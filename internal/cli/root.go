@@ -337,6 +337,9 @@ func commandAutoWritesNDJSON(cmd *cobra.Command, out io.Writer) bool {
 	if cmd == nil || cmd.Flags().Changed("json") {
 		return false
 	}
+	if cmd.Annotations != nil {
+		return cmd.Annotations["pixiv-cli.output-ndjson"] == "true"
+	}
 	file, ok := out.(interface{ Fd() uintptr })
 	if !ok || term.IsTerminal(int(file.Fd())) {
 		return false
@@ -791,14 +794,33 @@ func (a app) detailDeps() pixivdetail.Dependencies {
 			}
 			return pixivdetail.Request{HTTPSProxyOverride: proxyOverride}, nil
 		},
-		JSONOut: data.JSONOut,
+		JSONOut:     data.JSONOut,
+		ErrorOutput: a.errOut,
+		OutputIsTTY: func() bool { return outputIsTTY(a.out) },
 		Pooled: func(ctx context.Context, request pixivdetail.Request, attempt func(context.Context, *pixiv.Client) (bool, error)) error {
 			return data.Pooled(ctx, pixivdeps.Request{
 				UserID:             request.UserID,
 				HTTPSProxyOverride: request.HTTPSProxyOverride,
 			}, attempt)
 		},
+		FetchArtwork: func(ctx context.Context, client *pixiv.Client, id int64) (pixiv.Artwork, error) {
+			return client.Artwork(ctx, pixiv.ArtworkRequest{ArtworkID: id})
+		},
+		FetchNovel: func(ctx context.Context, client *pixiv.Client, id int64) (pixiv.Novel, error) {
+			return client.Novel(ctx, pixiv.NovelRequest{NovelID: id})
+		},
+		FetchNovelContent: func(ctx context.Context, client *pixiv.Client, id int64) (pixiv.NovelContent, error) {
+			return client.NovelContent(ctx, pixiv.NovelContentRequest{NovelID: id})
+		},
+		FetchUser: func(ctx context.Context, client *pixiv.Client, id int64) (pixiv.UserDetail, error) {
+			return client.User(ctx, pixiv.UserRequest{UserID: id})
+		},
 	}
+}
+
+func outputIsTTY(writer io.Writer) bool {
+	file, ok := writer.(interface{ Fd() uintptr })
+	return ok && term.IsTerminal(int(file.Fd()))
 }
 
 func (a app) fanboxDataDeps() fanboxcommands.Data {

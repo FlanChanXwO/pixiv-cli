@@ -12,7 +12,7 @@
 
 ### Task 1: Red — 锁定 `detail` 的双输入与类型推断 contract
 
-- [ ] **目标**：先为当前缺失行为添加聚焦失败测试，不修改生产实现。
+- [x] **目标**：先为当前缺失行为添加聚焦失败测试，不修改生产实现。
 - **测试范围**：
   - `pixiv detail` command 的 input codec 应为 `TextOrRecord`，当前应因仍为 `TextValue` 而失败。
   - canonical `illust` / `manga` / `ugoira` record 均映射到 artwork detail。
@@ -29,16 +29,16 @@
 - **Red 命令**：
   - `go test ./internal/cli/commands/pixiv/detail -count=1 -run '<new focused tests>' -v`
 - **验收**：新增 record-input 测试编译通过，并因当前 detail 不能消费 canonical records / 不能按 record type 推断而失败；既有单值测试保持绿色。
-- **实际做了什么**：待执行。
-- **验证证据**：待执行。
-- **剩余风险**：待执行。
+- **实际做了什么**：新增 producer record 类型归一化和 detail canonical record 输入测试，并实际运行 Red。
+- **验证证据**：`go test ./internal/shared/record -count=1 -run TestRecordFromArtworkNormalizesIllustrationType -v` 按预期因 `illustration` 与 `illust` 不一致失败。
+- **剩余风险**：detail 的完整 novel/user record 组合仍需补齐。
 - **下一步建议**：Task 2。
 
 ---
 
 ### Task 2: Green — 让 `detail` 最小接入 `TextOrRecord`
 
-- [ ] **目标**：只实现 Task 1 所需的最小输入和 entity resolution，使 Red 转 Green。
+- [x] **目标**：只实现 Task 1 所需的最小输入和 entity resolution，使 Red 转 Green。
 - **实现约束**：
   - 将 detail input binding 改为 `pipeline.TextOrRecord`；显式 argv 值仍优先，不读 stdin。
   - TextMode 继续走现有 `parseEntityIDOrURL` 和默认 `--type artwork` 语义。
@@ -52,16 +52,16 @@
 - **验证命令**：
   - `go test ./internal/cli/commands/pixiv/detail -count=1`
   - 若触及 pipeline：`go test ./internal/cli/pipeline -count=1`
-- **实际做了什么**：待执行。
-- **验证证据**：待执行。
-- **剩余风险**：待执行。
+- **实际做了什么**：detail 改用 `TextOrRecord`，支持 record 类型推断、显式类型冲突校验、NDJSON 输出和 JSON array spool；root 注入 detail fetch 端口。
+- **验证证据**：detail、record、CLI 相关测试通过。
+- **剩余风险**：root EPIPE 全路径与混合实体的更高层组合测试仍需补充。
 - **下一步建议**：Task 3。
 
 ---
 
 ### Task 3: Refactor + Phase 1 验证
 
-- [ ] **目标**：检查 input/entity 实现是否出现稳定且有害的重复；只有确有必要才重构，然后完成 Phase 1 验证。
+- [x] **目标**：检查 input/entity 实现是否出现稳定且有害的重复；只有确有必要才重构，然后完成 Phase 1 验证。
 - **重点审查**：
   - artwork aliases 是否只有一个 canonical compatibility source，而不是散落 switch。
   - raw TextValue 与 RecordMode 是否共享实际 detail fetch，而不是复制四套 SDK 调用。
@@ -71,9 +71,9 @@
   - `go test ./internal/cli/commands/pixiv/detail ./internal/cli/pipeline -count=1`
   - `git diff --check`
 - **验收**：Phase 1 绿色；能够从 canonical record 稳定得到正确 entity，且单值 detail 完全兼容。
-- **实际做了什么**：待执行。
-- **验证证据**：待执行。
-- **剩余风险**：待执行。
+- **实际做了什么**：移除旧的 TextValue helper，保留 Pixiv 类型规则在 detail owner，使用临时文件提交 JSON array，避免失败时提交不完整 stdout。
+- **验证证据**：`go test ./internal/cli/commands/pixiv/detail ./internal/shared/record ./internal/cli -count=1` 通过；`git diff --check` 通过。
+- **剩余风险**：尚未运行全仓库测试、构建及 code review。
 - **下一步建议**：集中检查 #1。
 
 ---

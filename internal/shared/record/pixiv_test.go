@@ -47,6 +47,15 @@ func TestRecordFromArtworkPreservesSDKFieldsAndNormalizesID(t *testing.T) {
 	assert.NotContains(t, string(got), `"version"`)
 }
 
+func TestRecordFromArtworkNormalizesIllustrationType(t *testing.T) {
+	artwork := pixiv.Artwork{ID: 101, Kind: pixiv.ArtworkKindIllustration}
+
+	record, err := recordpkg.RecordFromArtworkDTO(pixiv.ToArtworkDTO(artwork))
+	require.NoError(t, err)
+
+	assert.Equal(t, "illust", record.Type())
+}
+
 func TestRecordFromNovelAndUserPreview(t *testing.T) {
 	novel := pixiv.Novel{
 		ID:             88,

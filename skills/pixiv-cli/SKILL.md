@@ -144,6 +144,7 @@ pixiv search "WORD" --resolution high --aspect-ratio landscape --draw-tool "CLIP
 pixiv search --trending-tags --json
 pixiv detail ARTWORK_ID_OR_URL --type artwork --json
 pixiv detail NOVEL_ID --type novel --content --json
+pixiv search "初音ミク" --type artwork --ndjson | pixiv detail --ndjson
 pixiv series SERIES_ID --type novel --limit 20 --json
 pixiv comment ID --type artwork --limit 20 --json
 pixiv bookmark list --type artwork --limit 20 --json
@@ -177,8 +178,10 @@ an empty optional stream leaves the original omission/default behavior intact,
 and commands missing two or more required values do not read stdin. This
 applies to queries such as `pixiv search`, `detail`, `series`, `comment`,
 `user`, `config`, and account operations. `download` and bookmark/follow
-actions classify stdin as strict canonical NDJSON when its first non-whitespace
-byte is `{`; otherwise they use one raw ID/URL value. Once selected, a mode
+actions and `detail` classify stdin as strict canonical NDJSON when its first non-whitespace
+byte is `{`; otherwise they use one raw ID/URL value. `detail` infers artwork/novel/user from record types;
+record-mode `--json` emits an array, while record-mode non-TTY output defaults to NDJSON. Aggregate `search --json`
+is not a record stream and cannot be piped directly into `detail`. Once selected, a mode
 does not fall back to the other mode. `-` is ordinary positional text and is
 not a stdin sentinel.
 

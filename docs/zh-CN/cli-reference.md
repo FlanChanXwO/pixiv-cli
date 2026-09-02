@@ -280,6 +280,7 @@ CLI 使用 Cobra/pflag，选项可以写在位置参数前后，例如 `pixiv au
 账号池关闭时，所有非写入的数据读取、推荐、时间线与下载使用 `pixiv auth use` 选定的本地账号。只有 `[account_pool]` 显式设置 `enabled = true` 时才启用数据库账号池；账号行的 `schedulable` 控制是否参加调度，`strategy` 默认 `round_robin`，也支持 `random`。使用 `pixiv auth pool status|enable|disable` 查看或修改调度状态。写操作、认证和配置不使用账号池。数据命令拒绝 `--uid`、`--refresh-token`。
 
 视觉列表接入管道时会自动输出 NDJSON；也可显式使用 `--ndjson`。每行都是带稳定字符串 `id`、`type`、`url` 的规范 Record，其余适用 SDK 字段会保留。`download`、`bookmark add/remove`、`follow add/remove` 可不带位置 ID 直接消费它们；动作成功时 stdout 保持为空，安全诊断写入 stderr。`--on-error=skip|fail-fast` 控制 stdin 中格式错误或不兼容 Record 的处理；`--json` 与 `--ndjson` 不能同时使用。
+`pixiv detail` 也可直接消费规范 NDJSON：`illust`、`manga`、`ugoira` 和通用 `artwork` 记录进入作品详情，`novel` 与 `user` 记录进入对应详情。record 模式下，显式 `--ndjson` 输出规范 Record，显式 `--json` 输出完整 JSON 数组；省略输出 flag 时，非 TTY stdout 自动使用 NDJSON。`pixiv search --json` 是聚合 JSON 文档，不是规范 NDJSON 流，不能直接作为 `detail` 的输入。
 
 ### 反向搜图
 

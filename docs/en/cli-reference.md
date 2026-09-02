@@ -519,7 +519,7 @@ extension. Extensions also replace ASCII control characters and remove trailing 
 | list commands | `--page` / `-p` | empty | 1-based logical page; must be used with a positive `--limit`. |
 | `ranking` | `--mode` | `day` | One of `day`, `day_male`, `day_female`, `week`, `week_original`, `week_rookie`, `month`, `day_manga`, `week_manga`, `month_manga`, `week_rookie_manga`, `day_r18`, `day_male_r18`, `day_female_r18`, `week_r18`, `week_r18g`. The final nine require authentication. |
 | `ranking` | `--date` | empty | Ranking date, typically `YYYY-MM-DD`. |
-| `detail` | `--type` / `-t` | `artwork` | Entity type: `artwork`, `novel`, or `user`; `--content` is valid only with `novel`. |
+| `detail` | `--type` / `-t` | `artwork` | Entity type: `artwork` (also accepts `illust`, `manga`, `ugoira`), `novel`, or `user`; omitted type in record mode is inferred from the record; `--content` is valid only with `novel`. |
 | `series`, `comment` | `--type` / `-t` | required | Entity type: `artwork` or `novel`; the ID is interpreted only after the type is selected. |
 | `bookmark list` | `--type` / `-t` | `artwork` | Entity type: `artwork` or `novel`; `--restrict` and `--tag` are passed to the matching bookmark list. |
 | `bookmark tags` | `--type` / `-t` | `artwork` | Artwork bookmark tags only; `--restrict` selects public/private tags. |
@@ -598,7 +598,11 @@ blocks. The content is not data-layer truncated.
 `detail --type artwork` accepts a positive artwork ID or a canonical HTTPS `pixiv.net`/`www.pixiv.net` artwork URL
 in the form `/artworks/{id}` (an optional locale segment, query, and fragment are allowed). `detail --type novel`
 and `detail --type user` require positive numeric IDs. User and novel URLs are not silently interpreted as artwork
-URLs; unsupported URL shapes fail locally.
+URLs; unsupported URL shapes fail locally. `detail` also consumes canonical NDJSON records from stdin: `illust`,
+`manga`, `ugoira`, and generic `artwork` records resolve to artwork detail, while `novel` and `user` records resolve
+to their matching detail endpoints. In record mode, `--ndjson` emits canonical records and `--json` emits one JSON
+array; an omitted output flag auto-selects NDJSON for non-TTY stdout. Aggregate `search --json` output is not an
+NDJSON record stream and is not accepted by `detail`.
 
 `download` accepts the same artwork references, allowed CDN URLs, plus `/users/{id}`, `/users/{id}/artworks`,
 and `/users/{id}/bookmarks/artworks` URLs. User and public-bookmarks sources follow pagination for `illust`,
