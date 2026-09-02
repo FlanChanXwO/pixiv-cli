@@ -234,7 +234,7 @@
 
 ### Task 8: Composition contract tests — reverse image search 与继续管道
 
-- [ ] **目标**：锁定用户最关心的 reverse-search pipeline 和 detail 后继续消费能力。
+- [x] **目标**：锁定用户最关心的 reverse-search pipeline 和 detail 后继续消费能力。
 - **必须覆盖**：
   - reverse identity `{type:"artwork"}` → artwork detail。
   - reverse identity `{type:"user"}` → user detail。
@@ -247,9 +247,14 @@
   - 不支持 binary image stdin，不修改 reverse source loader。
 - **TDD 规则**：同 Task 7；只有真实失败才允许生产修复，且必须保留先失败证据。
 - **验收**：`pixiv search IMAGE --provider all | pixiv detail` 的 record contract 被 deterministic tests 证明。
-- **实际做了什么**：待执行。
-- **验证证据**：待执行。
-- **剩余风险**：待执行。
+- **实际做了什么**：在 detail owner 组合测试中调用真实 `search.New` 生成 reverse `artwork,user,artwork` NDJSON，再调用真实 `detail.New` 按每条 record 独立 inference，验证输出顺序为 `illust,user,illust`；另测显式 `--type artwork` 对 reverse user record 的 mismatch 在打开 client 前失败。通过真实 search `--json` aggregate 输出喂给 detail，确认不会自动拆 `records`；将 detail NDJSON 喂给真实 `download.New`，确认现有 visual record consumer 能读取 `type`/`id` 并收到 artwork ID。search owner 另有 binary stdin 边界测试，确认不会进入 reverse-search seam。未修改生产代码、reverse source loader 或 provider。
+- **验证证据**：
+  - 按任务书规则执行 TDD：新增组合测试在现有实现上直接 PASS；第一次下游测试暴露的是测试 fake 传入 nil SDK client，而 downloader 的既有 seam 明确拒绝 nil client，随后仅修正测试 fixture 为非 nil `&pixiv.Client{}`，无生产修复。
+  - `go test ./internal/cli/commands/pixiv/detail -count=1 -run '^(TestCommandConsumesReverseSearchIdentityRecordsInOrder|TestCommandRejectsReverseUserRecordForArtworkConstraintBeforeFetching|TestCommandDoesNotSplitReverseSearchAggregateJSONIntoRecords|TestDetailNDJSONFeedsExistingVisualDownloadConsumer)$' -v`：4 个测试 PASS（其中 mismatch/aggregate 测试输出预期的 structured pipeline error）。
+  - `go test ./internal/cli/commands/pixiv/search -count=1 -run '^TestCommandDoesNotTreatBinaryStdinAsReverseSearchSource$' -v`：PASS。
+  - `go test ./internal/cli/commands/pixiv/detail ./internal/cli/commands/pixiv/search ./internal/cli/commands/pixiv/download -count=1`：三个相关包均 PASS。
+  - `gofmt -d internal/cli/commands/pixiv/detail/detail_test.go internal/cli/commands/pixiv/search/search_test.go` 无输出；`git diff --check` PASS；两份修改文件的 LSP diagnostics 均为空；变更影响面仅为测试符号。
+- **剩余风险**：仍未启动真实 Pixiv/reverse provider 网络；下游证明使用既有 download manager 注入 seam 与一个 illust fixture，不覆盖真实文件写入。binary image stdin 仍是明确 non-goal。
 - **下一步建议**：Task 9。
 
 ---

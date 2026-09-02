@@ -8,10 +8,186 @@ import (
 	"strings"
 	"testing"
 
+	downloadcmd "github.com/FlanChanXwO/pixiv-cli/internal/cli/commands/pixiv/download"
+	searchcmd "github.com/FlanChanXwO/pixiv-cli/internal/cli/commands/pixiv/search"
+	downloader "github.com/FlanChanXwO/pixiv-cli/internal/media/downloader"
+	"github.com/FlanChanXwO/pixiv-cli/internal/services/reversesearch"
 	recordpkg "github.com/FlanChanXwO/pixiv-cli/internal/shared/record"
 	pixiv "github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
 	"github.com/spf13/cobra"
 )
+
+func TestCommandConsumesReverseSearchIdentityRecordsInOrder(t *testing.T) {
+	input := reverseSearchOutput(t, []reversesearch.Result{
+		{Pixiv: &reversesearch.PixivRef{Type: reversesearch.PixivRefArtwork, ID: 401}},
+		{Pixiv: &reversesearch.PixivRef{Type: reversesearch.PixivRefUser, ID: 402}},
+		{Pixiv: &reversesearch.PixivRef{Type: reversesearch.PixivRefArtwork, ID: 403}},
+	}, false)
+
+	sourceRecords := decodeMachineRecords(t, input)
+	assertMachineRecordIDs(t, sourceRecords, []string{"401", "402", "403"})
+	for index, wantType := range []string{"artwork", "user", "artwork"} {
+		if sourceRecords[index]["type"] != wantType {
+			t.Fatalf("reverse record %d has type %v, want %s", index, sourceRecords[index]["type"], wantType)
+		}
+	}
+
+	var output bytes.Buffer
+	data := testMachineDependencies(&output, strings.NewReader(input))
+	cmd := New(data)
+	cmd.SetArgs([]string{"--ndjson"})
+	requireNoError(t, cmd.Execute())
+
+	got := decodeMachineRecords(t, output.String())
+	assertMachineRecordIDs(t, got, []string{"401", "402", "403"})
+	for index, wantType := range []string{"illust", "user", "illust"} {
+		if got[index]["type"] != wantType {
+			t.Fatalf("detail record %d has type %v, want %s", index, got[index]["type"], wantType)
+		}
+	}
+}
+
+func TestCommandRejectsReverseUserRecordForArtworkConstraintBeforeFetching(t *testing.T) {
+	input := reverseSearchOutput(t, []reversesearch.Result{
+		{Pixiv: &reversesearch.PixivRef{Type: reversesearch.PixivRefUser, ID: 402}},
+	}, false)
+	var output, diagnostics bytes.Buffer
+	data := testMachineDependencies(&output, strings.NewReader(input))
+	data.ErrorOutput = &diagnostics
+	fetched := false
+	data.Pooled = func(context.Context, Request, func(context.Context, *pixiv.Client) (bool, error)) error {
+		fetched = true
+		return nil
+	}
+
+	cmd := New(data)
+	cmd.SetArgs([]string{"--type", "artwork", "--ndjson"})
+	err := cmd.Execute()
+	if err == nil {
+		t.Fatal("expected reverse user record to be rejected for artwork constraint")
+	}
+	if !strings.Contains(diagnostics.String(), "incompatible") {
+		t.Fatalf("expected type mismatch diagnostic, got %q", diagnostics.String())
+	}
+	if fetched {
+		t.Fatal("opened client for a record rejected by explicit type constraint")
+	}
+}
+
+func TestCommandDoesNotSplitReverseSearchAggregateJSONIntoRecords(t *testing.T) {
+	aggregate := reverseSearchOutput(t, []reversesearch.Result{
+		{Pixiv: &reversesearch.PixivRef{Type: reversesearch.PixivRefArtwork, ID: 404}},
+	}, true)
+	if !strings.Contains(aggregate, `"records"`) {
+		t.Fatalf("expected reverse aggregate JSON to contain records, got %q", aggregate)
+	}
+
+	var output, diagnostics bytes.Buffer
+	data := testMachineDependencies(&output, strings.NewReader(aggregate))
+	data.ErrorOutput = &diagnostics
+	fetched := false
+	data.Pooled = func(context.Context, Request, func(context.Context, *pixiv.Client) (bool, error)) error {
+		fetched = true
+		return nil
+	}
+	cmd := New(data)
+	cmd.SetArgs([]string{"--ndjson"})
+	err := cmd.Execute()
+	if err == nil {
+		t.Fatal("expected aggregate reverse JSON to be rejected as a record stream")
+	}
+	if !strings.Contains(diagnostics.String(), `"code":"invalid_record"`) {
+		t.Fatalf("expected structured invalid-record diagnostic, got %q", diagnostics.String())
+	}
+	if fetched {
+		t.Fatal("opened client while parsing an aggregate reverse-search envelope")
+	}
+}
+
+func TestDetailNDJSONFeedsExistingVisualDownloadConsumer(t *testing.T) {
+	artwork, err := recordpkg.RecordFromArtworkDTO(pixiv.ToArtworkDTO(pixiv.Artwork{
+		ID: 501, Kind: pixiv.ArtworkKindIllustration, Title: "视觉作品",
+	}))
+	requireNoError(t, err)
+
+	var detailOutput bytes.Buffer
+	detailCommand := New(testMachineDependencies(
+		&detailOutput,
+		strings.NewReader(normalSearchRecordInput(t, []recordpkg.Record{artwork})),
+	))
+	detailCommand.SetArgs([]string{"--ndjson"})
+	requireNoError(t, detailCommand.Execute())
+	detailRecords := decodeMachineRecords(t, detailOutput.String())
+	assertMachineRecordIDs(t, detailRecords, []string{"501"})
+	if detailRecords[0]["type"] != "illust" {
+		t.Fatalf("detail output type = %v, want illust", detailRecords[0]["type"])
+	}
+
+	var downloadedIDs []int64
+	downloadCommand := downloadcmd.New(downloadcmd.Deps{
+		Input:       strings.NewReader(detailOutput.String()),
+		Output:      &bytes.Buffer{},
+		ErrorOutput: &bytes.Buffer{},
+		UsageError:  func(err error) error { return err },
+		Runtime: func() (downloadcmd.Runtime, error) {
+			return downloadcmd.Runtime{}, nil
+		},
+		Pooled: func(ctx context.Context, _ downloadcmd.CommandRequest, attempt func(context.Context, *pixiv.Client) (bool, error)) error {
+			_, err := attempt(ctx, &pixiv.Client{})
+			return err
+		},
+		Download: func() downloader.DownloadService {
+			return downloader.DownloadService{
+				NewManager: func(_ downloader.DownloadClient, _, _ string) (downloader.DownloadManager, error) {
+					return captureDownloadManager{ids: &downloadedIDs}, nil
+				},
+			}
+		},
+	})
+	downloadCommand.SetArgs([]string{"--on-error", "fail-fast"})
+	requireNoError(t, downloadCommand.Execute())
+	if len(downloadedIDs) != 1 || downloadedIDs[0] != 501 {
+		t.Fatalf("download consumer received IDs %v, want [501]", downloadedIDs)
+	}
+}
+
+type captureDownloadManager struct {
+	ids *[]int64
+}
+
+func (m captureDownloadManager) Download(_ context.Context, request downloader.DownloadRequest) ([]downloader.DownloadedArtwork, error) {
+	*m.ids = append(*m.ids, request.IllustIDs...)
+	return nil, nil
+}
+
+func reverseSearchOutput(t *testing.T, results []reversesearch.Result, jsonOutput bool) string {
+	t.Helper()
+	var output bytes.Buffer
+	cmd := searchcmd.New(searchcmd.Dependencies{
+		Input:       strings.NewReader(""),
+		Output:      &output,
+		ErrorOutput: &bytes.Buffer{},
+		UsageError:  func(err error) error { return err },
+		JSONOut: func(*bool) (bool, error) {
+			return jsonOutput, nil
+		},
+		ReverseSearch: func(_ context.Context, request searchcmd.ReverseSearchRequest) (reversesearch.Response, error) {
+			if request.Provider != reversesearch.ProviderAll {
+				t.Fatalf("reverse provider = %q, want %q", request.Provider, reversesearch.ProviderAll)
+			}
+			return reversesearch.Response{Results: results}, nil
+		},
+	})
+	args := []string{"https://example.test/image.jpg", "--provider", "all"}
+	if jsonOutput {
+		args = append(args, "--json")
+	} else {
+		args = append(args, "--ndjson")
+	}
+	cmd.SetArgs(args)
+	requireNoError(t, cmd.Execute())
+	return output.String()
+}
 
 func TestCommandRejectsUnsupportedURLBeforeOpeningClient(t *testing.T) {
 	opened := false

@@ -72,6 +72,28 @@ func TestCommandUsesReverseSearchForHTTPSourceWithoutOpeningPixivSDK(t *testing.
 	}
 }
 
+func TestCommandDoesNotTreatBinaryStdinAsReverseSearchSource(t *testing.T) {
+	called := false
+	cmd := New(Dependencies{
+		Input:      bytes.NewReader([]byte{0, 1, 2, 3}),
+		Output:     &bytes.Buffer{},
+		UsageError: func(err error) error { return err },
+		ReverseSearch: func(context.Context, ReverseSearchRequest) (reversesearch.Response, error) {
+			called = true
+			return reversesearch.Response{}, nil
+		},
+	})
+	cmd.SetArgs([]string{"--provider", "all", "--ndjson"})
+
+	err := cmd.Execute()
+	if err == nil || !strings.Contains(err.Error(), "--provider is only supported for image sources") {
+		t.Fatalf("expected binary stdin to remain outside reverse-search input, got %v", err)
+	}
+	if called {
+		t.Fatal("treated binary stdin as a reverse-search source")
+	}
+}
+
 func TestCommandPassesReverseSearchProviderAndProxyOverride(t *testing.T) {
 	var captured ReverseSearchRequest
 	cmd := New(Dependencies{
