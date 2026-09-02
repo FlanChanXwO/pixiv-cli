@@ -414,17 +414,37 @@
 
 ### 🔍 最终集中检查（Task 10–12）
 
-- [ ] **目标**：最终交付前复查。
-- **检查清单**：
-  - [ ] C1 Input contract 有证据。
-  - [ ] C2 Entity semantics 有证据。
-  - [ ] C3 Output contract 有证据。
-  - [ ] C4 Search/reverse composition 有证据。
-  - [ ] C5 Error contract 有证据。
-  - [ ] C6 Docs/regression 有证据。
-  - [ ] 无 public SDK / provider / config scope creep。
-  - [ ] 无新增第三方依赖。
-  - [ ] 全部 production code 变更有先失败测试证据。
-  - [ ] finding-first review 无阻塞问题。
-- **结论**：待执行。
-- **发现问题**：待执行。
+- [x] **目标**：最终交付前复查。
+- [x] **检查清单**：
+  - [x] C1 Input contract 有证据。
+  - [x] C2 Entity semantics 有证据。
+  - [x] C3 Output contract 有证据。
+  - [x] C4 Search/reverse composition 有证据。
+  - [x] C5 Error contract 有证据。
+  - [x] C6 Docs/regression 有证据。
+  - [x] 无 public SDK / provider / config scope creep。
+  - [x] 无新增第三方依赖。
+  - [x] 全部 production code 变更有先失败测试证据，或属于已有 contract 覆盖的 composition-only 变更。
+  - [x] finding-first review 无阻塞问题。
+- **实际做了什么**：对完整 goal 范围 `origin/main...HEAD` 重新执行最终验收矩阵，覆盖初始生产提交 `8506202`、后续实现、测试、文档和 ledger；同时复核 Task 1–12 的 Red/Green 记录、架构边界、依赖变化和 review 结论。确认 detail 已完成 canonical `TextOrRecord` 输入、实体类型推断/显式类型约束、TTY/非 TTY/`--json`/`--ndjson` 输出、novel content 投影、normal/reverse search 组合与既有 downstream consumer 连接。
+  - **C1 Input contract**：`internal/cli/commands/pixiv/detail/detail.go` 使用 `pipeline.TextOrRecord`，RecordMode 通过 `pipeline.ConsumeNDJSONRecords` 顺序消费；detail tests 覆盖 canonical artwork、normal search 的 artwork/novel/user、reverse identity、单值 ID、保留 search metadata 与 TextValue 兼容。raw ID/URL 解析和单值 stdin 路径由 `TestCommandTextValueAcceptsRawURLAndStdin` 与既有 TextValue 回归测试保护。
+  - **C2 Entity semantics**：`entityForRecord` 集中维护 `artwork/illust/manga/ugoira -> artwork`、`novel -> novel`、`user -> user`，显式 `--type` 作为 compatibility constraint；测试覆盖四种 artwork alias、novel/user、冲突和 unsupported type，并验证 detail 输出重新归一化为实际实体类型。
+  - **C3 Output contract**：`--json` 与 `--ndjson` 互斥；RecordMode TTY 使用人类可读详情和稳定 `---` 分隔，非 TTY 自动 NDJSON，显式 `--ndjson` 优先；RecordMode `--json` 通过临时文件 spool 逐条生成完整 JSON array，没有先收集完整输入流。TextValue 默认输出与 `--json` 单 document 语义保持不变。
+  - **C4 Composition**：normal search、reverse search 和 detail 的顺序消费、具体 artwork type、novel/user 投影以及 `detail --ndjson` 到既有 download consumer 的测试均通过；reverse provider、proxy、image-source 和 downstream output contract 未被改动。
+  - **C5 Error contract**：malformed record、aggregate JSON、unknown/unsupported type、显式类型 mismatch、非 novel `--content`、stdout/stderr 边界、远端 detail error 和原始 output write error 均有非零失败/诊断测试；错误直接保留真实原因，无静默跳过、伪造成功、隐式 fallback 或把诊断写入 stdout。最终审计发现原 C5 证据缺少直接的远端详情失败测试，已新增 `TestCommandPreservesRemoteDetailError`，仅补测试、不改变生产行为。
+  - **C6 Documentation & regression**：双语 CLI reference、`skills/pixiv-cli` 及 discover reference 已同步 pipeline、类型推断、输出、reverse contract 和 aggregate JSON 非目标；相关测试、文档测试、全量测试、构建、vet、LSP diagnostics 和 diff 检查均有实际通过记录。
+  - **TDD/范围证据**：Task 1 记录真实 Red（record type normalization）；Task 4/5 记录输出 separator 和 I/O error 的真实 Red→Green；Task 6 记录 novel content projection 的 Red→Green；集中检查 #1 记录 `commandAutoWritesNDJSON` annotation 回归的真实 Red→Green。composition-only 检查按任务规则允许在已有实现覆盖时直接 PASS，未为制造 Red 而篡改测试或实现。
+- **验证证据**：
+  - `go test ./internal/cli/commands/pixiv/detail -count=1 -v`：PASS，包含 detail pipeline、TTY/非 TTY、JSON array、alias、novel content、malformed/remote/I/O error cases。
+  - `go test ./internal/cli ./internal/cli/commands/pixiv/search ./internal/shared/record -count=1`：PASS。
+  - `go test ./scripts/tests/documentation -count=1`：PASS。
+  - `go vet ./internal/cli ./internal/cli/commands/pixiv/detail ./internal/cli/commands/pixiv/search ./internal/shared/record`：PASS。
+  - `go test ./... -count=1`：PASS；仓库默认跳过需本机凭据的真实 Pixiv/FANBOX SDK E2E。
+  - `sh scripts/build.sh`：PASS，生成 Darwin arm64 `build/pixiv`；构建产物未进入 Git 变更。
+  - LSP diagnostics：`detail.go`、`root.go`、`internal/shared/record/pixiv.go`、`detail_test.go` 均为空；当前工作区 `git diff --check` 通过，提交后再复核 `git diff --check origin/main...HEAD`。
+  - 范围复核：`git diff --name-only origin/main...HEAD` 的 production Go 改动仅为 `internal/cli/commands/pixiv/detail/detail.go`、`internal/cli/root.go`、`internal/shared/record/pixiv.go`；没有 `sdk/`、`internal/services/reversesearch/`、binary source loader、`internal/config/`、`go.mod` 或 `go.sum` 的 production 变更，也没有新增第三方依赖。
+  - review 证据：Task 11 finding-first review 未发现 P0/P1/P2/P3；集中检查 #1 已将审查范围扩展到初始 `8506202` 生产提交并修复 annotation 回归，后续相关测试、vet、LSP 和 diff 检查均通过。
+- **结论**：通过。goal-1 的 C1–C6、测试先行、范围边界和 review 门禁均满足；待提交最终 ledger 后执行提交后构建/范围 diff/clean-worktree 复核，再将 goal 标记为 complete。
+- **发现问题**：C5 的 Evidence Required 原先没有直接覆盖远端详情 SDK 错误；已由 `TestCommandPreservesRemoteDetailError` 补齐，测试与全量回归均通过。未发现生产逻辑阻塞问题。
+- **剩余风险**：未运行需要本机真实凭据的 Pixiv/FANBOX SDK E2E，也未在真实跨平台 TTY/非 TTY 与真实 reverse provider 网络上执行 smoke；这些是环境依赖的补充风险，不影响 deterministic contract 结论。`internal/cli/commands/pixiv/search/search_test.go:365` 的 `forvar` warning 为 base commit 既有问题，未归属于本 goal。
+- **下一步建议**：提交最终测试与 goal ledger，完成提交后构建、范围 diff 和 clean-worktree 复核；全部通过后将 goal 标记为 complete。

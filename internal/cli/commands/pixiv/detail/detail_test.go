@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"io"
 	"strings"
 	"testing"
@@ -480,6 +481,35 @@ func TestCommandTextValueKeepsHumanOutputWhenStdoutIsNotTTY(t *testing.T) {
 	}
 }
 
+func TestCommandTextValueAcceptsRawURLAndStdin(t *testing.T) {
+	tests := []struct {
+		name  string
+		args  []string
+		input string
+	}{
+		{
+			name: "raw Pixiv URL",
+			args: []string{"https://www.pixiv.net/artworks/42"},
+		},
+		{
+			name:  "stdin raw ID",
+			input: "42\n",
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			var output bytes.Buffer
+			cmd := New(testMachineDependencies(&output, strings.NewReader(tc.input)))
+			cmd.SetArgs(tc.args)
+			requireNoError(t, cmd.Execute())
+			if !strings.Contains(output.String(), "title: artwork") {
+				t.Fatalf("expected compatible human detail output, got %q", output.String())
+			}
+		})
+	}
+}
+
 func TestCommandTextValueJSONRemainsSingleDocument(t *testing.T) {
 	var output bytes.Buffer
 	data := testMachineDependencies(&output, strings.NewReader(""))
@@ -771,6 +801,29 @@ not-json
 		t.Fatalf("record diagnostic polluted stdout: %q", output.String())
 	}
 	assertMachineRecordIDs(t, decodeMachineRecords(t, output.String()), []string{"42"})
+}
+
+func TestCommandPreservesRemoteDetailError(t *testing.T) {
+	var output, diagnostics bytes.Buffer
+	const failureMessage = "remote artwork detail failed"
+	data := testMachineDependencies(&output, strings.NewReader(`{"id":"42","type":"illust","url":"https://www.pixiv.net/artworks/42"}
+`))
+	data.ErrorOutput = &diagnostics
+	data.FetchArtwork = func(_ context.Context, _ *pixiv.Client, _ int64) (pixiv.Artwork, error) {
+		return pixiv.Artwork{}, errors.New(failureMessage)
+	}
+
+	cmd := New(data)
+	cmd.SetArgs([]string{"--ndjson"})
+	if err := cmd.Execute(); err == nil {
+		t.Fatal("expected remote detail failure")
+	}
+	if !strings.Contains(diagnostics.String(), failureMessage) {
+		t.Fatalf("remote detail failure was not preserved in diagnostics: %q", diagnostics.String())
+	}
+	if output.Len() != 0 {
+		t.Fatalf("remote detail failure polluted stdout: %q", output.String())
+	}
 }
 
 func TestCommandRecordOutputWriteErrorRemainsOriginal(t *testing.T) {
