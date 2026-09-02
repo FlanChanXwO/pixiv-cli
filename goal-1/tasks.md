@@ -441,10 +441,10 @@
   - `go vet ./internal/cli ./internal/cli/commands/pixiv/detail ./internal/cli/commands/pixiv/search ./internal/shared/record`：PASS。
   - `go test ./... -count=1`：PASS；仓库默认跳过需本机凭据的真实 Pixiv/FANBOX SDK E2E。
   - `sh scripts/build.sh`：PASS，生成 Darwin arm64 `build/pixiv`；构建产物未进入 Git 变更。
-  - LSP diagnostics：`detail.go`、`root.go`、`internal/shared/record/pixiv.go`、`detail_test.go` 均为空；当前工作区 `git diff --check` 通过，提交后再复核 `git diff --check origin/main...HEAD`。
+  - LSP diagnostics：`detail.go`、`root.go`、`internal/shared/record/pixiv.go`、`detail_test.go` 均为空；当前工作区与提交后 `git diff --check origin/main...HEAD` 均通过。
   - 范围复核：`git diff --name-only origin/main...HEAD` 的 production Go 改动仅为 `internal/cli/commands/pixiv/detail/detail.go`、`internal/cli/root.go`、`internal/shared/record/pixiv.go`；没有 `sdk/`、`internal/services/reversesearch/`、binary source loader、`internal/config/`、`go.mod` 或 `go.sum` 的 production 变更，也没有新增第三方依赖。
   - review 证据：Task 11 finding-first review 未发现 P0/P1/P2/P3；集中检查 #1 已将审查范围扩展到初始 `8506202` 生产提交并修复 annotation 回归，后续相关测试、vet、LSP 和 diff 检查均通过。
-- **结论**：通过。goal-1 的 C1–C6、测试先行、范围边界和 review 门禁均满足；待提交最终 ledger 后执行提交后构建/范围 diff/clean-worktree 复核，再将 goal 标记为 complete。
+- **结论**：通过。goal-1 的 C1–C6、测试先行、范围边界和 review 门禁均满足；最终 ledger 已提交，提交后构建、范围 diff、LSP diagnostics、无未完成 ledger marker 与 clean-worktree 复核均通过，可以将 goal 标记为 complete。
 - **发现问题**：C5 的 Evidence Required 原先没有直接覆盖远端详情 SDK 错误；已由 `TestCommandPreservesRemoteDetailError` 补齐，测试与全量回归均通过。未发现生产逻辑阻塞问题。
 - **剩余风险**：未运行需要本机真实凭据的 Pixiv/FANBOX SDK E2E，也未在真实跨平台 TTY/非 TTY 与真实 reverse provider 网络上执行 smoke；这些是环境依赖的补充风险，不影响 deterministic contract 结论。`internal/cli/commands/pixiv/search/search_test.go:365` 的 `forvar` warning 为 base commit 既有问题，未归属于本 goal。
-- **下一步建议**：提交最终测试与 goal ledger，完成提交后构建、范围 diff 和 clean-worktree 复核；全部通过后将 goal 标记为 complete。
+- **下一步建议**：goal-1 已完成；无后续 task。
