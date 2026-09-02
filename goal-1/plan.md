@@ -298,7 +298,7 @@ git diff --check
 
 ## 9. 回滚方案
 
-- 所有工作只在 `goal/search-detail-pipeline` 分支进行，未合并前不影响 `main`。
+- 所有工作只在 `feature/search-detail-pipeline` 分支进行，未合并前不影响 `main`。
 - 生产变更集中在 detail owner、必要的 shared record conversion 和最小 composition wiring；可按阶段 commit 独立 revert。
 - 不修改 public SDK / reverse provider，因此回滚 detail integration 不需要数据迁移或配置迁移。
 - 新增 `--ndjson` 若最终 contract 审查不通过，可在合并前连同文档和测试整体移除，不保留半支持状态。
