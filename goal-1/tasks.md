@@ -98,7 +98,7 @@
 
 ### Task 4: Red — 锁定 machine output 与兼容性行为
 
-- [ ] **目标**：在生产输出逻辑修改前，用失败测试定义 record transformer 的完整输出 contract。
+- [x] **目标**：在生产输出逻辑修改前，用失败测试定义 record transformer 的完整输出 contract。
 - **必须覆盖**：
   - TextValue + 默认输出：保持现有 human presenter，即使 stdout 是非 TTY writer 也不自动切换 JSON/NDJSON。
   - TextValue + `--json`：保持现有单 DTO document。
@@ -114,9 +114,9 @@
 - **输出污染测试**：stderr diagnostics/logging 不得进入 NDJSON stdout；每一行 stdout 都可由 canonical record parser 解析。
 - **Red 命令**：`go test ./internal/cli/commands/pixiv/detail -count=1 -run '<output tests>' -v`
 - **验收**：测试因 `--ndjson` 尚不存在、record output 尚未实现或当前 presenter 行为不同而失败；不得先改实现再补测试。
-- **实际做了什么**：待执行。
-- **验证证据**：待执行。
-- **剩余风险**：待执行。
+- **实际做了什么**：在 `internal/cli/commands/pixiv/detail/detail_test.go` 增加 machine-output Red contract 测试，覆盖 TextValue human/JSON/NDJSON 兼容、RecordMode TTY 分隔、非 TTY 自动 NDJSON、显式 `--ndjson`、JSON array 顺序、artwork/novel/user detail record 投影，以及 stderr/stdout 分离。
+- **验证证据**：LSP 对测试文件无诊断；`gofmt` 与 `git diff --check` 通过。实际运行 `go test ./internal/cli/commands/pixiv/detail -count=1 -run 'TestCommand(TextValue|Record)' -v` 进入 Red：除其余新增 contract 测试通过外，`TestCommandRecordTTYSeparatesHumanDetails` 因当前实现缺少 `\n---\n` 稳定分隔而失败，证明 Task 5 需要补齐该行为。
+- **剩余风险**：当前 record-mode TTY human 输出会直接拼接多条详情，尚未提供稳定分隔；Task 5 还需把该 Red 测试转 Green。
 - **下一步建议**：Task 5。
 
 ---

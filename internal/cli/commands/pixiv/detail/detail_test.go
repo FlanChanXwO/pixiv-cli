@@ -140,6 +140,253 @@ func TestCommandRejectsRecordTypeMismatch(t *testing.T) {
 	}
 }
 
+func TestCommandTextValueKeepsHumanOutputWhenStdoutIsNotTTY(t *testing.T) {
+	var output bytes.Buffer
+	data := testMachineDependencies(&output, strings.NewReader(""))
+	data.OutputIsTTY = func() bool { return false }
+
+	cmd := New(data)
+	cmd.SetArgs([]string{"42"})
+	requireNoError(t, cmd.Execute())
+
+	got := output.String()
+	if !strings.Contains(got, "title: artwork") {
+		t.Fatalf("expected human detail output, got %q", got)
+	}
+	trimmed := strings.TrimSpace(got)
+	if strings.HasPrefix(trimmed, "{") || strings.HasPrefix(trimmed, "[") {
+		t.Fatalf("text-value output unexpectedly became machine JSON: %q", got)
+	}
+}
+
+func TestCommandTextValueJSONRemainsSingleDocument(t *testing.T) {
+	var output bytes.Buffer
+	data := testMachineDependencies(&output, strings.NewReader(""))
+	cmd := New(data)
+	cmd.SetArgs([]string{"42", "--json"})
+	requireNoError(t, cmd.Execute())
+
+	var object map[string]any
+	if err := json.Unmarshal(output.Bytes(), &object); err != nil {
+		t.Fatalf("expected one JSON object, got %q: %v", output.String(), err)
+	}
+	if len(object) == 0 {
+		t.Fatalf("expected detail DTO fields, got %q", output.String())
+	}
+	if strings.HasPrefix(strings.TrimSpace(output.String()), "[") {
+		t.Fatalf("text-value --json unexpectedly became an array: %q", output.String())
+	}
+}
+
+func TestCommandTextValueNDJSONOutputsCanonicalRecord(t *testing.T) {
+	var output bytes.Buffer
+	data := testMachineDependencies(&output, strings.NewReader(""))
+	data.OutputIsTTY = func() bool { return true }
+	cmd := New(data)
+	cmd.SetArgs([]string{"42", "--ndjson"})
+	requireNoError(t, cmd.Execute())
+
+	records := decodeMachineRecords(t, output.String())
+	if len(records) != 1 || records[0]["id"] != "42" || records[0]["type"] != "illust" {
+		t.Fatalf("unexpected text-value canonical output: %q", output.String())
+	}
+}
+
+func TestCommandRecordTTYSeparatesHumanDetails(t *testing.T) {
+	var output bytes.Buffer
+	data := testMachineDependencies(&output, strings.NewReader(`{"id":"42","type":"illust","url":"https://www.pixiv.net/artworks/42"}
+{"id":"43","type":"manga","url":"https://www.pixiv.net/artworks/43"}
+`))
+	data.OutputIsTTY = func() bool { return true }
+	cmd := New(data)
+	cmd.SetArgs([]string{})
+	requireNoError(t, cmd.Execute())
+
+	got := output.String()
+	if strings.Count(got, "title: artwork") != 2 {
+		t.Fatalf("expected two human detail entries, got %q", got)
+	}
+	if !strings.Contains(got, "\n---\n") {
+		t.Fatalf("expected stable separator between TTY record entries, got %q", got)
+	}
+}
+
+func TestCommandRecordNonTTYAutoNDJSONPreservesOrder(t *testing.T) {
+	var output bytes.Buffer
+	data := testMachineDependencies(&output, strings.NewReader(`{"id":"42","type":"illust","url":"https://www.pixiv.net/artworks/42"}
+{"id":"43","type":"manga","url":"https://www.pixiv.net/artworks/43"}
+`))
+	data.OutputIsTTY = func() bool { return false }
+	cmd := New(data)
+	cmd.SetArgs([]string{})
+	requireNoError(t, cmd.Execute())
+
+	assertMachineRecordIDs(t, decodeMachineRecords(t, output.String()), []string{"42", "43"})
+}
+
+func TestCommandRecordExplicitNDJSONOverridesTTY(t *testing.T) {
+	var output bytes.Buffer
+	data := testMachineDependencies(&output, strings.NewReader(`{"id":"42","type":"illust","url":"https://www.pixiv.net/artworks/42"}
+{"id":"43","type":"manga","url":"https://www.pixiv.net/artworks/43"}
+`))
+	data.OutputIsTTY = func() bool { return true }
+	cmd := New(data)
+	cmd.SetArgs([]string{"--ndjson"})
+	requireNoError(t, cmd.Execute())
+
+	assertMachineRecordIDs(t, decodeMachineRecords(t, output.String()), []string{"42", "43"})
+}
+
+func TestCommandRecordJSONOutputsOrderedArray(t *testing.T) {
+	var output bytes.Buffer
+	data := testMachineDependencies(&output, strings.NewReader(`{"id":"42","type":"illust","url":"https://www.pixiv.net/artworks/42"}
+{"id":"43","type":"manga","url":"https://www.pixiv.net/artworks/43"}
+`))
+	data.OutputIsTTY = func() bool { return true }
+	cmd := New(data)
+	cmd.SetArgs([]string{"--json"})
+	requireNoError(t, cmd.Execute())
+
+	var records []map[string]any
+	if err := json.Unmarshal(output.Bytes(), &records); err != nil {
+		t.Fatalf("expected one JSON array document, got %q: %v", output.String(), err)
+	}
+	assertMachineRecordIDs(t, records, []string{"42", "43"})
+}
+
+func TestCommandRecordMachineOutputUsesDetailTypes(t *testing.T) {
+	tests := []struct {
+		name     string
+		input    string
+		wantID   string
+		wantType string
+	}{
+		{
+			name:     "generic artwork becomes concrete artwork kind",
+			input:    `{"id":"42","type":"artwork","url":"https://www.pixiv.net/artworks/42"}` + "\n",
+			wantID:   "42",
+			wantType: "illust",
+		},
+		{
+			name:     "novel",
+			input:    `{"id":"88","type":"novel","url":"https://www.pixiv.net/novel/show.php?id=88"}` + "\n",
+			wantID:   "88",
+			wantType: "novel",
+		},
+		{
+			name:     "user",
+			input:    `{"id":"99","type":"user","url":"https://www.pixiv.net/users/99"}` + "\n",
+			wantID:   "99",
+			wantType: "user",
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			var output bytes.Buffer
+			data := testMachineDependencies(&output, strings.NewReader(test.input))
+			cmd := New(data)
+			cmd.SetArgs([]string{"--ndjson"})
+			requireNoError(t, cmd.Execute())
+
+			records := decodeMachineRecords(t, output.String())
+			if len(records) != 1 || records[0]["id"] != test.wantID || records[0]["type"] != test.wantType {
+				t.Fatalf("unexpected detail record: %q", output.String())
+			}
+			if test.wantType == "user" {
+				user, ok := records[0]["user"].(map[string]any)
+				if !ok || user["name"] != "user" {
+					t.Fatalf("expected detailed user envelope, got %q", output.String())
+				}
+			}
+		})
+	}
+}
+
+func TestCommandRecordDiagnosticsStayOffStdout(t *testing.T) {
+	var output bytes.Buffer
+	var diagnostics bytes.Buffer
+	data := testMachineDependencies(&output, strings.NewReader(`{"id":"42","type":"illust","url":"https://www.pixiv.net/artworks/42"}
+not-json
+`))
+	data.ErrorOutput = &diagnostics
+	cmd := New(data)
+	cmd.SetArgs([]string{"--ndjson"})
+	if err := cmd.Execute(); err == nil {
+		t.Fatal("expected malformed record to fail")
+	}
+
+	if !strings.Contains(diagnostics.String(), `"code":"invalid_record"`) {
+		t.Fatalf("expected structured record diagnostic on stderr, got %q", diagnostics.String())
+	}
+	if strings.Contains(output.String(), "invalid_record") {
+		t.Fatalf("record diagnostic polluted stdout: %q", output.String())
+	}
+	assertMachineRecordIDs(t, decodeMachineRecords(t, output.String()), []string{"42"})
+}
+
+func testMachineDependencies(output io.Writer, input io.Reader) Dependencies {
+	return Dependencies{
+		Input:       input,
+		Output:      output,
+		ErrorOutput: &bytes.Buffer{},
+		UsageError:  func(err error) error { return err },
+		BuildRequest: func(*cobra.Command, Options) (Request, error) {
+			return Request{}, nil
+		},
+		JSONOut: func(override *bool) (bool, error) {
+			return override != nil && *override, nil
+		},
+		Pooled: func(ctx context.Context, _ Request, attempt func(context.Context, *pixiv.Client) (bool, error)) error {
+			_, err := attempt(ctx, nil)
+			return err
+		},
+		FetchArtwork: func(_ context.Context, _ *pixiv.Client, id int64) (pixiv.Artwork, error) {
+			return pixiv.Artwork{ID: id, Kind: pixiv.ArtworkKindIllustration, Title: "artwork"}, nil
+		},
+		FetchNovel: func(_ context.Context, _ *pixiv.Client, id int64) (pixiv.Novel, error) {
+			return pixiv.Novel{ID: id, Title: "novel"}, nil
+		},
+		FetchNovelContent: func(_ context.Context, _ *pixiv.Client, id int64) (pixiv.NovelContent, error) {
+			return pixiv.NovelContent{NovelID: id, Title: "novel-content"}, nil
+		},
+		FetchUser: func(_ context.Context, _ *pixiv.Client, id int64) (pixiv.UserDetail, error) {
+			return pixiv.UserDetail{User: pixiv.User{ID: id, Name: "user"}}, nil
+		},
+	}
+}
+
+func decodeMachineRecords(t *testing.T, output string) []map[string]any {
+	t.Helper()
+	var records []map[string]any
+	for lineNumber, line := range strings.Split(strings.TrimSpace(output), "\n") {
+		if strings.TrimSpace(line) == "" {
+			continue
+		}
+		var value map[string]any
+		if err := json.Unmarshal([]byte(line), &value); err != nil {
+			t.Fatalf("line %d is not a canonical JSON record: %q: %v", lineNumber+1, line, err)
+		}
+		records = append(records, value)
+	}
+	return records
+}
+
+func assertMachineRecordIDs(t *testing.T, records []map[string]any, want []string) {
+	t.Helper()
+	if len(records) != len(want) {
+		t.Fatalf("expected %d records, got %d: %#v", len(want), len(records), records)
+	}
+	for index, expectedID := range want {
+		if records[index]["id"] != expectedID {
+			t.Fatalf("record %d has id %v, want %s", index, records[index]["id"], expectedID)
+		}
+		if records[index]["url"] == nil || records[index]["type"] == nil {
+			t.Fatalf("record %d is missing canonical fields: %#v", index, records[index])
+		}
+	}
+}
+
 func testRecordDependencies(output io.Writer, input io.Reader) Dependencies {
 	return Dependencies{
 		Input: input, Output: output, ErrorOutput: &bytes.Buffer{},
