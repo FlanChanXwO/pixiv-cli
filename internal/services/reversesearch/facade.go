@@ -3,6 +3,7 @@ package reversesearch
 import (
 	"context"
 	"errors"
+	"sync"
 )
 
 // PayloadQuery 是可在读取 source 前完成校验的查询元数据。
@@ -33,12 +34,29 @@ type Dependencies struct {
 
 // Facade 将不透明 source 固化一次，并确保 provider 查询结束后清理快照。
 type Facade struct {
-	sources  SourceLoader
-	payloads PayloadSearcher
+	sources   SourceLoader
+	payloads  PayloadSearcher
+	closeOnce sync.Once
+	closeErr  error
 }
 
 func NewFacade(dependencies Dependencies) *Facade {
 	return &Facade{sources: dependencies.Sources, payloads: dependencies.Payloads}
+}
+
+// Close 释放 Facade 所拥有的 payload 编排器。source snapshot 是每次 Search
+// 的局部资源，已经在 Search 返回前关闭；长期存活的 provider/session 资源则
+// 由 payloads 的可选生命周期端口释放。
+func (f *Facade) Close() error {
+	if f == nil {
+		return nil
+	}
+	f.closeOnce.Do(func() {
+		if closer, ok := f.payloads.(Closer); ok {
+			f.closeErr = closer.Close()
+		}
+	})
+	return f.closeErr
 }
 
 // New 是 NewFacade 的简洁别名。
@@ -76,3 +94,4 @@ func (f *Facade) Search(ctx context.Context, request Request) (response Response
 }
 
 var _ Searcher = (*Facade)(nil)
+var _ Closer = (*Facade)(nil)

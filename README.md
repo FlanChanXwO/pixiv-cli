@@ -244,6 +244,9 @@ The `reverse_search` tool accepts a regular local file or HTTP(S) URL and may up
 that source to third-party providers. Because trusted local MCP clients may request
 private files and private/loopback/link-local URLs, run it only from a client you
 trust; see the [reverse-search MCP contract](docs/en/mcp-tools.md#reverse-image-search).
+For advanced reverse-search proxy, User-Agent, and challenge-recovery settings, see
+the [CLI reference](docs/en/cli-reference.md). FlareSolverr is a JSON
+challenge-recovery control path and never receives the native ascii2d image upload.
 
 ### Go SDK
 

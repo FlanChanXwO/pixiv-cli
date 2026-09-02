@@ -1,6 +1,6 @@
 ---
 slug: pixiv-cli
-version: 1.0.0
+version: 1.0.1
 displayName: Pixiv CLI
 summary: Safely operate Pixiv with the pixiv-cli binary for discovery, account actions, and downloads.
 license: MIT
@@ -207,7 +207,10 @@ just to resolve output settings.
 it only through non-TTY stdin (`printf '%s\n' 'KEY' | pixiv config set
 saucenao_api_key`), and `pixiv config get saucenao_api_key` is always
 `<redacted>`. `SAUCENAO_API_KEY` overrides the file without being displayed.
-Other TOML settings are hand-maintained; inspect the installed help before suggesting them.
+Other TOML settings are hand-maintained; in particular, reverse-search transport
+and challenge recovery use `[reverse_search.network]` and
+`[reverse_search.flaresolverr]`. Inspect the installed help before suggesting
+advanced settings.
 
 FANBOX is a separate read-only service surface. Import its `FANBOXSESSID` with
 `pixiv fanbox auth import`, select it with `pixiv fanbox auth use --auto` or an
@@ -284,7 +287,13 @@ session.
    `[fanbox.network].proxy_url` and `user_agent` settings, plus an optional
    `[fanbox.flaresolverr]` challenge-only route. With an explicit Pixiv proxy,
    resource downloads deliberately use HTTP/1.1; App API and OAuth retain
-   normal protocol negotiation.
+   normal protocol negotiation. Reverse search has separate standard
+   source/SauceNAO, ascii2d browser, and FlareSolverr JSON-control surfaces:
+   `[reverse_search.network].proxy_url` affects only ascii2d when present,
+   while a reverse-search command override applies to both native clients.
+   `[reverse_search.flaresolverr].proxy_url` is only the solver's browser
+   upstream proxy; it does not proxy solver control traffic or the native
+   ascii2d upload.
 11. **Long downloads may legitimately take time.** Do not impose an arbitrary
    timeout or kill the process merely because it is slow; wait for completion,
    user cancellation, or a real error.
@@ -317,7 +326,20 @@ session.
     the Pixiv subtype. With `all`, one success plus one failure is `partial` and
     exits successfully with a stderr warning; one-provider or all-provider
     failure is non-zero. Never expose source, key, temporary path, CSRF,
-    redirect location, or upstream response body.
+    redirect location, or upstream response body. ascii2d's provider-specific
+    upload limit is 10 MB, not a global 1 MiB compressed-upload rule. Its default
+    User-Agent is paired with the `Chrome_146` TLS profile; Chromium User-Agents
+    derive matching `Sec-CH-UA`, `Sec-CH-UA-Mobile`, and `Sec-CH-UA-Platform`
+    hints, while non-Chromium User-Agents omit those hints. FlareSolverr is
+    challenge-only, receives JSON control requests rather than the image multipart
+    upload, and keeps solver state in the process/client only. Stable error codes
+    are `unknown`, `invalid_request`, `invalid_source`, `source_not_regular_file`,
+    `source_read_failed`, `source_http_status`, `snapshot_failed`,
+    `source_loader_not_configured`, `provider_not_configured`, `missing_credential`,
+    `malformed_upstream_response`, `upstream_http_status`, `provider_failed`,
+    `all_providers_failed`, `challenge_required`, `solver_unavailable`,
+    `solver_failed`, and `malformed_solver_response`; provider causes are
+    sanitized to the reviewed code/message boundary.
 
 ## Routing
 

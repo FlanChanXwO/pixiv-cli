@@ -241,9 +241,12 @@ CLI 的认证、配置、回调桥接、Release 检查缓存与 callback helper 
 ### 配置管理
 
 `pixiv config path/get/set/unset` 管理 `account_pool_enabled`、`account_pool_strategy`、`download_path`、
-`filename_template`、`directory_template`、`request_interval`、`https_proxy`、`log_level` 与 `log_format`。
-其余高级 TOML 由用户手工维护。首次配置 bootstrap 使用 `internal/config/settings` schema 元数据与
-`tomledit` 自动生成精简文件，只落盘标记为 baseline 的默认项，且绝不覆盖已有文件。
+`filename_template`、`directory_template`、`request_interval`、`https_proxy`、`log_level`、`log_format`、
+`reverse_search_provider`、`reverse_search_pixiv_only` 与 `saucenao_api_key`。
+其余高级 TOML 由用户手工维护。尤其是 reverse-search transport 与 challenge recovery 位于
+`[reverse_search.network]` 和 `[reverse_search.flaresolverr]`；这些 table 不会由 baseline config 生成，并在启动时
+读取为 snapshot。首次配置 bootstrap 使用 `internal/config/settings` schema 元数据与 `tomledit` 自动生成精简文件，
+只落盘标记为 baseline 的默认项，且绝不覆盖已有文件。
 
 > [!NOTE]
 > 已删除的 `[web] fallback_enabled` 若仍存在会返回 `removed_setting`，用 `pixiv config unset web_fallback_enabled` 清理。`[logging].level`（`info|debug`）与 `[logging].format`（`text|json`）是启动时生效的配置；`PIXIV_LOG_LEVEL` 与 `PIXIV_LOG_FORMAT` 覆盖文件值。
@@ -252,7 +255,11 @@ CLI 的认证、配置、回调桥接、Release 检查缓存与 callback helper 
 
 CLI 使用 Cobra/pflag，flag 可以写在位置参数前后；例如 `pixiv auth check 12345678 --json` 和 `pixiv search "初音ミク" --json` 都受支持。
 
-Pixiv command proxy、`[pixiv.network]`、环境变量与 `[network]`，以及 FANBOX 独立的 `[fanbox.network]`/`[fanbox.flaresolverr]` 配置，均按各自服务边界解析，FlareSolverr 仅用于 challenge recovery。
+Pixiv command proxy、`[pixiv.network]`、环境变量与 `[network]`，FANBOX 独立的
+`[fanbox.network]`/`[fanbox.flaresolverr]` 配置，以及 reverse-search 的
+`[reverse_search.network]`/`[reverse_search.flaresolverr]` 配置，均按各自服务边界解析。reverse search 有
+standard source/SauceNAO、ascii2d browser 与 FlareSolverr JSON-control 三个独立网络面；FlareSolverr 仅用于
+challenge recovery。
 
 ## 获取 refresh token
 
@@ -335,6 +342,11 @@ scripts/test-reverse-search-e2e.sh
 `PIXIV_REVERSE_SEARCH_E2E=1` 才运行，必须提供 source；provider 为 SauceNAO 或 `all` 时还必须提供
 `SAUCENAO_API_KEY`，仅 ascii2d 时不要求 key。脚本不接受 source/key 参数，也不会回显它们，只应配合获授权的
 测试图片运行。它用于观察第三方兼容性，不是默认 release 门禁；skip 或上游不可用不能被报告成真实网络成功。
+
+独立的 `TestRealReverseSearchMCPReusesSolverSession` 检查在显式启用时还要求
+`PIXIV_REVERSE_SEARCH_SOLVER_URL`；可选的 `PIXIV_REVERSE_SEARCH_SOLVER_PROXY` 只表示 FlareSolverr browser
+upstream proxy，不代理 solver control request 或 native ascii2d image upload，solver session state 和 source 也不会
+作为 test evidence 持久化。
 
 `scripts/test-e2e.sh` 只选择当前的 public SDK E2E 测试：Pixiv 测试从本地 `pixiv-cli.db` 读取选中账号，
 FANBOX 测试从约定的 macOS Keychain item 读取 `FANBOXSESSID`。FANBOX 的

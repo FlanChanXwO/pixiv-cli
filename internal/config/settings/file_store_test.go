@@ -106,7 +106,16 @@ func TestGeneratedDefaultConfigIsCompactAndPreservesExistingFile(t *testing.T) {
 	} {
 		require.Contains(t, string(body), fragment)
 	}
-	for _, fragment := range []string{"directory_template", "request_interval", "[network]", "[account_pool]"} {
+	for _, fragment := range []string{
+		"directory_template",
+		"request_interval",
+		"[network]",
+		"[account_pool]",
+		"[reverse_search.network]",
+		"[reverse_search.flaresolverr]",
+		"proxy_url",
+		"user_agent",
+	} {
 		require.NotContains(t, string(body), fragment)
 	}
 

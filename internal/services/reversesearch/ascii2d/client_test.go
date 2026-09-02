@@ -2,6 +2,7 @@ package ascii2d_test
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -82,6 +83,22 @@ func TestUploadPreservesCancellationAndClosesResponseBody(t *testing.T) {
 	require.True(t, responseBody.closed.Load())
 	require.NotContains(t, errorChainText(err), "private source payload")
 	require.NotContains(t, errorChainText(err), "private upstream response body")
+}
+
+func TestUploadAcceptsSameHostHTTPRedirectForHTTPSEndpoint(t *testing.T) {
+	client := newTransportClient(t, func(request *http.Request) (*http.Response, error) {
+		_, err := io.Copy(io.Discard, request.Body)
+		require.NoError(t, err)
+		return &http.Response{
+			StatusCode: http.StatusFound,
+			Header:     http.Header{"Location": {"http://ascii2d.invalid/search/color/" + fixtureHash}},
+			Body:       io.NopCloser(strings.NewReader("")),
+			Request:    request,
+		}, nil
+	})
+
+	_, err := client.Upload(context.Background(), loadSnapshot(t, []byte("\x89PNG\r\n\x1a\nfixture")))
+	require.NoError(t, err)
 }
 
 func TestUploadAcceptsSupportedMediaAtOfficialSizeBoundary(t *testing.T) {
@@ -352,6 +369,32 @@ func TestSessionSearchParsesColorAndBOVWFromOneUpload(t *testing.T) {
 	}
 }
 
+func TestSessionSearchIgnoresAdvertisementItemBoxes(t *testing.T) {
+	server := resultServer(t, resultFixtureWithAdvertisement(), http.StatusOK)
+	defer server.Close()
+
+	session := uploadSession(t, server)
+	response, err := session.Search(context.Background(), reversesearch.ProviderASCII2DColor)
+	require.NoError(t, err)
+	require.Equal(t, []reversesearch.Match{{
+		Rank: 1, IndexName: "pixiv", Title: "Fixture title", Author: "Fixture author",
+		ExternalURLs: []string{"https://www.pixiv.net/artworks/123", "https://www.pixiv.net/users/456"},
+	}}, response.Matches)
+}
+
+func TestSessionSearchParsesExternalResultDetails(t *testing.T) {
+	server := resultServer(t, resultFixtureWithExternalResult(), http.StatusOK)
+	defer server.Close()
+
+	session := uploadSession(t, server)
+	response, err := session.Search(context.Background(), reversesearch.ProviderASCII2DColor)
+	require.NoError(t, err)
+	require.Equal(t, []reversesearch.Match{{
+		Rank: 1, IndexName: "Dlsite", Title: "External title",
+		ExternalURLs: []string{"https://example.test/external"},
+	}}, response.Matches)
+}
+
 func TestSessionSearchRejectsUnsupportedProviderAndMalformedResultStructure(t *testing.T) {
 	tests := []struct {
 		name string
@@ -483,6 +526,29 @@ func uploadFormFixture() string {
 	return `<html><body><form id="file_upload" enctype="multipart/form-data" action="/search/file" method="post"><input type="hidden" name="authenticity_token" value="fixture-csrf"><input type="file" name="file"></form></body></html>`
 }
 
+func resultFixtureWithAdvertisement() string {
+	const advertisement = `<div class="row item-box"><div class="p-t-1 hidden-md-up"><div class="gray-link">advertisement</div></div></div>`
+	return strings.Replace(resultFixture(), `<div class="row item-box">
+  <div class="image-box">`, advertisement+`
+<div class="row item-box">
+  <div class="image-box">`, 1)
+}
+
+func resultFixtureWithExternalResult() string {
+	return `<html><body>
+<div class="row item-box"><div class="image-box">query image</div></div>
+<div class="row item-box">
+  <div class="image-box"><img src="/thumbnail/external.jpg"></div>
+  <div class="info-box">
+    <div class="detail-box gray-link">
+      <strong class="info-header">登録された詳細</strong>
+      <div class="external">External title<a target="_blank" rel="noopener" href="https://example.test/external">Dlsite</a></div>
+    </div>
+  </div>
+</div>
+</body></html>`
+}
+
 func resultFixture() string {
 	return `<html><body>
 <div class="row item-box"><div class="image-box">query image</div></div>
@@ -500,6 +566,94 @@ func resultFixture() string {
 </body></html>`
 }
 
+func TestUploadMapsChallengeAndSolverFailuresToStableCodes(t *testing.T) {
+	tests := []struct {
+		name        string
+		solverBody  string
+		solverState bool
+		wantCode    reversesearch.ErrorCode
+		wantCause   error
+	}{
+		{
+			name:     "challenge without configured solver",
+			wantCode: reversesearch.CodeChallengeRequired,
+		},
+		{
+			name:        "solver response is malformed",
+			solverState: true,
+			solverBody:  `{"status":"ok","solution":{"userAgent":"solver-agent","cookies":[]}}`,
+			wantCode:    reversesearch.CodeMalformedSolverResponse,
+			wantCause:   ascii2d.ErrMalformedSolverResponse,
+		},
+		{
+			name:        "solver reports failure",
+			solverState: true,
+			solverBody:  `{"status":"error","message":"private solver diagnostic"}`,
+			wantCode:    reversesearch.CodeSolverFailed,
+			wantCause:   ascii2d.ErrSolverFailed,
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			asciiServer := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
+				writer.Header().Set("Cf-Mitigated", "challenge")
+				writer.WriteHeader(http.StatusForbidden)
+				_, _ = io.WriteString(writer, "private ascii challenge body")
+			}))
+			t.Cleanup(asciiServer.Close)
+
+			options := ascii2d.Options{Endpoint: asciiServer.URL, HTTPClient: asciiServer.Client()}
+			if test.solverState {
+				solverServer := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+					var payload struct {
+						Command string `json:"cmd"`
+					}
+					if err := json.NewDecoder(request.Body).Decode(&payload); err != nil {
+						t.Errorf("decode solver request: %v", err)
+						return
+					}
+					switch payload.Command {
+					case "sessions.create":
+						writeJSON(t, writer, map[string]any{"status": "ok"})
+					case "request.get":
+						writer.Header().Set("Content-Type", "application/json")
+						writer.WriteHeader(http.StatusOK)
+						_, _ = io.WriteString(writer, test.solverBody)
+					default:
+						t.Errorf("unexpected solver command %q", payload.Command)
+						writer.WriteHeader(http.StatusBadRequest)
+					}
+				}))
+				t.Cleanup(solverServer.Close)
+				options.FlareSolverr = &ascii2d.FlareSolverrOptions{URL: solverServer.URL}
+			}
+
+			client, err := ascii2d.New(options)
+			require.NoError(t, err)
+			_, err = client.Upload(context.Background(), loadSnapshot(t, []byte("\xff\xd8\xff\xe0fixture")))
+			require.Equal(t, test.wantCode, reversesearch.CodeOf(err))
+			if test.wantCause != nil {
+				require.ErrorIs(t, err, test.wantCause)
+			}
+			require.NotContains(t, errorChainText(err), "private ascii challenge body")
+			require.NotContains(t, errorChainText(err), "private solver diagnostic")
+		})
+	}
+}
+
+func TestNewMapsInvalidSolverConfigurationToStableCode(t *testing.T) {
+	_, err := ascii2d.New(ascii2d.Options{
+		Endpoint:   "https://ascii2d.invalid",
+		HTTPClient: &http.Client{Transport: roundTripFunc(func(*http.Request) (*http.Response, error) { return nil, errors.New("unused") })},
+		FlareSolverr: &ascii2d.FlareSolverrOptions{
+			URL: "file:///private/solver",
+		},
+	})
+	require.Equal(t, reversesearch.CodeSolverUnavailable, reversesearch.CodeOf(err))
+	require.ErrorIs(t, err, ascii2d.ErrSolverUnavailable)
+}
+
 func errorChainText(err error) string {
 	if err == nil {
 		return ""
@@ -512,4 +666,404 @@ func errorChainText(err error) string {
 		return text
 	}
 	return text + "\n" + errorChainText(errors.Unwrap(err))
+}
+
+func TestUploadClassifiesCloudflareChallengeHeaderBeforeReadingBody(t *testing.T) {
+	const privateResponse = "private cloudflare challenge response"
+	responseBody := &closeTrackingBody{Reader: strings.NewReader(privateResponse)}
+	client, err := ascii2d.New(ascii2d.Options{
+		Endpoint: "https://ascii2d.invalid",
+		HTTPClient: &http.Client{Transport: roundTripFunc(func(request *http.Request) (*http.Response, error) {
+			return &http.Response{
+				StatusCode: http.StatusForbidden,
+				Header:     http.Header{"Cf-Mitigated": []string{"challenge"}},
+				Body:       responseBody,
+				Request:    request,
+			}, nil
+		})},
+	})
+	require.NoError(t, err)
+
+	_, err = client.Upload(context.Background(), loadSnapshot(t, []byte("\xff\xd8\xff\xe0fixture")))
+	require.Equal(t, reversesearch.CodeChallengeRequired, reversesearch.CodeOf(err))
+	require.EqualError(t, err, "ascii2d challenge requires solver recovery")
+	require.True(t, responseBody.closed.Load())
+	require.NotContains(t, errorChainText(err), privateResponse)
+}
+
+func TestUploadClassifiesCloudflareHTMLChallengeWithoutArbitraryTruncation(t *testing.T) {
+	responseBody := &closeTrackingBody{Reader: strings.NewReader(strings.Repeat("ordinary prefix ", 5000) + `<html><head><title>Just a moment...</title></head><body>Checking your browser before accessing ascii2d</body></html>`)}
+	client, err := ascii2d.New(ascii2d.Options{
+		Endpoint: "https://ascii2d.invalid",
+		HTTPClient: &http.Client{Transport: roundTripFunc(func(request *http.Request) (*http.Response, error) {
+			return &http.Response{
+				StatusCode: http.StatusForbidden,
+				Header:     http.Header{"Content-Type": []string{"text/html; charset=utf-8"}},
+				Body:       responseBody,
+				Request:    request,
+			}, nil
+		})},
+	})
+	require.NoError(t, err)
+
+	_, err = client.Upload(context.Background(), loadSnapshot(t, []byte("\xff\xd8\xff\xe0fixture")))
+	require.Equal(t, reversesearch.CodeChallengeRequired, reversesearch.CodeOf(err))
+	require.EqualError(t, err, "ascii2d challenge requires solver recovery")
+	require.True(t, responseBody.closed.Load())
+}
+
+func TestUploadClassifiesCloudflareChallengeHeaderEvenWithSuccessfulStatus(t *testing.T) {
+	const privateResponse = "private cloudflare challenge response"
+	responseBody := &closeTrackingBody{Reader: strings.NewReader(privateResponse)}
+	client, err := ascii2d.New(ascii2d.Options{
+		Endpoint: "https://ascii2d.invalid",
+		HTTPClient: &http.Client{Transport: roundTripFunc(func(request *http.Request) (*http.Response, error) {
+			return &http.Response{
+				StatusCode: http.StatusOK,
+				Header:     http.Header{"Cf-Mitigated": []string{"challenge"}},
+				Body:       responseBody,
+				Request:    request,
+			}, nil
+		})},
+	})
+	require.NoError(t, err)
+
+	_, err = client.Upload(context.Background(), loadSnapshot(t, []byte("\xff\xd8\xff\xe0fixture")))
+	require.Equal(t, reversesearch.CodeChallengeRequired, reversesearch.CodeOf(err))
+	require.EqualError(t, err, "ascii2d challenge requires solver recovery")
+	require.True(t, responseBody.closed.Load())
+	require.NotContains(t, errorChainText(err), privateResponse)
+}
+
+const (
+	recoveredSolverUserAgent = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36"
+	solverProxyFixture       = "http://solver-proxy.invalid:8080"
+)
+
+type solverFixture struct {
+	server     *httptest.Server
+	createCall atomic.Int32
+	getCall    atomic.Int32
+	mu         sync.Mutex
+	getURLs    []string
+}
+
+func newSolverFixture(t *testing.T) *solverFixture {
+	t.Helper()
+	fixture := &solverFixture{}
+	fixture.server = httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		if request.URL.Path != "/v1" {
+			t.Errorf("solver endpoint path = %q, want /v1", request.URL.Path)
+		}
+		var payload struct {
+			Command string `json:"cmd"`
+			Session string `json:"session"`
+			URL     string `json:"url"`
+			Proxy   *struct {
+				URL string `json:"url"`
+			} `json:"proxy"`
+		}
+		if err := json.NewDecoder(request.Body).Decode(&payload); err != nil {
+			t.Errorf("decode solver request: %v", err)
+			writer.WriteHeader(http.StatusBadRequest)
+			return
+		}
+		switch payload.Command {
+		case "sessions.create":
+			fixture.createCall.Add(1)
+			if payload.Proxy == nil || payload.Proxy.URL != solverProxyFixture {
+				t.Errorf("solver create proxy = %#v, want %q", payload.Proxy, solverProxyFixture)
+			}
+			if payload.URL != "" {
+				t.Errorf("solver create unexpectedly contains protected URL %q", payload.URL)
+			}
+			writeJSON(t, writer, map[string]any{"status": "ok", "message": "Session created."})
+		case "request.get":
+			fixture.getCall.Add(1)
+			if payload.Proxy != nil {
+				t.Errorf("solver get unexpectedly contains proxy %#v", payload.Proxy)
+			}
+			if payload.Session == "" {
+				t.Errorf("solver get session is empty")
+			}
+			fixture.mu.Lock()
+			fixture.getURLs = append(fixture.getURLs, payload.URL)
+			fixture.mu.Unlock()
+			writeJSON(t, writer, map[string]any{
+				"status": "ok",
+				"solution": map[string]any{
+					"userAgent": recoveredSolverUserAgent,
+					"cookies":   []map[string]string{{"name": "cf_clearance", "value": "clearance-fixture"}},
+				},
+			})
+		case "sessions.destroy":
+			writeJSON(t, writer, map[string]any{"status": "ok", "message": "Session destroyed."})
+		default:
+			t.Errorf("unexpected solver command %q", payload.Command)
+			writer.WriteHeader(http.StatusBadRequest)
+		}
+	}))
+	t.Cleanup(fixture.server.Close)
+	return fixture
+}
+
+func writeJSON(t *testing.T, writer http.ResponseWriter, value any) {
+	t.Helper()
+	writer.Header().Set("Content-Type", "application/json")
+	if err := json.NewEncoder(writer).Encode(value); err != nil {
+		t.Errorf("encode solver response: %v", err)
+	}
+}
+
+type uploadObservation struct {
+	Token   string
+	Cookie  string
+	Agent   string
+	Payload []byte
+}
+
+func observeUpload(request *http.Request) (uploadObservation, error) {
+	if err := request.ParseMultipartForm(1 << 20); err != nil {
+		return uploadObservation{}, err
+	}
+	file, _, err := request.FormFile("file")
+	if err != nil {
+		return uploadObservation{}, err
+	}
+	defer file.Close()
+	payload, err := io.ReadAll(file)
+	if err != nil {
+		return uploadObservation{}, err
+	}
+	return uploadObservation{
+		Token:   request.FormValue("authenticity_token"),
+		Cookie:  request.Header.Get("Cookie"),
+		Agent:   request.Header.Get("User-Agent"),
+		Payload: payload,
+	}, nil
+}
+
+func loadReplaySnapshot(t *testing.T, payload []byte) (*reversesearch.Snapshot, string) {
+	t.Helper()
+	sourceDir := t.TempDir()
+	snapshotDir := t.TempDir()
+	sourcePath := filepath.Join(sourceDir, "fixture.jpg")
+	require.NoError(t, os.WriteFile(sourcePath, payload, 0o600))
+	snapshot, err := reversesearch.NewSourceLoader(reversesearch.SourceLoaderOptions{TempDir: snapshotDir}).Load(context.Background(), sourcePath)
+	require.NoError(t, err)
+	t.Cleanup(func() { require.NoError(t, snapshot.Close()) })
+	entries, err := os.ReadDir(snapshotDir)
+	require.NoError(t, err)
+	require.Len(t, entries, 1)
+	return snapshot, filepath.Join(snapshotDir, entries[0].Name())
+}
+
+func newSolverRecoveryClient(t *testing.T, asciiServer *httptest.Server, solver *solverFixture) *ascii2d.Client {
+	t.Helper()
+	client, err := ascii2d.New(ascii2d.Options{
+		Endpoint:   asciiServer.URL,
+		HTTPClient: asciiServer.Client(),
+		FlareSolverr: &ascii2d.FlareSolverrOptions{
+			URL:      solver.server.URL,
+			ProxyURL: solverProxyFixture,
+		},
+	})
+	require.NoError(t, err)
+	return client
+}
+
+func solverFixtureURLs(fixture *solverFixture) []string {
+	fixture.mu.Lock()
+	defer fixture.mu.Unlock()
+	return append([]string(nil), fixture.getURLs...)
+}
+
+func TestUploadReplaysWithFreshSessionAfterUploadChallenge(t *testing.T) {
+	initialPayload := []byte("\xff\xd8\xff\xe0first-payload")
+	replayPayload := []byte("\xff\xd8\xff\xe0reopened-payload")
+	snapshot, snapshotPath := loadReplaySnapshot(t, initialPayload)
+	solver := newSolverFixture(t)
+	var homeCalls atomic.Int32
+	var uploadCalls atomic.Int32
+	var resultCalls atomic.Int32
+	var observationsMu sync.Mutex
+	var observations []uploadObservation
+	asciiServer := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		switch request.URL.Path {
+		case "/":
+			call := homeCalls.Add(1)
+			if call == 1 {
+				http.SetCookie(writer, &http.Cookie{Name: "ascii2d_session", Value: "stale-session", Path: "/"})
+				_, _ = io.WriteString(writer, strings.ReplaceAll(uploadFormFixture(), "fixture-csrf", "stale-csrf"))
+				return
+			}
+			if request.Header.Get("User-Agent") != recoveredSolverUserAgent {
+				t.Errorf("recovery home User-Agent = %q, want solver UA", request.Header.Get("User-Agent"))
+			}
+			if strings.Contains(request.Header.Get("Cookie"), "stale-session") {
+				t.Errorf("recovery home reused stale session cookie: %q", request.Header.Get("Cookie"))
+			}
+			clearance, err := request.Cookie("cf_clearance")
+			if err != nil || clearance.Value != "clearance-fixture" {
+				t.Errorf("recovery home cf_clearance = %#v, want solver clearance", clearance)
+			}
+			http.SetCookie(writer, &http.Cookie{Name: "ascii2d_session", Value: "fresh-session", Path: "/"})
+			_, _ = io.WriteString(writer, strings.ReplaceAll(uploadFormFixture(), "fixture-csrf", "fresh-csrf"))
+		case "/search/file":
+			call := uploadCalls.Add(1)
+			observation, err := observeUpload(request)
+			if err != nil {
+				t.Errorf("observe upload %d: %v", call, err)
+				writer.WriteHeader(http.StatusBadRequest)
+				return
+			}
+			observationsMu.Lock()
+			observations = append(observations, observation)
+			observationsMu.Unlock()
+			if call == 1 {
+				if err := os.WriteFile(snapshotPath, replayPayload, 0o600); err != nil {
+					t.Errorf("replace snapshot for replay: %v", err)
+				}
+				writer.Header().Set("Cf-Mitigated", "challenge")
+				writer.WriteHeader(http.StatusForbidden)
+				_, _ = io.WriteString(writer, "private challenge body")
+				return
+			}
+			if observation.Token != "fresh-csrf" {
+				t.Errorf("replay CSRF = %q, want fresh-csrf", observation.Token)
+			}
+			if observation.Agent != recoveredSolverUserAgent {
+				t.Errorf("replay User-Agent = %q, want solver UA", observation.Agent)
+			}
+			if !strings.Contains(observation.Cookie, "ascii2d_session=fresh-session") || !strings.Contains(observation.Cookie, "cf_clearance=clearance-fixture") {
+				t.Errorf("replay cookies = %q, want fresh session and clearance", observation.Cookie)
+			}
+			if strings.Contains(observation.Cookie, "stale-session") {
+				t.Errorf("replay reused stale session cookie: %q", observation.Cookie)
+			}
+			if string(observation.Payload) != string(replayPayload) {
+				t.Errorf("replay payload = %q, want reopened snapshot payload %q", observation.Payload, replayPayload)
+			}
+			writer.Header().Set("Location", "/search/color/"+fixtureHash)
+			writer.WriteHeader(http.StatusFound)
+		case "/search/color/" + fixtureHash:
+			resultCalls.Add(1)
+			if request.Header.Get("User-Agent") != recoveredSolverUserAgent {
+				t.Errorf("result User-Agent = %q, want solver UA", request.Header.Get("User-Agent"))
+			}
+			_, _ = io.WriteString(writer, resultFixture())
+		default:
+			t.Errorf("unexpected ascii2d request path: %s", request.URL.Path)
+			writer.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	defer asciiServer.Close()
+
+	client := newSolverRecoveryClient(t, asciiServer, solver)
+	session, err := client.Upload(context.Background(), snapshot)
+	require.NoError(t, err)
+	require.NotNil(t, session)
+	_, err = session.Search(context.Background(), reversesearch.ProviderASCII2DColor)
+	require.NoError(t, err)
+	require.Equal(t, int32(2), homeCalls.Load())
+	require.Equal(t, int32(2), uploadCalls.Load())
+	require.Equal(t, int32(1), resultCalls.Load())
+	require.Equal(t, int32(1), solver.createCall.Load())
+	require.Equal(t, int32(1), solver.getCall.Load())
+	require.Equal(t, []string{asciiServer.URL + "/search/file"}, solverFixtureURLs(solver))
+
+	observationsMu.Lock()
+	defer observationsMu.Unlock()
+	require.Len(t, observations, 2)
+	require.Equal(t, "stale-csrf", observations[0].Token)
+	require.Equal(t, initialPayload, observations[0].Payload)
+}
+
+func TestUploadRecoversWhenInitialHomepageIsChallenged(t *testing.T) {
+	snapshot := loadSnapshot(t, []byte("\xff\xd8\xff\xe0homepage-challenge"))
+	solver := newSolverFixture(t)
+	var homeCalls atomic.Int32
+	var uploadCalls atomic.Int32
+	asciiServer := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		switch request.URL.Path {
+		case "/":
+			call := homeCalls.Add(1)
+			if call == 1 {
+				writer.Header().Set("Cf-Mitigated", "challenge")
+				writer.WriteHeader(http.StatusForbidden)
+				return
+			}
+			if request.Header.Get("User-Agent") != recoveredSolverUserAgent {
+				t.Errorf("recovery home User-Agent = %q, want solver UA", request.Header.Get("User-Agent"))
+			}
+			http.SetCookie(writer, &http.Cookie{Name: "ascii2d_session", Value: "fresh-session", Path: "/"})
+			_, _ = io.WriteString(writer, strings.ReplaceAll(uploadFormFixture(), "fixture-csrf", "fresh-csrf"))
+		case "/search/file":
+			uploadCalls.Add(1)
+			observation, err := observeUpload(request)
+			if err != nil {
+				t.Errorf("observe recovered upload: %v", err)
+				writer.WriteHeader(http.StatusBadRequest)
+				return
+			}
+			if observation.Token != "fresh-csrf" || observation.Agent != recoveredSolverUserAgent {
+				t.Errorf("recovered upload = %+v, want fresh CSRF and solver UA", observation)
+			}
+			writer.Header().Set("Location", "/search/color/"+fixtureHash)
+			writer.WriteHeader(http.StatusFound)
+		default:
+			t.Errorf("unexpected ascii2d request path: %s", request.URL.Path)
+			writer.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	defer asciiServer.Close()
+
+	client := newSolverRecoveryClient(t, asciiServer, solver)
+	session, err := client.Upload(context.Background(), snapshot)
+	require.NoError(t, err)
+	require.NotNil(t, session)
+	require.Equal(t, int32(2), homeCalls.Load())
+	require.Equal(t, int32(1), uploadCalls.Load())
+	require.Equal(t, int32(1), solver.createCall.Load())
+	require.Equal(t, int32(1), solver.getCall.Load())
+	require.Equal(t, []string{asciiServer.URL}, solverFixtureURLs(solver))
+}
+
+func TestUploadStopsAfterOneRecoveryReplayAndInvalidatesSolverState(t *testing.T) {
+	snapshot := loadSnapshot(t, []byte("\xff\xd8\xff\xe0replay-once"))
+	solver := newSolverFixture(t)
+	var homeCalls atomic.Int32
+	var uploadCalls atomic.Int32
+	asciiServer := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		switch request.URL.Path {
+		case "/":
+			call := homeCalls.Add(1)
+			if call == 1 {
+				_, _ = io.WriteString(writer, strings.ReplaceAll(uploadFormFixture(), "fixture-csrf", "stale-csrf"))
+				return
+			}
+			_, _ = io.WriteString(writer, strings.ReplaceAll(uploadFormFixture(), "fixture-csrf", "fresh-csrf"))
+		case "/search/file":
+			uploadCalls.Add(1)
+			if _, err := observeUpload(request); err != nil {
+				t.Errorf("observe upload: %v", err)
+			}
+			writer.Header().Set("Cf-Mitigated", "challenge")
+			writer.WriteHeader(http.StatusForbidden)
+		default:
+			t.Errorf("unexpected ascii2d request path: %s", request.URL.Path)
+			writer.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	defer asciiServer.Close()
+
+	client := newSolverRecoveryClient(t, asciiServer, solver)
+	_, err := client.Upload(context.Background(), snapshot)
+	require.ErrorIs(t, err, ascii2d.ErrSolverFailed)
+	require.Equal(t, reversesearch.CodeSolverFailed, reversesearch.CodeOf(err))
+	require.Equal(t, int32(2), homeCalls.Load())
+	require.Equal(t, int32(2), uploadCalls.Load(), "challenge recovery must not loop beyond one replay")
+	require.Equal(t, int32(1), solver.createCall.Load())
+	require.Equal(t, int32(1), solver.getCall.Load())
+	require.Equal(t, []string{asciiServer.URL + "/search/file"}, solverFixtureURLs(solver))
 }

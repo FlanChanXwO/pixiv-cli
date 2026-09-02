@@ -173,6 +173,48 @@ func TestReverseSearchPartialResultIsNotMCPError(t *testing.T) {
 	}
 }
 
+func TestReverseSearchStableSolverErrorKeepsStructuredErrorEnvelope(t *testing.T) {
+	const secret = "solver-secret source-secret csrf-secret"
+	session, closeSession := newSDKTestSessionWithPorts(t, &fakeAPI{}, pixivmcpserver.SDKPorts{
+		ReverseSearch: pixivmcpserver.ReverseSearchPorts{
+			Searcher: reverseSearcherFunc(func(context.Context, reversesearch.Request) (reversesearch.Response, error) {
+				return reversesearch.Response{
+					Providers: []reversesearch.ProviderSummary{{Name: reversesearch.ProviderASCII2DColor, Status: reversesearch.ProviderStatusError}},
+					Results:   []reversesearch.Result{},
+					ProviderErrors: []reversesearch.ProviderError{{
+						Provider: reversesearch.ProviderASCII2DColor,
+						Code:     reversesearch.CodeSolverFailed,
+						Message:  "ascii2d challenge solver failed",
+					}},
+				}, reversesearch.NewError(reversesearch.CodeSolverFailed, "ascii2d challenge solver failed", errors.New(secret))
+			}),
+		},
+	}, pixivmcpserver.Account{})
+	defer closeSession()
+
+	result := callTool(t, session, "reverse_search", map[string]any{
+		"source": "https://source-secret.example.test/image?token=solver-secret", "provider": "ascii2d-color",
+	})
+	if !result.IsError {
+		t.Fatalf("solver failure must be an MCP error: %+v", result)
+	}
+	var out reverseSearchOutputFixture
+	decodeStructured(t, result, &out)
+	if len(out.Providers) != 1 || len(out.Results) != 0 || len(out.ProviderErrors) != 1 {
+		t.Fatalf("solver failure envelope is not preserved: %+v", out)
+	}
+	if out.ProviderErrors[0].Code != reversesearch.CodeSolverFailed {
+		t.Fatalf("provider error code = %q, want %q", out.ProviderErrors[0].Code, reversesearch.CodeSolverFailed)
+	}
+	raw := string(mustJSON(t, result))
+	if !strings.Contains(raw, string(reversesearch.CodeSolverFailed)) {
+		t.Fatalf("MCP error did not expose stable code: %s", raw)
+	}
+	if strings.Contains(raw, secret) {
+		t.Fatalf("MCP solver failure leaked private cause: %s", raw)
+	}
+}
+
 func TestReverseSearchFailurePreservesSafeStructuredEnvelope(t *testing.T) {
 	session, closeSession := newSDKTestSessionWithPorts(t, &fakeAPI{}, pixivmcpserver.SDKPorts{
 		ReverseSearch: pixivmcpserver.ReverseSearchPorts{

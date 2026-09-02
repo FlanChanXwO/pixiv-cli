@@ -9,6 +9,7 @@
 ## Security
 
 - Reverse search loads each source once into a private snapshot, removes it after provider work, and keeps source strings, credentials, temporary paths, cookies, CSRF/redirect values, and upstream bodies out of published output and diagnostics. The MCP contract deliberately permits private files and private/loopback/link-local URLs only for trusted local clients, while documenting third-party upload, retention, and URL-caching implications. ([`69caa31`](https://github.com/FlanChanXwO/pixiv-cli/commit/69caa31), [`3e2cb47`](https://github.com/FlanChanXwO/pixiv-cli/commit/3e2cb47), [`80d5729`](https://github.com/FlanChanXwO/pixiv-cli/commit/80d5729), [`8169787`](https://github.com/FlanChanXwO/pixiv-cli/commit/8169787), [`4632334`](https://github.com/FlanChanXwO/pixiv-cli/commit/4632334), [`4cfc4d4`](https://github.com/FlanChanXwO/pixiv-cli/commit/4cfc4d4))
+- Sanitized reverse-search provider failures at the public CLI/MCP boundary so only reviewed stable `code`/`message` values are exposed; wrapped causes and upstream diagnostics remain private. ([`7505ae8`](https://github.com/FlanChanXwO/pixiv-cli/commit/7505ae8))
 
 ## Documentation
 
@@ -22,6 +23,10 @@
   from one schema; first-run `config.toml` is generated from schema metadata and never overwrites an existing file.
 - Added `reverse_search_provider` and `reverse_search_pixiv_only` configuration, plus stdin-only/redacted
   `saucenao_api_key` and the `SAUCENAO_API_KEY` environment override; public SDK construction and APIs remain unchanged. ([`d4a1254`](https://github.com/FlanChanXwO/pixiv-cli/commit/d4a1254), [`ce03802`](https://github.com/FlanChanXwO/pixiv-cli/commit/ce03802), [`9cf51d7`](https://github.com/FlanChanXwO/pixiv-cli/commit/9cf51d7))
+- Reverse-search runtime configuration now documents separate standard/source-SauceNAO and ascii2d proxy surfaces,
+  Chrome-146 User-Agent/client-hint pairing, and optional challenge-only FlareSolverr JSON control with an independent
+  browser upstream proxy. Native ascii2d image uploads remain multipart and provider-specific at 10 MB; no global 1 MiB
+  compressed-upload rule is introduced. ([`c01402a`](https://github.com/FlanChanXwO/pixiv-cli/commit/c01402a), [`50d13a3`](https://github.com/FlanChanXwO/pixiv-cli/commit/50d13a3), [`f9c1525`](https://github.com/FlanChanXwO/pixiv-cli/commit/f9c1525), [`341cfbb`](https://github.com/FlanChanXwO/pixiv-cli/commit/341cfbb), [`471af9b`](https://github.com/FlanChanXwO/pixiv-cli/commit/471af9b))
 
 ## Maintenance
 

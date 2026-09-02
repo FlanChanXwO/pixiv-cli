@@ -296,9 +296,25 @@ provider 值为 `saucenao`、`ascii2d-color`、`ascii2d-bovw` 和 `all`。配置
 只覆盖本次调用。`all` 按固定顺序 SauceNAO、ascii2d color、ascii2d bovw 执行，并可能产生 partial 成功。
 `reverse_search_pixiv_only` 控制 `results` 是否保留非 Pixiv 命中，默认 `true`，不是单次命令 flag。
 
+反向搜图传输有彼此独立的网络面。图片模式命令上的 `--proxy` 或 `--no-proxy` 只对本次调用生效，并同时
+覆盖 standard source/SauceNAO client 与专用 ascii2d browser client。没有命令级覆盖时，
+`[reverse_search.network].proxy_url`（包括显式空值）只覆盖 ascii2d；standard source/SauceNAO client 继续
+使用全局 `https_proxy`/`[network].https_proxy` 路由。service 值缺失时，ascii2d 跟随该 standard proxy。
+支持的代理 URI scheme 为 `http`、`https`、`socks5` 和 `socks5h`。
+
+`[reverse_search.network].user_agent` 只作用于 ascii2d browser request。默认值是与 `Chrome_146` TLS profile
+配对的 Chrome 146 macOS User-Agent。Chromium User-Agent 会推导匹配的 `Sec-CH-UA`、`Sec-CH-UA-Mobile` 和
+`Sec-CH-UA-Platform` client hint；非 Chromium User-Agent 会省略这些 Chromium hint。请求头控制字符会被拒绝。
+
+`[reverse_search.flaresolverr]` 可选，只在检测到 ascii2d challenge 后使用。其 `url` 是 JSON control endpoint；
+`proxy_url` 只作为 `sessions.create` 中的 browser upstream proxy 发送。solver control traffic 不继承 native/standard
+proxy。solver 为 native ascii2d client 返回 browser User-Agent 与 clearance state；图片仍由 native
+`/search/file` multipart 上传，绝不会通过 FlareSolverr 上传。solver state 只属于进程/client，不写入磁盘。
+
 source 只被抓取或打开一次，写入私有临时快照；输出仅包含 `input.kind`（`file` 或 `url`）和 `input.sha256`。
 SauceNAO 与 ascii2d 是第三方服务：图片可能按其政策被上传或保留，URL 请求也可能被缓存。ascii2d 接受 JPEG、PNG、
-WEBP，并执行 provider 自身的 10 MB 上传限制；这不是 SauceNAO-only 查询的统一限制。不要提交无权分享的图片或 URL。
+WEBP，并执行 provider 自身的 10 MB 上传限制；这不是 SauceNAO-only 查询的统一限制。反向搜图没有全局 1 MiB
+压缩上传规则；`gzip, deflate, br` 是 response content negotiation，不是上传限制。不要提交无权分享的图片或 URL。
 
 JSON 输出是完整 envelope：`{input, providers, results, records, provider_errors, partial}`。`records` 只包含
 canonical Pixiv identity：反向搜图不知道作品 subtype，因此作品使用通用 `type:"artwork"`，用户使用 `type:"user"`。
@@ -308,6 +324,13 @@ CLI 不会仅为推断 subtype 调用 Pixiv detail。关闭 Pixiv-only 时，纯
 对 `all` 来说，一个 provider 成功、另一个失败时设置 `partial=true`，向 stderr 写安全 warning，并以成功退出；单
 provider 失败或全部 provider 失败时非零退出，但在有响应数据时保留 JSON envelope。provider error 只使用稳定的
 `code` 和 `message`；source、API key、cookie、CSRF/redirect 值、临时路径和上游响应 body 不会进入输出或诊断。
+
+当前稳定的反向搜图 error-code vocabulary 为：`unknown`、`invalid_request`、`invalid_source`、
+`source_not_regular_file`、`source_read_failed`、`source_http_status`、`snapshot_failed`、
+`source_loader_not_configured`、`provider_not_configured`、`missing_credential`、`malformed_upstream_response`、
+`upstream_http_status`、`provider_failed`、`all_providers_failed`、`challenge_required`、`solver_unavailable`、
+`solver_failed` 和 `malformed_solver_response`。provider failure cause 会在输出边界脱敏：只发布经过审查的
+稳定 code 与安全 message，不发布 wrapped cause 或上游诊断。
 
 所有公开位置参数命令都支持一次隐式非 TTY stdin 补值：缺少一个必填值或省略可选值时，完整 stdin 作为一个值，只移除一个末尾 LF/CRLF，不按 shell 空白拆分；显式位置参数存在时不读 stdin。例如 `printf '%s\n' 13214141 | pixiv search` 等价于 `pixiv search 13214141`。`download`、`bookmark add/remove`、`follow add/remove` 对隐式输入按首个非空白字节选择严格 canonical NDJSON 或一个裸 ID/URL，选定模式后不回退；`-` 只是普通文本。
 
@@ -517,7 +540,8 @@ pixiv config get saucenao_api_key    # 始终输出 <redacted>
 环境变量 `SAUCENAO_API_KEY` 会覆盖文件值，但不会显示内容。不要把 key 写入 shell history、诊断信息、JSON、
 MCP input 或提交到仓库的 TOML 文件。
 
-手工 TOML 可以包含 `[account_pool]`、`[network]`、`[pixiv.network]`、`[fanbox.network]`、`[fanbox.flaresolverr]`、`[reverse_search]`、`[login]`、`[update]` 等高级运行时段：
+手工 TOML 可以包含 `[account_pool]`、`[network]`、`[pixiv.network]`、`[fanbox.network]`、`[fanbox.flaresolverr]`、
+`[reverse_search]`、`[reverse_search.network]`、`[reverse_search.flaresolverr]`、`[login]`、`[update]` 等高级运行时段：
 
 ```toml
 [network]
@@ -537,9 +561,24 @@ proxy_url = "socks5://solver-upstream.example:1080"
 [reverse_search]
 provider = "saucenao"
 pixiv_only = true
+
+[reverse_search.network]
+proxy_url = "socks5://ascii2d-proxy.example:1080"
+user_agent = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36"
+
+[reverse_search.flaresolverr]
+url = "http://127.0.0.1:8191"
+proxy_url = "socks5://solver-upstream.example:1080"
 ```
 
-`[pixiv.network].proxy_url` 与 `[fanbox.network].proxy_url` 区分缺失和显式空值：命令 `--proxy`/`--no-proxy` > 对应 service key（含显式空值） > `https_proxy`/`HTTPS_PROXY` > `[network].https_proxy` > direct。FANBOX native 只接受不带 userinfo 的 HTTP(S) CONNECT；Pixiv 接受 HTTP(S)、SOCKS5 与 SOCKS5H。`user_agent` 只修改 FANBOX native header，不改变 Chrome 146 TLS profile，也不保证绕过 Cloudflare。FlareSolverr 可选且仅 challenge-only；service URL 与 upstream proxy 独立于 native FANBOX proxy。默认 config generator 不创建这些可选 table。
+`[pixiv.network].proxy_url`、`[fanbox.network].proxy_url` 与 `[reverse_search.network].proxy_url` 都区分缺失和显式空值。
+Pixiv、FANBOX 与 reverse search 保持各自 service boundary。对 reverse search，命令级覆盖（`--proxy`/`--no-proxy`）
+同时作用于 standard 与 ascii2d；否则 reverse-search service value 只作用于 ascii2d，standard source/SauceNAO client
+继续使用全局 route。reverse-search `user_agent` 只影响 ascii2d，并必须与 browser client hint 配对，不改变 SauceNAO
+或 standard source client。`FlareSolverr` 可选且仅 challenge-only：control URL 与 browser upstream proxy 独立于两个
+native reverse-search route，协议是 JSON 而不是 image multipart。默认 config generator 会省略可选的 service proxy
+与 FlareSolverr table，但仍可能生成 baseline
+`[reverse_search]` provider/filter 值。
 
 `[account_pool]` 只保存 `enabled` 与 `strategy`；每个账号的 `schedulable`、冻结和 marker 状态位于 `pixiv-cli.db`。已移除的 `account_pool.accounts` 不会自动迁移；若仍存在，runtime 配置会返回 `removed_setting`，必须显式执行 `pixiv config unset account_pool_accounts` 清理。不要把 refresh token 写入 `config.toml`。历史 `data/account-pool.json` scheduler 不会被自动读取、迁移或删除。`[logging].level` 只接受 `info`、`debug`，`[logging].format` 只接受 `text`、`json`；`PIXIV_LOG_LEVEL` 与 `PIXIV_LOG_FORMAT` 覆盖文件值。debug 诊断只写 stderr，不输出 query、header、Cookie、token、响应体或 proxy userinfo，也不创建日志文件；config 管理与 secret export 继续静默，MCP stdout 仍只保留 JSON-RPC。
 

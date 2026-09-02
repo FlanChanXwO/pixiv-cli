@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -22,6 +23,7 @@ import (
 	"github.com/FlanChanXwO/pixiv-cli/internal/services/reversesearch"
 	reverseassembly "github.com/FlanChanXwO/pixiv-cli/internal/services/reversesearch/assembly"
 	"github.com/FlanChanXwO/pixiv-cli/internal/storage/database"
+	"github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/spf13/cobra"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -109,6 +111,8 @@ func TestImageSearchBuildsReverseSearchWithCLIProxyOverride(t *testing.T) {
 
 	require.NoError(t, root.Execute(), stderr.String())
 	assert.Equal(t, "http://127.0.0.1:7890", captured.Proxy)
+	require.NotNil(t, captured.ASCII2DProxy)
+	assert.Equal(t, "http://127.0.0.1:7890", *captured.ASCII2DProxy)
 }
 
 func TestMCPReverseSearchUsesStartupConfigAndProxySnapshot(t *testing.T) {
@@ -128,13 +132,81 @@ func TestMCPReverseSearchUsesStartupConfigAndProxySnapshot(t *testing.T) {
 		ReverseSearchProvider:  "all",
 		ReverseSearchPixivOnly: false,
 		SauceNAOAPIKey:         "startup-key",
+		ReverseSearchFlareSolverr: &configapp.FlareSolverrConfig{
+			URL:      "http://solver.invalid",
+			ProxyURL: "socks5://solver-proxy.invalid:1080",
+		},
 	}, mcpcommands.Request{HTTPSProxyOverride: &proxy})
 	require.NoError(t, err)
 	assert.Equal(t, "http://mcp-flag-proxy", captured.Proxy)
+	require.NotNil(t, captured.ASCII2DProxy)
+	assert.Equal(t, "http://mcp-flag-proxy", *captured.ASCII2DProxy)
 	assert.Equal(t, "startup-key", captured.SauceNAOKey)
+	require.NotNil(t, captured.FlareSolverr)
+	assert.Equal(t, "http://solver.invalid", captured.FlareSolverr.URL)
+	assert.Equal(t, "socks5://solver-proxy.invalid:1080", captured.FlareSolverr.ProxyURL)
 	assert.Equal(t, reversesearch.ProviderAll, ports.Provider)
 	assert.False(t, ports.PixivOnly)
 	assert.NotNil(t, ports.Searcher)
+}
+
+func TestMCPReverseSearchUsesConfiguredServiceProxyBeforeGlobal(t *testing.T) {
+	oldReverse := newCLIMCPReverseSearch
+	var captured reverseassembly.Options
+	newCLIMCPReverseSearch = func(options reverseassembly.Options) (reversesearch.Searcher, error) {
+		captured = options
+		return rootReverseSearcherFunc(func(_ context.Context, _ reversesearch.Request) (reversesearch.Response, error) {
+			return reversesearch.Response{}, nil
+		}), nil
+	}
+	t.Cleanup(func() { newCLIMCPReverseSearch = oldReverse })
+
+	tests := []struct {
+		name         string
+		proxy        configapp.OptionalString
+		wantStandard string
+		wantASCII2D  string
+	}{
+		{name: "configured service proxy wins for ascii2d only", proxy: configapp.OptionalString{Present: true, Value: "http://reverse-search-proxy"}, wantStandard: "http://global-proxy", wantASCII2D: "http://reverse-search-proxy"},
+		{name: "explicit empty service proxy means direct for ascii2d only", proxy: configapp.OptionalString{Present: true}, wantStandard: "http://global-proxy", wantASCII2D: ""},
+		{name: "absent service proxy falls back to global for both", proxy: configapp.OptionalString{}, wantStandard: "http://global-proxy", wantASCII2D: "http://global-proxy"},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			_, err := newMCPReverseSearchPorts(configapp.RuntimeConfig{
+				HTTPSProxy: "http://global-proxy",
+				ReverseSearchNetwork: configapp.ServiceNetworkConfig{
+					ProxyURL: test.proxy,
+				},
+				ReverseSearchProvider:  "all",
+				ReverseSearchPixivOnly: false,
+			}, mcpcommands.Request{})
+			require.NoError(t, err)
+			assert.Equal(t, test.wantStandard, captured.Proxy)
+			require.NotNil(t, captured.ASCII2DProxy)
+			assert.Equal(t, test.wantASCII2D, *captured.ASCII2DProxy)
+		})
+	}
+}
+
+func TestMCPReverseSearchPassesConfiguredUserAgentToAssembly(t *testing.T) {
+	oldReverse := newCLIMCPReverseSearch
+	var captured reverseassembly.Options
+	newCLIMCPReverseSearch = func(options reverseassembly.Options) (reversesearch.Searcher, error) {
+		captured = options
+		return rootReverseSearcherFunc(func(_ context.Context, _ reversesearch.Request) (reversesearch.Response, error) {
+			return reversesearch.Response{}, nil
+		}), nil
+	}
+	t.Cleanup(func() { newCLIMCPReverseSearch = oldReverse })
+
+	_, err := newMCPReverseSearchPorts(configapp.RuntimeConfig{
+		ReverseSearchNetwork: configapp.ServiceNetworkConfig{
+			UserAgent: configapp.OptionalString{Present: true, Value: "fixture-user-agent"},
+		},
+	}, mcpcommands.Request{})
+	require.NoError(t, err)
+	assert.Equal(t, "fixture-user-agent", captured.UserAgent)
 }
 
 func TestCloseStateClosesInReverseOrderOnceAndJoinsErrors(t *testing.T) {
@@ -537,4 +609,79 @@ func useTempPaths(t *testing.T) (string, string) {
 	configPath := filepath.Join(base, "config.toml")
 	t.Cleanup(paths.SetConfigFilePathForTest(configPath))
 	return databasePath, configPath
+}
+
+type closeTrackingReverseSearcher struct {
+	rootReverseSearcherFunc
+	closeCalls atomic.Int32
+	closeErr   error
+}
+
+func (s *closeTrackingReverseSearcher) Close() error {
+	s.closeCalls.Add(1)
+	return s.closeErr
+}
+
+func TestCLIReverseSearchClosesSearcherOnceAndKeepsJSONOnStdout(t *testing.T) {
+	useTempPaths(t)
+	oldReverse := newCLIReverseSearch
+	closeErr := errors.New("reverse search close failed")
+	searcher := &closeTrackingReverseSearcher{
+		rootReverseSearcherFunc: func(context.Context, reversesearch.Request) (reversesearch.Response, error) {
+			return reversesearch.Response{Input: reversesearch.Input{Kind: reversesearch.SourceKindURL, SHA256: "deadbeef"}}, nil
+		},
+		closeErr: closeErr,
+	}
+	newCLIReverseSearch = func(reverseassembly.Options) (reversesearch.Searcher, error) {
+		return searcher, nil
+	}
+	t.Cleanup(func() { newCLIReverseSearch = oldReverse })
+
+	var stdout, stderr bytes.Buffer
+	code := Run([]string{"pixiv", "search", "https://example.test/image.jpg", "--json"}, strings.NewReader(""), &stdout, &stderr)
+
+	require.Equal(t, 1, code)
+	require.Contains(t, stderr.String(), closeErr.Error())
+	require.JSONEq(t, `{"input":{"kind":"url","sha256":"deadbeef"},"providers":[],"records":[],"results":[],"provider_errors":[],"partial":false}`, stdout.String())
+	require.Equal(t, int32(1), searcher.closeCalls.Load())
+}
+
+func TestMCPReverseSearchRegistersSearcherForStdioLifetime(t *testing.T) {
+	useTempPaths(t)
+	oldConfig := loadCLIRuntimeConfig
+	oldReverse := newCLIMCPReverseSearch
+	oldSDK := newCLIPixivSDKPorts
+	oldStdio := runMCPStdio
+	closeErr := errors.New("mcp reverse search close failed")
+	searcher := &closeTrackingReverseSearcher{closeErr: closeErr}
+
+	loadCLIRuntimeConfig = func() (configapp.RuntimeConfig, error) {
+		return configapp.RuntimeConfig{}, nil
+	}
+	newCLIMCPReverseSearch = func(reverseassembly.Options) (reversesearch.Searcher, error) {
+		return searcher, nil
+	}
+	newCLIPixivSDKPorts = func(app) (pixivSDKPorts, error) {
+		return pixivSDKPorts{}, nil
+	}
+	runMCPStdio = func(context.Context, *mcp.Server) error { return nil }
+	t.Cleanup(func() {
+		loadCLIRuntimeConfig = oldConfig
+		newCLIMCPReverseSearch = oldReverse
+		newCLIPixivSDKPorts = oldSDK
+		runMCPStdio = oldStdio
+	})
+
+	var stdout, stderr bytes.Buffer
+	a := app{
+		in:         strings.NewReader(""),
+		out:        &stdout,
+		errOut:     &stderr,
+		closeState: &closeState{},
+	}
+	require.NoError(t, a.runPixivMCP(context.Background(), mcpcommands.Request{}))
+	require.ErrorIs(t, a.closeResources(), closeErr)
+	require.ErrorIs(t, a.closeResources(), closeErr)
+	require.Equal(t, int32(1), searcher.closeCalls.Load())
+	require.Empty(t, stdout.String())
 }

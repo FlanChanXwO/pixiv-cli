@@ -68,23 +68,25 @@ type snapshotEnvValue struct {
 }
 
 type RuntimeConfig struct {
-	DownloadPath           string
-	FilenameTemplate       string
-	DirectoryTemplate      string
-	HTTPSProxy             string
-	LogLevel               string
-	LogFormat              string
-	PixivNetwork           ServiceNetworkConfig
-	FanboxNetwork          ServiceNetworkConfig
-	FanboxFlareSolverr     *FlareSolverrConfig
-	RequestInterval        time.Duration
-	UpdateCheckEnabled     bool
-	OutputJSON             bool
-	LoginOpenBrowser       bool
-	LoginUseAfterLogin     bool
-	ReverseSearchProvider  string
-	ReverseSearchPixivOnly bool
-	SauceNAOAPIKey         string
+	DownloadPath              string
+	FilenameTemplate          string
+	DirectoryTemplate         string
+	HTTPSProxy                string
+	LogLevel                  string
+	LogFormat                 string
+	PixivNetwork              ServiceNetworkConfig
+	FanboxNetwork             ServiceNetworkConfig
+	ReverseSearchNetwork      ServiceNetworkConfig
+	FanboxFlareSolverr        *FlareSolverrConfig
+	ReverseSearchFlareSolverr *FlareSolverrConfig
+	RequestInterval           time.Duration
+	UpdateCheckEnabled        bool
+	OutputJSON                bool
+	LoginOpenBrowser          bool
+	LoginUseAfterLogin        bool
+	ReverseSearchProvider     string
+	ReverseSearchPixivOnly    bool
+	SauceNAOAPIKey            string
 	// LoginRelay* 描述本次运行时创建的跨机器浏览器中继。历史 secret/target
 	// 配置项仍可留在私有配置文件中，但不会载入 runtime，避免恢复旧 client relay。
 	LoginRelayPublicURL   string
@@ -439,32 +441,42 @@ func (s Snapshot) Runtime() (RuntimeConfig, error) {
 	if err != nil {
 		return RuntimeConfig{}, err
 	}
+	reverseSearchNetwork, err := s.serviceNetwork("reverse_search.network", true)
+	if err != nil {
+		return RuntimeConfig{}, err
+	}
 	flareSolverr, err := s.flareSolverr()
 	if err != nil {
 		return RuntimeConfig{}, err
 	}
+	reverseSearchFlareSolverr, err := s.flareSolverrAt("reverse_search.flaresolverr")
+	if err != nil {
+		return RuntimeConfig{}, err
+	}
 	cfg := RuntimeConfig{
-		DownloadPath:           downloadPath.Value.(string),
-		FilenameTemplate:       filenameTemplate.Value.(string),
-		DirectoryTemplate:      settingStringValue(directoryTemplate),
-		HTTPSProxy:             "",
-		LogLevel:               normalizedLogLevel,
-		LogFormat:              normalizedLogFormat,
-		PixivNetwork:           pixivNetwork,
-		FanboxNetwork:          fanboxNetwork,
-		FanboxFlareSolverr:     flareSolverr,
-		UpdateCheckEnabled:     updateCheckEnabled.Value.(bool),
-		OutputJSON:             outputJSON.Value.(bool),
-		LoginOpenBrowser:       loginOpenBrowser.Value.(bool),
-		LoginUseAfterLogin:     loginUseAfterLogin.Value.(bool),
-		ReverseSearchProvider:  reverseSearchProvider.Value.(string),
-		ReverseSearchPixivOnly: reverseSearchPixivOnly.Value.(bool),
-		SauceNAOAPIKey:         settingStringValue(sauceNAOAPIKey),
-		LoginRelayPublicURL:    settingStringValue(loginRelayPublicURL),
-		LoginRelayListenAddr:   settingStringValue(loginRelayListenAddr),
-		LoginRelayTLSCertFile:  settingStringValue(loginRelayTLSCertFile),
-		LoginRelayTLSKeyFile:   settingStringValue(loginRelayTLSKeyFile),
-		AccountPool:            accountPool,
+		DownloadPath:              downloadPath.Value.(string),
+		FilenameTemplate:          filenameTemplate.Value.(string),
+		DirectoryTemplate:         settingStringValue(directoryTemplate),
+		HTTPSProxy:                "",
+		LogLevel:                  normalizedLogLevel,
+		LogFormat:                 normalizedLogFormat,
+		PixivNetwork:              pixivNetwork,
+		FanboxNetwork:             fanboxNetwork,
+		ReverseSearchNetwork:      reverseSearchNetwork,
+		FanboxFlareSolverr:        flareSolverr,
+		ReverseSearchFlareSolverr: reverseSearchFlareSolverr,
+		UpdateCheckEnabled:        updateCheckEnabled.Value.(bool),
+		OutputJSON:                outputJSON.Value.(bool),
+		LoginOpenBrowser:          loginOpenBrowser.Value.(bool),
+		LoginUseAfterLogin:        loginUseAfterLogin.Value.(bool),
+		ReverseSearchProvider:     reverseSearchProvider.Value.(string),
+		ReverseSearchPixivOnly:    reverseSearchPixivOnly.Value.(bool),
+		SauceNAOAPIKey:            settingStringValue(sauceNAOAPIKey),
+		LoginRelayPublicURL:       settingStringValue(loginRelayPublicURL),
+		LoginRelayListenAddr:      settingStringValue(loginRelayListenAddr),
+		LoginRelayTLSCertFile:     settingStringValue(loginRelayTLSCertFile),
+		LoginRelayTLSKeyFile:      settingStringValue(loginRelayTLSKeyFile),
+		AccountPool:               accountPool,
 	}
 	if requestInterval.HasValue {
 		cfg.RequestInterval = requestInterval.Value.(time.Duration)
@@ -504,11 +516,15 @@ func (s Snapshot) optionalString(path string) (OptionalString, error) {
 }
 
 func (s Snapshot) flareSolverr() (*FlareSolverrConfig, error) {
-	urlValue, err := s.optionalString("fanbox.flaresolverr.url")
+	return s.flareSolverrAt("fanbox.flaresolverr")
+}
+
+func (s Snapshot) flareSolverrAt(prefix string) (*FlareSolverrConfig, error) {
+	urlValue, err := s.optionalString(prefix + ".url")
 	if err != nil {
 		return nil, err
 	}
-	proxyValue, err := s.optionalString("fanbox.flaresolverr.proxy_url")
+	proxyValue, err := s.optionalString(prefix + ".proxy_url")
 	if err != nil {
 		return nil, err
 	}
@@ -516,7 +532,7 @@ func (s Snapshot) flareSolverr() (*FlareSolverrConfig, error) {
 		return nil, nil
 	}
 	if !urlValue.Present || strings.TrimSpace(urlValue.Value) == "" {
-		return nil, errors.New("fanbox.flaresolverr.url must be set when fanbox.flaresolverr is configured")
+		return nil, fmt.Errorf("%s.url must be set when %s is configured", prefix, prefix)
 	}
 	return &FlareSolverrConfig{URL: urlValue.Value, ProxyURL: proxyValue.Value}, nil
 }

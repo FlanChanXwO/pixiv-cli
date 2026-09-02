@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"mime"
 	"mime/multipart"
 	"net/http"
 	"net/http/cookiejar"
@@ -13,6 +14,9 @@ import (
 	"net/url"
 	"regexp"
 	"strings"
+	"sync"
+
+	"golang.org/x/net/html"
 
 	reversesearch "github.com/FlanChanXwO/pixiv-cli/internal/services/reversesearch"
 )
@@ -26,18 +30,54 @@ const (
 var (
 	uploadHashPattern      = regexp.MustCompile(`^[0-9a-f]{32}$`)
 	errCrossOriginRedirect = errors.New("ascii2d cross-origin redirect")
+	errChallengeDetected   = errors.New("ascii2d challenge detected")
 )
+
+func mapSolverError(err error) error {
+	if err == nil {
+		return nil
+	}
+	if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+		return err
+	}
+	if reversesearch.CodeOf(err) != reversesearch.CodeUnknown {
+		return err
+	}
+	switch {
+	case errors.Is(err, ErrSolverUnavailable):
+		return reversesearch.NewError(reversesearch.CodeSolverUnavailable, "ascii2d challenge solver is unavailable", err)
+	case errors.Is(err, ErrSolverFailed):
+		return reversesearch.NewError(reversesearch.CodeSolverFailed, "ascii2d challenge solver failed", err)
+	case errors.Is(err, ErrMalformedSolverResponse):
+		return reversesearch.NewError(reversesearch.CodeMalformedSolverResponse, "ascii2d challenge solver response is malformed", err)
+	default:
+		return err
+	}
+}
 
 // Options 是 ascii2d adapter 的构造依赖。
 type Options struct {
-	HTTPClient *http.Client
-	Endpoint   string
+	HTTPClient   *http.Client
+	Endpoint     string
+	ProxyURL     string
+	UserAgent    string
+	FlareSolverr *FlareSolverrOptions
+}
+
+type clientLifecycle struct {
+	once sync.Once
+	err  error
 }
 
 // Client 持有 ascii2d 会话模板；每次 Upload 都创建独立 cookie jar。
 type Client struct {
-	httpClient *http.Client
-	endpoint   *url.URL
+	httpClient  *http.Client
+	endpoint    *url.URL
+	userAgent   string
+	hints       clientHints
+	solver      *solverClient
+	solverCache *solverStateCache
+	lifecycle   *clientLifecycle
 }
 
 // Session 是一次成功上传产生的不可变查询句柄。color 与 bovw 可共享它。
@@ -45,6 +85,8 @@ type Session struct {
 	client *Client
 	hash   string
 }
+
+var _ reversesearch.Closer = (*Client)(nil)
 
 func New(options Options) (*Client, error) {
 	endpoint := options.Endpoint
@@ -56,13 +98,68 @@ func New(options Options) (*Client, error) {
 		(!strings.EqualFold(parsed.Scheme, "http") && !strings.EqualFold(parsed.Scheme, "https")) {
 		return nil, reversesearch.NewError(reversesearch.CodeInvalidRequest, "ascii2d endpoint is invalid", nil)
 	}
+	userAgent, hints, err := normalizeUserAgent(options.UserAgent)
+	if err != nil {
+		return nil, err
+	}
+	proxyURL, err := validateProxyURL(options.ProxyURL)
+	if err != nil {
+		return nil, err
+	}
 	baseClient := options.HTTPClient
 	if baseClient == nil {
-		baseClient = http.DefaultClient
+		transport, err := newBrowserTransport(proxyURL)
+		if err != nil {
+			return nil, reversesearch.NewError(reversesearch.CodeProviderFailed, "could not create ascii2d browser transport", nil)
+		}
+		baseClient = &http.Client{Transport: transport}
 	}
 	client := *baseClient
 	client.Jar = nil
-	return &Client{httpClient: &client, endpoint: parsed}, nil
+	var solver *solverClient
+	if options.FlareSolverr != nil {
+		solver, err = newSolverClient(solverClientOptions{FlareSolverr: *options.FlareSolverr})
+		if err != nil {
+			return nil, mapSolverError(err)
+		}
+	}
+	return &Client{
+		httpClient:  &client,
+		endpoint:    parsed,
+		userAgent:   userAgent,
+		hints:       hints,
+		solver:      solver,
+		solverCache: newSolverStateCache(),
+		lifecycle:   &clientLifecycle{},
+	}, nil
+}
+
+// Close 结束 ascii2d 的进程级 solver session，并释放 native/browser client
+// 的空闲连接。session client 与模板 client 共享同一 lifecycle，因此重复
+// Close 或从任一 session 关闭都不会重复 destroy 同一个 solver session。
+func (c *Client) Close() error {
+	if c == nil {
+		return nil
+	}
+	if c.lifecycle == nil {
+		// 只有内部零值/旧测试构造会缺少 lifecycle；正常实例均由 New 初始化。
+		c.lifecycle = &clientLifecycle{}
+	}
+	c.lifecycle.once.Do(func() {
+		if c.solverCache != nil {
+			c.solverCache.close()
+		}
+		if c.solver != nil {
+			c.lifecycle.err = errors.Join(c.lifecycle.err, c.solver.destroy(context.Background()))
+			if c.solver.httpClient != nil {
+				c.solver.httpClient.CloseIdleConnections()
+			}
+		}
+		if c.httpClient != nil {
+			c.httpClient.CloseIdleConnections()
+		}
+	})
+	return c.lifecycle.err
 }
 
 func (c *Client) Preflight(ctx context.Context) error {
@@ -78,7 +175,7 @@ func (c *Client) Preflight(ctx context.Context) error {
 	return nil
 }
 
-// Upload 校验 ascii2d 专属媒体约束，建立 Cookie/CSRF 会话并只上传一次快照。
+// Upload 校验 ascii2d 专属媒体约束；每次上传尝试都从 Snapshot 重新打开并构建 multipart。
 func (c *Client) Upload(ctx context.Context, snapshot *reversesearch.Snapshot) (reversesearch.ASCII2DSession, error) {
 	if err := c.Preflight(ctx); err != nil {
 		return nil, err
@@ -93,13 +190,65 @@ func (c *Client) Upload(ctx context.Context, snapshot *reversesearch.Snapshot) (
 	}
 	token, err := sessionClient.fetchCSRF(ctx)
 	if err != nil {
+		if errors.Is(err, errChallengeDetected) {
+			return c.recoverUpload(ctx, snapshot, mediaType, sessionClient.endpoint.String(), err)
+		}
 		return nil, err
 	}
 	hash, err := sessionClient.upload(ctx, snapshot, mediaType, token)
 	if err != nil {
+		if errors.Is(err, errChallengeDetected) {
+			return c.recoverUpload(ctx, snapshot, mediaType, sessionClient.resolvePath("/search/file").String(), err)
+		}
 		return nil, err
 	}
 	return &Session{client: sessionClient, hash: hash}, nil
+}
+
+func (c *Client) recoverUpload(ctx context.Context, snapshot *reversesearch.Snapshot, mediaType, protectedURL string, challengeErr error) (reversesearch.ASCII2DSession, error) {
+	if c == nil || c.solver == nil {
+		return nil, reversesearch.NewError(reversesearch.CodeChallengeRequired, "ascii2d challenge requires solver recovery", challengeErr)
+	}
+	// challenge 只允许一次恢复重放；恢复后的 session/CSRF 与原尝试完全隔离。
+	state, err := c.solveChallenge(ctx, protectedURL)
+	if err != nil {
+		return nil, mapSolverError(err)
+	}
+	sessionClient, err := c.newSessionClientWithSolverState(state)
+	if err != nil {
+		c.solverCache.invalidate()
+		return nil, mapSolverError(err)
+	}
+	token, err := sessionClient.fetchCSRF(ctx)
+	if err != nil {
+		if errors.Is(err, errChallengeDetected) {
+			c.solverCache.invalidate()
+			return nil, mapSolverError(ErrSolverFailed)
+		}
+		return nil, err
+	}
+	hash, err := sessionClient.upload(ctx, snapshot, mediaType, token)
+	if err != nil {
+		if errors.Is(err, errChallengeDetected) {
+			c.solverCache.invalidate()
+			return nil, mapSolverError(ErrSolverFailed)
+		}
+		return nil, err
+	}
+	return &Session{client: sessionClient, hash: hash}, nil
+}
+
+func (c *Client) solveChallenge(ctx context.Context, protectedURL string) (solverState, error) {
+	if c == nil || c.solver == nil || c.solverCache == nil || c.endpoint == nil {
+		return solverState{}, mapSolverError(ErrSolverUnavailable)
+	}
+	state, err := c.solverCache.getOrSolve(ctx, func(solveContext context.Context) (solverState, error) {
+		if err := c.solver.create(solveContext); err != nil {
+			return solverState{}, err
+		}
+		return c.solver.get(solveContext, protectedURL)
+	})
+	return state, mapSolverError(err)
 }
 
 func (c *Client) newSessionClient() (*Client, error) {
@@ -123,7 +272,37 @@ func (c *Client) newSessionClient() (*Client, error) {
 		}
 		return nil
 	}
-	return &Client{httpClient: &httpClient, endpoint: c.endpoint}, nil
+	return &Client{
+		httpClient:  &httpClient,
+		endpoint:    c.endpoint,
+		userAgent:   c.userAgent,
+		hints:       c.hints,
+		solver:      c.solver,
+		solverCache: c.solverCache,
+		lifecycle:   c.lifecycle,
+	}, nil
+}
+
+func (c *Client) newSessionClientWithSolverState(state solverState) (*Client, error) {
+	if !validSolverHeaderValue(state.userAgent) || state.clearance == "" || !validSolverCookieValue(state.clearance) {
+		return nil, ErrMalformedSolverResponse
+	}
+	userAgent, hints, err := normalizeUserAgent(state.userAgent)
+	if err != nil {
+		return nil, ErrMalformedSolverResponse
+	}
+	sessionClient, err := c.newSessionClient()
+	if err != nil {
+		return nil, err
+	}
+	sessionClient.userAgent = userAgent
+	sessionClient.hints = hints
+	sessionClient.httpClient.Jar.SetCookies(sessionClient.endpoint, []*http.Cookie{{
+		Name:  "cf_clearance",
+		Value: state.clearance,
+		Path:  "/",
+	}})
+	return sessionClient, nil
 }
 
 func validateSnapshot(snapshot *reversesearch.Snapshot) (string, error) {
@@ -162,6 +341,7 @@ func (c *Client) fetchCSRF(ctx context.Context) (string, error) {
 	if err != nil {
 		return "", reversesearch.NewError(reversesearch.CodeProviderFailed, "could not create ascii2d session request", nil)
 	}
+	c.applyNavigationHeaders(request, "none", "")
 	response, err := c.httpClient.Do(request)
 	if err != nil {
 		if ctxErr := ctx.Err(); ctxErr != nil {
@@ -173,14 +353,161 @@ func (c *Client) fetchCSRF(ctx context.Context) (string, error) {
 		return "", reversesearch.NewError(reversesearch.CodeProviderFailed, "ascii2d session request failed", nil)
 	}
 	defer response.Body.Close()
-	if response.StatusCode < http.StatusOK || response.StatusCode >= http.StatusMultipleChoices {
-		return "", reversesearch.NewError(reversesearch.CodeUpstreamHTTPStatus, "ascii2d returned an unsuccessful HTTP status", nil)
+	if response.StatusCode >= http.StatusOK && response.StatusCode < http.StatusMultipleChoices {
+		if challengeErr := detectResponseChallenge(ctx, response); challengeErr != nil {
+			return "", challengeErr
+		}
+	} else {
+		return "", classifyResponseError(ctx, response, "ascii2d returned an unsuccessful HTTP status")
 	}
 	token, parseErr := parseUploadForm(response.Body)
 	if parseErr != nil {
 		return "", reversesearch.NewError(reversesearch.CodeMalformedUpstreamResponse, "ascii2d returned a malformed response", nil)
 	}
 	return token, nil
+}
+
+// classifyResponseError 先处理 Cloudflare 的权威响应头，再按需流式扫描 403 HTML。
+// 普通上游错误仍保留原有分类；challenge 的 cause 只供 provider 内部后续恢复，
+// 不把上游响应正文带入跨边界错误文本。
+func classifyResponseError(ctx context.Context, response *http.Response, fallbackMessage string) error {
+	if challengeErr := detectResponseChallenge(ctx, response); challengeErr != nil {
+		return challengeErr
+	}
+	return reversesearch.NewError(reversesearch.CodeUpstreamHTTPStatus, fallbackMessage, nil)
+}
+
+func detectResponseChallenge(ctx context.Context, response *http.Response) error {
+	if ctxErr := ctx.Err(); ctxErr != nil {
+		return ctxErr
+	}
+	challenged, readErr := detectChallenge(response)
+	if ctxErr := ctx.Err(); ctxErr != nil {
+		return ctxErr
+	}
+	if readErr != nil {
+		return reversesearch.NewError(reversesearch.CodeProviderFailed, "could not read ascii2d error response", nil)
+	}
+	if challenged {
+		return reversesearch.NewError(reversesearch.CodeUpstreamHTTPStatus, "ascii2d challenge detected", errChallengeDetected)
+	}
+	return nil
+}
+
+func detectChallenge(response *http.Response) (bool, error) {
+	if response == nil {
+		return false, nil
+	}
+	// cf-mitigated 是 Cloudflare 明确声明 challenge 的权威信号，优先于正文。
+	if challengeHeaderDetected(response.Header) {
+		return true, nil
+	}
+	if response.StatusCode != http.StatusForbidden || response.Body == nil || !isHTMLContentType(response.Header) {
+		return false, nil
+	}
+	return scanHTMLChallenge(response.Body)
+}
+
+func challengeHeaderDetected(header http.Header) bool {
+	for _, value := range header.Values("Cf-Mitigated") {
+		for _, item := range strings.Split(value, ",") {
+			if strings.EqualFold(strings.TrimSpace(item), "challenge") {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+func isHTMLContentType(header http.Header) bool {
+	mediaType, _, err := mime.ParseMediaType(header.Get("Content-Type"))
+	if err != nil {
+		return false
+	}
+	mediaType = strings.ToLower(strings.TrimSpace(mediaType))
+	return mediaType == "text/html" || mediaType == "application/xhtml+xml" || strings.HasSuffix(mediaType, "+html")
+}
+
+func scanHTMLChallenge(body io.Reader) (bool, error) {
+	tokenizer := html.NewTokenizer(body)
+	activeHeading := ""
+	var headingText strings.Builder
+	for {
+		switch tokenType := tokenizer.Next(); tokenType {
+		case html.ErrorToken:
+			if errors.Is(tokenizer.Err(), io.EOF) {
+				return false, nil
+			}
+			return false, tokenizer.Err()
+		case html.StartTagToken, html.SelfClosingTagToken:
+			token := tokenizer.Token()
+			if tokenHasChallengeMarker(token) {
+				return true, nil
+			}
+			if isChallengeHeading(token.Data) {
+				activeHeading = token.Data
+				headingText.Reset()
+			}
+		case html.EndTagToken:
+			token := tokenizer.Token()
+			if token.Data == activeHeading {
+				activeHeading = ""
+			}
+		case html.TextToken, html.CommentToken:
+			token := tokenizer.Token()
+			text := normalizeChallengeText(token.Data)
+			if hasChallengeText(text) {
+				return true, nil
+			}
+			if activeHeading != "" {
+				headingText.WriteString(" ")
+				headingText.WriteString(text)
+				if hasChallengeText(normalizeChallengeText(headingText.String())) {
+					return true, nil
+				}
+			}
+		}
+	}
+}
+
+func tokenHasChallengeMarker(token html.Token) bool {
+	for _, attribute := range token.Attr {
+		value := strings.ToLower(attribute.Key + "=" + attribute.Val)
+		if strings.Contains(value, "cf-chl") || strings.Contains(value, "cf_chl") || strings.Contains(value, "challenge-platform") {
+			return true
+		}
+	}
+	return false
+}
+
+func isChallengeHeading(name string) bool {
+	switch strings.ToLower(name) {
+	case "title", "h1", "h2":
+		return true
+	default:
+		return false
+	}
+}
+
+func normalizeChallengeText(value string) string {
+	return strings.Join(strings.Fields(strings.ToLower(value)), " ")
+}
+
+func hasChallengeText(value string) bool {
+	// Ray ID、access-denied 和通用 WAF 标题不是 challenge 证据，避免误触发 solver。
+	for _, marker := range []string{
+		"just a moment",
+		"verify you are human",
+		"checking your browser before accessing",
+		"challenge-platform",
+		"cf-chl-",
+		"cf_chl",
+	} {
+		if strings.Contains(value, marker) {
+			return true
+		}
+	}
+	return false
 }
 
 func (c *Client) upload(ctx context.Context, snapshot *reversesearch.Snapshot, mediaType, token string) (string, error) {
@@ -192,6 +519,7 @@ func (c *Client) upload(ctx context.Context, snapshot *reversesearch.Snapshot, m
 		<-writeResult
 		return "", reversesearch.NewError(reversesearch.CodeProviderFailed, "could not create ascii2d upload request", nil)
 	}
+	c.applyFormHeaders(request)
 	request.Header.Set("Content-Type", contentType)
 
 	client := *c.httpClient
@@ -211,8 +539,12 @@ func (c *Client) upload(ctx context.Context, snapshot *reversesearch.Snapshot, m
 	if ctxErr := ctx.Err(); ctxErr != nil {
 		return "", ctxErr
 	}
-	if response.StatusCode < http.StatusMultipleChoices || response.StatusCode >= http.StatusBadRequest {
-		return "", reversesearch.NewError(reversesearch.CodeUpstreamHTTPStatus, "ascii2d returned an unsuccessful HTTP status", nil)
+	if response.StatusCode >= http.StatusMultipleChoices && response.StatusCode < http.StatusBadRequest {
+		if challengeErr := detectResponseChallenge(ctx, response); challengeErr != nil {
+			return "", challengeErr
+		}
+	} else {
+		return "", classifyResponseError(ctx, response, "ascii2d returned an unsuccessful HTTP status")
 	}
 	hash, locationErr := c.validateUploadLocation(response.Header.Get("Location"))
 	if locationErr != nil {
@@ -281,6 +613,7 @@ func (c *Client) validateUploadLocation(raw string) (string, error) {
 	if err != nil || raw == "" || location.User != nil {
 		return "", reversesearch.NewError(reversesearch.CodeMalformedUpstreamResponse, "ascii2d returned a malformed upload location", nil)
 	}
+	normalizeSameHostHTTPSUploadLocation(c.endpoint, location)
 	resolved := c.endpoint.ResolveReference(location)
 	if !sameOrigin(c.endpoint, resolved) {
 		return "", reversesearch.NewError(reversesearch.CodeMalformedUpstreamResponse, "ascii2d returned an unsafe upload location", nil)
@@ -293,6 +626,18 @@ func (c *Client) validateUploadLocation(raw string) (string, error) {
 		return "", reversesearch.NewError(reversesearch.CodeMalformedUpstreamResponse, "ascii2d returned a malformed upload location", nil)
 	}
 	return segments[2], nil
+}
+
+func normalizeSameHostHTTPSUploadLocation(endpoint, location *url.URL) {
+	if !strings.EqualFold(endpoint.Scheme, "https") ||
+		!strings.EqualFold(location.Scheme, "http") ||
+		!strings.EqualFold(location.Hostname(), endpoint.Hostname()) {
+		return
+	}
+	// ascii2d 当前会在 HTTPS 上传响应中生成同主机的 HTTP Location。这里只
+	// 把已校验主机的 scheme 规范回 HTTPS endpoint，绝不跟随不安全的降级地址；
+	// 显式端口仍由 sameOrigin 继续校验。
+	location.Scheme = endpoint.Scheme
 }
 
 func sameOrigin(left, right *url.URL) bool {
@@ -339,6 +684,7 @@ func (s *Session) Search(ctx context.Context, provider reversesearch.Provider) (
 	if err != nil {
 		return reversesearch.ProviderResponse{}, reversesearch.NewError(reversesearch.CodeProviderFailed, "could not create ascii2d result request", nil)
 	}
+	s.client.applyNavigationHeaders(request, "same-origin", s.client.homeURL())
 	response, err := s.client.httpClient.Do(request)
 	if err != nil {
 		if ctxErr := ctx.Err(); ctxErr != nil {
@@ -350,8 +696,12 @@ func (s *Session) Search(ctx context.Context, provider reversesearch.Provider) (
 		return reversesearch.ProviderResponse{}, reversesearch.NewError(reversesearch.CodeProviderFailed, "ascii2d result request failed", nil)
 	}
 	defer response.Body.Close()
-	if response.StatusCode < http.StatusOK || response.StatusCode >= http.StatusMultipleChoices {
-		return reversesearch.ProviderResponse{}, reversesearch.NewError(reversesearch.CodeUpstreamHTTPStatus, "ascii2d returned an unsuccessful HTTP status", nil)
+	if response.StatusCode >= http.StatusOK && response.StatusCode < http.StatusMultipleChoices {
+		if challengeErr := detectResponseChallenge(ctx, response); challengeErr != nil {
+			return reversesearch.ProviderResponse{}, challengeErr
+		}
+	} else {
+		return reversesearch.ProviderResponse{}, classifyResponseError(ctx, response, "ascii2d returned an unsuccessful HTTP status")
 	}
 	matches, parseErr := parseResults(response.Body)
 	if parseErr != nil {

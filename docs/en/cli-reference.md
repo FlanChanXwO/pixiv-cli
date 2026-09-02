@@ -380,11 +380,30 @@ The provider values are `saucenao`, `ascii2d-color`, `ascii2d-bovw`, and `all`. 
 ascii2d color, ascii2d bovw and may return a partial success. `reverse_search_pixiv_only` controls whether
 non-Pixiv matches remain in `results`; it defaults to `true` and is not a per-command flag.
 
+Reverse-search transport has separate network surfaces. On an image-mode command, `--proxy` or `--no-proxy`
+overrides both the standard source/SauceNAO client and the dedicated ascii2d browser client for that invocation.
+Without a command override, `[reverse_search.network].proxy_url` (including an explicit empty value) overrides only
+ascii2d; the standard source/SauceNAO client keeps the global `https_proxy`/`[network].https_proxy` route. When the
+service value is absent, ascii2d follows that standard proxy. Supported proxy URI schemes are `http`, `https`,
+`socks5`, and `socks5h`.
+
+`[reverse_search.network].user_agent` applies only to ascii2d browser requests. The default is a Chrome 146 macOS
+User-Agent paired with the `Chrome_146` TLS profile. A Chromium User-Agent derives matching
+`Sec-CH-UA`, `Sec-CH-UA-Mobile`, and `Sec-CH-UA-Platform` client hints; a non-Chromium User-Agent omits those
+Chromium hints. Header control characters are rejected.
+
+`[reverse_search.flaresolverr]` is optional and used only after an ascii2d challenge is detected. Its `url` is a JSON
+control endpoint; `proxy_url` is sent only as the browser upstream proxy in `sessions.create`. Solver control traffic
+does not inherit the native/standard proxy. The solver returns the browser User-Agent and clearance state for the
+native ascii2d client; the image remains a native `/search/file` multipart upload and is never uploaded through
+FlareSolverr. Solver state is process/client-scoped and is never written to disk.
+
 The source is fetched or opened once into a private temporary snapshot and represented in output only by
 `input.kind` (`file` or `url`) and `input.sha256`. SauceNAO and ascii2d are third-party services: the image may be
 uploaded or retained according to their policies, and URL requests may be cached. ascii2d accepts JPEG, PNG, and
 WEBP and applies its provider-specific 10 MB upload limit; this does not impose a common limit on SauceNAO-only
-search. Do not submit images or URLs that the user is not authorized to share.
+search. There is no reverse-search-wide 1 MiB compressed-upload rule; `gzip, deflate, br` is response-content
+negotiation, not an upload limit. Do not submit images or URLs that the user is not authorized to share.
 
 JSON output is the complete envelope `{input, providers, results, records, provider_errors, partial}`. `records`
 contains only canonical Pixiv identities: artwork matches use the generic `type:"artwork"` because reverse search
@@ -396,6 +415,13 @@ For `all`, a successful provider plus a failed provider sets `partial=true`, wri
 exits successfully. A single-provider failure or an all-provider failure exits non-zero while preserving any
 available JSON envelope. Provider errors use stable `code` and `message` values; source strings, API keys, cookies,
 CSRF/redirect values, temporary paths, and upstream response bodies never appear in output or diagnostics.
+
+The stable reverse-search error-code vocabulary is `unknown`, `invalid_request`, `invalid_source`,
+`source_not_regular_file`, `source_read_failed`, `source_http_status`, `snapshot_failed`,
+`source_loader_not_configured`, `provider_not_configured`, `missing_credential`, `malformed_upstream_response`,
+`upstream_http_status`, `provider_failed`, `all_providers_failed`, `challenge_required`, `solver_unavailable`,
+`solver_failed`, and `malformed_solver_response`. Provider failure causes are sanitized at the output boundary:
+only the reviewed stable code and safe message are published, never the wrapped cause or upstream diagnostic.
 
 Public positional inputs also accept one implicit non-TTY stdin value. A missing required value or an omitted optional
 value consumes the complete stream as one value and removes only one trailing LF/CRLF; it never splits shell whitespace.
@@ -628,7 +654,8 @@ The environment variable `SAUCENAO_API_KEY` overrides the file value without dis
 key in shell history, diagnostics, JSON, MCP input, or a checked-in TOML file.
 
 Manual TOML may contain advanced runtime sections such as `[account_pool]`, `[network]`, `[pixiv.network]`,
-`[fanbox.network]`, `[fanbox.flaresolverr]`, `[reverse_search]`, `[login]`, and `[update]`:
+`[fanbox.network]`, `[fanbox.flaresolverr]`, `[reverse_search]`, `[reverse_search.network]`,
+`[reverse_search.flaresolverr]`, `[login]`, and `[update]`:
 
 ```toml
 [network]
@@ -648,15 +675,25 @@ proxy_url = "socks5://solver-upstream.example:1080"
 [reverse_search]
 provider = "saucenao"
 pixiv_only = true
+
+[reverse_search.network]
+proxy_url = "socks5://ascii2d-proxy.example:1080"
+user_agent = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36"
+
+[reverse_search.flaresolverr]
+url = "http://127.0.0.1:8191"
+proxy_url = "socks5://solver-upstream.example:1080"
 ```
 
-`[pixiv.network].proxy_url` and `[fanbox.network].proxy_url` preserve absent versus explicit empty:
-the command override (`--proxy`/`--no-proxy`) wins, then the corresponding service value, then the global
-environment/config proxy, then direct access. FANBOX native accepts only userinfo-free HTTP(S) CONNECT;
-Pixiv accepts HTTP(S), SOCKS5, and SOCKS5H. `user_agent` changes only the FANBOX native header and does not
-change its Chrome 146 TLS profile or guarantee Cloudflare access. FlareSolverr is optional and challenge-only;
-its service URL and upstream proxy are independent from the native FANBOX proxy. The default config generator
-does not create any of these optional tables.
+`[pixiv.network].proxy_url`, `[fanbox.network].proxy_url`, and `[reverse_search.network].proxy_url` preserve absent
+versus explicit empty values. Pixiv and FANBOX keep their own service boundaries. For reverse search, the command
+override (`--proxy`/`--no-proxy`) wins for both standard and ascii2d traffic; otherwise the reverse-search service
+value affects only ascii2d, while the standard source/SauceNAO client keeps the global route. The reverse-search
+`user_agent` affects only ascii2d and must stay paired with the browser client hints; it does not change SauceNAO or
+the standard source client. `FlareSolverr` is optional and challenge-only: its control URL and browser upstream proxy
+are independent from both native reverse-search routes, and its protocol is JSON rather than image multipart. The
+default config generator omits the optional service proxy and FlareSolverr tables, while the baseline `[reverse_search]`
+provider/filter values may still be generated.
 
 `[account_pool]` stores only `enabled` and `strategy`; per-account `schedulable`, freeze, and marker state lives
 in `pixiv-cli.db`. The removed `account_pool.accounts` key is not migrated; if present, runtime configuration

@@ -9,6 +9,7 @@
 ## 安全
 
 - 反向搜图每个 source 只加载一次到私有快照，并在 provider 工作结束后清理；发布输出和诊断不会包含 source 字符串、凭据、临时路径、cookie、CSRF/redirect 值或上游 body。MCP 契约有意允许私有文件以及私网/loopback/link-local URL，但只适用于可信本机 client，同时说明第三方上传、保存和 URL 缓存影响。([`69caa31`](https://github.com/FlanChanXwO/pixiv-cli/commit/69caa31)、[`3e2cb47`](https://github.com/FlanChanXwO/pixiv-cli/commit/3e2cb47)、[`80d5729`](https://github.com/FlanChanXwO/pixiv-cli/commit/80d5729)、[`8169787`](https://github.com/FlanChanXwO/pixiv-cli/commit/8169787)、[`4632334`](https://github.com/FlanChanXwO/pixiv-cli/commit/4632334)、[`4cfc4d4`](https://github.com/FlanChanXwO/pixiv-cli/commit/4cfc4d4))
+- 在 public CLI/MCP 边界脱敏 reverse-search provider failure，只暴露经过审查的稳定 `code`/`message`；wrapped cause 与上游诊断保持私有。([`7505ae8`](https://github.com/FlanChanXwO/pixiv-cli/commit/7505ae8))
 
 ## 文档
 
@@ -22,6 +23,10 @@
   `config.toml` 由 schema 元数据自动生成，且不会覆盖已有文件。
 - 新增 `reverse_search_provider` 与 `reverse_search_pixiv_only` 配置、仅限 stdin 且始终脱敏的
   `saucenao_api_key`，以及不显示 key 内容的 `SAUCENAO_API_KEY` 环境覆盖；public SDK 的构造与 API 保持不变。([`d4a1254`](https://github.com/FlanChanXwO/pixiv-cli/commit/d4a1254)、[`ce03802`](https://github.com/FlanChanXwO/pixiv-cli/commit/ce03802)、[`9cf51d7`](https://github.com/FlanChanXwO/pixiv-cli/commit/9cf51d7))
+- reverse-search runtime 配置现明确区分 standard/source-SauceNAO 与 ascii2d proxy，说明 Chrome-146
+  User-Agent/client-hint 配对，以及可选、仅用于 challenge 的 FlareSolverr JSON control 与独立 browser upstream
+  proxy。native ascii2d image upload 仍是 multipart，provider 自身限制为 10 MB；不引入全局 1 MiB 压缩上传规则。
+  ([`c01402a`](https://github.com/FlanChanXwO/pixiv-cli/commit/c01402a)、[`50d13a3`](https://github.com/FlanChanXwO/pixiv-cli/commit/50d13a3)、[`f9c1525`](https://github.com/FlanChanXwO/pixiv-cli/commit/f9c1525)、[`341cfbb`](https://github.com/FlanChanXwO/pixiv-cli/commit/341cfbb)、[`471af9b`](https://github.com/FlanChanXwO/pixiv-cli/commit/471af9b))
 
 ## 维护
 

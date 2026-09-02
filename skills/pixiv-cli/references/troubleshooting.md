@@ -27,6 +27,7 @@ usually the answer. Never mask an error with retries or silent fallbacks.
 | Reverse search reports `missing_credential` | SauceNAO is selected without a key | Set `saucenao_api_key` through non-TTY stdin or provide `SAUCENAO_API_KEY`; `config get` is redacted. ascii2d-only providers do not require the SauceNAO key |
 | Reverse search reports `partial=true` | At least one provider succeeded and another failed | Inspect the safe `provider_errors` entries and retry only when the user explicitly wants another upstream request; do not hide the partial result or invent a fallback |
 | A reverse-search input was treated as a keyword | The value was not an explicit HTTP(S) source and did not resolve to a regular file | Check the exact path and provider/output flags. Explicit `http:`/`https:` values never fall back to keyword search, even when the URL is invalid |
+| Reverse search reports `challenge_required`, `solver_unavailable`, `solver_failed`, or `malformed_solver_response` | ascii2d challenge recovery is unavailable, failed, or returned an invalid JSON response | Check the optional `[reverse_search.flaresolverr]` URL and service logs. Its `proxy_url` is only the browser upstream proxy; it does not replace the native reverse-search proxy or carry the image upload |
 | Wrong account acting | Multiple local accounts | `pixiv auth list --json`, then `pixiv auth use UID` (confirm first); data commands do not accept per-command account overrides. |
 | `auth import` waits for hidden input the user cannot enter | Agent PTY has no direct user-input channel | Cancel the waiting command; give it to the user for their private terminal, or use an authorized secret-manager-to-stdin pipeline as described in `auth.md` |
 | Cookie string rejected | By design | Only raw App API refresh tokens are accepted; for an explicit import request follow `auth.md` without asking the user to disclose an undisclosed token |
@@ -51,6 +52,11 @@ safe metadata output does not make raw token or bundle stdout safe to display.
 - Pixiv service configuration can be scoped with `[pixiv.network].proxy_url`;
   FANBOX uses independent `[fanbox.network].proxy_url` and `user_agent` values.
   `[fanbox.flaresolverr]` is challenge-only and is not a general FANBOX proxy.
+- Reverse search uses three network surfaces. A command `--proxy`/`--no-proxy`
+  applies to both the standard source/SauceNAO and ascii2d clients; otherwise
+  `[reverse_search.network].proxy_url` affects only ascii2d, and an explicit
+  empty value selects direct ascii2d access. `[reverse_search.network].user_agent`
+  affects only ascii2d and must remain paired with its browser client hints.
 - Request pacing comes from `PIXIV_REQUEST_INTERVAL` or
   `[network].request_interval`.
 - Reverse search may upload the image to SauceNAO/ascii2d. Verify the source is

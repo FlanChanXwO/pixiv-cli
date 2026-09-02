@@ -142,6 +142,7 @@ var (
 	runMCPServer = func(a app, ctx context.Context, request mcpcommands.Request) error {
 		return a.runPixivMCP(ctx, request)
 	}
+	runMCPStdio          = stdiotransport.RunStdio
 	ensureURLSchemeRelay = loginhelper.EnsurePersistentIfNeeded
 	canPrompt            = func(a app) bool { return authcommands.CanPrompt(a.in, a.out) }
 	promptInput          = func(a app, message, defaultValue string) (string, error) {
@@ -367,6 +368,12 @@ func newUsageError(err error) error {
 
 func (a app) closeResources() error {
 	return a.closeState.close()
+}
+
+func registerReverseSearchCloser(state *closeState, searcher reversesearch.Searcher) {
+	if closer, ok := searcher.(reversesearch.Closer); ok {
+		state.add(closer.Close)
+	}
 }
 
 func (a app) openAuthDatabase() (*database.DB, error) {
@@ -719,16 +726,18 @@ func (a app) searchDeps() pixivsearch.Dependencies {
 			if request.Provider != "" {
 				provider = request.Provider
 			}
-			proxy := runtime.HTTPSProxy
-			if request.HTTPSProxyOverride != nil {
-				proxy = *request.HTTPSProxyOverride
-			}
+			standardProxy, ascii2dProxy := reverseSearchProxies(runtime, request.HTTPSProxyOverride)
 			searcher, err := newCLIReverseSearch(reverseassembly.Options{
-				Proxy: proxy, SauceNAOKey: runtime.SauceNAOAPIKey,
+				Proxy:        standardProxy,
+				ASCII2DProxy: &ascii2dProxy,
+				UserAgent:    runtime.ReverseSearchNetwork.UserAgent.Value,
+				SauceNAOKey:  runtime.SauceNAOAPIKey,
+				FlareSolverr: reverseSearchFlareSolverr(runtime),
 			})
 			if err != nil {
 				return reversesearch.Response{}, err
 			}
+			registerReverseSearchCloser(a.closeState, searcher)
 			return searcher.Search(ctx, reversesearch.Request{
 				Source: request.Source, Provider: provider, PixivOnly: runtime.ReverseSearchPixivOnly,
 			})
@@ -953,6 +962,7 @@ func (a app) runPixivMCP(ctx context.Context, request mcpcommands.Request) error
 	if err != nil {
 		return err
 	}
+	registerReverseSearchCloser(a.closeState, reverseSearchPorts.Searcher)
 	ports, err := newCLIPixivSDKPorts(a)
 	if err != nil {
 		return err
@@ -978,19 +988,42 @@ func (a app) runPixivMCP(ctx context.Context, request mcpcommands.Request) error
 		},
 		ReverseSearch: reverseSearchPorts,
 	}, account)
-	return stdiotransport.RunStdio(ctx, server)
+	return runMCPStdio(ctx, server)
+}
+
+func reverseSearchFlareSolverr(runtime configapp.RuntimeConfig) *reverseassembly.FlareSolverrOptions {
+	if runtime.ReverseSearchFlareSolverr == nil {
+		return nil
+	}
+	return &reverseassembly.FlareSolverrOptions{
+		URL:      runtime.ReverseSearchFlareSolverr.URL,
+		ProxyURL: runtime.ReverseSearchFlareSolverr.ProxyURL,
+	}
+}
+
+func reverseSearchProxies(runtime configapp.RuntimeConfig, override *string) (standardProxy, ascii2dProxy string) {
+	standardProxy = runtime.HTTPSProxy
+	if override != nil {
+		return *override, *override
+	}
+	if runtime.ReverseSearchNetwork.ProxyURL.Present {
+		return standardProxy, runtime.ReverseSearchNetwork.ProxyURL.Value
+	}
+	return standardProxy, standardProxy
 }
 
 // newMCPReverseSearchPorts 在 MCP stdio 启动时创建一次反向搜图 Facade，并
-// 固定代理、凭据和配置默认值。后续 tool input 只允许覆盖 provider，不能改变
-// 传输或 credential 依赖，避免同一 MCP session 的运行时语义漂移。
+// 固定 standard/ascii2d 两个代理网络面、凭据和配置默认值。后续 tool input
+// 只允许覆盖 provider，不能改变传输或 credential 依赖，避免同一 MCP session
+// 的运行时语义漂移。
 func newMCPReverseSearchPorts(runtime configapp.RuntimeConfig, request mcpcommands.Request) (mcpserver.ReverseSearchPorts, error) {
-	proxy := runtime.HTTPSProxy
-	if request.HTTPSProxyOverride != nil {
-		proxy = *request.HTTPSProxyOverride
-	}
+	standardProxy, ascii2dProxy := reverseSearchProxies(runtime, request.HTTPSProxyOverride)
 	searcher, err := newCLIMCPReverseSearch(reverseassembly.Options{
-		Proxy: proxy, SauceNAOKey: runtime.SauceNAOAPIKey,
+		Proxy:        standardProxy,
+		ASCII2DProxy: &ascii2dProxy,
+		UserAgent:    runtime.ReverseSearchNetwork.UserAgent.Value,
+		SauceNAOKey:  runtime.SauceNAOAPIKey,
+		FlareSolverr: reverseSearchFlareSolverr(runtime),
 	})
 	if err != nil {
 		return mcpserver.ReverseSearchPorts{}, err

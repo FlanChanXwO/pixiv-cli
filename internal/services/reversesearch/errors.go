@@ -20,6 +20,10 @@ const (
 	CodeUpstreamHTTPStatus        ErrorCode = "upstream_http_status"
 	CodeProviderFailed            ErrorCode = "provider_failed"
 	CodeAllProvidersFailed        ErrorCode = "all_providers_failed"
+	CodeChallengeRequired         ErrorCode = "challenge_required"
+	CodeSolverUnavailable         ErrorCode = "solver_unavailable"
+	CodeSolverFailed              ErrorCode = "solver_failed"
+	CodeMalformedSolverResponse   ErrorCode = "malformed_solver_response"
 )
 
 // Error 只渲染预先审查的安全消息；cause 用于 errors.Is/As，但不会进入 Error 文本。
