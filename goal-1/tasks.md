@@ -377,7 +377,7 @@
 
 ### Task 12: Goal completion audit
 
-- [ ] **目标**：逐项对照 `goal-1/input.md` 的 C1–C6 和本任务书证据，确认没有“实现了 parser 但没实现 UX”的假完成。
+- [x] **目标**：逐项对照 `goal-1/input.md` 的 C1–C6 和本任务书证据，确认没有“实现了 parser 但没实现 UX”的假完成。
 - **必须实际验证的命令语义**（可由 deterministic command tests 证明；真实网络 smoke 仅作额外证据）：
   - `pixiv search "miku" --type artwork --limit 20 | pixiv detail`
   - `pixiv search "novel" --type novel --limit 10 | pixiv detail`
@@ -391,10 +391,24 @@
   - `git diff --check` 绿色；
   - review 无阻塞 finding；
   - 任务书填写所有实际证据和剩余风险。
-- **实际做了什么**：待执行。
-- **验证证据**：待执行。
-- **剩余风险**：待执行。
-- **下一步建议**：若用户决定实现/合并，再进入实际开发或 PR 流程；本 planning goal 到此完成定义。
+- **实际做了什么**：对当前完整 goal 范围 `origin/main...HEAD` 建立 C1–C6 与命令语义验收矩阵，并复核 Task 11 的 finding-first review 与集中检查 #1 对初始生产提交的补充审查。确认输入、实体、输出、组合、错误和文档回归均有对应实现与 deterministic test，不存在只接 parser 而未接 UX 的半成品。
+  - **C1 Input contract**：`internal/cli/commands/pixiv/detail/detail.go:119-128` 绑定 `pipeline.TextOrRecord`，`:130-205` 区分 TextValue/RecordMode 并按顺序消费 `pipeline.ConsumeNDJSONRecords`；`detail_test.go:294-424` 覆盖 canonical artwork、普通 search 的 artwork/novel/user records 及保留 search metadata；`:464-514` 覆盖单值 ID、`--json` 单 document、`--ndjson` record 输出。
+  - **C2 Entity semantics**：`detail.go:418-446` 集中维护 `artwork/illust/manga/ugoira -> artwork`、`novel -> novel`、`user -> user` 与显式 `--type` compatibility constraint；`detail_test.go:452-462`、`:578-675` 覆盖冲突、四种 artwork alias 和 unsupported type；`:677-752` 与 `internal/shared/record/pixiv_test.go:13-122` 覆盖 novel content、novel/user canonical identity 和 artwork kind normalization。
+  - **C3 Output contract**：`detail.go:130-137` 实施 `--json`/`--ndjson` 互斥，`:176-267` 用逐条写入和 `jsonArraySpool` 生成 record-mode JSON array，不收集完整输入流；`detail_test.go:426-450`、`:516-576` 覆盖 array、TTY separator、非 TTY 自动 NDJSON 和显式 `--ndjson` precedence。
+  - **C4 Composition**：`detail_test.go:20-48` 覆盖 reverse-search artwork/user identity 顺序消费与 detail 后的具体 artwork type，`:107-152` 覆盖 detail NDJSON 进入既有 download consumer，`:322-391` 覆盖普通 artwork/novel/user search records；`internal/cli/commands/pixiv/search/search_test.go:293-328,503-533` 保留 reverse NDJSON 与非终端自动 NDJSON 证据；`docs/en/cli-reference.md:367-387` 和 `skills/pixiv-cli/references/discover.md:138-173` 对应记录了六类命令语义。
+  - **C5 Error contract**：`detail.go:75-90,308-390` 对 pooled/fetch/record projection 错误直接返回；`detail_test.go:50-105,192-289,442-462,645-675,754-794` 覆盖显式类型冲突、aggregate JSON 拒绝、unsupported URL/type、非 novel content、stderr structured diagnostic 与原始 output write error；错误路径没有静默跳过、伪造成功或回退到 TextValue。
+  - **C6 Documentation & regression**：双语 CLI reference、产品 skill 与 discover reference 已同步 pipeline、类型推断、输出和 reverse contract；本轮实际执行的相关测试、全量测试、构建、vet、LSP diagnostics 和 diff 检查均通过。
+- **验证证据**：
+  - `go test ./internal/cli/commands/pixiv/detail -count=1 -v`：PASS，包含全部 detail pipeline、TTY/非 TTY、array、alias、novel content、error/I/O cases。
+  - `go test ./internal/cli ./internal/cli/commands/pixiv/search ./internal/shared/record -count=1`：PASS。
+  - `go vet ./internal/cli ./internal/cli/commands/pixiv/detail ./internal/cli/commands/pixiv/search ./internal/shared/record`：PASS。
+  - `go test ./... -count=1`：PASS；真实 Pixiv/FANBOX SDK E2E 仍按仓库约定默认不启用。
+  - `sh scripts/build.sh`：PASS，生成 Darwin arm64 `build/pixiv`；构建产物未进入 Git 变更。
+  - LSP diagnostics：`detail.go`、`root.go`、`internal/shared/record/pixiv.go`、`detail_test.go` 均为空；`git diff --check origin/main...HEAD`：PASS；构建后 `git status --short` 保持 clean。
+  - 范围复核：`git diff --name-only origin/main...HEAD` 的 production Go 改动仅为 `detail.go`、`internal/cli/root.go`、`internal/shared/record/pixiv.go`；其余为聚焦测试、双语文档/skill 和 goal ledger。没有 `sdk/`、`internal/services/reversesearch/`、binary source loader、`internal/config/`、`go.mod` 或 `go.sum` 的 production 变更，也没有新增第三方依赖。
+  - review 证据：Task 11 finding-first review 未发现 P0/P1/P2/P3；集中检查 #1 已把审查范围扩展到初始 `8506202` 生产提交，并修复 `commandAutoWritesNDJSON` 对 input annotation 的真实回归，随后相关测试、vet、LSP 和 diff 检查均为 PASS。
+- **剩余风险**：未运行需要本机真实凭据的 Pixiv/FANBOX SDK E2E，也未在真实跨平台 TTY/非 TTY 与真实 reverse provider 网络上执行 smoke；这些是环境依赖的补充验证，不影响 deterministic contract 结论。`internal/cli/commands/pixiv/search/search_test.go:365` 的 `forvar` warning 为 base commit 既有问题，未归属于本 goal，也未扩大范围修复。
+- **下一步建议**：进入“最终集中检查（Task 10–12）”，再次核对 C1–C6、先失败测试证据、范围和 review 结论；完成后才可把 goal 标记为 complete。
 
 ---
 
