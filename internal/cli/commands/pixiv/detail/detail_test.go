@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 
+	recordpkg "github.com/FlanChanXwO/pixiv-cli/internal/shared/record"
 	pixiv "github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
 	"github.com/spf13/cobra"
 )
@@ -140,6 +141,103 @@ func TestCommandConsumesCanonicalArtworkRecordAsNDJSON(t *testing.T) {
 	if !strings.Contains(output.String(), `"type":"illust"`) {
 		t.Fatalf("expected canonical illust output, got %s", output.String())
 	}
+}
+
+func TestCommandConsumesNormalSearchCanonicalRecordsInOrder(t *testing.T) {
+	artworkRecord := func(value pixiv.Artwork) recordpkg.Record {
+		recordValue, err := recordpkg.RecordFromArtworkDTO(pixiv.ToArtworkDTO(value))
+		requireNoError(t, err)
+		return recordValue
+	}
+	novelRecord := func(value pixiv.Novel) recordpkg.Record {
+		recordValue, err := recordpkg.RecordFromNovelDTO(pixiv.ToNovelDTO(value))
+		requireNoError(t, err)
+		return recordValue
+	}
+	userRecord := func(value pixiv.UserPreview) recordpkg.Record {
+		recordValue, err := recordpkg.RecordFromUserPreviewDTO(pixiv.ToUserPreviewDTO(value))
+		requireNoError(t, err)
+		return recordValue
+	}
+
+	tests := []struct {
+		name      string
+		records   []recordpkg.Record
+		wantIDs   []string
+		wantTypes []string
+	}{
+		{
+			name: "artwork search",
+			records: []recordpkg.Record{
+				artworkRecord(pixiv.Artwork{ID: 101, Kind: pixiv.ArtworkKindIllustration, Title: "作品一"}),
+				artworkRecord(pixiv.Artwork{ID: 102, Kind: pixiv.ArtworkKindIllustration, Title: "作品二"}),
+			},
+			wantIDs:   []string{"101", "102"},
+			wantTypes: []string{"illust", "illust"},
+		},
+		{
+			name: "novel search",
+			records: []recordpkg.Record{
+				novelRecord(pixiv.Novel{ID: 201, Title: "小说一"}),
+				novelRecord(pixiv.Novel{ID: 202, Title: "小说二"}),
+			},
+			wantIDs:   []string{"201", "202"},
+			wantTypes: []string{"novel", "novel"},
+		},
+		{
+			name: "user search preview",
+			records: []recordpkg.Record{
+				userRecord(pixiv.UserPreview{User: pixiv.User{ID: 301, Name: "用户一"}}),
+				userRecord(pixiv.UserPreview{User: pixiv.User{ID: 302, Name: "用户二"}}),
+			},
+			wantIDs:   []string{"301", "302"},
+			wantTypes: []string{"user", "user"},
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			var output bytes.Buffer
+			data := testMachineDependencies(&output, strings.NewReader(normalSearchRecordInput(t, test.records)))
+			cmd := New(data)
+			cmd.SetArgs([]string{"--ndjson"})
+			requireNoError(t, cmd.Execute())
+
+			got := decodeMachineRecords(t, output.String())
+			assertMachineRecordIDs(t, got, test.wantIDs)
+			for index, wantType := range test.wantTypes {
+				if got[index]["type"] != wantType {
+					t.Fatalf("record %d has type %v, want %s: %#v", index, got[index]["type"], wantType, got[index])
+				}
+			}
+		})
+	}
+}
+
+func normalSearchRecordInput(t *testing.T, records []recordpkg.Record) string {
+	t.Helper()
+	var input strings.Builder
+	for _, value := range records {
+		raw, err := json.Marshal(value)
+		requireNoError(t, err)
+
+		var fields map[string]any
+		requireNoError(t, json.Unmarshal(raw, &fields))
+		fields["search_metadata"] = map[string]any{
+			"filter":      map[string]any{"word": "fixture"},
+			"sort":        "date_desc",
+			"page":        2,
+			"limit":       len(records),
+			"next_cursor": "fixture-next",
+		}
+		fields["future_dto_field"] = map[string]any{"accepted": true}
+
+		raw, err = json.Marshal(fields)
+		requireNoError(t, err)
+		input.Write(raw)
+		input.WriteByte('\n')
+	}
+	return input.String()
 }
 
 func requireNoError(t *testing.T, err error) {

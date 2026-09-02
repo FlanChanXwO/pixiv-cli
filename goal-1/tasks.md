@@ -210,7 +210,7 @@
 
 ### Task 7: Composition contract tests — 普通搜索三类实体
 
-- [ ] **目标**：用 search 当前真实 canonical record schema 验证 artwork / novel / user records 能直接进入 detail。
+- [x] **目标**：用 search 当前真实 canonical record schema 验证 artwork / novel / user records 能直接进入 detail。
 - **测试场景**：
   - normal artwork record → artwork detail。
   - normal novel record → novel detail。
@@ -221,9 +221,13 @@
 - **建议范围**：优先放在 detail owner 或已有 CLI composition test carrier；不为了“端到端”强行启动真实 Pixiv 网络。
 - **验证命令**：按新增 test package 运行最小聚焦命令。
 - **验收**：三类 normal search records 可直接消费，不要求 `jq` 抽 ID。
-- **实际做了什么**：待执行。
-- **验证证据**：待执行。
-- **剩余风险**：待执行。
+- **实际做了什么**：在 detail owner 组合测试中直接调用 search listing 使用的 `RecordFromArtworkDTO`、`RecordFromNovelDTO`、`RecordFromUserPreviewDTO`，生成两条 artwork、novel、user preview canonical records；为每条输入补充 filter/sort/page/limit/next_cursor 元数据和未知 DTO 字段，再通过 `detail --ndjson` 消费。
+- **验证证据**：
+  - 按任务书规则执行 TDD：新增组合测试已直接 PASS，说明 Phase 1/2 实现已经覆盖该路径，因此没有制造无意义的 Red。
+  - `go test ./internal/cli/commands/pixiv/detail -count=1 -run '^TestCommandConsumesNormalSearchCanonicalRecordsInOrder$' -v`：artwork search、novel search、user search preview 三个子测试均 PASS。
+  - `go test ./internal/cli/commands/pixiv/detail -count=1`：PASS。
+  - `gofmt -d internal/cli/commands/pixiv/detail/detail_test.go` 无输出；`git diff --check` PASS；修改后 LSP diagnostics 为空。
+- **剩余风险**：本任务使用 deterministic search-record fixture，未启动真实 Pixiv 网络；reverse-search、下游 consumer 和真实命令组合留待 Task 8。
 - **下一步建议**：Task 8。
 
 ---
