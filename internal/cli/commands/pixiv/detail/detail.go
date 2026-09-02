@@ -163,6 +163,9 @@ func (a command) runRecords(cmd *cobra.Command, opts Options) error {
 	}
 	markNDJSON(cmd, ndjson)
 	worker := a
+	humanOutput := !ndjson && !jsonOut
+	var humanBuffer bytes.Buffer
+	firstHuman := true
 	var spool *jsonArraySpool
 	if jsonOut && !ndjson {
 		spool, err = newJSONArraySpool()
@@ -182,7 +185,26 @@ func (a command) runRecords(cmd *cobra.Command, opts Options) error {
 		if err != nil {
 			return err
 		}
-		return worker.runOneWithOutput(ctx, cmd, entity, id, opts, ndjson, jsonOut)
+		if humanOutput {
+			humanBuffer.Reset()
+			worker.data.Output = &humanBuffer
+		}
+		if err := worker.runOneWithOutput(ctx, cmd, entity, id, opts, ndjson, jsonOut); err != nil {
+			return err
+		}
+		if !humanOutput {
+			return nil
+		}
+		if !firstHuman {
+			if _, err := io.WriteString(a.data.Output, "\n---\n"); err != nil {
+				return pipeline.FatalRecordPipeline(err)
+			}
+		}
+		if _, err := io.Copy(a.data.Output, &humanBuffer); err != nil {
+			return pipeline.FatalRecordPipeline(err)
+		}
+		firstHuman = false
+		return nil
 	})
 	if err != nil {
 		return err
@@ -377,7 +399,10 @@ func (a command) buildRequest(cmd *cobra.Command, opts Options) (Request, error)
 }
 
 func (a command) writeRecord(value record.Record) error {
-	return json.NewEncoder(a.data.Output).Encode(value)
+	if err := json.NewEncoder(a.data.Output).Encode(value); err != nil {
+		return pipeline.FatalRecordPipeline(err)
+	}
+	return nil
 }
 
 func entityForRecord(typ string, explicit bool, requested string) (string, error) {

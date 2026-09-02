@@ -123,7 +123,7 @@
 
 ### Task 5: Green — 实现 record-mode machine output
 
-- [ ] **目标**：实现 Task 4 定义的最小输出行为。
+- [x] **目标**：实现 Task 4 定义的最小输出行为。
 - **实现要点**：
   - 给 `detail` 增加 `--ndjson`，并与 `--json` 明确互斥。
   - output mode selection 必须同时看 input mode、显式 flags 和 stdout TTY；自动 NDJSON 只对 RecordMode 生效。
@@ -136,9 +136,9 @@
 - **验证命令**：
   - `go test ./internal/cli/commands/pixiv/detail -count=1`
   - `go test ./internal/cli/pipeline ./internal/shared/record -count=1`（按实际改动范围）
-- **实际做了什么**：待执行。
-- **验证证据**：待执行。
-- **剩余风险**：待执行。
+- **实际做了什么**：在 `detail.runRecords` 中为 TTY human record output 增加单条详情缓冲：每条详情成功后再写入 stdout，后续条目之间输出稳定的 `\n---\n` 分隔；machine output 路径保持逐条写入。另将 canonical record writer 的 stdout 写入错误标记为 fatal pipeline error，避免被误报成 action diagnostic 或吞掉原始 I/O 原因。未缓存完整 NDJSON 输入。
+- **验证证据**：先运行 `go test ./internal/cli/commands/pixiv/detail -count=1 -run 'TestCommandRecord(OutputWriteErrorRemainsOriginal|TTYSeparatesHumanDetails)' -v`，确认 separator 已通过而 stdout writer error 先以 `pipeline records failed` 暴露 Red；实现后运行 `go test ./internal/cli/commands/pixiv/detail -count=1 -run 'TestCommand(TextValue|Record)' -v` 全部通过，并运行 `go test ./internal/cli/commands/pixiv/detail -count=1`、`go test ./internal/cli/pipeline ./internal/shared/record -count=1` 均通过。LSP 对 detail 生产/测试文件无诊断，`gofmt` 与 `git diff --check` 通过。
+- **剩余风险**：Task 6 仍需补齐 novel content 的 canonical projection Red/Green 与 Phase 2 复查；全仓库门禁和 finding-first review 尚未执行。
 - **下一步建议**：Task 6。
 
 ---

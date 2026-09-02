@@ -325,6 +325,26 @@ not-json
 	assertMachineRecordIDs(t, decodeMachineRecords(t, output.String()), []string{"42"})
 }
 
+func TestCommandRecordOutputWriteErrorRemainsOriginal(t *testing.T) {
+	data := testMachineDependencies(failingWriter{err: outputWriteError{}}, strings.NewReader(`{"id":"42","type":"illust","url":"https://www.pixiv.net/artworks/42"}
+`))
+	cmd := New(data)
+	cmd.SetArgs([]string{"--ndjson"})
+	if err := cmd.Execute(); err == nil || !strings.Contains(err.Error(), "output write failed") {
+		t.Fatalf("expected original output write error, got %v", err)
+	}
+}
+
+type outputWriteError struct{}
+
+func (outputWriteError) Error() string { return "output write failed" }
+
+type failingWriter struct {
+	err error
+}
+
+func (w failingWriter) Write([]byte) (int, error) { return 0, w.err }
+
 func testMachineDependencies(output io.Writer, input io.Reader) Dependencies {
 	return Dependencies{
 		Input:       input,
