@@ -339,7 +339,7 @@
 
 ### Task 11: Finding-first code review
 
-- [ ] **目标**：按 `.agents/skills/pixiv-cli-review/SKILL.md` 对本 goal commit range 做只读审查，先 findings 后 summary。
+- [x] **目标**：按 `.agents/skills/pixiv-cli-review/SKILL.md` 对本 goal commit range 做只读审查，先 findings 后 summary。
 - **重点检查**：
   - CLI/public SDK 架构边界。
   - input codec 与 stdout/stderr contract。
@@ -352,9 +352,14 @@
   - 没有不必要依赖、锁文件变化或 reverse provider 改动。
 - **修复规则**：若 review 发现需要改生产代码的 finding，先补能复现 finding 的失败测试，再做最小修复并重跑 Task 10 受影响检查；不能直接“顺手修”。
 - **验收**：无 P0/P1 阻塞 finding；P2/P3 要么修复并有验证，要么明确记录并由用户决定是否接受。
-- **实际做了什么**：待执行。
-- **验证证据**：待执行。
-- **剩余风险**：待执行。
+- **实际做了什么**：对 `origin/feature/search-detail-pipeline...HEAD`（10 个 goal commits）执行 finding-first 只读审查；按边界、行为/错误、CLI contract、文档、测试布局与依赖范围逐项检查。确认 `detail` 仅经 `internal/cli/pipeline`、`internal/shared/record` 与 public `sdk/pixiv` 工作，单值 detail 兼容路径保留，record type 推断与显式 `--type` 约束一致，aggregate `search --json` 不误当 record stream，I/O 失败不被静默吞掉，且没有新增 timeout/截断/重试/隐式 fallback。审查结果采用 finding-first 结论：未发现 P0/P1/P2/P3 问题；没有生产修复需要追加。
+- **验证证据**：
+  - `go test ./internal/cli/commands/pixiv/detail ./internal/cli/commands/pixiv/search ./internal/shared/record -count=1`：PASS。
+  - `go vet ./internal/cli/commands/pixiv/detail ./internal/cli/commands/pixiv/search ./internal/shared/record`：PASS。
+  - LSP 诊断：`detail.go`、`detail_test.go` 无诊断；`search_test.go:365` 的 `forvar` warning 已由 base commit 引入，非本 goal 变更。
+  - Task 10 已验证 `go test ./... -count=1`、`sh scripts/build.sh` 与 `git diff --check` 均 PASS；提交前后工作区保持 clean。
+  - `docs/zh-CN/maintainers/{architecture,development}.md` 的边界与 canonical test-layout 规则、双语 CLI reference、`skills/pixiv-cli` 文档均已对照；改动未触及 `go.mod`/`go.sum`、public SDK、config、reverse provider 或 search 生产实现。
+- **剩余风险**：未运行需要本机真实凭据的 Pixiv/FANBOX SDK E2E，也未在真实跨平台 TTY/非 TTY 环境做 smoke；两者均为显式环境依赖的补充风险，不构成本次 review finding。`search_test.go:365` 的 `forvar` 是既有 warning，留待独立清理，未在本 task 扩大范围。
 - **下一步建议**：Task 12。
 
 ---
