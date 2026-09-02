@@ -303,6 +303,83 @@ func TestCommandRecordMachineOutputUsesDetailTypes(t *testing.T) {
 	}
 }
 
+func TestCommandNovelContentMachineOutputUsesCanonicalRecordProjection(t *testing.T) {
+	const recordInput = `{"id":"88","type":"novel","url":"https://www.pixiv.net/novel/show.php?id=88"}` + "\n"
+	tests := []struct {
+		name      string
+		args      []string
+		input     string
+		jsonArray bool
+	}{
+		{
+			name:  "record mode ndjson",
+			args:  []string{"--content", "--ndjson"},
+			input: recordInput,
+		},
+		{
+			name:      "record mode json array",
+			args:      []string{"--content", "--json"},
+			input:     recordInput,
+			jsonArray: true,
+		},
+		{
+			name:  "text value ndjson",
+			args:  []string{"88", "--type", "novel", "--content", "--ndjson"},
+			input: "",
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			var output bytes.Buffer
+			data := testMachineDependencies(&output, strings.NewReader(test.input))
+			data.FetchNovelContent = func(_ context.Context, _ *pixiv.Client, id int64) (pixiv.NovelContent, error) {
+				return pixiv.NovelContent{
+					NovelID: id,
+					Title:   "正文标题",
+					Caption: "正文说明",
+					Blocks: []pixiv.NovelBlock{{
+						Kind: pixiv.NovelBlockParagraph,
+						Text: "第一段",
+					}},
+				}, nil
+			}
+
+			cmd := New(data)
+			cmd.SetArgs(test.args)
+			requireNoError(t, cmd.Execute())
+
+			var records []map[string]any
+			if test.jsonArray {
+				if err := json.Unmarshal(output.Bytes(), &records); err != nil {
+					t.Fatalf("expected one JSON array document, got %q: %v", output.String(), err)
+				}
+			} else {
+				records = decodeMachineRecords(t, output.String())
+			}
+			if len(records) != 1 {
+				t.Fatalf("expected one novel content record, got %q", output.String())
+			}
+
+			record := records[0]
+			if record["id"] != "88" || record["type"] != "novel" || record["url"] != "https://www.pixiv.net/novel/show.php?id=88" {
+				t.Fatalf("novel content lost canonical identity: %#v", record)
+			}
+			if record["novel_id"] != float64(88) || record["title"] != "正文标题" || record["caption"] != "正文说明" {
+				t.Fatalf("novel content lost structured fields: %#v", record)
+			}
+			blocks, ok := record["blocks"].([]any)
+			if !ok || len(blocks) != 1 {
+				t.Fatalf("novel content blocks are not preserved: %#v", record["blocks"])
+			}
+			block, ok := blocks[0].(map[string]any)
+			if !ok || block["kind"] != "paragraph" || block["text"] != "第一段" {
+				t.Fatalf("novel content block is not preserved: %#v", blocks[0])
+			}
+		})
+	}
+}
+
 func TestCommandRecordDiagnosticsStayOffStdout(t *testing.T) {
 	var output bytes.Buffer
 	var diagnostics bytes.Buffer

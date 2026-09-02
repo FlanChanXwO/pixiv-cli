@@ -145,7 +145,7 @@
 
 ### Task 6: Red → Green — Novel content canonical projection + Phase 2 Refactor
 
-- [ ] **目标**：确保 `detail --content` 不成为 record pipeline 的特殊断点，并完成输出实现的最小重构。
+- [x] **目标**：确保 `detail --content` 不成为 record pipeline 的特殊断点，并完成输出实现的最小重构。
 - **Red**：
   - 为 `pixiv.NovelContentDTO`（或当前公开 DTO 对应结构）→ canonical record 写失败测试。
   - 断言稳定 `id`、`type=novel`、canonical novel URL 与 structured content 字段。
@@ -160,9 +160,9 @@
   - `go test ./internal/shared/record -count=1`
   - `go test ./internal/cli/commands/pixiv/detail -count=1`
 - **验收**：novel content machine output 也满足 canonical record contract；Phase 2 全绿。
-- **实际做了什么**：待执行。
-- **验证证据**：待执行。
-- **剩余风险**：待执行。
+- **实际做了什么**：新增 `RecordFromNovelContentDTO` 的 canonical identity/structured block 投影测试，并将 novel content 的非正 ID 纳入显式失败矩阵；新增 detail 命令测试覆盖 TextValue `--content --ndjson`、RecordMode `--content --ndjson` 与 RecordMode `--content --json`。复查发现现有显式 conversion 已由前序实现提供，且 detail 三条 machine-output 路径已复用它，因此本 task 不新增生产代码、不抽取未经证实的通用 transformer，也不使用 reflection。
+- **验证证据**：按执行约束先实际运行新增 focused tests；它们在当前实现上全部直接通过，因此没有为了制造 Red 而篡改测试或强行改实现。`go test ./internal/shared/record ./internal/cli/commands/pixiv/detail -count=1 -run 'TestRecordFromNovelContent|TestRecordMappersRejectNonPositiveSDKID|TestCommandNovelContentMachineOutputUsesCanonicalRecordProjection' -v` 通过；随后 `go test ./internal/shared/record -count=1`、`go test ./internal/cli/commands/pixiv/detail -count=1`、两包联合回归、`gofmt`、`git diff --check` 均通过；两个受影响测试文件 LSP diagnostics 为空。
+- **剩余风险**：Task 4–6 集中检查、normal/reverse search 组合测试、双语文档同步、全仓库门禁和 finding-first review 尚未执行。
 - **下一步建议**：集中检查 #2。
 
 ---
