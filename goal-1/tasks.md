@@ -80,17 +80,28 @@
 
 ### 🔍 集中检查 #1（Task 1–3）
 
-- [ ] **目标**：复查输入契约和架构边界。
+- [x] **目标**：复查输入契约和架构边界。
 - **检查清单**：
-  - [ ] Red 证据是否真实来自目标行为缺失。
-  - [ ] TextValue 单值兼容是否有测试保护。
-  - [ ] `artwork/illust/manga/ugoira/novel/user` 类型矩阵是否完整。
-  - [ ] 显式 `--type` 是否只做约束、不覆盖 record。
-  - [ ] malformed/unknown input 是否真实报错。
-  - [ ] 是否存在无依据限制、fallback 或 silent skip。
-  - [ ] 是否越过 CLI/public SDK 架构边界。
-- **结论**：待执行。
-- **发现问题**：待执行。
+  - [x] Red 证据是否真实来自目标行为缺失。
+  - [x] TextValue 单值兼容是否有测试保护。
+  - [x] `artwork/illust/manga/ugoira/novel/user` 类型矩阵是否完整。
+  - [x] 显式 `--type` 是否只做约束、不覆盖 record。
+  - [x] malformed/unknown input 是否真实报错。
+  - [x] 是否存在无依据限制、fallback 或 silent skip。
+  - [x] 是否越过 CLI/public SDK 架构边界。
+- **实际做了什么**：
+  - 对完整 goal 范围（`eeaea0b^..HEAD`，并与 `origin/main...HEAD` 交叉核对）复查 Task 1–3 的输入契约；用 `git show 8506202^:internal/cli/commands/pixiv/detail/detail.go` 确认实现前 detail 仍是单值 `TextValue`，因此 Task 1 的 Red 是真实行为缺失而非伪造失败。
+  - 对照 `detail_test.go` 的 `TestCommandTextValueKeepsHumanOutputWhenStdoutIsNotTTY`、`TestCommandTextValueJSONRemainsSingleDocument`、`TestCommandTextValueNDJSONOutputsCanonicalRecord` 与 raw ID/URL 测试，确认 TextValue 单值兼容仍有保护；`resolveRecordEntity` 覆盖 `artwork/illust/manga/ugoira` → artwork、`novel` → novel、`user` → user，且 `TestCommandRecordMachineOutputUsesDetailTypes` 已补齐四种 artwork 输入别名，normal/reverse composition 测试覆盖实体路径和顺序。
+  - 确认 `entityForRecord` 先推断 record 类型，再在 `cmd.Flags().Changed("type")` 为真时把显式 `--type` 作为兼容性约束；不兼容在 fetch 前显式失败，不从 URL 二次猜测或覆盖 record 类型。`ConsumeNDJSONRecords`、`RequiredRecordID` 以及新增的 `TestCommandRejectsUnsupportedRecordTypeBeforeFetching` 共同覆盖 malformed、aggregate JSON、未知/不支持类型、ID 与远端/I/O 失败的非零诊断路径。
+  - 复查 diff 和 import graph：没有新增固定超时、长度/记录数/分页硬限制、重试、静默 skip 或 fallback；detail/record 只依赖 `internal/cli/pipeline`、`internal/shared/record` 与 public `sdk/pixiv`，root 仅保留 composition wiring，没有触及 public SDK、配置或 reverse provider 子包。
+- **结论**：输入契约、兼容性、类型推断/约束与架构边界通过集中检查。发现并修复一处由本 goal 初始 root 改动引入的输出协议回归后，当前相关测试和 LSP 诊断均通过。
+- **发现问题**：`8506202` 在 `commandAutoWritesNDJSON` 中把“存在任意 command annotation”误当作“存在输出协议 annotation”，导致 `pipeline.Bind` 已写入 input annotation 的非 TTY `pixiv search` 跳过旧的 command-path 自动 NDJSON 判断。先新增 `TestCommandAutoWritesNDJSONFallsBackWithInputAnnotation`，Red 实际失败（返回 false），再将逻辑改为仅在 `pixiv-cli.output-ndjson` 键存在时短路，否则继续非 TTY fallback；focused Green 已通过。此前 Task 11 仅审查 `origin/feature/search-detail-pipeline...HEAD`，未包含初始生产提交，本集中检查已改用完整范围，Task 12 需继续按完整范围终审。
+- **验证证据**：
+  - Red：`go test ./internal/cli -count=1 -run '^TestCommandAutoWritesNDJSONFallsBackWithInputAnnotation$' -v`，断言失败，实际值为 false。
+  - Green/回归：`go test ./internal/cli ./internal/cli/commands/pixiv/detail ./internal/cli/commands/pixiv/search ./internal/shared/record -count=1` 通过；`go vet ./internal/cli ./internal/cli/commands/pixiv/detail ./internal/cli/commands/pixiv/search ./internal/shared/record` 通过。
+  - 聚焦 detail matrix/兼容性/error/composition 测试（含四种 artwork alias 与 unknown type）全通过；修改后的 `root.go`、`root_test.go`、`detail_test.go` LSP diagnostics 为空；`gofmt -d` 无输出，`git diff --check` 通过。
+- **剩余风险**：未运行需要本机凭据的真实 Pixiv/FANBOX E2E，也未做跨平台真实 TTY smoke；二者均是仓库既有显式环境依赖，不构成本 goal 的 deterministic pipeline 阻塞。Task 12/final check 仍需复查完整 goal range，并重新确认文档、构建与全仓库门禁证据。
+- **下一步建议**：Task 12。
 
 ---
 

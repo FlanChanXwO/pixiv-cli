@@ -589,6 +589,24 @@ func TestCommandRecordMachineOutputUsesDetailTypes(t *testing.T) {
 			wantType: "illust",
 		},
 		{
+			name:     "illust artwork alias",
+			input:    `{"id":"43","type":"illust","url":"https://www.pixiv.net/artworks/43"}` + "\n",
+			wantID:   "43",
+			wantType: "illust",
+		},
+		{
+			name:     "manga artwork alias",
+			input:    `{"id":"44","type":"manga","url":"https://www.pixiv.net/artworks/44"}` + "\n",
+			wantID:   "44",
+			wantType: "illust",
+		},
+		{
+			name:     "ugoira artwork alias",
+			input:    `{"id":"45","type":"ugoira","url":"https://www.pixiv.net/artworks/45"}` + "\n",
+			wantID:   "45",
+			wantType: "illust",
+		},
+		{
 			name:     "novel",
 			input:    `{"id":"88","type":"novel","url":"https://www.pixiv.net/novel/show.php?id=88"}` + "\n",
 			wantID:   "88",
@@ -621,6 +639,38 @@ func TestCommandRecordMachineOutputUsesDetailTypes(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+func TestCommandRejectsUnsupportedRecordTypeBeforeFetching(t *testing.T) {
+	var output, diagnostics bytes.Buffer
+	data := testMachineDependencies(&output, strings.NewReader(`{"id":"42","type":"mystery","url":"https://www.pixiv.net/artworks/42"}
+`))
+	data.ErrorOutput = &diagnostics
+	fetched := false
+	data.FetchArtwork = func(_ context.Context, _ *pixiv.Client, id int64) (pixiv.Artwork, error) {
+		fetched = true
+		return pixiv.Artwork{ID: id, Kind: pixiv.ArtworkKindIllustration}, nil
+	}
+	data.FetchNovel = func(_ context.Context, _ *pixiv.Client, id int64) (pixiv.Novel, error) {
+		fetched = true
+		return pixiv.Novel{ID: id}, nil
+	}
+	data.FetchUser = func(_ context.Context, _ *pixiv.Client, id int64) (pixiv.UserDetail, error) {
+		fetched = true
+		return pixiv.UserDetail{User: pixiv.User{ID: id}}, nil
+	}
+
+	cmd := New(data)
+	cmd.SetArgs([]string{"--ndjson"})
+	if err := cmd.Execute(); err == nil {
+		t.Fatal("expected unsupported record type to fail")
+	}
+	if !strings.Contains(diagnostics.String(), `unsupported record type`) || !strings.Contains(diagnostics.String(), `mystery`) {
+		t.Fatalf("expected unsupported-type diagnostic, got %q", diagnostics.String())
+	}
+	if fetched {
+		t.Fatal("unsupported record type was fetched")
 	}
 }
 

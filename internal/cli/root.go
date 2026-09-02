@@ -338,7 +338,9 @@ func commandAutoWritesNDJSON(cmd *cobra.Command, out io.Writer) bool {
 		return false
 	}
 	if cmd.Annotations != nil {
-		return cmd.Annotations["pixiv-cli.output-ndjson"] == "true"
+		if value, ok := cmd.Annotations["pixiv-cli.output-ndjson"]; ok {
+			return value == "true"
+		}
 	}
 	file, ok := out.(interface{ Fd() uintptr })
 	if !ok || term.IsTerminal(int(file.Fd())) {

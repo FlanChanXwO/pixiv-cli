@@ -274,6 +274,19 @@ func TestBrokenPipeSignalsAreScopedByOutputProtocol(t *testing.T) {
 	}
 }
 
+func TestCommandAutoWritesNDJSONFallsBackWithInputAnnotation(t *testing.T) {
+	pipeReader, pipeWriter, err := os.Pipe()
+	require.NoError(t, err)
+	defer pipeReader.Close()
+	defer pipeWriter.Close()
+
+	root := &cobra.Command{Use: "pixiv"}
+	cmd := &cobra.Command{Use: "search", Annotations: map[string]string{pipeline.AnnotationKey: "text"}}
+	root.AddCommand(cmd)
+
+	assert.True(t, commandAutoWritesNDJSON(cmd, pipeWriter))
+}
+
 func TestRunNoArgsPrintsCoreHelpOnly(t *testing.T) {
 	_, configPath := useTempPaths(t)
 
