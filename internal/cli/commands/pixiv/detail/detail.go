@@ -142,14 +142,21 @@ func (a command) run(cmd *cobra.Command, args []string, opts Options) error {
 	if err != nil {
 		return err
 	}
-	if opts.content && entity != "novel" {
-		return errors.New("--content is only supported when --type novel")
+	if err := validateContentEntity(opts.content, entity); err != nil {
+		return err
 	}
 	id, err := parseEntityIDOrURL(args[0], entity)
 	if err != nil {
 		return err
 	}
 	return a.runOne(cmd, entity, id, opts, false)
+}
+
+func validateContentEntity(content bool, entity string) error {
+	if content && entity != "novel" {
+		return errors.New("--content is only supported when --type novel")
+	}
+	return nil
 }
 
 func (a command) runRecords(cmd *cobra.Command, opts Options) error {
@@ -179,6 +186,9 @@ func (a command) runRecords(cmd *cobra.Command, opts Options) error {
 	err = pipeline.ConsumeNDJSONRecords(cmd.Context(), reader, a.data.ErrorOutput, "detail", true, func(ctx context.Context, input record.Record) error {
 		entity, err := entityForRecord(input.Type(), cmd.Flags().Changed("type"), opts.typ)
 		if err != nil {
+			return err
+		}
+		if err := validateContentEntity(opts.content, entity); err != nil {
 			return err
 		}
 		id, err := pipeline.RequiredRecordID(input)

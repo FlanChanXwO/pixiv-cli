@@ -67,6 +67,53 @@ func TestCommandRejectsContentForNonNovelBeforeOpeningClient(t *testing.T) {
 	}
 }
 
+func TestCommandRejectsContentForNonNovelRecordBeforeFetching(t *testing.T) {
+	tests := []struct {
+		name  string
+		input string
+	}{
+		{
+			name:  "artwork",
+			input: `{"id":"42","type":"illust","url":"https://www.pixiv.net/artworks/42"}` + "\n",
+		},
+		{
+			name:  "user",
+			input: `{"id":"99","type":"user","url":"https://www.pixiv.net/users/99"}` + "\n",
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			var output bytes.Buffer
+			var diagnostics bytes.Buffer
+			data := testMachineDependencies(&output, strings.NewReader(test.input))
+			data.ErrorOutput = &diagnostics
+			fetched := false
+			data.FetchArtwork = func(_ context.Context, _ *pixiv.Client, id int64) (pixiv.Artwork, error) {
+				fetched = true
+				return pixiv.Artwork{ID: id, Kind: pixiv.ArtworkKindIllustration}, nil
+			}
+			data.FetchUser = func(_ context.Context, _ *pixiv.Client, id int64) (pixiv.UserDetail, error) {
+				fetched = true
+				return pixiv.UserDetail{User: pixiv.User{ID: id}}, nil
+			}
+
+			cmd := New(data)
+			cmd.SetArgs([]string{"--content", "--ndjson"})
+			err := cmd.Execute()
+			if err == nil {
+				t.Fatal("expected explicit non-novel content validation error")
+			}
+			if !strings.Contains(diagnostics.String(), "--content is only supported when --type novel") {
+				t.Fatalf("expected explicit content validation diagnostic, got %q", diagnostics.String())
+			}
+			if fetched {
+				t.Fatal("non-novel record was fetched despite --content validation failure")
+			}
+		})
+	}
+}
+
 func TestCommandConsumesCanonicalArtworkRecordAsNDJSON(t *testing.T) {
 	var output bytes.Buffer
 	data := Dependencies{
