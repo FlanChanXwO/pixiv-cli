@@ -290,17 +290,23 @@
 
 ### 🔍 集中检查 #3（Task 7–9）
 
-- [ ] **目标**：对照用户目标重新检查是否真正实现“搜索/反搜 → detail”，而不是只让 unit test 看起来能解析 record。
+- [x] **目标**：对照用户目标重新检查是否真正实现“搜索/反搜 → detail”，而不是只让 unit test 看起来能解析 record。
 - **检查清单**：
-  - [ ] artwork / novel / user normal search records 均有组合证据。
-  - [ ] reverse `artwork` / `user` records 均有组合证据。
-  - [ ] mixed reverse stream 每条独立 inference。
-  - [ ] 至少一个 visual `search → detail → downstream record consumer` 有证据。
-  - [ ] search 普通过滤/分页参数不改变协议。
-  - [ ] aggregate `--json`、trending tags、binary image stdin 等 non-goal 没被暗中扩展。
-  - [ ] 双语文档和产品 skill 与实际行为一致。
-- **结论**：待执行。
-- **发现问题**：待执行。
+  - [x] artwork / novel / user normal search records 均有组合证据。
+  - [x] reverse `artwork` / `user` records 均有组合证据。
+  - [x] mixed reverse stream 每条独立 inference。
+  - [x] 至少一个 visual `search → detail → downstream record consumer` 有证据。
+  - [x] search 普通过滤/分页参数不改变协议。
+  - [x] aggregate `--json`、trending tags、binary image stdin 等 non-goal 没被暗中扩展。
+  - [x] 双语文档和产品 skill 与实际行为一致。
+- **结论**：通过。Task 7–9 的组合、边界和文档证据一致，没有发现需要回退或修复的问题。
+- **发现问题**：无。Task 7 的 normal-record fixture 保留 filter/sort/page/limit/next_cursor 与未知 DTO 字段；Task 8 的 mixed reverse、显式类型 mismatch、aggregate JSON、下游 download 和 binary stdin 测试均通过。现有 search 测试继续拒绝 image source 搭配 `--trending-tags`，本 goal diff 没有修改 search provider、source loader、SDK、配置 schema 或 trending-tags 生产路径；Task 9 的双语 CLI reference、产品 skill 和 discovery reference 与 runtime contract 对齐。
+- **验证证据**：
+  - `go test ./internal/cli/commands/pixiv/detail -count=1 -run '^(TestCommandConsumesNormalSearchCanonicalRecordsInOrder|TestCommandConsumesReverseSearchIdentityRecordsInOrder|TestCommandRejectsReverseUserRecordForArtworkConstraintBeforeFetching|TestCommandDoesNotSplitReverseSearchAggregateJSONIntoRecords|TestDetailNDJSONFeedsExistingVisualDownloadConsumer)$' -v`：PASS。
+  - `go test ./internal/cli/commands/pixiv/search -count=1 -run '^TestCommandDoesNotTreatBinaryStdinAsReverseSearchSource$' -v`：PASS。
+  - `go test ./internal/cli/commands/pixiv/detail ./internal/cli/commands/pixiv/search ./internal/cli/commands/pixiv/download -count=1`：PASS。
+  - `go test ./scripts/tests/documentation -count=1`：PASS；`git diff --check`：PASS；detail/search 受影响 Go 文件的 LSP diagnostics 为空。
+- **剩余风险**：尚未执行 Task 10 的仓库级全量门禁、构建和 Task 11 finding-first review；真实 Pixiv/reverse provider 网络仍未运行。上述风险不影响本轮对 Task 7–9 deterministic contract 的结论。
 
 ---
 
