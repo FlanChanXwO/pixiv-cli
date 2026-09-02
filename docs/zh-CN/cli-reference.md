@@ -280,6 +280,24 @@ CLI 使用 Cobra/pflag，选项可以写在位置参数前后，例如 `pixiv au
 账号池关闭时，所有非写入的数据读取、推荐、时间线与下载使用 `pixiv auth use` 选定的本地账号。只有 `[account_pool]` 显式设置 `enabled = true` 时才启用数据库账号池；账号行的 `schedulable` 控制是否参加调度，`strategy` 默认 `round_robin`，也支持 `random`。使用 `pixiv auth pool status|enable|disable` 查看或修改调度状态。写操作、认证和配置不使用账号池。数据命令拒绝 `--uid`、`--refresh-token`。
 
 视觉列表接入管道时会自动输出 NDJSON；也可显式使用 `--ndjson`。每行都是带稳定字符串 `id`、`type`、`url` 的规范 Record，其余适用 SDK 字段会保留。`download`、`bookmark add/remove`、`follow add/remove` 可不带位置 ID 直接消费它们；动作成功时 stdout 保持为空，安全诊断写入 stderr。`--on-error=skip|fail-fast` 控制 stdin 中格式错误或不兼容 Record 的处理；`--json` 与 `--ndjson` 不能同时使用。
+
+支持的 search → detail 管道推荐让管道自动选择规范 NDJSON：
+
+```bash
+pixiv search "miku" --type artwork --limit 20 | pixiv detail
+```
+
+因为 `search` 的 stdout 是 pipe，它会自动输出规范 NDJSON；`detail` 逐条消费 Record，
+并按 `type` 推断详情端点。显式指定 producer 的等价写法是：
+
+```bash
+pixiv search "miku" --type artwork --limit 20 --ndjson | pixiv detail
+```
+
+artwork、novel、user 搜索记录都会从 `type` 推断对应详情，不需要 `--type`。record mode 中显式给出的
+`--type` 只是 compatibility constraint，必须与推断出的 Record 类型兼容，绝不会覆盖 Record 类型。反向搜图的
+`artwork`、`user` identity record 也能走同一条 detail 管道。`search --json` 是完整聚合 JSON 文档，不是规范
+Record 流，因此 `pixiv search ... --json | pixiv detail` 不属于支持 contract。
 `pixiv detail` 也可直接消费规范 NDJSON：`illust`、`manga`、`ugoira` 和通用 `artwork` 记录进入作品详情，`novel` 与 `user` 记录进入对应详情。record 模式下，显式 `--ndjson` 输出规范 Record，显式 `--json` 输出完整 JSON 数组；省略输出 flag 时，非 TTY stdout 自动使用 NDJSON。`pixiv search --json` 是聚合 JSON 文档，不是规范 NDJSON 流，不能直接作为 `detail` 的输入。
 
 ### 反向搜图
@@ -292,6 +310,9 @@ CLI 使用 Cobra/pflag，选项可以写在位置参数前后，例如 `pixiv au
   其他文本仍按关键词处理。
 - 图片模式只接受 `--provider`、`--json`、`--ndjson`、`--proxy` 和 `--no-proxy`。搜索筛选、`--type`、分页和
   `--trending-tags` 会明确拒绝，不会静默忽略。
+
+反向搜图 source 只能是本地常规文件路径或 HTTP(S) URL；二进制图片字节从 stdin 传入不会进入图片模式，
+`cat image.png | pixiv search` 不受支持。
 
 provider 值为 `saucenao`、`ascii2d-color`、`ascii2d-bovw` 和 `all`。配置默认值是 `saucenao`；`--provider`
 只覆盖本次调用。`all` 按固定顺序 SauceNAO、ascii2d color、ascii2d bovw 执行，并可能产生 partial 成功。
@@ -320,7 +341,9 @@ WEBP，并执行 provider 自身的 10 MB 上传限制；这不是 SauceNAO-only
 JSON 输出是完整 envelope：`{input, providers, results, records, provider_errors, partial}`。`records` 只包含
 canonical Pixiv identity：反向搜图不知道作品 subtype，因此作品使用通用 `type:"artwork"`，用户使用 `type:"user"`。
 CLI 不会仅为推断 subtype 调用 Pixiv detail。关闭 Pixiv-only 时，纯外部命中可以保留在 `results`，但不会成为 record。
-人类输出是安全摘要；管道输出或显式 NDJSON 只输出这些 canonical record。
+人类输出是安全摘要；管道输出或显式 NDJSON 只输出这些 canonical record。反向搜图输出的 `artwork`、`user`
+identity record 可以直接管道给 `detail`；通用 `artwork` record 会由作品详情接口解析为实际返回的 `illust`、`manga`
+或 `ugoira` 作品详情。
 
 对 `all` 来说，一个 provider 成功、另一个失败时设置 `partial=true`，向 stderr 写安全 warning，并以成功退出；单
 provider 失败或全部 provider 失败时非零退出，但在有响应数据时保留 JSON envelope。provider error 只使用稳定的
@@ -333,7 +356,7 @@ provider 失败或全部 provider 失败时非零退出，但在有响应数据�
 `solver_failed` 和 `malformed_solver_response`。provider failure cause 会在输出边界脱敏：只发布经过审查的
 稳定 code 与安全 message，不发布 wrapped cause 或上游诊断。
 
-所有公开位置参数命令都支持一次隐式非 TTY stdin 补值：缺少一个必填值或省略可选值时，完整 stdin 作为一个值，只移除一个末尾 LF/CRLF，不按 shell 空白拆分；显式位置参数存在时不读 stdin。例如 `printf '%s\n' 13214141 | pixiv search` 等价于 `pixiv search 13214141`。`download`、`bookmark add/remove`、`follow add/remove` 对隐式输入按首个非空白字节选择严格 canonical NDJSON 或一个裸 ID/URL，选定模式后不回退；`-` 只是普通文本。
+所有公开位置参数命令都支持一次隐式非 TTY stdin 补值：缺少一个必填值或省略可选值时，完整 stdin 作为一个值，只移除一个末尾 LF/CRLF，不按 shell 空白拆分；显式位置参数存在时不读 stdin。例如 `printf '%s\n' 13214141 | pixiv search` 等价于 `pixiv search 13214141`。`download`、`bookmark add/remove`、`follow add/remove` 和 `detail` 对隐式输入按首个非空白字节选择严格 canonical NDJSON 或一个裸 ID/URL，选定模式后不回退；`detail` 会按 Record 的 `type` 推断作品、小说或用户详情；`-` 只是普通文本。
 
 canonical 数据 action 是 `search`、`detail`、`ranking`、`series`、`comment`、`bookmark`、`download`、`user`、`timeline`、`mypixiv` 和 `recommended`。在适用命令中统一使用 `-t/--type`、`-p/--page`、`-l/--limit`、`-o/--output`（下载目录）和 `-j/--json`；这些是参数短名，不是命令别名。例如，`pixiv timeline latest --type artwork` 是最新作品流的 canonical 写法。`novel search`、`user search` 和根级 `follow` 仍是兼容路径，必须映射到同一 application 用例。
 
@@ -359,7 +382,7 @@ canonical 数据 action 是 `search`、`detail`、`ranking`、`series`、`commen
 | `config unset` | `pixiv config unset KEY` | 从 `config.toml` 删除一个已知配置键。 |
 | `update` | `pixiv update [--check] [--prerelease] [--proxy URL]` | 检查或执行与当前安装来源匹配的更新；`--json` 仅可与 `--check` 同用。 |
 | `search` | `pixiv search [WORD\|IMAGE_PATH_OR_URL] [-t artwork\|novel\|user] [options]` | canonical 实体搜索或自动反向搜图。常规文件或显式 HTTP(S) source 选择图片模式；`--trending-tags` 是无 WORD 的完整作品趋势标签模式，不接受搜索筛选或分页。 |
-| `detail` | `pixiv detail ID_OR_URL [-t artwork\|novel\|user] [--content] [--json]` | 读取一件作品、一本小说或一个用户；`--content` 只对小说有效。 |
+| `detail` | `pixiv detail ID_OR_URL [-t artwork\|novel\|user] [--content] [--json\|--ndjson]` | 读取一件作品、一本小说或一个用户，或消费规范 NDJSON Record；`--content` 只对小说有效。 |
 | `ranking` | `pixiv ranking [--mode MODE --date YYYY-MM-DD --page N --limit N]` | 读取插画排行；小说排行不在 v1 契约中。 |
 | `series` | `pixiv series SERIES_ID -t artwork\|novel [--page N --limit N --json\|--ndjson]` | 列出一个作品或小说系列；实体类型必填。 |
 | `comment` | `pixiv comment ID -t artwork\|novel [--page N --limit N --json\|--ndjson]` | 读取作品或小说评论；评论发布、回复、删除和 stamp 未暴露。 |
@@ -424,7 +447,7 @@ Content-Type 与 URL 后缀不一致（例如 URL 为 `.png`、实体为 JPEG）
 | 列表命令 | `--page` / `-p` | 空 | 从 1 开始的逻辑页；必须与正数 `--limit` 同用。 |
 | `ranking` | `--mode` | `day` | 可用 `day`、`day_male`、`day_female`、`week`、`week_original`、`week_rookie`、`month`、`day_manga`、`week_manga`、`month_manga`、`week_rookie_manga`、`day_r18`、`day_male_r18`、`day_female_r18`、`week_r18`、`week_r18g`；最后九种需要认证。 |
 | `ranking` | `--date` | 空 | 排行榜日期，格式通常为 `YYYY-MM-DD`。 |
-| `detail` | `--type` / `-t` | `artwork` | 实体类型：`artwork`、`novel` 或 `user`；`--content` 只对 `novel` 有效。 |
+| `detail` | `--type` / `-t` | `artwork` | 实体类型：`artwork`（兼容 `illust`、`manga`、`ugoira`）、`novel` 或 `user`；record mode 省略 `--type` 时按 Record 的 `type` 推断，显式 `--type` 只校验兼容性；`--content` 只对 `novel` 有效。 |
 | `series`、`comment` | `--type` / `-t` | 必填 | 实体类型：`artwork` 或 `novel`；先选择类型后解释 ID。 |
 | `bookmark list` | `--type` / `-t` | `artwork` | 实体类型：`artwork` 或 `novel`；`--restrict` 与 `--tag` 映射到相应收藏列表。 |
 | `bookmark tags` | `--type` / `-t` | `artwork` | 只读取作品收藏标签；`--restrict` 选择 public/private。 |
@@ -494,7 +517,12 @@ STRATA · Sculptris · modo · AnimationMaster · VistaPro · Sunny3D · 3D-Coat
 
 `detail --type artwork` 接受正整数作品 ID，或规范 HTTPS `pixiv.net`/`www.pixiv.net` 作品 URL：`/artworks/{id}`；
 可带 locale、query 和 fragment。`detail --type novel` 与 `detail --type user` 要求正整数 ID；不支持的 URL 形状会在本地失败，
-不会把用户/小说 URL 静默当作作品 URL。
+不会把用户/小说 URL 静默当作作品 URL。`detail` 也接受 stdin 中的规范 NDJSON Record：`illust`、`manga`、`ugoira` 和通用
+`artwork` 进入作品详情，`novel` 与 `user` 进入对应详情。artwork、novel、user 搜索记录因此不需要显式
+`--type`；record mode 中显式 `--type` 只是 compatibility constraint，不能覆盖 Record 的 `type`。反向搜图输出的
+`artwork`、`user` identity record 也可直接作为 `detail` 输入。record mode 下，`--ndjson` 输出规范 Record，显式
+`--json` 输出一个完整 JSON 数组；省略输出 flag 时，非 TTY stdout 自动使用 NDJSON。`search --json` 是聚合 JSON 文档，
+不是规范 NDJSON 流，不能直接作为 `detail` 输入。
 
 `download` 还接受受策略允许的 CDN 直链、`/users/{id}`、`/users/{id}/artworks` 和公开收藏 URL。用户与公开收藏
 URL 会通过 App OAuth 遍历 `illust`、`manga`、`ugoira`，小说不在下载集合内；插画系列 URL 会明确因不是下载来源而失败。

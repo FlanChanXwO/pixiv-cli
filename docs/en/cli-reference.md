@@ -364,6 +364,28 @@ All non-mutating data reads, recommendations, timelines, and downloads use the l
 
 Visual lists write canonical Record NDJSON automatically when stdout is a non-terminal and no explicit output format was selected. Each line has stable string `id`, `type`, and `url`; `download`, `bookmark add/remove`, and `follow add/remove` consume compatible records without positional IDs. `--json` and explicit `--ndjson` retain precedence.
 
+For the supported search-to-detail pipeline, prefer letting the pipe select canonical NDJSON:
+
+```bash
+pixiv search "miku" --type artwork --limit 20 | pixiv detail
+```
+
+Because `search` stdout is a pipe, it emits canonical NDJSON automatically;
+`detail` consumes each record and infers its endpoint. The explicit producer
+equivalent is:
+
+```bash
+pixiv search "miku" --type artwork --limit 20 --ndjson | pixiv detail
+```
+
+Artwork, novel, and user search records infer their respective detail endpoints
+from `type`; no `--type` is needed. In record mode, an explicit `--type` is
+only a compatibility constraint: it must match the inferred record type and
+never overrides it. Reverse-search `artwork` and `user` identity records follow
+the same detail path. `search --json` is a complete aggregate document, not a
+canonical record stream, so `pixiv search ... --json | pixiv detail` is
+unsupported.
+
 ### Reverse image search
 
 `pixiv search SOURCE` enters image mode before any Pixiv SDK or account-pool setup:
@@ -374,6 +396,10 @@ Visual lists write canonical Record NDJSON automatically when stdout is a non-te
   FIFOs, devices, sockets, and other non-regular paths are not image sources; all other text remains a keyword.
 - Image mode accepts `--provider`, `--json`, `--ndjson`, `--proxy`, and `--no-proxy`. Search filters, `--type`,
   pagination, and `--trending-tags` are rejected rather than ignored.
+
+Reverse-search source must be a local regular-file path or an HTTP(S) URL.
+Binary image bytes on stdin do not select image mode; `cat image.png | pixiv
+search` is unsupported.
 
 The provider values are `saucenao`, `ascii2d-color`, `ascii2d-bovw`, and `all`. The configured default is
 `saucenao`; `--provider` overrides it for one invocation. `all` runs the providers in the fixed order SauceNAO,
@@ -409,7 +435,9 @@ JSON output is the complete envelope `{input, providers, results, records, provi
 contains only canonical Pixiv identities: artwork matches use the generic `type:"artwork"` because reverse search
 does not know the artwork subtype, while user matches use `type:"user"`. The CLI does not call Pixiv detail merely
 to infer a subtype. External-only matches can remain in `results` when Pixiv-only filtering is disabled but do not
-become records. Human output is a safe summary; piped or explicit NDJSON emits only those canonical records.
+become records. Human output is a safe summary; piped or explicit NDJSON emits only those canonical records. The
+canonical `artwork` and `user` identity records emitted by reverse search can be piped directly to `detail`; generic
+`artwork` records resolve to the concrete artwork detail returned by Pixiv.
 
 For `all`, a successful provider plus a failed provider sets `partial=true`, writes a safe warning to stderr, and
 exits successfully. A single-provider failure or an all-provider failure exits non-zero while preserving any
@@ -453,7 +481,7 @@ Only the structured entity filters documented by each command are accepted. The 
 | `config unset` | `pixiv config unset KEY` | Deletes one known config key from `config.toml`. |
 | `update` | `pixiv update [--check] [--prerelease] [--proxy URL]` | Checks for or performs an update matching the current install source; `--json` is only valid together with `--check`. |
 | `search` | `pixiv search [WORD\|IMAGE_PATH_OR_URL] [-t artwork\|novel\|user] [options]` | Canonical entity search or automatic reverse-image search. A regular file or explicit HTTP(S) source selects image mode; `--trending-tags` is the no-word artwork tag-list mode and does not accept search filters or pagination. |
-| `detail` | `pixiv detail ID_OR_URL [-t artwork\|novel\|user] [--content] [--json]` | Reads one artwork, novel, or user. `--content` is explicit and valid only for novels. |
+| `detail` | `pixiv detail ID_OR_URL [-t artwork\|novel\|user] [--content] [--json\|--ndjson]` | Reads one artwork, novel, or user, or consumes canonical NDJSON records. `--content` is explicit and valid only for novels. |
 | `ranking` | `pixiv ranking [--mode MODE --date YYYY-MM-DD --page N --limit N]` | Reads illustration rankings. Novel ranking is not part of the v1 contract. |
 | `series` | `pixiv series SERIES_ID -t artwork\|novel [--page N --limit N --json\|--ndjson]` | Lists the artworks or novels in one series. The entity type is required. |
 | `comment` | `pixiv comment ID -t artwork\|novel [--page N --limit N --json\|--ndjson]` | Reads artwork or novel comments. Comment write/reply/delete/stamp is not exposed. |
@@ -600,9 +628,11 @@ in the form `/artworks/{id}` (an optional locale segment, query, and fragment ar
 and `detail --type user` require positive numeric IDs. User and novel URLs are not silently interpreted as artwork
 URLs; unsupported URL shapes fail locally. `detail` also consumes canonical NDJSON records from stdin: `illust`,
 `manga`, `ugoira`, and generic `artwork` records resolve to artwork detail, while `novel` and `user` records resolve
-to their matching detail endpoints. In record mode, `--ndjson` emits canonical records and `--json` emits one JSON
-array; an omitted output flag auto-selects NDJSON for non-TTY stdout. Aggregate `search --json` output is not an
-NDJSON record stream and is not accepted by `detail`.
+to their matching detail endpoints. Artwork, novel, and user search records therefore need no explicit `--type`; when
+`--type` is supplied in record mode, it is only a compatibility constraint and never overrides the record type. The
+`artwork` and `user` identity records emitted by reverse search are valid `detail` inputs as well. In record mode,
+`--ndjson` emits canonical records and `--json` emits one JSON array; an omitted output flag auto-selects NDJSON for
+non-TTY stdout. Aggregate `search --json` output is not an NDJSON record stream and is not accepted by `detail`.
 
 `download` accepts the same artwork references, allowed CDN URLs, plus `/users/{id}`, `/users/{id}/artworks`,
 and `/users/{id}/bookmarks/artworks` URLs. User and public-bookmarks sources follow pagination for `illust`,

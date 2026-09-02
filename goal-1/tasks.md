@@ -261,12 +261,12 @@
 
 ### Task 9: 文档与产品 skill 同步
 
-- [ ] **目标**：只在代码 contract 已稳定并由测试证明后更新用户文档。
+- [x] **目标**：只在代码 contract 已稳定并由测试证明后更新用户文档。
 - **更新位置**：
   - `docs/en/cli-reference.md`
   - `docs/zh-CN/cli-reference.md`
   - `skills/pixiv-cli/SKILL.md`
-  - 若现有 reference 已有 detail/discovery/pipeline 章节则就地更新，不新建重复文档。
+  - `skills/pixiv-cli/references/discover.md`（沿用既有 discovery 章节，修正旧的 ID 提取式 guidance）
 - **必须说明**：
   - 推荐：`pixiv search ... | pixiv detail`，stdout pipe 自动使用 canonical NDJSON。
   - `pixiv search ... --ndjson | pixiv detail` 是显式等价形式。
@@ -277,12 +277,13 @@
   - 显式 `--type` 在 record mode 是 compatibility constraint。
   - binary image stdin 仍不支持。
 - **文档验证**：
-  - `git diff --check`
-  - 若仓库已有 documentation test carrier 覆盖这些文件，运行对应测试；不新增脆弱全文字符串 scanner。
-- **验收**：英文/简中 contract 一致，产品 skill 不再把 detail 描述为仅单值 consumer。
-- **实际做了什么**：待执行。
-- **验证证据**：待执行。
-- **剩余风险**：待执行。
+  - `git diff --check`：通过。
+  - `go test ./scripts/tests/documentation -count=1`：通过；未新增脆弱全文字符串 scanner。
+  - 另做了目标 contract 片段的双语/产品 skill presence check：通过。
+- **验收**：英文/简中 contract 一致，产品 skill 及其 discovery reference 不再把 detail 描述为仅单值 consumer。
+- **实际做了什么**：以英文 CLI reference 为 canonical baseline，同步简体中文 CLI reference、产品 `SKILL.md` 与其 `references/discover.md`；补充自动/显式 NDJSON search → detail 示例、三种 normal search record inference、显式 `--type` compatibility constraint、reverse identity record 直连 detail、record-mode `--ndjson`/`--json` 输出语义，并明确 `search --json` 聚合文档和 binary image stdin 都不属于支持 contract。
+- **验证证据**：文档测试通过；`git diff --check` 通过；Task 8 已提供 search/detail/downstream 与 reverse/error 行为测试证据，本 Task 9 未改生产代码。
+- **剩余风险**：未执行真实网络反搜或真实账号命令；本次风险限于文档措辞与示例，实际 runtime contract 仍以 Task 8 已验证实现为准。
 - **下一步建议**：集中检查 #3。
 
 ---

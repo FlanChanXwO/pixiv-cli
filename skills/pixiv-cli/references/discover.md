@@ -76,6 +76,9 @@ pixiv search https://your-image-url.example/image.png --provider all --ndjson
   non-Pixiv evidence stays in `results`.
 - Image mode accepts provider/output/proxy flags only. Do not add keyword
   filters, `--type`, `--limit`, `--page`, or `--trending-tags`.
+- The reverse-search source must be a local regular-file path or an HTTP(S)
+  URL. Binary image bytes on stdin do not select image mode;
+  `cat image.png | pixiv search` is unsupported.
 - SauceNAO and ascii2d are third-party upload services. The CLI snapshots the
   source once and returns only its kind/hash, so use an image and URL that the
   user is authorized to share. Provider retention/caching follows provider
@@ -134,13 +137,39 @@ pixiv search "初音ミク" --type novel --limit 10 --json
 
 ## From a search hit to full detail
 
-Extract `id` fields from the search JSON, then:
+For a composable search-to-detail pipeline, prefer canonical NDJSON:
 
+```bash
+pixiv search "landscape" --type artwork --limit 20 | pixiv detail
 ```
+
+The pipe makes `search` select canonical NDJSON automatically. The explicit
+producer form is equivalent:
+
+```bash
+pixiv search "landscape" --type artwork --limit 20 --ndjson | pixiv detail
+```
+
+Artwork, novel, and user search records infer the matching detail endpoint from
+`type`; no `--type` is needed. In record mode, an explicit `--type` is only a
+compatibility constraint and never overrides the record type. Reverse-search
+`artwork` and `user` identity records can enter the same pipeline:
+
+```bash
+pixiv search ./image.png --provider all --ndjson | pixiv detail --ndjson
+```
+
+When a single raw ID or URL is more convenient, the existing detail form remains
+supported:
+
+```bash
 pixiv detail 129543211 --json
 ```
 
-Inspect the returned fields before selecting values for a follow-up action;
+For record input, `detail --ndjson` emits one canonical Record per line and
+`detail --json` emits one complete JSON array. `search --json` is a complete
+aggregate document, not a record stream, so it cannot be piped directly into
+`detail`. Inspect returned fields before selecting values for a follow-up action;
 prefer one `detail` call over re-searching the same work.
 
 ## Explore an artist
