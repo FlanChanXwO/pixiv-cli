@@ -314,7 +314,7 @@
 
 ### Task 10: 相关回归 + 全量质量门禁
 
-- [ ] **目标**：从最小相关检查扩展到仓库级验证；不拿全量门禁代替前面的行为测试。
+- [x] **目标**：从最小相关检查扩展到仓库级验证；不拿全量门禁代替前面的行为测试。
 - **验证顺序**：
   1. `go test ./internal/cli/commands/pixiv/detail -count=1`
   2. `go test ./internal/cli/pipeline ./internal/shared/record -count=1`
@@ -324,9 +324,15 @@
   6. `git diff --check`
 - **失败处理**：先区分本次变更、既有失败、环境失败；只修本 goal 引入/暴露且属于范围的问题。没有代码/环境变化时不重复跑同一个失败检查。
 - **验收**：相关与全量门禁绿色，或对无法运行的客观环境项有明确记录。
-- **实际做了什么**：待执行。
-- **验证证据**：待执行。
-- **剩余风险**：待执行。
+- **实际做了什么**：按任务书顺序执行 detail、pipeline/record、`internal/cli/...`、仓库全量 Go 测试、构建脚本和 diff 门禁；所有检查均通过，未修改生产代码或测试以迎合门禁。
+- **验证证据**：
+  - `go test ./internal/cli/commands/pixiv/detail -count=1`：PASS。
+  - `go test ./internal/cli/pipeline ./internal/shared/record -count=1`：PASS。
+  - `go test ./internal/cli/... -count=1`：PASS。
+  - `go test ./... -count=1`：PASS，包含 e2e（真实 SDK 默认跳过）。
+  - `sh scripts/build.sh`：PASS，生成 Darwin arm64 `build/pixiv`；构建产物未进入 Git 变更。
+  - `git diff --check`：PASS；提交前后工作区均保持 clean。
+- **剩余风险**：未运行需要本机真实凭据的 Pixiv/FANBOX SDK E2E；该项是仓库既有的显式 opt-in 测试，不属于本 goal 的 deterministic pipeline 门禁。未执行 Task 11 finding-first review。
 - **下一步建议**：Task 11。
 
 ---
