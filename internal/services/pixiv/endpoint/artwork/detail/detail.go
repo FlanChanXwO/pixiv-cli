@@ -157,7 +157,6 @@ type singlePageDTO struct {
 }
 
 type metaPageDTO struct {
-	PageIndex int          `json:"page_index"`
 	Width     int          `json:"width"`
 	Height    int          `json:"height"`
 	Extension string       `json:"extension"`
@@ -231,7 +230,7 @@ func mapArtwork(dto illustDTO) artwork.Artwork {
 	pages := make([]artwork.MetaPage, len(dto.MetaPages))
 	for index, page := range dto.MetaPages {
 		pages[index] = artwork.MetaPage{
-			PageIndex: page.PageIndex,
+			PageIndex: index,
 			Width:     page.Width,
 			Height:    page.Height,
 			Extension: page.Extension,
