@@ -204,7 +204,7 @@ pixiv detail https://www.pixiv.net/artworks/123456
 pixiv recommended all --limit 10
 pixiv timeline latest --type illust --limit 20
 pixiv download https://www.pixiv.net/artworks/123456 --pages 1,3-5 --quality regular
-pixiv download 123456 https://i.pximg.net/img-original/example.jpg --concurrency 8
+pixiv download 123456 https://i.pximg.net/img-original/example.jpg
 
 # Batch-download every visual work from a creator.
 pixiv download https://www.pixiv.net/users/12345678/artworks

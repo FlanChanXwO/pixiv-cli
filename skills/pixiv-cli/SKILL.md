@@ -170,6 +170,11 @@ pixiv download [SRC...] [--pages 1,3-5] [--quality original|regular|small|thumb|
 pixiv update --check --json               # read-only update check
 ```
 
+For `pixiv download`, `--pages` accepts individual 1-based pages and closed ranges only. Successful stdout is
+empty; check the exit status for retained artwork failures. A successful ugoira may emit a non-blocking `warning:`
+on stderr when its filename template falls back. See `references/download.md` for CDN option boundaries and
+reporting details.
+
 Public positional commands can fill one missing value from non-TTY stdin. The
 stream is read as one complete value and only one final LF or CRLF is removed;
 spaces and internal newlines are preserved. An explicit positional value wins,
