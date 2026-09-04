@@ -25,7 +25,7 @@ import (
 // DownloadManager 是下载器在 MCP 侧的窄能力接口。
 type DownloadManager interface {
 	SetDownloadPath(string) error
-	Download(context.Context, downloader.DownloadRequest) ([]downloader.DownloadedArtwork, error)
+	Download(context.Context, downloader.DownloadRequest) (downloader.DownloadBatchResult, error)
 }
 
 // Account 是 MCP 请求的本地值；只携带传输覆写与账号选择，不持有

@@ -225,6 +225,7 @@ func assertEmptyDownloadResult(t *testing.T, result *mcp.CallToolResult, wantDel
 
 type fakeDownloads struct {
 	artworks      []downloader.DownloadedArtwork
+	result        downloader.DownloadBatchResult
 	downloadCalls int
 	downloadIDs   []int64
 	lastRequest   downloader.DownloadRequest
@@ -232,13 +233,17 @@ type fakeDownloads struct {
 }
 
 func (fakeDownloads) SetDownloadPath(string) error { return nil }
-func (d *fakeDownloads) Download(_ context.Context, request downloader.DownloadRequest) ([]downloader.DownloadedArtwork, error) {
+func (d *fakeDownloads) Download(_ context.Context, request downloader.DownloadRequest) (downloader.DownloadBatchResult, error) {
 	ids := request.IllustIDs
 
 	d.downloadCalls++
 	d.downloadIDs = append([]int64(nil), ids...)
 	d.lastRequest = request
-	return d.artworks, d.err
+	result := d.result
+	if result.Items == nil && d.artworks != nil {
+		result.Items = d.artworks
+	}
+	return result, d.err
 }
 
 // 收藏/关注 mutation tool 的 owner 契约：结构化成功结果。
