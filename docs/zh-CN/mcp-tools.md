@@ -104,12 +104,14 @@ application outcome 的 `filter` 会报告 `min`、`max`、`membership`、`strat
 
 | Tool | 输入 | Structured output |
 | --- | --- | --- |
-| `download` | `src` 与非空 `srcs` 必须二选一；每项是作品 PID、受支持的 Pixiv 作品/用户/公开收藏 URL 或允许的 CDN URL。可选 `pages` 使用 `1,3-5` 这类闭区间，`quality` 为 `original`、`regular`、`small`、`thumb`、`mini`，`ugoira_mode` 为 `gif` 或 `apng`，`delivery` 为 `local_path`。 | `{delivery, items, failures, files, text}`；每个 file 包含安全的本地 path/URI、MIME、大小和页码。任何失败都会保留 failure 并设置 `isError=true`。 |
-| `download_random_from_recommendation` | 可选 `count`（默认 `5`，显式值 `1..20`）、`pages`、`quality`、`ugoira_mode` 和 `delivery: "local_path"`。 | 同样的本地文件报告结构。 |
+| `download` | `src` 与非空 `srcs` 必须二选一；每项是作品 PID、受支持的 Pixiv 作品/用户/公开收藏 URL 或允许的 CDN URL。可选 `pages` 只使用 1-based 单页或 `1,3-5` 这类闭区间，`quality` 为 `original`、`regular`、`small`、`thumb`、`mini`，`ugoira_mode` 为 `gif` 或 `apng`，`delivery` 为 `local_path`。 | `{delivery, items, failures, warnings, files, text}`；每个 file 包含安全的本地 path/URI、MIME、大小和页码；`warnings` 保留非阻断的 Ugoira 文件名回退，单独的 warning 不会设置 `isError`。任何失败都会保留 failure 并设置 `isError=true`。 |
+| `download_random_from_recommendation` | 可选 `count`（默认 `5`，显式值 `1..20`）、`pages`、`quality`、`ugoira_mode` 和 `delivery: "local_path"`。 | 同样的本地文件报告结构，包含 `warnings` 并保留 `failures`。 |
 
 当前 MCP handler 没有把并发、filter、archive、directory-template、metadata sidecar、重试次数或重试延迟
 映射到 `DownloadRequest`，因此 download schema 不发布这些字段。下载使用已配置的 application 路径/模板，
-选项错误会显露，不会静默忽略输入。
+选项错误会显露，不会静默忽略输入。Ugoira 文件名模板非法或渲染为空时回退到默认文件名，并写入
+`warnings`，不会把成功项变成失败。部分报告在其他作品或 operation 失败时仍保留已完成的 items/files；只有 failure
+会设置 `isError=true`。
 
 用户和公开收藏 URL 按来源顺序展开认证态视觉作品，不包含小说；插画系列 URL 不是下载来源。URL 在本地解析，不抓 HTML
 或跟随重定向；CDN source 没有作品 metadata，不会被当作作品详情请求。

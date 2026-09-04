@@ -6,9 +6,11 @@ This is the complete contract for the `pixiv` command: installation, authenticat
 configuration, environment variables, authentication, and updates. It does not duplicate SDK or MCP details;
 those interfaces are linked under [Related documentation](#related-documentation).
 
-Visual lists automatically emit canonical NDJSON when piped. Downloads currently expose page selection, static
-quality, GIF/APNG mode, output directory, filename templates, and `--on-error`; unsupported options fail as unknown
-flags. Proxy URIs accept `http`, `https`, `socks5`, and `socks5h`.
+Visual lists automatically emit canonical NDJSON when piped. Downloads accept artwork IDs/URLs,
+user/public-bookmark URLs, and resource-policy-allowed CDN URLs; they expose page selection, static quality,
+GIF/APNG mode, output directory, filename templates, and `--on-error`. Unsupported options fail as unknown flags.
+Successful downloads keep stdout empty; non-blocking ugoira filename fallback warnings go to stderr, while item
+failures remain diagnostics and make the command non-zero. Proxy URIs accept `http`, `https`, `socks5`, and `socks5h`.
 
 `pixiv search SOURCE` also performs reverse-image search when `SOURCE` is an explicit HTTP(S) URL or an existing
 regular local file. Reverse search is independent of the authenticated Pixiv account; it uses the configured
@@ -531,11 +533,11 @@ extension. Extensions also replace ASCII control characters and remove trailing 
 | `mypixiv works` | `--type` / `-t` | required | Without `USER_ID`, use entity type `artwork` or `novel`; with `USER_ID`, `manga` is also supported. Legacy `illust` remains an alias for `artwork`. |
 | `recommended` | `--type` / `-t` | empty | `artwork`, `novel`, `user`, or `all`; positional `KIND` is compatibility syntax. |
 | record actions | `--on-error` | `skip` | Skip malformed/incompatible records with a stderr diagnostic, or use `fail-fast`. |
-| `download` | `--pages` | empty | 1-based closed page selection such as `1,3-5`; default downloads every page. Missing pages fail explicitly. |
+| `download` | `--pages` | empty | 1-based individual pages and closed ranges such as `1,3-5`; open-ended ranges are invalid. Default downloads every page, and missing pages fail explicitly. |
 | `download` | `--quality` | `original` | Static image quality: `original`, `regular` (longest side 1200), `small` (longest side 540), `thumb` (250×250 center crop), or `mini` (48×48 center crop). Ugoira rejects non-original quality or page selection as unsupported.
 | `download` | `--ugoira-mode` | `gif` | Ugoira output: `gif` or `apng`. |
 | `download` | `--download-path` / `--output` / `-o` | `DOWNLOAD_PATH`, `config.toml`, or `./downloads` | Download directory. `--output` is an alias for this option and conflicts if both specify different directories. |
-| `download` | `--filename-template` | `FILENAME_TEMPLATE`, `config.toml`, or `{author} - {title}_{id}` | Supports `{id}`, `{title}`, `{author}`, `{author_id}`, `{date}`, `{tags}`, and `{num}`. Unknown placeholders and unmatched braces are errors. |
+| `download` | `--filename-template` | `FILENAME_TEMPLATE`, `config.toml`, or `{author} - {title}_{id}` | Supports `{id}`, `{title}`, `{author}`, `{author_id}`, `{date}`, `{tags}`, and `{num}`. Unknown placeholders and unmatched braces are errors; an invalid or empty-rendered ugoira template falls back to the default filename and emits a warning on stderr. |
 | `bookmark add` | `--restrict` | `public` | Visibility of the new bookmark: `public` or `private`. |
 | `bookmark add` | `--tag` | empty | Bookmark tag; may be repeated. |
 | `follow add` | `--restrict` | `public` | Visibility of the new follow: `public` or `private`. |
@@ -557,7 +559,7 @@ evidence is not yet available. Premium is not a local hard gate, and bookmark co
 
 Artwork JSON/NDJSON preserves public entity data and an opaque resource reference where needed; it does not emit
 resolved/signed resource URLs, request headers, Cookies, expiry metadata, tokens, or other transport credentials.
-Download is an action: success keeps stdout empty, while failures are explicit diagnostics and a non-zero exit.
+Download is an action: success keeps stdout empty; ugoira filename fallback warnings are stderr-only, while failures are explicit diagnostics and a non-zero exit.
 
 ### Drawing-tool catalog
 
@@ -605,9 +607,10 @@ and `/users/{id}/bookmarks/artworks` URLs. User and public-bookmarks sources fol
 `manga`, and `ugoira`, deduplicating artwork IDs by first appearance. Artwork-series URLs are rejected as unsupported
 download sources. All need App OAuth and have no anonymous Web fallback. URL
 parsing is local only: it does not fetch HTML or follow redirects. The current CLI download contract exposes page
-selection, static quality, GIF/APNG mode, output directory, filename template, and `--on-error`; unsupported
-options fail as unknown flags. Downloads continue after independent artwork failures according to `--on-error` and
-report every outcome through diagnostics; cancellation stops immediately.
+selection, static quality, GIF/APNG mode, output directory, filename template, and `--on-error`; unsupported options fail as unknown flags. `--pages` accepts only individual 1-based pages and
+closed ranges. An invalid or empty-rendered ugoira filename template falls back to the default filename and emits
+a warning on stderr without failing that item. Record-level input errors follow `--on-error`; reported artwork
+failures remain visible and make the command non-zero. Cancellation stops immediately.
 
 ### Common flags
 

@@ -138,14 +138,16 @@ gate, and a bookmark count must not be described as a like count.
 
 | Tool | Input | Structured output |
 | --- | --- | --- |
-| `download` | Exactly one of `src` or non-empty `srcs`; each source is an artwork PID, supported Pixiv artwork/user/public-bookmark URL, or allowed CDN URL. Optional `pages` uses closed 1-based ranges such as `1,3-5`; `quality` is `original`, `regular`, `small`, `thumb`, or `mini`; `ugoira_mode` is `gif` or `apng`; `delivery` is `local_path`. | `{delivery, items, failures, files, text}`; each file includes its safe local path/URI, MIME type, size, and page. Any failure keeps its entry and sets `isError=true`. |
-| `download_random_from_recommendation` | Optional `count` (default `5`, explicit `1..20`), `pages`, `quality`, `ugoira_mode`, and `delivery: "local_path"`. | The same local-file report shape. |
+| `download` | Exactly one of `src` or non-empty `srcs`; each source is an artwork PID, supported Pixiv artwork/user/public-bookmark URL, or allowed CDN URL. Optional `pages` uses individual 1-based page numbers and closed ranges such as `1,3-5`; `quality` is `original`, `regular`, `small`, `thumb`, or `mini`; `ugoira_mode` is `gif` or `apng`; `delivery` is `local_path`. | `{delivery, items, failures, warnings, files, text}`; each file includes its safe local path/URI, MIME type, size, and page. `warnings` contains non-blocking ugoira filename fallbacks; a warning alone does not set `isError`. Any failure keeps its entry and sets `isError=true`. |
+| `download_random_from_recommendation` | Optional `count` (default `5`, explicit `1..20`), `pages`, `quality`, `ugoira_mode`, and `delivery: "local_path"`. | The same local-file report shape, including `warnings` and retained `failures`. |
 
 The download schema does not publish concurrency, filter, archive,
 directory-template, metadata-sidecar, retry-count, or retry-delay fields because
 the current MCP handler does not map them to `DownloadRequest`. Downloads use
 the configured application path/template and surface option errors rather than
-silently ignoring input.
+silently ignoring input. An invalid or empty-rendered ugoira filename template falls back to the default
+filename and is recorded in `warnings` without changing a successful item into a failure. Partial reports retain
+completed items and files when another item or the operation fails; only failures set `isError=true`.
 
 User and public-bookmark URLs expand authenticated visual works in source order
 and do not include novels; artwork-series URLs are not download sources. URL parsing is local and does

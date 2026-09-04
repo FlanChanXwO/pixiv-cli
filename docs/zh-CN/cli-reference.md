@@ -5,7 +5,7 @@
 本文是 `pixiv` 命令的完整契约：安装、认证、命令、flag、配置、环境变量、匿名 fallback 和更新。
 SDK 与 MCP 细节不在此重复，入口见[相关文档](#相关文档)。
 
-> 视觉列表在管道中会自动输出 canonical NDJSON。下载目前支持页码、静态质量、`gif|apng`、输出目录、文件名模板和 `--on-error`；不支持的选项会作为 unknown flag 失败。代理接受 `http`、`https`、`socks5` 与 `socks5h`；配置包含 `directory_template`、`request_interval`（可用 `PIXIV_REQUEST_INTERVAL` 或 `[network].request_interval` 设置）。
+> 视觉列表在管道中会自动输出 canonical NDJSON。下载接受作品 PID/URL、用户/公开收藏 URL 和经资源策略允许的 CDN 直链；目前支持页码、静态质量、`gif|apng`、输出目录、文件名模板和 `--on-error`；不支持的选项会作为 unknown flag 失败。成功下载的 stdout 为空；ugoira 文件名回退只在 stderr 输出非阻断 warning，作品失败则保留诊断并以非零退出。代理接受 `http`、`https`、`socks5` 与 `socks5h`；配置包含 `directory_template`、`request_interval`（可用 `PIXIV_REQUEST_INTERVAL` 或 `[network].request_interval` 设置）。
 
 `pixiv search SOURCE` 在 `SOURCE` 是显式 HTTP(S) URL 或现有常规本地文件时也会执行反向搜图。
 反向搜图不依赖已认证的 Pixiv 账号，而是使用配置的第三方 provider，并可能把 source 上传到本机之外。
@@ -435,11 +435,11 @@ Content-Type 与 URL 后缀不一致（例如 URL 为 `.png`、实体为 JPEG）
 | `mypixiv works` | `--type` / `-t` | 必填 | 省略 `USER_ID` 时使用实体类型 `artwork` 或 `novel`；提供 `USER_ID` 时还支持 `manga`。旧 `illust` 写法继续作为 `artwork` 的兼容别名。 |
 | `recommended` | `--type` / `-t` | 空 | `artwork`、`novel`、`user` 或 `all`；位置参数 `KIND` 是兼容写法。 |
 | Record 动作 | `--on-error` | `skip` | 对格式错误/不兼容记录选择写 stderr 后跳过，或 `fail-fast`。 |
-| `download` | `--pages` | 空 | 1-based 闭区间页选择，如 `1,3-5`；默认下载全部页。页不存在会明确失败。 |
+| `download` | `--pages` | 空 | 1-based 单页或闭区间选择，如 `1,3-5`；开放区间无效。默认下载全部页，页不存在会明确失败。 |
 | `download` | `--quality` | `original` | 静态图质量：`original`、`regular`（最长边 1200）、`small`（最长边 540）、`thumb`（250×250 居中裁剪）、`mini`（48×48 居中裁剪）。Ugoira 对非 original 质量或页选择返回 unsupported。 |
 | `download` | `--download-path` / `--output` / `-o` | `DOWNLOAD_PATH`、`config.toml` 或 `./downloads` | 下载目录；`--output` 是别名，两个参数若值不同会冲突。 |
 | `download` | `--ugoira-mode` | `gif` | Ugoira 输出：`gif` 或 `apng`。 |
-| `download` | `--filename-template` | `FILENAME_TEMPLATE`、`config.toml` 或 `{author} - {title}_{id}` | 支持 `{id}`、`{title}`、`{author}`、`{author_id}`、`{date}`、`{tags}`、`{num}`。未知占位符或不配对花括号会报错。 |
+| `download` | `--filename-template` | `FILENAME_TEMPLATE`、`config.toml` 或 `{author} - {title}_{id}` | 支持 `{id}`、`{title}`、`{author}`、`{author_id}`、`{date}`、`{tags}`、`{num}`。未知占位符或不配对花括号会报错；Ugoira 模板非法或渲染为空时回退到默认文件名，并在 stderr 输出 warning。 |
 | `bookmark add` | `--restrict` | `public` | 新收藏的可见性：`public` 或 `private`。 |
 | `bookmark add` | `--tag` | 空 | 收藏 tag；可重复使用。 |
 | `follow add` | `--restrict` | `public` | 新关注的可见性：`public` 或 `private`。 |
@@ -456,7 +456,7 @@ Content-Type 与 URL 后缀不一致（例如 URL 为 `.png`、实体为 JPEG）
 并标记 partial，`server` 因缺少可靠服务端证据而显式失败。Premium 不是本地硬门槛，收藏数也不是点赞数。
 
 作品 JSON/NDJSON 保留公开实体字段与必要的 opaque resource reference，不输出已解析/签名资源 URL、请求头、
-Cookie、过期 metadata、token 或其他 transport 凭据。`download` 是动作：成功 stdout 为空，失败为明确诊断和非零退出。
+Cookie、过期 metadata、token 或其他 transport 凭据。`download` 是动作：成功 stdout 为空；Ugoira 文件名回退 warning 只写 stderr，失败保留明确诊断并以非零退出。
 
 ### 绘图工具目录
 
@@ -498,7 +498,7 @@ STRATA · Sculptris · modo · AnimationMaster · VistaPro · Sunny3D · 3D-Coat
 `download` 还接受受策略允许的 CDN 直链、`/users/{id}`、`/users/{id}/artworks` 和公开收藏 URL。用户与公开收藏
 URL 会通过 App OAuth 遍历 `illust`、`manga`、`ugoira`，小说不在下载集合内；插画系列 URL 会明确因不是下载来源而失败。
 URL 在本地解析，不会抓 HTML 或跟随重定向。当前 CLI download 只公开页码、静态质量、GIF/APNG、输出目录、文件名模板和
-`--on-error`；其他参数作为 unknown flag 失败。取消会立即停止，单个作品失败会显露结果。
+`--on-error`；其他参数作为 unknown flag 失败。`--pages` 只接受单页和闭区间，开放区间会在本地拒绝。Ugoira 文件名模板非法或渲染为空时回退到默认文件名，并在 stderr 输出非阻断 warning，不会使该项成功下载变成失败。Record 输入错误遵循 `--on-error`；报告中的作品失败会保留并使命令以非零退出。取消会立即停止。
 
 ### 通用参数
 

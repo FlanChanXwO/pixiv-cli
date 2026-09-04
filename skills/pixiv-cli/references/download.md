@@ -23,15 +23,15 @@ Downloads write to disk — always run the checklist first.
 pixiv download 129543211
 pixiv download 129543211 130000001 130000002
 pixiv download https://www.pixiv.net/artworks/129543211
-pixiv download 129543211 --pages 1,3-5,8- --quality regular
+pixiv download 129543211 --pages 1,3-5 --quality regular
 pixiv download 129543211 --ugoira-mode apng --output ./downloads
 ```
 
 - Multi-page works download every page by default (`_p0`, `_p1`, ...).
-- `--pages` is 1-based. It accepts comma-separated numbers, closed ranges such
-  as `1,3-5`, and open ranges such as `8-`; selected pages are de-duplicated in
-  natural order. A missing selected page is an explicit error rather than a
-  silent skip.
+- `--pages` is 1-based and accepts comma-separated individual pages and closed
+  ranges such as `1,3-5`; selected pages are de-duplicated in natural order.
+  Open-ended ranges are rejected locally. A missing selected page is an explicit
+  error rather than a silent skip.
 - `--quality` accepts `original` (default), `regular`, `small`, `thumb`, and
   `mini` for static images. Invalid values fail before the download request.
 - `--ugoira-mode` accepts `gif` (default) or `apng`. Other containers are not
@@ -62,7 +62,9 @@ pixiv download https://www.pixiv.net/users/12345678/bookmarks/artworks
 - Only the listed `pixiv.net` / `www.pixiv.net` HTTPS page paths are accepted.
   Novel pages, artwork-series pages, FANBOX, Pixivision, Sketch, short links,
   other hosts, and other paths fail before the downloader opens them. A direct
-  CDN source is accepted only when the SDK resource policy validates it.
+  CDN source is accepted only when the SDK resource policy validates it; it uses
+  a safe URL basename and does not apply artwork-only pages, quality, ugoira, or
+  metadata filename-template options.
 - Artwork IDs expanded from user or bookmark URLs are de-duplicated by first
   appearance within the invocation. There is no CLI archive option for
   cross-run de-duplication.
@@ -96,8 +98,13 @@ invalid records.
 - Downloads are actions: successful CLI stdout is empty. Never parse a download
   report from stdout. Inspect the requested local directory to report produced
   files; errors are safe stderr diagnostics and make the command non-zero.
-- Report which references succeeded and which failed. Never summarize failures
-  away as “done”. Cancellation stops immediately.
+- An invalid or empty-rendered ugoira filename template falls back to the default
+  safe filename and emits a non-blocking warning on stderr; the successful item
+  remains successful.
+- A batch may contain successful items and failures. Report which references
+  succeeded and which failed; never summarize failures away as “done”.
+  `--on-error` controls malformed or incompatible input records, and cancellation
+  stops immediately.
 - Downloads require an authenticated local account. Restricted or R-18 works
   may fail; surface the actual API error and do not add a Cookie workaround or
   silently switch to a Web path.
