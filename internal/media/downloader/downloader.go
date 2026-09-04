@@ -815,11 +815,14 @@ func (m *Manager) downloadArtwork(ctx context.Context, id int64, pages []int, qu
 		if err != nil {
 			return DownloadedArtwork{}, err
 		}
-		if quality == DownloadQualityThumb || quality == DownloadQualityMini {
-			path, err = publishDetectedImageExtension(path, saved.ContentType)
-			if err != nil {
-				return DownloadedArtwork{}, err
+		// 所有静态 quality 都基于本次响应的实际类型发布最终扩展名，
+		// 不能再让 regular/small/original 继续沿用 original URL 的后缀。
+		path, err = publishDetectedImageExtension(path, saved.ContentType)
+		if err != nil {
+			if cleanupErr := os.Remove(saved.Path); cleanupErr != nil && !errors.Is(cleanupErr, os.ErrNotExist) {
+				return DownloadedArtwork{}, fmt.Errorf("%w; remove invalid downloaded file: %v", err, cleanupErr)
 			}
+			return DownloadedArtwork{}, err
 		}
 		artworkOut.Files = append(artworkOut.Files, DownloadedFile{Path: path, Page: item.page1})
 	}
@@ -992,26 +995,28 @@ func downloadExtension(rawURL string) string {
 	return strings.TrimRight(extension, ". ")
 }
 
-// publishDetectedImageExtension 修正 Pixiv 缩略图 URL 后缀与实际实体格式不一致的情况。
+// publishDetectedImageExtension 统一修正静态质量 URL 后缀与实际实体格式不一致的情况。
+// 响应 MIME 优先，文件签名次之，只有上游没有返回 MIME 时才使用 URL 后缀兜底。
 // hard link 发布不会覆盖同名目标；删除旧路径失败时撤销新 link，保留原文件并暴露错误。
 func publishDetectedImageExtension(path, contentType string) (string, error) {
-	extension := ""
-	mediaType := strings.TrimSpace(strings.SplitN(contentType, ";", 2)[0])
-	if mediaType == "" {
-		mediaType = MimeTypeForFile(path)
+	reportedType := normalizeMediaType(contentType)
+	mediaType := reportedType
+	extension, ok := imageExtensionForMediaType(mediaType)
+	if !ok {
+		mediaType = detectImageMimeType(path)
+		extension, ok = imageExtensionForMediaType(mediaType)
 	}
-	switch mediaType {
-	case "image/jpeg":
-		extension = ".jpg"
-	case "image/png":
-		extension = ".png"
-	case "image/gif":
-		extension = ".gif"
-	case "image/webp":
-		extension = ".webp"
-	default:
-		return path, nil
+	if !ok && reportedType == "" {
+		mediaType = MimeTypeForPath(path)
+		extension, ok = imageExtensionForMediaType(mediaType)
 	}
+	if !ok {
+		if reportedType == "" {
+			reportedType = mediaType
+		}
+		return path, fmt.Errorf("unsupported image content type %q", reportedType)
+	}
+
 	current := filepath.Ext(path)
 	if strings.EqualFold(current, extension) || (extension == ".jpg" && strings.EqualFold(current, ".jpeg")) {
 		return path, nil
