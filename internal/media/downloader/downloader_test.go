@@ -941,6 +941,37 @@ func TestDownloadSourcesRedactsRejectedSource(t *testing.T) {
 	require.NotContains(t, report.Failures[0].URL, source)
 }
 
+func TestDownloadSourcesMarksOpaqueResourceAsResource(t *testing.T) {
+	dir := t.TempDir()
+	ref, err := sdk.NewResourceRef("pixiv", []byte(`{"k":"artwork","id":42,"p":0}`))
+	if err != nil {
+		t.Fatalf("sdk.NewResourceRef: %v", err)
+	}
+	client := &downloadSourcesStub{
+		saveResource: func(_ context.Context, _ sdk.ResourceRef, options sdk.SaveOptions) (sdk.SavedResource, error) {
+			if err := os.WriteFile(options.Path, []byte("resource"), 0o644); err != nil {
+				return sdk.SavedResource{}, err
+			}
+			return sdk.SavedResource{Path: options.Path, Size: int64(len("resource"))}, nil
+		},
+	}
+
+	report, err := (downloader.DownloadService{}).DownloadSources(context.Background(), client, []string{ref.String()}, downloader.DownloadRequest{DownloadPath: dir})
+
+	if err != nil {
+		t.Fatalf("DownloadSources returned error: %v", err)
+	}
+	if len(report.Items) != 1 {
+		t.Fatalf("items=%+v, want one direct resource item", report.Items)
+	}
+	if report.Items[0].Type != downloader.DownloadedResourceType {
+		t.Fatalf("direct resource type=%q, want %q", report.Items[0].Type, downloader.DownloadedResourceType)
+	}
+	if report.Items[0].IllustID != 0 || report.Items[0].Title != "" || report.Items[0].Author != "" {
+		t.Fatalf("direct resource leaked artwork metadata: %+v", report.Items[0])
+	}
+}
+
 func TestDownloadSourcesDownloadsDirectCDNURLWithSafeBasename(t *testing.T) {
 	dir := t.TempDir()
 	source := "https://i.pximg.net/img-original/img/2026/09/04/12/34/56/789_p0/photo%3A%7C.png?signature=secret"

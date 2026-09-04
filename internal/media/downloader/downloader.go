@@ -343,7 +343,10 @@ func (s DownloadService) DownloadSources(ctx context.Context, client DownloadTar
 			report.Failures = append(report.Failures, DownloadFailure{URL: ref.String(), Message: err.Error(), Cause: err})
 			continue
 		}
-		report.Items = append(report.Items, DownloadedArtwork{Files: []DownloadedFile{{Path: path, Page: 1}}})
+		report.Items = append(report.Items, DownloadedArtwork{
+			Type:  DownloadedResourceType,
+			Files: []DownloadedFile{{Path: path, Page: 1}},
+		})
 		report.Committed = true
 	}
 	if len(directURLs) > 0 {
