@@ -709,6 +709,11 @@ func (m *Manager) Download(ctx context.Context, request DownloadRequest) (Downlo
 			batch.Items = append(batch.Items, result.artwork)
 			continue
 		}
+		// 作品内已有文件时，保留 partial item；失败项仍单独进入 Failures，
+		// 让批量报告与磁盘上已经发布的文件保持一致。
+		if len(result.artwork.Files) > 0 {
+			batch.Items = append(batch.Items, result.artwork)
+		}
 		if errors.Is(result.err, context.Canceled) || errors.Is(result.err, context.DeadlineExceeded) {
 			if workerContextErr == nil {
 				workerContextErr = result.err
@@ -794,35 +799,35 @@ func (m *Manager) downloadArtwork(ctx context.Context, id int64, pages []int, qu
 	for _, item := range selected {
 		rawURL := item.image.Image.Resource.URL
 		if rawURL == "" {
-			return DownloadedArtwork{}, fmt.Errorf("illust %d page %d has no image URL", artwork.ID, item.page1)
+			return artworkOut, fmt.Errorf("illust %d page %d has no image URL", artwork.ID, item.page1)
 		}
 		// GenerateChecked 在模板使用 {date} 但 CreateDate 缺失时返回错误，
 		// 这样在网络请求前就把未知占位符或不匹配花括号暴露为失败，而不是
 		// 写出空文件名并相互覆盖。
 		basename, err := filename.GenerateChecked(data, item.page1-1, m.filenameTemplate)
 		if err != nil {
-			return DownloadedArtwork{}, err
+			return artworkOut, err
 		}
 		if basename == "" {
-			return DownloadedArtwork{}, fmt.Errorf("illust %d page %d produced an empty filename", artwork.ID, item.page1)
+			return artworkOut, fmt.Errorf("illust %d page %d produced an empty filename", artwork.ID, item.page1)
 		}
 		ref, err := resourceForQuality(item.image.Image, quality)
 		if err != nil {
-			return DownloadedArtwork{}, err
+			return artworkOut, err
 		}
 		path := filepath.Join(base, basename+downloadExtension(rawURL))
 		saved, err := m.saveResource(ctx, ref, path)
 		if err != nil {
-			return DownloadedArtwork{}, err
+			return artworkOut, err
 		}
 		// 所有静态 quality 都基于本次响应的实际类型发布最终扩展名，
 		// 不能再让 regular/small/original 继续沿用 original URL 的后缀。
 		path, err = publishDetectedImageExtension(path, saved.ContentType)
 		if err != nil {
 			if cleanupErr := os.Remove(saved.Path); cleanupErr != nil && !errors.Is(cleanupErr, os.ErrNotExist) {
-				return DownloadedArtwork{}, fmt.Errorf("%w; remove invalid downloaded file: %v", err, cleanupErr)
+				return artworkOut, fmt.Errorf("%w; remove invalid downloaded file: %v", err, cleanupErr)
 			}
-			return DownloadedArtwork{}, err
+			return artworkOut, err
 		}
 		artworkOut.Files = append(artworkOut.Files, DownloadedFile{Path: path, Page: item.page1})
 	}

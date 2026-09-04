@@ -160,6 +160,52 @@ func TestDownloadManagerOperationErrorDoesNotBecomeBusinessFailure(t *testing.T)
 	}
 }
 
+func TestDownloadManagerOperationErrorPreservesStructuredReport(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "42.png")
+	if err := os.WriteFile(path, []byte("partial"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	operationErr := errors.New("download sentinel")
+	businessErr := errors.New("page one failed")
+	downloads := &fakeDownloads{
+		result: downloader.DownloadBatchResult{
+			Items: []downloader.DownloadedArtwork{{
+				IllustID: 42,
+				Title:    "partial",
+				Author:   "artist",
+				Type:     "illust",
+				Files:    []downloader.DownloadedFile{{Path: path, Page: 1}},
+			}},
+			Failures: []downloader.DownloadFailure{{
+				IllustID: 42,
+				Message:  businessErr.Error(),
+				Cause:    businessErr,
+			}},
+		},
+		err: operationErr,
+	}
+	session, closeSession := newSDKDownloadTestSession(t, &fakeSDKClient{}, downloads)
+	defer closeSession()
+
+	result, err := session.CallTool(context.Background(), &mcp.CallToolParams{
+		Name: "download",
+		Arguments: map[string]any{
+			"src":      "42",
+			"delivery": "local_path",
+		},
+	})
+	if err != nil {
+		t.Fatalf("call tool: %v", err)
+	}
+	out := decodeDownloadOut(t, result)
+	if !result.IsError || len(out.Items) != 1 || len(out.Items[0].Files) != 1 || len(out.Files) != 1 || len(out.Failures) != 1 {
+		t.Fatalf("result=%+v output=%+v", result, out)
+	}
+	if out.Failures[0].Message != businessErr.Error() || !strings.Contains(out.Text, businessErr.Error()) || !strings.Contains(out.Text, "Download failed: "+operationErr.Error()) {
+		t.Fatalf("output=%+v", out)
+	}
+}
+
 func TestDownloadPassesPagesAndQualityToManager(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "9.png")

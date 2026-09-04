@@ -256,6 +256,46 @@ func TestDownloadMultiPageArtworkReturnsAllPaths(t *testing.T) {
 	assertFileBody(t, got.Items[0].Files[1].Path, "p1")
 }
 
+// TestDownloadMultiPageArtworkKeepsPublishedPrefixOnPageFailure 验证同一作品的
+// 前页已经发布后，后页失败仍保留 partial item，并同时报告该作品失败。
+func TestDownloadMultiPageArtworkKeepsPublishedPrefixOnPageFailure(t *testing.T) {
+	dir := t.TempDir()
+	pageFailure := errors.New("page one failed")
+	client := &fakePixivClient{
+		details: map[int64]pixiv.Artwork{7: {
+			ID: 7, Title: "multi", PageCount: 3, Kind: pixiv.ArtworkKindIllustration,
+			User: pixiv.User{Name: "author"},
+			Pages: []pixiv.ArtworkPage{
+				artworkPage("https://i.example/7_p0.png", 0),
+				artworkPage("https://i.example/7_p1.png", 1),
+				artworkPage("https://i.example/7_p2.png", 2),
+			},
+		}},
+	}
+	calls := 0
+	client.saveResourceOverride = func(_ context.Context, _ sdk.ResourceRef, options sdk.SaveOptions) (sdk.SavedResource, error) {
+		calls++
+		if calls > 1 {
+			return sdk.SavedResource{}, pageFailure
+		}
+		body := []byte("page-zero")
+		if err := os.WriteFile(options.Path, body, 0o644); err != nil {
+			return sdk.SavedResource{}, err
+		}
+		return sdk.SavedResource{Path: options.Path, Size: int64(len(body)), ContentType: "image/png"}, nil
+	}
+	m := downloader.NewManager(client, dir, "{id}")
+
+	batch, err := m.Download(context.Background(), downloader.DownloadRequest{IllustIDs: []int64{7}})
+	require.NoError(t, err)
+	require.Len(t, batch.Items, 1)
+	require.Len(t, batch.Items[0].Files, 1)
+	require.Len(t, batch.Failures, 1)
+	require.Equal(t, int64(7), batch.Failures[0].IllustID)
+	require.ErrorIs(t, batch.Failures[0].Cause, pageFailure)
+	assertFileBody(t, batch.Items[0].Files[0].Path, "page-zero")
+}
+
 func TestDownloadMultiPageArtworkPublishesDetectedExtensions(t *testing.T) {
 	dir := t.TempDir()
 	urls := []string{

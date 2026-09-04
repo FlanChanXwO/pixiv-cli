@@ -93,7 +93,7 @@ func handleDownload(ctx context.Context, app *runtime.App, in downloadIn) (*mcp.
 	}
 	report, err := downloadSources(ctx, app, sources, pages, quality, ugoiraFormat)
 	if err != nil {
-		return emptyDownloadError(ctx, err, delivery, "Download failed: "+err.Error())
+		return downloadOperationError(ctx, delivery, report, err)
 	}
 	out, err := buildDownloadReportOut(delivery, report)
 	if err != nil {
@@ -257,6 +257,19 @@ func emptyDownloadError(_ context.Context, _ error, delivery, text string) (*mcp
 	return result, out, resultErr
 }
 
+// downloadOperationError 保留 operation error 发生前已经生成的结构化结果；
+// MCP 用 isError 表达工具级失败，不能用空结果覆盖已落盘的 partial items 或 failures。
+func downloadOperationError(ctx context.Context, delivery string, report downloader.DownloadReport, operationErr error) (*mcp.CallToolResult, downloadOut, error) {
+	out, err := buildDownloadReportOut(delivery, report)
+	if err != nil {
+		return emptyDownloadError(ctx, err, delivery, "Could not build the download result: "+err.Error())
+	}
+	out.Text += "\nDownload failed: " + operationErr.Error()
+	result := downloadResult(out)
+	result.IsError = true
+	return result, out, nil
+}
+
 func normalizeDelivery(value string) (string, string) {
 	switch strings.TrimSpace(value) {
 	case "", deliveryLocalPath:
@@ -385,14 +398,14 @@ func handleDownloadRandom(ctx context.Context, app *runtime.App, in downloadRand
 		ids = append(ids, illust.ID)
 	}
 	batch, err := downloadArtworks(ctx, app, ids, client, pages, quality, ugoiraFormat)
-	if err != nil {
-		return emptyDownloadError(ctx, err, delivery, "Download failed: "+err.Error())
-	}
 	report := downloader.DownloadReport{
 		Items:     batch.Items,
 		Failures:  batch.Failures,
 		Warnings:  batch.Warnings,
 		Committed: len(batch.Items) > 0,
+	}
+	if err != nil {
+		return downloadOperationError(ctx, delivery, report, err)
 	}
 	out, err := buildDownloadReportOut(delivery, report)
 	if err != nil {
