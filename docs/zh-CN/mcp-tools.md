@@ -110,8 +110,8 @@ application outcome 的 `filter` 会报告 `min`、`max`、`membership`、`strat
 当前 MCP handler 没有把并发、filter、archive、directory-template、metadata sidecar、重试次数或重试延迟
 映射到 `DownloadRequest`，因此 download schema 不发布这些字段。下载使用已配置的 application 路径/模板，
 选项错误会显露，不会静默忽略输入。Ugoira 文件名模板非法或渲染为空时回退到默认文件名，并写入
-`warnings`，不会把成功项变成失败。部分报告在其他作品或 operation 失败时仍保留已完成的 items/files；只有 failure
-会设置 `isError=true`。
+`warnings`，不会把成功项变成失败。部分报告在其他作品或 operation 失败时仍保留已完成的 items/files；保留的 failure 或 operation error
+会设置 `isError=true`，单独的 warning 不会。
 
 用户和公开收藏 URL 按来源顺序展开认证态视觉作品，不包含小说；插画系列 URL 不是下载来源。URL 在本地解析，不抓 HTML
 或跟随重定向；CDN source 没有作品 metadata，不会被当作作品详情请求。

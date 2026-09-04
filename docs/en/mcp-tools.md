@@ -147,7 +147,7 @@ the current MCP handler does not map them to `DownloadRequest`. Downloads use
 the configured application path/template and surface option errors rather than
 silently ignoring input. An invalid or empty-rendered ugoira filename template falls back to the default
 filename and is recorded in `warnings` without changing a successful item into a failure. Partial reports retain
-completed items and files when another item or the operation fails; only failures set `isError=true`.
+completed items and files when another item or the operation fails; a retained failure or operation error sets `isError=true`, while a warning alone does not.
 
 User and public-bookmark URLs expand authenticated visual works in source order
 and do not include novels; artwork-series URLs are not download sources. URL parsing is local and does
