@@ -1,6 +1,7 @@
 package download_test
 
 import (
+	"bytes"
 	"errors"
 	"testing"
 
@@ -10,6 +11,20 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
+
+func TestReportWarningsWritesToErrorOutput(t *testing.T) {
+	var errOut bytes.Buffer
+	report := downloader.DownloadReport{
+		Warnings: []downloader.DownloadWarning{{
+			IllustID: 42,
+			Type:     "ugoira",
+			Message:  "ugoira filename template failed; using default filename",
+		}},
+	}
+
+	require.NoError(t, download.ReportWarnings(&errOut, report))
+	assert.Equal(t, "warning: artwork 42 (ugoira): ugoira filename template failed; using default filename\n", errOut.String())
+}
 
 func TestReportErrorRetainsTypedRateLimitCause(t *testing.T) {
 	cause := sdk.NewError("pixiv", "download", sdk.RateLimited, sdk.WithRetry(sdk.RetryAdvice{Safe: true, HasAfter: true}))

@@ -6,7 +6,9 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"net/url"
 	"os"
+	"path"
 	"path/filepath"
 	"reflect"
 	"slices"
@@ -32,6 +34,11 @@ type DownloadClient interface {
 	Artwork(context.Context, pixiv.ArtworkRequest) (pixiv.Artwork, error)
 	UgoiraMetadata(context.Context, pixiv.UgoiraMetadataRequest) (pixiv.UgoiraMetadata, error)
 	SaveResource(context.Context, sdk.ResourceRef, sdk.SaveOptions) (sdk.SavedResource, error)
+}
+
+// DirectResourceClient 是直链 source 使用的窄端口；作品元数据下载仍只依赖 DownloadClient。
+type DirectResourceClient interface {
+	SaveResourceURL(context.Context, string, sdk.SaveOptions) (sdk.SavedResource, error)
 }
 
 // DownloadTargetClient 在下载资源能力之外提供作者作品列表，用于把用户 URL 展开为视觉作品。
@@ -133,6 +140,9 @@ func ValidateUgoiraFormat(format UgoiraFormat) error {
 	}
 }
 
+// DownloadedResourceType 标记没有 artwork 元数据的直接资源产物。
+const DownloadedResourceType = "resource"
+
 type DownloadedArtwork struct {
 	IllustID int64
 	Title    string
@@ -157,6 +167,22 @@ type DownloadFailure struct {
 	Cause error
 }
 
+// DownloadWarning 是成功下载结果中需要调用方关注、但不阻止产物发布的提示。
+// Message 仅承接安全的本地分类文本；输出 adapter 可以据此展示 warning。
+type DownloadWarning struct {
+	IllustID int64
+	Type     string
+	Message  string
+}
+
+// DownloadBatchResult 同时保留成功产物、单项失败和非阻断提示。Failures 中的 Cause
+// 保留 typed SDK error；批量级不可继续错误仍通过 Download 的 error 返回。
+type DownloadBatchResult struct {
+	Items    []DownloadedArtwork
+	Failures []DownloadFailure
+	Warnings []DownloadWarning
+}
+
 // 拒绝的 source 可能是用户误传的签名直链；失败记录只保留稳定占位符，避免
 // CLI/MCP 把原始 locator 回显到 stdout、JSON 或 structured result。
 const redactedDownloadSource = "[redacted source]"
@@ -165,12 +191,13 @@ const redactedDownloadSource = "[redacted source]"
 type DownloadReport struct {
 	Items     []DownloadedArtwork
 	Failures  []DownloadFailure
+	Warnings  []DownloadWarning
 	Committed bool
 }
 
 // DownloadManager 接收完整 DownloadRequest，避免 CLI/MCP 与实现各自解析 pages/quality。
 type DownloadManager interface {
-	Download(context.Context, DownloadRequest) ([]DownloadedArtwork, error)
+	Download(context.Context, DownloadRequest) (DownloadBatchResult, error)
 }
 
 type DownloadManagerFactory func(client DownloadClient, downloadPath, filenameTemplate string) (DownloadManager, error)
@@ -238,6 +265,7 @@ func (s DownloadService) DownloadSources(ctx context.Context, client DownloadTar
 		artworkIDs = append(artworkIDs, id)
 	}
 	var directRefs []sdk.ResourceRef
+	var directURLs []string
 	for _, source := range sources {
 		if err := ctx.Err(); err != nil {
 			return report, err
@@ -266,6 +294,10 @@ func (s DownloadService) DownloadSources(ctx context.Context, client DownloadTar
 			appendArtwork(id)
 			continue
 		}
+		if isDirectResourceURL(source) {
+			directURLs = append(directURLs, strings.TrimSpace(source))
+			continue
+		}
 		ref, refErr := sdk.ParseResourceRef(source)
 		if refErr != nil {
 			report.Failures = append(report.Failures, DownloadFailure{
@@ -281,16 +313,19 @@ func (s DownloadService) DownloadSources(ctx context.Context, client DownloadTar
 			return report, err
 		}
 		downloadRequest.IllustIDs = artworkIDs
-		items, err := manager.Download(ctx, downloadRequest)
+		batch, err := manager.Download(ctx, downloadRequest)
+		report.Items = append(report.Items, batch.Items...)
+		report.Failures = append(report.Failures, batch.Failures...)
+		report.Warnings = append(report.Warnings, batch.Warnings...)
+		report.Committed = report.Committed || len(batch.Items) > 0
 		if err != nil {
-			if ctx.Err() != nil {
-				return report, ctx.Err()
+			if ctxErr := ctx.Err(); ctxErr != nil {
+				return report, ctxErr
 			}
-			report.Failures = append(report.Failures, DownloadFailure{Message: err.Error(), Cause: err})
-			return report, nil
+			// batch 中的单项业务失败已经由 Failures 表达；返回值仅保留
+			// 无法继续当前 operation 的错误，不再把它伪装成单个失败项。
+			return report, err
 		}
-		report.Items = append(report.Items, items...)
-		report.Committed = report.Committed || len(items) > 0
 	}
 	for _, ref := range directRefs {
 		if err := ctx.Err(); err != nil {
@@ -302,20 +337,63 @@ func (s DownloadService) DownloadSources(ctx context.Context, client DownloadTar
 			continue
 		}
 		if _, err := client.SaveResource(ctx, ref, sdk.SaveOptions{Path: path}); err != nil {
+			if ctxErr := ctx.Err(); ctxErr != nil {
+				return report, ctxErr
+			}
 			report.Failures = append(report.Failures, DownloadFailure{URL: ref.String(), Message: err.Error(), Cause: err})
 			continue
 		}
-		report.Items = append(report.Items, DownloadedArtwork{Files: []DownloadedFile{{Path: path, Page: 1}}})
+		report.Items = append(report.Items, DownloadedArtwork{
+			Type:  DownloadedResourceType,
+			Files: []DownloadedFile{{Path: path, Page: 1}},
+		})
 		report.Committed = true
+	}
+	if len(directURLs) > 0 {
+		directClient, supportsDirectURLs := client.(DirectResourceClient)
+		for _, rawURL := range directURLs {
+			if err := ctx.Err(); err != nil {
+				return report, err
+			}
+			path, err := directResourcePathFromURL(request.DownloadPath, rawURL)
+			if err != nil {
+				report.Failures = append(report.Failures, DownloadFailure{
+					URL: redactedDownloadSource, Type: DownloadedResourceType, Message: err.Error(), Cause: err,
+				})
+				continue
+			}
+			if !supportsDirectURLs {
+				err := errors.New("download client does not support direct resource URLs")
+				report.Failures = append(report.Failures, DownloadFailure{
+					URL: redactedDownloadSource, Type: DownloadedResourceType, Message: err.Error(), Cause: err,
+				})
+				continue
+			}
+			if _, err := directClient.SaveResourceURL(ctx, rawURL, sdk.SaveOptions{Path: path}); err != nil {
+				if ctxErr := ctx.Err(); ctxErr != nil {
+					return report, ctxErr
+				}
+				safeErr := redactDirectResourceError(rawURL, err)
+				report.Failures = append(report.Failures, DownloadFailure{
+					URL: redactedDownloadSource, Type: DownloadedResourceType, Message: safeErr.Error(), Cause: safeErr,
+				})
+				continue
+			}
+			report.Items = append(report.Items, DownloadedArtwork{
+				Type:  DownloadedResourceType,
+				Files: []DownloadedFile{{Path: path, Page: 1}},
+			})
+			report.Committed = true
+		}
 	}
 	return report, nil
 }
 
 // Download 把 operation snapshot 与本次运行配置交给 composition root 注入的下载器。
-func (s DownloadService) Download(ctx context.Context, client DownloadClient, request DownloadRequest) ([]DownloadedArtwork, error) {
+func (s DownloadService) Download(ctx context.Context, client DownloadClient, request DownloadRequest) (DownloadBatchResult, error) {
 	manager, request, err := s.newManager(client, request)
 	if err != nil {
-		return nil, err
+		return DownloadBatchResult{}, err
 	}
 	return manager.Download(ctx, request)
 }
@@ -407,6 +485,103 @@ func directResourcePath(downloadPath string, ref sdk.ResourceRef) (string, error
 	return filepath.Join(downloadPath, "resource-"+encoded), nil
 }
 
+func isDirectResourceURL(source string) bool {
+	trimmed := strings.TrimSpace(source)
+	lower := strings.ToLower(trimmed)
+	return strings.HasPrefix(lower, "http://") || strings.HasPrefix(lower, "https://")
+}
+
+func directResourcePathFromURL(downloadPath, rawURL string) (string, error) {
+	if strings.TrimSpace(downloadPath) == "" {
+		return "", errors.New("download path is required for direct resource sources")
+	}
+	name, err := directResourceBasename(rawURL)
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(downloadPath, name), nil
+}
+
+func directResourceBasename(rawURL string) (string, error) {
+	parsed, err := url.Parse(strings.TrimSpace(rawURL))
+	if err != nil {
+		return "", errors.New("direct resource URL is invalid")
+	}
+	escapedPath := parsed.EscapedPath()
+	if escapedPath == "" || escapedPath == "/" || strings.HasSuffix(escapedPath, "/") {
+		return "", errors.New("direct resource URL has no usable basename")
+	}
+	name, err := url.PathUnescape(path.Base(escapedPath))
+	if err != nil || name == "" || name == "." || name == ".." {
+		return "", errors.New("direct resource URL has no usable basename")
+	}
+	name = filename.Sanitize(name)
+	name = strings.Map(func(r rune) rune {
+		if r < 0x20 || r == 0x7f {
+			return '_'
+		}
+		return r
+	}, name)
+	name = strings.TrimRight(name, ". ")
+	if name == "" || name == "." || name == ".." {
+		return "", errors.New("direct resource URL has no usable basename")
+	}
+	return name, nil
+}
+
+func redactDirectResourceError(rawURL string, err error) error {
+	if err == nil {
+		return nil
+	}
+	message := err.Error()
+	redacted := message
+	if rawURL != "" {
+		redacted = strings.ReplaceAll(redacted, rawURL, redactedDownloadSource)
+		if parsed, parseErr := url.Parse(rawURL); parseErr == nil {
+			if parsed.RawQuery != "" {
+				redacted = strings.ReplaceAll(redacted, parsed.RawQuery, "[redacted]")
+			}
+			for key, values := range parsed.Query() {
+				redacted = redactDirectResourceQueryParameter(redacted, key)
+				for _, value := range values {
+					if value != "" {
+						redacted = strings.ReplaceAll(redacted, value, "[redacted]")
+					}
+				}
+			}
+		}
+	}
+	if redacted == message {
+		return err
+	}
+	return errors.New(redacted)
+}
+
+func redactDirectResourceQueryParameter(message, key string) string {
+	if key == "" {
+		return message
+	}
+	marker := key + "="
+	searchFrom := 0
+	for searchFrom < len(message) {
+		relativeIndex := strings.Index(message[searchFrom:], marker)
+		if relativeIndex < 0 {
+			return message
+		}
+		index := searchFrom + relativeIndex
+		valueStart := index + len(marker)
+		valueEnd := strings.IndexAny(message[valueStart:], "& \t\r\n\"'<>")
+		if valueEnd < 0 {
+			valueEnd = len(message)
+		} else {
+			valueEnd += valueStart
+		}
+		message = message[:valueStart] + "[redacted]" + message[valueEnd:]
+		searchFrom = valueStart + len("[redacted]")
+	}
+	return message
+}
+
 func referenceURL(reference pixiv.Reference) string {
 	raw, err := reference.CanonicalURL()
 	if err != nil {
@@ -491,79 +666,98 @@ func (m *Manager) FilenameTemplate() string {
 	return m.filenameTemplate
 }
 
-func (m *Manager) Download(ctx context.Context, request DownloadRequest) ([]DownloadedArtwork, error) {
+func (m *Manager) Download(ctx context.Context, request DownloadRequest) (DownloadBatchResult, error) {
 	unique := deduplicatePositive(request.IllustIDs)
 	quality := request.Quality
 	if quality == "" {
 		quality = DownloadQualityOriginal
 	}
 	if err := ValidateDownloadQuality(quality); err != nil {
-		return nil, err
+		return DownloadBatchResult{}, err
 	}
 	ugoiraFormat := request.UgoiraFormat
 	if ugoiraFormat == "" {
 		ugoiraFormat = UgoiraFormatGIF
 	}
 	if err := ValidateUgoiraFormat(ugoiraFormat); err != nil {
-		return nil, err
+		return DownloadBatchResult{}, err
 	}
 	directoryTemplate := strings.TrimSpace(request.DirectoryTemplate)
 	if directoryTemplate == "" {
 		directoryTemplate = strings.TrimSpace(m.DirectoryTemplate())
 	}
 	if err := filename.ValidateDirectoryTemplate(directoryTemplate); err != nil {
-		return nil, err
+		return DownloadBatchResult{}, err
+	}
+	batch := DownloadBatchResult{
+		Items:    []DownloadedArtwork{},
+		Failures: []DownloadFailure{},
+		Warnings: []DownloadWarning{},
 	}
 	results := make([]struct {
-		artwork DownloadedArtwork
-		err     error
+		artwork  DownloadedArtwork
+		warnings []DownloadWarning
+		err      error
+		done     bool
 	}, len(unique))
-	if err := parallel.ForEach(ctx, len(unique), func(ctx context.Context, index int) {
-		results[index].artwork, results[index].err = m.downloadArtwork(ctx, unique[index], request.Pages, quality, ugoiraFormat, directoryTemplate)
-	}); err != nil {
-		return nil, err
-	}
-	// 部分成功：每个 worker 已原子发布它写出的文件。返回已发布作品使报告与
-	// 账号池重放边界反映真实磁盘状态；只有 context 错误才整体中止。否则逐作品
-	// 失败降级为返回的失败集合，调用方据此决定是否报错。
-	var published []DownloadedArtwork
-	var failures []DownloadFailure
+	parallelErr := parallel.ForEach(ctx, len(unique), func(ctx context.Context, index int) {
+		results[index].artwork, results[index].warnings, results[index].err = m.downloadArtwork(ctx, unique[index], request.Pages, quality, ugoiraFormat, directoryTemplate)
+		results[index].done = true
+	})
+	var workerContextErr error
 	for index, result := range results {
-		if result.err == nil {
-			published = append(published, result.artwork)
+		if !result.done {
 			continue
 		}
-		if ctx.Err() != nil {
-			return published, result.err
+		batch.Warnings = append(batch.Warnings, result.warnings...)
+		if result.err == nil {
+			batch.Items = append(batch.Items, result.artwork)
+			continue
 		}
-		failures = append(failures, DownloadFailure{
+		// 作品内已有文件时，保留 partial item；失败项仍单独进入 Failures，
+		// 让批量报告与磁盘上已经发布的文件保持一致。
+		if len(result.artwork.Files) > 0 {
+			batch.Items = append(batch.Items, result.artwork)
+		}
+		if errors.Is(result.err, context.Canceled) || errors.Is(result.err, context.DeadlineExceeded) {
+			if workerContextErr == nil {
+				workerContextErr = result.err
+			}
+			continue
+		}
+		batch.Failures = append(batch.Failures, DownloadFailure{
 			IllustID: unique[index],
 			Message:  result.err.Error(),
 			Cause:    result.err,
 		})
 	}
-	if len(failures) > 0 && len(published) == 0 {
-		// 没有任何作品发布时保留单一错误语义，便于调用方直接判断。
-		return nil, failures[0].Cause
+	if parallelErr != nil {
+		return batch, parallelErr
 	}
-	return published, nil
+	if ctxErr := ctx.Err(); ctxErr != nil {
+		return batch, ctxErr
+	}
+	if workerContextErr != nil {
+		return batch, workerContextErr
+	}
+	return batch, nil
 }
 
-func (m *Manager) downloadArtwork(ctx context.Context, id int64, pages []int, quality DownloadQuality, ugoiraFormat UgoiraFormat, directoryTemplate string) (out DownloadedArtwork, err error) {
+func (m *Manager) downloadArtwork(ctx context.Context, id int64, pages []int, quality DownloadQuality, ugoiraFormat UgoiraFormat, directoryTemplate string) (out DownloadedArtwork, warnings []DownloadWarning, err error) {
 	artwork, err := m.client.Artwork(ctx, pixiv.ArtworkRequest{ArtworkID: id})
 	if err != nil {
-		return DownloadedArtwork{}, err
+		return DownloadedArtwork{}, nil, err
 	}
 	base := m.DownloadPath()
 	base, err = filepath.Abs(base)
 	if err != nil {
-		return DownloadedArtwork{}, err
+		return DownloadedArtwork{}, nil, err
 	}
 	data := filenameData(artwork)
 	if directoryTemplate != "" {
 		relative, err := filename.BuildRelativeDirectory(directoryTemplate, data, 0)
 		if err != nil {
-			return DownloadedArtwork{}, err
+			return DownloadedArtwork{}, nil, err
 		}
 		if relative != "" {
 			base = filepath.Join(base, filepath.FromSlash(relative))
@@ -574,7 +768,7 @@ func (m *Manager) downloadArtwork(ctx context.Context, id int64, pages []int, qu
 		base = filepath.Join(base, filename.Sanitize(fmt.Sprintf("%d - %s", artwork.ID, text.DefaultString(artwork.Title, "Untitled"))))
 	}
 	if err := os.MkdirAll(base, 0o755); err != nil {
-		return DownloadedArtwork{}, err
+		return DownloadedArtwork{}, nil, err
 	}
 
 	artworkOut := DownloadedArtwork{
@@ -587,59 +781,65 @@ func (m *Manager) downloadArtwork(ctx context.Context, id int64, pages []int, qu
 	if kind == string(pixiv.ArtworkKindUgoira) {
 		// Ugoira 只支持原始 GIF/APNG 流程；派生质量或页选择显式 unsupported。
 		if quality != DownloadQualityOriginal {
-			return DownloadedArtwork{}, fmt.Errorf("ugoira quality %q is unsupported; only original is supported", quality)
+			return DownloadedArtwork{}, nil, fmt.Errorf("ugoira quality %q is unsupported; only original is supported", quality)
 		}
 		if len(pages) > 0 {
-			return DownloadedArtwork{}, fmt.Errorf("ugoira page selection is unsupported")
+			return DownloadedArtwork{}, nil, fmt.Errorf("ugoira page selection is unsupported")
 		}
-		path, err := m.downloadUgoira(ctx, artwork, base, ugoiraFormat)
+		path, warning, err := m.downloadUgoira(ctx, artwork, base, ugoiraFormat)
+		if warning != nil {
+			warnings = append(warnings, *warning)
+		}
 		if err != nil {
-			return DownloadedArtwork{}, err
+			return artworkOut, warnings, err
 		}
 		artworkOut.Files = append(artworkOut.Files, DownloadedFile{Path: path, Page: 1})
-		return artworkOut, nil
+		return artworkOut, warnings, nil
 	}
 
 	selected, err := selectStaticPages(artwork, pages)
 	if err != nil {
-		return DownloadedArtwork{}, err
+		return DownloadedArtwork{}, nil, err
 	}
 	if err := filename.ValidateTemplate(m.filenameTemplate); err != nil {
-		return DownloadedArtwork{}, err
+		return DownloadedArtwork{}, nil, err
 	}
 	for _, item := range selected {
 		rawURL := item.image.Image.Resource.URL
 		if rawURL == "" {
-			return DownloadedArtwork{}, fmt.Errorf("illust %d page %d has no image URL", artwork.ID, item.page1)
+			return artworkOut, nil, fmt.Errorf("illust %d page %d has no image URL", artwork.ID, item.page1)
 		}
 		// GenerateChecked 在模板使用 {date} 但 CreateDate 缺失时返回错误，
 		// 这样在网络请求前就把未知占位符或不匹配花括号暴露为失败，而不是
 		// 写出空文件名并相互覆盖。
 		basename, err := filename.GenerateChecked(data, item.page1-1, m.filenameTemplate)
 		if err != nil {
-			return DownloadedArtwork{}, err
+			return artworkOut, nil, err
 		}
 		if basename == "" {
-			return DownloadedArtwork{}, fmt.Errorf("illust %d page %d produced an empty filename", artwork.ID, item.page1)
+			return artworkOut, nil, fmt.Errorf("illust %d page %d produced an empty filename", artwork.ID, item.page1)
 		}
 		ref, err := resourceForQuality(item.image.Image, quality)
 		if err != nil {
-			return DownloadedArtwork{}, err
+			return artworkOut, nil, err
 		}
 		path := filepath.Join(base, basename+downloadExtension(rawURL))
 		saved, err := m.saveResource(ctx, ref, path)
 		if err != nil {
-			return DownloadedArtwork{}, err
+			return artworkOut, nil, err
 		}
-		if quality == DownloadQualityThumb || quality == DownloadQualityMini {
-			path, err = publishDetectedImageExtension(path, saved.ContentType)
-			if err != nil {
-				return DownloadedArtwork{}, err
+		// 所有静态 quality 都基于本次响应的实际类型发布最终扩展名，
+		// 不能再让 regular/small/original 继续沿用 original URL 的后缀。
+		path, err = publishDetectedImageExtension(path, saved.ContentType)
+		if err != nil {
+			if cleanupErr := os.Remove(saved.Path); cleanupErr != nil && !errors.Is(cleanupErr, os.ErrNotExist) {
+				return artworkOut, nil, fmt.Errorf("%w; remove invalid downloaded file: %v", err, cleanupErr)
 			}
+			return artworkOut, nil, err
 		}
 		artworkOut.Files = append(artworkOut.Files, DownloadedFile{Path: path, Page: item.page1})
 	}
-	return artworkOut, nil
+	return artworkOut, nil, nil
 }
 
 // resourceForQuality 把公开 DownloadQuality 映射到 SDK 的 artwork variant。
@@ -708,32 +908,55 @@ func selectStaticPages(artwork pixiv.Artwork, pages []int) ([]staticPage, error)
 	return selected, nil
 }
 
-func (m *Manager) downloadUgoira(ctx context.Context, artwork pixiv.Artwork, base string, format UgoiraFormat) (string, error) {
+func (m *Manager) downloadUgoira(ctx context.Context, artwork pixiv.Artwork, base string, format UgoiraFormat) (string, *DownloadWarning, error) {
+	data := filenameData(artwork)
+	basename, generationErr := filename.GenerateChecked(data, 0, m.filenameTemplate)
+	var warning *DownloadWarning
+	if generationErr != nil || basename == "" {
+		fallback, fallbackErr := filename.GenerateChecked(data, 0, "")
+		if fallbackErr != nil {
+			return "", nil, fmt.Errorf("ugoira filename fallback failed: %w", fallbackErr)
+		}
+		if fallback == "" {
+			return "", nil, errors.New("ugoira filename fallback produced an empty name")
+		}
+		message := "ugoira filename template failed; using default filename"
+		if generationErr == nil {
+			message = "ugoira filename template produced an empty name; using default filename"
+		}
+		warning = &DownloadWarning{
+			IllustID: artwork.ID,
+			Type:     string(pixiv.ArtworkKindUgoira),
+			Message:  message,
+		}
+		basename = fallback
+	}
+
 	meta, err := m.client.UgoiraMetadata(ctx, pixiv.UgoiraMetadataRequest{ArtworkID: artwork.ID})
 	if err != nil {
-		return "", err
+		return "", warning, err
 	}
 	archive := selectUgoiraArchive(meta)
 	if archive == nil || archive.Resource.URL == "" {
-		return "", fmt.Errorf("ugoira %d has no downloadable archive", artwork.ID)
+		return "", warning, fmt.Errorf("ugoira %d has no downloadable archive", artwork.ID)
 	}
 	zipFile, err := os.CreateTemp(base, "ugoira-*.zip")
 	if err != nil {
-		return "", err
+		return "", warning, err
 	}
 	zipPath := zipFile.Name()
 	if err := zipFile.Close(); err != nil {
-		return "", err
+		return "", warning, err
 	}
 	defer os.Remove(zipPath)
 	if _, err := m.saveResource(ctx, archive.Resource.Ref, zipPath); err != nil {
-		return "", err
+		return "", warning, err
 	}
-	outPath := filepath.Join(base, filename.Generate(filenameData(artwork), 0, m.filenameTemplate)+"."+string(format))
+	outPath := filepath.Join(base, basename+"."+string(format))
 	if err := m.convertUgoira(ctx, zipPath, meta.Frames, base, outPath, sharedugoira.Format(format)); err != nil {
-		return "", err
+		return "", warning, err
 	}
-	return outPath, nil
+	return outPath, warning, nil
 }
 
 // selectUgoiraArchive 优先 original，缺失时退回 medium。
@@ -808,26 +1031,28 @@ func downloadExtension(rawURL string) string {
 	return strings.TrimRight(extension, ". ")
 }
 
-// publishDetectedImageExtension 修正 Pixiv 缩略图 URL 后缀与实际实体格式不一致的情况。
+// publishDetectedImageExtension 统一修正静态质量 URL 后缀与实际实体格式不一致的情况。
+// 响应 MIME 优先，文件签名次之，只有上游没有返回 MIME 时才使用 URL 后缀兜底。
 // hard link 发布不会覆盖同名目标；删除旧路径失败时撤销新 link，保留原文件并暴露错误。
 func publishDetectedImageExtension(path, contentType string) (string, error) {
-	extension := ""
-	mediaType := strings.TrimSpace(strings.SplitN(contentType, ";", 2)[0])
-	if mediaType == "" {
-		mediaType = MimeTypeForFile(path)
+	reportedType := normalizeMediaType(contentType)
+	mediaType := reportedType
+	extension, ok := imageExtensionForMediaType(mediaType)
+	if !ok {
+		mediaType = detectImageMimeType(path)
+		extension, ok = imageExtensionForMediaType(mediaType)
 	}
-	switch mediaType {
-	case "image/jpeg":
-		extension = ".jpg"
-	case "image/png":
-		extension = ".png"
-	case "image/gif":
-		extension = ".gif"
-	case "image/webp":
-		extension = ".webp"
-	default:
-		return path, nil
+	if !ok && reportedType == "" {
+		mediaType = MimeTypeForPath(path)
+		extension, ok = imageExtensionForMediaType(mediaType)
 	}
+	if !ok {
+		if reportedType == "" {
+			reportedType = mediaType
+		}
+		return path, fmt.Errorf("unsupported image content type %q", reportedType)
+	}
+
 	current := filepath.Ext(path)
 	if strings.EqualFold(current, extension) || (extension == ".jpg" && strings.EqualFold(current, ".jpeg")) {
 		return path, nil

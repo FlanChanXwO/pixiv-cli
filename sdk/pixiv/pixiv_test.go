@@ -1165,6 +1165,30 @@ func TestArtworkBookmarkPreservesBookmarkedAndAbsentStates(t *testing.T) {
 	}
 }
 
+func TestArtworkPagesPublicMappingDerivesPageIndexesFromOrder(t *testing.T) {
+	rt := roundTripFunc(func(*http.Request) (*http.Response, error) {
+		return jsonResponse(`{"illust":{"id":42,"type":"manga","page_count":2,"create_date":"2026-01-01T00:00:00Z","image_urls":{"original":"https://i.pximg.net/img/42_p0.png"},"meta_pages":[{"image_urls":{"original":"https://i.pximg.net/img/42_p0.png"}},{"image_urls":{"original":"https://i.pximg.net/img/42_p1.png"}}],"user":{"id":7,"name":"artist"}}}`), nil
+	})
+	client, err := NewWith("token", Options{HTTPClient: &http.Client{Transport: rt}})
+	if err != nil {
+		t.Fatalf("NewWith: %v", err)
+	}
+
+	pages, err := client.ArtworkPages(context.Background(), ArtworkPagesRequest{ArtworkID: 42})
+	if err != nil {
+		t.Fatalf("ArtworkPages: %v", err)
+	}
+	if len(pages) != 2 {
+		t.Fatalf("len(pages) = %d, want 2", len(pages))
+	}
+	if pages[0].PageIndex != 0 || pages[1].PageIndex != 1 {
+		t.Fatalf("page indexes = %d, %d; want 0, 1", pages[0].PageIndex, pages[1].PageIndex)
+	}
+	if pages[0].Image.Resource.Ref == pages[1].Image.Resource.Ref {
+		t.Fatalf("page resource refs collide: %q", pages[0].Image.Resource.Ref)
+	}
+}
+
 func TestResourceRefDoesNotExposeResolvedURL(t *testing.T) {
 	const rawURL = "https://i.pximg.net/img/example.png?signature=sentinel"
 	rt := roundTripFunc(func(*http.Request) (*http.Response, error) {

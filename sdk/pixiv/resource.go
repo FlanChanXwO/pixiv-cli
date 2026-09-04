@@ -196,7 +196,46 @@ func (c *Client) SaveResource(ctx context.Context, ref sdk.ResourceRef, options 
 	}
 	size, err := atomicfile.Write(ctx, options.Path, &progressReader{src: response.Body, total: response.ContentLength(), progress: options.Progress})
 	if err != nil {
-		return sdk.SavedResource{}, newError("SaveResource", sdk.LocalStateError, "cannot write resource")
+		return sdk.SavedResource{}, classifyResourceWriteError("SaveResource", err)
+	}
+	return sdk.SavedResource{Path: options.Path, Size: size, ContentType: response.ContentType()}, nil
+}
+
+// SaveResourceURL 将经过资源策略校验的 Pixiv CDN URL 保存到 Path。它复用
+// ResourceClient 的 Referer、重定向校验和禁用 cookie 行为，并通过原子目标
+// 写入，避免失败传输留下最终文件。
+func (c *Client) SaveResourceURL(ctx context.Context, rawURL string, options sdk.SaveOptions) (sdk.SavedResource, error) {
+	const operation = "SaveResourceURL"
+	if strings.TrimSpace(options.Path) == "" {
+		return sdk.SavedResource{}, newError(operation, sdk.InvalidArgument, "destination path is required")
+	}
+	if err := c.validateResourceURL(rawURL); err != nil {
+		return sdk.SavedResource{}, newError(operation, sdk.ResourceForbidden, "resource URL is not allowed")
+	}
+
+	stream, err := c.resClient.Open(ctx, resource.OpenRequest{
+		URL:            rawURL,
+		Method:         http.MethodGet,
+		Header:         http.Header{"Referer": {protocol.AppReferer}},
+		Validate:       c.validateResourceURL,
+		DisableCookies: true,
+	})
+	if err != nil {
+		return sdk.SavedResource{}, classifyAppError(err, operation)
+	}
+	response := sdk.NewResourceResponse(stream.StatusCode, stream.Header, stream.Body)
+	defer response.Body.Close()
+	if response.StatusCode < 200 || response.StatusCode >= 300 {
+		return sdk.SavedResource{}, newError(operation, sdk.UpstreamError, "resource returned a non-success status")
+	}
+
+	size, err := atomicfile.Write(ctx, options.Path, &progressReader{
+		src:      response.Body,
+		total:    response.ContentLength(),
+		progress: options.Progress,
+	})
+	if err != nil {
+		return sdk.SavedResource{}, classifyResourceWriteError(operation, err)
 	}
 	return sdk.SavedResource{Path: options.Path, Size: size, ContentType: response.ContentType()}, nil
 }

@@ -21,8 +21,8 @@
 - **组合式视觉作品管道**——视觉列表接入管道时自动输出 canonical NDJSON；用 `--filter` 编写有类型的本地作品筛选，并可直接传给 `download`。
 - **本地账号池**——为读取型任务选择符合条件的本地账号，并在分页和下载准备阶段遵循 Pixiv 的 `Retry-After` 响应。
 - **易用的账号登录流程**——运行 `pixiv auth login` 即可在浏览器完成 OAuth，随后可使用 `auth list`、`auth use` 和 `auth check` 管理和确认本地多账号。
-- **四种 ugoira 输出模式**——可选择 GIF、APNG、无损 ZIP 或解压后的帧。
-- **可靠且可整理的下载**——重验证 `.pixiv-cache` 元数据、续传已验证残片、重试可恢复资源失败，可选归档完整作品、写入 sidecar，并在可知总字节数时显示终端进度。
+- **Ugoira 输出模式**——可选择 GIF 或 APNG；文件名模板非法或渲染为空时使用稳定默认文件名，并以 warnings 保持可观测。
+- **明确的下载结果**——可选择图片质量和闭区间页码，将允许的 Pixiv CDN URL 作为直链来源，并保留已完成文件、warnings 与 failures。
 - **认证 App API 发现能力**——通过 App API 读取 R18 详情、分页、ugoira metadata 和全部 16 种排行榜。
 - **实用搜索筛选**——支持分级、作品类型、AI 模式、横纵比、分辨率和版本内置的绘图工具目录；反向搜图支持从本地文件或 URL 查询 SauceNAO、ascii2d。
 - **直达 Pixiv 引用**——可把受支持作品 URL 直接粘贴给详情或下载；已认证的作者主页/作品页 URL 会展开为该作者的视觉作品。
@@ -204,7 +204,7 @@ pixiv detail https://www.pixiv.net/artworks/123456
 pixiv recommended all --limit 10
 pixiv timeline latest --type illust --limit 20
 pixiv download https://www.pixiv.net/artworks/123456 --pages 1,3-5 --quality regular
-pixiv download 123456 https://i.pximg.net/img-original/example.jpg --concurrency 8
+pixiv download 123456 https://i.pximg.net/img-original/example.jpg
 
 # 批量下载某位创作者的全部视觉作品。
 pixiv download https://www.pixiv.net/users/12345678/artworks
@@ -280,7 +280,7 @@ func main() {
 }
 ```
 
-SDK import path 为 `github.com/FlanChanXwO/pixiv-cli/sdk/pixiv`。`sdk/fanbox` 显式接收 `FANBOXSESSID`，使用 Chrome 146 TLS profile 与内置 Firefox 148 HTTP User-Agent baseline 的 native 路由，以及可选的服务级 proxy、user-agent 和仅 challenge 使用的 FlareSolverr。`Download`/`DownloadAll` 使用有文档依据的新手默认值；`DownloadWith`/`DownloadAllWith` 可控制路径、命名、页码、质量与并发。[SDK 指南](docs/zh-CN/sdk.md)说明模型、cursor、资源、错误和调用方职责。
+SDK import path 为 `github.com/FlanChanXwO/pixiv-cli/sdk/pixiv`。`sdk/fanbox` 显式接收 `FANBOXSESSID`，使用 Chrome 146 TLS profile 与内置 Firefox 148 HTTP User-Agent baseline 的 native 路由，以及可选的服务级 proxy、user-agent 和仅 challenge 使用的 FlareSolverr。公开 SDK 提供 typed Pixiv/FANBOX client 和 opaque resource API，而不是 CLI 批量下载 helper：`SaveResource` 接收 `ResourceRef`；Pixiv 的 `SaveResourceURL` 接收允许的 Pixiv media host 上的 HTTPS URL。两者都使用原子写入，并返回目标路径、字节大小和响应 Content-Type。[SDK 指南](docs/zh-CN/sdk.md)说明模型、cursor、资源、错误和调用方职责。
 
 ## 认证与 token 安全
 

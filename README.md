@@ -21,8 +21,8 @@
 - **Composable visual pipelines** — visual lists automatically emit canonical NDJSON when piped; use `--filter` for typed local artwork rules and pass matching records straight to `download`.
 - **Local account pools** — enable database-backed scheduling for read workloads with `pixiv auth pool status|enable|disable`; selection honors Pixiv `Retry-After` responses without exposing credentials.
 - **Guided account sign-in** — complete browser OAuth with `pixiv auth login`, then use `auth list`, `auth use`, and `auth check` to manage local multi-account access.
-- **Four ugoira output modes** — choose GIF, APNG, lossless ZIP, or extracted frames.
-- **Reliable, organized downloads** — revalidate `.pixiv-cache` metadata, resume verified partials, retry eligible resource failures, optionally archive completed artwork IDs, write sidecars, and show exact terminal progress when available.
+- **Ugoira output modes** — choose GIF or APNG; invalid or empty filename templates use a stable default and remain observable as warnings.
+- **Explicit download reporting** — select image quality and closed page ranges, use allowlisted Pixiv CDN URLs as direct sources, and keep completed files, warnings, and failures observable.
 - **Authenticated App API discovery** — read R18 details, pages, ugoira metadata, and all 16 ranking modes through the App API.
 - **Useful search filters** — rating, content type, AI mode, aspect ratio, resolution, and a versioned drawing-tool catalog; reverse-image search can query SauceNAO or ascii2d from a local file or URL.
 - **Direct Pixiv references** — paste supported artwork URLs into detail or download; authenticated profile and artworks URLs expand to that creator's visual works.
@@ -204,7 +204,7 @@ pixiv detail https://www.pixiv.net/artworks/123456
 pixiv recommended all --limit 10
 pixiv timeline latest --type illust --limit 20
 pixiv download https://www.pixiv.net/artworks/123456 --pages 1,3-5 --quality regular
-pixiv download 123456 https://i.pximg.net/img-original/example.jpg --concurrency 8
+pixiv download 123456 https://i.pximg.net/img-original/example.jpg
 
 # Batch-download every visual work from a creator.
 pixiv download https://www.pixiv.net/users/12345678/artworks
@@ -281,7 +281,7 @@ func main() {
 }
 ```
 
-The import path is `github.com/FlanChanXwO/pixiv-cli/sdk/pixiv`. `sdk/fanbox` accepts a `FANBOXSESSID` explicitly and supports native Chrome 146 TLS routing with the built-in Firefox 148 HTTP User-Agent baseline, with optional service-scoped proxy, user-agent, and challenge-only FlareSolverr options. `Download`/`DownloadAll` use documented beginner defaults; `DownloadWith`/`DownloadAllWith` expose paths, naming, pages, quality, and concurrency. The [SDK guide](docs/en/sdk.md) documents models, cursors, resources, errors, caller responsibilities, and the explicit DTO boundary used by CLI/MCP JSON output; media resources cross those boundaries only as opaque references.
+The import path is `github.com/FlanChanXwO/pixiv-cli/sdk/pixiv`. `sdk/fanbox` accepts a `FANBOXSESSID` explicitly and supports native Chrome 146 TLS routing with the built-in Firefox 148 HTTP User-Agent baseline, with optional service-scoped proxy, user-agent, and challenge-only FlareSolverr options. The public SDK exposes typed Pixiv/FANBOX clients and opaque resource APIs rather than CLI batch-download helpers: `SaveResource` accepts a `ResourceRef`, while Pixiv's `SaveResourceURL` accepts an HTTPS URL from an allowed Pixiv media host. Both save atomically and return the destination path, byte size, and response content type. The [SDK guide](docs/en/sdk.md) documents models, cursors, resources, errors, caller responsibilities, and the explicit DTO boundary used by CLI/MCP JSON output; media resources cross those boundaries only as opaque references.
 
 ## Authentication and token safety
 

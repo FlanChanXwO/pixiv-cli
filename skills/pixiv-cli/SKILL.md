@@ -1,6 +1,6 @@
 ---
 slug: pixiv-cli
-version: 1.0.1
+version: 1.0.2
 displayName: Pixiv CLI
 summary: Safely operate Pixiv with the pixiv-cli binary for discovery, account actions, and downloads.
 license: MIT
@@ -169,6 +169,11 @@ pixiv follow remove USER_ID               # write op
 pixiv download [SRC...] [--pages 1,3-5] [--quality original|regular|small|thumb|mini] [--ugoira-mode gif|apng] [--output DIR] [--on-error skip|fail-fast]
 pixiv update --check --json               # read-only update check
 ```
+
+For `pixiv download`, `--pages` accepts individual 1-based pages and closed ranges only. Successful stdout is
+empty; check the exit status for retained artwork failures. A successful ugoira may emit a non-blocking `warning:`
+on stderr when its filename template falls back. See `references/download.md` for CDN option boundaries and
+reporting details.
 
 Public positional commands can fill one missing value from non-TTY stdin. The
 stream is read as one complete value and only one final LF or CRLF is removed;
