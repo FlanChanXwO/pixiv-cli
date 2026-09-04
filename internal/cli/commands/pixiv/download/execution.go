@@ -194,7 +194,7 @@ func (a controller) runDownload(cmd *cobra.Command, args []string, opts download
 	downloadOne := func(ctx context.Context, id int64) error {
 		return a.deps.Pooled(ctx, clientReq, func(ctx context.Context, client *pixiv.Client) (bool, error) {
 			report, err := services.download.DownloadSources(ctx, client, []string{strconv.FormatInt(id, 10)}, request)
-			return downloadAttemptResult(report, err)
+			return downloadAttemptWithWarnings(a.errOut, report, err)
 		})
 	}
 	if len(args) == 0 {
@@ -204,7 +204,7 @@ func (a controller) runDownload(cmd *cobra.Command, args []string, opts download
 	// 尚无已发布文件时，账号池才可因有效 Retry-After 安全重放这次调用。
 	return a.deps.Pooled(cmd.Context(), clientReq, func(ctx context.Context, client *pixiv.Client) (bool, error) {
 		report, err := services.download.DownloadSources(ctx, client, args, request)
-		return downloadAttemptResult(report, err)
+		return downloadAttemptWithWarnings(a.errOut, report, err)
 	})
 }
 
@@ -216,6 +216,34 @@ func downloadAttemptResult(report downloader.DownloadReport, operationErr error)
 		return committed, operationErr
 	}
 	return committed, ReportError(report)
+}
+
+// downloadAttemptWithWarnings 先保留 operation/business error，再附加 stderr
+// 写入错误，避免 warning 输出故障掩盖真实下载失败。
+func downloadAttemptWithWarnings(w io.Writer, report downloader.DownloadReport, operationErr error) (bool, error) {
+	committed, resultErr := downloadAttemptResult(report, operationErr)
+	if warningErr := ReportWarnings(w, report); warningErr != nil {
+		resultErr = errors.Join(resultErr, warningErr)
+	}
+	return committed, resultErr
+}
+
+// ReportWarnings 把下载过程中的非阻断提示写到 stderr，避免污染 stdout 的
+// JSON/NDJSON 结果；warning 本身只包含 downloader 已分类的安全文本。
+func ReportWarnings(w io.Writer, report downloader.DownloadReport) error {
+	for _, warning := range report.Warnings {
+		label := "download"
+		if warning.IllustID > 0 {
+			label = fmt.Sprintf("artwork %d", warning.IllustID)
+		}
+		if warning.Type != "" {
+			label += " (" + warning.Type + ")"
+		}
+		if _, err := fmt.Fprintf(w, "warning: %s: %s\n", label, warning.Message); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // ReportCommitted 只以已经原子发布的常规文件判断提交边界。资源获取或解析在此

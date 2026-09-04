@@ -484,6 +484,45 @@ func TestDownloadUgoiraReturnsFinalGIFOnly(t *testing.T) {
 	assertFileBody(t, got.Items[0].Files[0].Path, "gif")
 }
 
+func TestDownloadUgoiraFallsBackToDefaultFilenameWithWarning(t *testing.T) {
+	for _, test := range []struct {
+		name     string
+		template string
+	}{
+		{name: "invalid template", template: "{unsupported}"},
+		{name: "empty rendered name", template: "{tags}"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			dir := t.TempDir()
+			zipURL := "https://i.example/ugoira.zip"
+			client := &fakePixivClient{
+				details: map[int64]pixiv.Artwork{
+					9: {
+						ID: 9, Title: "ugo", PageCount: 1, Kind: pixiv.ArtworkKindUgoira,
+						User: pixiv.User{Name: "author"},
+					},
+				},
+				ugoira:    map[int64]pixiv.UgoiraMetadata{9: ugoiraMetadata(zipURL)},
+				downloads: map[string][]byte{zipURL: makeZip(t, "000000.jpg", []byte("frame"))},
+			}
+			m := downloader.NewManager(client, dir, test.template)
+			m.SetUgoiraEncoder(&recordingUgoiraEncoder{output: []byte("gif")})
+
+			batch, err := m.Download(context.Background(), downloader.DownloadRequest{IllustIDs: []int64{9}})
+			require.NoError(t, err)
+			require.Len(t, batch.Items, 1)
+			require.Len(t, batch.Items[0].Files, 1)
+			require.Equal(t, "author - ugo_9.gif", filepath.Base(batch.Items[0].Files[0].Path))
+			require.NotEqual(t, ".gif", filepath.Base(batch.Items[0].Files[0].Path))
+			require.Len(t, batch.Warnings, 1)
+			require.Equal(t, int64(9), batch.Warnings[0].IllustID)
+			require.Equal(t, string(pixiv.ArtworkKindUgoira), batch.Warnings[0].Type)
+			require.Contains(t, strings.ToLower(batch.Warnings[0].Message), "default")
+			assertFileBody(t, batch.Items[0].Files[0].Path, "gif")
+		})
+	}
+}
+
 func TestDownloadUgoiraUsesOriginalArchive(t *testing.T) {
 	dir := t.TempDir()
 	originalURL := "https://i.example/original.zip"

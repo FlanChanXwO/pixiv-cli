@@ -139,6 +139,39 @@ func TestDownloadBatchFailuresPreserveBusinessErrorShape(t *testing.T) {
 	}
 }
 
+func TestDownloadWarningsAreStructuredAndTextVisible(t *testing.T) {
+	const warningMessage = "ugoira filename template failed; using default filename"
+	downloads := &fakeDownloads{result: downloader.DownloadBatchResult{
+		Warnings: []downloader.DownloadWarning{{
+			IllustID: 42,
+			Type:     "ugoira",
+			Message:  warningMessage,
+		}},
+	}}
+	session, closeSession := newSDKDownloadTestSession(t, &fakeSDKClient{}, downloads)
+	defer closeSession()
+
+	result, err := session.CallTool(context.Background(), &mcp.CallToolParams{
+		Name: "download",
+		Arguments: map[string]any{
+			"src": "42",
+		},
+	})
+	if err != nil {
+		t.Fatalf("call tool: %v", err)
+	}
+	if result.IsError {
+		t.Fatalf("warning-only download marked as error: %+v", result)
+	}
+	out := decodeDownloadOut(t, result)
+	if len(out.Warnings) != 1 || out.Warnings[0].IllustID != 42 || out.Warnings[0].Type != "ugoira" || out.Warnings[0].Message != warningMessage {
+		t.Fatalf("warnings=%+v", out.Warnings)
+	}
+	if !strings.Contains(out.Text, warningMessage) {
+		t.Fatalf("text=%q does not contain warning", out.Text)
+	}
+}
+
 func TestDownloadManagerOperationErrorDoesNotBecomeBusinessFailure(t *testing.T) {
 	downloads := &fakeDownloads{err: errors.New("download sentinel")}
 	session, closeSession := newSDKDownloadTestSession(t, &fakeSDKClient{}, downloads)
@@ -409,6 +442,7 @@ type downloadOut struct {
 	Delivery string               `json:"delivery"`
 	Items    []downloadItemOut    `json:"items"`
 	Failures []downloadFailureOut `json:"failures"`
+	Warnings []downloadWarningOut `json:"warnings"`
 	Files    []downloadFileOut    `json:"files"`
 	Text     string               `json:"text"`
 }
@@ -424,6 +458,12 @@ type downloadItemOut struct {
 
 type downloadFailureOut struct {
 	URL      string `json:"url"`
+	IllustID int64  `json:"illust_id"`
+	Type     string `json:"type"`
+	Message  string `json:"message"`
+}
+
+type downloadWarningOut struct {
 	IllustID int64  `json:"illust_id"`
 	Type     string `json:"type"`
 	Message  string `json:"message"`
