@@ -692,12 +692,13 @@ func (m *Manager) Download(ctx context.Context, request DownloadRequest) (Downlo
 		Warnings: []DownloadWarning{},
 	}
 	results := make([]struct {
-		artwork DownloadedArtwork
-		err     error
-		done    bool
+		artwork  DownloadedArtwork
+		warnings []DownloadWarning
+		err      error
+		done     bool
 	}, len(unique))
 	parallelErr := parallel.ForEach(ctx, len(unique), func(ctx context.Context, index int) {
-		results[index].artwork, results[index].err = m.downloadArtwork(ctx, unique[index], request.Pages, quality, ugoiraFormat, directoryTemplate)
+		results[index].artwork, results[index].warnings, results[index].err = m.downloadArtwork(ctx, unique[index], request.Pages, quality, ugoiraFormat, directoryTemplate)
 		results[index].done = true
 	})
 	var workerContextErr error
@@ -705,6 +706,7 @@ func (m *Manager) Download(ctx context.Context, request DownloadRequest) (Downlo
 		if !result.done {
 			continue
 		}
+		batch.Warnings = append(batch.Warnings, result.warnings...)
 		if result.err == nil {
 			batch.Items = append(batch.Items, result.artwork)
 			continue
@@ -738,21 +740,21 @@ func (m *Manager) Download(ctx context.Context, request DownloadRequest) (Downlo
 	return batch, nil
 }
 
-func (m *Manager) downloadArtwork(ctx context.Context, id int64, pages []int, quality DownloadQuality, ugoiraFormat UgoiraFormat, directoryTemplate string) (out DownloadedArtwork, err error) {
+func (m *Manager) downloadArtwork(ctx context.Context, id int64, pages []int, quality DownloadQuality, ugoiraFormat UgoiraFormat, directoryTemplate string) (out DownloadedArtwork, warnings []DownloadWarning, err error) {
 	artwork, err := m.client.Artwork(ctx, pixiv.ArtworkRequest{ArtworkID: id})
 	if err != nil {
-		return DownloadedArtwork{}, err
+		return DownloadedArtwork{}, nil, err
 	}
 	base := m.DownloadPath()
 	base, err = filepath.Abs(base)
 	if err != nil {
-		return DownloadedArtwork{}, err
+		return DownloadedArtwork{}, nil, err
 	}
 	data := filenameData(artwork)
 	if directoryTemplate != "" {
 		relative, err := filename.BuildRelativeDirectory(directoryTemplate, data, 0)
 		if err != nil {
-			return DownloadedArtwork{}, err
+			return DownloadedArtwork{}, nil, err
 		}
 		if relative != "" {
 			base = filepath.Join(base, filepath.FromSlash(relative))
@@ -763,7 +765,7 @@ func (m *Manager) downloadArtwork(ctx context.Context, id int64, pages []int, qu
 		base = filepath.Join(base, filename.Sanitize(fmt.Sprintf("%d - %s", artwork.ID, text.DefaultString(artwork.Title, "Untitled"))))
 	}
 	if err := os.MkdirAll(base, 0o755); err != nil {
-		return DownloadedArtwork{}, err
+		return DownloadedArtwork{}, nil, err
 	}
 
 	artworkOut := DownloadedArtwork{
@@ -776,62 +778,65 @@ func (m *Manager) downloadArtwork(ctx context.Context, id int64, pages []int, qu
 	if kind == string(pixiv.ArtworkKindUgoira) {
 		// Ugoira 只支持原始 GIF/APNG 流程；派生质量或页选择显式 unsupported。
 		if quality != DownloadQualityOriginal {
-			return DownloadedArtwork{}, fmt.Errorf("ugoira quality %q is unsupported; only original is supported", quality)
+			return DownloadedArtwork{}, nil, fmt.Errorf("ugoira quality %q is unsupported; only original is supported", quality)
 		}
 		if len(pages) > 0 {
-			return DownloadedArtwork{}, fmt.Errorf("ugoira page selection is unsupported")
+			return DownloadedArtwork{}, nil, fmt.Errorf("ugoira page selection is unsupported")
 		}
-		path, err := m.downloadUgoira(ctx, artwork, base, ugoiraFormat)
+		path, warning, err := m.downloadUgoira(ctx, artwork, base, ugoiraFormat)
+		if warning != nil {
+			warnings = append(warnings, *warning)
+		}
 		if err != nil {
-			return DownloadedArtwork{}, err
+			return artworkOut, warnings, err
 		}
 		artworkOut.Files = append(artworkOut.Files, DownloadedFile{Path: path, Page: 1})
-		return artworkOut, nil
+		return artworkOut, warnings, nil
 	}
 
 	selected, err := selectStaticPages(artwork, pages)
 	if err != nil {
-		return DownloadedArtwork{}, err
+		return DownloadedArtwork{}, nil, err
 	}
 	if err := filename.ValidateTemplate(m.filenameTemplate); err != nil {
-		return DownloadedArtwork{}, err
+		return DownloadedArtwork{}, nil, err
 	}
 	for _, item := range selected {
 		rawURL := item.image.Image.Resource.URL
 		if rawURL == "" {
-			return artworkOut, fmt.Errorf("illust %d page %d has no image URL", artwork.ID, item.page1)
+			return artworkOut, nil, fmt.Errorf("illust %d page %d has no image URL", artwork.ID, item.page1)
 		}
 		// GenerateChecked 在模板使用 {date} 但 CreateDate 缺失时返回错误，
 		// 这样在网络请求前就把未知占位符或不匹配花括号暴露为失败，而不是
 		// 写出空文件名并相互覆盖。
 		basename, err := filename.GenerateChecked(data, item.page1-1, m.filenameTemplate)
 		if err != nil {
-			return artworkOut, err
+			return artworkOut, nil, err
 		}
 		if basename == "" {
-			return artworkOut, fmt.Errorf("illust %d page %d produced an empty filename", artwork.ID, item.page1)
+			return artworkOut, nil, fmt.Errorf("illust %d page %d produced an empty filename", artwork.ID, item.page1)
 		}
 		ref, err := resourceForQuality(item.image.Image, quality)
 		if err != nil {
-			return artworkOut, err
+			return artworkOut, nil, err
 		}
 		path := filepath.Join(base, basename+downloadExtension(rawURL))
 		saved, err := m.saveResource(ctx, ref, path)
 		if err != nil {
-			return artworkOut, err
+			return artworkOut, nil, err
 		}
 		// 所有静态 quality 都基于本次响应的实际类型发布最终扩展名，
 		// 不能再让 regular/small/original 继续沿用 original URL 的后缀。
 		path, err = publishDetectedImageExtension(path, saved.ContentType)
 		if err != nil {
 			if cleanupErr := os.Remove(saved.Path); cleanupErr != nil && !errors.Is(cleanupErr, os.ErrNotExist) {
-				return artworkOut, fmt.Errorf("%w; remove invalid downloaded file: %v", err, cleanupErr)
+				return artworkOut, nil, fmt.Errorf("%w; remove invalid downloaded file: %v", err, cleanupErr)
 			}
-			return artworkOut, err
+			return artworkOut, nil, err
 		}
 		artworkOut.Files = append(artworkOut.Files, DownloadedFile{Path: path, Page: item.page1})
 	}
-	return artworkOut, nil
+	return artworkOut, nil, nil
 }
 
 // resourceForQuality 把公开 DownloadQuality 映射到 SDK 的 artwork variant。
@@ -900,32 +905,55 @@ func selectStaticPages(artwork pixiv.Artwork, pages []int) ([]staticPage, error)
 	return selected, nil
 }
 
-func (m *Manager) downloadUgoira(ctx context.Context, artwork pixiv.Artwork, base string, format UgoiraFormat) (string, error) {
+func (m *Manager) downloadUgoira(ctx context.Context, artwork pixiv.Artwork, base string, format UgoiraFormat) (string, *DownloadWarning, error) {
+	data := filenameData(artwork)
+	basename, generationErr := filename.GenerateChecked(data, 0, m.filenameTemplate)
+	var warning *DownloadWarning
+	if generationErr != nil || basename == "" {
+		fallback, fallbackErr := filename.GenerateChecked(data, 0, "")
+		if fallbackErr != nil {
+			return "", nil, fmt.Errorf("ugoira filename fallback failed: %w", fallbackErr)
+		}
+		if fallback == "" {
+			return "", nil, errors.New("ugoira filename fallback produced an empty name")
+		}
+		message := "ugoira filename template failed; using default filename"
+		if generationErr == nil {
+			message = "ugoira filename template produced an empty name; using default filename"
+		}
+		warning = &DownloadWarning{
+			IllustID: artwork.ID,
+			Type:     string(pixiv.ArtworkKindUgoira),
+			Message:  message,
+		}
+		basename = fallback
+	}
+
 	meta, err := m.client.UgoiraMetadata(ctx, pixiv.UgoiraMetadataRequest{ArtworkID: artwork.ID})
 	if err != nil {
-		return "", err
+		return "", warning, err
 	}
 	archive := selectUgoiraArchive(meta)
 	if archive == nil || archive.Resource.URL == "" {
-		return "", fmt.Errorf("ugoira %d has no downloadable archive", artwork.ID)
+		return "", warning, fmt.Errorf("ugoira %d has no downloadable archive", artwork.ID)
 	}
 	zipFile, err := os.CreateTemp(base, "ugoira-*.zip")
 	if err != nil {
-		return "", err
+		return "", warning, err
 	}
 	zipPath := zipFile.Name()
 	if err := zipFile.Close(); err != nil {
-		return "", err
+		return "", warning, err
 	}
 	defer os.Remove(zipPath)
 	if _, err := m.saveResource(ctx, archive.Resource.Ref, zipPath); err != nil {
-		return "", err
+		return "", warning, err
 	}
-	outPath := filepath.Join(base, filename.Generate(filenameData(artwork), 0, m.filenameTemplate)+"."+string(format))
+	outPath := filepath.Join(base, basename+"."+string(format))
 	if err := m.convertUgoira(ctx, zipPath, meta.Frames, base, outPath, sharedugoira.Format(format)); err != nil {
-		return "", err
+		return "", warning, err
 	}
-	return outPath, nil
+	return outPath, warning, nil
 }
 
 // selectUgoiraArchive 优先 original，缺失时退回 medium。

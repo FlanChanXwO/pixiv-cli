@@ -43,6 +43,7 @@ type downloadOut struct {
 	Delivery string               `json:"delivery"`
 	Items    []downloadItemOut    `json:"items"`
 	Failures []downloadFailureOut `json:"failures"`
+	Warnings []downloadWarningOut `json:"warnings"`
 	Files    []downloadFileOut    `json:"files"`
 	Text     string               `json:"text"`
 }
@@ -58,6 +59,12 @@ type downloadItemOut struct {
 
 type downloadFailureOut struct {
 	URL      string `json:"url"`
+	IllustID int64  `json:"illust_id"`
+	Type     string `json:"type"`
+	Message  string `json:"message"`
+}
+
+type downloadWarningOut struct {
 	IllustID int64  `json:"illust_id"`
 	Type     string `json:"type"`
 	Message  string `json:"message"`
@@ -245,6 +252,7 @@ func emptyDownloadResult(delivery, text string) (*mcp.CallToolResult, downloadOu
 		Delivery: delivery,
 		Items:    []downloadItemOut{},
 		Failures: []downloadFailureOut{},
+		Warnings: []downloadWarningOut{},
 		Files:    []downloadFileOut{},
 		Text:     text,
 	}
@@ -280,7 +288,7 @@ func normalizeDelivery(value string) (string, string) {
 }
 
 func buildDownloadOut(delivery string, artworks []downloader.DownloadedArtwork) (downloadOut, error) {
-	out := downloadOut{Delivery: delivery, Items: []downloadItemOut{}, Failures: []downloadFailureOut{}, Files: []downloadFileOut{}}
+	out := downloadOut{Delivery: delivery, Items: []downloadItemOut{}, Failures: []downloadFailureOut{}, Warnings: []downloadWarningOut{}, Files: []downloadFileOut{}}
 	lines := []string{fmt.Sprintf("Download completed; delivery: %s.", delivery)}
 	for _, artwork := range artworks {
 		item := downloadItemOut{
@@ -326,6 +334,18 @@ func buildDownloadReportOut(delivery string, report downloader.DownloadReport) (
 	out, err := buildDownloadOut(delivery, report.Items)
 	if err != nil {
 		return downloadOut{}, err
+	}
+	for _, warning := range report.Warnings {
+		out.Warnings = append(out.Warnings, downloadWarningOut{
+			IllustID: warning.IllustID, Type: warning.Type, Message: warning.Message,
+		})
+		if warning.IllustID > 0 {
+			out.Text += fmt.Sprintf("\nWarning artwork %d: %s", warning.IllustID, warning.Message)
+		} else if warning.Type != "" {
+			out.Text += fmt.Sprintf("\nWarning %s: %s", warning.Type, warning.Message)
+		} else {
+			out.Text += "\nWarning: " + warning.Message
+		}
 	}
 	for _, failure := range report.Failures {
 		out.Failures = append(out.Failures, downloadFailureOut{
