@@ -344,6 +344,9 @@ func (s DownloadService) DownloadSources(ctx context.Context, client DownloadTar
 				continue
 			}
 			if _, err := directClient.SaveResourceURL(ctx, rawURL, sdk.SaveOptions{Path: path}); err != nil {
+				if ctxErr := ctx.Err(); ctxErr != nil {
+					return report, ctxErr
+				}
 				safeErr := redactDirectResourceError(rawURL, err)
 				report.Failures = append(report.Failures, DownloadFailure{
 					URL: redactedDownloadSource, Type: DownloadedResourceType, Message: safeErr.Error(), Cause: safeErr,

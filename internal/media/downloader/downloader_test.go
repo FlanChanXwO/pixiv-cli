@@ -845,6 +845,80 @@ func TestDownloadSourcesRejectsDirectURLWithoutUsableBasename(t *testing.T) {
 	require.NotNil(t, report.Failures[0].Cause)
 }
 
+func TestDownloadSourcesPropagatesDirectContextErrors(t *testing.T) {
+	for _, test := range []struct {
+		name    string
+		wantErr error
+	}{
+		{name: "canceled", wantErr: context.Canceled},
+		{name: "deadline exceeded", wantErr: context.DeadlineExceeded},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			ctx := &directResourceErrorContext{
+				Context: context.Background(),
+				wantErr: test.wantErr,
+				done:    make(chan struct{}),
+			}
+			calls := 0
+			client := &downloadSourcesStub{
+				saveResourceURL: func(_ context.Context, _ string, options sdk.SaveOptions) (sdk.SavedResource, error) {
+					calls++
+					if calls == 1 {
+						if err := os.WriteFile(options.Path, []byte("done"), 0o600); err != nil {
+							return sdk.SavedResource{}, err
+						}
+						return sdk.SavedResource{Path: options.Path, Size: 4}, nil
+					}
+					ctx.trigger()
+					return sdk.SavedResource{}, test.wantErr
+				},
+			}
+
+			report, err := (downloader.DownloadService{}).DownloadSources(ctx, client, []string{
+				"https://i.pximg.net/first.jpg",
+				"https://i.pximg.net/second.jpg",
+			}, downloader.DownloadRequest{DownloadPath: t.TempDir()})
+
+			require.ErrorIs(t, err, test.wantErr)
+			require.Equal(t, 2, calls)
+			require.Len(t, report.Items, 1)
+			require.Empty(t, report.Failures)
+			require.True(t, report.Committed)
+		})
+	}
+}
+
+type directResourceErrorContext struct {
+	context.Context
+	wantErr   error
+	done      chan struct{}
+	mu        sync.RWMutex
+	triggered bool
+}
+
+func (c *directResourceErrorContext) Done() <-chan struct{} {
+	return c.done
+}
+
+func (c *directResourceErrorContext) Err() error {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	if c.triggered {
+		return c.wantErr
+	}
+	return c.Context.Err()
+}
+
+func (c *directResourceErrorContext) trigger() {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.triggered {
+		return
+	}
+	c.triggered = true
+	close(c.done)
+}
+
 func TestDownloadServiceStopsImmediatelyWhenContextIsCanceled(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
