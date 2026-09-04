@@ -167,6 +167,22 @@ type DownloadFailure struct {
 	Cause error
 }
 
+// DownloadWarning 是成功下载结果中需要调用方关注、但不阻止产物发布的提示。
+// Message 仅承接安全的本地分类文本；输出 adapter 可以据此展示 warning。
+type DownloadWarning struct {
+	IllustID int64
+	Type     string
+	Message  string
+}
+
+// DownloadBatchResult 同时保留成功产物、单项失败和非阻断提示。Failures 中的 Cause
+// 保留 typed SDK error；批量级不可继续错误仍通过 Download 的 error 返回。
+type DownloadBatchResult struct {
+	Items    []DownloadedArtwork
+	Failures []DownloadFailure
+	Warnings []DownloadWarning
+}
+
 // 拒绝的 source 可能是用户误传的签名直链；失败记录只保留稳定占位符，避免
 // CLI/MCP 把原始 locator 回显到 stdout、JSON 或 structured result。
 const redactedDownloadSource = "[redacted source]"
@@ -175,12 +191,13 @@ const redactedDownloadSource = "[redacted source]"
 type DownloadReport struct {
 	Items     []DownloadedArtwork
 	Failures  []DownloadFailure
+	Warnings  []DownloadWarning
 	Committed bool
 }
 
 // DownloadManager 接收完整 DownloadRequest，避免 CLI/MCP 与实现各自解析 pages/quality。
 type DownloadManager interface {
-	Download(context.Context, DownloadRequest) ([]DownloadedArtwork, error)
+	Download(context.Context, DownloadRequest) (DownloadBatchResult, error)
 }
 
 type DownloadManagerFactory func(client DownloadClient, downloadPath, filenameTemplate string) (DownloadManager, error)
@@ -296,16 +313,19 @@ func (s DownloadService) DownloadSources(ctx context.Context, client DownloadTar
 			return report, err
 		}
 		downloadRequest.IllustIDs = artworkIDs
-		items, err := manager.Download(ctx, downloadRequest)
+		batch, err := manager.Download(ctx, downloadRequest)
+		report.Items = append(report.Items, batch.Items...)
+		report.Failures = append(report.Failures, batch.Failures...)
+		report.Warnings = append(report.Warnings, batch.Warnings...)
+		report.Committed = report.Committed || len(batch.Items) > 0
 		if err != nil {
-			if ctx.Err() != nil {
-				return report, ctx.Err()
+			if ctxErr := ctx.Err(); ctxErr != nil {
+				return report, ctxErr
 			}
-			report.Failures = append(report.Failures, DownloadFailure{Message: err.Error(), Cause: err})
-			return report, nil
+			// batch 中的单项业务失败已经由 Failures 表达；返回值仅保留
+			// 无法继续当前 operation 的错误，不再把它伪装成单个失败项。
+			return report, err
 		}
-		report.Items = append(report.Items, items...)
-		report.Committed = report.Committed || len(items) > 0
 	}
 	for _, ref := range directRefs {
 		if err := ctx.Err(); err != nil {
@@ -317,6 +337,9 @@ func (s DownloadService) DownloadSources(ctx context.Context, client DownloadTar
 			continue
 		}
 		if _, err := client.SaveResource(ctx, ref, sdk.SaveOptions{Path: path}); err != nil {
+			if ctxErr := ctx.Err(); ctxErr != nil {
+				return report, ctxErr
+			}
 			report.Failures = append(report.Failures, DownloadFailure{URL: ref.String(), Message: err.Error(), Cause: err})
 			continue
 		}
@@ -364,10 +387,10 @@ func (s DownloadService) DownloadSources(ctx context.Context, client DownloadTar
 }
 
 // Download 把 operation snapshot 与本次运行配置交给 composition root 注入的下载器。
-func (s DownloadService) Download(ctx context.Context, client DownloadClient, request DownloadRequest) ([]DownloadedArtwork, error) {
+func (s DownloadService) Download(ctx context.Context, client DownloadClient, request DownloadRequest) (DownloadBatchResult, error) {
 	manager, request, err := s.newManager(client, request)
 	if err != nil {
-		return nil, err
+		return DownloadBatchResult{}, err
 	}
 	return manager.Download(ctx, request)
 }
@@ -640,62 +663,74 @@ func (m *Manager) FilenameTemplate() string {
 	return m.filenameTemplate
 }
 
-func (m *Manager) Download(ctx context.Context, request DownloadRequest) ([]DownloadedArtwork, error) {
+func (m *Manager) Download(ctx context.Context, request DownloadRequest) (DownloadBatchResult, error) {
 	unique := deduplicatePositive(request.IllustIDs)
 	quality := request.Quality
 	if quality == "" {
 		quality = DownloadQualityOriginal
 	}
 	if err := ValidateDownloadQuality(quality); err != nil {
-		return nil, err
+		return DownloadBatchResult{}, err
 	}
 	ugoiraFormat := request.UgoiraFormat
 	if ugoiraFormat == "" {
 		ugoiraFormat = UgoiraFormatGIF
 	}
 	if err := ValidateUgoiraFormat(ugoiraFormat); err != nil {
-		return nil, err
+		return DownloadBatchResult{}, err
 	}
 	directoryTemplate := strings.TrimSpace(request.DirectoryTemplate)
 	if directoryTemplate == "" {
 		directoryTemplate = strings.TrimSpace(m.DirectoryTemplate())
 	}
 	if err := filename.ValidateDirectoryTemplate(directoryTemplate); err != nil {
-		return nil, err
+		return DownloadBatchResult{}, err
+	}
+	batch := DownloadBatchResult{
+		Items:    []DownloadedArtwork{},
+		Failures: []DownloadFailure{},
+		Warnings: []DownloadWarning{},
 	}
 	results := make([]struct {
 		artwork DownloadedArtwork
 		err     error
+		done    bool
 	}, len(unique))
-	if err := parallel.ForEach(ctx, len(unique), func(ctx context.Context, index int) {
+	parallelErr := parallel.ForEach(ctx, len(unique), func(ctx context.Context, index int) {
 		results[index].artwork, results[index].err = m.downloadArtwork(ctx, unique[index], request.Pages, quality, ugoiraFormat, directoryTemplate)
-	}); err != nil {
-		return nil, err
-	}
-	// 部分成功：每个 worker 已原子发布它写出的文件。返回已发布作品使报告与
-	// 账号池重放边界反映真实磁盘状态；只有 context 错误才整体中止。否则逐作品
-	// 失败降级为返回的失败集合，调用方据此决定是否报错。
-	var published []DownloadedArtwork
-	var failures []DownloadFailure
+		results[index].done = true
+	})
+	var workerContextErr error
 	for index, result := range results {
-		if result.err == nil {
-			published = append(published, result.artwork)
+		if !result.done {
 			continue
 		}
-		if ctx.Err() != nil {
-			return published, result.err
+		if result.err == nil {
+			batch.Items = append(batch.Items, result.artwork)
+			continue
 		}
-		failures = append(failures, DownloadFailure{
+		if errors.Is(result.err, context.Canceled) || errors.Is(result.err, context.DeadlineExceeded) {
+			if workerContextErr == nil {
+				workerContextErr = result.err
+			}
+			continue
+		}
+		batch.Failures = append(batch.Failures, DownloadFailure{
 			IllustID: unique[index],
 			Message:  result.err.Error(),
 			Cause:    result.err,
 		})
 	}
-	if len(failures) > 0 && len(published) == 0 {
-		// 没有任何作品发布时保留单一错误语义，便于调用方直接判断。
-		return nil, failures[0].Cause
+	if parallelErr != nil {
+		return batch, parallelErr
 	}
-	return published, nil
+	if ctxErr := ctx.Err(); ctxErr != nil {
+		return batch, ctxErr
+	}
+	if workerContextErr != nil {
+		return batch, workerContextErr
+	}
+	return batch, nil
 }
 
 func (m *Manager) downloadArtwork(ctx context.Context, id int64, pages []int, quality DownloadQuality, ugoiraFormat UgoiraFormat, directoryTemplate string) (out DownloadedArtwork, err error) {

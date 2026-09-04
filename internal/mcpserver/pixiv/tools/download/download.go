@@ -162,7 +162,7 @@ func downloadDefaults(app *runtime.App) (string, string, string) {
 	return path, template, directory
 }
 
-func downloadArtworks(ctx context.Context, app *runtime.App, ids []int64, client *pixiv.Client, pages []int, quality downloader.DownloadQuality, ugoiraFormat downloader.UgoiraFormat) ([]downloader.DownloadedArtwork, error) {
+func downloadArtworks(ctx context.Context, app *runtime.App, ids []int64, client *pixiv.Client, pages []int, quality downloader.DownloadQuality, ugoiraFormat downloader.UgoiraFormat) (downloader.DownloadBatchResult, error) {
 	path, template, directory := downloadDefaults(app)
 	req := downloader.DownloadRequest{
 		IllustIDs:         ids,
@@ -180,7 +180,7 @@ func downloadArtworks(ctx context.Context, app *runtime.App, ids []int64, client
 	if client == nil {
 		lease, err := app.OpenClient(ctx)
 		if err != nil {
-			return nil, err
+			return downloader.DownloadBatchResult{}, err
 		}
 		defer lease.Close()
 		client = lease.Value()
@@ -384,13 +384,23 @@ func handleDownloadRandom(ctx context.Context, app *runtime.App, in downloadRand
 	for _, illust := range result.Items[:count] {
 		ids = append(ids, illust.ID)
 	}
-	artworks, err := downloadArtworks(ctx, app, ids, client, pages, quality, ugoiraFormat)
+	batch, err := downloadArtworks(ctx, app, ids, client, pages, quality, ugoiraFormat)
 	if err != nil {
 		return emptyDownloadError(ctx, err, delivery, "Download failed: "+err.Error())
 	}
-	out, err := buildDownloadOut(delivery, artworks)
+	report := downloader.DownloadReport{
+		Items:     batch.Items,
+		Failures:  batch.Failures,
+		Warnings:  batch.Warnings,
+		Committed: len(batch.Items) > 0,
+	}
+	out, err := buildDownloadReportOut(delivery, report)
 	if err != nil {
 		return emptyDownloadError(ctx, err, delivery, "Could not build the download result: "+err.Error())
 	}
-	return downloadResult(out), out, nil
+	toolResult := downloadResult(out)
+	if len(out.Failures) > 0 {
+		toolResult.IsError = true
+	}
+	return toolResult, out, nil
 }

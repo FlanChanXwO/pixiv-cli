@@ -109,8 +109,14 @@ func TestDownloadRejectsUnsupportedDelivery(t *testing.T) {
 	}
 }
 
-func TestDownloadManagerErrorPreservesBusinessErrorShape(t *testing.T) {
-	downloads := &fakeDownloads{err: errors.New("download sentinel")}
+func TestDownloadBatchFailuresPreserveBusinessErrorShape(t *testing.T) {
+	downloads := &fakeDownloads{result: downloader.DownloadBatchResult{
+		Failures: []downloader.DownloadFailure{{
+			IllustID: 42,
+			Message:  "download sentinel",
+			Cause:    errors.New("download sentinel"),
+		}},
+	}}
 	session, closeSession := newSDKDownloadTestSession(t, &fakeSDKClient{}, downloads)
 	defer closeSession()
 
@@ -130,6 +136,27 @@ func TestDownloadManagerErrorPreservesBusinessErrorShape(t *testing.T) {
 	}
 	if downloads.downloadCalls != 1 || !slices.Equal(downloads.downloadIDs, []int64{42}) {
 		t.Fatalf("download calls=%d IDs=%v want one manager call", downloads.downloadCalls, downloads.downloadIDs)
+	}
+}
+
+func TestDownloadManagerOperationErrorDoesNotBecomeBusinessFailure(t *testing.T) {
+	downloads := &fakeDownloads{err: errors.New("download sentinel")}
+	session, closeSession := newSDKDownloadTestSession(t, &fakeSDKClient{}, downloads)
+	defer closeSession()
+
+	result, err := session.CallTool(context.Background(), &mcp.CallToolParams{
+		Name: "download",
+		Arguments: map[string]any{
+			"src":      "42",
+			"delivery": "local_path",
+		},
+	})
+	if err != nil {
+		t.Fatalf("call tool: %v", err)
+	}
+	out := decodeDownloadOut(t, result)
+	if !result.IsError || len(out.Failures) != 0 || !strings.Contains(out.Text, "Download failed: download sentinel") {
+		t.Fatalf("result=%+v output=%+v", result, out)
 	}
 }
 
