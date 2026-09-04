@@ -194,10 +194,7 @@ func (a controller) runDownload(cmd *cobra.Command, args []string, opts download
 	downloadOne := func(ctx context.Context, id int64) error {
 		return a.deps.Pooled(ctx, clientReq, func(ctx context.Context, client *pixiv.Client) (bool, error) {
 			report, err := services.download.DownloadSources(ctx, client, []string{strconv.FormatInt(id, 10)}, request)
-			if err != nil {
-				return false, err
-			}
-			return ReportCommitted(report), ReportError(report)
+			return downloadAttemptResult(report, err)
 		})
 	}
 	if len(args) == 0 {
@@ -207,11 +204,18 @@ func (a controller) runDownload(cmd *cobra.Command, args []string, opts download
 	// 尚无已发布文件时，账号池才可因有效 Retry-After 安全重放这次调用。
 	return a.deps.Pooled(cmd.Context(), clientReq, func(ctx context.Context, client *pixiv.Client) (bool, error) {
 		report, err := services.download.DownloadSources(ctx, client, args, request)
-		if err != nil {
-			return ReportCommitted(report), err
-		}
-		return ReportCommitted(report), ReportError(report)
+		return downloadAttemptResult(report, err)
 	})
+}
+
+// downloadAttemptResult 统一 action-record 与普通参数路径的提交边界：
+// operation error 发生在部分结果之后时，仍以已发布文件阻止账号池重放。
+func downloadAttemptResult(report downloader.DownloadReport, operationErr error) (bool, error) {
+	committed := ReportCommitted(report)
+	if operationErr != nil {
+		return committed, operationErr
+	}
+	return committed, ReportError(report)
 }
 
 // ReportCommitted 只以已经原子发布的常规文件判断提交边界。资源获取或解析在此
