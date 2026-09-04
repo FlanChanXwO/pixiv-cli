@@ -271,14 +271,18 @@ func buildDownloadOut(delivery string, artworks []downloader.DownloadedArtwork) 
 	lines := []string{fmt.Sprintf("Download completed; delivery: %s.", delivery)}
 	for _, artwork := range artworks {
 		item := downloadItemOut{
-			URL:      "https://www.pixiv.net/artworks/" + strconv.FormatInt(artwork.IllustID, 10),
 			IllustID: artwork.IllustID,
 			Title:    artwork.Title,
 			Author:   artwork.Author,
 			Type:     artwork.Type,
 			Files:    []downloadFileOut{},
 		}
-		lines = append(lines, fmt.Sprintf("Artwork %d - %q / Author: %s / Type: %s", artwork.IllustID, artwork.Title, artwork.Author, artwork.Type))
+		if artwork.IllustID > 0 {
+			item.URL = "https://www.pixiv.net/artworks/" + strconv.FormatInt(artwork.IllustID, 10)
+			lines = append(lines, fmt.Sprintf("Artwork %d - %q / Author: %s / Type: %s", artwork.IllustID, artwork.Title, artwork.Author, artwork.Type))
+		} else {
+			lines = append(lines, fmt.Sprintf("Resource download / Type: %s", artwork.Type))
+		}
 		for _, file := range artwork.Files {
 			info, err := os.Stat(file.Path)
 			if err != nil {
