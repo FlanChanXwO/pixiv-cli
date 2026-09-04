@@ -6,7 +6,9 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"net/url"
 	"os"
+	"path"
 	"path/filepath"
 	"reflect"
 	"slices"
@@ -32,6 +34,11 @@ type DownloadClient interface {
 	Artwork(context.Context, pixiv.ArtworkRequest) (pixiv.Artwork, error)
 	UgoiraMetadata(context.Context, pixiv.UgoiraMetadataRequest) (pixiv.UgoiraMetadata, error)
 	SaveResource(context.Context, sdk.ResourceRef, sdk.SaveOptions) (sdk.SavedResource, error)
+}
+
+// DirectResourceClient 是直链 source 使用的窄端口；作品元数据下载仍只依赖 DownloadClient。
+type DirectResourceClient interface {
+	SaveResourceURL(context.Context, string, sdk.SaveOptions) (sdk.SavedResource, error)
 }
 
 // DownloadTargetClient 在下载资源能力之外提供作者作品列表，用于把用户 URL 展开为视觉作品。
@@ -132,6 +139,9 @@ func ValidateUgoiraFormat(format UgoiraFormat) error {
 		return errors.New("ugoira format must be one of gif, apng")
 	}
 }
+
+// DownloadedResourceType 标记没有 artwork 元数据的直接资源产物。
+const DownloadedResourceType = "resource"
 
 type DownloadedArtwork struct {
 	IllustID int64
@@ -238,6 +248,7 @@ func (s DownloadService) DownloadSources(ctx context.Context, client DownloadTar
 		artworkIDs = append(artworkIDs, id)
 	}
 	var directRefs []sdk.ResourceRef
+	var directURLs []string
 	for _, source := range sources {
 		if err := ctx.Err(); err != nil {
 			return report, err
@@ -264,6 +275,10 @@ func (s DownloadService) DownloadSources(ctx context.Context, client DownloadTar
 		}
 		if id, parseErr := strconv.ParseInt(strings.TrimSpace(source), 10, 64); parseErr == nil && id > 0 {
 			appendArtwork(id)
+			continue
+		}
+		if isDirectResourceURL(source) {
+			directURLs = append(directURLs, strings.TrimSpace(source))
 			continue
 		}
 		ref, refErr := sdk.ParseResourceRef(source)
@@ -307,6 +322,40 @@ func (s DownloadService) DownloadSources(ctx context.Context, client DownloadTar
 		}
 		report.Items = append(report.Items, DownloadedArtwork{Files: []DownloadedFile{{Path: path, Page: 1}}})
 		report.Committed = true
+	}
+	if len(directURLs) > 0 {
+		directClient, supportsDirectURLs := client.(DirectResourceClient)
+		for _, rawURL := range directURLs {
+			if err := ctx.Err(); err != nil {
+				return report, err
+			}
+			path, err := directResourcePathFromURL(request.DownloadPath, rawURL)
+			if err != nil {
+				report.Failures = append(report.Failures, DownloadFailure{
+					URL: redactedDownloadSource, Type: DownloadedResourceType, Message: err.Error(), Cause: err,
+				})
+				continue
+			}
+			if !supportsDirectURLs {
+				err := errors.New("download client does not support direct resource URLs")
+				report.Failures = append(report.Failures, DownloadFailure{
+					URL: redactedDownloadSource, Type: DownloadedResourceType, Message: err.Error(), Cause: err,
+				})
+				continue
+			}
+			if _, err := directClient.SaveResourceURL(ctx, rawURL, sdk.SaveOptions{Path: path}); err != nil {
+				safeErr := redactDirectResourceError(rawURL, err)
+				report.Failures = append(report.Failures, DownloadFailure{
+					URL: redactedDownloadSource, Type: DownloadedResourceType, Message: safeErr.Error(), Cause: safeErr,
+				})
+				continue
+			}
+			report.Items = append(report.Items, DownloadedArtwork{
+				Type:  DownloadedResourceType,
+				Files: []DownloadedFile{{Path: path, Page: 1}},
+			})
+			report.Committed = true
+		}
 	}
 	return report, nil
 }
@@ -405,6 +454,103 @@ func directResourcePath(downloadPath string, ref sdk.ResourceRef) (string, error
 	digest := sha256.Sum256([]byte(name))
 	encoded := hex.EncodeToString(digest[:])
 	return filepath.Join(downloadPath, "resource-"+encoded), nil
+}
+
+func isDirectResourceURL(source string) bool {
+	trimmed := strings.TrimSpace(source)
+	lower := strings.ToLower(trimmed)
+	return strings.HasPrefix(lower, "http://") || strings.HasPrefix(lower, "https://")
+}
+
+func directResourcePathFromURL(downloadPath, rawURL string) (string, error) {
+	if strings.TrimSpace(downloadPath) == "" {
+		return "", errors.New("download path is required for direct resource sources")
+	}
+	name, err := directResourceBasename(rawURL)
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(downloadPath, name), nil
+}
+
+func directResourceBasename(rawURL string) (string, error) {
+	parsed, err := url.Parse(strings.TrimSpace(rawURL))
+	if err != nil {
+		return "", errors.New("direct resource URL is invalid")
+	}
+	escapedPath := parsed.EscapedPath()
+	if escapedPath == "" || escapedPath == "/" || strings.HasSuffix(escapedPath, "/") {
+		return "", errors.New("direct resource URL has no usable basename")
+	}
+	name, err := url.PathUnescape(path.Base(escapedPath))
+	if err != nil || name == "" || name == "." || name == ".." {
+		return "", errors.New("direct resource URL has no usable basename")
+	}
+	name = filename.Sanitize(name)
+	name = strings.Map(func(r rune) rune {
+		if r < 0x20 || r == 0x7f {
+			return '_'
+		}
+		return r
+	}, name)
+	name = strings.TrimRight(name, ". ")
+	if name == "" || name == "." || name == ".." {
+		return "", errors.New("direct resource URL has no usable basename")
+	}
+	return name, nil
+}
+
+func redactDirectResourceError(rawURL string, err error) error {
+	if err == nil {
+		return nil
+	}
+	message := err.Error()
+	redacted := message
+	if rawURL != "" {
+		redacted = strings.ReplaceAll(redacted, rawURL, redactedDownloadSource)
+		if parsed, parseErr := url.Parse(rawURL); parseErr == nil {
+			if parsed.RawQuery != "" {
+				redacted = strings.ReplaceAll(redacted, parsed.RawQuery, "[redacted]")
+			}
+			for key, values := range parsed.Query() {
+				redacted = redactDirectResourceQueryParameter(redacted, key)
+				for _, value := range values {
+					if value != "" {
+						redacted = strings.ReplaceAll(redacted, value, "[redacted]")
+					}
+				}
+			}
+		}
+	}
+	if redacted == message {
+		return err
+	}
+	return errors.New(redacted)
+}
+
+func redactDirectResourceQueryParameter(message, key string) string {
+	if key == "" {
+		return message
+	}
+	marker := key + "="
+	searchFrom := 0
+	for searchFrom < len(message) {
+		relativeIndex := strings.Index(message[searchFrom:], marker)
+		if relativeIndex < 0 {
+			return message
+		}
+		index := searchFrom + relativeIndex
+		valueStart := index + len(marker)
+		valueEnd := strings.IndexAny(message[valueStart:], "& \t\r\n\"'<>")
+		if valueEnd < 0 {
+			valueEnd = len(message)
+		} else {
+			valueEnd += valueStart
+		}
+		message = message[:valueStart] + "[redacted]" + message[valueEnd:]
+		searchFrom = valueStart + len("[redacted]")
+	}
+	return message
 }
 
 func referenceURL(reference pixiv.Reference) string {

@@ -762,6 +762,89 @@ func TestDownloadSourcesRedactsRejectedSource(t *testing.T) {
 	require.NotContains(t, report.Failures[0].URL, source)
 }
 
+func TestDownloadSourcesDownloadsDirectCDNURLWithSafeBasename(t *testing.T) {
+	dir := t.TempDir()
+	source := "https://i.pximg.net/img-original/img/2026/09/04/12/34/56/789_p0/photo%3A%7C.png?signature=secret"
+	var gotURL string
+	var gotPath string
+	client := &downloadSourcesStub{
+		saveResourceURL: func(_ context.Context, rawURL string, options sdk.SaveOptions) (sdk.SavedResource, error) {
+			gotURL = rawURL
+			gotPath = options.Path
+			if err := os.WriteFile(options.Path, []byte("direct-image"), 0o644); err != nil {
+				return sdk.SavedResource{}, err
+			}
+			return sdk.SavedResource{Path: options.Path, Size: int64(len("direct-image")), ContentType: "image/png"}, nil
+		},
+	}
+
+	report, err := (downloader.DownloadService{}).DownloadSources(context.Background(), client, []string{source}, downloader.DownloadRequest{
+		DownloadPath:     dir,
+		Pages:            []int{2},
+		Quality:          downloader.DownloadQualityRegular,
+		UgoiraFormat:     downloader.UgoiraFormatAPNG,
+		FilenameTemplate: "{unsupported}",
+	})
+
+	require.NoError(t, err)
+	require.True(t, report.Committed)
+	require.Empty(t, report.Failures)
+	require.Equal(t, source, gotURL)
+	require.Equal(t, filepath.Join(dir, "photo__.png"), gotPath)
+	require.Len(t, report.Items, 1)
+	require.Zero(t, report.Items[0].IllustID)
+	require.Empty(t, report.Items[0].Title)
+	require.Empty(t, report.Items[0].Author)
+	require.Equal(t, "resource", report.Items[0].Type)
+	require.Equal(t, []downloader.DownloadedFile{{Path: gotPath, Page: 1}}, report.Items[0].Files)
+	assertFileBody(t, gotPath, "direct-image")
+}
+
+func TestDownloadSourcesReportsDirectURLFailuresWithoutSensitiveData(t *testing.T) {
+	sources := []string{
+		"https://i.pximg.net/img-original/img/2026/09/04/123_p0.jpg?signature=secret-one",
+		"https://i.pximg.net/img-original/img/2026/09/04/456_p0.jpg?signature=secret-two",
+	}
+	var calls []string
+	client := &downloadSourcesStub{
+		saveResourceURL: func(_ context.Context, rawURL string, _ sdk.SaveOptions) (sdk.SavedResource, error) {
+			calls = append(calls, rawURL)
+			return sdk.SavedResource{}, errors.New("GET " + rawURL + " failed: signature=secret")
+		},
+	}
+
+	report, err := (downloader.DownloadService{}).DownloadSources(context.Background(), client, sources, downloader.DownloadRequest{DownloadPath: t.TempDir()})
+
+	require.NoError(t, err)
+	require.Equal(t, sources, calls)
+	require.Len(t, report.Failures, len(sources))
+	for _, failure := range report.Failures {
+		require.Equal(t, "[redacted source]", failure.URL)
+		require.NotNil(t, failure.Cause)
+		require.NotContains(t, failure.Message, "https://i.pximg.net/")
+		require.NotContains(t, failure.Message, "secret")
+		require.NotContains(t, failure.Cause.Error(), "https://i.pximg.net/")
+		require.NotContains(t, failure.Cause.Error(), "secret")
+	}
+}
+
+func TestDownloadSourcesRejectsDirectURLWithoutUsableBasename(t *testing.T) {
+	client := &downloadSourcesStub{
+		saveResourceURL: func(context.Context, string, sdk.SaveOptions) (sdk.SavedResource, error) {
+			t.Fatal("direct resource URL without a basename must not be downloaded")
+			return sdk.SavedResource{}, nil
+		},
+	}
+
+	report, err := (downloader.DownloadService{}).DownloadSources(context.Background(), client, []string{"https://i.pximg.net/img-original/img/"}, downloader.DownloadRequest{DownloadPath: t.TempDir()})
+
+	require.NoError(t, err)
+	require.Len(t, report.Failures, 1)
+	require.Equal(t, "[redacted source]", report.Failures[0].URL)
+	require.Contains(t, report.Failures[0].Message, "basename")
+	require.NotNil(t, report.Failures[0].Cause)
+}
+
 func TestDownloadServiceStopsImmediatelyWhenContextIsCanceled(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
@@ -935,6 +1018,7 @@ type downloadSourcesStub struct {
 	userArtworks         func(context.Context, pixiv.UserArtworksRequest) (sdk.Page[pixiv.Artwork], error)
 	userArtworkBookmarks func(context.Context, pixiv.UserArtworkBookmarksRequest) (sdk.Page[pixiv.Artwork], error)
 	saveResource         func(context.Context, sdk.ResourceRef, sdk.SaveOptions) (sdk.SavedResource, error)
+	saveResourceURL      func(context.Context, string, sdk.SaveOptions) (sdk.SavedResource, error)
 }
 
 func (c *downloadSourcesStub) UserArtworks(ctx context.Context, request pixiv.UserArtworksRequest) (sdk.Page[pixiv.Artwork], error) {
@@ -954,6 +1038,13 @@ func (c *downloadSourcesStub) UserArtworkBookmarks(ctx context.Context, request 
 func (c *downloadSourcesStub) SaveResource(ctx context.Context, ref sdk.ResourceRef, options sdk.SaveOptions) (sdk.SavedResource, error) {
 	if c.saveResource != nil {
 		return c.saveResource(ctx, ref, options)
+	}
+	return sdk.SavedResource{}, nil
+}
+
+func (c *downloadSourcesStub) SaveResourceURL(ctx context.Context, rawURL string, options sdk.SaveOptions) (sdk.SavedResource, error) {
+	if c.saveResourceURL != nil {
+		return c.saveResourceURL(ctx, rawURL, options)
 	}
 	return sdk.SavedResource{}, nil
 }
