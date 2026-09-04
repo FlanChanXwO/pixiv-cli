@@ -196,7 +196,7 @@ func (c *Client) SaveResource(ctx context.Context, ref sdk.ResourceRef, options 
 	}
 	size, err := atomicfile.Write(ctx, options.Path, &progressReader{src: response.Body, total: response.ContentLength(), progress: options.Progress})
 	if err != nil {
-		return sdk.SavedResource{}, newError("SaveResource", sdk.LocalStateError, "cannot write resource")
+		return sdk.SavedResource{}, classifyResourceWriteError("SaveResource", err)
 	}
 	return sdk.SavedResource{Path: options.Path, Size: size, ContentType: response.ContentType()}, nil
 }
@@ -235,7 +235,7 @@ func (c *Client) SaveResourceURL(ctx context.Context, rawURL string, options sdk
 		progress: options.Progress,
 	})
 	if err != nil {
-		return sdk.SavedResource{}, newError(operation, sdk.LocalStateError, "cannot write resource")
+		return sdk.SavedResource{}, classifyResourceWriteError(operation, err)
 	}
 	return sdk.SavedResource{Path: options.Path, Size: size, ContentType: response.ContentType()}, nil
 }

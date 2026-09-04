@@ -344,6 +344,106 @@ func TestSaveResourceURLDoesNotPublishPartialBody(t *testing.T) {
 	}
 }
 
+func TestSaveResourceURLPreservesWriteContextCause(t *testing.T) {
+	tests := []struct {
+		name  string
+		cause error
+	}{
+		{name: "canceled", cause: context.Canceled},
+		{name: "deadline exceeded", cause: context.DeadlineExceeded},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			client, err := pixiv.NewWith("token", pixiv.Options{HTTPClient: &http.Client{Transport: roundTripFunc(func(*http.Request) (*http.Response, error) {
+				return &http.Response{
+					StatusCode: http.StatusOK,
+					Header:     http.Header{"Content-Type": {"image/png"}},
+					Body:       io.NopCloser(&contextErrorBody{cause: tc.cause}),
+				}, nil
+			})}})
+			if err != nil {
+				t.Fatalf("NewWith: %v", err)
+			}
+
+			destination := filepath.Join(t.TempDir(), "asset.png")
+			_, err = client.SaveResourceURL(context.Background(), "https://i.pximg.net/img/asset.png", sdk.SaveOptions{Path: destination})
+			assertResourceWriteContextCause(t, err, tc.cause, destination)
+		})
+	}
+}
+
+func TestSaveResourcePreservesWriteContextCause(t *testing.T) {
+	tests := []struct {
+		name  string
+		cause error
+	}{
+		{name: "canceled", cause: context.Canceled},
+		{name: "deadline exceeded", cause: context.DeadlineExceeded},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			rawURL := "https://i.pximg.net/img/asset.png"
+			client, err := pixiv.NewWith("token", pixiv.Options{HTTPClient: &http.Client{Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+				if req.URL.Host == "app-api.pixiv.net" {
+					body := `{"illust":{"id":42,"title":"art","type":"illust","create_date":"2026-01-01T00:00:00Z","image_urls":{"original":"` + rawURL + `"},"user":{"id":7,"name":"artist"},"tags":[]}}`
+					return jsonResponse(body), nil
+				}
+				if req.URL.Host == "i.pximg.net" {
+					return &http.Response{
+						StatusCode: http.StatusOK,
+						Header:     http.Header{"Content-Type": {"image/png"}},
+						Body:       io.NopCloser(&contextErrorBody{cause: tc.cause}),
+					}, nil
+				}
+				return nil, errors.New("unexpected resource host")
+			})}})
+			if err != nil {
+				t.Fatalf("NewWith: %v", err)
+			}
+			artwork, err := client.Artwork(context.Background(), pixiv.ArtworkRequest{ArtworkID: 42})
+			if err != nil {
+				t.Fatalf("Artwork: %v", err)
+			}
+
+			destination := filepath.Join(t.TempDir(), "asset.png")
+			_, err = client.SaveResource(context.Background(), artwork.Cover.Resource.Ref, sdk.SaveOptions{Path: destination})
+			assertResourceWriteContextCause(t, err, tc.cause, destination)
+		})
+	}
+}
+
+func assertResourceWriteContextCause(t *testing.T, err, cause error, destination string) {
+	t.Helper()
+	if err == nil {
+		t.Fatal("resource save should return an error")
+	}
+	if !errors.Is(err, cause) {
+		t.Fatalf("errors.Is(%v, %v) = false", err, cause)
+	}
+	if sdk.ReasonOf(err) != sdk.LocalStateError {
+		t.Fatalf("ReasonOf = %q, want %q (err=%v)", sdk.ReasonOf(err), sdk.LocalStateError, err)
+	}
+	if _, statErr := os.Stat(destination); !os.IsNotExist(statErr) {
+		t.Fatalf("destination should not exist, stat error = %v", statErr)
+	}
+}
+
+type contextErrorBody struct {
+	written bool
+	cause   error
+}
+
+func (b *contextErrorBody) Read(p []byte) (int, error) {
+	if b.written {
+		return 0, b.cause
+	}
+	b.written = true
+	copy(p, "partial")
+	return len("partial"), nil
+}
+
+func (b *contextErrorBody) Close() error { return nil }
+
 type failingBody struct {
 	written bool
 }
