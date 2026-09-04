@@ -4,6 +4,9 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"net/http"
+	"net/http/httptest"
+	"net/url"
 	"os"
 	"path/filepath"
 	"slices"
@@ -414,6 +417,160 @@ func TestDownloadSchemaPublishesOnlyMappedOptions(t *testing.T) {
 		if strings.Contains(string(raw), `"`+field+`"`) {
 			t.Fatalf("download schema publishes unmapped field %q: %s", field, raw)
 		}
+	}
+}
+
+func TestDownloadPreservesMixedMultiPageReport(t *testing.T) {
+	dir := t.TempDir()
+	paths := []string{filepath.Join(dir, "42-p1.png"), filepath.Join(dir, "42-p3.png")}
+	for index, path := range paths {
+		if err := os.WriteFile(path, []byte("png"), 0o644); err != nil {
+			t.Fatalf("write page %d: %v", index+1, err)
+		}
+	}
+	failure := errors.New("page 4 failed")
+	downloads := &fakeDownloads{result: downloader.DownloadBatchResult{
+		Items: []downloader.DownloadedArtwork{{
+			IllustID: 42,
+			Title:    "multi-page",
+			Author:   "artist",
+			Type:     "illust",
+			Files: []downloader.DownloadedFile{
+				{Path: paths[0], Page: 1},
+				{Path: paths[1], Page: 3},
+			},
+		}},
+		Failures: []downloader.DownloadFailure{{
+			IllustID: 42,
+			Type:     "illust",
+			Message:  failure.Error(),
+			Cause:    failure,
+		}},
+		Warnings: []downloader.DownloadWarning{{
+			IllustID: 42,
+			Type:     "ugoira",
+			Message:  "using default filename",
+		}},
+	}}
+	session, closeSession := newSDKDownloadTestSession(t, &fakeSDKClient{}, downloads)
+	defer closeSession()
+
+	result := callTool(t, session, "download", map[string]any{
+		"src":   "42",
+		"pages": "1,3",
+	})
+	if !result.IsError {
+		t.Fatalf("partial download should set isError: %+v", result)
+	}
+	out := decodeDownloadOut(t, result)
+	if len(out.Items) != 1 || len(out.Items[0].Files) != 2 || len(out.Files) != 2 {
+		t.Fatalf("multi-page output=%+v", out)
+	}
+	if out.Items[0].URL != "https://www.pixiv.net/artworks/42" || out.Items[0].Files[0].Page != 1 || out.Items[0].Files[1].Page != 3 {
+		t.Fatalf("item output=%+v", out.Items[0])
+	}
+	if len(out.Warnings) != 1 || out.Warnings[0].Message != "using default filename" {
+		t.Fatalf("warnings=%+v", out.Warnings)
+	}
+	if len(out.Failures) != 1 || out.Failures[0].Message != failure.Error() {
+		t.Fatalf("failures=%+v", out.Failures)
+	}
+	if !strings.Contains(out.Text, failure.Error()) || !strings.Contains(out.Text, "using default filename") {
+		t.Fatalf("text=%q", out.Text)
+	}
+}
+
+func TestDownloadDirectCDNPublishesResourceMetadata(t *testing.T) {
+	const secret = "signature=secret"
+	body := []byte("\x89PNG\r\n\x1a\nfixture")
+	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/img/asset.png" {
+			t.Errorf("request path=%q", r.URL.Path)
+		}
+		if got := r.Header.Get("Referer"); got != "https://app-api.pixiv.net/" {
+			t.Errorf("referer=%q", got)
+		}
+		if got := r.Header.Get("Cookie"); got != "" {
+			t.Errorf("resource request carried cookie %q", got)
+		}
+		w.Header().Set("Content-Type", "image/png")
+		_, _ = w.Write(body)
+	}))
+	defer server.Close()
+	serverURL, err := url.Parse(server.URL)
+	if err != nil {
+		t.Fatalf("url.Parse: %v", err)
+	}
+	client, err := pixiv.NewWith("test-access-token", pixiv.Options{
+		HTTPClient: server.Client(),
+		ResourcePolicy: pixiv.ResourcePolicy{
+			AllowedHosts: []string{serverURL.Hostname()},
+		},
+	})
+	if err != nil {
+		t.Fatalf("pixiv.NewWith: %v", err)
+	}
+	t.Cleanup(client.CloseIdleConnections)
+
+	dir := t.TempDir()
+	downloads := &downloadPathManager{fakeDownloads: &fakeDownloads{}, path: dir}
+	session, closeSession := newSDKDownloadTestSessionWithClient(t, client, downloads)
+	defer closeSession()
+
+	source := server.URL + "/img/asset.png?" + secret
+	result := callTool(t, session, "download", map[string]any{"src": source})
+	if result.IsError {
+		t.Fatalf("direct CDN download failed: %+v", result)
+	}
+	out := decodeDownloadOut(t, result)
+	if len(out.Items) != 1 || len(out.Files) != 1 {
+		t.Fatalf("direct resource output=%+v", out)
+	}
+	item := out.Items[0]
+	file := out.Files[0]
+	if item.Type != downloader.DownloadedResourceType || item.IllustID != 0 || item.URL != "" || item.Title != "" || item.Author != "" {
+		t.Fatalf("direct resource item leaked artwork metadata: %+v", item)
+	}
+	if file.Path != filepath.Join(dir, "asset.png") || file.FileURI == "" || file.MIMEType != "image/png" || file.SizeBytes != int64(len(body)) || file.Page != 1 {
+		t.Fatalf("direct resource file=%+v", file)
+	}
+	if saved, err := os.ReadFile(file.Path); err != nil || string(saved) != string(body) {
+		t.Fatalf("saved direct resource body=%q err=%v", saved, err)
+	}
+	raw, err := json.Marshal(result.StructuredContent)
+	if err != nil {
+		t.Fatalf("marshal structured output: %v", err)
+	}
+	if strings.Contains(string(raw), secret) || strings.Contains(out.Text, secret) || strings.Contains(out.Text, "artworks/0") {
+		t.Fatalf("unsafe direct resource output=%s text=%q", raw, out.Text)
+	}
+}
+
+type downloadPathManager struct {
+	*fakeDownloads
+	path string
+}
+
+func (m *downloadPathManager) DownloadPath() string { return m.path }
+
+func newSDKDownloadTestSessionWithClient(t *testing.T, sdkClient *pixiv.Client, downloads pixivmcpserver.DownloadManager) (*mcp.ClientSession, func()) {
+	t.Helper()
+	ports := pixivmcpserver.SDKPorts{
+		Open: func(pixivmcpserver.Account) (*pixiv.Client, error) { return sdkClient, nil },
+	}
+	server := pixivmcpserver.NewWithSDKDownloadFactory(downloads, func(*pixiv.Client) pixivmcpserver.DownloadManager { return downloads }, ports, pixivmcpserver.Account{})
+	clientTransport, serverTransport := mcp.NewInMemoryTransports()
+	ctx, cancel := context.WithCancel(context.Background())
+	go func() { _ = server.Run(ctx, serverTransport) }()
+	client := mcp.NewClient(&mcp.Implementation{Name: "test", Version: "0.0.0"}, nil)
+	session, err := client.Connect(ctx, clientTransport, nil)
+	if err != nil {
+		cancel()
+		t.Fatalf("connect: %v", err)
+	}
+	return session, func() {
+		_ = session.Close()
+		cancel()
 	}
 }
 
