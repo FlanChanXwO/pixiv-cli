@@ -54,14 +54,13 @@ func main() {
 	}
 
 	// 4. Save the first image through the SDK-validated resource path.
-	_, err = client.SaveResource(ctx, sdk.SaveOptions{
-		Ref:  pages[0].Image.Resource.Ref,
-		Dest: "./first.png",
+	saved, err := client.SaveResource(ctx, pages[0].Image.Resource.Ref, sdk.SaveOptions{
+		Path: "./first.png",
 	})
 	if err != nil {
 		panic(err)
 	}
-	fmt.Println("saved", first.ID)
+	fmt.Println("saved", saved.Path)
 }
 ```
 
@@ -254,11 +253,21 @@ defer resp.Body.Close()
 
 ```go
 // Save through the SDK-validated path (revalidates URL/redirects, atomic write).
-_, err := client.SaveResource(ctx, sdk.SaveOptions{
-    Ref:  image.Ref,
-    Dest: "./out.png",
+saved, err := client.SaveResource(ctx, image.Ref, sdk.SaveOptions{
+    Path: "./out.png",
 })
+if err != nil { /* handle */ }
+fmt.Println(saved.Path, saved.Size, saved.ContentType)
 ```
+
+For a direct Pixiv CDN source, use `SaveResourceURL` with an HTTPS URL without
+userinfo and with a non-empty path. The host must be an official Pixiv media host
+(`i.pximg.net`, `s.pximg.net`, or `i-f.pximg.net`), unless it is explicitly added
+to `ResourcePolicy.AllowedHosts`. The SDK revalidates every redirect, sends the
+product `Referer`, never sends the caller's Cookie jar, and writes atomically. It
+returns `sdk.SavedResource` with only `Path`, `Size`, and `ContentType`; the source
+URL and any signed query are not part of the result. This method saves one URL and
+does not expand artwork pages or batches.
 
 > [!IMPORTANT]
 > A `Resource` never stores a cookie; a bound FANBOX client may use its session

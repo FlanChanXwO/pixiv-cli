@@ -54,14 +54,13 @@ func main() {
 	}
 
 	// 4. 通过 SDK 校验的资源路径保存第一张图。
-	_, err = client.SaveResource(ctx, sdk.SaveOptions{
-		Ref:  pages[0].Image.Resource.Ref,
-		Dest: "./first.png",
+	saved, err := client.SaveResource(ctx, pages[0].Image.Resource.Ref, sdk.SaveOptions{
+		Path: "./first.png",
 	})
 	if err != nil {
 		panic(err)
 	}
-	fmt.Println("saved", first.ID)
+	fmt.Println("saved", saved.Path)
 }
 ```
 
@@ -232,11 +231,20 @@ defer resp.Body.Close()
 
 ```go
 // 通过 SDK 校验路径保存（复验 URL/redirect，原子写入）。
-_, err := client.SaveResource(ctx, sdk.SaveOptions{
-    Ref:  image.Ref,
-    Dest: "./out.png",
+saved, err := client.SaveResource(ctx, image.Ref, sdk.SaveOptions{
+    Path: "./out.png",
 })
+if err != nil { /* 处理 */ }
+fmt.Println(saved.Path, saved.Size, saved.ContentType)
 ```
+
+如果要保存 Pixiv CDN 直链，请使用 `SaveResourceURL`。URL 必须是无 userinfo、
+path 非空的 HTTPS URL；host 必须是官方 Pixiv media host（`i.pximg.net`、
+`s.pximg.net` 或 `i-f.pximg.net`），除非通过 `ResourcePolicy.AllowedHosts`
+显式加入其他 host。SDK 会复验每次 redirect，发送 product `Referer`，绝不发送
+调用方 Cookie jar，并使用原子写入。它返回的 `sdk.SavedResource` 只包含 `Path`、
+`Size` 和 `ContentType`；source URL 与 signed query 不在结果中。该方法只保存
+一个 URL，不展开作品页面或批次。
 
 > [!IMPORTANT]
 > `Resource` 本身不保存 Cookie；绑定的 FANBOX client 只可按策略把 session 发送给 FANBOX API 与 `downloads.fanbox.cc`，不会发送给 Pixiv/CDN 或第三方 host。`Resource` 不携带 token 或 Cookie；`RequiresCredentials` 表示资源仍需要调用方不可见的产品凭据。
