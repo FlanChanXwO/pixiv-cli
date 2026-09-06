@@ -1,13 +1,18 @@
 # 完整实施 goal：能力准入表
 
 观测日期：2026-09-05（Asia/Shanghai）。
+修订日期：2026-09-06（Asia/Shanghai）。
 
 ## 准入规则
 
-本文件区分两层：
+本文件区分四层：
 
+- `scope_admitted`：能力属于 Goal-3，允许建立独立 task。
+- `contract_frozen`：implementation contract 已固化。
 - `migration_ready`：允许开始生产实现。
 - `public_ready`：允许公开 SDK、CLI、MCP 和文档 surface。
+
+用户确认的 upstream 可用性是 scope 输入；历史 evidence verdict 只描述证据和覆盖状态，不再触发另起 Goal。
 
 完整逐项台账见 `api-migration-verification.md`。
 
@@ -37,38 +42,40 @@ non-primary account + real target + write/read-back + isolated delete
 
 ## 当前准入
 
-| 能力 | Upstream verdict | Migration | Public | 完整 goal 动作 |
-| --- | --- | --- | --- | --- |
-| novel follow | confirmed | ready | ready | 直接实施 surface 整理 |
-| novel recommended | confirmed | ready | ready | 直接实施 surface 整理 |
-| artwork search all/illust/manga/ugoira | confirmed | ready | ready | 直接实施 surface 整理 |
-| artwork latest illust | confirmed | ready | ready | 直接实施 surface 整理 |
-| artwork ranking | confirmed | ready | ready | 直接实施 surface 整理 |
-| ugoira metadata | confirmed | ready | ready | 直接实施 surface 整理 |
-| user novels | pagination_exempt | ready | ready | 直接实施 |
-| user artworks | pagination_exempt | ready | ready | 直接实施 |
-| public/private novel bookmark list | pagination_exempt | ready | ready | 直接实施 |
-| public/private artwork bookmark list | pagination_exempt | ready | ready | 直接实施 |
-| novel detail v2 | wire/response confirmed | ready | not ready | 可以开始 TDD 迁移；完成 adapter/SDK 后公开 |
-| novel latest `max_novel_id` | wire/response/two pages confirmed | ready | not ready | 可以开始 TDD 修复；完成 adapter/SDK 后公开 |
-| comment mutation wire | live read-back confirmed | ready | not ready | 可以开始 adapter/SDK TDD；未完成前不公开 |
-| stamps read | wire/response confirmed | ready | not ready | 可以开始 adapter/SDK TDD |
-| novel ranking | wire/response/two pages confirmed | ready | not ready | 可以开始 adapter/SDK TDD |
-| novel series v2 | pagination inconclusive | not ready | not ready | 仅验证；不切生产 path |
-| artwork recommended full cursor | second page inconclusive | not ready | not ready | 仅验证；不冻结 cursor |
-| novel comments v3 | non-empty/pagination inconclusive | not ready | not ready | 仅验证；不从 v2 迁移 |
-| artwork comments v3 | live empty inconclusive；fixture mismatch | not ready | not ready | 仅验证；不冻结 DTO |
-| novel search period | not tested | not ready | not ready | 加入 strict manifest 后验证 |
-| bookmark tags/detail/mutation | not tested | not ready | not ready | 加入 strict manifest 后验证 |
-| bookmark subtype | not tested | not ready | not ready | 加入 strict manifest 后验证 |
-| recommended/latest subtype expansion | partial/not tested | not ready | not ready | 完成 subtype 两页验证 |
-| comment total semantics | inconclusive | not ready | not ready | 非空响应验证后决定 |
-| bare ID probe | not tested | not ready | not ready | 保持显式 `--type` |
-| server-side rating | rejected | forbidden | forbidden | 禁止实施；使用 client-side filter |
-| `/v1/novel/detail` | rejected | forbidden | forbidden | 删除依赖 |
-| `/v1/novel/series` | rejected | forbidden | forbidden | 删除依赖 |
-| `/v1/novel/content` | rejected | forbidden | forbidden | 不承诺正文读取 |
-| WebView fallback | excluded | forbidden | forbidden | 不实施 |
+除表中标记为 `out` 的排除项外，所有范围内能力的 `Scope` 均为 `scope_admitted`。`Migration` 表示 contract freeze 后的生产实现状态；`Public` 表示是否已完成 public surface，不把历史 upstream verdict 当作接口存在性判断。
+
+| 能力 | Scope | Evidence | Migration | Public | 完整 Goal 动作 |
+| --- | --- | --- | --- | --- | --- |
+| novel follow | scope_admitted | confirmed | ready | ready | 直接实施 surface 整理 |
+| novel recommended | scope_admitted | confirmed | ready | ready | 直接实施 surface 整理 |
+| artwork search all/illust/manga/ugoira | scope_admitted | confirmed | ready | ready | 直接实施 surface 整理 |
+| artwork latest illust | scope_admitted | confirmed | ready | ready | 直接实施 surface 整理 |
+| artwork ranking | scope_admitted | confirmed | ready | ready | 直接实施 surface 整理 |
+| ugoira metadata | scope_admitted | confirmed | ready | ready | 直接实施 surface 整理 |
+| user novels | scope_admitted | confirmed / pagination_exempt | ready | ready | 直接实施 |
+| user artworks | scope_admitted | confirmed / pagination_exempt | ready | ready | 直接实施 |
+| public/private novel bookmark list | scope_admitted | confirmed / pagination_exempt | ready | ready | 直接实施 |
+| public/private artwork bookmark list | scope_admitted | confirmed / pagination_exempt | ready | ready | 直接实施 |
+| novel detail v2 | scope_admitted | wire/response confirmed | ready | not ready | T01-T02 snapshot 后开始 TDD；adapter/SDK 后公开 |
+| novel latest `max_novel_id` | scope_admitted | wire/response/two pages confirmed | ready | not ready | T02/T05 snapshot 后开始 TDD；adapter/SDK 后公开 |
+| comment mutation wire | scope_admitted | live read-back confirmed | ready | not ready | Goal-3 T04/T09/T16 独立实现；未完成前不公开 |
+| stamps read | scope_admitted | wire/response confirmed | ready | not ready | Goal-3 T04/T09/T17 独立实现 |
+| novel ranking | scope_admitted | wire/response/two pages confirmed | ready | not ready | Goal-3 T02/T10/T18/T30 独立实现 |
+| novel series v2 | scope_admitted | pagination inconclusive | snapshot pending | not ready | T02/T05 冻结；不另起 Goal |
+| artwork recommended full cursor | scope_admitted | second page inconclusive | snapshot pending | not ready | T04/T05 冻结；复用现有 cursor |
+| novel comments v3 | scope_admitted | non-empty/pagination inconclusive | snapshot pending | not ready | T04 冻结；不越过 SDK/public gate |
+| artwork comments v3 | scope_admitted | live empty inconclusive；fixture mismatch | snapshot pending | not ready | T04 冻结；不冻结未确认 DTO |
+| novel search period | scope_admitted | not tested | snapshot pending | not ready | T02 冻结后实现；不删除 `Duration` |
+| bookmark tags/detail/mutation | scope_admitted | not tested | snapshot pending | not ready | T03/T06 冻结后在 T08/T15 实施 |
+| bookmark subtype | scope_admitted | not tested | snapshot pending | not ready | T03/T22/T27 实施；按 logical pagination 验证 |
+| recommended/latest subtype expansion | scope_admitted | partial/not tested | snapshot pending | not ready | T04/T10/T28-T29 实施；逐项准入 |
+| comment total semantics | scope_admitted | inconclusive | snapshot pending | not ready | T04/T33 实施；无证据时保持非强保证 |
+| bare ID probe | scope_admitted | not tested | snapshot pending | not ready | T21 受控 probe；未冻结前要求显式 `--type` |
+| server-side rating | out | rejected | forbidden | forbidden | 不实施；使用 client-side filter |
+| `/v1/novel/detail` | out | rejected | forbidden | forbidden | 删除依赖 |
+| `/v1/novel/series` | out | rejected | forbidden | forbidden | 删除依赖 |
+| `/v1/novel/content` | out | rejected | forbidden | forbidden | 不承诺正文读取 |
+| WebView fallback | out | excluded | forbidden | forbidden | 不实施 |
 
 ## 进入 public surface 的条件
 
@@ -81,7 +88,7 @@ non-primary account + real target + write/read-back + isolated delete
 - README / CLI reference。
 - Skill 文档。
 
-任何未确认能力都只能保留在：
+任何未 `public_ready` 能力都只能保留在：
 
 - live test。
 - evidence。
@@ -90,15 +97,14 @@ non-primary account + real target + write/read-back + isolated delete
 
 ## 失败处理
 
-- `confirmed`：允许实施。
-- `inconclusive`：继续验证。
-- `rejected`：不得实现。
-- `blocked`：写明阻塞条件。
-- `not_tested`：不得公开。
+- `confirmed`：可作为 evidence 输入；生产实现仍须通过 `contract_frozen` / `migration_ready`。
+- `inconclusive` / `not_tested`：补齐 snapshot 或实现证据；不得公开。
+- `rejected`：不得实现；只做删除或兼容处理。
+- `blocked`：写明阻塞条件；不另起 Goal。
 
 ## API 迁移规则
 
-以下词语只允许用于 `confirmed` contract：
+以下词语只允许用于 `contract_frozen` / `migration_ready` contract：
 
 - 升级。
 - 转移。
@@ -106,6 +112,6 @@ non-primary account + real target + write/read-back + isolated delete
 - 新增 public SDK。
 - 新增 CLI/MCP surface。
 
-`inconclusive`、`rejected`、`not_tested` 只能进入验证 task。
+`inconclusive` / `not_tested` 只能进入 contract snapshot、验证或 internal candidate task；不得进入 public surface。
 
-因此，当前 v2 novel detail、v2 novel series、novel latest cursor、comments v3 均不能直接视为已验证迁移。
+因此，当前 v2 novel detail、v2 novel series、novel latest cursor、comments v3 仍须完成 contract snapshot；历史 evidence 状态不等于接口不存在，也不等于 public_ready。

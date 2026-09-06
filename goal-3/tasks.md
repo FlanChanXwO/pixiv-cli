@@ -1,102 +1,111 @@
-# goal-3 tasks：完整实施 goal
+# goal-3 tasks：完整实施 Goal
 
-观测日期：2026-09-05（Asia/Shanghai）。
+观测日期：2026-09-06（Asia/Shanghai）。
 
 ## 执行规则
 
-- 本文件属于一个完整 goal。
-- 一轮只执行一个未完成 task。
-- 每三个 task 后执行集中检查。
-- 先 Red，再 Green，再 Refactor。
-- 未通过 contract gate 的能力不得进入 public surface。
-- `blocked` 不得伪造为 `confirmed`。
+- 所有 task 属于同一个 Goal-3，不创建 Goal-3a、Goal-3b 或后续 Goal。
+- 一个 task 只负责一个 capability/owner，完成后独立提交、测试和回滚。
+- Contract Freeze、审计和矩阵 task 以 evidence snapshot 与一致性检查为 Red/Green 等价门禁；生产代码 task 必须 Red → Green → Refactor。
+- `scope_admitted` 不等于 `public_ready`；public surface 必须通过 adapter、SDK、CLI/MCP 和文档门禁。
+- 不重建 cursor、pagination、traversal 或 URL parser。
+- `blocked`、`rejected`、`excluded` 不得伪造为可公开能力；失败留在当前 Goal 内处理或从当前 public scope 移除。
 
-## 已完成：验证与审计
+## 已完成：验证与审计基线
 
-- [x] 建立严格 manifest。
-- [x] 建立 verdict gate。
-- [x] 验证 Novel read matrix。
-- [x] 验证 Artwork read matrix。
-- [x] 验证真实第一页与第二页。
-- [x] 通过当前 adapter 与 SDK probe。
-- [x] 完成既有 mutation evidence。
-- [x] 生成脱敏 JSON/Markdown evidence。
-- [x] 保留并重新分级旧 85 条 evidence。
-- [x] 生成 command-to-upstream matrix。
-- [x] 生成 Shaft-to-live diff。
-- [x] 生成 Wire/adapter/SDK diff。
-- [x] 生成分页报告。
-- [x] 生成 mutation 报告。
-- [x] 生成风险审计。
-- [x] 生成能力准入表。
-- [x] 排除 WebView 默认路径。
-- [x] 排除废弃 v1 novel detail、series、content。
-- [x] 判定 server-side rating 参数当前不可确认。
-- [x] 验证私有 artwork / novel bookmark 读接口。
-- [x] 对照 Shaft continuation、comments、series、mutation 处理。
-- [x] 使用临时 HOME 重跑 strict upstream read test。
-- [x] 完成实施条件复查。
-- [x] 将计划升级为单一完整实施 goal。
+- [x] 建立 strict manifest、verdict gate 和 evidence 格式。
+- [x] 完成 Novel / Artwork read matrix、真实 read evidence 和分页报告。
+- [x] 完成既有 mutation evidence、脱敏 JSON/Markdown evidence 和 mutation 报告。
+- [x] 生成 command-to-upstream、Shaft-to-live、Wire/adapter/SDK 差异表。
+- [x] 排除 WebView 默认路径、废弃 v1 novel detail/series/content 和 server-side rating filter。
+- [x] 将 Goal-3 确定为单一完整 Goal。
+- [x] 接受并记录本次 vNext 计划修改建议：cursor/pagination 复用、SDK 兼容决策、CLI migration matrix、owner-sized task。
 
-## 阶段 A：合约收口
+## Phase A：Contract Freeze
 
-- [ ] **T01**：建立实施前双门禁。同步 `api-migration-verification.md`。区分 `migration_ready` 与 `public_ready`。
-- [ ] **T02**：补齐 novel detail v2、novel series v2、novel latest 的真实第二页验证。
-- [ ] **T03**：补齐 artwork recommended、novel comments v3、artwork comments v3 的真实验证。
-- [ ] **CHECK-01**：集中检查 T01-T03。确认 verdict、字段、cursor 和 adapter/SDK 一致。
-- [ ] **T04**：验证 novel search period、novel/artwork bookmark tags、bookmark detail、artwork subtype、novel bookmark mutation round-trip。
-- [ ] **T05**：验证 comment text、reply、stamp、delete 的 adapter/SDK round-trip。使用非主测试账号。
-- [ ] **T06**：验证 stamps read、novel ranking、recommended subtype、latest subtype expansion、comment total 和 bare ID probe。失败能力不得公开。
-- [ ] **CHECK-02**：冻结迁移范围。每个 API 必须是 `migration_ready` 或从阶段 B 移除。重新生成 matrix、admission 和 failure class。
+这些 task 不再探索“接口是否存在”；它们把已确认范围固化为 implementation contract，并记录字段、continuation、mutation、error 和 regression fixture。
 
-## 阶段 B：Protocol 与 SDK
+- [ ] **T01**：冻结 artwork search/latest/ranking 与 ugoira metadata contract。
+- [ ] **T02**：冻结 novel search/detail/series/latest/recommended/ranking/follow contract。
+- [ ] **T03**：冻结 artwork/novel bookmark list、tags、detail 和 subtype contract。
+- [ ] **T04**：冻结 artwork/novel comments read、create、reply、stamp、delete 与 total semantics contract。
+- [ ] **T05**：冻结所有 endpoint continuation payload、allowlist 参数、endpoint/subtype binding、request digest 和第二页 fixture；只扩展现有 Pixiv cursor 体系。
+- [ ] **T06**：冻结 error classification、mutation isolation/read-back、evidence redaction 和 scope/admission matrix。
+- [ ] **CHECK-01**：检查 T01-T03 的 endpoint、DTO、type scope 和 fixture 一致性。
+- [ ] **CHECK-02**：检查 T04-T06；冻结 `contract_frozen` / `migration_ready` / `public_ready` 分层。
 
-- [ ] **T07**：只为 `confirmed` / `pagination_exempt` contract 写 Protocol red tests。候选 API 只保留在 live validation tests。
-- [ ] **T08**：只迁移已经达到 `confirmed` 的 API。novel detail/series、novel latest cursor、novel period 未达到 gate 时不得改生产 path。
-- [ ] **T09**：只实现已经达到 `confirmed` 的 DTO 和 bookmark contract。comments v3 仍为候选时，只更新验证 fixture，不更新 public SDK。
-- [ ] **CHECK-03**：集中检查 T07-T09。运行 SDK、adapter 和 live focused tests。
-- [ ] **T10**：实现受控 full continuation state。绑定 endpoint、subtype 和 request digest。
-- [ ] **T11**：实现 recommended、latest、search、bookmark 的 logical pagination。
-- [ ] **T12**：实现已确认 mutation、stamps、ranking 的 SDK operation。未确认项保持验证代码可达、生产 surface 不可达。
-- [ ] **CHECK-04**：集中检查 T10-T12。确认无 cursor 丢失、跨 subtype 复用或静默 fallback。
+## Phase B：Protocol / Adapter
 
-## 阶段 C：共享类型、Resolver 与 Filter
+- [ ] **T07**：实现 artwork/novel v2 read adapters；只处理 Phase A 已冻结 contract。
+- [ ] **T08**：实现 artwork/novel bookmark list、tags、detail 和 mutation adapters。
+- [ ] **T09**：实现 artwork/novel comment、reply、stamp、delete adapters。
+- [ ] **CHECK-03**：运行 T07-T09 的 adapter red/green、DTO decoding 和 error mapping tests。
+- [ ] **T10**：实现 ranking、recommended、latest 和 subtype adapters。
+- [ ] **T11**：实现 continuation extraction/sanitization；`next_url` 只能解析为 allowlist state，不能原样进入 cursor。
+- [ ] **CHECK-04**：检查所有 adapter 的 endpoint binding、空列表、错误语义和 no-secret 约束。
 
-- [ ] **T13**：建立 artwork、illust、manga、ugoira、novel、user 的 canonical type model。
-- [ ] **T14**：拆分 SearchArtworkType、RecommendedArtworkType、LatestArtworkType、BookmarkType、EntityType。
-- [ ] **T15**：实现 URL、canonical record、显式 type 的统一 resolver。URL 识别保持纯本地。
-- [ ] **CHECK-05**：集中检查 T13-T15。运行 resolver、type conflict、invalid combination tests。
-- [ ] **T16**：实现 bare ID probe。仅在 T06 confirmed 时开放，否则要求显式 type。
-- [ ] **T17**：实现 rating client-side filter 和 logical pagination。不得发送未经确认的伪 server filter。
-- [ ] **T18**：实现 bookmark subtype、comics → manga alias 和 type-specific validation。
-- [ ] **CHECK-06**：集中检查 T16-T18。检查类型泄露、过滤后续页和合法结果完整性。
+## Phase C：SDK / Cursor
 
-## 阶段 D：CLI 与 MCP surface
+- [ ] **T12**：完成 `Public SDK Compatibility Decision`。默认保持源码兼容；若接受 breaking change，先记录范围、迁移、版本和 module 策略。
+- [ ] **T13**：实现 artwork public SDK methods/models，保留现有 exported named type compatibility。
+- [ ] **T14**：实现 novel public SDK methods/models，保留 series 与 continuation 语义。
+- [ ] **T15**：实现 explicit bookmark SDK：`AddArtworkBookmark`、`RemoveArtworkBookmark`、novel 对应方法、list/tags/detail。
+- [ ] **CHECK-05**：运行 T12-T15 的 public signature、adapter/SDK 对照和 compatibility tests。
+- [ ] **T16**：实现 explicit artwork/novel comment SDK read/create/reply/delete contract。
+- [ ] **T17**：实现 stamps SDK operation；stamp 与 text/reply/delete 语义分别建模。
+- [ ] **T18**：实现 ranking/recommended/latest SDK operations，未通过 gate 的 subtype 不公开。
+- [ ] **T19**：扩展现有 `sdk/pixiv` cursor binding；需要变化时递增 binding version，不创建第二套 cursor format。
+- [ ] **CHECK-06**：运行 SDK、cursor、continuation mismatch、cross-subtype reuse 和 secret-redaction tests。
 
-- [ ] **T19**：统一 search、novel search、user search、trending 输入和输出。
-- [ ] **T20**：统一 bookmark、recommended、timeline、ranking surface。
-- [ ] **T21**：统一 detail、series、comment、user/follow/mypixiv surface。
-- [ ] **CHECK-07**：集中检查 T19-T21。运行 CLI golden、pipe、NDJSON 和错误策略测试。
-- [ ] **T22**：为已确认 SDK 能力补齐 MCP aggregation、input/output schema 和 structured errors。
-- [ ] **T23**：同步 MCP tool registration、localized MCP docs、README 和 CLI reference。
-- [ ] **T24**：实现 deprecated alias、hidden alias、无效 route 删除和 shell completion 迁移。
-- [ ] **CHECK-08**：集中检查 T22-T24。确认 CLI、MCP、SDK、docs surface 一致。
+## Phase D：Shared Semantics
 
-## 阶段 E：回归、审查与交付
+- [ ] **T20**：冻结 artwork、illust、manga、ugoira、novel、user canonical types；区分 entity type 与 subtype type。
+- [ ] **T21**：实现统一 resolver，复用 `pixiv.ParseURL`；补齐 structured record、URL、explicit type、bare-ID probe 和 conflict errors。
+- [ ] **T22**：实现 normalized rating/content-type filter；server-side rating 未确认时只做 client-side filter。
+- [ ] **T23**：接入 `internal/shared/pagination`、`internal/shared/traversal` 和 `CollectFilteredPagesFrom`；不新增 CLI/MCP/SDK 分页 engine。
+- [ ] **CHECK-07**：运行 canonical type、resolver、filter、logical limit、continuation 和 repeated cursor tests。
 
-- [ ] **T25**：运行 Protocol、Cursor、Filter、Resolver、CLI、SDK、MCP tests。
-- [ ] **T26**：运行真实 read regression。mutation 只在对应能力已获准入时运行。
-- [ ] **T27**：运行 `go test ./...` 和 `sh scripts/build.sh`。
-- [ ] **CHECK-09**：集中检查 T25-T27。修复本 goal 引入的失败。
-- [ ] **T28**：更新 evidence、matrix、risk audit、feasibility report 和 admission。
-- [ ] **T29**：运行脱敏扫描。确认没有 token、cookie、UID、用户名、正文、标题、原始 URL 和本机路径。
-- [ ] **T30**：完成最终 review。确认 rejected/blocked 能力没有 public entry。
-- [ ] **CHECK-10**：最终集中检查。满足完成标准后再结束 goal。
+## Phase E：CLI（按 command owner）
+
+- [ ] **T24**：search surface：`--type` entity 与 artwork subtype 语义。
+- [ ] **T25**：novel search surface：兼容 route、period contract 和 migration matrix。
+- [ ] **T26**：user search 与 trending surface。
+- [ ] **T27**：bookmark surface：list/tags/detail/add/remove，按 artwork/novel explicit dispatch。
+- [ ] **T28**：recommended surface：entity type、subtype 和 `all` 兼容语义。
+- [ ] **T29**：timeline surface：following/latest 的 entity type 与 `--content-type` subtype。
+- [ ] **T30**：ranking surface：artwork 与已准入 novel ranking 分开验证。
+- [ ] **T31**：detail surface：artwork/novel/user resolver 与 novel content exclusion。
+- [ ] **T32**：series surface：artwork/novel explicit type 和 series continuation。
+- [ ] **T33**：comment surface：read/create/reply/stamp/delete 的 entity-specific dispatch。
+- [ ] **T34**：user surface：detail/artworks/novels/relationships。
+- [ ] **T35**：follow surface：`user follow/unfollow` canonical route 与旧 alias。
+- [ ] **T36**：mypixiv surface：users/works 的 type-specific validation。
+- [ ] **CHECK-08**：运行 T24-T26 的 CLI golden、stdin、JSON/NDJSON 和 error strategy tests。
+- [ ] **CHECK-09**：运行 T27-T30 的 CLI golden、logical pagination、mutation 和 public gate tests。
+- [ ] **CHECK-10**：运行 T31-T36 的 resolver、pipe、completion candidate 和 compatibility tests。
+
+## Phase F：MCP / Compatibility / Docs
+
+- [ ] **T37**：补齐已准入 read capabilities 的 MCP aggregation、input/output schema 和 structured errors。
+- [ ] **T38**：补齐已准入 mutation capabilities 的 MCP operations、access-control errors 和 read-back result。
+- [ ] **T39**：完成 `cli-migration-matrix.md`；逐项决定 alias、hidden alias、deprecated、delete、stdin、JSON/NDJSON 和 MCP。
+- [ ] **T40**：迁移 shell completion、help、invalid route 删除和 deprecated flag 行为。
+- [ ] **T41**：同步 README、CLI reference、SDK docs、MCP docs 和 `skills/pixiv-cli/`；只记录已 `public_ready` 能力。
+- [ ] **CHECK-11**：检查 CLI/MCP/SDK/matrix/docs surface 一致性和未准入能力不可达性。
+
+## Phase G：Regression / Delivery
+
+- [ ] **T42**：运行 Protocol、adapter、SDK、cursor 和 shared semantic regression。
+- [ ] **T43**：运行 CLI、MCP、completion、alias/deprecation regression。
+- [ ] **T44**：运行 live read/mutation regression；mutation 只使用隔离账号、真实目标和本轮 ID。
+- [ ] **T45**：运行 `go test ./...`、`sh scripts/build.sh`、public surface audit、evidence redaction 和 migration audit。
+- [ ] **CHECK-12**：最终检查完成标准；确认 rejected/excluded 能力无 public entry，再结束 Goal-3。
 
 ## 每个 task 的回写格式
 
 ```text
 实际变更：
+负责 owner：
 验证命令：
 验证结果：
 新增 evidence：
@@ -106,11 +115,8 @@
 
 ## 当前实施入口
 
-当前可以启动本 goal。
+当前可启动单一 Goal-3。
 
-但 T01-T06 必须先执行。
+执行顺序必须从 T01 开始；T07 之前完成 Phase A contract freeze；T12 必须先完成 public SDK compatibility decision；T24 之前冻结 `goal-3/cli-migration-matrix.md`。
 
-T07-T12 只允许使用已经 `confirmed` 的 contract。
-它们是同一 goal 内的前置 gate。
-
-不允许直接跳到 T07 或 CLI surface。
+任何未 `public_ready` 的能力只能存在于 contract/evidence、internal candidate code 或验证 task，不得进入 CLI help、completion、MCP schema、Skill、README 或正式 docs。

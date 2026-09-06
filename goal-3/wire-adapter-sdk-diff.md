@@ -44,4 +44,9 @@
 - artwork latest 扩展 subtype。
 - comments total 的非空语义。
 
-这些项的 Wire、Adapter、SDK 均不能标为 confirmed。
+这些项的历史 Wire、Adapter、SDK 字段不能替代 `contract_frozen`、`migration_ready` 和 `public_ready`；应在 Goal-3 对应 task 中逐层补齐。
+
+
+## Goal-3 状态语义
+
+本矩阵的历史 verdict 用于描述 evidence、fixture 与当前生产覆盖，不等同于 capability 不存在。Goal-3 内按 `contract_frozen`、`migration_ready`、`public_ready` 逐层推进；`inconclusive` / `not_tested` 需要补 snapshot 或实现证据，但不产生新的 Goal。

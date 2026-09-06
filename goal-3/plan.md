@@ -1,443 +1,262 @@
 # goal-3：pixiv-cli vNext 完整实施计划
 
-观测日期：2026-09-05（Asia/Shanghai）。
+观测日期：2026-09-06（Asia/Shanghai）。
+修订依据：`Goal-3 vNext 计划修改建议报告`。
 
-## 计划状态
+## 计划结论
 
-本文件已从“验证后分批修复”升级为：
+Goal-3 保持为**单一完整 Goal**，不拆分为 Goal-3a、Goal-3b 或后续 Goal。
 
-> **单一 goal 的完整实施阶段。**
-
-它覆盖：
+目标是一次完成 Pixiv vNext public surface 收口，使以下层保持一致：
 
 ```text
-合约收口 → SDK / Protocol → 共享类型 → Resolver → Filter → CLI → MCP → 文档 → 回归
+upstream contract
+    → protocol / adapter
+    → public SDK
+    → shared types / cursor / pagination / resolver / filter
+    → CLI / MCP
+    → compatibility / documentation / regression
 ```
 
-这不是一次无门禁的大改动。
+Goal 层面要求完整交付；Task 层面要求单一 owner、可独立测试、提交和回滚。Task 数量增加不代表 Goal 被拆分。
 
-同一 goal 内仍按 task 顺序执行。
-每个 task 独立测试。
-每三个 task 做一次集中检查。
-
-未确认能力必须在同一 goal 内先完成验证。
-验证失败则该能力停止。
-不得伪造为 `confirmed`。
+本计划接受用户提供的审查结论：Goal-3 涉及的 upstream 能力属于本 Goal 的可实施范围。历史 evidence 中的 `inconclusive`、`not_tested` 等状态保留为证据完整性和实现覆盖记录，不再解释为“接口不存在”。它们仍可阻止 contract freeze 或 public surface，但不再触发另起 Goal，也不阻止为已确认范围建立独立实现 task。
 
 ## 目标
 
-完成 pixiv-cli vNext 的：
+1. 冻结 Pixiv App API implementation contract。
+2. 修正已存在的 novel、artwork、bookmark、comment、ranking、recommended、latest 能力。
+3. 条件接入 novel bookmark、comment mutation、stamps、novel ranking 与 subtype 能力。
+4. 统一 canonical types、已有 cursor、shared pagination/traversal、resolver 和 filter 语义。
+5. 收口 CLI 与 MCP public surface，并完成 alias、deprecation、completion 和文档迁移。
+6. 保持 public Go SDK 的兼容策略明确，不由执行 Agent 自行决定 breaking change。
+7. 以 adapter、SDK、CLI、MCP、live regression 和脱敏审计证明完整交付。
 
-1. Pixiv App API contract 校正。
-2. 已有 novel 能力修复。
-3. novel bookmark 能力补齐。
-4. comment read/write/delete 能力收口。
-5. stamps 与 novel ranking 的条件式接入。
-6. artwork type、rating、pagination 统一。
-7. resource resolver 统一。
-8. CLI public surface 迁移。
-9. SDK、Protocol、CLI、MCP、Skill 和文档同步。
-10. 兼容 alias、废弃入口和错误语义收口。
-11. 维护 `api-migration-verification.md`。确保每个迁移 API 已验证或已移出范围。
+## 范围与排除
 
-## 明确边界
+### Goal-3 范围
 
-### 已验证，可进入直接实施
+以下能力属于本 Goal，按 Phase A 的 contract freeze 资料实施：
 
-当前只有以下 contract 可以直接进入 SDK、CLI 或 MCP 实施：
-
-- novel follow。
-- novel recommended。
-- artwork search：all、illust、manga、ugoira。
-- artwork latest。
-- artwork ranking。
-- ugoira metadata。
-- user novels。
-- user artworks。
-- public/private novel bookmarks 的已验证读路径。
-- public/private artwork bookmarks 的已验证读路径。
-
-其中 user、artwork、bookmark 数据受限 case 使用 `pagination_exempt`。
-
-### 同一 goal 内先验证，验证后才可迁移
-
-以下都是候选 contract。
-它们**不是已验证的 API 迁移**：
-
-- `v1 novel detail` → `v2 novel detail`。
-- `v1 novel series` → `v2 novel series`。
-- novel latest `offset` → `max_novel_id`。
-- artwork recommended 的完整 continuation。
-- novel comments v2 → v3。
-- artwork comments → v3 DTO。
-- novel bookmark tags/detail/add/remove。
-- comment text/reply/stamp/delete。
-- stamps read。
-- novel ranking。
-- novel search period。
-- artwork bookmark tags 与 subtype。
-- recommended/latest subtype、comment total 和 bare ID probe。
-
-它们必须先完成 live + adapter + SDK 验证。
-只有 matrix 变为 `confirmed`，才允许迁移或公开。
-
-### 其他实施范围
-
-下列工作可以在 contract gate 之后实施：
-
-- artwork、manga、ugoira、novel、user 类型归一化。
-- URL、record、显式 type 的统一 resolver。
+- artwork search、latest、ranking、ugoira metadata。
+- novel search、detail、series、latest、recommended、ranking、follow。
+- user artworks、user novels、user relationships。
+- public/private artwork bookmark 与 novel bookmark。
+- artwork / novel comments read、create、reply、stamp、delete。
+- recommended、latest、bookmark subtype 与 logical pagination。
 - rating client-side filter。
-- 已确认能力对应的 CLI surface。
-- 已确认能力对应的 MCP parity。
-- 旧入口迁移、alias、deprecation 和文档同步。
+- CLI、MCP、SDK、Skill、README、CLI reference 和 MCP docs 的一致迁移。
 
-任何 CLI surface 都不能先于对应的 SDK contract。
+`scope_admitted` 表示能力属于 Goal-3；不等于已经完成 adapter、SDK 或 public surface。
 
-### 条件纳入
+### 条件 public 能力
 
-以下能力只有完成 live + adapter + SDK 验证后才可公开：
+下列能力仍属于 Goal-3，但只有完成 contract snapshot、adapter、SDK 和对应回归后才能公开：
 
-- novel ranking。
+- novel detail / series v2。
+- novel latest `max_novel_id` continuation。
+- artwork recommended 完整 continuation。
+- comments v3 DTO 与 total semantics。
+- novel bookmark tags/detail/add/remove。
+- artwork bookmark tags 与 subtype。
+- recommended/latest subtype expansion。
 - stamps。
-- artwork comment text/reply/delete。
-- novel comment text/stamp/delete。
+- novel ranking。
+- comment text/reply/stamp/delete。
+- bare ID probe。
 - `bookmark --type all`。
-- recommended 的 illust/manga/ugoira subtype。
-- timeline latest 的 manga/ugoira/组合 subtype。
-- bare ID 自动探测。
-- server-side rating filter。
+- server-side filter 以外的 rating 语义扩展。
 
-条件能力失败时：
+失败能力仍记录真实 failure class，并从 public SDK、CLI、MCP、completion 和正式文档 surface 排除；不延期到另一个 Goal。
 
-- 保留证据。
-- 标记 `rejected`、`inconclusive` 或 `blocked`。
-- 不添加 public SDK、CLI 或 MCP surface。
-
-### 排除本 goal
+### 明确排除
 
 - `/v1/novel/detail`。
 - `/v1/novel/series`。
 - `/v1/novel/content`。
-- WebView fallback。
-- `pixiv novel content` 的成功承诺。旧 App API 已 rejected；没有确认替代接口。
-- 把 `x_restrict` 当作已确认的 server-side rating 参数。
-- 任意只返回 HTTP 200、未通过 adapter/SDK 的候选接口。
-- 任意隐式匿名 Web fallback。
+- WebView fallback 或任何隐式匿名 Web fallback。
+- 将 `x_restrict` 当作已确认的 server-side rating 参数。
+- 将仅有 HTTP 200、缺少 required fields 或未通过 adapter/SDK 的候选接口公开。
 
-## 实施门禁
+## 状态与实施门禁
 
-### 普通 read 能力
+### 状态定义
 
-必须同时满足：
+| 状态 | 含义 | 允许动作 |
+| --- | --- | --- |
+| `scope_admitted` | 能力属于 Goal-3 范围；用户确认其 upstream 方向可实施 | 建立独立 task |
+| `contract_frozen` | method、path、request、response、continuation、mutation、error 和 fixture 已写入 snapshot | 开始生产实现准备 |
+| `migration_ready` | contract 已冻结，兼容策略已冻结，生产实现可开始 | 编写 adapter、SDK 和对应测试 |
+| `public_ready` | adapter、SDK、CLI/MCP contract tests 和文档通过 | 公开 public surface |
+| `rejected` / `excluded` | 本 Goal 不支持或明确排除 | 删除依赖，不作 fallback |
 
-1. Wire 已确认 method、path、参数名和类型。
-2. Response 已确认 required、optional、空列表和错误语义。
-3. 有 continuation 时已完成第二页验证。
-4. 当前 endpoint adapter 成功。
-5. 当前公开 SDK 成功。
+历史 matrix 的 `confirmed`、`partial`、`inconclusive`、`not_tested` 继续保留。它们描述现有证据和覆盖状态；执行时必须将其转化为 contract snapshot、实现 task 或明确排除，不得把状态含义扩张为“另一个 Goal”。
+
+### 普通 read
+
+必须具备：
+
+1. method、path、参数名和类型。
+2. required、optional、空列表和错误语义。
+3. 有 continuation 时的真实 continuation 参数和第二页回归 fixture。
+4. endpoint adapter。
+5. public SDK。
 6. adapter 与 SDK 结果一致。
 
-### 用户数据受限能力
+### 用户数据受限 case
 
-以下能力采用用户确认的例外：
+user novels、user artworks、public/private bookmarks 可使用 `pagination_exempt`。仍必须验证真实接口、参数、adapter 和 SDK；证据必须明确说明未执行第二页的原因和影响。
 
-- user novels。
-- user artworks。
-- public/private bookmarks。
+### mutation
 
-必须满足：
+必须使用非主账号和真实目标；写入前读取 access control，写入后立即读回，保存本轮 ID，删除仅使用本轮 ID，并完成 adapter/SDK round-trip。不得保存 token、cookie、UID、账号名、标题、正文或原始 URL。
 
-- 真实接口成功。
-- 参数语义正确。
-- adapter 成功。
-- SDK 成功。
+### public surface
 
-这类 case 不强制第二页。
-证据必须写明 `pagination_exempt`。
+只有同时满足 `migration_ready`、adapter、SDK、CLI/MCP contract tests 和文档同步，能力才可进入：
 
-### mutation 能力
+- exported SDK method 或 model。
+- CLI help、completion 和 command tree。
+- MCP tool registration、schema 和 structured errors。
+- README、CLI reference、SDK/MCP docs 和 `skills/pixiv-cli/`。
 
-必须满足：
+## 不可违反的架构约束
 
-- 使用非主账号。
-- 使用真实可评论或可收藏目标。
-- 写入前读取 access control。
-- 写入后立即读回。
-- 保存本轮产生的 ID。
-- 删除只使用本轮 ID。
-- 完成 adapter 与 SDK round-trip。
-- 不保存正文、标题、UID、账号名或 token。
+### Cursor：扩展现有实现
 
-### API 迁移双门禁
-
-完整台账见 `api-migration-verification.md`。
-
-`migration_ready` 允许开始生产实现：
-
-- live wire 已确认。
-- response contract 已确认。
-- 普通分页已完成第二页。
-- mutation 已完成写入、读回和隔离删除。
-
-`public_ready` 允许公开 surface：
-
-- 已满足 `migration_ready`。
-- adapter 成功。
-- SDK 成功。
-- adapter 与 SDK 一致。
-- CLI/MCP contract tests 通过。
-
-“升级迁移”至少必须满足 `migration_ready`。
-
-因此：
-
-- `inconclusive` 不能改生产 path。
-- `rejected` 不能作为 fallback。
-- `not_tested` 不能创建 public SDK 方法。
-- candidate adapter 只能存在于验证代码。
-- 生产实现只能在 `migration_ready` 后开始。
-- public contract 只能在 adapter、SDK 和对应回归全部通过后冻结。
-- `v1 novel content` 不得自动转为 WebView。
-
-当前状态：
-
-- v2 novel detail：`migration_ready`，`public_ready` 未完成。
-- novel latest `max_novel_id`：`migration_ready`，`public_ready` 未完成。
-- v2 novel series：仍是候选验证项。
-- comments v3：仍是候选验证项。
-
-只能把前两项描述为“上游迁移依据已确认”。
-不能描述为“完整 public contract 已确认”。
-
-### continuation
-
-Shaft 的设计只作为参考。
-
-允许借鉴：
-
-- 保存服务端 continuation。
-- 首页和续页分开处理。
-- series metadata 与 items 一起保存。
-- reply 使用 parent comment。
-
-不直接复制：
-
-- 不直接请求任意 raw URL。
-- 必须校验 host、path 和 endpoint 绑定。
-- 必须绑定影响结果集的请求参数。
-- 不得把单个 offset 当作完整 continuation。
-
-## 单一 goal 执行阶段
-
-### 阶段 A：合约收口
-
-先执行所有尚未达到 `migration_ready` 的必要验证：
-
-- novel series v2 两页。
-- artwork recommended 第二页。
-- novel comments v3 非空响应。
-- artwork comments v3 非空响应。
-- novel bookmark tags/detail/add/remove round-trip。
-- comments mutation round-trip。
-- stamps read 与 novel stamp comment 分别验证。
-- novel ranking 的 adapter/SDK 链路。
-- novel search period。
-- artwork bookmark tags 与 subtype。
-- recommended/latest subtype、comment total 和 bare ID probe。
-
-WebView 不进入默认验证路径。
-
-验证结果驱动后续 task。
-
-### 阶段 B：Protocol 与 SDK
-
-修正：
-
-- novel series v2。
-- novel latest `max_novel_id`。
-- comments v3 DTO。
-- full continuation state。
-- novel period date range。
-- recommended subtype 与 cursor digest。
-- bookmark novel request / response / mutation。
-- 已确认的 comment、stamp、ranking operation。
-
-所有 public SDK 方法先于 CLI 接入。
-
-### 阶段 C：共享模型与过滤
-
-建立窄而明确的类型：
+项目已有两层 cursor：
 
 ```text
-SearchArtworkType
-RecommendedArtworkType
-LatestArtworkType
-BookmarkType
-EntityType
+sdk.Cursor
+    → sdk/pixiv continuation envelope
 ```
 
-建立统一 cursor：
+Goal-3 只扩展现有 Pixiv continuation payload，不创建第二套 cursor abstraction。必须复用：
 
-- 保存服务端 continuation。
-- 保存 endpoint identity。
-- 保存 request parameter digest。
-- 拒绝跨 subtype 复用。
-- 支持 logical pagination。
+- `sdk.Cursor` 的 opaque envelope。
+- `sdk/pixiv` 的 product、operation、binding version、query digest、account/client binding 和 validation。
+- endpoint-specific sanitized continuation state。
 
-rating 规则：
+禁止：
 
-- server-side 参数未确认时，不向上游发送伪参数。
-- 使用返回对象的 `x_restrict` 做 client-side filter。
-- client-side filter 必须继续消耗 continuation。
-- 不静默截断合法结果。
+- 在 CLI 或 MCP 层实现 endpoint pagination token。
+- 绕过 `sdk.Cursor`。
+- 将 `next_url`、signed URL、token、cookie、credential 或非 continuation query 直接写入持久化 cursor。
 
-### 阶段 D：Resolver
+upstream 返回 `next_url` 时，由 adapter 解析并只保留 allowlist continuation 参数，例如 `offset`、`max_illust_id`、`max_novel_id`、`last_order`。若编码语义变化，只递增现有 `cursorBindingVersion`；不得创建新的 cursor format。
+
+### Pagination / traversal：复用现有 shared 实现
+
+Goal-3 不重建 pagination/traversal engine。统一使用：
+
+```text
+SDK endpoint
+    → opaque cursor
+    → internal/shared/traversal
+    → internal/shared/pagination
+    → product-level filter
+```
+
+已有 `internal/shared/pagination.CollectFilteredPagesFrom` 已处理 filter-before-logical-limit、Skip、Limit、OneBatch、cursor continuation、重复 cursor 检测和 pooled client replay。新增代码只负责 endpoint cursor adapter、参数绑定和 Pixiv-specific filter，不形成 CLI、MCP、SDK 三套分页实现。
+
+### Resolver：复用 `pixiv.ParseURL`
 
 resolver 顺序：
 
 ```text
-canonical record → Pixiv URL → 显式 --type → bare ID
+structured canonical record
+    → existing pixiv.ParseURL
+    → bare ID + explicit --type
+    → bare ID without --type 的受控 probe
 ```
 
-URL 识别必须纯本地。
+URL 解析保持纯本地，不重写已有 `pixiv.ParseURL`。URL 已包含 entity identity 时，冲突的显式 `--type` 返回 `InvalidArgument`，不得覆盖 URL 类型。bare ID probe 只有 namespace、错误分类、请求成本和失败行为都冻结后才开放；否则要求显式 `--type`。
 
-bare ID 只有在 namespace、错误分类和成本都确认后才启用。
-否则要求显式 `--type`。
+### Public Go SDK 兼容策略
 
-覆盖：
+SDK task 前必须完成 `Public SDK Compatibility Decision`（T12）。Goal-3 默认选择保持源码兼容：
 
-- artwork。
-- novel。
-- user。
-- artwork series。
-- novel series。
-- bookmark target。
-- comment target。
+- 保留已有 exported named types，尤其是 public request field 的类型。
+- 通过内部 narrow validator/type 限制合法值。
+- CLI 可采用更窄的 vNext type abstraction，不强迫 public SDK 同步 breaking。
 
-### 阶段 E：CLI 与 MCP
+若必须接受 breaking change，必须在 T12 明确记录 breaking 范围、migration guide、deprecated symbol strategy、semantic version strategy 和是否需要 `/v2` module；实现 Agent 不得自行决定。
 
-统一：
+### Bookmark / Comment SDK contract
 
-- `--type`。
-- `detail`、`series`、`comment` owner。
-- `bookmark` owner。
-- `user`、`timeline`、`recommended` owner。
-- URL 自动识别。
-- pipe 默认 NDJSON。
-- 显式格式选择。
-- batch / stream 错误策略。
-
-候选 public surface：
+CLI 可以统一 `TARGET` 与 `--type`，public SDK 不因此泛化为 `EntityTarget` 动态 API。优先保持 endpoint-oriented explicit methods：
 
 ```text
-pixiv search WORD
-pixiv novel search WORD
-pixiv user search WORD
-pixiv user detail USER
-pixiv user artworks USER
-pixiv user novels USER
-pixiv user following USER
-pixiv user followers USER
-pixiv user follow USER
-pixiv user unfollow USER
-pixiv bookmark list TARGET --type artwork|novel
-pixiv bookmark tags --type artwork|novel
-pixiv bookmark detail TARGET --type artwork|novel
-pixiv bookmark add TARGET --type artwork|novel
-pixiv bookmark remove TARGET --type artwork|novel
-pixiv recommended --type artwork|manga|novel
-pixiv timeline following --type artwork|novel
-pixiv timeline latest --type illust|manga|novel
-pixiv detail TARGET --type artwork|novel|user
-pixiv series TARGET --type artwork|novel
-pixiv comment TARGET --type artwork|novel
-pixiv ranking --mode MODE
-pixiv reverse-search IMAGE
-pixiv download SRC... -o DIR
+AddArtworkBookmark / RemoveArtworkBookmark
+AddNovelBookmark / RemoveNovelBookmark
+ArtworkComments / AddArtworkComment / DeleteArtworkComment
+NovelComments / AddNovelComment / DeleteNovelComment
 ```
 
-未通过条件门禁的 subtype 不出现在 help、completion、MCP schema 或正式文档中。
+reply、stamp、detail、tags 等独立语义必须在 request/model 中明确表达，并由 CLI resolver 负责 dispatch。
 
-### 阶段 F：兼容迁移与文档
+## CLI migration matrix
 
-删除或迁移前扫描：
+`goal-3/cli-migration-matrix.md` 是 CLI 迁移权威表，必须在 CLI task 开始前冻结。每行明确：
 
-- README。
-- locale CLI reference。
-- MCP docs。
-- Skill。
-- tests。
-- shell completion。
-- 脚本。
-- Issues / PR。
+- old surface 与 canonical surface。
+- accepted entity type 与 subtype type。
+- alias、hidden alias、deprecated 或 delete。
+- stdin、JSON/NDJSON 和 MCP 行为。
 
-旧入口分类：
+关键语义：
 
-- 高频入口：deprecated alias。
-- 重复入口：hidden alias + deprecation。
-- 完全无效入口：删除。
+- `artwork` 表示 artwork endpoint 的实体聚合，不等同于 `illust`；subtype 单独记录。
+- `recommended` 的 entity type 与 recommended subtype 不混写。
+- `timeline latest` 的 entity type 与 `--content-type` subtype 不混写。
+- 不建立一个让所有 command 接受所有值的全球 `EntityType`。
+- `--content-type` 只有在与 `--type` 语义不冲突时才迁移；否则作为 subtype flag 保留。
+- 未达到 `public_ready` 的 subtype 不得出现在 help、completion、MCP schema 或正式文档。
 
-候选迁移：
+## 实施阶段
 
-- `follow add/remove` → `user follow/unfollow`。
-- `user bookmarks` → `bookmark list`。
-- `--content-type` → `--type`。
-- `--restrict` → `--visibility`，仅在兼容性评估通过时实施。
-- `--on-error` → `--fail-fast`，仅在语义等价时实施。
-- `--download-path` → `-o`。
+### Phase A：Contract Freeze（T01-T06）
 
-### 阶段 G：集中验证与交付
+将已确认范围固化为 implementation contract，不再重复探索“接口是否存在”。冻结 endpoint、request、response DTO、continuation、mutation、error semantics 和 regression fixtures。旧 evidence 状态只作为缺口索引。
 
-必须完成：
+### Phase B：Protocol / Adapter（T07-T11）
 
-- Protocol tests。
-- Cursor tests。
-- Filter tests。
-- Resolver tests。
-- CLI tests。
-- SDK tests。
-- MCP tests。
-- live regression。
-- `go test ./...`。
-- `sh scripts/build.sh`。
-- 脱敏 evidence 检查。
-- 公开 surface 风险审计。
+按 owner 实现 HTTP transport 适配、DTO decoding、mutation adapter 和 continuation extraction。adapter 不把内部 DTO 泄漏给 public SDK；next URL 只通过 allowlist sanitization 进入 continuation state。
 
-## 停止条件
+### Phase C：SDK / Cursor（T12-T19）
 
-出现以下任一情况，停止对应能力：
+先完成 public SDK compatibility decision，再实现 explicit endpoint-oriented SDK methods，扩展现有 Pixiv cursor binding，补齐 adapter/SDK 对照测试。
 
-- live wire 与实现不一致。
-- required 字段不稳定。
-- 第二页无法确认。
-- adapter 或 SDK 失败。
-- 参数被服务端静默忽略。
-- continuation 无法安全绑定。
-- mutation 无法隔离和读回。
-- 需要匿名 fallback 才能成功。
+### Phase D：Shared Semantics（T20-T23）
 
-停止单项能力，不得把失败改写为空结果或默认成功。
+冻结 canonical types，实现基于 `ParseURL` 的 resolver、type conflict validation、normalized filter，并接入已有 pagination/traversal。rating 默认走 client-side filter：fetch、normalize、filter、继续消耗 continuation，不能发送未经 contract 允许的 server query。
 
-## 回滚
+### Phase E：CLI（T24-T36）
 
-- 每个 task 单独提交。
-- 不混入无关格式化。
-- 每个 public surface 保留迁移前行为说明。
-- 单项失败时回滚该 task，不回滚已确认的其他修复。
-- 公共 SDK 变更必须能通过旧入口 alias 兼容期。
+按 command owner 分 task：search、novel search、user search/trending、bookmark、recommended、timeline、ranking、detail、series、comment、user、follow、mypixiv。每个 task 单独 Red → Green → Refactor → commit。
+
+### Phase F：MCP / Compatibility / Docs（T37-T41）
+
+按 read/mutation 补齐 MCP aggregation、schema、registration 和 structured errors；执行 alias/deprecation、completion、README、CLI reference、SDK/MCP docs 与 Skill 同步。CLI、MCP 共享 canonical semantic request/validation，不互相调用，也不共享错误的 transport ownership。
+
+### Phase G：Regression（T42-T45）
+
+完成 SDK/protocol、CLI/MCP、live API、全量构建、public surface、evidence redaction 和 migration audit。Goal 只有在所有 public surface 一致且 rejected/excluded 能力无公开入口时完成。
+
+## 停止与回滚
+
+发现 response required 字段不稳定、continuation 无法安全绑定、参数语义被忽略、mutation 无法隔离读回、adapter/SDK 不一致或需要匿名 fallback 时，停止对应能力，保留真实错误和 evidence，不改写为空结果或默认成功。
+
+每个 task 单独提交，不混入无关格式化。单项失败回滚对应 task，不回滚其他已确认修复。public SDK 变更必须遵循 T12 兼容决策和迁移说明。
 
 ## 完成标准
 
-只有同时满足以下条件，goal 才能完成：
-
-1. 所有进入 public surface 的能力都有 contract evidence。
-2. 所有普通分页都有第二页证据。
-3. 所有例外 case 明确标记 `pagination_exempt`。
-4. 所有 public SDK 方法都有 adapter 对照测试。
-5. 所有 CLI 命令都有 CLI regression。
-6. MCP schema、SDK、CLI 和文档一致。
-7. rejected 能力没有公开入口。
-8. blocked 能力写明阻塞条件。
-9. 不保存 secret 或用户内容。
-10. 全量 Go 测试和构建通过。
+1. 所有 public 能力都有 contract snapshot 和 evidence。
+2. 普通分页有第二页 fixture；例外 case 明确标记 `pagination_exempt`。
+3. 每个 public SDK method 都有 adapter 对照测试。
+4. 每个 CLI command 都有 regression；CLI migration matrix 已冻结。
+5. MCP schema、SDK、CLI、Skill 和文档一致。
+6. Cursor、pagination、traversal、resolver 和 filter 未出现重复实现。
+7. rejected/excluded 能力无 public entry。
+8. 没有 token、cookie、credential、用户内容或原始 URL 泄漏。
+9. `go test ./...` 与 `sh scripts/build.sh` 通过。

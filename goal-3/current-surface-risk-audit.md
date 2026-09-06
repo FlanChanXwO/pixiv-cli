@@ -1,6 +1,7 @@
 # 当前公开能力风险审计
 
 观测日期：2026-09-05（Asia/Shanghai）。
+修订日期：2026-09-06（Asia/Shanghai）。
 
 | 级别 | 能力/命令 | 当前事实 | 风险 | 处置 |
 | --- | --- | --- | --- | --- |
@@ -13,9 +14,9 @@
 | P1 | `pixiv comment -t novel` | v3 候选可行；生产仍 v2 | 版本和字段不一致 | v3 候选单独回归 |
 | P1 | Novel detail series | live 有 `novel.series`；模型无字段 | 系列信息丢失 | 明确加入模型或记录为非目标 |
 | P2 | rating flag | live 忽略 `x_restrict` | 形成伪过滤能力 | 仅做客户端过滤或不公开 |
-| P2 | ranking | live path 可用；生产层不存在 | 新增能力缺少 owner | 单独 goal |
-| P2 | stamps | live path 可用；生产层不存在 | 新增能力缺少 owner | 单独 goal |
-| P2 | comment mutation | live wire/read-back 有证据；生产层不存在 | 直接接入会越过架构边界 | 单独 TDD goal |
+| P2 | ranking | live path 可用；生产层不存在 | 新增能力缺少 owner | Goal-3 内独立 ranking task；完成 adapter/SDK gate 后公开 |
+| P2 | stamps | live path 可用；生产层不存在 | 新增能力缺少 owner | Goal-3 内独立 stamps task；完成 adapter/SDK gate 后公开 |
+| P2 | comment mutation | live wire/read-back 有证据；生产层不存在 | 直接接入会越过架构边界 | Goal-3 内按 artwork/novel owner 拆分 TDD task |
 
 ## 未发现全面损坏
 
@@ -44,20 +45,19 @@
 
 ## API 迁移审计结论
 
-当前计划中的 API 升级项不能全部视为已验证。
+本审计中的历史 verdict 描述 evidence 和当前生产覆盖，不再表示 upstream 能力不存在。Goal-3 已将相关能力纳入同一个实施范围；Phase A 负责把已确认范围固化为 contract snapshot。
 
-已确认项可以直接进入实施。
-候选项必须先完成 live、adapter、SDK 和分页 gate。
+未完成 contract freeze 前：
 
-未满足 gate 前：
-
-- 不切换生产 endpoint。
-- 不新增 public SDK。
-- 不新增 CLI/MCP 入口。
+- 可以建立独立验证、adapter 和 SDK task。
+- 不切换未经冻结的生产 endpoint。
+- 不新增 public SDK、CLI/MCP 入口。
 - 不提供静默 fallback。
 
+ranking、stamps、comment mutation 属于 Goal-3，不得延期到另一个 Goal。
 
-## 新增缺口：原始计划未完整进入 strict manifest
+
+## Contract snapshot 缺口：原始计划尚未完整冻结
 
 以下 API 或参数仍缺强制验证 case：
 
@@ -72,5 +72,4 @@
 - artwork latest 扩展 subtype。
 - comments `total_comments` 的非空语义。
 
-这些缺口必须在阶段 A 处理。
-未验证时不能进入阶段 B。
+这些缺口在 Phase A 处理。它们是 contract freeze 缺口，不是另起 Goal 的理由；未冻结时不能进入 public surface。

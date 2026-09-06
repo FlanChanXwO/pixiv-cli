@@ -18,7 +18,7 @@ Live Pixiv 响应才是最终依据。
 | Comment add/reply | 共用 add path；reply 增加 parent ID | 真实写入 evidence 一致 | 未接入生产 adapter/SDK | 可作后续候选 |
 | Comment delete | Shaft 未实现 | live evidence 成功 | 未接入生产 adapter/SDK | 不从 Shaft 推导 |
 | Stamps | 只有孤立模型 | `/v1/stamps` 只读成功 | 未接入生产 adapter/SDK | 不从 Shaft 推导 |
-| Novel ranking | AppApi 有 ranking path | live 首页成功；生产层缺失 | 未公开 | 后续独立 goal |
+| Novel ranking | AppApi 有 ranking path | live 首页成功；生产层缺失 | 未公开 | Goal-3 内独立 task |
 
 ## 可借鉴
 

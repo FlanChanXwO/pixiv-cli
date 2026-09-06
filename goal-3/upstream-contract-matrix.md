@@ -7,7 +7,7 @@
 - `P1/P2` 是两页 item count。
 - `—` 表示本次不要求或未测试。
 - `pagination_exempt` 是用户确认的数据受限例外。
-- 只有 `confirmed` 才能冻结完整 contract。
+- `confirmed` 是当前 evidence verdict；完整 contract 以 `contract_frozen` 为准。
 
 | Case | 命令 | Method | Path | 参数 | P1 | P2 | Continuation | Adapter | SDK | Verdict | 备注 |
 | --- | --- | --- | --- | --- | ---: | ---: | --- | --- | --- | --- | --- |
@@ -77,3 +77,8 @@
 | illust-new-subtype-expansion | GET | /v1/illust/new | manga/ugoira/compound | partial | partial | partial | partial | partial | 必须补测 |
 | novel-comment-total | GET | /v2或v3/novel/comments | total_comments/include_total | partial | inconclusive | inconclusive | partial | partial | 必须补测 |
 | illust-comment-total | GET | /v3/illust/comments | total_comments/include_total | partial | inconclusive | inconclusive | partial | partial | 必须补测 |
+
+
+## Goal-3 状态语义
+
+本矩阵的历史 verdict 用于描述 evidence、fixture 与当前生产覆盖，不等同于 capability 不存在。Goal-3 内按 `contract_frozen`、`migration_ready`、`public_ready` 逐层推进；`inconclusive` / `not_tested` 需要补 snapshot 或实现证据，但不产生新的 Goal。

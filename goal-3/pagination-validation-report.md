@@ -61,3 +61,8 @@
 - artwork latest subtype expansion：每种 subtype 都要验证 `max_illust_id`。
 - bookmark subtype client filter：必须验证 logical pagination。
 - comments total：需要非空目标和真实 continuation。
+
+
+## Goal-3 实施约束
+
+本报告记录 continuation evidence，不要求另起 Goal。实现时扩展现有 `sdk.Cursor` / `sdk/pixiv` binding，并复用 `internal/shared/pagination`、`internal/shared/traversal` 与 `CollectFilteredPagesFrom`；不要在 CLI、MCP 或 SDK 层重建分页 engine。`next_url` 只能由 adapter 解析为 allowlist continuation state。

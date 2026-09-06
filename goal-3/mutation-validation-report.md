@@ -39,7 +39,7 @@ Shaft 没有打通 stamps API。
 
 所有 mutation 仍为 `not_tested`（针对当前生产层）。
 上游 wire/read-back evidence 不等于公开 SDK contract。
-后续必须建立独立 TDD 实施 goal。
+在 Goal-3 内建立按 capability/owner 拆分的独立 TDD task。
 
 
 ## Novel bookmark mutation 缺口

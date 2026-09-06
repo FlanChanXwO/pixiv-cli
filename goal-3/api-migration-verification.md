@@ -1,25 +1,32 @@
 # API 升级与迁移验证台账
 
 观测日期：2026-09-05（Asia/Shanghai）。
+修订日期：2026-09-06（Asia/Shanghai）。
 
 ## 目的
 
-本台账只回答一个问题：
+本台账回答两个问题：
 
-> 计划提到的 API 升级或迁移，是否已经具备实施依据？
+1. 已纳入 Goal-3 的 capability contract 是否已冻结到足以实施？
+2. adapter、SDK、CLI 和 MCP 是否已达到公开条件？
 
-## 两层门禁
+用户确认的 upstream 可用性属于 Goal-3 范围输入。台账中的 `confirmed`、`partial`、`inconclusive`、`not_tested` 保留为 evidence/覆盖状态，不再作为拆分 Goal 或否定能力存在的结论。
+
+## 分层门禁
+
+### `contract_frozen`
+
+允许把范围内 capability 交给实现 task。必须写明：
+
+- method、path、参数名和参数类型。
+- required / optional / empty / error 响应语义。
+- continuation 参数、endpoint binding 和第二页 fixture；无分页则明确记录。
+- mutation 写入、读回、隔离删除和恢复原状态。
+- regression fixture 与 evidence redaction 规则。
 
 ### `migration_ready`
 
-允许开始生产实现。
-
-必须满足：
-
-- method、path、参数名和参数类型已由 live 请求确认。
-- required / optional / empty / error 响应语义已确认。
-- 普通分页已验证真实第二页。
-- mutation 已完成真实写入、读回和隔离删除。
+允许开始生产实现。必须满足 `contract_frozen`，并且 public SDK compatibility decision 已冻结。
 
 ### `public_ready`
 
@@ -34,9 +41,10 @@
 
 因此：
 
-- 上游已确认但 adapter 未实现，可以进入 TDD 实现。
-- 不能直接进入 public surface。
-- 上游尚未确认，不能修改生产 endpoint。
+- scope-admitted 但 adapter 未实现的能力，可以进入独立 TDD 实现 task。
+- 未 `migration_ready` 不能切换生产 path。
+- 未 `public_ready` 不能进入 public surface。
+- 不因历史 `inconclusive` 另起 Goal；应完成 snapshot、实现或明确排除。
 
 ## 已确认的迁移依据
 
@@ -57,9 +65,9 @@
 | Artwork comments v3 DTO | `/v3/illust/comments` | 非空 live DTO；`date`；numeric access control；第二页 | inconclusive / fixture mismatch | 不冻结 DTO |
 | Artwork recommended continuation | `/v1/illust/recommended` | 完整 continuation 参数；成功第二页 | inconclusive | 不替换 cursor model |
 | Novel search period | `/v1/search/novel` + `start_date/end_date` | 未进入 strict manifest；live 两页；adapter；SDK | not tested | 不删除 `Duration` |
-| Novel bookmark tags | `/v1/user/bookmark-tags/novel` | wire/response；空列表；adapter；SDK | not tested | 不新增 public operation |
-| Novel bookmark detail | `/v2/novel/bookmark/detail` | wire/response；public/private 状态；adapter；SDK | not tested | 不新增 public operation |
-| Novel bookmark add/delete | `/v2/novel/bookmark/add` + `/v1/novel/bookmark/delete` | 隔离写入、detail、list、tags、恢复原状态；adapter；SDK | not tested | 不新增 public mutation |
+| Novel bookmark tags | `/v1/user/bookmark-tags/novel` | wire/response；空列表；adapter；SDK | not tested | contract snapshot 前不新增 public operation |
+| Novel bookmark detail | `/v2/novel/bookmark/detail` | wire/response；public/private 状态；adapter；SDK | not tested | contract snapshot 前不新增 public operation |
+| Novel bookmark add/delete | `/v2/novel/bookmark/add` + `/v1/novel/bookmark/delete` | 隔离写入、detail、list、tags、恢复原状态；adapter；SDK | not tested | contract snapshot 前不新增 public mutation |
 | Artwork bookmark tags | `/v1/user/bookmark-tags/illust` | wire/response；subtype 语义；adapter；SDK | not tested | 不扩展 subtype tags |
 | Artwork bookmark subtype | `/v1/user/bookmarks/illust` + `type/content_type` | 参数是否被忽略；logical pagination | not tested | 默认只能 client-side 候选 |
 | Recommended subtype | `/v1/illust/recommended` + `content_type` | illust/manga/ugoira 各两页 | not tested | 不公开 ugoira subtype |
@@ -80,24 +88,25 @@
 
 ## 启动生产迁移前的冻结条件
 
-阶段 A 完成时，所有计划中的 API 项必须属于以下二者之一：
+Phase A 完成时，每个范围内 capability 必须具备以下路径之一：
 
-1. `migration_ready`。
-2. 从生产实施范围移除。
+1. `contract_frozen`，随后进入 `migration_ready` 和实现 task。
+2. 明确从当前 public implementation scope 移除。
+3. `rejected` / `excluded`，进入删除或兼容处理。
 
-不能保留第三种状态。
+`inconclusive`、`not_tested` 是待冻结或待补证据的状态，不是另一个 Goal；它们在 contract 未冻结前不能进入 public surface。
 
-因此：
+## Public SDK Compatibility Decision
 
-- `inconclusive` 不能流入阶段 B。
-- `not_tested` 不能流入阶段 B。
-- `rejected` 只能进入删除或兼容处理。
+T12 必须先于任何 exported SDK contract 修改完成。Goal-3 默认保持源码兼容：保留已有 exported named types，内部使用窄 validator/type 限制合法值。CLI 可以采用更窄的 type abstraction，不强迫 public SDK breaking。
+
+若必须接受 breaking change，必须先记录 breaking 范围、migration guide、deprecated symbol strategy、semantic version strategy 和是否需要 `/v2` module；执行 Agent 不得自行决定。
 
 ## 当前结论
 
-计划中提到的 API 升级**并非全部已验证**。
+Goal-3 采用单一完整 Goal。当前台账中的历史 verdict 不代表能力不存在；它们用于定位 contract snapshot、adapter、SDK 或 public coverage 缺口。
 
-目前明确具备上游迁移依据的主要项目：
+具备上游迁移依据、但仍需生产实现的项目包括：
 
 - Novel latest cursor。
 - Novel detail v2。
@@ -105,5 +114,4 @@
 - Stamps read。
 - Novel ranking。
 
-其余候选必须在 T02-T06 完成验证。
-否则从实施 surface 删除。
+其余范围内 capability 在 Phase A 完成 contract snapshot 后，按 `migration_ready`、`public_ready` 逐层推进。失败能力在本 Goal 内停止、修复或移出 public implementation scope，不延期到另一个 Goal。
