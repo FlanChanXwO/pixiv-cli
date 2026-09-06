@@ -296,9 +296,7 @@ pixiv search "miku" --type artwork --limit 20 --ndjson | pixiv detail
 
 artwork、novel、user 搜索记录都会从 `type` 推断对应详情，不需要 `--type`。record mode 中显式给出的
 `--type` 只是 compatibility constraint，必须与推断出的 Record 类型兼容，绝不会覆盖 Record 类型。反向搜图的
-`artwork`、`user` identity record 也能走同一条 detail 管道。`search --json` 是完整聚合 JSON 文档，不是规范
-Record 流，因此 `pixiv search ... --json | pixiv detail` 不属于支持 contract。
-`pixiv detail` 也可直接消费规范 NDJSON：`illust`、`manga`、`ugoira` 和通用 `artwork` 记录进入作品详情，`novel` 与 `user` 记录进入对应详情。record 模式下，显式 `--ndjson` 输出规范 Record，显式 `--json` 输出完整 JSON 数组；省略输出 flag 时，非 TTY stdout 自动使用 NDJSON。`pixiv search --json` 是聚合 JSON 文档，不是规范 NDJSON 流，不能直接作为 `detail` 的输入。
+`artwork`、`user` identity record 也能走同一条 detail 管道。`pixiv detail` 也可直接消费规范 NDJSON：`illust`、`manga`、`ugoira` 和通用 `artwork` 记录进入作品详情，`novel` 与 `user` 记录进入对应详情。record 模式下，显式 `--ndjson` 输出规范 Record，显式 `--json` 输出完整 JSON 数组；省略输出 flag 时，非 TTY stdout 自动使用 NDJSON。`search --json` 是完整聚合 JSON 文档，不是规范 NDJSON 流，不能直接作为 `detail` 的输入。
 
 ### 反向搜图
 
@@ -382,7 +380,7 @@ canonical 数据 action 是 `search`、`detail`、`ranking`、`series`、`commen
 | `config unset` | `pixiv config unset KEY` | 从 `config.toml` 删除一个已知配置键。 |
 | `update` | `pixiv update [--check] [--prerelease] [--proxy URL]` | 检查或执行与当前安装来源匹配的更新；`--json` 仅可与 `--check` 同用。 |
 | `search` | `pixiv search [WORD\|IMAGE_PATH_OR_URL] [-t artwork\|novel\|user] [options]` | canonical 实体搜索或自动反向搜图。常规文件或显式 HTTP(S) source 选择图片模式；`--trending-tags` 是无 WORD 的完整作品趋势标签模式，不接受搜索筛选或分页。 |
-| `detail` | `pixiv detail ID_OR_URL [-t artwork\|novel\|user] [--content] [--json\|--ndjson]` | 读取一件作品、一本小说或一个用户，或消费规范 NDJSON Record；`--content` 只对小说有效。 |
+| `detail` | `pixiv detail [ID_OR_URL] [-t artwork\|novel\|user] [--content] [--json\|--ndjson]` | 读取一件作品、一本小说或一个用户，或消费规范 NDJSON Record；`--content` 只对小说有效。 |
 | `ranking` | `pixiv ranking [--mode MODE --date YYYY-MM-DD --page N --limit N]` | 读取插画排行；小说排行不在 v1 契约中。 |
 | `series` | `pixiv series SERIES_ID -t artwork\|novel [--page N --limit N --json\|--ndjson]` | 列出一个作品或小说系列；实体类型必填。 |
 | `comment` | `pixiv comment ID -t artwork\|novel [--page N --limit N --json\|--ndjson]` | 读取作品或小说评论；评论发布、回复、删除和 stamp 未暴露。 |

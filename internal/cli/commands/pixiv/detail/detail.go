@@ -9,7 +9,6 @@ import (
 	"fmt"
 	"io"
 	"net/url"
-	"os"
 	"strconv"
 	"strings"
 
@@ -107,7 +106,7 @@ func New(data Dependencies) *cobra.Command {
 	a := command{data: data}
 	options := Options{typ: "artwork"}
 	cmd := &cobra.Command{
-		Use:   "detail ID_OR_URL",
+		Use:   "detail [ID_OR_URL]",
 		Short: "Show one artwork, novel, or user",
 		Args:  cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -223,66 +222,6 @@ func (a command) runRecords(cmd *cobra.Command, opts Options) error {
 		return spool.commit(a.data.Output)
 	}
 	return nil
-}
-
-type jsonArraySpool struct {
-	file  *os.File
-	first bool
-}
-
-func newJSONArraySpool() (*jsonArraySpool, error) {
-	file, err := os.CreateTemp("", "pixiv-detail-*.json")
-	if err != nil {
-		return nil, err
-	}
-	if _, err := file.WriteString("["); err != nil {
-		file.Close()
-		os.Remove(file.Name())
-		return nil, err
-	}
-	return &jsonArraySpool{file: file, first: true}, nil
-}
-
-func (s *jsonArraySpool) Write(value []byte) (int, error) {
-	if !s.first {
-		if _, err := s.file.WriteString(","); err != nil {
-			return 0, err
-		}
-	}
-	s.first = false
-	return s.file.Write(value)
-}
-
-func (s *jsonArraySpool) commit(out io.Writer) error {
-	if _, err := s.file.WriteString("]\n"); err != nil {
-		return err
-	}
-	if _, err := s.file.Seek(0, io.SeekStart); err != nil {
-		return err
-	}
-	_, err := io.Copy(out, s.file)
-	return err
-}
-
-func (s *jsonArraySpool) close() error {
-	name := s.file.Name()
-	err := s.file.Close()
-	removeErr := os.Remove(name)
-	if err != nil {
-		return err
-	}
-	return removeErr
-}
-
-func markNDJSON(cmd *cobra.Command, enabled bool) {
-	if cmd.Annotations == nil {
-		cmd.Annotations = map[string]string{}
-	}
-	if enabled {
-		cmd.Annotations["pixiv-cli.output-ndjson"] = "true"
-	} else {
-		cmd.Annotations["pixiv-cli.output-ndjson"] = "false"
-	}
 }
 
 func (a command) jsonOutput(cmd *cobra.Command, opts Options) (bool, error) {

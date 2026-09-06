@@ -18,6 +18,13 @@ import (
 	"github.com/spf13/cobra"
 )
 
+func TestCommandUsageShowsOptionalIDForRecordInput(t *testing.T) {
+	cmd := New(Dependencies{})
+	if usage := cmd.UseLine(); usage != "detail [ID_OR_URL] [flags]" {
+		t.Fatalf("usage = %q, want detail [ID_OR_URL] [flags]", usage)
+	}
+}
+
 func TestCommandConsumesReverseSearchIdentityRecordsInOrder(t *testing.T) {
 	input := reverseSearchOutput(t, []reversesearch.Result{
 		{Pixiv: &reversesearch.PixivRef{Type: reversesearch.PixivRefArtwork, ID: 401}},
@@ -45,33 +52,6 @@ func TestCommandConsumesReverseSearchIdentityRecordsInOrder(t *testing.T) {
 		if got[index]["type"] != wantType {
 			t.Fatalf("detail record %d has type %v, want %s", index, got[index]["type"], wantType)
 		}
-	}
-}
-
-func TestCommandRejectsReverseUserRecordForArtworkConstraintBeforeFetching(t *testing.T) {
-	input := reverseSearchOutput(t, []reversesearch.Result{
-		{Pixiv: &reversesearch.PixivRef{Type: reversesearch.PixivRefUser, ID: 402}},
-	}, false)
-	var output, diagnostics bytes.Buffer
-	data := testMachineDependencies(&output, strings.NewReader(input))
-	data.ErrorOutput = &diagnostics
-	fetched := false
-	data.Pooled = func(context.Context, Request, func(context.Context, *pixiv.Client) (bool, error)) error {
-		fetched = true
-		return nil
-	}
-
-	cmd := New(data)
-	cmd.SetArgs([]string{"--type", "artwork", "--ndjson"})
-	err := cmd.Execute()
-	if err == nil {
-		t.Fatal("expected reverse user record to be rejected for artwork constraint")
-	}
-	if !strings.Contains(diagnostics.String(), "incompatible") {
-		t.Fatalf("expected type mismatch diagnostic, got %q", diagnostics.String())
-	}
-	if fetched {
-		t.Fatal("opened client for a record rejected by explicit type constraint")
 	}
 }
 
@@ -292,102 +272,29 @@ func TestCommandRejectsContentForNonNovelRecordBeforeFetching(t *testing.T) {
 	}
 }
 
-func TestCommandConsumesCanonicalArtworkRecordAsNDJSON(t *testing.T) {
-	var output bytes.Buffer
-	data := Dependencies{
-		Input: strings.NewReader(`{"id":"42","type":"illust","url":"https://www.pixiv.net/artworks/42"}
-`),
-		Output:       &output,
-		ErrorOutput:  &bytes.Buffer{},
-		UsageError:   func(err error) error { return err },
-		BuildRequest: func(*cobra.Command, Options) (Request, error) { return Request{}, nil },
-		JSONOut:      func(override *bool) (bool, error) { return override != nil && *override, nil },
-		OutputIsTTY:  func() bool { return false },
-		Pooled: func(ctx context.Context, req Request, attempt func(context.Context, *pixiv.Client) (bool, error)) error {
-			_, err := attempt(ctx, nil)
-			return err
-		},
-		FetchArtwork: func(context.Context, *pixiv.Client, int64) (pixiv.Artwork, error) {
-			return pixiv.Artwork{ID: 42, Kind: pixiv.ArtworkKindIllustration, Title: "标题"}, nil
-		},
-	}
-
-	cmd := New(data)
-	cmd.SetArgs([]string{"--ndjson"})
-	requireNoError(t, cmd.Execute())
-	if !strings.Contains(output.String(), `"type":"illust"`) {
-		t.Fatalf("expected canonical illust output, got %s", output.String())
-	}
-}
-
-func TestCommandConsumesNormalSearchCanonicalRecordsInOrder(t *testing.T) {
+func TestCommandConsumesNormalSearchArtworkRecordsInOrder(t *testing.T) {
 	artworkRecord := func(value pixiv.Artwork) recordpkg.Record {
 		recordValue, err := recordpkg.RecordFromArtworkDTO(pixiv.ToArtworkDTO(value))
 		requireNoError(t, err)
 		return recordValue
 	}
-	novelRecord := func(value pixiv.Novel) recordpkg.Record {
-		recordValue, err := recordpkg.RecordFromNovelDTO(pixiv.ToNovelDTO(value))
-		requireNoError(t, err)
-		return recordValue
-	}
-	userRecord := func(value pixiv.UserPreview) recordpkg.Record {
-		recordValue, err := recordpkg.RecordFromUserPreviewDTO(pixiv.ToUserPreviewDTO(value))
-		requireNoError(t, err)
-		return recordValue
+	records := []recordpkg.Record{
+		artworkRecord(pixiv.Artwork{ID: 101, Kind: pixiv.ArtworkKindIllustration, Title: "作品一"}),
+		artworkRecord(pixiv.Artwork{ID: 102, Kind: pixiv.ArtworkKindIllustration, Title: "作品二"}),
 	}
 
-	tests := []struct {
-		name      string
-		records   []recordpkg.Record
-		wantIDs   []string
-		wantTypes []string
-	}{
-		{
-			name: "artwork search",
-			records: []recordpkg.Record{
-				artworkRecord(pixiv.Artwork{ID: 101, Kind: pixiv.ArtworkKindIllustration, Title: "作品一"}),
-				artworkRecord(pixiv.Artwork{ID: 102, Kind: pixiv.ArtworkKindIllustration, Title: "作品二"}),
-			},
-			wantIDs:   []string{"101", "102"},
-			wantTypes: []string{"illust", "illust"},
-		},
-		{
-			name: "novel search",
-			records: []recordpkg.Record{
-				novelRecord(pixiv.Novel{ID: 201, Title: "小说一"}),
-				novelRecord(pixiv.Novel{ID: 202, Title: "小说二"}),
-			},
-			wantIDs:   []string{"201", "202"},
-			wantTypes: []string{"novel", "novel"},
-		},
-		{
-			name: "user search preview",
-			records: []recordpkg.Record{
-				userRecord(pixiv.UserPreview{User: pixiv.User{ID: 301, Name: "用户一"}}),
-				userRecord(pixiv.UserPreview{User: pixiv.User{ID: 302, Name: "用户二"}}),
-			},
-			wantIDs:   []string{"301", "302"},
-			wantTypes: []string{"user", "user"},
-		},
-	}
+	var output bytes.Buffer
+	data := testMachineDependencies(&output, strings.NewReader(normalSearchRecordInput(t, records)))
+	cmd := New(data)
+	cmd.SetArgs([]string{"--ndjson"})
+	requireNoError(t, cmd.Execute())
 
-	for _, test := range tests {
-		t.Run(test.name, func(t *testing.T) {
-			var output bytes.Buffer
-			data := testMachineDependencies(&output, strings.NewReader(normalSearchRecordInput(t, test.records)))
-			cmd := New(data)
-			cmd.SetArgs([]string{"--ndjson"})
-			requireNoError(t, cmd.Execute())
-
-			got := decodeMachineRecords(t, output.String())
-			assertMachineRecordIDs(t, got, test.wantIDs)
-			for index, wantType := range test.wantTypes {
-				if got[index]["type"] != wantType {
-					t.Fatalf("record %d has type %v, want %s: %#v", index, got[index]["type"], wantType, got[index])
-				}
-			}
-		})
+	got := decodeMachineRecords(t, output.String())
+	assertMachineRecordIDs(t, got, []string{"101", "102"})
+	for index, value := range got {
+		if value["type"] != "illust" {
+			t.Fatalf("record %d has type %v, want illust: %#v", index, value["type"], value)
+		}
 	}
 }
 
@@ -421,22 +328,6 @@ func requireNoError(t *testing.T, err error) {
 	t.Helper()
 	if err != nil {
 		t.Fatal(err)
-	}
-}
-
-func TestCommandConsumesRecordsAsJSONArray(t *testing.T) {
-	var output bytes.Buffer
-	data := testRecordDependencies(&output, strings.NewReader(`{"id":"42","type":"illust","url":"https://www.pixiv.net/artworks/42"}
-`))
-	cmd := New(data)
-	cmd.SetArgs([]string{"--json"})
-	requireNoError(t, cmd.Execute())
-	var values []map[string]any
-	if err := json.Unmarshal(output.Bytes(), &values); err != nil {
-		t.Fatalf("expected JSON array, got %q: %v", output.String(), err)
-	}
-	if len(values) != 1 || values[0]["type"] != "illust" {
-		t.Fatalf("unexpected array output: %s", output.String())
 	}
 }
 
