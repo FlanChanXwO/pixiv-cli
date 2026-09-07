@@ -43,7 +43,7 @@ Status 的 verified 表示对应 task 的实现与相关验证完成；各 task 
 | T08D | novel bookmark mutation endpoint owner | T12,T08B | 实现 novel bookmark add/remove endpoint leaf、candidate path/request/form/error fixture；不把未验证 wire 或 2xx 提升为发布成功 | verified |
 | T08 | bookmark endpoint owners（umbrella） | T12,T08A,T08B,T08C,T08D | 汇总并审计两类 bookmark 的 list/tags/detail/mutation leaf、DTO、错误映射与 fixture；全部子卡完成后才可标记 verified | verified |
 | T09A | appapi transport | T12,T04,T06 | 增加响应可解码的窄 form 能力；保留旧 PostForm，不自动重放不确定 mutation | verified |
-| T09B | comment/stamp protocol path registry | T04,T06 | 补齐 artwork/novel comment mutation 与 stamps path 常量；只负责协议路径注册和 fixture，不拥有 endpoint/SDK/CLI/MCP | pending |
+| T09B | comment/stamp protocol path registry | T04,T06 | 补齐 artwork/novel comment mutation 与 stamps path 常量；只负责协议路径注册和 fixture，不拥有 endpoint/SDK/CLI/MCP | verified |
 | T09C | artwork comment endpoint owner | T04,T05,T06,T09A,T09B | 实现 artwork comments read/create/reply/stamp/delete leaf、DTO、请求校验与错误映射；保留旧 read shape，不实现 SDK/public/read-back orchestration | pending |
 | T09D | novel comment endpoint owner | T04,T05,T06,T09A,T09B | 实现 novel comments read/create/reply/stamp/delete leaf、DTO、请求校验与错误映射；固定 v2 contract，不对 v3 candidate 做 fallback | pending |
 | T09E | stamps endpoint owner | T04,T09B | 实现 `/v1/stamps` read leaf、字段级 DTO/ID/资源引用校验与错误映射；不把未验证字段或 continuation 猜成 public contract | pending |
@@ -416,6 +416,17 @@ Status 的 verified 表示对应 task 的实现与相关验证完成；各 task 
 - 公开兼容性影响：没有新增/删除 SDK symbol、CLI/MCP schema/route、endpoint wire、默认值、账号/token 行为、依赖或 live 数据；只把后续 endpoint 实现责任显式拆分。既有 `ArtworkComments`/`NovelComments` read model、旧 CLI/MCP read surface 和 T09A `PostFormJSON` 边界保持不变，五项 required capability 仍为 `scope_admitted`。
 - 回滚前提 / 依赖闭包：整体撤销 T09B–T09E 子卡、T09 父卡依赖更新与本记录即可恢复拆卡前台账；不涉及生产数据或运行配置。若后续子卡已经被 T16/T17/T33/T37/T38/T44 引用，回滚前必须同步撤销或迁移这些 endpoint/DTO/response ID/read-back 依赖，不能只删除父卡。
 - 实际结果 / evidence / 风险：T09 已完成拆卡但父任务仍为 pending；T09B 为下一轮首个实现入口，随后依次处理 T09C、T09D、T09E，再进行 T09 umbrella audit。当前 comments v3/v2 严格 wire、第二页/total、numeric access-control、mutation response ID、同账号读回清理及 stamps 字段级 schema 仍未达到发布证据，41 条 required capability 继续为 `scope_admitted`，Goal-3 保持 incomplete。
+
+## T09B 完成记录
+
+- Owner package / 涉及文件：`internal/services/pixiv/protocol/protocol.go`、新增 `internal/services/pixiv/protocol/protocol_test.go` 及本任务台账。本卡只维护内部 App API 路径 registry 和独立 fixture，没有修改 endpoint owner、SDK、CLI/MCP、公开文档或依赖。
+- Depends on：T04、T06 已 verified；T09B 不调用 transport，T09C/T09D/T09E 依赖本卡提供的路径常量后再分别实现 endpoint leaf。T09A 的 `PostFormJSON` 由 T09C/T09D 消费，本卡不把它的 transport 证据扩大为 comment/stamp outcome 证据。
+- 冻结 contract / fixture：保留 `AppIllustComments = "/v3/illust/comments"` 与 `AppNovelComments = "/v2/novel/comments"`；新增 `AppIllustCommentAdd = "/v1/illust/comment/add"`、`AppIllustCommentDelete = "/v1/illust/comment/delete"`、`AppNovelCommentAdd = "/v1/novel/comment/add"`、`AppNovelCommentDelete = "/v1/novel/comment/delete"`、`AppStamps = "/v1/stamps"`。fixture 逐项断言常量与 T04 upstream matrix 的候选 path 完全相等；不定义 request form、DTO、response ID、continuation、读回、清理或 public contract。
+- Red 测试、命令及当前行为的预期失败：先新增 `TestCommentAndStampPaths`，运行 `go test ./internal/services/pixiv/protocol -run '^TestCommentAndStampPaths$' -count=1 -v`，实际因五个新增 `protocol.App*` 常量未定义而编译失败，随后才补 production registry；未以修改测试掩盖缺口。
+- Green 命令及验收断言：`go test ./internal/services/pixiv/protocol -run '^TestCommentAndStampPaths$' -count=1 -v`、`go test ./internal/services/pixiv/protocol -count=1`、`go test -race ./internal/services/pixiv/protocol -count=1`、comments/bookmark/SDK/MCP 关联回归、`go vet ./...`、`go test ./scripts/tests/documentation -count=1`、`go test ./... -count=1`、`sh scripts/build.sh` 均通过；LSP 对 `protocol.go` 与 `protocol_test.go` 无诊断，`git diff --check` 在提交前复核。
+- 公开兼容性影响：仅新增 internal protocol 常量并保留既有 read path，不改变任何请求调用、endpoint wire、SDK symbol、CLI/MCP schema/route、默认值、账号/token 行为、live 数据或依赖；五项 T09 capability 仍保持 `scope_admitted`，没有提前授予 `public_ready`。
+- 回滚前提 / 依赖闭包：回滚闭包为新增五个常量、`protocol_test.go` 与本记录/状态行；T09C/T09D/T09E 若已引用这些常量，必须先同步撤销或迁移引用再回滚。本卡不触碰业务数据、账号、token、缓存、运行配置或构建产物。
+- 实际结果 / evidence / 风险：T09B 已 verified，路径 registry 与 fixture 闭合，当前仍未执行 live API，也未验证 candidate path 的真实 wire、字段、response ID、错误/不确定结果、读回或清理语义；下一入口为 T09C，Goal-3 继续 incomplete。
 
 ## 实现任务准入卡
 
