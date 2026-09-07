@@ -82,6 +82,42 @@
 - T01 已冻结基础 operation contract，不把历史 evidence 直接提升为 capability `contract_frozen`/`public_ready`。T05 仍必须补 artwork series live 第二页、latest 扩展 subtype、recommended 完整 continuation/subtype 两页及各 operation 的 query/account/subtype binding。
 - T07/T10 负责 endpoint leaf、DTO/error mapping 和 ranking/latest/recommended owner 实现；T13 负责 public SDK、旧签名、series metadata 是否公开及 ugoira resource mapping。T01 不新增 production path、public symbol 或依赖。
 
+## T02 novel 基础 contract 冻结（2026-09-07）
+
+本节冻结 novel 七类 read operation 的基础 request、normalized entity/DTO、continuation 和 rejection 边界。历史表中的 `confirmed`、`inconclusive`、`not_tested` 与 `rejected` 不被改写；本节的 target contract 不等于 adapter/SDK 已实现，也不把任何 capability 提升为 `migration_ready` 或 `public_ready`。Novel 正文是独立 operation，不属于本节的 metadata contract；已被拒绝或排除的正文路径见“后续边界”。
+
+| Operation | Method / path | Base request | Normalized response | Continuation / subtype / rejection boundary | Evidence boundary |
+| --- | --- | --- | --- | --- | --- |
+| novel search | `GET /v1/search/novel` | `word` required；`search_target` 默认 `partial_match_for_tags`；`sort` 默认 `date_desc`；`duration` optional；首请求不带 `offset`，续页只带正 `offset` | required `novels` list → normalized `Novel` / public `NovelDTO`；`next_url` 只在 adapter 内解析 | search target、sort、duration 由各自 allowlist 校验；`start_date/end_date` 尚未进入 strict manifest，不在 T02 冻结；novel filter 仍是本地语义，不伪装成 upstream subtype | 现有 SDK/adapter request、DTO 和单元 fixture 已核验；独立 strict live 两页与日期字段证据尚缺，保持 `scope_admitted` |
+| novel detail | `GET /v2/novel/detail` | `novel_id` required positive；无分页 | required `novel` → `Novel`；保留 `series_next`、`series_prev` 的可选引用及 ID/title | `series_next`/`series_prev` 不产生 continuation；`/v1/novel/detail` 已 rejected，禁止 fallback 或继续请求旧 path | v2 wire/response 已确认；现有生产 adapter/SDK 与旧 v1 fixture 尚未迁移，留给 T07/T14 |
+| novel series | `GET /v2/novel/series` | `series_id` required positive；首请求只带 `series_id`，续页只带正 `last_order` | required `novel_series_detail` 与 `novels` list；保留 series ID/title/caption/user/is_concluded 及 novels | continuation key 固定为 `last_order`；不承载全局 subtype；`/v1/novel/series` 已 rejected，禁止 fallback | v2 wire/response 首批已确认，真实第二页与 adapter/SDK 尚缺；现有 v1 生产路径不得据此放行 |
+| novel latest | `GET /v1/novel/new` | wire 固定发送 `filter=for_android`；首请求无 continuation | required `novels` list → `Novel` | continuation 必须使用 upstream `max_novel_id`，不得把 `offset` 当作兼容替代；novel content subtype 不在本 operation 声明 | live wire/response 两页已确认；当前 adapter/SDK 仍使用 offset，修复留给 T10/T14/T18 |
+| novel recommended | `GET /v1/novel/recommended` | 首请求不带 query；续页显式发送 `offset`，包括合法的 `offset=0` | required `novels` list → `Novel` | continuation key 为 `offset`，必须区分“没有 cursor”和“cursor 值为 0”；不额外宣告 subtype | 两页 wire/response/adapter/SDK 已确认；后续仍需按 T05 补 binding 与完整回归 |
+| novel follow | `GET /v1/novel/follow` | `restrict` 为可选 public/private 选择，CLI/MCP 默认 public；首请求不带 offset | required `novels` list → `Novel` | continuation key 为正 `offset`；`restrict` 必须进入 query 与 cursor binding；这是 authenticated following read，不用匿名 Web fallback | 两页 wire/response/adapter/SDK 已确认；仍须经 T12、T18、T29/T37 的兼容与发布门禁 |
+| novel ranking | `GET /v1/novel/ranking` | `filter`、`mode` 按 ranking contract 传递；初始请求无 offset | required `novels` list → `Novel` | continuation key 为正 `offset`；ranking `mode` 是 operation 参数，不建立全局 novel subtype；当前没有 production owner | 两页 live wire/response 已确认；adapter、SDK、CLI/MCP owner 尚缺，保持 `not_tested`/`scope_admitted` |
+
+### T02 normalized novel DTO 与 null/empty/error 规则
+
+- normalized `Novel` 与 public `NovelDTO` 只承载已存在的稳定字段：`id/title/caption/user/tags/published_at/updated_at/x_restrict/text_length/is_original/total_bookmarks/total_views/cover`。`PublishedAt` 只能由有效 upstream 时间映射，不能用当前时间、零值或猜测值补齐；detail 的 series 引用和 series operation 的 series metadata 另行保留，不能塞入普通 novel 字段。
+- detail response 的 `novel`、series target response 的 `novel_series_detail` 与 `novels`、各 list operation 的 `novels` 都是 required。缺失或 JSON `null` 为 `MalformedUpstreamResponse`；空数组合法，normalized/public page 的 `Items` 必须是 non-nil empty slice。每一个 item 的 `novel.id` 和 `novel.user.id` 必须为正数；缺失、null 或非正身份字段均为 malformed。
+- wire scalar 的 optional 规则按 operation 保持明确差异：detail 当前允许 `x_restrict`、`text_length`、`is_original` 指针缺失并映射为 `0/false`，但不伪造业务值；search list 当前 adapter 对这三个字段要求非 null，缺失/null 必须报 malformed。其他已确认 list adapter 的普通字段可落 Go 零值，但后续 owner 不得把零值重新解释为 upstream 明示值。
+- `series_next`、`series_prev` 可以缺失或为 null；一旦存在，引用 ID 必须为正数，非法引用为 malformed。`novel_series_detail` 的 series ID 与 user ID 同样必须为正数，并保留 `caption`、`is_concluded` 等字段；不能因当前 v1 adapter 的宽松 list 解析而删除 v2 target 的 required 约束。
+- `next_url=null` 是正常终止。非 null 但为空、无法解析、缺少本 operation 唯一 continuation key、与上一页重复、违反 allowlist/range 或把另一 operation 的 token 当作本 operation continuation，均为 `MalformedUpstreamResponse`。search/follow/ranking 的 `offset` 与 series 的 `last_order` 必须为正；recommended 允许 continuation `offset=0`；latest 的 `max_novel_id` 必须为正。
+- 调用方参数错误（空 `word`、非法 search target/sort/duration、非正 novel/series ID、非法 ranking 参数或 restrict）返回 `InvalidArgument`，不发送 upstream request。传输、取消、鉴权、状态码和 upstream schema 错误保留真实分类；不得把 rejected path、匿名 fallback 或空列表伪装成成功。
+
+### T02 evidence index
+
+- 历史 novel operation 表与 verdict：本文件开头的 `novel-detail-v1` 至 `novel-ranking` 行；strict evidence 为 [`evidence/appapi-upstream.md`](evidence/appapi-upstream.md) 的 novel detail/series/content/latest/follow/recommended/ranking 行。
+- 迁移目标、已拒绝路径和 T12 兼容边界：[`api-migration-verification.md`](api-migration-verification.md) 的“已确认的迁移依据”“尚未达到迁移门禁”“已拒绝或排除”与 T12 小节。
+- 当前 normalized/SDK 对照：`internal/services/pixiv/endpoint/novel/{search,detail,series,timeline,recommended}`、`sdk/pixiv/{models.go,dto.go,request.go,ops_novel.go,validation.go}`；现有 endpoint/SDK/MCP fixture 仍按各自当前 v1/offset 行为记录，不能倒推目标实现已完成。
+- 当前明确缺口：detail/series 的 v2 adapter/SDK、latest 的 `max_novel_id`、novel ranking owner、search period 和所有 operation 的完整 query/account/subtype binding，分别留给 T05/T07/T10/T12/T14/T18/T25/T29/T30/T37/T42 等任务。
+
+### T02 与后续任务的边界
+
+- T05 负责第二页 fixture、continuation allowlist、query/account/subtype binding，以及 latest `max_novel_id`、series v2 `last_order` 和 search period 的补证；T06 负责跨 operation error、鉴权和脱敏规则。
+- T07/T10 负责 endpoint leaf、v2 path、DTO 和 error mapping；T14 负责 novel public SDK、series metadata、cursor 与源码兼容；T18 负责 latest/recommended/ranking/follow SDK 集成。T02 不改 protocol、adapter、SDK、CLI、MCP、依赖或默认值。
+- T25/T29/T30/T31/T32/T37 在 T39A 后分别处理 novel search、timeline、ranking、detail、series 及 MCP 路由；`NovelContent`/`/v1/novel/content` 已 rejected，WebView 正文已 excluded，后续只允许按 T12 冻结的 deprecated/explicit-unsupported 兼容方案处理，不得 fallback。
+
 ## 迁移准入规则（2026-09-07 更正）
 
 上表保留历史观测与原 verdict；包括备注中的 migration-ready 也仅是当时的证据标签，不是当前实施状态。当前实施与发布授权只来自 [能力准入表](capability-admission.md)，confirmed 不放行 CLI/MCP/docs。contract、T12/T39A、adapter/SDK、回归与文档按 tasks 依赖推进。

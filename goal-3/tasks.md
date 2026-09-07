@@ -19,7 +19,8 @@ Status 的 verified 表示本轮实现与相关验证完成，证据见分页报
 | T00 | scope/计划 owner | none | 冻结 required_scope；状态唯一来源、批准记录、完整性验收 | verified |
 | T20 | shared semantics | T00 | 冻结 Target kind / Result kind / Subtype；命令级冲突规则 | verified |
 | T01 | artwork contract | T00,T20 | 冻结 artwork search/series/latest/ranking/recommended/ugoira 基础 request、DTO、subtype | verified |
-| T02 | novel contract | T00,T20 | 冻结 novel search/detail/series/latest/recommended/ranking/follow | pending |
+| T02 | novel contract | T00,T20 | 冻结 novel search/detail/series/latest/recommended/ranking/follow | verified |
+| CHECK-01 | 集中检查-debug（T00/T20/T01/T02） | T02 | 复查需求偏离、bug/死代码、类型/构建/测试、安全、数据一致性、回滚和文档同步 | pending |
 | T03 | bookmark contract | T00,T20 | 冻结两类 list/tags/detail/mutation/subtype 及 list/tags all 聚合契约 | pending |
 | T04 | comment contract | T00,T20 | 冻结 artwork/novel comments read/create/reply/stamp/delete、stamps、total | pending |
 | T05 | continuation contract | T01,T02,T03,T04 | 冻结 allowlist、query/account/subtype binding、第二页 fixture；复用现有 cursor | pending |
@@ -98,6 +99,17 @@ Status 的 verified 表示本轮实现与相关验证完成，证据见分页报
 - 公开兼容性影响：无 production code、public SDK symbol、CLI/MCP wire、依赖或默认值变化；明确保留 `ArtworkKindIllustration="illustration"` 与 `RawKind`，不因 semantic `illust` 重命名既有 API。
 - 回滚前提 / 依赖闭包：文档提交需整体回滚 upstream matrix、plan 引用和 T01 状态；没有数据、账号、生产配置或 endpoint path 依赖。后续 T05/T07/T10/T13 只能在本 contract 约束下补实现与证据。
 - 实际结果 / evidence / 风险：T01 已完成基础 contract 冻结，相关 capability 仍保持 `scope_admitted`，Goal 继续 incomplete。下一步按拓扑顺序执行 T02；T05 负责补未确认 continuation/subtype evidence，T07/T10/T13 负责实现，不能把 T01 文档当作 public_ready。
+
+## T02 完成记录
+
+- Owner package / 涉及文件：novel contract；`goal-3/upstream-contract-matrix.md`、`goal-3/plan.md`、本文件。只冻结 search/detail/series/latest/recommended/ranking/follow 的目标 contract，不实现 endpoint/SDK/CLI/MCP。
+- Depends on：T00、T20、T01 verified；本轮仅沿 tasks 拓扑推进 T02。
+- 冻结 contract / fixture：upstream matrix 新增 T02 operation 表，明确 `/v1/search/novel`、`/v2/novel/detail`、`/v2/novel/series`、`/v1/novel/new`、`/v1/novel/recommended`、`/v1/novel/follow`、`/v1/novel/ranking` 的 request、normalized Novel/NovelDTO、series metadata、`offset`/`last_order`/`max_novel_id` continuation、null/empty/error 规则，以及 detail/series v1、novel content App/WebView 的 rejection/exclusion 边界。plan 已链接 T02 anchor；历史 evidence verdict 未改写。
+- Red 测试、命令及当前行为的预期失败：T02 是 contract freeze 文档任务，无生产代码 Red 阶段。只读核验确认当前 detail/series 仍是 v1、latest 仍使用 offset、novel ranking 没有生产 owner、search period/series 第二页及 v2 adapter/SDK 证据不足；这些差距保持显式，未被文档伪装成完成。
+- Green 命令及验收断言：`sed` 全量复读 `input.md`/`plan.md`/`tasks.md`；`nl`/`rg` 核验 `internal/services/pixiv/endpoint/novel`、`sdk/pixiv`、CLI/MCP owner、strict evidence 和 migration ledger；T02 anchor/七类 operation/拒绝路径均可检索；`git diff --check` 通过；提交钩子将运行 `go test ./...`。
+- 公开兼容性影响：无 production code、public SDK symbol、CLI/MCP wire、依赖、endpoint 请求或默认值变化；仅新增 contract 文档、plan 引用、T02 状态，并显式加入下一轮 `CHECK-01` 复查任务。
+- 回滚前提 / 依赖闭包：文档提交需整体回滚 upstream matrix、plan 引用、T02 状态和 CHECK-01 排程；没有数据、账号、生产配置或 endpoint path 依赖。后续实现若已引用本节，回滚前必须同步撤销其依赖或先提供兼容修复。
+- 实际结果 / evidence / 风险：T02 已完成，novel capability 仍保持 `scope_admitted`，Goal 继续 incomplete。主要剩余风险是 v2 detail/series 尚未接入生产、latest cursor 仍错误使用 offset、ranking owner 缺失及若干 continuation/binding 证据不足；按每三个 task 的 goal-mode 节奏，下一轮先执行 `CHECK-01`，通过后再按顺序进入 T03。
 
 ## 实现任务准入卡
 
