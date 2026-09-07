@@ -53,14 +53,17 @@ binary，并在修改 PATH 前完成用户级安装。可用 `--no-path` 保持 
 
 ### Docker（Linux amd64/arm64）
 
-官方镜像发布到 GHCR：`ghcr.io/flanchanxwo/pixiv-cli`。需要可复现部署时，请拉取精确 release：
+官方镜像同时发布到 GHCR：`ghcr.io/flanchanxwo/pixiv-cli` 和 Docker Hub：
+`docker.io/flanchanxwo/pixiv-cli`。两个 registry 都提供相同的 `linux/amd64` 与 `linux/arm64` 原生构建镜像。
+需要可复现部署时，请从任一 registry 拉取精确 release：
 
 ```bash
 docker pull ghcr.io/flanchanxwo/pixiv-cli:v1.2.3
+docker pull docker.io/flanchanxwo/pixiv-cli:v1.2.3
 ```
 
 `latest` 只跟随 stable release；prerelease tag 绝不移动 `latest`。要跟踪当前 stable release，可拉取
-`ghcr.io/flanchanxwo/pixiv-cli:latest`。镜像分别为 `linux/amd64` 和 `linux/arm64` 原生构建。容器运行同一个
+`ghcr.io/flanchanxwo/pixiv-cli:latest` 或 `docker.io/flanchanxwo/pixiv-cli:latest`。镜像分别为 `linux/amd64` 和 `linux/arm64` 原生构建。容器运行同一个
 `pixiv` binary，并使用与其他安装方式相同的 `~/.pixiv-cli` 状态命名空间。
 
 持久保存账号状态，并挂载下载工作区：

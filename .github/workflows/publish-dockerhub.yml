@@ -1,0 +1,198 @@
+name: Publish Docker Hub image
+
+on:
+  # Release 完成后异步接收 immutable tag 和已验证容器 artifact；不依赖
+  # workflow_run.head_branch，因为恢复运行时该字段可能是默认分支。
+  workflow_run:
+    workflows:
+      - Release
+    types:
+      - completed
+  # Docker Hub 推送失败时，可使用原 Release run 的 artifact 做显式恢复，避免重建镜像。
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: Existing published immutable SemVer tag to publish to Docker Hub
+        required: true
+        type: string
+      release_run_id:
+        description: Completed Release workflow run ID containing the verified container artifacts
+        required: true
+        type: string
+
+permissions: {}
+
+env:
+  DOCKER_HUB_IMAGE: docker.io/flanchanxwo/pixiv-cli
+  DOCKER_HUB_USERNAME: flanchanxwo
+
+jobs:
+  publish:
+    name: Publish pixiv-cli to Docker Hub
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-24.04
+    environment: release
+    permissions:
+      actions: read
+      contents: read
+    steps:
+      - name: Download the trusted completed-release tag
+        if: github.event_name == 'workflow_run'
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: skillhub-release-tag
+          path: ${{ runner.temp }}/dockerhub-release-tag
+          github-token: ${{ github.token }}
+          repository: ${{ github.repository }}
+          run-id: ${{ github.event.workflow_run.id }}
+      - name: Resolve the immutable release tag and source run
+        id: release
+        shell: bash
+        env:
+          WORKFLOW_DISPATCH_RELEASE_TAG: ${{ inputs.release_tag }}
+          WORKFLOW_DISPATCH_RELEASE_RUN_ID: ${{ inputs.release_run_id }}
+          WORKFLOW_RUN_ID: ${{ github.event.workflow_run.id }}
+        run: |
+          set -euo pipefail
+          if [ "$GITHUB_EVENT_NAME" = workflow_dispatch ]; then
+            release_tag="$WORKFLOW_DISPATCH_RELEASE_TAG"
+            release_run_id="$WORKFLOW_DISPATCH_RELEASE_RUN_ID"
+          else
+            handoff_dir="$RUNNER_TEMP/dockerhub-release-tag"
+            test "$(find "$handoff_dir" -maxdepth 1 -type f -print | LC_ALL=C sort)" = "$handoff_dir/release-tag"
+            release_tag=$(cat "$handoff_dir/release-tag")
+            release_run_id="$WORKFLOW_RUN_ID"
+          fi
+          case "$release_tag" in
+            v[0-9]*) ;;
+            *) printf '%s\n' 'release tag must start with v and a digit' >&2; exit 1 ;;
+          esac
+          case "$release_run_id" in
+            ''|*[!0-9]*) printf '%s\n' 'release run ID must be a decimal number' >&2; exit 1 ;;
+          esac
+          printf 'release_tag=%s\n' "$release_tag" >> "$GITHUB_OUTPUT"
+          printf 'run_id=%s\n' "$release_run_id" >> "$GITHUB_OUTPUT"
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+          ref: ${{ steps.release.outputs.release_tag }}
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff
+        with:
+          go-version: '1.26.3'
+      - name: Verify the exact published release and source run
+        shell: bash
+        env:
+          RELEASE_TAG: ${{ steps.release.outputs.release_tag }}
+          RELEASE_RUN_ID: ${{ steps.release.outputs.run_id }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          git show-ref --verify --quiet "refs/tags/$RELEASE_TAG"
+          tag_commit=$(git rev-parse "$RELEASE_TAG^{commit}")
+          git show-ref --verify --quiet "refs/remotes/origin/$DEFAULT_BRANCH"
+          git merge-base --is-ancestor "$tag_commit" "origin/$DEFAULT_BRANCH"
+          go run ./scripts/cmd/releaseassets validate --version "${RELEASE_TAG#v}"
+          test "$(gh api "repos/$GITHUB_REPOSITORY/releases/tags/$RELEASE_TAG" --jq '.draft')" = false
+          test -n "$(gh api "repos/$GITHUB_REPOSITORY/releases/tags/$RELEASE_TAG" --jq '.published_at')"
+          test "$(gh run view "$RELEASE_RUN_ID" --json name --jq '.name')" = Release
+          test "$(gh run view "$RELEASE_RUN_ID" --json conclusion --jq '.conclusion')" = success
+          test "$(gh run view "$RELEASE_RUN_ID" --json headSha --jq '.headSha')" = "$tag_commit"
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: verified-container-linux-amd64
+          path: containers/linux-amd64
+          github-token: ${{ github.token }}
+          repository: ${{ github.repository }}
+          run-id: ${{ steps.release.outputs.run_id }}
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: verified-container-linux-arm64
+          path: containers/linux-arm64
+          github-token: ${{ github.token }}
+          repository: ${{ github.repository }}
+          run-id: ${{ steps.release.outputs.run_id }}
+      - name: Load and verify the trusted container artifacts
+        shell: bash
+        env:
+          RELEASE_TAG: ${{ steps.release.outputs.release_tag }}
+        run: |
+          set -euo pipefail
+          docker load --input containers/linux-amd64/pixiv-cli-linux-amd64.tar
+          docker load --input containers/linux-arm64/pixiv-cli-linux-arm64.tar
+          release_commit=$(git rev-parse "$RELEASE_TAG^{commit}")
+          inspect_label() {
+            docker image inspect --format '{{ index .Config.Labels "'"$1"'" }}' "$2"
+          }
+          for arch in amd64 arm64; do
+            image="pixiv-cli:${RELEASE_TAG}-linux-${arch}"
+            test "$(docker run --rm "$image" --version)" = "pixiv ${RELEASE_TAG}"
+            test "$(inspect_label org.opencontainers.image.revision "$image")" = "$release_commit"
+            test "$(inspect_label org.opencontainers.image.version "$image")" = "$RELEASE_TAG"
+            test "$(inspect_label org.opencontainers.image.source "$image")" = "https://github.com/FlanChanXwO/pixiv-cli"
+            test "$(inspect_label org.opencontainers.image.licenses "$image")" = MIT
+          done
+      - name: Authenticate to Docker Hub
+        shell: bash
+        env:
+          DOCKER_HUB_TOKEN: ${{ secrets.DOCKER_HUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          test -n "$DOCKER_HUB_TOKEN"
+          printf '%s' "$DOCKER_HUB_TOKEN" | docker login docker.io --username "$DOCKER_HUB_USERNAME" --password-stdin
+      - name: Push architecture-specific verified images
+        shell: bash
+        env:
+          RELEASE_TAG: ${{ steps.release.outputs.release_tag }}
+        run: |
+          set -euo pipefail
+          for arch in amd64 arm64; do
+            source_image="pixiv-cli:${RELEASE_TAG}-linux-${arch}"
+            target_image="${DOCKER_HUB_IMAGE}:${RELEASE_TAG}-linux-${arch}"
+            docker tag "$source_image" "$target_image"
+            docker push "$target_image"
+          done
+      - name: Publish the exact-version multi-architecture manifest
+        shell: bash
+        env:
+          RELEASE_TAG: ${{ steps.release.outputs.release_tag }}
+        run: |
+          set -euo pipefail
+          docker manifest create "${DOCKER_HUB_IMAGE}:${RELEASE_TAG}" \
+            --amend "${DOCKER_HUB_IMAGE}:${RELEASE_TAG}-linux-amd64" \
+            --amend "${DOCKER_HUB_IMAGE}:${RELEASE_TAG}-linux-arm64"
+          docker manifest push "${DOCKER_HUB_IMAGE}:${RELEASE_TAG}"
+      - name: Advance latest only for the newest stable release
+        shell: bash
+        env:
+          RELEASE_TAG: ${{ steps.release.outputs.release_tag }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          channel=$(go run ./scripts/cmd/releaseassets channel --version "${RELEASE_TAG#v}")
+          case "$channel" in
+            stable)
+              latest_stable_tag=$(
+                gh api --paginate \
+                  "repos/$GITHUB_REPOSITORY/git/matching-refs/tags/v" \
+                  --jq '.[].ref | sub("^refs/tags/"; "")' \
+                | grep -E '^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$' \
+                | sort -Vr | head -n1
+              )
+              test "$RELEASE_TAG" = "$latest_stable_tag"
+              docker manifest create "${DOCKER_HUB_IMAGE}:latest" \
+                --amend "${DOCKER_HUB_IMAGE}:${RELEASE_TAG}-linux-amd64" \
+                --amend "${DOCKER_HUB_IMAGE}:${RELEASE_TAG}-linux-arm64"
+              docker manifest push "${DOCKER_HUB_IMAGE}:latest"
+              ;;
+            prerelease)
+              printf '%s\n' 'prerelease keeps the latest tag unchanged' >&2
+              ;;
+            *)
+              printf '%s\n' 'unexpected release classification' >&2
+              exit 1
+              ;;
+          esac

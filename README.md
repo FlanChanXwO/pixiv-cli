@@ -55,13 +55,16 @@ pass SHA-256 verification. This changes transport availability, never Release id
 
 ### Docker (Linux amd64/arm64)
 
-Official images are published to GHCR as `ghcr.io/flanchanxwo/pixiv-cli`. Pull an exact release when reproducibility matters:
+Official images are published to GHCR as `ghcr.io/flanchanxwo/pixiv-cli` and Docker Hub as
+`docker.io/flanchanxwo/pixiv-cli`. Both registries carry the same native `linux/amd64` and `linux/arm64`
+release images. Pull an exact release from either registry when reproducibility matters:
 
 ```bash
 docker pull ghcr.io/flanchanxwo/pixiv-cli:v1.2.3
+docker pull docker.io/flanchanxwo/pixiv-cli:v1.2.3
 ```
 
-`latest` follows stable releases only; Prerelease tags never move `latest`. To track the current stable release, pull `ghcr.io/flanchanxwo/pixiv-cli:latest`. Images are built natively for `linux/amd64` and `linux/arm64`. The container runs the same `pixiv` binary and uses the same `~/.pixiv-cli` state namespace as other installations.
+`latest` follows stable releases only; Prerelease tags never move `latest`. To track the current stable release, pull either `ghcr.io/flanchanxwo/pixiv-cli:latest` or `docker.io/flanchanxwo/pixiv-cli:latest`. Images are built natively for `linux/amd64` and `linux/arm64`. The container runs the same `pixiv` binary and uses the same `~/.pixiv-cli` state namespace as other installations.
 
 Keep account state persistent and expose a download workspace:
 

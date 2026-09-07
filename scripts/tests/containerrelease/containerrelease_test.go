@@ -347,6 +347,49 @@ func TestContainerArtifactRetentionSupportsRecovery(t *testing.T) {
 	}
 }
 
+// TestDockerHubPublishWorkflowUsesTrustedReleaseArtifacts 锁定 Docker Hub 发布的
+// immutable tag、已验证 artifact 和 protected release Environment 边界。
+func TestDockerHubPublishWorkflowUsesTrustedReleaseArtifacts(t *testing.T) {
+	t.Parallel()
+	root := repositoryRoot(t)
+	body, err := os.ReadFile(filepath.Join(root, ".github/workflows/publish-dockerhub.yml"))
+	if err != nil {
+		t.Fatalf("read Docker Hub publish workflow: %v", err)
+	}
+	text := string(body)
+	for _, fragment := range []string{
+		"name: Publish Docker Hub image",
+		"workflow_run:",
+		"- Release",
+		"- completed",
+		"workflow_dispatch:",
+		"release_tag:",
+		"release_run_id:",
+		"environment: release",
+		"actions: read",
+		"contents: read",
+		"name: skillhub-release-tag",
+		"name: verified-container-linux-amd64",
+		"name: verified-container-linux-arm64",
+		"secrets.DOCKER_HUB_TOKEN",
+		"docker login docker.io --username",
+		"--password-stdin",
+		"docker.io/flanchanxwo/pixiv-cli",
+		"docker manifest create",
+		"docker manifest push",
+	} {
+		if !strings.Contains(text, fragment) {
+			t.Fatalf("Docker Hub publish workflow must contain %q", fragment)
+		}
+	}
+	if strings.Contains(text, "packages: write") {
+		t.Fatal("Docker Hub publish workflow must not request GitHub package write permission")
+	}
+	if strings.Contains(text, "docker login docker.io --username \"$DOCKER_HUB_USERNAME\" --password \"$DOCKER_HUB_TOKEN\"") {
+		t.Fatal("Docker Hub token must be passed through docker login stdin, not argv")
+	}
+}
+
 // TestDockerignoreKeepsThirdPartyLicenseSummary 确保根级第三方许可汇总
 // 不会被通用 Markdown 排除规则挡在 build context 外。
 func TestDockerignoreKeepsThirdPartyLicenseSummary(t *testing.T) {
