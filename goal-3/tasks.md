@@ -42,7 +42,7 @@ Status 的 verified 表示对应 task 的实现与相关验证完成；各 task 
 | T08C | artwork bookmark mutation endpoint owner | T12,T08A | 实现 artwork bookmark add/remove endpoint leaf、request/form/error fixture；不把 error-only 2xx 提升为 read-back 成功 | verified |
 | T08D | novel bookmark mutation endpoint owner | T12,T08B | 实现 novel bookmark add/remove endpoint leaf、candidate path/request/form/error fixture；不把未验证 wire 或 2xx 提升为发布成功 | verified |
 | T08 | bookmark endpoint owners（umbrella） | T12,T08A,T08B,T08C,T08D | 汇总并审计两类 bookmark 的 list/tags/detail/mutation leaf、DTO、错误映射与 fixture；全部子卡完成后才可标记 verified | verified |
-| T09A | appapi transport | T12,T04,T06 | 增加响应可解码的窄 form 能力；保留旧 PostForm，不自动重放不确定 mutation | pending |
+| T09A | appapi transport | T12,T04,T06 | 增加响应可解码的窄 form 能力；保留旧 PostForm，不自动重放不确定 mutation | verified |
 | T09 | comment endpoint owners | T09A | 按 artwork/novel read/create/reply/stamp/delete 与 stamps leaf 拆卡实现 | pending |
 | T10 | ranking/recommended/latest owners | T12 | 按 endpoint leaf 拆卡实现 subtype 与 request/DTO | pending |
 | T11 | endpoint continuation owners | T07,T08,T09,T10,T05 | 校验和提取 endpoint allowlist continuation；不持久化 next_url | pending |
@@ -390,6 +390,17 @@ Status 的 verified 表示对应 task 的实现与相关验证完成；各 task 
 - 公开兼容性影响：本轮只完成 umbrella 审计和任务状态回写；没有新增/删除 SDK symbol、CLI/MCP schema/route、endpoint wire、默认值、依赖、账号/token 行为或 live 数据。两类 bookmark 的 leaf 证据闭合不授予任何 capability `public_ready`；`bookmark-subtype`、`bookmark-list-all`、`bookmark-tags-all` 及两类 bookmark mutation 仍按能力表保持 `scope_admitted`。
 - 回滚前提 / 依赖闭包：回滚只需撤销 T08 状态、该完成记录及父任务审计证据，不撤销 T08A–T08D 的生产实现；若后续 T11/T15/T19/T23/T27/T37/T38/T44 已引用父任务闭包，必须同步撤销引用或先补兼容修复。candidate novel path/form 仍需后续 strict/live 证据替换时，必须连同对应 adapter/fixture、SDK/CLI/MCP 引用一起迁移，不得保留旧结论。
 - 实际结果 / evidence / 风险：T08 umbrella 已 verified，10 个 bookmark endpoint leaf 的 method/path/request/DTO/error 离线证据由四张子卡闭合；novel candidate 及两类 mutation 的真实 wire、private access control、写后 detail/list/tags read-back、结果不确定性、同账号恢复，和 `--type all` 聚合/typed tags/aggregate cursor/页原子性均未完成。Goal-3 继续 incomplete，下一入口按 DAG 为 T09A。
+
+## T09A 完成记录
+
+- Owner package / 涉及文件：App API transport；`internal/services/pixiv/appapi/appapi.go`、同 stem 的 `appapi_test.go`，以及本任务台账。没有修改 endpoint owner、SDK、CLI/MCP、protocol、公开文档或依赖。
+- Depends on：T12、T04、T06 均已 verified；本卡只为 T09/T16 提供响应可解码的窄 form transport，具体 comment route、response ID 校验、读回、清理、SDK 与 public surface 留在后续 owner，不把 transport fixture 当作 mutation outcome 证据。
+- 冻结 contract / fixture：新增 `PostFormJSON(ctx, path, form, out)`，向指定 route 发送 form 并将非空 JSON 2xx 解码到 `out`；空/空白 body 或 JSON 解码失败返回脱敏 `MalformedResponse`，非 2xx 返回 typed HTTP failure（保留有效 `Retry-After` 元数据），传输失败返回 typed transport failure。仅对明确 401/403 沿用旧 `PostForm` 的 session refresh 后单次重试；429、5xx、传输错误、malformed success 与其他不确定 mutation 结果不自动重放。既有不读取响应的 `PostForm` 保持原行为，仍接受空 body 的 2xx。
+- Red 测试、命令及当前行为的预期失败：先新增 `TestPostFormJSONDecodesResponseAndSendsForm`，运行 `go test ./internal/services/pixiv/appapi -run '^TestPostFormJSONDecodesResponseAndSendsForm$' -count=1 -v`，实际因 `*appapi.Client` 尚不存在 `PostFormJSON` 而编译失败；没有先写 production implementation 或修改测试来掩盖失败。
+- Green 命令及验收断言：`go test ./internal/services/pixiv/appapi -run '^TestPostFormJSON' -count=1 -v`、`go test -race ./internal/services/pixiv/appapi -count=1`、相关 endpoint/SDK/MCP 回归、`go vet ./internal/services/pixiv/... ./sdk/pixiv ./internal/mcpserver/pixiv`、`go vet ./...`、`go test ./scripts/tests/documentation -count=1`、`go test ./... -count=1`、`sh scripts/build.sh` 与 `git diff --check` 均通过。测试覆盖 form/path/header 与 response ID 解码、empty/whitespace/malformed success、401/403 refresh 后解码，以及 429/5xx/transport error 各只发送一次；LSP 测试文件无诊断，production 文件仅有改动前已存在的 `Retry-After` `minmax` 风格提示，code-review-expert 自审无 P0/P1/P2 finding。
+- 公开兼容性影响：这是 `internal/services/pixiv/appapi.Client` 的 additive 窄 transport 能力，没有新增 SDK symbol、CLI/MCP schema/route、公开 wire、endpoint owner、默认值、账号/token 行为或 live API；既有 `PostForm` 路径与空 2xx 语义保持不变。41 条 required capability 仍全部为 `scope_admitted`，本卡不授予 `public_ready`。
+- 回滚前提 / 依赖闭包：需整体回滚 `PostFormJSON` 及其内部 helper、对应 response/error/replay fixture 与本完成记录；不要回滚既有 `PostForm`。后续 T09/T16/T27/T37/T38 若引用该窄能力，必须随 response ID 来源、同账号 execution context、读回失败与不确定结果边界一起回滚或先补兼容修复；不涉及业务数据、账号、token、缓存、运行配置或生成物。
+- 实际结果 / evidence / 风险：T09A 已 verified。离线 evidence 证明响应可解码 form transport 的请求、解码和错误/重放边界闭合，且不会因不确定结果自动重放；未执行 live API，未取得真实 comment mutation response ID，未实现 comment endpoint、读回/清理、SDK/CLI/MCP 发布或 public-ready 提升。当前任务表下一入口为 T09，Goal-3 继续 incomplete。
 
 ## 实现任务准入卡
 

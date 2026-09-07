@@ -20,6 +20,10 @@ type testDetailResponse struct {
 	} `json:"illust"`
 }
 
+type testMutationResponse struct {
+	CommentID int64 `json:"comment_id"`
+}
+
 type roundTripFunc func(*http.Request) (*http.Response, error)
 
 func (f roundTripFunc) RoundTrip(request *http.Request) (*http.Response, error) { return f(request) }
@@ -28,6 +32,176 @@ func getTestDetail(ctx context.Context, client *appapi.Client) (testDetailRespon
 	var result testDetailResponse
 	err := client.GetJSON(ctx, "/v1/illust/detail", url.Values{"illust_id": {"42"}}, &result)
 	return result, err
+}
+
+func TestPostFormJSONDecodesResponseAndSendsForm(t *testing.T) {
+	api := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost || r.URL.Path != "/v1/illust/comment/add" {
+			t.Fatalf("request = %s %s", r.Method, r.URL.String())
+		}
+		if err := r.ParseForm(); err != nil {
+			t.Fatalf("ParseForm returned error: %v", err)
+		}
+		if r.Form.Get("illust_id") != "42" || r.Form.Get("comment") != "hello" || strings.Join(r.Form["extra[]"], ",") != "a,b" {
+			t.Fatalf("form = %#v", r.Form)
+		}
+		if r.Header.Get("Authorization") != "Bearer direct-access" {
+			t.Fatalf("Authorization = %q", r.Header.Get("Authorization"))
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"comment_id":73}`))
+	}))
+	defer api.Close()
+
+	var result testMutationResponse
+	err := appapi.New(
+		appapi.WithBaseURL(api.URL),
+		appapi.WithHTTPClient(api.Client()),
+		appapi.WithAccessToken("direct-access"),
+	).PostFormJSON(
+		context.Background(),
+		"/v1/illust/comment/add",
+		url.Values{"illust_id": {"42"}, "comment": {"hello"}, "extra[]": {"a", "b"}},
+		&result,
+	)
+	if err != nil {
+		t.Fatalf("PostFormJSON returned error: %v", err)
+	}
+	if result.CommentID != 73 {
+		t.Fatalf("CommentID = %d, want 73", result.CommentID)
+	}
+}
+
+func TestPostFormJSONRejectsMalformedSuccessResponse(t *testing.T) {
+	for _, body := range []string{"", "   \n\t", "not-json"} {
+		t.Run(strings.ReplaceAll(body, "\n", "\\n"), func(t *testing.T) {
+			requests := 0
+			api := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				requests++
+				if r.Method != http.MethodPost || r.URL.Path != "/v1/illust/comment/add" {
+					t.Fatalf("request = %s %s", r.Method, r.URL.String())
+				}
+				w.Header().Set("Content-Type", "application/json")
+				_, _ = w.Write([]byte(body))
+			}))
+			defer api.Close()
+
+			var result testMutationResponse
+			err := appapi.New(appapi.WithBaseURL(api.URL), appapi.WithHTTPClient(api.Client()), appapi.WithAccessToken("access")).PostFormJSON(
+				context.Background(),
+				"/v1/illust/comment/add",
+				url.Values{"illust_id": {"42"}},
+				&result,
+			)
+			if !errors.Is(err, appapi.ErrMalformedResponse) {
+				t.Fatalf("error = %v, want malformed response", err)
+			}
+			if requests != 1 {
+				t.Fatalf("requests = %d, want 1", requests)
+			}
+		})
+	}
+}
+
+func TestPostFormJSONRefreshesAuthAndDecodesRetry(t *testing.T) {
+	for _, status := range []int{http.StatusUnauthorized, http.StatusForbidden} {
+		t.Run(http.StatusText(status), func(t *testing.T) {
+			session := &fakeSession{token: "old-access"}
+			requests := 0
+			api := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				requests++
+				if r.Method != http.MethodPost || r.URL.Path != "/v1/illust/comment/add" {
+					t.Fatalf("request = %s %s", r.Method, r.URL.String())
+				}
+				switch requests {
+				case 1:
+					if r.Header.Get("Authorization") != "Bearer old-access" {
+						t.Fatalf("first Authorization = %q", r.Header.Get("Authorization"))
+					}
+					w.WriteHeader(status)
+				case 2:
+					if r.Header.Get("Authorization") != "Bearer new-access" {
+						t.Fatalf("retry Authorization = %q", r.Header.Get("Authorization"))
+					}
+					_ = json.NewEncoder(w).Encode(testMutationResponse{CommentID: 73})
+				default:
+					t.Fatalf("unexpected request %d", requests)
+				}
+			}))
+			defer api.Close()
+
+			var result testMutationResponse
+			err := appapi.New(appapi.WithBaseURL(api.URL), appapi.WithHTTPClient(api.Client()), appapi.WithSession(session)).PostFormJSON(
+				context.Background(),
+				"/v1/illust/comment/add",
+				url.Values{"illust_id": {"42"}},
+				&result,
+			)
+			if err != nil || result.CommentID != 73 || session.refreshCalls != 1 || requests != 2 {
+				t.Fatalf("result=%+v err=%v refresh calls=%d requests=%d", result, err, session.refreshCalls, requests)
+			}
+		})
+	}
+}
+
+func TestPostFormJSONDoesNotReplayUncertainFailure(t *testing.T) {
+	for _, testCase := range []struct {
+		name       string
+		status     int
+		retryAfter string
+	}{
+		{name: "rate-limit", status: http.StatusTooManyRequests, retryAfter: "0"},
+		{name: "server-error", status: http.StatusBadGateway},
+	} {
+		t.Run(testCase.name, func(t *testing.T) {
+			session := &fakeSession{token: "access"}
+			requests := 0
+			api := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				requests++
+				if testCase.retryAfter != "" {
+					w.Header().Set("Retry-After", testCase.retryAfter)
+				}
+				w.WriteHeader(testCase.status)
+				_, _ = w.Write([]byte(`{"error":"request outcome is unknown"}`))
+			}))
+			defer api.Close()
+
+			var result testMutationResponse
+			err := appapi.New(appapi.WithBaseURL(api.URL), appapi.WithHTTPClient(api.Client()), appapi.WithSession(session)).PostFormJSON(
+				context.Background(),
+				"/v1/illust/comment/add",
+				url.Values{"illust_id": {"42"}},
+				&result,
+			)
+			if err == nil {
+				t.Fatal("PostFormJSON unexpectedly succeeded")
+			}
+			if requests != 1 || session.refreshCalls != 0 {
+				t.Fatalf("requests=%d refresh calls=%d, want one request and no refresh", requests, session.refreshCalls)
+			}
+		})
+	}
+
+	t.Run("transport-error", func(t *testing.T) {
+		calls := 0
+		httpClient := &http.Client{Transport: roundTripFunc(func(*http.Request) (*http.Response, error) {
+			calls++
+			return nil, errors.New("connection reset")
+		})}
+		var result testMutationResponse
+		err := appapi.New(appapi.WithBaseURL("https://example.invalid"), appapi.WithHTTPClient(httpClient), appapi.WithAccessToken("access")).PostFormJSON(
+			context.Background(),
+			"/v1/illust/comment/add",
+			url.Values{"illust_id": {"42"}},
+			&result,
+		)
+		if err == nil {
+			t.Fatal("PostFormJSON unexpectedly succeeded")
+		}
+		if calls != 1 {
+			t.Fatalf("transport calls=%d, want 1", calls)
+		}
+	})
 }
 
 func TestGetRawPreservesBodyAndHeadersForEndpointFamily(t *testing.T) {
