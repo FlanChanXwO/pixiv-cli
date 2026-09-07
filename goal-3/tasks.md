@@ -24,7 +24,9 @@ Status 的 verified 表示对应 task 的实现与相关验证完成；各 task 
 | T03 | bookmark contract | T00,T20 | 冻结两类 list/tags/detail/mutation/subtype 及 list/tags all 聚合契约 | verified |
 | T04 | comment contract | T00,T20 | 冻结 artwork/novel comments read/create/reply/stamp/delete、stamps、total | verified |
 | T05 | continuation contract | T01,T02,T03,T04 | 冻结 allowlist、query/account/subtype binding、第二页 fixture；复用现有 cursor | verified |
-| CHECK-02 | 集中检查-debug（T03/T04/T05） | T05 | audit-only 复查 bookmark/comment/continuation contract、required scope、历史 evidence、T23A 边界、账号/query/subtype binding、第二页 fixture、额外/重复 key、bug/死代码、类型/构建/测试、安全/数据/回滚/文档，并登记修复项 | pending |
+| CHECK-02 | 集中检查-debug（T03/T04/T05） | T05 | audit-only；不执行真实 API、不修改生产代码/CLI/MCP wire、不改 required_scope；复查 bookmark/comment/continuation contract、历史 evidence、T23A 边界、账号/query/subtype binding、第二页 fixture、额外/重复 key、bug/死代码、类型/构建/测试、安全/数据/回滚/文档，并登记修复项 | verified |
+| R02 | MCP filter replay 修复 | CHECK-02,T23A | 按 execution attempt 清空 MCP 本地 `seen` 状态；补非零 cursor + 本地 filter + 安全账号池 replay 回归，确保不静默丢记录；不改变 MCP schema | pending |
+| R03 | Goal 任务账本与文档 tracking hygiene | CHECK-02 | 对齐 T03/T04 的显式 depends_on 与完成记录；处理 `/goal-*/` 对新增 Goal 文档的忽略/force-add 规则 | pending |
 | T06 | error/其他 read contract | T00,T01,T02,T03,T04 | 冻结 user search/detail/relationships、trending、follow、mypixiv、error、mutation outcome 与脱敏 | pending |
 | T12 | SDK compatibility | T20,T01,T02,T03,T04,T05,T06 | 冻结 symbol map、旧 wrapper、named types、旧消费者编译、cursor 版本恢复；默认源码兼容 | pending |
 | T39A | CLI/MCP migration | T12 | 冻结 CLI 路由和 MCP tool/input/output compatibility map；旧 JSON 回放清单 | pending |
@@ -157,6 +159,18 @@ Status 的 verified 表示对应 task 的实现与相关验证完成；各 task 
 - 回滚前提 / 依赖闭包：文档提交需整体回滚 upstream matrix、plan 引用、T05 状态和 CHECK-02 排程；没有数据、账号或生产配置依赖。后续 owner 若已引用 T05，回滚前必须同步撤销其未完成的 adapter/SDK/CLI/MCP 依赖，不能只删除 allowlist 文本。
 - 实际结果 / evidence / 风险：T05 contract freeze 已完成；confirmed live 两页仅保留 novel follow/recommended、artwork search 四种 selector、artwork latest/ranking；数据受限 bookmark/user case 仍要求 synthetic two-page；novel-new、artwork recommended、novel-series-v2、comments 等继续保留真实 failure/inconclusive。当前 required capabilities 仍全部为 `scope_admitted`，Goal 继续 incomplete。按每三个 task 插入集中检查规则，已登记下一入口 `CHECK-02`，本轮不执行 T06。
 
+## CHECK-02 完成记录
+
+- Owner package / 涉及文件：集中质量 gate；只读审计 `goal-3/input.md`、`goal-3/plan.md`、`goal-3/tasks.md`、`goal-3/capability-admission.md`、T03/T04/T05 contract/evidence、T23A shared pagination/SDK/CLI/MCP、双语 SDK 文档与 `.gitignore`。本轮不调用真实 Pixiv/FANBOX API，不修改生产实现或公开 wire。
+- Depends on：T05 verified；复查 T03/T04/T05 与 T23A 的依赖闭包、required_scope、历史 evidence、账号/query/subtype binding、第二页 fixture、回滚和交付 tracking。
+- 冻结 contract / audit scope：CHECK-02 只验证“已冻结项”和“明确保留的未决项”是否被正确分层；不把 T05 `verified` 解读为所有 operation continuation 可发布，不把 synthetic two-page、`pagination_exempt`、历史 live evidence 或 T23A 局部修复提升为 capability 完成。审计后 41 条 required capability 必须继续为 `scope_admitted`。
+- Red 测试、命令及当前行为的预期失败：本 task 是 audit-only，无生产代码 Red 阶段。审计确认 shared checkpoint、SDK binding、错误丢弃、重复 opaque cursor 与多数 T23A 回归已有证据；同时发现 MCP `CollectWith` 的本地 filter `seen` 只在 zero cursor 重置，账号池从非零 cursor 安全 replay 时可能静默丢记录（`internal/mcpserver/pixiv/internal/runtime/runtime.go:223-238`、`internal/shared/traversal/traversal.go:70-93`、`internal/mcpserver/pixiv/internal/filters/filters.go:161-176`）。现有 replay fixture 均从 zero cursor 开始，不能证明该路径安全（`internal/mcpserver/pixiv/tools/search_illust/bookmark_test.go:60-96`）。
+- Green 命令及验收断言：`go test ./... -count=1`、`go vet ./...`、`sh scripts/build.sh`、`git diff --check` 与文档测试均通过；测试/build 通过只证明当前既有路径没有回归，不覆盖上述非零 cursor replay 缺口。静态审计确认 `capability-admission.md` 的 41 条 required capability 全部仍为 `scope_admitted`，没有历史 evidence、T23A 或 T05 状态升级；工作区无敏感/生成物进入 Git，远端交付状态在提交前后另行核验。
+- Findings / 修复登记：P1 MCP replay 状态问题登记为 `R02`，下一轮优先修复并补非零 cursor/local-filter/replay 回归；P1 `SearchNovels`/`SearchUsers` account binding 矛盾继续由既有 T12/T18 决策；cursor tamper/rollback 由既有 R01；novel latest、recommended subtype、严格额外 key/跨页重复 continuation、aggregate atomicity 由既有 T10/T11/T18/T19/T23 链路承接。T03 表格漏写 CHECK-01、T04 表格漏写 T03、CHECK-02 验收防误升级措辞和 `/goal-*/` tracking 风险登记为 `R03`，不在本审计轮直接修复。
+- 公开兼容性影响：无 production code、public SDK symbol、CLI/MCP wire、endpoint、默认值、依赖、required_scope 或 live 数据变化；仅把 CHECK-02 标记为 verified 并登记 R02/R03。已确认的 T23A 文档仍需以 R02 修复结果收紧，不提前宣称 replay 完整安全。
+- 回滚前提 / 依赖闭包：本轮只改 audit ledger/report；回滚需同时撤销 CHECK-02 状态、审计记录和 R02/R03 排程，不涉及运行数据或账号。R02 后续修改必须将 runtime filter 状态、traversal replay、MCP search fixture 作为同一测试/回滚闭包。
+- 实际结果 / evidence / 风险：CHECK-02 已完成，发现一项 T23A 范围内 P1 数据遗漏风险，故 Goal 继续 incomplete；下一入口是 R02，不是 T06。`pagination-validation-report.md` 已补充本审计对历史 zero-cursor replay 证据的限定，避免把既有全量测试通过误读为非零 cursor replay 已验证。
+
 ## 实现任务准入卡
 
 在当前任务下回写以下内容，或链接已有 contract/fixture；不要自动新增独立计划文件。跨 owner 的汇总任务必须先拆成单 owner 子卡；子卡使用父 ID 后缀，列出自己的依赖，父任务在全部子卡完成后完成。
@@ -181,3 +195,8 @@ Green 命令及验收断言：
 ## CHECK-01 追加修复任务
 
 - `R01`（pending）：发布前完成 cursor 完整性与回滚 gate。Owner 为 shared SDK/release compatibility；需检查 `sdk/cursor.go`、`sdk/pixiv/cursor.go`、T23A 分页报告、双语 SDK 文档及最终发布流程。验收必须明确 cursor 不是鉴权凭据，评估不可信输入是否需要完整性保护，并以跨版本回滚/迁移 fixture 证明 v2 cursor 与 shared collector、SDK、CLI/MCP 调用方的依赖闭包；没有证据不得发布。当前不为假设的威胁模型新增签名依赖或固定限制。
+
+## CHECK-02 追加修复任务
+
+- `R02`（pending，P1）：修复 `internal/mcpserver/pixiv/internal/runtime/runtime.go` 中 MCP local filter `seen` 的 execution-attempt 生命周期。账号池从非零 opaque cursor replay 时必须清空上一 attempt 的去重状态，再从同一初始 cursor 重新收集；增加真实 SDK + 离线 HTTP fixture，覆盖本地 filter、非零 cursor、safe replay、结果不遗漏不重复及 commit 边界。不得修改 MCP schema，不得静默重试或扩大 T23A 范围。
+- `R03`（pending，P2）：修正 `tasks.md` 的 T03/T04 depends_on 与完成记录，并决定 `/goal-*/` 的 Goal 文档跟踪策略（取消过宽忽略或在交付门禁中明确 force-add）；变更仅限计划/仓库 tracking，不得改变 required_scope 或公开行为。CHECK-02 的 audit-only 防误升级验收已在本轮补齐。

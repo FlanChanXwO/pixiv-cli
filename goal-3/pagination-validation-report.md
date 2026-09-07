@@ -119,10 +119,16 @@ sh scripts/build.sh
 
 ### 最终补充验证与自审
 
-`go test -race ./... -count=1` 通过；补充两端 `TestSearchContinuationReplayDiscardsFailedAttempt` 与 filtered repeated-cursor/predicate-error 回归后，三个受影响包的 `go test -race ... -count=1` 再次通过。第一次尝试中已收集但未交付的条目不会混入第二次尝试。
+`go test -race ./... -count=1` 通过；补充两端 `TestSearchContinuationReplayDiscardsFailedAttempt` 与 filtered repeated-cursor/predicate-error 回归后，三个受影响包的 `go test -race ... -count=1` 再次通过。现有 replay fixture 从 zero cursor 开始，因此只证明该起点的第一次尝试结果不会混入第二次尝试；不覆盖非零初始 cursor 与 MCP local-filter `seen` 状态的 replay 生命周期。
 
-按 code-review-expert 检查消费下标、首批/末批、累计位置、错误传播、账号绑定、脱敏、边界归属及兼容影响；未发现未解决的阻塞问题。稳定源限制与旧 cursor 失效均已记录；未新增无依据阈值。检查了产品 Skill 的分页/complete-source 文案，既有 CLI --page/--limit 使用方式不变，不向产品 Skill 提前发布未来 all 功能。
+按 code-review-expert 检查消费下标、首批/末批、累计位置、错误传播、账号绑定、脱敏、边界归属及兼容影响；本轮 CHECK-02 进一步发现非零初始 cursor 的 MCP local-filter replay 缺口，登记为 R02，不把历史 zero-cursor replay 证据扩张为完整账号池 replay 证明。稳定源限制与旧 cursor 失效均已记录；未新增无依据阈值。检查了产品 Skill 的分页/complete-source 文案，既有 CLI --page/--limit 使用方式不变，不向产品 Skill 提前发布未来 all 功能。
 
 T23A 任务卡：owner 为 shared pagination、sdk/pixiv、CLI search 和 MCP search_illust，属于本轮明确批准的跨层缺陷修复；落地按共享算法、SDK、两调用方的独立测试切片顺序推进。无未来 vNext 任务依赖。Red/Green 命令及结果见上；公开影响为新增 SDK checkpoint 接口及搜索 cursor v2。回滚须将收集器签名、SDK 方法及两调用方作为一个依赖闭包回退，不能单独撤回 callback 或 SDK method；已发行 v2 cursor 的回滚兼容需单独处理。T19/T23/T44 仍未完成。
 
 生产修复提交：`5162685`。该提交的 pre-commit gofmt 与 go test ./... 均通过；计划一致性测试随后续计划提交交付。
+
+### 2026-09-07 CHECK-02 审计限定
+
+CHECK-02 对 T23A 的当前实现和证据进行了集中复查。`go test ./... -count=1`、`go vet ./...`、`sh scripts/build.sh` 与文档测试均通过，但全量通过不覆盖尚未存在的非零 cursor replay fixture。`internal/mcpserver/pixiv/internal/runtime/runtime.go:223-238` 在 `CollectWith` 外层只创建一次 `seen`，仅当 fetch 收到 zero cursor 时重建；`internal/shared/traversal/traversal.go:70-93` 的 replay begin 只清空结果，不清空该 map；`internal/mcpserver/pixiv/internal/filters/filters.go:161-176` 会把重复实体静默过滤。因此从非零初始 cursor 开始、首个账号已产生 local-filter 状态后触发 safe account-pool replay，可能丢失第二次尝试的首批记录。现有 `internal/mcpserver/pixiv/tools/search_illust/bookmark_test.go:60-96` 只覆盖 zero cursor。
+
+该问题属于 T23A 范围内的 P1 数据完整性风险，已登记 `goal-3/tasks.md` 的 R02；在 R02 完成前，不能把“账号池重放”写成无条件已验证，也不能把 T23A 局部状态提升为其他 capability 的发布授权。真实 API、mutation 和 live second-page 仍按本报告原有 `inconclusive`/`pagination_exempt` 边界处理。
