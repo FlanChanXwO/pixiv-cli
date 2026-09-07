@@ -18,7 +18,7 @@ Status 的 verified 表示本轮实现与相关验证完成，证据见分页报
 | --- | --- | --- | --- | --- |
 | T00 | scope/计划 owner | none | 冻结 required_scope；状态唯一来源、批准记录、完整性验收 | verified |
 | T20 | shared semantics | T00 | 冻结 Target kind / Result kind / Subtype；命令级冲突规则 | verified |
-| T01 | artwork contract | T00,T20 | 冻结 artwork search/series/latest/ranking/recommended/ugoira 基础 request、DTO、subtype | pending |
+| T01 | artwork contract | T00,T20 | 冻结 artwork search/series/latest/ranking/recommended/ugoira 基础 request、DTO、subtype | verified |
 | T02 | novel contract | T00,T20 | 冻结 novel search/detail/series/latest/recommended/ranking/follow | pending |
 | T03 | bookmark contract | T00,T20 | 冻结两类 list/tags/detail/mutation/subtype 及 list/tags all 聚合契约 | pending |
 | T04 | comment contract | T00,T20 | 冻结 artwork/novel comments read/create/reply/stamp/delete、stamps、total | pending |
@@ -87,6 +87,17 @@ Status 的 verified 表示本轮实现与相关验证完成，证据见分页报
 - 公开兼容性影响：无 public SDK symbol、CLI wire、MCP schema、依赖或默认值变化；只为后续 T12/T21/T39A 提供冻结语义，既有兼容 surface 保持原样。
 - 回滚前提 / 依赖闭包：文档提交可整体回滚；回滚必须同时撤销迁移矩阵、plan 引用和本任务状态，不能保留实现任务对未冻结语义的依赖。无数据、账号或生产配置变更。
 - 实际结果 / evidence / 风险：T20 已完成并保持 Goal incomplete。现有实现与冻结目标之间的差距已显式登记，下一步按拓扑顺序执行 T01；T01/T02/T03/T04 等 contract owner 必须引用本契约并补各自 endpoint fixture，不得据本任务直接宣告 capability contract_frozen。
+
+## T01 完成记录
+
+- Owner package / 涉及文件：artwork contract；`goal-3/upstream-contract-matrix.md`、`goal-3/plan.md`、本文件。只冻结 search/series/latest/ranking/recommended/ugoira 的基础 contract，不实现 endpoint/SDK/CLI/MCP。
+- Depends on：T00、T20 verified。
+- 冻结 contract / fixture：upstream matrix 新增 T01 operation 表，明确六类 method/path、request required/optional/default、normalized `Artwork`/`UgoiraMetadataDTO`、search/latest/ranking/recommended/series 的 subtype 与 continuation 差异；同步冻结 `ArtworkDTO` optional 字段、required list 的 null/empty、`next_url` 终止/malformed、publish time、cover/pages 与 ugoira archive/frame 安全边界。
+- Red 测试、命令及当前行为的预期失败：T01 是 contract freeze 文档任务，无生产代码 Red 阶段。只读核验确认 series 缺独立 live matrix/第二页，recommended 第二页与 subtype 未确认，latest 扩展 subtype 仅 partial；这些未被伪装为已完成。
+- Green 命令及验收断言：`nl`/`rg` 逐项核验 `sdk/pixiv` model/DTO/request/operation、六个 artwork endpoint、现有 endpoint/SDK tests 与 Goal-3 evidence；`git diff --check` 和 T01 关键段落静态检索通过。历史 `go test ./...` 通过，且本次提交钩子将再次运行项目 Go 检查。
+- 公开兼容性影响：无 production code、public SDK symbol、CLI/MCP wire、依赖或默认值变化；明确保留 `ArtworkKindIllustration="illustration"` 与 `RawKind`，不因 semantic `illust` 重命名既有 API。
+- 回滚前提 / 依赖闭包：文档提交需整体回滚 upstream matrix、plan 引用和 T01 状态；没有数据、账号、生产配置或 endpoint path 依赖。后续 T05/T07/T10/T13 只能在本 contract 约束下补实现与证据。
+- 实际结果 / evidence / 风险：T01 已完成基础 contract 冻结，相关 capability 仍保持 `scope_admitted`，Goal 继续 incomplete。下一步按拓扑顺序执行 T02；T05 负责补未确认 continuation/subtype evidence，T07/T10/T13 负责实现，不能把 T01 文档当作 public_ready。
 
 ## 实现任务准入卡
 

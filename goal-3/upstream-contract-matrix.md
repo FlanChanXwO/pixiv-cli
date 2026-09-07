@@ -48,6 +48,40 @@
 | illust-comment-delete | delete artwork comment | POST | /v1/illust/comment/delete | comment_id | — | — | read_back | not_tested | not_tested | not_tested | production owner missing |
 | novel-comment-delete | delete novel comment | POST | /v1/novel/comment/delete | comment_id | — | — | read_back | not_tested | not_tested | not_tested | production owner missing |
 
+## T01 artwork 基础 contract 冻结（2026-09-07）
+
+本节冻结 artwork 六类 operation 的基础 request、normalized entity/DTO、subtype 与异常边界；它不是把不同 endpoint 压成一个通用 request。历史 evidence 的 `confirmed`/`inconclusive` 仍保持原样，能力发布状态仍只见 [能力准入表](capability-admission.md)。
+
+| Operation | Method / path | Base request | Normalized response | Continuation / subtype boundary | Evidence boundary |
+| --- | --- | --- | --- | --- | --- |
+| artwork search | `GET /v1/search/illust` | `word` required；`search_target` 默认 `partial_match_for_tags`；`sort` 默认 `date_desc`；`duration` 或 `start_date/end_date` optional；`offset` 只来自 continuation | required `illusts` list → `Artwork`；`next_url` 只在 adapter 内解析 | search selector 为 `all`、`illust-and-ugoira`、`illust`、`manga`、`ugoira`；`AIModeOnly` 是本地 filter，不是 subtype；wire `illust` 映射为 semantic `illust` / public legacy `illustration` | 四种 search case 均已有两页 wire/response/adapter/SDK evidence；rating 不进入 server-side contract |
+| artwork series | `GET /v1/illust/series` | `illust_series_id` required positive；首请求不带 `last_order`，续页只带 positive `last_order` | `illust_series_detail.user.id` 与 required `illusts` list；series user ID 是成功条件；item 仍 normalized 为 `Artwork` | continuation key 固定 `last_order`；series request 不承载 subtype filter，item subtype 仍按 `illust/manga/ugoira` 映射 | 现有 endpoint/SDK fixture 已确认；独立 live T01 matrix/第二页证据缺失，保留给 T05 |
+| artwork latest | `GET /v1/illust/new` | wire 必有 `content_type` 与 `filter=for_android`；public empty value 默认 `illust`；续页使用服务端返回的 continuation | required `illusts` list → `Artwork` | base subtype 先冻结 `illust`；`max_illust_id` 优先，兼容解析 `offset`；`manga`/`ugoira`/compound expansion 需独立证据 | `illust` 两页 confirmed；扩展 subtype 仍为 partial，不由 T01 提升 |
+| artwork ranking | `GET /v1/illust/ranking` | `mode` default `day`；`date` optional；续页为 positive `offset` | required `illusts` list → `Artwork` | subtype 不是独立 request 维度；`day_manga` 等 mode 由 ranking contract 表达，不映射成全局 `ArtworkKind`；合法 mode 由 `RankingMode` allowlist 冻结 | artwork ranking 两页 confirmed；mode/date 非法为 `InvalidArgument` |
+| artwork recommended | `GET /v1/illust/recommended` | base request 无 query；首次不发送 `offset`；续页即使 offset 为 `0` 也必须显式发送 `offset=0`；endpoint 的 optional `content_type` 先保留为 candidate | required `illusts` list → `Artwork` | continuation key 为 `offset`，且必须保留 initial/continuation distinction；recommended subtype 不在 T01 宣告支持 | 首页/基础 mapping confirmed；第二页失败根因与 subtype 两页未确认，保留给 T05 |
+| ugoira metadata | `GET /v1/ugoira/metadata` | `illust_id` required positive；无分页 | required metadata → `UgoiraMetadataDTO{artwork_id, archives, frames}`；至少一个 archive 与非空 frames | 无 continuation；这是 ugoira metadata operation，不是把所有 artwork 都标为 ugoira | wire/response/adapter/SDK mapping confirmed；unsafe/duplicated frame filename 为 malformed |
+
+### T01 normalized artwork DTO 与 null/empty/error 规则
+
+- public `ArtworkDTO` 的稳定字段为 `id/title/caption/kind/raw_kind/tags/user/published_at/total_bookmarks/total_views/width/height/page_count/x_restrict/ai_type/cover`；`updated_at`、`tools`、`pages` 是 optional `omitempty` 字段。`UpdatedAt=nil` 表示 upstream 未提供，list operation 不伪造 `Pages`，detail 才在有可用 media metadata 时填充页面。
+- `ArtworkKind` public legacy spelling 保持 `illustration/manga/ugoira/unknown`；`RawKind` 保留 upstream 原值。T20 的 semantic subtype `illust` 与 wire `illust` 的映射不能通过删除既有 SDK named value 来实现。
+- artwork list/series/latest/ranking/recommended 的 `illusts` 是 required list：缺失或 JSON `null` 为 `MalformedUpstreamResponse`，空数组合法且 normalized `Items` 必须为 non-nil empty slice。`next_url=null` 是正常结束；非 null 空字符串、缺少唯一合法 continuation key、重复 key、超出该 operation allowlist/range 或不可解析值均为 malformed（recommended 的 continuation `offset=0` 是允许的特例）。
+- `PublishedAt` 不能由无效/缺失 `create_date` 猜测；不能生成伪造 media URL。cover 按 `original → large → medium → square_medium` 选择，页面必须有可用 image URL；这些 malformed/error mapping 由 adapter/SDK owner 落地，不由本任务改变。
+- ugoira metadata 要求 `zip_urls` 至少有一个可用 archive、frames 非空；frame filename 必须非空、相对、安全且不重复。请求 ID/mode/date 等调用方错误为 `InvalidArgument`，upstream 结构错误为 `MalformedUpstreamResponse`，取消与 transport/upstream 错误保持真实分类。
+
+### T01 evidence index
+
+- search：历史两页四种 selector 的 evidence 为 `goal-3/evidence/appapi-upstream.md:20-23`，endpoint/SDK 回归分别见 `internal/services/pixiv/endpoint/artwork/search/search_test.go:24-94`、`sdk/pixiv/pixiv_test.go:493-543`。
+- series：首批/续页 `last_order` 与 series user required fixture 见 `sdk/pixiv/pixiv_test.go:276-320`、`internal/services/pixiv/endpoint/artwork/series/series_test.go:24-42`；独立 live evidence 尚缺。
+- latest/ranking：两页 evidence 见 `goal-3/evidence/appapi-upstream.md:26-27`；wire/continuation regression 见 `internal/services/pixiv/endpoint/artwork/timeline/timeline_test.go:24-84`、`internal/services/pixiv/endpoint/artwork/ranking/ranking_test.go:24-42`。
+- recommended：initial/continuation offset distinction 见 `internal/services/pixiv/endpoint/artwork/recommended/recommended_test.go:24-49`；历史第二页失败与 subtype 未确认见 `goal-3/evidence/appapi-upstream.md:25`、`goal-3/pagination-validation-report.md:24-31,57-61`。
+- DTO/ugoira：public optional-field shape 见 `sdk/pixiv/dto_test.go:93-144`；ugoira archive/frame mapping 与 unsafe filename 见 `sdk/pixiv/pixiv_test.go:890-918`。
+
+### T01 与后续任务的边界
+
+- T01 已冻结基础 operation contract，不把历史 evidence 直接提升为 capability `contract_frozen`/`public_ready`。T05 仍必须补 artwork series live 第二页、latest 扩展 subtype、recommended 完整 continuation/subtype 两页及各 operation 的 query/account/subtype binding。
+- T07/T10 负责 endpoint leaf、DTO/error mapping 和 ranking/latest/recommended owner 实现；T13 负责 public SDK、旧签名、series metadata 是否公开及 ugoira resource mapping。T01 不新增 production path、public symbol 或依赖。
+
 ## 迁移准入规则（2026-09-07 更正）
 
 上表保留历史观测与原 verdict；包括备注中的 migration-ready 也仅是当时的证据标签，不是当前实施状态。当前实施与发布授权只来自 [能力准入表](capability-admission.md)，confirmed 不放行 CLI/MCP/docs。contract、T12/T39A、adapter/SDK、回归与文档按 tasks 依赖推进。
