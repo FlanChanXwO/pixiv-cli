@@ -177,6 +177,15 @@ non-secret binding for that Client instance; the same Client may continue it,
 while another Client or process receives `InvalidCursor`. A client opened
 through `pixiv.Open` binds the cursor to the verified account identity instead.
 
+> [!WARNING]
+> Cursor encoding provides continuation state and binding checks, not a cryptographic
+> authenticity guarantee. A cursor is not an authentication credential; do not put
+> secrets in its identity, context, or payload, and do not rely on tamper resistance
+> when accepting cursors across an untrusted boundary. The published binding-version
+> change introduced for `SearchArtworks` also requires the shared collector, SDK, and callers to
+> be rolled back together; a previously issued version-2 cursor is not consumable by
+> the pre-version-2 search implementation.
+
 ### Resuming within an artwork search batch
 
 `SearchArtworks` cursors now use binding version **2**, including normal batch

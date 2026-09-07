@@ -22,7 +22,7 @@
 
 ## Cursor、分页与筛选
 
-继续使用 `sdk.Cursor` 外层 envelope、`sdk/pixiv` product/operation/version/query/account/client binding、endpoint sanitized continuation 和 shared pagination/traversal。禁止 CLI/MCP 自行解析 endpoint token，禁止持久化 next_url、signed URL、token、cookie、原始查询或用户内容。
+继续使用 `sdk.Cursor` 外层 envelope、`sdk/pixiv` product/operation/version/query/account/client binding、endpoint sanitized continuation 和 shared pagination/traversal。禁止 CLI/MCP 自行解析 endpoint token，禁止持久化 next_url、signed URL、token、cookie、原始查询或用户内容。当前 cursor 编码提供续读状态与 binding 校验，但不是密码学真实性校验，也不是鉴权凭据；不可信边界的完整性策略与 version-2 cursor 跨版本回滚验证纳入后续 `R01` 发布 gate。
 
 原计划声称 CollectFilteredPagesFrom 已完整支持 continuation 不成立：逻辑截断后直接返回上游 next 会遗漏批内余项，末批会产生 HasMore=true/空 cursor。T23A 已按先失败测试修正搜索基础；T23 仍须把契约接入其他 endpoint，而非只增加筛选参数。
 

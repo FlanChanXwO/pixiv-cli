@@ -170,6 +170,13 @@ for {
 同一 Client 可以继续，其他 Client 或进程会返回 `InvalidCursor`。通过
 `pixiv.Open` 创建的 Client 则把 cursor 绑定到已验证的账号 identity。
 
+> [!WARNING]
+> Cursor 编码只提供续读状态和绑定校验，不提供密码学意义上的真实性校验。
+> Cursor 不是鉴权凭据；不要把 secret 放进 identity、context 或 payload，也不要在
+> 不可信边界接收 cursor 时依赖其防篡改能力。`SearchArtworks` 的 binding version
+> 变更还要求 shared collector、SDK 和调用方作为整体回滚；已经发出的 version-2
+> cursor 不能由 version-2 之前的搜索实现消费。
+
 ### 作品搜索批内续读
 
 `SearchArtworks` 的普通批次 cursor 与 checkpoint 均使用 binding version **2**。

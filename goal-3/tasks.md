@@ -12,7 +12,7 @@ Contract/计划任务以证据与一致性检查为验收；代码任务逐个 R
 
 ## 任务依赖表
 
-Status 的 verified 表示本轮实现与相关验证完成，证据见分页报告（修复提交 5162685）；pending 不能被历史 evidence 自动提升。
+Status 的 verified 表示对应 task 的实现与相关验证完成；各 task 的完成记录、contract 文档和专项报告分别提供证据，T23A 的生产修复证据见分页报告（修复提交 5162685）。pending 不能被历史 evidence 自动提升。
 
 | Task | Owner / responsibility | depends_on | Deliverable / acceptance | Status |
 | --- | --- | --- | --- | --- |
@@ -20,7 +20,7 @@ Status 的 verified 表示本轮实现与相关验证完成，证据见分页报
 | T20 | shared semantics | T00 | 冻结 Target kind / Result kind / Subtype；命令级冲突规则 | verified |
 | T01 | artwork contract | T00,T20 | 冻结 artwork search/series/latest/ranking/recommended/ugoira 基础 request、DTO、subtype | verified |
 | T02 | novel contract | T00,T20 | 冻结 novel search/detail/series/latest/recommended/ranking/follow | verified |
-| CHECK-01 | 集中检查-debug（T00/T20/T01/T02） | T02 | 复查需求偏离、bug/死代码、类型/构建/测试、安全、数据一致性、回滚和文档同步 | pending |
+| CHECK-01 | 集中检查-debug（T00/T20/T01/T02） | T02 | audit-only 复查 input/plan 偏离、41 条 required_scope、bookmark list/tags all、历史 evidence、排除 endpoint、T23A 边界、bug/死代码、类型/构建/测试、安全/数据/回滚/文档，并登记修复项 | verified |
 | T03 | bookmark contract | T00,T20 | 冻结两类 list/tags/detail/mutation/subtype 及 list/tags all 聚合契约 | pending |
 | T04 | comment contract | T00,T20 | 冻结 artwork/novel comments read/create/reply/stamp/delete、stamps、total | pending |
 | T05 | continuation contract | T01,T02,T03,T04 | 冻结 allowlist、query/account/subtype binding、第二页 fixture；复用现有 cursor | pending |
@@ -66,6 +66,7 @@ Status 的 verified 表示本轮实现与相关验证完成，证据见分页报
 | T43 | CLI/MCP regression | T39B,T40 | JSON/NDJSON、stdin、skip/fail-fast、旧 schema、stdout 与不可达性 | pending |
 | T44 | live regression | T42,T43 | 未来显式隔离账号 read/mutation；本轮不执行，不借用历史成功 | pending |
 | T45 | delivery audit | T41,T42,T43,T44 | required_scope 全集 public_ready；go test/build、脱敏、迁移与发布审计 | pending |
+| R01 | cursor 完整性与发布回滚 gate | CHECK-01 | 在发布前明确不可信边界的 cursor 完整性策略，并以跨版本回滚/迁移验证证明不会把 cursor 当作鉴权凭据 | pending |
 
 ## T00 完成记录
 
@@ -111,6 +112,17 @@ Status 的 verified 表示本轮实现与相关验证完成，证据见分页报
 - 回滚前提 / 依赖闭包：文档提交需整体回滚 upstream matrix、plan 引用、T02 状态和 CHECK-01 排程；没有数据、账号、生产配置或 endpoint path 依赖。后续实现若已引用本节，回滚前必须同步撤销其依赖或先提供兼容修复。
 - 实际结果 / evidence / 风险：T02 已完成，novel capability 仍保持 `scope_admitted`，Goal 继续 incomplete。主要剩余风险是 v2 detail/series 尚未接入生产、latest cursor 仍错误使用 offset、ranking owner 缺失及若干 continuation/binding 证据不足；按每三个 task 的 goal-mode 节奏，下一轮先执行 `CHECK-01`，通过后再按顺序进入 T03。
 
+## CHECK-01 完成记录
+
+- Owner package / 涉及文件：集中质量 gate；只读检查 `goal-3/input.md`、`goal-3/plan.md`、`goal-3/tasks.md`、`goal-3/capability-admission.md`、T00/T20/T01/T02 contract/evidence，以及 T23A 受影响的 shared pagination、SDK、CLI/MCP、双语 SDK 文档。新增风险说明位于 `docs/en/sdk.md`、`docs/zh-CN/sdk.md`。
+- Depends on：T02 verified；T23A 为本轮已批准且已 verified 的独立基础修复。
+- 冻结 contract / fixture：CHECK-01 明确为 audit-only，不执行真实账号 API、不新增依赖、不启动其他 vNext endpoint、不修改 CLI/MCP wire；逐项核对 41 条 required scope、`bookmark list/tags --type all`、历史 evidence 不得提升、已排除 endpoint、T23A 与完整 `logical-pagination` 的边界。T23A 稳定源非 snapshot 限制、账号/query/client binding 和回滚闭包继续以分页报告及 SDK 文档为准。
+- Red 测试、命令及当前行为的预期失败：本 task 是集中审计，无生产代码 Red 阶段。审计先确认两项文档门槛：原 CHECK-01 行未逐项列出高风险边界，且 tasks 顶部把所有 verified 过度指向分页报告；同时确认 cursor 编码没有 MAC/签名、已发行 version-2 cursor 回滚到旧 binary 不兼容。这些是非当前发布阻塞的后续 gate，不被伪装为已解决的生产能力。
+- Green 命令及验收断言：`go test -race ./internal/shared/pagination ./sdk/pixiv ./internal/cli/commands/pixiv/search ./internal/mcpserver/pixiv/tools/search_illust -count=1`、`go vet ./internal/shared/pagination ./sdk/pixiv ./internal/cli/commands/pixiv/search ./internal/mcpserver/pixiv/tools/search_illust`、`go test ./scripts/tests/documentation -count=1`、`go test ./...`、`sh scripts/build.sh` 均通过；`git diff --check` 及目标 anchor/static audit 通过。复核确认 checkpoint 只保存非 secret continuation state，CLI/MCP 不暴露 opaque SDK cursor，账号/query/operation binding、错误丢弃、取消、重复 cursor、Skip/Limit/OneBatch 和跨批恢复测试均存在。
+- 公开兼容性影响：本轮没有改变 SDK/CLI/MCP/wire 行为、endpoint、默认值或依赖；双语 SDK 文档新增安全边界说明。没有把 cursor 当作鉴权凭据，也没有承诺防篡改或实时 snapshot 语义。
+- 回滚前提 / 依赖闭包：文档与任务记录可整体回滚；若未来实现 R01，必须同时验证或回滚 shared collector、SDK cursor binding、CLI/MCP 调用方和对应双语文档，不能只撤一个 cursor 版本或 callback。R01 不授权新增 crypto 依赖，具体策略须有证据并保持兼容。
+- 实际结果 / evidence / 风险：CHECK-01 已完成，未发现 P0/P1 或需立即修复的生产 bug、死代码、类型/构建/测试回归、鉴权越权或敏感信息泄露。发现的 P2 风险已通过双语文档告知，并登记 `R01` 作为发布前修复/gate；真实 API 稳定性、跨版本已发行 cursor 回滚和不可信边界 tamper resistance 仍未验证。required capabilities 仍全部为 `scope_admitted`，Goal 继续 incomplete；按任务顺序下一轮进入 T03。
+
 ## 实现任务准入卡
 
 在当前任务下回写以下内容，或链接已有 contract/fixture；不要自动新增独立计划文件。跨 owner 的汇总任务必须先拆成单 owner 子卡；子卡使用父 ID 后缀，列出自己的依赖，父任务在全部子卡完成后完成。
@@ -131,3 +143,7 @@ Green 命令及验收断言：
 单独提交用于追踪，不代表任意提交都能独立撤销。回滚须检查依赖闭包：后续 SDK/CLI/MCP 已依赖时，同步撤销依赖任务，或先提供保持构建与公开契约的兼容修复；由执行者记录验证证据。不得误撤无关工作。
 
 最终检查 T45、required_scope 全集、禁止 endpoint 的负向回归、源码与 wire compatibility、文档/Skill/completion 一致性。T44 未执行或任一 required 未 public_ready，Goal 保持 incomplete。
+
+## CHECK-01 追加修复任务
+
+- `R01`（pending）：发布前完成 cursor 完整性与回滚 gate。Owner 为 shared SDK/release compatibility；需检查 `sdk/cursor.go`、`sdk/pixiv/cursor.go`、T23A 分页报告、双语 SDK 文档及最终发布流程。验收必须明确 cursor 不是鉴权凭据，评估不可信输入是否需要完整性保护，并以跨版本回滚/迁移 fixture 证明 v2 cursor 与 shared collector、SDK、CLI/MCP 调用方的依赖闭包；没有证据不得发布。当前不为假设的威胁模型新增签名依赖或固定限制。
