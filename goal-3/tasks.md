@@ -17,7 +17,7 @@ Status 的 verified 表示本轮实现与相关验证完成，证据见分页报
 | Task | Owner / responsibility | depends_on | Deliverable / acceptance | Status |
 | --- | --- | --- | --- | --- |
 | T00 | scope/计划 owner | none | 冻结 required_scope；状态唯一来源、批准记录、完整性验收 | verified |
-| T20 | shared semantics | T00 | 冻结 Target kind / Result kind / Subtype；命令级冲突规则 | pending |
+| T20 | shared semantics | T00 | 冻结 Target kind / Result kind / Subtype；命令级冲突规则 | verified |
 | T01 | artwork contract | T00,T20 | 冻结 artwork search/series/latest/ranking/recommended/ugoira 基础 request、DTO、subtype | pending |
 | T02 | novel contract | T00,T20 | 冻结 novel search/detail/series/latest/recommended/ranking/follow | pending |
 | T03 | bookmark contract | T00,T20 | 冻结两类 list/tags/detail/mutation/subtype 及 list/tags all 聚合契约 | pending |
@@ -76,6 +76,17 @@ Status 的 verified 表示本轮实现与相关验证完成，证据见分页报
 - 公开兼容性影响：无 SDK、CLI、MCP、wire 或依赖变更；仅将已核验的 T00 计划任务标记为 `verified`。
 - 回滚前提 / 依赖闭包：这是文档状态提交，无生产依赖；回滚该提交即可恢复 T00 pending，不需要撤回代码或数据。后续任务仍必须依赖 T00，不能因本状态标记跳过 contract/compatibility 门禁。
 - 实际结果 / evidence / 风险：T00 已完成。required_scope 未缩减，状态唯一来源和完整性验收已冻结；剩余风险是 41 个 capability 均尚未达到 `public_ready`，按拓扑顺序下一步执行 T20。当前执行视为对既有 Goal-3 待办任务的继续，不改变 `input.md` 的历史原文或 required_scope。
+
+## T20 完成记录
+
+- Owner package / 涉及文件：shared semantics；`goal-3/cli-migration-matrix.md`、`goal-3/plan.md`、本文件。只冻结产品语义，不提前修改 SDK/CLI/MCP 生产实现。
+- Depends on：T00 verified。
+- 冻结 contract / fixture：迁移矩阵新增 T20 类型语义契约，分别定义 Target kind、Result/entity kind、Subtype 的允许边界；保留 `ReferenceKind` 的 user/user bookmarks/artwork series/novel series 细分；明确 `illustration` → `illust` 的兼容拼写、`Record.Type()` 的非全局语义、结构化 record → ParseURL → 显式类型 ID → 受控 bare-ID probe 顺序，以及 search/detail/series/bookmark/comment/feed 的命令级冲突规则。
+- Red 测试、命令及当前行为的预期失败：T20 是 contract freeze 文档任务，无生产代码 Red 阶段。只读核验确认当前没有统一三层类型或共享 resolver，且 bookmark list/tags 尚不支持 user URL + `--type novel`、`all` 和 bare-ID probe；这些是后续 T21/T27 等实现任务，不在 T20 偷渡修复。
+- Green 命令及验收断言：`rg`/`nl` 核验了 `sdk/pixiv/reference.go`、`models.go`、`request.go`、`internal/shared/record` 及相关 CLI/MCP 调用方；文档静态检查确认新增锚点、三层定义、命令表、resolver 顺序和冲突错误规则均可检索。未改生产代码，因此沿用上一轮 `go test ./...` 全通过证据；本提交钩子将再次运行相关 Go 检查。
+- 公开兼容性影响：无 public SDK symbol、CLI wire、MCP schema、依赖或默认值变化；只为后续 T12/T21/T39A 提供冻结语义，既有兼容 surface 保持原样。
+- 回滚前提 / 依赖闭包：文档提交可整体回滚；回滚必须同时撤销迁移矩阵、plan 引用和本任务状态，不能保留实现任务对未冻结语义的依赖。无数据、账号或生产配置变更。
+- 实际结果 / evidence / 风险：T20 已完成并保持 Goal incomplete。现有实现与冻结目标之间的差距已显式登记，下一步按拓扑顺序执行 T01；T01/T02/T03/T04 等 contract owner 必须引用本契约并补各自 endpoint fixture，不得据本任务直接宣告 capability contract_frozen。
 
 ## 实现任务准入卡
 

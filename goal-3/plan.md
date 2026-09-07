@@ -38,9 +38,9 @@ rating 使用 client-side filter，除已冻结的真实服务端参数外不发
 
 ## 类型、解析和聚合契约
 
-T20 在公开签名冻结前明确三层：Target kind 是输入身份（user/artwork/novel/series/comment）；Result/entity kind 是操作内容；Subtype 是 illust/manga/ugoira 等子类型。不建立所有命令都接受所有值的全局类型。
+T20 已在 [CLI/MCP 迁移矩阵的类型语义冻结](cli-migration-matrix.md#t20-类型语义冻结) 中明确三层：Target kind 是输入身份（user/artwork/novel/series/comment）；Result/entity kind 是操作内容；Subtype 是 illust/manga/ugoira 等子类型。不建立所有命令都接受所有值的全局类型。
 
-resolver 依次消费 structured canonical record、现有纯本地 ParseURL、显式类型 ID 和冻结后的受控 bare-ID probe。保留 ReferenceKind 的 user/user bookmarks/artwork series/novel series 区别。URL 与 --type 是否冲突由命令契约判定：bookmark list/tags 的 user URL 加 --type novel 合法；作品 mutation 输入身份与选择的作品类型必须一致。
+resolver 依次消费 structured canonical record、现有纯本地 ParseURL、显式类型 ID 和冻结后的受控 bare-ID probe；冲突、`all` 与错误规则以该节为准。保留 ReferenceKind 的 user/user bookmarks/artwork series/novel series 区别。URL 与 --type 是否冲突由命令契约判定：bookmark list/tags 的 user URL 加 --type novel 合法；作品 mutation 输入身份与选择的作品类型必须一致。
 
 [CLI 迁移矩阵](cli-migration-matrix.md) 冻结路由、flag、stdin/JSON/NDJSON 与 MCP 映射。bookmark list/tags --type all 均为 required：先 artwork 后 novel、各流顺序不变、统一 Skip/Limit、cursor 记录当前流及各流 checkpoint；tags 按内容类型保留同名标签和各自 count。需要的流之一失败时整次逻辑页失败，收集成功后才输出 JSON/NDJSON。detail/add/remove 不接受 all；SDK 保持 endpoint-oriented methods，由共享产品语义组织聚合。
 
