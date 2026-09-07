@@ -91,8 +91,11 @@ func (c *Client) Tags(ctx context.Context, request TagsRequest) (TagsResult, err
 	if err := c.transport.GetJSON(ctx, protocol.AppUserBookmarkTags, query, &raw); err != nil {
 		return TagsResult{}, err
 	}
-	items := make([]artwork.BookmarkTag, len(raw.Tags))
-	for index, value := range raw.Tags {
+	if !raw.Tags.Present || !raw.Tags.Valid {
+		return TagsResult{}, protocol.MalformedResponse()
+	}
+	items := make([]artwork.BookmarkTag, len(raw.Tags.Items))
+	for index, value := range raw.Tags.Items {
 		if value.Name == "" {
 			return TagsResult{}, protocol.MalformedResponse()
 		}
@@ -125,6 +128,10 @@ func (c *Client) Detail(ctx context.Context, artworkID int64) (artwork.BookmarkD
 		return artwork.BookmarkDetail{Tags: []string{}}, nil
 	}
 	if raw.Detail.IsBookmarked != nil && !*raw.Detail.IsBookmarked {
+		// 未收藏状态不应同时携带收藏限制或标签；否则无法安全判断上游字段的含义。
+		if raw.Detail.Restrict != "" || len(raw.Detail.Tags) != 0 {
+			return artwork.BookmarkDetail{}, protocol.MalformedResponse()
+		}
 		return artwork.BookmarkDetail{Tags: []string{}}, nil
 	}
 	tags := []string{}
@@ -168,8 +175,8 @@ type artworksResponseDTO struct {
 }
 
 type tagsResponseDTO struct {
-	Tags    []bookmarkTagDTO `json:"bookmark_tags"`
-	NextURL *string          `json:"next_url"`
+	Tags    requiredList[bookmarkTagDTO] `json:"bookmark_tags"`
+	NextURL *string                      `json:"next_url"`
 }
 
 type bookmarkTagDTO struct {

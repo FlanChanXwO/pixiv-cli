@@ -1193,7 +1193,7 @@ func TestArtworkBookmarkPreservesBookmarkedAndAbsentStates(t *testing.T) {
 		}
 		body := `{"bookmark_detail":{"is_bookmarked":true,"restrict":"private","tags":[{"name":"cat","is_registered":true},{"name":"fav","is_registered":false}]}}`
 		if calls == 2 {
-			body = `{"bookmark_detail":{"is_bookmarked":false,"restrict":"public","tags":[{"name":"cat","is_registered":false}]}}`
+			body = `{"bookmark_detail":{"is_bookmarked":false,"restrict":"","tags":[]}}`
 		}
 		return &http.Response{StatusCode: http.StatusOK, Header: http.Header{"Content-Type": {"application/json"}}, Body: io.NopCloser(strings.NewReader(body))}, nil
 	})
