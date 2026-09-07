@@ -63,8 +63,8 @@ pixiv download https://www.pixiv.net/users/12345678/bookmarks/artworks
   Novel pages, artwork-series pages, FANBOX, Pixivision, Sketch, short links,
   other hosts, and other paths fail before the downloader opens them. A direct
   CDN source is accepted only when the SDK resource policy validates it; it uses
-  a safe URL basename and does not apply artwork-only pages, quality, ugoira, or
-  metadata filename-template options.
+  a safe URL basename with a deterministic URL-identity suffix and does not apply
+  artwork-only pages, quality, ugoira, or metadata filename-template options.
 - Artwork IDs expanded from user or bookmark URLs are de-duplicated by first
   appearance within the invocation. There is no CLI archive option for
   cross-run de-duplication.

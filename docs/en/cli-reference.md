@@ -541,7 +541,7 @@ extension. Extensions also replace ASCII control characters and remove trailing 
 | `bookmark add` | `--restrict` | `public` | Visibility of the new bookmark: `public` or `private`. |
 | `bookmark add` | `--tag` | empty | Bookmark tag; may be repeated. |
 | `follow add` | `--restrict` | `public` | Visibility of the new follow: `public` or `private`. |
-| `download` | `SRC...` | required | Artwork PID, artwork URL, allowed CDN resource URL, user profile/artworks URL, or public bookmarks URL. Artwork-series URLs are not download sources. CDN files use the URL filename; metadata-dependent options do not apply. |
+| `download` | `SRC...` | required | Artwork PID, artwork URL, allowed CDN resource URL, user profile/artworks URL, or public bookmarks URL. Artwork-series URLs are not download sources. CDN files use a safe URL basename with a deterministic URL-identity suffix; metadata-dependent options do not apply. |
 
 All Pixiv content reads use the authenticated local account selected by `pixiv auth use` (or the eligible account
 pool) and the App API. App failures are final; the CLI does not fall back to an anonymous Web/API path. Search

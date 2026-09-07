@@ -52,6 +52,9 @@ func main() {
 	if err != nil {
 		panic(err)
 	}
+	if len(pages) == 0 {
+		return
+	}
 
 	// 4. Save the first image through the SDK-validated resource path.
 	saved, err := client.SaveResource(ctx, pages[0].Image.Resource.Ref, sdk.SaveOptions{
@@ -243,7 +246,15 @@ two runtime paths:
 
 ```go
 // Stream directly without buffering to disk.
-page, _ := client.ArtworkPages(ctx, pixiv.ArtworkPagesRequest{ArtworkID: id})
+page, err := client.ArtworkPages(ctx, pixiv.ArtworkPagesRequest{ArtworkID: id})
+if err != nil {
+	// handle
+	return
+}
+if len(page) == 0 {
+	// no image resource is available
+	return
+}
 image := page[0].Image.Resource
 resp, err := client.OpenResource(ctx, sdk.OpenResourceRequest{Ref: image.Ref})
 if err != nil { /* handle */ }

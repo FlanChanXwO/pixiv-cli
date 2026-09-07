@@ -531,7 +531,20 @@ func TestDownloadDirectCDNPublishesResourceMetadata(t *testing.T) {
 	if item.Type != downloader.DownloadedResourceType || item.IllustID != 0 || item.URL != "" || item.Title != "" || item.Author != "" {
 		t.Fatalf("direct resource item leaked artwork metadata: %+v", item)
 	}
-	if file.Path != filepath.Join(dir, "asset.png") || file.FileURI == "" || file.MIMEType != "image/png" || file.SizeBytes != int64(len(body)) || file.Page != 1 {
+	base := filepath.Base(file.Path)
+	if !strings.HasPrefix(base, "asset-") || !strings.HasSuffix(base, ".png") {
+		t.Fatalf("direct resource filename=%q, want safe asset basename with digest suffix", base)
+	}
+	digest := strings.TrimSuffix(strings.TrimPrefix(base, "asset-"), ".png")
+	if len(digest) != 12 {
+		t.Fatalf("direct resource digest=%q, want 12 hex characters", digest)
+	}
+	for _, character := range digest {
+		if !strings.ContainsRune("0123456789abcdef", character) {
+			t.Fatalf("direct resource digest=%q contains non-hex character %q", digest, character)
+		}
+	}
+	if file.FileURI == "" || file.MIMEType != "image/png" || file.SizeBytes != int64(len(body)) || file.Page != 1 {
 		t.Fatalf("direct resource file=%+v", file)
 	}
 	if saved, err := os.ReadFile(file.Path); err != nil || string(saved) != string(body) {

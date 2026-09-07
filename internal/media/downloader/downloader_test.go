@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"regexp"
 	"sync"
 	"time"
 
@@ -1000,7 +1001,7 @@ func TestDownloadSourcesDownloadsDirectCDNURLWithSafeBasename(t *testing.T) {
 	require.True(t, report.Committed)
 	require.Empty(t, report.Failures)
 	require.Equal(t, source, gotURL)
-	require.Equal(t, filepath.Join(dir, "photo__.png"), gotPath)
+	require.Regexp(t, regexp.MustCompile(`^photo__-[0-9a-f]{12}\.png$`), filepath.Base(gotPath))
 	require.Len(t, report.Items, 1)
 	require.Zero(t, report.Items[0].IllustID)
 	require.Empty(t, report.Items[0].Title)
@@ -1008,6 +1009,85 @@ func TestDownloadSourcesDownloadsDirectCDNURLWithSafeBasename(t *testing.T) {
 	require.Equal(t, "resource", report.Items[0].Type)
 	require.Equal(t, []downloader.DownloadedFile{{Path: gotPath, Page: 1}}, report.Items[0].Files)
 	assertFileBody(t, gotPath, "direct-image")
+}
+
+func TestDownloadSourcesUsesDistinctPathsForDirectURLsWithSameBasename(t *testing.T) {
+	dir := t.TempDir()
+	sources := []string{
+		"https://i.pximg.net/a/photo.png",
+		"https://i.pximg.net/b/photo.png",
+	}
+	var paths []string
+	client := &downloadSourcesStub{
+		saveResourceURL: func(_ context.Context, rawURL string, options sdk.SaveOptions) (sdk.SavedResource, error) {
+			paths = append(paths, options.Path)
+			body := []byte(rawURL)
+			if err := os.WriteFile(options.Path, body, 0o600); err != nil {
+				return sdk.SavedResource{}, err
+			}
+			return sdk.SavedResource{Path: options.Path, Size: int64(len(body)), ContentType: "image/png"}, nil
+		},
+	}
+
+	report, err := (downloader.DownloadService{}).DownloadSources(context.Background(), client, sources, downloader.DownloadRequest{DownloadPath: dir})
+
+	require.NoError(t, err)
+	require.True(t, report.Committed)
+	require.Empty(t, report.Failures)
+	require.Len(t, report.Items, len(sources))
+	require.Len(t, paths, len(sources))
+	require.NotEqual(t, paths[0], paths[1])
+	for index, path := range paths {
+		assertFileBody(t, path, sources[index])
+	}
+}
+
+func TestDownloadSourcesUsesDistinctPathsForDistinctDirectURLQueries(t *testing.T) {
+	dir := t.TempDir()
+	sources := []string{
+		"https://i.pximg.net/a/photo.png?signature=one",
+		"https://i.pximg.net/a/photo.png?signature=two",
+	}
+	var paths []string
+	client := &downloadSourcesStub{
+		saveResourceURL: func(_ context.Context, rawURL string, options sdk.SaveOptions) (sdk.SavedResource, error) {
+			paths = append(paths, options.Path)
+			body := []byte(rawURL)
+			if err := os.WriteFile(options.Path, body, 0o600); err != nil {
+				return sdk.SavedResource{}, err
+			}
+			return sdk.SavedResource{Path: options.Path, Size: int64(len(body)), ContentType: "image/png"}, nil
+		},
+	}
+
+	report, err := (downloader.DownloadService{}).DownloadSources(context.Background(), client, sources, downloader.DownloadRequest{DownloadPath: dir})
+
+	require.NoError(t, err)
+	require.True(t, report.Committed)
+	require.Empty(t, report.Failures)
+	require.Len(t, report.Items, len(sources))
+	require.Len(t, paths, len(sources))
+	require.NotEqual(t, paths[0], paths[1])
+	for index, path := range paths {
+		assertFileBody(t, path, sources[index])
+	}
+}
+
+func TestDownloadSourcesPreservesDiagnosticTextWhenRedactingDirectURL(t *testing.T) {
+	source := "https://i.pximg.net/a/photo.png?page=1"
+	client := &downloadSourcesStub{
+		saveResourceURL: func(_ context.Context, rawURL string, _ sdk.SaveOptions) (sdk.SavedResource, error) {
+			return sdk.SavedResource{}, errors.New("GET " + rawURL + " failed: HTTP/1.1 attempt 1 page 1")
+		},
+	}
+
+	report, err := (downloader.DownloadService{}).DownloadSources(context.Background(), client, []string{source}, downloader.DownloadRequest{DownloadPath: t.TempDir()})
+
+	require.NoError(t, err)
+	require.Len(t, report.Failures, 1)
+	require.Equal(t, "GET [redacted source] failed: HTTP/1.1 attempt 1 page 1", report.Failures[0].Message)
+	require.NotContains(t, report.Failures[0].Message, source)
+	require.NotContains(t, report.Failures[0].Message, "page=1")
 }
 
 func TestDownloadSourcesReportsDirectURLFailuresWithoutSensitiveData(t *testing.T) {

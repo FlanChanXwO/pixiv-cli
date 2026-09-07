@@ -443,7 +443,7 @@ Content-Type 与 URL 后缀不一致（例如 URL 为 `.png`、实体为 JPEG）
 | `bookmark add` | `--restrict` | `public` | 新收藏的可见性：`public` 或 `private`。 |
 | `bookmark add` | `--tag` | 空 | 收藏 tag；可重复使用。 |
 | `follow add` | `--restrict` | `public` | 新关注的可见性：`public` 或 `private`。 |
-| `download` | `SRC...` | 必填 | 作品 PID/URL、允许的 CDN URL、用户主页/作品页、公开书签页或插画系列页。CDN 文件仅使用 URL 文件名，不支持依赖作品元数据的选项。 |
+| `download` | `SRC...` | 必填 | 作品 PID/URL、允许的 CDN URL、用户主页/作品页或公开书签页。CDN 文件使用安全的 URL 文件名并附带确定性的 URL identity 摘要后缀，不支持依赖作品元数据的选项。 |
 
 所有 Pixiv 内容读取都使用 `pixiv auth use` 选定的本地账号（或账号池中的 eligible 账号）和 App API。App
 失败即为最终错误；CLI 不会切换到匿名 Web/API 路径。搜索筛选绑定 opaque SDK cursor，逻辑

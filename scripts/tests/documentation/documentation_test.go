@@ -278,6 +278,57 @@ func TestReverseSearchDocumentationAndLocaleRoutes(t *testing.T) {
 	}
 }
 
+// TestDownloadDocumentationKeepsDirectURLIdentityContract 锁定直链文件名的
+// 唯一性说明，并防止中文 SRC 表格重新宣称插画系列 URL 可下载。
+func TestDownloadDocumentationKeepsDirectURLIdentityContract(t *testing.T) {
+	root := repositoryRoot(t)
+	contracts := []struct {
+		locale       string
+		path         string
+		suffixPhrase string
+		forbidden    string
+	}{
+		{
+			locale:       "English",
+			path:         "docs/en/cli-reference.md",
+			suffixPhrase: "deterministic URL-identity suffix",
+			forbidden:    "Artwork-series",
+		},
+		{
+			locale:       "Simplified Chinese",
+			path:         "docs/zh-CN/cli-reference.md",
+			suffixPhrase: "确定性的 URL identity 摘要后缀",
+			forbidden:    "插画系列页",
+		},
+	}
+
+	for _, contract := range contracts {
+		document := readDocumentation(t, root, contract.path)
+		if !strings.Contains(document, contract.suffixPhrase) {
+			t.Errorf("%s CLI reference must document direct URL identity suffix %q", contract.locale, contract.suffixPhrase)
+		}
+
+		var sourceRow string
+		for line := range strings.SplitSeq(document, "\n") {
+			if strings.Contains(line, "| `download` | `SRC...` |") {
+				sourceRow = line
+				break
+			}
+		}
+		if sourceRow == "" {
+			t.Errorf("%s CLI reference is missing the download source row", contract.locale)
+			continue
+		}
+		allowedSources := sourceRow
+		if marker := strings.Index(allowedSources, "Artwork-series URLs are not download sources."); marker >= 0 {
+			allowedSources = allowedSources[:marker]
+		}
+		if strings.Contains(allowedSources, contract.forbidden) {
+			t.Errorf("%s CLI reference must not advertise %q in the download source row: %s", contract.locale, contract.forbidden, sourceRow)
+		}
+	}
+}
+
 func readDocumentation(t *testing.T, root, relativePath string) string {
 	t.Helper()
 	content, err := os.ReadFile(filepath.Join(root, relativePath))

@@ -52,6 +52,9 @@ func main() {
 	if err != nil {
 		panic(err)
 	}
+	if len(pages) == 0 {
+		return
+	}
 
 	// 4. 通过 SDK 校验的资源路径保存第一张图。
 	saved, err := client.SaveResource(ctx, pages[0].Image.Resource.Ref, sdk.SaveOptions{
@@ -221,7 +224,15 @@ if errors.Is(err, sdk.Unauthorized{}) {
 
 ```go
 // 直接流式读取，不落盘。
-page, _ := client.ArtworkPages(ctx, pixiv.ArtworkPagesRequest{ArtworkID: id})
+page, err := client.ArtworkPages(ctx, pixiv.ArtworkPagesRequest{ArtworkID: id})
+if err != nil {
+	// 处理
+	return
+}
+if len(page) == 0 {
+	// 没有可用的图片资源
+	return
+}
 image := page[0].Image.Resource
 resp, err := client.OpenResource(ctx, sdk.OpenResourceRequest{Ref: image.Ref})
 if err != nil { /* 处理 */ }
