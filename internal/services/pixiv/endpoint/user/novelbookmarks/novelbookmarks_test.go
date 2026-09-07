@@ -13,10 +13,13 @@ import (
 )
 
 type fakeTransport struct {
-	path   string
-	query  url.Values
-	body   string
-	getErr error
+	path    string
+	query   url.Values
+	form    url.Values
+	body    string
+	getErr  error
+	calls   int
+	postErr error
 }
 
 func (f *fakeTransport) GetJSON(_ context.Context, path string, query url.Values, out any) error {
@@ -26,6 +29,13 @@ func (f *fakeTransport) GetJSON(_ context.Context, path string, query url.Values
 		return f.getErr
 	}
 	return json.Unmarshal([]byte(f.body), out)
+}
+
+func (f *fakeTransport) PostForm(_ context.Context, path string, form url.Values) error {
+	f.calls++
+	f.path = path
+	f.form = form
+	return f.postErr
 }
 
 func TestListMapsBookmarkQueryAndContinuation(t *testing.T) {
@@ -74,6 +84,88 @@ func TestNovelBookmarkDetailUsesCandidatePathAndPreservesState(t *testing.T) {
 	}
 	if result.Restrict != "private" || len(result.Tags) != 1 || result.Tags[0] != "cat" {
 		t.Fatalf("result = %#v", result)
+	}
+}
+
+func TestNovelBookmarkMutationsUseCandidatePathsAndForms(t *testing.T) {
+	transport := &fakeTransport{}
+	client := novelbookmarks.New(transport)
+
+	if err := client.Add(context.Background(), novelbookmarks.AddRequest{
+		NovelID:  42,
+		Restrict: "private",
+		Tags:     []string{"cat", "favorite"},
+	}); err != nil {
+		t.Fatalf("Add: %v", err)
+	}
+	if transport.path != "/v2/novel/bookmark/add" || len(transport.form) != 3 || transport.form.Get("novel_id") != "42" || transport.form.Get("restrict") != "private" || len(transport.form["tags[]"]) != 2 || transport.form["tags[]"][0] != "cat" || transport.form["tags[]"][1] != "favorite" {
+		t.Fatalf("add request = %q %v", transport.path, transport.form)
+	}
+
+	if err := client.Remove(context.Background(), 42); err != nil {
+		t.Fatalf("Remove: %v", err)
+	}
+	if transport.path != "/v1/novel/bookmark/delete" || len(transport.form) != 1 || transport.form.Get("novel_id") != "42" {
+		t.Fatalf("remove request = %q %v", transport.path, transport.form)
+	}
+	if transport.calls != 2 {
+		t.Fatalf("mutation transport calls = %d, want 2", transport.calls)
+	}
+}
+
+func TestNovelBookmarkMutationsRejectInvalidRequestsBeforeTransport(t *testing.T) {
+	tests := []struct {
+		name string
+		call func(*novelbookmarks.Client) error
+	}{
+		{name: "add zero novel", call: func(client *novelbookmarks.Client) error {
+			return client.Add(context.Background(), novelbookmarks.AddRequest{NovelID: 0, Restrict: "public"})
+		}},
+		{name: "add negative novel", call: func(client *novelbookmarks.Client) error {
+			return client.Add(context.Background(), novelbookmarks.AddRequest{NovelID: -1, Restrict: "public"})
+		}},
+		{name: "add empty restrict", call: func(client *novelbookmarks.Client) error {
+			return client.Add(context.Background(), novelbookmarks.AddRequest{NovelID: 42})
+		}},
+		{name: "add unknown restrict", call: func(client *novelbookmarks.Client) error {
+			return client.Add(context.Background(), novelbookmarks.AddRequest{NovelID: 42, Restrict: "friends"})
+		}},
+		{name: "remove zero novel", call: func(client *novelbookmarks.Client) error {
+			return client.Remove(context.Background(), 0)
+		}},
+		{name: "remove negative novel", call: func(client *novelbookmarks.Client) error {
+			return client.Remove(context.Background(), -1)
+		}},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			transport := &fakeTransport{}
+			if err := test.call(novelbookmarks.New(transport)); err == nil {
+				t.Fatal("invalid novel bookmark request unexpectedly succeeded")
+			}
+			if transport.calls != 0 {
+				t.Fatalf("invalid request reached transport %d time(s)", transport.calls)
+			}
+		})
+	}
+}
+
+func TestNovelBookmarkMutationsPropagateTransportErrors(t *testing.T) {
+	wantErr := errors.New("novel bookmark mutation transport failed")
+	addTransport := &fakeTransport{postErr: wantErr}
+	if err := novelbookmarks.New(addTransport).Add(context.Background(), novelbookmarks.AddRequest{NovelID: 42, Restrict: "public"}); !errors.Is(err, wantErr) {
+		t.Fatalf("Add error = %v, want %v", err, wantErr)
+	}
+	if addTransport.calls != 1 {
+		t.Fatalf("Add transport calls = %d, want 1", addTransport.calls)
+	}
+
+	removeTransport := &fakeTransport{postErr: wantErr}
+	if err := novelbookmarks.New(removeTransport).Remove(context.Background(), 42); !errors.Is(err, wantErr) {
+		t.Fatalf("Remove error = %v, want %v", err, wantErr)
+	}
+	if removeTransport.calls != 1 {
+		t.Fatalf("Remove transport calls = %d, want 1", removeTransport.calls)
 	}
 }
 

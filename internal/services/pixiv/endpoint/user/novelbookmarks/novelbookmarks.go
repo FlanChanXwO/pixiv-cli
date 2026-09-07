@@ -13,9 +13,10 @@ import (
 	"github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/protocol"
 )
 
-// Transport 是小说收藏 family 所需的最小 App API 传输能力。
+// Transport 是小说收藏 family 所需的最小 App API 读写传输能力。
 type Transport interface {
 	GetJSON(context.Context, string, url.Values, any) error
+	PostForm(context.Context, string, url.Values) error
 }
 
 type Request struct {
@@ -153,6 +154,47 @@ func (c *Client) Detail(ctx context.Context, novelID int64) (BookmarkDetail, err
 		tags = append(tags, tag.Name)
 	}
 	return BookmarkDetail{Restrict: raw.Detail.Restrict, Tags: tags}, nil
+}
+
+// AddRequest 描述 novel bookmark add candidate 的请求参数。
+// 该请求仍未通过 live wire/SDK gate，不构成 public operation。
+type AddRequest struct {
+	NovelID  int64
+	Restrict string
+	Tags     []string
+}
+
+// Add 写入 novel bookmark add candidate，并原样传播传输层错误。
+// 2xx/空响应只代表 status-only transport 成功，不能作为收藏状态已改变的证明。
+func (c *Client) Add(ctx context.Context, request AddRequest) error {
+	if c == nil || c.transport == nil {
+		return errors.New("novel bookmark transport is not configured")
+	}
+	if request.NovelID <= 0 {
+		return errors.New("bookmark novel ID must be positive")
+	}
+	if request.Restrict != "public" && request.Restrict != "private" {
+		return errors.New("bookmark restrict must be public or private")
+	}
+	form := url.Values{"novel_id": {strconv.FormatInt(request.NovelID, 10)}, "restrict": {request.Restrict}}
+	for _, tag := range request.Tags {
+		form.Add("tags[]", tag)
+	}
+	return c.transport.PostForm(ctx, protocol.AppNovelBookmarkAdd, form)
+}
+
+// Remove 写入 novel bookmark delete candidate，并原样传播传输层错误。
+// 删除后的 detail/list/tags 读回与状态恢复仍由后续验证任务负责。
+func (c *Client) Remove(ctx context.Context, novelID int64) error {
+	if c == nil || c.transport == nil {
+		return errors.New("novel bookmark transport is not configured")
+	}
+	if novelID <= 0 {
+		return errors.New("bookmark novel ID must be positive")
+	}
+	return c.transport.PostForm(ctx, protocol.AppNovelBookmarkDelete, url.Values{
+		"novel_id": {strconv.FormatInt(novelID, 10)},
+	})
 }
 
 type responseDTO struct {

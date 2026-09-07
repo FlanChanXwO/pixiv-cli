@@ -40,6 +40,8 @@ const (
 	AppUserBookmarkTags      = "/v1/user/bookmark-tags/illust"
 	AppUserNovelBookmarkTags = "/v1/user/bookmark-tags/novel"
 	AppNovelBookmarkDetail   = "/v2/novel/bookmark/detail"
+	AppNovelBookmarkAdd      = "/v2/novel/bookmark/add"
+	AppNovelBookmarkDelete   = "/v1/novel/bookmark/delete"
 	AppNovelDetail           = "/v2/novel/detail"
 	AppNovelSeries           = "/v2/novel/series"
 	AppNovelContent          = "/v1/novel/content"
