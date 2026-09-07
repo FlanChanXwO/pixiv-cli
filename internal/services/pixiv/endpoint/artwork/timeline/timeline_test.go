@@ -33,7 +33,7 @@ func TestTimelineMapsConfirmedRoutesAndQueries(t *testing.T) {
 		query   map[string]string
 	}{
 		{name: "following", request: timeline.Request{Kind: timeline.Following, Restrict: "private", Offset: 20}, path: "/v2/illust/follow", query: map[string]string{"restrict": "private", "offset": "20"}},
-		{name: "latest", request: timeline.Request{Kind: timeline.Latest, ContentType: "manga", Offset: 30}, path: "/v1/illust/new", query: map[string]string{"content_type": "manga", "filter": "for_android", "offset": "30"}},
+		{name: "latest", request: timeline.Request{Kind: timeline.Latest, ContentType: "manga"}, path: "/v1/illust/new", query: map[string]string{"content_type": "manga", "filter": "for_android"}},
 		{name: "mypixiv", request: timeline.Request{Kind: timeline.MyPixiv, Offset: 40}, path: "/v2/illust/mypixiv", query: map[string]string{"offset": "40"}},
 		{name: "user", request: timeline.Request{Kind: timeline.UserArtworks, UserID: 77, ArtworkType: "manga", Offset: 50}, path: "/v1/user/illusts", query: map[string]string{"user_id": "77", "type": "manga", "offset": "50"}},
 	}
@@ -161,5 +161,73 @@ func TestLatestTimelineRejectsDuplicateContinuationValues(t *testing.T) {
 	_, err := timeline.New(transport).List(context.Background(), timeline.Request{Kind: timeline.Latest, ContentType: "illust"})
 	if err == nil {
 		t.Fatal("duplicate continuation values unexpectedly succeeded")
+	}
+}
+
+func TestLatestTimelineDefaultsContentTypeAndSendsFilter(t *testing.T) {
+	transport := &fakeTransport{body: `{"illusts":[]}`}
+	_, err := timeline.New(transport).List(context.Background(), timeline.Request{Kind: timeline.Latest})
+	if err != nil {
+		t.Fatalf("List: %v", err)
+	}
+	if got := transport.query.Get("content_type"); got != "illust" {
+		t.Fatalf("content_type = %q, want illust; query=%v", got, transport.query)
+	}
+	if got := transport.query.Get("filter"); got != "for_android" {
+		t.Fatalf("filter = %q, want for_android; query=%v", got, transport.query)
+	}
+	if _, present := transport.query["max_illust_id"]; present {
+		t.Fatalf("initial query unexpectedly contains max_illust_id: %v", transport.query)
+	}
+}
+
+func TestLatestTimelineRejectsUnapprovedContentType(t *testing.T) {
+	for _, contentType := range []string{"ugoira", "all", "illust-and-ugoira"} {
+		t.Run(contentType, func(t *testing.T) {
+			transport := &fakeTransport{body: `{"illusts":[]}`}
+			_, err := timeline.New(transport).List(context.Background(), timeline.Request{Kind: timeline.Latest, ContentType: contentType})
+			if err == nil {
+				t.Fatalf("content type %q unexpectedly succeeded", contentType)
+			}
+			if transport.calls != 0 {
+				t.Fatalf("invalid request reached transport %d time(s)", transport.calls)
+			}
+		})
+	}
+}
+
+func TestLatestTimelineRejectsOffsetContinuationRequest(t *testing.T) {
+	transport := &fakeTransport{body: `{"illusts":[]}`}
+	_, err := timeline.New(transport).List(context.Background(), timeline.Request{Kind: timeline.Latest, ContentType: "illust", Offset: 30})
+	if err == nil {
+		t.Fatal("offset continuation unexpectedly succeeded")
+	}
+	if transport.calls != 0 {
+		t.Fatalf("invalid request reached transport %d time(s)", transport.calls)
+	}
+}
+
+func TestLatestTimelineRejectsNegativeMaxIllustID(t *testing.T) {
+	transport := &fakeTransport{body: `{"illusts":[]}`}
+	_, err := timeline.New(transport).List(context.Background(), timeline.Request{Kind: timeline.Latest, ContentType: "illust", MaxIllustID: -1})
+	if err == nil {
+		t.Fatal("negative max_illust_id unexpectedly succeeded")
+	}
+	if transport.calls != 0 {
+		t.Fatalf("invalid request reached transport %d time(s)", transport.calls)
+	}
+}
+
+func TestLatestTimelineUsesMaxIllustIDContinuationRequest(t *testing.T) {
+	transport := &fakeTransport{body: `{"illusts":[]}`}
+	_, err := timeline.New(transport).List(context.Background(), timeline.Request{Kind: timeline.Latest, ContentType: "illust", MaxIllustID: 987654})
+	if err != nil {
+		t.Fatalf("List: %v", err)
+	}
+	if got := transport.query.Get("max_illust_id"); got != "987654" {
+		t.Fatalf("max_illust_id = %q, want 987654; query=%v", got, transport.query)
+	}
+	if _, present := transport.query["offset"]; present {
+		t.Fatalf("target query unexpectedly contains offset: %v", transport.query)
 	}
 }

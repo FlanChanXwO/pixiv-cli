@@ -91,11 +91,22 @@ func requestValues(request Request) (string, url.Values, error) {
 		setOffset(query, request.Offset)
 		return protocol.AppIllustFollow, query, nil
 	case Latest:
-		query := url.Values{"content_type": {request.ContentType}, "filter": {"for_android"}}
+		// 最新作品的新续页目标是 max_illust_id；拒绝 offset 输入，避免把旧
+		// continuation 静默降级为首页请求并造成重复数据。响应解析仍保留
+		// offset 兼容分支，供后续兼容层明确处理历史响应。
+		if request.Offset != 0 {
+			return "", nil, errors.New("latest artwork continuation must use max_illust_id")
+		}
+		if request.MaxIllustID < 0 {
+			return "", nil, errors.New("max illust ID must be non-negative")
+		}
+		contentType, err := normalizeLatestContentType(request.ContentType)
+		if err != nil {
+			return "", nil, err
+		}
+		query := url.Values{"content_type": {contentType}, "filter": {"for_android"}}
 		if request.MaxIllustID > 0 {
 			query.Set("max_illust_id", strconv.FormatInt(request.MaxIllustID, 10))
-		} else {
-			setOffset(query, request.Offset)
 		}
 		return protocol.AppIllustNew, query, nil
 	case MyPixiv:
@@ -115,6 +126,20 @@ func requestValues(request Request) (string, url.Values, error) {
 		return protocol.AppUserIllusts, query, nil
 	default:
 		return "", nil, errors.New("unsupported artwork timeline kind")
+	}
+}
+
+func normalizeLatestContentType(value string) (string, error) {
+	// 目前只有 illust 具备该 endpoint 的确认两页证据；manga 是既有 CLI/MCP
+	// 兼容输入，继续保留，但在 ugoira 或 compound subtype 的独立证据完成前拒绝它们，
+	// 避免把候选能力误当成目标 contract。
+	switch value {
+	case "", "illust":
+		return "illust", nil
+	case "manga":
+		return value, nil
+	default:
+		return "", errors.New("unsupported latest artwork content type")
 	}
 }
 
