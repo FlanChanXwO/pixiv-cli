@@ -20,7 +20,7 @@
 - 保存本轮 comment ID。
 - 删除仅使用本轮 comment ID。
 
-## 本轮状态
+## 历史轮次状态（2026-09-05）
 
 本轮没有重复执行 mutation。
 未接入公共 SDK、CLI 或 MCP。
@@ -53,4 +53,8 @@ Shaft 没有打通 stamps API。
 - 删除后恢复原状态。
 
 这些 case 尚未进入当前 strict mutation manifest。
-在验证前不能新增 public SDK/CLI/MCP mutation。
+正式发布前须完成验证；未发布实现的准入见能力准入表。
+
+## 2026-09-07 响应与失败契约补充
+
+本轮未执行真实 mutation。当前门禁只见 [能力准入表](capability-admission.md)。T09A 先于 comment adapter/SDK，提供可解码 form response；本轮 ID 必须来自创建响应的冻结字段。已取得 ID 但读回失败与结果不确定必须单独暴露，不属于可自动重放失败。写入/读回/清理使用同账号 execution context；只清理本轮 ID，无法证明 ID 时保留需处理状态，不猜测删除。

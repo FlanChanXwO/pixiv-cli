@@ -20,7 +20,7 @@
 
 ## 未发现全面损坏
 
-全量 Go 测试通过。
+2026-09-05 历史记录：全量 Go 测试通过（不计作本轮验证）。
 未发现搜索、follow、推荐小说、插画最新、插画排行、ugoira metadata 的新增回归证据。
 
 但单元测试不能替代上述 live contract 回归。
@@ -29,7 +29,7 @@
 
 本风险表不再要求另立后续 goal。
 
-当前 goal 先执行 T01-T06 合约收口。
+当前 goal 先执行 T00/T20、T01-T06、T12/T39A 范围、类型、合约和兼容冻结。
 
 之后才进入 Protocol、SDK、CLI 和 MCP 修改。
 
@@ -73,3 +73,21 @@ ranking、stamps、comment mutation 属于 Goal-3，不得延期到另一个 Goa
 - comments `total_comments` 的非空语义。
 
 这些缺口在 Phase A 处理。它们是 contract freeze 缺口，不是另起 Goal 的理由；未冻结时不能进入 public surface。
+
+## 2026-09-07 固定基线审查处置
+
+当前 capability 状态只见 [能力准入表](capability-admission.md)，不以本历史风险等级授予发布权限。本轮外部审查未确认 P0；上表保留原轮次分级，不能混算成此次审查结论。
+
+| Finding | 本轮处置 | 后续验收归属 |
+| --- | --- | --- |
+| P1-1 批内续读遗漏/末批空 cursor | 真实生产测试 Red；T23A 修复共享 checkpoint、SDK 与 CLI/MCP | T23 接入其余 endpoint；分页报告 |
+| P1-2 Target 与 Result 类型混淆 | T20 与迁移矩阵区分三层；user URL + novel bookmarks 合法 | T21/T27 |
+| P1-3 前置任务倒置 | T12/T20/T39A 前移，显式 depends_on | 依赖 DAG 检查 |
+| P1-4 发布状态循环 | 唯一 capability authority；未发布实现允许编写 SDK/注册/docs | T41/T45 |
+| P1-5 子集验收冒充完整交付 | required_scope 固定；未完成保持 incomplete；scope change 需明确批准 | T00/T45 |
+| P2-6 owner/all 缺口 | recommended 归 T01/T05；list/tags all 必交付且 typed counts | 准入 owner 链、T03/T27 |
+| P2-7 mutation 响应/不确定结果 | T09A 显式前置；同账号 ID/读回/清理，禁止不确定重放 | T09/T16/T38 |
+| P2-8 SDK/MCP 兼容缺口 | symbol map/wrapper/旧消费者；MCP wire map/旧 JSON 回放；cursor 版本策略 | T12/T39A/T39B |
+| P2-9 粒度/回滚不可执行 | 实现前任务卡、跨 owner 子卡、依赖闭包回滚 | tasks 准入规则 |
+
+其余生产行为本轮未修改；不将 stamps、novel mutation 或 all 计划修订记作实现完成。

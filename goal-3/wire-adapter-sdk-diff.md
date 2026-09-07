@@ -50,3 +50,5 @@
 ## Goal-3 状态语义
 
 本矩阵的历史 verdict 用于描述 evidence、fixture 与当前生产覆盖，不等同于 capability 不存在。Goal-3 内按 `contract_frozen`、`migration_ready`、`public_ready` 逐层推进；`inconclusive` / `not_tested` 需要补 snapshot 或实现证据，但不产生新的 Goal。
+
+当前状态与发布授权仅见 [能力准入表](capability-admission.md)；上表保留原轮次差异，不构成独立发布门禁。

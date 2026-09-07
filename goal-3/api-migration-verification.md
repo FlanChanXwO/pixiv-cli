@@ -1,60 +1,22 @@
-# API 升级与迁移验证台账
+# API 迁移 contract 与兼容验证台账
 
-观测日期：2026-09-05（Asia/Shanghai）。
-修订日期：2026-09-06（Asia/Shanghai）。
+原观测日期：2026-09-05；修订日期：2026-09-07（Asia/Shanghai）。
 
-## 目的
+## 当前门禁来源
 
-本台账回答两个问题：
+本文件是 contract/compatibility 工作清单；当前状态及发布授权只见 [能力准入表](capability-admission.md)。历史 upstream 证据不意味着 migration_ready；该状态必须同时满足 contract freeze 与 T12 兼容决策。T39A 冻结后才能实施 CLI/MCP 迁移。未发布实现允许同步编写导出 SDK、注册、测试和文档，发布仍须 public_ready。
 
-1. 已纳入 Goal-3 的 capability contract 是否已冻结到足以实施？
-2. adapter、SDK、CLI 和 MCP 是否已达到公开条件？
-
-用户确认的 upstream 可用性属于 Goal-3 范围输入。台账中的 `confirmed`、`partial`、`inconclusive`、`not_tested` 保留为 evidence/覆盖状态，不再作为拆分 Goal 或否定能力存在的结论。
-
-## 分层门禁
-
-### `contract_frozen`
-
-允许把范围内 capability 交给实现 task。必须写明：
-
-- method、path、参数名和参数类型。
-- required / optional / empty / error 响应语义。
-- continuation 参数、endpoint binding 和第二页 fixture；无分页则明确记录。
-- mutation 写入、读回、隔离删除和恢复原状态。
-- regression fixture 与 evidence redaction 规则。
-
-### `migration_ready`
-
-允许开始生产实现。必须满足 `contract_frozen`，并且 public SDK compatibility decision 已冻结。
-
-### `public_ready`
-
-允许公开 SDK、CLI 和 MCP surface。
-
-必须在 `migration_ready` 基础上继续满足：
-
-- endpoint adapter 成功。
-- public SDK 成功。
-- adapter 与 SDK 结果一致。
-- CLI / MCP contract tests 通过。
-
-因此：
-
-- scope-admitted 但 adapter 未实现的能力，可以进入独立 TDD 实现 task。
-- 未 `migration_ready` 不能切换生产 path。
-- 未 `public_ready` 不能进入 public surface。
-- 不因历史 `inconclusive` 另起 Goal；应完成 snapshot、实现或明确排除。
+所有 required_scope 均须完成；阻塞能力停止发布但保持 Goal incomplete，不能自行移除范围。
 
 ## 已确认的迁移依据
 
-| 能力 | 旧 contract | 目标 contract | Upstream | Migration | Public | 结论 |
-| --- | --- | --- | --- | --- | --- | --- |
-| Novel latest cursor | `offset` | `max_novel_id` | wire/response/两页已确认 | ready | not ready | 可以 TDD 修复；修复后再过 adapter/SDK gate |
-| Novel detail | `/v1/novel/detail` | `/v2/novel/detail` | v1 rejected；v2 wire/response 已确认；无分页 | ready | not ready | 可以 TDD 迁移；必须保留 v2 series 字段 |
-| Comment add/reply/delete wire | 无生产 operation | `/v1/*/comment/add|delete` | 真实写入、读回和删除已有 evidence | ready | not ready | 可以写 adapter/SDK red tests；未通过前不公开 |
-| Stamps read | 无生产 operation | `/v1/stamps` | wire/response 已确认；无分页 | ready | not ready | 可以写 adapter/SDK red tests |
-| Novel ranking | 无生产 operation | `/v1/novel/ranking` | wire/response/两页已确认 | ready | not ready | 可以写 adapter/SDK red tests |
+| 能力 | 旧 contract | 目标 contract | Upstream evidence | 当前执行前提 | 结论 |
+| --- | --- | --- | --- | --- | --- |
+| Novel latest cursor | `offset` | `max_novel_id` | wire/response/两页已确认 | contract + T12 pending | 冻结后 TDD 修复；修复后再过 adapter/SDK gate |
+| Novel detail | `/v1/novel/detail` | `/v2/novel/detail` | v1 rejected；v2 wire/response 已确认；无分页 | contract + T12 pending | 冻结后 TDD 迁移；必须保留 v2 series 字段 |
+| Comment add/reply/delete wire | 无生产 operation | `/v1/*/comment/add\|delete` | 真实写入、读回和删除已有 evidence | contract + T12 pending | 冻结后写 adapter/SDK red tests；未通过前不公开 |
+| Stamps read | 无生产 operation | `/v1/stamps` | wire/response 已确认；无分页 | contract + T12 pending | 冻结后写 adapter/SDK red tests |
+| Novel ranking | 无生产 operation | `/v1/novel/ranking` | wire/response/两页已确认 | contract + T12 pending | 冻结后写 adapter/SDK red tests |
 
 ## 尚未达到迁移门禁
 
@@ -86,32 +48,19 @@
 | Novel WebView content | `/webview/v2/novel` | excluded | 不进入本 goal 默认实现 |
 | Server-side rating | `x_restrict` request filter | rejected | 只允许 client-side filter |
 
-## 启动生产迁移前的冻结条件
 
-Phase A 完成时，每个范围内 capability 必须具备以下路径之一：
+## T12：SDK symbol map 必交付列
 
-1. `contract_frozen`，随后进入 `migration_ready` 和实现 task。
-2. 明确从当前 public implementation scope 移除。
-3. `rejected` / `excluded`，进入删除或兼容处理。
+逐个记录旧 method、request/model、named field type、替代 method、wrapper/deprecation、预期错误和旧消费者编译测试。默认保持源码兼容：AddBookmark/RemoveBookmark 与新增 artwork 方法并存并委托同一实现。废弃 endpoint 不等于删除符号；novel content 可保留 deprecated 入口并明确返回不支持，具体错误冻结后测试，不能继续请求已拒绝 endpoint。
 
-`inconclusive`、`not_tested` 是待冻结或待补证据的状态，不是另一个 Goal；它们在 contract 未冻结前不能进入 public surface。
+本轮搜索兼容决定：增加 CheckpointSearchArtworks 与可选 CursorContext，保留既有方法和 named types；仅 SearchArtworks binding version=2，旧搜索 cursor InvalidCursor，清除后重新开始；其他 operation 和 sdk.Cursor 外层格式不变。未校验身份的 New/NewWith client 只允许同实例续读；Open/OpenWith 使用 verified identity。
 
-## Public SDK Compatibility Decision
+## T39A：MCP compatibility map 必交付列
 
-T12 必须先于任何 exported SDK contract 修改完成。Goal-3 默认保持源码兼容：保留已有 exported named types，内部使用窄 validator/type 限制合法值。CLI 可以采用更窄的 type abstraction，不强迫 public SDK breaking。
+旧 tool → 新 operation；逐项 input 字段名/必填/default、output 字段/shape、structured error/isError。add_bookmark 的 illust_id 等旧 wire 契约不能被通用 TARGET 替代。每项列出旧 JSON 请求 fixture 与回放断言；CLI alias 验证不能替代它。
 
-若必须接受 breaking change，必须先记录 breaking 范围、migration guide、deprecated symbol strategy、semantic version strategy 和是否需要 `/v2` module；执行 Agent 不得自行决定。
+## T09A：mutation transport 与结果
 
-## 当前结论
+现有 PostForm 返回 error，2xx 不交付响应 body。先增加响应可解码的窄能力供 comment adapter 取得本轮 ID；保留 bookmark/follow 的旧 PostForm。request/response/读回共享同账号执行上下文。
 
-Goal-3 采用单一完整 Goal。当前台账中的历史 verdict 不代表能力不存在；它们用于定位 contract snapshot、adapter、SDK 或 public coverage 缺口。
-
-具备上游迁移依据、但仍需生产实现的项目包括：
-
-- Novel latest cursor。
-- Novel detail v2。
-- Comment mutation wire。
-- Stamps read。
-- Novel ranking。
-
-其余范围内 capability 在 Phase A 完成 contract snapshot 后，按 `migration_ready`、`public_ready` 逐层推进。失败能力在本 Goal 内停止、修复或移出 public implementation scope，不延期到另一个 Goal。
+明确未成功、已取得 ID 但读回失败、写入结果不确定三类结果必须可区分；后两类禁止自动重放。无法可靠取得 ID 时不能猜测最近评论并删除，清理只接受本轮 ID；保留真实失败与需要人工处理的状态。无匿名 fallback，无通用 mutation 自动重试。

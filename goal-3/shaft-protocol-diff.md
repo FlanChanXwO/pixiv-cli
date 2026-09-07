@@ -32,3 +32,5 @@ Live Pixiv 响应才是最终依据。
 - 必须校验 host、path、endpoint identity 和 allowlisted query。
 - 不静默丢弃未知 continuation 字段。
 - 不用 Shaft 旧代码替代 live 证据。
+
+当前实施与发布门禁只见 [能力准入表](capability-admission.md)；上表迁移方向不是生产切换授权。

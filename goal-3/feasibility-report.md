@@ -1,7 +1,7 @@
 # 上游接口可行性与完整实施 goal 准入报告
 
 观测日期：2026-09-05（Asia/Shanghai）。
-修订日期：2026-09-06（Asia/Shanghai）。
+修订日期：2026-09-07（Asia/Shanghai）。
 
 ## 结论
 
@@ -14,7 +14,7 @@ Goal-3 范围内 upstream 能力已作为可实施输入确认。现有 `inconcl
 ```text
 single_goal_ready = true
 unrestricted_full_surface_ready = false
-public_sdk_compatibility_decision = required_before_sdk
+public_sdk_compatibility_decision = required_before_adapter
 fail_closed_gate = required
 ```
 
@@ -23,10 +23,10 @@ fail_closed_gate = required
 - 可以启动一个完整 goal。
 - 不需要再拆成多个后续 goal。
 - Phase A 必须先完成 contract freeze。
-- 未 `public_ready` 能力不能进入 public surface。
+- 正式发布须 public_ready；migration_ready 后允许未发布实现与文档。
 - 验证失败时，只停止对应 capability，不另起 Goal。
 
-## 当前实时验证结果
+## 历史实时验证结果（2026-09-05）
 
 使用本地凭证的临时 HOME 副本。
 原始凭证数据库未修改。
@@ -50,19 +50,19 @@ not_tested=11
 
 | 能力 | 当前状态 | 完整 Goal 处理方式 |
 | --- | --- | --- |
-| artwork search | confirmed | 直接实施 SDK、CLI、MCP |
-| artwork latest | confirmed | 直接实施 SDK、CLI、MCP |
-| artwork ranking | confirmed | 直接实施 SDK、CLI、MCP |
-| artwork ugoira metadata | confirmed | 直接实施 SDK、CLI、MCP |
-| novel follow | confirmed | 直接实施 SDK、CLI、MCP |
-| novel recommended | confirmed | 直接实施 SDK、CLI、MCP |
+| artwork search | confirmed | contract 与兼容冻结后实施 SDK、CLI、MCP |
+| artwork latest | confirmed | contract 与兼容冻结后实施 SDK、CLI、MCP |
+| artwork ranking | confirmed | contract 与兼容冻结后实施 SDK、CLI、MCP |
+| artwork ugoira metadata | confirmed | contract 与兼容冻结后实施 SDK、CLI、MCP |
+| novel follow | confirmed | contract 与兼容冻结后实施 SDK、CLI、MCP |
+| novel recommended | confirmed | contract 与兼容冻结后实施 SDK、CLI、MCP |
 | user novels | confirmed / data-limited | 按 pagination exemption 实施 |
 | user artworks | confirmed / data-limited | 按 pagination exemption 实施 |
 | public/private bookmarks | confirmed / data-limited | 按 pagination exemption 实施 |
 | novel detail v2 | scope-admitted / snapshot pending | T01-T02 冻结 contract 后实施 |
 | novel series v2 | scope-admitted / snapshot pending | T02/T05 冻结 contract 后实施 |
 | novel latest | scope-admitted / cursor snapshot pending | T02/T05 扩展现有 cursor 后实施 |
-| artwork recommended | scope-admitted / continuation snapshot pending | T04/T05 冻结受控 continuation 后实施 |
+| artwork recommended | scope-admitted / continuation snapshot pending | T01/T05 冻结受控 continuation 后实施 |
 | novel comments v3 | scope-admitted / DTO snapshot pending | T04 冻结 DTO 后实施 |
 | artwork comments v3 | scope-admitted / fixture mismatch | T04 冻结 DTO；未冻结前不公开 |
 | novel bookmark mutation | scope-admitted / production gap | T03/T06 freeze 后在 Goal-3 T08/T15 实施 |
@@ -121,7 +121,7 @@ not_tested=11
 
 前提是：
 
-1. T01-T06 先执行 contract freeze。
+1. T00/T20、T01-T06、T12/T39A 先冻结范围、类型、contract 与兼容。
 2. 每项 capability 单独记录 snapshot、实现和 public gate。
 3. 失败能力不进入 public surface，也不另起 Goal。
 4. 生产变更继续通过 TDD。
@@ -147,3 +147,7 @@ not_tested=11
 不允许进入：
 
 > **把历史 evidence 状态误当成接口不存在，或绕过 gate 一次性公开全部 capability。**
+
+## 2026-09-07 审查更正
+
+当前状态与发布授权仅见 [能力准入表](capability-admission.md)，历史测试通过不计作本轮结果。required_scope 全集完成才结束 Goal；失败能力不得自动移出范围。本轮分页基础修复不代替其余 endpoint freeze 与 live 回归。

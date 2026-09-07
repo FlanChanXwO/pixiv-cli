@@ -48,19 +48,9 @@
 | illust-comment-delete | delete artwork comment | POST | /v1/illust/comment/delete | comment_id | — | — | read_back | not_tested | not_tested | not_tested | production owner missing |
 | novel-comment-delete | delete novel comment | POST | /v1/novel/comment/delete | comment_id | — | — | read_back | not_tested | not_tested | not_tested | production owner missing |
 
-## 迁移准入规则
+## 迁移准入规则（2026-09-07 更正）
 
-本矩阵的最终 verdict 表示 `public_ready`。
-
-开始 TDD 生产实现前，还要读取 `api-migration-verification.md` 的 `migration_ready`。
-
-规则：
-
-- `migration_ready`：允许开始 endpoint adapter / SDK 实现。
-- `confirmed` 或 `confirmed / pagination_exempt`：允许公开 CLI / MCP / docs surface。
-- `inconclusive`、`rejected`、`not_tested`：不能公开。
-- 没有 `migration_ready`：不能修改生产 endpoint。
-
+上表保留历史观测与原 verdict；包括备注中的 migration-ready 也仅是当时的证据标签，不是当前实施状态。当前实施与发布授权只来自 [能力准入表](capability-admission.md)，confirmed 不放行 CLI/MCP/docs。contract、T12/T39A、adapter/SDK、回归与文档按 tasks 依赖推进。
 
 ## 原始计划中尚未进入 strict manifest 的候选
 
