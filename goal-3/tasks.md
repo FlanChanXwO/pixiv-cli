@@ -44,7 +44,7 @@ Status 的 verified 表示对应 task 的实现与相关验证完成；各 task 
 | T08 | bookmark endpoint owners（umbrella） | T12,T08A,T08B,T08C,T08D | 汇总并审计两类 bookmark 的 list/tags/detail/mutation leaf、DTO、错误映射与 fixture；全部子卡完成后才可标记 verified | verified |
 | T09A | appapi transport | T12,T04,T06 | 增加响应可解码的窄 form 能力；保留旧 PostForm，不自动重放不确定 mutation | verified |
 | T09B | comment/stamp protocol path registry | T04,T06 | 补齐 artwork/novel comment mutation 与 stamps path 常量；只负责协议路径注册和 fixture，不拥有 endpoint/SDK/CLI/MCP | verified |
-| T09C | artwork comment endpoint owner | T04,T05,T06,T09A,T09B | 实现 artwork comments read/create/reply/stamp/delete leaf、DTO、请求校验与错误映射；保留旧 read shape，不实现 SDK/public/read-back orchestration | pending |
+| T09C | artwork comment endpoint owner | T04,T05,T06,T09A,T09B | 实现 artwork comments read/create/reply/stamp/delete leaf、DTO、请求校验与错误映射；保留旧 read shape，不实现 SDK/public/read-back orchestration | verified |
 | T09D | novel comment endpoint owner | T04,T05,T06,T09A,T09B | 实现 novel comments read/create/reply/stamp/delete leaf、DTO、请求校验与错误映射；固定 v2 contract，不对 v3 candidate 做 fallback | pending |
 | T09E | stamps endpoint owner | T04,T09B | 实现 `/v1/stamps` read leaf、字段级 DTO/ID/资源引用校验与错误映射；不把未验证字段或 continuation 猜成 public contract | pending |
 | T09 | comment endpoint owners | T09A,T09B,T09C,T09D,T09E | 汇总并审计 artwork/novel comments read/create/reply/stamp/delete 与 stamps leaf；全部子卡完成后才可标记 verified | pending |
@@ -427,6 +427,17 @@ Status 的 verified 表示对应 task 的实现与相关验证完成；各 task 
 - 公开兼容性影响：仅新增 internal protocol 常量并保留既有 read path，不改变任何请求调用、endpoint wire、SDK symbol、CLI/MCP schema/route、默认值、账号/token 行为、live 数据或依赖；五项 T09 capability 仍保持 `scope_admitted`，没有提前授予 `public_ready`。
 - 回滚前提 / 依赖闭包：回滚闭包为新增五个常量、`protocol_test.go` 与本记录/状态行；T09C/T09D/T09E 若已引用这些常量，必须先同步撤销或迁移引用再回滚。本卡不触碰业务数据、账号、token、缓存、运行配置或构建产物。
 - 实际结果 / evidence / 风险：T09B 已 verified，路径 registry 与 fixture 闭合，当前仍未执行 live API，也未验证 candidate path 的真实 wire、字段、response ID、错误/不确定结果、读回或清理语义；下一入口为 T09C，Goal-3 继续 incomplete。
+
+## T09C 完成记录
+
+- Owner package / 涉及文件：`internal/services/pixiv/endpoint/artwork/comments/comments.go` 与同 stem 的 `comments_test.go`。本卡只实现 artwork comments endpoint leaf；没有修改 SDK、CLI/MCP、公开文档、依赖或运行配置。
+- Depends on：T04、T05、T06、T09A、T09B 均已 verified。T09C 消费 T09A 的 `PostFormJSON`，复用 T09B 的 comment mutation path registry，并保留既有 `List` result shape；SDK/public binding、同账号 read-back、清理和 outcome orchestration 继续由 T16/T17/T33/T37/T38/T44 承接。
+- 冻结 contract / fixture：`List` 要求正 `ArtworkID`、非负 `offset`；`comments` 必须存在且为 list，缺失/null/错误类型返回脱敏 `MalformedResponse`，`[]` 保持非 nil 空结果；保留既有 parent ID、可选 `total_comments`/`access_control` 与正 offset continuation 校验。Create 使用 candidate `POST /v1/illust/comment/add`，form 为正 `illust_id` 与原样 `comment`；Reply 额外要求正 `parent_comment_id`；Stamp 额外要求正 `stamp_id`；三者只接受响应中的正 `comment_id`，不把 2xx/nil 当作写入证明。空字符串正文在 endpoint leaf 拒绝，但不裁剪或拒绝空白正文，因为业务接受性尚未验证。Delete 使用 candidate `POST /v1/illust/comment/delete` 和正 `comment_id`，仅调用 status-only `PostForm`，不假设响应 body。没有新增 namespace 猜测、自动 retry/replay、live 调用或 read-back。
+- Red 测试、命令及当前行为的预期失败：先新增 `TestCommentsListValidatesRequestAndRequiresCommentsList`，实际运行 focused test 观察到非正 artwork ID、负 offset 未被拒绝，缺失/null `comments` 未报 malformed；修复后再为 Create、Reply、Stamp、Delete 分别新增请求 fixture，首次运行分别因对应 client method/request type 未定义而编译失败。没有以修改测试掩盖缺口。
+- Green 命令及验收断言：上述 focused Red→Green 测试通过；`go test ./internal/services/pixiv/endpoint/artwork/comments -count=1`、`go test -race ./internal/services/pixiv/endpoint/artwork/comments -count=1`、`go test ./internal/services/pixiv/endpoint/artwork/comments ./internal/services/pixiv/appapi ./sdk/pixiv ./internal/mcpserver/pixiv -count=1`、`go vet ./...`、`go test ./scripts/tests/documentation -count=1`、`go test ./... -count=1`、`sh scripts/build.sh`、`git diff --check` 均通过。测试覆盖 list required/null/empty/request 边界、四类 mutation 的 candidate path/form、正 response ID、非法输入 no-network、malformed response 与 transport error 原样传播；LSP diagnostics 对两个受影响文件均为空，code-review-expert 自审无 P0/P1/P2 finding。
+- 公开兼容性影响：仅增加 `internal/services/pixiv/endpoint/artwork/comments` 的内部 leaf request/result、mutation transport 依赖和 response 校验；既有 `List` 查询参数、映射结果与 continuation 行为保持兼容。没有新增 SDK symbol、CLI/MCP schema/route、公开 endpoint 契约、默认值、依赖、账号/token 行为或 live 数据；五项 T09 capability 与全部 41 条 required capability 继续为 `scope_admitted`。
+- 回滚前提 / 依赖闭包：整体回滚 `comments.go` 的 mutation/required-list 变更、`comments_test.go` fixture 与本记录/状态行；若后续 T16/T17/T33/T37/T38/T44 已引用这些内部 method 或 response ID 边界，必须同步撤销或先提供兼容迁移，不能只删除 endpoint leaf。无业务数据、账号、token、缓存、运行配置或生成物迁移。
+- 实际结果 / evidence / 风险：T09C 已 verified，artwork comments read 与 candidate create/reply/stamp/delete leaf 的离线请求、校验、映射和错误证据闭合；未执行真实 API，未验证 candidate path/wire、空/空白正文业务语义、parent/stamp/comment namespace、写后 read-back、清理或不确定 outcome，故 `artwork-comments-read` 与 `artwork-comments-mutation` 仍为 `scope_admitted`。Goal-3 继续 incomplete，下一入口为 T09D。
 
 ## 实现任务准入卡
 
