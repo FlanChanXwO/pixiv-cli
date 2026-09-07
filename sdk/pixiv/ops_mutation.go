@@ -45,6 +45,9 @@ func (c *Client) FollowUser(ctx context.Context, request FollowUserRequest) erro
 	if request.Restrict == "" {
 		request.Restrict = RestrictPublic
 	}
+	if err := validateRestrict("FollowUser", request.Restrict); err != nil {
+		return err
+	}
 	if err := c.userFollow.Add(ctx, follow.Request{UserID: request.UserID, Restrict: string(request.Restrict)}); err != nil {
 		return classifyAppError(err, "FollowUser")
 	}

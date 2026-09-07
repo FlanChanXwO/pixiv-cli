@@ -29,7 +29,7 @@ Status 的 verified 表示对应 task 的实现与相关验证完成；各 task 
 | R03 | Goal 任务账本与文档 tracking hygiene | CHECK-02 | 对齐 T03/T04 的显式 depends_on 与完成记录；处理 `/goal-*/` 对新增 Goal 文档的忽略/force-add 规则 | verified |
 | T06 | error/其他 read contract | T00,T01,T02,T03,T04 | 冻结 user search/detail/relationships、user artworks/novels、recommended users、trending、follow、mypixiv、error、mutation outcome 与脱敏 | verified |
 | CHECK-03 | 集中检查-debug（R02/R03/T06） | R02,R03,T06 | audit-only；复查 T06 read/error/mutation contract、R02 replay 修复、R03 tracking、41 条 required_scope、历史 evidence、T23A 边界、bug/死代码、类型/构建/测试、安全/数据/回滚/文档，并登记修复项 | verified |
-| R04 | follow restrict 输入校验 | CHECK-03,T06 | 在 `FollowUser` SDK 边界复用 `validateRestrict`；空值仍默认 `public`，未知值以 `InvalidArgument` 在发起请求前拒绝，并补充无网络请求回归 | pending |
+| R04 | follow restrict 输入校验 | CHECK-03,T06 | 在 `FollowUser` SDK 边界复用 `validateRestrict`；空值仍默认 `public`，未知值以 `InvalidArgument` 在发起请求前拒绝，并补充无网络请求回归 | verified |
 | T12 | SDK compatibility | T20,T01,T02,T03,T04,T05,T06,CHECK-03,R04 | 冻结 symbol map、旧 wrapper、named types、旧消费者编译、cursor 版本恢复；默认源码兼容 | pending |
 | T39A | CLI/MCP migration | T12 | 冻结 CLI 路由和 MCP tool/input/output compatibility map；旧 JSON 回放清单 | pending |
 | T07 | read endpoint owners | T12 | 按 artwork/novel endpoint leaf 拆卡，实现 read adapter（含 v2、user/trending/relationships、follow/mypixiv 所需 endpoint）、DTO 与错误映射 | pending |
@@ -217,6 +217,17 @@ Status 的 verified 表示对应 task 的实现与相关验证完成；各 task 
 - 公开兼容性影响：本轮只更新 Goal-3 ledger，不改变 SDK symbol、CLI/MCP wire、endpoint、默认值、依赖、required_scope、live 数据或运行配置；R04 完成后应仅把已明确非法的 follow restrict 提前分类为 `InvalidArgument`，空值默认 public 的正常路径保持不变。
 - 回滚前提 / 依赖闭包：回滚本轮需同时撤销 CHECK-03 verified、R04 表格/登记与 T12 对 R04 的依赖；不涉及业务数据、账号、token、构建产物或生产配置。执行 R04 时需将 `sdk/pixiv/ops_mutation.go`、其聚焦测试和对应 ledger 作为同一闭包验证，不能只删校验而保留测试或依赖声明。
 - 实际结果 / evidence / 风险：CHECK-03 已 verified，唯一新增发现为 R04；Goal 继续 incomplete，41 条 required capability 未提升，下一 task 按账本进入 R04，不进入 T12。
+
+## R04 完成记录
+
+- Owner package / 涉及文件：公开 Pixiv SDK mutation；`sdk/pixiv/ops_mutation.go`、`sdk/pixiv/ops_mutation_test.go`。只补 `FollowUser` 的输入边界校验，不改变 follow endpoint、PostForm transport、read-back/outcome 或 CLI/MCP wire。
+- Depends on：CHECK-03、T06 verified。
+- 冻结 contract / fixture：空 `restrict` 仍先规范化为 `RestrictPublic`；随后复用已有 `validateRestrict("FollowUser", ...)`，只允许 `public`/`private`。未知值必须在 SDK 边界返回 `sdk.InvalidArgument`，不得进入 `/v1/user/follow/add`。
+- Red 测试、命令及当前行为的预期失败：新增 `TestFollowUserRejectsUnknownRestrictBeforeNetwork` 后，focused test 实际失败，返回 `upstream_unavailable`，且 fake transport 被调用；这证明缺口是可观测的错误分类与越过本地边界，而非仅凭静态推断。
+- Green 命令及验收断言：非法值测试通过并断言 transport 调用次数为 0；`TestFollowUserDefaultsEmptyRestrictToPublic` 通过并断言原 endpoint/form 仍发送 `restrict=public`。随后 `go test ./sdk/pixiv -count=1`、focused `go test`、focused `go test -race`、`go vet ./sdk/pixiv`、`go test ./... -count=1`、`go vet ./...`、`sh scripts/build.sh`、`go test` 文档检查与 `git diff --check` 均通过。公开 CLI reference 与 MCP 文档已说明 `public|private`，本修复没有新增文档契约或需要更新的 locale/Skill 文本。
+- 公开兼容性影响：无新增 symbol、依赖、endpoint、默认值或 wire 变化；合法 `public`/`private` 与空值默认 public 保持原请求，只有原本会被发送的非法值改为本地 `InvalidArgument`。
+- 回滚前提 / 依赖闭包：回滚需同时撤销 `FollowUser` 的校验调用、两条 external SDK 回归和本完成记录；不涉及账号、token、运行数据或配置。T12 对 R04 的依赖保持，不能只回滚生产行而保留已宣称的验证记录。
+- 实际结果 / evidence / 风险：R04 已 verified，未发现新的 P0/P1；Goal 仍 incomplete，41 条 required capability 未提升。下一入口按 DAG 为 T12。
 
 ## 实现任务准入卡
 
