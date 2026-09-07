@@ -28,6 +28,12 @@ func (c *Client) Add(ctx context.Context, request Request) error {
 	if c == nil || c.transport == nil {
 		return errors.New("user follow transport is not configured")
 	}
+	if request.UserID <= 0 {
+		return errors.New("follow user ID must be positive")
+	}
+	if request.Restrict != "public" && request.Restrict != "private" {
+		return errors.New("follow restrict must be public or private")
+	}
 	return c.transport.PostForm(ctx, protocol.AppFollowAdd, url.Values{
 		"user_id":  {strconv.FormatInt(request.UserID, 10)},
 		"restrict": {request.Restrict},
@@ -38,6 +44,9 @@ func (c *Client) Add(ctx context.Context, request Request) error {
 func (c *Client) Remove(ctx context.Context, userID int64) error {
 	if c == nil || c.transport == nil {
 		return errors.New("user follow transport is not configured")
+	}
+	if userID <= 0 {
+		return errors.New("follow user ID must be positive")
 	}
 	return c.transport.PostForm(ctx, protocol.AppFollowDelete, url.Values{
 		"user_id": {strconv.FormatInt(userID, 10)},

@@ -64,7 +64,7 @@ func (c *Client) List(ctx context.Context, request Request) (Result, error) {
 	}
 	items := make([]artwork.Artwork, len(raw.Illusts.Items))
 	for index, value := range raw.Illusts.Items {
-		if value.ID <= 0 {
+		if value.ID <= 0 || (request.Kind == MyPixiv && value.User.ID <= 0) {
 			return Result{}, protocol.MalformedResponse()
 		}
 		items[index] = mapArtwork(value)

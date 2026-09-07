@@ -3,10 +3,12 @@ package timeline_test
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/url"
 	"testing"
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/endpoint/artwork/timeline"
+	"github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/protocol"
 )
 
 type fakeTransport struct {
@@ -102,6 +104,39 @@ func TestUserArtworksNormalizesIllustrationAndRejectsInvalidRequest(t *testing.T
 func TestUserArtworksMapsArtworkDTO(t *testing.T) {
 	transport := &fakeTransport{body: `{"illusts":[{"id":101,"title":"art","type":"illust","user":{"id":77,"name":"artist"},"tags":[{"name":"tag"}]}]}`}
 	result, err := timeline.New(transport).List(context.Background(), timeline.Request{Kind: timeline.UserArtworks, UserID: 77, ArtworkType: "illust"})
+	if err != nil {
+		t.Fatalf("List: %v", err)
+	}
+	if len(result.Items) != 1 || result.Items[0].ID != 101 || result.Items[0].Title != "art" || result.Items[0].User.ID != 77 || len(result.Items[0].Tags) != 1 || result.Items[0].Tags[0].Name != "tag" {
+		t.Fatalf("result = %#v", result)
+	}
+}
+
+func TestMyPixivRejectsNonPositiveNestedOwnerID(t *testing.T) {
+	tests := []struct {
+		name    string
+		ownerID string
+	}{
+		{name: "zero", ownerID: "0"},
+		{name: "negative", ownerID: "-1"},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			transport := &fakeTransport{body: `{"illusts":[{"id":101,"user":{"id":` + test.ownerID + `}}]}`}
+			result, err := timeline.New(transport).List(context.Background(), timeline.Request{Kind: timeline.MyPixiv})
+			if !errors.Is(err, protocol.ErrMalformedResponse) {
+				t.Fatalf("List error = %v, want malformed response", err)
+			}
+			if result.Items != nil {
+				t.Fatalf("result contains partial items: %#v", result.Items)
+			}
+		})
+	}
+}
+
+func TestMyPixivMapsArtworkDTO(t *testing.T) {
+	transport := &fakeTransport{body: `{"illusts":[{"id":101,"title":"art","type":"illust","user":{"id":77,"name":"artist"},"tags":[{"name":"tag"}]}]}`}
+	result, err := timeline.New(transport).List(context.Background(), timeline.Request{Kind: timeline.MyPixiv})
 	if err != nil {
 		t.Fatalf("List: %v", err)
 	}

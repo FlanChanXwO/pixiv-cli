@@ -31,6 +31,9 @@ func (c *Client) List(ctx context.Context, request Request) (Result, error) {
 	if c == nil || c.transport == nil {
 		return Result{}, errors.New("user mypixiv transport is not configured")
 	}
+	if request.UserID <= 0 {
+		return Result{}, errors.New("user mypixiv user ID must be positive")
+	}
 	query := url.Values{"user_id": {strconv.FormatInt(request.UserID, 10)}, "filter": {"for_android"}}
 	if request.Offset > 0 {
 		query.Set("offset", strconv.Itoa(request.Offset))

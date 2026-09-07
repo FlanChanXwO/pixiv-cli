@@ -60,3 +60,14 @@ func TestTimelineRejectsNullNovelList(t *testing.T) {
 		t.Fatal("null list unexpectedly succeeded")
 	}
 }
+
+func TestMyPixivMapsNovelDTO(t *testing.T) {
+	transport := &fakeTransport{body: `{"novels":[{"id":101,"title":"story","user":{"id":77,"name":"writer"},"create_date":"2024-01-02T03:04:05+00:00","tags":[{"name":"fantasy"}]}]}`}
+	result, err := timeline.New(transport).List(context.Background(), timeline.Request{Kind: timeline.MyPixiv})
+	if err != nil {
+		t.Fatalf("List: %v", err)
+	}
+	if len(result.Items) != 1 || result.Items[0].ID != 101 || result.Items[0].Title != "story" || result.Items[0].User.ID != 77 || len(result.Items[0].Tags) != 1 || result.Items[0].Tags[0].Name != "fantasy" {
+		t.Fatalf("result = %#v", result)
+	}
+}
