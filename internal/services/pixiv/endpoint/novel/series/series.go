@@ -1,7 +1,9 @@
 package series
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"net/url"
 	"strconv"
@@ -42,11 +44,11 @@ func (c *Client) List(ctx context.Context, request Request) (Result, error) {
 	if err := c.transport.GetJSON(ctx, protocol.AppNovelSeries, query, &raw); err != nil {
 		return Result{}, err
 	}
-	if raw.Detail == nil || raw.Detail.ID <= 0 || raw.Detail.User.ID <= 0 {
+	if raw.Detail == nil || raw.Detail.ID <= 0 || raw.Detail.User.ID <= 0 || !raw.Novels.Present || !raw.Novels.Valid {
 		return Result{}, protocol.MalformedResponse()
 	}
-	items := make([]novel.Novel, len(raw.Novels))
-	for index, value := range raw.Novels {
+	items := make([]novel.Novel, len(raw.Novels.Items))
+	for index, value := range raw.Novels.Items {
 		if value.ID <= 0 || value.User.ID <= 0 {
 			return Result{}, protocol.MalformedResponse()
 		}
@@ -67,9 +69,27 @@ func (c *Client) List(ctx context.Context, request Request) (Result, error) {
 }
 
 type responseDTO struct {
-	Detail  *seriesDetailDTO `json:"novel_series_detail"`
-	Novels  []novelDTO       `json:"novels"`
-	NextURL *string          `json:"next_url"`
+	Detail  *seriesDetailDTO       `json:"novel_series_detail"`
+	Novels  requiredList[novelDTO] `json:"novels"`
+	NextURL *string                `json:"next_url"`
+}
+
+type requiredList[T any] struct {
+	Items   []T
+	Present bool
+	Valid   bool
+}
+
+func (l *requiredList[T]) UnmarshalJSON(data []byte) error {
+	*l = requiredList[T]{Present: true}
+	if bytes.Equal(bytes.TrimSpace(data), []byte("null")) {
+		return nil
+	}
+	if err := json.Unmarshal(data, &l.Items); err != nil {
+		return err
+	}
+	l.Valid = true
+	return nil
 }
 
 type seriesDetailDTO struct {

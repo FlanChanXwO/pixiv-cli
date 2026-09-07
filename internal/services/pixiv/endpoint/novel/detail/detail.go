@@ -21,10 +21,11 @@ type Client struct{ transport Transport }
 func New(transport Transport) *Client { return &Client{transport: transport} }
 
 type Result struct {
-	Novel        novel.Novel
-	SeriesNextID int64
-	SeriesPrevID int64
-	SeriesTitle  string
+	Novel           novel.Novel
+	SeriesNextID    int64
+	SeriesPrevID    int64
+	SeriesTitle     string
+	SeriesPrevTitle string
 }
 
 func (c *Client) Detail(ctx context.Context, novelID int64) (Result, error) {
@@ -51,6 +52,7 @@ func (c *Client) Detail(ctx context.Context, novelID int64) (Result, error) {
 			return Result{}, protocol.MalformedResponse()
 		}
 		result.SeriesPrevID = raw.SeriesPrev.ID
+		result.SeriesPrevTitle = raw.SeriesPrev.Title
 	}
 	return result, nil
 }

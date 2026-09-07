@@ -33,7 +33,7 @@ Status 的 verified 表示对应 task 的实现与相关验证完成；各 task 
 | T12 | SDK compatibility | T20,T01,T02,T03,T04,T05,T06,CHECK-03,R04 | 冻结 symbol map、旧 wrapper、named types、旧消费者编译、cursor 版本恢复；默认源码兼容 | verified |
 | T39A | CLI/MCP migration | T12 | 冻结 CLI 路由和 MCP tool/input/output compatibility map；旧 JSON 回放清单 | verified |
 | T07A | artwork read endpoint owner | T12 | 实现 artwork search、series、ugoira metadata 等 T07 artwork adapter leaf、DTO 与错误映射；保留现有 transport/SDK 边界，不进入 CLI/MCP | verified |
-| T07B | novel read endpoint owner | T12 | 实现 novel search、v2 detail、v2 series 等 T07 novel adapter leaf、DTO 与错误映射；禁止回退已 rejected v1 detail/series path | pending |
+| T07B | novel read endpoint owner | T12 | 实现 novel search、v2 detail、v2 series 等 T07 novel adapter leaf、DTO 与错误映射；禁止回退已 rejected v1 detail/series path | verified |
 | T07C | user read endpoint owner | T12,T06 | 实现 user search/detail/artworks/novels/relationships adapter leaf、DTO 与错误映射；bare-ID 的命令 resolver 仍由 T21 负责 | pending |
 | T07D | feed/relationship adjunct endpoint owner | T12,T06 | 实现 trending、MyPixiv、follow 所需 adapter leaf、DTO 与错误映射；不把 mutation read-back 或 CLI/MCP 发布门禁提前并入 | pending |
 | T07 | read endpoint owners（umbrella） | T12,T07A,T07B,T07C,T07D | 汇总并审计四个子卡的 artwork/novel/user/feed read adapter、DTO、错误映射与 leaf fixture；全部子卡完成后才可标记 verified | pending |
@@ -276,6 +276,17 @@ Status 的 verified 表示对应 task 的实现与相关验证完成；各 task 
 - 公开兼容性影响：无 public SDK symbol、CLI/MCP wire、endpoint path、依赖或默认值变化；合法的普通 frame file 与既有 artwork search/series 请求保持不变。只把不满足已冻结安全契约的上游 payload 提前分类为 malformed，避免后续解包/落盘边界产生路径穿越、覆盖或重复歧义。
 - 回滚前提 / 依赖闭包：回滚需同时撤销 `validFrameFiles` 校验、ugoira 负向 fixture 和本完成记录；不得只回滚生产校验而保留 T07A verified 状态。未涉及账号、token、下载内容、运行配置或 live API。
 - 实际结果 / evidence / 风险：T07A 已 verified；artwork search、series、ugoira adapter leaf 的现有离线回归通过，ugoira 文件安全缺口已按 T01 contract 补齐。T07 umbrella 仍 pending，T07B/T07C/T07D 尚未完成，41 条 required capability 仍未提升到 `public_ready`，Goal 继续 incomplete；下一入口按 DAG 为 T07B。
+
+## T07B 完成记录
+
+- Owner package / 涉及文件：novel read endpoint；`internal/services/pixiv/protocol/protocol.go`、`internal/services/pixiv/endpoint/novel/{search,detail,series,novel}.go` 及对应离线测试；同步更新 `sdk/pixiv/pixiv_test.go` 与 `internal/mcpserver/pixiv/pixiv_sdk_wire_test.go` 的既有 wire fixture。没有修改 SDK/CLI/MCP 生产实现。
+- Depends on：T12 verified；T02 novel contract 已冻结。
+- 冻结 contract / fixture：novel search 继续使用 `/v1/search/novel` 与 required `novels` list；novel detail/series canonical path 改为 `/v2/novel/detail`、`/v2/novel/series`，不请求已 rejected 的 v1 path。detail 保留可选 `series_next`/`series_prev` 的正数 ID 与前后 title；series 要求 `novel_series_detail`、`novels` list、正数 series/user/novel ID，空 list 合法且 normalized items 非 nil，续页仍只提取 `last_order`。
+- Red 测试、命令及当前行为的预期失败：先把 endpoint fixture 改为 v2 并加入 series required list/empty-list 断言，运行 `go test ./internal/services/pixiv/endpoint/novel/detail ./internal/services/pixiv/endpoint/novel/series -run '^(TestDetailMapsNovelAndSeriesReferences|TestSeriesMapsRouteQueryAndContinuation|TestSeriesRejectsMissingDetailOrInvalidNovel)$' -count=1` 实际失败：旧实现仍请求 v1、series 缺失/null `novels` 仍成功，且新前后 title 断言缺少 normalized 字段。
+- Green 命令及验收断言：新增 v2 path 常量映射、detail 前后 series title、series required-list DTO/error mapping，并补 search/series 空列表 fixture。`go test ./internal/services/pixiv/endpoint/novel/search ./internal/services/pixiv/endpoint/novel/detail ./internal/services/pixiv/endpoint/novel/series ./sdk/pixiv ./internal/mcpserver/pixiv -count=1`、`go test ./... -count=1`、`go vet ./...`、`sh scripts/build.sh`、`git diff --check` 均通过；`rg` 负向核验确认 `internal/` 与 `sdk/` 不再请求 `/v1/novel/detail` 或 `/v1/novel/series`。
+- 公开兼容性影响：未删除或重命名 SDK symbol、CLI/MCP tool/schema、request/response wire 或依赖；既有 `Novel`、`NovelSeries` 调用现在经同一 adapter 请求已冻结的 v2 path。v1 不做 fallback。SDK/MCP 测试只更新离线 path fixture；CLI/MCP 生产层未进入本任务。T14 后续仍负责 public SDK 的 series metadata、cursor 与源码兼容审计。
+- 回滚前提 / 依赖闭包：回滚需同时撤销 v2 protocol 常量、detail/series adapter 与 required-list 校验、novel search/series fixture、SDK/MCP path fixture 和本完成记录；不得只恢复 v1 path 而保留 T07B verified 或后续 T14 对 v2 的依赖。未涉及账号、token、下载内容、运行配置或 live API。
+- 实际结果 / evidence / 风险：T07B 已 verified；novel search、v2 detail、v2 series adapter 的离线 method/path/query/DTO/null/empty/error 回归通过，rejected v1 detail/series 未被请求。T07 umbrella 仍 pending，T07C/T07D 尚未完成，41 条 required capability 仍未达到 `public_ready`，Goal 继续 incomplete；下一入口按 DAG 为 T07C。
 
 ## 实现任务准入卡
 

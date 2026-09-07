@@ -29,12 +29,12 @@ func (f *fakeTransport) GetRaw(_ context.Context, path string, query url.Values)
 }
 
 func TestDetailMapsNovelAndSeriesReferences(t *testing.T) {
-	transport := &fakeTransport{body: `{"novel":{"id":12,"title":"story","caption":"body","x_restrict":0,"text_length":8,"is_original":true,"create_date":"2024-01-02T03:04:05+00:00","user":{"id":7,"name":"writer"}},"series_next":{"id":14,"title":"series"},"series_prev":{"id":10}}`}
+	transport := &fakeTransport{body: `{"novel":{"id":12,"title":"story","caption":"body","x_restrict":0,"text_length":8,"is_original":true,"create_date":"2024-01-02T03:04:05+00:00","user":{"id":7,"name":"writer"}},"series_next":{"id":14,"title":"next series"},"series_prev":{"id":10,"title":"previous series"}}`}
 	result, err := detail.New(transport).Detail(context.Background(), 12)
 	if err != nil {
 		t.Fatalf("Detail: %v", err)
 	}
-	if transport.path != "/v1/novel/detail" || transport.query.Get("novel_id") != "12" || result.Novel.ID != 12 || result.Novel.User.ID != 7 || result.SeriesNextID != 14 || result.SeriesPrevID != 10 || result.SeriesTitle != "series" {
+	if transport.path != "/v2/novel/detail" || transport.query.Get("novel_id") != "12" || result.Novel.ID != 12 || result.Novel.User.ID != 7 || result.SeriesNextID != 14 || result.SeriesPrevID != 10 || result.SeriesTitle != "next series" || result.SeriesPrevTitle != "previous series" {
 		t.Fatalf("result = %#v request=%q %v", result, transport.path, transport.query)
 	}
 }

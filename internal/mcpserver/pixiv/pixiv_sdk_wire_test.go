@@ -245,7 +245,7 @@ func (tr *testSDKTransport) RoundTrip(request *http.Request) (*http.Response, er
 		tr.fake.artworkBookmarkRequest = req
 		tr.fake.bookmarkDetailRequest = req
 		status, body, err = wireBookmarkDetail(tr.fake.bookmarkDetailResult)
-	case "/v1/novel/detail":
+	case "/v2/novel/detail":
 		id := queryInt64(request.URL.Query(), "novel_id")
 		tr.fake.novelDetailRequest = id
 		tr.fake.novelRequest = pixivsdk.NovelRequest{NovelID: id}

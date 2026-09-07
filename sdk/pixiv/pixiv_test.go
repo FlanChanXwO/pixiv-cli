@@ -374,7 +374,7 @@ func TestNovelSeriesWiresCursorAndMetadata(t *testing.T) {
 	calls := 0
 	rt := roundTripFunc(func(req *http.Request) (*http.Response, error) {
 		calls++
-		if req.URL.Path != "/v1/novel/series" {
+		if req.URL.Path != "/v2/novel/series" {
 			t.Errorf("path = %q", req.URL.Path)
 		}
 		query := req.URL.Query()
@@ -388,7 +388,7 @@ func TestNovelSeriesWiresCursorAndMetadata(t *testing.T) {
 		if query.Get("last_order") != wantLastOrder {
 			t.Errorf("last_order = %q, want %q", query.Get("last_order"), wantLastOrder)
 		}
-		body := `{"novel_series_detail":{"id":6001,"title":"series","caption":"caption","is_concluded":true,"user":{"id":8,"name":"writer"}},"novels":[{"id":6002,"title":"chapter","create_date":"2026-01-01T00:00:00Z","user":{"id":8,"name":"writer"}}],"next_url":"https://app-api.pixiv.net/v1/novel/series?series_id=6001&last_order=9"}`
+		body := `{"novel_series_detail":{"id":6001,"title":"series","caption":"caption","is_concluded":true,"user":{"id":8,"name":"writer"}},"novels":[{"id":6002,"title":"chapter","create_date":"2026-01-01T00:00:00Z","user":{"id":8,"name":"writer"}}],"next_url":"https://app-api.pixiv.net/v2/novel/series?series_id=6001&last_order=9"}`
 		if calls == 2 {
 			body = `{"novel_series_detail":{"id":6001,"title":"series","user":{"id":8,"name":"writer"}},"novels":[],"next_url":null}`
 		}
@@ -467,7 +467,7 @@ func TestArtworkCommentsPreserveMetadataAndCursor(t *testing.T) {
 func TestNovelAndUserDetailsWireOperation(t *testing.T) {
 	rt := roundTripFunc(func(req *http.Request) (*http.Response, error) {
 		switch req.URL.Path {
-		case "/v1/novel/detail":
+		case "/v2/novel/detail":
 			if req.URL.Query().Get("novel_id") != "9001" {
 				t.Errorf("novel query = %v", req.URL.Query())
 			}
