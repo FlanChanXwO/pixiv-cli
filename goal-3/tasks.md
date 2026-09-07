@@ -37,7 +37,11 @@ Status 的 verified 表示对应 task 的实现与相关验证完成；各 task 
 | T07C | user read endpoint owner | T12,T06 | 实现 user search/detail/artworks/novels/relationships adapter leaf、DTO 与错误映射；bare-ID 的命令 resolver 仍由 T21 负责 | verified |
 | T07D | feed/relationship adjunct endpoint owner | T12,T06 | 实现 trending、MyPixiv、follow 所需 adapter leaf、DTO 与错误映射；不把 mutation read-back 或 CLI/MCP 发布门禁提前并入 | verified |
 | T07 | read endpoint owners（umbrella） | T12,T07A,T07B,T07C,T07D | 汇总并审计四个子卡的 artwork/novel/user/feed read adapter、DTO、错误映射与 leaf fixture；全部子卡完成后才可标记 verified | verified |
-| T08 | bookmark endpoint owners | T12 | 按两类 list/tags/detail/mutation leaf 拆卡实现 | pending |
+| T08A | artwork bookmark read endpoint owner | T12 | 实现 artwork bookmark list/tags/detail leaf、required/null/empty/error 映射与离线 fixture；不擅自发送未验证的 subtype wire | pending |
+| T08B | novel bookmark read endpoint owner | T12 | 实现 novel bookmark list/tags/detail leaf、candidate path snapshot、required/null/empty/error 映射与离线 fixture | pending |
+| T08C | artwork bookmark mutation endpoint owner | T12,T08A | 实现 artwork bookmark add/remove endpoint leaf、request/form/error fixture；不把 error-only 2xx 提升为 read-back 成功 | pending |
+| T08D | novel bookmark mutation endpoint owner | T12,T08B | 实现 novel bookmark add/remove endpoint leaf、candidate path/request/form/error fixture；不把未验证 wire 或 2xx 提升为发布成功 | pending |
+| T08 | bookmark endpoint owners（umbrella） | T12,T08A,T08B,T08C,T08D | 汇总并审计两类 bookmark 的 list/tags/detail/mutation leaf、DTO、错误映射与 fixture；全部子卡完成后才可标记 verified | pending |
 | T09A | appapi transport | T12,T04,T06 | 增加响应可解码的窄 form 能力；保留旧 PostForm，不自动重放不确定 mutation | pending |
 | T09 | comment endpoint owners | T09A | 按 artwork/novel read/create/reply/stamp/delete 与 stamps leaf 拆卡实现 | pending |
 | T10 | ranking/recommended/latest owners | T12 | 按 endpoint leaf 拆卡实现 subtype 与 request/DTO | pending |
@@ -320,6 +324,17 @@ Status 的 verified 表示对应 task 的实现与相关验证完成；各 task 
 - 公开兼容性影响：没有新增或删除 public SDK symbol、CLI/MCP tool/schema、endpoint wire、默认值、依赖、账号/token 行为或下载数据；合法请求路径与 DTO 由各子卡保持。41 条 required capability 仍全部为 `scope_admitted`，本审计不授予 `contract_frozen`、`migration_ready` 或 `public_ready`；不执行 live API。同步把任务账本末尾与上方完成记录矛盾的 R04 追加行改为 `verified`，不改变 R04 生产代码或其证据。
 - 回滚前提 / 依赖闭包：本父任务提交只包含 T07 状态、T07 完成记录和 R04 账本状态的一致性修复，回滚时可整体撤销且不需要业务数据、账号、token、配置或生产代码回滚；若撤销任一 T07A–T07D 实现，必须连同对应 adapter、fixture、完成记录及父任务依赖重新审计，不得只把父行保留为 verified。
 - 实际结果 / evidence / 风险：T07 umbrella 已 verified，四个子卡的 read adapter、DTO、错误映射与离线 leaf fixture 证据闭合；Goal 仍 incomplete，未完成的 SDK/public cursor（T13/T14/T19）、continuation allowlist（T11）、bare-ID resolver（T21）、CLI/MCP 与 mutation read-back（T35/T38）等边界保持原状，`updated_at` 的跨 artwork/novel public mapper 仍留给 T13/T14。按任务表下一入口为 T08。
+
+## T08 拆卡记录
+
+- Owner package / 涉及文件：bookmark endpoint owner umbrella；本文件、`goal-3/upstream-contract-matrix.md` 的 T03 contract、`internal/services/pixiv/endpoint/artwork/bookmark`、`internal/services/pixiv/endpoint/user/novelbookmarks` 及其测试。T08 跨两类内容和 read/mutation 边界，按任务规则拆为 T08A–T08D；本轮没有修改生产代码、protocol、SDK、CLI/MCP wire、公开文档或依赖。
+- Depends on：T12、T03、T07 已 verified；T08A/T08B 只依赖已冻结的 bookmark contract 与 compatibility，T08C/T08D 分别依赖对应 read 子卡的 request/DTO 边界。`list/tags --type all` 的双流聚合、aggregate cursor、统一 Skip/Limit/OneBatch 与页原子性仍归 T19/T23/T27/T37，不在 endpoint 子卡中重复实现。
+- 冻结 contract / fixture：T08A 负责现有 artwork bookmark `Artworks`、`Tags`、`Detail` read leaf，并补 required list、null/empty、tag name、continuation 与错误边界；未经验证的 artwork `type/content_type` 不新增 wire。T08B 负责现有 novel bookmark list，并为 `/v1/user/bookmark-tags/novel` 与 `/v2/novel/bookmark/detail` 建立严格 candidate snapshot 后再落 adapter/DTO。T08C/T08D 分别负责 artwork/novel add/remove endpoint leaf 的正数 ID、restrict/tags/form/path/error fixture；response-bearing transport、写后读回、结果不确定性和同账号恢复仍由 T09A/T15/T38/T44 等后续 owner 闭合。
+- Red 测试、命令及当前行为的预期失败：这是 task decomposition/ledger task，无生产代码 Red 阶段。只读审计确认 artwork bookmark 当前已有 list/tags/detail，但 tags 使用普通 slice 会把 required `bookmark_tags` 的缺失/null 当成空结果；novel 当前只有 list，novel tags/detail/add/remove 的 wire/DTO/adapter/SDK 仍是 `not_tested`/candidate；两类 mutation 仍使用 error-only `PostForm`，不能用 2xx/nil 证明状态。上述缺口分别绑定到 T08A–T08D，不以一个宽泛父任务掩盖。
+- Green 命令及验收断言：`goal-3/tasks.md:40` 与 T03 表核对 T08 的真实范围；`sed`/`rg` 核对 `internal/services/pixiv/endpoint/artwork/bookmark/bookmark.go` 的现有 method/path/DTO 与 `internal/services/pixiv/endpoint/user/novelbookmarks/novelbookmarks.go` 的 novel list leaf；`go test ./scripts/tests/documentation -count=1`、`git diff --check` 通过。拆卡后依赖闭包为 T08A/T08B → 对应 mutation 子卡 → T08 umbrella，当前下一入口为 T08A。
+- 公开兼容性影响：只增加任务分解和审计边界，不新增 endpoint、public SDK symbol、CLI/MCP schema、默认值、依赖、账号/token 行为或 live 数据；四张子卡完成前不提升 bookmark capability 状态，41 条 required capability 继续为 `scope_admitted`。candidate novel path 与 mutation read-back 不因拆卡而成为已验证公开行为。
+- 回滚前提 / 依赖闭包：回滚只需撤销 T08A–T08D 行、T08 parent 依赖与本记录，不涉及生产代码或业务数据。后续若任一子卡已被 T15/T19/T23/T27/T37/T38 引用，回滚时必须同步撤销依赖或先补兼容修复，不能只删除父卡。
+- 实际结果 / evidence / 风险：T08 已完成拆卡但父任务仍为 pending；当前明确的首个实现任务为 T08A（artwork bookmark read）。novel candidate wire、mutation response/read-back、all 聚合和 strict live evidence 仍未完成，Goal 继续 incomplete。
 
 ## 实现任务准入卡
 
