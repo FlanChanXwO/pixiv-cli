@@ -46,7 +46,7 @@ Status 的 verified 表示对应 task 的实现与相关验证完成；各 task 
 | T09B | comment/stamp protocol path registry | T04,T06 | 补齐 artwork/novel comment mutation 与 stamps path 常量；只负责协议路径注册和 fixture，不拥有 endpoint/SDK/CLI/MCP | verified |
 | T09C | artwork comment endpoint owner | T04,T05,T06,T09A,T09B | 实现 artwork comments read/create/reply/stamp/delete leaf、DTO、请求校验与错误映射；保留旧 read shape，不实现 SDK/public/read-back orchestration | verified |
 | T09D | novel comment endpoint owner | T04,T05,T06,T09A,T09B | 实现 novel comments read/create/reply/stamp/delete leaf、DTO、请求校验与错误映射；固定 v2 contract，不对 v3 candidate 做 fallback | verified |
-| T09E | stamps endpoint owner | T04,T09B | 实现 `/v1/stamps` read leaf、字段级 DTO/ID/资源引用校验与错误映射；不把未验证字段或 continuation 猜成 public contract | pending |
+| T09E | stamps endpoint owner | T04,T09B | 实现 `/v1/stamps` read leaf、字段级 DTO/ID/资源引用校验与错误映射；不把未验证字段或 continuation 猜成 public contract | verified |
 | T09 | comment endpoint owners | T09A,T09B,T09C,T09D,T09E | 汇总并审计 artwork/novel comments read/create/reply/stamp/delete 与 stamps leaf；全部子卡完成后才可标记 verified | pending |
 | T10 | ranking/recommended/latest owners | T12 | 按 endpoint leaf 拆卡实现 subtype 与 request/DTO | pending |
 | T11 | endpoint continuation owners | T07,T08,T09,T10,T05 | 校验和提取 endpoint allowlist continuation；不持久化 next_url | pending |
@@ -449,6 +449,17 @@ Status 的 verified 表示对应 task 的实现与相关验证完成；各 task 
 - 公开兼容性影响：仅增加 `internal/services/pixiv/endpoint/novel/comments` 的内部 leaf request/result、mutation transport 依赖和 response 校验；既有 `List` 查询参数、映射结果、v2 path 与 continuation 行为保持兼容。没有新增 SDK symbol、CLI/MCP schema/route、公开 endpoint 契约、默认值、依赖、账号/token 行为或 live 数据；五项 T09 capability 与全部 41 条 required capability 继续为 `scope_admitted`。
 - 回滚前提 / 依赖闭包：整体回滚 `comments.go` 的 mutation/required-list 变更、`comments_test.go` fixture 与本记录/状态行；若后续 T16/T17/T33/T37/T38/T44 已引用这些内部 method 或 response ID 边界，必须同步撤销或先提供兼容迁移，不能只删除 endpoint leaf。无业务数据、账号、token、缓存、运行配置或生成物迁移。
 - 实际结果 / evidence / 风险：T09D 已 verified，novel comments v2 read 与 candidate create/reply/stamp/delete leaf 的离线请求、校验、映射和错误证据闭合；未执行真实 API，未验证 candidate mutation path/wire、空/空白正文业务语义、parent/stamp/comment namespace、写后 read-back、清理或不确定 outcome，也未验证 comments v2 strict 第二页/非空 total，故 `novel-comments-read` 与 `novel-comments-mutation` 仍为 `scope_admitted`。Goal-3 继续 incomplete，下一入口为 T09E。
+
+## T09E 完成记录
+
+- Owner package / 涉及文件：新增 `internal/services/pixiv/endpoint/stamps/stamps.go` 与同 stem 的 `stamps_test.go`。本卡只实现独立 stamps read endpoint leaf，没有接入 SDK、CLI/MCP、公开文档、依赖、账号池或运行配置。
+- Depends on：T04、T09B 已 verified。调用 T09B 注册的 `protocol.AppStamps`（`GET /v1/stamps`），通过 `GetJSON` 窄 transport 读取；T17 仍负责严格 snapshot 后的 public stamps model/DTO/SDK，后续 T21/T33/T37 负责 resolver、CLI/MCP 与公开输出。
+- 冻结 contract / fixture：请求固定为 `GET /v1/stamps`，query 为 nil，不发送未验证 selector；response 的 `stamps` 必须存在且为 list，缺失/null/错误结构映射为脱敏 `protocol.MalformedResponse`，`[]` 返回 non-nil empty；内部 candidate DTO 只读取 `stamp_id` 与 `stamp_url`，每个 ID 必须为正数，资源 locator 必须为 HTTPS、无 userinfo、带非根路径且命中既有 Pixiv media host allowlist；`next_url` 缺失或 null 表示正常结束，任何非 null continuation 都 malformed，绝不产生 cursor；未声明 wire 字段不进入结果，也不提升为 public contract。host allowlist 的新增校验仅在收到非 HTTPS、带凭据、无有效路径或非 `i.pximg.net`/`s.pximg.net`/`i-f.pximg.net` locator 时触发，目的是阻止不受信任资源进入后续 resource 层，正常 Pixiv stamp locator 不受影响。
+- Red 测试、命令及当前行为的预期失败：先新增 `TestListMapsStampIDAndResourceURL`，运行 `go test ./internal/services/pixiv/endpoint/stamps -run '^TestListMapsStampIDAndResourceURL$' -count=1 -v`，实际因目标目录只有测试文件而报 `no non-test Go files`；实现最小 leaf 后再新增 untrusted-host 断言，运行 `go test ./internal/services/pixiv/endpoint/stamps -run '^TestList(.*StampIDAndResourceURL|RejectsUntrustedResourceHost)$' -count=1 -v`，实际因非 Pixiv host 未被拒绝而失败，随后补齐既有 host policy。
+- Green 命令及验收断言：`go test ./internal/services/pixiv/endpoint/stamps -count=1 -v`、`go test -race ./internal/services/pixiv/endpoint/stamps -count=1`、`go test ./internal/services/pixiv/endpoint/stamps ./internal/services/pixiv/appapi ./sdk/pixiv ./internal/mcpserver/pixiv -count=1`、`go vet ./internal/services/pixiv/endpoint/stamps`、`go test ./scripts/tests/documentation -count=1`、`go vet ./...`、`go test ./... -count=1`、`sh scripts/build.sh` 与 `git diff --check` 均通过；测试覆盖固定 path/无 query、required/null/empty list、正/非正 ID、资源 locator 校验、no-continuation、transport failure、nil client/transport 以及 malformed error mapping。LSP blast-radius 显示新 leaf 无既有生产调用方，修改后两个文件 diagnostics 均为空。
+- 公开兼容性影响：仅增加 `internal/services/pixiv/endpoint/stamps` 的内部 `Transport`、`Client.List`、candidate `Stamp`/`Result` 与 response 校验；没有新增 SDK symbol、CLI/MCP route/schema、公开文档、默认值、依赖、endpoint fallback、live 请求或凭据行为。`stamps` capability 与全部 required capability 仍保持 `scope_admitted`，Goal-3 继续 incomplete。
+- 回滚前提 / 依赖闭包：整体回滚本卡两份新文件和本记录/状态行即可恢复 T09E 前状态；若后续 T17/T21/T33/T37 已引用该内部 `Stamp`/`Result`，回滚前须同步撤销或提供兼容迁移，不能只删除 leaf。没有业务数据、账号、token、缓存或生成物迁移。
+- 实际结果 / evidence / 风险：当前完成的是离线 endpoint owner；strict upstream evidence 只证明 `/v1/stamps` response 有 40 项且无 continuation，未把 schema fingerprint 猜成完整 public DTO。`stamp_id`/`stamp_url` 仍需 T17 strict snapshot、adapter/SDK 对照、resource ref 绑定与后续公开门禁；未执行真实 API，未改变任何 capability admission。下一入口为 T09 umbrella audit。
 
 ## 实现任务准入卡
 
