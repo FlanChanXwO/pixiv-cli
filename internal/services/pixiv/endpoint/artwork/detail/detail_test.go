@@ -52,6 +52,50 @@ func TestUgoiraMapsRequiredMetadata(t *testing.T) {
 	}
 }
 
+func TestUgoiraRejectsUnsafeOrDuplicateFrameFiles(t *testing.T) {
+	tests := []struct {
+		name  string
+		files []string
+	}{
+		{name: "parent directory", files: []string{"../000000.jpg"}},
+		{name: "absolute path", files: []string{"/tmp/000000.jpg"}},
+		{name: "nested parent directory", files: []string{"frames/../000000.jpg"}},
+		{name: "windows parent directory", files: []string{`frames\..\000000.jpg`}},
+		{name: "duplicate", files: []string{"000000.jpg", "000000.jpg"}},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			body := ugoiraMetadataResponse(test.files...)
+			client := detail.New(&fakeTransport{body: body})
+
+			if _, err := client.UgoiraMetadata(context.Background(), 123); err == nil {
+				t.Fatalf("expected malformed response for frame files %v", test.files)
+			}
+		})
+	}
+}
+
+func ugoiraMetadataResponse(files ...string) string {
+	frames := make([]map[string]any, 0, len(files))
+	for _, file := range files {
+		frames = append(frames, map[string]any{"file": file, "delay": 80})
+	}
+
+	body, err := json.Marshal(map[string]any{
+		"ugoira_metadata": map[string]any{
+			"zip_urls": map[string]string{
+				"medium": "https://i.pximg.net/img-zip-ugoira/img/123.zip",
+			},
+			"frames": frames,
+		},
+	})
+	if err != nil {
+		panic(err)
+	}
+	return string(body)
+}
+
 func TestArtworkRejectsNullOrMissingEnvelope(t *testing.T) {
 	for _, body := range []string{`{}`, `{"illust":null}`} {
 		_, err := detail.New(&fakeTransport{body: body}).Artwork(context.Background(), 123)

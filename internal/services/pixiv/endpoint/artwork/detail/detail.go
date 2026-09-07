@@ -6,7 +6,9 @@ import (
 	"encoding/json"
 	"errors"
 	"net/url"
+	"path"
 	"strconv"
+	"strings"
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/endpoint/artwork"
 	"github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/protocol"
@@ -67,10 +69,8 @@ func (c *Client) UgoiraMetadata(ctx context.Context, artworkID int64) (UgoiraRes
 		!metadata.Frames.Present || !metadata.Frames.Valid || len(metadata.Frames.Items) == 0 {
 		return UgoiraResult{}, protocol.MalformedResponse()
 	}
-	for _, frame := range metadata.Frames.Items {
-		if frame.File == "" {
-			return UgoiraResult{}, protocol.MalformedResponse()
-		}
+	if !validFrameFiles(metadata.Frames.Items) {
+		return UgoiraResult{}, protocol.MalformedResponse()
 	}
 	return UgoiraResult{Metadata: artwork.UgoiraMetadata{
 		ZipURLs: artwork.UgoiraZipURLs{
@@ -79,6 +79,31 @@ func (c *Client) UgoiraMetadata(ctx context.Context, artworkID int64) (UgoiraRes
 		},
 		Frames: mapFrames(metadata.Frames.Items),
 	}}, nil
+}
+
+func validFrameFiles(frames []ugoiraFrameDTO) bool {
+	seen := make(map[string]struct{}, len(frames))
+	for _, frame := range frames {
+		// 帧名会进入归档解包或落盘边界，必须拒绝路径穿越、绝对路径、NUL
+		// 和重复项，避免上游数据覆盖目标文件或产生歧义。
+		if frame.File == "" || strings.ContainsRune(frame.File, '\x00') {
+			return false
+		}
+		normalized := strings.ReplaceAll(frame.File, `\`, "/")
+		if path.IsAbs(normalized) || len(normalized) >= 2 && normalized[1] == ':' {
+			return false
+		}
+		for _, segment := range strings.Split(normalized, "/") {
+			if segment == "" || segment == "." || segment == ".." {
+				return false
+			}
+		}
+		if _, exists := seen[normalized]; exists {
+			return false
+		}
+		seen[normalized] = struct{}{}
+	}
+	return true
 }
 
 type artworkResponseDTO struct {

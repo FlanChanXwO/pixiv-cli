@@ -32,7 +32,7 @@ Status 的 verified 表示对应 task 的实现与相关验证完成；各 task 
 | R04 | follow restrict 输入校验 | CHECK-03,T06 | 在 `FollowUser` SDK 边界复用 `validateRestrict`；空值仍默认 `public`，未知值以 `InvalidArgument` 在发起请求前拒绝，并补充无网络请求回归 | verified |
 | T12 | SDK compatibility | T20,T01,T02,T03,T04,T05,T06,CHECK-03,R04 | 冻结 symbol map、旧 wrapper、named types、旧消费者编译、cursor 版本恢复；默认源码兼容 | verified |
 | T39A | CLI/MCP migration | T12 | 冻结 CLI 路由和 MCP tool/input/output compatibility map；旧 JSON 回放清单 | verified |
-| T07A | artwork read endpoint owner | T12 | 实现 artwork search、series、ugoira metadata 等 T07 artwork adapter leaf、DTO 与错误映射；保留现有 transport/SDK 边界，不进入 CLI/MCP | pending |
+| T07A | artwork read endpoint owner | T12 | 实现 artwork search、series、ugoira metadata 等 T07 artwork adapter leaf、DTO 与错误映射；保留现有 transport/SDK 边界，不进入 CLI/MCP | verified |
 | T07B | novel read endpoint owner | T12 | 实现 novel search、v2 detail、v2 series 等 T07 novel adapter leaf、DTO 与错误映射；禁止回退已 rejected v1 detail/series path | pending |
 | T07C | user read endpoint owner | T12,T06 | 实现 user search/detail/artworks/novels/relationships adapter leaf、DTO 与错误映射；bare-ID 的命令 resolver 仍由 T21 负责 | pending |
 | T07D | feed/relationship adjunct endpoint owner | T12,T06 | 实现 trending、MyPixiv、follow 所需 adapter leaf、DTO 与错误映射；不把 mutation read-back 或 CLI/MCP 发布门禁提前并入 | pending |
@@ -265,6 +265,17 @@ Status 的 verified 表示对应 task 的实现与相关验证完成；各 task 
 - 公开兼容性影响：没有 public SDK symbol、endpoint 请求、CLI/MCP wire、默认值、依赖、账号或 live 数据变化；只增加任务分解和审计边界，15 个 capability 继续为 `scope_admitted`。
 - 回滚前提 / 依赖闭包：回滚只需撤销四个子卡、T07 umbrella 依赖和本记录；后续若已有 owner 引用某子卡，必须同时撤销该依赖或先补兼容记录，不得只删除父卡。
 - 实际结果 / evidence / 风险：T07 的拆卡已完成，但 T07 父任务仍为 pending，不能据此宣告任何 capability `contract_frozen`、`migration_ready` 或 `public_ready`。下一轮按 DAG 执行 T07A，不进入 T07B–T08。
+
+## T07A 完成记录
+
+- Owner package / 涉及文件：artwork read endpoint；`internal/services/pixiv/endpoint/artwork/detail/detail.go`、`internal/services/pixiv/endpoint/artwork/detail/detail_test.go`。search 与 series leaf 沿用已存在的 `/v1/search/illust`、`/v1/illust/series` adapter、DTO 和 required/null/empty/continuation 校验；本任务只补齐 ugoira frame 文件安全边界，没有进入 SDK、CLI 或 MCP。
+- Depends on：T12 verified；T01 artwork contract 已冻结。
+- 冻结 contract / fixture：按 `goal-3/upstream-contract-matrix.md` 的 T01 约束，ugoira metadata 必须有可用 archive 和非空 frames；每个 frame file 必须非空、相对、安全且不重复。既有 artwork search/series 离线 fake transport fixture 继续覆盖 method/path、query、DTO 映射、空列表和 malformed required envelope。
+- Red 测试、命令及当前行为的预期失败：新增 `TestUgoiraRejectsUnsafeOrDuplicateFrameFiles` 后运行 `go test ./internal/services/pixiv/endpoint/artwork/detail -run '^TestUgoiraRejectsUnsafeOrDuplicateFrameFiles$' -count=1` 实际失败；旧 adapter 接受 `../000000.jpg`、绝对路径、`frames/../000000.jpg`、Windows 分隔符路径和重复文件名，并返回成功结果。
+- Green 命令及验收断言：`UgoiraMetadata` 在 DTO 映射前拒绝 NUL、绝对路径、Windows volume、空/`.`/`..` path segment 与归一化后的重复 frame file，返回既有 `protocol.MalformedResponse()`；新增测试与 `TestUgoiraMapsRequiredMetadata` 通过。随后 `go test ./internal/services/pixiv/endpoint/artwork/detail ./internal/services/pixiv/endpoint/artwork/search ./internal/services/pixiv/endpoint/artwork/series -count=1`、对应三包 `go vet`、`git diff --check` 均通过。
+- 公开兼容性影响：无 public SDK symbol、CLI/MCP wire、endpoint path、依赖或默认值变化；合法的普通 frame file 与既有 artwork search/series 请求保持不变。只把不满足已冻结安全契约的上游 payload 提前分类为 malformed，避免后续解包/落盘边界产生路径穿越、覆盖或重复歧义。
+- 回滚前提 / 依赖闭包：回滚需同时撤销 `validFrameFiles` 校验、ugoira 负向 fixture 和本完成记录；不得只回滚生产校验而保留 T07A verified 状态。未涉及账号、token、下载内容、运行配置或 live API。
+- 实际结果 / evidence / 风险：T07A 已 verified；artwork search、series、ugoira adapter leaf 的现有离线回归通过，ugoira 文件安全缺口已按 T01 contract 补齐。T07 umbrella 仍 pending，T07B/T07C/T07D 尚未完成，41 条 required capability 仍未提升到 `public_ready`，Goal 继续 incomplete；下一入口按 DAG 为 T07B。
 
 ## 实现任务准入卡
 
