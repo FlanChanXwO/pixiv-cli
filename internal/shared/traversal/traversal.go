@@ -41,6 +41,20 @@ func TraverseWith[C any, T any](
 	fetch func(context.Context, C, sdk.Cursor) ([]T, sdk.Cursor, error),
 	consume func([]T) (committed bool, err error),
 ) (pagination.PageResult, error) {
+	return TraverseWithFrom(ctx, execute, plan, sdk.Cursor{}, begin, fetch, consume)
+}
+
+// TraverseWithFrom 与 TraverseWith 相同，但从调用方已有的 opaque cursor 开始。
+// 这保持 cursor 的具体语义在 shared pagination 内，不让调用方解码或重建它。
+func TraverseWithFrom[C any, T any](
+	ctx context.Context,
+	execute Execute[C],
+	plan pagination.PagePlan,
+	initial sdk.Cursor,
+	begin func() error,
+	fetch func(context.Context, C, sdk.Cursor) ([]T, sdk.Cursor, error),
+	consume func([]T) (committed bool, err error),
+) (pagination.PageResult, error) {
 	if execute == nil {
 		return pagination.PageResult{}, ErrExecuteNotConfigured
 	}
@@ -55,7 +69,7 @@ func TraverseWith[C any, T any](
 
 		committed := false
 		var err error
-		pageResult, err = pagination.TraversePagesFrom(ctx, plan, sdk.Cursor{}, func(ctx context.Context, cursor sdk.Cursor) ([]T, sdk.Cursor, error) {
+		pageResult, err = pagination.TraversePagesFrom(ctx, plan, initial, func(ctx context.Context, cursor sdk.Cursor) ([]T, sdk.Cursor, error) {
 			return fetch(ctx, client, cursor)
 		}, func(items []T) error {
 			published, err := consume(items)
@@ -76,9 +90,20 @@ func CollectWith[C any, T any](
 	plan pagination.PagePlan,
 	fetch func(context.Context, C, sdk.Cursor) ([]T, sdk.Cursor, error),
 ) (PagedReadResult[T], error) {
+	return CollectWithFrom(ctx, execute, plan, sdk.Cursor{}, fetch)
+}
+
+// CollectWithFrom 与 CollectWith 相同，但从调用方已有的 opaque cursor 开始。
+func CollectWithFrom[C any, T any](
+	ctx context.Context,
+	execute Execute[C],
+	plan pagination.PagePlan,
+	initial sdk.Cursor,
+	fetch func(context.Context, C, sdk.Cursor) ([]T, sdk.Cursor, error),
+) (PagedReadResult[T], error) {
 	result := PagedReadResult[T]{Items: make([]T, 0)}
 
-	pageResult, err := TraverseWith(ctx, execute, plan, func() error {
+	pageResult, err := TraverseWithFrom(ctx, execute, plan, initial, func() error {
 		result.Items = result.Items[:0]
 		result.HasMore = false
 		return nil

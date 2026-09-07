@@ -25,7 +25,7 @@ Status 的 verified 表示对应 task 的实现与相关验证完成；各 task 
 | T04 | comment contract | T00,T20 | 冻结 artwork/novel comments read/create/reply/stamp/delete、stamps、total | verified |
 | T05 | continuation contract | T01,T02,T03,T04 | 冻结 allowlist、query/account/subtype binding、第二页 fixture；复用现有 cursor | verified |
 | CHECK-02 | 集中检查-debug（T03/T04/T05） | T05 | audit-only；不执行真实 API、不修改生产代码/CLI/MCP wire、不改 required_scope；复查 bookmark/comment/continuation contract、历史 evidence、T23A 边界、账号/query/subtype binding、第二页 fixture、额外/重复 key、bug/死代码、类型/构建/测试、安全/数据/回滚/文档，并登记修复项 | verified |
-| R02 | MCP filter replay 修复 | CHECK-02,T23A | 按 execution attempt 清空 MCP 本地 `seen` 状态；补非零 cursor + 本地 filter + 安全账号池 replay 回归，确保不静默丢记录；不改变 MCP schema | pending |
+| R02 | MCP filter replay 修复 | CHECK-02,T23A | 按 execution attempt 清空 MCP 本地 `seen` 状态；补非零 cursor + 本地 filter + 安全账号池 replay 回归，确保不静默丢记录；不改变 MCP schema | verified |
 | R03 | Goal 任务账本与文档 tracking hygiene | CHECK-02 | 对齐 T03/T04 的显式 depends_on 与完成记录；处理 `/goal-*/` 对新增 Goal 文档的忽略/force-add 规则 | pending |
 | T06 | error/其他 read contract | T00,T01,T02,T03,T04 | 冻结 user search/detail/relationships、trending、follow、mypixiv、error、mutation outcome 与脱敏 | pending |
 | T12 | SDK compatibility | T20,T01,T02,T03,T04,T05,T06 | 冻结 symbol map、旧 wrapper、named types、旧消费者编译、cursor 版本恢复；默认源码兼容 | pending |
@@ -171,6 +171,17 @@ Status 的 verified 表示对应 task 的实现与相关验证完成；各 task 
 - 回滚前提 / 依赖闭包：本轮只改 audit ledger/report；回滚需同时撤销 CHECK-02 状态、审计记录和 R02/R03 排程，不涉及运行数据或账号。R02 后续修改必须将 runtime filter 状态、traversal replay、MCP search fixture 作为同一测试/回滚闭包。
 - 实际结果 / evidence / 风险：CHECK-02 已完成，发现一项 T23A 范围内 P1 数据遗漏风险，故 Goal 继续 incomplete；下一入口是 R02，不是 T06。`pagination-validation-report.md` 已补充本审计对历史 zero-cursor replay 证据的限定，避免把既有全量测试通过误读为非零 cursor replay 已验证。
 
+## R02 完成记录
+
+- Owner package / 涉及文件：`internal/mcpserver/pixiv/internal/runtime/runtime.go`、`internal/mcpserver/pixiv/internal/runtime/runtime_test.go` 与 `internal/shared/traversal/traversal.go`。runtime 仍持有 MCP 本地 record filter；shared traversal 仅补充已有 opaque cursor 的 From 入口，使非零 continuation 能在同一 execution-attempt 语义下验证。
+- Depends on：CHECK-02、T23A verified；未引入新的 endpoint、账号池策略或 MCP wire surface。
+- 冻结 contract / fixture：每次 pooled `Execute` 回调代表一个独立 attempt，`seen` 必须在 attempt 开始时清空，不再根据 cursor 是否为零推断生命周期。离线 fixture 使用真实 `pixiv.OpenWith` SDK client：先取得 offset=30 的非零 cursor；首个 attempt 返回通过 `min_views` local filter 的 artwork 200、续到 offset=60 后返回错误；safe replay 从同一 offset=30 重新返回重复的 200 和被 filter 排除的 201。两次 attempt 均断言 `committed=false`，MCP schema 与 opaque cursor wire 不变。
+- Red 测试、命令及当前行为的预期失败：`go test ./internal/mcpserver/pixiv/internal/runtime -run TestCollectWithFromResetsLocalFilterOnSafeReplay -count=1 -v` 实际失败，safe replay 后结果为 `[]`，断言期望 1 条；这证明上一 attempt 的 `seen` 状态会静默丢掉 replay 首批记录，而非编译错误或人工推断。
+- Green 命令及验收断言：同一 focused test 通过；`go test ./internal/shared/traversal ./internal/mcpserver/pixiv/internal/runtime ./internal/mcpserver/pixiv/tools/search_illust ./internal/mcpserver/pixiv -count=1`、`go test -race ./internal/shared/traversal ./internal/mcpserver/pixiv/internal/runtime ./internal/mcpserver/pixiv/tools/search_illust -count=1`、`go test ./... -count=1`、`go vet ./...`、`sh scripts/build.sh`、`git diff --check` 均通过。结果断言确认 replay 不遗漏、不重复，existing traversal commit-boundary tests 继续通过。
+- 公开兼容性影响：没有 MCP schema/input/output、CLI、SDK public symbol、endpoint 请求、默认值、依赖或 token 行为变化；`CollectWith` 的 zero-cursor 调用保持原语义，仅新增 shared internal `CollectWithFrom`/`TraverseWithFrom` 委托入口。
+- 回滚前提 / 依赖闭包：需整体回滚 runtime 的 attempt wrapper、shared traversal From 委托入口及其离线 SDK 回归；若后续 owner 使用 From 入口，必须先撤销或迁移这些调用，不能只删除 wrapper。无运行数据、账号或持久配置迁移。
+- 实际结果 / evidence / 风险：R02 已 verified，P1 local-filter replay 遗漏已修复并通过 code-review-expert 自审，无新增 P0/P1。真实 API/live second-page、mutation、其余 endpoint continuation 仍未由本 task 覆盖；41 条 required capability 继续为 `scope_admitted`，Goal 保持 incomplete，下一入口是 R03。
+
 ## 实现任务准入卡
 
 在当前任务下回写以下内容，或链接已有 contract/fixture；不要自动新增独立计划文件。跨 owner 的汇总任务必须先拆成单 owner 子卡；子卡使用父 ID 后缀，列出自己的依赖，父任务在全部子卡完成后完成。
@@ -198,5 +209,5 @@ Green 命令及验收断言：
 
 ## CHECK-02 追加修复任务
 
-- `R02`（pending，P1）：修复 `internal/mcpserver/pixiv/internal/runtime/runtime.go` 中 MCP local filter `seen` 的 execution-attempt 生命周期。账号池从非零 opaque cursor replay 时必须清空上一 attempt 的去重状态，再从同一初始 cursor 重新收集；增加真实 SDK + 离线 HTTP fixture，覆盖本地 filter、非零 cursor、safe replay、结果不遗漏不重复及 commit 边界。不得修改 MCP schema，不得静默重试或扩大 T23A 范围。
+- `R02`（verified，P1）：已修复 `internal/mcpserver/pixiv/internal/runtime/runtime.go` 中 MCP local filter `seen` 的 execution-attempt 生命周期。账号池从非零 opaque cursor replay 时会清空上一 attempt 的去重状态，再从同一初始 cursor 重新收集；真实 SDK + 离线 HTTP fixture 覆盖本地 filter、非零 cursor、safe replay、结果不遗漏不重复及 commit 边界。未修改 MCP schema，未加入静默重试，未扩大 T23A 范围；完整证据见上方 `R02 完成记录` 与分页报告。
 - `R03`（pending，P2）：修正 `tasks.md` 的 T03/T04 depends_on 与完成记录，并决定 `/goal-*/` 的 Goal 文档跟踪策略（取消过宽忽略或在交付门禁中明确 force-add）；变更仅限计划/仓库 tracking，不得改变 required_scope 或公开行为。CHECK-02 的 audit-only 防误升级验收已在本轮补齐。

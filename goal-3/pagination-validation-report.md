@@ -132,3 +132,11 @@ T23A 任务卡：owner 为 shared pagination、sdk/pixiv、CLI search 和 MCP se
 CHECK-02 对 T23A 的当前实现和证据进行了集中复查。`go test ./... -count=1`、`go vet ./...`、`sh scripts/build.sh` 与文档测试均通过，但全量通过不覆盖尚未存在的非零 cursor replay fixture。`internal/mcpserver/pixiv/internal/runtime/runtime.go:223-238` 在 `CollectWith` 外层只创建一次 `seen`，仅当 fetch 收到 zero cursor 时重建；`internal/shared/traversal/traversal.go:70-93` 的 replay begin 只清空结果，不清空该 map；`internal/mcpserver/pixiv/internal/filters/filters.go:161-176` 会把重复实体静默过滤。因此从非零初始 cursor 开始、首个账号已产生 local-filter 状态后触发 safe account-pool replay，可能丢失第二次尝试的首批记录。现有 `internal/mcpserver/pixiv/tools/search_illust/bookmark_test.go:60-96` 只覆盖 zero cursor。
 
 该问题属于 T23A 范围内的 P1 数据完整性风险，已登记 `goal-3/tasks.md` 的 R02；在 R02 完成前，不能把“账号池重放”写成无条件已验证，也不能把 T23A 局部状态提升为其他 capability 的发布授权。真实 API、mutation 和 live second-page 仍按本报告原有 `inconclusive`/`pagination_exempt` 边界处理。
+
+### 2026-09-07 R02 修复记录
+
+R02 已完成。`internal/mcpserver/pixiv/internal/runtime/runtime.go` 现在把 MCP 本地 filter 的 `seen` map 重置绑定到 pooled `Execute` 回调的每个 execution attempt；不再用 opaque cursor 是否为零推断 replay 生命周期。`internal/shared/traversal/traversal.go` 新增 `TraverseWithFrom`/`CollectWithFrom` 委托入口，保持既有 zero-cursor `TraverseWith`/`CollectWith` 行为不变，并让回归可以从非零 continuation 真实起步。没有修改 MCP schema、CLI/SDK public contract、endpoint、依赖或静默重试行为。
+
+新增 `internal/mcpserver/pixiv/internal/runtime/runtime_test.go`，使用真实 `pixiv.OpenWith` client 与离线 HTTP fixture：seed 得到 offset=30 的 opaque cursor；首个 attempt 返回本地 `min_views` 命中的 artwork 200，随后在 offset=60 失败；safe replay 从同一 offset=30 返回重复 200 与被本地 filter 排除的 201。Red 阶段实际得到 replay 结果 0 条；修复后结果为恰好 1 条 200，且两次 attempt 均保持 `committed=false`。这覆盖了非零 cursor、local filter、safe replay、遗漏/重复和 commit 边界，而不是只测试 zero-cursor 重放。
+
+R02 验证：`go test ./internal/shared/traversal ./internal/mcpserver/pixiv/internal/runtime ./internal/mcpserver/pixiv/tools/search_illust ./internal/mcpserver/pixiv -count=1`、`go test -race ./internal/shared/traversal ./internal/mcpserver/pixiv/internal/runtime ./internal/mcpserver/pixiv/tools/search_illust -count=1`、`go test ./... -count=1`、`go vet ./...`、`sh scripts/build.sh` 与 `git diff --check` 均通过。该修复关闭本报告登记的 MCP local-filter replay P1；真实 API、mutation、live second-page 与其他 endpoint continuation 仍保持原有 evidence 边界，T23A 之外的 required capability 不因此升级。

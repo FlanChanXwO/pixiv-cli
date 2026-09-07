@@ -223,13 +223,29 @@ func Write(a *App, ctx context.Context, invoke func(context.Context, *pixiv.Clie
 // CollectWith 只负责 MCP record filter，逻辑分页由共享 traversal 引擎执行。
 // MCP 不自行打开 client、重放账号或解释 opaque cursor。
 func CollectWith[T any](ctx context.Context, app *App, plan ListPlan, fetch func(context.Context, *pixiv.Client, sdk.Cursor) ([]T, sdk.Cursor, error)) ([]T, bool, error) {
+	return collectWithFrom(ctx, app, plan, sdk.Cursor{}, fetch)
+}
+
+// collectWithFrom 是 MCP 内部的非 wire continuation seam；公开 tool 仍由
+// CollectWith 从零 cursor 开始，测试与后续 owner 可验证已有 opaque cursor 的
+// execution-attempt 生命周期。
+func collectWithFrom[T any](ctx context.Context, app *App, plan ListPlan, initial sdk.Cursor, fetch func(context.Context, *pixiv.Client, sdk.Cursor) ([]T, sdk.Cursor, error)) ([]T, bool, error) {
 	seen := make(map[string]struct{})
-	result, err := traversal.CollectWith(ctx, app.Execute(), pagination.PagePlan{
-		Skip: plan.Skip, Limit: max(0, plan.Limit), OneBatch: plan.OneBatch,
-	}, func(ctx context.Context, client *pixiv.Client, cursor sdk.Cursor) ([]T, sdk.Cursor, error) {
-		if cursor.IsZero() {
-			seen = make(map[string]struct{})
+	baseExecute := app.Execute()
+	execute := baseExecute
+	if baseExecute != nil {
+		execute = func(ctx context.Context, attempt func(context.Context, *pixiv.Client) (bool, error)) error {
+			return baseExecute(ctx, func(attemptCtx context.Context, client *pixiv.Client) (bool, error) {
+				// safe replay 可能在同一 Execute 调用内切换账号；去重状态必须
+				// 与每次 attempt 对齐，不能由 opaque cursor 的数值推断生命周期。
+				seen = make(map[string]struct{})
+				return attempt(attemptCtx, client)
+			})
 		}
+	}
+	result, err := traversal.CollectWithFrom(ctx, execute, pagination.PagePlan{
+		Skip: plan.Skip, Limit: max(0, plan.Limit), OneBatch: plan.OneBatch,
+	}, initial, func(ctx context.Context, client *pixiv.Client, cursor sdk.Cursor) ([]T, sdk.Cursor, error) {
 		items, next, err := fetch(ctx, client, cursor)
 		if err != nil {
 			return nil, sdk.Cursor{}, err
