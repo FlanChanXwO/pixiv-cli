@@ -262,6 +262,48 @@
 - 非本 operation 的额外 continuation query key 与跨页重复 upstream cursor 的拒绝，需要 leaf parser/共享 traversal 的专门回归；当前仅有同一 URL 内重复参数拒绝和 shared 层重复 cursor 检测，不能把两者混为一谈。
 - T05 只冻结 contract/fixture，不改变 capability admission；所有 required capability 继续由 `capability-admission.md` 授权，当前 Goal 仍 incomplete。
 
+## T06 error 与其他 read contract 冻结（2026-09-07）
+
+本节冻结 user、trending、MyPixiv 与 follow mutation 的 request/DTO/分页、鉴权、错误、结果和脱敏边界；不把当前 endpoint/SDK fixture 或历史 live evidence 直接提升为 `public_ready`。user artworks/novels 的真实数据受限仍沿用 `pagination_exempt`，但不能豁免合成两页、binding、错误和输出原子性回归。T06 不新增 endpoint、public symbol、CLI/MCP wire 或匿名 fallback。
+
+### T06 user、trending 与 MyPixiv read contract
+
+| Operation family | Method / path | Base request | Normalized response | Continuation / access boundary | Evidence boundary |
+| --- | --- | --- | --- | --- | --- |
+| user search | `GET /v1/search/user` | `word` 必须非空；首请求不带 `offset`，续页只带正 `offset` | required `user_previews` list → `UserPreview{User}`；每个 user ID 必须为正数；空数组是合法成功结果 | `next_url=null` 正常结束；非 null 只接受本 operation 的唯一正 `offset`；搜索账号 binding 当前仍是 T05 登记的 P1 gap | endpoint/SDK fixture 已有（`internal/services/pixiv/endpoint/user/search`、`sdk/pixiv/pixiv_test.go`）；strict live case 未进入 `evidence/appapi-upstream.md`，不据 fixture 提升 verdict |
+| user detail / current user | `GET /v1/user/detail` | 目标 user ID 必须为正数；`CurrentUser` 只能使用已验证 client identity 并附 `filter=for_android` | `user`、`profile`、`profile_publicity`、`workspace` 四个 envelope 都是 required object；缺失、null、结构非法或 user ID 非正数为 malformed；profile publicity 只接受 bool 或 `public/private` 形式 | 无 continuation；当前用户身份未知返回 `Unauthorized`，不得从 token 猜 ID 或切换账号 | detail endpoint、SDK DTO、MCP structured fixture 已有；strict live row 未登记，profile optional/visibility 语义以 owner fixture 为准 |
+| user artworks | `GET /v1/user/illusts` | user ID 必须为正数；`type` 是 command-specific artwork subtype，public `artwork/illustration` 映射 upstream `illust`；不支持的 subtype 返回 `InvalidArgument`；首请求不带 `offset` | required `illusts` list → `Artwork`；item ID 必须为正数；空数组合法且保持 non-nil `Items` | continuation 为正 `offset`，`user_id/type` 是 immutable base binding；不能把 user target 当成 artwork subtype | wire/adapter/SDK fixture 与历史 `user-illusts-{illust,manga}` row 已有；live 第二页未观察，继续 `inconclusive`/`pagination_exempt` 边界 |
+| user novels | `GET /v1/user/novels` | user ID 必须为正数；adapter 固定 `filter=for_android`；首请求不带 `offset` | required `novels` list → `Novel`；novel ID 与 nested user ID 必须为正数；空数组合法且保持 non-nil `Items` | continuation 为正 `offset`，`user_id` 不得被续页替换；这是 public user read，不把 private bookmark scope 混入 | wire/adapter/SDK fixture 与历史 `user-novels` row 已有；数据受限，live 第二页未观察，继续 `inconclusive`/`pagination_exempt` |
+| user relationships | `GET /v1/user/following`, `GET /v1/user/follower`, `GET /v1/user/related`, `GET /v2/user/list` | following/follower 使用正 `user_id` + `restrict=public|private`；related 使用正 `seed_user_id`；blocked 使用正 `user_id` + `filter=for_android`；首请求不带 `offset` | required user list（`user_previews`，blocked 兼容 `users`）→ `UserPreview{User}`；每个 user ID 必须为正数；空数组合法 | 所有 list continuation 只接受正 `offset`；restrict、target/seed ID 和 blocked scope 是 binding；跨账号 private、403、缺少认证不得改为 public、匿名或另一 user 重试 | endpoint leaf tests、SDK/MCP request/output fixtures 已有；strict live rows 未登记，related/followers/blocked 的第二页不得从其他 list 推断 |
+| user recommended | `GET /v1/user/recommended` | 首请求不发送 `offset`；合法续页即使为 `offset=0` 也必须显式发送 | required `user_previews`；user ID、nested artwork/novel ID 与 nested owner ID 必须为正数；nested list 可为空但不能以 malformed 响应伪装成功 | continuation 为 `offset`，区分 zero cursor 与 explicit `offset=0`；推荐 aggregate 的 user/artwork/novel result kind 不混为 subtype | endpoint fixture 已覆盖 nested mapping 与 `offset=0`；strict live case 未登记，不授予 recommended-all 发布权限 |
+| trending artwork tags | `GET /v1/trending-tags/illust` | 无 query、无用户 ID、无 continuation | required `trend_tags` list；每项 `tag` 非空且必须有合法 sample artwork；sample artwork ID 为正数并按 artwork DTO 规则映射；空数组合法 | 无分页；缺失/null list、空 tag、缺失/null sample artwork 或 sample ID 非正数为 `MalformedUpstreamResponse` | endpoint/SDK/MCP fixture 已有；strict live row 未登记，不能把当前 fixture 当作 upstream 两页或发布 evidence |
+| MyPixiv users | `GET /v1/user/mypixiv` | 只使用 verified current user ID，并固定 `filter=for_android`；首请求不带 `offset` | required `user_previews` list → `UserPreview{User}`；user ID 必须为正数；空数组合法 | continuation 为正 `offset`；不得接受调用方注入其他 user ID，不得匿名 fallback；身份未知返回 `Unauthorized` | endpoint/SDK/MCP fixture 已有；strict live row 未登记；账号 binding 和 pool replay 由 T12/T19/T23 owner 回归 |
+| MyPixiv artworks / novels | `GET /v2/illust/mypixiv`, `GET /v1/novel/mypixiv` | 由当前 authenticated client 执行；首请求不带 `offset`；不接受 user ID 或跨账号 scope | artwork path 的 required `illusts` → `Artwork`；novel path 的 required `novels` → `Novel`；ID 与 nested owner ID 必须为正数；空数组合法 | 两者 continuation 均为正 `offset`；各自 operation/cursor 不互用；无匿名、Web 或另一账号 fallback | artwork/novel timeline endpoint tests、SDK/MCP fixtures 已有；strict live 第二页未登记，不据 MyPixiv fixture 提升 verdict |
+
+所有 T06 list 的 required envelope 缺失或 JSON `null` 都是 `MalformedUpstreamResponse`，合法空数组必须保持 non-nil empty `Items`。`next_url` 只在 adapter 内解析；空字符串、不可解析、缺失唯一 allowlist key、重复 key、非正数或跨 operation key 均为 malformed，不把 raw URL 写入 public cursor。user search 的 verified account binding 缺口延续 T05 记录，必须由 T12/T18 决定，不由本节文档替代实现。
+
+### T06 follow mutation、错误与结果脱敏
+
+| Operation | Method / path | Request / precondition | Outcome contract | Evidence boundary |
+| --- | --- | --- | --- | --- |
+| follow user | `POST /v1/user/follow/add` | `user_id` 正数；`restrict` 仅 `public|private`，空值由兼容层默认 `public`；写前须在同一账号 execution context 验证目标和权限 | 当前 `PostForm` 不解码 response body，2xx/nil 只表示请求被接受，不能单独宣告关系已改变；必须用同账号 user/relationship read-back 证明 `is_followed=true`。明确拒绝/确定失败、读回失败和 dispatch 后不确定结果分开，不自动重放 | endpoint path/form、SDK/MCP wire fixture 已有；当前生产层没有 follow mutation read-back strict evidence，仍由 T07/T35/T38 完成 |
+| unfollow user | `POST /v1/user/follow/delete` | `user_id` 正数；写前保存原关系状态并使用同一账号 execution context | 2xx/nil 不是删除证明；同账号 read-back 必须证明 `is_followed=false`，并恢复测试前原状态。transport/cancel/deadline 或已接受但无法读回时保留不确定状态，不猜测、不搜索最近关系、不自动重试 | endpoint path/form、SDK/MCP wire fixture 已有；当前 production mutation/read-back 未测试，不升级 capability |
+
+T06 统一采用以下 SDK error 分类，调用方不能把错误流、空列表或 mutation 的 2xx 伪装成成功：
+
+- `InvalidArgument`：本地 ID/word/restrict/subtype/namespace 冲突或不支持的输入；不发送 upstream request。`InvalidCursor`：operation、query、account/client binding、版本或 continuation 不匹配。
+- `Unauthorized`：当前用户身份不可用的 identity-scoped read；`CredentialsExpired`：401 或无效/过期凭据；`Forbidden`：403/access-control 拒绝；`NotFound`：404；`ContentUnavailable`：410；`RateLimited`：429，并且只使用验证过的 `Retry-After` 提供 retry advice。
+- `MalformedUpstreamResponse`：required envelope/list/object 缺失、null、ID/continuation/schema 非法；`UpstreamError`：其他已分类的 upstream rejection/5xx；`UpstreamUnavailable`：DNS/TLS/proxy/connection/timeout 等传输失败。`context.Canceled` 与 `context.DeadlineExceeded` 保留为可识别的取消原因，不改写成成功或空结果。
+- 未有独立证据时不新增 `ChallengeRequired` 或其他 Pixiv-specific reason；403、网络错误、429、malformed 和不确定 mutation 不能触发“换一种资源类型再试”的隐式 bare-ID probe。bare-ID probe 只有在 T21 冻结候选 namespace 后才允许，无法判定或多个候选成功必须显式 `InvalidArgument`。
+
+错误与输出必须只交付受控分类：`sdk.Error` 的 detail/cause 不含 response body、raw URL、header、token、cookie、proxy userinfo、浏览器路径、配置内容、用户输入正文或上游 Web envelope message；protocol failure 只保留 status、transport、取消/deadline 和已验证 retry advice。CLI/MCP 不输出敏感诊断，MCP runtime error 保留 structured result 并设置 `isError=true`，stdout 继续只承载 JSON-RPC；cursor 只保存 binding/query digest/typed continuation，不保存 raw query、next_url、用户内容或凭据。
+
+### T06 evidence index 与边界
+
+- user/search/detail/relationship/trending/MyPixiv 的当前 adapter 与 SDK 对照分别见 `internal/services/pixiv/endpoint/user/{search,detail,related,followers,following,blocked,mypixiv,recommended}`、`internal/services/pixiv/endpoint/artwork/trending`、`internal/services/pixiv/endpoint/artwork/timeline`、`internal/services/pixiv/endpoint/novel/timeline` 及 `sdk/pixiv/{ops_user.go,ops_artwork.go,ops_novel.go,pixiv_test.go}`；MCP route/structured output 见 `internal/mcpserver/pixiv/pixiv_user_test.go`、`pixiv_sdk_wire_test.go`。
+- error/redaction 的现有安全边界见 `sdk/error.go`、`sdk/pixiv/errors.go`、`internal/services/pixiv/protocol/failure.go` 及其测试；双语 SDK 对外错误契约见 `docs/en/sdk.md`、`docs/zh-CN/sdk.md`。这些是当前实现与 fixture evidence，不替代 T12/T35/T37/T38 的兼容和发布回归。
+- strict live evidence 只认 `goal-3/evidence/appapi-upstream.md`/`.json` 的已登记 rows；T06 新增的 user search/detail/relationships/recommended/trending/MyPixiv/follow mutation 没有被历史 live 记录覆盖，user artworks/novels 的已有 rows 继续保持 `inconclusive`/`pagination_exempt`。本节不改写任何历史 verdict，不修改 capability admission；required capabilities 继续为 `scope_admitted`。
+
 ## 迁移准入规则（2026-09-07 更正）
 
 上表保留历史观测与原 verdict；包括备注中的 migration-ready 也仅是当时的证据标签，不是当前实施状态。当前实施与发布授权只来自 [能力准入表](capability-admission.md)，confirmed 不放行 CLI/MCP/docs。contract、T12/T39A、adapter/SDK、回归与文档按 tasks 依赖推进。

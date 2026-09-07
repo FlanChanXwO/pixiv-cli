@@ -27,8 +27,9 @@ Status 的 verified 表示对应 task 的实现与相关验证完成；各 task 
 | CHECK-02 | 集中检查-debug（T03/T04/T05） | T05 | audit-only；不执行真实 API、不修改生产代码/CLI/MCP wire、不改 required_scope；复查 bookmark/comment/continuation contract、历史 evidence、T23A 边界、账号/query/subtype binding、第二页 fixture、额外/重复 key、bug/死代码、类型/构建/测试、安全/数据/回滚/文档，并登记修复项 | verified |
 | R02 | MCP filter replay 修复 | CHECK-02,T23A | 按 execution attempt 清空 MCP 本地 `seen` 状态；补非零 cursor + 本地 filter + 安全账号池 replay 回归，确保不静默丢记录；不改变 MCP schema | verified |
 | R03 | Goal 任务账本与文档 tracking hygiene | CHECK-02 | 对齐 T03/T04 的显式 depends_on 与完成记录；处理 `/goal-*/` 对新增 Goal 文档的忽略/force-add 规则 | verified |
-| T06 | error/其他 read contract | T00,T01,T02,T03,T04 | 冻结 user search/detail/relationships、trending、follow、mypixiv、error、mutation outcome 与脱敏 | pending |
-| T12 | SDK compatibility | T20,T01,T02,T03,T04,T05,T06 | 冻结 symbol map、旧 wrapper、named types、旧消费者编译、cursor 版本恢复；默认源码兼容 | pending |
+| T06 | error/其他 read contract | T00,T01,T02,T03,T04 | 冻结 user search/detail/relationships、user artworks/novels、recommended users、trending、follow、mypixiv、error、mutation outcome 与脱敏 | verified |
+| CHECK-03 | 集中检查-debug（R02/R03/T06） | R02,R03,T06 | audit-only；复查 T06 read/error/mutation contract、R02 replay 修复、R03 tracking、41 条 required_scope、历史 evidence、T23A 边界、bug/死代码、类型/构建/测试、安全/数据/回滚/文档，并登记修复项 | pending |
+| T12 | SDK compatibility | T20,T01,T02,T03,T04,T05,T06,CHECK-03 | 冻结 symbol map、旧 wrapper、named types、旧消费者编译、cursor 版本恢复；默认源码兼容 | pending |
 | T39A | CLI/MCP migration | T12 | 冻结 CLI 路由和 MCP tool/input/output compatibility map；旧 JSON 回放清单 | pending |
 | T07 | read endpoint owners | T12 | 按 artwork/novel endpoint leaf 拆卡，实现 read adapter（含 v2、user/trending/relationships、follow/mypixiv 所需 endpoint）、DTO 与错误映射 | pending |
 | T08 | bookmark endpoint owners | T12 | 按两类 list/tags/detail/mutation leaf 拆卡实现 | pending |
@@ -192,6 +193,17 @@ Status 的 verified 表示对应 task 的实现与相关验证完成；各 task 
 - 公开兼容性影响：无 production code、SDK/CLI/MCP public surface、endpoint、依赖、required_scope 或状态授权变化；只修正计划 DAG 和仓库忽略边界。
 - 回滚前提 / 依赖闭包：整体回滚 `.gitignore` 的 `goal-3` 例外、T03/T04 依赖表和本完成记录即可恢复原 tracking 行为；不涉及业务数据、账号、构建产物或运行配置。
 - 实际结果 / evidence / 风险：R03 已 verified。任务表依赖 DAG 无新增环，Goal-3 文档 tracking 策略已明确；41 条 required capability 仍为 `scope_admitted`，Goal 继续 incomplete，下一入口按拓扑进入 T06。
+
+## T06 完成记录
+
+- Owner package / 涉及文件：error/其他 read contract；`goal-3/upstream-contract-matrix.md`、`goal-3/plan.md`、本文件。只冻结 user search/detail/relationships、user artworks/novels、recommended users、trending、MyPixiv、follow mutation、统一错误分类、mutation outcome 与脱敏，不实现 endpoint/SDK/CLI/MCP。
+- Depends on：T00、T01、T02、T03、T04 verified；本轮复用 T05 的 continuation/binding 规则、T20 的 Target/Result/Subtype 语义、CHECK-02/R02 的 replay 与错误边界。
+- 冻结 contract / fixture：upstream matrix 新增 T06 section。read operation 明确 method/path、required/optional/null/empty、正数 ID、subtype、offset/`offset=0`、verified current identity、private relationship scope 与无匿名 fallback；follow add/remove 明确 form path、写前检查、同账号 read-back 和确定失败/已接受未读回/dispatch 后不确定三类 outcome；错误矩阵冻结 `InvalidArgument`、`InvalidCursor`、`Unauthorized`、`CredentialsExpired`、`Forbidden`、`NotFound`、`ContentUnavailable`、`RateLimited`、`MalformedUpstreamResponse`、`UpstreamError`、`UpstreamUnavailable` 的边界，以及 cursor、SDK error、CLI/MCP structured output 的脱敏规则。历史 live rows 与 user artworks/novels 的 `inconclusive`/`pagination_exempt` 边界未改写。
+- Red 测试、命令及当前行为的预期失败：T06 是 contract freeze 文档任务，无生产代码 Red 阶段。只读审计确认 user/trending/MyPixiv/relationship endpoint 与 SDK/MCP fixture 已存在，但这些新增 T06 families 没有 strict live rows；`user-illusts`/`user-novels` 真实第二页未观察；SearchUsers account binding gap 仍由 T05 登记；follow leaf 与 SDK 只保留 status-only `PostForm`，没有 production read-back/outcome evidence；bare-ID probe 不能把 403、网络错误或不确定响应当作换类型依据。
+- Green 命令及验收断言：复读 `input.md`/`plan.md`/`tasks.md`；`rg`/`nl` 核验 T06 operation 表覆盖 user read、recommended、trending、MyPixiv、follow mutation、error/redaction、bare-ID 与 evidence boundary；确认历史 strict rows 未被改写、41 条 required capability 仍为 `scope_admitted`；提交前运行 `go test ./scripts/tests/documentation -count=1`、`git diff --check`，提交钩子运行 `go test ./...`。
+- 公开兼容性影响：无 production code、public SDK symbol、CLI/MCP wire、endpoint 请求、默认值、依赖或 live 数据变化；保留现有 `SearchUsers`、user detail/relationship、MyPixiv、trending、`FollowUser`/`UnfollowUser` 的源码与 wire 形状，后续 owner 不能把合约冻结误当作发布完成。
+- 回滚前提 / 依赖闭包：文档提交需整体回滚 T06 matrix section、plan link、T06 状态和 CHECK-03 排程；没有数据、账号、生产配置或 endpoint path 依赖。后续 T07/T12/T13/T14/T21/T35/T36/T37/T38 若已引用 T06，回滚时必须同步撤销其 read/error/mutation compatibility 依赖，不能只删除 contract 文本。
+- 实际结果 / evidence / 风险：T06 已 verified；当前 41 条 required capability 继续为 `scope_admitted`，Goal 保持 incomplete。T06 未新增 live API、未提高任何 capability 状态，未声明 follow read-back、SearchUsers account binding、user/relationship/MyPixiv/trending strict live 或 bare-ID probe 已完成。最近三个 task 为 R02、R03、T06，下一入口按 goal-mode 规则进入 `CHECK-03`，不直接跳到 T12。
 
 ## 实现任务准入卡
 

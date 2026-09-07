@@ -46,6 +46,8 @@ resolver 依次消费 structured canonical record、现有纯本地 ParseURL、�
 
 [artwork 基础 contract](upstream-contract-matrix.md#t01-artwork-基础-contract-冻结)、[novel 基础 contract](upstream-contract-matrix.md#t02-novel-基础-contract-冻结)、[bookmark 基础 contract](upstream-contract-matrix.md#t03-bookmark-基础-contract-冻结)、[comment 与 stamp 基础 contract](upstream-contract-matrix.md#t04-comment-与-stamp-基础-contract-冻结)、[T05 continuation contract](upstream-contract-matrix.md#t05-continuation-binding-and-page-2-fixture-contract-freeze-2026-09-07)、[CLI 迁移矩阵](cli-migration-matrix.md) 冻结路由、flag、stdin/JSON/NDJSON 与 MCP 映射。bookmark list/tags --type all 均为 required：先 artwork 后 novel、各流顺序不变、统一 Skip/Limit、cursor 记录当前流及各流 checkpoint；tags 按内容类型保留同名标签和各自 count。需要的流之一失败时整次逻辑页失败，收集成功后才输出 JSON/NDJSON。detail/add/remove 不接受 all；SDK 保持 endpoint-oriented methods，由共享产品语义组织聚合。
 
+[T06 error/其他 read contract](upstream-contract-matrix.md#t06-error-与其他-read-contract-冻结-2026-09-07) 冻结 user search/detail/relationships、user artworks/novels、recommended users、trending、MyPixiv、follow mutation、统一错误分类、mutation outcome 和脱敏边界。T06 只冻结 contract/fixture；strict live 缺口、SearchUsers account binding、follow read-back 与 bare-ID probe 仍由后续 owner/compatibility task 关闭，不授予 capability 发布权限。
+
 ## SDK/MCP 兼容与 mutation
 
 T12 默认源码兼容，交付逐项 symbol map：旧 method/request/model/named field type → 新入口 → wrapper/deprecation → 旧消费者编译测试。AddBookmark/RemoveBookmark 保留委托 wrapper；新增明确 artwork/novel 方法不自动删除旧方法。无效 novel content endpoint 与旧 exported symbol 分别处理，不能让 deprecated wrapper 继续调用已排除 path。任何必要 breaking change 先经明确批准，记录迁移、版本/module 策略。
