@@ -28,8 +28,9 @@ Status 的 verified 表示对应 task 的实现与相关验证完成；各 task 
 | R02 | MCP filter replay 修复 | CHECK-02,T23A | 按 execution attempt 清空 MCP 本地 `seen` 状态；补非零 cursor + 本地 filter + 安全账号池 replay 回归，确保不静默丢记录；不改变 MCP schema | verified |
 | R03 | Goal 任务账本与文档 tracking hygiene | CHECK-02 | 对齐 T03/T04 的显式 depends_on 与完成记录；处理 `/goal-*/` 对新增 Goal 文档的忽略/force-add 规则 | verified |
 | T06 | error/其他 read contract | T00,T01,T02,T03,T04 | 冻结 user search/detail/relationships、user artworks/novels、recommended users、trending、follow、mypixiv、error、mutation outcome 与脱敏 | verified |
-| CHECK-03 | 集中检查-debug（R02/R03/T06） | R02,R03,T06 | audit-only；复查 T06 read/error/mutation contract、R02 replay 修复、R03 tracking、41 条 required_scope、历史 evidence、T23A 边界、bug/死代码、类型/构建/测试、安全/数据/回滚/文档，并登记修复项 | pending |
-| T12 | SDK compatibility | T20,T01,T02,T03,T04,T05,T06,CHECK-03 | 冻结 symbol map、旧 wrapper、named types、旧消费者编译、cursor 版本恢复；默认源码兼容 | pending |
+| CHECK-03 | 集中检查-debug（R02/R03/T06） | R02,R03,T06 | audit-only；复查 T06 read/error/mutation contract、R02 replay 修复、R03 tracking、41 条 required_scope、历史 evidence、T23A 边界、bug/死代码、类型/构建/测试、安全/数据/回滚/文档，并登记修复项 | verified |
+| R04 | follow restrict 输入校验 | CHECK-03,T06 | 在 `FollowUser` SDK 边界复用 `validateRestrict`；空值仍默认 `public`，未知值以 `InvalidArgument` 在发起请求前拒绝，并补充无网络请求回归 | pending |
+| T12 | SDK compatibility | T20,T01,T02,T03,T04,T05,T06,CHECK-03,R04 | 冻结 symbol map、旧 wrapper、named types、旧消费者编译、cursor 版本恢复；默认源码兼容 | pending |
 | T39A | CLI/MCP migration | T12 | 冻结 CLI 路由和 MCP tool/input/output compatibility map；旧 JSON 回放清单 | pending |
 | T07 | read endpoint owners | T12 | 按 artwork/novel endpoint leaf 拆卡，实现 read adapter（含 v2、user/trending/relationships、follow/mypixiv 所需 endpoint）、DTO 与错误映射 | pending |
 | T08 | bookmark endpoint owners | T12 | 按两类 list/tags/detail/mutation leaf 拆卡实现 | pending |
@@ -205,6 +206,18 @@ Status 的 verified 表示对应 task 的实现与相关验证完成；各 task 
 - 回滚前提 / 依赖闭包：文档提交需整体回滚 T06 matrix section、plan link、T06 状态和 CHECK-03 排程；没有数据、账号、生产配置或 endpoint path 依赖。后续 T07/T12/T13/T14/T21/T35/T36/T37/T38 若已引用 T06，回滚时必须同步撤销其 read/error/mutation compatibility 依赖，不能只删除 contract 文本。
 - 实际结果 / evidence / 风险：T06 已 verified；当前 41 条 required capability 继续为 `scope_admitted`，Goal 保持 incomplete。T06 未新增 live API、未提高任何 capability 状态，未声明 follow read-back、SearchUsers account binding、user/relationship/MyPixiv/trending strict live 或 bare-ID probe 已完成。最近三个 task 为 R02、R03、T06，下一入口按 goal-mode 规则进入 `CHECK-03`，不直接跳到 T12。
 
+## CHECK-03 完成记录
+
+- Owner package / 涉及文件：集中质量 gate；只读复查 `goal-3/input.md`、`goal-3/plan.md`、`goal-3/tasks.md`、`goal-3/capability-admission.md`、T06 upstream contract、R02 runtime/traversal 回归、R03 tracking 规则、历史 evidence 与 T23A 分页报告，并核对 `sdk/pixiv`、follow endpoint、CLI/MCP mutation 调用方。无真实 Pixiv/FANBOX API、无生产实现改动。
+- Depends on：R02、R03、T06 verified。
+- 冻结 contract / fixture：审计确认 T06 已覆盖 user search/detail/relationships、user artworks/novels、recommended、trending、MyPixiv、follow mutation、错误分类/脱敏与 bare-ID 边界；R02 的 execution-attempt filter reset 和非零 cursor replay 证据保持有效；R03 的 Goal-3 tracking 例外只作用于已批准目录；41 条 required capability 仍全部为 `scope_admitted`。历史 strict/inconclusive/pagination_exempt verdict、T23A 仅修复搜索续读的边界均未升级。
+- Red 测试、命令及当前行为的预期失败：这是 audit-only task，无生产代码 Red 阶段。审计发现 follow contract 的一个未登记缺口：T06 要求 `restrict` 只接受 `public|private`、空值默认 `public`，但 `sdk/pixiv.Client.FollowUser` 目前没有调用已有 `validateRestrict`，未知值可继续进入 `/v1/user/follow/add`；该问题登记为 P1 `R04`，要求在 SDK 边界拒绝且不发网络请求。既有 SearchUsers account binding、follow read-back、strict live、bare-ID probe 等未决项仍由既有 owner 承接，未重复伪造为新完成项。
+- Green 命令及验收断言：`go test ./scripts/tests/documentation -count=1`、`go test ./... -count=1`、`go vet ./...`、`sh scripts/build.sh`、`go test -race ./internal/shared/traversal ./internal/mcpserver/pixiv/internal/runtime ./internal/mcpserver/pixiv/tools/search_illust -count=1` 与 `git diff --check` 均通过；`awk` 审计结果为 `required_rows=41 scope_admitted_rows=41 non_scope_admitted_required=0`；worktree 在构建后无非预期变更且本地/远端仍一致。全量测试和 build 通过不替代 R04 的待补 Red→Green 回归，也不替代未来 live/mutation gate。
+- Findings / 修复登记：`R04`（pending，P1）负责 `FollowUser` 的 `restrict` 本地校验与 no-network 测试；T12 显式依赖 R04，避免 SDK compatibility 在该输入契约未修复前继续推进。R01、T07/T09A/T12/T18/T21/T35/T37/T38 等既有 pending owner 仍按原职责处理 cursor、adapter、read-back、resolver、wire 与发布兼容，不在本轮扩张范围。
+- 公开兼容性影响：本轮只更新 Goal-3 ledger，不改变 SDK symbol、CLI/MCP wire、endpoint、默认值、依赖、required_scope、live 数据或运行配置；R04 完成后应仅把已明确非法的 follow restrict 提前分类为 `InvalidArgument`，空值默认 public 的正常路径保持不变。
+- 回滚前提 / 依赖闭包：回滚本轮需同时撤销 CHECK-03 verified、R04 表格/登记与 T12 对 R04 的依赖；不涉及业务数据、账号、token、构建产物或生产配置。执行 R04 时需将 `sdk/pixiv/ops_mutation.go`、其聚焦测试和对应 ledger 作为同一闭包验证，不能只删校验而保留测试或依赖声明。
+- 实际结果 / evidence / 风险：CHECK-03 已 verified，唯一新增发现为 R04；Goal 继续 incomplete，41 条 required capability 未提升，下一 task 按账本进入 R04，不进入 T12。
+
 ## 实现任务准入卡
 
 在当前任务下回写以下内容，或链接已有 contract/fixture；不要自动新增独立计划文件。跨 owner 的汇总任务必须先拆成单 owner 子卡；子卡使用父 ID 后缀，列出自己的依赖，父任务在全部子卡完成后完成。
@@ -234,3 +247,7 @@ Green 命令及验收断言：
 
 - `R02`（verified，P1）：已修复 `internal/mcpserver/pixiv/internal/runtime/runtime.go` 中 MCP local filter `seen` 的 execution-attempt 生命周期。账号池从非零 opaque cursor replay 时会清空上一 attempt 的去重状态，再从同一初始 cursor 重新收集；真实 SDK + 离线 HTTP fixture 覆盖本地 filter、非零 cursor、safe replay、结果不遗漏不重复及 commit 边界。未修改 MCP schema，未加入静默重试，未扩大 T23A 范围；完整证据见上方 `R02 完成记录` 与分页报告。
 - `R03`（verified，P2）：已修正 `tasks.md` 的 T03/T04 depends_on 与完成记录，并保留 `/goal-*/` 的通用忽略、仅为已批准的 `goal-3` 增加可追踪例外；未来 Goal 目录仍需明确决定后 force-add。变更仅限计划/仓库 tracking，未改变 required_scope 或公开行为；完整证据见上方 `R03 完成记录`。
+
+## CHECK-03 追加修复任务
+
+- `R04`（pending，P1）：`sdk/pixiv.Client.FollowUser` 必须在发起 `/v1/user/follow/add` 前复用 `validateRestrict`，只接受 `public`/`private`；空值继续由兼容层默认 `public`。补充 Red→Green 测试，使用可观测的 round-tripper 断言未知值返回 `sdk.InvalidArgument` 且网络调用次数为零；不得在 endpoint 层接受或静默重写未知值，不涉及 follow read-back、mutation outcome 或 MCP schema 的后续 T07/T35/T38 范围。
