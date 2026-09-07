@@ -177,6 +177,40 @@ non-secret binding for that Client instance; the same Client may continue it,
 while another Client or process receives `InvalidCursor`. A client opened
 through `pixiv.Open` binds the cursor to the verified account identity instead.
 
+### Resuming within an artwork search batch
+
+`SearchArtworks` cursors now use binding version **2**, including normal batch
+continuations. Version 1 search cursors return `InvalidCursor`; discard the old
+cursor and restart the query. Other operations keep their existing binding
+versions and the outer `sdk.Cursor` encoding is unchanged.
+
+When stopping inside a returned batch, call
+`client.CheckpointSearchArtworks(request, consumed)` using the **request that
+fetched that batch**, not its `page.Next`. `consumed` is positive and counts SDK
+items after normalization and AI filtering, including entries subsequently
+filtered or skipped by your application. A checkpoint created from an already
+resumed request accumulates that consumption. Use `page.Next` when the batch is
+fully consumed. The checkpoint method does no network I/O; a position beyond the
+batch is rejected as `InvalidCursor` when fetched. Non-positive or overflowing
+consumption returns `InvalidArgument`.
+
+Pass the returned cursor through the same `SearchArtworksRequest.Cursor`.
+Text/JSON codecs support persistence. Repeat every query field and optional
+`CursorContext`, a caller-defined local-filter context that is hashed into the
+binding and never sent upstream. Changing local filter semantics must change
+this context. CLI/MCP bookmark search share a context for effective strategy and
+bookmark bounds; no new CLI flag or MCP field is introduced.
+
+All SearchArtworks cursors bind to the verified account from `Open/OpenWith`,
+or to the same client instance when created through `New/NewWith` without a
+verified identity. Cross-account or cross-instance reuse returns `InvalidCursor`.
+The replay order is upstream batch → normalized SDK items / AI filter → consumed
+prefix → caller filter and logical limit. This avoids omissions and duplicates
+for a stable source sequence; re-fetching a live batch does **not** create a
+snapshot and cannot guarantee stability under upstream insertions, deletion or
+reordering. A stored position beyond the current batch returns `InvalidCursor`
+instead of silently restarting.
+
 ## Pixiv read operations
 
 | Operation | Input highlights | Returns | Common errors |

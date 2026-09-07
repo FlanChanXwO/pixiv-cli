@@ -5,6 +5,7 @@ import (
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/internal/outputs"
 	"github.com/FlanChanXwO/pixiv-cli/internal/shared/pagination"
+	"github.com/FlanChanXwO/pixiv-cli/internal/shared/searchfilter"
 	"github.com/FlanChanXwO/pixiv-cli/internal/shared/traversal"
 	"github.com/FlanChanXwO/pixiv-cli/sdk"
 	product "github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
@@ -13,6 +14,7 @@ import (
 // artworkSearchClient 是 bookmark 过滤所需的最小 public SDK capability。
 type artworkSearchClient interface {
 	SearchArtworks(context.Context, product.SearchArtworksRequest) (sdk.Page[product.Artwork], error)
+	CheckpointSearchArtworks(product.SearchArtworksRequest, int) (sdk.Cursor, error)
 }
 
 type artworkSearchOutcome struct {
@@ -91,6 +93,7 @@ func searchArtworks[C artworkSearchClient](ctx context.Context, execute traversa
 		}
 
 		candidateQuery := request.Query
+		candidateQuery.CursorContext = searchfilter.BookmarkContext(min, max, string(strategy))
 		if strategy == bookmarkFilterStrategyLocal {
 			// App API bounds 只是 candidate 条件；local 必须枚举正常候选流再本地复核。
 			candidateQuery.BookmarkMin = nil
@@ -114,6 +117,11 @@ func searchArtworks[C artworkSearchClient](ctx context.Context, execute traversa
 						sdk.WithDetail("artwork bookmark count is negative"))
 				}
 				return (min == nil || item.TotalBookmarks >= *min) && (max == nil || item.TotalBookmarks <= *max), nil
+			},
+			func(cursor sdk.Cursor, consumed int) (sdk.Cursor, error) {
+				checkpointQuery := candidateQuery
+				checkpointQuery.Cursor = cursor
+				return client.CheckpointSearchArtworks(checkpointQuery, consumed)
 			},
 		)
 		if err != nil {
@@ -212,19 +220,15 @@ func resolveBookmarkStrategy(requested bookmarkFilterStrategy, membership bookma
 }
 
 func searchArtworkPages[C artworkSearchClient](ctx context.Context, client C, query product.SearchArtworksRequest, plan pagination.PagePlan) (sdk.Page[product.Artwork], error) {
-	items := make([]product.Artwork, 0)
-	var next sdk.Cursor
-	_, err := pagination.TraversePagesFrom(ctx, plan, query.Cursor, func(ctx context.Context, cursor sdk.Cursor) ([]product.Artwork, sdk.Cursor, error) {
-		query.Cursor = cursor
-		page, err := client.SearchArtworks(ctx, query)
-		if err != nil {
-			return nil, sdk.Cursor{}, err
-		}
-		next = page.Next
-		return page.Items, page.Next, nil
-	}, func(page []product.Artwork) error {
-		items = append(items, page...)
-		return nil
+	items, next, _, err := pagination.CollectFilteredPagesFrom(ctx, plan, query.Cursor, func(ctx context.Context, cursor sdk.Cursor) ([]product.Artwork, sdk.Cursor, error) {
+		fetchQuery := query
+		fetchQuery.Cursor = cursor
+		page, err := client.SearchArtworks(ctx, fetchQuery)
+		return page.Items, page.Next, err
+	}, func(product.Artwork) (bool, error) { return true, nil }, func(cursor sdk.Cursor, consumed int) (sdk.Cursor, error) {
+		checkpointQuery := query
+		checkpointQuery.Cursor = cursor
+		return client.CheckpointSearchArtworks(checkpointQuery, consumed)
 	})
 	if err != nil {
 		return sdk.Page[product.Artwork]{}, err

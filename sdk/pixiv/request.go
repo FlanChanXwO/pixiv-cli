@@ -117,6 +117,9 @@ type SearchArtworksRequest struct {
 	BookmarkMin *int
 	BookmarkMax *int
 	Cursor      sdk.Cursor
+	// CursorContext binds caller-side filtering semantics; it is hashed into
+	// the cursor binding and is never sent to Pixiv. Repeat it when resuming.
+	CursorContext string
 }
 
 // ArtworkRequest selects one artwork by its stable ID.

@@ -397,7 +397,7 @@ func TestCollectFilteredPagesAppliesLimitAfterFilteringAcrossBatches(t *testing.
 		return []int{4}, sdk.Cursor{}, nil
 	}, func(value int) (bool, error) {
 		return value%2 == 0, nil
-	})
+	}, func(c sdk.Cursor, n int) (sdk.Cursor, error) { return testCursor(t, "checkpoint"), nil })
 
 	require.NoError(t, err)
 	assert.Equal(t, []int{2, 4}, items)
@@ -410,10 +410,106 @@ func TestCollectFilteredPagesKeepsNextCursorWhenLogicalLimitStopsInsideSource(t 
 	next := testCursor(t, "next")
 	items, cursor, result, err := pagination.CollectFilteredPagesFrom(context.Background(), pagination.PagePlan{Limit: 1}, sdk.Cursor{}, func(_ context.Context, _ sdk.Cursor) ([]int, sdk.Cursor, error) {
 		return []int{2, 4}, next, nil
-	}, func(value int) (bool, error) { return value%2 == 0, nil })
+	}, func(value int) (bool, error) { return value%2 == 0, nil }, func(c sdk.Cursor, n int) (sdk.Cursor, error) { return testCursor(t, "checkpoint"), nil })
 
 	require.NoError(t, err)
 	assert.Equal(t, []int{2}, items)
-	assert.Equal(t, next, cursor)
+	assert.Equal(t, testCursor(t, "checkpoint"), cursor)
 	assert.Equal(t, pagination.PageResult{Returned: 1, HasMore: true}, result)
+}
+
+func TestFilteredContinuationPreservesUnconsumedItems(t *testing.T) {
+	for _, lastBatch := range []bool{false, true} {
+		t.Run(map[bool]string{false: "next batch", true: "last batch"}[lastBatch], func(t *testing.T) {
+			fetch := func(_ context.Context, cur fakeCursor) ([]int, fakeCursor, error) {
+				if cur.value == "second" {
+					return []int{4}, fakeCursor{}, nil
+				}
+				next := fakeCursor{value: "second"}
+				if lastBatch {
+					next = fakeCursor{}
+				}
+				if cur.value == "remainder" {
+					return []int{3}, next, nil
+				}
+				return []int{1, 2, 3}, next, nil
+			}
+			include := func(int) (bool, error) { return true, nil }
+			first, next, result, err := pagination.CollectFilteredPagesFrom(context.Background(), pagination.PagePlan{Limit: 2}, fakeCursor{}, fetch, include, func(c fakeCursor, n int) (fakeCursor, error) {
+				require.Equal(t, 2, n)
+				return fakeCursor{value: "remainder"}, nil
+			})
+			require.NoError(t, err)
+			require.True(t, result.HasMore)
+			require.False(t, next.IsZero(), "remaining items require a usable cursor")
+			rest, _, _, err := pagination.CollectFilteredPagesFrom(context.Background(), pagination.PagePlan{}, next, fetch, include, func(c fakeCursor, n int) (fakeCursor, error) {
+				require.Equal(t, 2, n)
+				return fakeCursor{value: "remainder"}, nil
+			})
+			require.NoError(t, err)
+			want := []int{1, 2, 3, 4}
+			if lastBatch {
+				want = []int{1, 2, 3}
+			}
+			require.Equal(t, want, append(first, rest...))
+		})
+	}
+}
+
+func TestFilteredContinuationConsumesSourcePositions(t *testing.T) {
+	fetch := func(_ context.Context, c fakeCursor) ([]int, fakeCursor, error) {
+		switch c.value {
+		case "":
+			return []int{1, 3}, fakeCursor{value: "batch"}, nil
+		case "batch":
+			return []int{2, 3, 4, 5, 6}, fakeCursor{}, nil
+		case "rest":
+			return []int{5, 6}, fakeCursor{}, nil
+		default:
+			t.Fatal("unexpected continuation")
+			return nil, fakeCursor{}, nil
+		}
+	}
+	checkpoint := func(c fakeCursor, n int) (fakeCursor, error) {
+		require.Equal(t, "batch", c.value)
+		require.Equal(t, 3, n)
+		return fakeCursor{value: "rest"}, nil
+	}
+	include := func(n int) (bool, error) { return n%2 == 0, nil }
+	first, next, _, err := pagination.CollectFilteredPagesFrom(context.Background(), pagination.PagePlan{Skip: 1, Limit: 1, OneBatch: true}, fakeCursor{}, fetch, include, checkpoint)
+	require.NoError(t, err)
+	require.Equal(t, []int{4}, first)
+	rest, next, result, err := pagination.CollectFilteredPagesFrom(context.Background(), pagination.PagePlan{OneBatch: true}, next, fetch, include, checkpoint)
+	require.NoError(t, err)
+	require.Equal(t, []int{6}, rest)
+	require.True(t, next.IsZero())
+	require.False(t, result.HasMore)
+}
+
+func TestFilteredContinuationCancellationAndErrors(t *testing.T) {
+	boom := errors.New("checkpoint failed")
+	include := func(int) (bool, error) { return true, nil }
+	checkpoint := func(fakeCursor, int) (fakeCursor, error) { return fakeCursor{}, boom }
+	fetch := func(context.Context, fakeCursor) ([]int, fakeCursor, error) { return []int{1, 2}, fakeCursor{}, nil }
+	items, _, _, err := pagination.CollectFilteredPagesFrom(context.Background(), pagination.PagePlan{Limit: 1}, fakeCursor{}, fetch, include, checkpoint)
+	require.ErrorIs(t, err, boom)
+	require.Nil(t, items)
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	_, _, _, err = pagination.CollectFilteredPagesFrom(ctx, pagination.PagePlan{}, fakeCursor{}, fetch, include, checkpoint)
+	require.ErrorIs(t, err, context.Canceled)
+}
+
+func TestFilteredContinuationRejectsRepeatedCursorAndPredicateFailure(t *testing.T) {
+	checkpoint := func(c fakeCursor, n int) (fakeCursor, error) { t.Fatal("unexpected checkpoint"); return c, nil }
+	repeat := func(context.Context, fakeCursor) ([]int, fakeCursor, error) {
+		return nil, fakeCursor{value: "same"}, nil
+	}
+	items, _, _, err := pagination.CollectFilteredPagesFrom(context.Background(), pagination.PagePlan{}, fakeCursor{}, repeat, func(int) (bool, error) { return true, nil }, checkpoint)
+	require.ErrorContains(t, err, "cursor repeated")
+	require.Nil(t, items)
+	boom := errors.New("predicate failed")
+	items, _, _, err = pagination.CollectFilteredPagesFrom(context.Background(), pagination.PagePlan{}, fakeCursor{}, func(context.Context, fakeCursor) ([]int, fakeCursor, error) { return []int{1}, fakeCursor{}, nil }, func(int) (bool, error) { return false, boom }, checkpoint)
+	require.ErrorIs(t, err, boom)
+	require.Nil(t, items)
 }

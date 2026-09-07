@@ -18,11 +18,20 @@ import (
 // fail closed instead of being misinterpreted.
 const cursorBindingVersion = 1
 
+// 搜索新增批内 checkpoint 与账号绑定，只使旧搜索 cursor 失效。
+func operationCursorBindingVersion(op string) int {
+	if op == "SearchArtworks" {
+		return 2
+	}
+	return cursorBindingVersion
+}
+
 // continuationEnvelope is the opaque payload embedded in a Pixiv cursor. It
 // never contains tokens, cookies, signed URLs, search text, or local paths.
 type continuationEnvelope struct {
-	Key   string `json:"k"`
-	Value int64  `json:"v"`
+	Key      string `json:"k"`
+	Value    int64  `json:"v"`
+	Consumed int    `json:"s,omitempty"`
 }
 
 // identityScopedOps are operations whose pagination state is tied to the
@@ -30,6 +39,7 @@ type continuationEnvelope struct {
 // identity; when no identity could be verified the cursor is ephemeral and only
 // valid for the same client instance.
 var identityScopedOps = map[string]bool{
+	"SearchArtworks":      true,
 	"CurrentUser":         true,
 	"FollowingArtworks":   true,
 	"FollowingNovels":     true,
@@ -74,7 +84,11 @@ func (c *Client) buildCursor(op string, baseQuery url.Values, key string, value 
 	if !exists {
 		return sdk.Cursor{}, nil
 	}
-	payload, err := json.Marshal(continuationEnvelope{Key: key, Value: value})
+	return c.buildContinuationCursor(op, baseQuery, continuationEnvelope{Key: key, Value: value})
+}
+
+func (c *Client) buildContinuationCursor(op string, baseQuery url.Values, state continuationEnvelope) (sdk.Cursor, error) {
+	payload, err := json.Marshal(state)
 	if err != nil {
 		return sdk.Cursor{}, newError(op, sdk.UpstreamError, "cannot encode cursor")
 	}
@@ -89,34 +103,39 @@ func (c *Client) buildCursor(op string, baseQuery url.Values, key string, value 
 			opts = append(opts, sdk.WithCursorEphemeralInstance(c.cursorInstance))
 		}
 	}
-	return sdk.NewCursor(product, op, cursorBindingVersion, queryDigest(baseQuery), payload, opts...)
+	return sdk.NewCursor(product, op, operationCursorBindingVersion(op), queryDigest(baseQuery), payload, opts...)
 }
 
 // continuationFromCursor decodes and validates a caller-provided cursor against
 // the repeated base query. It returns the continuation key and value to append
 // to the next request.
 func (c *Client) continuationFromCursor(op string, baseQuery url.Values, cur sdk.Cursor) (key string, value int64, err error) {
-	if err := sdk.ValidateCursor(cur, product, op, cursorBindingVersion, queryDigest(baseQuery)); err != nil {
-		return "", 0, newError(op, sdk.InvalidCursor, "cursor does not match this operation and query")
+	state, err := c.continuationState(op, baseQuery, cur)
+	return state.Key, state.Value, err
+}
+
+func (c *Client) continuationState(op string, baseQuery url.Values, cur sdk.Cursor) (continuationEnvelope, error) {
+	if err := sdk.ValidateCursor(cur, product, op, operationCursorBindingVersion(op), queryDigest(baseQuery)); err != nil {
+		return continuationEnvelope{}, newError(op, sdk.InvalidCursor, "cursor does not match this operation and query")
 	}
 	if identityScopedOps[op] {
 		if identity, ok := sdk.CursorIdentity(cur); ok {
 			if strconv.FormatInt(c.userID, 10) != identity {
-				return "", 0, newError(op, sdk.InvalidCursor, "cursor belongs to a different account")
+				return continuationEnvelope{}, newError(op, sdk.InvalidCursor, "cursor belongs to a different account")
 			}
 		} else if err := sdk.ValidateCursorInstance(cur, c.cursorInstance); err != nil {
-			return "", 0, newError(op, sdk.InvalidCursor, "cursor belongs to a different client instance")
+			return continuationEnvelope{}, newError(op, sdk.InvalidCursor, "cursor belongs to a different client instance")
 		}
 	}
 	payload, err := sdk.CursorPayload(cur)
 	if err != nil {
-		return "", 0, newError(op, sdk.InvalidCursor, "cursor payload is unavailable")
+		return continuationEnvelope{}, newError(op, sdk.InvalidCursor, "cursor payload is unavailable")
 	}
 	var envelope continuationEnvelope
-	if err := json.Unmarshal(payload, &envelope); err != nil || envelope.Key == "" || envelope.Value < 0 {
-		return "", 0, newError(op, sdk.InvalidCursor, "cursor payload is malformed")
+	if err := json.Unmarshal(payload, &envelope); err != nil || envelope.Key == "" || envelope.Value < 0 || envelope.Consumed < 0 {
+		return continuationEnvelope{}, newError(op, sdk.InvalidCursor, "cursor payload is malformed")
 	}
-	return envelope.Key, envelope.Value, nil
+	return envelope, nil
 }
 
 // continuationOffset decodes an offset-keyed cursor. A zero cursor means the

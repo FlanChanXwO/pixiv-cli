@@ -409,6 +409,8 @@ amd64/arm64 platform-smoke 还会用真实 `cmd.exe`、`certutil.exe` 与 `tar.e
 | 目录 | same-package 理由 |
 | --- | --- |
 | `internal/cli` | composition root 测试观察未导出的 root wiring、invocation lifecycle 与 close ordering；这些 seam 不构成公开 API。 |
+| `internal/cli/commands/pixiv/search` | 通过真实 SDK 与 HTTP fixture 观察私有 searchArtworks 逻辑页续读。CLI/MCP wire 不暴露这些 cursor，为测试导出应用内部接口会扩大公开契约。 |
+| `internal/mcpserver/pixiv/tools/search_illust` | 通过真实 SDK 与 HTTP fixture 观察私有 searchArtworks 逻辑页续读。CLI/MCP wire 不暴露这些 cursor，为测试导出应用内部接口会扩大公开契约。 |
 | `internal/browsercookies/chromium` | 测试直接构造 provider 并注入 encryption key override，观察未导出的 cookie 记录解密路径与 profile 发现逻辑。 |
 | `internal/browsercookies/firefox` | 测试观察未导出的 profile 发现（`profiles.ini` 解析）、cookie 数据库路径解析与记录布局。 |
 | `internal/browsercookies/safari` | 测试直接调用未导出的 `parseBinaryCookies`，断言 binarycookies 记录布局。 |

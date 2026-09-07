@@ -326,6 +326,8 @@ A production file `x.go` corresponds to at most one `x_test.go` in the same dire
 | Directory | Reason for same-package |
 | --- | --- |
 | `internal/cli` | The composition root test observes unexported root wiring, invocation lifecycle, and close ordering; these seams are not a public API. |
+| `internal/cli/commands/pixiv/search` | Tests observe private searchArtworks logical-page continuation through a real SDK with an HTTP fixture. CLI/MCP wire contracts do not expose these cursors; exporting application internals only for tests would widen the public surface. |
+| `internal/mcpserver/pixiv/tools/search_illust` | Tests observe private searchArtworks logical-page continuation through a real SDK with an HTTP fixture. CLI/MCP wire contracts do not expose these cursors; exporting application internals only for tests would widen the public surface. |
 | `internal/browsercookies/chromium` | Tests construct the provider directly and inject an encryption key override, observing the unexported cookie record decryption path and profile discovery logic. |
 | `internal/browsercookies/firefox` | Tests observe unexported profile discovery (`profiles.ini` parsing), cookie database path resolution, and record layout. |
 | `internal/browsercookies/safari` | Tests directly call the unexported `parseBinaryCookies`, asserting binarycookies record layout. |

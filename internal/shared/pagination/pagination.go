@@ -122,13 +122,16 @@ func CollectPagesFrom[T any, C Cursor](ctx context.Context, plan PagePlan, initi
 
 // CollectFilteredPagesFrom 对上游批次逐项筛选，再应用 Skip、Limit 和 OneBatch。
 // 不能先把 Limit 传给普通 TraversePages，否则被筛掉的候选会占用逻辑页额度。
-func CollectFilteredPagesFrom[T any, C Cursor](ctx context.Context, plan PagePlan, initial C, fetch func(context.Context, C) ([]T, C, error), include func(T) (bool, error)) ([]T, C, PageResult, error) {
+func CollectFilteredPagesFrom[T any, C Cursor](ctx context.Context, plan PagePlan, initial C, fetch func(context.Context, C) ([]T, C, error), include func(T) (bool, error), checkpoint func(C, int) (C, error)) ([]T, C, PageResult, error) {
 	var zero C
 	if plan.Skip < 0 {
 		return nil, zero, PageResult{}, errors.New("page skip must be zero or positive")
 	}
 	if plan.Limit < 0 {
 		return nil, zero, PageResult{}, errors.New("page limit must be zero or positive")
+	}
+	if checkpoint == nil {
+		return nil, zero, PageResult{}, errors.New("filtered page checkpoint is required")
 	}
 	if include == nil {
 		return nil, zero, PageResult{}, errors.New("filtered page predicate is required")
@@ -141,6 +144,9 @@ func CollectFilteredPagesFrom[T any, C Cursor](ctx context.Context, plan PagePla
 	seekingOffset := skip > 0
 	seen := make(map[string]struct{})
 	for {
+		if err := ctx.Err(); err != nil {
+			return nil, zero, PageResult{}, err
+		}
 		if _, exists := seen[cursor.String()]; exists {
 			return nil, zero, PageResult{}, fmt.Errorf("pagination cursor repeated: %s", cursor.String())
 		}
@@ -151,13 +157,15 @@ func CollectFilteredPagesFrom[T any, C Cursor](ctx context.Context, plan PagePla
 			return nil, zero, PageResult{}, err
 		}
 		matched := make([]T, 0, len(batch))
-		for _, value := range batch {
+		positions := make([]int, 0, len(batch))
+		for index, value := range batch {
 			keep, err := include(value)
 			if err != nil {
 				return nil, zero, PageResult{}, err
 			}
 			if keep {
 				matched = append(matched, value)
+				positions = append(positions, index+1)
 			}
 		}
 
@@ -166,6 +174,7 @@ func CollectFilteredPagesFrom[T any, C Cursor](ctx context.Context, plan PagePla
 			matched = nil
 		} else if skip > 0 {
 			matched = matched[skip:]
+			positions = positions[skip:]
 			skip = 0
 		}
 		if seekingOffset && skip == 0 && len(matched) > 0 {
@@ -174,6 +183,15 @@ func CollectFilteredPagesFrom[T any, C Cursor](ctx context.Context, plan PagePla
 		if plan.Limit > 0 {
 			remaining := plan.Limit - result.Returned
 			if len(matched) > remaining {
+				// 截断发生在源批次内部，下一上游批次会跳过未消费条目。
+				// 保存源序列位置（包含过滤和 Skip），由产品 owner 编码。
+				next, err = checkpoint(cursor, positions[remaining-1])
+				if err != nil {
+					return nil, zero, PageResult{}, err
+				}
+				if next.IsZero() {
+					return nil, zero, PageResult{}, errors.New("checkpoint cursor must not be zero")
+				}
 				matched = matched[:remaining]
 				result.HasMore = true
 			}

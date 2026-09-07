@@ -170,6 +170,30 @@ for {
 同一 Client 可以继续，其他 Client 或进程会返回 `InvalidCursor`。通过
 `pixiv.Open` 创建的 Client 则把 cursor 绑定到已验证的账号 identity。
 
+### 作品搜索批内续读
+
+`SearchArtworks` 的普通批次 cursor 与 checkpoint 均使用 binding version **2**。
+旧版本 1 搜索 cursor 返回 `InvalidCursor`；清除旧 cursor 后重新查询。
+其他 operation 的 binding version 与 `sdk.Cursor` 外层编码不变。
+
+在批次内停止时，使用**取得该批次的原请求**调用
+`client.CheckpointSearchArtworks(request, consumed)`，不能传入该批次的 `page.Next`。
+`consumed` 为正数，按 SDK 规范化及 AI 筛选后的条目计数，包含调用方随后过滤或 Skip
+消费的项目。从已恢复请求再次建立 checkpoint 时累计消费位置；批次全部消费后使用
+`page.Next`。checkpoint 构造不联网；超出批次的位置在恢复请求时返回 `InvalidCursor`，
+非正数或整数溢出返回 `InvalidArgument`。
+
+将返回 cursor 通过同一 `SearchArtworksRequest.Cursor` 恢复，可用 Text/JSON codec 持久化。
+重复所有查询字段和可选 `CursorContext`；后者由调用方表达本地筛选语义，只进入摘要，
+不发送上游。本地筛选语义改变时必须改变该 context。CLI/MCP 收藏过滤搜索共用实际策略
+和收藏上下界的摘要；本轮不新增 CLI flag 或 MCP 字段。
+
+全部搜索 cursor 绑定 `Open/OpenWith` 的已验证账号；没有 verified identity 的
+`New/NewWith` 只能同一 client 实例恢复。跨账号或跨实例返回 `InvalidCursor`。
+恢复顺序为上游批次 → SDK 规范化及 AI 筛选 → 已消费前缀 → 调用方筛选与逻辑 limit。
+稳定源序列下可避免遗漏和重复；重新请求实时批次不构成快照，无法保证上游插入、删除、
+重排时的数据稳定性。保存的位置超出当前批次时返回 `InvalidCursor`，不静默重启。
+
 ## Pixiv 读取操作
 
 | 操作 | 入参要点 | 返回 | 常见错误 |
