@@ -13,11 +13,13 @@ import (
 )
 
 type fakeTransport struct {
-	path   string
-	query  url.Values
-	form   url.Values
-	body   string
-	getErr error
+	path    string
+	query   url.Values
+	form    url.Values
+	body    string
+	getErr  error
+	calls   int
+	postErr error
 }
 
 func (f *fakeTransport) GetJSON(_ context.Context, path string, query url.Values, out any) error {
@@ -30,9 +32,10 @@ func (f *fakeTransport) GetJSON(_ context.Context, path string, query url.Values
 }
 
 func (f *fakeTransport) PostForm(_ context.Context, path string, form url.Values) error {
+	f.calls++
 	f.path = path
 	f.form = form
-	return nil
+	return f.postErr
 }
 
 func TestBookmarkArtworkListMapsQueryAndBookmarkContinuation(t *testing.T) {
@@ -96,14 +99,70 @@ func TestBookmarkTagsDetailAndMutations(t *testing.T) {
 	if err := bookmark.New(transport).Add(context.Background(), bookmark.AddRequest{ArtworkID: 9, Restrict: "public", Tags: []string{"cat", "favorite"}}); err != nil {
 		t.Fatalf("Add: %v", err)
 	}
-	if transport.path != "/v2/illust/bookmark/add" || transport.form.Get("illust_id") != "9" || len(transport.form["tags[]"]) != 2 {
+	if transport.path != "/v2/illust/bookmark/add" || len(transport.form) != 3 || transport.form.Get("illust_id") != "9" || transport.form.Get("restrict") != "public" || len(transport.form["tags[]"]) != 2 {
 		t.Fatalf("add request = %q %v", transport.path, transport.form)
 	}
 	if err := bookmark.New(transport).Remove(context.Background(), 9); err != nil {
 		t.Fatalf("Remove: %v", err)
 	}
-	if transport.path != "/v1/illust/bookmark/delete" || transport.form.Get("illust_id") != "9" {
+	if transport.path != "/v1/illust/bookmark/delete" || len(transport.form) != 1 || transport.form.Get("illust_id") != "9" {
 		t.Fatalf("remove request = %q %v", transport.path, transport.form)
+	}
+}
+
+func TestBookmarkMutationsRejectInvalidRequestsBeforeTransport(t *testing.T) {
+	tests := []struct {
+		name string
+		call func(*bookmark.Client) error
+	}{
+		{name: "add zero artwork", call: func(client *bookmark.Client) error {
+			return client.Add(context.Background(), bookmark.AddRequest{ArtworkID: 0, Restrict: "public"})
+		}},
+		{name: "add negative artwork", call: func(client *bookmark.Client) error {
+			return client.Add(context.Background(), bookmark.AddRequest{ArtworkID: -1, Restrict: "public"})
+		}},
+		{name: "add empty restrict", call: func(client *bookmark.Client) error {
+			return client.Add(context.Background(), bookmark.AddRequest{ArtworkID: 9})
+		}},
+		{name: "add unknown restrict", call: func(client *bookmark.Client) error {
+			return client.Add(context.Background(), bookmark.AddRequest{ArtworkID: 9, Restrict: "friends"})
+		}},
+		{name: "remove zero artwork", call: func(client *bookmark.Client) error {
+			return client.Remove(context.Background(), 0)
+		}},
+		{name: "remove negative artwork", call: func(client *bookmark.Client) error {
+			return client.Remove(context.Background(), -1)
+		}},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			transport := &fakeTransport{}
+			if err := test.call(bookmark.New(transport)); err == nil {
+				t.Fatal("invalid bookmark request unexpectedly succeeded")
+			}
+			if transport.calls != 0 {
+				t.Fatalf("invalid request reached transport %d time(s)", transport.calls)
+			}
+		})
+	}
+}
+
+func TestBookmarkMutationsPropagateTransportErrors(t *testing.T) {
+	wantErr := errors.New("bookmark mutation transport failed")
+	addTransport := &fakeTransport{postErr: wantErr}
+	if err := bookmark.New(addTransport).Add(context.Background(), bookmark.AddRequest{ArtworkID: 9, Restrict: "public"}); !errors.Is(err, wantErr) {
+		t.Fatalf("Add error = %v, want %v", err, wantErr)
+	}
+	if addTransport.calls != 1 {
+		t.Fatalf("Add transport calls = %d, want 1", addTransport.calls)
+	}
+
+	removeTransport := &fakeTransport{postErr: wantErr}
+	if err := bookmark.New(removeTransport).Remove(context.Background(), 9); !errors.Is(err, wantErr) {
+		t.Fatalf("Remove error = %v, want %v", err, wantErr)
+	}
+	if removeTransport.calls != 1 {
+		t.Fatalf("Remove transport calls = %d, want 1", removeTransport.calls)
 	}
 }
 

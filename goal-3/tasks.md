@@ -39,7 +39,7 @@ Status 的 verified 表示对应 task 的实现与相关验证完成；各 task 
 | T07 | read endpoint owners（umbrella） | T12,T07A,T07B,T07C,T07D | 汇总并审计四个子卡的 artwork/novel/user/feed read adapter、DTO、错误映射与 leaf fixture；全部子卡完成后才可标记 verified | verified |
 | T08A | artwork bookmark read endpoint owner | T12 | 实现 artwork bookmark list/tags/detail leaf、required/null/empty/error 映射与离线 fixture；不擅自发送未验证的 subtype wire | verified |
 | T08B | novel bookmark read endpoint owner | T12 | 实现 novel bookmark list/tags/detail leaf、candidate path snapshot、required/null/empty/error 映射与离线 fixture | verified |
-| T08C | artwork bookmark mutation endpoint owner | T12,T08A | 实现 artwork bookmark add/remove endpoint leaf、request/form/error fixture；不把 error-only 2xx 提升为 read-back 成功 | pending |
+| T08C | artwork bookmark mutation endpoint owner | T12,T08A | 实现 artwork bookmark add/remove endpoint leaf、request/form/error fixture；不把 error-only 2xx 提升为 read-back 成功 | verified |
 | T08D | novel bookmark mutation endpoint owner | T12,T08B | 实现 novel bookmark add/remove endpoint leaf、candidate path/request/form/error fixture；不把未验证 wire 或 2xx 提升为发布成功 | pending |
 | T08 | bookmark endpoint owners（umbrella） | T12,T08A,T08B,T08C,T08D | 汇总并审计两类 bookmark 的 list/tags/detail/mutation leaf、DTO、错误映射与 fixture；全部子卡完成后才可标记 verified | pending |
 | T09A | appapi transport | T12,T04,T06 | 增加响应可解码的窄 form 能力；保留旧 PostForm，不自动重放不确定 mutation | pending |
@@ -357,6 +357,17 @@ Status 的 verified 表示对应 task 的实现与相关验证完成；各 task 
 - 公开兼容性影响：新增内容只位于 `internal/services` 与内部 protocol 常量；未新增 SDK symbol、CLI/MCP schema/route、默认值、依赖、账号/token 行为或 live API 调用，现有 novel bookmark list 请求与合法空页/错误传播保持不变。候选 tags/detail 不得被视为已验证 public operation，41 条 required capability 继续为 `scope_admitted`，相关 migration/public-ready 状态不变。
 - 回滚前提 / 依赖闭包：需整体回滚 novel bookmark read candidate 的两个 method、DTO、tests、两个 protocol path 常量、matrix snapshot 与本完成记录；同时保留/恢复 T07B 已验证的 novel list leaf。若后续 T11/T15/T27/T37 已引用 candidate snapshot，必须同步撤销引用或先补兼容修复；不涉及业务数据、账号、token、缓存、运行配置或生成物。
 - 实际结果 / evidence / 风险：T08B 已 verified，离线 leaf evidence 闭合；未执行 live API，novel tags/detail 的真实 wire、pagination、SDK/CLI/MCP gate 仍待后续任务严格验证，若 live 证据否定 candidate snapshot 必须以新证据替换而非 fallback 发布。T08C（artwork mutation）为下一入口，T08D、T08 umbrella、all 聚合、mutation read-back、后续 SDK/CLI/MCP 发布门禁及 Goal-3 仍 incomplete。
+
+## T08C 完成记录
+
+- Owner package / 涉及文件：artwork bookmark mutation endpoint；`internal/services/pixiv/endpoint/artwork/bookmark/bookmark.go`、同 stem 的 `bookmark_test.go`。本卡没有修改 SDK 生产实现、CLI/MCP surface、公开文档、protocol、依赖或 mutation read-back 流程。
+- Depends on：T12、T08A 均已 verified；本卡沿用 T03/T06 已冻结的 artwork bookmark mutation request/error 边界，仅补 endpoint leaf 的本地 request 校验和窄 form/error fixture，不进入 T09A 响应解码或 T15/T27/T38 的 SDK/aggregate/public owner。
+- 冻结 contract / fixture：`Add` 使用 `POST /v2/illust/bookmark/add`，要求正 `illust_id`、`restrict=public|private`，`tags[]` 可选且按输入重复发送；`Remove` 使用 `POST /v1/illust/bookmark/delete`，要求正 `illust_id`。两者只调用既有 `PostForm`，不解码响应正文、不把 2xx/nil 解释为 read-back 成功、不自动重放；非法 ID/restrict 在 transport 前返回错误，合法 form 字段与既有 wire 保持不变。
+- Red 测试、命令及当前行为的预期失败：先新增 `TestBookmarkMutationsRejectInvalidRequestsBeforeTransport`，运行 `go test ./internal/services/pixiv/endpoint/artwork/bookmark -run '^TestBookmarkMutationsRejectInvalidRequestsBeforeTransport$' -count=1 -v` 实际显示 add/remove 的 6 个非法输入均“unexpectedly succeeded”，证明旧实现会继续调用 fake transport。随后补充 `TestBookmarkMutationsPropagateTransportErrors` 与精确 form/path 断言。
+- Green 命令及验收断言：`go test ./internal/services/pixiv/endpoint/artwork/bookmark -run '^(TestBookmarkMutationsRejectInvalidRequestsBeforeTransport|TestBookmarkMutationsPropagateTransportErrors|TestBookmarkTagsDetailAndMutations)$' -count=1 -v`、`go test -race ./internal/services/pixiv/endpoint/artwork/bookmark -count=1`、`go test ./internal/services/pixiv/endpoint/artwork/bookmark ./internal/services/pixiv/appapi ./sdk/pixiv ./internal/mcpserver/pixiv -count=1`、对应包 `go vet`、`go test ./scripts/tests/documentation -count=1`、`git diff --check` 均通过。测试确认非法输入零次触达 transport，合法 add/remove 的 path/form 精确，transport error 原样传播；相关 appapi mutation fixture 继续覆盖 error-only PostForm 不因 429 自动重放。
+- 公开兼容性影响：没有新增/删除 SDK symbol、CLI/MCP schema/route、endpoint、默认值、依赖、账号/token 行为或 live 数据；合法 `public`/`private`、ID、重复 tags 与既有 form path 保持，只有不满足 T03 的 ID/restrict 输入改为 endpoint 本地错误。未把 status-only mutation 宣告为关系或 bookmark 状态已改变。
+- 回滚前提 / 依赖闭包：需整体回滚 Add/Remove 的 preflight 校验、fake transport/error/form 回归及本完成记录；后续若 T09A/T15/T27/T38 引用该 form/error boundary，必须同步撤销引用或先补兼容修复。无业务数据、账号、token、运行配置、缓存或生成物变更。
+- 实际结果 / evidence / 风险：T08C 已 verified，artwork bookmark add/remove leaf 的 request/path/form/error 离线 evidence 闭合；未执行真实 mutation，未验证 access control、写后 detail/list/tags read-back、结果不确定性或同账号恢复，故 artwork-bookmark-mutation 仍为 `scope_admitted`，Goal-3 继续 incomplete。下一入口为 T08D（novel bookmark mutation endpoint owner），随后才可执行 T08 umbrella 汇总。
 
 ## 实现任务准入卡
 

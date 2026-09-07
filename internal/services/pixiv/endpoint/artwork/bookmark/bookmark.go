@@ -153,6 +153,12 @@ func (c *Client) Add(ctx context.Context, request AddRequest) error {
 	if c == nil || c.transport == nil {
 		return errors.New("artwork bookmark transport is not configured")
 	}
+	if request.ArtworkID <= 0 {
+		return errors.New("bookmark artwork ID must be positive")
+	}
+	if request.Restrict != "public" && request.Restrict != "private" {
+		return errors.New("bookmark restrict must be public or private")
+	}
 	form := url.Values{"illust_id": {strconv.FormatInt(request.ArtworkID, 10)}, "restrict": {request.Restrict}}
 	for _, tag := range request.Tags {
 		form.Add("tags[]", tag)
@@ -163,6 +169,9 @@ func (c *Client) Add(ctx context.Context, request AddRequest) error {
 func (c *Client) Remove(ctx context.Context, artworkID int64) error {
 	if c == nil || c.transport == nil {
 		return errors.New("artwork bookmark transport is not configured")
+	}
+	if artworkID <= 0 {
+		return errors.New("bookmark artwork ID must be positive")
 	}
 	return c.transport.PostForm(ctx, protocol.AppBookmarkDelete, url.Values{
 		"illust_id": {strconv.FormatInt(artworkID, 10)},
