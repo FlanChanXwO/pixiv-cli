@@ -47,7 +47,7 @@ Status 的 verified 表示对应 task 的实现与相关验证完成；各 task 
 | T09C | artwork comment endpoint owner | T04,T05,T06,T09A,T09B | 实现 artwork comments read/create/reply/stamp/delete leaf、DTO、请求校验与错误映射；保留旧 read shape，不实现 SDK/public/read-back orchestration | verified |
 | T09D | novel comment endpoint owner | T04,T05,T06,T09A,T09B | 实现 novel comments read/create/reply/stamp/delete leaf、DTO、请求校验与错误映射；固定 v2 contract，不对 v3 candidate 做 fallback | verified |
 | T09E | stamps endpoint owner | T04,T09B | 实现 `/v1/stamps` read leaf、字段级 DTO/ID/资源引用校验与错误映射；不把未验证字段或 continuation 猜成 public contract | verified |
-| T09 | comment endpoint owners | T09A,T09B,T09C,T09D,T09E | 汇总并审计 artwork/novel comments read/create/reply/stamp/delete 与 stamps leaf；全部子卡完成后才可标记 verified | pending |
+| T09 | comment endpoint owners | T09A,T09B,T09C,T09D,T09E | 汇总并审计 artwork/novel comments read/create/reply/stamp/delete 与 stamps leaf；全部子卡完成后才可标记 verified | verified |
 | T10 | ranking/recommended/latest owners | T12 | 按 endpoint leaf 拆卡实现 subtype 与 request/DTO | pending |
 | T11 | endpoint continuation owners | T07,T08,T09,T10,T05 | 校验和提取 endpoint allowlist continuation；不持久化 next_url | pending |
 | T13 | sdk/pixiv artwork | T07,T11 | 实现 artwork SDK 与 adapter 对照、旧签名兼容 | pending |
@@ -409,13 +409,13 @@ Status 的 verified 表示对应 task 的实现与相关验证完成；各 task 
 ## T09 拆卡记录
 
 - Owner package / 涉及文件：comment/stamp endpoint owner umbrella；本轮只回写 `goal-3/tasks.md` 的 T09 子卡与依赖，不修改 production code、protocol、SDK、CLI/MCP、公开文档或依赖。
-- Depends on：T09A、T04、T05、T06 均已 verified；T09A 提供 response-decodable form transport，T04/T05/T06 分别冻结 comment/stamp operation、continuation/binding、错误与 mutation outcome 边界。T09 父任务必须等待四张子卡完成后再做 umbrella audit。
+- Depends on：T09A、T09B、T09C、T09D、T09E、T04、T05、T06 均已 verified；T09A 提供 response-decodable form transport，T04/T05/T06 分别冻结 comment/stamp operation、continuation/binding、错误与 mutation outcome 边界。T09 父任务必须等待五张子卡完成后再做 umbrella audit。
 - 冻结 contract / fixture：T09 直接承接 `capability-admission.md:48-52` 的 `artwork-comments-read`、`artwork-comments-mutation`、`novel-comments-read`、`novel-comments-mutation`、`stamps` 五项 required capability。`T09B` 独占 `internal/services/pixiv/protocol/protocol.go` 的 comment mutation/stamps path registry；`T09C` 独占 `internal/services/pixiv/endpoint/artwork/comments`，同时承载 artwork read 与 text/reply/stamp/delete endpoint leaf；`T09D` 独占 `internal/services/pixiv/endpoint/novel/comments`，固定 `/v2/novel/comments`，不得对 v3 candidate fallback；`T09E` 新增独立 stamps endpoint package，承载 `/v1/stamps`、required list、字段级 ID/资源引用和 no-continuation fixture。comments 的 optional `total`/`access_control` 与正 `offset` continuation 随 T09C/T09D 各自 read owner 验证，不另设跨包共享 owner；response ID 来源、同账号 read-back/清理、结果不确定性不被子卡伪装为 transport 成功，账号 execution context 与 public outcome 继续由 T16/T17/T33/T37/T38/T44 承接。
 - Red 测试、命令及当前行为的预期失败：本轮是跨 owner 的 task decomposition，无生产代码 Red 阶段。静态 `nl`/`rg` 与 LSP blast-radius 核对确认当前两个 comments package 只有 `GetJSON` read transport，protocol 只有 `AppIllustComments`/`AppNovelComments`，没有 comment mutation/stamps path、DTO 或 endpoint owner；现有 CLI/MCP 也只有旧 read surface。上述事实证明需要拆卡，但不把“缺少实现”改写成可发布失败。
 - Green 命令及验收断言：`nl -ba goal-3/capability-admission.md`、`nl -ba goal-3/upstream-contract-matrix.md`、`rg` 与 LSP 结果逐项绑定五项 capability、T04 rows 和现有 owner；新增 T09B–T09E 的 disjoint files/责任/依赖，并将 T09 父卡依赖闭包更新为 `T09A,T09B,T09C,T09D,T09E`。`go test ./scripts/tests/documentation -count=1` 与 `git diff --check` 通过；未因拆卡提升任何 capability 状态。
 - 公开兼容性影响：没有新增/删除 SDK symbol、CLI/MCP schema/route、endpoint wire、默认值、账号/token 行为、依赖或 live 数据；只把后续 endpoint 实现责任显式拆分。既有 `ArtworkComments`/`NovelComments` read model、旧 CLI/MCP read surface 和 T09A `PostFormJSON` 边界保持不变，五项 required capability 仍为 `scope_admitted`。
 - 回滚前提 / 依赖闭包：整体撤销 T09B–T09E 子卡、T09 父卡依赖更新与本记录即可恢复拆卡前台账；不涉及生产数据或运行配置。若后续子卡已经被 T16/T17/T33/T37/T38/T44 引用，回滚前必须同步撤销或迁移这些 endpoint/DTO/response ID/read-back 依赖，不能只删除父卡。
-- 实际结果 / evidence / 风险：T09 已完成拆卡但父任务仍为 pending；T09B 为下一轮首个实现入口，随后依次处理 T09C、T09D、T09E，再进行 T09 umbrella audit。当前 comments v3/v2 严格 wire、第二页/total、numeric access-control、mutation response ID、同账号读回清理及 stamps 字段级 schema 仍未达到发布证据，41 条 required capability 继续为 `scope_admitted`，Goal-3 保持 incomplete。
+- 实际结果 / evidence / 风险：拆卡阶段父任务保持 pending，随后按 T09B→T09C→T09D→T09E 完成四张实现子卡，并由本轮 T09 umbrella audit 闭合父卡。当前 comments v3/v2 严格 wire、第二页/total、numeric access-control、mutation response ID、同账号读回清理及 stamps 字段级 schema 仍未达到发布证据，41 条 required capability 继续为 `scope_admitted`，Goal-3 保持 incomplete。
 
 ## T09B 完成记录
 
@@ -460,6 +460,17 @@ Status 的 verified 表示对应 task 的实现与相关验证完成；各 task 
 - 公开兼容性影响：仅增加 `internal/services/pixiv/endpoint/stamps` 的内部 `Transport`、`Client.List`、candidate `Stamp`/`Result` 与 response 校验；没有新增 SDK symbol、CLI/MCP route/schema、公开文档、默认值、依赖、endpoint fallback、live 请求或凭据行为。`stamps` capability 与全部 required capability 仍保持 `scope_admitted`，Goal-3 继续 incomplete。
 - 回滚前提 / 依赖闭包：整体回滚本卡两份新文件和本记录/状态行即可恢复 T09E 前状态；若后续 T17/T21/T33/T37 已引用该内部 `Stamp`/`Result`，回滚前须同步撤销或提供兼容迁移，不能只删除 leaf。没有业务数据、账号、token、缓存或生成物迁移。
 - 实际结果 / evidence / 风险：当前完成的是离线 endpoint owner；strict upstream evidence 只证明 `/v1/stamps` response 有 40 项且无 continuation，未把 schema fingerprint 猜成完整 public DTO。`stamp_id`/`stamp_url` 仍需 T17 strict snapshot、adapter/SDK 对照、resource ref 绑定与后续公开门禁；未执行真实 API，未改变任何 capability admission。下一入口为 T09 umbrella audit。
+
+## T09 完成记录
+
+- Owner package / 涉及文件：comment/stamp endpoint umbrella audit；复核 T09A–T09E 完成记录及 `internal/services/pixiv/appapi`、`internal/services/pixiv/protocol`、`internal/services/pixiv/endpoint/{artwork/comments,novel/comments,stamps}` 的 production/test 文件，并核对 `goal-3/capability-admission.md`、`goal-3/upstream-contract-matrix.md` 与本任务账本。本轮只做父卡审计和状态回写，不修改 production code、SDK、CLI/MCP、公开文档、依赖或运行配置。
+- Depends on：T09A、T09B、T09C、T09D、T09E、T04、T05、T06、T12 均已 verified。五张子卡责任边界互不重叠：T09A 负责 response-decodable form transport，T09B 负责 protocol path registry，T09C/T09D 分别负责 artwork/novel comments leaf，T09E 独立负责 stamps leaf；T16/T17/T21/T33/T37/T38/T44 仍分别承接 SDK、stamps strict snapshot、resolver、CLI/MCP、read-back 与 outcome/public gate。
+- 冻结 contract / fixture：T09A 保留旧 `PostForm`，仅新增 `PostFormJSON`，对明确 401/403 允许既有 session refresh 单次重试，对不确定 mutation 结果不自动 replay；T09B 固定 comment read/mutation 与 `GET /v1/stamps` path 常量；T09C/T09D 覆盖 comments read、create、reply、stamp、delete 的 request preflight、required/null/empty list、正 ID、continuation、candidate response `comment_id` 与真实错误传播，其中 novel read 固定 v2、不对 v3 fallback；T09E 固定 stamps `GET /v1/stamps` 且无 query，验证 required list、正 `stamp_id`、既有 Pixiv media host 资源引用和 no-continuation。所有 leaf 都不把 2xx/nil、候选 wire、未验证字段或 transport fixture 解释成 public success；读回、清理、namespace、mutation outcome 和公开绑定保持后续任务边界。
+- Red 测试、命令及当前行为的预期失败：本父卡是跨 owner audit-only task，没有生产代码 Red 阶段。审计前任务表实际显示 T09A–T09E 全部 `verified` 而 T09 为 `pending`；`git show --name-status` 复核五张子卡各自只触碰其声明的 owner/test 与账本，`rg` 复核五组 method/path/fixture 均存在，且 SDK/CLI/MCP production 没有 stamps 或 comment mutation caller。没有用子卡历史记录自动替代父卡审计，也没有把离线 evidence 提升为 `public_ready`。
+- Green 命令及验收断言：本轮基线 `go test ./... -count=1` 通过；T09 五个 owner 的 `go test -race ./internal/services/pixiv/appapi ./internal/services/pixiv/protocol ./internal/services/pixiv/endpoint/artwork/comments ./internal/services/pixiv/endpoint/novel/comments ./internal/services/pixiv/endpoint/stamps -count=1`、`go test ./scripts/tests/documentation -count=1`、`go vet ./...`、`sh scripts/build.sh` 与 `git diff --check` 均通过。静态审计确认五张子卡已完成、owner 文件 disjoint、`AppIllustComments`/`AppNovelComments`/四个 mutation path/`AppStamps` 与对应测试闭合，41 条 required capability 全部仍为 `scope_admitted`。
+- 公开兼容性影响：仅把 T09 父卡从 `pending` 回写为 `verified`，并修正拆卡记录中“五张子卡”的账本表述；没有新增或删除 SDK symbol、CLI/MCP schema/route、公开 endpoint wire、默认值、依赖、账号/token 行为、live 数据或 public-ready admission。T09E 的 host allowlist 只在内部收到非 HTTPS、凭据、无有效路径或非既有 Pixiv media host locator 时触发，目的是阻止不受信任资源进入后续 resource 层，正常 locator 不受影响。
+- 回滚前提 / 依赖闭包：本父卡提交只包含 T09 状态、拆卡记录一致性修正和本完成记录，回滚时不撤销 T09A–T09E production/test 实现；若后续 T16/T17/T21/T33/T37/T38/T44 已引用父卡闭包，必须先同步撤销或迁移这些 transport、DTO、response ID、resolver、read-back 或 public 依赖。不存在业务数据、账号、token、缓存、运行配置或生成物迁移。
+- 实际结果 / evidence / 风险：T09 umbrella 已 verified，五张 endpoint/transport 子卡的离线请求、path、校验、DTO/error evidence 闭合，且未发现 public caller 或跨 owner 越界。未执行 live API；comments v3/v2 严格 wire、第二页/total、numeric access-control、mutation response ID 的真实证据、同账号读回清理与不确定 outcome、stamps 字段级 strict snapshot/resource ref 绑定仍未完成，41 条 required capability 继续为 `scope_admitted`。Goal-3 仍 incomplete，按 DAG 下一入口为 T10。
 
 ## 实现任务准入卡
 
