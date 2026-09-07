@@ -239,9 +239,9 @@
 
 ### T05 query、account 与 subtype binding
 
-- 外层 `sdk.Cursor` 固定携带 `product`、`operation`、product binding version、query digest，以及 verified identity 或 ephemeral client binding；payload 只保存 typed continuation `Key`、数值 `Value`，`SearchArtworks` 额外保存批内 `Consumed`。query digest 排序后计算，排除 continuation 本身；改变 product、operation、binding version、query 或 payload kind 都返回 `InvalidCursor`，不得静默从第一页重启。证据为 `sdk/cursor.go:9-35,177-207`、`sdk/pixiv/cursor.go:56-171`。
+- 外层 `sdk.Cursor` 固定携带 `product`、`operation`、product binding version 与 query digest；identity-scoped operation 额外携带 verified identity 或 ephemeral client binding，public-scoped operation 不携带账号/实例 binding；payload 只保存 typed continuation `Key`、数值 `Value`，`SearchArtworks` 额外保存批内 `Consumed`。query digest 排序后计算，排除 continuation 本身；改变 product、operation、binding version、query 或 payload kind 都返回 `InvalidCursor`，不得静默从第一页重启。证据为 `sdk/cursor.go:9-35,177-207`、`sdk/pixiv/cursor.go:56-171`。
 - query digest 必须覆盖所有会改变结果序列的 base/query/local semantics：artwork search 的 `word/target/sort/duration/date bounds/content type`、novel search 的 `word/target/sort/duration`、`SearchArtworks` 的 AI mode、aspect/resolution/tool/bookmark bounds 与 `CursorContext`；尚未进入 strict manifest 的 novel search `start_date/end_date` 不得被假定为已冻结字段；paged series/comments 的 target ID；ranking 的 `mode/date`；follow/bookmark 的 `restrict`；bookmark 的 `user_id/tag`；user artworks 的 `user_id/type`。`CursorContext` 只参与 digest、不发送给 upstream；本地 subtype/filter 改变时必须改变 context。现有字段核对见 `sdk/pixiv/request.go:103-123`、`sdk/pixiv/ops_artwork_search.go:74-136`、`sdk/pixiv/ops_artwork.go:58-230`、`sdk/pixiv/ops_novel.go:1-225`。
-- account binding 以 operation 的真实账号语义为准：verified `Open/OpenWith` 的 cursor 绑定正 user ID；未验证 `New/NewWith` 只能由同一 client instance 续读；pool attempt 换账号时必须丢弃旧结果和 cursor，不能把旧账号中间页交给新账号。当前 `identityScopedOps` 明确覆盖 `SearchArtworks`、CurrentUser、following/recommended/related 等，但不包含 `SearchNovels`、`SearchUsers`；这与双语 SDK 文档“全部搜索 cursor 绑定账号”的表述不一致，T05 将其登记为未关闭的 P1 binding gap，不能宣告“所有搜索均已账号绑定”。证据为 `sdk/pixiv/cursor.go:37-54`、`sdk/pixiv/pixiv.go:131-201`、`internal/services/pixiv/facade_test.go:129-180,218-249`。
+- account binding 以 operation 的真实账号语义为准：`identityScopedOps` 中的 verified `Open/OpenWith` cursor 绑定正 user ID，未验证 `New/NewWith` 只能由同一 client instance 续读；pool attempt 换账号时必须丢弃旧结果和 cursor，不能把旧账号中间页交给新账号。T12 冻结 `SearchArtworks`、CurrentUser、following/recommended/related 等为 identity-scoped；`SearchNovels`、`SearchUsers` 则明确为 public-scoped，只绑定 product、operation、version 与 query，不绑定账号或 client instance。双语 SDK 文档已按此决定修正，并由跨 client 合成回归锁定，不能再把“所有搜索均已账号绑定”作为契约。证据为 `sdk/pixiv/cursor.go:37-54`、`sdk/pixiv/pixiv.go:131-201`、`sdk/pixiv/pixiv_test.go:229-274`。
 - subtype binding 只允许已证实的语义进入 cursor：`SearchArtworks` 的 `ContentType`、AI/local filter context，latest 的 resolved `content_type`，user artworks 的 `type`；ranking `mode` 保持 ranking 参数，不伪装成全局 artwork subtype。CLI recommended 的 `content-type` 与 MCP `illust_filter.type` 当前没有进入 `RecommendedArtworksRequest`/SDK digest，虽然单次 MCP 在 runtime 做本地过滤，未来任何可持久化/跨请求 cursor 前必须补 subtype binding 与两页 fixture；artwork bookmark subtype 仍是 candidate，不得静默发 wire。
 - cursor 编码是 JSON + Base64URL，不是 MAC/签名，也不是鉴权凭据；不可信边界仍须重新校验上述 binding，错误和输出不得包含 token、cookie、signed URL、raw `next_url`、原始 query 或用户内容。现有 envelope 禁止项与安全警告见 `sdk/cursor.go:15-28`、`docs/zh-CN/sdk.md:173-178`。
 
@@ -258,7 +258,7 @@
 
 - `novel-new` 必须由 T10/T14/T18 按 `max_novel_id` 完成 adapter/SDK 迁移；当前 `offset` 续读失败不能通过 fallback、重试或空结果隐藏。
 - recommended artwork 的 subtype/filter binding 与两页证据由 T07/T13/T18/T23 关闭；在此之前 CLI/MCP 不得把 `illust`/`manga` 的本地过滤描述成 upstream subtype continuation contract。
-- `SearchNovels`/`SearchUsers` 是否需要与文档一致的 verified account binding，以及相应跨账号测试，由 SDK compatibility owner 在 T12/T18 明确；T05 保留当前实现缺口，不修改现有行为。
+- `SearchNovels`/`SearchUsers` 的 account binding 由 T12 冻结为 public-scoped；保留跨 client 恢复回归，不新增 identity binding 或 cursor version bump。若未来产品语义要求改为账号作用域，必须先重新提交兼容决策并单独提升 operation binding version，不能静默改变现有 cursor 行为。
 - 非本 operation 的额外 continuation query key 与跨页重复 upstream cursor 的拒绝，需要 leaf parser/共享 traversal 的专门回归；当前仅有同一 URL 内重复参数拒绝和 shared 层重复 cursor 检测，不能把两者混为一谈。
 - T05 只冻结 contract/fixture，不改变 capability admission；所有 required capability 继续由 `capability-admission.md` 授权，当前 Goal 仍 incomplete。
 
@@ -280,7 +280,7 @@
 | MyPixiv users | `GET /v1/user/mypixiv` | 只使用 verified current user ID，并固定 `filter=for_android`；首请求不带 `offset` | required `user_previews` list → `UserPreview{User}`；user ID 必须为正数；空数组合法 | continuation 为正 `offset`；不得接受调用方注入其他 user ID，不得匿名 fallback；身份未知返回 `Unauthorized` | endpoint/SDK/MCP fixture 已有；strict live row 未登记；账号 binding 和 pool replay 由 T12/T19/T23 owner 回归 |
 | MyPixiv artworks / novels | `GET /v2/illust/mypixiv`, `GET /v1/novel/mypixiv` | 由当前 authenticated client 执行；首请求不带 `offset`；不接受 user ID 或跨账号 scope | artwork path 的 required `illusts` → `Artwork`；novel path 的 required `novels` → `Novel`；ID 与 nested owner ID 必须为正数；空数组合法 | 两者 continuation 均为正 `offset`；各自 operation/cursor 不互用；无匿名、Web 或另一账号 fallback | artwork/novel timeline endpoint tests、SDK/MCP fixtures 已有；strict live 第二页未登记，不据 MyPixiv fixture 提升 verdict |
 
-所有 T06 list 的 required envelope 缺失或 JSON `null` 都是 `MalformedUpstreamResponse`，合法空数组必须保持 non-nil empty `Items`。`next_url` 只在 adapter 内解析；空字符串、不可解析、缺失唯一 allowlist key、重复 key、非正数或跨 operation key 均为 malformed，不把 raw URL 写入 public cursor。user search 的 verified account binding 缺口延续 T05 记录，必须由 T12/T18 决定，不由本节文档替代实现。
+所有 T06 list 的 required envelope 缺失或 JSON `null` 都是 `MalformedUpstreamResponse`，合法空数组必须保持 non-nil empty `Items`。`next_url` 只在 adapter 内解析；空字符串、不可解析、缺失唯一 allowlist key、重复 key、非正数或跨 operation key 均为 malformed，不把 raw URL 写入 public cursor。`SearchUsers` 的 verified account binding 不再作为未关闭缺口：T12 已冻结该 operation 为 public-scoped，现有 cross-client compatibility fixture 证明其不绑定账号或 client instance。
 
 ### T06 follow mutation、错误与结果脱敏
 

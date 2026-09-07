@@ -195,11 +195,16 @@ for {
 不发送上游。本地筛选语义改变时必须改变该 context。CLI/MCP 收藏过滤搜索共用实际策略
 和收藏上下界的摘要；本轮不新增 CLI flag 或 MCP 字段。
 
-全部搜索 cursor 绑定 `Open/OpenWith` 的已验证账号；没有 verified identity 的
+`SearchArtworks` cursor 绑定 `Open/OpenWith` 的已验证账号；没有 verified identity 的
 `New/NewWith` 只能同一 client 实例恢复。跨账号或跨实例返回 `InvalidCursor`。
 恢复顺序为上游批次 → SDK 规范化及 AI 筛选 → 已消费前缀 → 调用方筛选与逻辑 limit。
 稳定源序列下可避免遗漏和重复；重新请求实时批次不构成快照，无法保证上游插入、删除、
 重排时的数据稳定性。保存的位置超出当前批次时返回 `InvalidCursor`，不静默重启。
+
+`SearchNovels` 与 `SearchUsers` 刻意采用 public-scoped cursor：cursor 绑定
+product、operation、binding version 与 query，不绑定 verified account 或 client
+instance。相同查询的 cursor 可以交给另一个 client 恢复；这是冻结的源码兼容策略，
+不表示所有搜索 operation 都属于账号作用域。
 
 ## Pixiv 读取操作
 
@@ -213,6 +218,11 @@ for {
 | `ArtworkSeries` / `NovelSeries` | 正数 series ID、cursor | 系列分页（novel 还返回系列 metadata） | `InvalidCursor` |
 | `ArtworkComments` / `NovelComments` | 正数 ID、cursor | `CommentPage` | `NotFound` |
 | `UserArtworkBookmarks` / `UserArtworkBookmarkTags` / `UserNovelBookmarks` | `UserID`、`Restrict`、`tag`、cursor | typed 分页 | `InvalidArgument`、`InvalidCursor` |
+
+`NovelContent` 为兼容旧 v1 调用方而保留导出符号，但已标记为 deprecated：已
+rejected 的 `/v1/novel/content` App API endpoint 与被排除的 WebView path 都不会
+调用，方法不产生网络请求并返回 `ContentUnavailable`。当前 v1 contract 没有正文
+endpoint 替代入口。
 
 关键语义：
 

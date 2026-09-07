@@ -30,7 +30,7 @@ Status 的 verified 表示对应 task 的实现与相关验证完成；各 task 
 | T06 | error/其他 read contract | T00,T01,T02,T03,T04 | 冻结 user search/detail/relationships、user artworks/novels、recommended users、trending、follow、mypixiv、error、mutation outcome 与脱敏 | verified |
 | CHECK-03 | 集中检查-debug（R02/R03/T06） | R02,R03,T06 | audit-only；复查 T06 read/error/mutation contract、R02 replay 修复、R03 tracking、41 条 required_scope、历史 evidence、T23A 边界、bug/死代码、类型/构建/测试、安全/数据/回滚/文档，并登记修复项 | verified |
 | R04 | follow restrict 输入校验 | CHECK-03,T06 | 在 `FollowUser` SDK 边界复用 `validateRestrict`；空值仍默认 `public`，未知值以 `InvalidArgument` 在发起请求前拒绝，并补充无网络请求回归 | verified |
-| T12 | SDK compatibility | T20,T01,T02,T03,T04,T05,T06,CHECK-03,R04 | 冻结 symbol map、旧 wrapper、named types、旧消费者编译、cursor 版本恢复；默认源码兼容 | pending |
+| T12 | SDK compatibility | T20,T01,T02,T03,T04,T05,T06,CHECK-03,R04 | 冻结 symbol map、旧 wrapper、named types、旧消费者编译、cursor 版本恢复；默认源码兼容 | verified |
 | T39A | CLI/MCP migration | T12 | 冻结 CLI 路由和 MCP tool/input/output compatibility map；旧 JSON 回放清单 | pending |
 | T07 | read endpoint owners | T12 | 按 artwork/novel endpoint leaf 拆卡，实现 read adapter（含 v2、user/trending/relationships、follow/mypixiv 所需 endpoint）、DTO 与错误映射 | pending |
 | T08 | bookmark endpoint owners | T12 | 按两类 list/tags/detail/mutation leaf 拆卡实现 | pending |
@@ -228,6 +228,17 @@ Status 的 verified 表示对应 task 的实现与相关验证完成；各 task 
 - 公开兼容性影响：无新增 symbol、依赖、endpoint、默认值或 wire 变化；合法 `public`/`private` 与空值默认 public 保持原请求，只有原本会被发送的非法值改为本地 `InvalidArgument`。
 - 回滚前提 / 依赖闭包：回滚需同时撤销 `FollowUser` 的校验调用、两条 external SDK 回归和本完成记录；不涉及账号、token、运行数据或配置。T12 对 R04 的依赖保持，不能只回滚生产行而保留已宣称的验证记录。
 - 实际结果 / evidence / 风险：R04 已 verified，未发现新的 P0/P1；Goal 仍 incomplete，41 条 required capability 未提升。下一入口按 DAG 为 T12。
+
+## T12 完成记录
+
+- Owner package / 涉及文件：公开 SDK compatibility；`sdk/pixiv/ops_novel.go`、`sdk/pixiv/pixiv_test.go`、`internal/mcpserver/pixiv/pixiv_read_test.go`、`goal-3/api-migration-verification.md`、`goal-3/upstream-contract-matrix.md`、`goal-3/plan.md`、`docs/en/sdk.md`、`docs/zh-CN/sdk.md`。只处理 SDK symbol/cursor compatibility 与已 rejected novel content 的负向边界，没有进入 T39A 的 CLI/MCP map 实施。
+- Depends on：T20、T01、T02、T03、T04、T05、T06、CHECK-03、R04 verified。
+- 冻结 contract / fixture：完成逐 method 的旧 `Client` surface → request/result model → wrapper/deprecation/error map；保留旧 methods、requests、models、named fields、enum types、`AddBookmark`/`RemoveBookmark` wrapper 与 shared `sdk.Cursor` outer format。`CheckpointSearchArtworks`/`CursorContext` 记为 additive；仅 `SearchArtworks` binding version 为 2，旧 version-1 cursor 返回 `InvalidCursor`。`SearchNovels`/`SearchUsers` 明确冻结为 public-scoped cursor，并以跨 client synthetic fixture 锁定。`NovelContent` 保留 exported symbol/model/DTO，标记 deprecated，正数 ID 返回既有 `sdk.ContentUnavailable` 且不请求已 rejected endpoint；非法 ID 仍 `InvalidArgument`。
+- Red 测试、命令及当前行为的预期失败：先新增 `TestNovelContentDeprecatedEntryPointDoesNotCallRejectedEndpoint`，运行 `go test ./sdk/pixiv -run '^TestNovelContentDeprecatedEntryPointDoesNotCallRejectedEndpoint$' -count=1` 实际失败：旧实现通过 fake transport 发起请求并返回 `upstream_unavailable`，而契约要求 `content_unavailable`/零网络。该 Red 证据确认问题是 deprecated wrapper 仍调用 rejected path，不是静态推断。既有 `TestNovelContentPublicParserPreservesUnknownBlock` 随契约改为 negative regression；MCP 对应旧成功 fixture 也改为结构化 unsupported error 断言。
+- Green 命令及验收断言：`go test ./sdk/pixiv -run '^(TestNovelContentDeprecatedEntryPointDoesNotCallRejectedEndpoint|TestSearchNovelsWiresQueryAndCursor|TestSearchUsersWiresQueryAndCursor)$' -count=1`、`go test ./sdk/pixiv -run '^TestSearchNovelsAndUsersCursorsArePublicScoped$' -count=1`、`go test ./sdk/pixiv -run '^TestLegacySDKConsumerCompiles$' -count=1`、`go test ./sdk/pixiv -count=1`、`go test -race ./sdk/pixiv -count=1`、`go test ./internal/mcpserver/pixiv -run '^TestNovelContentReportsUnsupportedWithoutCallingRejectedEndpoint$' -count=1`、`go test ./...`、`go vet ./...`、`go test ./scripts/internal/publicapi -count=1`、`go test ./scripts/tests/documentation -count=1`、`sh scripts/build.sh`、`git diff --check` 均通过。public API inventory digest 仍通过，旧消费者 interface/literals 编译通过，MCP tool schema/name 未被本任务删除。
+- 公开兼容性影响：未删除或重命名 public SDK symbol、request/model/named field、enum、error reason、constructor、resource method 或 cursor outer format；未新增依赖。唯一有意的运行时兼容边界是 `NovelContent` 从调用 rejected endpoint 改为本地 `ContentUnavailable`，并使现有 `novel_content` MCP 调用得到 structured error 而不是伪造正文；其 tool/schema compatibility 仍留给 T39A 逐项冻结。`SearchNovels`/`SearchUsers` 不新增 account binding，避免无批准的 cursor breaking change。
+- 回滚前提 / 依赖闭包：回滚需同时撤销 `NovelContent` deprecated/no-network 实现、SDK/MCP negative tests、T12 symbol map 与双语 SDK 说明，以及 plan/matrix/tasks 状态；不能只恢复 production method 而保留“rejected endpoint 不可调用”的完成记录。未涉及账号、token、下载内容、运行配置、live API 或新依赖。
+- 实际结果 / evidence / 风险：T12 已 verified。Goal 仍 incomplete，41 条 required capability 继续为 `scope_admitted`，没有被兼容审计提升为 `public_ready`。已知后续风险是 T39A 仍需冻结 CLI alias、MCP tool/input/output/default/error 与旧 JSON replay；T07–T11、T13–T45 仍按 DAG 实现 endpoint、SDK、shared、CLI/MCP、文档和最终发布门禁。下一入口按 goal-mode 规则为 T39A，不直接进入 T07。
 
 ## 实现任务准入卡
 

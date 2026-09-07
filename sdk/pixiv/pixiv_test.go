@@ -3,6 +3,7 @@ package pixiv_test
 import (
 	"context"
 	"errors"
+	"fmt"
 
 	"github.com/FlanChanXwO/pixiv-cli/sdk"
 	"io"
@@ -224,6 +225,56 @@ func TestSearchUsersWiresQueryAndCursor(t *testing.T) {
 	}
 	if page.Items == nil || len(page.Items) != 0 || !page.Next.IsZero() || calls != 2 {
 		t.Fatalf("second page = %#v calls=%d", page, calls)
+	}
+}
+
+func TestSearchNovelsAndUsersCursorsArePublicScoped(t *testing.T) {
+	newClient := func(userID int64) *Client {
+		rt := roundTripFunc(func(req *http.Request) (*http.Response, error) {
+			if req.URL.Host == "oauth.secure.pixiv.net" {
+				return jsonResponse(fmt.Sprintf(`{"access_token":"access-%d","refresh_token":"refresh-%d","expires_in":3600,"user":{"id":%d}}`, userID, userID, userID)), nil
+			}
+			switch req.URL.Path {
+			case "/v1/search/novel":
+				if req.URL.Query().Get("offset") != "" {
+					return jsonResponse(`{"novels":[],"next_url":null}`), nil
+				}
+				return jsonResponse(`{"novels":[{"id":2001,"title":"novel","create_date":"2026-01-01T00:00:00Z","user":{"id":7,"name":"writer"},"x_restrict":0,"text_length":12,"is_original":true}],"next_url":"https://app-api.pixiv.net/v1/search/novel?word=novel&offset=30"}`), nil
+			case "/v1/search/user":
+				if req.URL.Query().Get("offset") != "" {
+					return jsonResponse(`{"user_previews":[],"next_url":null}`), nil
+				}
+				return jsonResponse(`{"user_previews":[{"user":{"id":3001,"name":"artist"}}],"next_url":"https://app-api.pixiv.net/v1/search/user?word=artist&offset=20"}`), nil
+			default:
+				return nil, errors.New("unexpected path " + req.URL.Path)
+			}
+		})
+		client, _, err := OpenWith(context.Background(), "refresh", Options{HTTPClient: &http.Client{Transport: rt}})
+		if err != nil {
+			t.Fatalf("OpenWith: %v", err)
+		}
+		return client
+	}
+
+	first, second := newClient(42), newClient(43)
+	novelRequest := SearchNovelsRequest{Word: "novel"}
+	page, err := first.SearchNovels(context.Background(), novelRequest)
+	if err != nil {
+		t.Fatalf("SearchNovels first page: %v", err)
+	}
+	novelRequest.Cursor = page.Next
+	if _, err := second.SearchNovels(context.Background(), novelRequest); err != nil {
+		t.Fatalf("SearchNovels public-scoped cursor: %v", err)
+	}
+
+	userRequest := SearchUsersRequest{Word: "artist"}
+	pageUsers, err := first.SearchUsers(context.Background(), userRequest)
+	if err != nil {
+		t.Fatalf("SearchUsers first page: %v", err)
+	}
+	userRequest.Cursor = pageUsers.Next
+	if _, err := second.SearchUsers(context.Background(), userRequest); err != nil {
+		t.Fatalf("SearchUsers public-scoped cursor: %v", err)
 	}
 }
 
@@ -917,24 +968,25 @@ func TestUgoiraMetadataMapsFramesAndRejectsUnsafeFilename(t *testing.T) {
 	})
 }
 
-func TestNovelContentPublicParserPreservesUnknownBlock(t *testing.T) {
-	rt := roundTripFunc(func(req *http.Request) (*http.Response, error) {
-		if req.URL.Path != "/v1/novel/content" {
-			t.Fatalf("path = %q", req.URL.Path)
-		}
-		body := `<html><body><div class="novel-view"><div class="novel-body"><p class="noveltext">known text</p><div class="novel_something">unknown block payload</div></div></div></body></html>`
-		return &http.Response{StatusCode: http.StatusOK, Header: http.Header{"Content-Type": {"text/html"}}, Body: io.NopCloser(strings.NewReader(body))}, nil
+func TestNovelContentDeprecatedEntryPointDoesNotCallRejectedEndpoint(t *testing.T) {
+	calls := 0
+	rt := roundTripFunc(func(*http.Request) (*http.Response, error) {
+		calls++
+		return nil, io.ErrUnexpectedEOF
 	})
 	client, err := NewWith("token", Options{HTTPClient: &http.Client{Transport: rt}})
 	if err != nil {
 		t.Fatalf("NewWith: %v", err)
 	}
-	content, err := client.NovelContent(context.Background(), NovelContentRequest{NovelID: 1})
-	if err != nil {
-		t.Fatalf("NovelContent: %v", err)
+	_, err = client.NovelContent(context.Background(), NovelContentRequest{NovelID: 1})
+	if sdk.ReasonOf(err) != sdk.ContentUnavailable {
+		t.Fatalf("reason = %q, want %q", sdk.ReasonOf(err), sdk.ContentUnavailable)
 	}
-	if len(content.Blocks) != 2 || content.Blocks[1].Kind != NovelBlockUnknown || content.Blocks[1].Unknown == nil {
-		t.Fatalf("content = %+v", content)
+	if err == nil || !strings.Contains(err.Error(), "unsupported") {
+		t.Fatalf("error = %v, want an explicit unsupported detail", err)
+	}
+	if calls != 0 {
+		t.Fatalf("rejected novel content endpoint was called %d time(s)", calls)
 	}
 }
 
@@ -1346,3 +1398,136 @@ func resourceTestClient(t *testing.T, server *httptest.Server) (*Client, *http.C
 	}
 	return client, httpClient
 }
+
+// legacyPixivClient models the v1 Client surface consumed by callers before
+// the Goal-3 additive API. Keeping this interface compile-checked prevents a
+// future migration from silently removing an old method signature.
+type legacyPixivClient interface {
+	SearchArtworks(context.Context, SearchArtworksRequest) (sdk.Page[Artwork], error)
+	Artwork(context.Context, ArtworkRequest) (Artwork, error)
+	ArtworkPages(context.Context, ArtworkPagesRequest) ([]ArtworkPage, error)
+	RelatedArtworks(context.Context, RelatedArtworksRequest) (sdk.Page[Artwork], error)
+	ArtworkSeries(context.Context, ArtworkSeriesRequest) (sdk.Page[Artwork], error)
+	ArtworkRanking(context.Context, ArtworkRankingRequest) (sdk.Page[Artwork], error)
+	RecommendedArtworks(context.Context, RecommendedArtworksRequest) (sdk.Page[Artwork], error)
+	FollowingArtworks(context.Context, FollowingArtworksRequest) (sdk.Page[Artwork], error)
+	LatestArtworks(context.Context, LatestArtworksRequest) (sdk.Page[Artwork], error)
+	UserArtworks(context.Context, UserArtworksRequest) (sdk.Page[Artwork], error)
+	UserArtworkBookmarks(context.Context, UserArtworkBookmarksRequest) (sdk.Page[Artwork], error)
+	UserArtworkBookmarkTags(context.Context, UserArtworkBookmarkTagsRequest) (sdk.Page[BookmarkTag], error)
+	MyPixivArtworks(context.Context, MyPixivArtworksRequest) (sdk.Page[Artwork], error)
+	TrendingArtworkTags(context.Context, TrendingArtworkTagsRequest) ([]TrendingTag, error)
+	UgoiraMetadata(context.Context, UgoiraMetadataRequest) (UgoiraMetadata, error)
+	ArtworkComments(context.Context, ArtworkCommentsRequest) (CommentPage, error)
+	ArtworkBookmark(context.Context, ArtworkBookmarkRequest) (ArtworkBookmarkDetail, error)
+	SearchNovels(context.Context, SearchNovelsRequest) (sdk.Page[Novel], error)
+	Novel(context.Context, NovelRequest) (Novel, error)
+	NovelSeries(context.Context, NovelSeriesRequest) (NovelSeriesResult, error)
+	NovelContent(context.Context, NovelContentRequest) (NovelContent, error)
+	NovelComments(context.Context, NovelCommentsRequest) (CommentPage, error)
+	RecommendedNovels(context.Context, RecommendedNovelsRequest) (sdk.Page[Novel], error)
+	FollowingNovels(context.Context, FollowingNovelsRequest) (sdk.Page[Novel], error)
+	LatestNovels(context.Context, LatestNovelsRequest) (sdk.Page[Novel], error)
+	UserNovels(context.Context, UserNovelsRequest) (sdk.Page[Novel], error)
+	UserNovelBookmarks(context.Context, UserNovelBookmarksRequest) (sdk.Page[Novel], error)
+	MyPixivNovels(context.Context, MyPixivNovelsRequest) (sdk.Page[Novel], error)
+	SearchUsers(context.Context, SearchUsersRequest) (sdk.Page[UserPreview], error)
+	User(context.Context, UserRequest) (UserDetail, error)
+	RecommendedUsers(context.Context, RecommendedUsersRequest) (sdk.Page[UserPreview], error)
+	RelatedUsers(context.Context, RelatedUsersRequest) (sdk.Page[UserPreview], error)
+	UserFollowing(context.Context, UserFollowingRequest) (sdk.Page[UserPreview], error)
+	UserFollowers(context.Context, UserFollowersRequest) (sdk.Page[UserPreview], error)
+	UserBlockedUsers(context.Context, UserBlockedUsersRequest) (sdk.Page[UserPreview], error)
+	MyPixivUsers(context.Context, MyPixivUsersRequest) (sdk.Page[UserPreview], error)
+	CurrentUser(context.Context, CurrentUserRequest) (UserDetail, error)
+	AddBookmark(context.Context, AddBookmarkRequest) error
+	RemoveBookmark(context.Context, RemoveBookmarkRequest) error
+	FollowUser(context.Context, FollowUserRequest) error
+	UnfollowUser(context.Context, UnfollowUserRequest) error
+	SetAIArtworkVisibility(context.Context, SetAIArtworkVisibilityRequest) error
+	OpenResource(context.Context, sdk.OpenResourceRequest) (*sdk.ResourceResponse, error)
+	SaveResource(context.Context, sdk.ResourceRef, sdk.SaveOptions) (sdk.SavedResource, error)
+	CloseIdleConnections()
+	UserID() int64
+	Username() string
+}
+
+var _ legacyPixivClient = (*Client)(nil)
+
+func TestLegacySDKConsumerCompiles(t *testing.T) {
+	var client legacyPixivClient = (*Client)(nil)
+	_ = client
+
+	// These literals intentionally use the pre-existing request fields and
+	// named types that a source-compatible consumer can compile against.
+	_ = SearchArtworksRequest{
+		Word: "word", Target: SearchTargetKeyword, Sort: SortModePopularDesc,
+		Duration: DurationLastWeek, StartDate: "2026-01-01", EndDate: "2026-01-02",
+		ContentType: SearchContentTypeIllust, AIMode: SearchAIModeExclude,
+		AspectRatio: SearchAspectRatioSquare, Resolution: SearchResolutionMedium,
+		Tool: "pen", BookmarkMin: intPointer(1), BookmarkMax: intPointer(2), Cursor: sdk.Cursor{},
+	}
+	_ = SearchNovelsRequest{Word: "word", Target: SearchTargetKeyword, Sort: SortModePopularDesc, Duration: DurationLastWeek, Cursor: sdk.Cursor{}}
+	_ = SearchUsersRequest{Word: "word", Cursor: sdk.Cursor{}}
+	_ = ArtworkRequest{ArtworkID: 1}
+	_ = ArtworkPagesRequest{ArtworkID: 1}
+	_ = RelatedArtworksRequest{ArtworkID: 1, Cursor: sdk.Cursor{}}
+	_ = ArtworkSeriesRequest{SeriesID: 1, Cursor: sdk.Cursor{}}
+	_ = ArtworkRankingRequest{Mode: RankingModeDay, Date: "2026-01-01", Cursor: sdk.Cursor{}}
+	_ = RecommendedArtworksRequest{Cursor: sdk.Cursor{}}
+	_ = FollowingArtworksRequest{Restrict: RestrictPublic, Cursor: sdk.Cursor{}}
+	_ = LatestArtworksRequest{ContentType: SearchContentTypeIllust, Cursor: sdk.Cursor{}}
+	_ = UserArtworksRequest{UserID: 1, Kind: ArtworkKindIllustration, Cursor: sdk.Cursor{}}
+	_ = UserArtworkBookmarksRequest{UserID: 1, Restrict: RestrictPublic, Tag: "tag", Cursor: sdk.Cursor{}}
+	_ = UserArtworkBookmarkTagsRequest{UserID: 1, Restrict: RestrictPublic, Cursor: sdk.Cursor{}}
+	_ = MyPixivArtworksRequest{Cursor: sdk.Cursor{}}
+	_ = TrendingArtworkTagsRequest{}
+	_ = UgoiraMetadataRequest{ArtworkID: 1}
+	_ = ArtworkCommentsRequest{ArtworkID: 1, Cursor: sdk.Cursor{}}
+	_ = ArtworkBookmarkRequest{ArtworkID: 1}
+	_ = NovelRequest{NovelID: 1}
+	_ = NovelSeriesRequest{SeriesID: 1, Cursor: sdk.Cursor{}}
+	_ = NovelContentRequest{NovelID: 1}
+	_ = NovelCommentsRequest{NovelID: 1, Cursor: sdk.Cursor{}}
+	_ = RecommendedNovelsRequest{Cursor: sdk.Cursor{}}
+	_ = FollowingNovelsRequest{Restrict: RestrictPublic, Cursor: sdk.Cursor{}}
+	_ = LatestNovelsRequest{Cursor: sdk.Cursor{}}
+	_ = UserNovelsRequest{UserID: 1, Cursor: sdk.Cursor{}}
+	_ = UserNovelBookmarksRequest{UserID: 1, Restrict: RestrictPublic, Tag: "tag", Cursor: sdk.Cursor{}}
+	_ = MyPixivNovelsRequest{Cursor: sdk.Cursor{}}
+	_ = UserRequest{UserID: 1}
+	_ = RecommendedUsersRequest{Cursor: sdk.Cursor{}}
+	_ = RelatedUsersRequest{UserID: 1, Cursor: sdk.Cursor{}}
+	_ = UserFollowingRequest{UserID: 1, Restrict: RestrictPublic, Cursor: sdk.Cursor{}}
+	_ = UserFollowersRequest{UserID: 1, Restrict: RestrictPublic, Cursor: sdk.Cursor{}}
+	_ = UserBlockedUsersRequest{UserID: 1, Cursor: sdk.Cursor{}}
+	_ = MyPixivUsersRequest{Cursor: sdk.Cursor{}}
+	_ = CurrentUserRequest{}
+	_ = AddBookmarkRequest{ArtworkID: 1, Restrict: RestrictPublic, Tags: []string{"tag"}}
+	_ = RemoveBookmarkRequest{ArtworkID: 1}
+	_ = FollowUserRequest{UserID: 1, Restrict: RestrictPublic}
+	_ = UnfollowUserRequest{UserID: 1}
+	_ = SetAIArtworkVisibilityRequest{Visible: true}
+
+	_ = Artwork{}
+	_ = ArtworkPage{}
+	_ = ArtworkBookmarkDetail{}
+	_ = BookmarkTag{}
+	_ = Comment{}
+	_ = CommentPage{}
+	_ = ImageResource{}
+	_ = Novel{}
+	_ = NovelContent{}
+	_ = NovelSeries{}
+	_ = NovelSeriesResult{}
+	_ = TrendingTag{}
+	_ = UgoiraMetadata{}
+	_ = User{}
+	_ = UserDetail{}
+	_ = UserPreview{}
+	_ = UserProfile{}
+	_ = UserProfilePublicity{}
+	_ = UserWorkspace{}
+}
+
+func intPointer(value int) *int { return &value }

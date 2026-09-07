@@ -220,6 +220,12 @@ snapshot and cannot guarantee stability under upstream insertions, deletion or
 reordering. A stored position beyond the current batch returns `InvalidCursor`
 instead of silently restarting.
 
+`SearchNovels` and `SearchUsers` are deliberately public-scoped operations.
+Their cursors bind the product, operation, binding version, and query, but not a
+verified account or client instance. A cursor for the same query may therefore
+be resumed by another client; this is the frozen source-compatibility policy,
+not an assertion that every search operation is account-scoped.
+
 ## Pixiv read operations
 
 | Operation | Input highlights | Returns | Common errors |
@@ -232,6 +238,12 @@ instead of silently restarting.
 | `ArtworkSeries` / `NovelSeries` | positive series ID, cursor | series page (novel also returns metadata) | `InvalidCursor` |
 | `ArtworkComments` / `NovelComments` | positive ID, cursor | `CommentPage` | `NotFound` |
 | `UserArtworkBookmarks` / `UserArtworkBookmarkTags` / `UserNovelBookmarks` | `UserID`, `Restrict`, `tag`, cursor | typed page | `InvalidArgument`, `InvalidCursor` |
+
+`NovelContent` remains exported for source compatibility with earlier v1
+consumers. It is deprecated: the rejected `/v1/novel/content` App API endpoint
+and excluded WebView path are not called, and the method returns
+`ContentUnavailable` without network I/O. There is no replacement body endpoint
+in the current v1 contract.
 
 Key semantics:
 

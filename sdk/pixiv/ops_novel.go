@@ -112,16 +112,16 @@ func (c *Client) NovelSeries(ctx context.Context, request NovelSeriesRequest) (N
 	}, nil
 }
 
-// NovelContent reads the structured body of one novel.
+// NovelContent is retained for source compatibility with the v1 SDK surface.
+//
+// Deprecated: the App API novel-content endpoint is rejected and WebView
+// content is outside the v1 SDK contract. This method returns
+// ContentUnavailable without making a network request.
 func (c *Client) NovelContent(ctx context.Context, request NovelContentRequest) (NovelContent, error) {
 	if request.NovelID <= 0 {
 		return NovelContent{}, newError("NovelContent", sdk.InvalidArgument, "novel ID must be positive")
 	}
-	html, err := c.novelDetail.Content(ctx, request.NovelID)
-	if err != nil {
-		return NovelContent{}, classifyAppError(err, "NovelContent")
-	}
-	return c.parseNovelContent(request.NovelID, html)
+	return NovelContent{}, newError("NovelContent", sdk.ContentUnavailable, "novel content is unsupported by the v1 App API")
 }
 
 // NovelComments lists comments on one novel.

@@ -80,36 +80,25 @@ func TestNovelDetailMapsRequestAndReturnsRecords(t *testing.T) {
 	}
 }
 
-func TestNovelContentReturnsBlocksWithOpaqueResourceRefs(t *testing.T) {
-	client := &fakeSDKClient{
-		novelContentHTML: `<!DOCTYPE html><html><body>` +
-			`<h1 class="title">novel-content</h1>` +
-			`<p class="noveltext">complete body</p>` +
-			`<figure class="novel_image"><img src="https://i.pximg.net/novel/12/image"></figure>` +
-			`</body></html>`,
-	}
+func TestNovelContentReportsUnsupportedWithoutCallingRejectedEndpoint(t *testing.T) {
+	client := &fakeSDKClient{}
 	session, closeSession := newSDKTestSession(t, client)
 	defer closeSession()
 
 	result := callTool(t, session, "novel_content", map[string]any{"novel_id": 12})
-	if result.IsError || client.novelContentRequest.NovelID != 12 {
+	if !result.IsError || client.novelContentRequest.NovelID != 0 {
 		t.Fatalf("novel content result=%+v request=%+v", result, client.novelContentRequest)
 	}
 	var out outputs.NovelContent
 	decodeStructured(t, result, &out)
-	derivedRef, err := sdk.NewResourceRef("pixiv", []byte(`{"k":"novel_image","id":12}`))
-	if err != nil {
-		t.Fatal(err)
+	if !resultHasText(result, "content_unavailable") {
+		t.Fatalf("novel content error = %+v", result)
 	}
-	if len(out.Content.Blocks) != 2 || out.Content.Blocks[0].Text != "complete body" || out.Content.Blocks[1].Image == nil || out.Content.Blocks[1].Image.Resource == nil || out.Content.Blocks[1].Image.Resource.Ref != derivedRef.String() {
+	if out.Content.Blocks == nil || len(out.Content.Blocks) != 0 {
 		t.Fatalf("novel content=%+v", out)
 	}
-	rawContent, err := json.Marshal(out)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if strings.Contains(string(rawContent), "https://private.example") || strings.Contains(strings.ToLower(string(rawContent)), "cookie") || strings.Contains(strings.ToLower(string(rawContent)), "header") {
-		t.Fatalf("novel content leaked resource transport data: %s", rawContent)
+	if client.novelContentRequest.NovelID != 0 {
+		t.Fatalf("rejected novel content endpoint was called with request=%+v", client.novelContentRequest)
 	}
 }
 
