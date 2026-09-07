@@ -3,10 +3,12 @@ package search_test
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/url"
 	"testing"
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/endpoint/user/search"
+	"github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/protocol"
 )
 
 type fakeTransport struct {
@@ -34,7 +36,22 @@ func TestSearchMapsRouteQueryUsersAndContinuation(t *testing.T) {
 
 func TestSearchRejectsNullUserList(t *testing.T) {
 	_, err := search.New(&fakeTransport{body: `{"user_previews":null}`}).Search(context.Background(), search.Request{Word: "artist"})
-	if err == nil {
-		t.Fatal("null user list unexpectedly succeeded")
+	if !errors.Is(err, protocol.ErrMalformedResponse) {
+		t.Fatalf("null user list error = %v, want malformed response", err)
+	}
+}
+
+func TestSearchAcceptsEmptyListAndRejectsInvalidUser(t *testing.T) {
+	result, err := search.New(&fakeTransport{body: `{"user_previews":[]}`}).Search(context.Background(), search.Request{Word: "artist"})
+	if err != nil {
+		t.Fatalf("empty list: %v", err)
+	}
+	if result.Items == nil || len(result.Items) != 0 || result.HasNext {
+		t.Fatalf("empty result = %#v", result)
+	}
+
+	_, err = search.New(&fakeTransport{body: `{"user_previews":[{"user":{"id":0}}]}`}).Search(context.Background(), search.Request{Word: "artist"})
+	if !errors.Is(err, protocol.ErrMalformedResponse) {
+		t.Fatalf("invalid user error = %v, want malformed response", err)
 	}
 }

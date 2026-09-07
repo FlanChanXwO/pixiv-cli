@@ -34,7 +34,7 @@ Status 的 verified 表示对应 task 的实现与相关验证完成；各 task 
 | T39A | CLI/MCP migration | T12 | 冻结 CLI 路由和 MCP tool/input/output compatibility map；旧 JSON 回放清单 | verified |
 | T07A | artwork read endpoint owner | T12 | 实现 artwork search、series、ugoira metadata 等 T07 artwork adapter leaf、DTO 与错误映射；保留现有 transport/SDK 边界，不进入 CLI/MCP | verified |
 | T07B | novel read endpoint owner | T12 | 实现 novel search、v2 detail、v2 series 等 T07 novel adapter leaf、DTO 与错误映射；禁止回退已 rejected v1 detail/series path | verified |
-| T07C | user read endpoint owner | T12,T06 | 实现 user search/detail/artworks/novels/relationships adapter leaf、DTO 与错误映射；bare-ID 的命令 resolver 仍由 T21 负责 | pending |
+| T07C | user read endpoint owner | T12,T06 | 实现 user search/detail/artworks/novels/relationships adapter leaf、DTO 与错误映射；bare-ID 的命令 resolver 仍由 T21 负责 | verified |
 | T07D | feed/relationship adjunct endpoint owner | T12,T06 | 实现 trending、MyPixiv、follow 所需 adapter leaf、DTO 与错误映射；不把 mutation read-back 或 CLI/MCP 发布门禁提前并入 | pending |
 | T07 | read endpoint owners（umbrella） | T12,T07A,T07B,T07C,T07D | 汇总并审计四个子卡的 artwork/novel/user/feed read adapter、DTO、错误映射与 leaf fixture；全部子卡完成后才可标记 verified | pending |
 | T08 | bookmark endpoint owners | T12 | 按两类 list/tags/detail/mutation leaf 拆卡实现 | pending |
@@ -287,6 +287,17 @@ Status 的 verified 表示对应 task 的实现与相关验证完成；各 task 
 - 公开兼容性影响：未删除或重命名 SDK symbol、CLI/MCP tool/schema、request/response wire 或依赖；既有 `Novel`、`NovelSeries` 调用现在经同一 adapter 请求已冻结的 v2 path。v1 不做 fallback。SDK/MCP 测试只更新离线 path fixture；CLI/MCP 生产层未进入本任务。T14 后续仍负责 public SDK 的 series metadata、cursor 与源码兼容审计。
 - 回滚前提 / 依赖闭包：回滚需同时撤销 v2 protocol 常量、detail/series adapter 与 required-list 校验、novel search/series fixture、SDK/MCP path fixture 和本完成记录；不得只恢复 v1 path 而保留 T07B verified 或后续 T14 对 v2 的依赖。未涉及账号、token、下载内容、运行配置或 live API。
 - 实际结果 / evidence / 风险：T07B 已 verified；novel search、v2 detail、v2 series adapter 的离线 method/path/query/DTO/null/empty/error 回归通过，rejected v1 detail/series 未被请求。T07 umbrella 仍 pending，T07C/T07D 尚未完成，41 条 required capability 仍未达到 `public_ready`，Goal 继续 incomplete；下一入口按 DAG 为 T07C。
+
+## T07C 完成记录
+
+- Owner package / 涉及文件：user read endpoint；`internal/services/pixiv/endpoint/user/{search,detail,novels,related,followers,following,blocked}`、`internal/services/pixiv/endpoint/artwork/timeline/timeline.go` 的 `UserArtworks` 分支及对应离线测试。未修改 SDK、CLI/MCP production、resolver 或 continuation owner。
+- Depends on：T12、T06 verified。
+- 冻结 contract / fixture：覆盖 `/v1/search/user`、`/v1/user/detail`（`Current` 固定 `filter=for_android`）、`/v1/user/illusts`、`/v1/user/novels`（固定 `filter=for_android`）、`/v1/user/following`、`/v1/user/follower`、`/v1/user/related` 与 `/v2/user/list` 的 method/path/query/DTO 映射。required user/profile/workspace object、required user/novel/illust list、blocked 的 `users` 与兼容 `user_previews` envelope、正数实体 ID、空数组 non-nil、null/缺失/非法响应的 `protocol.MalformedResponse` 均有离线 fixture。UserArtworks 在 adapter leaf 规范化空值与既有 `illustration` 拼写为 upstream `illust`，保留 `illust/manga/ugoira`，非正 user ID 和未声明 subtype 在发起 transport 前拒绝；bare-ID resolver 继续归 T21，续页额外 key/path allowlist 继续归 T11。
+- Red 测试、命令及当前行为的预期失败：新增 `TestUserArtworksNormalizesIllustrationAndRejectsInvalidRequest` 后运行 `go test ./internal/services/pixiv/endpoint/artwork/timeline -run '^TestUserArtworksNormalizesIllustrationAndRejectsInvalidRequest$' -count=1` 实际失败：旧实现把 `illustration` 原样发出，并接受 `user_id<=0` 与 `type=all`。严格校验初版随后由全量 `go test ./... -count=1` 暴露 MCP 省略 `type` 的既有默认路径，补充“空 subtype → illust”回归后再次 Red，修正后恢复兼容。
+- Green 命令及验收断言：`go test ./internal/services/pixiv/endpoint/user/search ./internal/services/pixiv/endpoint/user/detail ./internal/services/pixiv/endpoint/user/novels ./internal/services/pixiv/endpoint/user/related ./internal/services/pixiv/endpoint/user/followers ./internal/services/pixiv/endpoint/user/following ./internal/services/pixiv/endpoint/user/blocked ./internal/services/pixiv/endpoint/artwork/timeline ./internal/mcpserver/pixiv -count=1`、`go test ./internal/services/pixiv/... ./sdk/pixiv -count=1`、`go test ./... -count=1`、`go vet ./...`、`go test ./scripts/tests/documentation -count=1`、`sh scripts/build.sh` 与 `git diff --check` 均通过；LSP diagnostics 对 9 个受影响 Go 文件无错误。测试覆盖 user search/detail/artworks/novels/relationships 的 DTO、required/null/empty/error 语义与 blocked envelope 兼容。
+- 公开兼容性影响：未删除或重命名 SDK symbol、request/model、CLI/MCP tool/schema、resolver、依赖或账号行为；保留空 `user_artworks.type` 的既有默认成功路径，并将旧 SDK `illustration` 拼写安全映射为 App API `illust`。不符合 T06 的 user-artworks ID/subtype 请求不再触网。public SDK 对非法 subtype 的最终 `InvalidArgument` 分类与 cursor binding 仍由后续 T13/T14/T19 owner 完成；T11 仍负责 continuation allowlist，不在本卡提前实现。
+- 回滚前提 / 依赖闭包：回滚需同时撤销 UserArtworks subtype/ID 规范化、9 个 endpoint fixture 增补和本完成记录；不得只恢复 wire 行为而保留 T07C verified。未涉及账号、token、下载内容、运行配置、live API 或新依赖；后续 T11/T13/T14/T21/T23/T34/T37 若已引用本 adapter 约束，回滚时需同步撤销相应依赖或先提供兼容修复。
+- 实际结果 / evidence / 风险：T07C 已 verified；user search/detail/artworks/novels/relationships adapter leaf 与离线 DTO/null/empty/error 回归通过，T07 umbrella 仍等待 T07D 后再汇总，41 条 required capability 仍为 `scope_admitted`，Goal 继续 incomplete。剩余已知边界是 continuation 严格 allowlist（T11）、public SDK 错误/cursor 语义（T13/T14/T19）和 bare-ID resolver（T21）；下一可执行子卡按 DAG 为 T07D。
 
 ## 实现任务准入卡
 

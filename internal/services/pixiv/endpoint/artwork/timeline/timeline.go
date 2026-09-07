@@ -103,11 +103,30 @@ func requestValues(request Request) (string, url.Values, error) {
 		setOffset(query, request.Offset)
 		return protocol.AppIllustMyPixiv, query, nil
 	case UserArtworks:
-		query := url.Values{"user_id": {strconv.FormatInt(request.UserID, 10)}, "type": {request.ArtworkType}}
+		if request.UserID <= 0 {
+			return "", nil, errors.New("user artwork user ID must be positive")
+		}
+		artworkType, err := normalizeUserArtworkType(request.ArtworkType)
+		if err != nil {
+			return "", nil, err
+		}
+		query := url.Values{"user_id": {strconv.FormatInt(request.UserID, 10)}, "type": {artworkType}}
 		setOffset(query, request.Offset)
 		return protocol.AppUserIllusts, query, nil
 	default:
 		return "", nil, errors.New("unsupported artwork timeline kind")
+	}
+}
+
+func normalizeUserArtworkType(value string) (string, error) {
+	switch value {
+	case "", "illustration", "illust":
+		// 空值和 ArtworkKindIllustration 的既有拼写都使用默认的 illust。
+		return "illust", nil
+	case "manga", "ugoira":
+		return value, nil
+	default:
+		return "", errors.New("unsupported user artwork subtype")
 	}
 }
 

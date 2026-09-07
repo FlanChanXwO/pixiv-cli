@@ -13,9 +13,11 @@ type fakeTransport struct {
 	path  string
 	query url.Values
 	body  string
+	calls int
 }
 
 func (f *fakeTransport) GetJSON(_ context.Context, path string, query url.Values, out any) error {
+	f.calls++
 	f.path = path
 	f.query = query
 	return json.Unmarshal([]byte(f.body), out)
@@ -59,6 +61,52 @@ func TestTimelineRejectsNullList(t *testing.T) {
 	_, err := timeline.New(&fakeTransport{body: `{"illusts":null}`}).List(context.Background(), timeline.Request{Kind: timeline.Latest, ContentType: "illust"})
 	if err == nil {
 		t.Fatal("null list unexpectedly succeeded")
+	}
+}
+
+func TestUserArtworksNormalizesIllustrationAndRejectsInvalidRequest(t *testing.T) {
+	tests := []struct {
+		name    string
+		request timeline.Request
+		want    string
+	}{
+		{name: "default subtype", request: timeline.Request{Kind: timeline.UserArtworks, UserID: 77}, want: "illust"},
+		{name: "legacy illustration spelling", request: timeline.Request{Kind: timeline.UserArtworks, UserID: 77, ArtworkType: "illustration"}, want: "illust"},
+		{name: "zero user id", request: timeline.Request{Kind: timeline.UserArtworks, UserID: 0, ArtworkType: "manga"}},
+		{name: "negative user id", request: timeline.Request{Kind: timeline.UserArtworks, UserID: -1, ArtworkType: "manga"}},
+		{name: "unsupported subtype", request: timeline.Request{Kind: timeline.UserArtworks, UserID: 77, ArtworkType: "all"}},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			transport := &fakeTransport{body: `{"illusts":[]}`}
+			_, err := timeline.New(transport).List(context.Background(), test.request)
+			if test.want == "" {
+				if err == nil {
+					t.Fatal("invalid user-artworks request unexpectedly succeeded")
+				}
+				if transport.calls != 0 {
+					t.Fatalf("invalid request reached transport %d time(s)", transport.calls)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("List: %v", err)
+			}
+			if got := transport.query.Get("type"); got != test.want {
+				t.Fatalf("type = %q, want %q; query=%v", got, test.want, transport.query)
+			}
+		})
+	}
+}
+
+func TestUserArtworksMapsArtworkDTO(t *testing.T) {
+	transport := &fakeTransport{body: `{"illusts":[{"id":101,"title":"art","type":"illust","user":{"id":77,"name":"artist"},"tags":[{"name":"tag"}]}]}`}
+	result, err := timeline.New(transport).List(context.Background(), timeline.Request{Kind: timeline.UserArtworks, UserID: 77, ArtworkType: "illust"})
+	if err != nil {
+		t.Fatalf("List: %v", err)
+	}
+	if len(result.Items) != 1 || result.Items[0].ID != 101 || result.Items[0].Title != "art" || result.Items[0].User.ID != 77 || len(result.Items[0].Tags) != 1 || result.Items[0].Tags[0].Name != "tag" {
+		t.Fatalf("result = %#v", result)
 	}
 }
 
