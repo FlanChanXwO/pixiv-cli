@@ -32,7 +32,11 @@ Status 的 verified 表示对应 task 的实现与相关验证完成；各 task 
 | R04 | follow restrict 输入校验 | CHECK-03,T06 | 在 `FollowUser` SDK 边界复用 `validateRestrict`；空值仍默认 `public`，未知值以 `InvalidArgument` 在发起请求前拒绝，并补充无网络请求回归 | verified |
 | T12 | SDK compatibility | T20,T01,T02,T03,T04,T05,T06,CHECK-03,R04 | 冻结 symbol map、旧 wrapper、named types、旧消费者编译、cursor 版本恢复；默认源码兼容 | verified |
 | T39A | CLI/MCP migration | T12 | 冻结 CLI 路由和 MCP tool/input/output compatibility map；旧 JSON 回放清单 | verified |
-| T07 | read endpoint owners | T12 | 按 artwork/novel endpoint leaf 拆卡，实现 read adapter（含 v2、user/trending/relationships、follow/mypixiv 所需 endpoint）、DTO 与错误映射 | pending |
+| T07A | artwork read endpoint owner | T12 | 实现 artwork search、series、ugoira metadata 等 T07 artwork adapter leaf、DTO 与错误映射；保留现有 transport/SDK 边界，不进入 CLI/MCP | pending |
+| T07B | novel read endpoint owner | T12 | 实现 novel search、v2 detail、v2 series 等 T07 novel adapter leaf、DTO 与错误映射；禁止回退已 rejected v1 detail/series path | pending |
+| T07C | user read endpoint owner | T12,T06 | 实现 user search/detail/artworks/novels/relationships adapter leaf、DTO 与错误映射；bare-ID 的命令 resolver 仍由 T21 负责 | pending |
+| T07D | feed/relationship adjunct endpoint owner | T12,T06 | 实现 trending、MyPixiv、follow 所需 adapter leaf、DTO 与错误映射；不把 mutation read-back 或 CLI/MCP 发布门禁提前并入 | pending |
+| T07 | read endpoint owners（umbrella） | T12,T07A,T07B,T07C,T07D | 汇总并审计四个子卡的 artwork/novel/user/feed read adapter、DTO、错误映射与 leaf fixture；全部子卡完成后才可标记 verified | pending |
 | T08 | bookmark endpoint owners | T12 | 按两类 list/tags/detail/mutation leaf 拆卡实现 | pending |
 | T09A | appapi transport | T12,T04,T06 | 增加响应可解码的窄 form 能力；保留旧 PostForm，不自动重放不确定 mutation | pending |
 | T09 | comment endpoint owners | T09A | 按 artwork/novel read/create/reply/stamp/delete 与 stamps leaf 拆卡实现 | pending |
@@ -250,6 +254,17 @@ Status 的 verified 表示对应 task 的实现与相关验证完成；各 task 
 - 公开兼容性影响：不改变 SDK symbol、CLI/MCP wire、endpoint、依赖、账号、token、下载内容或 live API；只修正文档对已冻结行为的表述，并把 route/tool/default/error 与旧 JSON replay 约束显式化。后续 T24–T38 仍必须按本矩阵实现，T39B/T43 仍需逐项回放和全量回归；40 个 tool 的冻结不等于能力已 `public_ready`。
 - 回滚前提 / 依赖闭包：文档与任务账本变更可整体回滚，但必须同时撤销两个 compatibility matrix、verification/plan 链接、双语 CLI/MCP/Skill 说明和 T39A 状态；不得只删除矩阵而保留后续 owner 对其字段/default/error 的引用。未涉及账号、token、运行配置、live API 或新依赖。
 - 实际结果 / evidence / 风险：T39A 已 verified。代表性 stdio、mutation、user-list schema、novel-content no-network、exact registration replay 已通过；完整逐 tool 离线 replay、endpoint owner 实现、CLI/MCP 全量回归仍由 T37/T38/T39B/T43/T45 完成。41 条 required capability 仍为 `scope_admitted`，Goal 继续 incomplete；下一入口按 DAG 为 T07。
+
+## T07 拆卡记录
+
+- Owner package / 涉及文件：read endpoint owner umbrella；本文件。T07 同时覆盖 15 个 required capability，跨 artwork、novel、user/relationship 与 feed/relationship adjunct owner，按任务规则先拆为 T07A–T07D；本轮没有修改生产代码、protocol、SDK、CLI/MCP wire 或公开文档。
+- Depends on：T12、T06 已 verified；四个子卡各自只依赖已冻结的 contract/compatibility，不依赖尚未完成的后续 SDK/CLI/MCP owner。
+- 冻结 contract / fixture：T07A 负责 `artwork-search`、`artwork-series`、`ugoira-metadata` 等 artwork leaf；T07B 负责 `novel-search`、`novel-detail`、`novel-series`，其中 detail/series 必须迁移到已冻结的 v2 path；T07C 负责 `user-search`、`user-detail`、`user-artworks`、`user-novels`、`user-relationships`，bare-ID 命令 resolver 仍归 T21；T07D 负责 `trending`、`mypixiv`、`follow-mutation` 所需 endpoint leaf。每个子卡必须分别提交 method/path、request、DTO、null/empty、错误映射和离线 fixture；T07 umbrella 在四卡及其回归完成后审计汇总。
+- Red 测试、命令及当前行为的预期失败：这是 task decomposition/ledger task，无生产代码 Red 阶段。静态审计确认 T07 capability-admission 中有 15 行，且现有 endpoint 目录同时包含 v1/v2 混合路径与 user/feed families；若不拆卡，无法把 novel v2 禁止回退、user identity、follow outcome 等不同风险绑定到独立 owner 和回归证据。
+- Green 命令及验收断言：`awk` 核对 `capability-admission.md` 中 T07 adapter owner 共 15 个 capability；`rg --files internal/services/pixiv/endpoint` 核对 artwork/novel/user/feed leaf 目录；`go test ./scripts/tests/documentation -count=1` 与 `git diff --check` 在回写前后通过。任务表现已形成 T07A–T07D → T07 umbrella 的显式依赖，当前下一入口为 T07A。
+- 公开兼容性影响：没有 public SDK symbol、endpoint 请求、CLI/MCP wire、默认值、依赖、账号或 live 数据变化；只增加任务分解和审计边界，15 个 capability 继续为 `scope_admitted`。
+- 回滚前提 / 依赖闭包：回滚只需撤销四个子卡、T07 umbrella 依赖和本记录；后续若已有 owner 引用某子卡，必须同时撤销该依赖或先补兼容记录，不得只删除父卡。
+- 实际结果 / evidence / 风险：T07 的拆卡已完成，但 T07 父任务仍为 pending，不能据此宣告任何 capability `contract_frozen`、`migration_ready` 或 `public_ready`。下一轮按 DAG 执行 T07A，不进入 T07B–T08。
 
 ## 实现任务准入卡
 
