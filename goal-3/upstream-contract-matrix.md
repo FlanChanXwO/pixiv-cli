@@ -118,6 +118,47 @@
 - T07/T10 负责 endpoint leaf、v2 path、DTO 和 error mapping；T14 负责 novel public SDK、series metadata、cursor 与源码兼容；T18 负责 latest/recommended/ranking/follow SDK 集成。T02 不改 protocol、adapter、SDK、CLI、MCP、依赖或默认值。
 - T25/T29/T30/T31/T32/T37 在 T39A 后分别处理 novel search、timeline、ranking、detail、series 及 MCP 路由；`NovelContent`/`/v1/novel/content` 已 rejected，WebView 正文已 excluded，后续只允许按 T12 冻结的 deprecated/explicit-unsupported 兼容方案处理，不得 fallback。
 
+## T03 bookmark 基础 contract 冻结（2026-09-07）
+
+本节冻结 artwork/novel bookmark 的 list、tags、detail、add、remove，以及 `list/tags --type all` 的产品层 contract。目标 contract、历史 evidence 和当前生产实现严格分层：历史表中的 verdict 不改写；`not_tested`/`inconclusive` 的 operation 只能登记目标边界，不能新增 public route 或提升 capability 状态。`all` 是跨两个 endpoint 的聚合选择，不是 upstream subtype，也不能被 detail/add/remove 继承。
+
+| Operation | Method / path | Base request | Normalized response | Continuation / subtype / mutation boundary | Evidence boundary |
+| --- | --- | --- | --- | --- | --- |
+| artwork bookmark list | `GET /v1/user/bookmarks/illust` | `user_id` required positive；`restrict` 为 `public/private`，产品层默认 `public`；`tag` optional；首请求不带 `max_bookmark_id` | required `illusts` list → normalized `Artwork`；空列表合法 | 续页只接受正 `max_bookmark_id`；不发送未经验证的 `type/content_type`；单类 cursor 不能用于 all | public/private wire、response、现有 adapter/SDK fixture 已有，但 strict live 第二页是 `pagination_exempt`/未观察，不能宣告完整分页发布 |
+| novel bookmark list | `GET /v1/user/bookmarks/novel` | `user_id` required positive；`restrict` 为 `public/private`，产品层默认 `public`；`tag` optional；首请求不带 `max_bookmark_id` | required `novels` list → normalized `Novel`；空列表合法 | 续页只接受正 `max_bookmark_id`；novel list 不承载 artwork subtype；单类 cursor 不能用于 all | public/private wire、response、现有 adapter/SDK fixture 已有，但 strict live 第二页是 `pagination_exempt`/未观察 |
+| artwork bookmark tags | `GET /v1/user/bookmark-tags/illust` | `user_id` required positive；`restrict` 为 `public/private`，产品层默认 `public`；首请求不带 `offset` | target required `tags` list → `BookmarkTag{name,count}`；`name` 非空；空列表合法 | 续页只接受正 `offset`；`type/content_type` 仍是未验证 candidate，不进入已发布 wire；single-stream tag cursor 不能用于 all | 当前 adapter 将缺失/null tags 宽松视为空结果，属于旧行为而非目标 contract；现有 fixture 仅覆盖单流，subtype/live evidence 尚缺 |
+| novel bookmark tags | candidate `GET /v1/user/bookmark-tags/novel` | `user_id`、`restrict` 是已知 request 维度；其他参数、默认值与 continuation 不在 T03 擅自补造 | target 结果仍需保留 `name/count` 与 novel content kind；wire shape、null/empty 及分页需 T08 snapshot | 未冻结可发送 subtype 或 offset allowlist；在 T08 evidence/adapter/SDK 前不得新增 public operation | candidate 表明确 wire/response/空列表/adapter/SDK `not_tested`；保持 `scope_admitted` |
+| artwork bookmark detail | `GET /v2/illust/bookmark/detail` | `illust_id` required positive；无分页 | `ArtworkBookmarkDetail{restrict,tags}`；未收藏是合法空状态（空 restrict、non-nil empty tags）；已收藏保留 restrict 与全部 tag name | 404、`bookmark_detail:null` 或明确 `is_bookmarked:false` 只在该 endpoint 归一为空状态；其他错误真实传播；不接受 all | 当前 wire/adapter/SDK fixture 已覆盖 bookmarked/unbookmarked/404；这是当前单类实现证据，不是 all 或 mutation read-back 证据 |
+| novel bookmark detail | target `GET /v2/novel/bookmark/detail` | `novel_id` required positive；无分页 | target 需提供与 artwork detail 等价的 bookmark state（restrict、tags、明确的 absent 状态），不得把 Novel metadata/detail 混入 | absent/404 的归一化、tags shape 和错误映射必须先由 T08 snapshot 冻结；不接受 all | wire、response、public/private 状态、adapter/SDK 均 `not_tested`；T03 只冻结不 fallback、不公开未验证路径 |
+| artwork bookmark add | `POST /v2/illust/bookmark/add` | `illust_id` required positive；`restrict` 为 `public/private`，空值仅由兼容层默认 `public`；`tags[]` optional、可重复、可为空 | mutation 不以 2xx/nil 单独证明状态；需 detail/list/tags read-back | 无 continuation；写前确认当前账号与目标权限，保存原状态；结果分为确定失败、写入后读回失败、结果不确定，后两类禁止自动重放 | 当前仅有窄 `PostForm`/单测，无 bookmark 真实 mutation/read-back evidence；T09A/T08/T15/T38 必须补齐 |
+| novel bookmark add | target `POST /v2/novel/bookmark/add` | `novel_id` required positive；`restrict`、`tags` 的具体 wire optional/default 以 T08 strict snapshot 为准 | target 与 artwork mutation 同样要求 detail/list/tags read-back 和可观测 outcome | 无 continuation；不能因为旧 symbol 存在而调用未确认 path；不确定结果禁止重放 | novel bookmark mutation 当前未进入 strict manifest；保持 `not_tested` |
+| artwork bookmark remove | `POST /v1/illust/bookmark/delete` | `illust_id` required positive；无 continuation | 通过 detail/list/tags read-back 确认删除状态，或明确暴露不确定结果 | 写前保存并校验原状态；只恢复/清理本轮目标，不删除既有其他 bookmark；不接受 all | 当前仅验证 form method/path/status，无真实隔离账号生命周期证据 |
+| novel bookmark remove | target `POST /v1/novel/bookmark/delete` | `novel_id` required positive；无 continuation | 通过 novel detail/list/tags read-back 确认删除状态，删除后恢复原状态 | 无 fallback；不确定写入禁止猜测或重放；detail/list/tags read-back 是发布前必要条件 | path 是 candidate；wire、adapter、SDK、真实写后恢复均 `not_tested` |
+| bookmark list --type all | product aggregate over artwork list → novel list | 输入身份为 user/user bookmarks；`--type all` 与 user URL 合法；显式 artwork URL 与 novel 类型冲突；统一 `tag/restrict/local filter` | 连接后的 normalized Artwork/Novel sequence，保留各自 content kind | 固定 artwork → novel；各流 upstream 顺序不变；Skip/Limit 只应用一次，不按类型分配配额；OneBatch 可跳过空流但不为凑类型额外抓批；aggregate cursor 记录当前流、两端 checkpoint、完成状态、query/account binding | 目前无 aggregate SDK/CLI/MCP handler、DTO、cursor 或 all fixture；目标为 required，仍 `scope_admitted` |
+| bookmark tags --type all | product aggregate over artwork tags → novel tags | 输入身份与 list 相同；`all` 只适用于 tags；单类 `restrict`/user binding 必须同时作用于两流 | 每项必须带 `content_type=artwork|novel`、`name`、该流原始 `count`；同名 tag 不合并、不相加、不去重，流内顺序保留 | 固定 artwork → novel；统一 Skip/Limit/OneBatch；aggregate cursor 记录当前流、两个 tags checkpoint、完成状态和 binding；不持久化 next_url/token | novel tags 与 typed count 尚未有 upstream/adapter/SDK evidence；目前无 all output/atomicity fixture，仍 `scope_admitted` |
+
+### T03 subtype、鉴权与聚合错误边界
+
+- T20 的三层语义继续生效：bookmark list/tags 的 Target kind 是 user/user bookmarks，Result kind 是 artwork 或 novel，`illust/manga/ugoira` 只属于 artwork subtype；`all` 不是 subtype。现有 artwork bookmark endpoint 没有已验证的 `type/content_type` wire，因此在 evidence 前只允许将 subtype 作为目标 contract/candidate，不得静默发送或宣告 server-side filtering。若后续改为 client-side filter，subtype 与 local filter 必须进入 cursor binding，并按逻辑分页计数。
+- `restrict` 的产品选择只有 `public/private`，新 CLI/MCP/aggregate route 默认绑定 `public` 并把实际选择写入每个流的 query/cursor。`private` 只允许 verified authenticated account 的自身 bookmark scope；跨账号 private、缺少认证或上游 403 必须显式拒绝/保留真实鉴权分类，不得改请求为 public、匿名 Web fallback 或换另一个 user 重试。既有 SDK 空 `Restrict` 的源码兼容与默认处理留给 T12；不因此删除旧 named type 或改变旧 wire。
+- 已冻结的 list `illusts`/`novels` 与 artwork tags 的目标 `tags` list 都是 required：缺失或 JSON `null` 为 `MalformedUpstreamResponse`，`[]` 合法且 public page `Items` 为 non-nil empty slice。现有 artwork tags 的 null-as-empty 仅记录为 legacy adapter 行为，不能成为 all 成功的默认值；novel tags 的 required/null/empty 仍待 T08 snapshot，不得从 candidate path 推断。`next_url=null` 正常结束；非 null 空值、重复/缺失/非本 operation allowlist 的 continuation、非正 `max_bookmark_id`/`offset` 均 malformed。detail 的明确 absent state 是合法结果，但矛盾字段或未验证 novel detail shape 不能猜测归一。
+- 所有显式 ID 必须为正数；URL/structured record/`--type` namespace 冲突、非法 restrict/subtype 或 detail/add/remove 使用 all 返回 `InvalidArgument`。upstream 401/403、transport、取消、429、非成功状态和 schema 错误保留真实分类；不得把错误流、空 response 或 mutation 的 2xx 当作成功空列表。
+- 一次 `--type all` 逻辑页需要的任一流失败，整页失败，不返回已收集的成功子集；JSON/NDJSON 必须在两个流都完成该逻辑页收集后再提交。aggregate cursor 不得携带 next_url、signed URL、token、cookie、原始查询或用户内容；现有 `sdk.Cursor` 的 binding 也不是鉴权或密码学防篡改证明。
+
+### T03 evidence index
+
+- 历史 list rows 与 verdict：本文件开头的 `user-illust-bookmarks-public/private`、`user-novel-bookmarks-public/private`；strict evidence 为 [`evidence/appapi-upstream.md`](evidence/appapi-upstream.md) 对应行，pagination 仍按 data-limited/未观察第二页处理。
+- 已确认/候选迁移目标：[`api-migration-verification.md`](api-migration-verification.md) 的“尚未达到迁移门禁”与“已拒绝或排除”表；novel tags/detail/add/delete、artwork tags/subtype 均不得在 snapshot 前新增 public operation。
+- 当前 artwork leaf 与 normalized 规则：`internal/services/pixiv/endpoint/artwork/bookmark/bookmark.go` 及 `sdk/pixiv/ops_artwork.go`、`sdk/pixiv/ops_mutation.go`；当前 novel list 对照为 `internal/services/pixiv/endpoint/user/novelbookmarks/novelbookmarks.go` 与 `sdk/pixiv/ops_novel.go`。这些 fixture 证明既有单流行为，不证明 all/mutation contract。
+- 聚合、类型和错误目标：[`cli-migration-matrix.md`](cli-migration-matrix.md) 的 Target/Result/Subtype 与 `bookmark list/tags --type all` 段；鉴权、写前检查、读回、恢复和不确定 outcome 见 [`mutation-validation-report.md`](mutation-validation-report.md)。
+
+### T03 与后续任务的边界
+
+- T05 补两类 list/tags 的第二页或合成两页 fixture、continuation allowlist、query/account/restrict/subtype binding；T06 冻结跨账号 private、鉴权错误、mutation outcome 与脱敏分类。
+- T08 实现并验证 novel tags/detail/add/delete 及 artwork tags/subtype 所需 endpoint leaf、DTO、null/empty/error；T09A 提供可解码 mutation response 的窄 form transport，保留既有 `PostForm`。
+- T12/T15 冻结 explicit artwork/novel SDK symbol map、旧 `AddBookmark`/`RemoveBookmark` wrapper、named type 与空 restrict 兼容；T19/T23 负责 aggregate cursor、双流 checkpoint、统一 Skip/Limit/OneBatch 与失败原子性。T03 不改 production code、protocol、SDK、CLI、MCP 或依赖。
+- T21 负责 user URL/user bookmarks URL/显式类型 resolver；T27/T37/T38 分别实现 CLI/MCP 的 all、typed tags、页原子输出、旧 wire 回放和 mutation read-back/outcome；T39A/T41/T42/T43/T44/T45 负责 compatibility、双语文档、回归、隔离账号 live 和最终发布门禁。
+
 ## 迁移准入规则（2026-09-07 更正）
 
 上表保留历史观测与原 verdict；包括备注中的 migration-ready 也仅是当时的证据标签，不是当前实施状态。当前实施与发布授权只来自 [能力准入表](capability-admission.md)，confirmed 不放行 CLI/MCP/docs。contract、T12/T39A、adapter/SDK、回归与文档按 tasks 依赖推进。

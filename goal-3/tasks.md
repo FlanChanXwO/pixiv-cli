@@ -21,7 +21,7 @@ Status 的 verified 表示对应 task 的实现与相关验证完成；各 task 
 | T01 | artwork contract | T00,T20 | 冻结 artwork search/series/latest/ranking/recommended/ugoira 基础 request、DTO、subtype | verified |
 | T02 | novel contract | T00,T20 | 冻结 novel search/detail/series/latest/recommended/ranking/follow | verified |
 | CHECK-01 | 集中检查-debug（T00/T20/T01/T02） | T02 | audit-only 复查 input/plan 偏离、41 条 required_scope、bookmark list/tags all、历史 evidence、排除 endpoint、T23A 边界、bug/死代码、类型/构建/测试、安全/数据/回滚/文档，并登记修复项 | verified |
-| T03 | bookmark contract | T00,T20 | 冻结两类 list/tags/detail/mutation/subtype 及 list/tags all 聚合契约 | pending |
+| T03 | bookmark contract | T00,T20 | 冻结两类 list/tags/detail/mutation/subtype 及 list/tags all 聚合契约 | verified |
 | T04 | comment contract | T00,T20 | 冻结 artwork/novel comments read/create/reply/stamp/delete、stamps、total | pending |
 | T05 | continuation contract | T01,T02,T03,T04 | 冻结 allowlist、query/account/subtype binding、第二页 fixture；复用现有 cursor | pending |
 | T06 | error/其他 read contract | T00,T01,T02,T03,T04 | 冻结 user search/detail/relationships、trending、follow、mypixiv、error、mutation outcome 与脱敏 | pending |
@@ -122,6 +122,17 @@ Status 的 verified 表示对应 task 的实现与相关验证完成；各 task 
 - 公开兼容性影响：本轮没有改变 SDK/CLI/MCP/wire 行为、endpoint、默认值或依赖；双语 SDK 文档新增安全边界说明。没有把 cursor 当作鉴权凭据，也没有承诺防篡改或实时 snapshot 语义。
 - 回滚前提 / 依赖闭包：文档与任务记录可整体回滚；若未来实现 R01，必须同时验证或回滚 shared collector、SDK cursor binding、CLI/MCP 调用方和对应双语文档，不能只撤一个 cursor 版本或 callback。R01 不授权新增 crypto 依赖，具体策略须有证据并保持兼容。
 - 实际结果 / evidence / 风险：CHECK-01 已完成，未发现 P0/P1 或需立即修复的生产 bug、死代码、类型/构建/测试回归、鉴权越权或敏感信息泄露。发现的 P2 风险已通过双语文档告知，并登记 `R01` 作为发布前修复/gate；真实 API 稳定性、跨版本已发行 cursor 回滚和不可信边界 tamper resistance 仍未验证。required capabilities 仍全部为 `scope_admitted`，Goal 继续 incomplete；按任务顺序下一轮进入 T03。
+
+## T03 完成记录
+
+- Owner package / 涉及文件：bookmark contract；`goal-3/upstream-contract-matrix.md`、`goal-3/plan.md`、本文件。只冻结 artwork/novel bookmark list、tags、detail、add、remove、subtype 和 `list/tags --type all` 聚合，不实现 endpoint/SDK/CLI/MCP。
+- Depends on：T00、T20、CHECK-01 verified；本轮沿 tasks 拓扑推进 T03。
+- 冻结 contract / fixture：upstream matrix 新增 T03 operation 表，区分已存在的 artwork leaf、novel bookmark list 和尚未验证的 novel tags/detail/mutation；明确 `public/private` restrict、tag、`max_bookmark_id`/`offset`、detail absent state、mutation read-back/outcome、artwork subtype candidate、all 的 artwork→novel 顺序、统一 Skip/Limit、typed tag count、双流 cursor 和页原子失败。同步冻结 required list 的 null/empty、continuation malformed、namespace/all 拒绝、private access-control 与无匿名 fallback 边界；历史 evidence verdict 未改写。
+- Red 测试、命令及当前行为的预期失败：T03 是 contract freeze 文档任务，无生产代码 Red 阶段。只读核验确认当前 `--type all`、typed tag output、aggregate cursor、novel tags/detail/add/delete、mutation access control/read-back/restore 尚不存在或未进入 strict evidence；artwork tags 的 null-as-empty 只作为 legacy 行为登记，不能代替目标 required-list contract。
+- Green 命令及验收断言：复读 `input.md`/`plan.md`/`tasks.md`；`nl`/`rg` 核验 `sdk/pixiv` request/model/DTO/operation、两类 bookmark endpoint、CLI/MCP surface、capability admission、migration matrix、strict/mutation evidence；T03 anchor、十二项 leaf/aggregate operation（十项 leaf、两项 aggregate）、all 边界和 rejection 规则均可检索；`git diff --check` 通过；提交钩子将运行 `go test ./...`。
+- 公开兼容性影响：无 production code、public SDK symbol、CLI/MCP wire、依赖、endpoint 请求或默认值变化；保留现有单流 `BookmarkTag{Name,Count}`、`AddBookmark`/`RemoveBookmark` 及旧路由，typed aggregate output 和 novel explicit symbols 留给 T12/T15/T27/T37。
+- 回滚前提 / 依赖闭包：文档提交需整体回滚 upstream matrix、plan 引用和 T03 状态；没有数据、账号、生产配置或 endpoint path 依赖。后续 all cursor、SDK、CLI/MCP 实现必须作为 aggregate contract、两端 checkpoint、输出原子性和兼容 wrapper 的依赖闭包回滚，不能只撤一个流或一个 mutation leaf。
+- 实际结果 / evidence / 风险：T03 已完成基础 contract 冻结，bookmark capabilities 仍全部为 `scope_admitted`，Goal 继续 incomplete。主要剩余风险是 novel tags/detail/mutation 与 artwork tags/subtype 缺少 strict evidence/owner，all 聚合和 private access-control/read-back 尚未实现；按任务顺序下一轮进入 T04。
 
 ## 实现任务准入卡
 
