@@ -118,9 +118,26 @@ T12 的兼容基线是 `sdk`、`sdk/pixiv`、`sdk/fanbox` 当前导出清单及�
 
 旧消费者编译 fixture 只证明 source compatibility，不把尚未迁移的 v2 adapter、CLI/MCP wire 或 required capability 提升为 `public_ready`；这些仍分别由 T07–T45 的 owner 与最终 gate 验证。
 
-## T39A：MCP compatibility map 必交付列
+## T39A：CLI/MCP compatibility map 必交付列
 
-旧 tool → 新 operation；逐项 input 字段名/必填/default、output 字段/shape、structured error/isError。add_bookmark 的 illust_id 等旧 wire 契约不能被通用 TARGET 替代。每项列出旧 JSON 请求 fixture 与回放断言；CLI alias 验证不能替代它。
+T39A 已将迁移冻结拆成两个可审计载体：
+
+- [CLI route compatibility map](cli-migration-matrix.md#t39a-cli-route-compatibility-map)：
+  当前 command path、canonical operation、position/flag default、旧 route 保留
+  决定和 CLI 回放向量。`novel search`、`user search`、root `follow`、
+  positional `recommended all` 都是明确保留的 compatibility route，不依赖
+  Cobra 隐式 alias。
+- [MCP wire compatibility matrix](mcp-compatibility-matrix.md)：注册的 40 个
+  tool name 逐项对应新 operation/port、JSON input 字段/必填/default、
+  structured output shape、`isError`/稳定 error 语义和旧 JSON fixture。旧
+  `add_bookmark.illust_id`、`bookmark_tags.bookmark_tags` 等字段不能因 CLI
+  TARGET 统一而改名；`novel_content` 保留 schema 但正数 ID 只返回
+  `content_unavailable`，不调用 rejected endpoint。
+
+现有 stdio、mutation、user-list、novel-content 和 exact registration tests
+覆盖 matrix 中的代表性 replay；其余每行 fixture 是 T37/T38/T43 必须使用的
+离线回放清单。CLI alias 测试不能替代 MCP JSON replay，也不能把尚未实现的
+endpoint 提升为 `public_ready`。
 
 ## T09A：mutation transport 与结果
 

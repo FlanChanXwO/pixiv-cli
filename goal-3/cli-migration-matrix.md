@@ -82,3 +82,76 @@ CLI 与 MCP 可以共享上述 semantic validation，但互不调用；MCP tool 
 public SDK 保持 endpoint-oriented methods，不泛化为动态 EntityTarget API。CLI/MCP 共享产品 semantic validation，互不调用。T12 负责旧 SDK symbol map/编译，T39A 负责旧 MCP tool/input/output/default/error 逐项 map/回放，不能以“同一 semantic request”替代 wire 决策。
 
 默认保留旧 tool 名称、必填字段及返回结构，例如 add_bookmark.illust_id；新类型能力采用明确新增 operation/schema，不静默改变旧调用方默认值。确需 breaking 先经明确批准并记录迁移。既有 stdin、JSON/NDJSON、skip/fail-fast 和 MCP structured error/stdout 边界保持；上述 all 是新增的页原子契约，不改变旧命令的输出策略。
+
+## T39A：CLI route compatibility map
+
+CLI 的当前 route/flag canonical 说明在双语
+[`cli-reference.md`](../docs/en/cli-reference.md) 与
+[`cli-reference.md`](../docs/zh-CN/cli-reference.md)；本节只冻结迁移关系和
+兼容边界，不复制整份 flag reference。当前树通过 `pixiv --help` 及各 leaf
+`--help` 核对，未使用 Cobra `Aliases` 隐式改变 route；表中的“兼容路径”是
+仍注册的明确 command path。
+
+### 共享 CLI 输入/输出边界
+
+| Surface | Frozen contract |
+| --- | --- |
+| positional/stdin | command-specific positional value 优先；允许 stdin 的命令只消费一个完整值。URL/record 解析由该 command 的 resolver 负责，不把裸 ID 当作全局类型。 |
+| entity selector | `--type/-t` 选择 Result/entity kind；`--content-type` 只选择 endpoint subtype。`all` 只在明确列出的聚合命令有效。 |
+| list pagination | `--limit/-l` 省略为一个 upstream batch，正数填充 logical page，`0` 读到 cursor 结束；`--page/-p` 从 1 开始且要求正数 `--limit`。CLI 不解析或持久化 MCP/SDK opaque cursor。 |
+| output | `--json` 输出 structured JSON；列表在非终端按现有规则可输出 canonical NDJSON；`--ndjson` 只用于列表。stdout 不输出 token、Cookie、签名 URL 或请求头。 |
+| transport | `--proxy` 与 `--no-proxy` 二选一，作用域仅当前命令；数据命令只从本地已选账号/账号池取认证，不接受 `--uid`/`--refresh-token` 覆盖。 |
+| errors | 本地输入冲突、未知 enum、非法 ID、不可达/已排除 endpoint 均显式失败；不得把 upstream error、取消或“不支持”伪装为空结果或静默 fallback。 |
+
+### 当前 route → canonical operation → compatibility decision
+
+| Current route | Canonical operation / target | Required input and defaults | Compatibility decision and replay gate |
+| --- | --- | --- | --- |
+| `pixiv search [WORD\|IMAGE_PATH_OR_URL]` | `SearchArtworks`、`SearchNovels`、`SearchUsers`；图片源走 reverse-search facade；`--trending-tags` 走 trending | `WORD` 在实体搜索时必需；`--type/-t=artwork` 默认；artwork subtype 用 `--content-type` | 保留 canonical route；route/type/flag 组合必须由 command-specific validation 拒绝冲突，旧搜索 JSON/NDJSON 与分页回归由 T24/T43 承接。 |
+| `pixiv novel search WORD` | `SearchNovels(SearchNovelsRequest)` | `WORD` 必需；`--search-by=tag-partial`、`--sort=date_desc` 默认；只暴露基础 period/search fields | 保留兼容路径；等价目标是 `pixiv search WORD --type novel`，不删除旧 route，也不引入 rating/text-length/original-only 字段。 |
+| `pixiv user search WORD` | `SearchUsers(SearchUsersRequest)` | `WORD` 必需；列表分页按共享规则 | 保留兼容路径；等价目标是 `pixiv search WORD --type user`。 |
+| `pixiv detail ID_OR_URL` | `Artwork`、`Novel`、`User` | `--type/-t=artwork` 默认；artwork 可用受控 URL，novel/user 要求正数 ID | 保留 route；URL 与显式 type 冲突直接 `InvalidArgument`。`--content` 只保留输入兼容，正数 novel 现在返回 `content_unavailable` 且不调用 rejected content endpoint。 |
+| `pixiv series SERIES_ID` | `ArtworkSeries` 或 `NovelSeries` | `--type/-t` 必填；`SERIES_ID` 正数；list pagination 可选 | 保留 route；类型先于 ID dispatch，novel v1 rejected path 不作为 fallback。 |
+| `pixiv comment ID` | `ArtworkComments` 或 `NovelComments` | `--type/-t` 必填；`ID` 正数；list pagination 可选 | 保留 read route；create/reply/stamp/delete 是后续 additive operation，不偷改当前输出。 |
+| `pixiv ranking` | `ArtworkRanking` | `--mode=day` 默认，`--date` 可选；list pagination 可选 | 保留 route；novel ranking 不是当前旧 route 的隐式分支，待 T10/T18 owner 完成后再发布。 |
+| `pixiv recommended [KIND]` | kind-specific recommendation operations | `--type/-t` 与位置 `KIND` 任选其一；支持 artwork/novel/user/all；list pagination 可选 | 保留位置参数作为兼容写法；若两种 selector 冲突返回 `InvalidArgument`；`all` 的流顺序/原子页契约由 T28/T43 验证。 |
+| `pixiv timeline following [--type KIND]` | `FollowingArtworks` 或 `FollowingNovels` | `--type` 必填；artwork `--content-type=all` 默认，`--restrict=public` 默认 | 保留 route；`--type` 是 entity，`--content-type` 是 subtype，不互相替代。 |
+| `pixiv timeline latest [--type KIND]` | `LatestArtworks` 或 `LatestNovels` | `--type` 必填；artwork `--content-type=illust` 默认且只接受 `illust/manga` | 保留 route；不把 search 的 `all` 当作 latest subtype；novel continuation 的 `max_novel_id` 修复由后续 owner 完成。 |
+| `pixiv mypixiv users` | `MyPixivUsers` | list pagination 可选 | 保留 route；始终使用已认证 runtime identity。 |
+| `pixiv mypixiv works [USER_ID]` | `MyPixivArtworks` 或 `MyPixivNovels` | `--type` 必填；提供 USER_ID 时保留 artwork subtype 兼容规则 | 保留 route；公开 entity `artwork` 与旧 `illust` 拼写均须按既有兼容决策处理，不改成动态 union。 |
+| `pixiv user detail USER_ID` | `User` | 正数 USER_ID | 保留 route；不以 user URL 或裸 ID 猜测其他 namespace。 |
+| `pixiv user artworks [USER_ID]` | `UserArtworks` | USER_ID 可省略并解析认证用户；`--type=illustration` 旧默认，允许 `illust/manga/ugoira` | 保留 route；ID/default/type 字段保持，后续 resolver 只扩展已冻结的受控输入。 |
+| `pixiv user novels [USER_ID]` | `UserNovels` | USER_ID 可省略并解析认证用户；list pagination 可选 | 保留 route；失败不切 artwork 或 Web fallback。 |
+| `pixiv user bookmarks [USER_ID]` | `UserArtworkBookmarks` | USER_ID 可省略；`--restrict=public`、`--tag` 可选 | 保留旧 artwork-only route；新 typed `bookmark list` 不得删除它或改写其默认值。 |
+| `pixiv user following/followers [USER_ID]` | `UserFollowing` / `UserFollowers` | USER_ID 可省略；`--restrict=public` 默认；list pagination 可选 | 保留 route；关系 scope 不接受全局动态 type。 |
+| `pixiv user related USER_ID` | `RelatedUsers` | 正数 USER_ID；list pagination 可选 | 保留 route；不把 `USER_ID` 重命名为通用 TARGET。 |
+| `pixiv user blocked [USER_ID]` | `UserBlockedUsers` | USER_ID 可省略并解析认证用户；list pagination 可选 | 保留 route；App API failure final，不做匿名/Web fallback。 |
+| `pixiv user follow add/remove USER_ID` | `FollowUser` / `UnfollowUser` | 正数 USER_ID；add 的 `--restrict=public` 默认；`--on-error=skip` 默认 | 保留 route；mutation access control/read-back/outcome 由 T35/T38 owner 补齐，不自动重放不确定写入。 |
+| `pixiv bookmark list [USER_ID]` | artwork/novel bookmark list adapters | `--type=artwork` 默认，后续 required `all`；`--restrict=public`、`--tag` 可选；USER_ID/URL 由 resolver 处理 | 保留并作为 canonical typed list；`user URL + --type novel` 合法；`all` 聚合不改变单类型旧输出。 |
+| `pixiv bookmark tags [USER_ID]` | artwork/novel bookmark tag adapters | `--type=artwork` 默认，后续 required `all`；`--restrict=public` 默认；USER_ID/URL 可选 | 保留 route；同名 tag 按内容类型分别输出 count，不跨类型合并。 |
+| `pixiv bookmark detail ARTWORK_ID` | `ArtworkBookmark` | 正数 ARTWORK_ID；不接受 `all` | 保留 artwork-only route；未收藏必须保持明确的 false/empty 状态。 |
+| `pixiv bookmark add/remove ILLUST_ID` | `AddBookmark` / `RemoveBookmark` | 正数 ILLUST_ID；add 的 `--restrict=public`、`--on-error=skip` 默认，`--tag` 可重复 | 保留 `ILLUST_ID` 和旧输出；novel mutation 是未来显式 additive route，不替换旧 artwork wrapper。 |
+| `pixiv follow add/remove USER_ID` | `FollowUser` / `UnfollowUser` | 与 `user follow` 相同 | 保留 root compatibility route；不强制用户迁移后才执行。 |
+| `pixiv download`、`pixiv mcp`、`pixiv auth/config/update` | 现有 download/runtime/lifecycle ports | 不属于本轮 vNext data-route migration | route 与安全 stdout/credential contract 冻结不变；T39A 不把它们改写成 Pixiv entity target。 |
+
+### CLI 兼容回放清单
+
+T39A 的 CLI 证据只冻结 route/flag 解析，不替代 MCP JSON replay。最小回放集合为：
+
+1. `pixiv search cat --type artwork --limit 1 --json`、
+   `pixiv novel search cat --limit 1 --json`、`pixiv user search cat --limit 1 --json`：
+   三条搜索 route 的 selector、默认 sort 和 JSON shape。
+2. `pixiv detail 101 --type artwork --json`、
+   `pixiv detail 201 --type novel --content --json`：后者必须是
+   `content_unavailable`，且不能发 `/v1/novel/content`。
+3. `pixiv bookmark list 401 --type novel --limit 1 --json` 与
+   `pixiv bookmark tags 401 --type all --limit 1 --json`：typed target、all
+   聚合和输出原子性，由 T27/T43 在实现后补齐。
+4. `pixiv recommended all --json` 与
+   `pixiv recommended --type all --json`：位置参数兼容与 flag 形式冲突规则。
+5. `pixiv follow add 401 --restrict private` 与
+   `pixiv user follow add 401 --restrict private`：两条 route 的旧 alias
+   行为和 mutation error boundary。
+
+以上 route 不能作为 T39A 之外 endpoint 已实现的证据；它们只是冻结的输入/输出
+回放向量。后续实现失败时必须保留 route 并显式报告错误，不能删 route 逃避兼容门禁。

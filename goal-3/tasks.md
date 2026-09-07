@@ -31,7 +31,7 @@ Status 的 verified 表示对应 task 的实现与相关验证完成；各 task 
 | CHECK-03 | 集中检查-debug（R02/R03/T06） | R02,R03,T06 | audit-only；复查 T06 read/error/mutation contract、R02 replay 修复、R03 tracking、41 条 required_scope、历史 evidence、T23A 边界、bug/死代码、类型/构建/测试、安全/数据/回滚/文档，并登记修复项 | verified |
 | R04 | follow restrict 输入校验 | CHECK-03,T06 | 在 `FollowUser` SDK 边界复用 `validateRestrict`；空值仍默认 `public`，未知值以 `InvalidArgument` 在发起请求前拒绝，并补充无网络请求回归 | verified |
 | T12 | SDK compatibility | T20,T01,T02,T03,T04,T05,T06,CHECK-03,R04 | 冻结 symbol map、旧 wrapper、named types、旧消费者编译、cursor 版本恢复；默认源码兼容 | verified |
-| T39A | CLI/MCP migration | T12 | 冻结 CLI 路由和 MCP tool/input/output compatibility map；旧 JSON 回放清单 | pending |
+| T39A | CLI/MCP migration | T12 | 冻结 CLI 路由和 MCP tool/input/output compatibility map；旧 JSON 回放清单 | verified |
 | T07 | read endpoint owners | T12 | 按 artwork/novel endpoint leaf 拆卡，实现 read adapter（含 v2、user/trending/relationships、follow/mypixiv 所需 endpoint）、DTO 与错误映射 | pending |
 | T08 | bookmark endpoint owners | T12 | 按两类 list/tags/detail/mutation leaf 拆卡实现 | pending |
 | T09A | appapi transport | T12,T04,T06 | 增加响应可解码的窄 form 能力；保留旧 PostForm，不自动重放不确定 mutation | pending |
@@ -239,6 +239,17 @@ Status 的 verified 表示对应 task 的实现与相关验证完成；各 task 
 - 公开兼容性影响：未删除或重命名 public SDK symbol、request/model/named field、enum、error reason、constructor、resource method 或 cursor outer format；未新增依赖。唯一有意的运行时兼容边界是 `NovelContent` 从调用 rejected endpoint 改为本地 `ContentUnavailable`，并使现有 `novel_content` MCP 调用得到 structured error 而不是伪造正文；其 tool/schema compatibility 仍留给 T39A 逐项冻结。`SearchNovels`/`SearchUsers` 不新增 account binding，避免无批准的 cursor breaking change。
 - 回滚前提 / 依赖闭包：回滚需同时撤销 `NovelContent` deprecated/no-network 实现、SDK/MCP negative tests、T12 symbol map 与双语 SDK 说明，以及 plan/matrix/tasks 状态；不能只恢复 production method 而保留“rejected endpoint 不可调用”的完成记录。未涉及账号、token、下载内容、运行配置、live API 或新依赖。
 - 实际结果 / evidence / 风险：T12 已 verified。Goal 仍 incomplete，41 条 required capability 继续为 `scope_admitted`，没有被兼容审计提升为 `public_ready`。已知后续风险是 T39A 仍需冻结 CLI alias、MCP tool/input/output/default/error 与旧 JSON replay；T07–T11、T13–T45 仍按 DAG 实现 endpoint、SDK、shared、CLI/MCP、文档和最终发布门禁。下一入口按 goal-mode 规则为 T39A，不直接进入 T07。
+
+## T39A 完成记录
+
+- Owner package / 涉及文件：CLI/MCP migration contract；`goal-3/cli-migration-matrix.md`、`goal-3/mcp-compatibility-matrix.md`、`goal-3/api-migration-verification.md`、`goal-3/plan.md`、`docs/en/cli-reference.md`、`docs/zh-CN/cli-reference.md`、`docs/en/mcp-tools.md`、`docs/zh-CN/mcp-tools.md`、`skills/pixiv-cli/SKILL.md`、本文件。没有修改生产 endpoint、SDK、CLI/MCP handler 或 tool registration。
+- Depends on：T12 verified。
+- 冻结 contract / fixture：完成当前 CLI route → canonical operation → positional/flag default → compatibility decision map；完成注册表与 exact-set 测试对应的 40 个 Pixiv MCP tool 逐项 input required/default、structured output、`isError`/稳定 error、旧 JSON fixture 与 replay assertion map；明确保留 `add_bookmark.illust_id`、`bookmark_tags.bookmark_tags` 和 `novel_content` 的 wire/schema，其中正数 novel content 只返回 `content_unavailable`、不请求 rejected endpoint。现有代表性 replay 测试列入证据表，其余逐行离线回放留给 T37/T38/T43。
+- Red 测试、命令及当前行为的预期失败：T39A 是 contract/documentation freeze，没有生产代码 Red 阶段。只读核验发现原 T39A 只有占位列，且 CLI/MCP locale 与 T12 已确定的 `novel_content` no-network/unsupported 行为仍有过时成功描述；本任务补齐矩阵、回放清单和双语说明，没有把未来 endpoint 实现伪装成已完成。
+- Green 命令及验收断言：`go test ./scripts/tests/documentation -count=1`、`go test ./internal/mcpserver/pixiv -run '^(TestServerListsExpectedTools|TestMCPStdioKeepsJSONRPCOnStdout|TestSDKMutationToolsReturnStructuredSuccess|TestSDKMutationTypedErrorIsMCPError|TestNovelContentReportsUnsupportedWithoutCallingRejectedEndpoint|TestSDKUserListToolsSchemaRejectsRemovedLegacyFields|TestSDKUserListToolsUseCanonicalUserIDAndFilters)$' -count=1`、`go test ./internal/cli/commands/pixiv/... -count=1`、`git diff --check` 均通过；并按矩阵逐项运行当前 CLI 及相关 leaf `--help` 核对 route、selector 和 default。矩阵 40 个 tool name 与 `internal/mcpserver/pixiv/tools` 注册表逐项相同。
+- 公开兼容性影响：不改变 SDK symbol、CLI/MCP wire、endpoint、依赖、账号、token、下载内容或 live API；只修正文档对已冻结行为的表述，并把 route/tool/default/error 与旧 JSON replay 约束显式化。后续 T24–T38 仍必须按本矩阵实现，T39B/T43 仍需逐项回放和全量回归；40 个 tool 的冻结不等于能力已 `public_ready`。
+- 回滚前提 / 依赖闭包：文档与任务账本变更可整体回滚，但必须同时撤销两个 compatibility matrix、verification/plan 链接、双语 CLI/MCP/Skill 说明和 T39A 状态；不得只删除矩阵而保留后续 owner 对其字段/default/error 的引用。未涉及账号、token、运行配置、live API 或新依赖。
+- 实际结果 / evidence / 风险：T39A 已 verified。代表性 stdio、mutation、user-list schema、novel-content no-network、exact registration replay 已通过；完整逐 tool 离线 replay、endpoint owner 实现、CLI/MCP 全量回归仍由 T37/T38/T39B/T43/T45 完成。41 条 required capability 仍为 `scope_admitted`，Goal 继续 incomplete；下一入口按 DAG 为 T07。
 
 ## 实现任务准入卡
 

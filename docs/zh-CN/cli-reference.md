@@ -260,7 +260,7 @@ pixiv search ./image.png --provider ascii2d-color --json
 pixiv search https://example.com/image.png --provider all --ndjson
 pixiv search --trending-tags --json
 pixiv detail 123456 --type artwork --json
-pixiv detail 123456 --type novel --content --json
+pixiv detail 123456 --type novel --json
 pixiv series 42 --type artwork --limit 20
 pixiv comment 123456 --type artwork --limit 20
 pixiv bookmark list --type artwork --limit 20
@@ -358,7 +358,7 @@ canonical 数据 action 是 `search`、`detail`、`ranking`、`series`、`commen
 | `config unset` | `pixiv config unset KEY` | 从 `config.toml` 删除一个已知配置键。 |
 | `update` | `pixiv update [--check] [--prerelease] [--proxy URL]` | 检查或执行与当前安装来源匹配的更新；`--json` 仅可与 `--check` 同用。 |
 | `search` | `pixiv search [WORD\|IMAGE_PATH_OR_URL] [-t artwork\|novel\|user] [options]` | canonical 实体搜索或自动反向搜图。常规文件或显式 HTTP(S) source 选择图片模式；`--trending-tags` 是无 WORD 的完整作品趋势标签模式，不接受搜索筛选或分页。 |
-| `detail` | `pixiv detail ID_OR_URL [-t artwork\|novel\|user] [--content] [--json]` | 读取一件作品、一本小说或一个用户；`--content` 只对小说有效。 |
+| `detail` | `pixiv detail ID_OR_URL [-t artwork\|novel\|user] [--content] [--json]` | 读取一件作品、一本小说或一个用户；`--content` 是保留的小说兼容 flag，但 v1 App 正文 endpoint 不可用，正数小说 ID 返回 `content_unavailable` 且不请求 rejected endpoint。 |
 | `ranking` | `pixiv ranking [--mode MODE --date YYYY-MM-DD --page N --limit N]` | 读取插画排行；小说排行不在 v1 契约中。 |
 | `series` | `pixiv series SERIES_ID -t artwork\|novel [--page N --limit N --json\|--ndjson]` | 列出一个作品或小说系列；实体类型必填。 |
 | `comment` | `pixiv comment ID -t artwork\|novel [--page N --limit N --json\|--ndjson]` | 读取作品或小说评论；评论发布、回复、删除和 stamp 未暴露。 |
@@ -423,7 +423,7 @@ Content-Type 与 URL 后缀不一致（例如 URL 为 `.png`、实体为 JPEG）
 | 列表命令 | `--page` / `-p` | 空 | 从 1 开始的逻辑页；必须与正数 `--limit` 同用。 |
 | `ranking` | `--mode` | `day` | 可用 `day`、`day_male`、`day_female`、`week`、`week_original`、`week_rookie`、`month`、`day_manga`、`week_manga`、`month_manga`、`week_rookie_manga`、`day_r18`、`day_male_r18`、`day_female_r18`、`week_r18`、`week_r18g`；最后九种需要认证。 |
 | `ranking` | `--date` | 空 | 排行榜日期，格式通常为 `YYYY-MM-DD`。 |
-| `detail` | `--type` / `-t` | `artwork` | 实体类型：`artwork`、`novel` 或 `user`；`--content` 只对 `novel` 有效。 |
+| `detail` | `--type` / `-t` | `artwork` | 实体类型：`artwork`、`novel` 或 `user`；`--content` 是保留的小说兼容 flag，正文 endpoint 不可用时返回 `content_unavailable`。 |
 | `series`、`comment` | `--type` / `-t` | 必填 | 实体类型：`artwork` 或 `novel`；先选择类型后解释 ID。 |
 | `bookmark list` | `--type` / `-t` | `artwork` | 实体类型：`artwork` 或 `novel`；`--restrict` 与 `--tag` 映射到相应收藏列表。 |
 | `bookmark tags` | `--type` / `-t` | `artwork` | 只读取作品收藏标签；`--restrict` 选择 public/private。 |
@@ -488,8 +488,8 @@ STRATA · Sculptris · modo · AnimationMaster · VistaPro · Sunny3D · 3D-Coat
 都没有已记录的布尔标签契约。尚未验证对字面量大写 `OR` 标签/关键词的转义语法；需要严格查询时请避免该 token 并使用精确标签。
 
 `novel search` 仅走 App API，表达关键词匹配、排序、时间范围和分页。分级、正文长度与原创条件不属于 v1
-契约。小说详情与正文是两个明确请求：`detail --type novel` 返回 metadata，`detail --type novel --content`
-读取结构化 blocks；正文不在数据层截断。
+契约。`detail --type novel` 返回 metadata；保留的 `detail --type novel --content`
+兼容 flag 返回 `content_unavailable`，不会请求 rejected 正文 endpoint，也不会 fallback 到 WebView。
 
 `detail --type artwork` 接受正整数作品 ID，或规范 HTTPS `pixiv.net`/`www.pixiv.net` 作品 URL：`/artworks/{id}`；
 可带 locale、query 和 fragment。`detail --type novel` 与 `detail --type user` 要求正整数 ID；不支持的 URL 形状会在本地失败，

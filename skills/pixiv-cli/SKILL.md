@@ -143,7 +143,7 @@ pixiv search "WORD" --content-type manga --ai-mode exclude
 pixiv search "WORD" --resolution high --aspect-ratio landscape --draw-tool "CLIP STUDIO PAINT"
 pixiv search --trending-tags --json
 pixiv detail ARTWORK_ID_OR_URL --type artwork --json
-pixiv detail NOVEL_ID --type novel --content --json
+pixiv detail NOVEL_ID --type novel --json
 pixiv series SERIES_ID --type novel --limit 20 --json
 pixiv comment ID --type artwork --limit 20 --json
 pixiv bookmark list --type artwork --limit 20 --json
@@ -257,6 +257,10 @@ session.
    accepts `illust|manga`; it does not use search's broader `all` subtype.
    `mypixiv works --type artwork` maps the public artwork entity to Pixiv's
    `illust` feed; the older `--type illust` spelling remains compatible.
+   `detail --type novel --content` remains a compatibility flag, but the App
+   content endpoint is unavailable: it returns `content_unavailable` without a
+   rejected-endpoint request and never falls back to WebView. Use plain
+   `detail --type novel` for metadata.
 5. **Restricted search fails explicitly.** There is no anonymous search path.
    Restricted rating requests are not represented by a silent `--rating` filter;
    use the command's actual authenticated/API contract and surface failures.

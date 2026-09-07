@@ -333,7 +333,7 @@ pixiv search ./image.png --provider ascii2d-color --json
 pixiv search https://example.com/image.png --provider all --ndjson
 pixiv search --trending-tags --json
 pixiv detail 123456 --type artwork --json
-pixiv detail 123456 --type novel --content --json
+pixiv detail 123456 --type novel --json
 pixiv series 42 --type artwork --limit 20
 pixiv comment 123456 --type artwork --limit 20
 pixiv bookmark list --type artwork --limit 20
@@ -453,7 +453,7 @@ Only the structured entity filters documented by each command are accepted. The 
 | `config unset` | `pixiv config unset KEY` | Deletes one known config key from `config.toml`. |
 | `update` | `pixiv update [--check] [--prerelease] [--proxy URL]` | Checks for or performs an update matching the current install source; `--json` is only valid together with `--check`. |
 | `search` | `pixiv search [WORD\|IMAGE_PATH_OR_URL] [-t artwork\|novel\|user] [options]` | Canonical entity search or automatic reverse-image search. A regular file or explicit HTTP(S) source selects image mode; `--trending-tags` is the no-word artwork tag-list mode and does not accept search filters or pagination. |
-| `detail` | `pixiv detail ID_OR_URL [-t artwork\|novel\|user] [--content] [--json]` | Reads one artwork, novel, or user. `--content` is explicit and valid only for novels. |
+| `detail` | `pixiv detail ID_OR_URL [-t artwork\|novel\|user] [--content] [--json]` | Reads one artwork, novel, or user. `--content` remains a novel-only compatibility flag, but the v1 App content endpoint is unavailable: a positive novel ID returns `content_unavailable` without a rejected-endpoint request. |
 | `ranking` | `pixiv ranking [--mode MODE --date YYYY-MM-DD --page N --limit N]` | Reads illustration rankings. Novel ranking is not part of the v1 contract. |
 | `series` | `pixiv series SERIES_ID -t artwork\|novel [--page N --limit N --json\|--ndjson]` | Lists the artworks or novels in one series. The entity type is required. |
 | `comment` | `pixiv comment ID -t artwork\|novel [--page N --limit N --json\|--ndjson]` | Reads artwork or novel comments. Comment write/reply/delete/stamp is not exposed. |
@@ -519,7 +519,7 @@ extension. Extensions also replace ASCII control characters and remove trailing 
 | list commands | `--page` / `-p` | empty | 1-based logical page; must be used with a positive `--limit`. |
 | `ranking` | `--mode` | `day` | One of `day`, `day_male`, `day_female`, `week`, `week_original`, `week_rookie`, `month`, `day_manga`, `week_manga`, `month_manga`, `week_rookie_manga`, `day_r18`, `day_male_r18`, `day_female_r18`, `week_r18`, `week_r18g`. The final nine require authentication. |
 | `ranking` | `--date` | empty | Ranking date, typically `YYYY-MM-DD`. |
-| `detail` | `--type` / `-t` | `artwork` | Entity type: `artwork`, `novel`, or `user`; `--content` is valid only with `novel`. |
+| `detail` | `--type` / `-t` | `artwork` | Entity type: `artwork`, `novel`, or `user`; `--content` is a retained novel-only compatibility flag and returns `content_unavailable` while the v1 content endpoint is unavailable. |
 | `series`, `comment` | `--type` / `-t` | required | Entity type: `artwork` or `novel`; the ID is interpreted only after the type is selected. |
 | `bookmark list` | `--type` / `-t` | `artwork` | Entity type: `artwork` or `novel`; `--restrict` and `--tag` are passed to the matching bookmark list. |
 | `bookmark tags` | `--type` / `-t` | `artwork` | Artwork bookmark tags only; `--restrict` selects public/private tags. |
@@ -592,8 +592,9 @@ strict query is required.
 
 `novel search` is App-only and exposes keyword target, sort, duration, pagination, and the documented search target
 values. Rating, text-length, and original-only flags are not part of this v1 contract. Novel detail and content
-are separate requests: `detail --type novel` returns metadata and `detail --type novel --content` reads structured
-blocks. The content is not data-layer truncated.
+are separate routes: `detail --type novel` returns metadata, while the retained
+`detail --type novel --content` compatibility flag returns `content_unavailable` without
+calling the rejected content endpoint. It does not fall back to WebView.
 
 `detail --type artwork` accepts a positive artwork ID or a canonical HTTPS `pixiv.net`/`www.pixiv.net` artwork URL
 in the form `/artworks/{id}` (an optional locale segment, query, and fragment are allowed). `detail --type novel`

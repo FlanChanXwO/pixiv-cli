@@ -52,7 +52,10 @@ resolver 依次消费 structured canonical record、现有纯本地 ParseURL、�
 
 T12 默认源码兼容，交付逐项 symbol map：旧 method/request/model/named field type → 新入口 → wrapper/deprecation → 旧消费者编译测试。AddBookmark/RemoveBookmark 保留委托 wrapper；新增明确 artwork/novel 方法不自动删除旧方法。无效 novel content endpoint 与旧 exported symbol 分别处理，不能让 deprecated wrapper 继续调用已排除 path。任何必要 breaking change 先经明确批准，记录迁移、版本/module 策略。
 
-T39A 冻结 MCP compatibility map：旧 tool 名称、必填字段、默认值、input/output 结构、错误语义与新 request 逐项对应；例如 add_bookmark 的 illust_id 不因 CLI TARGET 统一而被删除。用旧 JSON 请求回放证明兼容，CLI alias 测试不能替代它。
+T39A 冻结 [CLI route map](cli-migration-matrix.md#t39a-cli-route-compatibility-map) 与
+[MCP compatibility map](mcp-compatibility-matrix.md)：旧 route/tool 名称、必填字段、默认值、
+input/output 结构、错误语义与新 request 逐项对应；例如 add_bookmark 的 illust_id 不因 CLI
+TARGET 统一而被删除。用旧 JSON 请求回放证明兼容，CLI alias 测试不能替代它。
 
 T09A 在 T09/T16 前提供响应可解码的窄 form transport；既有不读取响应的 PostForm bookmark/follow 路径保留。必须区分：确定未成功、已取得本轮创建 ID 但读回失败、请求结果不确定且没有可靠 ID。后两者不能作为安全自动重放依据，不能通过猜测最新评论推断本轮 ID。读回、清理和状态恢复绑定同一账号 execution context；只删除本轮 ID，不自动删除既有数据，不新建通用 mutation 重试。
 

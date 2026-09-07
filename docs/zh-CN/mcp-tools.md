@@ -5,6 +5,11 @@
 通过 `pixiv mcp` 启动 Pixiv stdio MCP server。MCP 使用自身 runtime 的凭据选择，
 不接受 CLI 数据命令的账号覆盖；stdout 始终保留给 JSON-RPC。
 
+`novel_content` 为保持 wire 兼容仍然注册，但其 App API 正文 endpoint 已不可用。
+传入正数 `novel_id` 时返回 structured `content_unavailable`、`isError=true` 和空
+正文 block 列表；不会请求 `/v1/novel/content`，也不会 fallback 到 WebView。小说
+metadata 请使用 `novel_detail`。
+
 ## 错误、分页与输出
 
 不符合 schema 的输入会在打开 SDK operation 前作为 JSON-RPC/tool input error
@@ -25,8 +30,8 @@ SDK opaque cursor 不离开 server。列表结果提供 `pagination.page`、`lim
 对 artwork、manga、novel、user 分别提供独立的分页对象。
 
 Record 保留公开实体字段以及必要的 opaque resource reference，但不会输出已解析/签名资源 URL、
-请求头、Cookie、过期 metadata、access token 或其他资源传输凭据。小说正文 block、评论和 profile image
-引用同样遵循此规则。
+请求头、Cookie、过期 metadata、access token 或其他资源传输凭据。可用的小说正文 block、评论和
+profile image 引用同样遵循此规则。
 Structured result 使用显式 DTO 与 typed envelope，不直接编码 runtime SDK model。独立的
 FANBOX MCP server 也遵循相同资源形状：第一方 resource 只包含 opaque `ref` 与可选的
 `requires_credentials`，不会包含 `url`、`request_headers` 或 `expires_at`。
@@ -122,7 +127,7 @@ application outcome 的 `filter` 会报告 `min`、`max`、`membership`、`strat
 | `search_novel` | 必填 `word`；可选 `search_target`、`sort`、`duration`、`novel_filter`、`page`、`limit`。rating、正文长度和 original 字段明确不发布。 |
 | `reverse_search` | 必填 `source`（常规本地文件或 HTTP(S) URL）；可选 `provider` enum。使用启动时固定的代理/key/pixiv-only 配置，返回上文的反向搜图 envelope。 |
 | `illust_detail` | 正数 `illust_id` 与受支持作品 `url` 必须二选一；返回一条安全 record。 |
-| `novel_detail` / `novel_content` | 正数 `novel_id`；前者返回 metadata，后者返回完整结构化正文 block。 |
+| `novel_detail` / `novel_content` | 正数 `novel_id`；前者返回 metadata，后者是保留的兼容 tool，返回 `content_unavailable` 与空 block，不请求已 rejected 的正文 endpoint。 |
 | `illust_related` | 正数 `illust_id`，可选 `illust_filter`、`page`、`limit`。 |
 | `illust_series` / `novel_series` | 正数 `series_id`、`page`、`limit`；小说系列额外返回安全 series metadata。 |
 | `illust_comments` / `novel_comments` | 正数作品/小说 `id`、`page`、`limit`；输出安全 comments、pagination，以及可取得的 `total`/`access_control` metadata。 |

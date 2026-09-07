@@ -6,6 +6,12 @@
 credential selection; it does not accept CLI data-command account overrides.
 The stdout stream is reserved for JSON-RPC.
 
+`novel_content` remains registered for wire compatibility, but its App API
+content endpoint is no longer available. A positive `novel_id` returns a
+structured `content_unavailable` error with `isError=true` and an empty content
+block list; it does not call `/v1/novel/content` and does not fall back to WebView.
+Use `novel_detail` for novel metadata.
+
 ## Errors, pagination, and output
 
 Schema-invalid input is rejected as a JSON-RPC/tool input error before the SDK
@@ -31,7 +37,8 @@ pagination objects for illustration, manga, novel, and user streams.
 Records keep public entity fields and an opaque resource reference when one is
 needed. They do not expose resolved/signed resource URLs, request headers,
 Cookies, expiry metadata, access tokens, or other resource transport credentials.
-Novel content blocks and comment/profile-image references follow the same rule.
+Available novel content blocks and comment/profile-image references follow the
+same rule.
 Structured results use explicit DTOs and typed envelopes rather than runtime SDK
 models. The separate FANBOX MCP server follows the same resource shape: a
 first-party resource contains its opaque `ref` and optional
@@ -160,7 +167,7 @@ not treated as an artwork detail request.
 | `search_novel` | Required `word`; optional `search_target`, `sort`, `duration`, `novel_filter`, `page`, `limit`. Rating, text-length, and original-only fields are intentionally not published. |
 | `reverse_search` | Required `source` (regular local file or HTTP(S) URL); optional `provider` enum. Uses the startup proxy/key/pixiv-only snapshot and returns the reverse-search envelope described above. |
 | `illust_detail` | Exactly one of positive `illust_id` or a supported artwork `url`; returns one safe record. |
-| `novel_detail` / `novel_content` | Positive `novel_id`; the first returns metadata and the second returns complete structured content blocks. |
+| `novel_detail` / `novel_content` | Positive `novel_id`; the first returns metadata. The second is a retained compatibility tool that returns `content_unavailable` with empty blocks and does not call the rejected content endpoint. |
 | `illust_related` | Positive `illust_id`, optional `illust_filter`, `page`, `limit`. |
 | `illust_series` / `novel_series` | Positive `series_id`, `page`, `limit`; novel series also returns safe series metadata. |
 | `illust_comments` / `novel_comments` | Positive artwork/novel `id`, `page`, `limit`; output includes safe comments, pagination, and available `total`/`access_control` metadata. |
