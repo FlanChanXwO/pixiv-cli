@@ -16,7 +16,7 @@ Status 的 verified 表示本轮实现与相关验证完成，证据见分页报
 
 | Task | Owner / responsibility | depends_on | Deliverable / acceptance | Status |
 | --- | --- | --- | --- | --- |
-| T00 | scope/计划 owner | none | 冻结 required_scope；状态唯一来源、批准记录、完整性验收 | pending |
+| T00 | scope/计划 owner | none | 冻结 required_scope；状态唯一来源、批准记录、完整性验收 | verified |
 | T20 | shared semantics | T00 | 冻结 Target kind / Result kind / Subtype；命令级冲突规则 | pending |
 | T01 | artwork contract | T00,T20 | 冻结 artwork search/series/latest/ranking/recommended/ugoira 基础 request、DTO、subtype | pending |
 | T02 | novel contract | T00,T20 | 冻结 novel search/detail/series/latest/recommended/ranking/follow | pending |
@@ -65,6 +65,17 @@ Status 的 verified 表示本轮实现与相关验证完成，证据见分页报
 | T43 | CLI/MCP regression | T39B,T40 | JSON/NDJSON、stdin、skip/fail-fast、旧 schema、stdout 与不可达性 | pending |
 | T44 | live regression | T42,T43 | 未来显式隔离账号 read/mutation；本轮不执行，不借用历史成功 | pending |
 | T45 | delivery audit | T41,T42,T43,T44 | required_scope 全集 public_ready；go test/build、脱敏、迁移与发布审计 | pending |
+
+## T00 完成记录
+
+- Owner package / 涉及文件：scope/计划 owner；`goal-3/input.md`、`goal-3/plan.md`、`goal-3/capability-admission.md`、本文件。
+- Depends on：无。
+- 冻结 contract / fixture：`capability-admission.md` 明确 required=yes 的 41 个 capability 构成不可自动缩减的 `required_scope`；该文件是状态与发布授权唯一来源；`scope_admitted` → `contract_frozen` → `migration_ready` → `public_ready` 的状态门禁、用户批准记录、`bookmark list/tags --type all` 及 typed tag count 约束均已写明。
+- Red 测试、命令及当前行为的预期失败：T00 是范围与计划文档核验，不修改生产代码，故无代码 Red 阶段。用 `awk` 审计能力表前置结果为 `capability_rows=41`、`required_yes=41`，且没有 required capability 的异常状态或 required 值。
+- Green 命令及验收断言：`go mod download` 成功；worktree 基线 `go test ./...` 通过；能力表审计与 `rg` 关键约束检索通过。所有 required capability 当前仍为 `scope_admitted`，因此完整 Goal 仍保持 incomplete，未将历史 evidence 或 T23A 局部验证误记为发布就绪。
+- 公开兼容性影响：无 SDK、CLI、MCP、wire 或依赖变更；仅将已核验的 T00 计划任务标记为 `verified`。
+- 回滚前提 / 依赖闭包：这是文档状态提交，无生产依赖；回滚该提交即可恢复 T00 pending，不需要撤回代码或数据。后续任务仍必须依赖 T00，不能因本状态标记跳过 contract/compatibility 门禁。
+- 实际结果 / evidence / 风险：T00 已完成。required_scope 未缩减，状态唯一来源和完整性验收已冻结；剩余风险是 41 个 capability 均尚未达到 `public_ready`，按拓扑顺序下一步执行 T20。当前执行视为对既有 Goal-3 待办任务的继续，不改变 `input.md` 的历史原文或 required_scope。
 
 ## 实现任务准入卡
 
