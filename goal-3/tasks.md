@@ -48,7 +48,7 @@ Status 的 verified 表示对应 task 的实现与相关验证完成；各 task 
 | T09D | novel comment endpoint owner | T04,T05,T06,T09A,T09B | 实现 novel comments read/create/reply/stamp/delete leaf、DTO、请求校验与错误映射；固定 v2 contract，不对 v3 candidate 做 fallback | verified |
 | T09E | stamps endpoint owner | T04,T09B | 实现 `/v1/stamps` read leaf、字段级 DTO/ID/资源引用校验与错误映射；不把未验证字段或 continuation 猜成 public contract | verified |
 | T09 | comment endpoint owners | T09A,T09B,T09C,T09D,T09E | 汇总并审计 artwork/novel comments read/create/reply/stamp/delete 与 stamps leaf；全部子卡完成后才可标记 verified | verified |
-| T10A | artwork latest endpoint owner | T12 | 完成 `/v1/illust/new` 的 `max_illust_id`、已批准 subtype、request/DTO/error leaf；不进入 SDK/CLI/MCP | pending |
+| T10A | artwork latest endpoint owner | T12 | 完成 `/v1/illust/new` 的 `max_illust_id`、已批准 subtype、request/DTO/error leaf；不进入 SDK/CLI/MCP | verified |
 | T10B | artwork ranking endpoint owner | T12 | 完成 `/v1/illust/ranking` 的 mode/date/offset、mode 校验与 request/DTO/error leaf；不进入 SDK/CLI/MCP | pending |
 | T10C | artwork recommended endpoint owner | T12 | 完成 recommended offset presence、required list 与 candidate subtype 边界；保留真实第二页 failure，不进入 SDK/CLI/MCP | pending |
 | CHECK-04 | 集中检查-debug（T10A/T10B/T10C） | T10A,T10B,T10C | audit-only 复查 artwork latest/ranking/recommended leaf、subtype/continuation/error、历史 evidence、public 边界、bug/类型/构建/测试/安全/回滚/文档 | pending |
@@ -491,6 +491,17 @@ Status 的 verified 表示对应 task 的实现与相关验证完成；各 task 
 - 公开兼容性影响：没有新增或删除 SDK symbol、CLI/MCP schema/route、endpoint wire、默认值、依赖、账号/token 行为、live 数据或 capability 状态；T10 父卡保持 `pending`，七项 capability 与全部 41 条 required capability 继续为 `scope_admitted`。novel ranking 只在 T10F 作为 internal leaf 登记，不提前创建 `NovelRanking` SDK/MCP/CLI 入口。
 - 回滚前提 / 依赖闭包：整体撤销 T10A–T10G、CHECK-04/CHECK-05、T10 父卡依赖更新与本拆卡记录即可恢复拆卡前台账，不涉及生产代码或业务数据。后续 endpoint、T11 continuation、T14/T18 SDK、T23/T28–T30/T37 public callers 若引用任一子卡，回滚前必须同步撤销或提供兼容迁移，不能只删除父卡或单个 owner。
 - 实际结果 / evidence / 风险：T10 已完成拆卡但父卡仍为 `pending`；七张 leaf 的写入范围已收敛为 disjoint endpoint responsibility，并在每三张子卡后安排 CHECK-04/CHECK-05。未执行 live API；artwork recommended subtype/第二页、artwork latest 扩展 subtype、novel latest max_novel_id 迁移、novel ranking adapter/公开链路与 novel follow 完整 owner evidence 仍待后续任务。下一入口按拓扑为 T10A。
+
+## T10A 完成记录
+
+- Owner package / 涉及文件：`internal/services/pixiv/endpoint/artwork/timeline/timeline.go` 与同 stem 测试 `internal/services/pixiv/endpoint/artwork/timeline/timeline_test.go`；本卡只实现 `/v1/illust/new` endpoint adapter leaf，没有修改 `sdk/pixiv`、CLI、MCP、protocol path、共享分页或公开文档。
+- Depends on：T12 已 verified。T01/T05 冻结了 `/v1/illust/new` 的 `content_type`、`filter=for_android`、`max_illust_id` 与 required `illusts` contract；T10A 不接管 T11 的通用 continuation、T18 的 SDK feed、T29/T37 的 CLI/MCP 发布。
+- 冻结 contract / fixture：空 `ContentType` 归一为已批准基础 subtype `illust`，始终发送 `content_type` 与 `filter=for_android`；既有 CLI/MCP 已使用的 `manga` 输入继续保留，但 `ugoira`、`all`、`illust-and-ugoira` 等未经确认的扩展 subtype 在 transport 前拒绝。latest 新请求只使用正 `max_illust_id`；非零 `Offset` 与负 `MaxIllustID` 明确报错且不发网络请求。响应继续要求非 null `illusts` list、作品 ID 为正数，优先解析 `max_illust_id`，并保留历史 `offset` continuation 的内部兼容解析；`next_url` 不进入 public output。
+- Red 测试、命令及当前行为的实际失败：`go test ./internal/services/pixiv/endpoint/artwork/timeline -run 'TestLatestTimeline(Default|RejectsOffset|RejectsNegative|UsesMax)' -count=1 -v` 实际显示默认 `content_type` 为空、`offset` 请求成功、负 `max_illust_id` 成功；`TestLatestTimelineUsesMaxIllustIDContinuationRequest` 在旧实现上已通过。补充 subtype 约束后，`go test ./internal/services/pixiv/endpoint/artwork/timeline -run '^TestLatestTimelineRejectsUnapprovedContentType$' -count=1 -v` 实际显示 `manga`/`ugoira`/`all` 均被旧实现接受；暂时只允许 `illust` 的实现还使既有 MCP `TestTimelineAndMyPixivToolsRouteAppSDKRequestsWithRecords` 的 `manga` 调用返回 structured error，随后以兼容测试和正式 allowlist 修复，未改 MCP 测试冒充通过。
+- Green 命令及验收断言：T10A endpoint `go test ./internal/services/pixiv/endpoint/artwork/timeline -count=1` 通过；受影响 `go test -race ./sdk/pixiv ./internal/cli/commands/pixiv/timeline ./internal/mcpserver/pixiv -count=1` 通过；全仓 `go test ./... -count=1`、`go vet ./...`、`go test ./scripts/tests/documentation -count=1`、`sh scripts/build.sh` 与 `git diff --check` 均通过。LSP 对 production/test 两文件的 diagnostics 均为空；离线 fixture 覆盖 default/filter、manga compatibility、max request/response、invalid subtype、invalid continuation request、negative ID 与 required list，未执行 live API。
+- 公开兼容性影响：没有新增或删除 SDK symbol、CLI/MCP schema/route、依赖、账号/token 行为或 raw `next_url` 输出；`manga` 既有 CLI/MCP 输入保持不变。新增限制仅在 T10A endpoint 收到非零 `Offset`、负 `MaxIllustID` 或未承诺 subtype 时触发，目的分别是阻止 `offset` 静默回到首页、阻止无效 continuation 进入 upstream、阻止未有独立 evidence 的 subtype 被误发布；正常首请求、`illust`/既有 `manga` 请求和 `max_illust_id` 续页不受影响。因当前 SDK 仍保留历史 `offset` cursor 分支，旧 offset cursor 现在会得到显式 adapter error 而非静默重复，这一兼容迁移由 T18/T19 继续收口，不能把本卡记作 public_ready。
+- 回滚前提 / 依赖闭包：代码提交 `d722710` 只包含上述 endpoint 与测试两文件，回滚该提交可恢复 T10A 前实现；任务账本另行记录。若后续 T11/T18/T19/T29/T37 已消费新的 `max_illust_id` 或错误语义，回滚前须先同步撤销或提供兼容迁移；没有业务数据、账号、token、缓存、依赖或运行配置迁移。
+- 实际结果 / evidence / 风险：T10A endpoint leaf 已 verified，`illust` 的 upstream 30/30 两页 confirmed evidence 与内部 max continuation fixture 闭合；`manga` 仅保留既有兼容输入，不提升其扩展 subtype evidence 或 capability 状态。41 条 required capability 仍全部为 `scope_admitted`，T10 父卡、T10B/T10C 与 CHECK-04 仍 pending；未执行 live API，下一入口为 T10B。
 
 ## 实现任务准入卡
 
