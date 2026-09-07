@@ -137,6 +137,15 @@
 | bookmark list --type all | product aggregate over artwork list → novel list | 输入身份为 user/user bookmarks；`--type all` 与 user URL 合法；显式 artwork URL 与 novel 类型冲突；统一 `tag/restrict/local filter` | 连接后的 normalized Artwork/Novel sequence，保留各自 content kind | 固定 artwork → novel；各流 upstream 顺序不变；Skip/Limit 只应用一次，不按类型分配配额；OneBatch 可跳过空流但不为凑类型额外抓批；aggregate cursor 记录当前流、两端 checkpoint、完成状态、query/account binding | 目前无 aggregate SDK/CLI/MCP handler、DTO、cursor 或 all fixture；目标为 required，仍 `scope_admitted` |
 | bookmark tags --type all | product aggregate over artwork tags → novel tags | 输入身份与 list 相同；`all` 只适用于 tags；单类 `restrict`/user binding 必须同时作用于两流 | 每项必须带 `content_type=artwork|novel`、`name`、该流原始 `count`；同名 tag 不合并、不相加、不去重，流内顺序保留 | 固定 artwork → novel；统一 Skip/Limit/OneBatch；aggregate cursor 记录当前流、两个 tags checkpoint、完成状态和 binding；不持久化 next_url/token | novel tags 与 typed count 尚未有 upstream/adapter/SDK evidence；目前无 all output/atomicity fixture，仍 `scope_admitted` |
 
+### T08B novel bookmark read candidate snapshot（2026-09-08，离线）
+
+本节只记录 T08B 为内部 adapter 建立的 candidate snapshot，不改写上方历史 evidence verdict，也不把 candidate path 提升为已验证的 public SDK/CLI/MCP operation。真实 upstream wire、live status 与 SDK gate 仍由后续任务重新验证。
+
+- novel bookmark tags 使用 candidate `GET /v1/user/bookmark-tags/novel`，当前离线请求只允许 `user_id` 与 `restrict`；响应要求 `bookmark_tags` list，元素保留 `name/count`，缺失或 JSON `null` 为 `MalformedUpstreamResponse`，`[]` 合法并归一为 non-nil empty items，空 tag name 为 malformed。
+- tags snapshot 不声明 continuation：`next_url` 只能缺失或 JSON `null`；非 null（包括带 `offset` 的 URL）显式返回 malformed。原因是 T05 已确认该 candidate 的 continuation allowlist、query key 和 range 尚未冻结，adapter 不能静默丢掉潜在的续页数据。
+- novel bookmark detail 使用 candidate `GET /v2/novel/bookmark/detail`，请求只带 `novel_id`；响应读取 `bookmark_detail` 的 `is_bookmarked`、`restrict` 与全部 tag name，不混入 Novel metadata。缺失/null detail、404 或明确的 `is_bookmarked:false` 空字段归一为 absent 状态（non-nil empty tags）；false 却携带 restrict/tag 为 malformed；已收藏或省略 bool 时保留状态字段，其他错误原样传播。
+- 以上均为 offline fixture-backed internal candidate evidence；不新增 public operation、不发送 subtype/type/content_type、不改变 `scope_admitted`/`not_tested` 状态。若后续 T11/T15/T27/T37 的 strict/live 验证否定该 snapshot，必须以新证据替换 adapter/fixture，而不是依赖此 candidate 继续发布。
+
 ### T03 subtype、鉴权与聚合错误边界
 
 - T20 的三层语义继续生效：bookmark list/tags 的 Target kind 是 user/user bookmarks，Result kind 是 artwork 或 novel，`illust/manga/ugoira` 只属于 artwork subtype；`all` 不是 subtype。现有 artwork bookmark endpoint 没有已验证的 `type/content_type` wire，因此在 evidence 前只允许将 subtype 作为目标 contract/candidate，不得静默发送或宣告 server-side filtering。若后续改为 client-side filter，subtype 与 local filter 必须进入 cursor binding，并按逻辑分页计数。
