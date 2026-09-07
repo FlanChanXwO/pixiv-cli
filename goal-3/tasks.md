@@ -1,6 +1,6 @@
 # Goal-3 tasks：完整实施 Goal
 
-修订日期：2026-09-07（Asia/Shanghai）。审查基线：`2167445280f1f6b6ce3ab8f6dbb3d082746b713d`。
+修订日期：2026-09-08（Asia/Shanghai）。审查基线：`2167445280f1f6b6ce3ab8f6dbb3d082746b713d`。
 
 ## 执行规则与当前入口
 
@@ -36,7 +36,7 @@ Status 的 verified 表示对应 task 的实现与相关验证完成；各 task 
 | T07B | novel read endpoint owner | T12 | 实现 novel search、v2 detail、v2 series 等 T07 novel adapter leaf、DTO 与错误映射；禁止回退已 rejected v1 detail/series path | verified |
 | T07C | user read endpoint owner | T12,T06 | 实现 user search/detail/artworks/novels/relationships adapter leaf、DTO 与错误映射；bare-ID 的命令 resolver 仍由 T21 负责 | verified |
 | T07D | feed/relationship adjunct endpoint owner | T12,T06 | 实现 trending、MyPixiv、follow 所需 adapter leaf、DTO 与错误映射；不把 mutation read-back 或 CLI/MCP 发布门禁提前并入 | verified |
-| T07 | read endpoint owners（umbrella） | T12,T07A,T07B,T07C,T07D | 汇总并审计四个子卡的 artwork/novel/user/feed read adapter、DTO、错误映射与 leaf fixture；全部子卡完成后才可标记 verified | pending |
+| T07 | read endpoint owners（umbrella） | T12,T07A,T07B,T07C,T07D | 汇总并审计四个子卡的 artwork/novel/user/feed read adapter、DTO、错误映射与 leaf fixture；全部子卡完成后才可标记 verified | verified |
 | T08 | bookmark endpoint owners | T12 | 按两类 list/tags/detail/mutation leaf 拆卡实现 | pending |
 | T09A | appapi transport | T12,T04,T06 | 增加响应可解码的窄 form 能力；保留旧 PostForm，不自动重放不确定 mutation | pending |
 | T09 | comment endpoint owners | T09A | 按 artwork/novel read/create/reply/stamp/delete 与 stamps leaf 拆卡实现 | pending |
@@ -310,6 +310,17 @@ Status 的 verified 表示对应 task 的实现与相关验证完成；各 task 
 - 回滚前提 / 依赖闭包：回滚需同时撤销 trending/MyPixiv/follow 负向与 DTO fixture、三个 endpoint 的校验、T07D 状态和本完成记录；不得只恢复 wire 行为而保留 T07D verified。未涉及账号、token、下载内容、运行配置、依赖或 live API；后续 T07 umbrella、T11、T13/T14、T35/T38 若已引用这些 adapter 约束，回滚时须同步撤销依赖或先补兼容修复。
 - 实际结果 / evidence / 风险：T07D 已 verified；trending、MyPixiv users/artworks/novels 与 follow endpoint leaf 的 method/path/request/DTO/null/empty/error 离线证据已补齐，T07 umbrella 现在可在四个子卡完成后执行汇总审计。41 条 required capability 仍为 `scope_admitted`，未执行 live API，也未把 follow 2xx 提升为关系已改变或把 `updated_at` optional public mapper 提前宣告完成；Goal 继续 incomplete，下一入口为 T07 umbrella。
 
+## T07 完成记录
+
+- Owner package / 涉及文件：read endpoint umbrella audit；复核 T07A–T07D 的完成记录、`internal/services/pixiv/endpoint/{artwork,novel,user}` leaf adapter 与对应离线 fixture，以及 `goal-3/capability-admission.md`、本文件。父任务只做汇总与账本回写，没有新增生产代码、protocol、SDK、CLI/MCP wire 或 live API。
+- Depends on：T12、T07A、T07B、T07C、T07D 均已 verified；T01/T02/T06 的 normalized contract 已作为四张子卡的共同前置。`bare-id-probe` 虽列在 T07 的 adapter 映射中，但其 resolver/probe 实现仍由 T21 负责，不在本父任务中提前完成。
+- 冻结 contract / fixture：T07A 的 artwork search/series/ugoira adapter 与 frame 安全边界、T07B 的 novel search 及 `/v2/novel/detail`、`/v2/novel/series` required-list/empty/error 语义、T07C 的 user search/detail/artworks/novels/relationships ID/subtype/required-null-empty/error 语义、T07D 的 trending/MyPixiv/follow path、request/DTO/preflight/error 语义均有各自完成记录与 leaf fixture。四卡合计覆盖 14 个具体 endpoint capability；第 15 行 `bare-id-probe` 保留 T21 的边界，不把 resolver 误记为已实现。
+- Red 测试、命令及当前行为的预期失败：这是依赖闭包与证据汇总的 audit-only task，没有生产代码 Red 阶段。审计开始时任务表准确显示 T12、T07A–T07D 已 verified 而 T07 仍 pending；没有用历史子卡完成记录自动替代父任务审计，也没有把 fixture 证据升级为 `public_ready`。
+- Green 命令及验收断言：`awk` 核对 T07 adapter owner 共 15 行且全部为 `scope_admitted`；`rg --files internal/services/pixiv/endpoint` 核对目标 endpoint fixture 共 18 个；正向检查确认 `/v1/trending-tags/illust`、`/v2/illust/mypixiv`、`/v1/novel/mypixiv`、`/v1/user/mypixiv`、`/v1/user/follow/{add,delete}` 均存在；负向 `rg` 确认 `internal/` 与 `sdk/` 不含 rejected 的 `/v1/novel/detail` 或 `/v1/novel/series`。18 个目标 endpoint 包的聚焦 `go test ... -count=1`、`go test ./... -count=1`、`go vet ./...`、`go test ./scripts/tests/documentation -count=1`、`sh scripts/build.sh` 与 `git diff --check` 均通过。
+- 公开兼容性影响：没有新增或删除 public SDK symbol、CLI/MCP tool/schema、endpoint wire、默认值、依赖、账号/token 行为或下载数据；合法请求路径与 DTO 由各子卡保持。41 条 required capability 仍全部为 `scope_admitted`，本审计不授予 `contract_frozen`、`migration_ready` 或 `public_ready`；不执行 live API。同步把任务账本末尾与上方完成记录矛盾的 R04 追加行改为 `verified`，不改变 R04 生产代码或其证据。
+- 回滚前提 / 依赖闭包：本父任务提交只包含 T07 状态、T07 完成记录和 R04 账本状态的一致性修复，回滚时可整体撤销且不需要业务数据、账号、token、配置或生产代码回滚；若撤销任一 T07A–T07D 实现，必须连同对应 adapter、fixture、完成记录及父任务依赖重新审计，不得只把父行保留为 verified。
+- 实际结果 / evidence / 风险：T07 umbrella 已 verified，四个子卡的 read adapter、DTO、错误映射与离线 leaf fixture 证据闭合；Goal 仍 incomplete，未完成的 SDK/public cursor（T13/T14/T19）、continuation allowlist（T11）、bare-ID resolver（T21）、CLI/MCP 与 mutation read-back（T35/T38）等边界保持原状，`updated_at` 的跨 artwork/novel public mapper 仍留给 T13/T14。按任务表下一入口为 T08。
+
 ## 实现任务准入卡
 
 在当前任务下回写以下内容，或链接已有 contract/fixture；不要自动新增独立计划文件。跨 owner 的汇总任务必须先拆成单 owner 子卡；子卡使用父 ID 后缀，列出自己的依赖，父任务在全部子卡完成后完成。
@@ -342,4 +353,4 @@ Green 命令及验收断言：
 
 ## CHECK-03 追加修复任务
 
-- `R04`（pending，P1）：`sdk/pixiv.Client.FollowUser` 必须在发起 `/v1/user/follow/add` 前复用 `validateRestrict`，只接受 `public`/`private`；空值继续由兼容层默认 `public`。补充 Red→Green 测试，使用可观测的 round-tripper 断言未知值返回 `sdk.InvalidArgument` 且网络调用次数为零；不得在 endpoint 层接受或静默重写未知值，不涉及 follow read-back、mutation outcome 或 MCP schema 的后续 T07/T35/T38 范围。
+- `R04`（verified，P1）：`sdk/pixiv.Client.FollowUser` 已在发起 `/v1/user/follow/add` 前复用 `validateRestrict`，只接受 `public`/`private`；空值继续由兼容层默认 `public`。Red→Green、no-network 回归及完整证据见上方 `R04 完成记录`；不涉及 follow read-back、mutation outcome 或 MCP schema 的后续 T07/T35/T38 范围。
