@@ -48,7 +48,16 @@ Status 的 verified 表示对应 task 的实现与相关验证完成；各 task 
 | T09D | novel comment endpoint owner | T04,T05,T06,T09A,T09B | 实现 novel comments read/create/reply/stamp/delete leaf、DTO、请求校验与错误映射；固定 v2 contract，不对 v3 candidate 做 fallback | verified |
 | T09E | stamps endpoint owner | T04,T09B | 实现 `/v1/stamps` read leaf、字段级 DTO/ID/资源引用校验与错误映射；不把未验证字段或 continuation 猜成 public contract | verified |
 | T09 | comment endpoint owners | T09A,T09B,T09C,T09D,T09E | 汇总并审计 artwork/novel comments read/create/reply/stamp/delete 与 stamps leaf；全部子卡完成后才可标记 verified | verified |
-| T10 | ranking/recommended/latest owners | T12 | 按 endpoint leaf 拆卡实现 subtype 与 request/DTO | pending |
+| T10A | artwork latest endpoint owner | T12 | 完成 `/v1/illust/new` 的 `max_illust_id`、已批准 subtype、request/DTO/error leaf；不进入 SDK/CLI/MCP | pending |
+| T10B | artwork ranking endpoint owner | T12 | 完成 `/v1/illust/ranking` 的 mode/date/offset、mode 校验与 request/DTO/error leaf；不进入 SDK/CLI/MCP | pending |
+| T10C | artwork recommended endpoint owner | T12 | 完成 recommended offset presence、required list 与 candidate subtype 边界；保留真实第二页 failure，不进入 SDK/CLI/MCP | pending |
+| CHECK-04 | 集中检查-debug（T10A/T10B/T10C） | T10A,T10B,T10C | audit-only 复查 artwork latest/ranking/recommended leaf、subtype/continuation/error、历史 evidence、public 边界、bug/类型/构建/测试/安全/回滚/文档 | pending |
+| T10D | novel latest endpoint owner | T12,CHECK-04 | 将 `/v1/novel/new` latest continuation 从 offset 修正为 `max_novel_id`；固定 filter/request/DTO/error，不做 fallback | pending |
+| T10E | novel recommended endpoint owner | T12,CHECK-04 | 完成 `/v1/novel/recommended` 的 explicit offset=0 presence、required list/request/DTO/error leaf | pending |
+| T10F | novel ranking endpoint owner | T12,CHECK-04 | 新增 `/v1/novel/ranking` internal endpoint leaf、protocol path、filter/mode/offset、required list/两页 fixture；不新增 SDK/CLI/MCP 入口 | pending |
+| CHECK-05 | 集中检查-debug（T10D/T10E/T10F） | T10D,T10E,T10F | audit-only 复查 novel latest/recommended/ranking leaf、max_novel_id/offset/mode/error、禁止 fallback、public 边界、bug/类型/构建/测试/安全/回滚/文档 | pending |
+| T10G | novel follow endpoint owner | T12,T10D,CHECK-05 | 完成 `/v1/novel/follow` 的 restrict/offset、required list、request/DTO/error leaf；与 latest continuation 分离 | pending |
+| T10 | ranking/recommended/latest/follow owners（umbrella） | T10A,T10B,T10C,CHECK-04,T10D,T10E,T10F,CHECK-05,T10G | 汇总并审计 artwork/novel latest、ranking、recommended 与 novel follow leaf；全部子卡与集中检查完成后才可标记 verified | pending |
 | T11 | endpoint continuation owners | T07,T08,T09,T10,T05 | 校验和提取 endpoint allowlist continuation；不持久化 next_url | pending |
 | T13 | sdk/pixiv artwork | T07,T11 | 实现 artwork SDK 与 adapter 对照、旧签名兼容 | pending |
 | T14 | sdk/pixiv novel | T07,T11 | 实现 novel SDK、series metadata 与 continuation | pending |
@@ -471,6 +480,17 @@ Status 的 verified 表示对应 task 的实现与相关验证完成；各 task 
 - 公开兼容性影响：仅把 T09 父卡从 `pending` 回写为 `verified`，并修正拆卡记录中“五张子卡”的账本表述；没有新增或删除 SDK symbol、CLI/MCP schema/route、公开 endpoint wire、默认值、依赖、账号/token 行为、live 数据或 public-ready admission。T09E 的 host allowlist 只在内部收到非 HTTPS、凭据、无有效路径或非既有 Pixiv media host locator 时触发，目的是阻止不受信任资源进入后续 resource 层，正常 locator 不受影响。
 - 回滚前提 / 依赖闭包：本父卡提交只包含 T09 状态、拆卡记录一致性修正和本完成记录，回滚时不撤销 T09A–T09E production/test 实现；若后续 T16/T17/T21/T33/T37/T38/T44 已引用父卡闭包，必须先同步撤销或迁移这些 transport、DTO、response ID、resolver、read-back 或 public 依赖。不存在业务数据、账号、token、缓存、运行配置或生成物迁移。
 - 实际结果 / evidence / 风险：T09 umbrella 已 verified，五张 endpoint/transport 子卡的离线请求、path、校验、DTO/error evidence 闭合，且未发现 public caller 或跨 owner 越界。未执行 live API；comments v3/v2 严格 wire、第二页/total、numeric access-control、mutation response ID 的真实证据、同账号读回清理与不确定 outcome、stamps 字段级 strict snapshot/resource ref 绑定仍未完成，41 条 required capability 继续为 `scope_admitted`。Goal-3 仍 incomplete，按 DAG 下一入口为 T10。
+
+## T10 拆卡记录
+
+- Owner package / 涉及文件：ranking/recommended/latest/follow endpoint owner umbrella；本轮只回写 `goal-3/tasks.md` 的 T10 子卡、集中检查卡与父卡依赖，不修改 production code、SDK、CLI/MCP、公开文档、依赖或运行配置。
+- Depends on：T12 已 verified。`capability-admission.md` 将 `artwork-latest`、`artwork-ranking`、`artwork-recommended`、`novel-latest`、`novel-recommended`、`novel-ranking`、`novel-follow` 七项 capability 的 Adapter owner 均指定为 T10；T11 负责 continuation，T18 负责 SDK feed 集成，T28/T29/T30/T37 负责 CLI/MCP 发布边界。
+- 冻结 contract / fixture：T10A 只负责 artwork latest `/v1/illust/new` 的 `content_type`/`filter=for_android`、已批准 subtype 与 `max_illust_id`，不把 offset fallback 变为 target；T10B 只负责 artwork ranking `/v1/illust/ranking` 的 mode/date/正 offset 与 mode allowlist；T10C 只负责 artwork recommended 首次无 offset、续页显式 offset（包括 0）与 required `illusts`，`content_type` candidate 和真实第二页 failure 不得伪装成已验证 subtype。T10D 只负责 novel latest `/v1/novel/new` 的 `filter=for_android` 与 `max_novel_id`，禁止 offset fallback；T10E 只负责 novel recommended `/v1/novel/recommended` 的 required `novels` 与 explicit offset presence；T10F 独占新建 novel ranking `/v1/novel/ranking` leaf、protocol path、filter/mode/offset 与 required `novels`；T10G 只负责 novel follow `/v1/novel/follow` 的 restrict/offset 与 required `novels`，和 latest continuation 分离。各 leaf 只拥有对应 endpoint package 的 request/DTO/path/error fixture，不重建 shared pagination、不持久化 raw `next_url`、不新增 public SDK/CLI/MCP surface。
+- Red 测试、命令及当前行为的预期失败：本轮是跨 owner task decomposition，无生产代码 Red 阶段。只读审计确认 T10 原父卡尚未拆分，novel ranking 没有 production owner，novel latest 当前仍使用 offset，artwork recommended subtype binding/第二页仍未闭合；同时确认 novel follow 虽不在父卡标题中却属于 T10 Adapter，不能遗漏。上述缺口分别绑定 T10A–T10G，不将历史 live evidence 直接写成实现完成。
+- Green 命令及验收断言：`nl -ba goal-3/capability-admission.md`、`nl -ba goal-3/upstream-contract-matrix.md`、`rg` 与三个只读探索结果逐项绑定七项 capability、operation path、现有 endpoint owner、T12/T11/T18/T28–T37 边界；确认 SDK/CLI/MCP 层不在 T10 写入范围，新增 T10A–T10G 与 CHECK-04/CHECK-05 的依赖无环；基线 `go test ./... -count=1` 已通过。修改后另行运行文档检查与 `git diff --check`。
+- 公开兼容性影响：没有新增或删除 SDK symbol、CLI/MCP schema/route、endpoint wire、默认值、依赖、账号/token 行为、live 数据或 capability 状态；T10 父卡保持 `pending`，七项 capability 与全部 41 条 required capability 继续为 `scope_admitted`。novel ranking 只在 T10F 作为 internal leaf 登记，不提前创建 `NovelRanking` SDK/MCP/CLI 入口。
+- 回滚前提 / 依赖闭包：整体撤销 T10A–T10G、CHECK-04/CHECK-05、T10 父卡依赖更新与本拆卡记录即可恢复拆卡前台账，不涉及生产代码或业务数据。后续 endpoint、T11 continuation、T14/T18 SDK、T23/T28–T30/T37 public callers 若引用任一子卡，回滚前必须同步撤销或提供兼容迁移，不能只删除父卡或单个 owner。
+- 实际结果 / evidence / 风险：T10 已完成拆卡但父卡仍为 `pending`；七张 leaf 的写入范围已收敛为 disjoint endpoint responsibility，并在每三张子卡后安排 CHECK-04/CHECK-05。未执行 live API；artwork recommended subtype/第二页、artwork latest 扩展 subtype、novel latest max_novel_id 迁移、novel ranking adapter/公开链路与 novel follow 完整 owner evidence 仍待后续任务。下一入口按拓扑为 T10A。
 
 ## 实现任务准入卡
 
