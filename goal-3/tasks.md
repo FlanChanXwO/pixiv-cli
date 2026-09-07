@@ -23,7 +23,8 @@ Status 的 verified 表示对应 task 的实现与相关验证完成；各 task 
 | CHECK-01 | 集中检查-debug（T00/T20/T01/T02） | T02 | audit-only 复查 input/plan 偏离、41 条 required_scope、bookmark list/tags all、历史 evidence、排除 endpoint、T23A 边界、bug/死代码、类型/构建/测试、安全/数据/回滚/文档，并登记修复项 | verified |
 | T03 | bookmark contract | T00,T20 | 冻结两类 list/tags/detail/mutation/subtype 及 list/tags all 聚合契约 | verified |
 | T04 | comment contract | T00,T20 | 冻结 artwork/novel comments read/create/reply/stamp/delete、stamps、total | verified |
-| T05 | continuation contract | T01,T02,T03,T04 | 冻结 allowlist、query/account/subtype binding、第二页 fixture；复用现有 cursor | pending |
+| T05 | continuation contract | T01,T02,T03,T04 | 冻结 allowlist、query/account/subtype binding、第二页 fixture；复用现有 cursor | verified |
+| CHECK-02 | 集中检查-debug（T03/T04/T05） | T05 | audit-only 复查 bookmark/comment/continuation contract、required scope、历史 evidence、T23A 边界、账号/query/subtype binding、第二页 fixture、额外/重复 key、bug/死代码、类型/构建/测试、安全/数据/回滚/文档，并登记修复项 | pending |
 | T06 | error/其他 read contract | T00,T01,T02,T03,T04 | 冻结 user search/detail/relationships、trending、follow、mypixiv、error、mutation outcome 与脱敏 | pending |
 | T12 | SDK compatibility | T20,T01,T02,T03,T04,T05,T06 | 冻结 symbol map、旧 wrapper、named types、旧消费者编译、cursor 版本恢复；默认源码兼容 | pending |
 | T39A | CLI/MCP migration | T12 | 冻结 CLI 路由和 MCP tool/input/output compatibility map；旧 JSON 回放清单 | pending |
@@ -144,6 +145,17 @@ Status 的 verified 表示对应 task 的实现与相关验证完成；各 task 
 - 公开兼容性影响：无 production code、public SDK symbol、CLI/MCP wire、依赖、endpoint 请求或默认值变化；保留 `Comment`/`CommentPage`/`CommentDTO`、`illust_comments`/`novel_comments` 与当前 JSON/NDJSON envelope；新增 mutation/stamps symbol、字段和 tool 留给 T09A/T16/T17/T33/T37/T38 及 T39A。
 - 回滚前提 / 依赖闭包：文档提交需整体回滚 upstream matrix、plan 引用和 T04 状态；没有数据、账号、生产配置或 endpoint path 依赖。后续 comment adapter、窄 form transport、SDK、CLI/MCP 及 read-back 实现必须连同 response ID、同账号 execution context、页/错误原子性和兼容 wrapper 作为依赖闭包回滚。
 - 实际结果 / evidence / 风险：T04 已完成基础 contract 冻结，comment/stamps capabilities 仍全部为 `scope_admitted`，Goal 继续 incomplete。主要剩余风险是 comments 版本/日期/access-control、第二页与 total 语义、字段级 stamps schema、mutation response ID 与真实隔离清理尚未通过 strict/owner evidence；按任务顺序下一轮进入 T05。
+
+## T05 完成记录
+
+- Owner package / 涉及文件：continuation contract；`goal-3/upstream-contract-matrix.md`、`goal-3/plan.md`、本文件。只冻结 continuation、binding 与第二页 fixture，不实现 endpoint/SDK/CLI/MCP。
+- Depends on：T01、T02、T03、T04 verified；本轮沿 tasks 拓扑推进 T05，并复用 CHECK-01 已确认的 cursor 安全边界与 T23A shared pagination 证据。
+- 冻结 contract / fixture：upstream matrix 新增 T05 section，按 artwork/novel/user/series/comments/bookmark/tag/aggregate family 冻结 `offset`、`last_order`、`max_illust_id`、`max_novel_id`、`max_bookmark_id` 的 target allowlist 与 recommended `offset=0` presence 规则；明确 query digest、verified account/ephemeral client、subtype/local filter binding，`sdk.Cursor` 不承载 raw `next_url`/token/cookie；登记 live confirmed、synthetic two-page、`pagination_exempt` 与 `inconclusive` 的真实边界，并要求第二页 required list、终止响应、changed-binding、malformed continuation 和重复 cursor fixture。
+- Red 测试、命令及当前行为的预期失败：T05 是 contract freeze 文档任务，无生产代码 Red 阶段。只读核验确认 novel latest 当前仍用 `offset` 而 live target 为 `max_novel_id`；CLI/MCP recommended subtype 尚未进入 SDK cursor digest；`SearchNovels`/`SearchUsers` 当前未纳入 identity-scoped binding；多数单 key parser 忽略未知额外 query key，endpoint 不保存跨页重复状态；这些均登记为后续实现/兼容缺口，没有被写成已完成。
+- Green 命令及验收断言：复读 `input.md`/`plan.md`/`tasks.md`；逐项核验 `sdk/cursor.go`、`sdk/pixiv/cursor.go`、`sdk/pixiv/ops_*`、endpoint continuation parser、shared pagination/traversal、strict evidence、SDK/CLI/MCP 两页 fixture 与 account-pool replay；确认 T05 anchor、operation allowlist、binding 字段、安全边界和 evidence verdict 均可检索。提交前运行 `git diff --check`、`go test ./scripts/tests/documentation -count=1`、`go test ./...` 与 `sh scripts/build.sh`。
+- 公开兼容性影响：无 production code、public SDK symbol、CLI/MCP wire、endpoint 请求、默认值、依赖或 live 数据变更；只补充内部 contract、fixture/evidence 分层与 CHECK-02 排程。现有 cursor、recommended subtype、搜索账号 binding 的行为保持不变。
+- 回滚前提 / 依赖闭包：文档提交需整体回滚 upstream matrix、plan 引用、T05 状态和 CHECK-02 排程；没有数据、账号或生产配置依赖。后续 owner 若已引用 T05，回滚前必须同步撤销其未完成的 adapter/SDK/CLI/MCP 依赖，不能只删除 allowlist 文本。
+- 实际结果 / evidence / 风险：T05 contract freeze 已完成；confirmed live 两页仅保留 novel follow/recommended、artwork search 四种 selector、artwork latest/ranking；数据受限 bookmark/user case 仍要求 synthetic two-page；novel-new、artwork recommended、novel-series-v2、comments 等继续保留真实 failure/inconclusive。当前 required capabilities 仍全部为 `scope_admitted`，Goal 继续 incomplete。按每三个 task 插入集中检查规则，已登记下一入口 `CHECK-02`，本轮不执行 T06。
 
 ## 实现任务准入卡
 

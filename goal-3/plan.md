@@ -32,6 +32,8 @@ Pixiv 搜索在既有 payload 中保存原批次 offset 与累计消费位置。
 
 本轮新增 `Client.CheckpointSearchArtworks(request, consumed)` 与 `SearchArtworksRequest.CursorContext`。后者只进入查询摘要，不发送上游；两端统一绑定实际收藏筛选上下界及策略。SearchArtworks binding version 单独升到 2，其他 operation 保持现有版本；旧搜索 cursor 返回 InvalidCursor，调用者清除它后从头开始，不静默重启。搜索 cursor 绑定 verified account；无 verified identity 时只能同一 client 恢复。
 
+[T05 continuation、binding 与第二页 fixture contract](upstream-contract-matrix.md#t05-continuation-binding-and-page-2-fixture-contract-freeze-2026-09-07) 已冻结各 operation 的 sanitized continuation allowlist、初始页/续页差异、query/account/subtype binding、live 与 synthetic 第二页证据分层，以及 `pagination_exempt`/`inconclusive` 不得升级的边界。当前实现缺口（novel latest 的 `max_novel_id`、recommended subtype binding、部分搜索 account binding 与额外/重复 key 校验）保持显式，不能由文档冻结替代实现。
+
 验收：相同查询、筛选和稳定源序列下，连续使用返回 cursor 等价于完整遍历的对应部分，不遗漏、不重复；包含批内、末批、过滤空批、Skip/Limit/OneBatch、重复 cursor、取消、账号池重放与错误传播。恢复重新请求原批次，不提供实时数据快照；上游重排/删除仍可能改变结果，位置越界明确返回 InvalidCursor。限制与恢复语义同步 SDK 文档。
 
 rating 使用 client-side filter，除已冻结的真实服务端参数外不发送 x_restrict。future subtype、local filter 必须进入相应 cursor binding。
@@ -42,7 +44,7 @@ T20 已在 [CLI/MCP 迁移矩阵的类型语义冻结](cli-migration-matrix.md#t
 
 resolver 依次消费 structured canonical record、现有纯本地 ParseURL、显式类型 ID 和冻结后的受控 bare-ID probe；冲突、`all` 与错误规则以该节为准。保留 ReferenceKind 的 user/user bookmarks/artwork series/novel series 区别。URL 与 --type 是否冲突由命令契约判定：bookmark list/tags 的 user URL 加 --type novel 合法；作品 mutation 输入身份与选择的作品类型必须一致。
 
-[artwork 基础 contract](upstream-contract-matrix.md#t01-artwork-基础-contract-冻结)、[novel 基础 contract](upstream-contract-matrix.md#t02-novel-基础-contract-冻结)、[bookmark 基础 contract](upstream-contract-matrix.md#t03-bookmark-基础-contract-冻结)、[comment 与 stamp 基础 contract](upstream-contract-matrix.md#t04-comment-与-stamp-基础-contract-冻结)、[CLI 迁移矩阵](cli-migration-matrix.md) 冻结路由、flag、stdin/JSON/NDJSON 与 MCP 映射。bookmark list/tags --type all 均为 required：先 artwork 后 novel、各流顺序不变、统一 Skip/Limit、cursor 记录当前流及各流 checkpoint；tags 按内容类型保留同名标签和各自 count。需要的流之一失败时整次逻辑页失败，收集成功后才输出 JSON/NDJSON。detail/add/remove 不接受 all；SDK 保持 endpoint-oriented methods，由共享产品语义组织聚合。
+[artwork 基础 contract](upstream-contract-matrix.md#t01-artwork-基础-contract-冻结)、[novel 基础 contract](upstream-contract-matrix.md#t02-novel-基础-contract-冻结)、[bookmark 基础 contract](upstream-contract-matrix.md#t03-bookmark-基础-contract-冻结)、[comment 与 stamp 基础 contract](upstream-contract-matrix.md#t04-comment-与-stamp-基础-contract-冻结)、[T05 continuation contract](upstream-contract-matrix.md#t05-continuation-binding-and-page-2-fixture-contract-freeze-2026-09-07)、[CLI 迁移矩阵](cli-migration-matrix.md) 冻结路由、flag、stdin/JSON/NDJSON 与 MCP 映射。bookmark list/tags --type all 均为 required：先 artwork 后 novel、各流顺序不变、统一 Skip/Limit、cursor 记录当前流及各流 checkpoint；tags 按内容类型保留同名标签和各自 count。需要的流之一失败时整次逻辑页失败，收集成功后才输出 JSON/NDJSON。detail/add/remove 不接受 all；SDK 保持 endpoint-oriented methods，由共享产品语义组织聚合。
 
 ## SDK/MCP 兼容与 mutation
 

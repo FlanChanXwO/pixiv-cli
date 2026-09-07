@@ -211,6 +211,57 @@
 - T21 负责 comment URL/structured record/显式类型 resolver；T33 实现 CLI read/mutation/stamps 迁移与输出；T37/T38 分别实现 MCP read/mutation tools、旧 JSON 回放、structured error 与同账号 read-back。
 - T39B/T40/T41/T42/T43/T44/T45 负责实施后兼容、completion/docs、协议/SDK/CLI/MCP 回归、隔离账号 live 与最终发布门禁；T04 不修改 production code、protocol、SDK、CLI、MCP 或依赖。
 
+## T05 continuation, binding, and page-2 fixture contract freeze (2026-09-07)
+
+本节在 T01–T04 的 operation contract 之上冻结 continuation allowlist、初始页/续页差异、query/account/subtype binding 与第二页 fixture 规则。它复用现有 `sdk.Cursor`、`sdk/pixiv` 的 product/operation/version/query/account/client binding，以及 `internal/shared/pagination` / `internal/shared/traversal`；不新增 cursor 编码、通用 checkpoint API、CLI/MCP 自行解析 `next_url` 或 production behavior。历史 evidence 的 `confirmed`、`pagination_exempt`、`inconclusive`、`not_tested` 和 `rejected` verdict 均保持原样。
+
+### T05 continuation allowlist 与初始页/续页差异
+
+| Operation family | Target sanitized continuation allowlist | 初始页与续页 | 第二页 fixture / evidence boundary |
+| --- | --- | --- | --- |
+| artwork search | `offset`，正整数；四种已验证 content type 共用该 operation key | zero cursor 首请求不发送 `offset`；续页只发送正 `offset`，重复原始 search query | live `search-illust-{all,illust,manga,ugoira}` 均 confirmed、30/30、跨页无重复；SDK/CLI/MCP 两页 fixture 见 `goal-3/evidence/appapi-upstream.md:20-23`、`sdk/pixiv/pixiv_test.go:493-543`、`internal/cli/commands/pixiv/search/bookmark_test.go:180-255` |
+| artwork series | `last_order`，正 `int64` | 首请求只带 series ID；续页只带正 `last_order` | endpoint/SDK 两页合成 fixture 已有；独立 live 第二页未观察，保持 `inconclusive`，见 `sdk/pixiv/pixiv_test.go:276-320`、`goal-3/pagination-validation-report.md:5-12` |
+| artwork latest | target key 为 `max_illust_id`；当前 adapter 仍兼容解析 `offset`，但新 target request 不得以 `offset` 替代 | 首请求不带 continuation；续页沿用服务端返回的唯一 typed key；`content_type` 属于 base binding | `illust` live 30/30 confirmed；扩展 subtype 仍 partial，见 `goal-3/evidence/appapi-upstream.md:26`、`internal/services/pixiv/endpoint/artwork/timeline/timeline_test.go:65-81` |
+| artwork ranking / following / MyPixiv / user artworks / related / comments | `offset`，正整数；ranking 的 `mode/date`、user 的 `user_id/type`、follow 的 `restrict` 不属于 continuation | 首请求省略 `offset`；续页只发送正 `offset` | ranking live 30/30 confirmed；related/comments、user/feed 的 live 第二页不据 fixture 推为 confirmed，保留各自历史 verdict |
+| artwork recommended | `offset`，允许续页值 `0`；“无 cursor”与“cursor=0”必须可区分 | 无 cursor 时不发送 `offset`；合法续页即使为 `offset=0` 也显式发送 | initial/continuation endpoint fixture 已有；live 85/0、第二页错误，状态 `inconclusive`，见 `internal/services/pixiv/endpoint/artwork/recommended/recommended_test.go:24-49`、`goal-3/evidence/appapi-upstream.md:25` |
+| novel search / follow / MyPixiv / user novels / user relations | `offset`，正整数；`word/search_target/sort/duration`、`restrict`、`user_id` 等 base query 不得被续页替换 | 首请求省略 `offset`；续页只发送正 `offset` 并复用 base query | novel search 只有 SDK 合成两页，live period/两页尚缺；follow live 30/30 confirmed；user novels 是 `pagination_exempt`，仍须保留合成逻辑两页 |
+| novel recommended / user recommended | `offset`，允许续页值 `0`；同 artwork recommended 的 presence 规则 | 无 cursor 时不发送 `offset`；续页 `offset=0` 必须显式发送 | novel recommended live 33/33 confirmed；user recommended 只有 endpoint/SDK 级 fixture，不能提升 live verdict |
+| novel latest | target key 为 `max_novel_id`；不得把当前实现的 `offset` 当兼容替代 | 首请求无 continuation；续页必须按 upstream `max_novel_id` 重建请求 | live 30/30 只证明 upstream continuation；当前 adapter/SDK 仍用 `offset`，续页 rejected，保持 `inconclusive`，见 `goal-3/evidence/appapi-upstream.md:11`、`goal-3/pagination-validation-report.md:14-20` |
+| novel series v2 | target key 为 `last_order` | 首请求只带 series ID；续页只带正 `last_order`；不得从 v1 fallback 或混用 cursor | v2 path/首批证据存在，第二页未观察，生产仍 v1，保持 `inconclusive`，见 `goal-3/evidence/appapi-upstream.md:7-8` |
+| novel comments | `offset`，正整数；v2/v3 cursor 不互换 | 首请求只带 novel ID；续页只发送正 `offset` | endpoint fixture 与 artwork comments SDK 两页 fixture 不能替代 novel comments live 第二页；当前 strict verdict `inconclusive` |
+| artwork / novel bookmark list | `max_bookmark_id`，正 `int64` | 首请求不带 key；续页只发送正 `max_bookmark_id`，保留 `user_id/restrict/tag` | 两类真实数据均 `pagination_exempt`/未观察第二页；SDK 两页 fixture 见 `sdk/pixiv/pixiv_test.go:991-1041,1089-1133`，不得改写 live verdict |
+| artwork bookmark tags | `offset`，正整数 | 首请求不带 key；续页只发送正 `offset`，保留 `user_id/restrict` | SDK 两页 fixture 已有；wire/subtype/live evidence 尚缺，仍按 T03 `not_tested`/`pagination_exempt` 边界处理 |
+| novel bookmark tags | continuation allowlist 未冻结 | 不猜测 candidate path 的 query、key、range 或 null/empty 行为 | 留给 T08 strict snapshot；T05 不新增 public operation 或 candidate fallback |
+| detail、ugoira metadata、stamps、comment/bookmark mutation | none | 不产生 continuation；mutation 的 read-back 是 outcome，不是分页 cursor | stamps live no-continuation 已确认，但 adapter/SDK/DTO 仍 `not_tested`；其他 operation 继续沿用 T01–T04 rejection boundary |
+| bookmark `--type all` / tags `--type all` | product aggregate cursor 由每个已冻结流的 typed checkpoint 组成；不能直接复用单流 cursor | 固定 artwork → novel；统一 Skip/Limit/OneBatch；单流完成状态与两端 binding 必须进入 aggregate state | 当前无 aggregate SDK/CLI/MCP fixture；不得携带 raw `next_url`、token、cookie、原始 query 或用户内容，留给 T19/T23 |
+
+规则解释：`next_url=null` 或缺失表示正常结束；非 null 空字符串、无法解析、缺少/重复 key、非本 operation allowlist、值越界或另一 operation 的 key 均为 malformed target。recommended 的 `offset=0` 是唯一已冻结的零值续页特例。当前多数单 key adapter 会忽略未知额外 query key，且 endpoint parser 不保存上一页状态；这两项是实现缺口，不得在 T05 记录中伪称已由 leaf parser 完成，后续 owner/T23 必须用测试补齐。
+
+### T05 query、account 与 subtype binding
+
+- 外层 `sdk.Cursor` 固定携带 `product`、`operation`、product binding version、query digest，以及 verified identity 或 ephemeral client binding；payload 只保存 typed continuation `Key`、数值 `Value`，`SearchArtworks` 额外保存批内 `Consumed`。query digest 排序后计算，排除 continuation 本身；改变 product、operation、binding version、query 或 payload kind 都返回 `InvalidCursor`，不得静默从第一页重启。证据为 `sdk/cursor.go:9-35,177-207`、`sdk/pixiv/cursor.go:56-171`。
+- query digest 必须覆盖所有会改变结果序列的 base/query/local semantics：artwork search 的 `word/target/sort/duration/date bounds/content type`、novel search 的 `word/target/sort/duration`、`SearchArtworks` 的 AI mode、aspect/resolution/tool/bookmark bounds 与 `CursorContext`；尚未进入 strict manifest 的 novel search `start_date/end_date` 不得被假定为已冻结字段；paged series/comments 的 target ID；ranking 的 `mode/date`；follow/bookmark 的 `restrict`；bookmark 的 `user_id/tag`；user artworks 的 `user_id/type`。`CursorContext` 只参与 digest、不发送给 upstream；本地 subtype/filter 改变时必须改变 context。现有字段核对见 `sdk/pixiv/request.go:103-123`、`sdk/pixiv/ops_artwork_search.go:74-136`、`sdk/pixiv/ops_artwork.go:58-230`、`sdk/pixiv/ops_novel.go:1-225`。
+- account binding 以 operation 的真实账号语义为准：verified `Open/OpenWith` 的 cursor 绑定正 user ID；未验证 `New/NewWith` 只能由同一 client instance 续读；pool attempt 换账号时必须丢弃旧结果和 cursor，不能把旧账号中间页交给新账号。当前 `identityScopedOps` 明确覆盖 `SearchArtworks`、CurrentUser、following/recommended/related 等，但不包含 `SearchNovels`、`SearchUsers`；这与双语 SDK 文档“全部搜索 cursor 绑定账号”的表述不一致，T05 将其登记为未关闭的 P1 binding gap，不能宣告“所有搜索均已账号绑定”。证据为 `sdk/pixiv/cursor.go:37-54`、`sdk/pixiv/pixiv.go:131-201`、`internal/services/pixiv/facade_test.go:129-180,218-249`。
+- subtype binding 只允许已证实的语义进入 cursor：`SearchArtworks` 的 `ContentType`、AI/local filter context，latest 的 resolved `content_type`，user artworks 的 `type`；ranking `mode` 保持 ranking 参数，不伪装成全局 artwork subtype。CLI recommended 的 `content-type` 与 MCP `illust_filter.type` 当前没有进入 `RecommendedArtworksRequest`/SDK digest，虽然单次 MCP 在 runtime 做本地过滤，未来任何可持久化/跨请求 cursor 前必须补 subtype binding 与两页 fixture；artwork bookmark subtype 仍是 candidate，不得静默发 wire。
+- cursor 编码是 JSON + Base64URL，不是 MAC/签名，也不是鉴权凭据；不可信边界仍须重新校验上述 binding，错误和输出不得包含 token、cookie、signed URL、raw `next_url`、原始 query 或用户内容。现有 envelope 禁止项与安全警告见 `sdk/cursor.go:15-28`、`docs/zh-CN/sdk.md:173-178`。
+
+### T05 第二页 fixture 规则与现有证据
+
+每个需要分页的 owner 至少要保留以下合成回归：首响应带 required list 与合法 continuation，第二请求只携带本 operation allowlist key 并复用不可变 base query，第二响应再次具备 required list，终止响应为合法空 list + `next_url=null`；另有缺失/null list、空 continuation、重复 key、未知 key、非法 range、upstream error 与 query/account/subtype changed-binding 失败样例。fixture 只验证当前 operation 的行为，不把 endpoint 的 `next_url` 文本泄露到 public cursor。
+
+- live second-page confirmed 仅包括 `novel-follow`、`novel-recommended`、artwork search 四种 content type、`artwork latest` 与 `artwork ranking`；这些 case 的 item count、`page_overlap=0` 和 adapter/SDK verdict 见 `goal-3/evidence/appapi-upstream.md:11-14,20-27`。`page_overlap=0` 对没有真正第二页的 case 不构成成功证明。
+- 已有合成两页覆盖包括 `SearchArtworks`、artwork/novel series、artwork/novel bookmarks、artwork bookmark tags、artwork comments、novel search，以及 CLI/MCP search 的逻辑页/批内 checkpoint；入口见 `sdk/pixiv/pixiv_test.go:135-182,276-414,493-543,991-1133`、`internal/shared/pagination/pagination_test.go:87-289,361-419`。novel comments 当前只有 endpoint 单次 continuation fixture，不得写成 SDK 两页已覆盖。
+- `user novels`、`user artworks`、public/private bookmarks 是数据受限的 `pagination_exempt`，只放宽真实 live 第二页观测，不放宽合成逻辑分页、binding、错误和 checkpoint 回归。`illust-recommended`、`novel-series-v2`、comments 与 `novel-new` 的第二页/迁移状态仍按 `inconclusive` 或真实 failure class 保留，见 `goal-3/pagination-validation-report.md:14-54`。
+- shared pagination 在再次 fetch 前按 opaque cursor 文本检测重复/环路，并在 fetch/consume 错误时丢弃已收集结果；它不解码 SDK cursor。`CheckpointSearchArtworks` 是当前唯一明确的批内 checkpoint API，其他 operation 只复用 upstream continuation；不得为补 fixture 临时发明通用 `Checkpoint*`。
+
+### T05 未关闭项与后续 owner
+
+- `novel-new` 必须由 T10/T14/T18 按 `max_novel_id` 完成 adapter/SDK 迁移；当前 `offset` 续读失败不能通过 fallback、重试或空结果隐藏。
+- recommended artwork 的 subtype/filter binding 与两页证据由 T07/T13/T18/T23 关闭；在此之前 CLI/MCP 不得把 `illust`/`manga` 的本地过滤描述成 upstream subtype continuation contract。
+- `SearchNovels`/`SearchUsers` 是否需要与文档一致的 verified account binding，以及相应跨账号测试，由 SDK compatibility owner 在 T12/T18 明确；T05 保留当前实现缺口，不修改现有行为。
+- 非本 operation 的额外 continuation query key 与跨页重复 upstream cursor 的拒绝，需要 leaf parser/共享 traversal 的专门回归；当前仅有同一 URL 内重复参数拒绝和 shared 层重复 cursor 检测，不能把两者混为一谈。
+- T05 只冻结 contract/fixture，不改变 capability admission；所有 required capability 继续由 `capability-admission.md` 授权，当前 Goal 仍 incomplete。
+
 ## 迁移准入规则（2026-09-07 更正）
 
 上表保留历史观测与原 verdict；包括备注中的 migration-ready 也仅是当时的证据标签，不是当前实施状态。当前实施与发布授权只来自 [能力准入表](capability-admission.md)，confirmed 不放行 CLI/MCP/docs。contract、T12/T39A、adapter/SDK、回归与文档按 tasks 依赖推进。
