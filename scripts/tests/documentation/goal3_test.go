@@ -23,7 +23,7 @@ func goalRows(text string) [][]string {
 func TestGoal3TaskDependenciesAndRequiredCoverage(t *testing.T) {
 	tasks := map[string][]string{}
 	for _, row := range goalRows(readUserGuide(t, "goal-3/tasks.md")) {
-		if len(row) != 5 || row[0] == "Task" || !strings.HasPrefix(row[0], "T") {
+		if len(row) != 5 || row[0] == "Task" || !isGoalTaskID(row[0]) {
 			continue
 		}
 		if _, exists := tasks[row[0]]; exists {
@@ -100,6 +100,10 @@ func TestGoal3TaskDependenciesAndRequiredCoverage(t *testing.T) {
 			t.Errorf("required capability missing: %s", id)
 		}
 	}
+}
+
+func isGoalTaskID(id string) bool {
+	return strings.HasPrefix(id, "T") || strings.HasPrefix(id, "CHECK-") || strings.HasPrefix(id, "R")
 }
 
 func TestGoal3PublicationAuthority(t *testing.T) {

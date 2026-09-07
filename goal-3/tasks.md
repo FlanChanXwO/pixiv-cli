@@ -21,12 +21,12 @@ Status 的 verified 表示对应 task 的实现与相关验证完成；各 task 
 | T01 | artwork contract | T00,T20 | 冻结 artwork search/series/latest/ranking/recommended/ugoira 基础 request、DTO、subtype | verified |
 | T02 | novel contract | T00,T20 | 冻结 novel search/detail/series/latest/recommended/ranking/follow | verified |
 | CHECK-01 | 集中检查-debug（T00/T20/T01/T02） | T02 | audit-only 复查 input/plan 偏离、41 条 required_scope、bookmark list/tags all、历史 evidence、排除 endpoint、T23A 边界、bug/死代码、类型/构建/测试、安全/数据/回滚/文档，并登记修复项 | verified |
-| T03 | bookmark contract | T00,T20 | 冻结两类 list/tags/detail/mutation/subtype 及 list/tags all 聚合契约 | verified |
-| T04 | comment contract | T00,T20 | 冻结 artwork/novel comments read/create/reply/stamp/delete、stamps、total | verified |
+| T03 | bookmark contract | T00,T20,CHECK-01 | 冻结两类 list/tags/detail/mutation/subtype 及 list/tags all 聚合契约 | verified |
+| T04 | comment contract | T00,T20,T03 | 冻结 artwork/novel comments read/create/reply/stamp/delete、stamps、total | verified |
 | T05 | continuation contract | T01,T02,T03,T04 | 冻结 allowlist、query/account/subtype binding、第二页 fixture；复用现有 cursor | verified |
 | CHECK-02 | 集中检查-debug（T03/T04/T05） | T05 | audit-only；不执行真实 API、不修改生产代码/CLI/MCP wire、不改 required_scope；复查 bookmark/comment/continuation contract、历史 evidence、T23A 边界、账号/query/subtype binding、第二页 fixture、额外/重复 key、bug/死代码、类型/构建/测试、安全/数据/回滚/文档，并登记修复项 | verified |
 | R02 | MCP filter replay 修复 | CHECK-02,T23A | 按 execution attempt 清空 MCP 本地 `seen` 状态；补非零 cursor + 本地 filter + 安全账号池 replay 回归，确保不静默丢记录；不改变 MCP schema | verified |
-| R03 | Goal 任务账本与文档 tracking hygiene | CHECK-02 | 对齐 T03/T04 的显式 depends_on 与完成记录；处理 `/goal-*/` 对新增 Goal 文档的忽略/force-add 规则 | pending |
+| R03 | Goal 任务账本与文档 tracking hygiene | CHECK-02 | 对齐 T03/T04 的显式 depends_on 与完成记录；处理 `/goal-*/` 对新增 Goal 文档的忽略/force-add 规则 | verified |
 | T06 | error/其他 read contract | T00,T01,T02,T03,T04 | 冻结 user search/detail/relationships、trending、follow、mypixiv、error、mutation outcome 与脱敏 | pending |
 | T12 | SDK compatibility | T20,T01,T02,T03,T04,T05,T06 | 冻结 symbol map、旧 wrapper、named types、旧消费者编译、cursor 版本恢复；默认源码兼容 | pending |
 | T39A | CLI/MCP migration | T12 | 冻结 CLI 路由和 MCP tool/input/output compatibility map；旧 JSON 回放清单 | pending |
@@ -140,7 +140,7 @@ Status 的 verified 表示对应 task 的实现与相关验证完成；各 task 
 ## T04 完成记录
 
 - Owner package / 涉及文件：comment/stamp contract；`goal-3/upstream-contract-matrix.md`、`goal-3/plan.md`、本文件。只冻结 artwork/novel comments read、text/reply/stamp/delete、stamps read 与 total 元数据，不实现 endpoint/SDK/CLI/MCP。
-- Depends on：T00、T20 verified；本轮沿 tasks 拓扑推进 T04，并复用 T03 已冻结的证据分层与错误边界。
+- Depends on：T00、T20、T03 verified；本轮沿 tasks 拓扑推进 T04，并复用 T03 已冻结的证据分层与错误边界。
 - 冻结 contract / fixture：upstream matrix 新增 T04 contract 表，覆盖两类 comments read、八类 comment mutation 变体、stamps read 和两类 total 元数据；明确 `illust_id`/`novel_id`/`comment_id`/`parent_comment_id`/`stamp_id` 的 namespace 与正数边界、parent chain、required/null/empty、date 与 numeric access-control 的 unresolved wire、optional `total`、正 `offset` continuation、创建 ID/read-back/outcome、同账号清理、CLI/MCP 旧 wire 与敏感信息边界。历史 matrix、strict evidence、mutation manifest 的 `rejected`/`inconclusive`/`not_tested` 均保持原样。
 - Red 测试、命令及当前行为的预期失败：T04 是 contract freeze 文档任务，无生产代码 Red 阶段。只读核验确认当前仅有 artwork v3 与 novel v2 comments read adapter/SDK、没有 comment mutation/stamps public owner；strict comments live 没有真实第二页/非空 total，artwork date/numeric access-control 与当前 fixture 不一致，novel v3、mutation response ID、body/null-empty 及字段级 stamps schema 尚未验证，不能将历史 200/read-back 直接当作 public contract。
 - Green 命令及验收断言：复读 `input.md`/`plan.md`/`tasks.md`；`nl`/`rg` 核验两类 comments adapter/fixture、SDK `CommentPage`/DTO/operation、CLI/MCP read surface、strict/legacy/mutation evidence、T20 类型矩阵和 capability admission；T04 anchor、十三项 contract row（两类 read、八类 mutation、stamps、两类 total）、rejection/outcome/atomicity 边界均可检索；`git diff --check` 通过；提交钩子将运行 `go test ./...`。
@@ -182,6 +182,17 @@ Status 的 verified 表示对应 task 的实现与相关验证完成；各 task 
 - 回滚前提 / 依赖闭包：需整体回滚 runtime 的 attempt wrapper、shared traversal From 委托入口及其离线 SDK 回归；若后续 owner 使用 From 入口，必须先撤销或迁移这些调用，不能只删除 wrapper。无运行数据、账号或持久配置迁移。
 - 实际结果 / evidence / 风险：R02 已 verified，P1 local-filter replay 遗漏已修复并通过 code-review-expert 自审，无新增 P0/P1。真实 API/live second-page、mutation、其余 endpoint continuation 仍未由本 task 覆盖；41 条 required capability 继续为 `scope_admitted`，Goal 保持 incomplete，下一入口是 R03。
 
+## R03 完成记录
+
+- Owner package / 涉及文件：Goal-3 任务账本与仓库 tracking；`.gitignore`、`goal-3/tasks.md`。不修改生产代码、required_scope、公开 API、CLI/MCP wire 或运行数据。
+- Depends on：CHECK-02 verified；本轮只处理其登记的 T03/T04 dependency ledger 与 Goal 文档跟踪问题。
+- 冻结 contract / fixture：T03 的显式依赖与完成记录均为 `T00,T20,CHECK-01`；T04 的显式依赖与完成记录均为 `T00,T20,T03`。保留通用 `/goal-*/` 忽略，新增 `goal-3` 例外，使当前已批准、已纳入版本控制的 Goal 文档可直接被 Git 发现；未来 `goal-4` 等目录仍保持 ignored，只有明确决定纳入交付时才 force-add。
+- Red 测试、命令及当前行为的预期失败：这是 tracking/documentation task，无生产代码 Red 阶段。变更前 `git check-ignore -v --no-index goal-3/r03-tracking-probe.md` 与 `goal-4/r03-tracking-probe.md` 均命中 `.gitignore:17:/goal-*/`；任务表也实际存在 T03/T04 表格依赖与完成记录不一致。
+- Green 命令及验收断言：修改后 `git check-ignore -v --no-index goal-3/r03-tracking-probe.md` 不再命中，而 `goal-4/r03-tracking-probe.md` 仍命中通用规则；`rg` 核验 T03/T04 表格与完成记录依赖一致；`go test ./scripts/tests/documentation -count=1`、`git diff --check` 通过。Goal-3 目录中的新增文档可不使用 force-add，未来 Goal 目录的显式 force-add 策略仍可观测。
+- 公开兼容性影响：无 production code、SDK/CLI/MCP public surface、endpoint、依赖、required_scope 或状态授权变化；只修正计划 DAG 和仓库忽略边界。
+- 回滚前提 / 依赖闭包：整体回滚 `.gitignore` 的 `goal-3` 例外、T03/T04 依赖表和本完成记录即可恢复原 tracking 行为；不涉及业务数据、账号、构建产物或运行配置。
+- 实际结果 / evidence / 风险：R03 已 verified。任务表依赖 DAG 无新增环，Goal-3 文档 tracking 策略已明确；41 条 required capability 仍为 `scope_admitted`，Goal 继续 incomplete，下一入口按拓扑进入 T06。
+
 ## 实现任务准入卡
 
 在当前任务下回写以下内容，或链接已有 contract/fixture；不要自动新增独立计划文件。跨 owner 的汇总任务必须先拆成单 owner 子卡；子卡使用父 ID 后缀，列出自己的依赖，父任务在全部子卡完成后完成。
@@ -210,4 +221,4 @@ Green 命令及验收断言：
 ## CHECK-02 追加修复任务
 
 - `R02`（verified，P1）：已修复 `internal/mcpserver/pixiv/internal/runtime/runtime.go` 中 MCP local filter `seen` 的 execution-attempt 生命周期。账号池从非零 opaque cursor replay 时会清空上一 attempt 的去重状态，再从同一初始 cursor 重新收集；真实 SDK + 离线 HTTP fixture 覆盖本地 filter、非零 cursor、safe replay、结果不遗漏不重复及 commit 边界。未修改 MCP schema，未加入静默重试，未扩大 T23A 范围；完整证据见上方 `R02 完成记录` 与分页报告。
-- `R03`（pending，P2）：修正 `tasks.md` 的 T03/T04 depends_on 与完成记录，并决定 `/goal-*/` 的 Goal 文档跟踪策略（取消过宽忽略或在交付门禁中明确 force-add）；变更仅限计划/仓库 tracking，不得改变 required_scope 或公开行为。CHECK-02 的 audit-only 防误升级验收已在本轮补齐。
+- `R03`（verified，P2）：已修正 `tasks.md` 的 T03/T04 depends_on 与完成记录，并保留 `/goal-*/` 的通用忽略、仅为已批准的 `goal-3` 增加可追踪例外；未来 Goal 目录仍需明确决定后 force-add。变更仅限计划/仓库 tracking，未改变 required_scope 或公开行为；完整证据见上方 `R03 完成记录`。
