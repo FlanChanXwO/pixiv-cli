@@ -159,6 +159,58 @@
 - T12/T15 冻结 explicit artwork/novel SDK symbol map、旧 `AddBookmark`/`RemoveBookmark` wrapper、named type 与空 restrict 兼容；T19/T23 负责 aggregate cursor、双流 checkpoint、统一 Skip/Limit/OneBatch 与失败原子性。T03 不改 production code、protocol、SDK、CLI、MCP 或依赖。
 - T21 负责 user URL/user bookmarks URL/显式类型 resolver；T27/T37/T38 分别实现 CLI/MCP 的 all、typed tags、页原子输出、旧 wire 回放和 mutation read-back/outcome；T39A/T41/T42/T43/T44/T45 负责 compatibility、双语文档、回归、隔离账号 live 和最终发布门禁。
 
+## T04 comment 与 stamp 基础 contract 冻结（2026-09-07）
+
+本节冻结 artwork/novel comments 的 read、text/reply/stamp/delete mutation、stamps read 与 `total` 元数据 contract。目标 contract、当前 adapter/SDK fixture、历史 live mutation 和 strict upstream evidence 严格分层：既有 `rejected`/`inconclusive`/`not_tested` verdict 不改写，历史 HTTP 200/read-back 不直接授予 public route。当前 comments v3/v2 版本选择、日期/access-control wire 与 mutation response ID 未完全证实时，不得以 fallback、空成功或自动重放掩盖缺口。
+
+| Operation | Method / path candidate | Base request | Normalized response / result | Continuation / mutation boundary | Evidence boundary |
+| --- | --- | --- | --- | --- | --- |
+| artwork comments read | current `GET /v3/illust/comments` | `illust_id` required positive；`offset` 只作为 continuation；历史曾带 `include_total_comments`，是否需要不得从旧记录推断 | target required `comments` list → `Comment{id,user,body,CreatedAt,parent}`；可选 `total` 与 `access_control` | `next_url=null` 正常结束；非 null 只允许经过 adapter 验证的正 `offset`；不保存 raw URL | 当前 adapter/SDK fixture 与 strict wire/response 有覆盖，但 strict 第二页未观察；历史 matrix 将 `illust-comments-v3` 标为 `rejected`，strict row 为 `inconclusive`（date/numeric access-control/分页风险），均不能放行 release |
+| novel comments read | current `GET /v2/novel/comments`；`/v3/novel/comments` 仅 candidate | `novel_id` required positive；`offset` 只作为 continuation；不发送未经 snapshot 确认的额外 total 参数 | target required `comments` list → 同一 normalized comment shape；可选 `total` 与 `access_control` | 只接受本 operation 的正 `offset`；v2/v3 不自动 fallback 或混合 cursor | v2 有当前 adapter/SDK fixture，但 strict overall `inconclusive`（空首批/未观察第二页）；v3 wire/response 仅 candidate/inconclusive，adapter/SDK 未测试 |
+| artwork comment text create | candidate `POST /v1/illust/comment/add` | `illust_id`、`comment` required；无 `parent_comment_id`/`stamp_id` | 必须从严格冻结的 response 解码本轮正 `comment_id`，再由 read-back 确认；2xx/nil 不是状态证明 | 无 continuation；写前检查可评论/权限与目标 namespace；结果区分明确失败、已得 ID 但读回失败、结果不确定 | 历史非主账号 wire/read-back 200 仍为当前 production `not_tested`；现有 `PostForm` 不交付 body/ID，T09A/T09/T16 必须补齐 |
+| artwork comment reply | candidate `POST /v1/illust/comment/add` | `illust_id`、`comment` required；`parent_comment_id` required positive；parent 必须属于同一 artwork scope | 返回并读回新 comment ID；parent chain 只作为 comment result 的递归关系，不把 parent ID 当作品 ID | 无 continuation；写前确认 parent/权限；不确定结果禁止自动重放或猜测最近评论 | 历史 wire/read-back 记录确认额外 `parent_comment_id`，但 adapter/SDK/CLI/MCP 未测试 |
+| artwork comment stamp | candidate `POST /v1/illust/comment/add` | `illust_id`、`comment` required；`stamp_id` required positive；stamp ID 不得猜测 | 同 text/reply：response ID + 同账号 read-back；stamp 引用字段需由 stamps snapshot 冻结 | 无 continuation；只接受目标 artwork namespace；不确定结果禁止重放 | 旧 `comment-stamp-write` 有单条 read-back 记录，但未进入当前 strict comment mutation manifest；不提升为 production capability |
+| novel comment text create | candidate `POST /v1/novel/comment/add` | `novel_id`、`comment` required；无 parent/stamp | 必须取得 response 中冻结的正 comment ID 并 read-back；2xx/nil 不等于成功 | 无 continuation；同账号写入/读回/清理；明确失败与不确定结果分开 | 历史 wire/read-back 200，但 current adapter/SDK/CLI/MCP 全部 `not_tested` |
+| novel comment reply | candidate `POST /v1/novel/comment/add` | `novel_id`、`comment` required；`parent_comment_id` required positive；parent 必须属于同一 novel scope | response ID + novel comments read-back；parent scope 必须与 novel 一致 | 无 continuation；Shaft 仅提供形态参考，不凭此补 live response/schema | 只有候选/Shaft 依据，当前 strict mutation manifest 无独立 case；保持 `candidate/not_tested` |
+| novel comment stamp | candidate `POST /v1/novel/comment/add` | `novel_id`、`comment` required；`stamp_id` required positive；stamp 不能脱离 stamps contract 猜测 | response ID + read-back | 无 continuation；结果不确定禁止重放 | 历史 wire/read-back 200，但当前 production adapter/SDK/CLI/MCP `not_tested` |
+| artwork comment delete | candidate `POST /v1/illust/comment/delete` | `comment_id` required positive；comment namespace 必须可证明属于 artwork | read-back 确认目标消失/状态变化；不能用 2xx 单独证明删除 | 写前 access check；只清理本轮确认 ID，不删除既有评论；不确定结果禁止猜测或重放 | 历史删除/read-back 200；当前 production owner、adapter/SDK/CLI/MCP 仍 `not_tested` |
+| novel comment delete | candidate `POST /v1/novel/comment/delete` | `comment_id` required positive；comment namespace 必须可证明属于 novel | read-back 确认删除；不把空列表或网络失败当删除成功 | 同 artwork delete；同账号 execution context；不跨 namespace fallback | 历史删除/read-back 200；当前 production owner、adapter/SDK/CLI/MCP 仍 `not_tested` |
+| stamps read | `GET /v1/stamps` | 当前 strict evidence 无 query 参数；不发送未验证 selector | target required `stamps` list，但 item 字段/ID/资源引用必须先由 T17 snapshot 冻结；不凭 schema fingerprint 设计 public DTO | strict evidence 为 no continuation；若后续发现 continuation，必须另行 snapshot，不把它混入当前无分页 contract | wire/response/page=40/no continuation confirmed；adapter/SDK/CLI/MCP 与字段级 DTO 均 `not_tested`，production owner missing |
+| artwork comments total metadata | 同 artwork comments read endpoint | `total_comments` 是否要求 `include_total_comments` 未冻结；默认不向 public surface 承诺请求该参数 | `CommentPage.Total *int64` 仅在 upstream 显式给出时非 nil；缺失/null 不变为 0；total 不是分页完整性证明 | total 不产生独立 cursor，也不保证与 comments/items 实时一致 | 历史 `include_total_comments` 请求与 strict 记录均为 item_count=0/`inconclusive`；非空 total、参数必要性、两页一致性待补 |
+| novel comments total metadata | 同 novel comments read endpoint（v2/v3 选择尚未定） | `total_comments`/include 参数同上；不把 v3 candidate 当默认 | 同上，保持 optional pointer/non-strong guarantee | 不单独续读；不得以 missing total 推断无评论 | novel v2/v3 total 均缺非空/第二页 evidence，状态 `inconclusive`；T05/T06/T09/T16 冻结后续语义 |
+
+### T04 normalized comment、空值与错误边界
+
+- 目标 comments response 的 `comments` 是 required list：缺失或 JSON `null` 为 `MalformedUpstreamResponse`，`[]` 合法且 normalized `Items` 为 non-nil empty slice。当前 artwork/novel adapter 对缺失/null 通过 Go nil slice 生成空结果，只能登记为 legacy 宽松行为，不能成为新 contract 的静默成功。每个 comment 与 parent chain 的 ID 必须为正数；不增加无依据的递归深度或正文长度截断。
+- normalized comment 必须保留正 `ID`、用户、正文、有效创建时间和可选 parent chain。当前 fixture 在 `comment` 为空时回退 `caption`，而 Shaft/live 风险记录使用 `date`、当前 adapter 使用 `created_at`；字段别名、正文空字符串/null、用户字段 requiredness 和日期解析必须由 strict snapshot/owner fixture 冻结，不能把当前 fallback 当作对未知 wire 的通用兜底。无效时间、矛盾 parent 或已确认的 schema 错误真实报错。
+- `access_control` 是可选元数据：缺失/null 保持 nil，不等价于 `false`；当前 adapter 的 bool shape 与历史 live numeric access-control 观察不一致，必须先冻结 wire 到 normalized mapping，不能丢字段或把“不能评论”伪装成“没有评论”。读取权限错误、403 与合法空列表保持不同分类。
+- `total_comments` 只映射为 optional `*int64`；缺失/null/未验证不能写成 0，total 也不作为“已取完所有 comments”的证明。`include_total_comments` 是历史请求字段，不在 T04 默认 public wire 中擅自保证；T05/T06 负责非空 total、绑定和错误 evidence。
+- `next_url=null` 是正常结束；非 null 空字符串、解析失败、缺少/重复/非本 operation allowlist 的 `offset`、非正或溢出 offset 均 malformed。continuation 只由 adapter 转成 sanitized state；SDK/CLI/MCP 不保存 next_url、token、cookie、签名 URL、原始 query 或评论正文。
+
+### T04 mutation、类型与输出边界
+
+- comments read/create 的父 Target 是 artwork 或 novel，Result kind 是 comment；reply/delete 的 Target kind 是 comment；`text`、`reply`、`stamp` 是 operation type，不是 artwork subtype。所有作品、评论、parent、stamp ID 必须为正数并保持 namespace；`all` 不适用于 comment detail/mutation，URL、structured record 与显式类型冲突返回 `InvalidArgument`，不做隐式换类型重试。
+- comment body 是 mutation 的 required input；JSON null/missing 必须拒绝。空字符串/空白的业务接受性、服务端长度边界与 response body 字段不能凭空硬编码，必须由 T09/T16 snapshot/测试冻结；不截断合法正文。`parent_comment_id`、`stamp_id` 的存在关系与目标 scope 必须在写前验证。
+- mutation 必须先确认同一账号 execution context 对目标具备写/删权限，保存所需原状态；创建必须从可解码 response 取得本轮正 comment ID，再做同账号 read-back；读回失败、已得 ID 但无法证明状态和无可靠 ID 的不确定结果分别暴露，禁止自动重放、猜测最近评论或删除既有数据。delete 只允许清理本轮确认 ID，并验证删除后的目标状态。
+- 当前 CLI `comment ID --type artwork|novel`、MCP `illust_comments`/`novel_comments` 的输入字段、JSON/NDJSON/structured envelope 与 `total`/`access_control` optional 形状继续保留；新 create/reply/stamp/delete/stamps surface 必须经 T39A 逐项冻结，不得把旧 read tool 的 `id` 或旧 DTO 静默改成通用 TARGET。read 逻辑页任一 continuation/adapter 错误时不输出已收集成功子集。
+- 401/403、取消、transport、429、非成功状态和 schema 错误保持真实分类；不得把 error、空 response、mutation 2xx 或缺失 total 当成功空列表。MCP stdout 继续只承载 JSON-RPC，comment DTO、stamp DTO 和 cursor 不得泄露 token、cookie、header、原始 URL 或用户凭据。
+
+### T04 evidence index
+
+- 当前 comments adapter/SDK 与 fixture：`internal/services/pixiv/endpoint/artwork/comments/comments.go`、`internal/services/pixiv/endpoint/artwork/comments/comments_test.go`、`internal/services/pixiv/endpoint/novel/comments/comments.go`、`internal/services/pixiv/endpoint/novel/comments/comments_test.go`、`sdk/pixiv/ops_artwork.go`、`sdk/pixiv/ops_novel.go`、`sdk/pixiv/models.go`、`sdk/pixiv/dto.go`。
+- 历史 comments/stamps strict rows：本文件开头 `novel-comments-v2`、`novel-comments-v3`、`illust-comments-v3`、`stamps`、六个 comment mutation rows；strict evidence 为 [`evidence/appapi-upstream.md`](evidence/appapi-upstream.md) 对应行，其中 comments 第二页/total 与 artwork date/access-control 风险不能省略。
+- mutation live/read-back 与当前生产门禁：[`mutation-validation-report.md`](mutation-validation-report.md) 的既有六类 comment 写入/删除、[`evidence/appapi-mutation.md`](evidence/appapi-mutation.md) 的 adapter/SDK `not_tested` rows，以及 [`api-migration-verification.md`](api-migration-verification.md) 的 comment add/reply/delete、stamps 和 T09A 条款；历史 `comment-stamp-write` 仅保持其原 verdict。
+- total、旧读取和候选字段：[`evidence/appapi-read.md`](evidence/appapi-read.md) 的 `comments-total`/`comment-stamp-write`、[`evidence/appapi-read.json`](evidence/appapi-read.json) 的 `include_total_comments` 记录、[`shaft-protocol-diff.md`](shaft-protocol-diff.md) 的 date/access-control/add/reply/stamps 对照；这些只提供候选/历史依据，不能替代 strict snapshot。
+- CLI/MCP 兼容与类型边界：[`cli-migration-matrix.md`](cli-migration-matrix.md) 的 comments Target/Result/type 与旧 `comment` surface；现有实现/fixture 为 `internal/cli/commands/pixiv/comment`、`internal/mcpserver/pixiv/tools/{illust_comments,novel_comments}`、`internal/mcpserver/pixiv/internal/outputs/outputs.go`，只证明当前 read surface。
+
+### T04 与后续任务的边界
+
+- T05 补 comments 两页/非空目标、offset allowlist、query/account binding、重复 cursor 和 total continuation 证据；T06 冻结 401/403、numeric access-control、null/empty、脱敏与 mutation outcome 分类。
+- T09A 提供可解码 form response 的窄 transport，保留旧 `PostForm`；T09 实现 artwork/novel comments read/create/reply/stamp/delete endpoint leaves、DTO 和错误映射，不能用当前 error-only mutation 当成功证明。
+- T12/T16 冻结 explicit comment SDK symbol、旧 read request/model/DTO 与 wrapper/compatibility；T17 实现 stamps model/DTO/SDK；T19/T23 接入 comment continuation、logical pagination 与页原子性。
+- T21 负责 comment URL/structured record/显式类型 resolver；T33 实现 CLI read/mutation/stamps 迁移与输出；T37/T38 分别实现 MCP read/mutation tools、旧 JSON 回放、structured error 与同账号 read-back。
+- T39B/T40/T41/T42/T43/T44/T45 负责实施后兼容、completion/docs、协议/SDK/CLI/MCP 回归、隔离账号 live 与最终发布门禁；T04 不修改 production code、protocol、SDK、CLI、MCP 或依赖。
+
 ## 迁移准入规则（2026-09-07 更正）
 
 上表保留历史观测与原 verdict；包括备注中的 migration-ready 也仅是当时的证据标签，不是当前实施状态。当前实施与发布授权只来自 [能力准入表](capability-admission.md)，confirmed 不放行 CLI/MCP/docs。contract、T12/T39A、adapter/SDK、回归与文档按 tasks 依赖推进。

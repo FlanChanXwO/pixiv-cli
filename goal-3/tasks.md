@@ -22,7 +22,7 @@ Status 的 verified 表示对应 task 的实现与相关验证完成；各 task 
 | T02 | novel contract | T00,T20 | 冻结 novel search/detail/series/latest/recommended/ranking/follow | verified |
 | CHECK-01 | 集中检查-debug（T00/T20/T01/T02） | T02 | audit-only 复查 input/plan 偏离、41 条 required_scope、bookmark list/tags all、历史 evidence、排除 endpoint、T23A 边界、bug/死代码、类型/构建/测试、安全/数据/回滚/文档，并登记修复项 | verified |
 | T03 | bookmark contract | T00,T20 | 冻结两类 list/tags/detail/mutation/subtype 及 list/tags all 聚合契约 | verified |
-| T04 | comment contract | T00,T20 | 冻结 artwork/novel comments read/create/reply/stamp/delete、stamps、total | pending |
+| T04 | comment contract | T00,T20 | 冻结 artwork/novel comments read/create/reply/stamp/delete、stamps、total | verified |
 | T05 | continuation contract | T01,T02,T03,T04 | 冻结 allowlist、query/account/subtype binding、第二页 fixture；复用现有 cursor | pending |
 | T06 | error/其他 read contract | T00,T01,T02,T03,T04 | 冻结 user search/detail/relationships、trending、follow、mypixiv、error、mutation outcome 与脱敏 | pending |
 | T12 | SDK compatibility | T20,T01,T02,T03,T04,T05,T06 | 冻结 symbol map、旧 wrapper、named types、旧消费者编译、cursor 版本恢复；默认源码兼容 | pending |
@@ -133,6 +133,17 @@ Status 的 verified 表示对应 task 的实现与相关验证完成；各 task 
 - 公开兼容性影响：无 production code、public SDK symbol、CLI/MCP wire、依赖、endpoint 请求或默认值变化；保留现有单流 `BookmarkTag{Name,Count}`、`AddBookmark`/`RemoveBookmark` 及旧路由，typed aggregate output 和 novel explicit symbols 留给 T12/T15/T27/T37。
 - 回滚前提 / 依赖闭包：文档提交需整体回滚 upstream matrix、plan 引用和 T03 状态；没有数据、账号、生产配置或 endpoint path 依赖。后续 all cursor、SDK、CLI/MCP 实现必须作为 aggregate contract、两端 checkpoint、输出原子性和兼容 wrapper 的依赖闭包回滚，不能只撤一个流或一个 mutation leaf。
 - 实际结果 / evidence / 风险：T03 已完成基础 contract 冻结，bookmark capabilities 仍全部为 `scope_admitted`，Goal 继续 incomplete。主要剩余风险是 novel tags/detail/mutation 与 artwork tags/subtype 缺少 strict evidence/owner，all 聚合和 private access-control/read-back 尚未实现；按任务顺序下一轮进入 T04。
+
+## T04 完成记录
+
+- Owner package / 涉及文件：comment/stamp contract；`goal-3/upstream-contract-matrix.md`、`goal-3/plan.md`、本文件。只冻结 artwork/novel comments read、text/reply/stamp/delete、stamps read 与 total 元数据，不实现 endpoint/SDK/CLI/MCP。
+- Depends on：T00、T20 verified；本轮沿 tasks 拓扑推进 T04，并复用 T03 已冻结的证据分层与错误边界。
+- 冻结 contract / fixture：upstream matrix 新增 T04 contract 表，覆盖两类 comments read、八类 comment mutation 变体、stamps read 和两类 total 元数据；明确 `illust_id`/`novel_id`/`comment_id`/`parent_comment_id`/`stamp_id` 的 namespace 与正数边界、parent chain、required/null/empty、date 与 numeric access-control 的 unresolved wire、optional `total`、正 `offset` continuation、创建 ID/read-back/outcome、同账号清理、CLI/MCP 旧 wire 与敏感信息边界。历史 matrix、strict evidence、mutation manifest 的 `rejected`/`inconclusive`/`not_tested` 均保持原样。
+- Red 测试、命令及当前行为的预期失败：T04 是 contract freeze 文档任务，无生产代码 Red 阶段。只读核验确认当前仅有 artwork v3 与 novel v2 comments read adapter/SDK、没有 comment mutation/stamps public owner；strict comments live 没有真实第二页/非空 total，artwork date/numeric access-control 与当前 fixture 不一致，novel v3、mutation response ID、body/null-empty 及字段级 stamps schema 尚未验证，不能将历史 200/read-back 直接当作 public contract。
+- Green 命令及验收断言：复读 `input.md`/`plan.md`/`tasks.md`；`nl`/`rg` 核验两类 comments adapter/fixture、SDK `CommentPage`/DTO/operation、CLI/MCP read surface、strict/legacy/mutation evidence、T20 类型矩阵和 capability admission；T04 anchor、十三项 contract row（两类 read、八类 mutation、stamps、两类 total）、rejection/outcome/atomicity 边界均可检索；`git diff --check` 通过；提交钩子将运行 `go test ./...`。
+- 公开兼容性影响：无 production code、public SDK symbol、CLI/MCP wire、依赖、endpoint 请求或默认值变化；保留 `Comment`/`CommentPage`/`CommentDTO`、`illust_comments`/`novel_comments` 与当前 JSON/NDJSON envelope；新增 mutation/stamps symbol、字段和 tool 留给 T09A/T16/T17/T33/T37/T38 及 T39A。
+- 回滚前提 / 依赖闭包：文档提交需整体回滚 upstream matrix、plan 引用和 T04 状态；没有数据、账号、生产配置或 endpoint path 依赖。后续 comment adapter、窄 form transport、SDK、CLI/MCP 及 read-back 实现必须连同 response ID、同账号 execution context、页/错误原子性和兼容 wrapper 作为依赖闭包回滚。
+- 实际结果 / evidence / 风险：T04 已完成基础 contract 冻结，comment/stamps capabilities 仍全部为 `scope_admitted`，Goal 继续 incomplete。主要剩余风险是 comments 版本/日期/access-control、第二页与 total 语义、字段级 stamps schema、mutation response ID 与真实隔离清理尚未通过 strict/owner evidence；按任务顺序下一轮进入 T05。
 
 ## 实现任务准入卡
 
