@@ -92,6 +92,8 @@ T12 的兼容基线是 `sdk`、`sdk/pixiv`、`sdk/fanbox` 当前导出清单及�
 | `LatestNovels` | `LatestNovelsRequest` → `sdk.Page[Novel]` | 保留；后续修复 `max_novel_id` continuation | 不把旧 `offset` 修复伪装成 symbol 删除 | `TestLegacySDKConsumerCompiles` |
 | `UserNovels` | `UserNovelsRequest` → `sdk.Page[Novel]` | 保留；pagination-exempt 不改变 source API | `UserID`/cursor 保持；失败不 fallback | `TestLegacySDKConsumerCompiles` |
 | `UserNovelBookmarks` | `UserNovelBookmarksRequest` → `sdk.Page[Novel]` | 保留；novel bookmark expansion 仅 additive | 不擅自新增 bookmark mutation symbol | `TestLegacySDKConsumerCompiles` |
+| `UserNovelBookmarkTags` | `UserNovelBookmarkTagsRequest` → `sdk.Page[BookmarkTag]` | additive candidate read；不改变 `UserNovelBookmarks` | 保留 `UserID`/`Restrict`/`Cursor`；当前非零 cursor 返回 `InvalidCursor`，不猜续页 | `TestExplicitNovelBookmarkReadSDK`、`TestExplicitNovelBookmarkSDKRejectsUnsupportedInputsBeforeNetwork` |
+| `NovelBookmark` | `NovelBookmarkRequest` → `NovelBookmarkDetail` | additive candidate detail read；不暴露 novel metadata 或 mutation outcome | 正数 `NovelID`；未收藏统一为空 `Restrict`/tags | `TestExplicitNovelBookmarkReadSDK` |
 | `MyPixivNovels` | `MyPixivNovelsRequest` → `sdk.Page[Novel]` | 保留；继续 identity-scoped | 身份未知 `Unauthorized`，cursor 绑定错误 `InvalidCursor` | `TestLegacySDKConsumerCompiles` |
 | `SearchUsers` | `SearchUsersRequest` → `sdk.Page[UserPreview]` | 保留原 method；冻结为 public-scoped cursor | 不绑定账号或 client instance；query 失配返回 `InvalidCursor` | `TestSearchNovelsAndUsersCursorsArePublicScoped` |
 | `User` | `UserRequest` → `UserDetail` | 保留；后续 v2 detail 迁移不改 symbol | 正数 ID；保留 `InvalidArgument`/upstream 分类 | `TestLegacySDKConsumerCompiles` |
@@ -104,6 +106,8 @@ T12 的兼容基线是 `sdk`、`sdk/pixiv`、`sdk/fanbox` 当前导出清单及�
 | `CurrentUser` | `CurrentUserRequest` → `UserDetail` | 保留；使用 verified identity 的 detail path | 身份未知 `Unauthorized`；不恢复旧 `/v1/user/me` | `TestLegacySDKConsumerCompiles` |
 | `AddBookmark` | `AddBookmarkRequest` → `error` | 保留旧 wrapper；未来 explicit artwork bookmark method 委托同一语义 | 空 restrict 默认 `public`；未知值 `InvalidArgument`，不发请求 | `TestLegacySDKConsumerCompiles`、R04 no-network test |
 | `RemoveBookmark` | `RemoveBookmarkRequest` → `error` | 保留旧 wrapper；未来 explicit method 不删除它 | 正数 ID；真实 upstream/transport 错误保持 | `TestLegacySDKConsumerCompiles` |
+| `AddArtworkBookmark` | `AddArtworkBookmarkRequest` → `error` | additive explicit artwork mutation；旧 `AddBookmark` 委托同一内部实现 | 正数 `ArtworkID`；空 restrict 默认 `public`；tags wire shape 保持 | `TestExplicitArtworkBookmarkMutationsKeepLegacyWrappers` |
+| `RemoveArtworkBookmark` | `RemoveArtworkBookmarkRequest` → `error` | additive explicit artwork mutation；旧 `RemoveBookmark` 委托同一内部实现 | 正数 `ArtworkID`；错误 operation label 按入口保留 | `TestExplicitArtworkBookmarkMutationsKeepLegacyWrappers` |
 | `FollowUser` | `FollowUserRequest` → `error` | 保留原 mutation symbol | 空 restrict 默认 `public`；未知值 `InvalidArgument`，不发请求 | `TestFollowUserRejectsUnknownRestrictBeforeNetwork` |
 | `UnfollowUser` | `UnfollowUserRequest` → `error` | 保留原 mutation symbol | 正数 user ID；不自动 read-back 或重放 | `TestLegacySDKConsumerCompiles` |
 | `SetAIArtworkVisibility` | `SetAIArtworkVisibilityRequest` → `error` | 保留原 mutation symbol | 保留显式 upstream/transport 分类 | `TestLegacySDKConsumerCompiles` |
@@ -113,7 +117,7 @@ T12 的兼容基线是 `sdk`、`sdk/pixiv`、`sdk/fanbox` 当前导出清单及�
 - `SearchArtworksRequest` 的旧字段 `Word`、`Target`、`Sort`、`Duration`、`StartDate`、`EndDate`、`ContentType`、`AIMode`、`AspectRatio`、`Resolution`、`Tool`、`BookmarkMin`、`BookmarkMax`、`Cursor` 全部保留；`CursorContext` 是唯一已批准的 additive 字段，只进入 cursor digest、不发送 upstream。
 - 其他 request 的 named fields 保持原样：`SearchNovelsRequest{Word,Target,Sort,Duration,Cursor}`、`SearchUsersRequest{Word,Cursor}`；各类 ID request 保留原 ID 名；paged request 保留 `Cursor`；bookmark/follow request 保留 `UserID`/`ArtworkID`、`Restrict`、`Tag`、`Visible`。不以通用 `Target`、动态 map 或匿名 struct 替换这些字段。
 - named enum/type 保持原名与底层语义：`Restrict`、`ArtworkKind`、`SearchTarget`、`SortMode`、`DurationFilter`、`RankingMode`、`SearchContentType`、`SearchAIMode`、`SearchAspectRatio`、`SearchResolution`、`UgoiraQuality`、novel/comment block 与 mark kinds，以及其既有常量。`ArtworkKindIllustration="illustration"` 不改成会破坏源码的 `illust`。
-- named result/model 保持原名与字段形状：`Artwork`、`ArtworkPage`、`ImageResource`、`Novel`、`NovelContent`、`NovelSeries`、`NovelSeriesResult`、`User`、`UserDetail`、`UserPreview`、`UserProfile`、`UserProfilePublicity`、`UserWorkspace`、`Comment`、`CommentPage`、`ArtworkBookmarkDetail`、`BookmarkTag`、`TrendingTag`、`UgoiraMetadata` 及其 DTO/显式转换器。新增 normalized DTO 不替换既有 runtime model。
+- named result/model 保持原名与字段形状：`Artwork`、`ArtworkPage`、`ImageResource`、`Novel`、`NovelContent`、`NovelSeries`、`NovelSeriesResult`、`User`、`UserDetail`、`UserPreview`、`UserProfile`、`UserProfilePublicity`、`UserWorkspace`、`Comment`、`CommentPage`、`ArtworkBookmarkDetail`、`NovelBookmarkDetail`、`BookmarkTag`、`TrendingTag`、`UgoiraMetadata` 及其 DTO/显式转换器。新增 normalized DTO 不替换既有 runtime model。
 - constructors、login、resource 与 shared error surface 也保持：`Open`/`OpenWith`、`New`/`NewWith`、`BeginLogin`、`Client.OpenResource`、`Client.SaveResource`、`CloseIdleConnections`、`UserID`、`Username`，以及 `sdk.Error`/`Reason`、`sdk.Page`、`sdk.Cursor` 的既有导出符号和 outer encoding。`ContentUnavailable` 是既有 reason，不新增“Unsupported”枚举。
 
 旧消费者编译 fixture 只证明 source compatibility，不把尚未迁移的 v2 adapter、CLI/MCP wire 或 required capability 提升为 `public_ready`；这些仍分别由 T07–T45 的 owner 与最终 gate 验证。

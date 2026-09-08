@@ -8,33 +8,63 @@ import (
 	"github.com/FlanChanXwO/pixiv-cli/sdk"
 )
 
-// AddBookmark bookmarks one artwork. Tags, when non-empty, are applied as
-// bookmark tags.
-func (c *Client) AddBookmark(ctx context.Context, request AddBookmarkRequest) error {
+// AddArtworkBookmark bookmarks one artwork. Tags, when non-empty, are applied
+// as bookmark tags.
+func (c *Client) AddArtworkBookmark(ctx context.Context, request AddArtworkBookmarkRequest) error {
+	return c.addArtworkBookmark(ctx, request, "AddArtworkBookmark")
+}
+
+// addArtworkBookmark contains the shared implementation for the explicit
+// artwork operation and its legacy wrapper so their validation and wire
+// semantics cannot drift apart.
+func (c *Client) addArtworkBookmark(ctx context.Context, request AddArtworkBookmarkRequest, operation string) error {
 	if request.ArtworkID <= 0 {
-		return newError("AddBookmark", sdk.InvalidArgument, "artwork ID must be positive")
+		return newError(operation, sdk.InvalidArgument, "artwork ID must be positive")
 	}
 	if request.Restrict == "" {
 		request.Restrict = RestrictPublic
 	}
-	if err := validateRestrict("AddBookmark", request.Restrict); err != nil {
+	if err := validateRestrict(operation, request.Restrict); err != nil {
 		return err
 	}
 	if err := c.artworkBookmark.Add(ctx, bookmark.AddRequest{ArtworkID: request.ArtworkID, Restrict: string(request.Restrict), Tags: request.Tags}); err != nil {
-		return classifyAppError(err, "AddBookmark")
+		return classifyAppError(err, operation)
 	}
 	return nil
 }
 
-// RemoveBookmark removes the current user's bookmark from one artwork.
-func (c *Client) RemoveBookmark(ctx context.Context, request RemoveBookmarkRequest) error {
-	if request.ArtworkID <= 0 {
-		return newError("RemoveBookmark", sdk.InvalidArgument, "artwork ID must be positive")
+// AddBookmark bookmarks one artwork. It is retained as a source-compatible
+// wrapper around AddArtworkBookmark's implementation.
+func (c *Client) AddBookmark(ctx context.Context, request AddBookmarkRequest) error {
+	return c.addArtworkBookmark(ctx, AddArtworkBookmarkRequest{
+		ArtworkID: request.ArtworkID,
+		Restrict:  request.Restrict,
+		Tags:      request.Tags,
+	}, "AddBookmark")
+}
+
+// RemoveArtworkBookmark removes the current user's bookmark from one artwork.
+func (c *Client) RemoveArtworkBookmark(ctx context.Context, request RemoveArtworkBookmarkRequest) error {
+	return c.removeArtworkBookmark(ctx, request.ArtworkID, "RemoveArtworkBookmark")
+}
+
+// removeArtworkBookmark contains the shared implementation for the explicit
+// artwork operation and its legacy wrapper.
+func (c *Client) removeArtworkBookmark(ctx context.Context, artworkID int64, operation string) error {
+	if artworkID <= 0 {
+		return newError(operation, sdk.InvalidArgument, "artwork ID must be positive")
 	}
-	if err := c.artworkBookmark.Remove(ctx, request.ArtworkID); err != nil {
-		return classifyAppError(err, "RemoveBookmark")
+	if err := c.artworkBookmark.Remove(ctx, artworkID); err != nil {
+		return classifyAppError(err, operation)
 	}
 	return nil
+}
+
+// RemoveBookmark removes the current user's bookmark from one artwork. It is
+// retained as a source-compatible wrapper around RemoveArtworkBookmark's
+// implementation.
+func (c *Client) RemoveBookmark(ctx context.Context, request RemoveBookmarkRequest) error {
+	return c.removeArtworkBookmark(ctx, request.ArtworkID, "RemoveBookmark")
 }
 
 // FollowUser follows one user.

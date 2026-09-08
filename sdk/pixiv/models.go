@@ -226,9 +226,9 @@ type NovelSeriesResult struct {
 	Novels sdk.Page[Novel]
 }
 
-// BookmarkTag is one tag used by a user's artwork bookmarks. Count is the
-// number of bookmarks carrying the tag when upstream provided it, otherwise
-// zero.
+// BookmarkTag is one tag used by a user's artwork or novel bookmarks. Count
+// is the number of bookmarks carrying the tag when upstream provided it,
+// otherwise zero.
 type BookmarkTag struct {
 	Name  string
 	Count int
@@ -244,6 +244,13 @@ type TrendingTag struct {
 // ArtworkBookmarkDetail is the current user's bookmark state for one artwork.
 // A zero-value Restrict means the artwork is not bookmarked.
 type ArtworkBookmarkDetail struct {
+	Restrict Restrict
+	Tags     []string
+}
+
+// NovelBookmarkDetail is the current user's bookmark state for one novel.
+// A zero-value Restrict means the novel is not bookmarked.
+type NovelBookmarkDetail struct {
 	Restrict Restrict
 	Tags     []string
 }

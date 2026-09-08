@@ -217,7 +217,9 @@ instance。相同查询的 cursor 可以交给另一个 client 恢复；这是�
 | `Artwork` / `Novel` / `User` | 正数 typed ID | 详情记录 | `NotFound`、`InvalidArgument` |
 | `ArtworkSeries` / `NovelSeries` | 正数 series ID、cursor | 系列分页（novel 还返回系列 metadata） | `InvalidCursor` |
 | `ArtworkComments` / `NovelComments` | 正数 ID、cursor | `CommentPage` | `NotFound` |
-| `UserArtworkBookmarks` / `UserArtworkBookmarkTags` / `UserNovelBookmarks` | `UserID`、`Restrict`、`tag`、cursor | typed 分页 | `InvalidArgument`、`InvalidCursor` |
+| `UserArtworkBookmarks` / `UserArtworkBookmarkTags` / `UserNovelBookmarks` / `UserNovelBookmarkTags` | `UserID`、`Restrict`、`tag`、cursor | typed 分页 | `InvalidArgument`、`InvalidCursor` |
+| `ArtworkBookmark` / `NovelBookmark` | 正数 artwork 或 novel ID | 收藏详情状态 | `InvalidArgument`、`MalformedUpstreamResponse`、已分类的上游/传输错误 |
+| `AddArtworkBookmark` / `RemoveArtworkBookmark`（旧 `AddBookmark` / `RemoveBookmark`） | 正数 artwork ID；add 接受 `Restrict` 与 tags | `error` | `InvalidArgument`、已分类的上游/传输错误 |
 
 `NovelContent` 为兼容旧 v1 调用方而保留导出符号，但已标记为 deprecated：已
 rejected 的 `/v1/novel/content` App API endpoint 与被排除的 WebView path 都不会
@@ -229,7 +231,12 @@ endpoint 替代入口。
 - `CurrentUser` 通过 `/v1/user/detail`、已验证的正数账号 UID 和 Android App API filter 读取认证账号；不再调用已失效的 `/v1/user/me`。
 - `SearchAIModeOnly` 按规范化后的 `Artwork.AIType == 2` 对当前返回批次做本地筛选；该 mode 会进入 cursor 绑定，因此不能把另一种 AI mode 的续页 cursor 复用过来。
 - 只有上游明确提供时才填充评论总数和访问控制 metadata。成功的空列表使用非 nil 的空 `Items` slice 表示，不伪造错误或总数。
-- `ArtworkBookmark` 用空 `Restrict` 与空 tags 表示当前作品未收藏；`AddBookmark` 校验可见性值，不把未知值静默交给服务端默认处理。
+- `ArtworkBookmark` 与 `NovelBookmark` 用空 `Restrict` 与空 tags 表示当前对象未收藏。`NovelBookmark` 与
+  `UserNovelBookmarkTags` 当前遵循 candidate upstream read contract：小说收藏 tags 暂无续页，非零 cursor
+  会被拒绝，直到该 contract 完成验证。小说收藏 mutation 仍按 strict/live evidence 要求保持不导出。
+- `AddArtworkBookmark` 与 `RemoveArtworkBookmark` 是显式 artwork mutation method。旧的 `AddBookmark` 与
+  `RemoveBookmark` wrapper 保留原签名和 error-operation label，并委托同一套校验与 wire 语义。add 的空
+  `Restrict` 默认 `public`，不支持的值在本地拒绝。
 - `BookmarkMin` 与 `BookmarkMax` 是可选、闭区间、非负的 App API 候选边界。public SDK 只负责校验并转发为 `bookmark_num_min`/`bookmark_num_max`，不做 Premium 前置探测，不宣称全局完备，也不静默切换候选策略。application 若做本地精确复核，应另行报告已解析的策略与结果完备性。
 
 ## 错误

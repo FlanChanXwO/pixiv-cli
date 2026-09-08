@@ -225,6 +225,46 @@ func (c *Client) UserNovelBookmarks(ctx context.Context, request UserNovelBookma
 	return c.novelPage("UserNovelBookmarks", query, "max_bookmark_id", list.Items, list.NextMaxBookmarkID, list.HasNext)
 }
 
+// UserNovelBookmarkTags lists the bookmark tags of one user's bookmarked
+// novels. The candidate upstream endpoint currently has no continuation
+// contract, so a non-zero cursor is rejected instead of being guessed.
+func (c *Client) UserNovelBookmarkTags(ctx context.Context, request UserNovelBookmarkTagsRequest) (sdk.Page[BookmarkTag], error) {
+	if request.UserID <= 0 {
+		return sdk.Page[BookmarkTag]{}, newError("UserNovelBookmarkTags", sdk.InvalidArgument, "user ID must be positive")
+	}
+	if err := validateRestrict("UserNovelBookmarkTags", request.Restrict); err != nil {
+		return sdk.Page[BookmarkTag]{}, err
+	}
+	if !request.Cursor.IsZero() {
+		return sdk.Page[BookmarkTag]{}, newError("UserNovelBookmarkTags", sdk.InvalidCursor, "novel bookmark tags continuation is not supported")
+	}
+	result, err := c.userNovelBookmarks.Tags(ctx, usernovelbookmarks.TagsRequest{
+		UserID: request.UserID, Restrict: string(request.Restrict),
+	})
+	if err != nil {
+		return sdk.Page[BookmarkTag]{}, classifyAppError(err, "UserNovelBookmarkTags")
+	}
+	items := make([]BookmarkTag, 0, len(result.Items))
+	for _, tag := range result.Items {
+		items = append(items, BookmarkTag{Name: tag.Name, Count: tag.Count})
+	}
+	return sdk.Page[BookmarkTag]{Items: items}, nil
+}
+
+// NovelBookmark reads the current user's bookmark detail for one novel.
+// The upstream route is a candidate and is kept endpoint-oriented; it does
+// not expose novel metadata or mutation outcome through this method.
+func (c *Client) NovelBookmark(ctx context.Context, request NovelBookmarkRequest) (NovelBookmarkDetail, error) {
+	if request.NovelID <= 0 {
+		return NovelBookmarkDetail{}, newError("NovelBookmark", sdk.InvalidArgument, "novel ID must be positive")
+	}
+	detail, err := c.userNovelBookmarks.Detail(ctx, request.NovelID)
+	if err != nil {
+		return NovelBookmarkDetail{}, classifyAppError(err, "NovelBookmark")
+	}
+	return NovelBookmarkDetail{Restrict: Restrict(detail.Restrict), Tags: append([]string{}, detail.Tags...)}, nil
+}
+
 // MyPixivNovels lists novels from the current user's MyPixiv feed.
 func (c *Client) MyPixivNovels(ctx context.Context, request MyPixivNovelsRequest) (sdk.Page[Novel], error) {
 	query := url.Values{}

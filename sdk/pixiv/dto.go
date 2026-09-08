@@ -202,6 +202,12 @@ type ArtworkBookmarkDetailDTO struct {
 	Tags     []string `json:"tags"`
 }
 
+// NovelBookmarkDetailDTO is the output-safe form of NovelBookmarkDetail.
+type NovelBookmarkDetailDTO struct {
+	Restrict Restrict `json:"restrict"`
+	Tags     []string `json:"tags"`
+}
+
 // NovelRubyDTO is the output-safe form of NovelRuby.
 type NovelRubyDTO struct {
 	Text     string `json:"text"`
@@ -530,6 +536,11 @@ func ToTrendingTagDTO(value TrendingTag) TrendingTagDTO {
 // ToArtworkBookmarkDetailDTO converts bookmark state to a DTO.
 func ToArtworkBookmarkDetailDTO(value ArtworkBookmarkDetail) ArtworkBookmarkDetailDTO {
 	return ArtworkBookmarkDetailDTO{Restrict: value.Restrict, Tags: append([]string(nil), value.Tags...)}
+}
+
+// ToNovelBookmarkDetailDTO converts novel bookmark state to a DTO.
+func ToNovelBookmarkDetailDTO(value NovelBookmarkDetail) NovelBookmarkDetailDTO {
+	return NovelBookmarkDetailDTO{Restrict: value.Restrict, Tags: append([]string(nil), value.Tags...)}
 }
 
 // ToNovelRubyDTO converts a ruby annotation to a DTO.

@@ -191,6 +191,16 @@ type UserArtworkBookmarkTagsRequest struct {
 	Cursor   sdk.Cursor
 }
 
+// UserNovelBookmarkTagsRequest lists the bookmark tags of one user's
+// bookmarked novels. The candidate upstream endpoint currently has no
+// continuation contract; Cursor is retained so the public page shape can be
+// extended without replacing this request type when that contract is frozen.
+type UserNovelBookmarkTagsRequest struct {
+	UserID   int64
+	Restrict Restrict
+	Cursor   sdk.Cursor
+}
+
 // MyPixivArtworksRequest lists artworks from the current user's MyPixiv feed.
 type MyPixivArtworksRequest struct {
 	Cursor sdk.Cursor
@@ -215,6 +225,12 @@ type ArtworkCommentsRequest struct {
 // artwork.
 type ArtworkBookmarkRequest struct {
 	ArtworkID int64
+}
+
+// NovelBookmarkRequest reads the current user's bookmark detail for one
+// novel.
+type NovelBookmarkRequest struct {
+	NovelID int64
 }
 
 // SearchNovelsRequest searches novels. Repeat the original fields when
@@ -340,6 +356,20 @@ type AddBookmarkRequest struct {
 	ArtworkID int64
 	Restrict  Restrict
 	Tags      []string
+}
+
+// AddArtworkBookmarkRequest bookmarks one artwork. Tags are applied as
+// bookmark tags when non-empty.
+type AddArtworkBookmarkRequest struct {
+	ArtworkID int64
+	Restrict  Restrict
+	Tags      []string
+}
+
+// RemoveArtworkBookmarkRequest removes the current user's bookmark from one
+// artwork.
+type RemoveArtworkBookmarkRequest struct {
+	ArtworkID int64
 }
 
 // RemoveBookmarkRequest removes the current user's bookmark from one artwork.

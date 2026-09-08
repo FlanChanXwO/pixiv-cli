@@ -237,7 +237,9 @@ not an assertion that every search operation is account-scoped.
 | `Artwork` / `Novel` / `User` | positive typed ID | detail record | `NotFound`, `InvalidArgument` |
 | `ArtworkSeries` / `NovelSeries` | positive series ID, cursor | series page (novel also returns metadata) | `InvalidCursor` |
 | `ArtworkComments` / `NovelComments` | positive ID, cursor | `CommentPage` | `NotFound` |
-| `UserArtworkBookmarks` / `UserArtworkBookmarkTags` / `UserNovelBookmarks` | `UserID`, `Restrict`, `tag`, cursor | typed page | `InvalidArgument`, `InvalidCursor` |
+| `UserArtworkBookmarks` / `UserArtworkBookmarkTags` / `UserNovelBookmarks` / `UserNovelBookmarkTags` | `UserID`, `Restrict`, `tag`, cursor | typed page | `InvalidArgument`, `InvalidCursor` |
+| `ArtworkBookmark` / `NovelBookmark` | positive artwork or novel ID | bookmark detail state | `InvalidArgument`, `MalformedUpstreamResponse`, classified upstream/transport errors |
+| `AddArtworkBookmark` / `RemoveArtworkBookmark` (legacy `AddBookmark` / `RemoveBookmark`) | positive artwork ID; add accepts `Restrict` and tags | `error` | `InvalidArgument`, classified upstream/transport errors |
 
 `NovelContent` remains exported for source compatibility with earlier v1
 consumers. It is deprecated: the rejected `/v1/novel/content` App API endpoint
@@ -254,9 +256,17 @@ Key semantics:
 - Comment totals and access-control metadata remain nil unless the upstream
   response supplied them. A successful empty list is a non-nil empty `Items`
   slice, not an invented error or total.
-- `ArtworkBookmark` represents an absent bookmark with an empty `Restrict` and
-  empty tags; `AddBookmark` validates visibility and never treats an unsupported
-  value as a server default.
+- `ArtworkBookmark` and `NovelBookmark` represent an absent bookmark with an
+  empty `Restrict` and empty tags. `NovelBookmark` and
+  `UserNovelBookmarkTags` currently follow candidate upstream read contracts:
+  novel bookmark tags have no continuation and reject a non-zero cursor until
+  that contract is verified. Novel bookmark mutations remain intentionally
+  unexported pending strict/live evidence.
+- `AddArtworkBookmark` and `RemoveArtworkBookmark` are the explicit artwork
+  mutation methods. The legacy `AddBookmark` and `RemoveBookmark` wrappers keep
+  their existing signatures and error-operation labels, and delegate the same
+  validation and wire semantics. Add operations default an empty `Restrict` to
+  `public` and reject unsupported values locally.
 - `BookmarkMin` and `BookmarkMax` are optional, inclusive, non-negative App API
   candidate bounds. The SDK validates and forwards them as
   `bookmark_num_min`/`bookmark_num_max` but performs no Premium preflight, claims
