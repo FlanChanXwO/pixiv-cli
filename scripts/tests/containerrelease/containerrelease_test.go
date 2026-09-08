@@ -390,6 +390,62 @@ func TestDockerHubPublishWorkflowUsesTrustedReleaseArtifacts(t *testing.T) {
 	}
 }
 
+// TestDockerHubPublishWorkflowDoesNotRunARM64ImageOnX64Runner 锁定 Docker Hub
+// 后置发布只在 x64 runner 上做 amd64 runtime smoke，arm64 仅加载并校验架构与标签。
+func TestDockerHubPublishWorkflowDoesNotRunARM64ImageOnX64Runner(t *testing.T) {
+	t.Parallel()
+	root := repositoryRoot(t)
+	body, err := os.ReadFile(filepath.Join(root, ".github/workflows/publish-dockerhub.yml"))
+	if err != nil {
+		t.Fatalf("read Docker Hub publish workflow: %v", err)
+	}
+	text := string(body)
+	if !strings.Contains(text, "    runs-on: ubuntu-24.04") {
+		t.Fatal("Docker Hub publish workflow must keep the publish job on the x64 ubuntu-24.04 runner")
+	}
+
+	const verifyStep = "      - name: Load and verify the trusted container artifacts"
+	const nextStep = "      - name: Authenticate to Docker Hub"
+	start := strings.Index(text, verifyStep)
+	if start < 0 {
+		t.Fatalf("Docker Hub publish workflow must contain %q", verifyStep)
+	}
+	end := strings.Index(text[start:], "\n"+nextStep)
+	if end < 0 {
+		t.Fatalf("Docker Hub publish workflow must contain the step after %q", verifyStep)
+	}
+	verifyScript := text[start : start+end]
+
+	const architectureCheck = `test "$(docker image inspect --format '{{.Architecture}}' "$image")" = "$arch"`
+	if !strings.Contains(verifyScript, architectureCheck) {
+		t.Fatalf("Docker Hub publish workflow must verify each loaded image architecture with %q", architectureCheck)
+	}
+
+	if !strings.Contains(verifyScript, "for arch in amd64 arm64; do") {
+		t.Fatal("Docker Hub publish workflow must verify both Linux architectures in one loop")
+	}
+	if runIndex := strings.Index(verifyScript, "docker run"); runIndex >= 0 && strings.Index(verifyScript, architectureCheck) > runIndex {
+		t.Fatal("Docker Hub publish workflow must verify the image architecture before any runtime smoke")
+	}
+
+	amd64Guard := `if [ "$arch" = amd64 ]; then`
+	guardDepth := 0
+	for _, line := range strings.Split(verifyScript, "\n") {
+		trimmed := strings.TrimSpace(line)
+		switch {
+		case trimmed == amd64Guard:
+			guardDepth++
+		case trimmed == "fi" && guardDepth > 0:
+			guardDepth--
+		case strings.Contains(trimmed, "docker run") && guardDepth == 0:
+			t.Fatalf("Docker Hub publish workflow must not run an image outside the amd64 guard; arm64 must not execute on the x64 runner: %q", trimmed)
+		}
+	}
+	if guardDepth != 0 {
+		t.Fatal("Docker Hub publish workflow must close the amd64-only runtime smoke guard")
+	}
+}
+
 // TestDockerignoreKeepsThirdPartyLicenseSummary 确保根级第三方许可汇总
 // 不会被通用 Markdown 排除规则挡在 build context 外。
 func TestDockerignoreKeepsThirdPartyLicenseSummary(t *testing.T) {

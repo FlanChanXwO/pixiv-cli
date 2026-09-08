@@ -129,7 +129,10 @@ jobs:
           }
           for arch in amd64 arm64; do
             image="pixiv-cli:${RELEASE_TAG}-linux-${arch}"
-            test "$(docker run --rm "$image" --version)" = "pixiv ${RELEASE_TAG}"
+            test "$(docker image inspect --format '{{.Architecture}}' "$image")" = "$arch"
+            if [ "$arch" = amd64 ]; then
+              test "$(docker run --rm "$image" --version)" = "pixiv ${RELEASE_TAG}"
+            fi
             test "$(inspect_label org.opencontainers.image.revision "$image")" = "$release_commit"
             test "$(inspect_label org.opencontainers.image.version "$image")" = "$RELEASE_TAG"
             test "$(inspect_label org.opencontainers.image.source "$image")" = "https://github.com/FlanChanXwO/pixiv-cli"
