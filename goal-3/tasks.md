@@ -67,7 +67,7 @@ Status 的 verified 表示对应 task 的实现与相关验证完成；各 task 
 | T18 | sdk/pixiv feed | T10,T11 | 实现 ranking/recommended/latest SDK 与 subtype | verified |
 | T19 | sdk/pixiv cursor | T13,T14,T15,T16,T17,T18 | 扩展其余 endpoint payload/binding；不重建 envelope | verified |
 | T21 | resolver owner | T20,T12,T13,T14 | 复用 ParseURL；record/URL/ID、command-specific conflict、受控 probe | verified |
-| T22 | filter owner | T20,T19 | 规范化 rating/content-type filter；不发送未经确认 server rating | pending |
+| T22 | filter owner | T20,T19 | 规范化 rating/content-type filter；不发送未经确认 server rating | verified |
 | T23A | pagination + sdk/pixiv + search | none | 本轮获批基础修复：先失败测试、checkpoint、SDK 绑定、CLI/MCP 两调用方；详见分页报告 | verified |
 | T23 | pagination/traversal integration | T19,T22,T23A | 将基础续读契约接入其余 endpoint；验证聚合流、过滤及 Skip/Limit/OneBatch | pending |
 | T24 | CLI search | T39A,T13,T21,T22,T23 | artwork search 与 subtype；stdin/JSON/NDJSON | pending |
@@ -701,6 +701,17 @@ Status 的 verified 表示对应 task 的实现与相关验证完成；各 task 
 - 公开兼容性影响：没有新增、删除或重命名 public SDK symbol，没有 CLI/MCP route、schema、wire 字段、endpoint、认证/token 输出、默认值、依赖或本地数据变化；新增内容仅为内部共享语义包和维护者架构说明，后续 owner 可按 contract 接入。
 - 回滚前提 / 依赖闭包：代码、测试、双语架构说明提交 `69ff78c4e42f075d0f1de9cc9018521412ce1c45` 与本记录需成对回滚；若后续 T24–T38 已引用 `internal/shared/resolver`，回滚前须同步撤销引用或先提供保持构建和公开契约的兼容迁移。没有业务数据、账号、token、缓存、运行配置、依赖或生成物迁移。
 - 实际结果 / evidence / 风险：T21 已 verified，未执行真实 Pixiv API，未改写 strict/live evidence，也未授予任何 capability `public_ready`。`required=41 scope_admitted=41 public_ready=0 other=0` 保持不变，Goal-3 继续 incomplete；主要剩余风险是后续 CLI/MCP owner 需要为各命令提供精确 contract，并在接入时保留本卡的 namespace、all、probe 与脱敏边界。下一张 pending 卡为 T22。
+
+## T22 完成记录
+
+- Owner package / 涉及文件：`internal/shared/searchfilter` 新增共享 artwork 本地筛选语义与 focused tests；`sdk/pixiv/filter_wire_test.go` 增加 wire negative regression；双语 `docs/{en,zh-CN}/maintainers/architecture.md` 登记包职责。本卡不修改 CLI/MCP owner，不新增 public SDK request 字段或 endpoint。
+- Depends on：T20 的 Target kind / Result kind / Subtype 与 command-specific boundary、T19 的 `CursorContext`/query digest contract 均已 verified；承接 upstream contract 中“rating 只允许 client-side filter”“local filter 必须进入相应 cursor binding”“`CursorContext` 不发送 upstream”的冻结决定。
+- 冻结 contract / fixture：`NormalizeRating` 接受 `sfw`、`r18`、`r18g`、`mature`、`all`，对空白与大小写做 canonical 化，空值与 `all` 等价；`NormalizeContentType` 接受 `all`、`illust-and-ugoira`、`illust`、`manga`、`ugoira`，并把既有 `illustration` 兼容别名规范化为 `illust`。`Filter.Matches` 按 `x_restrict=0/1/2` 执行 safe/r18/r18g 本地匹配，`mature` 覆盖已知 18+ 两类，未知等级不被误判；content-type 的组合选择器不匹配 manga。`Filter.CursorContext`/`FilterContext` 只输出 stable SHA-256 摘要，供 SDK cursor binding 使用，不携带原始 filter 值；rating 不生成或发送 `rating`/`x_restrict` upstream 参数。
+- Red 测试、命令及当前行为的实际失败：先新增 `internal/shared/searchfilter/filter_test.go` 与 `sdk/pixiv/filter_wire_test.go`，运行 `go test ./internal/shared/searchfilter ./sdk/pixiv -run 'Test(NormalizeFilter|FilterMatches|FilterContext|SearchArtworksLocalRatingContext)' -count=1`；当前行为实际因 `Rating`、`ContentType`、`RatingAll`、`ContentTypeAll` 与 `NormalizeFilter` 未定义而编译失败，随后在同一 focused seam 实现 Green，没有修改测试来掩盖缺口。
+- Green 命令及验收断言：`go test ./internal/shared/searchfilter ./sdk/pixiv ./internal/mcpserver/pixiv/internal/filters ./internal/cli/commands/pixiv/search -count=1`、`go test -race ./internal/shared/searchfilter ./sdk/pixiv -count=1`、`go test ./... -count=1`、`go vet ./...`、`sh scripts/build.sh`、`go test ./scripts/internal/publicapi -count=1`、`go test ./scripts/tests/documentation -count=1`、`gofmt -d internal/shared/searchfilter/filter.go internal/shared/searchfilter/filter_test.go sdk/pixiv/filter_wire_test.go` 与 `git diff --check` 均通过；提交钩子再次通过 `gofmt` 与 `go test ./...`。测试覆盖 canonical alias/default、未知值显式错误、rating/content-type 组合 matching、未知 `x_restrict`、opaque cursor binding、SDK 实际请求中无 `rating`/`x_restrict`/`cursor_context`。
+- 公开兼容性影响：无 public SDK symbol、CLI/MCP route/schema、wire endpoint、认证/token 输出、默认业务 route、依赖或本地数据变更；新增仅为 `internal/shared/searchfilter` 内部语义、回归测试与维护者双语架构说明。既有 `internal/shared/searchfilter.BookmarkContext` 及其 CLI/MCP 调用方保持不变。
+- 回滚前提 / 依赖闭包：代码与架构说明提交 `79753ecbf32d2e94a9508d9412348b60aed69ab5` 与本账本记录需成对回滚；若后续 T23/T24/T27/T29/T37 已引用新 filter symbols，回滚前须先撤销这些调用或提供等价迁移，不能单独删除共享包。没有业务数据、账号、token、缓存、运行配置、依赖或生成物迁移。
+- 实际结果 / evidence / 风险：T22 已 verified；代码提交已推送并由 `git ls-remote origin refs/heads/codex/goal-3-vnext-plan` 核验为 `79753ecbf32d2e94a9508d9412348b60aed69ab5`。未执行真实 Pixiv API，未改写 strict/live evidence，也未授予任何 capability `public_ready`；`required=41 scope_admitted=41 public_ready=0 other=0` 保持不变，Goal-3 继续 incomplete。残余风险是后续命令 owner 必须按各自 contract 选择默认 subtype、接入 local filter 并把语义摘要放进对应 cursor binding，不得把本包误用成全局 Target union。下一张 pending 卡为 T23。
 
 ## 实现任务准入卡
 
