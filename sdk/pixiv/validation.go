@@ -30,6 +30,42 @@ func validateRestrict(operation string, value Restrict) error {
 	}
 }
 
+func normalizeFollowingRestrict(operation string, value Restrict) (Restrict, error) {
+	if value == "" {
+		value = RestrictPublic
+	}
+	if err := validateRestrict(operation, value); err != nil {
+		return "", err
+	}
+	return value, nil
+}
+
+// normalizeLatestArtworkContentType 将 public 空值解析为已冻结的 illust
+// feed，并拒绝尚未承诺的复合或 ugoira subtype。
+func normalizeLatestArtworkContentType(operation string, value SearchContentType) (string, error) {
+	switch value {
+	case "", SearchContentTypeIllust:
+		return string(SearchContentTypeIllust), nil
+	case SearchContentTypeManga:
+		return string(SearchContentTypeManga), nil
+	default:
+		return "", newError(operation, sdk.InvalidArgument, "content type is unsupported for latest artworks")
+	}
+}
+
+// normalizeUserArtworkKind 将旧 public 拼写 illustration 与 wire 拼写
+// illust 绑定到同一查询摘要，避免合法旧游标无法续读。
+func normalizeUserArtworkKind(operation string, value ArtworkKind) (string, error) {
+	switch value {
+	case "", ArtworkKindIllustration, ArtworkKind("illust"):
+		return "illust", nil
+	case ArtworkKindManga, ArtworkKindUgoira:
+		return string(value), nil
+	default:
+		return "", newError(operation, sdk.InvalidArgument, "artwork kind is unsupported")
+	}
+}
+
 func validateSearchWord(operation, value string) error {
 	if strings.TrimSpace(value) == "" {
 		return newError(operation, sdk.InvalidArgument, "search word is required")

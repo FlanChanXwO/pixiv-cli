@@ -644,6 +644,107 @@ func TestLatestArtworksBindsCursorToContentType(t *testing.T) {
 	}
 }
 
+func TestFollowingArtworksDefaultsEmptyRestrictAndRejectsUnknownBeforeNetwork(t *testing.T) {
+	calls := 0
+	rt := roundTripFunc(func(req *http.Request) (*http.Response, error) {
+		calls++
+		if req.URL.Path != "/v2/illust/follow" {
+			t.Errorf("path = %s", req.URL.Path)
+		}
+		if got := req.URL.Query().Get("restrict"); got != "public" {
+			t.Errorf("restrict = %q, want %q", got, "public")
+		}
+		return jsonResponse(`{"illusts":[],"next_url":null}`), nil
+	})
+	client, err := NewWith("token", Options{HTTPClient: &http.Client{Transport: rt}})
+	if err != nil {
+		t.Fatalf("NewWith: %v", err)
+	}
+	if _, err := client.FollowingArtworks(context.Background(), FollowingArtworksRequest{}); err != nil {
+		t.Fatalf("empty restrict: %v", err)
+	}
+	if calls != 1 {
+		t.Fatalf("calls after default restrict = %d, want 1", calls)
+	}
+	_, err = client.FollowingArtworks(context.Background(), FollowingArtworksRequest{Restrict: Restrict("friends")})
+	if sdk.ReasonOf(err) != sdk.InvalidArgument {
+		t.Fatalf("unknown restrict reason = %q, want %q", sdk.ReasonOf(err), sdk.InvalidArgument)
+	}
+	if calls != 1 {
+		t.Fatalf("unknown restrict reached transport %d time(s)", calls-1)
+	}
+}
+
+func TestLatestArtworksRejectsUnapprovedContentTypeBeforeNetwork(t *testing.T) {
+	calls := 0
+	rt := roundTripFunc(func(req *http.Request) (*http.Response, error) {
+		calls++
+		return nil, errors.New("latest artwork transport must not be called")
+	})
+	client, err := NewWith("token", Options{HTTPClient: &http.Client{Transport: rt}})
+	if err != nil {
+		t.Fatalf("NewWith: %v", err)
+	}
+	for _, contentType := range []SearchContentType{
+		SearchContentTypeAll,
+		SearchContentTypeIllustAndUgoira,
+		SearchContentTypeUgoira,
+		SearchContentType("unknown"),
+	} {
+		_, err := client.LatestArtworks(context.Background(), LatestArtworksRequest{ContentType: contentType})
+		if sdk.ReasonOf(err) != sdk.InvalidArgument {
+			t.Errorf("content type %q reason = %q, want %q", contentType, sdk.ReasonOf(err), sdk.InvalidArgument)
+		}
+	}
+	if calls != 0 {
+		t.Fatalf("invalid latest content types reached transport %d time(s)", calls)
+	}
+}
+
+func TestUserArtworksNormalizesLegacyKindAndBindsCursorToCanonicalType(t *testing.T) {
+	calls := 0
+	rt := roundTripFunc(func(req *http.Request) (*http.Response, error) {
+		calls++
+		if req.URL.Path != "/v1/user/illusts" {
+			t.Errorf("path = %s", req.URL.Path)
+		}
+		if got := req.URL.Query().Get("user_id"); got != "77" {
+			t.Errorf("user_id = %q, want %q", got, "77")
+		}
+		if got := req.URL.Query().Get("type"); got != "illust" {
+			t.Errorf("type = %q, want %q", got, "illust")
+		}
+		if calls == 2 && req.URL.Query().Get("offset") != "30" {
+			t.Errorf("continuation query = %v", req.URL.Query())
+		}
+		return jsonResponse(`{"illusts":[],"next_url":"https://app-api.pixiv.net/v1/user/illusts?user_id=77&type=illust&offset=30"}`), nil
+	})
+	client, err := NewWith("token", Options{HTTPClient: &http.Client{Transport: rt}})
+	if err != nil {
+		t.Fatalf("NewWith: %v", err)
+	}
+	page, err := client.UserArtworks(context.Background(), UserArtworksRequest{UserID: 77, Kind: ArtworkKindIllustration})
+	if err != nil {
+		t.Fatalf("legacy illustration kind: %v", err)
+	}
+	if page.Next.IsZero() {
+		t.Fatal("expected continuation cursor")
+	}
+	if _, err := client.UserArtworks(context.Background(), UserArtworksRequest{UserID: 77, Kind: ArtworkKind("illust"), Cursor: page.Next}); err != nil {
+		t.Fatalf("canonical illust continuation: %v", err)
+	}
+	if calls != 2 {
+		t.Fatalf("calls after canonical continuation = %d, want 2", calls)
+	}
+	_, err = client.UserArtworks(context.Background(), UserArtworksRequest{UserID: 77, Kind: ArtworkKind("all")})
+	if sdk.ReasonOf(err) != sdk.InvalidArgument {
+		t.Fatalf("unknown user artwork kind reason = %q, want %q", sdk.ReasonOf(err), sdk.InvalidArgument)
+	}
+	if calls != 2 {
+		t.Fatalf("unknown user artwork kind reached transport %d time(s)", calls-2)
+	}
+}
+
 func TestArtworkWiresDetailPreservesPagesAndResources(t *testing.T) {
 	rt := roundTripFunc(func(req *http.Request) (*http.Response, error) {
 		if req.URL.Path != "/v1/illust/detail" {

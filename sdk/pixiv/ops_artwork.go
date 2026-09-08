@@ -114,12 +114,16 @@ func (c *Client) RecommendedArtworks(ctx context.Context, request RecommendedArt
 
 // FollowingArtworks lists artworks by followed users.
 func (c *Client) FollowingArtworks(ctx context.Context, request FollowingArtworksRequest) (sdk.Page[Artwork], error) {
-	query := url.Values{"restrict": {string(request.Restrict)}}
+	restrict, err := normalizeFollowingRestrict("FollowingArtworks", request.Restrict)
+	if err != nil {
+		return sdk.Page[Artwork]{}, err
+	}
+	query := url.Values{"restrict": {string(restrict)}}
 	offset, err := c.continuationOffset("FollowingArtworks", query, request.Cursor)
 	if err != nil {
 		return sdk.Page[Artwork]{}, err
 	}
-	list, err := c.artworkTimeline.List(ctx, timeline.Request{Kind: timeline.Following, Restrict: string(request.Restrict), Offset: offset})
+	list, err := c.artworkTimeline.List(ctx, timeline.Request{Kind: timeline.Following, Restrict: string(restrict), Offset: offset})
 	if err != nil {
 		return sdk.Page[Artwork]{}, classifyAppError(err, "FollowingArtworks")
 	}
@@ -129,9 +133,9 @@ func (c *Client) FollowingArtworks(ctx context.Context, request FollowingArtwork
 // LatestArtworks lists the newest artworks.
 func (c *Client) LatestArtworks(ctx context.Context, request LatestArtworksRequest) (sdk.Page[Artwork], error) {
 	query := url.Values{}
-	contentType := string(request.ContentType)
-	if contentType == "" {
-		contentType = "illust"
+	contentType, err := normalizeLatestArtworkContentType("LatestArtworks", request.ContentType)
+	if err != nil {
+		return sdk.Page[Artwork]{}, err
 	}
 	// Bind the resolved content type into the cursor digest so a continuation
 	// produced for one feed (e.g. illust) cannot be replayed against another
@@ -165,7 +169,10 @@ func (c *Client) UserArtworks(ctx context.Context, request UserArtworksRequest) 
 	if request.UserID <= 0 {
 		return sdk.Page[Artwork]{}, newError("UserArtworks", sdk.InvalidArgument, "user ID must be positive")
 	}
-	kind := string(request.Kind)
+	kind, err := normalizeUserArtworkKind("UserArtworks", request.Kind)
+	if err != nil {
+		return sdk.Page[Artwork]{}, err
+	}
 	query := url.Values{"user_id": {itoa(request.UserID)}, "type": {kind}}
 	offset, err := c.continuationOffset("UserArtworks", query, request.Cursor)
 	if err != nil {
