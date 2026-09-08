@@ -61,7 +61,7 @@ Status 的 verified 表示对应 task 的实现与相关验证完成；各 task 
 | T11 | endpoint continuation owners | T07,T08,T09,T10,T05 | 校验和提取 endpoint allowlist continuation；不持久化 next_url | verified |
 | T13 | sdk/pixiv artwork | T07,T11 | 实现 artwork SDK 与 adapter 对照、旧签名兼容 | verified |
 | T14 | sdk/pixiv novel | T07,T11 | 实现 novel SDK、series metadata 与 continuation | verified |
-| T15 | sdk/pixiv bookmark | T08,T11 | 实现 explicit bookmark SDK，保留 AddBookmark/RemoveBookmark wrapper | pending |
+| T15 | sdk/pixiv bookmark | T08,T11 | 实现 explicit bookmark SDK，保留 AddBookmark/RemoveBookmark wrapper | verified |
 | T16 | sdk/pixiv comment | T09,T11 | 实现 explicit read/create/reply/delete；ID 来源与不确定结果可观测 | pending |
 | T17 | sdk/pixiv stamps | T09,T11 | 实现 stamps SDK 与 stamp/text/reply 独立语义 | pending |
 | T18 | sdk/pixiv feed | T10,T11 | 实现 ranking/recommended/latest SDK 与 subtype | pending |
@@ -635,6 +635,17 @@ Status 的 verified 表示对应 task 的实现与相关验证完成；各 task 
 - 公开兼容性影响：未删除、重命名或改变既有 SDK method/request/model；只将 SearchNovels、NovelSeries、UserNovels、MyPixivNovels 的篡改或非法非正续页从“触达 transport 后被归类为 upstream failure”收紧为 transport 前 `InvalidCursor`。推荐小说仍保留合法 `offset=0` 的专用路径，未改变其他 operation、token/账号行为、raw `next_url`、timeout、重试、截断、fallback、依赖或文档契约。
 - 回滚前提 / 依赖闭包：代码提交 `517733e03f526ec8338d861556b26cb99cb7277a` 与本记录需成对回滚，恢复既有 novel cursor helper 调用和对应负向 fixture；若后续 T15/T18/T19/T23/T25/T28/T29/T32/T37 已引用正值 cursor 边界，回滚前须同步撤销引用或先补兼容迁移。未涉及账号、token、业务数据、缓存、运行配置或生成物迁移。
 - 实际结果 / evidence / 风险：T14 已 verified，未执行真实 API，未改写 live evidence；本轮 code-review-expert 自审未发现本卡范围内 P0/P1/P2。`required=41 scope_admitted=41 public_ready=0 other=0` 保持不变，T14 不授予 novel capability 的 `public_ready`，Goal-3 继续 incomplete；按 DAG 下一任务为 T15。
+
+## T15 完成记录
+
+- Owner package / 涉及文件：`sdk/pixiv` bookmark public SDK；`sdk/pixiv/request.go`、`models.go`、`dto.go`、`ops_novel.go`、`ops_mutation.go`、`ops_bookmark_test.go`、`dto_test.go`，以及双语 `docs/*/sdk.md`、`goal-3/api-migration-verification.md` 和 public API inventory digest。既有 artwork/novel bookmark list、artwork tags/detail 与 novel list 保持原入口；本卡新增 novel candidate read 的 public SDK 入口和 explicit artwork mutation 入口。
+- Depends on：T08、T11 已 verified；T08A/C 已闭合 artwork bookmark list/detail/mutation endpoint leaf，T08B/D 已分别提供 novel bookmark read candidate 与 internal-only mutation leaf，T12 冻结旧 bookmark method/request/model、wrapper 委托和 named type 兼容。T19/T23 的 cursor 扩展、`--type all` 聚合及逻辑分页不属于本卡。
+- 冻结 contract / fixture：`UserNovelBookmarkTags` 使用 candidate `GET /v1/user/bookmark-tags/novel`，只发送 `user_id`/`restrict`，响应映射为 `sdk.Page[BookmarkTag]`；当前 snapshot 不声明续页，非零 cursor 返回 `InvalidCursor`，不猜 offset 或 subtype。`NovelBookmark` 使用 candidate `GET /v2/novel/bookmark/detail`，只读取 `novel_id` 的 bookmark state；缺失/null/404 absent 归一为空 `Restrict` 与空 tags。`AddArtworkBookmark`/`RemoveArtworkBookmark` 使用现有 artwork mutation wire；旧 `AddBookmark`/`RemoveBookmark` 保留原签名、默认值和 error-operation label，并委托同一内部实现。novel mutation 不导出，`all` 聚合和 mutation read-back 仍留给后续 owner。
+- Red 测试、命令及当前行为的实际失败：先新增 `TestExplicitArtworkBookmarkMutationsKeepLegacyWrappers`、`TestExplicitNovelBookmarkReadSDK` 与 unsupported-input 回归，运行 `go test ./sdk/pixiv -run '^TestExplicit(ArtworkBookmarkMutationsKeepLegacyWrappers|NovelBookmarkReadSDK)$' -count=1 -v`；当前实现实际因 `AddArtworkBookmark`、`AddArtworkBookmarkRequest`、`RemoveArtworkBookmark`、`RemoveArtworkBookmarkRequest`、`UserNovelBookmarkTags`、`UserNovelBookmarkTagsRequest`、`NovelBookmark`、`NovelBookmarkRequest` 未定义而编译失败，证明 Red 来自缺少 public seam。
+- Green 命令及验收断言：`go test ./sdk/pixiv -run '^Test(Explicit|NovelBookmarkDetail)' -count=1 -v`、`go test ./sdk/pixiv -count=1`、`go test -race ./sdk/pixiv -count=1`、`go test ./internal/services/pixiv/endpoint/user/novelbookmarks ./internal/services/pixiv/endpoint/artwork/bookmark -count=1`、`go test ./scripts/internal/publicapi -count=1`、`go test ./scripts/tests/documentation -count=1`、`go test ./... -count=1`、`go vet ./...`、`sh scripts/build.sh`、`gofmt -d` 与 `git diff --check` 均通过。focused fixture 确认 explicit artwork add/remove 与 legacy wrapper 的 path/form/default 一致，novel tags/detail 的 candidate path/query/absent normalization 正确，非法 ID/restrict/cursor 不触达 transport；public API digest 更新为当前 inventory 的 `b6061e40e32511ac834fab9319b356aa40fcdf4da74bc3b46084e5d99025b0a8`。
+- 公开兼容性影响：只新增 `UserNovelBookmarkTags`、`NovelBookmark`、`AddArtworkBookmark`、`RemoveArtworkBookmark` 及其 request/model/DTO；未删除、重命名或改变既有 `UserNovelBookmarks`、`AddBookmark`、`RemoveBookmark`。旧 mutation wrapper 的空 restrict→`public`、非法输入 `InvalidArgument`、transport/status 错误分类和 operation label 保持；未改 CLI/MCP route/schema、endpoint protocol、账号/token 行为、依赖或重试/超时/截断/fallback 语义。novel mutation 仍无 public export。
+- 回滚前提 / 依赖闭包：代码与文档提交 `87610d27a38a4bd66d2acaa96d2271a32206b22e` 与本账本记录需成对回滚；恢复 public API digest、SDK explicit seam、candidate read fixture 与双语说明。若后续 T19/T23/T27/T37/T38 已引用这些新增符号或 candidate boundary，回滚前须同步撤销引用或先补兼容迁移。未涉及 live API、账号、token、业务数据、缓存、运行配置或生成物迁移。
+- 实际结果 / evidence / 风险：T15 已 verified，代码自审未发现本卡范围内 P0/P1/P2。`required=41 scope_admitted=41 public_ready=0 other=0` 保持不变；本卡未执行真实 API，novel candidate read、mutation outcome/read-back、`--type all` 聚合与逻辑分页仍不能据此宣告 `public_ready`。LSP 在重启/重索引后仍对同包既有声明产生 `undefined` 误报，但 Go 编译器、测试、race、vet 与构建均通过，故以实际编译验证为准并保留该工具限制记录。Goal-3 继续 incomplete，按 DAG 下一 pending task 为 T16。
 
 ## 实现任务准入卡
 
