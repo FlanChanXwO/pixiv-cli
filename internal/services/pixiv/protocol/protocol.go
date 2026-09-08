@@ -17,6 +17,7 @@ const (
 	AppIllustRecommended     = "/v1/illust/recommended"
 	AppIllustNew             = "/v1/illust/new"
 	AppNovelRecommended      = "/v1/novel/recommended"
+	AppNovelRanking          = "/v1/novel/ranking"
 	AppNovelNew              = "/v1/novel/new"
 	AppNovelFollow           = "/v1/novel/follow"
 	AppUserRecommended       = "/v1/user/recommended"

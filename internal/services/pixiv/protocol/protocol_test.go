@@ -53,3 +53,9 @@ func TestCommentAndStampPaths(t *testing.T) {
 		})
 	}
 }
+
+func TestNovelRankingPath(t *testing.T) {
+	if got, want := protocol.AppNovelRanking, "/v1/novel/ranking"; got != want {
+		t.Fatalf("path = %q, want %q", got, want)
+	}
+}
