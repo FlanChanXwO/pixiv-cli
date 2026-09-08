@@ -56,7 +56,7 @@ Status 的 verified 表示对应 task 的实现与相关验证完成；各 task 
 | T10E | novel recommended endpoint owner | T12,CHECK-04 | 完成 `/v1/novel/recommended` 的 explicit offset=0 presence、required list/request/DTO/error leaf | verified |
 | T10F | novel ranking endpoint owner | T12,CHECK-04 | 新增 `/v1/novel/ranking` internal endpoint leaf、protocol path、filter/mode/offset、required list/两页 fixture；不新增 SDK/CLI/MCP 入口 | verified |
 | CHECK-05 | 集中检查-debug（T10D/T10E/T10F） | T10D,T10E,T10F | audit-only 复查 novel latest/recommended/ranking leaf、max_novel_id/offset/mode/error、禁止 fallback、public 边界、bug/类型/构建/测试/安全/回滚/文档 | verified |
-| T10G | novel follow endpoint owner | T12,T10D,CHECK-05 | 完成 `/v1/novel/follow` 的 restrict/offset、required list、request/DTO/error leaf；与 latest continuation 分离 | pending |
+| T10G | novel follow endpoint owner | T12,T10D,CHECK-05 | 完成 `/v1/novel/follow` 的 restrict/offset、required list、request/DTO/error leaf；与 latest continuation 分离 | verified |
 | T10 | ranking/recommended/latest/follow owners（umbrella） | T10A,T10B,T10C,CHECK-04,T10D,T10E,T10F,CHECK-05,T10G | 汇总并审计 artwork/novel latest、ranking、recommended 与 novel follow leaf；全部子卡与集中检查完成后才可标记 verified | pending |
 | T11 | endpoint continuation owners | T07,T08,T09,T10,T05 | 校验和提取 endpoint allowlist continuation；不持久化 next_url | pending |
 | T13 | sdk/pixiv artwork | T07,T11 | 实现 artwork SDK 与 adapter 对照、旧签名兼容 | pending |
@@ -579,6 +579,17 @@ Status 的 verified 表示对应 task 的实现与相关验证完成；各 task 
 - 公开兼容性影响：T10D/T10E 的既有 SDK/CLI timeline/recommended 调用方保持可编译，T10F 仍只增加 internal endpoint leaf 与 protocol path；没有新增或删除公开 symbol、CLI/MCP schema/route、默认公开参数、账号/token 行为或输出字段。没有执行真实 API，也没有把 novel-ranking 的历史 `not_tested` 改写成 live evidence。已知额外 continuation key、URL/path allowlist 与跨页重复 upstream cursor 风险按 T11 保持 deferred，不在本卡提前宣称已关闭。
 - 回滚前提 / 依赖闭包：本卡只回写 `tasks.md` 的 CHECK-05 状态与完成记录；回滚只需撤销本记录和状态行。T10D/T10E/T10F 代码提交仍须按各自依赖闭包回滚；若后续 owner 已消费其 request/path/error boundary，必须先撤销引用或提供兼容迁移。未涉及业务数据、账号、token、缓存、运行配置、依赖或生成物。
 - 实际结果 / evidence / 风险：2026-09-08 审计未发现需要追加 repair task 的生产问题，CHECK-05 已 verified；T10D、T10E、T10F 均 verified，T10 父卡仍 pending，41 条 required capability 仍全部 `scope_admitted`，Goal-3 继续 incomplete。按 DAG 下一任务为 T10G（novel follow endpoint owner）；后续不得因本卡审计结果提前授予 `public_ready`。
+
+## T10G 完成记录
+
+- Owner package / 涉及文件：完成既有 `internal/services/pixiv/endpoint/novel/timeline/timeline.go` 与同 stem 测试 `internal/services/pixiv/endpoint/novel/timeline/timeline_test.go` 中的 novel follow request boundary；代码提交为 `29b2bd305fbcb4e2588f46223ec442287459bc1e`（`fix(goal-3): validate novel follow request`）。本卡继续复用 timeline owner，未修改 `sdk/pixiv`、CLI、MCP、公开文档、配置或依赖。
+- Depends on：T12、T10D、CHECK-05 已 verified；T11 的 continuation allowlist、raw `next_url` 完整校验与跨页重复 cursor，及 T14/T18/T19/T23/T29/T37 的 novel adapter/SDK/cursor/shared/public surface 闭包仍由后续 owner 负责。本卡不把 latest 的 `max_novel_id` continuation 合并到 follow。
+- 冻结 contract / fixture：目标为 `/v1/novel/follow`；`restrict` 只接受可选空值、`public` 或 `private`（CLI/MCP 默认 public，直接 SDK 的空值语义保持不变），首页不写入 offset，续页使用正 offset；response 要求存在且非 null 的 `novels` list，空数组映射为非 nil，novel 与嵌套 user ID 必须为正数。`next_url` 仅在 internal leaf 解析，不进入结果或 public output；latest 仍独立使用 `max_novel_id`。
+- Red 测试、命令及当前行为的实际失败：先新增 `TestFollowingRejectsInvalidRequestBeforeTransport`，运行 `go test ./internal/services/pixiv/endpoint/novel/timeline -run '^TestFollowingRejectsInvalidRequestBeforeTransport$' -count=1 -v`；旧实现对负 offset 与非法 `restrict=friends` 均错误地成功并触达 transport，两个子测试实际失败。
+- Green 命令及验收断言：加入 transport 前校验后，上述 focused 测试通过；`go test ./internal/services/pixiv/endpoint/novel/timeline -run '^(TestFollowingRejectsInvalidRequestBeforeTransport|TestTimelineMapsConfirmedRoutesAndQueries|TestTimelineRejectsNullNovelList|TestLatestNovelRejectsOffsetContinuationRequest|TestLatestNovelPreservesMaxNovelIDContinuation|TestLatestNovelUsesMaxNovelIDContinuationRequest|TestLatestNovelRejectsNegativeMaxNovelID|TestLatestNovelRejectsOffsetContinuationResponse|TestLatestNovelRejectsMixedContinuationKeys)$' -count=1 -v`、相关包 race 回归、`go test ./... -count=1`、`go vet ./...`、`go test ./scripts/tests/documentation -count=1`、`sh scripts/build.sh` 与 `git diff --check` 均通过；两个受影响 Go 文件的 LSP diagnostics 均为空。未执行 live API。
+- 公开兼容性影响：有效的 following route、public/private/空 restrict 与正 offset query 保持不变；现在非法 restrict 与负 offset 在网络请求前显式拒绝，防止无效 cursor 被静默解释为首页。没有新增或删除 SDK symbol、CLI/MCP schema/route、公开输出字段、默认公开参数、账号/token 行为或依赖；没有新增匿名 fallback、重试、固定超时或截断。
+- 回滚前提 / 依赖闭包：代码提交 `29b2bd305fbcb4e2588f46223ec442287459bc1e` 可恢复本卡 request boundary 与测试前行为；若后续 T11、T14、T18、T19、T23、T29 或 T37 消费了该 error boundary，回滚前须先撤销引用或提供保持构建与公开契约的兼容迁移。没有业务数据、账号、token、缓存、运行配置、依赖或生成物迁移。
+- 实际结果 / evidence / 风险：T10G endpoint leaf 已 verified，required `novels`/Novel DTO/ID 校验与 follow restrict/offset no-network boundary evidence 闭合；latest continuation 仍分离，T11 继续负责通用 continuation allowlist 与重复 cursor。`required=41 scope_admitted=41 public_ready=0 other=0`，T10 父卡仍 pending，Goal-3 继续 incomplete；按 DAG 下一任务为 T10 umbrella parent。
 
 ## 实现任务准入卡
 
