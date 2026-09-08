@@ -49,7 +49,7 @@ func (c *Client) SearchNovels(ctx context.Context, request SearchNovelsRequest) 
 	if request.Duration != "" {
 		query.Set("duration", string(request.Duration))
 	}
-	offset, err := c.continuationOffset("SearchNovels", query, request.Cursor)
+	offset, err := c.continuationPositiveOffset("SearchNovels", query, request.Cursor)
 	if err != nil {
 		return sdk.Page[Novel]{}, err
 	}
@@ -80,7 +80,7 @@ func (c *Client) NovelSeries(ctx context.Context, request NovelSeriesRequest) (N
 		return NovelSeriesResult{}, newError("NovelSeries", sdk.InvalidArgument, "series ID must be positive")
 	}
 	query := url.Values{"series_id": {itoa(request.SeriesID)}}
-	lastOrder, err := c.continuationValue("NovelSeries", query, request.Cursor, "last_order")
+	lastOrder, err := c.continuationPositiveValue("NovelSeries", query, request.Cursor, "last_order")
 	if err != nil {
 		return NovelSeriesResult{}, err
 	}
@@ -189,7 +189,7 @@ func (c *Client) UserNovels(ctx context.Context, request UserNovelsRequest) (sdk
 		return sdk.Page[Novel]{}, newError("UserNovels", sdk.InvalidArgument, "user ID must be positive")
 	}
 	query := url.Values{"user_id": {itoa(request.UserID)}}
-	offset, err := c.continuationOffset("UserNovels", query, request.Cursor)
+	offset, err := c.continuationPositiveOffset("UserNovels", query, request.Cursor)
 	if err != nil {
 		return sdk.Page[Novel]{}, err
 	}
@@ -228,7 +228,7 @@ func (c *Client) UserNovelBookmarks(ctx context.Context, request UserNovelBookma
 // MyPixivNovels lists novels from the current user's MyPixiv feed.
 func (c *Client) MyPixivNovels(ctx context.Context, request MyPixivNovelsRequest) (sdk.Page[Novel], error) {
 	query := url.Values{}
-	offset, err := c.continuationOffset("MyPixivNovels", query, request.Cursor)
+	offset, err := c.continuationPositiveOffset("MyPixivNovels", query, request.Cursor)
 	if err != nil {
 		return sdk.Page[Novel]{}, err
 	}

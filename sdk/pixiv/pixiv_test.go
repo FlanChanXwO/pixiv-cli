@@ -2,6 +2,8 @@ package pixiv_test
 
 import (
 	"context"
+	"encoding/base64"
+	"encoding/json"
 	"errors"
 	"fmt"
 
@@ -179,6 +181,38 @@ func TestSearchNovelsWiresQueryAndCursor(t *testing.T) {
 	}
 	if page.Items == nil || len(page.Items) != 0 || !page.Next.IsZero() || calls != 2 {
 		t.Fatalf("second page = %#v calls=%d", page, calls)
+	}
+}
+
+func TestSearchNovelsRejectsNonPositiveContinuationBeforeNetwork(t *testing.T) {
+	calls := 0
+	rt := roundTripFunc(func(req *http.Request) (*http.Response, error) {
+		calls++
+		if calls > 1 {
+			return nil, errors.New("invalid novel search cursor reached transport")
+		}
+		if req.URL.Path != "/v1/search/novel" {
+			t.Errorf("path = %q", req.URL.Path)
+		}
+		return jsonResponse(`{"novels":[],"next_url":"https://app-api.pixiv.net/v1/search/novel?word=novel&offset=30"}`), nil
+	})
+	client, err := NewWith("token", Options{HTTPClient: &http.Client{Transport: rt}})
+	if err != nil {
+		t.Fatalf("NewWith: %v", err)
+	}
+	first, err := client.SearchNovels(context.Background(), SearchNovelsRequest{Word: "novel"})
+	if err != nil {
+		t.Fatalf("SearchNovels first page: %v", err)
+	}
+	_, err = client.SearchNovels(context.Background(), SearchNovelsRequest{
+		Word:   "novel",
+		Cursor: cursorWithPayload(t, first.Next, `{"k":"offset","v":0}`),
+	})
+	if sdk.ReasonOf(err) != sdk.InvalidCursor {
+		t.Fatalf("ReasonOf = %q, want %q (err=%v)", sdk.ReasonOf(err), sdk.InvalidCursor, err)
+	}
+	if calls != 1 {
+		t.Fatalf("invalid continuation reached transport %d time(s)", calls-1)
 	}
 }
 
@@ -404,7 +438,8 @@ func TestNovelSeriesWiresCursorAndMetadata(t *testing.T) {
 		t.Fatalf("NovelSeries: %v", err)
 	}
 	if result.Series.ID != 6001 || result.Series.Title != "series" || !result.Series.IsConcluded ||
-		result.Series.User.ID != 8 || len(result.Novels.Items) != 1 || result.Novels.Items[0].ID != 6002 || result.Novels.Next.IsZero() {
+		result.Series.Caption != "caption" || result.Series.User.ID != 8 || result.Series.User.Name != "writer" ||
+		len(result.Novels.Items) != 1 || result.Novels.Items[0].ID != 6002 || result.Novels.Next.IsZero() {
 		t.Fatalf("first result = %#v", result)
 	}
 	request.Cursor = result.Novels.Next
@@ -415,6 +450,129 @@ func TestNovelSeriesWiresCursorAndMetadata(t *testing.T) {
 	if result.Novels.Items == nil || len(result.Novels.Items) != 0 || !result.Novels.Next.IsZero() || calls != 2 {
 		t.Fatalf("second result = %#v calls=%d", result, calls)
 	}
+}
+
+func TestNovelSeriesRejectsNonPositiveContinuationBeforeNetwork(t *testing.T) {
+	calls := 0
+	rt := roundTripFunc(func(req *http.Request) (*http.Response, error) {
+		calls++
+		if calls > 1 {
+			return nil, errors.New("invalid novel series cursor reached transport")
+		}
+		if req.URL.Path != "/v2/novel/series" {
+			t.Errorf("path = %q", req.URL.Path)
+		}
+		return jsonResponse(`{"novel_series_detail":{"id":6001,"user":{"id":8}},"novels":[],"next_url":"https://app-api.pixiv.net/v2/novel/series?series_id=6001&last_order=9"}`), nil
+	})
+	client, err := NewWith("token", Options{HTTPClient: &http.Client{Transport: rt}})
+	if err != nil {
+		t.Fatalf("NewWith: %v", err)
+	}
+	first, err := client.NovelSeries(context.Background(), NovelSeriesRequest{SeriesID: 6001})
+	if err != nil {
+		t.Fatalf("NovelSeries first page: %v", err)
+	}
+	request := NovelSeriesRequest{SeriesID: 6001, Cursor: cursorWithPayload(t, first.Novels.Next, `{"k":"last_order","v":0}`)}
+	_, err = client.NovelSeries(context.Background(), request)
+	if sdk.ReasonOf(err) != sdk.InvalidCursor {
+		t.Fatalf("ReasonOf = %q, want %q (err=%v)", sdk.ReasonOf(err), sdk.InvalidCursor, err)
+	}
+	if calls != 1 {
+		t.Fatalf("invalid continuation reached transport %d time(s)", calls-1)
+	}
+}
+
+func TestUserNovelsRejectsNonPositiveContinuationBeforeNetwork(t *testing.T) {
+	calls := 0
+	rt := roundTripFunc(func(req *http.Request) (*http.Response, error) {
+		calls++
+		if calls > 1 {
+			return nil, errors.New("invalid user novels cursor reached transport")
+		}
+		if req.URL.Path != "/v1/user/novels" {
+			t.Errorf("path = %q", req.URL.Path)
+		}
+		return jsonResponse(`{"novels":[],"next_url":"https://app-api.pixiv.net/v1/user/novels?user_id=77&filter=for_android&offset=30"}`), nil
+	})
+	client, err := NewWith("token", Options{HTTPClient: &http.Client{Transport: rt}})
+	if err != nil {
+		t.Fatalf("NewWith: %v", err)
+	}
+	first, err := client.UserNovels(context.Background(), UserNovelsRequest{UserID: 77})
+	if err != nil {
+		t.Fatalf("UserNovels first page: %v", err)
+	}
+	_, err = client.UserNovels(context.Background(), UserNovelsRequest{
+		UserID: 77,
+		Cursor: cursorWithPayload(t, first.Next, `{"k":"offset","v":0}`),
+	})
+	if sdk.ReasonOf(err) != sdk.InvalidCursor {
+		t.Fatalf("ReasonOf = %q, want %q (err=%v)", sdk.ReasonOf(err), sdk.InvalidCursor, err)
+	}
+	if calls != 1 {
+		t.Fatalf("invalid continuation reached transport %d time(s)", calls-1)
+	}
+}
+
+func TestMyPixivNovelsRejectsNonPositiveContinuationBeforeNetwork(t *testing.T) {
+	calls := 0
+	rt := roundTripFunc(func(req *http.Request) (*http.Response, error) {
+		calls++
+		if calls > 1 {
+			return nil, errors.New("invalid MyPixiv novels cursor reached transport")
+		}
+		if req.URL.Path != "/v1/novel/mypixiv" {
+			t.Errorf("path = %q", req.URL.Path)
+		}
+		return jsonResponse(`{"novels":[],"next_url":"https://app-api.pixiv.net/v1/novel/mypixiv?offset=30"}`), nil
+	})
+	client, err := NewWith("token", Options{HTTPClient: &http.Client{Transport: rt}})
+	if err != nil {
+		t.Fatalf("NewWith: %v", err)
+	}
+	first, err := client.MyPixivNovels(context.Background(), MyPixivNovelsRequest{})
+	if err != nil {
+		t.Fatalf("MyPixivNovels first page: %v", err)
+	}
+	_, err = client.MyPixivNovels(context.Background(), MyPixivNovelsRequest{
+		Cursor: cursorWithPayload(t, first.Next, `{"k":"offset","v":0}`),
+	})
+	if sdk.ReasonOf(err) != sdk.InvalidCursor {
+		t.Fatalf("ReasonOf = %q, want %q (err=%v)", sdk.ReasonOf(err), sdk.InvalidCursor, err)
+	}
+	if calls != 1 {
+		t.Fatalf("invalid continuation reached transport %d time(s)", calls-1)
+	}
+}
+
+func cursorWithPayload(t *testing.T, cursor sdk.Cursor, payload string) sdk.Cursor {
+	t.Helper()
+	text, err := cursor.MarshalText()
+	if err != nil {
+		t.Fatalf("MarshalText: %v", err)
+	}
+	raw, err := base64.RawURLEncoding.DecodeString(string(text))
+	if err != nil {
+		t.Fatalf("Decode cursor: %v", err)
+	}
+	var envelope map[string]json.RawMessage
+	if err := json.Unmarshal(raw, &envelope); err != nil {
+		t.Fatalf("Unmarshal cursor: %v", err)
+	}
+	envelope["pl"], err = json.Marshal([]byte(payload))
+	if err != nil {
+		t.Fatalf("Marshal payload: %v", err)
+	}
+	raw, err = json.Marshal(envelope)
+	if err != nil {
+		t.Fatalf("Marshal cursor: %v", err)
+	}
+	var tampered sdk.Cursor
+	encoded := base64.RawURLEncoding.EncodeToString(raw)
+	if err := tampered.UnmarshalText([]byte(encoded)); err != nil {
+		t.Fatalf("UnmarshalText: %v", err)
+	}
+	return tampered
 }
 
 func TestArtworkCommentsPreserveMetadataAndCursor(t *testing.T) {

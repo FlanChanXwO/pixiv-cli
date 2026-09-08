@@ -154,6 +154,25 @@ func (c *Client) continuationOffset(op string, baseQuery url.Values, cur sdk.Cur
 	return int(value), nil
 }
 
+// continuationPositiveOffset decodes an offset cursor whose continuation
+// value must be positive. A zero cursor still represents the first page.
+func (c *Client) continuationPositiveOffset(op string, baseQuery url.Values, cur sdk.Cursor) (int, error) {
+	if cur.IsZero() {
+		return 0, nil
+	}
+	state, err := c.continuationState(op, baseQuery, cur)
+	if err != nil {
+		return 0, err
+	}
+	if state.Key != "offset" {
+		return 0, newError(op, sdk.InvalidCursor, "cursor continuation kind mismatch")
+	}
+	if state.Value <= 0 || int64(int(state.Value)) != state.Value {
+		return 0, newError(op, sdk.InvalidCursor, "cursor continuation offset must be positive")
+	}
+	return int(state.Value), nil
+}
+
 // continuationValue decodes a cursor whose continuation carries an explicit
 // value under expectedKey (for example max_bookmark_id or last_order). A zero
 // cursor returns zero.
@@ -169,6 +188,25 @@ func (c *Client) continuationValue(op string, baseQuery url.Values, cur sdk.Curs
 		return 0, newError(op, sdk.InvalidCursor, "cursor continuation kind mismatch")
 	}
 	return value, nil
+}
+
+// continuationPositiveValue decodes an explicit continuation value that must
+// be positive. A zero cursor still represents the first page.
+func (c *Client) continuationPositiveValue(op string, baseQuery url.Values, cur sdk.Cursor, expectedKey string) (int64, error) {
+	if cur.IsZero() {
+		return 0, nil
+	}
+	state, err := c.continuationState(op, baseQuery, cur)
+	if err != nil {
+		return 0, err
+	}
+	if state.Key != expectedKey {
+		return 0, newError(op, sdk.InvalidCursor, "cursor continuation kind mismatch")
+	}
+	if state.Value <= 0 {
+		return 0, newError(op, sdk.InvalidCursor, "cursor continuation value must be positive")
+	}
+	return state.Value, nil
 }
 
 // continuationOffsetExists is continuationOffset for operations whose adapter
