@@ -11,6 +11,7 @@ import (
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/endpoint/artwork"
 	"github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/endpoint/novel"
+	"github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/endpoint/stamps"
 	"github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/endpoint/user"
 	"github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/protocol"
 	"github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/resource"
@@ -281,6 +282,12 @@ func (c *Client) resolveResourceURL(ctx context.Context, ref sdk.ResourceRef, op
 			return "", classifyAppError(appErr, operation)
 		}
 		rawURL, err = c.novelContentResourceURL(rp, raw)
+	case "stamp":
+		result, appErr := c.stamps.List(ctx)
+		if appErr != nil {
+			return "", classifyAppError(appErr, operation)
+		}
+		rawURL, err = stampResourceURL(result.Items, rp.ID)
 	default:
 		return "", newError(operation, sdk.InvalidArgument, "resource kind is unsupported")
 	}
@@ -297,6 +304,15 @@ func (c *Client) resolveResourceURL(ctx context.Context, ref sdk.ResourceRef, op
 	c.resourceURLs[ref.String()] = rawURL
 	c.resourceMu.Unlock()
 	return rawURL, nil
+}
+
+func stampResourceURL(items []stamps.Stamp, id int64) (string, error) {
+	for _, item := range items {
+		if item.ID == id {
+			return item.URL, nil
+		}
+	}
+	return "", errors.New("stamp is unavailable")
 }
 
 func artworkResourceURL(illust artwork.Artwork, page int, variant string) (string, error) {

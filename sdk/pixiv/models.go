@@ -47,6 +47,13 @@ type ImageResource struct {
 	Height   int
 }
 
+// Stamp is a Pixiv comment stamp. Image is a first-party resource identified
+// by the stable stamp ID; upstream does not provide image dimensions here.
+type Stamp struct {
+	ID    int64
+	Image ImageResource
+}
+
 // ArtworkPage is one page of a multi-page artwork. PageIndex is zero-based and
 // follows the upstream display order. Image is a usable image resource.
 type ArtworkPage struct {

@@ -25,6 +25,7 @@ import (
 	novelsearch "github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/endpoint/novel/search"
 	novelseries "github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/endpoint/novel/series"
 	noveltimeline "github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/endpoint/novel/timeline"
+	stamps "github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/endpoint/stamps"
 	userblocked "github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/endpoint/user/blocked"
 	userdetail "github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/endpoint/user/detail"
 	userfollow "github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/endpoint/user/follow"
@@ -109,6 +110,7 @@ type Client struct {
 	userRelated        *userrelated.Client
 	userSearch         *usersearch.Client
 	userVisibility     *uservisibility.Client
+	stamps             *stamps.Client
 	resClient          *resource.Client
 	opts               Options
 
@@ -239,6 +241,7 @@ func newClient(httpClient *http.Client, selfHTTP bool, accessToken string, optio
 		userRelated:        userrelated.New(app),
 		userSearch:         usersearch.New(app),
 		userVisibility:     uservisibility.New(app),
+		stamps:             stamps.New(app),
 		resClient:          resource.NewApp(httpClient),
 		opts:               options,
 		httpClient:         httpClient,

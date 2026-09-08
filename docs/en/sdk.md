@@ -234,11 +234,14 @@ not an assertion that every search operation is account-scoped.
 | `SearchNovels` | word, target, sort, duration | `Page[Novel]` | `InvalidArgument` |
 | `SearchUsers` | word | `Page[User]` | `InvalidArgument` |
 | `ArtworkRanking` | mode (default `day`), optional `YYYY-MM-DD` | `Page[Artwork]` | `InvalidArgument` |
+| `Stamps` | no query or cursor fields | `[]Stamp` | `MalformedUpstreamResponse`, classified upstream/transport errors |
 | `Artwork` / `Novel` / `User` | positive typed ID | detail record | `NotFound`, `InvalidArgument` |
 | `ArtworkSeries` / `NovelSeries` | positive series ID, cursor | series page (novel also returns metadata) | `InvalidCursor` |
 | `ArtworkComments` / `NovelComments` | positive ID, cursor | `CommentPage` | `NotFound` |
 | `PostArtworkComment` / `ReplyArtworkComment` / `DeleteArtworkComment` | positive artwork ID; reply also requires a positive parent comment ID | `CommentMutationResult` for post/reply; `error` for delete | `InvalidArgument`, `MalformedUpstreamResponse`, classified upstream/transport errors |
+| `StampArtworkComment` | positive artwork ID, non-empty comment, positive stamp ID | `CommentMutationResult` | `InvalidArgument`, `MalformedUpstreamResponse`, classified upstream/transport errors |
 | `PostNovelComment` / `ReplyNovelComment` / `DeleteNovelComment` | positive novel ID; reply also requires a positive parent comment ID | `CommentMutationResult` for post/reply; `error` for delete | `InvalidArgument`, `MalformedUpstreamResponse`, classified upstream/transport errors |
+| `StampNovelComment` | positive novel ID, non-empty comment, positive stamp ID | `CommentMutationResult` | `InvalidArgument`, `MalformedUpstreamResponse`, classified upstream/transport errors |
 | `UserArtworkBookmarks` / `UserArtworkBookmarkTags` / `UserNovelBookmarks` / `UserNovelBookmarkTags` | `UserID`, `Restrict`, `tag`, cursor | typed page | `InvalidArgument`, `InvalidCursor` |
 | `ArtworkBookmark` / `NovelBookmark` | positive artwork or novel ID | bookmark detail state | `InvalidArgument`, `MalformedUpstreamResponse`, classified upstream/transport errors |
 | `AddArtworkBookmark` / `RemoveArtworkBookmark` (legacy `AddBookmark` / `RemoveBookmark`) | positive artwork ID; add accepts `Restrict` and tags | `error` | `InvalidArgument`, classified upstream/transport errors |
@@ -258,6 +261,11 @@ Key semantics:
 - Comment totals and access-control metadata remain nil unless the upstream
   response supplied them. A successful empty list is a non-nil empty `Items`
   slice, not an invented error or total.
+- `Stamps` calls the authenticated `/v1/stamps` read contract without query or
+  continuation fields. Each `Stamp` exposes its positive stable ID and an
+  `ImageResource`; the current contract does not claim dimensions or additional
+  wire fields. Stamp image refs use the same opaque resource boundary as other
+  Pixiv media and are re-resolved from `/v1/stamps` when a new client opens one.
 - `PostArtworkComment`/`ReplyArtworkComment` and
   `PostNovelComment`/`ReplyNovelComment` use the namespace-specific comment
   add endpoint and return `CommentMutationResult.CommentID` only when the
@@ -268,6 +276,11 @@ Key semantics:
   delete endpoint with the supplied positive `comment_id`. The SDK validates
   the local shape and exposes the classified upstream result; ownership,
   namespace proof, read-back, and cleanup remain application responsibilities.
+- `StampArtworkComment` and `StampNovelComment` use the namespace-specific
+  comment add endpoint with `stamp_id` as an independent field alongside the
+  operation's `comment` text. They never encode a stamp as a reply parent or
+  silently fall back to text/reply semantics; the returned ID is subject to the
+  same direct-response, no-read-back rule.
 - `ArtworkBookmark` and `NovelBookmark` represent an absent bookmark with an
   empty `Restrict` and empty tags. `NovelBookmark` and
   `UserNovelBookmarkTags` currently follow candidate upstream read contracts:
@@ -354,7 +367,7 @@ operation; these fields are never part of an output DTO.
 Use the explicit field-by-field converters when serializing a result:
 `pixiv.ToArtworkDTO`, `pixiv.ToNovelDTO`, `pixiv.ToUserDTO`,
 `pixiv.ToUserDetailDTO`, `pixiv.ToUserPreviewDTO`, `pixiv.ToCommentDTO`,
-`pixiv.ToNovelContentDTO`, `pixiv.ToUgoiraMetadataDTO`, and their related
+`pixiv.ToStampDTO`, `pixiv.ToNovelContentDTO`, `pixiv.ToUgoiraMetadataDTO`, and their related
 Pixiv converters; or the corresponding `fanbox.To*DTO` converters for creators,
 posts, blocks, assets, users, and tags. `sdk.ToResourceDTO` emits only the
 opaque `ref` and optional `requires_credentials` metadata. The CLI and MCP
@@ -364,7 +377,7 @@ they never reflect over or JSON-marshal runtime product models.
 For Pixiv, `Resource.Ref` contains only the resource kind, stable ID, page, and
 optional variant. It never embeds the current or signed media URL. The SDK can
 reuse the current locator held by the client, or re-fetch the corresponding
-artwork, novel, user, ugoira, or novel-content metadata before opening it; every
+artwork, novel, user, ugoira, novel-content, or stamp metadata before opening it; every
 resolved URL and redirect is allowlisted again. `SaveResource` writes through an
 atomic destination and reports the response `Content-Length` in
 `SaveProgress.Total` when upstream supplies it. Resource requests use an

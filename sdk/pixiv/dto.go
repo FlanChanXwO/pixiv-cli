@@ -20,6 +20,12 @@ type ImageResourceDTO struct {
 	Height   int              `json:"height"`
 }
 
+// StampDTO is the output-safe form of Stamp.
+type StampDTO struct {
+	ID    int64            `json:"id"`
+	Image ImageResourceDTO `json:"image"`
+}
+
 // ArtworkPageDTO is the output-safe form of ArtworkPage.
 type ArtworkPageDTO struct {
 	PageIndex int              `json:"page_index"`
@@ -296,6 +302,12 @@ func ToImageResourceDTO(value ImageResource) ImageResourceDTO {
 		Width:    value.Width,
 		Height:   value.Height,
 	}
+}
+
+// ToStampDTO converts a stamp without exposing its runtime locator or request
+// headers.
+func ToStampDTO(value Stamp) StampDTO {
+	return StampDTO{ID: value.ID, Image: ToImageResourceDTO(value.Image)}
 }
 
 // ToArtworkPageDTO converts an artwork page to an output-safe DTO.

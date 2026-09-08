@@ -226,7 +226,7 @@ Implementation logic and same-package tests live in `scripts/internal/<name>`. S
 The public SDK is the only external contract surface, exported only from these three packages:
 
 - `sdk`: shared `Page[T]`, `Cursor` (Text/JSON codec), `Error` (sentinel, context chain, redaction), `ResourceRef`/`Resource`, and resource request/response/save types.
-- `sdk/pixiv`: Pixiv App-only SDK. `Open/OpenWith/New/NewWith` constructors, OAuth `LoginSession`, credentials rotation, normalized models, opaque cursor, `ParseURL`, and resource reads. No anonymous Web path.
+- `sdk/pixiv`: Pixiv App-only SDK. `Open/OpenWith/New/NewWith` constructors, OAuth `LoginSession`, credentials rotation, normalized artwork/novel/user/comment/stamp models, opaque cursor, `ParseURL`, comment mutations, stamp reads, and resource reads. No anonymous Web path.
 - `sdk/fanbox`: FANBOX SDK. `Client.ValidateSession`, creator/tag/post/home/supporting, two kinds of pagination, and resource reads; it does not read browsers, DB, or Pixiv credentials, and does not import `sdk/pixiv`.
 
 The FANBOX native transport uses the Chrome 146 TLS profile and a built-in Firefox 148 HTTP User-Agent baseline, and only accepts an explicit HTTP client, proxy, UA, and optional

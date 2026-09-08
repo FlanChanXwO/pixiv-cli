@@ -214,11 +214,14 @@ instance。相同查询的 cursor 可以交给另一个 client 恢复；这是�
 | `SearchNovels` | 关键词、target、排序、duration | `Page[Novel]` | `InvalidArgument` |
 | `SearchUsers` | 关键词 | `Page[User]` | `InvalidArgument` |
 | `ArtworkRanking` | mode（默认 `day`）、可选 `YYYY-MM-DD` | `Page[Artwork]` | `InvalidArgument` |
+| `Stamps` | 无 query 或 cursor 字段 | `[]Stamp` | `MalformedUpstreamResponse`、已分类的上游/传输错误 |
 | `Artwork` / `Novel` / `User` | 正数 typed ID | 详情记录 | `NotFound`、`InvalidArgument` |
 | `ArtworkSeries` / `NovelSeries` | 正数 series ID、cursor | 系列分页（novel 还返回系列 metadata） | `InvalidCursor` |
 | `ArtworkComments` / `NovelComments` | 正数 ID、cursor | `CommentPage` | `NotFound` |
 | `PostArtworkComment` / `ReplyArtworkComment` / `DeleteArtworkComment` | 正数 artwork ID；reply 还要求正数 parent comment ID | post/reply 返回 `CommentMutationResult`；delete 返回 `error` | `InvalidArgument`、`MalformedUpstreamResponse`、已分类的上游/传输错误 |
+| `StampArtworkComment` | 正数 artwork ID、非空 comment、正数 stamp ID | `CommentMutationResult` | `InvalidArgument`、`MalformedUpstreamResponse`、已分类的上游/传输错误 |
 | `PostNovelComment` / `ReplyNovelComment` / `DeleteNovelComment` | 正数 novel ID；reply 还要求正数 parent comment ID | post/reply 返回 `CommentMutationResult`；delete 返回 `error` | `InvalidArgument`、`MalformedUpstreamResponse`、已分类的上游/传输错误 |
+| `StampNovelComment` | 正数 novel ID、非空 comment、正数 stamp ID | `CommentMutationResult` | `InvalidArgument`、`MalformedUpstreamResponse`、已分类的上游/传输错误 |
 | `UserArtworkBookmarks` / `UserArtworkBookmarkTags` / `UserNovelBookmarks` / `UserNovelBookmarkTags` | `UserID`、`Restrict`、`tag`、cursor | typed 分页 | `InvalidArgument`、`InvalidCursor` |
 | `ArtworkBookmark` / `NovelBookmark` | 正数 artwork 或 novel ID | 收藏详情状态 | `InvalidArgument`、`MalformedUpstreamResponse`、已分类的上游/传输错误 |
 | `AddArtworkBookmark` / `RemoveArtworkBookmark`（旧 `AddBookmark` / `RemoveBookmark`） | 正数 artwork ID；add 接受 `Restrict` 与 tags | `error` | `InvalidArgument`、已分类的上游/传输错误 |
@@ -233,6 +236,7 @@ endpoint 替代入口。
 - `CurrentUser` 通过 `/v1/user/detail`、已验证的正数账号 UID 和 Android App API filter 读取认证账号；不再调用已失效的 `/v1/user/me`。
 - `SearchAIModeOnly` 按规范化后的 `Artwork.AIType == 2` 对当前返回批次做本地筛选；该 mode 会进入 cursor 绑定，因此不能把另一种 AI mode 的续页 cursor 复用过来。
 - 只有上游明确提供时才填充评论总数和访问控制 metadata。成功的空列表使用非 nil 的空 `Items` slice 表示，不伪造错误或总数。
+- `Stamps` 按认证态 `/v1/stamps` read contract 请求，不发送 query 或 continuation。每个 `Stamp` 只公开正数稳定 ID 与 `ImageResource`；当前 contract 不宣称尺寸或其他未冻结的 wire 字段。stamp 图片使用与其他 Pixiv 媒体相同的 opaque resource 边界，新 client 打开时会重新从 `/v1/stamps` 解析 locator。
 - `PostArtworkComment`/`ReplyArtworkComment` 与
   `PostNovelComment`/`ReplyNovelComment` 使用各自 namespace 的 comment add
   endpoint；只有上游响应包含正数 `comment_id` 时，才返回
@@ -241,6 +245,10 @@ endpoint 替代入口。
 - `DeleteArtworkComment` 与 `DeleteNovelComment` 使用各自 namespace 的
   delete endpoint，转发调用方提供的正数 `comment_id`。SDK 只负责本地形状校验
   与上游结果分类；归属、namespace 证明、read-back 与清理由 application 负责。
+- `StampArtworkComment` 与 `StampNovelComment` 使用对应 namespace 的
+  comment add endpoint，把 `stamp_id` 作为与操作 `comment` 文本并列的独立字段。
+  不会把 stamp 编码为 reply parent，也不会静默退化为 text/reply 语义；返回 ID
+  同样遵循直接响应、无 read-back 规则。
 - `ArtworkBookmark` 与 `NovelBookmark` 用空 `Restrict` 与空 tags 表示当前对象未收藏。`NovelBookmark` 与
   `UserNovelBookmarkTags` 当前遵循 candidate upstream read contract：小说收藏 tags 暂无续页，非零 cursor
   会被拒绝，直到该 contract 完成验证。小说收藏 mutation 仍按 strict/live evidence 要求保持不导出。
@@ -303,9 +311,9 @@ _, err := client.SaveResource(ctx, sdk.SaveOptions{
 
 运行时 product model 与 CLI/MCP JSON 边界的值是有意分离的。`sdk.Resource` 在进程内 streaming 操作中可以带当前可用的 `URL`、转发所需的 `RequestHeaders` 和 `ExpiresAt`；这些字段绝不进入输出 DTO。
 
-序列化结果时使用显式的逐字段转换器：Pixiv 使用 `pixiv.ToArtworkDTO`、`pixiv.ToNovelDTO`、`pixiv.ToUserDTO`、`pixiv.ToUserDetailDTO`、`pixiv.ToUserPreviewDTO`、`pixiv.ToCommentDTO`、`pixiv.ToNovelContentDTO`、`pixiv.ToUgoiraMetadataDTO` 及其相关转换器；FANBOX 使用对应的 `fanbox.To*DTO` 转换 creator、post、block、asset、user 与 tag。`sdk.ToResourceDTO` 只输出 opaque `ref` 与可选的 `requires_credentials` metadata。CLI/MCP 只编码这些 DTO、管道 `Record` 与 typed envelope，不反射遍历或直接 JSON 编码运行时 product model。
+序列化结果时使用显式的逐字段转换器：Pixiv 使用 `pixiv.ToArtworkDTO`、`pixiv.ToNovelDTO`、`pixiv.ToUserDTO`、`pixiv.ToUserDetailDTO`、`pixiv.ToUserPreviewDTO`、`pixiv.ToCommentDTO`、`pixiv.ToStampDTO`、`pixiv.ToNovelContentDTO`、`pixiv.ToUgoiraMetadataDTO` 及其相关转换器；FANBOX 使用对应的 `fanbox.To*DTO` 转换 creator、post、block、asset、user 与 tag。`sdk.ToResourceDTO` 只输出 opaque `ref` 与可选的 `requires_credentials` metadata。CLI/MCP 只编码这些 DTO、管道 `Record` 与 typed envelope，不反射遍历或直接 JSON 编码运行时 product model。
 
-Pixiv 的 `Resource.Ref` 只包含资源 kind、稳定 ID、page 和可选 variant，绝不嵌入当前或签名媒体 URL。SDK 会优先复用当前 Client 保存的 locator，或重新读取对应 artwork、novel、user、ugoira 或小说正文 metadata 后再打开；解析出的 URL 与每次 redirect 都会再次通过 allowlist 校验。`SaveResource` 通过原子目标写入；上游提供 `Content-Length` 时，`SaveProgress.Total` 会报告该值。资源请求只使用显式允许的 header，绝不发送调用方 Cookie jar。
+Pixiv 的 `Resource.Ref` 只包含资源 kind、稳定 ID、page 和可选 variant，绝不嵌入当前或签名媒体 URL。SDK 会优先复用当前 Client 保存的 locator，或重新读取对应 artwork、novel、user、ugoira、小说正文或 stamp metadata 后再打开；解析出的 URL 与每次 redirect 都会再次通过 allowlist 校验。`SaveResource` 通过原子目标写入；上游提供 `Content-Length` 时，`SaveProgress.Total` 会报告该值。资源请求只使用显式允许的 header，绝不发送调用方 Cookie jar。
 
 FANBOX 的 `Resource.Ref` 只包含稳定 identity（资源 kind、所属 creator 或 post，以及 attachment id），绝不嵌入当前可用或签名媒体 URL，因此 locator 轮换不会改变缓存键，存储的 ref 可跨 session 重新打开。`OpenResource` 与 `SaveResource` 优先复用 session 内 locator，否则通过重新拉取所属 creator 或 post 并按稳定 id 定位附件来重新解析出新鲜且经 allowlist 校验的 locator。session cookie 只发送给需要凭据的 `downloads.fanbox.cc` host，绝不发送给公开 CDN 或第三方 host；`RequiresCredentials` 表示该 locator 仍需要 session。
 

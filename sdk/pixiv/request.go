@@ -209,6 +209,10 @@ type MyPixivArtworksRequest struct {
 // TrendingArtworkTagsRequest lists currently trending artwork tags.
 type TrendingArtworkTagsRequest struct{}
 
+// StampsRequest lists the comment stamps available to the authenticated user.
+// The current upstream contract has no query or continuation fields.
+type StampsRequest struct{}
+
 // UgoiraMetadataRequest selects the ugoira metadata of one artwork. The
 // artwork must be a ugoira.
 type UgoiraMetadataRequest struct {
@@ -237,6 +241,14 @@ type ReplyArtworkCommentRequest struct {
 // DeleteArtworkCommentRequest deletes one artwork comment by its comment ID.
 type DeleteArtworkCommentRequest struct {
 	CommentID int64
+}
+
+// StampArtworkCommentRequest posts a stamp comment on one artwork. Comment is
+// retained as the operation text; StampID is an independent upstream field.
+type StampArtworkCommentRequest struct {
+	ArtworkID int64
+	Comment   string
+	StampID   int64
 }
 
 // ArtworkBookmarkRequest reads the current user's bookmark detail for one
@@ -299,6 +311,14 @@ type ReplyNovelCommentRequest struct {
 // DeleteNovelCommentRequest deletes one novel comment by its comment ID.
 type DeleteNovelCommentRequest struct {
 	CommentID int64
+}
+
+// StampNovelCommentRequest posts a stamp comment on one novel. Comment is
+// retained as the operation text; StampID is an independent upstream field.
+type StampNovelCommentRequest struct {
+	NovelID int64
+	Comment string
+	StampID int64
 }
 
 // RecommendedNovelsRequest lists recommended novels.
