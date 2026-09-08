@@ -10,6 +10,7 @@ import (
 	"strconv"
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/endpoint/artwork"
+	endpointcontinuation "github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/endpoint/continuation"
 	"github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/protocol"
 )
 
@@ -60,7 +61,7 @@ func (c *Client) Artworks(ctx context.Context, request ArtworksRequest) (Artwork
 		}
 		items[index] = mapArtwork(value)
 	}
-	next, hasNext, err := continuation(raw.NextURL, "max_bookmark_id", false)
+	next, hasNext, err := continuation(raw.NextURL, protocol.AppUserBookmarks, []string{"max_bookmark_id"}, false, "user_id", "restrict", "tag")
 	if err != nil {
 		return ArtworksResult{}, err
 	}
@@ -101,7 +102,7 @@ func (c *Client) Tags(ctx context.Context, request TagsRequest) (TagsResult, err
 		}
 		items[index] = artwork.BookmarkTag{Name: value.Name, Count: value.Count}
 	}
-	next, hasNext, err := continuation(raw.NextURL, "offset", true)
+	next, hasNext, err := continuation(raw.NextURL, protocol.AppUserBookmarkTags, []string{"offset"}, false, "user_id", "restrict")
 	if err != nil {
 		return TagsResult{}, err
 	}
@@ -305,23 +306,20 @@ func (l *requiredList[T]) UnmarshalJSON(data []byte) error {
 	return nil
 }
 
-func continuation(rawURL *string, key string, requireInt bool) (int64, bool, error) {
+func continuation(rawURL *string, path string, keys []string, allowZero bool, allowedQueryKeys ...string) (int64, bool, error) {
 	if rawURL == nil {
 		return 0, false, nil
 	}
-	if *rawURL == "" {
+	_, value, err := endpointcontinuation.Parse(*rawURL, endpointcontinuation.Spec{
+		Path:             path,
+		Keys:             keys,
+		AllowZero:        allowZero,
+		AllowedQueryKeys: allowedQueryKeys,
+	})
+	if err != nil || (!allowZero && value <= 0) || (allowZero && value < 0) {
 		return 0, false, protocol.MalformedResponse()
 	}
-	parsed, err := url.Parse(*rawURL)
-	if err != nil {
-		return 0, false, protocol.MalformedResponse()
-	}
-	values, err := url.ParseQuery(parsed.RawQuery)
-	if err != nil || len(values[key]) != 1 {
-		return 0, false, protocol.MalformedResponse()
-	}
-	value, err := strconv.ParseInt(values.Get(key), 10, 64)
-	if err != nil || value <= 0 || requireInt && int64(int(value)) != value {
+	if keys[0] == "offset" && int64(int(value)) != value {
 		return 0, false, protocol.MalformedResponse()
 	}
 	return value, true, nil

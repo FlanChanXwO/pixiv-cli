@@ -163,3 +163,11 @@ func TestLatestNovelRejectsMixedContinuationKeys(t *testing.T) {
 		t.Fatalf("List error = %v, want malformed response", err)
 	}
 }
+
+func TestMyPixivRejectsContinuationWithFollowingQueryKey(t *testing.T) {
+	transport := &fakeTransport{body: `{"novels":[],"next_url":"https://app-api.pixiv.net/v1/novel/follow?offset=20&restrict=public"}`}
+	_, err := timeline.New(transport).List(context.Background(), timeline.Request{Kind: timeline.MyPixiv})
+	if !errors.Is(err, protocol.ErrMalformedResponse) {
+		t.Fatalf("List error = %v, want malformed response", err)
+	}
+}

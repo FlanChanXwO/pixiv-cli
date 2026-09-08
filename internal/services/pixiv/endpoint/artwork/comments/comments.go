@@ -9,6 +9,7 @@ import (
 	"strconv"
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/endpoint/artwork"
+	endpointcontinuation "github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/endpoint/continuation"
 	"github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/protocol"
 )
 
@@ -287,18 +288,11 @@ func continuation(rawURL *string) (int, bool, error) {
 	if rawURL == nil {
 		return 0, false, nil
 	}
-	if *rawURL == "" {
-		return 0, false, protocol.MalformedResponse()
-	}
-	parsed, err := url.Parse(*rawURL)
-	if err != nil {
-		return 0, false, protocol.MalformedResponse()
-	}
-	values, err := url.ParseQuery(parsed.RawQuery)
-	if err != nil || len(values["offset"]) != 1 {
-		return 0, false, protocol.MalformedResponse()
-	}
-	value, err := strconv.ParseInt(values.Get("offset"), 10, 64)
+	_, value, err := endpointcontinuation.Parse(*rawURL, endpointcontinuation.Spec{
+		Path:             protocol.AppIllustComments,
+		Keys:             []string{"offset"},
+		AllowedQueryKeys: []string{"illust_id"},
+	})
 	if err != nil || value <= 0 || int64(int(value)) != value {
 		return 0, false, protocol.MalformedResponse()
 	}

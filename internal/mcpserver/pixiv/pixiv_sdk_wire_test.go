@@ -19,6 +19,7 @@ import (
 type testSDKTransport struct {
 	t    *testing.T
 	fake *fakeSDKClient
+	path string
 }
 
 func (tr *testSDKTransport) RoundTrip(request *http.Request) (*http.Response, error) {
@@ -40,6 +41,7 @@ func (tr *testSDKTransport) RoundTrip(request *http.Request) (*http.Response, er
 		})
 		return &http.Response{StatusCode: http.StatusOK, Header: http.Header{"Content-Type": {"application/json"}}, Body: io.NopCloser(strings.NewReader(string(body)))}, nil
 	}
+	tr.path = request.URL.Path
 	var status int
 	var body []byte
 	var err error
@@ -692,9 +694,9 @@ func (tr *testSDKTransport) wireUserPreviewPage(page sdk.Page[pixivsdk.UserPrevi
 	return http.StatusOK, body, err
 }
 
-// nextPageURL 为 wire page 编码 continuation。offset 由 cursor 文本稳定派生，
-// 相同的 cursor 产生相同的 offset（供 pagination 周期检测），不同的 cursor 产生
-// 不同 offset（避免把正常续页误判为重复）。
+// nextPageURL 为 wire page 编码 continuation。cursor 文本稳定派生出续传值，
+// 相同的 cursor 产生相同的值（供 pagination 周期检测），不同的 cursor 产生
+// 不同的值（避免把正常续页误判为重复）；key 随 operation path 使用冻结语义。
 func (tr *testSDKTransport) nextPageURL(cursor sdk.Cursor) *string {
 	if cursor.IsZero() {
 		return nil
@@ -707,7 +709,16 @@ func (tr *testSDKTransport) nextPageURL(cursor sdk.Cursor) *string {
 	if sum < 0 {
 		sum = -sum
 	}
-	value := "https://app-api.pixiv.net/v1/continuation?offset=" + strconv.Itoa(1+sum)
+	key := "offset"
+	switch tr.path {
+	case "/v1/novel/new":
+		key = "max_novel_id"
+	case "/v1/illust/series", "/v2/novel/series":
+		key = "last_order"
+	case "/v1/user/bookmarks/illust", "/v1/user/bookmarks/novel":
+		key = "max_bookmark_id"
+	}
+	value := "https://app-api.pixiv.net" + tr.path + "?" + key + "=" + strconv.Itoa(1+sum)
 	return &value
 }
 

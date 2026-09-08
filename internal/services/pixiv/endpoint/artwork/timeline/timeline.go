@@ -9,6 +9,7 @@ import (
 	"strconv"
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/endpoint/artwork"
+	endpointcontinuation "github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/endpoint/continuation"
 	"github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/protocol"
 )
 
@@ -73,7 +74,7 @@ func (c *Client) List(ctx context.Context, request Request) (Result, error) {
 	if request.Kind == Latest {
 		continuationKeys = []string{"max_illust_id", "offset"}
 	}
-	nextKey, nextValue, hasNext, err := continuation(raw.NextURL, continuationKeys)
+	nextKey, nextValue, hasNext, err := continuation(raw.NextURL, path, continuationKeys)
 	if err != nil {
 		return Result{}, err
 	}
@@ -263,40 +264,32 @@ func (l *requiredList[T]) UnmarshalJSON(data []byte) error {
 	return nil
 }
 
-func continuation(rawURL *string, keys []string) (string, int64, bool, error) {
+func continuation(rawURL *string, path string, keys []string) (string, int64, bool, error) {
 	if rawURL == nil {
 		return "", 0, false, nil
 	}
-	if *rawURL == "" {
-		return "", 0, false, protocol.MalformedResponse()
-	}
-	parsed, err := url.Parse(*rawURL)
-	if err != nil {
-		return "", 0, false, protocol.MalformedResponse()
-	}
-	values, err := url.ParseQuery(parsed.RawQuery)
-	if err != nil {
-		return "", 0, false, protocol.MalformedResponse()
-	}
-	key := ""
-	for _, candidate := range keys {
-		entries, present := values[candidate]
-		if !present {
-			continue
-		}
-		if len(entries) != 1 || key != "" {
-			return "", 0, false, protocol.MalformedResponse()
-		}
-		key = candidate
-	}
-	if key == "" {
-		return "", 0, false, protocol.MalformedResponse()
-	}
-	value, err := strconv.ParseInt(values.Get(key), 10, 64)
+	key, value, err := endpointcontinuation.Parse(*rawURL, endpointcontinuation.Spec{
+		Path:             path,
+		Keys:             keys,
+		AllowedQueryKeys: allowedContinuationQueryKeys(path),
+	})
 	if err != nil || value <= 0 || (key == "offset" && int64(int(value)) != value) {
 		return "", 0, false, protocol.MalformedResponse()
 	}
 	return key, value, true, nil
+}
+
+func allowedContinuationQueryKeys(path string) []string {
+	switch path {
+	case protocol.AppIllustFollow:
+		return []string{"restrict"}
+	case protocol.AppIllustNew:
+		return []string{"content_type", "filter"}
+	case protocol.AppUserIllusts:
+		return []string{"user_id", "type"}
+	default:
+		return nil
+	}
 }
 
 func mapArtwork(dto illustDTO) artwork.Artwork {

@@ -9,6 +9,7 @@ import (
 	"net/url"
 	"strconv"
 
+	endpointcontinuation "github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/endpoint/continuation"
 	"github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/endpoint/novel"
 	"github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/protocol"
 )
@@ -346,17 +347,13 @@ func cloneString(value *string) *string {
 }
 
 func continuation(rawURL string) (int64, error) {
-	parsed, err := url.Parse(rawURL)
+	_, value, err := endpointcontinuation.Parse(rawURL, endpointcontinuation.Spec{
+		Path:             protocol.AppUserNovelBookmarks,
+		Keys:             []string{"max_bookmark_id"},
+		AllowedQueryKeys: []string{"user_id", "restrict", "tag"},
+	})
 	if err != nil {
-		return 0, protocol.MalformedResponse()
-	}
-	values, err := url.ParseQuery(parsed.RawQuery)
-	if err != nil || len(values["max_bookmark_id"]) != 1 {
-		return 0, protocol.MalformedResponse()
-	}
-	value, err := strconv.ParseInt(values.Get("max_bookmark_id"), 10, 64)
-	if err != nil || value <= 0 {
-		return 0, protocol.MalformedResponse()
+		return 0, err
 	}
 	return value, nil
 }

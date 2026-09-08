@@ -3,10 +3,12 @@ package search_test
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/url"
 	"testing"
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/endpoint/artwork/search"
+	"github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/protocol"
 )
 
 type fakeTransport struct {
@@ -88,6 +90,35 @@ func TestSearchPreservesSuccessfulEmptyListAndRejectsNullList(t *testing.T) {
 			}
 			if result.HasNext {
 				t.Fatal("terminal empty list must not have continuation")
+			}
+		})
+	}
+}
+
+func TestSearchRejectsContinuationOutsideEndpointAllowlist(t *testing.T) {
+	tests := []struct {
+		name    string
+		nextURL string
+	}{
+		{
+			name:    "unknown query key",
+			nextURL: "https://app-api.pixiv.net/v1/search/illust?offset=30&max_novel_id=9",
+		},
+		{
+			name:    "wrong endpoint path",
+			nextURL: "https://app-api.pixiv.net/v1/search/novel?offset=30",
+		},
+		{
+			name:    "wrong endpoint host",
+			nextURL: "https://example.invalid/v1/search/illust?offset=30",
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			body := `{"illusts":[],"next_url":"` + test.nextURL + `"}`
+			_, err := search.New(&fakeTransport{body: body}).Search(context.Background(), search.Request{Word: "landscape"})
+			if !errors.Is(err, protocol.ErrMalformedResponse) {
+				t.Fatalf("Search error = %v, want malformed response", err)
 			}
 		})
 	}

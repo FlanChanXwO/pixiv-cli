@@ -8,6 +8,7 @@ import (
 	"net/url"
 	"strconv"
 
+	endpointcontinuation "github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/endpoint/continuation"
 	"github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/endpoint/novel"
 	"github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/protocol"
 )
@@ -77,7 +78,7 @@ func (c *Client) List(ctx context.Context, request Request) (Result, error) {
 			}
 			result.NextKey, result.NextValue, result.HasNext = "max_novel_id", next, true
 		} else {
-			next, err := continuation(*raw.NextURL)
+			next, err := continuation(*raw.NextURL, path)
 			if err != nil {
 				return Result{}, err
 			}
@@ -218,32 +219,35 @@ func cloneString(value *string) *string {
 	copy := *value
 	return &copy
 }
-func continuation(rawURL string) (int, error) {
-	parsed, err := url.Parse(rawURL)
-	if err != nil {
-		return 0, protocol.MalformedResponse()
-	}
-	values, err := url.ParseQuery(parsed.RawQuery)
-	if err != nil || len(values["offset"]) != 1 {
-		return 0, protocol.MalformedResponse()
-	}
-	value, err := strconv.ParseInt(values.Get("offset"), 10, 64)
+func continuation(rawURL, path string) (int, error) {
+	_, value, err := endpointcontinuation.Parse(rawURL, endpointcontinuation.Spec{
+		Path:             path,
+		Keys:             []string{"offset"},
+		AllowedQueryKeys: allowedContinuationQueryKeys(path),
+	})
 	if err != nil || value <= 0 || int64(int(value)) != value {
 		return 0, protocol.MalformedResponse()
 	}
 	return int(value), nil
 }
 
+func allowedContinuationQueryKeys(path string) []string {
+	switch path {
+	case protocol.AppNovelFollow:
+		return []string{"restrict"}
+	case protocol.AppNovelNew:
+		return []string{"filter"}
+	default:
+		return nil
+	}
+}
+
 func latestContinuation(rawURL string) (int64, error) {
-	parsed, err := url.Parse(rawURL)
-	if err != nil {
-		return 0, protocol.MalformedResponse()
-	}
-	values, err := url.ParseQuery(parsed.RawQuery)
-	if err != nil || len(values) != 1 || len(values["max_novel_id"]) != 1 {
-		return 0, protocol.MalformedResponse()
-	}
-	value, err := strconv.ParseInt(values.Get("max_novel_id"), 10, 64)
+	_, value, err := endpointcontinuation.Parse(rawURL, endpointcontinuation.Spec{
+		Path:             protocol.AppNovelNew,
+		Keys:             []string{"max_novel_id"},
+		AllowedQueryKeys: []string{"filter"},
+	})
 	if err != nil || value <= 0 {
 		return 0, protocol.MalformedResponse()
 	}

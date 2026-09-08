@@ -55,3 +55,33 @@ func TestSearchAcceptsEmptyListAndRejectsInvalidUser(t *testing.T) {
 		t.Fatalf("invalid user error = %v, want malformed response", err)
 	}
 }
+
+func TestSearchRejectsContinuationOutsideEndpointAllowlist(t *testing.T) {
+	tests := []struct {
+		name    string
+		nextURL string
+	}{
+		{
+			name:    "unknown query key",
+			nextURL: "https://app-api.pixiv.net/v1/search/user?word=artist&offset=20&max_novel_id=9",
+		},
+		{
+			name:    "wrong path",
+			nextURL: "https://app-api.pixiv.net/v1/search/novel?word=artist&offset=20",
+		},
+		{
+			name:    "wrong host",
+			nextURL: "https://example.invalid/v1/search/user?word=artist&offset=20",
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			body := `{"user_previews":[{"user":{"id":41}}],"next_url":"` + test.nextURL + `"}`
+			_, err := search.New(&fakeTransport{body: body}).Search(context.Background(), search.Request{Word: "artist"})
+			if !errors.Is(err, protocol.ErrMalformedResponse) {
+				t.Fatalf("continuation error = %v, want malformed response", err)
+			}
+		})
+	}
+}
