@@ -50,7 +50,11 @@ var identityScopedOps = map[string]bool{
 	"RecommendedNovels":   true,
 	"RecommendedUsers":    true,
 	"RelatedArtworks":     true,
+	"RelatedUsers":        true,
 	"ArtworkRanking":      false,
+	"UserFollowing":       true,
+	"UserFollowers":       true,
+	"UserBlockedUsers":    true,
 }
 
 // queryDigest returns a stable digest of the request's query parameters. The
@@ -171,23 +175,6 @@ func (c *Client) continuationPositiveOffset(op string, baseQuery url.Values, cur
 		return 0, newError(op, sdk.InvalidCursor, "cursor continuation offset must be positive")
 	}
 	return int(state.Value), nil
-}
-
-// continuationValue decodes a cursor whose continuation carries an explicit
-// value under expectedKey (for example max_bookmark_id or last_order). A zero
-// cursor returns zero.
-func (c *Client) continuationValue(op string, baseQuery url.Values, cur sdk.Cursor, expectedKey string) (int64, error) {
-	if cur.IsZero() {
-		return 0, nil
-	}
-	key, value, err := c.continuationFromCursor(op, baseQuery, cur)
-	if err != nil {
-		return 0, err
-	}
-	if key != expectedKey {
-		return 0, newError(op, sdk.InvalidCursor, "cursor continuation kind mismatch")
-	}
-	return value, nil
 }
 
 // continuationPositiveValue decodes an explicit continuation value that must

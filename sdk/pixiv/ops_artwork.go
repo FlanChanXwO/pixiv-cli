@@ -44,7 +44,7 @@ func (c *Client) RelatedArtworks(ctx context.Context, request RelatedArtworksReq
 		return sdk.Page[Artwork]{}, newError("RelatedArtworks", sdk.InvalidArgument, "artwork ID must be positive")
 	}
 	query := url.Values{"illust_id": {itoa(request.ArtworkID)}}
-	offset, err := c.continuationOffset("RelatedArtworks", query, request.Cursor)
+	offset, err := c.continuationPositiveOffset("RelatedArtworks", query, request.Cursor)
 	if err != nil {
 		return sdk.Page[Artwork]{}, err
 	}
@@ -61,7 +61,7 @@ func (c *Client) ArtworkSeries(ctx context.Context, request ArtworkSeriesRequest
 		return sdk.Page[Artwork]{}, newError("ArtworkSeries", sdk.InvalidArgument, "series ID must be positive")
 	}
 	query := url.Values{"illust_series_id": {itoa(request.SeriesID)}}
-	lastOrder, err := c.continuationValue("ArtworkSeries", query, request.Cursor, "last_order")
+	lastOrder, err := c.continuationPositiveValue("ArtworkSeries", query, request.Cursor, "last_order")
 	if err != nil {
 		return sdk.Page[Artwork]{}, err
 	}
@@ -87,7 +87,7 @@ func (c *Client) ArtworkRanking(ctx context.Context, request ArtworkRankingReque
 	if request.Date != "" {
 		query.Set("date", request.Date)
 	}
-	offset, err := c.continuationOffset("ArtworkRanking", query, request.Cursor)
+	offset, err := c.continuationPositiveOffset("ArtworkRanking", query, request.Cursor)
 	if err != nil {
 		return sdk.Page[Artwork]{}, err
 	}
@@ -119,7 +119,7 @@ func (c *Client) FollowingArtworks(ctx context.Context, request FollowingArtwork
 		return sdk.Page[Artwork]{}, err
 	}
 	query := url.Values{"restrict": {string(restrict)}}
-	offset, err := c.continuationOffset("FollowingArtworks", query, request.Cursor)
+	offset, err := c.continuationPositiveOffset("FollowingArtworks", query, request.Cursor)
 	if err != nil {
 		return sdk.Page[Artwork]{}, err
 	}
@@ -150,8 +150,15 @@ func (c *Client) LatestArtworks(ctx context.Context, request LatestArtworksReque
 		}
 		switch key {
 		case "offset":
+			// 两种兼容续页形式都必须指向真实的下一页；接受零值会重放首页。
+			if value <= 0 || int64(int(value)) != value {
+				return sdk.Page[Artwork]{}, newError("LatestArtworks", sdk.InvalidCursor, "cursor continuation offset must be positive")
+			}
 			offset = int(value)
 		case "max_illust_id":
+			if value <= 0 {
+				return sdk.Page[Artwork]{}, newError("LatestArtworks", sdk.InvalidCursor, "cursor continuation value must be positive")
+			}
 			maxIllustID = value
 		default:
 			return sdk.Page[Artwork]{}, newError("LatestArtworks", sdk.InvalidCursor, "cursor continuation kind mismatch")
@@ -174,7 +181,7 @@ func (c *Client) UserArtworks(ctx context.Context, request UserArtworksRequest) 
 		return sdk.Page[Artwork]{}, err
 	}
 	query := url.Values{"user_id": {itoa(request.UserID)}, "type": {kind}}
-	offset, err := c.continuationOffset("UserArtworks", query, request.Cursor)
+	offset, err := c.continuationPositiveOffset("UserArtworks", query, request.Cursor)
 	if err != nil {
 		return sdk.Page[Artwork]{}, err
 	}
@@ -197,7 +204,7 @@ func (c *Client) UserArtworkBookmarks(ctx context.Context, request UserArtworkBo
 	if request.Tag != "" {
 		query.Set("tag", request.Tag)
 	}
-	maxID, err := c.continuationValue("UserArtworkBookmarks", query, request.Cursor, "max_bookmark_id")
+	maxID, err := c.continuationPositiveValue("UserArtworkBookmarks", query, request.Cursor, "max_bookmark_id")
 	if err != nil {
 		return sdk.Page[Artwork]{}, err
 	}
@@ -218,7 +225,7 @@ func (c *Client) UserArtworkBookmarkTags(ctx context.Context, request UserArtwor
 		return sdk.Page[BookmarkTag]{}, err
 	}
 	query := url.Values{"user_id": {itoa(request.UserID)}, "restrict": {string(request.Restrict)}}
-	offset, err := c.continuationOffset("UserArtworkBookmarkTags", query, request.Cursor)
+	offset, err := c.continuationPositiveOffset("UserArtworkBookmarkTags", query, request.Cursor)
 	if err != nil {
 		return sdk.Page[BookmarkTag]{}, err
 	}
@@ -240,7 +247,7 @@ func (c *Client) UserArtworkBookmarkTags(ctx context.Context, request UserArtwor
 // MyPixivArtworks lists artworks from the current user's MyPixiv feed.
 func (c *Client) MyPixivArtworks(ctx context.Context, request MyPixivArtworksRequest) (sdk.Page[Artwork], error) {
 	query := url.Values{}
-	offset, err := c.continuationOffset("MyPixivArtworks", query, request.Cursor)
+	offset, err := c.continuationPositiveOffset("MyPixivArtworks", query, request.Cursor)
 	if err != nil {
 		return sdk.Page[Artwork]{}, err
 	}
@@ -287,7 +294,7 @@ func (c *Client) ArtworkComments(ctx context.Context, request ArtworkCommentsReq
 		return CommentPage{}, newError("ArtworkComments", sdk.InvalidArgument, "artwork ID must be positive")
 	}
 	query := url.Values{"illust_id": {itoa(request.ArtworkID)}}
-	offset, err := c.continuationOffset("ArtworkComments", query, request.Cursor)
+	offset, err := c.continuationPositiveOffset("ArtworkComments", query, request.Cursor)
 	if err != nil {
 		return CommentPage{}, err
 	}

@@ -226,6 +226,13 @@ verified account or client instance. A cursor for the same query may therefore
 be resumed by another client; this is the frozen source-compatibility policy,
 not an assertion that every search operation is account-scoped.
 
+For paged operations that accept an upstream continuation, every non-zero
+continuation is a positive typed position. Offset-based operations reject zero,
+negative, and overflowing offsets before transport; value-based operations
+reject non-positive values such as `last_order`, `max_bookmark_id`, and
+`max_illust_id`. The recommended feeds retain their explicit `offset=0`
+continuation exception described above.
+
 ## Pixiv read operations
 
 | Operation | Input highlights | Returns | Common errors |
@@ -272,12 +279,18 @@ Key semantics:
   an omitted continuation and an explicit `offset=0`; the latter is sent only
   when resuming a cursor. Recommended artwork subtype filtering is not part of
   the public SDK request and must not be inferred from a caller-side filter.
+- `RelatedUsers`, `UserFollowing`, `UserFollowers`, and `UserBlockedUsers` are
+  identity-scoped cursor operations. With a verified account their cursors bind
+  that account; otherwise they are valid only for the same client instance.
+  `UserFollowing` and `UserFollowers` normalize an empty `restrict` to `public`
+  before both transport and cursor binding.
 - `FollowingArtworks` and `FollowingNovels` normalize an empty `restrict` to
   `public`, reject other values before transport, and bind the resolved value in
   the cursor query.
 - `LatestArtworks` resolves an empty content type to `illust` and accepts the
   committed `manga` subtype. The resolved subtype is part of the cursor binding;
-  `all`, `illust-and-ugoira`, and `ugoira` are rejected for this operation.
+  `all`, `illust-and-ugoira`, and `ugoira` are rejected for this operation. Both
+  its legacy `offset` and `max_illust_id` cursor forms must carry positive values.
 - `LatestNovels` always sends the fixed App API filter `for_android`. Its cursor
   carries the positive upstream `max_novel_id`; the SDK does not fall back to an
   offset continuation. Repeat the original request fields when resuming.

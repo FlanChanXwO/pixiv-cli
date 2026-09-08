@@ -206,6 +206,11 @@ product、operation、binding version 与 query，不绑定 verified account 或
 instance。相同查询的 cursor 可以交给另一个 client 恢复；这是冻结的源码兼容策略，
 不表示所有搜索 operation 都属于账号作用域。
 
+接受上游 continuation 的分页 operation，其所有非零 continuation 都必须是正数的
+typed position。offset 形式会在发起 transport 前拒绝零值、负值和溢出值；显式 value
+形式会拒绝 `last_order`、`max_bookmark_id`、`max_illust_id` 等非正数。上文所述的
+recommended feed 仍保留显式 `offset=0` 的续读例外。
+
 ## Pixiv 读取操作
 
 | 操作 | 入参要点 | 返回 | 常见错误 |
@@ -244,8 +249,9 @@ endpoint 替代入口。
 - `SearchAIModeOnly` 按规范化后的 `Artwork.AIType == 2` 对当前返回批次做本地筛选；该 mode 会进入 cursor 绑定，因此不能把另一种 AI mode 的续页 cursor 复用过来。
 - ranking cursor 会绑定所选 `mode`（artwork ranking 还绑定 `date`）。`NovelRanking` 固定发送 App API filter `for_android`，首页不发送 `offset`，续页只使用上游返回的正数 `offset`。
 - `RecommendedArtworks` 与 `RecommendedNovels` 保留“未提供 continuation”和显式 `offset=0` 的区别；只有续读 cursor 时才发送后者。recommended artwork subtype 不属于当前 public SDK request，不能根据调用方本地 filter 推断或补发。
+- `RelatedUsers`、`UserFollowing`、`UserFollowers` 与 `UserBlockedUsers` 都是 identity-scoped cursor operation。存在已验证账号时，cursor 绑定该账号；否则只允许同一 client instance 继续使用。`UserFollowing` 与 `UserFollowers` 会在 transport 和 cursor 绑定前都把空 `restrict` 归一为 `public`。
 - `FollowingArtworks` 与 `FollowingNovels` 会把空 `restrict` 归一为 `public`，在 transport 前拒绝其他值，并把解析后的值绑定到 cursor query。
-- `LatestArtworks` 将空 content type 解析为 `illust`，并接受已冻结的 `manga` subtype；解析后的 subtype 会进入 cursor binding。该操作拒绝 `all`、`illust-and-ugoira` 与 `ugoira`。
+- `LatestArtworks` 将空 content type 解析为 `illust`，并接受已冻结的 `manga` subtype；解析后的 subtype 会进入 cursor binding。该操作拒绝 `all`、`illust-and-ugoira` 与 `ugoira`，其兼容的 `offset` 与 `max_illust_id` cursor 形式都必须携带正数。
 - `LatestNovels` 始终发送固定的 App API filter `for_android`。其 cursor 携带上游正数 `max_novel_id`，SDK 不 fallback 到 offset continuation；续读时应重复原始 request 字段。
 - 只有上游明确提供时才填充评论总数和访问控制 metadata。成功的空列表使用非 nil 的空 `Items` slice 表示，不伪造错误或总数。
 - `Stamps` 按认证态 `/v1/stamps` read contract 请求，不发送 query 或 continuation。每个 `Stamp` 只公开正数稳定 ID 与 `ImageResource`；当前 contract 不宣称尺寸或其他未冻结的 wire 字段。stamp 图片使用与其他 Pixiv 媒体相同的 opaque resource 边界，新 client 打开时会重新从 `/v1/stamps` 解析 locator。

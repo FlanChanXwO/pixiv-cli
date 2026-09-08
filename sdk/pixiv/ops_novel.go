@@ -155,7 +155,7 @@ func (c *Client) NovelComments(ctx context.Context, request NovelCommentsRequest
 		return CommentPage{}, newError("NovelComments", sdk.InvalidArgument, "novel ID must be positive")
 	}
 	query := url.Values{"novel_id": {itoa(request.NovelID)}}
-	offset, err := c.continuationOffset("NovelComments", query, request.Cursor)
+	offset, err := c.continuationPositiveOffset("NovelComments", query, request.Cursor)
 	if err != nil {
 		return CommentPage{}, err
 	}
@@ -187,7 +187,7 @@ func (c *Client) FollowingNovels(ctx context.Context, request FollowingNovelsReq
 		return sdk.Page[Novel]{}, err
 	}
 	query := url.Values{"restrict": {string(restrict)}}
-	offset, err := c.continuationOffset("FollowingNovels", query, request.Cursor)
+	offset, err := c.continuationPositiveOffset("FollowingNovels", query, request.Cursor)
 	if err != nil {
 		return sdk.Page[Novel]{}, err
 	}
@@ -241,7 +241,7 @@ func (c *Client) UserNovelBookmarks(ctx context.Context, request UserNovelBookma
 	if request.Tag != "" {
 		query.Set("tag", request.Tag)
 	}
-	maxID, err := c.continuationValue("UserNovelBookmarks", query, request.Cursor, "max_bookmark_id")
+	maxID, err := c.continuationPositiveValue("UserNovelBookmarks", query, request.Cursor, "max_bookmark_id")
 	if err != nil {
 		return sdk.Page[Novel]{}, err
 	}
