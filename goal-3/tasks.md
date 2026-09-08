@@ -62,7 +62,7 @@ Status 的 verified 表示对应 task 的实现与相关验证完成；各 task 
 | T13 | sdk/pixiv artwork | T07,T11 | 实现 artwork SDK 与 adapter 对照、旧签名兼容 | verified |
 | T14 | sdk/pixiv novel | T07,T11 | 实现 novel SDK、series metadata 与 continuation | verified |
 | T15 | sdk/pixiv bookmark | T08,T11 | 实现 explicit bookmark SDK，保留 AddBookmark/RemoveBookmark wrapper | verified |
-| T16 | sdk/pixiv comment | T09,T11 | 实现 explicit read/create/reply/delete；ID 来源与不确定结果可观测 | pending |
+| T16 | sdk/pixiv comment | T09,T11 | 实现 explicit read/create/reply/delete；ID 来源与不确定结果可观测 | verified |
 | T17 | sdk/pixiv stamps | T09,T11 | 实现 stamps SDK 与 stamp/text/reply 独立语义 | pending |
 | T18 | sdk/pixiv feed | T10,T11 | 实现 ranking/recommended/latest SDK 与 subtype | pending |
 | T19 | sdk/pixiv cursor | T13,T14,T15,T16,T17,T18 | 扩展其余 endpoint payload/binding；不重建 envelope | pending |
@@ -646,6 +646,17 @@ Status 的 verified 表示对应 task 的实现与相关验证完成；各 task 
 - 公开兼容性影响：只新增 `UserNovelBookmarkTags`、`NovelBookmark`、`AddArtworkBookmark`、`RemoveArtworkBookmark` 及其 request/model/DTO；未删除、重命名或改变既有 `UserNovelBookmarks`、`AddBookmark`、`RemoveBookmark`。旧 mutation wrapper 的空 restrict→`public`、非法输入 `InvalidArgument`、transport/status 错误分类和 operation label 保持；未改 CLI/MCP route/schema、endpoint protocol、账号/token 行为、依赖或重试/超时/截断/fallback 语义。novel mutation 仍无 public export。
 - 回滚前提 / 依赖闭包：代码与文档提交 `87610d27a38a4bd66d2acaa96d2271a32206b22e` 与本账本记录需成对回滚；恢复 public API digest、SDK explicit seam、candidate read fixture 与双语说明。若后续 T19/T23/T27/T37/T38 已引用这些新增符号或 candidate boundary，回滚前须同步撤销引用或先补兼容迁移。未涉及 live API、账号、token、业务数据、缓存、运行配置或生成物迁移。
 - 实际结果 / evidence / 风险：T15 已 verified，代码自审未发现本卡范围内 P0/P1/P2。`required=41 scope_admitted=41 public_ready=0 other=0` 保持不变；本卡未执行真实 API，novel candidate read、mutation outcome/read-back、`--type all` 聚合与逻辑分页仍不能据此宣告 `public_ready`。LSP 在重启/重索引后仍对同包既有声明产生 `undefined` 误报，但 Go 编译器、测试、race、vet 与构建均通过，故以实际编译验证为准并保留该工具限制记录。Goal-3 继续 incomplete，按 DAG 下一 pending task 为 T16。
+
+## T16 完成记录
+
+- Owner package / 涉及文件：`sdk/pixiv` comment public SDK；新增 `sdk/pixiv/ops_comment.go` 与 `ops_comment_test.go`，新增六类 namespace-specific request 和 `CommentMutationResult`，更新 `docs/en/sdk.md`、`docs/zh-CN/sdk.md`、两份 maintainer capability boundary 与 `scripts/internal/publicapi/publicapi_test.go`。既有 `ArtworkComments`、`NovelComments` read method、`Comment`/`CommentPage` model 保持不变；stamps SDK 留给 T17。
+- Depends on：T09、T11 verified；承接 T04 的 artwork/novel comments read 与 create/reply/delete contract、T05 的 continuation/error boundary、T06 的 mutation outcome/redaction 规则，以及 T09A 已提供的 `PostFormJSON` response-decodable transport。T16 不实现 read-back、namespace proof、cleanup、CLI/MCP tool 或 stamps。
+- 冻结 contract / fixture：新增 `PostArtworkComment`、`ReplyArtworkComment`、`DeleteArtworkComment` 与 novel 对应入口。post/reply 分别调用 `/v1/illust/comment/add`、`/v1/novel/comment/add`，必须从响应正数 `comment_id` 生成 `CommentMutationResult.CommentID`；reply 额外发送正数 `parent_comment_id`。delete 分别调用对应 namespace 的 `/v1/*/comment/delete` 并只返回 classified `error`。SDK 在 transport 前拒绝非正目标/parent/comment ID 与空正文，不裁剪空白正文，不猜测最新评论，不自动重放不确定 mutation。
+- Red 测试、命令及当前行为的实际失败：新增 `ops_comment_test.go` 后运行 `go test ./sdk/pixiv -run '^(TestExplicitCommentMutationsReturnResponseIDsAndUseNamespaces|TestExplicitCommentMutationsRejectInvalidInputsBeforeNetwork|TestPostArtworkCommentRequiresResponseCommentID)$' -count=1 -v`；当前行为实际因六个新增 public method 与 request type 未定义而编译失败，随后以同一 public seam 进入 Green。
+- Green 命令及验收断言：focused comment tests、`go test ./sdk/pixiv -count=1`、`go test -race ./sdk/pixiv -count=1`、两类 comment adapter 与 `appapi` 测试、`go test ./scripts/internal/publicapi -count=1`、`go test ./scripts/tests/documentation -count=1`、`go test ./... -count=1`、`go vet ./...`、`sh scripts/build.sh`、`gofmt -d`、`git diff --check` 均通过；提交钩子再次通过 `gofmt` 与 `go test ./...`。fixture 覆盖六条 namespace/path/form 路由、响应 ID 透传、缺失 `comment_id` 的 `MalformedUpstreamResponse` 和 invalid-input no-network 边界；public API digest 更新为 `470d67f0e049035578ca52b4c59565e5dce3289f51a76b6cc0fb021c508b35e6`。
+- 公开兼容性影响：只新增 explicit comment request/method/result symbol，保留既有 read method、named model、CLI/MCP 旧 route/schema、账号/token 行为与 endpoint protocol；错误继续使用既有 `InvalidArgument`、`MalformedUpstreamResponse` 和分类后的 upstream/transport reason。双语 SDK 文档记录 response ID、无 read-back/猜测/自动重放语义；maintainer 文档明确 SDK-only migration seam 仍 evidence-gated，不代表 v1 `public_ready`。
+- 回滚前提 / 依赖闭包：代码与文档提交 `b675bea` 与本账本记录需成对回滚，恢复 public API digest、comment SDK seam、双语 contract 与 capability boundary。若后续 T17、T21、T33、T37、T38 已引用新增 symbol 或 response-ID boundary，回滚前须同步撤销引用或先补兼容迁移；未涉及 live API、账号、token、业务数据、缓存、运行配置、依赖或生成物迁移。
+- 实际结果 / evidence / 风险：T16 已 verified，代码自审未发现本卡范围内 P0/P1/P2；未执行真实 API，未改写 strict/live evidence，也未把 comment read/mutation capability 提升为 `public_ready`。创建 ID 已能被调用方直接观测，但同账号 read-back、清理、namespace 证明与不确定结果的上层 outcome 仍由 T21/T33/T37/T38 完成；T17 是下一张 pending 卡。LSP 重启后新增 `ops_comment.go`、`ops_comment_test.go`、`models.go` diagnostics 为空，`request.go` 仍偶发误报同包既有类型未声明，实际编译、测试、race、vet 与构建结果为准。`required=41 scope_admitted=41 public_ready=0 other=0` 保持不变，Goal-3 继续 incomplete。
 
 ## 实现任务准入卡
 
