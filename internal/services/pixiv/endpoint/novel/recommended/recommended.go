@@ -35,10 +35,11 @@ func (c *Client) List(ctx context.Context, request Request) (Result, error) {
 	if c == nil || c.transport == nil {
 		return Result{}, errors.New("novel recommended transport is not configured")
 	}
+	if err := validateRequest(request); err != nil {
+		return Result{}, err
+	}
 	query := url.Values{}
 	if request.ContinuationExists {
-		query.Set("offset", strconv.Itoa(request.Offset))
-	} else if request.Offset > 0 {
 		query.Set("offset", strconv.Itoa(request.Offset))
 	}
 	var raw responseDTO
@@ -67,6 +68,17 @@ func (c *Client) List(ctx context.Context, request Request) (Result, error) {
 		result.NextOffset, result.HasNext = next, true
 	}
 	return result, nil
+}
+
+func validateRequest(request Request) error {
+	if request.Offset < 0 {
+		return errors.New("novel recommended offset must not be negative")
+	}
+	// offset 只属于续页；首页的默认 offset=0 不写入请求参数。
+	if !request.ContinuationExists && request.Offset != 0 {
+		return errors.New("novel recommended initial request must not specify offset")
+	}
+	return nil
 }
 
 type responseDTO struct {

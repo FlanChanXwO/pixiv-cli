@@ -13,12 +13,36 @@ type fakeTransport struct {
 	path  string
 	query url.Values
 	body  string
+	calls int
 }
 
 func (f *fakeTransport) GetJSON(_ context.Context, path string, query url.Values, out any) error {
+	f.calls++
 	f.path = path
 	f.query = query
 	return json.Unmarshal([]byte(f.body), out)
+}
+
+func TestRecommendedRejectsInitialOffsetBeforeTransport(t *testing.T) {
+	transport := &fakeTransport{body: `{"novels":[]}`}
+	_, err := recommended.New(transport).List(context.Background(), recommended.Request{Offset: 1})
+	if err == nil {
+		t.Fatal("initial offset unexpectedly succeeded")
+	}
+	if transport.calls != 0 {
+		t.Fatalf("transport calls = %d, want 0", transport.calls)
+	}
+}
+
+func TestRecommendedRejectsNegativeOffsetBeforeTransport(t *testing.T) {
+	transport := &fakeTransport{body: `{"novels":[]}`}
+	_, err := recommended.New(transport).List(context.Background(), recommended.Request{Offset: -1, ContinuationExists: true})
+	if err == nil {
+		t.Fatal("negative offset unexpectedly succeeded")
+	}
+	if transport.calls != 0 {
+		t.Fatalf("transport calls = %d, want 0", transport.calls)
+	}
 }
 
 func TestRecommendedPreservesInitialAndContinuationOffset(t *testing.T) {
