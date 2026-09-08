@@ -66,7 +66,7 @@ Status 的 verified 表示对应 task 的实现与相关验证完成；各 task 
 | T17 | sdk/pixiv stamps | T09,T11 | 实现 stamps SDK 与 stamp/text/reply 独立语义 | verified |
 | T18 | sdk/pixiv feed | T10,T11 | 实现 ranking/recommended/latest SDK 与 subtype | verified |
 | T19 | sdk/pixiv cursor | T13,T14,T15,T16,T17,T18 | 扩展其余 endpoint payload/binding；不重建 envelope | verified |
-| T21 | resolver owner | T20,T12,T13,T14 | 复用 ParseURL；record/URL/ID、command-specific conflict、受控 probe | pending |
+| T21 | resolver owner | T20,T12,T13,T14 | 复用 ParseURL；record/URL/ID、command-specific conflict、受控 probe | verified |
 | T22 | filter owner | T20,T19 | 规范化 rating/content-type filter；不发送未经确认 server rating | pending |
 | T23A | pagination + sdk/pixiv + search | none | 本轮获批基础修复：先失败测试、checkpoint、SDK 绑定、CLI/MCP 两调用方；详见分页报告 | verified |
 | T23 | pagination/traversal integration | T19,T22,T23A | 将基础续读契约接入其余 endpoint；验证聚合流、过滤及 Skip/Limit/OneBatch | pending |
@@ -690,6 +690,17 @@ Status 的 verified 表示对应 task 的实现与相关验证完成；各 task 
 - 公开兼容性影响：没有新增、删除或重命名 public SDK symbol；仅收紧既有非零 continuation 的合法范围并补齐 cursor identity/query binding。正常首页请求保持原样，recommended 的显式零 offset 兼容语义保持不变；UserFollowing/UserFollowers 的空 `restrict` 现在按冻结 contract 发 `public`。不修改 CLI/MCP schema/route、endpoint wire 的既有字段、认证/token 输出、默认账号选择、依赖或本地数据。
 - 回滚前提 / 依赖闭包：代码/测试/文档提交 `48b5a2e45bc5f592d2def37bfe77179b180f15f5` 与本记录需成对回滚，恢复旧 helper、其余 operation 的零值接受行为、关系用户的未绑定 cursor、空 `restrict` wire 与双语说明；随后才可回滚本记录的状态行。没有业务数据、账号、token、缓存、运行配置、依赖或生成物迁移；后续 T21/T23/T28–T30/T37 若消费这些 binding 语义，回滚时必须同步撤销引用或先补兼容迁移。
 - 实际结果 / evidence / 风险：T19 已 verified，未执行真实 API，未改变 strict/live evidence，也未授予 capability `public_ready`。代码自审按 `code-review-expert` 检查 SOLID、死代码、输入边界、身份校验、secret 泄露、并发与错误传播，未发现本卡范围内 P0/P1/P2；旧 `continuationValue` 已清理。主要剩余风险是真实 Pixiv 第二页及后续 CLI/MCP 发布链路仍由后续任务负责。`required=41 scope_admitted=41 public_ready=0 other=0` 保持不变，Goal-3 继续 incomplete；下一张 pending 卡为 T21。
+
+## T21 完成记录
+
+- Owner package / 涉及文件：新增 `internal/shared/resolver/resolver.go` 与 `internal/shared/resolver/resolver_test.go`，同步更新 `docs/en/maintainers/architecture.md`、`docs/zh-CN/maintainers/architecture.md`；代码、测试与架构边界提交为 `69ff78c4e42f075d0f1de9cc9018521412ce1c45`。resolver 只消费 command contract、`internal/shared/record.Record` 与纯本地 `sdk/pixiv.ParseURL`，不持有 client、凭据或内部协议适配包。
+- Depends on：T20、T12、T13、T14 已 verified；本卡不提前接入 T24–T38 的 CLI/MCP owner，也不改变 T19 cursor、SDK endpoint 或 T22 filter 行为。
+- 冻结 contract / fixture：Target kind、Result kind、Subtype 三层分离；输入顺序为 structured canonical record → 纯本地 `ParseURL` → 显式类型 ID → 仅在 command contract 明确允许时执行冻结候选的 bare-ID probe。record 校验正数 ID、ID/URL 一致、URL namespace、legacy artwork subtype 映射与独立 subtype；URL 保留 `ReferenceKind`，按 command contract 执行 MustMatch/Independent 冲突规则；显式 typed ID 不把裸数字当作全局可判定类型；`all` 只作为声明的 selector，不作为 subtype。无页面 URL 的 comment typed ID 通过 `BareTargetKind` 表达。probe 区分 found/not found/forbidden/network/indeterminate，403、网络错误和不确定结果不触发 fallback，多个成功或无法判定返回 `InvalidArgument`；未分类 probe error 按声明状态脱敏归类。
+- Red 测试、命令及当前行为的实际失败：先创建测试后运行 `go test ./internal/shared/resolver -count=1 -v`，当时目录只有 `_test.go`，Go 实际返回 `no non-test Go files in .../internal/shared/resolver`。随后为未分类 forbidden/network probe error 和 comment typed ID 增加回归测试；实现前分别观察到原始错误会泄露且 `TypeSpec` 无法编译表达 comment target，均由 Green 阶段修复。
+- Green 命令及验收断言：`go test ./internal/shared/resolver -count=1 -v`、`go test -race ./internal/shared/resolver -count=1`、`go test ./internal/shared/record ./sdk/pixiv ./internal/cli/pipeline -count=1`、`go test ./scripts/internal/publicapi -count=1`、`go test ./scripts/tests/documentation -count=1`、`go vet ./...`、`sh scripts/build.sh`、`go test ./... -count=1`、`gofmt -d internal/shared/resolver/resolver.go internal/shared/resolver/resolver_test.go` 与 `git diff --check` 均通过；代码提交钩子再次通过 `gofmt` 与 `go test ./...`。测试覆盖 target/result 分离、record/URL identity、URL 与 type 冲突、bookmark user URL + novel、bookmark URL 拒绝 novel/all、typed comment ID、bare-ID 显式类型/controlled probe、forbidden/network 无 fallback、ambiguous success、全 not-found 和错误脱敏。LSP `blast_radius` 覆盖新增 resolver 全部符号，确认当前没有生产调用方；当前 gopls 不支持 `get_diagnostics`，因此以编译、vet、测试与构建作为诊断替代证据。
+- 公开兼容性影响：没有新增、删除或重命名 public SDK symbol，没有 CLI/MCP route、schema、wire 字段、endpoint、认证/token 输出、默认值、依赖或本地数据变化；新增内容仅为内部共享语义包和维护者架构说明，后续 owner 可按 contract 接入。
+- 回滚前提 / 依赖闭包：代码、测试、双语架构说明提交 `69ff78c4e42f075d0f1de9cc9018521412ce1c45` 与本记录需成对回滚；若后续 T24–T38 已引用 `internal/shared/resolver`，回滚前须同步撤销引用或先提供保持构建和公开契约的兼容迁移。没有业务数据、账号、token、缓存、运行配置、依赖或生成物迁移。
+- 实际结果 / evidence / 风险：T21 已 verified，未执行真实 Pixiv API，未改写 strict/live evidence，也未授予任何 capability `public_ready`。`required=41 scope_admitted=41 public_ready=0 other=0` 保持不变，Goal-3 继续 incomplete；主要剩余风险是后续 CLI/MCP owner 需要为各命令提供精确 contract，并在接入时保留本卡的 namespace、all、probe 与脱敏边界。下一张 pending 卡为 T22。
 
 ## 实现任务准入卡
 
