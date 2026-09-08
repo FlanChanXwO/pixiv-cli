@@ -108,12 +108,20 @@ fixes `id`, `type`, and `url`, and provides JSON normalization, version-metadata
 This package does not depend on CLI, MCP, or `internal/services` protocol adapter packages; MCP's own output schema and DTO wrapping still live in
 `internal/mcpserver/pixiv/internal/records`.
 
+### `internal/shared/searchfilter`
+
+Owns shared artwork-local filter semantics for CLI/MCP: it normalizes rating and content-type inputs to canonical
+values, matches DTO `x_restrict` and artwork kinds client-side, and produces a cursor context that does not expose
+raw filter values. Rating is never mapped to an unconfirmed upstream `x_restrict` request parameter; command-specific
+field availability and endpoint-confirmed content-type wire parameters remain owned by each command contract. This
+package holds no client, credentials, or protocol adapter.
+
 ### Business Facade, accounts, and generic traversal
 
 - `internal/services/pixiv` is the Pixiv business Facade, aggregating business leaf modules such as `account` and `pool`. `account` owns local accounts, login completion, default account, credential identity/rotation, and account management; `pool` owns selection, freezing, Gate, safe replay, and the related error semantics.
 - `internal/services/fanbox` is the FANBOX business Facade, aggregating the FANBOX `account` leaf module and client lifecycle; the FANBOX session does not share type or lifecycle with the Pixiv refresh token.
 - `internal/shared/lifecycle` only carries protocol-agnostic lifecycle, Lease, and Attempt; it does not own Pixiv/FANBOX account selection, credentials, or replay strategy.
-- `internal/shared/traversal` only carries generic reentrant paged traversal (opaque cursor, logical skip/limit, single-batch compatibility semantics, and duplicate-cursor loop termination); bookmark and other product filter strategies still live in each CLI/MCP search adapter.
+- `internal/shared/traversal` only carries generic reentrant paged traversal (opaque cursor, logical skip/limit, single-batch compatibility semantics, and duplicate-cursor loop termination); command-level filter integration remains in each CLI/MCP owner, while normalized artwork rating/content-type semantics come from `internal/shared/searchfilter`.
 
 The config schema, `config.toml` path/get/set/unset, generated baseline, and the immutable `Snapshot` required for a single execution live in `internal/config/settings`; the protocol-agnostic month-truncation pure function lives in `internal/utils/date`. CLI/MCP use business Facades via owner-local narrow Seams and the MCP runtime `SDKPorts`, without directly depending on upstream Adapters. `internal/account` and `internal/session` have been deleted, with no compatibility alias retained.
 
