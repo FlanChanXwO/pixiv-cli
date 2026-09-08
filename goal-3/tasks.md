@@ -53,7 +53,7 @@ Status 的 verified 表示对应 task 的实现与相关验证完成；各 task 
 | T10C | artwork recommended endpoint owner | T12 | 完成 recommended offset presence、required list 与 candidate subtype 边界；保留真实第二页 failure，不进入 SDK/CLI/MCP | verified |
 | CHECK-04 | 集中检查-debug（T10A/T10B/T10C） | T10A,T10B,T10C | audit-only 复查 artwork latest/ranking/recommended leaf、subtype/continuation/error、历史 evidence、public 边界、bug/类型/构建/测试/安全/回滚/文档 | verified |
 | T10D | novel latest endpoint owner | T12,CHECK-04 | 将 `/v1/novel/new` latest continuation 从 offset 修正为 `max_novel_id`；固定 filter/request/DTO/error，不做 fallback | verified |
-| T10E | novel recommended endpoint owner | T12,CHECK-04 | 完成 `/v1/novel/recommended` 的 explicit offset=0 presence、required list/request/DTO/error leaf | pending |
+| T10E | novel recommended endpoint owner | T12,CHECK-04 | 完成 `/v1/novel/recommended` 的 explicit offset=0 presence、required list/request/DTO/error leaf | verified |
 | T10F | novel ranking endpoint owner | T12,CHECK-04 | 新增 `/v1/novel/ranking` internal endpoint leaf、protocol path、filter/mode/offset、required list/两页 fixture；不新增 SDK/CLI/MCP 入口 | pending |
 | CHECK-05 | 集中检查-debug（T10D/T10E/T10F） | T10D,T10E,T10F | audit-only 复查 novel latest/recommended/ranking leaf、max_novel_id/offset/mode/error、禁止 fallback、public 边界、bug/类型/构建/测试/安全/回滚/文档 | pending |
 | T10G | novel follow endpoint owner | T12,T10D,CHECK-05 | 完成 `/v1/novel/follow` 的 restrict/offset、required list、request/DTO/error leaf；与 latest continuation 分离 | pending |
@@ -546,6 +546,17 @@ Status 的 verified 表示对应 task 的实现与相关验证完成；各 task 
 - 公开兼容性影响：没有新增或删除 SDK symbol、CLI/MCP schema/route、公开输出字段、endpoint path、默认公开参数、账号/token 行为或依赖；仅增加 internal adapter 的 typed continuation state。现有 `LatestNovels` SDK 仍按历史 offset cursor 调用，因 adapter 现在显式拒绝该错误 continuation 而不会静默回首页；T14/T18/T19/T29/T37 后续负责把 public SDK/cursor/CLI/MCP 链路迁移到 `max_novel_id`，本卡不把 adapter 修复提升为 `novel-latest` 的 `public_ready`。
 - 回滚前提 / 依赖闭包：回滚代码提交 `3b010ad` 可恢复 T10D 前的 novel timeline adapter/test，但若后续 T11、T14、T18、T19、T23、T29 或 T37 已消费 `NextKey`/`NextValue` 或 latest error boundary，必须先同步撤销引用或提供保持构建与公开契约的兼容迁移；随后回滚本条 ledger 状态与记录。没有业务数据、账号、token、缓存、运行配置或生成物迁移。
 - 实际结果 / evidence / 风险：T10D endpoint leaf 已 verified，`/v1/novel/new` 的 request/DTO/error 与 `max_novel_id` continuation adapter evidence 闭合；历史 live 两页 `confirmed` 与当前 SDK `inconclusive`/`sdk_call_error` verdict 均保持原样，没有借离线 fixture 提升状态。41 条 required capability 仍全部为 `scope_admitted`，Goal-3 继续 incomplete；T10 父卡与 T10E/T10F/CHECK-05 仍 pending，下一入口按 DAG 为 T10E。
+
+## T10E 完成记录
+
+- Owner package / 涉及文件：`internal/services/pixiv/endpoint/novel/recommended/recommended.go` 与同 stem 测试 `internal/services/pixiv/endpoint/novel/recommended/recommended_test.go`；代码提交为 `6126346e41a590c7c50b6570d82f3625cdbd1648`（`fix(goal-3): harden novel recommended endpoint`）。本卡只实现 `/v1/novel/recommended` endpoint adapter leaf，没有修改 `sdk/pixiv`、CLI、MCP、protocol path、共享分页、公开文档或依赖。
+- Depends on：T12、CHECK-04 已 verified；T02/T05 冻结了 novel recommended 的 required `novels`、首页无 query、续页显式 `offset`（包括 `offset=0`）与 malformed/error contract。T10E 不接管 T11 的通用 continuation、T14/T18 的 novel SDK/cursor 迁移或 T29/T37 的 CLI/MCP public surface。
+- 冻结 contract / fixture：首页请求只能使用默认 `offset=0` 且不写入 query；续页保留显式 `offset`，因此 `offset=0` 仍会发送；负 offset 与带 offset 的非法首页请求在 transport 前拒绝。response 继续要求 `novels` list 存在且非 null，保留空 list 的非 nil 语义、正 novel/user ID 校验、DTO 映射及 `next_url` 空值/非法 offset 的 `protocol.MalformedResponse`；不做 raw `next_url` 透传、fallback、重试或空结果隐藏。
+- Red 测试、命令及当前行为的实际失败：先补 `TestRecommendedRejectsInitialOffsetBeforeTransport`、transport call 计数，运行 `go test ./internal/services/pixiv/endpoint/novel/recommended -run '^TestRecommendedRejectsInitialOffsetBeforeTransport$' -count=1 -v`；旧实现实际输出 `initial offset unexpectedly succeeded`，证明初始 `offset=1` 会错误触达 transport 成功路径，而非编译推断或人工假设。
+- Green 命令及验收断言：`go test ./internal/services/pixiv/endpoint/novel/recommended -run '^TestRecommended' -count=1 -v`、`go test -race ./internal/services/pixiv/endpoint/novel/recommended ./sdk/pixiv ./internal/cli/commands/pixiv/recommended ./internal/mcpserver/pixiv -count=1` 均通过；新增 fixture 覆盖首页 offset rejection、负续页 offset rejection、首页不发送 offset、续页显式发送 `offset=0`，既有 fixture 覆盖 required list 与 novel/user DTO 映射。LSP 对两个受影响 Go 文件 diagnostics 为空。随后 `go test ./... -count=1`、`go vet ./...`、`go test ./scripts/tests/documentation -count=1`、`sh scripts/build.sh`、`git diff --check` 均通过，提交钩子中的 `gofmt` 与 `go test ./...` 也通过；未执行真实 API。
+- 公开兼容性影响：没有新增或删除 SDK symbol、CLI/MCP schema/route、公开输出字段、endpoint path、默认公开参数、账号/token 行为或依赖；仅收紧 internal adapter 对非法初始 offset/负 offset 的 request boundary，同时保持 SDK 传入的显式续页 `offset=0`。T11/T14/T18/T19/T29/T37 后续继续负责通用 continuation、novel SDK/cursor 与 public surface 迁移，本卡不把 adapter 修复提升为 `novel-recommended` 的 `public_ready`。
+- 回滚前提 / 依赖闭包：代码回滚提交 `6126346e41a590c7c50b6570d82f3625cdbd1648` 可恢复 T10E 前的 novel recommended request 行为与测试；若后续 T11、T14、T18、T19、T23、T29 或 T37 已消费本卡的 offset/error boundary，必须先同步撤销引用或提供保持构建与公开契约的兼容迁移，再回滚本条 ledger 状态与记录。没有业务数据、账号、token、缓存、运行配置或生成物迁移。
+- 实际结果 / evidence / 风险：T10E endpoint leaf 已 verified，`/v1/novel/recommended` 的 request/DTO/error 与 explicit offset presence evidence 闭合；没有新增 subtype、SDK/CLI/MCP surface 或 live API verdict。41 条 required capability 仍全部为 `scope_admitted`，Goal-3 继续 incomplete；T10D/T10E 已 verified，下一入口按 DAG 为 T10F，之后需完成 T10F 与 CHECK-05。
 
 ## 实现任务准入卡
 
