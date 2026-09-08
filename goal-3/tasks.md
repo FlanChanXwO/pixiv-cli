@@ -60,7 +60,7 @@ Status 的 verified 表示对应 task 的实现与相关验证完成；各 task 
 | T10 | ranking/recommended/latest/follow owners（umbrella） | T10A,T10B,T10C,CHECK-04,T10D,T10E,T10F,CHECK-05,T10G | 汇总并审计 artwork/novel latest、ranking、recommended 与 novel follow leaf；全部子卡与集中检查完成后才可标记 verified | verified |
 | T11 | endpoint continuation owners | T07,T08,T09,T10,T05 | 校验和提取 endpoint allowlist continuation；不持久化 next_url | verified |
 | T13 | sdk/pixiv artwork | T07,T11 | 实现 artwork SDK 与 adapter 对照、旧签名兼容 | verified |
-| T14 | sdk/pixiv novel | T07,T11 | 实现 novel SDK、series metadata 与 continuation | pending |
+| T14 | sdk/pixiv novel | T07,T11 | 实现 novel SDK、series metadata 与 continuation | verified |
 | T15 | sdk/pixiv bookmark | T08,T11 | 实现 explicit bookmark SDK，保留 AddBookmark/RemoveBookmark wrapper | pending |
 | T16 | sdk/pixiv comment | T09,T11 | 实现 explicit read/create/reply/delete；ID 来源与不确定结果可观测 | pending |
 | T17 | sdk/pixiv stamps | T09,T11 | 实现 stamps SDK 与 stamp/text/reply 独立语义 | pending |
@@ -624,6 +624,17 @@ Status 的 verified 表示对应 task 的实现与相关验证完成；各 task 
 - 公开兼容性影响：未删除、重命名或改变任何旧 SDK method/request/model/named value，保留 `ArtworkKindIllustration="illustration"`；合法 public/private、illust/manga/ugoira 请求继续使用既有 path/query，只有未承诺输入从原先可能进入 adapter 的路径改为本地 `InvalidArgument`。没有新增固定 timeout、重试、截断、fallback、raw `next_url` 输出、token/账号行为、依赖或文档契约；现有双语 CLI reference/MCP compatibility 已覆盖这些值，本卡无需改 locale 文档。
 - 回滚前提 / 依赖闭包：代码提交 `32a5d49fcdbde936be315e6ace2c7944b1072a1a` 与本记录需成对回滚，恢复旧的 input 透传行为及对应 Red fixture；若后续 T14/T15/T18/T19/T21/T29/T34/T37 已引用 canonical artwork query/cursor 边界，回滚前须同步撤销引用或先补兼容迁移。未涉及账号、token、业务数据、缓存、运行配置或生成物。
 - 实际结果 / evidence / 风险：T13 已 verified，未执行真实 API，未改写 live evidence；代码审查未发现本卡范围内 P0/P1/P2。`required=41 scope_admitted=41 public_ready=0 other=0` 保持不变，T13 不授予 artwork capability 的 `public_ready`，Goal-3 继续 incomplete；按 DAG 下一任务为 T14。后续仍需完成 novel SDK、bookmark/comment SDK、shared cursor、aggregate、CLI/MCP publicization、真实证据与最终 release gate。
+
+## T14 完成记录
+
+- Owner package / 涉及文件：`sdk/pixiv` novel public SDK；`sdk/pixiv/cursor.go`、`sdk/pixiv/ops_novel.go`、`sdk/pixiv/pixiv_test.go`。本卡沿用 T07/T11 已完成的 v2 novel detail/series 与 normalized adapter，补齐 public SDK 对 novel continuation 的正值边界和 series metadata 回归；不新增 endpoint、public symbol 或依赖。
+- Depends on：T07、T11 均已 verified；T02/T05 冻结 `/v1/search/novel`、`/v2/novel/detail`、`/v2/novel/series` 的 request/required list/continuation 契约，T12 冻结既有 novel SDK method/request/model、public-scoped search cursor 与 MyPixiv identity-scoped cursor。T18 负责 latest/recommended/ranking/follow feed，本卡未触碰其实现。
+- 冻结 contract / fixture：`SearchNovels` 保持既有默认 target/sort、首次请求省略 offset，非零 cursor 只能携带正 offset；`Novel` 继续走 v2 detail，保持稳定 public model，detail adapter 的可选 series 引用不塞入普通 `Novel`；`NovelSeries` 保持 v2 `last_order` continuation，并将 series ID/title/caption/user/is_concluded 与分页 novels 一起返回；`UserNovels` 与 `MyPixivNovels` 的非零 offset cursor 必须为正值，零 cursor 仍表示首页。合法 query、cursor binding、空且非 nil 列表和 MyPixiv identity 语义不变。
+- Red 测试、命令及当前行为的实际失败：加入 `TestNovelSeriesRejectsNonPositiveContinuationBeforeNetwork` 后运行 `go test ./sdk/pixiv -run '^TestNovelSeriesRejectsNonPositiveContinuationBeforeNetwork$' -count=1 -v`；旧实现将篡改为 `last_order=0` 的 cursor 送入 transport，实际得到 `upstream_unavailable`，而不是预期的 `invalid_cursor`，证明失败发生在 SDK 续读边界而非静态推断。随后以同一夹具覆盖 Search/User/MyPixiv 的 offset=0 负向回归。
+- Green 命令及验收断言：focused novel SDK tests、`go test ./sdk/pixiv -count=1`、`go test -race ./sdk/pixiv -count=1`、`go test ./internal/services/pixiv/endpoint/novel/... -count=1`、`go test ./internal/cli/... ./internal/mcpserver/pixiv/... -count=1`、`go test ./... -count=1`、`go vet ./sdk/pixiv`、`go vet ./...`、`sh scripts/build.sh`、`gofmt -d` 与 `git diff --check` 均通过；代码提交钩子再次通过 `gofmt` 与 `go test ./...`。LSP 重启并重新索引后三个改动文件 diagnostics 为空。
+- 公开兼容性影响：未删除、重命名或改变既有 SDK method/request/model；只将 SearchNovels、NovelSeries、UserNovels、MyPixivNovels 的篡改或非法非正续页从“触达 transport 后被归类为 upstream failure”收紧为 transport 前 `InvalidCursor`。推荐小说仍保留合法 `offset=0` 的专用路径，未改变其他 operation、token/账号行为、raw `next_url`、timeout、重试、截断、fallback、依赖或文档契约。
+- 回滚前提 / 依赖闭包：代码提交 `517733e03f526ec8338d861556b26cb99cb7277a` 与本记录需成对回滚，恢复既有 novel cursor helper 调用和对应负向 fixture；若后续 T15/T18/T19/T23/T25/T28/T29/T32/T37 已引用正值 cursor 边界，回滚前须同步撤销引用或先补兼容迁移。未涉及账号、token、业务数据、缓存、运行配置或生成物迁移。
+- 实际结果 / evidence / 风险：T14 已 verified，未执行真实 API，未改写 live evidence；本轮 code-review-expert 自审未发现本卡范围内 P0/P1/P2。`required=41 scope_admitted=41 public_ready=0 other=0` 保持不变，T14 不授予 novel capability 的 `public_ready`，Goal-3 继续 incomplete；按 DAG 下一任务为 T15。
 
 ## 实现任务准入卡
 
