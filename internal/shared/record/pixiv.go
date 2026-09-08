@@ -12,7 +12,24 @@ import (
 // 产品包内完成字段级转换，记录层不再通过反射猜测或脱敏运行时字段。
 func RecordFromArtworkDTO(artwork pixiv.ArtworkDTO) (Record, error) {
 	url := "https://www.pixiv.net/artworks/" + strconv.FormatInt(artwork.ID, 10)
-	return recordFromDTO(artwork, artwork.ID, string(artwork.Kind), url)
+	recordType, err := artworkRecordType(artwork.Kind)
+	if err != nil {
+		return Record{}, err
+	}
+	return recordFromDTO(artwork, artwork.ID, recordType, url)
+}
+
+func artworkRecordType(kind pixiv.ArtworkKind) (string, error) {
+	switch kind {
+	case pixiv.ArtworkKindIllustration:
+		return "illust", nil
+	case pixiv.ArtworkKindManga:
+		return "manga", nil
+	case pixiv.ArtworkKindUgoira:
+		return "ugoira", nil
+	default:
+		return "", errors.New("unsupported artwork kind for record")
+	}
 }
 
 // RecordFromNovelDTO 将小说 DTO 映射为管道记录。
@@ -22,6 +39,12 @@ func RecordFromNovelDTO(novel pixiv.NovelDTO) (Record, error) {
 }
 
 // RecordFromUserPreviewDTO 将用户预览 DTO 映射为管道记录。
+// RecordFromNovelContentDTO 将结构化小说正文映射为可继续管道处理的小说记录。
+func RecordFromNovelContentDTO(content pixiv.NovelContentDTO) (Record, error) {
+	url := "https://www.pixiv.net/novel/show.php?id=" + strconv.FormatInt(content.NovelID, 10)
+	return recordFromDTO(content, content.NovelID, "novel", url)
+}
+
 func RecordFromUserPreviewDTO(preview pixiv.UserPreviewDTO) (Record, error) {
 	id := strconv.FormatInt(preview.User.ID, 10)
 	return recordFromDTO(preview, preview.User.ID, "user", "https://www.pixiv.net/users/"+id)

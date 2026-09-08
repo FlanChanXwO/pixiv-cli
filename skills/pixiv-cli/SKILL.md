@@ -144,6 +144,8 @@ pixiv search "WORD" --resolution high --aspect-ratio landscape --draw-tool "CLIP
 pixiv search --trending-tags --json
 pixiv detail ARTWORK_ID_OR_URL --type artwork --json
 pixiv detail NOVEL_ID --type novel --content --json
+pixiv search "初音ミク" --type artwork --limit 20 | pixiv detail
+pixiv search "初音ミク" --type artwork --limit 20 --ndjson | pixiv detail --ndjson
 pixiv series SERIES_ID --type novel --limit 20 --json
 pixiv comment ID --type artwork --limit 20 --json
 pixiv bookmark list --type artwork --limit 20 --json
@@ -176,11 +178,13 @@ spaces and internal newlines are preserved. An explicit positional value wins,
 an empty optional stream leaves the original omission/default behavior intact,
 and commands missing two or more required values do not read stdin. This
 applies to queries such as `pixiv search`, `detail`, `series`, `comment`,
-`user`, `config`, and account operations. `download` and bookmark/follow
-actions classify stdin as strict canonical NDJSON when its first non-whitespace
-byte is `{`; otherwise they use one raw ID/URL value. Once selected, a mode
-does not fall back to the other mode. `-` is ordinary positional text and is
-not a stdin sentinel.
+`user`, `config`, and account operations. `download`, bookmark/follow actions, and
+`detail` classify stdin as strict canonical NDJSON when its first non-whitespace
+byte is `{`; otherwise they use one raw ID/URL value. `detail` infers artwork/novel/user from record types; in record
+mode an explicit `--type` is only a compatibility constraint and never overrides the record type. Record-mode `--json`
+emits an array, while record-mode non-TTY output defaults to NDJSON. Aggregate `search --json` is not a record stream
+and cannot be piped directly into `detail`. Once selected, a mode does not fall back to the other mode. `-` is
+ordinary positional text and is not a stdin sentinel.
 
 Data commands use the account selected by `pixiv auth use` when the pool is disabled;
 when `[account_pool].enabled = true`, the database selects eligible local accounts
@@ -317,13 +321,16 @@ session.
     providers are `saucenao`, `ascii2d-color`, `ascii2d-bovw`, and `all`; the
     default is `reverse_search_provider=saucenao`, and `--provider` is a
     one-command override. `reverse_search_pixiv_only=true` keeps only explicit
-    Pixiv artwork/user identities in the canonical result set. The source is
-    loaded once into a private snapshot and may be uploaded or retained by a
-    third party, so use only authorized images/URLs. JSON returns
+    Pixiv artwork/user identities in the canonical result set. The source must be a local regular-file path or an
+    HTTP(S) URL; binary image bytes on stdin do not select reverse-search mode, so `cat image.png | pixiv search`
+    is unsupported. The source is loaded once into a private snapshot and may be uploaded or retained by a third
+    party, so use only authorized images/URLs. JSON returns
     `input/providers/results/records/provider_errors/partial`; piped or explicit
     NDJSON returns only canonical records. Reverse-search artwork records use
     generic `type="artwork"` (not `illust`) because the provider does not prove
-    the Pixiv subtype. With `all`, one success plus one failure is `partial` and
+    the Pixiv subtype. Reverse-search `artwork` and `user` identity records can be piped directly into `detail`;
+    `detail` resolves the generic artwork identity to the concrete Pixiv artwork detail. With `all`, one success plus
+    one failure is `partial` and
     exits successfully with a stderr warning; one-provider or all-provider
     failure is non-zero. Never expose source, key, temporary path, CSRF,
     redirect location, or upstream response body. ascii2d's provider-specific
