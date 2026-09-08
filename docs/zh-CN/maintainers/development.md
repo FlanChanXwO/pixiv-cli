@@ -450,7 +450,7 @@ for ip,n in sorted(same): print(ip,n)'
 
 ### 能力边界
 
-这是 v1 中**不得有任何入口**的能力的维护者侧权威清单，是负面契约：为下列能力新增 CLI/MCP/SDK 入口即为缺陷。禁止以 schema 占位或 mock 空结果「预留」。
+这是 v1 中**不得有可发布入口**的能力的维护者侧权威清单，是负面契约：为下列能力新增已发布的 CLI/MCP/SDK 入口即为缺陷。Evidence-gated 表中记录的 SDK-only migration seam 不属于可发布入口，也不得据此记为 capability 已完成。禁止以 schema 占位或 mock 空结果「预留」。
 
 **Unsupported（v1 明确不支持；新增入口即缺陷）：**
 
@@ -459,13 +459,13 @@ for ip,n in sorted(same): print(ip,n)'
 | `ART-SEARCH-RATING` | `internal/cli/commands/pixiv/search` + `sdk/pixiv` | CLI `--rating` 报告 "rating filter is not supported by the v1 App API search contract"；MCP `search_illust` schema 无 rating 参数 | 仅当 v1 App API search contract 新增 rating 语义；届时同步 SDK 字段、CLI flag、MCP schema、locale 文档与本清单 |
 | `NOVEL-SEARCH-ADVANCED` | 无 owner（不得新增） | SDK/MCP schema 无 advanced 字段 | 上游 contract 出现后可评估；禁止 schema 占位 |
 
-**Evidence-gated（当前无入口；新增须先满足 close-out 条件）：**
+**Evidence-gated（可存在 SDK-only migration seam；可发布入口仍须先满足 close-out 条件）：**
 
 | ID | 唯一 owner | 当前证据 | close-out 条件 |
 | --- | --- | --- | --- |
 | `NOVEL-RANKING` | 无 owner | SDK 无 `NovelRanking` 导出；MCP 无 `novel_ranking` tool | 上游 App API 提供小说排行后 |
 | `NOVEL-BOOKMARK-MUTATION` | 无 owner | SDK 无 `AddNovelBookmark` 类导出；`user_novel_bookmarks` 只读 | 同上 |
-| `COMMENT-WRITE` | 无 owner | MCP `comment_post`/`comment_add` 目录 = 0；SDK `PostComment`/`DeleteComment` 导出 = 0 | 上游提供可验证的写入 contract 后 |
+| `COMMENT-WRITE` | `sdk/pixiv`（T16；CLI/MCP 后续） | SDK 已暴露按 namespace 区分的 `PostArtworkComment`/`ReplyArtworkComment`/`DeleteArtworkComment` 及 novel 对应方法；MCP `comment_post`/`comment_add` 目录仍 = 0；响应 ID、read-back、清理和 strict live evidence 尚未闭合 | 完成 strict/live 写入 evidence、同账号 read-back、清理及 T33/T38 兼容门禁后；此前仍是 evidence-gated，不得记为 `public_ready` |
 | `NOTIFICATION` | 无 owner | MCP `notification` 目录 = 0；SDK `Notification*` 导出 = 0 | 同上 |
 | `AUTOCOMPLETE` | 无 owner | MCP `autocomplete` 目录 = 0；SDK `Autocomplete*` 导出 = 0；未并入 `search` | 同上 |
 | `WEB-RESTRICTED-READ` | 无 owner | 无 `webapi` 包；`web_fallback_enabled` 是 tombstone key（`config get/set` → `removed_setting`） | 不得重开匿名 Web 路径；任何恢复 Web/AJAX 的提议须先修订 AGENTS 冻结契约并经 ADR |

@@ -237,6 +237,8 @@ not an assertion that every search operation is account-scoped.
 | `Artwork` / `Novel` / `User` | positive typed ID | detail record | `NotFound`, `InvalidArgument` |
 | `ArtworkSeries` / `NovelSeries` | positive series ID, cursor | series page (novel also returns metadata) | `InvalidCursor` |
 | `ArtworkComments` / `NovelComments` | positive ID, cursor | `CommentPage` | `NotFound` |
+| `PostArtworkComment` / `ReplyArtworkComment` / `DeleteArtworkComment` | positive artwork ID; reply also requires a positive parent comment ID | `CommentMutationResult` for post/reply; `error` for delete | `InvalidArgument`, `MalformedUpstreamResponse`, classified upstream/transport errors |
+| `PostNovelComment` / `ReplyNovelComment` / `DeleteNovelComment` | positive novel ID; reply also requires a positive parent comment ID | `CommentMutationResult` for post/reply; `error` for delete | `InvalidArgument`, `MalformedUpstreamResponse`, classified upstream/transport errors |
 | `UserArtworkBookmarks` / `UserArtworkBookmarkTags` / `UserNovelBookmarks` / `UserNovelBookmarkTags` | `UserID`, `Restrict`, `tag`, cursor | typed page | `InvalidArgument`, `InvalidCursor` |
 | `ArtworkBookmark` / `NovelBookmark` | positive artwork or novel ID | bookmark detail state | `InvalidArgument`, `MalformedUpstreamResponse`, classified upstream/transport errors |
 | `AddArtworkBookmark` / `RemoveArtworkBookmark` (legacy `AddBookmark` / `RemoveBookmark`) | positive artwork ID; add accepts `Restrict` and tags | `error` | `InvalidArgument`, classified upstream/transport errors |
@@ -256,6 +258,16 @@ Key semantics:
 - Comment totals and access-control metadata remain nil unless the upstream
   response supplied them. A successful empty list is a non-nil empty `Items`
   slice, not an invented error or total.
+- `PostArtworkComment`/`ReplyArtworkComment` and
+  `PostNovelComment`/`ReplyNovelComment` use the namespace-specific comment
+  add endpoint and return `CommentMutationResult.CommentID` only when the
+  upstream response contains a positive `comment_id`. The ID is not a
+  read-back confirmation; the SDK does not guess a recent comment, perform
+  read-back, or automatically replay an uncertain mutation.
+- `DeleteArtworkComment` and `DeleteNovelComment` use the namespace-specific
+  delete endpoint with the supplied positive `comment_id`. The SDK validates
+  the local shape and exposes the classified upstream result; ownership,
+  namespace proof, read-back, and cleanup remain application responsibilities.
 - `ArtworkBookmark` and `NovelBookmark` represent an absent bookmark with an
   empty `Restrict` and empty tags. `NovelBookmark` and
   `UserNovelBookmarkTags` currently follow candidate upstream read contracts:

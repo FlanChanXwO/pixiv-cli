@@ -194,6 +194,13 @@ type Comment struct {
 	ParentComment *Comment
 }
 
+// CommentMutationResult reports the comment ID returned by an upstream
+// create or reply response. The ID does not prove that a later read-back
+// succeeded; callers must perform that verification separately.
+type CommentMutationResult struct {
+	CommentID int64
+}
+
 // CommentAccessControl records the upstream access-control state for a comment
 // page when upstream provided it.
 type CommentAccessControl struct {

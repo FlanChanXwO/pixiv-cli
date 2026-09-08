@@ -367,7 +367,7 @@ for ip,n in sorted(same): print(ip,n)'
 
 ### Capability scope
 
-This is the maintainer-side authority for capabilities that **must not have any entry point** in v1. It is a negative contract: adding a CLI/MCP/SDK entry point for any of these is a defect. Schema-only placeholders or mock empty results are forbidden.
+This is the maintainer-side authority for capabilities that **must not have a release-ready entry point** in v1. It is a negative contract: adding a shipped CLI/MCP/SDK entry point for any of these is a defect. An SDK-only migration seam tracked in the evidence-gated table is not release-ready and must not be treated as a completed capability. Schema-only placeholders or mock empty results are forbidden.
 
 **Unsupported (explicitly not supported in v1; a new entry point is a defect):**
 
@@ -376,13 +376,13 @@ This is the maintainer-side authority for capabilities that **must not have any 
 | `ART-SEARCH-RATING` | `internal/cli/commands/pixiv/search` + `sdk/pixiv` | CLI `--rating` reports "rating filter is not supported by the v1 App API search contract"; MCP `search_illust` schema has no rating parameter | Only when the v1 App API search contract adds rating semantics; then synchronize the SDK field, CLI flag, MCP schema, locale documentation, and this list |
 | `NOVEL-SEARCH-ADVANCED` | No owner (must not be added) | SDK/MCP schema has no advanced field | May be evaluated once the upstream contract appears; schema-only placeholders are forbidden |
 
-**Evidence-gated (no entry point today; adding one requires the close-out condition):**
+**Evidence-gated (an SDK-only migration seam may exist; release-ready entry points still require the close-out condition):**
 
 | ID | Unique owner | Current evidence | Close-out condition |
 | --- | --- | --- | --- |
 | `NOVEL-RANKING` | No owner | SDK has no `NovelRanking` export; MCP has no `novel_ranking` tool | After the upstream App API provides novel ranking |
 | `NOVEL-BOOKMARK-MUTATION` | No owner | SDK has no `AddNovelBookmark`-style export; `user_novel_bookmarks` is read-only | Same as above |
-| `COMMENT-WRITE` | No owner | MCP `comment_post`/`comment_add` directories = 0; SDK `PostComment`/`DeleteComment` exports = 0 | After the upstream provides a verifiable write contract |
+| `COMMENT-WRITE` | `sdk/pixiv` (T16; CLI/MCP later) | SDK exposes namespace-specific `PostArtworkComment`/`ReplyArtworkComment`/`DeleteArtworkComment` and novel equivalents; MCP `comment_post`/`comment_add` directories remain = 0; response ID, read-back, cleanup, and strict live evidence are incomplete | After strict/live write evidence plus same-account read-back, cleanup, and T33/T38 compatibility gates; until then this remains evidence-gated and is not `public_ready` |
 | `NOTIFICATION` | No owner | MCP `notification` directory = 0; SDK `Notification*` exports = 0 | Same as above |
 | `AUTOCOMPLETE` | No owner | MCP `autocomplete` directory = 0; SDK `Autocomplete*` exports = 0; not merged into `search` | Same as above |
 | `WEB-RESTRICTED-READ` | No owner | No `webapi` package; `web_fallback_enabled` is a tombstone key (`config get/set` → `removed_setting`) | Do not reopen the anonymous Web path; any proposal to restore Web/AJAX must first amend the AGENTS frozen contract and pass an ADR |

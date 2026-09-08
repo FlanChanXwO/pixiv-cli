@@ -217,6 +217,8 @@ instance。相同查询的 cursor 可以交给另一个 client 恢复；这是�
 | `Artwork` / `Novel` / `User` | 正数 typed ID | 详情记录 | `NotFound`、`InvalidArgument` |
 | `ArtworkSeries` / `NovelSeries` | 正数 series ID、cursor | 系列分页（novel 还返回系列 metadata） | `InvalidCursor` |
 | `ArtworkComments` / `NovelComments` | 正数 ID、cursor | `CommentPage` | `NotFound` |
+| `PostArtworkComment` / `ReplyArtworkComment` / `DeleteArtworkComment` | 正数 artwork ID；reply 还要求正数 parent comment ID | post/reply 返回 `CommentMutationResult`；delete 返回 `error` | `InvalidArgument`、`MalformedUpstreamResponse`、已分类的上游/传输错误 |
+| `PostNovelComment` / `ReplyNovelComment` / `DeleteNovelComment` | 正数 novel ID；reply 还要求正数 parent comment ID | post/reply 返回 `CommentMutationResult`；delete 返回 `error` | `InvalidArgument`、`MalformedUpstreamResponse`、已分类的上游/传输错误 |
 | `UserArtworkBookmarks` / `UserArtworkBookmarkTags` / `UserNovelBookmarks` / `UserNovelBookmarkTags` | `UserID`、`Restrict`、`tag`、cursor | typed 分页 | `InvalidArgument`、`InvalidCursor` |
 | `ArtworkBookmark` / `NovelBookmark` | 正数 artwork 或 novel ID | 收藏详情状态 | `InvalidArgument`、`MalformedUpstreamResponse`、已分类的上游/传输错误 |
 | `AddArtworkBookmark` / `RemoveArtworkBookmark`（旧 `AddBookmark` / `RemoveBookmark`） | 正数 artwork ID；add 接受 `Restrict` 与 tags | `error` | `InvalidArgument`、已分类的上游/传输错误 |
@@ -231,6 +233,14 @@ endpoint 替代入口。
 - `CurrentUser` 通过 `/v1/user/detail`、已验证的正数账号 UID 和 Android App API filter 读取认证账号；不再调用已失效的 `/v1/user/me`。
 - `SearchAIModeOnly` 按规范化后的 `Artwork.AIType == 2` 对当前返回批次做本地筛选；该 mode 会进入 cursor 绑定，因此不能把另一种 AI mode 的续页 cursor 复用过来。
 - 只有上游明确提供时才填充评论总数和访问控制 metadata。成功的空列表使用非 nil 的空 `Items` slice 表示，不伪造错误或总数。
+- `PostArtworkComment`/`ReplyArtworkComment` 与
+  `PostNovelComment`/`ReplyNovelComment` 使用各自 namespace 的 comment add
+  endpoint；只有上游响应包含正数 `comment_id` 时，才返回
+  `CommentMutationResult.CommentID`。该 ID 不是读回确认；SDK 不猜测最新评论，
+  不执行 read-back，也不自动重放不确定的 mutation。
+- `DeleteArtworkComment` 与 `DeleteNovelComment` 使用各自 namespace 的
+  delete endpoint，转发调用方提供的正数 `comment_id`。SDK 只负责本地形状校验
+  与上游结果分类；归属、namespace 证明、read-back 与清理由 application 负责。
 - `ArtworkBookmark` 与 `NovelBookmark` 用空 `Restrict` 与空 tags 表示当前对象未收藏。`NovelBookmark` 与
   `UserNovelBookmarkTags` 当前遵循 candidate upstream read contract：小说收藏 tags 暂无续页，非零 cursor
   会被拒绝，直到该 contract 完成验证。小说收藏 mutation 仍按 strict/live evidence 要求保持不导出。

@@ -221,6 +221,24 @@ type ArtworkCommentsRequest struct {
 	Cursor    sdk.Cursor
 }
 
+// PostArtworkCommentRequest posts a top-level comment on one artwork.
+type PostArtworkCommentRequest struct {
+	ArtworkID int64
+	Comment   string
+}
+
+// ReplyArtworkCommentRequest replies to one artwork comment.
+type ReplyArtworkCommentRequest struct {
+	ArtworkID       int64
+	Comment         string
+	ParentCommentID int64
+}
+
+// DeleteArtworkCommentRequest deletes one artwork comment by its comment ID.
+type DeleteArtworkCommentRequest struct {
+	CommentID int64
+}
+
 // ArtworkBookmarkRequest reads the current user's bookmark detail for one
 // artwork.
 type ArtworkBookmarkRequest struct {
@@ -263,6 +281,24 @@ type NovelContentRequest struct {
 type NovelCommentsRequest struct {
 	NovelID int64
 	Cursor  sdk.Cursor
+}
+
+// PostNovelCommentRequest posts a top-level comment on one novel.
+type PostNovelCommentRequest struct {
+	NovelID int64
+	Comment string
+}
+
+// ReplyNovelCommentRequest replies to one novel comment.
+type ReplyNovelCommentRequest struct {
+	NovelID         int64
+	Comment         string
+	ParentCommentID int64
+}
+
+// DeleteNovelCommentRequest deletes one novel comment by its comment ID.
+type DeleteNovelCommentRequest struct {
+	CommentID int64
 }
 
 // RecommendedNovelsRequest lists recommended novels.
