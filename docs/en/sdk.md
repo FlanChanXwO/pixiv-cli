@@ -234,6 +234,13 @@ not an assertion that every search operation is account-scoped.
 | `SearchNovels` | word, target, sort, duration | `Page[Novel]` | `InvalidArgument` |
 | `SearchUsers` | word | `Page[User]` | `InvalidArgument` |
 | `ArtworkRanking` | mode (default `day`), optional `YYYY-MM-DD` | `Page[Artwork]` | `InvalidArgument` |
+| `RecommendedArtworks` | cursor | `Page[Artwork]` | `InvalidCursor` |
+| `FollowingArtworks` | `restrict` (`public`/`private`), cursor | `Page[Artwork]` | `InvalidArgument`, `InvalidCursor` |
+| `LatestArtworks` | content type (`illust` by default or `manga`), cursor | `Page[Artwork]` | `InvalidArgument`, `InvalidCursor` |
+| `NovelRanking` | mode (default `day`), cursor | `Page[Novel]` | `InvalidArgument`, `InvalidCursor` |
+| `RecommendedNovels` | cursor | `Page[Novel]` | `InvalidCursor` |
+| `FollowingNovels` | `restrict` (`public`/`private`), cursor | `Page[Novel]` | `InvalidArgument`, `InvalidCursor` |
+| `LatestNovels` | cursor | `Page[Novel]` | `InvalidCursor` |
 | `Stamps` | no query or cursor fields | `[]Stamp` | `MalformedUpstreamResponse`, classified upstream/transport errors |
 | `Artwork` / `Novel` / `User` | positive typed ID | detail record | `NotFound`, `InvalidArgument` |
 | `ArtworkSeries` / `NovelSeries` | positive series ID, cursor | series page (novel also returns metadata) | `InvalidCursor` |
@@ -258,6 +265,22 @@ Key semantics:
 - `SearchAIModeOnly` is a local result-batch filter over `Artwork.AIType == 2`.
   Its mode is included in the cursor binding, so a continuation cannot be reused
   for another AI mode.
+- Ranking cursors bind the selected `mode` (and the artwork ranking `date`).
+  `NovelRanking` sends the fixed App API filter `for_android`, omits `offset` on
+  the first request, and resumes only with the positive upstream `offset`.
+- `RecommendedArtworks` and `RecommendedNovels` preserve the distinction between
+  an omitted continuation and an explicit `offset=0`; the latter is sent only
+  when resuming a cursor. Recommended artwork subtype filtering is not part of
+  the public SDK request and must not be inferred from a caller-side filter.
+- `FollowingArtworks` and `FollowingNovels` normalize an empty `restrict` to
+  `public`, reject other values before transport, and bind the resolved value in
+  the cursor query.
+- `LatestArtworks` resolves an empty content type to `illust` and accepts the
+  committed `manga` subtype. The resolved subtype is part of the cursor binding;
+  `all`, `illust-and-ugoira`, and `ugoira` are rejected for this operation.
+- `LatestNovels` always sends the fixed App API filter `for_android`. Its cursor
+  carries the positive upstream `max_novel_id`; the SDK does not fall back to an
+  offset continuation. Repeat the original request fields when resuming.
 - Comment totals and access-control metadata remain nil unless the upstream
   response supplied them. A successful empty list is a non-nil empty `Items`
   slice, not an invented error or total.

@@ -380,7 +380,7 @@ This is the maintainer-side authority for capabilities that **must not have a re
 
 | ID | Unique owner | Current evidence | Close-out condition |
 | --- | --- | --- | --- |
-| `NOVEL-RANKING` | No owner | SDK has no `NovelRanking` export; MCP has no `novel_ranking` tool | After the upstream App API provides novel ranking |
+| `NOVEL-RANKING` | `sdk/pixiv` (T18; CLI/MCP later) | SDK exposes the additive `NovelRanking` migration seam over the internal `/v1/novel/ranking` adapter; MCP has no `novel_ranking` tool, and live/public release evidence is still incomplete | Complete the live second-page, shared cursor, CLI/MCP and release compatibility gates; until then this remains evidence-gated and is not `public_ready` |
 | `NOVEL-BOOKMARK-MUTATION` | No owner | SDK has no `AddNovelBookmark`-style export; `user_novel_bookmarks` is read-only | Same as above |
 | `COMMENT-WRITE` | `sdk/pixiv` (T16; CLI/MCP later) | SDK exposes namespace-specific `PostArtworkComment`/`ReplyArtworkComment`/`DeleteArtworkComment` and novel equivalents; MCP `comment_post`/`comment_add` directories remain = 0; response ID, read-back, cleanup, and strict live evidence are incomplete | After strict/live write evidence plus same-account read-back, cleanup, and T33/T38 compatibility gates; until then this remains evidence-gated and is not `public_ready` |
 | `NOTIFICATION` | No owner | MCP `notification` directory = 0; SDK `Notification*` exports = 0 | Same as above |

@@ -12,7 +12,7 @@ import (
 func TestRepositoryPublicAPIInventoryIsPinned(t *testing.T) {
 	repositoryRoot := findPublicAPIRepositoryRoot(t)
 	digest := sha256.Sum256([]byte(Render(Inventory(repositoryRoot))))
-	const wantDigest = "f3831dde25a4e20e5aca82e50d5f368ec570d9c184cd6275fec2000c72f5c8d0"
+	const wantDigest = "ae465716f4e3e4d03a0fd73f365be33007a62d8a99c5a150d1234df8947f7e1e"
 	if got := hex.EncodeToString(digest[:]); got != wantDigest {
 		t.Fatalf("public SDK inventory changed: got sha256 %s, want %s; update the inventory deliberately with the public API review", got, wantDigest)
 	}

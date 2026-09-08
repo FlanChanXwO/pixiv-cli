@@ -6,6 +6,7 @@ import (
 
 	novelentity "github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/endpoint/novel"
 	novelcomments "github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/endpoint/novel/comments"
+	novelranking "github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/endpoint/novel/ranking"
 	novelrecommended "github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/endpoint/novel/recommended"
 	novelsearch "github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/endpoint/novel/search"
 	novelseries "github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/endpoint/novel/series"
@@ -112,6 +113,30 @@ func (c *Client) NovelSeries(ctx context.Context, request NovelSeriesRequest) (N
 	}, nil
 }
 
+// NovelRanking lists the current novel ranking.
+func (c *Client) NovelRanking(ctx context.Context, request NovelRankingRequest) (sdk.Page[Novel], error) {
+	if request.Mode == "" {
+		request.Mode = RankingModeDay
+	}
+	if err := validateRankingMode("NovelRanking", request.Mode); err != nil {
+		return sdk.Page[Novel]{}, err
+	}
+	query := url.Values{"filter": {"for_android"}, "mode": {string(request.Mode)}}
+	offset, err := c.continuationPositiveOffset("NovelRanking", query, request.Cursor)
+	if err != nil {
+		return sdk.Page[Novel]{}, err
+	}
+	list, err := c.novelRanking.List(ctx, novelranking.Request{
+		Filter: "for_android",
+		Mode:   string(request.Mode),
+		Offset: offset,
+	})
+	if err != nil {
+		return sdk.Page[Novel]{}, classifyAppError(err, "NovelRanking")
+	}
+	return c.novelPage("NovelRanking", query, "offset", list.Items, int64(list.NextOffset), list.HasNext)
+}
+
 // NovelContent is retained for source compatibility with the v1 SDK surface.
 //
 // Deprecated: the App API novel-content endpoint is rejected and WebView
@@ -157,12 +182,16 @@ func (c *Client) RecommendedNovels(ctx context.Context, request RecommendedNovel
 
 // FollowingNovels lists novels by followed users.
 func (c *Client) FollowingNovels(ctx context.Context, request FollowingNovelsRequest) (sdk.Page[Novel], error) {
-	query := url.Values{"restrict": {string(request.Restrict)}}
+	restrict, err := normalizeFollowingRestrict("FollowingNovels", request.Restrict)
+	if err != nil {
+		return sdk.Page[Novel]{}, err
+	}
+	query := url.Values{"restrict": {string(restrict)}}
 	offset, err := c.continuationOffset("FollowingNovels", query, request.Cursor)
 	if err != nil {
 		return sdk.Page[Novel]{}, err
 	}
-	list, err := c.novelTimeline.List(ctx, noveltimeline.Request{Kind: noveltimeline.Following, Restrict: string(request.Restrict), Offset: offset})
+	list, err := c.novelTimeline.List(ctx, noveltimeline.Request{Kind: noveltimeline.Following, Restrict: string(restrict), Offset: offset})
 	if err != nil {
 		return sdk.Page[Novel]{}, classifyAppError(err, "FollowingNovels")
 	}
@@ -171,16 +200,16 @@ func (c *Client) FollowingNovels(ctx context.Context, request FollowingNovelsReq
 
 // LatestNovels lists the newest novels.
 func (c *Client) LatestNovels(ctx context.Context, request LatestNovelsRequest) (sdk.Page[Novel], error) {
-	query := url.Values{}
-	offset, err := c.continuationOffset("LatestNovels", query, request.Cursor)
+	query := url.Values{"filter": {"for_android"}}
+	maxNovelID, err := c.continuationPositiveValue("LatestNovels", query, request.Cursor, "max_novel_id")
 	if err != nil {
 		return sdk.Page[Novel]{}, err
 	}
-	list, err := c.novelTimeline.List(ctx, noveltimeline.Request{Kind: noveltimeline.Latest, Offset: offset})
+	list, err := c.novelTimeline.List(ctx, noveltimeline.Request{Kind: noveltimeline.Latest, MaxNovelID: maxNovelID})
 	if err != nil {
 		return sdk.Page[Novel]{}, classifyAppError(err, "LatestNovels")
 	}
-	return c.novelPage("LatestNovels", query, "offset", list.Items, int64(list.NextOffset), list.HasNext)
+	return c.novelPage("LatestNovels", query, list.NextKey, list.Items, list.NextValue, list.HasNext)
 }
 
 // UserNovels lists one user's novels.

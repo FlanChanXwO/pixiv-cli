@@ -214,6 +214,13 @@ instance。相同查询的 cursor 可以交给另一个 client 恢复；这是�
 | `SearchNovels` | 关键词、target、排序、duration | `Page[Novel]` | `InvalidArgument` |
 | `SearchUsers` | 关键词 | `Page[User]` | `InvalidArgument` |
 | `ArtworkRanking` | mode（默认 `day`）、可选 `YYYY-MM-DD` | `Page[Artwork]` | `InvalidArgument` |
+| `RecommendedArtworks` | cursor | `Page[Artwork]` | `InvalidCursor` |
+| `FollowingArtworks` | `restrict`（`public`/`private`）、cursor | `Page[Artwork]` | `InvalidArgument`、`InvalidCursor` |
+| `LatestArtworks` | content type（默认 `illust` 或 `manga`）、cursor | `Page[Artwork]` | `InvalidArgument`、`InvalidCursor` |
+| `NovelRanking` | mode（默认 `day`）、cursor | `Page[Novel]` | `InvalidArgument`、`InvalidCursor` |
+| `RecommendedNovels` | cursor | `Page[Novel]` | `InvalidCursor` |
+| `FollowingNovels` | `restrict`（`public`/`private`）、cursor | `Page[Novel]` | `InvalidArgument`、`InvalidCursor` |
+| `LatestNovels` | cursor | `Page[Novel]` | `InvalidCursor` |
 | `Stamps` | 无 query 或 cursor 字段 | `[]Stamp` | `MalformedUpstreamResponse`、已分类的上游/传输错误 |
 | `Artwork` / `Novel` / `User` | 正数 typed ID | 详情记录 | `NotFound`、`InvalidArgument` |
 | `ArtworkSeries` / `NovelSeries` | 正数 series ID、cursor | 系列分页（novel 还返回系列 metadata） | `InvalidCursor` |
@@ -235,6 +242,11 @@ endpoint 替代入口。
 
 - `CurrentUser` 通过 `/v1/user/detail`、已验证的正数账号 UID 和 Android App API filter 读取认证账号；不再调用已失效的 `/v1/user/me`。
 - `SearchAIModeOnly` 按规范化后的 `Artwork.AIType == 2` 对当前返回批次做本地筛选；该 mode 会进入 cursor 绑定，因此不能把另一种 AI mode 的续页 cursor 复用过来。
+- ranking cursor 会绑定所选 `mode`（artwork ranking 还绑定 `date`）。`NovelRanking` 固定发送 App API filter `for_android`，首页不发送 `offset`，续页只使用上游返回的正数 `offset`。
+- `RecommendedArtworks` 与 `RecommendedNovels` 保留“未提供 continuation”和显式 `offset=0` 的区别；只有续读 cursor 时才发送后者。recommended artwork subtype 不属于当前 public SDK request，不能根据调用方本地 filter 推断或补发。
+- `FollowingArtworks` 与 `FollowingNovels` 会把空 `restrict` 归一为 `public`，在 transport 前拒绝其他值，并把解析后的值绑定到 cursor query。
+- `LatestArtworks` 将空 content type 解析为 `illust`，并接受已冻结的 `manga` subtype；解析后的 subtype 会进入 cursor binding。该操作拒绝 `all`、`illust-and-ugoira` 与 `ugoira`。
+- `LatestNovels` 始终发送固定的 App API filter `for_android`。其 cursor 携带上游正数 `max_novel_id`，SDK 不 fallback 到 offset continuation；续读时应重复原始 request 字段。
 - 只有上游明确提供时才填充评论总数和访问控制 metadata。成功的空列表使用非 nil 的空 `Items` slice 表示，不伪造错误或总数。
 - `Stamps` 按认证态 `/v1/stamps` read contract 请求，不发送 query 或 continuation。每个 `Stamp` 只公开正数稳定 ID 与 `ImageResource`；当前 contract 不宣称尺寸或其他未冻结的 wire 字段。stamp 图片使用与其他 Pixiv 媒体相同的 opaque resource 边界，新 client 打开时会重新从 `/v1/stamps` 解析 locator。
 - `PostArtworkComment`/`ReplyArtworkComment` 与

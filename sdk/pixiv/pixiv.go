@@ -21,6 +21,7 @@ import (
 	artworktrending "github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/endpoint/artwork/trending"
 	novelcomments "github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/endpoint/novel/comments"
 	noveldetail "github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/endpoint/novel/detail"
+	novelranking "github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/endpoint/novel/ranking"
 	novelrecommended "github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/endpoint/novel/recommended"
 	novelsearch "github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/endpoint/novel/search"
 	novelseries "github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/endpoint/novel/series"
@@ -95,6 +96,7 @@ type Client struct {
 	novelComments      *novelcomments.Client
 	novelDetail        *noveldetail.Client
 	novelRecommended   *novelrecommended.Client
+	novelRanking       *novelranking.Client
 	novelSearch        *novelsearch.Client
 	novelSeries        *novelseries.Client
 	novelTimeline      *noveltimeline.Client
@@ -226,6 +228,7 @@ func newClient(httpClient *http.Client, selfHTTP bool, accessToken string, optio
 		novelComments:      novelcomments.New(app),
 		novelDetail:        noveldetail.New(app),
 		novelRecommended:   novelrecommended.New(app),
+		novelRanking:       novelranking.New(app),
 		novelSearch:        novelsearch.New(app),
 		novelSeries:        novelseries.New(app),
 		novelTimeline:      noveltimeline.New(app),

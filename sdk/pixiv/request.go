@@ -33,7 +33,7 @@ const (
 	DurationLastMonth DurationFilter = "within_last_month"
 )
 
-// RankingMode selects an artwork ranking category.
+// RankingMode selects an artwork or novel ranking category.
 type RankingMode string
 
 // RankingMode values define the supported RankingMode filesystem.
@@ -323,6 +323,12 @@ type StampNovelCommentRequest struct {
 
 // RecommendedNovelsRequest lists recommended novels.
 type RecommendedNovelsRequest struct {
+	Cursor sdk.Cursor
+}
+
+// NovelRankingRequest lists the current novel ranking.
+type NovelRankingRequest struct {
+	Mode   RankingMode
 	Cursor sdk.Cursor
 }
 
