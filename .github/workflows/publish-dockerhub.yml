@@ -185,11 +185,14 @@ jobs:
                 | grep -E '^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$' \
                 | sort -Vr | head -n1
               )
-              test "$RELEASE_TAG" = "$latest_stable_tag"
-              docker manifest create "${DOCKER_HUB_IMAGE}:latest" \
-                --amend "${DOCKER_HUB_IMAGE}:${RELEASE_TAG}-linux-amd64" \
-                --amend "${DOCKER_HUB_IMAGE}:${RELEASE_TAG}-linux-arm64"
-              docker manifest push "${DOCKER_HUB_IMAGE}:latest"
+              if [ "$RELEASE_TAG" = "$latest_stable_tag" ]; then
+                docker manifest create "${DOCKER_HUB_IMAGE}:latest" \
+                  --amend "${DOCKER_HUB_IMAGE}:${RELEASE_TAG}-linux-amd64" \
+                  --amend "${DOCKER_HUB_IMAGE}:${RELEASE_TAG}-linux-arm64"
+                docker manifest push "${DOCKER_HUB_IMAGE}:latest"
+              else
+                printf '%s\n' 'older stable release keeps the latest tag unchanged' >&2
+              fi
               ;;
             prerelease)
               printf '%s\n' 'prerelease keeps the latest tag unchanged' >&2

@@ -446,6 +446,45 @@ func TestDockerHubPublishWorkflowDoesNotRunARM64ImageOnX64Runner(t *testing.T) {
 	}
 }
 
+// TestDockerHubPublishWorkflowLeavesLatestUnchangedForOlderStableRelease 锁定
+// 手动恢复旧 stable 时 exact-version 发布成功，只有 latest 更新被跳过而不是令 job 失败。
+func TestDockerHubPublishWorkflowLeavesLatestUnchangedForOlderStableRelease(t *testing.T) {
+	t.Parallel()
+	root := repositoryRoot(t)
+	body, err := os.ReadFile(filepath.Join(root, ".github/workflows/publish-dockerhub.yml"))
+	if err != nil {
+		t.Fatalf("read Docker Hub publish workflow: %v", err)
+	}
+	text := string(body)
+
+	const stableCase = "            stable)\n"
+	const prereleaseCase = "            prerelease)"
+	start := strings.Index(text, stableCase)
+	if start < 0 {
+		t.Fatalf("Docker Hub publish workflow must contain %q", stableCase)
+	}
+	end := strings.Index(text[start:], prereleaseCase)
+	if end < 0 {
+		t.Fatalf("Docker Hub publish workflow must contain the case after %q", stableCase)
+	}
+	stableBlock := text[start : start+end]
+
+	for _, fragment := range []string{
+		`if [ "$RELEASE_TAG" = "$latest_stable_tag" ]; then`,
+		`docker manifest create "${DOCKER_HUB_IMAGE}:latest"`,
+		`docker manifest push "${DOCKER_HUB_IMAGE}:latest"`,
+		"else",
+		"older stable release keeps the latest tag unchanged",
+	} {
+		if !strings.Contains(stableBlock, fragment) {
+			t.Fatalf("stable Docker Hub publish path must contain %q", fragment)
+		}
+	}
+	if strings.Contains(stableBlock, `test "$RELEASE_TAG" = "$latest_stable_tag"`) {
+		t.Fatal("an older stable release must not fail the Docker Hub publish job when latest is unchanged")
+	}
+}
+
 // TestDockerignoreKeepsThirdPartyLicenseSummary 确保根级第三方许可汇总
 // 不会被通用 Markdown 排除规则挡在 build context 外。
 func TestDockerignoreKeepsThirdPartyLicenseSummary(t *testing.T) {

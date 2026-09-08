@@ -503,8 +503,8 @@ registry 发布而重建或重签 native 资产。exact-version manifest 总是�
 handoff 和两份 verified container artifact，校验 release tag、source commit、公开 Release 与 channel，随后只在
 通过 stdin 执行 `docker login` 时使用受保护 `release` Environment 的 secret `DOCKER_HUB_TOKEN`，再发布到
 `docker.io/flanchanxwo/pixiv-cli`。它不会重建镜像。若 Docker Hub 发布失败，应从默认分支使用原始
-`release_tag` 与 `release_run_id` dispatch，以复用同一批 verified artifact；exact-version tag 总是发布，只有最新
-stable release 才推进 `latest`。
+`release_tag` 与 `release_run_id` dispatch，以复用同一批 verified artifact；exact-version tag 总是发布，恢复旧
+stable 时即使不更新 `latest` 也会成功，只有最新 stable release 才推进 `latest`。
 
 ### 容器发布验证
 
