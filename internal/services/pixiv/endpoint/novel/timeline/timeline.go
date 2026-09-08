@@ -91,6 +91,14 @@ func requestValues(request Request) (string, url.Values, error) {
 	query := url.Values{}
 	switch request.Kind {
 	case Following:
+		// follow contract 只接受可选的 public/private scope 与非负 offset；在
+		// transport 前拒绝非法输入，避免无效 cursor 被静默解释为首页请求。
+		if request.Restrict != "" && request.Restrict != "public" && request.Restrict != "private" {
+			return "", nil, errors.New("novel follow restrict must be public or private")
+		}
+		if request.Offset < 0 {
+			return "", nil, errors.New("novel follow offset must not be negative")
+		}
 		query.Set("restrict", request.Restrict)
 		setOffset(query, request.Offset)
 		return protocol.AppNovelFollow, query, nil

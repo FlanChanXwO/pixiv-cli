@@ -58,6 +58,28 @@ func TestTimelineMapsConfirmedRoutesAndQueries(t *testing.T) {
 	}
 }
 
+func TestFollowingRejectsInvalidRequestBeforeTransport(t *testing.T) {
+	tests := []struct {
+		name    string
+		request timeline.Request
+	}{
+		{name: "negative offset", request: timeline.Request{Kind: timeline.Following, Restrict: "public", Offset: -1}},
+		{name: "unsupported restrict", request: timeline.Request{Kind: timeline.Following, Restrict: "friends"}},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			transport := &fakeTransport{body: `{"novels":[]}`}
+			_, err := timeline.New(transport).List(context.Background(), test.request)
+			if err == nil {
+				t.Fatal("invalid following request unexpectedly succeeded")
+			}
+			if transport.calls != 0 {
+				t.Fatalf("invalid request reached transport %d time(s)", transport.calls)
+			}
+		})
+	}
+}
+
 func TestTimelineRejectsNullNovelList(t *testing.T) {
 	_, err := timeline.New(&fakeTransport{body: `{"novels":null}`}).List(context.Background(), timeline.Request{Kind: timeline.Latest})
 	if err == nil {
