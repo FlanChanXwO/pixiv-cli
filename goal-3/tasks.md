@@ -50,7 +50,7 @@ Status 的 verified 表示对应 task 的实现与相关验证完成；各 task 
 | T09 | comment endpoint owners | T09A,T09B,T09C,T09D,T09E | 汇总并审计 artwork/novel comments read/create/reply/stamp/delete 与 stamps leaf；全部子卡完成后才可标记 verified | verified |
 | T10A | artwork latest endpoint owner | T12 | 完成 `/v1/illust/new` 的 `max_illust_id`、已批准 subtype、request/DTO/error leaf；不进入 SDK/CLI/MCP | verified |
 | T10B | artwork ranking endpoint owner | T12 | 完成 `/v1/illust/ranking` 的 mode/date/offset、mode 校验与 request/DTO/error leaf；不进入 SDK/CLI/MCP | verified |
-| T10C | artwork recommended endpoint owner | T12 | 完成 recommended offset presence、required list 与 candidate subtype 边界；保留真实第二页 failure，不进入 SDK/CLI/MCP | pending |
+| T10C | artwork recommended endpoint owner | T12 | 完成 recommended offset presence、required list 与 candidate subtype 边界；保留真实第二页 failure，不进入 SDK/CLI/MCP | verified |
 | CHECK-04 | 集中检查-debug（T10A/T10B/T10C） | T10A,T10B,T10C | audit-only 复查 artwork latest/ranking/recommended leaf、subtype/continuation/error、历史 evidence、public 边界、bug/类型/构建/测试/安全/回滚/文档 | pending |
 | T10D | novel latest endpoint owner | T12,CHECK-04 | 将 `/v1/novel/new` latest continuation 从 offset 修正为 `max_novel_id`；固定 filter/request/DTO/error，不做 fallback | pending |
 | T10E | novel recommended endpoint owner | T12,CHECK-04 | 完成 `/v1/novel/recommended` 的 explicit offset=0 presence、required list/request/DTO/error leaf | pending |
@@ -513,6 +513,17 @@ Status 的 verified 表示对应 task 的实现与相关验证完成；各 task 
 - 公开兼容性影响：没有新增或删除 SDK symbol、CLI/MCP schema/route、依赖、账号/token 行为或 raw `next_url` 输出；合法 mode/date/positive offset 的 path/query 与 DTO 映射保持不变。新增限制只在 mode 不属于冻结 allowlist、date 不符合既有 SDK 同源日期 contract 或 offset 为负时触发，目的分别是阻止未知 mode/任意日期字符串/无效 continuation 进入上游；offset=0 首请求和所有已列合法 mode 不受影响。没有新增固定超时、重试、截断或静默 fallback；41 条 required capability 仍为 `scope_admitted`，本卡不授予 `public_ready`。
 - 回滚前提 / 依赖闭包：代码提交 `b5116fb` 只包含上述 endpoint 与测试两文件，回滚可恢复 T10B 前的 mode/date/offset 透传行为；若后续 T11/T18/T19/T30/T37 已消费新的 preflight/error 边界，回滚前须同步撤销或提供兼容迁移。任务账本记录需与该代码提交成对回滚；没有业务数据、账号、token、缓存、依赖或运行配置迁移。
 - 实际结果 / evidence / 风险：T10B endpoint leaf 已 verified；artwork ranking 两页 confirmed evidence（30/30）与内部 required-list、正 ID、正 offset continuation fixture 闭合。新增的 mode/date/negative-offset no-network 回归与既有 valid-mode/query regression 均通过；ranking SDK、CLI、MCP 公共调用方未被改动。T10A/T10B 已完成，T10C 与 CHECK-04 仍 pending，41 条 required capability 继续为 `scope_admitted`，Goal-3 保持 incomplete；下一入口按拓扑为 T10C。
+
+## T10C 完成记录
+
+- Owner package / 涉及文件：`internal/services/pixiv/endpoint/artwork/recommended/recommended.go` 与同 stem 测试 `internal/services/pixiv/endpoint/artwork/recommended/recommended_test.go`；本卡只实现 `/v1/illust/recommended` endpoint adapter leaf，没有修改 SDK、CLI、MCP、protocol path、共享分页或公开文档。
+- Depends on：T12 已 verified；T01/T05 冻结了 recommended 的空 base query、首次/续页 offset presence、required `illusts` 与 candidate subtype 边界。本卡不接管 T11 的通用 continuation、T18 的 feed SDK、T28/T37 的 CLI/MCP 发布或真实第二页证据。
+- 冻结 contract / fixture：首次请求必须使用 `ContinuationExists=false` 且 `Offset=0`，wire query 不含 `offset`；续页必须使用 `ContinuationExists=true`，即使 offset 为 `0` 也显式发送 `offset=0`。负 offset、带正 offset 但未标记续页的内部请求在 transport 前拒绝，避免把初始/续页语义静默混淆。endpoint 的非空 `ContentType` 仍是未冻结 candidate，当前全部拒绝而不透传；响应要求非 null、存在且可解码的 `illusts` list，作品 ID 必须为正数，`next_url` 只在 adapter 内解析唯一非负 offset，不进入 public output。
+- Red 测试、命令及当前行为的实际失败：新增 `TestRecommendedRejectsInvalidRequestBeforeTransport` 与 fake transport 调用计数后，运行 `go test ./internal/services/pixiv/endpoint/artwork/recommended -run '^TestRecommendedRejectsInvalidRequestBeforeTransport$' -count=1 -v`；旧实现实际让 candidate `content_type=manga`、正 offset 初始请求和负续页 offset 均成功并触达 transport，三项子测试均失败。既有 `TestRecommendedPreservesInitialOffsetPolicyAndMapsArtwork`、`TestRecommendedSendsZeroOffsetForContinuation` 继续作为 wire presence 回归。
+- Green 命令及验收断言：`go test ./internal/services/pixiv/endpoint/artwork/recommended -run '^TestRecommended' -count=1 -v`、`go test -race ./internal/services/pixiv/endpoint/artwork/recommended ./sdk/pixiv ./internal/cli/commands/pixiv/recommended ./internal/mcpserver/pixiv -count=1`、`go test ./... -count=1`、`go vet ./...`、`go test ./scripts/tests/documentation -count=1`、`sh scripts/build.sh` 与 `git diff --check` 均通过。离线 fixture 覆盖首请求无 offset、续页 `offset=0`、缺失/null required list 与 invalid request no-network；LSP 对 production/test 两文件 diagnostics 均为空。没有执行 live API，真实第二页 failure 根因和 recommended subtype 两页 wire 仍按 T05 保留未确认。
+- 公开兼容性影响：没有新增/删除 SDK symbol、CLI/MCP schema/route、endpoint path、默认值、依赖、账号/token 行为或 raw `next_url` 输出；SDK 当前 `RecommendedArtworks` 只发空 base query 并按 cursor 形成合法续页，因此正常公开路径不受影响。新增限制仅对内部收到非空 candidate subtype、负 offset 或初始请求携带非零 offset 时触发，目的分别是阻止未有两页证据的 subtype、无效 continuation 和初始/续页混淆进入上游；不新增固定超时、截断、重试或静默 fallback。
+- 回滚前提 / 依赖闭包：代码提交 `9001800` 只包含上述 endpoint preflight、offset query presence 调整及测试；与本完成记录成对回滚可恢复 T10C 前的任意 `content_type`/offset 透传。若后续 T11/T18/T19/T28/T37 已消费新的错误边界，回滚前须同步撤销引用或先提供兼容迁移；不涉及业务数据、账号、token、缓存、运行配置、依赖或生成物迁移。
+- 实际结果 / evidence / 风险：T10C endpoint leaf 已 verified，recommended 基础 DTO、required list、首/续页 offset presence 与 candidate subtype no-network boundary 的离线 evidence 闭合；没有把首页映射或单页 fixture 误记为真实第二页或 subtype 两页 evidence。41 条 required capability 仍全部为 `scope_admitted`，`artwork-recommended` 仍不是 `public_ready`，T10 父卡与 CHECK-04 保持 pending，Goal-3 继续 incomplete；下一入口为 CHECK-04。
 
 ## 实现任务准入卡
 
