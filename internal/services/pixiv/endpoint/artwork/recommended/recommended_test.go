@@ -13,9 +13,11 @@ type fakeTransport struct {
 	path  string
 	query url.Values
 	body  string
+	calls int
 }
 
 func (f *fakeTransport) GetJSON(_ context.Context, path string, query url.Values, out any) error {
+	f.calls++
 	f.path = path
 	f.query = query
 	return json.Unmarshal([]byte(f.body), out)
@@ -46,5 +48,35 @@ func TestRecommendedSendsZeroOffsetForContinuation(t *testing.T) {
 	}
 	if transport.query.Get("offset") != "0" {
 		t.Fatalf("query = %v", transport.query)
+	}
+}
+
+func TestRecommendedRejectsMissingList(t *testing.T) {
+	_, err := recommended.New(&fakeTransport{body: `{"next_url":null}`}).List(context.Background(), recommended.Request{})
+	if err == nil {
+		t.Fatal("missing artwork list unexpectedly succeeded")
+	}
+}
+
+func TestRecommendedRejectsInvalidRequestBeforeTransport(t *testing.T) {
+	tests := []struct {
+		name    string
+		request recommended.Request
+	}{
+		{name: "candidate content type", request: recommended.Request{ContentType: "manga"}},
+		{name: "positive offset without continuation", request: recommended.Request{Offset: 30}},
+		{name: "negative continuation offset", request: recommended.Request{Offset: -1, ContinuationExists: true}},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			transport := &fakeTransport{body: `{"illusts":[]}`}
+			if _, err := recommended.New(transport).List(context.Background(), test.request); err == nil {
+				t.Fatal("invalid request unexpectedly succeeded")
+			}
+			if transport.calls != 0 {
+				t.Fatalf("transport calls = %d, want 0", transport.calls)
+			}
+		})
 	}
 }

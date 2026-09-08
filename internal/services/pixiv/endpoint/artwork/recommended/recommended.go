@@ -36,11 +36,11 @@ func (c *Client) List(ctx context.Context, request Request) (Result, error) {
 	if c == nil || c.transport == nil {
 		return Result{}, errors.New("artwork recommended transport is not configured")
 	}
-	query := url.Values{}
-	if request.ContentType != "" {
-		query.Set("content_type", request.ContentType)
+	if err := validateRequest(request); err != nil {
+		return Result{}, err
 	}
-	if request.ContinuationExists || request.Offset > 0 {
+	query := url.Values{}
+	if request.ContinuationExists {
 		query.Set("offset", strconv.Itoa(request.Offset))
 	}
 	var raw responseDTO
@@ -62,6 +62,21 @@ func (c *Client) List(ctx context.Context, request Request) (Result, error) {
 		return Result{}, err
 	}
 	return Result{Items: items, NextOffset: nextOffset, HasNext: hasNext}, nil
+}
+
+func validateRequest(request Request) error {
+	// recommended 的 subtype 仍是 candidate；未有独立两页证据前，不把它透传成已支持能力。
+	if request.ContentType != "" {
+		return errors.New("artwork recommended content type is unsupported")
+	}
+	if request.Offset < 0 {
+		return errors.New("artwork recommended offset must not be negative")
+	}
+	// offset 只属于续页。这样不会把带 offset 的非法初始请求静默解释成首页或续页。
+	if !request.ContinuationExists && request.Offset != 0 {
+		return errors.New("artwork recommended initial request must not specify offset")
+	}
+	return nil
 }
 
 type responseDTO struct {
