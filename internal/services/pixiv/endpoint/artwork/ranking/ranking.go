@@ -7,6 +7,7 @@ import (
 	"errors"
 	"net/url"
 	"strconv"
+	"time"
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/endpoint/artwork"
 	"github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/protocol"
@@ -36,7 +37,18 @@ func (c *Client) List(ctx context.Context, request Request) (Result, error) {
 	if c == nil || c.transport == nil {
 		return Result{}, errors.New("artwork ranking transport is not configured")
 	}
-	query := url.Values{"mode": {request.Mode}}
+	mode, err := normalizeMode(request.Mode)
+	if err != nil {
+		return Result{}, err
+	}
+	if err := validateDate(request.Date); err != nil {
+		return Result{}, err
+	}
+	// offset=0 保留为首请求语义；只有负值是无效 continuation，不能静默回到首页。
+	if request.Offset < 0 {
+		return Result{}, errors.New("artwork ranking offset must not be negative")
+	}
+	query := url.Values{"mode": {mode}}
 	if request.Date != "" {
 		query.Set("date", request.Date)
 	}
@@ -62,6 +74,33 @@ func (c *Client) List(ctx context.Context, request Request) (Result, error) {
 		return Result{}, err
 	}
 	return Result{Items: items, NextOffset: nextOffset, HasNext: hasNext}, nil
+}
+
+func normalizeMode(value string) (string, error) {
+	if value == "" {
+		return "day", nil
+	}
+	// 允许集合来自冻结的 RankingMode contract；未知字符串不得透传给上游。
+	switch value {
+	case "day", "day_male", "day_female", "week", "week_original", "week_rookie", "month",
+		"day_manga", "week_manga", "month_manga", "week_rookie_manga", "day_r18",
+		"day_male_r18", "day_female_r18", "week_r18", "week_r18g":
+		return value, nil
+	default:
+		return "", errors.New("artwork ranking mode is unsupported")
+	}
+}
+
+func validateDate(value string) error {
+	if value == "" {
+		return nil
+	}
+	// 日期是冻结 contract 的可选日历值，不把任意字符串透传给上游。
+	parsed, err := time.Parse("2006-01-02", value)
+	if err != nil || parsed.Format("2006-01-02") != value {
+		return errors.New("artwork ranking date must use YYYY-MM-DD")
+	}
+	return nil
 }
 
 type responseDTO struct {
