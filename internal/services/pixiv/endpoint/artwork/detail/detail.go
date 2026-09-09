@@ -231,7 +231,8 @@ func mapArtwork(dto illustDTO) artwork.Artwork {
 	pages := make([]artwork.MetaPage, len(dto.MetaPages))
 	for index, page := range dto.MetaPages {
 		pages[index] = artwork.MetaPage{
-			PageIndex: page.PageIndex,
+			// Pixiv 的 meta_pages 以数组顺序定义页序；真实响应不保证携带 page_index。
+			PageIndex: index,
 			Width:     page.Width,
 			Height:    page.Height,
 			Extension: page.Extension,
