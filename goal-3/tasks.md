@@ -78,7 +78,7 @@ Status 的 verified 表示对应 task 的实现与相关验证完成；各 task 
 | T29 | CLI timeline | T39A,T18,T21,T22,T23 | following/latest；entity 与 content-type subtype | verified |
 | T30 | CLI ranking | T39A,T18,T22,T23 | artwork/novel ranking | verified |
 | T31 | CLI detail | T39A,T13,T14,T21 | artwork/novel/user resolver；content endpoint exclusion 的兼容处理 | verified |
-| T32 | CLI series | T39A,T13,T14,T21,T23 | artwork/novel series 与 continuation | pending |
+| T32 | CLI series | T39A,T13,T14,T21,T23 | artwork/novel series 与 continuation | verified |
 | T33 | CLI comment | T39A,T16,T17,T21,T23 | read/create/reply/stamp/delete 的类型与结果语义 | pending |
 | T34 | CLI user | T39A,T06,T13,T14,T21,T23 | detail/artworks/novels/relationships | pending |
 | T35 | CLI follow | T39A,T06,T21 | user follow/unfollow 与旧 route alias | pending |
@@ -811,6 +811,17 @@ Status 的 verified 表示对应 task 的实现与相关验证完成；各 task 
 - 公开兼容性影响：保留省略 `--type` 的旧 artwork detail 默认与既有文本/JSON presenter；新增 novel/user typed detail 路由和统一 resolver 语义；novel `--content` 由原先可能触达的正文请求改为冻结的结构化 `content_unavailable` 兼容错误，确保不调用已拒绝 endpoint。未新增、删除或重命名 public SDK symbol，未修改 MCP schema、上游 wire 字段、认证/token stdout、依赖、本地数据或账号选择；未加入无依据的 timeout、截断、重试上限、静默 fallback 或匿名 Web fallback。
 - 回滚前提 / 依赖闭包：代码/测试提交 `1b03dcae64361baeb904eeb8b68b527a1093fa30` 与本账本记录需成对回滚；若后续 T32–T38、T39B/T40 或最终 release gate 已引用 detail typed route、resolver 语义或 content-unavailable contract，回滚前须同步撤销引用或提供等价兼容迁移。没有业务数据、账号、token、缓存、运行配置、依赖或生成物迁移。
 - 实际结果 / evidence / 风险：T31 已 verified；本轮仅使用离线 HTTP fixture、CLI/SDK 本地回归、文档测试、LSP diagnostics、vet、全量测试与构建检查，未执行真实 Pixiv API，也未授予任何 detail capability `public_ready`。现有文档与 `skills/pixiv-cli` 已声明同一 contract，故无额外文档差异；`required=41 scope_admitted=41 public_ready=0 other=0` 保持不变，Goal-3 继续 incomplete；下一张 pending 卡为 T32。
+
+## T32 完成记录
+
+- Owner package / 涉及文件：`internal/cli/commands/pixiv/series/series.go`、`internal/cli/commands/pixiv/series/series_test.go`；同步更新 `docs/en/cli-reference.md`、`docs/zh-CN/cli-reference.md` 与 `skills/pixiv-cli/SKILL.md`。代码、测试与产品文档提交为 `be3b1b0930835274b515bb52aea57240e6d7847c`，并已推送到 `origin/codex/goal-3-vnext-plan`。
+- Depends on：T39A、T13、T14、T21、T23 均已 verified；本卡只把既有 public SDK 的 `ArtworkSeries`/`NovelSeries`、共享 `internal/shared/resolver` 与既有 listing/pool execution 接入 `series` owner，不修改 SDK symbol、endpoint adapter、MCP owner/schema 或 T33 之后的范围。
+- 冻结 contract / fixture：`pixiv series` 继续接受正数 series ID，并新增本地解析的 canonical artwork-series URL `https://www.pixiv.net/user/<uid>/series/<id>` 与 novel-series URL `https://www.pixiv.net/novel/series/<id>`；`--type artwork|novel` 仍必填，类型先于输入解释，`all` 和未知值直接失败。series URL 的 `ReferenceKind` 必须与显式类型匹配，解析不进行 bare-ID probe 或网络 I/O；artwork 只调用 `/v1/illust/series`，novel 只调用 `/v2/novel/series`，`--limit` 跨页 continuation 分别保留 `last_order=8`/`last_order=9` fixture 语义，novel JSON 保留安全 series metadata 与合并后的 novels。
+- Red 测试、命令及当前行为的实际失败：先加入 `TestSeriesArtworkURLUsesPublicSDK`，运行 `go test ./internal/cli/commands/pixiv/series -run '^TestSeriesArtworkURLUsesPublicSDK$' -count=1 -v`；旧实现实际在 client/HTTP seam 前返回 `series_id must be a positive integer`。随后加入 `TestSeriesRejectsUnsupportedTypeBeforeParsingInput`，在前置类型校验实现前运行 `go test ./internal/cli/commands/pixiv/series -run 'TestSeriesRejects(UnsupportedTypeBeforeParsingInput|URLTypeMismatchBeforeOpeningClient)' -count=1 -v`，无效类型实际先得到 `pixiv:series: invalid_argument: input must be a positive ID or a supported Pixiv URL`，证明 URL 解析顺序不符合类型先行契约；两次 Red 均由当前行为实际触发。
+- Green 命令及验收断言：`go test ./internal/cli/commands/pixiv/series -count=1 -v`、`go test ./scripts/tests/documentation -count=1`、`go test ./...`、`sh scripts/build.sh`、相关 Go 文件 `gofmt`、`git diff --check` 及提交钩子中的 `gofmt`/`go test ./...` 均通过。离线 HTTP fixture 验证 artwork URL 两页 `/v1/illust/series` 与 `last_order=8`、novel URL 两页 `/v2/novel/series` 与 `last_order=9`、typed NDJSON/JSON 输出、URL/type mismatch 和 `all`/未知类型在账号池前失败；LSP `get_diagnostics` 对两个受影响 Go 文件均无诊断，`detect_changes` 确认 `New` 只有 `internal/cli/root.go` 的生产调用方。远端 `git ls-remote origin refs/heads/codex/goal-3-vnext-plan` 与本地 HEAD 均为 `be3b1b0930835274b515bb52aea57240e6d7847c`。
+- 公开兼容性影响：保留原有正数 series ID、artwork/novel public SDK 路由、文本/JSON/NDJSON 与逻辑分页；新增 artwork/novel series URL 输入及 URL namespace/type 冲突的结构化 `InvalidArgument`。未新增、删除或重命名 public SDK symbol，未修改 MCP schema、上游 wire 字段、认证/token stdout、账号选择、依赖或本地数据；未加入无依据的 timeout、截断、重试上限、bare-ID fallback 或匿名 Web fallback。
+- 回滚前提 / 依赖闭包：代码/测试/文档提交 `be3b1b0930835274b515bb52aea57240e6d7847c` 与本台账记录需成对回滚；若后续 T33–T38、T39B/T40 或最终 release gate 引用 series URL resolver、`SERIES_ID_OR_URL` 或 continuation 语义，回滚前须同步撤销引用或提供等价兼容迁移。没有业务数据、账号、token、缓存、运行配置、依赖或生成物迁移。
+- 实际结果 / evidence / 风险：T32 已 verified；本轮只使用离线 HTTP fixture、CLI/SDK 本地回归、文档测试、LSP diagnostics、全量测试与构建检查，未执行真实 Pixiv API，也未把 artwork/novel series capability 标为 `public_ready`。`required=41 scope_admitted=41 public_ready=0 other=0` 保持不变，Goal-3 继续 incomplete；下一张 pending 卡为 T33。残余风险仅为真实上游 series 数据形状/权限变化，需在后续允许 live evidence 的阶段另行验证。
 
 ## 实现任务准入卡
 
