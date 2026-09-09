@@ -787,7 +787,7 @@ func decodeMachineRecords(t *testing.T, output string) []map[string]any {
 func assertMachineRecordIDs(t *testing.T, records []map[string]any, want []string) {
 	t.Helper()
 	if len(records) != len(want) {
-		t.Fatalf("expected %d records, got %d: %#v", len(want), records)
+		t.Fatalf("expected %d records, got %d: %#v", len(want), len(records), records)
 	}
 	for index, expectedID := range want {
 		if records[index]["id"] != expectedID {
