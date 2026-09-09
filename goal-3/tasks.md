@@ -70,7 +70,7 @@ Status 的 verified 表示对应 task 的实现与相关验证完成；各 task 
 | T22 | filter owner | T20,T19 | 规范化 rating/content-type filter；不发送未经确认 server rating | verified |
 | T23A | pagination + sdk/pixiv + search | none | 本轮获批基础修复：先失败测试、checkpoint、SDK 绑定、CLI/MCP 两调用方；详见分页报告 | verified |
 | T23 | pagination/traversal integration | T19,T22,T23A | 将基础续读契约接入其余 endpoint；验证聚合流、过滤及 Skip/Limit/OneBatch | verified |
-| T24 | CLI search | T39A,T13,T21,T22,T23 | artwork search 与 subtype；stdin/JSON/NDJSON | pending |
+| T24 | CLI search | T39A,T13,T21,T22,T23 | artwork search 与 subtype；stdin/JSON/NDJSON | verified |
 | T25 | CLI novel search | T39A,T14,T21,T22,T23 | novel search canonical route、period 与旧 route | pending |
 | T26 | CLI user search/trending | T39A,T06,T13,T23 | user search 与 trending | pending |
 | T27 | CLI bookmark | T39A,T15,T21,T22,T23 | list/tags/detail/add/remove；list/tags all；user target 与内容类型分开 | pending |
@@ -723,6 +723,17 @@ Status 的 verified 表示对应 task 的实现与相关验证完成；各 task 
 - 公开兼容性影响：新增内容只位于 `internal/shared`，无 public SDK symbol、CLI/MCP route/schema、endpoint wire、认证/token 输出、默认账号行为、依赖、本地数据或生成物契约变化。`CollectFilteredPagesFrom` 保持原有过滤、Skip/Limit/OneBatch、checkpoint、错误传播和 callback 校验顺序，只改为复用统一 collector；没有新增固定 timeout、重试上限、截断或静默 fallback。
 - 回滚前提 / 依赖闭包：代码/测试/双语架构说明提交 `bbe3b4e6553c9a46503be804bc728b61c375f0a4` 与本记录需成对回滚；若后续 T24–T38 已接入 `Stream`/`StreamState`/`CollectStreamsWith`，回滚前必须先撤销这些调用或完成等价兼容迁移，不能单独删除 shared seam。没有业务数据、账号、token、缓存、运行配置、依赖或发布物迁移。
 - 实际结果 / evidence / 风险：T23 已 verified，代码提交已创建；本记录提交后将与代码一起推送并再以 `git ls-remote origin refs/heads/codex/goal-3-vnext-plan` 核验。未执行真实 Pixiv API，未改写 strict/live evidence，也未授予任何 capability `public_ready`；`required=41 scope_admitted=41 public_ready=0 other=0` 保持不变，Goal-3 继续 incomplete。当前剩余风险是产品 owner 尚未把各 endpoint 的 continuation/binding 编码接入新的 aggregate seam，后续 T24–T38 仍需分别完成其 public/compatibility/docs/regression 责任。下一张 pending 卡为 T24。
+
+## T24 完成记录
+
+- Owner package / 涉及文件：`internal/cli/commands/pixiv/search/search.go`、`internal/cli/commands/pixiv/search/bookmark.go` 及对应测试；同步更新 `docs/en/cli-reference.md`、`docs/zh-CN/cli-reference.md`、`skills/pixiv-cli/references/discover.md` 与 `skills/pixiv-cli/references/troubleshooting.md`。代码、测试与契约文档提交为 `eb3d6ff1910d75bd67513bce5da99f370c331cc5`。本卡只接入 CLI artwork search，不修改 MCP owner、SDK endpoint 或 CLI/MCP wire schema。
+- Depends on：T39A、T13、T21、T22、T23 均已 verified；承接 artwork search 的 stdin 输入、JSON/NDJSON 输出、shared canonical filter、opaque cursor binding、批内 checkpoint、账号池 execution/replay 与本地 filter 不进入 upstream 的冻结语义。
+- 冻结 contract / fixture：`--content-type illustration` 归一化为 upstream `illust`，同时保留 `illust`、`manga`、`ugoira` 等 canonical subtype；`--rating sfw|r18|r18g|mature|all` 只匹配规范化 DTO 的 `x_restrict`（`0`、`1`、`2`、`1/2`、关闭），不伪造为 upstream `rating` 或 `x_restrict` 请求字段；非 `all` 的 canonical filter digest 绑定 opaque cursor。Include 先于全局 Skip/Limit，跨批次继续读取直到填充逻辑结果，并以输入 cursor 与源批次消费位置 checkpoint；stdin keyword、JSON envelope 与 NDJSON record 保持既有 CLI 语义，bookmark 区间与 rating 同时存在时组合两类脱敏 cursor context。
+- Red 测试、命令及当前行为的实际失败：先加入 `TestCommandLocallyFiltersArtworkRatingAndCanonicalizesSubtype`，运行 `go test ./internal/cli/commands/pixiv/search -run '^TestCommandLocallyFiltersArtworkRatingAndCanonicalizesSubtype$' -count=1 -v`；实现前实际在 SDK 请求前失败并返回 `rating filtering is not supported by the v1 App API search contract`，证明旧兼容诊断路径无法满足本卡本地筛选契约。随后补充 stdin 跨批 NDJSON、批内过滤/逻辑 limit/checkpoint 与 bookmark+rating context 组合回归。
+- Green 命令及验收断言：`go test ./internal/cli/commands/pixiv/search -run 'TestCommandLocallyFiltersArtworkRatingAndCanonicalizesSubtype|TestCommandSearchReadsWordFromStdinAndEmitsFilteredNDJSONAcrossBatches' -count=1 -v`、`go test ./internal/cli/commands/pixiv/search -count=1`、`go test ./internal/cli/commands/pixiv/search -race -count=1`、`go test ./internal/shared/searchfilter ./internal/shared/pagination ./internal/shared/traversal ./sdk/pixiv -count=1`、`go test ./scripts/tests/documentation -count=1`、`go test ./scripts/internal/publicapi -count=1`、`go test ./... -count=1`、`go vet ./...`、`sh scripts/build.sh`、相关 Go 文件 `gofmt`、`git diff --check` 均通过；提交钩子再次通过 `gofmt` 与 `go test ./...`。fixture 断言 upstream query 只有 canonical `content_type=illust` 且没有 `rating/x_restrict`，stdin 在两批请求中均解析为 `cat`，limit=1 时只输出匹配的 artwork 2，bookmark 过滤先于逻辑 limit 并保留 checkpoint consumed=2，组合 context 不泄露原始 rating/bookmark 值。LSP `detect_changes` 覆盖 CLI search 生产调用方与测试引用，两个受影响实现文件 `get_diagnostics` 均无诊断。
+- 公开兼容性影响：新增/恢复的是既有 CLI artwork `--rating` 与 `illustration` subtype 兼容语义；没有新增、删除或重命名 public SDK symbol，没有 MCP route/schema、endpoint wire 字段、认证/token stdout、默认账号选择、依赖、本地数据或发布物变化。`--rating` 不会把本地筛选条件发送给 upstream；未改变 novel/user/image source 对不适用 flag 的校验，也未引入固定 timeout、重试上限、截断或静默 fallback。
+- 回滚前提 / 依赖闭包：代码与本记录需成对回滚；若后续 T25–T38 或 MCP T37 依赖 `searchArtworks` 的 Include/checkpoint 或组合 cursor context，回滚前必须同步撤销调用或先提供等价兼容迁移，不能只删除 CLI helper。没有业务数据、账号、token、缓存、运行配置、依赖或生成物迁移。
+- 实际结果 / evidence / 风险：T24 已 verified，代码提交已创建；本记录提交后将与代码一起推送并以 `git ls-remote origin refs/heads/codex/goal-3-vnext-plan` 核验。未执行真实 Pixiv API，未改写 strict/live evidence，也未授予 `artwork-search` capability `public_ready`，因为 MCP owner T37 与最终发布门禁仍未完成；`required=41 scope_admitted=41 public_ready=0 other=0` 保持不变，Goal-3 继续 incomplete。当前剩余风险是 T25 CLI novel search，下一张 pending 卡为 T25。
 
 ## 实现任务准入卡
 
