@@ -121,7 +121,8 @@ canonical 值，按 DTO 的 `x_restrict` 和 artwork kind 做 client-side matchi
 - `internal/services/pixiv` 是 Pixiv 业务 Facade，聚合 `account` 与 `pool` 等业务叶 Module。`account` 负责本地账号、登录完成、默认账号、凭据 identity/rotation 与账号管理；`pool` 负责选择、冻结、Gate、safe replay 与相关错误语义。
 - `internal/services/fanbox` 是 FANBOX 业务 Facade，聚合 FANBOX `account` 叶 Module 与 client lifecycle；FANBOX session 不与 Pixiv refresh token 共享类型或生命周期。
 - `internal/shared/lifecycle` 只承载协议无关的生命周期、Lease 与 Attempt；它不拥有 Pixiv/FANBOX 账号选择、凭据或重放策略。
-- `internal/shared/traversal` 只承载泛型可重入分页遍历（opaque cursor、逻辑 skip/limit、单批兼容语义与重复 cursor 止环）；命令级筛选接入仍留在各 CLI/MCP owner，规范化的 artwork rating/content-type 语义由 `internal/shared/searchfilter` 提供。
+- `internal/shared/pagination` 负责协议无关的单流与有序聚合流逻辑分页：先对候选执行筛选，再统一应用 skip/limit；`OneBatch` 在当前流找到首个匹配源批次后停止；批内截断通过源序列位置 checkpoint 续读。其 `StreamState` 只包含当前流和各流 cursor，不编码产品语义；产品 owner 负责把它与 query/account/subtype binding 一起编码进 opaque cursor。
+- `internal/shared/traversal` 负责单流与聚合读的可重入 execute lifecycle，在安全 replay 前清空未提交结果。命令级筛选接入仍留在各 CLI/MCP owner，规范化的 artwork rating/content-type 语义由 `internal/shared/searchfilter` 提供。
 
 配置 schema、`config.toml` path/get/set/unset、自动生成的默认文件与一次执行所需的 immutable `Snapshot` 位于 `internal/config/settings`；协议无关的日期按月截断纯函数位于 `internal/utils/date`。CLI/MCP 经 owner-local 窄 Seam 与 MCP runtime `SDKPorts` 使用业务 Facade，不直接依赖上游 Adapter。`internal/account` 与 `internal/session` 已删除，不保留兼容 alias。
 

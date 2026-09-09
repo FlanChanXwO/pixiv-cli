@@ -406,6 +406,30 @@ func TestCollectFilteredPagesAppliesLimitAfterFilteringAcrossBatches(t *testing.
 	assert.Equal(t, pagination.PageResult{Returned: 2}, result)
 }
 
+func TestCollectFilteredPagesValidatesPlanBeforeCallbacks(t *testing.T) {
+	_, _, _, err := pagination.CollectFilteredPagesFrom[int, sdk.Cursor](
+		context.Background(),
+		pagination.PagePlan{Skip: -1},
+		sdk.Cursor{},
+		nil,
+		nil,
+		nil,
+	)
+	require.EqualError(t, err, "page skip must be zero or positive")
+}
+
+func TestCollectFilteredPagesValidatesCheckpointBeforePredicate(t *testing.T) {
+	_, _, _, err := pagination.CollectFilteredPagesFrom[int, sdk.Cursor](
+		context.Background(),
+		pagination.PagePlan{},
+		sdk.Cursor{},
+		nil,
+		nil,
+		nil,
+	)
+	require.EqualError(t, err, "filtered page checkpoint is required")
+}
+
 func TestCollectFilteredPagesKeepsNextCursorWhenLogicalLimitStopsInsideSource(t *testing.T) {
 	next := testCursor(t, "next")
 	items, cursor, result, err := pagination.CollectFilteredPagesFrom(context.Background(), pagination.PagePlan{Limit: 1}, sdk.Cursor{}, func(_ context.Context, _ sdk.Cursor) ([]int, sdk.Cursor, error) {

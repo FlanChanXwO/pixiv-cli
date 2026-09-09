@@ -136,85 +136,18 @@ func CollectFilteredPagesFrom[T any, C Cursor](ctx context.Context, plan PagePla
 	if include == nil {
 		return nil, zero, PageResult{}, errors.New("filtered page predicate is required")
 	}
-
-	items := make([]T, 0)
-	var result PageResult
-	cursor := initial
-	skip := plan.Skip
-	seekingOffset := skip > 0
-	seen := make(map[string]struct{})
-	for {
-		if err := ctx.Err(); err != nil {
-			return nil, zero, PageResult{}, err
-		}
-		if _, exists := seen[cursor.String()]; exists {
-			return nil, zero, PageResult{}, fmt.Errorf("pagination cursor repeated: %s", cursor.String())
-		}
-		seen[cursor.String()] = struct{}{}
-
-		batch, next, err := fetch(ctx, cursor)
-		if err != nil {
-			return nil, zero, PageResult{}, err
-		}
-		matched := make([]T, 0, len(batch))
-		positions := make([]int, 0, len(batch))
-		for index, value := range batch {
-			keep, err := include(value)
-			if err != nil {
-				return nil, zero, PageResult{}, err
-			}
-			if keep {
-				matched = append(matched, value)
-				positions = append(positions, index+1)
-			}
-		}
-
-		if skip >= len(matched) {
-			skip -= len(matched)
-			matched = nil
-		} else if skip > 0 {
-			matched = matched[skip:]
-			positions = positions[skip:]
-			skip = 0
-		}
-		if seekingOffset && skip == 0 && len(matched) > 0 {
-			seekingOffset = false
-		}
-		if plan.Limit > 0 {
-			remaining := plan.Limit - result.Returned
-			if len(matched) > remaining {
-				// 截断发生在源批次内部，下一上游批次会跳过未消费条目。
-				// 保存源序列位置（包含过滤和 Skip），由产品 owner 编码。
-				next, err = checkpoint(cursor, positions[remaining-1])
-				if err != nil {
-					return nil, zero, PageResult{}, err
-				}
-				if next.IsZero() {
-					return nil, zero, PageResult{}, errors.New("checkpoint cursor must not be zero")
-				}
-				matched = matched[:remaining]
-				result.HasMore = true
-			}
-		}
-		if len(matched) > 0 {
-			items = append(items, matched...)
-			result.Returned += len(matched)
-		}
-		if plan.Limit > 0 && result.Returned >= plan.Limit {
-			if !result.HasMore {
-				result.HasMore = !next.IsZero()
-			}
-			return items, next, result, nil
-		}
-		if plan.OneBatch && !seekingOffset {
-			if result.Returned > 0 || next.IsZero() {
-				result.HasMore = !next.IsZero()
-				return items, next, result, nil
-			}
-		}
-		if next.IsZero() {
-			return items, zero, result, nil
-		}
-		cursor = next
+	items, state, result, err := CollectStreamsFrom(ctx, plan, []Stream[T, C]{
+		{
+			Fetch:      fetch,
+			Include:    include,
+			Checkpoint: checkpoint,
+		},
+	}, StreamState[C]{Cursors: []C{initial}})
+	if err != nil {
+		return nil, zero, PageResult{}, err
 	}
+	if state.Current == 0 {
+		return items, state.Cursors[0], result, nil
+	}
+	return items, zero, result, nil
 }
