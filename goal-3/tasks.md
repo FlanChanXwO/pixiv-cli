@@ -79,7 +79,7 @@ Status 的 verified 表示对应 task 的实现与相关验证完成；各 task 
 | T30 | CLI ranking | T39A,T18,T22,T23 | artwork/novel ranking | verified |
 | T31 | CLI detail | T39A,T13,T14,T21 | artwork/novel/user resolver；content endpoint exclusion 的兼容处理 | verified |
 | T32 | CLI series | T39A,T13,T14,T21,T23 | artwork/novel series 与 continuation | verified |
-| T33 | CLI comment | T39A,T16,T17,T21,T23 | read/create/reply/stamp/delete 的类型与结果语义 | pending |
+| T33 | CLI comment | T39A,T16,T17,T21,T23 | read/create/reply/stamp/delete/stamps 的类型与结果语义 | verified |
 | T34 | CLI user | T39A,T06,T13,T14,T21,T23 | detail/artworks/novels/relationships | pending |
 | T35 | CLI follow | T39A,T06,T21 | user follow/unfollow 与旧 route alias | pending |
 | T36 | CLI mypixiv | T39A,T06,T13,T14,T21,T23 | users/works typed validation | pending |
@@ -822,6 +822,17 @@ Status 的 verified 表示对应 task 的实现与相关验证完成；各 task 
 - 公开兼容性影响：保留原有正数 series ID、artwork/novel public SDK 路由、文本/JSON/NDJSON 与逻辑分页；新增 artwork/novel series URL 输入及 URL namespace/type 冲突的结构化 `InvalidArgument`。未新增、删除或重命名 public SDK symbol，未修改 MCP schema、上游 wire 字段、认证/token stdout、账号选择、依赖或本地数据；未加入无依据的 timeout、截断、重试上限、bare-ID fallback 或匿名 Web fallback。
 - 回滚前提 / 依赖闭包：代码/测试/文档提交 `be3b1b0930835274b515bb52aea57240e6d7847c` 与本台账记录需成对回滚；若后续 T33–T38、T39B/T40 或最终 release gate 引用 series URL resolver、`SERIES_ID_OR_URL` 或 continuation 语义，回滚前须同步撤销引用或提供等价兼容迁移。没有业务数据、账号、token、缓存、运行配置、依赖或生成物迁移。
 - 实际结果 / evidence / 风险：T32 已 verified；本轮只使用离线 HTTP fixture、CLI/SDK 本地回归、文档测试、LSP diagnostics、全量测试与构建检查，未执行真实 Pixiv API，也未把 artwork/novel series capability 标为 `public_ready`。`required=41 scope_admitted=41 public_ready=0 other=0` 保持不变，Goal-3 继续 incomplete；下一张 pending 卡为 T33。残余风险仅为真实上游 series 数据形状/权限变化，需在后续允许 live evidence 的阶段另行验证。
+
+## T33 完成记录
+
+- Owner package / 涉及文件：`internal/cli/commands/pixiv/comment/comment.go`、`internal/cli/commands/pixiv/comment/comment_test.go`；同步更新 `docs/en/cli-reference.md`、`docs/zh-CN/cli-reference.md` 与 `skills/pixiv-cli/SKILL.md`。实现、测试与公开文档提交为 `dd290f659ae5e98607b98b62009a940dda769b81`，并已推送到 `origin/codex/goal-3-vnext-plan`。
+- Depends on：T39A、T16、T17、T21、T23 均已 verified；本卡只接入既有 public SDK 的 comment/stamp 方法、共享 `internal/shared/resolver` 与既有 `deps.Read`/`deps.Write` 执行边界，不修改 SDK、endpoint adapter、MCP owner/schema 或 T34 之后的范围。
+- 冻结 contract / fixture：保留原 `pixiv comment ID --type artwork|novel` read route 与 artwork/novel 分页、JSON/NDJSON/text presenter；新增 additive `create`、`reply`、`stamp`、`delete` 与非分页 `stamps`。create/reply/stamp 的位置 ID 是正数 artwork/novel ID，delete 的位置 ID 是正数 comment ID；五条 mutation 只能使用显式 `--type artwork|novel`，URL 与 `all` 在 resolver/账号池前拒绝。create/reply/stamp 要求 `--comment`，reply 另要求正数 `--parent-comment-id`，stamp 另要求正数 `--stamp-id`；这些字段独立传给对应 upstream form。create/reply/stamp 只输出 upstream 返回的正数 `comment_id`，delete 只在删除请求成功后输出状态，不做 read-back；`comment stamps` 只请求 `/v1/stamps`，输出安全 DTO/opaque stamp reference，不暴露 runtime URL、请求头或分页字段。
+- Red 测试、命令及当前行为的实际失败：先加入 `TestNewRegistersCommentActionsWithoutChangingReadRoute`，运行 `go test ./internal/cli/commands/pixiv/comment -run '^TestNewRegistersCommentActionsWithoutChangingReadRoute$' -count=1 -v`，旧实现实际报 `comment command did not register "create" action; children = []`。再加入 `TestCommentCreateReturnsResponseCommentID`，运行 `go test ./internal/cli/commands/pixiv/comment -run '^TestCommentCreateReturnsResponseCommentID$' -count=1 -v`，旧实现实际返回 `comment create is not implemented`。两次 Red 均由当前 comment owner 缺少 additive action/写入路由而真实触发。
+- Green 命令及验收断言：`go test ./internal/cli/commands/pixiv/comment -count=1 -v`、`go test ./scripts/tests/documentation -count=1`、`go test ./...`、`sh scripts/build.sh`、相关 Go 文件 `gofmt -l` 检查、`git diff --check` 及提交钩子中的 `gofmt`/`go test ./...` 均通过。离线 HTTP fixture 验证 artwork/novel create/reply/stamp/delete 的 endpoint、form 与 JSON 结果，`stamps` 验证无 query、非分页和 URL/请求头不泄露，read route 验证 `/v3/illust/comments` 与 `/v2/novel/comments` 未改变，invalid type/URL/缺失 parent/stamp 在打开账号池前失败。LSP 重建索引后两个受影响 Go 文件均无诊断，`detect_changes` 确认 `New` 只有 `internal/cli/root.go` 的生产调用方；远端 `git ls-remote origin refs/heads/codex/goal-3-vnext-plan` 与本地 HEAD 均为 `dd290f659ae5e98607b98b62009a940dda769b81`。
+- 公开兼容性影响：保留原 comment read 的正数 ID、artwork/novel public SDK 路由、分页与输出格式；新增显式类型绑定的五个 comment action 及 comment-specific JSON 结果。未新增、删除或重命名 public SDK symbol，未修改 MCP schema、上游 query/form 字段、认证/token stdout、账号选择、依赖、本地数据或运行配置；未加入无依据的 timeout、截断、重试上限、匿名 Web fallback 或 read-back 假设。既有 bookmark/follow mutation 的空成功输出契约保持不变。
+- 回滚前提 / 依赖闭包：实现提交 `dd290f659ae5e98607b98b62009a940dda769b81` 与本台账记录需成对回滚；若后续 T34–T38、T39B/T40 或最终 release gate 引用 comment action、stamps DTO 或结果语义，回滚前须同步撤销引用或提供等价兼容迁移。没有业务数据、账号、token、缓存、运行配置、依赖或生成物迁移。
+- 实际结果 / evidence / 风险：T33 已 verified；本轮只使用离线 HTTP fixture、CLI/SDK 本地回归、文档测试、LSP diagnostics、全量测试与构建检查，未执行真实 Pixiv API 写操作，也未把 comment capability 标为 `public_ready`。`required=41 scope_admitted=41 public_ready=0 other=0` 保持不变，Goal-3 继续 incomplete；下一张 pending 卡为 T34。残余风险仅为真实上游 comment/stamp 权限与响应形状变化，需在后续允许 live evidence 的阶段另行验证。
 
 ## 实现任务准入卡
 
