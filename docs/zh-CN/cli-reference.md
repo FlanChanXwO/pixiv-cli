@@ -261,7 +261,7 @@ pixiv search https://example.com/image.png --provider all --ndjson
 pixiv search --trending-tags --json
 pixiv detail 123456 --type artwork --json
 pixiv detail 123456 --type novel --json
-pixiv series 42 --type artwork --limit 20
+pixiv series SERIES_ID_OR_URL --type artwork --limit 20
 pixiv comment 123456 --type artwork --limit 20
 pixiv bookmark list --type artwork --limit 20
 pixiv bookmark list --type all --limit 20 --json
@@ -363,7 +363,7 @@ canonical 数据 action 是 `search`、`detail`、`ranking`、`series`、`commen
 | `search` | `pixiv search [WORD\|IMAGE_PATH_OR_URL] [-t artwork\|novel\|user] [options]` | canonical 实体搜索或自动反向搜图。常规文件或显式 HTTP(S) source 选择图片模式；`--trending-tags` 是无 WORD 的完整作品趋势标签模式，不接受搜索筛选或分页。 |
 | `detail` | `pixiv detail ID_OR_URL [-t artwork\|novel\|user] [--content] [--json]` | 读取一件作品、一本小说或一个用户；`--content` 是保留的小说兼容 flag，但 v1 App 正文 endpoint 不可用，正数小说 ID 返回 `content_unavailable` 且不请求 rejected endpoint。 |
 | `ranking` | `pixiv ranking [-t artwork\|novel] [--mode MODE --date YYYY-MM-DD --page N --limit N]` | 读取作品或小说排行；默认是 `artwork`，`--date` 只适用于作品排行。 |
-| `series` | `pixiv series SERIES_ID -t artwork\|novel [--page N --limit N --json\|--ndjson]` | 列出一个作品或小说系列；实体类型必填。 |
+| `series` | `pixiv series SERIES_ID_OR_URL -t artwork\|novel [--page N --limit N --json\|--ndjson]` | 列出一个作品或小说系列；输入可以是正数 series ID 或受支持的作品/小说系列 URL，实体类型必填且必须与 URL 命名空间匹配。 |
 | `comment` | `pixiv comment ID -t artwork\|novel [--page N --limit N --json\|--ndjson]` | 读取作品或小说评论；评论发布、回复、删除和 stamp 未暴露。 |
 | `bookmark` | `pixiv bookmark list\|tags\|detail\|add\|remove ...` | 读取作品/小说收藏、作品/小说收藏标签/详情，或修改作品收藏。`list` 和 `tags` 接受用户 ID 或用户 URL，并支持 `--type artwork\|novel\|all`；`all` 固定先作品后小说并保留 typed record/tag。`detail` 支持 artwork/novel，不支持 `all`；add/remove 仍只修改作品收藏。 |
 | `user` | `pixiv user search\|detail\|artworks\|novels\|bookmarks\|following\|followers\|related\|blocked\|follow ...` | 读取用户、资料和关系，或管理作品关注；省略用户 ID 是否使用当前账号由具体子命令决定。 |
@@ -427,7 +427,7 @@ Content-Type 与 URL 后缀不一致（例如 URL 为 `.png`、实体为 JPEG）
 | `ranking` | `--mode` | `day` | 可用 `day`、`day_male`、`day_female`、`week`、`week_original`、`week_rookie`、`month`、`day_manga`、`week_manga`、`month_manga`、`week_rookie_manga`、`day_r18`、`day_male_r18`、`day_female_r18`、`week_r18`、`week_r18g`；最后九种需要认证。 |
 | `ranking` | `--date` | 空 | 排行榜日期，格式通常为 `YYYY-MM-DD`。 |
 | `detail` | `--type` / `-t` | `artwork` | 实体类型：`artwork`、`novel` 或 `user`；`--content` 是保留的小说兼容 flag，正文 endpoint 不可用时返回 `content_unavailable`。 |
-| `series`、`comment` | `--type` / `-t` | 必填 | 实体类型：`artwork` 或 `novel`；先选择类型后解释 ID。 |
+| `series`、`comment` | `--type` / `-t` | 必填 | 实体类型：`artwork` 或 `novel`；series 支持正数 ID 或受支持的系列 URL，URL 命名空间必须与所选类型匹配；先选择类型后解释输入。 |
 | `bookmark list` | `--type` / `-t` | `artwork` | 实体类型：`artwork`、`novel` 或 `all`；`all` 按作品后小说使用一个逻辑页，并保留每条 record 的类型。`--restrict` 与 `--tag` 映射到相应收藏列表。 |
 | `bookmark tags` | `--type` / `-t` | `artwork` | 实体类型：`artwork`、`novel` 或 `all`；`all` 将同名作品/小说标签作为带类型的独立记录保留。`--restrict` 选择 public/private。 |
 | `user artworks` | `--type` | `illustration` | 作品子类型：`illust`、`manga` 或 `ugoira`。 |

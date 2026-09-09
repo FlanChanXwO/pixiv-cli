@@ -334,7 +334,7 @@ pixiv search https://example.com/image.png --provider all --ndjson
 pixiv search --trending-tags --json
 pixiv detail 123456 --type artwork --json
 pixiv detail 123456 --type novel --json
-pixiv series 42 --type artwork --limit 20
+pixiv series SERIES_ID_OR_URL --type artwork --limit 20
 pixiv comment 123456 --type artwork --limit 20
 pixiv bookmark list --type artwork --limit 20
 pixiv bookmark list --type all --limit 20 --json
@@ -458,7 +458,7 @@ Only the structured entity filters documented by each command are accepted. The 
 | `search` | `pixiv search [WORD\|IMAGE_PATH_OR_URL] [-t artwork\|novel\|user] [options]` | Canonical entity search or automatic reverse-image search. A regular file or explicit HTTP(S) source selects image mode; `--trending-tags` is the no-word artwork tag-list mode and does not accept search filters or pagination. |
 | `detail` | `pixiv detail ID_OR_URL [-t artwork\|novel\|user] [--content] [--json]` | Reads one artwork, novel, or user. `--content` remains a novel-only compatibility flag, but the v1 App content endpoint is unavailable: a positive novel ID returns `content_unavailable` without a rejected-endpoint request. |
 | `ranking` | `pixiv ranking [-t artwork\|novel] [--mode MODE --date YYYY-MM-DD --page N --limit N]` | Reads artwork or novel rankings. `artwork` is the default; `--date` is supported only for artwork ranking. |
-| `series` | `pixiv series SERIES_ID -t artwork\|novel [--page N --limit N --json\|--ndjson]` | Lists the artworks or novels in one series. The entity type is required. |
+| `series` | `pixiv series SERIES_ID_OR_URL -t artwork\|novel [--page N --limit N --json\|--ndjson]` | Lists the artworks or novels in one series. The input may be a positive series ID or a supported artwork/novel series URL; the entity type is required and must match the URL namespace. |
 | `comment` | `pixiv comment ID -t artwork\|novel [--page N --limit N --json\|--ndjson]` | Reads artwork or novel comments. Comment write/reply/delete/stamp is not exposed. |
 | `bookmark` | `pixiv bookmark list\|tags\|detail\|add\|remove ...` | Lists artwork/novel bookmarks, reads artwork/novel bookmark tags/detail, or mutates artwork bookmarks. `list` and `tags` accept a user ID or user URL and support `--type artwork\|novel\|all`; `all` keeps artwork before novel and preserves typed records/tags. `detail` accepts artwork/novel but not `all`; add/remove remain artwork-only. |
 | `user` | `pixiv user search\|detail\|artworks\|novels\|bookmarks\|following\|followers\|related\|blocked\|follow ...` | Reads user/profile/relationship data and manages artwork follows. Omitted user IDs use the current account only where that subcommand says so. |
@@ -523,7 +523,7 @@ extension. Extensions also replace ASCII control characters and remove trailing 
 | `ranking` | `--mode` | `day` | One of `day`, `day_male`, `day_female`, `week`, `week_original`, `week_rookie`, `month`, `day_manga`, `week_manga`, `month_manga`, `week_rookie_manga`, `day_r18`, `day_male_r18`, `day_female_r18`, `week_r18`, `week_r18g`. The final nine require authentication. |
 | `ranking` | `--date` | empty | Ranking date, typically `YYYY-MM-DD`. |
 | `detail` | `--type` / `-t` | `artwork` | Entity type: `artwork`, `novel`, or `user`; `--content` is a retained novel-only compatibility flag and returns `content_unavailable` while the v1 content endpoint is unavailable. |
-| `series`, `comment` | `--type` / `-t` | required | Entity type: `artwork` or `novel`; the ID is interpreted only after the type is selected. |
+| `series`, `comment` | `--type` / `-t` | required | Entity type: `artwork` or `novel`; series accepts a positive ID or a supported series URL, and its URL namespace must match the selected type. The input is interpreted only after the type is selected. |
 | `bookmark list` | `--type` / `-t` | `artwork` | Entity type: `artwork`, `novel`, or `all`; `all` uses one logical page in artwork-then-novel order and keeps each record typed. `--restrict` and `--tag` are passed to the matching bookmark list. |
 | `bookmark tags` | `--type` / `-t` | `artwork` | Entity type: `artwork`, `novel`, or `all`; `all` keeps same-name artwork and novel tags as separate typed entries. `--restrict` selects public/private tags. |
 | `user artworks` | `--type` | `illustration` | Artwork subtype: `illust`, `manga`, or `ugoira`. |

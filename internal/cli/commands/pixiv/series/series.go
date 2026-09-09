@@ -13,7 +13,7 @@ import (
 	"github.com/FlanChanXwO/pixiv-cli/internal/cli/commands/pixiv"
 	"github.com/FlanChanXwO/pixiv-cli/internal/cli/commands/pixiv/internal/listing"
 	record "github.com/FlanChanXwO/pixiv-cli/internal/shared/record"
-	"github.com/FlanChanXwO/pixiv-cli/internal/utils/parse"
+	"github.com/FlanChanXwO/pixiv-cli/internal/shared/resolver"
 	"github.com/FlanChanXwO/pixiv-cli/sdk"
 	pixiv "github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
 	"github.com/spf13/cobra"
@@ -36,9 +36,9 @@ func New(data deps.Data) *cobra.Command {
 	a := command{data: data}
 	options := options{}
 	cmd := &cobra.Command{
-		Use:   "series SERIES_ID",
+		Use:   "series SERIES_ID_OR_URL",
 		Short: "List the artworks or novels in a series",
-		Args:  data.ExactArgs(1, "pixiv series [options] SERIES_ID"),
+		Args:  data.ExactArgs(1, "pixiv series [options] SERIES_ID_OR_URL"),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return a.run(cmd, args[0], options)
 		},
@@ -56,7 +56,10 @@ func (a command) run(cmd *cobra.Command, arg string, opts options) error {
 	if !cmd.Flags().Changed("type") {
 		return errors.New("--type is required for series")
 	}
-	id, err := parse.PositiveInt64(arg, "series_id")
+	if err := validateSeriesType(opts.typ); err != nil {
+		return err
+	}
+	target, err := resolver.Resolve(cmd.Context(), resolver.Input{Value: arg, Type: opts.typ}, seriesContract())
 	if err != nil {
 		return err
 	}
@@ -81,22 +84,45 @@ func (a command) run(cmd *cobra.Command, arg string, opts options) error {
 	}
 	ndjson := a.data.ShouldAutoNDJSON(cmd, opts.ndjson, jsonOut)
 
-	switch opts.typ {
-	case "artwork":
+	switch target.ResultKind {
+	case resolver.ResultKindArtwork:
 		fetch := func(client *pixiv.Client, ctx context.Context, cursor sdk.Cursor) ([]pixiv.Artwork, sdk.Cursor, error) {
-			result, err := client.ArtworkSeries(ctx, pixiv.ArtworkSeriesRequest{SeriesID: id, Cursor: cursor})
+			result, err := client.ArtworkSeries(ctx, pixiv.ArtworkSeriesRequest{SeriesID: target.ID, Cursor: cursor})
 			if err != nil {
 				return nil, sdk.Cursor{}, err
 			}
 			return result.Items, result.Next, nil
 		}
 		return a.runner().RunPooledIllustListWithHeading(cmd.Context(), listing.Request(request), plan, jsonOut, ndjson,
-			func() string { return fmt.Sprintf("artworks in series %d", id) }, fetch,
+			func() string { return fmt.Sprintf("artworks in series %d", target.ID) }, fetch,
 			func(items []pixiv.Artwork, start int) error { return printArtworks(a.data.Output, items, start) })
-	case "novel":
-		return a.runNovel(cmd, request, id, plan, jsonOut, ndjson)
+	case resolver.ResultKindNovel:
+		return a.runNovel(cmd, request, target.ID, plan, jsonOut, ndjson)
 	default:
 		return errors.New("type must be one of artwork, novel")
+	}
+}
+
+func validateSeriesType(value string) error {
+	switch value {
+	case "artwork", "novel":
+		return nil
+	default:
+		return errors.New("type must be one of artwork, novel")
+	}
+}
+
+func seriesContract() resolver.Contract {
+	return resolver.Contract{
+		Operation: "series",
+		Types: []resolver.TypeSpec{
+			{Name: "artwork", ResultKind: resolver.ResultKindArtwork, BareReferenceKind: pixiv.ReferenceKindArtworkSeries},
+			{Name: "novel", ResultKind: resolver.ResultKindNovel, BareReferenceKind: pixiv.ReferenceKindNovelSeries},
+		},
+		URLKinds: map[pixiv.ReferenceKind]resolver.URLTypeRelation{
+			pixiv.ReferenceKindArtworkSeries: resolver.URLTypeMustMatchResult,
+			pixiv.ReferenceKindNovelSeries:   resolver.URLTypeMustMatchResult,
+		},
 	}
 }
 

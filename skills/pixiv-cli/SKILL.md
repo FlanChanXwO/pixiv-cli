@@ -144,7 +144,7 @@ pixiv search "WORD" --resolution high --aspect-ratio landscape --draw-tool "CLIP
 pixiv search --trending-tags --json
 pixiv detail ARTWORK_ID_OR_URL --type artwork --json
 pixiv detail NOVEL_ID --type novel --json
-pixiv series SERIES_ID --type novel --limit 20 --json
+pixiv series SERIES_ID_OR_URL --type novel --limit 20 --json
 pixiv comment ID --type artwork --limit 20 --json
 pixiv bookmark list --type artwork --limit 20 --json
 pixiv bookmark list USER_ID_OR_URL --type all --limit 20 --json
@@ -328,7 +328,11 @@ session.
     ID or a `pixiv.net`/`www.pixiv.net` HTTPS `/artworks/{id}` URL (an optional
     locale, query, or fragment is harmless). `bookmark detail` accepts an
     artwork or novel ID/URL and requires a matching `--type` when one is given;
-    `bookmark list/tags` accept a user ID or user URL. A user URL can be used
+    `bookmark list/tags` accept a user ID or user URL. `series` accepts a
+    positive series ID or an artwork-series URL in the form
+    `https://www.pixiv.net/user/<uid>/series/<id>`, or a novel-series URL in the
+    form `https://www.pixiv.net/novel/series/<id>`. Its required `--type`
+    value must match the URL namespace. A user URL can be used
     with `--type novel`, while an artwork-bookmarks URL cannot be reinterpreted
     as novel or `all`. `download` also accepts `/users/{id}` and
     `/users/{id}/artworks`, plus `/users/{id}/bookmarks/artworks`. These expand
