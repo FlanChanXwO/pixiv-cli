@@ -71,7 +71,7 @@ Status 的 verified 表示对应 task 的实现与相关验证完成；各 task 
 | T23A | pagination + sdk/pixiv + search | none | 本轮获批基础修复：先失败测试、checkpoint、SDK 绑定、CLI/MCP 两调用方；详见分页报告 | verified |
 | T23 | pagination/traversal integration | T19,T22,T23A | 将基础续读契约接入其余 endpoint；验证聚合流、过滤及 Skip/Limit/OneBatch | verified |
 | T24 | CLI search | T39A,T13,T21,T22,T23 | artwork search 与 subtype；stdin/JSON/NDJSON | verified |
-| T25 | CLI novel search | T39A,T14,T21,T22,T23 | novel search canonical route、period 与旧 route | pending |
+| T25 | CLI novel search | T39A,T14,T21,T22,T23 | novel search canonical route、period 与旧 route | verified |
 | T26 | CLI user search/trending | T39A,T06,T13,T23 | user search 与 trending | pending |
 | T27 | CLI bookmark | T39A,T15,T21,T22,T23 | list/tags/detail/add/remove；list/tags all；user target 与内容类型分开 | pending |
 | T28 | CLI recommended | T39A,T18,T21,T22,T23 | entity/subtype/all 与旧 positional all | pending |
@@ -734,6 +734,17 @@ Status 的 verified 表示对应 task 的实现与相关验证完成；各 task 
 - 公开兼容性影响：新增/恢复的是既有 CLI artwork `--rating` 与 `illustration` subtype 兼容语义；没有新增、删除或重命名 public SDK symbol，没有 MCP route/schema、endpoint wire 字段、认证/token stdout、默认账号选择、依赖、本地数据或发布物变化。`--rating` 不会把本地筛选条件发送给 upstream；未改变 novel/user/image source 对不适用 flag 的校验，也未引入固定 timeout、重试上限、截断或静默 fallback。
 - 回滚前提 / 依赖闭包：代码与本记录需成对回滚；若后续 T25–T38 或 MCP T37 依赖 `searchArtworks` 的 Include/checkpoint 或组合 cursor context，回滚前必须同步撤销调用或先提供等价兼容迁移，不能只删除 CLI helper。没有业务数据、账号、token、缓存、运行配置、依赖或生成物迁移。
 - 实际结果 / evidence / 风险：T24 已 verified，代码提交已创建；本记录提交后将与代码一起推送并以 `git ls-remote origin refs/heads/codex/goal-3-vnext-plan` 核验。未执行真实 Pixiv API，未改写 strict/live evidence，也未授予 `artwork-search` capability `public_ready`，因为 MCP owner T37 与最终发布门禁仍未完成；`required=41 scope_admitted=41 public_ready=0 other=0` 保持不变，Goal-3 继续 incomplete。当前剩余风险是 T25 CLI novel search，下一张 pending 卡为 T25。
+
+## T25 完成记录
+
+- Owner package / 涉及文件：`internal/cli/commands/pixiv/search/novel.go` 与新增 `internal/cli/commands/pixiv/search/novel_test.go`。现有双语 CLI reference、`skills/pixiv-cli/references/discover.md` 已明确 novel search 只支持三种 search target 与 `day|week|month` period，本卡未重复修改文档；代码提交为 `bdb874fa9cacbfef048d2bc45a38730d21bed3b0`。
+- Depends on：T39A、T14、T21、T22、T23 均已 verified；承接 T02/T05 的 `/v1/search/novel`、`SearchNovelsRequest`、public-scoped positive offset cursor、query digest 与 novel period contract，并复用 T23 的 pooled traversal 与 T24 已验证的 CLI 输入/输出边界。
+- 冻结 contract / fixture：canonical `pixiv search WORD --type novel` 与 legacy `pixiv novel search WORD` 共用同一 novel owner execution；首请求使用 `/v1/search/novel`，默认 `search_target=partial_match_for_tags`、`sort=date_desc`，`--search-by` 仅允许 `tag-partial|tag-exact|title-caption`，`--sort` 允许 `date_desc|date_asc`，`--period` 只允许 `day|week|month` 并映射为 upstream duration；novel 不接受 `tag-title-caption`、`half-year`、`year`、`--start-date` 或 `--end-date`。`--limit` 跨 upstream offset continuation 形成逻辑结果；JSON 使用 `novels` envelope，NDJSON 使用稳定 novel record，legacy route 支持 stdin word。
+- Red 测试、命令及当前行为的实际失败：先加入 `TestNovelSearchRejectsTagTitleCaptionForCanonicalAndLegacyRoutes`，运行 `go test ./internal/cli/commands/pixiv/search -run TestNovelSearchRejectsTagTitleCaptionForCanonicalAndLegacyRoutes -count=1 -v`；旧实现复用 artwork 的 `resolveSearchBy`，canonical 与 legacy 两个子测试均实际返回 `<nil>`，且 `Pooled` 被打开，证明不支持的 `keyword` target 会越过 CLI 校验。随后补充 canonical period/JSON/两页、legacy stdin/NDJSON、unsupported period 与 date flag 的 no-network 回归。
+- Green 命令及验收断言：`go test ./internal/cli/commands/pixiv/search -run 'Test(NovelSearch|CanonicalNovelSearch|LegacyNovelSearch)' -count=1 -v`、`go test ./internal/cli/commands/pixiv/search -count=1`、`go test -race ./internal/cli/commands/pixiv/search -count=1`、`go test ./... -count=1`、`go vet ./...`、`sh scripts/build.sh`、相关文件 `gofmt`、`git diff --check` 均通过；提交钩子再次通过 `gofmt` 与 `go test ./...`。fixture 断言 canonical/legacy 均到达 `/v1/search/novel`，period/query target/sort 映射正确，首请求无 offset、第二页为 `offset=30`，JSON 聚合两条 novel，NDJSON 包含 `id/type/title`，非法 target/period/date flag 均在打开 SDK 前失败。LSP `get_diagnostics` 对 `novel.go` 与 `novel_test.go` 均为空；`detect_changes`/`blast_radius` 确认 legacy `NewNovel` 的唯一生产调用方仍为 `internal/cli/root.go`。
+- 公开兼容性影响：完成既有 CLI canonical novel search 与 `pixiv novel search` compatibility route 的验证与收紧；不新增、删除或重命名 public SDK symbol，不改变 MCP route/schema、`/v1/search/novel` wire 字段、认证/token stdout、默认账号选择、依赖、本地数据或发布物。`tag-title-caption` 仍只属于 artwork search；本卡仅拒绝此前错误放行到 novel 的 unsupported keyword target，不引入固定 timeout、重试上限、截断或静默 fallback。
+- 回滚前提 / 依赖闭包：代码提交 `bdb874fa9cacbfef048d2bc45a38730d21bed3b0` 与本记录需成对回滚；若后续 T37 MCP novel owner 或其他上层调用依赖该 novel target 校验，回滚前必须同步撤销调用或提供等价兼容修复，不能只删除 owner-local validator。没有业务数据、账号、token、缓存、运行配置、依赖或生成物迁移。
+- 实际结果 / evidence / 风险：T25 已 verified；未执行真实 Pixiv API，未改写 strict/live evidence，也未授予 `novel-search` capability `public_ready`，因为 MCP owner T37 与最终发布门禁尚未完成。`required=41 scope_admitted=41 public_ready=0 other=0` 保持不变，Goal-3 继续 incomplete；下一张 pending 卡为 T26。
 
 ## 实现任务准入卡
 
