@@ -464,7 +464,7 @@ for ip,n in sorted(same): print(ip,n)'
 
 | ID | 唯一 owner | 当前证据 | close-out 条件 |
 | --- | --- | --- | --- |
-| `NOVEL-RANKING` | `sdk/pixiv`（T18；CLI/MCP 后续） | SDK 已在 internal `/v1/novel/ranking` adapter 之上暴露 additive `NovelRanking` migration seam；MCP 无 `novel_ranking` tool，live/public 发布 evidence 仍未闭合 | 完成 live 第二页、shared cursor、CLI/MCP 与发布兼容门禁；此前仍是 evidence-gated，不得记为 `public_ready` |
+| `NOVEL-RANKING` | `sdk/pixiv` + `internal/cli/commands/pixiv/ranking`（T18/T30；MCP 后续） | SDK 与 CLI 已在 internal `/v1/novel/ranking` adapter 之上暴露 additive `NovelRanking` seam；CLI 通过 `--type novel` 显式选择；MCP 无 `novel_ranking` tool，live/public 发布 evidence 仍未闭合 | 完成 live 第二页、shared cursor、MCP 与发布兼容门禁；此前仍是 evidence-gated，不得记为 `public_ready` |
 | `NOVEL-BOOKMARK-MUTATION` | 无 owner | SDK 无 `AddNovelBookmark` 类导出；`user_novel_bookmarks` 只读 | 同上 |
 | `COMMENT-WRITE` | `sdk/pixiv`（T16；CLI/MCP 后续） | SDK 已暴露按 namespace 区分的 `PostArtworkComment`/`ReplyArtworkComment`/`DeleteArtworkComment` 及 novel 对应方法；MCP `comment_post`/`comment_add` 目录仍 = 0；响应 ID、read-back、清理和 strict live evidence 尚未闭合 | 完成 strict/live 写入 evidence、同账号 read-back、清理及 T33/T38 兼容门禁后；此前仍是 evidence-gated，不得记为 `public_ready` |
 | `NOTIFICATION` | 无 owner | MCP `notification` 目录 = 0；SDK `Notification*` 导出 = 0 | 同上 |

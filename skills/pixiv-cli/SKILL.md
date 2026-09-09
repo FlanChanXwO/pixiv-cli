@@ -153,6 +153,7 @@ pixiv bookmark tags USER_ID_OR_URL --type all --limit 20 --json
 pixiv bookmark detail ARTWORK_ID_OR_NOVEL_ID_OR_URL --type novel --json
 pixiv user novels USER_ID --limit 20 --json
 pixiv ranking --mode day
+pixiv ranking --type novel --mode day --limit 10
 pixiv recommended --type artwork --limit 10 # type is required; needs auth
 pixiv recommended --type artwork --content-type manga --limit 10 # local artwork subtype filter
 pixiv recommended --type all --limit 10     # request all supported kinds; needs auth
@@ -280,7 +281,9 @@ session.
    reliable evidence exists. Do not present a strategy error as an empty result.
    `novel search` is App-only and requires authentication. Bookmark count is a
    public bookmark total, never a like count.
-6. **Extended rankings need authentication.** Valid modes are `day`,
+6. **Rankings support artwork and novel entities.** `pixiv ranking` defaults to
+   `--type artwork`; use `--type novel` for novel ranking. `--date` is only
+   valid with artwork ranking. Valid modes are `day`,
    `day_male`, `day_female`, `week`, `week_original`, `week_rookie`, `month`,
    `day_manga`, `week_manga`, `month_manga`, `week_rookie_manga`, `day_r18`,
    `day_male_r18`, `day_female_r18`, `week_r18`, `week_r18g`. The final nine

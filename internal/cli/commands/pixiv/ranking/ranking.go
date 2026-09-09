@@ -1,4 +1,4 @@
-// Package ranking owns the Pixiv illustration ranking command.
+// Package ranking owns the Pixiv artwork and novel ranking command.
 package ranking
 
 import (
@@ -19,6 +19,7 @@ import (
 type options struct {
 	deps.CommandOptions
 	ndjson bool
+	typ    string
 	mode   string
 	date   string
 	limit  int
@@ -32,10 +33,10 @@ type command struct {
 // New builds the actual `pixiv ranking` command.
 func New(data deps.Data) *cobra.Command {
 	a := command{data: data}
-	options := options{mode: string(pixiv.RankingModeDay)}
+	options := options{typ: "artwork", mode: string(pixiv.RankingModeDay)}
 	cmd := &cobra.Command{
 		Use:   "ranking",
-		Short: "Show illustration ranking",
+		Short: "Show artwork or novel ranking",
 		Args:  data.ExactArgs(0, "pixiv ranking [options]"),
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			return a.run(cmd, options)
@@ -44,8 +45,9 @@ func New(data deps.Data) *cobra.Command {
 	data.BindCommonFlags(cmd, &options.CommandOptions)
 	listing.BindNDJSONFlag(cmd, &options.ndjson)
 	flags := cmd.Flags()
+	flags.StringVarP(&options.typ, "type", "t", options.typ, "entity type: artwork or novel")
 	flags.StringVar(&options.mode, "mode", options.mode, "ranking mode: day, day_male, day_female, week, week_original, week_rookie, month, day_manga, week_manga, month_manga, week_rookie_manga, day_r18, day_male_r18, day_female_r18, week_r18, week_r18g; the last nine require authentication")
-	flags.StringVar(&options.date, "date", "", "YYYY-MM-DD")
+	flags.StringVar(&options.date, "date", "", "YYYY-MM-DD (artwork ranking only)")
 	listing.BindListFlags(cmd, &options.limit, &options.page)
 	data.BindNoInput(cmd)
 	requirements.Bind(cmd, requirements.PixivData())
@@ -53,6 +55,12 @@ func New(data deps.Data) *cobra.Command {
 }
 
 func (a command) run(cmd *cobra.Command, opts options) error {
+	if opts.typ != "artwork" && opts.typ != "novel" {
+		return errors.New("type must be one of: artwork, novel")
+	}
+	if opts.typ == "novel" && cmd.Flags().Changed("date") {
+		return errors.New("--date is only supported when --type artwork")
+	}
 	plan, err := listing.ParsePlan(cmd, opts.limit, opts.page)
 	if err != nil {
 		return err
@@ -73,6 +81,17 @@ func (a command) run(cmd *cobra.Command, opts options) error {
 		}
 	}
 	ndjson := a.data.ShouldAutoNDJSON(cmd, opts.ndjson, jsonOut)
+	if opts.typ == "novel" {
+		fetch := func(client *pixiv.Client, ctx context.Context, cursor sdk.Cursor) ([]pixiv.Novel, sdk.Cursor, error) {
+			result, err := client.NovelRanking(ctx, pixiv.NovelRankingRequest{Mode: pixiv.RankingMode(opts.mode), Cursor: cursor})
+			if err != nil {
+				return nil, sdk.Cursor{}, err
+			}
+			return result.Items, result.Next, nil
+		}
+		return a.runner().RunPooledNovelList(cmd.Context(), listing.Request(request), plan, jsonOut, ndjson, fmt.Sprintf("%s novel ranking", opts.mode), fetch,
+			func(items []pixiv.Novel) error { return printNovels(a.data.Output, items) })
+	}
 	fetch := func(client *pixiv.Client, ctx context.Context, cursor sdk.Cursor) ([]pixiv.Artwork, sdk.Cursor, error) {
 		result, err := client.ArtworkRanking(ctx, pixiv.ArtworkRankingRequest{Mode: pixiv.RankingMode(opts.mode), Date: opts.date, Cursor: cursor})
 		if err != nil {
@@ -101,6 +120,15 @@ func printArtworks(out io.Writer, items []pixiv.Artwork, offset int) error {
 			tags = append(tags, tag.Name)
 		}
 		if _, err := fmt.Fprintf(out, "%d %q by %s bookmarks:%d views:%d tags:%s\n", item.ID, item.Title, item.User.Name, item.TotalBookmarks, item.TotalViews, strings.Join(tags, ",")); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func printNovels(out io.Writer, items []pixiv.Novel) error {
+	for _, item := range items {
+		if _, err := fmt.Fprintf(out, "%d %s — %s\n", item.ID, item.Title, item.User.Name); err != nil {
 			return err
 		}
 	}

@@ -57,7 +57,7 @@ CLI 与 MCP 可以共享上述 semantic validation，但互不调用；MCP tool 
 | bookmark detail/add/remove TARGET | 同名 | artwork 或 novel | 对应作品类型；不接受 all | 不把子类型当 namespace | retain；explicit SDK dispatch |
 | recommended all | recommended --type all | none | artwork, novel, user, all | 按 artwork endpoint 冻结 | retain deprecated positional all |
 | timeline following/latest | 同名 | none | artwork, novel | --content-type | retain；latest continuation 单独绑定 |
-| ranking | 同名 | none | artwork, novel | 按 ranking contract | retain；novel 待回归后发布 |
+| ranking | 同名 | none | artwork, novel | 按 ranking contract | retain；默认 artwork，novel 通过 `--type novel` 显式选择 |
 | detail TARGET | 同名 | artwork, novel, user | 与目标身份一致 | none | retain；novel content 禁止旧 endpoint，符号兼容见 T12 |
 | series TARGET | 同名 | artwork series, novel series | artwork, novel | none | retain；URL series identity 决定 dispatch |
 | comment TARGET | 同名 | read/create 为 artwork/novel；reply/delete 按 comment contract | artwork, novel namespace | text/reply/stamp 是操作类型 | retain read；新增 mutation 分别冻结 |
@@ -113,7 +113,7 @@ CLI 的当前 route/flag canonical 说明在双语
 | `pixiv detail ID_OR_URL` | `Artwork`、`Novel`、`User` | `--type/-t=artwork` 默认；artwork 可用受控 URL，novel/user 要求正数 ID | 保留 route；URL 与显式 type 冲突直接 `InvalidArgument`。`--content` 只保留输入兼容，正数 novel 现在返回 `content_unavailable` 且不调用 rejected content endpoint。 |
 | `pixiv series SERIES_ID` | `ArtworkSeries` 或 `NovelSeries` | `--type/-t` 必填；`SERIES_ID` 正数；list pagination 可选 | 保留 route；类型先于 ID dispatch，novel v1 rejected path 不作为 fallback。 |
 | `pixiv comment ID` | `ArtworkComments` 或 `NovelComments` | `--type/-t` 必填；`ID` 正数；list pagination 可选 | 保留 read route；create/reply/stamp/delete 是后续 additive operation，不偷改当前输出。 |
-| `pixiv ranking` | `ArtworkRanking` | `--mode=day` 默认，`--date` 可选；list pagination 可选 | 保留 route；novel ranking 不是当前旧 route 的隐式分支，待 T10/T18 owner 完成后再发布。 |
+| `pixiv ranking` | `ArtworkRanking` 或 `NovelRanking` | `--type/-t=artwork` 默认；`--mode=day` 默认；`--date` 只适用于 artwork；list pagination 可选 | 保留 route；novel ranking 不是旧 route 的隐式分支，使用显式 `--type novel` 发布。 |
 | `pixiv recommended [KIND]` | kind-specific recommendation operations | `--type/-t` 与位置 `KIND` 任选其一；支持 artwork/novel/user/all；list pagination 可选 | 保留位置参数作为兼容写法；若两种 selector 冲突返回 `InvalidArgument`；`all` 的流顺序/原子页契约由 T28/T43 验证。 |
 | `pixiv timeline following [--type KIND]` | `FollowingArtworks` 或 `FollowingNovels` | `--type` 必填；artwork `--content-type=all` 默认，`--restrict=public` 默认 | 保留 route；`--type` 是 entity，`--content-type` 是 subtype，不互相替代。 |
 | `pixiv timeline latest [--type KIND]` | `LatestArtworks` 或 `LatestNovels` | `--type` 必填；artwork `--content-type=illust` 默认且只接受 `illust/manga` | 保留 route；不把 search 的 `all` 当作 latest subtype；novel continuation 的 `max_novel_id` 修复由后续 owner 完成。 |

@@ -362,7 +362,7 @@ canonical 数据 action 是 `search`、`detail`、`ranking`、`series`、`commen
 | `update` | `pixiv update [--check] [--prerelease] [--proxy URL]` | 检查或执行与当前安装来源匹配的更新；`--json` 仅可与 `--check` 同用。 |
 | `search` | `pixiv search [WORD\|IMAGE_PATH_OR_URL] [-t artwork\|novel\|user] [options]` | canonical 实体搜索或自动反向搜图。常规文件或显式 HTTP(S) source 选择图片模式；`--trending-tags` 是无 WORD 的完整作品趋势标签模式，不接受搜索筛选或分页。 |
 | `detail` | `pixiv detail ID_OR_URL [-t artwork\|novel\|user] [--content] [--json]` | 读取一件作品、一本小说或一个用户；`--content` 是保留的小说兼容 flag，但 v1 App 正文 endpoint 不可用，正数小说 ID 返回 `content_unavailable` 且不请求 rejected endpoint。 |
-| `ranking` | `pixiv ranking [--mode MODE --date YYYY-MM-DD --page N --limit N]` | 读取插画排行；小说排行不在 v1 契约中。 |
+| `ranking` | `pixiv ranking [-t artwork\|novel] [--mode MODE --date YYYY-MM-DD --page N --limit N]` | 读取作品或小说排行；默认是 `artwork`，`--date` 只适用于作品排行。 |
 | `series` | `pixiv series SERIES_ID -t artwork\|novel [--page N --limit N --json\|--ndjson]` | 列出一个作品或小说系列；实体类型必填。 |
 | `comment` | `pixiv comment ID -t artwork\|novel [--page N --limit N --json\|--ndjson]` | 读取作品或小说评论；评论发布、回复、删除和 stamp 未暴露。 |
 | `bookmark` | `pixiv bookmark list\|tags\|detail\|add\|remove ...` | 读取作品/小说收藏、作品/小说收藏标签/详情，或修改作品收藏。`list` 和 `tags` 接受用户 ID 或用户 URL，并支持 `--type artwork\|novel\|all`；`all` 固定先作品后小说并保留 typed record/tag。`detail` 支持 artwork/novel，不支持 `all`；add/remove 仍只修改作品收藏。 |

@@ -203,12 +203,15 @@ pixiv timeline latest --type novel --limit 20
 pixiv ranking --mode day --limit 10
 pixiv ranking --mode week --date 2026-07-01 --limit 10
 pixiv ranking --mode week_r18 --limit 10
+pixiv ranking --type novel --mode week --limit 10
 pixiv recommended --type artwork --limit 10
 pixiv recommended --type artwork --content-type manga --limit 10
 pixiv recommended --type all --limit 5
 ```
 
-- `ranking` supports `day`, `day_male`, `day_female`, `week`, `week_original`,
+- `ranking` defaults to artwork; pass `--type novel` for novel ranking. The
+  artwork-only `--date YYYY-MM-DD` option is rejected for novel ranking.
+  Both entity types support `day`, `day_male`, `day_female`, `week`, `week_original`,
   `week_rookie`, `month`, `day_manga`, `week_manga`, `month_manga`,
   `week_rookie_manga`, `day_r18`, `day_male_r18`, `day_female_r18`,
   `week_r18`, and `week_r18g`. The final nine require authentication; never
