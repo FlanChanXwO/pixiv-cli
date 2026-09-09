@@ -83,7 +83,15 @@ Status 的 verified 表示对应 task 的实现与相关验证完成；各 task 
 | T34 | CLI user | T39A,T06,T13,T14,T21,T23 | detail/artworks/novels/relationships | verified |
 | T35 | CLI follow | T39A,T06,T21 | user follow/unfollow 与旧 route alias | verified |
 | T36 | CLI mypixiv | T39A,T06,T13,T14,T21,T23 | users/works typed validation | verified |
-| T37 | MCP read owners | T39A,T13,T14,T15,T16,T17,T18,T21,T22,T23 | 按 tool owner 拆卡，注册/schema/structured errors 与旧请求回放 | pending |
+| T37A | MCP artwork/novel core read owner | T39A,T13,T14,T21,T22,T23 | `search_illust`/`search_novel`、artwork/novel detail/related/series 与 `novel_content`；逐 tool 完成 schema、structured error 与旧 JSON 回放，保留 rejected content endpoint 的兼容错误 | pending |
+| T37B | MCP feed/recommendation read owner | T39A,T06,T18,T21,T22,T23 | ranking、recommended、timeline、trending；完成 subtype/restrict/filter、独立分页、all 聚合失败原子性与旧 JSON 回放 | pending |
+| T37C | MCP comments/stamp read owner | T39A,T16,T17,T21,T23 | artwork/novel comments read 与 stamp MCP 边界；完成 comments envelope、total/access_control、stamp reference/负向边界与旧 JSON 回放，不静默新增未冻结 tool | pending |
+| CHECK-06 | 集中检查-debug（T37A/T37B/T37C） | T37A,T37B,T37C | audit-only 复查 core/feed/comment read 的 owner 隔离、schema、structured error、分页/过滤、禁止 endpoint、旧 JSON 回放、测试/安全/回滚/文档并登记修复项 | pending |
+| T37D | MCP user/mypixiv/relationship read owner | T39A,T06,T13,T14,T21,T23 | `search_user`、user detail/artworks/novels、MyPixiv 与 following/followers/related/blocked；完成 identity/resolver/filter、分页、structured error 与旧 JSON 回放 | pending |
+| T37E | MCP bookmark read/aggregate owner | T39A,T15,T19,T21,T22,T23 | artwork/novel bookmark list/tags/detail 与 required `bookmark-list-all`/`bookmark-tags-all` capability 的显式 additive operation；保留旧 `user_bookmarks`/`bookmark_tags` wire，完成双流 checkpoint、页原子失败与旧 JSON 回放 | pending |
+| T37F | MCP registration/schema/error/replay harness | T39A,T37A,T37B,T37C,T37D,T37E | 维护聚合注册、legacy exact-set、共享 output/error schema、stdio stdout 边界和全量 read replay harness；新增 operation 只能显式 additive，不得重命名/删除旧 tool | pending |
+| CHECK-07 | 集中检查-debug（T37D/T37E/T37F） | CHECK-06,T37D,T37E,T37F | audit-only 复查 user/bookmark/shared harness 的 owner 隔离、aggregate contract、schema/error/stdout、旧 tool exact-set、测试/安全/回滚/文档并登记修复项 | pending |
+| T37 | MCP read owners（umbrella） | T37A,T37B,T37C,CHECK-06,T37D,T37E,T37F,CHECK-07 | 汇总并审计所有 MCP read owner、注册/schema/structured errors、bookmark aggregate 与旧 JSON 回放；全部子卡和集中检查完成后才可标记 verified | pending |
 | T38 | MCP mutation owners | T39A,T15,T16,T17,T06,T21 | 按 tool owner 拆卡，access control、read-back/outcome 与旧请求回放 | pending |
 | T39B | compatibility audit | T24,T25,T26,T27,T28,T29,T30,T31,T32,T33,T34,T35,T36,T37,T38 | 实施后审计 SDK symbol/CLI alias/MCP wire，与 T39A 冻结表逐项对照 | pending |
 | T40 | CLI presentation | T39B | completion/help/deprecated flags 与候选注册检查 | pending |
@@ -866,6 +874,17 @@ Status 的 verified 表示对应 task 的实现与相关验证完成；各 task 
 - 公开兼容性影响：保留 `mypixiv users|works` 现有命令树、分页、文本/JSON/NDJSON presenter、artwork/novel public entity 与 `illust` legacy spelling；仅将输入/type/未知身份错误固定为稳定 SDK reason，并明确 users 的当前账号绑定和 works 的 numeric USER_ID 边界。未新增、删除或重命名 public SDK symbol，未修改 MCP schema、上游 wire 字段、认证/token stdout、账号选择、依赖、本地数据或运行配置；未加入无依据的 timeout、截断、重试上限、静默 fallback 或匿名 Web fallback。
 - 回滚前提 / 依赖闭包：实现提交 `997e68e97aa47eceb5007abf63861b3728403ace` 与本台账记录需成对回滚；若后续 T37–T38、T39B/T40 或最终 release gate 引用 mypixiv typed validation、verified identity 或 CLI 文档语义，回滚前须同步撤销引用或提供等价兼容迁移。没有业务数据、账号、token、缓存、运行配置、依赖或生成物迁移。
 - 实际结果 / evidence / 风险：T36 已 verified；本轮只使用离线 HTTP fixture、CLI/SDK 本地回归、双语文档与产品 Skill 检查、LSP diagnostics、影响面审查、全量测试、静态检查与构建，未执行真实 Pixiv API，也未把 mypixiv capability 标为 `public_ready`。`required=41 scope_admitted=41 public_ready=0 other=0` 保持不变，Goal-3 继续 incomplete；下一张 pending 卡为 T37。残余风险仅为真实上游 MyPixiv 权限、响应形状与多账号池 replay 证据，需在后续 MCP/release gate 允许 live evidence 的阶段另行验证。
+
+## T37 拆卡记录
+
+- Owner package / 涉及文件：本轮只回写 `goal-3/tasks.md`。只读审计 `internal/mcpserver/pixiv/pixiv.go`、`internal/mcpserver/pixiv/tools/*`、`internal/mcpserver/pixiv/internal/{runtime,filters,records,outputs}` 以及现有 `pixiv_{search_server,read,user,contract,sdk_wire}_test.go`；不修改 production code、公开 SDK、CLI/MCP wire、依赖或运行配置。39 个直接 `Register` 调用加上 download package 的两个 tool 入口，与 T39A 的 40-tool legacy set 对齐。
+- Depends on：T39A、T13、T14、T15、T16、T17、T18、T21、T22、T23、T06、T19 均已 verified。T37 跨 core artwork/novel、feed/recommendation、comments/stamp、user/relationship、bookmark aggregate 与 shared registration/error/replay owner，按任务规则拆为 T37A–T37F；CHECK-06/CHECK-07 在对应三张子卡后复查，T37 父卡必须等待全部子卡和集中检查。
+- 冻结 contract / fixture：T39A `mcp-compatibility-matrix.md:81-113` 的旧 tool 名、字段、默认、structured output、`isError` 和 40 个 legacy 注册集合继续冻结；T37A 负责 `search_illust`/`search_novel`、detail/related/series 与 `novel_content`，T37B 负责 ranking/recommended/timeline/trending，T37C 负责两类 comments read 与 stamp MCP 边界，T37D 负责 `search_user`、user detail/lists、MyPixiv 和 relationships，T37E 负责四类 bookmark read 及 required `bookmark-list-all`/`bookmark-tags-all` capability 的显式 additive operation，T37F 负责聚合注册和共享 schema/error/stdout/replay harness。bookmark `all` 只能使用明确新增 operation/schema，不能改名或扩展旧 `user_bookmarks`/`bookmark_tags`；stamps 当前没有冻结的独立 MCP tool，子卡只能验证既有 comments/stamp-reference 边界，不得借 T17 的 SDK evidence 偷增 tool。
+- Red 测试、命令及当前行为的预期失败：本轮是 decomposition/ledger task，无 production code Red 阶段。静态审计显示旧 read surface 已分散到 33 个 tool package，现有测试只有代表性 search/detail/comments/feed/user/bookmark replay；`TestServerListsExpectedTools` 只锁定 legacy exact-set，尚未覆盖每一行 matrix 的独立 JSON replay，也没有 bookmark `all` 的 MCP operation、双流 checkpoint 或页原子失败证据。若继续把 T37 当作单卡，会把不相容的 owner、共享注册文件和 aggregate contract 混在一个回归边界内。
+- Green 命令及验收断言：回写前后使用 `rg --files internal/mcpserver/pixiv/tools | sort`、`rg '^\| `[^`]+` \|` goal-3/mcp-compatibility-matrix.md`、`rg 'Register\(app, server\)' internal/mcpserver/pixiv/pixiv.go` 和 `nl -ba goal-3/capability-admission.md` 逐项核对 33 个 read surface、40 个 legacy tool、required capability 的 T37 owner 与子卡文件边界；运行 `go test ./internal/mcpserver/pixiv/... -count=1`、`go test ./scripts/tests/documentation -count=1`、`git diff --check`。验收只要求拆卡依赖无环、legacy wire 未被改写、下一入口明确为 T37A，不把现有代表性 fixture 升级为 public evidence。
+- 公开兼容性影响：无 production code、public SDK symbol、CLI route、MCP legacy schema、endpoint、默认值、账号/token、live 数据或依赖变化；只将 T37 拆成 disjoint owner 与两个集中检查卡。41 条 required capability 继续为 `scope_admitted`，不授予 `contract_frozen`、`migration_ready` 或 `public_ready`。
+- 回滚前提 / 依赖闭包：整体撤销 T37A–T37F、CHECK-06/CHECK-07、T37 父卡依赖更新及本记录即可恢复拆卡前台账；没有业务数据、账号、token、缓存、运行配置或生成物迁移。若后续子卡已经新增 aggregate tool、共享 schema 或 replay fixture，回滚前必须同步撤销其引用或提供保持 legacy exact-set/source compatibility 的兼容迁移，不能只删除父卡记录。
+- 实际结果 / evidence / 风险：T37 已完成拆卡但父卡仍为 `pending`；未执行真实 Pixiv API，未把现有 fake fixture 记为 live/strict evidence。当前 `required=41 scope_admitted=41 public_ready=0 other=0` 保持不变，Goal-3 继续 incomplete；按 DAG 下一入口为 T37A。残余风险集中在每个 MCP tool 的离线旧 JSON 回放、bookmark 双流 aggregate contract、共享注册/schema/error harness 与后续 T39B/T43 回归，不能由 T39A 的代表性 replay 自动覆盖。
 
 ## 实现任务准入卡
 
