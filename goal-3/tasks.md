@@ -69,7 +69,7 @@ Status 的 verified 表示对应 task 的实现与相关验证完成；各 task 
 | T21 | resolver owner | T20,T12,T13,T14 | 复用 ParseURL；record/URL/ID、command-specific conflict、受控 probe | verified |
 | T22 | filter owner | T20,T19 | 规范化 rating/content-type filter；不发送未经确认 server rating | verified |
 | T23A | pagination + sdk/pixiv + search | none | 本轮获批基础修复：先失败测试、checkpoint、SDK 绑定、CLI/MCP 两调用方；详见分页报告 | verified |
-| T23 | pagination/traversal integration | T19,T22,T23A | 将基础续读契约接入其余 endpoint；验证聚合流、过滤及 Skip/Limit/OneBatch | pending |
+| T23 | pagination/traversal integration | T19,T22,T23A | 将基础续读契约接入其余 endpoint；验证聚合流、过滤及 Skip/Limit/OneBatch | verified |
 | T24 | CLI search | T39A,T13,T21,T22,T23 | artwork search 与 subtype；stdin/JSON/NDJSON | pending |
 | T25 | CLI novel search | T39A,T14,T21,T22,T23 | novel search canonical route、period 与旧 route | pending |
 | T26 | CLI user search/trending | T39A,T06,T13,T23 | user search 与 trending | pending |
@@ -712,6 +712,17 @@ Status 的 verified 表示对应 task 的实现与相关验证完成；各 task 
 - 公开兼容性影响：无 public SDK symbol、CLI/MCP route/schema、wire endpoint、认证/token 输出、默认业务 route、依赖或本地数据变更；新增仅为 `internal/shared/searchfilter` 内部语义、回归测试与维护者双语架构说明。既有 `internal/shared/searchfilter.BookmarkContext` 及其 CLI/MCP 调用方保持不变。
 - 回滚前提 / 依赖闭包：代码与架构说明提交 `79753ecbf32d2e94a9508d9412348b60aed69ab5` 与本账本记录需成对回滚；若后续 T23/T24/T27/T29/T37 已引用新 filter symbols，回滚前须先撤销这些调用或提供等价迁移，不能单独删除共享包。没有业务数据、账号、token、缓存、运行配置、依赖或生成物迁移。
 - 实际结果 / evidence / 风险：T22 已 verified；代码提交已推送并由 `git ls-remote origin refs/heads/codex/goal-3-vnext-plan` 核验为 `79753ecbf32d2e94a9508d9412348b60aed69ab5`。未执行真实 Pixiv API，未改写 strict/live evidence，也未授予任何 capability `public_ready`；`required=41 scope_admitted=41 public_ready=0 other=0` 保持不变，Goal-3 继续 incomplete。残余风险是后续命令 owner 必须按各自 contract 选择默认 subtype、接入 local filter 并把语义摘要放进对应 cursor binding，不得把本包误用成全局 Target union。下一张 pending 卡为 T23。
+
+## T23 完成记录
+
+- Owner package / 涉及文件：`internal/shared/pagination/pagination.go`、`internal/shared/pagination/streams.go`、对应 pagination tests，以及 `internal/shared/traversal/streams.go`、对应 traversal tests；同步更新 `docs/en/maintainers/architecture.md` 与 `docs/zh-CN/maintainers/architecture.md`。代码、测试和架构说明提交为 `bbe3b4e6553c9a46503be804bc728b61c375f0a4`。现有带本地筛选的 SearchArtworks CLI/MCP 路径继续使用 `CollectFilteredPagesFrom`，该入口现在委托统一 stream collector；其他 endpoint 的产品级聚合与 cursor binding 仍由 T24–T38 owner 按 contract 接入。
+- Depends on：T19、T22、T23A 均已 verified；承接 `sdk.Cursor` 的 opaque continuation、query/filter/account/subtype binding、批内 checkpoint 以及本地 filter 不进入 upstream 的冻结语义。T23 不新增 endpoint，不把 `recommended all` 的既有独立分页改为聚合语义，也不提前实现 bookmark `list/tags --type all` 的 public owner。
+- 冻结 contract / fixture：有序 `Stream` 保持各自 upstream 顺序，并按配置顺序连接为逻辑序列；Include 先于全局 Skip/Limit；批内截断通过“输入 cursor + 源批次消费位置”回调生成 checkpoint；`StreamState` 保存当前流和各流 continuation，产品 binding/编码留在 owner；`OneBatch` 只在当前流首个有匹配内容的源批次后停止，允许跳过空流且不预取下一流；任一流 fetch/filter/checkpoint 错误都会丢弃整页部分结果；`traversal` 在每次 execute attempt 重新从相同初始 state 收集，未提交结果不得混入 replay。
+- Red 测试、命令及当前行为的实际失败：先加入 `internal/shared/pagination/streams_test.go`、`internal/shared/traversal/streams_test.go`，运行 `go test ./internal/shared/pagination ./internal/shared/traversal -count=1`；实现缺失时 Go 实际报告 `pagination.Stream`、`CollectStreamsFrom`、`StreamState` 与 `traversal.CollectStreamsWith` 未定义。随后补充保持既有 filtered helper 错误优先级的测试：负 `Skip/Limit` 必须先于 callback 校验，且 `checkpoint` 必须先于 `include`；旧行为在 Green 前实际返回了错误顺序，修正后回归通过。
+- Green 命令及验收断言：`go test ./internal/shared/pagination ./internal/shared/traversal -count=1`、`go test ./internal/shared/pagination ./internal/shared/traversal -race -count=1`、`go vet ./internal/shared/pagination ./internal/shared/traversal`、`go test ./scripts/tests/documentation -count=1`、`go test ./scripts/internal/publicapi -count=1`、`go test ./... -count=1`、`go vet ./...`、`sh scripts/build.sh`、相关文件 `gofmt -d` 和 `git diff --check` 均通过；提交钩子再次通过 gofmt 与 `go test ./...`。测试覆盖跨流 Skip/Limit、批内 remainder、过滤前预算、OneBatch 空流跳过、整页错误丢弃、execute replay 清空以及从聚合 state 续读。LSP `blast_radius` 确认新增导出符号仅由 shared 包内部与测试引用；当前 gopls 未提供 get_diagnostics，故以编译、vet、测试和构建替代诊断证据。
+- 公开兼容性影响：新增内容只位于 `internal/shared`，无 public SDK symbol、CLI/MCP route/schema、endpoint wire、认证/token 输出、默认账号行为、依赖、本地数据或生成物契约变化。`CollectFilteredPagesFrom` 保持原有过滤、Skip/Limit/OneBatch、checkpoint、错误传播和 callback 校验顺序，只改为复用统一 collector；没有新增固定 timeout、重试上限、截断或静默 fallback。
+- 回滚前提 / 依赖闭包：代码/测试/双语架构说明提交 `bbe3b4e6553c9a46503be804bc728b61c375f0a4` 与本记录需成对回滚；若后续 T24–T38 已接入 `Stream`/`StreamState`/`CollectStreamsWith`，回滚前必须先撤销这些调用或完成等价兼容迁移，不能单独删除 shared seam。没有业务数据、账号、token、缓存、运行配置、依赖或发布物迁移。
+- 实际结果 / evidence / 风险：T23 已 verified，代码提交已创建；本记录提交后将与代码一起推送并再以 `git ls-remote origin refs/heads/codex/goal-3-vnext-plan` 核验。未执行真实 Pixiv API，未改写 strict/live evidence，也未授予任何 capability `public_ready`；`required=41 scope_admitted=41 public_ready=0 other=0` 保持不变，Goal-3 继续 incomplete。当前剩余风险是产品 owner 尚未把各 endpoint 的 continuation/binding 编码接入新的 aggregate seam，后续 T24–T38 仍需分别完成其 public/compatibility/docs/regression 责任。下一张 pending 卡为 T24。
 
 ## 实现任务准入卡
 
