@@ -376,7 +376,7 @@ canonical 数据 action 是 `search`、`detail`、`ranking`、`series`、`commen
 | `user` | `pixiv user search\|detail\|artworks\|novels\|bookmarks\|following\|followers\|related\|blocked\|follow ...` | 读取用户、资料和关系，或管理用户关注；follow mutation 接受正数用户 ID 或兼容的 user Record，省略用户 ID 是否使用当前账号由具体子命令决定。 |
 | `download` | `pixiv download [options] SRC...` | 下载作品 ID/URL、允许的 CDN URL，或从受支持的用户、公开收藏 URL 展开视觉作品。作品系列 URL 不是下载来源。`--output/-o` 是 `--download-path` 的别名。 |
 | `timeline` | `pixiv timeline following\|latest -t artwork\|novel [--content-type TYPE ...]` | 读取关注用户或最新作品流；`--type` 选择实体，作品子类型使用独立的 `--content-type`。following 作品因 upstream endpoint 没有子类型 query 而在本地筛选；latest 作品只支持 `illust|manga`。 |
-| `mypixiv` | `pixiv mypixiv users\|works [-t artwork\|novel ...]` | 读取 MyPixiv 用户以及作品/小说流。 |
+| `mypixiv` | `pixiv mypixiv users\|works [-t artwork\|novel ...]` | 读取 MyPixiv 用户以及作品/小说流。`users` 只使用当前账号且要求已验证的 runtime identity；`works USER_ID` 只接受正数数字 ID，不把 URL 当作 ID。 |
 | `recommended` | `pixiv recommended [-t artwork\|novel\|user\|all] [--content-type all\|illust\|manga] [--page N --limit N --json]` | 读取个性化推荐；对 artwork，`--content-type` 只在本地按返回的 artwork DTO 子类型筛选，不发送 upstream 查询参数；位置参数 `KIND` 仍兼容；`all` 的各实体流在结果中保持独立。 |
 | `novel search` | `pixiv novel search WORD [options]` | 小说搜索兼容路径；优先使用 `pixiv search WORD --type novel`，只暴露基础小说搜索字段。 |
 | `user search` | `pixiv user search WORD [options]` | 用户搜索兼容路径；优先使用 `pixiv search WORD --type user`。 |
@@ -445,7 +445,8 @@ Content-Type 与 URL 后缀不一致（例如 URL 为 `.png`、实体为 JPEG）
 | `user following`、`user followers` | `--restrict` | `public` | 关注可见性：`public` 或 `private`。 |
 | `timeline following` | `--type` / `-t`、`--content-type` | 必填、`all` | 实体类型为 `artwork` 或 `novel`；artwork 支持本地 `all|illust-and-ugoira|illust|manga|ugoira` 筛选，`--restrict` 为 public/private。对 `novel` 显式传 `--content-type` 会拒绝。 |
 | `timeline latest` | `--type` / `-t`、`--content-type` | 必填、`illust` | 实体类型为 `artwork` 或 `novel`；latest artwork 只支持 `illust` 或 `manga`，省略 `--content-type` 时选择 `illust`。对 `novel` 显式传 `--content-type` 会拒绝。 |
-| `mypixiv works` | `--type` / `-t` | 必填 | 省略 `USER_ID` 时使用实体类型 `artwork` 或 `novel`；提供 `USER_ID` 时还支持 `manga`。旧 `illust` 写法继续作为 `artwork` 的兼容别名。 |
+| `mypixiv users` | `--page`、`--limit` | 可选 | 只使用已验证的认证账号身份；不接受位置用户目标，也没有匿名 fallback。 |
+| `mypixiv works` | `--type` / `-t` | 必填 | 省略 `USER_ID` 时使用实体类型 `artwork` 或 `novel`；提供正数数字 `USER_ID` 时还支持 `manga`。旧 `illust` 写法继续作为 `artwork` 的兼容别名；类型或 ID 非法时在账号池执行前返回 `invalid_argument`。 |
 | `recommended` | `--type` / `-t` | 空 | `artwork`、`novel`、`user` 或 `all`；选择 `artwork` 时可用 `--content-type` 指定本地子类型筛选；位置参数 `KIND` 是兼容写法。 |
 | `recommended` | `--content-type` | `all` | 仅用于 artwork 的本地子类型筛选：`all`、`illust` 或 `manga`。该值只筛选返回 DTO 的 kind，不发送为 upstream 的 `content_type` 参数。 |
 | Record 动作 | `--on-error` | `skip` | 对格式错误/不兼容记录选择写 stderr 后跳过，或 `fail-fast`。 |

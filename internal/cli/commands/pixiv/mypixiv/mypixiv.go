@@ -102,7 +102,7 @@ func (a command) runUsers(cmd *cobra.Command, opts options) error {
 	fetch := func(client *pixiv.Client, ctx context.Context, cursor sdk.Cursor) ([]pixiv.UserPreview, sdk.Cursor, error) {
 		if userID == 0 {
 			var err error
-			userID, err = deps.CurrentUserID(client)
+			userID, err = currentUserID(client)
 			if err != nil {
 				return nil, sdk.Cursor{}, err
 			}
@@ -118,6 +118,14 @@ func (a command) runUsers(cmd *cobra.Command, opts options) error {
 	}, fetch, func(items []pixiv.UserPreview) error { return printUserPreviews(a.data.Output, items) })
 }
 
+func currentUserID(client *pixiv.Client) (int64, error) {
+	if id := client.UserID(); id > 0 {
+		return id, nil
+	}
+	return 0, sdk.NewError("pixiv", "MyPixivUsers", sdk.Unauthorized,
+		sdk.WithDetail("cannot determine current user id"))
+}
+
 func (a command) runWorks(cmd *cobra.Command, args []string, opts options) error {
 	// CLI 的 --type 选择实体，公开名称 artwork 对应 App API 的 illust 子类型。
 	// 保留 illust 输入兼容既有脚本，但帮助与文档统一使用 artwork。
@@ -127,16 +135,19 @@ func (a command) runWorks(cmd *cobra.Command, args []string, opts options) error
 	var userID int64
 	if len(args) == 0 {
 		if opts.contentType != "illust" && opts.contentType != "novel" {
-			return errors.New("type without USER_ID must be one of: artwork, novel")
+			return sdk.NewError("pixiv", "mypixiv works", sdk.InvalidArgument,
+				sdk.WithDetail("type without USER_ID must be one of: artwork, novel"))
 		}
 	} else {
 		if opts.contentType != "illust" && opts.contentType != "manga" && opts.contentType != "novel" {
-			return errors.New("type with USER_ID must be one of: artwork, manga, novel")
+			return sdk.NewError("pixiv", "mypixiv works", sdk.InvalidArgument,
+				sdk.WithDetail("type with USER_ID must be one of: artwork, manga, novel"))
 		}
 		var err error
 		userID, err = parse.PositiveInt64(args[0], "user_id")
 		if err != nil {
-			return err
+			return sdk.NewError("pixiv", "mypixiv works", sdk.InvalidArgument,
+				sdk.WithDetail("user_id must be a positive integer"))
 		}
 	}
 	plan, err := listing.ParsePlan(cmd, opts.limit, opts.page)

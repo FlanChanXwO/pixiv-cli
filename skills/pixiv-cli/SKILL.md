@@ -165,7 +165,9 @@ pixiv recommended --type all --limit 10     # request all supported kinds; needs
 pixiv timeline following --type artwork --content-type illust --limit 20
 pixiv timeline latest --type artwork --limit 20 # defaults to the supported illust feed
 pixiv timeline latest --type novel --limit 20
+pixiv mypixiv users --limit 20
 pixiv mypixiv works --type artwork --limit 20
+pixiv mypixiv works USER_ID --type manga --limit 20
 pixiv user search "WORD" --limit 10 --json # authenticated App user search
 pixiv user detail USER_ID --json          # full public profile (USER_ID required)
 pixiv user artworks [USER_ID] --limit 20  # omit USER_ID = current account
@@ -271,6 +273,12 @@ session.
    locally filters returned artwork DTOs for `all|illust-and-ugoira|illust|manga|ugoira`;
    the following endpoint has no upstream subtype query, so do not send one.
    `--content-type` is rejected with `--type novel` for either timeline route.
+   `mypixiv users` requires the verified runtime account identity and accepts no
+   positional user target. `mypixiv works` requires `--type`; without `USER_ID`
+   it accepts only `artwork|novel`, while a supplied positive numeric `USER_ID`
+   also permits `manga`. URL targets and unsupported types return
+   `invalid_argument` before account-pool execution; there is no anonymous
+   fallback.
    `mypixiv works --type artwork` maps the public artwork entity to Pixiv's
    `illust` feed; the older `--type illust` spelling remains compatible.
    `detail --type novel --content` remains a compatibility flag, but the App
