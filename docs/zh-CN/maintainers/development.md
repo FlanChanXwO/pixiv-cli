@@ -493,11 +493,18 @@ overlay。tag run 失败时应修复默认分支上的原因，并按正常的�
 build、production build 与 publish 都绑定同一个 tag；生产构建在独立 runner 上从 clean tag tree 重建
 staticlib，并继续以 `git diff --exit-code` 做 byte-for-byte 校验。
 
-GitHub Release 与 GHCR 是独立系统，无法原子提交。因此容器发布拆成 Release 前的 `build_container`
+GitHub Release 与 registry 是独立系统，无法原子提交。因此 GHCR 容器发布拆成 Release 前的 `build_container`
 和 Release 后的 `publish_container`。若 GHCR 发布失败，release workflow 必须保持 failed；恢复方式是用
 同一批 verified-container artifact（保留 90 天）和 immutable tag 重跑失败的 `publish_container` job——不要为了修复
 registry 发布而重建或重签 native 资产。exact-version manifest 总是推送；只有现有 channel classifier
 报告 stable 时才推进 `latest`。不使用 retry loop 隐藏 push 失败。
+
+`.github/workflows/publish-dockerhub.yml` 是独立的 Release 后 workflow。它从完成的 Release run 接收精确 tag
+handoff 和两份 verified container artifact，校验 release tag、source commit、公开 Release 与 channel，随后只在
+通过 stdin 执行 `docker login` 时使用受保护 `release` Environment 的 secret `DOCKER_HUB_TOKEN`，再发布到
+`docker.io/flanchanxwo/pixiv-cli`。它不会重建镜像。若 Docker Hub 发布失败，应从默认分支使用原始
+`release_tag` 与 `release_run_id` dispatch，以复用同一批 verified artifact；exact-version tag 总是发布，恢复旧
+stable 时即使不更新 `latest` 也会成功，只有最新 stable release 才推进 `latest`。
 
 ### 容器发布验证
 
@@ -655,10 +662,12 @@ workflow artifact 读取、生成或记录 deploy key。
 当前 Release 不会进行 Apple notarization 或 Windows Authenticode。直接下载仍可能被 Gatekeeper
 或 SmartScreen 拦截/提示；这是需要在用户文档中保留的系统信誉边界，不能通过文档或脚本绕过。
 
-成功结束的 `Release` workflow 会同时触发 `.github/workflows/publish-skillhub.yml` 与 `.github/workflows/publish-clawhub.yml`。GitHub 以
+成功结束的 `Release` workflow 会同时触发 `.github/workflows/publish-dockerhub.yml`、`.github/workflows/publish-skillhub.yml` 与
+`.github/workflows/publish-clawhub.yml`。GitHub 以
 `github.token` 创建 Release 时不会递归触发 `release` event，因此不能将该 event 用作可靠的自动化
 交接。完成 Homebrew 部署的 Release 会交出只含精确 release tag 的短期 artifact；这避免恢复发布的
-`workflow_run.head_branch` 为 `main` 时把分支名误作版本。SkillHub workflow 只 checkout 该不可变 tag，
+`workflow_run.head_branch` 为 `main` 时把分支名误作版本。Docker Hub、SkillHub 和 ClawHub workflow 都使用这个不可变
+handoff，并在发布前独立重新校验 tag。SkillHub workflow 只 checkout 该不可变 tag，
 并确认该 tag 属于默认分支、对应 GitHub Release 已公开且版本满足 SemVer 后，才对
 `skills/pixiv-cli/` 与前一个已合并的语义版本 tag 比较。目录未变化时工作流成功跳过；目录变化时才运行
 SkillHub CLI 的 dry-run 和提交。产品 `SKILL.md` 的 SemVer 必须与 CLI Release tag 相同；release 的 tag-source

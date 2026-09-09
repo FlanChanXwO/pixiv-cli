@@ -50,14 +50,12 @@ func requireFragments(t *testing.T, locale, document string, fragments []string)
 	}
 }
 
-// rejectUnsafeClaims 防止文档宣称容器改变了既有产品模型或引入额外 registry。
+// rejectUnsafeClaims 防止文档宣称容器改变了既有产品模型或认证模型。
 func rejectUnsafeClaims(t *testing.T, locale, document string) {
 	t.Helper()
 	for _, forbidden := range []string{
 		"Docker-specific product",
 		"Docker-specific authentication",
-		"Docker Hub",
-		"docker.io/flanchanxwo",
 	} {
 		if strings.Contains(document, forbidden) {
 			t.Fatalf("%s README must not claim or advertise %q", locale, forbidden)
@@ -72,6 +70,8 @@ func TestDockerInstallationContractIsBilingual(t *testing.T) {
 	commonFragments := []string{
 		"ghcr.io/flanchanxwo/pixiv-cli",
 		"docker pull ghcr.io/flanchanxwo/pixiv-cli:",
+		"docker.io/flanchanxwo/pixiv-cli",
+		"docker pull docker.io/flanchanxwo/pixiv-cli:",
 		":v1.2.3",
 		":latest",
 		"linux/amd64",
@@ -170,6 +170,10 @@ func TestMaintainerDocsDocumentContainerReleaseVerification(t *testing.T) {
 				"`pixiv config path`",
 				"org.opencontainers.image.source",
 				"credential-free container smoke workflow",
+				"publish-dockerhub.yml",
+				"DOCKER_HUB_TOKEN",
+				"docker.io/flanchanxwo/pixiv-cli",
+				"release_run_id",
 				"go test ./scripts/internal/releaseworkflow -count=1",
 				"go test ./scripts/tests/containerrelease -count=1",
 				"go run ./scripts/cmd/releaseworkflow --workflow .github/workflows/release.yml",
@@ -188,6 +192,10 @@ func TestMaintainerDocsDocumentContainerReleaseVerification(t *testing.T) {
 				"`pixiv config path`",
 				"org.opencontainers.image.source",
 				"无凭据容器 smoke workflow",
+				"publish-dockerhub.yml",
+				"DOCKER_HUB_TOKEN",
+				"docker.io/flanchanxwo/pixiv-cli",
+				"release_run_id",
 				"go test ./scripts/internal/releaseworkflow -count=1",
 				"go test ./scripts/tests/containerrelease -count=1",
 				"go run ./scripts/cmd/releaseworkflow --workflow .github/workflows/release.yml",
