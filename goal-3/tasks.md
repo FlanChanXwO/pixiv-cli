@@ -76,7 +76,7 @@ Status 的 verified 表示对应 task 的实现与相关验证完成；各 task 
 | T27 | CLI bookmark | T39A,T15,T21,T22,T23 | list/tags/detail/add/remove；list/tags all；user target 与内容类型分开 | verified |
 | T28 | CLI recommended | T39A,T18,T21,T22,T23 | entity/subtype/all 与旧 positional all | verified |
 | T29 | CLI timeline | T39A,T18,T21,T22,T23 | following/latest；entity 与 content-type subtype | verified |
-| T30 | CLI ranking | T39A,T18,T22,T23 | artwork/novel ranking | pending |
+| T30 | CLI ranking | T39A,T18,T22,T23 | artwork/novel ranking | verified |
 | T31 | CLI detail | T39A,T13,T14,T21 | artwork/novel/user resolver；content endpoint exclusion 的兼容处理 | pending |
 | T32 | CLI series | T39A,T13,T14,T21,T23 | artwork/novel series 与 continuation | pending |
 | T33 | CLI comment | T39A,T16,T17,T21,T23 | read/create/reply/stamp/delete 的类型与结果语义 | pending |
@@ -789,6 +789,17 @@ Status 的 verified 表示对应 task 的实现与相关验证完成；各 task 
 - 公开兼容性影响：不新增、删除或重命名 public SDK symbol，不修改 MCP route/schema、upstream adapter wire、认证/token stdout、账号选择、依赖或本地数据。following artwork subtype 是 CLI 本地 DTO 语义；latest artwork 的既有默认与 `illust|manga` 约束保持；显式 content-type 与 novel 的组合现在显式失败，避免把 artwork subtype 误用于 novel。未新增固定 timeout、重试上限、截断、静默 fallback 或匿名 Web fallback。
 - 回滚前提 / 依赖闭包：代码/测试/文档提交 `58abd02ce4a7e76289646be19c9a85654848ff35` 与本台账记录需成对回滚；若后续 T30–T38、T39B/T40 或最终 gate 已引用 timeline 的 subtype/冲突契约，回滚前须同步撤销引用或提供等价兼容迁移。没有业务数据、账号、token、缓存、运行配置、依赖或生成物迁移。
 - 实际结果 / evidence / 风险：T29 已 verified；本轮仅使用离线 HTTP fixture、CLI/SDK 本地测试与构建检查，未执行真实 Pixiv API，未把 T29 的本地 subtype 证据升级为 upstream subtype 的 live evidence，也未授予任何 capability `public_ready`。`required=41 scope_admitted=41 public_ready=0 other=0` 保持不变，Goal-3 继续 incomplete；下一张 pending 卡为 T30。
+
+## T30 完成记录
+
+- Owner package / 涉及文件：`internal/cli/commands/pixiv/ranking/ranking.go`、`internal/cli/commands/pixiv/ranking/ranking_test.go`；同步更新 `docs/en/cli-reference.md`、`docs/zh-CN/cli-reference.md`、`docs/en/maintainers/development.md`、`docs/zh-CN/maintainers/development.md`、`goal-3/cli-migration-matrix.md`、`skills/pixiv-cli/SKILL.md` 与 `skills/pixiv-cli/references/discover.md`。代码、测试与契约文档提交为 `7694ac795c56b7f88415eaf5b616588225cce3e`。
+- Depends on：T39A、T18、T22、T23 均已 verified；本卡只接入既有 public SDK 的 `ArtworkRanking`/`NovelRanking`、共享 listing runner 与 Pixiv CLI pooled execution，不修改 SDK、endpoint adapter、MCP schema 或 T31 之后的 detail owner。
+- 冻结 contract / fixture：`pixiv ranking` 保留旧 route，`--type artwork` 默认并继续调用 `/v1/illust/ranking`；显式 `--type novel` 调用 `/v1/novel/ranking`，复用 `NovelRanking` 的 `filter=for_android`、mode 与正 offset continuation。两种实体都支持已冻结的 ranking mode；`--date` 只属于 artwork，novel 显式传入时在账号池/网络执行前失败。`--limit`/`--page`、JSON envelope、canonical NDJSON typed record 与文本 presenter 复用既有 listing 语义。
+- Red 测试、命令及当前行为的实际失败：先加入 ranking flag、novel 两页 continuation/typed NDJSON、旧 artwork route 与 novel/date 冲突测试，运行 `go test ./internal/cli/commands/pixiv/ranking -run 'Test(NewDeclaresRankingInputAndOutputFlags|NovelRankingUsesTypedRouteAndContinuesAcrossPages|ArtworkRankingDefaultPreservesLegacyRoute|NovelRankingRejectsDateBeforeOpeningClient)$' -count=1 -v`；旧实现实际缺少 `--type`，novel 用例返回 `unknown flag: --type`，flag 断言也明确失败，证明缺口位于 ranking CLI owner。
+- Green 命令及验收断言：`go test ./internal/cli/commands/pixiv/ranking -count=1 -v`、`go test -race ./internal/cli/commands/pixiv/ranking -count=1`、`go test ./internal/cli/commands/pixiv/... -count=1`、`go test ./internal/shared/searchfilter ./internal/shared/pagination ./sdk/pixiv -count=1`、`go test ./scripts/tests/documentation -count=1`、`go test ./... -count=1`、`go vet ./...`、`sh scripts/build.sh`、相关 Go 文件 `gofmt` 与 `git diff --check` 均通过；提交钩子再次通过 `gofmt` 与 `go test ./...`。LSP 对 ranking production/test 文件 diagnostics 为空；blast-radius/detect-changes 确认 production caller 仍只有 `internal/cli/root.go` 的既有 `ranking.New` 组装。
+- 公开兼容性影响：新增 `--type artwork|novel` 是 additive CLI 能力；省略 flag 的旧 artwork ranking 默认、mode/date query、文本与 JSON/NDJSON artwork 输出保持不变。novel 不携带 artwork `date`，不引入隐式 fallback、匿名 Web、token stdout、依赖、数据或运行配置变化；MCP 仍未新增 `novel_ranking` tool。
+- 回滚前提 / 依赖闭包：代码/测试/文档提交 `7694ac795c56b7f88415eaf5b616588225cce3e` 与本记录需成对回滚；若后续 T31–T38、T39B/T40 或最终 release gate 引用显式 ranking type/output 契约，回滚前须同步撤销引用或提供等价兼容迁移。没有业务数据、账号、token、缓存、运行配置、依赖或生成物迁移。
+- 实际结果 / evidence / 风险：T30 已 verified；本轮只使用离线 HTTP fixture、CLI/SDK 本地回归、文档测试与构建检查，未执行真实 Pixiv API，也未把 novel ranking 的两页离线 fixture 升级为 live/public evidence。`NOVEL-RANKING` 仍需 live 第二页、MCP 与 release compatibility gates，未授予 `artwork-ranking` 或 `novel-ranking` capability `public_ready`；`required=41 scope_admitted=41 public_ready=0 other=0` 保持不变，Goal-3 继续 incomplete；下一张 pending 卡为 T31。
 
 ## 实现任务准入卡
 
