@@ -129,6 +129,36 @@ func NovelContentOutputSchema() *jsonschema.Schema {
 	}
 }
 
+// UserDetailOutputSchema 描述只返回实体记录的 detail envelope。
+func UserDetailOutputSchema() *jsonschema.Schema {
+	return singleRecordsOutputSchema()
+}
+
+// NovelDetailOutputSchema 描述小说详情的结构化 envelope。
+func NovelDetailOutputSchema() *jsonschema.Schema {
+	return singleRecordsOutputSchema()
+}
+
+// NovelSeriesOutputSchema 描述小说系列元数据与实体记录的 envelope。
+func NovelSeriesOutputSchema() *jsonschema.Schema {
+	return &jsonschema.Schema{
+		Type: "object",
+		Properties: map[string]*jsonschema.Schema{
+			"series": {
+				Type:                 "object",
+				AdditionalProperties: &jsonschema.Schema{},
+			},
+			"records": recordArraySchema(),
+			"pagination": {
+				Type:                 "object",
+				AdditionalProperties: &jsonschema.Schema{},
+			},
+		},
+		Required:             []string{"series", "records", "pagination"},
+		AdditionalProperties: &jsonschema.Schema{Not: &jsonschema.Schema{}},
+	}
+}
+
 // BookmarkTagsOutputSchema 返回收藏标签输出的 schema。
 func BookmarkTagsOutputSchema() *jsonschema.Schema {
 	return &jsonschema.Schema{
@@ -167,23 +197,10 @@ func BookmarkDetailOutputSchema() *jsonschema.Schema {
 // 额外属性，同时约束每条记录都具备稳定身份字段。
 func RecordsOutputSchema() *jsonschema.Schema {
 	allowAdditionalProperties := &jsonschema.Schema{}
-	record := &jsonschema.Schema{
-		Type:     "object",
-		Required: []string{"id", "type", "url"},
-		Properties: map[string]*jsonschema.Schema{
-			"id":   {Type: "string"},
-			"type": {Type: "string"},
-			"url":  {Type: "string"},
-		},
-		AdditionalProperties: allowAdditionalProperties,
-	}
 	return &jsonschema.Schema{
 		Type: "object",
 		Properties: map[string]*jsonschema.Schema{
-			"records": {
-				Type:  "array",
-				Items: record,
-			},
+			"records": recordArraySchema(),
 			"pagination": {
 				Type:                 "object",
 				AdditionalProperties: allowAdditionalProperties,
@@ -235,6 +252,35 @@ func RecordsOutputSchema() *jsonschema.Schema {
 		},
 		Required:             []string{"records"},
 		AdditionalProperties: &jsonschema.Schema{Not: &jsonschema.Schema{}},
+	}
+}
+
+func singleRecordsOutputSchema() *jsonschema.Schema {
+	return &jsonschema.Schema{
+		Type:                 "object",
+		Properties:           map[string]*jsonschema.Schema{"records": recordArraySchema()},
+		Required:             []string{"records"},
+		AdditionalProperties: &jsonschema.Schema{Not: &jsonschema.Schema{}},
+	}
+}
+
+func recordArraySchema() *jsonschema.Schema {
+	return &jsonschema.Schema{
+		Type:  "array",
+		Items: recordSchema(),
+	}
+}
+
+func recordSchema() *jsonschema.Schema {
+	return &jsonschema.Schema{
+		Type:     "object",
+		Required: []string{"id", "type", "url"},
+		Properties: map[string]*jsonschema.Schema{
+			"id":   {Type: "string"},
+			"type": {Type: "string"},
+			"url":  {Type: "string"},
+		},
+		AdditionalProperties: &jsonschema.Schema{},
 	}
 }
 

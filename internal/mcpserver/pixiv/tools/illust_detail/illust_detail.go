@@ -16,7 +16,7 @@ import (
 
 // Register 注册 illust_detail。
 func Register(app *runtime.App, server *mcp.Server) {
-	runtime.AddTool(app, server, &mcp.Tool{Name: "illust_detail", Description: "Get detailed information from exactly one artwork ID or supported Pixiv URL.", OutputSchema: records.RecordsOutputSchema()}, func(ctx context.Context, request *mcp.CallToolRequest, input illustReferenceIn) (*mcp.CallToolResult, outputs.UserDetail, error) {
+	runtime.AddTool(app, server, &mcp.Tool{Name: "illust_detail", Description: "Get detailed information from exactly one artwork ID or supported Pixiv URL.", OutputSchema: records.UserDetailOutputSchema()}, func(ctx context.Context, request *mcp.CallToolRequest, input illustReferenceIn) (*mcp.CallToolResult, outputs.UserDetail, error) {
 		return handleIllustDetail(ctx, app, input)
 	})
 }

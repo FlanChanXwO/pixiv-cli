@@ -259,6 +259,18 @@ func (tr *testSDKTransport) RoundTrip(request *http.Request) (*http.Response, er
 			novel = tr.fake.novelDetailResult
 		}
 		status, body, err = wireNovel(novel)
+	case "/v2/novel/series":
+		id := queryInt64(request.URL.Query(), "series_id")
+		req := pixivsdk.NovelSeriesRequest{SeriesID: id}
+		tr.fake.novelSeriesRequest = req
+		result, callErr := callNovelSeries(tr.fake.novelSeries, req)
+		if callErr != nil {
+			return wireErrorResponse(callErr)
+		}
+		if tr.fake.novelSeries == nil && tr.fake.novelSeriesResult.Series.ID > 0 {
+			result = tr.fake.novelSeriesResult
+		}
+		status, body, err = tr.wireNovelSeries(result)
 	case "/v1/novel/content":
 		id := queryInt64(request.URL.Query(), "novel_id")
 		tr.fake.novelContentRequest = pixivsdk.NovelContentRequest{NovelID: id}
@@ -431,6 +443,13 @@ func callNovelDetail(fn func(context.Context, int64) (pixivsdk.Novel, error), id
 		return pixivsdk.Novel{}, nil
 	}
 	return fn(context.Background(), id)
+}
+
+func callNovelSeries(fn func(context.Context, pixivsdk.NovelSeriesRequest) (pixivsdk.NovelSeriesResult, error), req pixivsdk.NovelSeriesRequest) (pixivsdk.NovelSeriesResult, error) {
+	if fn == nil {
+		return pixivsdk.NovelSeriesResult{}, nil
+	}
+	return fn(context.Background(), req)
 }
 
 func callRecommendedArtworks(fn func(context.Context, pixivsdk.RecommendedArtworksRequest, int) (sdk.Page[pixivsdk.Artwork], error), req pixivsdk.RecommendedArtworksRequest, call int) (sdk.Page[pixivsdk.Artwork], error) {
@@ -678,6 +697,30 @@ func (tr *testSDKTransport) wireNovelPage(page sdk.Page[pixivsdk.Novel]) (int, [
 		Novels  []map[string]any `json:"novels"`
 		NextURL *string          `json:"next_url"`
 	}{items, next})
+	return http.StatusOK, body, err
+}
+
+func (tr *testSDKTransport) wireNovelSeries(result pixivsdk.NovelSeriesResult) (int, []byte, error) {
+	items := make([]map[string]any, 0, len(result.Novels.Items))
+	for _, item := range result.Novels.Items {
+		items = append(items, wireNovelValue(item))
+	}
+	next := tr.nextPageURL(result.Novels.Next)
+	body, err := json.Marshal(struct {
+		SeriesDetail map[string]any   `json:"novel_series_detail"`
+		Novels       []map[string]any `json:"novels"`
+		NextURL      *string          `json:"next_url"`
+	}{
+		SeriesDetail: map[string]any{
+			"id":           result.Series.ID,
+			"title":        result.Series.Title,
+			"caption":      result.Series.Caption,
+			"is_concluded": result.Series.IsConcluded,
+			"user":         wireUser{ID: result.Series.User.ID, Name: result.Series.User.Name, Account: result.Series.User.Account},
+		},
+		Novels:  items,
+		NextURL: next,
+	})
 	return http.StatusOK, body, err
 }
 

@@ -145,6 +145,7 @@ type fakeSDKClient struct {
 	userRecommended       func(context.Context, pixiv.RecommendedUsersRequest) (sdk.Page[pixiv.UserPreview], error)
 	relatedArtworks       func(context.Context, pixiv.RelatedArtworksRequest) (sdk.Page[pixiv.Artwork], error)
 	artworkSeries         func(context.Context, pixiv.ArtworkSeriesRequest) (sdk.Page[pixiv.Artwork], error)
+	novelSeries           func(context.Context, pixiv.NovelSeriesRequest) (pixiv.NovelSeriesResult, error)
 	userDetailResult      pixiv.UserDetail
 	userDetailErr         error
 	artworkBookmarkDetail pixiv.ArtworkBookmarkDetail
@@ -197,6 +198,8 @@ type fakeSDKClient struct {
 	artworkSeriesPage      sdk.Page[pixiv.Artwork]
 	novelDetailResult      pixiv.Novel
 	novelRequest           pixiv.NovelRequest
+	novelSeriesResult      pixiv.NovelSeriesResult
+	novelSeriesRequest     pixiv.NovelSeriesRequest
 	novelContentHTML       string
 	novelContentRequest    pixiv.NovelContentRequest
 	artworkCommentsResult  pixiv.CommentPage

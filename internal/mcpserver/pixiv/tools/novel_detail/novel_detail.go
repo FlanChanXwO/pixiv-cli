@@ -15,7 +15,7 @@ import (
 
 // Register 注册 novel_detail。
 func Register(app *runtime.App, server *mcp.Server) {
-	runtime.AddTool(app, server, &mcp.Tool{Name: "novel_detail", Description: "Get detailed information for one Pixiv novel.", OutputSchema: records.RecordsOutputSchema()}, func(ctx context.Context, request *mcp.CallToolRequest, input In) (*mcp.CallToolResult, outputs.NovelDetail, error) {
+	runtime.AddTool(app, server, &mcp.Tool{Name: "novel_detail", Description: "Get detailed information for one Pixiv novel.", OutputSchema: records.NovelDetailOutputSchema()}, func(ctx context.Context, request *mcp.CallToolRequest, input In) (*mcp.CallToolResult, outputs.NovelDetail, error) {
 		return handleNovelDetail(ctx, app, input)
 	})
 }

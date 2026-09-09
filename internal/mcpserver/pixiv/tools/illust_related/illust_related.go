@@ -3,6 +3,7 @@ package illust_related
 
 import (
 	"context"
+	"errors"
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/internal/filters"
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/internal/outputs"
@@ -27,6 +28,9 @@ type relatedIn struct {
 }
 
 func handleIllustRelated(ctx context.Context, app *runtime.App, in relatedIn) (*mcp.CallToolResult, outputs.Records, error) {
+	if in.IllustID <= 0 {
+		return outputs.Error(errors.New("illust_id must be a positive integer"))
+	}
 	plan, err := runtime.ParseListPlan(in.PageLimitIn)
 	if err != nil {
 		return outputs.Error(err)
