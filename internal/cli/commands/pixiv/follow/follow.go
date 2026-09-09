@@ -3,11 +3,13 @@ package follow
 
 import (
 	"context"
+	"fmt"
 
 	requirements "github.com/FlanChanXwO/pixiv-cli/internal/cli/commands"
 	"github.com/FlanChanXwO/pixiv-cli/internal/cli/commands/pixiv"
 	"github.com/FlanChanXwO/pixiv-cli/internal/cli/pipeline"
-	"github.com/FlanChanXwO/pixiv-cli/internal/utils/parse"
+	"github.com/FlanChanXwO/pixiv-cli/internal/shared/resolver"
+	"github.com/FlanChanXwO/pixiv-cli/sdk"
 	pixiv "github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
 	"github.com/spf13/cobra"
 )
@@ -40,6 +42,9 @@ func (a command) newAdd() *cobra.Command {
 		Short: "Follow a user",
 		Args:  a.data.ActionInputArgs("pixiv follow add [options] [USER_ID]"),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if err := validateFollowRestrict(opts.restrict); err != nil {
+				return err
+			}
 			if _, err := pipeline.RecordFailureStrategy(opts.onError); err != nil {
 				return a.data.Usage(err)
 			}
@@ -51,9 +56,9 @@ func (a command) newAdd() *cobra.Command {
 			if len(args) == 0 {
 				return a.data.ConsumeActionRecords(cmd, "follow_add", opts.onError, userRecordTypes, invoke)
 			}
-			id, err := parse.PositiveInt64(args[0], "user_id")
+			id, err := resolveFollowUserID(cmd.Context(), args[0], "follow add")
 			if err != nil {
-				return a.data.Usage(err)
+				return err
 			}
 			return invoke(cmd.Context(), id)
 		},
@@ -84,9 +89,9 @@ func (a command) newRemove() *cobra.Command {
 			if len(args) == 0 {
 				return a.data.ConsumeActionRecords(cmd, "follow_remove", opts.onError, userRecordTypes, invoke)
 			}
-			id, err := parse.PositiveInt64(args[0], "user_id")
+			id, err := resolveFollowUserID(cmd.Context(), args[0], "follow remove")
 			if err != nil {
-				return a.data.Usage(err)
+				return err
 			}
 			return invoke(cmd.Context(), id)
 		},
@@ -111,5 +116,31 @@ func (a command) actionInvoker(cmd *cobra.Command, options deps.CommandOptions, 
 			initialized = true
 		}
 		return invoke(ctx, request, id)
+	}
+}
+
+func resolveFollowUserID(ctx context.Context, value, operation string) (int64, error) {
+	target, err := resolver.Resolve(ctx, resolver.Input{Value: value}, resolver.Contract{
+		Operation:   operation,
+		DefaultType: "user",
+		Types: []resolver.TypeSpec{{
+			Name:              "user",
+			ResultKind:        resolver.ResultKindUser,
+			BareReferenceKind: pixiv.ReferenceKindUser,
+		}},
+	})
+	if err != nil {
+		return 0, fmt.Errorf("user_id: %w", err)
+	}
+	return target.ID, nil
+}
+
+func validateFollowRestrict(value string) error {
+	switch pixiv.Restrict(value) {
+	case "", pixiv.RestrictPublic, pixiv.RestrictPrivate:
+		return nil
+	default:
+		return sdk.NewError("pixiv", "follow add", sdk.InvalidArgument,
+			sdk.WithDetail("restrict must be public or private"))
 	}
 }

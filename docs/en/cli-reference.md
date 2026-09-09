@@ -347,6 +347,8 @@ pixiv bookmark tags --limit 20
 pixiv bookmark tags --type all --limit 20 --json
 pixiv bookmark detail NOVEL_ID --type novel --json
 pixiv user followers 123456 --limit 20
+pixiv user follow add 123456 --restrict private
+pixiv follow remove 123456
 pixiv ranking --mode day
 pixiv recommended --type all --limit 5
 pixiv download 123456 789012 --output ./downloads
@@ -370,7 +372,7 @@ The CLI uses Cobra/pflag, so options may appear before or after positional argum
 
 All non-mutating data reads, recommendations, timelines, and downloads use the local account selected by `pixiv auth use` when the account pool is disabled. Account pooling is active only when `[account_pool]` explicitly sets `enabled = true`; the database `schedulable` flag controls membership and `strategy` defaults to `round_robin` with `random` also supported. Use `pixiv auth pool status|enable|disable` to inspect or change membership. Writes, authentication, and configuration do not use the pool. Data commands reject `--uid` and `--refresh-token`.
 
-Visual lists write canonical Record NDJSON automatically when stdout is a non-terminal and no explicit output format was selected. Each line has stable string `id`, `type`, and `url`; `download`, `bookmark add/remove`, and `follow add/remove` consume compatible records without positional IDs. `comment create/reply/stamp/delete` use one positive numeric ID and do not consume Record input. Comment create/reply/stamp return the upstream positive `comment_id` directly; delete returns a success status only. `comment stamps` is a read-only, non-paginated list. `--json` and explicit `--ndjson` retain precedence.
+Visual lists write canonical Record NDJSON automatically when stdout is a non-terminal and no explicit output format was selected. Each line has stable string `id`, `type`, and `url`; `download`, `bookmark add/remove`, and `follow add/remove` consume compatible records without positional IDs. Explicit follow targets must otherwise be positive numeric user IDs; user URLs are rejected locally. `pixiv user follow add/remove` and the root `pixiv follow add/remove` route share the same owner, with `add --restrict public|private` defaulting to `public`. `comment create/reply/stamp/delete` use one positive numeric ID and do not consume Record input. Comment create/reply/stamp return the upstream positive `comment_id` directly; delete returns a success status only. `comment stamps` is a read-only, non-paginated list. `--json` and explicit `--ndjson` retain precedence.
 
 ### Reverse image search
 
@@ -466,14 +468,14 @@ Only the structured entity filters documented by each command are accepted. The 
 | `series` | `pixiv series SERIES_ID_OR_URL -t artwork\|novel [--page N --limit N --json\|--ndjson]` | Lists the artworks or novels in one series. The input may be a positive series ID or a supported artwork/novel series URL; the entity type is required and must match the URL namespace. |
 | `comment` | `pixiv comment ID -t artwork\|novel [--page N --limit N --json\|--ndjson]`; `pixiv comment create ID -t artwork\|novel --comment TEXT [--json]`; `pixiv comment reply ID -t artwork\|novel --parent-comment-id COMMENT_ID --comment TEXT [--json]`; `pixiv comment stamp ID -t artwork\|novel --stamp-id STAMP_ID --comment TEXT [--json]`; `pixiv comment delete COMMENT_ID -t artwork\|novel [--json]`; `pixiv comment stamps [--json\|--ndjson]` | Preserves the artwork/novel comment read route and adds explicit create, reply, stamp, delete, and stamp-list actions. Comment mutations accept positive numeric IDs only; create/reply/stamp return `comment_id`, delete returns a status, and `stamps` returns output-safe stamp DTOs without pagination or runtime URLs. |
 | `bookmark` | `pixiv bookmark list\|tags\|detail\|add\|remove ...` | Lists artwork/novel bookmarks, reads artwork/novel bookmark tags/detail, or mutates artwork bookmarks. `list` and `tags` accept a user ID or user URL and support `--type artwork\|novel\|all`; `all` keeps artwork before novel and preserves typed records/tags. `detail` accepts artwork/novel but not `all`; add/remove remain artwork-only. |
-| `user` | `pixiv user search\|detail\|artworks\|novels\|bookmarks\|following\|followers\|related\|blocked\|follow ...` | Reads user/profile/relationship data and manages artwork follows. Omitted user IDs use the current account only where that subcommand says so. |
+| `user` | `pixiv user search\|detail\|artworks\|novels\|bookmarks\|following\|followers\|related\|blocked\|follow ...` | Reads user/profile/relationship data and manages user follows. Follow mutations accept a positive numeric user ID or a compatible user Record; omitted user IDs use the current account only where that subcommand says so. |
 | `download` | `pixiv download [options] SRC...` | Downloads artwork IDs/URLs, allowed CDN URLs, or visual works expanded from supported user and public-bookmark URLs. Artwork-series URLs are not download sources. `--output/-o` aliases `--download-path`. |
 | `timeline` | `pixiv timeline following\|latest -t artwork\|novel [--content-type TYPE ...]` | Reads followed-user or latest artwork/novel streams. `--type` selects the entity; artwork subtype is a separate `--content-type` option. Following artwork filters locally because its upstream endpoint has no subtype query; latest artwork supports only `illust|manga`. |
 | `mypixiv` | `pixiv mypixiv users\|works [-t artwork\|novel ...]` | Reads MyPixiv users and artwork/novel feeds. |
 | `recommended` | `pixiv recommended [-t artwork\|novel\|user\|all] [--content-type all\|illust\|manga] [--page N --limit N --json]` | Reads personalized recommendations. For artwork, `--content-type` locally filters returned artwork DTOs by subtype and is not sent as an upstream query parameter. Positional `KIND` remains accepted for compatibility; `all` keeps each entity stream separate in the result. |
 | `novel search` | `pixiv novel search WORD [options]` | Compatibility route for novel search; prefer `pixiv search WORD --type novel`. It exposes only the documented basic novel search fields. |
 | `user search` | `pixiv user search WORD [options]` | Compatibility route for user search; prefer `pixiv search WORD --type user`. |
-| `follow` | `pixiv follow add\|remove USER_ID ...` | Compatibility route for user follow mutation; prefer `pixiv user follow add\|remove`. |
+| `follow` | `pixiv follow add\|remove USER_ID ...` | Compatibility route for user follow mutation; it shares the same owner and input contract as `pixiv user follow add\|remove`. |
 | `mcp` | `pixiv mcp [--proxy URL\|--no-proxy]` | Starts the MCP stdio server; the proxy override applies only to this launch. |
 | `fanbox auth` | `pixiv fanbox auth import|list|use|remove|status` | Imports and manages local FANBOX sessions. Session values are never printed. Native `--proxy`/`--no-proxy` applies only to the FANBOX command. |
 | `fanbox creators` | `pixiv fanbox creators [--kind supporting\|following] [--page N --limit N]` | Lists supporting or following FANBOX creators. |
@@ -614,6 +616,10 @@ calling the rejected content endpoint. It does not fall back to WebView.
 in the form `/artworks/{id}` (an optional locale segment, query, and fragment are allowed). `detail --type novel`
 and `detail --type user` require positive numeric IDs. User and novel URLs are not silently interpreted as artwork
 URLs; unsupported URL shapes fail locally.
+
+`user follow add/remove` and the root `follow add/remove` compatibility route accept a positive numeric user ID or a canonical user
+Record. User profile URLs are rejected locally rather than converted to an ID. `follow add --restrict` accepts `public` or `private`
+and defaults to `public`; successful follow mutations keep the existing empty-success-output contract.
 
 `download` accepts the same artwork references, allowed CDN URLs, plus `/users/{id}`, `/users/{id}/artworks`,
 and `/users/{id}/bookmarks/artworks` URLs. User and public-bookmarks sources follow pagination for `illust`,

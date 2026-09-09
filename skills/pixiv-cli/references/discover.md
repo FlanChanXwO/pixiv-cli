@@ -153,6 +153,8 @@ pixiv user novels 11 --limit 20
 pixiv user bookmarks 11 --tag "初音ミク" --limit 20
 pixiv user following 11 --limit 20
 pixiv user followers 11 --limit 20
+pixiv user follow add 123456 --restrict private
+pixiv follow remove 123456
 pixiv user related 11 --limit 20
 pixiv user blocked 11 --limit 20
 ```
@@ -177,6 +179,12 @@ pixiv user search "NAME" --limit 20 --json
   namespace conversion. For a name, use `user search` while authenticated. Do
   not substitute an artwork search or label its authors as a username-search
   result.
+- Follow mutations accept a positive numeric USER_ID or a canonical user
+  Record. `pixiv user follow add/remove` and the root `pixiv follow
+  add/remove` compatibility route share the same owner; `follow add
+  --restrict` accepts `public|private` and defaults to `public`. User profile
+  URLs are rejected locally, and successful mutations keep the empty-success-
+  output contract.
 
 ## Followed and latest feeds
 
