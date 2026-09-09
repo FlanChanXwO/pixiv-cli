@@ -131,11 +131,11 @@ application outcome 的 `filter` 会报告 `min`、`max`、`membership`、`strat
 | `illust_related` | 正数 `illust_id`，可选 `illust_filter`、`page`、`limit`。 |
 | `illust_series` / `novel_series` | 正数 `series_id`、`page`、`limit`；小说系列额外返回安全 series metadata。 |
 | `illust_comments` / `novel_comments` | 正数作品/小说 `id`、`page`、`limit`；输出安全 comments、pagination，以及可取得的 `total`/`access_control` metadata。 |
-| `illust_ranking` | 可选 `mode`、`date`、`illust_filter`、`page`、`limit`；省略 mode 为 `day`。 |
+| `illust_ranking` | 可选 `mode`、`date`、`illust_filter`、`page`、`limit`；`mode` 是封闭的 ranking enum，日期必须是有效 `YYYY-MM-DD`，省略 mode 为 `day`。 |
 | `search_user` | 必填 `word`，可选 `user_filter`、`page`、`limit`；调用 App user-search operation。 |
 | `illust_recommended` | 作品推荐，可选 `illust_filter`、`page`、`limit`。 |
-| `recommended` | 必填 `kind`：`all`、`illust`、`manga`、`novel` 或 `user`；可选匹配的 typed filter、`page`、`limit`。 |
-| `trending_tags_illust` | 无输入；返回完整当前作品趋势标签列表。 |
+| `recommended` | 必填 `kind`：`all`、`illust`、`manga`、`novel` 或 `user`；可选匹配的 typed filter、`page`、`limit`。`illust`/`manga` 选择对应 artwork subtype，冲突 filter 会在 SDK 执行前拒绝；`all` 保持四路独立流，并采用原子失败语义。 |
+| `trending_tags_illust` | 无输入；返回完整当前作品趋势标签列表。上游返回空列表时仍是成功的空结果。 |
 | `timeline_illust_following` / `timeline_novel_following` | `restrict`（`public`/`private`）、匹配实体 filter、`page`、`limit`。 |
 | `timeline_illust_latest` | 必填 `content_type`（`illust` 或 `manga`），可选 `illust_filter`、`page`、`limit`。 |
 | `timeline_novel_latest` | 可选 `novel_filter`、`page`、`limit`。 |

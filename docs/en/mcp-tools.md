@@ -171,11 +171,11 @@ not treated as an artwork detail request.
 | `illust_related` | Positive `illust_id`, optional `illust_filter`, `page`, `limit`. |
 | `illust_series` / `novel_series` | Positive `series_id`, `page`, `limit`; novel series also returns safe series metadata. |
 | `illust_comments` / `novel_comments` | Positive artwork/novel `id`, `page`, `limit`; output includes safe comments, pagination, and available `total`/`access_control` metadata. |
-| `illust_ranking` | Optional `mode`, `date`, `illust_filter`, `page`, `limit`; omitted mode is `day`. |
+| `illust_ranking` | Optional `mode`, `date`, `illust_filter`, `page`, `limit`; `mode` is a closed ranking enum, dates must be valid `YYYY-MM-DD`, and omitted mode is `day`. |
 | `search_user` | Required `word`, optional `user_filter`, `page`, `limit`; uses the App user-search operation. |
 | `illust_recommended` | Artwork recommendations with optional `illust_filter`, `page`, `limit`. |
-| `recommended` | Required `kind`: `all`, `illust`, `manga`, `novel`, or `user`; optional matching typed filters, `page`, `limit`. |
-| `trending_tags_illust` | No input; returns the complete current artwork trending-tag list. |
+| `recommended` | Required `kind`: `all`, `illust`, `manga`, `novel`, or `user`; optional matching typed filters, `page`, `limit`. `illust`/`manga` select the corresponding artwork subtype, conflicting filters are rejected before SDK execution, and `all` keeps four independent streams with atomic failure semantics. |
+| `trending_tags_illust` | No input; returns the complete current artwork trending-tag list. An empty upstream list is a successful empty result. |
 | `timeline_illust_following` / `timeline_novel_following` | `restrict` (`public`/`private`), matching entity filter, `page`, `limit`. |
 | `timeline_illust_latest` | Required `content_type` (`illust` or `manga`), optional `illust_filter`, `page`, `limit`. |
 | `timeline_novel_latest` | Optional `novel_filter`, `page`, `limit`. |

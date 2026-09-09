@@ -15,7 +15,7 @@ import (
 
 // Register 注册 timeline_illust_following。
 func Register(app *runtime.App, server *mcp.Server) {
-	runtime.AddTool(app, server, &mcp.Tool{Name: "timeline_illust_following", Description: "Browse artworks from followed artists.", OutputSchema: records.RecordsOutputSchema()}, func(ctx context.Context, request *mcp.CallToolRequest, input followIn) (*mcp.CallToolResult, outputs.Records, error) {
+	runtime.AddTool(app, server, &mcp.Tool{Name: "timeline_illust_following", Description: "Browse artworks from followed artists.", InputSchema: followInputSchema(), OutputSchema: records.RecordsOutputSchema()}, func(ctx context.Context, request *mcp.CallToolRequest, input followIn) (*mcp.CallToolResult, outputs.Records, error) {
 		return handleIllustFollow(ctx, app, input)
 	})
 }
@@ -24,6 +24,19 @@ type followIn struct {
 	Restrict     string                `json:"restrict,omitempty"`
 	IllustFilter *filters.IllustFilter `json:"illust_filter,omitempty"`
 	runtime.PageLimitIn
+}
+
+func followInputSchema() map[string]any {
+	return map[string]any{
+		"type":                 "object",
+		"additionalProperties": false,
+		"properties": map[string]any{
+			"restrict":      map[string]any{"type": "string", "enum": []string{"public", "private"}, "description": "Visibility scope; omitted defaults to public."},
+			"illust_filter": filters.IllustFilterSchema(),
+			"page":          map[string]any{"type": "integer", "minimum": 1, "description": "1-based logical page; requires a positive limit."},
+			"limit":         map[string]any{"type": "integer", "minimum": 0, "description": "Maximum logical results; 0 returns all; omitted reads one upstream batch."},
+		},
+	}
 }
 
 func handleIllustFollow(ctx context.Context, app *runtime.App, in followIn) (*mcp.CallToolResult, outputs.Records, error) {

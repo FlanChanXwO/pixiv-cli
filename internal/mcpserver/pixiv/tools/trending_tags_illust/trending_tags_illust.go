@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/internal/outputs"
+	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/internal/records"
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/internal/runtime"
 	pixiv "github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
@@ -14,12 +15,20 @@ import (
 
 // Register 注册 trending_tags_illust。
 func Register(app *runtime.App, server *mcp.Server) {
-	runtime.AddTool(app, server, &mcp.Tool{Name: "trending_tags_illust", Description: "Get currently trending illustration tags."}, func(ctx context.Context, request *mcp.CallToolRequest, input In) (*mcp.CallToolResult, outputs.TrendingTags, error) {
+	runtime.AddTool(app, server, &mcp.Tool{Name: "trending_tags_illust", Description: "Get currently trending illustration tags.", InputSchema: trendingInputSchema(), OutputSchema: records.TrendingTagsOutputSchema()}, func(ctx context.Context, request *mcp.CallToolRequest, input In) (*mcp.CallToolResult, outputs.TrendingTags, error) {
 		return handleTrendingTags(ctx, app, input)
 	})
 }
 
 type In struct{}
+
+func trendingInputSchema() map[string]any {
+	return map[string]any{
+		"type":                 "object",
+		"additionalProperties": false,
+		"properties":           map[string]any{},
+	}
+}
 
 func handleTrendingTags(ctx context.Context, app *runtime.App, _ In) (*mcp.CallToolResult, outputs.TrendingTags, error) {
 	result, err := runtime.Read(app, ctx, func(ctx context.Context, client *pixiv.Client) ([]pixiv.TrendingTag, error) {

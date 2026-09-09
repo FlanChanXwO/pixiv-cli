@@ -255,6 +255,54 @@ func RecordsOutputSchema() *jsonschema.Schema {
 	}
 }
 
+// RecommendedOutputSchema 描述 recommended 的四路聚合 envelope。推荐流的
+// pagination 只允许已公开的四个 subtype，SDK continuation 仍留在适配层。
+func RecommendedOutputSchema() *jsonschema.Schema {
+	return &jsonschema.Schema{
+		Type: "object",
+		Properties: map[string]*jsonschema.Schema{
+			"records": recordArraySchema(),
+			"pagination": {
+				Type: "object",
+				Properties: map[string]*jsonschema.Schema{
+					"illust": PaginationOutputSchema(),
+					"manga":  PaginationOutputSchema(),
+					"novel":  PaginationOutputSchema(),
+					"user":   PaginationOutputSchema(),
+				},
+				AdditionalProperties: &jsonschema.Schema{Not: &jsonschema.Schema{}},
+			},
+		},
+		Required:             []string{"records", "pagination"},
+		AdditionalProperties: &jsonschema.Schema{Not: &jsonschema.Schema{}},
+	}
+}
+
+// TrendingTagsOutputSchema 描述 trending_tags_illust 的稳定顶层 envelope；
+// tags.items 直接由 public DTO 推导，确保嵌套 artwork 的可选字段与实际 JSON
+// 序列化契约同步，同时不把 SDK continuation 或原始响应字段提升为顶层协议。
+func TrendingTagsOutputSchema() *jsonschema.Schema {
+	tagSchema, err := jsonschema.For[pixiv.TrendingTagDTO](nil)
+	if err != nil {
+		// TrendingTagDTO 只包含 JSON Schema 支持的 public DTO 字段；如果这里
+		// 失败，说明 DTO 契约本身已超出 schema 支持范围，继续注册错误 schema
+		// 会比在 composition root 直接暴露问题更危险。
+		panic(err)
+	}
+	return &jsonschema.Schema{
+		Type: "object",
+		Properties: map[string]*jsonschema.Schema{
+			"tags": {
+				Type:  "array",
+				Items: tagSchema,
+			},
+			"text": {Type: "string"},
+		},
+		Required:             []string{"tags", "text"},
+		AdditionalProperties: &jsonschema.Schema{Not: &jsonschema.Schema{}},
+	}
+}
+
 func singleRecordsOutputSchema() *jsonschema.Schema {
 	return &jsonschema.Schema{
 		Type:                 "object",

@@ -15,7 +15,7 @@ import (
 
 // Register 注册 illust_recommended。
 func Register(app *runtime.App, server *mcp.Server) {
-	runtime.AddTool(app, server, &mcp.Tool{Name: "illust_recommended", Description: "Get personalized artwork recommendations.", OutputSchema: records.RecordsOutputSchema()}, func(ctx context.Context, request *mcp.CallToolRequest, input recommendedArtworkIn) (*mcp.CallToolResult, outputs.Records, error) {
+	runtime.AddTool(app, server, &mcp.Tool{Name: "illust_recommended", Description: "Get personalized artwork recommendations.", InputSchema: recommendedArtworkInputSchema(), OutputSchema: records.RecordsOutputSchema()}, func(ctx context.Context, request *mcp.CallToolRequest, input recommendedArtworkIn) (*mcp.CallToolResult, outputs.Records, error) {
 		return handleIllustRecommended(ctx, app, input)
 	})
 }
@@ -23,6 +23,18 @@ func Register(app *runtime.App, server *mcp.Server) {
 type recommendedArtworkIn struct {
 	IllustFilter *filters.IllustFilter `json:"illust_filter,omitempty"`
 	runtime.PageLimitIn
+}
+
+func recommendedArtworkInputSchema() map[string]any {
+	return map[string]any{
+		"type":                 "object",
+		"additionalProperties": false,
+		"properties": map[string]any{
+			"illust_filter": filters.IllustFilterSchema(),
+			"page":          map[string]any{"type": "integer", "minimum": 1, "description": "1-based logical page; requires a positive limit."},
+			"limit":         map[string]any{"type": "integer", "minimum": 0, "description": "Maximum logical results; 0 returns all; omitted reads one upstream batch."},
+		},
+	}
 }
 
 func handleIllustRecommended(ctx context.Context, app *runtime.App, in recommendedArtworkIn) (*mcp.CallToolResult, outputs.Records, error) {

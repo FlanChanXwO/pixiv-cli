@@ -118,11 +118,18 @@ func TestTimelineToolsValidateInputAndExposeSDKErrors(t *testing.T) {
 	session, closeSession := newSDKTestSession(t, client)
 	defer closeSession()
 
+	result, err := session.CallTool(context.Background(), &mcp.CallToolParams{
+		Name:      "timeline_illust_latest",
+		Arguments: map[string]any{"content_type": "ugoira"},
+	})
+	if err == nil && (result == nil || !result.IsError) {
+		t.Fatalf("timeline_illust_latest invalid content_type result=%+v error=%v", result, err)
+	}
+
 	for _, tool := range []struct {
 		name string
 		args map[string]any
 	}{
-		{"timeline_illust_latest", map[string]any{"content_type": "ugoira"}},
 		{"mypixiv_novels", map[string]any{"page": 0, "limit": 1}},
 		{"timeline_illust_latest", map[string]any{"content_type": "illust"}},
 	} {

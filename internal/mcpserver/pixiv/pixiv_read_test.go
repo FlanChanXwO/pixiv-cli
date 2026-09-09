@@ -134,7 +134,9 @@ func TestSDKRecommendedAllReturnsEveryStreamAndPagination(t *testing.T) {
 			return sdk.Page[pixiv.Artwork]{Items: []pixiv.Artwork{testSDKIllust(1, "illust", 10)}, Next: testPageCursor(1)}, nil
 		}
 		order = append(order, "manga")
-		return sdk.Page[pixiv.Artwork]{Items: []pixiv.Artwork{testSDKIllust(2, "manga", 20)}, Next: testPageCursor(2)}, nil
+		manga := testSDKIllust(2, "manga", 20)
+		manga.Kind = pixiv.ArtworkKindManga
+		return sdk.Page[pixiv.Artwork]{Items: []pixiv.Artwork{manga}, Next: testPageCursor(2)}, nil
 	}
 	client.novelRecommended = func(context.Context, pixiv.RecommendedNovelsRequest) (sdk.Page[pixiv.Novel], error) {
 		order = append(order, "novel")
@@ -216,20 +218,16 @@ func TestSDKRecommendedSingleKindsAndInputFailures(t *testing.T) {
 	client := &fakeSDKClient{}
 	session, closeSession := newSDKTestSession(t, client)
 	defer closeSession()
-	result := callTool(t, session, "recommended", map[string]any{"kind": "unknown"})
-	if !result.IsError {
-		t.Fatalf("invalid kind result=%+v", result)
-	}
-	for _, input := range []map[string]any{{}, {"kind": 9}} {
-		_, err := session.CallTool(context.Background(), &mcp.CallToolParams{Name: "recommended", Arguments: input})
-		if err == nil {
-			t.Fatalf("input=%v error=%v", input, err)
+	for _, input := range []map[string]any{{"kind": "unknown"}, {}, {"kind": 9}} {
+		result, err := session.CallTool(context.Background(), &mcp.CallToolParams{Name: "recommended", Arguments: input})
+		if err == nil && (result == nil || !result.IsError) {
+			t.Fatalf("input=%v result=%+v error=%v", input, result, err)
 		}
 	}
 
 	noSDKSession, closeNoSDKSession := newTestSession(t, &fakeDownloads{})
 	defer closeNoSDKSession()
-	result = callTool(t, noSDKSession, "recommended", map[string]any{"kind": "illust"})
+	result := callTool(t, noSDKSession, "recommended", map[string]any{"kind": "illust"})
 	if !result.IsError {
 		t.Fatalf("unconfigured SDK result=%+v", result)
 	}

@@ -15,7 +15,7 @@ import (
 
 // Register 注册 timeline_novel_latest。
 func Register(app *runtime.App, server *mcp.Server) {
-	runtime.AddTool(app, server, &mcp.Tool{Name: "timeline_novel_latest", Description: "Browse latest novels through the App API.", OutputSchema: records.RecordsOutputSchema()}, func(ctx context.Context, request *mcp.CallToolRequest, input In) (*mcp.CallToolResult, outputs.Records, error) {
+	runtime.AddTool(app, server, &mcp.Tool{Name: "timeline_novel_latest", Description: "Browse latest novels through the App API.", InputSchema: latestInputSchema(), OutputSchema: records.RecordsOutputSchema()}, func(ctx context.Context, request *mcp.CallToolRequest, input In) (*mcp.CallToolResult, outputs.Records, error) {
 		return handleNovelNew(ctx, app, input)
 	})
 }
@@ -23,6 +23,18 @@ func Register(app *runtime.App, server *mcp.Server) {
 type In struct {
 	NovelFilter *filters.NovelFilter `json:"novel_filter,omitempty"`
 	runtime.PageLimitIn
+}
+
+func latestInputSchema() map[string]any {
+	return map[string]any{
+		"type":                 "object",
+		"additionalProperties": false,
+		"properties": map[string]any{
+			"novel_filter": filters.NovelFilterSchema(),
+			"page":         map[string]any{"type": "integer", "minimum": 1, "description": "1-based logical page; requires a positive limit."},
+			"limit":        map[string]any{"type": "integer", "minimum": 0, "description": "Maximum logical results; 0 returns all; omitted reads one upstream batch."},
+		},
+	}
 }
 
 func handleNovelNew(ctx context.Context, app *runtime.App, in In) (*mcp.CallToolResult, outputs.Records, error) {

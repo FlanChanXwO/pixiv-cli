@@ -754,6 +754,8 @@ func (tr *testSDKTransport) nextPageURL(cursor sdk.Cursor) *string {
 	}
 	key := "offset"
 	switch tr.path {
+	case "/v1/illust/new":
+		key = "max_illust_id"
 	case "/v1/novel/new":
 		key = "max_novel_id"
 	case "/v1/illust/series", "/v2/novel/series":
