@@ -465,7 +465,7 @@ Only the structured entity filters documented by each command are accepted. The 
 | `download` | `pixiv download [options] SRC...` | Downloads artwork IDs/URLs, allowed CDN URLs, or visual works expanded from supported user and public-bookmark URLs. Artwork-series URLs are not download sources. `--output/-o` aliases `--download-path`. |
 | `timeline` | `pixiv timeline following\|latest -t artwork\|novel [--content-type TYPE ...]` | Reads followed-user or latest artwork/novel streams. Artwork subtype is a separate `--content-type` option. |
 | `mypixiv` | `pixiv mypixiv users\|works [-t artwork\|novel ...]` | Reads MyPixiv users and artwork/novel feeds. |
-| `recommended` | `pixiv recommended [-t artwork\|novel\|user\|all] [--page N --limit N --json]` | Reads personalized recommendations. Positional `KIND` remains accepted for compatibility; `all` keeps each entity stream separate in the result. |
+| `recommended` | `pixiv recommended [-t artwork\|novel\|user\|all] [--content-type all\|illust\|manga] [--page N --limit N --json]` | Reads personalized recommendations. For artwork, `--content-type` locally filters returned artwork DTOs by subtype and is not sent as an upstream query parameter. Positional `KIND` remains accepted for compatibility; `all` keeps each entity stream separate in the result. |
 | `novel search` | `pixiv novel search WORD [options]` | Compatibility route for novel search; prefer `pixiv search WORD --type novel`. It exposes only the documented basic novel search fields. |
 | `user search` | `pixiv user search WORD [options]` | Compatibility route for user search; prefer `pixiv search WORD --type user`. |
 | `follow` | `pixiv follow add\|remove USER_ID ...` | Compatibility route for user follow mutation; prefer `pixiv user follow add\|remove`. |
@@ -532,7 +532,8 @@ extension. Extensions also replace ASCII control characters and remove trailing 
 | `timeline following` | `--type` / `-t`, `--content-type` | required, `all` | Entity type is `artwork` or `novel`; artwork subtype is separate and `--restrict` is `public` or `private`. |
 | `timeline latest` | `--type` / `-t`, `--content-type` | required, `illust` | Entity type is `artwork` or `novel`; the latest-artwork endpoint supports `illust` or `manga`, and omitted `--content-type` selects `illust`. |
 | `mypixiv works` | `--type` / `-t` | required | Without `USER_ID`, use entity type `artwork` or `novel`; with `USER_ID`, `manga` is also supported. Legacy `illust` remains an alias for `artwork`. |
-| `recommended` | `--type` / `-t` | empty | `artwork`, `novel`, `user`, or `all`; positional `KIND` is compatibility syntax. |
+| `recommended` | `--type` / `-t` | empty | `artwork`, `novel`, `user`, or `all`; with `artwork`, `--content-type` selects the local subtype filter; positional `KIND` is compatibility syntax. |
+| `recommended` | `--content-type` | `all` | Artwork-only local subtype filter: `all`, `illust`, or `manga`. The value filters returned DTO kinds and is not sent as the upstream `content_type` parameter. |
 | record actions | `--on-error` | `skip` | Skip malformed/incompatible records with a stderr diagnostic, or use `fail-fast`. |
 | `download` | `--pages` | empty | 1-based closed page selection such as `1,3-5`; default downloads every page. Missing pages fail explicitly. |
 | `download` | `--quality` | `original` | Static image quality: `original`, `regular` (longest side 1200), `small` (longest side 540), `thumb` (250×250 center crop), or `mini` (48×48 center crop). Ugoira rejects non-original quality or page selection as unsupported.

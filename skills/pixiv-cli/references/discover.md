@@ -183,6 +183,7 @@ pixiv ranking --mode day --limit 10
 pixiv ranking --mode week --date 2026-07-01 --limit 10
 pixiv ranking --mode week_r18 --limit 10
 pixiv recommended --type artwork --limit 10
+pixiv recommended --type artwork --content-type manga --limit 10
 pixiv recommended --type all --limit 5
 ```
 
@@ -192,8 +193,10 @@ pixiv recommended --type all --limit 5
   `week_r18`, and `week_r18g`. The final nine require authentication; never
   substitute a failed extended mode with `day`.
 - `recommended` always needs authentication and a kind. Use the typed
-  `--type` flag; for `all`, inspect the actual output shape and keep the
-  returned categories separate rather than assuming one flat list.
+  `--type` flag; for artwork, `--content-type all|illust|manga` is a local
+  filter over returned artwork DTO kinds and is not sent as the upstream
+  `content_type` parameter. For `all`, inspect the actual output shape and
+  keep the returned categories separate rather than assuming one flat list.
 
 ## Curate: bookmarks and follows
 

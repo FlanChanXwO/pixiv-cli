@@ -8,6 +8,7 @@ import (
 	"os"
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/cli/commands/pixiv/internal/listing"
+	"github.com/FlanChanXwO/pixiv-cli/internal/shared/searchfilter"
 	"github.com/FlanChanXwO/pixiv-cli/sdk"
 	pixiv "github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
 )
@@ -21,24 +22,18 @@ func (a command) runAll(ctx context.Context, client *pixiv.Client, plan listing.
 	}
 	defer spool.Close()
 
-	fetchArtworks := func(ctx context.Context, cursor sdk.Cursor) ([]pixiv.Artwork, sdk.Cursor, error) {
-		result, err := client.RecommendedArtworks(ctx, pixiv.RecommendedArtworksRequest{Cursor: cursor})
-		if err != nil {
-			return nil, sdk.Cursor{}, err
-		}
-		return result.Items, result.Next, nil
-	}
 	for _, section := range []struct {
 		key     string
 		heading string
-	}{{key: "illusts", heading: "recommended illustrations"}, {key: "manga", heading: "recommended manga"}} {
+		filter  searchfilter.Filter
+	}{{key: "illusts", heading: "recommended illustrations", filter: searchfilter.Filter{ContentType: searchfilter.ContentTypeIllust}}, {key: "manga", heading: "recommended manga", filter: searchfilter.Filter{ContentType: searchfilter.ContentTypeManga}}} {
 		if err := spool.section(section.key); err != nil {
 			return false, err
 		}
 		if err := spool.heading(jsonOut, section.heading); err != nil {
 			return false, err
 		}
-		if err := listing.PageItems(ctx, plan, fetchArtworks, spool.artworks); err != nil {
+		if err := listing.PageItems(ctx, plan, fetchRecommendedArtworks(client, section.filter), spool.artworks); err != nil {
 			return false, err
 		}
 	}

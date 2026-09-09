@@ -13,6 +13,7 @@ import (
 	"github.com/FlanChanXwO/pixiv-cli/internal/cli/commands/pixiv/internal/listing"
 	"github.com/FlanChanXwO/pixiv-cli/internal/cli/pipeline"
 	record "github.com/FlanChanXwO/pixiv-cli/internal/shared/record"
+	"github.com/FlanChanXwO/pixiv-cli/internal/shared/searchfilter"
 	"github.com/FlanChanXwO/pixiv-cli/sdk"
 	pixiv "github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
 	"github.com/spf13/cobra"
@@ -137,7 +138,7 @@ func New(data Dependencies) *cobra.Command {
 	listing.BindNDJSONFlag(cmd, &opts.ndjson)
 	listing.BindListFlags(cmd, &opts.limit, &opts.page)
 	cmd.Flags().StringVarP(&opts.typ, "type", "t", opts.typ, "entity type: artwork, novel, user, all")
-	cmd.Flags().StringVar(&opts.contentType, "content-type", opts.contentType, "artwork subtype: all, illust, manga")
+	cmd.Flags().StringVar(&opts.contentType, "content-type", opts.contentType, "local artwork subtype filter: all, illust, manga")
 	data.bindTextValue(cmd)
 	requirements.Bind(cmd, requirements.PixivData())
 	return cmd
@@ -210,14 +211,21 @@ func (a command) run(cmd *cobra.Command, kind string, opts options) error {
 			return a.runAll(ctx, client, plan, jsonOut)
 		})
 	}
-	return a.runOne(cmd.Context(), listing.Request(request), plan, jsonOut, ndjson, kind)
+	artworkFilter := searchfilter.Filter{}
+	if kind == "illust" || kind == "manga" {
+		artworkFilter, err = resolveArtworkFilter(kind, opts.contentType)
+		if err != nil {
+			return err
+		}
+	}
+	return a.runOne(cmd.Context(), listing.Request(request), plan, jsonOut, ndjson, kind, artworkFilter)
 }
 
 func validKind(kind string) bool {
 	return kind == "all" || kind == "illust" || kind == "manga" || kind == "novel" || kind == "user"
 }
 
-func (a command) runOne(ctx context.Context, request listing.Request, plan listing.Plan, jsonOut, ndjson bool, kind string) error {
+func (a command) runOne(ctx context.Context, request listing.Request, plan listing.Plan, jsonOut, ndjson bool, kind string, artworkFilter searchfilter.Filter) error {
 	if kind == "illust" || kind == "manga" {
 		jsonKey := "illusts"
 		if kind == "manga" {
@@ -228,7 +236,7 @@ func (a command) runOne(ctx context.Context, request listing.Request, plan listi
 			if err != nil {
 				return nil, sdk.Cursor{}, err
 			}
-			return result.Items, result.Next, nil
+			return filterRecommendedArtworks(result.Items, artworkFilter), result.Next, nil
 		}
 		return a.runner().RunPooledIllustListWithKey(ctx, request, plan, jsonOut, ndjson, jsonKey, func() string {
 			return fmt.Sprintf("recommended %s", kind)
@@ -257,6 +265,36 @@ func (a command) runOne(ctx context.Context, request listing.Request, plan listi
 		func(items []pixiv.UserPreview) error { return printUserPreviews(a.data.Output, items) })
 }
 
+func resolveArtworkFilter(kind, contentType string) (searchfilter.Filter, error) {
+	if kind == "manga" {
+		contentType = string(searchfilter.ContentTypeManga)
+	}
+	return searchfilter.NormalizeFilter("", contentType)
+}
+
+func filterRecommendedArtworks(items []pixiv.Artwork, filter searchfilter.Filter) []pixiv.Artwork {
+	if filter.ContentType == "" || filter.ContentType == searchfilter.ContentTypeAll {
+		return items
+	}
+	filtered := make([]pixiv.Artwork, 0, len(items))
+	for _, item := range items {
+		if filter.Matches(0, string(item.Kind)) {
+			filtered = append(filtered, item)
+		}
+	}
+	return filtered
+}
+
+func fetchRecommendedArtworks(client *pixiv.Client, filter searchfilter.Filter) func(context.Context, sdk.Cursor) ([]pixiv.Artwork, sdk.Cursor, error) {
+	return func(ctx context.Context, cursor sdk.Cursor) ([]pixiv.Artwork, sdk.Cursor, error) {
+		result, err := client.RecommendedArtworks(ctx, pixiv.RecommendedArtworksRequest{Cursor: cursor})
+		if err != nil {
+			return nil, sdk.Cursor{}, err
+		}
+		return filterRecommendedArtworks(result.Items, filter), result.Next, nil
+	}
+}
+
 // runAllNDJSON 保留 all 的既有类别顺序。每写出一条记录即标记提交，因此账号池只会
 // 在任何下游可见输出之前重放 429。
 func (a command) runAllNDJSON(ctx context.Context, client *pixiv.Client, plan listing.Plan) (bool, error) {
@@ -275,18 +313,13 @@ func (a command) runAllNDJSON(ctx context.Context, client *pixiv.Client, plan li
 		}
 		return nil
 	}
-	fetchArtworks := func(ctx context.Context, cursor sdk.Cursor) ([]pixiv.Artwork, sdk.Cursor, error) {
-		result, err := client.RecommendedArtworks(ctx, pixiv.RecommendedArtworksRequest{Cursor: cursor})
-		if err != nil {
-			return nil, sdk.Cursor{}, err
+	for _, filter := range []searchfilter.Filter{
+		{ContentType: searchfilter.ContentTypeIllust},
+		{ContentType: searchfilter.ContentTypeManga},
+	} {
+		if err := listing.PageItems(ctx, plan, fetchRecommendedArtworks(client, filter), writeArtworks); err != nil {
+			return committed, err
 		}
-		return result.Items, result.Next, nil
-	}
-	if err := listing.PageItems(ctx, plan, fetchArtworks, writeArtworks); err != nil {
-		return committed, err
-	}
-	if err := listing.PageItems(ctx, plan, fetchArtworks, writeArtworks); err != nil {
-		return committed, err
 	}
 	if err := listing.PageItems(ctx, plan, func(ctx context.Context, cursor sdk.Cursor) ([]pixiv.Novel, sdk.Cursor, error) {
 		result, err := client.RecommendedNovels(ctx, pixiv.RecommendedNovelsRequest{Cursor: cursor})

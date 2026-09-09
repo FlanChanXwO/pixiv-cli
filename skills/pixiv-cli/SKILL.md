@@ -154,6 +154,7 @@ pixiv bookmark detail ARTWORK_ID_OR_NOVEL_ID_OR_URL --type novel --json
 pixiv user novels USER_ID --limit 20 --json
 pixiv ranking --mode day
 pixiv recommended --type artwork --limit 10 # type is required; needs auth
+pixiv recommended --type artwork --content-type manga --limit 10 # local artwork subtype filter
 pixiv recommended --type all --limit 10     # request all supported kinds; needs auth
 pixiv timeline following --type artwork --content-type illust --limit 20
 pixiv timeline latest --type artwork --limit 20 # defaults to the supported illust feed
@@ -240,7 +241,10 @@ session.
    App page resource is a real error, not a reason to scrape or retry Web.
 2. **`recommended` requires a kind.** Choose one of the kinds shown by
    `pixiv recommended --help`; it requires authentication and does not work
-   anonymously.
+   anonymously. With artwork recommendations, `--content-type` accepts
+   `all|illust|manga` and filters returned DTO kinds locally; it is not sent as
+   an upstream query parameter. `--type all` keeps artwork, novel, and user
+   streams separate, and positional `KIND` remains a compatibility spelling.
 3. **`--limit` is command-specific.** Verify the installed help before adding it;
    list forms of `search`, `novel search`, `ranking`, `series`, `comment`, `bookmark`,
    `recommended`, `timeline`, `mypixiv`, and `user` expose it where applicable.

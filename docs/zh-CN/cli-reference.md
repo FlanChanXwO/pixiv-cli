@@ -370,7 +370,7 @@ canonical 数据 action 是 `search`、`detail`、`ranking`、`series`、`commen
 | `download` | `pixiv download [options] SRC...` | 下载作品 ID/URL、允许的 CDN URL，或从受支持的用户、公开收藏 URL 展开视觉作品。作品系列 URL 不是下载来源。`--output/-o` 是 `--download-path` 的别名。 |
 | `timeline` | `pixiv timeline following\|latest -t artwork\|novel [--content-type TYPE ...]` | 读取关注用户或最新作品流；作品子类型使用独立的 `--content-type`。 |
 | `mypixiv` | `pixiv mypixiv users\|works [-t artwork\|novel ...]` | 读取 MyPixiv 用户以及作品/小说流。 |
-| `recommended` | `pixiv recommended [-t artwork\|novel\|user\|all] [--page N --limit N --json]` | 读取个性化推荐；位置参数 `KIND` 仍兼容；`all` 的各实体流在结果中保持独立。 |
+| `recommended` | `pixiv recommended [-t artwork\|novel\|user\|all] [--content-type all\|illust\|manga] [--page N --limit N --json]` | 读取个性化推荐；对 artwork，`--content-type` 只在本地按返回的 artwork DTO 子类型筛选，不发送 upstream 查询参数；位置参数 `KIND` 仍兼容；`all` 的各实体流在结果中保持独立。 |
 | `novel search` | `pixiv novel search WORD [options]` | 小说搜索兼容路径；优先使用 `pixiv search WORD --type novel`，只暴露基础小说搜索字段。 |
 | `user search` | `pixiv user search WORD [options]` | 用户搜索兼容路径；优先使用 `pixiv search WORD --type user`。 |
 | `follow` | `pixiv follow add\|remove USER_ID ...` | 用户关注兼容路径；优先使用 `pixiv user follow add\|remove`。 |
@@ -436,7 +436,8 @@ Content-Type 与 URL 后缀不一致（例如 URL 为 `.png`、实体为 JPEG）
 | `timeline following` | `--type` / `-t`、`--content-type` | 必填、`all` | 实体类型为 `artwork` 或 `novel`；作品子类型独立设置，`--restrict` 为 public/private。 |
 | `timeline latest` | `--type` / `-t`、`--content-type` | 必填、`illust` | 实体类型为 `artwork` 或 `novel`；最新作品接口支持 `illust` 或 `manga`，省略 `--content-type` 时选择 `illust`。 |
 | `mypixiv works` | `--type` / `-t` | 必填 | 省略 `USER_ID` 时使用实体类型 `artwork` 或 `novel`；提供 `USER_ID` 时还支持 `manga`。旧 `illust` 写法继续作为 `artwork` 的兼容别名。 |
-| `recommended` | `--type` / `-t` | 空 | `artwork`、`novel`、`user` 或 `all`；位置参数 `KIND` 是兼容写法。 |
+| `recommended` | `--type` / `-t` | 空 | `artwork`、`novel`、`user` 或 `all`；选择 `artwork` 时可用 `--content-type` 指定本地子类型筛选；位置参数 `KIND` 是兼容写法。 |
+| `recommended` | `--content-type` | `all` | 仅用于 artwork 的本地子类型筛选：`all`、`illust` 或 `manga`。该值只筛选返回 DTO 的 kind，不发送为 upstream 的 `content_type` 参数。 |
 | Record 动作 | `--on-error` | `skip` | 对格式错误/不兼容记录选择写 stderr 后跳过，或 `fail-fast`。 |
 | `download` | `--pages` | 空 | 1-based 闭区间页选择，如 `1,3-5`；默认下载全部页。页不存在会明确失败。 |
 | `download` | `--quality` | `original` | 静态图质量：`original`、`regular`（最长边 1200）、`small`（最长边 540）、`thumb`（250×250 居中裁剪）、`mini`（48×48 居中裁剪）。Ugoira 对非 original 质量或页选择返回 unsupported。 |
