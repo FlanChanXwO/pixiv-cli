@@ -631,3 +631,226 @@ func TestCommandAutoUsesNDJSONForNonTerminalOutput(t *testing.T) {
 		t.Fatalf("unexpected auto-NDJSON record: %+v", item)
 	}
 }
+
+func TestTrendingTagsHumanOutputEscapesControlBytes(t *testing.T) {
+	output := &bytes.Buffer{}
+	cmd := New(Dependencies{
+		Input:  strings.NewReader(""),
+		Output: output,
+		JSONOut: func(*bool) (bool, error) {
+			return false, nil
+		},
+		Pooled: func(ctx context.Context, _ Request, attempt func(context.Context, *pixiv.Client) (bool, error)) error {
+			client, err := pixiv.NewWith("token", pixiv.Options{HTTPClient: &http.Client{Transport: searchFixtureTransport(func(request *http.Request) (*http.Response, error) {
+				if request.URL.Path != "/v1/trending-tags/illust" {
+					t.Fatalf("path = %q, want /v1/trending-tags/illust", request.URL.Path)
+				}
+				body := `{"trend_tags":[{"tag":"cat\nnext","translated_name":"猫\t二","illust":{"id":1,"title":"cover","user":{"id":2},"create_date":"2024-01-02T03:04:05+00:00"}}]}`
+				return &http.Response{
+					StatusCode: http.StatusOK,
+					Header:     http.Header{"Content-Type": {"application/json"}},
+					Body:       io.NopCloser(strings.NewReader(body)),
+					Request:    request,
+				}, nil
+			})}})
+			if err != nil {
+				return err
+			}
+			_, err = attempt(ctx, client)
+			return err
+		},
+	})
+	cmd.SetArgs([]string{"--trending-tags"})
+
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("execute trending tags: %v", err)
+	}
+	if got, want := output.String(), "cat\\nnext (translation: 猫\\t二)\n"; got != want {
+		t.Fatalf("human output = %q, want %q", got, want)
+	}
+}
+
+func TestCanonicalUserSearchUsesRouteAndLogicalPaginationJSON(t *testing.T) {
+	output := &bytes.Buffer{}
+	requests := 0
+	transport := searchFixtureTransport(func(request *http.Request) (*http.Response, error) {
+		requests++
+		if request.URL.Path != "/v1/search/user" {
+			t.Fatalf("path = %q, want /v1/search/user", request.URL.Path)
+		}
+		query := request.URL.Query()
+		if query.Get("word") != "artist" {
+			t.Fatalf("word = %q, want artist", query.Get("word"))
+		}
+		wantOffset := ""
+		body := `{"user_previews":[{"user":{"id":3001,"name":"artist one","account":"artist1","comment":"first"}}],"next_url":"https://app-api.pixiv.net/v1/search/user?word=artist&offset=20"}`
+		if requests == 2 {
+			wantOffset = "20"
+			body = `{"user_previews":[{"user":{"id":3002,"name":"artist two","account":"artist2","comment":"second"}}],"next_url":null}`
+		}
+		if query.Get("offset") != wantOffset {
+			t.Fatalf("offset = %q, want %q", query.Get("offset"), wantOffset)
+		}
+		return &http.Response{
+			StatusCode: http.StatusOK,
+			Header:     http.Header{"Content-Type": {"application/json"}},
+			Body:       io.NopCloser(strings.NewReader(body)),
+			Request:    request,
+		}, nil
+	})
+	cmd := New(Dependencies{
+		Input:      strings.NewReader(""),
+		Output:     output,
+		UsageError: func(err error) error { return err },
+		JSONOut:    func(*bool) (bool, error) { return true, nil },
+		Pooled: func(ctx context.Context, _ Request, attempt func(context.Context, *pixiv.Client) (bool, error)) error {
+			client, err := pixiv.NewWith("token", pixiv.Options{HTTPClient: &http.Client{Transport: transport}})
+			if err != nil {
+				return err
+			}
+			_, err = attempt(ctx, client)
+			return err
+		},
+	})
+	cmd.SetArgs([]string{"artist", "--type", "user", "--limit", "2", "--json"})
+
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("execute canonical user search: %v", err)
+	}
+	if requests != 2 {
+		t.Fatalf("HTTP requests = %d, want 2", requests)
+	}
+	var envelope struct {
+		Users []struct {
+			User struct {
+				ID      int64  `json:"id"`
+				Account string `json:"account"`
+			} `json:"user"`
+		} `json:"user_previews"`
+	}
+	if err := json.Unmarshal(output.Bytes(), &envelope); err != nil {
+		t.Fatalf("decode JSON output: %v; output=%q", err, output.String())
+	}
+	if len(envelope.Users) != 2 || envelope.Users[0].User.ID != 3001 || envelope.Users[1].User.ID != 3002 {
+		t.Fatalf("user previews = %#v, want IDs 3001 and 3002", envelope.Users)
+	}
+	if envelope.Users[0].User.Account != "artist1" || envelope.Users[1].User.Account != "artist2" {
+		t.Fatalf("user accounts = %#v, want artist1 and artist2", envelope.Users)
+	}
+}
+
+func TestCanonicalUserSearchRejectsArtworkFlagsBeforeOpeningClient(t *testing.T) {
+	for _, flagArgs := range [][]string{
+		{"--search-by", "tag-exact"},
+		{"--sort", "date_asc"},
+		{"--period", "week"},
+		{"--rating", "sfw"},
+	} {
+		name := strings.Join(flagArgs, "_")
+		t.Run(name, func(t *testing.T) {
+			opened := false
+			cmd := New(Dependencies{
+				Input:      strings.NewReader(""),
+				Output:     &bytes.Buffer{},
+				UsageError: func(err error) error { return err },
+				JSONOut:    func(*bool) (bool, error) { return false, nil },
+				Pooled: func(context.Context, Request, func(context.Context, *pixiv.Client) (bool, error)) error {
+					opened = true
+					return nil
+				},
+			})
+			cmd.SetArgs(append([]string{"artist", "--type", "user"}, flagArgs...))
+
+			err := cmd.Execute()
+			if err == nil || !strings.Contains(err.Error(), "only supported when --type artwork or novel") {
+				t.Fatalf("expected user flag validation error, got %v", err)
+			}
+			if opened {
+				t.Fatal("opened SDK client before validating user search flags")
+			}
+		})
+	}
+}
+
+func TestTrendingTagsJSONOutputUsesCompleteEnvelope(t *testing.T) {
+	output := &bytes.Buffer{}
+	cmd := New(Dependencies{
+		Input:  strings.NewReader(""),
+		Output: output,
+		JSONOut: func(*bool) (bool, error) {
+			return true, nil
+		},
+		Pooled: func(ctx context.Context, _ Request, attempt func(context.Context, *pixiv.Client) (bool, error)) error {
+			client, err := pixiv.NewWith("token", pixiv.Options{HTTPClient: &http.Client{Transport: searchFixtureTransport(func(request *http.Request) (*http.Response, error) {
+				if request.URL.Path != "/v1/trending-tags/illust" || len(request.URL.Query()) != 0 {
+					t.Fatalf("request = %s?%s, want empty-query trending route", request.URL.Path, request.URL.Query().Encode())
+				}
+				body := `{"trend_tags":[{"tag":"cat","translated_name":"猫","illust":{"id":4001,"title":"cover","user":{"id":7},"create_date":"2024-01-02T03:04:05+00:00"}}]}`
+				return &http.Response{
+					StatusCode: http.StatusOK,
+					Header:     http.Header{"Content-Type": {"application/json"}},
+					Body:       io.NopCloser(strings.NewReader(body)),
+					Request:    request,
+				}, nil
+			})}})
+			if err != nil {
+				return err
+			}
+			_, err = attempt(ctx, client)
+			return err
+		},
+	})
+	cmd.SetArgs([]string{"--trending-tags", "--json"})
+
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("execute trending tags JSON: %v", err)
+	}
+	var envelope struct {
+		Tags []struct {
+			Tag     string `json:"tag"`
+			Artwork struct {
+				ID int64 `json:"id"`
+			} `json:"artwork"`
+		} `json:"tags"`
+	}
+	if err := json.Unmarshal(output.Bytes(), &envelope); err != nil {
+		t.Fatalf("decode trending JSON: %v; output=%q", err, output.String())
+	}
+	if len(envelope.Tags) != 1 || envelope.Tags[0].Tag != "cat" || envelope.Tags[0].Artwork.ID != 4001 {
+		t.Fatalf("trending tags = %#v, want cat with artwork 4001", envelope.Tags)
+	}
+}
+
+func TestTrendingTagsRejectsWordAndUnsupportedFlagsBeforeOpeningClient(t *testing.T) {
+	for _, args := range [][]string{
+		{"cat", "--trending-tags"},
+		{"--trending-tags", "--limit", "1"},
+		{"--trending-tags", "--page", "1"},
+		{"--trending-tags", "--ndjson"},
+		{"--trending-tags", "--type", "artwork"},
+	} {
+		name := strings.Join(args, "_")
+		t.Run(name, func(t *testing.T) {
+			opened := false
+			cmd := New(Dependencies{
+				Input:      strings.NewReader(""),
+				Output:     &bytes.Buffer{},
+				UsageError: func(err error) error { return err },
+				JSONOut:    func(*bool) (bool, error) { return false, nil },
+				Pooled: func(context.Context, Request, func(context.Context, *pixiv.Client) (bool, error)) error {
+					opened = true
+					return nil
+				},
+			})
+			cmd.SetArgs(args)
+
+			err := cmd.Execute()
+			if err == nil {
+				t.Fatal("expected trending-tags validation error")
+			}
+			if opened {
+				t.Fatal("opened SDK client before validating trending-tags flags")
+			}
+		})
+	}
+}

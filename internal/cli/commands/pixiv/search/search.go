@@ -18,6 +18,7 @@ import (
 	record "github.com/FlanChanXwO/pixiv-cli/internal/shared/record"
 	"github.com/FlanChanXwO/pixiv-cli/internal/shared/searchfilter"
 	dateutil "github.com/FlanChanXwO/pixiv-cli/internal/utils/date"
+	textutil "github.com/FlanChanXwO/pixiv-cli/internal/utils/text"
 	"github.com/FlanChanXwO/pixiv-cli/sdk"
 	pixiv "github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
 	"github.com/spf13/cobra"
@@ -493,7 +494,7 @@ func (a command) runTrendingTags(cmd *cobra.Command, options CommandOptions) err
 		if translated == "" {
 			translated = "none"
 		}
-		if _, err := fmt.Fprintf(a.data.Output, "%s (translation: %s)\n", tag.Tag, translated); err != nil {
+		if _, err := fmt.Fprintf(a.data.Output, "%s (translation: %s)\n", textutil.SafeLine(tag.Tag), textutil.SafeLine(translated)); err != nil {
 			return err
 		}
 	}
