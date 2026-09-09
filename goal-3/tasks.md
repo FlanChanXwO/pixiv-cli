@@ -72,7 +72,7 @@ Status 的 verified 表示对应 task 的实现与相关验证完成；各 task 
 | T23 | pagination/traversal integration | T19,T22,T23A | 将基础续读契约接入其余 endpoint；验证聚合流、过滤及 Skip/Limit/OneBatch | verified |
 | T24 | CLI search | T39A,T13,T21,T22,T23 | artwork search 与 subtype；stdin/JSON/NDJSON | verified |
 | T25 | CLI novel search | T39A,T14,T21,T22,T23 | novel search canonical route、period 与旧 route | verified |
-| T26 | CLI user search/trending | T39A,T06,T13,T23 | user search 与 trending | pending |
+| T26 | CLI user search/trending | T39A,T06,T13,T23 | user search 与 trending | verified |
 | T27 | CLI bookmark | T39A,T15,T21,T22,T23 | list/tags/detail/add/remove；list/tags all；user target 与内容类型分开 | pending |
 | T28 | CLI recommended | T39A,T18,T21,T22,T23 | entity/subtype/all 与旧 positional all | pending |
 | T29 | CLI timeline | T39A,T18,T21,T22,T23 | following/latest；entity 与 content-type subtype | pending |
@@ -745,6 +745,17 @@ Status 的 verified 表示对应 task 的实现与相关验证完成；各 task 
 - 公开兼容性影响：完成既有 CLI canonical novel search 与 `pixiv novel search` compatibility route 的验证与收紧；不新增、删除或重命名 public SDK symbol，不改变 MCP route/schema、`/v1/search/novel` wire 字段、认证/token stdout、默认账号选择、依赖、本地数据或发布物。`tag-title-caption` 仍只属于 artwork search；本卡仅拒绝此前错误放行到 novel 的 unsupported keyword target，不引入固定 timeout、重试上限、截断或静默 fallback。
 - 回滚前提 / 依赖闭包：代码提交 `bdb874fa9cacbfef048d2bc45a38730d21bed3b0` 与本记录需成对回滚；若后续 T37 MCP novel owner 或其他上层调用依赖该 novel target 校验，回滚前必须同步撤销调用或提供等价兼容修复，不能只删除 owner-local validator。没有业务数据、账号、token、缓存、运行配置、依赖或生成物迁移。
 - 实际结果 / evidence / 风险：T25 已 verified；未执行真实 Pixiv API，未改写 strict/live evidence，也未授予 `novel-search` capability `public_ready`，因为 MCP owner T37 与最终发布门禁尚未完成。`required=41 scope_admitted=41 public_ready=0 other=0` 保持不变，Goal-3 继续 incomplete；下一张 pending 卡为 T26。
+
+## T26 完成记录
+
+- Owner package / 涉及文件：`internal/cli/commands/pixiv/search/search.go`、`internal/cli/commands/pixiv/search/search_test.go`、`internal/cli/commands/pixiv/user/user_test.go`；用户搜索的 owner execution 已由现有 `internal/cli/commands/pixiv/user/user.go` 统一承载，本卡补齐 canonical/legacy 路由回放、分页、输出和趋势标签边界。代码提交为 `420ee41c72a1e5c3c2d1f4c1ab807109211c5302`。
+- Depends on：T39A、T06、T13、T23 均已 verified；承接 `/v1/search/user`、`SearchUsersRequest`、positive-offset public-scoped cursor、`/v1/trending-tags/illust`、typed DTO 与共享 pooled traversal。未扩展到 T34 的 user detail/artworks/novels/relationships。
+- 冻结 contract / fixture：canonical `pixiv search WORD --type user` 与 legacy `pixiv user search WORD` 共用 user owner；首请求使用 `/v1/search/user?word=WORD` 且不带 offset，续页只使用已验证的 `offset=20` continuation，`--limit` 聚合逻辑结果。JSON 保留 `user_previews` envelope，NDJSON 输出稳定 `id/type/url` user record，legacy route 支持 stdin word。`pixiv search --trending-tags` 不接受 WORD、`--type`、`--limit`、`--page` 或 `--ndjson`，调用 `/v1/trending-tags/illust` 空 query；JSON 输出 `tags` 及 sample artwork，文本输出逐标签翻译，并对上游控制字节做 `SafeLine` 转义。
+- Red 测试、命令及当前行为的实际失败：先加入 `TestTrendingTagsHumanOutputEscapesControlBytes`，运行 `go test ./internal/cli/commands/pixiv/search -run '^TestTrendingTagsHumanOutputEscapesControlBytes$' -count=1 -v`；旧实现直接写入上游 tag/translation，实际输出了原始换行和制表符，测试按逐行协议预期失败。随后补充 canonical user JSON 两页、legacy stdin/NDJSON 两页、趋势 JSON envelope、趋势非法组合和 user 不适用 flag 的 no-network 回归。
+- Green 命令及验收断言：`go test ./internal/cli/commands/pixiv/search ./internal/cli/commands/pixiv/user -count=1`、`go test -race ./internal/cli/commands/pixiv/search ./internal/cli/commands/pixiv/user -count=1`、`go test ./... -count=1`、`go vet ./...`、`sh scripts/build.sh`、相关 Go 文件 `gofmt`、`git diff --check` 均通过；代码提交钩子再次通过 `gofmt` 与 `go test ./...`。fixture 断言 canonical/legacy 均到达正确 App API route，word、首请求无 offset、续页 offset 和 JSON/NDJSON 结果均正确；趋势标签 query 为空、完整 sample artwork 保留、控制字节被转义，所有不适用 flag 在打开 SDK 前失败。
+- 公开兼容性影响：完成既有 user search/trending CLI 路由的可回放验证，并修复趋势标签文本展示破坏逐行协议的问题；不新增、删除或重命名 public SDK symbol，不改变 MCP route/schema、upstream wire 字段、认证/token stdout、默认账号选择、依赖、本地数据或发布物。JSON 继续保留原始文本语义并由 `encoding/json` 转义；`SafeLine` 只作用于人类可读文本输出，不引入固定 timeout、重试上限、截断或静默 fallback。
+- 回滚前提 / 依赖闭包：代码提交 `420ee41c72a1e5c3c2d1f4c1ab807109211c5302` 与本记录需成对回滚；若后续 T37 MCP user/trending owner 或 T39B/T40 依赖这些 route/output 断言，回滚前必须同步撤销调用方或提供等价兼容迁移，不能只删除文本安全修复。没有业务数据、账号、token、缓存、运行配置、依赖或生成物迁移。
+- 实际结果 / evidence / 风险：T26 已 verified；未执行真实 Pixiv API，未改写 strict/live evidence，也未授予 `user-search` 或 `trending` capability `public_ready`，因为 MCP owner T37、兼容审计和最终发布门禁仍未完成。`required=41 scope_admitted=41 public_ready=0 other=0` 保持不变，Goal-3 继续 incomplete；下一张 pending 卡为 T27。
 
 ## 实现任务准入卡
 
