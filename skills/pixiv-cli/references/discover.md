@@ -176,6 +176,27 @@ pixiv user search "NAME" --limit 20 --json
   authenticated. Do not substitute an artwork search or label its authors as a
   username-search result.
 
+## Followed and latest feeds
+
+```
+pixiv timeline following --type artwork --content-type manga --limit 20
+pixiv timeline following --type novel --restrict private --limit 20
+pixiv timeline latest --type artwork --content-type illust --limit 20
+pixiv timeline latest --type novel --limit 20
+```
+
+- `--type` selects the entity (`artwork` or `novel`). It is not an artwork
+  subtype selector; use `--content-type` for artwork subtype semantics.
+- Following artwork accepts local `all|illust-and-ugoira|illust|manga|ugoira`
+  filtering and defaults to `all`. The upstream following endpoint only takes
+  `restrict`, so the subtype is filtered from returned DTOs and must not be
+  sent as an upstream query parameter. A positive `--limit` continues across
+  upstream batches until the logical result is filled or the current cursor
+  ends.
+- Latest artwork defaults to `illust` and accepts only `illust|manga`; do not
+  use search's broader `all` selector. Explicit `--content-type` is invalid
+  for either novel timeline route.
+
 ## Rankings and recommendations
 
 ```

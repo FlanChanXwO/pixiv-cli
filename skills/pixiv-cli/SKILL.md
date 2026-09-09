@@ -261,6 +261,10 @@ session.
    not publish rating, text-length, or original-only filters.
    `timeline latest --type artwork` defaults `--content-type` to `illust` and
    accepts `illust|manga`; it does not use search's broader `all` subtype.
+   `timeline following --type artwork` defaults `--content-type` to `all` and
+   locally filters returned artwork DTOs for `all|illust-and-ugoira|illust|manga|ugoira`;
+   the following endpoint has no upstream subtype query, so do not send one.
+   `--content-type` is rejected with `--type novel` for either timeline route.
    `mypixiv works --type artwork` maps the public artwork entity to Pixiv's
    `illust` feed; the older `--type illust` spelling remains compatible.
    `detail --type novel --content` remains a compatibility flag, but the App
