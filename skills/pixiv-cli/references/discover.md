@@ -167,14 +167,16 @@ pixiv user search "NAME" --limit 20 --json
   has no anonymous or `related_illust_authors` fallback; an account or an
   explicit authentication error is required.
 
-- `user detail USER_ID` requires the ID (no self-default). `--json` gives the
-  full stable profile envelope.
-- `user artworks` / `bookmarks` / `following` default to the current account
-  when USER_ID is omitted.
-- `user detail` accepts only the ID. If the user gives a `pixiv.net/users/<id>`
-  URL, extract its numeric ID. For a name, use `user search` while
-  authenticated. Do not substitute an artwork search or label its authors as a
-  username-search result.
+- `user detail USER_ID` requires a numeric ID (no self-default). `--json` gives
+  the full stable profile envelope.
+- `user artworks` / `novels` / `bookmarks` / `following` / `followers` /
+  `blocked` default to the current account when USER_ID is omitted; `detail`
+  and `related` require an explicit numeric ID.
+- User detail and user-list routes accept numeric USER_ID values only. A
+  `pixiv.net/users/<id>` URL is rejected rather than treated as an implicit
+  namespace conversion. For a name, use `user search` while authenticated. Do
+  not substitute an artwork search or label its authors as a username-search
+  result.
 
 ## Followed and latest feeds
 

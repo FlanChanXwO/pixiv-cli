@@ -13,6 +13,7 @@ import (
 	requirements "github.com/FlanChanXwO/pixiv-cli/internal/cli/commands"
 	"github.com/FlanChanXwO/pixiv-cli/internal/cli/commands/pixiv/internal/listing"
 	"github.com/FlanChanXwO/pixiv-cli/internal/cli/pipeline"
+	"github.com/FlanChanXwO/pixiv-cli/internal/shared/resolver"
 	"github.com/FlanChanXwO/pixiv-cli/internal/utils/parse"
 	"github.com/FlanChanXwO/pixiv-cli/sdk"
 	pixiv "github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
@@ -176,7 +177,8 @@ func currentUserID(client *pixiv.Client) (int64, error) {
 	if id := client.UserID(); id > 0 {
 		return id, nil
 	}
-	return 0, errors.New("cannot determine current user id")
+	return 0, sdk.NewError("pixiv", "CurrentUser", sdk.Unauthorized,
+		sdk.WithDetail("cannot determine current user id"))
 }
 
 // New builds the actual `pixiv user` command group.
@@ -421,6 +423,49 @@ func requestedUserID(args []string) (int64, error) {
 	return parse.PositiveInt64(args[0], "user_id")
 }
 
+func resolveUserID(ctx context.Context, value, operation string) (int64, error) {
+	target, err := resolver.Resolve(ctx, resolver.Input{Value: value}, resolver.Contract{
+		Operation:   operation,
+		DefaultType: "user",
+		Types: []resolver.TypeSpec{{
+			Name:              "user",
+			ResultKind:        resolver.ResultKindUser,
+			BareReferenceKind: pixiv.ReferenceKindUser,
+		}},
+	})
+	if err != nil {
+		return 0, fmt.Errorf("user_id: %w", err)
+	}
+	return target.ID, nil
+}
+
+func requestedResolvedUserID(ctx context.Context, args []string, operation string) (int64, error) {
+	if len(args) != 1 {
+		return 0, nil
+	}
+	return resolveUserID(ctx, args[0], operation)
+}
+
+func validateArtworkType(value string) error {
+	switch pixiv.ArtworkKind(value) {
+	case "", pixiv.ArtworkKindIllustration, pixiv.ArtworkKind("illust"), pixiv.ArtworkKindManga, pixiv.ArtworkKindUgoira:
+		return nil
+	default:
+		return sdk.NewError("pixiv", "user artworks", sdk.InvalidArgument,
+			sdk.WithDetail("type must be one of illustration, illust, manga, or ugoira"))
+	}
+}
+
+func validateRelationshipRestrict(value string) error {
+	switch pixiv.Restrict(value) {
+	case "", pixiv.RestrictPublic, pixiv.RestrictPrivate:
+		return nil
+	default:
+		return sdk.NewError("pixiv", "user relationships", sdk.InvalidArgument,
+			sdk.WithDetail("restrict must be public or private"))
+	}
+}
+
 func (a command) runSearch(cmd *cobra.Command, args []string, opts listOptions) error {
 	plan, request, jsonOut, ndjson, err := a.resolve(cmd, opts, true)
 	if err != nil {
@@ -440,7 +485,7 @@ func (a command) runSearch(cmd *cobra.Command, args []string, opts listOptions) 
 }
 
 func (a command) runDetail(cmd *cobra.Command, arg string, opts CommandOptions) error {
-	userID, err := parse.PositiveInt64(arg, "user_id")
+	userID, err := resolveUserID(cmd.Context(), arg, "user detail")
 	if err != nil {
 		return err
 	}
@@ -465,7 +510,10 @@ func (a command) runDetail(cmd *cobra.Command, arg string, opts CommandOptions) 
 }
 
 func (a command) runArtworks(cmd *cobra.Command, args []string, opts listOptions) error {
-	requested, err := requestedUserID(args)
+	if err := validateArtworkType(opts.illustType); err != nil {
+		return err
+	}
+	requested, err := requestedResolvedUserID(cmd.Context(), args, "user artworks")
 	if err != nil {
 		return err
 	}
@@ -524,7 +572,10 @@ func (a command) runBookmarks(cmd *cobra.Command, args []string, opts listOption
 
 // runFollowing 保持既有输出模式：该命令不参与自动 NDJSON 判定。
 func (a command) runFollowing(cmd *cobra.Command, args []string, opts listOptions) error {
-	requested, err := requestedUserID(args)
+	if err := validateRelationshipRestrict(opts.restrict); err != nil {
+		return err
+	}
+	requested, err := requestedResolvedUserID(cmd.Context(), args, "user following")
 	if err != nil {
 		return err
 	}
@@ -553,7 +604,7 @@ func (a command) runFollowing(cmd *cobra.Command, args []string, opts listOption
 }
 
 func (a command) runNovels(cmd *cobra.Command, args []string, opts listOptions) error {
-	requested, err := requestedUserID(args)
+	requested, err := requestedResolvedUserID(cmd.Context(), args, "user novels")
 	if err != nil {
 		return err
 	}
@@ -581,7 +632,10 @@ func (a command) runNovels(cmd *cobra.Command, args []string, opts listOptions) 
 }
 
 func (a command) runFollowers(cmd *cobra.Command, args []string, opts listOptions) error {
-	requested, err := requestedUserID(args)
+	if err := validateRelationshipRestrict(opts.restrict); err != nil {
+		return err
+	}
+	requested, err := requestedResolvedUserID(cmd.Context(), args, "user followers")
 	if err != nil {
 		return err
 	}
@@ -610,7 +664,7 @@ func (a command) runFollowers(cmd *cobra.Command, args []string, opts listOption
 }
 
 func (a command) runRelated(cmd *cobra.Command, arg string, opts listOptions) error {
-	userID, err := parse.PositiveInt64(arg, "user_id")
+	userID, err := resolveUserID(cmd.Context(), arg, "user related")
 	if err != nil {
 		return err
 	}
@@ -631,7 +685,7 @@ func (a command) runRelated(cmd *cobra.Command, arg string, opts listOptions) er
 }
 
 func (a command) runBlocked(cmd *cobra.Command, args []string, opts listOptions) error {
-	requested, err := requestedUserID(args)
+	requested, err := requestedResolvedUserID(cmd.Context(), args, "user blocked")
 	if err != nil {
 		return err
 	}
