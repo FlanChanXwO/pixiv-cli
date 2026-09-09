@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/shared/pagination"
+	"github.com/FlanChanXwO/pixiv-cli/internal/shared/searchfilter"
 	"github.com/FlanChanXwO/pixiv-cli/internal/shared/traversal"
 	"github.com/FlanChanXwO/pixiv-cli/sdk"
 	product "github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
@@ -17,7 +18,8 @@ import (
 )
 
 type artworkClient struct {
-	search func(context.Context, product.SearchArtworksRequest) (sdk.Page[product.Artwork], error)
+	search     func(context.Context, product.SearchArtworksRequest) (sdk.Page[product.Artwork], error)
+	checkpoint func(product.SearchArtworksRequest, int) (sdk.Cursor, error)
 }
 
 func (c artworkClient) SearchArtworks(ctx context.Context, request product.SearchArtworksRequest) (sdk.Page[product.Artwork], error) {
@@ -25,6 +27,9 @@ func (c artworkClient) SearchArtworks(ctx context.Context, request product.Searc
 }
 
 func (c artworkClient) CheckpointSearchArtworks(request product.SearchArtworksRequest, consumed int) (sdk.Cursor, error) {
+	if c.checkpoint != nil {
+		return c.checkpoint(request, consumed)
+	}
 	return sdk.NewCursor("test", "checkpoint", 1, "hash", []byte("batch remainder"))
 }
 
@@ -72,6 +77,68 @@ func TestSearchArtworksLocallyFiltersCandidatesAndReportsCompleteness(t *testing
 	require.Equal(t, first, calls[1].Cursor)
 	require.Nil(t, calls[0].BookmarkMin)
 	require.Nil(t, calls[0].BookmarkMax)
+}
+
+func TestSearchArtworksAppliesLocalFilterBeforeLogicalLimitAndCheckpoints(t *testing.T) {
+	start := testSearchCursor(t, "start")
+	first := testSearchCursor(t, "first")
+	checkpoint := testSearchCursor(t, "checkpoint")
+	var calls []product.SearchArtworksRequest
+	var checkpointRequest product.SearchArtworksRequest
+	var checkpointConsumed int
+	client := artworkClient{
+		search: func(_ context.Context, request product.SearchArtworksRequest) (sdk.Page[product.Artwork], error) {
+			calls = append(calls, request)
+			return sdk.Page[product.Artwork]{
+				Items: []product.Artwork{
+					{ID: 1, XRestrict: 0},
+					{ID: 2, XRestrict: 1},
+					{ID: 3, XRestrict: 1},
+				},
+				Next: first,
+			}, nil
+		},
+		checkpoint: func(request product.SearchArtworksRequest, consumed int) (sdk.Cursor, error) {
+			checkpointRequest = request
+			checkpointConsumed = consumed
+			return checkpoint, nil
+		},
+	}
+	include := func(item product.Artwork) (bool, error) { return item.XRestrict == 1, nil }
+	result, err := searchArtworks(context.Background(), oneClientOperation(client), artworkSearchRequest{
+		Query:   product.SearchArtworksRequest{Word: "cat", Cursor: start, CursorContext: "rating-context"},
+		Plan:    pagination.PagePlan{Limit: 1},
+		Include: include,
+	})
+
+	require.NoError(t, err)
+	require.Equal(t, []int64{2}, searchArtworkIDs(result.Page.Items))
+	require.Equal(t, checkpoint, result.Page.Next)
+	require.Len(t, calls, 1)
+	require.Equal(t, start, calls[0].Cursor)
+	require.Equal(t, "rating-context", checkpointRequest.CursorContext)
+	require.Equal(t, 2, checkpointConsumed)
+}
+
+func TestSearchArtworksBindsBookmarkAndLocalFilterContextsTogether(t *testing.T) {
+	var request product.SearchArtworksRequest
+	min := 10
+	localContext := "rating-context"
+	client := artworkClient{search: func(_ context.Context, value product.SearchArtworksRequest) (sdk.Page[product.Artwork], error) {
+		request = value
+		return sdk.Page[product.Artwork]{Items: []product.Artwork{{ID: 1, XRestrict: 1, TotalBookmarks: 12}}}, nil
+	}}
+	include := func(item product.Artwork) (bool, error) { return item.XRestrict == 1, nil }
+	_, err := searchArtworks(context.Background(), oneClientOperation(client), artworkSearchRequest{
+		Query: product.SearchArtworksRequest{
+			Word: "cat", CursorContext: localContext, BookmarkMin: &min,
+		},
+		Plan: pagination.PagePlan{Limit: 1}, Include: include, Strategy: bookmarkFilterStrategyAuto,
+	})
+
+	require.NoError(t, err)
+	require.Equal(t, combineCursorContexts(localContext, searchfilter.BookmarkContext(&min, nil, string(bookmarkFilterStrategyLocal))), request.CursorContext)
+	require.NotEqual(t, searchfilter.BookmarkContext(&min, nil, string(bookmarkFilterStrategyLocal)), request.CursorContext)
 }
 
 func TestSearchArtworksBestEffortKeepsCandidateBoundsAndReportsPartialLimit(t *testing.T) {

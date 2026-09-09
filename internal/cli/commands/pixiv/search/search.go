@@ -16,6 +16,7 @@ import (
 	"github.com/FlanChanXwO/pixiv-cli/internal/cli/commands/pixiv/user"
 	"github.com/FlanChanXwO/pixiv-cli/internal/cli/pipeline"
 	record "github.com/FlanChanXwO/pixiv-cli/internal/shared/record"
+	"github.com/FlanChanXwO/pixiv-cli/internal/shared/searchfilter"
 	dateutil "github.com/FlanChanXwO/pixiv-cli/internal/utils/date"
 	"github.com/FlanChanXwO/pixiv-cli/sdk"
 	pixiv "github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
@@ -226,9 +227,9 @@ func New(data Dependencies) *cobra.Command {
 	flags.StringVar(&opts.period, "period", "", "time range: day, week, month, half-year, year")
 	flags.StringVar(&opts.startDate, "start-date", "", "inclusive start date: YYYY-MM-DD")
 	flags.StringVar(&opts.endDate, "end-date", "", "inclusive end date: YYYY-MM-DD")
-	flags.StringVar(&opts.rating, "rating", "", "rating filter is not supported by the v1 App API search contract")
+	flags.StringVar(&opts.rating, "rating", "", "local rating filter: sfw, r18, r18g, mature, all")
 	flags.StringVarP(&opts.typ, "type", "t", opts.typ, "entity type: artwork, novel, user")
-	flags.StringVar(&opts.contentType, "content-type", opts.contentType, "artwork type filter: all, illust-and-ugoira, illust, manga, ugoira")
+	flags.StringVar(&opts.contentType, "content-type", opts.contentType, "artwork type filter: all, illust-and-ugoira, illust/illustration, manga, ugoira")
 	flags.BoolVar(&opts.trendingTags, "trending-tags", false, "return the complete current artwork trending-tag list; WORD and list pagination are not accepted")
 	flags.StringVar(&opts.resolution, "resolution", opts.resolution, "resolution filter: all, high, medium, low")
 	flags.StringVar(&opts.aspectRatio, "aspect-ratio", opts.aspectRatio, "aspect ratio filter: all, landscape, portrait, square")
@@ -283,17 +284,15 @@ func (a command) run(cmd *cobra.Command, args []string, opts options) error {
 			Page:           opts.page,
 		})
 	}
-	if err := resolveRating(opts.rating); err != nil {
-		return err
-	}
 	target, err := resolveSearchBy(opts.searchBy)
 	if err != nil {
 		return err
 	}
-	contentType, err := resolveContentType(opts.contentType)
+	artworkFilter, err := searchfilter.NormalizeFilter(opts.rating, opts.contentType)
 	if err != nil {
 		return err
 	}
+	contentType := pixiv.SearchContentType(artworkFilter.ContentType)
 	aiMode, err := resolveAIMode(opts.aiMode)
 	if err != nil {
 		return err
@@ -345,6 +344,15 @@ func (a command) run(cmd *cobra.Command, args []string, opts options) error {
 		ContentType: contentType, AIMode: aiMode, AspectRatio: aspectRatio, Resolution: resolution,
 		Tool: opts.drawTool, BookmarkMin: bookmarkMin, BookmarkMax: bookmarkMax,
 	}
+	var include func(pixiv.Artwork) (bool, error)
+	if artworkFilter.Rating != searchfilter.RatingAll {
+		// rating 只有 DTO 中的 x_restrict 可验证；它必须绑定到 SDK cursor，
+		// 但不能伪造为 upstream 的 rating/x_restrict 请求参数。
+		query.CursorContext = artworkFilter.CursorContext()
+		include = func(item pixiv.Artwork) (bool, error) {
+			return artworkFilter.Matches(item.XRestrict, string(item.Kind)), nil
+		}
+	}
 	if bookmarkMin != nil || bookmarkMax != nil || cmd.Flags().Changed("bookmark-strategy") {
 		if bookmarkMin == nil && bookmarkMax == nil {
 			return errors.New("--bookmark-strategy requires --bookmark-min or --bookmark-max")
@@ -353,7 +361,10 @@ func (a command) run(cmd *cobra.Command, args []string, opts options) error {
 		if err != nil {
 			return err
 		}
-		return a.runBookmarkFiltered(cmd, listing.Request(clientReq), plan, jsonOut, ndjson, word, query, strategy)
+		return a.runBookmarkFiltered(cmd, listing.Request(clientReq), plan, jsonOut, ndjson, word, query, strategy, include)
+	}
+	if include != nil {
+		return a.runLocallyFiltered(cmd, listing.Request(clientReq), plan, jsonOut, ndjson, word, query, include)
 	}
 	fetch := func(client *pixiv.Client, ctx context.Context, cursor sdk.Cursor) ([]pixiv.Artwork, sdk.Cursor, error) {
 		request := query
@@ -395,19 +406,36 @@ type bookmarkFilterJSON struct {
 
 // runBookmarkFiltered 在 CLI adapter 内完成 bookmark 区间过滤；输出形态与
 // 过滤元数据仍由 CLI 保持。
-func (a command) runBookmarkFiltered(cmd *cobra.Command, account listing.Request, plan listing.Plan, jsonOut, ndjson bool, word string, query pixiv.SearchArtworksRequest, strategy bookmarkFilterStrategy) error {
+func (a command) runBookmarkFiltered(cmd *cobra.Command, account listing.Request, plan listing.Plan, jsonOut, ndjson bool, word string, query pixiv.SearchArtworksRequest, strategy bookmarkFilterStrategy, include func(pixiv.Artwork) (bool, error)) error {
 	outcome, err := searchArtworks(cmd.Context(), a.runner().Executor(account), artworkSearchRequest{
 		Query:      query,
 		Plan:       plan.PagePlan(),
 		Membership: bookmarkMembershipUnknown,
 		Strategy:   strategy,
+		Include:    include,
 	})
 	if err != nil {
 		return err
 	}
+	return a.writeArtworkResults(jsonOut, ndjson, word, outcome.Page.Items, outcome.Filter)
+}
+
+func (a command) runLocallyFiltered(cmd *cobra.Command, account listing.Request, plan listing.Plan, jsonOut, ndjson bool, word string, query pixiv.SearchArtworksRequest, include func(pixiv.Artwork) (bool, error)) error {
+	outcome, err := searchArtworks(cmd.Context(), a.runner().Executor(account), artworkSearchRequest{
+		Query:   query,
+		Plan:    plan.PagePlan(),
+		Include: include,
+	})
+	if err != nil {
+		return err
+	}
+	return a.writeArtworkResults(jsonOut, ndjson, word, outcome.Page.Items, nil)
+}
+
+func (a command) writeArtworkResults(jsonOut, ndjson bool, word string, items []pixiv.Artwork, bookmark *bookmarkFilterOutcome) error {
 	if ndjson {
 		encoder := json.NewEncoder(a.data.Output)
-		for _, item := range outcome.Page.Items {
+		for _, item := range items {
 			record, err := record.RecordFromArtworkDTO(pixiv.ToArtworkDTO(item))
 			if err != nil {
 				return err
@@ -420,19 +448,19 @@ func (a command) runBookmarkFiltered(cmd *cobra.Command, account listing.Request
 	}
 	if jsonOut {
 		var filter *bookmarkFilterJSON
-		if outcome.Filter != nil {
+		if bookmark != nil {
 			filter = &bookmarkFilterJSON{
-				Min: outcome.Filter.Min, Max: outcome.Filter.Max,
-				Membership: outcome.Filter.Membership, Strategy: outcome.Filter.Strategy,
-				Completeness: outcome.Filter.Completeness,
+				Min: bookmark.Min, Max: bookmark.Max,
+				Membership: bookmark.Membership, Strategy: bookmark.Strategy,
+				Completeness: bookmark.Completeness,
 			}
 		}
-		return a.data.writeJSON(artworkSearchOut{Illusts: artworkDTOs(outcome.Page.Items), Filter: filter})
+		return a.data.writeJSON(artworkSearchOut{Illusts: artworkDTOs(items), Filter: filter})
 	}
 	if _, err := fmt.Fprintf(a.data.Output, "illustrations for %q\n", word); err != nil {
 		return err
 	}
-	return printArtworks(a.data.Output, outcome.Page.Items)
+	return printArtworks(a.data.Output, items)
 }
 
 func (a command) runTrendingTags(cmd *cobra.Command, options CommandOptions) error {
@@ -547,29 +575,6 @@ func validateTrendingTagsFlags(cmd *cobra.Command) error {
 		}
 	}
 	return nil
-}
-
-// resolveRating 保留合法值的诊断，但不把没有可靠接口证据的 rating 参数静默丢给
-// public SDK。
-func resolveRating(value string) error {
-	if value == "" {
-		return nil
-	}
-	switch value {
-	case "sfw", "r18", "r18g", "mature", "all":
-		return errors.New("rating filtering is not supported by the v1 App API search contract")
-	default:
-		return errors.New("rating must be one of sfw, r18, r18g, mature, all")
-	}
-}
-
-func resolveContentType(value string) (pixiv.SearchContentType, error) {
-	switch value {
-	case "all", "illust-and-ugoira", "illust", "manga", "ugoira":
-		return pixiv.SearchContentType(value), nil
-	default:
-		return "", errors.New("content-type must be one of all, illust-and-ugoira, illust, manga, ugoira")
-	}
 }
 
 func resolveAIMode(value string) (pixiv.SearchAIMode, error) {

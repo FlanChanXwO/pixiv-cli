@@ -405,13 +405,13 @@ Content-Type 与 URL 后缀不一致（例如 URL 为 `.png`、实体为 JPEG）
 | --- | --- | --- | --- |
 | `search` | `--type` / `-t` | `artwork` | 实体路由：`artwork`、`novel` 或 `user`；作品子类型使用独立的 `--content-type`，`illust` 不是实体值。 |
 | `search` | `--provider` | `reverse_search_provider`（`saucenao`） | 反向搜图 provider：`saucenao`、`ascii2d-color`、`ascii2d-bovw` 或 `all`；仅图片源有效，并只覆盖本次调用的配置。 |
-| `search` | `--content-type` | `all` | 作品子类型：`all`、`illust-and-ugoira`、`illust`、`manga` 或 `ugoira`；只适用于 artwork search。 |
+| `search` | `--content-type` | `all` | 作品子类型：`all`、`illust-and-ugoira`、`illust`/`illustration`、`manga` 或 `ugoira`；`illustration` 是 `illust` 的兼容别名，只适用于 artwork search。 |
 | `search`、`novel search` | `--search-by` | `tag-partial` | artwork 支持 `tag-partial`、`tag-exact`、`title-caption`、`tag-title-caption`；novel 只支持前三者。 |
 | `search`、`novel search` | `--sort` | `date_desc` | 排序方式：`date_desc` 或 `date_asc`。 |
 | `search` | `--period` | 空 | 作品范围：`day`、`week`、`month`、`half-year` 或 `year`；不能和 `--start-date`/`--end-date` 同用。 |
 | `novel search` | `--period` | 空 | 小说范围：`day`、`week` 或 `month`。 |
 | `search` | `--start-date` / `--end-date` | 空 | 包含边界的 `YYYY-MM-DD` 日期；两端都给时起始不得晚于结束；只适用于 artwork search。 |
-| `search` | `--rating` | 空 | 仅保留兼容诊断。任意非空值都会在 SDK 请求前因 v1 App API 没有可靠 rating 字段而报不支持，绝不执行筛选。 |
+| `search` | `--rating` | 空 | artwork 本地筛选：`sfw`、`r18`、`r18g`、`mature` 或 `all`。按规范化 DTO 的 `x_restrict` 匹配，语义绑定到 opaque cursor，绝不作为 upstream 请求字段发送。 |
 | `search` | `--ai-mode` | `all` | 作品 AI 筛选：`all`、`exclude` 或 `only`；Pixiv `AIType==2` 表示 AI 生成。 |
 | `search` | `--aspect-ratio` | `all` | 作品横纵比：`all`、`landscape`、`portrait` 或 `square`。 |
 | `search` | `--resolution` | `all` | 作品分辨率层级：`all`、`high`、`medium` 或 `low`。 |
@@ -450,8 +450,9 @@ Content-Type 与 URL 后缀不一致（例如 URL 为 `.png`、实体为 JPEG）
 `--page`/`--limit` 会跨上游批次读取，直到填满逻辑结果或上游 cursor 结束。省略 `--limit` 读取一个上游批次，
 `--limit 0` 遍历当前上游结果直到耗尽；正数 `--page` 必须与正数 `--limit` 同用。
 
-`--rating` 仅保留为兼容诊断；任何非空值都会在 SDK 请求前返回不支持错误，绝不执行筛选。作品
-`--bookmark-min`/`--bookmark-max` 是公开 `TotalBookmarks` 的非负闭区间条件。application 会在结果中报告策略
+`--rating` 是规范化 DTO `x_restrict` 上的 artwork 本地筛选：`sfw` 匹配 `0`，`r18` 匹配 `1`，`r18g` 匹配 `2`，
+`mature` 匹配 `1` 或 `2`，`all` 关闭筛选。其 canonical 语义摘要会绑定 opaque SDK cursor，但不会向 upstream
+发送 `rating` 或 `x_restrict` 请求字段。作品 `--bookmark-min`/`--bookmark-max` 是公开 `TotalBookmarks` 的非负闭区间条件。application 会在结果中报告策略
 和完整性：`auto` 当前使用已取得候选上的精确 local 筛选，`local` 同义，`best_effort` 保留 App candidate bounds
 并标记 partial，`server` 因缺少可靠服务端证据而显式失败。Premium 不是本地硬门槛，收藏数也不是点赞数。
 

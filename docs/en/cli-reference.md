@@ -501,13 +501,13 @@ extension. Extensions also replace ASCII control characters and remove trailing 
 | --- | --- | --- | --- |
 | `search` | `--type` / `-t` | `artwork` | Entity route: `artwork`, `novel`, or `user`. Artwork subtype is a separate `--content-type`; `illust` is not an entity value. |
 | `search` | `--provider` | `reverse_search_provider` (`saucenao`) | Reverse-image provider: `saucenao`, `ascii2d-color`, `ascii2d-bovw`, or `all`; valid only for image sources and overrides the config for this invocation. |
-| `search` | `--content-type` | `all` | Artwork subtype: `all`, `illust-and-ugoira`, `illust`, `manga`, or `ugoira`; artwork search only. |
+| `search` | `--content-type` | `all` | Artwork subtype: `all`, `illust-and-ugoira`, `illust`/`illustration`, `manga`, or `ugoira`; `illustration` is a compatibility alias for `illust`, and the flag is artwork-search only. |
 | `search`, `novel search` | `--search-by` | `tag-partial` | Artwork search accepts `tag-partial`, `tag-exact`, `title-caption`, and `tag-title-caption`; novel search accepts the first three only. |
 | `search`, `novel search` | `--sort` | `date_desc` | Sort order: `date_desc` or `date_asc`. |
 | `search` | `--period` | empty | Artwork range: `day`, `week`, `month`, `half-year`, or `year`; mutually exclusive with `--start-date`/`--end-date`. |
 | `novel search` | `--period` | empty | Novel range: `day`, `week`, or `month`. |
 | `search` | `--start-date` / `--end-date` | empty | Inclusive `YYYY-MM-DD` date bounds; when both are present, start cannot be later than end. Artwork search only. |
-| `search` | `--rating` | empty | Compatibility flag only. Any non-empty value is rejected because the v1 App API search request has no verified rating field; it never filters results. |
+| `search` | `--rating` | empty | Local artwork filter: `sfw`, `r18`, `r18g`, `mature`, or `all`. It matches normalized DTO `x_restrict` values, binds the semantic filter to the opaque cursor, and is never sent as an upstream request field. |
 | `search` | `--ai-mode` | `all` | Artwork AI filter: `all`, `exclude`, or `only`; Pixiv `AIType==2` is AI-generated. |
 | `search` | `--aspect-ratio` | `all` | Artwork aspect ratio: `all`, `landscape`, `portrait`, or `square`. |
 | `search` | `--resolution` | `all` | Artwork resolution tier: `all`, `high`, `medium`, or `low`. |
@@ -548,8 +548,10 @@ batches until the requested logical results are filled or the upstream cursor en
 upstream batch; `--limit 0` traverses the current upstream result until exhaustion. A positive `--page` requires a
 positive `--limit`.
 
-`--rating` is retained only as a compatibility diagnostic. Passing any value returns an unsupported usage error
-before the SDK request; it is not a filter. Artwork `--bookmark-min`/`--bookmark-max` are inclusive non-negative
+`--rating` is a client-side artwork filter over normalized DTO `x_restrict`: `sfw` matches `0`, `r18` matches `1`,
+`r18g` matches `2`, `mature` matches `1` or `2`, and `all` disables the filter. Its canonical semantic digest is
+bound to the opaque SDK cursor, while no `rating` or `x_restrict` request field is sent upstream. Artwork
+`--bookmark-min`/`--bookmark-max` are inclusive non-negative
 conditions on public `TotalBookmarks`. The application reports the selected strategy and completeness: `auto`
 currently uses exact local filtering over fetched candidates, `local` has the same behavior, `best_effort` keeps
 App candidate bounds but reports partial completeness, and `server` fails explicitly because reliable server-side

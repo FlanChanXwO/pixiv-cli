@@ -25,7 +25,7 @@ pixiv search "初音ミク" --type artwork --limit 10 --json
   reserve `--tag` for `user bookmarks` (filter) and `bookmark add` (repeatable
   bookmark tag).
 - Sort defaults to `date_desc`; `date_asc` is the only other supported value.
-- `--content-type all|illust-and-ugoira|illust|manga|ugoira`, `--ai-mode
+- `--content-type all|illust-and-ugoira|illust|illustration|manga|ugoira`, `--ai-mode
   all|exclude|only`, `--aspect-ratio all|landscape|portrait|square`,
   `--resolution all|high|medium|low`, and exact `--draw-tool` names are
   artwork-only filters. `--type` selects the entity route; it is not an
@@ -39,10 +39,11 @@ pixiv search "初音ミク" --type artwork --limit 10 --json
   `server` fails explicitly because this branch has no reliable server-filter
   evidence. Never call bookmark count a like count, and do not describe a
   candidate page as a complete site-wide result.
-- `--rating` is retained only as a compatibility diagnostic. Any non-empty
-  value is rejected because the v1 App API search contract has no verified
-  rating field; it is not a local filter. The same unsupported-field rule
-  applies when a flag is not valid for the selected entity.
+- `--rating sfw|r18|r18g|mature|all` is a local artwork filter over normalized
+  DTO `x_restrict`; it binds the canonical filter digest to the opaque cursor
+  and is never sent as an upstream `rating` or `x_restrict` field. The same
+  unsupported-field rule applies when a flag is not valid for the selected
+  entity.
 - Drawing-tool names use the fixed catalog for this CLI version. Choose an exact
   value from the [CLI reference](../../../docs/en/cli-reference.md#drawing-tool-catalog);
   a unique one-edit spelling correction is shown in the validation error.
