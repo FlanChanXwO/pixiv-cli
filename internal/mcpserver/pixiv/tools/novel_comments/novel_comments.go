@@ -12,7 +12,7 @@ import (
 
 // Register 注册 novel_comments。
 func Register(app *runtime.App, server *mcp.Server) {
-	runtime.AddTool(app, server, &mcp.Tool{Name: "novel_comments", Description: "Read comments for a Pixiv novel.", OutputSchema: records.CommentOutputSchema()}, func(ctx context.Context, request *mcp.CallToolRequest, input In) (*mcp.CallToolResult, outputs.Comments, error) {
+	runtime.AddTool(app, server, &mcp.Tool{Name: "novel_comments", Description: "Read comments for a Pixiv novel.", InputSchema: records.CommentInputSchema(), OutputSchema: records.CommentOutputSchema()}, func(ctx context.Context, request *mcp.CallToolRequest, input In) (*mcp.CallToolResult, outputs.Comments, error) {
 		return handleNovelComments(ctx, app, input)
 	})
 }

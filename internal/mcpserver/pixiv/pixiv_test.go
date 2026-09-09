@@ -204,6 +204,8 @@ type fakeSDKClient struct {
 	novelContentRequest    pixiv.NovelContentRequest
 	artworkCommentsResult  pixiv.CommentPage
 	artworkCommentsRequest pixiv.ArtworkCommentsRequest
+	novelCommentsResult    pixiv.CommentPage
+	novelCommentsRequest   pixiv.NovelCommentsRequest
 	bookmarkTagsPage       sdk.Page[pixiv.BookmarkTag]
 	bookmarkDetailResult   pixiv.ArtworkBookmarkDetail
 	bookmarkDetailRequest  pixiv.ArtworkBookmarkRequest

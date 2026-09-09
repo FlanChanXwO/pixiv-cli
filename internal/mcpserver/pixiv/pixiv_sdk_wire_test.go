@@ -280,6 +280,10 @@ func (tr *testSDKTransport) RoundTrip(request *http.Request) (*http.Response, er
 		tr.fake.illustCommentsRequest = req
 		tr.fake.artworkCommentsRequest = req
 		status, body, err = wireCommentPageResult(tr.fake.artworkCommentsResult)
+	case "/v2/novel/comments":
+		req := pixivsdk.NovelCommentsRequest{NovelID: queryInt64(request.URL.Query(), "novel_id")}
+		tr.fake.novelCommentsRequest = req
+		status, body, err = wireCommentPageResult(tr.fake.novelCommentsResult)
 	case "/v1/trending-tags/illust":
 		status, body, err = wireTrendingTags(tr.fake.trendingTags)
 	case "/v2/illust/bookmark/add":

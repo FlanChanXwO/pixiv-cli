@@ -99,6 +99,21 @@ func PaginationOutputSchema() *jsonschema.Schema {
 	return OpenObjectSchema()
 }
 
+// CommentInputSchema 返回 artwork/novel comments 共用的稳定输入 schema。
+// stamp_id 属于评论 mutation 的独立字段，不能借 read tool 的兼容边界暴露。
+func CommentInputSchema() map[string]any {
+	return map[string]any{
+		"type":                 "object",
+		"additionalProperties": false,
+		"required":             []string{"id"},
+		"properties": map[string]any{
+			"id":    map[string]any{"type": "integer", "minimum": 1, "description": "Positive artwork or novel ID."},
+			"page":  map[string]any{"type": "integer", "minimum": 1, "description": "1-based logical page; requires a positive limit."},
+			"limit": map[string]any{"type": "integer", "minimum": 0, "description": "Maximum comments; 0 returns all; omitted reads one upstream batch."},
+		},
+	}
+}
+
 // CommentOutputSchema 返回评论输出的 schema。
 func CommentOutputSchema() *jsonschema.Schema {
 	return &jsonschema.Schema{

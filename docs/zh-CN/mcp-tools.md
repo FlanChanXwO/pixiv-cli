@@ -25,6 +25,12 @@ metadata 请使用 `novel_detail`。
 - `page` 从 1 开始，必须配合正数 `limit`。
 - 实体 filter 在逻辑分页前执行，并按稳定实体身份去重。
 
+`illust_comments` 与 `novel_comments` 发布封闭的 `{id, page, limit}` 输入 object。
+`id` 必须为正数；输出 envelope 为 `{comments, pagination}`，并在上游明确提供时
+附带 `total` 与 `access_control`，否则省略这些字段。作品评论与小说评论分别使用
+当前的 comments operation。两个 read tool 都不接受只用于 mutation 的 `stamp_id`，
+legacy MCP 注册表也不新增独立的 `stamps` tool。
+
 SDK opaque cursor 不离开 server。列表结果提供 `pagination.page`、`limit`、
 `returned`、`has_more`，适用时提供 `next_page`。`recommended(kind="all")`
 对 artwork、manga、novel、user 分别提供独立的分页对象。
@@ -130,7 +136,7 @@ application outcome 的 `filter` 会报告 `min`、`max`、`membership`、`strat
 | `novel_detail` / `novel_content` | 正数 `novel_id`；前者返回 metadata，后者是保留的兼容 tool，返回 `content_unavailable` 与空 block，不请求已 rejected 的正文 endpoint。 |
 | `illust_related` | 正数 `illust_id`，可选 `illust_filter`、`page`、`limit`。 |
 | `illust_series` / `novel_series` | 正数 `series_id`、`page`、`limit`；小说系列额外返回安全 series metadata。 |
-| `illust_comments` / `novel_comments` | 正数作品/小说 `id`、`page`、`limit`；输出安全 comments、pagination，以及可取得的 `total`/`access_control` metadata。 |
+| `illust_comments` / `novel_comments` | 封闭输入 `{id, page, limit}`，其中 `id` 为正数；输出 `{comments, pagination}`，并可选返回 `total`/`access_control` metadata。read tool 不接受只用于 mutation 的 `stamp_id`，legacy 注册表不暴露独立 `stamps` tool。 |
 | `illust_ranking` | 可选 `mode`、`date`、`illust_filter`、`page`、`limit`；`mode` 是封闭的 ranking enum，日期必须是有效 `YYYY-MM-DD`，省略 mode 为 `day`。 |
 | `search_user` | 必填 `word`，可选 `user_filter`、`page`、`limit`；调用 App user-search operation。 |
 | `illust_recommended` | 作品推荐，可选 `illust_filter`、`page`、`limit`。 |
