@@ -147,8 +147,10 @@ pixiv detail NOVEL_ID --type novel --json
 pixiv series SERIES_ID --type novel --limit 20 --json
 pixiv comment ID --type artwork --limit 20 --json
 pixiv bookmark list --type artwork --limit 20 --json
+pixiv bookmark list USER_ID_OR_URL --type all --limit 20 --json
 pixiv bookmark tags --limit 20 --json
-pixiv bookmark detail ARTWORK_ID --json
+pixiv bookmark tags USER_ID_OR_URL --type all --limit 20 --json
+pixiv bookmark detail ARTWORK_ID_OR_NOVEL_ID_OR_URL --type novel --json
 pixiv user novels USER_ID --limit 20 --json
 pixiv ranking --mode day
 pixiv recommended --type artwork --limit 10 # type is required; needs auth
@@ -301,8 +303,9 @@ session.
 11. **Long downloads may legitimately take time.** Do not impose an arbitrary
    timeout or kill the process merely because it is slow; wait for completion,
    user cancellation, or a real error.
-12. **Tag search has query grammar.** `user bookmarks --tag TAG` filters
-   bookmark listings; `bookmark add --tag TAG` adds a repeatable bookmark tag.
+12. **Tag search has query grammar.** `bookmark list --tag TAG` and
+   `user bookmarks --tag TAG` filter bookmark listings; `bookmark add --tag TAG`
+   adds a repeatable bookmark tag.
    `search` has no `--tag` flag — put the tag expression in its required `WORD`.
    For a reliable boolean tag query, use `--search-by tag-exact`: `tagA tagB`
    requires both complete tags, and uppercase `tagA OR tagB` accepts either.
@@ -312,11 +315,14 @@ session.
    no literal-uppercase-`OR` escape syntax is verified.
 13. **Direct URLs are intentionally narrow.** `detail` accepts only an artwork
     ID or a `pixiv.net`/`www.pixiv.net` HTTPS `/artworks/{id}` URL (an optional
-    locale, query, or fragment is harmless). `download` also accepts `/users/{id}`
-    and `/users/{id}/artworks`, plus `/users/{id}/bookmarks/artworks`. These
-    expand visual works in first-seen artwork-ID order; user and bookmark
-    downloads use App OAuth. Artwork-series URLs are rejected as unsupported
-    download sources.
+    locale, query, or fragment is harmless). `bookmark detail` accepts an
+    artwork or novel ID/URL and requires a matching `--type` when one is given;
+    `bookmark list/tags` accept a user ID or user URL. A user URL can be used
+    with `--type novel`, while an artwork-bookmarks URL cannot be reinterpreted
+    as novel or `all`. `download` also accepts `/users/{id}` and
+    `/users/{id}/artworks`, plus `/users/{id}/bookmarks/artworks`. These expand
+    visual works in first-seen artwork-ID order; user and bookmark downloads use
+    App OAuth. Artwork-series URLs are rejected as unsupported download sources.
 14. **Reverse-image search has a separate privacy and result contract.** The
     providers are `saucenao`, `ascii2d-color`, `ascii2d-bovw`, and `all`; the
     default is `reverse_search_provider=saucenao`, and `--provider` is a

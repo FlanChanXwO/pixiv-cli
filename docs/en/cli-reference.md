@@ -337,7 +337,10 @@ pixiv detail 123456 --type novel --json
 pixiv series 42 --type artwork --limit 20
 pixiv comment 123456 --type artwork --limit 20
 pixiv bookmark list --type artwork --limit 20
+pixiv bookmark list --type all --limit 20 --json
 pixiv bookmark tags --limit 20
+pixiv bookmark tags --type all --limit 20 --json
+pixiv bookmark detail NOVEL_ID --type novel --json
 pixiv user followers 123456 --limit 20
 pixiv ranking --mode day
 pixiv recommended --type all --limit 5
@@ -457,7 +460,7 @@ Only the structured entity filters documented by each command are accepted. The 
 | `ranking` | `pixiv ranking [--mode MODE --date YYYY-MM-DD --page N --limit N]` | Reads illustration rankings. Novel ranking is not part of the v1 contract. |
 | `series` | `pixiv series SERIES_ID -t artwork\|novel [--page N --limit N --json\|--ndjson]` | Lists the artworks or novels in one series. The entity type is required. |
 | `comment` | `pixiv comment ID -t artwork\|novel [--page N --limit N --json\|--ndjson]` | Reads artwork or novel comments. Comment write/reply/delete/stamp is not exposed. |
-| `bookmark` | `pixiv bookmark list\|tags\|detail\|add\|remove ...` | Lists artwork/novel bookmarks, reads artwork bookmark tags/detail, or mutates artwork bookmarks. `list` uses `--type artwork\|novel`; `tags` is artwork-only. |
+| `bookmark` | `pixiv bookmark list\|tags\|detail\|add\|remove ...` | Lists artwork/novel bookmarks, reads artwork/novel bookmark tags/detail, or mutates artwork bookmarks. `list` and `tags` accept a user ID or user URL and support `--type artwork\|novel\|all`; `all` keeps artwork before novel and preserves typed records/tags. `detail` accepts artwork/novel but not `all`; add/remove remain artwork-only. |
 | `user` | `pixiv user search\|detail\|artworks\|novels\|bookmarks\|following\|followers\|related\|blocked\|follow ...` | Reads user/profile/relationship data and manages artwork follows. Omitted user IDs use the current account only where that subcommand says so. |
 | `download` | `pixiv download [options] SRC...` | Downloads artwork IDs/URLs, allowed CDN URLs, or visual works expanded from supported user and public-bookmark URLs. Artwork-series URLs are not download sources. `--output/-o` aliases `--download-path`. |
 | `timeline` | `pixiv timeline following\|latest -t artwork\|novel [--content-type TYPE ...]` | Reads followed-user or latest artwork/novel streams. Artwork subtype is a separate `--content-type` option. |
@@ -521,8 +524,8 @@ extension. Extensions also replace ASCII control characters and remove trailing 
 | `ranking` | `--date` | empty | Ranking date, typically `YYYY-MM-DD`. |
 | `detail` | `--type` / `-t` | `artwork` | Entity type: `artwork`, `novel`, or `user`; `--content` is a retained novel-only compatibility flag and returns `content_unavailable` while the v1 content endpoint is unavailable. |
 | `series`, `comment` | `--type` / `-t` | required | Entity type: `artwork` or `novel`; the ID is interpreted only after the type is selected. |
-| `bookmark list` | `--type` / `-t` | `artwork` | Entity type: `artwork` or `novel`; `--restrict` and `--tag` are passed to the matching bookmark list. |
-| `bookmark tags` | `--type` / `-t` | `artwork` | Artwork bookmark tags only; `--restrict` selects public/private tags. |
+| `bookmark list` | `--type` / `-t` | `artwork` | Entity type: `artwork`, `novel`, or `all`; `all` uses one logical page in artwork-then-novel order and keeps each record typed. `--restrict` and `--tag` are passed to the matching bookmark list. |
+| `bookmark tags` | `--type` / `-t` | `artwork` | Entity type: `artwork`, `novel`, or `all`; `all` keeps same-name artwork and novel tags as separate typed entries. `--restrict` selects public/private tags. |
 | `user artworks` | `--type` | `illustration` | Artwork subtype: `illust`, `manga`, or `ugoira`. |
 | `user bookmarks` | `--restrict`, `--tag` | `public`, empty | Bookmark visibility and exact bookmark-tag filter. |
 | `user following`, `user followers` | `--restrict` | `public` | Follow visibility: `public` or `private`. |

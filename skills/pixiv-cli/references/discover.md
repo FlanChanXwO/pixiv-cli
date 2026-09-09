@@ -195,16 +195,24 @@ pixiv recommended --type all --limit 5
   `--type` flag; for `all`, inspect the actual output shape and keep the
   returned categories separate rather than assuming one flat list.
 
-## Curate: bookmarks and follows (write ops)
+## Curate: bookmarks and follows
 
 ```
 pixiv bookmark add 129543211
 pixiv follow add 11
 pixiv bookmark list --type artwork --limit 20
+pixiv bookmark list USER_ID_OR_URL --type all --limit 20 --json
 pixiv bookmark tags --limit 20
-pixiv bookmark detail 129543211 --json
+pixiv bookmark tags USER_ID_OR_URL --type all --limit 20 --json
+pixiv bookmark detail ARTWORK_ID_OR_NOVEL_ID_OR_URL --type novel --json
 ```
 
-State the target ID in one line before executing (SKILL.md operation tiers).
-`remove` variants are symmetrical. These need authentication; on an anonymous
-session report that a login is required instead of attempting fallback.
+`bookmark list` and `bookmark tags` accept a user ID or user URL. Their
+`--type all` mode reads artwork first and novels second, applies one logical
+page across both streams, and keeps typed records/tags separate; a failure in
+either stream fails the aggregate before JSON/NDJSON is emitted. `bookmark
+detail` accepts an artwork or novel ID/URL with a matching `--type`, but not
+`all`. State the target ID in one line before executing (SKILL.md operation
+tiers). `remove` variants are symmetrical. These need authentication; on an
+anonymous session report that a login is required instead of attempting
+fallback.

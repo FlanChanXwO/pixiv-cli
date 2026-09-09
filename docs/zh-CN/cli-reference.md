@@ -264,7 +264,10 @@ pixiv detail 123456 --type novel --json
 pixiv series 42 --type artwork --limit 20
 pixiv comment 123456 --type artwork --limit 20
 pixiv bookmark list --type artwork --limit 20
+pixiv bookmark list --type all --limit 20 --json
 pixiv bookmark tags --limit 20
+pixiv bookmark tags --type all --limit 20 --json
+pixiv bookmark detail NOVEL_ID --type novel --json
 pixiv user followers 123456 --limit 20
 pixiv ranking --mode day
 pixiv recommended --type all --limit 5
@@ -362,7 +365,7 @@ canonical 数据 action 是 `search`、`detail`、`ranking`、`series`、`commen
 | `ranking` | `pixiv ranking [--mode MODE --date YYYY-MM-DD --page N --limit N]` | 读取插画排行；小说排行不在 v1 契约中。 |
 | `series` | `pixiv series SERIES_ID -t artwork\|novel [--page N --limit N --json\|--ndjson]` | 列出一个作品或小说系列；实体类型必填。 |
 | `comment` | `pixiv comment ID -t artwork\|novel [--page N --limit N --json\|--ndjson]` | 读取作品或小说评论；评论发布、回复、删除和 stamp 未暴露。 |
-| `bookmark` | `pixiv bookmark list\|tags\|detail\|add\|remove ...` | 读取作品/小说收藏、作品收藏标签/详情，或修改作品收藏。`list` 用 `--type artwork\|novel`，`tags` 只支持 artwork。 |
+| `bookmark` | `pixiv bookmark list\|tags\|detail\|add\|remove ...` | 读取作品/小说收藏、作品/小说收藏标签/详情，或修改作品收藏。`list` 和 `tags` 接受用户 ID 或用户 URL，并支持 `--type artwork\|novel\|all`；`all` 固定先作品后小说并保留 typed record/tag。`detail` 支持 artwork/novel，不支持 `all`；add/remove 仍只修改作品收藏。 |
 | `user` | `pixiv user search\|detail\|artworks\|novels\|bookmarks\|following\|followers\|related\|blocked\|follow ...` | 读取用户、资料和关系，或管理作品关注；省略用户 ID 是否使用当前账号由具体子命令决定。 |
 | `download` | `pixiv download [options] SRC...` | 下载作品 ID/URL、允许的 CDN URL，或从受支持的用户、公开收藏 URL 展开视觉作品。作品系列 URL 不是下载来源。`--output/-o` 是 `--download-path` 的别名。 |
 | `timeline` | `pixiv timeline following\|latest -t artwork\|novel [--content-type TYPE ...]` | 读取关注用户或最新作品流；作品子类型使用独立的 `--content-type`。 |
@@ -425,8 +428,8 @@ Content-Type 与 URL 后缀不一致（例如 URL 为 `.png`、实体为 JPEG）
 | `ranking` | `--date` | 空 | 排行榜日期，格式通常为 `YYYY-MM-DD`。 |
 | `detail` | `--type` / `-t` | `artwork` | 实体类型：`artwork`、`novel` 或 `user`；`--content` 是保留的小说兼容 flag，正文 endpoint 不可用时返回 `content_unavailable`。 |
 | `series`、`comment` | `--type` / `-t` | 必填 | 实体类型：`artwork` 或 `novel`；先选择类型后解释 ID。 |
-| `bookmark list` | `--type` / `-t` | `artwork` | 实体类型：`artwork` 或 `novel`；`--restrict` 与 `--tag` 映射到相应收藏列表。 |
-| `bookmark tags` | `--type` / `-t` | `artwork` | 只读取作品收藏标签；`--restrict` 选择 public/private。 |
+| `bookmark list` | `--type` / `-t` | `artwork` | 实体类型：`artwork`、`novel` 或 `all`；`all` 按作品后小说使用一个逻辑页，并保留每条 record 的类型。`--restrict` 与 `--tag` 映射到相应收藏列表。 |
+| `bookmark tags` | `--type` / `-t` | `artwork` | 实体类型：`artwork`、`novel` 或 `all`；`all` 将同名作品/小说标签作为带类型的独立记录保留。`--restrict` 选择 public/private。 |
 | `user artworks` | `--type` | `illustration` | 作品子类型：`illust`、`manga` 或 `ugoira`。 |
 | `user bookmarks` | `--restrict`、`--tag` | `public`、空 | 收藏可见性与精确收藏 tag 筛选。 |
 | `user following`、`user followers` | `--restrict` | `public` | 关注可见性：`public` 或 `private`。 |
