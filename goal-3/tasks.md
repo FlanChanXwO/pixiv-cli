@@ -74,7 +74,7 @@ Status 的 verified 表示对应 task 的实现与相关验证完成；各 task 
 | T25 | CLI novel search | T39A,T14,T21,T22,T23 | novel search canonical route、period 与旧 route | verified |
 | T26 | CLI user search/trending | T39A,T06,T13,T23 | user search 与 trending | verified |
 | T27 | CLI bookmark | T39A,T15,T21,T22,T23 | list/tags/detail/add/remove；list/tags all；user target 与内容类型分开 | verified |
-| T28 | CLI recommended | T39A,T18,T21,T22,T23 | entity/subtype/all 与旧 positional all | pending |
+| T28 | CLI recommended | T39A,T18,T21,T22,T23 | entity/subtype/all 与旧 positional all | verified |
 | T29 | CLI timeline | T39A,T18,T21,T22,T23 | following/latest；entity 与 content-type subtype | pending |
 | T30 | CLI ranking | T39A,T18,T22,T23 | artwork/novel ranking | pending |
 | T31 | CLI detail | T39A,T13,T14,T21 | artwork/novel/user resolver；content endpoint exclusion 的兼容处理 | pending |
@@ -767,6 +767,17 @@ Status 的 verified 表示对应 task 的实现与相关验证完成；各 task 
 - 公开兼容性影响：既有单类型 artwork list/tags/detail 与 add/remove 的输出、默认值和 artwork mutation route 保持兼容；新增 novel read 入口、user URL/record 解析、all list/tags typed 聚合及其原子输出规则。未新增、删除或重命名 public SDK symbol，未导出 novel mutation，未修改 MCP schema、upstream wire 字段、认证/token stdout、默认账号选择、依赖或本地数据；未加入无依据的 timeout、截断、重试上限、静默 fallback 或匿名 Web fallback。双语 CLI reference 与产品 Skill 已同步。
 - 回滚前提 / 依赖闭包：代码/文档提交 `81178a6dd329dea754496908c7af632743117dc2` 与本账本记录需成对回滚；若后续 T37 MCP bookmark owner、T38 mutation owner、T39B/T40 compatibility 或最终 release gate 已引用 typed bookmark route/output，回滚前必须同步撤销调用或提供等价兼容迁移。没有业务数据、账号、token、缓存、运行配置、依赖或生成物迁移。
 - 实际结果 / evidence / 风险：T27 已 verified；本轮仅使用离线 HTTP fixture 与本地 SDK/CLI 测试，未执行真实 Pixiv API，未改写 novel bookmark candidate endpoint 的 strict/live evidence，也未授予 bookmark capabilities `public_ready`；candidate novel tags/detail 的 live 状态仍由后续 evidence/发布门禁确认。`required=41 scope_admitted=41 public_ready=0 other=0` 保持不变，Goal-3 继续 incomplete；下一张 pending 卡为 T28。
+
+## T28 完成记录
+
+- Owner package / 涉及文件：`internal/cli/commands/pixiv/recommended/recommended.go`、`internal/cli/commands/pixiv/recommended/all.go`、`internal/cli/commands/pixiv/recommended/recommended_test.go`；同步更新 `docs/en/cli-reference.md`、`docs/zh-CN/cli-reference.md`、`skills/pixiv-cli/SKILL.md` 与 `skills/pixiv-cli/references/discover.md`。代码、测试与公开文档提交为 `a6b9092d823dfc8d332a9045f59650ebdd0509a6`。
+- Depends on：T39A、T18、T21、T22、T23 均已 verified；承接 recommended artwork/novel/user 的公开 SDK continuation、T20 的 entity/result/subtype 分层、T22 的本地 content-type filter，以及 T23 的共享 `--limit`/`--page` 逻辑分页。未进入 MCP owner T37、兼容审计 T39B 或最终发布门禁。
+- 冻结 contract / fixture：`--type` 支持 `artwork`、`novel`、`user`、`all`，旧 positional `KIND` 保持兼容；`artwork` 的 `--content-type` 接受 `all|illust|manga`，只在 SDK 返回的 artwork DTO kind 上本地筛选，不发送 upstream `content_type`。正数 `--limit` 继续跨推荐 endpoint 的 offset continuation 填充逻辑页；`all` 保持 artwork、novel、user 各流独立分页和既有顺序，artwork 流按 `illusts`/`manga` 分区输出，JSON 继续整份临时 spool 后原子提交。
+- Red 测试、命令及当前行为的实际失败：先加入 `TestCommandRecommendedContentTypeFiltersAcrossPages` 与 `TestCommandRecommendedAllSeparatesArtworkSubtypesAndKeepsIndependentPages`，运行 `go test ./internal/cli/commands/pixiv/recommended -count=1 -v`；旧实现的 artwork subtype 仅请求一页并混出 illustration，`all` 只产生 4 个请求且把同一 artwork 批次原样写入两个分区，未满足两页 subtype 过滤与独立流契约。该 Red 结果同时证明缺口位于 CLI owner 的本地过滤/聚合接线，而非 SDK wire contract。
+- Green 命令及验收断言：`go test ./internal/cli/commands/pixiv/recommended -count=1 -v`、`go test -race ./internal/cli/commands/pixiv/recommended -count=1`、`go test ./internal/cli/commands/pixiv/... -count=1`、`go test ./internal/shared/searchfilter ./internal/shared/pagination ./sdk/pixiv -count=1`、`go test ./scripts/tests/documentation -count=1`、`go test ./... -count=1`、`go vet ./...`、`sh scripts/build.sh`、相关 Go 文件 `gofmt` 与 `git diff --check` 均通过；提交钩子再次通过 `gofmt` 与 `go test ./...`。fixture 覆盖 artwork `illust`/`manga` 两页本地筛选且请求不含 `content_type`、novel/user 两页 `offset=0` continuation、`--type all` 的独立 artwork subtype 分区，以及 `all` 与旧 positional `all` 的 JSON 结构。LSP 对三个受影响 Go 文件均无诊断，`detect_changes` 确认生产调用方仍收敛在 recommended owner 与 CLI root 组装。
+- 公开兼容性影响：不新增、删除或重命名 public SDK symbol，不修改 MCP route/schema、upstream endpoint wire 字段、认证/token stdout、默认账号选择、依赖、本地数据或发布物。`--type artwork --content-type ...` 的 subtype 过滤是本地 DTO 语义；`--type all` 不再把混合 artwork 候选重复写进 `illusts` 与 `manga`，而是保留既有分区顺序和各流独立分页。未加入固定 timeout、重试上限、截断、静默 fallback 或匿名 Web fallback。
+- 回滚前提 / 依赖闭包：代码/测试/文档提交 `a6b9092d823dfc8d332a9045f59650ebdd0509a6` 与本记录需成对回滚；若后续 T29–T38、T39B/T40 或最终 release gate 引用 recommended 的 subtype/all 输出契约，回滚前必须同步撤销调用方或提供等价兼容迁移。没有业务数据、账号、token、缓存、运行配置、依赖或生成物迁移。
+- 实际结果 / evidence / 风险：T28 已 verified；本轮仅使用离线 HTTP fixture 与本地 SDK/CLI 测试，未执行真实 Pixiv API，未改写 artwork recommended subtype 的历史 `not_tested`/`inconclusive` evidence，也未授予 `artwork-recommended`、`novel-recommended` 或 `recommended-all` capability `public_ready`。上游 subtype continuation 仍不作为 CLI wire contract 宣称，后续 owner 仍需按 capability-admission 完成 MCP/最终发布链；`required=41 scope_admitted=41 public_ready=0 other=0` 保持不变，Goal-3 继续 incomplete；下一张 pending 卡为 T29。
 
 ## 实现任务准入卡
 
