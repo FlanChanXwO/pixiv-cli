@@ -4,6 +4,8 @@
 
 ## 新增
 
+- 完成 MCP comments read owner：`illust_comments` 与 `novel_comments` 现在发布封闭的 `{id, page, limit}` schema，约束正数 ID/page 与非负 limit；保留 `{comments, pagination}` envelope 及可选 `total`/`access_control`，回放当前 artwork/novel comments operation，并将只用于 mutation 的 `stamp_id` 与独立 `stamps` tool 排除在 legacy read surface 之外。([`5a21430`](https://github.com/FlanChanXwO/pixiv-cli/commit/5a214307c66f4466746fec943f6d9e370cb0439e))
+
 - 完成 MCP feed/recommendation read owner：feed tools 现在发布封闭 input schema 与稳定 structured output envelope；ranking 校验 mode/date 契约；timeline filter 会跨上游 batch 填满逻辑页；typed recommendation 会选择 artwork subtype，并在 SDK 执行前拒绝冲突 filter；`recommended(kind=all)` 保持独立 pagination 与原子失败语义。([`cedb507`](https://github.com/FlanChanXwO/pixiv-cli/commit/cedb507cf07e3099c8aedb4b44c9361434513685))
 
 - 为 `pixiv search SOURCE` 与 Pixiv MCP `reverse_search` tool 新增反向搜图。CLI 会自动把显式 HTTP(S) URL 和现有常规文件识别为图片模式；SauceNAO、ascii2d color/BOVW 与 `all` provider 返回稳定 JSON envelope、通用 artwork/user record 以及 canonical record 的 NDJSON，并明确报告 provider partial 结果。([`69caa31`](https://github.com/FlanChanXwO/pixiv-cli/commit/69caa31)、[`6599dec`](https://github.com/FlanChanXwO/pixiv-cli/commit/6599dec)、[`ef0dcfe`](https://github.com/FlanChanXwO/pixiv-cli/commit/ef0dcfe)、[`e67e21f`](https://github.com/FlanChanXwO/pixiv-cli/commit/e67e21f)、[`959414e`](https://github.com/FlanChanXwO/pixiv-cli/commit/959414e)、[`ce03802`](https://github.com/FlanChanXwO/pixiv-cli/commit/ce03802)、[`298e0f3`](https://github.com/FlanChanXwO/pixiv-cli/commit/298e0f3))
