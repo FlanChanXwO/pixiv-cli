@@ -9,12 +9,13 @@ import (
 	"fmt"
 	"io"
 	"net/url"
-	"strconv"
 	"strings"
 
 	requirements "github.com/FlanChanXwO/pixiv-cli/internal/cli/commands"
 	"github.com/FlanChanXwO/pixiv-cli/internal/cli/pipeline"
+	"github.com/FlanChanXwO/pixiv-cli/internal/shared/resolver"
 	"github.com/FlanChanXwO/pixiv-cli/internal/utils/text"
+	"github.com/FlanChanXwO/pixiv-cli/sdk"
 	pixiv "github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
 	"github.com/spf13/cobra"
 )
@@ -141,9 +142,14 @@ func (a command) run(cmd *cobra.Command, arg string, opts Options) error {
 	if opts.content && entity != "novel" {
 		return errors.New("--content is only supported when --type novel")
 	}
-	id, err := parseEntityIDOrURL(arg, entity)
+	target, err := resolver.Resolve(cmd.Context(), resolver.Input{Value: arg, Type: opts.typ}, detailContract())
 	if err != nil {
 		return err
+	}
+	if opts.content {
+		// App v1 的正文 endpoint 已被拒绝；在构造请求和打开账号池前返回兼容错误，
+		// 确保该兼容 flag 不会把执行路径带到已排除的请求。
+		return sdk.NewError("pixiv", "NovelContent", sdk.ContentUnavailable, sdk.WithDetail("novel content is unsupported by the v1 App API"))
 	}
 	if a.data.BuildRequest == nil {
 		return errors.New("pixiv detail request builder is not configured")
@@ -163,10 +169,10 @@ func (a command) run(cmd *cobra.Command, arg string, opts Options) error {
 	if err != nil {
 		return err
 	}
-	switch entity {
-	case "artwork":
+	switch target.ResultKind {
+	case resolver.ResultKindArtwork:
 		result, err := readDetail(a.data, cmd.Context(), request, func(ctx context.Context, client *pixiv.Client) (pixiv.Artwork, error) {
-			return client.Artwork(ctx, pixiv.ArtworkRequest{ArtworkID: id})
+			return client.Artwork(ctx, pixiv.ArtworkRequest{ArtworkID: target.ID})
 		})
 		if err != nil {
 			return err
@@ -175,21 +181,9 @@ func (a command) run(cmd *cobra.Command, arg string, opts Options) error {
 			return a.data.writeJSON(pixiv.ToArtworkDTO(result))
 		}
 		return printArtwork(a.data.Output, result)
-	case "novel":
-		if opts.content {
-			result, err := readDetail(a.data, cmd.Context(), request, func(ctx context.Context, client *pixiv.Client) (pixiv.NovelContent, error) {
-				return client.NovelContent(ctx, pixiv.NovelContentRequest{NovelID: id})
-			})
-			if err != nil {
-				return err
-			}
-			if jsonOut {
-				return a.data.writeJSON(pixiv.ToNovelContentDTO(result))
-			}
-			return printNovelContent(a.data.Output, result)
-		}
+	case resolver.ResultKindNovel:
 		result, err := readDetail(a.data, cmd.Context(), request, func(ctx context.Context, client *pixiv.Client) (pixiv.Novel, error) {
-			return client.Novel(ctx, pixiv.NovelRequest{NovelID: id})
+			return client.Novel(ctx, pixiv.NovelRequest{NovelID: target.ID})
 		})
 		if err != nil {
 			return err
@@ -198,9 +192,9 @@ func (a command) run(cmd *cobra.Command, arg string, opts Options) error {
 			return a.data.writeJSON(pixiv.ToNovelDTO(result))
 		}
 		return printNovel(a.data.Output, result)
-	case "user":
+	case resolver.ResultKindUser:
 		result, err := readDetail(a.data, cmd.Context(), request, func(ctx context.Context, client *pixiv.Client) (pixiv.UserDetail, error) {
-			return client.User(ctx, pixiv.UserRequest{UserID: id})
+			return client.User(ctx, pixiv.UserRequest{UserID: target.ID})
 		})
 		if err != nil {
 			return err
@@ -223,24 +217,19 @@ func resolveEntity(value string) (string, error) {
 	}
 }
 
-func parseEntityIDOrURL(arg, entity string) (int64, error) {
-	value := strings.TrimSpace(arg)
-	if id, err := strconv.ParseInt(value, 10, 64); err == nil && id > 0 {
-		return id, nil
+func detailContract() resolver.Contract {
+	return resolver.Contract{
+		Operation:   "detail",
+		DefaultType: "artwork",
+		Types: []resolver.TypeSpec{
+			{Name: "artwork", ResultKind: resolver.ResultKindArtwork, BareReferenceKind: pixiv.ReferenceKindArtwork},
+			{Name: "novel", ResultKind: resolver.ResultKindNovel, BareReferenceKind: pixiv.ReferenceKindNovel},
+			{Name: "user", ResultKind: resolver.ResultKindUser, BareReferenceKind: pixiv.ReferenceKindUser},
+		},
+		URLKinds: map[pixiv.ReferenceKind]resolver.URLTypeRelation{
+			pixiv.ReferenceKindArtwork: resolver.URLTypeMustMatchResult,
+		},
 	}
-	ref, err := pixiv.ParseURL(value)
-	if err != nil {
-		return 0, errors.New("argument must be an entity ID or a supported Pixiv URL")
-	}
-	want := map[string]pixiv.ReferenceKind{
-		"artwork": pixiv.ReferenceKindArtwork,
-		"novel":   pixiv.ReferenceKindNovel,
-		"user":    pixiv.ReferenceKindUser,
-	}
-	if ref.Kind != want[entity] {
-		return 0, fmt.Errorf("URL does not name a supported Pixiv %s", entity)
-	}
-	return ref.ID, nil
 }
 
 func printArtwork(out io.Writer, item pixiv.Artwork) error {
@@ -273,39 +262,6 @@ func printArtwork(out io.Writer, item pixiv.Artwork) error {
 func printNovel(out io.Writer, item pixiv.Novel) error {
 	_, err := fmt.Fprintf(out, "%d %s — %s\n", item.ID, item.Title, item.User.Name)
 	return err
-}
-
-func printNovelContent(out io.Writer, content pixiv.NovelContent) error {
-	if _, err := fmt.Fprintf(out, "novel %d: %s\n", content.NovelID, content.Title); err != nil {
-		return err
-	}
-	for _, block := range content.Blocks {
-		switch block.Kind {
-		case pixiv.NovelBlockParagraph, pixiv.NovelBlockHeader:
-			if _, err := fmt.Fprintln(out, block.Text); err != nil {
-				return err
-			}
-		case pixiv.NovelBlockImage:
-			if block.Image != nil {
-				if _, err := fmt.Fprintf(out, "[image resource %s] %s\n", block.Image.Resource.Ref.String(), block.Image.Caption); err != nil {
-					return err
-				}
-			}
-		case pixiv.NovelBlockFile:
-			if block.File != nil {
-				if _, err := fmt.Fprintf(out, "[file %s resource %s] %s\n", block.File.Filename, block.File.Resource.Ref.String(), block.File.Caption); err != nil {
-					return err
-				}
-			}
-		case pixiv.NovelBlockUnknown:
-			if block.Unknown != nil {
-				if _, err := fmt.Fprintf(out, "[unknown block %s]\n", block.Unknown.RawType); err != nil {
-					return err
-				}
-			}
-		}
-	}
-	return nil
 }
 
 func printUser(out io.Writer, result pixiv.UserDetail) error {
