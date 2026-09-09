@@ -73,7 +73,7 @@ Status 的 verified 表示对应 task 的实现与相关验证完成；各 task 
 | T24 | CLI search | T39A,T13,T21,T22,T23 | artwork search 与 subtype；stdin/JSON/NDJSON | verified |
 | T25 | CLI novel search | T39A,T14,T21,T22,T23 | novel search canonical route、period 与旧 route | verified |
 | T26 | CLI user search/trending | T39A,T06,T13,T23 | user search 与 trending | verified |
-| T27 | CLI bookmark | T39A,T15,T21,T22,T23 | list/tags/detail/add/remove；list/tags all；user target 与内容类型分开 | pending |
+| T27 | CLI bookmark | T39A,T15,T21,T22,T23 | list/tags/detail/add/remove；list/tags all；user target 与内容类型分开 | verified |
 | T28 | CLI recommended | T39A,T18,T21,T22,T23 | entity/subtype/all 与旧 positional all | pending |
 | T29 | CLI timeline | T39A,T18,T21,T22,T23 | following/latest；entity 与 content-type subtype | pending |
 | T30 | CLI ranking | T39A,T18,T22,T23 | artwork/novel ranking | pending |
@@ -756,6 +756,17 @@ Status 的 verified 表示对应 task 的实现与相关验证完成；各 task 
 - 公开兼容性影响：完成既有 user search/trending CLI 路由的可回放验证，并修复趋势标签文本展示破坏逐行协议的问题；不新增、删除或重命名 public SDK symbol，不改变 MCP route/schema、upstream wire 字段、认证/token stdout、默认账号选择、依赖、本地数据或发布物。JSON 继续保留原始文本语义并由 `encoding/json` 转义；`SafeLine` 只作用于人类可读文本输出，不引入固定 timeout、重试上限、截断或静默 fallback。
 - 回滚前提 / 依赖闭包：代码提交 `420ee41c72a1e5c3c2d1f4c1ab807109211c5302` 与本记录需成对回滚；若后续 T37 MCP user/trending owner 或 T39B/T40 依赖这些 route/output 断言，回滚前必须同步撤销调用方或提供等价兼容迁移，不能只删除文本安全修复。没有业务数据、账号、token、缓存、运行配置、依赖或生成物迁移。
 - 实际结果 / evidence / 风险：T26 已 verified；未执行真实 Pixiv API，未改写 strict/live evidence，也未授予 `user-search` 或 `trending` capability `public_ready`，因为 MCP owner T37、兼容审计和最终发布门禁仍未完成。`required=41 scope_admitted=41 public_ready=0 other=0` 保持不变，Goal-3 继续 incomplete；下一张 pending 卡为 T27。
+
+## T27 完成记录
+
+- Owner package / 涉及文件：`internal/cli/commands/pixiv/bookmark/bookmark.go`、`internal/cli/commands/pixiv/bookmark/bookmark_test.go`；同步更新 `docs/en/cli-reference.md`、`docs/zh-CN/cli-reference.md`、`skills/pixiv-cli/SKILL.md` 与 `skills/pixiv-cli/references/discover.md`。代码、测试与文档提交为 `81178a6dd329dea754496908c7af632743117dc2`，已推送并核验远端同 SHA。
+- Depends on：T39A、T15、T21、T22、T23 均已 verified；承接 bookmark artwork/novel public SDK read、shared resolver、shared pagination、账号池安全重放和既有 artwork mutation wrapper。本卡不实现 novel bookmark mutation，保留其 T38 owner 边界。
+- 冻结 contract / fixture：`bookmark list/tags` 的输入身份是 user，可接受正数 UID、user URL 和 canonical user record；`--type` 将 user target 与 artwork/novel result 分开，`all` 只对 list/tags 开放，固定 artwork→novel 顺序并在连接序列上统一 Skip/Limit/OneBatch。all 流使用上游输入 cursor 加批内 consumed checkpoint，避免 logical limit 截断丢失余项；同名 artwork/novel tag 不合并，all 输出保留 type；任一流失败时 JSON/NDJSON 不提交部分结果。作品 bookmarks URL 与 novel/all 冲突、detail 的 `all` 均在发起网络请求前拒绝。detail 支持 artwork/novel ID、URL 与 canonical record，并要求 URL/record namespace 与显式类型一致；add/remove 继续使用 `ILLUST_ID` 和既有 artwork-only 输出/写入语义。
+- Red 测试、命令及当前行为的实际失败：先运行 `go test ./internal/cli/commands/pixiv/bookmark -run '^TestBookmarkListAllUsesOneLogicalLimitAndTypedNDJSON$' -count=1 -v`，旧实现实际返回 `bookmark list type must be one of artwork, novel`；`TestBookmarkTagsAllPreservesSameNameCountsAndType` 实际返回 `bookmark tags type must be artwork`；`TestBookmarkListAcceptsUserURLForNovel` 实际返回 `user_id must be a positive integer`；`TestBookmarkDetailSupportsNovelType` 实际因未知 `--type` 失败；`TestBookmarkTagsSupportsNovelType` 实际沿用 artwork-only 拒绝；`TestBookmarkListAcceptsCanonicalUserRecordForNovel` 实际把 record JSON 当作普通文本并返回 `input must be a positive ID or a supported Pixiv URL`；`TestBookmarkHelpUsesTypedTargetNames` 实际观察到旧 root help `Manage illustration bookmarks`。补充的账号池回归 `TestBookmarkAllResolvesCurrentUserPerPoolAttempt` 在修复前实际观察到第二次尝试仍发送 `user_id=11`，而第二个 client 应使用 `22`。
+- Green 命令及验收断言：上述聚焦用例均已由 Red→Green；最终 `go test ./internal/cli/commands/pixiv/bookmark -count=1 -v`、`go test -race ./internal/cli/commands/pixiv/bookmark -count=1`、`go vet ./internal/cli/commands/pixiv/bookmark`、`go test ./internal/cli/commands/pixiv/... -count=1`、`go vet ./internal/cli/commands/pixiv/...`、`go test ./scripts/tests/documentation -count=1`、`go test ./... -count=1`、`go vet ./...`、`sh scripts/build.sh`、`git diff --check` 均通过；bookmark 文件 LSP diagnostics 为空。fixture 覆盖 artwork→novel 逻辑 limit、same-name typed tags、user URL/record、novel detail/tags、冲突 no-network、JSON/NDJSON 聚合原子性，以及账号池第二次尝试按当前 client 解析 UID。
+- 公开兼容性影响：既有单类型 artwork list/tags/detail 与 add/remove 的输出、默认值和 artwork mutation route 保持兼容；新增 novel read 入口、user URL/record 解析、all list/tags typed 聚合及其原子输出规则。未新增、删除或重命名 public SDK symbol，未导出 novel mutation，未修改 MCP schema、upstream wire 字段、认证/token stdout、默认账号选择、依赖或本地数据；未加入无依据的 timeout、截断、重试上限、静默 fallback 或匿名 Web fallback。双语 CLI reference 与产品 Skill 已同步。
+- 回滚前提 / 依赖闭包：代码/文档提交 `81178a6dd329dea754496908c7af632743117dc2` 与本账本记录需成对回滚；若后续 T37 MCP bookmark owner、T38 mutation owner、T39B/T40 compatibility 或最终 release gate 已引用 typed bookmark route/output，回滚前必须同步撤销调用或提供等价兼容迁移。没有业务数据、账号、token、缓存、运行配置、依赖或生成物迁移。
+- 实际结果 / evidence / 风险：T27 已 verified；本轮仅使用离线 HTTP fixture 与本地 SDK/CLI 测试，未执行真实 Pixiv API，未改写 novel bookmark candidate endpoint 的 strict/live evidence，也未授予 bookmark capabilities `public_ready`；candidate novel tags/detail 的 live 状态仍由后续 evidence/发布门禁确认。`required=41 scope_admitted=41 public_ready=0 other=0` 保持不变，Goal-3 继续 incomplete；下一张 pending 卡为 T28。
 
 ## 实现任务准入卡
 
