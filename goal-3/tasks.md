@@ -81,7 +81,7 @@ Status 的 verified 表示对应 task 的实现与相关验证完成；各 task 
 | T32 | CLI series | T39A,T13,T14,T21,T23 | artwork/novel series 与 continuation | verified |
 | T33 | CLI comment | T39A,T16,T17,T21,T23 | read/create/reply/stamp/delete/stamps 的类型与结果语义 | verified |
 | T34 | CLI user | T39A,T06,T13,T14,T21,T23 | detail/artworks/novels/relationships | verified |
-| T35 | CLI follow | T39A,T06,T21 | user follow/unfollow 与旧 route alias | pending |
+| T35 | CLI follow | T39A,T06,T21 | user follow/unfollow 与旧 route alias | verified |
 | T36 | CLI mypixiv | T39A,T06,T13,T14,T21,T23 | users/works typed validation | pending |
 | T37 | MCP read owners | T39A,T13,T14,T15,T16,T17,T18,T21,T22,T23 | 按 tool owner 拆卡，注册/schema/structured errors 与旧请求回放 | pending |
 | T38 | MCP mutation owners | T39A,T15,T16,T17,T06,T21 | 按 tool owner 拆卡，access control、read-back/outcome 与旧请求回放 | pending |
@@ -844,6 +844,17 @@ Status 的 verified 表示对应 task 的实现与相关验证完成；各 task 
 - 公开兼容性影响：保留 bookmark 旧 positional 解析与既有 user CLI 的默认账号、输出和 auto-NDJSON 行为；user read routes 改为共享 resolver/SDK typed route，并把 URL/非法 subtype/restrict/未知 current identity 的错误分类固定下来。未新增、删除或重命名 public SDK symbol，未修改 MCP schema、上游 wire 字段、认证/token stdout、账号选择、依赖、本地数据或运行配置；未加入无依据的 timeout、截断、重试上限、静默 fallback 或匿名 Web fallback。
 - 回滚前提 / 依赖闭包：实现提交 `2a4e68be1993806f458c0c1a2d3b875c4f6ba6f5` 与本台账记录需成对回滚；若后续 T35–T38、T39B/T40 或最终 release gate 引用 user resolver、分页或 SafeLine 语义，回滚前须同步撤销引用或提供等价兼容迁移。没有业务数据、账号、token、缓存、运行配置、依赖或生成物迁移。
 - 实际结果 / evidence / 风险：T34 已 verified；本轮只使用离线 HTTP fixture、CLI/SDK 本地回归、文档测试、LSP diagnostics、全量测试、静态检查与构建，未执行真实 Pixiv API，也未把 user capability 标为 `public_ready`。`required=41 scope_admitted=41 public_ready=0 other=0` 保持不变，Goal-3 继续 incomplete；下一张 pending 卡为 T35。残余风险仅为真实上游 user endpoint 的权限与响应形状变化，需在后续允许 live evidence 的阶段另行验证。
+
+## T35 完成记录
+
+- Owner package / 涉及文件：`internal/cli/commands/pixiv/follow/follow.go`、`internal/cli/commands/pixiv/follow/follow_test.go`；同步更新 `docs/en/cli-reference.md`、`docs/zh-CN/cli-reference.md` 与 `skills/pixiv-cli/references/discover.md`。实现、测试与公开文档提交为 `ca117972cf89fbf616bcf3e191cd1ef155360684`，已推送到 `origin/codex/goal-3-vnext-plan`，且本地与远端完整 SHA 一致。
+- Depends on：T39A、T06、T21 均已 verified；本卡复用既有 root wiring、共享 `internal/shared/resolver`、public `sdk/pixiv` follow methods 与 `deps.Write` mutation boundary，不修改 SDK symbol、内部 endpoint adapter、MCP owner/schema 或 T36 之后的 owner 范围。
+- 冻结 contract / fixture：`pixiv user follow add/remove` 与根级 `pixiv follow add/remove` 继续挂载同一 follow owner，保留旧 route alias。显式目标只接受正数 numeric USER_ID，Pixiv user URL 在本地返回结构化 `InvalidArgument`，不做 bare-ID probe 或网络 fallback；`user` canonical Record 仍可由 `follow_add`/`follow_remove` 消费。`follow add --restrict` 只接受 `public|private`，默认 `public`，非法值在打开账号池前拒绝；`--on-error=skip|fail-fast` 与既有 Record diagnostics 保持不变。离线 HTTP fixture 验证 add `/v1/user/follow/add` 的 `user_id`/`restrict` 与 remove `/v1/user/follow/delete` 的 `user_id`，两个 route alias 的 wire request 相同，成功 stdout 保持为空；不确定写入不自动重放。
+- Red 测试、命令及当前行为的实际失败：先加入 `TestFollowAddRejectsUnsupportedRestrictBeforeOpeningClient`，运行 `go test ./internal/cli/commands/pixiv/follow -run '^TestFollowAddRejectsUnsupportedRestrictBeforeOpeningClient$' -count=1`；旧实现实际返回 `An error is expected but got nil`，且 fake `Pooled` 被允许进入执行路径。该 Red 证明缺口位于 CLI follow 的本地 restrict preflight，而不是 SDK endpoint 或网络 fixture。随后补充 URL rejection、root/user alias wire-contract 与空成功输出回归。
+- Green 命令及验收断言：`go test ./internal/cli/commands/pixiv/follow -count=1`、`go test ./internal/cli/commands/pixiv/... -count=1`、`go test ./scripts/tests/documentation -count=1`、`go test ./... -count=1`、`go vet ./...`、`sh scripts/build.sh`、相关 Go 文件 `gofmt`、`git diff --check` 及提交钩子中的 `gofmt`/`go test ./...` 均通过。LSP diagnostics 对 follow 实现和测试均无诊断；`detect_changes`/`blast_radius` 确认 `follow.New` 生产调用方仍只有 `internal/cli/root.go` 的 root route 与 user compatibility mount。
+- 公开兼容性影响：保留原有 Record 输入、`--on-error` 策略、public/private follow wire fields、成功 stdout 为空与 root alias；把显式 follow 目标统一到 user resolver，拒绝 user URL，并把非法 restrict/URL 错误分类为 `InvalidArgument`。未新增、删除或重命名 public SDK symbol，未修改 MCP schema、认证/token stdout、账号选择、依赖、本地数据或运行配置；未加入无依据的 timeout、截断、重试上限、静默 fallback、自动重放或匿名 Web fallback。CLI 仍保留 status-only mutation 兼容语义，严格 read-back/outcome 证据留给后续 mutation owner/release gate。
+- 回滚前提 / 依赖闭包：实现提交 `ca117972cf89fbf616bcf3e191cd1ef155360684` 与本台账记录需成对回滚；若后续 T36–T38、T39B/T40 或最终 release gate 引用 follow resolver、alias 或 mutation input contract，回滚前须同步撤销引用或提供等价兼容迁移。没有业务数据、账号、token、缓存、运行配置、依赖或生成物迁移。
+- 实际结果 / evidence / 风险：T35 已 verified；本轮只使用离线 HTTP fixture、CLI/SDK 本地回归、双语文档测试、LSP diagnostics、影响面审查、全量测试、静态检查与构建，未执行真实 Pixiv API，也未把 follow capability 标为 `public_ready`。`required=41 scope_admitted=41 public_ready=0 other=0` 保持不变，Goal-3 继续 incomplete；下一张 pending 卡为 T36。残余风险仅为真实上游 follow mutation 的权限、read-back/outcome 与不确定提交状态证据，需在后续 MCP/release gate 允许 live evidence 的阶段另行验证。
 
 ## 实现任务准入卡
 
