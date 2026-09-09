@@ -77,7 +77,7 @@ Status 的 verified 表示对应 task 的实现与相关验证完成；各 task 
 | T28 | CLI recommended | T39A,T18,T21,T22,T23 | entity/subtype/all 与旧 positional all | verified |
 | T29 | CLI timeline | T39A,T18,T21,T22,T23 | following/latest；entity 与 content-type subtype | verified |
 | T30 | CLI ranking | T39A,T18,T22,T23 | artwork/novel ranking | verified |
-| T31 | CLI detail | T39A,T13,T14,T21 | artwork/novel/user resolver；content endpoint exclusion 的兼容处理 | pending |
+| T31 | CLI detail | T39A,T13,T14,T21 | artwork/novel/user resolver；content endpoint exclusion 的兼容处理 | verified |
 | T32 | CLI series | T39A,T13,T14,T21,T23 | artwork/novel series 与 continuation | pending |
 | T33 | CLI comment | T39A,T16,T17,T21,T23 | read/create/reply/stamp/delete 的类型与结果语义 | pending |
 | T34 | CLI user | T39A,T06,T13,T14,T21,T23 | detail/artworks/novels/relationships | pending |
@@ -800,6 +800,17 @@ Status 的 verified 表示对应 task 的实现与相关验证完成；各 task 
 - 公开兼容性影响：新增 `--type artwork|novel` 是 additive CLI 能力；省略 flag 的旧 artwork ranking 默认、mode/date query、文本与 JSON/NDJSON artwork 输出保持不变。novel 不携带 artwork `date`，不引入隐式 fallback、匿名 Web、token stdout、依赖、数据或运行配置变化；MCP 仍未新增 `novel_ranking` tool。
 - 回滚前提 / 依赖闭包：代码/测试/文档提交 `7694ac795c56b7f88415eaf5b616588225cce3e` 与本记录需成对回滚；若后续 T31–T38、T39B/T40 或最终 release gate 引用显式 ranking type/output 契约，回滚前须同步撤销引用或提供等价兼容迁移。没有业务数据、账号、token、缓存、运行配置、依赖或生成物迁移。
 - 实际结果 / evidence / 风险：T30 已 verified；本轮只使用离线 HTTP fixture、CLI/SDK 本地回归、文档测试与构建检查，未执行真实 Pixiv API，也未把 novel ranking 的两页离线 fixture 升级为 live/public evidence。`NOVEL-RANKING` 仍需 live 第二页、MCP 与 release compatibility gates，未授予 `artwork-ranking` 或 `novel-ranking` capability `public_ready`；`required=41 scope_admitted=41 public_ready=0 other=0` 保持不变，Goal-3 继续 incomplete；下一张 pending 卡为 T31。
+
+## T31 完成记录
+
+- Owner package / 涉及文件：`internal/cli/commands/pixiv/detail/detail.go`、`internal/cli/commands/pixiv/detail/detail_test.go`。复用既有双语 CLI reference、产品 Skill 与 migration matrix 中已经冻结的 detail contract，本卡无需再改文档；代码与测试提交为 `1b03dcae64361baeb904eeb8b68b527a1093fa30`。
+- Depends on：T39A、T13、T14、T21 均已 verified；本卡只接入共享 `internal/shared/resolver` 与既有 public `sdk/pixiv` detail methods，不改变 MCP owner、SDK endpoint adapter、账号池组装或 T32 之后的 owner 范围。
+- 冻结 contract / fixture：`pixiv detail` 默认 `artwork`，显式支持 `artwork`、`novel`、`user`；输入统一经过 command-local resolver，正数 artwork ID 可配 canonical HTTPS Pixiv artwork URL，novel/user 只接受正数 ID，novel/user URL 与显式 type 冲突均在请求构造前返回 `InvalidArgument`，错误不回显 URL query。artwork、novel、user 分别只调用既有 public SDK 的 `/v1/illust/detail`、`/v2/novel/detail`、`/v1/user/detail`。`--content` 仅保留 novel 兼容入口，对正数 novel 在构造 request、打开账号池和发起请求前返回 `ContentUnavailable`，不得触达已排除的 `/v1/novel/content` endpoint。
+- Red 测试、命令及当前行为的实际失败：先加入 `TestCommandRejectsNovelURLBeforeOpeningClient`，运行 `go test ./internal/cli/commands/pixiv/detail -run '^TestCommandRejectsNovelURLBeforeOpeningClient$' -count=1 -v`，旧实现实际返回 `expected novel URL validation error, got <nil>`；再加入 `TestCommandNovelContentReturnsUnavailableBeforeOpeningClient`，运行 `go test ./internal/cli/commands/pixiv/detail -run '^TestCommandNovelContentReturnsUnavailableBeforeOpeningClient$' -count=1 -v`，旧实现实际返回 `reason = "", want "content_unavailable" (err=<nil>)`。两次 Red 均证明缺口发生在 detail owner 的输入 resolver 与 rejected content endpoint 处理，而不是网络 fixture。
+- Green 命令及验收断言：`go test ./internal/cli/commands/pixiv/detail -count=1 -v`、`go test -race ./internal/cli/commands/pixiv/detail -count=1`、`go vet ./internal/cli/commands/pixiv/detail`、`go test ./internal/shared/resolver ./sdk/pixiv ./internal/cli/commands/pixiv/... -count=1`、`go vet ./internal/shared/resolver ./sdk/pixiv ./internal/cli/commands/pixiv/...`、`go test ./scripts/tests/documentation -count=1`、`go test ./... -count=1`、`go vet ./...`、`sh scripts/build.sh`、changed Go files 的 `gofmt` 检查与 `git diff --check` 均通过。离线 HTTP fixture 验证三类 typed ID 的 public SDK endpoint/path/query；no-network fixture 验证 novel/user URL、URL/type conflict、content unavailable 均在 BuildRequest/Pooled 前失败，并验证 rejected URL query 不泄露。
+- 公开兼容性影响：保留省略 `--type` 的旧 artwork detail 默认与既有文本/JSON presenter；新增 novel/user typed detail 路由和统一 resolver 语义；novel `--content` 由原先可能触达的正文请求改为冻结的结构化 `content_unavailable` 兼容错误，确保不调用已拒绝 endpoint。未新增、删除或重命名 public SDK symbol，未修改 MCP schema、上游 wire 字段、认证/token stdout、依赖、本地数据或账号选择；未加入无依据的 timeout、截断、重试上限、静默 fallback 或匿名 Web fallback。
+- 回滚前提 / 依赖闭包：代码/测试提交 `1b03dcae64361baeb904eeb8b68b527a1093fa30` 与本账本记录需成对回滚；若后续 T32–T38、T39B/T40 或最终 release gate 已引用 detail typed route、resolver 语义或 content-unavailable contract，回滚前须同步撤销引用或提供等价兼容迁移。没有业务数据、账号、token、缓存、运行配置、依赖或生成物迁移。
+- 实际结果 / evidence / 风险：T31 已 verified；本轮仅使用离线 HTTP fixture、CLI/SDK 本地回归、文档测试、LSP diagnostics、vet、全量测试与构建检查，未执行真实 Pixiv API，也未授予任何 detail capability `public_ready`。现有文档与 `skills/pixiv-cli` 已声明同一 contract，故无额外文档差异；`required=41 scope_admitted=41 public_ready=0 other=0` 保持不变，Goal-3 继续 incomplete；下一张 pending 卡为 T32。
 
 ## 实现任务准入卡
 
