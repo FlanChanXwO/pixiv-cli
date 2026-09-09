@@ -30,6 +30,7 @@
 
 ## 维护
 
+- 修复 Pixiv 多页作品归一化：当上游响应省略 `page_index` 时，以 `meta_pages` 数组顺序生成页号，确保每页 resource ref 保持唯一，避免多个下载输出错误解析成同一张图片。([#81](https://github.com/FlanChanXwO/pixiv-cli/pull/81))
 - 修复 Pixiv 当前用户查询，改用有效的 `/v1/user/detail`；最新作品流支持 `max_illust_id` 分页；当 CDN 的 `.png` URL 实际返回 JPEG 时，修正缩略图文件扩展名与 MCP MIME 元数据。
 - 加固 FANBOX identity-scoped cursor 绑定（Home、Supporting、Creators）到已验证的 FANBOX 账号 ID，使在一个账号下生成的 cursor 不能被重放到另一个账号的流上；CreatorPosts 与 TaggedPosts 仍是公开作用域。([#59](https://github.com/FlanChanXwO/pixiv-cli/pull/59))
 - 将嵌入 URL 的 FANBOX resource ref 替换为只含稳定 identity（kind、所属 creator/post、attachment id）的信封；`OpenResource`/`SaveResource` 在 session 内无 locator 缓存时从可信 metadata 重新解析新鲜且经 allowlist 校验的 locator，session cookie 只发送给需要凭据的 `downloads.fanbox.cc` host。([#59](https://github.com/FlanChanXwO/pixiv-cli/pull/59))
