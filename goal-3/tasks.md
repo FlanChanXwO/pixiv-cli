@@ -75,7 +75,7 @@ Status 的 verified 表示对应 task 的实现与相关验证完成；各 task 
 | T26 | CLI user search/trending | T39A,T06,T13,T23 | user search 与 trending | verified |
 | T27 | CLI bookmark | T39A,T15,T21,T22,T23 | list/tags/detail/add/remove；list/tags all；user target 与内容类型分开 | verified |
 | T28 | CLI recommended | T39A,T18,T21,T22,T23 | entity/subtype/all 与旧 positional all | verified |
-| T29 | CLI timeline | T39A,T18,T21,T22,T23 | following/latest；entity 与 content-type subtype | pending |
+| T29 | CLI timeline | T39A,T18,T21,T22,T23 | following/latest；entity 与 content-type subtype | verified |
 | T30 | CLI ranking | T39A,T18,T22,T23 | artwork/novel ranking | pending |
 | T31 | CLI detail | T39A,T13,T14,T21 | artwork/novel/user resolver；content endpoint exclusion 的兼容处理 | pending |
 | T32 | CLI series | T39A,T13,T14,T21,T23 | artwork/novel series 与 continuation | pending |
@@ -778,6 +778,17 @@ Status 的 verified 表示对应 task 的实现与相关验证完成；各 task 
 - 公开兼容性影响：不新增、删除或重命名 public SDK symbol，不修改 MCP route/schema、upstream endpoint wire 字段、认证/token stdout、默认账号选择、依赖、本地数据或发布物。`--type artwork --content-type ...` 的 subtype 过滤是本地 DTO 语义；`--type all` 不再把混合 artwork 候选重复写进 `illusts` 与 `manga`，而是保留既有分区顺序和各流独立分页。未加入固定 timeout、重试上限、截断、静默 fallback 或匿名 Web fallback。
 - 回滚前提 / 依赖闭包：代码/测试/文档提交 `a6b9092d823dfc8d332a9045f59650ebdd0509a6` 与本记录需成对回滚；若后续 T29–T38、T39B/T40 或最终 release gate 引用 recommended 的 subtype/all 输出契约，回滚前必须同步撤销调用方或提供等价兼容迁移。没有业务数据、账号、token、缓存、运行配置、依赖或生成物迁移。
 - 实际结果 / evidence / 风险：T28 已 verified；本轮仅使用离线 HTTP fixture 与本地 SDK/CLI 测试，未执行真实 Pixiv API，未改写 artwork recommended subtype 的历史 `not_tested`/`inconclusive` evidence，也未授予 `artwork-recommended`、`novel-recommended` 或 `recommended-all` capability `public_ready`。上游 subtype continuation 仍不作为 CLI wire contract 宣称，后续 owner 仍需按 capability-admission 完成 MCP/最终发布链；`required=41 scope_admitted=41 public_ready=0 other=0` 保持不变，Goal-3 继续 incomplete；下一张 pending 卡为 T29。
+
+## T29 完成记录
+
+- Owner package / 涉及文件：`internal/cli/commands/pixiv/timeline/timeline.go` 与 `internal/cli/commands/pixiv/timeline/timeline_test.go`；同步更新 `docs/en/cli-reference.md`、`docs/zh-CN/cli-reference.md`、`skills/pixiv-cli/SKILL.md` 与 `skills/pixiv-cli/references/discover.md`。代码、测试与公开文档提交为 `58abd02ce4a7e76289646be19c9a85654848ff35`。
+- Depends on：T39A、T18、T21、T22、T23 均已 verified；本卡只接入既有 timeline public SDK/共享 listing/filter 语义，不修改 SDK、MCP schema、endpoint adapter 或 T30 之后的 novel continuation owner。
+- 冻结 contract / fixture：`timeline following` 与 `timeline latest` 均要求 `--type artwork|novel`，`--type` 是 entity 而非 subtype；following 默认 `--restrict=public`，artwork 默认 `--content-type=all`，支持 `all|illust-and-ugoira|illust|manga|ugoira` 的本地 DTO 筛选，且不向 `/v2/illust/follow` 发送 `content_type`。following/ latest 的 novel 路由都拒绝显式 `--content-type`；latest artwork 默认 `illust`，只接受 upstream 支持的 `illust|manga`。正数 `--limit` 的 logical pagination 在本地 subtype 筛选后继续沿用 upstream cursor；latest 既有 `--type illust|manga` 兼容写法保持不变。
+- Red 测试、命令及当前行为的实际失败：先将 following artwork fixture 对齐当前 SDK 的 `/v2/illust/follow` 路径与 offset continuation，再运行 `go test ./internal/cli/commands/pixiv/timeline -run '^TestFollowingArtworkContentTypeFiltersAcrossPages$' -count=1 -v`；旧实现实际只发 1 个请求并输出首批 `8101`（illust）和 `8102`（manga），测试要求过滤出 `8102`、继续请求第二批并得到 `8103`，因此以 `HTTP requests = 1, want 2` 失败。随后新增 following novel、latest novel 显式 `--content-type` 以及 following artwork 非法 subtype 的 no-network 测试；旧实现对应错误均为 nil，证明冲突或未知 subtype 会在进入账号池前被静默接受。
+- Green 命令及验收断言：`go test ./internal/cli/commands/pixiv/timeline -count=1 -v`、`go test -race ./internal/cli/commands/pixiv/timeline -count=1`、`go test ./internal/cli/commands/pixiv/... -count=1`、`go test ./internal/shared/searchfilter ./internal/shared/pagination ./sdk/pixiv -count=1`、`go test ./... -count=1`、`go test ./scripts/tests/documentation -count=1`、`go vet ./...`、`sh scripts/build.sh`、`git diff --check` 均通过。LSP 对 timeline production/test 文件诊断为空；blast-radius/detect-changes 确认 production caller 仍只有 `internal/cli/root.go` 的既有 timeline 组装。提交钩子再次通过 `gofmt` 与 `go test ./...`。
+- 公开兼容性影响：不新增、删除或重命名 public SDK symbol，不修改 MCP route/schema、upstream adapter wire、认证/token stdout、账号选择、依赖或本地数据。following artwork subtype 是 CLI 本地 DTO 语义；latest artwork 的既有默认与 `illust|manga` 约束保持；显式 content-type 与 novel 的组合现在显式失败，避免把 artwork subtype 误用于 novel。未新增固定 timeout、重试上限、截断、静默 fallback 或匿名 Web fallback。
+- 回滚前提 / 依赖闭包：代码/测试/文档提交 `58abd02ce4a7e76289646be19c9a85654848ff35` 与本台账记录需成对回滚；若后续 T30–T38、T39B/T40 或最终 gate 已引用 timeline 的 subtype/冲突契约，回滚前须同步撤销引用或提供等价兼容迁移。没有业务数据、账号、token、缓存、运行配置、依赖或生成物迁移。
+- 实际结果 / evidence / 风险：T29 已 verified；本轮仅使用离线 HTTP fixture、CLI/SDK 本地测试与构建检查，未执行真实 Pixiv API，未把 T29 的本地 subtype 证据升级为 upstream subtype 的 live evidence，也未授予任何 capability `public_ready`。`required=41 scope_admitted=41 public_ready=0 other=0` 保持不变，Goal-3 继续 incomplete；下一张 pending 卡为 T30。
 
 ## 实现任务准入卡
 
