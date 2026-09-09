@@ -336,6 +336,11 @@ pixiv detail 123456 --type artwork --json
 pixiv detail 123456 --type novel --json
 pixiv series SERIES_ID_OR_URL --type artwork --limit 20
 pixiv comment 123456 --type artwork --limit 20
+pixiv comment create 123456 --type artwork --comment "hello"
+pixiv comment reply 123456 --type artwork --parent-comment-id 789 --comment "reply" --json
+pixiv comment stamp 123456 --type artwork --stamp-id 9 --comment "stamp" --json
+pixiv comment delete 789 --type artwork --json
+pixiv comment stamps --json
 pixiv bookmark list --type artwork --limit 20
 pixiv bookmark list --type all --limit 20 --json
 pixiv bookmark tags --limit 20
@@ -365,7 +370,7 @@ The CLI uses Cobra/pflag, so options may appear before or after positional argum
 
 All non-mutating data reads, recommendations, timelines, and downloads use the local account selected by `pixiv auth use` when the account pool is disabled. Account pooling is active only when `[account_pool]` explicitly sets `enabled = true`; the database `schedulable` flag controls membership and `strategy` defaults to `round_robin` with `random` also supported. Use `pixiv auth pool status|enable|disable` to inspect or change membership. Writes, authentication, and configuration do not use the pool. Data commands reject `--uid` and `--refresh-token`.
 
-Visual lists write canonical Record NDJSON automatically when stdout is a non-terminal and no explicit output format was selected. Each line has stable string `id`, `type`, and `url`; `download`, `bookmark add/remove`, and `follow add/remove` consume compatible records without positional IDs. `--json` and explicit `--ndjson` retain precedence.
+Visual lists write canonical Record NDJSON automatically when stdout is a non-terminal and no explicit output format was selected. Each line has stable string `id`, `type`, and `url`; `download`, `bookmark add/remove`, and `follow add/remove` consume compatible records without positional IDs. `comment create/reply/stamp/delete` use one positive numeric ID and do not consume Record input. Comment create/reply/stamp return the upstream positive `comment_id` directly; delete returns a success status only. `comment stamps` is a read-only, non-paginated list. `--json` and explicit `--ndjson` retain precedence.
 
 ### Reverse image search
 
@@ -459,7 +464,7 @@ Only the structured entity filters documented by each command are accepted. The 
 | `detail` | `pixiv detail ID_OR_URL [-t artwork\|novel\|user] [--content] [--json]` | Reads one artwork, novel, or user. `--content` remains a novel-only compatibility flag, but the v1 App content endpoint is unavailable: a positive novel ID returns `content_unavailable` without a rejected-endpoint request. |
 | `ranking` | `pixiv ranking [-t artwork\|novel] [--mode MODE --date YYYY-MM-DD --page N --limit N]` | Reads artwork or novel rankings. `artwork` is the default; `--date` is supported only for artwork ranking. |
 | `series` | `pixiv series SERIES_ID_OR_URL -t artwork\|novel [--page N --limit N --json\|--ndjson]` | Lists the artworks or novels in one series. The input may be a positive series ID or a supported artwork/novel series URL; the entity type is required and must match the URL namespace. |
-| `comment` | `pixiv comment ID -t artwork\|novel [--page N --limit N --json\|--ndjson]` | Reads artwork or novel comments. Comment write/reply/delete/stamp is not exposed. |
+| `comment` | `pixiv comment ID -t artwork\|novel [--page N --limit N --json\|--ndjson]`; `pixiv comment create ID -t artwork\|novel --comment TEXT [--json]`; `pixiv comment reply ID -t artwork\|novel --parent-comment-id COMMENT_ID --comment TEXT [--json]`; `pixiv comment stamp ID -t artwork\|novel --stamp-id STAMP_ID --comment TEXT [--json]`; `pixiv comment delete COMMENT_ID -t artwork\|novel [--json]`; `pixiv comment stamps [--json\|--ndjson]` | Preserves the artwork/novel comment read route and adds explicit create, reply, stamp, delete, and stamp-list actions. Comment mutations accept positive numeric IDs only; create/reply/stamp return `comment_id`, delete returns a status, and `stamps` returns output-safe stamp DTOs without pagination or runtime URLs. |
 | `bookmark` | `pixiv bookmark list\|tags\|detail\|add\|remove ...` | Lists artwork/novel bookmarks, reads artwork/novel bookmark tags/detail, or mutates artwork bookmarks. `list` and `tags` accept a user ID or user URL and support `--type artwork\|novel\|all`; `all` keeps artwork before novel and preserves typed records/tags. `detail` accepts artwork/novel but not `all`; add/remove remain artwork-only. |
 | `user` | `pixiv user search\|detail\|artworks\|novels\|bookmarks\|following\|followers\|related\|blocked\|follow ...` | Reads user/profile/relationship data and manages artwork follows. Omitted user IDs use the current account only where that subcommand says so. |
 | `download` | `pixiv download [options] SRC...` | Downloads artwork IDs/URLs, allowed CDN URLs, or visual works expanded from supported user and public-bookmark URLs. Artwork-series URLs are not download sources. `--output/-o` aliases `--download-path`. |
@@ -523,7 +528,10 @@ extension. Extensions also replace ASCII control characters and remove trailing 
 | `ranking` | `--mode` | `day` | One of `day`, `day_male`, `day_female`, `week`, `week_original`, `week_rookie`, `month`, `day_manga`, `week_manga`, `month_manga`, `week_rookie_manga`, `day_r18`, `day_male_r18`, `day_female_r18`, `week_r18`, `week_r18g`. The final nine require authentication. |
 | `ranking` | `--date` | empty | Ranking date, typically `YYYY-MM-DD`. |
 | `detail` | `--type` / `-t` | `artwork` | Entity type: `artwork`, `novel`, or `user`; `--content` is a retained novel-only compatibility flag and returns `content_unavailable` while the v1 content endpoint is unavailable. |
-| `series`, `comment` | `--type` / `-t` | required | Entity type: `artwork` or `novel`; series accepts a positive ID or a supported series URL, and its URL namespace must match the selected type. The input is interpreted only after the type is selected. |
+| `series`, `comment` | `--type` / `-t` | required | Entity type: `artwork` or `novel`; series accepts a positive ID or a supported series URL, and its URL namespace must match the selected type. Comment read/create/reply/stamp use a positive artwork/novel ID; comment delete uses the type to select the artwork or novel comment endpoint. The input is interpreted only after the type is selected. |
+| `comment create`, `comment reply`, `comment stamp` | `--comment` | required | Comment body. The CLI rejects an empty value and never truncates the supplied text. |
+| `comment reply` | `--parent-comment-id` | required positive integer | Parent comment ID for a reply; it is not used as the artwork or novel ID. |
+| `comment stamp` | `--stamp-id` | required positive integer | Stamp ID sent independently from the comment body. |
 | `bookmark list` | `--type` / `-t` | `artwork` | Entity type: `artwork`, `novel`, or `all`; `all` uses one logical page in artwork-then-novel order and keeps each record typed. `--restrict` and `--tag` are passed to the matching bookmark list. |
 | `bookmark tags` | `--type` / `-t` | `artwork` | Entity type: `artwork`, `novel`, or `all`; `all` keeps same-name artwork and novel tags as separate typed entries. `--restrict` selects public/private tags. |
 | `user artworks` | `--type` | `illustration` | Artwork subtype: `illust`, `manga`, or `ugoira`. |
@@ -621,7 +629,7 @@ report every outcome through diagnostics; cancellation stops immediately.
 | Flag | Applies to | Default | Description |
 | --- | --- | --- | --- |
 | `--ndjson` | data list/read commands | `false` | Emits one canonical Record per line for streaming filters and actions; cannot be combined with `--json`. |
-| `--json` | safe data reads, auth summaries, `update --check` | `false` | Emits one complete result document where the command exposes it. Download and mutation actions do not emit a success report. |
+| `--json` | safe data reads, auth summaries, `update --check`, comment mutations, `comment stamps` | `false` | Emits one complete result document where the command exposes it. Existing download/bookmark/follow mutation actions do not emit a success report; comment create/reply/stamp emit `comment_id`, and comment delete emits `deleted: true`. |
 | `--proxy URL` | network commands and `mcp` | `https_proxy`/`HTTPS_PROXY`, `config.toml`, or empty | Uses an `http`, `https`, `socks5`, or `socks5h` proxy URI for this command only; forbidden with bundle-form `auth import`. |
 | `--no-proxy` | same as `--proxy` | empty | Clears the proxy for this command; cannot be combined with `--proxy` or bundle restore. |
 

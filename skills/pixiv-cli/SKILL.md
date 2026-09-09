@@ -75,10 +75,10 @@ the installed binary's `pixiv <cmd> --help` output.
 | Tier | Commands | Behavior |
 | --- | --- | --- |
 | Credential transfer | `auth import` `auth export` | Execute only for the user's explicit import/export task; follow `references/auth.md` so secret input/output is not exposed accidentally |
-| Read | `search` `detail` `ranking` `series` `comment` `bookmark list/tags/detail` `recommended` `timeline *` `mypixiv *` `user *` `config get/path` root `--version` `update --check` | Execute when the user's task requires it |
+| Read | `search` `detail` `ranking` `series` `comment` `comment stamps` `bookmark list/tags/detail` `recommended` `timeline *` `mypixiv *` `user *` `config get/path` root `--version` `update --check` | Execute when the user's task requires it |
 | Account diagnosis | `auth list/check` | List only for authentication/account/fallback decisions; check only when network validation is needed |
 | Account maintenance | `auth refresh` | Rotates saved OAuth credentials and refreshes the cached account profile/Premium status; run only on an explicit request |
-| Write | `bookmark add/remove` `follow add/remove` | State the target (illust/user ID) in one line before executing; for NDJSON stdin actions, state the record type and scope before starting |
+| Write | `comment create/reply/stamp/delete` `bookmark add/remove` `follow add/remove` | State the target (artwork/novel/comment ID) and explicit type in one line before executing; comment mutations require positive numeric IDs and their required body/parent/stamp fields; for NDJSON stdin actions, state the record type and scope before starting |
 | Disk | `download` | Confirm target directory and exact targets (IDs or supported Pixiv URLs) before each invocation; a user URL expands every visual work, so state that scope explicitly; approval never carries over; see `references/download.md` |
 | Interactive credential | `auth login` | Read `references/auth.md`, then run only on an explicit request while the user is present for browser OAuth; use the one-time desktop hand-off URL when the account host is remote |
 | Account/config state | `auth use/remove` `config set/unset` `update` (actual install) | Ask for explicit confirmation each time; approval does not carry over |
@@ -146,6 +146,11 @@ pixiv detail ARTWORK_ID_OR_URL --type artwork --json
 pixiv detail NOVEL_ID --type novel --json
 pixiv series SERIES_ID_OR_URL --type novel --limit 20 --json
 pixiv comment ID --type artwork --limit 20 --json
+pixiv comment create ID --type artwork --comment "hello"
+pixiv comment reply ID --type artwork --parent-comment-id PARENT_ID --comment "reply" --json
+pixiv comment stamp ID --type artwork --stamp-id STAMP_ID --comment "stamp" --json
+pixiv comment delete COMMENT_ID --type artwork --json
+pixiv comment stamps --json
 pixiv bookmark list --type artwork --limit 20 --json
 pixiv bookmark list USER_ID_OR_URL --type all --limit 20 --json
 pixiv bookmark tags --limit 20 --json
@@ -272,7 +277,16 @@ session.
    content endpoint is unavailable: it returns `content_unavailable` without a
    rejected-endpoint request and never falls back to WebView. Use plain
    `detail --type novel` for metadata.
-5. **Restricted search fails explicitly.** There is no anonymous search path.
+5. **Comment mutations are explicit and status-bound.** `comment create`,
+   `reply`, `stamp`, and `delete` require `--type artwork|novel` and positive
+   numeric IDs; URLs and `all` are rejected. `create/reply/stamp` require
+   `--comment` and return the upstream `comment_id` directly. `reply` also
+   requires `--parent-comment-id`, while `stamp` requires `--stamp-id`; these
+   IDs are independent fields. `delete` returns only a success status and does
+   not read comments back. `comment stamps` is a non-paginated read and emits
+   output-safe opaque stamp references without runtime URLs. Existing
+   bookmark/follow mutation actions retain their empty-success-output contract.
+6. **Restricted search fails explicitly.** There is no anonymous search path.
    Restricted rating requests are not represented by a silent `--rating` filter;
    use the command's actual authenticated/API contract and surface failures.
    Bookmark-count bounds use the application strategy/completeness result:
@@ -281,21 +295,21 @@ session.
    reliable evidence exists. Do not present a strategy error as an empty result.
    `novel search` is App-only and requires authentication. Bookmark count is a
    public bookmark total, never a like count.
-6. **Rankings support artwork and novel entities.** `pixiv ranking` defaults to
+7. **Rankings support artwork and novel entities.** `pixiv ranking` defaults to
    `--type artwork`; use `--type novel` for novel ranking. `--date` is only
    valid with artwork ranking. Valid modes are `day`,
    `day_male`, `day_female`, `week`, `week_original`, `week_rookie`, `month`,
    `day_manga`, `week_manga`, `month_manga`, `week_rookie_manga`, `day_r18`,
    `day_male_r18`, `day_female_r18`, `week_r18`, `week_r18g`. The final nine
    must not be replaced with an anonymous day ranking.
-7. **Empty filtered batches are skipped.** With application-side bookmark
+8. **Empty filtered batches are skipped.** With application-side bookmark
    filtering, search continues past leading empty upstream batches to the first
    non-empty logical batch or true end; `--limit N` fills logical results and
    `--limit 0` walks the current filtered result. Do not invent request caps.
-8. **No like-count field.** Do not invent or label bookmark totals as likes.
-9. **`update --json` is only valid with `--check`.** The actual install never
+9. **No like-count field.** Do not invent or label bookmark totals as likes.
+10. **`update --json` is only valid with `--check`.** The actual install never
    emits JSON.
-10. **Proxy is per-command or service-scoped.** The browser's system proxy is
+11. **Proxy is per-command or service-scoped.** The browser's system proxy is
    NOT inherited. Pixiv command overrides take precedence over
    `[pixiv.network].proxy_url`, environment, and the global `[network]` value;
    persist the global value with `pixiv config set https_proxy URL` when that is
@@ -311,10 +325,10 @@ session.
    `[reverse_search.flaresolverr].proxy_url` is only the solver's browser
    upstream proxy; it does not proxy solver control traffic or the native
    ascii2d upload.
-11. **Long downloads may legitimately take time.** Do not impose an arbitrary
+12. **Long downloads may legitimately take time.** Do not impose an arbitrary
    timeout or kill the process merely because it is slow; wait for completion,
    user cancellation, or a real error.
-12. **Tag search has query grammar.** `bookmark list --tag TAG` and
+13. **Tag search has query grammar.** `bookmark list --tag TAG` and
    `user bookmarks --tag TAG` filter bookmark listings; `bookmark add --tag TAG`
    adds a repeatable bookmark tag.
    `search` has no `--tag` flag — put the tag expression in its required `WORD`.
@@ -324,7 +338,7 @@ session.
    verified uppercase `OR` syntax, but its fuzzy/alias/translated matches are
    not a strict exact-tag AND. `title-caption` and App-only `tag-title-caption` have no boolean-tag contract;
    no literal-uppercase-`OR` escape syntax is verified.
-13. **Direct URLs are intentionally narrow.** `detail` accepts only an artwork
+14. **Direct URLs are intentionally narrow.** `detail` accepts only an artwork
     ID or a `pixiv.net`/`www.pixiv.net` HTTPS `/artworks/{id}` URL (an optional
     locale, query, or fragment is harmless). `bookmark detail` accepts an
     artwork or novel ID/URL and requires a matching `--type` when one is given;
