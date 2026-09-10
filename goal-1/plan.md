@@ -2,7 +2,7 @@
 
 ## 背景
 
-本 Goal 基于 `refactor/goal-1-vnext-replan` 分支启动，该分支从 `codex/goal-3-vnext-progress` 当前 HEAD `e40443495981cdaf01215d6711cb24fa618b087a` 分出，保留既有实现与历史证据，不重做已经被真实测试和审计证明正确的工作。
+本 Goal 基于 `refactor/goal-1` 分支启动，该分支从 `codex/goal-3-vnext-progress` 当前 HEAD `e40443495981cdaf01215d6711cb24fa618b087a` 分出，保留既有实现与历史证据，不重做已经被真实测试和审计证明正确的工作。
 
 旧 `goal-3/` 目录继续作为历史计划、验证证据和兼容资料来源，但不再作为本 Goal 的执行状态机。旧计划存在以下结构问题：
 
