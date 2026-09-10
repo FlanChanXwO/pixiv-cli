@@ -158,7 +158,7 @@ AND (required_external_blockers > 0 OR required_decision_blockers > 0)
 
 ## G1-T03 — Baseline inventory：bookmark
 
-**Status:** pending
+**Status:** verified
 
 **Depends on:** G1-T02
 
@@ -174,10 +174,14 @@ AND (required_external_blockers > 0 OR required_decision_blockers > 0)
 - mutation offline 与 live evidence 不混淆。
 
 **完成记录：**
-- 覆盖计数：
-- Verified evidence：
-- Drift：
-- Internal gaps：
+- 覆盖计数：11/11（14–24）；全部 required，`public_ready=0/11`；全 Goal scope 仍 `required=41, scope_admitted=41`。
+- Verified evidence：更新 `goal-1/current-state.md`，为 11 项逐层记录 Contract、Adapter、SDK、Shared、CLI、MCP、Offline、Live、Compatibility、Release verdict，并补充 typed semantics、双流 checkpoint、统一 budget、页原子失败、mutation read-back/cleanup 边界。
+- Aggregate：确认当前 CLI list/tags `--type all` 有 offline 双流实现与 atomicity tests，但没有 public aggregate SDK/MCP operation 或跨调用 cursor；`all` 不作为 upstream subtype。
+- Mutation：artwork add/remove 仅有 transport/form/validation；novel add/delete 仍 candidate adapter；没有真实 bookmark mutation、read-back、restore、cleanup 或 uncertain-no-replay evidence。
+- Evidence boundary：`goal-3/capability-admission.md:37-47` 的 11 项仍为 `scope_admitted`；历史 T15/T19/T23 `verified` 仅作局部 seam 证据，不提升 capability acceptance；旧 `not_tested/inconclusive` 记录保持。
+- Drift：目标 worktree 相对继承基线仍只有 Goal-1 tracking 文件，`goal-3/` 无 diff；未新增业务/API scope。
+- 验证：完成源码/测试/contract/evidence/history inventory；LSP 核验 bookmark public symbols 与 shared collectors；目标 worktree 初始 clean；未执行 live E2E；commit hook 负责 `gofmt` 与 `go test ./...`。
+- GoalState impact：保持 `ACTIVE`；无 external/decision blocker。
 - 下一步：G1-CHECK-01
 
 ## G1-CHECK-01 — 集中检查：preflight + artwork/novel/bookmark baseline
