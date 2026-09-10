@@ -205,7 +205,7 @@ AND (required_external_blockers > 0 OR required_decision_blockers > 0)
 
 ## G1-T04 — Baseline inventory：comments/stamps + user/shared
 
-**Status:** pending
+**Status:** verified
 
 **Depends on:** G1-CHECK-01
 
@@ -221,10 +221,12 @@ AND (required_external_blockers > 0 OR required_decision_blockers > 0)
 - comments read/mutation、stamps、follow mutation 的 offline/live 边界明确。
 
 **完成记录：**
-- 覆盖计数：
-- Verified evidence：
-- Drift：
-- Internal gaps：
+- 覆盖计数：PASS。25–41 共 17/17；与前序 1–24 合计 41/41；全 required scope 为 `scope_admitted`，`public_ready=0/41`。
+- Verified evidence：已更新 `goal-1/current-state.md` 的 25–41 layer matrix 与逐项 evidence。确认 comments/stamps、user/relationship、resolver/rating/pagination/recommended-all 的 Contract、Adapter、SDK、Shared、CLI、MCP、Offline、Live、Compatibility、Release verdict；所有 `verified` 均指向当前源码/测试/证据。
+- Boundary：artwork comments v3 contract 保持 `rejected`；comment mutation MCP surface 缺失；user artwork/novel 与 MyPixiv 缺 strict second-page；follow mutation 缺同账号 read-back；bare-ID 无 production probe；rating 缺 MCP；T23A/R02 不替代 endpoint continuation；T37D WIP 不计 MCP user layer verified。
+- Offline verification：`go test ./internal/services/pixiv/endpoint/artwork/comments ./internal/services/pixiv/endpoint/novel/comments ./internal/services/pixiv/endpoint/stamps ./sdk/pixiv ./internal/cli/commands/pixiv/comment ./internal/mcpserver/pixiv/... -count=1` PASS；本轮未执行真实 Pixiv live API。
+- Drift：无。只修改 `goal-1/current-state.md` 与 `goal-1/tasks.md`；未改生产代码、API、scope 或 Goal-3 资料；目标 worktree 保持专用 linked worktree。
+- Internal gaps：无新增 blocker；既有 `implemented_unverified`/`missing`/`rejected` 逐项记录，留给后续 owner/correction task，不在本 task 修改业务代码。
 - 下一步：G1-T05
 
 ## G1-T05 — Correctness ledger 与 forbidden behavior 复核

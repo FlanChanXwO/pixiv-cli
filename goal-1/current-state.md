@@ -1,14 +1,14 @@
-# Goal-1 当前状态：Capabilities 1–24 baseline inventory
+# Goal-1 当前状态：Capabilities 1–41 baseline inventory
 
-> 本文件覆盖 `G1-T01`、`G1-T02`、`G1-T03` 与 `G1-CHECK-01`，只记录当前分支的代码、测试、历史和 Goal-3 证据，不授予任何 capability 的发布资格。
+> 本文件覆盖 `G1-T01`、`G1-T02`、`G1-T03`、`G1-CHECK-01` 与 `G1-T04`，只记录当前分支的代码、测试、历史和 Goal-3 证据，不授予任何 capability 的发布资格。
 
 ## 1. 快照与状态口径
 
 - 执行分支：`refactor/pixiv-api-stability`
 - G1-T03 inventory 起始 commit：`35dd0d7efebd16eeda6d5fb8ac3e766b31f8461d`，继承基线：`e40443495981cdaf01215d6711cb24fa618b087a`
 - 当前 worktree：`/Users/flanchan/Developer/Projects/GithubProjects/.worktrees/pixiv-cli-refactor-pixiv-api-stability`
-- G1-T03 开始时 worktree 干净；本地分支相对远端领先 2 个 Goal-1 tracking commit。G1-CHECK-01 检查时 worktree 仍干净，HEAD 为 `042c0200ce1b3349ab3e08a744fea7802838025c`，相对 `origin/refactor/pixiv-api-stability` 领先 3 个 Goal-1 tracking commit。与继承基线相比，当前分支只新增 Goal-1 tracking 文件，`goal-3/` 无 diff。
-- Goal-3 的 `goal-3/capability-admission.md` 是 capability 状态唯一权威来源：当前盘点的 24 项均为 `required=yes, state=scope_admitted`；全 41 项中没有一项为 `public_ready`（`goal-3/capability-admission.md:3-15,23-47,65`；`artwork-series` 在该表后段，仍属于原 required 集合）。
+- G1-T03 开始时 worktree 干净；G1-CHECK-01 检查时 HEAD 为 `042c0200ce1b3349ab3e08a744fea7802838025c`。G1-T04 审计起始 HEAD 为 `f7cff3fb86dcc5117c634359bedbea5abdfa4d0b`，相对 `origin/refactor/pixiv-api-stability` 领先 5 个 Goal-1 tracking commit；worktree 干净。与继承基线相比，当前分支只新增 Goal-1 tracking 文件，`goal-3/` 无 diff。
+- Goal-3 的 `goal-3/capability-admission.md` 是 capability 状态唯一权威来源：当前盘点的 41 项均为 `required=yes, state=scope_admitted`；全 41 项中没有一项为 `public_ready`（`goal-3/capability-admission.md:3-15,23-70`；`artwork-series` 在该表后段，仍属于原 required 集合）。
 - `scope_admitted` 只表示 capability 属于 required scope；不表示 contract 已冻结、迁移已完成或可以进入正式发布 surface。
 - 本文状态：
   - `verified`：当前源码/离线测试/已有证据可以直接核验该层事实。
@@ -21,11 +21,11 @@
 
 ### 2.1 Required coverage
 
-- Capabilities：24/41，当前盘点能力全部纳入 required scope。
-- `public_ready`：0/24（全 required scope 仍为 0/41）。
-- `scope_admitted`：24/24（全 required scope 为 41/41）。
+- Capabilities：41/41，当前盘点能力全部纳入 required scope。
+- `public_ready`：0/41。
+- `scope_admitted`：41/41。
 - 当前没有 capability 可以仅凭 Goal-3 历史 task 的 `verified` 标记直接转为 accepted。
-- 当前未发现新的业务/API/evidence drift；Goal-1 分支相对继承基线的 drift 只有执行资料与 G1-T01/G1-T02/G1-T03/G1-CHECK-01 记录。
+- 当前未发现新的业务/API/evidence drift；Goal-1 分支相对继承基线的 drift 只有执行资料与 G1-T01/G1-T02/G1-T03/G1-CHECK-01/G1-T04 记录。
 
 ### 2.2 Layer matrix
 
@@ -55,8 +55,25 @@
 | 22 | `bookmark-subtype` | implemented_unverified | missing | missing | implemented_unverified | verified | missing | verified | missing | implemented_unverified | missing |
 | 23 | `bookmark-list-all` | implemented_unverified | verified | missing | verified | verified | missing | verified | implemented_unverified | missing | missing |
 | 24 | `bookmark-tags-all` | implemented_unverified | verified | missing | verified | verified | missing | verified | implemented_unverified | missing | missing |
+| 25 | `artwork-comments-read` | rejected | implemented_unverified | implemented_unverified | implemented_unverified | implemented_unverified | implemented_unverified | verified | rejected | implemented_unverified | rejected |
+| 26 | `artwork-comments-mutation` | implemented_unverified | verified | verified | verified | verified | missing | verified | implemented_unverified | implemented_unverified | missing |
+| 27 | `novel-comments-read` | implemented_unverified | verified | verified | verified | verified | verified | verified | implemented_unverified | implemented_unverified | missing |
+| 28 | `novel-comments-mutation` | implemented_unverified | verified | verified | verified | verified | missing | verified | implemented_unverified | implemented_unverified | missing |
+| 29 | `stamps` | implemented_unverified | verified | verified | verified | verified | missing | verified | implemented_unverified | implemented_unverified | missing |
+| 30 | `user-artworks` | implemented_unverified | verified | implemented_unverified | verified | verified | verified | verified | implemented_unverified | implemented_unverified | rejected |
+| 31 | `user-novels` | implemented_unverified | verified | implemented_unverified | verified | verified | verified | verified | implemented_unverified | implemented_unverified | rejected |
+| 32 | `user-relationships` | implemented_unverified | verified | implemented_unverified | verified | verified | verified | verified | implemented_unverified | implemented_unverified | rejected |
+| 33 | `user-detail` | implemented_unverified | verified | implemented_unverified | verified | verified | verified | verified | implemented_unverified | implemented_unverified | rejected |
+| 34 | `user-search` | implemented_unverified | verified | implemented_unverified | verified | verified | verified | verified | implemented_unverified | implemented_unverified | rejected |
+| 35 | `trending` | implemented_unverified | verified | implemented_unverified | verified | missing | verified | verified | implemented_unverified | implemented_unverified | rejected |
+| 36 | `follow-mutation` | implemented_unverified | verified | implemented_unverified | verified | verified | verified | verified | missing | implemented_unverified | rejected |
+| 37 | `mypixiv` | implemented_unverified | verified | implemented_unverified | verified | verified | verified | verified | implemented_unverified | implemented_unverified | rejected |
+| 38 | `bare-id-probe` | implemented_unverified | missing | missing | verified | implemented_unverified | missing | verified | missing | rejected | rejected |
+| 39 | `rating-filter` | implemented_unverified | verified | implemented_unverified | verified | verified | missing | verified | implemented_unverified | implemented_unverified | rejected |
+| 40 | `logical-pagination` | implemented_unverified | implemented_unverified | implemented_unverified | verified | implemented_unverified | implemented_unverified | verified | implemented_unverified | implemented_unverified | rejected |
+| 41 | `recommended-all` | implemented_unverified | implemented_unverified | missing | implemented_unverified | verified | implemented_unverified | verified | implemented_unverified | implemented_unverified | rejected |
 
-`Release=rejected` / `Release=missing` 均表示当前不能发布，不表示 required scope 可以删除。当前 24 项必须继续沿 Goal-1 Phase A–F 完成各自 gate；其余 17 项将在 G1-T04 盘点。
+`Release=rejected` / `Release=missing` 均表示当前不能发布，不表示 required scope 可以删除。当前 41 项必须继续沿 Goal-1 Phase A–F 完成各自 gate；G1-T04 已补齐 25–41；矩阵仍只记录事实 verdict，不授予发布资格。
 
 ## 3. Capability inventory
 
@@ -393,7 +410,120 @@
 - **Mutation boundary**：artwork mutation 当前只有 transport success；novel mutation 只有 candidate adapter transport。两者均无当前 Goal 要求的 live read-back、restore、cleanup、uncertain-no-replay evidence。
 - **Requiredness/evidence boundary**：11 项在 `capability-admission.md:37-47` 仍为 `scope_admitted`；T15/T19/T23 历史 `verified` 只能证明局部 seam，不能提升 bookmark capability acceptance（`goal-3/tasks.md:649-656,691-733`）。
 
-## 5. Rejected endpoint 与 no-fallback
+## 5. G1-T04 inventory：comments/stamps + user/shared（25–41）
+
+本节沿用上文状态口径。`verified` 只表示当前层有可追溯源码/离线测试/evidence；`implemented_unverified` 不等于 `public_ready`；`missing` 与 `rejected` 保持为后续 owner/gate 的明确缺口。
+
+### 5.1 `artwork-comments-read`（#25）
+
+- **Layer verdict：** Contract=`rejected`；Adapter/SDK/Shared/CLI/MCP=`implemented_unverified`；Offline=`verified`；Live=`rejected`；Compatibility=`implemented_unverified`；Release=`rejected`。
+- **证据：** 当前 artwork comments 仍走 `/v3/illust/comments`（`internal/services/pixiv/endpoint/artwork/comments/comments.go:60-103`、`sdk/pixiv/ops_artwork.go:292-305`、`internal/cli/commands/pixiv/comment/comment.go:45-64`、`internal/mcpserver/pixiv/tools/illust_comments/illust_comments.go:13-26`），离线 fixture/MCP envelope 可核验（`sdk/pixiv/pixiv_test.go:578-618`、`internal/cli/commands/pixiv/comment/comment_test.go:245-299`、`internal/mcpserver/pixiv/pixiv_mcp_comments_read_test.go:15-132`）。
+- **边界：** Goal-3 将该 v3 contract 标为 rejected，要求补齐 `date`、numeric access-control、第二页和非空 live DTO 后才可重新评估（`goal-3/upstream-contract-matrix.md:41`；`goal-3/api-migration-verification.md:26-28`）。不得 fallback 到未经批准的 endpoint。
+
+### 5.2 `artwork-comments-mutation`（#26）
+
+- **Layer verdict：** Contract=`implemented_unverified`；Adapter/SDK/Shared/CLI/Offline=`verified`；MCP=`missing`；Live/Compatibility=`implemented_unverified`；Release=`missing`。
+- **证据：** create/reply/stamp/delete adapter 与测试位于 `internal/services/pixiv/endpoint/artwork/comments/comments.go:106-160`、同目录 `comments_test.go:185-296`；SDK/CLI 入口分别位于 `sdk/pixiv/ops_comment.go:11-67`、`sdk/pixiv/ops_stamps.go:30-50`、`internal/cli/commands/pixiv/comment/comment.go:63-123,269-315`，对应离线测试通过。
+- **边界：** MCP registry 没有 artwork comment mutation tool（`internal/mcpserver/pixiv/pixiv.go:90-130`）；历史写入证据不等于当前公开 SDK/CLI/MCP 的同账号 read-back/cleanup（`goal-3/mutation-validation-report.md:23-42`；`goal-3/evidence/appapi-upstream.md:35-40`）。
+
+### 5.3 `novel-comments-read`（#27）
+
+- **Layer verdict：** Contract/Live/Compatibility=`implemented_unverified`；Adapter/SDK/Shared/CLI/MCP/Offline=`verified`；Release=`missing`。
+- **证据：** novel comments v2 adapter、SDK、MCP read tool 与输出分别见 `internal/services/pixiv/endpoint/novel/comments/comments.go:60-108`、`sdk/pixiv/ops_novel.go:153-166`、`internal/mcpserver/pixiv/tools/novel_comments/novel_comments.go:13-26`、`internal/mcpserver/pixiv/internal/outputs/outputs.go:260-305`；CLI/MCP fixture 见 `internal/cli/commands/pixiv/comment/comment_test.go:245-299`、`internal/mcpserver/pixiv/pixiv_mcp_comments_read_test.go:22-116`。
+- **边界：** current production path 无 v3 fallback，但 live 仍缺第二页/完整 strict 回放，不能由离线分页实现升级为 public-ready（`goal-3/api-migration-verification.md:25-27`；`goal-3/wire-adapter-sdk-diff.md:17-19`）。
+
+### 5.4 `novel-comments-mutation`（#28）
+
+- **Layer verdict：** Contract=`implemented_unverified`；Adapter/SDK/Shared/CLI/Offline=`verified`；MCP=`missing`；Live/Compatibility=`implemented_unverified`；Release=`missing`。
+- **证据：** novel create/reply/stamp/delete adapter 见 `internal/services/pixiv/endpoint/novel/comments/comments.go:111-160`；SDK request/operation 见 `sdk/pixiv/ops_comment.go:70-126`、`sdk/pixiv/ops_stamps.go:53-74`、`sdk/pixiv/request.go:299-323`；CLI 路由和输入约束见 `internal/cli/commands/pixiv/comment/comment.go:150-315`、`comment_test.go:301-339`。
+- **边界：** `novel_comments` MCP 只读，未提供 mutation surface（`internal/mcpserver/pixiv/tools/novel_comments/novel_comments.go:13-26`）；历史 mutation row 仍是 upstream-only/production `not_tested`（`goal-3/mutation-validation-report.md:7-14,23-42`；`goal-3/evidence/appapi-upstream.md:37-40`）。
+
+### 5.5 `stamps`（#29）
+
+- **Layer verdict：** Contract=`implemented_unverified`；Adapter/SDK/Shared/CLI/Offline=`verified`；MCP=`missing`；Live/Compatibility=`implemented_unverified`；Release=`missing`。
+- **证据：** `/v1/stamps` adapter 与验证见 `internal/services/pixiv/endpoint/stamps/stamps.go`、`internal/services/pixiv/endpoint/stamps/stamps_test.go:26-113`；SDK resource/mutation 见 `sdk/pixiv/ops_stamps.go:11-74`、`ops_stamps_test.go:153-222`；CLI surface 见 `internal/cli/commands/pixiv/comment/comment.go:125-145,317-361`。
+- **边界：** legacy MCP registry 明确不新增 standalone `stamps` tool（`internal/mcpserver/pixiv/pixiv_mcp_comments_read_test.go:119-132`；`docs/en/mcp-tools.md:37-38`）。strict live 只证明 `/v1/stamps` wire/response，尚未证明当前 adapter/SDK/CLI public path 对齐（`goal-3/evidence/appapi-upstream.md:34`；`goal-3/wire-adapter-sdk-diff.md:27`）。
+
+### 5.6 `user-artworks`（#30）
+
+- **Layer verdict：** Contract/SDK/Live/Compatibility=`implemented_unverified`；Adapter/Shared/CLI/MCP/Offline=`verified`；Release=`rejected`。
+- **证据：** adapter 使用 `UserArtworks` timeline kind、正数 user ID、type 与 offset continuation（`internal/services/pixiv/endpoint/artwork/timeline/timeline.go:33-85,117-137`）；SDK 入口/LSP symbol 位于 `sdk/pixiv/ops_artwork.go:175-194`，MCP/CLI 与测试见 `internal/mcpserver/pixiv/tools/user_artworks/user_artworks.go:17-63`、`internal/cli/commands/pixiv/user/user.go:266-280`、`internal/cli/commands/pixiv/user/user_test.go:175-182`。
+- **边界：** 历史 live 只有首请求，`second_page_not_observed`（`goal-3/evidence/appapi-upstream.md:28-29`）；不允许把同类 SDK continuation fixture（`sdk/pixiv/ops_user_test.go:12-77`）当作 live acceptance。
+
+### 5.7 `user-novels`（#31）
+
+- **Layer verdict：** Contract/SDK/Live/Compatibility=`implemented_unverified`；Adapter/Shared/CLI/MCP/Offline=`verified`；Release=`rejected`。
+- **证据：** adapter 固定 `filter=for_android`、正数 user ID 与 offset continuation（`internal/services/pixiv/endpoint/user/novels/novels.go:17-76,199-205`）；SDK/CLI/MCP 分别见 `sdk/pixiv/ops_novel.go:216`、`internal/cli/commands/pixiv/user/user.go:318-331`、`internal/mcpserver/pixiv/tools/user_novels/user_novels.go:17-60`，测试见 `internal/cli/commands/pixiv/user/user_test.go:184-189`。
+- **边界：** historical row 仍 `second_page_not_observed`（`goal-3/evidence/appapi-upstream.md:15`）；兼容 fixture 不替代 live continuation。
+
+### 5.8 `user-relationships`（#32）
+
+- **Layer verdict：** Contract/SDK/Live/Compatibility=`implemented_unverified`；Adapter/Shared/CLI/MCP/Offline=`verified`；Release=`rejected`。
+- **证据：** following/followers/related/blocked adapter 分别位于 `internal/services/pixiv/endpoint/user/following`、`internal/services/pixiv/endpoint/user/followers`、`internal/services/pixiv/endpoint/user/related`、`internal/services/pixiv/endpoint/user/blocked`；SDK operations 见 `sdk/pixiv/ops_user.go:70-145`；MCP read tools 与 fixture 见 `internal/mcpserver/pixiv/tools/user_following`、`internal/mcpserver/pixiv/tools/user_followers`、`internal/mcpserver/pixiv/tools/related_users`、`internal/mcpserver/pixiv/tools/blocked_users`、`internal/mcpserver/pixiv/pixiv_mcp_user_read_test.go:198-231,378-385`。
+- **边界：** 当前没有 strict live rows，关系列表的离线 continuation 不能替代 authenticated live evidence（`goal-3/upstream-contract-matrix.md:287,314`）。
+
+### 5.9 `user-detail`（#33）
+
+- **Layer verdict：** Contract/SDK/Live/Compatibility=`implemented_unverified`；Adapter/Shared/CLI/MCP/Offline=`verified`；Release=`rejected`。
+- **证据：** detail adapter 严格校验 user/profile/profile_publicity/workspace（`internal/services/pixiv/endpoint/user/detail/detail.go:23-42`）；SDK/CLI/MCP 入口与测试见 `sdk/pixiv/ops_user.go:35-45`、`internal/cli/commands/pixiv/user/user.go:250-263`、`internal/mcpserver/pixiv/tools/user_detail/user_detail.go:17-48`、`internal/cli/commands/pixiv/user/user_test.go:168-174`。
+- **边界：** Goal-3 未登记该 capability 的 strict live row；不能把 DTO fixture 当 current-account live proof（`goal-3/upstream-contract-matrix.md:283,314`）。
+
+### 5.10 `user-search`（#34）
+
+- **Layer verdict：** Contract/SDK/Live/Compatibility=`implemented_unverified`；Adapter/Shared/CLI/MCP/Offline=`verified`；Release=`rejected`。
+- **证据：** search adapter 负责 word、offset 和 required users list（`internal/services/pixiv/endpoint/user/search/search.go:20-55`）；SDK/CLI/MCP 入口见 `sdk/pixiv/ops_user.go:19-33`、`internal/cli/commands/pixiv/user/user.go:236-247`、`internal/mcpserver/pixiv/tools/search_user/search_user.go:17-50`；SDK query/cursor test 见 `sdk/pixiv/pixiv_test.go:219-265`。
+- **边界：** 无 strict live row，且 account binding/anonymous fallback gate 未闭合（`goal-3/upstream-contract-matrix.md:282,314`）。
+
+### 5.11 `trending`（#35）
+
+- **Layer verdict：** Contract/SDK/Live/Compatibility=`implemented_unverified`；Adapter/Shared/MCP/Offline=`verified`；CLI=`missing`；Release=`rejected`。
+- **证据：** SDK artwork trending operation 位于 `sdk/pixiv/ops_artwork.go:262-279`；MCP owner/handler 与 tests 位于 `internal/mcpserver/pixiv/tools/trending_tags_illust/trending_tags_illust.go:17-55`、`internal/mcpserver/pixiv/pixiv_mcp_feed_read_test.go:34-62`；CLI user owner 中没有 trending command（`internal/cli/commands/pixiv/user/user.go:187-370`）。
+- **边界：** `goal-3/upstream-contract-matrix.md:288,314` 无 strict live row；MCP surface 不能替代缺失的 CLI owner。
+
+### 5.12 `follow-mutation`（#36）
+
+- **Layer verdict：** Contract/SDK/Compatibility=`implemented_unverified`；Adapter/Shared/CLI/MCP/Offline=`verified`；Live=`missing`；Release=`rejected`。
+- **证据：** follow adapter 与测试在 `internal/services/pixiv/endpoint/user/follow/follow.go`、`follow_test.go`；SDK `FollowUser`/`UnfollowUser` 在 `sdk/pixiv/ops_mutation.go:70-95`；CLI/MCP owners 与 tests 见 `internal/cli/commands/pixiv/follow/follow.go:29-107`、`internal/mcpserver/pixiv/tools/{follow_user,unfollow_user}`、`internal/mcpserver/pixiv/pixiv_sdk_wire_test.go:323-334`。
+- **边界：** 当前没有同账号 read-back/cleanup 的 strict live evidence；2xx 只说明请求被接受，不能证明关系状态变化（`goal-3/mutation-validation-report.md:28-45`；`goal-3/upstream-contract-matrix.md:298`）。
+
+### 5.13 `mypixiv`（#37）
+
+- **Layer verdict：** Contract/SDK/Live/Compatibility=`implemented_unverified`；Adapter/Shared/CLI/MCP/Offline=`verified`；Release=`rejected`。
+- **证据：** user MyPixiv adapter 在 `internal/services/pixiv/endpoint/user/mypixiv/mypixiv.go:30-115`；SDK artwork/novel/user operations 见 `sdk/pixiv/ops_artwork.go:248-260`、`sdk/pixiv/ops_novel.go:298-309`、`sdk/pixiv/ops_user.go:148-169`；CLI/MCP owners 与 tests 见 `internal/cli/commands/pixiv/mypixiv/mypixiv.go:34-68,133-214`、`internal/mcpserver/pixiv/tools/{mypixiv_users,mypixiv_illusts,mypixiv_novels}`、`internal/mcpserver/pixiv/pixiv_mcp_user_read_test.go:174-197,292-302`。
+- **边界：** contract 要求 verified current identity、禁止外部 UID/跨账号 cursor；strict live 第二页未登记（`goal-3/upstream-contract-matrix.md:289-290,314`）。`T37D` 的 WIP/旧 verified 不升级为 MCP user layer verified。
+
+### 5.14 `bare-id-probe`（#38）
+
+- **Layer verdict：** Contract=`implemented_unverified`；Adapter/SDK/MCP/Live=`missing`；Shared/Offline=`verified`；CLI=`implemented_unverified`；Compatibility/Release=`rejected`。
+- **证据：** shared resolver 定义 `BareIDPolicy`、probe status 与多命中/403/404/network 分类（`internal/shared/resolver/resolver.go:100-118,235-294`；LSP `BareIDPolicy` symbol 同样定位于 `resolver.go:103`），测试覆盖 typed requirement、probe 分类与不 fallback（`internal/shared/resolver/resolver_test.go:56-74,164-223,240-340`）。
+- **边界：** 没有 production adapter 注入、SDK `Probe/ResolveBareID` 或 MCP probe tool；迁移台账仍要求保持显式 `--type`（`goal-3/api-migration-verification.md:35-40`）。
+
+### 5.15 `rating-filter`（#39）
+
+- **Layer verdict：** Contract/Live/Compatibility=`implemented_unverified`；Adapter/Shared/CLI/Offline=`verified`；SDK=`implemented_unverified`；MCP=`missing`；Release=`rejected`。
+- **证据：** local canonical rating 和 client-side matching 位于 `internal/shared/searchfilter/filter.go:10-39,55-137`，测试见 `filter_test.go:11-116`；mapper 保留 `XRestrict`，但 search 不把 rating 写入 upstream query（`sdk/pixiv/map_artwork.go:30-37`、`sdk/pixiv/ops_artwork_search.go:13-128`）；CLI tests 见 `internal/cli/commands/pixiv/search/search_test.go:439-480,522-535`。
+- **边界：** MCP search schema 尚未暴露 rating，且历史 server-side `x_restrict` evidence 不能充当完整 live dataset（`internal/mcpserver/pixiv/tools/search_novel/search_novel.go:31-34`；`goal-3/api-migration-verification.md:41-49`）。
+
+### 5.16 `logical-pagination`（#40）
+
+- **Layer verdict：** Contract/Adapter/SDK/CLI/MCP/Live/Compatibility=`implemented_unverified`；Shared/Offline=`verified`；Release=`rejected`。
+- **证据：** shared pagination/traversal 与测试见 `internal/shared/pagination/{pagination.go,pagination_test.go}`、`internal/shared/traversal/{traversal.go,streams.go,streams_test.go}`；MCP runtime LSP `CollectWith` 定位在 `internal/mcpserver/pixiv/internal/runtime/runtime.go:224`；SDK search checkpoint 见 `sdk/pixiv/ops_artwork_search.go:39-67,139-156`，CLI listing 见 `internal/cli/commands/pixiv/internal/listing/listing.go:22-76,110-113`。
+- **边界：** T23A/R02 只证明 shared/checkpoint/replay engine（`goal-3/pagination-validation-report.md:79-100,136-145`），不证明所有 Pixiv endpoint continuation；latest/recommended/novel continuation 的 live rows 仍有 gaps（`goal-3/api-migration-verification.md:20-34`）。
+
+### 5.17 `recommended-all`（#41）
+
+- **Layer verdict：** Contract/Adapter/Shared/MCP/Live/Compatibility=`implemented_unverified`；SDK=`missing`；CLI/Offline=`verified`；Release=`rejected`。
+- **证据：** individual SDK operations 存在但没有 `RecommendedAll` aggregate（`sdk/pixiv/ops_artwork.go:102-127`、`sdk/pixiv/ops_novel.go:170-177`、`sdk/pixiv/ops_user.go:48-70`）；CLI `runAll`/spool/atomic output 见 `internal/cli/commands/pixiv/recommended/all.go:16-72,102-115,190-210`；MCP four-stream handler 见 `internal/mcpserver/pixiv/tools/recommended/recommended.go:94-209`，LSP 定位 `handleRecommended` 为 line 94。
+- **边界：** `kind=all` 的四路 pagination、任一必需流失败即整体错误的 compatibility contract 已记录，但没有真实四流 live evidence；T37B 只通过 offline replay，不能提升 public-ready（`goal-3/mcp-compatibility-matrix.md:94`；`goal-3/tasks.md:906-909`；`goal-3/pagination-validation-report.md:24-31`）。
+
+### 5.18 G1-T04 汇总
+
+- 17/17 项已完成 layer inventory；全 required scope 为 `41/41`，全部 `scope_admitted`，`public_ready=0/41`。
+- 离线闭合面：comments/stamps 的 adapter/SDK/CLI seams、novel comments read MCP、user read/relationship/MyPixiv MCP、resolver policy、local rating、shared logical pagination、recommended-all CLI/MCP aggregate 均有源码和 focused tests。
+- 未闭合面：artwork comments v3 contract rejected；comment mutation MCP surface 缺失；user artwork/novel 及 MyPixiv 缺 strict second page；大多数 user/trending/detail/search/relationship rows 无 strict live；follow mutation 缺 read-back；bare-ID 无 production probe；rating 缺 MCP；logical pagination 非 endpoint-global；recommended-all 缺 SDK aggregate/live 四流证明。
+- 关键审计规则：历史 `verified`、离线 fixture、T23A/R02 replay、T37D WIP 均不得改写为 `public_ready` 或 MCP user layer verified。
+
+## 6. Rejected endpoint 与 no-fallback
 
 以下路径和行为必须在所有层保持显式拒绝或不可达，不能以兼容为由 fallback：
 
@@ -404,14 +534,14 @@
 - server-side `x_restrict` / rating：服务端忽略或不支持时，不得伪装成 upstream filter；只能保留已确认的本地语义与 cursor binding（`goal-3/upstream-contract-matrix.md:33,252-255`）。
 - 不得把 cursor 当鉴权凭据；不得把 upstream error 变成空成功结果；不得把不确定 mutation 自动重放。
 
-## 6. 历史 evidence 与当前代码的边界
+## 7. 历史 evidence 与当前代码的边界
 
 - Goal-3 历史 tasks 中 T01/T02、T07A/T07B、T10A–T10G、T13/T14/T18、T24–T32、T37A/B 等 `verified` 只证明对应历史 task 的实现或审计，不授予 capability `public_ready`（`goal-3/tasks.md:19-39,51-62,75-87`；`goal-3/capability-admission.md:5-15`）。
 - `ugoira-metadata` strict evidence 声称 CLI/MCP confirmed，但当前源码没有专用 CLI/MCP metadata surface；本 inventory 以当前源码为准，将 live 标为 `implemented_unverified`，把该 evidence 冲突留给后续 correction/owner task。
 - `novel-latest` strict upstream evidence 已显示 `max_novel_id`，但 adapter/SDK 状态为 not_tested/inconclusive；当前代码已有 max ID leaf，不得把历史 evidence 自动提升为完整 cross-layer acceptance。
 - 当前分支相对 `e404434` 没有 `goal-3/` diff；上述 gaps 是继承状态，不是本轮业务/API 改动引入。
 
-## 7. 查阅范围与验证命令
+## 8. 查阅范围与验证命令
 
 ### 查阅范围
 
@@ -429,8 +559,9 @@
 - `goal-3/shaft-protocol-diff.md`
 - `goal-3/tasks.md`
 - `goal-3/evidence/appapi-upstream.md` 及其 JSON/相关 evidence
-- capabilities 1–24 的 endpoint、SDK、CLI、MCP source/test 文件及 Git history
+- capabilities 1–41 的 endpoint、SDK、CLI、MCP source/test 文件及 Git history
 - bookmark aggregate 的 `internal/shared/pagination/*`、`internal/shared/traversal/*` 与 CLI regression tests
+- G1-T04 comments/stamps、user/relationship、resolver、searchfilter、recommended-all 的 endpoint、SDK、CLI、MCP source/test 文件
 
 ### LSP 证据
 
@@ -444,14 +575,13 @@
 
 ### Offline evidence
 
-G1-T01 已在干净目标 worktree 执行 `go test ./...` 并通过；G1-CHECK-01 在检查时 HEAD `042c0200ce1b3349ab3e08a744fea7802838025c` 再次执行 `go test ./...` 并通过。G1-T02/G1-T03 本身只读；本文件引用的 targeted tests/fixtures 是当前分支文件中的可追溯证据，generic `verified` 行均有具体证据索引。
+G1-T01 已在干净目标 worktree 执行 `go test ./...` 并通过；G1-CHECK-01 在 HEAD `042c0200ce1b3349ab3e08a744fea7802838025c` 再次执行 `go test ./...` 并通过。G1-T04 focused command 通过：`go test ./internal/services/pixiv/endpoint/artwork/comments ./internal/services/pixiv/endpoint/novel/comments ./internal/services/pixiv/endpoint/stamps ./sdk/pixiv ./internal/cli/commands/pixiv/comment ./internal/mcpserver/pixiv/... -count=1`。本轮未执行真实 Pixiv live API；本文件引用的 source/test/evidence 均为当前分支可追溯资料。
 
-## 8. G1-T03 与 G1-CHECK-01 结论
+## 9. G1-T04、G1-T03 与 G1-CHECK-01 结论
 
-- 覆盖：24/41；其中 bookmark 11/11，无漏项；全 required scope 仍 `41/41 scope_admitted`，`public_ready=0/41`。
-- 当前可核验的实现主要集中在 offline adapter/SDK/CLI/MCP leaf 与 CLI aggregate；novel tags/detail/mutation、bookmark subtype、aggregate public SDK/MCP、strict live、mutation read-back/cleanup 尚未闭合。
-- typed artwork/novel semantics、双流 checkpoint、统一 budget、页原子失败均已记录实现位置与 offline tests；aggregate state 当前只在一次 CLI 执行内生效，未形成跨调用 public cursor。
-- mutation 仅证明 transport/form/validation；不得把 2xx、`nil` error 或历史 comment mutation evidence 当作 bookmark 状态变化证明。
-- 资料冲突已保留：当前源码的离线 CLI `--type all` 比旧 T03 ledger 更先进，但不改变 capability admission；旧 task `verified` 不自动升级 acceptance。
-- G1-CHECK-01：PASS。24 项矩阵为 1–24 且无漏项；所有 generic `verified` 行已指向相邻 source/test/evidence 行号；required scope 仍为 41/41，`public_ready=0/41`。
-- GoalState：保持 `ACTIVE`。无新增 external/decision blocker；下一任务为 `G1-T04`。
+- 覆盖：41/41；G1-T04 补齐 25–41 共 17 项；无 capability 漏项；全 required scope 为 `41/41 scope_admitted`，`public_ready=0/41`。
+- 当前可核验实现仍主要集中在 offline adapter/SDK/CLI/MCP leaf 与局部 aggregate；strict live、mutation read-back/cleanup、MCP mutation、SDK aggregate、endpoint-global continuation 等未闭合面保持为明确 verdict。
+- `logical-pagination` 的 T23A/R02 只证明 shared/checkpoint/replay engine；不能替代 user/comments/recommended/latest 等 endpoint continuation evidence。
+- T37D WIP/旧 task `verified`、离线 fixture、历史 upstream mutation evidence 均未提升为 capability acceptance 或 MCP user layer verified。
+- G1-CHECK-01：历史集中检查仍 PASS，覆盖 1–24；G1-T04 本轮 focused tests PASS，新增 inventory 覆盖 25–41，未改生产代码、API、scope 或 Goal-3 资料。
+- GoalState：保持 `ACTIVE`。无新增 external/decision blocker；下一任务为 `G1-T05`。
