@@ -120,7 +120,17 @@ jobs:
         run: bash scripts/build-staticlibs.sh --target '${{ matrix.rust_target }}'
       - name: Run native GIF/APNG smoke
         shell: bash
-        run: go test ./internal/media/ugoira -run '^TestRustUgoiraEncoderNativeGIFAndAPNG$' -count=1
+        run: |
+          set +e
+          native_smoke_log="$RUNNER_TEMP/native-ugoira-smoke.log"
+          go test ./internal/media/ugoira -run '^TestRustUgoiraEncoderNativeGIFAndAPNG$' -count=1 >"$native_smoke_log" 2>&1
+          status=$?
+          cat "$native_smoke_log"
+          if [ "$status" -ne 0 ]; then
+            message=$(tail -n 40 "$native_smoke_log" | tr '\r\n' ' ' | sed 's/%/%25/g')
+            printf '::error title=Native GIF/APNG smoke::%s\n' "$message"
+            exit "$status"
+          fi
       - name: Build and package a versioned binary
         shell: bash
         run: |
