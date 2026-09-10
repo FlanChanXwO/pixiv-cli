@@ -1,4 +1,4 @@
-# Goal-1 Tasks：Pixiv vNext 重规划与收敛
+# Goal-1 Tasks：Pixiv API 迁移与稳定性收敛
 
 ## 执行规则
 
