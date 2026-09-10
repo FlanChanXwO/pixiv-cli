@@ -25,7 +25,7 @@
 - `public_ready`：0/24（全 required scope 仍为 0/41）。
 - `scope_admitted`：24/24（全 required scope 为 41/41）。
 - 当前没有 capability 可以仅凭 Goal-3 历史 task 的 `verified` 标记直接转为 accepted。
-- 当前未发现新的业务/API/evidence drift；Goal-1 分支相对继承基线的 drift 只有执行资料与 G1-T01/G1-T02/G1-T03 记录。
+- 当前未发现新的业务/API/evidence drift；Goal-1 分支相对继承基线的 drift 只有执行资料与 G1-T01/G1-T02/G1-T03/G1-CHECK-01 记录。
 
 ### 2.2 Layer matrix
 
