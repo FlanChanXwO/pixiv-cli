@@ -121,7 +121,7 @@
 - 进入 `blocked_external`，由通用终止任务生成 closure report。
 - 不以“手工模仿简短风格”冒充已使用 skill。
 
-Caveman 只负责输出/上下文效率，不替代 TDD、验证或工程判断。
+Caveman 只负责输出/上下文效率，不替代 TDD、验证或工程判断。每个新会话/worker 恢复 Goal 时都必须重新确认 Caveman 仍可用；不能只依赖第一轮的旧记录。
 
 ### 4.2 每轮输出预算
 
@@ -135,19 +135,37 @@ Caveman 只负责输出/上下文效率，不替代 TDD、验证或工程判断�
 
 禁止在 `tasks.md` 重复粘贴大段测试日志、diff、旧 plan 文本或相同背景说明。长日志只记录命令、结果摘要和可追溯位置。
 
-### 4.3 执行前 preflight
+### 4.3 独立 worktree 是硬性执行条件
+
+除初始化/修改 Goal 计划文档外，本 Goal 的所有业务执行必须发生在专用独立 worktree 中，不允许直接在普通主 checkout 上实施。
+
+Worktree 规则：
+
+1. 每次恢复执行先检测当前是否已经处于 linked/native isolated worktree；若已经隔离且不是 submodule，则复用当前 worktree，禁止嵌套再建一个。
+2. 创建隔离环境时优先使用客户端/平台提供的原生 worktree 能力；只有不存在原生能力时才使用 `git worktree` fallback。
+3. 使用项目内 `.worktrees/` 或 `worktrees/` fallback 时，创建前必须确认该目录被 Git ignore；未被 ignore 时先以最小变更修正 tracking，再继续。
+4. 专用 worktree 的执行分支必须是 `refactor/pixiv-api-stability`，并确认 HEAD 是 `e404434` 的后代。
+5. 禁止使用 `--force`、`reset --hard`、删除其他 worktree、移动他人 checkout 或重写历史来满足隔离条件。
+6. 如果目标分支已被其他 worktree 占用、平台拒绝创建隔离环境、权限不足，且无法在不破坏现有 checkout 的情况下安全进入专用 worktree，则记录 `WORKTREE_ISOLATION_UNAVAILABLE` 并标记 `blocked_external`。
+7. Goal 的 task commit、CHECK、phase push、live evidence 记录和最终 closure 都必须从该专用 worktree 的同一执行分支产生。
+
+Worktree 路径本身不是 contract；重要的是“linked/native isolation + 正确分支 + 可追溯 HEAD”，不得为了固定路径引入额外复杂度。
+
+### 4.4 执行前 preflight
 
 正式业务 task 之前必须机械确认：
 
+- 当前处于独立 worktree，而不是普通主 checkout 或 submodule。
 - 当前分支为 `refactor/pixiv-api-stability`。
 - HEAD 是 `e404434` 的后代。
 - 除 Goal 计划文件外没有来源不明的未提交业务改动。
 - `goal-1/input.md`、`plan.md`、`tasks.md` 已被跟踪。
-- Go toolchain 与仓库既有测试/build 命令可用。
+- Go toolchain 与仓库既有 test/build 入口可调用。
 - Caveman skill 可加载并已启用。
 - 需要代码导航时优先使用可用 LSP；不可用时记录 fallback，不能假装执行过语义导航。
+- 独立 worktree 初始 baseline 必须执行一次 `go test ./...`；这是隔离基线验证，不在每张 leaf task 重复执行。若 baseline 失败，记录失败并进入 `blocked_decision`，不得把既有失败当作本 Goal 回归继续推进。
 
-Preflight 只检查实施条件，不运行全仓 release gate，不修改业务代码。
+Preflight 不修改业务代码、不安装新依赖、不执行额外的 release-only gate。
 
 ## 5. 权威资料与证据优先级
 
@@ -228,7 +246,7 @@ layer 状态只允许：
 - 把局部 bugfix 扩成“顺便清理整个模块”。
 - 仅为了让代码看起来统一而改动未触及的稳定路径。
 
-允许抽象的条件：当前 task 已有两个或以上真实调用点需要同一语义，且复用现有 helper 不能合理表达；即使满足，也优先最小局部 helper，不扩大 public surface。
+允许抽象的条件：当前 frozen acceptance 确实需要共享语义，且复用现有 helper 无法合理表达；即使满足，也优先最小局部 helper，不扩大 public surface。不得使用“将来可能有第二个调用点”作为抽象理由。
 
 Refactor 阶段只允许：
 
@@ -268,7 +286,8 @@ Refactor 阶段只允许：
 
 全量验证集中执行：
 
-- Phase gate：只跑该阶段相关 regression。
+- Worktree preflight：仅在独立 worktree 建立时执行一次 `go test ./...` 作为干净基线。
+- Phase gate：只跑该阶段相关 regression，并完成 phase push；不额外重复全仓测试。
 - Offline release candidate：`go test ./...`、`go vet ./...`、`sh scripts/build.sh`、必要 race、兼容 replay、docs、forbidden endpoint、redaction。
 - Final closure：不重复运行已经在同一 HEAD 上通过且未被后续改动 invalidated 的相同 gate。
 
@@ -293,43 +312,63 @@ Luna 不允许在 live phase 临时决定“哪些 capability 应该 live”。�
 
 ### Phase A — Baseline / manifest
 
-目标：完成 preflight，分组盘点 41 capability，复核 correctness，冻结 live manifest 和有限 execution mapping。
+目标：完成 worktree/Caveman preflight，分组盘点 41 capability，复核 correctness，冻结 live manifest 和有限 execution mapping。
 
 出口：
 
+- 独立 worktree 基线有效。
 - required=41。
 - unmapped=0。
 - undecomposed=0。
 - live manifest 已冻结。
 - 所有内部已知 gap 有具体 task/correction owner。
+- Phase A CHECK 通过并完成 phase push。
 
 ### Phase B — MCP read convergence
 
 按 user、bookmark typed read、bookmark aggregate、registration/schema/replay 拆分，不再由一个 task同时承担全部 read owner。
 
-出口：required MCP read layer 有专项 evidence。
+出口：required MCP read layer 有专项 evidence；Phase B CHECK 通过并完成 phase push。
 
 ### Phase C — MCP mutation convergence
 
 按 bookmark、artwork comment/stamp、novel comment/stamp、follow 与 mutation harness 拆分。
 
-出口：offline mutation outcome、uncertain-result、wire compatibility 全部关闭；live 留给 Phase F。
+出口：offline mutation outcome、uncertain-result、wire compatibility 全部关闭；live 留给 Phase F；Phase C CHECK 通过并完成 phase push。
 
 ### Phase D — Compatibility / release contract
 
 cursor integrity、SDK compatibility、CLI compatibility/presentation、MCP compatibility、docs/Skill 分开执行。
 
-出口：不存在未处理 breaking decision；forbidden endpoint contract 仍成立。
+出口：不存在未处理 breaking decision；forbidden endpoint contract 仍成立；Phase D CHECK 通过并完成 phase push。
 
 ### Phase E — Offline release candidate
 
 protocol/SDK、CLI、MCP regression 分开，再执行一次 full test/vet/build/必要 race/redaction gate。
 
-出口：内部 `missing=0`、无理由 `implemented_unverified=0`、open P0/P1=0。
+出口：内部 `missing=0`、无理由 `implemented_unverified=0`、open P0/P1=0；Phase E CHECK 通过并完成 phase push。
 
 ### Phase F — Live / closure
 
 按 live manifest 分 read families 和 mutation。最后重新计算 41 capability acceptance 并生成 closure report。
+
+出口：Phase F CHECK 通过并完成 phase push，然后进入 `G1-FINAL`；若只剩 blocker，则进入 `G1-TERM`。
+
+### 10.1 Phase push gate
+
+每个 Phase 的最后一个 CHECK 同时承担 phase push gate。CHECK 在 push 成功前不能标记 `verified`，后续 Phase 不能开始。
+
+Phase push 必须遵循：
+
+1. 所有本 Phase 已完成 task/correction 的变更和 `tasks.md/current-state.md` 记录均已提交；worktree 在 push 前应无来源不明的未提交改动。
+2. 从专用 worktree 执行普通 fast-forward push 到当前执行分支：`refactor/pixiv-api-stability`。禁止 force push。
+3. push 后核对远端该分支 SHA 与本地 phase-exit HEAD 一致，并把 `Phase`、`Local HEAD`、`Remote SHA`、`Push result` 写入对应 CHECK 完成记录。
+4. 即使本 Phase 是纯审计/no-op，没有新增业务代码，也执行一次 push；远端已 up-to-date 可视为成功。
+5. 网络、认证或远端服务不可用导致 push 失败时，对应 CHECK 标记 `blocked_external`，不得进入下一 Phase。
+6. non-fast-forward、远端分支出现未知并发提交或需要重写历史时，不自动 rebase/merge/force；对应 CHECK 标记 `blocked_decision`，由 `G1-TERM` 形成安全停点。
+7. correction 若修改了已经 push 的较早 Phase 所覆盖的代码/gate，只需在当前所属 Phase 的 exit push 推送新的 HEAD；无需重写历史 phase checkpoint，但必须记录哪些旧 gate 被 invalidated 并重新验证。
+
+Phase push 是交付/恢复 checkpoint，不触发额外重复测试；CHECK 已通过的验证直接复用。
 
 ## 11. Leaf task admission
 
@@ -388,6 +427,8 @@ Task 终态：`verified` / `blocked_external` / `blocked_decision`。
 只允许真正环境/外部条件：
 
 - 用户明确要求的 Caveman skill 在执行环境不可用。
+- 无法建立/恢复独立 worktree，且原因是平台能力、权限或现有 checkout 占用，不能在不破坏环境的情况下解决。
+- phase push 因网络、认证或远端服务不可用失败。
 - 账号/权限不可用。
 - 网络或上游服务不可用。
 - 必需目标数据不存在或不可安全构造。
@@ -396,7 +437,7 @@ Task 终态：`verified` / `blocked_external` / `blocked_decision`。
 
 ### `blocked_decision`
 
-只用于必须取得用户授权才能继续的 breaking API、scope change、安全/权限策略变化。
+只用于必须取得用户授权才能继续的 breaking API、scope change、安全/权限策略变化，以及 phase push 遇到 non-fast-forward/未知远端并发而需要选择历史整合策略的情况。Worktree 初始 baseline 已失败且无法归因本 Goal 时，也停止为 `blocked_decision`，不能无授权继续。
 
 ### 通用 `G1-TERM` terminalization
 
@@ -415,6 +456,7 @@ AND (required_external_blockers > 0 OR required_decision_blockers > 0)
 - 验证没有仍可执行的内部 task/correction。
 - 写 `closure-report.md`。
 - 计算 `BLOCKED_EXTERNAL` 或 `BLOCKED_DECISION`。
+- 提交 blocked closure 记录，并尝试普通 fast-forward push 到 `refactor/pixiv-api-stability`；push 失败必须写入 closure report，禁止 force。
 
 如果 decision 和 external 同时存在，报告两者，GoalState 使用 `BLOCKED_DECISION`，因为恢复执行首先需要用户决策。
 
@@ -442,6 +484,8 @@ COMPLETED :=
   AND required_blockers == 0
   AND undecomposed_tasks == 0
   AND correctness_p0_p1_open == 0
+  AND worktree_isolation_gate == PASS
+  AND all_phase_push_gates == PASS
   AND cursor_integrity_gate == PASS
   AND sdk_compat_gate == PASS
   AND cli_compat_gate == PASS
@@ -454,6 +498,7 @@ COMPLETED :=
   AND documentation_gate == PASS
   AND redaction_gate == PASS
   AND final_closure_audit == PASS
+  AND final_state_push == PASS
 ```
 
 额外约束：
@@ -461,12 +506,14 @@ COMPLETED :=
 - `accepted_count` 必须恰好 41。
 - 任一 required blocker 存在都不能 COMPLETED。
 - 所有 live-required capability 必须有当前 live evidence。
+- Phase A–F 的 push gate 必须全部成功，远端分支可恢复到每个已完成阶段的最新 checkpoint。
+- 最终 closure commit 也必须成功 push，远端 `refactor/pixiv-api-stability` SHA 与最终本地 HEAD 一致。
 - 最终 closure 不得出现新的既有 required acceptance failure。
 - Final closure 不重复运行同一 HEAD 已通过、且之后未被相关改动 invalidated 的昂贵 gate。
 
 ### BLOCKED_EXTERNAL
 
-只有在没有可执行内部 task/correction、所有可离线解决的 gap 已关闭、剩余 required acceptance 唯一缺口都是真实 external blocker 时成立。
+只有在没有可执行内部 task/correction、所有可离线解决的 gap 已关闭、剩余 required acceptance 唯一缺口都是真实 external blocker时成立。Worktree/push 外部条件也适用该规则。
 
 ### BLOCKED_DECISION
 
@@ -486,12 +533,14 @@ COMPLETED :=
 
 ## 16. 回滚原则
 
+- 所有业务执行发生在专用 worktree，不通过主 checkout 混入临时状态。
 - 不通过大规模 revert 重写旧 WIP 历史。
 - 每个 task 只修改其 leaf slice 必需部分。
 - 旧实现错误优先最小 correction。
 - public API/CLI/MCP 变更记录 blast radius。
 - cursor/serialization 变更说明跨版本恢复或明确受控失效。
 - mutation/live 只清理本轮可识别副作用。
+- phase push 只允许普通 fast-forward；出现并发历史时停止，不 force、不 reset 远端。
 
 ## 17. 最终产物
 
@@ -503,6 +552,8 @@ COMPLETED :=
 - `goal-1/current-state.md`
 - `goal-1/closure-report.md`
 
-`closure-report.md` 是唯一允许声明最终 GoalState 的文档，必须能回溯到 `current-state.md`、`tasks.md` 和验证证据。
+`tasks.md` 的每个 Phase exit CHECK 必须保留 push checkpoint（Local HEAD / Remote SHA / result）。
 
-只有 `GoalState: COMPLETED` 才允许把 Goal 在客户端标记为完成。`BLOCKED_EXTERNAL` / `BLOCKED_DECISION` 只允许停止无人值守推进。
+`closure-report.md` 是唯一允许声明最终 GoalState 的文档，必须能回溯到 `current-state.md`、`tasks.md`、阶段 push checkpoint 和验证证据。
+
+只有 `GoalState: COMPLETED` 且最终 closure 已成功 push 到 `refactor/pixiv-api-stability`，才允许把 Goal 在客户端标记为完成。`BLOCKED_EXTERNAL` / `BLOCKED_DECISION` 只允许停止无人值守推进。
