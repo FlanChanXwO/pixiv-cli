@@ -254,7 +254,7 @@ AND (required_external_blockers > 0 OR required_decision_blockers > 0)
 
 ## G1-T06 — Freeze Live Manifest + finite execution mapping
 
-**Status:** pending
+**Status:** verified
 
 **Depends on:** G1-T04,G1-T05
 
@@ -269,11 +269,13 @@ AND (required_external_blockers > 0 OR required_decision_blockers > 0)
 - Compatibility、cursor、docs、offline regression、live 都有 owner。
 
 **完成记录：**
-- Required/unmapped/undecomposed：
-- Live-required count：
-- Added correction tasks：
-- Blockers：
-- 下一步：G1-CHECK-02
+- **Required/unmapped/undecomposed：** `41 / 0 / 0`。41 项全部有主 task、配套 gate 或 correction owner；`mapped_to_task=41`。
+- **Live-required count：** `36 yes`；`5 no`：#22 `bookmark-subtype`、#25 `artwork-comments-read`（rejected）、#38 `bare-id-probe`、#39 `rating-filter`（local）、#40 `logical-pagination`（generic shared）。
+- **Added correction tasks：** 未新增 task ID；新增/保留 14 个有界 correction candidate，并全部绑定到 G1-T07–G1-T30 或 G1-CHECK-02 的既有 owner；缺失 public surface、rejected path 与 aggregate gap 均显式登记。
+- **Blockers：** 当前 external=0、decision=0；P0=0；P1=1（#4 artwork-recommended continuation），映射至 G1-T28/G1-T20/G1-T22，不隐藏。
+- **Freeze：** 后续 live 只执行 manifest 中 `live_required=yes` 的明确 scenario；数据/账号/网络不足时记录 `blocked_external`，不得伪造第二页；mutation 必须 read-back/cleanup，uncertain 不 replay。
+- **Offline / graph verification：** `41/41` matrix、manifest 4 组表、finite mapping、correction owner registry 已通过静态审计；本 task 无业务代码变更。
+- **下一步：** G1-CHECK-02
 
 ## G1-CHECK-02 — Phase A exit：41-state、correctness、manifests + push
 
@@ -405,6 +407,8 @@ AND (required_external_blockers > 0 OR required_decision_blockers > 0)
 **Depends on:** G1-T07,G1-T08,G1-T09,G1-T10
 
 **目标：** 收敛 read tool registration、exact-set、共享 output/error schema。
+
+**Manifest owner coverage：** 对 `ugoira-metadata`、`novel-ranking`、`recommended-all`、`rating-filter` 的 required read/registration surface 做 exact-set 核验；缺失 surface 必须转入已登记 correction，不得静默跳过。
 
 **验收：** 旧 tool 不被删除/静默重命名；required additive operations 注册完整；structured error 一致；forbidden endpoint 不可达。
 
@@ -639,6 +643,8 @@ AND (required_external_blockers > 0 OR required_decision_blockers > 0)
 
 **目标：** 对照旧 T12 symbol map，只收敛实际 SDK compatibility 差异。
 
+**Manifest owner coverage：** 承接 v2 novel detail/series、required aggregate SDK surface 与已冻结 cursor/filter 语义；不得以兼容 wrapper 触发 rejected endpoint，也不得把缺失 aggregate 当作已接受。
+
 **验收：** exported symbols/named types/legacy wrappers/old consumer compilation；excluded endpoint 兼容入口不发 rejected 请求。
 
 **最小验证：** SDK compatibility/old consumer tests；不跑 CLI/MCP。
@@ -659,6 +665,8 @@ AND (required_external_blockers > 0 OR required_decision_blockers > 0)
 **Depends on:** G1-T20
 
 **目标：** 收敛 canonical route、legacy alias/deprecation、默认值、help/completion；不重设计 CLI。
+
+**Manifest owner coverage：** 承接 `ugoira-metadata`/trending 的真实 CLI surface、explicit `--type`/bare-ID 边界与 local rating presentation；不凭空增加 server-side rating 或隐式 probe。
 
 **验收：** 旧 route/alias 可用；新 canonical 行为符合 frozen map；help/completion 只显示真实 surface。
 
@@ -691,6 +699,8 @@ AND (required_external_blockers > 0 OR required_decision_blockers > 0)
 **Depends on:** G1-CHECK-07
 
 **目标：** 对照旧 T39A，只修 MCP tool/input/output wire 的真实差异。
+
+**Manifest owner coverage：** 核验 required additive owner（含 `ugoira-metadata`、`novel-ranking`、`recommended-all`）；rating 仅保留 frozen local semantics；`artwork-comments-read` rejected path 不得被注册为 fallback。
 
 **验收：** old tool exact-set、legacy request/output/error schema；新增 required operation additive；旧 tool 不删不静默改名。
 
@@ -730,6 +740,8 @@ AND (required_external_blockers > 0 OR required_decision_blockers > 0)
 **Depends on:** G1-T20,G1-T21,G1-T22,G1-T23
 
 **目标：** 专门证明 rejected endpoint 和 fallback 禁令仍成立，避免在大 regression 中被淹没。
+
+**Manifest owner coverage：** 保护 #25 artwork comments rejected、#38 bare-ID explicit-type boundary，以及 #8/#9/#25 的 v1/WebView/anonymous no-fallback 负向断言。
 
 **验收：** `/v1/novel/detail`、`/v1/novel/series`、`/v1/novel/content`、WebView/anonymous fallback、未经确认 server x_restrict 不可从 required public paths 触发。
 
@@ -854,7 +866,7 @@ Live 只执行 `Live Manifest` 中 `live_required=yes` 的场景，不临时增�
 
 **Depends on:** G1-CHECK-09
 
-**目标：** 验证 manifest 中 artwork/novel/feed endpoint、关键 query、second-page continuation 和错误边界。
+**目标：** 验证 manifest 中 artwork/novel/feed endpoint、关键 query、second-page continuation 和错误边界；另承接 #41 recommended-all 的 artwork/novel/user feed streams。
 
 **验收：** 当前授权环境下执行并脱敏；缺真实账号/数据/网络可 `blocked_external`；live 暴露内部 bug 必须 correction，不能当 external blocker。
 
@@ -872,7 +884,7 @@ Live 只执行 `Live Manifest` 中 `live_required=yes` 的场景，不临时增�
 
 **Depends on:** G1-CHECK-09
 
-**目标：** 验证 manifest 中 bookmark/comments/user/MyPixiv/relationship read 与数据受限 pagination 场景。
+**目标：** 验证 manifest 中 bookmark/comments/user/MyPixiv/relationship read 与数据受限 pagination 场景；另承接 #41 aggregate read，不把 leaf PASS 当作 aggregate PASS。
 
 **验收：** 只要求 manifest 指定的代表性真实场景；数据不足时按 manifest 记录 `blocked_external`，不得伪造第二页。
 

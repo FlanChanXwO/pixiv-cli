@@ -1,13 +1,13 @@
 # Goal-1 当前状态：Capabilities 1–41 baseline inventory
 
-> 本文件覆盖 `G1-T01`、`G1-T02`、`G1-T03`、`G1-CHECK-01`、`G1-T04` 与 `G1-T05`，只记录当前分支的代码、测试、历史和 Goal-3 证据，不授予任何 capability 的发布资格。
+> 本文件覆盖 `G1-T01`、`G1-T02`、`G1-T03`、`G1-CHECK-01`、`G1-T04`、`G1-T05` 与 `G1-T06`，只记录当前分支的代码、测试、历史和 Goal-3 证据，不授予任何 capability 的发布资格。
 
 ## 1. 快照与状态口径
 
 - 执行分支：`refactor/pixiv-api-stability`
 - G1-T03 inventory 起始 commit：`35dd0d7efebd16eeda6d5fb8ac3e766b31f8461d`，继承基线：`e40443495981cdaf01215d6711cb24fa618b087a`
 - 当前 worktree：`/Users/flanchan/Developer/Projects/GithubProjects/.worktrees/pixiv-cli-refactor-pixiv-api-stability`
-- G1-T03 开始时 worktree 干净；G1-CHECK-01 检查时 HEAD 为 `042c0200ce1b3349ab3e08a744fea7802838025c`。G1-T04 审计起始 HEAD 为 `f7cff3fb86dcc5117c634359bedbea5abdfa4d0b`；G1-T05 correctness audit 起始 HEAD 为 `35885b0d9316b4a1f2326bcee0511d8bc5ae29ed`，worktree 干净。与继承基线相比，当前分支只新增 Goal-1 tracking 文件，`goal-3/` 无 diff。
+- G1-T03 开始时 worktree 干净；G1-CHECK-01 检查时 HEAD 为 `042c0200ce1b3349ab3e08a744fea7802838025c`。G1-T04 审计起始 HEAD 为 `f7cff3fb86dcc5117c634359bedbea5abdfa4d0b`；G1-T05 correctness audit 起始 HEAD 为 `35885b0d9316b4a1f2326bcee0511d8bc5ae29ed`；G1-T06 manifest audit 起始 HEAD 为 `c5e3d679eef4b2b2404984bbd6630588a3c7ac8a`，worktree 干净。与继承基线相比，当前分支只新增 Goal-1 tracking 文件，`goal-3/` 无 diff。
 - Goal-3 的 `goal-3/capability-admission.md` 是 capability 状态唯一权威来源：当前盘点的 41 项均为 `required=yes, state=scope_admitted`；全 41 项中没有一项为 `public_ready`（`goal-3/capability-admission.md:3-15,23-70`；`artwork-series` 在该表后段，仍属于原 required 集合）。
 - `scope_admitted` 只表示 capability 属于 required scope；不表示 contract 已冻结、迁移已完成或可以进入正式发布 surface。
 - 本文状态：
@@ -25,7 +25,7 @@
 - `public_ready`：0/41。
 - `scope_admitted`：41/41。
 - 当前没有 capability 可以仅凭 Goal-3 历史 task 的 `verified` 标记直接转为 accepted。
-- 当前未发现新的业务/API/evidence drift；Goal-1 分支相对继承基线的 drift 只有执行资料与 G1-T01/G1-T02/G1-T03/G1-CHECK-01/G1-T04/G1-T05 记录。
+- 当前未发现新的业务/API/evidence drift；Goal-1 分支相对继承基线的 drift 只有执行资料与 G1-T01/G1-T02/G1-T03/G1-CHECK-01/G1-T04/G1-T05/G1-T06 记录。
 
 ### 2.2 Layer matrix
 
@@ -619,4 +619,130 @@ G1-T01 已在干净目标 worktree 执行 `go test ./...` 并通过；G1-CHECK-0
 - `logical-pagination` 的 T23A/R02 只证明 shared/checkpoint/replay engine；不能替代 user/comments/recommended/latest 等 endpoint continuation evidence。
 - T37D WIP/旧 task `verified`、离线 fixture、历史 upstream mutation evidence 均未提升为 capability acceptance 或 MCP user layer verified。
 - G1-CHECK-01：历史集中检查仍 PASS，覆盖 1–24；G1-T04 inventory 与 G1-T05 correctness focused tests 均 PASS，未改生产代码、API、scope 或 Goal-3 资料；artwork-recommended second-page continuation 的 P1 仍 open。
-- GoalState：保持 `ACTIVE`。G1-T05 新增一个未闭合的 P1 correctness item（artwork recommended continuation），不把它隐藏为 known limitation；无新增 external/decision blocker；下一任务为 `G1-T06`。
+- GoalState：保持 `ACTIVE`。G1-T05 的 1 个 open P1 已在 G1-T06 映射到具体 correction owner；本轮冻结 manifest，不把 P1 隐藏为 known limitation；无新增 external/decision blocker；下一任务为 `G1-CHECK-02`。
+
+
+## 11. G1-T06 Live Manifest 与 finite execution mapping
+
+> **冻结口径：** 本 manifest 是进入 Phase F 前的唯一 live scope。`live_required=yes` 只表示该 capability 最终需要真实场景；不表示当前已经 live verified。`mapped_to_task` 是本阶段的执行映射状态，不等于最终 `accepted` 或 `public_ready`。数据不足、账号/权限、网络或上游不可用时，只能按本表条件记录 `blocked_external`，不得伪造第二页或成功。
+
+### 11.1 Manifest：artwork / novel feed（1–13）
+
+| # / capability | live_required | endpoint / path family | required scenario；second-page | 账号 / 目标数据条件 | mutation read-back / cleanup | 当前 evidence / blocker | mapping status / owner |
+|---:|---|---|---|---|---|---|---|
+| 1 `artwork-search` | yes | `GET /v1/search/illust` | 稳定 query；覆盖 `all/illust/manga/ugoira`；首页+续页；**required** | 已认证账号；每个代表性 content type 需非空两页 | N/A（read-only） | HTTP 200、30→30、offset 与 adapter/SDK wire 已有；rating/filter/account binding 未闭合 | `mapped_to_task`：G1-T28；cursor/compat：G1-T19–T27；rating candidate：`CAND-G1-T06-REC-ACCOUNT-RATING` |
+| 2 `artwork-latest` | yes | `GET /v1/illust/new` | latest；验证承诺 subtype 与 `max_illust_id`；首页+续页；**required** | 已认证账号；每个承诺 subtype 需稳定非空两页 | N/A | `illust-new` 有 strict 30→30；manga/ugoira/compound subtype 与 SDK offset/max 双形态仍未闭合 | `mapped_to_task`：G1-T28；correction：`CAND-G1-T06-REC-LATEST` |
+| 3 `artwork-ranking` | yes | `GET /v1/illust/ranking` | 固定 `mode`、日期/默认日期；offset 首页+续页；核验无重复；**required** | 已认证账号；指定 mode/date 需两页 | N/A | HTTP 200、30→30、offset 已有；compat/release 未闭合 | `mapped_to_task`：G1-T28；compat/regression：G1-T19–T27 |
+| 4 `artwork-recommended` | yes | `GET /v1/illust/recommended` | 非空首页；保留完整 continuation 参数；真实第二页；**required** | 已认证账号；推荐结果必须非空且返回 continuation | N/A | 历史第二页为 `inconclusive/second_page_error`；本 manifest 明确保留 Open P1 | `mapped_to_task`：G1-T28；correction：`CAND-G1-T06-REC-RECOMMENDED` |
+| 5 `artwork-series` | yes | `GET /v1/illust/series` | 有效 series ID；`last_order` 首页+续页；required metadata；**required** | 可访问且至少两页的 artwork series | N/A | 当前无独立 live 第二页证据；offline 两页不替代 live | `mapped_to_task`：G1-T28；correction：`CAND-G1-T06-ARTWORK-SERIES-LIVE` |
+| 6 `ugoira-metadata` | yes | `GET /v1/ugoira/metadata` | 有效 ugoira artwork；读取 archive/frames；**no** | 已认证且可访问的真实 ugoira ID | N/A | 历史 upstream evidence 存在；当前缺专用 CLI/MCP owner，不能只当 external blocker | `mapped_to_task`：G1-T28、G1-T11、G1-T21、G1-T22；correction：`CAND-G1-T06-UGOIRA-SURFACE` |
+| 7 `novel-search` | yes | `GET /v1/search/novel` | 固定 query；覆盖 period/date；正 offset 首页+续页；**required** | 已认证账号；query 需非空两页，period/date 可验证 | N/A | strict 两页与 period/date evidence 未闭合 | `mapped_to_task`：G1-T28、G1-T25；correction：`CAND-G1-T06-NOVEL-SEARCH-CONTRACT` |
+| 8 `novel-detail` | yes | `GET /v2/novel/detail`；旧 `/v1/novel/detail` 必须 rejected | 有效 novel detail；required novel/series metadata；**no** | 已认证账号；可靠正 novel ID | N/A | v2 wire/response 可见；adapter/SDK strict full-chain 未测试；v1 404/rejected | `mapped_to_task`：G1-T20、G1-T25、G1-T28；correction：`CAND-G1-T06-NOVEL-DETAIL-SERIES-V2` |
+| 9 `novel-series` | yes | `GET /v2/novel/series`；旧 v1 必须 rejected | 有效 series ID；`last_order` 首页+续页；**required** | 已认证账号；series 至少两页 | N/A | v2 首页有记录，第二页未观察；tracking-doc 与当前 v2 path 有 drift | `mapped_to_task`：G1-T20、G1-T23、G1-T28；correction：`CAND-G1-T06-REC-SERIES-DOC` |
+| 10 `novel-latest` | yes | `GET /v1/novel/new`；`filter=for_android`；`max_novel_id` | latest 首页+`max_novel_id` 续页；禁止 offset fallback/mixed key；**required** | 已认证账号；feed 必须非空两页 | N/A | upstream 30→30；当前 strict row 为 `sdk_call_error`，CLI/MCP second-page 未闭合 | `mapped_to_task`：G1-T28；correction：`CAND-G1-T06-REC-LATEST` |
+| 11 `novel-recommended` | yes | `GET /v1/novel/recommended` | 推荐首页+offset 续页；核验无重复；**required** | 已认证账号；推荐 feed 需两页 | N/A | HTTP 200、33→33、offset 与 adapter/SDK wire 已有；compat/release 未闭合 | `mapped_to_task`：G1-T28；compat/regression：G1-T19–T27 |
+| 12 `novel-ranking` | yes | `GET /v1/novel/ranking` | 固定 filter/mode；offset 首页+续页；**required** | 已认证账号；指定 ranking 场景需两页 | N/A | upstream 30→30；adapter/SDK `not_tested`；当前无专用 MCP owner | `mapped_to_task`：G1-T11、G1-T20、G1-T22、G1-T28；correction：`CAND-G1-T06-NOVEL-RANKING-SURFACE` |
+| 13 `novel-follow` | yes | `GET /v1/novel/follow`；`restrict` + offset | following 首页+续页；至少一个明确 restrict；**required** | 已认证账号；following feed 需两页 | N/A | HTTP 200、30→30、offset 已有；strict contract/compat 未闭合 | `mapped_to_task`：G1-T28；compat/regression：G1-T19–T27 |
+
+### 11.2 Manifest：bookmark（14–24）
+
+| # / capability | live_required | endpoint / path family | required scenario；second-page | 账号 / 目标数据条件 | mutation read-back / cleanup | 当前 evidence / blocker | mapping status / owner |
+|---:|---|---|---|---|---|---|---|
+| 14 `artwork-bookmark-list` | yes | `GET /v1/user/bookmarks/illust` | public/private representative read；**no：data-limited exception**；若自然有 continuation 只记录，不伪造 | 同一认证账号；有可访问 artwork bookmarks；正 user ID | N/A（read-only） | adapter/SDK/CLI/MCP/offline 有；strict live 未闭合；pagination exemption 不等于 live pass | `mapped_to_task`：G1-T09、G1-T29；cursor/compat：G1-T19–T27 |
+| 15 `artwork-bookmark-tags` | yes | `GET /v1/user/bookmark-tags/illust` | tags name/count、空列表、restrict；**conditional：continuation contract 未冻结** | 账号需有 tags；允许合法空 tags | N/A | strict tag wire/live continuation `not_tested`；null-as-empty 不得冒充 strict contract | `mapped_to_task`：G1-T09、G1-T25、G1-T29 |
+| 16 `artwork-bookmark-detail` | yes | `GET /v2/illust/bookmark/detail` | 已收藏与未收藏/absent；tags/restrict/error；**no** | 可靠正 illust ID；同账号可访问 | N/A | offline fixture 有；strict live/public evidence 未闭合 | `mapped_to_task`：G1-T09、G1-T29 |
+| 17 `artwork-bookmark-mutation` | yes | `POST /v2/illust/bookmark/add`；`POST /v1/illust/bookmark/delete` | add 或 remove 一次；**no**（read-back 不是第二页） | 明确授权隔离账号；可靠正 illust ID；目标可写 | 必须保存原状态；同账号 detail/list/tags read-back；只清理本轮副作用；uncertain 不 replay | 当前只有 transport/form/validation；2xx 不证明状态变化 | `mapped_to_task`：G1-T13、G1-T17、G1-T18、G1-T30 |
+| 18 `novel-bookmark-list` | yes | `GET /v1/user/bookmarks/novel` | restrict、required novels、空结果；**no：data-limited exception**；不得伪造第二页 | 同一认证账号；有可访问 novel bookmarks；正 user ID | N/A | endpoint/SDK/CLI/MCP/offline 有；strict live 仍 `implemented_unverified` | `mapped_to_task`：G1-T09、G1-T29；cursor/compat：G1-T19–T27 |
+| 19 `novel-bookmark-tags` | yes | candidate `GET /v1/user/bookmark-tags/novel` | 先冻结 strict candidate，再读 name/count/empty/error；**conditional：不得猜 continuation** | 账号可有 novel tags，也允许合法空结果 | N/A | Goal-3 `not_tested`；candidate adapter/SDK 有但 MCP/continuation/defaults 未冻结 | `mapped_to_task`：G1-T09、G1-T25、G1-T29 |
+| 20 `novel-bookmark-detail` | yes | candidate `GET /v2/novel/bookmark/detail` | 已收藏/未收藏；absent/404、public/private、tags/error；**no** | 可靠正 novel ID；同账号可访问 | N/A | wire/response/public-private/adapter/SDK/MCP 均未形成 strict evidence | `mapped_to_task`：G1-T09、G1-T20、G1-T25、G1-T29 |
+| 21 `novel-bookmark-mutation` | yes | candidate `POST /v2/novel/bookmark/add`；`POST /v1/novel/bookmark/delete` | add/delete 一次；**no**（read-back 不是第二页） | 明确授权隔离账号；可靠正 novel ID；先保存原状态 | detail/list/tags 同账号 read-back；删除后恢复原 bookmark/restrict/tags；只清理本轮副作用；uncertain 不 replay | 当前 live `missing`；public SDK/CLI/MCP mutation 缺失 | `mapped_to_task`：G1-T13、G1-T17、G1-T18、G1-T20、G1-T22、G1-T30 |
+| 22 `bookmark-subtype` | no | artwork bookmark family 的 client-side selector；无已批准 server subtype path | 不执行 server-side subtype live；offline 验证 `artwork\|novel\|all`、client-side filter、logical limit；**no** | synthetic fixture 覆盖多种 subtype | N/A | server-side subtype 无 evidence；`all` 不是 upstream subtype；默认 contract 是 client-side | `mapped_to_task`：G1-T09、G1-T19、G1-T21、G1-T22 |
+| 23 `bookmark-list-all` | yes | artwork bookmark list → novel bookmark list aggregate | 同一账号执行 `--type all`；artwork 后 novel；统一 budget/typed output/failure atomicity；**conditional：仅自然 continuation** | 同一账号可访问两类 bookmarks；最好两流非空，允许一流为空 | N/A（read-only aggregate） | offline aggregate 有；无 public SDK/MCP aggregate cursor 或 aggregate live evidence | `mapped_to_task`：G1-T10、G1-T19、G1-T20、G1-T22、G1-T29 |
+| 24 `bookmark-tags-all` | yes | artwork tags → novel tags candidate aggregate | `--type all`；同名 tag 不合并；count/type/atomicity；**conditional：novel continuation 未冻结** | 同一账号可读两类 tags；至少一侧有 tags，另一侧可空 | N/A | 仅 CLI offline aggregate；novel candidate、aggregate live evidence 缺失 | `mapped_to_task`：G1-T10、G1-T19、G1-T20、G1-T22、G1-T29 |
+
+### 11.3 Manifest：comments / user / relationship（25–37）
+
+| # / capability | live_required | endpoint / path family | required scenario；second-page | 账号 / 目标数据条件 | mutation read-back / cleanup | 当前 evidence / blocker | mapping status / owner |
+|---:|---|---|---|---|---|---|---|
+| 25 `artwork-comments-read` | no | 当前 `/v3/illust/comments` contract rejected；不得 fallback | 不发 rejected request；执行 no-fallback negative guard；**no** | 若未来批准新 contract，才需可评论且有 comments 的 artwork；当前不要求 live data | N/A（read-only） | 当前 v3 缺 required `date`/numeric access-control/strict DTO/second-page；不能把 rejection 当成功 | `mapped_to_task`：G1-T24；correction：`CAND-G1-T06-ARTWORK-COMMENTS-REJECTED`；只有 approved replacement 才能再映射 T29 |
+| 26 `artwork-comments-mutation` | yes | `POST /v1/illust/comment/add`、`POST /v1/illust/comment/delete`；reply/stamp 共用 add | text/reply/stamp 各最小一条并 delete 本轮 comment；**no** | 明确授权隔离账号；目标 artwork 可评论；必须取得可靠 comment ID | 同账号 read-back；只删除本轮 comment ID；ID 不确定不得猜删/重放 | adapter/SDK/offline transport 有；MCP mutation 缺失；production read-back/cleanup 未闭合 | `mapped_to_task`：G1-T14、G1-T17、G1-T18、G1-T30；correction：`CAND-G1-T06-REC-COMMENTS-MUTATION` |
+| 27 `novel-comments-read` | yes | 当前生产 `GET /v2/novel/comments`；v3 为 candidate | 非空 comments；DTO/access-control；有 continuation 时完成第二页；**required if returned** | 已认证账号；目标 novel 可访问且有 comments；需可取得跨页数据，缺数据按 external blocker 记录 | N/A | v2 strict row HTTP 200 但 second page 未观察；v3 single-page/inconclusive | `mapped_to_task`：G1-T29；若切换 v3，追加 correction/contract owner |
+| 28 `novel-comments-mutation` | yes | `POST /v1/novel/comment/add`、`POST /v1/novel/comment/delete` | text/stamp/delete 本轮 comment；**no** | 明确授权隔离账号；目标 novel 可评论；保存响应 ID | 同账号 read-back；只删除本轮 ID；uncertain 不 replay | current production mutation 未闭合；MCP 仅 read；历史 strict evidence 不等于 public acceptance | `mapped_to_task`：G1-T15、G1-T17、G1-T18、G1-T30；correction：`CAND-G1-T06-REC-COMMENTS-MUTATION` |
+| 29 `stamps` | yes | `GET /v1/stamps`；写入通过 artwork/novel comment add stamp | 至少一次 stamps read；#26/#28 各覆盖一条 stamp；**no** | read 需真实 stamp target；mutation 需隔离账号和可评论目标 | 同 comment mutation：read-back、只清理本轮 comment/stamp ID | strict wire/response 有；当前无 standalone stamps public surface | `mapped_to_task`：G1-T14、G1-T15、G1-T30；correction：`CAND-G1-T06-REC-COMMENTS-MUTATION` |
+| 30 `user-artworks` | yes | `GET /v1/user/illusts`；`type=illust\|manga` | representative user read；**no：pagination_exempt**；若自然有 continuation 只记录 | 正数 public user ID；允许合法空/单页，但目标必须有效 | N/A | adapter/SDK/CLI/MCP/offline 有；历史仅首请求，second page 未观察 | `mapped_to_task`：G1-T08、G1-T29 |
+| 31 `user-novels` | yes | `GET /v1/user/novels`；`filter=for_android` | required novels/nested IDs；**no：pagination_exempt** | 正数 public user ID；数据受限可接受空/单页 | N/A | fixture/adapter/SDK 有；strict live second page 未观察 | `mapped_to_task`：G1-T08、G1-T29 |
+| 32 `user-relationships` | yes | following/follower/related families；blocked path `/v2/user/list` remains blocked | representative following/follower/related/blocked read；**conditional：有 continuation 才验证，不伪造** | 已认证；private relationship 需权限；related 需正 seed user ID；403/跨账号不得 fallback | N/A | offline continuation 有；strict live rows 未登记 | `mapped_to_task`：G1-T08、G1-T29 |
+| 33 `user-detail` | yes | `GET /v1/user/detail`；CurrentUser identity path | user detail + CurrentUser identity；**no** | 正数 user ID；CurrentUser 只用已验证 client identity 和 `filter=for_android` | N/A | fixture/SDK/MCP 有；strict live row 缺失；不得从 token 猜 UID | `mapped_to_task`：G1-T07、G1-T29 |
+| 34 `user-search` | yes | `GET /v1/search/user` | non-empty word；首页+有 continuation 时第二请求；**conditional** | 已认证或明确 public-scoped；word 非空；user IDs 正数 | N/A | fixture/SDK 有；strict live/account-cursor binding 未闭合 | `mapped_to_task`：G1-T07、G1-T29 |
+| 35 `trending` | yes | `GET /v1/trending-tags/illust` | non-empty trending tags；sample artwork 合法；**no** | 需取得带合法 sample artwork 的响应 | N/A | fixture/SDK/MCP 有；strict live 未登记；CLI owner 缺失 | `mapped_to_task`：G1-T07、G1-T21、G1-T29 |
+| 36 `follow-mutation` | yes | `POST /v1/user/follow/add`；`POST /v1/user/follow/delete` | 保存原关系；add/read-back true；delete/read-back false；**no** | 明确授权隔离账号；正数目标 user；同账号执行上下文 | 强制同账号 read-back；只恢复本轮可识别关系；uncertain 不 retry/replay | endpoint/SDK/MCP/offline wire 有；Live `missing`；2xx 不证明关系变化 | `mapped_to_task`：G1-T16、G1-T17、G1-T18、G1-T30 |
+| 37 `mypixiv` | yes | `GET /v1/user/mypixiv`；`GET /v2/illust/mypixiv`；`GET /v1/novel/mypixiv` | current identity users/artworks/novels representative read；**conditional：若有 continuation 才验证** | 只允许 verified current user/client identity；不接受外部 UID、匿名或跨账号 cursor | N/A | fixtures 有；strict live second page 未登记；T37D WIP 不等于 MCP verified | `mapped_to_task`：G1-T08、G1-T29 |
+
+### 11.4 Manifest：shared semantics / aggregate（38–41）
+
+| # / capability | live_required | endpoint / path family | required scenario；second-page | 账号 / 目标数据条件 | mutation read-back / cleanup | 当前 evidence / blocker | mapping status / owner |
+|---:|---|---|---|---|---|---|---|
+| 38 `bare-id-probe` | no | 无已批准 production endpoint；resolver 仅 shared policy | 不执行 live probe；先保持显式 `--type`；**no** | 若未来冻结 namespace，需 single-ID 多命中/403/404/network 分类 | N/A | resolver tests 有；Adapter/SDK/MCP/Live missing；不得隐式 fallback | `mapped_to_task`：G1-T21、G1-T24；correction：`CAND-G1-T06-BARE-ID-SURFACE` |
+| 39 `rating-filter` | no | 本地 normalized `x_restrict` / search filter；不得宣称 upstream rating | local fixture 验证不同 `XRestrict`；若伴随 live，只验证本地过滤；**no：rating 本身不进 live gate** | fixture 必须含不同 XRestrict；禁止发未经确认的 upstream rating/x_restrict | N/A | local canonical rating/filter offline verified；MCP missing；server-side evidence inconclusive | `mapped_to_task`：G1-T19、G1-T20、G1-T21、G1-T22；correction：`CAND-G1-T06-REC-ACCOUNT-RATING`、`CAND-G1-T06-RATING-MCP-SURFACE` |
+| 40 `logical-pagination` | no | `internal/shared/pagination`、`internal/shared/traversal`；endpoint continuation 由各 owner 负责 | 不单独做 live API；shared checkpoint/replay/Skip/Limit/OneBatch/duplicate/cancel offline；**generic fixture second-page yes，live N/A** | synthetic pages、合法 continuation、失败/取消/replay；generic evidence 不替代 endpoint live | N/A | shared engine offline verified；T23A/R02 不覆盖 endpoint-global continuation | `mapped_to_task`：G1-T19；endpoint owners：G1-T28、G1-T29 |
+| 41 `recommended-all` | yes | artwork `/v1/illust/recommended`、novel `/v1/novel/recommended`、user `/v1/user/recommended`，CLI/MCP `kind=all` 四分区 | 四流 aggregate；每个可分页流实际 continuation；统一 budget、任一路失败整体失败；**required** | 已认证；四流均需非空或按 manifest 记录 data blocker；不得输出 partial success | N/A（read-only aggregate） | CLI/MCP offline aggregate 有；SDK `RecommendedAll` missing；四流 strict live 缺；artwork continuation P1 open | `mapped_to_task`：G1-T11、G1-T20、G1-T22、G1-T28、G1-T29；correction：`CAND-G1-T06-RECOMMENDED-ALL-SURFACE` |
+
+### 11.5 Finite execution mapping
+
+| execution owner | frozen responsibility | capability / evidence coverage |
+|---|---|---|
+| G1-T07 | MCP user identity read、schema、resolver、pagination、error | #33–35；#35 CLI gap转 G1-T21 |
+| G1-T08 | MCP user collections、relationships、MyPixiv read | #30–32、#37 |
+| G1-T09 | MCP typed bookmark list/tags/detail、client-side subtype | #14–16、#18–20、#22 |
+| G1-T10 | bookmark list/tags aggregate | #23–24 |
+| G1-T11 | read registration/exact-set；required missing read owners 不得静默跳过 | #6、#12、#39、#41 的 registration/schema owner；缺 surface 进入对应 correction |
+| G1-T13 | bookmark mutation MCP layer | #17、#21 |
+| G1-T14 | artwork comment/stamp MCP mutation | #26、#29 |
+| G1-T15 | novel comment/stamp MCP mutation | #28、#29 |
+| G1-T16 | follow/unfollow MCP mutation | #36 |
+| G1-T17 / G1-T18 | shared mutation outcome、read-back/cleanup、uncertain no replay、legacy contract | #17、#21、#26、#28、#29、#36 |
+| G1-T19 | cursor integrity、filter/account/subtype binding、generic logical pagination | #1–5、#7、#10–13、#14–24、#27、#30–34、#37、#39–41 |
+| G1-T20 | exported SDK symbols/wrappers、v2 contract、aggregate SDK owner | #8–12、#20–24、#39、#41 |
+| G1-T21 | CLI canonical/legacy surface、presentation、explicit-type/no implicit fallback、local rating | #6、#21、#35、#38–39 |
+| G1-T22 | MCP compatibility、exact-set、missing/additive read surface、MCP rating boundary | #6、#12、#21–25、#39、#41 |
+| G1-T23 | docs/Skill/changelog synchronization、v2/rejected/no-fallback wording | #8–9、#25、#38–41 |
+| G1-T24 | forbidden endpoint/no-fallback negative gate、rejected artwork comments、bare-ID boundary | #25、#38–39；并保护 #8–9 的 v1 rejection |
+| G1-T25 | protocol/endpoint/SDK regression、continuation allowlist、negative/rejected fixtures | 全 41 项的 contract/adapter/SDK regression |
+| G1-T26 | CLI/MCP regression、JSON/NDJSON/cursor/aggregate/mutation safety | 全 41 项的 public presentation/registration regression |
+| G1-T27 | full offline/build/vet/race-as-needed/redaction/docs gate | 全 41 项最终 offline/release gate |
+| G1-T28 | manifest feed live read、query、continuation、错误边界 | #1–13；#41 的 artwork/novel/user feed streams |
+| G1-T29 | manifest bookmark/comments/user/MyPixiv/relationship read；data-limited policy | #14–16、#18–20、#23–25、#27、#30–35、#37；#41 aggregate read |
+| G1-T30 | manifest mutation round-trip、read-back、cleanup、uncertain no replay | #17、#21、#26、#28–29、#36 |
+| G1-CHECK-02 | 冻结 manifest、检查 counts、P0/P1 显式暴露、Phase A push gate | 41/41 mapped；36 live-required；5 no-live；0 unmapped；0 undecomposed |
+
+### 11.6 Correction owner registry
+
+本轮不新增 required capability，也不增加新的 live scope。以下候选均已有具体后续 owner；是否转为代码 correction 由对应 task 的 Red/evidence 决定：
+
+| candidate | bounded correction / evidence | owner |
+|---|---|---|
+| `CAND-G1-T06-REC-RECOMMENDED` | strict non-empty two-page recommended；保留完整 continuation；贯穿 endpoint→SDK→CLI/MCP | G1-T28、G1-T29、G1-T20、G1-T22 |
+| `CAND-G1-T06-REC-LATEST` | novel-latest CLI/MCP second-page + live；保留 `max_novel_id`，禁止 offset/mixed key | G1-T20、G1-T28 |
+| `CAND-G1-T06-REC-SERIES-DOC` | v2 series live/second-page evidence + tracking-doc correction | G1-T20、G1-T23、G1-T28 |
+| `CAND-G1-T06-REC-COMMENTS-MUTATION` | same-account create/reply/stamp/delete；response ID read-back；cleanup；uncertain no replay | G1-T14、G1-T15、G1-T17、G1-T18、G1-T30 |
+| `CAND-G1-T06-REC-ACCOUNT-RATING` | pool switch、filter digest cursor invalidation、local restrict；不伪造 server-side rating | G1-T19、G1-T20、G1-T21、G1-T22 |
+| `CAND-G1-T06-ARTWORK-SERIES-LIVE` | artwork series reliable ID + strict second-page | G1-T25、G1-T28 |
+| `CAND-G1-T06-UGOIRA-SURFACE` | additive CLI/MCP owner 或明确 correction/blocker；不把缺 surface 静默当作 live success | G1-T11、G1-T21、G1-T22 |
+| `CAND-G1-T06-NOVEL-SEARCH-CONTRACT` | period/date contract、query binding、strict continuation | G1-T19、G1-T25、G1-T28 |
+| `CAND-G1-T06-NOVEL-RANKING-SURFACE` | adapter/SDK contract 与 MCP owner；registration additive | G1-T11、G1-T20、G1-T22、G1-T28 |
+| `CAND-G1-T06-NOVEL-DETAIL-SERIES-V2` | v2 detail/series adapter/SDK strict evidence；v1 rejection regression | G1-T20、G1-T23、G1-T25、G1-T28 |
+| `CAND-G1-T06-ARTWORK-COMMENTS-REJECTED` | 保持 rejected endpoint/no-fallback；只有批准 replacement 才允许新 read path | G1-T24；后续若批准再映射 G1-T29 |
+| `CAND-G1-T06-BARE-ID-SURFACE` | explicit `--type` 与 no implicit probe/fallback；不凭空新增 resolver surface | G1-T21、G1-T24 |
+| `CAND-G1-T06-RATING-MCP-SURFACE` | 仅在 frozen contract 需要时补 MCP local rating semantics；不宣称 upstream rating | G1-T21、G1-T22 |
+| `CAND-G1-T06-RECOMMENDED-ALL-SURFACE` | SDK aggregate、MCP/CLI exact-set、四流 live 与 failure atomicity | G1-T11、G1-T20、G1-T22、G1-T28、G1-T29 |
+
+### 11.7 G1-T06 counts / blockers / state
+
+- **Required：** 41。
+- **Live-required：** 36；`live_required=no`：#22、#25、#38、#39、#40，共 5 项。
+- **Mapping：** `mapped_to_task=41`；`accepted_by_evidence=0`（本 task 只冻结执行映射，不提前宣称最终 acceptance）；`blocked_external=0`；`blocked_decision=0`。
+- **Unmapped / undecomposed：** `unmapped=0 / undecomposed=0`。每个 capability 都有主 task、配套 gate 或 correction owner；缺失 public surface 已显式登记，不再留在“以后再看”。
+- **Open correctness：** P0=0；P1=1（#4 `artwork-recommended` continuation），已映射至 G1-T28/G1-T20/G1-T22，未隐藏。
+- **Mutation：** #17、#21、#26、#28、#29、#36 必须执行写前授权、可靠 ID、同账号 read-back、仅清理本轮副作用；uncertain 不 replay。
+- **External/decision blocker：** 当前无 blocker。未来 live 数据/账号/权限/网络不足时，严格按 manifest 记录 `blocked_external`；不得把 internal bug 归类为 external blocker。
+- **Freeze boundary：** 后续 live task 只能执行本表 `live_required=yes` 的 scenario；不得临时增加 query、subtype、第二页或 mutation scope。Phase A 仍需 G1-CHECK-02 复核并完成普通 fast-forward push 后，才能进入 Phase B。
