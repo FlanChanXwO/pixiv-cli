@@ -4,20 +4,25 @@
 
 ## 1. Goal 定位
 
-本 Goal 不重新发明一套 Pixiv API 方案，也不缩减旧 Goal-3 已经明确承诺的交付范围。它的职责是把旧分支中已经完成的大量接口迁移、SDK/CLI/MCP 改造、分页修复、兼容工作和验证证据重新整理为一个**有限、可验证、可终止**的 Goal Mode 执行图，然后只完成真实剩余工作。
+本 Goal 不重新发明 Pixiv API 方案，不缩减旧 Goal-3 已承诺的交付范围，也不把历史任务重新做一遍。目标是：
 
-旧 `goal-3/` 目录继续作为历史 contract、验证证据、兼容决策和风险材料来源，但不再作为当前执行状态机。旧 `tasks.md` 的 `verified` 只能作为证据线索，不能单独证明当前分支仍满足对应验收。
+1. 复核并复用已经有可信证据的实现。
+2. 精确完成仍缺失或仍未验证的接口迁移、稳定性、SDK、CLI、MCP 与兼容工作。
+3. 把执行过程限制为有限、可验证、可恢复、可终止的 Goal Mode 任务图。
+4. 让 Luna 级执行模型可以逐轮机械推进，不需要临时设计任务、不需要猜 scope、不需要在宽任务中自行决定 owner。
+
+旧 `goal-3/` 目录只作为 contract、验证证据、兼容决策和风险资料来源，不再作为当前执行状态机。旧 `tasks.md` 的 `verified` 只是证据线索，不能单独证明当前分支仍满足 acceptance。
 
 本 Goal 主要修正旧执行模型的四个结构缺陷：
 
-1. 长期总目标与“当前轮允许做什么”混在一起，导致局部修复完成后仍自动向整个任务图推进。
-2. capability 状态、task 状态和 release gate 是多套人工维护真相，已经发生漂移。
-3. 存在未分解 meta-task、不可达依赖和未接入最终终点的 gate。
-4. 最终 audit 可以继续自由发现新范围，形成没有 closure 的开放式任务生成器。
+- 长期总目标与当前轮授权混在一起。
+- capability、task、release gate 多套人工状态发生漂移。
+- 存在未分解 meta-task、不可达依赖和遗漏 release gate。
+- 最终 audit 可以自由产生新 scope，导致 Goal 没有 closure。
 
-## 2. 范围保真：旧 41 项 required capability 全部保留
+## 2. 范围保真：41 项 required capability 全部保留
 
-本 Goal **不进行 scope reduction**。旧 `goal-3/capability-admission.md` 中 41 个 `required=yes` capability 全部继续 required；优先级只影响执行顺序，不能改变 requiredness，也不能把原 required 项降级为 `deferred_nonblocking`。
+本 Goal 不进行 scope reduction。旧 `goal-3/capability-admission.md` 中 41 个 `required=yes` capability 全部继续 required。优先级只影响执行顺序，不能改变 requiredness。
 
 ### Artwork / feed
 
@@ -78,11 +83,13 @@
 40. `logical-pagination`
 41. `recommended-all`
 
-只有用户后续明确批准 scope change，且在本计划中记录日期、理由、受影响 capability、兼容影响和验收变化后，才能改变以上 required 集合。
+只有用户后续明确批准 scope change，并记录日期、理由、受影响 capability、兼容影响和验收变化后，才能改变以上 required 集合。
+
+`deferred_nonblocking` 不允许用于以上 41 项。新发现但不属于这 41 项的需求只能进入 `out-of-scope observations`。
 
 ## 3. 明确排除与禁止行为
 
-继续继承旧计划已经确认的 exclusion：
+继续继承旧计划确认的 exclusion：
 
 - `/v1/novel/detail`
 - `/v1/novel/series`
@@ -90,11 +97,61 @@
 - WebView/anonymous fallback
 - 未经确认的 server-side `x_restrict`
 
-禁止因为替代 endpoint 不可用而静默回退到 rejected path；禁止把上游错误伪装为空结果；禁止把 cursor 当鉴权凭据；禁止在 mutation 不确定结果上自动重放。
+禁止：
 
-## 4. 权威资料与证据优先级
+- 替代 endpoint 不可用时静默 fallback 到 rejected path。
+- 把上游错误伪装为空结果或成功。
+- 把 cursor 当作鉴权凭据。
+- mutation 不确定结果自动重放。
+- 为完成当前 task 顺手升级依赖、换框架、重命名全仓或重写架构。
+- 通过新增第 42 个 required capability 来解决当前 acceptance failure。
 
-允许引用的旧资料包括：
+## 4. Luna 执行契约与 Caveman skill
+
+本 Goal 面向无人值守多轮执行。执行器必须优先遵循确定性和上下文节省原则。
+
+### 4.1 Caveman skill 为执行前置要求
+
+用户明确要求本 Goal 使用 **Caveman skill**。其用途限定为：压缩 Agent 自己的叙述、减少 filler/tool narration、降低跨轮上下文负担；不得改变代码、API/函数名、CLI 命令、flags 或精确错误字符串。
+
+执行前 preflight 必须确认当前 Agent 能加载并启用 Caveman skill。若当前执行环境没有该 skill：
+
+- 不自动安装依赖或修改全局环境。
+- 记录 `CAVEMAN_SKILL_UNAVAILABLE`。
+- 进入 `blocked_external`，由通用终止任务生成 closure report。
+- 不以“手工模仿简短风格”冒充已使用 skill。
+
+Caveman 只负责输出/上下文效率，不替代 TDD、验证或工程判断。
+
+### 4.2 每轮输出预算
+
+每轮完成记录只保留后续 worker 恢复所需事实：
+
+- 实际改动或 no-op 结论。
+- Red/Green 或只读 evidence。
+- 影响的 capability。
+- 剩余风险/blocker。
+- 下一 task。
+
+禁止在 `tasks.md` 重复粘贴大段测试日志、diff、旧 plan 文本或相同背景说明。长日志只记录命令、结果摘要和可追溯位置。
+
+### 4.3 执行前 preflight
+
+正式业务 task 之前必须机械确认：
+
+- 当前分支为 `refactor/pixiv-api-stability`。
+- HEAD 是 `e404434` 的后代。
+- 除 Goal 计划文件外没有来源不明的未提交业务改动。
+- `goal-1/input.md`、`plan.md`、`tasks.md` 已被跟踪。
+- Go toolchain 与仓库既有测试/build 命令可用。
+- Caveman skill 可加载并已启用。
+- 需要代码导航时优先使用可用 LSP；不可用时记录 fallback，不能假装执行过语义导航。
+
+Preflight 只检查实施条件，不运行全仓 release gate，不修改业务代码。
+
+## 5. 权威资料与证据优先级
+
+允许引用：
 
 - `goal-3/plan.md`
 - `goal-3/tasks.md`
@@ -111,20 +168,20 @@
 - `goal-3/shaft-protocol-diff.md`
 - `goal-3/evidence/`
 
-证据可信度按以下顺序判断，后一层不能覆盖前一层的冲突事实：
+证据优先级：
 
-1. 当前分支可重复运行的测试、构建、静态检查和真实 live 结果。
-2. 当前分支代码与明确可追溯的 commit/diff。
-3. 旧 Goal-3 的原始 fixture、wire evidence、pagination/mutation 报告。
+1. 当前分支可重复运行的测试、构建、静态检查和当前 live 结果。
+2. 当前分支代码与可追溯 commit/diff。
+3. 旧 Goal-3 原始 fixture、wire evidence、pagination/mutation 报告。
 4. 旧 contract/compatibility matrices。
 5. 旧 `tasks.md` 完成记录。
 6. 旧 capability 单字段状态。
 
-任何 capability 或 layer 只能在证据足以证明时标记 `verified`。历史 `verified` 与当前代码冲突时，以当前代码和可重复验证结果为准，并建立 correction task。
+后一层不能覆盖前一层冲突事实。历史 `verified` 与当前代码冲突时，以当前事实为准。
 
-## 5. 当前状态模型：一份真相，不再手写 public_ready
+## 6. 当前状态模型
 
-`goal-1/current-state.md` 是本 Goal 开始执行后生成的当前状态权威表。每个 required capability 逐层记录：
+`goal-1/current-state.md` 是执行阶段的当前状态权威表。每个 required capability 记录：
 
 - Contract
 - Adapter
@@ -139,269 +196,242 @@
 
 layer 状态只允许：
 
-- `verified`：有当前或可复核证据证明满足目标 contract。
-- `implemented_unverified`：实现看起来存在，但当前 Goal 尚未取得足够证据。
-- `missing`：实现或必要验证不存在。
-- `blocked_external`：实现侧无已知缺口，但验证依赖当前不可用的账号、数据、网络或外部服务状态。
-- `blocked_decision`：继续必须做未经授权的 breaking/scope/security 决策。
-- `not_applicable`：该 layer 按 capability contract 明确不适用；必须写理由。
+- `verified`
+- `implemented_unverified`
+- `missing`
+- `blocked_external`
+- `blocked_decision`
+- `not_applicable`
 
-`public_ready` / `release_ready` 不再作为手工维护状态；只能由上述 layer 和 gate **派生计算**。
+`not_applicable` 必须有 contract 理由。`public_ready` / `release_ready` 只能派生计算，不再手工维护。
 
-## 6. Required capability 的完成定义
+一个 capability 只有同时满足以下条件才 `accepted`：
 
-一个 required capability 只有同时满足以下条件才算 `accepted`：
+1. 所有适用 layer 为 `verified` 或有理由的 `not_applicable`。
+2. 对应 offline correctness acceptance 通过。
+3. 对应 SDK/CLI/MCP compatibility 通过或该 surface 明确不适用。
+4. forbidden endpoint / no-fallback 断言通过。
+5. release contract 要求 live 时，Live 必须 `verified`。
+6. 不存在映射到它的 open P0/P1 correctness finding。
 
-1. 其适用 layer 均为 `verified` 或 contract 明确允许的 `not_applicable`。
-2. 对应离线/fixture correctness 验收通过。
-3. 对应 SDK/CLI/MCP 兼容要求通过，或者 contract 明确不要求该 surface。
-4. 所有 forbidden endpoint / no-fallback 负向断言通过。
-5. 若该 capability 的 release contract 明确要求 live 证明，则 live layer 必须 `verified`；`blocked_external` 只能形成 Goal 阻塞，不能形成 accepted。
-6. 不存在映射到该 capability 的未解决 P0/P1 correctness finding。
+`blocked_external` 不能产生 accepted。
 
-仅仅“代码已经写了”“旧 tasks 标 verified”“单元测试通过”或“没有 pending task”都不足以让 capability accepted。
+## 7. 防过度设计规则
 
-## 7. 优先级：只决定顺序，不决定是否交付
+所有实现 task 默认采用 **minimum sufficient change**：只实现当前 frozen acceptance 所需的最小改动。
 
-### P0/P1 correctness 优先
+禁止：
 
-优先确认并关闭：
+- 因“以后可能用到”新增 abstraction、framework、configuration layer、plugin system 或通用 retry system。
+- 为单个当前用例设计泛化 DSL、通用 registry 或新的跨包架构。
+- 在没有当前 acceptance 驱动时做 repo-wide rename、package ownership 移动或公共 API redesign。
+- 把局部 bugfix 扩成“顺便清理整个模块”。
+- 仅为了让代码看起来统一而改动未触及的稳定路径。
 
-- logical pagination / checkpoint / replay correctness
-- novel latest continuation
-- novel detail / series endpoint migration
-- artwork recommended continuation
-- artwork / novel comments contract 与 DTO
-- restrict / rating filter 语义
-- rejected endpoint 不可达与 no-fallback
+允许抽象的条件：当前 task 已有两个或以上真实调用点需要同一语义，且复用现有 helper 不能合理表达；即使满足，也优先最小局部 helper，不扩大 public surface。
 
-### 核心 public surface
+Refactor 阶段只允许：
 
-随后收敛已经接近完成但仍缺 MCP/read/mutation/compatibility 的能力：
+- 清理本 task 引入的重复或明显可读性问题。
+- 复用已有 abstraction。
+- 修复与当前 acceptance 直接相关的 ownership 问题。
 
-- user / MyPixiv / relationships
-- bookmark read 与 aggregate
-- bookmark mutation
-- comment/stamp mutation
-- follow mutation
-- MCP registration/schema/error/replay
+如果更大重构看起来有价值但不是当前 acceptance 必需，记录到 `out-of-scope observations`，不进入本 Goal。
 
-### 最终 convergence
+## 8. 防过度测试规则
 
-最后执行：
+测试目标是证明 acceptance，不追求测试数量或覆盖率数字。
 
-- cursor integrity / rollback gate
-- SDK/CLI/MCP compatibility audit
-- CLI presentation / docs / Skill
-- protocol/SDK regression
-- CLI/MCP regression
-- full build/release-candidate gate
-- live read/mutation validation
-- capability closure audit
+### 8.1 代码 leaf task 的最低充分验证
 
-`bookmark-*-all`、`recommended-all`、`bare-id-probe` 等即使优先级较低，也仍属于 required scope，不能因为是 enhancement 风格能力而自动延期。
+每个生产代码 task：
 
-## 8. 执行结构与阶段出口
+1. 一个能够行为性证明当前缺口的最小 Red；同一根因不重复堆多个等价 Red。
+2. Green 后运行该测试。
+3. 运行受影响 package 的现有相关 tests。
+4. 只有跨 package/wire/cursor/serialization 行为被触及时，才运行对应 integration/compatibility tests。
 
-### Phase A — Baseline reconciliation
+不得每张 leaf task 都运行 `go test ./...`、全 MCP replay、全 CLI regression 或全 race。
 
-目标：从 `e404434` 重新建立真实 capability/layer 状态，并证明任务图 closure。
+### 8.2 不要求的测试
 
-出口条件：
+除非 frozen contract 或已观察 bug 明确需要，否则不要求：
 
-- 41 个 required capability 全部出现在 `current-state.md`。
-- 每个非 verified layer 都映射到具体 task、外部 blocker 或明确 `not_applicable`。
-- 没有“以后再拆”“按 owner 再拆”的 meta-task。
-- 不允许改变 required scope。
+- 为 trivial pass-through/wrapper 重复添加单元测试。
+- 为相同 DTO 语义建立多套等价 fixture。
+- 穷举所有 flag/query 组合。
+- 为已有稳定 helper 重新补覆盖率。
+- 为未改动 package 执行 race test。
+- 追求 arbitrary coverage percentage。
+
+### 8.3 集中 gate
+
+全量验证集中执行：
+
+- Phase gate：只跑该阶段相关 regression。
+- Offline release candidate：`go test ./...`、`go vet ./...`、`sh scripts/build.sh`、必要 race、兼容 replay、docs、forbidden endpoint、redaction。
+- Final closure：不重复运行已经在同一 HEAD 上通过且未被后续改动 invalidated 的相同 gate。
+
+只要 task acceptance 已被最小充分证据关闭，就停止增加测试。
+
+## 9. Live manifest 必须提前冻结
+
+在进入任何 live task 前，必须在 `goal-1/current-state.md` 建立 `Live Manifest`。每一项至少记录：
+
+- capability
+- `live_required: yes/no`
+- endpoint/path family
+- required scenario
+- 是否要求 second-page continuation
+- 所需账号/目标数据条件
+- mutation 时的 read-back/cleanup 要求
+- 当前 evidence 或 blocker
+
+Luna 不允许在 live phase 临时决定“哪些 capability 应该 live”。只有 frozen manifest 中 `live_required=yes` 的条目进入 required live gate。
+
+## 10. 执行阶段
+
+### Phase A — Baseline / manifest
+
+目标：完成 preflight，分组盘点 41 capability，复核 correctness，冻结 live manifest 和有限 execution mapping。
+
+出口：
+
+- required=41。
+- unmapped=0。
+- undecomposed=0。
+- live manifest 已冻结。
+- 所有内部已知 gap 有具体 task/correction owner。
 
 ### Phase B — MCP read convergence
 
-目标：完成 user/MyPixiv/relationship、bookmark read/aggregate 和 read harness。
+按 user、bookmark typed read、bookmark aggregate、registration/schema/replay 拆分，不再由一个 task同时承担全部 read owner。
 
-出口条件：相关 MCP schema、structured error、pagination/filter、legacy JSON replay 和 registration exact-set 全部有证据。
+出口：required MCP read layer 有专项 evidence。
 
 ### Phase C — MCP mutation convergence
 
-目标：完成 bookmark、comment/stamp、follow mutation surface。
+按 bookmark、artwork comment/stamp、novel comment/stamp、follow 与 mutation harness 拆分。
 
-出口条件：input validation、outcome、uncertain-result、legacy compatibility 和 offline fixture 全部通过；live 证明留给专门 live phase。
+出口：offline mutation outcome、uncertain-result、wire compatibility 全部关闭；live 留给 Phase F。
 
-### Phase D — Compatibility and release contract convergence
+### Phase D — Compatibility / release contract
 
-目标：关闭 cursor integrity/rollback、SDK/CLI/MCP compatibility、presentation/docs/Skill 差异。
+cursor integrity、SDK compatibility、CLI compatibility/presentation、MCP compatibility、docs/Skill 分开执行。
 
-出口条件：不存在未决 breaking change；若必须 breaking change，进入 `blocked_decision`，不得由 Agent 自行实施。
+出口：不存在未处理 breaking decision；forbidden endpoint contract 仍成立。
 
 ### Phase E — Offline release candidate
 
-目标：完成最大范围离线回归、构建、负向 endpoint 检查和敏感数据审计。
+protocol/SDK、CLI、MCP regression 分开，再执行一次 full test/vet/build/必要 race/redaction gate。
 
-出口条件：所有可在代码库内解决的 required gap 已关闭；只允许真正的 live/external blocker 留到 Phase F。
+出口：内部 `missing=0`、无理由 `implemented_unverified=0`、open P0/P1=0。
 
-### Phase F — Live and terminal closure
+### Phase F — Live / closure
 
-目标：执行可授权的 live read/mutation 验证，并机械计算最终 Goal 状态。
+按 live manifest 分 read families 和 mutation。最后重新计算 41 capability acceptance 并生成 closure report。
 
-出口条件只能是 `COMPLETED`、`BLOCKED_EXTERNAL` 或 `BLOCKED_DECISION`，不能是含糊的“基本完成”。
+## 11. Leaf task admission
 
-## 9. Task admission：所有执行项必须是 leaf task
+普通 task 进入 `in_progress` 前必须明确：
 
-任何普通 task 在进入 `in_progress` 前必须具备：
-
-- 唯一 owner/slice。
-- 明确涉及的 capability。
-- 明确 depends_on。
-- 明确允许修改的层和主要文件区域。
-- 可执行验收断言。
-- 代码 task 的真实 Red 方式。
-- Green 后的最小相关回归。
+- 单一 owner/slice。
+- capability 集合。
+- depends_on。
+- 允许修改的层/主要区域。
+- acceptance。
+- 代码 task 的最小 Red。
+- 最小 Green/regression。
 - 兼容影响。
 - 回滚边界。
-- 完成后要回写的证据位置。
 
-以下描述不能作为 task：
+禁止 task：
 
 - “按 owner 再拆”。
 - “修剩余问题”。
-- “让测试都通过”。
-- “完成所有兼容”。
-- “根据情况继续”。
+- “让所有测试通过”。
+- “完成全部兼容”。
+- “继续调查直到没问题”。
 
-如果一个 task 同时跨越多个可独立测试的 owner，必须在**开始实现前**拆成 leaf task；拆分不能新增 capability 或扩大 scope。
+若任务开始前仍需要执行器自行设计多个独立 owner，说明任务不是 leaf，必须在 `tasks.md` 预拆后才能执行。
 
-## 10. TDD 与验证层级
+## 12. Correction task 必须抢占后续任务
 
-所有生产代码修改必须 Red → Green → Refactor。Red 必须行为性失败，不能用语法错误、故意破坏 fixture 或无关失败冒充。
+检查、回归或 live 可以新增 correction，但必须绑定既有 acceptance failure，格式 `G1-CORR-<来源>-NN`，记录：
 
-### Leaf task
+- Source task/gate
+- Capability
+- Observed failure
+- Expected contract
+- Scope boundary
+- Red command / expected failure（生产代码变更时）
+- Green acceptance
+- Compatibility impact
+- Rollback boundary
 
-- 目标 Red 测试。
-- 最小实现。
-- 目标 Green 测试。
-- 相关 package tests。
-- 必要的 integration/compatibility test。
+调度规则：
 
-### 每三个普通 task 后的集中检查
+1. 新 correction 必须插入到**当前 task 后、原下一 task 前**，不能简单追加到文件末尾。
+2. correction 成为下一张 pending executable task，优先于后续 phase。
+3. correction 依赖只能指向已完成必要前置，不得引入新 capability。
+4. correction 若让已完成 gate 失效，受影响 gate 与 closure task 重置为 `pending`。
+5. correction 完成后回到原执行序列。
 
-复查：
+这样允许修 bug，但不允许形成无限产品 scope。
 
-- 是否偏离 `input.md` 和本 plan。
-- capability/task 映射是否漂移。
-- bug、死代码、调试残留。
-- 类型、构建、相关测试。
-- 兼容性、错误传播、安全与敏感信息。
-- pagination/cursor/mutation invariants。
-- 文档和测试是否同步。
+## 13. Blocking 与通用终止路径
 
-集中检查不允许顺手修业务代码；发现 required acceptance failure 时创建受约束的 correction task。
+Task 终态：`verified` / `blocked_external` / `blocked_decision`。
 
-### Phase / final gate
+### `blocked_external`
 
-最终才运行最大范围：
+只允许真正环境/外部条件：
 
-- `go test ./...`
-- `go vet ./...`
-- `sh scripts/build.sh`
-- 必要 race tests
-- public API compatibility tests
-- CLI canonical/legacy route tests
-- MCP exact-set / legacy JSON replay
-- docs/completion tests
-- forbidden endpoint / fallback 负向检查
-- evidence / secret / token / cookie / URL redaction audit
+- 用户明确要求的 Caveman skill 在执行环境不可用。
+- 账号/权限不可用。
+- 网络或上游服务不可用。
+- 必需目标数据不存在或不可安全构造。
 
-## 11. Correction task：允许修复，不允许扩 scope
+不能用“测试难写”“还没调查”“代码看起来复杂”作为 external blocker。
 
-集中检查、regression 或终审可以新增 correction task，但必须满足全部条件：
+### `blocked_decision`
 
-1. 来源必须是本 Goal 已冻结的 required capability、compatibility rule、regression gate 或本 Goal 自己引入的回归。
-2. 必须记录 `Source task/gate`、`Capability`、`Observed failure`、`Expected contract`、`Acceptance`。
-3. 一个 correction task 只处理一个可独立验证的根因；多个根因必须拆开。
-4. 不允许借 correction 引入新产品能力、依赖升级、无关重构或新的 public surface。
-5. 发现真正的新需求时只记入 `out-of-scope observations`，不进入本 Goal task graph。
-6. correction task 必须有有限验收；禁止“继续调查直到没问题”式任务。
+只用于必须取得用户授权才能继续的 breaking API、scope change、安全/权限策略变化。
 
-因此本 Goal 允许 task 数量因**已有 acceptance 失败**而增加，但不允许 required capability 集合增长。
+### 通用 `G1-TERM` terminalization
 
-## 12. Live validation 与外部阻塞
+`G1-TERM` 是特殊控制任务，不属于正常 Phase 序列。它可以在**任何阶段**抢占执行，不要求先到 Phase F。
 
-Live read/mutation 只在具备明确授权的账号、网络和目标数据时执行。
+允许执行条件：
 
-### 可以标记 `blocked_external` 的条件
+```text
+runnable_required_tasks == 0
+AND (required_external_blockers > 0 OR required_decision_blockers > 0)
+```
 
-必须同时满足：
+它只做：
 
-- 当前代码与 offline/fixture 层没有已知可修复缺口。
-- blocker 确实来自账号、权限、网络、目标数据或上游服务，而不是“测试难写”或“尚未调查”。
-- 记录缺失条件、受影响 capability、已完成的离线覆盖和 release 风险。
-- 不借用旧历史 live success 冒充当前 live 验证。
+- 汇总 blockers。
+- 验证没有仍可执行的内部 task/correction。
+- 写 `closure-report.md`。
+- 计算 `BLOCKED_EXTERNAL` 或 `BLOCKED_DECISION`。
 
-Mutation live 额外要求：
+如果 decision 和 external 同时存在，报告两者，GoalState 使用 `BLOCKED_DECISION`，因为恢复执行首先需要用户决策。
 
-- 隔离账号和明确授权。
-- 写前 access control。
-- 本轮创建/修改资源可识别。
-- 写后 read-back。
-- 仅清理本轮副作用。
-- uncertain result 不自动 replay，不通过“最新评论”等启发式猜测创建 ID。
+`G1-TERM` **绝不能**把 Goal 标记完成。
 
-## 13. 兼容原则
+如果 blocker 后续解除，相关 task 恢复为 `pending`，从最早未完成 task继续；旧 blocked closure report 标记为 superseded。
 
-默认继续旧计划已经冻结的策略：
+## 14. 严格终止状态机
 
-- public Go SDK 尽量源码兼容；已有 exported method/type 不随 endpoint 迁移随意删除。
-- CLI 保留必要 canonical/legacy alias 与 deprecation 行为。
-- MCP 保留旧 tool/input/output wire compatibility，并以 legacy JSON replay 证明。
-- `NovelContent` 等无可用 App API replacement 的旧 symbol 可以保留明确兼容错误，但不得调用 rejected endpoint。
-- cursor version/binding 变化必须显式失败或迁移，禁止静默从第一页重启。
+GoalState 只有：
 
-若发现必须 breaking change，当前 task 只能进入 `blocked_decision` 并写清 blast radius、替代方案和需要的用户决策；不能自行实施。
+- `ACTIVE`
+- `BLOCKED_EXTERNAL`
+- `BLOCKED_DECISION`
+- `COMPLETED`
 
-## 14. 回滚原则
-
-- 本分支从现有 API 迁移 WIP 分出，不通过大规模 revert 重写历史。
-- 每个新 task 只修改其 vertical slice 必需部分。
-- 发现旧实现错误时优先最小 correction，而不是回滚整段已经验证的工作。
-- 公共 API/CLI/MCP 变更必须记录 blast radius。
-- cursor/serialization 变更必须说明跨版本恢复或明确失效策略。
-- mutation/live 验证不得留下无法归属本轮的远端副作用。
-
-## 15. 严格终止状态机
-
-本 Goal 的运行状态只有：
-
-- `ACTIVE`：仍存在可执行的 required task/correction task。
-- `BLOCKED_EXTERNAL`：不存在可执行内部任务，但至少一个 required acceptance 仅被真实外部条件阻塞。
-- `BLOCKED_DECISION`：不存在可继续安全执行的路径，且至少一个 required acceptance 需要用户批准 breaking/scope/security 决策。
-- `COMPLETED`：所有 required capability accepted，所有 gate 通过，无 blocker。
-
-### `COMPLETED` 的必要且充分条件
-
-只有以下条件**全部同时成立**才能标记 Goal 完成：
-
-1. 41 个 required capability 全部 `accepted`。
-2. `tasks.md` 不存在 `pending` / `in_progress` 的 required ordinary task 或 correction task。
-3. 不存在未分解 meta-task。
-4. 不存在 `blocked_external` 或 `blocked_decision` 的 required task/capability。
-5. `current-state.md` 与最终代码、测试、兼容和 live evidence 一致。
-6. 所有 P0/P1 correctness finding 已关闭；不存在以“已知限制”方式隐藏的 correctness defect。
-7. cursor/pagination integrity 与 rollback gate 通过。
-8. SDK compatibility gate 通过。
-9. CLI compatibility/presentation gate 通过。
-10. MCP exact-set/schema/error/legacy replay gate 通过。
-11. protocol/SDK regression 通过。
-12. CLI/MCP regression 通过。
-13. `go test ./...` 通过。
-14. `go vet ./...` 通过。
-15. `sh scripts/build.sh` 通过。
-16. 必要 race tests 通过。
-17. forbidden endpoint/no-fallback 负向检查通过。
-18. docs/Skill/completion 与真实 surface 一致。
-19. evidence 和日志不存在 token/cookie/signed URL/隐私数据泄漏。
-20. 所有需要 live 证明的 required capability 已取得当前 live evidence。
-21. 最终 closure audit 没有发现新的**既有 required acceptance failure**。
-
-形式化表示：
+### COMPLETED 必要且充分条件
 
 ```text
 COMPLETED :=
@@ -412,47 +442,67 @@ COMPLETED :=
   AND required_blockers == 0
   AND undecomposed_tasks == 0
   AND correctness_p0_p1_open == 0
-  AND compatibility_gates == PASS
-  AND offline_release_gate == PASS
+  AND cursor_integrity_gate == PASS
+  AND sdk_compat_gate == PASS
+  AND cli_compat_gate == PASS
+  AND mcp_compat_gate == PASS
+  AND protocol_sdk_regression == PASS
+  AND cli_regression == PASS
+  AND mcp_regression == PASS
+  AND full_offline_gate == PASS
   AND required_live_gate == PASS
+  AND documentation_gate == PASS
+  AND redaction_gate == PASS
   AND final_closure_audit == PASS
 ```
 
-### `BLOCKED_EXTERNAL`
+额外约束：
 
-只有在以下条件全部成立时才允许停止为 external blocked：
+- `accepted_count` 必须恰好 41。
+- 任一 required blocker 存在都不能 COMPLETED。
+- 所有 live-required capability 必须有当前 live evidence。
+- 最终 closure 不得出现新的既有 required acceptance failure。
+- Final closure 不重复运行同一 HEAD 已通过、且之后未被相关改动 invalidated 的昂贵 gate。
 
-- 没有任何当前可执行的内部 task/correction task。
-- 所有离线 gate 已通过。
-- 每个未 accepted required capability 的唯一剩余缺口都能映射到真实 external blocker。
-- 没有未调查的 `implemented_unverified` 或 `missing` layer。
-- 没有 P0/P1 内部 correctness defect。
+### BLOCKED_EXTERNAL
 
-此状态允许 Goal Mode 停止自动推进，但**不得把 Goal 标记完成，也不得宣称 public/release ready**。
+只有在没有可执行内部 task/correction、所有可离线解决的 gap 已关闭、剩余 required acceptance 唯一缺口都是真实 external blocker 时成立。
 
-### `BLOCKED_DECISION`
+### BLOCKED_DECISION
 
-只有在安全继续必须得到用户明确决策时使用，例如 breaking public API、required scope change、敏感账号/权限策略变化。此状态同样不是完成。
+只有继续安全执行必须取得用户明确决策时成立。不是完成。
 
-## 16. 防止无限 Goal 的硬规则
+## 15. Compatibility 原则
 
-- 最终 audit 不能新增产品 scope。
-- 原 41 项之外的新需求一律写入 `out-of-scope observations`，不追加为本 Goal required task。
-- audit 只能为已冻结 acceptance failure 生成 correction task。
-- correction task 必须绑定根因和验收，不能再产生开放式“调查全部问题”。
-- `blocked_external` / `blocked_decision` 不能被当作 verified。
-- `deferred_nonblocking` 不允许用于原 41 个 required capability。
-- 如果所有 task 都完成但任一 required capability 未 accepted，则 Goal **不能**结束为 COMPLETED；必须回溯到具体 layer，创建受约束 correction task或进入合法 blocker 状态。
-- 如果某个 task 被证明无需代码修改，只有在现有代码和验证证据已满足其 acceptance 时才能直接标 `verified`，并记录 no-op evidence。
+默认继续旧计划冻结策略：
+
+- public Go SDK 尽量源码兼容。
+- CLI 保留必要 canonical/legacy alias 与 deprecation 行为。
+- MCP 保留旧 tool/input/output wire compatibility，并以 legacy JSON replay 验证。
+- `NovelContent` 等无 App API replacement 的旧 symbol 可以保留明确兼容错误，但不得请求 rejected endpoint。
+- cursor version/binding 变化必须显式失败或迁移，不能静默从第一页重启。
+
+必须 breaking 时进入 `blocked_decision`，不由执行 Agent 自行实施。
+
+## 16. 回滚原则
+
+- 不通过大规模 revert 重写旧 WIP 历史。
+- 每个 task 只修改其 leaf slice 必需部分。
+- 旧实现错误优先最小 correction。
+- public API/CLI/MCP 变更记录 blast radius。
+- cursor/serialization 变更说明跨版本恢复或明确受控失效。
+- mutation/live 只清理本轮可识别副作用。
 
 ## 17. 最终产物
 
-Goal 结束前至少维护：
+至少维护：
 
-- `goal-1/input.md`：用户原始启动输入，保持逐字不改。
-- `goal-1/plan.md`：本计划和后续明确批准的 scope/decision 变更。
-- `goal-1/tasks.md`：有限执行任务和每轮完成证据。
-- `goal-1/current-state.md`：41 个 capability 的当前 layer 状态与 evidence index。
-- `goal-1/closure-report.md`：最终 `COMPLETED` / `BLOCKED_EXTERNAL` / `BLOCKED_DECISION` 判定、gate 结果、残余风险和 blocker。
+- `goal-1/input.md`
+- `goal-1/plan.md`
+- `goal-1/tasks.md`
+- `goal-1/current-state.md`
+- `goal-1/closure-report.md`
 
-只有 `closure-report.md` 能声明最终运行终态；它必须能够从 `current-state.md`、`tasks.md` 和验证输出追溯到证据。
+`closure-report.md` 是唯一允许声明最终 GoalState 的文档，必须能回溯到 `current-state.md`、`tasks.md` 和验证证据。
+
+只有 `GoalState: COMPLETED` 才允许把 Goal 在客户端标记为完成。`BLOCKED_EXTERNAL` / `BLOCKED_DECISION` 只允许停止无人值守推进。
