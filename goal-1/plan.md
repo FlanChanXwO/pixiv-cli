@@ -1,19 +1,19 @@
-# Goal-1：Pixiv vNext 重规划与收敛计划
+# Goal-1：Pixiv API 迁移与稳定性收敛计划
 
 ## 背景
 
-本 Goal 基于 `refactor/goal-1` 分支启动，该分支从 `codex/goal-3-vnext-progress` 当前 HEAD `e40443495981cdaf01215d6711cb24fa618b087a` 分出，保留既有实现与历史证据，不重做已经被真实测试和审计证明正确的工作。
+本 Goal 基于 `refactor/pixiv-api-stability` 分支启动，该分支从 `codex/goal-3-vnext-progress` 当前 HEAD `e40443495981cdaf01215d6711cb24fa618b087a` 分出，保留既有实现与历史证据，不重做已经被真实测试和审计证明正确的工作。
 
 旧 `goal-3/` 目录继续作为历史计划、验证证据和兼容资料来源，但不再作为本 Goal 的执行状态机。旧计划存在以下结构问题：
 
-- 长期 vNext 总目标、单轮执行授权、capability 状态、task 日志和 release gate 混在一起。
+- 长期 API 迁移总目标、单轮执行授权、capability 状态、task 日志和 release gate 混在一起。
 - `tasks.md` 存在未分解的 meta-task，例如 T38 仍要求后续再拆 owner 卡。
 - T44 被标注为“本轮不执行”，却又是 T45 的必需依赖，导致终态不可达。
 - R01 名义上是发布 gate，却未接入 T45 依赖。
 - capability authority 与 task 状态发生漂移：大量 task 已 verified，但 capability 仍停留在 `scope_admitted`。
 - 41 个 capability 被当作同权重 all-or-nothing gate，真实生产 bug、核心 API 缺口与产品增强混在一起。
 
-本 Goal 的任务不是重新发明 Pixiv vNext，而是：**盘点当前真实状态，保留已验证成果，补齐必要剩余实现，并把执行图重构成有限、可验证、可终止的 Goal Mode 任务集。**
+本 Goal 的任务不是重新启动一套接口计划，而是：**盘点当前真实状态，保留已验证成果，补齐必要剩余实现，并把执行图重构成有限、可验证、可终止的 Goal Mode 任务集。**
 
 ## 权威输入与证据来源
 
@@ -154,7 +154,7 @@ Live validation 不再用“本轮不执行但又是硬依赖”的方式表达�
 
 ## 回滚策略
 
-- 本分支从既有 vNext WIP HEAD 分出，因此不通过大规模 revert 来“恢复干净历史”。
+- 本分支从既有 API 迁移 WIP HEAD 分出，因此不通过大规模 revert 来“恢复干净历史”。
 - 每个新 task 仅修改其 vertical slice 必需文件。
 - 发现既有实现有问题时，优先用最小修正提交，不重写历史。
 - 公共接口变更必须记录 blast radius 和兼容影响。
