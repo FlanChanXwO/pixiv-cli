@@ -1,13 +1,13 @@
 # Goal-1 当前状态：Capabilities 1–41 baseline inventory
 
-> 本文件覆盖 `G1-T01`、`G1-T02`、`G1-T03`、`G1-CHECK-01` 与 `G1-T04`，只记录当前分支的代码、测试、历史和 Goal-3 证据，不授予任何 capability 的发布资格。
+> 本文件覆盖 `G1-T01`、`G1-T02`、`G1-T03`、`G1-CHECK-01`、`G1-T04` 与 `G1-T05`，只记录当前分支的代码、测试、历史和 Goal-3 证据，不授予任何 capability 的发布资格。
 
 ## 1. 快照与状态口径
 
 - 执行分支：`refactor/pixiv-api-stability`
 - G1-T03 inventory 起始 commit：`35dd0d7efebd16eeda6d5fb8ac3e766b31f8461d`，继承基线：`e40443495981cdaf01215d6711cb24fa618b087a`
 - 当前 worktree：`/Users/flanchan/Developer/Projects/GithubProjects/.worktrees/pixiv-cli-refactor-pixiv-api-stability`
-- G1-T03 开始时 worktree 干净；G1-CHECK-01 检查时 HEAD 为 `042c0200ce1b3349ab3e08a744fea7802838025c`。G1-T04 审计起始 HEAD 为 `f7cff3fb86dcc5117c634359bedbea5abdfa4d0b`，相对 `origin/refactor/pixiv-api-stability` 领先 5 个 Goal-1 tracking commit；worktree 干净。与继承基线相比，当前分支只新增 Goal-1 tracking 文件，`goal-3/` 无 diff。
+- G1-T03 开始时 worktree 干净；G1-CHECK-01 检查时 HEAD 为 `042c0200ce1b3349ab3e08a744fea7802838025c`。G1-T04 审计起始 HEAD 为 `f7cff3fb86dcc5117c634359bedbea5abdfa4d0b`；G1-T05 correctness audit 起始 HEAD 为 `35885b0d9316b4a1f2326bcee0511d8bc5ae29ed`，worktree 干净。与继承基线相比，当前分支只新增 Goal-1 tracking 文件，`goal-3/` 无 diff。
 - Goal-3 的 `goal-3/capability-admission.md` 是 capability 状态唯一权威来源：当前盘点的 41 项均为 `required=yes, state=scope_admitted`；全 41 项中没有一项为 `public_ready`（`goal-3/capability-admission.md:3-15,23-70`；`artwork-series` 在该表后段，仍属于原 required 集合）。
 - `scope_admitted` 只表示 capability 属于 required scope；不表示 contract 已冻结、迁移已完成或可以进入正式发布 surface。
 - 本文状态：
@@ -25,7 +25,7 @@
 - `public_ready`：0/41。
 - `scope_admitted`：41/41。
 - 当前没有 capability 可以仅凭 Goal-3 历史 task 的 `verified` 标记直接转为 accepted。
-- 当前未发现新的业务/API/evidence drift；Goal-1 分支相对继承基线的 drift 只有执行资料与 G1-T01/G1-T02/G1-T03/G1-CHECK-01/G1-T04 记录。
+- 当前未发现新的业务/API/evidence drift；Goal-1 分支相对继承基线的 drift 只有执行资料与 G1-T01/G1-T02/G1-T03/G1-CHECK-01/G1-T04/G1-T05 记录。
 
 ### 2.2 Layer matrix
 
@@ -523,7 +523,42 @@
 - 未闭合面：artwork comments v3 contract rejected；comment mutation MCP surface 缺失；user artwork/novel 及 MyPixiv 缺 strict second page；大多数 user/trending/detail/search/relationship rows 无 strict live；follow mutation 缺 read-back；bare-ID 无 production probe；rating 缺 MCP；logical pagination 非 endpoint-global；recommended-all 缺 SDK aggregate/live 四流证明。
 - 关键审计规则：历史 `verified`、离线 fixture、T23A/R02 replay、T37D WIP 均不得改写为 `public_ready` 或 MCP user layer verified。
 
-## 6. Rejected endpoint 与 no-fallback
+## 6. G1-T05 Correctness ledger 与 forbidden behavior 复核
+
+> 本节逐项把 code path、test path、历史 evidence 和当前 verdict 放在同一 ledger 中。`offline verified` 只证明当前可复核的实现/适配 seam，不等于 strict live、跨层 continuation 或 `public_ready`；P0/P1 以显式 open 状态记录。
+
+| 复核项 | Code path + test path | 历史 evidence | 当前 verdict |
+|---|---|---|---|
+| logical pagination / checkpoint / replay | `internal/shared/pagination/pagination.go:37-180`、`internal/shared/traversal/traversal.go:37-105`；`internal/shared/pagination/pagination_test.go:376-538`、`internal/shared/traversal/traversal_test.go:13-169` | `goal-3/tasks.md:205-214,724-733`（T23A/R02） | **Shared engine verified**；只闭合 generic traversal、checkpoint/replay seam，不闭合各 endpoint 的 next-page wire/live。无 P0/P1；保留 endpoint-specific correction candidate。 |
+| novel latest | `internal/services/pixiv/endpoint/novel/timeline/timeline.go:101-120,185-197`；`.../timeline_test.go:101-165`；`sdk/pixiv/ops_novel.go:201-212`、`ops_novel_test.go:195-245` | `goal-3/tasks.md:547-556,680-689`；`goal-3/evidence/appapi-upstream.md:11-12` | **Adapter/SDK offline verified**：`max_novel_id` 语义已落到 v2 leaf；CLI/MCP second-page 与 strict live 尚未独立闭合。无 P0/P1；列为 G1-T06 correction/evidence candidate。 |
+| novel detail / series | `internal/services/pixiv/endpoint/novel/detail/{detail.go,detail_test.go}`、`novel/series/{series.go,series_test.go}`；`sdk/pixiv/ops_novel.go:66-114`；MCP novel detail/series owners | `goal-3/evidence/appapi-upstream.md:5-8`；`goal-3/api-migration-verification.md:134-139`；`goal-3/pagination-validation-report.md:33-38` | **Offline v2 path verified**；v1 detail/series rejected，live second-page/release evidence 未闭合。无 P0/P1。发现一个 P2 tracking-doc drift：`goal-3/upstream-contract-matrix.md:17` 的“生产仍为 v1”与当前 v2 code path 冲突，留给后续 correction，不在本 task 改 Goal-3。 |
+| artwork recommended continuation | `internal/services/pixiv/endpoint/artwork/recommended/recommended.go:24-80,185-197`、`recommended_test.go:26-80`；`sdk/pixiv/ops_artwork.go:101-112`、`ops_artwork_test.go:11-52`；CLI/MCP recommended tests | `goal-3/api-migration-verification.md:28`；`goal-3/wire-adapter-sdk-diff.md:21`；`goal-3/tasks.md:53-54`；`goal-3/pagination-validation-report.md:24-31` | **Open P1**：second-page continuation 当前仍为 `inconclusive/second_page_error`。shared pagination 或 zero-cursor fake test 不能关闭该风险，不得标作 known limitation。Correction candidate 需用 strict live non-empty two-page fixture，保留完整 continuation params，并贯穿 endpoint→SDK→CLI/MCP；G1-T05 不改业务 code。 |
+| artwork / novel comments DTO | artwork `/v3/illust/comments` adapter `internal/services/pixiv/endpoint/artwork/comments/comments.go:60-104,231-299`、tests `comments_test.go:52-139`；novel adapter `internal/services/pixiv/endpoint/novel/comments/comments.go:206-306`；SDK DTO mapping `sdk/pixiv/map_artwork.go:247-260`、`map_extra.go:39-52`；MCP read tests | `goal-3/evidence/appapi-upstream.md:18-19`；`goal-3/upstream-contract-matrix.md:262-263`；`goal-3/pagination-validation-report.md:57-63` | **Offline DTO/adapter/SDK/MCP verified**；live pagination inconclusive。无 P0/P1；未达到 public-ready。 |
+| restrict / rating / cursor binding | local restrict validation `sdk/pixiv/validation.go:24-40`；cursor envelope/binding `sdk/pixiv/cursor.go:15-58,84-142`；`cursor_test.go:273-331`、`sdk/pixiv/pixiv_test.go:754-834` | `goal-3/upstream-contract-matrix.md:33,252-255` | **Offline validation/binding verified**；没有把 server-side rating 伪装成 upstream filter，也没有把 cursor 当鉴权凭据。无 P0/P1；account-pool switch/live contract 仍是 evidence candidate，不能泛化为“所有 operation 必须 account-bound”。 |
+| comments mutation outcome | artwork/novel mutation adapters 与 tests；`sdk/pixiv/ops_comment.go:16-124` | `goal-3/mutation-validation-report.md:5-26,38-42`；`goal-3/evidence/appapi-mutation.md:3-10` | **Transport/DTO offline verified；outcome 未闭合**：production mutation 仍 `not_tested`，无同账号 read-back/cleanup。无隐藏 P1（release 已阻断）；correction candidate 需同账号 create/reply/stamp/delete、response ID read-back、清理确认，并对 uncertain 禁止自动 replay。 |
+| rejected endpoint / no-fallback | `sdk/pixiv/ops_novel.go:140-150` 的 `NovelContent`；`internal/mcpserver/pixiv/tools/novel_content/novel_content.go:26-37`；SDK/MCP no-network tests | `goal-3/evidence/appapi-upstream.md:3-10`；`goal-3/api-migration-verification.md:134-144` | **Forbidden behavior verified offline**：v1 detail/series/content 与 WebView fallback 不可达；`ContentUnavailable` 保持显式结果；upstream error 不转空成功，uncertain mutation 不自动重放。无 P0/P1。 |
+
+### 6.1 Open P0/P1
+
+- **P0：无。** 当前没有证据显示已发生数据破坏、凭据泄露、不可逆错误或所有调用方都会命中的阻断性错误。
+- **P1：1 项。** `artwork-recommended` second-page continuation 的 `inconclusive/second_page_error` 保持 open；它是 correctness gate，不得写成 known limitation，也不得用 shared-engine PASS 覆盖。
+
+### 6.2 Constrained correction candidates
+
+以下只建立受约束候选，不在 G1-T05 修改业务代码或扩展 scope：
+
+1. **CAND-G1-T06-REC-RECOMMENDED**：用非空 two-page strict fixture 验证 recommended continuation，覆盖 endpoint/SDK/CLI/MCP 与完整 cursor/next-url 参数。
+2. **CAND-G1-T06-REC-LATEST**：补 novel-latest CLI/MCP second-page 与 live evidence；保留 `max_novel_id`，禁止回退 offset 或混合 key。
+3. **CAND-G1-T06-REC-SERIES-DOC**：修正 novel-series tracking-doc drift，并把 live second-page evidence 与当前 v2 contract 对齐。
+4. **CAND-G1-T06-REC-COMMENTS-MUTATION**：同账号 mutation round-trip/read-back/cleanup；结果区分 confirmed、accepted-not-read-back、uncertain，uncertain 不 replay。
+5. **CAND-G1-T06-REC-ACCOUNT-RATING**：验证 account-pool switch、filter digest cursor invalidation 和 local `x_restrict` 语义；不新增未经证实的 server-side rating 或 all-ops account binding。
+
+### 6.3 Out-of-scope observations
+
+- 本轮没有新增产品需求；未来 MCP rating surface、SDK aggregate、更多 strict live fixtures 只作为现有 gap/candidate 记录，不改变 required scope 41 项。
+- 当前 branch 仍无业务/API/Goal-3 资料 diff；本轮只更新 Goal-1 tracking 文档。
+
+## 7. Rejected endpoint 与 no-fallback
 
 以下路径和行为必须在所有层保持显式拒绝或不可达，不能以兼容为由 fallback：
 
@@ -534,14 +569,14 @@
 - server-side `x_restrict` / rating：服务端忽略或不支持时，不得伪装成 upstream filter；只能保留已确认的本地语义与 cursor binding（`goal-3/upstream-contract-matrix.md:33,252-255`）。
 - 不得把 cursor 当鉴权凭据；不得把 upstream error 变成空成功结果；不得把不确定 mutation 自动重放。
 
-## 7. 历史 evidence 与当前代码的边界
+## 8. 历史 evidence 与当前代码的边界
 
 - Goal-3 历史 tasks 中 T01/T02、T07A/T07B、T10A–T10G、T13/T14/T18、T24–T32、T37A/B 等 `verified` 只证明对应历史 task 的实现或审计，不授予 capability `public_ready`（`goal-3/tasks.md:19-39,51-62,75-87`；`goal-3/capability-admission.md:5-15`）。
 - `ugoira-metadata` strict evidence 声称 CLI/MCP confirmed，但当前源码没有专用 CLI/MCP metadata surface；本 inventory 以当前源码为准，将 live 标为 `implemented_unverified`，把该 evidence 冲突留给后续 correction/owner task。
-- `novel-latest` strict upstream evidence 已显示 `max_novel_id`，但 adapter/SDK 状态为 not_tested/inconclusive；当前代码已有 max ID leaf，不得把历史 evidence 自动提升为完整 cross-layer acceptance。
+- `novel-latest` strict upstream evidence 已显示 `max_novel_id`；当前 adapter/SDK max-ID leaf 与离线测试可核验，但 CLI/MCP second-page 与 strict live 尚未闭合，不得把历史 evidence 自动提升为完整 cross-layer acceptance。
 - 当前分支相对 `e404434` 没有 `goal-3/` diff；上述 gaps 是继承状态，不是本轮业务/API 改动引入。
 
-## 8. 查阅范围与验证命令
+## 9. 查阅范围与验证命令
 
 ### 查阅范围
 
@@ -575,13 +610,13 @@
 
 ### Offline evidence
 
-G1-T01 已在干净目标 worktree 执行 `go test ./...` 并通过；G1-CHECK-01 在 HEAD `042c0200ce1b3349ab3e08a744fea7802838025c` 再次执行 `go test ./...` 并通过。G1-T04 focused command 通过：`go test ./internal/services/pixiv/endpoint/artwork/comments ./internal/services/pixiv/endpoint/novel/comments ./internal/services/pixiv/endpoint/stamps ./sdk/pixiv ./internal/cli/commands/pixiv/comment ./internal/mcpserver/pixiv/... -count=1`。本轮未执行真实 Pixiv live API；本文件引用的 source/test/evidence 均为当前分支可追溯资料。
+G1-T01 已在干净目标 worktree 执行 `go test ./...` 并通过；G1-CHECK-01 在 HEAD `042c0200ce1b3349ab3e08a744fea7802838025c` 再次执行 `go test ./...` 并通过。G1-T04 focused command 通过：`go test ./internal/services/pixiv/endpoint/artwork/comments ./internal/services/pixiv/endpoint/novel/comments ./internal/services/pixiv/endpoint/stamps ./sdk/pixiv ./internal/cli/commands/pixiv/comment ./internal/mcpserver/pixiv/... -count=1`。G1-T05 correctness focused commands 通过：shared pagination/traversal；novel latest；artwork recommended endpoint/SDK/CLI/MCP；novel detail/series；artwork/novel comments；SDK validation/cursor；MCP read/no-fallback。具体执行均为 `-count=1`，未执行真实 Pixiv live API；本文件引用的 source/test/evidence 均为当前分支可追溯资料。
 
-## 9. G1-T04、G1-T03 与 G1-CHECK-01 结论
+## 10. G1-T05、G1-T04、G1-T03 与 G1-CHECK-01 结论
 
 - 覆盖：41/41；G1-T04 补齐 25–41 共 17 项；无 capability 漏项；全 required scope 为 `41/41 scope_admitted`，`public_ready=0/41`。
 - 当前可核验实现仍主要集中在 offline adapter/SDK/CLI/MCP leaf 与局部 aggregate；strict live、mutation read-back/cleanup、MCP mutation、SDK aggregate、endpoint-global continuation 等未闭合面保持为明确 verdict。
 - `logical-pagination` 的 T23A/R02 只证明 shared/checkpoint/replay engine；不能替代 user/comments/recommended/latest 等 endpoint continuation evidence。
 - T37D WIP/旧 task `verified`、离线 fixture、历史 upstream mutation evidence 均未提升为 capability acceptance 或 MCP user layer verified。
-- G1-CHECK-01：历史集中检查仍 PASS，覆盖 1–24；G1-T04 本轮 focused tests PASS，新增 inventory 覆盖 25–41，未改生产代码、API、scope 或 Goal-3 资料。
-- GoalState：保持 `ACTIVE`。无新增 external/decision blocker；下一任务为 `G1-T05`。
+- G1-CHECK-01：历史集中检查仍 PASS，覆盖 1–24；G1-T04 inventory 与 G1-T05 correctness focused tests 均 PASS，未改生产代码、API、scope 或 Goal-3 资料；artwork-recommended second-page continuation 的 P1 仍 open。
+- GoalState：保持 `ACTIVE`。G1-T05 新增一个未闭合的 P1 correctness item（artwork recommended continuation），不把它隐藏为 known limitation；无新增 external/decision blocker；下一任务为 `G1-T06`。

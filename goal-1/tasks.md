@@ -231,7 +231,7 @@ AND (required_external_blockers > 0 OR required_decision_blockers > 0)
 
 ## G1-T05 — Correctness ledger 与 forbidden behavior 复核
 
-**Status:** pending
+**Status:** verified
 
 **Depends on:** G1-T04
 
@@ -245,10 +245,12 @@ AND (required_external_blockers > 0 OR required_decision_blockers > 0)
 - 新产品需求只进 out-of-scope observations。
 
 **完成记录：**
-- Open P0/P1：
-- Closed by evidence：
-- Correction candidates：
-- 下一步：G1-T06
+- **Open P0/P1：** P0 无；P1 1 项：`artwork-recommended` second-page continuation 的 `inconclusive/second_page_error`。该项显式保持 open，未伪装为 known limitation，也未用 shared pagination PASS 覆盖。
+- **Closed by evidence：** shared pagination/checkpoint/replay engine；novel-latest adapter/SDK 的 `max_novel_id` leaf；novel detail/series 离线 v2 path；artwork/novel comments DTO adapter/SDK/MCP offline path；restrict/local rating/cursor binding offline path；rejected endpoint/no-fallback offline boundary。
+- **Correction candidates：** CAND-G1-T06-REC-RECOMMENDED（strict non-empty two-page endpoint→SDK→CLI/MCP）；CAND-G1-T06-REC-LATEST（CLI/MCP second page + live）；CAND-G1-T06-REC-SERIES-DOC（tracking-doc drift + v2/live evidence）；CAND-G1-T06-REC-COMMENTS-MUTATION（same-account read-back/cleanup/uncertain no replay）；CAND-G1-T06-REC-ACCOUNT-RATING（pool switch/filter digest/local restrict，不伪造 server-side rating）。未修改业务代码。
+- **Drift：** 仅修改 `goal-1/current-state.md` 与 `goal-1/tasks.md`；发现的 novel-series Goal-3 tracking-doc drift 只登记为 P2 candidate，未在本 task 修改 Goal-3；无新产品需求。
+- **Offline verification：** correctness focused commands 全部 PASS（shared pagination/traversal、novel latest、artwork recommended endpoint/SDK/CLI/MCP、novel detail/series、artwork/novel comments、SDK validation/cursor、MCP read/no-fallback）；本轮未执行真实 Pixiv live API。
+- **下一步：** G1-T06
 
 ## G1-T06 — Freeze Live Manifest + finite execution mapping
 
