@@ -331,7 +331,7 @@ func checkoutStep(step *yaml.Node) bool {
 }
 
 func goSetupStep(step *yaml.Node) bool {
-	return actionStep(step, "actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff", "go-version", "1.26.3")
+	return actionStep(step, "actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff", "go-version", "1.27.1")
 }
 
 func actionStep(step *yaml.Node, action, key, want string) bool {

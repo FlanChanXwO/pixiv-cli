@@ -47,8 +47,8 @@ while [ "$#" -gt 0 ]; do
 done
 
 command -v cargo >/dev/null 2>&1 || fail 'cargo is required to build Rust staticlibs'
-command -v go >/dev/null 2>&1 || fail 'Go 1.26.3 is required to verify the Rust source digest'
-[ "$(go env GOVERSION)" = 'go1.26.3' ] || fail "Go 1.26.3 is required, found $(go env GOVERSION)"
+command -v go >/dev/null 2>&1 || fail 'Go 1.27.1 is required to verify the Rust source digest'
+[ "$(go env GOVERSION)" = 'go1.27.1' ] || fail "Go 1.27.1 is required, found $(go env GOVERSION)"
 [ -f "$crate_manifest" ] || fail "Rust crate manifest is missing: $crate_manifest"
 
 targets='x86_64-apple-darwin aarch64-apple-darwin x86_64-unknown-linux-gnu aarch64-unknown-linux-gnu x86_64-pc-windows-msvc aarch64-pc-windows-msvc'

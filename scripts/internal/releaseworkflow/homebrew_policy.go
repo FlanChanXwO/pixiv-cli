@@ -67,7 +67,7 @@ printf '%s\n' "$formula_name" > staging-formula/formula-name`
 	if err := requireCanonicalCheckout(steps[0], "render_homebrew_formula job", checkoutWithRequirement{"persist-credentials", "false"}, checkoutWithRequirement{"ref", "${{ env.RELEASE_TAG }}"}); err != nil {
 		return err
 	}
-	if err := requireExactActionStep(steps[1], "render_homebrew_formula Go setup", setupGoAction, map[string]string{"go-version": "1.26.3"}); err != nil {
+	if err := requireExactActionStep(steps[1], "render_homebrew_formula Go setup", setupGoAction, map[string]string{"go-version": "1.27.1"}); err != nil {
 		return err
 	}
 	if err := requireExactActionStep(steps[2], "verified checksums download", downloadArtifactAction, map[string]string{

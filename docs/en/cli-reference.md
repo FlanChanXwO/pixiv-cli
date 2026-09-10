@@ -84,7 +84,7 @@ relay server without registering a desktop handler.
 sh scripts/build.sh
 ```
 
-A supported source build requires Go `1.26.3`, `CGO_ENABLED=1`, a working C linker for the target platform, and a
+A supported source build requires Go `1.27.1`, `CGO_ENABLED=1`, a working C linker for the target platform, and a
 Rust ugoira staticlib matching the target. It outputs `build/pixiv` or `build/pixiv.exe`. On Windows, run the build
 command via Git Bash, MSYS2, or WSL.
 

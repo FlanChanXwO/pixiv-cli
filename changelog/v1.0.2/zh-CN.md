@@ -1,4 +1,4 @@
-# v1.0.2 — 2026-09-09
+# v1.0.2 — 2026-09-10
 
 ## 新增
 
@@ -27,5 +27,6 @@
 ## 维护
 
 - 扩展 page ordering、CDN policy、MIME mapping、partial result、cancellation、CLI/MCP projection、多页 resource identity 与 verified container provenance 的回归和 release-contract 覆盖。([#79](https://github.com/FlanChanXwO/pixiv-cli/pull/79)、[#80](https://github.com/FlanChanXwO/pixiv-cli/pull/80)、[#81](https://github.com/FlanChanXwO/pixiv-cli/pull/81))
+- 将受支持的源码构建与发布工具链统一升级到 Go `1.27.1`，覆盖 CI、native evidence、container、Homebrew 与 Docker Hub 验证 workflow。该版本包含上游 Windows MSVC cgo 修复，不再注入仅适用于 MinGW 的 `-mthreads`；Windows ARM64 仍显式跳过 race detector，因为 Go 的 race detector 目前依然不支持该目标。([#79](https://github.com/FlanChanXwO/pixiv-cli/pull/79))
 
 **完整变更**：[v1.0.1...v1.0.2](https://github.com/FlanChanXwO/pixiv-cli/compare/v1.0.1...v1.0.2)

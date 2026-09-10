@@ -31,7 +31,7 @@ jobs:
           persist-credentials: false
       - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff
         with:
-          go-version: '1.26.3'
+          go-version: '1.27.1'
       - name: Detect documentation-only changes
         id: scope
         shell: bash
@@ -102,7 +102,7 @@ jobs:
           persist-credentials: false
       - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff
         with:
-          go-version: '1.26.3'
+          go-version: '1.27.1'
       - name: Install the pinned native Rust toolchain
         shell: bash
         run: rustup toolchain install '${{ matrix.rust_toolchain }}' --profile minimal --target '${{ matrix.rust_target }}' --no-self-update

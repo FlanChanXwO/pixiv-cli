@@ -67,7 +67,7 @@ binary 预检会在替换现有安装前显露 loader 失败。
 sh scripts/build.sh
 ```
 
-受支持的源码构建需要 Go `1.26.3`、`CGO_ENABLED=1`、目标平台可用的 C linker，以及与
+受支持的源码构建需要 Go `1.27.1`、`CGO_ENABLED=1`、目标平台可用的 C linker，以及与
 目标匹配的 Rust ugoira staticlib。它会输出 `build/pixiv` 或 `build/pixiv.exe`。Windows
 可通过 Git Bash、MSYS2 或 WSL 运行构建命令。
 

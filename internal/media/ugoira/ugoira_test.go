@@ -76,7 +76,7 @@ func TestCGODisabledBuildRejectsMissingRustStaticlib(t *testing.T) {
 		t.Fatal("CGO_ENABLED=0 go build unexpectedly succeeded")
 	}
 	message := strings.ToLower(string(body))
-	for _, want := range []string{"go 1.26.3", "cgo", "staticlib", "c linker"} {
+	for _, want := range []string{"go 1.27.1", "cgo", "staticlib", "c linker"} {
 		if !strings.Contains(message, want) {
 			t.Fatalf("CGO_ENABLED=0 build error does not contain %q:\n%s", want, body)
 		}

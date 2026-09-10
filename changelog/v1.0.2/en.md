@@ -1,4 +1,4 @@
-# v1.0.2 — 2026-09-09
+# v1.0.2 — 2026-09-10
 
 ## Added
 
@@ -27,5 +27,6 @@
 ## Maintenance
 
 - Expand regression and release-contract coverage for page ordering, CDN policy, MIME mapping, partial results, cancellation, CLI/MCP projections, multi-page resource identity, and verified container provenance. ([#79](https://github.com/FlanChanXwO/pixiv-cli/pull/79), [#80](https://github.com/FlanChanXwO/pixiv-cli/pull/80), [#81](https://github.com/FlanChanXwO/pixiv-cli/pull/81))
+- Move the supported source-build and release toolchain to Go `1.27.1`, including CI, native evidence, container, Homebrew, and Docker Hub verification workflows. This picks up the upstream Windows MSVC cgo fix that no longer injects the MinGW-only `-mthreads` flag, while keeping the explicit Windows ARM64 race-detector skip because that target remains unsupported by Go's race detector. ([#79](https://github.com/FlanChanXwO/pixiv-cli/pull/79))
 
 **Full Changelog**: [v1.0.1...v1.0.2](https://github.com/FlanChanXwO/pixiv-cli/compare/v1.0.1...v1.0.2)

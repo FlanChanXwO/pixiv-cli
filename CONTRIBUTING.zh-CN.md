@@ -15,7 +15,7 @@
 
 受支持的源码构建使用：
 
-- Go `1.26.3`；
+- Go `1.27.1`；
 - `CGO_ENABLED=1` 和目标平台可用的 C linker；
 - 仓库中经 manifest 校验、与目标平台匹配的 Rust ugoira static library。
 

@@ -17,7 +17,7 @@
 项目是 Go module，当前 `go.mod` 声明：
 
 ```text
-go 1.26.3
+go 1.27.1
 ```
 
 开工前建议检查 Go/cgo、Rust 与常规测试环境：
@@ -45,7 +45,7 @@ ZIP；这一限制的目的仅是防止帧源在 decoder 自身限制生效前�
 
 受支持的 Go 源码构建需要下列条件：
 
-- Go `1.26.3`；
+- Go `1.27.1`；
 - `CGO_ENABLED=1`；
 - 当前 `GOOS/GOARCH` 对应的 C linker；
 - Rust crate 对应 target 的 committed `staticlib`；
@@ -574,7 +574,7 @@ pre-commit 和 `git diff --check`；production build job 只从 clean tag tree �
 `go run ./scripts/cmd/releaseassets channel --version ...` 判定；build metadata 中的连字符不会使 stable
 tag 误变为 prerelease。
 
-Go 1.26.3 不支持 Windows ARM64 的 race detector，因此该唯一 matrix entry 显式跳过 `go test -race`；
+Go 1.27.1 不支持 Windows ARM64 的 race detector，因此该唯一 matrix entry 显式跳过 `go test -race`；
 其余五个原生目标仍运行 race gate，workflow policy 固定这个条件，禁止扩张为任意条件跳过。
 test matrix 还固定 `GIT_CONFIG_*` 为 `core.autocrlf=false`，使 Git for Windows checkout 保留 immutable
 tag 的 LF blob bytes；否则 pre-commit 的 `gofmt` 会把 runner 的 CRLF 转换误报为源码未格式化。该配置

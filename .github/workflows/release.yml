@@ -26,7 +26,7 @@ jobs:
           ref: ${{ github.sha }}
       - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff
         with:
-          go-version: '1.26.3'
+          go-version: '1.27.1'
       - name: Validate release SemVer
         shell: bash
         run: go run ./scripts/cmd/releaseassets validate --version "${RELEASE_TAG#v}"
@@ -76,7 +76,7 @@ jobs:
           ref: ${{ env.RELEASE_TAG }}
       - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff
         with:
-          go-version: '1.26.3'
+          go-version: '1.27.1'
       - name: Run offline SDK E2E contract tests
         shell: bash
         run: |
@@ -155,7 +155,7 @@ jobs:
           ref: ${{ env.RELEASE_TAG }}
       - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff
         with:
-          go-version: '1.26.3'
+          go-version: '1.27.1'
       # 质量门从不可变 tag 读取 workflow、版本、CHANGELOG 与 Release notes。
       - name: Validate the exact immutable release source
         shell: bash
@@ -178,7 +178,7 @@ jobs:
         shell: bash
         run: go test ./...
       - name: Test Go sources with the race detector
-        # Go 1.26.3 明确不支持 windows/arm64 的 -race；其余五个原生目标仍必须执行 race gate。
+        # Go 1.27.1 明确不支持 windows/arm64 的 -race；其余五个原生目标仍必须执行 race gate。
         if: matrix.goos != 'windows' || matrix.goarch != 'arm64'
         shell: bash
         run: go test -race ./...
@@ -263,7 +263,7 @@ jobs:
           ref: ${{ env.RELEASE_TAG }}
       - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff
         with:
-          go-version: '1.26.3'
+          go-version: '1.27.1'
           cache: false
       - name: Validate the exact immutable production source
         shell: bash
@@ -352,7 +352,7 @@ jobs:
           ref: ${{ env.RELEASE_TAG }}
       - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff
         with:
-          go-version: '1.26.3'
+          go-version: '1.27.1'
       - name: Validate the immutable container source
         shell: bash
         run: |
@@ -443,7 +443,7 @@ jobs:
           ref: ${{ env.RELEASE_TAG }}
       - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff
         with:
-          go-version: '1.26.3'
+          go-version: '1.27.1'
       - name: Audit release sources and validate the bilingual tag notes
         shell: bash
         env:
@@ -507,7 +507,7 @@ jobs:
           ref: ${{ env.RELEASE_TAG }}
       - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff
         with:
-          go-version: '1.26.3'
+          go-version: '1.27.1'
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
         with:
           name: verified-release-darwin-amd64
@@ -622,7 +622,7 @@ jobs:
           ref: ${{ env.RELEASE_TAG }}
       - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff
         with:
-          go-version: '1.26.3'
+          go-version: '1.27.1'
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
         with:
           name: verified-container-linux-amd64
@@ -702,7 +702,7 @@ jobs:
           ref: ${{ env.RELEASE_TAG }}
       - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff
         with:
-          go-version: '1.26.3'
+          go-version: '1.27.1'
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
         with:
           name: verified-release-checksums
