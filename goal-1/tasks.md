@@ -4,18 +4,22 @@
 
 ## 执行规则
 
-- `goal-1/plan.md` 定义 required scope、证据、测试预算和终止状态机；本文件定义执行顺序。
+- `goal-1/plan.md` 定义 required scope、证据、测试预算、worktree/push gate 和终止状态机；本文件定义执行顺序。
 - `goal-1/input.md` 保持用户原始启动输入，禁止改写。
 - 每轮只执行第一个未完成且可安全执行的普通 task、抢占式 correction task，或满足条件的特殊终止任务。
+- 除 Goal 计划初始化/修订外，所有业务执行必须在专用独立 worktree 中进行；禁止在普通主 checkout 直接实施。
+- 专用 worktree 必须运行 `refactor/pixiv-api-stability`，优先复用已有 linked/native isolation，再优先平台原生 worktree，最后才允许安全的 `git worktree` fallback；禁止 force、reset 或破坏其他 checkout。
+- 每个 Phase 的最后一个 CHECK 同时是 phase push gate；push 成功并确认远端 SHA 与 phase-exit HEAD 一致前，CHECK 不能 `verified`，下一 Phase 不得开始。
+- Phase push 只允许普通 fast-forward push 到当前执行分支 `refactor/pixiv-api-stability`；网络/认证失败为 `blocked_external`，non-fast-forward/未知远端并发为 `blocked_decision`，禁止 force push。
 - 原 41 个 required capability 全部继续 required；不得降级为 `deferred_nonblocking`。
 - 所有生产代码修改必须 Red → Green → Refactor。
 - 同一根因只要求一个最小行为性 Red；Green 后只运行受影响 package 和必要 integration/compatibility tests。
-- leaf task 不重复运行 `go test ./...`、全 CLI/MCP regression 或全 race；这些集中在 Phase E。
+- leaf task 不重复运行 `go test ./...`、全 CLI/MCP regression 或全 race；这些集中在 Phase E。独立 worktree 建立时允许并要求一次 `go test ./...` 作为干净 baseline。
 - 禁止 speculative abstraction、无关重构、依赖升级、全仓 rename、为了“统一”修改稳定路径。
 - 如果现有实现和证据已经满足 task acceptance，可以 no-op `verified`，但必须记录当前复核证据。
 - 新发现但不属于原 41 项的需求只进入 `out-of-scope observations`。
 - 每完成三个普通 task，下一轮必须执行对应 CHECK。
-- Caveman skill 只负责压缩叙述和上下文；不能替代验证，也不能改变代码、命令、API 名或精确错误字符串。
+- Caveman skill 只负责压缩叙述和上下文；不能替代验证，也不能改变代码、命令、API 名或精确错误字符串。每个新会话恢复 Goal 时重新确认其可用性。
 
 ## Task 状态
 
@@ -45,6 +49,18 @@
 
 新 correction 必须插在当前 task 后、原下一 task 前，使其成为下一张 pending executable task。禁止简单追加到文件末尾后继续下一 Phase。若 correction 使已完成 gate 失效，受影响 gate 和 final closure 必须重置为 `pending`。
 
+## Phase push gate 通用规则
+
+Phase A–F 的最后一个 CHECK 在其业务/审计 acceptance 通过后，还必须完成：
+
+1. 本 Phase 的 task/correction 结果和 Goal 账本均已提交；没有来源不明的未提交业务 diff。
+2. 执行普通 fast-forward push 到 `refactor/pixiv-api-stability`；即使本 Phase 没有新业务实现，也执行一次 push，`up-to-date` 算成功。
+3. 核对远端分支 SHA 与本地 phase-exit HEAD 一致。
+4. 在 CHECK 完成记录中写 `Local HEAD`、`Remote SHA`、`Push result`。
+5. push 失败时 CHECK 不得标记 `verified`，后续 Phase 不得开始。
+
+Phase push 是恢复 checkpoint，不要求为 push 再重复阶段测试。
+
 ## 特殊控制任务：G1-TERM
 
 `G1-TERM` 不属于普通 Phase 顺序，不计入“三个普通 task 后 CHECK”。它可以在任意阶段抢占执行。
@@ -62,10 +78,11 @@ AND (required_external_blockers > 0 OR required_decision_blockers > 0)
 - 汇总 blocker 与受影响 capability。
 - 创建/更新 `goal-1/closure-report.md`。
 - 写 `GoalState: BLOCKED_EXTERNAL` 或 `GoalState: BLOCKED_DECISION`。
+- 提交 blocked closure 记录并尝试普通 fast-forward push 到 `refactor/pixiv-api-stability`；若 push 本身失败，记录失败，不得 force。
 
 若两类 blocker 同时存在，记录两类，GoalState 使用 `BLOCKED_DECISION`。
 
-**禁止：** 标记 Goal complete；修改业务代码；跳过仍可执行的内部 work。
+**禁止：** 标记 Goal complete；修改业务代码；跳过仍可执行的内部 work；force push。
 
 ---
 
@@ -73,34 +90,41 @@ AND (required_external_blockers > 0 OR required_decision_blockers > 0)
 
 本阶段不修改业务代码。
 
-## G1-T01 — Luna/Caveman execution preflight
+## G1-T01 — Luna/Caveman/worktree execution preflight
 
 **Status:** pending
 
 **Depends on:** none
 
-**Scope:** 分支、工作区、toolchain、Goal 文件、Caveman/LSP 可用性。
+**Scope:** worktree、分支、工作区、toolchain、Goal 文件、Caveman/LSP 可用性、干净 baseline。
 
 **验收：**
 
+- 检测 `git-dir`/`git-common-dir` 与 superproject，证明当前是 linked/native isolated worktree 且不是 submodule；若已隔离则复用，禁止嵌套 worktree。
+- 若尚未隔离：优先平台原生 worktree；无原生能力时才使用安全的 `git worktree` fallback，并在项目内 fallback 目录创建前确认其被 ignore。
 - 当前分支为 `refactor/pixiv-api-stability`。
 - HEAD 是 `e404434` 后代。
+- 不使用 force/reset/delete-other-worktree 等方式解决 branch checkout 冲突；无法安全建立隔离时标 `blocked_external`。
 - 没有来源不明的未提交业务 diff。
 - `goal-1/input.md`、`plan.md`、`tasks.md` 均被跟踪。
 - Go toolchain 与仓库既有 test/build 入口可调用。
 - Caveman skill 可加载并启用；不可用时标 `blocked_external`，不自动安装。
 - 代码导航需要 LSP 时，确认可用；不可用则记录明确 fallback。
+- 在专用 worktree 上执行一次 `go test ./...` 作为干净 baseline；通过才可继续。若 baseline 失败且不是本 Goal 造成，标 `blocked_decision`，不得无授权继续。
 
-**禁止：** 全仓 release test；业务代码修改；依赖安装。
+**禁止：** 业务代码修改；新依赖安装；额外 release-only gate。
 
 **完成记录：**
+- Worktree path/type：
 - Branch/HEAD：
-- Worktree：
+- Worktree isolation：
+- Worktree cleanliness：
 - Toolchain：
+- Baseline `go test ./...`：
 - Caveman：
 - LSP/fallback：
 - GoalState impact：
-- 下一步：G1-T02
+- 下一步：G1-T02 或 G1-TERM
 
 ## G1-T02 — Baseline inventory：artwork + novel/feed
 
@@ -159,12 +183,13 @@ AND (required_external_blockers > 0 OR required_decision_blockers > 0)
 
 **Depends on:** G1-T01,G1-T02,G1-T03
 
-检查分支/skill/toolchain 条件、24 项 baseline 完整性、evidence 误提升、scope drift、rejected endpoint 和 bookmark aggregate requiredness。
+检查 worktree/branch/skill/toolchain 条件、24 项 baseline 完整性、evidence 误提升、scope drift、rejected endpoint 和 bookmark aggregate requiredness。
 
-**Pass：** 当前覆盖 24/41；无漏项；无未经证据的 `verified`。
+**Pass：** 当前覆盖 24/41；无漏项；无未经证据的 `verified`；执行仍在同一专用 worktree。
 
 **完成记录：**
 - 检查结论：
+- Worktree：
 - Correction：
 - Blocker：
 
@@ -236,19 +261,24 @@ AND (required_external_blockers > 0 OR required_decision_blockers > 0)
 - Blockers：
 - 下一步：G1-CHECK-02
 
-## G1-CHECK-02 — 集中检查：41-state、correctness、manifests
+## G1-CHECK-02 — Phase A exit：41-state、correctness、manifests + push
 
 **Status:** pending
 
 **Depends on:** G1-T04,G1-T05,G1-T06
 
-**Pass：** `required=41`、`unmapped=0`、`undecomposed=0`、Live Manifest frozen；无被隐藏的内部 P0/P1。
+**Pass：** `required=41`、`unmapped=0`、`undecomposed=0`、Live Manifest frozen；无被隐藏的内部 P0/P1；仍在专用 worktree。
+
+**Phase push gate：** Pass 后提交本阶段 Goal 账本/证据，普通 fast-forward push 到 `refactor/pixiv-api-stability`，远端 SHA 必须等于 Local HEAD。push 未成功不得进入 Phase B。
 
 **完成记录：**
 - 检查结论：
 - Counts：
 - Correction：
 - Blocker：
+- Local HEAD：
+- Remote SHA：
+- Push result：
 
 ---
 
@@ -392,18 +422,23 @@ AND (required_external_blockers > 0 OR required_decision_blockers > 0)
 - 风险：
 - 下一步：G1-CHECK-04
 
-## G1-CHECK-04 — 集中检查：MCP read 完整性
+## G1-CHECK-04 — Phase B exit：MCP read 完整性 + push
 
 **Status:** pending
 
 **Depends on:** G1-T10,G1-T11,G1-T12
 
-**Pass：** Phase B required MCP read acceptance 有 evidence；无未分解 read owner；无多余 generalization。
+**Pass：** Phase B required MCP read acceptance 有 evidence；无未分解 read owner；无多余 generalization；worktree 无来源不明 diff。
+
+**Phase push gate：** 提交 Phase B 的实现/账本，普通 fast-forward push 到 `refactor/pixiv-api-stability` 并验证 Remote SHA == Local HEAD。push 未成功不得进入 Phase C。
 
 **完成记录：**
 - 检查结论：
 - Correction：
 - 风险：
+- Local HEAD：
+- Remote SHA：
+- Push result：
 
 ---
 
@@ -535,18 +570,23 @@ AND (required_external_blockers > 0 OR required_decision_blockers > 0)
 - 风险：
 - 下一步：G1-CHECK-06
 
-## G1-CHECK-06 — 集中检查：MCP mutation 完整性
+## G1-CHECK-06 — Phase C exit：MCP mutation 完整性 + push
 
 **Status:** pending
 
 **Depends on:** G1-T16,G1-T17,G1-T18
 
-**Pass：** 所有内部 mutation gap 关闭或有抢占式 correction；无 live blocker 掩盖代码问题。
+**Pass：** 所有内部 mutation gap 关闭或有抢占式 correction；无 live blocker 掩盖代码问题；worktree 状态可交付。
+
+**Phase push gate：** 提交 Phase C 的实现/账本，普通 fast-forward push 到 `refactor/pixiv-api-stability` 并验证 Remote SHA == Local HEAD。push 未成功不得进入 Phase D。
 
 **完成记录：**
 - 检查结论：
 - Correction：
 - 风险：
+- Local HEAD：
+- Remote SHA：
+- Push result：
 
 ---
 
@@ -687,18 +727,23 @@ AND (required_external_blockers > 0 OR required_decision_blockers > 0)
 - Correction：
 - 下一步：G1-CHECK-08
 
-## G1-CHECK-08 — 集中检查：compatibility/docs/release contract
+## G1-CHECK-08 — Phase D exit：compatibility/docs/release contract + push
 
 **Status:** pending
 
 **Depends on:** G1-T22,G1-T23,G1-T24
 
-**Pass：** cursor/SDK/CLI/MCP/docs/forbidden contract 均有 evidence；无未决内部差异。
+**Pass：** cursor/SDK/CLI/MCP/docs/forbidden contract 均有 evidence；无未决内部差异；worktree 状态可交付。
+
+**Phase push gate：** 提交 Phase D 的实现/文档/账本，普通 fast-forward push 到 `refactor/pixiv-api-stability` 并验证 Remote SHA == Local HEAD。push 未成功不得进入 Phase E。
 
 **完成记录：**
 - 检查结论：
 - Correction：
 - Blocker：
+- Local HEAD：
+- Remote SHA：
+- Push result：
 
 ---
 
@@ -763,13 +808,15 @@ AND (required_external_blockers > 0 OR required_decision_blockers > 0)
 - Correction：
 - 下一步：G1-CHECK-09
 
-## G1-CHECK-09 — 集中检查：offline release candidate
+## G1-CHECK-09 — Phase E exit：offline release candidate + push
 
 **Status:** pending
 
 **Depends on:** G1-T25,G1-T26,G1-T27
 
-**Pass：** internal `missing=0`；无理由 `implemented_unverified=0`；open P0/P1=0；offline gates PASS；required=41/unmapped=0/undecomposed=0。
+**Pass：** internal `missing=0`；无理由 `implemented_unverified=0`；open P0/P1=0；offline gates PASS；required=41/unmapped=0/undecomposed=0；worktree 状态可交付。
+
+**Phase push gate：** 提交 Phase E gate/账本，普通 fast-forward push 到 `refactor/pixiv-api-stability` 并验证 Remote SHA == Local HEAD。push 未成功不得进入 Phase F。
 
 **完成记录：**
 - Internal gaps：
@@ -777,6 +824,9 @@ AND (required_external_blockers > 0 OR required_decision_blockers > 0)
 - External candidates：
 - Decision blockers：
 - Correction：
+- Local HEAD：
+- Remote SHA：
+- Push result：
 
 ---
 
@@ -837,7 +887,7 @@ Live 只执行 `Live Manifest` 中 `live_required=yes` 的场景，不临时增�
 - Blocker/Correction：
 - 下一步：G1-CHECK-10
 
-## G1-CHECK-10 — 集中检查：live validation
+## G1-CHECK-10 — Phase F exit：live validation + push
 
 **Status:** pending
 
@@ -847,22 +897,25 @@ Live 只执行 `Live Manifest` 中 `live_required=yes` 的场景，不临时增�
 
 **Pass/terminal：**
 
-- 有内部 correction：保持 ACTIVE，抢占执行 correction。
+- 有内部 correction：保持 ACTIVE，抢占执行 correction；当前 CHECK 不完成 phase push。
 - 仅剩真实 external/decision blocker 且无可执行内部 work：运行 G1-TERM。
-- 所有 required live acceptance verified：进入 G1-FINAL。
+- 所有 required live acceptance verified：提交 Phase F live evidence/账本，普通 fast-forward push 到 `refactor/pixiv-api-stability`，验证 Remote SHA == Local HEAD；push 成功后进入 G1-FINAL。
 
 **完成记录：**
 - Live verified：
 - External blockers：
 - Decision blockers：
 - Correction：
+- Local HEAD：
+- Remote SHA：
+- Push result：
 - 下一步：G1-FINAL 或 G1-TERM
 
 ---
 
 # 特殊完成任务：G1-FINAL
 
-`G1-FINAL` 只在 G1-CHECK-10 通过且不存在 required blocker 时执行；不计入“三个普通 task 后 CHECK”。
+`G1-FINAL` 只在 G1-CHECK-10 通过、Phase A–F push gate 全通过且不存在 required blocker 时执行；不计入“三个普通 task 后 CHECK”。
 
 **Scope:** 只更新 `goal-1/current-state.md`、`goal-1/tasks.md`、`goal-1/closure-report.md`；不修改业务代码。
 
@@ -874,14 +927,16 @@ Live 只执行 `Live Manifest` 中 `live_required=yes` 的场景，不临时增�
 - blockers，必须 0。
 - unmapped/undecomposed，必须 0。
 - open P0/P1，必须 0。
+- worktree isolation gate 必须 PASS。
+- Phase A–F push gate 必须全部 PASS。
 - cursor integrity、SDK/CLI/MCP compatibility、protocol/SDK regression、CLI/MCP regression、full offline、required live、docs、redaction gate 均 PASS。
 
 **不得重复测试：** 如果某 gate 在当前 HEAD 已通过，且之后没有触及其相关代码/契约，G1-FINAL 直接引用该 evidence，不重复运行昂贵命令。
 
-**最终判定：**
+**最终判定候选：**
 
 ```text
-COMPLETED iff
+COMPLETED_CANDIDATE iff
   required_count == 41
   AND accepted_count == 41
   AND pending_required_tasks == 0
@@ -890,6 +945,8 @@ COMPLETED iff
   AND unmapped == 0
   AND undecomposed == 0
   AND open_correctness_p0_p1 == 0
+  AND worktree_isolation_gate == PASS
+  AND all_phase_push_gates == PASS
   AND cursor_integrity_gate == PASS
   AND sdk_compat_gate == PASS
   AND cli_compat_gate == PASS
@@ -902,7 +959,14 @@ COMPLETED iff
   AND redaction_gate == PASS
 ```
 
-只有满足全部条件才写 `GoalState: COMPLETED` 并允许客户端标记 Goal complete。
+满足候选条件后：
+
+1. 写 `GoalState: COMPLETED` 的最终 closure/current-state/tasks 记录并提交。
+2. 普通 fast-forward push 最终 closure commit 到 `refactor/pixiv-api-stability`。
+3. 验证远端 SHA 与最终 Local HEAD 一致。
+4. 只有最终 push 成功后，COMPLETED 才正式成立并允许客户端标记 Goal complete。
+
+如果最终 push 因网络/认证失败，Goal 不能标 complete，记录 `BLOCKED_EXTERNAL`；若 non-fast-forward/未知远端并发，记录 `BLOCKED_DECISION`；禁止 force。
 
 如果重新计算发现内部 gap：GoalState 保持 `ACTIVE`，创建抢占式 correction，并重置受影响 gate。
 
@@ -912,7 +976,12 @@ COMPLETED iff
 - required/accepted：
 - pending/in-progress：
 - blockers：
+- Worktree gate：
+- Phase push gates：
 - gate summary：
+- Final Local HEAD：
+- Final Remote SHA：
+- Final Push result：
 - GoalState：
 
 ---
@@ -921,8 +990,8 @@ COMPLETED iff
 
 合法停止结果只有：
 
-- `COMPLETED`：41/41 accepted，全部 required gate PASS，无 blocker。
-- `BLOCKED_EXTERNAL`：无内部可执行 work，但 required acceptance 被 Caveman/账号/权限/网络/目标数据/上游等真实外部条件阻塞。
-- `BLOCKED_DECISION`：无安全可继续路径，需要用户批准 breaking/scope/security 决策。
+- `COMPLETED`：41/41 accepted，全部 required gate PASS，worktree isolation PASS，Phase A–F push 全部 PASS，最终 closure 已成功 push，无 blocker。
+- `BLOCKED_EXTERNAL`：无内部可执行 work，但 required acceptance 或必需执行条件被 Caveman/worktree/push/账号/权限/网络/目标数据/上游等真实外部条件阻塞。
+- `BLOCKED_DECISION`：无安全可继续路径，需要用户批准 breaking/scope/security 决策，或处理 non-fast-forward/未知远端并发历史。
 
 `BLOCKED_*` 允许停止无人值守推进，但不是 Goal 完成。只有 `COMPLETED` 可以调用客户端的“标记 goal 完成”动作。
