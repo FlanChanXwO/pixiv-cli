@@ -92,7 +92,7 @@ AND (required_external_blockers > 0 OR required_decision_blockers > 0)
 
 ## G1-T01 — Luna/Caveman/worktree execution preflight
 
-**Status:** pending
+**Status:** verified
 
 **Depends on:** none
 
@@ -115,16 +115,16 @@ AND (required_external_blockers > 0 OR required_decision_blockers > 0)
 **禁止：** 业务代码修改；新依赖安装；额外 release-only gate。
 
 **完成记录：**
-- Worktree path/type：
-- Branch/HEAD：
-- Worktree isolation：
-- Worktree cleanliness：
-- Toolchain：
-- Baseline `go test ./...`：
-- Caveman：
-- LSP/fallback：
-- GoalState impact：
-- 下一步：G1-T02 或 G1-TERM
+- Worktree path/type：`/Users/flanchan/Developer/Projects/GithubProjects/.worktrees/pixiv-cli-refactor-pixiv-api-stability`；linked Git worktree；`git-dir != git-common-dir`；不是 submodule。
+- Branch/HEAD：`refactor/pixiv-api-stability`；preflight 基线 HEAD `29ae255e2061b57e21d2067492878e1df342efe8`；已创建 task commit `docs(goal-1): verify G1-T01 preflight`；`e40443495981cdaf01215d6711cb24fa618b087a` 是 ancestor。
+- Worktree isolation：PASS；未嵌套 worktree；主 checkout 的既有 dirty WIP 未触碰。
+- Worktree cleanliness：PASS；目标 worktree `git status --porcelain` 为空；`goal-1/input.md`、`plan.md`、`tasks.md` 均 tracked；`git diff --check` 通过。
+- Toolchain：Go `go1.26.3 darwin/arm64`；`go.mod` 与 `scripts/build.sh` 可用；`go mod download` 成功。
+- Baseline `go test ./...`：PASS；目标 worktree 执行退出码 0，所有 package 通过。
+- Caveman：PASS；`/Users/flanchan/.agents/skills/caveman/SKILL.md` 可加载；当前会话按其紧凑叙述规则运行。
+- LSP/fallback：PASS；目标 worktree 已启动 `gopls`，server version `v0.21.1`；`open_document` 与 `list_symbols` 成功，无 fallback。
+- GoalState impact：保持 `ACTIVE`；无 blocker。
+- 下一步：G1-T02
 
 ## G1-T02 — Baseline inventory：artwork + novel/feed
 
