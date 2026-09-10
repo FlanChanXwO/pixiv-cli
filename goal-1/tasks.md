@@ -4,663 +4,891 @@
 
 ## 执行规则
 
-- `goal-1/plan.md` 定义 required scope、证据规则和终止状态机；本文件定义执行顺序。
+- `goal-1/plan.md` 定义 required scope、证据、测试预算和终止状态机；本文件定义执行顺序。
 - `goal-1/input.md` 保持用户原始启动输入，禁止改写。
-- 每轮只执行第一个未完成且可以安全执行的 task；不得合并、跳序或顺手扩 scope。
-- 所有生产代码修改必须 Red → Green → Refactor；如果 task 经过当前证据证明已满足 acceptance，可以 no-op `verified`，但必须记录复核证据。
-- 旧 `goal-3/tasks.md` 的 `verified` 只能作为调查线索，不能自动提升本文件状态。
-- 原 41 个 required capability 全部继续 required；本文件无权把其中任何一个标记为 `deferred_nonblocking`。
-- 禁止未分解 meta-task，例如“以后再拆”“按 owner 再拆”“修所有剩余问题”。
-- 每完成三个普通 task，下一轮必须执行对应 `CHECK` task。
-- 每个 task 完成后必须填写实际改动、验证证据、剩余风险和下一步。
-- 任何新增 correction task 必须绑定既有 required acceptance failure，不得新增产品范围。
-- 新发现但不属于原 41 项 required scope 的需求只记录到 `goal-1/current-state.md` 的 `out-of-scope observations`，不进入当前 Goal 的 required task graph。
+- 每轮只执行第一个未完成且可安全执行的普通 task、抢占式 correction task，或满足条件的特殊终止任务。
+- 原 41 个 required capability 全部继续 required；不得降级为 `deferred_nonblocking`。
+- 所有生产代码修改必须 Red → Green → Refactor。
+- 同一根因只要求一个最小行为性 Red；Green 后只运行受影响 package 和必要 integration/compatibility tests。
+- leaf task 不重复运行 `go test ./...`、全 CLI/MCP regression 或全 race；这些集中在 Phase E。
+- 禁止 speculative abstraction、无关重构、依赖升级、全仓 rename、为了“统一”修改稳定路径。
+- 如果现有实现和证据已经满足 task acceptance，可以 no-op `verified`，但必须记录当前复核证据。
+- 新发现但不属于原 41 项的需求只进入 `out-of-scope observations`。
+- 每完成三个普通 task，下一轮必须执行对应 CHECK。
+- Caveman skill 只负责压缩叙述和上下文；不能替代验证，也不能改变代码、命令、API 名或精确错误字符串。
 
 ## Task 状态
 
-普通状态：
+普通 task：
 
-- `pending`：尚未执行。
-- `in_progress`：当前轮正在执行。
-- `verified`：acceptance 已由事实证据证明。
-- `blocked_external`：仅被账号、权限、网络、目标数据或上游状态阻塞；不能冒充 verified。
-- `blocked_decision`：继续需要用户批准 breaking/scope/security 决策；不能冒充 verified。
+- `pending`
+- `in_progress`
+- `verified`
+- `blocked_external`
+- `blocked_decision`
 
-`blocked_external` / `blocked_decision` 是 task 的终态，但不是 Goal 完成态。
+`blocked_external` / `blocked_decision` 是 task 终态，不是 Goal 完成态。
 
-依赖默认要求前置 task 为 `verified`。只有 G1-T18 与 G1-CHECK-06 属于终态计算任务，可以在 G1-T16/G1-T17 已达到任一终态（`verified` / `blocked_external` / `blocked_decision`）后运行，以计算 `COMPLETED` 或阻塞结果。
+## Correction 抢占规则
 
-## Correction task 规则
-
-检查、回归和终审允许追加 correction task，格式必须为 `G1-CORR-<来源>-NN`，并包含：
+发现既有 required acceptance failure 或本 Goal 引入回归时，新增 `G1-CORR-<来源>-NN`，必须记录：
 
 - Source task/gate
 - Capability
 - Observed failure
 - Expected contract
 - Scope boundary
-- Red command / expected failure（若改生产代码）
+- Red / expected failure（生产代码变更时）
 - Green acceptance
 - Compatibility impact
 - Rollback boundary
 
-Correction 只能修复本 Goal 已冻结的 acceptance failure 或本 Goal 引入的回归。不能借 correction 增加第 42 个 required capability。
+新 correction 必须插在当前 task 后、原下一 task 前，使其成为下一张 pending executable task。禁止简单追加到文件末尾后继续下一 Phase。若 correction 使已完成 gate 失效，受影响 gate 和 final closure 必须重置为 `pending`。
 
-如果 correction 使已经完成的 downstream gate 失效，必须把受影响 gate/closure task 重置为 `pending` 并重新验证，禁止沿用旧通过结果。
+## 特殊控制任务：G1-TERM
+
+`G1-TERM` 不属于普通 Phase 顺序，不计入“三个普通 task 后 CHECK”。它可以在任意阶段抢占执行。
+
+**允许条件：**
+
+```text
+runnable_required_tasks == 0
+AND (required_external_blockers > 0 OR required_decision_blockers > 0)
+```
+
+**只允许做：**
+
+- 证明没有仍可执行的内部 task/correction。
+- 汇总 blocker 与受影响 capability。
+- 创建/更新 `goal-1/closure-report.md`。
+- 写 `GoalState: BLOCKED_EXTERNAL` 或 `GoalState: BLOCKED_DECISION`。
+
+若两类 blocker 同时存在，记录两类，GoalState 使用 `BLOCKED_DECISION`。
+
+**禁止：** 标记 Goal complete；修改业务代码；跳过仍可执行的内部 work。
 
 ---
 
-# Phase A — Baseline reconciliation
+# Phase A — Preflight、baseline 与 manifests
 
-目标：在继续业务实现前，把 41 个 required capability 的当前真实 layer 状态、已知 correctness 风险和有限剩余工作映射清楚。此阶段不修改业务代码。
+本阶段不修改业务代码。
 
-## G1-T01 — 建立 41 capability 当前状态与 evidence index
+## G1-T01 — Luna/Caveman execution preflight
 
 **Status:** pending
 
 **Depends on:** none
 
-**Scope:** `goal-1/current-state.md`、只读代码/测试/history/旧 `goal-3/` 证据。
-
-**目标：** 对旧 41 个 required capability 逐项建立 Contract / Adapter / SDK / Shared / CLI / MCP / Offline / Live / Compatibility / Release 状态。
+**Scope:** 分支、工作区、toolchain、Goal 文件、Caveman/LSP 可用性。
 
 **验收：**
-- 创建 `goal-1/current-state.md`。
-- 必须恰好覆盖旧 41 个 required capability；不能少项、合并后丢项或增加 required 项。
-- 每个适用 layer 使用 `verified` / `implemented_unverified` / `missing` / `blocked_external` / `blocked_decision` / `not_applicable`。
-- 每个 `verified` 必须有证据索引；每个 `not_applicable` 必须有 contract 理由。
-- 记录 `e404434` 的 T37D WIP，不能把 WIP 误记为完成。
-- 旧 task status 与当前事实冲突时明确登记 drift。
-- 记录当前分支相对源分支的基线，不把后续 Goal 文档提交混入旧实现证据。
 
-**禁止：** 修改生产代码；缩减 required scope；仅复制旧 capability 单字段状态。
+- 当前分支为 `refactor/pixiv-api-stability`。
+- HEAD 是 `e404434` 后代。
+- 没有来源不明的未提交业务 diff。
+- `goal-1/input.md`、`plan.md`、`tasks.md` 均被跟踪。
+- Go toolchain 与仓库既有 test/build 入口可调用。
+- Caveman skill 可加载并启用；不可用时标 `blocked_external`，不自动安装。
+- 代码导航需要 LSP 时，确认可用；不可用则记录明确 fallback。
+
+**禁止：** 全仓 release test；业务代码修改；依赖安装。
 
 **完成记录：**
-- 实际改动：
-- 验证证据：
-- 状态漂移：
-- 剩余风险：
+- Branch/HEAD：
+- Worktree：
+- Toolchain：
+- Caveman：
+- LSP/fallback：
+- GoalState impact：
 - 下一步：G1-T02
 
-## G1-T02 — 复核 known correctness 与 forbidden behavior
+## G1-T02 — Baseline inventory：artwork + novel/feed
 
 **Status:** pending
 
 **Depends on:** G1-T01
 
-**Scope:** pagination/replay、novel latest/detail/series、recommended continuation、comments DTO、restrict/rating、rejected endpoint/no-fallback。
+**Capabilities:** 1–13。
 
-**目标：** 把旧风险审计与当前实现/测试逐项对照，确认哪些 correctness 问题已经真实关闭，哪些仅“实现过但未证明”，哪些仍然存在。
+**Scope:** `goal-1/current-state.md`，只读代码、tests、history、旧 evidence。
+
+**目标：** 对 artwork / novel / feed 13 项逐层记录 Contract、Adapter、SDK、Shared、CLI、MCP、Offline、Live、Compatibility、Release。
 
 **验收：**
-- `current-state.md` 有独立 correctness ledger。
-- 至少覆盖 logical pagination/checkpoint/replay、novel latest continuation、novel detail/series endpoint、artwork recommended continuation、artwork/novel comments DTO、restrict/rating filter、rejected endpoint no-fallback。
-- 每项记录代码路径、测试路径、历史证据和当前 verdict。
-- P0/P1 不能以“known limitation”方式绕过。
-- 发现内部可修复 failure 时只登记 correction candidate，不在本 task 修改业务代码。
-- 发现新需求但不属于旧 41 required 时记为 out-of-scope observation。
+
+- 13 项全部存在，无合并丢项。
+- `verified` 有 evidence index。
+- `implemented_unverified` / `missing` 不被历史 task 状态覆盖。
+- rejected endpoint 与 no-fallback 状态明确。
+- T37A/B/C 历史完成只作为证据，不自动 accepted。
 
 **完成记录：**
-- 实际改动：
-- 验证证据：
-- Correction candidates：
-- 剩余风险：
+- 覆盖计数：
+- Verified evidence：
+- Drift：
+- Internal gaps：
 - 下一步：G1-T03
 
-## G1-T03 — 编译 finite execution manifest 与 closure mapping
+## G1-T03 — Baseline inventory：bookmark
 
 **Status:** pending
 
-**Depends on:** G1-T01,G1-T02
+**Depends on:** G1-T02
 
-**Scope:** `goal-1/current-state.md`、本 `tasks.md` 的映射核验；不改业务代码。
+**Capabilities:** 14–24。
 
-**目标：** 证明每个非 accepted required capability 都有有限处理路径，并把旧 remaining work 映射到本文件已经列出的 leaf task 或受约束 correction task。
+**目标：** 复核 bookmark list/tags/detail/mutation/subtype/list-all/tags-all 的所有 layer。
 
 **验收：**
-- 41 个 required capability 每项必须属于以下之一：`accepted_by_evidence`、`mapped_to_task`、`blocked_external`、`blocked_decision`；初始化阶段不得出现 `deferred_nonblocking`。
-- 每个 `mapped_to_task` 至少有一个具体 task ID。
-- MCP read/mutation、cursor integrity、compatibility、docs、offline regression、live validation 都有明确 owner。
-- 不存在“以后再拆卡”的任务。
-- 若 G1-T01/T02 发现旧已完成区域存在真实 required gap，为每个独立根因追加一个符合规则的 correction task；不得新增 capability。
-- 输出 manifest checksum/计数：required=41，unmapped=0，undecomposed=0。
+
+- 11 项完整。
+- `bookmark-list-all` / `bookmark-tags-all` 保持 required。
+- artwork/novel typed semantics、双流 checkpoint、统一 budget、页原子失败证据分开记录。
+- mutation offline 与 live evidence 不混淆。
 
 **完成记录：**
-- 实际改动：
-- Manifest 计数：
-- 新增 correction task：
-- 剩余风险：
+- 覆盖计数：
+- Verified evidence：
+- Drift：
+- Internal gaps：
 - 下一步：G1-CHECK-01
 
-## G1-CHECK-01 — 集中检查：baseline、correctness、closure
+## G1-CHECK-01 — 集中检查：preflight + artwork/novel/bookmark baseline
 
 **Status:** pending
 
 **Depends on:** G1-T01,G1-T02,G1-T03
 
-**检查：** input/plan 偏离、41 项完整性、evidence 真伪、状态漂移、P0/P1 correctness、forbidden endpoint、task mapping、未分解任务、scope creep。
+检查分支/skill/toolchain 条件、24 项 baseline 完整性、evidence 误提升、scope drift、rejected endpoint 和 bookmark aggregate requiredness。
 
-**Pass 条件：** `required=41`、`unmapped=0`、`undecomposed=0`，且没有被错误隐藏的内部 correctness gap。
-
-**发现问题：** 只能登记/追加绑定既有 acceptance 的 correction task；不在 CHECK 内顺手修改业务代码。
+**Pass：** 当前覆盖 24/41；无漏项；无未经证据的 `verified`。
 
 **完成记录：**
 - 检查结论：
-- Required/unmapped/undecomposed：
-- 新增 correction task：
-- 剩余风险：
+- Correction：
+- Blocker：
 
----
-
-# Phase B — MCP read convergence
-
-## G1-T04 — MCP user / MyPixiv / relationship read 收敛
+## G1-T04 — Baseline inventory：comments/stamps + user/shared
 
 **Status:** pending
 
 **Depends on:** G1-CHECK-01
 
-**Capabilities:** `user-artworks`、`user-novels`、`user-relationships`、`user-detail`、`user-search`、`mypixiv`，以及其 MCP/Shared 相关 acceptance。
+**Capabilities:** 25–41。
 
-**目标：** 收敛 `e404434` 的 T37D WIP：search user、user detail/artworks/novels、MyPixiv、following/followers/related/blocked 的 schema、resolver/filter、pagination、structured error、legacy replay。
-
-**实现准入：** 若 G1-T01/T03 已证明该 slice 全部满足 acceptance，则允许 no-op verified；否则代码修改必须先得到行为性 Red。
+**目标：** 完成其余 comments/stamps、user/relationship、bare-id/rating/logical-pagination/recommended-all 的 layer inventory。
 
 **验收：**
-- 相关 MCP schema 与 frozen compatibility 一致。
-- identity/resolver/filter/pagination 行为有专项测试。
-- structured error 不伪装成功。
-- legacy JSON replay 保持兼容。
-- rejected endpoint 不可达。
-- 不扩展到 bookmark/mutation。
 
-**回滚边界：** 仅 MCP user/MyPixiv/relationship read slice 与必要共享 schema helper。
+- 17 项完整，最终 `required_count=41`。
+- `logical-pagination` 的 T23A/R02 证据与其他 endpoint continuation 分开。
+- T37D WIP 明确为 WIP，不误记 MCP user layer verified。
+- comments read/mutation、stamps、follow mutation 的 offline/live 边界明确。
 
 **完成记录：**
-- 实际改动：
-- Red：
-- Green/回归：
-- 兼容影响：
-- 剩余风险：
+- 覆盖计数：
+- Verified evidence：
+- Drift：
+- Internal gaps：
 - 下一步：G1-T05
 
-## G1-T05 — MCP bookmark read 与 required aggregate 收敛
+## G1-T05 — Correctness ledger 与 forbidden behavior 复核
 
 **Status:** pending
 
 **Depends on:** G1-T04
 
-**Capabilities:** artwork/novel bookmark list/tags/detail、`bookmark-subtype`、`bookmark-list-all`、`bookmark-tags-all`。
-
-**目标：** 完成 MCP bookmark read surface，并保留旧 `user_bookmarks` / `bookmark_tags` wire；旧 required aggregate 不能降级为 enhancement。
+**至少覆盖：** logical pagination/checkpoint/replay、novel latest、novel detail/series、artwork recommended continuation、artwork/novel comments DTO、restrict/rating、rejected endpoint/no-fallback。
 
 **验收：**
-- artwork/novel list/tags/detail schema、错误和 cursor 行为有专项回归。
-- `bookmark-list-all`：artwork 后 novel，统一 Skip/Limit budget，双流 checkpoint，可恢复且不遗漏不重复。
-- `bookmark-tags-all`：按内容类型保留同名标签与各自 count。
-- 聚合中任一 required 流失败时逻辑页整体失败，不输出部分成功。
-- legacy JSON replay 通过。
-- 不修改 mutation surface。
 
-**回滚边界：** MCP bookmark read/aggregate 与必要共享聚合调用方。
+- 每项有代码路径、测试路径、历史 evidence、当前 verdict。
+- P0/P1 不允许以 known limitation 绕过。
+- 内部可修复 failure 建立受约束 correction candidate，不在本 task 修业务代码。
+- 新产品需求只进 out-of-scope observations。
 
 **完成记录：**
-- 实际改动：
-- Red：
-- Green/回归：
-- 兼容影响：
-- 剩余风险：
+- Open P0/P1：
+- Closed by evidence：
+- Correction candidates：
 - 下一步：G1-T06
 
-## G1-T06 — MCP read registration/schema/error/replay harness 收敛
+## G1-T06 — Freeze Live Manifest + finite execution mapping
 
 **Status:** pending
 
 **Depends on:** G1-T04,G1-T05
 
-**Capabilities:** 所有 required MCP read layer 的公共 gate。
-
-**目标：** 收敛 read tool registration、legacy exact-set、共享 output/error schema、stdio stdout 边界和全量 read replay harness。
+**Scope:** `goal-1/current-state.md` 与本 task graph；不改业务代码。
 
 **验收：**
-- tool exact-set 与兼容矩阵一致；新增 required operation 只能 additive。
-- 旧 tool 不被静默重命名/删除。
-- legacy request replay 全通过。
-- structured error schema 一致。
-- stdout 不混入日志/诊断噪声。
-- read tool 的 forbidden endpoint/no-fallback 检查通过。
-- 不包含 mutation implementation。
+
+- 建立 Live Manifest：capability、live_required、scenario、second-page、账号/数据条件、mutation read-back/cleanup、evidence/blocker。
+- 41 项每项为 `accepted_by_evidence`、`mapped_to_task`、`blocked_external` 或 `blocked_decision` 之一。
+- 每个 `mapped_to_task` 有具体 task ID。
+- `required=41`、`unmapped=0`、`undecomposed=0`。
+- Compatibility、cursor、docs、offline regression、live 都有 owner。
 
 **完成记录：**
-- 实际改动：
-- Red：
-- Green/回归：
-- Tool-set evidence：
-- 剩余风险：
+- Required/unmapped/undecomposed：
+- Live-required count：
+- Added correction tasks：
+- Blockers：
 - 下一步：G1-CHECK-02
 
-## G1-CHECK-02 — 集中检查：MCP read
+## G1-CHECK-02 — 集中检查：41-state、correctness、manifests
 
 **Status:** pending
 
 **Depends on:** G1-T04,G1-T05,G1-T06
 
-复查 MCP read owner 隔离、schema、structured errors、pagination/filter、aggregate 原子性、tool exact-set、legacy replay、forbidden endpoint、测试和 docs drift。
-
-**Pass 条件：** Phase B 对应所有 required MCP read acceptance 均有证据或已有受约束 correction task。
+**Pass：** `required=41`、`unmapped=0`、`undecomposed=0`、Live Manifest frozen；无被隐藏的内部 P0/P1。
 
 **完成记录：**
 - 检查结论：
-- 新增 correction task：
-- 剩余风险：
+- Counts：
+- Correction：
+- Blocker：
 
 ---
 
-# Phase C — MCP mutation convergence
+# Phase B — MCP read convergence
 
-## G1-T07 — MCP artwork/novel bookmark mutation vertical slice
+## G1-T07 — MCP user identity read：search/detail/trending
 
 **Status:** pending
 
 **Depends on:** G1-CHECK-02
 
-**Capabilities:** `artwork-bookmark-mutation`、`novel-bookmark-mutation` 的 MCP layer。
+**Capabilities:** `user-search`、`user-detail`、`trending` 的 MCP/Shared acceptance。
 
-**目标：** 完成 artwork/novel bookmark add/remove 的 MCP input validation、SDK dispatch、mutation outcome、structured error 和兼容 replay。
+**目标：** 收敛 search user、user detail、trending 的 schema、resolver/filter、pagination、structured error 与 legacy replay。
 
-**验收：**
-- 代码改动前有真实 Red。
-- public/private、成功、明确失败、不确定结果均有 offline fixture。
-- uncertain mutation 不自动 replay。
-- 旧请求 wire 兼容。
-- 不把离线成功冒充 live round-trip。
+**最小验证：** 若需改代码，一个行为性 Red；Green 后运行相关 MCP tool/package tests 和必要 legacy replay。
+
+**验收：** schema/identity/filter/pagination/error 与 frozen contract 一致；不扩到 relationships/bookmark。
 
 **完成记录：**
-- 实际改动：
-- Red：
-- Green/回归：
-- 兼容影响：
-- 剩余风险：
+- 改动/no-op：
+- Red/Green：
+- Compatibility：
+- 风险：
 - 下一步：G1-T08
 
-## G1-T08 — MCP artwork/novel comment + stamp mutation vertical slice
+## G1-T08 — MCP user collections/relationships/MyPixiv read
 
 **Status:** pending
 
 **Depends on:** G1-T07
 
-**Capabilities:** `artwork-comments-mutation`、`novel-comments-mutation`、`stamps` 的 mutation/MCP acceptance。
+**Capabilities:** `user-artworks`、`user-novels`、`user-relationships`、`mypixiv`。
 
-**目标：** 完成 create/reply/stamp/delete MCP surface，严格复用已冻结 SDK、comment ID 来源和 mutation outcome 语义。
+**目标：** 收敛 artworks/novels、following/followers/related/blocked、MyPixiv 的 read surface。
 
-**验收：**
-- create/reply/stamp/delete 各自有输入、成功、错误和 uncertain-result 测试。
-- 本轮创建 ID 必须来自可靠响应/contract，禁止通过“最新评论”等启发式猜测。
-- 不确定结果不自动重放。
-- structured error 与 legacy compatibility 通过。
-- 不扩大到未经旧 scope 承诺的新 mutation。
+**最小验证：** 一个根因一个 Red；相关 tool/package tests；只在跨 owner wire 变化时跑 replay。
+
+**验收：** resolver、pagination、structured errors、legacy wire 均与 manifest 一致；T37D WIP 全部闭合或产生具体 correction。
 
 **完成记录：**
-- 实际改动：
-- Red：
-- Green/回归：
-- ID/outcome evidence：
-- 剩余风险：
+- 改动/no-op：
+- Red/Green：
+- Compatibility：
+- 风险：
 - 下一步：G1-T09
 
-## G1-T09 — MCP follow/unfollow mutation vertical slice
+## G1-T09 — MCP typed bookmark read
 
 **Status:** pending
 
 **Depends on:** G1-T08
 
-**Capabilities:** `follow-mutation` 的 MCP layer。
+**Capabilities:** artwork/novel bookmark list/tags/detail、`bookmark-subtype`。
 
-**目标：** 完成 user follow/unfollow MCP mutation surface，并保持 restrict 校验和旧 wire。
+**目标：** 完成 typed bookmark read，不包含 `all` aggregate。
 
-**验收：**
-- invalid restrict 在网络请求前拒绝。
-- success / definite failure / uncertain outcome 有离线回归。
-- legacy JSON replay 通过。
-- 不新增通用 mutation retry。
-- 不改变 SDK/CLI 已冻结兼容语义。
+**验收：** public/private、typed target、empty/error/cursor、logical-limit/filter 语义和旧 `user_bookmarks` / `bookmark_tags` wire 通过。
+
+**最小验证：** focused Red/Green + bookmark MCP package tests。
 
 **完成记录：**
-- 实际改动：
-- Red：
-- Green/回归：
-- 剩余风险：
+- 改动/no-op：
+- Red/Green：
+- Compatibility：
+- 风险：
 - 下一步：G1-CHECK-03
 
-## G1-CHECK-03 — 集中检查：mutation
+## G1-CHECK-03 — 集中检查：MCP user + typed bookmark read
 
 **Status:** pending
 
 **Depends on:** G1-T07,G1-T08,G1-T09
 
-复查 access control、uncertain outcome、重放安全、同账号语义、本轮 ID、旧 wire、错误传播、敏感信息、无自动 retry、离线/live 证据边界。
-
-**Pass 条件：** 所有 MCP mutation 内部实现 gap 已关闭或有明确 correction；不得用 live blocker 掩盖可修复代码问题。
+复查 owner 隔离、schema/error、resolver/filter/pagination、legacy wire、forbidden endpoint、是否出现多余 abstraction。
 
 **完成记录：**
 - 检查结论：
-- 新增 correction task：
-- 剩余风险：
+- Correction：
+- 风险：
 
----
-
-# Phase D — Compatibility and release contract convergence
-
-## G1-T10 — Cursor integrity、binding 与跨版本 rollback gate
+## G1-T10 — MCP required bookmark aggregates
 
 **Status:** pending
 
 **Depends on:** G1-CHECK-03
 
-**Capabilities:** `logical-pagination` 及所有使用持久化 cursor 的 required capability。
-
-**目标：** 收敛旧 R01：明确 cursor 的不可信边界、版本/binding 行为和跨版本 rollback/失效策略。
+**Capabilities:** `bookmark-list-all`、`bookmark-tags-all`。
 
 **验收：**
-- cursor 不包含 credential、cookie、token、signed URL、原始用户内容或未脱敏 next_url。
-- query/account/client/subtype binding 与 frozen contract 一致。
-- 不兼容版本明确返回 `InvalidCursor` 或已定义迁移结果，禁止静默从第一页重启。
-- 批内 checkpoint、末批 checkpoint、Skip/Limit/OneBatch、重复 cursor、取消和 replay 回归通过。
-- 有跨版本 rollback/compatibility 测试或明确不可兼容的受控失败测试。
+
+- list-all：artwork 后 novel、统一 Skip/Limit budget、双流 checkpoint、恢复不漏不重。
+- tags-all：typed 同名标签分开保留各自 count。
+- 任一 required 流失败，逻辑页整体失败，不输出部分成功。
+- 旧 wire 不被替换；新增 operation 只能 additive。
+
+**最小验证：** 聚合专项 Red/Green；不跑全 MCP suite。
 
 **完成记录：**
-- 实际改动：
-- Red：
-- Green/回归：
-- Integrity evidence：
-- 剩余风险：
+- 改动/no-op：
+- Red/Green：
+- Aggregate evidence：
+- 风险：
 - 下一步：G1-T11
 
-## G1-T11 — 全局 SDK / CLI / MCP compatibility audit 与差异收敛
+## G1-T11 — MCP read registration/schema/error gate
 
 **Status:** pending
 
-**Depends on:** G1-T10
+**Depends on:** G1-T07,G1-T08,G1-T09,G1-T10
 
-**Capabilities:** 41 项的 Compatibility layer。
+**目标：** 收敛 read tool registration、exact-set、共享 output/error schema。
 
-**目标：** 对照旧 T12/T39A compatibility matrices 和当前实现，只修真实差异，不重新设计 public surface。
+**验收：** 旧 tool 不被删除/静默重命名；required additive operations 注册完整；structured error 一致；forbidden endpoint 不可达。
 
-**验收：**
-- public Go SDK symbol/named type/legacy consumer compilation 通过。
-- CLI canonical route、legacy alias、默认值和错误语义通过。
-- MCP old tool/input/output wire 和 legacy JSON replay 通过。
-- `NovelContent` 等 excluded endpoint 的兼容入口不发 rejected 请求。
-- 发现必须 breaking change 时进入 `blocked_decision`，不得擅自实施。
+**最小验证：** registration/schema/error 相关 tests；不跑全 legacy replay。
 
 **完成记录：**
-- 实际改动：
-- Red：
-- Green/回归：
-- Breaking-change audit：
-- 剩余风险：
+- 改动/no-op：
+- Red/Green：
+- Tool set：
+- 风险：
 - 下一步：G1-T12
 
-## G1-T12 — CLI presentation、双语 docs、Skill 与 changelog 收敛
+## G1-T12 — MCP read legacy replay + stdout boundary
 
 **Status:** pending
 
 **Depends on:** G1-T11
 
-**Capabilities:** 41 项的文档/可发现性公共 gate。
+**目标：** 只验证 read 层 legacy JSON replay 和 stdio stdout/stderr 边界。
 
-**目标：** 同步 completion/help/deprecation、README、CLI/SDK/MCP docs、`skills/pixiv-cli/` 和必要 changelog，只描述真实已实现 surface。
+**验收：** legacy request replay 通过；stdout 不混入日志；structured error wire 稳定。
 
-**验收：**
-- CLI help/completion 与实际注册一致。
-- 双语文档不宣称 rejected/excluded 能力可用。
-- cursor/pagination、mutation uncertainty、兼容/弃用行为有必要说明。
-- docs/completion tests 通过。
-- 不把未取得 live 证明的能力描述为“已 live 验证”。
+**测试预算：** 运行 read replay harness 与 stdout tests；不重复 package 已通过的功能测试。
 
 **完成记录：**
-- 实际改动：
-- 验证：
-- 文档一致性：
-- 剩余风险：
+- Replay：
+- Stdout：
+- Correction：
+- 风险：
 - 下一步：G1-CHECK-04
 
-## G1-CHECK-04 — 集中检查：compatibility / docs / release contracts
+## G1-CHECK-04 — 集中检查：MCP read 完整性
 
 **Status:** pending
 
 **Depends on:** G1-T10,G1-T11,G1-T12
 
-复查 cursor integrity、SDK/CLI/MCP compatibility、breaking-change blocker、presentation、docs、Skill、changelog、forbidden endpoint 文档和真实 surface 一致性。
+**Pass：** Phase B required MCP read acceptance 有 evidence；无未分解 read owner；无多余 generalization。
 
 **完成记录：**
 - 检查结论：
-- 新增 correction task：
-- Blocking decision：
-- 剩余风险：
+- Correction：
+- 风险：
 
 ---
 
-# Phase E — Offline release candidate
+# Phase C — MCP mutation convergence
 
-## G1-T13 — Protocol / endpoint / SDK regression gate
+## G1-T13 — MCP bookmark mutation
 
 **Status:** pending
 
 **Depends on:** G1-CHECK-04
 
-**目标：** 对 adapter、DTO、request、continuation、SDK models/methods/cursor 做系统离线回归。
+**Capabilities:** `artwork-bookmark-mutation`、`novel-bookmark-mutation` 的 MCP layer。
 
-**验收：**
-- required/optional/null/empty/error fixture 通过。
-- adapter ↔ SDK 对照通过。
-- continuation allowlist 与 query/account/subtype binding 通过。
-- old consumer compile/public API checks 通过。
-- rejected endpoint 负向测试通过。
-- 不以 historical success 替代当前运行结果。
+**验收：** add/remove、public/private、definite success/failure/uncertain outcome、structured error、legacy wire；uncertain 不自动 replay。
+
+**最小验证：** 一个根因一个 Red；bookmark mutation focused/package tests。
 
 **完成记录：**
-- 实际改动：
-- 回归命令：
-- 结果：
-- 新增 correction task：
-- 剩余风险：
+- 改动/no-op：
+- Red/Green：
+- Outcome evidence：
+- 风险：
 - 下一步：G1-T14
 
-## G1-T14 — CLI / MCP regression gate
+## G1-T14 — MCP artwork comment/stamp mutation
 
 **Status:** pending
 
 **Depends on:** G1-T13
 
-**目标：** 对所有 required CLI/MCP surface 做离线集成和兼容回归。
+**Capabilities:** `artwork-comments-mutation`、`stamps` 的 artwork-side MCP acceptance。
 
-**验收：**
-- CLI JSON/NDJSON/stdin/skip/fail-fast/cursor/alias 行为通过。
-- MCP schema、structured errors、exact-set、legacy JSON replay、stdout 边界通过。
-- aggregate operation 的顺序、budget、checkpoint、失败原子性通过。
-- mutation offline outcome 与 replay safety 通过。
-- 不调用 forbidden endpoint。
+**验收：** create/reply/stamp/delete input/outcome/error；创建 ID 来自可靠 contract，不使用“最新评论”猜测；uncertain 不 replay。
+
+**最小验证：** artwork comment mutation focused/package tests。
 
 **完成记录：**
-- 实际改动：
-- 回归命令：
-- 结果：
-- 新增 correction task：
-- 剩余风险：
+- 改动/no-op：
+- Red/Green：
+- ID/outcome：
+- 风险：
 - 下一步：G1-T15
 
-## G1-T15 — Full offline release-candidate build / quality / redaction gate
+## G1-T15 — MCP novel comment/stamp mutation
 
 **Status:** pending
 
-**Depends on:** G1-T13,G1-T14
+**Depends on:** G1-T14
 
-**目标：** 运行本 Goal 最大范围可离线执行的 release-candidate gate。
+**Capabilities:** `novel-comments-mutation`、`stamps` 的 novel-side MCP acceptance。
 
-**必须验证：**
-- `go test ./...`
-- `go vet ./...`
-- `sh scripts/build.sh`
-- 必要 race tests
-- public API compatibility
-- CLI/MCP compatibility replay
-- docs/completion tests
-- forbidden endpoint/no-fallback 负向检查
-- evidence/log 中 token、cookie、signed URL、隐私数据和其他敏感信息检查
-- `current-state.md` 中所有内部可解决 layer 不得继续是 `missing` 或无理由的 `implemented_unverified`
+**验收：** create/reply/stamp/delete 与 frozen v2 contract 一致；禁止对 candidate v3 fallback；ID/outcome/error 可观测。
 
-任何失败必须映射到具体根因并建立 correction task；禁止创建“修所有测试”任务。
+**最小验证：** novel comment mutation focused/package tests。
 
 **完成记录：**
-- 实际改动：
-- Gate 命令：
-- Gate 结果：
-- 新增 correction task：
-- 剩余风险：
+- 改动/no-op：
+- Red/Green：
+- ID/outcome：
+- 风险：
 - 下一步：G1-CHECK-05
 
-## G1-CHECK-05 — 集中检查：offline release candidate
+## G1-CHECK-05 — 集中检查：bookmark/comment mutation
 
 **Status:** pending
 
 **Depends on:** G1-T13,G1-T14,G1-T15
 
-**目标：** 证明所有代码库内部可解决的 required gap 已关闭，进入 live phase 前只剩真正外部验证或明确用户决策。
-
-**Pass 条件：**
-- internal `missing` = 0。
-- unjustified `implemented_unverified` = 0。
-- open P0/P1 correctness = 0。
-- offline gates = PASS。
-- required=41、unmapped=0、undecomposed=0。
+复查 uncertain outcome、ID 来源、error、legacy wire、无自动 retry、无无关 mutation abstraction。
 
 **完成记录：**
 - 检查结论：
-- Internal gaps：
-- External candidates：
-- Decision blockers：
-- 新增 correction task：
+- Correction：
+- 风险：
+
+## G1-T16 — MCP follow/unfollow mutation
+
+**Status:** pending
+
+**Depends on:** G1-CHECK-05
+
+**Capabilities:** `follow-mutation` MCP layer。
+
+**验收：** invalid restrict 网络前拒绝；follow/unfollow success/failure/uncertain 有离线回归；旧 wire 兼容；无通用 retry。
+
+**最小验证：** focused Red/Green + follow MCP package tests。
+
+**完成记录：**
+- 改动/no-op：
+- Red/Green：
+- 风险：
+- 下一步：G1-T17
+
+## G1-T17 — Shared mutation outcome / uncertainty harness
+
+**Status:** pending
+
+**Depends on:** G1-T13,G1-T14,G1-T15,G1-T16
+
+**目标：** 只收敛多种 mutation 共用的 outcome/error/uncertain 语义和必要 shared harness；不得为了统一而新建通用 mutation framework。
+
+**验收：** definite failure 与 uncertain 分离；不自动 replay；已有 helper 可复用时不新增 abstraction。
+
+**最小验证：** shared harness tests + 受影响 mutation package spot checks。
+
+**完成记录：**
+- 改动/no-op：
+- Red/Green：
+- Shared semantics：
+- 风险：
+- 下一步：G1-T18
+
+## G1-T18 — MCP mutation legacy replay / offline read-back contract gate
+
+**Status:** pending
+
+**Depends on:** G1-T17
+
+**目标：** 验证旧 mutation request wire、structured error、offline read-back contract；不执行 live 写入。
+
+**验收：** legacy replay 通过；read-back orchestration 可测试；无法知道写入结果时保持 uncertain；不借 offline fixture 宣称 live success。
+
+**测试预算：** mutation replay harness + 必要 integration，不重复所有 focused tests。
+
+**完成记录：**
+- Replay：
+- Read-back contract：
+- Correction：
+- 风险：
+- 下一步：G1-CHECK-06
+
+## G1-CHECK-06 — 集中检查：MCP mutation 完整性
+
+**Status:** pending
+
+**Depends on:** G1-T16,G1-T17,G1-T18
+
+**Pass：** 所有内部 mutation gap 关闭或有抢占式 correction；无 live blocker 掩盖代码问题。
+
+**完成记录：**
+- 检查结论：
+- Correction：
+- 风险：
 
 ---
 
-# Phase F — Live validation and terminal closure
+# Phase D — Compatibility、cursor 与 docs
 
-## G1-T16 — Live read validation
-
-**Status:** pending
-
-**Depends on:** G1-CHECK-05
-
-**Capabilities:** 所有 contract 明确需要当前 live read/第二页证明的 required capability。
-
-**目标：** 使用明确授权账号/网络/目标数据验证关键 read endpoint、第二页 continuation 以及 adapter/SDK/CLI/MCP 对齐。
-
-**验收：**
-- 有授权条件时执行 live read，记录脱敏 evidence。
-- 至少覆盖 frozen live manifest 中的 endpoint/path、关键 query、第二页 continuation 和错误边界。
-- 不借用旧 historical success 冒充当前验证。
-- 缺账号/权限/网络/目标数据/上游条件时，只有满足 plan 的严格条件才可标 `blocked_external`。
-- 如果 live 暴露代码内 correctness 问题，则不能标 external blocker；必须登记 correction task。
-
-**完成记录：**
-- 实际验证：
-- Evidence：
-- External blocker（如有）：
-- Correction task（如有）：
-- 剩余风险：
-- 下一步：G1-T17
-
-## G1-T17 — Live mutation validation 与隔离清理
+## G1-T19 — Cursor integrity / binding / rollback gate
 
 **Status:** pending
 
-**Depends on:** G1-CHECK-05
+**Depends on:** G1-CHECK-06
 
-**Capabilities:** artwork/novel bookmark mutation、artwork/novel comments mutation、follow mutation，以及相关 stamps/read-back contract。
-
-**目标：** 在明确授权的隔离账号与真实目标下验证 mutation round-trip。
+**Capabilities:** `logical-pagination` 与所有持久化 cursor 使用者。
 
 **验收：**
-- 写前确认 access control 和目标归属。
-- create/add/follow 后按 contract read-back。
-- reply/stamp/delete/remove/unfollow 按对应 contract 验证。
-- 仅清理本轮可识别的副作用；不删除既有用户数据。
-- uncertain result 不自动 replay。
-- evidence 脱敏。
-- 外部条件不足时可 `blocked_external`，但不能记作 mutation verified。
-- live 暴露内部 bug 时建立 correction task，而不是 external blocker。
+
+- cursor 不含 credential/cookie/token/signed URL/raw next_url/原始用户内容。
+- query/account/client/subtype binding 与 contract 一致。
+- 不兼容版本显式 `InvalidCursor` 或已定义迁移，不静默第一页重启。
+- 批内/末批 checkpoint、Skip/Limit/OneBatch、重复 cursor、取消、replay 有针对性回归。
+- 跨版本 rollback 有兼容测试或受控失败测试。
+
+**测试预算：** cursor/shared + 直接调用方相关 tests，不跑全仓。
 
 **完成记录：**
-- 实际验证：
-- Read-back / cleanup：
-- Evidence：
-- External blocker（如有）：
-- Correction task（如有）：
-- 剩余风险：
-- 下一步：G1-T18
+- 改动/no-op：
+- Red/Green：
+- Integrity：
+- 风险：
+- 下一步：G1-T20
 
-## G1-T18 — 重新计算 41 capability acceptance 与生成 closure report
+## G1-T20 — Public Go SDK compatibility
 
 **Status:** pending
 
-**Depends on:** G1-T16,G1-T17 reached terminal status
+**Depends on:** G1-T19
 
-**Scope:** 只更新 `goal-1/current-state.md`、`goal-1/closure-report.md` 和必要 task 状态；不修改业务代码。
+**目标：** 对照旧 T12 symbol map，只收敛实际 SDK compatibility 差异。
 
-**目标：** 从当前最终代码和所有 gate 证据机械计算每个 capability 的 acceptance 与 Goal 运行终态。
+**验收：** exported symbols/named types/legacy wrappers/old consumer compilation；excluded endpoint 兼容入口不发 rejected 请求。
 
-**验收：**
-- 重新核对 41 个 required capability，数量必须恰好为 41。
-- 每个 capability 的适用 layer 和 evidence index 最终一致。
-- 输出 `accepted_count`、`blocked_external_count`、`blocked_decision_count`、`internal_gap_count`、`pending_task_count`、`undecomposed_task_count`。
-- 创建/更新 `goal-1/closure-report.md`。
-- 只有满足 plan 中 `COMPLETED` 全部条件时才能写 `GoalState: COMPLETED`。
-- 任一 required external blocker 存在时写 `GoalState: BLOCKED_EXTERNAL`。
-- 任一 required decision blocker 存在时写 `GoalState: BLOCKED_DECISION`；若同时存在 external blocker，同时列出但 decision blocker 优先决定需要用户输入。
-- 若发现内部 gap，GoalState 保持 `ACTIVE` 并建立受约束 correction task；不得伪造终态。
+**最小验证：** SDK compatibility/old consumer tests；不跑 CLI/MCP。
+
+**Blocking：** 必须 breaking 时 `blocked_decision`，并触发 G1-TERM 条件检查。
 
 **完成记录：**
-- Accepted：
-- Blocked external：
-- Blocked decision：
+- 改动/no-op：
+- Compatibility tests：
+- Breaking decision：
+- 风险：
+- 下一步：G1-T21
+
+## G1-T21 — CLI compatibility + presentation
+
+**Status:** pending
+
+**Depends on:** G1-T20
+
+**目标：** 收敛 canonical route、legacy alias/deprecation、默认值、help/completion；不重设计 CLI。
+
+**验收：** 旧 route/alias 可用；新 canonical 行为符合 frozen map；help/completion 只显示真实 surface。
+
+**最小验证：** 相关 route/alias/help/completion tests。
+
+**完成记录：**
+- 改动/no-op：
+- Tests：
+- Compatibility：
+- 风险：
+- 下一步：G1-CHECK-07
+
+## G1-CHECK-07 — 集中检查：cursor + SDK + CLI
+
+**Status:** pending
+
+**Depends on:** G1-T19,G1-T20,G1-T21
+
+复查 cursor safety、rollback、source compatibility、CLI alias/presentation、breaking blocker 与 over-refactor。
+
+**完成记录：**
+- 检查结论：
+- Correction：
+- Decision blocker：
+
+## G1-T22 — MCP compatibility audit
+
+**Status:** pending
+
+**Depends on:** G1-CHECK-07
+
+**目标：** 对照旧 T39A，只修 MCP tool/input/output wire 的真实差异。
+
+**验收：** old tool exact-set、legacy request/output/error schema；新增 required operation additive；旧 tool 不删不静默改名。
+
+**最小验证：** MCP compatibility tests + relevant replay，不重复功能 tests。
+
+**Blocking：** breaking wire 需要 `blocked_decision`。
+
+**完成记录：**
+- 改动/no-op：
+- Compatibility：
+- Breaking decision：
+- 风险：
+- 下一步：G1-T23
+
+## G1-T23 — README / CLI / SDK / MCP docs / Skill / changelog
+
+**Status:** pending
+
+**Depends on:** G1-T21,G1-T22
+
+**目标：** 只同步真实已实现 surface、compatibility、cursor/mutation 注意事项和 exclusion。
+
+**验收：** 双语文档、`skills/pixiv-cli/`、必要 changelog 与实际 surface 一致；不声称未 live 验证能力已 live verified。
+
+**测试预算：** docs/completion tests；不跑业务全仓测试。
+
+**完成记录：**
+- 文档改动：
+- Docs tests：
+- 风险：
+- 下一步：G1-T24
+
+## G1-T24 — Forbidden endpoint / no-fallback release contract gate
+
+**Status:** pending
+
+**Depends on:** G1-T20,G1-T21,G1-T22,G1-T23
+
+**目标：** 专门证明 rejected endpoint 和 fallback 禁令仍成立，避免在大 regression 中被淹没。
+
+**验收：** `/v1/novel/detail`、`/v1/novel/series`、`/v1/novel/content`、WebView/anonymous fallback、未经确认 server x_restrict 不可从 required public paths 触发。
+
+**测试预算：** 现有负向 tests + 必要静态引用检查；不新增重复 fixture。
+
+**完成记录：**
+- Gate：
+- Findings：
+- Correction：
+- 下一步：G1-CHECK-08
+
+## G1-CHECK-08 — 集中检查：compatibility/docs/release contract
+
+**Status:** pending
+
+**Depends on:** G1-T22,G1-T23,G1-T24
+
+**Pass：** cursor/SDK/CLI/MCP/docs/forbidden contract 均有 evidence；无未决内部差异。
+
+**完成记录：**
+- 检查结论：
+- Correction：
+- Blocker：
+
+---
+
+# Phase E — Offline release candidate
+
+## G1-T25 — Protocol / endpoint / SDK regression
+
+**Status:** pending
+
+**Depends on:** G1-CHECK-08
+
+**验收：** required/optional/null/empty/error fixtures、adapter↔SDK、continuation allowlist/binding、old consumer、rejected endpoint negative regression 通过。
+
+**测试预算：** 运行 protocol/endpoint/SDK regression 集；不重复 full CLI/MCP。
+
+**完成记录：**
+- Commands：
+- Result：
+- Correction：
+- 下一步：G1-T26
+
+## G1-T26 — CLI + MCP regression
+
+**Status:** pending
+
+**Depends on:** G1-T25
+
+**验收：** CLI JSON/NDJSON/stdin/skip/fail-fast/cursor/alias；MCP schema/error/exact-set/legacy replay/stdout；aggregate 与 mutation offline safety 通过。
+
+**测试预算：** 运行 CLI/MCP regression harness；不重复 protocol/SDK suite。
+
+**完成记录：**
+- Commands：
+- Result：
+- Correction：
+- 下一步：G1-T27
+
+## G1-T27 — Full offline build / quality / race-as-needed / redaction gate
+
+**Status:** pending
+
+**Depends on:** G1-T25,G1-T26
+
+**必须验证一次：**
+
+- `go test ./...`
+- `go vet ./...`
+- `sh scripts/build.sh`
+- race tests 仅对本 Goal 修改过且存在并发语义的 package，或已有 release contract 明确要求的集合
+- docs/completion
+- compatibility replay
+- forbidden endpoint/no-fallback
+- evidence/log 中 token/cookie/signed URL/隐私数据
+
+禁止为了“更保险”重复运行与同一 HEAD 已通过且未被 invalidated 的昂贵 gate。
+
+**完成记录：**
+- Commands：
+- Result：
+- Race scope/rationale：
+- Redaction：
+- Correction：
+- 下一步：G1-CHECK-09
+
+## G1-CHECK-09 — 集中检查：offline release candidate
+
+**Status:** pending
+
+**Depends on:** G1-T25,G1-T26,G1-T27
+
+**Pass：** internal `missing=0`；无理由 `implemented_unverified=0`；open P0/P1=0；offline gates PASS；required=41/unmapped=0/undecomposed=0。
+
+**完成记录：**
 - Internal gaps：
-- Pending/undecomposed：
-- GoalState：
-- 下一步：G1-CHECK-06
+- Gate summary：
+- External candidates：
+- Decision blockers：
+- Correction：
 
-## G1-CHECK-06 — 最终集中检查-debug 与终态证明
+---
+
+# Phase F — Live validation
+
+Live 只执行 `Live Manifest` 中 `live_required=yes` 的场景，不临时增加 live scope。
+
+## G1-T28 — Live read：artwork / novel / feed
 
 **Status:** pending
 
-**Depends on:** G1-T16,G1-T17,G1-T18 reached terminal status
+**Depends on:** G1-CHECK-09
 
-这是 Goal Mode 的最终最大范围复查，不是新的 feature discovery 阶段。
+**目标：** 验证 manifest 中 artwork/novel/feed endpoint、关键 query、second-page continuation 和错误边界。
 
-**必须复查：**
-- 41 required capability 是否完整且 acceptance 计算正确。
-- tasks 是否存在 pending/in_progress required work。
-- 是否有未分解 meta-task。
-- P0/P1 correctness 是否全部关闭。
-- cursor integrity/rollback gate。
-- SDK/CLI/MCP compatibility。
-- protocol/SDK、CLI/MCP、full test/vet/build/race gate。
-- forbidden endpoint/no-fallback。
-- docs/Skill/completion/changelog 一致性。
-- live evidence 与 blocker 分类真实性。
-- evidence/redaction。
-- correction task 是否全部闭合且没有让旧 gate 失效。
+**验收：** 当前授权环境下执行并脱敏；缺真实账号/数据/网络可 `blocked_external`；live 暴露内部 bug 必须 correction，不能当 external blocker。
 
-**最终判定规则：**
+**测试预算：** 只跑 manifest 明确要求的场景，不穷举所有 filter/flag 组合。
+
+**完成记录：**
+- Scenarios：
+- Evidence：
+- Blocker/Correction：
+- 下一步：G1-T29
+
+## G1-T29 — Live read：bookmark / comments / user
+
+**Status:** pending
+
+**Depends on:** G1-CHECK-09
+
+**目标：** 验证 manifest 中 bookmark/comments/user/MyPixiv/relationship read 与数据受限 pagination 场景。
+
+**验收：** 只要求 manifest 指定的代表性真实场景；数据不足时按 manifest 记录 `blocked_external`，不得伪造第二页。
+
+**完成记录：**
+- Scenarios：
+- Evidence：
+- Blocker/Correction：
+- 下一步：G1-T30
+
+## G1-T30 — Live mutation：bookmark / comments / follow
+
+**Status:** pending
+
+**Depends on:** G1-CHECK-09
+
+**目标：** 按 manifest 在明确授权隔离账号验证 mutation round-trip。
+
+**验收：** 写前 access control；可靠 ID；read-back；只清理本轮副作用；uncertain 不 replay；evidence 脱敏。
+
+**测试预算：** 每个 mutation family 只执行 frozen contract 要求的最小成功/清理路径和必要错误边界，不做压力/穷举测试。
+
+**完成记录：**
+- Scenarios：
+- Read-back/cleanup：
+- Evidence：
+- Blocker/Correction：
+- 下一步：G1-CHECK-10
+
+## G1-CHECK-10 — 集中检查：live validation
+
+**Status:** pending
+
+**Depends on:** G1-T28,G1-T29,G1-T30 reached terminal status
+
+复核 manifest 覆盖、证据脱敏、external blocker 分类、mutation cleanup、live 是否暴露内部 correction。
+
+**Pass/terminal：**
+
+- 有内部 correction：保持 ACTIVE，抢占执行 correction。
+- 仅剩真实 external/decision blocker 且无可执行内部 work：运行 G1-TERM。
+- 所有 required live acceptance verified：进入 G1-FINAL。
+
+**完成记录：**
+- Live verified：
+- External blockers：
+- Decision blockers：
+- Correction：
+- 下一步：G1-FINAL 或 G1-TERM
+
+---
+
+# 特殊完成任务：G1-FINAL
+
+`G1-FINAL` 只在 G1-CHECK-10 通过且不存在 required blocker 时执行；不计入“三个普通 task 后 CHECK”。
+
+**Scope:** 只更新 `goal-1/current-state.md`、`goal-1/tasks.md`、`goal-1/closure-report.md`；不修改业务代码。
+
+**必须重新计算：**
+
+- `required_count`，必须 41。
+- `accepted_count`，必须 41。
+- pending/in_progress required tasks，必须 0。
+- blockers，必须 0。
+- unmapped/undecomposed，必须 0。
+- open P0/P1，必须 0。
+- cursor integrity、SDK/CLI/MCP compatibility、protocol/SDK regression、CLI/MCP regression、full offline、required live、docs、redaction gate 均 PASS。
+
+**不得重复测试：** 如果某 gate 在当前 HEAD 已通过，且之后没有触及其相关代码/契约，G1-FINAL 直接引用该 evidence，不重复运行昂贵命令。
+
+**最终判定：**
 
 ```text
 COMPLETED iff
-  required_capabilities == 41
+  required_count == 41
   AND accepted_count == 41
   AND pending_required_tasks == 0
   AND in_progress_required_tasks == 0
   AND required_blockers == 0
-  AND undecomposed_tasks == 0
+  AND unmapped == 0
+  AND undecomposed == 0
   AND open_correctness_p0_p1 == 0
   AND cursor_integrity_gate == PASS
   AND sdk_compat_gate == PASS
@@ -674,17 +902,16 @@ COMPLETED iff
   AND redaction_gate == PASS
 ```
 
-如果只剩真实 external blocker，则最终为 `BLOCKED_EXTERNAL`；如果需要明确用户决策，则最终为 `BLOCKED_DECISION`。两者都允许无人值守 Goal Mode 停止，但**不得调用“标记 goal 完成”的动作**，不得宣称 release/public ready。
+只有满足全部条件才写 `GoalState: COMPLETED` 并允许客户端标记 Goal complete。
 
-若最终检查发现既有 required acceptance failure，只能追加受约束 correction task，并把 G1-T18 / G1-CHECK-06 及受影响 gate 重置为 `pending` 后重新验证。禁止在最终检查新增产品 scope。
+如果重新计算发现内部 gap：GoalState 保持 `ACTIVE`，创建抢占式 correction，并重置受影响 gate。
+
+如果发现 blocker：不得 COMPLETED；按 G1-TERM 规则生成 blocked closure。
 
 **完成记录：**
-- 最终检查结论：
-- accepted_count：
-- external blockers：
-- decision blockers：
-- pending/in_progress：
-- undecomposed：
+- required/accepted：
+- pending/in-progress：
+- blockers：
 - gate summary：
 - GoalState：
 
@@ -692,10 +919,10 @@ COMPLETED iff
 
 # 终点约束
 
-本文件的最后一行不是“所有 task 都做过”就算完成。Goal Mode 只有三种合法停止结果：
+合法停止结果只有：
 
-- `COMPLETED`：41/41 accepted，全部 required gate 通过，无 blocker。
-- `BLOCKED_EXTERNAL`：无内部可执行工作，offline gate 通过，但 required live/external 条件不足。
-- `BLOCKED_DECISION`：无安全可继续路径，等待用户批准 breaking/scope/security 决策。
+- `COMPLETED`：41/41 accepted，全部 required gate PASS，无 blocker。
+- `BLOCKED_EXTERNAL`：无内部可执行 work，但 required acceptance 被 Caveman/账号/权限/网络/目标数据/上游等真实外部条件阻塞。
+- `BLOCKED_DECISION`：无安全可继续路径，需要用户批准 breaking/scope/security 决策。
 
-`BLOCKED_*` 只是停止自动推进，不是完成。只有 `COMPLETED` 才能把 Goal 在客户端标记为完成。
+`BLOCKED_*` 允许停止无人值守推进，但不是 Goal 完成。只有 `COMPLETED` 可以调用客户端的“标记 goal 完成”动作。
