@@ -55,6 +55,17 @@ func TestPlatformSmokePinsAuditedRustToolchains(t *testing.T) {
 	}
 }
 
+func TestPlatformSmokeUsesGo1271(t *testing.T) {
+	payload, err := os.ReadFile("../../../.github/workflows/platform-smoke.yml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	workflow := string(payload)
+	if !strings.Contains(workflow, "go-version: '1.27.1'") {
+		t.Fatal("platform smoke workflow must use Go 1.27.1 for the Windows MSVC cgo fix")
+	}
+}
+
 func TestPlatformSmokeEmbedsOnlyRootVersion(t *testing.T) {
 	payload, err := os.ReadFile("../../../.github/workflows/platform-smoke.yml")
 	if err != nil {
