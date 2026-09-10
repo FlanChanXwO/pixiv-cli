@@ -138,6 +138,8 @@ type fakeSDKClient struct {
 	myPixivNovels         func(context.Context, pixiv.MyPixivNovelsRequest) (sdk.Page[pixiv.Novel], error)
 	userNovels            func(context.Context, pixiv.UserNovelsRequest) (sdk.Page[pixiv.Novel], error)
 	userFollowing         func(context.Context, pixiv.UserFollowingRequest) (sdk.Page[pixiv.UserPreview], error)
+	userFollowers         func(context.Context, pixiv.UserFollowersRequest) (sdk.Page[pixiv.UserPreview], error)
+	userBlockedUsers      func(context.Context, pixiv.UserBlockedUsersRequest) (sdk.Page[pixiv.UserPreview], error)
 	relatedUsers          func(context.Context, pixiv.RelatedUsersRequest) (sdk.Page[pixiv.UserPreview], error)
 	recommendedArtworks   func(context.Context, pixiv.RecommendedArtworksRequest, int) (sdk.Page[pixiv.Artwork], error)
 	illustRanking         func(context.Context, pixiv.ArtworkRankingRequest) (sdk.Page[pixiv.Artwork], error)
@@ -185,6 +187,8 @@ type fakeSDKClient struct {
 	bookmarksRequest           pixiv.UserArtworkBookmarksRequest
 	userNovelsRequest          pixiv.UserNovelsRequest
 	followingRequest           pixiv.UserFollowingRequest
+	followersRequest           pixiv.UserFollowersRequest
+	blockedUsersRequest        pixiv.UserBlockedUsersRequest
 	relatedUsersRequest        pixiv.RelatedUsersRequest
 	bookmarkTagsRequest        pixiv.UserArtworkBookmarkTagsRequest
 	artworkBookmarkRequest     pixiv.ArtworkBookmarkRequest

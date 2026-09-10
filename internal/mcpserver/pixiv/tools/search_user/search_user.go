@@ -8,6 +8,7 @@ import (
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/internal/outputs"
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/internal/records"
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/internal/runtime"
+	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/internal/schemas"
 	"github.com/FlanChanXwO/pixiv-cli/sdk"
 	pixiv "github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
@@ -15,7 +16,10 @@ import (
 
 // Register 注册 search_user。
 func Register(app *runtime.App, server *mcp.Server) {
-	runtime.AddTool(app, server, &mcp.Tool{Name: "search_user", Description: "Search for users/artists on Pixiv.", OutputSchema: records.RecordsOutputSchema()}, func(ctx context.Context, request *mcp.CallToolRequest, input searchUserIn) (*mcp.CallToolResult, outputs.Records, error) {
+	runtime.AddTool(app, server, &mcp.Tool{Name: "search_user", Description: "Search for users/artists on Pixiv.", InputSchema: schemas.List(map[string]any{
+		"word":        map[string]any{"type": "string", "description": "User search keyword."},
+		"user_filter": filters.UserFilterSchema(),
+	}, "word"), OutputSchema: records.RecordsOutputSchema()}, func(ctx context.Context, request *mcp.CallToolRequest, input searchUserIn) (*mcp.CallToolResult, outputs.Records, error) {
 		return handleSearchUser(ctx, app, input)
 	})
 }

@@ -147,7 +147,7 @@ func (tr *testSDKTransport) RoundTrip(request *http.Request) (*http.Response, er
 		}
 		status, body, err = tr.wireNovelPage(page)
 	case "/v1/user/mypixiv":
-		req := pixivsdk.MyPixivUsersRequest{}
+		req := pixivsdk.MyPixivUsersRequest{Cursor: cursorFromOffset(queryInt(request.URL.Query(), "offset"))}
 		tr.fake.myPixivUsersRequest = req
 		page, callErr := callUserPageFunc(tr.fake.myPixivUsers, req)
 		if callErr != nil {
@@ -226,6 +226,14 @@ func (tr *testSDKTransport) RoundTrip(request *http.Request) (*http.Response, er
 			page = sdk.Page[pixivsdk.UserPreview]{Items: tr.fake.following}
 		}
 		status, body, err = tr.wireUserPreviewPage(page)
+	case "/v1/user/follower":
+		req := pixivsdk.UserFollowersRequest{UserID: queryInt64(request.URL.Query(), "user_id"), Restrict: pixivsdk.Restrict(request.URL.Query().Get("restrict")), Cursor: cursorFromOffset(queryInt(request.URL.Query(), "offset"))}
+		tr.fake.followersRequest = req
+		page, callErr := callUserPageFunc(tr.fake.userFollowers, req)
+		if callErr != nil {
+			return wireErrorResponse(callErr)
+		}
+		status, body, err = tr.wireUserPreviewPage(page)
 	case "/v1/user/related":
 		req := pixivsdk.RelatedUsersRequest{UserID: queryInt64(request.URL.Query(), "seed_user_id"), Cursor: cursorFromOffset(queryInt(request.URL.Query(), "offset"))}
 		tr.fake.relatedUsersRequest = req
@@ -236,6 +244,14 @@ func (tr *testSDKTransport) RoundTrip(request *http.Request) (*http.Response, er
 		}
 		if tr.fake.relatedUsers == nil && len(tr.fake.relatedPage.Items) > 0 {
 			page = tr.fake.relatedPage
+		}
+		status, body, err = tr.wireUserPreviewPage(page)
+	case "/v2/user/list":
+		req := pixivsdk.UserBlockedUsersRequest{UserID: queryInt64(request.URL.Query(), "user_id"), Cursor: cursorFromOffset(queryInt(request.URL.Query(), "offset"))}
+		tr.fake.blockedUsersRequest = req
+		page, callErr := callUserPageFunc(tr.fake.userBlockedUsers, req)
+		if callErr != nil {
+			return wireErrorResponse(callErr)
 		}
 		status, body, err = tr.wireUserPreviewPage(page)
 	case "/v1/user/bookmark-tags/illust":

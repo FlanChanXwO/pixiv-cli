@@ -130,7 +130,7 @@ func TestTimelineToolsValidateInputAndExposeSDKErrors(t *testing.T) {
 		name string
 		args map[string]any
 	}{
-		{"mypixiv_novels", map[string]any{"page": 0, "limit": 1}},
+		{"mypixiv_novels", map[string]any{"page": 1, "limit": 0}},
 		{"timeline_illust_latest", map[string]any{"content_type": "illust"}},
 	} {
 		result := callTool(t, session, tool.name, tool.args)
@@ -204,16 +204,16 @@ func TestSDKListValidationReturnsMCPErrorWithStructuredOutput(t *testing.T) {
 	session, closeSession := newSDKTestSession(t, &fakeSDKClient{})
 	defer closeSession()
 
-	result := callTool(t, session, "user_artworks", map[string]any{"user_id": 9, "page": 0, "limit": 1})
+	result := callTool(t, session, "user_artworks", map[string]any{"user_id": 9, "page": 1, "limit": 0})
 	if !result.IsError {
-		t.Fatalf("invalid page must be an MCP error result: %+v", result)
+		t.Fatalf("invalid logical page must be an MCP error result: %+v", result)
 	}
 	if len(result.Content) != 1 {
 		t.Fatalf("error result must retain text content: %+v", result.Content)
 	}
 	var out outputs.Records
 	decodeStructured(t, result, &out)
-	if len(out.Records) != 0 || !resultHasText(result, "page must be a positive integer") {
+	if len(out.Records) != 0 || !resultHasText(result, "page requires limit to be a positive integer") {
 		t.Fatalf("structured validation error = %+v", out)
 	}
 }
@@ -249,10 +249,13 @@ func TestSDKUserDetailRejectsInvalidInputAndReturnsSDKFailuresAsMCPError(t *test
 	for _, input := range []map[string]any{{"user_id": 0}, {"user_id": -1}} {
 		client := &fakeSDKClient{}
 		session, closeSession := newSDKTestSession(t, client)
-		result := callTool(t, session, "user_detail", input)
+		result, err := session.CallTool(context.Background(), &mcp.CallToolParams{Name: "user_detail", Arguments: input})
 		closeSession()
-		if !result.IsError || client.userDetailRequest != (pixiv.UserRequest{}) {
-			t.Fatalf("input=%v result=%+v captured=%+v", input, result, client.userDetailRequest)
+		if err == nil && (result == nil || !result.IsError) {
+			t.Fatalf("input=%v result=%+v err=%v captured=%+v", input, result, err, client.userDetailRequest)
+		}
+		if client.userDetailRequest != (pixiv.UserRequest{}) {
+			t.Fatalf("input=%v result=%+v err=%v captured=%+v", input, result, err, client.userDetailRequest)
 		}
 	}
 	for _, input := range []map[string]any{{}, {"user_id": "not-an-integer"}} {
