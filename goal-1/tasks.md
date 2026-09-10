@@ -128,7 +128,7 @@ AND (required_external_blockers > 0 OR required_decision_blockers > 0)
 
 ## G1-T02 — Baseline inventory：artwork + novel/feed
 
-**Status:** pending
+**Status:** verified
 
 **Depends on:** G1-T01
 
@@ -147,10 +147,13 @@ AND (required_external_blockers > 0 OR required_decision_blockers > 0)
 - T37A/B/C 历史完成只作为证据，不自动 accepted。
 
 **完成记录：**
-- 覆盖计数：
-- Verified evidence：
-- Drift：
-- Internal gaps：
+- 覆盖计数：13/13，全部纳入 required scope；`public_ready=0/13`；无漏项。
+- Verified evidence：新建 `goal-1/current-state.md`，逐项记录 Contract、Adapter、SDK、Shared、CLI、MCP、Offline、Live、Compatibility、Release，并为 verified 层提供 source/test/evidence index。
+- Drift：当前 HEAD 相对继承基线 `e40443495981cdaf01215d6711cb24fa618b087a` 仅增加 Goal-1 tracking 文件；`goal-3/` 无 diff；当前分支无新的业务/API/evidence drift。
+- Internal gaps：artwork recommended 第二页/subtype binding；artwork series live 第二页；ugoira metadata CLI/MCP surface 与旧 evidence 冲突；novel search period/date/live 两页；novel detail/series v2 full chain；novel latest max_novel_id live 闭环；novel ranking MCP owner；统一 compatibility/docs/release gate。
+- Rejected/no-fallback：已记录 `/v1/novel/detail`、`/v1/novel/series`、`/v1/novel/content`、WebView fallback、未确认 server-side `x_restrict` 的拒绝边界；未把历史 task `verified` 提升为 capability acceptance。
+- 验证证据：G1-T01 `go test ./...` baseline PASS；本 task 完成 LSP symbol 核验、源码/evidence/history inventory 和 current-state 结构校验；未执行 live E2E。
+- GoalState impact：保持 `ACTIVE`；无 external/decision blocker。
 - 下一步：G1-T03
 
 ## G1-T03 — Baseline inventory：bookmark
