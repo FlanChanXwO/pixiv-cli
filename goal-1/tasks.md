@@ -186,7 +186,7 @@ AND (required_external_blockers > 0 OR required_decision_blockers > 0)
 
 ## G1-CHECK-01 — 集中检查：preflight + artwork/novel/bookmark baseline
 
-**Status:** pending
+**Status:** verified
 
 **Depends on:** G1-T01,G1-T02,G1-T03
 
@@ -195,10 +195,13 @@ AND (required_external_blockers > 0 OR required_decision_blockers > 0)
 **Pass：** 当前覆盖 24/41；无漏项；无未经证据的 `verified`；执行仍在同一专用 worktree。
 
 **完成记录：**
-- 检查结论：
-- Worktree：
-- Correction：
-- Blocker：
+- 检查结论：PASS。`goal-1/current-state.md` layer matrix 编号严格为 1–24，覆盖 24/41；bookmark 14–24 为 11/11；required scope 仍为 41/41 `scope_admitted`；`public_ready=0/41`；无 capability 漏项。
+- Evidence：generic `verified` 行已补具体 evidence index，均可回溯到相邻 source/test/evidence 行；历史 Goal-3 task `verified` 未被提升为 capability acceptance；`goal-3/capability-admission.md` required 状态无漂移。
+- Rejected/aggregate：`/v1/novel/detail`、`/v1/novel/series`、`/v1/novel/content` 与 WebView/anonymous fallback 仍显式拒绝；`bookmark-list-all`、`bookmark-tags-all` 仍 required，`--type all` 只属于产品层 list/tags aggregate，不作为 upstream subtype。
+- Worktree：在 `/Users/flanchan/Developer/Projects/GithubProjects/.worktrees/pixiv-cli-refactor-pixiv-api-stability` 的 linked worktree 执行；branch=`refactor/pixiv-api-stability`；worktree clean；审计时 HEAD=`042c0200ce1b3349ab3e08a744fea7802838025c`；相对远端 ahead 3；与继承基线 `e40443495981cdaf01215d6711cb24fa618b087a` 相比仅有 Goal-1 tracking 文件，`goal-3/` 与业务/API 无 diff。
+- Preflight/toolchain：目标 skill 文件（goal-mode、using-git-worktrees、github、caveman、superpowers）均可加载；`gopls` 已启动并报告可用；`go version go1.26.3 darwin/arm64`、`gh version 2.97.0`；当前 HEAD 执行 `go test ./...` PASS。
+- Correction：无。为消除 generic `verified` 可审计性缺口，仅补充 `current-state.md` 的 evidence index 与 CHECK 记录；未改生产代码、API、scope 或 Goal-3 资料。
+- Blocker：无。G1-CHECK-01 非 Phase A exit gate，本轮不 push；下一任务为 `G1-T04`。
 
 ## G1-T04 — Baseline inventory：comments/stamps + user/shared
 

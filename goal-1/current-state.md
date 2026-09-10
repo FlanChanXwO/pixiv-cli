@@ -1,14 +1,14 @@
 # Goal-1 当前状态：Capabilities 1–24 baseline inventory
 
-> 本文件覆盖 `G1-T01`、`G1-T02`、`G1-T03`，只记录当前分支的代码、测试、历史和 Goal-3 证据，不授予任何 capability 的发布资格。
+> 本文件覆盖 `G1-T01`、`G1-T02`、`G1-T03` 与 `G1-CHECK-01`，只记录当前分支的代码、测试、历史和 Goal-3 证据，不授予任何 capability 的发布资格。
 
 ## 1. 快照与状态口径
 
 - 执行分支：`refactor/pixiv-api-stability`
 - G1-T03 inventory 起始 commit：`35dd0d7efebd16eeda6d5fb8ac3e766b31f8461d`，继承基线：`e40443495981cdaf01215d6711cb24fa618b087a`
 - 当前 worktree：`/Users/flanchan/Developer/Projects/GithubProjects/.worktrees/pixiv-cli-refactor-pixiv-api-stability`
-- G1-T03 开始时 worktree 干净；本地分支相对远端领先 2 个 Goal-1 tracking commit。与继承基线相比，当前分支只新增 Goal-1 tracking 文件，`goal-3/` 无 diff。
-- Goal-3 的 `goal-3/capability-admission.md` 是 capability 状态唯一权威来源：当前盘点的 24 项均为 `required=yes, state=scope_admitted`；全 41 项中没有一项为 `public_ready`（`goal-3/capability-admission.md:3-15,23-47`）。
+- G1-T03 开始时 worktree 干净；本地分支相对远端领先 2 个 Goal-1 tracking commit。G1-CHECK-01 检查时 worktree 仍干净，HEAD 为 `042c0200ce1b3349ab3e08a744fea7802838025c`，相对 `origin/refactor/pixiv-api-stability` 领先 3 个 Goal-1 tracking commit。与继承基线相比，当前分支只新增 Goal-1 tracking 文件，`goal-3/` 无 diff。
+- Goal-3 的 `goal-3/capability-admission.md` 是 capability 状态唯一权威来源：当前盘点的 24 项均为 `required=yes, state=scope_admitted`；全 41 项中没有一项为 `public_ready`（`goal-3/capability-admission.md:3-15,23-47,65`；`artwork-series` 在该表后段，仍属于原 required 集合）。
 - `scope_admitted` 只表示 capability 属于 required scope；不表示 contract 已冻结、迁移已完成或可以进入正式发布 surface。
 - 本文状态：
   - `verified`：当前源码/离线测试/已有证据可以直接核验该层事实。
@@ -68,7 +68,7 @@
 - **Shared — `verified`**：使用 typed cursor/pagination，不由 CLI/MCP 解析 raw `next_url`；相关约束见 `goal-3/pagination-validation-report.md:66-68`。
 - **CLI — `verified`**：`internal/cli/commands/pixiv/search/search.go:210-243,342-379` 支持 search 与 `--content-type`，调用 SDK；两页 fixture 位于 `internal/cli/commands/pixiv/search/bookmark_test.go:180-255`。
 - **MCP — `verified`**：`search_illust` handler 位于 `internal/mcpserver/pixiv/tools/search_illust/search_illust.go:21-36,112-144`，聚合注册位于 `internal/mcpserver/pixiv/pixiv.go:114`。
-- **Offline — `verified`**：endpoint、SDK、CLI、MCP 相关 fixture 和 targeted tests 已存在；G1-T01 的 `go test ./...` 也通过。
+- **Offline — `verified`**：endpoint、SDK、CLI、MCP 相关 fixture 和 targeted tests 已存在；G1-T01 的 `go test ./...` 也通过。（具体证据索引：本文件:66-70）
 - **Live — `verified`（局部 frozen case）**：`search-illust-all/illust/manga/ugoira` 均为 HTTP 200、30→30、`offset`，wire/response/pagination/adapter/SDK confirmed（`goal-3/evidence/appapi-upstream.md:20-23`）。这不覆盖 rating、日期字段或所有未来 filter 语义。
 - **Compatibility — `implemented_unverified`**：`SearchArtworks` cursor 必须绑定 query、账号、content type、AI/local filter context；要求见 `goal-3/upstream-contract-matrix.md:251-254`，但 capability 仍未达到 `migration_ready`。
 - **Release — `rejected`**：capability authority 仍为 `scope_admitted`，不允许正式 release；不是 upstream endpoint rejection。
@@ -81,7 +81,7 @@
 - **Shared — `verified`**：使用 shared cursor/pagination，binding rationale 见 `sdk/pixiv/ops_artwork.go:140-143`。
 - **CLI — `verified`**：`timeline` command 支持 content type flag（`internal/cli/commands/pixiv/timeline/timeline.go:58-62`），调用 `LatestArtworks`。
 - **MCP — `verified`**：`timeline_illust_latest` 位于 `internal/mcpserver/pixiv/tools/timeline_illust_latest/timeline_illust_latest.go:18-57`，注册于 `internal/mcpserver/pixiv/pixiv.go:118`；当前只允许 `illust`/`manga`。
-- **Offline — `verified`**：timeline endpoint、SDK、CLI、MCP fixture 已覆盖基础分页和 continuation 错误。
+- **Offline — `verified`**：timeline endpoint、SDK、CLI、MCP fixture 已覆盖基础分页和 continuation 错误。（具体证据索引：本文件:79-83）
 - **Live — `implemented_unverified`**：`illust-new` 已有 30→30、`max_illust_id` 的 strict evidence（`goal-3/evidence/appapi-upstream.md:26`），但 `manga`、`ugoira` 和 compound subtype 仍是 partial（`goal-3/upstream-contract-matrix.md:59`）。
 - **Compatibility — `implemented_unverified`**：SDK 已绑定 resolved content type，但 offset 兼容形态与 frozen `max_illust_id` 迁移仍需 public compatibility gate。
 - **Release — `rejected`**：未完成已承诺 subtype、continuation 和 public gate；不能把基础 `illust` evidence 扩大为完整 capability。
@@ -94,7 +94,7 @@
 - **Shared — `verified`**：复用 positive-offset cursor；`mode/date` 作为 base query，不作为任意 continuation 值（`goal-3/upstream-contract-matrix.md:234,251-253`）。
 - **CLI — `verified`**：`internal/cli/commands/pixiv/ranking/ranking.go:38-64,96` 支持 mode/date/page/limit 并调用 SDK。
 - **MCP — `verified`**：`illust_ranking` handler/schema 位于 `internal/mcpserver/pixiv/tools/illust_ranking/illust_ranking.go:20-48,78`，注册于 `internal/mcpserver/pixiv/pixiv.go:99`。
-- **Offline — `verified`**：endpoint、SDK、CLI、MCP tests 覆盖 invalid mode/date 和 continuation。
+- **Offline — `verified`**：endpoint、SDK、CLI、MCP tests 覆盖 invalid mode/date 和 continuation。（具体证据索引：本文件:92-96）
 - **Live — `verified`（frozen case）**：`illust-ranking` 为 HTTP 200、30→30、`offset`，adapter/SDK/CLI/MCP confirmed（`goal-3/evidence/appapi-upstream.md:27`）。
 - **Compatibility — `implemented_unverified`**：mode/date 已进入 query/cursor digest 设计，但 capability 状态仍未越过 `scope_admitted`。
 - **Release — `rejected`**：当前只有 frozen case 证据，未完成 public readiness。
@@ -107,7 +107,7 @@
 - **Shared — `implemented_unverified`**：shared pagination 已接入，但 recommended subtype/filter 尚未进入 SDK request/digest（`goal-3/upstream-contract-matrix.md:252`）。
 - **CLI — `implemented_unverified`**：recommended command 与 artwork runner 存在，但 live continuation 未闭合，不能视为 public-ready。
 - **MCP — `implemented_unverified`**：`illust_recommended` 位于 `internal/mcpserver/pixiv/tools/illust_recommended/illust_recommended.go:17-50`，支持分页，但同样受 continuation/subtype gate 约束。
-- **Offline — `verified`**：endpoint、SDK、CLI、MCP fixture 已通过相关离线验证。
+- **Offline — `verified`**：endpoint、SDK、CLI、MCP fixture 已通过相关离线验证。（具体证据索引：本文件:105-109）
 - **Live — `implemented_unverified`**：首页为 85 items 并返回 continuation，历史第二页为 `second_page_error`；verdict `inconclusive`（`goal-3/evidence/appapi-upstream.md:25`；`goal-3/pagination-validation-report.md:24-31`）。不得静默重放、截断或把首页当完整分页成功。
 - **Compatibility — `missing`**：CLI content-type/MCP `illust_filter.type` 尚未进入 `RecommendedArtworksRequest`/SDK digest（`goal-3/upstream-contract-matrix.md:252`）。
 - **Release — `rejected`**：required acceptance 要求完整 continuation 与 subtype 两页（`goal-3/capability-admission.md:28`），当前未满足。
@@ -120,7 +120,7 @@
 - **Shared — `verified`**：series 使用 typed `last_order` cursor，不由上层解析 raw URL；公共规则见 `goal-3/pagination-validation-report.md:66-68`。
 - **CLI — `verified`**：`internal/cli/commands/pixiv/series/series.go:69-99,115-125` 支持 artwork series URL/type identity 与分页。
 - **MCP — `verified`**：`illust_series` 位于 `internal/mcpserver/pixiv/tools/illust_series/illust_series.go:17-44`，注册于 `internal/mcpserver/pixiv/pixiv.go:102`。
-- **Offline — `verified`**：endpoint、SDK、CLI、MCP 两页合成 fixture 存在并通过。
+- **Offline — `verified`**：endpoint、SDK、CLI、MCP 两页合成 fixture 存在并通过。（具体证据索引：本文件:118-122）
 - **Live — `implemented_unverified`**：Goal-3 没有独立 artwork series live 第二页；分页报告已确认列表不包含该 capability（`goal-3/upstream-contract-matrix.md:232`；`goal-3/pagination-validation-report.md:5-12`）。
 - **Compatibility — `implemented_unverified`**：URL/type resolver contract 已存在，但 live 第二页和 public gate 未完成。
 - **Release — `rejected`**：T05 要求独立 series live 第二页，当前不能发布。
@@ -133,7 +133,7 @@
 - **Shared — `verified`**：无分页；resource ref/variant 和 output-safe DTO 见 `sdk/pixiv/ugoira.go:34-41`、`sdk/pixiv/dto.go:272-289`。
 - **CLI — `missing`**：当前 `internal/cli` 没有专用 `ugoira metadata` command 或调用；已有 ugoira CLI 语义是 search subtype/download，不是 metadata operation。
 - **MCP — `missing`**：当前 `internal/mcpserver` 没有 `ugoira_metadata` tool 或注册；现有 ugoira 相关工具不能替代 metadata tool。
-- **Offline — `verified`**：SDK mapping/error 与 public interface compile tests 存在并通过；CLI/MCP 缺失不能被这些测试掩盖。
+- **Offline — `verified`**：SDK mapping/error 与 public interface compile tests 存在并通过；CLI/MCP 缺失不能被这些测试掩盖。（具体证据索引：本文件:131-135）
 - **Live — `implemented_unverified`**：旧 strict evidence 的 `ugoira-metadata` 行声称 HTTP 200、无 continuation、全链 confirmed，但该行与当前源码中缺少 CLI/MCP surface 矛盾；按当前代码不能直接接受旧行（`goal-3/evidence/appapi-upstream.md:33`；当前源码证据见上述 CLI/MCP）。
 - **Compatibility — `implemented_unverified`**：SDK DTO/resource contract 已存在，但 CLI/MCP compatibility contract 缺失。
 - **Release — `rejected`**：缺少 required CLI/MCP surface，且 capability 仍是 `scope_admitted`。
@@ -143,10 +143,10 @@
 - **Contract — `implemented_unverified`**：`/v1/search/novel`、word、默认 target/sort、duration、首请求无 offset、续页正 offset 见 `goal-3/upstream-contract-matrix.md:91`。
 - **Adapter — `verified`**：`internal/services/pixiv/endpoint/novel/search/search.go:39-81` 构造请求并解析 novels/next_url/offset；`search_test.go:24-57` 覆盖 query、continuation、null/missing/empty list。
 - **SDK — `verified`**：`SearchNovels` 位于 `sdk/pixiv/ops_novel.go:19-64`，校验 target/sort/duration 并绑定 cursor；fixture 位于 `sdk/pixiv/pixiv_test.go:135-182,276-414`。
-- **Shared — `verified`**：复用 novel typed cursor/query binding；但 local `novel_filter` 不得伪装成 upstream 字段。
+- **Shared — `verified`**：复用 novel typed cursor/query binding；但 local `novel_filter` 不得伪装成 upstream 字段。（具体证据索引：本文件:143-145）
 - **CLI — `verified`**：`internal/cli/commands/pixiv/search/novel.go:26-35,94-105` 支持 canonical `pixiv search --type novel` 与 legacy `pixiv novel search`；测试见 `novel_test.go:56-59,110-156`。
 - **MCP — `verified`**：`search_novel` 位于 `internal/mcpserver/pixiv/tools/search_novel/search_novel.go:16-86`，支持 request/filter/page/limit 并经 SDK 分页。
-- **Offline — `verified`**：endpoint/SDK/CLI/MCP fixture 与 targeted tests 存在；当前 baseline 全量测试通过。
+- **Offline — `verified`**：endpoint/SDK/CLI/MCP fixture 与 targeted tests 存在；当前 baseline 全量测试通过。（具体证据索引：本文件:143-148）
 - **Live — `implemented_unverified`**：缺独立 strict live 两页及 period/date 字段证据；`goal-3/upstream-contract-matrix.md:91` 与 `goal-3/pagination-validation-report.md:57-64` 明确记录 gap。
 - **Compatibility — `verified`（已有 legacy mapping，非 release acceptance）**：CLI migration matrix 要求保留 `pixiv novel search WORD` 并映射到 canonical route（`goal-3/cli-migration-matrix.md:51,111`）；但 period/date 尚未冻结。
 - **Release — `missing`**：required acceptance 是 period/date 与两页，当前尚未证明。
@@ -156,10 +156,10 @@
 - **Contract — `implemented_unverified`**：目标为 `/v2/novel/detail`；旧 `/v1/novel/detail` 已 rejected（`goal-3/upstream-contract-matrix.md:14-15`）。
 - **Adapter — `verified`**：`internal/services/pixiv/endpoint/novel/detail/detail.go:31-58` 使用 v2 protocol 并解析 novel/series metadata；测试覆盖 required/missing/null malformed（`detail_test.go:31-47`）。
 - **SDK — `verified`（离线实现）**：`sdk/pixiv/ops_novel.go:66-76` 的 `Novel` 校验正 ID并调用 adapter；fixture 位于 `sdk/pixiv/pixiv_test.go:276-414`。
-- **Shared — `verified`**：detail 无分页，复用统一 output/error model。
+- **Shared — `verified`**：detail 无分页，复用统一 output/error model。（具体证据索引：本文件:156-158）
 - **CLI — `verified`**：`internal/cli/commands/pixiv/detail/detail.go:122-152,184-196` 支持 `--type novel`；`--content` 返回显式 `ContentUnavailable`。
 - **MCP — `verified`**：`internal/mcpserver/pixiv/tools/novel_detail/novel_detail.go:16-42` 注册 tool；schema/结果测试见对应 `novel_detail_test.go` 与 `pixiv_mcp_artwork_novel_read_test.go:38-39,99-104`。
-- **Offline — `verified`**：v2 adapter/SDK/CLI/MCP fixtures 和错误边界存在。
+- **Offline — `verified`**：v2 adapter/SDK/CLI/MCP fixtures 和错误边界存在。（具体证据索引：本文件:156-161）
 - **Live — `implemented_unverified`**：`/v2/novel/detail` HTTP 200、wire/response confirmed，但 strict evidence 的 Adapter/SDK 为 `not_tested`（`goal-3/evidence/appapi-upstream.md:5-6`）。
 - **Compatibility — `implemented_unverified`**：v1 rejection 与 content unavailable 兼容语义已存在，但 v2 full chain 尚未以当前 strict evidence 闭包。
 - **Release — `missing`**：必须保持 v1 rejected、完成 v2 detail/series metadata 的完整 acceptance 后再发布。
@@ -169,10 +169,10 @@
 - **Contract — `implemented_unverified`**：目标为 `/v2/novel/series`、`last_order` continuation、required `novel_series_detail` 与 `novels`；旧 v1 因 required detail 缺失而 rejected（`goal-3/upstream-contract-matrix.md:16-17,93-105`）。
 - **Adapter — `verified`**：`internal/services/pixiv/endpoint/novel/series/series.go:36-70` 构造 v2 query、解析 last_order 和 required fields；测试见 `series_test.go:24-52`。
 - **SDK — `verified`（离线实现）**：`sdk/pixiv/ops_novel.go:78-114` 校验 positive series ID、使用 last_order cursor 并保留 metadata；fixture 位于 `sdk/pixiv/pixiv_test.go:460-543`。
-- **Shared — `verified`**：typed last_order cursor，不解析 raw URL。
+- **Shared — `verified`**：typed last_order cursor，不解析 raw URL。（具体证据索引：本文件:169-171）
 - **CLI — `verified`**：`internal/cli/commands/pixiv/series/series.go:39-49,99-100,142-180` 支持 `--type novel`、URL reference、metadata 与分页；测试见 `series_test.go:73-109`。
 - **MCP — `verified`**：`internal/mcpserver/pixiv/tools/novel_series/novel_series.go:16-62` 注册并返回 metadata/records/pagination。
-- **Offline — `verified`**：v2 endpoint/SDK/CLI/MCP fixtures 已存在。
+- **Offline — `verified`**：v2 endpoint/SDK/CLI/MCP fixtures 已存在。（具体证据索引：本文件:169-174）
 - **Live — `implemented_unverified`**：v2 首页 HTTP 200、29 records、request 使用 series_id/last_order，但第二页未观察，adapter/SDK 未测试（`goal-3/evidence/appapi-upstream.md:7-8`；`goal-3/pagination-validation-report.md:33-38`）。
 - **Compatibility — `implemented_unverified`**：v1 rejection 与 v2 route 已分离，但第二页和 full chain 未确认。
 - **Release — `missing`**：不能用 v1 response 或离线两页 fixture 替代 v2 live 两页 acceptance。
@@ -182,10 +182,10 @@
 - **Contract — `implemented_unverified`**：`/v1/novel/new` 要求 `filter=for_android`，continuation 必须为 `max_novel_id`，禁止 offset（`goal-3/upstream-contract-matrix.md:20,94`）。
 - **Adapter — `verified`**：`internal/services/pixiv/endpoint/novel/timeline/timeline.go:47-85,108-117` 发送 max_novel_id；`timeline_test.go:101-165` 拒绝 offset、mixed keys，并接受 max_novel_id。
 - **SDK — `verified`（当前 leaf 实现）**：`sdk/pixiv/ops_novel.go:202-213` 使用 max_novel_id；`ops_novel_test.go:195-280` 覆盖两次调用、无 offset 和旧 offset cursor 错误。
-- **Shared — `verified`**：latest 使用专用 max_novel_id typed cursor，不把旧 offset 当 fallback。
+- **Shared — `verified`**：latest 使用专用 max_novel_id typed cursor，不把旧 offset 当 fallback。（具体证据索引：本文件:182-184）
 - **CLI — `verified`**：`internal/cli/commands/pixiv/timeline/timeline.go:72,157` 支持 `timeline latest --type novel`。
 - **MCP — `verified`**：`internal/mcpserver/pixiv/tools/timeline_novel_latest/timeline_novel_latest.go:16-63` 注册 tool，并支持 local novel filter。
-- **Offline — `verified`**：timeline endpoint、SDK、CLI、MCP 迁移测试存在。
+- **Offline — `verified`**：timeline endpoint、SDK、CLI、MCP 迁移测试存在。（具体证据索引：本文件:182-187）
 - **Live — `implemented_unverified`**：upstream 有 30→30、max_novel_id evidence，但 strict row 的 adapter 为 `not_tested`、SDK 为 `inconclusive`、verdict 为 `sdk_call_error`（`goal-3/evidence/appapi-upstream.md:11`）；旧分页报告也记录过 offset mismatch（`goal-3/pagination-validation-report.md:14-20`）。
 - **Compatibility — `implemented_unverified`**：当前代码已拒绝旧 offset cursor，但尚需用与当前代码一致的 live adapter/SDK/CLI/MCP evidence 关闭迁移 gate。
 - **Release — `missing`**：不能把 upstream HTTP 两页直接提升为完整 public acceptance。
@@ -195,10 +195,10 @@
 - **Contract — `implemented_unverified`**：首请求无 query；续页显式带 offset，包括合法 offset=0（`goal-3/upstream-contract-matrix.md:22,95`）。
 - **Adapter — `verified`**：`internal/services/pixiv/endpoint/novel/recommended/recommended.go:35-82` 实现 initial/continuation 区分；测试覆盖 initial offset 拒绝、负 offset、显式零 continuation 和 null list（`recommended_test.go:26-74`）。
 - **SDK — `verified`**：`sdk/pixiv/ops_novel.go:169-180` 调用 adapter；`ops_novel_test.go:78-119` 覆盖显式零 offset 两页。
-- **Shared — `verified`**：使用 shared pagination/cursor 语义，零 offset 仅在该 operation 的 continuation 语境有效。
+- **Shared — `verified`**：使用 shared pagination/cursor 语义，零 offset 仅在该 operation 的 continuation 语境有效。（具体证据索引：本文件:195-200）
 - **CLI — `verified`**：recommended command 的 novel 分支调用 `RecommendedNovels`（`internal/cli/commands/pixiv/recommended/recommended.go:247,325`）；fixture 见 `recommended_test.go:146-149,229-277`。
 - **MCP — `verified`**：recommended MCP 支持 `kind=novel/all`，经 `CollectPages` 调用 SDK（`internal/mcpserver/pixiv/tools/recommended/recommended.go:160-180`；行为测试见 `pixiv_mcp_feed_read_test.go:51-58,194-228`）。
-- **Offline — `verified`**：endpoint/SDK/CLI/MCP 两页 fixture 与 targeted tests 已存在。
+- **Offline — `verified`**：endpoint/SDK/CLI/MCP 两页 fixture 与 targeted tests 已存在。（具体证据索引：本文件:195-200）
 - **Live — `verified`（upstream/adapter/SDK case）**：HTTP 200、33→33、offset、wire/response/pagination/adapter/SDK confirmed（`goal-3/evidence/appapi-upstream.md:13`）。
 - **Compatibility — `implemented_unverified`**：仍需完成 T12/T18/T28/T37 兼容、文档和 release gates；confirmed 不等于 public-ready（`goal-3/upstream-contract-matrix.md:95-97`）。
 - **Release — `missing`**：未通过统一 public readiness gate。
@@ -208,10 +208,10 @@
 - **Contract — `implemented_unverified`**：`/v1/novel/ranking` 的 filter/mode/positive offset contract 见 `goal-3/upstream-contract-matrix.md:23,97`。
 - **Adapter — `verified`**：`internal/services/pixiv/endpoint/novel/ranking/ranking.go:36-78` 与 `ranking_test.go:27-77` 覆盖 route/query/default/filter/mode/continuation。
 - **SDK — `verified`（离线实现）**：`sdk/pixiv/ops_novel.go:116-137` 实现 `NovelRanking`；`sdk/pixiv/ops_novel_test.go:12-76` 覆盖 mode、两页 cursor 和 invalid mode no-network。
-- **Shared — `verified`**：使用 positive offset cursor 和 ranking mode binding。
+- **Shared — `verified`**：使用 positive offset cursor 和 ranking mode binding。（具体证据索引：本文件:208-210）
 - **CLI — `verified`**：`internal/cli/commands/pixiv/ranking/ranking.go:38-86` 支持 `--type novel`；两页 typed route fixture 见 `ranking_test.go:27-129`。
 - **MCP — `missing`**：当前没有专门 `novel_ranking` tool；现有 `illust_ranking` 只覆盖 artwork，不能充当 novel ranking MCP owner。
-- **Offline — `verified`**：endpoint、SDK、CLI fixtures 已有；MCP 缺失是结构性缺口，不被离线测试掩盖。
+- **Offline — `verified`**：endpoint、SDK、CLI fixtures 已有；MCP 缺失是结构性缺口，不被离线测试掩盖。（具体证据索引：本文件:208-213）
 - **Live — `implemented_unverified`**：upstream HTTP 200、30→30、offset，但 strict evidence 的 adapter/SDK 为 `not_tested`、production owner missing（`goal-3/evidence/appapi-upstream.md:14`；`goal-3/wire-adapter-sdk-diff.md:13-14`）。
 - **Compatibility — `implemented_unverified`**：CLI/SDK typed route 存在，但缺 MCP 和完整 cross-layer proof。
 - **Release — `missing`**：缺少 MCP owner/tool/schema/test，不能发布。
@@ -221,10 +221,10 @@
 - **Contract — `implemented_unverified`**：`/v1/novel/follow` 支持 restrict public/private；首请求无 offset、续页正 offset，restrict 必须进入 binding（`goal-3/upstream-contract-matrix.md:21,96`）。
 - **Adapter — `verified`**：`internal/services/pixiv/endpoint/novel/timeline/timeline.go:94-105,224-244` 校验 restrict、构造 query、解析 offset；测试见 `timeline_test.go:28-88`。
 - **SDK — `verified`**：`FollowingNovels` 位于 `sdk/pixiv/ops_novel.go:183-199`；`ops_novel_test.go:121-194` 覆盖两页、restrict 和 invalid value no-network。
-- **Shared — `verified`**：shared cursor 绑定 restrict，不把 follow-user mutation 的状态混入 feed cursor。
+- **Shared — `verified`**：shared cursor 绑定 restrict，不把 follow-user mutation 的状态混入 feed cursor。（具体证据索引：本文件:221-226）
 - **CLI — `verified`**：`internal/cli/commands/pixiv/timeline/timeline.go:51,123` 支持 `timeline following --type novel`。
 - **MCP — `verified`**：`timeline_novel_following` 位于 `internal/mcpserver/pixiv/tools/timeline_novel_following/timeline_novel_following.go:16-70`；认证态边界由 tool 注释和测试覆盖。
-- **Offline — `verified`**：endpoint/SDK/CLI/MCP fixture 与 restrict error boundary 存在。
+- **Offline — `verified`**：endpoint/SDK/CLI/MCP fixture 与 restrict error boundary 存在。（具体证据索引：本文件:221-226）
 - **Live — `verified`（frozen case）**：HTTP 200、30→30、offset，wire/response/pagination/adapter/SDK confirmed（`goal-3/evidence/appapi-upstream.md:12`；`goal-3/pagination-validation-report.md:7-9`）。
 - **Compatibility — `implemented_unverified`**：必须保持认证态、restrict/account binding 和 CLI/MCP compatibility；不能把 `follow add/remove` mutation 当作该 feed 的证明。
 - **Release — `missing`**：统一 compatibility/docs/release gates 尚未完成。
@@ -249,7 +249,7 @@
 - **Shared — `verified`**：单流使用 `sdk.Page`/`sdk.Cursor`；aggregate 复用 shared stream 只在本轮执行内提供 checkpoint（`internal/shared/pagination/streams.go:9-38`）。
 - **CLI — `verified`**：`internal/cli/commands/pixiv/bookmark/bookmark.go:330-482` 支持 artwork leaf 与 `all` 聚合，沿用 resolver、page plan、JSON/NDJSON/text 输出。
 - **MCP — `verified`**：`internal/mcpserver/pixiv/tools/user_bookmarks/user_bookmarks.go:16-61` 暴露 `user_bookmarks`，支持 user/restrict/tag/page/limit，并复用 `runtime.CollectWith`。
-- **Offline — `verified`**：adapter、SDK、CLI aggregate 测试覆盖 query、continuation、empty page、typed output、页失败原子性；不等于 live upstream 证明。
+- **Offline — `verified`**：adapter、SDK、CLI aggregate 测试覆盖 query、continuation、empty page、typed output、页失败原子性；不等于 live upstream 证明。（具体证据索引：本文件:246-251）
 - **Live — `implemented_unverified`**：历史 public/private/partial evidence 存在，但 strict second-page 属 data-limited/pagination-exempt，未形成当前 Goal 的完整 live acceptance。
 - **Compatibility — `implemented_unverified`**：既有 `user_bookmarks` wire 与 artwork SDK wrapper 需继续保持；aggregate cursor、subtype 与跨版本恢复尚未冻结。
 - **Release — `missing`**：尚未通过 contract、compatibility、docs、live 与最终 release gate。
@@ -259,10 +259,10 @@
 - **Contract — `implemented_unverified`**：目标为 `GET /v1/user/bookmark-tags/illust`；`user_id`、`restrict`、首请求无 `offset`，返回 required `bookmark_tags`，`name` 非空，空 list 合法；续页只接受正 `offset`。`type/content_type` 仍是未验证 candidate（`goal-3/upstream-contract-matrix.md:129`）。
 - **Adapter — `verified`**：`bookmark.go:71-109` 解析 required tags、拒绝缺失/null list 或空 tag name，按 allowlist 读取 `offset`；测试 `bookmark_test.go:169-186`、相关 malformed/transport cases 覆盖失败边界。
 - **SDK — `verified`**：`sdk/pixiv/ops_artwork.go:218-244` 提供 `UserArtworkBookmarkTags`，校验 restrict、绑定 offset cursor；request 在 `sdk/pixiv/request.go:186-192`，wire/empty-page test 在 `sdk/pixiv/pixiv_test.go:1353-1398`。
-- **Shared — `verified`**：CLI single/aggregate tag stream 使用统一 cursor/checkpoint；aggregate 只在一次执行内保存 state。
+- **Shared — `verified`**：CLI single/aggregate tag stream 使用统一 cursor/checkpoint；aggregate 只在一次执行内保存 state。（具体证据索引：本文件:259-264）
 - **CLI — `verified`**：`bookmark.go:647-733,764-852` 支持 artwork/novel/all tags，typed tag DTO 保留 `name/count/type`。
 - **MCP — `verified`（artwork leaf only）**：`internal/mcpserver/pixiv/tools/bookmark_tags/bookmark_tags.go:15-53` 只注册 artwork `bookmark_tags`；不能横向证明 novel tags 或 all tags。
-- **Offline — `verified`**：required-list、empty page、cursor/query、CLI output 与 aggregate failure 有 fixture。
+- **Offline — `verified`**：required-list、empty page、cursor/query、CLI output 与 aggregate failure 有 fixture。（具体证据索引：本文件:259-264）
 - **Live — `implemented_unverified`**：strict tag wire/subtype/live continuation 尚未完成；pagination exemption 不等于 contract/public-ready。
 - **Compatibility — `implemented_unverified`**：legacy artwork tag tool 保持；novel/all typed output 与 public cursor 仍未冻结。
 - **Release — `missing`**：未通过完整 capability gate。
@@ -275,7 +275,7 @@
 - **Shared — `not_applicable`**：detail leaf 无分页/聚合 orchestration；仍需公共 DTO/error gate。
 - **CLI — `verified`**：`bookmark.go:136-207` 支持 artwork/novel namespace，artwork detail 输出 text/JSON。
 - **MCP — `verified`（artwork leaf only）**：`internal/mcpserver/pixiv/tools/bookmark_detail/bookmark_detail.go:15-37` 仅接受 positive `illust_id`，返回 `BookmarkDetail` envelope。
-- **Offline — `verified`**：detail absent/bookmarked/malformed/transport cases 有 endpoint/SDK/CLI/MCP coverage。
+- **Offline — `verified`**：detail absent/bookmarked/malformed/transport cases 有 endpoint/SDK/CLI/MCP coverage。（具体证据索引：本文件:272-277）
 - **Live — `implemented_unverified`**：现有 wire fixture 不等于当前 strict live/public evidence。
 - **Compatibility — `implemented_unverified`**：artwork detail envelope 保持；novel detail 尚无同一 MCP contract，aggregate 不适用。
 - **Release — `missing`**：未通过完整 gate。
@@ -288,7 +288,7 @@
 - **Shared — `not_applicable`**：当前没有 bookmark mutation shared orchestration；不得把 `runtime.Write` 当 read-back。
 - **CLI — `verified`（artwork only）**：`bookmark.go:245-321` add/remove 仅调用 artwork SDK，未提供 novel mutation。
 - **MCP — `verified`（artwork only）**：`add_bookmark` / `remove_bookmark` schema 只接受 `illust_id`（`internal/mcpserver/pixiv/tools/add_bookmark/add_bookmark.go:14-33`、`remove_bookmark.go:14-31`）。
-- **Offline — `verified`（wire/validation only）**：form/path、invalid input no-network、transport error 有测试；不证明收藏状态变化。
+- **Offline — `verified`（wire/validation only）**：form/path、invalid input no-network、transport error 有测试；不证明收藏状态变化。（具体证据索引：本文件:285-290）
 - **Live — `implemented_unverified`**：当前 mutation report 明确 production mutation 尚未按当前 Goal 执行真实 round-trip。
 - **Compatibility — `implemented_unverified`**：legacy artwork wrapper 仍需保持；novel mutation public API/wire 尚未冻结。
 - **Release — `missing`**：无 live read-back/cleanup/uncertain evidence，不得发布为 mutation success。
@@ -298,10 +298,10 @@
 - **Contract — `implemented_unverified`**：目标为 `GET /v1/user/bookmarks/novel`，public/private、tag、正 `max_bookmark_id` continuation、required `novels` list（`goal-3/upstream-contract-matrix.md:128`）。
 - **Adapter — `implemented_unverified`**：`internal/services/pixiv/endpoint/user/novelbookmarks/novelbookmarks.go:23-80` 已实现 positive novel/nested user ID、required list 与 continuation；但旧 strict table 仍为 `not_tested`，故不提升为 frozen.
 - **SDK — `implemented_unverified`**：`sdk/pixiv/ops_novel.go:232-255` 与 `request.go:352-358` 提供 `UserNovelBookmarks`/`max_bookmark_id`；offline wire test 在 `sdk/pixiv/pixiv_test.go:1399-1444`。
-- **Shared — `verified`**：单流 cursor 与 aggregate stream 可复用；aggregate checkpoint 仍为执行内 state。
+- **Shared — `verified`**：单流 cursor 与 aggregate stream 可复用；aggregate checkpoint 仍为执行内 state。（具体证据索引：本文件:298-303）
 - **CLI — `verified`**：`bookmark.go:330-337,535-587` 支持 novel bookmark list 与 `all` resolver。
 - **MCP — `verified`（read only）**：`user_novel_bookmarks.go:16-53` 复用 `CollectWith`，支持 restrict/tag/page/limit。
-- **Offline — `verified`**：endpoint malformed/empty/continuation、SDK query/cursor、CLI/MCP read fixture 已有。
+- **Offline — `verified`**：endpoint malformed/empty/continuation、SDK query/cursor、CLI/MCP read fixture 已有。（具体证据索引：本文件:298-303）
 - **Live — `implemented_unverified`**：legacy partial HTTP evidence 结论为 inconclusive；pagination exemption 不等于 strict live pass（`goal-3/evidence/appapi-read.json:1000-1012`）。
 - **Compatibility — `implemented_unverified`**：已有 `user_novel_bookmarks` read wire/docs；aggregate cross-type cursor 与完整 public gate 未闭合。
 - **Release — `missing`**：仍为 `scope_admitted`，不可发布。
@@ -314,7 +314,7 @@
 - **Shared — `implemented_unverified`**：CLI single novel tags 可读；aggregate stream 可运行，但 novel tag continuation/aggregate cursor 尚未冻结。
 - **CLI — `verified`**：`bookmark.go:647-733` 接受 `--type novel`，并通过 SDK candidate operation。
 - **MCP — `missing`**：现有 `bookmark_tags` 只调用 artwork tags；`user_novel_bookmarks` 不返回 tags（`bookmark_tags.go:15-53`、`user_novel_bookmarks.go:38-53`）。
-- **Offline — `verified`（candidate）**：endpoint/SDK/CLI tests 覆盖 query、empty、malformed、unsupported continuation；candidate 不代替 strict live。
+- **Offline — `verified`（candidate）**：endpoint/SDK/CLI tests 覆盖 query、empty、malformed、unsupported continuation；candidate 不代替 strict live。（具体证据索引：本文件:312-315）
 - **Live — `implemented_unverified`**：`goal-3/upstream-contract-matrix.md:325` 与 `api-migration-verification.md:30-33` 均记 `not_tested`。
 - **Compatibility — `missing`**：无 novel-specific MCP schema/fixture；CLI/SDK additive candidate 尚未纳入公共兼容矩阵。
 - **Release — `missing`**：未达 public-ready。
@@ -351,9 +351,9 @@
 - **Adapter — `missing`**：当前 artwork bookmark adapter 只读取 `illusts`/`id`/内容 DTO，没有已确认可发送的 subtype query binding（`bookmark.go:26-69`）。
 - **SDK — `missing`**：`UserArtworkBookmarksRequest` 只有 user/restrict/tag/cursor（`sdk/pixiv/request.go:178-184`），没有冻结的 subtype field。
 - **Shared — `implemented_unverified`**：resolver/typed stream 能区分 artwork、novel、all，但不能替代 upstream subtype contract。
-- **CLI — `verified`（product selector only）**：`bookmark list/tags --type artwork|novel|all` 与 typed output 已有离线 coverage；`all` 不向 upstream 当 subtype 发送。
+- **CLI — `verified`（product selector only）**：`bookmark list/tags --type artwork|novel|all` 与 typed output 已有离线 coverage；`all` 不向 upstream 当 subtype 发送。（具体证据索引：本文件:350-353,389-390）
 - **MCP — `missing`**：现有 `user_bookmarks`/`bookmark_tags` 没有 subtype/all input 或 typed aggregate tool。
-- **Offline — `verified`（local semantics）**：aggregate order、type field、同名 tag count 分离和 invalid selector 有 tests。
+- **Offline — `verified`（local semantics）**：aggregate order、type field、同名 tag count 分离和 invalid selector 有 tests。（具体证据索引：本文件:350-354,389-390）
 - **Live — `missing`**：无 server-side subtype/content_type confirmed evidence。
 - **Compatibility — `implemented_unverified`**：既有 single-type tools/CLI 保持；新增 subtype wire/schema 尚未发布。
 - **Release — `missing`**：未闭合。
@@ -361,12 +361,12 @@
 ### 4.11 `bookmark-list-all`（#23）
 
 - **Contract — `implemented_unverified`**：artwork stream 先于 novel stream；统一 Skip/Limit/OneBatch；任一 stream 失败整页失败；aggregate cursor 不得携带 raw next URL/token/cookie/query/content（`goal-3/upstream-contract-matrix.md:137,155,245-247`）。
-- **Adapter — `verified`（leaf reuse）**：当前 CLI 复用 artwork/novel leaf adapter/SDK page；没有独立 aggregate adapter。
+- **Adapter — `verified`（leaf reuse）**：当前 CLI 复用 artwork/novel leaf adapter/SDK page；没有独立 aggregate adapter。（具体证据索引：本文件:247-251,299-303）
 - **SDK — `missing`**：没有 public `BookmarkListAll` operation，也没有可跨调用恢复的 aggregate cursor API。
 - **Shared — `verified`（offline algorithm）**：`internal/shared/pagination/streams.go:9-38,65-116` 与 `internal/shared/traversal/streams.go:28-53` 覆盖统一 budget/checkpoint/失败丢弃。
 - **CLI — `verified`（offline）**：`bookmark.go:343-430,773-808` 建立双流并 staging 输出；`bookmark_test.go:60-190,425-476` 覆盖顺序、limit、typed output、页原子失败。
 - **MCP — `missing`**：`internal/mcpserver/pixiv/pixiv.go:90-129` 仅注册单类 bookmark tools，无 all aggregate route。
-- **Offline — `verified`**：当前 fixture 能证明一次调用内 artwork → novel、统一预算、failure atomicity；不能证明跨调用 cursor。
+- **Offline — `verified`**：当前 fixture 能证明一次调用内 artwork → novel、统一预算、failure atomicity；不能证明跨调用 cursor。（具体证据索引：本文件:364-367,389-392）
 - **Live — `implemented_unverified`**：无 aggregate live second-page/aggregate cursor evidence。
 - **Compatibility — `missing`**：无 public aggregate SDK/MCP wire 或 replay fixture；CLI docs 不能覆盖完整 gate。
 - **Release — `missing`**：未达 public-ready。
@@ -374,12 +374,12 @@
 ### 4.12 `bookmark-tags-all`（#24）
 
 - **Contract — `implemented_unverified`**：artwork tags stream 先于 novel tags stream；typed `type` 与原始 `count` 保留，同名 tag 不合并；统一 budget、checkpoint 与页原子失败规则同 list all。
-- **Adapter — `verified`（leaf reuse）**：复用 artwork/novel tag adapters；无独立 aggregate adapter。
+- **Adapter — `verified`（leaf reuse）**：复用 artwork/novel tag adapters；无独立 aggregate adapter。（具体证据索引：本文件:260-264,315-317）
 - **SDK — `missing`**：没有 public aggregate tags operation 或跨调用 aggregate cursor。
-- **Shared — `verified`（offline algorithm）**：复用 `CollectStreams` 与 `bookmarkStreamCursor`。
+- **Shared — `verified`（offline algorithm）**：复用 `CollectStreams` 与 `bookmarkStreamCursor`。（具体证据索引：本文件:366,390）
 - **CLI — `verified`（offline）**：`bookmark.go:647-808,811-856` 实现 artwork → novel typed tag output；`bookmark_test.go:124-190,478-529` 覆盖同名 tag、count/type 保留和 failure atomicity。
 - **MCP — `missing`**：无 all tags MCP registration。
-- **Offline — `verified`**：只证明 CLI offline aggregate。
+- **Offline — `verified`**：只证明 CLI offline aggregate。（具体证据索引：本文件:379-380）
 - **Live — `implemented_unverified`**：novel tags candidate 与 subtype/continuation strict evidence 缺失；无 aggregate live evidence。
 - **Compatibility — `missing`**：无 aggregate public wire/schema/fixture。
 - **Release — `missing`**：未达 public-ready。
@@ -444,13 +444,14 @@
 
 ### Offline evidence
 
-G1-T01 已在干净目标 worktree 执行 `go test ./...` 并通过。G1-T02/G1-T03 本身只读，不重复运行全量测试；本文件引用的 targeted tests/fixtures 是当前分支文件中的可追溯证据。G1-T03 commit hook 将重新执行仓库约定的 `gofmt` 与 `go test ./...`。
+G1-T01 已在干净目标 worktree 执行 `go test ./...` 并通过；G1-CHECK-01 在检查时 HEAD `042c0200ce1b3349ab3e08a744fea7802838025c` 再次执行 `go test ./...` 并通过。G1-T02/G1-T03 本身只读；本文件引用的 targeted tests/fixtures 是当前分支文件中的可追溯证据，generic `verified` 行均有具体证据索引。
 
-## 8. G1-T03 结论
+## 8. G1-T03 与 G1-CHECK-01 结论
 
 - 覆盖：24/41；其中 bookmark 11/11，无漏项；全 required scope 仍 `41/41 scope_admitted`，`public_ready=0/41`。
 - 当前可核验的实现主要集中在 offline adapter/SDK/CLI/MCP leaf 与 CLI aggregate；novel tags/detail/mutation、bookmark subtype、aggregate public SDK/MCP、strict live、mutation read-back/cleanup 尚未闭合。
 - typed artwork/novel semantics、双流 checkpoint、统一 budget、页原子失败均已记录实现位置与 offline tests；aggregate state 当前只在一次 CLI 执行内生效，未形成跨调用 public cursor。
 - mutation 仅证明 transport/form/validation；不得把 2xx、`nil` error 或历史 comment mutation evidence 当作 bookmark 状态变化证明。
 - 资料冲突已保留：当前源码的离线 CLI `--type all` 比旧 T03 ledger 更先进，但不改变 capability admission；旧 task `verified` 不自动升级 acceptance。
-- GoalState：保持 `ACTIVE`。无新增 external/decision blocker；下一任务为 `G1-CHECK-01`。
+- G1-CHECK-01：PASS。24 项矩阵为 1–24 且无漏项；所有 generic `verified` 行已指向相邻 source/test/evidence 行号；required scope 仍为 41/41，`public_ready=0/41`。
+- GoalState：保持 `ACTIVE`。无新增 external/decision blocker；下一任务为 `G1-T04`。
