@@ -717,7 +717,7 @@ AND (required_external_blockers > 0 OR required_decision_blockers > 0)
 
 ## G1-T22 — MCP compatibility audit
 
-**Status:** pending
+**Status:** verified
 
 **Depends on:** G1-CHECK-07
 
@@ -732,10 +732,12 @@ AND (required_external_blockers > 0 OR required_decision_blockers > 0)
 **Blocking：** breaking wire 需要 `blocked_decision`。
 
 **完成记录：**
-- 改动/no-op：
-- Compatibility：
-- Breaking decision：
-- 风险：
+- 改动/no-op：no-op verified。对照旧 T39A（40-tool frozen map）与当前 registry，无 tool 删除/静默改名、无 legacy request/output/error schema 差异需要修复；本轮零代码改动。
+- Compatibility：`TestServerListsExpectedTools` exact-set PASS——当前 54 个 client-visible tool = T39A 冻结 40 + 14 个有记录 additive（T09 novel bookmark tags/detail、T10 bookmark_list_all/tags_all、T13 add/remove_novel_bookmark、T14/T15 各 4 个 comment/stamp mutation），legacy 名称与输入字段全部保留；output schema 四组 match 测试、四组 read legacy JSON replay、mutation structured success/typed error 测试（共 19 focused）全 PASS；`TestEveryToolOutputSchemaOmitsTransportAndCredentialFields` PASS。
+- Additive owner 核验：`ugoira-metadata`、`novel-ranking` 的 MCP surface 仍缺失，继续显式登记于 `CAND-G1-T06-UGOIRA-SURFACE`、`CAND-G1-T06-NOVEL-RANKING-SURFACE`（registry 静态核查无这两个 tool，未被静默跳过或伪造）；`recommended-all` 的 MCP 四流 aggregate（`recommended` kind=all）存在且有 focused failure-atomicity tests。
+- Rating/rejected：MCP 无 rating input schema（`search_novel` 注释明确 rating 表面在可靠证据前不发布），local semantics 仅在 CLI；生产 MCP 源码静态核查无 `/v1/novel/detail|series|content` 调用；`illust_comments` legacy v3 read tool 保持原 wire，未注册任何 fallback replacement；`novel_content` 结构化 unsupported 且零网络（focused test PASS）。
+- Breaking decision：无。不触发 `blocked_decision`。
+- 风险：missing additive surface（ugoira/novel-ranking）与 live/compatibility/release gates 继续 open（correction registry 与后续 phase owner）。无新增 internal/external/decision blocker。
 - 下一步：G1-T23
 
 ## G1-T23 — README / CLI / SDK / MCP docs / Skill / changelog
