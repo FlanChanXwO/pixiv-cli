@@ -4,6 +4,11 @@
 
 ## Added
 
+- Added `--type artwork|novel` to `pixiv bookmark add/remove` (default `artwork`, preserving the previous
+  behavior). The novel namespace uses the public SDK novel bookmark operations on the
+  `/v2/novel/bookmark/add` and `/v1/novel/bookmark/delete` wire; `all` and other namespaces are rejected
+  before any network call, and Record consumption only accepts records matching the selected namespace.
+
 - Added additive Pixiv MCP artwork and novel comment mutations: `create_artwork_comment`,
   `reply_artwork_comment`, `stamp_artwork_comment`, `delete_artwork_comment`,
   `create_novel_comment`, `reply_novel_comment`, `stamp_novel_comment`, and

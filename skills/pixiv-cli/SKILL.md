@@ -173,8 +173,8 @@ pixiv user detail USER_ID --json          # full public profile (USER_ID require
 pixiv user artworks [USER_ID] --limit 20  # omit USER_ID = current account
 pixiv user bookmarks [USER_ID] --tag TAG --limit 20
 pixiv user following [USER_ID] --limit 20
-pixiv bookmark add ILLUST_ID --tag TAG    # --tag repeatable; write op
-pixiv bookmark remove ILLUST_ID           # write op
+pixiv bookmark add ARTWORK_ID_OR_NOVEL_ID --tag TAG    # --type novel for novels; --tag repeatable; write op
+pixiv bookmark remove ARTWORK_ID_OR_NOVEL_ID           # --type novel for novels; write op
 pixiv follow add USER_ID                  # write op
 pixiv follow remove USER_ID               # write op
 pixiv download [SRC...] [--pages 1,3-5] [--quality original|regular|small|thumb|mini] [--ugoira-mode gif|apng] [--output DIR] [--on-error skip|fail-fast]

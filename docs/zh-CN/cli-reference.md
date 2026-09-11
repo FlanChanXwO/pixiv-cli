@@ -273,6 +273,7 @@ pixiv bookmark list --type all --limit 20 --json
 pixiv bookmark tags --limit 20
 pixiv bookmark tags --type all --limit 20 --json
 pixiv bookmark detail NOVEL_ID --type novel --json
+pixiv bookmark add NOVEL_ID --type novel
 pixiv user followers 123456 --limit 20
 pixiv user follow add 123456 --restrict private
 pixiv follow remove 123456
@@ -289,7 +290,7 @@ CLI 使用 Cobra/pflag，选项可以写在位置参数前后，例如 `pixiv au
 
 账号池关闭时，所有非写入的数据读取、推荐、时间线与下载使用 `pixiv auth use` 选定的本地账号。只有 `[account_pool]` 显式设置 `enabled = true` 时才启用数据库账号池；账号行的 `schedulable` 控制是否参加调度，`strategy` 默认 `round_robin`，也支持 `random`。使用 `pixiv auth pool status|enable|disable` 查看或修改调度状态。写操作、认证和配置不使用账号池。数据命令拒绝 `--uid`、`--refresh-token`。
 
-视觉列表接入管道时会自动输出 NDJSON；也可显式使用 `--ndjson`。每行都是带稳定字符串 `id`、`type`、`url` 的规范 Record，其余适用 SDK 字段会保留。`download`、`bookmark add/remove`、`follow add/remove` 可不带位置 ID 直接消费它们；follow 显式目标必须是正数用户 ID，用户 URL 会在本地拒绝。`pixiv user follow add/remove` 与根级 `pixiv follow add/remove` 共享同一 owner，`add --restrict` 只接受 `public|private`，默认 `public`。comment 的 `create/reply/stamp/delete` 只接受一个正数 ID，不消费 Record。comment 的 create/reply/stamp 直接返回 upstream 正数 `comment_id`，delete 只返回成功状态；`comment stamps` 是无分页的只读列表。既有动作成功时 stdout 保持为空，安全诊断写入 stderr。`--on-error=skip|fail-fast` 控制 stdin 中格式错误或不兼容 Record 的处理；`--json` 与 `--ndjson` 不能同时使用。
+视觉列表接入管道时会自动输出 NDJSON；也可显式使用 `--ndjson`。每行都是带稳定字符串 `id`、`type`、`url` 的规范 Record，其余适用 SDK 字段会保留。`download`、`bookmark add/remove`、`follow add/remove` 可不带位置 ID 直接消费它们；bookmark add/remove 只消费与所选 `--type` 匹配 namespace 的 Record（默认 artwork 类型，`--type novel` 时为 `novel`）；follow 显式目标必须是正数用户 ID，用户 URL 会在本地拒绝。`pixiv user follow add/remove` 与根级 `pixiv follow add/remove` 共享同一 owner，`add --restrict` 只接受 `public|private`，默认 `public`。comment 的 `create/reply/stamp/delete` 只接受一个正数 ID，不消费 Record。comment 的 create/reply/stamp 直接返回 upstream 正数 `comment_id`，delete 只返回成功状态；`comment stamps` 是无分页的只读列表。既有动作成功时 stdout 保持为空，安全诊断写入 stderr。`--on-error=skip|fail-fast` 控制 stdin 中格式错误或不兼容 Record 的处理；`--json` 与 `--ndjson` 不能同时使用。
 
 ### 反向搜图
 
@@ -372,7 +373,7 @@ canonical 数据 action 是 `search`、`detail`、`ranking`、`series`、`commen
 | `ranking` | `pixiv ranking [-t artwork\|novel] [--mode MODE --date YYYY-MM-DD --page N --limit N]` | 读取作品或小说排行；默认是 `artwork`，`--date` 只适用于作品排行。 |
 | `series` | `pixiv series SERIES_ID_OR_URL -t artwork\|novel [--page N --limit N --json\|--ndjson]` | 列出一个作品或小说系列；输入可以是正数 series ID 或受支持的作品/小说系列 URL，实体类型必填且必须与 URL 命名空间匹配。 |
 | `comment` | `pixiv comment ID -t artwork\|novel [--page N --limit N --json\|--ndjson]`；`pixiv comment create ID -t artwork\|novel --comment TEXT [--json]`；`pixiv comment reply ID -t artwork\|novel --parent-comment-id COMMENT_ID --comment TEXT [--json]`；`pixiv comment stamp ID -t artwork\|novel --stamp-id STAMP_ID --comment TEXT [--json]`；`pixiv comment delete COMMENT_ID -t artwork\|novel [--json]`；`pixiv comment stamps [--json\|--ndjson]` | 保留作品/小说评论读取路径，并新增显式 create、reply、stamp、delete 与 stamp 列表 action。评论 mutation 只接受正数 ID；create/reply/stamp 返回 `comment_id`，delete 返回状态，`stamps` 返回不含 runtime URL 的安全 stamp DTO 且不分页。 |
-| `bookmark` | `pixiv bookmark list\|tags\|detail\|add\|remove ...` | 读取作品/小说收藏、作品/小说收藏标签/详情，或修改作品收藏。`list` 和 `tags` 接受用户 ID 或用户 URL，并支持 `--type artwork\|novel\|all`；`all` 固定先作品后小说并保留 typed record/tag。`detail` 支持 artwork/novel，不支持 `all`；add/remove 仍只修改作品收藏。 |
+| `bookmark` | `pixiv bookmark list\|tags\|detail\|add\|remove ...` | 读取作品/小说收藏、作品/小说收藏标签/详情，或修改作品收藏。`list` 和 `tags` 接受用户 ID 或用户 URL，并支持 `--type artwork\|novel\|all`；`all` 固定先作品后小说并保留 typed record/tag。`detail`/`add`/`remove` 支持 artwork/novel，不支持 `all`；add/remove 默认 `artwork`，用 `--type` 选择 namespace。 |
 | `user` | `pixiv user search\|detail\|artworks\|novels\|bookmarks\|following\|followers\|related\|blocked\|follow ...` | 读取用户、资料和关系，或管理用户关注；follow mutation 接受正数用户 ID 或兼容的 user Record，省略用户 ID 是否使用当前账号由具体子命令决定。 |
 | `download` | `pixiv download [options] SRC...` | 下载作品 ID/URL、允许的 CDN URL，或从受支持的用户、公开收藏 URL 展开视觉作品。作品系列 URL 不是下载来源。`--output/-o` 是 `--download-path` 的别名。 |
 | `timeline` | `pixiv timeline following\|latest -t artwork\|novel [--content-type TYPE ...]` | 读取关注用户或最新作品流；`--type` 选择实体，作品子类型使用独立的 `--content-type`。following 作品因 upstream endpoint 没有子类型 query 而在本地筛选；latest 作品只支持 `illust|manga`。 |
@@ -455,8 +456,10 @@ Content-Type 与 URL 后缀不一致（例如 URL 为 `.png`、实体为 JPEG）
 | `download` | `--download-path` / `--output` / `-o` | `DOWNLOAD_PATH`、`config.toml` 或 `./downloads` | 下载目录；`--output` 是别名，两个参数若值不同会冲突。 |
 | `download` | `--ugoira-mode` | `gif` | Ugoira 输出：`gif` 或 `apng`。 |
 | `download` | `--filename-template` | `FILENAME_TEMPLATE`、`config.toml` 或 `{author} - {title}_{id}` | 支持 `{id}`、`{title}`、`{author}`、`{author_id}`、`{date}`、`{tags}`、`{num}`。未知占位符或不配对花括号会报错。 |
+| `bookmark add` | `--type` / `-t` | `artwork` | 实体类型：`artwork` 或 `novel`；为位置 ID 或 Record 选择收藏 namespace。`all` 与其他 namespace 会在网络调用前拒绝。 |
 | `bookmark add` | `--restrict` | `public` | 新收藏的可见性：`public` 或 `private`。 |
 | `bookmark add` | `--tag` | 空 | 收藏 tag；可重复使用。 |
+| `bookmark remove` | `--type` / `-t` | `artwork` | 实体类型：`artwork` 或 `novel`；为位置 ID 或 Record 选择收藏 namespace。 |
 | `follow add` | `--restrict` | `public` | 新关注的可见性：`public` 或 `private`。 |
 | `download` | `SRC...` | 必填 | 作品 PID/URL、允许的 CDN URL、用户主页/作品页、公开书签页或插画系列页。CDN 文件仅使用 URL 文件名，不支持依赖作品元数据的选项。 |
 

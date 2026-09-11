@@ -4,6 +4,11 @@
 
 ## 新增
 
+- 为 `pixiv bookmark add/remove` 新增 `--type artwork|novel`（默认 `artwork`，保持既有行为）。novel
+  namespace 使用 public SDK 的小说收藏 operation，走 `/v2/novel/bookmark/add` 与
+  `/v1/novel/bookmark/delete`；`all` 与其他 namespace 会在网络调用前拒绝，Record 消费只接受与所选
+  namespace 匹配的记录。
+
 - 新增 Pixiv MCP 作品与小说评论 mutation：`create_artwork_comment`、
   `reply_artwork_comment`、`stamp_artwork_comment`、`delete_artwork_comment`、
   `create_novel_comment`、`reply_novel_comment`、`stamp_novel_comment` 与
