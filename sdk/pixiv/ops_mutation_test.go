@@ -64,6 +64,82 @@ func TestFollowUserDefaultsEmptyRestrictToPublic(t *testing.T) {
 	}
 }
 
+// 关注/取消关注的 uncertain failure（如 502）无法判断上游是否已生效，
+// 因此必须把错误原样返回且只发送一次请求，禁止自动重试或重放。
+func TestFollowMutationsDoNotReplayUncertainFailure(t *testing.T) {
+	for _, test := range []struct {
+		name string
+		call func(*pixiv.Client) error
+	}{
+		{name: "follow", call: func(c *pixiv.Client) error {
+			return c.FollowUser(context.Background(), pixiv.FollowUserRequest{UserID: 7, Restrict: pixiv.RestrictPublic})
+		}},
+		{name: "unfollow", call: func(c *pixiv.Client) error {
+			return c.UnfollowUser(context.Background(), pixiv.UnfollowUserRequest{UserID: 7})
+		}},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			calls := 0
+			rt := roundTripFunc(func(req *http.Request) (*http.Response, error) {
+				calls++
+				return &http.Response{
+					StatusCode: http.StatusBadGateway,
+					Header:     http.Header{"Content-Type": {"application/json"}},
+					Body:       io.NopCloser(strings.NewReader(`{"error":"outcome unknown"}`)),
+				}, nil
+			})
+			client, err := pixiv.NewWith("token", pixiv.Options{HTTPClient: &http.Client{Transport: rt}})
+			if err != nil {
+				t.Fatalf("NewWith: %v", err)
+			}
+
+			if err := test.call(client); err == nil {
+				t.Fatalf("%s returned nil for an upstream 502", test.name)
+			}
+			if calls != 1 {
+				t.Fatalf("upstream call count = %d, want 1 for uncertain mutation", calls)
+			}
+		})
+	}
+}
+
+func TestFollowMutationsRejectInvalidInputBeforeNetwork(t *testing.T) {
+	calls := 0
+	rt := roundTripFunc(func(req *http.Request) (*http.Response, error) {
+		calls++
+		return nil, io.ErrUnexpectedEOF
+	})
+	client, err := pixiv.NewWith("token", pixiv.Options{HTTPClient: &http.Client{Transport: rt}})
+	if err != nil {
+		t.Fatalf("NewWith: %v", err)
+	}
+
+	for _, test := range []struct {
+		name string
+		call func() error
+	}{
+		{name: "follow user id", call: func() error {
+			return client.FollowUser(context.Background(), pixiv.FollowUserRequest{Restrict: pixiv.RestrictPublic})
+		}},
+		{name: "follow restrict", call: func() error {
+			return client.FollowUser(context.Background(), pixiv.FollowUserRequest{UserID: 7, Restrict: pixiv.Restrict("friends")})
+		}},
+		{name: "unfollow user id", call: func() error {
+			return client.UnfollowUser(context.Background(), pixiv.UnfollowUserRequest{})
+		}},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			err := test.call()
+			if sdk.ReasonOf(err) != sdk.InvalidArgument {
+				t.Fatalf("ReasonOf = %q, want %q (err=%v)", sdk.ReasonOf(err), sdk.InvalidArgument, err)
+			}
+		})
+	}
+	if calls != 0 {
+		t.Fatalf("invalid input reached upstream %d time(s)", calls)
+	}
+}
+
 func TestNovelBookmarkMutationsUseCandidatePathsAndForms(t *testing.T) {
 	var requests []*http.Request
 	rt := roundTripFunc(func(req *http.Request) (*http.Response, error) {

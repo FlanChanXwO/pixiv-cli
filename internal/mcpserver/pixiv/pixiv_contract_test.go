@@ -60,6 +60,35 @@ func TestNovelBookmarkMutationTypedErrorIsMCPError(t *testing.T) {
 	}
 }
 
+// 关注/取消关注失败必须保持 structured mutation 错误语义：isError=true、
+// success=false，且错误文本保留 typed reason，不吞掉上游失败。
+func TestFollowMutationTypedErrorIsMCPError(t *testing.T) {
+	for _, test := range []struct {
+		name string
+		err  *sdk.Error
+		tool string
+	}{
+		{name: "follow_user", err: &sdk.Error{Product: "pixiv", Operation: "FollowUser", Reason: sdk.UpstreamError, HTTPStatus: http.StatusBadGateway}, tool: "follow_user"},
+		{name: "unfollow_user", err: &sdk.Error{Product: "pixiv", Operation: "UnfollowUser", Reason: sdk.UpstreamError, HTTPStatus: http.StatusBadGateway}, tool: "unfollow_user"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			client := &fakeSDKClient{followUserErr: test.err, unfollowUserErr: test.err}
+			session, closeSession := newSDKTestSession(t, client)
+			defer closeSession()
+
+			result := callTool(t, session, test.tool, map[string]any{"user_id": 8})
+			if !result.IsError {
+				t.Fatalf("typed SDK %s failure must be an MCP error: %+v", test.tool, result)
+			}
+			var out outputs.Mutation
+			decodeStructured(t, result, &out)
+			if out.Success || out.UserID != 8 || !strings.Contains(out.Text, "upstream_error") {
+				t.Fatalf("structured %s mutation error = %+v", test.tool, out)
+			}
+		})
+	}
+}
+
 func TestSDKMutationToolsReturnStructuredSuccess(t *testing.T) {
 	client := &fakeSDKClient{}
 	session, closeSession := newSDKTestSession(t, client)
