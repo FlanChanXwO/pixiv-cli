@@ -1,13 +1,13 @@
 # Goal-1 当前状态：Capabilities 1–41 baseline inventory
 
-> 本文件覆盖 `G1-T01`、`G1-T02`、`G1-T03`、`G1-CHECK-01`、`G1-T04`、`G1-T05`、`G1-T06`、`G1-CHECK-02`、`G1-T07`、`G1-T08`、`G1-T09`、`G1-CHECK-03` 与 `G1-T10`，只记录当前分支的代码、测试、历史和 Goal-3 证据，不授予任何 capability 的发布资格。
+> 本文件覆盖 `G1-T01`、`G1-T02`、`G1-T03`、`G1-CHECK-01`、`G1-T04`、`G1-T05`、`G1-T06`、`G1-CHECK-02`、`G1-T07`、`G1-T08`、`G1-T09`、`G1-CHECK-03`、`G1-T10` 与 `G1-T11`，只记录当前分支的代码、测试、历史和 Goal-3 证据，不授予任何 capability 的发布资格。
 
 ## 1. 快照与状态口径
 
 - 执行分支：`refactor/pixiv-api-stability`
 - G1-T03 inventory 起始 commit：`35dd0d7efebd16eeda6d5fb8ac3e766b31f8461d`，继承基线：`e40443495981cdaf01215d6711cb24fa618b087a`
 - 当前 worktree：`/Users/flanchan/Developer/Projects/GithubProjects/.worktrees/pixiv-cli-refactor-pixiv-api-stability`
-- G1-T03 开始时 worktree 干净；G1-CHECK-01 检查时 HEAD 为 `042c0200ce1b3349ab3e08a744fea7802838025c`。G1-T04 审计起始 HEAD 为 `f7cff3fb86dcc5117c634359bedbea5abdfa4d0b`；G1-T05 correctness audit 起始 HEAD 为 `35885b0d9316b4a1f2326bcee0511d8bc5ae29ed`；G1-T06 manifest audit 起始 HEAD 为 `c5e3d679eef4b2b2404984bbd6630588a3c7ac8a`，worktree 干净。G1-CHECK-02 pre-push ledger commit 为 `b17b1775f2ea0783f394f7600d30cafd8ad428c5`，已普通 fast-forward push，远端 SHA 与该 checkpoint 一致。其后 G1-T07 在 `5b45827efc5b553a0ad8caca5289253dfe585ba` 收敛 MCP user identity 行为、测试与双语文档；G1-T08 仅修正双语 MCP contract 文档并同步本状态账本；G1-T09 新增 candidate/offline novel bookmark tags/detail MCP read、补 typed bookmark wire/empty/error/subtype logical-pagination 测试与双语文档；G1-CHECK-03 对 MCP user/typed bookmark 的 owner、schema/error、resolver/filter/pagination、legacy wire、forbidden endpoint 与 abstraction scope 审计通过；G1-T10 新增 `bookmark_list_all` / `bookmark_tags_all` additive MCP aggregate，补双流统一 budget、重放、页原子失败、typed tag 与 exact registration evidence；严格 live、public SDK aggregate、public compatibility 与 release 仍未关闭；`goal-3/` 无 diff。
+- G1-T03 开始时 worktree 干净；G1-CHECK-01 检查时 HEAD 为 `042c0200ce1b3349ab3e08a744fea7802838025c`。G1-T04 审计起始 HEAD 为 `f7cff3fb86dcc5117c634359bedbea5abdfa4d0b`；G1-T05 correctness audit 起始 HEAD 为 `35885b0d9316b4a1f2326bcee0511d8bc5ae29ed`；G1-T06 manifest audit 起始 HEAD 为 `c5e3d679eef4b2b2404984bbd6630588a3c7ac8a`，worktree 干净。G1-CHECK-02 pre-push ledger commit 为 `b17b1775f2ea0783f394f7600d30cafd8ad428c5`，已普通 fast-forward push，远端 SHA 与该 checkpoint 一致。其后 G1-T07 在 `5b45827efc5b553a0ad8caca5289253dfe585ba` 收敛 MCP user identity 行为、测试与双语文档；G1-T08 仅修正双语 MCP contract 文档并同步本状态账本；G1-T09 新增 candidate/offline novel bookmark tags/detail MCP read、补 typed bookmark wire/empty/error/subtype logical-pagination 测试与双语文档；G1-CHECK-03 对 MCP user/typed bookmark 的 owner、schema/error、resolver/filter/pagination、legacy wire、forbidden endpoint 与 abstraction scope 审计通过；G1-T10 新增 `bookmark_list_all` / `bookmark_tags_all` additive MCP aggregate，补双流统一 budget、重放、页原子失败、typed tag 与 exact registration evidence；G1-T11 对 MCP read registration、44 个 client-visible tool exact-set、output schema、structured error 与 forbidden endpoint 做 no-op gate 复核并通过；严格 live、public SDK aggregate、public compatibility 与 release 仍未关闭；`goal-3/` 无 diff。
 - Goal-3 的 `goal-3/capability-admission.md` 是 capability 状态唯一权威来源：当前盘点的 41 项均为 `required=yes, state=scope_admitted`；全 41 项中没有一项为 `public_ready`（`goal-3/capability-admission.md:3-15,23-70`；`artwork-series` 在该表后段，仍属于原 required 集合）。
 - `scope_admitted` 只表示 capability 属于 required scope；不表示 contract 已冻结、迁移已完成或可以进入正式发布 surface。
 - 本文状态：
@@ -25,7 +25,7 @@
 - `public_ready`：0/41。
 - `scope_admitted`：41/41。
 - 当前没有 capability 可以仅凭 Goal-3 历史 task 的 `verified` 标记直接转为 accepted。
-- 当前未发现新的业务/API/evidence drift；Goal-1 分支相对继承基线的 drift 只有执行资料与 G1-T01/G1-T02/G1-T03/G1-CHECK-01/G1-T04/G1-T05/G1-T06/G1-T07/G1-T08/G1-T09/G1-CHECK-03/G1-T10 记录。
+- 当前未发现新的业务/API/evidence drift；Goal-1 分支相对继承基线的 drift 只有执行资料与 G1-T01/G1-T02/G1-T03/G1-CHECK-01/G1-T04/G1-T05/G1-T06/G1-T07/G1-T08/G1-T09/G1-CHECK-03/G1-T10/G1-T11 记录。
 
 ### 2.2 Layer matrix
 
@@ -617,10 +617,10 @@ G1-T01 已在干净目标 worktree 执行 `go test ./...` 并通过；G1-CHECK-0
 - 覆盖：41/41；G1-T04 补齐 25–41 共 17 项；无 capability 漏项；全 required scope 为 `41/41 scope_admitted`，`public_ready=0/41`。
 - 当前可核验实现仍主要集中在 offline adapter/SDK/CLI/MCP leaf 与局部 aggregate；strict live、mutation read-back/cleanup、MCP mutation、SDK aggregate、endpoint-global continuation 等未闭合面保持为明确 verdict。
 - `logical-pagination` 的 T23A/R02 只证明 shared/checkpoint/replay engine；不能替代 user/comments/recommended/latest 等 endpoint continuation evidence。
-- G1-T07/G1-T08/G1-T09 已完成 MCP/Shared offline acceptance：user identity、collections、relationships、MyPixiv，以及 artwork/novel typed bookmark list/tags/detail 的 schema、resolver、filter、pagination、structured error、legacy JSON replay 与 additive registration 均由当前目标分支回归覆盖；该证据不替代 strict live、candidate contract、compatibility 或 release gate。
+- G1-T07/G1-T08/G1-T09 已完成 MCP/Shared offline acceptance：user identity、collections、relationships、MyPixiv，以及 artwork/novel typed bookmark list/tags/detail 的 schema、resolver、filter、pagination、structured error、legacy JSON replay 与 additive registration 均由当前目标分支回归覆盖；G1-T10 又补齐 bookmark aggregate 的双流预算、checkpoint、typed tag 与页原子失败；G1-T11 复核 exact registration、schema/error 与 forbidden endpoint gate。上述证据不替代 strict live、candidate contract、compatibility 或 release gate。
 - G1-CHECK-01：历史集中检查仍 PASS，覆盖 1–24；G1-T04 inventory 与 G1-T05 correctness focused tests 均 PASS，未改生产代码、API、scope 或 Goal-3 资料；artwork-recommended second-page continuation 的 P1 仍 open。
 - G1-CHECK-03：PASS。静态/语义审计确认 MCP leaf 仅经 public `sdk/pixiv` 与 owner-local `internal/mcpserver/pixiv/internal/{runtime,filters,records,outputs}`；无 `internal/services/pixiv|fanbox` 直连；生产 MCP 无 `/v1/novel/detail`、`/v1/novel/series`、`/v1/novel/content` 调用。既有 user legacy replay、typed error/empty、resolver/filter/logical pagination、bookmark legacy wire、candidate novel read 与 exact registration 回归均通过；未发现额外 abstraction 或需本轮 correction。该证据不替代 strict live、candidate contract、compatibility 或 release gate。
-- GoalState：保持 `ACTIVE`。G1-T05 的 1 个 open P1 已在 G1-T06 映射到具体 correction owner；G1-T09 只关闭 typed bookmark 的 MCP/offline 责任链，G1-CHECK-03 审计未扩大 scope；novel candidate strict live/compatibility 仍保持未验证；无新增 external/decision blocker。G1-CHECK-02 已完成 Phase A 检查并通过普通 fast-forward push，checkpoint Local/Remote SHA 均为 `b17b1775f2ea0783f394f7600d30cafd8ad428c5`；下一任务为 `G1-T10`。
+- GoalState：保持 `ACTIVE`。G1-T05 的 1 个 open P1 已在 G1-T06 映射到具体 correction owner；G1-T09 只关闭 typed bookmark 的 MCP/offline 责任链，G1-CHECK-03 审计未扩大 scope；G1-T10/G1-T11 只补齐 aggregate 与 read gate 的离线/注册证据，未把缺失的 ugoira metadata、novel ranking、rating owner 或 public SDK aggregate 静默视为完成；novel candidate strict live/compatibility 仍保持未验证；无新增 external/decision blocker。G1-CHECK-02 已完成 Phase A 检查并通过普通 fast-forward push，checkpoint Local/Remote SHA 均为 `b17b1775f2ea0783f394f7600d30cafd8ad428c5`；下一任务为 `G1-T12`。
 
 
 ## 11. G1-T06 Live Manifest 与 finite execution mapping
@@ -747,4 +747,16 @@ G1-T01 已在干净目标 worktree 执行 `go test ./...` 并通过；G1-CHECK-0
 - **Open correctness：** P0=0；P1=1（#4 `artwork-recommended` continuation），已映射至 G1-T28/G1-T20/G1-T22，未隐藏。
 - **Mutation：** #17、#21、#26、#28、#29、#36 必须执行写前授权、可靠 ID、同账号 read-back、仅清理本轮副作用；uncertain 不 replay。
 - **External/decision blocker：** 当前无 blocker。未来 live 数据/账号/权限/网络不足时，严格按 manifest 记录 `blocked_external`；不得把 internal bug 归类为 external blocker。
-- **Freeze boundary：** 后续 live task 只能执行本表 `live_required=yes` 的 scenario；不得临时增加 query、subtype、第二页或 mutation scope。G1-CHECK-02 已复核 manifest、counts、P0/P1、owner mapping 并完成普通 fast-forward push；Phase B 已完成 G1-T07、G1-T08、G1-T09、G1-CHECK-03、G1-T10，下一任务为 G1-T11。
+- **Freeze boundary：** 后续 live task 只能执行本表 `live_required=yes` 的 scenario；不得临时增加 query、subtype、第二页或 mutation scope。G1-CHECK-02 已复核 manifest、counts、P0/P1、owner mapping 并完成普通 fast-forward push；Phase B 已完成 G1-T07、G1-T08、G1-T09、G1-CHECK-03、G1-T10、G1-T11，下一任务为 G1-T12。
+
+
+## 12. G1-T11 MCP read registration/schema/error gate
+
+- **结论：** PASS，no-op verified。现有实现和离线证据已满足本 task 的 registration/schema/error acceptance，因此没有修改生产代码、tool 名称、schema 或 API。
+- **Exact registration：** `TestServerListsExpectedTools` 对 MCP client-visible tool 做 exact-set 核验，当前集合为 44 个名称；legacy read/mutation/download/reverse-search 名称均保留，G1-T10 的 `bookmark_list_all` / `bookmark_tags_all` 作为 additive operations 保留。
+- **Schema：** `TestFeedRecommendationSchemasMatchLegacyContracts`、`TestArtworkNovelReadOutputSchemasMatchWireEnvelopes`、`TestUserReadSchemasMatchLegacyContracts` 通过；`recommended.kind` 仍是 `all|illust|manga|novel|user`，`recommended` output 仍是 `records` + 四路 `pagination`。`TestEveryToolOutputSchemaOmitsTransportAndCredentialFields` 通过，未发现 nil output schema 或 transport/credential property。
+- **Structured error：** recommended、ranking、user、typed bookmark、artwork/novel read 的 invalid-input、SDK-failure、empty/partial-failure tests 通过；`TestToolErrorResultPreservesStructuredContent` 与 `TestToolErrorOutputDoesNotLeakCanary` 通过，错误保持 `isError=true`、structured envelope 安全且不泄漏 transport/credential。
+- **Manifest correction routing：** `ugoira-metadata`、`novel-ranking`、`rating-filter` 缺失 owner 仍分别由 `CAND-G1-T06-UGOIRA-SURFACE`、`CAND-G1-T06-NOVEL-RANKING-SURFACE`、`CAND-G1-T06-RATING-MCP-SURFACE` 登记并交给后续 task；`recommended-all` 的现有 MCP aggregate 已核验，但 SDK aggregate、四流 strict live、compatibility/release 仍未闭合。缺失 surface 未被静默跳过或伪造为 accepted。
+- **Forbidden endpoint：** 生产 `internal/mcpserver/pixiv` 源码无 `internal/services/{pixiv,fanbox}` 直连，也无 `/v1/novel/detail`、`/v1/novel/series`、`/v1/novel/content` 调用；`/v1/novel/content` 只在 rejected-path test fixture 中用于证明不可达。
+- **Focused evidence：** `go test ./internal/mcpserver/pixiv -count=1 -run '^(TestServerListsExpectedTools|TestEveryToolOutputSchemaOmitsTransportAndCredentialFields|TestFeedRecommendationSchemasMatchLegacyContracts|TestArtworkNovelReadOutputSchemasMatchWireEnvelopes|TestUserReadSchemasMatchLegacyContracts|TestToolErrorResultPreservesStructuredContent|TestToolErrorOutputDoesNotLeakCanary|TestSDKRecommendedAllReturnsEveryStreamAndPagination|TestSDKRecommendedSingleKindsAndInputFailures|TestSDKRecommendedAllFailureDoesNotExposePartialStructuredOutput|TestIllustRankingRejectsInvalidInputBeforeSDKExecution|TestRecommendedKindSelectsArtworkSubtype|TestRecommendedRejectsKindConflictingFiltersBeforeSDKExecution|TestTypedBookmarkSchemasKeepLegacyFieldsClosed|TestTypedBookmarkReadsPreserveEmptyAndTypedErrors|TestBookmarkListAllFailureDoesNotExposePartialRecords|TestBookmarkTagsAllFailureDoesNotExposePartialTags|TestSearchUserSDKFailureRemainsStructured|TestUserDetailSDKFailureRemainsStructured|TestBlockedUsersSDKFailureRemainsStructuredAndDoesNotFallback|TestArtworkNovelReadSDKFailuresPreserveSafeStructuredEnvelopes)$' -v`：PASS。按 task 预算未跑全 legacy replay。
+- **下一步：** G1-T12。

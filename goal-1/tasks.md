@@ -404,7 +404,7 @@ AND (required_external_blockers > 0 OR required_decision_blockers > 0)
 
 ## G1-T11 — MCP read registration/schema/error gate
 
-**Status:** pending
+**Status:** verified
 
 **Depends on:** G1-T07,G1-T08,G1-T09,G1-T10
 
@@ -417,10 +417,10 @@ AND (required_external_blockers > 0 OR required_decision_blockers > 0)
 **最小验证：** registration/schema/error 相关 tests；不跑全 legacy replay。
 
 **完成记录：**
-- 改动/no-op：
-- Red/Green：
-- Tool set：
-- 风险：
+- 改动/no-op：no-op verified。现有 MCP registry 已覆盖当前 44 个 client-visible tool；保留 legacy 名称/输入字段，并保留 G1-T10 新增 `bookmark_list_all` / `bookmark_tags_all` additive surface。没有为缺失 surface 发明临时 tool 或静默跳过 manifest correction。
+- Red/Green：未修改生产代码，无新增 Red；focused registration/schema/error suite 实跑通过：`go test ./internal/mcpserver/pixiv -count=1 -run '^(TestServerListsExpectedTools|TestEveryToolOutputSchemaOmitsTransportAndCredentialFields|TestFeedRecommendationSchemasMatchLegacyContracts|TestArtworkNovelReadOutputSchemasMatchWireEnvelopes|TestUserReadSchemasMatchLegacyContracts|TestToolErrorResultPreservesStructuredContent|TestToolErrorOutputDoesNotLeakCanary|TestSDKRecommendedAllReturnsEveryStreamAndPagination|TestSDKRecommendedSingleKindsAndInputFailures|TestSDKRecommendedAllFailureDoesNotExposePartialStructuredOutput|TestIllustRankingRejectsInvalidInputBeforeSDKExecution|TestRecommendedKindSelectsArtworkSubtype|TestRecommendedRejectsKindConflictingFiltersBeforeSDKExecution|TestTypedBookmarkSchemasKeepLegacyFieldsClosed|TestTypedBookmarkReadsPreserveEmptyAndTypedErrors|TestBookmarkListAllFailureDoesNotExposePartialRecords|TestBookmarkTagsAllFailureDoesNotExposePartialTags|TestSearchUserSDKFailureRemainsStructured|TestUserDetailSDKFailureRemainsStructured|TestBlockedUsersSDKFailureRemainsStructuredAndDoesNotFallback|TestArtworkNovelReadSDKFailuresPreserveSafeStructuredEnvelopes)$' -v`。
+- Tool set：`TestServerListsExpectedTools` exact-set PASS；`recommended.kind` 保留 `all|illust|manga|novel|user` 和四路 pagination；所有注册 tool 的 output schema 均存在且不暴露 transport/credential 字段；read failure 均保留 structured error/空 partial 输出语义。`ugoira-metadata`、`novel-ranking`、`rating-filter` 的缺失 owner 继续由 `CAND-G1-T06-UGOIRA-SURFACE`、`CAND-G1-T06-NOVEL-RANKING-SURFACE`、`CAND-G1-T06-RATING-MCP-SURFACE` 登记并交给后续 owner；`recommended-all` 的 MCP surface 已存在，但 SDK aggregate/live/compatibility 仍未闭合。
+- 风险：#6/#12/#39 的 required surface 仍未完成，不得升格为 accepted；#41 仍受 public SDK aggregate、四流 strict live、compatibility/release 和 artwork recommendation continuation P1 约束。生产 MCP 源码无 forbidden internal service import 或 `/v1/novel/detail|series|content` 调用；`/v1/novel/content` 仅保留在 rejected-path 测试 fixture 中。无新增 internal/external/decision blocker。
 - 下一步：G1-T12
 
 ## G1-T12 — MCP read legacy replay + stdout boundary
