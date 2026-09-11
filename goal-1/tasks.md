@@ -581,7 +581,7 @@ AND (required_external_blockers > 0 OR required_decision_blockers > 0)
 
 ## G1-T18 — MCP mutation legacy replay / offline read-back contract gate
 
-**Status:** pending
+**Status:** verified
 
 **Depends on:** G1-T17
 
@@ -592,10 +592,10 @@ AND (required_external_blockers > 0 OR required_decision_blockers > 0)
 **测试预算：** mutation replay harness + 必要 integration，不重复所有 focused tests。
 
 **完成记录：**
-- Replay：
-- Read-back contract：
-- Correction：
-- 风险：
+- Replay：旧 mutation request wire 与 structured error 由既有证据承载并在本轮 HEAD 复跑：MCP wire responder 对全部 mutation endpoint（artwork/novel bookmark add-delete、artwork/novel comment add-delete、follow add-delete）做精确 path/form 断言；`TestSDKMutationToolsReturnStructuredSuccess` 保持 legacy tool 名与 legacy 输入字段（`illust_id`/`restrict`/`tags`/`user_id`）；`TestSDKMutationTypedErrorIsMCPError`、`TestNovelBookmarkMutationTypedErrorIsMCPError`、`TestFollowMutationTypedErrorIsMCPError`、`TestArtworkCommentMutationTypedErrorIsMCPErrorAndDoesNotReplay`、`TestNovelCommentMutationTypedErrorIsMCPErrorAndDoesNotReplay` 证明 typed failure 保持 `isError=true`/`success=false` 且不重放。read 侧四组 legacy JSON replay harness 不受影响。
+- Read-back contract：新增 SDK `TestBookmarkMutationReadBackOrchestrationOffline`：同一 client 上 add→`ArtworkBookmark` detail 确认→remove→detail 确认恢复，并对 wire 序列（add/detail/delete/detail）做精确断言；证明 read-back 编排只由调用方组合既有 public read 操作即可离线测试，且 2xx 本身不代表状态确认。未新增 abstraction、未在 MCP 层做自动 read-back（uncertain 不 replay 边界不变）。live read-back/cleanup 仍属 G1-T30。
+- Correction：无。
+- 风险：offline fixture 只证明 wire/编排可测性，不宣称 live success；`无法知道写入结果时保持 uncertain` 由四 family 的 502 单次请求回归继续覆盖。无新增 internal/external/decision blocker。
 - 下一步：G1-CHECK-06
 
 ## G1-CHECK-06 — Phase C exit：MCP mutation 完整性 + push
