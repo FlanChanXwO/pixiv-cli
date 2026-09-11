@@ -561,7 +561,7 @@ AND (required_external_blockers > 0 OR required_decision_blockers > 0)
 
 ## G1-T17 — Shared mutation outcome / uncertainty harness
 
-**Status:** pending
+**Status:** verified
 
 **Depends on:** G1-T13,G1-T14,G1-T15,G1-T16
 
@@ -572,10 +572,11 @@ AND (required_external_blockers > 0 OR required_decision_blockers > 0)
 **最小验证：** shared harness tests + 受影响 mutation package spot checks。
 
 **完成记录：**
-- 改动/no-op：
-- Red/Green：
-- Shared semantics：
-- 风险：
+- 改动/no-op：no-op verified。shared 语义已由既有载体承载且测试齐备，本轮零代码改动，不新增通用 mutation framework。
+- Red/Green：无生产代码变更，未触发 Red；shared harness 与 spot checks 实跑通过（见下）。
+- Shared semantics：(1) definite/uncertain 分离由 `sdk/pixiv/errors.go classifyStatus` 承载：400→`InvalidArgument`、403→`Forbidden`、404→`NotFound`、410→`ContentUnavailable`（definite typed failure）；401→`CredentialsExpired`、429→`RateLimited` 仅携带显式 `RetryAdvice`；5xx/transport→`UpstreamError`（uncertain）。(2) 不自动 replay：SDK 层各 mutation family 的 502 单次请求回归（novel bookmark/artwork comment/novel comment/follow）+ pool/facade 边界 `TestSchedulerFailsOverOnlyBeforeCommit`、`TestFacadeUseDoesNotReplayCommittedAttempt`、`TestSchedulerRequiresSafeFutureRetryAfter`；MCP `runtime.Write` 将 mutation attempt 标记 `committed=true`（读路径为 false），`Facade.Use` 只在未 commit 且 SDK retry advice 明确允许时切换账号。(3) 复用而非新增：14 个 mutation tool 全部经 `runtime.Write` + `outputs.RunMutation`/`RunMutationInPlace`（rg 全量核对），无 tool 自建 outcome 映射或绕过账号池边界。
+- 回归：`go test ./internal/services/pixiv ./internal/services/pixiv/pool -run 'TestScheduler|TestFacadeUse' -count=1 -v`、`go test ./sdk/pixiv ./internal/mcpserver/pixiv ./internal/services/pixiv/endpoint/user/follow ./internal/services/pixiv/endpoint/user/novelbookmarks -count=1` 均 PASS。
+- 风险：本 gate 只收敛 offline shared 语义；strict live、写后 read-back/cleanup 与 release 仍 open（G1-T30 及后续 owner）。无新增 internal/external/decision blocker。
 - 下一步：G1-T18
 
 ## G1-T18 — MCP mutation legacy replay / offline read-back contract gate
