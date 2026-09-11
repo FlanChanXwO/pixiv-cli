@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"errors"
 	"net/url"
-	"strconv"
 
 	endpointcontinuation "github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/endpoint/continuation"
 	"github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/endpoint/novel"
@@ -18,13 +17,15 @@ type Transport interface {
 }
 
 type Request struct {
-	Offset             int
-	ContinuationExists bool
+	// ContinuationParams 非空表示续页：整体回放上游 next_url 给出的多参数
+	// 集合（offset、already_recommended、bookmark 游标等）；nil 表示首页。
+	ContinuationParams url.Values
 }
 
 type Result struct {
-	Items      []novel.Novel
-	NextOffset int
+	Items []novel.Novel
+	// NextParams 是上游 next_url 的完整查询参数集，HasNext 为 true 时非空。
+	NextParams url.Values
 	HasNext    bool
 }
 
@@ -39,12 +40,8 @@ func (c *Client) List(ctx context.Context, request Request) (Result, error) {
 	if err := validateRequest(request); err != nil {
 		return Result{}, err
 	}
-	query := url.Values{}
-	if request.ContinuationExists {
-		query.Set("offset", strconv.Itoa(request.Offset))
-	}
 	var raw responseDTO
-	if err := c.transport.GetJSON(ctx, protocol.AppNovelRecommended, query, &raw); err != nil {
+	if err := c.transport.GetJSON(ctx, protocol.AppNovelRecommended, request.ContinuationParams, &raw); err != nil {
 		return Result{}, err
 	}
 	if !raw.Novels.Present || !raw.Novels.Valid {
@@ -62,22 +59,20 @@ func (c *Client) List(ctx context.Context, request Request) (Result, error) {
 		if *raw.NextURL == "" {
 			return Result{}, protocol.MalformedResponse()
 		}
-		next, err := continuation(*raw.NextURL)
+		params, err := continuation(*raw.NextURL)
 		if err != nil {
 			return Result{}, err
 		}
-		result.NextOffset, result.HasNext = next, true
+		result.NextParams, result.HasNext = params, true
 	}
 	return result, nil
 }
 
 func validateRequest(request Request) error {
-	if request.Offset < 0 {
-		return errors.New("novel recommended offset must not be negative")
-	}
-	// offset 只属于续页；首页的默认 offset=0 不写入请求参数。
-	if !request.ContinuationExists && request.Offset != 0 {
-		return errors.New("novel recommended initial request must not specify offset")
+	// 续页参数只能整体来自上游 next_url 的回放（由 SDK 从 cursor 解出），
+	// 不接受调用方自拼的部分参数；nil 表示首页。
+	if request.ContinuationParams != nil && len(request.ContinuationParams) == 0 {
+		return errors.New("novel recommended continuation params are invalid")
 	}
 	return nil
 }
@@ -172,14 +167,14 @@ func cloneString(value *string) *string {
 	copy := *value
 	return &copy
 }
-func continuation(rawURL string) (int, error) {
-	_, value, err := endpointcontinuation.Parse(rawURL, endpointcontinuation.Spec{
+func continuation(rawURL string) (url.Values, error) {
+	params, hasNext, err := endpointcontinuation.ParseParams(rawURL, endpointcontinuation.Spec{
 		Path:      protocol.AppNovelRecommended,
-		Keys:      []string{"offset"},
+		Keys:      []string{"offset", "already_recommended", "max_bookmark_id_for_recommend", "include_ranking_novels", "include_privacy_policy"},
 		AllowZero: true,
 	})
-	if err != nil || value < 0 || int64(int(value)) != value {
-		return 0, protocol.MalformedResponse()
+	if err != nil || !hasNext {
+		return nil, protocol.MalformedResponse()
 	}
-	return int(value), nil
+	return params, nil
 }

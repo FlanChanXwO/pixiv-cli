@@ -8,6 +8,7 @@ package continuation
 import (
 	"net/url"
 	"strconv"
+	"strings"
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/protocol"
 )
@@ -20,6 +21,13 @@ type Spec struct {
 	Keys             []string
 	AllowZero        bool
 	AllowedQueryKeys []string
+	// AllowedKeyPrefixes 允许带下标数组的参数键前缀（例如 viewed[0]）；
+	// 每个完整键仍必须只出现一次。
+	AllowedKeyPrefixes []string
+	// IgnoredKeyPrefixes 匹配的参数键会被丢弃而不是报错：上游会下发一些
+	// 仅用于其自身会话的参数（如 viewed[]），live 证据证明回放它们会被
+	// 400 拒绝，因此提取续页参数集时必须剔除。
+	IgnoredKeyPrefixes []string
 }
 
 // Parse 校验并提取 rawURL 中的唯一 typed continuation value。
@@ -73,4 +81,68 @@ func Parse(rawURL string, spec Spec) (string, int64, error) {
 		return "", 0, protocol.MalformedResponse()
 	}
 	return continuationKey, value, nil
+}
+
+// ParseParams 校验 next_url 并返回其完整查询参数集，供 recommended 这类
+// “上游用多参数（offset、bookmark 游标、viewed 下标数组）表达续页”的
+// endpoint 整体回放。与 Parse 相同：host/path 固定、每个键只出现一次、
+// 未登记的键一律 malformed；rawURL 为空表示没有下一页。
+func ParseParams(rawURL string, spec Spec) (url.Values, bool, error) {
+	if rawURL == "" {
+		return nil, false, nil
+	}
+	if spec.Path == "" {
+		return nil, false, protocol.MalformedResponse()
+	}
+	parsed, err := url.Parse(rawURL)
+	if err != nil || parsed.Scheme != "https" || parsed.User != nil || parsed.Fragment != "" || parsed.Opaque != "" || parsed.Hostname() != appAPIHost || parsed.Port() != "" || parsed.Path != spec.Path || parsed.EscapedPath() != spec.Path {
+		return nil, false, protocol.MalformedResponse()
+	}
+	values, err := url.ParseQuery(parsed.RawQuery)
+	if err != nil {
+		return nil, false, protocol.MalformedResponse()
+	}
+	allowed := make(map[string]struct{}, len(spec.AllowedQueryKeys)+len(spec.Keys))
+	for _, key := range spec.Keys {
+		if key == "" {
+			return nil, false, protocol.MalformedResponse()
+		}
+		allowed[key] = struct{}{}
+	}
+	for _, key := range spec.AllowedQueryKeys {
+		allowed[key] = struct{}{}
+	}
+	prefixes := spec.AllowedKeyPrefixes
+	ignored := spec.IgnoredKeyPrefixes
+	for key, entries := range values {
+		isIgnored := false
+		for _, prefix := range ignored {
+			if prefix != "" && strings.HasPrefix(key, prefix) {
+				isIgnored = true
+				break
+			}
+		}
+		if isIgnored {
+			delete(values, key)
+			continue
+		}
+		ok := false
+		if _, exact := allowed[key]; exact {
+			ok = true
+		} else {
+			for _, prefix := range prefixes {
+				if prefix != "" && strings.HasPrefix(key, prefix) {
+					ok = true
+					break
+				}
+			}
+		}
+		if !ok || len(entries) != 1 || entries[0] == "" {
+			return nil, false, protocol.MalformedResponse()
+		}
+	}
+	if len(values) == 0 {
+		return nil, false, protocol.MalformedResponse()
+	}
+	return values, true, nil
 }

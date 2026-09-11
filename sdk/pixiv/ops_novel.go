@@ -167,17 +167,19 @@ func (c *Client) NovelComments(ctx context.Context, request NovelCommentsRequest
 }
 
 // RecommendedNovels lists recommended novels.
+// RecommendedNovels lists recommended novels. 续页以上游 next_url 的多参数
+// 集整体回放（offset、already_recommended、bookmark 游标）。
 func (c *Client) RecommendedNovels(ctx context.Context, request RecommendedNovelsRequest) (sdk.Page[Novel], error) {
 	query := url.Values{}
-	offset, contExists, err := c.continuationOffsetExists("RecommendedNovels", query, request.Cursor)
+	params, err := c.continuationParams("RecommendedNovels", query, request.Cursor)
 	if err != nil {
 		return sdk.Page[Novel]{}, err
 	}
-	list, err := c.novelRecommended.List(ctx, novelrecommended.Request{Offset: offset, ContinuationExists: contExists})
+	list, err := c.novelRecommended.List(ctx, novelrecommended.Request{ContinuationParams: params})
 	if err != nil {
 		return sdk.Page[Novel]{}, classifyAppError(err, "RecommendedNovels")
 	}
-	return c.novelPage("RecommendedNovels", query, "offset", list.Items, int64(list.NextOffset), list.HasNext)
+	return c.novelParamsPage("RecommendedNovels", query, list.Items, list.NextParams, list.HasNext)
 }
 
 // FollowingNovels lists novels by followed users.
@@ -306,6 +308,28 @@ func (c *Client) MyPixivNovels(ctx context.Context, request MyPixivNovelsRequest
 		return sdk.Page[Novel]{}, classifyAppError(err, "MyPixivNovels")
 	}
 	return c.novelPage("MyPixivNovels", query, "offset", list.Items, int64(list.NextOffset), list.HasNext)
+}
+
+// novelParamsPage 与 novelPage 共享 DTO 映射，但以多参数 continuation 构建
+// cursor（recommended 家族）。
+func (c *Client) novelParamsPage(op string, query url.Values, list []novelentity.Novel, nextParams url.Values, hasNext bool) (sdk.Page[Novel], error) {
+	items := make([]Novel, 0, len(list))
+	for _, value := range list {
+		mapped, err := c.mapNovel(value)
+		if err != nil {
+			return sdk.Page[Novel]{}, err
+		}
+		items = append(items, mapped)
+	}
+	var next sdk.Cursor
+	if hasNext {
+		built, err := c.buildContinuationCursor(op, query, continuationEnvelope{Params: nextParams})
+		if err != nil {
+			return sdk.Page[Novel]{}, err
+		}
+		next = built
+	}
+	return sdk.Page[Novel]{Items: items, Next: next}, nil
 }
 
 func (c *Client) novelPage(op string, query url.Values, key string, list []novelentity.Novel, nextValue int64, hasNext bool) (sdk.Page[Novel], error) {

@@ -204,6 +204,28 @@ func mapArtworkTags(values []artwork.Tag) []Tag {
 	return result
 }
 
+// artworkParamsPage 与 artworkPage 共享 DTO 映射，但以多参数 continuation
+// 构建 cursor（recommended 家族）。
+func (c *Client) artworkParamsPage(op string, query url.Values, values []artwork.Artwork, nextParams url.Values, hasNext bool) (sdk.Page[Artwork], error) {
+	items := make([]Artwork, len(values))
+	for index, value := range values {
+		mapped, err := c.mapArtworkEntity(value)
+		if err != nil {
+			return sdk.Page[Artwork]{}, err
+		}
+		items[index] = mapped
+	}
+	var next sdk.Cursor
+	if hasNext {
+		built, err := c.buildContinuationCursor(op, query, continuationEnvelope{Params: nextParams})
+		if err != nil {
+			return sdk.Page[Artwork]{}, err
+		}
+		next = built
+	}
+	return sdk.Page[Artwork]{Items: items, Next: next}, nil
+}
+
 func (c *Client) artworkPage(op string, query url.Values, key string, values []artwork.Artwork, nextValue int64, hasNext bool) (sdk.Page[Artwork], error) {
 	items := make([]Artwork, len(values))
 	for index, value := range values {

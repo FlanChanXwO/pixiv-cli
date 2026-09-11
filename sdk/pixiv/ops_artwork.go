@@ -98,18 +98,20 @@ func (c *Client) ArtworkRanking(ctx context.Context, request ArtworkRankingReque
 	return c.artworkPage("ArtworkRanking", query, "offset", list.Items, int64(list.NextOffset), list.HasNext)
 }
 
-// RecommendedArtworks lists recommended artworks.
+// RecommendedArtworks lists recommended artworks. 上游以多参数 next_url
+// 表达续页（offset=0 特例 + bookmark 游标 + viewed 下标数组），cursor 以
+// 结构化参数集整体回放，不保存 raw next_url。
 func (c *Client) RecommendedArtworks(ctx context.Context, request RecommendedArtworksRequest) (sdk.Page[Artwork], error) {
 	query := url.Values{}
-	offset, contExists, err := c.continuationOffsetExists("RecommendedArtworks", query, request.Cursor)
+	params, err := c.continuationParams("RecommendedArtworks", query, request.Cursor)
 	if err != nil {
 		return sdk.Page[Artwork]{}, err
 	}
-	list, err := c.artworkRecommended.List(ctx, recommended.Request{Offset: offset, ContinuationExists: contExists})
+	list, err := c.artworkRecommended.List(ctx, recommended.Request{ContinuationParams: params})
 	if err != nil {
 		return sdk.Page[Artwork]{}, classifyAppError(err, "RecommendedArtworks")
 	}
-	return c.artworkPage("RecommendedArtworks", query, "offset", list.Items, int64(list.NextOffset), list.HasNext)
+	return c.artworkParamsPage("RecommendedArtworks", query, list.Items, list.NextParams, list.HasNext)
 }
 
 // FollowingArtworks lists artworks by followed users.

@@ -18,9 +18,11 @@ import (
 // fail closed instead of being misinterpreted.
 const cursorBindingVersion = 1
 
-// 搜索新增批内 checkpoint 与账号绑定，只使旧搜索 cursor 失效。
+// 搜索新增批内 checkpoint 与账号绑定、recommended 改为多参数 continuation
+// 回放，二者都只使各自旧 cursor 显式失效（fail-closed）。
 func operationCursorBindingVersion(op string) int {
-	if op == "SearchArtworks" {
+	switch op {
+	case "SearchArtworks", "RecommendedArtworks", "RecommendedNovels":
 		return 2
 	}
 	return cursorBindingVersion
@@ -28,10 +30,13 @@ func operationCursorBindingVersion(op string) int {
 
 // continuationEnvelope is the opaque payload embedded in a Pixiv cursor. It
 // never contains tokens, cookies, signed URLs, search text, or local paths.
+// Params 仅承载 recommended 这类上游以多参数表达续页的 endpoint 的结构化
+// 续页参数（offset、bookmark 游标、viewed 下标数组等），不含 next_url 原文。
 type continuationEnvelope struct {
-	Key      string `json:"k"`
-	Value    int64  `json:"v"`
-	Consumed int    `json:"s,omitempty"`
+	Key      string     `json:"k"`
+	Value    int64      `json:"v"`
+	Consumed int        `json:"s,omitempty"`
+	Params   url.Values `json:"p,omitempty"`
 }
 
 // identityScopedOps are operations whose pagination state is tied to the
@@ -136,7 +141,15 @@ func (c *Client) continuationState(op string, baseQuery url.Values, cur sdk.Curs
 		return continuationEnvelope{}, newError(op, sdk.InvalidCursor, "cursor payload is unavailable")
 	}
 	var envelope continuationEnvelope
-	if err := json.Unmarshal(payload, &envelope); err != nil || envelope.Key == "" || envelope.Value < 0 || envelope.Consumed < 0 {
+	if err := json.Unmarshal(payload, &envelope); err != nil || envelope.Value < 0 || envelope.Consumed < 0 {
+		return continuationEnvelope{}, newError(op, sdk.InvalidCursor, "cursor payload is malformed")
+	}
+	// 两种合法 payload 形态：单键 continuation（Key+Value）与 recommended
+	// 家族的多参数集（Params）；二者都不允许为空。
+	if envelope.Key == "" && len(envelope.Params) == 0 {
+		return continuationEnvelope{}, newError(op, sdk.InvalidCursor, "cursor payload is malformed")
+	}
+	if envelope.Key != "" && len(envelope.Params) != 0 {
 		return continuationEnvelope{}, newError(op, sdk.InvalidCursor, "cursor payload is malformed")
 	}
 	return envelope, nil
@@ -207,6 +220,22 @@ func (c *Client) continuationOffsetExists(op string, baseQuery url.Values, cur s
 		return 0, false, err
 	}
 	return offset, true, nil
+}
+
+// continuationParams 解码多参数 continuation（recommended 家族）。零 cursor
+// 表示首页并返回 nil；payload 未携带 Params 时显式 InvalidCursor，不静默重启。
+func (c *Client) continuationParams(op string, baseQuery url.Values, cur sdk.Cursor) (url.Values, error) {
+	if cur.IsZero() {
+		return nil, nil
+	}
+	state, err := c.continuationState(op, baseQuery, cur)
+	if err != nil {
+		return nil, err
+	}
+	if len(state.Params) == 0 {
+		return nil, newError(op, sdk.InvalidCursor, "cursor continuation params are missing")
+	}
+	return state.Params, nil
 }
 
 func itoa(n int64) string {

@@ -50,7 +50,7 @@ func TestRealPixivSDKLiveManifestRead(t *testing.T) {
 					ContentType: contentType,
 					Cursor:      cursor,
 				})
-			}, func(item pixivsdk.Artwork) int64 { return item.ID })
+			}, func(item pixivsdk.Artwork) int64 { return item.ID }, true)
 		time.Sleep(liveManifestPace)
 	}
 
@@ -62,7 +62,7 @@ func TestRealPixivSDKLiveManifestRead(t *testing.T) {
 		liveTwoPages(t, "latest/"+string(contentType),
 			func(cursor sdk.Cursor) (sdk.Page[pixivsdk.Artwork], error) {
 				return client.LatestArtworks(ctx, pixivsdk.LatestArtworksRequest{ContentType: contentType, Cursor: cursor})
-			}, func(item pixivsdk.Artwork) int64 { return item.ID })
+			}, func(item pixivsdk.Artwork) int64 { return item.ID }, true)
 		time.Sleep(liveManifestPace)
 	}
 
@@ -70,7 +70,7 @@ func TestRealPixivSDKLiveManifestRead(t *testing.T) {
 	liveTwoPages(t, "ranking/day",
 		func(cursor sdk.Cursor) (sdk.Page[pixivsdk.Artwork], error) {
 			return client.ArtworkRanking(ctx, pixivsdk.ArtworkRankingRequest{Mode: pixivsdk.RankingModeDay, Cursor: cursor})
-		}, func(item pixivsdk.Artwork) int64 { return item.ID })
+		}, func(item pixivsdk.Artwork) int64 { return item.ID }, true)
 	time.Sleep(liveManifestPace)
 
 	// #4 artwork-recommended：非空首页 + continuation + 真实第二页（P1 closure
@@ -123,7 +123,7 @@ func TestRealPixivSDKLiveManifestRead(t *testing.T) {
 	liveTwoPages(t, "search_novel",
 		func(cursor sdk.Cursor) (sdk.Page[pixivsdk.Novel], error) {
 			return client.SearchNovels(ctx, pixivsdk.SearchNovelsRequest{Word: "初音ミク", Cursor: cursor})
-		}, func(item pixivsdk.Novel) int64 { return item.ID })
+		}, func(item pixivsdk.Novel) int64 { return item.ID }, true)
 	time.Sleep(liveManifestPace)
 
 	// #8 novel-detail：v2 detail 读取一个有效 novel。
@@ -150,28 +150,28 @@ func TestRealPixivSDKLiveManifestRead(t *testing.T) {
 	liveTwoPages(t, "latest_novel",
 		func(cursor sdk.Cursor) (sdk.Page[pixivsdk.Novel], error) {
 			return client.LatestNovels(ctx, pixivsdk.LatestNovelsRequest{Cursor: cursor})
-		}, func(item pixivsdk.Novel) int64 { return item.ID })
+		}, func(item pixivsdk.Novel) int64 { return item.ID }, true)
 	time.Sleep(liveManifestPace)
 
 	// #11 novel-recommended：offset 续页。
 	liveTwoPages(t, "recommended_novel",
 		func(cursor sdk.Cursor) (sdk.Page[pixivsdk.Novel], error) {
 			return client.RecommendedNovels(ctx, pixivsdk.RecommendedNovelsRequest{Cursor: cursor})
-		}, func(item pixivsdk.Novel) int64 { return item.ID })
+		}, func(item pixivsdk.Novel) int64 { return item.ID }, false)
 	time.Sleep(liveManifestPace)
 
 	// #12 novel-ranking：固定 mode=day，offset 续页。
 	liveTwoPages(t, "ranking_novel/day",
 		func(cursor sdk.Cursor) (sdk.Page[pixivsdk.Novel], error) {
 			return client.NovelRanking(ctx, pixivsdk.NovelRankingRequest{Mode: pixivsdk.RankingModeDay, Cursor: cursor})
-		}, func(item pixivsdk.Novel) int64 { return item.ID })
+		}, func(item pixivsdk.Novel) int64 { return item.ID }, true)
 	time.Sleep(liveManifestPace)
 
 	// #13 novel-follow：restrict=public，offset 续页；feed 为空记 data-limited。
 	liveTwoPages(t, "following_novel/public",
 		func(cursor sdk.Cursor) (sdk.Page[pixivsdk.Novel], error) {
 			return client.FollowingNovels(ctx, pixivsdk.FollowingNovelsRequest{Restrict: pixivsdk.RestrictPublic, Cursor: cursor})
-		}, func(item pixivsdk.Novel) int64 { return item.ID })
+		}, func(item pixivsdk.Novel) int64 { return item.ID }, true)
 	time.Sleep(liveManifestPace)
 
 	// #41 recommended-all 的 artwork/novel/user feed streams（首条流 + continuation 记录）。
@@ -251,9 +251,10 @@ func openRealPixivLiveClient(t *testing.T, ctx context.Context) *pixivsdk.Client
 }
 
 // liveTwoPages 执行“首页 + 真实续页”场景并做跨页 ID 去重检查。上游无
-// continuation 时按 manifest 记录 data-limited，不伪造第二页；请求错误与跨页
-// 重复属于契约违规，使测试失败。
-func liveTwoPages[T any](t *testing.T, name string, fetch func(sdk.Cursor) (sdk.Page[T], error), idOf func(T) int64) {
+// continuation 时按 manifest 记录 data-limited，不伪造第二页；请求错误使测试
+// 失败。strictNoDup=true 时跨页重复判失败（搜索/排行/最新等确定性序列）；
+// 推荐类 feed 上游本身可能跨页重复（G1-T28 live 证据），重复仅记录计数。
+func liveTwoPages[T any](t *testing.T, name string, fetch func(sdk.Cursor) (sdk.Page[T], error), idOf func(T) int64, strictNoDup bool) {
 	t.Helper()
 	page1, err := fetch(sdk.Cursor{})
 	if err != nil {
@@ -281,7 +282,7 @@ func liveTwoPages[T any](t *testing.T, name string, fetch func(sdk.Cursor) (sdk.
 		}
 	}
 	t.Logf("%s second page: %d items, duplicates=%d", name, len(page2.Items), duplicates)
-	if duplicates > 0 {
+	if duplicates > 0 && strictNoDup {
 		t.Errorf("%s second page repeats %d first-page item(s)", name, duplicates)
 	}
 }

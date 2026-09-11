@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"errors"
 	"net/url"
-	"strconv"
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/endpoint/artwork"
 	endpointcontinuation "github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/endpoint/continuation"
@@ -22,14 +21,16 @@ type Client struct{ transport Transport }
 func New(transport Transport) *Client { return &Client{transport: transport} }
 
 type Request struct {
-	ContentType        string
-	Offset             int
-	ContinuationExists bool
+	ContentType string
+	// ContinuationParams 非空表示续页：整体回放上游 next_url 给出的多参数
+	// 集合（offset、bookmark 游标、viewed 下标数组等）；nil 表示首页。
+	ContinuationParams url.Values
 }
 
 type Result struct {
-	Items      []artwork.Artwork
-	NextOffset int
+	Items []artwork.Artwork
+	// NextParams 是上游 next_url 的完整查询参数集，HasNext 为 true 时非空。
+	NextParams url.Values
 	HasNext    bool
 }
 
@@ -40,12 +41,8 @@ func (c *Client) List(ctx context.Context, request Request) (Result, error) {
 	if err := validateRequest(request); err != nil {
 		return Result{}, err
 	}
-	query := url.Values{}
-	if request.ContinuationExists {
-		query.Set("offset", strconv.Itoa(request.Offset))
-	}
 	var raw responseDTO
-	if err := c.transport.GetJSON(ctx, protocol.AppIllustRecommended, query, &raw); err != nil {
+	if err := c.transport.GetJSON(ctx, protocol.AppIllustRecommended, request.ContinuationParams, &raw); err != nil {
 		return Result{}, err
 	}
 	if !raw.Illusts.Present || !raw.Illusts.Valid {
@@ -58,11 +55,11 @@ func (c *Client) List(ctx context.Context, request Request) (Result, error) {
 		}
 		items[index] = mapArtwork(value)
 	}
-	nextOffset, hasNext, err := continuation(raw.NextURL)
+	nextParams, hasNext, err := continuation(raw.NextURL)
 	if err != nil {
 		return Result{}, err
 	}
-	return Result{Items: items, NextOffset: nextOffset, HasNext: hasNext}, nil
+	return Result{Items: items, NextParams: nextParams, HasNext: hasNext}, nil
 }
 
 func validateRequest(request Request) error {
@@ -70,12 +67,10 @@ func validateRequest(request Request) error {
 	if request.ContentType != "" {
 		return errors.New("artwork recommended content type is unsupported")
 	}
-	if request.Offset < 0 {
-		return errors.New("artwork recommended offset must not be negative")
-	}
-	// offset 只属于续页。这样不会把带 offset 的非法初始请求静默解释成首页或续页。
-	if !request.ContinuationExists && request.Offset != 0 {
-		return errors.New("artwork recommended initial request must not specify offset")
+	// 续页参数只能整体来自上游 next_url 的回放（由 SDK 从 cursor 解出），
+	// 不接受调用方自拼的部分参数；空集合与首页等价，由 nil 表示首页。
+	if request.ContinuationParams != nil && len(request.ContinuationParams) == 0 {
+		return errors.New("artwork recommended continuation params are invalid")
 	}
 	return nil
 }
@@ -182,19 +177,23 @@ func (l *requiredList[T]) UnmarshalJSON(data []byte) error {
 	return nil
 }
 
-func continuation(rawURL *string) (int, bool, error) {
+func continuation(rawURL *string) (url.Values, bool, error) {
 	if rawURL == nil {
-		return 0, false, nil
+		return nil, false, nil
 	}
-	_, value, err := endpointcontinuation.Parse(*rawURL, endpointcontinuation.Spec{
-		Path:      protocol.AppIllustRecommended,
-		Keys:      []string{"offset"},
-		AllowZero: true,
+	// live 证据（G1-T28）：next_url 中的 viewed[] 是上游会话参数，回放会被
+	// 400 拒绝；提取续页参数集时剔除，其余参数（offset/bookmark 游标/include
+	// flags）原样回放。
+	params, hasNext, err := endpointcontinuation.ParseParams(*rawURL, endpointcontinuation.Spec{
+		Path:               protocol.AppIllustRecommended,
+		Keys:               []string{"offset", "min_bookmark_id_for_recent_illust", "max_bookmark_id_for_recommend", "include_ranking_illusts", "include_privacy_policy"},
+		AllowZero:          true,
+		IgnoredKeyPrefixes: []string{"viewed["},
 	})
-	if err != nil || value < 0 || int64(int(value)) != value {
-		return 0, false, protocol.MalformedResponse()
+	if err != nil || !hasNext {
+		return nil, false, protocol.MalformedResponse()
 	}
-	return int(value), true, nil
+	return params, true, nil
 }
 
 func mapArtwork(dto illustDTO) artwork.Artwork {
