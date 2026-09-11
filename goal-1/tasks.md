@@ -678,7 +678,7 @@ AND (required_external_blockers > 0 OR required_decision_blockers > 0)
 
 ## G1-T21 — CLI compatibility + presentation
 
-**Status:** pending
+**Status:** verified
 
 **Depends on:** G1-T20
 
@@ -691,11 +691,13 @@ AND (required_external_blockers > 0 OR required_decision_blockers > 0)
 **最小验证：** 相关 route/alias/help/completion tests。
 
 **完成记录：**
-- 改动/no-op：
-- Tests：
-- Compatibility：
-- 风险：
-- 下一步：G1-CHECK-07
+- 改动/no-op：Red→Green 实现 frozen map row 35 要求的 `bookmark add/remove` 双 namespace：新增 `--type/-t`（默认 `artwork`，保持旧行为），novel dispatch 走 G1-T13 的 public SDK `AddNovelBookmark`/`RemoveNovelBookmark`（`/v2/novel/bookmark/add`、`/v1/novel/bookmark/delete`）；`--type all/user` 与未知值在网络前拒绝，措辞与 resolver TypeSpec 一致；record 消费按 namespace 分离（novel type 只接受 `novel` record，artwork record 报 `unsupported_type`；默认 artwork 行为不变）；help/usage 改为 typed 名（`[ARTWORK_ID_OR_NOVEL_ID]`）。Red 实跑 5 个新测试因 `unknown flag: --type` 全部失败后 Green。
+- Tests：新增 `TestBookmark{Add,Remove}SupportsNovelType`、`TestBookmarkMutationRejectsUnsupportedTypeBeforeNetwork`、`TestBookmarkAddConsumesNovelRecordsOnlyWithNovelType`、`TestBookmarkAddRejectsArtworkRecordWithNovelType`；回归 `go test ./internal/cli/commands/pixiv/{bookmark,search,follow,comment} ./internal/cli ./sdk/pixiv -count=1`、`go test ./scripts/tests/documentation -count=1`、`go vet`、`gofmt` 全 PASS；commit hook 全量 `go test ./...` PASS。
+- Compatibility：旧 route/alias 全部保留（artwork 默认路径、`bookmark_add/remove` record operation 名、legacy wrapper wire 不变）；canonical 行为符合 cli-migration-matrix row 35（artwork 或 novel、不接受 `all`、namespace 一致）；trending 的真实 CLI surface 复核为 `pixiv search --trending-tags`（frozen row 110，冲突拒绝与 wire tests 已存在，纠正 state matrix #35 的 stale `CLI=missing`）；bare-ID 边界保持显式 `--type`、无隐式 probe（resolver/CLI 负向 tests）；local rating 为 `search --rating` 本地过滤并绑定 cursor digest，不发 server-side rating（`search.go` 注释与 tests）。
+- Adjudication：`ugoira-metadata` CLI：frozen cli-migration-matrix 无 `ugoira metadata` 路由（Goal-3 T07A 明确 adapter/SDK only），CLI 层缺口保持显式登记（`CAND-G1-T06-UGOIRA-SURFACE`），不静默当作已解决；是否新增 additive 命令留 G1-FINAL 裁决。
+- 文档：`bookmark add/remove --type` 与 typed usage 的双语 cli-reference / `skills/pixiv-cli` 同步由 G1-T23 统一执行（本 task 记录 pending）。
+- 风险：无新增 internal/external/decision blocker；live/access-control 仍由 Phase F owner。
+- 下一步：G1-T22
 
 ## G1-CHECK-07 — 集中检查：cursor + SDK + CLI
 
