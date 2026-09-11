@@ -39,7 +39,7 @@ func handleTrendingTags(ctx context.Context, app *runtime.App, _ In) (*mcp.CallT
 	}
 	out := outputs.TrendingTags{Tags: []pixiv.TrendingTagDTO{}}
 	if len(result) == 0 {
-		out.Text = "Could not retrieve trending tags."
+		out.Text = "No trending tags found."
 		return outputs.TrendingTagsResult(out, false), out, nil
 	}
 	lines := make([]string, 0, len(result))

@@ -281,6 +281,22 @@ func TestFeedRecommendationLegacyJSONReplayPreservesStructuredContracts(t *testi
 				}
 			},
 		},
+		{
+			name:   "trending tags empty",
+			tool:   "trending_tags_illust",
+			args:   map[string]any{},
+			client: &fakeSDKClient{trendingTags: []pixiv.TrendingTag{}},
+			check: func(t *testing.T, result *mcp.CallToolResult) {
+				if result.IsError {
+					t.Fatalf("empty trending tags returned error: %+v", result)
+				}
+				var out outputs.TrendingTags
+				decodeStructured(t, result, &out)
+				if out.Tags == nil || len(out.Tags) != 0 || out.Text != "No trending tags found." {
+					t.Fatalf("empty trending tags=%+v", out)
+				}
+			},
+		},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {

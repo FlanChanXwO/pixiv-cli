@@ -303,7 +303,7 @@ AND (required_external_blockers > 0 OR required_decision_blockers > 0)
 
 ## G1-T07 — MCP user identity read：search/detail/trending
 
-**Status:** pending
+**Status:** verified
 
 **Depends on:** G1-CHECK-02
 
@@ -316,11 +316,11 @@ AND (required_external_blockers > 0 OR required_decision_blockers > 0)
 **验收：** schema/identity/filter/pagination/error 与 frozen contract 一致；不扩到 relationships/bookmark。
 
 **完成记录：**
-- 改动/no-op：
-- Red/Green：
-- Compatibility：
-- 风险：
-- 下一步：G1-T08
+- **改动/no-op：** 补齐 `search_user` 的非空白 `word` schema（`minLength=1`）与 SDK 执行前 typed `InvalidArgument` guard；补充 user-search/user-detail structured-error、blank-input no-execute、trending empty-success 的 MCP 回归与 legacy replay；trending 空列表文本改为成功语义 `No trending tags found.`；双语 MCP 文档同步。未扩展 relationships/bookmark，也未改变 `user_detail` 的 frozen 必填 `user_id` wire；CurrentUser verified identity 仍由 SDK/endpoint 既有路径覆盖，当前用户 resolver/list 交由 G1-T08。
+- **Red/Green：** Red：`go test ./internal/mcpserver/pixiv -run 'Test(UserReadSchemasMatchLegacyContracts|SearchUserRejectsBlankWordBeforeSDKExecution|TrendingTagsIllustEmptyResultIsSuccessful)$' -count=1 -v` 实际暴露 `search_user.word` 缺少 `minLength`，以及 trending 空成功仍输出失败措辞。Green：相关 focused replay、`go test ./internal/mcpserver/pixiv/... -count=1`、`go test ./sdk/pixiv ./internal/services/pixiv/endpoint/user/search ./internal/services/pixiv/endpoint/user/detail ./internal/services/pixiv/endpoint/artwork/trending -count=1`、`go test ./internal/cli/commands/pixiv/search -run 'TestTrendingTags' -count=1`、`go vet ./internal/mcpserver/pixiv/...`、`go test ./scripts/tests/documentation -count=1` 均通过；LSP diagnostics 无新增错误，`git diff --check` 通过。
+- **Compatibility：** `search_user`、`user_detail`、`trending_tags_illust` 名称、旧字段、输出 envelope、pagination/filter 与 explicit detail identity contract 保持；legacy JSON replay、跨 SDK cursor filter、structured error、trending empty success 均通过；未执行真实 Pixiv API，未把 offline evidence 升格为 live/public-ready。
+- **风险：** #33–35 的 strict live/account binding/CurrentUser live evidence 仍未闭合；trending CLI owner/correction 仍属 G1-T21；本卡只完成 MCP/Shared offline acceptance。
+- **下一步：** G1-T08
 
 ## G1-T08 — MCP user collections/relationships/MyPixiv read
 

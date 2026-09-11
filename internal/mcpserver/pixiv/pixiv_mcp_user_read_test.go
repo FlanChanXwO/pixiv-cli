@@ -6,6 +6,7 @@ import (
 	"strings"
 	"testing"
 
+	pixivmcpserver "github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv"
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/internal/outputs"
 	"github.com/FlanChanXwO/pixiv-cli/sdk"
 	pixiv "github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
@@ -49,7 +50,9 @@ func TestUserReadSchemasMatchLegacyContracts(t *testing.T) {
 				assertSchemaMinimum(t, feedSchemaProperty(t, schema, "limit"), 0)
 			}
 			if test.name == "search_user" {
-				if property := feedSchemaProperty(t, schema, "word"); property["type"] != "string" {
+				property := feedSchemaProperty(t, schema, "word")
+				minLength, ok := property["minLength"].(float64)
+				if property["type"] != "string" || !ok || minLength != 1 {
 					t.Fatalf("search_user word schema=%#v", property)
 				}
 			}
@@ -79,6 +82,70 @@ func TestUserReadSchemasMatchLegacyContracts(t *testing.T) {
 	output := feedSchemaObject(t, "user_detail output", tool.OutputSchema)
 	assertSchemaFields(t, output, []string{"records"})
 	assertSchemaRequired(t, output, []string{"records"})
+}
+
+func TestSearchUserRejectsBlankWordBeforeSDKExecution(t *testing.T) {
+	executions := 0
+	client := openWireClient(t, &fakeSDKClient{})
+	ports := pixivmcpserver.SDKPorts{
+		Open: func(pixivmcpserver.Account) (*pixiv.Client, error) {
+			return client, nil
+		},
+		Execute: func(ctx context.Context, _ pixivmcpserver.Account, attempt func(context.Context, *pixiv.Client) (bool, error)) error {
+			executions++
+			_, err := attempt(ctx, client)
+			return err
+		},
+	}
+	session, closeSession := newSDKTestSessionWithPorts(t, &fakeAPI{}, ports, pixivmcpserver.Account{})
+	defer closeSession()
+
+	result := callTool(t, session, "search_user", map[string]any{"word": " \t"})
+	if !result.IsError || executions != 0 || !resultHasText(result, "search word is required") {
+		t.Fatalf("blank search_user result=%+v executions=%d", result, executions)
+	}
+	var out outputs.Records
+	decodeStructured(t, result, &out)
+	if len(out.Records) != 0 {
+		t.Fatalf("blank search_user records=%+v", out.Records)
+	}
+}
+
+func TestSearchUserSDKFailureRemainsStructured(t *testing.T) {
+	typed := sdk.NewError("pixiv", "SearchUsers", sdk.Forbidden)
+	calls := 0
+	client := &fakeSDKClient{searchUser: func(context.Context, pixiv.SearchUsersRequest) (sdk.Page[pixiv.UserPreview], error) {
+		calls++
+		return sdk.Page[pixiv.UserPreview]{}, typed
+	}}
+	session, closeSession := newSDKTestSession(t, client)
+	defer closeSession()
+
+	result := callTool(t, session, "search_user", map[string]any{"word": "miku"})
+	if !result.IsError || calls != 1 || !resultHasText(result, typed.Error()) {
+		t.Fatalf("search_user failure result=%+v calls=%d", result, calls)
+	}
+	var out outputs.Records
+	decodeStructured(t, result, &out)
+	if len(out.Records) != 0 || out.Pagination.Page != 1 {
+		t.Fatalf("search_user failure output=%+v", out)
+	}
+}
+
+func TestUserDetailSDKFailureRemainsStructured(t *testing.T) {
+	typed := sdk.NewError("pixiv", "User", sdk.Forbidden)
+	session, closeSession := newSDKTestSession(t, &fakeSDKClient{userDetailErr: typed})
+	defer closeSession()
+
+	result := callTool(t, session, "user_detail", map[string]any{"user_id": 401})
+	if !result.IsError || !resultHasText(result, typed.Error()) {
+		t.Fatalf("user_detail failure result=%+v", result)
+	}
+	var out outputs.UserDetail
+	decodeStructured(t, result, &out)
+	if len(out.Records) != 0 {
+		t.Fatalf("user_detail failure records=%+v", out.Records)
+	}
 }
 
 func TestRelatedUsersResolvesCurrentIdentityAndFiltersBeforeLogicalPagination(t *testing.T) {

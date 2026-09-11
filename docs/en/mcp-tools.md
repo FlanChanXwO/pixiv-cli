@@ -180,7 +180,7 @@ not treated as an artwork detail request.
 | `illust_series` / `novel_series` | Positive `series_id`, `page`, `limit`; novel series also returns safe series metadata. |
 | `illust_comments` / `novel_comments` | Closed input `{id, page, limit}` with positive `id`; output is `{comments, pagination}` plus optional `total`/`access_control` metadata. Read tools do not accept mutation-only `stamp_id`, and no standalone `stamps` tool is exposed in the legacy registry. |
 | `illust_ranking` | Optional `mode`, `date`, `illust_filter`, `page`, `limit`; `mode` is a closed ranking enum, dates must be valid `YYYY-MM-DD`, and omitted mode is `day`. |
-| `search_user` | Required `word`, optional `user_filter`, `page`, `limit`; uses the App user-search operation. |
+| `search_user` | Required non-blank `word`, optional `user_filter`, `page`, `limit`; blank input is rejected before SDK execution and valid input uses the App user-search operation. |
 | `illust_recommended` | Artwork recommendations with optional `illust_filter`, `page`, `limit`. |
 | `recommended` | Required `kind`: `all`, `illust`, `manga`, `novel`, or `user`; optional matching typed filters, `page`, `limit`. `illust`/`manga` select the corresponding artwork subtype, conflicting filters are rejected before SDK execution, and `all` keeps four independent streams with atomic failure semantics. |
 | `trending_tags_illust` | No input; returns the complete current artwork trending-tag list. An empty upstream list is a successful empty result. |

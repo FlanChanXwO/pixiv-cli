@@ -138,7 +138,7 @@ application outcome 的 `filter` 会报告 `min`、`max`、`membership`、`strat
 | `illust_series` / `novel_series` | 正数 `series_id`、`page`、`limit`；小说系列额外返回安全 series metadata。 |
 | `illust_comments` / `novel_comments` | 封闭输入 `{id, page, limit}`，其中 `id` 为正数；输出 `{comments, pagination}`，并可选返回 `total`/`access_control` metadata。read tool 不接受只用于 mutation 的 `stamp_id`，legacy 注册表不暴露独立 `stamps` tool。 |
 | `illust_ranking` | 可选 `mode`、`date`、`illust_filter`、`page`、`limit`；`mode` 是封闭的 ranking enum，日期必须是有效 `YYYY-MM-DD`，省略 mode 为 `day`。 |
-| `search_user` | 必填 `word`，可选 `user_filter`、`page`、`limit`；调用 App user-search operation。 |
+| `search_user` | 必填非空白 `word`，可选 `user_filter`、`page`、`limit`；空白输入会在 SDK 执行前拒绝，合法输入调用 App user-search operation。 |
 | `illust_recommended` | 作品推荐，可选 `illust_filter`、`page`、`limit`。 |
 | `recommended` | 必填 `kind`：`all`、`illust`、`manga`、`novel` 或 `user`；可选匹配的 typed filter、`page`、`limit`。`illust`/`manga` 选择对应 artwork subtype，冲突 filter 会在 SDK 执行前拒绝；`all` 保持四路独立流，并采用原子失败语义。 |
 | `trending_tags_illust` | 无输入；返回完整当前作品趋势标签列表。上游返回空列表时仍是成功的空结果。 |

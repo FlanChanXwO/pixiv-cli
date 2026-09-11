@@ -175,6 +175,21 @@ func TestTrendingTagsIllustReturnsTagsAndText(t *testing.T) {
 	}
 }
 
+func TestTrendingTagsIllustEmptyResultIsSuccessful(t *testing.T) {
+	session, closeSession := newSDKTestSession(t, &fakeSDKClient{trendingTags: []pixiv.TrendingTag{}})
+	defer closeSession()
+
+	result := callTool(t, session, "trending_tags_illust", map[string]any{})
+	if result.IsError || !resultHasText(result, "No trending tags found.") {
+		t.Fatalf("empty trending result=%+v", result)
+	}
+	var out outputs.TrendingTags
+	decodeStructured(t, result, &out)
+	if out.Tags == nil || len(out.Tags) != 0 || out.Text != "No trending tags found." {
+		t.Fatalf("empty trending output=%+v", out)
+	}
+}
+
 func TestTrendingTagsIllustSDKErrorIsStructured(t *testing.T) {
 	client := openWireClient(t, &fakeSDKClient{trendingTags: []pixiv.TrendingTag{{Tag: "never", TranslatedName: ""}}})
 	ports := pixivmcpserver.SDKPorts{

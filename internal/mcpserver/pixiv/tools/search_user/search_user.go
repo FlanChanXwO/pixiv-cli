@@ -3,6 +3,7 @@ package search_user
 
 import (
 	"context"
+	"strings"
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/internal/filters"
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/internal/outputs"
@@ -17,7 +18,7 @@ import (
 // Register 注册 search_user。
 func Register(app *runtime.App, server *mcp.Server) {
 	runtime.AddTool(app, server, &mcp.Tool{Name: "search_user", Description: "Search for users/artists on Pixiv.", InputSchema: schemas.List(map[string]any{
-		"word":        map[string]any{"type": "string", "description": "User search keyword."},
+		"word":        map[string]any{"type": "string", "minLength": 1, "description": "User search keyword."},
 		"user_filter": filters.UserFilterSchema(),
 	}, "word"), OutputSchema: records.RecordsOutputSchema()}, func(ctx context.Context, request *mcp.CallToolRequest, input searchUserIn) (*mcp.CallToolResult, outputs.Records, error) {
 		return handleSearchUser(ctx, app, input)
@@ -31,6 +32,10 @@ type searchUserIn struct {
 }
 
 func handleSearchUser(ctx context.Context, app *runtime.App, in searchUserIn) (*mcp.CallToolResult, outputs.Records, error) {
+	if strings.TrimSpace(in.Word) == "" {
+		return outputs.Error(sdk.NewError("pixiv", "SearchUsers", sdk.InvalidArgument,
+			sdk.WithDetail("search word is required")))
+	}
 	plan, err := runtime.ParseListPlan(in.PageLimitIn)
 	if err != nil {
 		return outputs.Error(err)
