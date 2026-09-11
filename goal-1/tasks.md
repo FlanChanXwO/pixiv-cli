@@ -742,7 +742,7 @@ AND (required_external_blockers > 0 OR required_decision_blockers > 0)
 
 ## G1-T23 — README / CLI / SDK / MCP docs / Skill / changelog
 
-**Status:** pending
+**Status:** verified
 
 **Depends on:** G1-T21,G1-T22
 
@@ -753,9 +753,9 @@ AND (required_external_blockers > 0 OR required_decision_blockers > 0)
 **测试预算：** docs/completion tests；不跑业务全仓测试。
 
 **完成记录：**
-- 文档改动：
-- Docs tests：
-- 风险：
+- 文档改动：同步 G1-T21 引入的 `bookmark add/remove --type artwork|novel` 真实 surface——双语 cli-reference（quick examples 增 novel add 示例、record 消费说明按 namespace 限定、命令表 `detail/add/remove 支持 artwork/novel 不接受 all`、flags 表补 add/remove 的 `--type/-t` 行）、`skills/pixiv-cli/SKILL.md`（`ILLUST_ID` 过时示例改为 `ARTWORK_ID_OR_NOVEL_ID` + `--type novel` 提示）、`changelog/unreleased/{en,zh-CN}.md`（Added 条目：默认 artwork 保持既有行为、novel 走 public SDK wire、namespace 网络前拒绝、Record 按 namespace 过滤）。未声称任何 live-verified 能力；README/MCP docs/SDK docs 无需改动（T13–T15 已同步 MCP/SDK 表面，本轮无 MCP/SDK 变化）。
+- Docs tests：`go test ./scripts/tests/documentation -count=1` PASS；`TestBookmarkHelpUsesTypedTargetNames` PASS；`ILLUST_ID` 全仓残留扫描为空；`git diff --check` PASS。
+- 风险：ugoira/novel-ranking/rating 等缺失 surface 继续按 correction registry 保持文档沉默（不凭空文档化）；live 边界不变。无新增 internal/external/decision blocker。
 - 下一步：G1-T24
 
 ## G1-T24 — Forbidden endpoint / no-fallback release contract gate
