@@ -140,6 +140,68 @@ func TestFollowMutationsRejectInvalidInputBeforeNetwork(t *testing.T) {
 	}
 }
 
+// Read-back 编排（写入后用同账号 read 确认真实状态、删除后确认恢复）由调用方
+// 基于既有 public read 操作组合；本测试只证明该编排可离线测试，2xx 本身不代表
+// 状态已改变，live read-back 仍属 live manifest 的 G1-T30。
+func TestBookmarkMutationReadBackOrchestrationOffline(t *testing.T) {
+	var sequence []string
+	rt := roundTripFunc(func(req *http.Request) (*http.Response, error) {
+		sequence = append(sequence, req.Method+" "+req.URL.Path)
+		switch {
+		case req.Method == http.MethodPost && req.URL.Path == "/v2/illust/bookmark/add":
+			return jsonResponse("{}"), nil
+		case req.Method == http.MethodGet && req.URL.Path == "/v2/illust/bookmark/detail":
+			body := `{"bookmark_detail":{"is_bookmarked":true,"restrict":"public","tags":[{"name":"cat","is_registered":true}]}}`
+			if len(sequence) == 4 {
+				body = `{"bookmark_detail":{"is_bookmarked":false,"restrict":"","tags":[]}}`
+			}
+			return jsonResponse(body), nil
+		case req.Method == http.MethodPost && req.URL.Path == "/v1/illust/bookmark/delete":
+			return jsonResponse("{}"), nil
+		default:
+			t.Fatalf("unexpected read-back wire call: %s %s", req.Method, req.URL.Path)
+			return nil, nil
+		}
+	})
+	client, err := pixiv.NewWith("token", pixiv.Options{HTTPClient: &http.Client{Transport: rt}})
+	if err != nil {
+		t.Fatalf("NewWith: %v", err)
+	}
+	ctx := context.Background()
+
+	if err := client.AddArtworkBookmark(ctx, pixiv.AddArtworkBookmarkRequest{ArtworkID: 77, Tags: []string{"cat"}}); err != nil {
+		t.Fatalf("AddArtworkBookmark: %v", err)
+	}
+	detail, err := client.ArtworkBookmark(ctx, pixiv.ArtworkBookmarkRequest{ArtworkID: 77})
+	if err != nil {
+		t.Fatalf("read-back after add: %v", err)
+	}
+	if len(detail.Tags) != 1 || detail.Tags[0] != "cat" {
+		t.Fatalf("read-back after add did not confirm state: %#v", detail)
+	}
+
+	if err := client.RemoveArtworkBookmark(ctx, pixiv.RemoveArtworkBookmarkRequest{ArtworkID: 77}); err != nil {
+		t.Fatalf("RemoveArtworkBookmark: %v", err)
+	}
+	detail, err = client.ArtworkBookmark(ctx, pixiv.ArtworkBookmarkRequest{ArtworkID: 77})
+	if err != nil {
+		t.Fatalf("read-back after remove: %v", err)
+	}
+	if len(detail.Tags) != 0 {
+		t.Fatalf("read-back after remove did not confirm restore: %#v", detail)
+	}
+
+	want := []string{
+		http.MethodPost + " /v2/illust/bookmark/add",
+		http.MethodGet + " /v2/illust/bookmark/detail",
+		http.MethodPost + " /v1/illust/bookmark/delete",
+		http.MethodGet + " /v2/illust/bookmark/detail",
+	}
+	if !slices.Equal(sequence, want) {
+		t.Fatalf("wire sequence = %v, want %v", sequence, want)
+	}
+}
+
 func TestNovelBookmarkMutationsUseCandidatePathsAndForms(t *testing.T) {
 	var requests []*http.Request
 	rt := roundTripFunc(func(req *http.Request) (*http.Response, error) {
