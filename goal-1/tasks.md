@@ -626,7 +626,7 @@ AND (required_external_blockers > 0 OR required_decision_blockers > 0)
 
 ## G1-T19 — Cursor integrity / binding / rollback gate
 
-**Status:** pending
+**Status:** verified
 
 **Depends on:** G1-CHECK-06
 
@@ -643,10 +643,13 @@ AND (required_external_blockers > 0 OR required_decision_blockers > 0)
 **测试预算：** cursor/shared + 直接调用方相关 tests，不跑全仓。
 
 **完成记录：**
-- 改动/no-op：
-- Red/Green：
-- Integrity：
-- 风险：
+- 改动/no-op：no-op verified。cursor integrity/binding/rollback 三层（`sdk` 通用 Cursor、`sdk/pixiv` 产品绑定、shared pagination/traversal 与直接调用方）均已由既有实现与测试满足；本轮零代码改动，未触发 Red。
+- Integrity：`sdk/cursor.go` 的 `cursorEnvelope` 为封闭 typed 结构（format version/product/operation/binding/query digest/非 secret identity/ephemeral instance/payload），凭据、cookie、token、signed URL、raw next_url、原始查询词与用户内容没有承载字段；payload 由 `sdk/pixiv/cursor.go continuationEnvelope{Key,Value,Consumed}` 唯一构造。`TestSearchArtworksCheckpointRejectsChangedBindings` 直接断言 payload 不含查询词与 CursorContext；`TestCursorTextIsRouteSafe`、`TestCursorRoundTripPreservesBindingAndPayload`、`TestCursorJSONRoundTrip` 覆盖编码与往返。
+- Binding：`ValidateCursor` 校验 product/op/binding version/query digest；identity-scoped ops 绑定 verified 非 secret identity 或 ephemeral instance（`TestRemainingIdentityScopedPixivCursorsBindClientInstance`、`TestCursorEphemeralInstanceBinding`）；search checkpoint 绑定 word/CursorContext/AI mode/content type/account/client（`TestSearchArtworksCheckpoint{RoundTrip,RejectsChangedBindings,AIAndLaterBatches,VerifiedAccount}`）；`TestRemainingPixiv{Offset,Value}CursorsRejectNonPositiveContinuation`、`TestLatestArtworksRejectsNonPositiveContinuationValues` 覆盖其余 ops 的 kind/value 边界。
+- Incompatible version/rollback：format version 不识别 → `InvalidCursor`（`decodeCursor`）；binding version 篡改（b=2→1）→ `InvalidCursor` 的受控失败测试即 rollback gate（`TestSearchArtworksCheckpointRejectsChangedBindings` 尾段）；novel latest 旧 offset cursor 拒绝（`ops_novel_test.go`）；不静默第一页重启——zero cursor 是唯一的首页入口。
+- Checkpoint/batch regression：`internal/shared/pagination` 覆盖 skip across batches、truncate inside batch、exact-limit next cursor、OneBatch 三态、repeated cursor/cycle 拒绝、negative plan pre-fetch、fetch/consume error、caller context（取消）、filtered continuation（limit 后 checkpoint、unconsumed 保留、cancel/error、predicate failure）；`internal/shared/traversal` 覆盖 commit boundary、logical more 不暴露 cursor、uncommitted 结果 replay 前清空；MCP runtime `TestCollectWithFromResetsLocalFilterOnSafeReplay`；CLI narrow executor port。
+- 回归：`go test ./sdk ./sdk/pixiv ./internal/shared/pagination ./internal/shared/traversal ./internal/mcpserver/pixiv/internal/runtime ./internal/cli/commands/pixiv/internal/listing -count=1` 与 `go vet`（四个核心包）均 PASS；`git diff --check` PASS。
+- 风险：离线 shared/SDK 证据不替代 endpoint live continuation（Phase F owner）；MCP aggregate cursor 不对外暴露，跨版本恢复仅在受控失败语义内。无新增 internal/external/decision blocker。
 - 下一步：G1-T20
 
 ## G1-T20 — Public Go SDK compatibility
