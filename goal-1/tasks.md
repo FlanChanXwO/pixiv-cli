@@ -865,7 +865,7 @@ AND (required_external_blockers > 0 OR required_decision_blockers > 0)
 
 ## G1-CHECK-09 — Phase E exit：offline release candidate + push
 
-**Status:** pending
+**Status:** verified
 
 **Depends on:** G1-T25,G1-T26,G1-T27
 
@@ -874,14 +874,16 @@ AND (required_external_blockers > 0 OR required_decision_blockers > 0)
 **Phase push gate：** 提交 Phase E gate/账本，普通 fast-forward push 到 `refactor/pixiv-api-stability` 并验证 Remote SHA == Local HEAD。push 未成功不得进入 Phase F。
 
 **完成记录：**
-- Internal gaps：
-- Gate summary：
-- External candidates：
-- Decision blockers：
-- Correction：
-- Local HEAD：
-- Remote SHA：
-- Push result：
+- Internal gaps：matrix 重算审计（脚本提取 41 行 layer matrix）：required=41、unmapped=0、undecomposed=0、mapped_to_task=41。39 个 `missing` 单元逐类归因，全部有显式理由+owner，内部可离线闭合缺口=0：Live=missing×2（#21/#36，Phase F G1-T30 owner）；Release=missing×24（终局 release gate，G1-FINAL 派生）；aggregate SDK=missing×3（#23/#24/#41，G1-T20 裁决：不在 T12 symbol map，产品层聚合）；#22 bookmark-subtype Adapter/SDK/Live×3（无已批准 server subtype path，契约裁决）；#38 bare-id Adapter/SDK/MCP/Live×4（explicit-type 边界为设计裁定，CAND-G1-T06-BARE-ID-SURFACE）；#6 ugoira CLI/MCP×2（frozen CLI map 无路由，CAND-G1-T06-UGOIRA-SURFACE）；#12 novel-ranking MCP×1（CAND-G1-T06-NOVEL-RANKING-SURFACE）；#39 rating MCP×1（CAND-G1-T06-RATING-MCP-SURFACE，frozen contract 保持 rating 本地化）；#4 recommended Compatibility×1（终局 compat gate，G1-FINAL）。
+- Gate summary：`implemented_unverified`×150 全部有因可溯——Live 层（≈35，Phase F live manifest 36 项 required scenario）、Contract/Compatibility 层（≈70，冻结与兼容验收由 G1-FINAL 统一重算）、其余为实现面已有离线证据但待完整 cross-layer/live 证明（inventory §3–§5 可追溯）。offline gates 全 PASS：T25（40 包 protocol/endpoint/SDK）、T26（CLI 28 + MCP 10）、T27（全量 147 包、vet、build、race×5、redaction focused）。
+- External candidates：无新增；既有 correction registry（ugoira/novel-ranking/rating/bare-id surface 等 14 项）保持登记，属 scope/G1-FINAL 裁决项，非本轮可离线闭合。
+- Decision blockers：无。
+- Open P0/P1 口径：P0=0；P1=1（#4 artwork-recommended second-page continuation）为 live-dependent correctness 项，唯一 closure owner 是 G1-T28 strict live two-page 证据（G1-CHECK-10 强制复核），在 Phase E 离线候选集中不可闭合；内部可离线闭合的 open P0/P1=0。该 P1 继续在 live manifest row 4 显式保留，不视为已解决、不被 shared-engine PASS 覆盖。
+- Correction：无新增 correction、capability、task ID 或 scope。
+- Local HEAD：`2b465546067b45d45488d93d275a8def3fe82979`（Phase E push-exit checkpoint）。
+- Remote SHA：`2b465546067b45d45488d93d275a8def3fe82979`；已由 `git ls-remote` 与 `gh api` 双重核验一致。
+- Push result：PASS；`740a09cb6acbba18085313889083db82acaf0d5c..2b465546067b45d45488d93d275a8def3fe82979` ordinary fast-forward；未使用 force/rebase。CHECK 在远端一致性核验后标记为 `verified`。
+- 下一步：G1-T28（Phase F live read）。
 
 ---
 
