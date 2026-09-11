@@ -542,7 +542,7 @@ AND (required_external_blockers > 0 OR required_decision_blockers > 0)
 
 ## G1-T16 — MCP follow/unfollow mutation
 
-**Status:** pending
+**Status:** verified
 
 **Depends on:** G1-CHECK-05
 
@@ -553,9 +553,10 @@ AND (required_external_blockers > 0 OR required_decision_blockers > 0)
 **最小验证：** focused Red/Green + follow MCP package tests。
 
 **完成记录：**
-- 改动/no-op：
-- Red/Green：
-- 风险：
+- 改动/no-op：no-op verified。既有 MCP `follow_user`/`unfollow_user` 与 public SDK `FollowUser`/`UnfollowUser` 已满足 frozen contract（正数 `user_id`、空 restrict 归一 public、unknown restrict 网络前拒绝、`/v1/user/follow/add|delete` wire 不变）；本轮未改生产代码、tool schema、registration 或文档，只补齐 acceptance 要求但此前缺失的离线回归。
+- Red/Green：新增 SDK `TestFollowMutationsDoNotReplayUncertainFailure`（follow/unfollow 对上游 502 各只发一次请求且原样返回错误，不自动 retry/replay）、`TestFollowMutationsRejectInvalidInputBeforeNetwork`（非法 user_id/restrict 在网络前 typed `InvalidArgument`，calls=0）与 MCP `TestFollowMutationTypedErrorIsMCPError`（typed upstream failure → `isError=true`、`success=false`、错误文本保留 `upstream_error` reason）。新测试实跑即通过，证明现有实现无 uncertain retry、无吞错，未触发生产 Red。invalid restrict 网络前拒绝由既有 `TestFollowUserRejectsUnknownRestrictBeforeNetwork` 继续覆盖；success/旧 wire 由 `TestSDKMutationToolsReturnStructuredSuccess` 与 follow wire handlers 覆盖。
+- 回归：`go test ./sdk/pixiv ./internal/mcpserver/pixiv ./internal/services/pixiv/endpoint/user/follow -count=1`、focused mutation `-race`、`go vet ./sdk/pixiv ./internal/mcpserver/pixiv`、`gofmt` 与 `git diff --check` 均 PASS。
+- 风险：仍只有 offline wire 证据；strict live、写前 access-control、同账号写后 read-back/cleanup 与 release gate 继续 open（G1-T30 及后续 owner）。无新增 internal/external/decision blocker。
 - 下一步：G1-T17
 
 ## G1-T17 — Shared mutation outcome / uncertainty harness
