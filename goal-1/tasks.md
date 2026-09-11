@@ -445,7 +445,7 @@ AND (required_external_blockers > 0 OR required_decision_blockers > 0)
 
 ## G1-CHECK-04 — Phase B exit：MCP read 完整性 + push
 
-**Status:** pending
+**Status:** in_progress
 
 **Depends on:** G1-T10,G1-T11,G1-T12
 
@@ -453,13 +453,14 @@ AND (required_external_blockers > 0 OR required_decision_blockers > 0)
 
 **Phase push gate：** 提交 Phase B 的实现/账本，普通 fast-forward push 到 `refactor/pixiv-api-stability` 并验证 Remote SHA == Local HEAD。push 未成功不得进入 Phase C。
 
-**完成记录：**
-- 检查结论：
-- Correction：
-- 风险：
-- Local HEAD：
-- Remote SHA：
-- Push result：
+**完成记录（push 前）：**
+- **检查结论：** PASS。复核 G1-T07、G1-T08、G1-T09、G1-CHECK-03、G1-T10、G1-T11、G1-T12 的 read evidence；required MCP read owner 已分解，当前 44 个 client-visible tool 的 exact registration、schema/error、legacy wire 与 stdio boundary 有证据；未发现未分解 read owner、重复 generalization 或来源不明 diff。专用 linked worktree 与 branch=`refactor/pixiv-api-stability` 仍有效，未改业务 API、scope 或 Goal-3 资料。
+- **Coverage：** user identity/collections/relationships/MyPixiv、typed bookmark 与 dual-stream aggregate read、registration/schema/structured error、legacy JSON replay/stdout boundary 均已覆盖；`ugoira-metadata`、`novel-ranking`、`rating-filter` 仍显式落在 `CAND-G1-T06-UGOIRA-SURFACE`、`CAND-G1-T06-NOVEL-RANKING-SURFACE`、`CAND-G1-T06-RATING-MCP-SURFACE` correction registry；`recommended-all` 的 MCP surface 已存在，但 SDK aggregate、strict live、compatibility/release 仍未闭合。
+- **Correction：** 无新增 correction、capability、task ID 或 scope；缺失 required surface 未被静默跳过或伪造为 accepted。
+- **风险：** 当前证据为 offline MCP/read replay/stdio；不能替代 strict live、public compatibility、release 或 mutation read-back。无新增 internal/external/decision blocker。
+- **Local HEAD：** `35dd07bfa17ad5ecdb02b7c82b6b3d8deb9455d1`（push 前账本修订尚未提交）。
+- **Remote SHA：** `aa80415f17c49d274b672cf256e63e109ee4ff9e`（已由 `gh api` 与 `git ls-remote` 一致核验）。
+- **Push result：** pending；下一步提交本 CHECK 账本，再执行普通 fast-forward push。
 
 ---
 

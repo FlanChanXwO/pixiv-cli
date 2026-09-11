@@ -1,6 +1,6 @@
 # Goal-1 当前状态：Capabilities 1–41 baseline inventory
 
-> 本文件覆盖 `G1-T01`、`G1-T02`、`G1-T03`、`G1-CHECK-01`、`G1-T04`、`G1-T05`、`G1-T06`、`G1-CHECK-02`、`G1-T07`、`G1-T08`、`G1-T09`、`G1-CHECK-03`、`G1-T10`、`G1-T11` 与 `G1-T12`，只记录当前分支的代码、测试、历史和 Goal-3 证据，不授予任何 capability 的发布资格。
+> 本文件覆盖 `G1-T01`、`G1-T02`、`G1-T03`、`G1-CHECK-01`、`G1-T04`、`G1-T05`、`G1-T06`、`G1-CHECK-02`、`G1-T07`、`G1-T08`、`G1-T09`、`G1-CHECK-03`、`G1-T10`、`G1-T11`、`G1-T12` 与 `G1-CHECK-04`，只记录当前分支的代码、测试、历史和 Goal-3 证据，不授予任何 capability 的发布资格。
 
 ## 1. 快照与状态口径
 
@@ -25,7 +25,7 @@
 - `public_ready`：0/41。
 - `scope_admitted`：41/41。
 - 当前没有 capability 可以仅凭 Goal-3 历史 task 的 `verified` 标记直接转为 accepted。
-- 当前未发现新的业务/API/evidence drift；Goal-1 分支相对继承基线的 drift 只有执行资料与 G1-T01/G1-T02/G1-T03/G1-CHECK-01/G1-T04/G1-T05/G1-T06/G1-T07/G1-T08/G1-T09/G1-CHECK-03/G1-T10/G1-T11/G1-T12 记录。
+- 当前未发现新的业务/API/evidence drift；Goal-1 分支相对继承基线的 drift 只有执行资料与 G1-T01/G1-T02/G1-T03/G1-CHECK-01/G1-T04/G1-T05/G1-T06/G1-T07/G1-T08/G1-T09/G1-CHECK-03/G1-T10/G1-T11/G1-T12/G1-CHECK-04 记录。
 
 ### 2.2 Layer matrix
 
@@ -747,7 +747,7 @@ G1-T01 已在干净目标 worktree 执行 `go test ./...` 并通过；G1-CHECK-0
 - **Open correctness：** P0=0；P1=1（#4 `artwork-recommended` continuation），已映射至 G1-T28/G1-T20/G1-T22，未隐藏。
 - **Mutation：** #17、#21、#26、#28、#29、#36 必须执行写前授权、可靠 ID、同账号 read-back、仅清理本轮副作用；uncertain 不 replay。
 - **External/decision blocker：** 当前无 blocker。未来 live 数据/账号/权限/网络不足时，严格按 manifest 记录 `blocked_external`；不得把 internal bug 归类为 external blocker。
-- **Freeze boundary：** 后续 live task 只能执行本表 `live_required=yes` 的 scenario；不得临时增加 query、subtype、第二页或 mutation scope。G1-CHECK-02 已复核 manifest、counts、P0/P1、owner mapping 并完成普通 fast-forward push；Phase B 已完成 G1-T07、G1-T08、G1-T09、G1-CHECK-03、G1-T10、G1-T11、G1-T12，下一任务为 G1-CHECK-04。
+- **Freeze boundary：** 后续 live task 只能执行本表 `live_required=yes` 的 scenario；不得临时增加 query、subtype、第二页或 mutation scope。G1-CHECK-02 已复核 manifest、counts、P0/P1、owner mapping 并完成普通 fast-forward push；Phase B 已完成 G1-T07、G1-T08、G1-T09、G1-CHECK-03、G1-T10、G1-T11、G1-T12，G1-CHECK-04 pre-push audit 已通过，等待普通 fast-forward push。
 
 
 ## 12. G1-T11 MCP read registration/schema/error gate
@@ -771,3 +771,11 @@ G1-T01 已在干净目标 worktree 执行 `go test ./...` 并通过；G1-CHECK-0
 - **Correction/risk：** 无 correction、无新增 blocker；offline replay/stdio evidence 不能替代 strict live、public compatibility、release 或 mutation read-back。
 - **Focused evidence：** `go test ./internal/mcpserver/pixiv ...` replay/error/stdout subset 与 `go test ./internal/cli ./internal/cli/commands/pixiv/mcp ...` stdout subset 均 PASS；未重复无关 package 功能测试。
 - **下一步：** G1-CHECK-04。
+
+## 14. G1-CHECK-04 Phase B exit：MCP read 完整性 + push
+
+- **Pre-push 结论：** PASS。专用 linked worktree、branch=`refactor/pixiv-api-stability`、Phase B G1-T07–G1-T12 evidence、44 个 client-visible tool exact registration、read owner/correction mapping、schema/error、legacy replay 与 stdout/stderr boundary 均已复核；无未分解 read owner、无多余 generalization、无来源不明 diff。
+- **Coverage/correction：** user read、typed bookmark read、dual-stream aggregate read 与 legacy/stdout read gate 已有 offline evidence；`ugoira-metadata`、`novel-ranking`、`rating-filter` 继续保留明确 correction owner，`recommended-all` 的 SDK aggregate/strict live/compatibility/release 继续 open；未新增 capability、task 或 scope。
+- **Push gate：** 当前本地账本修订前 HEAD=`35dd07bfa17ad5ecdb02b7c82b6b3d8deb9455d1`；remote=`aa80415f17c49d274b672cf256e63e109ee4ff9e`，`gh api` 与 `git ls-remote` 一致；下一步提交本 gate 账本并普通 fast-forward push，成功后再把 CHECK 标为 `verified`。
+- **风险：** offline MCP/read evidence 不能替代 strict live、public compatibility、release 或 mutation read-back；无新增 internal/external/decision blocker。
+- **下一步：** 完成本 CHECK 的普通 fast-forward push，然后进入 G1-T13。
