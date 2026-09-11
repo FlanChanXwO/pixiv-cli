@@ -501,7 +501,7 @@ AND (required_external_blockers > 0 OR required_decision_blockers > 0)
 - 改动/no-op：新增 additive MCP `create_artwork_comment`、`reply_artwork_comment`、`stamp_artwork_comment`、`delete_artwork_comment`；`Mutation` 增加可选 `comment_id`，保留既有 `RunMutation`，仅为可靠响应字段增加窄的 `RunMutationInPlace`；补齐注册、wire fixture、exact registry、schema 与双语 MCP/README/release-prep 文档。未改 legacy `illust_comments`/`novel_comments` read surface，也未新增 standalone `stamps` tool 或 internal/services 直连。
 - Red/Green：Red 实际运行 `go test ./internal/mcpserver/pixiv -run 'Test(ArtworkCommentMutation|ServerListsExpectedTools)' -count=1 -v`，在实现前因 4 个 tool 未注册、schema 缺失和 exact registry mismatch 失败。随后 focused mutation/registry、invalid-input、race、MCP package、SDK/endpoint、documentation、`go test ./... -count=1`、`go vet ./...` 与 `sh scripts/build.sh` 均 PASS；commit hook 的 gofmt/full test 也 PASS。
 - ID/outcome：create/reply/stamp 的 `comment_id` 直接取 public SDK/upstream response；delete 只接受并返回调用方提供的正数 comment ID，不通过“最新评论”猜测。typed upstream failure 保留 `success=false`、`isError=true` 与安全诊断；schema 为 closed object，ID 为正数、comment 非空；502 uncertain fixture 只发一次 wire 请求，不自动 replay。
-- 证据/提交：当前 exact client-visible registry 为 50 个 tool；实现提交为 `41e4b2dc2ced61662e464a0564917e393ce79fa8`，目标 worktree clean、local ahead 2，remote 仍为 `6bf64c208719f4e5dff3c0af7bf93e2630d3d340`，本 task 未 push。
+- 证据/提交：当前 exact client-visible registry 为 50 个 tool；实现提交为 `41e4b2dc2ced61662e464a0564917e393ce79fa8`，目标 worktree clean、local ahead 3，remote 仍为 `6bf64c208719f4e5dff3c0af7bf93e2630d3d340`，本 task 未 push。
 - 风险：当前仍只有 offline MCP/wire evidence；严格 live、access-control、同账号写后 read-back/cleanup、public compatibility 与 release gate 仍未关闭。无新增 internal/external/decision blocker。
 - 下一步：G1-T15
 
