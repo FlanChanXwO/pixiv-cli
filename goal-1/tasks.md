@@ -279,7 +279,7 @@ AND (required_external_blockers > 0 OR required_decision_blockers > 0)
 
 ## G1-CHECK-02 — Phase A exit：41-state、correctness、manifests + push
 
-**Status:** in_progress
+**Status:** verified
 
 **Depends on:** G1-T04,G1-T05,G1-T06
 
@@ -287,15 +287,15 @@ AND (required_external_blockers > 0 OR required_decision_blockers > 0)
 
 **Phase push gate：** Pass 后提交本阶段 Goal 账本/证据，普通 fast-forward push 到 `refactor/pixiv-api-stability`，远端 SHA 必须等于 Local HEAD。push 未成功不得进入 Phase B。
 
-**完成记录（push 前）：**
-- **检查结论：** pre-push audit PASS；目标分支为专用 linked worktree、branch=`refactor/pixiv-api-stability`、继承 `e404434`；worktree 当前仅有本 CHECK 账本修订，未改业务代码。
-- **Counts：** required=`41`；manifest rows=`41`；`live_required=yes/no=36/5`；`mapped_to_task/unmapped/undecomposed=41/0/0`；P0=`0`；P1=`1`（#4 `artwork-recommended` continuation）。
-- **Coverage：** Goal-3 required capability set、current-state layer matrix、Live Manifest capability set 均为 41 项；finite mapping 已覆盖 G1-T07–G1-T30 与 G1-CHECK-02；`G1-T12` legacy replay/stdout owner 已补齐。
-- **Correction：** 未新增 capability、task ID 或 scope；保留 14 个 G1-T06 correction candidates；open P1 仍绑定 G1-T20/G1-T22/G1-T28，不隐藏。
-- **Blocker：** external=`0`；decision=`0`；GoalState 保持 `ACTIVE`。
-- **Local HEAD：** `4d079ae86138b5436d34ff5f7679ed0264e9a088`（push 前账本修订尚未提交）。
-- **Remote SHA：** `29ae255e2061b57e21d2067492878e1df342efe8`（通过 `gh api` 与 `git ls-remote` 一致核验）。
-- **Push result：** pending；下一步提交本 CHECK 账本，再执行普通 fast-forward push。
+**完成记录：**
+- **检查结论：** PASS。专用 linked worktree、branch=`refactor/pixiv-api-stability`、`e404434` ancestry、tracked Goal-1 inputs、clean pre-push state 均通过；未改业务代码/API/scope/Goal-3。
+- **Counts：** required=`41`；manifest rows=`41`；`live_required=yes/no=36/5`；`mapped_to_task/unmapped/undecomposed=41/0/0`；P0=`0`；P1=`1`（#4 `artwork-recommended` continuation，已显式保留并绑定 correction owner）。
+- **Coverage：** Goal-3 required capability set、current-state layer matrix、Live Manifest capability set 均为 41 项；finite mapping 覆盖 G1-T07–G1-T30 与 G1-CHECK-02；G1-T12 legacy replay/stdout owner 已补齐。
+- **Correction：** 未新增 capability、task ID 或 scope；保留 14 个 G1-T06 correction candidates；无 external/decision blocker。
+- **Local HEAD：** `b17b1775f2ea0783f394f7600d30cafd8ad428c5`。
+- **Remote SHA：** `b17b1775f2ea0783f394f7600d30cafd8ad428c5`；已由 `gh api` 与 `git ls-remote` 核验一致。
+- **Push result：** PASS；`29ae255e2061b57e21d2067492878e1df342efe8..b17b1775f2ea0783f394f7600d30cafd8ad428c5` ordinary fast-forward；未使用 force/rebase。
+- **下一步：** G1-T07。
 
 ---
 

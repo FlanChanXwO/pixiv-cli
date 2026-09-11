@@ -1,13 +1,13 @@
 # Goal-1 当前状态：Capabilities 1–41 baseline inventory
 
-> 本文件覆盖 `G1-T01`、`G1-T02`、`G1-T03`、`G1-CHECK-01`、`G1-T04`、`G1-T05` 与 `G1-T06`，只记录当前分支的代码、测试、历史和 Goal-3 证据，不授予任何 capability 的发布资格。
+> 本文件覆盖 `G1-T01`、`G1-T02`、`G1-T03`、`G1-CHECK-01`、`G1-T04`、`G1-T05`、`G1-T06` 与 `G1-CHECK-02`，只记录当前分支的代码、测试、历史和 Goal-3 证据，不授予任何 capability 的发布资格。
 
 ## 1. 快照与状态口径
 
 - 执行分支：`refactor/pixiv-api-stability`
 - G1-T03 inventory 起始 commit：`35dd0d7efebd16eeda6d5fb8ac3e766b31f8461d`，继承基线：`e40443495981cdaf01215d6711cb24fa618b087a`
 - 当前 worktree：`/Users/flanchan/Developer/Projects/GithubProjects/.worktrees/pixiv-cli-refactor-pixiv-api-stability`
-- G1-T03 开始时 worktree 干净；G1-CHECK-01 检查时 HEAD 为 `042c0200ce1b3349ab3e08a744fea7802838025c`。G1-T04 审计起始 HEAD 为 `f7cff3fb86dcc5117c634359bedbea5abdfa4d0b`；G1-T05 correctness audit 起始 HEAD 为 `35885b0d9316b4a1f2326bcee0511d8bc5ae29ed`；G1-T06 manifest audit 起始 HEAD 为 `c5e3d679eef4b2b2404984bbd6630588a3c7ac8a`，worktree 干净。与继承基线相比，当前分支只新增 Goal-1 tracking 文件，`goal-3/` 无 diff。
+- G1-T03 开始时 worktree 干净；G1-CHECK-01 检查时 HEAD 为 `042c0200ce1b3349ab3e08a744fea7802838025c`。G1-T04 审计起始 HEAD 为 `f7cff3fb86dcc5117c634359bedbea5abdfa4d0b`；G1-T05 correctness audit 起始 HEAD 为 `35885b0d9316b4a1f2326bcee0511d8bc5ae29ed`；G1-T06 manifest audit 起始 HEAD 为 `c5e3d679eef4b2b2404984bbd6630588a3c7ac8a`，worktree 干净。G1-CHECK-02 pre-push ledger commit 为 `b17b1775f2ea0783f394f7600d30cafd8ad428c5`，已普通 fast-forward push，远端 SHA 与该 checkpoint 一致。与继承基线相比，当前分支只新增 Goal-1 tracking 文件，`goal-3/` 无 diff。
 - Goal-3 的 `goal-3/capability-admission.md` 是 capability 状态唯一权威来源：当前盘点的 41 项均为 `required=yes, state=scope_admitted`；全 41 项中没有一项为 `public_ready`（`goal-3/capability-admission.md:3-15,23-70`；`artwork-series` 在该表后段，仍属于原 required 集合）。
 - `scope_admitted` 只表示 capability 属于 required scope；不表示 contract 已冻结、迁移已完成或可以进入正式发布 surface。
 - 本文状态：
@@ -619,7 +619,7 @@ G1-T01 已在干净目标 worktree 执行 `go test ./...` 并通过；G1-CHECK-0
 - `logical-pagination` 的 T23A/R02 只证明 shared/checkpoint/replay engine；不能替代 user/comments/recommended/latest 等 endpoint continuation evidence。
 - T37D WIP/旧 task `verified`、离线 fixture、历史 upstream mutation evidence 均未提升为 capability acceptance 或 MCP user layer verified。
 - G1-CHECK-01：历史集中检查仍 PASS，覆盖 1–24；G1-T04 inventory 与 G1-T05 correctness focused tests 均 PASS，未改生产代码、API、scope 或 Goal-3 资料；artwork-recommended second-page continuation 的 P1 仍 open。
-- GoalState：保持 `ACTIVE`。G1-T05 的 1 个 open P1 已在 G1-T06 映射到具体 correction owner；本轮冻结 manifest，不把 P1 隐藏为 known limitation；无新增 external/decision blocker；下一任务为 `G1-CHECK-02`。
+- GoalState：保持 `ACTIVE`。G1-T05 的 1 个 open P1 已在 G1-T06 映射到具体 correction owner；本轮冻结 manifest，不把 P1 隐藏为 known limitation；无新增 external/decision blocker。G1-CHECK-02 已完成 Phase A 检查并通过普通 fast-forward push，checkpoint Local/Remote SHA 均为 `b17b1775f2ea0783f394f7600d30cafd8ad428c5`；下一任务为 `G1-T07`。
 
 
 ## 11. G1-T06 Live Manifest 与 finite execution mapping
@@ -746,4 +746,4 @@ G1-T01 已在干净目标 worktree 执行 `go test ./...` 并通过；G1-CHECK-0
 - **Open correctness：** P0=0；P1=1（#4 `artwork-recommended` continuation），已映射至 G1-T28/G1-T20/G1-T22，未隐藏。
 - **Mutation：** #17、#21、#26、#28、#29、#36 必须执行写前授权、可靠 ID、同账号 read-back、仅清理本轮副作用；uncertain 不 replay。
 - **External/decision blocker：** 当前无 blocker。未来 live 数据/账号/权限/网络不足时，严格按 manifest 记录 `blocked_external`；不得把 internal bug 归类为 external blocker。
-- **Freeze boundary：** 后续 live task 只能执行本表 `live_required=yes` 的 scenario；不得临时增加 query、subtype、第二页或 mutation scope。Phase A 仍需 G1-CHECK-02 复核并完成普通 fast-forward push 后，才能进入 Phase B。
+- **Freeze boundary：** 后续 live task 只能执行本表 `live_required=yes` 的 scenario；不得临时增加 query、subtype、第二页或 mutation scope。G1-CHECK-02 已复核 manifest、counts、P0/P1、owner mapping 并完成普通 fast-forward push；Phase B 下一任务为 G1-T07。
