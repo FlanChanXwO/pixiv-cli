@@ -425,7 +425,7 @@ AND (required_external_blockers > 0 OR required_decision_blockers > 0)
 
 ## G1-T12 — MCP read legacy replay + stdout boundary
 
-**Status:** pending
+**Status:** verified
 
 **Depends on:** G1-T11
 
@@ -436,10 +436,11 @@ AND (required_external_blockers > 0 OR required_decision_blockers > 0)
 **测试预算：** 运行 read replay harness 与 stdout tests；不重复 package 已通过的功能测试。
 
 **完成记录：**
-- Replay：
-- Stdout：
-- Correction：
-- 风险：
+- Replay：no-op verified。现有四组 read legacy JSON replay harness 覆盖 artwork/novel、feed/recommendation、comments、user/Mypixiv/relationship read；全部保留既有 request fields、structured output envelope、empty/error 语义与 rejected `novel_content` endpoint 边界。
+- Stdout：`TestMCPStdioKeepsJSONRPCOnStdout`、`TestDiagnosticsLevelControlsMCPStderrWithoutTouchingStdout`、`TestMCPReverseSearchRegistersSearcherForStdioLifetime` 与 `TestCLIReverseSearchClosesSearcherOnceAndKeepsJSONOnStdout` 通过；JSON-RPC 独占 stdout，diagnostics 只按配置写 stderr，close error 不污染 protocol stdout。
+- Correction：无。生产 `RunStdio` 仍只绑定 `mcp.StdioTransport`；没有新增日志、fallback 或改写 wire。此前 forbidden endpoint/rejected-path correction 继续有效。
+- 风险：证据为 offline replay/stdio boundary，不能替代 strict live、public compatibility、release 或 mutation read-back；无新增 internal/external/decision blocker。
+- 验证：`go test ./internal/mcpserver/pixiv -count=1 -run '^(TestArtworkNovelReadLegacyJSONReplayPreservesStructuredContracts|TestCommentReadLegacyJSONReplayPreservesStructuredContracts|TestFeedRecommendationLegacyJSONReplayPreservesStructuredContracts|TestUserReadLegacyJSONReplayPreservesStructuredContracts|TestMCPStdioKeepsJSONRPCOnStdout|TestToolErrorResultPreservesStructuredContent|TestToolErrorOutputDoesNotLeakCanary)$' -v`、`go test ./internal/cli ./internal/cli/commands/pixiv/mcp -count=1 -run '^(TestDiagnosticsLevelControlsMCPStderrWithoutTouchingStdout|TestCLIReverseSearchClosesSearcherOnceAndKeepsJSONOnStdout|TestMCPReverseSearchRegistersSearcherForStdioLifetime|TestNewCommandPreservesMCPSurface)$' -v` 均 PASS。
 - 下一步：G1-CHECK-04
 
 ## G1-CHECK-04 — Phase B exit：MCP read 完整性 + push
