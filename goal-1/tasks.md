@@ -701,16 +701,19 @@ AND (required_external_blockers > 0 OR required_decision_blockers > 0)
 
 ## G1-CHECK-07 — 集中检查：cursor + SDK + CLI
 
-**Status:** pending
+**Status:** verified
 
 **Depends on:** G1-T19,G1-T20,G1-T21
 
 复查 cursor safety、rollback、source compatibility、CLI alias/presentation、breaking blocker 与 over-refactor。
 
 **完成记录：**
-- 检查结论：
-- Correction：
-- Decision blocker：
+- 检查结论：PASS。G1-T19/T20/T21 证据在当前 HEAD 复核并复跑通过：(1) cursor safety/rollback——封闭 typed envelope 无凭据承载字段、payload canary、format/binding version fail-closed、无静默第一页重启、batch/checkpoint/replay/cancel 回归；(2) source compatibility——pinned public API inventory digest PASS、old consumer 编译、legacy wrapper 保留、`NovelContent` 零网络、T12 以来仅 additive；(3) CLI presentation——frozen map row 35 双 namespace 已闭合且默认 artwork 旧行为不变、namespace 冲突网络前拒绝、trending= `search --trending-tags` 纠正 stale verdict、ugoira CLI 缺口保持显式登记、local rating 不发 server-side。
+- Over-refactor：T21 实现改动仅 `bookmark.go` 68 行（helper + 两命令 flag/dispatch + record types）+ 162 行测试；复用既有 flag/dispatch/record 模式，无新 abstraction、无跨包重设计、无 debug 残留（diff 扫描）。
+- Breaking blocker：无。T20 无 breaking；T21 为 additive flag + 默认值保持，不触发 `blocked_decision`。
+- Verification：`go test ./internal/shared/pagination ./internal/shared/traversal ./sdk ./sdk/pixiv ./internal/cli/commands/pixiv/bookmark ./internal/cli/commands/pixiv/search ./internal/cli ./scripts/internal/publicapi -count=1` 全部 PASS；各实现提交时 commit hook 全量 `go test ./...` PASS。
+- Correction：无新增 correction、capability、task ID 或 scope。
+- Decision blocker：无。G1-CHECK-07 非 Phase D exit gate，本轮不 push；下一任务为 G1-T22。
 
 ## G1-T22 — MCP compatibility audit
 
