@@ -893,7 +893,7 @@ Live 只执行 `Live Manifest` 中 `live_required=yes` 的场景，不临时增�
 
 ## G1-T28 — Live read：artwork / novel / feed
 
-**Status:** pending
+**Status:** verified
 
 **Depends on:** G1-CHECK-09
 
@@ -904,10 +904,33 @@ Live 只执行 `Live Manifest` 中 `live_required=yes` 的场景，不临时增�
 **测试预算：** 只跑 manifest 明确要求的场景，不穷举所有 filter/flag 组合。
 
 **完成记录：**
-- Scenarios：
-- Evidence：
-- Blocker/Correction：
-- 下一步：G1-T29
+- Scenarios：新增 `e2e/sdk_pixiv_live_manifest_test.go` `TestRealPixivSDKLiveManifestRead`（`PIXIV_SDK_E2E=1` 门控，凭据仅进程内读取/回写轮换，输出仅计数/布尔/公共实体 ID）。经本地代理（直连超时，按 §2.2 使用 127.0.0.1:7890，`PIXIV_E2E_PROXY`）实跑 20+ live 请求：PASS——#1 search all/illust/manga/ugoira 四类均 30→30 两页零重复；#2 latest illust/manga 两页；#3 ranking/day 两页零重复；#6 ugoira metadata（artwork 149551069，frames=87，archives=1）；#7 novel search 30→30；#8 novel detail；#10 novel latest 两页；#12 novel ranking 两页；#13 novel follow 9→0（有 continuation，第二页空，无重复）；#41 user recommended stream 30 项有 continuation。
+- Evidence：live 输出脱敏后记录于本记录与 current-state §35；未写入任何 token/cookie/签名 URL/用户私有内容。
+- Blocker/Correction：**live 暴露内部 bug → 抢占式 correction `G1-CORR-G1-T28-RECOMMENDED-01`（已插入本 task 后、G1-T29 前）**：#4 artwork-recommended 与 #11 novel-recommended 首页即 `malformed_upstream_response`。脱敏诊断（临时 tee 捕获，已删除）：两响应结构合法（illusts 85 项 id 全正、novels 31 项 id/user.id 全正、next_url 非空），根因是 live `next_url` 续页参数为多参数集（artwork：`min_bookmark_id_for_recent_illust`+`max_bookmark_id_for_recommend`+`offset=0`+`viewed[]`；novel：`offset=15`+`already_recommended`+`max_bookmark_id_for_recommend`），而 adapter continuation 解析只接受单一 `offset`——即 CAND-G1-T06-REC-RECOMMENDED 指出的「完整 cursor/next-url 参数」缺口，P1 根因落定（首页即失败，重于历史记录的第二页错误）。#5 artwork-series 与 #9 novel-series：production surface 不暴露 series 引用，无法安全构造目标 ID，按 manifest 记 `blocked_external (data)`，correction candidate 保留。G1-T28 的 live gate 本身 PASS（场景执行完毕、发现已转 correction），但 #4/#11 Live 维持未验证直至 correction 完成。
+- 下一步：G1-CORR-G1-T28-RECOMMENDED-01
+
+## G1-CORR-G1-T28-RECOMMENDED-01 — recommended continuation 多参数收敛
+
+**Status:** pending
+
+**Source task/gate：** G1-T28 live read（P1：#4 artwork-recommended continuation，源自 G1-T05/G1-CHECK-09 记录）。
+
+**Capability：** #4 `artwork-recommended`、#11 `novel-recommended`、#41 `recommended-all`（artwork/novel 流）。
+
+**Observed failure：** live 首页即 `malformed_upstream_response`（SDK/adapter 全链）。live `next_url` 续页参数为多参数集：artwork=`min_bookmark_id_for_recent_illust`+`max_bookmark_id_for_recommend`+`offset=0`+`viewed[]`+include flags；novel=`offset=15`+`already_recommended`+`max_bookmark_id_for_recommend`+include flags；adapter continuation 解析仅接受单一 `offset`，遇未知参数判 malformed。
+
+**Expected contract：** recommended（artwork/novel）continuation 必须保留完整上游续页参数集（CAND-G1-T06-REC-RECOMMENDED 的「完整 cursor/next-url 参数」），首请求不带 offset、续页按上游给定参数集原样回放；cursor 不得存储 raw next_url/凭据/签名 URL。
+
+**Scope boundary：** 仅 recommended 两个 endpoint adapter 的 continuation 解析/allowlist、`sdk/pixiv` recommended ops 的 cursor payload 结构（多参数状态）与相关 fixtures/tests；不触碰其他 endpoint 的 continuation。
+
+**Red / expected failure：** 以 live 捕获的多参数 next_url 形状构造 fixture（仅含结构化参数键，不含私有内容），现有 adapter 返回 `malformed_upstream_response`（实跑确认）；修正前 live `TestRealPixivSDKLiveManifestRead` 的 recommended 场景亦失败。
+
+**Green acceptance：** fixture 下 adapter 接受多参数 continuation 并正确回放；`TestRealPixivSDKLiveManifestRead` 的 #4/#11 两页 PASS 且零重复；cursor payload 含多参数状态且 binding version 递增使旧 cursor 显式 `InvalidCursor`。
+
+**Compatibility impact：** recommended cursor payload schema 变更 → binding version 递增，旧 cursor 显式失败（fail-closed，与 SearchArtworks v2 先例一致）；cursor 完整性 gate（T19）需复核多参数 payload 不含凭据/签名 URL/raw next_url。
+
+**Rollback boundary：** revert adapter allowlist、payload 结构、binding version 与 fixtures/tests 即可整体回滚，不影响其他 endpoint。
+
 
 ## G1-T29 — Live read：bookmark / comments / user
 
