@@ -654,7 +654,7 @@ AND (required_external_blockers > 0 OR required_decision_blockers > 0)
 
 ## G1-T20 — Public Go SDK compatibility
 
-**Status:** pending
+**Status:** verified
 
 **Depends on:** G1-T19
 
@@ -669,10 +669,11 @@ AND (required_external_blockers > 0 OR required_decision_blockers > 0)
 **Blocking：** 必须 breaking 时 `blocked_decision`，并触发 G1-TERM 条件检查。
 
 **完成记录：**
-- 改动/no-op：
-- Compatibility tests：
-- Breaking decision：
-- 风险：
+- 改动/no-op：no-op verified。当前 public SDK surface 与旧 T12 symbol map 对照无删除/重命名/语义 breaking；自 T12 以来 exported surface 的唯一变化是 G1-T13 additive 新增 `AddNovelBookmark`/`RemoveNovelBookmark` 及其 request types（当时已随 public API review 更新 pinned digest）。本轮零代码改动。
+- Compatibility tests：`TestRepositoryPublicAPIInventoryIsPinned`（exported symbols/named types 钉死 digest PASS）+ `TestInventoryCollectsOnlyExportedPackageSymbols`；`TestLegacySDKConsumerCompiles`（旧消费者 interface/字面量编译）PASS；legacy wrapper `TestAddBookmarkWiresMutation` 与 `TestNovelBookmarkMutationsUseCandidatePathsAndForms` PASS；`TestNovelContentDeprecatedEntryPointDoesNotCallRejectedEndpoint` 证明 excluded endpoint 兼容入口零网络、返回 `ContentUnavailable`；`TestSearchNovelsAndUsersCursorsArePublicScoped` 与 `TestSearchArtworksCheckpointRoundTrip` 证明已冻结 cursor 语义保持；`go test ./sdk ./sdk/pixiv -count=1` 全包 PASS。
+- Manifest coverage：v2 novel detail/series 的 SDK 层为 verified（`Novel`/`NovelSeries` v2 path）；aggregate SDK surface（#23/#24 bookmark aggregate、#41 recommended-all）在旧 T12 symbol map 中不存在 public aggregate operation，其 contract 权威是 cli-migration-matrix 的产品层聚合命令；本轮如实记录 SDK aggregate 仍 `missing`、不得当作已接受，capability verdict 留给 G1-FINAL 重算；已冻结 cursor/filter 语义由 G1-T19 证据承接。
+- Breaking decision：无。无 breaking 变更，不触发 `blocked_decision` 或 G1-TERM。
+- 风险：SDK aggregate 缺口已显式登记（不因 CLI/MCP 聚合已实现而升格 accepted）；live/compatibility/release gate 继续 open。无新增 internal/external/decision blocker。
 - 下一步：G1-T21
 
 ## G1-T21 — CLI compatibility + presentation
