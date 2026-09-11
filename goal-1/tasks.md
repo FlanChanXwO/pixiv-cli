@@ -527,16 +527,18 @@ AND (required_external_blockers > 0 OR required_decision_blockers > 0)
 
 ## G1-CHECK-05 — 集中检查：bookmark/comment mutation
 
-**Status:** pending
+**Status:** verified
 
 **Depends on:** G1-T13,G1-T14,G1-T15
 
 复查 uncertain outcome、ID 来源、error、legacy wire、无自动 retry、无无关 mutation abstraction。
 
 **完成记录：**
-- 检查结论：
-- Correction：
-- 风险：
+- 检查结论：PASS。对 G1-T13、G1-T14、G1-T15 的 bookmark/comment/stamp mutation 做集中复查；可靠 ID、structured outcome/error、legacy wire、uncertain no-replay、public SDK boundary 与 helper scope 均符合 frozen contract。
+- Correction：无。bookmark mutation 只使用调用方提供的 artwork/novel ID；comment create/reply/stamp 只使用 public SDK/upstream response 的正数 `comment_id`；delete 只使用调用方提供的正数 `comment_id`。`outputs.RunMutation`/`RunMutationInPlace` 与 `runtime.Write` 保持现有窄边界，没有新增通用 mutation framework、latest-comment 猜测、candidate v3 fallback、账号切换 replay 或 internal/services 直连。
+- 验证：`go test ./internal/mcpserver/pixiv -run 'Test(SDKMutationTypedErrorIsMCPError|NovelBookmarkMutationTypedErrorIsMCPError|SDKMutationToolsReturnStructuredSuccess|ArtworkCommentMutation|NovelCommentMutation|ServerListsExpectedTools)' -count=1 -race`、SDK mutation focused race tests、五个 mutation endpoint package tests、`go test ./scripts/tests/documentation -count=1` 与 `git diff --check` 均 PASS；502 typed failure fixtures 均只产生一次 wire request，structured failure 保留 `success=false`/`isError=true`。
+- 风险：本 gate 只关闭 offline MCP/wire contract；strict live、写前 access-control、同账号写后 read-back/cleanup、public compatibility、release 与 Phase C push 仍未关闭。无新增 blocker。
+- 下一步：G1-T16
 
 ## G1-T16 — MCP follow/unfollow mutation
 
