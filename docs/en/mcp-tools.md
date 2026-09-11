@@ -194,9 +194,10 @@ not treated as an artwork detail request.
 | `user_novels` | Optional `user_id`, `novel_filter`, `page`, `limit`; omitted ID resolves to the authenticated user. |
 | `user_bookmarks` | Optional `user_id`, `restrict`, `tag`, `illust_filter`, `page`, `limit`; reads artwork bookmarks. |
 | `user_novel_bookmarks` | Optional `user_id`, `restrict`, `tag`, `page`, `limit`; reads novel bookmarks. |
-| `user_following` / `user_followers` | Optional `user_id`, `restrict`, `user_filter`, `page`, `limit`; omitted ID resolves to the authenticated user. |
-| `related_users` | Positive `user_id`, optional `user_filter`, `page`, `limit`. |
-| `blocked_users` | Optional `user_id`, `page`, `limit`; omitted ID resolves to the authenticated user. App API failure is reported and never changed to a Web fallback. |
+| `user_following` | Optional `user_id`, `restrict`, `user_filter`, `page`, `limit`; omitted ID resolves to the authenticated user. |
+| `user_followers` | Optional `user_id`, `restrict`, `page`, `limit`; omitted ID resolves to the authenticated user. |
+| `related_users` | Optional positive `user_id` (defaults to the authenticated user), compatibility `restrict`, optional `user_filter`, `page`, `limit`. |
+| `blocked_users` | Optional `user_id`, compatibility `restrict`, `page`, `limit`; omitted ID resolves to the authenticated user. App API failure is reported and never changed to a Web fallback. |
 | `bookmark_tags` | Optional `user_id`, `restrict`, `page`, `limit`; returns `{bookmark_tags, pagination}`. |
 | `bookmark_detail` | Required positive `illust_id`; returns `{bookmarked, restrict, tags}` and preserves the unbookmarked state. |
 

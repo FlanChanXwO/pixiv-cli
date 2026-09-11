@@ -152,9 +152,10 @@ application outcome 的 `filter` 会报告 `min`、`max`、`membership`、`strat
 | `user_novels` | 可选 `user_id`、`novel_filter`、`page`、`limit`；省略 ID 使用认证账号。 |
 | `user_bookmarks` | 可选 `user_id`、`restrict`、`tag`、`illust_filter`、`page`、`limit`；读取作品收藏。 |
 | `user_novel_bookmarks` | 可选 `user_id`、`restrict`、`tag`、`page`、`limit`；读取小说收藏。 |
-| `user_following` / `user_followers` | 可选 `user_id`、`restrict`、`user_filter`、`page`、`limit`；省略 ID 使用认证账号。 |
-| `related_users` | 正数 `user_id`，可选 `user_filter`、`page`、`limit`。 |
-| `blocked_users` | 可选 `user_id`、`page`、`limit`；省略 ID 使用认证账号。App API 失败会显露，不切换 Web fallback。 |
+| `user_following` | 可选 `user_id`、`restrict`、`user_filter`、`page`、`limit`；省略 ID 使用认证账号。 |
+| `user_followers` | 可选 `user_id`、`restrict`、`page`、`limit`；省略 ID 使用认证账号。 |
+| `related_users` | 可选正数 `user_id`（省略时使用认证账号），兼容字段 `restrict`，可选 `user_filter`、`page`、`limit`。 |
+| `blocked_users` | 可选 `user_id`、兼容字段 `restrict`、`page`、`limit`；省略 ID 使用认证账号。App API 失败会显露，不切换 Web fallback。 |
 | `bookmark_tags` | 可选 `user_id`、`restrict`、`page`、`limit`；返回 `{bookmark_tags, pagination}`。 |
 | `bookmark_detail` | 必填正数 `illust_id`；返回 `{bookmarked, restrict, tags}`，保留未收藏状态。 |
 

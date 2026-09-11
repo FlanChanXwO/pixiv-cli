@@ -324,7 +324,7 @@ AND (required_external_blockers > 0 OR required_decision_blockers > 0)
 
 ## G1-T08 — MCP user collections/relationships/MyPixiv read
 
-**Status:** pending
+**Status:** verified
 
 **Depends on:** G1-T07
 
@@ -337,10 +337,10 @@ AND (required_external_blockers > 0 OR required_decision_blockers > 0)
 **验收：** resolver、pagination、structured errors、legacy wire 均与 manifest 一致；T37D WIP 全部闭合或产生具体 correction。
 
 **完成记录：**
-- 改动/no-op：
-- Red/Green：
-- Compatibility：
-- 风险：
+- 改动/no-op：production MCP/SDK/endpoint 实现已满足 frozen user collections、relationships、MyPixiv wire，本轮不做行为改动；修正文档将 `user_following` 与 `user_followers` 的 `user_filter` 差异、`related_users` 的 current-user default/compatibility `restrict`、`blocked_users` 的 compatibility `restrict` 与 schema 对齐。T37D offline owner 已以当前目标分支证据闭合。
+- Red/Green：本轮为 no-op + 文档 contract correction，未触发 production behavior Red；focused MCP schema、resolver、logical pagination/filter、structured error、legacy JSON replay、MCP package、SDK user operations、user/artwork endpoint、vet、documentation tests 与 `git diff --check` 均通过。
+- Compatibility：`user_artworks`、`user_novels`、`mypixiv_users`/`mypixiv_illusts`/`mypixiv_novels`、`user_following`/`user_followers`/`related_users`/`blocked_users` 的 names、legacy fields、current-user resolver、filters、opaque cursor、records envelope 与 typed error semantics 保持；不接受 removed legacy fields，不暴露 transport credential，不引入 Web/匿名 fallback。
+- 风险：#30–32、#37 的 strict live/account binding、真实第二页与 compatibility/release gates 仍未闭合；按 manifest 由 G1-T29 继续处理，不能把 offline replay 或 synthetic continuation 升格为 live/public-ready。无新增内部 blocker。
 - 下一步：G1-T09
 
 ## G1-T09 — MCP typed bookmark read
