@@ -227,7 +227,7 @@ func TestServerListsExpectedTools(t *testing.T) {
 		"illust_series", "novel_series", "illust_comments", "novel_comments",
 		"recommended", "trending_tags_illust", "timeline_illust_following", "timeline_novel_following",
 		"timeline_illust_latest", "timeline_novel_latest", "mypixiv_users", "mypixiv_illusts", "mypixiv_novels",
-		"user_detail", "user_artworks", "user_novels", "user_bookmarks", "user_novel_bookmarks", "user_following", "user_followers", "related_users", "blocked_users", "bookmark_tags", "bookmark_detail", "add_bookmark",
+		"user_detail", "user_artworks", "user_novels", "user_bookmarks", "user_novel_bookmarks", "user_following", "user_followers", "related_users", "blocked_users", "bookmark_tags", "bookmark_detail", "novel_bookmark_tags", "novel_bookmark_detail", "add_bookmark",
 		"remove_bookmark", "follow_user", "unfollow_user", "reverse_search",
 	}
 	slices.Sort(names)

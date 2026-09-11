@@ -221,9 +221,14 @@ type BookmarkDetail struct {
 	Tags       []string `json:"tags"`
 }
 
-// BookmarkDetailResult 构造 bookmark detail 的 MCP 摘要。
+// BookmarkDetailResult 构造 artwork bookmark detail 的 MCP 摘要。
 func BookmarkDetailResult(out BookmarkDetail, illustID int64) *mcp.CallToolResult {
 	return &mcp.CallToolResult{Content: []mcp.Content{&mcp.TextContent{Text: fmt.Sprintf("Artwork %d bookmarked: %t.", illustID, out.Bookmarked)}}}
+}
+
+// NovelBookmarkDetailResult 构造 novel bookmark detail 的 MCP 摘要。
+func NovelBookmarkDetailResult(out BookmarkDetail, novelID int64) *mcp.CallToolResult {
+	return &mcp.CallToolResult{Content: []mcp.Content{&mcp.TextContent{Text: fmt.Sprintf("Novel %d bookmarked: %t.", novelID, out.Bookmarked)}}}
 }
 
 // BookmarkDetailError 构造 bookmark detail 的 MCP error 摘要。

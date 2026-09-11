@@ -345,7 +345,7 @@ AND (required_external_blockers > 0 OR required_decision_blockers > 0)
 
 ## G1-T09 — MCP typed bookmark read
 
-**Status:** pending
+**Status:** verified
 
 **Depends on:** G1-T08
 
@@ -358,10 +358,10 @@ AND (required_external_blockers > 0 OR required_decision_blockers > 0)
 **最小验证：** focused Red/Green + bookmark MCP package tests。
 
 **完成记录：**
-- 改动/no-op：
-- Red/Green：
-- Compatibility：
-- 风险：
+- 改动/no-op：新增 `novel_bookmark_tags` / `novel_bookmark_detail` MCP candidate read tools；保留 legacy `user_bookmarks` / `bookmark_tags` / `bookmark_detail` wire；扩展 typed bookmark wire fixture、exact registration test 与双语 MCP docs；`user_bookmarks` 的 artwork subtype 继续走 client-side filter，未添加 `all` aggregate。
+- Red/Green：初次 `go test ./internal/mcpserver/pixiv -run 'TestTypedBookmark|TestArtworkBookmarkSubtype' -count=1 -v` 在缺少 novel bookmark route / typed tool 时按预期失败；补齐 transport fixture 后同命令再次因 `novel_bookmark_tags` 未注册失败。新增工具与最小实现后该 focused suite 通过；随后 MCP root、MCP subtree、SDK/endpoint bookmark tests、vet、documentation tests、`git diff --check` 与 `gofmt` 检查均通过。
+- Compatibility：旧 tool 名称、字段、output envelope 与 legacy replay 保持；新增 novel tools 使用 closed schemas、positive `novel_id`、`bookmark_tags` / `bookmark_detail` typed envelope，保留 empty、upstream typed error、invalid argument 与 absent state；candidate novel tags 不发明 continuation，unexpected non-zero cursor 显式返回 `InvalidCursor`；不引入 Web/匿名 fallback、secret 输出或 `all` 聚合 wire。
+- 风险：novel candidate 的 strict wire/public-private/live/continuation/compatibility/release 仍未证明；#14–16、#18 的 strict live/account binding、aggregate G1-T10 与 G1-CHECK-03 仍未关闭；本 task 无新增 internal blocker。
 - 下一步：G1-CHECK-03
 
 ## G1-CHECK-03 — 集中检查：MCP user + typed bookmark read

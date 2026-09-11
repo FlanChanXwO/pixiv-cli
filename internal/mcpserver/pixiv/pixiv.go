@@ -20,6 +20,8 @@ import (
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/tools/mypixiv_illusts"
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/tools/mypixiv_novels"
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/tools/mypixiv_users"
+	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/tools/novel_bookmark_detail"
+	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/tools/novel_bookmark_tags"
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/tools/novel_comments"
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/tools/novel_content"
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/tools/novel_detail"
@@ -103,6 +105,8 @@ func register(app *runtime.App, server *mcp.Server) {
 	mypixiv_illusts.Register(app, server)
 	mypixiv_novels.Register(app, server)
 	mypixiv_users.Register(app, server)
+	novel_bookmark_detail.Register(app, server)
+	novel_bookmark_tags.Register(app, server)
 	novel_comments.Register(app, server)
 	novel_content.Register(app, server)
 	novel_detail.Register(app, server)

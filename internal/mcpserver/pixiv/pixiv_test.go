@@ -120,44 +120,48 @@ func resultHasText(result *mcp.CallToolResult, wanted string) bool {
 type fakeSDKClient struct {
 	mu sync.Mutex
 
-	userID                int64
-	searchIllust          func(context.Context, pixiv.SearchArtworksRequest) (sdk.Page[pixiv.Artwork], error)
-	searchNovel           func(context.Context, pixiv.SearchNovelsRequest) (sdk.Page[pixiv.Novel], error)
-	searchUser            func(context.Context, pixiv.SearchUsersRequest) (sdk.Page[pixiv.UserPreview], error)
-	illustDetail          func(context.Context, int64) (pixiv.Artwork, error)
-	novelDetail           func(context.Context, int64) (pixiv.Novel, error)
-	artworks              []pixiv.Artwork
-	bookmarks             []pixiv.Artwork
-	following             []pixiv.UserPreview
-	followingIllusts      func(context.Context, pixiv.FollowingArtworksRequest) (sdk.Page[pixiv.Artwork], error)
-	followingNovels       func(context.Context, pixiv.FollowingNovelsRequest) (sdk.Page[pixiv.Novel], error)
-	latestIllusts         func(context.Context, pixiv.LatestArtworksRequest) (sdk.Page[pixiv.Artwork], error)
-	latestNovels          func(context.Context, pixiv.LatestNovelsRequest) (sdk.Page[pixiv.Novel], error)
-	myPixivUsers          func(context.Context, pixiv.MyPixivUsersRequest) (sdk.Page[pixiv.UserPreview], error)
-	myPixivIllusts        func(context.Context, pixiv.MyPixivArtworksRequest) (sdk.Page[pixiv.Artwork], error)
-	myPixivNovels         func(context.Context, pixiv.MyPixivNovelsRequest) (sdk.Page[pixiv.Novel], error)
-	userNovels            func(context.Context, pixiv.UserNovelsRequest) (sdk.Page[pixiv.Novel], error)
-	userFollowing         func(context.Context, pixiv.UserFollowingRequest) (sdk.Page[pixiv.UserPreview], error)
-	userFollowers         func(context.Context, pixiv.UserFollowersRequest) (sdk.Page[pixiv.UserPreview], error)
-	userBlockedUsers      func(context.Context, pixiv.UserBlockedUsersRequest) (sdk.Page[pixiv.UserPreview], error)
-	relatedUsers          func(context.Context, pixiv.RelatedUsersRequest) (sdk.Page[pixiv.UserPreview], error)
-	recommendedArtworks   func(context.Context, pixiv.RecommendedArtworksRequest, int) (sdk.Page[pixiv.Artwork], error)
-	illustRanking         func(context.Context, pixiv.ArtworkRankingRequest) (sdk.Page[pixiv.Artwork], error)
-	novelRecommended      func(context.Context, pixiv.RecommendedNovelsRequest) (sdk.Page[pixiv.Novel], error)
-	userRecommended       func(context.Context, pixiv.RecommendedUsersRequest) (sdk.Page[pixiv.UserPreview], error)
-	relatedArtworks       func(context.Context, pixiv.RelatedArtworksRequest) (sdk.Page[pixiv.Artwork], error)
-	artworkSeries         func(context.Context, pixiv.ArtworkSeriesRequest) (sdk.Page[pixiv.Artwork], error)
-	novelSeries           func(context.Context, pixiv.NovelSeriesRequest) (pixiv.NovelSeriesResult, error)
-	userDetailResult      pixiv.UserDetail
-	userDetailErr         error
-	artworkBookmarkDetail pixiv.ArtworkBookmarkDetail
-	bookmarkTags          []pixiv.BookmarkTag
-	illustComments        []pixiv.Comment
-	trendingTags          []pixiv.TrendingTag
-	addBookmarkErr        error
-	removeBookmarkErr     error
-	followUserErr         error
-	unfollowUserErr       error
+	userID                 int64
+	searchIllust           func(context.Context, pixiv.SearchArtworksRequest) (sdk.Page[pixiv.Artwork], error)
+	searchNovel            func(context.Context, pixiv.SearchNovelsRequest) (sdk.Page[pixiv.Novel], error)
+	searchUser             func(context.Context, pixiv.SearchUsersRequest) (sdk.Page[pixiv.UserPreview], error)
+	illustDetail           func(context.Context, int64) (pixiv.Artwork, error)
+	novelDetail            func(context.Context, int64) (pixiv.Novel, error)
+	artworks               []pixiv.Artwork
+	bookmarks              []pixiv.Artwork
+	novelBookmarks         []pixiv.Novel
+	following              []pixiv.UserPreview
+	followingIllusts       func(context.Context, pixiv.FollowingArtworksRequest) (sdk.Page[pixiv.Artwork], error)
+	followingNovels        func(context.Context, pixiv.FollowingNovelsRequest) (sdk.Page[pixiv.Novel], error)
+	latestIllusts          func(context.Context, pixiv.LatestArtworksRequest) (sdk.Page[pixiv.Artwork], error)
+	latestNovels           func(context.Context, pixiv.LatestNovelsRequest) (sdk.Page[pixiv.Novel], error)
+	myPixivUsers           func(context.Context, pixiv.MyPixivUsersRequest) (sdk.Page[pixiv.UserPreview], error)
+	myPixivIllusts         func(context.Context, pixiv.MyPixivArtworksRequest) (sdk.Page[pixiv.Artwork], error)
+	myPixivNovels          func(context.Context, pixiv.MyPixivNovelsRequest) (sdk.Page[pixiv.Novel], error)
+	userNovels             func(context.Context, pixiv.UserNovelsRequest) (sdk.Page[pixiv.Novel], error)
+	userFollowing          func(context.Context, pixiv.UserFollowingRequest) (sdk.Page[pixiv.UserPreview], error)
+	userFollowers          func(context.Context, pixiv.UserFollowersRequest) (sdk.Page[pixiv.UserPreview], error)
+	userBlockedUsers       func(context.Context, pixiv.UserBlockedUsersRequest) (sdk.Page[pixiv.UserPreview], error)
+	relatedUsers           func(context.Context, pixiv.RelatedUsersRequest) (sdk.Page[pixiv.UserPreview], error)
+	recommendedArtworks    func(context.Context, pixiv.RecommendedArtworksRequest, int) (sdk.Page[pixiv.Artwork], error)
+	illustRanking          func(context.Context, pixiv.ArtworkRankingRequest) (sdk.Page[pixiv.Artwork], error)
+	novelRecommended       func(context.Context, pixiv.RecommendedNovelsRequest) (sdk.Page[pixiv.Novel], error)
+	userRecommended        func(context.Context, pixiv.RecommendedUsersRequest) (sdk.Page[pixiv.UserPreview], error)
+	relatedArtworks        func(context.Context, pixiv.RelatedArtworksRequest) (sdk.Page[pixiv.Artwork], error)
+	artworkSeries          func(context.Context, pixiv.ArtworkSeriesRequest) (sdk.Page[pixiv.Artwork], error)
+	userBookmarksFunc      func(pixiv.UserArtworkBookmarksRequest, int) (sdk.Page[pixiv.Artwork], error)
+	novelSeries            func(context.Context, pixiv.NovelSeriesRequest) (pixiv.NovelSeriesResult, error)
+	userDetailResult       pixiv.UserDetail
+	userDetailErr          error
+	artworkBookmarkDetail  pixiv.ArtworkBookmarkDetail
+	bookmarkTags           []pixiv.BookmarkTag
+	illustComments         []pixiv.Comment
+	novelBookmarkTagsErr   error
+	novelBookmarkDetailErr error
+	trendingTags           []pixiv.TrendingTag
+	addBookmarkErr         error
+	removeBookmarkErr      error
+	followUserErr          error
+	unfollowUserErr        error
 
 	// capture
 	searchIllustRequest        pixiv.SearchArtworksRequest
@@ -185,36 +189,44 @@ type fakeSDKClient struct {
 	userArtworksCalls          int
 	recommendedArtworksCalls   int
 	bookmarksRequest           pixiv.UserArtworkBookmarksRequest
+	bookmarksRequests          []pixiv.UserArtworkBookmarksRequest
+	bookmarksCalls             int
 	userNovelsRequest          pixiv.UserNovelsRequest
+	novelBookmarksRequest      pixiv.UserNovelBookmarksRequest
+	novelBookmarksRequests     []pixiv.UserNovelBookmarksRequest
 	followingRequest           pixiv.UserFollowingRequest
 	followersRequest           pixiv.UserFollowersRequest
 	blockedUsersRequest        pixiv.UserBlockedUsersRequest
 	relatedUsersRequest        pixiv.RelatedUsersRequest
 	bookmarkTagsRequest        pixiv.UserArtworkBookmarkTagsRequest
+	novelBookmarkTagsRequest   pixiv.UserNovelBookmarkTagsRequest
 	artworkBookmarkRequest     pixiv.ArtworkBookmarkRequest
+	novelBookmarkRequest       pixiv.NovelBookmarkRequest
 	illustCommentsRequest      pixiv.ArtworkCommentsRequest
 	addBookmarkRequest         pixiv.AddBookmarkRequest
 	removeBookmarkRequest      pixiv.RemoveBookmarkRequest
 	followUserRequest          pixiv.FollowUserRequest
 	unfollowUserRequest        pixiv.UnfollowUserRequest
 
-	// typed read tools canned results (task11)
-	artworkSeriesPage      sdk.Page[pixiv.Artwork]
-	novelDetailResult      pixiv.Novel
-	novelRequest           pixiv.NovelRequest
-	novelSeriesResult      pixiv.NovelSeriesResult
-	novelSeriesRequest     pixiv.NovelSeriesRequest
-	novelContentHTML       string
-	novelContentRequest    pixiv.NovelContentRequest
-	artworkCommentsResult  pixiv.CommentPage
-	artworkCommentsRequest pixiv.ArtworkCommentsRequest
-	novelCommentsResult    pixiv.CommentPage
-	novelCommentsRequest   pixiv.NovelCommentsRequest
-	bookmarkTagsPage       sdk.Page[pixiv.BookmarkTag]
-	bookmarkDetailResult   pixiv.ArtworkBookmarkDetail
-	bookmarkDetailRequest  pixiv.ArtworkBookmarkRequest
-	relatedPage            sdk.Page[pixiv.UserPreview]
-	relatedRequest         pixiv.RelatedUsersRequest
+	// typed read tools canned results
+	artworkSeriesPage         sdk.Page[pixiv.Artwork]
+	novelDetailResult         pixiv.Novel
+	novelRequest              pixiv.NovelRequest
+	novelSeriesResult         pixiv.NovelSeriesResult
+	novelSeriesRequest        pixiv.NovelSeriesRequest
+	novelContentHTML          string
+	novelContentRequest       pixiv.NovelContentRequest
+	artworkCommentsResult     pixiv.CommentPage
+	artworkCommentsRequest    pixiv.ArtworkCommentsRequest
+	novelCommentsResult       pixiv.CommentPage
+	novelCommentsRequest      pixiv.NovelCommentsRequest
+	bookmarkTagsPage          sdk.Page[pixiv.BookmarkTag]
+	novelBookmarkTagsPage     sdk.Page[pixiv.BookmarkTag]
+	bookmarkDetailResult      pixiv.ArtworkBookmarkDetail
+	bookmarkDetailRequest     pixiv.ArtworkBookmarkRequest
+	novelBookmarkDetailResult pixiv.NovelBookmarkDetail
+	relatedPage               sdk.Page[pixiv.UserPreview]
+	relatedRequest            pixiv.RelatedUsersRequest
 }
 
 func assertEmptyDownloadResult(t *testing.T, result *mcp.CallToolResult, wantDelivery, wantText string) {

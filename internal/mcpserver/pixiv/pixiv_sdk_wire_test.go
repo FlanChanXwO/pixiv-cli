@@ -212,9 +212,21 @@ func (tr *testSDKTransport) RoundTrip(request *http.Request) (*http.Response, er
 		}
 		status, body, err = tr.wireNovelPage(page)
 	case "/v1/user/bookmarks/illust":
-		req := pixivsdk.UserArtworkBookmarksRequest{UserID: queryInt64(request.URL.Query(), "user_id"), Restrict: pixivsdk.Restrict(request.URL.Query().Get("restrict")), Tag: request.URL.Query().Get("tag"), Cursor: cursorFromOffset(queryInt(request.URL.Query(), "offset"))}
+		req := pixivsdk.UserArtworkBookmarksRequest{UserID: queryInt64(request.URL.Query(), "user_id"), Restrict: pixivsdk.Restrict(request.URL.Query().Get("restrict")), Tag: request.URL.Query().Get("tag"), Cursor: cursorFromOffset(queryInt(request.URL.Query(), "max_bookmark_id"))}
 		tr.fake.bookmarksRequest = req
-		status, body, err = tr.wireArtworkPage(sdk.Page[pixivsdk.Artwork]{Items: tr.fake.bookmarks})
+		tr.fake.bookmarksRequests = append(tr.fake.bookmarksRequests, req)
+		tr.fake.bookmarksCalls++
+		page, callErr := callUserBookmarks(tr.fake.userBookmarksFunc, req, tr.fake.bookmarksCalls, tr.fake.bookmarks)
+		if callErr != nil {
+			return wireErrorResponse(callErr)
+		}
+		status, body, err = tr.wireArtworkPage(page)
+	case "/v1/user/bookmarks/novel":
+		query := request.URL.Query()
+		req := pixivsdk.UserNovelBookmarksRequest{UserID: queryInt64(query, "user_id"), Restrict: pixivsdk.Restrict(query.Get("restrict")), Tag: query.Get("tag"), Cursor: cursorFromOffset(queryInt(query, "max_bookmark_id"))}
+		tr.fake.novelBookmarksRequest = req
+		tr.fake.novelBookmarksRequests = append(tr.fake.novelBookmarksRequests, req)
+		status, body, err = tr.wireNovelPage(sdk.Page[pixivsdk.Novel]{Items: tr.fake.novelBookmarks})
 	case "/v1/user/following":
 		req := pixivsdk.UserFollowingRequest{UserID: queryInt64(request.URL.Query(), "user_id"), Restrict: pixivsdk.Restrict(request.URL.Query().Get("restrict")), Cursor: cursorFromOffset(queryInt(request.URL.Query(), "offset"))}
 		tr.fake.followingRequest = req
@@ -258,11 +270,25 @@ func (tr *testSDKTransport) RoundTrip(request *http.Request) (*http.Response, er
 		req := pixivsdk.UserArtworkBookmarkTagsRequest{UserID: queryInt64(request.URL.Query(), "user_id"), Restrict: pixivsdk.Restrict(request.URL.Query().Get("restrict")), Cursor: cursorFromOffset(queryInt(request.URL.Query(), "offset"))}
 		tr.fake.bookmarkTagsRequest = req
 		status, body, err = wireBookmarkTags(tr.fake.bookmarkTagsPage.Items)
+	case "/v1/user/bookmark-tags/novel":
+		req := pixivsdk.UserNovelBookmarkTagsRequest{UserID: queryInt64(request.URL.Query(), "user_id"), Restrict: pixivsdk.Restrict(request.URL.Query().Get("restrict")), Cursor: cursorFromOffset(queryInt(request.URL.Query(), "offset"))}
+		tr.fake.novelBookmarkTagsRequest = req
+		if tr.fake.novelBookmarkTagsErr != nil {
+			return wireErrorResponse(tr.fake.novelBookmarkTagsErr)
+		}
+		status, body, err = wireBookmarkTags(tr.fake.novelBookmarkTagsPage.Items)
 	case "/v2/illust/bookmark/detail":
 		req := pixivsdk.ArtworkBookmarkRequest{ArtworkID: queryInt64(request.URL.Query(), "illust_id")}
 		tr.fake.artworkBookmarkRequest = req
 		tr.fake.bookmarkDetailRequest = req
 		status, body, err = wireBookmarkDetail(tr.fake.bookmarkDetailResult)
+	case "/v2/novel/bookmark/detail":
+		req := pixivsdk.NovelBookmarkRequest{NovelID: queryInt64(request.URL.Query(), "novel_id")}
+		tr.fake.novelBookmarkRequest = req
+		if tr.fake.novelBookmarkDetailErr != nil {
+			return wireErrorResponse(tr.fake.novelBookmarkDetailErr)
+		}
+		status, body, err = wireNovelBookmarkDetail(tr.fake.novelBookmarkDetailResult)
 	case "/v2/novel/detail":
 		id := queryInt64(request.URL.Query(), "novel_id")
 		tr.fake.novelDetailRequest = id
@@ -477,6 +503,13 @@ func callRecommendedArtworks(fn func(context.Context, pixivsdk.RecommendedArtwor
 		return sdk.Page[pixivsdk.Artwork]{Items: []pixivsdk.Artwork{}}, nil
 	}
 	return fn(context.Background(), req, call)
+}
+
+func callUserBookmarks(fn func(pixivsdk.UserArtworkBookmarksRequest, int) (sdk.Page[pixivsdk.Artwork], error), req pixivsdk.UserArtworkBookmarksRequest, call int, fallback []pixivsdk.Artwork) (sdk.Page[pixivsdk.Artwork], error) {
+	if fn == nil {
+		return sdk.Page[pixivsdk.Artwork]{Items: fallback}, nil
+	}
+	return fn(req, call)
 }
 
 func callUserArtworks(fn func(pixivsdk.UserArtworksRequest, int) (sdk.Page[pixivsdk.Artwork], error), fallback []pixivsdk.Artwork, req pixivsdk.UserArtworksRequest, call int) (sdk.Page[pixivsdk.Artwork], error) {
@@ -897,6 +930,24 @@ func wireBookmarkTags(tags []pixivsdk.BookmarkTag) (int, []byte, error) {
 }
 
 func wireBookmarkDetail(detail pixivsdk.ArtworkBookmarkDetail) (int, []byte, error) {
+	restrict := ""
+	switch detail.Restrict {
+	case pixivsdk.RestrictPublic:
+		restrict = "public"
+	case pixivsdk.RestrictPrivate:
+		restrict = "private"
+	}
+	tags := make([]map[string]any, 0, len(detail.Tags))
+	for _, tag := range detail.Tags {
+		tags = append(tags, map[string]any{"name": tag, "is_registered": true})
+	}
+	body, err := json.Marshal(struct {
+		BookmarkDetail map[string]any `json:"bookmark_detail"`
+	}{map[string]any{"is_bookmarked": restrict != "", "restrict": restrict, "tags": tags}})
+	return http.StatusOK, body, err
+}
+
+func wireNovelBookmarkDetail(detail pixivsdk.NovelBookmarkDetail) (int, []byte, error) {
 	restrict := ""
 	switch detail.Restrict {
 	case pixivsdk.RestrictPublic:

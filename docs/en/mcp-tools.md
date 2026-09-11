@@ -194,6 +194,8 @@ not treated as an artwork detail request.
 | `user_novels` | Optional `user_id`, `novel_filter`, `page`, `limit`; omitted ID resolves to the authenticated user. |
 | `user_bookmarks` | Optional `user_id`, `restrict`, `tag`, `illust_filter`, `page`, `limit`; reads artwork bookmarks. |
 | `user_novel_bookmarks` | Optional `user_id`, `restrict`, `tag`, `page`, `limit`; reads novel bookmarks. |
+| `novel_bookmark_tags` | Optional `user_id`, `restrict`, `page`, `limit`; returns `{bookmark_tags, pagination}` for novel bookmarks. The current candidate App API has no continuation contract; a continuation outside that contract is reported as a typed error. |
+| `novel_bookmark_detail` | Required positive `novel_id`; returns `{bookmarked, restrict, tags}` for one novel and preserves the absent/unbookmarked state. It uses the candidate novel-bookmark detail App API. |
 | `user_following` | Optional `user_id`, `restrict`, `user_filter`, `page`, `limit`; omitted ID resolves to the authenticated user. |
 | `user_followers` | Optional `user_id`, `restrict`, `page`, `limit`; omitted ID resolves to the authenticated user. |
 | `related_users` | Optional positive `user_id` (defaults to the authenticated user), compatibility `restrict`, optional `user_filter`, `page`, `limit`. |
