@@ -821,7 +821,7 @@ AND (required_external_blockers > 0 OR required_decision_blockers > 0)
 
 ## G1-T26 — CLI + MCP regression
 
-**Status:** pending
+**Status:** verified
 
 **Depends on:** G1-T25
 
@@ -830,9 +830,9 @@ AND (required_external_blockers > 0 OR required_decision_blockers > 0)
 **测试预算：** 运行 CLI/MCP regression harness；不重复 protocol/SDK suite。
 
 **完成记录：**
-- Commands：
-- Result：
-- Correction：
+- Commands：`go test ./internal/cli/... -count=1`（28 个有测试 package：全部 Pixiv 命令 owner、pipeline/action record 消费、internal/cli root、CLI MCP runtime）与 `go test ./internal/mcpserver/... -count=1`（10 个有测试 package：Pixiv MCP 全 tool、runtime/records/outputs/filters internals、FANBOX MCP）；另复跑 focused subset（四组 read legacy JSON replay、`TestMCPStdioKeepsJSONRPCOnStdout`、`TestServerListsExpectedTools`）6/6 PASS。
+- Result：CLI 28/28、MCP 10/10 全部 ok，0 FAIL。CLI JSON/NDJSON/stdin 补值/skip/fail-fast/typed cursor/legacy alias、MCP closed schema/structured error/exact registration/legacy JSON replay/stdio stdout 边界、bookmark 双流 aggregate 与全部 mutation 的 offline safety（502 单请求、namespace record 过滤、页原子失败）全部通过；按预算未重复 protocol/SDK suite（G1-T25 已闭环）。
+- Correction：无。
 - 下一步：G1-T27
 
 ## G1-T27 — Full offline build / quality / race-as-needed / redaction gate
