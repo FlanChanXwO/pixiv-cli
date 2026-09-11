@@ -259,6 +259,20 @@ func collectWithFrom[T any](ctx context.Context, app *App, plan ListPlan, initia
 	return result.Items, result.HasMore, err
 }
 
+// CollectStreamsWith 为需要多个有序上游流的 MCP read tool 复用同一账号池
+// execution 边界与 structured 配置错误语义。聚合结果由 traversal 在每次
+// attempt 中重置，失败 attempt 的部分结果不会泄漏到后续安全重放。
+func CollectStreamsWith[T any, C pagination.Cursor](ctx context.Context, app *App, plan ListPlan, streams func(*pixiv.Client) []pagination.Stream[T, C]) ([]T, bool, error) {
+	result, err := traversal.CollectStreamsWith(ctx, app.Execute(), pagination.PagePlan{
+		Skip: plan.Skip, Limit: max(0, plan.Limit), OneBatch: plan.OneBatch,
+	}, streams)
+	if errors.Is(err, traversal.ErrExecuteNotConfigured) {
+		err = sdk.NewError("pixiv", "PagedRead", sdk.LocalStateError,
+			sdk.WithDetail("sdk pooled operation is not configured"))
+	}
+	return result.Items, result.HasMore, err
+}
+
 // CollectPages 仅把 MCP 的兼容 sentinel 映射到共享分页语义；成功空结果
 // 仍保持 non-nil slice，失败时共享 collector 会丢弃部分结果。
 func CollectPages[T any](ctx context.Context, plan ListPlan, fetch func(context.Context, sdk.Cursor) ([]T, sdk.Cursor, error)) ([]T, bool, error) {

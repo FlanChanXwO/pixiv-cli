@@ -152,6 +152,8 @@ application outcome 的 `filter` 会报告 `min`、`max`、`membership`、`strat
 | `user_novels` | 可选 `user_id`、`novel_filter`、`page`、`limit`；省略 ID 使用认证账号。 |
 | `user_bookmarks` | 可选 `user_id`、`restrict`、`tag`、`illust_filter`、`page`、`limit`；读取作品收藏。 |
 | `user_novel_bookmarks` | 可选 `user_id`、`restrict`、`tag`、`page`、`limit`；读取小说收藏。 |
+| `bookmark_list_all` | 可选 `user_id`、`restrict`、`tag`、`page`、`limit`；新增的聚合 tool，先读取作品收藏再读取小说收藏。`page`/`limit` 作用于拼接后的统一逻辑流；任一 required 流失败时返回错误，不返回部分 records。 |
+| `bookmark_tags_all` | 可选 `user_id`、`restrict`、`page`、`limit`；新增的聚合 tool，先读取作品标签再读取小说标签。每个标签保留 `content_type` 与原始 `count`；同名标签不合并，任一 required 流失败时不返回部分标签。 |
 | `novel_bookmark_tags` | 可选 `user_id`、`restrict`、`page`、`limit`；返回小说收藏的 `{bookmark_tags, pagination}`。当前 candidate App API 没有续页 contract；超出该 contract 的 continuation 会返回 typed error。 |
 | `novel_bookmark_detail` | 必填正数 `novel_id`；返回单篇小说的 `{bookmarked, restrict, tags}`，保留缺失/未收藏状态；使用 candidate novel-bookmark detail App API。 |
 | `user_following` | 可选 `user_id`、`restrict`、`user_filter`、`page`、`limit`；省略 ID 使用认证账号。 |

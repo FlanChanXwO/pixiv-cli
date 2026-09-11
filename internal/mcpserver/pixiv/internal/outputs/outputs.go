@@ -214,6 +214,31 @@ func BookmarkTagsError(err error) (*mcp.CallToolResult, BookmarkTags, error) {
 	return &mcp.CallToolResult{IsError: true, Content: []mcp.Content{&mcp.TextContent{Text: records.ErrorMessage(err)}}}, out, nil
 }
 
+// TypedBookmarkTag 是 bookmark_tags_all 的标签记录；content_type 保持
+// artwork/novel 两条上游流的来源，不把同名标签错误合并。
+type TypedBookmarkTag struct {
+	Name        string `json:"name"`
+	Count       int    `json:"count"`
+	ContentType string `json:"content_type"`
+}
+
+// BookmarkTagsAll 是 bookmark_tags_all tool 的 additive output envelope。
+type BookmarkTagsAll struct {
+	Tags       []TypedBookmarkTag    `json:"bookmark_tags"`
+	Pagination runtime.PaginationOut `json:"pagination"`
+}
+
+// BookmarkTagsAllResult 构造 bookmark_tags_all 的 MCP 摘要。
+func BookmarkTagsAllResult(out BookmarkTagsAll, count int) *mcp.CallToolResult {
+	return &mcp.CallToolResult{Content: []mcp.Content{&mcp.TextContent{Text: fmt.Sprintf("Retrieved %d bookmark tags.", count)}}}
+}
+
+// BookmarkTagsAllError 构造 bookmark_tags_all 的 MCP error 摘要。
+func BookmarkTagsAllError(err error) (*mcp.CallToolResult, BookmarkTagsAll, error) {
+	out := BookmarkTagsAll{Tags: []TypedBookmarkTag{}, Pagination: runtime.PaginationOut{Page: 1}}
+	return &mcp.CallToolResult{IsError: true, Content: []mcp.Content{&mcp.TextContent{Text: records.ErrorMessage(err)}}}, out, nil
+}
+
 // BookmarkDetail 是 bookmark_detail tool 的输出 envelope。
 type BookmarkDetail struct {
 	Bookmarked bool     `json:"bookmarked"`

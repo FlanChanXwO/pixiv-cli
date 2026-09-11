@@ -190,6 +190,32 @@ func BookmarkTagsOutputSchema() *jsonschema.Schema {
 	}
 }
 
+// BookmarkTagsAllOutputSchema 描述 additive bookmark_tags_all 的 typed 标签
+// envelope。legacy bookmark_tags 继续使用开放的旧标签对象 schema。
+func BookmarkTagsAllOutputSchema() *jsonschema.Schema {
+	return &jsonschema.Schema{
+		Type: "object",
+		Properties: map[string]*jsonschema.Schema{
+			"bookmark_tags": {
+				Type: "array",
+				Items: &jsonschema.Schema{
+					Type: "object",
+					Properties: map[string]*jsonschema.Schema{
+						"name":         {Type: "string"},
+						"count":        {Type: "integer"},
+						"content_type": {Type: "string", Enum: []any{"artwork", "novel"}},
+					},
+					Required:             []string{"name", "count", "content_type"},
+					AdditionalProperties: &jsonschema.Schema{Not: &jsonschema.Schema{}},
+				},
+			},
+			"pagination": PaginationOutputSchema(),
+		},
+		Required:             []string{"bookmark_tags", "pagination"},
+		AdditionalProperties: &jsonschema.Schema{Not: &jsonschema.Schema{}},
+	}
+}
+
 // BookmarkDetailOutputSchema 返回收藏详情输出的 schema。
 func BookmarkDetailOutputSchema() *jsonschema.Schema {
 	return &jsonschema.Schema{

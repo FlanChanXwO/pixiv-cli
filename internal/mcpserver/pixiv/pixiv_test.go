@@ -155,6 +155,7 @@ type fakeSDKClient struct {
 	artworkBookmarkDetail  pixiv.ArtworkBookmarkDetail
 	bookmarkTags           []pixiv.BookmarkTag
 	illustComments         []pixiv.Comment
+	novelBookmarksErr      error
 	novelBookmarkTagsErr   error
 	novelBookmarkDetailErr error
 	trendingTags           []pixiv.TrendingTag

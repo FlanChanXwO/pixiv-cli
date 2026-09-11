@@ -8,7 +8,9 @@ import (
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/tools/add_bookmark"
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/tools/blocked_users"
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/tools/bookmark_detail"
+	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/tools/bookmark_list_all"
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/tools/bookmark_tags"
+	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/tools/bookmark_tags_all"
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/tools/download"
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/tools/follow_user"
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/tools/illust_comments"
@@ -93,7 +95,9 @@ func register(app *runtime.App, server *mcp.Server) {
 	add_bookmark.Register(app, server)
 	blocked_users.Register(app, server)
 	bookmark_detail.Register(app, server)
+	bookmark_list_all.Register(app, server)
 	bookmark_tags.Register(app, server)
+	bookmark_tags_all.Register(app, server)
 	download.Register(app, server)
 	follow_user.Register(app, server)
 	illust_comments.Register(app, server)

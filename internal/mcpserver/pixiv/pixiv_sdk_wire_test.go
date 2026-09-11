@@ -226,6 +226,9 @@ func (tr *testSDKTransport) RoundTrip(request *http.Request) (*http.Response, er
 		req := pixivsdk.UserNovelBookmarksRequest{UserID: queryInt64(query, "user_id"), Restrict: pixivsdk.Restrict(query.Get("restrict")), Tag: query.Get("tag"), Cursor: cursorFromOffset(queryInt(query, "max_bookmark_id"))}
 		tr.fake.novelBookmarksRequest = req
 		tr.fake.novelBookmarksRequests = append(tr.fake.novelBookmarksRequests, req)
+		if tr.fake.novelBookmarksErr != nil {
+			return wireErrorResponse(tr.fake.novelBookmarksErr)
+		}
 		status, body, err = tr.wireNovelPage(sdk.Page[pixivsdk.Novel]{Items: tr.fake.novelBookmarks})
 	case "/v1/user/following":
 		req := pixivsdk.UserFollowingRequest{UserID: queryInt64(request.URL.Query(), "user_id"), Restrict: pixivsdk.Restrict(request.URL.Query().Get("restrict")), Cursor: cursorFromOffset(queryInt(request.URL.Query(), "offset"))}

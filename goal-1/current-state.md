@@ -1,13 +1,13 @@
 # Goal-1 当前状态：Capabilities 1–41 baseline inventory
 
-> 本文件覆盖 `G1-T01`、`G1-T02`、`G1-T03`、`G1-CHECK-01`、`G1-T04`、`G1-T05`、`G1-T06`、`G1-CHECK-02`、`G1-T07`、`G1-T08`、`G1-T09` 与 `G1-CHECK-03`，只记录当前分支的代码、测试、历史和 Goal-3 证据，不授予任何 capability 的发布资格。
+> 本文件覆盖 `G1-T01`、`G1-T02`、`G1-T03`、`G1-CHECK-01`、`G1-T04`、`G1-T05`、`G1-T06`、`G1-CHECK-02`、`G1-T07`、`G1-T08`、`G1-T09`、`G1-CHECK-03` 与 `G1-T10`，只记录当前分支的代码、测试、历史和 Goal-3 证据，不授予任何 capability 的发布资格。
 
 ## 1. 快照与状态口径
 
 - 执行分支：`refactor/pixiv-api-stability`
 - G1-T03 inventory 起始 commit：`35dd0d7efebd16eeda6d5fb8ac3e766b31f8461d`，继承基线：`e40443495981cdaf01215d6711cb24fa618b087a`
 - 当前 worktree：`/Users/flanchan/Developer/Projects/GithubProjects/.worktrees/pixiv-cli-refactor-pixiv-api-stability`
-- G1-T03 开始时 worktree 干净；G1-CHECK-01 检查时 HEAD 为 `042c0200ce1b3349ab3e08a744fea7802838025c`。G1-T04 审计起始 HEAD 为 `f7cff3fb86dcc5117c634359bedbea5abdfa4d0b`；G1-T05 correctness audit 起始 HEAD 为 `35885b0d9316b4a1f2326bcee0511d8bc5ae29ed`；G1-T06 manifest audit 起始 HEAD 为 `c5e3d679eef4b2b2404984bbd6630588a3c7ac8a`，worktree 干净。G1-CHECK-02 pre-push ledger commit 为 `b17b1775f2ea0783f394f7600d30cafd8ad428c5`，已普通 fast-forward push，远端 SHA 与该 checkpoint 一致。其后 G1-T07 在 `5b45827efc5b553a0ad8caca5289253dfe585ba` 收敛 MCP user identity 行为、测试与双语文档；G1-T08 仅修正双语 MCP contract 文档并同步本状态账本；G1-T09 新增 candidate/offline novel bookmark tags/detail MCP read、补 typed bookmark wire/empty/error/subtype logical-pagination 测试与双语文档；G1-CHECK-03 对 MCP user/typed bookmark 的 owner、schema/error、resolver/filter/pagination、legacy wire、forbidden endpoint 与 abstraction scope 审计通过；严格 live、public compatibility 与 release 仍未关闭；`goal-3/` 无 diff。
+- G1-T03 开始时 worktree 干净；G1-CHECK-01 检查时 HEAD 为 `042c0200ce1b3349ab3e08a744fea7802838025c`。G1-T04 审计起始 HEAD 为 `f7cff3fb86dcc5117c634359bedbea5abdfa4d0b`；G1-T05 correctness audit 起始 HEAD 为 `35885b0d9316b4a1f2326bcee0511d8bc5ae29ed`；G1-T06 manifest audit 起始 HEAD 为 `c5e3d679eef4b2b2404984bbd6630588a3c7ac8a`，worktree 干净。G1-CHECK-02 pre-push ledger commit 为 `b17b1775f2ea0783f394f7600d30cafd8ad428c5`，已普通 fast-forward push，远端 SHA 与该 checkpoint 一致。其后 G1-T07 在 `5b45827efc5b553a0ad8caca5289253dfe585ba` 收敛 MCP user identity 行为、测试与双语文档；G1-T08 仅修正双语 MCP contract 文档并同步本状态账本；G1-T09 新增 candidate/offline novel bookmark tags/detail MCP read、补 typed bookmark wire/empty/error/subtype logical-pagination 测试与双语文档；G1-CHECK-03 对 MCP user/typed bookmark 的 owner、schema/error、resolver/filter/pagination、legacy wire、forbidden endpoint 与 abstraction scope 审计通过；G1-T10 新增 `bookmark_list_all` / `bookmark_tags_all` additive MCP aggregate，补双流统一 budget、重放、页原子失败、typed tag 与 exact registration evidence；严格 live、public SDK aggregate、public compatibility 与 release 仍未关闭；`goal-3/` 无 diff。
 - Goal-3 的 `goal-3/capability-admission.md` 是 capability 状态唯一权威来源：当前盘点的 41 项均为 `required=yes, state=scope_admitted`；全 41 项中没有一项为 `public_ready`（`goal-3/capability-admission.md:3-15,23-70`；`artwork-series` 在该表后段，仍属于原 required 集合）。
 - `scope_admitted` 只表示 capability 属于 required scope；不表示 contract 已冻结、迁移已完成或可以进入正式发布 surface。
 - 本文状态：
@@ -25,7 +25,7 @@
 - `public_ready`：0/41。
 - `scope_admitted`：41/41。
 - 当前没有 capability 可以仅凭 Goal-3 历史 task 的 `verified` 标记直接转为 accepted。
-- 当前未发现新的业务/API/evidence drift；Goal-1 分支相对继承基线的 drift 只有执行资料与 G1-T01/G1-T02/G1-T03/G1-CHECK-01/G1-T04/G1-T05/G1-T06/G1-T07/G1-T08/G1-T09/G1-CHECK-03 记录。
+- 当前未发现新的业务/API/evidence drift；Goal-1 分支相对继承基线的 drift 只有执行资料与 G1-T01/G1-T02/G1-T03/G1-CHECK-01/G1-T04/G1-T05/G1-T06/G1-T07/G1-T08/G1-T09/G1-CHECK-03/G1-T10 记录。
 
 ### 2.2 Layer matrix
 
@@ -53,8 +53,8 @@
 | 20 | `novel-bookmark-detail` | implemented_unverified | implemented_unverified | implemented_unverified | not_applicable | verified | verified | verified | implemented_unverified | implemented_unverified | missing |
 | 21 | `novel-bookmark-mutation` | implemented_unverified | implemented_unverified | missing | not_applicable | missing | missing | verified | missing | missing | missing |
 | 22 | `bookmark-subtype` | implemented_unverified | missing | missing | implemented_unverified | verified | verified | verified | missing | implemented_unverified | missing |
-| 23 | `bookmark-list-all` | implemented_unverified | verified | missing | verified | verified | missing | verified | implemented_unverified | missing | missing |
-| 24 | `bookmark-tags-all` | implemented_unverified | verified | missing | verified | verified | missing | verified | implemented_unverified | missing | missing |
+| 23 | `bookmark-list-all` | implemented_unverified | verified | missing | verified | verified | verified | verified | implemented_unverified | implemented_unverified | missing |
+| 24 | `bookmark-tags-all` | implemented_unverified | verified | missing | verified | verified | verified | verified | implemented_unverified | implemented_unverified | missing |
 | 25 | `artwork-comments-read` | rejected | implemented_unverified | implemented_unverified | implemented_unverified | implemented_unverified | implemented_unverified | verified | rejected | implemented_unverified | rejected |
 | 26 | `artwork-comments-mutation` | implemented_unverified | verified | verified | verified | verified | missing | verified | implemented_unverified | implemented_unverified | missing |
 | 27 | `novel-comments-read` | implemented_unverified | verified | verified | verified | verified | verified | verified | implemented_unverified | implemented_unverified | missing |
@@ -382,10 +382,10 @@
 - **SDK — `missing`**：没有 public `BookmarkListAll` operation，也没有可跨调用恢复的 aggregate cursor API。
 - **Shared — `verified`（offline algorithm）**：`internal/shared/pagination/streams.go:9-38,65-116` 与 `internal/shared/traversal/streams.go:28-53` 覆盖统一 budget/checkpoint/失败丢弃。
 - **CLI — `verified`（offline）**：`bookmark.go:343-430,773-808` 建立双流并 staging 输出；`bookmark_test.go:60-190,425-476` 覆盖顺序、limit、typed output、页原子失败。
-- **MCP — `missing`**：`internal/mcpserver/pixiv/pixiv.go:90-129` 仅注册单类 bookmark tools，无 all aggregate route。
-- **Offline — `verified`**：当前 fixture 能证明一次调用内 artwork → novel、统一预算、failure atomicity；不能证明跨调用 cursor。（具体证据索引：本文件:364-367,389-392）
+- **MCP — `verified`（additive aggregate）**：新增 `bookmark_list_all`，使用 closed input、shared stream collector 与 `Records` envelope；旧 `user_bookmarks` / `user_novel_bookmarks` registration 与 wire 保持不变（`internal/mcpserver/pixiv/pixiv.go`、`internal/mcpserver/pixiv/pixiv_bookmark_aggregate_test.go`）。
+- **Offline — `verified`**：fixture 能证明 artwork → novel、跨逻辑页的统一 `Skip`/`Limit` 不漏不重、失败重放不泄漏 partial，以及 shared checkpoint seam；MCP 不暴露 aggregate cursor。（具体证据索引：`internal/mcpserver/pixiv/pixiv_bookmark_aggregate_test.go`、`internal/shared/pagination/streams.go`、`internal/shared/traversal/streams.go`）
 - **Live — `implemented_unverified`**：无 aggregate live second-page/aggregate cursor evidence。
-- **Compatibility — `missing`**：无 public aggregate SDK/MCP wire 或 replay fixture；CLI docs 不能覆盖完整 gate。
+- **Compatibility — `implemented_unverified`**：新 MCP operation 仅 additive，exact registration 保留旧 tool，聚合 error/empty envelope 与 legacy wire 回归通过；public aggregate SDK、strict live 与完整 compatibility/release gate 仍未闭合。
 - **Release — `missing`**：未达 public-ready。
 
 ### 4.12 `bookmark-tags-all`（#24）
@@ -395,18 +395,18 @@
 - **SDK — `missing`**：没有 public aggregate tags operation 或跨调用 aggregate cursor。
 - **Shared — `verified`（offline algorithm）**：复用 `CollectStreams` 与 `bookmarkStreamCursor`。（具体证据索引：本文件:366,390）
 - **CLI — `verified`（offline）**：`bookmark.go:647-808,811-856` 实现 artwork → novel typed tag output；`bookmark_test.go:124-190,478-529` 覆盖同名 tag、count/type 保留和 failure atomicity。
-- **MCP — `missing`**：无 all tags MCP registration。
-- **Offline — `verified`**：只证明 CLI offline aggregate。（具体证据索引：本文件:379-380）
+- **MCP — `verified`（additive typed aggregate）**：新增 `bookmark_tags_all`，输出 closed typed `{name,count,content_type}` item；旧 `bookmark_tags` / `novel_bookmark_tags` output contract 不变。
+- **Offline — `verified`**：CLI 与 MCP 均有 artwork → novel、同名 tag 分离、原始 count/type 与 required-stream failure atomicity evidence；novel candidate continuation 仍不猜测。
 - **Live — `implemented_unverified`**：novel tags candidate 与 subtype/continuation strict evidence 缺失；无 aggregate live evidence。
-- **Compatibility — `missing`**：无 aggregate public wire/schema/fixture。
+- **Compatibility — `implemented_unverified`**：MCP aggregate schema、exact registration、typed same-name counts 与 structured failure fixture 已有；public aggregate SDK、strict candidate/live compatibility 与 release gate 仍未闭合。
 - **Release — `missing`**：未达 public-ready。
 
 ### 4.13 Bookmark cross-cutting verdict
 
-- **Typed semantics**：CLI 以 `bookmarkListItem` / `bookmarkTagItem` 保留 artwork/novel kind；`--type all` 固定 artwork 后 novel；同名 tag 不合并，保留各自 count/type（`bookmark.go:54-69,773-856`；`bookmark_test.go:60-190`）。这是当前离线产品层证据，不是 upstream subtype evidence。
-- **Dual-stream checkpoint**：`bookmarkStreamCursor` 保存上游输入 cursor 与批内 `consumed`；shared collector 在一条 logical page 中统一执行预算，任一 stream 失败丢弃 partial（`bookmark.go:71-88,433-482,811-852`；`internal/shared/pagination/streams.go:9-38,65-116`）。但 `runAllList`/`runAllTags` 当前丢弃返回 `StreamState`，没有跨调用可恢复的 public aggregate cursor。
-- **Unified budget**：`CollectStreams` 连接后只应用一次 Skip/Limit/OneBatch，不按 artwork/novel 分配预算；CLI tests 已覆盖 limit=2 与双流请求。不能据此证明 public cursor 恢复。
-- **Page atomicity**：CLI list/tags 先写 staging buffer，所有 stream/serialization 成功后才提交 stdout；novel stream 失败时 output 保持空。共享 traversal 也清空失败 attempt 的 partial result。
+- **Typed semantics**：CLI 以 `bookmarkListItem` / `bookmarkTagItem` 保留 artwork/novel kind；`--type all` 固定 artwork 后 novel；同名 tag 不合并，保留各自 count/type。MCP `bookmark_tags_all` 进一步以 `content_type=artwork|novel` 固定来源（`bookmark.go:54-69,773-856`；`bookmark_test.go:60-190`；`internal/mcpserver/pixiv/pixiv_bookmark_aggregate_test.go`）。这是当前离线产品层证据，不是 upstream subtype evidence。
+- **Dual-stream checkpoint**：CLI `bookmarkStreamCursor` 与 MCP aggregate-local `bookmarkCursor` 都保存上游输入 cursor 与批内 `consumed`；shared collector 在一条 logical page 中统一执行预算，任一 stream 失败丢弃 partial，traversal 在安全重放时清空失败 attempt 结果。MCP 与 CLI 都不暴露跨调用 public aggregate cursor（`bookmark.go:71-88,433-482,811-852`；`internal/mcpserver/pixiv/tools/bookmark_list_all/bookmark_list_all.go`；`internal/mcpserver/pixiv/tools/bookmark_tags_all/bookmark_tags_all.go`；`internal/shared/pagination/streams.go:9-38,65-116`）。
+- **Unified budget**：CLI 与 MCP aggregate 都复用 `CollectStreams` 连接后的单一 Skip/Limit/OneBatch，不按 artwork/novel 分配预算；MCP focused tests 覆盖 limit=1 的 artwork→novel page transition 与无重复恢复。不能据此证明 public cursor 恢复。
+- **Page atomicity**：CLI list/tags 先写 staging buffer，所有 stream/serialization 成功后才提交 stdout；MCP aggregate 在 artwork 成功而 novel 失败时返回 `isError=true` 与空 structured records/tags；共享 traversal 也清空失败 attempt 的 partial result。
 - **Mutation boundary**：artwork mutation 当前只有 transport success；novel mutation 只有 candidate adapter transport。两者均无当前 Goal 要求的 live read-back、restore、cleanup、uncertain-no-replay evidence。
 - **Requiredness/evidence boundary**：11 项在 `capability-admission.md:37-47` 仍为 `scope_admitted`；T15/T19/T23 历史 `verified` 只能证明局部 seam，不能提升 bookmark capability acceptance（`goal-3/tasks.md:649-656,691-733`）。
 
@@ -658,8 +658,8 @@ G1-T01 已在干净目标 worktree 执行 `go test ./...` 并通过；G1-CHECK-0
 | 20 `novel-bookmark-detail` | yes | candidate `GET /v2/novel/bookmark/detail` | 已收藏/未收藏；absent/404、public/private、tags/error；**no** | 可靠正 novel ID；同账号可访问 | N/A | candidate wire/response/adapter/SDK/MCP/offline 已有；strict public/private/live/compatibility 仍未形成 evidence | `mapped_to_task`：G1-T09、G1-T20、G1-T25、G1-T29 |
 | 21 `novel-bookmark-mutation` | yes | candidate `POST /v2/novel/bookmark/add`；`POST /v1/novel/bookmark/delete` | add/delete 一次；**no**（read-back 不是第二页） | 明确授权隔离账号；可靠正 novel ID；先保存原状态 | detail/list/tags 同账号 read-back；删除后恢复原 bookmark/restrict/tags；只清理本轮副作用；uncertain 不 replay | 当前 live `missing`；public SDK/CLI/MCP mutation 缺失 | `mapped_to_task`：G1-T13、G1-T17、G1-T18、G1-T20、G1-T22、G1-T30 |
 | 22 `bookmark-subtype` | no | artwork bookmark family 的 client-side selector；无已批准 server subtype path | 不执行 server-side subtype live；offline 验证 `artwork\|novel\|all`、client-side filter、logical limit；**no** | synthetic fixture 覆盖多种 subtype | N/A | MCP client-side subtype filter 与 logical pagination 已 offline verified；server-side subtype 无 evidence；`all` 不是 upstream subtype | `mapped_to_task`：G1-T09、G1-T19、G1-T21、G1-T22 |
-| 23 `bookmark-list-all` | yes | artwork bookmark list → novel bookmark list aggregate | 同一账号执行 `--type all`；artwork 后 novel；统一 budget/typed output/failure atomicity；**conditional：仅自然 continuation** | 同一账号可访问两类 bookmarks；最好两流非空，允许一流为空 | N/A（read-only aggregate） | offline aggregate 有；无 public SDK/MCP aggregate cursor 或 aggregate live evidence | `mapped_to_task`：G1-T10、G1-T19、G1-T20、G1-T22、G1-T29 |
-| 24 `bookmark-tags-all` | yes | artwork tags → novel tags candidate aggregate | `--type all`；同名 tag 不合并；count/type/atomicity；**conditional：novel continuation 未冻结** | 同一账号可读两类 tags；至少一侧有 tags，另一侧可空 | N/A | 仅 CLI offline aggregate；novel candidate、aggregate live evidence 缺失 | `mapped_to_task`：G1-T10、G1-T19、G1-T20、G1-T22、G1-T29 |
+| 23 `bookmark-list-all` | yes | artwork bookmark list → novel bookmark list aggregate | 同一账号执行 `--type all`；artwork 后 novel；统一 budget/typed output/failure atomicity；**conditional：仅自然 continuation** | 同一账号可访问两类 bookmarks；最好两流非空，允许一流为空 | N/A（read-only aggregate） | CLI/MCP offline aggregate 有；无 public SDK/MCP aggregate cursor、strict live 或 aggregate live evidence | `mapped_to_task`：G1-T10、G1-T19、G1-T20、G1-T22、G1-T29 |
+| 24 `bookmark-tags-all` | yes | artwork tags → novel tags candidate aggregate | `--type all`；同名 tag 不合并；count/type/atomicity；**conditional：novel continuation 未冻结** | 同一账号可读两类 tags；至少一侧有 tags，另一侧可空 | N/A | CLI/MCP offline aggregate 有；novel candidate continuation、strict compatibility 与 aggregate live evidence 缺失 | `mapped_to_task`：G1-T10、G1-T19、G1-T20、G1-T22、G1-T29 |
 
 ### 11.3 Manifest：comments / user / relationship（25–37）
 
@@ -747,4 +747,4 @@ G1-T01 已在干净目标 worktree 执行 `go test ./...` 并通过；G1-CHECK-0
 - **Open correctness：** P0=0；P1=1（#4 `artwork-recommended` continuation），已映射至 G1-T28/G1-T20/G1-T22，未隐藏。
 - **Mutation：** #17、#21、#26、#28、#29、#36 必须执行写前授权、可靠 ID、同账号 read-back、仅清理本轮副作用；uncertain 不 replay。
 - **External/decision blocker：** 当前无 blocker。未来 live 数据/账号/权限/网络不足时，严格按 manifest 记录 `blocked_external`；不得把 internal bug 归类为 external blocker。
-- **Freeze boundary：** 后续 live task 只能执行本表 `live_required=yes` 的 scenario；不得临时增加 query、subtype、第二页或 mutation scope。G1-CHECK-02 已复核 manifest、counts、P0/P1、owner mapping 并完成普通 fast-forward push；Phase B 已完成 G1-T07、G1-T08、G1-T09，G1-CHECK-03 已审计通过，下一任务为 G1-T10。
+- **Freeze boundary：** 后续 live task 只能执行本表 `live_required=yes` 的 scenario；不得临时增加 query、subtype、第二页或 mutation scope。G1-CHECK-02 已复核 manifest、counts、P0/P1、owner mapping 并完成普通 fast-forward push；Phase B 已完成 G1-T07、G1-T08、G1-T09、G1-CHECK-03、G1-T10，下一任务为 G1-T11。

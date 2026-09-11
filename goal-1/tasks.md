@@ -380,7 +380,7 @@ AND (required_external_blockers > 0 OR required_decision_blockers > 0)
 
 ## G1-T10 — MCP required bookmark aggregates
 
-**Status:** pending
+**Status:** verified
 
 **Depends on:** G1-CHECK-03
 
@@ -396,10 +396,10 @@ AND (required_external_blockers > 0 OR required_decision_blockers > 0)
 **最小验证：** 聚合专项 Red/Green；不跑全 MCP suite。
 
 **完成记录：**
-- 改动/no-op：
-- Red/Green：
-- Aggregate evidence：
-- 风险：
+- 改动/no-op：新增 `bookmark_list_all` 与 `bookmark_tags_all` 两个 additive MCP tool；复用 public `sdk/pixiv` bookmark operations、shared `pagination/traversal` 双流 collector，新增 typed tag output/schema、registration、wire failure fixture 与双语 MCP docs；旧 bookmark tool 名称、输入/输出 envelope 与 endpoint wire 未替换。
+- Red/Green：Red 实跑 `go test ./internal/mcpserver/pixiv -run 'TestBookmark(ListAll|TagsAll)' -count=1 -v`，在 operation 未注册时按预期因 unknown tool 失败；Green 实跑 `go test ./internal/mcpserver/pixiv -run 'TestBookmark(ListAll|TagsAll)|TestServerListsExpectedTools' -count=1 -v`，5 个 aggregate tests 与 exact registration 全部通过。另 `go test ./internal/mcpserver/pixiv/internal/runtime ./internal/mcpserver/pixiv/internal/records ./internal/mcpserver/pixiv/internal/outputs ./internal/shared/pagination ./internal/shared/traversal -count=1`、`go vet ./internal/mcpserver/pixiv/...`、文档测试、`gofmt` 与 `git diff --check` 通过；按任务约束未跑全 MCP suite。
+- Aggregate evidence：list 固定 artwork→novel；统一 page/limit 在第一页返回 artwork、第二页返回 novel 且无重复；失败 attempt 重放后只保留成功结果；required novel stream failure 时整页 `isError=true` 且 structured records 为空；tags 保留同名 tag 的独立 count 与 `content_type=artwork|novel`，required stream failure 时 structured tags 为空；exact registration 证明旧 wire additive 保留。shared collector 的双流 state/checkpoint 已接入，MCP 不暴露 aggregate cursor。
+- 风险：public SDK aggregate operation/cursor、strict candidate/public-private/live second-page、完整 compatibility 与 release 仍未证明；novel bookmark tags continuation 仍按“不猜测”处理；无新增 internal/external/decision blocker。
 - 下一步：G1-T11
 
 ## G1-T11 — MCP read registration/schema/error gate
