@@ -780,7 +780,7 @@ AND (required_external_blockers > 0 OR required_decision_blockers > 0)
 
 ## G1-CHECK-08 — Phase D exit：compatibility/docs/release contract + push
 
-**Status:** pending
+**Status:** verified
 
 **Depends on:** G1-T22,G1-T23,G1-T24
 
@@ -789,12 +789,15 @@ AND (required_external_blockers > 0 OR required_decision_blockers > 0)
 **Phase push gate：** 提交 Phase D 的实现/文档/账本，普通 fast-forward push 到 `refactor/pixiv-api-stability` 并验证 Remote SHA == Local HEAD。push 未成功不得进入 Phase E。
 
 **完成记录：**
-- 检查结论：
-- Correction：
-- Blocker：
-- Local HEAD：
-- Remote SHA：
-- Push result：
+- 检查结论：PASS。G1-T19（cursor integrity/binding/rollback）、G1-T20（SDK compatibility，无 breaking）、G1-T21（CLI presentation + bookmark add/remove novel namespace Red→Green）、G1-CHECK-07（集中检查 PASS）、G1-T22（MCP compatibility audit，无 breaking）、G1-T23（双语 docs/Skill/changelog 同步）、G1-T24（forbidden endpoint/no-fallback gate PASS，legacy novel resource 路径登记 out-of-scope observation）全部 verified；cursor/SDK/CLI/MCP/docs/forbidden 六项 contract 均有当前 HEAD 可复跑证据；无未决内部差异。
+- Verification：push-exit HEAD 复跑 Phase D 代表性回归——shared pagination/traversal/resolver/searchfilter、sdk、sdk/pixiv、bookmark、search、internal/cli、publicapi pinned inventory、MCP focused compat set（exact registration/schema walk/novel_content negative/mutation structured）与 documentation tests，全部 PASS；各实现提交时 commit hook 全量 `go test ./...` PASS。
+- Worktree：专用 linked worktree、branch=`refactor/pixiv-api-stability`、push 前干净；Phase D 实现/文档/账本共 9 个 commit（`2f62771..c4a99ec`）全部已提交，无来源不明 diff。
+- Correction：无新增 correction、capability、task ID 或 scope；T24 的 out-of-scope observation 已登记（legacy novel resource 兼容面，移除需用户决策）。
+- Blocker：无 internal/external/decision blocker。
+- Local HEAD：`c4a99ec4ecb3646bced231d493db94d641405969`（Phase D push-exit checkpoint）。
+- Remote SHA：`c4a99ec4ecb3646bced231d493db94d641405969`；已由 `git ls-remote` 与 `gh api` 双重核验一致。
+- Push result：PASS；`5bfb29ceb0b2a541e7fb21ae932bdc79f34e3432..c4a99ec4ecb3646bced231d493db94d641405969` ordinary fast-forward；未使用 force/rebase。CHECK 在远端一致性核验后标记为 `verified`。
+- 下一步：G1-T25（Phase E）。
 
 ---
 
