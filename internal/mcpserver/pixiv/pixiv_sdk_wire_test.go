@@ -329,6 +329,44 @@ func (tr *testSDKTransport) RoundTrip(request *http.Request) (*http.Response, er
 		req := pixivsdk.NovelCommentsRequest{NovelID: queryInt64(request.URL.Query(), "novel_id")}
 		tr.fake.novelCommentsRequest = req
 		status, body, err = wireCommentPageResult(tr.fake.novelCommentsResult)
+	case "/v1/illust/comment/add":
+		tr.fake.artworkCommentWireCalls++
+		artworkID := formInt64(request, "illust_id")
+		comment := formValue(request, "comment")
+		switch {
+		case formValue(request, "parent_comment_id") != "":
+			tr.fake.replyArtworkCommentRequest = pixivsdk.ReplyArtworkCommentRequest{
+				ArtworkID:       artworkID,
+				Comment:         comment,
+				ParentCommentID: formInt64(request, "parent_comment_id"),
+			}
+			if tr.fake.replyArtworkCommentErr != nil {
+				return wireErrorResponse(tr.fake.replyArtworkCommentErr)
+			}
+			status, body, err = http.StatusOK, []byte(`{"comment_id":902}`), nil
+		case formValue(request, "stamp_id") != "":
+			tr.fake.stampArtworkCommentRequest = pixivsdk.StampArtworkCommentRequest{
+				ArtworkID: artworkID,
+				Comment:   comment,
+				StampID:   formInt64(request, "stamp_id"),
+			}
+			if tr.fake.stampArtworkCommentErr != nil {
+				return wireErrorResponse(tr.fake.stampArtworkCommentErr)
+			}
+			status, body, err = http.StatusOK, []byte(`{"comment_id":903}`), nil
+		default:
+			tr.fake.createArtworkCommentRequest = pixivsdk.PostArtworkCommentRequest{ArtworkID: artworkID, Comment: comment}
+			if tr.fake.createArtworkCommentErr != nil {
+				return wireErrorResponse(tr.fake.createArtworkCommentErr)
+			}
+			status, body, err = http.StatusOK, []byte(`{"comment_id":901}`), nil
+		}
+	case "/v1/illust/comment/delete":
+		tr.fake.deleteArtworkCommentRequest = pixivsdk.DeleteArtworkCommentRequest{CommentID: formInt64(request, "comment_id")}
+		if tr.fake.deleteArtworkCommentErr != nil {
+			return wireErrorResponse(tr.fake.deleteArtworkCommentErr)
+		}
+		status, body, err = http.StatusOK, []byte(`{}`), nil
 	case "/v1/trending-tags/illust":
 		status, body, err = wireTrendingTags(tr.fake.trendingTags)
 	case "/v2/illust/bookmark/add":

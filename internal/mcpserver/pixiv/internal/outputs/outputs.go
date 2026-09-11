@@ -264,12 +264,13 @@ func BookmarkDetailError(err error) (*mcp.CallToolResult, BookmarkDetail, error)
 
 // Mutation 是 mutation tool 的输出 envelope。
 type Mutation struct {
-	Success  bool   `json:"success"`
-	Action   string `json:"action"`
-	IllustID int64  `json:"illust_id,omitempty"`
-	NovelID  int64  `json:"novel_id,omitempty"`
-	UserID   int64  `json:"user_id,omitempty"`
-	Text     string `json:"text"`
+	Success   bool   `json:"success"`
+	Action    string `json:"action"`
+	IllustID  int64  `json:"illust_id,omitempty"`
+	NovelID   int64  `json:"novel_id,omitempty"`
+	UserID    int64  `json:"user_id,omitempty"`
+	CommentID int64  `json:"comment_id,omitempty"`
+	Text      string `json:"text"`
 }
 
 // MutationResult 构造 mutation 的 MCP 摘要。
@@ -286,6 +287,18 @@ func RunMutation(out Mutation, run func() error) (*mcp.CallToolResult, Mutation,
 	}
 	out.Success = true
 	return MutationResult(out), out, nil
+}
+
+// RunMutationInPlace 与 RunMutation 共享失败/成功语义，同时允许一次上游
+// mutation 成功后把可靠响应字段（例如 comment_id）写回同一个 envelope。
+func RunMutationInPlace(out *Mutation, run func() error) (*mcp.CallToolResult, Mutation, error) {
+	err := run()
+	if err != nil {
+		out.Text = "Error: " + err.Error()
+		return MutationResult(*out), *out, nil
+	}
+	out.Success = true
+	return MutationResult(*out), *out, nil
 }
 
 // ListComments 在账号池重放边界内收集 artwork 或 novel 的评论分页并输出统一

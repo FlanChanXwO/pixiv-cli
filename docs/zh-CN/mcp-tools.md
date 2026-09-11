@@ -174,12 +174,17 @@ application outcome 的 `filter` 会报告 `min`、`max`、`membership`、`strat
 | `add_novel_bookmark` | `novel_id`，可选 `restrict`、可重复 `tags` | `{success, action, novel_id}` |
 | `remove_bookmark` | `illust_id` | `{success, action, illust_id}` |
 | `remove_novel_bookmark` | `novel_id` | `{success, action, novel_id}` |
+| `create_artwork_comment` | 正数 `illust_id`、非空 `comment` | `{success, action, illust_id, comment_id}` |
+| `reply_artwork_comment` | 正数 `illust_id`、非空 `comment`、正数 `parent_comment_id` | `{success, action, illust_id, comment_id}` |
+| `stamp_artwork_comment` | 正数 `illust_id`、非空 `comment`、正数 `stamp_id` | `{success, action, illust_id, comment_id}` |
+| `delete_artwork_comment` | 正数 `comment_id` | `{success, action, comment_id}` |
 | `follow_user` | `user_id`，可选 `restrict` | `{success, action, user_id}` |
 | `unfollow_user` | `user_id` | `{success, action, user_id}` |
 
-写操作包含作品/小说收藏和用户关注 mutation。add 省略 `restrict` 时默认为 `public`，只接受
-`public` 或 `private`。提交后状态未知时不会换账号重放；失败写操作返回 `success=false`、
-`isError=true` 和安全诊断。
+写操作包含作品/小说收藏、作品评论/印章评论和用户关注 mutation。add 省略 `restrict` 时默认为
+`public`，只接受 `public` 或 `private`。作品评论 create/reply/stamp 会直接返回上游给出的
+`comment_id`；delete 返回输入的评论 ID。server 不会读取最新评论来猜测 ID，提交后状态未知时不会换账号重放；失败写操作返回
+`success=false`、`isError=true` 和安全诊断。
 
 ## 认证与 fallback
 

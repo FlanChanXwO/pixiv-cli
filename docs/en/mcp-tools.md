@@ -218,13 +218,20 @@ optional port or a failed App request.
 | `add_novel_bookmark` | `novel_id`, optional `restrict`, repeated `tags` | `{success, action, novel_id}` |
 | `remove_bookmark` | `illust_id` | `{success, action, illust_id}` |
 | `remove_novel_bookmark` | `novel_id` | `{success, action, novel_id}` |
+| `create_artwork_comment` | positive `illust_id`, non-empty `comment` | `{success, action, illust_id, comment_id}` |
+| `reply_artwork_comment` | positive `illust_id`, non-empty `comment`, positive `parent_comment_id` | `{success, action, illust_id, comment_id}` |
+| `stamp_artwork_comment` | positive `illust_id`, non-empty `comment`, positive `stamp_id` | `{success, action, illust_id, comment_id}` |
+| `delete_artwork_comment` | positive `comment_id` | `{success, action, comment_id}` |
 | `follow_user` | `user_id`, optional `restrict` | `{success, action, user_id}` |
 | `unfollow_user` | `user_id` | `{success, action, user_id}` |
 
-Writes are artwork/novel-bookmark and user-follow mutations. An empty
-`restrict` on an add defaults to `public`; only `public` and `private` are
-accepted. A post-submit unknown state is not replayed under another account.
-Failed writes return `success=false` with `isError=true` and a safe diagnostic.
+Writes are artwork/novel-bookmark, artwork-comment/stamp, and user-follow
+mutations. An empty `restrict` on an add defaults to `public`; only `public`
+and `private` are accepted. Artwork comment create/reply/stamp operations
+return the upstream `comment_id`; delete returns the supplied comment ID. The
+server never reads the latest comment to guess an ID, and a post-submit unknown
+state is not replayed under another account. Failed writes return
+`success=false` with `isError=true` and a safe diagnostic.
 
 ## Authentication and fallback
 

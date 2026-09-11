@@ -227,7 +227,7 @@ pixiv timeline latest --type illust --limit 10 --json
 
 ### MCP
 
-反向搜图属于 CLI/MCP integration；public Go SDK 现在也暴露 typed artwork 与 novel bookmark mutation。
+反向搜图属于 CLI/MCP integration；public Go SDK 现在也暴露 typed artwork/novel bookmark 与 comment mutation。
 
 显式启动 stdio server。stdout 只用于 JSON-RPC；tool 运行失败会以 `isError=true` 的 structured result 返回。默认不创建项目级或每日日志文件。
 
