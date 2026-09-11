@@ -760,7 +760,7 @@ AND (required_external_blockers > 0 OR required_decision_blockers > 0)
 
 ## G1-T24 — Forbidden endpoint / no-fallback release contract gate
 
-**Status:** pending
+**Status:** verified
 
 **Depends on:** G1-T20,G1-T21,G1-T22,G1-T23
 
@@ -773,9 +773,9 @@ AND (required_external_blockers > 0 OR required_decision_blockers > 0)
 **测试预算：** 现有负向 tests + 必要静态引用检查；不新增重复 fixture。
 
 **完成记录：**
-- Gate：
-- Findings：
-- Correction：
+- Gate：PASS。静态扫描（sdk/internal/cli/internal/mcpserver/internal/services/pixiv/internal/shared 生产树）：无 `/v1/novel/detail`、`/v1/novel/series` 引用（protocol 常量为 `AppNovelDetail="/v2/novel/detail"`、`AppNovelSeries="/v2/novel/series"`，endpoint packages PASS）；无 `/webview` 请求路径；无 anonymous fallback 路径。负向回归实跑 PASS：`TestNovelContentDeprecatedEntryPointDoesNotCallRejectedEndpoint`（SDK NovelContent 零网络）、`TestNovelContentReportsUnsupportedWithoutCallingRejectedEndpoint`（MCP structured unsupported 零网络）、novel detail/series endpoint、resolver（bare-ID explicit-type、无隐式 probe）、searchfilter（rating 仅本地规范化，`map_artwork` 不把 rating 写入 upstream query）。
+- Findings：(1) `/v1/novel/content` 仅作为 protocol 常量 `AppNovelContent` 存在，唯一生产消费点是 legacy `novel_image`/`novel_file` resource resolve 路径（`sdk/pixiv/resource.go:280`→`detail.go Content`）；该路径不属于 41 项 required capability 的任何 surface（CLI download 不接受 novel 来源、SDK `NovelContent` deprecated 零网络、MCP `novel_content` structured unsupported），ref 铸造链闭合于内容解析自身，required public path 无法铸造或接受此类 ref；上游对该 endpoint 已 404（受控失败，无 fallback）。判定：gate 不破，登记 out-of-scope observation。(2) `illust_comments` 保持 legacy v3 wire，未注册任何 replacement/fallback（#25 保护成立）。
+- Correction：无。finding (1) 若要移除 legacy resource 兼容面属 breaking change（超出 required scope，需用户决策），不自行实施。
 - 下一步：G1-CHECK-08
 
 ## G1-CHECK-08 — Phase D exit：compatibility/docs/release contract + push
