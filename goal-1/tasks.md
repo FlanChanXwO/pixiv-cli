@@ -837,7 +837,7 @@ AND (required_external_blockers > 0 OR required_decision_blockers > 0)
 
 ## G1-T27 — Full offline build / quality / race-as-needed / redaction gate
 
-**Status:** pending
+**Status:** verified
 
 **Depends on:** G1-T25,G1-T26
 
@@ -855,11 +855,12 @@ AND (required_external_blockers > 0 OR required_decision_blockers > 0)
 禁止为了“更保险”重复运行与同一 HEAD 已通过且未被 invalidated 的昂贵 gate。
 
 **完成记录：**
-- Commands：
-- Result：
-- Race scope/rationale：
-- Redaction：
-- Correction：
+- Commands：`go test ./... -count=1`（147 包）；`go vet ./...`（clean）；`sh scripts/build.sh`（built build/pixiv）；`go test -race ./internal/mcpserver/pixiv ./internal/mcpserver/pixiv/internal/runtime ./sdk/pixiv ./internal/services/pixiv ./internal/services/pixiv/pool -count=1`；redaction focused：`TestToolErrorOutputDoesNotLeakCanary`、`TestEveryToolOutputSchemaOmitsTransportAndCredentialFields`、`TestCursorTextIsRouteSafe`、`TestSearchArtworksCheckpointRejectsChangedBindings`；`git diff --check`。
+- Result：全量 test 147/147 包 PASS（0 FAIL）；vet 零输出；build 成功产出 `build/pixiv`；race 5 包 PASS；redaction focused 全 PASS。
+- Race scope/rationale：仅覆盖本 Goal 修改过且具并发语义的 package——MCP mutation/runtime（wire handler 与 attempt 生命周期）、sdk/pixiv（novel mutation + client）、services/pixiv facade 与 pool（账号池 attempt commit/replay 语义，release contract 既有 race 要求集，沿 CHECK-05 先例）；未为未改动 package 追加 race。
+- Redaction：MCP error canary 与 output schema credential/transport 字段 walk PASS（isError 输出与全部 54 tool schema 不泄漏 token/cookie/signed URL）；cursor 文本 route-safe PASS；`goal-1/*.md` 账本静态扫描无 refresh/access token、Bearer、签名 URL 或隐私数据（本轮无 live 证据写入）；`git diff --check` PASS。
+- 引用未 invalidated 证据：docs/completion（scripts/tests/documentation PASS 于 T23/CHECK-08）、compatibility replay（四组 legacy replay 于 T26）、forbidden endpoint/no-fallback（T24 gate）均在同一代码 HEAD 通过，其后仅 ledger commit，不重复运行。
+- Correction：无。
 - 下一步：G1-CHECK-09
 
 ## G1-CHECK-09 — Phase E exit：offline release candidate + push
