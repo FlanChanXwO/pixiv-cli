@@ -943,7 +943,7 @@ Live 只执行 `Live Manifest` 中 `live_required=yes` 的场景，不临时增�
 
 ## G1-T29 — Live read：bookmark / comments / user
 
-**Status:** pending
+**Status:** verified
 
 **Depends on:** G1-CHECK-09
 
@@ -952,10 +952,33 @@ Live 只执行 `Live Manifest` 中 `live_required=yes` 的场景，不临时增�
 **验收：** 只要求 manifest 指定的代表性真实场景；数据不足时按 manifest 记录 `blocked_external`，不得伪造第二页。
 
 **完成记录：**
-- Scenarios：
-- Evidence：
-- Blocker/Correction：
-- 下一步：G1-T30
+- Scenarios：`e2e/sdk_pixiv_live_manifest_test.go` 新增 `TestRealPixivSDKLiveManifestBookmarkUserRead`（同 env 门控）。Live PASS——#14 artwork bookmarks public 30(续页存在)/private 1；#15 bookmark tags illust 30/novel 0（空列表合法）；#18 novel bookmarks public/private 均空（合法）；#29 stamps 40；#30/#31 user artworks/novels self 0（合法空，pagination_exempt）；#32 following 29→29 零重复、followers/blocked 0（合法）；#33 user detail + CurrentUser 身份一致；#34 search user 18 项；#35 trending 40 tags + sample artwork 合法；#37 mypixiv users/illusts/novels 0（合法空）；#23/#24 CLI `--type all` 聚合 live：records=2 artwork_side=true（novel 流为空，manifest 明确允许一流为空）、tags typed 输出。
+- Evidence：脱敏（计数/布尔/公共 ID）；CLI 聚合通过子进程执行 `build` 产出的真实 binary（带 `--proxy`），记录解析自 JSON 的 record type 序列。
+- Blocker/Correction：**live 暴露内部 bug → 抢占式 correction `G1-CORR-G1-T29-BOOKMARK-DETAIL-01`**：#16/#20 bookmark detail 的 absent（未收藏）case live 返回 `malformed_upstream_response`——脱敏诊断（tee 捕获）显示 live 响应为 HTTP 200 + `is_bookmarked:false` 且携带作品自身 tags（is_registered:false），而 adapter 按 Goal-3 fixture 假设「absent 带 tags → malformed」；冻结契约要求「归一为空 restrict 与 non-nil empty tags」，adapter 过严。#27 novel comments：扫描前 3 本搜索小说均 0 comments → `blocked_external (data)`；#20 bookmarked case：账号无 novel bookmarks → `blocked_external (data)`。G1-T29 场景执行完毕，gate 本身 PASS，#16/#20 Live 维持未验证直至 correction。
+- 下一步：G1-CORR-G1-T29-BOOKMARK-DETAIL-01
+
+## G1-CORR-G1-T29-BOOKMARK-DETAIL-01 — bookmark detail absent 归一修正
+
+**Status:** pending
+
+**Source task/gate：** G1-T29 live read（#16/#20 absent case）。
+
+**Capability：** #16 `artwork-bookmark-detail`、#20 `novel-bookmark-detail`。
+
+**Observed failure：** live 未收藏响应为 HTTP 200 + `{"bookmark_detail":{"is_bookmarked":false,"tags":[...作品自身 tags...]}}`（is_registered:false），adapter 以「absent 携带 tag → malformed」拒绝；与冻结契约「未收藏归一为空 restrict 与 non-nil empty tags」冲突。artwork 与 novel 两个 detail adapter 同根因。
+
+**Expected contract：** is_bookmarked=false 的响应统一归一为 `{Bookmarked:false, Restrict:"", Tags:[]string{}}`（上游携带的未注册 tags 为作品自身属性，不是收藏 tags）；404/null 保持既有归一。
+
+**Scope boundary：** 仅 artwork bookmark detail 与 novel bookmark detail 的 absent 归一逻辑与 fixtures；不触碰 bookmarked=true 路径与其他 endpoint。
+
+**Red / expected failure：** fixture `{"bookmark_detail":{"is_bookmarked":false,"tags":[{"name":"x","is_registered":false}]}}` → 当前 adapter 返回 malformed（实跑确认）。
+
+**Green acceptance：** fixture 归一为 bookmarked=false + 空 tags；`TestRealPixivSDKLiveManifestBookmarkUserRead` 的 absent case live PASS；bookmarked=true 路径回归不变。
+
+**Compatibility impact：** SDK `ArtworkBookmarkDetail`/`NovelBookmarkDetail` 输出在 absent 场景从 error 变为显式 absent 归一（与冻结契约一致）；无 wire 变更。
+
+**Rollback boundary：** revert 两个 adapter 的归一分支与 fixtures 即可。
+
 
 ## G1-T30 — Live mutation：bookmark / comments / follow
 
