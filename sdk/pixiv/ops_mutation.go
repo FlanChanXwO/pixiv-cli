@@ -5,6 +5,7 @@ import (
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/endpoint/artwork/bookmark"
 	"github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/endpoint/user/follow"
+	usernovelbookmarks "github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/endpoint/user/novelbookmarks"
 	"github.com/FlanChanXwO/pixiv-cli/sdk"
 )
 
@@ -65,6 +66,35 @@ func (c *Client) removeArtworkBookmark(ctx context.Context, artworkID int64, ope
 // implementation.
 func (c *Client) RemoveBookmark(ctx context.Context, request RemoveBookmarkRequest) error {
 	return c.removeArtworkBookmark(ctx, request.ArtworkID, "RemoveBookmark")
+}
+
+// AddNovelBookmark bookmarks one novel. Tags, when non-empty, are applied as
+// bookmark tags.
+func (c *Client) AddNovelBookmark(ctx context.Context, request AddNovelBookmarkRequest) error {
+	if request.NovelID <= 0 {
+		return newError("AddNovelBookmark", sdk.InvalidArgument, "novel ID must be positive")
+	}
+	if request.Restrict == "" {
+		request.Restrict = RestrictPublic
+	}
+	if err := validateRestrict("AddNovelBookmark", request.Restrict); err != nil {
+		return err
+	}
+	if err := c.userNovelBookmarks.Add(ctx, usernovelbookmarks.AddRequest{NovelID: request.NovelID, Restrict: string(request.Restrict), Tags: request.Tags}); err != nil {
+		return classifyAppError(err, "AddNovelBookmark")
+	}
+	return nil
+}
+
+// RemoveNovelBookmark removes the current user's bookmark from one novel.
+func (c *Client) RemoveNovelBookmark(ctx context.Context, request RemoveNovelBookmarkRequest) error {
+	if request.NovelID <= 0 {
+		return newError("RemoveNovelBookmark", sdk.InvalidArgument, "novel ID must be positive")
+	}
+	if err := c.userNovelBookmarks.Remove(ctx, request.NovelID); err != nil {
+		return classifyAppError(err, "RemoveNovelBookmark")
+	}
+	return nil
 }
 
 // FollowUser follows one user.

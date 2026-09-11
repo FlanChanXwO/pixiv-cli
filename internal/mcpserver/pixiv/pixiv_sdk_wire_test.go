@@ -348,6 +348,23 @@ func (tr *testSDKTransport) RoundTrip(request *http.Request) (*http.Response, er
 			return wireErrorResponse(tr.fake.removeBookmarkErr)
 		}
 		status, body, err = http.StatusOK, []byte("{}"), nil
+	case "/v2/novel/bookmark/add":
+		req := pixivsdk.AddNovelBookmarkRequest{NovelID: formInt64(request, "novel_id"), Restrict: pixivsdk.Restrict(formValue(request, "restrict"))}
+		if tags := formValues(request, "tags[]"); len(tags) > 0 {
+			req.Tags = tags
+		}
+		tr.fake.addNovelBookmarkRequest = req
+		if tr.fake.addNovelBookmarkErr != nil {
+			return wireErrorResponse(tr.fake.addNovelBookmarkErr)
+		}
+		status, body, err = http.StatusOK, []byte("{}"), nil
+	case "/v1/novel/bookmark/delete":
+		req := pixivsdk.RemoveNovelBookmarkRequest{NovelID: formInt64(request, "novel_id")}
+		tr.fake.removeNovelBookmarkRequest = req
+		if tr.fake.removeNovelBookmarkErr != nil {
+			return wireErrorResponse(tr.fake.removeNovelBookmarkErr)
+		}
+		status, body, err = http.StatusOK, []byte("{}"), nil
 	case "/v1/user/follow/add":
 		req := pixivsdk.FollowUserRequest{UserID: formInt64(request, "user_id"), Restrict: pixivsdk.Restrict(formValue(request, "restrict"))}
 		tr.fake.followUserRequest = req

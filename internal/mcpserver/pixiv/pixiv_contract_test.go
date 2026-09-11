@@ -39,6 +39,27 @@ func TestSDKMutationTypedErrorIsMCPError(t *testing.T) {
 	}
 }
 
+func TestNovelBookmarkMutationTypedErrorIsMCPError(t *testing.T) {
+	client := &fakeSDKClient{addNovelBookmarkErr: &sdk.Error{
+		Product:    "pixiv",
+		Operation:  "AddNovelBookmark",
+		Reason:     sdk.UpstreamError,
+		HTTPStatus: http.StatusBadGateway,
+	}}
+	session, closeSession := newSDKTestSession(t, client)
+	defer closeSession()
+
+	result := callTool(t, session, "add_novel_bookmark", map[string]any{"novel_id": 41})
+	if !result.IsError {
+		t.Fatalf("typed SDK novel mutation failure must be an MCP error: %+v", result)
+	}
+	var out outputs.Mutation
+	decodeStructured(t, result, &out)
+	if out.Success || out.NovelID != 41 || !strings.Contains(out.Text, "upstream_error") {
+		t.Fatalf("structured novel mutation error = %+v", out)
+	}
+}
+
 func TestSDKMutationToolsReturnStructuredSuccess(t *testing.T) {
 	client := &fakeSDKClient{}
 	session, closeSession := newSDKTestSession(t, client)
@@ -52,6 +73,8 @@ func TestSDKMutationToolsReturnStructuredSuccess(t *testing.T) {
 	}{
 		{"add_bookmark", map[string]any{"illust_id": 9, "restrict": "private", "tags": []string{"one"}}, "add_bookmark", "Bookmarked artwork 9."},
 		{"remove_bookmark", map[string]any{"illust_id": 9}, "remove_bookmark", "Removed bookmark from artwork 9."},
+		{"add_novel_bookmark", map[string]any{"novel_id": 9, "restrict": "private", "tags": []string{"one"}}, "add_novel_bookmark", "Bookmarked novel 9."},
+		{"remove_novel_bookmark", map[string]any{"novel_id": 9}, "remove_novel_bookmark", "Removed bookmark from novel 9."},
 		{"follow_user", map[string]any{"user_id": 8, "restrict": "private"}, "follow_user", "Followed user 8."},
 		{"unfollow_user", map[string]any{"user_id": 8}, "unfollow_user", "Unfollowed user 8."},
 	} {
@@ -62,6 +85,9 @@ func TestSDKMutationToolsReturnStructuredSuccess(t *testing.T) {
 			if !out.Success || out.Action != test.want || out.Text != test.wantText {
 				t.Fatalf("mutation output = %+v", out)
 			}
+			if strings.Contains(test.name, "novel") && out.NovelID != 9 {
+				t.Fatalf("novel mutation output = %+v", out)
+			}
 		})
 	}
 	if client.addBookmarkRequest.ArtworkID != 9 || client.addBookmarkRequest.Restrict != pixiv.RestrictPrivate || !slices.Equal(client.addBookmarkRequest.Tags, []string{"one"}) {
@@ -69,6 +95,9 @@ func TestSDKMutationToolsReturnStructuredSuccess(t *testing.T) {
 	}
 	if client.removeBookmarkRequest.ArtworkID != 9 || client.followUserRequest.UserID != 8 || client.followUserRequest.Restrict != pixiv.RestrictPrivate || client.unfollowUserRequest.UserID != 8 {
 		t.Fatalf("mutation requests = remove=%+v follow=%+v unfollow=%+v", client.removeBookmarkRequest, client.followUserRequest, client.unfollowUserRequest)
+	}
+	if client.addNovelBookmarkRequest.NovelID != 9 || client.addNovelBookmarkRequest.Restrict != pixiv.RestrictPrivate || !slices.Equal(client.addNovelBookmarkRequest.Tags, []string{"one"}) || client.removeNovelBookmarkRequest.NovelID != 9 {
+		t.Fatalf("novel mutation requests = add=%+v remove=%+v", client.addNovelBookmarkRequest, client.removeNovelBookmarkRequest)
 	}
 }
 

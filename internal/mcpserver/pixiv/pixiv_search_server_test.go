@@ -227,8 +227,8 @@ func TestServerListsExpectedTools(t *testing.T) {
 		"illust_series", "novel_series", "illust_comments", "novel_comments",
 		"recommended", "trending_tags_illust", "timeline_illust_following", "timeline_novel_following",
 		"timeline_illust_latest", "timeline_novel_latest", "mypixiv_users", "mypixiv_illusts", "mypixiv_novels",
-		"user_detail", "user_artworks", "user_novels", "user_bookmarks", "user_novel_bookmarks", "user_following", "user_followers", "related_users", "blocked_users", "bookmark_tags", "bookmark_tags_all", "bookmark_detail", "bookmark_list_all", "novel_bookmark_tags", "novel_bookmark_detail", "add_bookmark",
-		"remove_bookmark", "follow_user", "unfollow_user", "reverse_search",
+		"user_detail", "user_artworks", "user_novels", "user_bookmarks", "user_novel_bookmarks", "user_following", "user_followers", "related_users", "blocked_users", "bookmark_tags", "bookmark_tags_all", "bookmark_detail", "bookmark_list_all", "novel_bookmark_tags", "novel_bookmark_detail", "add_bookmark", "add_novel_bookmark",
+		"remove_bookmark", "remove_novel_bookmark", "follow_user", "unfollow_user", "reverse_search",
 	}
 	slices.Sort(names)
 	slices.Sort(want)
@@ -290,6 +290,63 @@ func TestServerListsExpectedTools(t *testing.T) {
 	for _, field := range []string{"rating", "min_text_length", "max_text_length", "original_only"} {
 		if strings.Contains(string(novelSchema), `"`+field+`"`) {
 			t.Fatalf("search_novel input schema publishes unsupported field %q: %s", field, novelSchema)
+		}
+	}
+}
+
+func TestNovelBookmarkMutationSchemasExposeInputs(t *testing.T) {
+	server := pixivmcpserver.New(&fakeAPI{}, &fakeDownloads{})
+	clientTransport, serverTransport := mcp.NewInMemoryTransports()
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go func() {
+		_ = server.Run(ctx, serverTransport)
+	}()
+
+	client := mcp.NewClient(&mcp.Implementation{Name: "test", Version: "0.0.0"}, nil)
+	session, err := client.Connect(ctx, clientTransport, nil)
+	if err != nil {
+		t.Fatalf("connect: %v", err)
+	}
+	defer func() { _ = session.Close() }()
+
+	tools := map[string]*mcp.Tool{}
+	for tool, err := range session.Tools(ctx, nil) {
+		if err != nil {
+			t.Fatalf("tools: %v", err)
+		}
+		if tool.Name == "add_novel_bookmark" || tool.Name == "remove_novel_bookmark" {
+			tools[tool.Name] = tool
+		}
+	}
+	for _, name := range []string{"add_novel_bookmark", "remove_novel_bookmark"} {
+		tool := tools[name]
+		if tool == nil {
+			t.Fatalf("%s tool is not registered", name)
+		}
+		encoded, err := json.Marshal(tool.InputSchema)
+		if err != nil {
+			t.Fatalf("marshal %s input schema: %v", name, err)
+		}
+		var schema struct {
+			Properties map[string]json.RawMessage `json:"properties"`
+			Required   []string                   `json:"required"`
+		}
+		if err := json.Unmarshal(encoded, &schema); err != nil {
+			t.Fatalf("decode %s input schema: %v", name, err)
+		}
+		if _, ok := schema.Properties["novel_id"]; !ok || !slices.Contains(schema.Required, "novel_id") {
+			t.Fatalf("%s schema = %s, want required novel_id", name, encoded)
+		}
+		if name == "add_novel_bookmark" {
+			for _, field := range []string{"restrict", "tags"} {
+				if _, ok := schema.Properties[field]; !ok {
+					t.Fatalf("%s schema missing %q: %s", name, field, encoded)
+				}
+			}
+			if !strings.Contains(string(schema.Properties["restrict"]), "public or private") {
+				t.Fatalf("%s schema restrict description missing: %s", name, encoded)
+			}
 		}
 	}
 }

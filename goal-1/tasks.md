@@ -469,7 +469,7 @@ AND (required_external_blockers > 0 OR required_decision_blockers > 0)
 
 ## G1-T13 — MCP bookmark mutation
 
-**Status:** pending
+**Status:** verified
 
 **Depends on:** G1-CHECK-04
 
@@ -480,12 +480,11 @@ AND (required_external_blockers > 0 OR required_decision_blockers > 0)
 **最小验证：** 一个根因一个 Red；bookmark mutation focused/package tests。
 
 **完成记录：**
-- 改动/no-op：
-- Red/Green：
-- Outcome evidence：
-- 风险：
+- 改动/no-op：已将既有 novel bookmark endpoint leaf 提升到 public SDK 的 `AddNovelBookmark` / `RemoveNovelBookmark`；新增 MCP `add_novel_bookmark` / `remove_novel_bookmark` 与 `novel_id` structured output；artwork `add_bookmark`/`remove_bookmark` 及 legacy wire 未改。
+- Red/Green：SDK Red：`go test ./sdk/pixiv -run 'TestNovelBookmarkMutations' -count=1 -v` 初始因 public method/request type 未定义失败；MCP Red：`go test ./internal/mcpserver/pixiv -run '^TestNovelBookmarkMutation' -count=1 -v` 初始因 `Mutation.NovelID` 未定义失败。随后 focused SDK/MCP tests 与 `go test ./... -count=1` 均 PASS。
+- Outcome evidence：offline tests 覆盖 add/remove path/form、显式 private 与省略 restrict 的 public、tags、invalid input 网络前拒绝、typed structured MCP failure/success/schema、legacy artwork wire，以及 502 uncertain outcome 只发出一次请求；没有自动 replay/read-back。
+- 风险：仍无真实 mutation、access-control、写后 read-back/cleanup 或 release evidence；不把 status-only 2xx 提升为收藏状态已改变。无新增 blocker。
 - 下一步：G1-T14
-
 ## G1-T14 — MCP artwork comment/stamp mutation
 
 **Status:** pending

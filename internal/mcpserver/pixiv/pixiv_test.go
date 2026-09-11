@@ -161,6 +161,8 @@ type fakeSDKClient struct {
 	trendingTags           []pixiv.TrendingTag
 	addBookmarkErr         error
 	removeBookmarkErr      error
+	addNovelBookmarkErr    error
+	removeNovelBookmarkErr error
 	followUserErr          error
 	unfollowUserErr        error
 
@@ -206,6 +208,8 @@ type fakeSDKClient struct {
 	illustCommentsRequest      pixiv.ArtworkCommentsRequest
 	addBookmarkRequest         pixiv.AddBookmarkRequest
 	removeBookmarkRequest      pixiv.RemoveBookmarkRequest
+	addNovelBookmarkRequest    pixiv.AddNovelBookmarkRequest
+	removeNovelBookmarkRequest pixiv.RemoveNovelBookmarkRequest
 	followUserRequest          pixiv.FollowUserRequest
 	unfollowUserRequest        pixiv.UnfollowUserRequest
 

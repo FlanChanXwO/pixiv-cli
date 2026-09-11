@@ -6,6 +6,7 @@ package pixiv
 import (
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/internal/runtime"
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/tools/add_bookmark"
+	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/tools/add_novel_bookmark"
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/tools/blocked_users"
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/tools/bookmark_detail"
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/tools/bookmark_list_all"
@@ -31,6 +32,7 @@ import (
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/tools/recommended"
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/tools/related_users"
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/tools/remove_bookmark"
+	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/tools/remove_novel_bookmark"
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/tools/reverse_search"
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/tools/search_illust"
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/tools/search_novel"
@@ -93,6 +95,7 @@ func newServer(app *runtime.App) *mcp.Server {
 
 func register(app *runtime.App, server *mcp.Server) {
 	add_bookmark.Register(app, server)
+	add_novel_bookmark.Register(app, server)
 	blocked_users.Register(app, server)
 	bookmark_detail.Register(app, server)
 	bookmark_list_all.Register(app, server)
@@ -118,6 +121,7 @@ func register(app *runtime.App, server *mcp.Server) {
 	recommended.Register(app, server)
 	related_users.Register(app, server)
 	remove_bookmark.Register(app, server)
+	remove_novel_bookmark.Register(app, server)
 	reverse_search.Register(app, server)
 	search_illust.Register(app, server)
 	search_novel.Register(app, server)

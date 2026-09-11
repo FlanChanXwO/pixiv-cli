@@ -259,6 +259,7 @@ continuation exception described above.
 | `UserArtworkBookmarks` / `UserArtworkBookmarkTags` / `UserNovelBookmarks` / `UserNovelBookmarkTags` | `UserID`, `Restrict`, `tag`, cursor | typed page | `InvalidArgument`, `InvalidCursor` |
 | `ArtworkBookmark` / `NovelBookmark` | positive artwork or novel ID | bookmark detail state | `InvalidArgument`, `MalformedUpstreamResponse`, classified upstream/transport errors |
 | `AddArtworkBookmark` / `RemoveArtworkBookmark` (legacy `AddBookmark` / `RemoveBookmark`) | positive artwork ID; add accepts `Restrict` and tags | `error` | `InvalidArgument`, classified upstream/transport errors |
+| `AddNovelBookmark` / `RemoveNovelBookmark` | positive novel ID; add accepts `Restrict` and tags | `error` | `InvalidArgument`, classified upstream/transport errors |
 
 `NovelContent` remains exported for source compatibility with earlier v1
 consumers. It is deprecated: the rejected `/v1/novel/content` App API endpoint
@@ -321,13 +322,18 @@ Key semantics:
   empty `Restrict` and empty tags. `NovelBookmark` and
   `UserNovelBookmarkTags` currently follow candidate upstream read contracts:
   novel bookmark tags have no continuation and reject a non-zero cursor until
-  that contract is verified. Novel bookmark mutations remain intentionally
-  unexported pending strict/live evidence.
+  that contract is verified. The public SDK exposes additive
+  `AddNovelBookmark` and `RemoveNovelBookmark` methods for the novel bookmark
+  mutation wire; their status-only success is not a read-back confirmation.
 - `AddArtworkBookmark` and `RemoveArtworkBookmark` are the explicit artwork
   mutation methods. The legacy `AddBookmark` and `RemoveBookmark` wrappers keep
   their existing signatures and error-operation labels, and delegate the same
   validation and wire semantics. Add operations default an empty `Restrict` to
   `public` and reject unsupported values locally.
+- `AddNovelBookmark` and `RemoveNovelBookmark` use the namespace-specific novel
+  bookmark add/delete endpoints. Add requests default an empty `Restrict` to
+  `public` and reject unsupported values locally. Neither method reads back
+  state or automatically replays an uncertain mutation.
 - `BookmarkMin` and `BookmarkMax` are optional, inclusive, non-negative App API
   candidate bounds. The SDK validates and forwards them as
   `bookmark_num_min`/`bookmark_num_max` but performs no Premium preflight, claims

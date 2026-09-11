@@ -267,6 +267,7 @@ type Mutation struct {
 	Success  bool   `json:"success"`
 	Action   string `json:"action"`
 	IllustID int64  `json:"illust_id,omitempty"`
+	NovelID  int64  `json:"novel_id,omitempty"`
 	UserID   int64  `json:"user_id,omitempty"`
 	Text     string `json:"text"`
 }

@@ -439,6 +439,20 @@ type RemoveBookmarkRequest struct {
 	ArtworkID int64
 }
 
+// AddNovelBookmarkRequest bookmarks one novel. Tags are applied as bookmark
+// tags when non-empty.
+type AddNovelBookmarkRequest struct {
+	NovelID  int64
+	Restrict Restrict
+	Tags     []string
+}
+
+// RemoveNovelBookmarkRequest removes the current user's bookmark from one
+// novel.
+type RemoveNovelBookmarkRequest struct {
+	NovelID int64
+}
+
 // FollowUserRequest follows one user.
 type FollowUserRequest struct {
 	UserID   int64

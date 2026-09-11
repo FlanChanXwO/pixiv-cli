@@ -215,13 +215,16 @@ optional port or a failed App request.
 | Tool | Input | Structured output |
 | --- | --- | --- |
 | `add_bookmark` | `illust_id`, optional `restrict`, repeated `tags` | `{success, action, illust_id}` |
+| `add_novel_bookmark` | `novel_id`, optional `restrict`, repeated `tags` | `{success, action, novel_id}` |
 | `remove_bookmark` | `illust_id` | `{success, action, illust_id}` |
+| `remove_novel_bookmark` | `novel_id` | `{success, action, novel_id}` |
 | `follow_user` | `user_id`, optional `restrict` | `{success, action, user_id}` |
 | `unfollow_user` | `user_id` | `{success, action, user_id}` |
 
-Writes are artwork-bookmark and user-follow mutations only. A post-submit
-unknown state is not replayed under another account. Failed writes return
-`success=false` with `isError=true` and a safe diagnostic.
+Writes are artwork/novel-bookmark and user-follow mutations. An empty
+`restrict` on an add defaults to `public`; only `public` and `private` are
+accepted. A post-submit unknown state is not replayed under another account.
+Failed writes return `success=false` with `isError=true` and a safe diagnostic.
 
 ## Authentication and fallback
 

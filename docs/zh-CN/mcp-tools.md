@@ -171,12 +171,15 @@ application outcome 的 `filter` 会报告 `min`、`max`、`membership`、`strat
 | Tool | 输入 | Structured output |
 | --- | --- | --- |
 | `add_bookmark` | `illust_id`，可选 `restrict`、可重复 `tags` | `{success, action, illust_id}` |
+| `add_novel_bookmark` | `novel_id`，可选 `restrict`、可重复 `tags` | `{success, action, novel_id}` |
 | `remove_bookmark` | `illust_id` | `{success, action, illust_id}` |
+| `remove_novel_bookmark` | `novel_id` | `{success, action, novel_id}` |
 | `follow_user` | `user_id`，可选 `restrict` | `{success, action, user_id}` |
 | `unfollow_user` | `user_id` | `{success, action, user_id}` |
 
-写操作只包含作品收藏和用户关注 mutation。提交后状态未知时不会换账号重放；失败写操作返回
-`success=false`、`isError=true` 和安全诊断。
+写操作包含作品/小说收藏和用户关注 mutation。add 省略 `restrict` 时默认为 `public`，只接受
+`public` 或 `private`。提交后状态未知时不会换账号重放；失败写操作返回 `success=false`、
+`isError=true` 和安全诊断。
 
 ## 认证与 fallback
 

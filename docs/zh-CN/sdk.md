@@ -237,6 +237,7 @@ recommended feed 仍保留显式 `offset=0` 的续读例外。
 | `UserArtworkBookmarks` / `UserArtworkBookmarkTags` / `UserNovelBookmarks` / `UserNovelBookmarkTags` | `UserID`、`Restrict`、`tag`、cursor | typed 分页 | `InvalidArgument`、`InvalidCursor` |
 | `ArtworkBookmark` / `NovelBookmark` | 正数 artwork 或 novel ID | 收藏详情状态 | `InvalidArgument`、`MalformedUpstreamResponse`、已分类的上游/传输错误 |
 | `AddArtworkBookmark` / `RemoveArtworkBookmark`（旧 `AddBookmark` / `RemoveBookmark`） | 正数 artwork ID；add 接受 `Restrict` 与 tags | `error` | `InvalidArgument`、已分类的上游/传输错误 |
+| `AddNovelBookmark` / `RemoveNovelBookmark` | 正数 novel ID；add 接受 `Restrict` 与 tags | `error` | `InvalidArgument`、已分类的上游/传输错误 |
 
 `NovelContent` 为兼容旧 v1 调用方而保留导出符号，但已标记为 deprecated：已
 rejected 的 `/v1/novel/content` App API endpoint 与被排除的 WebView path 都不会
@@ -269,10 +270,13 @@ endpoint 替代入口。
   同样遵循直接响应、无 read-back 规则。
 - `ArtworkBookmark` 与 `NovelBookmark` 用空 `Restrict` 与空 tags 表示当前对象未收藏。`NovelBookmark` 与
   `UserNovelBookmarkTags` 当前遵循 candidate upstream read contract：小说收藏 tags 暂无续页，非零 cursor
-  会被拒绝，直到该 contract 完成验证。小说收藏 mutation 仍按 strict/live evidence 要求保持不导出。
+  会被拒绝，直到该 contract 完成验证。public SDK 现在以 additive method 暴露
+  `AddNovelBookmark` 与 `RemoveNovelBookmark` 的小说收藏 mutation wire；status-only 成功不等于读回确认。
 - `AddArtworkBookmark` 与 `RemoveArtworkBookmark` 是显式 artwork mutation method。旧的 `AddBookmark` 与
   `RemoveBookmark` wrapper 保留原签名和 error-operation label，并委托同一套校验与 wire 语义。add 的空
   `Restrict` 默认 `public`，不支持的值在本地拒绝。
+- `AddNovelBookmark` 与 `RemoveNovelBookmark` 使用 namespace-specific novel bookmark add/delete endpoint。
+  add 的空 `Restrict` 默认 `public`，不支持的值在本地拒绝；两者都不读回状态，也不会自动重放不确定的 mutation。
 - `BookmarkMin` 与 `BookmarkMax` 是可选、闭区间、非负的 App API 候选边界。public SDK 只负责校验并转发为 `bookmark_num_min`/`bookmark_num_max`，不做 Premium 前置探测，不宣称全局完备，也不静默切换候选策略。application 若做本地精确复核，应另行报告已解析的策略与结果完备性。
 
 ## 错误

@@ -227,7 +227,7 @@ pixiv timeline latest --type illust --limit 10 --json
 
 ### MCP
 
-Reverse-image search is available through the CLI/MCP integration; the public Go SDK remains unchanged.
+Reverse-image search is available through the CLI/MCP integration; the public Go SDK also exposes typed artwork and novel bookmark mutations.
 
 Start the stdio server explicitly. stdout remains reserved for JSON-RPC; tool failures are returned as structured results with `isError=true`. No project-level or daily log files are created by default.
 
