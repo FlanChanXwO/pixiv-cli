@@ -600,7 +600,7 @@ AND (required_external_blockers > 0 OR required_decision_blockers > 0)
 
 ## G1-CHECK-06 — Phase C exit：MCP mutation 完整性 + push
 
-**Status:** pending
+**Status:** verified
 
 **Depends on:** G1-T16,G1-T17,G1-T18
 
@@ -609,12 +609,16 @@ AND (required_external_blockers > 0 OR required_decision_blockers > 0)
 **Phase push gate：** 提交 Phase C 的实现/账本，普通 fast-forward push 到 `refactor/pixiv-api-stability` 并验证 Remote SHA == Local HEAD。push 未成功不得进入 Phase D。
 
 **完成记录：**
-- 检查结论：
-- Correction：
-- 风险：
-- Local HEAD：
-- Remote SHA：
-- Push result：
+- 检查结论：PASS。G1-T13（novel bookmark public SDK + MCP mutation）、G1-T14（artwork comment/stamp ×4）、G1-T15（novel comment/stamp ×4）、G1-T16（follow/unfollow 回归补齐）、G1-T17（shared outcome/uncertainty 复核）、G1-T18（legacy wire/structured error 复核 + offline read-back 编排回归）全部 verified；MCP/offline 层无未关闭的内部 mutation gap，无需抢占式 correction。可靠 ID、structured outcome/error、legacy wire、uncertain no-replay、committed-before-replay 边界与 helper 复用在 CHECK-05 与 T16–T18 记录中均有当前分支证据。
+- Verification：本轮在 push-exit HEAD 复跑 `go test ./internal/services/pixiv ./internal/services/pixiv/pool -run 'TestScheduler|TestFacadeUse' -count=1`（shared harness）、8 个 mutation 相关 package（sdk/pixiv、internal/mcpserver/pixiv、artwork/novel bookmark、artwork/novel comments、stamps、follow endpoint）`-count=1`，以及 MCP focused mutation/registration set `-race`，全部 PASS；此前 T14–T18 提交时 commit hook 的全量 `go test ./...` 亦 PASS。
+- Live boundary：Phase C 按计划仅关闭 offline MCP/wire/编排 contract；strict live、写前 access-control、同账号写后 read-back/cleanup 未执行且未被 offline fixture 伪装，全部按 manifest 留给 G1-T30（Phase F）；无 live blocker 掩盖代码问题。
+- Worktree：专用 linked worktree、branch=`refactor/pixiv-api-stability`、push 前 `git status --porcelain` 为空；Phase C 实现/账本共 14 个 commit（`f266d9a..5a057ad`）均已提交，无来源不明 diff。
+- Correction：无新增 correction、capability、task ID 或 scope。
+- 风险：当前证据为 offline wire/regression/race；public compatibility、release、cursor/docs gate 与 live 继续 open（Phase D–F owner）。无新增 internal/external/decision blocker。
+- Local HEAD：`5a057ad6f7510c7c005c22974012b830152e3ed9`（Phase C push-exit checkpoint）。
+- Remote SHA：`5a057ad6f7510c7c005c22974012b830152e3ed9`；已由 `git ls-remote` 与 `gh api repos/FlanChanXwO/pixiv-cli/branches/...` 双重核验一致。
+- Push result：PASS；`6bf64c208719f4e5dff3c0af7bf93e2630d3d340..5a057ad6f7510c7c005c22974012b830152e3ed9` ordinary fast-forward；未使用 force/rebase。CHECK 在远端一致性核验后标记为 `verified`。
+- 下一步：G1-T19（Phase D）。
 
 ---
 
