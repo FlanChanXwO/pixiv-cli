@@ -805,7 +805,7 @@ AND (required_external_blockers > 0 OR required_decision_blockers > 0)
 
 ## G1-T25 — Protocol / endpoint / SDK regression
 
-**Status:** pending
+**Status:** verified
 
 **Depends on:** G1-CHECK-08
 
@@ -814,9 +814,9 @@ AND (required_external_blockers > 0 OR required_decision_blockers > 0)
 **测试预算：** 运行 protocol/endpoint/SDK regression 集；不重复 full CLI/MCP。
 
 **完成记录：**
-- Commands：
-- Result：
-- Correction：
+- Commands：`go test ./internal/services/pixiv/... ./sdk/... -count=1`（protocol、appapi、oauth、pool、resource、facade 与全部 artwork/novel/user endpoint adapter packages、sdk、sdk/pixiv、sdk/fanbox，共 40 个有测试 package）；另单独复跑 `go test ./sdk/pixiv -run 'TestLegacySDKConsumerCompiles|TestNovelContentDeprecatedEntryPointDoesNotCallRejectedEndpoint' -count=1`。
+- Result：40/40 package PASS，0 FAIL。required/optional/null/empty/error fixtures、adapter↔SDK DTO/cursor 映射、continuation allowlist/binding（含 search checkpoint v2、novel latest max_novel_id、typed value cursors）、old consumer 编译、`NovelContent` rejected endpoint 零网络负向回归全部通过；按预算未重复 full CLI/MCP（G1-T26 owner）。
+- Correction：无。
 - 下一步：G1-T26
 
 ## G1-T26 — CLI + MCP regression
