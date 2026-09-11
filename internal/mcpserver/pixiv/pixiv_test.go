@@ -169,6 +169,10 @@ type fakeSDKClient struct {
 	replyArtworkCommentErr  error
 	stampArtworkCommentErr  error
 	deleteArtworkCommentErr error
+	createNovelCommentErr   error
+	replyNovelCommentErr    error
+	stampNovelCommentErr    error
+	deleteNovelCommentErr   error
 
 	// capture
 	searchIllustRequest         pixiv.SearchArtworksRequest
@@ -221,6 +225,11 @@ type fakeSDKClient struct {
 	stampArtworkCommentRequest  pixiv.StampArtworkCommentRequest
 	deleteArtworkCommentRequest pixiv.DeleteArtworkCommentRequest
 	artworkCommentWireCalls     int
+	createNovelCommentRequest   pixiv.PostNovelCommentRequest
+	replyNovelCommentRequest    pixiv.ReplyNovelCommentRequest
+	stampNovelCommentRequest    pixiv.StampNovelCommentRequest
+	deleteNovelCommentRequest   pixiv.DeleteNovelCommentRequest
+	novelCommentWireCalls       int
 
 	// typed read tools canned results
 	artworkSeriesPage         sdk.Page[pixiv.Artwork]

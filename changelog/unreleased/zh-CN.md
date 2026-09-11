@@ -4,10 +4,12 @@
 
 ## 新增
 
-- 新增 Pixiv MCP 作品评论 mutation：`create_artwork_comment`、
-  `reply_artwork_comment`、`stamp_artwork_comment` 与
-  `delete_artwork_comment`。create/reply/stamp 直接暴露上游返回的
-  `comment_id`；server 不会通过读取最新评论猜测 ID，也不会自动重放结果未知的写操作。
+- 新增 Pixiv MCP 作品与小说评论 mutation：`create_artwork_comment`、
+  `reply_artwork_comment`、`stamp_artwork_comment`、`delete_artwork_comment`、
+  `create_novel_comment`、`reply_novel_comment`、`stamp_novel_comment` 与
+  `delete_novel_comment`。create/reply/stamp 直接暴露上游返回的 `comment_id`；
+  server 不会通过读取最新评论猜测 ID，不会回退到 candidate v3 comments contract，
+  也不会自动重放结果未知的写操作。
 
 - 完成 MCP comments read owner：`illust_comments` 与 `novel_comments` 现在发布封闭的 `{id, page, limit}` schema，约束正数 ID/page 与非负 limit；保留 `{comments, pagination}` envelope 及可选 `total`/`access_control`，回放当前 artwork/novel comments operation，并将只用于 mutation 的 `stamp_id` 与独立 `stamps` tool 排除在 legacy read surface 之外。([`5a21430`](https://github.com/FlanChanXwO/pixiv-cli/commit/5a214307c66f4466746fec943f6d9e370cb0439e))
 

@@ -367,6 +367,44 @@ func (tr *testSDKTransport) RoundTrip(request *http.Request) (*http.Response, er
 			return wireErrorResponse(tr.fake.deleteArtworkCommentErr)
 		}
 		status, body, err = http.StatusOK, []byte(`{}`), nil
+	case "/v1/novel/comment/add":
+		tr.fake.novelCommentWireCalls++
+		novelID := formInt64(request, "novel_id")
+		comment := formValue(request, "comment")
+		switch {
+		case formValue(request, "parent_comment_id") != "":
+			tr.fake.replyNovelCommentRequest = pixivsdk.ReplyNovelCommentRequest{
+				NovelID:         novelID,
+				Comment:         comment,
+				ParentCommentID: formInt64(request, "parent_comment_id"),
+			}
+			if tr.fake.replyNovelCommentErr != nil {
+				return wireErrorResponse(tr.fake.replyNovelCommentErr)
+			}
+			status, body, err = http.StatusOK, []byte(`{"comment_id":902}`), nil
+		case formValue(request, "stamp_id") != "":
+			tr.fake.stampNovelCommentRequest = pixivsdk.StampNovelCommentRequest{
+				NovelID: novelID,
+				Comment: comment,
+				StampID: formInt64(request, "stamp_id"),
+			}
+			if tr.fake.stampNovelCommentErr != nil {
+				return wireErrorResponse(tr.fake.stampNovelCommentErr)
+			}
+			status, body, err = http.StatusOK, []byte(`{"comment_id":903}`), nil
+		default:
+			tr.fake.createNovelCommentRequest = pixivsdk.PostNovelCommentRequest{NovelID: novelID, Comment: comment}
+			if tr.fake.createNovelCommentErr != nil {
+				return wireErrorResponse(tr.fake.createNovelCommentErr)
+			}
+			status, body, err = http.StatusOK, []byte(`{"comment_id":901}`), nil
+		}
+	case "/v1/novel/comment/delete":
+		tr.fake.deleteNovelCommentRequest = pixivsdk.DeleteNovelCommentRequest{CommentID: formInt64(request, "comment_id")}
+		if tr.fake.deleteNovelCommentErr != nil {
+			return wireErrorResponse(tr.fake.deleteNovelCommentErr)
+		}
+		status, body, err = http.StatusOK, []byte(`{}`), nil
 	case "/v1/trending-tags/illust":
 		status, body, err = wireTrendingTags(tr.fake.trendingTags)
 	case "/v2/illust/bookmark/add":

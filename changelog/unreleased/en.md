@@ -4,11 +4,12 @@
 
 ## Added
 
-- Added additive Pixiv MCP artwork comment mutations: `create_artwork_comment`,
-  `reply_artwork_comment`, `stamp_artwork_comment`, and
-  `delete_artwork_comment`. Create/reply/stamp expose the upstream
-  `comment_id`; the server does not infer IDs by reading the latest comment or
-  automatically replay an uncertain write.
+- Added additive Pixiv MCP artwork and novel comment mutations: `create_artwork_comment`,
+  `reply_artwork_comment`, `stamp_artwork_comment`, `delete_artwork_comment`,
+  `create_novel_comment`, `reply_novel_comment`, `stamp_novel_comment`, and
+  `delete_novel_comment`. Create/reply/stamp expose the upstream `comment_id`;
+  the server does not infer IDs by reading the latest comment, fall back to the
+  candidate v3 comments contract, or automatically replay an uncertain write.
 
 - Completed the MCP comments read owner: `illust_comments` and `novel_comments` now publish closed `{id, page, limit}` schemas with positive ID/page and non-negative limit constraints, preserve the `{comments, pagination}` envelope plus optional `total`/`access_control`, replay the current artwork/novel comment operations, and keep mutation-only `stamp_id` plus a standalone `stamps` tool outside the legacy read surface. ([`5a21430`](https://github.com/FlanChanXwO/pixiv-cli/commit/5a214307c66f4466746fec943f6d9e370cb0439e))
 

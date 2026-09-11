@@ -13,7 +13,9 @@ import (
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/tools/bookmark_tags"
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/tools/bookmark_tags_all"
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/tools/create_artwork_comment"
+	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/tools/create_novel_comment"
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/tools/delete_artwork_comment"
+	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/tools/delete_novel_comment"
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/tools/download"
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/tools/follow_user"
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/tools/illust_comments"
@@ -36,11 +38,13 @@ import (
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/tools/remove_bookmark"
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/tools/remove_novel_bookmark"
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/tools/reply_artwork_comment"
+	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/tools/reply_novel_comment"
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/tools/reverse_search"
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/tools/search_illust"
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/tools/search_novel"
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/tools/search_user"
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/tools/stamp_artwork_comment"
+	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/tools/stamp_novel_comment"
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/tools/timeline_illust_following"
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/tools/timeline_illust_latest"
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/tools/timeline_novel_following"
@@ -102,7 +106,9 @@ func register(app *runtime.App, server *mcp.Server) {
 	add_novel_bookmark.Register(app, server)
 	blocked_users.Register(app, server)
 	create_artwork_comment.Register(app, server)
+	create_novel_comment.Register(app, server)
 	delete_artwork_comment.Register(app, server)
+	delete_novel_comment.Register(app, server)
 	bookmark_detail.Register(app, server)
 	bookmark_list_all.Register(app, server)
 	bookmark_tags.Register(app, server)
@@ -127,6 +133,7 @@ func register(app *runtime.App, server *mcp.Server) {
 	recommended.Register(app, server)
 	related_users.Register(app, server)
 	reply_artwork_comment.Register(app, server)
+	reply_novel_comment.Register(app, server)
 	remove_bookmark.Register(app, server)
 	remove_novel_bookmark.Register(app, server)
 	reverse_search.Register(app, server)
@@ -134,6 +141,7 @@ func register(app *runtime.App, server *mcp.Server) {
 	search_novel.Register(app, server)
 	search_user.Register(app, server)
 	stamp_artwork_comment.Register(app, server)
+	stamp_novel_comment.Register(app, server)
 	timeline_illust_following.Register(app, server)
 	timeline_illust_latest.Register(app, server)
 	timeline_novel_following.Register(app, server)

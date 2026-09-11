@@ -178,13 +178,18 @@ application outcome 的 `filter` 会报告 `min`、`max`、`membership`、`strat
 | `reply_artwork_comment` | 正数 `illust_id`、非空 `comment`、正数 `parent_comment_id` | `{success, action, illust_id, comment_id}` |
 | `stamp_artwork_comment` | 正数 `illust_id`、非空 `comment`、正数 `stamp_id` | `{success, action, illust_id, comment_id}` |
 | `delete_artwork_comment` | 正数 `comment_id` | `{success, action, comment_id}` |
+| `create_novel_comment` | 正数 `novel_id`、非空 `comment` | `{success, action, novel_id, comment_id}` |
+| `reply_novel_comment` | 正数 `novel_id`、非空 `comment`、正数 `parent_comment_id` | `{success, action, novel_id, comment_id}` |
+| `stamp_novel_comment` | 正数 `novel_id`、非空 `comment`、正数 `stamp_id` | `{success, action, novel_id, comment_id}` |
+| `delete_novel_comment` | 正数 `comment_id` | `{success, action, comment_id}` |
 | `follow_user` | `user_id`，可选 `restrict` | `{success, action, user_id}` |
 | `unfollow_user` | `user_id` | `{success, action, user_id}` |
 
-写操作包含作品/小说收藏、作品评论/印章评论和用户关注 mutation。add 省略 `restrict` 时默认为
-`public`，只接受 `public` 或 `private`。作品评论 create/reply/stamp 会直接返回上游给出的
-`comment_id`；delete 返回输入的评论 ID。server 不会读取最新评论来猜测 ID，提交后状态未知时不会换账号重放；失败写操作返回
-`success=false`、`isError=true` 和安全诊断。
+写操作包含作品/小说收藏、作品/小说评论/印章评论和用户关注 mutation。add 省略 `restrict` 时默认为
+`public`，只接受 `public` 或 `private`。作品与小说评论 create/reply/stamp 会直接返回上游给出的
+`comment_id`；delete 返回输入的评论 ID。server 不会读取最新评论来猜测 ID，不会回退到 candidate
+v3 comments contract，提交后状态未知时不会换账号重放；失败写操作返回 `success=false`、
+`isError=true` 和安全诊断。
 
 ## 认证与 fallback
 
