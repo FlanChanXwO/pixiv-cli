@@ -366,16 +366,17 @@ AND (required_external_blockers > 0 OR required_decision_blockers > 0)
 
 ## G1-CHECK-03 — 集中检查：MCP user + typed bookmark read
 
-**Status:** pending
+**Status:** verified
 
 **Depends on:** G1-T07,G1-T08,G1-T09
 
 复查 owner 隔离、schema/error、resolver/filter/pagination、legacy wire、forbidden endpoint、是否出现多余 abstraction。
 
 **完成记录：**
-- 检查结论：
-- Correction：
-- 风险：
+- 检查结论：PASS。审计 `G1-T07`–`G1-T09` 的 MCP leaf 与 registration：tool owner 只经 public `sdk/pixiv` 和 MCP owner-local runtime/filter/record/output；没有 `internal/services/pixiv` 或 `internal/services/fanbox` 直连。生产 MCP 没有调用 `/v1/novel/detail`、`/v1/novel/series`、`/v1/novel/content`；reverse-search 的既有 `internal/services/reversesearch` 仍是唯一允许的边界例外。`user_*` resolver/filter/logical pagination、typed bookmark empty/error/invalid/absent、legacy JSON replay、bookmark output schema 与 exact registration 回归均通过。
+- Correction：无。新增 novel candidate tools 复用既有 `runtime.CollectWith`、`runtime.Read`、`BookmarkTags`/`BookmarkDetail` envelope，没有新建重复 abstraction；`all` aggregate 未提前进入本 task。此前发现的 layer matrix stale `missing` 已修正为 MCP/offline `verified`，不涉及业务代码。
+- 风险：candidate novel tags/detail 的 strict wire、public/private、continuation、live、compatibility 与 release 仍未证明；#14–16、#18 strict live/account binding、G1-T10 aggregate 与后续 regression/live gates 仍按 manifest 开放。G1-CHECK-03 无新增 internal/external/decision blocker。
+- 下一步：G1-T10
 
 ## G1-T10 — MCP required bookmark aggregates
 

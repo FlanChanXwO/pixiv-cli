@@ -1,13 +1,13 @@
 # Goal-1 当前状态：Capabilities 1–41 baseline inventory
 
-> 本文件覆盖 `G1-T01`、`G1-T02`、`G1-T03`、`G1-CHECK-01`、`G1-T04`、`G1-T05`、`G1-T06`、`G1-CHECK-02`、`G1-T07`、`G1-T08` 与 `G1-T09`，只记录当前分支的代码、测试、历史和 Goal-3 证据，不授予任何 capability 的发布资格。
+> 本文件覆盖 `G1-T01`、`G1-T02`、`G1-T03`、`G1-CHECK-01`、`G1-T04`、`G1-T05`、`G1-T06`、`G1-CHECK-02`、`G1-T07`、`G1-T08`、`G1-T09` 与 `G1-CHECK-03`，只记录当前分支的代码、测试、历史和 Goal-3 证据，不授予任何 capability 的发布资格。
 
 ## 1. 快照与状态口径
 
 - 执行分支：`refactor/pixiv-api-stability`
 - G1-T03 inventory 起始 commit：`35dd0d7efebd16eeda6d5fb8ac3e766b31f8461d`，继承基线：`e40443495981cdaf01215d6711cb24fa618b087a`
 - 当前 worktree：`/Users/flanchan/Developer/Projects/GithubProjects/.worktrees/pixiv-cli-refactor-pixiv-api-stability`
-- G1-T03 开始时 worktree 干净；G1-CHECK-01 检查时 HEAD 为 `042c0200ce1b3349ab3e08a744fea7802838025c`。G1-T04 审计起始 HEAD 为 `f7cff3fb86dcc5117c634359bedbea5abdfa4d0b`；G1-T05 correctness audit 起始 HEAD 为 `35885b0d9316b4a1f2326bcee0511d8bc5ae29ed`；G1-T06 manifest audit 起始 HEAD 为 `c5e3d679eef4b2b2404984bbd6630588a3c7ac8a`，worktree 干净。G1-CHECK-02 pre-push ledger commit 为 `b17b1775f2ea0783f394f7600d30cafd8ad428c5`，已普通 fast-forward push，远端 SHA 与该 checkpoint 一致。其后 G1-T07 在 `5b45827efc5b553a0ad8caca5289253dfe585ba` 收敛 MCP user identity 行为、测试与双语文档；G1-T08 仅修正双语 MCP contract 文档并同步本状态账本；G1-T09 新增 candidate/offline novel bookmark tags/detail MCP read、补 typed bookmark wire/empty/error/subtype logical-pagination 测试与双语文档；严格 live、public compatibility 与 release 仍未关闭；`goal-3/` 无 diff。
+- G1-T03 开始时 worktree 干净；G1-CHECK-01 检查时 HEAD 为 `042c0200ce1b3349ab3e08a744fea7802838025c`。G1-T04 审计起始 HEAD 为 `f7cff3fb86dcc5117c634359bedbea5abdfa4d0b`；G1-T05 correctness audit 起始 HEAD 为 `35885b0d9316b4a1f2326bcee0511d8bc5ae29ed`；G1-T06 manifest audit 起始 HEAD 为 `c5e3d679eef4b2b2404984bbd6630588a3c7ac8a`，worktree 干净。G1-CHECK-02 pre-push ledger commit 为 `b17b1775f2ea0783f394f7600d30cafd8ad428c5`，已普通 fast-forward push，远端 SHA 与该 checkpoint 一致。其后 G1-T07 在 `5b45827efc5b553a0ad8caca5289253dfe585ba` 收敛 MCP user identity 行为、测试与双语文档；G1-T08 仅修正双语 MCP contract 文档并同步本状态账本；G1-T09 新增 candidate/offline novel bookmark tags/detail MCP read、补 typed bookmark wire/empty/error/subtype logical-pagination 测试与双语文档；G1-CHECK-03 对 MCP user/typed bookmark 的 owner、schema/error、resolver/filter/pagination、legacy wire、forbidden endpoint 与 abstraction scope 审计通过；严格 live、public compatibility 与 release 仍未关闭；`goal-3/` 无 diff。
 - Goal-3 的 `goal-3/capability-admission.md` 是 capability 状态唯一权威来源：当前盘点的 41 项均为 `required=yes, state=scope_admitted`；全 41 项中没有一项为 `public_ready`（`goal-3/capability-admission.md:3-15,23-70`；`artwork-series` 在该表后段，仍属于原 required 集合）。
 - `scope_admitted` 只表示 capability 属于 required scope；不表示 contract 已冻结、迁移已完成或可以进入正式发布 surface。
 - 本文状态：
@@ -25,7 +25,7 @@
 - `public_ready`：0/41。
 - `scope_admitted`：41/41。
 - 当前没有 capability 可以仅凭 Goal-3 历史 task 的 `verified` 标记直接转为 accepted。
-- 当前未发现新的业务/API/evidence drift；Goal-1 分支相对继承基线的 drift 只有执行资料与 G1-T01/G1-T02/G1-T03/G1-CHECK-01/G1-T04/G1-T05/G1-T06/G1-T07/G1-T08/G1-T09 记录。
+- 当前未发现新的业务/API/evidence drift；Goal-1 分支相对继承基线的 drift 只有执行资料与 G1-T01/G1-T02/G1-T03/G1-CHECK-01/G1-T04/G1-T05/G1-T06/G1-T07/G1-T08/G1-T09/G1-CHECK-03 记录。
 
 ### 2.2 Layer matrix
 
@@ -49,10 +49,10 @@
 | 16 | `artwork-bookmark-detail` | implemented_unverified | verified | verified | not_applicable | verified | verified | verified | implemented_unverified | implemented_unverified | missing |
 | 17 | `artwork-bookmark-mutation` | implemented_unverified | verified | verified | not_applicable | verified | verified | verified | implemented_unverified | implemented_unverified | missing |
 | 18 | `novel-bookmark-list` | implemented_unverified | implemented_unverified | implemented_unverified | verified | verified | verified | verified | implemented_unverified | implemented_unverified | missing |
-| 19 | `novel-bookmark-tags` | implemented_unverified | implemented_unverified | implemented_unverified | implemented_unverified | verified | missing | verified | implemented_unverified | missing | missing |
-| 20 | `novel-bookmark-detail` | implemented_unverified | implemented_unverified | implemented_unverified | not_applicable | verified | missing | verified | implemented_unverified | implemented_unverified | missing |
+| 19 | `novel-bookmark-tags` | implemented_unverified | implemented_unverified | implemented_unverified | implemented_unverified | verified | verified | verified | implemented_unverified | implemented_unverified | missing |
+| 20 | `novel-bookmark-detail` | implemented_unverified | implemented_unverified | implemented_unverified | not_applicable | verified | verified | verified | implemented_unverified | implemented_unverified | missing |
 | 21 | `novel-bookmark-mutation` | implemented_unverified | implemented_unverified | missing | not_applicable | missing | missing | verified | missing | missing | missing |
-| 22 | `bookmark-subtype` | implemented_unverified | missing | missing | implemented_unverified | verified | missing | verified | missing | implemented_unverified | missing |
+| 22 | `bookmark-subtype` | implemented_unverified | missing | missing | implemented_unverified | verified | verified | verified | missing | implemented_unverified | missing |
 | 23 | `bookmark-list-all` | implemented_unverified | verified | missing | verified | verified | missing | verified | implemented_unverified | missing | missing |
 | 24 | `bookmark-tags-all` | implemented_unverified | verified | missing | verified | verified | missing | verified | implemented_unverified | missing | missing |
 | 25 | `artwork-comments-read` | rejected | implemented_unverified | implemented_unverified | implemented_unverified | implemented_unverified | implemented_unverified | verified | rejected | implemented_unverified | rejected |
@@ -619,7 +619,8 @@ G1-T01 已在干净目标 worktree 执行 `go test ./...` 并通过；G1-CHECK-0
 - `logical-pagination` 的 T23A/R02 只证明 shared/checkpoint/replay engine；不能替代 user/comments/recommended/latest 等 endpoint continuation evidence。
 - G1-T07/G1-T08/G1-T09 已完成 MCP/Shared offline acceptance：user identity、collections、relationships、MyPixiv，以及 artwork/novel typed bookmark list/tags/detail 的 schema、resolver、filter、pagination、structured error、legacy JSON replay 与 additive registration 均由当前目标分支回归覆盖；该证据不替代 strict live、candidate contract、compatibility 或 release gate。
 - G1-CHECK-01：历史集中检查仍 PASS，覆盖 1–24；G1-T04 inventory 与 G1-T05 correctness focused tests 均 PASS，未改生产代码、API、scope 或 Goal-3 资料；artwork-recommended second-page continuation 的 P1 仍 open。
-- GoalState：保持 `ACTIVE`。G1-T05 的 1 个 open P1 已在 G1-T06 映射到具体 correction owner；G1-T09 只关闭 typed bookmark 的 MCP/offline 责任链，novel candidate strict live/compatibility 仍保持未验证；无新增 external/decision blocker。G1-CHECK-02 已完成 Phase A 检查并通过普通 fast-forward push，checkpoint Local/Remote SHA 均为 `b17b1775f2ea0783f394f7600d30cafd8ad428c5`；下一任务为 `G1-CHECK-03`。
+- G1-CHECK-03：PASS。静态/语义审计确认 MCP leaf 仅经 public `sdk/pixiv` 与 owner-local `internal/mcpserver/pixiv/internal/{runtime,filters,records,outputs}`；无 `internal/services/pixiv|fanbox` 直连；生产 MCP 无 `/v1/novel/detail`、`/v1/novel/series`、`/v1/novel/content` 调用。既有 user legacy replay、typed error/empty、resolver/filter/logical pagination、bookmark legacy wire、candidate novel read 与 exact registration 回归均通过；未发现额外 abstraction 或需本轮 correction。该证据不替代 strict live、candidate contract、compatibility 或 release gate。
+- GoalState：保持 `ACTIVE`。G1-T05 的 1 个 open P1 已在 G1-T06 映射到具体 correction owner；G1-T09 只关闭 typed bookmark 的 MCP/offline 责任链，G1-CHECK-03 审计未扩大 scope；novel candidate strict live/compatibility 仍保持未验证；无新增 external/decision blocker。G1-CHECK-02 已完成 Phase A 检查并通过普通 fast-forward push，checkpoint Local/Remote SHA 均为 `b17b1775f2ea0783f394f7600d30cafd8ad428c5`；下一任务为 `G1-T10`。
 
 
 ## 11. G1-T06 Live Manifest 与 finite execution mapping
@@ -746,4 +747,4 @@ G1-T01 已在干净目标 worktree 执行 `go test ./...` 并通过；G1-CHECK-0
 - **Open correctness：** P0=0；P1=1（#4 `artwork-recommended` continuation），已映射至 G1-T28/G1-T20/G1-T22，未隐藏。
 - **Mutation：** #17、#21、#26、#28、#29、#36 必须执行写前授权、可靠 ID、同账号 read-back、仅清理本轮副作用；uncertain 不 replay。
 - **External/decision blocker：** 当前无 blocker。未来 live 数据/账号/权限/网络不足时，严格按 manifest 记录 `blocked_external`；不得把 internal bug 归类为 external blocker。
-- **Freeze boundary：** 后续 live task 只能执行本表 `live_required=yes` 的 scenario；不得临时增加 query、subtype、第二页或 mutation scope。G1-CHECK-02 已复核 manifest、counts、P0/P1、owner mapping 并完成普通 fast-forward push；Phase B 已完成 G1-T07、G1-T08、G1-T09，下一任务为 G1-CHECK-03。
+- **Freeze boundary：** 后续 live task 只能执行本表 `live_required=yes` 的 scenario；不得临时增加 query、subtype、第二页或 mutation scope。G1-CHECK-02 已复核 manifest、counts、P0/P1、owner mapping 并完成普通 fast-forward push；Phase B 已完成 G1-T07、G1-T08、G1-T09，G1-CHECK-03 已审计通过，下一任务为 G1-T10。
