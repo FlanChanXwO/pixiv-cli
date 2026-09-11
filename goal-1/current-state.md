@@ -696,6 +696,7 @@ G1-T01 已在干净目标 worktree 执行 `go test ./...` 并通过；G1-CHECK-0
 | G1-T09 | MCP typed bookmark list/tags/detail、client-side subtype | #14–16、#18–20、#22 |
 | G1-T10 | bookmark list/tags aggregate | #23–24 |
 | G1-T11 | read registration/exact-set；required missing read owners 不得静默跳过 | #6、#12、#39、#41 的 registration/schema owner；缺 surface 进入对应 correction |
+| G1-T12 | read legacy JSON replay、stdio stdout/stderr boundary、structured error wire | read capabilities #1–16、#18–20、#22–25、#27、#30–35、#37、#39–41；mutation read-back output仍由 G1-T18/G1-T30 负责 |
 | G1-T13 | bookmark mutation MCP layer | #17、#21 |
 | G1-T14 | artwork comment/stamp MCP mutation | #26、#29 |
 | G1-T15 | novel comment/stamp MCP mutation | #28、#29 |
