@@ -632,3 +632,165 @@ func bookmarkJSONResponse(request *http.Request, status int, body string) *http.
 		Request:    request,
 	}
 }
+
+// frozen cli-migration-matrix 将 bookmark detail/add/remove 冻结为 artwork 或
+// novel 双 namespace；add/remove 必须与 detail 一致地按 --type 分发到 novel
+// bookmark mutation，且 URL/record/显式类型不得跨 namespace。
+func TestBookmarkAddSupportsNovelType(t *testing.T) {
+	transport := bookmarkRoundTripFunc(func(request *http.Request) (*http.Response, error) {
+		if request.Method != http.MethodPost || request.URL.Path != "/v2/novel/bookmark/add" {
+			t.Fatalf("request = %s %s, want POST /v2/novel/bookmark/add", request.Method, request.URL.Path)
+		}
+		if err := request.ParseForm(); err != nil {
+			t.Fatalf("ParseForm: %v", err)
+		}
+		if request.PostForm.Get("novel_id") != "9001" || request.PostForm.Get("restrict") != "private" {
+			t.Fatalf("form = %v, want novel_id 9001 restrict private", request.PostForm)
+		}
+		return bookmarkJSONResponse(request, http.StatusOK, `{}`), nil
+	})
+	client, err := pixiv.NewWith("test-access-token", pixiv.Options{HTTPClient: &http.Client{Transport: transport}})
+	if err != nil {
+		t.Fatalf("NewWith: %v", err)
+	}
+
+	cmd := New(deps.Data{
+		Input:       strings.NewReader(""),
+		Output:      &bytes.Buffer{},
+		ErrorOutput: &bytes.Buffer{},
+		UsageError:  func(err error) error { return err },
+		Pooled: func(ctx context.Context, _ deps.Request, attempt func(context.Context, *pixiv.Client) (bool, error)) error {
+			_, err := attempt(ctx, client)
+			return err
+		},
+	})
+	cmd.SetArgs([]string{"add", "9001", "--type", "novel", "--restrict", "private"})
+
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("Execute: %v", err)
+	}
+}
+
+func TestBookmarkRemoveSupportsNovelType(t *testing.T) {
+	transport := bookmarkRoundTripFunc(func(request *http.Request) (*http.Response, error) {
+		if request.Method != http.MethodPost || request.URL.Path != "/v1/novel/bookmark/delete" {
+			t.Fatalf("request = %s %s, want POST /v1/novel/bookmark/delete", request.Method, request.URL.Path)
+		}
+		if err := request.ParseForm(); err != nil {
+			t.Fatalf("ParseForm: %v", err)
+		}
+		if request.PostForm.Get("novel_id") != "9001" {
+			t.Fatalf("form = %v, want novel_id 9001", request.PostForm)
+		}
+		return bookmarkJSONResponse(request, http.StatusOK, `{}`), nil
+	})
+	client, err := pixiv.NewWith("test-access-token", pixiv.Options{HTTPClient: &http.Client{Transport: transport}})
+	if err != nil {
+		t.Fatalf("NewWith: %v", err)
+	}
+
+	cmd := New(deps.Data{
+		Input:       strings.NewReader(""),
+		Output:      &bytes.Buffer{},
+		ErrorOutput: &bytes.Buffer{},
+		UsageError:  func(err error) error { return err },
+		Pooled: func(ctx context.Context, _ deps.Request, attempt func(context.Context, *pixiv.Client) (bool, error)) error {
+			_, err := attempt(ctx, client)
+			return err
+		},
+	})
+	cmd.SetArgs([]string{"remove", "9001", "--type", "novel"})
+
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("Execute: %v", err)
+	}
+}
+
+func TestBookmarkMutationRejectsUnsupportedTypeBeforeNetwork(t *testing.T) {
+	for _, test := range []struct {
+		name string
+		args []string
+	}{
+		{name: "add all", args: []string{"add", "9001", "--type", "all"}},
+		{name: "add user", args: []string{"add", "9001", "--type", "user"}},
+		{name: "remove all", args: []string{"remove", "9001", "--type", "all"}},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			pooledCalls := 0
+			cmd := New(deps.Data{
+				Input:       strings.NewReader(""),
+				Output:      &bytes.Buffer{},
+				ErrorOutput: &bytes.Buffer{},
+				UsageError:  func(err error) error { return err },
+				Pooled: func(context.Context, deps.Request, func(context.Context, *pixiv.Client) (bool, error)) error {
+					pooledCalls++
+					return nil
+				},
+			})
+			cmd.SetArgs(test.args)
+
+			err := cmd.Execute()
+			if err == nil || !strings.Contains(err.Error(), `type "all" is not supported by this command`) && !strings.Contains(err.Error(), `type "user" is not supported by this command`) {
+				t.Fatalf("Execute error = %v, want unsupported type", err)
+			}
+			if pooledCalls != 0 {
+				t.Fatalf("Pooled called %d time(s), want no network call", pooledCalls)
+			}
+		})
+	}
+}
+
+func TestBookmarkAddConsumesNovelRecordsOnlyWithNovelType(t *testing.T) {
+	transport := bookmarkRoundTripFunc(func(request *http.Request) (*http.Response, error) {
+		if request.Method != http.MethodPost || request.URL.Path != "/v2/novel/bookmark/add" {
+			t.Fatalf("request = %s %s, want POST /v2/novel/bookmark/add", request.Method, request.URL.Path)
+		}
+		if err := request.ParseForm(); err != nil {
+			t.Fatalf("ParseForm: %v", err)
+		}
+		if request.PostForm.Get("novel_id") != "42" {
+			t.Fatalf("form = %v, want novel_id 42", request.PostForm)
+		}
+		return bookmarkJSONResponse(request, http.StatusOK, `{}`), nil
+	})
+	client, err := pixiv.NewWith("test-access-token", pixiv.Options{HTTPClient: &http.Client{Transport: transport}})
+	if err != nil {
+		t.Fatalf("NewWith: %v", err)
+	}
+
+	cmd := New(deps.Data{
+		Input:       strings.NewReader(`{"id":"42","type":"novel","url":"https://www.pixiv.net/novel/42"}` + "\n"),
+		Output:      &bytes.Buffer{},
+		ErrorOutput: &bytes.Buffer{},
+		UsageError:  func(err error) error { return err },
+		Pooled: func(ctx context.Context, _ deps.Request, attempt func(context.Context, *pixiv.Client) (bool, error)) error {
+			_, err := attempt(ctx, client)
+			return err
+		},
+	})
+	cmd.SetArgs([]string{"add", "--type", "novel"})
+
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("Execute: %v", err)
+	}
+}
+
+func TestBookmarkAddRejectsArtworkRecordWithNovelType(t *testing.T) {
+	var diagnostics bytes.Buffer
+	cmd := New(deps.Data{
+		Input:       strings.NewReader(`{"id":"42","type":"artwork","url":"https://www.pixiv.net/artworks/42"}` + "\n"),
+		Output:      &bytes.Buffer{},
+		ErrorOutput: &diagnostics,
+		UsageError:  func(err error) error { return err },
+		Pooled: func(context.Context, deps.Request, func(context.Context, *pixiv.Client) (bool, error)) error {
+			t.Fatal("Pooled must not be called for a namespace-mismatched record")
+			return nil
+		},
+	})
+	cmd.SetArgs([]string{"add", "--type", "novel", "--on-error", "fail-fast"})
+
+	err := cmd.Execute()
+	if err == nil || !strings.Contains(diagnostics.String(), `"code":"unsupported_type"`) {
+		t.Fatalf("Execute error = %v, diagnostics = %q, want unsupported_type", err, diagnostics.String())
+	}
+}

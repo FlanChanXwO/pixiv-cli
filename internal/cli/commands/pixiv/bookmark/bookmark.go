@@ -30,6 +30,13 @@ var visualRecordTypes = map[string]struct{}{
 	"ugoira":  {},
 }
 
+// novelRecordTypes 与 frozen cli-migration-matrix 一致：bookmark add/remove 在
+// --type novel 下只消费 novel namespace 的 record， artwork record 视为跨
+// namespace 拒绝。
+var novelRecordTypes = map[string]struct{}{
+	"novel": {},
+}
+
 type listOptions struct {
 	deps.CommandOptions
 	ndjson   bool
@@ -42,6 +49,7 @@ type listOptions struct {
 
 type mutationOptions struct {
 	deps.CommandOptions
+	typ      string
 	restrict string
 	tags     []string
 	onError  string
@@ -255,25 +263,48 @@ func bookmarkDetailContract() resolver.Contract {
 	}
 }
 
+// bookmarkMutationType 校验 add/remove 的显式 entity type。frozen
+// cli-migration-matrix 将 bookmark detail/add/remove 冻结为 artwork 或 novel；
+// 不接受 all 或其他 namespace。错误措辞与 resolver 的 TypeSpec 校验保持一致。
+func bookmarkMutationType(typ string) (string, error) {
+	switch typ {
+	case "artwork", "novel":
+		return typ, nil
+	default:
+		return "", fmt.Errorf("type %q is not supported by this command", typ)
+	}
+}
+
 func (a command) newAdd() *cobra.Command {
-	opts := mutationOptions{restrict: string(pixiv.RestrictPublic)}
+	opts := mutationOptions{typ: "artwork", restrict: string(pixiv.RestrictPublic)}
 	cmd := &cobra.Command{
-		Use:   "add [ILLUST_ID]",
-		Short: "Bookmark an illustration",
-		Args:  a.data.ActionInputArgs("pixiv bookmark add [options] [ILLUST_ID]"),
+		Use:   "add [ARTWORK_ID_OR_NOVEL_ID]",
+		Short: "Bookmark an artwork or novel",
+		Args:  a.data.ActionInputArgs("pixiv bookmark add [options] [ARTWORK_ID_OR_NOVEL_ID]"),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			typ, err := bookmarkMutationType(opts.typ)
+			if err != nil {
+				return a.data.Usage(err)
+			}
 			if _, err := pipeline.RecordFailureStrategy(opts.onError); err != nil {
 				return a.data.Usage(err)
 			}
 			invoke := a.actionInvoker(cmd, opts.CommandOptions, func(ctx context.Context, request deps.Request, id int64) error {
 				return deps.Write(a.data, ctx, request, func(ctx context.Context, client *pixiv.Client) error {
+					if typ == "novel" {
+						return client.AddNovelBookmark(ctx, pixiv.AddNovelBookmarkRequest{NovelID: id, Restrict: pixiv.Restrict(opts.restrict), Tags: opts.tags})
+					}
 					return client.AddBookmark(ctx, pixiv.AddBookmarkRequest{ArtworkID: id, Restrict: pixiv.Restrict(opts.restrict), Tags: opts.tags})
 				})
 			})
 			if len(args) == 0 {
-				return a.data.ConsumeActionRecords(cmd, "bookmark_add", opts.onError, visualRecordTypes, invoke)
+				recordTypes := visualRecordTypes
+				if typ == "novel" {
+					recordTypes = novelRecordTypes
+				}
+				return a.data.ConsumeActionRecords(cmd, "bookmark_add", opts.onError, recordTypes, invoke)
 			}
-			id, err := parse.PositiveInt64(args[0], "illust_id")
+			id, err := parse.PositiveInt64(args[0], "bookmark target ID")
 			if err != nil {
 				return a.data.Usage(err)
 			}
@@ -281,6 +312,7 @@ func (a command) newAdd() *cobra.Command {
 		},
 	}
 	a.data.BindActionFlags(cmd, &opts.ProxyOptions)
+	cmd.Flags().StringVarP(&opts.typ, "type", "t", opts.typ, "entity type: artwork or novel")
 	cmd.Flags().StringVar(&opts.restrict, "restrict", opts.restrict, "bookmark visibility (public or private)")
 	cmd.Flags().StringArrayVar(&opts.tags, "tag", nil, "bookmark tag; may be repeated")
 	cmd.Flags().StringVar(&opts.onError, "on-error", "skip", "record failure strategy: skip or fail-fast")
@@ -290,24 +322,35 @@ func (a command) newAdd() *cobra.Command {
 }
 
 func (a command) newRemove() *cobra.Command {
-	opts := mutationOptions{}
+	opts := mutationOptions{typ: "artwork"}
 	cmd := &cobra.Command{
-		Use:   "remove [ILLUST_ID]",
-		Short: "Remove an illustration bookmark",
-		Args:  a.data.ActionInputArgs("pixiv bookmark remove [options] [ILLUST_ID]"),
+		Use:   "remove [ARTWORK_ID_OR_NOVEL_ID]",
+		Short: "Remove an artwork or novel bookmark",
+		Args:  a.data.ActionInputArgs("pixiv bookmark remove [options] [ARTWORK_ID_OR_NOVEL_ID]"),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			typ, err := bookmarkMutationType(opts.typ)
+			if err != nil {
+				return a.data.Usage(err)
+			}
 			if _, err := pipeline.RecordFailureStrategy(opts.onError); err != nil {
 				return a.data.Usage(err)
 			}
 			invoke := a.actionInvoker(cmd, opts.CommandOptions, func(ctx context.Context, request deps.Request, id int64) error {
 				return deps.Write(a.data, ctx, request, func(ctx context.Context, client *pixiv.Client) error {
+					if typ == "novel" {
+						return client.RemoveNovelBookmark(ctx, pixiv.RemoveNovelBookmarkRequest{NovelID: id})
+					}
 					return client.RemoveBookmark(ctx, pixiv.RemoveBookmarkRequest{ArtworkID: id})
 				})
 			})
 			if len(args) == 0 {
-				return a.data.ConsumeActionRecords(cmd, "bookmark_remove", opts.onError, visualRecordTypes, invoke)
+				recordTypes := visualRecordTypes
+				if typ == "novel" {
+					recordTypes = novelRecordTypes
+				}
+				return a.data.ConsumeActionRecords(cmd, "bookmark_remove", opts.onError, recordTypes, invoke)
 			}
-			id, err := parse.PositiveInt64(args[0], "illust_id")
+			id, err := parse.PositiveInt64(args[0], "bookmark target ID")
 			if err != nil {
 				return a.data.Usage(err)
 			}
@@ -315,6 +358,7 @@ func (a command) newRemove() *cobra.Command {
 		},
 	}
 	a.data.BindActionFlags(cmd, &opts.ProxyOptions)
+	cmd.Flags().StringVarP(&opts.typ, "type", "t", opts.typ, "entity type: artwork or novel")
 	cmd.Flags().StringVar(&opts.onError, "on-error", "skip", "record failure strategy: skip or fail-fast")
 	a.data.BindTextOrRecord(cmd, 0, 1, 0)
 	requirements.Bind(cmd, requirements.PixivData())
