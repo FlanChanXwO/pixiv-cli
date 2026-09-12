@@ -1,5 +1,7 @@
 # Goal-3 capability 状态与 required_scope
 
+> **SUPERSEDED STATE / FROZEN SCOPE EVIDENCE**：当前 layer 状态与 release readiness 只由 `goal-1/current-state.md` 维护和派生。本文件继续冻结原始 `required_scope=41`、历史 contract owner 与 acceptance 索引；下表 `State` 以及下文“唯一权威来源”等表述属于 Goal-3 历史状态，不得覆盖 Goal-1 当前事实。
+
 修订日期：2026-09-07（Asia/Shanghai）。这是**当前 capability 状态的唯一权威来源**；其他文档只记录 contract、迁移策略或历史 evidence，不独立授予发布权限。
 
 ## 状态与发布规则

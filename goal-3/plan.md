@@ -1,5 +1,7 @@
 # Goal-3：Pixiv vNext 完整实施计划
 
+> **SUPERSEDED / READ-ONLY EVIDENCE**：当前执行状态机已迁移到 `goal-1/plan.md`、`goal-1/tasks.md`、`goal-1/current-state.md`。本文件仅保留历史 contract、设计决策与 evidence；其中“当前状态”“下一任务”“唯一权威来源”等措辞均为历史语境，不得用于恢复执行旧 Goal-3 DAG 或判断当前发布完成度。
+
 修订日期：2026-09-07（Asia/Shanghai）。本轮依据固定基线 `2167445280f1f6b6ce3ab8f6dbb3d082746b713d` 的 REQUEST_CHANGES 审查（5 P1、4 P2）及 `goal3-pagination-repro`，保留 Goal-3 为单一完整 Goal。
 
 ## 目标、范围与完成定义

@@ -987,12 +987,36 @@ Live 只执行 `Live Manifest` 中 `live_required=yes` 的场景，不临时增�
 - **兼容 / 回滚：** 无 wire、public symbol、CLI/MCP schema 变更；只修正 absent 归一。回滚仅需撤销两个 adapter 分支与对应 fixture/test 断言。
 - **风险 / 下一步：** #16 artwork bookmark detail Live → `verified`；#20 novel bookmark detail absent case 已验证，但 bookmarked=true 目标数据仍为 `blocked_external (data)`；#27 novel comments 同样受目标数据限制。下一任务为 `G1-T30`。
 
+## G1-CORR-G1-T29-NOVEL-COMMENTS-DATA-PROBE-01 — novel comments live 样本探测去除无依据固定上限
+
+**Status:** pending
+
+**Source task/gate：** G1-T29 live read（#27 `novel-comments-read` 数据样本探测）。
+
+**Capability：** #27 `novel-comments-read`。
+
+**Depends on：** G1-CORR-G1-T29-BOOKMARK-DETAIL-01 reached terminal status。
+
+**Observed failure：** 当前 live harness 使用 `novels.Items[:3]` 扫描固定 3 本小说寻找非空评论样本；该 `3` 没有 frozen manifest、上游或平台限制依据。结果可能把“第 4 本以后存在评论”的可验证场景误记为 `blocked_external (data)`；当 search 结果少于 3 项时还存在 slice panic 风险。
+
+**Expected contract：** live 数据探测只能依据真实返回集合与 manifest 条件，不得用无依据固定条数提前判定外部 blocker。对当前已取得的 search page 安全遍历，找到首个 comments 非空目标即停止；当前集合确无满足条件目标时才记录 data-limited evidence。若要继续跨页寻找样本，必须由既有 manifest/contract 明确要求，而不是新增任意分页/次数上限。
+
+**Scope boundary：** 仅 `e2e/sdk_pixiv_live_manifest_test.go` 中 novel-comments live target selection 与对应测试/helper；不改生产 endpoint、SDK、CLI/MCP，不扩大 live manifest，不新增 retry/timeout/扫描次数限制。
+
+**Red / expected failure：** 先增加最小行为测试覆盖：(1) search 结果少于 3 项不得 panic；(2) 第 4 个或更后位置存在 comments 时必须能选中，而不能提前声明 data blocker。当前固定 `[:3]` 实现应实际失败。
+
+**Green acceptance：** 对已返回 page 安全遍历并在首个非空 comments 目标停止；无目标时保留真实 data-limited 结果；focused E2E helper/unit test PASS，原 live harness 行为不扩 scope。
+
+**Compatibility impact：** 无 public API/wire/schema/CLI/MCP 变化；只提高 live gate 对 `blocked_external (data)` 分类的可信度。
+
+**Rollback boundary：** 仅回滚 live harness target-selection 与对应测试/helper。
+
 
 ## G1-T30 — Live mutation：bookmark / comments / follow
 
 **Status:** pending
 
-**Depends on:** G1-CHECK-09
+**Depends on:** G1-CHECK-09,G1-CORR-G1-T29-BOOKMARK-DETAIL-01,G1-CORR-G1-T29-NOVEL-COMMENTS-DATA-PROBE-01 reached terminal status
 
 **目标：** 按 manifest 在明确授权隔离账号验证 mutation round-trip。
 
@@ -1019,7 +1043,7 @@ Live 只执行 `Live Manifest` 中 `live_required=yes` 的场景，不临时增�
 
 - 有内部 correction：保持 ACTIVE，抢占执行 correction；当前 CHECK 不完成 phase push。
 - 仅剩真实 external/decision blocker 且无可执行内部 work：运行 G1-TERM。
-- 所有 required live acceptance verified：提交 Phase F live evidence/账本，普通 fast-forward push 到 `refactor/pixiv-api-stability`，验证 Remote SHA == Local HEAD；push 成功后进入 G1-FINAL。
+- 所有 required live acceptance verified：提交 Phase F live evidence/账本，普通 fast-forward push 到 `refactor/pixiv-api-stability`，验证 Remote SHA == Local HEAD；push 成功后进入 G1-T31。
 
 **完成记录：**
 - Live verified：
@@ -1029,13 +1053,44 @@ Live 只执行 `Live Manifest` 中 `live_required=yes` 的场景，不临时增�
 - Local HEAD：
 - Remote SHA：
 - Push result：
+- 下一步：G1-T31 或 G1-TERM
+
+## G1-T31 — Pre-final latest-main integration readiness
+
+**Status:** pending
+
+**Depends on:** G1-CHECK-10 verified
+
+**Scope:** 只读 Git/history/diff + 必要的最小受影响 gate 复核；默认不修改业务代码，不自动 merge/rebase/reset/force。
+
+**目标：** 在最终 COMPLETED 判定前确认当前执行分支相对最新 `origin/main` 的漂移不会让已通过的 SDK/wire/cursor/CLI/MCP/protocol/docs/release acceptance 失效。
+
+**验收：**
+
+- fetch 最新 `origin/main` 与目标分支，记录 Local HEAD、Remote branch SHA、main SHA、merge-base、ahead/behind。
+- 列出 merge-base 后双方共同修改的文件；只对共享 contract/hotspot 做 blast-radius 审计，不扫描或重测无关 main 变更。
+- 核对 public SDK symbols、cursor/serialization、CLI route/flags/output、MCP exact-set/schema/error、protocol/rejected endpoint、docs/Skill/release gate 是否被 main overlap invalidated。
+- 无实际 invalidation：`integration_readiness=PASS`，直接进入 G1-FINAL，不为了形式同步 main。
+- 有可内部修复的 acceptance failure：注册抢占式 `G1-CORR-G1-T31-...`，重置被 invalidated 的最小 gate，GoalState 保持 ACTIVE。
+- 需要选择 merge/rebase/cherry-pick、处理未知远端并发历史、breaking contract 或 scope change：标记 `blocked_decision`，进入 G1-TERM；禁止自动整合历史。
+- 只运行被 overlap 实际影响的 focused verification；不得无条件重跑 Phase E full suite 或全部 live manifest。
+
+**完成记录：**
+- Main SHA：
+- Branch SHA：
+- Merge base / ahead / behind：
+- Shared modified hotspots：
+- Invalidated gates：
+- Focused verification：
+- Integration readiness：
+- Blocker / correction：
 - 下一步：G1-FINAL 或 G1-TERM
 
 ---
 
 # 特殊完成任务：G1-FINAL
 
-`G1-FINAL` 只在 G1-CHECK-10 通过、Phase A–F push gate 全通过且不存在 required blocker 时执行；不计入“三个普通 task 后 CHECK”。
+`G1-FINAL` 只在 G1-CHECK-10 与 G1-T31 均通过、Phase A–F push gate 全通过且不存在 required blocker 时执行；不计入“三个普通 task 后 CHECK”。
 
 **Scope:** 只更新 `goal-1/current-state.md`、`goal-1/tasks.md`、`goal-1/closure-report.md`；不修改业务代码。
 
@@ -1049,6 +1104,7 @@ Live 只执行 `Live Manifest` 中 `live_required=yes` 的场景，不临时增�
 - open P0/P1，必须 0。
 - worktree isolation gate 必须 PASS。
 - Phase A–F push gate 必须全部 PASS。
+- latest-main integration readiness 必须 PASS。
 - cursor integrity、SDK/CLI/MCP compatibility、protocol/SDK regression、CLI/MCP regression、full offline、required live、docs、redaction gate 均 PASS。
 
 **不得重复测试：** 如果某 gate 在当前 HEAD 已通过，且之后没有触及其相关代码/契约，G1-FINAL 直接引用该 evidence，不重复运行昂贵命令。
@@ -1067,6 +1123,7 @@ COMPLETED_CANDIDATE iff
   AND open_correctness_p0_p1 == 0
   AND worktree_isolation_gate == PASS
   AND all_phase_push_gates == PASS
+  AND latest_main_integration_readiness == PASS
   AND cursor_integrity_gate == PASS
   AND sdk_compat_gate == PASS
   AND cli_compat_gate == PASS

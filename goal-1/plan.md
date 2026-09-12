@@ -169,6 +169,13 @@ Preflight 不修改业务代码、不安装新依赖、不执行额外的 releas
 
 ## 5. 权威资料与证据优先级
 
+### 5.1 当前执行权威边界
+
+- `goal-1/tasks.md` 是**当前执行顺序的唯一权威来源**；下一 task、correction 抢占与终止路径只从该文件选择。
+- `goal-1/current-state.md` 是**当前 capability layer 状态的唯一权威来源**；`public_ready` / `release_ready` 只能由当前 layer 与 release gate 派生，禁止从旧 Goal 的单字段状态直接提升。
+- `goal-3/capability-admission.md` 仅继续作为原始 `required_scope=41` 与历史 contract/evidence 的冻结来源；其 `State`、`public_ready`、旧 task `verified/pending` 不再驱动 Goal-1 调度或完成判定。
+- `goal-3/plan.md`、`goal-3/tasks.md`、`goal-3/capability-admission.md` 属于 **superseded / read-only evidence**。若其“当前/下一任务/唯一权威来源”等历史措辞与 Goal-1 冲突，一律以 Goal-1 为准，不得恢复执行旧 DAG。
+
 允许引用：
 
 - `goal-3/plan.md`
@@ -352,7 +359,20 @@ protocol/SDK、CLI、MCP regression 分开，再执行一次 full test/vet/build
 
 按 live manifest 分 read families 和 mutation。最后重新计算 41 capability acceptance 并生成 closure report。
 
-出口：Phase F CHECK 通过并完成 phase push，然后进入 `G1-FINAL`；若只剩 blocker，则进入 `G1-TERM`。
+出口：Phase F CHECK 通过并完成 phase push，然后进入 `G1-T31` latest-main integration readiness gate；若只剩 blocker，则进入 `G1-TERM`。只有 `G1-T31` verified 后才允许进入 `G1-FINAL`。
+
+### Pre-final latest-main integration readiness gate
+
+Phase A–F 证明当前执行分支自身闭合，但不能证明它仍可安全集成最新 `main`。因此 `G1-FINAL` 前必须执行一次只读 integration readiness 审计：
+
+1. fetch 最新 `origin/main` 与 `origin/refactor/pixiv-api-stability`，记录当前 branch 相对 main 的 ahead/behind 与 merge-base；不自动 merge/rebase/reset/force。
+2. 只分析 merge-base 以后**双方共同修改**的文件与公开 contract：public SDK symbol/wire、cursor/serialization、CLI route/flags/output、MCP tool/schema/error、protocol endpoint、release/docs/Skill gate。
+3. 如果 latest main 没有使既有 Goal acceptance/gate 失效，记录 `integration_readiness=PASS`，不要求为了“同步”而制造无必要 merge commit。
+4. 如果存在可由当前 Goal 最小 correction 关闭的行为冲突，按 correction 规则抢占并重置受影响 gate。
+5. 如果继续需要选择 merge/rebase/cherry-pick、解决未知远端并发历史、接受 breaking contract 或扩大 scope，则标记 `blocked_decision`，不得由执行 Agent 自行整合历史。
+6. integration readiness 只重跑被 latest-main overlap **实际 invalidated** 的最小 gate；不得无条件重跑整个 Phase A–F。
+
+该 gate 的目标是证明“当前 Goal 的结论仍适用于准备集成的仓库状态”，不是强制把 main 合并进执行分支。
 
 ### 10.1 Phase push gate
 
@@ -486,6 +506,7 @@ COMPLETED :=
   AND correctness_p0_p1_open == 0
   AND worktree_isolation_gate == PASS
   AND all_phase_push_gates == PASS
+  AND latest_main_integration_readiness == PASS
   AND cursor_integrity_gate == PASS
   AND sdk_compat_gate == PASS
   AND cli_compat_gate == PASS

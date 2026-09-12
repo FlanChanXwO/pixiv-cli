@@ -1,5 +1,7 @@
 # Goal-3 tasks：完整实施 Goal
 
+> **SUPERSEDED / DO NOT SCHEDULE**：当前任务调度只允许读取 `goal-1/tasks.md`。本文件中的 `verified` / `pending` 与“下一入口”仅作为历史执行证据，不得选择为当前下一任务；需要引用旧验收或完成记录时可只读使用。
+
 修订日期：2026-09-08（Asia/Shanghai）。审查基线：`2167445280f1f6b6ce3ab8f6dbb3d082746b713d`。
 
 ## 执行规则与当前入口
