@@ -2,7 +2,7 @@
 
 **GoalState:** `ACTIVE`
 
-**Report status:** `CURRENT_RESUMED_EXECUTION` — 2026-09-13；历史 G1-CHECK-10/G1-TERM blocked closure 已被新 live evidence 与 artwork-series wire correction supersede。Goal 仍不满足 `COMPLETED`。
+**Report status:** `CURRENT_BLOCKED_CLOSURE` — 2026-09-13；本轮 live evidence 与 artwork-series wire correction 已完成，G1-CHECK-10 已重新审计并由 G1-TERM 记录 scope 决策阻塞。Goal 仍不满足 `COMPLETED`。
 
 **Generated:** 2026-09-13
 
@@ -10,9 +10,9 @@
 
 **Worktree:** `/Users/flanchan/Developer/Projects/GithubProjects/.worktrees/pixiv-cli-refactor-pixiv-api-stability`（专用 linked worktree）
 
-**Current task:** `G1-CHECK-10`（in_progress；GoalState=`ACTIVE`）
+**Current task:** `G1-TERM`（blocked_decision；GoalState=`BLOCKED_DECISION`）
 
-**Current next task:** 完成 G1-CHECK-10 重算；若仍存在 decision/scope blocker，再进入 G1-TERM，否则按依赖进入 G1-T31。
+**Current next task:** 等待 #6/#12/#23/#24/#38/#39/#41 的 scope/contract 决策；明确后从最早受影响 task 恢复，不执行 G1-T31/G1-FINAL。
 
 ## 0. Resume reason
 
@@ -141,3 +141,12 @@
 - **Decision / scope blockers：** #6、#12、#23、#24、#41、#38、#39 仍需用户明确批准 layer/public-surface 裁定；不自行新增 CLI/MCP/SDK contract、aggregate operation、rating surface 或 bare-ID probe。
 - **Verification：** `go test ./...`、`go vet ./...`、`sh scripts/build.sh`、documentation tests、series/SDK focused tests、LSP diagnostics、`gofmt` 与 `git diff --check` 均 PASS；artwork-series live recovery 首页/第二页均为 30 个 artwork 且 continuation 成功。
 - **Routing：** 无 runnable required task，进入 `G1-TERM` 路由；不得执行 G1-T31/G1-FINAL，Goal 保持 `ACTIVE`，等待 scope/contract 决策。当前 artwork-series 代码与账本变更待本批次 commit/push。
+
+## 14. Current G1-TERM blocked closure（2026-09-13）
+
+- **GoalState：** `BLOCKED_DECISION`。G1-CHECK-10 rerun 已到 terminal `blocked_decision`；当前无 runnable required task，也无剩余 data/permission external blocker。#6、#12、#23、#24、#38、#39、#41 仍需用户明确 layer/public-surface contract，G1-T31/G1-FINAL 继续锁定。
+- **Counts：** required capability `41/41`、`public_ready=0/41`、`scope_admitted=41/41`；manifest `41/41`，`live_required=yes/no=36/5`，`mapped_to_task=41`、`unmapped=0`、`undecomposed=0`。
+- **已闭合证据：** #5 artwork-series `offset` correction/recovery、#17/#20/#21 bookmark round-trip、#26/#28 comments mutation 均已 verified；#9/#27 与既有 corrections 保留。评论只写 `很棒！`，stamp 使用空正文；不 replay uncertain mutation、不扫描 ID、不猜测 `comment_access_control` scalar。
+- **Decision / scope：** #6/#12 需要 CLI/MCP surface 裁定，#23/#24/#41 需要 aggregate/strict public contract 裁定，#38 需要 bare-ID probe 裁定，#39 需要 rating MCP 裁定。本 closure 不自行扩大 public surface。
+- **Verification / Git：** `go test ./...`、`go vet ./...`、`sh scripts/build.sh`、documentation tests、series/SDK focused tests、race、LSP、gofmt 与 `git diff --check` 均 PASS；checkpoint `f5b317913030266cb40a303001dfe451ff0b146a` 已普通 fast-forward 推送，Local/Remote SHA 一致，worktree clean。
+- **Next：** 等待用户 scope/contract 决策；明确后从最早受影响的 decision task 恢复。不得执行 G1-T31/G1-FINAL，Goal 不得标记 `COMPLETED`。

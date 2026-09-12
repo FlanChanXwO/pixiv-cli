@@ -1115,3 +1115,12 @@ G1-T01 已在干净目标 worktree 执行 `go test ./...` 并通过；G1-CHECK-0
 - **Red→Green：** endpoint 新增 offset wire fixture、SDK 新增 offset cursor round-trip；旧 last_order endpoint/SDK/cursor regression 保持 PASS。Red 阶段 endpoint 因缺 `Offset/NextKey/NextValue` 编译失败，SDK 因 offset next_url 返回 `malformed_upstream_response`；修正后 series endpoint 与 cursor focused tests PASS。
 - **Live：** `PIXIV_SDK_E2E=1 PIXIV_ARTWORK_SERIES_RECOVERY_ID=21859 PIXIV_E2E_PROXY=http://127.0.0.1:7890 go test ./e2e -run '^TestRealPixivSDKLiveArtworkSeriesRecovery$' -count=1 -v` PASS（约 5 秒）：public SDK 首页 30 个 artwork、continuation=true；真实第二页 30 个 artwork、continuation=true。
 - **边界：** 候选只来自公开可追溯 series URL，不扫描 ID；raw probe 不输出 response body；live 使用只读请求，无 token/cookie/refresh token/raw signed URL 进入日志。Goal 尚未完成，下一步是受影响的 G1-CHECK-10。
+
+## 51. G1-TERM resumed blocked closure（2026-09-13）
+
+- **GoalState：** `BLOCKED_DECISION`。G1-CHECK-10 rerun 已达 terminal `blocked_decision`；当前无 runnable required task，也无剩余 data/permission external blocker。#6、#12、#23、#24、#38、#39、#41 仍缺用户明确的 layer/public-surface contract，故 G1-T31/G1-FINAL 锁定，Goal 不满足 `COMPLETED`。
+- **Counts：** required capability `41/41`、`public_ready=0/41`、`scope_admitted=41/41`；manifest `41/41`，`live_required=yes/no=36/5`，`mapped_to_task=41`、`unmapped=0`、`undecomposed=0`。
+- **Evidence：** #5 artwork-series `offset` continuation correction/recovery、#17/#20/#21 bookmark round-trip、#26/#28 comments mutation 均已 verified；#9/#27 与既有 correction evidence 保留。评论正文仅为 `很棒！`，stamp 使用空正文；不 replay uncertain mutation、不扫描 ID、不猜测 `comment_access_control` scalar。
+- **Decision / scope：** #6/#12 为 CLI/MCP surface，#23/#24/#41 为 aggregate/strict public contract，#38 为 bare-ID probe，#39 为 rating MCP；本 closure 不自行扩大 public surface。
+- **Verification / Git：** `go test ./...`、`go vet ./...`、`sh scripts/build.sh`、documentation tests、series/SDK focused tests、race、LSP、gofmt 与 `git diff --check` 均 PASS；checkpoint `f5b317913030266cb40a303001dfe451ff0b146a` 已普通 fast-forward 推送，Local/Remote SHA 一致，worktree clean。
+- **Next：** 等待用户 scope/contract 决策；明确后从最早受影响的 decision task 恢复，不执行 G1-T31/G1-FINAL。

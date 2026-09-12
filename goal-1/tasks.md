@@ -1276,7 +1276,25 @@ go test ./sdk/pixiv ./internal/services/pixiv/endpoint/artwork/comments ./intern
 
 **Remaining decision / scope blockers：** #6、#12、#23、#24、#41、#38、#39 仍缺明确的 layer/public-surface contract；涉及新增 CLI/MCP/SDK surface、aggregate SDK、rating MCP 或 bare-ID probe，不能用本轮数据权限推断批准。`comment_access_control` scalar 业务语义仍不猜测。故本 CHECK 不能标 `verified`，不启动 G1-T31/G1-FINAL。
 
-**Next：** `G1-TERM` 重新记录当前 decision blocker；Goal 不标记 `COMPLETED`。若用户后续明确批准 scope，再从对应 decision task 恢复。
+**Next：** `G1-TERM` 已重新记录当前 decision blocker；Goal 不标记 `COMPLETED`。若用户后续明确批准 scope，再从对应 decision task 恢复。
+
+## G1-TERM — resumed blocked closure（2026-09-13；supersedes prior G1-TERM records）
+
+**Status:** blocked_decision
+
+**Depends on:** G1-CHECK-10 rerun reached terminal `blocked_decision`
+
+**GoalState：** `BLOCKED_DECISION`。本次恢复后无 runnable required task，也没有剩余 data/permission external blocker；但 #6、#12、#23、#24、#38、#39、#41 仍需要用户明确 layer/public-surface contract，故不得进入 G1-T31/G1-FINAL 或标记 Goal `COMPLETED`。
+
+**Counts：** required capability `41/41`、`public_ready=0/41`、`scope_admitted=41/41`；manifest `41/41`，`live_required=yes/no=36/5`，`mapped_to_task=41`、`unmapped=0`、`undecomposed=0`。
+
+**已闭合证据：** #5 artwork-series 的 `offset` continuation correction/recovery、#17/#20/#21 bookmark round-trip、#26/#28 comments text/reply/stamp live write/read-back/cleanup 均已 verified；#9/#27 与既有 correction evidence 保留。评论正文仅为 `很棒！`，stamp 使用空正文；未 replay uncertain mutation，不扫描 ID，不猜测 `comment_access_control` scalar。
+
+**Decision / scope blockers：** #6/#12 涉及 CLI/MCP surface，#23/#24/#41 涉及 aggregate/strict public contract，#38 涉及 bare-ID probe，#39 涉及 rating MCP。继续实现需要用户批准对应范围/契约；本 closure 不自行扩大 public surface。
+
+**Verification / Git：** `go test ./...`、`go vet ./...`、`sh scripts/build.sh`、documentation tests、series/SDK focused tests、race、LSP、gofmt 与 `git diff --check` 均 PASS；closure checkpoint `f5b317913030266cb40a303001dfe451ff0b146a` 已普通 fast-forward 推送，Local/Remote SHA 一致，worktree clean。
+
+**Next：** 等待用户 scope/contract 决策；决策明确后从最早受影响的 decision task 恢复。不得执行 G1-T31/G1-FINAL。
 
 ## G1-T31 — Pre-final latest-main integration readiness
 
