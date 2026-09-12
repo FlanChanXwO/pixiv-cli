@@ -1079,7 +1079,7 @@ Live 只执行 `Live Manifest` 中 `live_required=yes` 的场景，不临时增�
 - **External blockers：** #5/#9 series target/第二页、#20 novel bookmarked target、#27 comments DTO/target、#17/#21 bookmark read-back、#26/#28 comment target；具体证据与 cleanup/reconcile 结果见 closure report 与 current-state §40–§42。
 - **Decision blockers：** #6/#12 缺少批准的 CLI/MCP surface、#23/#24/#41 aggregate SDK/strict contract 未冻结、#38 bare-ID 与 #39 rating MCP 仍受 frozen boundary 约束；不得在本 task 自行扩大 public scope。
 - **Verification：** `go test ./...`、`go vet ./...`、`sh scripts/build.sh`、documentation tests、LSP/focused/live/reconcile、`gofmt` 与 `git diff --check` 均有 PASS 证据。
-- **Local HEAD：** closure commit 完成后填写；**Remote SHA：** 普通 fast-forward push 后由 GitHub API 与 `git ls-remote` 核验；**Push result：** 待执行。
+- **Closure checkpoint Local HEAD：** `2d60489d5355ac0ed31703fceab47415945be074`；**Closure checkpoint Remote SHA：** `2d60489d5355ac0ed31703fceab47415945be074`；**Push result：** PASS，`8589ea1bfa16cef3df3c9dbe2d4fffa8fe9670ec..2d60489` ordinary fast-forward，GitHub API 与 `git ls-remote` 双重核验一致。随后仅发布本 push 结果的 documentation ledger，并再次普通 fast-forward 验证当前 Local/Remote 相等。
 - **下一步：** 本 Goal 进入 `BLOCKED_DECISION` terminal state；不得执行 G1-T31/G1-FINAL，不得标记 Goal complete。
 
 ## G1-T31 — Pre-final latest-main integration readiness

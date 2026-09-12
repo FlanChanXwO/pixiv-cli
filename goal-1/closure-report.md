@@ -59,8 +59,9 @@
 
 - G1-CHECK-10 audit base：`a3f8d31`。
 - Audit 前远端：`refactor/pixiv-api-stability`=`8589ea1bfa16cef3df3c9dbe2d4fffa8fe9670ec`；`origin/main`=`7ff1e6b4e6177c657876f69cd930d279d2d0bfce`。
-- Closure commit 将从当前分支普通 fast-forward 推送；禁止 force、rebase、reset 或删除其他 worktree。
-- Push result：待本次 `G1-TERM` closure commit 完成后执行并以 GitHub API 与 `git ls-remote` 双重核验。
+- Closure checkpoint commit：`2d60489d5355ac0ed31703fceab47415945be074`。
+- Push result：PASS；`8589ea1bfa16cef3df3c9dbe2d4fffa8fe9670ec..2d60489d5355ac0ed31703fceab47415945be074` ordinary fast-forward；未使用 force/rebase。GitHub API 与 `git ls-remote` 均确认 Remote SHA=`2d60489d5355ac0ed31703fceab47415945be074`，与 closure checkpoint Local HEAD 一致。
+- Post-push ledger：本报告的 push 结果更新会作为后续 documentation commit 再次普通 fast-forward 推送；发布后再次核验 Remote SHA == 当前 Local HEAD。禁止 force、reset 或删除其他 worktree。
 
 ## 6. Resume conditions
 

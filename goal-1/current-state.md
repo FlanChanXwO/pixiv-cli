@@ -1038,3 +1038,4 @@ G1-T01 已在干净目标 worktree 执行 `go test ./...` 并通过；G1-CHECK-0
 - **External blocker summary：** #5/#9 缺 series target/第二页；#20 缺 novel bookmarked target；#27 受 `invalid comment time` 上游 DTO 阻断；#17/#21 bookmark write 后状态无法确认但 cleanup/reconcile 干净；#26/#28 无安全 comment target，未发写入。
 - **Decision blocker summary：** #6/#12 缺批准的 CLI/MCP surface；#23/#24/#41 aggregate SDK/strict contract 未冻结；#38 bare-ID 与 #39 rating MCP 仍受 frozen boundary 约束。继续实现需要用户明确 public contract/scope，不能在 terminal task 中自行扩大范围。
 - **Verification / safety：** 全量 offline、vet、build、documentation、LSP、focused/live/reconcile 与 redaction evidence 均通过；没有 token/cookie/refresh token/raw URL/评论正文进入日志；未修改生产代码或 Goal-3 scope。
+- **Closure push：** blocked closure checkpoint `2d60489d5355ac0ed31703fceab47415945be074` 已从远端 `8589ea1bfa16cef3df3c9dbe2d4fffa8fe9670ec` 普通 fast-forward 推送成功；GitHub API 与 `git ls-remote` 双重确认 Remote SHA 与 checkpoint Local HEAD 一致。随后仅发布本结果的 documentation ledger，并再次核验最终 Local/Remote 相等。
