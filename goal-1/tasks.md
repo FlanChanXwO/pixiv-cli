@@ -1022,7 +1022,7 @@ Live 只执行 `Live Manifest` 中 `live_required=yes` 的场景，不临时增�
 
 ## G1-T30 — Live mutation：bookmark / comments / follow
 
-**Status:** in_progress
+**Status:** blocked_external
 
 **Depends on:** G1-CHECK-09,G1-CORR-G1-T29-BOOKMARK-DETAIL-01,G1-CORR-G1-T29-NOVEL-COMMENTS-DATA-PROBE-01 reached terminal status
 
@@ -1033,13 +1033,13 @@ Live 只执行 `Live Manifest` 中 `live_required=yes` 的场景，不临时增�
 **测试预算：** 每个 mutation family 只执行 frozen contract 要求的最小成功/清理路径和必要错误边界，不做压力/穷举测试。
 
 **完成记录：**
-- Scenarios：
-- Read-back/cleanup：
-- Evidence：
-- Blocker/Correction：
+- Scenarios：在明确授权的非默认本地账号 `127975236` 上执行；测试 harness 显式要求 `PIXIV_SDK_E2E_MUTATION=1` 与 `PIXIV_E2E_MUTATION_USER_ID`，并拒绝普通默认账号。最终 live round-trip 覆盖 artwork bookmark、novel bookmark、stamps read、artwork/novel comment target probe、follow add/delete；只使用当前 search page 的真实返回集合，不新增扫描上限。
+- Read-back/cleanup：follow 目标公共 user `17391869` 完成 add → 同账号 `User.IsFollowed=true` → delete → `false`，`writes=1/read_back=true/cleanup=true`。bookmark artwork 目标 `149587117`、novel 目标 `29111542` 各完成一次 add（status-only accepted），即时 detail/list/tags 未确认收藏状态，随后各只执行一次本轮 cleanup delete；只读 reconcile 均确认 `bookmarked=false`、list/tags 读取成功且目标不在 list。评论在写前探测未取得带显式 `CanComment` 的合法 target，artwork/novel 均未发 comment write；stamp read 返回 40 项并选得正数 stamp ID，但因无 comment target 未发 stamp write。
+- Evidence：最终 live 命令 `PIXIV_SDK_E2E_MUTATION=1 PIXIV_E2E_MUTATION_USER_ID=127975236 PIXIV_E2E_PROXY=http://127.0.0.1:7890 go test ./e2e -run '^TestRealPixivSDKLiveManifestMutation$' -count=1 -v` PASS；输出只含账号/作品/用户/stamp 公共 ID、计数、布尔状态和分类 reason。reconcile 命令对最终 bookmark targets PASS；没有 token、cookie、refresh token、评论正文或 raw URL 进入日志。account-selection 与 untagged bookmark read-back 的 Red→Green focused tests 均 PASS。
+- Blocker/Correction：第一次 harness 运行暴露 result logger 丢失 `writes/cleanup` 的内部证据 bug，随后以离线 Green 修正；又发现无标签 read-back 错误要求空字符串 tag，补充 Red→Green 回归并修正后重跑。早期尝试与最终尝试的已知 bookmark targets 均经只读 reconcile 清理。最终 bookmark add 的 `writes=1` 后 read-back 仍不可见，cleanup 已成功，按 frozen status-only/uncertain-no-replay 语义归类 `blocked_external`，不再重放；artwork/novel comment target probe 受当前上游 comment 数据/权限阻断，未伪造 target 或写入。无生产代码 correction。
 - 下一步：G1-CHECK-10
 
-**当前 preflight：** 专用 linked worktree 与目标分支有效；本机本地数据库存在多个 Pixiv 账号，但没有显式 mutation 账号选择或授权环境变量。Goal-3 历史 evidence 仅标记 `non-main-account`/`mutation-account`，没有可安全映射到当前本地账号的身份资料。当前未执行任何写请求；继续前必须明确指定隔离账号，并确认允许在该账号上执行本 manifest 的最小 add/delete/comment/follow round-trip。
+**当前 preflight：** 用户已明确授权使用本机认证；专用 linked worktree 与目标分支有效。选择本地非默认账号 UID `127975236`，并在 harness 内核对 `CurrentUser` identity；refresh token 仅从本地数据库进程内读取并按 SDK 既有契约轮换回写，不进入 argv/env/log。默认账号未配置 Pixiv UID 时按普通 live-read 的 sort_order 第一账号语义排除；未执行账号切换、token 导出或非本 manifest 写入。
 
 ## G1-CHECK-10 — Phase F exit：live validation + push
 
