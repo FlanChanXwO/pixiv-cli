@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -291,6 +292,17 @@ func liveTwoPages[T any](t *testing.T, name string, fetch func(sdk.Cursor) (sdk.
 	}
 }
 
+// firstNovelWithComments 按当前搜索页的真实返回顺序探测首个有评论的小说。
+// 不预设页内条数，避免短页越界或把后续合法结果误判为数据阻塞。
+func firstNovelWithComments(items []pixivsdk.Novel, hasComments func(int64) bool) (int64, bool) {
+	for _, item := range items {
+		if hasComments(item.ID) {
+			return item.ID, true
+		}
+	}
+	return 0, false
+}
+
 // TestRealPixivSDKLiveManifestBookmarkUserRead 执行 goal-1 Live Manifest
 // bookmark（14–16、18–20、23–24）、comments（27、29）、user（30–35、37）的
 // live read 场景。数据受限按 manifest 记录 blocked_external/data-limited；
@@ -411,32 +423,32 @@ func TestRealPixivSDKLiveManifestBookmarkUserRead(t *testing.T) {
 	} else if len(novels.Items) == 0 {
 		t.Logf("novel_comments: blocked_external (data): novel search returned no items")
 	} else {
-		// 数据条件：目标 novel 需有 comments；扫描前 3 本，找不到按
+		// 数据条件：目标 novel 需有 comments；只扫描当前搜索页，找不到按
 		// blocked_external (data) 记录，不伪造非空结果。
-		novelID := novels.Items[0].ID
-		for _, candidate := range novels.Items[:3] {
-			probe, err := client.NovelComments(ctx, pixivsdk.NovelCommentsRequest{NovelID: candidate.ID})
+		novelID, found := firstNovelWithComments(novels.Items, func(candidateID int64) bool {
+			probe, err := client.NovelComments(ctx, pixivsdk.NovelCommentsRequest{NovelID: candidateID})
 			if err != nil {
-				t.Errorf("novel comments %d: %v", candidate.ID, err)
-				continue
+				t.Errorf("novel comments %d: %v", candidateID, err)
+				return false
 			}
-			if len(probe.Page.Items) > 0 {
-				novelID = candidate.ID
-				break
-			}
-		}
-		comments, err := client.NovelComments(ctx, pixivsdk.NovelCommentsRequest{NovelID: novelID})
-		if err != nil {
-			t.Errorf("novel comments %d: %v", novelID, err)
+			return len(probe.Page.Items) > 0
+		})
+		if !found {
+			t.Logf("novel_comments: blocked_external (data): current search page has no non-empty comments target")
 		} else {
-			t.Logf("novel_comments %d: %d comments, continuation=%v, total=%v, access_control=%v",
-				novelID, len(comments.Page.Items), !comments.Page.Next.IsZero(), comments.Total != nil, comments.AccessControl != nil)
-			if !comments.Page.Next.IsZero() {
-				second, err := client.NovelComments(ctx, pixivsdk.NovelCommentsRequest{NovelID: novelID, Cursor: comments.Page.Next})
-				if err != nil {
-					t.Errorf("novel comments second page: %v", err)
-				} else {
-					t.Logf("novel_comments %d second page: %d comments", novelID, len(second.Page.Items))
+			comments, err := client.NovelComments(ctx, pixivsdk.NovelCommentsRequest{NovelID: novelID})
+			if err != nil {
+				t.Errorf("novel comments %d: %v", novelID, err)
+			} else {
+				t.Logf("novel_comments %d: %d comments, continuation=%v, total=%v, access_control=%v",
+					novelID, len(comments.Page.Items), !comments.Page.Next.IsZero(), comments.Total != nil, comments.AccessControl != nil)
+				if !comments.Page.Next.IsZero() {
+					second, err := client.NovelComments(ctx, pixivsdk.NovelCommentsRequest{NovelID: novelID, Cursor: comments.Page.Next})
+					if err != nil {
+						t.Errorf("novel comments second page: %v", err)
+					} else {
+						t.Logf("novel_comments %d second page: %d comments", novelID, len(second.Page.Items))
+					}
 				}
 			}
 		}
@@ -580,6 +592,40 @@ func TestRealPixivSDKLiveManifestBookmarkUserRead(t *testing.T) {
 		}
 		t.Logf("%s: records=%d artwork_side=%v novel_side=%v artwork_first=%v",
 			scenario.name, len(types), artworkSeen, novelSeen, artworkFirst)
+	}
+}
+
+func TestFirstNovelWithCommentsHandlesShortPages(t *testing.T) {
+	items := []pixivsdk.Novel{{ID: 11}, {ID: 22}}
+	var probed []int64
+
+	novelID, found := firstNovelWithComments(items, func(id int64) bool {
+		probed = append(probed, id)
+		return false
+	})
+
+	if found || novelID != 0 {
+		t.Fatalf("firstNovelWithComments() = (%d, %v), want (0, false)", novelID, found)
+	}
+	if got, want := probed, []int64{11, 22}; !reflect.DeepEqual(got, want) {
+		t.Fatalf("probed novel IDs = %v, want %v", got, want)
+	}
+}
+
+func TestFirstNovelWithCommentsFindsFourthItem(t *testing.T) {
+	items := []pixivsdk.Novel{{ID: 11}, {ID: 22}, {ID: 33}, {ID: 44}, {ID: 55}}
+	var probed []int64
+
+	novelID, found := firstNovelWithComments(items, func(id int64) bool {
+		probed = append(probed, id)
+		return id == 44
+	})
+
+	if !found || novelID != 44 {
+		t.Fatalf("firstNovelWithComments() = (%d, %v), want (44, true)", novelID, found)
+	}
+	if got, want := probed, []int64{11, 22, 33, 44}; !reflect.DeepEqual(got, want) {
+		t.Fatalf("probed novel IDs = %v, want %v", got, want)
 	}
 }
 

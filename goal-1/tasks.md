@@ -989,7 +989,7 @@ Live 只执行 `Live Manifest` 中 `live_required=yes` 的场景，不临时增�
 
 ## G1-CORR-G1-T29-NOVEL-COMMENTS-DATA-PROBE-01 — novel comments live 样本探测去除无依据固定上限
 
-**Status:** pending
+**Status:** verified
 
 **Source task/gate：** G1-T29 live read（#27 `novel-comments-read` 数据样本探测）。
 
@@ -1010,6 +1010,14 @@ Live 只执行 `Live Manifest` 中 `live_required=yes` 的场景，不临时增�
 **Compatibility impact：** 无 public API/wire/schema/CLI/MCP 变化；只提高 live gate 对 `blocked_external (data)` 分类的可信度。
 
 **Rollback boundary：** 仅回滚 live harness target-selection 与对应测试/helper。
+
+**完成记录：**
+- **改动：** 在 `e2e/sdk_pixiv_live_manifest_test.go` 提取 `firstNovelWithComments`，按当前 search page 的真实返回顺序遍历，命中首个非空 comments 即停止；无命中返回 `(0, false)`，不再使用 `Items[:3]`，不新增跨页、重试、超时或扫描次数限制。
+- **Red：** 先加入短页与第 4 项命中两个行为测试，并以原 `[:3]` selection seam 实跑 focused 命令；短页用例按预期因 slice bounds panic 失败，第 4 项用例也无法在前三项内命中。测试覆盖少于 3 项不越界、第 4 项可命中以及命中后停止继续探测。
+- **Green / 回归：** `go test ./e2e -run 'TestFirstNovelWithComments(HandlesShortPages|FindsFourthItem)$' -count=1 -v` PASS；`go test ./e2e -run 'TestFirstNovelWithComments(HandlesShortPages|FindsFourthItem)$|TestRealPixivSDKLiveManifestBookmarkUserRead$' -count=1 -v` 中 helper PASS、live 未设 env 时按门控 skip；`gopls check e2e/sdk_pixiv_live_manifest_test.go`、`gofmt`、`git diff --check` PASS。
+- **Live：** 经 `PIXIV_SDK_E2E=1 PIXIV_E2E_PROXY=http://127.0.0.1:7890` 两次实跑同一 manifest harness，其他 bookmark/user/stamp/relationship 场景均完成；novel comments 当前候选返回 `malformed_upstream_response: invalid comment time`，随后当前 search page 无可用非空 comments target。该错误来自上游候选数据无法满足 SDK 的时间 DTO 契约，既有 harness 也会对请求错误 `t.Errorf`；未静默降级，#27 Live 保持 `blocked_external (data/upstream)`，不扩大本 correction 到生产解析。
+- **兼容 / 回滚：** 无 public API、wire、schema、CLI/MCP 变化；回滚仅撤销 helper、target-selection 与两项 focused tests。
+- **风险 / 下一步：** 真实账号当前仍无可验证 novel comments target；待有合法 comments DTO 的当前 page 后重跑 #27。下一任务为 `G1-T30`。
 
 
 ## G1-T30 — Live mutation：bookmark / comments / follow
