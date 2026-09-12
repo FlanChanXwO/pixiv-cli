@@ -1065,6 +1065,23 @@ Live 只执行 `Live Manifest` 中 `live_required=yes` 的场景，不临时增�
 - **验证：** 当前 HEAD 的 `go test ./...`、`go vet ./...`、`sh scripts/build.sh`、LSP check、focused mutation tests、live mutation、read-first reconcile、脱敏/`git diff --check` 均已有 PASS 证据；没有 token/cookie/refresh token/raw URL/评论正文进入记录。
 - **下一步：** `G1-TERM`（不是 G1-T31；`G1-FINAL` 不可执行）。
 
+## G1-TERM — blocked closure
+
+**Status:** blocked_decision
+
+**Depends on:** G1-CHECK-10 reached terminal status
+
+**允许条件：** `runnable_required_tasks == 0` 且存在 required external/decision blocker。
+
+**完成记录：**
+- **GoalState：** `BLOCKED_DECISION`。G1-T28、G1-T29、G1-T30 已到 terminal status；既有 correction 均已 verified；G1-T31/G1-FINAL 依赖锁定；没有仍可执行的 required task/correction。
+- **Closure report：** 新建 `goal-1/closure-report.md`，汇总 required=41、live-required=36、unmapped=0、undecomposed=0、live evidence、external blocker、decision/scope blocker、恢复条件与验证证据。`public_ready=0/41`，不得声明 COMPLETED。
+- **External blockers：** #5/#9 series target/第二页、#20 novel bookmarked target、#27 comments DTO/target、#17/#21 bookmark read-back、#26/#28 comment target；具体证据与 cleanup/reconcile 结果见 closure report 与 current-state §40–§42。
+- **Decision blockers：** #6/#12 缺少批准的 CLI/MCP surface、#23/#24/#41 aggregate SDK/strict contract 未冻结、#38 bare-ID 与 #39 rating MCP 仍受 frozen boundary 约束；不得在本 task 自行扩大 public scope。
+- **Verification：** `go test ./...`、`go vet ./...`、`sh scripts/build.sh`、documentation tests、LSP/focused/live/reconcile、`gofmt` 与 `git diff --check` 均有 PASS 证据。
+- **Local HEAD：** closure commit 完成后填写；**Remote SHA：** 普通 fast-forward push 后由 GitHub API 与 `git ls-remote` 核验；**Push result：** 待执行。
+- **下一步：** 本 Goal 进入 `BLOCKED_DECISION` terminal state；不得执行 G1-T31/G1-FINAL，不得标记 Goal complete。
+
 ## G1-T31 — Pre-final latest-main integration readiness
 
 **Status:** pending

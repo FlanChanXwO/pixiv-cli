@@ -1030,3 +1030,11 @@ G1-T01 已在干净目标 worktree 执行 `go test ./...` 并通过；G1-CHECK-0
 - **Correction / state：** 未发现 live 暴露的新生产 correction；#4/#11 recommended continuation 的既有 P1 已闭合。G1-CHECK-10=`blocked_decision`，因为同时存在真实 external blocker 与需要明确 scope/contract 决策的 required gap；按任务规则下一步是 `G1-TERM`，不是 G1-T31 或 G1-FINAL。
 - **Git / push evidence：** worktree clean；Local HEAD=`d381e6f564e08dd63496b4c0ad04c7aac5352285`；GitHub API 与 `git ls-remote` 均确认 Remote=`8589ea1bfa16cef3df3c9dbe2d4fffa8fe9670ec`，Local ahead 5、无反向提交；`origin/main`=`7ff1e6b4e6177c657876f69cd930d279d2d0bfce`。本 CHECK 未执行 Phase F push，因为它未通过 verified 条件；G1-TERM 必须对 blocked closure 尝试普通 fast-forward push，禁止 force。
 - **验证：** 当前 HEAD 的 `go test ./...`、`go vet ./...`、`sh scripts/build.sh`、LSP check、focused mutation tests、live mutation、read-first reconcile、脱敏与 `git diff --check` 均有 PASS 证据；没有 token/cookie/refresh token/raw URL/评论正文进入记录。
+
+## 42. G1-TERM blocked closure
+
+- **GoalState：** `BLOCKED_DECISION`。G1-CHECK-10 已审计为 terminal `blocked_decision`；G1-T28、G1-T29、G1-T30 与既有 corrections 均到 terminal status，G1-T31/G1-FINAL 依赖锁定，没有仍可执行的 required task/correction。
+- **Closure report：** [goal-1/closure-report.md](closure-report.md) 汇总 required scope `41/41`、live-required `36`、`unmapped=0`、`undecomposed=0`、live evidence、external blocker、decision/scope blocker 与恢复条件。当前 `public_ready=0/41`，不满足 COMPLETED 条件。
+- **External blocker summary：** #5/#9 缺 series target/第二页；#20 缺 novel bookmarked target；#27 受 `invalid comment time` 上游 DTO 阻断；#17/#21 bookmark write 后状态无法确认但 cleanup/reconcile 干净；#26/#28 无安全 comment target，未发写入。
+- **Decision blocker summary：** #6/#12 缺批准的 CLI/MCP surface；#23/#24/#41 aggregate SDK/strict contract 未冻结；#38 bare-ID 与 #39 rating MCP 仍受 frozen boundary 约束。继续实现需要用户明确 public contract/scope，不能在 terminal task 中自行扩大范围。
+- **Verification / safety：** 全量 offline、vet、build、documentation、LSP、focused/live/reconcile 与 redaction evidence 均通过；没有 token/cookie/refresh token/raw URL/评论正文进入日志；未修改生产代码或 Goal-3 scope。
