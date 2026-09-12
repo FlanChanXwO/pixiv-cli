@@ -361,7 +361,7 @@ protocol/SDK、CLI、MCP regression 分开，再执行一次 full test/vet/build
 
 出口：Phase F CHECK 通过并完成 phase push，然后进入 `G1-T31` latest-main integration readiness gate；若只剩 blocker，则进入 `G1-TERM`。只有 `G1-T31` verified 后才允许进入 `G1-FINAL`。
 
-### 10.2 Pre-final latest-main integration readiness gate
+### Pre-final latest-main integration readiness gate
 
 Phase A–F 证明当前执行分支自身闭合，但不能证明它仍可安全集成最新 `main`。因此 `G1-FINAL` 前必须执行一次只读 integration readiness 审计：
 
