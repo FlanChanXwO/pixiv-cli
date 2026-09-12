@@ -1048,3 +1048,11 @@ G1-T01 已在干净目标 worktree 执行 `go test ./...` 并通过；G1-CHECK-0
 - **仍属 external / 可恢复 probe：** #20 novel bookmarked=true 目标不足、#17/#21 bookmark mutation status-only 后不可确认 read-back（cleanup/reconcile 干净且 uncertain 不 replay）目前没有新的内部根因证据，保持 external candidate。#5/#9 series 原 blocker 仍成立，但 #9 已找到可追溯公开候选（PixivPy demo `novel_series(1206600)` 并消费 next page），已登记 `G1-RECOVER-G1-T28-SERIES-TARGET-01` 做只读 live 复核；只有当前 live 确认可访问且满足 manifest 分页条件后才能解除，候选 ID 不作为永久 fixture。#5 artwork-series 没有同等证据时继续 external，禁止任意 ID 扫描。
 - **Decision/scope：** #6/#12/#23/#24/#41/#38/#39 仍为 decision blocker；推荐不为本 migration/stability PR 机械新增未冻结 public surface：ugoira 保持 SDK、novel ranking 保持 SDK+CLI、aggregate SDK 不新增、bare-ID 继续 explicit-type/no-probe、rating 继续 CLI-local。只有用户明确批准该 layer-applicability 裁定后，相关非既有 surface 才可标 `not_applicable`；41 项 required capability 集合本身不减少。
 - **恢复顺序：** `G1-CORR-G1-T29-COMMENT-WIRE-02` → `G1-RECOVER-G1-T28-SERIES-TARGET-01` → 仅受影响的 `G1-T30` comment slice → `G1-CHECK-10`。旧 follow/stamps verified evidence 与 bookmark cleanup/reconcile evidence保留，不做无依据重复 mutation；G1-T31/G1-FINAL 仍等 G1-CHECK-10 verified。
+
+## 44. G1-CORR-G1-T29-COMMENT-WIRE-02 comments 当前 App API wire 纠偏
+
+- **结论：** PASS，`date` wire drift 已在 endpoint normalized mapping 与 SDK public mapping 中纠正；旧 `created_at` 合法 fixture 保持兼容。该 correction 不改变 public symbol、CLI/MCP route/schema、mutation preflight 或其他 capability scope。
+- **Red→Green：** 新增 endpoint `date` mapping、scalar access-control 不猜测 fixture 与 SDK `CreatedAt` regression。修正前 endpoint 得到空 `CreateDate`，SDK 实跑 `invalid comment time`；修正后 focused tests、novel endpoint 全回归、`gopls check`、LSP diagnostics、`gofmt`、`git diff --check` 均 PASS。
+- **Live：** 以 `PIXIV_SDK_E2E=1 PIXIV_E2E_PROXY=http://127.0.0.1:7890 go test ./e2e -run '^TestRealPixivSDKLiveManifestBookmarkUserRead$' -count=1 -v` 只读复核，命令 PASS（约 59 秒）；#27 候选 novel `29100695` 返回 2 条 comments，`continuation=false`、`total=false`、`access_control=false`，不再报 `invalid comment time`。没有评论写入，也未无条件重跑 follow/bookmark mutation。
+- **Access-control 边界：** 当前 `comment_access_control` scalar 的业务语义仍未被证据确认；adapter 不将其猜成 `CanComment`/`IsLocked`，不默认 `CanComment=true`。#26/#28 仍不能升级为 verified，受影响的 comment target/mutation slice 留给后续安全证据；#25 rejected/no-fallback 不变。
+- **下一步：** `G1-RECOVER-G1-T28-SERIES-TARGET-01`；该 recovery terminal 后才进入受影响的 G1-T30 comment slice 与 G1-CHECK-10。

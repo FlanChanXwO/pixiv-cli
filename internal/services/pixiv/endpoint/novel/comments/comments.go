@@ -237,6 +237,7 @@ type commentDTO struct {
 	User          userDTO     `json:"user"`
 	Comment       string      `json:"comment"`
 	Caption       string      `json:"caption"`
+	Date          string      `json:"date"`
 	CreateDate    string      `json:"created_at"`
 	ParentComment *commentDTO `json:"parent_comment"`
 }
@@ -270,7 +271,7 @@ func validCommentChain(value commentDTO) bool {
 }
 
 func mapComment(value commentDTO) novel.Comment {
-	result := novel.Comment{ID: value.ID, User: mapUser(value.User), Comment: value.Comment, CreateDate: value.CreateDate}
+	result := novel.Comment{ID: value.ID, User: mapUser(value.User), Comment: value.Comment, CreateDate: commentDate(value)}
 	if result.Comment == "" {
 		result.Comment = value.Caption
 	}
@@ -279,6 +280,14 @@ func mapComment(value commentDTO) novel.Comment {
 		result.ParentComment = &parent
 	}
 	return result
+}
+
+func commentDate(value commentDTO) string {
+	if value.Date != "" {
+		return value.Date
+	}
+	// 保留旧版合法 fixture 的解码能力；当前 App API wire 优先使用 date。
+	return value.CreateDate
 }
 
 func mapUser(value userDTO) novel.UserSummary {

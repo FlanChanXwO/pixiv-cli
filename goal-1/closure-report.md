@@ -12,13 +12,14 @@
 
 **Previous terminal task:** `G1-TERM`（superseded）
 
-**Current next task:** `G1-CORR-G1-T29-COMMENT-WIRE-02`（随后 `G1-RECOVER-G1-T28-SERIES-TARGET-01`）
+**Current next task:** `G1-RECOVER-G1-T28-SERIES-TARGET-01`（随后受影响的 G1-T30 comment slice）
 
 ## 0. Resume reason
 
 - blocked closure 的关键前提是 `runnable_required_tasks == 0`。该前提已经失效：当前 comments adapter 从 `created_at` 读取评论时间，而当前 App API 参考模型使用 `date`；这与 live `invalid comment time` 形成直接、可测试的内部根因链。
 - 当前 comments adapter 还期待 `access_control:{can_comment,is_locked}`，而当前 App API 参考模型使用 `comment_access_control` 整数。此前“没有显式 CanComment target”因此需要先按真实 wire 重新判定，不能继续无条件归类为 external data blocker；scalar 业务语义不得猜测。
-- 已在 `tasks.md` 插入 `G1-CORR-G1-T29-COMMENT-WIRE-02`，并把 G1-T30/G1-CHECK-10 恢复为 pending；旧 G1-TERM checkpoint 只保留历史证据。Goal 当前重新 `ACTIVE`。
+- 已在 `tasks.md` 插入 `G1-CORR-G1-T29-COMMENT-WIRE-02`，并把 G1-T30/G1-CHECK-10 恢复为 pending；该 correction 已完成并记录 endpoint/SDK Red→Green 与当前 live read 证据，旧 G1-TERM checkpoint 只保留历史证据。Goal 当前保持 `ACTIVE`。
+- correction 后 #27 当前 live novel comments 候选成功映射 2 条 comments，不再报 `invalid comment time`；`comment_access_control` scalar 语义仍未证实，因此没有映射、没有默认放行，也没有发起 comment mutation。
 - 其余 external candidate 中，novel bookmarked=true 目标与 bookmark status-only read-back 暂未发现新的内部根因，继续保持。series 数据仍是 external 条件，但已登记只读 recovery task：先验证公开 PixivPy demo 的 novel-series candidate 是否当前仍可访问且有第二页；artwork-series 不进行任意 ID 扫描。public-surface decision blockers 也继续保持，直到用户明确批准 layer applicability/scope 裁定。
 
 ## 1. Terminal eligibility
@@ -79,3 +80,10 @@
 ## 6. Resume conditions
 
 若 external 数据/上游条件恢复，或用户明确批准所需 public contract/scope，旧的 blocked closure report 应标记为 superseded；相关 task 从最早未完成 required task 恢复，重新执行受影响的最小 live/compatibility gate。当前报告不代表 Goal 完成。
+
+## 7. Current resumed progress
+
+- `G1-CORR-G1-T29-COMMENT-WIRE-02` 已 verified：novel comment DTO 现在按当前 App API `date` wire 优先映射，旧 `created_at` 合法 fixture 保持兼容；focused endpoint/SDK、novel endpoint regression、LSP、gofmt 与 diff check 均通过。
+- #27 live read 已用已授权本机认证、临时代理和既有 manifest harness 复核：候选 `29100695` 返回 2 条 comments，`continuation=false`、`total=false`、`access_control=false`，整个 `TestRealPixivSDKLiveManifestBookmarkUserRead` PASS。日志未包含 token、cookie、refresh token、raw URL 或评论正文。
+- `comment_access_control` 的整数业务语义仍没有证据确认；不猜测 `CanComment`/`IsLocked`，不默认放行写入。#26/#28 的受影响 comment target/mutation slice 留待后续安全证据；G1-T30、G1-CHECK-10 仍为 pending。
+- **Next:** `G1-RECOVER-G1-T28-SERIES-TARGET-01`。

@@ -60,6 +60,28 @@ func TestCommentsMapsParentMetadataAndContinuation(t *testing.T) {
 	}
 }
 
+func TestCommentsMapsCurrentAppAPICommentDate(t *testing.T) {
+	transport := &fakeTransport{body: `{"comments":[{"id":9,"comment":"current wire","date":"2026-01-02T03:04:05+00:00","user":{"id":7}}]}`}
+	result, err := comments.New(transport).List(context.Background(), comments.Request{NovelID: 123})
+	if err != nil {
+		t.Fatalf("List: %v", err)
+	}
+	if len(result.Items) != 1 || result.Items[0].CreateDate != "2026-01-02T03:04:05+00:00" {
+		t.Fatalf("result = %#v, want current App API date in CreateDate", result)
+	}
+}
+
+func TestCommentsDoesNotGuessScalarCommentAccessControl(t *testing.T) {
+	transport := &fakeTransport{body: `{"comments":[{"id":9,"comment":"current wire","date":"2026-01-02T03:04:05+00:00","user":{"id":7}}],"comment_access_control":1}`}
+	result, err := comments.New(transport).List(context.Background(), comments.Request{NovelID: 123})
+	if err != nil {
+		t.Fatalf("List: %v", err)
+	}
+	if result.AccessControl != nil {
+		t.Fatalf("scalar comment_access_control was guessed as %#v", result.AccessControl)
+	}
+}
+
 func TestCommentsRejectsInvalidParentID(t *testing.T) {
 	_, err := comments.New(&fakeTransport{body: `{"comments":[{"id":1,"parent_comment":{"id":0}}]}`}).List(context.Background(), comments.Request{NovelID: 1})
 	if err == nil {

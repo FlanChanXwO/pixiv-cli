@@ -1021,7 +1021,7 @@ Live 只执行 `Live Manifest` 中 `live_required=yes` 的场景，不临时增�
 
 ## G1-CORR-G1-T29-COMMENT-WIRE-02 — comments 当前 App API wire 纠偏
 
-**Status:** pending
+**Status:** verified
 
 **Source task/gate：** G1-T29 / G1-CHECK-10；blocked closure 后的新证据证明 #27 不能继续归类为纯 external blocker。
 
@@ -1057,6 +1057,16 @@ Live 只执行 `Live Manifest` 中 `live_required=yes` 的场景，不临时增�
 **Rollback boundary：** 仅 comments adapter/SDK mapping fixture 与本 correction 直接相关的 live harness 证据；不触碰 bookmark/follow/series/aggregate/public-surface scope。
 
 **Blocked-closure impact：** `G1-TERM` 的前提 `runnable_required_tasks == 0` 已被新证据推翻；旧 blocked closure 标记 superseded，GoalState 恢复 `ACTIVE`。本 correction 成为下一张 executable task。
+
+**完成记录：**
+
+- **改动：** `internal/services/pixiv/endpoint/novel/comments` 的 comment DTO 新增当前 App API `date` wire，并在 normalized mapping 中优先写入 `novel.Comment.CreateDate`；已有合法 `created_at` fixture 保留兼容解码。parent comment 递归、total、continuation、错误边界与 mutation path 未改变。没有新增 public symbol、CLI/MCP route、output schema、retry、timeout、扫描上限或静默业务 fallback。
+- **Red：** 先加入 `date` endpoint fixture 与 SDK fixture，实跑 `go test ./internal/services/pixiv/endpoint/novel/comments ./sdk/pixiv -run 'TestCommentsMapsCurrentAppAPICommentDate|TestNovelCommentsMapsCurrentAppAPICommentDate' -count=1 -v`；endpoint 断言观察到 `CreateDate:""`，SDK 真实失败为 `pixiv:Comment: malformed_upstream_response: invalid comment time`。`comment_access_control` scalar fixture 同时证明当前 adapter 不会猜成 object，未预设整数语义。
+- **Green / 回归：** 修正后 focused `TestCommentsMapsParentMetadataAndContinuation`、`TestCommentsMapsCurrentAppAPICommentDate`、`TestCommentsDoesNotGuessScalarCommentAccessControl` 与 `TestNovelCommentsMapsCurrentAppAPICommentDate` 全部 PASS；`go test ./internal/services/pixiv/endpoint/novel/... ./sdk/pixiv -count=1` 全部 PASS；`gopls check`、LSP diagnostics、`gofmt`、`git diff --check` 全部 PASS。
+- **Live：** 使用已授权本机认证和临时代理执行 `PIXIV_SDK_E2E=1 PIXIV_E2E_PROXY=http://127.0.0.1:7890 go test ./e2e -run '^TestRealPixivSDKLiveManifestBookmarkUserRead$' -count=1 -v`，命令 PASS（约 59 秒）；#27 当前候选 `29100695` 成功返回 2 条 comments，`continuation=false`、`total=false`、`access_control=false`，未再出现 `invalid comment time`。本轮只读，没有评论写入，也没有无依据重跑 follow/bookmark mutation。
+- **Access-control 结论：** 当前 live/public mapping 没有提供可判定的 `CanComment`/`IsLocked`；`comment_access_control` 整数语义尚未由证据确认，因此不新增 scalar 到 public DTO、不默认 `CanComment=true`，也不重跑 G1-T30 comment mutation slice。#26/#28 的最终 external/permission reclassification 留待后续有安全证据时处理。
+- **兼容 / 回滚：** 仅修复 novel comments adapter/SDK mapping correctness；旧 `created_at` 合法 fixture、parent/error/continuation 行为保持；回滚边界为本 correction 的 comments mapping/tests/live evidence，不触碰 bookmark/follow/series/aggregate/public surface。
+- **下一步：** `G1-RECOVER-G1-T28-SERIES-TARGET-01`；其后才执行受影响的 G1-T30 comment slice 与 G1-CHECK-10。
 
 ## G1-RECOVER-G1-T28-SERIES-TARGET-01 — series public target 恢复验证
 
