@@ -1134,7 +1134,7 @@ Live 只执行 `Live Manifest` 中 `live_required=yes` 的场景，不临时增�
 
 ## G1-CHECK-10 — Phase F exit：live validation + push
 
-**Status:** pending
+**Status:** blocked_decision
 
 **Depends on:** G1-T28,G1-T29,G1-CORR-G1-T29-COMMENT-WIRE-02,G1-RECOVER-G1-T28-SERIES-TARGET-01,G1-T30 reached terminal status
 
@@ -1157,6 +1157,16 @@ Live 只执行 `Live Manifest` 中 `live_required=yes` 的场景，不临时增�
 - 有内部 correction：保持 ACTIVE，抢占执行 correction；当前 CHECK 不完成 phase push。
 - 仅剩真实 external/decision blocker 且无可执行内部 work：运行 G1-TERM。
 - 所有 required live acceptance verified：提交 Phase F live evidence/账本，普通 fast-forward push 到 `refactor/pixiv-api-stability`，验证 Remote SHA == Local HEAD；push 成功后进入 G1-T31。
+
+**当前审计记录（2026-09-13）：**
+
+- **判定：** `blocked_decision`（terminal）。manifest 41 行 ID `1..41` 各出现一次，`live_required=yes/no=36/5`，`mapped_to_task=41`、`unmapped=0`、`undecomposed=0`；G1-T28、G1-T29、既有 corrections/recovery 与 G1-T30 均为 terminal `verified`，没有新的内部 correction 或可执行 required task。G1-T31 依赖本 CHECK `verified`，因此不启动；下一步为 G1-TERM。
+- **已收敛证据：** #9 novel-series recovery 已完成 30→22 真实第二页；#27 comments 在 `date` wire correction 后成功映射 2 条当前 comments；#36 follow round-trip 已完成；#4/#11 recommended continuation P1 已闭合；#29 stamps read 已完成。#27 不再保留旧的 `invalid comment time` blocker。
+- **External blockers：** #5 artwork-series 无可追溯目标；#17/#21 bookmark status-only write 后状态不可确认但 cleanup/reconcile 干净，按 uncertain no-replay；#20 novel bookmark detail 缺 `bookmarked=true` 目标；#26/#28 comments mutation 无显式且可安全判定的 `CanComment` target，`writes=0`，未发评论/回复/stamp 写请求。
+- **Decision / scope blockers：** #6、#12、#23、#24、#41、#38、#39 仍需用户明确批准 layer/public-surface 裁定；不得在本 CHECK 自行新增 CLI/MCP/SDK contract、aggregate operation、rating surface 或 bare-ID probe。`comment_access_control` scalar 的 `0/1` 业务语义未猜测映射。
+- **安全 / 验证：** mutation cleanup/reconcile 与 no-replay 边界保留；输出未包含 token、cookie、refresh token、评论正文或 raw signed/auth URL。`go test ./scripts/tests/documentation -count=1`、cursor/SDK route-safety、Pixiv/FANBOX MCP schema 与 error-canary focused tests PASS；G1-T27 在当前 HEAD `e74fcb6` 的 full test/vet/build/race/LSP/live/reconcile/diff-check 证据继续有效。
+- **Git：** 审计起点 Local/Remote=`e74fcb6836781064f755f74a3d8b6c96a99cc63f`，`origin/main=7ff1e6b4e6177c657876f69cd930d279d2d0bfce`，worktree clean、无 PR、无远端分叉。本 CHECK 因未通过 `verified` 不宣称 Phase F push gate；本次账本文档执行普通 fast-forward 推送，G1-TERM 仍须记录最终 closure checkpoint。
+- **GoalState：** 当前仍为 `ACTIVE`；只有 G1-TERM 执行后才可进入 `BLOCKED_DECISION`，不得进入 G1-T31/G1-FINAL。
 
 **历史审计记录（已由 comments wire 新证据 superseded）：**
 - **审计结论：** 当前不能将 Phase F 标记 `verified`，也不能把 required live acceptance 伪装成 accepted。G1-T28、G1-T29、G1-T30 均已到 terminal status；既有 correction `G1-CORR-G1-T28-RECOMMENDED-01`、`G1-CORR-G1-T29-BOOKMARK-DETAIL-01`、`G1-CORR-G1-T29-NOVEL-COMMENTS-DATA-PROBE-01` 均为 `verified`，没有新的可执行 correction task。除本 CHECK 外，任务图没有仍可执行的 `pending/in_progress` required work；G1-T31 与 G1-FINAL 被本 CHECK 的失败条件依赖锁定，G1-TERM 是唯一可执行的 terminal task。

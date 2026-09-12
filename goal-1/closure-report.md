@@ -2,9 +2,9 @@
 
 **GoalState:** `ACTIVE`
 
-**Report status:** `SUPERSEDED_BLOCKED_CHECKPOINT` — 2026-09-12 的 blocked closure 已被新的内部 correctness evidence 重新打开；下方原 terminal evidence 保留用于审计，不再代表当前 terminal eligibility。
+**Report status:** `CURRENT_AUDIT_READY_FOR_G1-TERM` — 2026-09-13；G1-CHECK-10 已完成当前审计并到 terminal `blocked_decision`，下方历史 terminal evidence 保留用于审计；G1-TERM 尚未执行，GoalState 暂保持 `ACTIVE`。
 
-**Generated:** 2026-09-12
+**Generated:** 2026-09-13
 
 **Branch:** `refactor/pixiv-api-stability`
 
@@ -12,7 +12,7 @@
 
 **Previous terminal task:** `G1-TERM`（superseded）
 
-**Current next task:** `G1-CHECK-10`（G1-T30 受影响的 comments/access-control slice 已完成）
+**Current next task:** `G1-TERM`（G1-CHECK-10 已到 terminal `blocked_decision`；GoalState 在 terminal task 执行前保持 `ACTIVE`）
 
 ## 0. Resume reason
 
@@ -86,9 +86,9 @@
 
 - `G1-CORR-G1-T29-COMMENT-WIRE-02` 已 verified：novel comment DTO 现在按当前 App API `date` wire 优先映射，旧 `created_at` 合法 fixture 保持兼容；focused endpoint/SDK、novel endpoint regression、LSP、gofmt 与 diff check 均通过。
 - #27 live read 已用已授权本机认证、临时代理和既有 manifest harness 复核：候选 `29100695` 返回 2 条 comments，`continuation=false`、`total=false`、`access_control=false`，整个 `TestRealPixivSDKLiveManifestBookmarkUserRead` PASS。日志未包含 token、cookie、refresh token、raw URL 或评论正文。
-- `comment_access_control` 的整数业务语义仍没有证据确认；不猜测 `CanComment`/`IsLocked`，不默认放行写入。#26/#28 的受影响 comment target/mutation slice 已完成安全复核并归类为 `blocked_external(data/permission)`；G1-T30 已到 terminal `verified`，G1-CHECK-10 仍 pending。
+- `comment_access_control` 的整数业务语义仍没有证据确认；不猜测 `CanComment`/`IsLocked`，不默认放行写入。#26/#28 的受影响 comment target/mutation slice 已完成安全复核并归类为 `blocked_external(data/permission)`；G1-T30 已到 terminal `verified`，G1-CHECK-10 已到 terminal `blocked_decision`。
 - G1-T30 只重跑了受 comments wire correction 影响的 comments/access-control slice；既有 follow/stamps/bookmark evidence 没有重放。
-- **Next:** `G1-CHECK-10`。
+- **Next:** `G1-TERM`。
 
 ## 8. Current resumed progress — G1-T30 comments/access-control slice
 
@@ -96,4 +96,14 @@
 - **Scalar live evidence：** `PIXIV_SDK_E2E_COMMENT_ACCESS_CONTROL_PROBE=1 PIXIV_E2E_MUTATION_USER_ID=127975236 PIXIV_E2E_PROXY=http://127.0.0.1:7890 go test ./e2e -run '^TestRealPixivSDKLiveCommentAccessControlProbe$' -count=1 -v` PASS（约 74s）。artwork 当前 search page `30/30` 响应成功，scalar 为 integer，其中 `0`×29、`1`×1；novel `30/30` 响应成功且全为 `0`。只记录 wire 事实，不将整数映射为业务权限。
 - **Mutation live evidence：** `PIXIV_SDK_E2E_COMMENT_MUTATION=1 PIXIV_E2E_MUTATION_USER_ID=127975236 PIXIV_E2E_PROXY=http://127.0.0.1:7890 go test ./e2e -run '^TestRealPixivSDKLiveCommentMutationSlice$' -count=1 -v` PASS（约 77s）。stamps read 成功；artwork text/reply/stamp 与 novel text/stamp 全部在写前 preflight 因无显式 `CanComment` target 阻断，`writes=0`，没有评论/回复/stamp 写入。
 - **判定：** #26/#28 在 comments wire correction 后正式归类为 `blocked_external(data/permission)`；#27 的 `date` correction/live read 保留。follow/stamps/bookmark evidence 保留，未重放；没有 token、cookie、refresh token、raw URL 或评论正文进入日志。无 production SDK/endpoint/CLI/MCP/public schema 变化，仅增强 env-gated e2e 证据与安全分类。
-- **下一步：** `G1-CHECK-10`；本报告仍为 `ACTIVE`，不代表 Goal 已完成。
+- **下一步：** `G1-TERM`；本报告仍为 `ACTIVE`，不代表 Goal 已完成。
+
+## 9. Current G1-CHECK-10 audit（2026-09-13）
+
+- **Task verdict：** `G1-CHECK-10=blocked_decision`（terminal）。manifest 41 行 ID `1..41` 各出现一次，`live_required=yes/no=36/5`，`mapped_to_task=41`、`unmapped=0`、`undecomposed=0`；所有普通 task、correction、recovery 与 G1-T30 已到 terminal，未发现新的内部 correction。G1-T31 依赖本 CHECK `verified`，G1-FINAL 继续锁定。
+- **Current live evidence：** #9 novel-series recovery 已完成真实首页 30 → opaque cursor 第二页 22；#27 `date` wire correction 后成功映射 2 条 comments；#36 follow 完成同账号 add/read-back/delete/read-back；#4/#11 recommended continuation P1 已闭合；#29 stamps read 成功。旧 #27 `invalid comment time` blocker 已解除。
+- **External blockers：** #5 artwork-series 无可追溯目标；#17/#21 bookmark status-only write 后状态不可确认但 cleanup/reconcile 干净，按 uncertain no-replay；#20 novel bookmark detail 缺 `bookmarked=true` 目标；#26/#28 无显式且可安全判定的 `CanComment` target，comments slice `writes=0`，未发评论/回复/stamp 写请求。
+- **Decision / scope blockers：** #6、#12、#23、#24、#41、#38、#39 仍需用户明确批准 layer/public-surface 裁定；不在 terminal audit 中新增 CLI/MCP/SDK contract、aggregate operation、rating surface 或 bare-ID probe。`comment_access_control` 的 scalar 业务语义保持未定义。
+- **Safety / verification：** mutation cleanup/reconcile/no-replay evidence 保留；live 输出未包含 token、cookie、refresh token、评论正文或 raw signed/auth URL。文档测试、cursor/SDK route-safety、Pixiv/FANBOX MCP schema/error-canary focused tests PASS；G1-T27 当前 HEAD `e74fcb6` 的 full offline/vet/build/race/LSP/live/reconcile/diff-check 证据未被 docs-only audit invalidated。
+- **Git / routing：** 审计起点 Local/Remote=`e74fcb6836781064f755f74a3d8b6c96a99cc63f`，`origin/main=7ff1e6b4e6177c657876f69cd930d279d2d0bfce`，worktree clean、无 PR、无远端分叉。本 audit 文档按普通 fast-forward 推送；因 CHECK verdict 不是 `verified`，该 push 不宣称 Phase F push gate 通过。下一张 `G1-TERM` 需单独写 closure checkpoint 并普通 fast-forward 推送。
+- **GoalState：** 仍为 `ACTIVE`；G1-TERM 执行后才可按混合 blocker 计算 `BLOCKED_DECISION`。当前不得进入 G1-T31/G1-FINAL。
