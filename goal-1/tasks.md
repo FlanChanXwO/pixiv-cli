@@ -1022,7 +1022,7 @@ Live 只执行 `Live Manifest` 中 `live_required=yes` 的场景，不临时增�
 
 ## G1-T30 — Live mutation：bookmark / comments / follow
 
-**Status:** pending
+**Status:** in_progress
 
 **Depends on:** G1-CHECK-09,G1-CORR-G1-T29-BOOKMARK-DETAIL-01,G1-CORR-G1-T29-NOVEL-COMMENTS-DATA-PROBE-01 reached terminal status
 
@@ -1038,6 +1038,8 @@ Live 只执行 `Live Manifest` 中 `live_required=yes` 的场景，不临时增�
 - Evidence：
 - Blocker/Correction：
 - 下一步：G1-CHECK-10
+
+**当前 preflight：** 专用 linked worktree 与目标分支有效；本机本地数据库存在多个 Pixiv 账号，但没有显式 mutation 账号选择或授权环境变量。Goal-3 历史 evidence 仅标记 `non-main-account`/`mutation-account`，没有可安全映射到当前本地账号的身份资料。当前未执行任何写请求；继续前必须明确指定隔离账号，并确认允许在该账号上执行本 manifest 的最小 add/delete/comment/follow round-trip。
 
 ## G1-CHECK-10 — Phase F exit：live validation + push
 
