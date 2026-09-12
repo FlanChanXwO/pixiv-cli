@@ -35,6 +35,20 @@ func TestSeriesMapsRouteQueryAndContinuation(t *testing.T) {
 	}
 }
 
+func TestSeriesMapsOffsetContinuation(t *testing.T) {
+	transport := &fakeTransport{body: `{"illust_series_detail":{"user":{"id":7}},"illusts":[{"id":456,"user":{"id":9}}],"next_url":"https://app-api.pixiv.net/v1/illust/series?illust_series_id=42&offset=30"}`}
+	result, err := series.New(transport).List(context.Background(), series.Request{SeriesID: 42, Offset: 30})
+	if err != nil {
+		t.Fatalf("List: %v", err)
+	}
+	if transport.query.Get("illust_series_id") != "42" || transport.query.Get("offset") != "30" || transport.query.Get("last_order") != "" {
+		t.Fatalf("request query = %v", transport.query)
+	}
+	if result.NextKey != "offset" || result.NextValue != 30 || !result.HasNext {
+		t.Fatalf("result continuation = %#v", result)
+	}
+}
+
 func TestSeriesRejectsMissingDetailUser(t *testing.T) {
 	_, err := series.New(&fakeTransport{body: `{"illust_series_detail":null,"illusts":[]}`}).List(context.Background(), series.Request{SeriesID: 42})
 	if err == nil {

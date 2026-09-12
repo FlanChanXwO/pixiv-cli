@@ -38,7 +38,7 @@
 | 2 | `artwork-latest` | implemented_unverified | verified | implemented_unverified | verified | verified | verified | verified | verified | implemented_unverified | rejected |
 | 3 | `artwork-ranking` | implemented_unverified | verified | implemented_unverified | verified | verified | verified | verified | verified | implemented_unverified | rejected |
 | 4 | `artwork-recommended` | implemented_unverified | verified | implemented_unverified | implemented_unverified | implemented_unverified | implemented_unverified | verified | verified | missing | rejected |
-| 5 | `artwork-series` | implemented_unverified | verified | implemented_unverified | verified | verified | verified | verified | blocked_external | implemented_unverified | rejected |
+| 5 | `artwork-series` | implemented_unverified | verified | implemented_unverified | verified | verified | verified | verified | verified | implemented_unverified | rejected |
 | 6 | `ugoira-metadata` | implemented_unverified | verified | implemented_unverified | verified | missing | missing | verified | verified | implemented_unverified | rejected |
 | 7 | `novel-search` | implemented_unverified | verified | verified | verified | verified | verified | verified | verified | verified | missing |
 | 8 | `novel-detail` | implemented_unverified | verified | verified | verified | verified | verified | verified | verified | implemented_unverified | missing |
@@ -1109,7 +1109,9 @@ G1-T01 已在干净目标 worktree 执行 `go test ./...` 并通过；G1-CHECK-0
 
 ## 50. G1-CORR-G1-T28-ARTWORK-SERIES-WIRE-02：当前 artwork series continuation
 
-- **状态：** `in_progress`；这是当前唯一正在执行的 wire correction。decision/scope blockers #6/#12/#23/#24/#41/#38/#39 仍保留，未因本次数据恢复而自动扩大 public surface。
-- **证据：** 对公开可追溯候选 `https://www.pixiv.net/user/10509347/series/21859` 只做一次显式 raw read：首页 `illust_count=30`、`valid_item_count=30`、存在 `next_url`；续页 query keys 为 `illust_series_id` 与 `offset`，没有 `last_order`。当前 SDK/endpoint 只认 `last_order`，因此返回 `malformed_upstream_response`。
-- **下一步与边界：** 先对该 `next_url` 做只读第二页确认，再按 TDD 兼容 `offset` 与既有 `last_order` fixture，更新 endpoint/SDK cursor regression 与显式 recovery test；不扫描 ID、不输出 raw response、不新增 route、固定分页/重试/超时上限或 fallback。
-- **验证状态：** comments/bookmark focused tests、live mutation cleanup、`gofmt`、LSP diagnostics 与 `git diff --check` 已有证据；series correction 完成后再运行受影响的 focused/full gate，并重算 G1-CHECK-10。Goal 尚未完成。
+- **状态：** `verified`。这是已完成的当前 wire correction；decision/scope blockers #6/#12/#23/#24/#41/#38/#39 仍保留，未因本次数据恢复而自动扩大 public surface。
+- **证据：** 对公开可追溯候选 `https://www.pixiv.net/user/10509347/series/21859` 只做显式 raw read：首页 `illust_count=30`、`valid_item_count=30`、存在 `next_url`；随后以 `illust_series_id=21859&offset=30` 读取真实第二页并确认仍有 continuation。两页 query keys 均为 `illust_series_id` 与 `offset`，没有 `last_order`。当前 SDK/endpoint 只认 `last_order`，因此修正前续页返回 `malformed_upstream_response`。
+- **实现：** endpoint request 支持 `offset` 并保留 `last_order` 兼容；continuation 返回实际 key/value；SDK 按 cursor key 选择对应请求参数并用实际 key 构建下一枚 opaque cursor。没有新增 route、固定分页/重试/超时上限或 fallback。
+- **Red→Green：** endpoint 新增 offset wire fixture、SDK 新增 offset cursor round-trip；旧 last_order endpoint/SDK/cursor regression 保持 PASS。Red 阶段 endpoint 因缺 `Offset/NextKey/NextValue` 编译失败，SDK 因 offset next_url 返回 `malformed_upstream_response`；修正后 series endpoint 与 cursor focused tests PASS。
+- **Live：** `PIXIV_SDK_E2E=1 PIXIV_ARTWORK_SERIES_RECOVERY_ID=21859 PIXIV_E2E_PROXY=http://127.0.0.1:7890 go test ./e2e -run '^TestRealPixivSDKLiveArtworkSeriesRecovery$' -count=1 -v` PASS（约 5 秒）：public SDK 首页 30 个 artwork、continuation=true；真实第二页 30 个 artwork、continuation=true。
+- **边界：** 候选只来自公开可追溯 series URL，不扫描 ID；raw probe 不输出 response body；live 使用只读请求，无 token/cookie/refresh token/raw signed URL 进入日志。Goal 尚未完成，下一步是受影响的 G1-CHECK-10。

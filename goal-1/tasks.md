@@ -1233,7 +1233,7 @@ go test ./sdk/pixiv ./internal/services/pixiv/endpoint/artwork/comments ./intern
 
 ## G1-RESUME-2026-09-13 — comments/bookmark live evidence and next correction
 
-**Status:** in_progress
+**Status:** verified
 
 **已解除 external evidence：**
 
@@ -1246,15 +1246,37 @@ go test ./sdk/pixiv ./internal/services/pixiv/endpoint/artwork/comments ./intern
 
 ## G1-CORR-G1-T28-ARTWORK-SERIES-WIRE-02 — artwork series continuation wire 纠偏
 
-**Status:** in_progress
+**Status:** verified
 
 **Source evidence：** 公开可追溯的 [gallery-dl Pixiv test data](https://github.com/mikf/gallery-dl/blob/master/test/results/pixiv.py) 提供 `https://www.pixiv.net/user/10509347/series/21859` 候选；只对该显式候选进行 live read，不扫描 series ID。
 
 **Observed failure：** 当前 App API 首页返回 30 个有效 `illusts` 和 `next_url`，其 query keys 为 `illust_series_id`、`offset`；没有 `last_order`。当前 artwork-series endpoint/SDK 续页 parser 只接受 `last_order`，因此 CLI/SDK 返回 `malformed_upstream_response`，而不是成功消费真实第二页。
 
-**Scope / expected contract：** 仅纠正 artwork-series endpoint request/continuation 与 SDK opaque cursor binding，兼容已有 `last_order` fixture；先用 raw second-page read 确认 `offset` 续页响应，再以 TDD 更新 endpoint/SDK tests 与显式候选 recovery test。不得扫描 ID、引入新 public route、固定分页/重试/超时上限或 fallback。
+**Scope / expected contract：** 仅纠正 artwork-series endpoint request/continuation 与 SDK opaque cursor binding，兼容已有 `last_order` fixture；用 raw second-page read 确认 `offset` 续页响应，再以 TDD 更新 endpoint/SDK tests 与显式候选 recovery test。不得扫描 ID、引入新 public route、固定分页/重试/超时上限或 fallback。
 
-**Next：** 先 Red→Green 修复 `offset` continuation，再验证候选真实第二页并重跑受影响的 #5 live gate。
+**Red→Green / live：** endpoint 新 fixture 与 SDK offset cursor 先 Red（endpoint 缺 `Offset/NextKey/NextValue`；SDK offset next_url 返回 `malformed_upstream_response`），修正后 endpoint、SDK series/cursor tests PASS。`PIXIV_SDK_E2E=1 PIXIV_ARTWORK_SERIES_RECOVERY_ID=21859 PIXIV_E2E_PROXY=http://127.0.0.1:7890 go test ./e2e -run '^TestRealPixivSDKLiveArtworkSeriesRecovery$' -count=1 -v` PASS：首页 30、真实第二页 30，均有有效 continuation。
+
+**安全 / 下一步：** 只对公开可追溯显式候选 `21859` 读，raw response 不进入日志，无外部写入；#5 blocker 解除。下一步进入受影响的 G1-CHECK-10。
+
+## G1-CHECK-10 — resumed Phase F exit audit（2026-09-13）
+
+**Status:** blocked_decision
+
+**Depends on:** G1-CORR-G1-T30-ARTWORK-COMMENT-WIRE-01、G1-RESUME-2026-09-13、G1-CORR-G1-T28-ARTWORK-SERIES-WIRE-02 均 verified
+
+**Current audit：** manifest 41 行 ID `1..41` 各出现一次；`live_required=yes/no=36/5`；`mapped_to_task=41`、`unmapped=0`、`undecomposed=0`。本轮没有剩余 data/permission external blocker：#5 artwork-series、#17/#20/#21 bookmark、#26/#28 comments 均已有最新 live evidence；#27/#9 与既有 recovery/correction evidence 保留。
+
+**Correction / live evidence：**
+
+- comments wire correction 已完成：`date`、nested `comment.id`、空 stamp 正文跨 endpoint/SDK/CLI/MCP 与文档同步，非 Flan 账号 `128042145` 的 artwork `149603743` 与 novel `29100695` comments text/reply/stamp 共 5 项均 write/read-back/cleanup verified，正文只写 `很棒！`。
+- bookmark round-trip 已完成：非 Flan 账号 `127975236` 的 artwork `149605267` 与 novel `29100695` 均 add/detail/list/remove/reconcile verified；novel detail 在 add 后读到 `restrict=public`，解除 #20 bookmarked=true target blocker。SQLite lock 的旧 artwork 尝试不计入证据且未 replay。
+- artwork-series wire correction 已完成：显式公开候选 `21859` 的 App API 首页 30 → `offset=30` 真实第二页 30；public SDK opaque cursor recovery PASS，#5 blocker 解除；兼容旧 `last_order` fixture。
+
+**Verification：** `go test ./...`、`go vet ./...`、`sh scripts/build.sh`、documentation tests、series/comments/bookmark focused tests、LSP diagnostics、gofmt 与 `git diff --check` 均 PASS。未运行无依据的重复 mutation；live 输出/账本不含 token、cookie、refresh token、raw signed URL 或评论正文。
+
+**Remaining decision / scope blockers：** #6、#12、#23、#24、#41、#38、#39 仍缺明确的 layer/public-surface contract；涉及新增 CLI/MCP/SDK surface、aggregate SDK、rating MCP 或 bare-ID probe，不能用本轮数据权限推断批准。`comment_access_control` scalar 业务语义仍不猜测。故本 CHECK 不能标 `verified`，不启动 G1-T31/G1-FINAL。
+
+**Next：** `G1-TERM` 重新记录当前 decision blocker；Goal 不标记 `COMPLETED`。若用户后续明确批准 scope，再从对应 decision task 恢复。
 
 ## G1-T31 — Pre-final latest-main integration readiness
 

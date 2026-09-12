@@ -718,6 +718,68 @@ func TestRealPixivSDKLiveNovelSeriesRecovery(t *testing.T) {
 	t.Logf("novel_series candidate %d second page: novels=%d continuation=%v", seriesID, len(second.Novels.Items), !second.Novels.Next.IsZero())
 }
 
+func parseArtworkSeriesRecoveryID(rawID string) (int64, error) {
+	rawID = strings.TrimSpace(rawID)
+	if rawID == "" {
+		return 0, errors.New("artwork series recovery ID is empty")
+	}
+	seriesID, err := strconv.ParseInt(rawID, 10, 64)
+	if err != nil || seriesID <= 0 {
+		return 0, errors.New("artwork series recovery ID must be a positive integer")
+	}
+	return seriesID, nil
+}
+
+// TestRealPixivSDKLiveArtworkSeriesRecovery validates one explicitly supplied
+// public candidate through the public SDK, including its real continuation.
+// The candidate stays in the invocation environment rather than becoming a
+// permanent fixture or an ID-enumeration seed.
+func TestRealPixivSDKLiveArtworkSeriesRecovery(t *testing.T) {
+	if os.Getenv("PIXIV_SDK_E2E") != "1" {
+		t.Skip("set PIXIV_SDK_E2E=1 to run the real Pixiv SDK e2e")
+	}
+	rawID := strings.TrimSpace(os.Getenv("PIXIV_ARTWORK_SERIES_RECOVERY_ID"))
+	if rawID == "" {
+		t.Skip("set PIXIV_ARTWORK_SERIES_RECOVERY_ID to validate one explicit artwork series candidate")
+	}
+	seriesID, err := parseArtworkSeriesRecoveryID(rawID)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	ctx := context.Background()
+	client := openRealPixivLiveClient(t, ctx)
+	first, err := client.ArtworkSeries(ctx, pixivsdk.ArtworkSeriesRequest{SeriesID: seriesID})
+	if err != nil {
+		switch sdk.ReasonOf(err) {
+		case sdk.Forbidden, sdk.NotFound, sdk.ContentUnavailable:
+			t.Logf("artwork_series candidate %d: blocked_external (data/permission): reason=%s", seriesID, sdk.ReasonOf(err))
+			return
+		default:
+			t.Fatalf("artwork_series candidate %d: %v", seriesID, err)
+		}
+	}
+
+	t.Logf("artwork_series candidate %d first page: artworks=%d continuation=%v", seriesID, len(first.Items), !first.Next.IsZero())
+	if len(first.Items) == 0 {
+		t.Logf("artwork_series candidate %d: blocked_external (data): empty first page", seriesID)
+		return
+	}
+	if first.Next.IsZero() {
+		t.Logf("artwork_series candidate %d: blocked_external (data): no continuation", seriesID)
+		return
+	}
+
+	second, err := client.ArtworkSeries(ctx, pixivsdk.ArtworkSeriesRequest{SeriesID: seriesID, Cursor: first.Next})
+	if err != nil {
+		t.Fatalf("artwork_series candidate %d second page: %v", seriesID, err)
+	}
+	if len(second.Items) == 0 {
+		t.Fatalf("artwork_series candidate %d second page is empty", seriesID)
+	}
+	t.Logf("artwork_series candidate %d second page: artworks=%d continuation=%v", seriesID, len(second.Items), !second.Next.IsZero())
+}
+
 // cliRecordTypes 解析 CLI --json 输出的 record type 序列（兼容数组与
 // {records:[...]} envelope），用于验证 all 聚合的 artwork→novel 顺序。
 func cliRecordTypes(t *testing.T, out string) []string {

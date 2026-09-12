@@ -10,9 +10,9 @@
 
 **Worktree:** `/Users/flanchan/Developer/Projects/GithubProjects/.worktrees/pixiv-cli-refactor-pixiv-api-stability`（专用 linked worktree）
 
-**Current task:** `G1-CORR-G1-T28-ARTWORK-SERIES-WIRE-02`（in_progress；GoalState=`ACTIVE`）
+**Current task:** `G1-CHECK-10`（in_progress；GoalState=`ACTIVE`）
 
-**Current next task:** 完成 artwork-series `offset` continuation correction，随后重跑受影响的 live gate 与 G1-CHECK-10；decision/scope blocker 仍需单独决策。
+**Current next task:** 完成 G1-CHECK-10 重算；若仍存在 decision/scope blocker，再进入 G1-TERM，否则按依赖进入 G1-T31。
 
 ## 0. Resume reason
 
@@ -125,4 +125,19 @@
 - **已恢复的 live evidence：** #17 artwork bookmark 使用非 Flan 账号 `127975236`、新候选 `149605267` 完成 add/detail/list/remove/reconcile；#20/#21 novel bookmark 使用同账号、`29100695` 完成 add/detail/list/remove/reconcile，并在 add 后 detail 读到 `restrict=public`、list 可见；#26 artwork comments 使用账号 `128042145`、`149603743` 完成 text/reply/stamp 的 write/read-back/cleanup；#28 novel comments 使用同账号、`29100695` 完成 text/stamp 的 write/read-back/cleanup。所有记录均已确认无残留。
 - **评论与安全：** 评论正文只写 `很棒！`；stamp 使用空正文，清理由响应 ID 完成。未记录 token、cookie、refresh token、raw signed/auth URL 或评论正文。一次 artwork bookmark 候选因本地 SQLite lock 的尝试不计入证据且未 replay；默认账号已恢复为 `127975236`。
 - **新内部 correction：** 公开可追溯候选 `https://www.pixiv.net/user/10509347/series/21859` 的 App API 首页返回 30/30 有效 artwork 和 `next_url`，续页 query 使用 `illust_series_id` + `offset`；现有 artwork-series continuation 只接受 `last_order`，导致 `malformed_upstream_response`。该事实已登记为 `G1-CORR-G1-T28-ARTWORK-SERIES-WIRE-02`，只对显式候选继续 read，不扫描 ID。
-- **当前门禁：** comments/bookmark focused tests 与 live cleanup evidence 已通过；series correction 仍未完成，因此不运行 G1-T31/G1-FINAL、不声明 Goal 完成。完成后需更新 G1-CHECK-10；#6/#12/#23/#24/#41/#38/#39 decision/scope blockers 仍需独立批准，未因本次恢复自动解决。
+- **当前门禁：** comments/bookmark focused tests、live cleanup evidence 与 artwork-series `offset` correction/recovery 已通过；正在重算 G1-CHECK-10，不运行 G1-T31/G1-FINAL、不声明 Goal 完成。#6/#12/#23/#24/#41/#38/#39 decision/scope blockers 仍需独立批准，未因本次恢复自动解决。
+
+## 12. Current correction closure：artwork-series offset continuation（2026-09-13）
+
+- **Correction：** `G1-CORR-G1-T28-ARTWORK-SERIES-WIRE-02`=`verified`。endpoint 同时兼容现有 `last_order` fixture 与当前 App API 的 `offset` continuation；SDK 读取 cursor 中的实际 continuation key，并以同一 key 回放请求/构建下一枚 opaque cursor。
+- **Red→Green：** 新增 endpoint offset query/continuation fixture 与 SDK offset cursor round-trip；Red 阶段分别出现缺少 endpoint 字段的编译错误和 SDK `malformed_upstream_response`，Green 后 endpoint、series cursor focused tests 与既有 last_order regression 均 PASS。
+- **Live：** 对公开显式候选 `21859` 运行 `TestRealPixivSDKLiveArtworkSeriesRecovery`，public SDK 首页 30 个 artwork、第二页 30 个 artwork，两个页面均成功返回 continuation；没有写操作、ID 扫描或 raw response 日志。
+- **下一步：** #5 artwork-series external blocker 已解除；执行受影响的 G1-CHECK-10 manifest/task graph、live evidence、decision blocker 与最新 Git 状态重算。Goal 仍为 `ACTIVE`，尚未进入 G1-T31/G1-FINAL。
+
+## 13. Current G1-CHECK-10 rerun（2026-09-13）
+
+- **Verdict：** `blocked_decision`。manifest `41/41`，`live_required=yes/no=36/5`，`mapped_to_task=41`、`unmapped=0`、`undecomposed=0`；#5 artwork-series、#17/#20/#21 bookmark、#26/#28 comments 的外部证据与对应 correction 均已闭合。
+- **External blockers：** 当前无剩余 data/permission external blocker。既有 #27、#9 证据继续有效；本轮不 replay uncertain mutation，不扫描 ID，不新增 raw probe。
+- **Decision / scope blockers：** #6、#12、#23、#24、#41、#38、#39 仍需用户明确批准 layer/public-surface 裁定；不自行新增 CLI/MCP/SDK contract、aggregate operation、rating surface 或 bare-ID probe。
+- **Verification：** `go test ./...`、`go vet ./...`、`sh scripts/build.sh`、documentation tests、series/SDK focused tests、LSP diagnostics、`gofmt` 与 `git diff --check` 均 PASS；artwork-series live recovery 首页/第二页均为 30 个 artwork 且 continuation 成功。
+- **Routing：** 无 runnable required task，进入 `G1-TERM` 路由；不得执行 G1-T31/G1-FINAL，Goal 保持 `ACTIVE`，等待 scope/contract 决策。当前 artwork-series 代码与账本变更待本批次 commit/push。

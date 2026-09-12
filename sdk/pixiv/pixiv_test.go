@@ -404,6 +404,52 @@ func TestArtworkSeriesWiresCursor(t *testing.T) {
 	}
 }
 
+func TestArtworkSeriesWiresOffsetCursor(t *testing.T) {
+	calls := 0
+	rt := roundTripFunc(func(req *http.Request) (*http.Response, error) {
+		calls++
+		if req.URL.Path != "/v1/illust/series" {
+			t.Errorf("path = %q", req.URL.Path)
+		}
+		query := req.URL.Query()
+		if query.Get("illust_series_id") != "5001" {
+			t.Errorf("series id = %q", query.Get("illust_series_id"))
+		}
+		wantOffset := ""
+		if calls == 2 {
+			wantOffset = "30"
+		}
+		if query.Get("offset") != wantOffset || query.Get("last_order") != "" {
+			t.Errorf("continuation query = %v, want offset=%q and no last_order", query, wantOffset)
+		}
+		body := `{"illust_series_detail":{"user":{"id":7,"name":"artist"}},"illusts":[{"id":5002,"title":"chapter","type":"manga","create_date":"2026-01-01T00:00:00Z","user":{"id":7,"name":"artist"}}],"next_url":"https://app-api.pixiv.net/v1/illust/series?illust_series_id=5001&offset=30"}`
+		if calls == 2 {
+			body = `{"illust_series_detail":{"user":{"id":7,"name":"artist"}},"illusts":[{"id":5003,"title":"chapter 2","type":"manga","create_date":"2026-01-02T00:00:00Z","user":{"id":7,"name":"artist"}}],"next_url":null}`
+		}
+		return &http.Response{StatusCode: http.StatusOK, Header: http.Header{"Content-Type": {"application/json"}}, Body: io.NopCloser(strings.NewReader(body))}, nil
+	})
+	client, err := NewWith("token", Options{HTTPClient: &http.Client{Transport: rt}})
+	if err != nil {
+		t.Fatalf("NewWith: %v", err)
+	}
+	request := ArtworkSeriesRequest{SeriesID: 5001}
+	page, err := client.ArtworkSeries(context.Background(), request)
+	if err != nil {
+		t.Fatalf("ArtworkSeries: %v", err)
+	}
+	if len(page.Items) != 1 || page.Items[0].ID != 5002 || page.Next.IsZero() {
+		t.Fatalf("first page = %#v", page)
+	}
+	request.Cursor = page.Next
+	page, err = client.ArtworkSeries(context.Background(), request)
+	if err != nil {
+		t.Fatalf("ArtworkSeries continuation: %v", err)
+	}
+	if len(page.Items) != 1 || page.Items[0].ID != 5003 || !page.Next.IsZero() || calls != 2 {
+		t.Fatalf("second page = %#v calls=%d", page, calls)
+	}
+}
+
 func TestNovelSeriesWiresCursorAndMetadata(t *testing.T) {
 	calls := 0
 	rt := roundTripFunc(func(req *http.Request) (*http.Response, error) {

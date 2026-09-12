@@ -24,11 +24,14 @@ func New(transport Transport) *Client { return &Client{transport: transport} }
 type Request struct {
 	SeriesID  int64
 	LastOrder int64
+	Offset    int64
 }
 
 type Result struct {
 	Items         []artwork.Artwork
 	NextLastOrder int64
+	NextKey       string
+	NextValue     int64
 	HasNext       bool
 	UserID        int64
 }
@@ -38,7 +41,9 @@ func (c *Client) List(ctx context.Context, request Request) (Result, error) {
 		return Result{}, errors.New("artwork series transport is not configured")
 	}
 	query := url.Values{"illust_series_id": {strconv.FormatInt(request.SeriesID, 10)}}
-	if request.LastOrder > 0 {
+	if request.Offset > 0 {
+		query.Set("offset", strconv.FormatInt(request.Offset, 10))
+	} else if request.LastOrder > 0 {
 		query.Set("last_order", strconv.FormatInt(request.LastOrder, 10))
 	}
 	var raw responseDTO
@@ -55,11 +60,15 @@ func (c *Client) List(ctx context.Context, request Request) (Result, error) {
 		}
 		items[index] = mapArtwork(value)
 	}
-	nextOrder, hasNext, err := continuation(raw.NextURL)
+	nextKey, nextValue, hasNext, err := continuation(raw.NextURL)
 	if err != nil {
 		return Result{}, err
 	}
-	return Result{Items: items, NextLastOrder: nextOrder, HasNext: hasNext, UserID: raw.SeriesDetail.User.ID}, nil
+	result := Result{Items: items, NextKey: nextKey, NextValue: nextValue, HasNext: hasNext, UserID: raw.SeriesDetail.User.ID}
+	if nextKey == "last_order" {
+		result.NextLastOrder = nextValue
+	}
+	return result, nil
 }
 
 type responseDTO struct {
@@ -169,19 +178,19 @@ func (l *requiredList[T]) UnmarshalJSON(data []byte) error {
 	return nil
 }
 
-func continuation(rawURL *string) (int64, bool, error) {
+func continuation(rawURL *string) (string, int64, bool, error) {
 	if rawURL == nil {
-		return 0, false, nil
+		return "", 0, false, nil
 	}
-	_, value, err := endpointcontinuation.Parse(*rawURL, endpointcontinuation.Spec{
+	key, value, err := endpointcontinuation.Parse(*rawURL, endpointcontinuation.Spec{
 		Path:             protocol.AppIllustSeries,
-		Keys:             []string{"last_order"},
+		Keys:             []string{"offset", "last_order"},
 		AllowedQueryKeys: []string{"illust_series_id"},
 	})
 	if err != nil || value <= 0 {
-		return 0, false, protocol.MalformedResponse()
+		return "", 0, false, protocol.MalformedResponse()
 	}
-	return value, true, nil
+	return key, value, true, nil
 }
 
 func mapArtwork(dto illustDTO) artwork.Artwork {

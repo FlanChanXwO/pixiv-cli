@@ -61,15 +61,39 @@ func (c *Client) ArtworkSeries(ctx context.Context, request ArtworkSeriesRequest
 		return sdk.Page[Artwork]{}, newError("ArtworkSeries", sdk.InvalidArgument, "series ID must be positive")
 	}
 	query := url.Values{"illust_series_id": {itoa(request.SeriesID)}}
-	lastOrder, err := c.continuationPositiveValue("ArtworkSeries", query, request.Cursor, "last_order")
-	if err != nil {
-		return sdk.Page[Artwork]{}, err
+	continuationKey := ""
+	continuationValue := int64(0)
+	if !request.Cursor.IsZero() {
+		key, value, err := c.continuationFromCursor("ArtworkSeries", query, request.Cursor)
+		if err != nil {
+			return sdk.Page[Artwork]{}, err
+		}
+		if value <= 0 {
+			return sdk.Page[Artwork]{}, newError("ArtworkSeries", sdk.InvalidCursor, "cursor continuation value must be positive")
+		}
+		switch key {
+		case "offset":
+			if int64(int(value)) != value {
+				return sdk.Page[Artwork]{}, newError("ArtworkSeries", sdk.InvalidCursor, "cursor continuation offset is out of range")
+			}
+		case "last_order":
+		default:
+			return sdk.Page[Artwork]{}, newError("ArtworkSeries", sdk.InvalidCursor, "cursor continuation kind mismatch")
+		}
+		continuationKey, continuationValue = key, value
 	}
-	list, err := c.artworkSeries.List(ctx, series.Request{SeriesID: request.SeriesID, LastOrder: lastOrder})
+	seriesRequest := series.Request{SeriesID: request.SeriesID}
+	switch continuationKey {
+	case "offset":
+		seriesRequest.Offset = continuationValue
+	case "last_order":
+		seriesRequest.LastOrder = continuationValue
+	}
+	list, err := c.artworkSeries.List(ctx, seriesRequest)
 	if err != nil {
 		return sdk.Page[Artwork]{}, classifyAppError(err, "ArtworkSeries")
 	}
-	return c.artworkPage("ArtworkSeries", query, "last_order", list.Items, list.NextLastOrder, list.HasNext)
+	return c.artworkPage("ArtworkSeries", query, list.NextKey, list.Items, list.NextValue, list.HasNext)
 }
 
 // ArtworkRanking lists the current artwork ranking.
