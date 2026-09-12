@@ -1,6 +1,8 @@
 # Goal-1 Closure Report
 
-**GoalState:** `BLOCKED_DECISION`
+**GoalState:** `ACTIVE`
+
+**Report status:** `SUPERSEDED_BLOCKED_CHECKPOINT` — 2026-09-12 的 blocked closure 已被新的内部 correctness evidence 重新打开；下方原 terminal evidence 保留用于审计，不再代表当前 terminal eligibility。
 
 **Generated:** 2026-09-12
 
@@ -8,9 +10,20 @@
 
 **Worktree:** `/Users/flanchan/Developer/Projects/GithubProjects/.worktrees/pixiv-cli-refactor-pixiv-api-stability`（专用 linked worktree）
 
-**Terminal task:** `G1-TERM`
+**Previous terminal task:** `G1-TERM`（superseded）
+
+**Current next task:** `G1-CORR-G1-T29-COMMENT-WIRE-02`（随后 `G1-RECOVER-G1-T28-SERIES-TARGET-01`）
+
+## 0. Resume reason
+
+- blocked closure 的关键前提是 `runnable_required_tasks == 0`。该前提已经失效：当前 comments adapter 从 `created_at` 读取评论时间，而当前 App API 参考模型使用 `date`；这与 live `invalid comment time` 形成直接、可测试的内部根因链。
+- 当前 comments adapter 还期待 `access_control:{can_comment,is_locked}`，而当前 App API 参考模型使用 `comment_access_control` 整数。此前“没有显式 CanComment target”因此需要先按真实 wire 重新判定，不能继续无条件归类为 external data blocker；scalar 业务语义不得猜测。
+- 已在 `tasks.md` 插入 `G1-CORR-G1-T29-COMMENT-WIRE-02`，并把 G1-T30/G1-CHECK-10 恢复为 pending；旧 G1-TERM checkpoint 只保留历史证据。Goal 当前重新 `ACTIVE`。
+- 其余 external candidate 中，novel bookmarked=true 目标与 bookmark status-only read-back 暂未发现新的内部根因，继续保持。series 数据仍是 external 条件，但已登记只读 recovery task：先验证公开 PixivPy demo 的 novel-series candidate 是否当前仍可访问且有第二页；artwork-series 不进行任意 ID 扫描。public-surface decision blockers 也继续保持，直到用户明确批准 layer applicability/scope 裁定。
 
 ## 1. Terminal eligibility
+
+> **Historical snapshot only.** 本节描述 superseded blocked checkpoint 当时的判定；当前已经因为存在 runnable correction 而不满足 terminal eligibility。
 
 - Required capability scope remains `41/41`; `live_required=yes` 为 36 项，`live_required=no` 为 5 项；`unmapped=0`、`undecomposed=0`。
 - G1-CHECK-10 已完成审计并标记 `blocked_decision`。既有 correction `G1-CORR-G1-T28-RECOMMENDED-01`、`G1-CORR-G1-T29-BOOKMARK-DETAIL-01`、`G1-CORR-G1-T29-NOVEL-COMMENTS-DATA-PROBE-01` 均已 `verified`。

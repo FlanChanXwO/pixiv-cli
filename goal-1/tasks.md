@@ -1017,14 +1017,76 @@ Live 只执行 `Live Manifest` 中 `live_required=yes` 的场景，不临时增�
 - **Green / 回归：** `go test ./e2e -run 'TestFirstNovelWithComments(HandlesShortPages|FindsFourthItem)$' -count=1 -v` PASS；`go test ./e2e -run 'TestFirstNovelWithComments(HandlesShortPages|FindsFourthItem)$|TestRealPixivSDKLiveManifestBookmarkUserRead$' -count=1 -v` 中 helper PASS、live 未设 env 时按门控 skip；`gopls check e2e/sdk_pixiv_live_manifest_test.go`、`gofmt`、`git diff --check` PASS。
 - **Live：** 经 `PIXIV_SDK_E2E=1 PIXIV_E2E_PROXY=http://127.0.0.1:7890` 两次实跑同一 manifest harness，其他 bookmark/user/stamp/relationship 场景均完成；novel comments 当前候选返回 `malformed_upstream_response: invalid comment time`，随后当前 search page 无可用非空 comments target。该错误来自上游候选数据无法满足 SDK 的时间 DTO 契约，既有 harness 也会对请求错误 `t.Errorf`；未静默降级，#27 Live 保持 `blocked_external (data/upstream)`，不扩大本 correction 到生产解析。
 - **兼容 / 回滚：** 无 public API、wire、schema、CLI/MCP 变化；回滚仅撤销 helper、target-selection 与两项 focused tests。
-- **风险 / 下一步：** 真实账号当前仍无可验证 novel comments target；待有合法 comments DTO 的当前 page 后重跑 #27。下一任务为 `G1-T30`。
+- **风险 / 下一步（历史记录，已 superseded）：** 当时把真实账号的 novel comments 失败归为 data/upstream blocker 并计划进入 `G1-T30`；后续新证据已证明 `date` / `created_at` wire drift 是内部 correction candidate。当前下一任务改为 `G1-CORR-G1-T29-COMMENT-WIRE-02`。
+
+## G1-CORR-G1-T29-COMMENT-WIRE-02 — comments 当前 App API wire 纠偏
+
+**Status:** pending
+
+**Source task/gate：** G1-T29 / G1-CHECK-10；blocked closure 后的新证据证明 #27 不能继续归类为纯 external blocker。
+
+**Capabilities：** #27 `novel-comments-read`；并重新判定 #26/#28 comment mutation 的 access-control preflight 是否被同一 wire drift 影响。#25 artwork-comments-read 的 rejected/no-fallback contract 不因本 correction 改变。
+
+**Observed failure：**
+
+- live 非空 novel comments 返回后，SDK 报 `malformed_upstream_response: invalid comment time`。
+- 当前 `internal/services/pixiv/endpoint/novel/comments` DTO 从 `created_at` 读取评论时间，而当前 App API 参考模型的 comment 字段为 `date`；因此真实 `date` 未进入 normalized `CreateDate`，SDK 在 RFC3339 映射处得到空值并报错。
+- 当前 comments adapter 期待 `access_control:{can_comment,is_locked}` 对象；当前 App API 参考模型使用 `comment_access_control` 整数。现有 mutation target probe 又要求 `AccessControl != nil && CanComment && !IsLocked`，因此“找不到 CanComment target”可能至少部分来自 wire 解析缺口，不能继续未经验证地记为纯 external data blocker。
+
+**Expected contract：**
+
+- 只按当前真实 App API wire 映射评论时间；非空合法 comment 必须产生可解析的 public `CreatedAt`，不得把 wire drift 伪装成 external data shortage。
+- `comment_access_control` 的整数语义必须先由当前 live/evidence 明确证明后再映射；禁止猜测 `0/1` 的业务含义，禁止为了放行 mutation 而默认 `CanComment=true`。
+- 如果纠正 wire 后仍没有可安全写评论的 target，则 #26/#28 才可重新归类为真实 `blocked_external(data/permission)`。
+
+**Scope boundary：** comments DTO / normalized mapping / 对应 fixture 与最小 SDK mapping regression；只在有证据时调整 access-control mapping。不得新增 retry、sleep、扫描次数上限、跨页穷举、评论写入 fallback，亦不得降低 mutation 写前权限检查。
+
+**Red / expected failure：**
+
+1. 使用当前 wire 形状 `{"comments":[{"id":...,"date":"2026-..."}],...}` 的最小 fixture，当前实现应因 `CreateDate` 为空而在 SDK 映射中复现 `invalid comment time`。
+2. 使用当前 `comment_access_control` 字段的最小 fixture 证明现有 adapter 不会产生可判定 access-control；只锁定 wire shape，不预设整数语义。
+
+**Green acceptance：**
+
+- focused endpoint/SDK tests 证明 `date` 正确进入 `Comment.CreatedAt`，旧合法 fixture/parent-comment/error/continuation 行为不回归。
+- 重跑 #27 当前 live read；若非空 comments 存在，必须成功映射而非 `invalid comment time`。
+- 对 access-control 仅记录真实 scalar 与经证据确认的映射；若语义可确认，再只重跑 G1-T30 的 comment target-selection/mutation slice；follow/bookmark 已有 live evidence不得无条件重跑。
+
+**Compatibility impact：** 修复此前真实 App API comment 时间无法映射的 correctness bug；不新增 public symbol、CLI route、MCP tool 或 output schema。access-control 若需内部表示调整，public DTO 字段名保持现状，语义必须与已证实 upstream contract 对齐。
+
+**Rollback boundary：** 仅 comments adapter/SDK mapping fixture 与本 correction 直接相关的 live harness 证据；不触碰 bookmark/follow/series/aggregate/public-surface scope。
+
+**Blocked-closure impact：** `G1-TERM` 的前提 `runnable_required_tasks == 0` 已被新证据推翻；旧 blocked closure 标记 superseded，GoalState 恢复 `ACTIVE`。本 correction 成为下一张 executable task。
+
+## G1-RECOVER-G1-T28-SERIES-TARGET-01 — series public target 恢复验证
+
+**Status:** pending
+
+**Depends on：** `G1-CORR-G1-T29-COMMENT-WIRE-02` reached terminal status。
+
+**Capabilities：** #5 `artwork-series`、#9 `novel-series` 的既有 live manifest target/second-page acceptance。
+
+**目标：** 在不扫描任意 ID、不新增产品 surface 的前提下，优先利用可追溯的公开 series 示例恢复 live target。当前公开 PixivPy demo 明确使用 `novel_series(1206600)` 并继续消费其 `next_url`；该 ID 只作为本轮候选，不写成永久 fixture，也不预设当前仍有效。
+
+**Scope boundary：** 只做安全 read-only live target validation / harness target selection。不得枚举 ID 空间、不得新增 retry/扫描上限、不得修改生产 endpoint 来“制造”第二页。artwork-series 若没有同等可追溯公开候选或当前合法响应暴露的 series reference，保持真实 `blocked_external(data)`。
+
+**验收：**
+
+- 对 novel candidate 先做只读可访问性检查；只有真实响应当前可访问且能按 manifest 形成第二页 continuation，才将 #9 live blocker 解除。
+- continuation 必须走当前 public SDK/adapter 的既有 cursor/path；不得直接 replay raw signed/auth URL。
+- artwork-series 只接受当前真实响应或可信公开样本提供的 series ID；找不到就保留 blocker，不做猜测式 ID 扫描。
+- 发现 adapter/SDK correctness failure 时转有界 correction；数据失效/无第二页则仍为 external。
+
+**Compatibility impact：** 无 public API/wire/CLI/MCP 变化；只改善 live evidence 的可获得性。
+
+**Rollback boundary：** 仅 live harness target candidate/evidence；不触碰生产 series 实现。
 
 
 ## G1-T30 — Live mutation：bookmark / comments / follow
 
-**Status:** blocked_external
+**Status:** pending
 
-**Depends on:** G1-CHECK-09,G1-CORR-G1-T29-BOOKMARK-DETAIL-01,G1-CORR-G1-T29-NOVEL-COMMENTS-DATA-PROBE-01 reached terminal status
+**Depends on:** G1-CHECK-09,G1-CORR-G1-T29-BOOKMARK-DETAIL-01,G1-CORR-G1-T29-NOVEL-COMMENTS-DATA-PROBE-01,G1-CORR-G1-T29-COMMENT-WIRE-02,G1-RECOVER-G1-T28-SERIES-TARGET-01 reached terminal status
 
 **目标：** 按 manifest 在明确授权隔离账号验证 mutation round-trip。
 
@@ -1032,7 +1094,9 @@ Live 只执行 `Live Manifest` 中 `live_required=yes` 的场景，不临时增�
 
 **测试预算：** 每个 mutation family 只执行 frozen contract 要求的最小成功/清理路径和必要错误边界，不做压力/穷举测试。
 
-**完成记录：**
+**恢复说明（2026-09-12）：** 此 task 的既有 follow/stamps 与 bookmark cleanup/reconcile evidence 保留；仅 comments/access-control slice 被 `G1-CORR-G1-T29-COMMENT-WIRE-02` invalidated。correction 完成后只重跑实际受影响的 comment target/mutation 验证，不重放已处于 uncertain-no-replay 边界的 bookmark add，也不无条件重跑已 verified 的 follow round-trip。
+
+**历史完成记录（comments slice 已 superseded；follow/stamps/bookmark cleanup evidence 仍保留）：**
 - Scenarios：在明确授权的非默认本地账号 `127975236` 上执行；测试 harness 显式要求 `PIXIV_SDK_E2E_MUTATION=1` 与 `PIXIV_E2E_MUTATION_USER_ID`，并拒绝普通默认账号。最终 live round-trip 覆盖 artwork bookmark、novel bookmark、stamps read、artwork/novel comment target probe、follow add/delete；只使用当前 search page 的真实返回集合，不新增扫描上限。
 - Read-back/cleanup：follow 目标公共 user `17391869` 完成 add → 同账号 `User.IsFollowed=true` → delete → `false`，`writes=1/read_back=true/cleanup=true`。bookmark artwork 目标 `149587117`、novel 目标 `29111542` 各完成一次 add（status-only accepted），即时 detail/list/tags 未确认收藏状态，随后各只执行一次本轮 cleanup delete；只读 reconcile 均确认 `bookmarked=false`、list/tags 读取成功且目标不在 list。评论在写前探测未取得带显式 `CanComment` 的合法 target，artwork/novel 均未发 comment write；stamp read 返回 40 项并选得正数 stamp ID，但因无 comment target 未发 stamp write。
 - Evidence：最终 live 命令 `PIXIV_SDK_E2E_MUTATION=1 PIXIV_E2E_MUTATION_USER_ID=127975236 PIXIV_E2E_PROXY=http://127.0.0.1:7890 go test ./e2e -run '^TestRealPixivSDKLiveManifestMutation$' -count=1 -v` PASS；输出只含账号/作品/用户/stamp 公共 ID、计数、布尔状态和分类 reason。reconcile 命令对最终 bookmark targets PASS；没有 token、cookie、refresh token、评论正文或 raw URL 进入日志。account-selection 与 untagged bookmark read-back 的 Red→Green focused tests 均 PASS。
@@ -1043,11 +1107,23 @@ Live 只执行 `Live Manifest` 中 `live_required=yes` 的场景，不临时增�
 
 ## G1-CHECK-10 — Phase F exit：live validation + push
 
-**Status:** blocked_decision
+**Status:** pending
 
-**Depends on:** G1-T28,G1-T29,G1-T30 reached terminal status
+**Depends on:** G1-T28,G1-T29,G1-CORR-G1-T29-COMMENT-WIRE-02,G1-RECOVER-G1-T28-SERIES-TARGET-01,G1-T30 reached terminal status
 
 复核 manifest 覆盖、证据脱敏、external blocker 分类、mutation cleanup、live 是否暴露内部 correction。
+
+**恢复说明（2026-09-12）：** 旧 `blocked_decision` 审计基于“没有新的可执行 production correction”。当前证据已证明 novel comments 的 `date` / `created_at` wire drift 是内部 correctness candidate，并显示 `comment_access_control` shape 可能使 `CanComment` probe 产生假 external blocker；同时已有可追溯的公开 novel-series target candidate 可做安全恢复验证。因此旧 CHECK 结论 superseded。必须先完成 `G1-CORR-G1-T29-COMMENT-WIRE-02`、`G1-RECOVER-G1-T28-SERIES-TARGET-01` 与受影响的 G1-T30 comment slice，再重新执行本 CHECK。
+
+**Decision / scope 推荐裁定（等待用户明确批准，不视为当前 acceptance）：**
+
+- #6 `ugoira-metadata`：保持现有 public SDK surface；本 PR 不为了 closure 新增 standalone CLI/MCP surface，若批准则 CLI/MCP layer 以“未冻结为本 PR public contract”为理由 `not_applicable`。
+- #12 `novel-ranking`：SDK + `pixiv ranking --type novel` 已是既有 public surface；本 PR 不新增 MCP tool，若批准则 MCP layer `not_applicable`。
+- #23/#24/#41 aggregate：只验收已经存在的 CLI/MCP aggregate 行为、failure atomicity 与 live contract；不新增 aggregate Go SDK operation/cursor。若批准，则 aggregate SDK layer `not_applicable`，而不是把缺失 SDK 当 required gap。
+- #38 `bare-id-probe`：继续保持 explicit-type / no implicit probe 的安全 contract；不新增 bare-ID MCP probe surface，若批准则 MCP layer `not_applicable`。
+- #39 `rating-filter`：继续保持 CLI-local filter；不新增 MCP rating surface，也不发明 server-side rating/`x_restrict`，若批准则 MCP layer `not_applicable`。
+
+以上裁定不减少 41 项 required capability，只裁定“某 capability 是否必须在每个 public layer 都新增 surface”。默认原则是 migration/stability PR 不因 closure 机械扩张此前未冻结的 public API。
 
 **Pass/terminal：**
 
@@ -1055,7 +1131,7 @@ Live 只执行 `Live Manifest` 中 `live_required=yes` 的场景，不临时增�
 - 仅剩真实 external/decision blocker 且无可执行内部 work：运行 G1-TERM。
 - 所有 required live acceptance verified：提交 Phase F live evidence/账本，普通 fast-forward push 到 `refactor/pixiv-api-stability`，验证 Remote SHA == Local HEAD；push 成功后进入 G1-T31。
 
-**完成记录：**
+**历史审计记录（已由 comments wire 新证据 superseded）：**
 - **审计结论：** 当前不能将 Phase F 标记 `verified`，也不能把 required live acceptance 伪装成 accepted。G1-T28、G1-T29、G1-T30 均已到 terminal status；既有 correction `G1-CORR-G1-T28-RECOMMENDED-01`、`G1-CORR-G1-T29-BOOKMARK-DETAIL-01`、`G1-CORR-G1-T29-NOVEL-COMMENTS-DATA-PROBE-01` 均为 `verified`，没有新的可执行 correction task。除本 CHECK 外，任务图没有仍可执行的 `pending/in_progress` required work；G1-T31 与 G1-FINAL 被本 CHECK 的失败条件依赖锁定，G1-TERM 是唯一可执行的 terminal task。
 - **Live verified：** G1-T28 的 feed/search/ranking/recommended/detail 场景（#1–4、#6–8、#10–13）已由当前分支 live evidence 支持；G1-T29 的 bookmark/user/relationship/MyPixiv/stamps/aggregate read 场景（#14–16、#18–19、#23–24、#29–37）已按 manifest 记录；G1-T30 的 follow mutation 与 stamps read-back 已 verified。所有结论均保留在 current-state 对应 task section，不把 partial aggregate 或 offline evidence 升级为完整 accepted。
 - **External blockers：** #5 artwork-series、#9 novel-series 缺少可安全构造的真实 series target/第二页；#20 novel bookmarked=true 缺目标数据；#27 novel comments 候选返回 `invalid comment time`，无法形成合法非空 target；#17/#21 bookmark status-only write 后 detail/list/tags read-back 不可确认但 cleanup/reconcile 均干净；#26/#28 当前没有显式 `CanComment` 且可安全映射的 artwork/novel target，因此没有发出 comment write。上述均是当前真实账号/目标数据/上游状态，未归类为内部 bug。
@@ -1067,13 +1143,15 @@ Live 只执行 `Live Manifest` 中 `live_required=yes` 的场景，不临时增�
 
 ## G1-TERM — blocked closure
 
-**Status:** blocked_decision
+**Status:** pending
 
 **Depends on:** G1-CHECK-10 reached terminal status
 
+**Superseded checkpoint：** 2026-09-12 的 `BLOCKED_DECISION` closure 已成功 push，但其 terminal eligibility 依赖 `runnable_required_tasks == 0`。`G1-CORR-G1-T29-COMMENT-WIRE-02` 建立后该条件不再成立，因此历史 blocked 记录只保留为审计证据；当前 G1-TERM 不可执行，除非后续再次满足 terminal 条件。
+
 **允许条件：** `runnable_required_tasks == 0` 且存在 required external/decision blocker。
 
-**完成记录：**
+**历史 blocked closure 记录（checkpoint 保留；当前 terminal eligibility 已 superseded）：**
 - **GoalState：** `BLOCKED_DECISION`。G1-T28、G1-T29、G1-T30 已到 terminal status；既有 correction 均已 verified；G1-T31/G1-FINAL 依赖锁定；没有仍可执行的 required task/correction。
 - **Closure report：** 新建 `goal-1/closure-report.md`，汇总 required=41、live-required=36、unmapped=0、undecomposed=0、live evidence、external blocker、decision/scope blocker、恢复条件与验证证据。`public_ready=0/41`，不得声明 COMPLETED。
 - **External blockers：** #5/#9 series target/第二页、#20 novel bookmarked target、#27 comments DTO/target、#17/#21 bookmark read-back、#26/#28 comment target；具体证据与 cleanup/reconcile 结果见 closure report 与 current-state §40–§42。
