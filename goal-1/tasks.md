@@ -1043,7 +1043,7 @@ Live 只执行 `Live Manifest` 中 `live_required=yes` 的场景，不临时增�
 
 ## G1-CHECK-10 — Phase F exit：live validation + push
 
-**Status:** pending
+**Status:** blocked_decision
 
 **Depends on:** G1-T28,G1-T29,G1-T30 reached terminal status
 
@@ -1056,14 +1056,14 @@ Live 只执行 `Live Manifest` 中 `live_required=yes` 的场景，不临时增�
 - 所有 required live acceptance verified：提交 Phase F live evidence/账本，普通 fast-forward push 到 `refactor/pixiv-api-stability`，验证 Remote SHA == Local HEAD；push 成功后进入 G1-T31。
 
 **完成记录：**
-- Live verified：
-- External blockers：
-- Decision blockers：
-- Correction：
-- Local HEAD：
-- Remote SHA：
-- Push result：
-- 下一步：G1-T31 或 G1-TERM
+- **审计结论：** 当前不能将 Phase F 标记 `verified`，也不能把 required live acceptance 伪装成 accepted。G1-T28、G1-T29、G1-T30 均已到 terminal status；既有 correction `G1-CORR-G1-T28-RECOMMENDED-01`、`G1-CORR-G1-T29-BOOKMARK-DETAIL-01`、`G1-CORR-G1-T29-NOVEL-COMMENTS-DATA-PROBE-01` 均为 `verified`，没有新的可执行 correction task。除本 CHECK 外，任务图没有仍可执行的 `pending/in_progress` required work；G1-T31 与 G1-FINAL 被本 CHECK 的失败条件依赖锁定，G1-TERM 是唯一可执行的 terminal task。
+- **Live verified：** G1-T28 的 feed/search/ranking/recommended/detail 场景（#1–4、#6–8、#10–13）已由当前分支 live evidence 支持；G1-T29 的 bookmark/user/relationship/MyPixiv/stamps/aggregate read 场景（#14–16、#18–19、#23–24、#29–37）已按 manifest 记录；G1-T30 的 follow mutation 与 stamps read-back 已 verified。所有结论均保留在 current-state 对应 task section，不把 partial aggregate 或 offline evidence 升级为完整 accepted。
+- **External blockers：** #5 artwork-series、#9 novel-series 缺少可安全构造的真实 series target/第二页；#20 novel bookmarked=true 缺目标数据；#27 novel comments 候选返回 `invalid comment time`，无法形成合法非空 target；#17/#21 bookmark status-only write 后 detail/list/tags read-back 不可确认但 cleanup/reconcile 均干净；#26/#28 当前没有显式 `CanComment` 且可安全映射的 artwork/novel target，因此没有发出 comment write。上述均是当前真实账号/目标数据/上游状态，未归类为内部 bug。
+- **Decision / scope blockers：** #6 `ugoira-metadata` CLI/MCP、#12 `novel-ranking` MCP、#23/#24/#41 public aggregate SDK/strict aggregate evidence，以及 #38 bare-ID、#39 rating MCP surface 仍只有 correction registry 或 frozen boundary，没有已批准的 public contract/owner；继续实现需要新增 surface、选择 breaking/范围方案或补充产品决策，不能在本 CHECK 自行扩大 scope。#41 仍不能因已有 CLI/MCP aggregate 或单路 recommended live 证据而 accepted。
+- **Correction：** 未发现 live 暴露的新生产 correction；#4/#11 recommended continuation 的既有 P1 已闭合。当前混合 blocker 以 `blocked_decision` 记录，按规则下一步进入 `G1-TERM`，由 terminal closure 汇总 external 与 decision blocker。
+- **Git / push preflight：** worktree clean；Local HEAD=`d381e6f564e08dd63496b4c0ad04c7aac5352285`；GitHub API 与 `git ls-remote` 均显示 Remote=`8589ea1bfa16cef3df3c9dbe2d4fffa8fe9670ec`，Local ahead 5、无反向提交；`origin/main`=`7ff1e6b4e6177c657876f69cd930d279d2d0bfce`。本 CHECK 未执行 Phase F push，因为它未通过 verified 条件；G1-TERM 必须对最终 blocked closure 尝试普通 fast-forward push，禁止 force。
+- **验证：** 当前 HEAD 的 `go test ./...`、`go vet ./...`、`sh scripts/build.sh`、LSP check、focused mutation tests、live mutation、read-first reconcile、脱敏/`git diff --check` 均已有 PASS 证据；没有 token/cookie/refresh token/raw URL/评论正文进入记录。
+- **下一步：** `G1-TERM`（不是 G1-T31；`G1-FINAL` 不可执行）。
 
 ## G1-T31 — Pre-final latest-main integration readiness
 
