@@ -1292,7 +1292,7 @@ go test ./sdk/pixiv ./internal/services/pixiv/endpoint/artwork/comments ./intern
 
 **Decision / scope blockers：** #6/#12 涉及 CLI/MCP surface，#23/#24/#41 涉及 aggregate/strict public contract，#38 涉及 bare-ID probe，#39 涉及 rating MCP。继续实现需要用户批准对应范围/契约；本 closure 不自行扩大 public surface。
 
-**Verification / Git：** `go test ./...`、`go vet ./...`、`sh scripts/build.sh`、documentation tests、series/SDK focused tests、race、LSP、gofmt 与 `git diff --check` 均 PASS；closure checkpoint `f5b317913030266cb40a303001dfe451ff0b146a` 已普通 fast-forward 推送，Local/Remote SHA 一致，worktree clean。
+**Verification / Git：** `go test ./...`、`go vet ./...`、`sh scripts/build.sh`、documentation tests、series/SDK focused tests、race、LSP、gofmt 与 `git diff --check` 均 PASS；closure checkpoint `2493f9a34ff871657070cb3a8d4c8f17cb8df581` 已普通 fast-forward 推送，Local/Remote SHA 一致，worktree clean。
 
 **Next：** 等待用户 scope/contract 决策；决策明确后从最早受影响的 decision task 恢复。不得执行 G1-T31/G1-FINAL。
 

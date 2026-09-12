@@ -148,5 +148,5 @@
 - **Counts：** required capability `41/41`、`public_ready=0/41`、`scope_admitted=41/41`；manifest `41/41`，`live_required=yes/no=36/5`，`mapped_to_task=41`、`unmapped=0`、`undecomposed=0`。
 - **已闭合证据：** #5 artwork-series `offset` correction/recovery、#17/#20/#21 bookmark round-trip、#26/#28 comments mutation 均已 verified；#9/#27 与既有 corrections 保留。评论只写 `很棒！`，stamp 使用空正文；不 replay uncertain mutation、不扫描 ID、不猜测 `comment_access_control` scalar。
 - **Decision / scope：** #6/#12 需要 CLI/MCP surface 裁定，#23/#24/#41 需要 aggregate/strict public contract 裁定，#38 需要 bare-ID probe 裁定，#39 需要 rating MCP 裁定。本 closure 不自行扩大 public surface。
-- **Verification / Git：** `go test ./...`、`go vet ./...`、`sh scripts/build.sh`、documentation tests、series/SDK focused tests、race、LSP、gofmt 与 `git diff --check` 均 PASS；checkpoint `f5b317913030266cb40a303001dfe451ff0b146a` 已普通 fast-forward 推送，Local/Remote SHA 一致，worktree clean。
+- **Verification / Git：** `go test ./...`、`go vet ./...`、`sh scripts/build.sh`、documentation tests、series/SDK focused tests、race、LSP、gofmt 与 `git diff --check` 均 PASS；checkpoint `2493f9a34ff871657070cb3a8d4c8f17cb8df581` 已普通 fast-forward 推送，Local/Remote SHA 一致，worktree clean。
 - **Next：** 等待用户 scope/contract 决策；明确后从最早受影响的 decision task 恢复。不得执行 G1-T31/G1-FINAL，Goal 不得标记 `COMPLETED`。
