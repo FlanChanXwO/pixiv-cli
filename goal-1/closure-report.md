@@ -1,8 +1,8 @@
 # Goal-1 Closure Report
 
-**GoalState:** `ACTIVE`
+**GoalState:** `BLOCKED_DECISION`
 
-**Report status:** `CURRENT_AUDIT_READY_FOR_G1-TERM` — 2026-09-13；G1-CHECK-10 已完成当前审计并到 terminal `blocked_decision`，下方历史 terminal evidence 保留用于审计；G1-TERM 尚未执行，GoalState 暂保持 `ACTIVE`。
+**Report status:** `CURRENT_BLOCKED_CLOSURE` — 2026-09-13；G1-CHECK-10 与 G1-TERM 均已到 terminal，external 与 decision blocker 并存。下方历史 terminal evidence 保留用于审计；Goal 不满足 `COMPLETED`。
 
 **Generated:** 2026-09-13
 
@@ -10,9 +10,9 @@
 
 **Worktree:** `/Users/flanchan/Developer/Projects/GithubProjects/.worktrees/pixiv-cli-refactor-pixiv-api-stability`（专用 linked worktree）
 
-**Previous terminal task:** `G1-TERM`（superseded）
+**Current terminal task:** `G1-TERM`（verified；GoalState=`BLOCKED_DECISION`）
 
-**Current next task:** `G1-TERM`（G1-CHECK-10 已到 terminal `blocked_decision`；GoalState 在 terminal task 执行前保持 `ACTIVE`）
+**Current next task:** 无；等待 external data/permission 或用户明确 scope 决策后，从最早未完成 required task 恢复。
 
 ## 0. Resume reason
 
@@ -106,4 +106,15 @@
 - **Decision / scope blockers：** #6、#12、#23、#24、#41、#38、#39 仍需用户明确批准 layer/public-surface 裁定；不在 terminal audit 中新增 CLI/MCP/SDK contract、aggregate operation、rating surface 或 bare-ID probe。`comment_access_control` 的 scalar 业务语义保持未定义。
 - **Safety / verification：** mutation cleanup/reconcile/no-replay evidence 保留；live 输出未包含 token、cookie、refresh token、评论正文或 raw signed/auth URL。文档测试、cursor/SDK route-safety、Pixiv/FANBOX MCP schema/error-canary focused tests PASS；G1-T27 当前 HEAD `e74fcb6` 的 full offline/vet/build/race/LSP/live/reconcile/diff-check 证据未被 docs-only audit invalidated。
 - **Git / routing：** 审计起点 Local/Remote=`e74fcb6836781064f755f74a3d8b6c96a99cc63f`，`origin/main=7ff1e6b4e6177c657876f69cd930d279d2d0bfce`，worktree clean、无 PR、无远端分叉。审计账本提交=`20c89fc8cadc2ae757b9b0ba95e3f84785a6fb42` 已普通 fast-forward 推送，`git ls-remote` 与 GitHub API 均确认 Remote SHA 相同；因 CHECK verdict 不是 `verified`，该 push 不宣称 Phase F push gate 通过。下一张 `G1-TERM` 需单独写 closure checkpoint 并普通 fast-forward 推送。
-- **GoalState：** 仍为 `ACTIVE`；G1-TERM 执行后才可按混合 blocker 计算 `BLOCKED_DECISION`。当前不得进入 G1-T31/G1-FINAL。
+- **审计时状态：** G1-TERM 执行前为 `ACTIVE`；本行已由下方当前 closure supersede。
+
+## 10. Current G1-TERM blocked closure（2026-09-13）
+
+- **GoalState：** `BLOCKED_DECISION`。G1-CHECK-10 已到 terminal `blocked_decision`；重新核对后 `runnable_required_tasks=0`，且 required external blocker 与 decision blocker 同时存在。G1-TERM 已完成；G1-T31/G1-FINAL 依赖锁定，不能声明 Goal 完成。
+- **Counts：** required capability `41/41`、`public_ready=0/41`、`scope_admitted=41/41`；manifest `41/41`，`live_required=yes/no=36/5`，`mapped_to_task=41`、`unmapped=0`、`undecomposed=0`。
+- **External blockers：** #5 artwork-series 无可追溯且满足第二页条件的目标；#17/#21 bookmark status-only 写入后的状态不可确认但 cleanup/reconcile 干净，按 uncertain no-replay；#20 novel bookmark detail 缺 `bookmarked=true` 目标；#26/#28 comments mutation 无显式且可安全判定的 `CanComment` target，comments slice `writes=0`，未发评论/回复/stamp 写入。
+- **Decision / scope blockers：** #6、#12、#23、#24、#41、#38、#39 仍需用户明确批准 layer/public-surface contract；不得自行新增 CLI/MCP/SDK surface、aggregate operation、rating surface 或 bare-ID probe。`comment_access_control` scalar `0/1` 业务语义保持未定义。
+- **Recovery conditions：** 取得合法 artwork-series target、novel bookmark true target、可确认 bookmark read-back、满足 access-control/权限/可靠 ID 的 comments target，或用户明确批准对应 public contract/scope 后，才从最早未完成 required task 恢复；不扫描 ID、不 replay uncertain mutation、不猜测 wire 语义。
+- **Verification / safety：** G1-T27 full offline/vet/build/race/LSP/live/reconcile/diff-check、G1-CHECK-10 focused checks 与 T30 comments evidence 均保留；G1-TERM 只重算 closure 并更新账本，未新增生产代码或外部写入。账本无 token、cookie、refresh token、评论正文或 raw signed/auth URL。
+- **Git / push：** closure 前 Local/Remote=`955c09a90407d3baf0cda8b52fe252b575ec6594`，`origin/main=7ff1e6b4e6177c657876f69cd930d279d2d0bfce`，worktree clean、无远端分叉。closure 文档提交后执行普通 fast-forward push，并核验 GitHub API 与 `git ls-remote` 的 Remote SHA == Local HEAD。
+- **Next：** 无可执行 required task；等待 external data/permission 或用户 scope 决策。不得执行 G1-T31/G1-FINAL，除非 blocker 条件解除并重新打开相应 task。

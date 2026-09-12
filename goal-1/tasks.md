@@ -1180,15 +1180,25 @@ Live 只执行 `Live Manifest` 中 `live_required=yes` 的场景，不临时增�
 
 ## G1-TERM — blocked closure
 
-**Status:** pending
+**Status:** verified
 
 **Depends on:** G1-CHECK-10 reached terminal status
 
-**Superseded checkpoint：** 2026-09-12 的 `BLOCKED_DECISION` closure 已成功 push，但其 terminal eligibility 依赖 `runnable_required_tasks == 0`。`G1-CORR-G1-T29-COMMENT-WIRE-02` 建立后该条件不再成立，因此历史 blocked 记录只保留为审计证据；当前 G1-TERM 不可执行，除非后续再次满足 terminal 条件。
+**历史说明（已由本次 closure supersede）：** 2026-09-12 的 `BLOCKED_DECISION` closure 已成功 push，但其 terminal eligibility 依赖 `runnable_required_tasks == 0`。`G1-CORR-G1-T29-COMMENT-WIRE-02` 建立后该条件不再成立；本次 G1-CHECK-10 完成后重新满足 terminal 条件，历史 blocked 记录只保留为审计证据。
 
 **允许条件：** `runnable_required_tasks == 0` 且存在 required external/decision blocker。
 
-**历史 blocked closure 记录（checkpoint 保留；当前 terminal eligibility 已 superseded）：**
+**当前完成记录（2026-09-13）：**
+
+- **前提重核：** G1-CHECK-10 已到 terminal `blocked_decision`；普通 task、correction、recovery 与 G1-T30 全部 terminal，除 G1-TERM 外没有 runnable required task。G1-T31 依赖 CHECK `verified`，G1-FINAL 依赖 G1-T31 与零 blocker，均不可执行。
+- **计算结果：** required capability `41/41`、`public_ready=0/41`、manifest `41/41`、`live_required=yes/no=36/5`、`mapped_to_task=41`、`unmapped=0`、`undecomposed=0`；external blockers 为 #5/#17/#20/#21/#26/#28，decision/scope blockers 为 #6/#12/#23/#24/#38/#39/#41。两类 blocker 并存，GoalState 必须为 `BLOCKED_DECISION`。
+- **安全边界：** #17/#21 的 uncertain bookmark 状态不 replay；#26/#28 comments slice `writes=0`，没有评论、回复或 stamp 写入；不扫描 series/ID，不猜测 `comment_access_control` scalar，不新增 public surface。live 输出与 closure 账本不含 token、cookie、refresh token、评论正文或 raw signed/auth URL。
+- **Closure report：** [goal-1/closure-report.md](closure-report.md) 已更新为当前 `BLOCKED_DECISION` closure；[goal-1/current-state.md](current-state.md) 已追加 §48 当前终止记录。Goal 不满足 COMPLETED 条件。
+- **验证：** G1-CHECK-10 的 manifest/docs/cursor/SDK/MCP focused checks PASS；G1-T27 full offline/vet/build/race/LSP/live/reconcile/diff-check 与 T30 live evidence 仍有效，closure 本身未修改生产代码。
+- **Git：** closure 前 Local/Remote=`955c09a90407d3baf0cda8b52fe252b575ec6594`，`origin/main=7ff1e6b4e6177c657876f69cd930d279d2d0bfce`，worktree clean；本 task 文档提交后只执行普通 fast-forward push，并核验 GitHub API 与 `git ls-remote`。
+- **Next：** 无可执行 required task；等待 external data/permission 或用户明确 scope 决策。条件解除后从最早未完成 required task 恢复，不执行 G1-T31/G1-FINAL。
+
+**历史 blocked closure 记录（checkpoint 保留；当前记录已 supersede）：**
 - **GoalState：** `BLOCKED_DECISION`。G1-T28、G1-T29、G1-T30 已到 terminal status；既有 correction 均已 verified；G1-T31/G1-FINAL 依赖锁定；没有仍可执行的 required task/correction。
 - **Closure report：** 新建 `goal-1/closure-report.md`，汇总 required=41、live-required=36、unmapped=0、undecomposed=0、live evidence、external blocker、decision/scope blocker、恢复条件与验证证据。`public_ready=0/41`，不得声明 COMPLETED。
 - **External blockers：** #5/#9 series target/第二页、#20 novel bookmarked target、#27 comments DTO/target、#17/#21 bookmark read-back、#26/#28 comment target；具体证据与 cleanup/reconcile 结果见 closure report 与 current-state §40–§42。
