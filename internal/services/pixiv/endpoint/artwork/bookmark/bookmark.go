@@ -129,10 +129,7 @@ func (c *Client) Detail(ctx context.Context, artworkID int64) (artwork.BookmarkD
 		return artwork.BookmarkDetail{Tags: []string{}}, nil
 	}
 	if raw.Detail.IsBookmarked != nil && !*raw.Detail.IsBookmarked {
-		// 未收藏状态不应同时携带收藏限制或标签；否则无法安全判断上游字段的含义。
-		if raw.Detail.Restrict != "" || len(raw.Detail.Tags) != 0 {
-			return artwork.BookmarkDetail{}, protocol.MalformedResponse()
-		}
+		// 未收藏响应中的 tags 可能是作品自身标签，不是收藏标签；统一归一为空状态。
 		return artwork.BookmarkDetail{Tags: []string{}}, nil
 	}
 	tags := []string{}

@@ -959,7 +959,7 @@ Live 只执行 `Live Manifest` 中 `live_required=yes` 的场景，不临时增�
 
 ## G1-CORR-G1-T29-BOOKMARK-DETAIL-01 — bookmark detail absent 归一修正
 
-**Status:** pending
+**Status:** verified
 
 **Source task/gate：** G1-T29 live read（#16/#20 absent case）。
 
@@ -978,6 +978,14 @@ Live 只执行 `Live Manifest` 中 `live_required=yes` 的场景，不临时增�
 **Compatibility impact：** SDK `ArtworkBookmarkDetail`/`NovelBookmarkDetail` 输出在 absent 场景从 error 变为显式 absent 归一（与冻结契约一致）；无 wire 变更。
 
 **Rollback boundary：** revert 两个 adapter 的归一分支与 fixtures 即可。
+
+**完成记录：**
+- **改动：** `artwork/bookmark.Client.Detail` 与 `user/novelbookmarks.Client.Detail` 对 `is_bookmarked=false` 统一返回 `Restrict:""` 与 non-nil empty `Tags`，忽略上游随响应携带的 restrict/作品标签；`is_bookmarked=true`、null、404 和其他错误路径保持不变。两组 endpoint fixture 改为锁定该归一契约。
+- **Red：** `go test ./internal/services/pixiv/endpoint/artwork/bookmark ./internal/services/pixiv/endpoint/user/novelbookmarks -run 'Test(BookmarkDetailNormalizesUnbookmarkedFields|NovelBookmarkDetailNormalizesCandidateAbsentStates)$' -count=1 -v` 在实现前按预期因 `malformed_upstream_response` 失败，覆盖 false + restrict 与 false + `is_registered:false` 作品标签两种 live 形状。
+- **Green / 回归：** 上述 focused tests、两 endpoint 全包测试、`go test ./sdk/pixiv -run 'Test(Artwork|Novel)Bookmark' -count=1`、`gopls check`、`gofmt` 与 `git diff --check` 全部通过。
+- **Live：** `PIXIV_SDK_E2E=1 PIXIV_E2E_PROXY=http://127.0.0.1:7890 go test ./e2e -run TestRealPixivSDKLiveManifestBookmarkUserRead -count=1 -v` PASS（57.89s）；artwork absent 与 novel absent 均返回 `bookmarked=false,tags=0`。输出仅含脱敏计数/布尔值/公共 ID，无 token/cookie/签名 URL。novel `bookmarked=true` 仍因账号无 novel bookmark 数据记为 `blocked_external (data)`，未伪造 live evidence。
+- **兼容 / 回滚：** 无 wire、public symbol、CLI/MCP schema 变更；只修正 absent 归一。回滚仅需撤销两个 adapter 分支与对应 fixture/test 断言。
+- **风险 / 下一步：** #16 artwork bookmark detail Live → `verified`；#20 novel bookmark detail absent case 已验证，但 bookmarked=true 目标数据仍为 `blocked_external (data)`；#27 novel comments 同样受目标数据限制。下一任务为 `G1-T30`。
 
 
 ## G1-T30 — Live mutation：bookmark / comments / follow

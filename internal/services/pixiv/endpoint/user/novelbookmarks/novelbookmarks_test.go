@@ -251,13 +251,16 @@ func TestNovelBookmarkDetailNormalizesCandidateAbsentStates(t *testing.T) {
 	}
 
 	for name, body := range map[string]string{
-		"false detail with restrict": `{"bookmark_detail":{"is_bookmarked":false,"restrict":"private","tags":[]}}`,
-		"false detail with tags":     `{"bookmark_detail":{"is_bookmarked":false,"restrict":"","tags":[{"name":"cat"}]}}`,
+		"false detail with restrict":   `{"bookmark_detail":{"is_bookmarked":false,"restrict":"private","tags":[]}}`,
+		"false detail with novel tags": `{"bookmark_detail":{"is_bookmarked":false,"restrict":"","tags":[{"name":"cat","is_registered":false}]}}`,
 	} {
 		t.Run(name, func(t *testing.T) {
-			_, err := novelbookmarks.New(&fakeTransport{body: body}).Detail(context.Background(), 42)
-			if !errors.Is(err, protocol.ErrMalformedResponse) {
-				t.Fatalf("Detail(%s) error = %v, want malformed response", body, err)
+			result, err := novelbookmarks.New(&fakeTransport{body: body}).Detail(context.Background(), 42)
+			if err != nil {
+				t.Fatalf("Detail(%s): %v", body, err)
+			}
+			if result.Restrict != "" || result.Tags == nil || len(result.Tags) != 0 {
+				t.Fatalf("unbookmarked detail = %#v, want empty normalized state", result)
 			}
 		})
 	}

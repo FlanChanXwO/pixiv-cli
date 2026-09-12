@@ -272,18 +272,18 @@ func TestBookmarkTagsRejectMalformedItemsAndContinuation(t *testing.T) {
 	}
 }
 
-func TestBookmarkDetailRejectsContradictoryUnbookmarkedFields(t *testing.T) {
-	for _, body := range []string{
-		`{"bookmark_detail":{"is_bookmarked":false,"restrict":"private","tags":[]}}`,
-		`{"bookmark_detail":{"is_bookmarked":false,"restrict":"","tags":[{"name":"cat"}]}}`,
+func TestBookmarkDetailNormalizesUnbookmarkedFields(t *testing.T) {
+	for name, body := range map[string]string{
+		"false detail with restrict":     `{"bookmark_detail":{"is_bookmarked":false,"restrict":"private","tags":[]}}`,
+		"false detail with artwork tags": `{"bookmark_detail":{"is_bookmarked":false,"restrict":"","tags":[{"name":"cat","is_registered":false}]}}`,
 	} {
-		t.Run(body, func(t *testing.T) {
+		t.Run(name, func(t *testing.T) {
 			result, err := bookmark.New(&fakeTransport{body: body}).Detail(context.Background(), 9)
-			if !errors.Is(err, protocol.ErrMalformedResponse) {
-				t.Fatalf("Detail(%s) error = %v, want malformed response", body, err)
+			if err != nil {
+				t.Fatalf("Detail(%s): %v", body, err)
 			}
-			if result.Tags != nil || result.Restrict != "" {
-				t.Fatalf("malformed detail result = %#v", result)
+			if result.Restrict != "" || result.Tags == nil || len(result.Tags) != 0 {
+				t.Fatalf("unbookmarked detail = %#v, want empty normalized state", result)
 			}
 		})
 	}

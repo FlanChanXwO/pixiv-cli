@@ -145,9 +145,7 @@ func (c *Client) Detail(ctx context.Context, novelID int64) (BookmarkDetail, err
 		return BookmarkDetail{Tags: []string{}}, nil
 	}
 	if raw.Detail.IsBookmarked != nil && !*raw.Detail.IsBookmarked {
-		if raw.Detail.Restrict != "" || len(raw.Detail.Tags) != 0 {
-			return BookmarkDetail{}, protocol.MalformedResponse()
-		}
+		// 未收藏响应中的 tags 可能是作品自身标签，不是收藏标签；统一归一为空状态。
 		return BookmarkDetail{Tags: []string{}}, nil
 	}
 	tags := []string{}
