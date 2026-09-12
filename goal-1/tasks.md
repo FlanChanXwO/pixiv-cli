@@ -1165,7 +1165,7 @@ Live 只执行 `Live Manifest` 中 `live_required=yes` 的场景，不临时增�
 - **External blockers：** #5 artwork-series 无可追溯目标；#17/#21 bookmark status-only write 后状态不可确认但 cleanup/reconcile 干净，按 uncertain no-replay；#20 novel bookmark detail 缺 `bookmarked=true` 目标；#26/#28 comments mutation 无显式且可安全判定的 `CanComment` target，`writes=0`，未发评论/回复/stamp 写请求。
 - **Decision / scope blockers：** #6、#12、#23、#24、#41、#38、#39 仍需用户明确批准 layer/public-surface 裁定；不得在本 CHECK 自行新增 CLI/MCP/SDK contract、aggregate operation、rating surface 或 bare-ID probe。`comment_access_control` scalar 的 `0/1` 业务语义未猜测映射。
 - **安全 / 验证：** mutation cleanup/reconcile 与 no-replay 边界保留；输出未包含 token、cookie、refresh token、评论正文或 raw signed/auth URL。`go test ./scripts/tests/documentation -count=1`、cursor/SDK route-safety、Pixiv/FANBOX MCP schema 与 error-canary focused tests PASS；G1-T27 在当前 HEAD `e74fcb6` 的 full test/vet/build/race/LSP/live/reconcile/diff-check 证据继续有效。
-- **Git：** 审计起点 Local/Remote=`e74fcb6836781064f755f74a3d8b6c96a99cc63f`，`origin/main=7ff1e6b4e6177c657876f69cd930d279d2d0bfce`，worktree clean、无 PR、无远端分叉。本 CHECK 因未通过 `verified` 不宣称 Phase F push gate；本次账本文档执行普通 fast-forward 推送，G1-TERM 仍须记录最终 closure checkpoint。
+- **Git：** 审计起点 Local/Remote=`e74fcb6836781064f755f74a3d8b6c96a99cc63f`，`origin/main=7ff1e6b4e6177c657876f69cd930d279d2d0bfce`，worktree clean、无 PR、无远端分叉。本 CHECK 因未通过 `verified` 不宣称 Phase F push gate；审计账本提交=`20c89fc8cadc2ae757b9b0ba95e3f84785a6fb42` 已普通 fast-forward 推送，`git ls-remote` 与 GitHub API 均确认 Remote SHA 相同。G1-TERM 仍须记录最终 closure checkpoint。
 - **GoalState：** 当前仍为 `ACTIVE`；只有 G1-TERM 执行后才可进入 `BLOCKED_DECISION`，不得进入 G1-T31/G1-FINAL。
 
 **历史审计记录（已由 comments wire 新证据 superseded）：**
