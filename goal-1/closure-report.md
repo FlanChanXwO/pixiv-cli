@@ -12,7 +12,7 @@
 
 **Previous terminal task:** `G1-TERM`（superseded）
 
-**Current next task:** `G1-T30` 受影响的 comments/access-control slice（随后 `G1-CHECK-10`）
+**Current next task:** `G1-CHECK-10`（G1-T30 受影响的 comments/access-control slice 已完成）
 
 ## 0. Resume reason
 
@@ -86,6 +86,14 @@
 
 - `G1-CORR-G1-T29-COMMENT-WIRE-02` 已 verified：novel comment DTO 现在按当前 App API `date` wire 优先映射，旧 `created_at` 合法 fixture 保持兼容；focused endpoint/SDK、novel endpoint regression、LSP、gofmt 与 diff check 均通过。
 - #27 live read 已用已授权本机认证、临时代理和既有 manifest harness 复核：候选 `29100695` 返回 2 条 comments，`continuation=false`、`total=false`、`access_control=false`，整个 `TestRealPixivSDKLiveManifestBookmarkUserRead` PASS。日志未包含 token、cookie、refresh token、raw URL 或评论正文。
-- `comment_access_control` 的整数业务语义仍没有证据确认；不猜测 `CanComment`/`IsLocked`，不默认放行写入。#26/#28 的受影响 comment target/mutation slice 留待后续安全证据；G1-T30、G1-CHECK-10 仍为 pending。
-- `G1-T30` 只需重跑受 comments wire correction 影响的 comments/access-control slice；已有 follow/stamps/bookmark evidence 不重放。
-- **Next:** `G1-T30` 受影响的 comments/access-control slice。
+- `comment_access_control` 的整数业务语义仍没有证据确认；不猜测 `CanComment`/`IsLocked`，不默认放行写入。#26/#28 的受影响 comment target/mutation slice 已完成安全复核并归类为 `blocked_external(data/permission)`；G1-T30 已到 terminal `verified`，G1-CHECK-10 仍 pending。
+- G1-T30 只重跑了受 comments wire correction 影响的 comments/access-control slice；既有 follow/stamps/bookmark evidence 没有重放。
+- **Next:** `G1-CHECK-10`。
+
+## 8. Current resumed progress — G1-T30 comments/access-control slice
+
+- **TDD / harness：** 新增只读 `comment_access_control` wire probe、独立 comments mutation gate 与无 target 的 `content_unavailable` 分类。decoder/classification focused tests 先 Red 后 Green；malformed/invalid 读取错误仍进入 correction；raw probe 复用既有 `liveManifestPace=1200ms`，不添加新的 retry、timeout、扫描上限或 fallback。
+- **Scalar live evidence：** `PIXIV_SDK_E2E_COMMENT_ACCESS_CONTROL_PROBE=1 PIXIV_E2E_MUTATION_USER_ID=127975236 PIXIV_E2E_PROXY=http://127.0.0.1:7890 go test ./e2e -run '^TestRealPixivSDKLiveCommentAccessControlProbe$' -count=1 -v` PASS（约 74s）。artwork 当前 search page `30/30` 响应成功，scalar 为 integer，其中 `0`×29、`1`×1；novel `30/30` 响应成功且全为 `0`。只记录 wire 事实，不将整数映射为业务权限。
+- **Mutation live evidence：** `PIXIV_SDK_E2E_COMMENT_MUTATION=1 PIXIV_E2E_MUTATION_USER_ID=127975236 PIXIV_E2E_PROXY=http://127.0.0.1:7890 go test ./e2e -run '^TestRealPixivSDKLiveCommentMutationSlice$' -count=1 -v` PASS（约 77s）。stamps read 成功；artwork text/reply/stamp 与 novel text/stamp 全部在写前 preflight 因无显式 `CanComment` target 阻断，`writes=0`，没有评论/回复/stamp 写入。
+- **判定：** #26/#28 在 comments wire correction 后正式归类为 `blocked_external(data/permission)`；#27 的 `date` correction/live read 保留。follow/stamps/bookmark evidence 保留，未重放；没有 token、cookie、refresh token、raw URL 或评论正文进入日志。无 production SDK/endpoint/CLI/MCP/public schema 变化，仅增强 env-gated e2e 证据与安全分类。
+- **下一步：** `G1-CHECK-10`；本报告仍为 `ACTIVE`，不代表 Goal 已完成。

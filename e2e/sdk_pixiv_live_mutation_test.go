@@ -2,6 +2,7 @@ package e2e
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"net/url"
@@ -9,21 +10,119 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/config/paths"
 	config "github.com/FlanChanXwO/pixiv-cli/internal/config/settings"
 	accountpixiv "github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/account"
+	"github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/appapi"
+	"github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/protocol"
 	"github.com/FlanChanXwO/pixiv-cli/internal/storage/database"
 	"github.com/FlanChanXwO/pixiv-cli/sdk"
 	pixivsdk "github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
 )
 
 const (
-	mutationGuardEnv   = "PIXIV_SDK_E2E_MUTATION"
-	mutationAccountEnv = "PIXIV_E2E_MUTATION_USER_ID"
+	mutationGuardEnv                  = "PIXIV_SDK_E2E_MUTATION"
+	mutationAccountEnv                = "PIXIV_E2E_MUTATION_USER_ID"
+	commentAccessControlProbeGuardEnv = "PIXIV_SDK_E2E_COMMENT_ACCESS_CONTROL_PROBE"
+	commentMutationGuardEnv           = "PIXIV_SDK_E2E_COMMENT_MUTATION"
 )
+
+type commentAccessControlObservation struct {
+	present bool
+	kind    string
+	value   *int64
+}
+
+func TestDecodeCommentAccessControlPreservesInteger(t *testing.T) {
+	got, err := decodeCommentAccessControl([]byte(`{"comment_access_control":0}`))
+	if err != nil {
+		t.Fatalf("decode comment access control: %v", err)
+	}
+	if !got.present || got.kind != "integer" || got.value == nil || *got.value != 0 {
+		t.Fatalf("observation = %#v, want present integer 0", got)
+	}
+}
+
+func TestDecodeCommentAccessControlDoesNotInventObjectSemantics(t *testing.T) {
+	got, err := decodeCommentAccessControl([]byte(`{"access_control":{"can_comment":true,"is_locked":false}}`))
+	if err != nil {
+		t.Fatalf("decode comment access control: %v", err)
+	}
+	if got.present || got.kind != "missing" || got.value != nil {
+		t.Fatalf("observation = %#v, want missing scalar observation", got)
+	}
+}
+
+func TestCommentTargetUnavailableUsesContentUnavailable(t *testing.T) {
+	err := commentTargetUnavailable("artwork")
+	if sdk.ReasonOf(err) != sdk.ContentUnavailable {
+		t.Fatalf("reason = %q, want %q", sdk.ReasonOf(err), sdk.ContentUnavailable)
+	}
+}
+
+func TestCommentTargetProbePreservesMalformedCorrection(t *testing.T) {
+	err := sdk.NewError("pixiv", "Comments", sdk.MalformedUpstreamResponse)
+	result := commentTargetProbeResult(err)
+	if result.status != "correction" || result.reason != sdk.MalformedUpstreamResponse {
+		t.Fatalf("result = %#v, want malformed correction", result)
+	}
+}
+
+// TestRealPixivSDKLiveCommentAccessControlProbe 记录当前 wire scalar，不给任意
+// 整数赋予业务含义。它与 mutation runner 分离：发现 scalar 只是只读证据，不是
+// 权限 preflight。
+func TestRealPixivSDKLiveCommentAccessControlProbe(t *testing.T) {
+	if os.Getenv(commentAccessControlProbeGuardEnv) != "1" {
+		t.Skip("set PIXIV_SDK_E2E_COMMENT_ACCESS_CONTROL_PROBE=1 to run the read-only Pixiv comment access-control probe")
+	}
+	targetID, err := strconv.ParseInt(strings.TrimSpace(os.Getenv(mutationAccountEnv)), 10, 64)
+	if err != nil || targetID <= 0 {
+		t.Fatalf("%s must be a positive local Pixiv account UID", mutationAccountEnv)
+	}
+
+	ctx := context.Background()
+	session := openRealPixivMutationSession(t, ctx, targetID)
+	probeLiveCommentAccessControl(t, ctx, session, "artwork", protocol.AppIllustComments, "illust_id")
+	probeLiveCommentAccessControl(t, ctx, session, "novel", protocol.AppNovelComments, "novel_id")
+}
+
+// TestRealPixivSDKLiveCommentMutationSlice 只重跑被 comments wire correction
+// 影响的 comments slice。故意不调用完整 mutation runner，不重放已 verified 的
+// follow/stamp-read evidence，也不重放 uncertain bookmark 写入。
+func TestRealPixivSDKLiveCommentMutationSlice(t *testing.T) {
+	if os.Getenv(commentMutationGuardEnv) != "1" {
+		t.Skip("set PIXIV_SDK_E2E_COMMENT_MUTATION=1 to run the isolated Pixiv comment mutation slice")
+	}
+	targetID, err := strconv.ParseInt(strings.TrimSpace(os.Getenv(mutationAccountEnv)), 10, 64)
+	if err != nil || targetID <= 0 {
+		t.Fatalf("%s must be a positive local Pixiv account UID", mutationAccountEnv)
+	}
+
+	ctx := context.Background()
+	client := openRealPixivMutationClient(t, ctx, targetID)
+	stamps, err := client.Stamps(ctx, pixivsdk.StampsRequest{})
+	if err != nil {
+		result := blockedMutationResult(0, err)
+		recordLiveMutation(t, "artwork_comment_stamp", result)
+		recordLiveMutation(t, "novel_comment_stamp", result)
+		return
+	}
+	if len(stamps) == 0 || stamps[0].ID <= 0 {
+		result := blockedMutationResult(0, fmt.Errorf("no usable stamp returned"))
+		recordLiveMutation(t, "artwork_comment_stamp", result)
+		recordLiveMutation(t, "novel_comment_stamp", result)
+		return
+	}
+
+	stampID := stamps[0].ID
+	marker := "codex-goal1-t30-comments-" + strconv.FormatInt(time.Now().UTC().UnixNano(), 10)
+	runArtworkCommentMutations(t, ctx, client, stampID, marker)
+	runNovelCommentMutations(t, ctx, client, stampID, marker)
+}
 
 // findPixivMutationAccount enforces the manifest's account-isolation boundary:
 // live mutation must name a stored credential explicitly and may not use the
@@ -208,7 +307,51 @@ func reconcileNovelBookmark(t *testing.T, ctx context.Context, client *pixivsdk.
 	t.Logf("reconcile novel bookmark: target_id=%d bookmarked=false cleaned=true", novelID)
 }
 
+type realPixivMutationSession struct {
+	client *pixivsdk.Client
+	raw    *appapi.Client
+}
+
+// liveProbePacingRoundTripper 让 raw diagnostic path 遵守 public SDK operation
+// 的既有 live pacing contract。raw probe 仅为观察一个尚未建模的 wire field，
+// 才绕过 SDK operation layer。
+type liveProbePacingRoundTripper struct {
+	inner    http.RoundTripper
+	interval time.Duration
+	mu       sync.Mutex
+	last     time.Time
+}
+
+func (p *liveProbePacingRoundTripper) RoundTrip(req *http.Request) (*http.Response, error) {
+	p.mu.Lock()
+	wait := p.interval - time.Since(p.last)
+	if wait > 0 {
+		timer := time.NewTimer(wait)
+		select {
+		case <-req.Context().Done():
+			timer.Stop()
+			p.mu.Unlock()
+			return nil, req.Context().Err()
+		case <-timer.C:
+		}
+	}
+	p.last = time.Now()
+	p.mu.Unlock()
+	return p.inner.RoundTrip(req)
+}
+
+func (p *liveProbePacingRoundTripper) CloseIdleConnections() {
+	if closer, ok := p.inner.(interface{ CloseIdleConnections() }); ok {
+		closer.CloseIdleConnections()
+	}
+}
+
 func openRealPixivMutationClient(t *testing.T, ctx context.Context, targetID int64) *pixivsdk.Client {
+	t.Helper()
+	return openRealPixivMutationSession(t, ctx, targetID).client
+}
+
+func openRealPixivMutationSession(t *testing.T, ctx context.Context, targetID int64) *realPixivMutationSession {
 	t.Helper()
 	home, err := os.UserHomeDir()
 	if err != nil {
@@ -240,21 +383,21 @@ func openRealPixivMutationClient(t *testing.T, ctx context.Context, targetID int
 		t.Fatal(err)
 	}
 
-	options := pixivsdk.Options{Pacing: pixivsdk.Pacing{MinInterval: liveManifestPace}}
+	transport := http.DefaultTransport.(*http.Transport).Clone()
 	if proxy := os.Getenv("PIXIV_E2E_PROXY"); proxy != "" {
 		proxyURL, err := url.Parse(proxy)
 		if err != nil {
 			t.Fatalf("parse proxy: %v", err)
 		}
-		transport := http.DefaultTransport.(*http.Transport).Clone()
 		transport.Proxy = http.ProxyURL(proxyURL)
-		options.HTTPClient = &http.Client{Transport: transport}
 	}
+	httpClient := &http.Client{Transport: transport}
+	options := pixivsdk.Options{HTTPClient: httpClient, Pacing: pixivsdk.Pacing{MinInterval: liveManifestPace}}
 	client, credentials, err := pixivsdk.OpenWith(ctx, string(account.RefreshTokenCopy()), options)
 	if err != nil {
 		t.Fatalf("pixiv.Open mutation account: %s", liveMutationReason(err))
 	}
-	t.Cleanup(client.CloseIdleConnections)
+	t.Cleanup(httpClient.CloseIdleConnections)
 	if credentials.UserID <= 0 || credentials.AccessToken() == "" || credentials.RefreshToken() == "" {
 		t.Fatal("open mutation account did not return verified credentials")
 	}
@@ -264,7 +407,124 @@ func openRealPixivMutationClient(t *testing.T, ctx context.Context, targetID int
 	if err := db.RotatePixivCredentials(ctx, account.UserID, account.CredentialRevision, []byte(credentials.RefreshToken())); err != nil {
 		t.Fatalf("persist mutation account rotation: %v", err)
 	}
-	return client
+	rawHTTPClient := &http.Client{Transport: &liveProbePacingRoundTripper{
+		inner:    transport.Clone(),
+		interval: liveManifestPace,
+	}}
+	app := appapi.New(
+		appapi.WithHTTPClient(rawHTTPClient),
+		appapi.WithAccessToken(credentials.AccessToken()),
+		appapi.WithUserID(credentials.UserID),
+	)
+	t.Cleanup(rawHTTPClient.CloseIdleConnections)
+	return &realPixivMutationSession{client: client, raw: app}
+}
+
+func decodeCommentAccessControl(body []byte) (commentAccessControlObservation, error) {
+	var envelope map[string]json.RawMessage
+	if err := json.Unmarshal(body, &envelope); err != nil {
+		return commentAccessControlObservation{}, fmt.Errorf("comments response is not a JSON object")
+	}
+	raw, ok := envelope["comment_access_control"]
+	if !ok {
+		return commentAccessControlObservation{kind: "missing"}, nil
+	}
+	observation := commentAccessControlObservation{present: true}
+	if strings.TrimSpace(string(raw)) == "null" {
+		observation.kind = "null"
+		return observation, nil
+	}
+	var integer int64
+	if err := json.Unmarshal(raw, &integer); err == nil {
+		observation.kind = "integer"
+		observation.value = &integer
+		return observation, nil
+	}
+
+	var value any
+	if err := json.Unmarshal(raw, &value); err != nil {
+		return commentAccessControlObservation{}, fmt.Errorf("comment_access_control value is malformed")
+	}
+	switch value.(type) {
+	case float64:
+		observation.kind = "number"
+	case bool:
+		observation.kind = "boolean"
+	case string:
+		observation.kind = "string"
+	case []any:
+		observation.kind = "array"
+	case map[string]any:
+		observation.kind = "object"
+	default:
+		observation.kind = "unknown"
+	}
+	return observation, nil
+}
+
+func commentTargetUnavailable(family string) error {
+	return sdk.NewError("pixiv", "CommentTarget", sdk.ContentUnavailable,
+		sdk.WithDetail(family+" comments have no explicit access-control target"))
+}
+
+func commentTargetProbeResult(err error) liveMutationResult {
+	return mutationWriteError(0, err)
+}
+
+func probeLiveCommentAccessControl(t *testing.T, ctx context.Context, session *realPixivMutationSession, family, path, parameter string) {
+	t.Helper()
+	var ids []int64
+	switch family {
+	case "artwork":
+		page, err := session.client.SearchArtworks(ctx, pixivsdk.SearchArtworksRequest{
+			Word: "初音ミク", ContentType: pixivsdk.SearchContentTypeIllust,
+		})
+		if err != nil {
+			t.Fatalf("%s comment access-control candidate search: %s", family, liveMutationReason(err))
+		}
+		ids = make([]int64, 0, len(page.Items))
+		for _, item := range page.Items {
+			ids = append(ids, item.ID)
+		}
+	case "novel":
+		page, err := session.client.SearchNovels(ctx, pixivsdk.SearchNovelsRequest{Word: "初音ミク"})
+		if err != nil {
+			t.Fatalf("%s comment access-control candidate search: %s", family, liveMutationReason(err))
+		}
+		ids = make([]int64, 0, len(page.Items))
+		for _, item := range page.Items {
+			ids = append(ids, item.ID)
+		}
+	default:
+		t.Fatalf("unsupported comment access-control family %q", family)
+	}
+
+	counts := map[string]int{}
+	readErrors := map[sdk.Reason]int{}
+	var scalarValues []int64
+	responses := 0
+	for _, id := range ids {
+		if id <= 0 {
+			continue
+		}
+		body, err := session.raw.GetRaw(ctx, path, url.Values{parameter: {strconv.FormatInt(id, 10)}})
+		if err != nil {
+			readErrors[liveMutationReason(err)]++
+			continue
+		}
+		responses++
+		observation, err := decodeCommentAccessControl(body)
+		if err != nil {
+			t.Errorf("%s comment access-control target_id=%d: %v", family, id, err)
+			continue
+		}
+		counts[observation.kind]++
+		if observation.value != nil {
+			scalarValues = append(scalarValues, *observation.value)
+		}
+	}
+	t.Logf("comment access-control probe: family=%s candidates=%d responses=%d read_errors=%v wire_kinds=%v scalar_values=%v semantics=unconfirmed",
+		family, len(ids), responses, readErrors, counts, scalarValues)
 }
 
 type liveMutationResult struct {
@@ -632,7 +892,7 @@ func runArtworkCommentMutations(t *testing.T, ctx context.Context, client *pixiv
 	t.Helper()
 	target, err := findArtworkCommentTarget(ctx, client)
 	if err != nil {
-		result := blockedMutationResult(0, err)
+		result := commentTargetProbeResult(err)
 		recordLiveMutation(t, "artwork_comment_text", result)
 		recordLiveMutation(t, "artwork_comment_reply", result)
 		recordLiveMutation(t, "artwork_comment_stamp", result)
@@ -695,7 +955,7 @@ func runNovelCommentMutations(t *testing.T, ctx context.Context, client *pixivsd
 	t.Helper()
 	target, err := findNovelCommentTarget(ctx, client)
 	if err != nil {
-		result := blockedMutationResult(0, err)
+		result := commentTargetProbeResult(err)
 		recordLiveMutation(t, "novel_comment_text", result)
 		recordLiveMutation(t, "novel_comment_stamp", result)
 		return
@@ -775,12 +1035,19 @@ func findArtworkCommentTarget(ctx context.Context, client *pixivsdk.Client) (liv
 	if err != nil {
 		return liveCommentTarget{}, err
 	}
+	var lastErr error
+	readableCandidates := 0
 	for _, item := range page.Items {
 		if item.ID <= 0 {
 			continue
 		}
 		comments, err := client.ArtworkComments(ctx, pixivsdk.ArtworkCommentsRequest{ArtworkID: item.ID})
-		if err != nil || comments.AccessControl == nil || !comments.AccessControl.CanComment || comments.AccessControl.IsLocked {
+		if err != nil {
+			lastErr = err
+			continue
+		}
+		readableCandidates++
+		if comments.AccessControl == nil || !comments.AccessControl.CanComment || comments.AccessControl.IsLocked {
 			continue
 		}
 		var parentID int64
@@ -792,7 +1059,10 @@ func findArtworkCommentTarget(ctx context.Context, client *pixivsdk.Client) (liv
 		}
 		return liveCommentTarget{contentID: item.ID, parentID: parentID}, nil
 	}
-	return liveCommentTarget{}, fmt.Errorf("current artwork search page has no target with explicit comment access control")
+	if readableCandidates == 0 && lastErr != nil {
+		return liveCommentTarget{}, lastErr
+	}
+	return liveCommentTarget{}, commentTargetUnavailable("artwork")
 }
 
 func findNovelCommentTarget(ctx context.Context, client *pixivsdk.Client) (liveCommentTarget, error) {
@@ -800,12 +1070,19 @@ func findNovelCommentTarget(ctx context.Context, client *pixivsdk.Client) (liveC
 	if err != nil {
 		return liveCommentTarget{}, err
 	}
+	var lastErr error
+	readableCandidates := 0
 	for _, item := range page.Items {
 		if item.ID <= 0 {
 			continue
 		}
 		comments, err := client.NovelComments(ctx, pixivsdk.NovelCommentsRequest{NovelID: item.ID})
-		if err != nil || comments.AccessControl == nil || !comments.AccessControl.CanComment || comments.AccessControl.IsLocked {
+		if err != nil {
+			lastErr = err
+			continue
+		}
+		readableCandidates++
+		if comments.AccessControl == nil || !comments.AccessControl.CanComment || comments.AccessControl.IsLocked {
 			continue
 		}
 		var parentID int64
@@ -817,7 +1094,10 @@ func findNovelCommentTarget(ctx context.Context, client *pixivsdk.Client) (liveC
 		}
 		return liveCommentTarget{contentID: item.ID, parentID: parentID}, nil
 	}
-	return liveCommentTarget{}, fmt.Errorf("current novel search page has no target with explicit comment access control")
+	if readableCandidates == 0 && lastErr != nil {
+		return liveCommentTarget{}, lastErr
+	}
+	return liveCommentTarget{}, commentTargetUnavailable("novel")
 }
 
 func runFollowMutation(ctx context.Context, client *pixivsdk.Client, currentUserID int64) liveMutationResult {

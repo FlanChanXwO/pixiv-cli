@@ -1064,3 +1064,12 @@ G1-T01 已在干净目标 worktree 执行 `go test ./...` 并通过；G1-CHECK-0
 - **判定：** #9 `novel-series` 当前候选与真实第二页验证通过，Live target blocker 解除；#5 `artwork-series` 仍因没有可追溯目标保持 `blocked_external(data)`，没有进行 ID 扫描。production series endpoint/SDK 与 public surface 未修改。
 - **验证：** 未设 live env 时 probe 正常 skip；gofmt、e2e focused test、既有 series endpoint/SDK regression 均通过。无新 correctness correction。
 - **下一步：** `G1-T30` 仅重跑受 wire correction 影响的 comments/access-control slice；follow/stamps/bookmark evidence 保留，不无条件重放。
+
+## 46. G1-T30 resumed comments/access-control slice
+
+- **范围：** 仅重跑 comments/access-control；没有调用完整 mutation runner，因此没有重放已 verified 的 follow/stamps/read-back，也没有重放处于 uncertain-no-replay 边界的 bookmark add。专用 linked worktree 与显式非默认账号 UID `127975236` 保持不变，认证/refresh token 只在进程内使用。
+- **TDD / harness：** 新增 `comment_access_control` raw-wire 只读 probe、独立 comments mutation gate 与无 target 的 `content_unavailable` 分类。decoder/classification fixture 先以未定义符号得到真实 Red 编译失败，随后四项 focused tests Green；malformed/invalid 读取错误仍进入 correction，不被伪装成 external。raw probe 使用既有 `liveManifestPace=1200ms`，没有新增 retry、timeout、扫描上限或 fallback。
+- **Scalar live：** `TestRealPixivSDKLiveCommentAccessControlProbe` 经 `127.0.0.1:7890` 代理 PASS（约 74s）。artwork 当前 search page `30/30` 响应成功，scalar 全为 integer，其中 `0`×29、`1`×1；novel `30/30` 成功且全为 `0`。这是 wire 事实，不足以证明整数业务语义；没有将其映射成 `CanComment`/`IsLocked`。
+- **Comment mutation live：** `TestRealPixivSDKLiveCommentMutationSlice` PASS（约 77s）。stamps read 成功；artwork text/reply/stamp 与 novel text/stamp 的写前 preflight 均没有显式 `CanComment` target，全部 `writes=0`、`read_back=false`、`cleanup=false`、`uncertain=false`、`reason=content_unavailable`；没有评论/回复/stamp 写入。
+- **判定：** #26/#28 在 wire correction 后重新归类为 `blocked_external(data/permission)`，不是内部 parser correction；#27 的 `date` wire correction 与既有 live read 证据保留。G1-T30 到 terminal `verified`，但 required live acceptance 仍保留这些 external blocker；无 production SDK/endpoint/CLI/MCP/public schema 变化。
+- **验证：** decoder/classification focused tests、两次 live focused tests、`gofmt` 已通过；下一任务为 `G1-CHECK-10`。

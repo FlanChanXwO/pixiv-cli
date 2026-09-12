@@ -1103,7 +1103,7 @@ Live 只执行 `Live Manifest` 中 `live_required=yes` 的场景，不临时增�
 
 ## G1-T30 — Live mutation：bookmark / comments / follow
 
-**Status:** pending
+**Status:** verified
 
 **Depends on:** G1-CHECK-09,G1-CORR-G1-T29-BOOKMARK-DETAIL-01,G1-CORR-G1-T29-NOVEL-COMMENTS-DATA-PROBE-01,G1-CORR-G1-T29-COMMENT-WIRE-02,G1-RECOVER-G1-T28-SERIES-TARGET-01 reached terminal status
 
@@ -1123,6 +1123,14 @@ Live 只执行 `Live Manifest` 中 `live_required=yes` 的场景，不临时增�
 - 下一步：G1-CHECK-10
 
 **当前 preflight：** 用户已明确授权使用本机认证；专用 linked worktree 与目标分支有效。选择本地非默认账号 UID `127975236`，并在 harness 内核对 `CurrentUser` identity；refresh token 仅从本地数据库进程内读取并按 SDK 既有契约轮换回写，不进入 argv/env/log。默认账号未配置 Pixiv UID 时按普通 live-read 的 sort_order 第一账号语义排除；未执行账号切换、token 导出或非本 manifest 写入。
+
+**当前 comments/access-control slice 完成记录（2026-09-13）：**
+
+- **TDD / harness：** 新增只读 `comment_access_control` wire probe 与独立 comments mutation gate。解析/分类 fixture 先 Red（`decodeCommentAccessControl`、`commentTargetUnavailable`、`commentTargetProbeResult` 未定义导致 e2e 编译失败），实现后四项 focused tests Green；malformed/invalid probe error 仍进入 correction，只有无安全 target 才是 `content_unavailable`。raw probe 复用现有 `liveManifestPace=1200ms`，不添加新的 retry/timeout/扫描上限。
+- **Scalar live evidence：** `PIXIV_SDK_E2E_COMMENT_ACCESS_CONTROL_PROBE=1 PIXIV_E2E_MUTATION_USER_ID=127975236 PIXIV_E2E_PROXY=http://127.0.0.1:7890 go test ./e2e -run '^TestRealPixivSDKLiveCommentAccessControlProbe$' -count=1 -v` PASS（约 74s）。同一明确隔离账号的当前 search page：artwork `candidates=30,responses=30,read_errors=0,wire_kinds=integer:30,scalar_values=29×0+1×1`；novel `candidates=30,responses=30,read_errors=0,wire_kinds=integer:30,scalar_values=30×0`。日志没有 token/cookie/refresh token/raw URL/评论正文；`0/1` 业务语义仍未被可靠证据确认。
+- **Mutation slice：** `PIXIV_SDK_E2E_COMMENT_MUTATION=1 PIXIV_E2E_MUTATION_USER_ID=127975236 PIXIV_E2E_PROXY=http://127.0.0.1:7890 go test ./e2e -run '^TestRealPixivSDKLiveCommentMutationSlice$' -count=1 -v` PASS（约 77s）。stamps read 成功；artwork text/reply/stamp 与 novel text/stamp 均在写前 preflight 因无显式 `CanComment` target 记录 `status=blocked_external,reason=content_unavailable,writes=0,read_back=false,cleanup=false,uncertain=false`，没有发出任何评论/回复/stamp 写入。
+- **判定：** comments wire correction 后，#26/#28 正式归类为 `blocked_external(data/permission)`；真实 scalar 已记录，但不映射为 `CanComment`/`IsLocked`，不默认放行。follow/stamps/bookmark 既有 evidence 保留，未重放；T30 进入 terminal `verified`（required mutation acceptance 仍含上述 external blocker）。无 production SDK/endpoint/CLI/MCP/public schema 变化，仅增强 env-gated e2e 证据与阻断分类。
+- **下一步：** `G1-CHECK-10`。
 
 ## G1-CHECK-10 — Phase F exit：live validation + push
 
