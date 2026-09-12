@@ -1070,7 +1070,7 @@ Live 只执行 `Live Manifest` 中 `live_required=yes` 的场景，不临时增�
 
 ## G1-RECOVER-G1-T28-SERIES-TARGET-01 — series public target 恢复验证
 
-**Status:** pending
+**Status:** verified
 
 **Depends on：** `G1-CORR-G1-T29-COMMENT-WIRE-02` reached terminal status。
 
@@ -1090,6 +1090,15 @@ Live 只执行 `Live Manifest` 中 `live_required=yes` 的场景，不临时增�
 **Compatibility impact：** 无 public API/wire/CLI/MCP 变化；只改善 live evidence 的可获得性。
 
 **Rollback boundary：** 仅 live harness target candidate/evidence；不触碰生产 series 实现。
+
+**完成记录：**
+
+- **改动：** 在 `e2e/sdk_pixiv_live_manifest_test.go` 增加独立的环境门控 recovery probe。候选通过 `PIXIV_NOVEL_SERIES_RECOVERY_ID` 显式传入，不把 `1206600` 固化为永久 fixture，也不枚举 ID；probe 只调用现有 `NovelSeries` public SDK 与 opaque cursor，检查首页及真实 `last_order` 第二页。常规 manifest 继续将 artwork-series 记录为 data-limited，并指向独立 novel-series probe。
+- **验证边界：** 未修改 production endpoint、SDK、CLI/MCP、public API、wire/schema 或 series 逻辑；候选不存在/无权限按安全 external reason 记录，结构错误与续页请求错误显式失败，不静默降级。
+- **Live：** `PIXIV_SDK_E2E=1 PIXIV_NOVEL_SERIES_RECOVERY_ID=1206600 PIXIV_E2E_PROXY=http://127.0.0.1:7890 go test ./e2e -run '^TestRealPixivSDKLiveNovelSeriesRecovery$' -count=1 -v` PASS；首页 `novels=30, continuation=true`，沿当前 SDK cursor 请求第二页得到 `novels=22, continuation=false`。没有 raw signed/auth URL 被 replay，没有写操作。
+- **离线 / 质量：** TDD Red→Green 先加入正数解析 table test，实跑因 `undefined: parseNovelSeriesRecoveryID` 编译失败；实现空白/非数字/非正数拒绝后 parser focused tests PASS。未设 live env 时 probe 按门控 skip；`gofmt` 后 e2e package 编译、focused test、series endpoint/SDK 既有回归均 PASS；本 task 没有发现 correctness correction。
+- **结论：** #9 `novel-series` 的当前候选 live target 与真实第二页验证通过，解除原 data target blocker；#5 `artwork-series` 仍为 `blocked_external(data)`，没有进行猜测式 ID 扫描。Goal 仍为 `ACTIVE`。
+- **下一步：** `G1-T30` 的受影响 comments/access-control slice；不重放已保留的 follow/stamps/bookmark evidence。
 
 
 ## G1-T30 — Live mutation：bookmark / comments / follow

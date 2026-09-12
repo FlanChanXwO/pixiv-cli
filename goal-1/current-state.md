@@ -1056,3 +1056,11 @@ G1-T01 已在干净目标 worktree 执行 `go test ./...` 并通过；G1-CHECK-0
 - **Live：** 以 `PIXIV_SDK_E2E=1 PIXIV_E2E_PROXY=http://127.0.0.1:7890 go test ./e2e -run '^TestRealPixivSDKLiveManifestBookmarkUserRead$' -count=1 -v` 只读复核，命令 PASS（约 59 秒）；#27 候选 novel `29100695` 返回 2 条 comments，`continuation=false`、`total=false`、`access_control=false`，不再报 `invalid comment time`。没有评论写入，也未无条件重跑 follow/bookmark mutation。
 - **Access-control 边界：** 当前 `comment_access_control` scalar 的业务语义仍未被证据确认；adapter 不将其猜成 `CanComment`/`IsLocked`，不默认 `CanComment=true`。#26/#28 仍不能升级为 verified，受影响的 comment target/mutation slice 留给后续安全证据；#25 rejected/no-fallback 不变。
 - **下一步：** `G1-RECOVER-G1-T28-SERIES-TARGET-01`；该 recovery terminal 后才进入受影响的 G1-T30 comment slice 与 G1-CHECK-10。
+
+## 45. G1-RECOVER-G1-T28-SERIES-TARGET-01 series public target 恢复验证
+
+- **结论：** PASS。独立环境门控 recovery probe 接受显式 `PIXIV_NOVEL_SERIES_RECOVERY_ID`，不固化候选、不枚举 ID；常规 manifest 的 artwork-series data-limited 记录保持独立。
+- **Live：** 以 `PIXIV_NOVEL_SERIES_RECOVERY_ID=1206600` 经 `127.0.0.1:7890` 代理运行 `TestRealPixivSDKLiveNovelSeriesRecovery`：首页返回 30 条 novels 且有 continuation，当前 public SDK opaque cursor 请求第二页成功返回 22 条，第二页无 continuation。没有 raw signed/auth URL replay 或写操作。
+- **判定：** #9 `novel-series` 当前候选与真实第二页验证通过，Live target blocker 解除；#5 `artwork-series` 仍因没有可追溯目标保持 `blocked_external(data)`，没有进行 ID 扫描。production series endpoint/SDK 与 public surface 未修改。
+- **验证：** 未设 live env 时 probe 正常 skip；gofmt、e2e focused test、既有 series endpoint/SDK regression 均通过。无新 correctness correction。
+- **下一步：** `G1-T30` 仅重跑受 wire correction 影响的 comments/access-control slice；follow/stamps/bookmark evidence 保留，不无条件重放。

@@ -4,12 +4,14 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"reflect"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -101,10 +103,11 @@ func TestRealPixivSDKLiveManifestRead(t *testing.T) {
 	}
 	time.Sleep(liveManifestPace)
 
-	// #5 artwork-series / #9 novel-series：当前 surface 不暴露 series 引用，
-	// 无法从既有 live 结果安全构造目标 series ID；按 manifest 记录 data-limited。
+	// #5 artwork-series：当前 surface 不暴露可追溯的 series 引用，按 manifest
+	// 记录 data-limited。#9 novel-series 由下方独立的显式候选 recovery probe
+	// 覆盖，避免把候选 ID 固化进常规 manifest。
 	t.Logf("artwork_series: blocked_external (data): no series reference reachable from production surfaces; correction candidate CAND-G1-T06-ARTWORK-SERIES-LIVE remains")
-	t.Logf("novel_series: blocked_external (data): no series reference reachable from production surfaces; correction candidate CAND-G1-T06-REC-SERIES-DOC remains")
+	t.Logf("novel_series: see TestRealPixivSDKLiveNovelSeriesRecovery for explicit public candidate validation")
 
 	// #6 ugoira-metadata：从 ugoira 搜索结果取有效 artwork，读取 archive/frames。
 	ugoiraPage, err := client.SearchArtworks(ctx, pixivsdk.SearchArtworksRequest{Word: "初音ミク", ContentType: pixivsdk.SearchContentTypeUgoira})
@@ -627,6 +630,92 @@ func TestFirstNovelWithCommentsFindsFourthItem(t *testing.T) {
 	if got, want := probed, []int64{11, 22, 33, 44}; !reflect.DeepEqual(got, want) {
 		t.Fatalf("probed novel IDs = %v, want %v", got, want)
 	}
+}
+
+func TestParseNovelSeriesRecoveryIDRequiresPositiveInteger(t *testing.T) {
+	for _, test := range []struct {
+		name string
+		raw  string
+		want int64
+		ok   bool
+	}{
+		{name: "empty", raw: "", want: 0},
+		{name: "non-numeric", raw: "series", want: 0},
+		{name: "zero", raw: "0", want: 0},
+		{name: "negative", raw: "-1", want: 0},
+		{name: "positive", raw: "123", want: 123, ok: true},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			got, err := parseNovelSeriesRecoveryID(test.raw)
+			if test.ok {
+				if err != nil || got != test.want {
+					t.Fatalf("parseNovelSeriesRecoveryID(%q) = %d, %v; want %d, nil", test.raw, got, err, test.want)
+				}
+				return
+			}
+			if err == nil {
+				t.Fatalf("parseNovelSeriesRecoveryID(%q) = %d, nil; want error", test.raw, got)
+			}
+		})
+	}
+}
+
+func parseNovelSeriesRecoveryID(rawID string) (int64, error) {
+	rawID = strings.TrimSpace(rawID)
+	if rawID == "" {
+		return 0, errors.New("novel series recovery ID is empty")
+	}
+	seriesID, err := strconv.ParseInt(rawID, 10, 64)
+	if err != nil || seriesID <= 0 {
+		return 0, errors.New("novel series recovery ID must be a positive integer")
+	}
+	return seriesID, nil
+}
+
+// TestRealPixivSDKLiveNovelSeriesRecovery validates one explicitly supplied
+// public candidate. The candidate stays in the invocation environment rather
+// than becoming a permanent fixture or an ID-enumeration seed.
+func TestRealPixivSDKLiveNovelSeriesRecovery(t *testing.T) {
+	if os.Getenv("PIXIV_SDK_E2E") != "1" {
+		t.Skip("set PIXIV_SDK_E2E=1 to run the real Pixiv SDK e2e")
+	}
+	rawID := strings.TrimSpace(os.Getenv("PIXIV_NOVEL_SERIES_RECOVERY_ID"))
+	if rawID == "" {
+		t.Skip("set PIXIV_NOVEL_SERIES_RECOVERY_ID to validate one explicit novel series candidate")
+	}
+	seriesID, err := parseNovelSeriesRecoveryID(rawID)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	ctx := context.Background()
+	client := openRealPixivLiveClient(t, ctx)
+	first, err := client.NovelSeries(ctx, pixivsdk.NovelSeriesRequest{SeriesID: seriesID})
+	if err != nil {
+		switch sdk.ReasonOf(err) {
+		case sdk.Forbidden, sdk.NotFound, sdk.ContentUnavailable:
+			t.Logf("novel_series candidate %d: blocked_external (data/permission): reason=%s", seriesID, sdk.ReasonOf(err))
+			return
+		default:
+			t.Fatalf("novel_series candidate %d: %v", seriesID, err)
+		}
+	}
+
+	t.Logf("novel_series candidate %d first page: novels=%d continuation=%v", seriesID, len(first.Novels.Items), !first.Novels.Next.IsZero())
+	if len(first.Novels.Items) == 0 {
+		t.Logf("novel_series candidate %d: blocked_external (data): empty first page", seriesID)
+		return
+	}
+	if first.Novels.Next.IsZero() {
+		t.Logf("novel_series candidate %d: blocked_external (data): no continuation", seriesID)
+		return
+	}
+
+	second, err := client.NovelSeries(ctx, pixivsdk.NovelSeriesRequest{SeriesID: seriesID, Cursor: first.Novels.Next})
+	if err != nil {
+		t.Fatalf("novel_series candidate %d second page: %v", seriesID, err)
+	}
+	t.Logf("novel_series candidate %d second page: novels=%d continuation=%v", seriesID, len(second.Novels.Items), !second.Novels.Next.IsZero())
 }
 
 // cliRecordTypes 解析 CLI --json 输出的 record type 序列（兼容数组与
