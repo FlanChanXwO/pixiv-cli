@@ -1195,7 +1195,7 @@ Live 只执行 `Live Manifest` 中 `live_required=yes` 的场景，不临时增�
 - **安全边界：** #17/#21 的 uncertain bookmark 状态不 replay；#26/#28 comments slice `writes=0`，没有评论、回复或 stamp 写入；不扫描 series/ID，不猜测 `comment_access_control` scalar，不新增 public surface。live 输出与 closure 账本不含 token、cookie、refresh token、评论正文或 raw signed/auth URL。
 - **Closure report：** [goal-1/closure-report.md](closure-report.md) 已更新为当前 `BLOCKED_DECISION` closure；[goal-1/current-state.md](current-state.md) 已追加 §48 当前终止记录。Goal 不满足 COMPLETED 条件。
 - **验证：** G1-CHECK-10 的 manifest/docs/cursor/SDK/MCP focused checks PASS；G1-T27 full offline/vet/build/race/LSP/live/reconcile/diff-check 与 T30 live evidence 仍有效，closure 本身未修改生产代码。
-- **Git：** closure 前 Local/Remote=`955c09a90407d3baf0cda8b52fe252b575ec6594`，`origin/main=7ff1e6b4e6177c657876f69cd930d279d2d0bfce`，worktree clean；本 task 文档提交后只执行普通 fast-forward push，并核验 GitHub API 与 `git ls-remote`。
+- **Git：** closure 前 Local/Remote=`955c09a90407d3baf0cda8b52fe252b575ec6594`，`origin/main=7ff1e6b4e6177c657876f69cd930d279d2d0bfce`，worktree clean；closure checkpoint=`0ccf341b5dd1e26a953f1a57b5c5707807bf7a7c`，已从 `955c09a90407d3baf0cda8b52fe252b575ec6594` 普通 fast-forward 推送，GitHub API 与 `git ls-remote` 均确认 Remote SHA 相同。后续仅发布本结果的 documentation ledger。
 - **Next：** 无可执行 required task；等待 external data/permission 或用户明确 scope 决策。条件解除后从最早未完成 required task 恢复，不执行 G1-T31/G1-FINAL。
 
 **历史 blocked closure 记录（checkpoint 保留；当前记录已 supersede）：**
