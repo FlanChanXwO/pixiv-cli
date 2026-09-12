@@ -1207,6 +1207,55 @@ Live 只执行 `Live Manifest` 中 `live_required=yes` 的场景，不临时增�
 - **Closure checkpoint Local HEAD：** `2d60489d5355ac0ed31703fceab47415945be074`；**Closure checkpoint Remote SHA：** `2d60489d5355ac0ed31703fceab47415945be074`；**Push result：** PASS，`8589ea1bfa16cef3df3c9dbe2d4fffa8fe9670ec..2d60489` ordinary fast-forward，GitHub API 与 `git ls-remote` 双重核验一致。随后仅发布本 push 结果的 documentation ledger，并再次普通 fast-forward 验证当前 Local/Remote 相等。
 - **下一步：** 本 Goal 进入 `BLOCKED_DECISION` terminal state；不得执行 G1-T31/G1-FINAL，不得标记 Goal complete。
 
+## G1-CORR-G1-T30-ARTWORK-COMMENT-WIRE-01 — artwork comments 当前 App API wire 纠偏
+
+**Status:** verified
+
+**Source task/gate：** 使用非 Flan 账号 `128042145` 自搜索 artwork `149603743` 的 comments read 返回 `invalid comment time`；现已由当前 App API `date` wire 与 nested mutation response 证据定位并修复。
+
+**Capability：** #26 `artwork-comments-mutation`；同时复核 #25 rejected read boundary 未被触碰。
+
+**Observed wire drift：** artwork/novel comments 的当前 response 使用 `date`，comment mutation response 使用 nested `comment.id`；sticker-only add 允许空 `comment`。旧 adapter 只认 `created_at`、只认 top-level `comment_id`，且把 stamp 的空正文误判为非法。
+
+**Red / Green：** 先运行 focused command，实际 Red 为 SDK/endpoint `invalid_argument: comment body must not be empty`、CLI `--comment is required`、MCP schema required/minLength；加入 `date`、nested ID 与空 stamp fixture 后，以下命令 Green：
+
+```text
+go test ./sdk/pixiv ./internal/services/pixiv/endpoint/artwork/comments ./internal/services/pixiv/endpoint/novel/comments ./internal/cli/commands/pixiv/comment ./internal/mcpserver/pixiv -count=1
+```
+
+**实现范围：** artwork/novel endpoint 优先映射 `date` 并兼容旧 `created_at`，兼容 nested `comment.id`；SDK、CLI、MCP 允许 sticker-only stamp 的空 `comment`，create/reply 仍要求非空正文；双语 SDK/CLI/MCP 文档与 `skills/pixiv-cli` 已同步。e2e 使用专用 replies/comments wire read-back，并以响应 ID 清理。
+
+**Live acceptance：** `PIXIV_SDK_E2E_COMMENT_MUTATION=1 PIXIV_E2E_MUTATION_USER_ID=128042145 PIXIV_E2E_PROXY=http://127.0.0.1:7890 go test ./e2e -run '^TestRealPixivSDKLiveCommentMutationSlice$' -count=1 -v` PASS（约 41 秒）：artwork text/reply/stamp 与 novel text/stamp 共 5 项均 `status=verified`、`writes=1`、`read_back=true`、`cleanup=true`、`uncertain=false`；正文只使用极短赞美 `很棒！`，stamp 使用空正文。当前源码 read-back 再次确认 artwork `149603743` 与 novel `29100695` 均无当前用户评论残留。
+
+**Compatibility / rollback：** 这是已有 comments/stamp route 的 wire 兼容修正；没有新增 endpoint、retry、扫描上限或 public operation，但 CLI/MCP 的 stamp input contract 必须从“必填非空正文”纠正为“正文可省略/为空，`stamp_id` 仍必填”，对应 schema 与文档变化是证据要求而非 scope 扩张。回滚 endpoint DTO、SDK stamp 校验、CLI/MCP schema、fixtures/tests 与本 correction harness 即可。
+
+**下一步：** 已解除 #26/#28 的 parser/target 阻塞，继续处理 artwork-series 当前 wire continuation correction，再重算 G1-CHECK-10。
+
+## G1-RESUME-2026-09-13 — comments/bookmark live evidence and next correction
+
+**Status:** in_progress
+
+**已解除 external evidence：**
+
+- #17 artwork bookmark：非 Flan 账号 `127975236` 对新候选 `149605267` 完成 add → detail `restrict=public`/tags 可读 → public list 可见 → remove → detail/list/tags 均无残留；首次候选 `149605331` 因 SQLite lock 的尝试不计入证据，也未 replay。
+- #20/#21 novel bookmark：同一账号对 `29100695` 完成 add → detail `restrict=public`（形成 `bookmarked=true` 等价 live 状态）/list 可见 → remove → detail/list/tags 均无残留。#20 目标数据与 #21 mutation read-back 同时解除。
+- #26 artwork comments：账号 `128042145`、`149603743` 的 text/reply/stamp 全部完成写入、专用 read-back、cleanup。
+- #28 novel comments：账号 `128042145`、`29100695` 的 text/stamp 全部完成写入、read-back、cleanup。
+
+上述写入均使用临时非 Flan 认证，评论正文仅为 `很棒！`；账本不记录 token/cookie/refresh token、raw signed URL 或评论正文。默认账号已恢复为原先的 `127975236`。
+
+## G1-CORR-G1-T28-ARTWORK-SERIES-WIRE-02 — artwork series continuation wire 纠偏
+
+**Status:** in_progress
+
+**Source evidence：** 公开可追溯的 [gallery-dl Pixiv test data](https://github.com/mikf/gallery-dl/blob/master/test/results/pixiv.py) 提供 `https://www.pixiv.net/user/10509347/series/21859` 候选；只对该显式候选进行 live read，不扫描 series ID。
+
+**Observed failure：** 当前 App API 首页返回 30 个有效 `illusts` 和 `next_url`，其 query keys 为 `illust_series_id`、`offset`；没有 `last_order`。当前 artwork-series endpoint/SDK 续页 parser 只接受 `last_order`，因此 CLI/SDK 返回 `malformed_upstream_response`，而不是成功消费真实第二页。
+
+**Scope / expected contract：** 仅纠正 artwork-series endpoint request/continuation 与 SDK opaque cursor binding，兼容已有 `last_order` fixture；先用 raw second-page read 确认 `offset` 续页响应，再以 TDD 更新 endpoint/SDK tests 与显式候选 recovery test。不得扫描 ID、引入新 public route、固定分页/重试/超时上限或 fallback。
+
+**Next：** 先 Red→Green 修复 `offset` continuation，再验证候选真实第二页并重跑受影响的 #5 live gate。
+
 ## G1-T31 — Pre-final latest-main integration readiness
 
 **Status:** pending

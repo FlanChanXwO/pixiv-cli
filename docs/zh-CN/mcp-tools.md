@@ -176,11 +176,11 @@ application outcome 的 `filter` 会报告 `min`、`max`、`membership`、`strat
 | `remove_novel_bookmark` | `novel_id` | `{success, action, novel_id}` |
 | `create_artwork_comment` | 正数 `illust_id`、非空 `comment` | `{success, action, illust_id, comment_id}` |
 | `reply_artwork_comment` | 正数 `illust_id`、非空 `comment`、正数 `parent_comment_id` | `{success, action, illust_id, comment_id}` |
-| `stamp_artwork_comment` | 正数 `illust_id`、非空 `comment`、正数 `stamp_id` | `{success, action, illust_id, comment_id}` |
+| `stamp_artwork_comment` | 正数 `illust_id`、可选 `comment`（sticker-only 时为空）、正数 `stamp_id` | `{success, action, illust_id, comment_id}` |
 | `delete_artwork_comment` | 正数 `comment_id` | `{success, action, comment_id}` |
 | `create_novel_comment` | 正数 `novel_id`、非空 `comment` | `{success, action, novel_id, comment_id}` |
 | `reply_novel_comment` | 正数 `novel_id`、非空 `comment`、正数 `parent_comment_id` | `{success, action, novel_id, comment_id}` |
-| `stamp_novel_comment` | 正数 `novel_id`、非空 `comment`、正数 `stamp_id` | `{success, action, novel_id, comment_id}` |
+| `stamp_novel_comment` | 正数 `novel_id`、可选 `comment`（sticker-only 时为空）、正数 `stamp_id` | `{success, action, novel_id, comment_id}` |
 | `delete_novel_comment` | 正数 `comment_id` | `{success, action, comment_id}` |
 | `follow_user` | `user_id`，可选 `restrict` | `{success, action, user_id}` |
 | `unfollow_user` | `user_id` | `{success, action, user_id}` |

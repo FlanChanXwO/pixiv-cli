@@ -231,9 +231,9 @@ recommended feed 仍保留显式 `offset=0` 的续读例外。
 | `ArtworkSeries` / `NovelSeries` | 正数 series ID、cursor | 系列分页（novel 还返回系列 metadata） | `InvalidCursor` |
 | `ArtworkComments` / `NovelComments` | 正数 ID、cursor | `CommentPage` | `NotFound` |
 | `PostArtworkComment` / `ReplyArtworkComment` / `DeleteArtworkComment` | 正数 artwork ID；reply 还要求正数 parent comment ID | post/reply 返回 `CommentMutationResult`；delete 返回 `error` | `InvalidArgument`、`MalformedUpstreamResponse`、已分类的上游/传输错误 |
-| `StampArtworkComment` | 正数 artwork ID、非空 comment、正数 stamp ID | `CommentMutationResult` | `InvalidArgument`、`MalformedUpstreamResponse`、已分类的上游/传输错误 |
+| `StampArtworkComment` | 正数 artwork ID、可选 comment（sticker-only 时为空）、正数 stamp ID | `CommentMutationResult` | `InvalidArgument`、`MalformedUpstreamResponse`、已分类的上游/传输错误 |
 | `PostNovelComment` / `ReplyNovelComment` / `DeleteNovelComment` | 正数 novel ID；reply 还要求正数 parent comment ID | post/reply 返回 `CommentMutationResult`；delete 返回 `error` | `InvalidArgument`、`MalformedUpstreamResponse`、已分类的上游/传输错误 |
-| `StampNovelComment` | 正数 novel ID、非空 comment、正数 stamp ID | `CommentMutationResult` | `InvalidArgument`、`MalformedUpstreamResponse`、已分类的上游/传输错误 |
+| `StampNovelComment` | 正数 novel ID、可选 comment（sticker-only 时为空）、正数 stamp ID | `CommentMutationResult` | `InvalidArgument`、`MalformedUpstreamResponse`、已分类的上游/传输错误 |
 | `UserArtworkBookmarks` / `UserArtworkBookmarkTags` / `UserNovelBookmarks` / `UserNovelBookmarkTags` | `UserID`、`Restrict`、`tag`、cursor | typed 分页 | `InvalidArgument`、`InvalidCursor` |
 | `ArtworkBookmark` / `NovelBookmark` | 正数 artwork 或 novel ID | 收藏详情状态 | `InvalidArgument`、`MalformedUpstreamResponse`、已分类的上游/传输错误 |
 | `AddArtworkBookmark` / `RemoveArtworkBookmark`（旧 `AddBookmark` / `RemoveBookmark`） | 正数 artwork ID；add 接受 `Restrict` 与 tags | `error` | `InvalidArgument`、已分类的上游/传输错误 |
@@ -265,9 +265,9 @@ endpoint 替代入口。
   delete endpoint，转发调用方提供的正数 `comment_id`。SDK 只负责本地形状校验
   与上游结果分类；归属、namespace 证明、read-back 与清理由 application 负责。
 - `StampArtworkComment` 与 `StampNovelComment` 使用对应 namespace 的
-  comment add endpoint，把 `stamp_id` 作为与操作 `comment` 文本并列的独立字段。
-  不会把 stamp 编码为 reply parent，也不会静默退化为 text/reply 语义；返回 ID
-  同样遵循直接响应、无 read-back 规则。
+  comment add endpoint，把 `stamp_id` 作为独立字段发送。`comment` 可选；当前
+  App API 的 sticker-only wire 形态要求它为空。不会把 stamp 编码为 reply parent，
+  也不会静默退化为 text/reply 语义；返回 ID 同样遵循直接响应、无 read-back 规则。
 - `ArtworkBookmark` 与 `NovelBookmark` 用空 `Restrict` 与空 tags 表示当前对象未收藏。`NovelBookmark` 与
   `UserNovelBookmarkTags` 当前遵循 candidate upstream read contract：小说收藏 tags 暂无续页，非零 cursor
   会被拒绝，直到该 contract 完成验证。public SDK 现在以 additive method 暴露

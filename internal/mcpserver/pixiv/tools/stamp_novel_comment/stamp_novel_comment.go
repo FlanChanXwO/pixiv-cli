@@ -17,7 +17,7 @@ func Register(app *runtime.App, server *mcp.Server) {
 	runtime.AddTool(app, server, &mcp.Tool{
 		Name:        "stamp_novel_comment",
 		Description: "Add a stamp comment to a Pixiv novel.",
-		InputSchema: schemas.ClosedObject(novelCommentProperties(), []string{"novel_id", "comment", "stamp_id"}),
+		InputSchema: schemas.ClosedObject(novelCommentProperties(), []string{"novel_id", "stamp_id"}),
 	}, func(ctx context.Context, request *mcp.CallToolRequest, input In) (*mcp.CallToolResult, outputs.Mutation, error) {
 		return handleStampNovelComment(ctx, app, input)
 	})
@@ -33,7 +33,7 @@ type In struct {
 func novelCommentProperties() map[string]any {
 	return map[string]any{
 		"novel_id": schemas.PositiveInteger("Positive Pixiv novel ID."),
-		"comment":  map[string]any{"type": "string", "minLength": 1, "description": "Non-empty comment body."},
+		"comment":  map[string]any{"type": "string", "description": "Optional comment body; empty is the sticker-only wire form."},
 		"stamp_id": schemas.PositiveInteger("Positive Pixiv stamp ID."),
 	}
 }

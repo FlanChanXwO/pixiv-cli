@@ -220,11 +220,11 @@ optional port or a failed App request.
 | `remove_novel_bookmark` | `novel_id` | `{success, action, novel_id}` |
 | `create_artwork_comment` | positive `illust_id`, non-empty `comment` | `{success, action, illust_id, comment_id}` |
 | `reply_artwork_comment` | positive `illust_id`, non-empty `comment`, positive `parent_comment_id` | `{success, action, illust_id, comment_id}` |
-| `stamp_artwork_comment` | positive `illust_id`, non-empty `comment`, positive `stamp_id` | `{success, action, illust_id, comment_id}` |
+| `stamp_artwork_comment` | positive `illust_id`, optional `comment` (empty for sticker-only), positive `stamp_id` | `{success, action, illust_id, comment_id}` |
 | `delete_artwork_comment` | positive `comment_id` | `{success, action, comment_id}` |
 | `create_novel_comment` | positive `novel_id`, non-empty `comment` | `{success, action, novel_id, comment_id}` |
 | `reply_novel_comment` | positive `novel_id`, non-empty `comment`, positive `parent_comment_id` | `{success, action, novel_id, comment_id}` |
-| `stamp_novel_comment` | positive `novel_id`, non-empty `comment`, positive `stamp_id` | `{success, action, novel_id, comment_id}` |
+| `stamp_novel_comment` | positive `novel_id`, optional `comment` (empty for sticker-only), positive `stamp_id` | `{success, action, novel_id, comment_id}` |
 | `delete_novel_comment` | positive `comment_id` | `{success, action, comment_id}` |
 | `follow_user` | `user_id`, optional `restrict` | `{success, action, user_id}` |
 | `unfollow_user` | `user_id` | `{success, action, user_id}` |

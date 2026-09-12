@@ -244,7 +244,8 @@ type DeleteArtworkCommentRequest struct {
 }
 
 // StampArtworkCommentRequest posts a stamp comment on one artwork. Comment is
-// retained as the operation text; StampID is an independent upstream field.
+// optional and may be empty for the sticker-only wire form; StampID is an
+// independent upstream field.
 type StampArtworkCommentRequest struct {
 	ArtworkID int64
 	Comment   string
@@ -314,7 +315,8 @@ type DeleteNovelCommentRequest struct {
 }
 
 // StampNovelCommentRequest posts a stamp comment on one novel. Comment is
-// retained as the operation text; StampID is an independent upstream field.
+// optional and may be empty for the sticker-only wire form; StampID is an
+// independent upstream field.
 type StampNovelCommentRequest struct {
 	NovelID int64
 	Comment string

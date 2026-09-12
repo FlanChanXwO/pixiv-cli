@@ -29,7 +29,26 @@ const (
 	mutationAccountEnv                = "PIXIV_E2E_MUTATION_USER_ID"
 	commentAccessControlProbeGuardEnv = "PIXIV_SDK_E2E_COMMENT_ACCESS_CONTROL_PROBE"
 	commentMutationGuardEnv           = "PIXIV_SDK_E2E_COMMENT_MUTATION"
+	// 评论清理由接口返回的 comment ID 完成，不需要把长 marker 写入用户可见内容。
+	liveCommentBody = "很棒！"
 )
+
+func TestLiveCommentBodyIsShortPraise(t *testing.T) {
+	if got, want := liveCommentBody, "很棒！"; got != want {
+		t.Fatalf("live comment body = %q, want %q", got, want)
+	}
+}
+
+func TestCommentReplyReadbackUsesDedicatedEndpoint(t *testing.T) {
+	artworkPath, artworkKey := commentReplyReadback(protocol.AppIllustCommentAdd)
+	if artworkPath != "/v2/illust/comment/replies" || artworkKey != "comment_id" {
+		t.Fatalf("artwork reply read-back = (%q, %q)", artworkPath, artworkKey)
+	}
+	novelPath, novelKey := commentReplyReadback(protocol.AppNovelCommentAdd)
+	if novelPath != "/v2/novel/comment/replies" || novelKey != "comment_id" {
+		t.Fatalf("novel reply read-back = (%q, %q)", novelPath, novelKey)
+	}
+}
 
 type commentAccessControlObservation struct {
 	present bool
@@ -72,6 +91,19 @@ func TestCommentTargetProbePreservesMalformedCorrection(t *testing.T) {
 	}
 }
 
+func TestCommentTargetCanBeProbedWithUnknownAccessControl(t *testing.T) {
+	page := sdk.Page[pixivsdk.Comment]{Items: []pixivsdk.Comment{{ID: 1}}}
+	if !commentTargetCanBeProbed(pixivsdk.CommentPage{Page: page}) {
+		t.Fatal("readable comment target with unknown access control should be probeable under explicit mutation gate")
+	}
+}
+
+func TestCommentTargetCannotBeProbedWithoutComments(t *testing.T) {
+	if commentTargetCanBeProbed(pixivsdk.CommentPage{}) {
+		t.Fatal("empty comment page should not be a mutation target")
+	}
+}
+
 // TestRealPixivSDKLiveCommentAccessControlProbe 记录当前 wire scalar，不给任意
 // 整数赋予业务含义。它与 mutation runner 分离：发现 scalar 只是只读证据，不是
 // 权限 preflight。
@@ -103,7 +135,8 @@ func TestRealPixivSDKLiveCommentMutationSlice(t *testing.T) {
 	}
 
 	ctx := context.Background()
-	client := openRealPixivMutationClient(t, ctx, targetID)
+	session := openRealPixivMutationSession(t, ctx, targetID)
+	client := session.client
 	stamps, err := client.Stamps(ctx, pixivsdk.StampsRequest{})
 	if err != nil {
 		result := blockedMutationResult(0, err)
@@ -119,9 +152,29 @@ func TestRealPixivSDKLiveCommentMutationSlice(t *testing.T) {
 	}
 
 	stampID := stamps[0].ID
-	marker := "codex-goal1-t30-comments-" + strconv.FormatInt(time.Now().UTC().UnixNano(), 10)
-	runArtworkCommentMutations(t, ctx, client, stampID, marker)
-	runNovelCommentMutations(t, ctx, client, stampID, marker)
+	runArtworkCommentMutations(t, ctx, session, stampID)
+	runNovelCommentMutations(t, ctx, session, stampID)
+}
+
+func readRawCommentIDs(ctx context.Context, raw *appapi.Client, path, idKey string, contentID, userID int64) (map[int64]struct{}, error) {
+	var envelope struct {
+		Comments []struct {
+			ID   int64 `json:"id"`
+			User struct {
+				ID int64 `json:"id"`
+			} `json:"user"`
+		} `json:"comments"`
+	}
+	if err := raw.GetJSON(ctx, path, url.Values{idKey: {strconv.FormatInt(contentID, 10)}}, &envelope); err != nil {
+		return nil, err
+	}
+	ids := make(map[int64]struct{})
+	for _, comment := range envelope.Comments {
+		if comment.ID > 0 && comment.User.ID == userID {
+			ids[comment.ID] = struct{}{}
+		}
+	}
+	return ids, nil
 }
 
 // findPixivMutationAccount enforces the manifest's account-isolation boundary:
@@ -160,7 +213,8 @@ func TestRealPixivSDKLiveManifestMutation(t *testing.T) {
 	}
 
 	ctx := context.Background()
-	client := openRealPixivMutationClient(t, ctx, targetID)
+	session := openRealPixivMutationSession(t, ctx, targetID)
+	client := session.client
 	identity, err := client.CurrentUser(ctx, pixivsdk.CurrentUserRequest{})
 	if err != nil {
 		t.Fatalf("current mutation account: %s", liveMutationReason(err))
@@ -169,8 +223,6 @@ func TestRealPixivSDKLiveManifestMutation(t *testing.T) {
 		t.Fatalf("mutation account identity = %d, want %d", identity.User.ID, targetID)
 	}
 	t.Logf("mutation account: user_id=%d", targetID)
-
-	marker := "codex-goal1-t30-" + strconv.FormatInt(time.Now().UTC().UnixNano(), 10)
 
 	// 标签不是本轮 bookmark 的必要 mutation 变量；不附加标签可避免把上游
 	// 标签索引的可见性延迟误判为收藏状态失败，但仍验证 detail/list/tags 三个
@@ -199,8 +251,8 @@ func TestRealPixivSDKLiveManifestMutation(t *testing.T) {
 		} else {
 			t.Logf("stamps: count=%d usable=true", len(stamps))
 			recordLiveMutation(t, "stamps", verifiedReadOnlyResult(stampID, len(stamps)))
-			runArtworkCommentMutations(t, ctx, client, stampID, marker)
-			runNovelCommentMutations(t, ctx, client, stampID, marker)
+			runArtworkCommentMutations(t, ctx, session, stampID)
+			runNovelCommentMutations(t, ctx, session, stampID)
 		}
 	}
 
@@ -310,6 +362,7 @@ func reconcileNovelBookmark(t *testing.T, ctx context.Context, client *pixivsdk.
 type realPixivMutationSession struct {
 	client *pixivsdk.Client
 	raw    *appapi.Client
+	userID int64
 }
 
 // liveProbePacingRoundTripper 让 raw diagnostic path 遵守 public SDK operation
@@ -417,7 +470,7 @@ func openRealPixivMutationSession(t *testing.T, ctx context.Context, targetID in
 		appapi.WithUserID(credentials.UserID),
 	)
 	t.Cleanup(rawHTTPClient.CloseIdleConnections)
-	return &realPixivMutationSession{client: client, raw: app}
+	return &realPixivMutationSession{client: client, raw: app, userID: credentials.UserID}
 }
 
 func decodeCommentAccessControl(body []byte) (commentAccessControlObservation, error) {
@@ -888,8 +941,26 @@ type liveCommentTarget struct {
 	parentID  int64
 }
 
-func runArtworkCommentMutations(t *testing.T, ctx context.Context, client *pixivsdk.Client, stampID int64, marker string) {
+func commentReplyReadback(writePath string) (string, string) {
+	if writePath == protocol.AppNovelCommentAdd {
+		return "/v2/novel/comment/replies", "comment_id"
+	}
+	return "/v2/illust/comment/replies", "comment_id"
+}
+
+func readCommentReplies(ctx context.Context, raw *appapi.Client, writePath string, parentID, userID, commentID int64) (bool, error) {
+	path, idKey := commentReplyReadback(writePath)
+	ids, err := readRawCommentIDs(ctx, raw, path, idKey, parentID, userID)
+	if err != nil {
+		return false, err
+	}
+	_, ok := ids[commentID]
+	return ok, nil
+}
+
+func runArtworkCommentMutations(t *testing.T, ctx context.Context, session *realPixivMutationSession, stampID int64) {
 	t.Helper()
+	client := session.client
 	target, err := findArtworkCommentTarget(ctx, client)
 	if err != nil {
 		result := commentTargetProbeResult(err)
@@ -909,13 +980,24 @@ func runArtworkCommentMutations(t *testing.T, ctx context.Context, client *pixiv
 	remove := func(commentID int64) error {
 		return client.DeleteArtworkComment(ctx, pixivsdk.DeleteArtworkCommentRequest{CommentID: commentID})
 	}
+	replyRead := func(commentID int64) (bool, error) {
+		return readCommentReplies(ctx, session.raw, protocol.AppIllustCommentAdd, target.parentID, session.userID, commentID)
+	}
+	stampRead := func(commentID int64) (bool, error) {
+		ids, err := readRawCommentIDs(ctx, session.raw, "/v3/illust/comments", "illust_id", target.contentID, session.userID)
+		if err != nil {
+			return false, err
+		}
+		_, ok := ids[commentID]
+		return ok, nil
+	}
 
 	recordLiveMutation(t, "artwork_comment_text", runLiveCommentMutation(
 		target.contentID,
 		func() (int64, error) {
 			result, err := client.PostArtworkComment(ctx, pixivsdk.PostArtworkCommentRequest{
 				ArtworkID: target.contentID,
-				Comment:   marker + " artwork text",
+				Comment:   liveCommentBody,
 			})
 			return result.CommentID, err
 		}, read, remove,
@@ -929,11 +1011,11 @@ func runArtworkCommentMutations(t *testing.T, ctx context.Context, client *pixiv
 			func() (int64, error) {
 				result, err := client.ReplyArtworkComment(ctx, pixivsdk.ReplyArtworkCommentRequest{
 					ArtworkID:       target.contentID,
-					Comment:         marker + " artwork reply",
+					Comment:         liveCommentBody,
 					ParentCommentID: target.parentID,
 				})
 				return result.CommentID, err
-			}, read, remove,
+			}, replyRead, remove,
 		))
 	}
 
@@ -942,17 +1024,18 @@ func runArtworkCommentMutations(t *testing.T, ctx context.Context, client *pixiv
 		func() (int64, error) {
 			result, err := client.StampArtworkComment(ctx, pixivsdk.StampArtworkCommentRequest{
 				ArtworkID: target.contentID,
-				Comment:   marker + " artwork stamp",
+				Comment:   "",
 				StampID:   stampID,
 			})
 			return result.CommentID, err
-		}, read, remove,
+		}, stampRead, remove,
 	))
 
 }
 
-func runNovelCommentMutations(t *testing.T, ctx context.Context, client *pixivsdk.Client, stampID int64, marker string) {
+func runNovelCommentMutations(t *testing.T, ctx context.Context, session *realPixivMutationSession, stampID int64) {
 	t.Helper()
+	client := session.client
 	target, err := findNovelCommentTarget(ctx, client)
 	if err != nil {
 		result := commentTargetProbeResult(err)
@@ -971,13 +1054,21 @@ func runNovelCommentMutations(t *testing.T, ctx context.Context, client *pixivsd
 	remove := func(commentID int64) error {
 		return client.DeleteNovelComment(ctx, pixivsdk.DeleteNovelCommentRequest{CommentID: commentID})
 	}
+	stampRead := func(commentID int64) (bool, error) {
+		ids, err := readRawCommentIDs(ctx, session.raw, "/v3/novel/comments", "novel_id", target.contentID, session.userID)
+		if err != nil {
+			return false, err
+		}
+		_, ok := ids[commentID]
+		return ok, nil
+	}
 
 	recordLiveMutation(t, "novel_comment_text", runLiveCommentMutation(
 		target.contentID,
 		func() (int64, error) {
 			result, err := client.PostNovelComment(ctx, pixivsdk.PostNovelCommentRequest{
 				NovelID: target.contentID,
-				Comment: marker + " novel text",
+				Comment: liveCommentBody,
 			})
 			return result.CommentID, err
 		}, read, remove,
@@ -987,11 +1078,11 @@ func runNovelCommentMutations(t *testing.T, ctx context.Context, client *pixivsd
 		func() (int64, error) {
 			result, err := client.StampNovelComment(ctx, pixivsdk.StampNovelCommentRequest{
 				NovelID: target.contentID,
-				Comment: marker + " novel stamp",
+				Comment: "",
 				StampID: stampID,
 			})
 			return result.CommentID, err
-		}, read, remove,
+		}, stampRead, remove,
 	))
 
 }
@@ -1028,6 +1119,22 @@ func runLiveCommentMutation(targetID int64, write func() (int64, error), read fu
 	return result
 }
 
+// commentTargetCanBeProbed only decides whether one explicit live write may be
+// attempted. Unknown scalar access-control is never mapped to CanComment; the
+// mutation test's explicit user authorization plus write/read-back/cleanup provide
+// the target-specific evidence.
+func commentTargetCanBeProbed(page pixivsdk.CommentPage) bool {
+	if page.AccessControl != nil {
+		return page.AccessControl.CanComment && !page.AccessControl.IsLocked
+	}
+	for _, comment := range page.Page.Items {
+		if comment.ID > 0 {
+			return true
+		}
+	}
+	return false
+}
+
 func findArtworkCommentTarget(ctx context.Context, client *pixivsdk.Client) (liveCommentTarget, error) {
 	page, err := client.SearchArtworks(ctx, pixivsdk.SearchArtworksRequest{
 		Word: "初音ミク", ContentType: pixivsdk.SearchContentTypeIllust,
@@ -1047,7 +1154,7 @@ func findArtworkCommentTarget(ctx context.Context, client *pixivsdk.Client) (liv
 			continue
 		}
 		readableCandidates++
-		if comments.AccessControl == nil || !comments.AccessControl.CanComment || comments.AccessControl.IsLocked {
+		if !commentTargetCanBeProbed(comments) {
 			continue
 		}
 		var parentID int64
@@ -1082,7 +1189,7 @@ func findNovelCommentTarget(ctx context.Context, client *pixivsdk.Client) (liveC
 			continue
 		}
 		readableCandidates++
-		if comments.AccessControl == nil || !comments.AccessControl.CanComment || comments.AccessControl.IsLocked {
+		if !commentTargetCanBeProbed(comments) {
 			continue
 		}
 		var parentID int64

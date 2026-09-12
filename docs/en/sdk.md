@@ -253,9 +253,9 @@ continuation exception described above.
 | `ArtworkSeries` / `NovelSeries` | positive series ID, cursor | series page (novel also returns metadata) | `InvalidCursor` |
 | `ArtworkComments` / `NovelComments` | positive ID, cursor | `CommentPage` | `NotFound` |
 | `PostArtworkComment` / `ReplyArtworkComment` / `DeleteArtworkComment` | positive artwork ID; reply also requires a positive parent comment ID | `CommentMutationResult` for post/reply; `error` for delete | `InvalidArgument`, `MalformedUpstreamResponse`, classified upstream/transport errors |
-| `StampArtworkComment` | positive artwork ID, non-empty comment, positive stamp ID | `CommentMutationResult` | `InvalidArgument`, `MalformedUpstreamResponse`, classified upstream/transport errors |
+| `StampArtworkComment` | positive artwork ID, optional comment (empty for sticker-only), positive stamp ID | `CommentMutationResult` | `InvalidArgument`, `MalformedUpstreamResponse`, classified upstream/transport errors |
 | `PostNovelComment` / `ReplyNovelComment` / `DeleteNovelComment` | positive novel ID; reply also requires a positive parent comment ID | `CommentMutationResult` for post/reply; `error` for delete | `InvalidArgument`, `MalformedUpstreamResponse`, classified upstream/transport errors |
-| `StampNovelComment` | positive novel ID, non-empty comment, positive stamp ID | `CommentMutationResult` | `InvalidArgument`, `MalformedUpstreamResponse`, classified upstream/transport errors |
+| `StampNovelComment` | positive novel ID, optional comment (empty for sticker-only), positive stamp ID | `CommentMutationResult` | `InvalidArgument`, `MalformedUpstreamResponse`, classified upstream/transport errors |
 | `UserArtworkBookmarks` / `UserArtworkBookmarkTags` / `UserNovelBookmarks` / `UserNovelBookmarkTags` | `UserID`, `Restrict`, `tag`, cursor | typed page | `InvalidArgument`, `InvalidCursor` |
 | `ArtworkBookmark` / `NovelBookmark` | positive artwork or novel ID | bookmark detail state | `InvalidArgument`, `MalformedUpstreamResponse`, classified upstream/transport errors |
 | `AddArtworkBookmark` / `RemoveArtworkBookmark` (legacy `AddBookmark` / `RemoveBookmark`) | positive artwork ID; add accepts `Restrict` and tags | `error` | `InvalidArgument`, classified upstream/transport errors |
@@ -314,10 +314,11 @@ Key semantics:
   the local shape and exposes the classified upstream result; ownership,
   namespace proof, read-back, and cleanup remain application responsibilities.
 - `StampArtworkComment` and `StampNovelComment` use the namespace-specific
-  comment add endpoint with `stamp_id` as an independent field alongside the
-  operation's `comment` text. They never encode a stamp as a reply parent or
-  silently fall back to text/reply semantics; the returned ID is subject to the
-  same direct-response, no-read-back rule.
+  comment add endpoint with `stamp_id` as an independent field. The `comment`
+  field is optional; an empty value is the current App API sticker-only wire
+  form. They never encode a stamp as a reply parent or silently fall back to
+  text/reply semantics; the returned ID is subject to the same direct-response,
+  no-read-back rule.
 - `ArtworkBookmark` and `NovelBookmark` represent an absent bookmark with an
   empty `Restrict` and empty tags. `NovelBookmark` and
   `UserNovelBookmarkTags` currently follow candidate upstream read contracts:

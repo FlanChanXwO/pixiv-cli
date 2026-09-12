@@ -33,9 +33,7 @@ func (c *Client) StampArtworkComment(ctx context.Context, request StampArtworkCo
 	if request.ArtworkID <= 0 {
 		return CommentMutationResult{}, newError("StampArtworkComment", sdk.InvalidArgument, "artwork ID must be positive")
 	}
-	if request.Comment == "" {
-		return CommentMutationResult{}, newError("StampArtworkComment", sdk.InvalidArgument, "comment body must not be empty")
-	}
+	// App API 的 sticker-only wire 形态要求 comment 为空；stamp_id 单独标识贴纸。
 	if request.StampID <= 0 {
 		return CommentMutationResult{}, newError("StampArtworkComment", sdk.InvalidArgument, "stamp ID must be positive")
 	}
@@ -56,9 +54,7 @@ func (c *Client) StampNovelComment(ctx context.Context, request StampNovelCommen
 	if request.NovelID <= 0 {
 		return CommentMutationResult{}, newError("StampNovelComment", sdk.InvalidArgument, "novel ID must be positive")
 	}
-	if request.Comment == "" {
-		return CommentMutationResult{}, newError("StampNovelComment", sdk.InvalidArgument, "comment body must not be empty")
-	}
+	// App API 的 sticker-only wire 形态要求 comment 为空；stamp_id 单独标识贴纸。
 	if request.StampID <= 0 {
 		return CommentMutationResult{}, newError("StampNovelComment", sdk.InvalidArgument, "stamp ID must be positive")
 	}

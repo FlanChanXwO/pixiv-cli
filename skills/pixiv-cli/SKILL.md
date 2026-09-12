@@ -148,7 +148,7 @@ pixiv series SERIES_ID_OR_URL --type novel --limit 20 --json
 pixiv comment ID --type artwork --limit 20 --json
 pixiv comment create ID --type artwork --comment "hello"
 pixiv comment reply ID --type artwork --parent-comment-id PARENT_ID --comment "reply" --json
-pixiv comment stamp ID --type artwork --stamp-id STAMP_ID --comment "stamp" --json
+pixiv comment stamp ID --type artwork --stamp-id STAMP_ID --json
 pixiv comment delete COMMENT_ID --type artwork --json
 pixiv comment stamps --json
 pixiv bookmark list --type artwork --limit 20 --json
@@ -287,12 +287,14 @@ session.
    `detail --type novel` for metadata.
 5. **Comment mutations are explicit and status-bound.** `comment create`,
    `reply`, `stamp`, and `delete` require `--type artwork|novel` and positive
-   numeric IDs; URLs and `all` are rejected. `create/reply/stamp` require
-   `--comment` and return the upstream `comment_id` directly. `reply` also
-   requires `--parent-comment-id`, while `stamp` requires `--stamp-id`; these
-   IDs are independent fields. `delete` returns only a success status and does
-   not read comments back. `comment stamps` is a non-paginated read and emits
-   output-safe opaque stamp references without runtime URLs. Existing
+   numeric IDs; URLs and `all` are rejected. `create/reply` require a non-empty
+   `--comment`; `stamp` accepts an optional comment and forwards empty text for
+   the sticker-only wire form. These operations return the upstream `comment_id`
+   directly. `reply` also requires `--parent-comment-id`, while `stamp` requires
+   `--stamp-id`; these IDs are independent fields. `delete` returns only a
+   success status and does not read comments back. `comment stamps` is a
+   non-paginated read and emits output-safe opaque stamp references without
+   runtime URLs. Existing
    bookmark/follow mutation actions retain their empty-success-output contract.
 6. **Restricted search fails explicitly.** There is no anonymous search path.
    Restricted rating requests are not represented by a silent `--rating` filter;

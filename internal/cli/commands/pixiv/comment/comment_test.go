@@ -124,12 +124,28 @@ func TestCommentMutationsDispatchArtworkAndNovelNamespaces(t *testing.T) {
 			wantID:   84,
 		},
 		{
+			name:     "artwork stamp without comment",
+			args:     []string{"stamp", "101", "--type", "artwork", "--stamp-id", "9", "--json"},
+			path:     "/v1/illust/comment/add",
+			form:     map[string]string{"illust_id": "101", "comment": "", "stamp_id": "9"},
+			response: `{"comment":{"id":86}}`,
+			wantID:   86,
+		},
+		{
 			name:     "novel stamp",
 			args:     []string{"stamp", "201", "--type", "novel", "--stamp-id", "9", "--comment", "stamp", "--json"},
 			path:     "/v1/novel/comment/add",
 			form:     map[string]string{"novel_id": "201", "comment": "stamp", "stamp_id": "9"},
 			response: `{"comment_id":85}`,
 			wantID:   85,
+		},
+		{
+			name:     "novel stamp without comment",
+			args:     []string{"stamp", "201", "--type", "novel", "--stamp-id", "9", "--json"},
+			path:     "/v1/novel/comment/add",
+			form:     map[string]string{"novel_id": "201", "comment": "", "stamp_id": "9"},
+			response: `{"comment":{"id":87}}`,
+			wantID:   87,
 		},
 		{
 			name:         "artwork delete",

@@ -151,9 +151,7 @@ func (c *Client) Stamp(ctx context.Context, request StampRequest) (MutationResul
 	if err := validateNovelID(request.NovelID); err != nil {
 		return MutationResult{}, err
 	}
-	if err := validateCommentBody(request.Comment); err != nil {
-		return MutationResult{}, err
-	}
+	// sticker-only wire 允许空 comment；正文必填校验仅适用于 create/reply。
 	if request.StampID <= 0 {
 		return MutationResult{}, errors.New("stamp ID must be positive")
 	}
@@ -181,10 +179,11 @@ func (c *Client) postComment(ctx context.Context, form url.Values) (MutationResu
 	if err := c.transport.PostFormJSON(ctx, protocol.AppNovelCommentAdd, form, &raw); err != nil {
 		return MutationResult{}, err
 	}
-	if raw.CommentID == nil || *raw.CommentID <= 0 {
+	commentID := raw.commentID()
+	if commentID == nil || *commentID <= 0 {
 		return MutationResult{}, protocol.MalformedResponse()
 	}
-	return MutationResult{CommentID: *raw.CommentID}, nil
+	return MutationResult{CommentID: *commentID}, nil
 }
 
 func validateNovelID(id int64) error {
@@ -211,7 +210,22 @@ type responseDTO struct {
 }
 
 type mutationResponseDTO struct {
-	CommentID *int64 `json:"comment_id"`
+	CommentID *int64              `json:"comment_id"`
+	Comment   *mutationCommentDTO `json:"comment"`
+}
+
+type mutationCommentDTO struct {
+	ID *int64 `json:"id"`
+}
+
+func (value mutationResponseDTO) commentID() *int64 {
+	if value.CommentID != nil {
+		return value.CommentID
+	}
+	if value.Comment != nil {
+		return value.Comment.ID
+	}
+	return nil
 }
 
 type requiredList[T any] struct {

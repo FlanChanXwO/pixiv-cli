@@ -97,6 +97,51 @@ func TestStampCommentMutationsKeepStampSeparateFromTextAndReply(t *testing.T) {
 	}
 }
 
+func TestStampCommentMutationsAllowEmptyStickerText(t *testing.T) {
+	var requests []string
+	rt := roundTripFunc(func(req *http.Request) (*http.Response, error) {
+		if req.URL.Host != "app-api.pixiv.net" {
+			return nil, errors.New("unexpected host: " + req.URL.Host)
+		}
+		if req.URL.Path != "/v1/illust/comment/add" && req.URL.Path != "/v1/novel/comment/add" {
+			return nil, errors.New("unexpected stamp path: " + req.URL.Path)
+		}
+		if err := req.ParseForm(); err != nil {
+			return nil, err
+		}
+		if len(req.PostForm) != 3 || req.PostForm.Get("comment") != "" || req.PostForm.Get("stamp_id") != "9" || req.PostForm.Get("parent_comment_id") != "" {
+			return nil, errors.New("empty sticker form is not preserved: " + req.PostForm.Encode())
+		}
+		requests = append(requests, req.URL.Path)
+		return jsonResponse(`{"comment":{"id":901}}`), nil
+	})
+	client, err := NewWith("token", Options{HTTPClient: &http.Client{Transport: rt}})
+	if err != nil {
+		t.Fatalf("NewWith: %v", err)
+	}
+
+	artworkResult, err := client.StampArtworkComment(context.Background(), StampArtworkCommentRequest{
+		ArtworkID: 123,
+		StampID:   9,
+	})
+	if err != nil {
+		t.Fatalf("StampArtworkComment: %v", err)
+	}
+	novelResult, err := client.StampNovelComment(context.Background(), StampNovelCommentRequest{
+		NovelID: 456,
+		StampID: 9,
+	})
+	if err != nil {
+		t.Fatalf("StampNovelComment: %v", err)
+	}
+	if artworkResult.CommentID != 901 || novelResult.CommentID != 901 {
+		t.Fatalf("mutation results = %#v/%#v", artworkResult, novelResult)
+	}
+	if len(requests) != 2 || requests[0] != "/v1/illust/comment/add" || requests[1] != "/v1/novel/comment/add" {
+		t.Fatalf("requests = %#v", requests)
+	}
+}
+
 func TestStampCommentMutationsRejectInvalidInputsBeforeNetwork(t *testing.T) {
 	calls := 0
 	rt := roundTripFunc(func(*http.Request) (*http.Response, error) {
@@ -110,7 +155,6 @@ func TestStampCommentMutationsRejectInvalidInputsBeforeNetwork(t *testing.T) {
 
 	artworkCases := []StampArtworkCommentRequest{
 		{ArtworkID: 0, Comment: "body", StampID: 9},
-		{ArtworkID: 1, Comment: "", StampID: 9},
 		{ArtworkID: 1, Comment: "body", StampID: 0},
 	}
 	for _, request := range artworkCases {
@@ -122,7 +166,6 @@ func TestStampCommentMutationsRejectInvalidInputsBeforeNetwork(t *testing.T) {
 
 	novelCases := []StampNovelCommentRequest{
 		{NovelID: 0, Comment: "body", StampID: 9},
-		{NovelID: 1, Comment: "", StampID: 9},
 		{NovelID: 1, Comment: "body", StampID: 0},
 	}
 	for _, request := range novelCases {

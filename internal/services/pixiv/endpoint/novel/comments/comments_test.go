@@ -82,6 +82,17 @@ func TestCommentsDoesNotGuessScalarCommentAccessControl(t *testing.T) {
 	}
 }
 
+func TestCommentsCreateMapsCurrentAppAPICommentResponse(t *testing.T) {
+	transport := &fakeTransport{mutationBody: `{"comment":{"id":77,"comment":"current wire"}}`}
+	result, err := comments.New(transport).Create(context.Background(), comments.CreateRequest{NovelID: 123, Comment: "hello"})
+	if err != nil {
+		t.Fatalf("Create returned error: %v", err)
+	}
+	if result.CommentID != 77 {
+		t.Fatalf("CommentID = %d, want 77", result.CommentID)
+	}
+}
+
 func TestCommentsRejectsInvalidParentID(t *testing.T) {
 	_, err := comments.New(&fakeTransport{body: `{"comments":[{"id":1,"parent_comment":{"id":0}}]}`}).List(context.Background(), comments.Request{NovelID: 1})
 	if err == nil {
@@ -213,6 +224,26 @@ func TestCommentsStampBuildsFormAndMapsCommentID(t *testing.T) {
 		t.Fatalf("mutation request = calls:%d path:%q", transport.postJSONCalls, transport.mutationPath)
 	}
 	if transport.mutationForm.Get("novel_id") != "123" || transport.mutationForm.Get("comment") != "stamp" || transport.mutationForm.Get("stamp_id") != "9" || len(transport.mutationForm) != 3 {
+		t.Fatalf("mutation form = %#v", transport.mutationForm)
+	}
+}
+
+func TestCommentsStampAllowsEmptyComment(t *testing.T) {
+	transport := &fakeTransport{mutationBody: `{"comment":{"id":75}}`}
+	result, err := comments.New(transport).Stamp(context.Background(), comments.StampRequest{
+		NovelID: 123,
+		StampID: 9,
+	})
+	if err != nil {
+		t.Fatalf("Stamp returned error: %v", err)
+	}
+	if result.CommentID != 75 {
+		t.Fatalf("CommentID = %d, want 75", result.CommentID)
+	}
+	if transport.postJSONCalls != 1 || transport.mutationPath != "/v1/novel/comment/add" {
+		t.Fatalf("mutation request = calls:%d path:%q", transport.postJSONCalls, transport.mutationPath)
+	}
+	if transport.mutationForm.Get("novel_id") != "123" || transport.mutationForm.Get("comment") != "" || transport.mutationForm.Get("stamp_id") != "9" || len(transport.mutationForm) != 3 {
 		t.Fatalf("mutation form = %#v", transport.mutationForm)
 	}
 }

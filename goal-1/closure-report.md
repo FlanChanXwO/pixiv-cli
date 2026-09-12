@@ -1,8 +1,8 @@
 # Goal-1 Closure Report
 
-**GoalState:** `BLOCKED_DECISION`
+**GoalState:** `ACTIVE`
 
-**Report status:** `CURRENT_BLOCKED_CLOSURE` — 2026-09-13；G1-CHECK-10 与 G1-TERM 均已到 terminal，external 与 decision blocker 并存。下方历史 terminal evidence 保留用于审计；Goal 不满足 `COMPLETED`。
+**Report status:** `CURRENT_RESUMED_EXECUTION` — 2026-09-13；历史 G1-CHECK-10/G1-TERM blocked closure 已被新 live evidence 与 artwork-series wire correction supersede。Goal 仍不满足 `COMPLETED`。
 
 **Generated:** 2026-09-13
 
@@ -10,9 +10,9 @@
 
 **Worktree:** `/Users/flanchan/Developer/Projects/GithubProjects/.worktrees/pixiv-cli-refactor-pixiv-api-stability`（专用 linked worktree）
 
-**Current terminal task:** `G1-TERM`（verified；GoalState=`BLOCKED_DECISION`）
+**Current task:** `G1-CORR-G1-T28-ARTWORK-SERIES-WIRE-02`（in_progress；GoalState=`ACTIVE`）
 
-**Current next task:** 无；等待 external data/permission 或用户明确 scope 决策后，从最早未完成 required task 恢复。
+**Current next task:** 完成 artwork-series `offset` continuation correction，随后重跑受影响的 live gate 与 G1-CHECK-10；decision/scope blocker 仍需单独决策。
 
 ## 0. Resume reason
 
@@ -118,3 +118,11 @@
 - **Verification / safety：** G1-T27 full offline/vet/build/race/LSP/live/reconcile/diff-check、G1-CHECK-10 focused checks 与 T30 comments evidence 均保留；G1-TERM 只重算 closure 并更新账本，未新增生产代码或外部写入。账本无 token、cookie、refresh token、评论正文或 raw signed/auth URL。
 - **Git / push：** closure 前 Local/Remote=`955c09a90407d3baf0cda8b52fe252b575ec6594`，`origin/main=7ff1e6b4e6177c657876f69cd930d279d2d0bfce`，worktree clean、无远端分叉。closure checkpoint=`0ccf341b5dd1e26a953f1a57b5c5707807bf7a7c`，从 `955c09a90407d3baf0cda8b52fe252b575ec6594` 普通 fast-forward 推送成功；GitHub API 与 `git ls-remote` 均确认 Remote SHA == closure checkpoint。后续仅发布本结果的 documentation ledger。
 - **Next：** 无可执行 required task；等待 external data/permission 或用户 scope 决策。不得执行 G1-T31/G1-FINAL，除非 blocker 条件解除并重新打开相应 task。
+
+## 11. Current resumed execution（2026-09-13；supersedes §10）
+
+- **状态：** `ACTIVE`。历史 §10 的 blocked closure 保留审计记录，但其 `runnable_required_tasks == 0` 前提已被新 live evidence 与新 wire correction 推翻；当前 task 为 `G1-CORR-G1-T28-ARTWORK-SERIES-WIRE-02`。
+- **已恢复的 live evidence：** #17 artwork bookmark 使用非 Flan 账号 `127975236`、新候选 `149605267` 完成 add/detail/list/remove/reconcile；#20/#21 novel bookmark 使用同账号、`29100695` 完成 add/detail/list/remove/reconcile，并在 add 后 detail 读到 `restrict=public`、list 可见；#26 artwork comments 使用账号 `128042145`、`149603743` 完成 text/reply/stamp 的 write/read-back/cleanup；#28 novel comments 使用同账号、`29100695` 完成 text/stamp 的 write/read-back/cleanup。所有记录均已确认无残留。
+- **评论与安全：** 评论正文只写 `很棒！`；stamp 使用空正文，清理由响应 ID 完成。未记录 token、cookie、refresh token、raw signed/auth URL 或评论正文。一次 artwork bookmark 候选因本地 SQLite lock 的尝试不计入证据且未 replay；默认账号已恢复为 `127975236`。
+- **新内部 correction：** 公开可追溯候选 `https://www.pixiv.net/user/10509347/series/21859` 的 App API 首页返回 30/30 有效 artwork 和 `next_url`，续页 query 使用 `illust_series_id` + `offset`；现有 artwork-series continuation 只接受 `last_order`，导致 `malformed_upstream_response`。该事实已登记为 `G1-CORR-G1-T28-ARTWORK-SERIES-WIRE-02`，只对显式候选继续 read，不扫描 ID。
+- **当前门禁：** comments/bookmark focused tests 与 live cleanup evidence 已通过；series correction 仍未完成，因此不运行 G1-T31/G1-FINAL、不声明 Goal 完成。完成后需更新 G1-CHECK-10；#6/#12/#23/#24/#41/#38/#39 decision/scope blockers 仍需独立批准，未因本次恢复自动解决。

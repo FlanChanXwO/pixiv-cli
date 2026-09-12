@@ -50,18 +50,18 @@
 | 14 | `artwork-bookmark-list` | implemented_unverified | verified | verified | verified | verified | verified | verified | verified | implemented_unverified | missing |
 | 15 | `artwork-bookmark-tags` | implemented_unverified | verified | verified | verified | verified | verified | verified | verified | implemented_unverified | missing |
 | 16 | `artwork-bookmark-detail` | implemented_unverified | verified | verified | not_applicable | verified | verified | verified | verified | implemented_unverified | missing |
-| 17 | `artwork-bookmark-mutation` | implemented_unverified | verified | verified | not_applicable | verified | verified | verified | blocked_external | implemented_unverified | missing |
+| 17 | `artwork-bookmark-mutation` | implemented_unverified | verified | verified | not_applicable | verified | verified | verified | verified | implemented_unverified | missing |
 | 18 | `novel-bookmark-list` | implemented_unverified | implemented_unverified | implemented_unverified | verified | verified | verified | verified | verified | implemented_unverified | missing |
 | 19 | `novel-bookmark-tags` | implemented_unverified | implemented_unverified | implemented_unverified | implemented_unverified | verified | verified | verified | verified | implemented_unverified | missing |
-| 20 | `novel-bookmark-detail` | implemented_unverified | implemented_unverified | implemented_unverified | not_applicable | verified | verified | verified | blocked_external | implemented_unverified | missing |
-| 21 | `novel-bookmark-mutation` | implemented_unverified | implemented_unverified | verified | not_applicable | verified | verified | verified | blocked_external | implemented_unverified | missing |
+| 20 | `novel-bookmark-detail` | implemented_unverified | implemented_unverified | implemented_unverified | not_applicable | verified | verified | verified | verified | implemented_unverified | missing |
+| 21 | `novel-bookmark-mutation` | implemented_unverified | implemented_unverified | verified | not_applicable | verified | verified | verified | verified | implemented_unverified | missing |
 | 22 | `bookmark-subtype` | implemented_unverified | missing | missing | implemented_unverified | verified | verified | verified | missing | implemented_unverified | missing |
 | 23 | `bookmark-list-all` | implemented_unverified | verified | missing | verified | verified | verified | verified | verified | implemented_unverified | missing |
 | 24 | `bookmark-tags-all` | implemented_unverified | verified | missing | verified | verified | verified | verified | verified | implemented_unverified | missing |
 | 25 | `artwork-comments-read` | rejected | implemented_unverified | implemented_unverified | implemented_unverified | implemented_unverified | implemented_unverified | verified | rejected | implemented_unverified | rejected |
-| 26 | `artwork-comments-mutation` | implemented_unverified | verified | verified | verified | verified | verified | verified | blocked_external | implemented_unverified | missing |
+| 26 | `artwork-comments-mutation` | implemented_unverified | verified | verified | verified | verified | verified | verified | verified | implemented_unverified | missing |
 | 27 | `novel-comments-read` | implemented_unverified | verified | verified | verified | verified | verified | verified | verified | implemented_unverified | missing |
-| 28 | `novel-comments-mutation` | implemented_unverified | verified | verified | verified | verified | verified | verified | blocked_external | implemented_unverified | missing |
+| 28 | `novel-comments-mutation` | implemented_unverified | verified | verified | verified | verified | verified | verified | verified | implemented_unverified | missing |
 | 29 | `stamps` | implemented_unverified | verified | verified | verified | verified | verified | verified | verified | implemented_unverified | missing |
 | 30 | `user-artworks` | implemented_unverified | verified | implemented_unverified | verified | verified | verified | verified | verified | implemented_unverified | rejected |
 | 31 | `user-novels` | implemented_unverified | verified | implemented_unverified | verified | verified | verified | verified | verified | implemented_unverified | rejected |
@@ -1096,3 +1096,20 @@ G1-T01 已在干净目标 worktree 执行 `go test ./...` 并通过；G1-CHECK-0
 - **Verification / safety：** G1-T27 full offline/vet/build/race/LSP/live/reconcile/diff-check 证据、G1-CHECK-10 docs/cursor/SDK/MCP focused tests 与 T30 comments slice 证据均保留；closure 只读重算并未新增生产代码或外部写入。账本无 token、cookie、refresh token、评论正文或 raw signed/auth URL。
 - **Git / push：** closure 前 Local/Remote=`955c09a90407d3baf0cda8b52fe252b575ec6594`，`origin/main=7ff1e6b4e6177c657876f69cd930d279d2d0bfce`，worktree clean、无远端分叉。G1-TERM closure checkpoint=`0ccf341b5dd1e26a953f1a57b5c5707807bf7a7c`，从 `955c09a90407d3baf0cda8b52fe252b575ec6594` 普通 fast-forward 推送成功；GitHub API 与 `git ls-remote` 均确认 Remote SHA == closure checkpoint。后续仅发布 documentation ledger。
 - **Next：** 无可执行 required task；等待 external data/permission 或用户 scope 决策。不得执行 G1-T31/G1-FINAL，除非 blocker 条件解除并重新打开相应 task。
+
+## 49. Resumed execution：comments/bookmark live evidence（2026-09-13）
+
+- **GoalState：** `ACTIVE`。§48 的 `BLOCKED_DECISION` 是历史 closure；当前存在已验证的 external recovery evidence 与新的 artwork-series wire correction，故 `runnable_required_tasks == 0` 前提已被 supersede。
+- **#17 artwork bookmark：** 非 Flan 账号 `127975236` 对新候选 `149605267` 完成 add → detail `restrict=public` 且 tags 读取成功 → public bookmark list 可见 → remove → detail/list/tags 均确认无残留。更早候选 `149605331` 的一次尝试遇到本地 SQLite lock，不计入证据且未 replay。
+- **#20/#21 novel bookmark：** 同一账号对 `29100695` 完成 add → detail `restrict=public`、list 可见 → remove → detail/list/tags 均确认无残留；该 detail read-back 同时提供 `bookmarked=true` 等价 live 状态，解除 #20 target 与 #21 mutation read-back blocker。
+- **#26 artwork comments：** 非 Flan 账号 `128042145`、artwork `149603743` 的 text/reply/stamp 均完成写入、专用 read-back、cleanup；结果均 `writes=1/read_back=true/cleanup=true/uncertain=false`。
+- **#28 novel comments：** 同一账号、novel `29100695` 的 text/stamp 均完成写入、read-back、cleanup；结果均 `writes=1/read_back=true/cleanup=true/uncertain=false`。
+- **安全边界：** 评论正文只使用极短赞美 `很棒！`；cleanup 依赖接口返回 ID；未把 token、cookie、refresh token、raw signed URL 或长评论正文写入日志/账本。默认账号已恢复为原先的 `127975236`。
+- **状态变化：** #17/#20/#21/#26/#28 的历史 data/permission blocker 已以当前 live evidence 解除；#29 stamps 既有 evidence 保留。#5 artwork-series 不再只是“没有候选”问题，当前显式候选暴露出可复现的 `offset` continuation parser correction，登记为 `G1-CORR-G1-T28-ARTWORK-SERIES-WIRE-02`。
+
+## 50. G1-CORR-G1-T28-ARTWORK-SERIES-WIRE-02：当前 artwork series continuation
+
+- **状态：** `in_progress`；这是当前唯一正在执行的 wire correction。decision/scope blockers #6/#12/#23/#24/#41/#38/#39 仍保留，未因本次数据恢复而自动扩大 public surface。
+- **证据：** 对公开可追溯候选 `https://www.pixiv.net/user/10509347/series/21859` 只做一次显式 raw read：首页 `illust_count=30`、`valid_item_count=30`、存在 `next_url`；续页 query keys 为 `illust_series_id` 与 `offset`，没有 `last_order`。当前 SDK/endpoint 只认 `last_order`，因此返回 `malformed_upstream_response`。
+- **下一步与边界：** 先对该 `next_url` 做只读第二页确认，再按 TDD 兼容 `offset` 与既有 `last_order` fixture，更新 endpoint/SDK cursor regression 与显式 recovery test；不扫描 ID、不输出 raw response、不新增 route、固定分页/重试/超时上限或 fallback。
+- **验证状态：** comments/bookmark focused tests、live mutation cleanup、`gofmt`、LSP diagnostics 与 `git diff --check` 已有证据；series correction 完成后再运行受影响的 focused/full gate，并重算 G1-CHECK-10。Goal 尚未完成。

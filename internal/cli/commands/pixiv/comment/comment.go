@@ -117,7 +117,7 @@ func (a command) newStamp() *cobra.Command {
 			return a.runStamp(cmd, args[0], opts)
 		},
 	}
-	a.bindMutationFlags(cmd, &opts, "comment body (required)")
+	a.bindMutationFlags(cmd, &opts, "optional comment body (empty for sticker-only)")
 	cmd.Flags().Int64Var(&opts.stampID, "stamp-id", 0, "stamp ID (required)")
 	return cmd
 }
@@ -270,9 +270,7 @@ func (a command) runStamp(cmd *cobra.Command, arg string, opts mutationOptions) 
 	if err := validateCommentType(cmd, opts.typ); err != nil {
 		return err
 	}
-	if opts.comment == "" {
-		return errors.New("--comment is required")
-	}
+	// sticker-only comments intentionally forward an empty --comment value.
 	if opts.stampID <= 0 {
 		return errors.New("--stamp-id must be positive")
 	}

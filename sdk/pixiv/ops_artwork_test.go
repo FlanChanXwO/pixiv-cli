@@ -8,10 +8,36 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/FlanChanXwO/pixiv-cli/sdk"
 	. "github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
 )
+
+func TestArtworkCommentsMapsCurrentAppAPICommentDate(t *testing.T) {
+	rt := roundTripFunc(func(req *http.Request) (*http.Response, error) {
+		if req.URL.Path != "/v3/illust/comments" {
+			t.Errorf("path = %q, want %q", req.URL.Path, "/v3/illust/comments")
+		}
+		if req.URL.Query().Get("illust_id") != "9001" {
+			t.Errorf("illust_id = %q, want %q", req.URL.Query().Get("illust_id"), "9001")
+		}
+		return jsonResponse(`{"comments":[{"id":9002,"comment":"current wire","date":"2026-01-02T03:04:05+00:00","user":{"id":7,"name":"commenter"}}],"next_url":null}`), nil
+	})
+	client, err := NewWith("token", Options{HTTPClient: &http.Client{Transport: rt}})
+	if err != nil {
+		t.Fatalf("NewWith: %v", err)
+	}
+
+	page, err := client.ArtworkComments(context.Background(), ArtworkCommentsRequest{ArtworkID: 9001})
+	if err != nil {
+		t.Fatalf("ArtworkComments: %v", err)
+	}
+	want := time.Date(2026, time.January, 2, 3, 4, 5, 0, time.UTC)
+	if len(page.Page.Items) != 1 || page.Page.Items[0].ID != 9002 || !page.Page.Items[0].CreatedAt.Equal(want) {
+		t.Fatalf("page = %#v, want comment date %s", page, want)
+	}
+}
 
 func TestRecommendedArtworksPreservesExplicitZeroContinuation(t *testing.T) {
 	calls := 0

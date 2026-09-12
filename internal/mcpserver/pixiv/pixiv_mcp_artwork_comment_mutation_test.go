@@ -141,7 +141,7 @@ func TestArtworkCommentMutationSchemasExposeOnlyContractInputs(t *testing.T) {
 	want := map[string][]string{
 		"create_artwork_comment": {"illust_id", "comment"},
 		"reply_artwork_comment":  {"illust_id", "comment", "parent_comment_id"},
-		"stamp_artwork_comment":  {"illust_id", "comment", "stamp_id"},
+		"stamp_artwork_comment":  {"illust_id", "stamp_id"},
 		"delete_artwork_comment": {"comment_id"},
 	}
 	for name, required := range want {
@@ -167,9 +167,16 @@ func TestArtworkCommentMutationSchemasExposeOnlyContractInputs(t *testing.T) {
 			}
 		}
 		for _, field := range []string{"comment"} {
-			if property, ok := properties[field].(map[string]any); ok {
+			if property, ok := properties[field].(map[string]any); ok && name != "stamp_artwork_comment" {
 				if got, ok := property["minLength"].(float64); !ok || got != 1 {
 					t.Fatalf("%s %s schema minLength=%#v, want 1", name, field, property["minLength"])
+				}
+			}
+		}
+		if name == "stamp_artwork_comment" {
+			if property, ok := properties["comment"].(map[string]any); ok {
+				if _, ok := property["minLength"]; ok {
+					t.Fatalf("%s comment schema must allow empty text: %#v", name, property)
 				}
 			}
 		}
@@ -183,6 +190,20 @@ func TestArtworkCommentMutationSchemasExposeOnlyContractInputs(t *testing.T) {
 				t.Fatalf("%s schema must not expose parent_comment_id: %#v", name, schema)
 			}
 		}
+	}
+}
+
+func TestArtworkStampCommentAllowsOmittedComment(t *testing.T) {
+	client := &fakeSDKClient{}
+	session, closeSession := newSDKTestSession(t, client)
+	defer closeSession()
+
+	result := callTool(t, session, "stamp_artwork_comment", map[string]any{"illust_id": 9, "stamp_id": 7})
+	if result.IsError {
+		t.Fatalf("stamp artwork comment without text failed: %+v", result)
+	}
+	if client.stampArtworkCommentRequest != (pixiv.StampArtworkCommentRequest{ArtworkID: 9, StampID: 7}) {
+		t.Fatalf("stamp artwork comment request = %+v", client.stampArtworkCommentRequest)
 	}
 }
 
