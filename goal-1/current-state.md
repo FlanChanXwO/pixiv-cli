@@ -1,5 +1,7 @@
 # Goal-1 当前状态：Capabilities 1–41 baseline inventory
 
+> 执行口径修订：本文件是 Goal-1 当前 capability layer 状态与 release readiness 的权威表；Goal-3 capability 表只冻结 required scope 与历史 evidence。下文引用 Goal-3 “唯一权威来源”的旧措辞按历史语境理解，不得覆盖本文件当前 verdict。
+
 > 本文件覆盖 `G1-T01`、`G1-T02`、`G1-T03`、`G1-CHECK-01`、`G1-T04`、`G1-T05`、`G1-T06`、`G1-CHECK-02`、`G1-T07`、`G1-T08`、`G1-T09`、`G1-CHECK-03`、`G1-T10`、`G1-T11`、`G1-T12`、`G1-CHECK-04`、`G1-T13`、`G1-T14`、`G1-T15`、`G1-CHECK-05`、`G1-T16`、`G1-T17`、`G1-T18`、`G1-CHECK-06`、`G1-T19`、`G1-T20`、`G1-T21`、`G1-CHECK-07`、`G1-T22`、`G1-T23`、`G1-T24`、`G1-CHECK-08`、`G1-T25`、`G1-T26`、`G1-T27`、`G1-CHECK-09`、`G1-T28`、`G1-CORR-G1-T28-RECOMMENDED-01` 与 `G1-T29`，只记录当前分支的代码、测试、历史和 Goal-3 证据，不授予任何 capability 的发布资格。
 
 ## 1. 快照与状态口径
