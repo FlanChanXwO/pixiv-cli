@@ -1,8 +1,8 @@
 # Goal-1 Closure Report
 
-**GoalState:** `ACTIVE`
+**GoalState:** `COMPLETED`，以本报告所在最终 closure commit 成功普通 fast-forward push、且远端 SHA 与本地 HEAD 一致为正式收口条件。
 
-**Report status:** `G1_CORR_G1_FINAL_ARTWORK_COMMENTS_VERIFIED` — 2026-09-13；#25 correction 已完成，G1-FINAL 尚待受影响 gates 复跑与最终重算，GoalState 保持 `ACTIVE`。
+**Report status:** `G1_FINAL_CLOSURE_VERIFIED` — 2026-09-13；#25 correction、G1-FINAL acceptance 与全部 required gates 已通过，final closure payload 待本次提交普通 fast-forward push 后完成最终 SHA 核对。
 
 **Generated:** 2026-09-13
 
@@ -10,9 +10,9 @@
 
 **Worktree:** `/Users/flanchan/Developer/Projects/GithubProjects/.worktrees/pixiv-cli-refactor-pixiv-api-stability`（专用 linked worktree）
 
-**Current task:** `G1-CORR-G1-FINAL-ARTWORK-COMMENTS-01`（verified；代码/证据已闭合）
+**Current task:** `G1-FINAL`（verified；41/41 accepted，全部 required gates PASS）
 
-**Current next task:** `G1-FINAL` rerun：复跑受影响 gates，重算 41 项 acceptance，并在通过后执行最终 closure push。
+**Current next task:** 最终 closure push 与远端 SHA 核对；完成后无后续 required task。
 
 ## 0. Resume reason
 
@@ -194,3 +194,13 @@
 - **Live read:** 固定 `初音ミク` earliest artwork search page 的显式目标 `258`，`--page 1/2 --limit 20` 各 20 条且 ID 不重复；两页均有 numeric access-control `0`，`total` 缺失且未被伪造，日期可解析。只读，无评论正文、凭据、替代 endpoint、任意 ID 扫描或写入。
 - **Verification:** Red→Green endpoint fixture、SDK mapping/DTO、CLI read、MCP structured-output tests PASS；`sh scripts/build.sh` 与真实 CLI 两页 probe PASS。代码变化使 final offline/docs/redaction gate 需要复跑，尚未执行最终 closure push。
 - **Next:** `G1-FINAL` rerun；若所有既有 gates 与受影响 gates PASS，再写 `COMPLETED` closure 并普通 fast-forward push。当前 GoalState 仍为 `ACTIVE`。
+
+## 20. Final closure — G1-FINAL acceptance verified（2026-09-13）
+
+- **GoalState：** `COMPLETED`，以本报告所在最终 closure payload 完成普通 fast-forward push、并核对远端 `refactor/pixiv-api-stability` SHA 与本地 HEAD 一致后正式成立。
+- **Acceptance：** required capability `41/41`；effective accepted `41/41`；ordinary required tasks pending/in_progress=`0/0`；required blockers=`0`；unmapped/undecomposed=`0/0`；open P0/P1=`0`。
+- **#25 closure：** 当前 production route `/v3/illust/comments` 已覆盖 `date`、两页 continuation、页间不重复及 numeric `comment_access_control` 的 opaque 保留，CLI/MCP 暴露为 `access_control.comment_access_control`；缺失 `total_comments` 保持省略，不猜测 scalar 业务语义，不调用 fallback。
+- **Final gates：** worktree isolation、Phase A–F push、latest-main integration readiness、cursor integrity、SDK/CLI/MCP compatibility、protocol/SDK、CLI、MCP、full offline、required live、documentation、redaction、final closure audit 均 PASS。受本 correction 影响的 full offline、vet、race、build、documentation/public-api、redaction、gopls 与 `git diff --check` 均已复核通过。
+- **Safety / scope：** live read 仅使用固定 `初音ミク` earliest search page 的显式 artwork `258`；未扫描任意 ID、未调用替代 endpoint、未执行评论写入、未记录评论正文/凭据/signed URL；未新增 fallback、retry、timeout 或 public surface。
+- **Git：** 写入本最终记录前 branch/local/remote=`2759c3530902e6c4c7902ba02405e5163f3c7c77`，`origin/main=7ff1e6b4e6177c657876f69cd930d279d2d0bfce`，无分叉；本节所在 commit 必须从专用 worktree普通 fast-forward 推送，push 后以 `git ls-remote` 核对远端 SHA 等于本地 HEAD。
+- **Result：** 无后续 required task、无 blocker；最终 closure push 成功后允许客户端将 Goal 标记为完成。

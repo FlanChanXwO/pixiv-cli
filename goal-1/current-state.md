@@ -1184,3 +1184,13 @@ G1-T01 已在干净目标 worktree 执行 `go test ./...` 并通过；G1-CHECK-0
 - **Boundary：** 旧 `illust-comments-v3` rejected/no-fallback 历史行不改写；当前 production route 仍为 `/v3/illust/comments`，仅补齐已观察 wire 的兼容映射与证据，不新增 fallback、retry、timeout、扫描上限或 public operation。
 - **Verification：** artwork/novel endpoint、SDK、CLI comment、MCP comment focused tests PASS；真实 build 后 CLI 两页 probe PASS。下一步必须运行受影响的 final offline/docs/redaction gate，再执行 G1-FINAL acceptance rerun；在此之前不执行最终 closure push。
 - **Effective delta：** #25 的适用 Contract/Adapter/SDK/Shared/CLI/MCP/Offline/Live/Compatibility/Release evidence 已具备；G1-FINAL rerun 的候选计数为 required=`41`、accepted=`41`，但在 final gates 完成前 GoalState 仍保持 `ACTIVE`。
+
+## 58. G1-FINAL acceptance and final closure payload（2026-09-13）
+
+- **GoalState：** `COMPLETED`，前提是本节所在最终 closure payload 已完成普通 fast-forward push，且远端分支 SHA 与本地 HEAD 已核对一致。
+- **Acceptance：** required capability `41/41`；effective accepted `41/41`；ordinary required tasks pending/in_progress=`0/0`；required blockers=`0`；unmapped/undecomposed=`0/0`；open P0/P1=`0`。
+- **#25：** 当前 `/v3/illust/comments` contract 已由 `date` 映射、两页 continuation、页间不重复和 opaque numeric `comment_access_control` 证据闭合；normalized output 使用 `access_control.comment_access_control` 保留原值，缺失 `total_comments` 不伪造成 `0`，不推断权限语义、不调用 fallback。
+- **Final gates：** worktree isolation、Phase A–F push、latest-main integration readiness、cursor integrity、SDK/CLI/MCP compatibility、protocol/SDK、CLI、MCP、full offline、required live、documentation、redaction、final closure audit 均 PASS。受本 correction 影响的 full offline、vet、race、build、documentation/public-api、redaction、gopls 与 diff-check 均已复核通过。
+- **Safety / scope：** live comments 只读取固定 `初音ミク` earliest search page 的显式 artwork `258`；未扫描任意 ID、未调用替代 endpoint、未执行评论写入、未记录评论正文/凭据/signed URL；未新增 fallback、retry、timeout 或 public surface。
+- **Git：** 写入本记录前 branch/local/remote=`2759c3530902e6c4c7902ba02405e5163f3c7c77`，`origin/main=7ff1e6b4e6177c657876f69cd930d279d2d0bfce`，无分叉；本节所在最终 closure commit 只允许从专用 worktree普通 fast-forward 推送，push 后必须核对 `git ls-remote` SHA 等于本地 HEAD。
+- **Next：** 无后续 required task；完成最终 closure push 与远端 SHA 核对后，Goal 正式收口。

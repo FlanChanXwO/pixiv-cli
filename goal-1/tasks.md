@@ -1473,9 +1473,25 @@ COMPLETED_CANDIDATE iff
 
 - Status → `verified`。Red fixture 证明 artwork adapter 原先丢弃 numeric `comment_access_control`；Green 后 artwork/novel adapter、SDK、CLI JSON、MCP structured output 均保留 opaque numeric value，legacy bool object 保持兼容，禁止从 `0/1` 猜测权限。
 - Live：显式目标 artwork `258` 来自固定 `初音ミク` earliest search page；`--page 1/2 --limit 20` 各返回 20 条且页间不重复，两页均有 `access_control.comment_access_control=0`，`date` 正常映射，`total` 缺失保持省略。只读，无正文、凭据、替代 endpoint、任意 ID 扫描或 mutation。
-- Verification：endpoint/SDK/CLI/MCP comments focused tests、`sh scripts/build.sh` 与真实 CLI 两页 probe PASS；受影响的 final offline/docs/redaction gate 仍待复跑。
+- Verification：endpoint/SDK/CLI/MCP comments focused tests、`sh scripts/build.sh`、真实 CLI 两页 probe，以及受影响的 final offline/docs/redaction gate 均 PASS。
 - Compatibility / rollback：新增字段仅保留已观测 current wire；旧 `{can_comment,is_locked}` 与已有 CLI/MCP envelope 不变。回滚本 correction 的 adapter fields、SDK `NumericValue`、DTO marshaler、fixtures/tests、docs/changelog 即可。
-- **Next：** G1-FINAL rerun；需先完成受影响 gate，再决定最终 closure commit/push。
+- **Next：** G1-FINAL acceptance rerun 已通过；进入最终 closure commit/push。
+
+## G1-FINAL — final acceptance and closure（2026-09-13）
+
+**Status:** verified
+
+**GoalState:** `COMPLETED`，以本节所在最终 closure commit 完成普通 fast-forward push 并核对远端 SHA 后正式成立。
+
+**Acceptance:** required capability `41/41`；effective accepted `41/41`；ordinary required tasks pending/in_progress=`0/0`；required blockers=`0`；unmapped/undecomposed=`0/0`；open P0/P1=`0`。
+
+**#25 closure:** 当前 `/v3/illust/comments` 读取已覆盖 `date`、两页 continuation、页间不重复，以及 opaque numeric `comment_access_control` → `access_control.comment_access_control`；缺失 `total_comments` 保持省略，不猜测 scalar 业务语义，不调用 fallback。
+
+**Required gates:** worktree isolation、Phase A–F push、latest-main integration readiness、cursor integrity、SDK/CLI/MCP compatibility、protocol/SDK、CLI、MCP、full offline、required live、documentation、redaction、final closure audit 均 PASS。受 correction 影响的 `go test ./... -count=1`、`go vet ./...`、race、`sh scripts/build.sh`、documentation/public-api、redaction、gopls 与 `git diff --check` 均已取得 PASS 证据。
+
+**Safety:** 只读 comments evidence 来自固定 `初音ミク` earliest search page 的显式 artwork `258`；未扫描任意 ID、未调用替代 endpoint、未写入评论、未记录评论正文/凭据/signed URL；没有新增 fallback、retry、timeout 或 public surface。
+
+**Final-state push:** 本节与 `current-state.md`、`closure-report.md` 的最终 closure payload 必须从专用 worktree 以普通 fast-forward 推送到 `refactor/pixiv-api-stability`；push 后 `git ls-remote` 的远端 SHA 必须等于本地 HEAD。禁止 force push。
 
 ---
 
