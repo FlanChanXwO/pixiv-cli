@@ -2,7 +2,7 @@
 
 **GoalState:** `ACTIVE`
 
-**Report status:** `DECISION_RESOLVED_RESUMED` — 2026-09-13；此前 G1-TERM scope decision blocker 已由用户委托裁定解除。GoalState 恢复 `ACTIVE`，等待 G1-CHECK-10 重新计算 Phase F exit；尚未满足 `COMPLETED`。
+**Report status:** `PHASE_F_EXIT_VERIFIED` — 2026-09-13；此前 G1-TERM scope decision blocker 已由用户委托裁定解除，G1-CHECK-10 已完成重算并通过 Phase F push gate。GoalState 保持 `ACTIVE`，尚未满足 `COMPLETED`。
 
 **Generated:** 2026-09-13
 
@@ -10,9 +10,9 @@
 
 **Worktree:** `/Users/flanchan/Developer/Projects/GithubProjects/.worktrees/pixiv-cli-refactor-pixiv-api-stability`（专用 linked worktree）
 
-**Current task:** `G1-CHECK-10`（in_progress；scope decision 已解除，正在执行 Phase F push gate）
+**Current task:** `G1-CHECK-10`（verified；scope decision 已解除，Phase F push gate 已通过）
 
-**Current next task:** 完成 G1-CHECK-10 普通 fast-forward push 并核对远端 SHA；成功后进入 `G1-T31`。
+**Current next task:** `G1-T31`：执行最新 `origin/main` integration readiness，只读核对共享热点后进入 `G1-FINAL`。
 
 ## 0. Resume reason
 
@@ -162,3 +162,10 @@
 - **Required scope：** 保持 41/41，不做 scope reduction；变化只发生在 layer applicability。
 - **Current route：** `G1-DEC-SURFACE-APPLICABILITY-01=verified` → `G1-CHECK-10=pending`。CHECK 只重算受影响的 capability/compatibility/release verdict 与 Phase F push gate；不得重复已经 verified 的 live mutation、bookmark/comments/series round-trip 或 Phase E full gate。
 - **Completion boundary：** 当前尚未声明 Phase F exit PASS、G1-T31 PASS 或 Goal `COMPLETED`；这些结论必须由后续正常 task 产生。
+
+## 16. Current G1-CHECK-10 Phase F exit（2026-09-13）
+
+- **Verdict：** `verified`。required capability `41/41`；manifest `41/41`；`live_required=yes/no=36/5`；`mapped_to_task=41`、`unmapped=0`、`undecomposed=0`。scope/applicability 裁定已消除本轮 decision blocker；没有 remaining required external blocker。
+- **Evidence reuse：** #41 的 artwork/novel/user 推荐流已有 live evidence，现有 CLI/MCP aggregate 的统一预算、continuation 与 failure-atomicity 有既有 offline evidence；aggregate SDK 按 contract 为 `not_applicable`。已验证的 mutation、series、bookmark/comments 与 Phase E full gate 未重复运行。
+- **Phase F push checkpoint：** `2314fd4c8e848a952da7e8d9ec4aa781b6bae2a3`；从 `b04a6b87ea2fb18cafb91833cb9300eda9e7f037` ordinary fast-forward 推送成功，`git ls-remote` 核对 Remote SHA == Local HEAD。后续 ledger 只追加本验证结论。
+- **Next：** `G1-T31`。

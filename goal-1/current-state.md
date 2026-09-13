@@ -1136,3 +1136,12 @@ G1-T01 已在干净目标 worktree 执行 `go test ./...` 并通过；G1-CHECK-0
 - **#38：** acceptance 是 explicit-type / no implicit probe 的负向安全 contract；Adapter/SDK/MCP/Live probe=`not_applicable`。不得因为 closure 自动探测 ID 类型或 fallback。
 - **#39：** rating 固定为 CLI-local filter；SDK rating operation/MCP/server-side rating/rating live gate=`not_applicable`。不得发送未经确认的 upstream rating/`x_restrict`。
 - **State impact：** 41 项 required capability 集合不变；只修正 layer applicability。当前没有剩余 scope/contract decision blocker；下一步重新执行 `G1-CHECK-10`，只重算受本裁定影响的 matrix/compatibility/release verdict，不重复已通过 live mutation 或 Phase E 全量 gate。
+
+## 53. G1-CHECK-10 rerun / Phase F exit（2026-09-13）
+
+- **GoalState：** `ACTIVE`。scope/applicability decision 已按执行计划冻结，G1-CHECK-10 本轮重算通过；G1-T31 是下一项 required task，Goal 尚未完成。
+- **Counts：** required capability `41/41`；manifest `41/41`；`live_required=yes/no=36/5`；`mapped_to_task=41`、`unmapped=0`、`undecomposed=0`。#6/#12/#23/#24/#38/#39/#41 的非适用层按 contract 记 `not_applicable`；#41 的 artwork/novel/user recommendation live evidence 已存在。
+- **Blocker：** 当前没有 remaining required external/decision blocker；不新增 public surface，不猜测 `comment_access_control` scalar 语义。
+- **Evidence / budget：** 复用既有 mutation、series、bookmark/comments live evidence、Phase E full offline、cursor/SDK/CLI/MCP compatibility、docs 与 redaction evidence；没有重复已验证的 live mutation 或 Phase E full gate。
+- **Phase F push gate：** PASS。checkpoint `2314fd4c8e848a952da7e8d9ec4aa781b6bae2a3` 已从 `b04a6b87ea2fb18cafb91833cb9300eda9e7f037` 普通 fast-forward 推送；Remote SHA == Local HEAD，worktree clean。
+- **Next：** `G1-T31`，只读执行最新 `origin/main` integration readiness。

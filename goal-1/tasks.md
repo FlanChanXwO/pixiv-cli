@@ -1287,7 +1287,7 @@ go test ./sdk/pixiv ./internal/services/pixiv/endpoint/artwork/comments ./intern
 
 ## G1-CHECK-10 — resumed Phase F exit audit（2026-09-13）
 
-**Status:** in_progress
+**Status:** verified
 
 **Depends on:** G1-CORR-G1-T30-ARTWORK-COMMENT-WIRE-01、G1-RESUME-2026-09-13、G1-CORR-G1-T28-ARTWORK-SERIES-WIRE-02、G1-DEC-SURFACE-APPLICABILITY-01 均 verified
 
@@ -1305,7 +1305,12 @@ go test ./sdk/pixiv ./internal/services/pixiv/endpoint/artwork/comments ./intern
 
 **Current audit result：** scope resolution 已将 #6、#12、#23、#24、#38、#39、#41 的未冻结 additive layer 缺口按 contract 归入 `not_applicable`；#41 的 artwork/novel/user 推荐流已有 live evidence，现有 CLI/MCP aggregate 的统一预算、continuation 与 failure-atomicity 保持既有 offline evidence。当前没有剩余 required external/decision blocker；本次只更新 matrix/live verdict，不新增 public surface，不重跑已验证的 mutation、series/bookmark/comments 或 Phase E full gate。
 
-**Phase F push gate：** 正在从当前专用 worktree 提交本次 CHECK/状态账本并普通 fast-forward push；push 成功并核对 SHA 后标记本 task `verified`，下一 task 为 `G1-T31`。
+**完成记录：**
+
+- **Verdict：** `verified`。required capability `41/41`；manifest `41/41`；`live_required=yes/no=36/5`；`mapped_to_task=41`、`unmapped=0`、`undecomposed=0`。本次 scope/applicability 重算后没有 remaining required external/decision blocker；#41 live verdict 由既有 artwork/novel/user 推荐流证据支撑，aggregate SDK 按裁定为 `not_applicable`。
+- **Gate reuse：** 复用已验证的 comments/bookmark/series live evidence、Phase E full offline gate、cursor/SDK/CLI/MCP compatibility 与 docs/redaction evidence；没有重复已通过的 mutation、series、bookmark/comments live 或 Phase E full gate。
+- **Phase F push gate：** PASS。第一阶段状态账本提交 `2314fd4c8e848a952da7e8d9ec4aa781b6bae2a3` 已从 `b04a6b87ea2fb18cafb91833cb9300eda9e7f037` 普通 fast-forward 推送到 `origin/refactor/pixiv-api-stability`；`git ls-remote` 核对 Remote SHA == Local HEAD。该提交是本次 CHECK 的 push checkpoint，后续仅追加本验证结论账本。
+- **下一步：** `G1-T31`。
 
 ## G1-TERM — resumed blocked closure（2026-09-13；supersedes prior G1-TERM records）
 
