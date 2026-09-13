@@ -1449,8 +1449,8 @@ COMPLETED_CANDIDATE iff
 - Worktree gate：PASS，专用 linked worktree、branch=`refactor/pixiv-api-stability`、worktree clean。
 - Phase push gates：A–F PASS；latest-main integration readiness PASS；最终 closure push 尚未执行。
 - gate summary：cursor、SDK/CLI/MCP compatibility、protocol/SDK、CLI/MCP regression、full offline、既有 required live、docs、redaction 均复用 PASS；新 aggregate CLI probe 真实返回 `rate_limited`，不改写既有证据。
-- Final Local HEAD / Remote SHA：当前账本基线 `54e2b198fb0aa4ce290c30267b08c1c9edb030ba` / `54e2b198fb0aa4ce290c30267b08c1c9edb030ba`；本轮文档审计尚未产生新提交。
-- Final Push result：尚未执行；不得宣称最终 closure push。
+- Audit ledger Local HEAD / Remote SHA：`797bb91e76e3bfd6a357f746be8794d8d48c0afb` / `797bb91e76e3bfd6a357f746be8794d8d48c0afb`；从 `54e2b198fb0aa4ce290c30267b08c1c9edb030ba` 普通 fast-forward 推送成功。
+- Final closure push result：尚未执行；不得宣称最终 closure push。
 - GoalState：`ACTIVE`；下一步 `G1-CORR-G1-FINAL-ARTWORK-COMMENTS-01`。
 
 ## G1-CORR-G1-FINAL-ARTWORK-COMMENTS-01 — artwork comments final contract evidence

@@ -183,5 +183,6 @@
 - **Verdict：** `ACTIVE`，不是 `COMPLETED`。required=`41`、effective accepted=`40`；ordinary required task pending/in_progress=`0/0`，unmapped/undecomposed=`0/0`，open P0/P1=`0`。
 - **Remaining gap：** #25 `artwork-comments-read` 仍由 Goal-3 的 artwork comments v3 rejected/no-fallback contract 约束。显式目标 `149603743` 的只读 probe 只证明单批可解析 comments（1 条/6 条），未证明第二页，也未提供可解释的 normalized access-control；未调用替代 endpoint、未猜测 scalar 语义。
 - **Gate status：** worktree isolation、Phase A–F push、latest-main integration、cursor/SDK/CLI/MCP compatibility、protocol/SDK、CLI/MCP、full offline、既有 required live、docs、redaction 均 PASS（复用已有证据）。新 aggregate CLI probe 被真实 `rate_limited` 拒绝，未覆盖已有 live evidence，未产生写操作。
+- **Ledger push：** 当前审计 checkpoint=`797bb91e76e3bfd6a357f746be8794d8d48c0afb`，从 `54e2b198fb0aa4ce290c30267b08c1c9edb030ba` 普通 fast-forward 推送成功，Remote SHA 与 Local HEAD 一致；这不是最终 closure push。
 - **Safety / scope：** 本次只更新 Goal ledger；不新增 public surface，不修改业务代码，不 fallback、不 replay、不扫描任意 ID。账本不包含 token、cookie、refresh token、评论正文或 raw signed/auth URL。
 - **Next:** `G1-CORR-G1-FINAL-ARTWORK-COMMENTS-01`。需获得满足冻结 contract 的当前 artwork comments 证据，或取得明确 contract/scope 变更后重新运行 G1-FINAL；在此之前不执行最终 closure push。
