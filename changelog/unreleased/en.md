@@ -4,24 +4,6 @@
 
 ## Added
 
-- Added `--type artwork|novel` to `pixiv bookmark add/remove` (default `artwork`, preserving the previous
-  behavior). The novel namespace uses the public SDK novel bookmark operations on the
-  `/v2/novel/bookmark/add` and `/v1/novel/bookmark/delete` wire; `all` and other namespaces are rejected
-  before any network call, and Record consumption only accepts records matching the selected namespace.
-
-- Added additive Pixiv MCP artwork and novel comment mutations: `create_artwork_comment`,
-  `reply_artwork_comment`, `stamp_artwork_comment`, `delete_artwork_comment`,
-  `create_novel_comment`, `reply_novel_comment`, `stamp_novel_comment`, and
-  `delete_novel_comment`. Create/reply/stamp expose the upstream `comment_id`;
-  the server does not infer IDs by reading the latest comment, fall back to the
-  candidate v3 comments contract, or automatically replay an uncertain write.
-
-- Completed the MCP comments read owner: `illust_comments` and `novel_comments` now publish closed `{id, page, limit}` schemas with positive ID/page and non-negative limit constraints, preserve the `{comments, pagination}` envelope plus optional `total`/`access_control`, replay the current artwork/novel comment operations, and keep mutation-only `stamp_id` plus a standalone `stamps` tool outside the legacy read surface. ([`5a21430`](https://github.com/FlanChanXwO/pixiv-cli/commit/5a214307c66f4466746fec943f6d9e370cb0439e))
-
-- Preserved the current App API numeric `comment_access_control` field through artwork and novel comment adapters, SDK DTOs, CLI JSON, and MCP output without inferring `can_comment` or `is_locked`; legacy object-shaped access metadata remains compatible.
-
-- Completed the MCP feed/recommendation read owner: feed tools now publish closed input schemas and stable structured output envelopes, ranking validates its mode/date contract, timeline filters fill logical pages across upstream batches, typed recommendations select artwork subtypes and reject conflicting filters before SDK execution, and `recommended(kind=all)` preserves independent pagination with atomic failure semantics. ([`cedb507`](https://github.com/FlanChanXwO/pixiv-cli/commit/cedb507cf07e3099c8aedb4b44c9361434513685))
-
 - Added reverse-image search to `pixiv search SOURCE` and the Pixiv MCP `reverse_search` tool. The CLI automatically selects image mode for explicit HTTP(S) URLs and existing regular files; SauceNAO, ascii2d color/BOVW, and `all` providers return a stable JSON envelope, generic artwork/user records, and NDJSON for canonical records, with explicit partial-provider semantics. ([`69caa31`](https://github.com/FlanChanXwO/pixiv-cli/commit/69caa31), [`6599dec`](https://github.com/FlanChanXwO/pixiv-cli/commit/6599dec), [`ef0dcfe`](https://github.com/FlanChanXwO/pixiv-cli/commit/ef0dcfe), [`e67e21f`](https://github.com/FlanChanXwO/pixiv-cli/commit/e67e21f), [`959414e`](https://github.com/FlanChanXwO/pixiv-cli/commit/959414e), [`ce03802`](https://github.com/FlanChanXwO/pixiv-cli/commit/ce03802), [`298e0f3`](https://github.com/FlanChanXwO/pixiv-cli/commit/298e0f3))
 
 ## Security

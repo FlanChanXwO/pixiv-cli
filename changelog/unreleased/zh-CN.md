@@ -4,24 +4,6 @@
 
 ## 新增
 
-- 为 `pixiv bookmark add/remove` 新增 `--type artwork|novel`（默认 `artwork`，保持既有行为）。novel
-  namespace 使用 public SDK 的小说收藏 operation，走 `/v2/novel/bookmark/add` 与
-  `/v1/novel/bookmark/delete`；`all` 与其他 namespace 会在网络调用前拒绝，Record 消费只接受与所选
-  namespace 匹配的记录。
-
-- 新增 Pixiv MCP 作品与小说评论 mutation：`create_artwork_comment`、
-  `reply_artwork_comment`、`stamp_artwork_comment`、`delete_artwork_comment`、
-  `create_novel_comment`、`reply_novel_comment`、`stamp_novel_comment` 与
-  `delete_novel_comment`。create/reply/stamp 直接暴露上游返回的 `comment_id`；
-  server 不会通过读取最新评论猜测 ID，不会回退到 candidate v3 comments contract，
-  也不会自动重放结果未知的写操作。
-
-- 完成 MCP comments read owner：`illust_comments` 与 `novel_comments` 现在发布封闭的 `{id, page, limit}` schema，约束正数 ID/page 与非负 limit；保留 `{comments, pagination}` envelope 及可选 `total`/`access_control`，回放当前 artwork/novel comments operation，并将只用于 mutation 的 `stamp_id` 与独立 `stamps` tool 排除在 legacy read surface 之外。([`5a21430`](https://github.com/FlanChanXwO/pixiv-cli/commit/5a214307c66f4466746fec943f6d9e370cb0439e))
-
-- 在 artwork/novel comments adapter、SDK DTO、CLI JSON 与 MCP 输出中保留当前 App API 的 numeric `comment_access_control` 字段，不从它推断 `can_comment` 或 `is_locked`；旧 object-shaped access metadata 继续兼容。
-
-- 完成 MCP feed/recommendation read owner：feed tools 现在发布封闭 input schema 与稳定 structured output envelope；ranking 校验 mode/date 契约；timeline filter 会跨上游 batch 填满逻辑页；typed recommendation 会选择 artwork subtype，并在 SDK 执行前拒绝冲突 filter；`recommended(kind=all)` 保持独立 pagination 与原子失败语义。([`cedb507`](https://github.com/FlanChanXwO/pixiv-cli/commit/cedb507cf07e3099c8aedb4b44c9361434513685))
-
 - 为 `pixiv search SOURCE` 与 Pixiv MCP `reverse_search` tool 新增反向搜图。CLI 会自动把显式 HTTP(S) URL 和现有常规文件识别为图片模式；SauceNAO、ascii2d color/BOVW 与 `all` provider 返回稳定 JSON envelope、通用 artwork/user record 以及 canonical record 的 NDJSON，并明确报告 provider partial 结果。([`69caa31`](https://github.com/FlanChanXwO/pixiv-cli/commit/69caa31)、[`6599dec`](https://github.com/FlanChanXwO/pixiv-cli/commit/6599dec)、[`ef0dcfe`](https://github.com/FlanChanXwO/pixiv-cli/commit/ef0dcfe)、[`e67e21f`](https://github.com/FlanChanXwO/pixiv-cli/commit/e67e21f)、[`959414e`](https://github.com/FlanChanXwO/pixiv-cli/commit/959414e)、[`ce03802`](https://github.com/FlanChanXwO/pixiv-cli/commit/ce03802)、[`298e0f3`](https://github.com/FlanChanXwO/pixiv-cli/commit/298e0f3))
 
 ## 安全
