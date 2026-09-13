@@ -30,7 +30,7 @@
 - 当前没有 capability 可以仅凭 Goal-3 历史 task 的 `verified` 标记直接转为 accepted。
 - 当前未发现新的业务/API/evidence drift；Goal-1 分支相对继承基线的 drift 仅来自已记录的执行资料、G1-T01–G1-T30、对应 corrections/recovery 与本次 G1-CHECK-10 审计，不改变 41 项 required scope。
 
-### 2.2 Layer matrix
+### 2.2 Layer matrix（历史基线；G1-FINAL effective verdict 见 §56）
 
 | # | Capability | Contract | Adapter | SDK | Shared | CLI | MCP | Offline | Live | Compatibility | Release |
 |---:|---|---|---|---|---|---|---|---|---|---|---|
@@ -76,7 +76,7 @@
 | 40 | `logical-pagination` | implemented_unverified | implemented_unverified | implemented_unverified | verified | implemented_unverified | implemented_unverified | verified | implemented_unverified | implemented_unverified | rejected |
 | 41 | `recommended-all` | implemented_unverified | implemented_unverified | not_applicable | implemented_unverified | verified | implemented_unverified | verified | verified | implemented_unverified | rejected |
 
-`Release=rejected` / `Release=missing` 均表示当前不能发布，不表示 required scope 可以删除。当前 41 项必须继续沿 Goal-1 Phase A–F 完成各自 gate；G1-T04 已补齐 25–41；矩阵仍只记录事实 verdict，不授予发布资格。
+以上是 G1-T04/Phase E 的历史基线，保留用于审计差异；当前 acceptance 以 §56 的 G1-FINAL effective verdict 为准。历史 `Release=rejected` / `Release=missing` 不表示 required scope 可以删除。
 
 ## 3. Capability inventory
 
@@ -1163,3 +1163,13 @@ G1-T01 已在干净目标 worktree 执行 `go test ./...` 并通过；G1-CHECK-0
 - **Focused evidence：** 九个 artwork endpoint 包测试、SDK `ArtworkPages` public seam resource-ref regression、gopls diagnostics、gofmt、diff-check、documentation tests PASS；correction commit hook `go test ./...` PASS。不重复 Phase E full gate 或 live manifest。
 - **Integration readiness：** `PASS`；不需要 merge/rebase/cherry-pick，不扩大 live scope。
 - **Next：** G1-FINAL。
+
+## 56. G1-FINAL strict acceptance audit（2026-09-13）
+
+- **GoalState：** `ACTIVE`。G1-CHECK-10 与 G1-T31 已 verified，但最终重算未满足 `accepted_count == 41`，因此不标记 `COMPLETED`。
+- **Strict counts：** required=`41`；effective matrix rows=`41`；accepted=`40`；ordinary required task pending/in_progress=`0/0`；unmapped=`0`；undecomposed=`0`；open P0/P1=`0`；remaining required blocker=`#25 artwork-comments-read`。
+- **Effective verdict delta：** 除 #25 外，#1–#5、#7–#21、#23–#24、#26–#37、#41 的适用 layer 均为 `verified`；#6 的 CLI/MCP、#12 的 MCP、#22 的 server subtype Adapter/SDK/Live、#23/#24/#41 的 aggregate SDK、#38 的 production probe layers、#39 的 rating SDK/MCP/server-side/live、#40 的 standalone Adapter/SDK/Live 均按既有 contract 为 `not_applicable`。#38/#39 的安全/本地语义仍由 verified negative/local contract 支撑。
+- **#25 evidence：** 只读 CLI probe 使用显式 artwork `149603743`，`--limit 1` 得到 1 条合法 comment，`--limit 21` 得到 6 条；两次均未形成可证明的第二页，normalized output 未提供 `access_control`。该证据证明当前 parser 可读部分当前 wire，但不足以推翻 Goal-3 对 artwork comments v3 的 rejected/no-fallback contract；没有调用替代 endpoint，也没有猜测 `comment_access_control` scalar 语义。
+- **Gate reuse：** worktree isolation PASS；Phase A–F push checkpoints PASS；latest-main integration PASS；cursor/SDK/CLI/MCP compatibility、protocol/SDK、CLI/MCP、full offline、既有 required live、docs、redaction 均复用当前 HEAD 证据。一次 aggregate CLI read-only probe 遇到真实 `rate_limited`，不覆盖此前已核验的 live evidence，也未产生写操作。
+- **Safety：** 未新增业务代码、public surface、fallback、retry、timeout 或 live write；日志与账本未写入 token、cookie、refresh token、评论正文或 raw signed/auth URL。
+- **Next：** `G1-CORR-G1-FINAL-ARTWORK-COMMENTS-01`；需要可证明的当前 artwork comments contract（合法 `date`、numeric access-control 的可解释映射与 continuation evidence）或明确的 contract/scope 变更，才能把 #25 从 rejected gap 重新评估。当前不执行最终 closure push。

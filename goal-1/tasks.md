@@ -1443,16 +1443,31 @@ COMPLETED_CANDIDATE iff
 如果发现 blocker：不得 COMPLETED；按 G1-TERM 规则生成 blocked closure。
 
 **完成记录：**
-- required/accepted：
-- pending/in-progress：
-- blockers：
-- Worktree gate：
-- Phase push gates：
-- gate summary：
-- Final Local HEAD：
-- Final Remote SHA：
-- Final Push result：
-- GoalState：
+- required/accepted：`41/40`；当前 effective matrix 仅 #25 未满足全 layer acceptance。
+- pending/in-progress：ordinary required tasks `0/0`；G1-FINAL 本次审计未通过，保持 `ACTIVE`。
+- blockers：#25 artwork-comments-read 的冻结 rejected/no-fallback contract 仍未有足够的当前 artwork comments evidence；不能靠一次合法首批 read 或 mutation read-back 伪造 second-page/access-control contract。
+- Worktree gate：PASS，专用 linked worktree、branch=`refactor/pixiv-api-stability`、worktree clean。
+- Phase push gates：A–F PASS；latest-main integration readiness PASS；最终 closure push 尚未执行。
+- gate summary：cursor、SDK/CLI/MCP compatibility、protocol/SDK、CLI/MCP regression、full offline、既有 required live、docs、redaction 均复用 PASS；新 aggregate CLI probe 真实返回 `rate_limited`，不改写既有证据。
+- Final Local HEAD / Remote SHA：当前账本基线 `54e2b198fb0aa4ce290c30267b08c1c9edb030ba` / `54e2b198fb0aa4ce290c30267b08c1c9edb030ba`；本轮文档审计尚未产生新提交。
+- Final Push result：尚未执行；不得宣称最终 closure push。
+- GoalState：`ACTIVE`；下一步 `G1-CORR-G1-FINAL-ARTWORK-COMMENTS-01`。
+
+## G1-CORR-G1-FINAL-ARTWORK-COMMENTS-01 — artwork comments final contract evidence
+
+**Status:** in_progress
+
+**Source:** G1-FINAL strict matrix recalculation。
+
+**Capability:** #25 `artwork-comments-read`。
+
+**Observed gap:** 当前 branch 可解析部分当前 App API artwork comments wire，但显式目标只返回单批 6 条；normalized output 未暴露可核验的 access-control，且没有第二页 continuation evidence。Goal-3 冻结的 v3 rejected/no-fallback contract 仍不能提升为 accepted。
+
+**Allowed route:** 只允许使用显式、授权、可追溯 artwork target 做 read-only evidence；不得扫描任意 ID、调用未批准替代 endpoint、猜测 numeric access-control 语义、或把 mutation read-back 当作 comments-read contract。
+
+**Exit condition:** 获得满足当前冻结 contract 的可重复 read evidence并更新 #25 matrix，或记录明确的 contract/scope 变更后重新运行 G1-FINAL。未满足前保持 GoalState `ACTIVE`，不执行最终 closure push。
+
+**Safety:** 最近 probe 未写入 Pixiv；输出仅保留计数/布尔/错误 reason，未保留评论正文、凭据或 signed URL。
 
 ---
 

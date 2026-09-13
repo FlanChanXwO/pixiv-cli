@@ -2,7 +2,7 @@
 
 **GoalState:** `ACTIVE`
 
-**Report status:** `PHASE_F_EXIT_VERIFIED` — 2026-09-13；此前 G1-TERM scope decision blocker 已由用户委托裁定解除，G1-CHECK-10 已完成重算并通过 Phase F push gate。GoalState 保持 `ACTIVE`，尚未满足 `COMPLETED`。
+**Report status:** `G1_FINAL_ACTIVE` — 2026-09-13；G1-CHECK-10、G1-T31 与 Phase A–F push gates 已通过，但 G1-FINAL 严格重算为 `40/41 accepted`，GoalState 保持 `ACTIVE`。
 
 **Generated:** 2026-09-13
 
@@ -10,9 +10,9 @@
 
 **Worktree:** `/Users/flanchan/Developer/Projects/GithubProjects/.worktrees/pixiv-cli-refactor-pixiv-api-stability`（专用 linked worktree）
 
-**Current task:** `G1-T31`（verified；latest-main integration readiness PASS）
+**Current task:** `G1-FINAL`（strict audit 未通过；#25 contract evidence gap）
 
-**Current next task:** `G1-FINAL`：重新计算全部 41 项 acceptance 与 required gates。
+**Current next task:** `G1-CORR-G1-FINAL-ARTWORK-COMMENTS-01`：补齐或重新裁定 #25 artwork-comments-read contract evidence。
 
 ## 0. Resume reason
 
@@ -177,3 +177,11 @@
 - **Correction progress：** detail fixture 先 Red（缺失 `page_index` 时得到 `0,0`），随后覆盖 bookmark/detail/ranking/recommended/related/search/series/timeline/trending 九个 artwork endpoint，并新增 SDK `ArtworkPages` public seam 的 resource-ref collision regression；focused tests Green。修正提交 `9f323e6384b9d2ac6958052234c3cb9a5b905dae` 已普通 fast-forward 推送，Remote SHA == Local HEAD。
 - **Boundary：** main 的 record/detail pipeline、structured download result、direct resource URL、release/CI/doc updates均为 additive overlap；旧 detail route、SDK/wire/cursor、MCP exact-set/error contract 未发现删除、重命名或语义弱化。它们不要求本分支形式同步 main；page-index correction 是本轮唯一实际 invalidation。
 - **Next：** `G1-FINAL`，执行最终 41 项 acceptance/gate 重算。
+
+## 18. Current G1-FINAL strict audit（2026-09-13）
+
+- **Verdict：** `ACTIVE`，不是 `COMPLETED`。required=`41`、effective accepted=`40`；ordinary required task pending/in_progress=`0/0`，unmapped/undecomposed=`0/0`，open P0/P1=`0`。
+- **Remaining gap：** #25 `artwork-comments-read` 仍由 Goal-3 的 artwork comments v3 rejected/no-fallback contract 约束。显式目标 `149603743` 的只读 probe 只证明单批可解析 comments（1 条/6 条），未证明第二页，也未提供可解释的 normalized access-control；未调用替代 endpoint、未猜测 scalar 语义。
+- **Gate status：** worktree isolation、Phase A–F push、latest-main integration、cursor/SDK/CLI/MCP compatibility、protocol/SDK、CLI/MCP、full offline、既有 required live、docs、redaction 均 PASS（复用已有证据）。新 aggregate CLI probe 被真实 `rate_limited` 拒绝，未覆盖已有 live evidence，未产生写操作。
+- **Safety / scope：** 本次只更新 Goal ledger；不新增 public surface，不修改业务代码，不 fallback、不 replay、不扫描任意 ID。账本不包含 token、cookie、refresh token、评论正文或 raw signed/auth URL。
+- **Next:** `G1-CORR-G1-FINAL-ARTWORK-COMMENTS-01`。需获得满足冻结 contract 的当前 artwork comments 证据，或取得明确 contract/scope 变更后重新运行 G1-FINAL；在此之前不执行最终 closure push。
