@@ -1287,7 +1287,7 @@ go test ./sdk/pixiv ./internal/services/pixiv/endpoint/artwork/comments ./intern
 
 ## G1-CHECK-10 — resumed Phase F exit audit（2026-09-13）
 
-**Status:** pending
+**Status:** in_progress
 
 **Depends on:** G1-CORR-G1-T30-ARTWORK-COMMENT-WIRE-01、G1-RESUME-2026-09-13、G1-CORR-G1-T28-ARTWORK-SERIES-WIRE-02、G1-DEC-SURFACE-APPLICABILITY-01 均 verified
 
@@ -1303,7 +1303,9 @@ go test ./sdk/pixiv ./internal/services/pixiv/endpoint/artwork/comments ./intern
 
 **Decision / scope resolution：** #6、#12、#23、#24、#41、#38、#39 已由 `G1-DEC-SURFACE-APPLICABILITY-01` 作最终 layer-applicability 裁定，不再是 blocker。重新执行本 CHECK 时应按 `not_applicable` 理由重算 capability acceptance；不得因此新增 CLI/MCP/SDK surface。`comment_access_control` scalar 业务语义仍不猜测，但 comments live write/read-back/cleanup 已有独立真实 evidence，不构成当前 scope blocker。
 
-**Next：** 重新执行本 CHECK；若 Phase F 无其他 required blocker，则完成 Phase F push gate 后进入 G1-T31。
+**Current audit result：** scope resolution 已将 #6、#12、#23、#24、#38、#39、#41 的未冻结 additive layer 缺口按 contract 归入 `not_applicable`；#41 的 artwork/novel/user 推荐流已有 live evidence，现有 CLI/MCP aggregate 的统一预算、continuation 与 failure-atomicity 保持既有 offline evidence。当前没有剩余 required external/decision blocker；本次只更新 matrix/live verdict，不新增 public surface，不重跑已验证的 mutation、series/bookmark/comments 或 Phase E full gate。
+
+**Phase F push gate：** 正在从当前专用 worktree 提交本次 CHECK/状态账本并普通 fast-forward push；push 成功并核对 SHA 后标记本 task `verified`，下一 task 为 `G1-T31`。
 
 ## G1-TERM — resumed blocked closure（2026-09-13；supersedes prior G1-TERM records）
 

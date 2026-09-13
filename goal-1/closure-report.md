@@ -10,9 +10,9 @@
 
 **Worktree:** `/Users/flanchan/Developer/Projects/GithubProjects/.worktrees/pixiv-cli-refactor-pixiv-api-stability`（专用 linked worktree）
 
-**Current task:** `G1-DEC-SURFACE-APPLICABILITY-01`（verified；历史 blocked closure 已 superseded）
+**Current task:** `G1-CHECK-10`（in_progress；scope decision 已解除，正在执行 Phase F push gate）
 
-**Current next task:** `G1-CHECK-10` rerun；按已冻结的 layer applicability 重算 Phase F exit，若无其他 blocker 则进入 G1-T31。
+**Current next task:** 完成 G1-CHECK-10 普通 fast-forward push 并核对远端 SHA；成功后进入 `G1-T31`。
 
 ## 0. Resume reason
 

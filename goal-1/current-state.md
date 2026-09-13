@@ -74,7 +74,7 @@
 | 38 | `bare-id-probe` | verified | not_applicable | not_applicable | verified | verified | not_applicable | verified | not_applicable | verified | not_applicable |
 | 39 | `rating-filter` | verified | verified | not_applicable | verified | verified | not_applicable | verified | not_applicable | implemented_unverified | rejected |
 | 40 | `logical-pagination` | implemented_unverified | implemented_unverified | implemented_unverified | verified | implemented_unverified | implemented_unverified | verified | implemented_unverified | implemented_unverified | rejected |
-| 41 | `recommended-all` | implemented_unverified | implemented_unverified | not_applicable | implemented_unverified | verified | implemented_unverified | verified | implemented_unverified | implemented_unverified | rejected |
+| 41 | `recommended-all` | implemented_unverified | implemented_unverified | not_applicable | implemented_unverified | verified | implemented_unverified | verified | verified | implemented_unverified | rejected |
 
 `Release=rejected` / `Release=missing` 均表示当前不能发布，不表示 required scope 可以删除。当前 41 项必须继续沿 Goal-1 Phase A–F 完成各自 gate；G1-T04 已补齐 25–41；矩阵仍只记录事实 verdict，不授予发布资格。
 
