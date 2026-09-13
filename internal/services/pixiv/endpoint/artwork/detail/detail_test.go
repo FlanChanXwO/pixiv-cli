@@ -26,7 +26,7 @@ func decodeJSON(body string, out any) error {
 }
 
 func TestArtworkMapsRouteAndPages(t *testing.T) {
-	transport := &fakeTransport{body: `{"illust":{"id":123,"title":"two pages","type":"manga","page_count":2,"user":{"id":7,"name":"artist"},"tags":[{"name":"cat","translated_name":"猫"}],"image_urls":{"large":"https://i.example/cover.jpg"},"meta_pages":[{"page_index":0,"width":1000,"height":1200,"extension":"jpg","image_urls":{"original":"https://i.example/0.jpg"}},{"page_index":1,"width":1000,"height":1200,"extension":"jpg","image_urls":{"original":"https://i.example/1.jpg"}}],"illust_ai_type":2,"create_date":"2024-01-02T03:04:05+00:00"}}`}
+	transport := &fakeTransport{body: `{"illust":{"id":123,"title":"two pages","type":"manga","page_count":2,"user":{"id":7,"name":"artist"},"tags":[{"name":"cat","translated_name":"猫"}],"image_urls":{"large":"https://i.example/cover.jpg"},"meta_pages":[{"width":1000,"height":1200,"extension":"jpg","image_urls":{"original":"https://i.example/0.jpg"}},{"width":1000,"height":1200,"extension":"jpg","image_urls":{"original":"https://i.example/1.jpg"}}],"illust_ai_type":2,"create_date":"2024-01-02T03:04:05+00:00"}}`}
 	client := detail.New(transport)
 
 	result, err := client.Artwork(context.Background(), 123)
@@ -38,6 +38,9 @@ func TestArtworkMapsRouteAndPages(t *testing.T) {
 	}
 	if result.Artwork.ID != 123 || result.Artwork.User.ID != 7 || len(result.Artwork.MetaPages) != 2 || result.Artwork.AIType != 2 {
 		t.Fatalf("artwork = %#v", result.Artwork)
+	}
+	if result.Artwork.MetaPages[0].PageIndex != 0 || result.Artwork.MetaPages[1].PageIndex != 1 {
+		t.Fatalf("page indexes = %d, %d; want 0, 1", result.Artwork.MetaPages[0].PageIndex, result.Artwork.MetaPages[1].PageIndex)
 	}
 }
 

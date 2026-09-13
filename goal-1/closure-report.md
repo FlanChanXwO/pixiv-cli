@@ -10,9 +10,9 @@
 
 **Worktree:** `/Users/flanchan/Developer/Projects/GithubProjects/.worktrees/pixiv-cli-refactor-pixiv-api-stability`（专用 linked worktree）
 
-**Current task:** `G1-CHECK-10`（verified；scope decision 已解除，Phase F push gate 已通过）
+**Current task:** `G1-T31`（in_progress；latest-main overlap 已发现 artwork page index correction）
 
-**Current next task:** `G1-T31`：执行最新 `origin/main` integration readiness，只读核对共享热点后进入 `G1-FINAL`。
+**Current next task:** 完成 `G1-CORR-G1-T31-MULTIPAGE-RESOURCE-REF-01` 与 shared-hotspot audit；通过后进入 `G1-FINAL`。
 
 ## 0. Resume reason
 
@@ -169,3 +169,11 @@
 - **Evidence reuse：** #41 的 artwork/novel/user 推荐流已有 live evidence，现有 CLI/MCP aggregate 的统一预算、continuation 与 failure-atomicity 有既有 offline evidence；aggregate SDK 按 contract 为 `not_applicable`。已验证的 mutation、series、bookmark/comments 与 Phase E full gate 未重复运行。
 - **Phase F push checkpoint：** `2314fd4c8e848a952da7e8d9ec4aa781b6bae2a3`；从 `b04a6b87ea2fb18cafb91833cb9300eda9e7f037` ordinary fast-forward 推送成功，`git ls-remote` 核对 Remote SHA == Local HEAD。后续 ledger 只追加本验证结论。
 - **Next：** `G1-T31`。
+
+## 17. Current G1-T31 latest-main audit / correction（2026-09-13）
+
+- **Audit inputs：** fetch 后 Branch/Remote=`43b90c40dcb8b4b9edb1d81d0bf2064dac0b6691`、`origin/main=7ff1e6b4e6177c657876f69cd930d279d2d0bfce`、merge-base=`3149360a344c9e3a09b4d5cda711a44dc8a803ce`；branch ahead `206`，main ahead `65`，无远端分叉，未 merge/rebase/reset。
+- **Invalidation：** main `5d25741` 在 artwork endpoints 统一按 `meta_pages` 顺序生成 zero-based `PageIndex`；目标分支旧映射读取不稳定 `page_index`，会造成多页 `ResourceRef` 碰撞。已登记 correction `G1-CORR-G1-T31-MULTIPAGE-RESOURCE-REF-01`。
+- **Correction progress：** detail fixture 先 Red（缺失 `page_index` 时得到 `0,0`），随后覆盖 bookmark/detail/ranking/recommended/related/search/series/timeline/trending 九个 artwork endpoint，并新增 SDK `ArtworkPages` public seam 的 resource-ref collision regression；focused tests Green。
+- **Boundary：** main 的 record/detail pipeline、structured download result、direct resource URL、release/CI/doc updates均为 additive overlap；旧 detail route、SDK/wire/cursor、MCP exact-set/error contract 未发现删除、重命名或语义弱化。它们不要求本分支形式同步 main；page-index correction 是本轮唯一实际 invalidation。
+- **Next：** 完成 correction 账本与 targeted integration gate，随后标记 G1-T31 verified 并进入 `G1-FINAL`。

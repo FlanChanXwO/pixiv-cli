@@ -1145,3 +1145,12 @@ G1-T01 已在干净目标 worktree 执行 `go test ./...` 并通过；G1-CHECK-0
 - **Evidence / budget：** 复用既有 mutation、series、bookmark/comments live evidence、Phase E full offline、cursor/SDK/CLI/MCP compatibility、docs 与 redaction evidence；没有重复已验证的 live mutation 或 Phase E full gate。
 - **Phase F push gate：** PASS。checkpoint `2314fd4c8e848a952da7e8d9ec4aa781b6bae2a3` 已从 `b04a6b87ea2fb18cafb91833cb9300eda9e7f037` 普通 fast-forward 推送；Remote SHA == Local HEAD，worktree clean。
 - **Next：** `G1-T31`，只读执行最新 `origin/main` integration readiness。
+
+## 54. G1-T31 latest-main overlap / artwork page index correction（2026-09-13）
+
+- **GoalState：** `ACTIVE`。最新 main integration audit 发现一个可内部修复的 shared correctness gap，故 G1-T31 暂未 terminal；没有 decision blocker 或未知远端并发。
+- **Git topology：** branch/remote=`43b90c40dcb8b4b9edb1d81d0bf2064dac0b6691`，`origin/main=7ff1e6b4e6177c657876f69cd930d279d2d0bfce`，merge-base=`3149360a344c9e3a09b4d5cda711a44dc8a803ce`；branch ahead `206`、main ahead `65`，fetch 后无分叉，未 merge/rebase/reset。
+- **Correction：** main `5d25741` 已将 artwork endpoints 的多页 `PageIndex` 改为按 `meta_pages` 数组顺序生成；目标分支旧 wire 映射在缺失/重复 `page_index` 时会生成碰撞的 SDK `ResourceRef`。已对 bookmark/detail/ranking/recommended/related/search/series/timeline/trending 九个 endpoint 采用同一稳定映射。
+- **TDD / verification：** detail fixture 先以缺失 `page_index` 实跑 Red（`0,0`），修正后 detail focused、SDK `ArtworkPages` resource-ref collision regression 与九个 endpoint 包测试均 PASS。没有改变 route、cursor、public symbol、MCP exact-set/error contract、下载命名或 live scope。
+- **Main overlap boundary：** record/detail pipeline、structured download result、direct resource URL、release/CI/docs 等 main 新提交均为 additive；未发现删除、重命名或语义弱化，因此不自动整合 main。当前唯一 actual invalidation 是上述 page-index/resource-ref correctness gap。
+- **Next：** 完成 correction 账本与 targeted integration gate，进入 G1-FINAL 前再次核对工作树与远端 SHA。

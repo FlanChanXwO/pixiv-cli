@@ -1334,7 +1334,7 @@ go test ./sdk/pixiv ./internal/services/pixiv/endpoint/artwork/comments ./intern
 
 ## G1-T31 — Pre-final latest-main integration readiness
 
-**Status:** pending
+**Status:** in_progress
 
 **Depends on:** G1-CHECK-10 verified
 
@@ -1362,6 +1362,20 @@ go test ./sdk/pixiv ./internal/services/pixiv/endpoint/artwork/comments ./intern
 - Integration readiness：
 - Blocker / correction：
 - 下一步：G1-FINAL 或 G1-TERM
+
+## G1-CORR-G1-T31-MULTIPAGE-RESOURCE-REF-01 — artwork page index wire correction
+
+**Status:** in_progress
+
+**Source task/gate：** G1-T31 latest-main integration readiness。
+
+**Observed invalidation：** latest `origin/main` 的 `5d25741` 修复了所有 artwork endpoint 的多页 `PageIndex` 生成：上游 `meta_pages[].page_index` 在当前 App API 响应中可能缺失或重复，继续读取该字段会让 SDK 为不同页面生成相同的 opaque `ResourceRef`。当前分支仍保留旧映射，故 shared endpoint/resource gate 被实际 invalidated。
+
+**Scope：** 对 main 修复覆盖的 artwork endpoints（bookmark/detail/ranking/recommended/related/search/series/timeline/trending）删除对不稳定 wire `page_index` 的依赖，按 `meta_pages` 数组顺序生成 zero-based `PageIndex`；不改变 route、cursor、public symbol、下载命名或其他协议语义。补充 endpoint 与 SDK public seam 回归，确认不同页面的 resource refs 不碰撞。
+
+**TDD：** 先将 detail fixture 的 `page_index` 字段移除并增加 `0,1` 断言；修正前 focused test 实际 Red（得到 `0,0`），再实现 endpoint mappings。detail focused test、SDK `ArtworkPages` resource-ref regression 与九个受影响 artwork endpoint 包测试均 Green。
+
+**Next：** 完成 G1-T31 shared-hotspot audit，核对 main 其他 additive record/download/release drift 未削弱本 Goal contract；然后标记本 correction 与 G1-T31 terminal `verified`，进入 G1-FINAL。
 
 ---
 
