@@ -1334,7 +1334,7 @@ go test ./sdk/pixiv ./internal/services/pixiv/endpoint/artwork/comments ./intern
 
 ## G1-T31 — Pre-final latest-main integration readiness
 
-**Status:** in_progress
+**Status:** verified
 
 **Depends on:** G1-CHECK-10 verified
 
@@ -1353,19 +1353,19 @@ go test ./sdk/pixiv ./internal/services/pixiv/endpoint/artwork/comments ./intern
 - 只运行被 overlap 实际影响的 focused verification；不得无条件重跑 Phase E full suite 或全部 live manifest。
 
 **完成记录：**
-- Main SHA：
-- Branch SHA：
-- Merge base / ahead / behind：
-- Shared modified hotspots：
-- Invalidated gates：
-- Focused verification：
-- Integration readiness：
-- Blocker / correction：
-- 下一步：G1-FINAL 或 G1-TERM
+- Main SHA：`7ff1e6b4e6177c657876f69cd930d279d2d0bfce`
+- Branch SHA：`9f323e6384b9d2ac6958052234c3cb9a5b905dae`；Remote SHA 相同。
+- Merge base / ahead / behind：`3149360a344c9e3a09b4d5cda711a44dc8a803ce`；branch ahead `207`、main ahead `65`；无远端分叉。
+- Shared modified hotspots：README/changelog/docs/skills、CLI detail、MCP runtime/tests、artwork endpoint adapters、SDK resource/tests。逐项复核后，main 的 record/detail pipeline、structured download result、direct resource URL、release/CI/docs 均为 additive；旧 route、SDK/wire/cursor、MCP exact-set/schema/error contract 未发现删除、重命名或语义弱化。
+- Invalidated gates：仅发现 `5d25741` 的 artwork multi-page `PageIndex` correctness gap；已由 `G1-CORR-G1-T31-MULTIPAGE-RESOURCE-REF-01` 修复，不再 invalidated。
+- Focused verification：detail fixture Red→Green；九个受影响 artwork endpoint 包测试 PASS；SDK `ArtworkPages` public seam resource-ref collision regression PASS；`gopls check`、`gofmt`、`git diff --check`、documentation tests PASS；correction commit hook `go test ./...` PASS。
+- Integration readiness：`PASS`。不需要 merge/rebase/cherry-pick，不扩大 live scope，不重复 Phase E full gate 或已验证 live manifest。
+- Blocker / correction：无 blocker；correction `G1-CORR-G1-T31-MULTIPAGE-RESOURCE-REF-01` verified。
+- 下一步：`G1-FINAL`。
 
 ## G1-CORR-G1-T31-MULTIPAGE-RESOURCE-REF-01 — artwork page index wire correction
 
-**Status:** in_progress
+**Status:** verified
 
 **Source task/gate：** G1-T31 latest-main integration readiness。
 
@@ -1375,7 +1375,9 @@ go test ./sdk/pixiv ./internal/services/pixiv/endpoint/artwork/comments ./intern
 
 **TDD：** 先将 detail fixture 的 `page_index` 字段移除并增加 `0,1` 断言；修正前 focused test 实际 Red（得到 `0,0`），再实现 endpoint mappings。detail focused test、SDK `ArtworkPages` resource-ref regression 与九个受影响 artwork endpoint 包测试均 Green。
 
-**Next：** 完成 G1-T31 shared-hotspot audit，核对 main 其他 additive record/download/release drift 未削弱本 Goal contract；然后标记本 correction 与 G1-T31 terminal `verified`，进入 G1-FINAL。
+**完成记录：** detail fixture 先 Red（缺失 `page_index` 时得到 `0,0`），修正后 endpoint mappings、SDK public seam 与九个受影响 artwork endpoint 包测试 Green；`gopls check`、`gofmt`、`git diff --check` 与 documentation tests PASS，commit hook `go test ./...` PASS。修正提交 `9f323e6384b9d2ac6958052234c3cb9a5b905dae` 已普通 fast-forward 推送，Remote SHA == Local HEAD；未改变 route、cursor、public symbol、下载命名或 live scope。
+
+**Next：** `G1-FINAL`。
 
 ---
 

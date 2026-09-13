@@ -1154,3 +1154,12 @@ G1-T01 已在干净目标 worktree 执行 `go test ./...` 并通过；G1-CHECK-0
 - **TDD / verification：** detail fixture 先以缺失 `page_index` 实跑 Red（`0,0`），修正后 detail focused、SDK `ArtworkPages` resource-ref collision regression 与九个 endpoint 包测试均 PASS。没有改变 route、cursor、public symbol、MCP exact-set/error contract、下载命名或 live scope。
 - **Main overlap boundary：** record/detail pipeline、structured download result、direct resource URL、release/CI/docs 等 main 新提交均为 additive；未发现删除、重命名或语义弱化，因此不自动整合 main。当前唯一 actual invalidation 是上述 page-index/resource-ref correctness gap。
 - **Next：** 完成 correction 账本与 targeted integration gate，进入 G1-FINAL 前再次核对工作树与远端 SHA。
+
+## 55. G1-T31 integration readiness verified（2026-09-13）
+
+- **GoalState：** `ACTIVE`。G1-T31 与 `G1-CORR-G1-T31-MULTIPAGE-RESOURCE-REF-01` 均 `verified`；下一项为 G1-FINAL，尚未满足 Goal 完成条件。
+- **Git：** branch/remote=`9f323e6384b9d2ac6958052234c3cb9a5b905dae`，`origin/main=7ff1e6b4e6177c657876f69cd930d279d2d0bfce`，merge-base=`3149360a344c9e3a09b4d5cda711a44dc8a803ce`；branch ahead `207`、main ahead `65`；无分叉，worktree clean。
+- **Shared-hotspot verdict：** main 的 record/detail pipeline、structured download result、direct resource URL、release/CI/docs 均为 additive overlap；旧 route、SDK/wire/cursor、MCP exact-set/schema/error contract 未发现删除、重命名或语义弱化。page-index/resource-ref correction 已消除唯一实际 invalidation。
+- **Focused evidence：** 九个 artwork endpoint 包测试、SDK `ArtworkPages` public seam resource-ref regression、gopls diagnostics、gofmt、diff-check、documentation tests PASS；correction commit hook `go test ./...` PASS。不重复 Phase E full gate 或 live manifest。
+- **Integration readiness：** `PASS`；不需要 merge/rebase/cherry-pick，不扩大 live scope。
+- **Next：** G1-FINAL。
