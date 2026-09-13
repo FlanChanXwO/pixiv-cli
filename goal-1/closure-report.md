@@ -2,7 +2,7 @@
 
 **GoalState:** `ACTIVE`
 
-**Report status:** `CURRENT_BLOCKED_CLOSURE` — 2026-09-13；本轮 live evidence 与 artwork-series wire correction 已完成，G1-CHECK-10 已重新审计并由 G1-TERM 记录 scope 决策阻塞。Goal 仍不满足 `COMPLETED`。
+**Report status:** `DECISION_RESOLVED_RESUMED` — 2026-09-13；此前 G1-TERM scope decision blocker 已由用户委托裁定解除。GoalState 恢复 `ACTIVE`，等待 G1-CHECK-10 重新计算 Phase F exit；尚未满足 `COMPLETED`。
 
 **Generated:** 2026-09-13
 
@@ -10,11 +10,14 @@
 
 **Worktree:** `/Users/flanchan/Developer/Projects/GithubProjects/.worktrees/pixiv-cli-refactor-pixiv-api-stability`（专用 linked worktree）
 
-**Current task:** `G1-TERM`（blocked_decision；GoalState=`BLOCKED_DECISION`）
+**Current task:** `G1-DEC-SURFACE-APPLICABILITY-01`（verified；历史 blocked closure 已 superseded）
 
-**Current next task:** 等待 #6/#12/#23/#24/#38/#39/#41 的 scope/contract 决策；明确后从最早受影响 task 恢复，不执行 G1-T31/G1-FINAL。
+**Current next task:** `G1-CHECK-10` rerun；按已冻结的 layer applicability 重算 Phase F exit，若无其他 blocker 则进入 G1-T31。
 
 ## 0. Resume reason
+
+- 2026-09-13 用户明确将 #6/#12/#23/#24/#38/#39/#41 的 layer/public-surface scope 裁定权委托给执行计划。结论为：不为了 capability 对称性新增未冻结 public surface；ugoira CLI/MCP、novel-ranking MCP、aggregate SDK、bare-ID production probe、rating SDK/MCP/server-side/live 均按各自 contract 记 `not_applicable`。该 standing policy 已写入 `plan.md §6.1`，后续同类 additive-surface 缺失不得再次形成 `blocked_decision`。
+- 因此最新 G1-TERM 的 decision condition 已解除，历史 blocked closure 保留审计但不再代表当前状态；GoalState=`ACTIVE`，下一 task 为 G1-CHECK-10 rerun。
 
 - blocked closure 的关键前提是 `runnable_required_tasks == 0`。该前提已经失效：当前 comments adapter 从 `created_at` 读取评论时间，而当前 App API 参考模型使用 `date`；这与 live `invalid comment time` 形成直接、可测试的内部根因链。
 - 当前 comments adapter 还期待 `access_control:{can_comment,is_locked}`，而当前 App API 参考模型使用 `comment_access_control` 整数。此前“没有显式 CanComment target”因此需要先按真实 wire 重新判定，不能继续无条件归类为 external data blocker；scalar 业务语义不得猜测。
@@ -134,19 +137,28 @@
 - **Live：** 对公开显式候选 `21859` 运行 `TestRealPixivSDKLiveArtworkSeriesRecovery`，public SDK 首页 30 个 artwork、第二页 30 个 artwork，两个页面均成功返回 continuation；没有写操作、ID 扫描或 raw response 日志。
 - **下一步：** #5 artwork-series external blocker 已解除；执行受影响的 G1-CHECK-10 manifest/task graph、live evidence、decision blocker 与最新 Git 状态重算。Goal 仍为 `ACTIVE`，尚未进入 G1-T31/G1-FINAL。
 
-## 13. Current G1-CHECK-10 rerun（2026-09-13）
+## 13. Historical G1-CHECK-10 rerun（2026-09-13；superseded）
 
 - **Verdict：** `blocked_decision`。manifest `41/41`，`live_required=yes/no=36/5`，`mapped_to_task=41`、`unmapped=0`、`undecomposed=0`；#5 artwork-series、#17/#20/#21 bookmark、#26/#28 comments 的外部证据与对应 correction 均已闭合。
 - **External blockers：** 当前无剩余 data/permission external blocker。既有 #27、#9 证据继续有效；本轮不 replay uncertain mutation，不扫描 ID，不新增 raw probe。
 - **Decision / scope blockers：** #6、#12、#23、#24、#41、#38、#39 仍需用户明确批准 layer/public-surface 裁定；不自行新增 CLI/MCP/SDK contract、aggregate operation、rating surface 或 bare-ID probe。
 - **Verification：** `go test ./...`、`go vet ./...`、`sh scripts/build.sh`、documentation tests、series/SDK focused tests、LSP diagnostics、`gofmt` 与 `git diff --check` 均 PASS；artwork-series live recovery 首页/第二页均为 30 个 artwork 且 continuation 成功。
-- **Routing：** 无 runnable required task，进入 `G1-TERM` 路由；不得执行 G1-T31/G1-FINAL，Goal 保持 `ACTIVE`，等待 scope/contract 决策。当前 artwork-series 代码与账本变更待本批次 commit/push。
+- **Routing（historical）：** 当时无 runnable required task，因此进入 `G1-TERM`；该 decision condition 已由 §15 的 standing adjudication 解除。
 
-## 14. Current G1-TERM blocked closure（2026-09-13）
+## 14. Historical G1-TERM blocked closure（2026-09-13；superseded）
 
 - **GoalState：** `BLOCKED_DECISION`。G1-CHECK-10 rerun 已到 terminal `blocked_decision`；当前无 runnable required task，也无剩余 data/permission external blocker。#6、#12、#23、#24、#38、#39、#41 仍需用户明确 layer/public-surface contract，G1-T31/G1-FINAL 继续锁定。
 - **Counts：** required capability `41/41`、`public_ready=0/41`、`scope_admitted=41/41`；manifest `41/41`，`live_required=yes/no=36/5`，`mapped_to_task=41`、`unmapped=0`、`undecomposed=0`。
 - **已闭合证据：** #5 artwork-series `offset` correction/recovery、#17/#20/#21 bookmark round-trip、#26/#28 comments mutation 均已 verified；#9/#27 与既有 corrections 保留。评论只写 `很棒！`，stamp 使用空正文；不 replay uncertain mutation、不扫描 ID、不猜测 `comment_access_control` scalar。
 - **Decision / scope：** #6/#12 需要 CLI/MCP surface 裁定，#23/#24/#41 需要 aggregate/strict public contract 裁定，#38 需要 bare-ID probe 裁定，#39 需要 rating MCP 裁定。本 closure 不自行扩大 public surface。
 - **Verification / Git：** `go test ./...`、`go vet ./...`、`sh scripts/build.sh`、documentation tests、series/SDK focused tests、race、LSP、gofmt 与 `git diff --check` 均 PASS；checkpoint `2493f9a34ff871657070cb3a8d4c8f17cb8df581` 已普通 fast-forward 推送，Local/Remote SHA 一致，worktree clean。
-- **Next：** 等待用户 scope/contract 决策；明确后从最早受影响的 decision task 恢复。不得执行 G1-T31/G1-FINAL，Goal 不得标记 `COMPLETED`。
+- **Next（historical）：** 等待用户 scope/contract 决策。该条件已经满足，当前路由见 §15。
+
+## 15. Current scope adjudication / resumed route（2026-09-13）
+
+- **GoalState：** `ACTIVE`。用户已明确委托本 Goal 对 public layer applicability 作最终裁定，§14 的 `BLOCKED_DECISION` 不再是当前状态。
+- **Scope decision：** #6 ugoira CLI/MCP=`not_applicable`；#12 novel-ranking MCP=`not_applicable`；#23/#24/#41 aggregate SDK=`not_applicable`；#38 保持 explicit-type/no implicit probe，production probe layers=`not_applicable`；#39 保持 CLI-local rating，SDK rating op/MCP/server-side/live=`not_applicable`。
+- **Standing policy：** 以后仅缺少“从未冻结、从未承诺”的 additive SDK/CLI/MCP surface 时，Goal worker直接根据 `plan.md §6.1` 标 `not_applicable`，不得再次形成 `blocked_decision`。只有 breaking existing contract、安全边界弱化、冻结 contract 冲突或历史整合策略仍需要用户决策。
+- **Required scope：** 保持 41/41，不做 scope reduction；变化只发生在 layer applicability。
+- **Current route：** `G1-DEC-SURFACE-APPLICABILITY-01=verified` → `G1-CHECK-10=pending`。CHECK 只重算受影响的 capability/compatibility/release verdict 与 Phase F push gate；不得重复已经 verified 的 live mutation、bookmark/comments/series round-trip 或 Phase E full gate。
+- **Completion boundary：** 当前尚未声明 Phase F exit PASS、G1-T31 PASS 或 Goal `COMPLETED`；这些结论必须由后续正常 task 产生。

@@ -241,6 +241,43 @@ layer 状态只允许：
 
 `blocked_external` 不能产生 accepted。
 
+### 6.1 Public surface applicability 常驻裁定
+
+用户已于 2026-09-13 将本 Goal 内“是否为了 capability 对称性新增 public surface”的裁定权委托给执行计划。自此以后，`required capability` **不等于** SDK / CLI / MCP 三层必须形成笛卡尔积；layer applicability 由既有/冻结 contract 决定，而不是由矩阵中的空格倒推出新产品需求。
+
+一个 public layer 只有满足以下任一条件时才是 required/applicable：
+
+1. merge-base 前已经存在且属于兼容承诺的 public surface；
+2. Goal-3/Goal-1 冻结的 CLI/MCP/SDK contract 明确要求该 surface；
+3. 用户原始需求或后续明确指令明确要求该 surface。
+
+若以上条件均不成立，则：
+
+- 不得仅因为其他 layer 已实现，就新增对称的 CLI/MCP/SDK operation；
+- 该 layer 记录为 `not_applicable`，并写明 contract 理由；
+- 缺少这种未冻结的 additive surface **不得**触发 `blocked_decision`；
+- 新增便利 surface 可以记录为 out-of-scope observation，但不进入本 Goal required closure。
+
+安全/负向能力可以通过“禁止行为被验证”完成 acceptance。例如 explicit-type / no implicit probe 是 #38 的正向 contract，不需要先实现一个 probe 再证明它不该被使用。
+
+只有以下情况仍允许因 scope/contract 进入 `blocked_decision`：
+
+- 必须删除、重命名或语义改变既有 public contract；
+- 必须削弱 fail-closed、安全、隐私或 no-replay 边界；
+- 两个已经冻结且互相冲突的 public contract 无法同时满足；
+- 继续执行需要用户选择 breaking migration/history integration 策略。
+
+本 Goal 当前冻结的 layer-applicability 裁定：
+
+- #6 `ugoira-metadata`：SDK 为 public surface；CLI/MCP=`not_applicable`。
+- #12 `novel-ranking`：SDK + `pixiv ranking --type novel` 为 public surface；MCP=`not_applicable`。
+- #23 `bookmark-list-all`、#24 `bookmark-tags-all`：CLI/MCP 为 aggregate product surface；aggregate SDK=`not_applicable`。
+- #41 `recommended-all`：CLI/MCP 的现有 aggregate contract 为 public surface；aggregate SDK=`not_applicable`，不得为了 closure 新增 aggregate SDK/cursor。
+- #38 `bare-id-probe`：contract 固定为 explicit-type / no implicit probe；production Adapter/SDK/MCP/Live probe=`not_applicable`，不得新增自动探测或 fallback。
+- #39 `rating-filter`：contract 固定为 CLI-local filtering；rating SDK operation、MCP rating surface、server-side rating/`x_restrict` 与 rating live gate=`not_applicable`。Adapter/normalized model 只负责提供本地过滤所需数据，不得把本地 rating 伪装成 upstream capability。
+
+以上裁定不减少 41 项 required capability，只定义每项 capability 的适用 layer。
+
 ## 7. 防过度设计规则
 
 所有实现 task 默认采用 **minimum sufficient change**：只实现当前 frozen acceptance 所需的最小改动。
@@ -457,7 +494,7 @@ Task 终态：`verified` / `blocked_external` / `blocked_decision`。
 
 ### `blocked_decision`
 
-只用于必须取得用户授权才能继续的 breaking API、scope change、安全/权限策略变化，以及 phase push 遇到 non-fast-forward/未知远端并发而需要选择历史整合策略的情况。Worktree 初始 baseline 已失败且无法归因本 Goal 时，也停止为 `blocked_decision`，不能无授权继续。
+只用于必须取得用户授权才能继续的 breaking API、已冻结 contract 冲突、安全/权限策略变化，以及 phase push 遇到 non-fast-forward/未知远端并发而需要选择历史整合策略的情况。§6.1 已授权执行器自行裁定的“未冻结 additive public surface 是否存在”不再属于 decision blocker；默认按 `not_applicable` 处理。Worktree 初始 baseline 已失败且无法归因本 Goal 时，也停止为 `blocked_decision`，不能无授权继续。
 
 ### 通用 `G1-TERM` terminalization
 

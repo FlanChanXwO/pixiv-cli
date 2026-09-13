@@ -1260,9 +1260,36 @@ go test ./sdk/pixiv ./internal/services/pixiv/endpoint/artwork/comments ./intern
 
 ## G1-CHECK-10 — resumed Phase F exit audit（2026-09-13）
 
-**Status:** blocked_decision
+## G1-DEC-SURFACE-APPLICABILITY-01 — public surface applicability 常驻裁定
 
-**Depends on:** G1-CORR-G1-T30-ARTWORK-COMMENT-WIRE-01、G1-RESUME-2026-09-13、G1-CORR-G1-T28-ARTWORK-SERIES-WIRE-02 均 verified
+**Status:** verified
+
+**Source：** 用户于 2026-09-13 明确要求由执行计划直接作 scope/contract 决策，避免 Goal 因未冻结 additive surface 反复阻塞。
+
+**Capabilities：** #6、#12、#23、#24、#38、#39、#41。
+
+**决策：**
+
+- #6：ugoira metadata 只要求既有 SDK；CLI/MCP `not_applicable`。
+- #12：novel ranking 要求既有 SDK + CLI；MCP `not_applicable`。
+- #23/#24：aggregate 的 public owner 为现有 CLI/MCP；aggregate SDK `not_applicable`。
+- #41：recommended-all 的 aggregate public owner为现有 CLI/MCP；aggregate SDK `not_applicable`。
+- #38：保持 explicit-type / no implicit probe；production probe Adapter/SDK/MCP/Live 均 `not_applicable`。
+- #39：保持 CLI-local rating；SDK rating op、MCP rating、server-side rating 与 rating live gate均 `not_applicable`。
+
+**Standing policy：** required capability 不等于所有 public layer 必须对称存在。未在 merge-base public compatibility、冻结 contract 或用户需求中明确要求的 additive surface，执行器直接以 contract reason 标 `not_applicable`，不再触发 `blocked_decision`。只有 breaking existing contract、削弱安全/fail-closed、冻结 contract 冲突或历史整合策略才需要再次阻塞等用户决定。
+
+**Scope impact：** required capability 仍为 41；没有 scope reduction，只冻结 layer applicability。不修改生产代码、public wire 或现有 CLI/MCP/SDK surface。
+
+**Verification budget：** docs/state-only adjudication；重新执行 G1-CHECK-10 时只重算受影响 matrix、compatibility/release 和 Phase F exit，不重复已经 verified 的 live mutation/series/bookmark/comments 或 Phase E full suite。
+
+**Next：** G1-CHECK-10 rerun。
+
+## G1-CHECK-10 — resumed Phase F exit audit（2026-09-13）
+
+**Status:** pending
+
+**Depends on:** G1-CORR-G1-T30-ARTWORK-COMMENT-WIRE-01、G1-RESUME-2026-09-13、G1-CORR-G1-T28-ARTWORK-SERIES-WIRE-02、G1-DEC-SURFACE-APPLICABILITY-01 均 verified
 
 **Current audit：** manifest 41 行 ID `1..41` 各出现一次；`live_required=yes/no=36/5`；`mapped_to_task=41`、`unmapped=0`、`undecomposed=0`。本轮没有剩余 data/permission external blocker：#5 artwork-series、#17/#20/#21 bookmark、#26/#28 comments 均已有最新 live evidence；#27/#9 与既有 recovery/correction evidence 保留。
 
@@ -1274,9 +1301,9 @@ go test ./sdk/pixiv ./internal/services/pixiv/endpoint/artwork/comments ./intern
 
 **Verification：** `go test ./...`、`go vet ./...`、`sh scripts/build.sh`、documentation tests、series/comments/bookmark focused tests、LSP diagnostics、gofmt 与 `git diff --check` 均 PASS。未运行无依据的重复 mutation；live 输出/账本不含 token、cookie、refresh token、raw signed URL 或评论正文。
 
-**Remaining decision / scope blockers：** #6、#12、#23、#24、#41、#38、#39 仍缺明确的 layer/public-surface contract；涉及新增 CLI/MCP/SDK surface、aggregate SDK、rating MCP 或 bare-ID probe，不能用本轮数据权限推断批准。`comment_access_control` scalar 业务语义仍不猜测。故本 CHECK 不能标 `verified`，不启动 G1-T31/G1-FINAL。
+**Decision / scope resolution：** #6、#12、#23、#24、#41、#38、#39 已由 `G1-DEC-SURFACE-APPLICABILITY-01` 作最终 layer-applicability 裁定，不再是 blocker。重新执行本 CHECK 时应按 `not_applicable` 理由重算 capability acceptance；不得因此新增 CLI/MCP/SDK surface。`comment_access_control` scalar 业务语义仍不猜测，但 comments live write/read-back/cleanup 已有独立真实 evidence，不构成当前 scope blocker。
 
-**Next：** `G1-TERM` 已重新记录当前 decision blocker；Goal 不标记 `COMPLETED`。若用户后续明确批准 scope，再从对应 decision task 恢复。
+**Next：** 重新执行本 CHECK；若 Phase F 无其他 required blocker，则完成 Phase F push gate 后进入 G1-T31。
 
 ## G1-TERM — resumed blocked closure（2026-09-13；supersedes prior G1-TERM records）
 
@@ -1295,6 +1322,8 @@ go test ./sdk/pixiv ./internal/services/pixiv/endpoint/artwork/comments ./intern
 **Verification / Git：** `go test ./...`、`go vet ./...`、`sh scripts/build.sh`、documentation tests、series/SDK focused tests、race、LSP、gofmt 与 `git diff --check` 均 PASS；closure checkpoint `2493f9a34ff871657070cb3a8d4c8f17cb8df581` 已普通 fast-forward 推送，Local/Remote SHA 一致，worktree clean。
 
 **Next：** 等待用户 scope/contract 决策；决策明确后从最早受影响的 decision task 恢复。不得执行 G1-T31/G1-FINAL。
+
+**Superseded by decision（2026-09-13）：** `G1-DEC-SURFACE-APPLICABILITY-01` 已取得用户委托并冻结全部七项 layer applicability；本 blocked closure 的 decision condition 已解除。当前 GoalState=`ACTIVE`，下一 executable task 为 pending `G1-CHECK-10`。历史 checkpoint 不删除、不改写。
 
 ## G1-T31 — Pre-final latest-main integration readiness
 

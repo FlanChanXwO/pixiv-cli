@@ -39,13 +39,13 @@
 | 3 | `artwork-ranking` | implemented_unverified | verified | implemented_unverified | verified | verified | verified | verified | verified | implemented_unverified | rejected |
 | 4 | `artwork-recommended` | implemented_unverified | verified | implemented_unverified | implemented_unverified | implemented_unverified | implemented_unverified | verified | verified | missing | rejected |
 | 5 | `artwork-series` | implemented_unverified | verified | implemented_unverified | verified | verified | verified | verified | verified | implemented_unverified | rejected |
-| 6 | `ugoira-metadata` | implemented_unverified | verified | implemented_unverified | verified | missing | missing | verified | verified | implemented_unverified | rejected |
+| 6 | `ugoira-metadata` | implemented_unverified | verified | implemented_unverified | verified | not_applicable | not_applicable | verified | verified | implemented_unverified | rejected |
 | 7 | `novel-search` | implemented_unverified | verified | verified | verified | verified | verified | verified | verified | verified | missing |
 | 8 | `novel-detail` | implemented_unverified | verified | verified | verified | verified | verified | verified | verified | implemented_unverified | missing |
 | 9 | `novel-series` | implemented_unverified | verified | verified | verified | verified | verified | verified | verified | implemented_unverified | missing |
 | 10 | `novel-latest` | implemented_unverified | verified | verified | verified | verified | verified | verified | verified | implemented_unverified | missing |
 | 11 | `novel-recommended` | implemented_unverified | verified | verified | verified | verified | verified | verified | verified | implemented_unverified | missing |
-| 12 | `novel-ranking` | implemented_unverified | verified | verified | verified | verified | missing | verified | verified | implemented_unverified | missing |
+| 12 | `novel-ranking` | implemented_unverified | verified | verified | verified | verified | not_applicable | verified | verified | implemented_unverified | missing |
 | 13 | `novel-follow` | implemented_unverified | verified | verified | verified | verified | verified | verified | verified | implemented_unverified | missing |
 | 14 | `artwork-bookmark-list` | implemented_unverified | verified | verified | verified | verified | verified | verified | verified | implemented_unverified | missing |
 | 15 | `artwork-bookmark-tags` | implemented_unverified | verified | verified | verified | verified | verified | verified | verified | implemented_unverified | missing |
@@ -56,8 +56,8 @@
 | 20 | `novel-bookmark-detail` | implemented_unverified | implemented_unverified | implemented_unverified | not_applicable | verified | verified | verified | verified | implemented_unverified | missing |
 | 21 | `novel-bookmark-mutation` | implemented_unverified | implemented_unverified | verified | not_applicable | verified | verified | verified | verified | implemented_unverified | missing |
 | 22 | `bookmark-subtype` | implemented_unverified | missing | missing | implemented_unverified | verified | verified | verified | missing | implemented_unverified | missing |
-| 23 | `bookmark-list-all` | implemented_unverified | verified | missing | verified | verified | verified | verified | verified | implemented_unverified | missing |
-| 24 | `bookmark-tags-all` | implemented_unverified | verified | missing | verified | verified | verified | verified | verified | implemented_unverified | missing |
+| 23 | `bookmark-list-all` | implemented_unverified | verified | not_applicable | verified | verified | verified | verified | verified | implemented_unverified | missing |
+| 24 | `bookmark-tags-all` | implemented_unverified | verified | not_applicable | verified | verified | verified | verified | verified | implemented_unverified | missing |
 | 25 | `artwork-comments-read` | rejected | implemented_unverified | implemented_unverified | implemented_unverified | implemented_unverified | implemented_unverified | verified | rejected | implemented_unverified | rejected |
 | 26 | `artwork-comments-mutation` | implemented_unverified | verified | verified | verified | verified | verified | verified | verified | implemented_unverified | missing |
 | 27 | `novel-comments-read` | implemented_unverified | verified | verified | verified | verified | verified | verified | verified | implemented_unverified | missing |
@@ -71,10 +71,10 @@
 | 35 | `trending` | implemented_unverified | verified | implemented_unverified | verified | verified | verified | verified | verified | implemented_unverified | rejected |
 | 36 | `follow-mutation` | implemented_unverified | verified | implemented_unverified | verified | verified | verified | verified | verified | implemented_unverified | rejected |
 | 37 | `mypixiv` | implemented_unverified | verified | implemented_unverified | verified | verified | verified | verified | verified | implemented_unverified | rejected |
-| 38 | `bare-id-probe` | implemented_unverified | missing | missing | verified | implemented_unverified | missing | verified | missing | rejected | rejected |
-| 39 | `rating-filter` | implemented_unverified | verified | implemented_unverified | verified | verified | missing | verified | implemented_unverified | implemented_unverified | rejected |
+| 38 | `bare-id-probe` | verified | not_applicable | not_applicable | verified | verified | not_applicable | verified | not_applicable | verified | not_applicable |
+| 39 | `rating-filter` | verified | verified | not_applicable | verified | verified | not_applicable | verified | not_applicable | implemented_unverified | rejected |
 | 40 | `logical-pagination` | implemented_unverified | implemented_unverified | implemented_unverified | verified | implemented_unverified | implemented_unverified | verified | implemented_unverified | implemented_unverified | rejected |
-| 41 | `recommended-all` | implemented_unverified | implemented_unverified | missing | implemented_unverified | verified | implemented_unverified | verified | implemented_unverified | implemented_unverified | rejected |
+| 41 | `recommended-all` | implemented_unverified | implemented_unverified | not_applicable | implemented_unverified | verified | implemented_unverified | verified | implemented_unverified | implemented_unverified | rejected |
 
 `Release=rejected` / `Release=missing` 均表示当前不能发布，不表示 required scope 可以删除。当前 41 项必须继续沿 Goal-1 Phase A–F 完成各自 gate；G1-T04 已补齐 25–41；矩阵仍只记录事实 verdict，不授予发布资格。
 
@@ -1124,3 +1124,15 @@ G1-T01 已在干净目标 worktree 执行 `go test ./...` 并通过；G1-CHECK-0
 - **Decision / scope：** #6/#12 为 CLI/MCP surface，#23/#24/#41 为 aggregate/strict public contract，#38 为 bare-ID probe，#39 为 rating MCP；本 closure 不自行扩大 public surface。
 - **Verification / Git：** `go test ./...`、`go vet ./...`、`sh scripts/build.sh`、documentation tests、series/SDK focused tests、race、LSP、gofmt 与 `git diff --check` 均 PASS；checkpoint `2493f9a34ff871657070cb3a8d4c8f17cb8df581` 已普通 fast-forward 推送，Local/Remote SHA 一致，worktree clean。
 - **Next：** 等待用户 scope/contract 决策；明确后从最早受影响的 decision task 恢复，不执行 G1-T31/G1-FINAL。
+
+## 52. Public surface applicability 决策解除（2026-09-13）
+
+- **GoalState：** `ACTIVE`。用户明确委托执行计划对本次 scope/contract blocker 作最终裁定；§51 的 `BLOCKED_DECISION` closure 因 decision condition 已解除而 superseded，历史 checkpoint 继续保留审计用途。
+- **常驻规则：** required capability 不要求 SDK/CLI/MCP 全层对称。只有既有 public compatibility、冻结 contract 或用户明确需求要求的 layer 才 applicable；仅因矩阵某层缺失不得新增 public API，也不得再次触发 `blocked_decision`。该规则已写入 `goal-1/plan.md §6.1`，后续 Goal worker 可直接应用，无需再次询问。
+- **#6 `ugoira-metadata`：** SDK 保持 canonical public surface；CLI/MCP=`not_applicable`。不新增 `ugoira metadata` CLI 或 MCP tool。
+- **#12 `novel-ranking`：** SDK + `pixiv ranking --type novel` 保持 canonical public surface；MCP=`not_applicable`。不新增 ranking MCP tool。
+- **#23/#24：** bookmark aggregate 的 canonical public surface 为现有 CLI/MCP；aggregate SDK=`not_applicable`。不新增 SDK aggregate operation/cursor。
+- **#41：** `recommended-all` 的 canonical aggregate contract 为现有 CLI/MCP product orchestration；aggregate SDK=`not_applicable`。继续以既有统一预算、continuation/failure-atomicity evidence 验收，不新增 Go SDK aggregate API。
+- **#38：** acceptance 是 explicit-type / no implicit probe 的负向安全 contract；Adapter/SDK/MCP/Live probe=`not_applicable`。不得因为 closure 自动探测 ID 类型或 fallback。
+- **#39：** rating 固定为 CLI-local filter；SDK rating operation/MCP/server-side rating/rating live gate=`not_applicable`。不得发送未经确认的 upstream rating/`x_restrict`。
+- **State impact：** 41 项 required capability 集合不变；只修正 layer applicability。当前没有剩余 scope/contract decision blocker；下一步重新执行 `G1-CHECK-10`，只重算受本裁定影响的 matrix/compatibility/release verdict，不重复已通过 live mutation 或 Phase E 全量 gate。
