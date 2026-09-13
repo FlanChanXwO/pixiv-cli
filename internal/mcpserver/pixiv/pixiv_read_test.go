@@ -125,6 +125,32 @@ func TestIllustCommentsMapsRequestAndPreservesEnvelope(t *testing.T) {
 	}
 }
 
+func TestIllustCommentsPreservesOpaqueNumericAccessControl(t *testing.T) {
+	numericValue := int64(0)
+	client := &fakeSDKClient{
+		artworkCommentsResult: pixiv.CommentPage{
+			Page:          sdk.Page[pixiv.Comment]{Items: []pixiv.Comment{{ID: 21, Comment: "artwork comment", User: pixiv.User{ID: 4}}}},
+			AccessControl: &pixiv.CommentAccessControl{NumericValue: &numericValue},
+		},
+	}
+	session, closeSession := newSDKTestSession(t, client)
+	defer closeSession()
+
+	result := callTool(t, session, "illust_comments", map[string]any{"id": 20})
+	if result.IsError {
+		t.Fatalf("artwork comments result=%+v", result)
+	}
+	var raw map[string]any
+	decodeStructured(t, result, &raw)
+	access, ok := raw["access_control"].(map[string]any)
+	if !ok || access["comment_access_control"] != float64(0) {
+		t.Fatalf("access_control=%#v, want opaque numeric value", raw["access_control"])
+	}
+	if _, ok := access["can_comment"]; ok {
+		t.Fatalf("numeric access_control invented can_comment: %#v", access)
+	}
+}
+
 func TestSDKRecommendedAllReturnsEveryStreamAndPagination(t *testing.T) {
 	client := &fakeSDKClient{}
 	var order []string

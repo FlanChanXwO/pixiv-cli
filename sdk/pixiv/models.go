@@ -213,6 +213,10 @@ type CommentMutationResult struct {
 type CommentAccessControl struct {
 	CanComment bool
 	IsLocked   bool
+	// NumericValue preserves the current App API scalar without assigning it
+	// business meaning. CanComment and IsLocked are meaningful only when the
+	// legacy object form was supplied by upstream.
+	NumericValue *int64
 }
 
 // CommentPage wraps a paged list of comments together with optional upstream

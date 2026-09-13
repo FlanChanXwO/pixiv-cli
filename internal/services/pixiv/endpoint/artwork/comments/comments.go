@@ -93,7 +93,10 @@ func (c *Client) List(ctx context.Context, request Request) (Result, error) {
 		total = &value
 	}
 	var accessControl *artwork.CommentAccessControl
-	if raw.AccessControl != nil {
+	if raw.CommentAccessControl != nil {
+		value := *raw.CommentAccessControl
+		accessControl = &artwork.CommentAccessControl{NumericValue: &value}
+	} else if raw.AccessControl != nil {
 		accessControl = &artwork.CommentAccessControl{CanComment: raw.AccessControl.CanComment, IsLocked: raw.AccessControl.IsLocked}
 	}
 	nextOffset, hasNext, err := continuation(raw.NextURL)
@@ -203,6 +206,9 @@ type responseDTO struct {
 	NextURL       *string                  `json:"next_url"`
 	TotalComments *int64                   `json:"total_comments"`
 	AccessControl *commentAccessControlDTO `json:"access_control"`
+	// CommentAccessControl 是当前 App API 标量；与 legacy object 分开解码，
+	// 避免猜测其业务含义。
+	CommentAccessControl *int64 `json:"comment_access_control"`
 }
 
 type mutationResponseDTO struct {

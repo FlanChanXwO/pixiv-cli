@@ -1455,7 +1455,7 @@ COMPLETED_CANDIDATE iff
 
 ## G1-CORR-G1-FINAL-ARTWORK-COMMENTS-01 — artwork comments final contract evidence
 
-**Status:** in_progress
+**Status:** verified
 
 **Source:** G1-FINAL strict matrix recalculation。
 
@@ -1468,6 +1468,14 @@ COMPLETED_CANDIDATE iff
 **Exit condition:** 获得满足当前冻结 contract 的可重复 read evidence并更新 #25 matrix，或记录明确的 contract/scope 变更后重新运行 G1-FINAL。未满足前保持 GoalState `ACTIVE`，不执行最终 closure push。
 
 **Safety:** 最近 probe 未写入 Pixiv；输出仅保留计数/布尔/错误 reason，未保留评论正文、凭据或 signed URL。
+
+**完成记录（2026-09-13）：**
+
+- Status → `verified`。Red fixture 证明 artwork adapter 原先丢弃 numeric `comment_access_control`；Green 后 artwork/novel adapter、SDK、CLI JSON、MCP structured output 均保留 opaque numeric value，legacy bool object 保持兼容，禁止从 `0/1` 猜测权限。
+- Live：显式目标 artwork `258` 来自固定 `初音ミク` earliest search page；`--page 1/2 --limit 20` 各返回 20 条且页间不重复，两页均有 `access_control.comment_access_control=0`，`date` 正常映射，`total` 缺失保持省略。只读，无正文、凭据、替代 endpoint、任意 ID 扫描或 mutation。
+- Verification：endpoint/SDK/CLI/MCP comments focused tests、`sh scripts/build.sh` 与真实 CLI 两页 probe PASS；受影响的 final offline/docs/redaction gate 仍待复跑。
+- Compatibility / rollback：新增字段仅保留已观测 current wire；旧 `{can_comment,is_locked}` 与已有 CLI/MCP envelope 不变。回滚本 correction 的 adapter fields、SDK `NumericValue`、DTO marshaler、fixtures/tests、docs/changelog 即可。
+- **Next：** G1-FINAL rerun；需先完成受影响 gate，再决定最终 closure commit/push。
 
 ---
 

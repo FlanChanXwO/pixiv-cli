@@ -1,6 +1,7 @@
 package pixiv
 
 import (
+	"encoding/json"
 	"time"
 
 	"github.com/FlanChanXwO/pixiv-cli/sdk"
@@ -165,6 +166,23 @@ type CommentDTO struct {
 type CommentAccessControlDTO struct {
 	CanComment bool `json:"can_comment"`
 	IsLocked   bool `json:"is_locked"`
+	// NumericValue preserves the current App API scalar. It is emitted as
+	// comment_access_control and is intentionally not converted to booleans.
+	NumericValue *int64 `json:"-"`
+}
+
+// MarshalJSON keeps the legacy object shape intact while making the current
+// scalar wire value explicit instead of emitting unknown booleans as false.
+func (value CommentAccessControlDTO) MarshalJSON() ([]byte, error) {
+	if value.NumericValue != nil {
+		return json.Marshal(struct {
+			NumericValue int64 `json:"comment_access_control"`
+		}{NumericValue: *value.NumericValue})
+	}
+	return json.Marshal(struct {
+		CanComment bool `json:"can_comment"`
+		IsLocked   bool `json:"is_locked"`
+	}{CanComment: value.CanComment, IsLocked: value.IsLocked})
 }
 
 // CommentPageDTO is the output-safe form of CommentPage.
@@ -490,7 +508,11 @@ func toCommentDTO(value *Comment) *CommentDTO {
 
 // ToCommentAccessControlDTO converts comment access metadata to a DTO.
 func ToCommentAccessControlDTO(value CommentAccessControl) CommentAccessControlDTO {
-	return CommentAccessControlDTO{CanComment: value.CanComment, IsLocked: value.IsLocked}
+	return CommentAccessControlDTO{
+		CanComment:   value.CanComment,
+		IsLocked:     value.IsLocked,
+		NumericValue: cloneInt64(value.NumericValue),
+	}
 }
 
 // ToCommentPageDTO converts a comment page while preserving the stable cursor

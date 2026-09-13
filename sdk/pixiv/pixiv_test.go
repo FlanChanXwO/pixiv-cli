@@ -668,6 +668,45 @@ func TestArtworkCommentsPreserveMetadataAndCursor(t *testing.T) {
 	}
 }
 
+func TestArtworkCommentsPreserveNumericAccessControl(t *testing.T) {
+	rt := roundTripFunc(func(req *http.Request) (*http.Response, error) {
+		if req.URL.Path != "/v3/illust/comments" || req.URL.Query().Get("illust_id") != "7001" {
+			t.Errorf("request = %s?%s", req.URL.Path, req.URL.RawQuery)
+		}
+		body := `{"comments":[{"id":7002,"comment":"hello","date":"2026-01-01T00:00:00Z","user":{"id":7,"name":"commenter"}}],"comment_access_control":0,"next_url":null}`
+		return &http.Response{StatusCode: http.StatusOK, Header: http.Header{"Content-Type": {"application/json"}}, Body: io.NopCloser(strings.NewReader(body))}, nil
+	})
+	client, err := NewWith("token", Options{HTTPClient: &http.Client{Transport: rt}})
+	if err != nil {
+		t.Fatalf("NewWith: %v", err)
+	}
+	page, err := client.ArtworkComments(context.Background(), ArtworkCommentsRequest{ArtworkID: 7001})
+	if err != nil {
+		t.Fatalf("ArtworkComments: %v", err)
+	}
+	if page.AccessControl == nil || page.AccessControl.NumericValue == nil || *page.AccessControl.NumericValue != 0 {
+		t.Fatalf("access control = %#v, want preserved numeric zero", page.AccessControl)
+	}
+	if page.AccessControl.CanComment || page.AccessControl.IsLocked {
+		t.Fatalf("numeric access control was assigned object semantics: %#v", page.AccessControl)
+	}
+
+	encoded, err := json.Marshal(ToCommentAccessControlDTO(*page.AccessControl))
+	if err != nil {
+		t.Fatalf("marshal access control DTO: %v", err)
+	}
+	var wire map[string]any
+	if err := json.Unmarshal(encoded, &wire); err != nil {
+		t.Fatalf("decode access control DTO: %v", err)
+	}
+	if wire["comment_access_control"] != float64(0) {
+		t.Fatalf("access control DTO = %s, want opaque numeric value", encoded)
+	}
+	if _, ok := wire["can_comment"]; ok {
+		t.Fatalf("access control DTO invented can_comment: %s", encoded)
+	}
+}
+
 func TestNovelAndUserDetailsWireOperation(t *testing.T) {
 	rt := roundTripFunc(func(req *http.Request) (*http.Response, error) {
 		switch req.URL.Path {

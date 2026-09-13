@@ -288,7 +288,11 @@ func TestCommentReadRouteRemainsArtworkAndNovelComments(t *testing.T) {
 				if req.Method != http.MethodGet || req.URL.Path != test.path || req.URL.RawQuery != test.form {
 					t.Fatalf("request = %s %s?%s, want GET %s?%s", req.Method, req.URL.Path, req.URL.RawQuery, test.path, test.form)
 				}
-				return commentJSONResponse(req, `{"comments":[{"id":8,"comment":"hello","created_at":"2024-01-02T03:04:05+00:00","user":{"id":7,"name":"artist"}}],"next_url":null}`), nil
+				body := `{"comments":[{"id":8,"comment":"hello","created_at":"2024-01-02T03:04:05+00:00","user":{"id":7,"name":"artist"}}],"next_url":null}`
+				if test.name == "artwork" {
+					body = `{"comments":[{"id":8,"comment":"hello","date":"2026-01-02T03:04:05+00:00","user":{"id":7,"name":"artist"}}],"comment_access_control":0,"next_url":null}`
+				}
+				return commentJSONResponse(req, body), nil
 			})
 			client, err := pixiv.NewWith("test-access-token", pixiv.Options{HTTPClient: &http.Client{Transport: transport}})
 			if err != nil {
@@ -302,13 +306,17 @@ func TestCommentReadRouteRemainsArtworkAndNovelComments(t *testing.T) {
 				t.Fatalf("execute comment read: %v", err)
 			}
 			var result struct {
-				Comments []pixiv.CommentDTO `json:"comments"`
+				Comments      []pixiv.CommentDTO `json:"comments"`
+				AccessControl map[string]any     `json:"access_control"`
 			}
 			if err := json.Unmarshal(output.Bytes(), &result); err != nil {
 				t.Fatalf("decode JSON output: %v; output=%q", err, output.String())
 			}
 			if len(result.Comments) != 1 || result.Comments[0].ID != 8 || result.Comments[0].Comment != "hello" {
 				t.Fatalf("comments = %#v, want the existing comment envelope", result.Comments)
+			}
+			if test.name == "artwork" && result.AccessControl["comment_access_control"] != float64(0) {
+				t.Fatalf("artwork access_control = %#v, want opaque numeric value", result.AccessControl)
 			}
 		})
 	}

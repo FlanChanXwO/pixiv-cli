@@ -285,7 +285,11 @@ session.
    content endpoint is unavailable: it returns `content_unavailable` without a
    rejected-endpoint request and never falls back to WebView. Use plain
    `detail --type novel` for metadata.
-5. **Comment mutations are explicit and status-bound.** `comment create`,
+5. **Comment reads preserve upstream metadata.** JSON comment reads retain optional
+   `total`/`access_control`; when the current App API supplies numeric
+   `comment_access_control`, output keeps it under `access_control.comment_access_control`
+   and does not infer boolean permission fields.
+6. **Comment mutations are explicit and status-bound.** `comment create`,
    `reply`, `stamp`, and `delete` require `--type artwork|novel` and positive
    numeric IDs; URLs and `all` are rejected. `create/reply` require a non-empty
    `--comment`; `stamp` accepts an optional comment and forwards empty text for
@@ -296,7 +300,7 @@ session.
    non-paginated read and emits output-safe opaque stamp references without
    runtime URLs. Existing
    bookmark/follow mutation actions retain their empty-success-output contract.
-6. **Restricted search fails explicitly.** There is no anonymous search path.
+7. **Restricted search fails explicitly.** There is no anonymous search path.
    Restricted rating requests are not represented by a silent `--rating` filter;
    use the command's actual authenticated/API contract and surface failures.
    Bookmark-count bounds use the application strategy/completeness result:

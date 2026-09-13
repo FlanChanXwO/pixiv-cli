@@ -261,7 +261,11 @@ func (c *Client) mapArtworkCommentPage(op string, query url.Values, values []art
 		page.Total = &value
 	}
 	if access != nil {
-		page.AccessControl = &CommentAccessControl{CanComment: access.CanComment, IsLocked: access.IsLocked}
+		page.AccessControl = &CommentAccessControl{
+			CanComment:   access.CanComment,
+			IsLocked:     access.IsLocked,
+			NumericValue: cloneInt64(access.NumericValue),
+		}
 	}
 	return page, nil
 }

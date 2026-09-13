@@ -1072,16 +1072,23 @@ func wireCommentPageResult(page pixivsdk.CommentPage) (int, []byte, error) {
 		total = &value
 	}
 	var accessControl *pixivsdk.CommentAccessControlDTO
+	var numericAccessControl *int64
 	if page.AccessControl != nil {
-		converted := pixivsdk.ToCommentAccessControlDTO(*page.AccessControl)
-		accessControl = &converted
+		if page.AccessControl.NumericValue != nil {
+			value := *page.AccessControl.NumericValue
+			numericAccessControl = &value
+		} else {
+			converted := pixivsdk.ToCommentAccessControlDTO(*page.AccessControl)
+			accessControl = &converted
+		}
 	}
 	body, err := json.Marshal(struct {
-		Comments      []pixivsdk.CommentDTO             `json:"comments"`
-		NextURL       *string                           `json:"next_url"`
-		TotalComments *int64                            `json:"total_comments"`
-		AccessControl *pixivsdk.CommentAccessControlDTO `json:"access_control"`
-	}{dtos, nil, total, accessControl})
+		Comments             []pixivsdk.CommentDTO             `json:"comments"`
+		NextURL              *string                           `json:"next_url"`
+		TotalComments        *int64                            `json:"total_comments"`
+		AccessControl        *pixivsdk.CommentAccessControlDTO `json:"access_control"`
+		CommentAccessControl *int64                            `json:"comment_access_control"`
+	}{dtos, nil, total, accessControl, numericAccessControl})
 	return http.StatusOK, body, err
 }
 

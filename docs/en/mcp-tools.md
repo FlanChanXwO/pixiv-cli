@@ -34,8 +34,12 @@ List tools accept `page` and `limit`:
 `{comments, pagination}` with optional `total` and `access_control` fields that
 are omitted when the upstream response does not provide them. Artwork comments
 use the current artwork-comments operation and novel comments use the current
-novel-comments operation. Neither read tool accepts mutation-only `stamp_id`,
-and the legacy MCP registry does not add a standalone `stamps` tool.
+novel-comments operation. When the current App API supplies the opaque numeric
+`comment_access_control` wire field, it is preserved as
+`access_control.comment_access_control`; the SDK and server do not infer
+`can_comment` or `is_locked` from that number. Neither read tool accepts
+mutation-only `stamp_id`, and the legacy MCP registry does not add a standalone
+`stamps` tool.
 
 Opaque SDK cursors never leave the server. List results expose `pagination.page`,
 `limit`, `returned`, and `has_more`; they may also expose `next_page` when another
@@ -178,7 +182,7 @@ not treated as an artwork detail request.
 | `novel_detail` / `novel_content` | Positive `novel_id`; the first returns metadata. The second is a retained compatibility tool that returns `content_unavailable` with empty blocks and does not call the rejected content endpoint. |
 | `illust_related` | Positive `illust_id`, optional `illust_filter`, `page`, `limit`. |
 | `illust_series` / `novel_series` | Positive `series_id`, `page`, `limit`; novel series also returns safe series metadata. |
-| `illust_comments` / `novel_comments` | Closed input `{id, page, limit}` with positive `id`; output is `{comments, pagination}` plus optional `total`/`access_control` metadata. Read tools do not accept mutation-only `stamp_id`, and no standalone `stamps` tool is exposed in the legacy registry. |
+| `illust_comments` / `novel_comments` | Closed input `{id, page, limit}` with positive `id`; output is `{comments, pagination}` plus optional `total`/`access_control` metadata. An opaque numeric `comment_access_control` is retained inside `access_control` without boolean inference. Read tools do not accept mutation-only `stamp_id`, and no standalone `stamps` tool is exposed in the legacy registry. |
 | `illust_ranking` | Optional `mode`, `date`, `illust_filter`, `page`, `limit`; `mode` is a closed ranking enum, dates must be valid `YYYY-MM-DD`, and omitted mode is `day`. |
 | `search_user` | Required non-blank `word`, optional `user_filter`, `page`, `limit`; blank input is rejected before SDK execution and valid input uses the App user-search operation. |
 | `illust_recommended` | Artwork recommendations with optional `illust_filter`, `page`, `limit`. |

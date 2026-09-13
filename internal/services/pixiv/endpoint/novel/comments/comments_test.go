@@ -71,14 +71,17 @@ func TestCommentsMapsCurrentAppAPICommentDate(t *testing.T) {
 	}
 }
 
-func TestCommentsDoesNotGuessScalarCommentAccessControl(t *testing.T) {
+func TestCommentsPreservesScalarCommentAccessControlWithoutGuessingSemantics(t *testing.T) {
 	transport := &fakeTransport{body: `{"comments":[{"id":9,"comment":"current wire","date":"2026-01-02T03:04:05+00:00","user":{"id":7}}],"comment_access_control":1}`}
 	result, err := comments.New(transport).List(context.Background(), comments.Request{NovelID: 123})
 	if err != nil {
 		t.Fatalf("List: %v", err)
 	}
-	if result.AccessControl != nil {
-		t.Fatalf("scalar comment_access_control was guessed as %#v", result.AccessControl)
+	if result.AccessControl == nil || result.AccessControl.NumericValue == nil || *result.AccessControl.NumericValue != 1 {
+		t.Fatalf("scalar comment_access_control = %#v, want preserved numeric value", result.AccessControl)
+	}
+	if result.AccessControl.CanComment || result.AccessControl.IsLocked {
+		t.Fatalf("scalar comment_access_control was assigned object semantics: %#v", result.AccessControl)
 	}
 }
 

@@ -2,7 +2,7 @@
 
 **GoalState:** `ACTIVE`
 
-**Report status:** `G1_FINAL_ACTIVE` — 2026-09-13；G1-CHECK-10、G1-T31 与 Phase A–F push gates 已通过，但 G1-FINAL 严格重算为 `40/41 accepted`，GoalState 保持 `ACTIVE`。
+**Report status:** `G1_CORR_G1_FINAL_ARTWORK_COMMENTS_VERIFIED` — 2026-09-13；#25 correction 已完成，G1-FINAL 尚待受影响 gates 复跑与最终重算，GoalState 保持 `ACTIVE`。
 
 **Generated:** 2026-09-13
 
@@ -10,9 +10,9 @@
 
 **Worktree:** `/Users/flanchan/Developer/Projects/GithubProjects/.worktrees/pixiv-cli-refactor-pixiv-api-stability`（专用 linked worktree）
 
-**Current task:** `G1-FINAL`（strict audit 未通过；#25 contract evidence gap）
+**Current task:** `G1-CORR-G1-FINAL-ARTWORK-COMMENTS-01`（verified；代码/证据已闭合）
 
-**Current next task:** `G1-CORR-G1-FINAL-ARTWORK-COMMENTS-01`：补齐或重新裁定 #25 artwork-comments-read contract evidence。
+**Current next task:** `G1-FINAL` rerun：复跑受影响 gates，重算 41 项 acceptance，并在通过后执行最终 closure push。
 
 ## 0. Resume reason
 
@@ -186,3 +186,11 @@
 - **Ledger push：** 初始审计 checkpoint=`797bb91e76e3bfd6a357f746be8794d8d48c0afb`；最新 ledger update=`6c5b39f8067636f5f061c357ec180d7b62a5fa77`，均普通 fast-forward 且 Remote SHA 与 Local HEAD 一致；这不是最终 closure push。
 - **Safety / scope：** 本次只更新 Goal ledger；不新增 public surface，不修改业务代码，不 fallback、不 replay、不扫描任意 ID。账本不包含 token、cookie、refresh token、评论正文或 raw signed/auth URL。
 - **Next:** `G1-CORR-G1-FINAL-ARTWORK-COMMENTS-01`。需获得满足冻结 contract 的当前 artwork comments 证据，或取得明确 contract/scope 变更后重新运行 G1-FINAL；在此之前不执行最终 closure push。
+
+## 19. Current resumed correction — G1-CORR-G1-FINAL-ARTWORK-COMMENTS-01
+
+- **Status:** `verified`。当前 App API artwork comments contract gap 已由最小 wire correction 与可重复只读 evidence 关闭；旧 §18 保留为 correction 前历史快照。
+- **Implementation:** artwork/novel comments adapter 优先映射 `date`、兼容 `created_at`，保留 numeric `comment_access_control` 为 opaque `access_control.comment_access_control`；SDK、CLI JSON、MCP structured output 同步，legacy bool object 保持兼容且不猜测权限语义。
+- **Live read:** 固定 `初音ミク` earliest artwork search page 的显式目标 `258`，`--page 1/2 --limit 20` 各 20 条且 ID 不重复；两页均有 numeric access-control `0`，`total` 缺失且未被伪造，日期可解析。只读，无评论正文、凭据、替代 endpoint、任意 ID 扫描或写入。
+- **Verification:** Red→Green endpoint fixture、SDK mapping/DTO、CLI read、MCP structured-output tests PASS；`sh scripts/build.sh` 与真实 CLI 两页 probe PASS。代码变化使 final offline/docs/redaction gate 需要复跑，尚未执行最终 closure push。
+- **Next:** `G1-FINAL` rerun；若所有既有 gates 与受影响 gates PASS，再写 `COMPLETED` closure 并普通 fast-forward push。当前 GoalState 仍为 `ACTIVE`。

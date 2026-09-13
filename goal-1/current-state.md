@@ -1174,3 +1174,13 @@ G1-T01 已在干净目标 worktree 执行 `go test ./...` 并通过；G1-CHECK-0
 - **Ledger push：** 初始文档审计 checkpoint=`797bb91e76e3bfd6a357f746be8794d8d48c0afb`；最新 ledger update=`6c5b39f8067636f5f061c357ec180d7b62a5fa77`，两次均普通 fast-forward，git ls-remote 核对 Remote SHA == Local HEAD。两者都不是最终 closure push。
 - **Safety：** 未新增业务代码、public surface、fallback、retry、timeout 或 live write；日志与账本未写入 token、cookie、refresh token、评论正文或 raw signed/auth URL。
 - **Next：** `G1-CORR-G1-FINAL-ARTWORK-COMMENTS-01`；需要可证明的当前 artwork comments contract（合法 `date`、numeric access-control 的可解释映射与 continuation evidence）或明确的 contract/scope 变更，才能把 #25 从 rejected gap 重新评估。当前不执行最终 closure push。
+
+## 57. G1-CORR-G1-FINAL-ARTWORK-COMMENTS-01 verified（2026-09-13）
+
+- **Status：** `verified`。该 correction 关闭 #25 的可执行内部 gap；旧 §56 仅保留为 correction 前的历史快照，当前 effective acceptance 需在 G1-FINAL rerun 复算。
+- **Red → Green：** 新增 artwork adapter fixture，先实跑并确认当前代码丢弃 numeric `comment_access_control`；随后 artwork/novel adapter、SDK model/mapper、CLI JSON、MCP structured output 均改为保留 opaque numeric value。legacy `access_control:{can_comment,is_locked}` object 仍按原形状兼容；numeric value 不映射为任意布尔权限。
+- **Current wire contract：** comments DTO 优先使用当前 `date`，兼容旧合法 `created_at`；`comment_access_control` 作为 optional `int64` 保存为 `access_control.comment_access_control`，不猜测 `0/1` 业务语义；`total_comments` 缺失/null 仍不伪造成 `0`。
+- **Live read evidence：** 在当前认证账号下，从固定检索词 `初音ミク` 的 earliest artwork search page 取得显式目标 `258`，仅读取 `pixiv comment 258 --type artwork --limit 20 --page 1/2 --json`。两页各返回 20 条、页间 ID 不重复；两页均返回 `access_control.comment_access_control=0`，均无 `total`，评论时间由当前 `date` wire 解析为 `created_at`。未输出正文，未写入评论，未调用替代 endpoint，未扫描任意 ID。
+- **Boundary：** 旧 `illust-comments-v3` rejected/no-fallback 历史行不改写；当前 production route 仍为 `/v3/illust/comments`，仅补齐已观察 wire 的兼容映射与证据，不新增 fallback、retry、timeout、扫描上限或 public operation。
+- **Verification：** artwork/novel endpoint、SDK、CLI comment、MCP comment focused tests PASS；真实 build 后 CLI 两页 probe PASS。下一步必须运行受影响的 final offline/docs/redaction gate，再执行 G1-FINAL acceptance rerun；在此之前不执行最终 closure push。
+- **Effective delta：** #25 的适用 Contract/Adapter/SDK/Shared/CLI/MCP/Offline/Live/Compatibility/Release evidence 已具备；G1-FINAL rerun 的候选计数为 required=`41`、accepted=`41`，但在 final gates 完成前 GoalState 仍保持 `ACTIVE`。

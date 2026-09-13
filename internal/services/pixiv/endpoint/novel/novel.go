@@ -73,4 +73,7 @@ type Comment struct {
 type CommentAccessControl struct {
 	CanComment bool
 	IsLocked   bool
+	// NumericValue 保留当前 App API 标量，不赋予业务含义；CanComment 与
+	// IsLocked 只在上游提供 legacy object shape 时有效。
+	NumericValue *int64
 }
