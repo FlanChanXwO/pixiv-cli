@@ -9,11 +9,12 @@ import (
 	"fmt"
 	"io"
 	"net/url"
+	"strconv"
 	"strings"
 
 	requirements "github.com/FlanChanXwO/pixiv-cli/internal/cli/commands"
 	"github.com/FlanChanXwO/pixiv-cli/internal/cli/pipeline"
-	"github.com/FlanChanXwO/pixiv-cli/internal/shared/resolver"
+	"github.com/FlanChanXwO/pixiv-cli/internal/shared/record"
 	"github.com/FlanChanXwO/pixiv-cli/internal/utils/text"
 	"github.com/FlanChanXwO/pixiv-cli/sdk"
 	pixiv "github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
@@ -31,6 +32,7 @@ type Options struct {
 	Proxy   string
 	NoProxy bool
 	JSON    bool
+	ndjson  bool
 
 	typ     string
 	content bool
@@ -39,12 +41,18 @@ type Options struct {
 // Dependencies 是 detail owner 的最小执行端口。资源 factory 由 composition root
 // 在输入验证后通过 BuildRequest/Pooled 注入；detail 不导入旧 CLI resource graph。
 type Dependencies struct {
-	Input        io.Reader
-	Output       io.Writer
-	UsageError   func(error) error
-	BuildRequest func(*cobra.Command, Options) (Request, error)
-	JSONOut      func(*bool) (bool, error)
-	Pooled       func(context.Context, Request, func(context.Context, *pixiv.Client) (bool, error)) error
+	Input             io.Reader
+	Output            io.Writer
+	ErrorOutput       io.Writer
+	OutputIsTTY       func() bool
+	UsageError        func(error) error
+	BuildRequest      func(*cobra.Command, Options) (Request, error)
+	JSONOut           func(*bool) (bool, error)
+	Pooled            func(context.Context, Request, func(context.Context, *pixiv.Client) (bool, error)) error
+	FetchArtwork      func(context.Context, *pixiv.Client, int64) (pixiv.Artwork, error)
+	FetchNovel        func(context.Context, *pixiv.Client, int64) (pixiv.Novel, error)
+	FetchNovelContent func(context.Context, *pixiv.Client, int64) (pixiv.NovelContent, error)
+	FetchUser         func(context.Context, *pixiv.Client, int64) (pixiv.UserDetail, error)
 }
 
 type command struct {
@@ -62,26 +70,6 @@ func (d Dependencies) bindCommonFlags(cmd *cobra.Command, opts *Options) {
 	cmd.Flags().BoolVarP(&opts.JSON, "json", "j", false, "print JSON")
 	cmd.Flags().StringVar(&opts.Proxy, "proxy", "", "proxy URL (http, https, socks5, or socks5h) for this command")
 	cmd.Flags().BoolVar(&opts.NoProxy, "no-proxy", false, "clear the configured proxy for this command")
-}
-
-func (d Dependencies) bindTextValue(cmd *cobra.Command) {
-	pipeline.Bind(cmd, pipeline.InputSpec{
-		Codec:        pipeline.TextValue,
-		MinArgs:      1,
-		MaxArgs:      1,
-		FillPosition: 0,
-		Reader:       d.Input,
-		UsageError:   d.usage,
-	})
-}
-
-func (d Dependencies) exactArgs(count int, usage string) cobra.PositionalArgs {
-	return func(_ *cobra.Command, args []string) error {
-		if len(args) != count {
-			return fmt.Errorf("usage: %s", usage)
-		}
-		return nil
-	}
 }
 
 func readDetail[T any](d Dependencies, ctx context.Context, request Request, invoke func(context.Context, *pixiv.Client) (T, error)) (T, error) {
@@ -119,85 +107,235 @@ func New(data Dependencies) *cobra.Command {
 	a := command{data: data}
 	options := Options{typ: "artwork"}
 	cmd := &cobra.Command{
-		Use:   "detail ID_OR_URL",
+		Use:   "detail [ID_OR_URL]",
 		Short: "Show one artwork, novel, or user",
-		Args:  data.exactArgs(1, "pixiv detail [options] ID_OR_URL"),
+		Args:  cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return a.run(cmd, args[0], options)
+			return a.run(cmd, args, options)
 		},
 	}
 	data.bindCommonFlags(cmd, &options)
-	data.bindTextValue(cmd)
+	cmd.Flags().BoolVar(&options.ndjson, "ndjson", false, "print one canonical record per line")
+	data.bindTextOrRecord(cmd)
 	cmd.Flags().StringVarP(&options.typ, "type", "t", options.typ, "entity type: artwork, novel, user")
 	cmd.Flags().BoolVar(&options.content, "content", false, "for novels, read structured novel content instead of metadata")
 	requirements.Bind(cmd, requirements.PixivData())
 	return cmd
 }
 
-func (a command) run(cmd *cobra.Command, arg string, opts Options) error {
+func (d Dependencies) bindTextOrRecord(cmd *cobra.Command) {
+	pipeline.Bind(cmd, pipeline.InputSpec{Codec: pipeline.TextOrRecord, MinArgs: 1, MaxArgs: 1, FillPosition: 0, Reader: d.Input, UsageError: d.usage})
+}
+
+func (a command) run(cmd *cobra.Command, args []string, opts Options) error {
+	if cmd.Flags().Changed("json") && cmd.Flags().Changed("ndjson") {
+		return errors.New("--json and --ndjson cannot be used together")
+	}
+	if pipeline.ModeOf(cmd) == pipeline.RecordMode {
+		return a.runRecords(cmd, opts)
+	}
+	markNDJSON(cmd, opts.ndjson)
+	if len(args) != 1 {
+		return errors.New("detail requires one ID or URL")
+	}
 	entity, err := resolveEntity(opts.typ)
 	if err != nil {
 		return err
 	}
-	if opts.content && entity != "novel" {
+	if err := validateContentEntity(opts.content, entity); err != nil {
+		return err
+	}
+	id, err := parseEntityIDOrURL(args[0], entity)
+	if err != nil {
+		return err
+	}
+	return a.runOne(cmd, entity, id, opts, false)
+}
+
+func validateContentEntity(content bool, entity string) error {
+	if content && entity != "novel" {
 		return errors.New("--content is only supported when --type novel")
 	}
-	target, err := resolver.Resolve(cmd.Context(), resolver.Input{Value: arg, Type: opts.typ}, detailContract())
-	if err != nil {
-		return err
-	}
-	if opts.content {
-		// App v1 的正文 endpoint 已被拒绝；在构造请求和打开账号池前返回兼容错误，
-		// 确保该兼容 flag 不会把执行路径带到已排除的请求。
+	if content {
+		// App v1 的正文 endpoint 已被拒绝；在构造 request 和打开账号池前返回
+		// 兼容错误，保证 text/record 两条输入链路都不会触达已排除的 endpoint。
 		return sdk.NewError("pixiv", "NovelContent", sdk.ContentUnavailable, sdk.WithDetail("novel content is unsupported by the v1 App API"))
 	}
-	if a.data.BuildRequest == nil {
-		return errors.New("pixiv detail request builder is not configured")
-	}
-	request, err := a.data.BuildRequest(cmd, opts)
+	return nil
+}
+
+func (a command) runRecords(cmd *cobra.Command, opts Options) error {
+	jsonOut, err := a.jsonOutput(cmd, opts)
 	if err != nil {
 		return err
 	}
-	var jsonOverride *bool
-	if cmd.Flags().Changed("json") {
-		jsonOverride = &opts.JSON
+	ndjson := opts.ndjson
+	if !cmd.Flags().Changed("json") && !cmd.Flags().Changed("ndjson") && !jsonOut && a.data.OutputIsTTY != nil {
+		ndjson = !a.data.OutputIsTTY()
 	}
+	markNDJSON(cmd, ndjson)
+	worker := a
+	humanOutput := !ndjson && !jsonOut
+	var humanBuffer bytes.Buffer
+	firstHuman := true
+	var spool *jsonArraySpool
+	if jsonOut && !ndjson {
+		spool, err = newJSONArraySpool()
+		if err != nil {
+			return err
+		}
+		defer spool.close()
+		worker.data.Output = spool
+	}
+	reader := pipeline.Reader(cmd, a.data.Input)
+	err = pipeline.ConsumeNDJSONRecords(cmd.Context(), reader, a.data.ErrorOutput, "detail", true, func(ctx context.Context, input record.Record) error {
+		entity, err := entityForRecord(input.Type(), cmd.Flags().Changed("type"), opts.typ)
+		if err != nil {
+			return err
+		}
+		if err := validateContentEntity(opts.content, entity); err != nil {
+			return err
+		}
+		id, err := pipeline.RequiredRecordID(input)
+		if err != nil {
+			return err
+		}
+		if humanOutput {
+			humanBuffer.Reset()
+			worker.data.Output = &humanBuffer
+		}
+		if err := worker.runOneWithOutput(ctx, cmd, entity, id, opts, ndjson, jsonOut); err != nil {
+			return err
+		}
+		if !humanOutput {
+			return nil
+		}
+		if !firstHuman {
+			if _, err := io.WriteString(a.data.Output, "\n---\n"); err != nil {
+				return pipeline.FatalRecordPipeline(err)
+			}
+		}
+		if _, err := io.Copy(a.data.Output, &humanBuffer); err != nil {
+			return pipeline.FatalRecordPipeline(err)
+		}
+		firstHuman = false
+		return nil
+	})
+	if err != nil {
+		return err
+	}
+	if spool != nil {
+		return spool.commit(a.data.Output)
+	}
+	return nil
+}
+
+func (a command) jsonOutput(cmd *cobra.Command, opts Options) (bool, error) {
 	if a.data.JSONOut == nil {
-		return errors.New("pixiv detail JSON output resolver is not configured")
+		return false, errors.New("pixiv detail JSON output resolver is not configured")
 	}
-	jsonOut, err := a.data.JSONOut(jsonOverride)
+	var override *bool
+	if cmd.Flags().Changed("json") {
+		override = &opts.JSON
+	}
+	return a.data.JSONOut(override)
+}
+
+func (a command) runOne(cmd *cobra.Command, entity string, id int64, opts Options, recordMode bool) error {
+	jsonOut, err := a.jsonOutput(cmd, opts)
 	if err != nil {
 		return err
 	}
-	switch target.ResultKind {
-	case resolver.ResultKindArtwork:
-		result, err := readDetail(a.data, cmd.Context(), request, func(ctx context.Context, client *pixiv.Client) (pixiv.Artwork, error) {
-			return client.Artwork(ctx, pixiv.ArtworkRequest{ArtworkID: target.ID})
+	ndjson := opts.ndjson
+	return a.runOneWithOutput(cmd.Context(), cmd, entity, id, opts, ndjson, jsonOut && !recordMode)
+}
+
+func (a command) runOneWithOutput(ctx context.Context, cmd *cobra.Command, entity string, id int64, opts Options, ndjson, jsonOut bool) error {
+	request, err := a.buildRequest(cmd, opts)
+	if err != nil {
+		return err
+	}
+	switch entity {
+	case "artwork":
+		if a.data.FetchArtwork == nil {
+			return errors.New("pixiv artwork detail fetcher is not configured")
+		}
+		result, err := readDetail(a.data, ctx, request, func(ctx context.Context, client *pixiv.Client) (pixiv.Artwork, error) {
+			return a.data.FetchArtwork(ctx, client, id)
 		})
 		if err != nil {
 			return err
+		}
+		if ndjson || (jsonOut && pipeline.ModeOf(cmd) == pipeline.RecordMode) {
+			value, err := record.RecordFromArtworkDTO(pixiv.ToArtworkDTO(result))
+			if err != nil {
+				return err
+			}
+			return a.writeRecord(value)
 		}
 		if jsonOut {
 			return a.data.writeJSON(pixiv.ToArtworkDTO(result))
 		}
 		return printArtwork(a.data.Output, result)
-	case resolver.ResultKindNovel:
-		result, err := readDetail(a.data, cmd.Context(), request, func(ctx context.Context, client *pixiv.Client) (pixiv.Novel, error) {
-			return client.Novel(ctx, pixiv.NovelRequest{NovelID: target.ID})
+	case "novel":
+		if opts.content {
+			if a.data.FetchNovelContent == nil {
+				return errors.New("pixiv novel content fetcher is not configured")
+			}
+			result, err := readDetail(a.data, ctx, request, func(ctx context.Context, client *pixiv.Client) (pixiv.NovelContent, error) {
+				return a.data.FetchNovelContent(ctx, client, id)
+			})
+			if err != nil {
+				return err
+			}
+			if ndjson || (jsonOut && pipeline.ModeOf(cmd) == pipeline.RecordMode) {
+				value, err := record.RecordFromNovelContentDTO(pixiv.ToNovelContentDTO(result))
+				if err != nil {
+					return err
+				}
+				return a.writeRecord(value)
+			}
+			if jsonOut {
+				return a.data.writeJSON(pixiv.ToNovelContentDTO(result))
+			}
+			return printNovelContent(a.data.Output, result)
+		}
+		if a.data.FetchNovel == nil {
+			return errors.New("pixiv novel detail fetcher is not configured")
+		}
+		result, err := readDetail(a.data, ctx, request, func(ctx context.Context, client *pixiv.Client) (pixiv.Novel, error) {
+			return a.data.FetchNovel(ctx, client, id)
 		})
 		if err != nil {
 			return err
+		}
+		if ndjson || (jsonOut && pipeline.ModeOf(cmd) == pipeline.RecordMode) {
+			value, err := record.RecordFromNovelDTO(pixiv.ToNovelDTO(result))
+			if err != nil {
+				return err
+			}
+			return a.writeRecord(value)
 		}
 		if jsonOut {
 			return a.data.writeJSON(pixiv.ToNovelDTO(result))
 		}
 		return printNovel(a.data.Output, result)
-	case resolver.ResultKindUser:
-		result, err := readDetail(a.data, cmd.Context(), request, func(ctx context.Context, client *pixiv.Client) (pixiv.UserDetail, error) {
-			return client.User(ctx, pixiv.UserRequest{UserID: target.ID})
+	case "user":
+		if a.data.FetchUser == nil {
+			return errors.New("pixiv user detail fetcher is not configured")
+		}
+		result, err := readDetail(a.data, ctx, request, func(ctx context.Context, client *pixiv.Client) (pixiv.UserDetail, error) {
+			return a.data.FetchUser(ctx, client, id)
 		})
 		if err != nil {
 			return err
+		}
+		if ndjson || (jsonOut && pipeline.ModeOf(cmd) == pipeline.RecordMode) {
+			value, err := record.RecordFromUserDetailDTO(pixiv.ToUserDetailDTO(result))
+			if err != nil {
+				return err
+			}
+			return a.writeRecord(value)
 		}
 		if jsonOut {
 			return a.data.writeJSON(pixiv.ToUserDetailDTO(result))
@@ -208,28 +346,80 @@ func (a command) run(cmd *cobra.Command, arg string, opts Options) error {
 	}
 }
 
+func (a command) buildRequest(cmd *cobra.Command, opts Options) (Request, error) {
+	if a.data.BuildRequest == nil {
+		return Request{}, errors.New("pixiv detail request builder is not configured")
+	}
+	return a.data.BuildRequest(cmd, opts)
+}
+
+func (a command) writeRecord(value record.Record) error {
+	if err := json.NewEncoder(a.data.Output).Encode(value); err != nil {
+		return pipeline.FatalRecordPipeline(err)
+	}
+	return nil
+}
+
+func entityForRecord(typ string, explicit bool, requested string) (string, error) {
+	inferred, err := resolveRecordEntity(typ)
+	if err != nil {
+		return "", err
+	}
+	if !explicit {
+		return inferred, nil
+	}
+	wanted, err := resolveEntity(requested)
+	if err != nil {
+		return "", err
+	}
+	if wanted != inferred && !(wanted == "artwork" && inferred == "artwork") {
+		return "", fmt.Errorf("record type %q is incompatible with --type %q", typ, requested)
+	}
+	return wanted, nil
+}
+
+func resolveRecordEntity(typ string) (string, error) {
+	switch typ {
+	case "artwork", "illust", "manga", "ugoira":
+		return "artwork", nil
+	case "novel":
+		return "novel", nil
+	case "user":
+		return "user", nil
+	default:
+		return "", fmt.Errorf("unsupported record type %q", typ)
+	}
+}
+
 func resolveEntity(value string) (string, error) {
 	switch value {
-	case "artwork", "novel", "user":
+	case "artwork", "illust", "manga", "ugoira":
+		return "artwork", nil
+	case "novel", "user":
 		return value, nil
 	default:
 		return "", errors.New("type must be one of artwork, novel, user")
 	}
 }
 
-func detailContract() resolver.Contract {
-	return resolver.Contract{
-		Operation:   "detail",
-		DefaultType: "artwork",
-		Types: []resolver.TypeSpec{
-			{Name: "artwork", ResultKind: resolver.ResultKindArtwork, BareReferenceKind: pixiv.ReferenceKindArtwork},
-			{Name: "novel", ResultKind: resolver.ResultKindNovel, BareReferenceKind: pixiv.ReferenceKindNovel},
-			{Name: "user", ResultKind: resolver.ResultKindUser, BareReferenceKind: pixiv.ReferenceKindUser},
-		},
-		URLKinds: map[pixiv.ReferenceKind]resolver.URLTypeRelation{
-			pixiv.ReferenceKindArtwork: resolver.URLTypeMustMatchResult,
-		},
+func parseEntityIDOrURL(arg, entity string) (int64, error) {
+	value := strings.TrimSpace(arg)
+	if id, err := strconv.ParseInt(value, 10, 64); err == nil && id > 0 {
+		return id, nil
 	}
+	ref, err := pixiv.ParseURL(value)
+	if err != nil {
+		return 0, errors.New("argument must be an entity ID or a supported Pixiv URL")
+	}
+	want := map[string]pixiv.ReferenceKind{
+		"artwork": pixiv.ReferenceKindArtwork,
+		"novel":   pixiv.ReferenceKindNovel,
+		"user":    pixiv.ReferenceKindUser,
+	}
+	if ref.Kind != want[entity] {
+		return 0, fmt.Errorf("URL does not name a supported Pixiv %s", entity)
+	}
+	return ref.ID, nil
 }
 
 func printArtwork(out io.Writer, item pixiv.Artwork) error {
@@ -262,6 +452,39 @@ func printArtwork(out io.Writer, item pixiv.Artwork) error {
 func printNovel(out io.Writer, item pixiv.Novel) error {
 	_, err := fmt.Fprintf(out, "%d %s — %s\n", item.ID, item.Title, item.User.Name)
 	return err
+}
+
+func printNovelContent(out io.Writer, content pixiv.NovelContent) error {
+	if _, err := fmt.Fprintf(out, "novel %d: %s\n", content.NovelID, content.Title); err != nil {
+		return err
+	}
+	for _, block := range content.Blocks {
+		switch block.Kind {
+		case pixiv.NovelBlockParagraph, pixiv.NovelBlockHeader:
+			if _, err := fmt.Fprintln(out, block.Text); err != nil {
+				return err
+			}
+		case pixiv.NovelBlockImage:
+			if block.Image != nil {
+				if _, err := fmt.Fprintf(out, "[image resource %s] %s\n", block.Image.Resource.Ref.String(), block.Image.Caption); err != nil {
+					return err
+				}
+			}
+		case pixiv.NovelBlockFile:
+			if block.File != nil {
+				if _, err := fmt.Fprintf(out, "[file %s resource %s] %s\n", block.File.Filename, block.File.Resource.Ref.String(), block.File.Caption); err != nil {
+					return err
+				}
+			}
+		case pixiv.NovelBlockUnknown:
+			if block.Unknown != nil {
+				if _, err := fmt.Fprintf(out, "[unknown block %s]\n", block.Unknown.RawType); err != nil {
+					return err
+				}
+			}
+		}
+	}
+	return nil
 }
 
 func printUser(out io.Writer, result pixiv.UserDetail) error {

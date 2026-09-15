@@ -6,9 +6,11 @@ This is the complete contract for the `pixiv` command: installation, authenticat
 configuration, environment variables, authentication, and updates. It does not duplicate SDK or MCP details;
 those interfaces are linked under [Related documentation](#related-documentation).
 
-Visual lists automatically emit canonical NDJSON when piped. Downloads currently expose page selection, static
-quality, GIF/APNG mode, output directory, filename templates, and `--on-error`; unsupported options fail as unknown
-flags. Proxy URIs accept `http`, `https`, `socks5`, and `socks5h`.
+Visual lists automatically emit canonical NDJSON when piped. Downloads accept artwork IDs/URLs,
+user/public-bookmark URLs, and resource-policy-allowed CDN URLs; they expose page selection, static quality,
+GIF/APNG mode, output directory, filename templates, and `--on-error`. Unsupported options fail as unknown flags.
+Successful downloads keep stdout empty; non-blocking ugoira filename fallback warnings go to stderr, while item
+failures remain diagnostics and make the command non-zero. Proxy URIs accept `http`, `https`, `socks5`, and `socks5h`.
 
 `pixiv search SOURCE` also performs reverse-image search when `SOURCE` is an explicit HTTP(S) URL or an existing
 regular local file. Reverse search is independent of the authenticated Pixiv account; it uses the configured
@@ -82,7 +84,7 @@ relay server without registering a desktop handler.
 sh scripts/build.sh
 ```
 
-A supported source build requires Go `1.26.3`, `CGO_ENABLED=1`, a working C linker for the target platform, and a
+A supported source build requires Go `1.27.1`, `CGO_ENABLED=1`, a working C linker for the target platform, and a
 Rust ugoira staticlib matching the target. It outputs `build/pixiv` or `build/pixiv.exe`. On Windows, run the build
 command via Git Bash, MSYS2, or WSL.
 
@@ -375,6 +377,28 @@ All non-mutating data reads, recommendations, timelines, and downloads use the l
 
 Visual lists write canonical Record NDJSON automatically when stdout is a non-terminal and no explicit output format was selected. Each line has stable string `id`, `type`, and `url`; `download`, `bookmark add/remove`, and `follow add/remove` consume compatible records without positional IDs; bookmark add/remove only consume records whose namespace matches the selected `--type` (artwork types by default, `novel` with `--type novel`). Explicit follow targets must otherwise be positive numeric user IDs; user URLs are rejected locally. `pixiv user follow add/remove` and the root `pixiv follow add/remove` route share the same owner, with `add --restrict public|private` defaulting to `public`. `comment create/reply/stamp/delete` use one positive numeric ID and do not consume Record input. Comment reads preserve optional `total`/`access_control` metadata; when upstream supplies opaque numeric `comment_access_control`, JSON keeps it under `access_control.comment_access_control` without inferring boolean permission fields. Comment create/reply/stamp return the upstream positive `comment_id` directly; delete returns a success status only. `comment stamps` is a read-only, non-paginated list. `--json` and explicit `--ndjson` retain precedence.
 
+For the supported search-to-detail pipeline, prefer letting the pipe select canonical NDJSON:
+
+```bash
+pixiv search "miku" --type artwork --limit 20 | pixiv detail
+```
+
+Because `search` stdout is a pipe, it emits canonical NDJSON automatically;
+`detail` consumes each record and infers its endpoint. The explicit producer
+equivalent is:
+
+```bash
+pixiv search "miku" --type artwork --limit 20 --ndjson | pixiv detail
+```
+
+Artwork, novel, and user search records infer their respective detail endpoints
+from `type`; no `--type` is needed. In record mode, an explicit `--type` is
+only a compatibility constraint: it must match the inferred record type and
+never overrides it. Reverse-search `artwork` and `user` identity records follow
+the same detail path. `search --json` is a complete aggregate document, not a
+canonical record stream, so `pixiv search ... --json | pixiv detail` is
+unsupported.
+
 ### Reverse image search
 
 `pixiv search SOURCE` enters image mode before any Pixiv SDK or account-pool setup:
@@ -385,6 +409,10 @@ Visual lists write canonical Record NDJSON automatically when stdout is a non-te
   FIFOs, devices, sockets, and other non-regular paths are not image sources; all other text remains a keyword.
 - Image mode accepts `--provider`, `--json`, `--ndjson`, `--proxy`, and `--no-proxy`. Search filters, `--type`,
   pagination, and `--trending-tags` are rejected rather than ignored.
+
+Reverse-search source must be a local regular-file path or an HTTP(S) URL.
+Binary image bytes on stdin do not select image mode; `cat image.png | pixiv
+search` is unsupported.
 
 The provider values are `saucenao`, `ascii2d-color`, `ascii2d-bovw`, and `all`. The configured default is
 `saucenao`; `--provider` overrides it for one invocation. `all` runs the providers in the fixed order SauceNAO,
@@ -420,7 +448,9 @@ JSON output is the complete envelope `{input, providers, results, records, provi
 contains only canonical Pixiv identities: artwork matches use the generic `type:"artwork"` because reverse search
 does not know the artwork subtype, while user matches use `type:"user"`. The CLI does not call Pixiv detail merely
 to infer a subtype. External-only matches can remain in `results` when Pixiv-only filtering is disabled but do not
-become records. Human output is a safe summary; piped or explicit NDJSON emits only those canonical records.
+become records. Human output is a safe summary; piped or explicit NDJSON emits only those canonical records. The
+canonical `artwork` and `user` identity records emitted by reverse search can be piped directly to `detail`; generic
+`artwork` records resolve to the concrete artwork detail returned by Pixiv.
 
 For `all`, a successful provider plus a failed provider sets `partial=true`, writes a safe warning to stderr, and
 exits successfully. A single-provider failure or an all-provider failure exits non-zero while preserving any
@@ -464,7 +494,7 @@ Only the structured entity filters documented by each command are accepted. The 
 | `config unset` | `pixiv config unset KEY` | Deletes one known config key from `config.toml`. |
 | `update` | `pixiv update [--check] [--prerelease] [--proxy URL]` | Checks for or performs an update matching the current install source; `--json` is only valid together with `--check`. |
 | `search` | `pixiv search [WORD\|IMAGE_PATH_OR_URL] [-t artwork\|novel\|user] [options]` | Canonical entity search or automatic reverse-image search. A regular file or explicit HTTP(S) source selects image mode; `--trending-tags` is the no-word artwork tag-list mode and does not accept search filters or pagination. |
-| `detail` | `pixiv detail ID_OR_URL [-t artwork\|novel\|user] [--content] [--json]` | Reads one artwork, novel, or user. `--content` remains a novel-only compatibility flag, but the v1 App content endpoint is unavailable: a positive novel ID returns `content_unavailable` without a rejected-endpoint request. |
+| `detail` | `pixiv detail [ID_OR_URL] [-t artwork\|novel\|user] [--content] [--json\|--ndjson]` | Reads one artwork, novel, or user, or consumes canonical NDJSON records. `--content` is a retained novel-only compatibility flag; the v1 App content endpoint is unavailable, so it returns `content_unavailable` before opening the account pool or requesting the rejected endpoint. |
 | `ranking` | `pixiv ranking [-t artwork\|novel] [--mode MODE --date YYYY-MM-DD --page N --limit N]` | Reads artwork or novel rankings. `artwork` is the default; `--date` is supported only for artwork ranking. |
 | `series` | `pixiv series SERIES_ID_OR_URL -t artwork\|novel [--page N --limit N --json\|--ndjson]` | Lists the artworks or novels in one series. The input may be a positive series ID or a supported artwork/novel series URL; the entity type is required and must match the URL namespace. |
 | `comment` | `pixiv comment ID -t artwork\|novel [--page N --limit N --json\|--ndjson]`; `pixiv comment create ID -t artwork\|novel --comment TEXT [--json]`; `pixiv comment reply ID -t artwork\|novel --parent-comment-id COMMENT_ID --comment TEXT [--json]`; `pixiv comment stamp ID -t artwork\|novel --stamp-id STAMP_ID [--comment TEXT] [--json]`; `pixiv comment delete COMMENT_ID -t artwork\|novel [--json]`; `pixiv comment stamps [--json\|--ndjson]` | Preserves the artwork/novel comment read route and adds explicit create, reply, stamp, delete, and stamp-list actions. Comment reads preserve optional `total`/`access_control`; opaque numeric `comment_access_control` remains nested under `access_control` without boolean inference. Comment mutations accept positive numeric IDs only; create/reply require a non-empty body, stamp accepts an optional body and forwards empty text for sticker-only wire, create/reply/stamp return `comment_id`, delete returns a status, and `stamps` returns output-safe stamp DTOs without pagination or runtime URLs. |
@@ -530,7 +560,7 @@ extension. Extensions also replace ASCII control characters and remove trailing 
 | list commands | `--page` / `-p` | empty | 1-based logical page; must be used with a positive `--limit`. |
 | `ranking` | `--mode` | `day` | One of `day`, `day_male`, `day_female`, `week`, `week_original`, `week_rookie`, `month`, `day_manga`, `week_manga`, `month_manga`, `week_rookie_manga`, `day_r18`, `day_male_r18`, `day_female_r18`, `week_r18`, `week_r18g`. The final nine require authentication. |
 | `ranking` | `--date` | empty | Ranking date, typically `YYYY-MM-DD`. |
-| `detail` | `--type` / `-t` | `artwork` | Entity type: `artwork`, `novel`, or `user`; `--content` is a retained novel-only compatibility flag and returns `content_unavailable` while the v1 content endpoint is unavailable. |
+| `detail` | `--type` / `-t` | `artwork` | Entity type: `artwork` (also accepts `illust`, `manga`, `ugoira`), `novel`, or `user`; omitted type in record mode is inferred from the record. `--content` is a retained novel-only compatibility flag and returns `content_unavailable` before account-pool execution while the v1 content endpoint is unavailable. |
 | `series`, `comment` | `--type` / `-t` | required | Entity type: `artwork` or `novel`; series accepts a positive ID or a supported series URL, and its URL namespace must match the selected type. Comment read/create/reply/stamp use a positive artwork/novel ID; comment delete uses the type to select the artwork or novel comment endpoint. The input is interpreted only after the type is selected. |
 | `comment create`, `comment reply` | `--comment` | required | Non-empty comment body. The CLI rejects an empty value and never truncates the supplied text. |
 | `comment stamp` | `--comment` | optional | Optional comment text; omit it or pass an empty value for the current sticker-only wire form. The CLI never truncates supplied text. |
@@ -548,17 +578,17 @@ extension. Extensions also replace ASCII control characters and remove trailing 
 | `recommended` | `--type` / `-t` | empty | `artwork`, `novel`, `user`, or `all`; with `artwork`, `--content-type` selects the local subtype filter; positional `KIND` is compatibility syntax. |
 | `recommended` | `--content-type` | `all` | Artwork-only local subtype filter: `all`, `illust`, or `manga`. Filtering happens after `--page/--limit` selects the raw recommendation window; the value is not sent as the upstream `content_type` parameter. |
 | record actions | `--on-error` | `skip` | Skip malformed/incompatible records with a stderr diagnostic, or use `fail-fast`. |
-| `download` | `--pages` | empty | 1-based closed page selection such as `1,3-5`; default downloads every page. Missing pages fail explicitly. |
+| `download` | `--pages` | empty | 1-based individual pages and closed ranges such as `1,3-5`; open-ended ranges are invalid. Default downloads every page, and missing pages fail explicitly. |
 | `download` | `--quality` | `original` | Static image quality: `original`, `regular` (longest side 1200), `small` (longest side 540), `thumb` (250×250 center crop), or `mini` (48×48 center crop). Ugoira rejects non-original quality or page selection as unsupported.
 | `download` | `--ugoira-mode` | `gif` | Ugoira output: `gif` or `apng`. |
 | `download` | `--download-path` / `--output` / `-o` | `DOWNLOAD_PATH`, `config.toml`, or `./downloads` | Download directory. `--output` is an alias for this option and conflicts if both specify different directories. |
-| `download` | `--filename-template` | `FILENAME_TEMPLATE`, `config.toml`, or `{author} - {title}_{id}` | Supports `{id}`, `{title}`, `{author}`, `{author_id}`, `{date}`, `{tags}`, and `{num}`. Unknown placeholders and unmatched braces are errors. |
+| `download` | `--filename-template` | `FILENAME_TEMPLATE`, `config.toml`, or `{author} - {title}_{id}` | Supports `{id}`, `{title}`, `{author}`, `{author_id}`, `{date}`, `{tags}`, and `{num}`. Unknown placeholders and unmatched braces are errors; an invalid or empty-rendered ugoira template falls back to the default filename and emits a warning on stderr. |
 | `bookmark add` | `--type` / `-t` | `artwork` | Entity type: `artwork` or `novel`; selects the bookmark namespace for the positional ID or Record. `all` and other namespaces are rejected before any network call. |
 | `bookmark add` | `--restrict` | `public` | Visibility of the new bookmark: `public` or `private`. |
 | `bookmark add` | `--tag` | empty | Bookmark tag; may be repeated. |
 | `bookmark remove` | `--type` / `-t` | `artwork` | Entity type: `artwork` or `novel`; selects the bookmark namespace for the positional ID or Record. |
 | `follow add` | `--restrict` | `public` | Visibility of the new follow: `public` or `private`. |
-| `download` | `SRC...` | required | Artwork PID, artwork URL, allowed CDN resource URL, user profile/artworks URL, or public bookmarks URL. Artwork-series URLs are not download sources. CDN files use the URL filename; metadata-dependent options do not apply. |
+| `download` | `SRC...` | required | Artwork PID, artwork URL, allowed CDN resource URL, user profile/artworks URL, or public bookmarks URL. Artwork-series URLs are not download sources. CDN files use a safe URL basename with a deterministic URL-identity suffix; metadata-dependent options do not apply. |
 
 All Pixiv content reads use the authenticated local account selected by `pixiv auth use` (or the eligible account
 pool) and the App API. App failures are final; the CLI does not fall back to an anonymous Web/API path. Search
@@ -578,7 +608,7 @@ evidence is not yet available. Premium is not a local hard gate, and bookmark co
 
 Artwork JSON/NDJSON preserves public entity data and an opaque resource reference where needed; it does not emit
 resolved/signed resource URLs, request headers, Cookies, expiry metadata, tokens, or other transport credentials.
-Download is an action: success keeps stdout empty, while failures are explicit diagnostics and a non-zero exit.
+Download is an action: success keeps stdout empty; ugoira filename fallback warnings are stderr-only, while failures are explicit diagnostics and a non-zero exit.
 
 ### Drawing-tool catalog
 
@@ -620,7 +650,13 @@ calling the rejected content endpoint. It does not fall back to WebView.
 `detail --type artwork` accepts a positive artwork ID or a canonical HTTPS `pixiv.net`/`www.pixiv.net` artwork URL
 in the form `/artworks/{id}` (an optional locale segment, query, and fragment are allowed). `detail --type novel`
 and `detail --type user` require positive numeric IDs. User and novel URLs are not silently interpreted as artwork
-URLs; unsupported URL shapes fail locally.
+URLs; unsupported URL shapes fail locally. `detail` also consumes canonical NDJSON records from stdin: `illust`,
+`manga`, `ugoira`, and generic `artwork` records resolve to artwork detail, while `novel` and `user` records resolve
+to their matching detail endpoints. Artwork, novel, and user search records therefore need no explicit `--type`; when
+`--type` is supplied in record mode, it is only a compatibility constraint and never overrides the record type. The
+`artwork` and `user` identity records emitted by reverse search are valid `detail` inputs as well. In record mode,
+`--ndjson` emits canonical records and `--json` emits one JSON array; an omitted output flag auto-selects NDJSON for
+non-TTY stdout. Aggregate `search --json` output is not an NDJSON record stream and is not accepted by `detail`.
 
 `user follow add/remove` and the root `follow add/remove` compatibility route accept a positive numeric user ID or a canonical user
 Record. User profile URLs are rejected locally rather than converted to an ID. `follow add --restrict` accepts `public` or `private`
@@ -631,9 +667,10 @@ and `/users/{id}/bookmarks/artworks` URLs. User and public-bookmarks sources fol
 `manga`, and `ugoira`, deduplicating artwork IDs by first appearance. Artwork-series URLs are rejected as unsupported
 download sources. All need App OAuth and have no anonymous Web fallback. URL
 parsing is local only: it does not fetch HTML or follow redirects. The current CLI download contract exposes page
-selection, static quality, GIF/APNG mode, output directory, filename template, and `--on-error`; unsupported
-options fail as unknown flags. Downloads continue after independent artwork failures according to `--on-error` and
-report every outcome through diagnostics; cancellation stops immediately.
+selection, static quality, GIF/APNG mode, output directory, filename template, and `--on-error`; unsupported options fail as unknown flags. `--pages` accepts only individual 1-based pages and
+closed ranges. An invalid or empty-rendered ugoira filename template falls back to the default filename and emits
+a warning on stderr without failing that item. Record-level input errors follow `--on-error`; reported artwork
+failures remain visible and make the command non-zero. Cancellation stops immediately.
 
 ### Common flags
 

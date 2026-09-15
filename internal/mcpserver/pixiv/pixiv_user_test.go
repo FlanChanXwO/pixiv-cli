@@ -79,7 +79,7 @@ func TestTimelineAndMyPixivToolsRouteAppSDKRequestsWithRecords(t *testing.T) {
 		t.Fatalf("timeline_novel_following request=%+v structured=%#v", followingNovel, following)
 	}
 
-	illustNew := assertRecords("timeline_illust_latest", map[string]any{"content_type": "manga", "limit": 1}, "2", "illustration")
+	illustNew := assertRecords("timeline_illust_latest", map[string]any{"content_type": "manga", "limit": 1}, "2", "illust")
 	if latestIllust.ContentType != pixiv.SearchContentTypeManga || !paginationHasMore(t, illustNew) {
 		t.Fatalf("timeline_illust_latest request=%+v structured=%#v", latestIllust, illustNew)
 	}
@@ -94,7 +94,7 @@ func TestTimelineAndMyPixivToolsRouteAppSDKRequestsWithRecords(t *testing.T) {
 		t.Fatalf("mypixiv_users request=%+v", myPixivUsers)
 	}
 
-	assertRecords("mypixiv_illusts", map[string]any{}, "5", "illustration")
+	assertRecords("mypixiv_illusts", map[string]any{}, "5", "illust")
 	if !myPixivIllusts.Cursor.IsZero() {
 		t.Fatalf("mypixiv_illusts request=%+v", myPixivIllusts)
 	}

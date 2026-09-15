@@ -43,7 +43,7 @@ func checkE2EJob(job *yaml.Node) error {
 	if err := requireCanonicalCheckout(steps[0], "e2e job", checkoutWithRequirement{"fetch-depth", "0"}, checkoutWithRequirement{"persist-credentials", "false"}, checkoutWithRequirement{"ref", "${{ env.RELEASE_TAG }}"}); err != nil {
 		return err
 	}
-	if err := requireExactActionStep(steps[1], "e2e Go setup", setupGoAction, map[string]string{"go-version": "1.26.3"}); err != nil {
+	if err := requireExactActionStep(steps[1], "e2e Go setup", setupGoAction, map[string]string{"go-version": "1.27.1"}); err != nil {
 		return err
 	}
 	if err := requireOnlyMappingKeys(steps[2], "name", "shell", "run"); err != nil {

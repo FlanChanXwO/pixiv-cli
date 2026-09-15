@@ -31,7 +31,7 @@ jobs:
           persist-credentials: false
       - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff
         with:
-          go-version: '1.26.3'
+          go-version: '1.27.1'
       - name: Detect documentation-only changes
         id: scope
         shell: bash
@@ -55,6 +55,7 @@ jobs:
       contents: read
     env:
       CC: ${{ matrix.cc }}
+      RUSTUP_TOOLCHAIN: ${{ matrix.rust_toolchain }}
     strategy:
       fail-fast: false
       matrix:
@@ -63,31 +64,37 @@ jobs:
             goos: darwin
             goarch: amd64
             rust_target: x86_64-apple-darwin
+            rust_toolchain: '1.96.0'
             cc: clang
           - runner: macos-15
             goos: darwin
             goarch: arm64
             rust_target: aarch64-apple-darwin
+            rust_toolchain: '1.96.1'
             cc: clang
           - runner: ubuntu-22.04
             goos: linux
             goarch: amd64
             rust_target: x86_64-unknown-linux-gnu
+            rust_toolchain: '1.96.1'
             cc: gcc
           - runner: ubuntu-22.04-arm
             goos: linux
             goarch: arm64
             rust_target: aarch64-unknown-linux-gnu
+            rust_toolchain: '1.96.1'
             cc: gcc
           - runner: windows-2025
             goos: windows
             goarch: amd64
             rust_target: x86_64-pc-windows-msvc
+            rust_toolchain: '1.96.0'
             cc: clang -fuse-ld=lld
           - runner: windows-11-arm
             goos: windows
             goarch: arm64
             rust_target: aarch64-pc-windows-msvc
+            rust_toolchain: '1.96.1'
             cc: clang -fuse-ld=lld
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
@@ -95,10 +102,10 @@ jobs:
           persist-credentials: false
       - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff
         with:
-          go-version: '1.26.3'
-      - name: Install the native Rust target
+          go-version: '1.27.1'
+      - name: Install the pinned native Rust toolchain
         shell: bash
-        run: rustup target add '${{ matrix.rust_target }}'
+        run: rustup toolchain install '${{ matrix.rust_toolchain }}' --profile minimal --target '${{ matrix.rust_target }}' --no-self-update
       - name: Check vendored Rust sources
         shell: bash
         run: sh scripts/test-rust-vendor.sh
@@ -113,7 +120,17 @@ jobs:
         run: bash scripts/build-staticlibs.sh --target '${{ matrix.rust_target }}'
       - name: Run native GIF/APNG smoke
         shell: bash
-        run: go test ./internal/media/ugoira -run '^TestRustUgoiraEncoderNativeGIFAndAPNG$' -count=1
+        run: |
+          set +e
+          native_smoke_log="$RUNNER_TEMP/native-ugoira-smoke.log"
+          go test ./internal/media/ugoira -run '^TestRustUgoiraEncoderNativeGIFAndAPNG$' -count=1 >"$native_smoke_log" 2>&1
+          status=$?
+          cat "$native_smoke_log"
+          if [ "$status" -ne 0 ]; then
+            message=$(tail -n 40 "$native_smoke_log" | tr '\r\n' ' ' | sed 's/%/%25/g')
+            printf '::error title=Native GIF/APNG smoke::%s\n' "$message"
+            exit "$status"
+          fi
       - name: Build and package a versioned binary
         shell: bash
         run: |

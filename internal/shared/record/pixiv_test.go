@@ -47,6 +47,15 @@ func TestRecordFromArtworkPreservesSDKFieldsAndNormalizesID(t *testing.T) {
 	assert.NotContains(t, string(got), `"version"`)
 }
 
+func TestRecordFromArtworkNormalizesIllustrationType(t *testing.T) {
+	artwork := pixiv.Artwork{ID: 101, Kind: pixiv.ArtworkKindIllustration}
+
+	record, err := recordpkg.RecordFromArtworkDTO(pixiv.ToArtworkDTO(artwork))
+	require.NoError(t, err)
+
+	assert.Equal(t, "illust", record.Type())
+}
+
 func TestRecordFromNovelAndUserPreview(t *testing.T) {
 	novel := pixiv.Novel{
 		ID:             88,
@@ -126,6 +135,67 @@ func TestRecordFromUserDetailPreservesCompleteEnvelope(t *testing.T) {
 	assertRecordMatchesSource(t, detail, record, "321", "user", "https://www.pixiv.net/users/321")
 }
 
+func TestRecordFromNovelContentPreservesCanonicalIdentityAndStructuredFields(t *testing.T) {
+	content := pixiv.NovelContent{
+		NovelID: 808,
+		Title:   "正文标题",
+		Caption: "正文说明",
+		Blocks: []pixiv.NovelBlock{
+			{
+				Kind:  pixiv.NovelBlockParagraph,
+				Text:  "第一段",
+				Marks: []pixiv.NovelMark{{Kind: pixiv.NovelMarkStrong, Text: "重点"}},
+			},
+			{Kind: pixiv.NovelBlockHeader, Text: "章节一"},
+			{
+				Kind: pixiv.NovelBlockUnknown,
+				Unknown: &pixiv.NovelUnknownBlock{
+					RawType: "quote",
+					Payload: map[string]string{"label": "引用"},
+				},
+			},
+		},
+	}
+
+	gotRecord, err := recordpkg.RecordFromNovelContentDTO(pixiv.ToNovelContentDTO(content))
+	require.NoError(t, err)
+	body, err := json.Marshal(gotRecord)
+	require.NoError(t, err)
+
+	var object map[string]any
+	require.NoError(t, json.Unmarshal(body, &object))
+	assert.Equal(t, "808", object["id"])
+	assert.Equal(t, "novel", object["type"])
+	assert.Equal(t, "https://www.pixiv.net/novel/show.php?id=808", object["url"])
+	assert.Equal(t, float64(808), object["novel_id"])
+	assert.Equal(t, "正文标题", object["title"])
+	assert.Equal(t, "正文说明", object["caption"])
+
+	blocks, ok := object["blocks"].([]any)
+	require.True(t, ok, "blocks must remain a structured array")
+	require.Len(t, blocks, 3)
+	firstBlock, ok := blocks[0].(map[string]any)
+	require.True(t, ok, "first block must remain a structured object")
+	assert.Equal(t, "paragraph", firstBlock["kind"])
+	assert.Equal(t, "第一段", firstBlock["text"])
+	marks, ok := firstBlock["marks"].([]any)
+	require.True(t, ok, "inline marks must remain structured")
+	require.Len(t, marks, 1)
+	mark, ok := marks[0].(map[string]any)
+	require.True(t, ok, "inline mark must remain a structured object")
+	assert.Equal(t, "strong", mark["kind"])
+	assert.Equal(t, "重点", mark["text"])
+
+	thirdBlock, ok := blocks[2].(map[string]any)
+	require.True(t, ok, "unknown block must remain a structured object")
+	unknown, ok := thirdBlock["unknown"].(map[string]any)
+	require.True(t, ok, "unknown block payload must remain available")
+	assert.Equal(t, "quote", unknown["raw_type"])
+	payload, ok := unknown["payload"].(map[string]any)
+	require.True(t, ok, "unknown block payload must remain structured")
+	assert.Equal(t, "引用", payload["label"])
+}
+
 func TestRecordMappersRejectNonPositiveSDKID(t *testing.T) {
 	for _, test := range []struct {
 		name string
@@ -136,6 +206,9 @@ func TestRecordMappersRejectNonPositiveSDKID(t *testing.T) {
 		}},
 		{name: "novel", make: func() (recordpkg.Record, error) {
 			return recordpkg.RecordFromNovelDTO(pixiv.ToNovelDTO(pixiv.Novel{ID: -1}))
+		}},
+		{name: "novel content", make: func() (recordpkg.Record, error) {
+			return recordpkg.RecordFromNovelContentDTO(pixiv.ToNovelContentDTO(pixiv.NovelContent{NovelID: -1}))
 		}},
 		{name: "user", make: func() (recordpkg.Record, error) {
 			return recordpkg.RecordFromUserPreviewDTO(pixiv.ToUserPreviewDTO(pixiv.UserPreview{User: pixiv.User{ID: 0}}))

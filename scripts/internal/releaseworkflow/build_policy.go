@@ -120,7 +120,7 @@ func requireCanonicalBuildSteps(steps []*yaml.Node) error {
 	if err := requireCanonicalCheckout(steps[0], "build checkout", checkoutWithRequirement{"fetch-depth", "0"}, checkoutWithRequirement{"persist-credentials", "false"}, checkoutWithRequirement{"ref", "${{ env.RELEASE_TAG }}"}); err != nil {
 		return err
 	}
-	if err := requireExactActionStep(steps[1], "build Go setup", setupGoAction, map[string]string{"go-version": "1.26.3"}); err != nil {
+	if err := requireExactActionStep(steps[1], "build Go setup", setupGoAction, map[string]string{"go-version": "1.27.1"}); err != nil {
 		return err
 	}
 	for index, gate := range []struct {
@@ -265,7 +265,7 @@ func checkProductionBuildJob(job *yaml.Node) error {
 	if err := requireCanonicalCheckout(steps[0], "build_production job", checkoutWithRequirement{"clean", "true"}, checkoutWithRequirement{"fetch-depth", "0"}, checkoutWithRequirement{"persist-credentials", "false"}, checkoutWithRequirement{"ref", "${{ env.RELEASE_TAG }}"}); err != nil {
 		return err
 	}
-	if err := requireExactActionStep(steps[1], "build_production Go setup", setupGoAction, map[string]string{"go-version": "1.26.3", "cache": "false"}); err != nil {
+	if err := requireExactActionStep(steps[1], "build_production Go setup", setupGoAction, map[string]string{"go-version": "1.27.1", "cache": "false"}); err != nil {
 		return err
 	}
 	if err := requireCanonicalNamedRunStep(steps[2], "Validate the exact immutable production source", `go run ./scripts/cmd/releaseassets validate-source --version "${RELEASE_TAG#v}" --product-skill skills/pixiv-cli/SKILL.md`); err != nil {

@@ -43,6 +43,7 @@ type downloadOut struct {
 	Delivery string               `json:"delivery"`
 	Items    []downloadItemOut    `json:"items"`
 	Failures []downloadFailureOut `json:"failures"`
+	Warnings []downloadWarningOut `json:"warnings"`
 	Files    []downloadFileOut    `json:"files"`
 	Text     string               `json:"text"`
 }
@@ -58,6 +59,12 @@ type downloadItemOut struct {
 
 type downloadFailureOut struct {
 	URL      string `json:"url"`
+	IllustID int64  `json:"illust_id"`
+	Type     string `json:"type"`
+	Message  string `json:"message"`
+}
+
+type downloadWarningOut struct {
 	IllustID int64  `json:"illust_id"`
 	Type     string `json:"type"`
 	Message  string `json:"message"`
@@ -93,7 +100,7 @@ func handleDownload(ctx context.Context, app *runtime.App, in downloadIn) (*mcp.
 	}
 	report, err := downloadSources(ctx, app, sources, pages, quality, ugoiraFormat)
 	if err != nil {
-		return emptyDownloadError(ctx, err, delivery, "Download failed: "+err.Error())
+		return downloadOperationError(ctx, delivery, report, err)
 	}
 	out, err := buildDownloadReportOut(delivery, report)
 	if err != nil {
@@ -162,7 +169,7 @@ func downloadDefaults(app *runtime.App) (string, string, string) {
 	return path, template, directory
 }
 
-func downloadArtworks(ctx context.Context, app *runtime.App, ids []int64, client *pixiv.Client, pages []int, quality downloader.DownloadQuality, ugoiraFormat downloader.UgoiraFormat) ([]downloader.DownloadedArtwork, error) {
+func downloadArtworks(ctx context.Context, app *runtime.App, ids []int64, client *pixiv.Client, pages []int, quality downloader.DownloadQuality, ugoiraFormat downloader.UgoiraFormat) (downloader.DownloadBatchResult, error) {
 	path, template, directory := downloadDefaults(app)
 	req := downloader.DownloadRequest{
 		IllustIDs:         ids,
@@ -180,7 +187,7 @@ func downloadArtworks(ctx context.Context, app *runtime.App, ids []int64, client
 	if client == nil {
 		lease, err := app.OpenClient(ctx)
 		if err != nil {
-			return nil, err
+			return downloader.DownloadBatchResult{}, err
 		}
 		defer lease.Close()
 		client = lease.Value()
@@ -245,6 +252,7 @@ func emptyDownloadResult(delivery, text string) (*mcp.CallToolResult, downloadOu
 		Delivery: delivery,
 		Items:    []downloadItemOut{},
 		Failures: []downloadFailureOut{},
+		Warnings: []downloadWarningOut{},
 		Files:    []downloadFileOut{},
 		Text:     text,
 	}
@@ -257,6 +265,19 @@ func emptyDownloadError(_ context.Context, _ error, delivery, text string) (*mcp
 	return result, out, resultErr
 }
 
+// downloadOperationError 保留 operation error 发生前已经生成的结构化结果；
+// MCP 用 isError 表达工具级失败，不能用空结果覆盖已落盘的 partial items 或 failures。
+func downloadOperationError(ctx context.Context, delivery string, report downloader.DownloadReport, operationErr error) (*mcp.CallToolResult, downloadOut, error) {
+	out, err := buildDownloadReportOut(delivery, report)
+	if err != nil {
+		return emptyDownloadError(ctx, err, delivery, "Could not build the download result: "+err.Error())
+	}
+	out.Text += "\nDownload failed: " + operationErr.Error()
+	result := downloadResult(out)
+	result.IsError = true
+	return result, out, nil
+}
+
 func normalizeDelivery(value string) (string, string) {
 	switch strings.TrimSpace(value) {
 	case "", deliveryLocalPath:
@@ -267,18 +288,22 @@ func normalizeDelivery(value string) (string, string) {
 }
 
 func buildDownloadOut(delivery string, artworks []downloader.DownloadedArtwork) (downloadOut, error) {
-	out := downloadOut{Delivery: delivery, Items: []downloadItemOut{}, Failures: []downloadFailureOut{}, Files: []downloadFileOut{}}
+	out := downloadOut{Delivery: delivery, Items: []downloadItemOut{}, Failures: []downloadFailureOut{}, Warnings: []downloadWarningOut{}, Files: []downloadFileOut{}}
 	lines := []string{fmt.Sprintf("Download completed; delivery: %s.", delivery)}
 	for _, artwork := range artworks {
 		item := downloadItemOut{
-			URL:      "https://www.pixiv.net/artworks/" + strconv.FormatInt(artwork.IllustID, 10),
 			IllustID: artwork.IllustID,
 			Title:    artwork.Title,
 			Author:   artwork.Author,
 			Type:     artwork.Type,
 			Files:    []downloadFileOut{},
 		}
-		lines = append(lines, fmt.Sprintf("Artwork %d - %q / Author: %s / Type: %s", artwork.IllustID, artwork.Title, artwork.Author, artwork.Type))
+		if artwork.IllustID > 0 {
+			item.URL = "https://www.pixiv.net/artworks/" + strconv.FormatInt(artwork.IllustID, 10)
+			lines = append(lines, fmt.Sprintf("Artwork %d - %q / Author: %s / Type: %s", artwork.IllustID, artwork.Title, artwork.Author, artwork.Type))
+		} else {
+			lines = append(lines, fmt.Sprintf("Resource download / Type: %s", artwork.Type))
+		}
 		for _, file := range artwork.Files {
 			info, err := os.Stat(file.Path)
 			if err != nil {
@@ -309,6 +334,18 @@ func buildDownloadReportOut(delivery string, report downloader.DownloadReport) (
 	out, err := buildDownloadOut(delivery, report.Items)
 	if err != nil {
 		return downloadOut{}, err
+	}
+	for _, warning := range report.Warnings {
+		out.Warnings = append(out.Warnings, downloadWarningOut{
+			IllustID: warning.IllustID, Type: warning.Type, Message: warning.Message,
+		})
+		if warning.IllustID > 0 {
+			out.Text += fmt.Sprintf("\nWarning artwork %d: %s", warning.IllustID, warning.Message)
+		} else if warning.Type != "" {
+			out.Text += fmt.Sprintf("\nWarning %s: %s", warning.Type, warning.Message)
+		} else {
+			out.Text += "\nWarning: " + warning.Message
+		}
 	}
 	for _, failure := range report.Failures {
 		out.Failures = append(out.Failures, downloadFailureOut{
@@ -380,13 +417,23 @@ func handleDownloadRandom(ctx context.Context, app *runtime.App, in downloadRand
 	for _, illust := range result.Items[:count] {
 		ids = append(ids, illust.ID)
 	}
-	artworks, err := downloadArtworks(ctx, app, ids, client, pages, quality, ugoiraFormat)
-	if err != nil {
-		return emptyDownloadError(ctx, err, delivery, "Download failed: "+err.Error())
+	batch, err := downloadArtworks(ctx, app, ids, client, pages, quality, ugoiraFormat)
+	report := downloader.DownloadReport{
+		Items:     batch.Items,
+		Failures:  batch.Failures,
+		Warnings:  batch.Warnings,
+		Committed: len(batch.Items) > 0,
 	}
-	out, err := buildDownloadOut(delivery, artworks)
+	if err != nil {
+		return downloadOperationError(ctx, delivery, report, err)
+	}
+	out, err := buildDownloadReportOut(delivery, report)
 	if err != nil {
 		return emptyDownloadError(ctx, err, delivery, "Could not build the download result: "+err.Error())
 	}
-	return downloadResult(out), out, nil
+	toolResult := downloadResult(out)
+	if len(out.Failures) > 0 {
+		toolResult.IsError = true
+	}
+	return toolResult, out, nil
 }

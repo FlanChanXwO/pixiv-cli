@@ -58,7 +58,7 @@ go run ./scripts/cmd/releasenotes validate \
 	if err := requireCanonicalCheckout(steps[0], "release_notes_audit job", checkoutWithRequirement{"fetch-depth", "0"}, checkoutWithRequirement{"persist-credentials", "false"}, checkoutWithRequirement{"ref", "${{ env.RELEASE_TAG }}"}); err != nil {
 		return err
 	}
-	if err := requireExactActionStep(steps[1], "release_notes_audit Go setup", setupGoAction, map[string]string{"go-version": "1.26.3"}); err != nil {
+	if err := requireExactActionStep(steps[1], "release_notes_audit Go setup", setupGoAction, map[string]string{"go-version": "1.27.1"}); err != nil {
 		return err
 	}
 	if err := requireOnlyMappingKeys(steps[2], "name", "shell", "env", "run"); err != nil ||

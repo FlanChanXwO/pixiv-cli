@@ -50,14 +50,12 @@ func requireFragments(t *testing.T, locale, document string, fragments []string)
 	}
 }
 
-// rejectUnsafeClaims 防止文档宣称容器改变了既有产品模型或引入额外 registry。
+// rejectUnsafeClaims 防止文档宣称容器改变了既有产品模型或认证模型。
 func rejectUnsafeClaims(t *testing.T, locale, document string) {
 	t.Helper()
 	for _, forbidden := range []string{
 		"Docker-specific product",
 		"Docker-specific authentication",
-		"Docker Hub",
-		"docker.io/flanchanxwo",
 	} {
 		if strings.Contains(document, forbidden) {
 			t.Fatalf("%s README must not claim or advertise %q", locale, forbidden)
@@ -72,6 +70,8 @@ func TestDockerInstallationContractIsBilingual(t *testing.T) {
 	commonFragments := []string{
 		"ghcr.io/flanchanxwo/pixiv-cli",
 		"docker pull ghcr.io/flanchanxwo/pixiv-cli:",
+		"docker.io/flanchanxwo/pixiv-cli",
+		"docker pull docker.io/flanchanxwo/pixiv-cli:",
 		":v1.2.3",
 		":latest",
 		"linux/amd64",
@@ -170,6 +170,10 @@ func TestMaintainerDocsDocumentContainerReleaseVerification(t *testing.T) {
 				"`pixiv config path`",
 				"org.opencontainers.image.source",
 				"credential-free container smoke workflow",
+				"publish-dockerhub.yml",
+				"DOCKER_HUB_TOKEN",
+				"docker.io/flanchanxwo/pixiv-cli",
+				"release_run_id",
 				"go test ./scripts/internal/releaseworkflow -count=1",
 				"go test ./scripts/tests/containerrelease -count=1",
 				"go run ./scripts/cmd/releaseworkflow --workflow .github/workflows/release.yml",
@@ -188,6 +192,10 @@ func TestMaintainerDocsDocumentContainerReleaseVerification(t *testing.T) {
 				"`pixiv config path`",
 				"org.opencontainers.image.source",
 				"无凭据容器 smoke workflow",
+				"publish-dockerhub.yml",
+				"DOCKER_HUB_TOKEN",
+				"docker.io/flanchanxwo/pixiv-cli",
+				"release_run_id",
 				"go test ./scripts/internal/releaseworkflow -count=1",
 				"go test ./scripts/tests/containerrelease -count=1",
 				"go run ./scripts/cmd/releaseworkflow --workflow .github/workflows/release.yml",
@@ -274,6 +282,57 @@ func TestReverseSearchDocumentationAndLocaleRoutes(t *testing.T) {
 		linkPath := filepath.Clean(filepath.Join(filepath.Dir(contract.path), contract.localePath))
 		if _, err := os.Stat(filepath.Join(root, linkPath)); err != nil {
 			t.Errorf("%s locale route %q does not resolve: %v", contract.path, contract.localePath, err)
+		}
+	}
+}
+
+// TestDownloadDocumentationKeepsDirectURLIdentityContract 锁定直链文件名的
+// 唯一性说明，并防止中文 SRC 表格重新宣称插画系列 URL 可下载。
+func TestDownloadDocumentationKeepsDirectURLIdentityContract(t *testing.T) {
+	root := repositoryRoot(t)
+	contracts := []struct {
+		locale       string
+		path         string
+		suffixPhrase string
+		forbidden    string
+	}{
+		{
+			locale:       "English",
+			path:         "docs/en/cli-reference.md",
+			suffixPhrase: "deterministic URL-identity suffix",
+			forbidden:    "Artwork-series",
+		},
+		{
+			locale:       "Simplified Chinese",
+			path:         "docs/zh-CN/cli-reference.md",
+			suffixPhrase: "确定性的 URL identity 摘要后缀",
+			forbidden:    "插画系列页",
+		},
+	}
+
+	for _, contract := range contracts {
+		document := readDocumentation(t, root, contract.path)
+		if !strings.Contains(document, contract.suffixPhrase) {
+			t.Errorf("%s CLI reference must document direct URL identity suffix %q", contract.locale, contract.suffixPhrase)
+		}
+
+		var sourceRow string
+		for line := range strings.SplitSeq(document, "\n") {
+			if strings.Contains(line, "| `download` | `SRC...` |") {
+				sourceRow = line
+				break
+			}
+		}
+		if sourceRow == "" {
+			t.Errorf("%s CLI reference is missing the download source row", contract.locale)
+			continue
+		}
+		allowedSources := sourceRow
+		if marker := strings.Index(allowedSources, "Artwork-series URLs are not download sources."); marker >= 0 {
+			allowedSources = allowedSources[:marker]
+		}
+		if strings.Contains(allowedSources, contract.forbidden) {
+			t.Errorf("%s CLI reference must not advertise %q in the download source row: %s", contract.locale, contract.forbidden, sourceRow)
 		}
 	}
 }

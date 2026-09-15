@@ -34,7 +34,7 @@ jobs:
           ref: ${{ github.sha }}
       - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff
         with:
-          go-version: '1.26.3'
+          go-version: '1.27.1'
       - name: Validate the manual tag and the public Release
         shell: bash
         env:
@@ -75,7 +75,7 @@ jobs:
           ref: ${{ github.sha }}
       - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff
         with:
-          go-version: '1.26.3'
+          go-version: '1.27.1'
       - name: Download only the public Release checksums
         shell: bash
         env:
