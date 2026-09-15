@@ -33,12 +33,6 @@ const (
 	liveCommentBody = "很棒！"
 )
 
-func TestLiveCommentBodyIsShortPraise(t *testing.T) {
-	if got, want := liveCommentBody, "很棒！"; got != want {
-		t.Fatalf("live comment body = %q, want %q", got, want)
-	}
-}
-
 func TestCommentReplyReadbackUsesDedicatedEndpoint(t *testing.T) {
 	artworkPath, artworkKey := commentReplyReadback(protocol.AppIllustCommentAdd)
 	if artworkPath != "/v2/illust/comment/replies" || artworkKey != "comment_id" {
@@ -80,6 +74,27 @@ func TestCommentTargetUnavailableUsesContentUnavailable(t *testing.T) {
 	err := commentTargetUnavailable("artwork")
 	if sdk.ReasonOf(err) != sdk.ContentUnavailable {
 		t.Fatalf("reason = %q, want %q", sdk.ReasonOf(err), sdk.ContentUnavailable)
+	}
+}
+
+func TestLiveMutationResultMustStopAfterUncertainWrite(t *testing.T) {
+	tests := []struct {
+		name   string
+		result liveMutationResult
+		want   bool
+	}{
+		{name: "uncertain after write", result: liveMutationResult{writes: 1, uncertain: true, cleanup: true}, want: true},
+		{name: "cleanup not confirmed", result: liveMutationResult{writes: 1, readBack: true, cleanup: false}, want: true},
+		{name: "correction after write", result: liveMutationResult{status: "correction", writes: 1, cleanup: true}, want: true},
+		{name: "verified and cleaned", result: liveMutationResult{status: "verified", writes: 1, readBack: true, cleanup: true}, want: false},
+		{name: "read-only correction", result: liveMutationResult{status: "correction"}, want: false},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			if got := liveMutationMustStop(test.result); got != test.want {
+				t.Fatalf("liveMutationMustStop(%+v) = %v, want %v", test.result, got, test.want)
+			}
+		})
 	}
 }
 
@@ -613,9 +628,17 @@ func recordLiveMutation(t *testing.T, name string, result liveMutationResult) {
 	t.Logf("%s: status=%s target_id=%d writes=%d read_back=%v cleanup=%v uncertain=%v evidence=%d reason=%s",
 		name, result.status, result.targetID, result.writes, result.readBack, result.cleanup,
 		result.uncertain, result.evidence, result.reason)
+	if liveMutationMustStop(result) {
+		t.Fatalf("%s: live mutation outcome is unsafe to continue after write (status=%s cleanup=%v uncertain=%v reason=%s)",
+			name, result.status, result.cleanup, result.uncertain, result.reason)
+	}
 	if result.status == "correction" {
 		t.Errorf("%s: live mutation contract correction required (reason=%s)", name, result.reason)
 	}
+}
+
+func liveMutationMustStop(result liveMutationResult) bool {
+	return result.writes > 0 && (result.uncertain || !result.cleanup || result.status == "correction")
 }
 
 func liveMutationReason(err error) sdk.Reason {

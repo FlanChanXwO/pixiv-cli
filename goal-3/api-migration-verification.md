@@ -110,7 +110,7 @@ T12 的兼容基线是 `sdk`、`sdk/pixiv`、`sdk/fanbox` 当前导出清单及�
 | `RemoveArtworkBookmark` | `RemoveArtworkBookmarkRequest` → `error` | additive explicit artwork mutation；旧 `RemoveBookmark` 委托同一内部实现 | 正数 `ArtworkID`；错误 operation label 按入口保留 | `TestExplicitArtworkBookmarkMutationsKeepLegacyWrappers` |
 | `FollowUser` | `FollowUserRequest` → `error` | 保留原 mutation symbol | 空 restrict 默认 `public`；未知值 `InvalidArgument`，不发请求 | `TestFollowUserRejectsUnknownRestrictBeforeNetwork` |
 | `UnfollowUser` | `UnfollowUserRequest` → `error` | 保留原 mutation symbol | 正数 user ID；不自动 read-back 或重放 | `TestLegacySDKConsumerCompiles` |
-| `SetAIArtworkVisibility` | `SetAIArtworkVisibilityRequest` → `error` | 保留原 mutation symbol | 保留显式 upstream/transport 分类 | `TestLegacySDKConsumerCompiles` |
+| `SetAIArtworkVisibility` | `SetAIArtworkVisibilityRequest` → `error` | 保留原 mutation symbol；当前 App API endpoint 已不可用，因此入口 deprecated | 本地返回 `ContentUnavailable` 且不发网络请求 | `TestSetAIArtworkVisibilityDeprecatedEntryPointDoesNotCallRejectedEndpoint` |
 
 ### Named types、字段与非 operation surface
 

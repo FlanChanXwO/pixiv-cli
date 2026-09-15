@@ -135,6 +135,9 @@ func (c *Client) Detail(ctx context.Context, artworkID int64) (artwork.BookmarkD
 	tags := []string{}
 	if raw.Detail.Tags != nil {
 		for _, tag := range raw.Detail.Tags {
+			if !tag.IsRegistered {
+				continue
+			}
 			tags = append(tags, tag.Name)
 		}
 	}

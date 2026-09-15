@@ -44,15 +44,15 @@ func (c *Client) RelatedArtworks(ctx context.Context, request RelatedArtworksReq
 		return sdk.Page[Artwork]{}, newError("RelatedArtworks", sdk.InvalidArgument, "artwork ID must be positive")
 	}
 	query := url.Values{"illust_id": {itoa(request.ArtworkID)}}
-	offset, err := c.continuationPositiveOffset("RelatedArtworks", query, request.Cursor)
+	params, err := c.continuationParams("RelatedArtworks", query, request.Cursor)
 	if err != nil {
 		return sdk.Page[Artwork]{}, err
 	}
-	list, err := c.artworkRelated.List(ctx, related.Request{ArtworkID: request.ArtworkID, Offset: offset})
+	list, err := c.artworkRelated.List(ctx, related.Request{ArtworkID: request.ArtworkID, ContinuationParams: params})
 	if err != nil {
 		return sdk.Page[Artwork]{}, classifyAppError(err, "RelatedArtworks")
 	}
-	return c.artworkPage("RelatedArtworks", query, "offset", list.Items, int64(list.NextOffset), list.HasNext)
+	return c.artworkParamsPage("RelatedArtworks", query, list.Items, list.NextParams, list.HasNext)
 }
 
 // ArtworkSeries lists artworks within one illustration series.

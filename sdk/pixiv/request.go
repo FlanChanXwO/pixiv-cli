@@ -466,8 +466,8 @@ type UnfollowUserRequest struct {
 	UserID int64
 }
 
-// SetAIArtworkVisibilityRequest sets whether AI-generated artworks are shown
-// in the current user's feeds.
+// SetAIArtworkVisibilityRequest is retained for source compatibility with the
+// deprecated SetAIArtworkVisibility entry point.
 type SetAIArtworkVisibilityRequest struct {
 	Visible bool
 }

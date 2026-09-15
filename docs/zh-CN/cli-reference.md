@@ -378,7 +378,7 @@ canonical 数据 action 是 `search`、`detail`、`ranking`、`series`、`commen
 | `download` | `pixiv download [options] SRC...` | 下载作品 ID/URL、允许的 CDN URL，或从受支持的用户、公开收藏 URL 展开视觉作品。作品系列 URL 不是下载来源。`--output/-o` 是 `--download-path` 的别名。 |
 | `timeline` | `pixiv timeline following\|latest -t artwork\|novel [--content-type TYPE ...]` | 读取关注用户或最新作品流；`--type` 选择实体，作品子类型使用独立的 `--content-type`。following 作品因 upstream endpoint 没有子类型 query 而在本地筛选；latest 作品只支持 `illust|manga`。 |
 | `mypixiv` | `pixiv mypixiv users\|works [-t artwork\|novel ...]` | 读取 MyPixiv 用户以及作品/小说流。`users` 只使用当前账号且要求已验证的 runtime identity；`works USER_ID` 只接受正数数字 ID，不把 URL 当作 ID。 |
-| `recommended` | `pixiv recommended [-t artwork\|novel\|user\|all] [--content-type all\|illust\|manga] [--page N --limit N --json]` | 读取个性化推荐；对 artwork，`--content-type` 只在本地按返回的 artwork DTO 子类型筛选，不发送 upstream 查询参数；位置参数 `KIND` 仍兼容；`all` 的各实体流在结果中保持独立。 |
+| `recommended` | `pixiv recommended [-t artwork\|novel\|user\|all] [--content-type all\|illust\|manga] [--page N --limit N --json]` | 读取个性化推荐；对 artwork，`--page/--limit` 先选择原始 recommendation 逻辑窗口，再由 `--content-type` 在该窗口内按 DTO 子类型筛选，不发送 upstream 查询参数，也不会为了填满某个 subtype 无界向后扫描；`all` 只遍历一次 artwork stream 并在同一窗口内分成 illust/manga。位置参数 `KIND` 仍兼容。 |
 | `novel search` | `pixiv novel search WORD [options]` | 小说搜索兼容路径；优先使用 `pixiv search WORD --type novel`，只暴露基础小说搜索字段。 |
 | `user search` | `pixiv user search WORD [options]` | 用户搜索兼容路径；优先使用 `pixiv search WORD --type user`。 |
 | `follow` | `pixiv follow add\|remove USER_ID ...` | 用户关注兼容路径；与 `pixiv user follow add\|remove` 共享同一 owner 和输入契约。 |
@@ -450,7 +450,7 @@ Content-Type 与 URL 后缀不一致（例如 URL 为 `.png`、实体为 JPEG）
 | `mypixiv users` | `--page`、`--limit` | 可选 | 只使用已验证的认证账号身份；不接受位置用户目标，也没有匿名 fallback。 |
 | `mypixiv works` | `--type` / `-t` | 必填 | 省略 `USER_ID` 时使用实体类型 `artwork` 或 `novel`；提供正数数字 `USER_ID` 时还支持 `manga`。旧 `illust` 写法继续作为 `artwork` 的兼容别名；类型或 ID 非法时在账号池执行前返回 `invalid_argument`。 |
 | `recommended` | `--type` / `-t` | 空 | `artwork`、`novel`、`user` 或 `all`；选择 `artwork` 时可用 `--content-type` 指定本地子类型筛选；位置参数 `KIND` 是兼容写法。 |
-| `recommended` | `--content-type` | `all` | 仅用于 artwork 的本地子类型筛选：`all`、`illust` 或 `manga`。该值只筛选返回 DTO 的 kind，不发送为 upstream 的 `content_type` 参数。 |
+| `recommended` | `--content-type` | `all` | 仅用于 artwork 的本地子类型筛选：`all`、`illust` 或 `manga`。筛选发生在 `--page/--limit` 选定的原始 recommendation 窗口之后；该值不发送为 upstream 的 `content_type` 参数。 |
 | Record 动作 | `--on-error` | `skip` | 对格式错误/不兼容记录选择写 stderr 后跳过，或 `fail-fast`。 |
 | `download` | `--pages` | 空 | 1-based 闭区间页选择，如 `1,3-5`；默认下载全部页。页不存在会明确失败。 |
 | `download` | `--quality` | `original` | 静态图质量：`original`、`regular`（最长边 1200）、`small`（最长边 540）、`thumb`（250×250 居中裁剪）、`mini`（48×48 居中裁剪）。Ugoira 对非 original 质量或页选择返回 unsupported。 |

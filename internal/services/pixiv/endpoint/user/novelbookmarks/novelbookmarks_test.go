@@ -87,6 +87,17 @@ func TestNovelBookmarkDetailUsesCandidatePathAndPreservesState(t *testing.T) {
 	}
 }
 
+func TestNovelBookmarkDetailExposesOnlyRegisteredBookmarkTags(t *testing.T) {
+	transport := &fakeTransport{body: `{"bookmark_detail":{"is_bookmarked":true,"restrict":"public","tags":[{"name":"content-tag","is_registered":false},{"name":"saved-tag","is_registered":true}]}}`}
+	result, err := novelbookmarks.New(transport).Detail(context.Background(), 42)
+	if err != nil {
+		t.Fatalf("Detail: %v", err)
+	}
+	if result.Restrict != "public" || len(result.Tags) != 1 || result.Tags[0] != "saved-tag" {
+		t.Fatalf("bookmark detail = %#v, want only registered bookmark tags", result)
+	}
+}
+
 func TestNovelBookmarkMutationsUseCandidatePathsAndForms(t *testing.T) {
 	transport := &fakeTransport{}
 	client := novelbookmarks.New(transport)

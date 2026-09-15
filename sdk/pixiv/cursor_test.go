@@ -270,6 +270,41 @@ func TestLatestArtworksRejectsNonPositiveContinuationValues(t *testing.T) {
 	}
 }
 
+func TestRecommendedArtworkCursorRejectsUnknownContinuationParamBeforeNetwork(t *testing.T) {
+	client, calls := newCursorT19Client(t)
+	cursor, err := client.buildContinuationCursor("RecommendedArtworks", url.Values{}, continuationEnvelope{Params: url.Values{"unexpected": {"1"}}})
+	if err != nil {
+		t.Fatalf("buildContinuationCursor: %v", err)
+	}
+	_, err = client.RecommendedArtworks(context.Background(), RecommendedArtworksRequest{Cursor: cursor})
+	if reason := sdk.ReasonOf(err); reason != sdk.InvalidCursor {
+		t.Fatalf("ReasonOf = %q, want %q (err=%v)", reason, sdk.InvalidCursor, err)
+	}
+	if *calls != 0 {
+		t.Fatalf("invalid continuation reached transport %d time(s)", *calls)
+	}
+}
+
+func TestRelatedArtworkCursorRejectsGappedIndexedContinuationBeforeNetwork(t *testing.T) {
+	client, calls := newCursorT19Client(t)
+	base := url.Values{"illust_id": {"123"}}
+	cursor, err := client.buildContinuationCursor("RelatedArtworks", base, continuationEnvelope{Params: url.Values{
+		"illust_id":          {"123"},
+		"seed_illust_ids[0]": {"456"},
+		"viewed[1]":          {"123"},
+	}})
+	if err != nil {
+		t.Fatalf("buildContinuationCursor: %v", err)
+	}
+	_, err = client.RelatedArtworks(context.Background(), RelatedArtworksRequest{ArtworkID: 123, Cursor: cursor})
+	if reason := sdk.ReasonOf(err); reason != sdk.InvalidCursor {
+		t.Fatalf("ReasonOf = %q, want %q (err=%v)", reason, sdk.InvalidCursor, err)
+	}
+	if *calls != 0 {
+		t.Fatalf("invalid continuation reached transport %d time(s)", *calls)
+	}
+}
+
 func TestRemainingIdentityScopedPixivCursorsBindClientInstance(t *testing.T) {
 	ctx := context.Background()
 	tests := []struct {

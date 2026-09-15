@@ -160,7 +160,7 @@ pixiv user novels USER_ID --limit 20 --json
 pixiv ranking --mode day
 pixiv ranking --type novel --mode day --limit 10
 pixiv recommended --type artwork --limit 10 # type is required; needs auth
-pixiv recommended --type artwork --content-type manga --limit 10 # local artwork subtype filter
+pixiv recommended --type artwork --content-type manga --limit 10 # limit selects the raw recommendation window; subtype filtering is local
 pixiv recommended --type all --limit 10     # request all supported kinds; needs auth
 pixiv timeline following --type artwork --content-type illust --limit 20
 pixiv timeline latest --type artwork --limit 20 # defaults to the supported illust feed

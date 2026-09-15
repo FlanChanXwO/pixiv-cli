@@ -102,7 +102,9 @@ func TestCommandRecommendedContentTypeFiltersAcrossPages(t *testing.T) {
 				}
 			})
 			cmd := recommendedTestCommand(output, recommendedTestClient(t, transport))
-			cmd.SetArgs([]string{"artwork", "--content-type", test.contentType, "--limit", "2", "--ndjson"})
+			// recommendation 的 subtype 是本地过滤；limit 约束原始 artwork
+			// recommendation 窗口，因此取 4 个原始项后再得到各 2 个 subtype。
+			cmd.SetArgs([]string{"artwork", "--content-type", test.contentType, "--limit", "4", "--ndjson"})
 
 			if err := cmd.Execute(); err != nil {
 				t.Fatalf("Execute: %v", err)
@@ -125,6 +127,30 @@ func TestCommandRecommendedContentTypeFiltersAcrossPages(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+func TestCommandRecommendedMangaLimitDoesNotScanPastLogicalArtworkWindow(t *testing.T) {
+	output := &bytes.Buffer{}
+	calls := 0
+	transport := recommendedRoundTripFunc(func(request *http.Request) (*http.Response, error) {
+		calls++
+		if calls > 1 {
+			return nil, io.ErrUnexpectedEOF
+		}
+		return recommendedJSONResponse(request, `{"illusts":[{"id":7311,"title":"illustration","type":"illust","create_date":"2026-01-05T00:00:00Z","user":{"id":21,"name":"artist"}}],"next_url":"https://app-api.pixiv.net/v1/illust/recommended?offset=30"}`), nil
+	})
+	cmd := recommendedTestCommand(output, recommendedTestClient(t, transport))
+	cmd.SetArgs([]string{"artwork", "--content-type", "manga", "--limit", "1", "--ndjson"})
+
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("Execute: %v", err)
+	}
+	if calls != 1 {
+		t.Fatalf("recommended artwork calls = %d, want 1", calls)
+	}
+	if strings.TrimSpace(output.String()) != "" {
+		t.Fatalf("output = %q, want no manga in selected artwork window", output.String())
 	}
 }
 
@@ -235,13 +261,12 @@ func TestCommandRecommendedAllSeparatesArtworkSubtypesAndKeepsIndependentPages(t
 	})
 	client := recommendedTestClient(t, transport)
 	cmd := recommendedTestCommand(output, client)
-	cmd.SetArgs([]string{"--type", "all", "--limit", "2", "--json"})
+	cmd.SetArgs([]string{"--type", "all", "--limit", "4", "--json"})
 
 	if err := cmd.Execute(); err != nil {
 		t.Fatalf("Execute: %v", err)
 	}
 	if got, want := paths, []string{
-		"/v1/illust/recommended", "/v1/illust/recommended",
 		"/v1/illust/recommended", "/v1/illust/recommended",
 		"/v1/novel/recommended", "/v1/user/recommended",
 	}; !equalStrings(got, want) {

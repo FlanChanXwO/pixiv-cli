@@ -125,11 +125,10 @@ func (c *Client) UnfollowUser(ctx context.Context, request UnfollowUserRequest) 
 	return nil
 }
 
-// SetAIArtworkVisibility sets whether AI-generated artworks are shown in the
-// current user's feeds.
+// SetAIArtworkVisibility is retained for source compatibility.
+//
+// Deprecated: the App API AI-visibility endpoint is no longer available.
+// This method returns ContentUnavailable without making a network request.
 func (c *Client) SetAIArtworkVisibility(ctx context.Context, request SetAIArtworkVisibilityRequest) error {
-	if err := c.userVisibility.Set(ctx, request.Visible); err != nil {
-		return classifyAppError(err, "SetAIArtworkVisibility")
-	}
-	return nil
+	return newError("SetAIArtworkVisibility", sdk.ContentUnavailable, "AI artwork visibility is unsupported by the current App API")
 }

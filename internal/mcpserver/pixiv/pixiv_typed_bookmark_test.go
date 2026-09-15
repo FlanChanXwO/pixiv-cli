@@ -128,6 +128,25 @@ func TestTypedBookmarkReadsPreserveEmptyAndTypedErrors(t *testing.T) {
 	}
 }
 
+func TestNovelBookmarkDetailEmptyTagsSatisfyOutputSchema(t *testing.T) {
+	client := &fakeSDKClient{novelBookmarkDetailResult: pixiv.NovelBookmarkDetail{}}
+	session, closeSession := newSDKTestSession(t, client)
+	defer closeSession()
+
+	result, err := session.CallTool(context.Background(), &mcp.CallToolParams{
+		Name:      "novel_bookmark_detail",
+		Arguments: map[string]any{"novel_id": 101},
+	})
+	if err != nil {
+		t.Fatalf("novel_bookmark_detail schema validation: %v", err)
+	}
+	var out outputs.BookmarkDetail
+	decodeStructured(t, result, &out)
+	if result.IsError || out.Tags == nil || len(out.Tags) != 0 {
+		t.Fatalf("novel bookmark detail result=%+v output=%+v, want tags=[]", result, out)
+	}
+}
+
 func TestTypedBookmarkSchemasKeepLegacyFieldsClosed(t *testing.T) {
 	session, closeSession := newSDKTestSession(t, &fakeSDKClient{userID: 1})
 	defer closeSession()

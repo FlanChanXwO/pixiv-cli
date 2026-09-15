@@ -61,6 +61,22 @@ func TestRealPixivSDKLiveManifestRead(t *testing.T) {
 		time.Sleep(liveManifestPace)
 	}
 
+	// related 当前使用 seed_illust_ids[]/viewed[] 组合 continuation。先从实时
+	// 日榜取得高活跃 artwork ID，再强制读取第二页，避免只验证首页 2xx。
+	seedPage, err := client.ArtworkRanking(ctx, pixivsdk.ArtworkRankingRequest{Mode: pixivsdk.RankingModeDay})
+	if err != nil {
+		t.Fatalf("related seed ranking: %v", err)
+	}
+	if len(seedPage.Items) == 0 {
+		t.Fatal("related seed ranking returned no artwork")
+	}
+	seedID := seedPage.Items[0].ID
+	liveTwoPages(t, "related_artworks",
+		func(cursor sdk.Cursor) (sdk.Page[pixivsdk.Artwork], error) {
+			return client.RelatedArtworks(ctx, pixivsdk.RelatedArtworksRequest{ArtworkID: seedID, Cursor: cursor})
+		}, func(item pixivsdk.Artwork) int64 { return item.ID }, true)
+	time.Sleep(liveManifestPace)
+
 	// #2 artwork-latest：承诺 subtype illust/manga，max_illust_id 续页。
 	for _, contentType := range []pixivsdk.SearchContentType{
 		pixivsdk.SearchContentTypeIllust,

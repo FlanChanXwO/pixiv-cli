@@ -82,6 +82,61 @@ func TestRecommendedArtworksPreservesExplicitZeroContinuation(t *testing.T) {
 	}
 }
 
+func TestRelatedArtworksNormalizesIndexedLiveContinuationArrays(t *testing.T) {
+	calls := 0
+	liveNextURL := "https://app-api.pixiv.net/v2/illust/related?illust_id=123&seed_illust_ids%5B0%5D=123&viewed%5B0%5D=456&viewed%5B1%5D=789"
+	rt := roundTripFunc(func(req *http.Request) (*http.Response, error) {
+		calls++
+		if req.URL.Path != "/v2/illust/related" {
+			t.Errorf("path = %q, want %q", req.URL.Path, "/v2/illust/related")
+		}
+		query := req.URL.Query()
+		if calls == 1 {
+			if query.Get("illust_id") != "123" {
+				t.Errorf("initial query = %v", query)
+			}
+		} else {
+			if got := query["seed_illust_ids[]"]; len(got) != 1 || got[0] != "123" {
+				t.Errorf("normalized seed_illust_ids[] = %v, want [123]", got)
+			}
+			if got := query["viewed[]"]; len(got) != 2 || got[0] != "456" || got[1] != "789" {
+				t.Errorf("normalized viewed[] = %v, want [456 789]", got)
+			}
+			for key := range query {
+				if strings.HasPrefix(key, "seed_illust_ids[") && key != "seed_illust_ids[]" {
+					t.Errorf("indexed seed continuation leaked to transport: %v", query)
+				}
+				if strings.HasPrefix(key, "viewed[") && key != "viewed[]" {
+					t.Errorf("indexed viewed continuation leaked to transport: %v", query)
+				}
+			}
+		}
+		body := `{"illusts":[{"id":456,"title":"related","type":"illust","create_date":"2026-01-05T00:00:00Z","user":{"id":21,"name":"artist"}}],"next_url":"` + liveNextURL + `"}`
+		if calls == 2 {
+			body = `{"illusts":[],"next_url":null}`
+		}
+		return jsonResponse(body), nil
+	})
+	client, err := NewWith("token", Options{HTTPClient: &http.Client{Transport: rt}})
+	if err != nil {
+		t.Fatalf("NewWith: %v", err)
+	}
+	page, err := client.RelatedArtworks(context.Background(), RelatedArtworksRequest{ArtworkID: 123})
+	if err != nil {
+		t.Fatalf("RelatedArtworks: %v", err)
+	}
+	if page.Next.IsZero() {
+		t.Fatal("live related next_url must produce a continuation cursor")
+	}
+	page, err = client.RelatedArtworks(context.Background(), RelatedArtworksRequest{ArtworkID: 123, Cursor: page.Next})
+	if err != nil {
+		t.Fatalf("RelatedArtworks continuation: %v", err)
+	}
+	if page.Items == nil || len(page.Items) != 0 || !page.Next.IsZero() || calls != 2 {
+		t.Fatalf("second page = %#v calls=%d", page, calls)
+	}
+}
+
 // G1-CORR-G1-T28-RECOMMENDED-01：live next_url 的多参数续页集必须被完整
 // 回放；cursor 文本不得泄漏 raw next_url/凭据，binding v2 使旧单 offset
 // cursor 显式失效。

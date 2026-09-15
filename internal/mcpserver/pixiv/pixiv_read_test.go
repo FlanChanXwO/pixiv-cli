@@ -155,18 +155,17 @@ func TestSDKRecommendedAllReturnsEveryStreamAndPagination(t *testing.T) {
 	client := &fakeSDKClient{}
 	var order []string
 	client.recommendedArtworks = func(_ context.Context, _ pixiv.RecommendedArtworksRequest, call int) (sdk.Page[pixiv.Artwork], error) {
-		if call == 1 {
-			order = append(order, "illust")
-			return sdk.Page[pixiv.Artwork]{Items: []pixiv.Artwork{testSDKIllust(1, "illust", 10)}, Next: testPageCursor(1)}, nil
+		if call != 1 {
+			return sdk.Page[pixiv.Artwork]{}, errors.New("recommended all traversed artwork stream more than once")
 		}
-		order = append(order, "manga")
+		order = append(order, "visual")
 		manga := testSDKIllust(2, "manga", 20)
 		manga.Kind = pixiv.ArtworkKindManga
-		return sdk.Page[pixiv.Artwork]{Items: []pixiv.Artwork{manga}, Next: testPageCursor(2)}, nil
+		return sdk.Page[pixiv.Artwork]{Items: []pixiv.Artwork{testSDKIllust(1, "illust", 10), manga}, Next: testPageCursor(2)}, nil
 	}
 	client.novelRecommended = func(context.Context, pixiv.RecommendedNovelsRequest) (sdk.Page[pixiv.Novel], error) {
 		order = append(order, "novel")
-		return sdk.Page[pixiv.Novel]{Items: []pixiv.Novel{{ID: 3, User: pixiv.User{ID: 30}, Tags: []pixiv.Tag{}}}, Next: testPageCursor(3)}, nil
+		return sdk.Page[pixiv.Novel]{Items: []pixiv.Novel{{ID: 3, User: pixiv.User{ID: 30}, Tags: []pixiv.Tag{}}}}, nil
 	}
 	client.userRecommended = func(context.Context, pixiv.RecommendedUsersRequest) (sdk.Page[pixiv.UserPreview], error) {
 		order = append(order, "user")
@@ -176,14 +175,13 @@ func TestSDKRecommendedAllReturnsEveryStreamAndPagination(t *testing.T) {
 				Illusts: []pixiv.Artwork{},
 				Novels:  []pixiv.Novel{{ID: 5, User: pixiv.User{ID: 40}}},
 			}},
-			Next: testPageCursor(4),
 		}, nil
 	}
 	session, closeSession := newSDKTestSession(t, client)
 	defer closeSession()
 
-	result := callTool(t, session, "recommended", map[string]any{"kind": "all", "limit": 1})
-	if result.IsError || !slices.Equal(order, []string{"illust", "manga", "novel", "user"}) {
+	result := callTool(t, session, "recommended", map[string]any{"kind": "all", "limit": 2})
+	if result.IsError || !slices.Equal(order, []string{"visual", "novel", "user"}) {
 		t.Fatalf("recommended all result=%+v order=%v", result, order)
 	}
 	var structured map[string]any
@@ -259,13 +257,36 @@ func TestSDKRecommendedSingleKindsAndInputFailures(t *testing.T) {
 	}
 }
 
+func TestSDKRecommendedMangaLimitDoesNotScanPastLogicalArtworkWindow(t *testing.T) {
+	calls := 0
+	client := &fakeSDKClient{recommendedArtworks: func(_ context.Context, _ pixiv.RecommendedArtworksRequest, call int) (sdk.Page[pixiv.Artwork], error) {
+		calls = call
+		if call > 1 {
+			return sdk.Page[pixiv.Artwork]{}, errors.New("unexpected recommendation scan beyond logical artwork window")
+		}
+		return sdk.Page[pixiv.Artwork]{Items: []pixiv.Artwork{testSDKIllust(11, "illustration", 1)}, Next: testPageCursor(1)}, nil
+	}}
+	session, closeSession := newSDKTestSession(t, client)
+	defer closeSession()
+
+	result := callTool(t, session, "recommended", map[string]any{"kind": "manga", "limit": 1})
+	if result.IsError {
+		t.Fatalf("recommended manga result=%+v", result)
+	}
+	var out outputs.Recommended
+	decodeStructured(t, result, &out)
+	if calls != 1 || len(out.Records) != 0 {
+		t.Fatalf("calls=%d records=%+v, want one artwork request and no manga in selected window", calls, out.Records)
+	}
+}
+
 func TestSDKRecommendedAllFailureDoesNotExposePartialStructuredOutput(t *testing.T) {
 	client := &fakeSDKClient{
-		recommendedArtworks: func(_ context.Context, _ pixiv.RecommendedArtworksRequest, call int) (sdk.Page[pixiv.Artwork], error) {
-			if call == 1 {
-				return sdk.Page[pixiv.Artwork]{Items: []pixiv.Artwork{testSDKIllust(1, "first", 1)}}, nil
-			}
-			return sdk.Page[pixiv.Artwork]{}, errors.New("malformed upstream response")
+		recommendedArtworks: func(_ context.Context, _ pixiv.RecommendedArtworksRequest, _ int) (sdk.Page[pixiv.Artwork], error) {
+			return sdk.Page[pixiv.Artwork]{Items: []pixiv.Artwork{testSDKIllust(1, "first", 1)}}, nil
+		},
+		novelRecommended: func(context.Context, pixiv.RecommendedNovelsRequest) (sdk.Page[pixiv.Novel], error) {
+			return sdk.Page[pixiv.Novel]{}, errors.New("malformed upstream response")
 		},
 	}
 	session, closeSession := newSDKTestSession(t, client)

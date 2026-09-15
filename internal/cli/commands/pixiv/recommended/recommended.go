@@ -138,7 +138,7 @@ func New(data Dependencies) *cobra.Command {
 	listing.BindNDJSONFlag(cmd, &opts.ndjson)
 	listing.BindListFlags(cmd, &opts.limit, &opts.page)
 	cmd.Flags().StringVarP(&opts.typ, "type", "t", opts.typ, "entity type: artwork, novel, user, all")
-	cmd.Flags().StringVar(&opts.contentType, "content-type", opts.contentType, "local artwork subtype filter: all, illust, manga")
+	cmd.Flags().StringVar(&opts.contentType, "content-type", opts.contentType, "local artwork subtype filter applied after recommendation pagination: all, illust, manga")
 	data.bindTextValue(cmd)
 	requirements.Bind(cmd, requirements.PixivData())
 	return cmd
@@ -236,11 +236,13 @@ func (a command) runOne(ctx context.Context, request listing.Request, plan listi
 			if err != nil {
 				return nil, sdk.Cursor{}, err
 			}
-			return filterRecommendedArtworks(result.Items, artworkFilter), result.Next, nil
+			return result.Items, result.Next, nil
 		}
-		return a.runner().RunPooledIllustListWithKey(ctx, request, plan, jsonOut, ndjson, jsonKey, func() string {
+		return a.runner().RunPooledIllustListWithKeyPostFilter(ctx, request, plan, jsonOut, ndjson, jsonKey, func() string {
 			return fmt.Sprintf("recommended %s", kind)
-		}, fetch, func(items []pixiv.Artwork, start int) error { return printArtworks(a.data.Output, items) })
+		}, fetch, func(items []pixiv.Artwork) []pixiv.Artwork {
+			return filterRecommendedArtworks(items, artworkFilter)
+		}, func(items []pixiv.Artwork, start int) error { return printArtworks(a.data.Output, items) })
 	}
 	if kind == "novel" {
 		fetch := func(client *pixiv.Client, ctx context.Context, cursor sdk.Cursor) ([]pixiv.Novel, sdk.Cursor, error) {
@@ -313,11 +315,15 @@ func (a command) runAllNDJSON(ctx context.Context, client *pixiv.Client, plan li
 		}
 		return nil
 	}
-	for _, filter := range []searchfilter.Filter{
-		{ContentType: searchfilter.ContentTypeIllust},
-		{ContentType: searchfilter.ContentTypeManga},
-	} {
-		if err := listing.PageItems(ctx, plan, fetchRecommendedArtworks(client, filter), writeArtworks); err != nil {
+	var visualItems []pixiv.Artwork
+	if err := listing.PageItems(ctx, plan, fetchRecommendedArtworks(client, searchfilter.Filter{}), func(items []pixiv.Artwork) error {
+		visualItems = append(visualItems, items...)
+		return nil
+	}); err != nil {
+		return committed, err
+	}
+	for _, filter := range []searchfilter.Filter{{ContentType: searchfilter.ContentTypeIllust}, {ContentType: searchfilter.ContentTypeManga}} {
+		if err := writeArtworks(filterRecommendedArtworks(visualItems, filter)); err != nil {
 			return committed, err
 		}
 	}

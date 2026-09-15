@@ -22,6 +22,14 @@ func (a command) runAll(ctx context.Context, client *pixiv.Client, plan listing.
 	}
 	defer spool.Close()
 
+	var visualItems []pixiv.Artwork
+	if err := listing.PageItems(ctx, plan, fetchRecommendedArtworks(client, searchfilter.Filter{}), func(items []pixiv.Artwork) error {
+		visualItems = append(visualItems, items...)
+		return nil
+	}); err != nil {
+		return false, err
+	}
+
 	for _, section := range []struct {
 		key     string
 		heading string
@@ -33,7 +41,7 @@ func (a command) runAll(ctx context.Context, client *pixiv.Client, plan listing.
 		if err := spool.heading(jsonOut, section.heading); err != nil {
 			return false, err
 		}
-		if err := listing.PageItems(ctx, plan, fetchRecommendedArtworks(client, section.filter), spool.artworks); err != nil {
+		if err := spool.artworks(filterRecommendedArtworks(visualItems, section.filter)); err != nil {
 			return false, err
 		}
 	}

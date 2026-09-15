@@ -150,6 +150,9 @@ func (c *Client) Detail(ctx context.Context, novelID int64) (BookmarkDetail, err
 	}
 	tags := []string{}
 	for _, tag := range raw.Detail.Tags {
+		if !tag.IsRegistered {
+			continue
+		}
 		tags = append(tags, tag.Name)
 	}
 	return BookmarkDetail{Restrict: raw.Detail.Restrict, Tags: tags}, nil

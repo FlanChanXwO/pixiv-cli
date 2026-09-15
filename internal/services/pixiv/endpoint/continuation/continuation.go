@@ -102,19 +102,8 @@ func ParseParams(rawURL string, spec Spec) (url.Values, bool, error) {
 	if err != nil {
 		return nil, false, protocol.MalformedResponse()
 	}
-	allowed := make(map[string]struct{}, len(spec.AllowedQueryKeys)+len(spec.Keys))
-	for _, key := range spec.Keys {
-		if key == "" {
-			return nil, false, protocol.MalformedResponse()
-		}
-		allowed[key] = struct{}{}
-	}
-	for _, key := range spec.AllowedQueryKeys {
-		allowed[key] = struct{}{}
-	}
-	prefixes := spec.AllowedKeyPrefixes
 	ignored := spec.IgnoredKeyPrefixes
-	for key, entries := range values {
+	for key := range values {
 		isIgnored := false
 		for _, prefix := range ignored {
 			if prefix != "" && strings.HasPrefix(key, prefix) {
@@ -124,25 +113,57 @@ func ParseParams(rawURL string, spec Spec) (url.Values, bool, error) {
 		}
 		if isIgnored {
 			delete(values, key)
-			continue
 		}
+	}
+	if err := ValidateParams(values, spec); err != nil {
+		return nil, false, protocol.MalformedResponse()
+	}
+	return values, true, nil
+}
+
+// ValidateParams 校验已经结构化的 continuation 参数集合。它用于 cursor
+// 解码后的本地 fail-closed 校验以及 endpoint 续页请求，避免合法 envelope
+// 内的未知、空值或重复标量参数到达 transport。
+func ValidateParams(values url.Values, spec Spec) error {
+	if len(values) == 0 {
+		return protocol.MalformedResponse()
+	}
+	allowed := make(map[string]struct{}, len(spec.AllowedQueryKeys)+len(spec.Keys))
+	for _, key := range spec.Keys {
+		if key == "" {
+			return protocol.MalformedResponse()
+		}
+		allowed[key] = struct{}{}
+	}
+	for _, key := range spec.AllowedQueryKeys {
+		if key == "" {
+			return protocol.MalformedResponse()
+		}
+		allowed[key] = struct{}{}
+	}
+	for key, entries := range values {
 		ok := false
 		if _, exact := allowed[key]; exact {
 			ok = true
 		} else {
-			for _, prefix := range prefixes {
+			for _, prefix := range spec.AllowedKeyPrefixes {
 				if prefix != "" && strings.HasPrefix(key, prefix) {
 					ok = true
 					break
 				}
 			}
 		}
-		if !ok || len(entries) != 1 || entries[0] == "" {
-			return nil, false, protocol.MalformedResponse()
+		if !ok || len(entries) == 0 {
+			return protocol.MalformedResponse()
+		}
+		if len(entries) != 1 {
+			return protocol.MalformedResponse()
+		}
+		for _, entry := range entries {
+			if entry == "" {
+				return protocol.MalformedResponse()
+			}
 		}
 	}
-	if len(values) == 0 {
-		return nil, false, protocol.MalformedResponse()
-	}
-	return values, true, nil
+	return nil
 }

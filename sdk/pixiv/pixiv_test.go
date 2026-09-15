@@ -1358,6 +1358,28 @@ func TestNovelContentDeprecatedEntryPointDoesNotCallRejectedEndpoint(t *testing.
 	}
 }
 
+func TestSetAIArtworkVisibilityDeprecatedEntryPointDoesNotCallRejectedEndpoint(t *testing.T) {
+	calls := 0
+	rt := roundTripFunc(func(*http.Request) (*http.Response, error) {
+		calls++
+		return nil, io.ErrUnexpectedEOF
+	})
+	client, err := NewWith("token", Options{HTTPClient: &http.Client{Transport: rt}})
+	if err != nil {
+		t.Fatalf("NewWith: %v", err)
+	}
+	err = client.SetAIArtworkVisibility(context.Background(), SetAIArtworkVisibilityRequest{Visible: true})
+	if sdk.ReasonOf(err) != sdk.ContentUnavailable {
+		t.Fatalf("reason = %q, want %q", sdk.ReasonOf(err), sdk.ContentUnavailable)
+	}
+	if err == nil || !strings.Contains(err.Error(), "unsupported") {
+		t.Fatalf("error = %v, want an explicit unsupported detail", err)
+	}
+	if calls != 0 {
+		t.Fatalf("rejected AI visibility endpoint was called %d time(s)", calls)
+	}
+}
+
 func jsonResponse(body string) *http.Response {
 	return &http.Response{
 		StatusCode: http.StatusOK,
@@ -1573,7 +1595,7 @@ func TestArtworkBookmarkPreservesBookmarkedAndAbsentStates(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ArtworkBookmark: %v", err)
 	}
-	if detail.Restrict != RestrictPrivate || len(detail.Tags) != 2 {
+	if detail.Restrict != RestrictPrivate || len(detail.Tags) != 1 || detail.Tags[0] != "cat" {
 		t.Fatalf("bookmarked detail = %#v", detail)
 	}
 	detail, err = client.ArtworkBookmark(context.Background(), ArtworkBookmarkRequest{ArtworkID: 77})

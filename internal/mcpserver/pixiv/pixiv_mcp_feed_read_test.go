@@ -195,15 +195,12 @@ func TestFeedRecommendationLegacyJSONReplayPreservesStructuredContracts(t *testi
 			tool: "recommended",
 			args: map[string]any{"kind": "all"},
 			client: func() *fakeSDKClient {
-				call := 0
 				client := &fakeSDKClient{}
 				client.recommendedArtworks = func(context.Context, pixiv.RecommendedArtworksRequest, int) (sdk.Page[pixiv.Artwork], error) {
-					call++
-					item := testSDKIllust(int64(20+call), "artwork", int64(call))
-					if call == 2 {
-						item.Kind = pixiv.ArtworkKindManga
-					}
-					return sdk.Page[pixiv.Artwork]{Items: []pixiv.Artwork{item}}, nil
+					illust := testSDKIllust(21, "artwork", 1)
+					manga := testSDKIllust(22, "manga", 2)
+					manga.Kind = pixiv.ArtworkKindManga
+					return sdk.Page[pixiv.Artwork]{Items: []pixiv.Artwork{illust, manga}}, nil
 				}
 				client.novelRecommended = func(context.Context, pixiv.RecommendedNovelsRequest) (sdk.Page[pixiv.Novel], error) {
 					return sdk.Page[pixiv.Novel]{Items: []pixiv.Novel{{ID: 23, User: pixiv.User{ID: 3}, Tags: []pixiv.Tag{}}}}, nil

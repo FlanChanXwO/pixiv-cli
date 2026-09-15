@@ -129,6 +129,17 @@ func (a Runner) RunPooledIllustListWithHeading(ctx context.Context, request Requ
 // RunPooledIllustListWithKey 保留少数已有 JSON 兼容键（例如 manga），同时复用完整的
 // 账号池提交边界。
 func (a Runner) RunPooledIllustListWithKey(ctx context.Context, request Request, plan Plan, jsonOut, ndjson bool, jsonKey string, heading func() string, fetch func(*pixiv.Client, context.Context, sdk.Cursor) ([]pixiv.Artwork, sdk.Cursor, error), print func([]pixiv.Artwork, int) error) error {
+	return a.runPooledIllustListWithKey(ctx, request, plan, jsonOut, ndjson, jsonKey, heading, fetch, nil, print)
+}
+
+// RunPooledIllustListWithKeyPostFilter 在共享分页已经选定逻辑窗口后再执行本地
+// 展示筛选。它用于上游没有 subtype 参数的 recommendation，避免为了填满本地
+// 筛选结果而无界向后扫描远端分页。
+func (a Runner) RunPooledIllustListWithKeyPostFilter(ctx context.Context, request Request, plan Plan, jsonOut, ndjson bool, jsonKey string, heading func() string, fetch func(*pixiv.Client, context.Context, sdk.Cursor) ([]pixiv.Artwork, sdk.Cursor, error), postFilter func([]pixiv.Artwork) []pixiv.Artwork, print func([]pixiv.Artwork, int) error) error {
+	return a.runPooledIllustListWithKey(ctx, request, plan, jsonOut, ndjson, jsonKey, heading, fetch, postFilter, print)
+}
+
+func (a Runner) runPooledIllustListWithKey(ctx context.Context, request Request, plan Plan, jsonOut, ndjson bool, jsonKey string, heading func() string, fetch func(*pixiv.Client, context.Context, sdk.Cursor) ([]pixiv.Artwork, sdk.Cursor, error), postFilter func([]pixiv.Artwork) []pixiv.Artwork, print func([]pixiv.Artwork, int) error) error {
 	var spool *jsonArraySpool
 	if jsonOut {
 		defer func() {
@@ -155,6 +166,9 @@ func (a Runner) RunPooledIllustListWithKey(ctx context.Context, request Request,
 		func(ctx context.Context, client *pixiv.Client, cursor sdk.Cursor) ([]pixiv.Artwork, sdk.Cursor, error) {
 			return fetch(client, ctx, cursor)
 		}, func(items []pixiv.Artwork) (bool, error) {
+			if postFilter != nil {
+				items = postFilter(items)
+			}
 			if ndjson {
 				committed := false
 				for _, item := range items {

@@ -18,11 +18,11 @@ import (
 // fail closed instead of being misinterpreted.
 const cursorBindingVersion = 1
 
-// 搜索新增批内 checkpoint 与账号绑定、recommended 改为多参数 continuation
-// 回放，二者都只使各自旧 cursor 显式失效（fail-closed）。
+// 搜索新增批内 checkpoint 与账号绑定，recommended/related 改为多参数
+// continuation 回放；这些变更都只使对应 operation 的旧 cursor 显式失效。
 func operationCursorBindingVersion(op string) int {
 	switch op {
-	case "SearchArtworks", "RecommendedArtworks", "RecommendedNovels":
+	case "SearchArtworks", "RecommendedArtworks", "RecommendedNovels", "RelatedArtworks":
 		return 2
 	}
 	return cursorBindingVersion
@@ -235,7 +235,97 @@ func (c *Client) continuationParams(op string, baseQuery url.Values, cur sdk.Cur
 	if len(state.Params) == 0 {
 		return nil, newError(op, sdk.InvalidCursor, "cursor continuation params are missing")
 	}
+	if !validContinuationParams(op, state.Params) {
+		return nil, newError(op, sdk.InvalidCursor, "cursor continuation params are malformed")
+	}
 	return state.Params, nil
+}
+
+func validContinuationParams(op string, params url.Values) bool {
+	if len(params) == 0 {
+		return false
+	}
+	switch op {
+	case "RecommendedArtworks":
+		allowed := map[string]bool{
+			"offset": true, "min_bookmark_id_for_recent_illust": true,
+			"max_bookmark_id_for_recommend": true, "include_ranking_illusts": true,
+			"include_privacy_policy": true,
+		}
+		for key, values := range params {
+			if !allowed[key] || len(values) != 1 || values[0] == "" {
+				return false
+			}
+			switch key {
+			case "offset":
+				value, err := strconv.ParseInt(values[0], 10, 64)
+				if err != nil || value < 0 {
+					return false
+				}
+			case "min_bookmark_id_for_recent_illust", "max_bookmark_id_for_recommend":
+				value, err := strconv.ParseInt(values[0], 10, 64)
+				if err != nil || value <= 0 {
+					return false
+				}
+			case "include_ranking_illusts", "include_privacy_policy":
+				if values[0] != "true" && values[0] != "false" {
+					return false
+				}
+			}
+		}
+		return true
+	case "RecommendedNovels":
+		allowed := map[string]bool{
+			"offset": true, "already_recommended": true,
+			"max_bookmark_id_for_recommend": true, "include_ranking_novels": true,
+			"include_privacy_policy": true,
+		}
+		for key, values := range params {
+			if !allowed[key] || len(values) != 1 || values[0] == "" {
+				return false
+			}
+			switch key {
+			case "offset":
+				value, err := strconv.ParseInt(values[0], 10, 64)
+				if err != nil || value < 0 {
+					return false
+				}
+			case "max_bookmark_id_for_recommend":
+				value, err := strconv.ParseInt(values[0], 10, 64)
+				if err != nil || value <= 0 {
+					return false
+				}
+			case "include_ranking_novels", "include_privacy_policy":
+				if values[0] != "true" && values[0] != "false" {
+					return false
+				}
+			}
+		}
+		return true
+	case "RelatedArtworks":
+		if len(params["illust_id"]) != 1 || !validPositiveCursorValues(params["illust_id"]) {
+			return false
+		}
+		if offset, hasOffset := params["offset"]; hasOffset {
+			return len(params) == 2 && len(offset) == 1 && validPositiveCursorValues(offset)
+		}
+		return len(params) == 3 && validPositiveCursorValues(params["seed_illust_ids[]"]) && validPositiveCursorValues(params["viewed[]"])
+	default:
+		return false
+	}
+}
+
+func validPositiveCursorValues(values []string) bool {
+	if len(values) == 0 {
+		return false
+	}
+	for _, raw := range values {
+		value, err := strconv.ParseInt(raw, 10, 64)
+		if err != nil || value <= 0 {
+			return false
+		}
+	}
+	return true
 }
 
 func itoa(n int64) string {

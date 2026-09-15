@@ -288,3 +288,14 @@ func TestBookmarkDetailNormalizesUnbookmarkedFields(t *testing.T) {
 		})
 	}
 }
+
+func TestBookmarkDetailExposesOnlyRegisteredBookmarkTags(t *testing.T) {
+	body := `{"bookmark_detail":{"is_bookmarked":true,"restrict":"public","tags":[{"name":"content-tag","is_registered":false},{"name":"saved-tag","is_registered":true}]}}`
+	result, err := bookmark.New(&fakeTransport{body: body}).Detail(context.Background(), 9)
+	if err != nil {
+		t.Fatalf("Detail: %v", err)
+	}
+	if result.Restrict != "public" || len(result.Tags) != 1 || result.Tags[0] != "saved-tag" {
+		t.Fatalf("bookmark detail = %#v, want only registered bookmark tags", result)
+	}
+}
