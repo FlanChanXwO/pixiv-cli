@@ -1,0 +1,1422 @@
+[
+  {
+    "schema_version": 1,
+    "observed_at": "2026-09-05T09:01:45Z",
+    "source_commit": "working-tree",
+    "manifest_digest": "8503d7b7c1ec392e7865f8d4d51088ed11329c28dd2d2283648fc26704e0dc47",
+    "account_slot": "non-main-account",
+    "case_id": "novel-detail-v1",
+    "method": "GET",
+    "path": "/v1/novel/detail",
+    "parameter_names": [
+      "novel_id"
+    ],
+    "status": 404,
+    "content_type": "application/json",
+    "first_page": {
+      "item_count": 0,
+      "required_present": false
+    },
+    "second_page": {
+      "item_count": 0,
+      "required_present": false
+    },
+    "continuation_type": "none",
+    "page_overlap": 0,
+    "termination_rule": "missing_continuation",
+    "access_control_present": false,
+    "access_control_allowed": false,
+    "wire_verdict": "confirmed",
+    "response_verdict": "rejected",
+    "pagination_verdict": "not_tested",
+    "adapter_verdict": "not_tested",
+    "sdk_verdict": "inconclusive",
+    "adapter_item_count": 0,
+    "sdk_item_count": 0,
+    "adapter_sdk_equal": false,
+    "verdict": "rejected",
+    "failure_class": "upstream_contract_rejected"
+  },
+  {
+    "schema_version": 1,
+    "observed_at": "2026-09-05T09:01:45Z",
+    "source_commit": "working-tree",
+    "manifest_digest": "8503d7b7c1ec392e7865f8d4d51088ed11329c28dd2d2283648fc26704e0dc47",
+    "account_slot": "non-main-account",
+    "case_id": "novel-detail-v2",
+    "method": "GET",
+    "path": "/v2/novel/detail",
+    "parameter_names": [
+      "novel_id"
+    ],
+    "status": 200,
+    "content_type": "application/json",
+    "first_page": {
+      "schema_fingerprint": "f2110e6cf92b93ae7b8ba2a41347889c1b864a2db67289f2d82f8d71854c24be",
+      "item_count": 0,
+      "required_present": true
+    },
+    "second_page": {
+      "item_count": 0,
+      "required_present": false
+    },
+    "continuation_type": "none",
+    "page_overlap": 0,
+    "termination_rule": "missing_continuation",
+    "access_control_present": false,
+    "access_control_allowed": false,
+    "wire_verdict": "confirmed",
+    "response_verdict": "confirmed",
+    "pagination_verdict": "confirmed",
+    "adapter_verdict": "not_tested",
+    "sdk_verdict": "not_tested",
+    "adapter_item_count": 0,
+    "sdk_item_count": 0,
+    "adapter_sdk_equal": false,
+    "verdict": "not_tested"
+  },
+  {
+    "schema_version": 1,
+    "observed_at": "2026-09-05T09:01:47Z",
+    "source_commit": "working-tree",
+    "manifest_digest": "8503d7b7c1ec392e7865f8d4d51088ed11329c28dd2d2283648fc26704e0dc47",
+    "account_slot": "non-main-account",
+    "case_id": "novel-series-v1",
+    "method": "GET",
+    "path": "/v1/novel/series",
+    "parameter_names": [
+      "series_id"
+    ],
+    "status": 200,
+    "content_type": "application/json",
+    "first_page": {
+      "schema_fingerprint": "3cd9ef765e534175a439fce1800c232cbf3151515770befc67592db3dc5d15b4",
+      "item_count": 29,
+      "required_present": false
+    },
+    "second_page": {
+      "item_count": 0,
+      "required_present": false
+    },
+    "continuation_type": "none",
+    "page_overlap": 0,
+    "termination_rule": "missing_continuation",
+    "access_control_present": false,
+    "access_control_allowed": false,
+    "wire_verdict": "confirmed",
+    "response_verdict": "rejected",
+    "pagination_verdict": "not_tested",
+    "adapter_verdict": "not_tested",
+    "sdk_verdict": "inconclusive",
+    "adapter_item_count": 0,
+    "sdk_item_count": 0,
+    "adapter_sdk_equal": false,
+    "verdict": "rejected",
+    "failure_class": "required_field_missing"
+  },
+  {
+    "schema_version": 1,
+    "observed_at": "2026-09-05T09:01:47Z",
+    "source_commit": "working-tree",
+    "manifest_digest": "8503d7b7c1ec392e7865f8d4d51088ed11329c28dd2d2283648fc26704e0dc47",
+    "account_slot": "non-main-account",
+    "case_id": "novel-series-v2",
+    "method": "GET",
+    "path": "/v2/novel/series",
+    "parameter_names": [
+      "series_id"
+    ],
+    "status": 200,
+    "content_type": "application/json",
+    "first_page": {
+      "schema_fingerprint": "38530b5d9794229be7a182e6639282c4c34935314c124d72e3bc9f137dc711af",
+      "item_count": 29,
+      "required_present": true
+    },
+    "second_page": {
+      "item_count": 0,
+      "required_present": false
+    },
+    "continuation_type": "none",
+    "page_overlap": 0,
+    "termination_rule": "missing_continuation",
+    "access_control_present": false,
+    "access_control_allowed": false,
+    "wire_verdict": "confirmed",
+    "response_verdict": "confirmed",
+    "pagination_verdict": "inconclusive",
+    "adapter_verdict": "not_tested",
+    "sdk_verdict": "not_tested",
+    "adapter_item_count": 0,
+    "sdk_item_count": 0,
+    "adapter_sdk_equal": false,
+    "verdict": "inconclusive",
+    "failure_class": "second_page_not_observed"
+  },
+  {
+    "schema_version": 1,
+    "observed_at": "2026-09-05T09:01:48Z",
+    "source_commit": "working-tree",
+    "manifest_digest": "8503d7b7c1ec392e7865f8d4d51088ed11329c28dd2d2283648fc26704e0dc47",
+    "account_slot": "non-main-account",
+    "case_id": "novel-content-app",
+    "method": "GET",
+    "path": "/v1/novel/content",
+    "parameter_names": [
+      "novel_id"
+    ],
+    "status": 404,
+    "content_type": "application/json",
+    "first_page": {
+      "item_count": 0,
+      "required_present": false
+    },
+    "second_page": {
+      "item_count": 0,
+      "required_present": false
+    },
+    "continuation_type": "none",
+    "page_overlap": 0,
+    "termination_rule": "missing_continuation",
+    "access_control_present": false,
+    "access_control_allowed": false,
+    "wire_verdict": "confirmed",
+    "response_verdict": "rejected",
+    "pagination_verdict": "not_tested",
+    "adapter_verdict": "not_tested",
+    "sdk_verdict": "inconclusive",
+    "adapter_item_count": 0,
+    "sdk_item_count": 0,
+    "adapter_sdk_equal": false,
+    "verdict": "rejected",
+    "failure_class": "upstream_contract_rejected"
+  },
+  {
+    "schema_version": 1,
+    "observed_at": "2026-09-05T09:01:48Z",
+    "source_commit": "working-tree",
+    "manifest_digest": "8503d7b7c1ec392e7865f8d4d51088ed11329c28dd2d2283648fc26704e0dc47",
+    "account_slot": "non-main-account",
+    "case_id": "novel-content-webview",
+    "method": "GET",
+    "path": "/webview/v2/novel",
+    "parameter_names": [
+      "id"
+    ],
+    "status": 200,
+    "content_type": "text/html",
+    "first_page": {
+      "schema_fingerprint": "3d87d31e8a1d44f1b406704fe6d44720c643b293ac2ad4aa009d2d91f797440c",
+      "item_count": 1,
+      "required_present": true
+    },
+    "second_page": {
+      "item_count": 0,
+      "required_present": false
+    },
+    "continuation_type": "none",
+    "page_overlap": 0,
+    "termination_rule": "missing_continuation",
+    "access_control_present": false,
+    "access_control_allowed": false,
+    "wire_verdict": "confirmed",
+    "response_verdict": "confirmed",
+    "pagination_verdict": "confirmed",
+    "adapter_verdict": "not_tested",
+    "sdk_verdict": "not_tested",
+    "adapter_item_count": 0,
+    "sdk_item_count": 0,
+    "adapter_sdk_equal": false,
+    "verdict": "not_tested"
+  },
+  {
+    "schema_version": 1,
+    "observed_at": "2026-09-05T09:01:50Z",
+    "source_commit": "working-tree",
+    "manifest_digest": "8503d7b7c1ec392e7865f8d4d51088ed11329c28dd2d2283648fc26704e0dc47",
+    "account_slot": "non-main-account",
+    "case_id": "novel-new",
+    "method": "GET",
+    "path": "/v1/novel/new",
+    "parameter_names": [
+      "filter"
+    ],
+    "status": 200,
+    "content_type": "application/json",
+    "first_page": {
+      "schema_fingerprint": "3cd9ef765e534175a439fce1800c232cbf3151515770befc67592db3dc5d15b4",
+      "item_count": 30,
+      "required_present": true
+    },
+    "second_page": {
+      "schema_fingerprint": "3cd9ef765e534175a439fce1800c232cbf3151515770befc67592db3dc5d15b4",
+      "item_count": 30,
+      "required_present": true
+    },
+    "continuation_type": "max_novel_id",
+    "page_overlap": 0,
+    "termination_rule": "missing_continuation",
+    "access_control_present": false,
+    "access_control_allowed": false,
+    "wire_verdict": "confirmed",
+    "response_verdict": "confirmed",
+    "pagination_verdict": "confirmed",
+    "adapter_verdict": "not_tested",
+    "sdk_verdict": "inconclusive",
+    "adapter_item_count": 0,
+    "sdk_item_count": 0,
+    "adapter_sdk_equal": false,
+    "verdict": "inconclusive",
+    "failure_class": "sdk_call_error"
+  },
+  {
+    "schema_version": 1,
+    "observed_at": "2026-09-05T09:01:53Z",
+    "source_commit": "working-tree",
+    "manifest_digest": "8503d7b7c1ec392e7865f8d4d51088ed11329c28dd2d2283648fc26704e0dc47",
+    "account_slot": "non-main-account",
+    "case_id": "novel-follow",
+    "method": "GET",
+    "path": "/v1/novel/follow",
+    "parameter_names": [
+      "restrict"
+    ],
+    "status": 200,
+    "content_type": "application/json",
+    "first_page": {
+      "schema_fingerprint": "3cd9ef765e534175a439fce1800c232cbf3151515770befc67592db3dc5d15b4",
+      "item_count": 30,
+      "required_present": true
+    },
+    "second_page": {
+      "schema_fingerprint": "3cd9ef765e534175a439fce1800c232cbf3151515770befc67592db3dc5d15b4",
+      "item_count": 30,
+      "required_present": true
+    },
+    "continuation_type": "offset",
+    "page_overlap": 0,
+    "termination_rule": "missing_continuation",
+    "access_control_present": false,
+    "access_control_allowed": false,
+    "wire_verdict": "confirmed",
+    "response_verdict": "confirmed",
+    "pagination_verdict": "confirmed",
+    "adapter_verdict": "confirmed",
+    "sdk_verdict": "confirmed",
+    "adapter_item_count": 30,
+    "sdk_item_count": 30,
+    "adapter_sdk_equal": true,
+    "verdict": "confirmed"
+  },
+  {
+    "schema_version": 1,
+    "observed_at": "2026-09-05T09:01:55Z",
+    "source_commit": "working-tree",
+    "manifest_digest": "8503d7b7c1ec392e7865f8d4d51088ed11329c28dd2d2283648fc26704e0dc47",
+    "account_slot": "non-main-account",
+    "case_id": "novel-recommended",
+    "method": "GET",
+    "path": "/v1/novel/recommended",
+    "parameter_names": null,
+    "status": 200,
+    "content_type": "application/json",
+    "first_page": {
+      "schema_fingerprint": "56bc0dd57336c4ab4f88f6ebf17cd47269af16d7454bd1a53a06df77f6befce9",
+      "item_count": 33,
+      "required_present": true
+    },
+    "second_page": {
+      "schema_fingerprint": "56bc0dd57336c4ab4f88f6ebf17cd47269af16d7454bd1a53a06df77f6befce9",
+      "item_count": 33,
+      "required_present": true
+    },
+    "continuation_type": "offset",
+    "page_overlap": 0,
+    "termination_rule": "missing_continuation",
+    "access_control_present": false,
+    "access_control_allowed": false,
+    "wire_verdict": "confirmed",
+    "response_verdict": "confirmed",
+    "pagination_verdict": "confirmed",
+    "adapter_verdict": "confirmed",
+    "sdk_verdict": "confirmed",
+    "adapter_item_count": 33,
+    "sdk_item_count": 33,
+    "adapter_sdk_equal": true,
+    "verdict": "confirmed"
+  },
+  {
+    "schema_version": 1,
+    "observed_at": "2026-09-05T09:01:57Z",
+    "source_commit": "working-tree",
+    "manifest_digest": "8503d7b7c1ec392e7865f8d4d51088ed11329c28dd2d2283648fc26704e0dc47",
+    "account_slot": "non-main-account",
+    "case_id": "novel-ranking",
+    "method": "GET",
+    "path": "/v1/novel/ranking",
+    "parameter_names": [
+      "filter",
+      "mode"
+    ],
+    "status": 200,
+    "content_type": "application/json",
+    "first_page": {
+      "schema_fingerprint": "3cd9ef765e534175a439fce1800c232cbf3151515770befc67592db3dc5d15b4",
+      "item_count": 30,
+      "required_present": true
+    },
+    "second_page": {
+      "schema_fingerprint": "3cd9ef765e534175a439fce1800c232cbf3151515770befc67592db3dc5d15b4",
+      "item_count": 30,
+      "required_present": true
+    },
+    "continuation_type": "offset",
+    "page_overlap": 0,
+    "termination_rule": "missing_continuation",
+    "access_control_present": false,
+    "access_control_allowed": false,
+    "wire_verdict": "confirmed",
+    "response_verdict": "confirmed",
+    "pagination_verdict": "confirmed",
+    "adapter_verdict": "not_tested",
+    "sdk_verdict": "not_tested",
+    "adapter_item_count": 0,
+    "sdk_item_count": 0,
+    "adapter_sdk_equal": false,
+    "verdict": "not_tested"
+  },
+  {
+    "schema_version": 1,
+    "observed_at": "2026-09-05T09:01:58Z",
+    "source_commit": "working-tree",
+    "manifest_digest": "8503d7b7c1ec392e7865f8d4d51088ed11329c28dd2d2283648fc26704e0dc47",
+    "account_slot": "non-main-account",
+    "case_id": "user-novels",
+    "method": "GET",
+    "path": "/v1/user/novels",
+    "parameter_names": [
+      "filter",
+      "user_id"
+    ],
+    "status": 200,
+    "content_type": "application/json",
+    "first_page": {
+      "schema_fingerprint": "6fffbddff9c82eb0dfff1fb63685a49e67c4c8e84269b22276fb2abdd2d922fb",
+      "item_count": 0,
+      "required_present": true
+    },
+    "second_page": {
+      "item_count": 0,
+      "required_present": false
+    },
+    "continuation_type": "none",
+    "page_overlap": 0,
+    "termination_rule": "missing_continuation",
+    "access_control_present": false,
+    "access_control_allowed": false,
+    "wire_verdict": "confirmed",
+    "response_verdict": "confirmed",
+    "pagination_verdict": "inconclusive",
+    "adapter_verdict": "confirmed",
+    "sdk_verdict": "confirmed",
+    "adapter_item_count": 0,
+    "sdk_item_count": 0,
+    "adapter_sdk_equal": true,
+    "verdict": "inconclusive",
+    "failure_class": "second_page_not_observed"
+  },
+  {
+    "schema_version": 1,
+    "observed_at": "2026-09-05T09:01:58Z",
+    "source_commit": "working-tree",
+    "manifest_digest": "8503d7b7c1ec392e7865f8d4d51088ed11329c28dd2d2283648fc26704e0dc47",
+    "account_slot": "non-main-account",
+    "case_id": "user-novel-bookmarks-public",
+    "method": "GET",
+    "path": "/v1/user/bookmarks/novel",
+    "parameter_names": [
+      "restrict",
+      "user_id"
+    ],
+    "status": 200,
+    "content_type": "application/json",
+    "first_page": {
+      "schema_fingerprint": "3cd9ef765e534175a439fce1800c232cbf3151515770befc67592db3dc5d15b4",
+      "item_count": 0,
+      "required_present": true
+    },
+    "second_page": {
+      "item_count": 0,
+      "required_present": false
+    },
+    "continuation_type": "none",
+    "page_overlap": 0,
+    "termination_rule": "missing_continuation",
+    "access_control_present": false,
+    "access_control_allowed": false,
+    "wire_verdict": "confirmed",
+    "response_verdict": "confirmed",
+    "pagination_verdict": "inconclusive",
+    "adapter_verdict": "confirmed",
+    "sdk_verdict": "confirmed",
+    "adapter_item_count": 0,
+    "sdk_item_count": 0,
+    "adapter_sdk_equal": true,
+    "verdict": "inconclusive",
+    "failure_class": "second_page_not_observed"
+  },
+  {
+    "schema_version": 1,
+    "observed_at": "2026-09-05T09:01:59Z",
+    "source_commit": "working-tree",
+    "manifest_digest": "8503d7b7c1ec392e7865f8d4d51088ed11329c28dd2d2283648fc26704e0dc47",
+    "account_slot": "non-main-account",
+    "case_id": "user-novel-bookmarks-private",
+    "method": "GET",
+    "path": "/v1/user/bookmarks/novel",
+    "parameter_names": [
+      "restrict",
+      "user_id"
+    ],
+    "status": 200,
+    "content_type": "application/json",
+    "first_page": {
+      "schema_fingerprint": "3cd9ef765e534175a439fce1800c232cbf3151515770befc67592db3dc5d15b4",
+      "item_count": 0,
+      "required_present": true
+    },
+    "second_page": {
+      "item_count": 0,
+      "required_present": false
+    },
+    "continuation_type": "none",
+    "page_overlap": 0,
+    "termination_rule": "missing_continuation",
+    "access_control_present": false,
+    "access_control_allowed": false,
+    "wire_verdict": "confirmed",
+    "response_verdict": "confirmed",
+    "pagination_verdict": "inconclusive",
+    "adapter_verdict": "confirmed",
+    "sdk_verdict": "confirmed",
+    "adapter_item_count": 0,
+    "sdk_item_count": 0,
+    "adapter_sdk_equal": true,
+    "verdict": "inconclusive",
+    "failure_class": "second_page_not_observed"
+  },
+  {
+    "schema_version": 1,
+    "observed_at": "2026-09-05T09:02:00Z",
+    "source_commit": "working-tree",
+    "manifest_digest": "8503d7b7c1ec392e7865f8d4d51088ed11329c28dd2d2283648fc26704e0dc47",
+    "account_slot": "non-main-account",
+    "case_id": "novel-comments-v2",
+    "method": "GET",
+    "path": "/v2/novel/comments",
+    "parameter_names": [
+      "novel_id"
+    ],
+    "status": 200,
+    "content_type": "application/json",
+    "first_page": {
+      "schema_fingerprint": "79c677face3d5c92c26cc6edcdb3797c0636f599ba152900643784a6c4280cfa",
+      "item_count": 0,
+      "required_present": true
+    },
+    "second_page": {
+      "item_count": 0,
+      "required_present": false
+    },
+    "continuation_type": "none",
+    "page_overlap": 0,
+    "termination_rule": "missing_continuation",
+    "access_control_present": true,
+    "access_control_allowed": true,
+    "wire_verdict": "confirmed",
+    "response_verdict": "confirmed",
+    "pagination_verdict": "inconclusive",
+    "adapter_verdict": "confirmed",
+    "sdk_verdict": "confirmed",
+    "adapter_item_count": 0,
+    "sdk_item_count": 0,
+    "adapter_sdk_equal": true,
+    "verdict": "inconclusive",
+    "failure_class": "second_page_not_observed"
+  },
+  {
+    "schema_version": 1,
+    "observed_at": "2026-09-05T09:02:00Z",
+    "source_commit": "working-tree",
+    "manifest_digest": "8503d7b7c1ec392e7865f8d4d51088ed11329c28dd2d2283648fc26704e0dc47",
+    "account_slot": "non-main-account",
+    "case_id": "novel-comments-v3",
+    "method": "GET",
+    "path": "/v3/novel/comments",
+    "parameter_names": [
+      "novel_id"
+    ],
+    "status": 200,
+    "content_type": "application/json",
+    "first_page": {
+      "schema_fingerprint": "79c677face3d5c92c26cc6edcdb3797c0636f599ba152900643784a6c4280cfa",
+      "item_count": 0,
+      "required_present": true
+    },
+    "second_page": {
+      "item_count": 0,
+      "required_present": false
+    },
+    "continuation_type": "none",
+    "page_overlap": 0,
+    "termination_rule": "missing_continuation",
+    "access_control_present": true,
+    "access_control_allowed": true,
+    "wire_verdict": "confirmed",
+    "response_verdict": "confirmed",
+    "pagination_verdict": "inconclusive",
+    "adapter_verdict": "not_tested",
+    "sdk_verdict": "not_tested",
+    "adapter_item_count": 0,
+    "sdk_item_count": 0,
+    "adapter_sdk_equal": false,
+    "verdict": "inconclusive",
+    "failure_class": "second_page_not_observed"
+  },
+  {
+    "schema_version": 1,
+    "observed_at": "2026-09-05T09:02:02Z",
+    "source_commit": "working-tree",
+    "manifest_digest": "8503d7b7c1ec392e7865f8d4d51088ed11329c28dd2d2283648fc26704e0dc47",
+    "account_slot": "non-main-account",
+    "case_id": "search-illust-all",
+    "method": "GET",
+    "path": "/v1/search/illust",
+    "parameter_names": [
+      "filter",
+      "search_target",
+      "sort",
+      "word"
+    ],
+    "status": 200,
+    "content_type": "application/json",
+    "first_page": {
+      "schema_fingerprint": "233267a6a0e67e95120f36795506ffe54cea126472d4117a73bb24d57bd58699",
+      "item_count": 30,
+      "required_present": true
+    },
+    "second_page": {
+      "schema_fingerprint": "233267a6a0e67e95120f36795506ffe54cea126472d4117a73bb24d57bd58699",
+      "item_count": 30,
+      "required_present": true
+    },
+    "continuation_type": "offset",
+    "page_overlap": 0,
+    "termination_rule": "missing_continuation",
+    "access_control_present": false,
+    "access_control_allowed": false,
+    "wire_verdict": "confirmed",
+    "response_verdict": "confirmed",
+    "pagination_verdict": "confirmed",
+    "adapter_verdict": "confirmed",
+    "sdk_verdict": "confirmed",
+    "adapter_item_count": 30,
+    "sdk_item_count": 30,
+    "adapter_sdk_equal": true,
+    "verdict": "confirmed"
+  },
+  {
+    "schema_version": 1,
+    "observed_at": "2026-09-05T09:02:06Z",
+    "source_commit": "working-tree",
+    "manifest_digest": "8503d7b7c1ec392e7865f8d4d51088ed11329c28dd2d2283648fc26704e0dc47",
+    "account_slot": "non-main-account",
+    "case_id": "search-illust-illust",
+    "method": "GET",
+    "path": "/v1/search/illust",
+    "parameter_names": [
+      "content_type",
+      "filter",
+      "search_target",
+      "sort",
+      "word"
+    ],
+    "status": 200,
+    "content_type": "application/json",
+    "first_page": {
+      "schema_fingerprint": "233267a6a0e67e95120f36795506ffe54cea126472d4117a73bb24d57bd58699",
+      "item_count": 30,
+      "required_present": true
+    },
+    "second_page": {
+      "schema_fingerprint": "233267a6a0e67e95120f36795506ffe54cea126472d4117a73bb24d57bd58699",
+      "item_count": 30,
+      "required_present": true
+    },
+    "continuation_type": "offset",
+    "page_overlap": 0,
+    "termination_rule": "missing_continuation",
+    "access_control_present": false,
+    "access_control_allowed": false,
+    "wire_verdict": "confirmed",
+    "response_verdict": "confirmed",
+    "pagination_verdict": "confirmed",
+    "adapter_verdict": "confirmed",
+    "sdk_verdict": "confirmed",
+    "adapter_item_count": 30,
+    "sdk_item_count": 30,
+    "adapter_sdk_equal": true,
+    "verdict": "confirmed"
+  },
+  {
+    "schema_version": 1,
+    "observed_at": "2026-09-05T09:02:07Z",
+    "source_commit": "working-tree",
+    "manifest_digest": "8503d7b7c1ec392e7865f8d4d51088ed11329c28dd2d2283648fc26704e0dc47",
+    "account_slot": "non-main-account",
+    "case_id": "search-illust-manga",
+    "method": "GET",
+    "path": "/v1/search/illust",
+    "parameter_names": [
+      "content_type",
+      "filter",
+      "search_target",
+      "sort",
+      "word"
+    ],
+    "status": 200,
+    "content_type": "application/json",
+    "first_page": {
+      "schema_fingerprint": "233267a6a0e67e95120f36795506ffe54cea126472d4117a73bb24d57bd58699",
+      "item_count": 30,
+      "required_present": true
+    },
+    "second_page": {
+      "schema_fingerprint": "233267a6a0e67e95120f36795506ffe54cea126472d4117a73bb24d57bd58699",
+      "item_count": 30,
+      "required_present": true
+    },
+    "continuation_type": "offset",
+    "page_overlap": 0,
+    "termination_rule": "missing_continuation",
+    "access_control_present": false,
+    "access_control_allowed": false,
+    "wire_verdict": "confirmed",
+    "response_verdict": "confirmed",
+    "pagination_verdict": "confirmed",
+    "adapter_verdict": "confirmed",
+    "sdk_verdict": "confirmed",
+    "adapter_item_count": 30,
+    "sdk_item_count": 30,
+    "adapter_sdk_equal": true,
+    "verdict": "confirmed"
+  },
+  {
+    "schema_version": 1,
+    "observed_at": "2026-09-05T09:02:12Z",
+    "source_commit": "working-tree",
+    "manifest_digest": "8503d7b7c1ec392e7865f8d4d51088ed11329c28dd2d2283648fc26704e0dc47",
+    "account_slot": "non-main-account",
+    "case_id": "search-illust-ugoira",
+    "method": "GET",
+    "path": "/v1/search/illust",
+    "parameter_names": [
+      "content_type",
+      "filter",
+      "search_target",
+      "sort",
+      "word"
+    ],
+    "status": 200,
+    "content_type": "application/json",
+    "first_page": {
+      "schema_fingerprint": "233267a6a0e67e95120f36795506ffe54cea126472d4117a73bb24d57bd58699",
+      "item_count": 30,
+      "required_present": true
+    },
+    "second_page": {
+      "schema_fingerprint": "233267a6a0e67e95120f36795506ffe54cea126472d4117a73bb24d57bd58699",
+      "item_count": 30,
+      "required_present": true
+    },
+    "continuation_type": "offset",
+    "page_overlap": 0,
+    "termination_rule": "missing_continuation",
+    "access_control_present": false,
+    "access_control_allowed": false,
+    "wire_verdict": "confirmed",
+    "response_verdict": "confirmed",
+    "pagination_verdict": "confirmed",
+    "adapter_verdict": "confirmed",
+    "sdk_verdict": "confirmed",
+    "adapter_item_count": 30,
+    "sdk_item_count": 30,
+    "adapter_sdk_equal": true,
+    "verdict": "confirmed"
+  },
+  {
+    "schema_version": 1,
+    "observed_at": "2026-09-05T09:02:15Z",
+    "source_commit": "working-tree",
+    "manifest_digest": "8503d7b7c1ec392e7865f8d4d51088ed11329c28dd2d2283648fc26704e0dc47",
+    "account_slot": "non-main-account",
+    "case_id": "search-illust-rating",
+    "method": "GET",
+    "path": "/v1/search/illust",
+    "parameter_names": [
+      "filter",
+      "search_target",
+      "sort",
+      "word",
+      "x_restrict"
+    ],
+    "status": 200,
+    "content_type": "application/json",
+    "first_page": {
+      "schema_fingerprint": "233267a6a0e67e95120f36795506ffe54cea126472d4117a73bb24d57bd58699",
+      "item_count": 30,
+      "required_present": true
+    },
+    "second_page": {
+      "schema_fingerprint": "233267a6a0e67e95120f36795506ffe54cea126472d4117a73bb24d57bd58699",
+      "item_count": 30,
+      "required_present": true
+    },
+    "continuation_type": "offset",
+    "page_overlap": 0,
+    "termination_rule": "missing_continuation",
+    "access_control_present": false,
+    "access_control_allowed": false,
+    "wire_verdict": "confirmed",
+    "response_verdict": "confirmed",
+    "pagination_verdict": "confirmed",
+    "adapter_verdict": "not_tested",
+    "sdk_verdict": "not_tested",
+    "adapter_item_count": 0,
+    "sdk_item_count": 0,
+    "adapter_sdk_equal": false,
+    "verdict": "not_tested"
+  },
+  {
+    "schema_version": 1,
+    "observed_at": "2026-09-05T09:02:20Z",
+    "source_commit": "working-tree",
+    "manifest_digest": "8503d7b7c1ec392e7865f8d4d51088ed11329c28dd2d2283648fc26704e0dc47",
+    "account_slot": "non-main-account",
+    "case_id": "illust-recommended",
+    "method": "GET",
+    "path": "/v1/illust/recommended",
+    "parameter_names": [
+      "filter"
+    ],
+    "status": 200,
+    "content_type": "application/json",
+    "first_page": {
+      "schema_fingerprint": "dd0df9c1d0bf9c38e9b71f4645083a51934fe2c14d9ab52dcf9385130d8fd62b",
+      "item_count": 85,
+      "required_present": true
+    },
+    "second_page": {
+      "item_count": 0,
+      "required_present": false
+    },
+    "continuation_type": "offset",
+    "page_overlap": 0,
+    "termination_rule": "missing_continuation",
+    "access_control_present": false,
+    "access_control_allowed": false,
+    "wire_verdict": "confirmed",
+    "response_verdict": "confirmed",
+    "pagination_verdict": "inconclusive",
+    "adapter_verdict": "confirmed",
+    "sdk_verdict": "confirmed",
+    "adapter_item_count": 83,
+    "sdk_item_count": 83,
+    "adapter_sdk_equal": true,
+    "verdict": "inconclusive",
+    "failure_class": "second_page_error"
+  },
+  {
+    "schema_version": 1,
+    "observed_at": "2026-09-05T09:02:23Z",
+    "source_commit": "working-tree",
+    "manifest_digest": "8503d7b7c1ec392e7865f8d4d51088ed11329c28dd2d2283648fc26704e0dc47",
+    "account_slot": "non-main-account",
+    "case_id": "illust-new",
+    "method": "GET",
+    "path": "/v1/illust/new",
+    "parameter_names": [
+      "content_type",
+      "filter"
+    ],
+    "status": 200,
+    "content_type": "application/json",
+    "first_page": {
+      "schema_fingerprint": "06087d244c35be5537dd3e563cfffd8518b1c388ff579a28b1b14c9cab36c2a3",
+      "item_count": 30,
+      "required_present": true
+    },
+    "second_page": {
+      "schema_fingerprint": "06087d244c35be5537dd3e563cfffd8518b1c388ff579a28b1b14c9cab36c2a3",
+      "item_count": 30,
+      "required_present": true
+    },
+    "continuation_type": "max_illust_id",
+    "page_overlap": 0,
+    "termination_rule": "missing_continuation",
+    "access_control_present": false,
+    "access_control_allowed": false,
+    "wire_verdict": "confirmed",
+    "response_verdict": "confirmed",
+    "pagination_verdict": "confirmed",
+    "adapter_verdict": "confirmed",
+    "sdk_verdict": "confirmed",
+    "adapter_item_count": 30,
+    "sdk_item_count": 30,
+    "adapter_sdk_equal": true,
+    "verdict": "confirmed"
+  },
+  {
+    "schema_version": 1,
+    "observed_at": "2026-09-05T09:02:26Z",
+    "source_commit": "working-tree",
+    "manifest_digest": "8503d7b7c1ec392e7865f8d4d51088ed11329c28dd2d2283648fc26704e0dc47",
+    "account_slot": "non-main-account",
+    "case_id": "illust-ranking",
+    "method": "GET",
+    "path": "/v1/illust/ranking",
+    "parameter_names": [
+      "mode"
+    ],
+    "status": 200,
+    "content_type": "application/json",
+    "first_page": {
+      "schema_fingerprint": "06087d244c35be5537dd3e563cfffd8518b1c388ff579a28b1b14c9cab36c2a3",
+      "item_count": 30,
+      "required_present": true
+    },
+    "second_page": {
+      "schema_fingerprint": "06087d244c35be5537dd3e563cfffd8518b1c388ff579a28b1b14c9cab36c2a3",
+      "item_count": 30,
+      "required_present": true
+    },
+    "continuation_type": "offset",
+    "page_overlap": 0,
+    "termination_rule": "missing_continuation",
+    "access_control_present": false,
+    "access_control_allowed": false,
+    "wire_verdict": "confirmed",
+    "response_verdict": "confirmed",
+    "pagination_verdict": "confirmed",
+    "adapter_verdict": "confirmed",
+    "sdk_verdict": "confirmed",
+    "adapter_item_count": 30,
+    "sdk_item_count": 30,
+    "adapter_sdk_equal": true,
+    "verdict": "confirmed"
+  },
+  {
+    "schema_version": 1,
+    "observed_at": "2026-09-05T09:02:27Z",
+    "source_commit": "working-tree",
+    "manifest_digest": "8503d7b7c1ec392e7865f8d4d51088ed11329c28dd2d2283648fc26704e0dc47",
+    "account_slot": "non-main-account",
+    "case_id": "user-illusts-illust",
+    "method": "GET",
+    "path": "/v1/user/illusts",
+    "parameter_names": [
+      "filter",
+      "type",
+      "user_id"
+    ],
+    "status": 200,
+    "content_type": "application/json",
+    "first_page": {
+      "schema_fingerprint": "8d77e9c7080c4f378a1a270e25ea7dc2d2a6d1eba2708f95f6be5bc40761bb12",
+      "item_count": 0,
+      "required_present": true
+    },
+    "second_page": {
+      "item_count": 0,
+      "required_present": false
+    },
+    "continuation_type": "none",
+    "page_overlap": 0,
+    "termination_rule": "missing_continuation",
+    "access_control_present": false,
+    "access_control_allowed": false,
+    "wire_verdict": "confirmed",
+    "response_verdict": "confirmed",
+    "pagination_verdict": "inconclusive",
+    "adapter_verdict": "confirmed",
+    "sdk_verdict": "confirmed",
+    "adapter_item_count": 0,
+    "sdk_item_count": 0,
+    "adapter_sdk_equal": true,
+    "verdict": "inconclusive",
+    "failure_class": "second_page_not_observed"
+  },
+  {
+    "schema_version": 1,
+    "observed_at": "2026-09-05T09:02:28Z",
+    "source_commit": "working-tree",
+    "manifest_digest": "8503d7b7c1ec392e7865f8d4d51088ed11329c28dd2d2283648fc26704e0dc47",
+    "account_slot": "non-main-account",
+    "case_id": "user-illusts-manga",
+    "method": "GET",
+    "path": "/v1/user/illusts",
+    "parameter_names": [
+      "filter",
+      "type",
+      "user_id"
+    ],
+    "status": 200,
+    "content_type": "application/json",
+    "first_page": {
+      "schema_fingerprint": "8d77e9c7080c4f378a1a270e25ea7dc2d2a6d1eba2708f95f6be5bc40761bb12",
+      "item_count": 0,
+      "required_present": true
+    },
+    "second_page": {
+      "item_count": 0,
+      "required_present": false
+    },
+    "continuation_type": "none",
+    "page_overlap": 0,
+    "termination_rule": "missing_continuation",
+    "access_control_present": false,
+    "access_control_allowed": false,
+    "wire_verdict": "confirmed",
+    "response_verdict": "confirmed",
+    "pagination_verdict": "inconclusive",
+    "adapter_verdict": "confirmed",
+    "sdk_verdict": "confirmed",
+    "adapter_item_count": 0,
+    "sdk_item_count": 0,
+    "adapter_sdk_equal": true,
+    "verdict": "inconclusive",
+    "failure_class": "second_page_not_observed"
+  },
+  {
+    "schema_version": 1,
+    "observed_at": "2026-09-05T09:02:29Z",
+    "source_commit": "working-tree",
+    "manifest_digest": "8503d7b7c1ec392e7865f8d4d51088ed11329c28dd2d2283648fc26704e0dc47",
+    "account_slot": "non-main-account",
+    "case_id": "user-illust-bookmarks-public",
+    "method": "GET",
+    "path": "/v1/user/bookmarks/illust",
+    "parameter_names": [
+      "restrict",
+      "user_id"
+    ],
+    "status": 200,
+    "content_type": "application/json",
+    "first_page": {
+      "schema_fingerprint": "06087d244c35be5537dd3e563cfffd8518b1c388ff579a28b1b14c9cab36c2a3",
+      "item_count": 16,
+      "required_present": true
+    },
+    "second_page": {
+      "item_count": 0,
+      "required_present": false
+    },
+    "continuation_type": "none",
+    "page_overlap": 0,
+    "termination_rule": "missing_continuation",
+    "access_control_present": false,
+    "access_control_allowed": false,
+    "wire_verdict": "confirmed",
+    "response_verdict": "confirmed",
+    "pagination_verdict": "inconclusive",
+    "adapter_verdict": "confirmed",
+    "sdk_verdict": "confirmed",
+    "adapter_item_count": 16,
+    "sdk_item_count": 16,
+    "adapter_sdk_equal": true,
+    "verdict": "inconclusive",
+    "failure_class": "second_page_not_observed"
+  },
+  {
+    "schema_version": 1,
+    "observed_at": "2026-09-05T09:02:30Z",
+    "source_commit": "working-tree",
+    "manifest_digest": "8503d7b7c1ec392e7865f8d4d51088ed11329c28dd2d2283648fc26704e0dc47",
+    "account_slot": "non-main-account",
+    "case_id": "user-illust-bookmarks-private",
+    "method": "GET",
+    "path": "/v1/user/bookmarks/illust",
+    "parameter_names": [
+      "restrict",
+      "user_id"
+    ],
+    "status": 200,
+    "content_type": "application/json",
+    "first_page": {
+      "schema_fingerprint": "06087d244c35be5537dd3e563cfffd8518b1c388ff579a28b1b14c9cab36c2a3",
+      "item_count": 0,
+      "required_present": true
+    },
+    "second_page": {
+      "item_count": 0,
+      "required_present": false
+    },
+    "continuation_type": "none",
+    "page_overlap": 0,
+    "termination_rule": "missing_continuation",
+    "access_control_present": false,
+    "access_control_allowed": false,
+    "wire_verdict": "confirmed",
+    "response_verdict": "confirmed",
+    "pagination_verdict": "inconclusive",
+    "adapter_verdict": "confirmed",
+    "sdk_verdict": "confirmed",
+    "adapter_item_count": 0,
+    "sdk_item_count": 0,
+    "adapter_sdk_equal": true,
+    "verdict": "inconclusive",
+    "failure_class": "second_page_not_observed"
+  },
+  {
+    "schema_version": 1,
+    "observed_at": "2026-09-05T09:02:31Z",
+    "source_commit": "working-tree",
+    "manifest_digest": "8503d7b7c1ec392e7865f8d4d51088ed11329c28dd2d2283648fc26704e0dc47",
+    "account_slot": "non-main-account",
+    "case_id": "illust-comments-v3",
+    "method": "GET",
+    "path": "/v3/illust/comments",
+    "parameter_names": [
+      "illust_id",
+      "include_total_comments"
+    ],
+    "status": 200,
+    "content_type": "application/json",
+    "first_page": {
+      "schema_fingerprint": "79c677face3d5c92c26cc6edcdb3797c0636f599ba152900643784a6c4280cfa",
+      "item_count": 0,
+      "required_present": true
+    },
+    "second_page": {
+      "item_count": 0,
+      "required_present": false
+    },
+    "continuation_type": "none",
+    "page_overlap": 0,
+    "termination_rule": "missing_continuation",
+    "access_control_present": true,
+    "access_control_allowed": true,
+    "wire_verdict": "confirmed",
+    "response_verdict": "confirmed",
+    "pagination_verdict": "inconclusive",
+    "adapter_verdict": "confirmed",
+    "sdk_verdict": "confirmed",
+    "adapter_item_count": 0,
+    "sdk_item_count": 0,
+    "adapter_sdk_equal": true,
+    "verdict": "inconclusive",
+    "failure_class": "second_page_not_observed"
+  },
+  {
+    "schema_version": 1,
+    "observed_at": "2026-09-05T09:02:32Z",
+    "source_commit": "working-tree",
+    "manifest_digest": "8503d7b7c1ec392e7865f8d4d51088ed11329c28dd2d2283648fc26704e0dc47",
+    "account_slot": "non-main-account",
+    "case_id": "ugoira-metadata",
+    "method": "GET",
+    "path": "/v1/ugoira/metadata",
+    "parameter_names": [
+      "illust_id"
+    ],
+    "status": 200,
+    "content_type": "application/json",
+    "first_page": {
+      "schema_fingerprint": "3e83ac74848f497ab6599fb03fc224e83b7b460a7d4aa1b961fcf277084ff196",
+      "item_count": 0,
+      "required_present": true
+    },
+    "second_page": {
+      "item_count": 0,
+      "required_present": false
+    },
+    "continuation_type": "none",
+    "page_overlap": 0,
+    "termination_rule": "missing_continuation",
+    "access_control_present": false,
+    "access_control_allowed": false,
+    "wire_verdict": "confirmed",
+    "response_verdict": "confirmed",
+    "pagination_verdict": "confirmed",
+    "adapter_verdict": "confirmed",
+    "sdk_verdict": "confirmed",
+    "adapter_item_count": 1,
+    "sdk_item_count": 1,
+    "adapter_sdk_equal": true,
+    "verdict": "confirmed"
+  },
+  {
+    "schema_version": 1,
+    "observed_at": "2026-09-05T09:02:32Z",
+    "source_commit": "working-tree",
+    "manifest_digest": "8503d7b7c1ec392e7865f8d4d51088ed11329c28dd2d2283648fc26704e0dc47",
+    "account_slot": "non-main-account",
+    "case_id": "stamps",
+    "method": "GET",
+    "path": "/v1/stamps",
+    "parameter_names": null,
+    "status": 200,
+    "content_type": "application/json",
+    "first_page": {
+      "schema_fingerprint": "48306fd04f903c3a3edf8b2d63c937032fe62002eee8034319e516084d0d3092",
+      "item_count": 40,
+      "required_present": true
+    },
+    "second_page": {
+      "item_count": 0,
+      "required_present": false
+    },
+    "continuation_type": "none",
+    "page_overlap": 0,
+    "termination_rule": "missing_continuation",
+    "access_control_present": false,
+    "access_control_allowed": false,
+    "wire_verdict": "confirmed",
+    "response_verdict": "confirmed",
+    "pagination_verdict": "confirmed",
+    "adapter_verdict": "not_tested",
+    "sdk_verdict": "not_tested",
+    "adapter_item_count": 0,
+    "sdk_item_count": 0,
+    "adapter_sdk_equal": false,
+    "verdict": "not_tested"
+  },
+  {
+    "schema_version": 1,
+    "observed_at": "2026-09-05T09:02:32Z",
+    "source_commit": "working-tree",
+    "manifest_digest": "8503d7b7c1ec392e7865f8d4d51088ed11329c28dd2d2283648fc26704e0dc47",
+    "account_slot": "non-main-account",
+    "case_id": "illust-comment-text",
+    "method": "POST",
+    "path": "/v1/illust/comment/add",
+    "parameter_names": [
+      "illust_id",
+      "comment"
+    ],
+    "status": 0,
+    "first_page": {
+      "item_count": 0,
+      "required_present": false
+    },
+    "second_page": {
+      "item_count": 0,
+      "required_present": false
+    },
+    "continuation_type": "none",
+    "page_overlap": 0,
+    "termination_rule": "missing_continuation",
+    "access_control_present": false,
+    "access_control_allowed": false,
+    "wire_verdict": "not_tested",
+    "response_verdict": "not_tested",
+    "pagination_verdict": "not_tested",
+    "adapter_verdict": "not_tested",
+    "sdk_verdict": "not_tested",
+    "adapter_item_count": 0,
+    "sdk_item_count": 0,
+    "adapter_sdk_equal": false,
+    "verdict": "not_tested",
+    "failure_class": "mutation_runner_pending"
+  },
+  {
+    "schema_version": 1,
+    "observed_at": "2026-09-05T09:02:32Z",
+    "source_commit": "working-tree",
+    "manifest_digest": "8503d7b7c1ec392e7865f8d4d51088ed11329c28dd2d2283648fc26704e0dc47",
+    "account_slot": "non-main-account",
+    "case_id": "illust-comment-reply",
+    "method": "POST",
+    "path": "/v1/illust/comment/add",
+    "parameter_names": [
+      "illust_id",
+      "comment",
+      "parent_comment_id"
+    ],
+    "status": 0,
+    "first_page": {
+      "item_count": 0,
+      "required_present": false
+    },
+    "second_page": {
+      "item_count": 0,
+      "required_present": false
+    },
+    "continuation_type": "none",
+    "page_overlap": 0,
+    "termination_rule": "missing_continuation",
+    "access_control_present": false,
+    "access_control_allowed": false,
+    "wire_verdict": "not_tested",
+    "response_verdict": "not_tested",
+    "pagination_verdict": "not_tested",
+    "adapter_verdict": "not_tested",
+    "sdk_verdict": "not_tested",
+    "adapter_item_count": 0,
+    "sdk_item_count": 0,
+    "adapter_sdk_equal": false,
+    "verdict": "not_tested",
+    "failure_class": "mutation_runner_pending"
+  },
+  {
+    "schema_version": 1,
+    "observed_at": "2026-09-05T09:02:32Z",
+    "source_commit": "working-tree",
+    "manifest_digest": "8503d7b7c1ec392e7865f8d4d51088ed11329c28dd2d2283648fc26704e0dc47",
+    "account_slot": "non-main-account",
+    "case_id": "novel-comment-stamp",
+    "method": "POST",
+    "path": "/v1/novel/comment/add",
+    "parameter_names": [
+      "novel_id",
+      "comment",
+      "stamp_id"
+    ],
+    "status": 0,
+    "first_page": {
+      "item_count": 0,
+      "required_present": false
+    },
+    "second_page": {
+      "item_count": 0,
+      "required_present": false
+    },
+    "continuation_type": "none",
+    "page_overlap": 0,
+    "termination_rule": "missing_continuation",
+    "access_control_present": false,
+    "access_control_allowed": false,
+    "wire_verdict": "not_tested",
+    "response_verdict": "not_tested",
+    "pagination_verdict": "not_tested",
+    "adapter_verdict": "not_tested",
+    "sdk_verdict": "not_tested",
+    "adapter_item_count": 0,
+    "sdk_item_count": 0,
+    "adapter_sdk_equal": false,
+    "verdict": "not_tested",
+    "failure_class": "mutation_runner_pending"
+  },
+  {
+    "schema_version": 1,
+    "observed_at": "2026-09-05T09:02:32Z",
+    "source_commit": "working-tree",
+    "manifest_digest": "8503d7b7c1ec392e7865f8d4d51088ed11329c28dd2d2283648fc26704e0dc47",
+    "account_slot": "non-main-account",
+    "case_id": "novel-comment-text",
+    "method": "POST",
+    "path": "/v1/novel/comment/add",
+    "parameter_names": [
+      "novel_id",
+      "comment"
+    ],
+    "status": 0,
+    "first_page": {
+      "item_count": 0,
+      "required_present": false
+    },
+    "second_page": {
+      "item_count": 0,
+      "required_present": false
+    },
+    "continuation_type": "none",
+    "page_overlap": 0,
+    "termination_rule": "missing_continuation",
+    "access_control_present": false,
+    "access_control_allowed": false,
+    "wire_verdict": "not_tested",
+    "response_verdict": "not_tested",
+    "pagination_verdict": "not_tested",
+    "adapter_verdict": "not_tested",
+    "sdk_verdict": "not_tested",
+    "adapter_item_count": 0,
+    "sdk_item_count": 0,
+    "adapter_sdk_equal": false,
+    "verdict": "not_tested",
+    "failure_class": "mutation_runner_pending"
+  },
+  {
+    "schema_version": 1,
+    "observed_at": "2026-09-05T09:02:32Z",
+    "source_commit": "working-tree",
+    "manifest_digest": "8503d7b7c1ec392e7865f8d4d51088ed11329c28dd2d2283648fc26704e0dc47",
+    "account_slot": "non-main-account",
+    "case_id": "illust-comment-delete",
+    "method": "POST",
+    "path": "/v1/illust/comment/delete",
+    "parameter_names": [
+      "comment_id"
+    ],
+    "status": 0,
+    "first_page": {
+      "item_count": 0,
+      "required_present": false
+    },
+    "second_page": {
+      "item_count": 0,
+      "required_present": false
+    },
+    "continuation_type": "none",
+    "page_overlap": 0,
+    "termination_rule": "missing_continuation",
+    "access_control_present": false,
+    "access_control_allowed": false,
+    "wire_verdict": "not_tested",
+    "response_verdict": "not_tested",
+    "pagination_verdict": "not_tested",
+    "adapter_verdict": "not_tested",
+    "sdk_verdict": "not_tested",
+    "adapter_item_count": 0,
+    "sdk_item_count": 0,
+    "adapter_sdk_equal": false,
+    "verdict": "not_tested",
+    "failure_class": "mutation_runner_pending"
+  },
+  {
+    "schema_version": 1,
+    "observed_at": "2026-09-05T09:02:32Z",
+    "source_commit": "working-tree",
+    "manifest_digest": "8503d7b7c1ec392e7865f8d4d51088ed11329c28dd2d2283648fc26704e0dc47",
+    "account_slot": "non-main-account",
+    "case_id": "novel-comment-delete",
+    "method": "POST",
+    "path": "/v1/novel/comment/delete",
+    "parameter_names": [
+      "comment_id"
+    ],
+    "status": 0,
+    "first_page": {
+      "item_count": 0,
+      "required_present": false
+    },
+    "second_page": {
+      "item_count": 0,
+      "required_present": false
+    },
+    "continuation_type": "none",
+    "page_overlap": 0,
+    "termination_rule": "missing_continuation",
+    "access_control_present": false,
+    "access_control_allowed": false,
+    "wire_verdict": "not_tested",
+    "response_verdict": "not_tested",
+    "pagination_verdict": "not_tested",
+    "adapter_verdict": "not_tested",
+    "sdk_verdict": "not_tested",
+    "adapter_item_count": 0,
+    "sdk_item_count": 0,
+    "adapter_sdk_equal": false,
+    "verdict": "not_tested",
+    "failure_class": "mutation_runner_pending"
+  }
+]

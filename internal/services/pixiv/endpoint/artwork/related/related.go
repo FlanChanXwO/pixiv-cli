@@ -7,8 +7,10 @@ import (
 	"errors"
 	"net/url"
 	"strconv"
+	"strings"
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/endpoint/artwork"
+	endpointcontinuation "github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/endpoint/continuation"
 	"github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/protocol"
 )
 
@@ -21,13 +23,15 @@ type Client struct{ transport Transport }
 func New(transport Transport) *Client { return &Client{transport: transport} }
 
 type Request struct {
-	ArtworkID int64
-	Offset    int
+	ArtworkID          int64
+	Offset             int
+	ContinuationParams url.Values
 }
 
 type Result struct {
 	Items      []artwork.Artwork
 	NextOffset int
+	NextParams url.Values
 	HasNext    bool
 }
 
@@ -36,7 +40,12 @@ func (c *Client) List(ctx context.Context, request Request) (Result, error) {
 		return Result{}, errors.New("artwork related transport is not configured")
 	}
 	query := url.Values{"illust_id": {strconv.FormatInt(request.ArtworkID, 10)}}
-	if request.Offset > 0 {
+	if request.ContinuationParams != nil {
+		if request.Offset != 0 || validateContinuationParams(request.ContinuationParams) != nil || request.ContinuationParams.Get("illust_id") != strconv.FormatInt(request.ArtworkID, 10) {
+			return Result{}, errors.New("artwork related continuation params are invalid")
+		}
+		query = cloneValues(request.ContinuationParams)
+	} else if request.Offset > 0 {
 		query.Set("offset", strconv.Itoa(request.Offset))
 	}
 	var raw responseDTO
@@ -53,11 +62,11 @@ func (c *Client) List(ctx context.Context, request Request) (Result, error) {
 		}
 		items[index] = mapArtwork(value)
 	}
-	nextOffset, hasNext, err := continuation(raw.NextURL)
+	nextOffset, nextParams, hasNext, err := continuation(raw.NextURL)
 	if err != nil {
 		return Result{}, err
 	}
-	return Result{Items: items, NextOffset: nextOffset, HasNext: hasNext}, nil
+	return Result{Items: items, NextOffset: nextOffset, NextParams: nextParams, HasNext: hasNext}, nil
 }
 
 type responseDTO struct {
@@ -161,26 +170,118 @@ func (l *requiredList[T]) UnmarshalJSON(data []byte) error {
 	return nil
 }
 
-func continuation(rawURL *string) (int, bool, error) {
+func continuation(rawURL *string) (int, url.Values, bool, error) {
 	if rawURL == nil {
-		return 0, false, nil
+		return 0, nil, false, nil
 	}
-	if *rawURL == "" {
-		return 0, false, protocol.MalformedResponse()
+	params, hasNext, err := endpointcontinuation.ParseParams(*rawURL, relatedContinuationSpec())
+	if err != nil || !hasNext {
+		return 0, nil, false, protocol.MalformedResponse()
 	}
-	parsed, err := url.Parse(*rawURL)
-	if err != nil {
-		return 0, false, protocol.MalformedResponse()
+	if rawOffset := params.Get("offset"); rawOffset != "" {
+		value, parseErr := strconv.ParseInt(rawOffset, 10, 64)
+		if parseErr != nil || value <= 0 || int64(int(value)) != value {
+			return 0, nil, false, protocol.MalformedResponse()
+		}
+		return int(value), params, true, nil
 	}
-	values, err := url.ParseQuery(parsed.RawQuery)
-	if err != nil || len(values["offset"]) != 1 {
-		return 0, false, protocol.MalformedResponse()
+	seedIDs, ok := indexedValues(params, "seed_illust_ids[")
+	if !ok {
+		return 0, nil, false, protocol.MalformedResponse()
 	}
-	value, err := strconv.ParseInt(values.Get("offset"), 10, 64)
-	if err != nil || value <= 0 || int64(int(value)) != value {
-		return 0, false, protocol.MalformedResponse()
+	viewed, ok := indexedValues(params, "viewed[")
+	if !ok {
+		return 0, nil, false, protocol.MalformedResponse()
 	}
-	return int(value), true, nil
+	return 0, url.Values{
+		"illust_id":         append([]string(nil), params["illust_id"]...),
+		"seed_illust_ids[]": seedIDs,
+		"viewed[]":          viewed,
+	}, true, nil
+}
+
+func relatedContinuationSpec() endpointcontinuation.Spec {
+	return endpointcontinuation.Spec{
+		Path:               protocol.AppIllustRelated,
+		Keys:               []string{"offset"},
+		AllowedQueryKeys:   []string{"illust_id"},
+		AllowedKeyPrefixes: []string{"seed_illust_ids[", "viewed["},
+	}
+}
+
+func indexedValues(params url.Values, prefix string) ([]string, bool) {
+	indexed := make(map[int]string)
+	for key, entries := range params {
+		if !strings.HasPrefix(key, prefix) {
+			continue
+		}
+		if len(entries) != 1 || entries[0] == "" || !strings.HasSuffix(key, "]") {
+			return nil, false
+		}
+		indexText := strings.TrimSuffix(strings.TrimPrefix(key, prefix), "]")
+		index, err := strconv.Atoi(indexText)
+		if err != nil || index < 0 {
+			return nil, false
+		}
+		value, err := strconv.ParseInt(entries[0], 10, 64)
+		if err != nil || value <= 0 {
+			return nil, false
+		}
+		indexed[index] = entries[0]
+	}
+	if len(indexed) == 0 {
+		return nil, false
+	}
+	values := make([]string, len(indexed))
+	for index := range values {
+		value, exists := indexed[index]
+		if !exists {
+			return nil, false
+		}
+		values[index] = value
+	}
+	return values, true
+}
+
+func validateContinuationParams(params url.Values) error {
+	if len(params["illust_id"]) != 1 {
+		return protocol.MalformedResponse()
+	}
+	if rawOffset, hasOffset := params["offset"]; hasOffset {
+		if len(params) != 2 || len(rawOffset) != 1 {
+			return protocol.MalformedResponse()
+		}
+		value, err := strconv.ParseInt(rawOffset[0], 10, 64)
+		if err != nil || value <= 0 || int64(int(value)) != value {
+			return protocol.MalformedResponse()
+		}
+		return nil
+	}
+	if len(params) != 3 || !validPositiveValues(params["seed_illust_ids[]"]) || !validPositiveValues(params["viewed[]"]) {
+		return protocol.MalformedResponse()
+	}
+	return nil
+}
+
+func validPositiveValues(values []string) bool {
+	if len(values) == 0 {
+		return false
+	}
+	for _, raw := range values {
+		value, err := strconv.ParseInt(raw, 10, 64)
+		if err != nil || value <= 0 {
+			return false
+		}
+	}
+	return true
+}
+
+func cloneValues(values url.Values) url.Values {
+	cloned := make(url.Values, len(values))
+	for key, entries := range values {
+		cloned[key] = append([]string(nil), entries...)
+	}
+	return cloned
 }
 
 func mapArtwork(dto illustDTO) artwork.Artwork {

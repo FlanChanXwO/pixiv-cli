@@ -61,7 +61,7 @@ func (a command) newNovelSearchCommand() *cobra.Command {
 }
 
 func (a command) runNovelSearch(cmd *cobra.Command, args []string, opts novelOptions) error {
-	target, err := resolveSearchBy(opts.searchBy)
+	target, err := resolveNovelSearchBy(opts.searchBy)
 	if err != nil {
 		return err
 	}
@@ -103,4 +103,19 @@ func (a command) runNovelSearch(cmd *cobra.Command, args []string, opts novelOpt
 	}
 	return a.runner().RunPooledNovelList(cmd.Context(), listing.Request(request), plan, jsonOut, opts.ndjson, fmt.Sprintf("novels for %q", word), fetch,
 		func(items []pixiv.Novel) error { return printNovels(a.data.Output, items) })
+}
+
+// resolveNovelSearchBy 将小说搜索 target 限定为 v1 合同支持的三种值，避免复用
+// artwork 的 tag-title-caption 能力后把不支持的 keyword 请求发给 upstream。
+func resolveNovelSearchBy(value string) (pixiv.SearchTarget, error) {
+	switch value {
+	case searchTargetTagPartial:
+		return pixiv.SearchTargetPartialMatchForTags, nil
+	case searchTargetTagExact:
+		return pixiv.SearchTargetExactMatchForTags, nil
+	case searchTargetTitleCaption:
+		return pixiv.SearchTargetTitleAndCaption, nil
+	default:
+		return "", fmt.Errorf("search-by must be one of %s, %s, %s", searchTargetTagPartial, searchTargetTagExact, searchTargetTitleCaption)
+	}
 }

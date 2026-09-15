@@ -335,12 +335,23 @@ pixiv search ./image.png --provider ascii2d-color --json
 pixiv search https://example.com/image.png --provider all --ndjson
 pixiv search --trending-tags --json
 pixiv detail 123456 --type artwork --json
-pixiv detail 123456 --type novel --content --json
-pixiv series 42 --type artwork --limit 20
+pixiv detail 123456 --type novel --json
+pixiv series SERIES_ID_OR_URL --type artwork --limit 20
 pixiv comment 123456 --type artwork --limit 20
+pixiv comment create 123456 --type artwork --comment "hello"
+pixiv comment reply 123456 --type artwork --parent-comment-id 789 --comment "reply" --json
+pixiv comment stamp 123456 --type artwork --stamp-id 9 --json
+pixiv comment delete 789 --type artwork --json
+pixiv comment stamps --json
 pixiv bookmark list --type artwork --limit 20
+pixiv bookmark list --type all --limit 20 --json
 pixiv bookmark tags --limit 20
+pixiv bookmark tags --type all --limit 20 --json
+pixiv bookmark detail NOVEL_ID --type novel --json
+pixiv bookmark add NOVEL_ID --type novel
 pixiv user followers 123456 --limit 20
+pixiv user follow add 123456 --restrict private
+pixiv follow remove 123456
 pixiv ranking --mode day
 pixiv recommended --type all --limit 5
 pixiv download 123456 789012 --output ./downloads
@@ -364,7 +375,7 @@ The CLI uses Cobra/pflag, so options may appear before or after positional argum
 
 All non-mutating data reads, recommendations, timelines, and downloads use the local account selected by `pixiv auth use` when the account pool is disabled. Account pooling is active only when `[account_pool]` explicitly sets `enabled = true`; the database `schedulable` flag controls membership and `strategy` defaults to `round_robin` with `random` also supported. Use `pixiv auth pool status|enable|disable` to inspect or change membership. Writes, authentication, and configuration do not use the pool. Data commands reject `--uid` and `--refresh-token`.
 
-Visual lists write canonical Record NDJSON automatically when stdout is a non-terminal and no explicit output format was selected. Each line has stable string `id`, `type`, and `url`; `download`, `bookmark add/remove`, and `follow add/remove` consume compatible records without positional IDs. `--json` and explicit `--ndjson` retain precedence.
+Visual lists write canonical Record NDJSON automatically when stdout is a non-terminal and no explicit output format was selected. Each line has stable string `id`, `type`, and `url`; `download`, `bookmark add/remove`, and `follow add/remove` consume compatible records without positional IDs; bookmark add/remove only consume records whose namespace matches the selected `--type` (artwork types by default, `novel` with `--type novel`). Explicit follow targets must otherwise be positive numeric user IDs; user URLs are rejected locally. `pixiv user follow add/remove` and the root `pixiv follow add/remove` route share the same owner, with `add --restrict public|private` defaulting to `public`. `comment create/reply/stamp/delete` use one positive numeric ID and do not consume Record input. Comment reads preserve optional `total`/`access_control` metadata; when upstream supplies opaque numeric `comment_access_control`, JSON keeps it under `access_control.comment_access_control` without inferring boolean permission fields. Comment create/reply/stamp return the upstream positive `comment_id` directly; delete returns a success status only. `comment stamps` is a read-only, non-paginated list. `--json` and explicit `--ndjson` retain precedence.
 
 For the supported search-to-detail pipeline, prefer letting the pipe select canonical NDJSON:
 
@@ -483,19 +494,19 @@ Only the structured entity filters documented by each command are accepted. The 
 | `config unset` | `pixiv config unset KEY` | Deletes one known config key from `config.toml`. |
 | `update` | `pixiv update [--check] [--prerelease] [--proxy URL]` | Checks for or performs an update matching the current install source; `--json` is only valid together with `--check`. |
 | `search` | `pixiv search [WORD\|IMAGE_PATH_OR_URL] [-t artwork\|novel\|user] [options]` | Canonical entity search or automatic reverse-image search. A regular file or explicit HTTP(S) source selects image mode; `--trending-tags` is the no-word artwork tag-list mode and does not accept search filters or pagination. |
-| `detail` | `pixiv detail [ID_OR_URL] [-t artwork\|novel\|user] [--content] [--json\|--ndjson]` | Reads one artwork, novel, or user, or consumes canonical NDJSON records. `--content` is explicit and valid only for novels. |
-| `ranking` | `pixiv ranking [--mode MODE --date YYYY-MM-DD --page N --limit N]` | Reads illustration rankings. Novel ranking is not part of the v1 contract. |
-| `series` | `pixiv series SERIES_ID -t artwork\|novel [--page N --limit N --json\|--ndjson]` | Lists the artworks or novels in one series. The entity type is required. |
-| `comment` | `pixiv comment ID -t artwork\|novel [--page N --limit N --json\|--ndjson]` | Reads artwork or novel comments. Comment write/reply/delete/stamp is not exposed. |
-| `bookmark` | `pixiv bookmark list\|tags\|detail\|add\|remove ...` | Lists artwork/novel bookmarks, reads artwork bookmark tags/detail, or mutates artwork bookmarks. `list` uses `--type artwork\|novel`; `tags` is artwork-only. |
-| `user` | `pixiv user search\|detail\|artworks\|novels\|bookmarks\|following\|followers\|related\|blocked\|follow ...` | Reads user/profile/relationship data and manages artwork follows. Omitted user IDs use the current account only where that subcommand says so. |
+| `detail` | `pixiv detail [ID_OR_URL] [-t artwork\|novel\|user] [--content] [--json\|--ndjson]` | Reads one artwork, novel, or user, or consumes canonical NDJSON records. `--content` is a retained novel-only compatibility flag; the v1 App content endpoint is unavailable, so it returns `content_unavailable` before opening the account pool or requesting the rejected endpoint. |
+| `ranking` | `pixiv ranking [-t artwork\|novel] [--mode MODE --date YYYY-MM-DD --page N --limit N]` | Reads artwork or novel rankings. `artwork` is the default; `--date` is supported only for artwork ranking. |
+| `series` | `pixiv series SERIES_ID_OR_URL -t artwork\|novel [--page N --limit N --json\|--ndjson]` | Lists the artworks or novels in one series. The input may be a positive series ID or a supported artwork/novel series URL; the entity type is required and must match the URL namespace. |
+| `comment` | `pixiv comment ID -t artwork\|novel [--page N --limit N --json\|--ndjson]`; `pixiv comment create ID -t artwork\|novel --comment TEXT [--json]`; `pixiv comment reply ID -t artwork\|novel --parent-comment-id COMMENT_ID --comment TEXT [--json]`; `pixiv comment stamp ID -t artwork\|novel --stamp-id STAMP_ID [--comment TEXT] [--json]`; `pixiv comment delete COMMENT_ID -t artwork\|novel [--json]`; `pixiv comment stamps [--json\|--ndjson]` | Preserves the artwork/novel comment read route and adds explicit create, reply, stamp, delete, and stamp-list actions. Comment reads preserve optional `total`/`access_control`; opaque numeric `comment_access_control` remains nested under `access_control` without boolean inference. Comment mutations accept positive numeric IDs only; create/reply require a non-empty body, stamp accepts an optional body and forwards empty text for sticker-only wire, create/reply/stamp return `comment_id`, delete returns a status, and `stamps` returns output-safe stamp DTOs without pagination or runtime URLs. |
+| `bookmark` | `pixiv bookmark list\|tags\|detail\|add\|remove ...` | Lists artwork/novel bookmarks, reads artwork/novel bookmark tags/detail, or mutates artwork bookmarks. `list` and `tags` accept a user ID or user URL and support `--type artwork\|novel\|all`; `all` keeps artwork before novel and preserves typed records/tags. `detail`, `add`, and `remove` accept artwork/novel but not `all`; add/remove default to `artwork` and select the namespace with `--type`. |
+| `user` | `pixiv user search\|detail\|artworks\|novels\|bookmarks\|following\|followers\|related\|blocked\|follow ...` | Reads user/profile/relationship data and manages user follows. Follow mutations accept a positive numeric user ID or a compatible user Record; omitted user IDs use the current account only where that subcommand says so. |
 | `download` | `pixiv download [options] SRC...` | Downloads artwork IDs/URLs, allowed CDN URLs, or visual works expanded from supported user and public-bookmark URLs. Artwork-series URLs are not download sources. `--output/-o` aliases `--download-path`. |
-| `timeline` | `pixiv timeline following\|latest -t artwork\|novel [--content-type TYPE ...]` | Reads followed-user or latest artwork/novel streams. Artwork subtype is a separate `--content-type` option. |
-| `mypixiv` | `pixiv mypixiv users\|works [-t artwork\|novel ...]` | Reads MyPixiv users and artwork/novel feeds. |
-| `recommended` | `pixiv recommended [-t artwork\|novel\|user\|all] [--page N --limit N --json]` | Reads personalized recommendations. Positional `KIND` remains accepted for compatibility; `all` keeps each entity stream separate in the result. |
+| `timeline` | `pixiv timeline following\|latest -t artwork\|novel [--content-type TYPE ...]` | Reads followed-user or latest artwork/novel streams. `--type` selects the entity; artwork subtype is a separate `--content-type` option. Following artwork filters locally because its upstream endpoint has no subtype query; latest artwork supports only `illust|manga`. |
+| `mypixiv` | `pixiv mypixiv users\|works [-t artwork\|novel ...]` | Reads MyPixiv users and artwork/novel feeds. `users` is current-account-only and requires verified runtime identity; `works USER_ID` accepts positive numeric IDs only and never treats a URL as an ID. |
+| `recommended` | `pixiv recommended [-t artwork\|novel\|user\|all] [--content-type all\|illust\|manga] [--page N --limit N --json]` | Reads personalized recommendations. For artwork, `--page/--limit` first selects the raw recommendation window and `--content-type` then filters DTO subtypes inside that window; it is not sent upstream and never scans forward without bound to fill one subtype. `all` traverses the artwork stream once and partitions that same window into illust/manga. Positional `KIND` remains accepted for compatibility. |
 | `novel search` | `pixiv novel search WORD [options]` | Compatibility route for novel search; prefer `pixiv search WORD --type novel`. It exposes only the documented basic novel search fields. |
 | `user search` | `pixiv user search WORD [options]` | Compatibility route for user search; prefer `pixiv search WORD --type user`. |
-| `follow` | `pixiv follow add\|remove USER_ID ...` | Compatibility route for user follow mutation; prefer `pixiv user follow add\|remove`. |
+| `follow` | `pixiv follow add\|remove USER_ID ...` | Compatibility route for user follow mutation; it shares the same owner and input contract as `pixiv user follow add\|remove`. |
 | `mcp` | `pixiv mcp [--proxy URL\|--no-proxy]` | Starts the MCP stdio server; the proxy override applies only to this launch. |
 | `fanbox auth` | `pixiv fanbox auth import|list|use|remove|status` | Imports and manages local FANBOX sessions. Session values are never printed. Native `--proxy`/`--no-proxy` applies only to the FANBOX command. |
 | `fanbox creators` | `pixiv fanbox creators [--kind supporting\|following] [--page N --limit N]` | Lists supporting or following FANBOX creators. |
@@ -531,13 +542,13 @@ extension. Extensions also replace ASCII control characters and remove trailing 
 | --- | --- | --- | --- |
 | `search` | `--type` / `-t` | `artwork` | Entity route: `artwork`, `novel`, or `user`. Artwork subtype is a separate `--content-type`; `illust` is not an entity value. |
 | `search` | `--provider` | `reverse_search_provider` (`saucenao`) | Reverse-image provider: `saucenao`, `ascii2d-color`, `ascii2d-bovw`, or `all`; valid only for image sources and overrides the config for this invocation. |
-| `search` | `--content-type` | `all` | Artwork subtype: `all`, `illust-and-ugoira`, `illust`, `manga`, or `ugoira`; artwork search only. |
+| `search` | `--content-type` | `all` | Artwork subtype: `all`, `illust-and-ugoira`, `illust`/`illustration`, `manga`, or `ugoira`; `illustration` is a compatibility alias for `illust`, and the flag is artwork-search only. |
 | `search`, `novel search` | `--search-by` | `tag-partial` | Artwork search accepts `tag-partial`, `tag-exact`, `title-caption`, and `tag-title-caption`; novel search accepts the first three only. |
 | `search`, `novel search` | `--sort` | `date_desc` | Sort order: `date_desc` or `date_asc`. |
 | `search` | `--period` | empty | Artwork range: `day`, `week`, `month`, `half-year`, or `year`; mutually exclusive with `--start-date`/`--end-date`. |
 | `novel search` | `--period` | empty | Novel range: `day`, `week`, or `month`. |
 | `search` | `--start-date` / `--end-date` | empty | Inclusive `YYYY-MM-DD` date bounds; when both are present, start cannot be later than end. Artwork search only. |
-| `search` | `--rating` | empty | Compatibility flag only. Any non-empty value is rejected because the v1 App API search request has no verified rating field; it never filters results. |
+| `search` | `--rating` | empty | Local artwork filter: `sfw`, `r18`, `r18g`, `mature`, or `all`. It matches normalized DTO `x_restrict` values, binds the semantic filter to the opaque cursor, and is never sent as an upstream request field. |
 | `search` | `--ai-mode` | `all` | Artwork AI filter: `all`, `exclude`, or `only`; Pixiv `AIType==2` is AI-generated. |
 | `search` | `--aspect-ratio` | `all` | Artwork aspect ratio: `all`, `landscape`, `portrait`, or `square`. |
 | `search` | `--resolution` | `all` | Artwork resolution tier: `all`, `high`, `medium`, or `low`. |
@@ -549,25 +560,33 @@ extension. Extensions also replace ASCII control characters and remove trailing 
 | list commands | `--page` / `-p` | empty | 1-based logical page; must be used with a positive `--limit`. |
 | `ranking` | `--mode` | `day` | One of `day`, `day_male`, `day_female`, `week`, `week_original`, `week_rookie`, `month`, `day_manga`, `week_manga`, `month_manga`, `week_rookie_manga`, `day_r18`, `day_male_r18`, `day_female_r18`, `week_r18`, `week_r18g`. The final nine require authentication. |
 | `ranking` | `--date` | empty | Ranking date, typically `YYYY-MM-DD`. |
-| `detail` | `--type` / `-t` | `artwork` | Entity type: `artwork` (also accepts `illust`, `manga`, `ugoira`), `novel`, or `user`; omitted type in record mode is inferred from the record; `--content` is valid only with `novel`. |
-| `series`, `comment` | `--type` / `-t` | required | Entity type: `artwork` or `novel`; the ID is interpreted only after the type is selected. |
-| `bookmark list` | `--type` / `-t` | `artwork` | Entity type: `artwork` or `novel`; `--restrict` and `--tag` are passed to the matching bookmark list. |
-| `bookmark tags` | `--type` / `-t` | `artwork` | Artwork bookmark tags only; `--restrict` selects public/private tags. |
+| `detail` | `--type` / `-t` | `artwork` | Entity type: `artwork` (also accepts `illust`, `manga`, `ugoira`), `novel`, or `user`; omitted type in record mode is inferred from the record. `--content` is a retained novel-only compatibility flag and returns `content_unavailable` before account-pool execution while the v1 content endpoint is unavailable. |
+| `series`, `comment` | `--type` / `-t` | required | Entity type: `artwork` or `novel`; series accepts a positive ID or a supported series URL, and its URL namespace must match the selected type. Comment read/create/reply/stamp use a positive artwork/novel ID; comment delete uses the type to select the artwork or novel comment endpoint. The input is interpreted only after the type is selected. |
+| `comment create`, `comment reply` | `--comment` | required | Non-empty comment body. The CLI rejects an empty value and never truncates the supplied text. |
+| `comment stamp` | `--comment` | optional | Optional comment text; omit it or pass an empty value for the current sticker-only wire form. The CLI never truncates supplied text. |
+| `comment reply` | `--parent-comment-id` | required positive integer | Parent comment ID for a reply; it is not used as the artwork or novel ID. |
+| `comment stamp` | `--stamp-id` | required positive integer | Stamp ID sent independently from the comment body. |
+| `bookmark list` | `--type` / `-t` | `artwork` | Entity type: `artwork`, `novel`, or `all`; `all` uses one logical page in artwork-then-novel order and keeps each record typed. `--restrict` and `--tag` are passed to the matching bookmark list. |
+| `bookmark tags` | `--type` / `-t` | `artwork` | Entity type: `artwork`, `novel`, or `all`; `all` keeps same-name artwork and novel tags as separate typed entries. `--restrict` selects public/private tags. |
 | `user artworks` | `--type` | `illustration` | Artwork subtype: `illust`, `manga`, or `ugoira`. |
 | `user bookmarks` | `--restrict`, `--tag` | `public`, empty | Bookmark visibility and exact bookmark-tag filter. |
 | `user following`, `user followers` | `--restrict` | `public` | Follow visibility: `public` or `private`. |
-| `timeline following` | `--type` / `-t`, `--content-type` | required, `all` | Entity type is `artwork` or `novel`; artwork subtype is separate and `--restrict` is `public` or `private`. |
-| `timeline latest` | `--type` / `-t`, `--content-type` | required, `illust` | Entity type is `artwork` or `novel`; the latest-artwork endpoint supports `illust` or `manga`, and omitted `--content-type` selects `illust`. |
-| `mypixiv works` | `--type` / `-t` | required | Without `USER_ID`, use entity type `artwork` or `novel`; with `USER_ID`, `manga` is also supported. Legacy `illust` remains an alias for `artwork`. |
-| `recommended` | `--type` / `-t` | empty | `artwork`, `novel`, `user`, or `all`; positional `KIND` is compatibility syntax. |
+| `timeline following` | `--type` / `-t`, `--content-type` | required, `all` | Entity type is `artwork` or `novel`; artwork accepts local `all|illust-and-ugoira|illust|manga|ugoira` filtering and `--restrict` is `public` or `private`. Explicit `--content-type` with `novel` is rejected. |
+| `timeline latest` | `--type` / `-t`, `--content-type` | required, `illust` | Entity type is `artwork` or `novel`; latest artwork supports only `illust` or `manga`, and omitted `--content-type` selects `illust`. Explicit `--content-type` with `novel` is rejected. |
+| `mypixiv users` | `--page`, `--limit` | optional | Uses only the verified authenticated account identity; it accepts no positional user target and has no anonymous fallback. |
+| `mypixiv works` | `--type` / `-t` | required | Without `USER_ID`, use entity type `artwork` or `novel`; with a positive numeric `USER_ID`, `manga` is also supported. Legacy `illust` remains an alias for `artwork`; invalid types and IDs return `invalid_argument` before account-pool execution. |
+| `recommended` | `--type` / `-t` | empty | `artwork`, `novel`, `user`, or `all`; with `artwork`, `--content-type` selects the local subtype filter; positional `KIND` is compatibility syntax. |
+| `recommended` | `--content-type` | `all` | Artwork-only local subtype filter: `all`, `illust`, or `manga`. Filtering happens after `--page/--limit` selects the raw recommendation window; the value is not sent as the upstream `content_type` parameter. |
 | record actions | `--on-error` | `skip` | Skip malformed/incompatible records with a stderr diagnostic, or use `fail-fast`. |
 | `download` | `--pages` | empty | 1-based individual pages and closed ranges such as `1,3-5`; open-ended ranges are invalid. Default downloads every page, and missing pages fail explicitly. |
 | `download` | `--quality` | `original` | Static image quality: `original`, `regular` (longest side 1200), `small` (longest side 540), `thumb` (250×250 center crop), or `mini` (48×48 center crop). Ugoira rejects non-original quality or page selection as unsupported.
 | `download` | `--ugoira-mode` | `gif` | Ugoira output: `gif` or `apng`. |
 | `download` | `--download-path` / `--output` / `-o` | `DOWNLOAD_PATH`, `config.toml`, or `./downloads` | Download directory. `--output` is an alias for this option and conflicts if both specify different directories. |
 | `download` | `--filename-template` | `FILENAME_TEMPLATE`, `config.toml`, or `{author} - {title}_{id}` | Supports `{id}`, `{title}`, `{author}`, `{author_id}`, `{date}`, `{tags}`, and `{num}`. Unknown placeholders and unmatched braces are errors; an invalid or empty-rendered ugoira template falls back to the default filename and emits a warning on stderr. |
+| `bookmark add` | `--type` / `-t` | `artwork` | Entity type: `artwork` or `novel`; selects the bookmark namespace for the positional ID or Record. `all` and other namespaces are rejected before any network call. |
 | `bookmark add` | `--restrict` | `public` | Visibility of the new bookmark: `public` or `private`. |
 | `bookmark add` | `--tag` | empty | Bookmark tag; may be repeated. |
+| `bookmark remove` | `--type` / `-t` | `artwork` | Entity type: `artwork` or `novel`; selects the bookmark namespace for the positional ID or Record. |
 | `follow add` | `--restrict` | `public` | Visibility of the new follow: `public` or `private`. |
 | `download` | `SRC...` | required | Artwork PID, artwork URL, allowed CDN resource URL, user profile/artworks URL, or public bookmarks URL. Artwork-series URLs are not download sources. CDN files use a safe URL basename with a deterministic URL-identity suffix; metadata-dependent options do not apply. |
 
@@ -578,8 +597,10 @@ batches until the requested logical results are filled or the upstream cursor en
 upstream batch; `--limit 0` traverses the current upstream result until exhaustion. A positive `--page` requires a
 positive `--limit`.
 
-`--rating` is retained only as a compatibility diagnostic. Passing any value returns an unsupported usage error
-before the SDK request; it is not a filter. Artwork `--bookmark-min`/`--bookmark-max` are inclusive non-negative
+`--rating` is a client-side artwork filter over normalized DTO `x_restrict`: `sfw` matches `0`, `r18` matches `1`,
+`r18g` matches `2`, `mature` matches `1` or `2`, and `all` disables the filter. Its canonical semantic digest is
+bound to the opaque SDK cursor, while no `rating` or `x_restrict` request field is sent upstream. Artwork
+`--bookmark-min`/`--bookmark-max` are inclusive non-negative
 conditions on public `TotalBookmarks`. The application reports the selected strategy and completeness: `auto`
 currently uses exact local filtering over fetched candidates, `local` has the same behavior, `best_effort` keeps
 App candidate bounds but reports partial completeness, and `server` fails explicitly because reliable server-side
@@ -622,8 +643,9 @@ strict query is required.
 
 `novel search` is App-only and exposes keyword target, sort, duration, pagination, and the documented search target
 values. Rating, text-length, and original-only flags are not part of this v1 contract. Novel detail and content
-are separate requests: `detail --type novel` returns metadata and `detail --type novel --content` reads structured
-blocks. The content is not data-layer truncated.
+are separate routes: `detail --type novel` returns metadata, while the retained
+`detail --type novel --content` compatibility flag returns `content_unavailable` without
+calling the rejected content endpoint. It does not fall back to WebView.
 
 `detail --type artwork` accepts a positive artwork ID or a canonical HTTPS `pixiv.net`/`www.pixiv.net` artwork URL
 in the form `/artworks/{id}` (an optional locale segment, query, and fragment are allowed). `detail --type novel`
@@ -635,6 +657,10 @@ to their matching detail endpoints. Artwork, novel, and user search records ther
 `artwork` and `user` identity records emitted by reverse search are valid `detail` inputs as well. In record mode,
 `--ndjson` emits canonical records and `--json` emits one JSON array; an omitted output flag auto-selects NDJSON for
 non-TTY stdout. Aggregate `search --json` output is not an NDJSON record stream and is not accepted by `detail`.
+
+`user follow add/remove` and the root `follow add/remove` compatibility route accept a positive numeric user ID or a canonical user
+Record. User profile URLs are rejected locally rather than converted to an ID. `follow add --restrict` accepts `public` or `private`
+and defaults to `public`; successful follow mutations keep the existing empty-success-output contract.
 
 `download` accepts the same artwork references, allowed CDN URLs, plus `/users/{id}`, `/users/{id}/artworks`,
 and `/users/{id}/bookmarks/artworks` URLs. User and public-bookmarks sources follow pagination for `illust`,
@@ -651,7 +677,7 @@ failures remain visible and make the command non-zero. Cancellation stops immedi
 | Flag | Applies to | Default | Description |
 | --- | --- | --- | --- |
 | `--ndjson` | data list/read commands | `false` | Emits one canonical Record per line for streaming filters and actions; cannot be combined with `--json`. |
-| `--json` | safe data reads, auth summaries, `update --check` | `false` | Emits one complete result document where the command exposes it. Download and mutation actions do not emit a success report. |
+| `--json` | safe data reads, auth summaries, `update --check`, comment mutations, `comment stamps` | `false` | Emits one complete result document where the command exposes it. Existing download/bookmark/follow mutation actions do not emit a success report; comment create/reply/stamp emit `comment_id`, and comment delete emits `deleted: true`. |
 | `--proxy URL` | network commands and `mcp` | `https_proxy`/`HTTPS_PROXY`, `config.toml`, or empty | Uses an `http`, `https`, `socks5`, or `socks5h` proxy URI for this command only; forbidden with bundle-form `auth import`. |
 | `--no-proxy` | same as `--proxy` | empty | Clears the proxy for this command; cannot be combined with `--proxy` or bundle restore. |
 

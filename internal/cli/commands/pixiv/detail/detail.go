@@ -16,6 +16,7 @@ import (
 	"github.com/FlanChanXwO/pixiv-cli/internal/cli/pipeline"
 	"github.com/FlanChanXwO/pixiv-cli/internal/shared/record"
 	"github.com/FlanChanXwO/pixiv-cli/internal/utils/text"
+	"github.com/FlanChanXwO/pixiv-cli/sdk"
 	pixiv "github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
 	"github.com/spf13/cobra"
 )
@@ -155,6 +156,11 @@ func validateContentEntity(content bool, entity string) error {
 	if content && entity != "novel" {
 		return errors.New("--content is only supported when --type novel")
 	}
+	if content {
+		// App v1 的正文 endpoint 已被拒绝；在构造 request 和打开账号池前返回
+		// 兼容错误，保证 text/record 两条输入链路都不会触达已排除的 endpoint。
+		return sdk.NewError("pixiv", "NovelContent", sdk.ContentUnavailable, sdk.WithDetail("novel content is unsupported by the v1 App API"))
+	}
 	return nil
 }
 
@@ -188,6 +194,9 @@ func (a command) runRecords(cmd *cobra.Command, opts Options) error {
 			return err
 		}
 		if err := validateContentEntity(opts.content, entity); err != nil {
+			if sdk.ReasonOf(err) == sdk.ContentUnavailable {
+				return pipeline.FatalRecordPipeline(err)
+			}
 			return err
 		}
 		id, err := pipeline.RequiredRecordID(input)
@@ -403,7 +412,7 @@ func parseEntityIDOrURL(arg, entity string) (int64, error) {
 	}
 	ref, err := pixiv.ParseURL(value)
 	if err != nil {
-		return 0, errors.New("argument must be an entity ID or a supported Pixiv URL")
+		return 0, sdk.NewError("pixiv", "detail", sdk.InvalidArgument, sdk.WithDetail("argument must be an entity ID or a supported Pixiv URL"))
 	}
 	want := map[string]pixiv.ReferenceKind{
 		"artwork": pixiv.ReferenceKindArtwork,
@@ -411,7 +420,7 @@ func parseEntityIDOrURL(arg, entity string) (int64, error) {
 		"user":    pixiv.ReferenceKindUser,
 	}
 	if ref.Kind != want[entity] {
-		return 0, fmt.Errorf("URL does not name a supported Pixiv %s", entity)
+		return 0, sdk.NewError("pixiv", "detail", sdk.InvalidArgument, sdk.WithDetail(fmt.Sprintf("URL does not name a supported Pixiv %s", entity)))
 	}
 	return ref.ID, nil
 }

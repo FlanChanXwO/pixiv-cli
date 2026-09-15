@@ -3,10 +3,12 @@ package trending_test
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/url"
 	"testing"
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/endpoint/artwork/trending"
+	"github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/protocol"
 )
 
 type fakeTransport struct {
@@ -39,5 +41,27 @@ func TestTrendingRejectsMissingTagArtwork(t *testing.T) {
 	_, err := trending.New(&fakeTransport{body: `{"trend_tags":[{"tag":"cat","illust":null}]}`}).List(context.Background())
 	if err == nil {
 		t.Fatal("missing trend artwork unexpectedly succeeded")
+	}
+}
+
+func TestTrendingRejectsMalformedEnvelopeAndPreservesEmptyList(t *testing.T) {
+	for _, body := range []string{
+		`{}`,
+		`{"trend_tags":null}`,
+		`{"trend_tags":[{"tag":"","illust":{"id":1}}]}`,
+		`{"trend_tags":[{"tag":"cat","illust":{"id":0}}]}`,
+	} {
+		_, err := trending.New(&fakeTransport{body: body}).List(context.Background())
+		if !errors.Is(err, protocol.ErrMalformedResponse) {
+			t.Fatalf("body %s error = %v, want malformed response", body, err)
+		}
+	}
+
+	result, err := trending.New(&fakeTransport{body: `{"trend_tags":[]}`}).List(context.Background())
+	if err != nil {
+		t.Fatalf("empty list: %v", err)
+	}
+	if result == nil || len(result) != 0 {
+		t.Fatalf("empty result = %#v, want non-nil empty list", result)
 	}
 }

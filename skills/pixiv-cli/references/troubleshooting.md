@@ -78,8 +78,9 @@ safe metadata output does not make raw token or bundle stdout safe to display.
 - Empty search with filters: verify `--type` (entity route),
   `--content-type` when `--type artwork`, `--ai-mode`, `--aspect-ratio`,
   `--resolution`, and exact `--draw-tool` together; a strict combination can
-  legitimately return nothing. `--rating` is a compatibility diagnostic and
-  cannot be used to filter v1 App API search results.
+  legitimately return nothing. `--rating` is a local artwork filter over
+  normalized DTO `x_restrict` (`sfw`, `r18`, `r18g`, `mature`, or `all`), not an
+  upstream request field.
 - Wrong AI or resolution result: verify the documented `--ai-mode` and
   `--resolution` values with `pixiv search --help`, then inspect the returned
   records rather than assuming undocumented numeric mappings or thresholds.

@@ -16,7 +16,7 @@ import (
 
 // Register 注册 recommended。
 func Register(app *runtime.App, server *mcp.Server) {
-	runtime.AddTool(app, server, &mcp.Tool{Name: "recommended", Description: "Get typed personalized recommendations through the Pixiv SDK.", OutputSchema: records.RecordsOutputSchema()}, func(ctx context.Context, request *mcp.CallToolRequest, input In) (*mcp.CallToolResult, outputs.Recommended, error) {
+	runtime.AddTool(app, server, &mcp.Tool{Name: "recommended", Description: "Get typed personalized recommendations through the Pixiv SDK.", InputSchema: recommendedInputSchema(), OutputSchema: records.RecommendedOutputSchema()}, func(ctx context.Context, request *mcp.CallToolRequest, input In) (*mcp.CallToolResult, outputs.Recommended, error) {
 		return handleRecommended(ctx, app, input)
 	})
 }
@@ -29,6 +29,68 @@ type In struct {
 	runtime.PageLimitIn
 }
 
+func recommendedInputSchema() map[string]any {
+	return map[string]any{
+		"type":                 "object",
+		"additionalProperties": false,
+		"required":             []string{"kind"},
+		"properties": map[string]any{
+			"kind":          map[string]any{"type": "string", "enum": []string{"all", "illust", "manga", "novel", "user"}},
+			"illust_filter": filters.IllustFilterSchema(),
+			"novel_filter":  filters.NovelFilterSchema(),
+			"user_filter":   filters.UserFilterSchema(),
+			"page":          map[string]any{"type": "integer", "minimum": 1, "description": "1-based logical page; requires a positive limit. Artwork recommendation filters are applied after selecting this upstream window."},
+			"limit":         map[string]any{"type": "integer", "minimum": 0, "description": "Maximum logical results; 0 returns all; omitted reads one upstream batch. Artwork recommendation filters are applied after selecting this upstream window."},
+		},
+	}
+}
+
+func validateKindFilters(in In) error {
+	switch in.Kind {
+	case "all":
+		return nil
+	case "illust", "manga":
+		if in.NovelFilter != nil {
+			return errors.New("novel_filter conflicts with kind")
+		}
+		if in.UserFilter != nil {
+			return errors.New("user_filter conflicts with kind")
+		}
+		if in.IllustFilter != nil && in.IllustFilter.Type != "" && in.IllustFilter.Type != in.Kind {
+			return errors.New("illust_filter.type conflicts with kind")
+		}
+	case "novel":
+		if in.IllustFilter != nil {
+			return errors.New("illust_filter conflicts with kind")
+		}
+		if in.UserFilter != nil {
+			return errors.New("user_filter conflicts with kind")
+		}
+	case "user":
+		if in.IllustFilter != nil {
+			return errors.New("illust_filter conflicts with kind")
+		}
+		if in.NovelFilter != nil {
+			return errors.New("novel_filter conflicts with kind")
+		}
+	}
+	return nil
+}
+
+func artworkFilterForKind(kind string, filter *filters.IllustFilter) *filters.IllustFilter {
+	if kind != "illust" && kind != "manga" {
+		return filter
+	}
+	if filter == nil {
+		return &filters.IllustFilter{Type: kind}
+	}
+	copy := *filter
+	if copy.Type == "" {
+		copy.Type = kind
+	}
+	return &copy
+}
+
 func handleRecommended(ctx context.Context, app *runtime.App, in In) (*mcp.CallToolResult, outputs.Recommended, error) {
 	out := outputs.NewRecommended()
 	plan, err := runtime.ParseListPlan(in.PageLimitIn)
@@ -36,6 +98,9 @@ func handleRecommended(ctx context.Context, app *runtime.App, in In) (*mcp.CallT
 		err = errors.New("kind must be one of: all, illust, manga, novel, user")
 	}
 	if err != nil {
+		return outputs.RecommendedError(err)
+	}
+	if err := validateKindFilters(in); err != nil {
 		return outputs.RecommendedError(err)
 	}
 	ctx, err = filters.WithMixedFilters(ctx, in.IllustFilter, in.NovelFilter, in.UserFilter)
@@ -48,44 +113,56 @@ func handleRecommended(ctx context.Context, app *runtime.App, in In) (*mcp.CallT
 			sdk.WithDetail("sdk pooled operation is not configured")))
 	}
 	err = execute(ctx, func(ctx context.Context, client *pixiv.Client) (bool, error) {
-		if in.Kind == "all" || in.Kind == "illust" {
-			items, more, fetchErr := runtime.CollectPages(ctx, plan, func(ctx context.Context, c sdk.Cursor) ([]pixiv.Artwork, sdk.Cursor, error) {
+		var visualItems []pixiv.Artwork
+		var visualMore bool
+		if in.Kind == "all" || in.Kind == "illust" || in.Kind == "manga" {
+			rawArtworkCtx, filterErr := filters.WithIllustFilter(ctx, nil)
+			if filterErr != nil {
+				return false, filterErr
+			}
+			visualItems, visualMore, filterErr = runtime.CollectPages(rawArtworkCtx, plan, func(ctx context.Context, c sdk.Cursor) ([]pixiv.Artwork, sdk.Cursor, error) {
 				r, e := client.RecommendedArtworks(ctx, pixiv.RecommendedArtworksRequest{Cursor: c})
 				if e != nil {
 					return nil, sdk.Cursor{}, e
 				}
 				return r.Items, r.Next, nil
 			})
-			if fetchErr != nil {
-				return false, fetchErr
+			if filterErr != nil {
+				return false, filterErr
 			}
+		}
+		if in.Kind == "all" || in.Kind == "illust" {
+			artworkCtx, filterErr := filters.WithIllustFilter(ctx, artworkFilterForKind("illust", in.IllustFilter))
+			if filterErr != nil {
+				return false, filterErr
+			}
+			items := filters.FilterPage(artworkCtx, visualItems, make(map[string]struct{}))
 			recordItems, mapErr := records.FromArtworks(items)
 			if mapErr != nil {
 				return false, mapErr
 			}
 			out.Records = append(out.Records, recordItems...)
-			out.Pagination.Illust = outputs.RecommendedPage(plan, in.Limit, len(items), more)
+			out.Pagination.Illust = outputs.RecommendedPage(plan, in.Limit, len(items), visualMore)
 		}
 		if in.Kind == "all" || in.Kind == "manga" {
-			items, more, fetchErr := runtime.CollectPages(ctx, plan, func(ctx context.Context, c sdk.Cursor) ([]pixiv.Artwork, sdk.Cursor, error) {
-				r, e := client.RecommendedArtworks(ctx, pixiv.RecommendedArtworksRequest{Cursor: c})
-				if e != nil {
-					return nil, sdk.Cursor{}, e
-				}
-				return r.Items, r.Next, nil
-			})
-			if fetchErr != nil {
-				return false, fetchErr
+			artworkCtx, filterErr := filters.WithIllustFilter(ctx, artworkFilterForKind("manga", in.IllustFilter))
+			if filterErr != nil {
+				return false, filterErr
 			}
+			items := filters.FilterPage(artworkCtx, visualItems, make(map[string]struct{}))
 			recordItems, mapErr := records.FromArtworks(items)
 			if mapErr != nil {
 				return false, mapErr
 			}
 			out.Records = append(out.Records, recordItems...)
-			out.Pagination.Manga = outputs.RecommendedPage(plan, in.Limit, len(items), more)
+			out.Pagination.Manga = outputs.RecommendedPage(plan, in.Limit, len(items), visualMore)
 		}
 		if in.Kind == "all" || in.Kind == "novel" {
-			items, more, fetchErr := runtime.CollectPages(ctx, plan, func(ctx context.Context, c sdk.Cursor) ([]pixiv.Novel, sdk.Cursor, error) {
+			novelCtx, filterErr := filters.WithNovelFilter(ctx, in.NovelFilter)
+			if filterErr != nil {
+				return false, filterErr
+			}
+			items, more, fetchErr := runtime.CollectPages(novelCtx, plan, func(ctx context.Context, c sdk.Cursor) ([]pixiv.Novel, sdk.Cursor, error) {
 				r, e := client.RecommendedNovels(ctx, pixiv.RecommendedNovelsRequest{Cursor: c})
 				if e != nil {
 					return nil, sdk.Cursor{}, e
@@ -103,7 +180,11 @@ func handleRecommended(ctx context.Context, app *runtime.App, in In) (*mcp.CallT
 			out.Pagination.Novel = outputs.RecommendedPage(plan, in.Limit, len(items), more)
 		}
 		if in.Kind == "all" || in.Kind == "user" {
-			items, more, fetchErr := runtime.CollectPages(ctx, plan, func(ctx context.Context, c sdk.Cursor) ([]pixiv.UserPreview, sdk.Cursor, error) {
+			userCtx, filterErr := filters.WithUserFilter(ctx, in.UserFilter)
+			if filterErr != nil {
+				return false, filterErr
+			}
+			items, more, fetchErr := runtime.CollectPages(userCtx, plan, func(ctx context.Context, c sdk.Cursor) ([]pixiv.UserPreview, sdk.Cursor, error) {
 				r, e := client.RecommendedUsers(ctx, pixiv.RecommendedUsersRequest{Cursor: c})
 				if e != nil {
 					return nil, sdk.Cursor{}, e

@@ -326,6 +326,8 @@ A production file `x.go` corresponds to at most one `x_test.go` in the same dire
 | Directory | Reason for same-package |
 | --- | --- |
 | `internal/cli` | The composition root test observes unexported root wiring, invocation lifecycle, and close ordering; these seams are not a public API. |
+| `internal/cli/commands/pixiv/search` | Tests observe private searchArtworks logical-page continuation through a real SDK with an HTTP fixture. CLI/MCP wire contracts do not expose these cursors; exporting application internals only for tests would widen the public surface. |
+| `internal/mcpserver/pixiv/tools/search_illust` | Tests observe private searchArtworks logical-page continuation through a real SDK with an HTTP fixture. CLI/MCP wire contracts do not expose these cursors; exporting application internals only for tests would widen the public surface. |
 | `internal/browsercookies/chromium` | Tests construct the provider directly and inject an encryption key override, observing the unexported cookie record decryption path and profile discovery logic. |
 | `internal/browsercookies/firefox` | Tests observe unexported profile discovery (`profiles.ini` parsing), cookie database path resolution, and record layout. |
 | `internal/browsercookies/safari` | Tests directly call the unexported `parseBinaryCookies`, asserting binarycookies record layout. |
@@ -333,6 +335,7 @@ A production file `x.go` corresponds to at most one `x_test.go` in the same dire
 | `internal/update/installer` | Tests inject the unexported `assetURLValidator` seam and checksum verification function, and use real fixture binaries to verify root `--version` preflight and that the old executable is not replaced on failure. |
 | `internal/update/release` | `source_route_test.go` observes unexported source route selection and canonical API URL cache state; the rest of the directory already uses the external package. |
 | `internal/storage/database` | Tests observe the unexported `tableInfoQuery` allowlist and migration-compatibility seams so SQL identifiers remain fixed literals and legacy schemas cannot silently bypass their contract. |
+| `sdk/pixiv` | `cursor_test.go` observes unexported cursor construction and client-instance binding to verify exact query-bound invalid continuations without widening the public SDK surface. |
 | `scripts/internal/browsernativeevidence` | Tests observe unexported environment probes and inject synthetic Firefox cookie seeds. |
 | `scripts/internal/changescope` | Tests directly call unexported path parsing (`splitNULPaths`, `docsOnlyPaths`) and change-scope determination. |
 | `scripts/internal/homebrewformula` | Tests directly call unexported formula rendering and version validation (`renderFormula`, `validateFormulaVersion`, `checkDynamicVersionNeeds`). |
@@ -365,7 +368,7 @@ for ip,n in sorted(same): print(ip,n)'
 
 ### Capability scope
 
-This is the maintainer-side authority for capabilities that **must not have any entry point** in v1. It is a negative contract: adding a CLI/MCP/SDK entry point for any of these is a defect. Schema-only placeholders or mock empty results are forbidden.
+This is the maintainer-side authority for capabilities that **must not have a release-ready entry point** in v1. It is a negative contract: adding a shipped CLI/MCP/SDK entry point for any of these is a defect. An SDK-only migration seam tracked in the evidence-gated table is not release-ready and must not be treated as a completed capability. Schema-only placeholders or mock empty results are forbidden.
 
 **Unsupported (explicitly not supported in v1; a new entry point is a defect):**
 
@@ -374,13 +377,13 @@ This is the maintainer-side authority for capabilities that **must not have any 
 | `ART-SEARCH-RATING` | `internal/cli/commands/pixiv/search` + `sdk/pixiv` | CLI `--rating` reports "rating filter is not supported by the v1 App API search contract"; MCP `search_illust` schema has no rating parameter | Only when the v1 App API search contract adds rating semantics; then synchronize the SDK field, CLI flag, MCP schema, locale documentation, and this list |
 | `NOVEL-SEARCH-ADVANCED` | No owner (must not be added) | SDK/MCP schema has no advanced field | May be evaluated once the upstream contract appears; schema-only placeholders are forbidden |
 
-**Evidence-gated (no entry point today; adding one requires the close-out condition):**
+**Evidence-gated (an SDK-only migration seam may exist; release-ready entry points still require the close-out condition):**
 
 | ID | Unique owner | Current evidence | Close-out condition |
 | --- | --- | --- | --- |
-| `NOVEL-RANKING` | No owner | SDK has no `NovelRanking` export; MCP has no `novel_ranking` tool | After the upstream App API provides novel ranking |
-| `NOVEL-BOOKMARK-MUTATION` | No owner | SDK has no `AddNovelBookmark`-style export; `user_novel_bookmarks` is read-only | Same as above |
-| `COMMENT-WRITE` | No owner | MCP `comment_post`/`comment_add` directories = 0; SDK `PostComment`/`DeleteComment` exports = 0 | After the upstream provides a verifiable write contract |
+| `NOVEL-RANKING` | `sdk/pixiv` + `internal/cli/commands/pixiv/ranking` (T18/T30; MCP later) | SDK and CLI expose the additive `NovelRanking` seam over the internal `/v1/novel/ranking` adapter; CLI selects it explicitly with `--type novel`; MCP has no `novel_ranking` tool, and live/public release evidence is still incomplete | Complete the live second-page, shared cursor, MCP and release compatibility gates; until then this remains evidence-gated and is not `public_ready` |
+| `NOVEL-BOOKMARK-MUTATION` | `sdk/pixiv` + `internal/mcpserver/pixiv` (G1-T13; CLI later) | SDK exposes additive typed `AddNovelBookmark`/`RemoveNovelBookmark`; MCP exposes `add_novel_bookmark`/`remove_novel_bookmark`; offline outcome, validation and no-replay evidence is present, while strict/live, read-back and release evidence remain incomplete | Complete strict/live mutation evidence, same-account read-back, cleanup and compatibility/release gates; until then this remains evidence-gated and is not `public_ready` |
+| `COMMENT-WRITE` | `sdk/pixiv` (T16; CLI/MCP later) | SDK exposes namespace-specific `PostArtworkComment`/`ReplyArtworkComment`/`DeleteArtworkComment` and novel equivalents; MCP `comment_post`/`comment_add` directories remain = 0; response ID, read-back, cleanup, and strict live evidence are incomplete | After strict/live write evidence plus same-account read-back, cleanup, and T33/T38 compatibility gates; until then this remains evidence-gated and is not `public_ready` |
 | `NOTIFICATION` | No owner | MCP `notification` directory = 0; SDK `Notification*` exports = 0 | Same as above |
 | `AUTOCOMPLETE` | No owner | MCP `autocomplete` directory = 0; SDK `Autocomplete*` exports = 0; not merged into `search` | Same as above |
 | `WEB-RESTRICTED-READ` | No owner | No `webapi` package; `web_fallback_enabled` is a tombstone key (`config get/set` → `removed_setting`) | Do not reopen the anonymous Web path; any proposal to restore Web/AJAX must first amend the AGENTS frozen contract and pass an ADR |

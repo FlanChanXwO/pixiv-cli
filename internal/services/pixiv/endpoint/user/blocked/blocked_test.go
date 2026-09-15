@@ -3,10 +3,12 @@ package blocked_test
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/url"
 	"testing"
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/endpoint/user/blocked"
+	"github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/protocol"
 )
 
 type fakeTransport struct {
@@ -32,5 +34,25 @@ func TestBlockedAcceptsLegacyPreviewEnvelope(t *testing.T) {
 	result, err := blocked.New(f).List(context.Background(), blocked.Request{UserID: 9})
 	if err != nil || len(result.Items) != 1 || result.Items[0].User.ID != 92 {
 		t.Fatalf("result=%#v err=%v", result, err)
+	}
+}
+
+func TestBlockedValidatesRequiredListAndUserIDs(t *testing.T) {
+	for _, body := range []string{
+		`{}`,
+		`{"users":null}`,
+		`{"users":[{"id":0}]}`,
+	} {
+		_, err := blocked.New(&fakeTransport{body: body}).List(context.Background(), blocked.Request{UserID: 9})
+		if !errors.Is(err, protocol.ErrMalformedResponse) {
+			t.Fatalf("body %s error = %v, want malformed response", body, err)
+		}
+	}
+	result, err := blocked.New(&fakeTransport{body: `{"users":[]}`}).List(context.Background(), blocked.Request{UserID: 9})
+	if err != nil {
+		t.Fatalf("empty list: %v", err)
+	}
+	if result.Items == nil || len(result.Items) != 0 {
+		t.Fatalf("empty result = %#v", result)
 	}
 }

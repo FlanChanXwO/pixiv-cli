@@ -9,6 +9,7 @@ import (
 	"strconv"
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/endpoint/artwork"
+	"github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/endpoint/continuation"
 	"github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/protocol"
 )
 
@@ -153,16 +154,17 @@ func setFilters(query url.Values, filters Filters) {
 }
 
 func continuationOffset(rawURL string) (int, error) {
-	parsed, err := url.Parse(rawURL)
-	if err != nil {
-		return 0, protocol.MalformedResponse()
-	}
-	values, err := url.ParseQuery(parsed.RawQuery)
-	if err != nil || len(values["offset"]) != 1 {
-		return 0, protocol.MalformedResponse()
-	}
-	offset, err := strconv.ParseInt(values.Get("offset"), 10, 64)
-	if err != nil || offset <= 0 || int64(int(offset)) != offset {
+	_, offset, err := continuation.Parse(rawURL, continuation.Spec{
+		Path: protocol.AppSearchIllust,
+		Keys: []string{"offset"},
+		AllowedQueryKeys: []string{
+			"word", "search_target", "sort", "duration", "start_date", "end_date",
+			"search_ai_type", "ratio_pattern", "content_type", "tool",
+			"bookmark_num_min", "bookmark_num_max", "width_min", "width_max",
+			"height_min", "height_max",
+		},
+	})
+	if err != nil || int64(int(offset)) != offset {
 		return 0, protocol.MalformedResponse()
 	}
 	return int(offset), nil

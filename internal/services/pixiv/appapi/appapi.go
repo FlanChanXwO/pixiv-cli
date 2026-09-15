@@ -62,6 +62,13 @@ func (c *Client) PostForm(ctx context.Context, path string, form url.Values) err
 	return c.postFormWithRetry(ctx, path, form)
 }
 
+// PostFormJSON 提供给需要读取 mutation 响应的 endpoint family。成功响应必须
+// 包含可解码 JSON；除既有的明确 401/403 认证刷新外，不重放请求，避免把不确定
+// 的 mutation 当作安全失败处理。
+func (c *Client) PostFormJSON(ctx context.Context, path string, form url.Values, out any) error {
+	return c.postFormJSONWithRetry(ctx, path, form, out)
+}
+
 type staticSession struct{ token string }
 
 func (s staticSession) AccessToken() string { return s.token }
@@ -206,6 +213,20 @@ func (c *Client) postFormWithRetry(ctx context.Context, path string, form url.Va
 	return c.postForm(ctx, path, form)
 }
 
+func (c *Client) postFormJSONWithRetry(ctx context.Context, path string, form url.Values, out any) error {
+	err := c.postFormJSON(ctx, path, form, out)
+	if !isAuthAPIResponse(err) {
+		return err
+	}
+	if c.session == nil {
+		return err
+	}
+	if refreshErr := c.session.Refresh(ctx); refreshErr != nil {
+		return err
+	}
+	return c.postFormJSON(ctx, path, form, out)
+}
+
 // isAuthAPIResponse 仅识别明确的认证 HTTP 状态，避免响应正文中的词汇触发 mutation 重放。
 func isAuthAPIResponse(err error) bool {
 	var apiErr protocol.Failure
@@ -214,6 +235,10 @@ func isAuthAPIResponse(err error) bool {
 
 func (c *Client) postForm(ctx context.Context, path string, form url.Values) error {
 	return c.doForm(ctx, http.MethodPost, c.apiBase+path, requestOptions{Headers: c.apiHeaders()}, form)
+}
+
+func (c *Client) postFormJSON(ctx context.Context, path string, form url.Values, out any) error {
+	return c.doFormJSON(ctx, http.MethodPost, c.apiBase+path, requestOptions{Headers: c.apiHeaders()}, form, out)
 }
 
 // getRawWithRetry 与 JSON transport 共享认证刷新和有效 Retry-After 重试。
@@ -341,6 +366,29 @@ func (c *Client) doForm(ctx context.Context, method, rawURL string, opts request
 	}
 	if resp.StatusCode() < 200 || resp.StatusCode() >= 300 {
 		return protocol.HTTPStatus(resp.StatusCode())
+	}
+	return nil
+}
+
+func (c *Client) doFormJSON(ctx context.Context, method, rawURL string, opts requestOptions, form url.Values, out any) error {
+	req := c.restyClient.R().SetContext(ctx).SetFormDataFromValues(form)
+	if len(opts.Headers) > 0 {
+		req.SetHeaders(opts.Headers)
+	}
+	resp, err := req.Execute(method, rawURL)
+	if err != nil {
+		return protocol.Transport(err)
+	}
+	body := resp.Body()
+	if resp.StatusCode() < 200 || resp.StatusCode() >= 300 {
+		retryAfter, present := parseRetryAfter(resp.Header().Get("Retry-After"), time.Now())
+		return protocol.HTTPStatusWithRetryAfter(resp.StatusCode(), retryAfter, present)
+	}
+	if len(bytes.TrimSpace(body)) == 0 {
+		return protocol.MalformedResponse()
+	}
+	if err := json.Unmarshal(body, out); err != nil {
+		return protocol.MalformedResponse()
 	}
 	return nil
 }

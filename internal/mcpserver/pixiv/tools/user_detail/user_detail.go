@@ -8,6 +8,7 @@ import (
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/internal/outputs"
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/internal/records"
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/internal/runtime"
+	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/internal/schemas"
 	record "github.com/FlanChanXwO/pixiv-cli/internal/shared/record"
 	pixiv "github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
@@ -15,7 +16,9 @@ import (
 
 // Register 注册 user_detail。
 func Register(app *runtime.App, server *mcp.Server) {
-	runtime.AddTool(app, server, &mcp.Tool{Name: "user_detail", Description: "Get a user's complete profile through the authenticated Pixiv SDK.", OutputSchema: records.RecordsOutputSchema()}, func(ctx context.Context, request *mcp.CallToolRequest, input In) (*mcp.CallToolResult, outputs.UserDetail, error) {
+	runtime.AddTool(app, server, &mcp.Tool{Name: "user_detail", Description: "Get a user's complete profile through the authenticated Pixiv SDK.", InputSchema: schemas.ClosedObject(map[string]any{
+		"user_id": schemas.PositiveInteger("Positive Pixiv user ID."),
+	}, []string{"user_id"}), OutputSchema: records.UserDetailOutputSchema()}, func(ctx context.Context, request *mcp.CallToolRequest, input In) (*mcp.CallToolResult, outputs.UserDetail, error) {
 		return handleUserDetail(ctx, app, input)
 	})
 }

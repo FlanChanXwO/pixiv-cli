@@ -10,6 +10,7 @@ import (
 	"strconv"
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/endpoint/artwork"
+	endpointcontinuation "github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/endpoint/continuation"
 	"github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/protocol"
 )
 
@@ -60,7 +61,7 @@ func (c *Client) Artworks(ctx context.Context, request ArtworksRequest) (Artwork
 		}
 		items[index] = mapArtwork(value)
 	}
-	next, hasNext, err := continuation(raw.NextURL, "max_bookmark_id", false)
+	next, hasNext, err := continuation(raw.NextURL, protocol.AppUserBookmarks, []string{"max_bookmark_id"}, false, "user_id", "restrict", "tag")
 	if err != nil {
 		return ArtworksResult{}, err
 	}
@@ -91,14 +92,17 @@ func (c *Client) Tags(ctx context.Context, request TagsRequest) (TagsResult, err
 	if err := c.transport.GetJSON(ctx, protocol.AppUserBookmarkTags, query, &raw); err != nil {
 		return TagsResult{}, err
 	}
-	items := make([]artwork.BookmarkTag, len(raw.Tags))
-	for index, value := range raw.Tags {
+	if !raw.Tags.Present || !raw.Tags.Valid {
+		return TagsResult{}, protocol.MalformedResponse()
+	}
+	items := make([]artwork.BookmarkTag, len(raw.Tags.Items))
+	for index, value := range raw.Tags.Items {
 		if value.Name == "" {
 			return TagsResult{}, protocol.MalformedResponse()
 		}
 		items[index] = artwork.BookmarkTag{Name: value.Name, Count: value.Count}
 	}
-	next, hasNext, err := continuation(raw.NextURL, "offset", true)
+	next, hasNext, err := continuation(raw.NextURL, protocol.AppUserBookmarkTags, []string{"offset"}, false, "user_id", "restrict")
 	if err != nil {
 		return TagsResult{}, err
 	}
@@ -125,11 +129,15 @@ func (c *Client) Detail(ctx context.Context, artworkID int64) (artwork.BookmarkD
 		return artwork.BookmarkDetail{Tags: []string{}}, nil
 	}
 	if raw.Detail.IsBookmarked != nil && !*raw.Detail.IsBookmarked {
+		// 未收藏响应中的 tags 可能是作品自身标签，不是收藏标签；统一归一为空状态。
 		return artwork.BookmarkDetail{Tags: []string{}}, nil
 	}
 	tags := []string{}
 	if raw.Detail.Tags != nil {
 		for _, tag := range raw.Detail.Tags {
+			if !tag.IsRegistered {
+				continue
+			}
 			tags = append(tags, tag.Name)
 		}
 	}
@@ -146,6 +154,12 @@ func (c *Client) Add(ctx context.Context, request AddRequest) error {
 	if c == nil || c.transport == nil {
 		return errors.New("artwork bookmark transport is not configured")
 	}
+	if request.ArtworkID <= 0 {
+		return errors.New("bookmark artwork ID must be positive")
+	}
+	if request.Restrict != "public" && request.Restrict != "private" {
+		return errors.New("bookmark restrict must be public or private")
+	}
 	form := url.Values{"illust_id": {strconv.FormatInt(request.ArtworkID, 10)}, "restrict": {request.Restrict}}
 	for _, tag := range request.Tags {
 		form.Add("tags[]", tag)
@@ -156,6 +170,9 @@ func (c *Client) Add(ctx context.Context, request AddRequest) error {
 func (c *Client) Remove(ctx context.Context, artworkID int64) error {
 	if c == nil || c.transport == nil {
 		return errors.New("artwork bookmark transport is not configured")
+	}
+	if artworkID <= 0 {
+		return errors.New("bookmark artwork ID must be positive")
 	}
 	return c.transport.PostForm(ctx, protocol.AppBookmarkDelete, url.Values{
 		"illust_id": {strconv.FormatInt(artworkID, 10)},
@@ -168,8 +185,8 @@ type artworksResponseDTO struct {
 }
 
 type tagsResponseDTO struct {
-	Tags    []bookmarkTagDTO `json:"bookmark_tags"`
-	NextURL *string          `json:"next_url"`
+	Tags    requiredList[bookmarkTagDTO] `json:"bookmark_tags"`
+	NextURL *string                      `json:"next_url"`
 }
 
 type bookmarkTagDTO struct {
@@ -288,23 +305,20 @@ func (l *requiredList[T]) UnmarshalJSON(data []byte) error {
 	return nil
 }
 
-func continuation(rawURL *string, key string, requireInt bool) (int64, bool, error) {
+func continuation(rawURL *string, path string, keys []string, allowZero bool, allowedQueryKeys ...string) (int64, bool, error) {
 	if rawURL == nil {
 		return 0, false, nil
 	}
-	if *rawURL == "" {
+	_, value, err := endpointcontinuation.Parse(*rawURL, endpointcontinuation.Spec{
+		Path:             path,
+		Keys:             keys,
+		AllowZero:        allowZero,
+		AllowedQueryKeys: allowedQueryKeys,
+	})
+	if err != nil || (!allowZero && value <= 0) || (allowZero && value < 0) {
 		return 0, false, protocol.MalformedResponse()
 	}
-	parsed, err := url.Parse(*rawURL)
-	if err != nil {
-		return 0, false, protocol.MalformedResponse()
-	}
-	values, err := url.ParseQuery(parsed.RawQuery)
-	if err != nil || len(values[key]) != 1 {
-		return 0, false, protocol.MalformedResponse()
-	}
-	value, err := strconv.ParseInt(values.Get(key), 10, 64)
-	if err != nil || value <= 0 || requireInt && int64(int(value)) != value {
+	if keys[0] == "offset" && int64(int(value)) != value {
 		return 0, false, protocol.MalformedResponse()
 	}
 	return value, true, nil

@@ -16,7 +16,7 @@ import (
 
 // Register 注册 timeline_illust_latest。
 func Register(app *runtime.App, server *mcp.Server) {
-	runtime.AddTool(app, server, &mcp.Tool{Name: "timeline_illust_latest", Description: "Browse latest illustrations or manga through the App API.", OutputSchema: records.RecordsOutputSchema()}, func(ctx context.Context, request *mcp.CallToolRequest, input In) (*mcp.CallToolResult, outputs.Records, error) {
+	runtime.AddTool(app, server, &mcp.Tool{Name: "timeline_illust_latest", Description: "Browse latest illustrations or manga through the App API.", InputSchema: latestInputSchema(), OutputSchema: records.RecordsOutputSchema()}, func(ctx context.Context, request *mcp.CallToolRequest, input In) (*mcp.CallToolResult, outputs.Records, error) {
 		return handleIllustNew(ctx, app, input)
 	})
 }
@@ -25,6 +25,20 @@ type In struct {
 	ContentType  pixiv.SearchContentType `json:"content_type" jsonschema:"required: illust or manga"`
 	IllustFilter *filters.IllustFilter   `json:"illust_filter,omitempty"`
 	runtime.PageLimitIn
+}
+
+func latestInputSchema() map[string]any {
+	return map[string]any{
+		"type":                 "object",
+		"additionalProperties": false,
+		"required":             []string{"content_type"},
+		"properties": map[string]any{
+			"content_type":  map[string]any{"type": "string", "enum": []string{"illust", "manga"}},
+			"illust_filter": filters.IllustFilterSchema(),
+			"page":          map[string]any{"type": "integer", "minimum": 1, "description": "1-based logical page; requires a positive limit."},
+			"limit":         map[string]any{"type": "integer", "minimum": 0, "description": "Maximum logical results; 0 returns all; omitted reads one upstream batch."},
+		},
+	}
 }
 
 func handleIllustNew(ctx context.Context, app *runtime.App, in In) (*mcp.CallToolResult, outputs.Records, error) {

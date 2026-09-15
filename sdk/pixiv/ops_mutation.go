@@ -5,34 +5,94 @@ import (
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/endpoint/artwork/bookmark"
 	"github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/endpoint/user/follow"
+	usernovelbookmarks "github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/endpoint/user/novelbookmarks"
 	"github.com/FlanChanXwO/pixiv-cli/sdk"
 )
 
-// AddBookmark bookmarks one artwork. Tags, when non-empty, are applied as
-// bookmark tags.
-func (c *Client) AddBookmark(ctx context.Context, request AddBookmarkRequest) error {
+// AddArtworkBookmark bookmarks one artwork. Tags, when non-empty, are applied
+// as bookmark tags.
+func (c *Client) AddArtworkBookmark(ctx context.Context, request AddArtworkBookmarkRequest) error {
+	return c.addArtworkBookmark(ctx, request, "AddArtworkBookmark")
+}
+
+// addArtworkBookmark contains the shared implementation for the explicit
+// artwork operation and its legacy wrapper so their validation and wire
+// semantics cannot drift apart.
+func (c *Client) addArtworkBookmark(ctx context.Context, request AddArtworkBookmarkRequest, operation string) error {
 	if request.ArtworkID <= 0 {
-		return newError("AddBookmark", sdk.InvalidArgument, "artwork ID must be positive")
+		return newError(operation, sdk.InvalidArgument, "artwork ID must be positive")
 	}
 	if request.Restrict == "" {
 		request.Restrict = RestrictPublic
 	}
-	if err := validateRestrict("AddBookmark", request.Restrict); err != nil {
+	if err := validateRestrict(operation, request.Restrict); err != nil {
 		return err
 	}
 	if err := c.artworkBookmark.Add(ctx, bookmark.AddRequest{ArtworkID: request.ArtworkID, Restrict: string(request.Restrict), Tags: request.Tags}); err != nil {
-		return classifyAppError(err, "AddBookmark")
+		return classifyAppError(err, operation)
 	}
 	return nil
 }
 
-// RemoveBookmark removes the current user's bookmark from one artwork.
-func (c *Client) RemoveBookmark(ctx context.Context, request RemoveBookmarkRequest) error {
-	if request.ArtworkID <= 0 {
-		return newError("RemoveBookmark", sdk.InvalidArgument, "artwork ID must be positive")
+// AddBookmark bookmarks one artwork. It is retained as a source-compatible
+// wrapper around AddArtworkBookmark's implementation.
+func (c *Client) AddBookmark(ctx context.Context, request AddBookmarkRequest) error {
+	return c.addArtworkBookmark(ctx, AddArtworkBookmarkRequest{
+		ArtworkID: request.ArtworkID,
+		Restrict:  request.Restrict,
+		Tags:      request.Tags,
+	}, "AddBookmark")
+}
+
+// RemoveArtworkBookmark removes the current user's bookmark from one artwork.
+func (c *Client) RemoveArtworkBookmark(ctx context.Context, request RemoveArtworkBookmarkRequest) error {
+	return c.removeArtworkBookmark(ctx, request.ArtworkID, "RemoveArtworkBookmark")
+}
+
+// removeArtworkBookmark contains the shared implementation for the explicit
+// artwork operation and its legacy wrapper.
+func (c *Client) removeArtworkBookmark(ctx context.Context, artworkID int64, operation string) error {
+	if artworkID <= 0 {
+		return newError(operation, sdk.InvalidArgument, "artwork ID must be positive")
 	}
-	if err := c.artworkBookmark.Remove(ctx, request.ArtworkID); err != nil {
-		return classifyAppError(err, "RemoveBookmark")
+	if err := c.artworkBookmark.Remove(ctx, artworkID); err != nil {
+		return classifyAppError(err, operation)
+	}
+	return nil
+}
+
+// RemoveBookmark removes the current user's bookmark from one artwork. It is
+// retained as a source-compatible wrapper around RemoveArtworkBookmark's
+// implementation.
+func (c *Client) RemoveBookmark(ctx context.Context, request RemoveBookmarkRequest) error {
+	return c.removeArtworkBookmark(ctx, request.ArtworkID, "RemoveBookmark")
+}
+
+// AddNovelBookmark bookmarks one novel. Tags, when non-empty, are applied as
+// bookmark tags.
+func (c *Client) AddNovelBookmark(ctx context.Context, request AddNovelBookmarkRequest) error {
+	if request.NovelID <= 0 {
+		return newError("AddNovelBookmark", sdk.InvalidArgument, "novel ID must be positive")
+	}
+	if request.Restrict == "" {
+		request.Restrict = RestrictPublic
+	}
+	if err := validateRestrict("AddNovelBookmark", request.Restrict); err != nil {
+		return err
+	}
+	if err := c.userNovelBookmarks.Add(ctx, usernovelbookmarks.AddRequest{NovelID: request.NovelID, Restrict: string(request.Restrict), Tags: request.Tags}); err != nil {
+		return classifyAppError(err, "AddNovelBookmark")
+	}
+	return nil
+}
+
+// RemoveNovelBookmark removes the current user's bookmark from one novel.
+func (c *Client) RemoveNovelBookmark(ctx context.Context, request RemoveNovelBookmarkRequest) error {
+	if request.NovelID <= 0 {
+		return newError("RemoveNovelBookmark", sdk.InvalidArgument, "novel ID must be positive")
+	}
+	if err := c.userNovelBookmarks.Remove(ctx, request.NovelID); err != nil {
+		return classifyAppError(err, "RemoveNovelBookmark")
 	}
 	return nil
 }
@@ -44,6 +104,9 @@ func (c *Client) FollowUser(ctx context.Context, request FollowUserRequest) erro
 	}
 	if request.Restrict == "" {
 		request.Restrict = RestrictPublic
+	}
+	if err := validateRestrict("FollowUser", request.Restrict); err != nil {
+		return err
 	}
 	if err := c.userFollow.Add(ctx, follow.Request{UserID: request.UserID, Restrict: string(request.Restrict)}); err != nil {
 		return classifyAppError(err, "FollowUser")
@@ -62,11 +125,10 @@ func (c *Client) UnfollowUser(ctx context.Context, request UnfollowUserRequest) 
 	return nil
 }
 
-// SetAIArtworkVisibility sets whether AI-generated artworks are shown in the
-// current user's feeds.
+// SetAIArtworkVisibility is retained for source compatibility.
+//
+// Deprecated: the App API AI-visibility endpoint is no longer available.
+// This method returns ContentUnavailable without making a network request.
 func (c *Client) SetAIArtworkVisibility(ctx context.Context, request SetAIArtworkVisibilityRequest) error {
-	if err := c.userVisibility.Set(ctx, request.Visible); err != nil {
-		return classifyAppError(err, "SetAIArtworkVisibility")
-	}
-	return nil
+	return newError("SetAIArtworkVisibility", sdk.ContentUnavailable, "AI artwork visibility is unsupported by the current App API")
 }

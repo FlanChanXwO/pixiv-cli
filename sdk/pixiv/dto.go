@@ -1,6 +1,7 @@
 package pixiv
 
 import (
+	"encoding/json"
 	"time"
 
 	"github.com/FlanChanXwO/pixiv-cli/sdk"
@@ -18,6 +19,12 @@ type ImageResourceDTO struct {
 	Variant  string           `json:"variant"`
 	Width    int              `json:"width"`
 	Height   int              `json:"height"`
+}
+
+// StampDTO is the output-safe form of Stamp.
+type StampDTO struct {
+	ID    int64            `json:"id"`
+	Image ImageResourceDTO `json:"image"`
 }
 
 // ArtworkPageDTO is the output-safe form of ArtworkPage.
@@ -159,6 +166,23 @@ type CommentDTO struct {
 type CommentAccessControlDTO struct {
 	CanComment bool `json:"can_comment"`
 	IsLocked   bool `json:"is_locked"`
+	// NumericValue preserves the current App API scalar. It is emitted as
+	// comment_access_control and is intentionally not converted to booleans.
+	NumericValue *int64 `json:"-"`
+}
+
+// MarshalJSON keeps the legacy object shape intact while making the current
+// scalar wire value explicit instead of emitting unknown booleans as false.
+func (value CommentAccessControlDTO) MarshalJSON() ([]byte, error) {
+	if value.NumericValue != nil {
+		return json.Marshal(struct {
+			NumericValue int64 `json:"comment_access_control"`
+		}{NumericValue: *value.NumericValue})
+	}
+	return json.Marshal(struct {
+		CanComment bool `json:"can_comment"`
+		IsLocked   bool `json:"is_locked"`
+	}{CanComment: value.CanComment, IsLocked: value.IsLocked})
 }
 
 // CommentPageDTO is the output-safe form of CommentPage.
@@ -198,6 +222,12 @@ type TrendingTagDTO struct {
 
 // ArtworkBookmarkDetailDTO is the output-safe form of ArtworkBookmarkDetail.
 type ArtworkBookmarkDetailDTO struct {
+	Restrict Restrict `json:"restrict"`
+	Tags     []string `json:"tags"`
+}
+
+// NovelBookmarkDetailDTO is the output-safe form of NovelBookmarkDetail.
+type NovelBookmarkDetailDTO struct {
 	Restrict Restrict `json:"restrict"`
 	Tags     []string `json:"tags"`
 }
@@ -290,6 +320,12 @@ func ToImageResourceDTO(value ImageResource) ImageResourceDTO {
 		Width:    value.Width,
 		Height:   value.Height,
 	}
+}
+
+// ToStampDTO converts a stamp without exposing its runtime locator or request
+// headers.
+func ToStampDTO(value Stamp) StampDTO {
+	return StampDTO{ID: value.ID, Image: ToImageResourceDTO(value.Image)}
 }
 
 // ToArtworkPageDTO converts an artwork page to an output-safe DTO.
@@ -472,7 +508,11 @@ func toCommentDTO(value *Comment) *CommentDTO {
 
 // ToCommentAccessControlDTO converts comment access metadata to a DTO.
 func ToCommentAccessControlDTO(value CommentAccessControl) CommentAccessControlDTO {
-	return CommentAccessControlDTO{CanComment: value.CanComment, IsLocked: value.IsLocked}
+	return CommentAccessControlDTO{
+		CanComment:   value.CanComment,
+		IsLocked:     value.IsLocked,
+		NumericValue: cloneInt64(value.NumericValue),
+	}
 }
 
 // ToCommentPageDTO converts a comment page while preserving the stable cursor
@@ -530,6 +570,11 @@ func ToTrendingTagDTO(value TrendingTag) TrendingTagDTO {
 // ToArtworkBookmarkDetailDTO converts bookmark state to a DTO.
 func ToArtworkBookmarkDetailDTO(value ArtworkBookmarkDetail) ArtworkBookmarkDetailDTO {
 	return ArtworkBookmarkDetailDTO{Restrict: value.Restrict, Tags: append([]string(nil), value.Tags...)}
+}
+
+// ToNovelBookmarkDetailDTO converts novel bookmark state to a DTO.
+func ToNovelBookmarkDetailDTO(value NovelBookmarkDetail) NovelBookmarkDetailDTO {
+	return NovelBookmarkDetailDTO{Restrict: value.Restrict, Tags: append([]string(nil), value.Tags...)}
 }
 
 // ToNovelRubyDTO converts a ruby annotation to a DTO.

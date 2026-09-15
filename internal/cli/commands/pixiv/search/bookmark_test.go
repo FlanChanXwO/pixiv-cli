@@ -3,9 +3,14 @@ package search
 import (
 	"context"
 	"errors"
+	"fmt"
+	"io"
+	"net/http"
+	"strings"
 	"testing"
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/shared/pagination"
+	"github.com/FlanChanXwO/pixiv-cli/internal/shared/searchfilter"
 	"github.com/FlanChanXwO/pixiv-cli/internal/shared/traversal"
 	"github.com/FlanChanXwO/pixiv-cli/sdk"
 	product "github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
@@ -13,11 +18,19 @@ import (
 )
 
 type artworkClient struct {
-	search func(context.Context, product.SearchArtworksRequest) (sdk.Page[product.Artwork], error)
+	search     func(context.Context, product.SearchArtworksRequest) (sdk.Page[product.Artwork], error)
+	checkpoint func(product.SearchArtworksRequest, int) (sdk.Cursor, error)
 }
 
 func (c artworkClient) SearchArtworks(ctx context.Context, request product.SearchArtworksRequest) (sdk.Page[product.Artwork], error) {
 	return c.search(ctx, request)
+}
+
+func (c artworkClient) CheckpointSearchArtworks(request product.SearchArtworksRequest, consumed int) (sdk.Cursor, error) {
+	if c.checkpoint != nil {
+		return c.checkpoint(request, consumed)
+	}
+	return sdk.NewCursor("test", "checkpoint", 1, "hash", []byte("batch remainder"))
 }
 
 func oneClientOperation[C any](client C) traversal.Execute[C] {
@@ -66,6 +79,68 @@ func TestSearchArtworksLocallyFiltersCandidatesAndReportsCompleteness(t *testing
 	require.Nil(t, calls[0].BookmarkMax)
 }
 
+func TestSearchArtworksAppliesLocalFilterBeforeLogicalLimitAndCheckpoints(t *testing.T) {
+	start := testSearchCursor(t, "start")
+	first := testSearchCursor(t, "first")
+	checkpoint := testSearchCursor(t, "checkpoint")
+	var calls []product.SearchArtworksRequest
+	var checkpointRequest product.SearchArtworksRequest
+	var checkpointConsumed int
+	client := artworkClient{
+		search: func(_ context.Context, request product.SearchArtworksRequest) (sdk.Page[product.Artwork], error) {
+			calls = append(calls, request)
+			return sdk.Page[product.Artwork]{
+				Items: []product.Artwork{
+					{ID: 1, XRestrict: 0},
+					{ID: 2, XRestrict: 1},
+					{ID: 3, XRestrict: 1},
+				},
+				Next: first,
+			}, nil
+		},
+		checkpoint: func(request product.SearchArtworksRequest, consumed int) (sdk.Cursor, error) {
+			checkpointRequest = request
+			checkpointConsumed = consumed
+			return checkpoint, nil
+		},
+	}
+	include := func(item product.Artwork) (bool, error) { return item.XRestrict == 1, nil }
+	result, err := searchArtworks(context.Background(), oneClientOperation(client), artworkSearchRequest{
+		Query:   product.SearchArtworksRequest{Word: "cat", Cursor: start, CursorContext: "rating-context"},
+		Plan:    pagination.PagePlan{Limit: 1},
+		Include: include,
+	})
+
+	require.NoError(t, err)
+	require.Equal(t, []int64{2}, searchArtworkIDs(result.Page.Items))
+	require.Equal(t, checkpoint, result.Page.Next)
+	require.Len(t, calls, 1)
+	require.Equal(t, start, calls[0].Cursor)
+	require.Equal(t, "rating-context", checkpointRequest.CursorContext)
+	require.Equal(t, 2, checkpointConsumed)
+}
+
+func TestSearchArtworksBindsBookmarkAndLocalFilterContextsTogether(t *testing.T) {
+	var request product.SearchArtworksRequest
+	min := 10
+	localContext := "rating-context"
+	client := artworkClient{search: func(_ context.Context, value product.SearchArtworksRequest) (sdk.Page[product.Artwork], error) {
+		request = value
+		return sdk.Page[product.Artwork]{Items: []product.Artwork{{ID: 1, XRestrict: 1, TotalBookmarks: 12}}}, nil
+	}}
+	include := func(item product.Artwork) (bool, error) { return item.XRestrict == 1, nil }
+	_, err := searchArtworks(context.Background(), oneClientOperation(client), artworkSearchRequest{
+		Query: product.SearchArtworksRequest{
+			Word: "cat", CursorContext: localContext, BookmarkMin: &min,
+		},
+		Plan: pagination.PagePlan{Limit: 1}, Include: include, Strategy: bookmarkFilterStrategyAuto,
+	})
+
+	require.NoError(t, err)
+	require.Equal(t, combineCursorContexts(localContext, searchfilter.BookmarkContext(&min, nil, string(bookmarkFilterStrategyLocal))), request.CursorContext)
+	require.NotEqual(t, searchfilter.BookmarkContext(&min, nil, string(bookmarkFilterStrategyLocal)), request.CursorContext)
+}
+
 func TestSearchArtworksBestEffortKeepsCandidateBoundsAndReportsPartialLimit(t *testing.T) {
 	next := testSearchCursor(t, "partial")
 	var request product.SearchArtworksRequest
@@ -82,7 +157,8 @@ func TestSearchArtworksBestEffortKeepsCandidateBoundsAndReportsPartialLimit(t *t
 	require.NoError(t, err)
 	require.Equal(t, 10, *request.BookmarkMin)
 	require.Equal(t, 20, *request.BookmarkMax)
-	require.Equal(t, next, result.Page.Next)
+	require.False(t, result.Page.Next.IsZero())
+	require.NotEqual(t, next, result.Page.Next)
 	require.Equal(t, bookmarkFilterStrategyBestEffort, result.Filter.Strategy)
 	require.Equal(t, bookmarkFilterCompletenessPartial, result.Filter.Completeness)
 }
@@ -161,4 +237,86 @@ func searchArtworkIDs(items []product.Artwork) []int64 {
 		ids = append(ids, item.ID)
 	}
 	return ids
+}
+
+// continuationHTTP 只替代上游 HTTP，测试使用真实 SDK 和搜索适配路径。
+type continuationHTTP func(*http.Request) (*http.Response, error)
+
+func (f continuationHTTP) RoundTrip(r *http.Request) (*http.Response, error) { return f(r) }
+
+func TestSearchContinuationDoesNotLoseRemainder(t *testing.T) {
+	for _, filtered := range []bool{false, true} {
+		t.Run(fmt.Sprint(filtered), func(t *testing.T) {
+			client, err := product.NewWith("token", product.Options{HTTPClient: &http.Client{Transport: continuationHTTP(func(r *http.Request) (*http.Response, error) {
+				return &http.Response{StatusCode: 200, Header: http.Header{"Content-Type": {"application/json"}}, Body: io.NopCloser(strings.NewReader(`{"illusts":[{"id":1,"total_bookmarks":12,"type":"illust","create_date":"2024-05-01T10:00:00+09:00","user":{"id":7}},{"id":2,"total_bookmarks":12,"type":"illust","create_date":"2024-05-01T10:00:00+09:00","user":{"id":7}},{"id":3,"total_bookmarks":12,"type":"illust","create_date":"2024-05-01T10:00:00+09:00","user":{"id":7}}]}`))}, nil
+			})}})
+			require.NoError(t, err)
+			execute := func(ctx context.Context, fn func(context.Context, *product.Client) (bool, error)) error {
+				_, err := fn(ctx, client)
+				return err
+			}
+			request := artworkSearchRequest{Query: product.SearchArtworksRequest{Word: "test"}, Plan: pagination.PagePlan{Limit: 2}}
+			if filtered {
+				min := 10
+				request.Query.BookmarkMin = &min
+			}
+			first, err := searchArtworks(context.Background(), execute, request)
+			require.NoError(t, err)
+			require.False(t, first.Page.Next.IsZero(), "last batch remainder needs a continuation")
+			request.Query.Cursor = first.Page.Next
+			if filtered {
+				changed := request
+				min := 11
+				changed.Query.BookmarkMin = &min
+				_, err := searchArtworks(context.Background(), execute, changed)
+				require.Equal(t, sdk.InvalidCursor, sdk.ReasonOf(err))
+			}
+			second, err := searchArtworks(context.Background(), execute, request)
+			require.NoError(t, err)
+			var ids []int64
+			for _, item := range append(first.Page.Items, second.Page.Items...) {
+				ids = append(ids, item.ID)
+			}
+			require.Equal(t, []int64{1, 2, 3}, ids)
+			require.True(t, second.Page.Next.IsZero())
+		})
+	}
+}
+
+func TestSearchContinuationReplayDiscardsFailedAttempt(t *testing.T) {
+	makeClient := func(failing bool) *product.Client {
+		client, err := product.NewWith("token", product.Options{HTTPClient: &http.Client{Transport: continuationHTTP(func(r *http.Request) (*http.Response, error) {
+			if failing && r.URL.Query().Get("offset") != "" {
+				return nil, fmt.Errorf("fixture read failure")
+			}
+			ids := []int{2, 3}
+			next := ""
+			if failing {
+				ids = []int{1}
+				next = `,"next_url":"https://app-api.pixiv.net/v1/search/illust?offset=30"`
+			}
+			var records []string
+			for _, id := range ids {
+				records = append(records, fmt.Sprintf(`{"id":%d,"total_bookmarks":12,"type":"illust","create_date":"2024-05-01T10:00:00+09:00","user":{"id":7}}`, id))
+			}
+			return &http.Response{StatusCode: 200, Header: http.Header{"Content-Type": {"application/json"}}, Body: io.NopCloser(strings.NewReader(`{"illusts":[` + strings.Join(records, ",") + `]` + next + `}`))}, nil
+		})}})
+		require.NoError(t, err)
+		return client
+	}
+	first, second := makeClient(true), makeClient(false)
+	execute := func(ctx context.Context, fn func(context.Context, *product.Client) (bool, error)) error {
+		committed, err := fn(ctx, first)
+		require.Error(t, err)
+		require.False(t, committed)
+		_, err = fn(ctx, second)
+		return err
+	}
+	min := 10
+	result, err := searchArtworks(context.Background(), execute, artworkSearchRequest{Query: product.SearchArtworksRequest{Word: "test", BookmarkMin: &min}, Plan: pagination.PagePlan{Limit: 2}})
+	require.NoError(t, err)
+	require.Len(t, result.Page.Items, 2)
+	require.EqualValues(t, 2, result.Page.Items[0].ID)
+	require.EqualValues(t, 3, result.Page.Items[1].ID)
+	require.True(t, result.Page.Next.IsZero())
 }

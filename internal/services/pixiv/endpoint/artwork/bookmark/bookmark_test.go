@@ -3,6 +3,7 @@ package bookmark_test
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/url"
 	"testing"
@@ -12,11 +13,13 @@ import (
 )
 
 type fakeTransport struct {
-	path   string
-	query  url.Values
-	form   url.Values
-	body   string
-	getErr error
+	path    string
+	query   url.Values
+	form    url.Values
+	body    string
+	getErr  error
+	calls   int
+	postErr error
 }
 
 func (f *fakeTransport) GetJSON(_ context.Context, path string, query url.Values, out any) error {
@@ -29,9 +32,10 @@ func (f *fakeTransport) GetJSON(_ context.Context, path string, query url.Values
 }
 
 func (f *fakeTransport) PostForm(_ context.Context, path string, form url.Values) error {
+	f.calls++
 	f.path = path
 	f.form = form
-	return nil
+	return f.postErr
 }
 
 func TestBookmarkArtworkListMapsQueryAndBookmarkContinuation(t *testing.T) {
@@ -42,6 +46,12 @@ func TestBookmarkArtworkListMapsQueryAndBookmarkContinuation(t *testing.T) {
 	}
 	if transport.path != "/v1/user/bookmarks/illust" || transport.query.Get("user_id") != "7" || transport.query.Get("restrict") != "private" || transport.query.Get("tag") != "cat" || transport.query.Get("max_bookmark_id") != "3" {
 		t.Fatalf("request = %q %v", transport.path, transport.query)
+	}
+	if _, ok := transport.query["type"]; ok {
+		t.Fatalf("request unexpectedly includes unverified type filter: %v", transport.query)
+	}
+	if _, ok := transport.query["content_type"]; ok {
+		t.Fatalf("request unexpectedly includes unverified content_type filter: %v", transport.query)
 	}
 	if len(result.Items) != 1 || result.Items[0].ID != 4 || result.NextMaxBookmarkID != 8 || !result.HasNext {
 		t.Fatalf("result = %#v", result)
@@ -57,13 +67,19 @@ func TestBookmarkTagsDetailAndMutations(t *testing.T) {
 	if transport.path != "/v1/user/bookmark-tags/illust" || transport.query.Get("offset") != "2" || len(tags.Items) != 1 || tags.NextOffset != 5 {
 		t.Fatalf("tags = %#v request=%q %v", tags, transport.path, transport.query)
 	}
+	if _, ok := transport.query["type"]; ok {
+		t.Fatalf("tags request unexpectedly includes unverified type filter: %v", transport.query)
+	}
+	if _, ok := transport.query["content_type"]; ok {
+		t.Fatalf("tags request unexpectedly includes unverified content_type filter: %v", transport.query)
+	}
 
 	transport.body = `{"bookmark_detail":{"is_bookmarked":true,"restrict":"private","tags":[{"name":"cat","is_registered":true}]}}`
 	detail, err := bookmark.New(transport).Detail(context.Background(), 9)
 	if err != nil || transport.path != "/v2/illust/bookmark/detail" || detail.Restrict != "private" || len(detail.Tags) != 1 || detail.Tags[0] != "cat" {
 		t.Fatalf("detail = %#v err=%v", detail, err)
 	}
-	transport.body = `{"bookmark_detail":{"is_bookmarked":false,"restrict":"public","tags":[{"name":"cat","is_registered":false}]}}`
+	transport.body = `{"bookmark_detail":{"is_bookmarked":false,"restrict":"","tags":[]}}`
 	detail, err = bookmark.New(transport).Detail(context.Background(), 9)
 	if err != nil || detail.Restrict != "" || detail.Tags == nil || len(detail.Tags) != 0 {
 		t.Fatalf("not bookmarked detail = %#v err=%v", detail, err)
@@ -83,13 +99,203 @@ func TestBookmarkTagsDetailAndMutations(t *testing.T) {
 	if err := bookmark.New(transport).Add(context.Background(), bookmark.AddRequest{ArtworkID: 9, Restrict: "public", Tags: []string{"cat", "favorite"}}); err != nil {
 		t.Fatalf("Add: %v", err)
 	}
-	if transport.path != "/v2/illust/bookmark/add" || transport.form.Get("illust_id") != "9" || len(transport.form["tags[]"]) != 2 {
+	if transport.path != "/v2/illust/bookmark/add" || len(transport.form) != 3 || transport.form.Get("illust_id") != "9" || transport.form.Get("restrict") != "public" || len(transport.form["tags[]"]) != 2 {
 		t.Fatalf("add request = %q %v", transport.path, transport.form)
 	}
 	if err := bookmark.New(transport).Remove(context.Background(), 9); err != nil {
 		t.Fatalf("Remove: %v", err)
 	}
-	if transport.path != "/v1/illust/bookmark/delete" || transport.form.Get("illust_id") != "9" {
+	if transport.path != "/v1/illust/bookmark/delete" || len(transport.form) != 1 || transport.form.Get("illust_id") != "9" {
 		t.Fatalf("remove request = %q %v", transport.path, transport.form)
+	}
+}
+
+func TestBookmarkMutationsRejectInvalidRequestsBeforeTransport(t *testing.T) {
+	tests := []struct {
+		name string
+		call func(*bookmark.Client) error
+	}{
+		{name: "add zero artwork", call: func(client *bookmark.Client) error {
+			return client.Add(context.Background(), bookmark.AddRequest{ArtworkID: 0, Restrict: "public"})
+		}},
+		{name: "add negative artwork", call: func(client *bookmark.Client) error {
+			return client.Add(context.Background(), bookmark.AddRequest{ArtworkID: -1, Restrict: "public"})
+		}},
+		{name: "add empty restrict", call: func(client *bookmark.Client) error {
+			return client.Add(context.Background(), bookmark.AddRequest{ArtworkID: 9})
+		}},
+		{name: "add unknown restrict", call: func(client *bookmark.Client) error {
+			return client.Add(context.Background(), bookmark.AddRequest{ArtworkID: 9, Restrict: "friends"})
+		}},
+		{name: "remove zero artwork", call: func(client *bookmark.Client) error {
+			return client.Remove(context.Background(), 0)
+		}},
+		{name: "remove negative artwork", call: func(client *bookmark.Client) error {
+			return client.Remove(context.Background(), -1)
+		}},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			transport := &fakeTransport{}
+			if err := test.call(bookmark.New(transport)); err == nil {
+				t.Fatal("invalid bookmark request unexpectedly succeeded")
+			}
+			if transport.calls != 0 {
+				t.Fatalf("invalid request reached transport %d time(s)", transport.calls)
+			}
+		})
+	}
+}
+
+func TestBookmarkMutationsPropagateTransportErrors(t *testing.T) {
+	wantErr := errors.New("bookmark mutation transport failed")
+	addTransport := &fakeTransport{postErr: wantErr}
+	if err := bookmark.New(addTransport).Add(context.Background(), bookmark.AddRequest{ArtworkID: 9, Restrict: "public"}); !errors.Is(err, wantErr) {
+		t.Fatalf("Add error = %v, want %v", err, wantErr)
+	}
+	if addTransport.calls != 1 {
+		t.Fatalf("Add transport calls = %d, want 1", addTransport.calls)
+	}
+
+	removeTransport := &fakeTransport{postErr: wantErr}
+	if err := bookmark.New(removeTransport).Remove(context.Background(), 9); !errors.Is(err, wantErr) {
+		t.Fatalf("Remove error = %v, want %v", err, wantErr)
+	}
+	if removeTransport.calls != 1 {
+		t.Fatalf("Remove transport calls = %d, want 1", removeTransport.calls)
+	}
+}
+
+func TestBookmarkTagsRequireBookmarkTagsList(t *testing.T) {
+	for _, body := range []string{`{}`, `{"bookmark_tags":null}`} {
+		t.Run(body, func(t *testing.T) {
+			_, err := bookmark.New(&fakeTransport{body: body}).Tags(context.Background(), bookmark.TagsRequest{UserID: 7, Restrict: "public"})
+			if !errors.Is(err, protocol.ErrMalformedResponse) {
+				t.Fatalf("Tags(%s) error = %v, want malformed response", body, err)
+			}
+		})
+	}
+
+	result, err := bookmark.New(&fakeTransport{body: `{"bookmark_tags":[],"next_url":null}`}).Tags(context.Background(), bookmark.TagsRequest{UserID: 7, Restrict: "public"})
+	if err != nil {
+		t.Fatalf("empty Tags: %v", err)
+	}
+	if result.Items == nil || len(result.Items) != 0 || result.HasNext {
+		t.Fatalf("empty tags result = %#v, want non-nil empty terminal page", result)
+	}
+}
+
+func TestBookmarkArtworksRejectMalformedEnvelopeAndKeepEmptyPage(t *testing.T) {
+	invalidBodies := map[string]string{
+		"missing illusts":      `{}`,
+		"null illusts":         `{"illusts":null}`,
+		"empty next url":       `{"illusts":[],"next_url":""}`,
+		"missing continuation": `{"illusts":[],"next_url":"https://app-api.pixiv.net/v1/user/bookmarks/illust?tag=cat"}`,
+		"non-positive cursor":  `{"illusts":[],"next_url":"https://app-api.pixiv.net/v1/user/bookmarks/illust?max_bookmark_id=0"}`,
+		"duplicate cursor":     `{"illusts":[],"next_url":"https://app-api.pixiv.net/v1/user/bookmarks/illust?max_bookmark_id=2&max_bookmark_id=3"}`,
+	}
+	for name, body := range invalidBodies {
+		t.Run(name, func(t *testing.T) {
+			result, err := bookmark.New(&fakeTransport{body: body}).Artworks(context.Background(), bookmark.ArtworksRequest{UserID: 7, Restrict: "public"})
+			if !errors.Is(err, protocol.ErrMalformedResponse) {
+				t.Fatalf("Artworks(%s) error = %v, want malformed response", body, err)
+			}
+			if result.Items != nil {
+				t.Fatalf("malformed result contains partial items: %#v", result.Items)
+			}
+		})
+	}
+
+	result, err := bookmark.New(&fakeTransport{body: `{"illusts":[],"next_url":null}`}).Artworks(context.Background(), bookmark.ArtworksRequest{UserID: 7, Restrict: "public"})
+	if err != nil {
+		t.Fatalf("empty Artworks: %v", err)
+	}
+	if result.Items == nil || len(result.Items) != 0 || result.HasNext {
+		t.Fatalf("empty artworks result = %#v, want non-nil empty terminal page", result)
+	}
+}
+
+func TestBookmarkReadPropagatesTransportErrors(t *testing.T) {
+	transportErr := errors.New("bookmark transport failed")
+	for _, test := range []struct {
+		name string
+		call func(*fakeTransport) error
+	}{
+		{
+			name: "artworks",
+			call: func(transport *fakeTransport) error {
+				_, err := bookmark.New(transport).Artworks(context.Background(), bookmark.ArtworksRequest{UserID: 7, Restrict: "public"})
+				return err
+			},
+		},
+		{
+			name: "tags",
+			call: func(transport *fakeTransport) error {
+				_, err := bookmark.New(transport).Tags(context.Background(), bookmark.TagsRequest{UserID: 7, Restrict: "public"})
+				return err
+			},
+		},
+		{
+			name: "detail",
+			call: func(transport *fakeTransport) error {
+				_, err := bookmark.New(transport).Detail(context.Background(), 9)
+				return err
+			},
+		},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			if err := test.call(&fakeTransport{getErr: transportErr}); !errors.Is(err, transportErr) {
+				t.Fatalf("error = %v, want transport error", err)
+			}
+		})
+	}
+}
+
+func TestBookmarkTagsRejectMalformedItemsAndContinuation(t *testing.T) {
+	invalidBodies := map[string]string{
+		"empty name":           `{"bookmark_tags":[{"name":"","count":1}]}`,
+		"empty next url":       `{"bookmark_tags":[],"next_url":""}`,
+		"missing continuation": `{"bookmark_tags":[],"next_url":"https://app-api.pixiv.net/v1/user/bookmark-tags/illust?tag=cat"}`,
+		"non-positive offset":  `{"bookmark_tags":[],"next_url":"https://app-api.pixiv.net/v1/user/bookmark-tags/illust?offset=0"}`,
+		"duplicate offset":     `{"bookmark_tags":[],"next_url":"https://app-api.pixiv.net/v1/user/bookmark-tags/illust?offset=2&offset=3"}`,
+	}
+	for name, body := range invalidBodies {
+		t.Run(name, func(t *testing.T) {
+			result, err := bookmark.New(&fakeTransport{body: body}).Tags(context.Background(), bookmark.TagsRequest{UserID: 7, Restrict: "public"})
+			if !errors.Is(err, protocol.ErrMalformedResponse) {
+				t.Fatalf("Tags(%s) error = %v, want malformed response", body, err)
+			}
+			if result.Items != nil {
+				t.Fatalf("malformed result contains partial items: %#v", result.Items)
+			}
+		})
+	}
+}
+
+func TestBookmarkDetailNormalizesUnbookmarkedFields(t *testing.T) {
+	for name, body := range map[string]string{
+		"false detail with restrict":     `{"bookmark_detail":{"is_bookmarked":false,"restrict":"private","tags":[]}}`,
+		"false detail with artwork tags": `{"bookmark_detail":{"is_bookmarked":false,"restrict":"","tags":[{"name":"cat","is_registered":false}]}}`,
+	} {
+		t.Run(name, func(t *testing.T) {
+			result, err := bookmark.New(&fakeTransport{body: body}).Detail(context.Background(), 9)
+			if err != nil {
+				t.Fatalf("Detail(%s): %v", body, err)
+			}
+			if result.Restrict != "" || result.Tags == nil || len(result.Tags) != 0 {
+				t.Fatalf("unbookmarked detail = %#v, want empty normalized state", result)
+			}
+		})
+	}
+}
+
+func TestBookmarkDetailExposesOnlyRegisteredBookmarkTags(t *testing.T) {
+	body := `{"bookmark_detail":{"is_bookmarked":true,"restrict":"public","tags":[{"name":"content-tag","is_registered":false},{"name":"saved-tag","is_registered":true}]}}`
+	result, err := bookmark.New(&fakeTransport{body: body}).Detail(context.Background(), 9)
+	if err != nil {
+		t.Fatalf("Detail: %v", err)
+	}
+	if result.Restrict != "public" || len(result.Tags) != 1 || result.Tags[0] != "saved-tag" {
+		t.Fatalf("bookmark detail = %#v, want only registered bookmark tags", result)
 	}
 }

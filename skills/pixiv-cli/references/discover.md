@@ -25,7 +25,7 @@ pixiv search "初音ミク" --type artwork --limit 10 --json
   reserve `--tag` for `user bookmarks` (filter) and `bookmark add` (repeatable
   bookmark tag).
 - Sort defaults to `date_desc`; `date_asc` is the only other supported value.
-- `--content-type all|illust-and-ugoira|illust|manga|ugoira`, `--ai-mode
+- `--content-type all|illust-and-ugoira|illust|illustration|manga|ugoira`, `--ai-mode
   all|exclude|only`, `--aspect-ratio all|landscape|portrait|square`,
   `--resolution all|high|medium|low`, and exact `--draw-tool` names are
   artwork-only filters. `--type` selects the entity route; it is not an
@@ -39,10 +39,11 @@ pixiv search "初音ミク" --type artwork --limit 10 --json
   `server` fails explicitly because this branch has no reliable server-filter
   evidence. Never call bookmark count a like count, and do not describe a
   candidate page as a complete site-wide result.
-- `--rating` is retained only as a compatibility diagnostic. Any non-empty
-  value is rejected because the v1 App API search contract has no verified
-  rating field; it is not a local filter. The same unsupported-field rule
-  applies when a flag is not valid for the selected entity.
+- `--rating sfw|r18|r18g|mature|all` is a local artwork filter over normalized
+  DTO `x_restrict`; it binds the canonical filter digest to the opaque cursor
+  and is never sent as an upstream `rating` or `x_restrict` field. The same
+  unsupported-field rule applies when a flag is not valid for the selected
+  entity.
 - Drawing-tool names use the fixed catalog for this CLI version. Choose an exact
   value from the [CLI reference](../../../docs/en/cli-reference.md#drawing-tool-catalog);
   a unique one-edit spelling correction is shown in the validation error.
@@ -181,6 +182,8 @@ pixiv user novels 11 --limit 20
 pixiv user bookmarks 11 --tag "初音ミク" --limit 20
 pixiv user following 11 --limit 20
 pixiv user followers 11 --limit 20
+pixiv user follow add 123456 --restrict private
+pixiv follow remove 123456
 pixiv user related 11 --limit 20
 pixiv user blocked 11 --limit 20
 ```
@@ -195,14 +198,43 @@ pixiv user search "NAME" --limit 20 --json
   has no anonymous or `related_illust_authors` fallback; an account or an
   explicit authentication error is required.
 
-- `user detail USER_ID` requires the ID (no self-default). `--json` gives the
-  full stable profile envelope.
-- `user artworks` / `bookmarks` / `following` default to the current account
-  when USER_ID is omitted.
-- `user detail` accepts only the ID. If the user gives a `pixiv.net/users/<id>`
-  URL, extract its numeric ID. For a name, use `user search` while
-  authenticated. Do not substitute an artwork search or label its authors as a
-  username-search result.
+- `user detail USER_ID` requires a numeric ID (no self-default). `--json` gives
+  the full stable profile envelope.
+- `user artworks` / `novels` / `bookmarks` / `following` / `followers` /
+  `blocked` default to the current account when USER_ID is omitted; `detail`
+  and `related` require an explicit numeric ID.
+- User detail and user-list routes accept numeric USER_ID values only. A
+  `pixiv.net/users/<id>` URL is rejected rather than treated as an implicit
+  namespace conversion. For a name, use `user search` while authenticated. Do
+  not substitute an artwork search or label its authors as a username-search
+  result.
+- Follow mutations accept a positive numeric USER_ID or a canonical user
+  Record. `pixiv user follow add/remove` and the root `pixiv follow
+  add/remove` compatibility route share the same owner; `follow add
+  --restrict` accepts `public|private` and defaults to `public`. User profile
+  URLs are rejected locally, and successful mutations keep the empty-success-
+  output contract.
+
+## Followed and latest feeds
+
+```
+pixiv timeline following --type artwork --content-type manga --limit 20
+pixiv timeline following --type novel --restrict private --limit 20
+pixiv timeline latest --type artwork --content-type illust --limit 20
+pixiv timeline latest --type novel --limit 20
+```
+
+- `--type` selects the entity (`artwork` or `novel`). It is not an artwork
+  subtype selector; use `--content-type` for artwork subtype semantics.
+- Following artwork accepts local `all|illust-and-ugoira|illust|manga|ugoira`
+  filtering and defaults to `all`. The upstream following endpoint only takes
+  `restrict`, so the subtype is filtered from returned DTOs and must not be
+  sent as an upstream query parameter. A positive `--limit` continues across
+  upstream batches until the logical result is filled or the current cursor
+  ends.
+- Latest artwork defaults to `illust` and accepts only `illust|manga`; do not
+  use search's broader `all` selector. Explicit `--content-type` is invalid
+  for either novel timeline route.
 
 ## Rankings and recommendations
 
@@ -210,29 +242,43 @@ pixiv user search "NAME" --limit 20 --json
 pixiv ranking --mode day --limit 10
 pixiv ranking --mode week --date 2026-07-01 --limit 10
 pixiv ranking --mode week_r18 --limit 10
+pixiv ranking --type novel --mode week --limit 10
 pixiv recommended --type artwork --limit 10
+pixiv recommended --type artwork --content-type manga --limit 10
 pixiv recommended --type all --limit 5
 ```
 
-- `ranking` supports `day`, `day_male`, `day_female`, `week`, `week_original`,
+- `ranking` defaults to artwork; pass `--type novel` for novel ranking. The
+  artwork-only `--date YYYY-MM-DD` option is rejected for novel ranking.
+  Both entity types support `day`, `day_male`, `day_female`, `week`, `week_original`,
   `week_rookie`, `month`, `day_manga`, `week_manga`, `month_manga`,
   `week_rookie_manga`, `day_r18`, `day_male_r18`, `day_female_r18`,
   `week_r18`, and `week_r18g`. The final nine require authentication; never
   substitute a failed extended mode with `day`.
 - `recommended` always needs authentication and a kind. Use the typed
-  `--type` flag; for `all`, inspect the actual output shape and keep the
-  returned categories separate rather than assuming one flat list.
+  `--type` flag; for artwork, `--content-type all|illust|manga` is a local
+  filter over returned artwork DTO kinds and is not sent as the upstream
+  `content_type` parameter. For `all`, inspect the actual output shape and
+  keep the returned categories separate rather than assuming one flat list.
 
-## Curate: bookmarks and follows (write ops)
+## Curate: bookmarks and follows
 
 ```
 pixiv bookmark add 129543211
 pixiv follow add 11
 pixiv bookmark list --type artwork --limit 20
+pixiv bookmark list USER_ID_OR_URL --type all --limit 20 --json
 pixiv bookmark tags --limit 20
-pixiv bookmark detail 129543211 --json
+pixiv bookmark tags USER_ID_OR_URL --type all --limit 20 --json
+pixiv bookmark detail ARTWORK_ID_OR_NOVEL_ID_OR_URL --type novel --json
 ```
 
-State the target ID in one line before executing (SKILL.md operation tiers).
-`remove` variants are symmetrical. These need authentication; on an anonymous
-session report that a login is required instead of attempting fallback.
+`bookmark list` and `bookmark tags` accept a user ID or user URL. Their
+`--type all` mode reads artwork first and novels second, applies one logical
+page across both streams, and keeps typed records/tags separate; a failure in
+either stream fails the aggregate before JSON/NDJSON is emitted. `bookmark
+detail` accepts an artwork or novel ID/URL with a matching `--type`, but not
+`all`. State the target ID in one line before executing (SKILL.md operation
+tiers). `remove` variants are symmetrical. These need authentication; on an
+anonymous session report that a login is required instead of attempting
+fallback.

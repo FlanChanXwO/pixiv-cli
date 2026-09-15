@@ -172,6 +172,47 @@ for {
 同一 Client 可以继续，其他 Client 或进程会返回 `InvalidCursor`。通过
 `pixiv.Open` 创建的 Client 则把 cursor 绑定到已验证的账号 identity。
 
+> [!WARNING]
+> Cursor 编码只提供续读状态和绑定校验，不提供密码学意义上的真实性校验。
+> Cursor 不是鉴权凭据；不要把 secret 放进 identity、context 或 payload，也不要在
+> 不可信边界接收 cursor 时依赖其防篡改能力。`SearchArtworks` 的 binding version
+> 变更还要求 shared collector、SDK 和调用方作为整体回滚；已经发出的 version-2
+> cursor 不能由 version-2 之前的搜索实现消费。
+
+### 作品搜索批内续读
+
+`SearchArtworks` 的普通批次 cursor 与 checkpoint 均使用 binding version **2**。
+旧版本 1 搜索 cursor 返回 `InvalidCursor`；清除旧 cursor 后重新查询。
+其他 operation 的 binding version 与 `sdk.Cursor` 外层编码不变。
+
+在批次内停止时，使用**取得该批次的原请求**调用
+`client.CheckpointSearchArtworks(request, consumed)`，不能传入该批次的 `page.Next`。
+`consumed` 为正数，按 SDK 规范化及 AI 筛选后的条目计数，包含调用方随后过滤或 Skip
+消费的项目。从已恢复请求再次建立 checkpoint 时累计消费位置；批次全部消费后使用
+`page.Next`。checkpoint 构造不联网；超出批次的位置在恢复请求时返回 `InvalidCursor`，
+非正数或整数溢出返回 `InvalidArgument`。
+
+将返回 cursor 通过同一 `SearchArtworksRequest.Cursor` 恢复，可用 Text/JSON codec 持久化。
+重复所有查询字段和可选 `CursorContext`；后者由调用方表达本地筛选语义，只进入摘要，
+不发送上游。本地筛选语义改变时必须改变该 context。CLI/MCP 收藏过滤搜索共用实际策略
+和收藏上下界的摘要；本轮不新增 CLI flag 或 MCP 字段。
+
+`SearchArtworks` cursor 绑定 `Open/OpenWith` 的已验证账号；没有 verified identity 的
+`New/NewWith` 只能同一 client 实例恢复。跨账号或跨实例返回 `InvalidCursor`。
+恢复顺序为上游批次 → SDK 规范化及 AI 筛选 → 已消费前缀 → 调用方筛选与逻辑 limit。
+稳定源序列下可避免遗漏和重复；重新请求实时批次不构成快照，无法保证上游插入、删除、
+重排时的数据稳定性。保存的位置超出当前批次时返回 `InvalidCursor`，不静默重启。
+
+`SearchNovels` 与 `SearchUsers` 刻意采用 public-scoped cursor：cursor 绑定
+product、operation、binding version 与 query，不绑定 verified account 或 client
+instance。相同查询的 cursor 可以交给另一个 client 恢复；这是冻结的源码兼容策略，
+不表示所有搜索 operation 都属于账号作用域。
+
+接受上游 continuation 的分页 operation，其所有非零 continuation 都必须是正数的
+typed position。offset 形式会在发起 transport 前拒绝零值、负值和溢出值；显式 value
+形式会拒绝 `last_order`、`max_bookmark_id`、`max_illust_id` 等非正数。上文所述的
+recommended feed 仍保留显式 `offset=0` 的续读例外。
+
 ## Pixiv 读取操作
 
 | 操作 | 入参要点 | 返回 | 常见错误 |
@@ -180,17 +221,64 @@ for {
 | `SearchNovels` | 关键词、target、排序、duration | `Page[Novel]` | `InvalidArgument` |
 | `SearchUsers` | 关键词 | `Page[User]` | `InvalidArgument` |
 | `ArtworkRanking` | mode（默认 `day`）、可选 `YYYY-MM-DD` | `Page[Artwork]` | `InvalidArgument` |
+| `RecommendedArtworks` | cursor | `Page[Artwork]` | `InvalidCursor` |
+| `FollowingArtworks` | `restrict`（`public`/`private`）、cursor | `Page[Artwork]` | `InvalidArgument`、`InvalidCursor` |
+| `LatestArtworks` | content type（默认 `illust` 或 `manga`）、cursor | `Page[Artwork]` | `InvalidArgument`、`InvalidCursor` |
+| `NovelRanking` | mode（默认 `day`）、cursor | `Page[Novel]` | `InvalidArgument`、`InvalidCursor` |
+| `RecommendedNovels` | cursor | `Page[Novel]` | `InvalidCursor` |
+| `FollowingNovels` | `restrict`（`public`/`private`）、cursor | `Page[Novel]` | `InvalidArgument`、`InvalidCursor` |
+| `LatestNovels` | cursor | `Page[Novel]` | `InvalidCursor` |
+| `Stamps` | 无 query 或 cursor 字段 | `[]Stamp` | `MalformedUpstreamResponse`、已分类的上游/传输错误 |
 | `Artwork` / `Novel` / `User` | 正数 typed ID | 详情记录 | `NotFound`、`InvalidArgument` |
 | `ArtworkSeries` / `NovelSeries` | 正数 series ID、cursor | 系列分页（novel 还返回系列 metadata） | `InvalidCursor` |
 | `ArtworkComments` / `NovelComments` | 正数 ID、cursor | `CommentPage` | `NotFound` |
-| `UserArtworkBookmarks` / `UserArtworkBookmarkTags` / `UserNovelBookmarks` | `UserID`、`Restrict`、`tag`、cursor | typed 分页 | `InvalidArgument`、`InvalidCursor` |
+| `PostArtworkComment` / `ReplyArtworkComment` / `DeleteArtworkComment` | 正数 artwork ID；reply 还要求正数 parent comment ID | post/reply 返回 `CommentMutationResult`；delete 返回 `error` | `InvalidArgument`、`MalformedUpstreamResponse`、已分类的上游/传输错误 |
+| `StampArtworkComment` | 正数 artwork ID、可选 comment（sticker-only 时为空）、正数 stamp ID | `CommentMutationResult` | `InvalidArgument`、`MalformedUpstreamResponse`、已分类的上游/传输错误 |
+| `PostNovelComment` / `ReplyNovelComment` / `DeleteNovelComment` | 正数 novel ID；reply 还要求正数 parent comment ID | post/reply 返回 `CommentMutationResult`；delete 返回 `error` | `InvalidArgument`、`MalformedUpstreamResponse`、已分类的上游/传输错误 |
+| `StampNovelComment` | 正数 novel ID、可选 comment（sticker-only 时为空）、正数 stamp ID | `CommentMutationResult` | `InvalidArgument`、`MalformedUpstreamResponse`、已分类的上游/传输错误 |
+| `UserArtworkBookmarks` / `UserArtworkBookmarkTags` / `UserNovelBookmarks` / `UserNovelBookmarkTags` | `UserID`、`Restrict`、`tag`、cursor | typed 分页 | `InvalidArgument`、`InvalidCursor` |
+| `ArtworkBookmark` / `NovelBookmark` | 正数 artwork 或 novel ID | 收藏详情状态 | `InvalidArgument`、`MalformedUpstreamResponse`、已分类的上游/传输错误 |
+| `AddArtworkBookmark` / `RemoveArtworkBookmark`（旧 `AddBookmark` / `RemoveBookmark`） | 正数 artwork ID；add 接受 `Restrict` 与 tags | `error` | `InvalidArgument`、已分类的上游/传输错误 |
+| `AddNovelBookmark` / `RemoveNovelBookmark` | 正数 novel ID；add 接受 `Restrict` 与 tags | `error` | `InvalidArgument`、已分类的上游/传输错误 |
+
+`NovelContent` 为兼容旧 v1 调用方而保留导出符号，但已标记为 deprecated：已
+rejected 的 `/v1/novel/content` App API endpoint 与被排除的 WebView path 都不会
+调用，方法不产生网络请求并返回 `ContentUnavailable`。当前 v1 contract 没有正文
+endpoint 替代入口。
 
 关键语义：
 
 - `CurrentUser` 通过 `/v1/user/detail`、已验证的正数账号 UID 和 Android App API filter 读取认证账号；不再调用已失效的 `/v1/user/me`。
 - `SearchAIModeOnly` 按规范化后的 `Artwork.AIType == 2` 对当前返回批次做本地筛选；该 mode 会进入 cursor 绑定，因此不能把另一种 AI mode 的续页 cursor 复用过来。
+- ranking cursor 会绑定所选 `mode`（artwork ranking 还绑定 `date`）。`NovelRanking` 固定发送 App API filter `for_android`，首页不发送 `offset`，续页只使用上游返回的正数 `offset`。
+- `RecommendedArtworks` 与 `RecommendedNovels` 保留“未提供 continuation”和显式 `offset=0` 的区别；只有续读 cursor 时才发送后者。recommended artwork subtype 不属于当前 public SDK request，不能根据调用方本地 filter 推断或补发。
+- `RelatedUsers`、`UserFollowing`、`UserFollowers` 与 `UserBlockedUsers` 都是 identity-scoped cursor operation。存在已验证账号时，cursor 绑定该账号；否则只允许同一 client instance 继续使用。`UserFollowing` 与 `UserFollowers` 会在 transport 和 cursor 绑定前都把空 `restrict` 归一为 `public`。
+- `FollowingArtworks` 与 `FollowingNovels` 会把空 `restrict` 归一为 `public`，在 transport 前拒绝其他值，并把解析后的值绑定到 cursor query。
+- `LatestArtworks` 将空 content type 解析为 `illust`，并接受已冻结的 `manga` subtype；解析后的 subtype 会进入 cursor binding。该操作拒绝 `all`、`illust-and-ugoira` 与 `ugoira`，其兼容的 `offset` 与 `max_illust_id` cursor 形式都必须携带正数。
+- `LatestNovels` 始终发送固定的 App API filter `for_android`。其 cursor 携带上游正数 `max_novel_id`，SDK 不 fallback 到 offset continuation；续读时应重复原始 request 字段。
 - 只有上游明确提供时才填充评论总数和访问控制 metadata。成功的空列表使用非 nil 的空 `Items` slice 表示，不伪造错误或总数。
-- `ArtworkBookmark` 用空 `Restrict` 与空 tags 表示当前作品未收藏；`AddBookmark` 校验可见性值，不把未知值静默交给服务端默认处理。
+- `Stamps` 按认证态 `/v1/stamps` read contract 请求，不发送 query 或 continuation。每个 `Stamp` 只公开正数稳定 ID 与 `ImageResource`；当前 contract 不宣称尺寸或其他未冻结的 wire 字段。stamp 图片使用与其他 Pixiv 媒体相同的 opaque resource 边界，新 client 打开时会重新从 `/v1/stamps` 解析 locator。
+- `PostArtworkComment`/`ReplyArtworkComment` 与
+  `PostNovelComment`/`ReplyNovelComment` 使用各自 namespace 的 comment add
+  endpoint；只有上游响应包含正数 `comment_id` 时，才返回
+  `CommentMutationResult.CommentID`。该 ID 不是读回确认；SDK 不猜测最新评论，
+  不执行 read-back，也不自动重放不确定的 mutation。
+- `DeleteArtworkComment` 与 `DeleteNovelComment` 使用各自 namespace 的
+  delete endpoint，转发调用方提供的正数 `comment_id`。SDK 只负责本地形状校验
+  与上游结果分类；归属、namespace 证明、read-back 与清理由 application 负责。
+- `StampArtworkComment` 与 `StampNovelComment` 使用对应 namespace 的
+  comment add endpoint，把 `stamp_id` 作为独立字段发送。`comment` 可选；当前
+  App API 的 sticker-only wire 形态要求它为空。不会把 stamp 编码为 reply parent，
+  也不会静默退化为 text/reply 语义；返回 ID 同样遵循直接响应、无 read-back 规则。
+- `ArtworkBookmark` 与 `NovelBookmark` 用空 `Restrict` 与空 tags 表示当前对象未收藏。`NovelBookmark` 与
+  `UserNovelBookmarkTags` 当前遵循 candidate upstream read contract：小说收藏 tags 暂无续页，非零 cursor
+  会被拒绝，直到该 contract 完成验证。public SDK 现在以 additive method 暴露
+  `AddNovelBookmark` 与 `RemoveNovelBookmark` 的小说收藏 mutation wire；status-only 成功不等于读回确认。
+- `AddArtworkBookmark` 与 `RemoveArtworkBookmark` 是显式 artwork mutation method。旧的 `AddBookmark` 与
+  `RemoveBookmark` wrapper 保留原签名和 error-operation label，并委托同一套校验与 wire 语义。add 的空
+  `Restrict` 默认 `public`，不支持的值在本地拒绝。
+- `AddNovelBookmark` 与 `RemoveNovelBookmark` 使用 namespace-specific novel bookmark add/delete endpoint。
+  add 的空 `Restrict` 默认 `public`，不支持的值在本地拒绝；两者都不读回状态，也不会自动重放不确定的 mutation。
 - `BookmarkMin` 与 `BookmarkMax` 是可选、闭区间、非负的 App API 候选边界。public SDK 只负责校验并转发为 `bookmark_num_min`/`bookmark_num_max`，不做 Premium 前置探测，不宣称全局完备，也不静默切换候选策略。application 若做本地精确复核，应另行报告已解析的策略与结果完备性。
 
 ## 错误
@@ -264,9 +352,9 @@ path 非空的 HTTPS URL；host 必须是官方 Pixiv media host（`i.pximg.net`
 
 运行时 product model 与 CLI/MCP JSON 边界的值是有意分离的。`sdk.Resource` 在进程内 streaming 操作中可以带当前可用的 `URL`、转发所需的 `RequestHeaders` 和 `ExpiresAt`；这些字段绝不进入输出 DTO。
 
-序列化结果时使用显式的逐字段转换器：Pixiv 使用 `pixiv.ToArtworkDTO`、`pixiv.ToNovelDTO`、`pixiv.ToUserDTO`、`pixiv.ToUserDetailDTO`、`pixiv.ToUserPreviewDTO`、`pixiv.ToCommentDTO`、`pixiv.ToNovelContentDTO`、`pixiv.ToUgoiraMetadataDTO` 及其相关转换器；FANBOX 使用对应的 `fanbox.To*DTO` 转换 creator、post、block、asset、user 与 tag。`sdk.ToResourceDTO` 只输出 opaque `ref` 与可选的 `requires_credentials` metadata。CLI/MCP 只编码这些 DTO、管道 `Record` 与 typed envelope，不反射遍历或直接 JSON 编码运行时 product model。
+序列化结果时使用显式的逐字段转换器：Pixiv 使用 `pixiv.ToArtworkDTO`、`pixiv.ToNovelDTO`、`pixiv.ToUserDTO`、`pixiv.ToUserDetailDTO`、`pixiv.ToUserPreviewDTO`、`pixiv.ToCommentDTO`、`pixiv.ToStampDTO`、`pixiv.ToNovelContentDTO`、`pixiv.ToUgoiraMetadataDTO` 及其相关转换器；FANBOX 使用对应的 `fanbox.To*DTO` 转换 creator、post、block、asset、user 与 tag。`sdk.ToResourceDTO` 只输出 opaque `ref` 与可选的 `requires_credentials` metadata。CLI/MCP 只编码这些 DTO、管道 `Record` 与 typed envelope，不反射遍历或直接 JSON 编码运行时 product model。
 
-Pixiv 的 `Resource.Ref` 只包含资源 kind、稳定 ID、page 和可选 variant，绝不嵌入当前或签名媒体 URL。SDK 会优先复用当前 Client 保存的 locator，或重新读取对应 artwork、novel、user、ugoira 或小说正文 metadata 后再打开；解析出的 URL 与每次 redirect 都会再次通过 allowlist 校验。`SaveResource` 通过原子目标写入；上游提供 `Content-Length` 时，`SaveProgress.Total` 会报告该值。资源请求只使用显式允许的 header，绝不发送调用方 Cookie jar。
+Pixiv 的 `Resource.Ref` 只包含资源 kind、稳定 ID、page 和可选 variant，绝不嵌入当前或签名媒体 URL。SDK 会优先复用当前 Client 保存的 locator，或重新读取对应 artwork、novel、user、ugoira、小说正文或 stamp metadata 后再打开；解析出的 URL 与每次 redirect 都会再次通过 allowlist 校验。`SaveResource` 通过原子目标写入；上游提供 `Content-Length` 时，`SaveProgress.Total` 会报告该值。资源请求只使用显式允许的 header，绝不发送调用方 Cookie jar。
 
 FANBOX 的 `Resource.Ref` 只包含稳定 identity（资源 kind、所属 creator 或 post，以及 attachment id），绝不嵌入当前可用或签名媒体 URL，因此 locator 轮换不会改变缓存键，存储的 ref 可跨 session 重新打开。`OpenResource` 与 `SaveResource` 优先复用 session 内 locator，否则通过重新拉取所属 creator 或 post 并按稳定 id 定位附件来重新解析出新鲜且经 allowlist 校验的 locator。session cookie 只发送给需要凭据的 `downloads.fanbox.cc` host，绝不发送给公开 CDN 或第三方 host；`RequiresCredentials` 表示该 locator 仍需要 session。
 
