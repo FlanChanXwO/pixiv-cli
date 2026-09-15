@@ -121,8 +121,8 @@ func TestArtworkRankingDefaultPreservesLegacyRoute(t *testing.T) {
 	if err := json.Unmarshal([]byte(strings.TrimSpace(output.String())), &record); err != nil {
 		t.Fatalf("decode artwork record: %v; output=%q", err, output.String())
 	}
-	if record["id"] != "9401" || record["type"] != "illustration" {
-		t.Fatalf("artwork record = %#v, want illustration 9401", record)
+	if record["id"] != "9401" || record["type"] != "illust" {
+		t.Fatalf("artwork record = %#v, want illust 9401", record)
 	}
 }
 

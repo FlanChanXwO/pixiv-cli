@@ -67,7 +67,7 @@ func TestCommandRecommendedContentTypeFiltersAcrossPages(t *testing.T) {
 		wantType    string
 		wantIDs     []string
 	}{
-		{name: "illust", contentType: "illust", wantType: "illustration", wantIDs: []string{"7301", "7303"}},
+		{name: "illust", contentType: "illust", wantType: "illust", wantIDs: []string{"7301", "7303"}},
 		{name: "manga", contentType: "manga", wantType: "manga", wantIDs: []string{"7302", "7304"}},
 	} {
 		t.Run(test.name, func(t *testing.T) {

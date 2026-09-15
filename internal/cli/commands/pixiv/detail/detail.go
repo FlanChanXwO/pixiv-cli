@@ -194,6 +194,9 @@ func (a command) runRecords(cmd *cobra.Command, opts Options) error {
 			return err
 		}
 		if err := validateContentEntity(opts.content, entity); err != nil {
+			if sdk.ReasonOf(err) == sdk.ContentUnavailable {
+				return pipeline.FatalRecordPipeline(err)
+			}
 			return err
 		}
 		id, err := pipeline.RequiredRecordID(input)
@@ -409,7 +412,7 @@ func parseEntityIDOrURL(arg, entity string) (int64, error) {
 	}
 	ref, err := pixiv.ParseURL(value)
 	if err != nil {
-		return 0, errors.New("argument must be an entity ID or a supported Pixiv URL")
+		return 0, sdk.NewError("pixiv", "detail", sdk.InvalidArgument, sdk.WithDetail("argument must be an entity ID or a supported Pixiv URL"))
 	}
 	want := map[string]pixiv.ReferenceKind{
 		"artwork": pixiv.ReferenceKindArtwork,
@@ -417,7 +420,7 @@ func parseEntityIDOrURL(arg, entity string) (int64, error) {
 		"user":    pixiv.ReferenceKindUser,
 	}
 	if ref.Kind != want[entity] {
-		return 0, fmt.Errorf("URL does not name a supported Pixiv %s", entity)
+		return 0, sdk.NewError("pixiv", "detail", sdk.InvalidArgument, sdk.WithDetail(fmt.Sprintf("URL does not name a supported Pixiv %s", entity)))
 	}
 	return ref.ID, nil
 }

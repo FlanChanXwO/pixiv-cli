@@ -67,11 +67,11 @@ func TestFeedRecommendationSchemasMatchLegacyContracts(t *testing.T) {
 func TestRecommendedKindSelectsArtworkSubtype(t *testing.T) {
 	for _, test := range []struct {
 		kind           string
-		wantType       pixiv.ArtworkKind
+		wantType       string
 		wantPagination string
 	}{
-		{kind: "illust", wantType: pixiv.ArtworkKindIllustration, wantPagination: "illust"},
-		{kind: "manga", wantType: pixiv.ArtworkKindManga, wantPagination: "manga"},
+		{kind: "illust", wantType: "illust", wantPagination: "illust"},
+		{kind: "manga", wantType: "manga", wantPagination: "manga"},
 	} {
 		t.Run(test.kind, func(t *testing.T) {
 			illust := testSDKIllust(101, "illust", 1)
@@ -94,7 +94,7 @@ func TestRecommendedKindSelectsArtworkSubtype(t *testing.T) {
 				t.Fatalf("recommended %s records=%#v", test.kind, structured["records"])
 			}
 			record, ok := records[0].(map[string]any)
-			if !ok || record["type"] != string(test.wantType) {
+			if !ok || record["type"] != test.wantType {
 				t.Fatalf("recommended %s record=%#v, want type %q", test.kind, records[0], test.wantType)
 			}
 			pagination, ok := structured["pagination"].(map[string]any)

@@ -107,7 +107,7 @@ func TestBookmarkListAllUsesOneLogicalLimitAndTypedNDJSON(t *testing.T) {
 		kind string
 		url  string
 	}{
-		{id: "1001", kind: "illustration", url: "https://www.pixiv.net/artworks/1001"},
+		{id: "1001", kind: "illust", url: "https://www.pixiv.net/artworks/1001"},
 		{id: "2001", kind: "novel", url: "https://www.pixiv.net/novel/show.php?id=2001"},
 	}
 	for index, line := range lines {

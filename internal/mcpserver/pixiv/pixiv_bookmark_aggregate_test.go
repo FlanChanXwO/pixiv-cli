@@ -48,7 +48,7 @@ func TestBookmarkListAllUsesArtworkThenNovelWithOneLogicalPageBudget(t *testing.
 	}
 	var firstOut bookmarkAggregateOutput
 	decodeStructured(t, first, &firstOut)
-	if len(firstOut.Records) != 1 || firstOut.Records[0].ID != "11" || firstOut.Records[0].Type != "illustration" || !firstOut.Pagination.HasMore || firstOut.Pagination.NextPage == nil || *firstOut.Pagination.NextPage != 2 {
+	if len(firstOut.Records) != 1 || firstOut.Records[0].ID != "11" || firstOut.Records[0].Type != "illust" || !firstOut.Pagination.HasMore || firstOut.Pagination.NextPage == nil || *firstOut.Pagination.NextPage != 2 {
 		t.Fatalf("first aggregate page=%+v, want artwork page with novel continuation", firstOut)
 	}
 
