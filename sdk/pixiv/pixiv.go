@@ -38,7 +38,6 @@ import (
 	userrecommended "github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/endpoint/user/recommended"
 	userrelated "github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/endpoint/user/related"
 	usersearch "github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/endpoint/user/search"
-	uservisibility "github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/endpoint/user/visibility"
 	"github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/oauth"
 	"github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/resource"
 	"github.com/FlanChanXwO/pixiv-cli/internal/shared/diagnostics"
@@ -111,7 +110,6 @@ type Client struct {
 	userRecommended    *userrecommended.Client
 	userRelated        *userrelated.Client
 	userSearch         *usersearch.Client
-	userVisibility     *uservisibility.Client
 	stamps             *stamps.Client
 	resClient          *resource.Client
 	opts               Options
@@ -243,7 +241,6 @@ func newClient(httpClient *http.Client, selfHTTP bool, accessToken string, optio
 		userRecommended:    userrecommended.New(app),
 		userRelated:        userrelated.New(app),
 		userSearch:         usersearch.New(app),
-		userVisibility:     uservisibility.New(app),
 		stamps:             stamps.New(app),
 		resClient:          resource.NewApp(httpClient),
 		opts:               options,
