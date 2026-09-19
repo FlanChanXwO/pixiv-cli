@@ -12,11 +12,14 @@ sh scripts/build.sh
 真实 SDK e2e 默认跳过；需要本机凭据时显式运行（Pixiv 读本地 `pixiv-cli.db` 选中账号，FANBOX 读 macOS Keychain 授权 session）：
 
 ```bash
+PIXIV_E2E_READ_USER_ID=<secondary-uid> \
 PIXIV_SDK_E2E=1 go test ./e2e -run TestRealPixivSDKRead -count=1 -v
 FANBOX_E2E_CREATOR_ID=<non-secret-creator-id> FANBOX_E2E_TAG=<non-secret-tag> \
 FANBOX_E2E_POST_ID=<non-secret-post-id> FANBOX_E2E_POST_URL=<non-secret-post-url> \
 FANBOX_SDK_E2E=1 go test ./e2e -run TestRealFanboxSDKRead -count=1 -v
 ```
+
+`PIXIV_E2E_READ_USER_ID` 是可选的非 secret 本地账号 UID selector；显式设置时必须命中本地已保存账号，否则在联网前 fail closed，且不会 fallback 到默认账号。release evidence 应显式选择 secondary account；未设置时保留默认账号兼容行为。
 
 FANBOX E2E target variables are explicit non-secret test targets; the session remains in the macOS Keychain.
 

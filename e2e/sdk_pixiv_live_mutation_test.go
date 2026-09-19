@@ -3,6 +3,7 @@ package e2e
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/url"
@@ -119,6 +120,131 @@ func TestCommentTargetCannotBeProbedWithoutComments(t *testing.T) {
 	}
 }
 
+func TestCommentTargetCanBeProbedPreservesOpaqueNumericAccessControl(t *testing.T) {
+	for _, numeric := range []int64{0, 1} {
+		numeric := numeric
+		page := pixivsdk.CommentPage{AccessControl: &pixivsdk.CommentAccessControl{NumericValue: &numeric}}
+		if !commentTargetCanBeProbed(page) {
+			t.Fatalf("numeric comment_access_control=%d is opaque and must not be interpreted as denied", numeric)
+		}
+	}
+}
+
+func TestCommentTargetCanBeProbedHonorsLegacyObjectAccessControl(t *testing.T) {
+	for _, test := range []struct {
+		name string
+		page pixivsdk.CommentPage
+		want bool
+	}{
+		{name: "denied", page: pixivsdk.CommentPage{AccessControl: &pixivsdk.CommentAccessControl{}}, want: false},
+		{name: "allowed", page: pixivsdk.CommentPage{AccessControl: &pixivsdk.CommentAccessControl{CanComment: true}}, want: true},
+		{name: "locked", page: pixivsdk.CommentPage{AccessControl: &pixivsdk.CommentAccessControl{CanComment: true, IsLocked: true}}, want: false},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			if got := commentTargetCanBeProbed(test.page); got != test.want {
+				t.Fatalf("commentTargetCanBeProbed(%+v) = %v, want %v", test.page.AccessControl, got, test.want)
+			}
+		})
+	}
+}
+
+func TestLiveCommentMutationUsesSeparatePostDeleteRead(t *testing.T) {
+	writeReads := 0
+	cleanupReads := 0
+	result := runLiveCommentMutation(
+		42,
+		func() (int64, error) { return 99, nil },
+		func(commentID int64) (bool, error) {
+			writeReads++
+			return commentID == 99, nil
+		},
+		func(commentID int64) error {
+			if commentID != 99 {
+				t.Fatalf("delete comment id = %d, want 99", commentID)
+			}
+			return nil
+		},
+		func(commentID int64) (bool, error) {
+			cleanupReads++
+			return false, nil
+		},
+	)
+	if result.status != "verified" || !result.readBack || !result.cleanup || result.writes != 1 {
+		t.Fatalf("result = %+v, want verified write/read/delete/absence", result)
+	}
+	if writeReads != 1 || cleanupReads != 1 {
+		t.Fatalf("read calls = write:%d cleanup:%d, want 1/1", writeReads, cleanupReads)
+	}
+}
+
+func TestReplyCleanupReadTreatsOnlyNotFoundAsAbsent(t *testing.T) {
+	present, err := normalizeReplyCleanupRead(false, protocol.HTTPStatus(http.StatusNotFound))
+	if err != nil || present {
+		t.Fatalf("404 cleanup read = present:%v err:%v, want absent without error", present, err)
+	}
+	present, err = normalizeReplyCleanupRead(false, protocol.HTTPStatus(http.StatusInternalServerError))
+	if err == nil || present {
+		t.Fatalf("500 cleanup read = present:%v err:%v, want preserved error", present, err)
+	}
+	var failure protocol.Failure
+	if !errors.As(err, &failure) || failure.StatusCode != http.StatusInternalServerError {
+		t.Fatalf("cleanup error = %v, want preserved HTTP 500 failure", err)
+	}
+}
+
+func TestLiveCommentMutationKeepsWriteReadNotFoundStrict(t *testing.T) {
+	result := runLiveCommentMutation(
+		42,
+		func() (int64, error) { return 99, nil },
+		func(int64) (bool, error) { return false, protocol.HTTPStatus(http.StatusNotFound) },
+		func(int64) error { return nil },
+		func(int64) (bool, error) { return false, nil },
+	)
+	if result.status != "correction" || result.readBack || !result.cleanup {
+		t.Fatalf("result = %+v, want strict write read-back failure with confirmed cleanup", result)
+	}
+}
+
+func TestLiveCommentMutationRejectsPostDeletePresence(t *testing.T) {
+	result := runLiveCommentMutation(
+		42,
+		func() (int64, error) { return 99, nil },
+		func(int64) (bool, error) { return true, nil },
+		func(int64) error { return nil },
+		func(int64) (bool, error) { return true, nil },
+	)
+	if result.status != "correction" || result.cleanup {
+		t.Fatalf("result = %+v, want cleanup unconfirmed while deleted comment remains visible", result)
+	}
+}
+
+func TestValidateRequiredCommentMutationEvidenceRequiresEveryPublicMutation(t *testing.T) {
+	verified := liveMutationResult{status: "verified", writes: 1, readBack: true, cleanup: true}
+	all := []namedLiveMutationResult{
+		{name: "artwork_comment_text", result: verified},
+		{name: "artwork_comment_reply", result: verified},
+		{name: "artwork_comment_stamp", result: verified},
+		{name: "novel_comment_text", result: verified},
+		{name: "novel_comment_reply", result: verified},
+		{name: "novel_comment_stamp", result: verified},
+	}
+	if err := validateRequiredCommentMutationEvidence(all); err != nil {
+		t.Fatalf("all verified evidence rejected: %v", err)
+	}
+
+	missingNovelReply := append([]namedLiveMutationResult(nil), all[:4]...)
+	missingNovelReply = append(missingNovelReply, all[5])
+	if err := validateRequiredCommentMutationEvidence(missingNovelReply); err == nil || !strings.Contains(err.Error(), "novel_comment_reply") {
+		t.Fatalf("missing novel reply error = %v", err)
+	}
+
+	blocked := append([]namedLiveMutationResult(nil), all...)
+	blocked[0].result = blockedMutationResult(0, sdk.NewError("pixiv", "Comments", sdk.ContentUnavailable))
+	if err := validateRequiredCommentMutationEvidence(blocked); err == nil || !strings.Contains(err.Error(), "artwork_comment_text") {
+		t.Fatalf("blocked required mutation error = %v", err)
+	}
+}
+
 // TestRealPixivSDKLiveCommentAccessControlProbe 记录当前 wire scalar，不给任意
 // 整数赋予业务含义。它与 mutation runner 分离：发现 scalar 只是只读证据，不是
 // 权限 preflight。
@@ -154,21 +280,18 @@ func TestRealPixivSDKLiveCommentMutationSlice(t *testing.T) {
 	client := session.client
 	stamps, err := client.Stamps(ctx, pixivsdk.StampsRequest{})
 	if err != nil {
-		result := blockedMutationResult(0, err)
-		recordLiveMutation(t, "artwork_comment_stamp", result)
-		recordLiveMutation(t, "novel_comment_stamp", result)
-		return
+		t.Fatalf("load stamps for explicit comment mutation evidence: %v", err)
 	}
 	if len(stamps) == 0 || stamps[0].ID <= 0 {
-		result := blockedMutationResult(0, fmt.Errorf("no usable stamp returned"))
-		recordLiveMutation(t, "artwork_comment_stamp", result)
-		recordLiveMutation(t, "novel_comment_stamp", result)
-		return
+		t.Fatal("explicit comment mutation evidence requires at least one usable stamp")
 	}
 
 	stampID := stamps[0].ID
-	runArtworkCommentMutations(t, ctx, session, stampID)
-	runNovelCommentMutations(t, ctx, session, stampID)
+	results := runArtworkCommentMutations(t, ctx, session, stampID)
+	results = append(results, runNovelCommentMutations(t, ctx, session, stampID)...)
+	if err := validateRequiredCommentMutationEvidence(results); err != nil {
+		t.Fatalf("explicit live comment mutation evidence is incomplete: %v", err)
+	}
 }
 
 func readRawCommentIDs(ctx context.Context, raw *appapi.Client, path, idKey string, contentID, userID int64) (map[int64]struct{}, error) {
@@ -606,6 +729,38 @@ type liveMutationResult struct {
 	evidence  int
 }
 
+type namedLiveMutationResult struct {
+	name   string
+	result liveMutationResult
+}
+
+var requiredCommentMutationNames = []string{
+	"artwork_comment_text",
+	"artwork_comment_reply",
+	"artwork_comment_stamp",
+	"novel_comment_text",
+	"novel_comment_reply",
+	"novel_comment_stamp",
+}
+
+func validateRequiredCommentMutationEvidence(results []namedLiveMutationResult) error {
+	byName := make(map[string]liveMutationResult, len(results))
+	for _, item := range results {
+		byName[item.name] = item.result
+	}
+	for _, name := range requiredCommentMutationNames {
+		result, ok := byName[name]
+		if !ok {
+			return fmt.Errorf("required comment mutation %s produced no evidence", name)
+		}
+		if result.status != "verified" || result.writes != 1 || !result.readBack || !result.cleanup || result.uncertain {
+			return fmt.Errorf("required comment mutation %s is not verified: status=%s writes=%d read_back=%v cleanup=%v uncertain=%v reason=%s",
+				name, result.status, result.writes, result.readBack, result.cleanup, result.uncertain, result.reason)
+		}
+	}
+	return nil
+}
+
 func verifiedReadOnlyResult(targetID int64, evidence int) liveMutationResult {
 	return liveMutationResult{status: "verified", targetID: targetID, readBack: true, evidence: evidence}
 }
@@ -981,93 +1136,43 @@ func readCommentReplies(ctx context.Context, raw *appapi.Client, writePath strin
 	return ok, nil
 }
 
-func runArtworkCommentMutations(t *testing.T, ctx context.Context, session *realPixivMutationSession, stampID int64) {
-	t.Helper()
-	client := session.client
-	target, err := findArtworkCommentTarget(ctx, client)
-	if err != nil {
-		result := commentTargetProbeResult(err)
-		recordLiveMutation(t, "artwork_comment_text", result)
-		recordLiveMutation(t, "artwork_comment_reply", result)
-		recordLiveMutation(t, "artwork_comment_stamp", result)
-		return
+func normalizeReplyCleanupRead(present bool, err error) (bool, error) {
+	if err == nil {
+		return present, nil
 	}
-
-	read := func(commentID int64) (bool, error) {
-		page, err := client.ArtworkComments(ctx, pixivsdk.ArtworkCommentsRequest{ArtworkID: target.contentID})
-		if err != nil {
-			return false, err
-		}
-		return containsCommentID(page, commentID), nil
+	var failure protocol.Failure
+	if errors.As(err, &failure) && failure.Kind == protocol.FailureHTTPStatus && failure.StatusCode == http.StatusNotFound {
+		return false, nil
 	}
-	remove := func(commentID int64) error {
-		return client.DeleteArtworkComment(ctx, pixivsdk.DeleteArtworkCommentRequest{CommentID: commentID})
-	}
-	replyRead := func(commentID int64) (bool, error) {
-		return readCommentReplies(ctx, session.raw, protocol.AppIllustCommentAdd, target.parentID, session.userID, commentID)
-	}
-	stampRead := func(commentID int64) (bool, error) {
-		ids, err := readRawCommentIDs(ctx, session.raw, "/v3/illust/comments", "illust_id", target.contentID, session.userID)
-		if err != nil {
-			return false, err
-		}
-		_, ok := ids[commentID]
-		return ok, nil
-	}
-
-	recordLiveMutation(t, "artwork_comment_text", runLiveCommentMutation(
-		target.contentID,
-		func() (int64, error) {
-			result, err := client.PostArtworkComment(ctx, pixivsdk.PostArtworkCommentRequest{
-				ArtworkID: target.contentID,
-				Comment:   liveCommentBody,
-			})
-			return result.CommentID, err
-		}, read, remove,
-	))
-
-	if target.parentID <= 0 {
-		recordLiveMutation(t, "artwork_comment_reply", blockedMutationResult(target.contentID, fmt.Errorf("target has no existing parent comment")))
-	} else {
-		recordLiveMutation(t, "artwork_comment_reply", runLiveCommentMutation(
-			target.contentID,
-			func() (int64, error) {
-				result, err := client.ReplyArtworkComment(ctx, pixivsdk.ReplyArtworkCommentRequest{
-					ArtworkID:       target.contentID,
-					Comment:         liveCommentBody,
-					ParentCommentID: target.parentID,
-				})
-				return result.CommentID, err
-			}, replyRead, remove,
-		))
-	}
-
-	recordLiveMutation(t, "artwork_comment_stamp", runLiveCommentMutation(
-		target.contentID,
-		func() (int64, error) {
-			result, err := client.StampArtworkComment(ctx, pixivsdk.StampArtworkCommentRequest{
-				ArtworkID: target.contentID,
-				Comment:   "",
-				StampID:   stampID,
-			})
-			return result.CommentID, err
-		}, stampRead, remove,
-	))
-
+	return false, err
 }
 
-func runNovelCommentMutations(t *testing.T, ctx context.Context, session *realPixivMutationSession, stampID int64) {
-	t.Helper()
+func readCommentRepliesAfterDelete(ctx context.Context, raw *appapi.Client, writePath string, parentID, userID, commentID int64) (bool, error) {
+	present, err := readCommentReplies(ctx, raw, writePath, parentID, userID, commentID)
+	return normalizeReplyCleanupRead(present, err)
+}
+
+func runNovelCommentReplyWithCreatedParent(ctx context.Context, session *realPixivMutationSession, target liveCommentTarget) (liveMutationResult, liveMutationResult) {
 	client := session.client
-	target, err := findNovelCommentTarget(ctx, client)
+	parent, err := client.PostNovelComment(ctx, pixivsdk.PostNovelCommentRequest{
+		NovelID: target.contentID,
+		Comment: liveCommentBody,
+	})
 	if err != nil {
-		result := commentTargetProbeResult(err)
-		recordLiveMutation(t, "novel_comment_text", result)
-		recordLiveMutation(t, "novel_comment_stamp", result)
-		return
+		result := mutationWriteError(target.contentID, err)
+		if result.uncertain || result.status == "correction" {
+			result.writes = 1
+		}
+		return result, blockedMutationResult(target.contentID, fmt.Errorf("novel reply parent setup failed"))
 	}
 
-	read := func(commentID int64) (bool, error) {
+	parentResult := liveMutationResult{status: "correction", targetID: target.contentID, writes: 1}
+	if parent.CommentID <= 0 {
+		parentResult.reason = sdk.MalformedUpstreamResponse
+		return parentResult, correctionMutationResult(target.contentID, sdk.MalformedUpstreamResponse)
+	}
+
+	readParent := func(commentID int64) (bool, error) {
 		page, err := client.NovelComments(ctx, pixivsdk.NovelCommentsRequest{NovelID: target.contentID})
 		if err != nil {
 			return false, err
@@ -1077,43 +1182,222 @@ func runNovelCommentMutations(t *testing.T, ctx context.Context, session *realPi
 	remove := func(commentID int64) error {
 		return client.DeleteNovelComment(ctx, pixivsdk.DeleteNovelCommentRequest{CommentID: commentID})
 	}
-	stampRead := func(commentID int64) (bool, error) {
-		ids, err := readRawCommentIDs(ctx, session.raw, "/v3/novel/comments", "novel_id", target.contentID, session.userID)
-		if err != nil {
-			return false, err
-		}
-		_, ok := ids[commentID]
-		return ok, nil
+
+	present, readErr := readParent(parent.CommentID)
+	parentResult.readBack = readErr == nil && present
+	if readErr != nil {
+		parentResult.reason = liveMutationReason(readErr)
+	} else if !present {
+		parentResult.reason = sdk.MalformedUpstreamResponse
 	}
 
-	recordLiveMutation(t, "novel_comment_text", runLiveCommentMutation(
-		target.contentID,
-		func() (int64, error) {
-			result, err := client.PostNovelComment(ctx, pixivsdk.PostNovelCommentRequest{
-				NovelID: target.contentID,
-				Comment: liveCommentBody,
-			})
-			return result.CommentID, err
-		}, read, remove,
-	))
-	recordLiveMutation(t, "novel_comment_stamp", runLiveCommentMutation(
-		target.contentID,
-		func() (int64, error) {
-			result, err := client.StampNovelComment(ctx, pixivsdk.StampNovelCommentRequest{
-				NovelID: target.contentID,
-				Comment: "",
-				StampID: stampID,
-			})
-			return result.CommentID, err
-		}, stampRead, remove,
-	))
+	replyResult := blockedMutationResult(target.contentID, fmt.Errorf("novel reply parent setup was not readable"))
+	if parentResult.readBack {
+		replyRead := func(commentID int64) (bool, error) {
+			return readCommentReplies(ctx, session.raw, protocol.AppNovelCommentAdd, parent.CommentID, session.userID, commentID)
+		}
+		replyCleanupRead := func(commentID int64) (bool, error) {
+			return readCommentRepliesAfterDelete(ctx, session.raw, protocol.AppNovelCommentAdd, parent.CommentID, session.userID, commentID)
+		}
+		replyResult = runLiveCommentMutation(
+			target.contentID,
+			func() (int64, error) {
+				result, err := client.ReplyNovelComment(ctx, pixivsdk.ReplyNovelCommentRequest{
+					NovelID:         target.contentID,
+					ParentCommentID: parent.CommentID,
+					Comment:         liveCommentBody,
+				})
+				return result.CommentID, err
+			},
+			replyRead,
+			remove,
+			replyCleanupRead,
+		)
+	}
 
+	if err := remove(parent.CommentID); err != nil {
+		parentResult.reason = liveMutationReason(err)
+		return parentResult, replyResult
+	}
+	after, afterErr := readParent(parent.CommentID)
+	if afterErr != nil {
+		parentResult.reason = liveMutationReason(afterErr)
+		return parentResult, replyResult
+	}
+	if after {
+		parentResult.reason = sdk.MalformedUpstreamResponse
+		return parentResult, replyResult
+	}
+	parentResult.cleanup = true
+	if parentResult.readBack && parentResult.reason == "" {
+		parentResult.status = "verified"
+	}
+	return parentResult, replyResult
 }
 
-func runLiveCommentMutation(targetID int64, write func() (int64, error), read func(int64) (bool, error), remove func(int64) error) liveMutationResult {
+func runArtworkCommentMutations(t *testing.T, ctx context.Context, session *realPixivMutationSession, stampID int64) []namedLiveMutationResult {
+	t.Helper()
+	client := session.client
+	results := make([]namedLiveMutationResult, 0, 3)
+	record := func(name string, result liveMutationResult) {
+		results = append(results, namedLiveMutationResult{name: name, result: result})
+		recordLiveMutation(t, name, result)
+	}
+
+	target, err := findWritableArtworkCommentTarget(ctx, client)
+	if err != nil {
+		result := commentTargetProbeResult(err)
+		record("artwork_comment_text", result)
+		record("artwork_comment_stamp", result)
+	} else {
+		read := func(commentID int64) (bool, error) {
+			page, err := client.ArtworkComments(ctx, pixivsdk.ArtworkCommentsRequest{ArtworkID: target.contentID})
+			if err != nil {
+				return false, err
+			}
+			return containsCommentID(page, commentID), nil
+		}
+		remove := func(commentID int64) error {
+			return client.DeleteArtworkComment(ctx, pixivsdk.DeleteArtworkCommentRequest{CommentID: commentID})
+		}
+		stampRead := func(commentID int64) (bool, error) {
+			ids, err := readRawCommentIDs(ctx, session.raw, "/v3/illust/comments", "illust_id", target.contentID, session.userID)
+			if err != nil {
+				return false, err
+			}
+			_, ok := ids[commentID]
+			return ok, nil
+		}
+
+		record("artwork_comment_text", runLiveCommentMutation(
+			target.contentID,
+			func() (int64, error) {
+				result, err := client.PostArtworkComment(ctx, pixivsdk.PostArtworkCommentRequest{
+					ArtworkID: target.contentID,
+					Comment:   liveCommentBody,
+				})
+				return result.CommentID, err
+			}, read, remove, read,
+		))
+
+		record("artwork_comment_stamp", runLiveCommentMutation(
+			target.contentID,
+			func() (int64, error) {
+				result, err := client.StampArtworkComment(ctx, pixivsdk.StampArtworkCommentRequest{
+					ArtworkID: target.contentID,
+					Comment:   "",
+					StampID:   stampID,
+				})
+				return result.CommentID, err
+			}, stampRead, remove, stampRead,
+		))
+	}
+
+	replyTarget, replyErr := findReplyableArtworkCommentTarget(ctx, client)
+	if replyErr != nil {
+		record("artwork_comment_reply", commentTargetProbeResult(replyErr))
+	} else {
+		remove := func(commentID int64) error {
+			return client.DeleteArtworkComment(ctx, pixivsdk.DeleteArtworkCommentRequest{CommentID: commentID})
+		}
+		replyRead := func(commentID int64) (bool, error) {
+			return readCommentReplies(ctx, session.raw, protocol.AppIllustCommentAdd, replyTarget.parentID, session.userID, commentID)
+		}
+		replyCleanupRead := func(commentID int64) (bool, error) {
+			return readCommentRepliesAfterDelete(ctx, session.raw, protocol.AppIllustCommentAdd, replyTarget.parentID, session.userID, commentID)
+		}
+		record("artwork_comment_reply", runLiveCommentMutation(
+			replyTarget.contentID,
+			func() (int64, error) {
+				result, err := client.ReplyArtworkComment(ctx, pixivsdk.ReplyArtworkCommentRequest{
+					ArtworkID:       replyTarget.contentID,
+					Comment:         liveCommentBody,
+					ParentCommentID: replyTarget.parentID,
+				})
+				return result.CommentID, err
+			}, replyRead, remove, replyCleanupRead,
+		))
+	}
+
+	return results
+}
+
+func runNovelCommentMutations(t *testing.T, ctx context.Context, session *realPixivMutationSession, stampID int64) []namedLiveMutationResult {
+	t.Helper()
+	client := session.client
+	results := make([]namedLiveMutationResult, 0, 3)
+	record := func(name string, result liveMutationResult) {
+		results = append(results, namedLiveMutationResult{name: name, result: result})
+		recordLiveMutation(t, name, result)
+	}
+
+	target, err := findWritableNovelCommentTarget(ctx, client)
+	if err != nil {
+		result := commentTargetProbeResult(err)
+		record("novel_comment_text", result)
+		record("novel_comment_stamp", result)
+	} else {
+		read := func(commentID int64) (bool, error) {
+			page, err := client.NovelComments(ctx, pixivsdk.NovelCommentsRequest{NovelID: target.contentID})
+			if err != nil {
+				return false, err
+			}
+			return containsCommentID(page, commentID), nil
+		}
+		remove := func(commentID int64) error {
+			return client.DeleteNovelComment(ctx, pixivsdk.DeleteNovelCommentRequest{CommentID: commentID})
+		}
+		stampRead := func(commentID int64) (bool, error) {
+			ids, err := readRawCommentIDs(ctx, session.raw, "/v3/novel/comments", "novel_id", target.contentID, session.userID)
+			if err != nil {
+				return false, err
+			}
+			_, ok := ids[commentID]
+			return ok, nil
+		}
+
+		record("novel_comment_text", runLiveCommentMutation(
+			target.contentID,
+			func() (int64, error) {
+				result, err := client.PostNovelComment(ctx, pixivsdk.PostNovelCommentRequest{
+					NovelID: target.contentID,
+					Comment: liveCommentBody,
+				})
+				return result.CommentID, err
+			}, read, remove, read,
+		))
+		record("novel_comment_stamp", runLiveCommentMutation(
+			target.contentID,
+			func() (int64, error) {
+				result, err := client.StampNovelComment(ctx, pixivsdk.StampNovelCommentRequest{
+					NovelID: target.contentID,
+					Comment: "",
+					StampID: stampID,
+				})
+				return result.CommentID, err
+			}, stampRead, remove, stampRead,
+		))
+	}
+
+	if err != nil {
+		record("novel_comment_reply", commentTargetProbeResult(err))
+	} else {
+		parentResult, replyResult := runNovelCommentReplyWithCreatedParent(ctx, session, target)
+		recordLiveMutation(t, "novel_comment_reply_parent_setup", parentResult)
+		record("novel_comment_reply", replyResult)
+	}
+
+	return results
+}
+
+func runLiveCommentMutation(targetID int64, write func() (int64, error), readAfterWrite func(int64) (bool, error), remove func(int64) error, readAfterDelete func(int64) (bool, error)) liveMutationResult {
 	commentID, err := write()
 	if err != nil {
-		return mutationWriteError(targetID, err)
+		result := mutationWriteError(targetID, err)
+		if result.uncertain || result.status == "correction" {
+			result.writes = 1
+		}
+		return result
 	}
 	result := liveMutationResult{status: "correction", targetID: targetID, writes: 1}
 	if commentID <= 0 {
@@ -1121,20 +1405,28 @@ func runLiveCommentMutation(targetID int64, write func() (int64, error), read fu
 		return result
 	}
 
-	present, readErr := read(commentID)
+	present, readErr := readAfterWrite(commentID)
 	result.readBack = readErr == nil && present
 	deleteErr := remove(commentID)
-	result.cleanup = deleteErr == nil
 	if deleteErr != nil {
 		result.reason = liveMutationReason(deleteErr)
 		return result
 	}
-	after, afterErr := read(commentID)
+	after, afterErr := readAfterDelete(commentID)
 	if afterErr != nil {
 		result.reason = liveMutationReason(afterErr)
 		return result
 	}
-	if !result.readBack || after {
+	if after {
+		result.reason = sdk.MalformedUpstreamResponse
+		return result
+	}
+	result.cleanup = true
+	if readErr != nil {
+		result.reason = liveMutationReason(readErr)
+		return result
+	}
+	if !result.readBack {
 		result.reason = sdk.MalformedUpstreamResponse
 		return result
 	}
@@ -1148,6 +1440,9 @@ func runLiveCommentMutation(targetID int64, write func() (int64, error), read fu
 // the target-specific evidence.
 func commentTargetCanBeProbed(page pixivsdk.CommentPage) bool {
 	if page.AccessControl != nil {
+		if page.AccessControl.NumericValue != nil {
+			return true
+		}
 		return page.AccessControl.CanComment && !page.AccessControl.IsLocked
 	}
 	for _, comment := range page.Page.Items {
@@ -1158,7 +1453,15 @@ func commentTargetCanBeProbed(page pixivsdk.CommentPage) bool {
 	return false
 }
 
-func findArtworkCommentTarget(ctx context.Context, client *pixivsdk.Client) (liveCommentTarget, error) {
+func findWritableArtworkCommentTarget(ctx context.Context, client *pixivsdk.Client) (liveCommentTarget, error) {
+	return findArtworkCommentTarget(ctx, client, false)
+}
+
+func findReplyableArtworkCommentTarget(ctx context.Context, client *pixivsdk.Client) (liveCommentTarget, error) {
+	return findArtworkCommentTarget(ctx, client, true)
+}
+
+func findArtworkCommentTarget(ctx context.Context, client *pixivsdk.Client, requireExistingParent bool) (liveCommentTarget, error) {
 	page, err := client.SearchArtworks(ctx, pixivsdk.SearchArtworksRequest{
 		Word: "初音ミク", ContentType: pixivsdk.SearchContentTypeIllust,
 	})
@@ -1187,15 +1490,22 @@ func findArtworkCommentTarget(ctx context.Context, client *pixivsdk.Client) (liv
 				break
 			}
 		}
+		if requireExistingParent && parentID <= 0 {
+			continue
+		}
 		return liveCommentTarget{contentID: item.ID, parentID: parentID}, nil
 	}
 	if readableCandidates == 0 && lastErr != nil {
 		return liveCommentTarget{}, lastErr
 	}
-	return liveCommentTarget{}, commentTargetUnavailable("artwork")
+	family := "artwork"
+	if requireExistingParent {
+		family = "artwork reply"
+	}
+	return liveCommentTarget{}, commentTargetUnavailable(family)
 }
 
-func findNovelCommentTarget(ctx context.Context, client *pixivsdk.Client) (liveCommentTarget, error) {
+func findWritableNovelCommentTarget(ctx context.Context, client *pixivsdk.Client) (liveCommentTarget, error) {
 	page, err := client.SearchNovels(ctx, pixivsdk.SearchNovelsRequest{Word: "初音ミク"})
 	if err != nil {
 		return liveCommentTarget{}, err

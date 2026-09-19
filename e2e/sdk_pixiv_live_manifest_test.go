@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/url"
 	"os"
@@ -18,6 +19,7 @@ import (
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/config/paths"
 	config "github.com/FlanChanXwO/pixiv-cli/internal/config/settings"
+	accountpixiv "github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/account"
 	"github.com/FlanChanXwO/pixiv-cli/internal/storage/database"
 	"github.com/FlanChanXwO/pixiv-cli/sdk"
 	pixivsdk "github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
@@ -25,7 +27,86 @@ import (
 
 // liveManifestPace 上游对已认证 API 存在 429 限流（sdk.RateLimited 有对应
 // reason），在 live 场景之间加入固定间隔是对账号的真实保护，不属于无依据限制。
-const liveManifestPace = 1200 * time.Millisecond
+const (
+	liveManifestPace   = 1200 * time.Millisecond
+	liveReadAccountEnv = "PIXIV_E2E_READ_USER_ID"
+)
+
+func selectLiveReadAccount(accounts []accountpixiv.Account, defaultID int64, hasDefault bool, explicit string) (accountpixiv.Account, error) {
+	if len(accounts) == 0 {
+		return accountpixiv.Account{}, errors.New("no local pixiv account")
+	}
+	explicit = strings.TrimSpace(explicit)
+	if explicit != "" {
+		userID, err := strconv.ParseInt(explicit, 10, 64)
+		if err != nil || userID <= 0 {
+			return accountpixiv.Account{}, fmt.Errorf("%s must be a positive Pixiv account UID", liveReadAccountEnv)
+		}
+		for _, account := range accounts {
+			if account.UserID != userID {
+				continue
+			}
+			if !account.HasRefreshToken() {
+				return accountpixiv.Account{}, fmt.Errorf("%s account %d has no stored credential", liveReadAccountEnv, userID)
+			}
+			return account, nil
+		}
+		return accountpixiv.Account{}, fmt.Errorf("%s account %d is not present in the local account database", liveReadAccountEnv, userID)
+	}
+
+	account := accounts[0]
+	if hasDefault {
+		for _, candidate := range accounts {
+			if candidate.UserID == defaultID {
+				return candidate, nil
+			}
+		}
+		return accountpixiv.Account{}, fmt.Errorf("configured pixiv account %d is not present in database", defaultID)
+	}
+	return account, nil
+}
+
+func TestSelectLiveReadAccountExplicitWins(t *testing.T) {
+	accounts := []accountpixiv.Account{
+		accountpixiv.New(11, "default", []byte("default-token")),
+		accountpixiv.New(22, "secondary", []byte("secondary-token")),
+	}
+	account, err := selectLiveReadAccount(accounts, 11, true, "22")
+	if err != nil {
+		t.Fatalf("select explicit account: %v", err)
+	}
+	if account.UserID != 22 {
+		t.Fatalf("selected user = %d, want explicit 22", account.UserID)
+	}
+}
+
+func TestSelectLiveReadAccountRejectsMissingExplicitUser(t *testing.T) {
+	accounts := []accountpixiv.Account{accountpixiv.New(11, "default", []byte("default-token"))}
+	if _, err := selectLiveReadAccount(accounts, 11, true, "22"); err == nil {
+		t.Fatal("missing explicit read account must fail closed")
+	}
+}
+
+func TestSelectLiveReadAccountRejectsMalformedExplicitUser(t *testing.T) {
+	accounts := []accountpixiv.Account{accountpixiv.New(11, "default", []byte("default-token"))}
+	if _, err := selectLiveReadAccount(accounts, 11, true, "not-a-uid"); err == nil {
+		t.Fatal("malformed explicit read account must fail closed")
+	}
+}
+
+func TestSelectLiveReadAccountFallsBackToConfiguredDefault(t *testing.T) {
+	accounts := []accountpixiv.Account{
+		accountpixiv.New(22, "first", []byte("first-token")),
+		accountpixiv.New(11, "default", []byte("default-token")),
+	}
+	account, err := selectLiveReadAccount(accounts, 11, true, "")
+	if err != nil {
+		t.Fatalf("select configured default: %v", err)
+	}
+	if account.UserID != 11 {
+		t.Fatalf("selected user = %d, want configured default 11", account.UserID)
+	}
+}
 
 // TestRealPixivSDKLiveManifestRead 执行 goal-1 Live Manifest（§11.1/§11.4）中
 // artwork/novel/feed 的 live read 场景：manifest 明确要求的两页 continuation、
@@ -228,23 +309,13 @@ func openRealPixivLiveClient(t *testing.T, ctx context.Context) *pixivsdk.Client
 	if len(accounts) == 0 {
 		t.Fatal("no local pixiv account; explicit real e2e has no credential source")
 	}
-	account := accounts[0]
 	defaultID, hasDefault, err := config.ReadPixivDefaultUserID()
 	if err != nil {
 		t.Fatalf("read pixiv default account: %v", err)
 	}
-	if hasDefault {
-		found := false
-		for _, candidate := range accounts {
-			if candidate.UserID == defaultID {
-				account = candidate
-				found = true
-				break
-			}
-		}
-		if !found {
-			t.Fatalf("configured pixiv account %d is not present in database", defaultID)
-		}
+	account, err := selectLiveReadAccount(accounts, defaultID, hasDefault, os.Getenv(liveReadAccountEnv))
+	if err != nil {
+		t.Fatalf("select pixiv read account: %v", err)
 	}
 
 	options := pixivsdk.Options{}
