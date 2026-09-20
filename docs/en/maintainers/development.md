@@ -14,11 +14,7 @@ English | [简体中文](../../zh-CN/maintainers/development.md) | [Documentatio
 
 ## Environment check
 
-The project is a Go module; the current `go.mod` declares:
-
-```text
-go 1.27.1
-```
+The project is a Go module. `go.mod` is the single source of truth for the required Go toolchain version.
 
 Before starting, verify Go/cgo, Rust and the standard test environment:
 
@@ -37,7 +33,7 @@ Frame source reading shares the same memory boundary as the image decoder: the b
 
 Supported Go source builds require:
 
-- Go `1.27.1`;
+- the Go version declared in `go.mod`;
 - `CGO_ENABLED=1`;
 - a C linker for the current `GOOS/GOARCH`;
 - the committed `staticlib` for the corresponding Rust crate target;
@@ -427,7 +423,7 @@ Release verification now favors behavior contracts over a second workflow-policy
 
 The release workflow remains the source of truth for ordering and permissions. Production archives, container images, prepared checksums, and Homebrew installation against the exact production archives all finish before `release-approval`; publication then uses the secret-bearing `release` environment and consumes the approved artifacts without rebuilding them.
 
-Go 1.27.1 does not support the race detector on Windows ARM64. The release matrix nevertheless executes the race gate on all six native targets: five targets run `go test -race ./...`, while Windows ARM64 must execute the same command and match Go's exact `-race is not supported on windows/arm64` diagnostic. Any other failure remains a failed gate, and no matrix entry is skipped. The test matrix also pins `GIT_CONFIG_*` to `core.autocrlf=false` so that Git for Windows checkout preserves the LF blob bytes of the immutable tag; otherwise pre-commit's `gofmt` would misreport the runner's CRLF conversion as unformatted source. This configuration is only for the test gate; the independent production build still builds assets from the tag's clean default checkout.
+The Go toolchain declared in `go.mod` does not support the race detector on Windows ARM64. The release matrix nevertheless executes the race gate on all six native targets: five targets run `go test -race ./...`, while Windows ARM64 must execute the same command and match Go's exact `-race is not supported on windows/arm64` diagnostic. Any other failure remains a failed gate, and no matrix entry is skipped. The test matrix also pins `GIT_CONFIG_*` to `core.autocrlf=false` so that Git for Windows checkout preserves the LF blob bytes of the immutable tag; otherwise pre-commit's `gofmt` would misreport the runner's CRLF conversion as unformatted source. This configuration is only for the test gate; the independent production build still builds assets from the tag's clean default checkout.
 
 After publish verifies and publicizes the Release, it immediately uploads the same `release/checksums.txt`; the policy rejects intermediate steps, path replacement or post-publish rewriting. `render_homebrew_formula` only downloads that artifact and maps the releaseassets stable/prerelease result directly to `pixiv-cli`/`pixiv-cli-beta`. The precise four-target matrix (macOS Intel/arm64, Linux amd64/arm64) first uses `brew tap-new pixiv-cli-release/staging --no-git` to create each runner's isolated local tap, then `brew trust --tap pixiv-cli-release/staging` to explicitly trust this single temporary namespace; it places the single staging formula into its `Formula/`, then runs a real `brew install --formula` via `pixiv-cli-release/staging/<formula>`. macOS runs in the native runner's temporary tap; Linux runs inside a short-lived, fixed-digest `homebrew/brew` container, and the staging formula directory is passed into the container as a read-only bind mount. It then runs `test "$(pixiv --version)" = "pixiv $RELEASE_TAG"` and compares against the tag. It does not use a workspace formula path, developer/environment-variable bypass, nor clone, write or trust the public tap. Only when all of the above succeeds does the final protected `deploy_homebrew_tap` HTTPS-clone the public tap, verify the single staged formula, and read the deploy key in the last step; the SSH push pins the official GitHub ED25519 known_hosts, enables strict checking, and targets exactly `HEAD:main`. If any preceding job fails, the tap is not written.
 

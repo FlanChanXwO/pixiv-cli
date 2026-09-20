@@ -14,11 +14,7 @@
 
 ## 环境检查
 
-项目是 Go module，当前 `go.mod` 声明：
-
-```text
-go 1.27.1
-```
+项目是 Go module，所需 Go toolchain 版本只以 `go.mod` 为事实来源。
 
 开工前建议检查 Go/cgo、Rust 与常规测试环境：
 
@@ -45,7 +41,7 @@ ZIP；这一限制的目的仅是防止帧源在 decoder 自身限制生效前�
 
 受支持的 Go 源码构建需要下列条件：
 
-- Go `1.27.1`；
+- `go.mod` 声明的 Go 版本；
 - `CGO_ENABLED=1`；
 - 当前 `GOOS/GOARCH` 对应的 C linker；
 - Rust crate 对应 target 的 committed `staticlib`；
@@ -548,7 +544,7 @@ release workflow 本身就是顺序与权限的事实来源。生产 archive、c
 真实 production archive 的 Homebrew 安装验证都必须在 `release-approval` 前完成；审批后由
 保存发布 secrets 的 `release` environment 消费已经批准的同一批 artifact，不重新构建。
 
-Go 1.27.1 不支持 Windows ARM64 的 race detector，但 release matrix 仍会在六个原生目标上实际执行 race gate：
+`go.mod` 当前声明的 Go toolchain 不支持 Windows ARM64 的 race detector，但 release matrix 仍会在六个原生目标上实际执行 race gate：
 其中五个平台运行 `go test -race ./...`，Windows ARM64 则必须执行同一命令并精确匹配 Go 官方
 `-race is not supported on windows/arm64` 诊断；其他任何失败仍视为 gate 失败，因此不会再出现 matrix step skip。
 test matrix 还固定 `GIT_CONFIG_*` 为 `core.autocrlf=false`，使 Git for Windows checkout 保留 immutable

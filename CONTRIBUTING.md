@@ -15,7 +15,7 @@ Thanks for helping improve `pixiv-cli`. Focused bug reports, documentation fixes
 
 The supported source build uses:
 
-- Go `1.27.1`;
+- the Go version declared in `go.mod`;
 - `CGO_ENABLED=1` and a working C linker for the target;
 - the committed, manifest-verified Rust ugoira static library for the target.
 

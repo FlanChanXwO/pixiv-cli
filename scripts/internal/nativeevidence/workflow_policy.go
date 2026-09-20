@@ -201,7 +201,7 @@ func requireCanonicalSetupGo(step *yaml.Node) error {
 		return errors.New("native evidence job must use the canonical Go setup action")
 	}
 	with, ok := workflowyaml.MappingValue(step, "with")
-	if !ok || requireOnlyMappingKeys(with, "go-version") != nil || workflowyaml.RequireScalar(with, "go-version", "1.27.1") != nil {
+	if !ok || requireOnlyMappingKeys(with, "go-version-file") != nil || workflowyaml.RequireScalar(with, "go-version-file", "go.mod") != nil {
 		return errors.New("native evidence job must use the canonical Go setup action")
 	}
 	return nil

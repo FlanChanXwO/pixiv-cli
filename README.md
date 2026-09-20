@@ -253,8 +253,8 @@ challenge-recovery control path and never receives the native ascii2d image uplo
 
 ### Go SDK
 
-**Go 1.27.1 is the official source-build and SDK-development baseline for pixiv-cli v1.1.0.**
-The repository, CI, release builds, and native packaging all target that exact Go toolchain version.
+**The Go version declared in `go.mod` is the official source-build and SDK-development baseline.**
+The repository, CI, release builds, and native packaging all consume that single toolchain declaration.
 
 The public SDK receives credentials explicitly and does not read the CLI's local account store or process environment. Obtain the credential from your application's secret store and persist the rotated credentials returned by `Open`:
 

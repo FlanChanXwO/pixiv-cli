@@ -26,7 +26,7 @@ jobs:
           ref: ${{ github.sha }}
       - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff
         with:
-          go-version: '1.27.1'
+          go-version-file: go.mod
       - name: Validate release SemVer
         shell: bash
         run: go run ./scripts/cmd/releaseassets validate --version "${RELEASE_TAG#v}"
@@ -76,7 +76,7 @@ jobs:
           ref: ${{ env.RELEASE_TAG }}
       - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff
         with:
-          go-version: '1.27.1'
+          go-version-file: go.mod
       - name: Run offline SDK E2E contract tests
         shell: bash
         run: |
@@ -103,7 +103,7 @@ jobs:
           ref: ${{ env.RELEASE_TAG }}
       - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff
         with:
-          go-version: '1.27.1'
+          go-version-file: go.mod
       - name: Resolve release platforms
         id: release
         shell: bash
@@ -145,7 +145,7 @@ jobs:
           ref: ${{ env.RELEASE_TAG }}
       - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff
         with:
-          go-version: '1.27.1'
+          go-version-file: go.mod
       # 质量门从不可变 tag 读取 workflow、版本、CHANGELOG 与 Release notes。
       - name: Validate the exact immutable release source
         shell: bash
@@ -168,7 +168,7 @@ jobs:
         shell: bash
         run: go test ./...
       - name: Test Go sources with the race detector
-        # 六个平台都实际执行 gate。Go 1.27.1 不支持 windows/arm64 的 -race，因此该目标
+        # 六个平台都实际执行 gate。go.mod 当前声明的工具链不支持 windows/arm64 的 -race，因此该目标
         # 必须精确验证 Go 官方“不支持”诊断；其他五个平台实际运行 race tests。
         shell: bash
         run: sh scripts/test-race-gate.sh
@@ -212,7 +212,7 @@ jobs:
           ref: ${{ env.RELEASE_TAG }}
       - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff
         with:
-          go-version: '1.27.1'
+          go-version-file: go.mod
           cache: false
       - name: Validate the exact immutable production source
         shell: bash
@@ -302,7 +302,7 @@ jobs:
           ref: ${{ env.RELEASE_TAG }}
       - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff
         with:
-          go-version: '1.27.1'
+          go-version-file: go.mod
       - name: Validate the immutable container source
         shell: bash
         run: |
@@ -393,7 +393,7 @@ jobs:
           ref: ${{ env.RELEASE_TAG }}
       - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff
         with:
-          go-version: '1.27.1'
+          go-version-file: go.mod
       - name: Audit release sources and validate the bilingual tag notes
         shell: bash
         env:
@@ -454,7 +454,7 @@ jobs:
           ref: ${{ env.RELEASE_TAG }}
       - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff
         with:
-          go-version: '1.27.1'
+          go-version-file: go.mod
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
         with:
           pattern: verified-release-*
@@ -509,7 +509,7 @@ jobs:
           ref: ${{ env.RELEASE_TAG }}
       - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff
         with:
-          go-version: '1.27.1'
+          go-version-file: go.mod
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
         with:
           pattern: verified-release-*
@@ -615,7 +615,7 @@ jobs:
           ref: ${{ env.RELEASE_TAG }}
       - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff
         with:
-          go-version: '1.27.1'
+          go-version-file: go.mod
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
         with:
           pattern: verified-container-*
@@ -701,7 +701,7 @@ jobs:
           ref: ${{ env.RELEASE_TAG }}
       - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff
         with:
-          go-version: '1.27.1'
+          go-version-file: go.mod
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
         with:
           name: prepared-release-checksums
