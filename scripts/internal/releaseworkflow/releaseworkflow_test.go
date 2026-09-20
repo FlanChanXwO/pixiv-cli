@@ -22,6 +22,40 @@ func TestCheckWorkflowAcceptsCheckedInWorkflow(t *testing.T) {
 	}
 }
 
+func TestCheckWorkflowKeepsManualApprovalAtFinalReleaseBoundary(t *testing.T) {
+	t.Parallel()
+
+	for _, test := range []struct {
+		name   string
+		mutate func(*testing.T, *yaml.Node)
+		want   string
+	}{
+		{
+			name: "approval environment moved to publish",
+			mutate: func(t *testing.T, root *yaml.Node) {
+				requireMappingValue(t, jobNode(t, root, "publish"), "environment").Value = "release-approval"
+			},
+			want: "release-approval environment may only be used by approve_release",
+		},
+		{
+			name: "approval job no longer uses protected approval environment",
+			mutate: func(t *testing.T, root *yaml.Node) {
+				requireMappingValue(t, jobNode(t, root, "approve_release"), "environment").Value = "release"
+			},
+			want: "approve_release environment must be release-approval",
+		},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			root := releaseWorkflowRoot(t)
+			test.mutate(t, root)
+			err := checkWorkflow(mustMarshalYAML(t, root))
+			if err == nil || !strings.Contains(err.Error(), test.want) {
+				t.Fatalf("policy error = %v, want %q", err, test.want)
+			}
+		})
+	}
+}
+
 func TestCheckPinnedGitHubKnownHosts(t *testing.T) {
 	t.Parallel()
 

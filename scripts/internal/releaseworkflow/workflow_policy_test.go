@@ -141,6 +141,8 @@ func TestCheckWorkflowRejectsRequiredJobExecutionOverrides(t *testing.T) {
 		{name: "build continue on error", job: "build", key: "continue-on-error", value: scalarNode("true"), want: "build job must not define if or continue-on-error"},
 		{name: "verify if", job: "verify_release_source", key: "if", value: scalarNode("false"), want: "verify_release_source job must not define if or continue-on-error"},
 		{name: "verify continue on error", job: "verify_release_source", key: "continue-on-error", value: scalarNode("true"), want: "verify_release_source job must not define if or continue-on-error"},
+		{name: "approval if", job: "approve_release", key: "if", value: scalarNode("false"), want: "approve_release job must not define if or continue-on-error"},
+		{name: "approval continue on error", job: "approve_release", key: "continue-on-error", value: scalarNode("true"), want: "approve_release job must not define if or continue-on-error"},
 		{name: "publish if", job: "publish", key: "if", value: scalarNode("always()"), want: "publish job must not define if or continue-on-error"},
 		{name: "publish continue on error", job: "publish", key: "continue-on-error", value: scalarNode("true"), want: "publish job must not define if or continue-on-error"},
 		{name: "build defaults", job: "build", key: "defaults", value: mappingNode("run", mappingNode("working-directory", scalarNode("/tmp"))), want: "build job must not declare defaults"},
