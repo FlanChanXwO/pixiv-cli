@@ -138,19 +138,6 @@ func TestWindowsRustStaticlibSelectorsUseCgoLibrarySearchFlags(t *testing.T) {
 	}
 }
 
-// TestWindowsNativeEvidenceUsesLLDBackedClang 锁住 Windows workflow 的外链驱动：
-// Go 仅在外链器报告 LLD 时跳过 GCC 专属的 debug linker script；MSVC `link.exe` 不能解析该脚本。
-func TestWindowsNativeEvidenceUsesLLDBackedClang(t *testing.T) {
-	repoRoot := filepath.Clean(filepath.Join("..", "..", ".."))
-	body, err := os.ReadFile(filepath.Join(repoRoot, ".github", "workflows", "native-evidence.yml"))
-	if err != nil {
-		t.Fatalf("read native evidence workflow: %v", err)
-	}
-	if strings.Count(string(body), "export CC='clang -fuse-ld=lld'") != 2 {
-		t.Fatalf("Windows smoke and binary build must each select clang backed by lld:\n%s", body)
-	}
-}
-
 // TestPinnedRustSourcesDisableGitTextConversion 保留 first-party crate、Cargo vendor 和本地
 // locked dependency 的精确字节；Windows checkout 若把 LF 转为 CRLF，会改变
 // staticlib source digest，或破坏 Cargo checksum 与 licensebundle 输入。

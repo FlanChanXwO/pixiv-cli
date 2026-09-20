@@ -31,3 +31,25 @@ func TestResolveFiltersCapabilityAndCarriesNativeMetadata(t *testing.T) {
 		t.Fatalf("unexpected native evidence matrix: %#v", native)
 	}
 }
+
+func TestCheckedInWindowsNativeEvidenceUsesLLDBackedClang(t *testing.T) {
+	t.Parallel()
+
+	result, err := resolve(filepath.Join("..", "..", "ci", "platforms.json"), "native-evidence")
+	if err != nil {
+		t.Fatal(err)
+	}
+	windows := 0
+	for _, item := range result.Include {
+		if item["goos"] != "windows" {
+			continue
+		}
+		windows++
+		if got := item["cc"]; got != "clang -fuse-ld=lld" {
+			t.Fatalf("Windows native evidence cc = %v, want clang -fuse-ld=lld", got)
+		}
+	}
+	if windows != 2 {
+		t.Fatalf("Windows native evidence targets = %d, want 2", windows)
+	}
+}
