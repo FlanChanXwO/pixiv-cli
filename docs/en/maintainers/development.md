@@ -420,7 +420,7 @@ The shared contract for release policy lives in `scripts/internal/releasecontrac
 
 ### Verifier source navigation
 
-Release verification now favors behavior contracts over a second workflow-policy implementation. `tools/platformmatrix` validates the shared platform registry, while `tools/release` validates exact archive/container sets and checksums used by publication.
+Release verification now favors behavior contracts over a second workflow-policy implementation. `tools/platformmatrix` validates the shared platform registry, while `tools/release` owns reusable release trust and artifact checks: immutable tag/default-branch ancestry, published Release state, Release-run handoff identity, exact archive/container sets, and checksums. Publisher workflows keep only their channel-specific credentials, permissions, change detection, and publication commands; recovery runs may verify a successful `Release` handoff without binding the workflow run head to the tag, while publishers whose existing contract requires that identity (such as Docker Hub) additionally bind the handoff run to the immutable tag commit.
 
 `scripts/cmd/nativeevidence/` is organized by evidence lifecycle: `main.go` handles subcommands and flags; `models.go` stores target and evidence schema; `record.go` records single-runner evidence; `consolidate.go` validates and merges the six-target results; `archive.go` handles release archive members and JSON; `filesystem.go` handles paths, hashes and safe file operations; `workflow_policy.go` only verifies the native-evidence workflow. Tests cover policy, record and consolidate respectively, and fixture helpers are split by workflow and evidence/archive, avoiding piling policy tests back into a single file.
 

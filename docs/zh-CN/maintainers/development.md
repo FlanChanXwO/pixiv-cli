@@ -540,7 +540,11 @@ build quality、production isolation、publish/Homebrew policy、release notes �
 ### Verifier 源码导航
 
 Release 验证现在优先检查真实行为，不再维护第二套 workflow policy 实现。`tools/platformmatrix`
-负责校验共享平台注册表，`tools/release` 负责校验发布 archive/container 集合与 checksums。
+负责校验共享平台注册表；`tools/release` 统一负责可复用的发布信任与 artifact 校验，包括 immutable
+tag/default-branch ancestry、published Release 状态、Release-run handoff identity、精确的
+archive/container 集合与 checksums。各 publisher workflow 只保留自身渠道的 credential、权限、变更
+检测和发布命令；recovery run 可以只验证成功的 `Release` handoff，而原有契约明确要求 run 与 tag
+同一提交的 publisher（例如 Docker Hub）则继续额外绑定 handoff run 与 immutable tag commit。
 
 `scripts/cmd/nativeevidence/` 按 evidence 生命周期分卷：`main.go` 负责 subcommand 与 flag；`models.go` 保存
 target 和 evidence schema；`record.go` 记录单 runner evidence；`consolidate.go` 校验并合并六目标结果；

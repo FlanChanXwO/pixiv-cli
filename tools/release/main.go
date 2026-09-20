@@ -28,9 +28,15 @@ type platform struct {
 
 func main() {
 	if len(os.Args) < 2 {
-		fatal(errors.New("expected verify-artifact-set, verify-container-set, or checksums"))
+		fatal(errors.New("expected verify-source, verify-published-release, verify-handoff, verify-artifact-set, verify-container-set, or checksums"))
 	}
 	switch os.Args[1] {
+	case "verify-source":
+		verifySourceCommand(os.Args[2:])
+	case "verify-published-release":
+		verifyPublishedReleaseCommand(os.Args[2:])
+	case "verify-handoff":
+		verifyHandoffCommand(os.Args[2:])
 	case "verify-artifact-set":
 		verifyArtifactSet(os.Args[2:])
 	case "verify-container-set":

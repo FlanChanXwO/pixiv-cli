@@ -30,6 +30,7 @@ jobs:
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
         with:
+          fetch-depth: 0
           persist-credentials: false
           ref: ${{ github.sha }}
       - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff
@@ -43,24 +44,8 @@ jobs:
         run: |
           set -euo pipefail
           test "$GITHUB_REF" = "refs/heads/$DEFAULT_BRANCH"
-          go run ./scripts/cmd/releaseassets validate --version "${RELEASE_TAG#v}"
-          case "$RELEASE_TAG" in
-            v[0-9]*) ;;
-            *) printf '%s\n' 'release tag must start with v and a digit' >&2; exit 1 ;;
-          esac
-          gh api "repos/$GITHUB_REPOSITORY/releases/tags/$RELEASE_TAG" > release.json
-          python3 - "$RELEASE_TAG" release.json <<'PY'
-          import json
-          import pathlib
-          import sys
-
-          tag = sys.argv[1]
-          release = json.loads(pathlib.Path(sys.argv[2]).read_text(encoding="utf-8"))
-          if release.get("tag_name") != tag:
-              raise SystemExit("release tag does not match the requested tag")
-          if release.get("draft") or release.get("prerelease") or not release.get("published_at"):
-              raise SystemExit("requested release must already be public and stable")
-          PY
+          go run ./tools/release verify-source --tag "$RELEASE_TAG" --default-branch "$DEFAULT_BRANCH"
+          go run ./tools/release verify-published-release --repository "$GITHUB_REPOSITORY" --tag "$RELEASE_TAG" --stable
 
   render_stable_formula:
     name: Render a stable formula from Release checksums
