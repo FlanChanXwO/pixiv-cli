@@ -274,12 +274,21 @@ func (a controller) waitForHandoffRelayLoginCode(ctx context.Context, opts Relay
 		serveErr <- serveErrValue
 	}()
 	var cleanupOnce sync.Once
-	cleanup := func() {
+	closeServer := func(graceful bool) {
 		cleanupOnce.Do(func() {
 			stopContextWaiter()
-			_ = server.Shutdown(context.Background())
+			if graceful {
+				_ = server.Shutdown(context.Background())
+				return
+			}
+			// 父 context 取消表示本次登录会话已经被明确放弃。这里不能继续使用
+			// Shutdown 等待 active handler 变 idle，否则 race runner 上仍在收尾的
+			// HTTP handler 会反过来阻塞取消路径；Close 会立即终止这些连接。
+			_ = server.Close()
 		})
 	}
+	cleanup := func() { closeServer(true) }
+	abort := func() { closeServer(false) }
 	fmt.Fprintf(a.errOut, "Remote Pixiv login relay is listening on %s.\n", listener.Addr().String())
 	fmt.Fprintf(a.errOut, "Open remote Pixiv login session:\n%s\n", sessionURL)
 
@@ -297,7 +306,7 @@ func (a controller) waitForHandoffRelayLoginCode(ctx context.Context, opts Relay
 		}
 		return "", func(bool) {}, cleanup, errors.New("remote login relay stopped before sign-in completed")
 	case <-ctx.Done():
-		cleanup()
+		abort()
 		return "", func(bool) {}, cleanup, ctx.Err()
 	}
 }
