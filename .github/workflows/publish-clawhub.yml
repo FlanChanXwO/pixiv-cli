@@ -198,6 +198,10 @@ jobs:
             if [ -s "$verify_file" ]; then
               break
             fi
+            if [ "$verify_exit" -eq 0 ]; then
+              printf '%s\n' 'ClawHub verify succeeded without returning verification JSON.' >&2
+              exit 1
+            fi
             reset_seconds=$(sed -n 's/^Version not found (reset in \([0-9][0-9]*\)s)$/\1/p' "$verify_error" | head -n 1)
             if [ -z "$reset_seconds" ] || grep -Ev '^(Version not found \(reset in [0-9]+s\)|Error: Version not found \(reset in [0-9]+s\))$' "$verify_error" | grep -q .; then
               cat "$verify_error" >&2
