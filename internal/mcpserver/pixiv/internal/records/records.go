@@ -99,6 +99,21 @@ func PaginationOutputSchema() *jsonschema.Schema {
 	return OpenObjectSchema()
 }
 
+// CommentInputSchema 返回 artwork/novel comments 共用的稳定输入 schema。
+// stamp_id 属于评论 mutation 的独立字段，不能借 read tool 的兼容边界暴露。
+func CommentInputSchema() map[string]any {
+	return map[string]any{
+		"type":                 "object",
+		"additionalProperties": false,
+		"required":             []string{"id"},
+		"properties": map[string]any{
+			"id":    map[string]any{"type": "integer", "minimum": 1, "description": "Positive artwork or novel ID."},
+			"page":  map[string]any{"type": "integer", "minimum": 1, "description": "1-based logical page; requires a positive limit."},
+			"limit": map[string]any{"type": "integer", "minimum": 0, "description": "Maximum comments; 0 returns all; omitted reads one upstream batch."},
+		},
+	}
+}
+
 // CommentOutputSchema 返回评论输出的 schema。
 func CommentOutputSchema() *jsonschema.Schema {
 	return &jsonschema.Schema{
@@ -129,6 +144,36 @@ func NovelContentOutputSchema() *jsonschema.Schema {
 	}
 }
 
+// UserDetailOutputSchema 描述只返回实体记录的 detail envelope。
+func UserDetailOutputSchema() *jsonschema.Schema {
+	return singleRecordsOutputSchema()
+}
+
+// NovelDetailOutputSchema 描述小说详情的结构化 envelope。
+func NovelDetailOutputSchema() *jsonschema.Schema {
+	return singleRecordsOutputSchema()
+}
+
+// NovelSeriesOutputSchema 描述小说系列元数据与实体记录的 envelope。
+func NovelSeriesOutputSchema() *jsonschema.Schema {
+	return &jsonschema.Schema{
+		Type: "object",
+		Properties: map[string]*jsonschema.Schema{
+			"series": {
+				Type:                 "object",
+				AdditionalProperties: &jsonschema.Schema{},
+			},
+			"records": recordArraySchema(),
+			"pagination": {
+				Type:                 "object",
+				AdditionalProperties: &jsonschema.Schema{},
+			},
+		},
+		Required:             []string{"series", "records", "pagination"},
+		AdditionalProperties: &jsonschema.Schema{Not: &jsonschema.Schema{}},
+	}
+}
+
 // BookmarkTagsOutputSchema 返回收藏标签输出的 schema。
 func BookmarkTagsOutputSchema() *jsonschema.Schema {
 	return &jsonschema.Schema{
@@ -137,6 +182,32 @@ func BookmarkTagsOutputSchema() *jsonschema.Schema {
 			"bookmark_tags": {
 				Type:  "array",
 				Items: OpenObjectSchema(),
+			},
+			"pagination": PaginationOutputSchema(),
+		},
+		Required:             []string{"bookmark_tags", "pagination"},
+		AdditionalProperties: &jsonschema.Schema{Not: &jsonschema.Schema{}},
+	}
+}
+
+// BookmarkTagsAllOutputSchema 描述 additive bookmark_tags_all 的 typed 标签
+// envelope。legacy bookmark_tags 继续使用开放的旧标签对象 schema。
+func BookmarkTagsAllOutputSchema() *jsonschema.Schema {
+	return &jsonschema.Schema{
+		Type: "object",
+		Properties: map[string]*jsonschema.Schema{
+			"bookmark_tags": {
+				Type: "array",
+				Items: &jsonschema.Schema{
+					Type: "object",
+					Properties: map[string]*jsonschema.Schema{
+						"name":         {Type: "string"},
+						"count":        {Type: "integer"},
+						"content_type": {Type: "string", Enum: []any{"artwork", "novel"}},
+					},
+					Required:             []string{"name", "count", "content_type"},
+					AdditionalProperties: &jsonschema.Schema{Not: &jsonschema.Schema{}},
+				},
 			},
 			"pagination": PaginationOutputSchema(),
 		},
@@ -167,23 +238,10 @@ func BookmarkDetailOutputSchema() *jsonschema.Schema {
 // 额外属性，同时约束每条记录都具备稳定身份字段。
 func RecordsOutputSchema() *jsonschema.Schema {
 	allowAdditionalProperties := &jsonschema.Schema{}
-	record := &jsonschema.Schema{
-		Type:     "object",
-		Required: []string{"id", "type", "url"},
-		Properties: map[string]*jsonschema.Schema{
-			"id":   {Type: "string"},
-			"type": {Type: "string"},
-			"url":  {Type: "string"},
-		},
-		AdditionalProperties: allowAdditionalProperties,
-	}
 	return &jsonschema.Schema{
 		Type: "object",
 		Properties: map[string]*jsonschema.Schema{
-			"records": {
-				Type:  "array",
-				Items: record,
-			},
+			"records": recordArraySchema(),
 			"pagination": {
 				Type:                 "object",
 				AdditionalProperties: allowAdditionalProperties,
@@ -235,6 +293,83 @@ func RecordsOutputSchema() *jsonschema.Schema {
 		},
 		Required:             []string{"records"},
 		AdditionalProperties: &jsonschema.Schema{Not: &jsonschema.Schema{}},
+	}
+}
+
+// RecommendedOutputSchema 描述 recommended 的四路聚合 envelope。推荐流的
+// pagination 只允许已公开的四个 subtype，SDK continuation 仍留在适配层。
+func RecommendedOutputSchema() *jsonschema.Schema {
+	return &jsonschema.Schema{
+		Type: "object",
+		Properties: map[string]*jsonschema.Schema{
+			"records": recordArraySchema(),
+			"pagination": {
+				Type: "object",
+				Properties: map[string]*jsonschema.Schema{
+					"illust": PaginationOutputSchema(),
+					"manga":  PaginationOutputSchema(),
+					"novel":  PaginationOutputSchema(),
+					"user":   PaginationOutputSchema(),
+				},
+				AdditionalProperties: &jsonschema.Schema{Not: &jsonschema.Schema{}},
+			},
+		},
+		Required:             []string{"records", "pagination"},
+		AdditionalProperties: &jsonschema.Schema{Not: &jsonschema.Schema{}},
+	}
+}
+
+// TrendingTagsOutputSchema 描述 trending_tags_illust 的稳定顶层 envelope；
+// tags.items 直接由 public DTO 推导，确保嵌套 artwork 的可选字段与实际 JSON
+// 序列化契约同步，同时不把 SDK continuation 或原始响应字段提升为顶层协议。
+func TrendingTagsOutputSchema() *jsonschema.Schema {
+	tagSchema, err := jsonschema.For[pixiv.TrendingTagDTO](nil)
+	if err != nil {
+		// TrendingTagDTO 只包含 JSON Schema 支持的 public DTO 字段；如果这里
+		// 失败，说明 DTO 契约本身已超出 schema 支持范围，继续注册错误 schema
+		// 会比在 composition root 直接暴露问题更危险。
+		panic(err)
+	}
+	return &jsonschema.Schema{
+		Type: "object",
+		Properties: map[string]*jsonschema.Schema{
+			"tags": {
+				Type:  "array",
+				Items: tagSchema,
+			},
+			"text": {Type: "string"},
+		},
+		Required:             []string{"tags", "text"},
+		AdditionalProperties: &jsonschema.Schema{Not: &jsonschema.Schema{}},
+	}
+}
+
+func singleRecordsOutputSchema() *jsonschema.Schema {
+	return &jsonschema.Schema{
+		Type:                 "object",
+		Properties:           map[string]*jsonschema.Schema{"records": recordArraySchema()},
+		Required:             []string{"records"},
+		AdditionalProperties: &jsonschema.Schema{Not: &jsonschema.Schema{}},
+	}
+}
+
+func recordArraySchema() *jsonschema.Schema {
+	return &jsonschema.Schema{
+		Type:  "array",
+		Items: recordSchema(),
+	}
+}
+
+func recordSchema() *jsonschema.Schema {
+	return &jsonschema.Schema{
+		Type:     "object",
+		Required: []string{"id", "type", "url"},
+		Properties: map[string]*jsonschema.Schema{
+			"id":   {Type: "string"},
+			"type": {Type: "string"},
+			"url":  {Type: "string"},
+		},
+		AdditionalProperties: &jsonschema.Schema{},
 	}
 }
 

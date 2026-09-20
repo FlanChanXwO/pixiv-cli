@@ -18,11 +18,25 @@ import (
 // fail closed instead of being misinterpreted.
 const cursorBindingVersion = 1
 
+// 搜索新增批内 checkpoint 与账号绑定，recommended/related 改为多参数
+// continuation 回放；这些变更都只使对应 operation 的旧 cursor 显式失效。
+func operationCursorBindingVersion(op string) int {
+	switch op {
+	case "SearchArtworks", "RecommendedArtworks", "RecommendedNovels", "RelatedArtworks":
+		return 2
+	}
+	return cursorBindingVersion
+}
+
 // continuationEnvelope is the opaque payload embedded in a Pixiv cursor. It
 // never contains tokens, cookies, signed URLs, search text, or local paths.
+// Params 仅承载 recommended 这类上游以多参数表达续页的 endpoint 的结构化
+// 续页参数（offset、bookmark 游标、viewed 下标数组等），不含 next_url 原文。
 type continuationEnvelope struct {
-	Key   string `json:"k"`
-	Value int64  `json:"v"`
+	Key      string     `json:"k"`
+	Value    int64      `json:"v"`
+	Consumed int        `json:"s,omitempty"`
+	Params   url.Values `json:"p,omitempty"`
 }
 
 // identityScopedOps are operations whose pagination state is tied to the
@@ -30,6 +44,7 @@ type continuationEnvelope struct {
 // identity; when no identity could be verified the cursor is ephemeral and only
 // valid for the same client instance.
 var identityScopedOps = map[string]bool{
+	"SearchArtworks":      true,
 	"CurrentUser":         true,
 	"FollowingArtworks":   true,
 	"FollowingNovels":     true,
@@ -40,7 +55,11 @@ var identityScopedOps = map[string]bool{
 	"RecommendedNovels":   true,
 	"RecommendedUsers":    true,
 	"RelatedArtworks":     true,
+	"RelatedUsers":        true,
 	"ArtworkRanking":      false,
+	"UserFollowing":       true,
+	"UserFollowers":       true,
+	"UserBlockedUsers":    true,
 }
 
 // queryDigest returns a stable digest of the request's query parameters. The
@@ -74,7 +93,11 @@ func (c *Client) buildCursor(op string, baseQuery url.Values, key string, value 
 	if !exists {
 		return sdk.Cursor{}, nil
 	}
-	payload, err := json.Marshal(continuationEnvelope{Key: key, Value: value})
+	return c.buildContinuationCursor(op, baseQuery, continuationEnvelope{Key: key, Value: value})
+}
+
+func (c *Client) buildContinuationCursor(op string, baseQuery url.Values, state continuationEnvelope) (sdk.Cursor, error) {
+	payload, err := json.Marshal(state)
 	if err != nil {
 		return sdk.Cursor{}, newError(op, sdk.UpstreamError, "cannot encode cursor")
 	}
@@ -89,34 +112,47 @@ func (c *Client) buildCursor(op string, baseQuery url.Values, key string, value 
 			opts = append(opts, sdk.WithCursorEphemeralInstance(c.cursorInstance))
 		}
 	}
-	return sdk.NewCursor(product, op, cursorBindingVersion, queryDigest(baseQuery), payload, opts...)
+	return sdk.NewCursor(product, op, operationCursorBindingVersion(op), queryDigest(baseQuery), payload, opts...)
 }
 
 // continuationFromCursor decodes and validates a caller-provided cursor against
 // the repeated base query. It returns the continuation key and value to append
 // to the next request.
 func (c *Client) continuationFromCursor(op string, baseQuery url.Values, cur sdk.Cursor) (key string, value int64, err error) {
-	if err := sdk.ValidateCursor(cur, product, op, cursorBindingVersion, queryDigest(baseQuery)); err != nil {
-		return "", 0, newError(op, sdk.InvalidCursor, "cursor does not match this operation and query")
+	state, err := c.continuationState(op, baseQuery, cur)
+	return state.Key, state.Value, err
+}
+
+func (c *Client) continuationState(op string, baseQuery url.Values, cur sdk.Cursor) (continuationEnvelope, error) {
+	if err := sdk.ValidateCursor(cur, product, op, operationCursorBindingVersion(op), queryDigest(baseQuery)); err != nil {
+		return continuationEnvelope{}, newError(op, sdk.InvalidCursor, "cursor does not match this operation and query")
 	}
 	if identityScopedOps[op] {
 		if identity, ok := sdk.CursorIdentity(cur); ok {
 			if strconv.FormatInt(c.userID, 10) != identity {
-				return "", 0, newError(op, sdk.InvalidCursor, "cursor belongs to a different account")
+				return continuationEnvelope{}, newError(op, sdk.InvalidCursor, "cursor belongs to a different account")
 			}
 		} else if err := sdk.ValidateCursorInstance(cur, c.cursorInstance); err != nil {
-			return "", 0, newError(op, sdk.InvalidCursor, "cursor belongs to a different client instance")
+			return continuationEnvelope{}, newError(op, sdk.InvalidCursor, "cursor belongs to a different client instance")
 		}
 	}
 	payload, err := sdk.CursorPayload(cur)
 	if err != nil {
-		return "", 0, newError(op, sdk.InvalidCursor, "cursor payload is unavailable")
+		return continuationEnvelope{}, newError(op, sdk.InvalidCursor, "cursor payload is unavailable")
 	}
 	var envelope continuationEnvelope
-	if err := json.Unmarshal(payload, &envelope); err != nil || envelope.Key == "" || envelope.Value < 0 {
-		return "", 0, newError(op, sdk.InvalidCursor, "cursor payload is malformed")
+	if err := json.Unmarshal(payload, &envelope); err != nil || envelope.Value < 0 || envelope.Consumed < 0 {
+		return continuationEnvelope{}, newError(op, sdk.InvalidCursor, "cursor payload is malformed")
 	}
-	return envelope.Key, envelope.Value, nil
+	// 两种合法 payload 形态：单键 continuation（Key+Value）与 recommended
+	// 家族的多参数集（Params）；二者都不允许为空。
+	if envelope.Key == "" && len(envelope.Params) == 0 {
+		return continuationEnvelope{}, newError(op, sdk.InvalidCursor, "cursor payload is malformed")
+	}
+	if envelope.Key != "" && len(envelope.Params) != 0 {
+		return continuationEnvelope{}, newError(op, sdk.InvalidCursor, "cursor payload is malformed")
+	}
+	return envelope, nil
 }
 
 // continuationOffset decodes an offset-keyed cursor. A zero cursor means the
@@ -135,21 +171,42 @@ func (c *Client) continuationOffset(op string, baseQuery url.Values, cur sdk.Cur
 	return int(value), nil
 }
 
-// continuationValue decodes a cursor whose continuation carries an explicit
-// value under expectedKey (for example max_bookmark_id or last_order). A zero
-// cursor returns zero.
-func (c *Client) continuationValue(op string, baseQuery url.Values, cur sdk.Cursor, expectedKey string) (int64, error) {
+// continuationPositiveOffset decodes an offset cursor whose continuation
+// value must be positive. A zero cursor still represents the first page.
+func (c *Client) continuationPositiveOffset(op string, baseQuery url.Values, cur sdk.Cursor) (int, error) {
 	if cur.IsZero() {
 		return 0, nil
 	}
-	key, value, err := c.continuationFromCursor(op, baseQuery, cur)
+	state, err := c.continuationState(op, baseQuery, cur)
 	if err != nil {
 		return 0, err
 	}
-	if key != expectedKey {
+	if state.Key != "offset" {
 		return 0, newError(op, sdk.InvalidCursor, "cursor continuation kind mismatch")
 	}
-	return value, nil
+	if state.Value <= 0 || int64(int(state.Value)) != state.Value {
+		return 0, newError(op, sdk.InvalidCursor, "cursor continuation offset must be positive")
+	}
+	return int(state.Value), nil
+}
+
+// continuationPositiveValue decodes an explicit continuation value that must
+// be positive. A zero cursor still represents the first page.
+func (c *Client) continuationPositiveValue(op string, baseQuery url.Values, cur sdk.Cursor, expectedKey string) (int64, error) {
+	if cur.IsZero() {
+		return 0, nil
+	}
+	state, err := c.continuationState(op, baseQuery, cur)
+	if err != nil {
+		return 0, err
+	}
+	if state.Key != expectedKey {
+		return 0, newError(op, sdk.InvalidCursor, "cursor continuation kind mismatch")
+	}
+	if state.Value <= 0 {
+		return 0, newError(op, sdk.InvalidCursor, "cursor continuation value must be positive")
+	}
+	return state.Value, nil
 }
 
 // continuationOffsetExists is continuationOffset for operations whose adapter
@@ -163,6 +220,112 @@ func (c *Client) continuationOffsetExists(op string, baseQuery url.Values, cur s
 		return 0, false, err
 	}
 	return offset, true, nil
+}
+
+// continuationParams 解码多参数 continuation（recommended 家族）。零 cursor
+// 表示首页并返回 nil；payload 未携带 Params 时显式 InvalidCursor，不静默重启。
+func (c *Client) continuationParams(op string, baseQuery url.Values, cur sdk.Cursor) (url.Values, error) {
+	if cur.IsZero() {
+		return nil, nil
+	}
+	state, err := c.continuationState(op, baseQuery, cur)
+	if err != nil {
+		return nil, err
+	}
+	if len(state.Params) == 0 {
+		return nil, newError(op, sdk.InvalidCursor, "cursor continuation params are missing")
+	}
+	if !validContinuationParams(op, state.Params) {
+		return nil, newError(op, sdk.InvalidCursor, "cursor continuation params are malformed")
+	}
+	return state.Params, nil
+}
+
+func validContinuationParams(op string, params url.Values) bool {
+	if len(params) == 0 {
+		return false
+	}
+	switch op {
+	case "RecommendedArtworks":
+		allowed := map[string]bool{
+			"offset": true, "min_bookmark_id_for_recent_illust": true,
+			"max_bookmark_id_for_recommend": true, "include_ranking_illusts": true,
+			"include_privacy_policy": true,
+		}
+		for key, values := range params {
+			if !allowed[key] || len(values) != 1 || values[0] == "" {
+				return false
+			}
+			switch key {
+			case "offset":
+				value, err := strconv.ParseInt(values[0], 10, 64)
+				if err != nil || value < 0 {
+					return false
+				}
+			case "min_bookmark_id_for_recent_illust", "max_bookmark_id_for_recommend":
+				value, err := strconv.ParseInt(values[0], 10, 64)
+				if err != nil || value <= 0 {
+					return false
+				}
+			case "include_ranking_illusts", "include_privacy_policy":
+				if values[0] != "true" && values[0] != "false" {
+					return false
+				}
+			}
+		}
+		return true
+	case "RecommendedNovels":
+		allowed := map[string]bool{
+			"offset": true, "already_recommended": true,
+			"max_bookmark_id_for_recommend": true, "include_ranking_novels": true,
+			"include_privacy_policy": true,
+		}
+		for key, values := range params {
+			if !allowed[key] || len(values) != 1 || values[0] == "" {
+				return false
+			}
+			switch key {
+			case "offset":
+				value, err := strconv.ParseInt(values[0], 10, 64)
+				if err != nil || value < 0 {
+					return false
+				}
+			case "max_bookmark_id_for_recommend":
+				value, err := strconv.ParseInt(values[0], 10, 64)
+				if err != nil || value <= 0 {
+					return false
+				}
+			case "include_ranking_novels", "include_privacy_policy":
+				if values[0] != "true" && values[0] != "false" {
+					return false
+				}
+			}
+		}
+		return true
+	case "RelatedArtworks":
+		if len(params["illust_id"]) != 1 || !validPositiveCursorValues(params["illust_id"]) {
+			return false
+		}
+		if offset, hasOffset := params["offset"]; hasOffset {
+			return len(params) == 2 && len(offset) == 1 && validPositiveCursorValues(offset)
+		}
+		return len(params) == 3 && validPositiveCursorValues(params["seed_illust_ids[]"]) && validPositiveCursorValues(params["viewed[]"])
+	default:
+		return false
+	}
+}
+
+func validPositiveCursorValues(values []string) bool {
+	if len(values) == 0 {
+		return false
+	}
+	for _, raw := range values {
+		value, err := strconv.ParseInt(raw, 10, 64)
+		if err != nil || value <= 0 {
+			return false
+		}
+	}
+	return true
 }
 
 func itoa(n int64) string {

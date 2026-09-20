@@ -5,16 +5,19 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"net/http"
 	"net/url"
 	"strconv"
 
+	endpointcontinuation "github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/endpoint/continuation"
 	"github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/endpoint/novel"
 	"github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/protocol"
 )
 
-// Transport 是小说收藏 family 所需的最小 App API 传输能力。
+// Transport 是小说收藏 family 所需的最小 App API 读写传输能力。
 type Transport interface {
 	GetJSON(context.Context, string, url.Values, any) error
+	PostForm(context.Context, string, url.Values) error
 }
 
 type Request struct {
@@ -77,9 +80,152 @@ func (c *Client) List(ctx context.Context, request Request) (Result, error) {
 	return result, nil
 }
 
+// Tags 是 novel bookmark tags 的内部 candidate adapter。
+// 当前 snapshot 不声明续页语义；非 null next_url 必须显式失败，避免丢失数据。
+type TagsRequest struct {
+	UserID   int64
+	Restrict string
+}
+
+type BookmarkTag struct {
+	Name  string
+	Count int
+}
+
+type TagsResult struct {
+	Items []BookmarkTag
+}
+
+func (c *Client) Tags(ctx context.Context, request TagsRequest) (TagsResult, error) {
+	if c == nil || c.transport == nil {
+		return TagsResult{}, errors.New("novel bookmark transport is not configured")
+	}
+	var raw tagsResponseDTO
+	if err := c.transport.GetJSON(ctx, protocol.AppUserNovelBookmarkTags, url.Values{
+		"user_id":  {strconv.FormatInt(request.UserID, 10)},
+		"restrict": {request.Restrict},
+	}, &raw); err != nil {
+		return TagsResult{}, err
+	}
+	if !raw.Tags.Present || !raw.Tags.Valid || raw.NextURL != nil {
+		return TagsResult{}, protocol.MalformedResponse()
+	}
+	items := make([]BookmarkTag, len(raw.Tags.Items))
+	for index, value := range raw.Tags.Items {
+		if value.Name == "" {
+			return TagsResult{}, protocol.MalformedResponse()
+		}
+		items[index] = BookmarkTag{Name: value.Name, Count: value.Count}
+	}
+	return TagsResult{Items: items}, nil
+}
+
+// BookmarkDetail 是 novel bookmark detail candidate 的 normalized 状态。
+// 该 candidate 尚未通过 live wire/SDK gate，不在此处形成 public operation。
+type BookmarkDetail struct {
+	Restrict string
+	Tags     []string
+}
+
+func (c *Client) Detail(ctx context.Context, novelID int64) (BookmarkDetail, error) {
+	if c == nil || c.transport == nil {
+		return BookmarkDetail{}, errors.New("novel bookmark transport is not configured")
+	}
+	var raw detailResponseDTO
+	if err := c.transport.GetJSON(ctx, protocol.AppNovelBookmarkDetail, url.Values{
+		"novel_id": {strconv.FormatInt(novelID, 10)},
+	}, &raw); err != nil {
+		var failure protocol.Failure
+		if errors.As(err, &failure) && failure.Kind == protocol.FailureHTTPStatus && failure.StatusCode == http.StatusNotFound {
+			return BookmarkDetail{Tags: []string{}}, nil
+		}
+		return BookmarkDetail{}, err
+	}
+	if raw.Detail == nil {
+		return BookmarkDetail{Tags: []string{}}, nil
+	}
+	if raw.Detail.IsBookmarked != nil && !*raw.Detail.IsBookmarked {
+		// 未收藏响应中的 tags 可能是作品自身标签，不是收藏标签；统一归一为空状态。
+		return BookmarkDetail{Tags: []string{}}, nil
+	}
+	tags := []string{}
+	for _, tag := range raw.Detail.Tags {
+		if !tag.IsRegistered {
+			continue
+		}
+		tags = append(tags, tag.Name)
+	}
+	return BookmarkDetail{Restrict: raw.Detail.Restrict, Tags: tags}, nil
+}
+
+// AddRequest 描述 novel bookmark add 请求参数。
+type AddRequest struct {
+	NovelID  int64
+	Restrict string
+	Tags     []string
+}
+
+// Add 写入 novel bookmark add 请求，并原样传播传输层错误。
+// 2xx/空响应只代表 status-only transport 成功，不能作为收藏状态已改变的证明。
+func (c *Client) Add(ctx context.Context, request AddRequest) error {
+	if c == nil || c.transport == nil {
+		return errors.New("novel bookmark transport is not configured")
+	}
+	if request.NovelID <= 0 {
+		return errors.New("bookmark novel ID must be positive")
+	}
+	if request.Restrict != "public" && request.Restrict != "private" {
+		return errors.New("bookmark restrict must be public or private")
+	}
+	form := url.Values{"novel_id": {strconv.FormatInt(request.NovelID, 10)}, "restrict": {request.Restrict}}
+	for _, tag := range request.Tags {
+		form.Add("tags[]", tag)
+	}
+	return c.transport.PostForm(ctx, protocol.AppNovelBookmarkAdd, form)
+}
+
+// Remove 写入 novel bookmark delete 请求，并原样传播传输层错误。
+// 删除后的 detail/list/tags 读回与状态恢复仍由后续验证任务负责。
+func (c *Client) Remove(ctx context.Context, novelID int64) error {
+	if c == nil || c.transport == nil {
+		return errors.New("novel bookmark transport is not configured")
+	}
+	if novelID <= 0 {
+		return errors.New("bookmark novel ID must be positive")
+	}
+	return c.transport.PostForm(ctx, protocol.AppNovelBookmarkDelete, url.Values{
+		"novel_id": {strconv.FormatInt(novelID, 10)},
+	})
+}
+
 type responseDTO struct {
 	Novels  requiredList[novelDTO] `json:"novels"`
 	NextURL *string                `json:"next_url"`
+}
+
+type tagsResponseDTO struct {
+	Tags    requiredList[bookmarkTagDTO] `json:"bookmark_tags"`
+	NextURL *string                      `json:"next_url"`
+}
+
+type bookmarkTagDTO struct {
+	Name  string `json:"name"`
+	Count int    `json:"count"`
+}
+
+type detailResponseDTO struct {
+	Detail *bookmarkDetailDTO `json:"bookmark_detail"`
+}
+
+type bookmarkDetailDTO struct {
+	IsBookmarked *bool                  `json:"is_bookmarked"`
+	Restrict     string                 `json:"restrict"`
+	Tags         []bookmarkDetailTagDTO `json:"tags"`
+}
+
+type bookmarkDetailTagDTO struct {
+	Name         string `json:"name"`
+	IsRegistered bool   `json:"is_registered"`
 }
 
 type novelDTO struct {
@@ -201,17 +347,13 @@ func cloneString(value *string) *string {
 }
 
 func continuation(rawURL string) (int64, error) {
-	parsed, err := url.Parse(rawURL)
+	_, value, err := endpointcontinuation.Parse(rawURL, endpointcontinuation.Spec{
+		Path:             protocol.AppUserNovelBookmarks,
+		Keys:             []string{"max_bookmark_id"},
+		AllowedQueryKeys: []string{"user_id", "restrict", "tag"},
+	})
 	if err != nil {
-		return 0, protocol.MalformedResponse()
-	}
-	values, err := url.ParseQuery(parsed.RawQuery)
-	if err != nil || len(values["max_bookmark_id"]) != 1 {
-		return 0, protocol.MalformedResponse()
-	}
-	value, err := strconv.ParseInt(values.Get("max_bookmark_id"), 10, 64)
-	if err != nil || value <= 0 {
-		return 0, protocol.MalformedResponse()
+		return 0, err
 	}
 	return value, nil
 }

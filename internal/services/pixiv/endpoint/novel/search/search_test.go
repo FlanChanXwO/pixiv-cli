@@ -45,3 +45,13 @@ func TestSearchRejectsMissingOrNullNovelList(t *testing.T) {
 		}
 	}
 }
+
+func TestSearchAcceptsEmptyNovelList(t *testing.T) {
+	result, err := search.New(&fakeTransport{body: `{"novels":[],"next_url":null}`}).Search(context.Background(), search.Request{Word: "story"})
+	if err != nil {
+		t.Fatalf("Search: %v", err)
+	}
+	if result.Items == nil || len(result.Items) != 0 || result.HasNext {
+		t.Fatalf("result = %#v", result)
+	}
+}

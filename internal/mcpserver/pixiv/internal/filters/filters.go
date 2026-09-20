@@ -60,6 +60,17 @@ func NovelFilterSchema() map[string]any {
 	}
 }
 
+// UserFilterSchema 固定 user 筛选字段。
+func UserFilterSchema() map[string]any {
+	return map[string]any{
+		"type":                 "object",
+		"additionalProperties": false,
+		"properties": map[string]any{
+			"id": map[string]any{"type": "integer", "minimum": 1},
+		},
+	}
+}
+
 type contextKey struct{}
 
 type value struct {

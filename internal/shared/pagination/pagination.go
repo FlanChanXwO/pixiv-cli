@@ -122,7 +122,7 @@ func CollectPagesFrom[T any, C Cursor](ctx context.Context, plan PagePlan, initi
 
 // CollectFilteredPagesFrom 对上游批次逐项筛选，再应用 Skip、Limit 和 OneBatch。
 // 不能先把 Limit 传给普通 TraversePages，否则被筛掉的候选会占用逻辑页额度。
-func CollectFilteredPagesFrom[T any, C Cursor](ctx context.Context, plan PagePlan, initial C, fetch func(context.Context, C) ([]T, C, error), include func(T) (bool, error)) ([]T, C, PageResult, error) {
+func CollectFilteredPagesFrom[T any, C Cursor](ctx context.Context, plan PagePlan, initial C, fetch func(context.Context, C) ([]T, C, error), include func(T) (bool, error), checkpoint func(C, int) (C, error)) ([]T, C, PageResult, error) {
 	var zero C
 	if plan.Skip < 0 {
 		return nil, zero, PageResult{}, errors.New("page skip must be zero or positive")
@@ -130,73 +130,24 @@ func CollectFilteredPagesFrom[T any, C Cursor](ctx context.Context, plan PagePla
 	if plan.Limit < 0 {
 		return nil, zero, PageResult{}, errors.New("page limit must be zero or positive")
 	}
+	if checkpoint == nil {
+		return nil, zero, PageResult{}, errors.New("filtered page checkpoint is required")
+	}
 	if include == nil {
 		return nil, zero, PageResult{}, errors.New("filtered page predicate is required")
 	}
-
-	items := make([]T, 0)
-	var result PageResult
-	cursor := initial
-	skip := plan.Skip
-	seekingOffset := skip > 0
-	seen := make(map[string]struct{})
-	for {
-		if _, exists := seen[cursor.String()]; exists {
-			return nil, zero, PageResult{}, fmt.Errorf("pagination cursor repeated: %s", cursor.String())
-		}
-		seen[cursor.String()] = struct{}{}
-
-		batch, next, err := fetch(ctx, cursor)
-		if err != nil {
-			return nil, zero, PageResult{}, err
-		}
-		matched := make([]T, 0, len(batch))
-		for _, value := range batch {
-			keep, err := include(value)
-			if err != nil {
-				return nil, zero, PageResult{}, err
-			}
-			if keep {
-				matched = append(matched, value)
-			}
-		}
-
-		if skip >= len(matched) {
-			skip -= len(matched)
-			matched = nil
-		} else if skip > 0 {
-			matched = matched[skip:]
-			skip = 0
-		}
-		if seekingOffset && skip == 0 && len(matched) > 0 {
-			seekingOffset = false
-		}
-		if plan.Limit > 0 {
-			remaining := plan.Limit - result.Returned
-			if len(matched) > remaining {
-				matched = matched[:remaining]
-				result.HasMore = true
-			}
-		}
-		if len(matched) > 0 {
-			items = append(items, matched...)
-			result.Returned += len(matched)
-		}
-		if plan.Limit > 0 && result.Returned >= plan.Limit {
-			if !result.HasMore {
-				result.HasMore = !next.IsZero()
-			}
-			return items, next, result, nil
-		}
-		if plan.OneBatch && !seekingOffset {
-			if result.Returned > 0 || next.IsZero() {
-				result.HasMore = !next.IsZero()
-				return items, next, result, nil
-			}
-		}
-		if next.IsZero() {
-			return items, zero, result, nil
-		}
-		cursor = next
+	items, state, result, err := CollectStreamsFrom(ctx, plan, []Stream[T, C]{
+		{
+			Fetch:      fetch,
+			Include:    include,
+			Checkpoint: checkpoint,
+		},
+	}, StreamState[C]{Cursors: []C{initial}})
+	if err != nil {
+		return nil, zero, PageResult{}, err
 	}
+	if state.Current == 0 {
+		return items, state.Cursors[0], result, nil
+	}
+	return items, zero, result, nil
 }

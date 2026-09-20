@@ -74,7 +74,7 @@ The command tree is handled uniformly by `root.go` for global flags, requirement
 root-level `internal/cli/commands/{config,mcp,update}`, Pixiv `internal/cli/commands/pixiv/{auth,bookmark,comment,detail,download,follow,mypixiv,ranking,recommended,search,series,timeline,user}`,
 FANBOX `internal/cli/commands/fanbox/{auth,download,mcp,post}`. Data commands consume the public SDK `*pixiv.Client`/`*fanbox.Client` via the owner-local narrow
 `Data` port (`Open`/`Pooled`/`JSONOut`, etc.) and never reach internal protocol adapter packages;
-the shared stdin codec lives in `internal/cli/pipeline`, and the stable Pixiv record projection shared by CLI/MCP lives in `internal/shared/record`; that package only carries record protocol, JSON normalization, and public SDK DTO mapping, must not depend on CLI, MCP, or internal protocol adapter packages, and must not grow into a general dumping ground. These subpackages do not reverse-import the `internal/cli` root package.
+the shared stdin codec lives in `internal/cli/pipeline`, and the stable Pixiv record projection shared by CLI/MCP lives in `internal/shared/record`; the command-scoped Pixiv target resolver lives in `internal/shared/resolver`, consumes only the command contract, records, and pure-local `sdk/pixiv.ParseURL`, and requires owners to inject any controlled bare-ID probe explicitly, without owning clients, credentials, or protocol adapters. The `record` package only carries record protocol, JSON normalization, and public SDK DTO mapping, must not depend on CLI, MCP, or internal protocol adapter packages, and must not grow into a general dumping ground. These subpackages do not reverse-import the `internal/cli` root package.
 
 root `--version` stdout is exactly one line, `pixiv <version>`, with empty stderr and no startup update check. The removed
 `version` subcommand returns unknown-command during parsing with empty stdout. Automatic update runs only after a successful normal business command; it is skipped for MCP, help, root
@@ -108,12 +108,21 @@ fixes `id`, `type`, and `url`, and provides JSON normalization, version-metadata
 This package does not depend on CLI, MCP, or `internal/services` protocol adapter packages; MCP's own output schema and DTO wrapping still live in
 `internal/mcpserver/pixiv/internal/records`.
 
+### `internal/shared/searchfilter`
+
+Owns shared artwork-local filter semantics for CLI/MCP: it normalizes rating and content-type inputs to canonical
+values, matches DTO `x_restrict` and artwork kinds client-side, and produces a cursor context that does not expose
+raw filter values. Rating is never mapped to an unconfirmed upstream `x_restrict` request parameter; command-specific
+field availability and endpoint-confirmed content-type wire parameters remain owned by each command contract. This
+package holds no client, credentials, or protocol adapter.
+
 ### Business Facade, accounts, and generic traversal
 
 - `internal/services/pixiv` is the Pixiv business Facade, aggregating business leaf modules such as `account` and `pool`. `account` owns local accounts, login completion, default account, credential identity/rotation, and account management; `pool` owns selection, freezing, Gate, safe replay, and the related error semantics.
 - `internal/services/fanbox` is the FANBOX business Facade, aggregating the FANBOX `account` leaf module and client lifecycle; the FANBOX session does not share type or lifecycle with the Pixiv refresh token.
 - `internal/shared/lifecycle` only carries protocol-agnostic lifecycle, Lease, and Attempt; it does not own Pixiv/FANBOX account selection, credentials, or replay strategy.
-- `internal/shared/traversal` only carries generic reentrant paged traversal (opaque cursor, logical skip/limit, single-batch compatibility semantics, and duplicate-cursor loop termination); bookmark and other product filter strategies still live in each CLI/MCP search adapter.
+- `internal/shared/pagination` owns product-agnostic logical pagination for one ordered stream and ordered aggregate streams: filters run before the global skip/limit budget, `OneBatch` stops at the first matching source batch, and batch truncation is resumed through a source-position checkpoint. Its `StreamState` contains only the current stream and per-stream cursors; product owners encode that state together with query/account/subtype bindings in their opaque cursors.
+- `internal/shared/traversal` owns the reentrant execute lifecycle for single-stream and aggregate reads, clearing uncommitted results before a safe replay. Command-level filter wiring remains in each CLI/MCP owner, while normalized artwork rating/content-type semantics come from `internal/shared/searchfilter`.
 
 The config schema, `config.toml` path/get/set/unset, generated baseline, and the immutable `Snapshot` required for a single execution live in `internal/config/settings`; the protocol-agnostic month-truncation pure function lives in `internal/utils/date`. CLI/MCP use business Facades via owner-local narrow Seams and the MCP runtime `SDKPorts`, without directly depending on upstream Adapters. `internal/account` and `internal/session` have been deleted, with no compatibility alias retained.
 
@@ -226,7 +235,7 @@ Implementation logic and same-package tests live in `scripts/internal/<name>`. S
 The public SDK is the only external contract surface, exported only from these three packages:
 
 - `sdk`: shared `Page[T]`, `Cursor` (Text/JSON codec), `Error` (sentinel, context chain, redaction), `ResourceRef`/`Resource`, and resource request/response/save types.
-- `sdk/pixiv`: Pixiv App-only SDK. `Open/OpenWith/New/NewWith` constructors, OAuth `LoginSession`, credentials rotation, normalized models, opaque cursor, `ParseURL`, and resource reads. No anonymous Web path.
+- `sdk/pixiv`: Pixiv App-only SDK. `Open/OpenWith/New/NewWith` constructors, OAuth `LoginSession`, credentials rotation, normalized artwork/novel/user/comment/stamp models, opaque cursor, `ParseURL`, comment mutations, stamp reads, and resource reads. No anonymous Web path.
 - `sdk/fanbox`: FANBOX SDK. `Client.ValidateSession`, creator/tag/post/home/supporting, two kinds of pagination, and resource reads; it does not read browsers, DB, or Pixiv credentials, and does not import `sdk/pixiv`.
 
 The FANBOX native transport uses the Chrome 146 TLS profile and a built-in Firefox 148 HTTP User-Agent baseline, and only accepts an explicit HTTP client, proxy, UA, and optional

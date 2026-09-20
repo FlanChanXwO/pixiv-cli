@@ -1,0 +1,2261 @@
+[
+  {
+    "schema_version": 1,
+    "case_id": "search-illust-content-type",
+    "observed_at": "2026-09-05T00:32:52Z",
+    "source_commit": "working-tree",
+    "manifest_digest": "f6c0e6f517056a9cb9eb5d74cdf26e6df2cdf512cd2c27befc7e99691ca11263",
+    "app_profile": "pixiv-app",
+    "account_slot": "account-01",
+    "method": "GET",
+    "path": "/v1/search/illust",
+    "parameter_names": [
+      "word",
+      "search_target",
+      "sort",
+      "filter_by",
+      "offset",
+      "content_type"
+    ],
+    "status": 200,
+    "content_type": "application/json",
+    "schema_fingerprint": "233267a6a0e67e95120f36795506ffe54cea126472d4117a73bb24d57bd58699",
+    "item_count": 30,
+    "type_distribution": {
+      "illust": 29,
+      "ugoira": 1
+    },
+    "x_restrict_distribution": {
+      "0": 21,
+      "1": 9
+    },
+    "continuation_present": true,
+    "verdict": "inconclusive",
+    "reclassification": "legacy_partial_http_evidence"
+  },
+  {
+    "schema_version": 1,
+    "case_id": "search-rating-contract",
+    "observed_at": "2026-09-05T00:32:52Z",
+    "source_commit": "working-tree",
+    "manifest_digest": "f6c0e6f517056a9cb9eb5d74cdf26e6df2cdf512cd2c27befc7e99691ca11263",
+    "app_profile": "pixiv-app",
+    "account_slot": "account-01",
+    "method": "GET",
+    "path": "/v1/search/illust",
+    "parameter_names": [
+      "word",
+      "search_target",
+      "sort",
+      "filter_by",
+      "offset",
+      "rating",
+      "mode",
+      "x_restrict",
+      "r18",
+      "search_r18"
+    ],
+    "status": 200,
+    "content_type": "application/json",
+    "schema_fingerprint": "233267a6a0e67e95120f36795506ffe54cea126472d4117a73bb24d57bd58699",
+    "item_count": 30,
+    "type_distribution": {
+      "illust": 29,
+      "ugoira": 1
+    },
+    "x_restrict_distribution": {
+      "0": 21,
+      "1": 9
+    },
+    "continuation_present": true,
+    "verdict": "inconclusive",
+    "reclassification": "legacy_partial_http_evidence"
+  },
+  {
+    "schema_version": 1,
+    "case_id": "recommended-content-type",
+    "observed_at": "2026-09-05T00:32:52Z",
+    "source_commit": "working-tree",
+    "manifest_digest": "f6c0e6f517056a9cb9eb5d74cdf26e6df2cdf512cd2c27befc7e99691ca11263",
+    "app_profile": "pixiv-app",
+    "account_slot": "account-01",
+    "method": "GET",
+    "path": "/v1/illust/recommended",
+    "parameter_names": [
+      "content_type",
+      "filter",
+      "offset"
+    ],
+    "status": 200,
+    "content_type": "application/json",
+    "schema_fingerprint": "dd0df9c1d0bf9c38e9b71f4645083a51934fe2c14d9ab52dcf9385130d8fd62b",
+    "item_count": 88,
+    "type_distribution": {
+      "illust": 85,
+      "ugoira": 3
+    },
+    "x_restrict_distribution": {
+      "0": 88
+    },
+    "continuation_present": true,
+    "verdict": "inconclusive",
+    "reclassification": "legacy_partial_http_evidence"
+  },
+  {
+    "schema_version": 1,
+    "case_id": "illust-new-content-type",
+    "observed_at": "2026-09-05T00:32:52Z",
+    "source_commit": "working-tree",
+    "manifest_digest": "f6c0e6f517056a9cb9eb5d74cdf26e6df2cdf512cd2c27befc7e99691ca11263",
+    "app_profile": "pixiv-app",
+    "account_slot": "account-01",
+    "method": "GET",
+    "path": "/v1/illust/new",
+    "parameter_names": [
+      "content_type",
+      "max_illust_id"
+    ],
+    "status": 200,
+    "content_type": "application/json",
+    "schema_fingerprint": "06087d244c35be5537dd3e563cfffd8518b1c388ff579a28b1b14c9cab36c2a3",
+    "item_count": 29,
+    "type_distribution": {
+      "illust": 24,
+      "manga": 5
+    },
+    "x_restrict_distribution": {
+      "0": 29
+    },
+    "continuation_present": true,
+    "verdict": "inconclusive",
+    "reclassification": "legacy_partial_http_evidence"
+  },
+  {
+    "schema_version": 1,
+    "case_id": "novel-new-pagination",
+    "observed_at": "2026-09-05T00:32:52Z",
+    "source_commit": "working-tree",
+    "manifest_digest": "f6c0e6f517056a9cb9eb5d74cdf26e6df2cdf512cd2c27befc7e99691ca11263",
+    "app_profile": "pixiv-app",
+    "account_slot": "account-01",
+    "method": "GET",
+    "path": "/v1/novel/new",
+    "parameter_names": [
+      "max_novel_id"
+    ],
+    "status": 200,
+    "content_type": "application/json",
+    "schema_fingerprint": "3cd9ef765e534175a439fce1800c232cbf3151515770befc67592db3dc5d15b4",
+    "item_count": 30,
+    "x_restrict_distribution": {
+      "0": 23,
+      "1": 7
+    },
+    "continuation_present": true,
+    "verdict": "inconclusive",
+    "reclassification": "legacy_partial_http_evidence"
+  },
+  {
+    "schema_version": 1,
+    "case_id": "novel-detail",
+    "observed_at": "2026-09-05T00:32:52Z",
+    "source_commit": "working-tree",
+    "manifest_digest": "f6c0e6f517056a9cb9eb5d74cdf26e6df2cdf512cd2c27befc7e99691ca11263",
+    "app_profile": "pixiv-app",
+    "account_slot": "account-01",
+    "method": "GET",
+    "path": "/v2/novel/detail",
+    "parameter_names": [
+      "novel_id"
+    ],
+    "status": 200,
+    "content_type": "application/json",
+    "schema_fingerprint": "f2110e6cf92b93ae7b8ba2a41347889c1b864a2db67289f2d82f8d71854c24be",
+    "item_count": 0,
+    "continuation_present": false,
+    "verdict": "inconclusive",
+    "reclassification": "legacy_partial_http_evidence"
+  },
+  {
+    "schema_version": 1,
+    "case_id": "novel-series",
+    "observed_at": "2026-09-05T00:32:52Z",
+    "source_commit": "working-tree",
+    "manifest_digest": "f6c0e6f517056a9cb9eb5d74cdf26e6df2cdf512cd2c27befc7e99691ca11263",
+    "app_profile": "pixiv-app",
+    "account_slot": "account-01",
+    "method": "GET",
+    "path": "/v2/novel/series",
+    "parameter_names": [
+      "series_id",
+      "last_order"
+    ],
+    "status": 0,
+    "content_type": "",
+    "schema_fingerprint": "",
+    "item_count": 0,
+    "continuation_present": false,
+    "verdict": "inconclusive",
+    "failure_class": "transport_or_http_error"
+  },
+  {
+    "schema_version": 1,
+    "case_id": "novel-content",
+    "observed_at": "2026-09-05T00:32:52Z",
+    "source_commit": "working-tree",
+    "manifest_digest": "f6c0e6f517056a9cb9eb5d74cdf26e6df2cdf512cd2c27befc7e99691ca11263",
+    "app_profile": "pixiv-app",
+    "account_slot": "account-01",
+    "method": "GET",
+    "path": "/v1/novel/content",
+    "parameter_names": [
+      "novel_id"
+    ],
+    "status": 0,
+    "content_type": "",
+    "schema_fingerprint": "",
+    "item_count": 0,
+    "continuation_present": false,
+    "verdict": "inconclusive",
+    "failure_class": "transport_or_http_error"
+  },
+  {
+    "schema_version": 1,
+    "case_id": "search-novel-period",
+    "observed_at": "2026-09-05T00:32:52Z",
+    "source_commit": "working-tree",
+    "manifest_digest": "f6c0e6f517056a9cb9eb5d74cdf26e6df2cdf512cd2c27befc7e99691ca11263",
+    "app_profile": "pixiv-app",
+    "account_slot": "account-01",
+    "method": "GET",
+    "path": "/v1/search/novel",
+    "parameter_names": [
+      "word",
+      "search_target",
+      "sort",
+      "filter_by",
+      "offset",
+      "duration",
+      "start_date",
+      "end_date"
+    ],
+    "status": 200,
+    "content_type": "application/json",
+    "schema_fingerprint": "a3150dcd9aaf0c3cbf3eadd6ae9551e7e347e8242e3075496d22fe50035af11d",
+    "item_count": 30,
+    "x_restrict_distribution": {
+      "0": 29,
+      "1": 1
+    },
+    "continuation_present": true,
+    "verdict": "inconclusive",
+    "reclassification": "legacy_partial_http_evidence"
+  },
+  {
+    "schema_version": 1,
+    "case_id": "novel-bookmark-read",
+    "observed_at": "2026-09-05T00:32:52Z",
+    "source_commit": "working-tree",
+    "manifest_digest": "f6c0e6f517056a9cb9eb5d74cdf26e6df2cdf512cd2c27befc7e99691ca11263",
+    "app_profile": "pixiv-app",
+    "account_slot": "account-01",
+    "method": "GET",
+    "path": "/v1/user/bookmarks/novel",
+    "parameter_names": [
+      "user_id",
+      "restrict",
+      "tag",
+      "offset"
+    ],
+    "status": 0,
+    "content_type": "",
+    "schema_fingerprint": "",
+    "item_count": 0,
+    "continuation_present": false,
+    "verdict": "inconclusive",
+    "failure_class": "transport_or_http_error"
+  },
+  {
+    "schema_version": 1,
+    "case_id": "artwork-bookmark-subtype",
+    "observed_at": "2026-09-05T00:32:52Z",
+    "source_commit": "working-tree",
+    "manifest_digest": "f6c0e6f517056a9cb9eb5d74cdf26e6df2cdf512cd2c27befc7e99691ca11263",
+    "app_profile": "pixiv-app",
+    "account_slot": "account-01",
+    "method": "GET",
+    "path": "/v1/user/bookmarks/illust",
+    "parameter_names": [
+      "user_id",
+      "restrict",
+      "tag",
+      "offset",
+      "type",
+      "content_type"
+    ],
+    "status": 0,
+    "content_type": "",
+    "schema_fingerprint": "",
+    "item_count": 0,
+    "continuation_present": false,
+    "verdict": "inconclusive",
+    "failure_class": "transport_or_http_error"
+  },
+  {
+    "schema_version": 1,
+    "case_id": "comments-total",
+    "observed_at": "2026-09-05T00:32:52Z",
+    "source_commit": "working-tree",
+    "manifest_digest": "f6c0e6f517056a9cb9eb5d74cdf26e6df2cdf512cd2c27befc7e99691ca11263",
+    "app_profile": "pixiv-app",
+    "account_slot": "account-01",
+    "method": "GET",
+    "path": "/v3/illust/comments",
+    "parameter_names": [
+      "illust_id",
+      "offset",
+      "include_total_comments"
+    ],
+    "status": 200,
+    "content_type": "application/json",
+    "schema_fingerprint": "79c677face3d5c92c26cc6edcdb3797c0636f599ba152900643784a6c4280cfa",
+    "item_count": 0,
+    "continuation_present": true,
+    "verdict": "inconclusive",
+    "reclassification": "legacy_partial_http_evidence"
+  },
+  {
+    "schema_version": 1,
+    "case_id": "comment-mutation-contract",
+    "observed_at": "2026-09-05T00:32:52Z",
+    "source_commit": "working-tree",
+    "manifest_digest": "f6c0e6f517056a9cb9eb5d74cdf26e6df2cdf512cd2c27befc7e99691ca11263",
+    "app_profile": "pixiv-app",
+    "account_slot": "account-01",
+    "method": "POST",
+    "path": "/v1/illust/comment/add",
+    "parameter_names": [
+      "illust_id",
+      "comment",
+      "parent_comment_id",
+      "stamp_id"
+    ],
+    "status": 0,
+    "content_type": "",
+    "schema_fingerprint": "",
+    "item_count": 0,
+    "continuation_present": false,
+    "verdict": "not_tested",
+    "failure_class": "mutation_excluded_from_read_smoke",
+    "reclassification": "legacy_not_tested"
+  },
+  {
+    "schema_version": 1,
+    "case_id": "novel-ranking-contract",
+    "observed_at": "2026-09-05T00:32:52Z",
+    "source_commit": "working-tree",
+    "manifest_digest": "f6c0e6f517056a9cb9eb5d74cdf26e6df2cdf512cd2c27befc7e99691ca11263",
+    "app_profile": "pixiv-app",
+    "account_slot": "account-01",
+    "method": "GET",
+    "path": "/v1/novel/ranking",
+    "parameter_names": [
+      "mode",
+      "date",
+      "offset"
+    ],
+    "status": 0,
+    "content_type": "",
+    "schema_fingerprint": "",
+    "item_count": 0,
+    "continuation_present": false,
+    "verdict": "inconclusive",
+    "failure_class": "transport_or_http_error"
+  },
+  {
+    "schema_version": 1,
+    "case_id": "search-illust-content-type",
+    "observed_at": "2026-09-05T00:32:52Z",
+    "source_commit": "working-tree",
+    "manifest_digest": "f6c0e6f517056a9cb9eb5d74cdf26e6df2cdf512cd2c27befc7e99691ca11263",
+    "app_profile": "pixiv-app",
+    "account_slot": "account-02",
+    "method": "GET",
+    "path": "/v1/search/illust",
+    "parameter_names": [
+      "word",
+      "search_target",
+      "sort",
+      "filter_by",
+      "offset",
+      "content_type"
+    ],
+    "status": 200,
+    "content_type": "application/json",
+    "schema_fingerprint": "233267a6a0e67e95120f36795506ffe54cea126472d4117a73bb24d57bd58699",
+    "item_count": 30,
+    "type_distribution": {
+      "illust": 29,
+      "ugoira": 1
+    },
+    "x_restrict_distribution": {
+      "0": 21,
+      "1": 9
+    },
+    "continuation_present": true,
+    "verdict": "inconclusive",
+    "reclassification": "legacy_partial_http_evidence"
+  },
+  {
+    "schema_version": 1,
+    "case_id": "search-rating-contract",
+    "observed_at": "2026-09-05T00:32:52Z",
+    "source_commit": "working-tree",
+    "manifest_digest": "f6c0e6f517056a9cb9eb5d74cdf26e6df2cdf512cd2c27befc7e99691ca11263",
+    "app_profile": "pixiv-app",
+    "account_slot": "account-02",
+    "method": "GET",
+    "path": "/v1/search/illust",
+    "parameter_names": [
+      "word",
+      "search_target",
+      "sort",
+      "filter_by",
+      "offset",
+      "rating",
+      "mode",
+      "x_restrict",
+      "r18",
+      "search_r18"
+    ],
+    "status": 200,
+    "content_type": "application/json",
+    "schema_fingerprint": "233267a6a0e67e95120f36795506ffe54cea126472d4117a73bb24d57bd58699",
+    "item_count": 30,
+    "type_distribution": {
+      "illust": 29,
+      "ugoira": 1
+    },
+    "x_restrict_distribution": {
+      "0": 21,
+      "1": 9
+    },
+    "continuation_present": true,
+    "verdict": "inconclusive",
+    "reclassification": "legacy_partial_http_evidence"
+  },
+  {
+    "schema_version": 1,
+    "case_id": "recommended-content-type",
+    "observed_at": "2026-09-05T00:32:52Z",
+    "source_commit": "working-tree",
+    "manifest_digest": "f6c0e6f517056a9cb9eb5d74cdf26e6df2cdf512cd2c27befc7e99691ca11263",
+    "app_profile": "pixiv-app",
+    "account_slot": "account-02",
+    "method": "GET",
+    "path": "/v1/illust/recommended",
+    "parameter_names": [
+      "content_type",
+      "filter",
+      "offset"
+    ],
+    "status": 200,
+    "content_type": "application/json",
+    "schema_fingerprint": "dd0df9c1d0bf9c38e9b71f4645083a51934fe2c14d9ab52dcf9385130d8fd62b",
+    "item_count": 86,
+    "type_distribution": {
+      "illust": 86
+    },
+    "x_restrict_distribution": {
+      "0": 86
+    },
+    "continuation_present": true,
+    "verdict": "inconclusive",
+    "reclassification": "legacy_partial_http_evidence"
+  },
+  {
+    "schema_version": 1,
+    "case_id": "illust-new-content-type",
+    "observed_at": "2026-09-05T00:32:52Z",
+    "source_commit": "working-tree",
+    "manifest_digest": "f6c0e6f517056a9cb9eb5d74cdf26e6df2cdf512cd2c27befc7e99691ca11263",
+    "app_profile": "pixiv-app",
+    "account_slot": "account-02",
+    "method": "GET",
+    "path": "/v1/illust/new",
+    "parameter_names": [
+      "content_type",
+      "max_illust_id"
+    ],
+    "status": 200,
+    "content_type": "application/json",
+    "schema_fingerprint": "06087d244c35be5537dd3e563cfffd8518b1c388ff579a28b1b14c9cab36c2a3",
+    "item_count": 29,
+    "type_distribution": {
+      "illust": 24,
+      "manga": 5
+    },
+    "x_restrict_distribution": {
+      "0": 29
+    },
+    "continuation_present": true,
+    "verdict": "inconclusive",
+    "reclassification": "legacy_partial_http_evidence"
+  },
+  {
+    "schema_version": 1,
+    "case_id": "novel-new-pagination",
+    "observed_at": "2026-09-05T00:32:52Z",
+    "source_commit": "working-tree",
+    "manifest_digest": "f6c0e6f517056a9cb9eb5d74cdf26e6df2cdf512cd2c27befc7e99691ca11263",
+    "app_profile": "pixiv-app",
+    "account_slot": "account-02",
+    "method": "GET",
+    "path": "/v1/novel/new",
+    "parameter_names": [
+      "max_novel_id"
+    ],
+    "status": 200,
+    "content_type": "application/json",
+    "schema_fingerprint": "3cd9ef765e534175a439fce1800c232cbf3151515770befc67592db3dc5d15b4",
+    "item_count": 30,
+    "x_restrict_distribution": {
+      "0": 23,
+      "1": 7
+    },
+    "continuation_present": true,
+    "verdict": "inconclusive",
+    "reclassification": "legacy_partial_http_evidence"
+  },
+  {
+    "schema_version": 1,
+    "case_id": "novel-detail",
+    "observed_at": "2026-09-05T00:32:52Z",
+    "source_commit": "working-tree",
+    "manifest_digest": "f6c0e6f517056a9cb9eb5d74cdf26e6df2cdf512cd2c27befc7e99691ca11263",
+    "app_profile": "pixiv-app",
+    "account_slot": "account-02",
+    "method": "GET",
+    "path": "/v2/novel/detail",
+    "parameter_names": [
+      "novel_id"
+    ],
+    "status": 200,
+    "content_type": "application/json",
+    "schema_fingerprint": "f2110e6cf92b93ae7b8ba2a41347889c1b864a2db67289f2d82f8d71854c24be",
+    "item_count": 0,
+    "continuation_present": false,
+    "verdict": "inconclusive",
+    "reclassification": "legacy_partial_http_evidence"
+  },
+  {
+    "schema_version": 1,
+    "case_id": "novel-series",
+    "observed_at": "2026-09-05T00:32:52Z",
+    "source_commit": "working-tree",
+    "manifest_digest": "f6c0e6f517056a9cb9eb5d74cdf26e6df2cdf512cd2c27befc7e99691ca11263",
+    "app_profile": "pixiv-app",
+    "account_slot": "account-02",
+    "method": "GET",
+    "path": "/v2/novel/series",
+    "parameter_names": [
+      "series_id",
+      "last_order"
+    ],
+    "status": 0,
+    "content_type": "",
+    "schema_fingerprint": "",
+    "item_count": 0,
+    "continuation_present": false,
+    "verdict": "inconclusive",
+    "failure_class": "transport_or_http_error"
+  },
+  {
+    "schema_version": 1,
+    "case_id": "novel-content",
+    "observed_at": "2026-09-05T00:32:52Z",
+    "source_commit": "working-tree",
+    "manifest_digest": "f6c0e6f517056a9cb9eb5d74cdf26e6df2cdf512cd2c27befc7e99691ca11263",
+    "app_profile": "pixiv-app",
+    "account_slot": "account-02",
+    "method": "GET",
+    "path": "/v1/novel/content",
+    "parameter_names": [
+      "novel_id"
+    ],
+    "status": 0,
+    "content_type": "",
+    "schema_fingerprint": "",
+    "item_count": 0,
+    "continuation_present": false,
+    "verdict": "inconclusive",
+    "failure_class": "transport_or_http_error"
+  },
+  {
+    "schema_version": 1,
+    "case_id": "search-novel-period",
+    "observed_at": "2026-09-05T00:32:52Z",
+    "source_commit": "working-tree",
+    "manifest_digest": "f6c0e6f517056a9cb9eb5d74cdf26e6df2cdf512cd2c27befc7e99691ca11263",
+    "app_profile": "pixiv-app",
+    "account_slot": "account-02",
+    "method": "GET",
+    "path": "/v1/search/novel",
+    "parameter_names": [
+      "word",
+      "search_target",
+      "sort",
+      "filter_by",
+      "offset",
+      "duration",
+      "start_date",
+      "end_date"
+    ],
+    "status": 200,
+    "content_type": "application/json",
+    "schema_fingerprint": "a3150dcd9aaf0c3cbf3eadd6ae9551e7e347e8242e3075496d22fe50035af11d",
+    "item_count": 30,
+    "x_restrict_distribution": {
+      "0": 29,
+      "1": 1
+    },
+    "continuation_present": true,
+    "verdict": "inconclusive",
+    "reclassification": "legacy_partial_http_evidence"
+  },
+  {
+    "schema_version": 1,
+    "case_id": "novel-bookmark-read",
+    "observed_at": "2026-09-05T00:32:52Z",
+    "source_commit": "working-tree",
+    "manifest_digest": "f6c0e6f517056a9cb9eb5d74cdf26e6df2cdf512cd2c27befc7e99691ca11263",
+    "app_profile": "pixiv-app",
+    "account_slot": "account-02",
+    "method": "GET",
+    "path": "/v1/user/bookmarks/novel",
+    "parameter_names": [
+      "user_id",
+      "restrict",
+      "tag",
+      "offset"
+    ],
+    "status": 0,
+    "content_type": "",
+    "schema_fingerprint": "",
+    "item_count": 0,
+    "continuation_present": false,
+    "verdict": "inconclusive",
+    "failure_class": "transport_or_http_error"
+  },
+  {
+    "schema_version": 1,
+    "case_id": "artwork-bookmark-subtype",
+    "observed_at": "2026-09-05T00:32:52Z",
+    "source_commit": "working-tree",
+    "manifest_digest": "f6c0e6f517056a9cb9eb5d74cdf26e6df2cdf512cd2c27befc7e99691ca11263",
+    "app_profile": "pixiv-app",
+    "account_slot": "account-02",
+    "method": "GET",
+    "path": "/v1/user/bookmarks/illust",
+    "parameter_names": [
+      "user_id",
+      "restrict",
+      "tag",
+      "offset",
+      "type",
+      "content_type"
+    ],
+    "status": 0,
+    "content_type": "",
+    "schema_fingerprint": "",
+    "item_count": 0,
+    "continuation_present": false,
+    "verdict": "inconclusive",
+    "failure_class": "transport_or_http_error"
+  },
+  {
+    "schema_version": 1,
+    "case_id": "comments-total",
+    "observed_at": "2026-09-05T00:32:52Z",
+    "source_commit": "working-tree",
+    "manifest_digest": "f6c0e6f517056a9cb9eb5d74cdf26e6df2cdf512cd2c27befc7e99691ca11263",
+    "app_profile": "pixiv-app",
+    "account_slot": "account-02",
+    "method": "GET",
+    "path": "/v3/illust/comments",
+    "parameter_names": [
+      "illust_id",
+      "offset",
+      "include_total_comments"
+    ],
+    "status": 200,
+    "content_type": "application/json",
+    "schema_fingerprint": "79c677face3d5c92c26cc6edcdb3797c0636f599ba152900643784a6c4280cfa",
+    "item_count": 0,
+    "continuation_present": true,
+    "verdict": "inconclusive",
+    "reclassification": "legacy_partial_http_evidence"
+  },
+  {
+    "schema_version": 1,
+    "case_id": "comment-mutation-contract",
+    "observed_at": "2026-09-05T00:32:52Z",
+    "source_commit": "working-tree",
+    "manifest_digest": "f6c0e6f517056a9cb9eb5d74cdf26e6df2cdf512cd2c27befc7e99691ca11263",
+    "app_profile": "pixiv-app",
+    "account_slot": "account-02",
+    "method": "POST",
+    "path": "/v1/illust/comment/add",
+    "parameter_names": [
+      "illust_id",
+      "comment",
+      "parent_comment_id",
+      "stamp_id"
+    ],
+    "status": 0,
+    "content_type": "",
+    "schema_fingerprint": "",
+    "item_count": 0,
+    "continuation_present": false,
+    "verdict": "not_tested",
+    "failure_class": "mutation_excluded_from_read_smoke",
+    "reclassification": "legacy_not_tested"
+  },
+  {
+    "schema_version": 1,
+    "case_id": "novel-ranking-contract",
+    "observed_at": "2026-09-05T00:32:52Z",
+    "source_commit": "working-tree",
+    "manifest_digest": "f6c0e6f517056a9cb9eb5d74cdf26e6df2cdf512cd2c27befc7e99691ca11263",
+    "app_profile": "pixiv-app",
+    "account_slot": "account-02",
+    "method": "GET",
+    "path": "/v1/novel/ranking",
+    "parameter_names": [
+      "mode",
+      "date",
+      "offset"
+    ],
+    "status": 0,
+    "content_type": "",
+    "schema_fingerprint": "",
+    "item_count": 0,
+    "continuation_present": false,
+    "verdict": "inconclusive",
+    "failure_class": "transport_or_http_error"
+  },
+  {
+    "schema_version": 1,
+    "case_id": "search-illust-content-type",
+    "observed_at": "2026-09-05T00:32:52Z",
+    "source_commit": "working-tree",
+    "manifest_digest": "f6c0e6f517056a9cb9eb5d74cdf26e6df2cdf512cd2c27befc7e99691ca11263",
+    "app_profile": "pixiv-app",
+    "account_slot": "account-03",
+    "method": "GET",
+    "path": "/v1/search/illust",
+    "parameter_names": [
+      "word",
+      "search_target",
+      "sort",
+      "filter_by",
+      "offset",
+      "content_type"
+    ],
+    "status": 200,
+    "content_type": "application/json",
+    "schema_fingerprint": "233267a6a0e67e95120f36795506ffe54cea126472d4117a73bb24d57bd58699",
+    "item_count": 30,
+    "type_distribution": {
+      "illust": 29,
+      "ugoira": 1
+    },
+    "x_restrict_distribution": {
+      "0": 21,
+      "1": 9
+    },
+    "continuation_present": true,
+    "verdict": "inconclusive",
+    "reclassification": "legacy_partial_http_evidence"
+  },
+  {
+    "schema_version": 1,
+    "case_id": "search-rating-contract",
+    "observed_at": "2026-09-05T00:32:52Z",
+    "source_commit": "working-tree",
+    "manifest_digest": "f6c0e6f517056a9cb9eb5d74cdf26e6df2cdf512cd2c27befc7e99691ca11263",
+    "app_profile": "pixiv-app",
+    "account_slot": "account-03",
+    "method": "GET",
+    "path": "/v1/search/illust",
+    "parameter_names": [
+      "word",
+      "search_target",
+      "sort",
+      "filter_by",
+      "offset",
+      "rating",
+      "mode",
+      "x_restrict",
+      "r18",
+      "search_r18"
+    ],
+    "status": 200,
+    "content_type": "application/json",
+    "schema_fingerprint": "233267a6a0e67e95120f36795506ffe54cea126472d4117a73bb24d57bd58699",
+    "item_count": 30,
+    "type_distribution": {
+      "illust": 29,
+      "ugoira": 1
+    },
+    "x_restrict_distribution": {
+      "0": 21,
+      "1": 9
+    },
+    "continuation_present": true,
+    "verdict": "inconclusive",
+    "reclassification": "legacy_partial_http_evidence"
+  },
+  {
+    "schema_version": 1,
+    "case_id": "recommended-content-type",
+    "observed_at": "2026-09-05T00:32:52Z",
+    "source_commit": "working-tree",
+    "manifest_digest": "f6c0e6f517056a9cb9eb5d74cdf26e6df2cdf512cd2c27befc7e99691ca11263",
+    "app_profile": "pixiv-app",
+    "account_slot": "account-03",
+    "method": "GET",
+    "path": "/v1/illust/recommended",
+    "parameter_names": [
+      "content_type",
+      "filter",
+      "offset"
+    ],
+    "status": 200,
+    "content_type": "application/json",
+    "schema_fingerprint": "dd0df9c1d0bf9c38e9b71f4645083a51934fe2c14d9ab52dcf9385130d8fd62b",
+    "item_count": 85,
+    "type_distribution": {
+      "illust": 85
+    },
+    "x_restrict_distribution": {
+      "0": 85
+    },
+    "continuation_present": true,
+    "verdict": "inconclusive",
+    "reclassification": "legacy_partial_http_evidence"
+  },
+  {
+    "schema_version": 1,
+    "case_id": "illust-new-content-type",
+    "observed_at": "2026-09-05T00:32:52Z",
+    "source_commit": "working-tree",
+    "manifest_digest": "f6c0e6f517056a9cb9eb5d74cdf26e6df2cdf512cd2c27befc7e99691ca11263",
+    "app_profile": "pixiv-app",
+    "account_slot": "account-03",
+    "method": "GET",
+    "path": "/v1/illust/new",
+    "parameter_names": [
+      "content_type",
+      "max_illust_id"
+    ],
+    "status": 200,
+    "content_type": "application/json",
+    "schema_fingerprint": "06087d244c35be5537dd3e563cfffd8518b1c388ff579a28b1b14c9cab36c2a3",
+    "item_count": 29,
+    "type_distribution": {
+      "illust": 24,
+      "manga": 5
+    },
+    "x_restrict_distribution": {
+      "0": 29
+    },
+    "continuation_present": true,
+    "verdict": "inconclusive",
+    "reclassification": "legacy_partial_http_evidence"
+  },
+  {
+    "schema_version": 1,
+    "case_id": "novel-new-pagination",
+    "observed_at": "2026-09-05T00:32:52Z",
+    "source_commit": "working-tree",
+    "manifest_digest": "f6c0e6f517056a9cb9eb5d74cdf26e6df2cdf512cd2c27befc7e99691ca11263",
+    "app_profile": "pixiv-app",
+    "account_slot": "account-03",
+    "method": "GET",
+    "path": "/v1/novel/new",
+    "parameter_names": [
+      "max_novel_id"
+    ],
+    "status": 200,
+    "content_type": "application/json",
+    "schema_fingerprint": "3cd9ef765e534175a439fce1800c232cbf3151515770befc67592db3dc5d15b4",
+    "item_count": 30,
+    "x_restrict_distribution": {
+      "0": 23,
+      "1": 7
+    },
+    "continuation_present": true,
+    "verdict": "inconclusive",
+    "reclassification": "legacy_partial_http_evidence"
+  },
+  {
+    "schema_version": 1,
+    "case_id": "novel-detail",
+    "observed_at": "2026-09-05T00:32:52Z",
+    "source_commit": "working-tree",
+    "manifest_digest": "f6c0e6f517056a9cb9eb5d74cdf26e6df2cdf512cd2c27befc7e99691ca11263",
+    "app_profile": "pixiv-app",
+    "account_slot": "account-03",
+    "method": "GET",
+    "path": "/v2/novel/detail",
+    "parameter_names": [
+      "novel_id"
+    ],
+    "status": 200,
+    "content_type": "application/json",
+    "schema_fingerprint": "f2110e6cf92b93ae7b8ba2a41347889c1b864a2db67289f2d82f8d71854c24be",
+    "item_count": 0,
+    "continuation_present": false,
+    "verdict": "inconclusive",
+    "reclassification": "legacy_partial_http_evidence"
+  },
+  {
+    "schema_version": 1,
+    "case_id": "novel-series",
+    "observed_at": "2026-09-05T00:32:52Z",
+    "source_commit": "working-tree",
+    "manifest_digest": "f6c0e6f517056a9cb9eb5d74cdf26e6df2cdf512cd2c27befc7e99691ca11263",
+    "app_profile": "pixiv-app",
+    "account_slot": "account-03",
+    "method": "GET",
+    "path": "/v2/novel/series",
+    "parameter_names": [
+      "series_id",
+      "last_order"
+    ],
+    "status": 0,
+    "content_type": "",
+    "schema_fingerprint": "",
+    "item_count": 0,
+    "continuation_present": false,
+    "verdict": "inconclusive",
+    "failure_class": "transport_or_http_error"
+  },
+  {
+    "schema_version": 1,
+    "case_id": "novel-content",
+    "observed_at": "2026-09-05T00:32:52Z",
+    "source_commit": "working-tree",
+    "manifest_digest": "f6c0e6f517056a9cb9eb5d74cdf26e6df2cdf512cd2c27befc7e99691ca11263",
+    "app_profile": "pixiv-app",
+    "account_slot": "account-03",
+    "method": "GET",
+    "path": "/v1/novel/content",
+    "parameter_names": [
+      "novel_id"
+    ],
+    "status": 0,
+    "content_type": "",
+    "schema_fingerprint": "",
+    "item_count": 0,
+    "continuation_present": false,
+    "verdict": "inconclusive",
+    "failure_class": "transport_or_http_error"
+  },
+  {
+    "schema_version": 1,
+    "case_id": "search-novel-period",
+    "observed_at": "2026-09-05T00:32:52Z",
+    "source_commit": "working-tree",
+    "manifest_digest": "f6c0e6f517056a9cb9eb5d74cdf26e6df2cdf512cd2c27befc7e99691ca11263",
+    "app_profile": "pixiv-app",
+    "account_slot": "account-03",
+    "method": "GET",
+    "path": "/v1/search/novel",
+    "parameter_names": [
+      "word",
+      "search_target",
+      "sort",
+      "filter_by",
+      "offset",
+      "duration",
+      "start_date",
+      "end_date"
+    ],
+    "status": 200,
+    "content_type": "application/json",
+    "schema_fingerprint": "a3150dcd9aaf0c3cbf3eadd6ae9551e7e347e8242e3075496d22fe50035af11d",
+    "item_count": 30,
+    "x_restrict_distribution": {
+      "0": 29,
+      "1": 1
+    },
+    "continuation_present": true,
+    "verdict": "inconclusive",
+    "reclassification": "legacy_partial_http_evidence"
+  },
+  {
+    "schema_version": 1,
+    "case_id": "novel-bookmark-read",
+    "observed_at": "2026-09-05T00:32:52Z",
+    "source_commit": "working-tree",
+    "manifest_digest": "f6c0e6f517056a9cb9eb5d74cdf26e6df2cdf512cd2c27befc7e99691ca11263",
+    "app_profile": "pixiv-app",
+    "account_slot": "account-03",
+    "method": "GET",
+    "path": "/v1/user/bookmarks/novel",
+    "parameter_names": [
+      "user_id",
+      "restrict",
+      "tag",
+      "offset"
+    ],
+    "status": 0,
+    "content_type": "",
+    "schema_fingerprint": "",
+    "item_count": 0,
+    "continuation_present": false,
+    "verdict": "inconclusive",
+    "failure_class": "transport_or_http_error"
+  },
+  {
+    "schema_version": 1,
+    "case_id": "artwork-bookmark-subtype",
+    "observed_at": "2026-09-05T00:32:52Z",
+    "source_commit": "working-tree",
+    "manifest_digest": "f6c0e6f517056a9cb9eb5d74cdf26e6df2cdf512cd2c27befc7e99691ca11263",
+    "app_profile": "pixiv-app",
+    "account_slot": "account-03",
+    "method": "GET",
+    "path": "/v1/user/bookmarks/illust",
+    "parameter_names": [
+      "user_id",
+      "restrict",
+      "tag",
+      "offset",
+      "type",
+      "content_type"
+    ],
+    "status": 0,
+    "content_type": "",
+    "schema_fingerprint": "",
+    "item_count": 0,
+    "continuation_present": false,
+    "verdict": "inconclusive",
+    "failure_class": "transport_or_http_error"
+  },
+  {
+    "schema_version": 1,
+    "case_id": "comments-total",
+    "observed_at": "2026-09-05T00:32:52Z",
+    "source_commit": "working-tree",
+    "manifest_digest": "f6c0e6f517056a9cb9eb5d74cdf26e6df2cdf512cd2c27befc7e99691ca11263",
+    "app_profile": "pixiv-app",
+    "account_slot": "account-03",
+    "method": "GET",
+    "path": "/v3/illust/comments",
+    "parameter_names": [
+      "illust_id",
+      "offset",
+      "include_total_comments"
+    ],
+    "status": 200,
+    "content_type": "application/json",
+    "schema_fingerprint": "79c677face3d5c92c26cc6edcdb3797c0636f599ba152900643784a6c4280cfa",
+    "item_count": 0,
+    "continuation_present": true,
+    "verdict": "inconclusive",
+    "reclassification": "legacy_partial_http_evidence"
+  },
+  {
+    "schema_version": 1,
+    "case_id": "comment-mutation-contract",
+    "observed_at": "2026-09-05T00:32:52Z",
+    "source_commit": "working-tree",
+    "manifest_digest": "f6c0e6f517056a9cb9eb5d74cdf26e6df2cdf512cd2c27befc7e99691ca11263",
+    "app_profile": "pixiv-app",
+    "account_slot": "account-03",
+    "method": "POST",
+    "path": "/v1/illust/comment/add",
+    "parameter_names": [
+      "illust_id",
+      "comment",
+      "parent_comment_id",
+      "stamp_id"
+    ],
+    "status": 0,
+    "content_type": "",
+    "schema_fingerprint": "",
+    "item_count": 0,
+    "continuation_present": false,
+    "verdict": "not_tested",
+    "failure_class": "mutation_excluded_from_read_smoke",
+    "reclassification": "legacy_not_tested"
+  },
+  {
+    "schema_version": 1,
+    "case_id": "novel-ranking-contract",
+    "observed_at": "2026-09-05T00:32:52Z",
+    "source_commit": "working-tree",
+    "manifest_digest": "f6c0e6f517056a9cb9eb5d74cdf26e6df2cdf512cd2c27befc7e99691ca11263",
+    "app_profile": "pixiv-app",
+    "account_slot": "account-03",
+    "method": "GET",
+    "path": "/v1/novel/ranking",
+    "parameter_names": [
+      "mode",
+      "date",
+      "offset"
+    ],
+    "status": 0,
+    "content_type": "",
+    "schema_fingerprint": "",
+    "item_count": 0,
+    "continuation_present": false,
+    "verdict": "inconclusive",
+    "failure_class": "transport_or_http_error"
+  },
+  {
+    "schema_version": 1,
+    "case_id": "search-illust-content-type",
+    "observed_at": "2026-09-05T00:32:52Z",
+    "source_commit": "working-tree",
+    "manifest_digest": "f6c0e6f517056a9cb9eb5d74cdf26e6df2cdf512cd2c27befc7e99691ca11263",
+    "app_profile": "pixiv-app",
+    "account_slot": "account-04",
+    "method": "GET",
+    "path": "/v1/search/illust",
+    "parameter_names": [
+      "word",
+      "search_target",
+      "sort",
+      "filter_by",
+      "offset",
+      "content_type"
+    ],
+    "status": 200,
+    "content_type": "application/json",
+    "schema_fingerprint": "233267a6a0e67e95120f36795506ffe54cea126472d4117a73bb24d57bd58699",
+    "item_count": 30,
+    "type_distribution": {
+      "illust": 29,
+      "ugoira": 1
+    },
+    "x_restrict_distribution": {
+      "0": 21,
+      "1": 9
+    },
+    "continuation_present": true,
+    "verdict": "inconclusive",
+    "reclassification": "legacy_partial_http_evidence"
+  },
+  {
+    "schema_version": 1,
+    "case_id": "search-rating-contract",
+    "observed_at": "2026-09-05T00:32:52Z",
+    "source_commit": "working-tree",
+    "manifest_digest": "f6c0e6f517056a9cb9eb5d74cdf26e6df2cdf512cd2c27befc7e99691ca11263",
+    "app_profile": "pixiv-app",
+    "account_slot": "account-04",
+    "method": "GET",
+    "path": "/v1/search/illust",
+    "parameter_names": [
+      "word",
+      "search_target",
+      "sort",
+      "filter_by",
+      "offset",
+      "rating",
+      "mode",
+      "x_restrict",
+      "r18",
+      "search_r18"
+    ],
+    "status": 200,
+    "content_type": "application/json",
+    "schema_fingerprint": "233267a6a0e67e95120f36795506ffe54cea126472d4117a73bb24d57bd58699",
+    "item_count": 30,
+    "type_distribution": {
+      "illust": 29,
+      "ugoira": 1
+    },
+    "x_restrict_distribution": {
+      "0": 21,
+      "1": 9
+    },
+    "continuation_present": true,
+    "verdict": "inconclusive",
+    "reclassification": "legacy_partial_http_evidence"
+  },
+  {
+    "schema_version": 1,
+    "case_id": "recommended-content-type",
+    "observed_at": "2026-09-05T00:32:52Z",
+    "source_commit": "working-tree",
+    "manifest_digest": "f6c0e6f517056a9cb9eb5d74cdf26e6df2cdf512cd2c27befc7e99691ca11263",
+    "app_profile": "pixiv-app",
+    "account_slot": "account-04",
+    "method": "GET",
+    "path": "/v1/illust/recommended",
+    "parameter_names": [
+      "content_type",
+      "filter",
+      "offset"
+    ],
+    "status": 200,
+    "content_type": "application/json",
+    "schema_fingerprint": "dd0df9c1d0bf9c38e9b71f4645083a51934fe2c14d9ab52dcf9385130d8fd62b",
+    "item_count": 84,
+    "type_distribution": {
+      "illust": 82,
+      "ugoira": 2
+    },
+    "x_restrict_distribution": {
+      "0": 84
+    },
+    "continuation_present": true,
+    "verdict": "inconclusive",
+    "reclassification": "legacy_partial_http_evidence"
+  },
+  {
+    "schema_version": 1,
+    "case_id": "illust-new-content-type",
+    "observed_at": "2026-09-05T00:32:52Z",
+    "source_commit": "working-tree",
+    "manifest_digest": "f6c0e6f517056a9cb9eb5d74cdf26e6df2cdf512cd2c27befc7e99691ca11263",
+    "app_profile": "pixiv-app",
+    "account_slot": "account-04",
+    "method": "GET",
+    "path": "/v1/illust/new",
+    "parameter_names": [
+      "content_type",
+      "max_illust_id"
+    ],
+    "status": 200,
+    "content_type": "application/json",
+    "schema_fingerprint": "06087d244c35be5537dd3e563cfffd8518b1c388ff579a28b1b14c9cab36c2a3",
+    "item_count": 29,
+    "type_distribution": {
+      "illust": 24,
+      "manga": 5
+    },
+    "x_restrict_distribution": {
+      "0": 29
+    },
+    "continuation_present": true,
+    "verdict": "inconclusive",
+    "reclassification": "legacy_partial_http_evidence"
+  },
+  {
+    "schema_version": 1,
+    "case_id": "novel-new-pagination",
+    "observed_at": "2026-09-05T00:32:52Z",
+    "source_commit": "working-tree",
+    "manifest_digest": "f6c0e6f517056a9cb9eb5d74cdf26e6df2cdf512cd2c27befc7e99691ca11263",
+    "app_profile": "pixiv-app",
+    "account_slot": "account-04",
+    "method": "GET",
+    "path": "/v1/novel/new",
+    "parameter_names": [
+      "max_novel_id"
+    ],
+    "status": 200,
+    "content_type": "application/json",
+    "schema_fingerprint": "3cd9ef765e534175a439fce1800c232cbf3151515770befc67592db3dc5d15b4",
+    "item_count": 30,
+    "x_restrict_distribution": {
+      "0": 23,
+      "1": 7
+    },
+    "continuation_present": true,
+    "verdict": "inconclusive",
+    "reclassification": "legacy_partial_http_evidence"
+  },
+  {
+    "schema_version": 1,
+    "case_id": "novel-detail",
+    "observed_at": "2026-09-05T00:32:52Z",
+    "source_commit": "working-tree",
+    "manifest_digest": "f6c0e6f517056a9cb9eb5d74cdf26e6df2cdf512cd2c27befc7e99691ca11263",
+    "app_profile": "pixiv-app",
+    "account_slot": "account-04",
+    "method": "GET",
+    "path": "/v2/novel/detail",
+    "parameter_names": [
+      "novel_id"
+    ],
+    "status": 200,
+    "content_type": "application/json",
+    "schema_fingerprint": "f2110e6cf92b93ae7b8ba2a41347889c1b864a2db67289f2d82f8d71854c24be",
+    "item_count": 0,
+    "continuation_present": false,
+    "verdict": "inconclusive",
+    "reclassification": "legacy_partial_http_evidence"
+  },
+  {
+    "schema_version": 1,
+    "case_id": "novel-series",
+    "observed_at": "2026-09-05T00:32:52Z",
+    "source_commit": "working-tree",
+    "manifest_digest": "f6c0e6f517056a9cb9eb5d74cdf26e6df2cdf512cd2c27befc7e99691ca11263",
+    "app_profile": "pixiv-app",
+    "account_slot": "account-04",
+    "method": "GET",
+    "path": "/v2/novel/series",
+    "parameter_names": [
+      "series_id",
+      "last_order"
+    ],
+    "status": 0,
+    "content_type": "",
+    "schema_fingerprint": "",
+    "item_count": 0,
+    "continuation_present": false,
+    "verdict": "inconclusive",
+    "failure_class": "transport_or_http_error"
+  },
+  {
+    "schema_version": 1,
+    "case_id": "novel-content",
+    "observed_at": "2026-09-05T00:32:52Z",
+    "source_commit": "working-tree",
+    "manifest_digest": "f6c0e6f517056a9cb9eb5d74cdf26e6df2cdf512cd2c27befc7e99691ca11263",
+    "app_profile": "pixiv-app",
+    "account_slot": "account-04",
+    "method": "GET",
+    "path": "/v1/novel/content",
+    "parameter_names": [
+      "novel_id"
+    ],
+    "status": 0,
+    "content_type": "",
+    "schema_fingerprint": "",
+    "item_count": 0,
+    "continuation_present": false,
+    "verdict": "inconclusive",
+    "failure_class": "transport_or_http_error"
+  },
+  {
+    "schema_version": 1,
+    "case_id": "search-novel-period",
+    "observed_at": "2026-09-05T00:32:52Z",
+    "source_commit": "working-tree",
+    "manifest_digest": "f6c0e6f517056a9cb9eb5d74cdf26e6df2cdf512cd2c27befc7e99691ca11263",
+    "app_profile": "pixiv-app",
+    "account_slot": "account-04",
+    "method": "GET",
+    "path": "/v1/search/novel",
+    "parameter_names": [
+      "word",
+      "search_target",
+      "sort",
+      "filter_by",
+      "offset",
+      "duration",
+      "start_date",
+      "end_date"
+    ],
+    "status": 200,
+    "content_type": "application/json",
+    "schema_fingerprint": "a3150dcd9aaf0c3cbf3eadd6ae9551e7e347e8242e3075496d22fe50035af11d",
+    "item_count": 30,
+    "x_restrict_distribution": {
+      "0": 29,
+      "1": 1
+    },
+    "continuation_present": true,
+    "verdict": "inconclusive",
+    "reclassification": "legacy_partial_http_evidence"
+  },
+  {
+    "schema_version": 1,
+    "case_id": "novel-bookmark-read",
+    "observed_at": "2026-09-05T00:32:52Z",
+    "source_commit": "working-tree",
+    "manifest_digest": "f6c0e6f517056a9cb9eb5d74cdf26e6df2cdf512cd2c27befc7e99691ca11263",
+    "app_profile": "pixiv-app",
+    "account_slot": "account-04",
+    "method": "GET",
+    "path": "/v1/user/bookmarks/novel",
+    "parameter_names": [
+      "user_id",
+      "restrict",
+      "tag",
+      "offset"
+    ],
+    "status": 0,
+    "content_type": "",
+    "schema_fingerprint": "",
+    "item_count": 0,
+    "continuation_present": false,
+    "verdict": "inconclusive",
+    "failure_class": "transport_or_http_error"
+  },
+  {
+    "schema_version": 1,
+    "case_id": "artwork-bookmark-subtype",
+    "observed_at": "2026-09-05T00:32:52Z",
+    "source_commit": "working-tree",
+    "manifest_digest": "f6c0e6f517056a9cb9eb5d74cdf26e6df2cdf512cd2c27befc7e99691ca11263",
+    "app_profile": "pixiv-app",
+    "account_slot": "account-04",
+    "method": "GET",
+    "path": "/v1/user/bookmarks/illust",
+    "parameter_names": [
+      "user_id",
+      "restrict",
+      "tag",
+      "offset",
+      "type",
+      "content_type"
+    ],
+    "status": 0,
+    "content_type": "",
+    "schema_fingerprint": "",
+    "item_count": 0,
+    "continuation_present": false,
+    "verdict": "inconclusive",
+    "failure_class": "transport_or_http_error"
+  },
+  {
+    "schema_version": 1,
+    "case_id": "comments-total",
+    "observed_at": "2026-09-05T00:32:52Z",
+    "source_commit": "working-tree",
+    "manifest_digest": "f6c0e6f517056a9cb9eb5d74cdf26e6df2cdf512cd2c27befc7e99691ca11263",
+    "app_profile": "pixiv-app",
+    "account_slot": "account-04",
+    "method": "GET",
+    "path": "/v3/illust/comments",
+    "parameter_names": [
+      "illust_id",
+      "offset",
+      "include_total_comments"
+    ],
+    "status": 200,
+    "content_type": "application/json",
+    "schema_fingerprint": "79c677face3d5c92c26cc6edcdb3797c0636f599ba152900643784a6c4280cfa",
+    "item_count": 0,
+    "continuation_present": true,
+    "verdict": "inconclusive",
+    "reclassification": "legacy_partial_http_evidence"
+  },
+  {
+    "schema_version": 1,
+    "case_id": "comment-mutation-contract",
+    "observed_at": "2026-09-05T00:32:52Z",
+    "source_commit": "working-tree",
+    "manifest_digest": "f6c0e6f517056a9cb9eb5d74cdf26e6df2cdf512cd2c27befc7e99691ca11263",
+    "app_profile": "pixiv-app",
+    "account_slot": "account-04",
+    "method": "POST",
+    "path": "/v1/illust/comment/add",
+    "parameter_names": [
+      "illust_id",
+      "comment",
+      "parent_comment_id",
+      "stamp_id"
+    ],
+    "status": 0,
+    "content_type": "",
+    "schema_fingerprint": "",
+    "item_count": 0,
+    "continuation_present": false,
+    "verdict": "not_tested",
+    "failure_class": "mutation_excluded_from_read_smoke",
+    "reclassification": "legacy_not_tested"
+  },
+  {
+    "schema_version": 1,
+    "case_id": "novel-ranking-contract",
+    "observed_at": "2026-09-05T00:32:52Z",
+    "source_commit": "working-tree",
+    "manifest_digest": "f6c0e6f517056a9cb9eb5d74cdf26e6df2cdf512cd2c27befc7e99691ca11263",
+    "app_profile": "pixiv-app",
+    "account_slot": "account-04",
+    "method": "GET",
+    "path": "/v1/novel/ranking",
+    "parameter_names": [
+      "mode",
+      "date",
+      "offset"
+    ],
+    "status": 0,
+    "content_type": "",
+    "schema_fingerprint": "",
+    "item_count": 0,
+    "continuation_present": false,
+    "verdict": "inconclusive",
+    "failure_class": "transport_or_http_error"
+  },
+  {
+    "schema_version": 1,
+    "case_id": "search-illust-content-type",
+    "observed_at": "2026-09-05T00:32:52Z",
+    "source_commit": "working-tree",
+    "manifest_digest": "f6c0e6f517056a9cb9eb5d74cdf26e6df2cdf512cd2c27befc7e99691ca11263",
+    "app_profile": "pixiv-app",
+    "account_slot": "account-05",
+    "method": "GET",
+    "path": "/v1/search/illust",
+    "parameter_names": [
+      "word",
+      "search_target",
+      "sort",
+      "filter_by",
+      "offset",
+      "content_type"
+    ],
+    "status": 200,
+    "content_type": "application/json",
+    "schema_fingerprint": "233267a6a0e67e95120f36795506ffe54cea126472d4117a73bb24d57bd58699",
+    "item_count": 30,
+    "type_distribution": {
+      "illust": 29,
+      "ugoira": 1
+    },
+    "x_restrict_distribution": {
+      "0": 21,
+      "1": 9
+    },
+    "continuation_present": true,
+    "verdict": "inconclusive",
+    "reclassification": "legacy_partial_http_evidence"
+  },
+  {
+    "schema_version": 1,
+    "case_id": "search-rating-contract",
+    "observed_at": "2026-09-05T00:32:52Z",
+    "source_commit": "working-tree",
+    "manifest_digest": "f6c0e6f517056a9cb9eb5d74cdf26e6df2cdf512cd2c27befc7e99691ca11263",
+    "app_profile": "pixiv-app",
+    "account_slot": "account-05",
+    "method": "GET",
+    "path": "/v1/search/illust",
+    "parameter_names": [
+      "word",
+      "search_target",
+      "sort",
+      "filter_by",
+      "offset",
+      "rating",
+      "mode",
+      "x_restrict",
+      "r18",
+      "search_r18"
+    ],
+    "status": 200,
+    "content_type": "application/json",
+    "schema_fingerprint": "233267a6a0e67e95120f36795506ffe54cea126472d4117a73bb24d57bd58699",
+    "item_count": 30,
+    "type_distribution": {
+      "illust": 29,
+      "ugoira": 1
+    },
+    "x_restrict_distribution": {
+      "0": 21,
+      "1": 9
+    },
+    "continuation_present": true,
+    "verdict": "inconclusive",
+    "reclassification": "legacy_partial_http_evidence"
+  },
+  {
+    "schema_version": 1,
+    "case_id": "recommended-content-type",
+    "observed_at": "2026-09-05T00:32:52Z",
+    "source_commit": "working-tree",
+    "manifest_digest": "f6c0e6f517056a9cb9eb5d74cdf26e6df2cdf512cd2c27befc7e99691ca11263",
+    "app_profile": "pixiv-app",
+    "account_slot": "account-05",
+    "method": "GET",
+    "path": "/v1/illust/recommended",
+    "parameter_names": [
+      "content_type",
+      "filter",
+      "offset"
+    ],
+    "status": 200,
+    "content_type": "application/json",
+    "schema_fingerprint": "dd0df9c1d0bf9c38e9b71f4645083a51934fe2c14d9ab52dcf9385130d8fd62b",
+    "item_count": 89,
+    "type_distribution": {
+      "illust": 87,
+      "ugoira": 2
+    },
+    "x_restrict_distribution": {
+      "0": 89
+    },
+    "continuation_present": true,
+    "verdict": "inconclusive",
+    "reclassification": "legacy_partial_http_evidence"
+  },
+  {
+    "schema_version": 1,
+    "case_id": "illust-new-content-type",
+    "observed_at": "2026-09-05T00:32:52Z",
+    "source_commit": "working-tree",
+    "manifest_digest": "f6c0e6f517056a9cb9eb5d74cdf26e6df2cdf512cd2c27befc7e99691ca11263",
+    "app_profile": "pixiv-app",
+    "account_slot": "account-05",
+    "method": "GET",
+    "path": "/v1/illust/new",
+    "parameter_names": [
+      "content_type",
+      "max_illust_id"
+    ],
+    "status": 200,
+    "content_type": "application/json",
+    "schema_fingerprint": "06087d244c35be5537dd3e563cfffd8518b1c388ff579a28b1b14c9cab36c2a3",
+    "item_count": 29,
+    "type_distribution": {
+      "illust": 24,
+      "manga": 5
+    },
+    "x_restrict_distribution": {
+      "0": 29
+    },
+    "continuation_present": true,
+    "verdict": "inconclusive",
+    "reclassification": "legacy_partial_http_evidence"
+  },
+  {
+    "schema_version": 1,
+    "case_id": "novel-new-pagination",
+    "observed_at": "2026-09-05T00:32:52Z",
+    "source_commit": "working-tree",
+    "manifest_digest": "f6c0e6f517056a9cb9eb5d74cdf26e6df2cdf512cd2c27befc7e99691ca11263",
+    "app_profile": "pixiv-app",
+    "account_slot": "account-05",
+    "method": "GET",
+    "path": "/v1/novel/new",
+    "parameter_names": [
+      "max_novel_id"
+    ],
+    "status": 200,
+    "content_type": "application/json",
+    "schema_fingerprint": "3cd9ef765e534175a439fce1800c232cbf3151515770befc67592db3dc5d15b4",
+    "item_count": 30,
+    "x_restrict_distribution": {
+      "0": 23,
+      "1": 7
+    },
+    "continuation_present": true,
+    "verdict": "inconclusive",
+    "reclassification": "legacy_partial_http_evidence"
+  },
+  {
+    "schema_version": 1,
+    "case_id": "novel-detail",
+    "observed_at": "2026-09-05T00:32:52Z",
+    "source_commit": "working-tree",
+    "manifest_digest": "f6c0e6f517056a9cb9eb5d74cdf26e6df2cdf512cd2c27befc7e99691ca11263",
+    "app_profile": "pixiv-app",
+    "account_slot": "account-05",
+    "method": "GET",
+    "path": "/v2/novel/detail",
+    "parameter_names": [
+      "novel_id"
+    ],
+    "status": 200,
+    "content_type": "application/json",
+    "schema_fingerprint": "f2110e6cf92b93ae7b8ba2a41347889c1b864a2db67289f2d82f8d71854c24be",
+    "item_count": 0,
+    "continuation_present": false,
+    "verdict": "inconclusive",
+    "reclassification": "legacy_partial_http_evidence"
+  },
+  {
+    "schema_version": 1,
+    "case_id": "novel-series",
+    "observed_at": "2026-09-05T00:32:52Z",
+    "source_commit": "working-tree",
+    "manifest_digest": "f6c0e6f517056a9cb9eb5d74cdf26e6df2cdf512cd2c27befc7e99691ca11263",
+    "app_profile": "pixiv-app",
+    "account_slot": "account-05",
+    "method": "GET",
+    "path": "/v2/novel/series",
+    "parameter_names": [
+      "series_id",
+      "last_order"
+    ],
+    "status": 0,
+    "content_type": "",
+    "schema_fingerprint": "",
+    "item_count": 0,
+    "continuation_present": false,
+    "verdict": "inconclusive",
+    "failure_class": "transport_or_http_error"
+  },
+  {
+    "schema_version": 1,
+    "case_id": "novel-content",
+    "observed_at": "2026-09-05T00:32:52Z",
+    "source_commit": "working-tree",
+    "manifest_digest": "f6c0e6f517056a9cb9eb5d74cdf26e6df2cdf512cd2c27befc7e99691ca11263",
+    "app_profile": "pixiv-app",
+    "account_slot": "account-05",
+    "method": "GET",
+    "path": "/v1/novel/content",
+    "parameter_names": [
+      "novel_id"
+    ],
+    "status": 0,
+    "content_type": "",
+    "schema_fingerprint": "",
+    "item_count": 0,
+    "continuation_present": false,
+    "verdict": "inconclusive",
+    "failure_class": "transport_or_http_error"
+  },
+  {
+    "schema_version": 1,
+    "case_id": "search-novel-period",
+    "observed_at": "2026-09-05T00:32:52Z",
+    "source_commit": "working-tree",
+    "manifest_digest": "f6c0e6f517056a9cb9eb5d74cdf26e6df2cdf512cd2c27befc7e99691ca11263",
+    "app_profile": "pixiv-app",
+    "account_slot": "account-05",
+    "method": "GET",
+    "path": "/v1/search/novel",
+    "parameter_names": [
+      "word",
+      "search_target",
+      "sort",
+      "filter_by",
+      "offset",
+      "duration",
+      "start_date",
+      "end_date"
+    ],
+    "status": 200,
+    "content_type": "application/json",
+    "schema_fingerprint": "a3150dcd9aaf0c3cbf3eadd6ae9551e7e347e8242e3075496d22fe50035af11d",
+    "item_count": 30,
+    "x_restrict_distribution": {
+      "0": 29,
+      "1": 1
+    },
+    "continuation_present": true,
+    "verdict": "inconclusive",
+    "reclassification": "legacy_partial_http_evidence"
+  },
+  {
+    "schema_version": 1,
+    "case_id": "novel-bookmark-read",
+    "observed_at": "2026-09-05T00:32:52Z",
+    "source_commit": "working-tree",
+    "manifest_digest": "f6c0e6f517056a9cb9eb5d74cdf26e6df2cdf512cd2c27befc7e99691ca11263",
+    "app_profile": "pixiv-app",
+    "account_slot": "account-05",
+    "method": "GET",
+    "path": "/v1/user/bookmarks/novel",
+    "parameter_names": [
+      "user_id",
+      "restrict",
+      "tag",
+      "offset"
+    ],
+    "status": 0,
+    "content_type": "",
+    "schema_fingerprint": "",
+    "item_count": 0,
+    "continuation_present": false,
+    "verdict": "inconclusive",
+    "failure_class": "transport_or_http_error"
+  },
+  {
+    "schema_version": 1,
+    "case_id": "artwork-bookmark-subtype",
+    "observed_at": "2026-09-05T00:32:52Z",
+    "source_commit": "working-tree",
+    "manifest_digest": "f6c0e6f517056a9cb9eb5d74cdf26e6df2cdf512cd2c27befc7e99691ca11263",
+    "app_profile": "pixiv-app",
+    "account_slot": "account-05",
+    "method": "GET",
+    "path": "/v1/user/bookmarks/illust",
+    "parameter_names": [
+      "user_id",
+      "restrict",
+      "tag",
+      "offset",
+      "type",
+      "content_type"
+    ],
+    "status": 0,
+    "content_type": "",
+    "schema_fingerprint": "",
+    "item_count": 0,
+    "continuation_present": false,
+    "verdict": "inconclusive",
+    "failure_class": "transport_or_http_error"
+  },
+  {
+    "schema_version": 1,
+    "case_id": "comments-total",
+    "observed_at": "2026-09-05T00:32:52Z",
+    "source_commit": "working-tree",
+    "manifest_digest": "f6c0e6f517056a9cb9eb5d74cdf26e6df2cdf512cd2c27befc7e99691ca11263",
+    "app_profile": "pixiv-app",
+    "account_slot": "account-05",
+    "method": "GET",
+    "path": "/v3/illust/comments",
+    "parameter_names": [
+      "illust_id",
+      "offset",
+      "include_total_comments"
+    ],
+    "status": 200,
+    "content_type": "application/json",
+    "schema_fingerprint": "79c677face3d5c92c26cc6edcdb3797c0636f599ba152900643784a6c4280cfa",
+    "item_count": 0,
+    "continuation_present": true,
+    "verdict": "inconclusive",
+    "reclassification": "legacy_partial_http_evidence"
+  },
+  {
+    "schema_version": 1,
+    "case_id": "comment-mutation-contract",
+    "observed_at": "2026-09-05T00:32:52Z",
+    "source_commit": "working-tree",
+    "manifest_digest": "f6c0e6f517056a9cb9eb5d74cdf26e6df2cdf512cd2c27befc7e99691ca11263",
+    "app_profile": "pixiv-app",
+    "account_slot": "account-05",
+    "method": "POST",
+    "path": "/v1/illust/comment/add",
+    "parameter_names": [
+      "illust_id",
+      "comment",
+      "parent_comment_id",
+      "stamp_id"
+    ],
+    "status": 0,
+    "content_type": "",
+    "schema_fingerprint": "",
+    "item_count": 0,
+    "continuation_present": false,
+    "verdict": "not_tested",
+    "failure_class": "mutation_excluded_from_read_smoke",
+    "reclassification": "legacy_not_tested"
+  },
+  {
+    "schema_version": 1,
+    "case_id": "novel-ranking-contract",
+    "observed_at": "2026-09-05T00:32:52Z",
+    "source_commit": "working-tree",
+    "manifest_digest": "f6c0e6f517056a9cb9eb5d74cdf26e6df2cdf512cd2c27befc7e99691ca11263",
+    "app_profile": "pixiv-app",
+    "account_slot": "account-05",
+    "method": "GET",
+    "path": "/v1/novel/ranking",
+    "parameter_names": [
+      "mode",
+      "date",
+      "offset"
+    ],
+    "status": 0,
+    "content_type": "",
+    "schema_fingerprint": "",
+    "item_count": 0,
+    "continuation_present": false,
+    "verdict": "inconclusive",
+    "failure_class": "transport_or_http_error"
+  },
+  {
+    "schema_version": 1,
+    "case_id": "search-illust-content-type",
+    "observed_at": "2026-09-05T00:32:52Z",
+    "source_commit": "working-tree",
+    "manifest_digest": "f6c0e6f517056a9cb9eb5d74cdf26e6df2cdf512cd2c27befc7e99691ca11263",
+    "app_profile": "pixiv-app",
+    "account_slot": "account-06",
+    "method": "GET",
+    "path": "/v1/search/illust",
+    "parameter_names": [
+      "word",
+      "search_target",
+      "sort",
+      "filter_by",
+      "offset",
+      "content_type"
+    ],
+    "status": 200,
+    "content_type": "application/json",
+    "schema_fingerprint": "233267a6a0e67e95120f36795506ffe54cea126472d4117a73bb24d57bd58699",
+    "item_count": 30,
+    "type_distribution": {
+      "illust": 29,
+      "ugoira": 1
+    },
+    "x_restrict_distribution": {
+      "0": 21,
+      "1": 9
+    },
+    "continuation_present": true,
+    "verdict": "inconclusive",
+    "reclassification": "legacy_partial_http_evidence"
+  },
+  {
+    "schema_version": 1,
+    "case_id": "search-rating-contract",
+    "observed_at": "2026-09-05T00:32:52Z",
+    "source_commit": "working-tree",
+    "manifest_digest": "f6c0e6f517056a9cb9eb5d74cdf26e6df2cdf512cd2c27befc7e99691ca11263",
+    "app_profile": "pixiv-app",
+    "account_slot": "account-06",
+    "method": "GET",
+    "path": "/v1/search/illust",
+    "parameter_names": [
+      "word",
+      "search_target",
+      "sort",
+      "filter_by",
+      "offset",
+      "rating",
+      "mode",
+      "x_restrict",
+      "r18",
+      "search_r18"
+    ],
+    "status": 200,
+    "content_type": "application/json",
+    "schema_fingerprint": "233267a6a0e67e95120f36795506ffe54cea126472d4117a73bb24d57bd58699",
+    "item_count": 30,
+    "type_distribution": {
+      "illust": 29,
+      "ugoira": 1
+    },
+    "x_restrict_distribution": {
+      "0": 21,
+      "1": 9
+    },
+    "continuation_present": true,
+    "verdict": "inconclusive",
+    "reclassification": "legacy_partial_http_evidence"
+  },
+  {
+    "schema_version": 1,
+    "case_id": "recommended-content-type",
+    "observed_at": "2026-09-05T00:32:52Z",
+    "source_commit": "working-tree",
+    "manifest_digest": "f6c0e6f517056a9cb9eb5d74cdf26e6df2cdf512cd2c27befc7e99691ca11263",
+    "app_profile": "pixiv-app",
+    "account_slot": "account-06",
+    "method": "GET",
+    "path": "/v1/illust/recommended",
+    "parameter_names": [
+      "content_type",
+      "filter",
+      "offset"
+    ],
+    "status": 200,
+    "content_type": "application/json",
+    "schema_fingerprint": "dd0df9c1d0bf9c38e9b71f4645083a51934fe2c14d9ab52dcf9385130d8fd62b",
+    "item_count": 86,
+    "type_distribution": {
+      "illust": 85,
+      "ugoira": 1
+    },
+    "x_restrict_distribution": {
+      "0": 86
+    },
+    "continuation_present": true,
+    "verdict": "inconclusive",
+    "reclassification": "legacy_partial_http_evidence"
+  },
+  {
+    "schema_version": 1,
+    "case_id": "illust-new-content-type",
+    "observed_at": "2026-09-05T00:32:52Z",
+    "source_commit": "working-tree",
+    "manifest_digest": "f6c0e6f517056a9cb9eb5d74cdf26e6df2cdf512cd2c27befc7e99691ca11263",
+    "app_profile": "pixiv-app",
+    "account_slot": "account-06",
+    "method": "GET",
+    "path": "/v1/illust/new",
+    "parameter_names": [
+      "content_type",
+      "max_illust_id"
+    ],
+    "status": 200,
+    "content_type": "application/json",
+    "schema_fingerprint": "06087d244c35be5537dd3e563cfffd8518b1c388ff579a28b1b14c9cab36c2a3",
+    "item_count": 29,
+    "type_distribution": {
+      "illust": 24,
+      "manga": 5
+    },
+    "x_restrict_distribution": {
+      "0": 29
+    },
+    "continuation_present": true,
+    "verdict": "inconclusive",
+    "reclassification": "legacy_partial_http_evidence"
+  },
+  {
+    "schema_version": 1,
+    "case_id": "novel-new-pagination",
+    "observed_at": "2026-09-05T00:32:52Z",
+    "source_commit": "working-tree",
+    "manifest_digest": "f6c0e6f517056a9cb9eb5d74cdf26e6df2cdf512cd2c27befc7e99691ca11263",
+    "app_profile": "pixiv-app",
+    "account_slot": "account-06",
+    "method": "GET",
+    "path": "/v1/novel/new",
+    "parameter_names": [
+      "max_novel_id"
+    ],
+    "status": 200,
+    "content_type": "application/json",
+    "schema_fingerprint": "3cd9ef765e534175a439fce1800c232cbf3151515770befc67592db3dc5d15b4",
+    "item_count": 30,
+    "x_restrict_distribution": {
+      "0": 23,
+      "1": 7
+    },
+    "continuation_present": true,
+    "verdict": "inconclusive",
+    "reclassification": "legacy_partial_http_evidence"
+  },
+  {
+    "schema_version": 1,
+    "case_id": "novel-detail",
+    "observed_at": "2026-09-05T00:32:52Z",
+    "source_commit": "working-tree",
+    "manifest_digest": "f6c0e6f517056a9cb9eb5d74cdf26e6df2cdf512cd2c27befc7e99691ca11263",
+    "app_profile": "pixiv-app",
+    "account_slot": "account-06",
+    "method": "GET",
+    "path": "/v2/novel/detail",
+    "parameter_names": [
+      "novel_id"
+    ],
+    "status": 200,
+    "content_type": "application/json",
+    "schema_fingerprint": "f2110e6cf92b93ae7b8ba2a41347889c1b864a2db67289f2d82f8d71854c24be",
+    "item_count": 0,
+    "continuation_present": false,
+    "verdict": "inconclusive",
+    "reclassification": "legacy_partial_http_evidence"
+  },
+  {
+    "schema_version": 1,
+    "case_id": "novel-series",
+    "observed_at": "2026-09-05T00:32:52Z",
+    "source_commit": "working-tree",
+    "manifest_digest": "f6c0e6f517056a9cb9eb5d74cdf26e6df2cdf512cd2c27befc7e99691ca11263",
+    "app_profile": "pixiv-app",
+    "account_slot": "account-06",
+    "method": "GET",
+    "path": "/v2/novel/series",
+    "parameter_names": [
+      "series_id",
+      "last_order"
+    ],
+    "status": 0,
+    "content_type": "",
+    "schema_fingerprint": "",
+    "item_count": 0,
+    "continuation_present": false,
+    "verdict": "inconclusive",
+    "failure_class": "transport_or_http_error"
+  },
+  {
+    "schema_version": 1,
+    "case_id": "novel-content",
+    "observed_at": "2026-09-05T00:32:52Z",
+    "source_commit": "working-tree",
+    "manifest_digest": "f6c0e6f517056a9cb9eb5d74cdf26e6df2cdf512cd2c27befc7e99691ca11263",
+    "app_profile": "pixiv-app",
+    "account_slot": "account-06",
+    "method": "GET",
+    "path": "/v1/novel/content",
+    "parameter_names": [
+      "novel_id"
+    ],
+    "status": 0,
+    "content_type": "",
+    "schema_fingerprint": "",
+    "item_count": 0,
+    "continuation_present": false,
+    "verdict": "inconclusive",
+    "failure_class": "transport_or_http_error"
+  },
+  {
+    "schema_version": 1,
+    "case_id": "search-novel-period",
+    "observed_at": "2026-09-05T00:32:52Z",
+    "source_commit": "working-tree",
+    "manifest_digest": "f6c0e6f517056a9cb9eb5d74cdf26e6df2cdf512cd2c27befc7e99691ca11263",
+    "app_profile": "pixiv-app",
+    "account_slot": "account-06",
+    "method": "GET",
+    "path": "/v1/search/novel",
+    "parameter_names": [
+      "word",
+      "search_target",
+      "sort",
+      "filter_by",
+      "offset",
+      "duration",
+      "start_date",
+      "end_date"
+    ],
+    "status": 200,
+    "content_type": "application/json",
+    "schema_fingerprint": "a3150dcd9aaf0c3cbf3eadd6ae9551e7e347e8242e3075496d22fe50035af11d",
+    "item_count": 30,
+    "x_restrict_distribution": {
+      "0": 29,
+      "1": 1
+    },
+    "continuation_present": true,
+    "verdict": "inconclusive",
+    "reclassification": "legacy_partial_http_evidence"
+  },
+  {
+    "schema_version": 1,
+    "case_id": "novel-bookmark-read",
+    "observed_at": "2026-09-05T00:32:52Z",
+    "source_commit": "working-tree",
+    "manifest_digest": "f6c0e6f517056a9cb9eb5d74cdf26e6df2cdf512cd2c27befc7e99691ca11263",
+    "app_profile": "pixiv-app",
+    "account_slot": "account-06",
+    "method": "GET",
+    "path": "/v1/user/bookmarks/novel",
+    "parameter_names": [
+      "user_id",
+      "restrict",
+      "tag",
+      "offset"
+    ],
+    "status": 0,
+    "content_type": "",
+    "schema_fingerprint": "",
+    "item_count": 0,
+    "continuation_present": false,
+    "verdict": "inconclusive",
+    "failure_class": "transport_or_http_error"
+  },
+  {
+    "schema_version": 1,
+    "case_id": "artwork-bookmark-subtype",
+    "observed_at": "2026-09-05T00:32:52Z",
+    "source_commit": "working-tree",
+    "manifest_digest": "f6c0e6f517056a9cb9eb5d74cdf26e6df2cdf512cd2c27befc7e99691ca11263",
+    "app_profile": "pixiv-app",
+    "account_slot": "account-06",
+    "method": "GET",
+    "path": "/v1/user/bookmarks/illust",
+    "parameter_names": [
+      "user_id",
+      "restrict",
+      "tag",
+      "offset",
+      "type",
+      "content_type"
+    ],
+    "status": 0,
+    "content_type": "",
+    "schema_fingerprint": "",
+    "item_count": 0,
+    "continuation_present": false,
+    "verdict": "inconclusive",
+    "failure_class": "transport_or_http_error"
+  },
+  {
+    "schema_version": 1,
+    "case_id": "comments-total",
+    "observed_at": "2026-09-05T00:32:52Z",
+    "source_commit": "working-tree",
+    "manifest_digest": "f6c0e6f517056a9cb9eb5d74cdf26e6df2cdf512cd2c27befc7e99691ca11263",
+    "app_profile": "pixiv-app",
+    "account_slot": "account-06",
+    "method": "GET",
+    "path": "/v3/illust/comments",
+    "parameter_names": [
+      "illust_id",
+      "offset",
+      "include_total_comments"
+    ],
+    "status": 200,
+    "content_type": "application/json",
+    "schema_fingerprint": "79c677face3d5c92c26cc6edcdb3797c0636f599ba152900643784a6c4280cfa",
+    "item_count": 0,
+    "continuation_present": true,
+    "verdict": "inconclusive",
+    "reclassification": "legacy_partial_http_evidence"
+  },
+  {
+    "schema_version": 1,
+    "case_id": "comment-mutation-contract",
+    "observed_at": "2026-09-05T00:32:52Z",
+    "source_commit": "working-tree",
+    "manifest_digest": "f6c0e6f517056a9cb9eb5d74cdf26e6df2cdf512cd2c27befc7e99691ca11263",
+    "app_profile": "pixiv-app",
+    "account_slot": "account-06",
+    "method": "POST",
+    "path": "/v1/illust/comment/add",
+    "parameter_names": [
+      "illust_id",
+      "comment",
+      "parent_comment_id",
+      "stamp_id"
+    ],
+    "status": 0,
+    "content_type": "",
+    "schema_fingerprint": "",
+    "item_count": 0,
+    "continuation_present": false,
+    "verdict": "not_tested",
+    "failure_class": "mutation_excluded_from_read_smoke",
+    "reclassification": "legacy_not_tested"
+  },
+  {
+    "schema_version": 1,
+    "case_id": "novel-ranking-contract",
+    "observed_at": "2026-09-05T00:32:52Z",
+    "source_commit": "working-tree",
+    "manifest_digest": "f6c0e6f517056a9cb9eb5d74cdf26e6df2cdf512cd2c27befc7e99691ca11263",
+    "app_profile": "pixiv-app",
+    "account_slot": "account-06",
+    "method": "GET",
+    "path": "/v1/novel/ranking",
+    "parameter_names": [
+      "mode",
+      "date",
+      "offset"
+    ],
+    "status": 0,
+    "content_type": "",
+    "schema_fingerprint": "",
+    "item_count": 0,
+    "continuation_present": false,
+    "verdict": "inconclusive",
+    "failure_class": "transport_or_http_error"
+  },
+  {
+    "schema_version": 1,
+    "case_id": "comment-stamp-write",
+    "observed_at": "2026-09-05T00:32:52Z",
+    "source_commit": "working-tree",
+    "manifest_digest": "f6c0e6f517056a9cb9eb5d74cdf26e6df2cdf512cd2c27befc7e99691ca11263",
+    "app_profile": "pixiv-app",
+    "account_slot": "mutation-account",
+    "method": "POST",
+    "path": "/v1/illust/comment/add",
+    "parameter_names": [
+      "illust_id",
+      "comment",
+      "stamp_id"
+    ],
+    "status": 200,
+    "content_type": "",
+    "schema_fingerprint": "",
+    "item_count": 1,
+    "continuation_present": false,
+    "verdict": "confirmed",
+    "reclassification": "live_mutation_readback_confirmed"
+  }
+]

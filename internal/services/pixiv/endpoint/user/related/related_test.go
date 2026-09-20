@@ -3,10 +3,12 @@ package related_test
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/url"
 	"testing"
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/endpoint/user/related"
+	"github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/protocol"
 )
 
 type fakeTransport struct {
@@ -27,7 +29,22 @@ func TestRelatedMapsSeedAndContinuation(t *testing.T) {
 	}
 }
 func TestRelatedRejectsNullList(t *testing.T) {
-	if _, err := related.New(&fakeTransport{body: `{"user_previews":null}`}).List(context.Background(), related.Request{SeedUserID: 1}); err == nil {
-		t.Fatal("null list unexpectedly succeeded")
+	if _, err := related.New(&fakeTransport{body: `{"user_previews":null}`}).List(context.Background(), related.Request{SeedUserID: 1}); !errors.Is(err, protocol.ErrMalformedResponse) {
+		t.Fatalf("null list error = %v, want malformed response", err)
+	}
+}
+
+func TestRelatedAcceptsEmptyListAndRejectsInvalidUser(t *testing.T) {
+	result, err := related.New(&fakeTransport{body: `{"user_previews":[]}`}).List(context.Background(), related.Request{SeedUserID: 1})
+	if err != nil {
+		t.Fatalf("empty list: %v", err)
+	}
+	if result.Items == nil || len(result.Items) != 0 || result.HasNext {
+		t.Fatalf("empty result = %#v", result)
+	}
+
+	_, err = related.New(&fakeTransport{body: `{"user_previews":[{"user":{"id":0}}]}`}).List(context.Background(), related.Request{SeedUserID: 1})
+	if !errors.Is(err, protocol.ErrMalformedResponse) {
+		t.Fatalf("invalid user error = %v, want malformed response", err)
 	}
 }

@@ -80,36 +80,25 @@ func TestNovelDetailMapsRequestAndReturnsRecords(t *testing.T) {
 	}
 }
 
-func TestNovelContentReturnsBlocksWithOpaqueResourceRefs(t *testing.T) {
-	client := &fakeSDKClient{
-		novelContentHTML: `<!DOCTYPE html><html><body>` +
-			`<h1 class="title">novel-content</h1>` +
-			`<p class="noveltext">complete body</p>` +
-			`<figure class="novel_image"><img src="https://i.pximg.net/novel/12/image"></figure>` +
-			`</body></html>`,
-	}
+func TestNovelContentReportsUnsupportedWithoutCallingRejectedEndpoint(t *testing.T) {
+	client := &fakeSDKClient{}
 	session, closeSession := newSDKTestSession(t, client)
 	defer closeSession()
 
 	result := callTool(t, session, "novel_content", map[string]any{"novel_id": 12})
-	if result.IsError || client.novelContentRequest.NovelID != 12 {
+	if !result.IsError || client.novelContentRequest.NovelID != 0 {
 		t.Fatalf("novel content result=%+v request=%+v", result, client.novelContentRequest)
 	}
 	var out outputs.NovelContent
 	decodeStructured(t, result, &out)
-	derivedRef, err := sdk.NewResourceRef("pixiv", []byte(`{"k":"novel_image","id":12}`))
-	if err != nil {
-		t.Fatal(err)
+	if !resultHasText(result, "content_unavailable") {
+		t.Fatalf("novel content error = %+v", result)
 	}
-	if len(out.Content.Blocks) != 2 || out.Content.Blocks[0].Text != "complete body" || out.Content.Blocks[1].Image == nil || out.Content.Blocks[1].Image.Resource == nil || out.Content.Blocks[1].Image.Resource.Ref != derivedRef.String() {
+	if out.Content.Blocks == nil || len(out.Content.Blocks) != 0 {
 		t.Fatalf("novel content=%+v", out)
 	}
-	rawContent, err := json.Marshal(out)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if strings.Contains(string(rawContent), "https://private.example") || strings.Contains(strings.ToLower(string(rawContent)), "cookie") || strings.Contains(strings.ToLower(string(rawContent)), "header") {
-		t.Fatalf("novel content leaked resource transport data: %s", rawContent)
+	if client.novelContentRequest.NovelID != 0 {
+		t.Fatalf("rejected novel content endpoint was called with request=%+v", client.novelContentRequest)
 	}
 }
 
@@ -136,20 +125,47 @@ func TestIllustCommentsMapsRequestAndPreservesEnvelope(t *testing.T) {
 	}
 }
 
+func TestIllustCommentsPreservesOpaqueNumericAccessControl(t *testing.T) {
+	numericValue := int64(0)
+	client := &fakeSDKClient{
+		artworkCommentsResult: pixiv.CommentPage{
+			Page:          sdk.Page[pixiv.Comment]{Items: []pixiv.Comment{{ID: 21, Comment: "artwork comment", User: pixiv.User{ID: 4}}}},
+			AccessControl: &pixiv.CommentAccessControl{NumericValue: &numericValue},
+		},
+	}
+	session, closeSession := newSDKTestSession(t, client)
+	defer closeSession()
+
+	result := callTool(t, session, "illust_comments", map[string]any{"id": 20})
+	if result.IsError {
+		t.Fatalf("artwork comments result=%+v", result)
+	}
+	var raw map[string]any
+	decodeStructured(t, result, &raw)
+	access, ok := raw["access_control"].(map[string]any)
+	if !ok || access["comment_access_control"] != float64(0) {
+		t.Fatalf("access_control=%#v, want opaque numeric value", raw["access_control"])
+	}
+	if _, ok := access["can_comment"]; ok {
+		t.Fatalf("numeric access_control invented can_comment: %#v", access)
+	}
+}
+
 func TestSDKRecommendedAllReturnsEveryStreamAndPagination(t *testing.T) {
 	client := &fakeSDKClient{}
 	var order []string
 	client.recommendedArtworks = func(_ context.Context, _ pixiv.RecommendedArtworksRequest, call int) (sdk.Page[pixiv.Artwork], error) {
-		if call == 1 {
-			order = append(order, "illust")
-			return sdk.Page[pixiv.Artwork]{Items: []pixiv.Artwork{testSDKIllust(1, "illust", 10)}, Next: testPageCursor(1)}, nil
+		if call != 1 {
+			return sdk.Page[pixiv.Artwork]{}, errors.New("recommended all traversed artwork stream more than once")
 		}
-		order = append(order, "manga")
-		return sdk.Page[pixiv.Artwork]{Items: []pixiv.Artwork{testSDKIllust(2, "manga", 20)}, Next: testPageCursor(2)}, nil
+		order = append(order, "visual")
+		manga := testSDKIllust(2, "manga", 20)
+		manga.Kind = pixiv.ArtworkKindManga
+		return sdk.Page[pixiv.Artwork]{Items: []pixiv.Artwork{testSDKIllust(1, "illust", 10), manga}, Next: testPageCursor(2)}, nil
 	}
 	client.novelRecommended = func(context.Context, pixiv.RecommendedNovelsRequest) (sdk.Page[pixiv.Novel], error) {
 		order = append(order, "novel")
-		return sdk.Page[pixiv.Novel]{Items: []pixiv.Novel{{ID: 3, User: pixiv.User{ID: 30}, Tags: []pixiv.Tag{}}}, Next: testPageCursor(3)}, nil
+		return sdk.Page[pixiv.Novel]{Items: []pixiv.Novel{{ID: 3, User: pixiv.User{ID: 30}, Tags: []pixiv.Tag{}}}}, nil
 	}
 	client.userRecommended = func(context.Context, pixiv.RecommendedUsersRequest) (sdk.Page[pixiv.UserPreview], error) {
 		order = append(order, "user")
@@ -159,14 +175,13 @@ func TestSDKRecommendedAllReturnsEveryStreamAndPagination(t *testing.T) {
 				Illusts: []pixiv.Artwork{},
 				Novels:  []pixiv.Novel{{ID: 5, User: pixiv.User{ID: 40}}},
 			}},
-			Next: testPageCursor(4),
 		}, nil
 	}
 	session, closeSession := newSDKTestSession(t, client)
 	defer closeSession()
 
-	result := callTool(t, session, "recommended", map[string]any{"kind": "all", "limit": 1})
-	if result.IsError || !slices.Equal(order, []string{"illust", "manga", "novel", "user"}) {
+	result := callTool(t, session, "recommended", map[string]any{"kind": "all", "limit": 2})
+	if result.IsError || !slices.Equal(order, []string{"visual", "novel", "user"}) {
 		t.Fatalf("recommended all result=%+v order=%v", result, order)
 	}
 	var structured map[string]any
@@ -227,32 +242,51 @@ func TestSDKRecommendedSingleKindsAndInputFailures(t *testing.T) {
 	client := &fakeSDKClient{}
 	session, closeSession := newSDKTestSession(t, client)
 	defer closeSession()
-	result := callTool(t, session, "recommended", map[string]any{"kind": "unknown"})
-	if !result.IsError {
-		t.Fatalf("invalid kind result=%+v", result)
-	}
-	for _, input := range []map[string]any{{}, {"kind": 9}} {
-		_, err := session.CallTool(context.Background(), &mcp.CallToolParams{Name: "recommended", Arguments: input})
-		if err == nil {
-			t.Fatalf("input=%v error=%v", input, err)
+	for _, input := range []map[string]any{{"kind": "unknown"}, {}, {"kind": 9}} {
+		result, err := session.CallTool(context.Background(), &mcp.CallToolParams{Name: "recommended", Arguments: input})
+		if err == nil && (result == nil || !result.IsError) {
+			t.Fatalf("input=%v result=%+v error=%v", input, result, err)
 		}
 	}
 
 	noSDKSession, closeNoSDKSession := newTestSession(t, &fakeDownloads{})
 	defer closeNoSDKSession()
-	result = callTool(t, noSDKSession, "recommended", map[string]any{"kind": "illust"})
+	result := callTool(t, noSDKSession, "recommended", map[string]any{"kind": "illust"})
 	if !result.IsError {
 		t.Fatalf("unconfigured SDK result=%+v", result)
 	}
 }
 
+func TestSDKRecommendedMangaLimitDoesNotScanPastLogicalArtworkWindow(t *testing.T) {
+	calls := 0
+	client := &fakeSDKClient{recommendedArtworks: func(_ context.Context, _ pixiv.RecommendedArtworksRequest, call int) (sdk.Page[pixiv.Artwork], error) {
+		calls = call
+		if call > 1 {
+			return sdk.Page[pixiv.Artwork]{}, errors.New("unexpected recommendation scan beyond logical artwork window")
+		}
+		return sdk.Page[pixiv.Artwork]{Items: []pixiv.Artwork{testSDKIllust(11, "illustration", 1)}, Next: testPageCursor(1)}, nil
+	}}
+	session, closeSession := newSDKTestSession(t, client)
+	defer closeSession()
+
+	result := callTool(t, session, "recommended", map[string]any{"kind": "manga", "limit": 1})
+	if result.IsError {
+		t.Fatalf("recommended manga result=%+v", result)
+	}
+	var out outputs.Recommended
+	decodeStructured(t, result, &out)
+	if calls != 1 || len(out.Records) != 0 {
+		t.Fatalf("calls=%d records=%+v, want one artwork request and no manga in selected window", calls, out.Records)
+	}
+}
+
 func TestSDKRecommendedAllFailureDoesNotExposePartialStructuredOutput(t *testing.T) {
 	client := &fakeSDKClient{
-		recommendedArtworks: func(_ context.Context, _ pixiv.RecommendedArtworksRequest, call int) (sdk.Page[pixiv.Artwork], error) {
-			if call == 1 {
-				return sdk.Page[pixiv.Artwork]{Items: []pixiv.Artwork{testSDKIllust(1, "first", 1)}}, nil
-			}
-			return sdk.Page[pixiv.Artwork]{}, errors.New("malformed upstream response")
+		recommendedArtworks: func(_ context.Context, _ pixiv.RecommendedArtworksRequest, _ int) (sdk.Page[pixiv.Artwork], error) {
+			return sdk.Page[pixiv.Artwork]{Items: []pixiv.Artwork{testSDKIllust(1, "first", 1)}}, nil
+		},
+		novelRecommended: func(context.Context, pixiv.RecommendedNovelsRequest) (sdk.Page[pixiv.Novel], error) {
+			return sdk.Page[pixiv.Novel]{}, errors.New("malformed upstream response")
 		},
 	}
 	session, closeSession := newSDKTestSession(t, client)

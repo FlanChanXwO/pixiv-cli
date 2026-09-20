@@ -3,10 +3,12 @@ package novels_test
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/url"
 	"testing"
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/endpoint/user/novels"
+	"github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/protocol"
 )
 
 type fakeTransport struct {
@@ -43,8 +45,23 @@ func TestListRejectsMissingEnvelopeAndInvalidContinuation(t *testing.T) {
 		`{"novels":[],"next_url":"https://app-api.pixiv.net/v1/user/novels?offset=0"}`,
 	} {
 		transport := &fakeTransport{body: body}
-		if _, err := novels.New(transport).List(context.Background(), novels.Request{UserID: 7}); err == nil {
-			t.Fatalf("body %s unexpectedly succeeded", body)
+		if _, err := novels.New(transport).List(context.Background(), novels.Request{UserID: 7}); !errors.Is(err, protocol.ErrMalformedResponse) {
+			t.Fatalf("body %s error = %v, want malformed response", body, err)
 		}
+	}
+}
+
+func TestListAcceptsEmptyNovelListAndRejectsNestedInvalidUser(t *testing.T) {
+	result, err := novels.New(&fakeTransport{body: `{"novels":[]}`}).List(context.Background(), novels.Request{UserID: 7})
+	if err != nil {
+		t.Fatalf("empty list: %v", err)
+	}
+	if result.Items == nil || len(result.Items) != 0 || result.HasNext {
+		t.Fatalf("empty result = %#v", result)
+	}
+
+	_, err = novels.New(&fakeTransport{body: `{"novels":[{"id":4,"user":{"id":0}}]}`}).List(context.Background(), novels.Request{UserID: 7})
+	if !errors.Is(err, protocol.ErrMalformedResponse) {
+		t.Fatalf("invalid nested user error = %v, want malformed response", err)
 	}
 }

@@ -75,10 +75,10 @@ the installed binary's `pixiv <cmd> --help` output.
 | Tier | Commands | Behavior |
 | --- | --- | --- |
 | Credential transfer | `auth import` `auth export` | Execute only for the user's explicit import/export task; follow `references/auth.md` so secret input/output is not exposed accidentally |
-| Read | `search` `detail` `ranking` `series` `comment` `bookmark list/tags/detail` `recommended` `timeline *` `mypixiv *` `user *` `config get/path` root `--version` `update --check` | Execute when the user's task requires it |
+| Read | `search` `detail` `ranking` `series` `comment` `comment stamps` `bookmark list/tags/detail` `recommended` `timeline *` `mypixiv *` `user *` `config get/path` root `--version` `update --check` | Execute when the user's task requires it |
 | Account diagnosis | `auth list/check` | List only for authentication/account/fallback decisions; check only when network validation is needed |
 | Account maintenance | `auth refresh` | Rotates saved OAuth credentials and refreshes the cached account profile/Premium status; run only on an explicit request |
-| Write | `bookmark add/remove` `follow add/remove` | State the target (illust/user ID) in one line before executing; for NDJSON stdin actions, state the record type and scope before starting |
+| Write | `comment create/reply/stamp/delete` `bookmark add/remove` `follow add/remove` | State the target (artwork/novel/comment ID) and explicit type in one line before executing; comment mutations require positive numeric IDs and their required body/parent/stamp fields; for NDJSON stdin actions, state the record type and scope before starting |
 | Disk | `download` | Confirm target directory and exact targets (IDs or supported Pixiv URLs) before each invocation; a user URL expands every visual work, so state that scope explicitly; approval never carries over; see `references/download.md` |
 | Interactive credential | `auth login` | Read `references/auth.md`, then run only on an explicit request while the user is present for browser OAuth; use the one-time desktop hand-off URL when the account host is remote |
 | Account/config state | `auth use/remove` `config set/unset` `update` (actual install) | Ask for explicit confirmation each time; approval does not carry over |
@@ -143,29 +143,40 @@ pixiv search "WORD" --content-type manga --ai-mode exclude
 pixiv search "WORD" --resolution high --aspect-ratio landscape --draw-tool "CLIP STUDIO PAINT"
 pixiv search --trending-tags --json
 pixiv detail ARTWORK_ID_OR_URL --type artwork --json
-pixiv detail NOVEL_ID --type novel --content --json
+pixiv detail NOVEL_ID --type novel --json
 pixiv search "初音ミク" --type artwork --limit 20 | pixiv detail
 pixiv search "初音ミク" --type artwork --limit 20 --ndjson | pixiv detail --ndjson
-pixiv series SERIES_ID --type novel --limit 20 --json
+pixiv series SERIES_ID_OR_URL --type novel --limit 20 --json
 pixiv comment ID --type artwork --limit 20 --json
+pixiv comment create ID --type artwork --comment "hello"
+pixiv comment reply ID --type artwork --parent-comment-id PARENT_ID --comment "reply" --json
+pixiv comment stamp ID --type artwork --stamp-id STAMP_ID --json
+pixiv comment delete COMMENT_ID --type artwork --json
+pixiv comment stamps --json
 pixiv bookmark list --type artwork --limit 20 --json
+pixiv bookmark list USER_ID_OR_URL --type all --limit 20 --json
 pixiv bookmark tags --limit 20 --json
-pixiv bookmark detail ARTWORK_ID --json
+pixiv bookmark tags USER_ID_OR_URL --type all --limit 20 --json
+pixiv bookmark detail ARTWORK_ID_OR_NOVEL_ID_OR_URL --type novel --json
 pixiv user novels USER_ID --limit 20 --json
 pixiv ranking --mode day
+pixiv ranking --type novel --mode day --limit 10
 pixiv recommended --type artwork --limit 10 # type is required; needs auth
+pixiv recommended --type artwork --content-type manga --limit 10 # limit selects the raw recommendation window; subtype filtering is local
 pixiv recommended --type all --limit 10     # request all supported kinds; needs auth
 pixiv timeline following --type artwork --content-type illust --limit 20
 pixiv timeline latest --type artwork --limit 20 # defaults to the supported illust feed
 pixiv timeline latest --type novel --limit 20
+pixiv mypixiv users --limit 20
 pixiv mypixiv works --type artwork --limit 20
+pixiv mypixiv works USER_ID --type manga --limit 20
 pixiv user search "WORD" --limit 10 --json # authenticated App user search
 pixiv user detail USER_ID --json          # full public profile (USER_ID required)
 pixiv user artworks [USER_ID] --limit 20  # omit USER_ID = current account
 pixiv user bookmarks [USER_ID] --tag TAG --limit 20
 pixiv user following [USER_ID] --limit 20
-pixiv bookmark add ILLUST_ID --tag TAG    # --tag repeatable; write op
-pixiv bookmark remove ILLUST_ID           # write op
+pixiv bookmark add ARTWORK_ID_OR_NOVEL_ID --tag TAG    # --type novel for novels; --tag repeatable; write op
+pixiv bookmark remove ARTWORK_ID_OR_NOVEL_ID           # --type novel for novels; write op
 pixiv follow add USER_ID                  # write op
 pixiv follow remove USER_ID               # write op
 pixiv download [SRC...] [--pages 1,3-5] [--quality original|regular|small|thumb|mini] [--ugoira-mode gif|apng] [--output DIR] [--on-error skip|fail-fast]
@@ -247,7 +258,10 @@ session.
    App page resource is a real error, not a reason to scrape or retry Web.
 2. **`recommended` requires a kind.** Choose one of the kinds shown by
    `pixiv recommended --help`; it requires authentication and does not work
-   anonymously.
+   anonymously. With artwork recommendations, `--content-type` accepts
+   `all|illust|manga` and filters returned DTO kinds locally; it is not sent as
+   an upstream query parameter. `--type all` keeps artwork, novel, and user
+   streams separate, and positional `KIND` remains a compatibility spelling.
 3. **`--limit` is command-specific.** Verify the installed help before adding it;
    list forms of `search`, `novel search`, `ranking`, `series`, `comment`, `bookmark`,
    `recommended`, `timeline`, `mypixiv`, and `user` expose it where applicable.
@@ -264,9 +278,38 @@ session.
    not publish rating, text-length, or original-only filters.
    `timeline latest --type artwork` defaults `--content-type` to `illust` and
    accepts `illust|manga`; it does not use search's broader `all` subtype.
+   `timeline following --type artwork` defaults `--content-type` to `all` and
+   locally filters returned artwork DTOs for `all|illust-and-ugoira|illust|manga|ugoira`;
+   the following endpoint has no upstream subtype query, so do not send one.
+   `--content-type` is rejected with `--type novel` for either timeline route.
+   `mypixiv users` requires the verified runtime account identity and accepts no
+   positional user target. `mypixiv works` requires `--type`; without `USER_ID`
+   it accepts only `artwork|novel`, while a supplied positive numeric `USER_ID`
+   also permits `manga`. URL targets and unsupported types return
+   `invalid_argument` before account-pool execution; there is no anonymous
+   fallback.
    `mypixiv works --type artwork` maps the public artwork entity to Pixiv's
    `illust` feed; the older `--type illust` spelling remains compatible.
-5. **Restricted search fails explicitly.** There is no anonymous search path.
+   `detail --type novel --content` remains a compatibility flag, but the App
+   content endpoint is unavailable: it returns `content_unavailable` without a
+   rejected-endpoint request and never falls back to WebView. Use plain
+   `detail --type novel` for metadata.
+5. **Comment reads preserve upstream metadata.** JSON comment reads retain optional
+   `total`/`access_control`; when the current App API supplies numeric
+   `comment_access_control`, output keeps it under `access_control.comment_access_control`
+   and does not infer boolean permission fields.
+6. **Comment mutations are explicit and status-bound.** `comment create`,
+   `reply`, `stamp`, and `delete` require `--type artwork|novel` and positive
+   numeric IDs; URLs and `all` are rejected. `create/reply` require a non-empty
+   `--comment`; `stamp` accepts an optional comment and forwards empty text for
+   the sticker-only wire form. These operations return the upstream `comment_id`
+   directly. `reply` also requires `--parent-comment-id`, while `stamp` requires
+   `--stamp-id`; these IDs are independent fields. `delete` returns only a
+   success status and does not read comments back. `comment stamps` is a
+   non-paginated read and emits output-safe opaque stamp references without
+   runtime URLs. Existing
+   bookmark/follow mutation actions retain their empty-success-output contract.
+7. **Restricted search fails explicitly.** There is no anonymous search path.
    Restricted rating requests are not represented by a silent `--rating` filter;
    use the command's actual authenticated/API contract and surface failures.
    Bookmark-count bounds use the application strategy/completeness result:
@@ -275,19 +318,21 @@ session.
    reliable evidence exists. Do not present a strategy error as an empty result.
    `novel search` is App-only and requires authentication. Bookmark count is a
    public bookmark total, never a like count.
-6. **Extended rankings need authentication.** Valid modes are `day`,
+7. **Rankings support artwork and novel entities.** `pixiv ranking` defaults to
+   `--type artwork`; use `--type novel` for novel ranking. `--date` is only
+   valid with artwork ranking. Valid modes are `day`,
    `day_male`, `day_female`, `week`, `week_original`, `week_rookie`, `month`,
    `day_manga`, `week_manga`, `month_manga`, `week_rookie_manga`, `day_r18`,
    `day_male_r18`, `day_female_r18`, `week_r18`, `week_r18g`. The final nine
    must not be replaced with an anonymous day ranking.
-7. **Empty filtered batches are skipped.** With application-side bookmark
+8. **Empty filtered batches are skipped.** With application-side bookmark
    filtering, search continues past leading empty upstream batches to the first
    non-empty logical batch or true end; `--limit N` fills logical results and
    `--limit 0` walks the current filtered result. Do not invent request caps.
-8. **No like-count field.** Do not invent or label bookmark totals as likes.
-9. **`update --json` is only valid with `--check`.** The actual install never
+9. **No like-count field.** Do not invent or label bookmark totals as likes.
+10. **`update --json` is only valid with `--check`.** The actual install never
    emits JSON.
-10. **Proxy is per-command or service-scoped.** The browser's system proxy is
+11. **Proxy is per-command or service-scoped.** The browser's system proxy is
    NOT inherited. Pixiv command overrides take precedence over
    `[pixiv.network].proxy_url`, environment, and the global `[network]` value;
    persist the global value with `pixiv config set https_proxy URL` when that is
@@ -303,11 +348,12 @@ session.
    `[reverse_search.flaresolverr].proxy_url` is only the solver's browser
    upstream proxy; it does not proxy solver control traffic or the native
    ascii2d upload.
-11. **Long downloads may legitimately take time.** Do not impose an arbitrary
+12. **Long downloads may legitimately take time.** Do not impose an arbitrary
    timeout or kill the process merely because it is slow; wait for completion,
    user cancellation, or a real error.
-12. **Tag search has query grammar.** `user bookmarks --tag TAG` filters
-   bookmark listings; `bookmark add --tag TAG` adds a repeatable bookmark tag.
+13. **Tag search has query grammar.** `bookmark list --tag TAG` and
+   `user bookmarks --tag TAG` filter bookmark listings; `bookmark add --tag TAG`
+   adds a repeatable bookmark tag.
    `search` has no `--tag` flag — put the tag expression in its required `WORD`.
    For a reliable boolean tag query, use `--search-by tag-exact`: `tagA tagB`
    requires both complete tags, and uppercase `tagA OR tagB` accepts either.
@@ -315,13 +361,20 @@ session.
    verified uppercase `OR` syntax, but its fuzzy/alias/translated matches are
    not a strict exact-tag AND. `title-caption` and App-only `tag-title-caption` have no boolean-tag contract;
    no literal-uppercase-`OR` escape syntax is verified.
-13. **Direct URLs are intentionally narrow.** `detail` accepts only an artwork
+14. **Direct URLs are intentionally narrow.** `detail` accepts only an artwork
     ID or a `pixiv.net`/`www.pixiv.net` HTTPS `/artworks/{id}` URL (an optional
-    locale, query, or fragment is harmless). `download` also accepts `/users/{id}`
-    and `/users/{id}/artworks`, plus `/users/{id}/bookmarks/artworks`. These
-    expand visual works in first-seen artwork-ID order; user and bookmark
-    downloads use App OAuth. Artwork-series URLs are rejected as unsupported
-    download sources.
+    locale, query, or fragment is harmless). `bookmark detail` accepts an
+    artwork or novel ID/URL and requires a matching `--type` when one is given;
+    `bookmark list/tags` accept a user ID or user URL. `series` accepts a
+    positive series ID or an artwork-series URL in the form
+    `https://www.pixiv.net/user/<uid>/series/<id>`, or a novel-series URL in the
+    form `https://www.pixiv.net/novel/series/<id>`. Its required `--type`
+    value must match the URL namespace. A user URL can be used
+    with `--type novel`, while an artwork-bookmarks URL cannot be reinterpreted
+    as novel or `all`. `download` also accepts `/users/{id}` and
+    `/users/{id}/artworks`, plus `/users/{id}/bookmarks/artworks`. These expand
+    visual works in first-seen artwork-ID order; user and bookmark downloads use
+    App OAuth. Artwork-series URLs are rejected as unsupported download sources.
 14. **Reverse-image search has a separate privacy and result contract.** The
     providers are `saucenao`, `ascii2d-color`, `ascii2d-bovw`, and `all`; the
     default is `reverse_search_provider=saucenao`, and `--provider` is a

@@ -214,6 +214,31 @@ func BookmarkTagsError(err error) (*mcp.CallToolResult, BookmarkTags, error) {
 	return &mcp.CallToolResult{IsError: true, Content: []mcp.Content{&mcp.TextContent{Text: records.ErrorMessage(err)}}}, out, nil
 }
 
+// TypedBookmarkTag 是 bookmark_tags_all 的标签记录；content_type 保持
+// artwork/novel 两条上游流的来源，不把同名标签错误合并。
+type TypedBookmarkTag struct {
+	Name        string `json:"name"`
+	Count       int    `json:"count"`
+	ContentType string `json:"content_type"`
+}
+
+// BookmarkTagsAll 是 bookmark_tags_all tool 的 additive output envelope。
+type BookmarkTagsAll struct {
+	Tags       []TypedBookmarkTag    `json:"bookmark_tags"`
+	Pagination runtime.PaginationOut `json:"pagination"`
+}
+
+// BookmarkTagsAllResult 构造 bookmark_tags_all 的 MCP 摘要。
+func BookmarkTagsAllResult(out BookmarkTagsAll, count int) *mcp.CallToolResult {
+	return &mcp.CallToolResult{Content: []mcp.Content{&mcp.TextContent{Text: fmt.Sprintf("Retrieved %d bookmark tags.", count)}}}
+}
+
+// BookmarkTagsAllError 构造 bookmark_tags_all 的 MCP error 摘要。
+func BookmarkTagsAllError(err error) (*mcp.CallToolResult, BookmarkTagsAll, error) {
+	out := BookmarkTagsAll{Tags: []TypedBookmarkTag{}, Pagination: runtime.PaginationOut{Page: 1}}
+	return &mcp.CallToolResult{IsError: true, Content: []mcp.Content{&mcp.TextContent{Text: records.ErrorMessage(err)}}}, out, nil
+}
+
 // BookmarkDetail 是 bookmark_detail tool 的输出 envelope。
 type BookmarkDetail struct {
 	Bookmarked bool     `json:"bookmarked"`
@@ -221,9 +246,14 @@ type BookmarkDetail struct {
 	Tags       []string `json:"tags"`
 }
 
-// BookmarkDetailResult 构造 bookmark detail 的 MCP 摘要。
+// BookmarkDetailResult 构造 artwork bookmark detail 的 MCP 摘要。
 func BookmarkDetailResult(out BookmarkDetail, illustID int64) *mcp.CallToolResult {
 	return &mcp.CallToolResult{Content: []mcp.Content{&mcp.TextContent{Text: fmt.Sprintf("Artwork %d bookmarked: %t.", illustID, out.Bookmarked)}}}
+}
+
+// NovelBookmarkDetailResult 构造 novel bookmark detail 的 MCP 摘要。
+func NovelBookmarkDetailResult(out BookmarkDetail, novelID int64) *mcp.CallToolResult {
+	return &mcp.CallToolResult{Content: []mcp.Content{&mcp.TextContent{Text: fmt.Sprintf("Novel %d bookmarked: %t.", novelID, out.Bookmarked)}}}
 }
 
 // BookmarkDetailError 构造 bookmark detail 的 MCP error 摘要。
@@ -234,11 +264,13 @@ func BookmarkDetailError(err error) (*mcp.CallToolResult, BookmarkDetail, error)
 
 // Mutation 是 mutation tool 的输出 envelope。
 type Mutation struct {
-	Success  bool   `json:"success"`
-	Action   string `json:"action"`
-	IllustID int64  `json:"illust_id,omitempty"`
-	UserID   int64  `json:"user_id,omitempty"`
-	Text     string `json:"text"`
+	Success   bool   `json:"success"`
+	Action    string `json:"action"`
+	IllustID  int64  `json:"illust_id,omitempty"`
+	NovelID   int64  `json:"novel_id,omitempty"`
+	UserID    int64  `json:"user_id,omitempty"`
+	CommentID int64  `json:"comment_id,omitempty"`
+	Text      string `json:"text"`
 }
 
 // MutationResult 构造 mutation 的 MCP 摘要。
@@ -255,6 +287,18 @@ func RunMutation(out Mutation, run func() error) (*mcp.CallToolResult, Mutation,
 	}
 	out.Success = true
 	return MutationResult(out), out, nil
+}
+
+// RunMutationInPlace 与 RunMutation 共享失败/成功语义，同时允许一次上游
+// mutation 成功后把可靠响应字段（例如 comment_id）写回同一个 envelope。
+func RunMutationInPlace(out *Mutation, run func() error) (*mcp.CallToolResult, Mutation, error) {
+	err := run()
+	if err != nil {
+		out.Text = "Error: " + err.Error()
+		return MutationResult(*out), *out, nil
+	}
+	out.Success = true
+	return MutationResult(*out), *out, nil
 }
 
 // ListComments 在账号池重放边界内收集 artwork 或 novel 的评论分页并输出统一

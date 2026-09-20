@@ -74,23 +74,13 @@ func TestRealPixivSDKRead(t *testing.T) {
 	if len(accounts) == 0 {
 		t.Fatal("no local pixiv account; explicit real e2e has no credential source")
 	}
-	account := accounts[0]
 	defaultID, hasDefault, err := config.ReadPixivDefaultUserID()
 	if err != nil {
 		t.Fatalf("read pixiv default account: %v", err)
 	}
-	if hasDefault {
-		found := false
-		for _, candidate := range accounts {
-			if candidate.UserID == defaultID {
-				account = candidate
-				found = true
-				break
-			}
-		}
-		if !found {
-			t.Fatalf("configured pixiv account %d is not present in database", defaultID)
-		}
+	account, err := selectLiveReadAccount(accounts, defaultID, hasDefault, os.Getenv(liveReadAccountEnv))
+	if err != nil {
+		t.Fatalf("select pixiv read account: %v", err)
 	}
 
 	ctx := t.Context()

@@ -308,6 +308,7 @@ sh scripts/build.sh
 # 浏览器 provider 的离线 fixture/crypto/权限分类回归；真实跨平台 host evidence 另按 release-prep 执行。
 go test ./internal/browsercookies/... -count=1
 # 真实 SDK e2e 需要本机凭据（Pixiv 读本地 pixiv-cli.db 选中账号，FANBOX 读 Keychain）：
+PIXIV_E2E_READ_USER_ID=<secondary-uid> \
 PIXIV_SDK_E2E=1 go test ./e2e -run TestRealPixivSDKRead -count=1 -v
 FANBOX_E2E_CREATOR_ID=<non-secret-creator-id> FANBOX_E2E_TAG=<non-secret-tag> \
 FANBOX_E2E_POST_ID=<non-secret-post-id> FANBOX_E2E_POST_URL=<non-secret-post-url> \
@@ -348,7 +349,7 @@ scripts/test-reverse-search-e2e.sh
 upstream proxy，不代理 solver control request 或 native ascii2d image upload，solver session state 和 source 也不会
 作为 test evidence 持久化。
 
-`scripts/test-e2e.sh` 只选择当前的 public SDK E2E 测试：Pixiv 测试从本地 `pixiv-cli.db` 读取选中账号，
+`scripts/test-e2e.sh` 只选择当前的 public SDK E2E 测试：Pixiv 测试从本地 `pixiv-cli.db` 读取选中账号；`PIXIV_E2E_READ_USER_ID` 是可选的非 secret 本地账号 selector，显式提供时必须命中已保存 Pixiv 账号，格式错误或账号不存在都会在联网前 fail closed，且不会 fallback 到 configured default；release evidence 应显式选择获授权的 secondary account，省略时才保留 configured-default 兼容行为。
 FANBOX 测试从约定的 macOS Keychain item 读取 `FANBOXSESSID`。FANBOX 的
 `FANBOX_E2E_CREATOR_ID`、`FANBOX_E2E_TAG`、`FANBOX_E2E_POST_ID` 与 `FANBOX_E2E_POST_URL` 只接受
 显式、非 secret 的测试目标；不接受 refresh token、session 或完整 Cookie 作为参数/环境变量。可选的
@@ -356,7 +357,7 @@ FANBOX 测试从约定的 macOS Keychain item 读取 `FANBOXSESSID`。FANBOX 的
 `FANBOX_E2E_SOLVER_PROXY` 是可选的非 secret recovery 拓扑配置，默认不启用 solver。未显式启用真实 E2E 时测试默认 skip；显式启用但缺少本机
 凭据或 FANBOX 目标时会失败，不能把默认 skip 或自动发现记为 release evidence。
 
-v1 的真实 SDK E2E 是 `TestRealPixivSDKRead` 与 `TestRealFanboxSDKRead`（见 [测试](#测试) 的 `PIXIV_SDK_E2E=1` / `FANBOX_SDK_E2E=1` 命令）。Pixiv 侧测试进程只从本地 `pixiv-cli.db` 的选中账号读取 refresh token，打开 `sdk/pixiv` 验证 identity 并完成一个稳定 detail/list 与 `Resource` 读取，rotation 后的 credentials 先按正常 repository transaction 持久化再继续内容请求。FANBOX 侧直接通过 macOS Keychain 读取授权 `FANBOXSESSID` item，并使用显式 creator/tag/post/page URL 目标逐项验证 `Creator`、`Creators`、`CreatorTags`、`CreatorPosts`、`TaggedPosts`、`Post`、`Home`、`Supporting`、`ResolveURL`、`OpenResource` 与 `SaveResource`；列表目标在服务端返回 cursor 时各跟进一次 continuation，帖子详情必须发现 file attachment 并在临时目录完整读取。session 失效时明确报 `credentials_expired` 并要求重新导入，不 fallback。release-prep 运行后由操作者扫描 stdout、stderr、test log 与 evidence；token、Cookie、signed URL 与原始 response body 不得进入 argv、环境 dump、日志、test name、artifact 或失败 diff。以上说明描述测试覆盖，不表示真实 e2e 已经运行；请勿把 token 写入 shell history、日志或仓库文件。
+v1 的真实 SDK E2E 是 `TestRealPixivSDKRead` 与 `TestRealFanboxSDKRead`（见 [测试](#测试) 的 `PIXIV_SDK_E2E=1` / `FANBOX_SDK_E2E=1` 命令）。Pixiv 侧测试进程只从本地 `pixiv-cli.db` 的选中账号读取 refresh token；release-prep 应设置 `PIXIV_E2E_READ_USER_ID` 显式选择获授权的 secondary account，避免隐式使用 configured main/default account。随后打开 `sdk/pixiv` 验证 identity 并完成一个稳定 detail/list 与 `Resource` 读取，rotation 后的 credentials 先按正常 repository transaction 持久化再继续内容请求。FANBOX 侧直接通过 macOS Keychain 读取授权 `FANBOXSESSID` item，并使用显式 creator/tag/post/page URL 目标逐项验证 `Creator`、`Creators`、`CreatorTags`、`CreatorPosts`、`TaggedPosts`、`Post`、`Home`、`Supporting`、`ResolveURL`、`OpenResource` 与 `SaveResource`；列表目标在服务端返回 cursor 时各跟进一次 continuation，帖子详情必须发现 file attachment 并在临时目录完整读取。session 失效时明确报 `credentials_expired` 并要求重新导入，不 fallback。release-prep 运行后由操作者扫描 stdout、stderr、test log 与 evidence；token、Cookie、signed URL 与原始 response body 不得进入 argv、环境 dump、日志、test name、artifact 或失败 diff。以上说明描述测试覆盖，不表示真实 e2e 已经运行；请勿把 token 写入 shell history、日志或仓库文件。
 
 对于合法但没有 file attachment 的文章详情，补充使用 `TestRealFanboxSDKPostInfo`：它只要求显式
 post ID/page URL，验证公共 SDK 的 `Post`、非空 body、`ResolveURL` 与资源清单，并允许
@@ -409,6 +410,8 @@ amd64/arm64 platform-smoke 还会用真实 `cmd.exe`、`certutil.exe` 与 `tar.e
 | 目录 | same-package 理由 |
 | --- | --- |
 | `internal/cli` | composition root 测试观察未导出的 root wiring、invocation lifecycle 与 close ordering；这些 seam 不构成公开 API。 |
+| `internal/cli/commands/pixiv/search` | 通过真实 SDK 与 HTTP fixture 观察私有 searchArtworks 逻辑页续读。CLI/MCP wire 不暴露这些 cursor，为测试导出应用内部接口会扩大公开契约。 |
+| `internal/mcpserver/pixiv/tools/search_illust` | 通过真实 SDK 与 HTTP fixture 观察私有 searchArtworks 逻辑页续读。CLI/MCP wire 不暴露这些 cursor，为测试导出应用内部接口会扩大公开契约。 |
 | `internal/browsercookies/chromium` | 测试直接构造 provider 并注入 encryption key override，观察未导出的 cookie 记录解密路径与 profile 发现逻辑。 |
 | `internal/browsercookies/firefox` | 测试观察未导出的 profile 发现（`profiles.ini` 解析）、cookie 数据库路径解析与记录布局。 |
 | `internal/browsercookies/safari` | 测试直接调用未导出的 `parseBinaryCookies`，断言 binarycookies 记录布局。 |
@@ -416,6 +419,7 @@ amd64/arm64 platform-smoke 还会用真实 `cmd.exe`、`certutil.exe` 与 `tar.e
 | `internal/update/installer` | 测试注入未导出的 `assetURLValidator` seam 与 checksum 校验函数，用真实 fixture 二进制验证 root `--version` 预检与失败时不替换旧可执行。 |
 | `internal/update/release` | `source_route_test.go` 观察未导出的 source route 选择与 canonical API URL cache 状态；该目录其余测试已用 external package。 |
 | `internal/storage/database` | 测试观察未导出的 `tableInfoQuery` 白名单与迁移兼容 seam，确保 SQL 标识符始终来自固定字面量，旧 schema 不能静默绕过契约。 |
+| `sdk/pixiv` | `cursor_test.go` 观察未导出的 cursor 构造与 client-instance binding，以验证精确的 query-bound 无效 continuation，而不扩大 public SDK surface。 |
 | `scripts/internal/browsernativeevidence` | 测试观察未导出的环境探测并注入合成 Firefox cookie 种子。 |
 | `scripts/internal/changescope` | 测试直接调用未导出的路径解析（`splitNULPaths`、`docsOnlyPaths`）与 change-scope 判定。 |
 | `scripts/internal/homebrewformula` | 测试直接调用未导出的 formula 渲染与版本校验（`renderFormula`、`validateFormulaVersion`、`checkDynamicVersionNeeds`）。 |
@@ -448,7 +452,7 @@ for ip,n in sorted(same): print(ip,n)'
 
 ### 能力边界
 
-这是 v1 中**不得有任何入口**的能力的维护者侧权威清单，是负面契约：为下列能力新增 CLI/MCP/SDK 入口即为缺陷。禁止以 schema 占位或 mock 空结果「预留」。
+这是 v1 中**不得有可发布入口**的能力的维护者侧权威清单，是负面契约：为下列能力新增已发布的 CLI/MCP/SDK 入口即为缺陷。Evidence-gated 表中记录的 SDK-only migration seam 不属于可发布入口，也不得据此记为 capability 已完成。禁止以 schema 占位或 mock 空结果「预留」。
 
 **Unsupported（v1 明确不支持；新增入口即缺陷）：**
 
@@ -457,13 +461,13 @@ for ip,n in sorted(same): print(ip,n)'
 | `ART-SEARCH-RATING` | `internal/cli/commands/pixiv/search` + `sdk/pixiv` | CLI `--rating` 报告 "rating filter is not supported by the v1 App API search contract"；MCP `search_illust` schema 无 rating 参数 | 仅当 v1 App API search contract 新增 rating 语义；届时同步 SDK 字段、CLI flag、MCP schema、locale 文档与本清单 |
 | `NOVEL-SEARCH-ADVANCED` | 无 owner（不得新增） | SDK/MCP schema 无 advanced 字段 | 上游 contract 出现后可评估；禁止 schema 占位 |
 
-**Evidence-gated（当前无入口；新增须先满足 close-out 条件）：**
+**Evidence-gated（可存在 SDK-only migration seam；可发布入口仍须先满足 close-out 条件）：**
 
 | ID | 唯一 owner | 当前证据 | close-out 条件 |
 | --- | --- | --- | --- |
-| `NOVEL-RANKING` | 无 owner | SDK 无 `NovelRanking` 导出；MCP 无 `novel_ranking` tool | 上游 App API 提供小说排行后 |
-| `NOVEL-BOOKMARK-MUTATION` | 无 owner | SDK 无 `AddNovelBookmark` 类导出；`user_novel_bookmarks` 只读 | 同上 |
-| `COMMENT-WRITE` | 无 owner | MCP `comment_post`/`comment_add` 目录 = 0；SDK `PostComment`/`DeleteComment` 导出 = 0 | 上游提供可验证的写入 contract 后 |
+| `NOVEL-RANKING` | `sdk/pixiv` + `internal/cli/commands/pixiv/ranking`（T18/T30；MCP 后续） | SDK 与 CLI 已在 internal `/v1/novel/ranking` adapter 之上暴露 additive `NovelRanking` seam；CLI 通过 `--type novel` 显式选择；MCP 无 `novel_ranking` tool，live/public 发布 evidence 仍未闭合 | 完成 live 第二页、shared cursor、MCP 与发布兼容门禁；此前仍是 evidence-gated，不得记为 `public_ready` |
+| `NOVEL-BOOKMARK-MUTATION` | `sdk/pixiv` + `internal/mcpserver/pixiv`（G1-T13；CLI 后续） | SDK 已暴露 additive typed `AddNovelBookmark`/`RemoveNovelBookmark`；MCP 已暴露 `add_novel_bookmark`/`remove_novel_bookmark`；offline outcome、校验与 no-replay evidence 已存在，strict/live、read-back 与发布 evidence 仍未闭合 | 完成 strict/live mutation evidence、同账号 read-back、清理及兼容/发布门禁；此前仍是 evidence-gated，不得记为 `public_ready` |
+| `COMMENT-WRITE` | `sdk/pixiv`（T16；CLI/MCP 后续） | SDK 已暴露按 namespace 区分的 `PostArtworkComment`/`ReplyArtworkComment`/`DeleteArtworkComment` 及 novel 对应方法；MCP `comment_post`/`comment_add` 目录仍 = 0；响应 ID、read-back、清理和 strict live evidence 尚未闭合 | 完成 strict/live 写入 evidence、同账号 read-back、清理及 T33/T38 兼容门禁后；此前仍是 evidence-gated，不得记为 `public_ready` |
 | `NOTIFICATION` | 无 owner | MCP `notification` 目录 = 0；SDK `Notification*` 导出 = 0 | 同上 |
 | `AUTOCOMPLETE` | 无 owner | MCP `autocomplete` 目录 = 0；SDK `Autocomplete*` 导出 = 0；未并入 `search` | 同上 |
 | `WEB-RESTRICTED-READ` | 无 owner | 无 `webapi` 包；`web_fallback_enabled` 是 tombstone key（`config get/set` → `removed_setting`） | 不得重开匿名 Web 路径；任何恢复 Web/AJAX 的提议须先修订 AGENTS 冻结契约并经 ADR |

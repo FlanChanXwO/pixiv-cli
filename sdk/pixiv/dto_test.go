@@ -142,3 +142,19 @@ func TestArtworkDTOEmitsOptionalFieldsWhenPresent(t *testing.T) {
 		}
 	}
 }
+
+func TestNovelBookmarkDetailDTOCopiesTags(t *testing.T) {
+	value := pixiv.NovelBookmarkDetail{
+		Restrict: pixiv.RestrictPrivate,
+		Tags:     []string{"story"},
+	}
+
+	dto := pixiv.ToNovelBookmarkDetailDTO(value)
+	if dto.Restrict != value.Restrict || len(dto.Tags) != 1 || dto.Tags[0] != "story" {
+		t.Fatalf("novel bookmark detail DTO lost fields: %+v", dto)
+	}
+	dto.Tags[0] = "changed"
+	if value.Tags[0] != "story" {
+		t.Fatal("DTO shares the source tags slice")
+	}
+}

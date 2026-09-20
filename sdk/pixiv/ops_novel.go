@@ -6,6 +6,7 @@ import (
 
 	novelentity "github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/endpoint/novel"
 	novelcomments "github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/endpoint/novel/comments"
+	novelranking "github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/endpoint/novel/ranking"
 	novelrecommended "github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/endpoint/novel/recommended"
 	novelsearch "github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/endpoint/novel/search"
 	novelseries "github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/endpoint/novel/series"
@@ -49,7 +50,7 @@ func (c *Client) SearchNovels(ctx context.Context, request SearchNovelsRequest) 
 	if request.Duration != "" {
 		query.Set("duration", string(request.Duration))
 	}
-	offset, err := c.continuationOffset("SearchNovels", query, request.Cursor)
+	offset, err := c.continuationPositiveOffset("SearchNovels", query, request.Cursor)
 	if err != nil {
 		return sdk.Page[Novel]{}, err
 	}
@@ -80,7 +81,7 @@ func (c *Client) NovelSeries(ctx context.Context, request NovelSeriesRequest) (N
 		return NovelSeriesResult{}, newError("NovelSeries", sdk.InvalidArgument, "series ID must be positive")
 	}
 	query := url.Values{"series_id": {itoa(request.SeriesID)}}
-	lastOrder, err := c.continuationValue("NovelSeries", query, request.Cursor, "last_order")
+	lastOrder, err := c.continuationPositiveValue("NovelSeries", query, request.Cursor, "last_order")
 	if err != nil {
 		return NovelSeriesResult{}, err
 	}
@@ -112,16 +113,40 @@ func (c *Client) NovelSeries(ctx context.Context, request NovelSeriesRequest) (N
 	}, nil
 }
 
-// NovelContent reads the structured body of one novel.
+// NovelRanking lists the current novel ranking.
+func (c *Client) NovelRanking(ctx context.Context, request NovelRankingRequest) (sdk.Page[Novel], error) {
+	if request.Mode == "" {
+		request.Mode = RankingModeDay
+	}
+	if err := validateRankingMode("NovelRanking", request.Mode); err != nil {
+		return sdk.Page[Novel]{}, err
+	}
+	query := url.Values{"filter": {"for_android"}, "mode": {string(request.Mode)}}
+	offset, err := c.continuationPositiveOffset("NovelRanking", query, request.Cursor)
+	if err != nil {
+		return sdk.Page[Novel]{}, err
+	}
+	list, err := c.novelRanking.List(ctx, novelranking.Request{
+		Filter: "for_android",
+		Mode:   string(request.Mode),
+		Offset: offset,
+	})
+	if err != nil {
+		return sdk.Page[Novel]{}, classifyAppError(err, "NovelRanking")
+	}
+	return c.novelPage("NovelRanking", query, "offset", list.Items, int64(list.NextOffset), list.HasNext)
+}
+
+// NovelContent is retained for source compatibility with the v1 SDK surface.
+//
+// Deprecated: the App API novel-content endpoint is rejected and WebView
+// content is outside the v1 SDK contract. This method returns
+// ContentUnavailable without making a network request.
 func (c *Client) NovelContent(ctx context.Context, request NovelContentRequest) (NovelContent, error) {
 	if request.NovelID <= 0 {
 		return NovelContent{}, newError("NovelContent", sdk.InvalidArgument, "novel ID must be positive")
 	}
-	html, err := c.novelDetail.Content(ctx, request.NovelID)
-	if err != nil {
-		return NovelContent{}, classifyAppError(err, "NovelContent")
-	}
-	return c.parseNovelContent(request.NovelID, html)
+	return NovelContent{}, newError("NovelContent", sdk.ContentUnavailable, "novel content is unsupported by the v1 App API")
 }
 
 // NovelComments lists comments on one novel.
@@ -130,7 +155,7 @@ func (c *Client) NovelComments(ctx context.Context, request NovelCommentsRequest
 		return CommentPage{}, newError("NovelComments", sdk.InvalidArgument, "novel ID must be positive")
 	}
 	query := url.Values{"novel_id": {itoa(request.NovelID)}}
-	offset, err := c.continuationOffset("NovelComments", query, request.Cursor)
+	offset, err := c.continuationPositiveOffset("NovelComments", query, request.Cursor)
 	if err != nil {
 		return CommentPage{}, err
 	}
@@ -142,27 +167,33 @@ func (c *Client) NovelComments(ctx context.Context, request NovelCommentsRequest
 }
 
 // RecommendedNovels lists recommended novels.
+// RecommendedNovels lists recommended novels. 续页以上游 next_url 的多参数
+// 集整体回放（offset、already_recommended、bookmark 游标）。
 func (c *Client) RecommendedNovels(ctx context.Context, request RecommendedNovelsRequest) (sdk.Page[Novel], error) {
 	query := url.Values{}
-	offset, contExists, err := c.continuationOffsetExists("RecommendedNovels", query, request.Cursor)
+	params, err := c.continuationParams("RecommendedNovels", query, request.Cursor)
 	if err != nil {
 		return sdk.Page[Novel]{}, err
 	}
-	list, err := c.novelRecommended.List(ctx, novelrecommended.Request{Offset: offset, ContinuationExists: contExists})
+	list, err := c.novelRecommended.List(ctx, novelrecommended.Request{ContinuationParams: params})
 	if err != nil {
 		return sdk.Page[Novel]{}, classifyAppError(err, "RecommendedNovels")
 	}
-	return c.novelPage("RecommendedNovels", query, "offset", list.Items, int64(list.NextOffset), list.HasNext)
+	return c.novelParamsPage("RecommendedNovels", query, list.Items, list.NextParams, list.HasNext)
 }
 
 // FollowingNovels lists novels by followed users.
 func (c *Client) FollowingNovels(ctx context.Context, request FollowingNovelsRequest) (sdk.Page[Novel], error) {
-	query := url.Values{"restrict": {string(request.Restrict)}}
-	offset, err := c.continuationOffset("FollowingNovels", query, request.Cursor)
+	restrict, err := normalizeFollowingRestrict("FollowingNovels", request.Restrict)
 	if err != nil {
 		return sdk.Page[Novel]{}, err
 	}
-	list, err := c.novelTimeline.List(ctx, noveltimeline.Request{Kind: noveltimeline.Following, Restrict: string(request.Restrict), Offset: offset})
+	query := url.Values{"restrict": {string(restrict)}}
+	offset, err := c.continuationPositiveOffset("FollowingNovels", query, request.Cursor)
+	if err != nil {
+		return sdk.Page[Novel]{}, err
+	}
+	list, err := c.novelTimeline.List(ctx, noveltimeline.Request{Kind: noveltimeline.Following, Restrict: string(restrict), Offset: offset})
 	if err != nil {
 		return sdk.Page[Novel]{}, classifyAppError(err, "FollowingNovels")
 	}
@@ -171,16 +202,16 @@ func (c *Client) FollowingNovels(ctx context.Context, request FollowingNovelsReq
 
 // LatestNovels lists the newest novels.
 func (c *Client) LatestNovels(ctx context.Context, request LatestNovelsRequest) (sdk.Page[Novel], error) {
-	query := url.Values{}
-	offset, err := c.continuationOffset("LatestNovels", query, request.Cursor)
+	query := url.Values{"filter": {"for_android"}}
+	maxNovelID, err := c.continuationPositiveValue("LatestNovels", query, request.Cursor, "max_novel_id")
 	if err != nil {
 		return sdk.Page[Novel]{}, err
 	}
-	list, err := c.novelTimeline.List(ctx, noveltimeline.Request{Kind: noveltimeline.Latest, Offset: offset})
+	list, err := c.novelTimeline.List(ctx, noveltimeline.Request{Kind: noveltimeline.Latest, MaxNovelID: maxNovelID})
 	if err != nil {
 		return sdk.Page[Novel]{}, classifyAppError(err, "LatestNovels")
 	}
-	return c.novelPage("LatestNovels", query, "offset", list.Items, int64(list.NextOffset), list.HasNext)
+	return c.novelPage("LatestNovels", query, list.NextKey, list.Items, list.NextValue, list.HasNext)
 }
 
 // UserNovels lists one user's novels.
@@ -189,7 +220,7 @@ func (c *Client) UserNovels(ctx context.Context, request UserNovelsRequest) (sdk
 		return sdk.Page[Novel]{}, newError("UserNovels", sdk.InvalidArgument, "user ID must be positive")
 	}
 	query := url.Values{"user_id": {itoa(request.UserID)}}
-	offset, err := c.continuationOffset("UserNovels", query, request.Cursor)
+	offset, err := c.continuationPositiveOffset("UserNovels", query, request.Cursor)
 	if err != nil {
 		return sdk.Page[Novel]{}, err
 	}
@@ -212,7 +243,7 @@ func (c *Client) UserNovelBookmarks(ctx context.Context, request UserNovelBookma
 	if request.Tag != "" {
 		query.Set("tag", request.Tag)
 	}
-	maxID, err := c.continuationValue("UserNovelBookmarks", query, request.Cursor, "max_bookmark_id")
+	maxID, err := c.continuationPositiveValue("UserNovelBookmarks", query, request.Cursor, "max_bookmark_id")
 	if err != nil {
 		return sdk.Page[Novel]{}, err
 	}
@@ -225,10 +256,50 @@ func (c *Client) UserNovelBookmarks(ctx context.Context, request UserNovelBookma
 	return c.novelPage("UserNovelBookmarks", query, "max_bookmark_id", list.Items, list.NextMaxBookmarkID, list.HasNext)
 }
 
+// UserNovelBookmarkTags lists the bookmark tags of one user's bookmarked
+// novels. The candidate upstream endpoint currently has no continuation
+// contract, so a non-zero cursor is rejected instead of being guessed.
+func (c *Client) UserNovelBookmarkTags(ctx context.Context, request UserNovelBookmarkTagsRequest) (sdk.Page[BookmarkTag], error) {
+	if request.UserID <= 0 {
+		return sdk.Page[BookmarkTag]{}, newError("UserNovelBookmarkTags", sdk.InvalidArgument, "user ID must be positive")
+	}
+	if err := validateRestrict("UserNovelBookmarkTags", request.Restrict); err != nil {
+		return sdk.Page[BookmarkTag]{}, err
+	}
+	if !request.Cursor.IsZero() {
+		return sdk.Page[BookmarkTag]{}, newError("UserNovelBookmarkTags", sdk.InvalidCursor, "novel bookmark tags continuation is not supported")
+	}
+	result, err := c.userNovelBookmarks.Tags(ctx, usernovelbookmarks.TagsRequest{
+		UserID: request.UserID, Restrict: string(request.Restrict),
+	})
+	if err != nil {
+		return sdk.Page[BookmarkTag]{}, classifyAppError(err, "UserNovelBookmarkTags")
+	}
+	items := make([]BookmarkTag, 0, len(result.Items))
+	for _, tag := range result.Items {
+		items = append(items, BookmarkTag{Name: tag.Name, Count: tag.Count})
+	}
+	return sdk.Page[BookmarkTag]{Items: items}, nil
+}
+
+// NovelBookmark reads the current user's bookmark detail for one novel.
+// The upstream route is a candidate and is kept endpoint-oriented; it does
+// not expose novel metadata or mutation outcome through this method.
+func (c *Client) NovelBookmark(ctx context.Context, request NovelBookmarkRequest) (NovelBookmarkDetail, error) {
+	if request.NovelID <= 0 {
+		return NovelBookmarkDetail{}, newError("NovelBookmark", sdk.InvalidArgument, "novel ID must be positive")
+	}
+	detail, err := c.userNovelBookmarks.Detail(ctx, request.NovelID)
+	if err != nil {
+		return NovelBookmarkDetail{}, classifyAppError(err, "NovelBookmark")
+	}
+	return NovelBookmarkDetail{Restrict: Restrict(detail.Restrict), Tags: append([]string{}, detail.Tags...)}, nil
+}
+
 // MyPixivNovels lists novels from the current user's MyPixiv feed.
 func (c *Client) MyPixivNovels(ctx context.Context, request MyPixivNovelsRequest) (sdk.Page[Novel], error) {
 	query := url.Values{}
-	offset, err := c.continuationOffset("MyPixivNovels", query, request.Cursor)
+	offset, err := c.continuationPositiveOffset("MyPixivNovels", query, request.Cursor)
 	if err != nil {
 		return sdk.Page[Novel]{}, err
 	}
@@ -237,6 +308,28 @@ func (c *Client) MyPixivNovels(ctx context.Context, request MyPixivNovelsRequest
 		return sdk.Page[Novel]{}, classifyAppError(err, "MyPixivNovels")
 	}
 	return c.novelPage("MyPixivNovels", query, "offset", list.Items, int64(list.NextOffset), list.HasNext)
+}
+
+// novelParamsPage 与 novelPage 共享 DTO 映射，但以多参数 continuation 构建
+// cursor（recommended 家族）。
+func (c *Client) novelParamsPage(op string, query url.Values, list []novelentity.Novel, nextParams url.Values, hasNext bool) (sdk.Page[Novel], error) {
+	items := make([]Novel, 0, len(list))
+	for _, value := range list {
+		mapped, err := c.mapNovel(value)
+		if err != nil {
+			return sdk.Page[Novel]{}, err
+		}
+		items = append(items, mapped)
+	}
+	var next sdk.Cursor
+	if hasNext {
+		built, err := c.buildContinuationCursor(op, query, continuationEnvelope{Params: nextParams})
+		if err != nil {
+			return sdk.Page[Novel]{}, err
+		}
+		next = built
+	}
+	return sdk.Page[Novel]{Items: items, Next: next}, nil
 }
 
 func (c *Client) novelPage(op string, query url.Values, key string, list []novelentity.Novel, nextValue int64, hasNext bool) (sdk.Page[Novel], error) {

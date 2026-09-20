@@ -35,6 +35,29 @@ func TestRelatedMapsRouteArtworkAndContinuation(t *testing.T) {
 	}
 }
 
+func TestRelatedReplaysLiveMultiParamContinuation(t *testing.T) {
+	transport := &fakeTransport{body: `{"illusts":[{"id":456,"title":"related","user":{"id":9},"create_date":"2024-01-02T03:04:05+00:00"}],"next_url":"https://app-api.pixiv.net/v2/illust/related?illust_id=123&seed_illust_ids%5B0%5D=456&seed_illust_ids%5B1%5D=789&viewed%5B0%5D=123&viewed%5B1%5D=456"}`}
+	client := related.New(transport)
+	first, err := client.List(context.Background(), related.Request{ArtworkID: 123})
+	if err != nil {
+		t.Fatalf("first List: %v", err)
+	}
+	if !first.HasNext || len(first.NextParams["seed_illust_ids[]"]) != 2 || first.NextParams["seed_illust_ids[]"][0] != "456" || first.NextParams["seed_illust_ids[]"][1] != "789" || len(first.NextParams["viewed[]"]) != 2 || first.NextParams["viewed[]"][1] != "456" {
+		t.Fatalf("first result = %#v", first)
+	}
+	transport.body = `{"illusts":[],"next_url":null}`
+	second, err := client.List(context.Background(), related.Request{ArtworkID: 123, ContinuationParams: first.NextParams})
+	if err != nil {
+		t.Fatalf("second List: %v", err)
+	}
+	if got := transport.query; got.Get("illust_id") != "123" || len(got["seed_illust_ids[]"]) != 2 || got["seed_illust_ids[]"][1] != "789" || len(got["viewed[]"]) != 2 || got["viewed[]"][1] != "456" {
+		t.Fatalf("continuation query = %v", got)
+	}
+	if second.Items == nil || len(second.Items) != 0 || second.HasNext {
+		t.Fatalf("second result = %#v", second)
+	}
+}
+
 func TestRelatedPreservesEmptyArrayAndRejectsNull(t *testing.T) {
 	for _, test := range []struct {
 		name string

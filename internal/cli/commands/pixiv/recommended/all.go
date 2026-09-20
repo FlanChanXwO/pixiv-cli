@@ -8,6 +8,7 @@ import (
 	"os"
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/cli/commands/pixiv/internal/listing"
+	"github.com/FlanChanXwO/pixiv-cli/internal/shared/searchfilter"
 	"github.com/FlanChanXwO/pixiv-cli/sdk"
 	pixiv "github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
 )
@@ -21,24 +22,26 @@ func (a command) runAll(ctx context.Context, client *pixiv.Client, plan listing.
 	}
 	defer spool.Close()
 
-	fetchArtworks := func(ctx context.Context, cursor sdk.Cursor) ([]pixiv.Artwork, sdk.Cursor, error) {
-		result, err := client.RecommendedArtworks(ctx, pixiv.RecommendedArtworksRequest{Cursor: cursor})
-		if err != nil {
-			return nil, sdk.Cursor{}, err
-		}
-		return result.Items, result.Next, nil
+	var visualItems []pixiv.Artwork
+	if err := listing.PageItems(ctx, plan, fetchRecommendedArtworks(client, searchfilter.Filter{}), func(items []pixiv.Artwork) error {
+		visualItems = append(visualItems, items...)
+		return nil
+	}); err != nil {
+		return false, err
 	}
+
 	for _, section := range []struct {
 		key     string
 		heading string
-	}{{key: "illusts", heading: "recommended illustrations"}, {key: "manga", heading: "recommended manga"}} {
+		filter  searchfilter.Filter
+	}{{key: "illusts", heading: "recommended illustrations", filter: searchfilter.Filter{ContentType: searchfilter.ContentTypeIllust}}, {key: "manga", heading: "recommended manga", filter: searchfilter.Filter{ContentType: searchfilter.ContentTypeManga}}} {
 		if err := spool.section(section.key); err != nil {
 			return false, err
 		}
 		if err := spool.heading(jsonOut, section.heading); err != nil {
 			return false, err
 		}
-		if err := listing.PageItems(ctx, plan, fetchArtworks, spool.artworks); err != nil {
+		if err := spool.artworks(filterRecommendedArtworks(visualItems, section.filter)); err != nil {
 			return false, err
 		}
 	}
