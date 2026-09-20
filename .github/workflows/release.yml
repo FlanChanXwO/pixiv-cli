@@ -178,10 +178,10 @@ jobs:
         shell: bash
         run: go test ./...
       - name: Test Go sources with the race detector
-        # Go 1.27.1 明确不支持 windows/arm64 的 -race；其余五个原生目标仍必须执行 race gate。
-        if: matrix.goos != 'windows' || matrix.goarch != 'arm64'
+        # 六个平台都实际执行 gate。Go 1.27.1 不支持 windows/arm64 的 -race，因此该目标
+        # 必须精确验证 Go 官方“不支持”诊断；其他五个平台实际运行 race tests。
         shell: bash
-        run: go test -race ./...
+        run: sh scripts/test-race-gate.sh
       - name: Vet Go sources
         shell: bash
         run: go vet ./...

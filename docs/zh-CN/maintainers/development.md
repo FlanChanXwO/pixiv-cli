@@ -578,8 +578,9 @@ pre-commit 和 `git diff --check`；production build job 只从 clean tag tree �
 `go run ./scripts/cmd/releaseassets channel --version ...` 判定；build metadata 中的连字符不会使 stable
 tag 误变为 prerelease。
 
-Go 1.27.1 不支持 Windows ARM64 的 race detector，因此该唯一 matrix entry 显式跳过 `go test -race`；
-其余五个原生目标仍运行 race gate，workflow policy 固定这个条件，禁止扩张为任意条件跳过。
+Go 1.27.1 不支持 Windows ARM64 的 race detector，但 release matrix 仍会在六个原生目标上实际执行 race gate：
+其中五个平台运行 `go test -race ./...`，Windows ARM64 则必须执行同一命令并精确匹配 Go 官方
+`-race is not supported on windows/arm64` 诊断；其他任何失败仍视为 gate 失败，因此不会再出现 matrix step skip。
 test matrix 还固定 `GIT_CONFIG_*` 为 `core.autocrlf=false`，使 Git for Windows checkout 保留 immutable
 tag 的 LF blob bytes；否则 pre-commit 的 `gofmt` 会把 runner 的 CRLF 转换误报为源码未格式化。该配置
 仅用于 test gate，独立 production build 仍从 tag 的干净默认 checkout 构建资产。

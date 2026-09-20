@@ -252,6 +252,9 @@ challenge-recovery control path，绝不会收到 native ascii2d image upload。
 
 ### Go SDK
 
+**pixiv-cli v1.1.0 正式将 Go 1.27.1 作为源码构建与 SDK 开发基线。**
+仓库、CI、正式发布构建与原生打包统一使用这一精确 Go toolchain 版本。
+
 Public SDK 显式接收 credential，不读取 CLI 的本地账号库或进程环境。应用应从自己的 secret store 取得 credential，并自行保存 `Open` 返回的 rotation 后 credential：
 
 ```go

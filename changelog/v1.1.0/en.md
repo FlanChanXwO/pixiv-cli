@@ -26,5 +26,6 @@
 ## Maintenance
 
 - Add broad offline and live-manifest regression coverage for Pixiv endpoint ownership, SDK compatibility, cursor bindings, pagination, CLI/MCP projections, comments, bookmarks, users, feeds, and mutation evidence while keeping credentials and private responses out of the repository. ([#82](https://github.com/FlanChanXwO/pixiv-cli/pull/82))
+- Prepare the bilingual v1.1.0 release metadata and align the distributed product skill version with the release tag. ([#83](https://github.com/FlanChanXwO/pixiv-cli/pull/83))
 
 **Full Changelog**: [v1.0.2...v1.1.0](https://github.com/FlanChanXwO/pixiv-cli/compare/v1.0.2...v1.1.0)

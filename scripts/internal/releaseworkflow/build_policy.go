@@ -153,7 +153,7 @@ func requireCanonicalBuildSteps(steps []*yaml.Node) error {
 		command string
 	}{
 		{name: "Test Go sources", command: "go test ./..."},
-		{name: "Test Go sources with the race detector", command: "go test -race ./..."},
+		{name: "Test Go sources with the race detector", command: "sh scripts/test-race-gate.sh"},
 		{name: "Vet Go sources", command: "go vet ./..."},
 		{name: "Audit bundled licenses", command: "go run ./scripts/cmd/licensebundle --check"},
 		{name: "Test release packages", command: "sh scripts/test-package-release.sh"},
@@ -161,14 +161,8 @@ func requireCanonicalBuildSteps(steps []*yaml.Node) error {
 		{name: "Run pre-commit checks", command: "python -m pre_commit run --all-files"},
 	} {
 		step := steps[index+7]
-		if gate.command != "go test -race ./..." && hasExecutionOverride(step) {
+		if hasExecutionOverride(step) {
 			return fmt.Errorf("build quality gate %s must not define continue-on-error or if", gate.command)
-		}
-		if gate.command == "go test -race ./..." {
-			if err := requireCanonicalConditionalRunStep(step, "build quality gate "+gate.name, "matrix.goos != 'windows' || matrix.goarch != 'arm64'", gate.command); err != nil {
-				return fmt.Errorf("%s: %w", gate.command, err)
-			}
-			continue
 		}
 		if err := requireCanonicalNamedRunStep(step, gate.name, gate.command); err != nil {
 			return fmt.Errorf("%s: %w", gate.command, err)
@@ -189,7 +183,7 @@ func requireBuildCommandsPresent(job *yaml.Node) error {
 		{name: "Check Rust formatting from vendored sources", directory: "internal/media/ugoira/rust", command: "cargo fmt --check"},
 		{name: "Lint vendored Rust sources", directory: "internal/media/ugoira/rust", command: "cargo clippy --locked --offline --all-targets -- -D warnings"},
 		{name: "Test Go sources", command: "go test ./..."},
-		{name: "Test Go sources with the race detector", command: "go test -race ./..."},
+		{name: "Test Go sources with the race detector", command: "sh scripts/test-race-gate.sh"},
 		{name: "Vet Go sources", command: "go vet ./..."},
 		{name: "Audit bundled licenses", command: "go run ./scripts/cmd/licensebundle --check"},
 		{name: "Test release packages", command: "sh scripts/test-package-release.sh"},
