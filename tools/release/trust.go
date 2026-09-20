@@ -272,7 +272,13 @@ func appendGitHubOutput(path string, values map[string]string) error {
 	if err != nil {
 		return err
 	}
-	defer file.Close()
+	return appendGitHubOutputTo(file, values)
+}
+
+func appendGitHubOutputTo(file io.WriteCloser, values map[string]string) (retErr error) {
+	defer func() {
+		retErr = errors.Join(retErr, file.Close())
+	}()
 	for _, key := range []string{"commit", "version"} {
 		value, ok := values[key]
 		if !ok {

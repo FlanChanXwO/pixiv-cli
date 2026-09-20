@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -10,6 +11,14 @@ import (
 	"strings"
 	"testing"
 )
+
+type closeErrorWriter struct {
+	strings.Builder
+}
+
+func (writer *closeErrorWriter) Close() error {
+	return errors.New("close github output")
+}
 
 func TestReleaseTrustSourceUsesImmutableTagOnDefaultBranch(t *testing.T) {
 	t.Setenv("PATH", "/usr/bin:/bin"+string(os.PathListSeparator)+os.Getenv("PATH"))
@@ -85,5 +94,15 @@ func TestReleaseTrustPublishedReleaseAndHandoff(t *testing.T) {
 	}
 	if err := verifyReleaseHandoff(client, "FlanChanXwO/pixiv-cli", 42, "Release", ""); err != nil {
 		t.Fatalf("verify recovery handoff without head binding: %v", err)
+	}
+}
+
+func TestAppendGitHubOutputReturnsCloseError(t *testing.T) {
+	t.Parallel()
+
+	writer := &closeErrorWriter{}
+	err := appendGitHubOutputTo(writer, map[string]string{"commit": strings.Repeat("a", 40)})
+	if err == nil || !strings.Contains(err.Error(), "close github output") {
+		t.Fatalf("appendGitHubOutputTo close error = %v, want close failure", err)
 	}
 }
