@@ -14,6 +14,7 @@
 
 - 修正 artwork/novel 读取和 mutation 的 Pixiv wire adapter 与 continuation 处理，包括多页 artwork index、series cursor、recommendation continuation 参数、bookmark detail 空状态归一化，以及正数 cursor 校验。([#82](https://github.com/FlanChanXwO/pixiv-cli/pull/82))
 - 在不推断权限语义的前提下完整保留评论 metadata：当前评论日期映射已验证的 wire 字段，numeric `comment_access_control` 保留在 `access_control.comment_access_control`，同时继续兼容 legacy access metadata。([#82](https://github.com/FlanChanXwO/pixiv-cli/pull/82))
+- 父 context 取消时立即中止 remote-login relay，而不是继续等待 HTTP graceful shutdown，避免 active handler 在 race instrumentation 下拖住整个取消路径。([#86](https://github.com/FlanChanXwO/pixiv-cli/pull/86))
 
 ## 安全
 
