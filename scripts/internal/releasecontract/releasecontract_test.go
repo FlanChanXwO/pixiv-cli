@@ -1,7 +1,6 @@
 package releasecontract_test
 
 import (
-	"strings"
 	"testing"
 
 	"github.com/FlanChanXwO/pixiv-cli/scripts/internal/releasecontract"
@@ -84,42 +83,6 @@ func TestArchiveNameMatchesFixedTargetIdentity(t *testing.T) {
 		got := releasecontract.ArchiveName("0.1.0", target)
 		if got != want[target.String()] {
 			t.Errorf("ArchiveName(0.1.0, %s) = %q, want %q", target.String(), got, want[target.String()])
-		}
-	}
-}
-
-func TestValidateVersionRejectsLeadingVOrNonSemantic(t *testing.T) {
-	t.Parallel()
-
-	for _, version := range []string{"v0.1.0", "1not-semver", "0.1", "0.1.0.1"} {
-		if err := releasecontract.ValidateVersion(version); err == nil {
-			t.Errorf("ValidateVersion(%q) error = nil, want rejection", version)
-		}
-	}
-	if err := releasecontract.ValidateVersion("0.1.0-beta.1+build-2"); err != nil {
-		t.Fatalf("ValidateVersion(semver) error = %v", err)
-	}
-}
-
-func TestChannelClassifiesStableAndPrerelease(t *testing.T) {
-	t.Parallel()
-
-	for _, test := range []struct {
-		version string
-		want    string
-	}{
-		{version: "0.1.0", want: "stable"},
-		{version: "0.1.0+build-1", want: "stable"},
-		{version: "0.1.0-rc.1", want: "prerelease"},
-		{version: "0.1.0-rc.1+build-1", want: "prerelease"},
-	} {
-		if got := releasecontract.Channel(test.version); got != test.want {
-			t.Errorf("Channel(%q) = %q, want %q", test.version, got, test.want)
-		}
-		if strings.Contains(test.version, "-") {
-			if err := releasecontract.ValidateVersion(test.version); err != nil {
-				t.Errorf("ValidateVersion(%q) error = %v", test.version, err)
-			}
 		}
 	}
 }

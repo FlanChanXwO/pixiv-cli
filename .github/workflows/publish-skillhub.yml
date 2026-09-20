@@ -56,16 +56,15 @@ jobs:
             test "$(find "$handoff_dir" -maxdepth 1 -type f -print | LC_ALL=C sort)" = "$handoff_dir/release-tag"
             release_tag=$(cat "$handoff_dir/release-tag")
           fi
-          case "$release_tag" in
-            v[0-9]*) ;;
-            *) printf '%s\n' 'release tag must start with v and a digit' >&2; exit 1 ;;
-          esac
           printf 'value=%s\n' "$release_tag" >> "$GITHUB_OUTPUT"
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
         with:
           fetch-depth: 0
           persist-credentials: false
           ref: ${{ steps.release_tag.outputs.value }}
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff
+        with:
+          go-version-file: go.mod
       - name: Verify the published release tag belongs to the default branch
         id: skill_change
         shell: bash
@@ -73,19 +72,14 @@ jobs:
           RELEASE_TAG: ${{ steps.release_tag.outputs.value }}
           DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
           GH_TOKEN: ${{ github.token }}
+          WORKFLOW_RUN_ID: ${{ github.event.workflow_run.id }}
         run: |
           set -euo pipefail
-          case "$RELEASE_TAG" in
-            v[0-9]*) ;;
-            *) printf '%s\n' 'release tag must start with v and a digit' >&2; exit 1 ;;
-          esac
-          git show-ref --verify --quiet "refs/tags/$RELEASE_TAG"
-          tag_commit=$(git rev-parse "$RELEASE_TAG^{commit}")
-          git show-ref --verify --quiet "refs/remotes/origin/$DEFAULT_BRANCH"
-          git merge-base --is-ancestor "$tag_commit" "origin/$DEFAULT_BRANCH"
-          test "$(gh api "repos/$GITHUB_REPOSITORY/releases/tags/$RELEASE_TAG" --jq '.draft')" = false
-          test -n "$(gh api "repos/$GITHUB_REPOSITORY/releases/tags/$RELEASE_TAG" --jq '.published_at')"
-          go run ./scripts/cmd/releaseassets validate --version "${RELEASE_TAG#v}"
+          go run ./tools/release verify-source --tag "$RELEASE_TAG" --default-branch "$DEFAULT_BRANCH" --github-output "$GITHUB_OUTPUT"
+          go run ./tools/release verify-published-release --repository "$GITHUB_REPOSITORY" --tag "$RELEASE_TAG"
+          if [ "$GITHUB_EVENT_NAME" = workflow_run ]; then
+            go run ./tools/release verify-handoff --repository "$GITHUB_REPOSITORY" --run-id "$WORKFLOW_RUN_ID"
+          fi
           previous_tag=
           while IFS= read -r tag; do
             if [ "$tag" != "$RELEASE_TAG" ] && go run ./scripts/cmd/releaseassets validate --version "${tag#v}" >/dev/null 2>&1; then

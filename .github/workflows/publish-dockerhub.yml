@@ -65,13 +65,6 @@ jobs:
             release_tag=$(cat "$handoff_dir/release-tag")
             release_run_id="$WORKFLOW_RUN_ID"
           fi
-          case "$release_tag" in
-            v[0-9]*) ;;
-            *) printf '%s\n' 'release tag must start with v and a digit' >&2; exit 1 ;;
-          esac
-          case "$release_run_id" in
-            ''|*[!0-9]*) printf '%s\n' 'release run ID must be a decimal number' >&2; exit 1 ;;
-          esac
           printf 'release_tag=%s\n' "$release_tag" >> "$GITHUB_OUTPUT"
           printf 'run_id=%s\n' "$release_run_id" >> "$GITHUB_OUTPUT"
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
@@ -91,16 +84,9 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          git show-ref --verify --quiet "refs/tags/$RELEASE_TAG"
-          tag_commit=$(git rev-parse "$RELEASE_TAG^{commit}")
-          git show-ref --verify --quiet "refs/remotes/origin/$DEFAULT_BRANCH"
-          git merge-base --is-ancestor "$tag_commit" "origin/$DEFAULT_BRANCH"
-          go run ./scripts/cmd/releaseassets validate --version "${RELEASE_TAG#v}"
-          test "$(gh api "repos/$GITHUB_REPOSITORY/releases/tags/$RELEASE_TAG" --jq '.draft')" = false
-          test -n "$(gh api "repos/$GITHUB_REPOSITORY/releases/tags/$RELEASE_TAG" --jq '.published_at')"
-          test "$(gh run view "$RELEASE_RUN_ID" --json name --jq '.name')" = Release
-          test "$(gh run view "$RELEASE_RUN_ID" --json conclusion --jq '.conclusion')" = success
-          test "$(gh run view "$RELEASE_RUN_ID" --json headSha --jq '.headSha')" = "$tag_commit"
+          go run ./tools/release verify-source --tag "$RELEASE_TAG" --default-branch "$DEFAULT_BRANCH"
+          go run ./tools/release verify-published-release --repository "$GITHUB_REPOSITORY" --tag "$RELEASE_TAG"
+          go run ./tools/release verify-handoff --repository "$GITHUB_REPOSITORY" --run-id "$RELEASE_RUN_ID" --tag "$RELEASE_TAG"
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
         with:
           name: verified-container-linux-amd64

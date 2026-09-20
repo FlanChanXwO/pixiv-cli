@@ -104,7 +104,14 @@ func TestPublishWorkflowKeepsTheImmutableReleaseAndSecretBoundary(t *testing.T) 
 	}
 	verify := stepByName(t, steps, "Verify immutable release and exact skill source")
 	verifyRun := scalarValue(t, mappingValue(t, verify, "run"))
-	for _, required := range []string{"git merge-base --is-ancestor", "releases/tags/$RELEASE_TAG", "skills/pixiv-cli/SKILL.md", "git diff --quiet"} {
+	for _, required := range []string{
+		"tools/release verify-source",
+		"tools/release verify-published-release",
+		"tools/release verify-handoff",
+		"--github-output \"$GITHUB_OUTPUT\"",
+		"skills/pixiv-cli/SKILL.md",
+		"git diff --quiet",
+	} {
 		if !strings.Contains(verifyRun, required) {
 			fatalf(t, "immutable-source verification is missing %q", required)
 		}

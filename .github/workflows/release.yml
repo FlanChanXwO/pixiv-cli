@@ -27,9 +27,6 @@ jobs:
       - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff
         with:
           go-version-file: go.mod
-      - name: Validate release SemVer
-        shell: bash
-        run: go run ./scripts/cmd/releaseassets validate --version "${RELEASE_TAG#v}"
       - name: Verify the exact immutable release tag
         shell: bash
         env:
@@ -37,17 +34,10 @@ jobs:
           DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
         run: |
           set -euo pipefail
-          case "$RELEASE_TAG" in
-            v[0-9]*) ;;
-            *) printf '%s\n' 'release tag must start with v and a digit' >&2; exit 1 ;;
-          esac
-          git show-ref --verify --quiet "refs/tags/$RELEASE_TAG"
-          tag_commit=$(git rev-parse "$RELEASE_TAG^{commit}")
+          go run ./tools/release verify-source --tag "$RELEASE_TAG" --default-branch "$DEFAULT_BRANCH"
           tag_skill="$RUNNER_TEMP/pixiv-cli-SKILL.md"
           git show "$RELEASE_TAG:skills/pixiv-cli/SKILL.md" > "$tag_skill"
           go run ./scripts/cmd/releaseassets validate-source --version "${RELEASE_TAG#v}" --product-skill "$tag_skill"
-          git show-ref --verify --quiet "refs/remotes/origin/$DEFAULT_BRANCH"
-          git merge-base --is-ancestor "$tag_commit" "origin/$DEFAULT_BRANCH"
           set +e
           response=$(gh api --include "repos/$GITHUB_REPOSITORY/releases/tags/$RELEASE_TAG" 2>&1)
           api_status=$?
@@ -412,14 +402,16 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
           ref: ${{ env.RELEASE_TAG }}
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff
+        with:
+          go-version-file: go.mod
       - name: Require the tag commit on the default release branch
         shell: bash
         env:
           DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
         run: |
-          set -eu
-          git show-ref --verify --quiet "refs/remotes/origin/$DEFAULT_BRANCH"
-          git merge-base --is-ancestor HEAD "origin/$DEFAULT_BRANCH"
+          set -euo pipefail
+          go run ./tools/release verify-source --tag "$RELEASE_TAG" --default-branch "$DEFAULT_BRANCH"
 
   prepare_release:
     name: Prepare release materials

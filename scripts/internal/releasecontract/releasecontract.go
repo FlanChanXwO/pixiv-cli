@@ -3,9 +3,7 @@
 package releasecontract
 
 import (
-	"fmt"
-	"regexp"
-	"strings"
+	"github.com/FlanChanXwO/pixiv-cli/internal/releaseversion"
 )
 
 // Target 是固定的 release 目标（GOOS/GOARCH 对）。
@@ -61,24 +59,15 @@ func ArchiveName(version string, target Target) string {
 	return "pixiv-cli_" + version + "_" + target.GOOS + "_" + target.GOARCH + extension
 }
 
-var semanticVersionPattern = regexp.MustCompile(`^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(?:-(?:(?:0|[1-9][0-9]*|[0-9]*[A-Za-z-][0-9A-Za-z-]*)(?:\.(?:0|[1-9][0-9]*|[0-9]*[A-Za-z-][0-9A-Za-z-]*))*))?(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?$`)
-
 // ValidateVersion 要求 version 是不带前导 v 的 semantic version。
 func ValidateVersion(version string) error {
-	if !semanticVersionPattern.MatchString(version) {
-		return fmt.Errorf("version must be a semantic version without a leading v: %q", version)
-	}
-	return nil
+	return releaseversion.Validate(version)
 }
 
 // Channel 返回 release 的稳定渠道名称。调用方必须先 ValidateVersion；build metadata
 // 内合法的连字符不会被视为 prerelease 分隔符。
 func Channel(version string) string {
-	coreVersion, _, _ := strings.Cut(version, "+")
-	if strings.Contains(coreVersion, "-") {
-		return "prerelease"
-	}
-	return "stable"
+	return releaseversion.Channel(version)
 }
 
 var pinnedRustToolchains = map[string]string{
