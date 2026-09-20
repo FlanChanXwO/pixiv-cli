@@ -59,27 +59,26 @@ workflow、对应 `scripts/cmd/*` policy 和 `scripts/tests` 归属；默认只�
 | README/docs/agent-only | `go test ./scripts/tests/documentation -count=1`、`git diff --check` |
 | Go 或行为代码 | 聚焦测试；随后 `go test ./... -count=1`、`go vet ./...`，构建相关时运行 `sh scripts/build.sh` |
 | 共享、认证、下载、CLI、MCP、SDK | 另跑 `go test -race ./... -count=1` |
-| scripts、workflow、release policy | `go test ./scripts/... -count=1`、`go vet ./scripts/...`，以及受影响的 policy/test carrier |
+| scripts、workflow、release policy | `go test ./scripts/... ./tools/release ./tools/platformmatrix -count=1`、`go vet ./scripts/...`，以及受影响的行为契约测试 |
 | shell 脚本 | 对保留脚本运行 `sh -n`；不要只依赖 YAML 解析 |
 | 真实 Pixiv/FANBOX API、native host、Keychain/DPAPI 或受保护 release evidence | 只有用户显式授权并具备对应环境才运行；否则记录未运行和风险 |
 
 当前 workflow/policy 对应关系：
 
 ```bash
-go run ./scripts/cmd/releaseworkflow --workflow .github/workflows/release.yml
-go run ./scripts/cmd/prepublishhomebrew --workflow .github/workflows/homebrew-prepublish-verify.yml
+go test ./tools/release ./tools/platformmatrix -count=1
+sh scripts/test-homebrew-formula.sh
 go run ./scripts/cmd/nativeevidence policy --workflow .github/workflows/native-evidence.yml
 go run ./scripts/cmd/browsernativeevidence policy --workflow .github/workflows/browser-evidence.yml
 go test ./scripts/tests/clawhubworkflow -count=1
-go test ./scripts/tests/platformsmokeworkflow -count=1
 ```
 
-只运行与受影响 workflow 对应的命令，并把 policy 失败视为契约失败，不通过删除检查、放宽条件或静默 skip 来“修复”。
+只运行与受影响 workflow 对应的命令；优先验证外部行为、artifact 与安全边界，不为 YAML 排版、job 名称或具体实现形状新增脆弱测试。
 
 ## 按故障类型诊断
 
 - **测试/构建失败**：读取完整失败 step，使用同一 ref/SHA 在本地重现；检查依赖、平台、静态库 manifest、Rust toolchain 和源码边界。修复代码需要用户明确请求，CI skill 默认只诊断。
-- **policy/契约失败**：定位对应 `scripts/internal` verifier 和 workflow diff，确认是 workflow 语义、路径迁移、action SHA、权限、secret 边界或命令顺序变化；保持 fail-closed，不改 verifier 迎合错误 workflow。
+- **policy/契约失败**：定位对应行为契约与 workflow diff，确认是 artifact、权限、secret 边界、平台矩阵或命令语义变化；保持 fail-closed，不用脆弱的 YAML 形状断言掩盖真实问题。
 - **docs-only 分类异常**：核对 changescope 输出、空 diff/初始 push/手动触发行为以及 Quality gate 的 docs-only 分支；不能把无法读取 diff 当作 docs-only。
 - **缺失、skipped 或 pending required check**：区分有意的 docs-only skip、Windows ARM64 race 特例、job 未创建、权限不足和真正卡住；不得把 pending 当成功。
 - **基础设施/瞬态失败**：只有日志证据支持 runner、网络、GitHub API 或服务异常时才建议 rerun；若同一失败重复出现，停止重跑并报告共同根因。

@@ -1,0 +1,451 @@
+name: PR Verification
+
+on:
+  issue_comment:
+    types: [created]
+  workflow_dispatch:
+    inputs:
+      pr_number:
+        description: Pull request number to verify
+        required: true
+        type: string
+      trigger_comment_id:
+        description: Existing PR comment containing the trigger
+        required: true
+        type: string
+
+permissions: {}
+
+jobs:
+  dispatch:
+    name: Dispatch verification
+    if: github.event_name == 'workflow_dispatch' || github.event.issue.pull_request
+    concurrency:
+      group: pr-test-${{ github.repository }}-${{ github.event_name == 'workflow_dispatch' && inputs.pr_number || github.event.issue.number }}
+      cancel-in-progress: false
+    runs-on: ubuntu-24.04
+    permissions:
+      actions: write
+      contents: read
+      issues: write
+      pull-requests: read
+    outputs:
+      execute: ${{ steps.coordinate.outputs.execute }}
+      head_sha: ${{ steps.authorize.outputs.head_sha }}
+      head_repo: ${{ steps.authorize.outputs.head_repo }}
+      base_sha: ${{ steps.authorize.outputs.base_sha }}
+      same_repo: ${{ steps.authorize.outputs.same_repo }}
+      commands: ${{ steps.policy.outputs.commands }}
+      verification_hash: ${{ steps.policy.outputs.verification_hash }}
+      matrix: ${{ steps.matrix.outputs.matrix }}
+      identity: ${{ steps.coordinate.outputs.identity }}
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Authorize the trigger and acknowledge it
+        id: authorize
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          EVENT_NAME: ${{ github.event_name }}
+          EVENT_PR_NUMBER: ${{ github.event.issue.number }}
+          INPUT_PR_NUMBER: ${{ inputs.pr_number }}
+          EVENT_COMMENT_ID: ${{ github.event.comment.id }}
+          INPUT_COMMENT_ID: ${{ inputs.trigger_comment_id }}
+          EVENT_COMMENT_BODY: ${{ github.event.comment.body }}
+          EVENT_COMMENTER: ${{ github.event.comment.user.login }}
+        run: |
+          set -euo pipefail
+          if [ "$EVENT_NAME" = workflow_dispatch ]; then
+            pr="$INPUT_PR_NUMBER"
+            comment_id="$INPUT_COMMENT_ID"
+            comment_json=$(gh api "repos/$REPO/issues/comments/$comment_id")
+            comment_body=$(printf '%s' "$comment_json" | jq -r '.body')
+            commenter=$(printf '%s' "$comment_json" | jq -r '.user.login')
+          else
+            pr="$EVENT_PR_NUMBER"
+            comment_id="$EVENT_COMMENT_ID"
+            comment_body="$EVENT_COMMENT_BODY"
+            commenter="$EVENT_COMMENTER"
+          fi
+          trimmed="$comment_body"
+          trimmed="${trimmed#"${trimmed%%[![:space:]]*}"}"
+          trimmed="${trimmed%"${trimmed##*[![:space:]]}"}"
+          if [ "$trimmed" != /test ]; then
+            printf '%s\n' 'accepted=false' >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          pr_json=$(gh api "repos/$REPO/pulls/$pr")
+          author=$(printf '%s' "$pr_json" | jq -r '.user.login')
+          head_sha=$(printf '%s' "$pr_json" | jq -r '.head.sha')
+          head_repo=$(printf '%s' "$pr_json" | jq -r '.head.repo.full_name')
+          base_sha=$(printf '%s' "$pr_json" | jq -r '.base.sha')
+          if [ -z "$head_repo" ] || [ "$head_repo" = null ]; then
+            echo "Pull request head repository is unavailable." >&2
+            exit 1
+          fi
+
+          authorized=false
+          if [ "$commenter" = "$author" ]; then
+            authorized=true
+          else
+            permission=$(gh api "repos/$REPO/collaborators/$commenter/permission" --jq '.permission' 2>/dev/null || printf '%s' none)
+            case "$permission" in
+              admin|maintain|push|write) authorized=true ;;
+            esac
+          fi
+          if [ "$authorized" != true ]; then
+            printf '%s\n' 'accepted=false' >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          reaction_id=$(gh api --method POST "repos/$REPO/issues/comments/$comment_id/reactions" -H 'Accept: application/vnd.github+json' -f content=eyes --jq '.id')
+          same_repo=false
+          [ "$head_repo" = "$REPO" ] && same_repo=true
+          {
+            printf '%s\n' 'accepted=true'
+            printf 'pr=%s\n' "$pr"
+            printf 'comment_id=%s\n' "$comment_id"
+            printf 'reaction_id=%s\n' "$reaction_id"
+            printf 'head_sha=%s\n' "$head_sha"
+            printf 'head_repo=%s\n' "$head_repo"
+            printf 'base_sha=%s\n' "$base_sha"
+            printf 'same_repo=%s\n' "$same_repo"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Validate the current PR declaration
+        id: policy
+        if: steps.authorize.outputs.accepted == 'true'
+        continue-on-error: true
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          PR: ${{ steps.authorize.outputs.pr }}
+        run: |
+          set -euo pipefail
+          gh api "repos/$REPO/pulls/$PR" --jq '.body // ""' > "$RUNNER_TEMP/pr-body.md"
+          go run ./tools/prmeta --body-file "$RUNNER_TEMP/pr-body.md" --whitelist tools/verification/command-whitelist.txt --cli pixiv --github-output "$GITHUB_OUTPUT"
+
+      - name: Resolve trusted verification platforms
+        id: matrix
+        if: >-
+          steps.authorize.outputs.accepted == 'true' &&
+          steps.policy.outputs.template_ok == 'true' &&
+          steps.policy.outputs.test_ok == 'true' &&
+          steps.policy.outputs.command_count != '0'
+        shell: bash
+        run: go run ./tools/platformmatrix --capability verification --github-output "$GITHUB_OUTPUT"
+
+      - name: Coordinate duplicate and superseded runs
+        id: coordinate
+        if: steps.authorize.outputs.accepted == 'true'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          PR: ${{ steps.authorize.outputs.pr }}
+          COMMENT_ID: ${{ steps.authorize.outputs.comment_id }}
+          REACTION_ID: ${{ steps.authorize.outputs.reaction_id }}
+          HEAD_SHA: ${{ steps.authorize.outputs.head_sha }}
+          TEMPLATE_OK: ${{ steps.policy.outputs.template_ok }}
+          TEST_OK: ${{ steps.policy.outputs.test_ok }}
+          TEST_DESC: ${{ steps.policy.outputs.test_desc }}
+          COMMAND_COUNT: ${{ steps.policy.outputs.command_count }}
+          VERIFICATION_HASH: ${{ steps.policy.outputs.verification_hash }}
+        run: |
+          set -euo pipefail
+
+          find_result_comment() {
+            gh api --paginate "repos/$REPO/issues/$PR/comments" --jq '.[] | select(.user.login == "github-actions[bot]" and (.body | contains("<!-- pr-test-result -->"))) | .id' | head -1
+          }
+          write_comment() {
+            local comment_id="$1" file="$2"
+            if [ -n "$comment_id" ]; then
+              gh api --method PATCH "repos/$REPO/issues/comments/$comment_id" -F body=@"$file" >/dev/null
+              printf '%s' "$comment_id"
+            else
+              gh api --method POST "repos/$REPO/issues/$PR/comments" -F body=@"$file" --jq '.id'
+            fi
+          }
+          remove_reaction() {
+            gh api --method DELETE "repos/$REPO/issues/comments/$1/reactions/$2" -H 'Accept: application/vnd.github+json' >/dev/null 2>&1 || true
+          }
+          fail_trigger() {
+            local reason="$1"
+            remove_reaction "$COMMENT_ID" "$REACTION_ID"
+            gh api --method POST "repos/$REPO/issues/comments/$COMMENT_ID/reactions" -H 'Accept: application/vnd.github+json' -f content=-1 >/dev/null
+            local state
+            state=$(jq -nc --arg identity "$HEAD_SHA:$VERIFICATION_HASH" --arg head "$HEAD_SHA" --arg hash "$VERIFICATION_HASH" --argjson run "$GITHUB_RUN_ID" --argjson comment "$COMMENT_ID" --argjson reaction "$REACTION_ID" "{identity:\$identity,run_id:\$run,status:\"failed\",head_sha:\$head,verification_hash:\$hash,triggers:[{comment_id:\$comment,reaction_id:\$reaction}]}")
+            {
+              printf '%s\n' '<!-- pr-test-result -->'
+              printf '<!-- pr-test-state:%s -->\n\n' "$state"
+              printf '%s\n\n' '## Verification'
+              printf 'Commit: `%s`\n' "${HEAD_SHA:0:7}"
+              printf '%s\n\n' 'Overall: ❌ Failed'
+              printf '%s\n' "$reason"
+              printf '\n[View full GitHub Actions logs](%s/%s/actions/runs/%s)\n' "$GITHUB_SERVER_URL" "$REPO" "$GITHUB_RUN_ID"
+            } > "$RUNNER_TEMP/result-comment.md"
+            write_comment "$(find_result_comment)" "$RUNNER_TEMP/result-comment.md" >/dev/null
+            {
+              printf '%s\n' 'execute=false'
+              printf 'identity=%s:%s\n' "$HEAD_SHA" "$VERIFICATION_HASH"
+            } >> "$GITHUB_OUTPUT"
+          }
+
+          if [ "$TEMPLATE_OK" != true ] || [ "$TEST_OK" != true ]; then
+            fail_trigger "The current PR metadata or verification declaration is invalid."
+            exit 0
+          fi
+          if [ "$COMMAND_COUNT" = 0 ]; then
+            fail_trigger "No live verification commands are declared in the PR Verification section."
+            exit 0
+          fi
+
+          identity="$HEAD_SHA:$VERIFICATION_HASH"
+          trigger=$(jq -nc --argjson comment "$COMMENT_ID" --argjson reaction "$REACTION_ID" "{comment_id:\$comment,reaction_id:\$reaction}")
+          comment_id=$(find_result_comment)
+          old_state=
+          if [ -n "$comment_id" ]; then
+            old_body=$(gh api "repos/$REPO/issues/comments/$comment_id" --jq '.body')
+            # shellcheck disable=SC2016
+            old_state=$(printf '%s\n' "$old_body" | sed -n 's/^<!-- pr-test-state:\(.*\) -->$/\1/p' | head -1)
+          fi
+
+          if [ -n "$old_state" ] && printf '%s' "$old_state" | jq -e . >/dev/null 2>&1; then
+            old_identity=$(printf '%s' "$old_state" | jq -r '.identity // ""')
+            old_status=$(printf '%s' "$old_state" | jq -r '.status // ""')
+            if [ "$old_identity" = "$identity" ] && [ "$old_status" = running ]; then
+              # shellcheck disable=SC2016
+              state=$(printf '%s' "$old_state" | jq -c --argjson trigger "$trigger" '.triggers += [$trigger]')
+              old_body=$(gh api "repos/$REPO/issues/comments/$comment_id" --jq '.body')
+              printf '%s\n' "$old_body" | awk -v state="$state" '
+                /^<!-- pr-test-state:/ { print "<!-- pr-test-state:" state " -->"; next }
+                { print }
+              ' > "$RUNNER_TEMP/result-comment.md"
+              write_comment "$comment_id" "$RUNNER_TEMP/result-comment.md" >/dev/null
+              {
+                printf '%s\n' 'execute=false'
+                printf 'identity=%s\n' "$identity"
+              } >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+            if [ "$old_status" = running ]; then
+              printf '%s' "$old_state" | jq -c '.triggers[]?' | while read -r old_trigger; do
+                old_comment=$(printf '%s' "$old_trigger" | jq -r '.comment_id')
+                old_reaction=$(printf '%s' "$old_trigger" | jq -r '.reaction_id')
+                remove_reaction "$old_comment" "$old_reaction"
+              done
+              old_run=$(printf '%s' "$old_state" | jq -r '.run_id // 0')
+              if [ "$old_run" != 0 ] && [ "$old_run" != "$GITHUB_RUN_ID" ]; then
+                gh api --method POST "repos/$REPO/actions/runs/$old_run/cancel" >/dev/null 2>&1 || true
+              fi
+            fi
+          fi
+
+          state=$(jq -nc --arg identity "$identity" --arg head "$HEAD_SHA" --arg hash "$VERIFICATION_HASH" --argjson run "$GITHUB_RUN_ID" --argjson trigger "$trigger" "{identity:\$identity,run_id:\$run,status:\"running\",head_sha:\$head,verification_hash:\$hash,triggers:[\$trigger]}")
+          {
+            printf '%s\n' '<!-- pr-test-result -->'
+            printf '<!-- pr-test-state:%s -->\n\n' "$state"
+            printf '%s\n\n' '## Verification'
+            printf 'Commit: `%s`\n' "${HEAD_SHA:0:7}"
+            printf '%s\n' 'Overall: ⏳ Running'
+          } > "$RUNNER_TEMP/result-comment.md"
+          write_comment "$comment_id" "$RUNNER_TEMP/result-comment.md" >/dev/null
+          {
+            printf '%s\n' 'execute=true'
+            printf 'identity=%s\n' "$identity"
+          } >> "$GITHUB_OUTPUT"
+
+  verify:
+    name: Verify ${{ matrix.goos }}/${{ matrix.goarch }}
+    needs: dispatch
+    if: needs.dispatch.outputs.execute == 'true'
+    runs-on: ${{ matrix.runner }}
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      max-parallel: 2
+      matrix: ${{ fromJSON(needs.dispatch.outputs.matrix) }}
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          path: _trusted
+          persist-credentials: false
+          ref: ${{ needs.dispatch.outputs.base_sha }}
+
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff
+        with:
+          go-version-file: _trusted/go.mod
+          cache: false
+
+      - name: Initialize infrastructure-failure result
+        shell: bash
+        working-directory: _trusted
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/verification-result"
+          go run ./tools/verification init --platform '${{ matrix.goos }}/${{ matrix.goarch }}' --output "$RUNNER_TEMP/verification-result/${{ matrix.artifact }}.json"
+
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          repository: ${{ needs.dispatch.outputs.head_repo }}
+          ref: ${{ needs.dispatch.outputs.head_sha }}
+          path: pr
+          persist-credentials: false
+
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff
+        with:
+          go-version-file: pr/go.mod
+          cache: true
+
+      - name: Install the pinned native Rust toolchain
+        shell: bash
+        working-directory: pr
+        run: rustup toolchain install '${{ matrix.rust_toolchain }}' --profile minimal --target '${{ matrix.rust_target }}' --no-self-update
+
+      - name: Build the PR native Rust static library
+        shell: bash
+        working-directory: pr
+        env:
+          CC: ${{ matrix.cc }}
+          RUSTUP_TOOLCHAIN: ${{ matrix.rust_toolchain }}
+        run: bash scripts/build-staticlibs.sh --target '${{ matrix.rust_target }}'
+
+      - name: Build the exact PR binary
+        shell: bash
+        working-directory: pr
+        env:
+          CC: ${{ matrix.cc }}
+          RUSTUP_TOOLCHAIN: ${{ matrix.rust_toolchain }}
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = '${{ needs.dispatch.outputs.head_sha }}'
+          binary="$RUNNER_TEMP/pixiv"
+          if [ '${{ matrix.goos }}' = windows ]; then
+            binary="$RUNNER_TEMP/pixiv.exe"
+          fi
+          go build -trimpath -o "$binary" ./cmd/pixiv
+          printf 'VERIFICATION_BINARY=%s\n' "$binary" >> "$GITHUB_ENV"
+          mkdir -p "$RUNNER_TEMP/verification-home"
+          printf 'VERIFICATION_HOME=%s\n' "$RUNNER_TEMP/verification-home" >> "$GITHUB_ENV"
+
+      - name: Execute declared verification
+        shell: bash
+        working-directory: _trusted
+        env:
+          HOME: ${{ runner.temp }}/verification-home
+          USERPROFILE: ${{ runner.temp }}/verification-home
+          COMMANDS_JSON: ${{ needs.dispatch.outputs.commands }}
+          PIXIV_LOG_LEVEL: debug
+          PIXIV_LOG_FORMAT: text
+        run: |
+          set -euo pipefail
+          go run ./tools/verification execute --platform '${{ matrix.goos }}/${{ matrix.goarch }}' --binary "$VERIFICATION_BINARY" --commands-json "$COMMANDS_JSON" --workspace "$GITHUB_WORKSPACE/pr" --whitelist tools/verification/command-whitelist.txt --output "$RUNNER_TEMP/verification-result/${{ matrix.artifact }}.json"
+
+      - name: Remove isolated credential state
+        if: always()
+        shell: bash
+        run: rm -rf "$RUNNER_TEMP/verification-home"
+
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
+        with:
+          name: verification-result-${{ matrix.artifact }}
+          path: ${{ runner.temp }}/verification-result/${{ matrix.artifact }}.json
+          if-no-files-found: error
+          retention-days: 1
+
+  aggregate:
+    name: Aggregate verification
+    needs: [dispatch, verify]
+    if: always() && needs.dispatch.outputs.execute == 'true'
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      issues: write
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          persist-credentials: false
+          ref: ${{ needs.dispatch.outputs.base_sha }}
+
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Prepare result directory
+        shell: bash
+        run: mkdir -p "$RUNNER_TEMP/verification-results"
+
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        continue-on-error: true
+        with:
+          pattern: verification-result-*
+          path: ${{ runner.temp }}/verification-results
+          merge-multiple: true
+
+      - name: Render sanitized result
+        id: render
+        shell: bash
+        env:
+          EXPECTED_MATRIX: ${{ needs.dispatch.outputs.matrix }}
+        run: |
+          set -euo pipefail
+          go run ./tools/verification render --results-dir "$RUNNER_TEMP/verification-results" --expected-matrix-json "$EXPECTED_MATRIX" --commit '${{ needs.dispatch.outputs.head_sha }}' --run-url '${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}' --output "$RUNNER_TEMP/verification-comment.md" --github-output "$GITHUB_OUTPUT"
+
+      - name: Publish result and terminal reactions
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          PR: ${{ github.event_name == 'workflow_dispatch' && inputs.pr_number || github.event.issue.number }}
+          EXPECTED_IDENTITY: ${{ needs.dispatch.outputs.identity }}
+          OVERALL: ${{ steps.render.outputs.overall }}
+        run: |
+          set -euo pipefail
+          comment_id=$(gh api --paginate "repos/$REPO/issues/$PR/comments" --jq '.[] | select(.user.login == "github-actions[bot]" and (.body | contains("<!-- pr-test-result -->"))) | .id' | head -1)
+          test -n "$comment_id"
+          current_body=$(gh api "repos/$REPO/issues/comments/$comment_id" --jq '.body')
+          state=$(printf '%s\n' "$current_body" | sed -n 's/^<!-- pr-test-state:\(.*\) -->$/\1/p' | head -1)
+          test -n "$state"
+          current_identity=$(printf '%s' "$state" | jq -r '.identity // ""')
+          current_run=$(printf '%s' "$state" | jq -r '.run_id // 0')
+          if [ "$current_identity" != "$EXPECTED_IDENTITY" ] || [ "$current_run" != "$GITHUB_RUN_ID" ]; then
+            echo "A newer verification run owns the PR result; leaving it untouched."
+            exit 0
+          fi
+
+          terminal_status=failed
+          reaction=-1
+          [ "$OVERALL" = passed ] && terminal_status=passed && reaction=hooray
+          state=$(printf '%s' "$state" | jq -c --arg status "$terminal_status" '.status = $status')
+          {
+            head -n 1 "$RUNNER_TEMP/verification-comment.md"
+            printf '<!-- pr-test-state:%s -->\n' "$state"
+            tail -n +2 "$RUNNER_TEMP/verification-comment.md"
+          } > "$RUNNER_TEMP/verification-comment-final.md"
+          gh api --method PATCH "repos/$REPO/issues/comments/$comment_id" -F body=@"$RUNNER_TEMP/verification-comment-final.md" >/dev/null
+
+          printf '%s' "$state" | jq -c '.triggers[]?' | while read -r trigger; do
+            trigger_comment=$(printf '%s' "$trigger" | jq -r '.comment_id')
+            trigger_reaction=$(printf '%s' "$trigger" | jq -r '.reaction_id')
+            gh api --method DELETE "repos/$REPO/issues/comments/$trigger_comment/reactions/$trigger_reaction" -H 'Accept: application/vnd.github+json' >/dev/null 2>&1 || true
+            gh api --method POST "repos/$REPO/issues/comments/$trigger_comment/reactions" -H 'Accept: application/vnd.github+json' -f content="$reaction" >/dev/null
+          done
+
+      - name: Require successful verification
+        if: steps.render.outputs.overall != 'passed'
+        shell: bash
+        run: exit 1

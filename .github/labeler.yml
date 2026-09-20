@@ -41,8 +41,8 @@ release:
       - any-glob-to-any-file:
           - changelog/**
           - scripts/cmd/homebrewformula/**
-          - scripts/cmd/prepublishhomebrew/**
           - scripts/cmd/releaseassets/**
           - scripts/cmd/releasenotes/**
-          - scripts/cmd/releaseworkflow/**
+          - tools/release/**
+          - tools/platformmatrix/**
           - templates/homebrew/**

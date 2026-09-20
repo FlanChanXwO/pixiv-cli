@@ -10,7 +10,7 @@ on:
   workflow_dispatch: {}
 
 concurrency:
-  group: quality-gate-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  group: quality-gate-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
 permissions: {}
@@ -22,6 +22,7 @@ jobs:
     runs-on: ubuntu-24.04
     outputs:
       docs_only: ${{ steps.scope.outputs.docs_only }}
+      quality_required: ${{ steps.scope.outputs.quality_required }}
     permissions:
       contents: read
     steps:
@@ -41,7 +42,13 @@ jobs:
         run: |
           set -euo pipefail
           if [ "$GITHUB_EVENT_NAME" = workflow_dispatch ]; then
-            printf '%s\n' 'docs_only=false' >> "$GITHUB_OUTPUT"
+            {
+              printf '%s\n' 'docs_only=false'
+              printf '%s\n' 'quality_required=true'
+              printf '%s\n' 'platform_required=true'
+              printf '%s\n' 'container_required=true'
+              printf '%s\n' 'native_required=true'
+            } >> "$GITHUB_OUTPUT"
             exit 0
           fi
           go run ./scripts/cmd/changescope --base "$BASE_SHA" --head "$HEAD_SHA" --github-output "$GITHUB_OUTPUT"
@@ -78,15 +85,14 @@ jobs:
         if: ${{ needs.classify_changes.outputs.docs_only != 'true' }}
         shell: bash
         run: sh scripts/build.sh
-      - name: Test release package and workflow policy
+      - name: Test release behavior contracts
         if: ${{ needs.classify_changes.outputs.docs_only != 'true' }}
         shell: bash
         run: |
           sh scripts/test-package-release.sh
-          go run ./scripts/cmd/releaseworkflow --workflow .github/workflows/release.yml
-          go run ./scripts/cmd/prepublishhomebrew --workflow .github/workflows/homebrew-prepublish-verify.yml
           go test ./scripts/tests/clawhubworkflow -count=1
-          go test ./scripts/tests/platformsmokeworkflow -count=1
+          go test ./scripts/tests/containerrelease -count=1
+          go test ./tools/release ./tools/platformmatrix -count=1
       - name: Install pinned pre-commit
         if: ${{ needs.classify_changes.outputs.docs_only != 'true' }}
         shell: bash
@@ -120,3 +126,27 @@ jobs:
           # wiring，并由 loginhelper 包承担真实 Windows registry contract。
           go test ./internal/cli -run '^(TestAuthURLCallback|TestAuthURLHandlerInstall|TestNormalCLIInvocationEnsuresPersistentHandlerWithoutBlockingCommand)$' -count=1
           go test ./internal/cli/commands/pixiv/auth/loginhelper -count=1
+
+  quality_gate:
+    name: Quality gate
+    needs: [classify_changes, quality, windows_login_handler]
+    if: ${{ always() }}
+    runs-on: ubuntu-24.04
+    permissions: {}
+    steps:
+      - name: Require expected quality outcome
+        shell: bash
+        env:
+          CLASSIFY_RESULT: ${{ needs.classify_changes.result }}
+          DOCS_ONLY: ${{ needs.classify_changes.outputs.docs_only }}
+          QUALITY_RESULT: ${{ needs.quality.result }}
+          WINDOWS_RESULT: ${{ needs.windows_login_handler.result }}
+        run: |
+          set -euo pipefail
+          test "$CLASSIFY_RESULT" = success
+          test "$QUALITY_RESULT" = success
+          if [ "$DOCS_ONLY" = true ]; then
+            test "$WINDOWS_RESULT" = skipped
+          else
+            test "$WINDOWS_RESULT" = success
+          fi

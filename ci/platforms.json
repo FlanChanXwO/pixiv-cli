@@ -1,0 +1,10 @@
+{
+  "platforms": [
+    {"goos":"darwin","goarch":"amd64","runner":"macos-15-intel","rust_target":"x86_64-apple-darwin","rust_toolchain":"1.96.0","cc":"clang","capabilities":["smoke","verification","release","homebrew","race"]},
+    {"goos":"darwin","goarch":"arm64","runner":"macos-15","rust_target":"aarch64-apple-darwin","rust_toolchain":"1.96.1","cc":"clang","capabilities":["smoke","verification","release","homebrew","race"]},
+    {"goos":"linux","goarch":"amd64","runner":"ubuntu-22.04","rust_target":"x86_64-unknown-linux-gnu","rust_toolchain":"1.96.1","cc":"gcc","capabilities":["smoke","verification","release","container","homebrew","race"]},
+    {"goos":"linux","goarch":"arm64","runner":"ubuntu-22.04-arm","rust_target":"aarch64-unknown-linux-gnu","rust_toolchain":"1.96.1","cc":"gcc","capabilities":["smoke","verification","release","container","homebrew","race"]},
+    {"goos":"windows","goarch":"amd64","runner":"windows-2025","rust_target":"x86_64-pc-windows-msvc","rust_toolchain":"1.96.0","cc":"clang -fuse-ld=lld","capabilities":["smoke","verification","release","race"]},
+    {"goos":"windows","goarch":"arm64","runner":"windows-11-arm","rust_target":"aarch64-pc-windows-msvc","rust_toolchain":"1.96.1","cc":"clang -fuse-ld=lld","capabilities":["smoke","verification","release"]}
+  ]
+}

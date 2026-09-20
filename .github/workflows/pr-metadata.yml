@@ -2,7 +2,7 @@ name: Pull request metadata
 
 on:
   pull_request_target:
-    types: [opened, reopened, synchronize]
+    types: [opened, edited, reopened, ready_for_review, synchronize]
 
 # 默认不授予权限；此工作流只需读取标签配置并更新 PR 元数据。
 permissions: {}
@@ -29,3 +29,101 @@ jobs:
               issue_number: context.payload.pull_request.number,
               assignees: [context.payload.pull_request.user.login],
             });
+
+  validate:
+    name: Validate PR metadata
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      issues: write
+      statuses: write
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          persist-credentials: false
+          ref: ${{ github.event.pull_request.base.sha }}
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff
+        with:
+          go-version: '1.27.1'
+      - name: Validate template and verification declaration
+        id: policy
+        continue-on-error: true
+        shell: bash
+        env:
+          PR_BODY: ${{ github.event.pull_request.body }}
+        run: |
+          set -euo pipefail
+          printf '%s' "$PR_BODY" > "$RUNNER_TEMP/pr-body.md"
+          go run ./tools/prmeta --body-file "$RUNNER_TEMP/pr-body.md" --whitelist tools/verification/command-whitelist.txt --cli pixiv --github-output "$GITHUB_OUTPUT"
+      - name: Publish stable PR gate statuses
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          TEMPLATE_OK: ${{ steps.policy.outputs.template_ok }}
+          TEMPLATE_DESC: ${{ steps.policy.outputs.template_desc }}
+          TEST_OK: ${{ steps.policy.outputs.test_ok }}
+          TEST_DESC: ${{ steps.policy.outputs.test_desc }}
+        run: |
+          set -euo pipefail
+          template_state=failure
+          test_state=failure
+          [ "$TEMPLATE_OK" = true ] && template_state=success
+          [ "$TEST_OK" = true ] && test_state=success
+          gh api --method POST "repos/$REPO/statuses/$HEAD_SHA" -f state="$template_state" -f context='PR template gate' -f description="${TEMPLATE_DESC:0:140}" -f target_url="$RUN_URL"
+          gh api --method POST "repos/$REPO/statuses/$HEAD_SHA" -f state="$test_state" -f context='PR test command gate' -f description="${TEST_DESC:0:140}" -f target_url="$RUN_URL"
+      - name: Maintain invalid-PR age state
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          PR: ${{ github.event.pull_request.number }}
+          PR_BODY: ${{ github.event.pull_request.body }}
+          TEMPLATE_OK: ${{ steps.policy.outputs.template_ok }}
+          TEST_OK: ${{ steps.policy.outputs.test_ok }}
+        run: |
+          set -euo pipefail
+          state_comment=$(gh api --paginate "repos/$REPO/issues/$PR/comments" --jq '.[] | select(.user.login == "github-actions[bot]" and (.body | contains("<!-- pr-policy-state:"))) | .id' | head -1)
+          if [ "$TEMPLATE_OK" = true ] && [ "$TEST_OK" = true ]; then
+            if [ -n "$state_comment" ]; then
+              gh api --method DELETE "repos/$REPO/issues/comments/$state_comment" >/dev/null
+            fi
+            exit 0
+          fi
+          printf '%s' "$PR_BODY" > "$RUNNER_TEMP/pr-body-state.md"
+          body_hash=$(sha256sum "$RUNNER_TEMP/pr-body-state.md" | awk '{print $1}')
+          first_failed_at=
+          if [ -n "$state_comment" ]; then
+            old_body=$(gh api "repos/$REPO/issues/comments/$state_comment" --jq '.body')
+            old_state=$(printf '%s\n' "$old_body" | sed -n 's/^<!-- pr-policy-state:\(.*\) -->$/\1/p' | head -1)
+            if [ -n "$old_state" ] && printf '%s' "$old_state" | jq -e . >/dev/null 2>&1; then
+              old_hash=$(printf '%s' "$old_state" | jq -r '.body_sha256 // ""')
+              if [ "$old_hash" = "$body_hash" ]; then
+                first_failed_at=$(printf '%s' "$old_state" | jq -r '.first_failed_at // ""')
+              fi
+            fi
+          fi
+          if [ -z "$first_failed_at" ]; then
+            first_failed_at=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+          fi
+          state=$(jq -nc --arg hash "$body_hash" --arg first "$first_failed_at" '{body_sha256:$hash,first_failed_at:$first}')
+          {
+            printf '<!-- pr-policy-state:%s -->\n\n' "$state"
+            printf '%s\n' 'PR metadata is currently invalid. If the PR body remains unchanged and invalid for 7 days, the PR will be closed automatically.'
+          } > "$RUNNER_TEMP/pr-policy-state.md"
+          if [ -n "$state_comment" ]; then
+            gh api --method PATCH "repos/$REPO/issues/comments/$state_comment" -F body=@"$RUNNER_TEMP/pr-policy-state.md" >/dev/null
+          else
+            gh api --method POST "repos/$REPO/issues/$PR/comments" -F body=@"$RUNNER_TEMP/pr-policy-state.md" >/dev/null
+          fi
+      - name: Require metadata gates
+        shell: bash
+        env:
+          TEMPLATE_OK: ${{ steps.policy.outputs.template_ok }}
+          TEST_OK: ${{ steps.policy.outputs.test_ok }}
+        run: |
+          set -euo pipefail
+          test "$TEMPLATE_OK" = true
+          test "$TEST_OK" = true
