@@ -106,9 +106,19 @@ jobs:
       - name: Test platform OAuth callback integration
         shell: bash
         run: go test ./internal/cli/commands/pixiv/auth/loginhelper -count=1
-      - name: Build the native Rust static library
+      - name: Build and package the platform binary
         shell: bash
-        run: bash scripts/build-staticlibs.sh --target '${{ matrix.rust_target }}'
+        run: |
+          set -euo pipefail
+          version="0.2.0-ci.${GITHUB_RUN_ID}"
+          archive=$(sh scripts/build-platform.sh \
+            --target '${{ matrix.goos }}/${{ matrix.goarch }}' \
+            --rust-target '${{ matrix.rust_target }}' \
+            --cc '${{ matrix.cc }}' \
+            --version "$version" \
+            --output-dir dist \
+            --package)
+          printf 'PLATFORM_ARCHIVE=%s\n' "$archive" >> "$GITHUB_ENV"
       - name: Run native GIF/APNG smoke
         shell: bash
         run: |
@@ -122,41 +132,18 @@ jobs:
             printf '::error title=Native GIF/APNG smoke::%s\n' "$message"
             exit "$status"
           fi
-      - name: Build and package a versioned binary
-        shell: bash
-        run: |
-          set -euo pipefail
-          version="0.2.0-ci.${GITHUB_RUN_ID}"
-          mkdir -p dist
-          binary='dist/pixiv'
-          if [ '${{ matrix.goos }}' = windows ]; then
-            binary='dist/pixiv.exe'
-          fi
-          go build -trimpath -buildvcs=false \
-            -ldflags "-X github.com/FlanChanXwO/pixiv-cli/internal/shared/buildinfo.Version=v${version}" \
-            -o "$binary" ./cmd/pixiv
-          if [ '${{ matrix.goos }}' = linux ]; then
-            go run ./scripts/cmd/linuxabi --binary "$binary"
-          fi
-          go run ./scripts/cmd/releaseassets package \
-            --repo-root . \
-            --version "$version" \
-            --target '${{ matrix.goos }}/${{ matrix.goarch }}' \
-            --binary "$binary" \
-            --output-dir dist
       - name: Extract and smoke the packaged binary
         shell: bash
         run: |
           set -euo pipefail
           version="0.2.0-ci.${GITHUB_RUN_ID}"
-          archive="dist/pixiv-cli_${version}_${{ matrix.goos }}_${{ matrix.goarch }}"
           mkdir -p smoke
           binary='smoke/pixiv'
           if [ '${{ matrix.goos }}' = windows ]; then
-            7z x "${archive}.zip" -osmoke
+            7z x "$PLATFORM_ARCHIVE" -osmoke
             binary='smoke/pixiv.exe'
           else
-            tar -xzf "${archive}.tar.gz" -C smoke
+            tar -xzf "$PLATFORM_ARCHIVE" -C smoke
           fi
           test -f "$binary"
           PIXIV_E2E_BINARY="$(pwd)/$binary" \

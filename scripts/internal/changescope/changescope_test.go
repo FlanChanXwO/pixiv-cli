@@ -43,3 +43,11 @@ func TestSplitNULPathsPreservesWhitespace(t *testing.T) {
 		}
 	}
 }
+
+func TestContainerRelevantIncludesPlatformBuildPrimitive(t *testing.T) {
+	t.Parallel()
+
+	if !containerRelevant([]string{"scripts/build-platform.sh"}) {
+		t.Fatal("platform build primitive changes must trigger container validation")
+	}
+}

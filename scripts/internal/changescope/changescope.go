@@ -65,6 +65,7 @@ func containerRelevant(paths []string) bool {
 			strings.HasPrefix(path, "ci/"),
 			strings.HasPrefix(path, "tools/platformmatrix/"),
 			path == ".github/workflows/container-smoke.yml",
+			path == "scripts/build-platform.sh",
 			strings.HasPrefix(path, "scripts/build-staticlibs"),
 			strings.HasPrefix(path, "scripts/cmd/releaseassets/"):
 			return true

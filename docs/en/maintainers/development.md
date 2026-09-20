@@ -41,6 +41,8 @@ Supported Go source builds require:
 
 The fixed targets are darwin/linux/windows for amd64/arm64. `scripts/build-staticlibs.sh` uses locked Cargo inputs to generate the target libraries; only after a single successful run produces all six real libraries and verifies each SHA-256 does it write `manifest.json` with the Rust source digest. Single-target invocations invalidate the existing manifest, preventing a partial rebuild from proving full-platform consistency.
 
+CI and release callers that need one exact platform binary use `scripts/build-platform.sh`. The caller supplies the registry-derived `GOOS/GOARCH`, Rust target and C compiler; the primitive rebuilds that target's Rust staticlib, restores the pre-existing cross-platform manifest, builds the correctly suffixed/versioned binary, applies the Linux ABI gate when relevant, and optionally creates the canonical release archive. It prints the resulting binary or archive path. Workflow-specific tests, immutable-source assertions, credentials, approval and publication remain in their workflows rather than becoming modes of this script.
+
 The public ABI baseline for Linux releases is glibc 2.35. Linux runners for release test/production, native evidence, packaged-binary smoke and the Homebrew install matrix must be pinned to `ubuntu-22.04` and `ubuntu-22.04-arm`; quality, validate, publish and other jobs that do not produce Linux binaries may continue to use newer runners. After every Linux executable is produced, the following must be run:
 
 ```bash
@@ -295,6 +297,7 @@ Release-related local fixture/policy gates also include:
 
 ```bash
 sh scripts/test-build-staticlibs.sh
+sh scripts/test-build-platform.sh
 sh scripts/test-package-release.sh
 go test ./tools/release ./tools/platformmatrix -count=1
 go test ./scripts/cmd/nativeevidence -count=1

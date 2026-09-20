@@ -220,57 +220,39 @@ jobs:
       - name: Install the pinned native Rust toolchain
         shell: bash
         run: rustup toolchain install '${{ matrix.rust_toolchain }}' --profile minimal --target '${{ matrix.rust_target }}' --no-self-update
-      - name: Rebuild the selected static library from the immutable tag
+      - name: Build the exact production archive
         shell: bash
         run: |
           set -euo pipefail
           test "$(git rev-parse HEAD)" = "$(git rev-parse "$RELEASE_TAG^{commit}")"
           test -z "$(git status --porcelain --untracked-files=all)"
           test -z "$(git clean -ndx)"
-          bash scripts/build-staticlibs.sh --target '${{ matrix.rust_target }}'
-          git restore --source="$RELEASE_TAG^{commit}" -- internal/media/ugoira/rust/staticlib/manifest.json
+          archive=$(sh scripts/build-platform.sh \
+            --target '${{ matrix.goos }}/${{ matrix.goarch }}' \
+            --rust-target '${{ matrix.rust_target }}' \
+            --cc '${{ matrix.cc }}' \
+            --version "${RELEASE_TAG#v}" \
+            --output-dir "$RUNNER_TEMP/platform-build" \
+            --package)
+          git diff --check
           git diff --exit-code
           test -z "$(git status --porcelain --untracked-files=all)"
           test -z "$(git clean -ndx)"
-      - name: Check the generated diff
-        shell: bash
-        run: git diff --check
-      - name: Build the versioned native executable
-        shell: bash
-        run: |
-          set -eu
           mkdir -p dist
-          output='dist/pixiv'
-          if [ '${{ matrix.goos }}' = windows ]; then
-            output='dist/pixiv.exe'
-          fi
-          go build -trimpath -buildvcs=false \
-            -ldflags "-X github.com/FlanChanXwO/pixiv-cli/internal/shared/buildinfo.Version=${RELEASE_TAG}" \
-            -o "$output" ./cmd/pixiv
-          if [ '${{ matrix.goos }}' = linux ]; then
-            go run ./scripts/cmd/linuxabi --binary "$output"
-          fi
-      - name: Package the fixed-name platform asset
-        shell: bash
-        run: |
-          go run ./scripts/cmd/releaseassets package \
-            --repo-root . \
-            --version "${RELEASE_TAG#v}" \
-            --target '${{ matrix.goos }}/${{ matrix.goarch }}' \
-            --binary "dist/pixiv${{ matrix.goos == 'windows' && '.exe' || '' }}" \
-            --output-dir dist
+          destination="dist/$(basename "$archive")"
+          cp "$archive" "$destination"
+          printf 'PLATFORM_ARCHIVE=%s\n' "$destination" >> "$GITHUB_ENV"
       - name: Smoke the exact production package
         shell: bash
         run: |
           set -euo pipefail
           mkdir -p smoke
-          archive="dist/pixiv-cli_${RELEASE_TAG#v}_${{ matrix.goos }}_${{ matrix.goarch }}"
           binary='smoke/pixiv'
           if [ '${{ matrix.goos }}' = windows ]; then
-            7z x "${archive}.zip" -osmoke
+            7z x "$PLATFORM_ARCHIVE" -osmoke
             binary='smoke/pixiv.exe'
           else
-            tar -xzf "${archive}.tar.gz" -C smoke
+            tar -xzf "$PLATFORM_ARCHIVE" -C smoke
           fi
           test -f "$binary"
           test "$("$binary" --version)" = "pixiv $RELEASE_TAG"
@@ -312,24 +294,24 @@ jobs:
       - name: Install the pinned native Rust toolchain
         shell: bash
         run: rustup toolchain install '${{ matrix.rust_toolchain }}' --profile minimal --target '${{ matrix.rust_target }}' --no-self-update
-      - name: Rebuild the selected static library from the immutable tag
-        shell: bash
-        run: |
-          set -euo pipefail
-          CC='${{ matrix.cc }}' RUSTUP_TOOLCHAIN='${{ matrix.rust_toolchain }}' bash scripts/build-staticlibs.sh --target '${{ matrix.rust_target }}'
-          git restore --source="$RELEASE_TAG^{commit}" -- internal/media/ugoira/rust/staticlib/manifest.json
-          git diff --exit-code
-          test -z "$(git status --porcelain --untracked-files=all)"
-          test -z "$(git clean -ndx)"
       - name: Build and verify the versioned Linux executable
         shell: bash
         run: |
           set -euo pipefail
+          test -z "$(git status --porcelain --untracked-files=all)"
+          test -z "$(git clean -ndx)"
+          binary=$(RUSTUP_TOOLCHAIN='${{ matrix.rust_toolchain }}' sh scripts/build-platform.sh \
+            --target '${{ matrix.goos }}/${{ matrix.goarch }}' \
+            --rust-target '${{ matrix.rust_target }}' \
+            --cc '${{ matrix.cc }}' \
+            --version "${RELEASE_TAG#v}" \
+            --output-dir "$RUNNER_TEMP/platform-build")
+          git diff --check
+          git diff --exit-code
+          test -z "$(git status --porcelain --untracked-files=all)"
+          test -z "$(git clean -ndx)"
           mkdir -p dist
-          CC='${{ matrix.cc }}' go build -trimpath -buildvcs=false \
-            -ldflags "-X github.com/FlanChanXwO/pixiv-cli/internal/shared/buildinfo.Version=${RELEASE_TAG}" \
-            -o dist/pixiv ./cmd/pixiv
-          go run ./scripts/cmd/linuxabi --binary dist/pixiv
+          cp "$binary" dist/pixiv
       - name: Check the container packaging contract
         shell: bash
         run: go test ./scripts/tests/containerrelease -count=1
