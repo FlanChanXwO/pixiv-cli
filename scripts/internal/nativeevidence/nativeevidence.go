@@ -14,11 +14,9 @@ func Run(args []string) error {
 
 func run(arguments []string) error {
 	if len(arguments) == 0 {
-		return errors.New("usage: nativeevidence policy|record|consolidate")
+		return errors.New("usage: nativeevidence record|consolidate")
 	}
 	switch arguments[0] {
-	case "policy":
-		return runPolicy(arguments[1:])
 	case "record":
 		return runRecord(arguments[1:])
 	case "consolidate":
@@ -26,17 +24,6 @@ func run(arguments []string) error {
 	default:
 		return fmt.Errorf("unknown subcommand %q", arguments[0])
 	}
-}
-
-func runPolicy(arguments []string) error {
-	if len(arguments) != 2 || arguments[0] != "--workflow" {
-		return errors.New("usage: nativeevidence policy --workflow PATH")
-	}
-	body, err := os.ReadFile(arguments[1])
-	if err != nil {
-		return fmt.Errorf("read workflow: %w", err)
-	}
-	return checkWorkflow(body)
 }
 
 func runRecord(arguments []string) error {

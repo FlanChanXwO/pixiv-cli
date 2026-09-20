@@ -75,13 +75,14 @@ go run ./scripts/cmd/linuxabi --binary <linux-elf>
 六个 committed library 与 `manifest.json` 是已验证输入：manifest 绑定 Rust source digest、六 target、
 path 与逐目标 SHA-256，由 `internal/media/ugoira/staticlib` 的完整性测试锁定。当前 manifest 的 source
 digest 与六库 SHA-256 与受审计 source 逐字节一致；升级 Rust 时必须从同一受审计 source 完整重建、链接并
-smoke 验证六目标，同时更新六库、manifest、native evidence 与 release matrix——不得只更新单个平台的 pin。
+smoke 验证六目标，同时更新六库、manifest、native evidence 与 `ci/platforms.json`——不得只更新单个平台的 pin。
 
 合规 committed library 的编译器 provenance 必须按 target 固定，而不是使用可移动的 runner 默认
 toolchain：`x86_64-apple-darwin` 与 `x86_64-pc-windows-msvc` 使用 Rust `1.96.0`；
 `aarch64-apple-darwin`、`aarch64-pc-windows-msvc`、`x86_64-unknown-linux-gnu` 与
 `aarch64-unknown-linux-gnu` 来自 Rust `1.96.1`。release test 与 production matrix 都必须携带这份
-精确映射，并通过 `RUSTUP_TOOLCHAIN` 和带 `--no-self-update` 的 `rustup toolchain install` 使用它；
+精确映射只由 `ci/platforms.json` 维护；release、smoke 与 native-evidence matrix 通过 `tools/platformmatrix`
+消费它，并通过 `RUSTUP_TOOLCHAIN` 和带 `--no-self-update` 的 `rustup toolchain install` 使用；
 不能让 runner image 的 `stable` 更新改变重建 bytes。该映射记录来源，不是允许永久混用工具链的惯例；
 升级 Rust 时必须重建并同步固定全部六目标。
 
@@ -132,30 +133,22 @@ sh scripts/test-rust-vendor.sh
 `.github/workflows/native-evidence.yml` 是独立的、非发布的 runner 入口：只允许审计后的、包含非文档输入的 `main`
 push 或指向 `refs/heads/main` 的 `workflow_dispatch`。仅 `README*.md`、`docs/**`、`changelog/**` 或 `skills/**` 的 push
 不启动它；任一其他路径以及手动触发仍运行完整矩阵。全局 `permissions: {}`、job 仅 `contents: read`。它没有 `environment`、
-secret、tag/Release/tap/signing 命令；YAML AST policy 同时固定六个 runner、full-SHA action、无凭据
-checkout、vendored Rust 检查、单目标 staticlib、真实 cgo GIF/APNG smoke、版本化 binary 的
-`pixiv --version`、release-style archive 以及 artifact upload。可离线检查声明本身：
-
-matrix 的每个 target 还必须声明与 release test/production 完全相同的 `rust_toolchain`，job 通过
-`RUSTUP_TOOLCHAIN` 绑定该值，并执行带 `--profile minimal --target ... --no-self-update` 的精确
-`rustup toolchain install`。两个 verifier 共用 `scripts/internal/releasecontract` 中唯一的目标版本映射；
-任一 workflow 删除、替换、重复或错误插值该映射，policy 都会 fail closed。
+secret、tag/Release/tap/signing 命令。平台矩阵来自 `ci/platforms.json` 的 `native-evidence` capability；
+workflow 安装 registry 指定的 Rust toolchain、检查 vendored Rust 输入、通过 `scripts/build-platform.sh`
+完成目标 staticlib/binary/archive 链路，再运行真实 cgo GIF/APNG smoke、记录并上传 evidence。full-SHA
+action、无凭据 checkout、无 secret/发布副作用以及 build ownership 由聚焦的 test-only workflow contract
+覆盖，不再由 runtime YAML self-policy 固定整份 workflow 结构。
 
 Windows 两个 target 的 Rust library 使用 `*-pc-windows-msvc`；相应 cgo selector 必须以
 `-L${SRCDIR}/… -lugoira_rs` 声明库，不能把带盘符的绝对 `.lib` 路径直接传给 cgo；还必须显式携带
 Rust `std` 所需的 `advapi32`、`ntdll`、`userenv`、`ws2_32` 与 `dbghelp` import libraries。native evidence
-仅在 Windows 的 smoke 和版本化 binary 构建中显式设 `CC='clang -fuse-ld=lld'`：LLD 既能处理 MSVC
+把 registry 选择的 `CC='clang -fuse-ld=lld'` 同时传给 `scripts/build-platform.sh` 与 native smoke：LLD 既能处理 MSVC
 `.lib`，也让 Go 跳过 GCC 专属的 debug linker script；这不是运行时 fallback，也不改变 darwin/linux
 的 C linker 选择。
 
 ```bash
 go test ./scripts/internal/nativeevidence -count=1
-go run ./scripts/cmd/nativeevidence policy --workflow .github/workflows/native-evidence.yml
 ```
-
-该 policy command 只依赖 `internal/media/ugoira/staticlib` 的 source-digest/manifest 契约，不导入 cgo
-encoder；因此它必须能在每个 runner 构建目标 staticlib **之前**执行。若 policy gate 因缺库或 cgo
-link 失败，属于 workflow bootstrap 缺陷，而不是可接受的“尚无 native evidence”结果。
 
 每个 runner artifact 只有 `evidence/`：实际链接的 staticlib、版本化 binary、archive 及
 `native-evidence.json`。schema 2 record 会独立记录 workflow 提供的 `source_commit`，重算 Rust source digest
@@ -165,8 +158,9 @@ Release。
 
 `.github/workflows/browser-evidence.yml` 是另一条 credential-free 的原生 provider contract matrix，
 在 macOS、Linux、Windows 的 amd64/arm64 runner 上执行 `internal/browsercookies/...` 的平台代码与合成 fixture 回归，
-并由 `scripts/cmd/browsernativeevidence` 校验 workflow 的 runner、action SHA、固定 Firefox 153.0.3
-发行包 checksum、清理命令和 secret boundary。`firefox_native` job 只在 runner 临时目录解包官方包，
+聚焦的 test-only workflow contract 只锁 credential、full-SHA action、fixture 与 cleanup 等安全边界，
+不再由生产代码重新实现整份 workflow；`scripts/cmd/browsernativeevidence firefox-contract` 仅保留为
+隔离 Firefox profile/schema 的真实运行时 helper。`firefox_native` job 只在 runner 临时目录解包官方包，
 让 Firefox 生成隔离 profile/schema，再注入明确的 synthetic cookie 运行 provider contract；它不读取
 用户浏览器 profile、Keychain、DPAPI 或 Secret Service，也不上传 package/profile/database。真实
 profile/session evidence 仍只能在受保护的 release-prep host 取得，不能把该 workflow 的成功当作真实
@@ -380,10 +374,8 @@ sh scripts/test-build-staticlibs.sh
 sh scripts/test-build-platform.sh
 sh scripts/test-package-release.sh
 go test ./tools/release ./tools/platformmatrix -count=1
-go test ./scripts/cmd/nativeevidence -count=1
-go run ./scripts/cmd/nativeevidence policy --workflow .github/workflows/native-evidence.yml
+go test ./scripts/internal/nativeevidence -count=1
 go test ./scripts/internal/browsernativeevidence -count=1
-go run ./scripts/cmd/browsernativeevidence policy --workflow .github/workflows/browser-evidence.yml
 sh scripts/test-homebrew-formula.sh
 git diff --check
 ```
@@ -531,11 +523,10 @@ go test ./tools/release ./tools/platformmatrix -count=1
 无凭据容器 smoke workflow 会在相关变更时构建两个原生架构，并执行 version、非 root、state-path 和工作目录
 断言；正式 tagged release 不能用这些本地检查替代该 CI evidence。
 
-Release policy 的共享契约位于 `scripts/internal/releasecontract` 与 `scripts/internal/workflow/yaml`。
-前者持有唯一的 per-target Rust toolchain 映射和六平台契约，后者提供 YAML AST 安全操作；两者都直接
-参与正常 release policy 和 production build 校验。保留的 release verifier 测试只覆盖 tag trigger、
-build quality、production isolation、publish/Homebrew policy、release notes 与 workflow YAML 安全边界；
-历史 recovery 计划和验收报告保留原始文字与路径，不作为当前流程说明。
+共享平台 runner/Rust/CC metadata 只位于 `ci/platforms.json`，由 `tools/platformmatrix` 校验并输出；
+release archive identity 仍由 `scripts/internal/releasecontract` 持有。workflow 测试只保留行为与安全边界，
+不再镜像 job 数量、step 位置或 multiline shell 全文。历史 recovery 计划和验收报告保留原始文字与路径，
+不作为当前流程说明。
 
 ### Verifier 源码导航
 
@@ -548,9 +539,9 @@ archive/container 集合与 checksums。各 publisher workflow 只保留自身�
 
 `scripts/cmd/nativeevidence/` 按 evidence 生命周期分卷：`main.go` 负责 subcommand 与 flag；`models.go` 保存
 target 和 evidence schema；`record.go` 记录单 runner evidence；`consolidate.go` 校验并合并六目标结果；
-`archive.go` 负责 release archive member 与 JSON；`filesystem.go` 负责路径、hash 和安全文件操作；
-`workflow_policy.go` 只验证 native-evidence workflow。测试分别覆盖 policy、record、consolidate，fixture
-helper 再按 workflow 与 evidence/archive 分开，避免把策略测试重新堆进单一文件。
+`archive.go` 负责 release archive member 与 JSON；`filesystem.go` 负责路径、hash 和安全文件操作。
+`scripts/cmd/nativeevidence/` 只分发 `record` 与 `consolidate`；workflow 测试只覆盖 credential、action
+固定与 build ownership 等安全/行为边界，不再重新实现 workflow 的精确 YAML 形状。
 
 release workflow 本身就是顺序与权限的事实来源。生产 archive、container、prepared checksums 以及针对
 真实 production archive 的 Homebrew 安装验证都必须在 `release-approval` 前完成；审批后由

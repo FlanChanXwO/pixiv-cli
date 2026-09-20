@@ -68,8 +68,8 @@ workflow、对应 `scripts/cmd/*` policy 和 `scripts/tests` 归属；默认只�
 ```bash
 go test ./tools/release ./tools/platformmatrix -count=1
 sh scripts/test-homebrew-formula.sh
-go run ./scripts/cmd/nativeevidence policy --workflow .github/workflows/native-evidence.yml
-go run ./scripts/cmd/browsernativeevidence policy --workflow .github/workflows/browser-evidence.yml
+go test ./scripts/internal/nativeevidence -run '^TestNativeEvidenceWorkflowKeepsSecurityAndOwnershipBoundaries$' -count=1
+go test ./scripts/internal/browsernativeevidence -run '^TestBrowserEvidenceWorkflowKeepsSecurityAndFixtureBoundaries$' -count=1
 go test ./scripts/tests/clawhubworkflow -count=1
 ```
 

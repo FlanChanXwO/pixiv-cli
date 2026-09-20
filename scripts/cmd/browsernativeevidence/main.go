@@ -1,4 +1,4 @@
-// Command browsernativeevidence 校验无 credential 的 browser provider workflow。
+// Command browsernativeevidence 运行 browser provider evidence helper。
 package main
 
 import (
