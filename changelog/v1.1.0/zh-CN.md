@@ -28,5 +28,6 @@
 - 扩展 Pixiv endpoint ownership、SDK compatibility、cursor binding、pagination、CLI/MCP projection、comments、bookmarks、users、feeds 与 mutation evidence 的离线及 live-manifest 回归覆盖，同时继续确保 credential 和 private response 不进入仓库。([#82](https://github.com/FlanChanXwO/pixiv-cli/pull/82))
 - 准备 v1.1.0 双语发布元信息，并将分发的产品 skill 版本与 release tag 对齐。([#83](https://github.com/FlanChanXwO/pixiv-cli/pull/83))
 - 正式声明 Go `1.27.1` 为 v1.1.0 的源码构建与 SDK 开发基线，并同步仓库文档与发布元信息。Release CI 现在要求每个原生 matrix gate 都实际执行：Windows ARM64 不再跳过 race step，而是必须精确匹配 Go 官方“不支持 race”的诊断；其他 race 失败仍保持失败。([#84](https://github.com/FlanChanXwO/pixiv-cli/pull/84))
+- 将人工发布审批收敛为最终发布边界的一次审批。build、SDK E2E、provenance、source trust、production 与 container 检查全部自动执行；通过唯一的 `release-approval` Environment 审批后，GitHub Release 以及后续 registry/Homebrew 发布链自动继续，不再重复要求审批。([#85](https://github.com/FlanChanXwO/pixiv-cli/pull/85))
 
 **完整变更**：[v1.0.2...v1.1.0](https://github.com/FlanChanXwO/pixiv-cli/compare/v1.0.2...v1.1.0)
