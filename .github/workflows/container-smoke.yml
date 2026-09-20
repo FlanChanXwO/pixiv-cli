@@ -96,17 +96,17 @@ jobs:
       - name: Install the native Rust toolchain
         shell: bash
         run: rustup toolchain install '${{ matrix.rust_toolchain }}' --profile minimal --target '${{ matrix.rust_target }}' --no-self-update
-      - name: Build the native Rust static library
-        shell: bash
-        run: bash scripts/build-staticlibs.sh --target '${{ matrix.rust_target }}'
       - name: Build the versioned Linux binary
         shell: bash
         run: |
-          set -eu
-          mkdir -p dist
-          go build -trimpath -buildvcs=false \
-            -ldflags "-X github.com/FlanChanXwO/pixiv-cli/internal/shared/buildinfo.Version=v0.0.0-smoke" \
-            -o dist/pixiv ./cmd/pixiv
+          set -euo pipefail
+          binary=$(sh scripts/build-platform.sh \
+            --target '${{ matrix.goos }}/${{ matrix.goarch }}' \
+            --rust-target '${{ matrix.rust_target }}' \
+            --cc '${{ matrix.cc }}' \
+            --version 0.0.0-smoke \
+            --output-dir dist)
+          test "$binary" = dist/pixiv
       - name: Build the container image
         shell: bash
         run: docker build -t pixiv-cli-smoke:${{ matrix.goarch }} .

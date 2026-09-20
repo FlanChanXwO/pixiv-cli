@@ -314,14 +314,6 @@ jobs:
         working-directory: pr
         run: rustup toolchain install '${{ matrix.rust_toolchain }}' --profile minimal --target '${{ matrix.rust_target }}' --no-self-update
 
-      - name: Build the PR native Rust static library
-        shell: bash
-        working-directory: pr
-        env:
-          CC: ${{ matrix.cc }}
-          RUSTUP_TOOLCHAIN: ${{ matrix.rust_toolchain }}
-        run: bash scripts/build-staticlibs.sh --target '${{ matrix.rust_target }}'
-
       - name: Build the exact PR binary
         shell: bash
         working-directory: pr
@@ -331,11 +323,11 @@ jobs:
         run: |
           set -euo pipefail
           test "$(git rev-parse HEAD)" = '${{ needs.dispatch.outputs.head_sha }}'
-          binary="$RUNNER_TEMP/pixiv"
-          if [ '${{ matrix.goos }}' = windows ]; then
-            binary="$RUNNER_TEMP/pixiv.exe"
-          fi
-          go build -trimpath -o "$binary" ./cmd/pixiv
+          binary=$(sh scripts/build-platform.sh \
+            --target '${{ matrix.goos }}/${{ matrix.goarch }}' \
+            --rust-target '${{ matrix.rust_target }}' \
+            --cc '${{ matrix.cc }}' \
+            --output-dir "$RUNNER_TEMP/verification-build")
           printf 'VERIFICATION_BINARY=%s\n' "$binary" >> "$GITHUB_ENV"
           mkdir -p "$RUNNER_TEMP/verification-home"
           printf 'VERIFICATION_HOME=%s\n' "$RUNNER_TEMP/verification-home" >> "$GITHUB_ENV"

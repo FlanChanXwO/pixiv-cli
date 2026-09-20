@@ -52,6 +52,13 @@ Cargo 输入生成 target library；只有同一次成功得到全部六个真�
 写入带 Rust source digest 的 `manifest.json`。单 target 调用会使已有 manifest 失效，避免用
 局部重建证明全平台一致性。
 
+CI 与 release 在需要构建单个精确平台 binary 时统一调用 `scripts/build-platform.sh`。调用方传入由
+platform registry matrix 派生的 `GOOS/GOARCH`、Rust target 与 C compiler；primitive 负责重建该
+target 的 Rust staticlib、恢复调用前的跨平台 manifest、生成正确后缀/版本的 binary、在 Linux 上
+执行 ABI gate，并可选生成 canonical release archive，最后输出 binary 或 archive 路径。workflow
+自己的测试、immutable-source 断言、credential、审批与发布职责仍显式留在 workflow 中，不变成该
+脚本的 mode。
+
 Linux Release 的公开 ABI 基线是 glibc 2.35。release test/production、native evidence、packaged
 binary smoke 与 Homebrew install matrix 的 Linux runner 必须固定为 `ubuntu-22.04` 和
 `ubuntu-22.04-arm`；quality、validate、publish 等不产出 Linux binary 的 job 可继续使用更新 runner。
@@ -370,6 +377,7 @@ file attachment 完成 HEAD、完整保存和字节数核对。
 
 ```bash
 sh scripts/test-build-staticlibs.sh
+sh scripts/test-build-platform.sh
 sh scripts/test-package-release.sh
 go test ./tools/release ./tools/platformmatrix -count=1
 go test ./scripts/cmd/nativeevidence -count=1
