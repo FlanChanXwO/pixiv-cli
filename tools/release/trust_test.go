@@ -97,6 +97,24 @@ func TestReleaseTrustPublishedReleaseAndHandoff(t *testing.T) {
 	}
 }
 
+func TestVerifyPublishedReleaseStableRejectsPrereleaseTagEvenWhenReleaseFlagIsFalse(t *testing.T) {
+	t.Parallel()
+
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		if request.URL.Path != "/repos/FlanChanXwO/pixiv-cli/releases/tags/v1.2.3-rc.1" {
+			http.NotFound(writer, request)
+			return
+		}
+		fmt.Fprint(writer, `{"tag_name":"v1.2.3-rc.1","draft":false,"prerelease":false,"published_at":"2026-09-20T00:00:00Z"}`)
+	}))
+	t.Cleanup(server.Close)
+
+	client := githubReleaseClient{BaseURL: server.URL, Token: "test-token", HTTP: server.Client()}
+	if err := verifyPublishedRelease(client, "FlanChanXwO/pixiv-cli", "v1.2.3-rc.1", true); err == nil {
+		t.Fatal("stable published Release verification accepted a semantic prerelease tag")
+	}
+}
+
 func TestAppendGitHubOutputReturnsCloseError(t *testing.T) {
 	t.Parallel()
 

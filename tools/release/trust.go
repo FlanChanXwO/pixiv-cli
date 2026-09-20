@@ -135,8 +135,12 @@ func verifySourceTrust(repoRoot, tag, defaultBranch string) (sourceTrust, error)
 }
 
 func verifyPublishedRelease(client githubReleaseClient, repository, tag string, stable bool) error {
-	if _, err := releaseTagVersion(tag); err != nil {
+	version, err := releaseTagVersion(tag)
+	if err != nil {
 		return err
+	}
+	if stable && releaseversion.Channel(version) != "stable" {
+		return fmt.Errorf("Release %q uses a prerelease semantic version, stable Release required", tag)
 	}
 	path, err := githubRepositoryPath(repository)
 	if err != nil {
