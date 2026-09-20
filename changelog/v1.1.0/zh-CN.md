@@ -26,5 +26,6 @@
 ## 维护
 
 - 扩展 Pixiv endpoint ownership、SDK compatibility、cursor binding、pagination、CLI/MCP projection、comments、bookmarks、users、feeds 与 mutation evidence 的离线及 live-manifest 回归覆盖，同时继续确保 credential 和 private response 不进入仓库。([#82](https://github.com/FlanChanXwO/pixiv-cli/pull/82))
+- 准备 v1.1.0 双语发布元信息，并将分发的产品 skill 版本与 release tag 对齐。([#83](https://github.com/FlanChanXwO/pixiv-cli/pull/83))
 
 **完整变更**：[v1.0.2...v1.1.0](https://github.com/FlanChanXwO/pixiv-cli/compare/v1.0.2...v1.1.0)
