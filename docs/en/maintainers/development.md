@@ -300,12 +300,11 @@ Release-related local fixture/policy gates also include:
 ```bash
 sh scripts/test-build-staticlibs.sh
 sh scripts/test-package-release.sh
-go run ./scripts/cmd/releaseworkflow --workflow .github/workflows/release.yml
+go test ./tools/release ./tools/platformmatrix -count=1
 go test ./scripts/cmd/nativeevidence -count=1
 go run ./scripts/cmd/nativeevidence policy --workflow .github/workflows/native-evidence.yml
 go test ./scripts/internal/browsernativeevidence -count=1
 go run ./scripts/cmd/browsernativeevidence policy --workflow .github/workflows/browser-evidence.yml
-go test ./scripts/tests/platformsmokeworkflow -count=1
 sh scripts/test-homebrew-formula.sh
 git diff --check
 ```
@@ -343,11 +342,9 @@ A production file `x.go` corresponds to at most one `x_test.go` in the same dire
 | `scripts/internal/licensebundle` | Tests observe unexported `defaultBundleFileOps`, `generateFromTargetMetadata`, and license text normalization, and inject fake cargo metadata. |
 | `scripts/internal/linuxabi` | Tests directly call unexported glibc version parsing and ABI comparison (`parseGLIBCVersion`, `checkImportedSymbols`). |
 | `scripts/internal/nativeevidence` | Tests directly call unexported record/consolidate/policy seams, covering schema 2, independent `source_commit`, exact binary `--version` output, six-target hash/archive verification, and mutation rollback. |
-| `scripts/internal/prepublishhomebrew` | Tests inject unexported `test.mutate` and CI change detection, observing the failure paths of formula generation and pre-publish checks. |
 | `scripts/internal/publicapi` | Tests observe the unexported parser handling of `unexported`/`hidden` symbols and the golden comparison logic, using `writeFixture` to generate fixtures. |
 | `scripts/internal/releaseassets` | Tests inject unexported `injectReleaseSources`/`injectWindowsReleaseSources`, observing asset archive naming (`archiveName`) and checksums generation. |
 | `scripts/internal/releasenotes` | Tests observe unexported GitHub client call mappings, injecting a fake client to assert source auditing. |
-| `scripts/internal/releaseworkflow` | Tests inject unexported `mutation.mutate`/`mutation.run` to observe the workflow state machine and git environment injection, and lock the Version-only linker and root `--version` Homebrew gate. |
 
 There are currently no temporary items. This list does not accept open-ended phrases like "migration period" or "in the future". Adding a directory requires explaining the specific unexported symbol being observed and confirming that exporting a minimal interface is not a viable substitute; removing a directory requires a deletion task and test migration evidence (external package compiles + coverage unchanged).
 
@@ -414,9 +411,8 @@ GitHub Release and the registries are separate systems and cannot commit atomica
 Focused maintainer checks are:
 
 ```bash
-go test ./scripts/internal/releaseworkflow -count=1
 go test ./scripts/tests/containerrelease -count=1
-go run ./scripts/cmd/releaseworkflow --workflow .github/workflows/release.yml
+go test ./tools/release ./tools/platformmatrix -count=1
 ```
 
 The credential-free container smoke workflow builds both native architectures on relevant changes and executes version, non-root, state-path, and working-directory assertions; these local checks do not replace that CI evidence for a tagged release.
@@ -425,11 +421,11 @@ The shared contract for release policy lives in `scripts/internal/releasecontrac
 
 ### Verifier source navigation
 
-`scripts/cmd/releaseworkflow/` is organized by release responsibility: `main.go` handles command entry, file reading and top-level dispatch; `build_policy.go` handles validate, test build and production build; `e2e_policy.go` locks the Environment, secret reachability, input mapping and build dependency of the protected real E2E; `workflow_policy.go` handles tag trigger, job, step, command, action and permission helpers; `publish_policy.go` handles source verification, publishing, signing and channel; `homebrew_policy.go` handles formula render, four-platform verification and tap deploy. Tests are concentrated in each policy file and in `releaseworkflow_test.go`, `homebrew_policy_test.go`, `release_notes_policy_test.go` and `workflow_policy_test.go`; the command entry no longer keeps a top-level `main_test.go` that only verifies pass-through.
+Release verification now favors behavior contracts over a second workflow-policy implementation. `tools/platformmatrix` validates the shared platform registry, while `tools/release` validates exact archive/container sets and checksums used by publication.
 
 `scripts/cmd/nativeevidence/` is organized by evidence lifecycle: `main.go` handles subcommands and flags; `models.go` stores target and evidence schema; `record.go` records single-runner evidence; `consolidate.go` validates and merges the six-target results; `archive.go` handles release archive members and JSON; `filesystem.go` handles paths, hashes and safe file operations; `workflow_policy.go` only verifies the native-evidence workflow. Tests cover policy, record and consolidate respectively, and fixture helpers are split by workflow and evidence/archive, avoiding piling policy tests back into a single file.
 
-`go run ./scripts/cmd/releaseworkflow --workflow .github/workflows/release.yml` launches the YAML AST policy of the release workflow, rather than relying on text layout or line numbers. It precisely checks the tag trigger, the permissions/dependencies of the nine jobs, the secret mapping and publish blocking of the protected E2E, the six test/production runner matrices, the 40-bit SHA of every `uses`, and the SemVer channel invocation of publish. Default-branch ancestry must be done in the `verify_release_source` job with no `environment` and no secret; only after that job succeeds may publish depend on it and declare the precise `release` Environment and the two expected secrets used by the signature-metadata step. The policy scans every scalar's GitHub expression for the `secrets` context by expression boundary; `}`/`}}` in single-quoted strings and two single-quote escapes do not terminate the scan early, so formatted secret references outside the signature-metadata step also fail closed. The policy also rejects `continue-on-error` or conditional `if` on required jobs, default-branch ancestry steps and the quality gate; the validate and build checkouts must also explicitly set `persist-credentials: false`. To prevent shell control flow from hiding a gate, every quality check is the single-command `bash` step: the policy precisely verifies its run, crate cwd (Rust gate) and shell, and rejects unaudited `env`, `defaults` or other step fields. The only allowed variables are the root `RELEASE_TAG`, and the `CC` and per-target `RUSTUP_TOOLCHAIN` bound by the build matrix; Windows must use `clang -fuse-ld=lld` to link the MSVC Rust staticlib, avoiding mixing MinGW GCC and `.lib` ABI. The parser also fails closed on YAML aliases, merge keys and any duplicate mapping keys, so GitHub's override or working-directory semantics cannot diverge from the local check. The validate checkout pins the audited workflow SHA; the remaining production source checkouts are pinned to the exact tag. In particular, `verify_release_source` may only run, in order, the full-history, credential-free tag checkout and the default-branch ancestry gate — these two steps — and forbids any `ref`, `repository`, `path` or intermediate HEAD-switching step from altering the verified commit. The publish checkout likewise only allows credential-free tag source, preventing inconsistency between the signature metadata and the commit the build assets belong to. The build job must actually run the vendored Rust offline check, `cargo fmt --check` at the crate cwd, locked/offline Clippy `-D warnings`, plain Go tests, vet, licenses, packaging, the pinned `pre-commit==4.6.0`, pre-commit and `git diff --check`; the production build job only produces `verified-release-*` artifacts from a clean tag tree. The release channel may only be determined by `go run ./scripts/cmd/releaseassets channel --version ...`; the hyphen in build metadata must not turn a stable tag into a prerelease.
+The release workflow remains the source of truth for ordering and permissions. Production archives, container images, prepared checksums, and Homebrew installation against the exact production archives all finish before `release-approval`; publication then uses the secret-bearing `release` environment and consumes the approved artifacts without rebuilding them.
 
 Go 1.27.1 does not support the race detector on Windows ARM64. The release matrix nevertheless executes the race gate on all six native targets: five targets run `go test -race ./...`, while Windows ARM64 must execute the same command and match Go's exact `-race is not supported on windows/arm64` diagnostic. Any other failure remains a failed gate, and no matrix entry is skipped. The test matrix also pins `GIT_CONFIG_*` to `core.autocrlf=false` so that Git for Windows checkout preserves the LF blob bytes of the immutable tag; otherwise pre-commit's `gofmt` would misreport the runner's CRLF conversion as unformatted source. This configuration is only for the test gate; the independent production build still builds assets from the tag's clean default checkout.
 
@@ -447,7 +443,7 @@ There is direct backtrace evidence that Linuxbrew's `Resource` staging cleanup o
 Before creating any new tag or Release, a maintainer may manually run `.github/workflows/homebrew-prepublish-verify.yml` from the default branch, passing in an **already public, non-draft, non-prerelease** stable Release tag. It first verifies that the input is a `v`-prefixed SemVer, that the executing branch is the default branch, and that the GitHub Release's tag matches the input; it then downloads only that Release's published `checksums.txt`, renders the `pixiv-cli` staging formula, and finally runs a real local staging-tap install on the four production-identical runners for macOS Intel/arm64 and Linux amd64/arm64.
 
 This is a read-only rehearsal: it has no `release` Environment, secret, tag checkout, Release/asset editing or creation, and does not clone, commit or push the Homebrew tap. The Linux branch installs the read-only-mounted local staging formula in a fixed-digest, short-lived Homebrew container; macOS keeps the native ordinary install command.
-It is used to reproduce the Homebrew install chain before a formal release, and **does not replace** formal tag publishing, signed Releases, tap deployment or post-publish install acceptance. `go run ./scripts/cmd/prepublishhomebrew --workflow .github/workflows/homebrew-prepublish-verify.yml` checks the immutable boundary of this workflow locally and in the quality gate.
+It is used to reproduce the Homebrew install chain before a formal release, and **does not replace** formal tag publishing, signed Releases, tap deployment or post-publish install acceptance. The quality gate keeps behavior-level formula and artifact checks instead of mirroring the workflow as a second policy implementation.
 
 The formal release must still be blocked by a formal tag, signed GitHub Release, tap formula and subsequent install acceptance. The complete six-target staticlib/manifest and real native artifact evidence must have been collected and backfilled under control (see the "Rust ugoira staticlib" section); the protected `release` Environment, the production signing private key and the public repository must also be configured, but these preconditions themselves do not mean that a Release/tap has been created or that the install path has been accepted.
 

@@ -21,6 +21,11 @@ Bullet the change and why. Link an issue with `Closes #123` (closes on merge).
 - `go test ./...`
 - `sh scripts/build.sh`
 未测试时说明原因。 / If not tested, explain why.
+
+需要按需运行真实服务验证时，可额外提供一个 fenced test block。
+When live service verification is useful, optionally provide one fenced test block.
+只允许受信任白名单中的命令与受控管道；不会执行 shell。
+Only trusted-whitelist commands and controlled pipelines are accepted; no shell is invoked.
 -->
 
 ## 检查清单 / Checklist
@@ -29,3 +34,4 @@ Bullet the change and why. Link an issue with `Closes #123` (closes on merge).
 - [ ] 我没有新增依赖，或已在 `go.mod`（或 Rust `Cargo.toml`）的补充新的依赖 / No new dependencies, or added name, source, and purpose to `go.mod` (or Rust `Cargo.toml`) in Changes
 - [ ] 这不是一次破坏性更新，或已在「变更点」标注迁移影响 / Not a breaking change, or migration impact noted in Changes
 - [ ] 受影响的文档已在 `docs/en/` 与 `docs/zh-CN/` 同步 / Affected docs synced under `docs/en/` and `docs/zh-CN/`
+- [ ] 改动方向和范围已在实现前与维护者确认 / The direction and scope of this change were confirmed with a maintainer before implementation

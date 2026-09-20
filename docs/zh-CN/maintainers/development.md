@@ -375,12 +375,11 @@ file attachment 完成 HEAD、完整保存和字节数核对。
 ```bash
 sh scripts/test-build-staticlibs.sh
 sh scripts/test-package-release.sh
-go run ./scripts/cmd/releaseworkflow --workflow .github/workflows/release.yml
+go test ./tools/release ./tools/platformmatrix -count=1
 go test ./scripts/cmd/nativeevidence -count=1
 go run ./scripts/cmd/nativeevidence policy --workflow .github/workflows/native-evidence.yml
 go test ./scripts/internal/browsernativeevidence -count=1
 go run ./scripts/cmd/browsernativeevidence policy --workflow .github/workflows/browser-evidence.yml
-go test ./scripts/tests/platformsmokeworkflow -count=1
 sh scripts/test-homebrew-formula.sh
 git diff --check
 ```
@@ -426,11 +425,9 @@ amd64/arm64 platform-smoke 还会用真实 `cmd.exe`、`certutil.exe` 与 `tar.e
 | `scripts/internal/licensebundle` | 测试观察未导出的 `defaultBundleFileOps`、`generateFromTargetMetadata` 与 license 文本归一化，注入假 cargo metadata。 |
 | `scripts/internal/linuxabi` | 测试直接调用未导出的 glibc 版本解析与 ABI 比对（`parseGLIBCVersion`、`checkImportedSymbols`）。 |
 | `scripts/internal/nativeevidence` | 测试直接调用未导出的 record/consolidate/policy seam，覆盖 schema 2、独立 `source_commit`、精确 binary `--version` 输出、六目标 hash/archive 校验与 mutation 回滚。 |
-| `scripts/internal/prepublishhomebrew` | 测试注入未导出的 `test.mutate` 与 CI 变更检测，观察 formula 生成与预发布检查的失败路径。 |
 | `scripts/internal/publicapi` | 测试观察未导出的 `unexported`/`hidden` 符号解析与 golden 比对逻辑，用 `writeFixture` 生成 fixture。 |
 | `scripts/internal/releaseassets` | 测试注入未导出的 `injectReleaseSources`/`injectWindowsReleaseSources`，观察 asset archive 命名（`archiveName`）与 checksums 生成。 |
 | `scripts/internal/releasenotes` | 测试观察未导出的 GitHub client 调用映射，注入 fake client 断言来源审计。 |
-| `scripts/internal/releaseworkflow` | 测试注入未导出的 `mutation.mutate`/`mutation.run` 观察工作流状态机与 git 环境注入，锁定 Version-only linker 与 root `--version` Homebrew 门禁。 |
 
 当前没有 temporary 项。本清单不接受「迁移期」「未来」类无期限表述。新增目录须说明观察的**具体未导出符号**并确认导出最小接口不可行；删除目录须提供删除任务与测试迁移证据（external package 可编译 + 覆盖率不变）。
 
@@ -523,9 +520,8 @@ immutable tag checkout，在 clean tree 重建对应 Rust staticlib，通过 Lin
 维护者聚焦检查：
 
 ```bash
-go test ./scripts/internal/releaseworkflow -count=1
 go test ./scripts/tests/containerrelease -count=1
-go run ./scripts/cmd/releaseworkflow --workflow .github/workflows/release.yml
+go test ./tools/release ./tools/platformmatrix -count=1
 ```
 
 无凭据容器 smoke workflow 会在相关变更时构建两个原生架构，并执行 version、非 root、state-path 和工作目录
@@ -539,13 +535,8 @@ build quality、production isolation、publish/Homebrew policy、release notes �
 
 ### Verifier 源码导航
 
-`scripts/cmd/releaseworkflow/` 按发布职责分卷：`main.go` 负责命令入口、文件读取与顶层 dispatch；
-`build_policy.go` 负责 validate、test build 与 production build；`e2e_policy.go` 锁定受保护真实 E2E 的
-Environment、secret 可达性、输入映射与 build 依赖；`workflow_policy.go` 负责 tag trigger、
-job、step、command、action 与 permission helper；`publish_policy.go` 负责 source verification、发布、签名与 channel；
-`homebrew_policy.go` 负责 formula render、四平台验证与 tap deploy。测试集中在各 policy 文件及
-`releaseworkflow_test.go`、`homebrew_policy_test.go`、`release_notes_policy_test.go` 与
-`workflow_policy_test.go`；命令入口不再保留只验证透传的顶层 `main_test.go`。
+Release 验证现在优先检查真实行为，不再维护第二套 workflow policy 实现。`tools/platformmatrix`
+负责校验共享平台注册表，`tools/release` 负责校验发布 archive/container 集合与 checksums。
 
 `scripts/cmd/nativeevidence/` 按 evidence 生命周期分卷：`main.go` 负责 subcommand 与 flag；`models.go` 保存
 target 和 evidence schema；`record.go` 记录单 runner evidence；`consolidate.go` 校验并合并六目标结果；
@@ -553,30 +544,9 @@ target 和 evidence schema；`record.go` 记录单 runner evidence；`consolidat
 `workflow_policy.go` 只验证 native-evidence workflow。测试分别覆盖 policy、record、consolidate，fixture
 helper 再按 workflow 与 evidence/archive 分开，避免把策略测试重新堆进单一文件。
 
-`go run ./scripts/cmd/releaseworkflow --workflow .github/workflows/release.yml` 启动 release workflow 的 YAML AST policy，而不是依赖
-文本排版或行号。它精确检查 tag trigger、九份 job 的权限/依赖、受保护 E2E 的 secret 映射和发布阻断、六个 test/production runner matrix、每一个
-`uses` 的 40 位 SHA，以及 publish 的 SemVer channel 调用。默认分支 ancestry 必须在无
-`environment`、无 secret 的 `verify_release_source` job 中完成；只有该 job 成功后，publish 才可
-依赖它并声明精确的 `release` Environment、使用签名 metadata step 的两个预期 secret。policy 对所有
-scalar 中的 GitHub expression 按表达式边界扫描 `secrets` context；单引号字符串中的 `}`/`}}`
-以及两个单引号转义不会提前结束扫描，因此签名 metadata step 之外的格式化 secret 引用也会
-fail-closed。policy 还会拒绝 required job、默认分支 ancestry step 与 quality gate 的 `continue-on-error` 或条件 `if`；validate
-与 build checkout 也必须显式 `persist-credentials: false`。为避免 shell 控制流隐藏 gate，每项质量
-检查都是唯一的单命令 `bash` step：policy 精确验证其 run、crate cwd（Rust gate）和 shell，并拒绝
-未审计的 `env`、`defaults` 或其它 step 字段。唯一允许的变量是 root 的 `RELEASE_TAG`，以及 build
-matrix 绑定的 `CC` 与 per-target `RUSTUP_TOOLCHAIN`；Windows 必须使用 `clang -fuse-ld=lld` 链接 MSVC Rust staticlib，避免 MinGW
-GCC 与 `.lib` ABI 混用。解析器同时 fail-closed 地拒绝 YAML alias、merge key 和任何重复 mapping key，
-因此 GitHub 的覆盖或工作目录语义不会与本地检查分叉。validate 固定 checkout 受审计的 workflow SHA；
-其余生产 source checkout 固定为精确 tag。尤其
-`verify_release_source` 只能按顺序执行 full-history、无凭据的 tag checkout 与默认分支 ancestry gate
-这两个步骤，禁止 `ref`、`repository`、`path` 或中间切换 HEAD 的 step 改变被验证的提交。publish 的
-checkout 同样只允许无凭据 tag source，避免签名 metadata 与构建 asset 所属提交不一致。
-build job 必须实际运行 vendored Rust 离线检查、crate cwd 的 `cargo fmt --check` 与 locked/offline
-Clippy `-D warnings`、普通 Go 测试、vet、许可证、封装、固定版本 `pre-commit==4.6.0`、
-pre-commit 和 `git diff --check`；production build job 只从 clean tag tree 生成
-`verified-release-*` artifact。发布渠道仅可由
-`go run ./scripts/cmd/releaseassets channel --version ...` 判定；build metadata 中的连字符不会使 stable
-tag 误变为 prerelease。
+release workflow 本身就是顺序与权限的事实来源。生产 archive、container、prepared checksums 以及针对
+真实 production archive 的 Homebrew 安装验证都必须在 `release-approval` 前完成；审批后由
+保存发布 secrets 的 `release` environment 消费已经批准的同一批 artifact，不重新构建。
 
 Go 1.27.1 不支持 Windows ARM64 的 race detector，但 release matrix 仍会在六个原生目标上实际执行 race gate：
 其中五个平台运行 `go test -race ./...`，Windows ARM64 则必须执行同一命令并精确匹配 Go 官方
@@ -634,7 +604,7 @@ macOS Intel/arm64 与 Linux amd64/arm64 四个生产同款 runner 上执行真�
 也不会 clone、提交或推送 Homebrew tap。Linux 分支在固定 digest、短生命周期 Homebrew 容器中安装只读挂载的
 本地 staging formula；macOS 保持原生普通安装命令。
 它用于在正式发布之前复现 Homebrew 安装链路，**不替代**正式 tag 发布、签名 Release、tap 部署或发布后的
-安装验收。`go run ./scripts/cmd/prepublishhomebrew --workflow .github/workflows/homebrew-prepublish-verify.yml` 会在本地和质量门中检查该 workflow 的不可变边界。
+安装验收。质量门只保留 formula 与 artifact 的行为级校验，不再复制一套 workflow policy 实现。
 
 正式发布目前仍必须被正式 tag、签名 GitHub Release、tap formula 与后续安装验收阻断。完整
 six-target staticlib/manifest 与真实 native artifact 证据必须已受控收集并回填（见「Rust ugoira staticlib」一节）；

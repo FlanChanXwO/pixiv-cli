@@ -57,9 +57,9 @@ jobs:
             exit 1
           fi
           printf '%s\n' "$response" | grep -Eq 'HTTP/[0-9.]+ 404|HTTP 404'
-      - name: Statically check release workflow policy
+      - name: Check release behavior contracts
         shell: bash
-        run: go run ./scripts/cmd/releaseworkflow --workflow .github/workflows/release.yml
+        run: go test ./tools/release ./tools/platformmatrix -count=1
 
   e2e:
     name: SDK E2E contract gate
@@ -85,11 +85,44 @@ jobs:
           test -z "${FANBOX_SDK_E2E:-}"
           go test ./e2e -count=1 -v
 
+  resolve_platforms:
+    name: Resolve release platform matrices
+    needs:
+      - validate
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    outputs:
+      release: ${{ steps.release.outputs.matrix }}
+      container: ${{ steps.container.outputs.matrix }}
+      homebrew: ${{ steps.homebrew.outputs.matrix }}
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          persist-credentials: false
+          ref: ${{ env.RELEASE_TAG }}
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff
+        with:
+          go-version: '1.27.1'
+      - name: Resolve release platforms
+        id: release
+        shell: bash
+        run: go run ./tools/platformmatrix --capability release --github-output "$GITHUB_OUTPUT"
+      - name: Resolve container platforms
+        id: container
+        shell: bash
+        run: go run ./tools/platformmatrix --capability container --github-output "$GITHUB_OUTPUT"
+      - name: Resolve Homebrew platforms
+        id: homebrew
+        shell: bash
+        run: go run ./tools/platformmatrix --capability homebrew --github-output "$GITHUB_OUTPUT"
+
   build:
     name: Build ${{ matrix.goos }}/${{ matrix.goarch }}
     needs:
       - validate
       - e2e
+      - resolve_platforms
     runs-on: ${{ matrix.runner }}
     permissions:
       contents: read
@@ -103,50 +136,7 @@ jobs:
       GIT_CONFIG_VALUE_0: 'false'
     strategy:
       fail-fast: false
-      matrix:
-        include:
-          - runner: macos-15-intel
-            goos: darwin
-            goarch: amd64
-            rust_target: x86_64-apple-darwin
-            rust_toolchain: '1.96.0'
-            artifact: darwin-amd64
-            cc: clang
-          - runner: macos-15
-            goos: darwin
-            goarch: arm64
-            rust_target: aarch64-apple-darwin
-            rust_toolchain: '1.96.1'
-            artifact: darwin-arm64
-            cc: clang
-          - runner: ubuntu-22.04
-            goos: linux
-            goarch: amd64
-            rust_target: x86_64-unknown-linux-gnu
-            rust_toolchain: '1.96.1'
-            artifact: linux-amd64
-            cc: gcc
-          - runner: ubuntu-22.04-arm
-            goos: linux
-            goarch: arm64
-            rust_target: aarch64-unknown-linux-gnu
-            rust_toolchain: '1.96.1'
-            artifact: linux-arm64
-            cc: gcc
-          - runner: windows-2025
-            goos: windows
-            goarch: amd64
-            rust_target: x86_64-pc-windows-msvc
-            rust_toolchain: '1.96.0'
-            artifact: windows-amd64
-            cc: clang -fuse-ld=lld
-          - runner: windows-11-arm
-            goos: windows
-            goarch: arm64
-            rust_target: aarch64-pc-windows-msvc
-            rust_toolchain: '1.96.1'
-            artifact: windows-arm64
-            cc: clang -fuse-ld=lld
+      matrix: ${{ fromJSON(needs.resolve_platforms.outputs.release) }}
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
         with:
@@ -201,7 +191,9 @@ jobs:
   # 生产资产在独立 runner 上从 immutable tag 重建，避免测试进程的副作用影响 Release。
   build_production:
     name: Build production ${{ matrix.goos }}/${{ matrix.goarch }}
-    needs: build
+    needs:
+      - build
+      - resolve_platforms
     runs-on: ${{ matrix.runner }}
     permissions:
       contents: read
@@ -210,50 +202,7 @@ jobs:
       RUSTUP_TOOLCHAIN: ${{ matrix.rust_toolchain }}
     strategy:
       fail-fast: false
-      matrix:
-        include:
-          - runner: macos-15-intel
-            goos: darwin
-            goarch: amd64
-            rust_target: x86_64-apple-darwin
-            rust_toolchain: '1.96.0'
-            artifact: darwin-amd64
-            cc: clang
-          - runner: macos-15
-            goos: darwin
-            goarch: arm64
-            rust_target: aarch64-apple-darwin
-            rust_toolchain: '1.96.1'
-            artifact: darwin-arm64
-            cc: clang
-          - runner: ubuntu-22.04
-            goos: linux
-            goarch: amd64
-            rust_target: x86_64-unknown-linux-gnu
-            rust_toolchain: '1.96.1'
-            artifact: linux-amd64
-            cc: gcc
-          - runner: ubuntu-22.04-arm
-            goos: linux
-            goarch: arm64
-            rust_target: aarch64-unknown-linux-gnu
-            rust_toolchain: '1.96.1'
-            artifact: linux-arm64
-            cc: gcc
-          - runner: windows-2025
-            goos: windows
-            goarch: amd64
-            rust_target: x86_64-pc-windows-msvc
-            rust_toolchain: '1.96.0'
-            artifact: windows-amd64
-            cc: clang -fuse-ld=lld
-          - runner: windows-11-arm
-            goos: windows
-            goarch: arm64
-            rust_target: aarch64-pc-windows-msvc
-            rust_toolchain: '1.96.1'
-            artifact: windows-arm64
-            cc: clang -fuse-ld=lld
+      matrix: ${{ fromJSON(needs.resolve_platforms.outputs.release) }}
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
         with:
@@ -310,6 +259,21 @@ jobs:
             --target '${{ matrix.goos }}/${{ matrix.goarch }}' \
             --binary "dist/pixiv${{ matrix.goos == 'windows' && '.exe' || '' }}" \
             --output-dir dist
+      - name: Smoke the exact production package
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p smoke
+          archive="dist/pixiv-cli_${RELEASE_TAG#v}_${{ matrix.goos }}_${{ matrix.goarch }}"
+          binary='smoke/pixiv'
+          if [ '${{ matrix.goos }}' = windows ]; then
+            7z x "${archive}.zip" -osmoke
+            binary='smoke/pixiv.exe'
+          else
+            tar -xzf "${archive}.tar.gz" -C smoke
+          fi
+          test -f "$binary"
+          test "$("$binary" --version)" = "pixiv $RELEASE_TAG"
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: verified-release-${{ matrix.artifact }}
@@ -323,27 +287,13 @@ jobs:
     name: Build container ${{ matrix.goos }}/${{ matrix.goarch }}
     needs:
       - build
+      - resolve_platforms
     runs-on: ${{ matrix.runner }}
     permissions:
       contents: read
     strategy:
       fail-fast: false
-      matrix:
-        include:
-          - runner: ubuntu-22.04
-            goos: linux
-            goarch: amd64
-            rust_target: x86_64-unknown-linux-gnu
-            rust_toolchain: '1.96.1'
-            artifact: linux-amd64
-            cc: gcc
-          - runner: ubuntu-22.04-arm
-            goos: linux
-            goarch: arm64
-            rust_target: aarch64-unknown-linux-gnu
-            rust_toolchain: '1.96.1'
-            artifact: linux-arm64
-            cc: gcc
+      matrix: ${{ fromJSON(needs.resolve_platforms.outputs.container) }}
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
         with:
@@ -489,13 +439,52 @@ jobs:
           git show-ref --verify --quiet "refs/remotes/origin/$DEFAULT_BRANCH"
           git merge-base --is-ancestor HEAD "origin/$DEFAULT_BRANCH"
 
+  prepare_release:
+    name: Prepare release materials
+    needs:
+      - validate
+      - verify_release_source
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          persist-credentials: false
+          ref: ${{ env.RELEASE_TAG }}
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff
+        with:
+          go-version: '1.27.1'
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          pattern: verified-release-*
+          path: dist
+          merge-multiple: true
+      - name: Verify the registry-defined release archive set
+        shell: bash
+        run: |
+          set -euo pipefail
+          version="${RELEASE_TAG#v}"
+          go run ./tools/release verify-artifact-set --dir dist --version "$version"
+          go run ./tools/release checksums --dir dist --version "$version" --output dist/checksums.txt
+          test -s dist/checksums.txt
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: prepared-release-checksums
+          path: dist/checksums.txt
+          if-no-files-found: error
+          retention-days: 1
+
   approve_release:
     name: Approve final release publication
     needs:
       - build_container
       - verify_release_source
+      - prepare_release
+      - verify_homebrew_formula
     runs-on: ubuntu-24.04
     environment: release-approval
+    permissions: {}
     steps:
       - name: Record final release approval
         shell: bash
@@ -506,10 +495,10 @@ jobs:
     needs:
       - build_container
       - verify_release_source
+      - prepare_release
+      - verify_homebrew_formula
       - approve_release
     runs-on: ubuntu-24.04
-    # release 只承载发布 secrets；人工审批统一由 approve_release 的
-    # release-approval Environment 在最终发布边界执行一次。
     environment: release
     permissions:
       contents: write
@@ -523,28 +512,16 @@ jobs:
           go-version: '1.27.1'
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
         with:
-          name: verified-release-darwin-amd64
+          pattern: verified-release-*
           path: dist
+          merge-multiple: true
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
         with:
-          name: verified-release-darwin-arm64
-          path: dist
-      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
-        with:
-          name: verified-release-linux-amd64
-          path: dist
-      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
-        with:
-          name: verified-release-linux-arm64
-          path: dist
-      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
-        with:
-          name: verified-release-windows-amd64
-          path: dist
-      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
-        with:
-          name: verified-release-windows-arm64
-          path: dist
+          name: prepared-release-checksums
+          path: prepared-release
+      - name: Re-verify the approved archive set
+        shell: bash
+        run: go run ./tools/release verify-artifact-set --dir dist --version "${RELEASE_TAG#v}"
       - name: Create the signed release metadata
         shell: bash
         env:
@@ -569,6 +546,9 @@ jobs:
             --private-key "$key_path" \
             --changelog "changelog/v${RELEASE_TAG#v}/en.md" \
             --changelog-zh "changelog/v${RELEASE_TAG#v}/zh-CN.md"
+          while read -r expected_hash expected_name; do
+            grep -Fx "$expected_hash  $expected_name" release/checksums.txt >/dev/null
+          done < prepared-release/checksums.txt
       - name: Publish only the verified assets
         shell: bash
         env:
@@ -638,38 +618,43 @@ jobs:
           go-version: '1.27.1'
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
         with:
-          name: verified-container-linux-amd64
-          path: containers/linux-amd64
-      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
-        with:
-          name: verified-container-linux-arm64
-          path: containers/linux-arm64
+          pattern: verified-container-*
+          path: containers
+          merge-multiple: true
       - name: Load the verified container artifacts
         shell: bash
         run: |
           set -euo pipefail
-          docker load --input containers/linux-amd64/pixiv-cli-linux-amd64.tar
-          docker load --input containers/linux-arm64/pixiv-cli-linux-arm64.tar
+          go run ./tools/release verify-container-set --dir containers
+          for archive in containers/pixiv-cli-*.tar; do
+            docker load --input "$archive"
+          done
       - name: Authenticate to GHCR
         shell: bash
         env:
           GITHUB_TOKEN: ${{ github.token }}
         run: printf '%s' "$GITHUB_TOKEN" | docker login ghcr.io --username "$GITHUB_ACTOR" --password-stdin
-      - name: Push architecture-specific verified images
+      - name: Push registry-defined verified images
         shell: bash
         run: |
           set -euo pipefail
-          docker tag "pixiv-cli:${RELEASE_TAG}-linux-amd64" "ghcr.io/flanchanxwo/pixiv-cli:${RELEASE_TAG}-linux-amd64"
-          docker push "ghcr.io/flanchanxwo/pixiv-cli:${RELEASE_TAG}-linux-amd64"
-          docker tag "pixiv-cli:${RELEASE_TAG}-linux-arm64" "ghcr.io/flanchanxwo/pixiv-cli:${RELEASE_TAG}-linux-arm64"
-          docker push "ghcr.io/flanchanxwo/pixiv-cli:${RELEASE_TAG}-linux-arm64"
+          : > "$RUNNER_TEMP/container-refs"
+          for archive in containers/pixiv-cli-*.tar; do
+            artifact=$(basename "$archive" .tar)
+            artifact="${artifact#pixiv-cli-}"
+            image="pixiv-cli:${RELEASE_TAG}-${artifact}"
+            target="ghcr.io/flanchanxwo/pixiv-cli:${RELEASE_TAG}-${artifact}"
+            docker tag "$image" "$target"
+            docker push "$target"
+            printf '%s\n' "$target" >> "$RUNNER_TEMP/container-refs"
+          done
       - name: Publish the exact-version multi-architecture manifest
         shell: bash
         run: |
           set -euo pipefail
-          docker manifest create "ghcr.io/flanchanxwo/pixiv-cli:${RELEASE_TAG}" \
-            --amend "ghcr.io/flanchanxwo/pixiv-cli:${RELEASE_TAG}-linux-amd64" \
-            --amend "ghcr.io/flanchanxwo/pixiv-cli:${RELEASE_TAG}-linux-arm64"
+          mapfile -t refs < "$RUNNER_TEMP/container-refs"
+          test "${#refs[@]}" -gt 0
+          docker manifest create "ghcr.io/flanchanxwo/pixiv-cli:${RELEASE_TAG}" "${refs[@]}"
           docker manifest push "ghcr.io/flanchanxwo/pixiv-cli:${RELEASE_TAG}"
       - name: Advance latest only for the newest stable release
         shell: bash
@@ -688,9 +673,8 @@ jobs:
                 | sort -Vr | head -n1
               )
               test "${RELEASE_TAG}" = "${latest_stable_tag}"
-              docker manifest create "ghcr.io/flanchanxwo/pixiv-cli:latest" \
-                --amend "ghcr.io/flanchanxwo/pixiv-cli:${RELEASE_TAG}-linux-amd64" \
-                --amend "ghcr.io/flanchanxwo/pixiv-cli:${RELEASE_TAG}-linux-arm64"
+              mapfile -t refs < "$RUNNER_TEMP/container-refs"
+              docker manifest create "ghcr.io/flanchanxwo/pixiv-cli:latest" "${refs[@]}"
               docker manifest push "ghcr.io/flanchanxwo/pixiv-cli:latest"
               ;;
             prerelease)
@@ -704,7 +688,9 @@ jobs:
 
   render_homebrew_formula:
     name: Render the channel Homebrew formula
-    needs: publish
+    needs:
+      - validate
+      - prepare_release
     runs-on: ubuntu-24.04
     permissions:
       contents: read
@@ -718,7 +704,7 @@ jobs:
           go-version: '1.27.1'
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
         with:
-          name: verified-release-checksums
+          name: prepared-release-checksums
           path: verified-release
       - name: Render exactly one channel formula from the published checksums
         shell: bash
@@ -752,33 +738,26 @@ jobs:
           retention-days: 1
 
   verify_homebrew_formula:
-    name: Verify Homebrew on ${{ matrix.os }}/${{ matrix.arch }}
-    needs: render_homebrew_formula
+    name: Verify Homebrew on ${{ matrix.goos }}/${{ matrix.goarch }}
+    needs:
+      - render_homebrew_formula
+      - resolve_platforms
     runs-on: ${{ matrix.runner }}
     permissions:
       contents: read
     strategy:
       fail-fast: false
-      matrix:
-        include:
-          - runner: macos-15-intel
-            os: darwin
-            arch: amd64
-          - runner: macos-15
-            os: darwin
-            arch: arm64
-          - runner: ubuntu-22.04
-            os: linux
-            arch: amd64
-          - runner: ubuntu-22.04-arm
-            os: linux
-            arch: arm64
+      matrix: ${{ fromJSON(needs.resolve_platforms.outputs.homebrew) }}
     steps:
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
         with:
           name: staging-homebrew-formula
           path: staging-formula
-      - name: Install the staging formula and verify its embedded version
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: verified-release-${{ matrix.artifact }}
+          path: release-assets
+      - name: Install the staging formula against the exact production archive
         shell: bash
         run: |
           set -euo pipefail
@@ -788,11 +767,31 @@ jobs:
             *) exit 1 ;;
           esac
           test "$(find staging-formula -maxdepth 1 -type f -print | LC_ALL=C sort)" = "$(printf '%s\n%s\n' staging-formula/formula-name "staging-formula/$formula_name.rb" | LC_ALL=C sort)"
-          if [ '${{ matrix.os }}' = linux ]; then
+          version="${RELEASE_TAG#v}"
+          archive="pixiv-cli_${version}_${{ matrix.goos }}_${{ matrix.goarch }}.tar.gz"
+          test -f "release-assets/$archive"
+          public_url="https://github.com/$GITHUB_REPOSITORY/releases/download/$RELEASE_TAG/$archive"
+          if [ '${{ matrix.goos }}' = linux ]; then
+            verify_url="file:///release-assets/$archive"
+          else
+            verify_url="file://$(pwd)/release-assets/$archive"
+          fi
+          python3 - "$public_url" "$verify_url" "staging-formula/$formula_name.rb" "staging-formula/$formula_name-verify.rb" <<'PY'
+          import pathlib
+          import sys
+          old, new, source, target = sys.argv[1:]
+          body = pathlib.Path(source).read_text(encoding="utf-8")
+          if body.count(old) != 1:
+              raise SystemExit("expected exactly one production archive URL in formula")
+          pathlib.Path(target).write_text(body.replace(old, new), encoding="utf-8")
+          PY
+          if [ '${{ matrix.goos }}' = linux ]; then
             staging_dir="$(pwd)/staging-formula"
+            assets_dir="$(pwd)/release-assets"
             case "$staging_dir" in /*) ;; *) exit 1 ;; esac
             docker run --rm \
               --mount "type=bind,src=$staging_dir,dst=/staging-formula,readonly" \
+              --mount "type=bind,src=$assets_dir,dst=/release-assets,readonly" \
               --env RELEASE_TAG \
               --env HOMEBREW_NO_AUTO_UPDATE=1 \
               --env HOMEBREW_NO_ENV_HINTS=1 \
@@ -808,7 +807,7 @@ jobs:
                 staging_tap=pixiv-cli-release/staging
                 tap_dir="$(brew --repository)/Library/Taps/pixiv-cli-release/homebrew-staging"
                 brew tap-new "$staging_tap" --no-git
-                cp "/staging-formula/$formula_name.rb" "$tap_dir/Formula/$formula_name.rb"
+                cp "/staging-formula/$formula_name-verify.rb" "$tap_dir/Formula/$formula_name.rb"
                 brew install --formula "$staging_tap/$formula_name"
                 test "$(pixiv --version)" = "pixiv $RELEASE_TAG"
               '
@@ -817,14 +816,16 @@ jobs:
             tap_dir="$(brew --repository)/Library/Taps/pixiv-cli-release/homebrew-staging"
             brew tap-new "$staging_tap" --no-git
             brew trust --tap "$staging_tap"
-            cp "staging-formula/$formula_name.rb" "$tap_dir/Formula/$formula_name.rb"
+            cp "staging-formula/$formula_name-verify.rb" "$tap_dir/Formula/$formula_name.rb"
             brew install --formula "$staging_tap/$formula_name"
             test "$(pixiv --version)" = "pixiv $RELEASE_TAG"
           fi
 
   deploy_homebrew_tap:
     name: Deploy the verified Homebrew formula
-    needs: verify_homebrew_formula
+    needs:
+      - verify_homebrew_formula
+      - publish
     runs-on: ubuntu-24.04
     environment: release
     permissions:

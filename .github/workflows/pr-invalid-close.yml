@@ -1,0 +1,68 @@
+name: Close stale invalid PRs
+
+on:
+  schedule:
+    - cron: '23 3 * * *'
+  workflow_dispatch: {}
+
+permissions: {}
+
+jobs:
+  close:
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      issues: write
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Build trusted PR metadata validator
+        shell: bash
+        run: go build -o "$RUNNER_TEMP/prmeta" ./tools/prmeta
+
+      - name: Close PRs whose invalid body has been unchanged for seven days
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          now=$(date -u +%s)
+          gh api --paginate "repos/$REPO/pulls?state=open&per_page=100" --jq '.[].number' | while read -r pr; do
+            state_comment=$(gh api --paginate "repos/$REPO/issues/$pr/comments" --jq '.[] | select(.user.login == "github-actions[bot]" and (.body | contains("<!-- pr-policy-state:"))) | .id' | head -1)
+            [ -n "$state_comment" ] || continue
+            state_body=$(gh api "repos/$REPO/issues/comments/$state_comment" --jq '.body')
+            state=$(printf '%s\n' "$state_body" | sed -n 's/^<!-- pr-policy-state:\(.*\) -->$/\1/p' | head -1)
+            printf '%s' "$state" | jq -e . >/dev/null 2>&1 || continue
+
+            gh api "repos/$REPO/pulls/$pr" --jq '.body // ""' > "$RUNNER_TEMP/pr-$pr.md"
+            current_hash=$(sha256sum "$RUNNER_TEMP/pr-$pr.md" | awk '{print $1}')
+            recorded_hash=$(printf '%s' "$state" | jq -r '.body_sha256 // ""')
+            [ "$current_hash" = "$recorded_hash" ] || continue
+
+            set +e
+            "$RUNNER_TEMP/prmeta" --body-file "$RUNNER_TEMP/pr-$pr.md" --whitelist tools/verification/command-whitelist.txt --cli pixiv >/dev/null 2>&1
+            validation_rc=$?
+            set -e
+            if [ "$validation_rc" -eq 0 ]; then
+              gh api --method DELETE "repos/$REPO/issues/comments/$state_comment" >/dev/null
+              continue
+            fi
+
+            first_failed_at=$(printf '%s' "$state" | jq -r '.first_failed_at // ""')
+            [ -n "$first_failed_at" ] || continue
+            first_epoch=$(date -u -d "$first_failed_at" +%s)
+            if [ $((now - first_epoch)) -lt 604800 ]; then
+              continue
+            fi
+            gh api --method PATCH "repos/$REPO/pulls/$pr" -f state=closed >/dev/null
+            gh api --method POST "repos/$REPO/issues/$pr/comments" -f body='This PR was closed because its metadata remained invalid and unchanged for 7 days. Update the PR body and reopen it when ready.' >/dev/null
+          done

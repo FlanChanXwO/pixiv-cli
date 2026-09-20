@@ -174,9 +174,8 @@ func TestMaintainerDocsDocumentContainerReleaseVerification(t *testing.T) {
 				"DOCKER_HUB_TOKEN",
 				"docker.io/flanchanxwo/pixiv-cli",
 				"release_run_id",
-				"go test ./scripts/internal/releaseworkflow -count=1",
 				"go test ./scripts/tests/containerrelease -count=1",
-				"go run ./scripts/cmd/releaseworkflow --workflow .github/workflows/release.yml",
+				"go test ./tools/release ./tools/platformmatrix -count=1",
 			},
 		},
 		"Simplified Chinese": {
@@ -196,9 +195,8 @@ func TestMaintainerDocsDocumentContainerReleaseVerification(t *testing.T) {
 				"DOCKER_HUB_TOKEN",
 				"docker.io/flanchanxwo/pixiv-cli",
 				"release_run_id",
-				"go test ./scripts/internal/releaseworkflow -count=1",
 				"go test ./scripts/tests/containerrelease -count=1",
-				"go run ./scripts/cmd/releaseworkflow --workflow .github/workflows/release.yml",
+				"go test ./tools/release ./tools/platformmatrix -count=1",
 			},
 		},
 	}
