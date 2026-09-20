@@ -63,7 +63,7 @@ func checkPinnedGitHubKnownHosts(body []byte) error {
 // requiredJobs 是 release workflow 必须包含的 job 名称集合。
 var requiredJobs = []string{
 	"validate", "e2e", "build", "build_production", "release_notes_audit",
-	"verify_release_source", "publish", "render_homebrew_formula",
+	"verify_release_source", "approve_release", "publish", "render_homebrew_formula",
 	"verify_homebrew_formula", "deploy_homebrew_tap",
 }
 
@@ -165,6 +165,10 @@ func checkWorkflow(body []byte) error {
 	if !ok || verifyReleaseSource.Kind != yaml.MappingNode {
 		return errors.New("workflow must have a verify_release_source job")
 	}
+	approveRelease, ok := workflowyaml.MappingValue(jobs, "approve_release")
+	if !ok || approveRelease.Kind != yaml.MappingNode {
+		return errors.New("workflow must have an approve_release job")
+	}
 	publish, ok := workflowyaml.MappingValue(jobs, "publish")
 	if !ok || publish.Kind != yaml.MappingNode {
 		return errors.New("workflow must have a publish job")
@@ -184,7 +188,10 @@ func checkWorkflow(body []byte) error {
 	// 先报告任何越界 secret 引用，避免后续 checkout 形状校验掩盖真实的凭据泄露风险。
 	preflightPublishSteps, _ := jobSteps(publish)
 	preflightSigningIndex, _ := signingStepIndex(preflightPublishSteps)
-	if err := checkSigningSecretReachability(validate, build, productionBuild, releaseNotesAudit, verifyReleaseSource, publish, preflightPublishSteps, preflightSigningIndex); err != nil {
+	if err := checkSigningSecretReachability(validate, build, productionBuild, releaseNotesAudit, verifyReleaseSource, approveRelease, publish, preflightPublishSteps, preflightSigningIndex); err != nil {
+		return err
+	}
+	if err := checkApprovalEnvironmentReachability(jobs, approveRelease); err != nil {
 		return err
 	}
 	if err := checkHomebrewSecretReachability(renderHomebrew, verifyHomebrew, deployHomebrew); err != nil {
@@ -208,9 +215,12 @@ func checkWorkflow(body []byte) error {
 	if err := checkVerifyReleaseSourceJob(verifyReleaseSource); err != nil {
 		return err
 	}
+	buildContainer, _ := workflowyaml.MappingValue(jobs, "build_container")
+	if err := checkApproveReleaseJob(approveRelease, buildContainer != nil); err != nil {
+		return err
+	}
 	// 容器 job 是可选的：一旦存在，GitHub Release 必须等待其 artifact。
 	// 该检查必须先于 publish contract，否则旧的单依赖校验会掩盖一致性边界错误。
-	buildContainer, _ := workflowyaml.MappingValue(jobs, "build_container")
 	if err := requirePublishAfterContainerBuild(publish, buildContainer); err != nil {
 		return err
 	}
@@ -218,7 +228,7 @@ func checkWorkflow(body []byte) error {
 	if err != nil {
 		return err
 	}
-	if err := checkSigningSecretReachability(validate, build, productionBuild, releaseNotesAudit, verifyReleaseSource, publish, publishSteps, signingIndex); err != nil {
+	if err := checkSigningSecretReachability(validate, build, productionBuild, releaseNotesAudit, verifyReleaseSource, approveRelease, publish, publishSteps, signingIndex); err != nil {
 		return err
 	}
 	if err := checkRenderHomebrewJob(renderHomebrew); err != nil {

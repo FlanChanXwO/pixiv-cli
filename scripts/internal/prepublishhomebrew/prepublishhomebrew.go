@@ -166,7 +166,8 @@ func checkWorkflow(body []byte) error {
 	if !exactStringMap(value(root, "env"), map[string]string{"RELEASE_TAG": "${{ inputs.release_tag }}"}) || !contentsRead(root) {
 		return errors.New("workflow must bind only the required release_tag with contents read")
 	}
-	// 唯一 secret 只能留给经过 Environment 审批的最终 SSH push step。
+	// 唯一 secret 只能留给 release Environment 中的最终 SSH push step；
+	// 正式 release 的人工审批由独立 release-approval Environment 统一承担。
 	if strings.Count(string(body), "${{ secrets.") != 1 {
 		return errors.New("workflow must reference exactly one protected deploy secret")
 	}

@@ -489,14 +489,27 @@ jobs:
           git show-ref --verify --quiet "refs/remotes/origin/$DEFAULT_BRANCH"
           git merge-base --is-ancestor HEAD "origin/$DEFAULT_BRANCH"
 
+  approve_release:
+    name: Approve final release publication
+    needs:
+      - build_container
+      - verify_release_source
+    runs-on: ubuntu-24.04
+    environment: release-approval
+    steps:
+      - name: Record final release approval
+        shell: bash
+        run: 'true'
+
   publish:
     name: Sign and publish the GitHub Release
     needs:
       - build_container
       - verify_release_source
+      - approve_release
     runs-on: ubuntu-24.04
-    # Task 20 must create this protected Environment and store the signing values
-    # as its secrets, rather than repository secrets available to arbitrary tags.
+    # release 只承载发布 secrets；人工审批统一由 approve_release 的
+    # release-approval Environment 在最终发布边界执行一次。
     environment: release
     permissions:
       contents: write

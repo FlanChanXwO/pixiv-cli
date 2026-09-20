@@ -56,6 +56,53 @@ func checkVerifyReleaseSourceJob(job *yaml.Node) error {
 	return nil
 }
 
+func checkApproveReleaseJob(job *yaml.Node, requiresContainerDependency bool) error {
+	if err := requireRequiredJobExecution(job, "approve_release job"); err != nil {
+		return err
+	}
+	if err := requireOnlyMappingKeys(job, "name", "needs", "runs-on", "environment", "steps"); err != nil {
+		return fmt.Errorf("approve_release job: %w", err)
+	}
+	if requiresContainerDependency {
+		if err := requireExactStringSequence(job, "needs", "build_container", "verify_release_source"); err != nil {
+			return fmt.Errorf("approve_release job: %w", err)
+		}
+	} else if err := workflowyaml.RequireScalar(job, "needs", "verify_release_source"); err != nil {
+		return fmt.Errorf("approve_release job: %w", err)
+	}
+	if err := workflowyaml.RequireScalar(job, "runs-on", "ubuntu-24.04"); err != nil {
+		return fmt.Errorf("approve_release job: %w", err)
+	}
+	if err := workflowyaml.RequireScalar(job, "environment", "release-approval"); err != nil {
+		return errors.New("approve_release environment must be release-approval")
+	}
+	if workflowyaml.ContainsSecretReference(job) {
+		return errors.New("approve_release job must not reference secrets")
+	}
+	steps, err := jobSteps(job)
+	if err != nil || len(steps) != 1 {
+		return errors.New("approve_release job must contain only the final approval marker step")
+	}
+	if err := requireCanonicalRunStep(steps[0], "final release approval step", "true"); err != nil {
+		return err
+	}
+	return nil
+}
+
+func checkApprovalEnvironmentReachability(jobs, approval *yaml.Node) error {
+	for index := 0; index+1 < len(jobs.Content); index += 2 {
+		job := jobs.Content[index+1]
+		environment, ok := workflowyaml.MappingValue(job, "environment")
+		if !ok || environment.Kind != yaml.ScalarNode || environment.Value != "release-approval" {
+			continue
+		}
+		if job != approval {
+			return errors.New("release-approval environment may only be used by approve_release")
+		}
+	}
+	return nil
+}
+
 type checkoutWithRequirement struct {
 	key   string
 	value string
@@ -126,20 +173,22 @@ func checkPublishJob(job *yaml.Node, requiresContainerDependency bool) (int, []*
 	// 无容器构建时维持原有单依赖；有容器构建时 Release 必须等待两架构 artifact。
 	if requiresContainerDependency {
 		validNeeds := false
-		if needs, ok := workflowyaml.MappingValue(job, "needs"); ok && needs.Kind == yaml.SequenceNode && len(needs.Content) == 2 {
-			values := make([]string, 0, 2)
+		if needs, ok := workflowyaml.MappingValue(job, "needs"); ok && needs.Kind == yaml.SequenceNode && len(needs.Content) == 3 {
+			values := make([]string, 0, 3)
 			for _, dependency := range needs.Content {
 				if dependency.Kind == yaml.ScalarNode {
 					values = append(values, dependency.Value)
 				}
 			}
-			validNeeds = len(values) == 2 &&
-				values[0] == "build_container" && values[1] == "verify_release_source"
+			validNeeds = len(values) == 3 &&
+				values[0] == "build_container" &&
+				values[1] == "verify_release_source" &&
+				values[2] == "approve_release"
 		}
 		if !validNeeds {
-			return 0, nil, errors.New("publish job with container builds must depend on [build_container, verify_release_source]")
+			return 0, nil, errors.New("publish job with container builds must depend on [build_container, verify_release_source, approve_release]")
 		}
-	} else if err := workflowyaml.RequireScalar(job, "needs", "verify_release_source"); err != nil {
+	} else if err := requireExactStringSequence(job, "needs", "verify_release_source", "approve_release"); err != nil {
 		return 0, nil, fmt.Errorf("publish job: %w", err)
 	}
 	if err := workflowyaml.RequireScalar(job, "runs-on", "ubuntu-24.04"); err != nil {
@@ -346,11 +395,11 @@ func requireApprovedChannelCaseCommands(commands []string, channelCase string) e
 	return nil
 }
 
-func checkSigningSecretReachability(validate, build, productionBuild, releaseNotesAudit, verifyReleaseSource, publish *yaml.Node, publishSteps []*yaml.Node, signingIndex int) error {
-	// release Environment 的 secret 只应在 verify_release_source 成功后才由 publish job 注入；
+func checkSigningSecretReachability(validate, build, productionBuild, releaseNotesAudit, verifyReleaseSource, approveRelease, publish *yaml.Node, publishSteps []*yaml.Node, signingIndex int) error {
+	// release Environment 的 secret 只应在 verify_release_source 与最终人工审批成功后由 publish job 注入；
 	// 非发布 job、publish 的 job 级字段和非签名 step 都不允许引用 secrets，防止同一 job
 	// 启动即注入的 credential 在 shell gate 或其它步骤被提前访问。
-	for _, job := range []*yaml.Node{validate, build, productionBuild, releaseNotesAudit, verifyReleaseSource} {
+	for _, job := range []*yaml.Node{validate, build, productionBuild, releaseNotesAudit, verifyReleaseSource, approveRelease} {
 		if workflowyaml.ContainsSecretReference(job) {
 			return errors.New("non-release job must not reference secrets")
 		}
