@@ -468,7 +468,9 @@ func renderResults(args []string) {
 			fatal(err)
 		}
 		defer file.Close()
-		fmt.Fprintf(file, "overall=%s\n", overall)
+		if _, err := fmt.Fprintf(file, "overall=%s\n", overall); err != nil {
+			fatal(err)
+		}
 	}
 }
 

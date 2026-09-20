@@ -3,6 +3,7 @@ package main
 import (
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -25,7 +26,7 @@ func TestBuiltinPrintfAndSanitize(t *testing.T) {
 }
 
 func TestRunPipelineUsesRepositoryBinaryAndPipefail(t *testing.T) {
-	if os.Getenv("GOOS") == "windows" {
+	if runtime.GOOS == "windows" {
 		t.Skip("test helper uses a POSIX executable")
 	}
 	root := t.TempDir()

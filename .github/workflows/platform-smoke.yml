@@ -178,12 +178,13 @@ jobs:
       - name: Require the expected matrix outcome
         shell: bash
         env:
-          DOCS_ONLY: ${{ needs.classify_changes.outputs.docs_only }}
+          CLASSIFY_RESULT: ${{ needs.classify_changes.result }}
           PLATFORM_REQUIRED: ${{ needs.classify_changes.outputs.platform_required }}
           RESOLVE_RESULT: ${{ needs.resolve_platforms.result }}
           MATRIX_RESULT: ${{ needs.packaged_binary_smoke.result }}
         run: |
           set -euo pipefail
+          test "$CLASSIFY_RESULT" = success
           if [ "$PLATFORM_REQUIRED" != true ]; then
             test "$RESOLVE_RESULT" = skipped
             test "$MATRIX_RESULT" = skipped

@@ -92,7 +92,7 @@ jobs:
             fi
             exit 0
           fi
-          printf '%s' "$PR_BODY" > "$RUNNER_TEMP/pr-body-state.md"
+          printf '%s\n' "$PR_BODY" > "$RUNNER_TEMP/pr-body-state.md"
           body_hash=$(sha256sum "$RUNNER_TEMP/pr-body-state.md" | awk '{print $1}')
           first_failed_at=
           if [ -n "$state_comment" ]; then

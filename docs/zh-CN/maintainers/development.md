@@ -547,25 +547,6 @@ helper 再按 workflow 与 evidence/archive 分开，避免把策略测试重新
 release workflow 本身就是顺序与权限的事实来源。生产 archive、container、prepared checksums 以及针对
 真实 production archive 的 Homebrew 安装验证都必须在 `release-approval` 前完成；审批后由
 保存发布 secrets 的 `release` environment 消费已经批准的同一批 artifact，不重新构建。
-scalar 中的 GitHub expression 按表达式边界扫描 `secrets` context；单引号字符串中的 `}`/`}}`
-以及两个单引号转义不会提前结束扫描，因此签名 metadata step 之外的格式化 secret 引用也会
-fail-closed。policy 还会拒绝 required job、默认分支 ancestry step 与 quality gate 的 `continue-on-error` 或条件 `if`；validate
-与 build checkout 也必须显式 `persist-credentials: false`。为避免 shell 控制流隐藏 gate，每项质量
-检查都是唯一的单命令 `bash` step：policy 精确验证其 run、crate cwd（Rust gate）和 shell，并拒绝
-未审计的 `env`、`defaults` 或其它 step 字段。唯一允许的变量是 root 的 `RELEASE_TAG`，以及 build
-matrix 绑定的 `CC` 与 per-target `RUSTUP_TOOLCHAIN`；Windows 必须使用 `clang -fuse-ld=lld` 链接 MSVC Rust staticlib，避免 MinGW
-GCC 与 `.lib` ABI 混用。解析器同时 fail-closed 地拒绝 YAML alias、merge key 和任何重复 mapping key，
-因此 GitHub 的覆盖或工作目录语义不会与本地检查分叉。validate 固定 checkout 受审计的 workflow SHA；
-其余生产 source checkout 固定为精确 tag。尤其
-`verify_release_source` 只能按顺序执行 full-history、无凭据的 tag checkout 与默认分支 ancestry gate
-这两个步骤，禁止 `ref`、`repository`、`path` 或中间切换 HEAD 的 step 改变被验证的提交。publish 的
-checkout 同样只允许无凭据 tag source，避免签名 metadata 与构建 asset 所属提交不一致。
-build job 必须实际运行 vendored Rust 离线检查、crate cwd 的 `cargo fmt --check` 与 locked/offline
-Clippy `-D warnings`、普通 Go 测试、vet、许可证、封装、固定版本 `pre-commit==4.6.0`、
-pre-commit 和 `git diff --check`；production build job 只从 clean tag tree 生成
-`verified-release-*` artifact。发布渠道仅可由
-`go run ./scripts/cmd/releaseassets channel --version ...` 判定；build metadata 中的连字符不会使 stable
-tag 误变为 prerelease。
 
 Go 1.27.1 不支持 Windows ARM64 的 race detector，但 release matrix 仍会在六个原生目标上实际执行 race gate：
 其中五个平台运行 `go test -race ./...`，Windows ARM64 则必须执行同一命令并精确匹配 Go 官方
