@@ -79,6 +79,12 @@ func TestPublishWorkflowKeepsTheImmutableReleaseAndSecretBoundary(t *testing.T) 
 	if !strings.Contains(finalRun, "staticScanClean") || !strings.Contains(finalRun, "aggregateSecurityPending") || !strings.Contains(finalRun, "else if (pendingAggregationOnly)") || !strings.Contains(finalRun, "ClawHub aggregate security scan pending") {
 		fatalf(t, "publish step must make clean static scanning and pending aggregation an explicit verification branch")
 	}
+	if !strings.Contains(finalRun, "Version not found (reset in") ||
+		!strings.Contains(finalRun, "sleep \"$reset_seconds\"") ||
+		strings.Contains(finalRun, "max_attempts=") ||
+		strings.Contains(finalRun, "for attempt in") {
+		fatalf(t, "publish verification must follow ClawHub's reported visibility reset without a fixed retry cap")
+	}
 
 	dryRun := stepByName(t, steps, "Dry-run the exact tagged skill")
 	dryRunText := scalarValue(t, mappingValue(t, dryRun, "run"))
