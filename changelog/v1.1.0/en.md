@@ -14,6 +14,7 @@
 
 - Correct Pixiv wire adapters and continuation handling for artwork/novel reads and mutations, including multi-page artwork indexes, series cursors, recommendation continuation parameters, bookmark detail normalization, and positive cursor validation. ([#82](https://github.com/FlanChanXwO/pixiv-cli/pull/82))
 - Preserve comment metadata without inventing permission semantics: current comment dates map from the verified wire field, numeric `comment_access_control` is retained under `access_control.comment_access_control`, and legacy access metadata remains compatible. ([#82](https://github.com/FlanChanXwO/pixiv-cli/pull/82))
+- Abort the remote-login relay immediately when its parent context is cancelled instead of waiting for graceful HTTP shutdown, preventing active handler cleanup from stalling the cancellation path under race instrumentation. ([#86](https://github.com/FlanChanXwO/pixiv-cli/pull/86))
 
 ## Security
 
