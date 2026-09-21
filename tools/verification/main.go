@@ -15,6 +15,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"runtime"
 	"strconv"
 	"strings"
 	"sync"
@@ -31,6 +32,7 @@ type stageResult struct {
 	ExitCode   int    `json:"exit_code"`
 	DurationMS int64  `json:"duration_ms"`
 	Stderr     string `json:"stderr,omitempty"`
+	pipeClosed bool
 }
 
 type commandResult struct {
@@ -191,6 +193,7 @@ func runPipeline(command verificationpolicy.Command, binary, workspace string, t
 		}()
 	}
 	wg.Wait()
+	normalizeDownstreamPipeClose(results)
 
 	overallExit := 0
 	status := "passed"
@@ -252,8 +255,27 @@ func runStage(ctx context.Context, stage verificationpolicy.Stage, binary, works
 		if result.Stderr == "" {
 			result.Stderr = sanitize(err.Error())
 		}
+		result.pipeClosed = errors.Is(err, io.ErrClosedPipe) ||
+			(runtime.GOOS != "windows" && result.ExitCode == 141) ||
+			strings.TrimSpace(result.Stderr) == "io: read/write on closed pipe"
 	}
 	return result
+}
+
+// normalizeDownstreamPipeClose 保留 pipefail，但允许 head 等成功消费者主动提前关闭输入。
+// 只有右侧所有 stage 都成功时才规范化上游 SIGPIPE/closed-pipe；真实下游失败仍保持失败。
+func normalizeDownstreamPipeClose(results []stageResult) {
+	downstreamPassed := true
+	for index := len(results) - 1; index >= 0; index-- {
+		result := &results[index]
+		if index < len(results)-1 && downstreamPassed && result.pipeClosed {
+			result.Status = "passed"
+			result.ExitCode = 0
+		}
+		if result.ExitCode != 0 {
+			downstreamPassed = false
+		}
+	}
 }
 
 func isBuiltin(name string) bool {

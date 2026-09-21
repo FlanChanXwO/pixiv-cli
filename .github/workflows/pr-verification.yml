@@ -28,7 +28,7 @@ jobs:
       actions: write
       contents: read
       issues: write
-      pull-requests: read
+      pull-requests: write
     outputs:
       execute: ${{ steps.coordinate.outputs.execute }}
       head_sha: ${{ steps.authorize.outputs.head_sha }}
@@ -88,11 +88,19 @@ jobs:
           author=$(printf '%s' "$pr_json" | jq -r '.user.login')
           head_sha=$(printf '%s' "$pr_json" | jq -r '.head.sha')
           head_repo=$(printf '%s' "$pr_json" | jq -r '.head.repo.full_name')
-          base_sha=$(printf '%s' "$pr_json" | jq -r '.base.sha')
+          base_ref=$(printf '%s' "$pr_json" | jq -r '.base.ref')
           if [ -z "$head_repo" ] || [ "$head_repo" = null ]; then
             echo "Pull request head repository is unavailable." >&2
             exit 1
           fi
+          if [ -z "$base_ref" ] || [ "$base_ref" = null ]; then
+            echo "Pull request base branch is unavailable." >&2
+            exit 1
+          fi
+          # PR .base.sha 是 PR 创建时捕获的基线，可能落后于当前受保护分支。
+          # trusted verification 必须从当前 base branch tip 执行。
+          base_ref_encoded=$(printf '%s' "$base_ref" | jq -sRr @uri)
+          base_sha=$(gh api "repos/$REPO/branches/$base_ref_encoded" --jq '.commit.sha')
 
           authorized=false
           if [ "$commenter" = "$author" ]; then
@@ -108,14 +116,24 @@ jobs:
             exit 0
           fi
 
-          reaction_id=$(gh api --method POST "repos/$REPO/issues/comments/$comment_id/reactions" -H 'Accept: application/vnd.github+json' -f content=eyes --jq '.id')
+          reaction_subject() {
+            gh api "repos/$REPO/issues/comments/$1" --jq '.node_id'
+          }
+          add_reaction() {
+            local subject_id
+            subject_id=$(reaction_subject "$1")
+            gh api graphql \
+              -f query='mutation($subjectId: ID!, $content: ReactionContent!) { addReaction(input: {subjectId: $subjectId, content: $content}) { reaction { content } } }' \
+              -f subjectId="$subject_id" \
+              -f content="$2" >/dev/null
+          }
+          add_reaction "$comment_id" EYES
           same_repo=false
           [ "$head_repo" = "$REPO" ] && same_repo=true
           {
             printf '%s\n' 'accepted=true'
             printf 'pr=%s\n' "$pr"
             printf 'comment_id=%s\n' "$comment_id"
-            printf 'reaction_id=%s\n' "$reaction_id"
             printf 'head_sha=%s\n' "$head_sha"
             printf 'head_repo=%s\n' "$head_repo"
             printf 'base_sha=%s\n' "$base_sha"
@@ -155,7 +173,6 @@ jobs:
           REPO: ${{ github.repository }}
           PR: ${{ steps.authorize.outputs.pr }}
           COMMENT_ID: ${{ steps.authorize.outputs.comment_id }}
-          REACTION_ID: ${{ steps.authorize.outputs.reaction_id }}
           HEAD_SHA: ${{ steps.authorize.outputs.head_sha }}
           TEMPLATE_OK: ${{ steps.policy.outputs.template_ok }}
           TEST_OK: ${{ steps.policy.outputs.test_ok }}
@@ -177,15 +194,31 @@ jobs:
               gh api --method POST "repos/$REPO/issues/$PR/comments" -F body=@"$file" --jq '.id'
             fi
           }
+          reaction_subject() {
+            gh api "repos/$REPO/issues/comments/$1" --jq '.node_id'
+          }
+          add_reaction() {
+            local subject_id
+            subject_id=$(reaction_subject "$1")
+            gh api graphql \
+              -f query='mutation($subjectId: ID!, $content: ReactionContent!) { addReaction(input: {subjectId: $subjectId, content: $content}) { reaction { content } } }' \
+              -f subjectId="$subject_id" \
+              -f content="$2" >/dev/null
+          }
           remove_reaction() {
-            gh api --method DELETE "repos/$REPO/issues/comments/$1/reactions/$2" -H 'Accept: application/vnd.github+json' >/dev/null 2>&1 || true
+            local subject_id
+            subject_id=$(reaction_subject "$1") || return 0
+            gh api graphql \
+              -f query='mutation($subjectId: ID!, $content: ReactionContent!) { removeReaction(input: {subjectId: $subjectId, content: $content}) { subject { id } } }' \
+              -f subjectId="$subject_id" \
+              -f content="$2" >/dev/null 2>&1 || true
           }
           fail_trigger() {
             local reason="$1"
-            remove_reaction "$COMMENT_ID" "$REACTION_ID"
-            gh api --method POST "repos/$REPO/issues/comments/$COMMENT_ID/reactions" -H 'Accept: application/vnd.github+json' -f content=-1 >/dev/null
+            remove_reaction "$COMMENT_ID" EYES
+            add_reaction "$COMMENT_ID" THUMBS_DOWN
             local state
-            state=$(jq -nc --arg identity "$HEAD_SHA:$VERIFICATION_HASH" --arg head "$HEAD_SHA" --arg hash "$VERIFICATION_HASH" --argjson run "$GITHUB_RUN_ID" --argjson comment "$COMMENT_ID" --argjson reaction "$REACTION_ID" "{identity:\$identity,run_id:\$run,status:\"failed\",head_sha:\$head,verification_hash:\$hash,triggers:[{comment_id:\$comment,reaction_id:\$reaction}]}")
+            state=$(jq -nc --arg identity "$HEAD_SHA:$VERIFICATION_HASH" --arg head "$HEAD_SHA" --arg hash "$VERIFICATION_HASH" --argjson run "$GITHUB_RUN_ID" --argjson comment "$COMMENT_ID" "{identity:\$identity,run_id:\$run,status:\"failed\",head_sha:\$head,verification_hash:\$hash,triggers:[{comment_id:\$comment}]}")
             {
               printf '%s\n' '<!-- pr-test-result -->'
               printf '<!-- pr-test-state:%s -->\n\n' "$state"
@@ -212,7 +245,7 @@ jobs:
           fi
 
           identity="$HEAD_SHA:$VERIFICATION_HASH"
-          trigger=$(jq -nc --argjson comment "$COMMENT_ID" --argjson reaction "$REACTION_ID" "{comment_id:\$comment,reaction_id:\$reaction}")
+          trigger=$(jq -nc --argjson comment "$COMMENT_ID" "{comment_id:\$comment}")
           comment_id=$(find_result_comment)
           old_state=
           if [ -n "$comment_id" ]; then
@@ -242,8 +275,7 @@ jobs:
             if [ "$old_status" = running ]; then
               printf '%s' "$old_state" | jq -c '.triggers[]?' | while read -r old_trigger; do
                 old_comment=$(printf '%s' "$old_trigger" | jq -r '.comment_id')
-                old_reaction=$(printf '%s' "$old_trigger" | jq -r '.reaction_id')
-                remove_reaction "$old_comment" "$old_reaction"
+                remove_reaction "$old_comment" EYES
               done
               old_run=$(printf '%s' "$old_state" | jq -r '.run_id // 0')
               if [ "$old_run" != 0 ] && [ "$old_run" != "$GITHUB_RUN_ID" ]; then
@@ -366,6 +398,7 @@ jobs:
     permissions:
       contents: read
       issues: write
+      pull-requests: write
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
         with:
@@ -407,6 +440,25 @@ jobs:
           OVERALL: ${{ steps.render.outputs.overall }}
         run: |
           set -euo pipefail
+          reaction_subject() {
+            gh api "repos/$REPO/issues/comments/$1" --jq '.node_id'
+          }
+          add_reaction() {
+            local subject_id
+            subject_id=$(reaction_subject "$1")
+            gh api graphql \
+              -f query='mutation($subjectId: ID!, $content: ReactionContent!) { addReaction(input: {subjectId: $subjectId, content: $content}) { reaction { content } } }' \
+              -f subjectId="$subject_id" \
+              -f content="$2" >/dev/null
+          }
+          remove_reaction() {
+            local subject_id
+            subject_id=$(reaction_subject "$1") || return 0
+            gh api graphql \
+              -f query='mutation($subjectId: ID!, $content: ReactionContent!) { removeReaction(input: {subjectId: $subjectId, content: $content}) { subject { id } } }' \
+              -f subjectId="$subject_id" \
+              -f content="$2" >/dev/null 2>&1 || true
+          }
           comment_id=$(gh api --paginate "repos/$REPO/issues/$PR/comments" --jq '.[] | select(.user.login == "github-actions[bot]" and (.body | contains("<!-- pr-test-result -->"))) | .id' | head -1)
           test -n "$comment_id"
           current_body=$(gh api "repos/$REPO/issues/comments/$comment_id" --jq '.body')
@@ -420,8 +472,8 @@ jobs:
           fi
 
           terminal_status=failed
-          reaction=-1
-          [ "$OVERALL" = passed ] && terminal_status=passed && reaction=hooray
+          reaction=THUMBS_DOWN
+          [ "$OVERALL" = passed ] && terminal_status=passed && reaction=HOORAY
           state=$(printf '%s' "$state" | jq -c --arg status "$terminal_status" '.status = $status')
           {
             head -n 1 "$RUNNER_TEMP/verification-comment.md"
@@ -432,9 +484,8 @@ jobs:
 
           printf '%s' "$state" | jq -c '.triggers[]?' | while read -r trigger; do
             trigger_comment=$(printf '%s' "$trigger" | jq -r '.comment_id')
-            trigger_reaction=$(printf '%s' "$trigger" | jq -r '.reaction_id')
-            gh api --method DELETE "repos/$REPO/issues/comments/$trigger_comment/reactions/$trigger_reaction" -H 'Accept: application/vnd.github+json' >/dev/null 2>&1 || true
-            gh api --method POST "repos/$REPO/issues/comments/$trigger_comment/reactions" -H 'Accept: application/vnd.github+json' -f content="$reaction" >/dev/null
+            remove_reaction "$trigger_comment" EYES
+            add_reaction "$trigger_comment" "$reaction"
           done
 
       - name: Require successful verification
