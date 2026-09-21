@@ -195,11 +195,23 @@ jobs:
             fi
           }
           reaction_subject() {
-            gh api "repos/$REPO/issues/comments/$1" --jq '.node_id'
+            local output status
+            if output=$(gh api "repos/$REPO/issues/comments/$1" --jq '.node_id' 2>&1); then
+              printf '%s\n' "$output"
+              return 0
+            else
+              status=$?
+            fi
+            case "$output" in
+              *"(HTTP 404)"*) return 0 ;;
+            esac
+            printf '%s\n' "$output" >&2
+            return "$status"
           }
           add_reaction() {
             local subject_id
             subject_id=$(reaction_subject "$1")
+            [ -n "$subject_id" ] || return 0
             gh api graphql \
               -f query='mutation($subjectId: ID!, $content: ReactionContent!) { addReaction(input: {subjectId: $subjectId, content: $content}) { reaction { content } } }' \
               -f subjectId="$subject_id" \
@@ -208,6 +220,7 @@ jobs:
           remove_reaction() {
             local subject_id
             subject_id=$(reaction_subject "$1")
+            [ -n "$subject_id" ] || return 0
             gh api graphql \
               -f query='mutation($subjectId: ID!, $content: ReactionContent!) { removeReaction(input: {subjectId: $subjectId, content: $content}) { subject { id } } }' \
               -f subjectId="$subject_id" \
@@ -441,11 +454,23 @@ jobs:
         run: |
           set -euo pipefail
           reaction_subject() {
-            gh api "repos/$REPO/issues/comments/$1" --jq '.node_id'
+            local output status
+            if output=$(gh api "repos/$REPO/issues/comments/$1" --jq '.node_id' 2>&1); then
+              printf '%s\n' "$output"
+              return 0
+            else
+              status=$?
+            fi
+            case "$output" in
+              *"(HTTP 404)"*) return 0 ;;
+            esac
+            printf '%s\n' "$output" >&2
+            return "$status"
           }
           add_reaction() {
             local subject_id
             subject_id=$(reaction_subject "$1")
+            [ -n "$subject_id" ] || return 0
             gh api graphql \
               -f query='mutation($subjectId: ID!, $content: ReactionContent!) { addReaction(input: {subjectId: $subjectId, content: $content}) { reaction { content } } }' \
               -f subjectId="$subject_id" \
@@ -454,6 +479,7 @@ jobs:
           remove_reaction() {
             local subject_id
             subject_id=$(reaction_subject "$1")
+            [ -n "$subject_id" ] || return 0
             gh api graphql \
               -f query='mutation($subjectId: ID!, $content: ReactionContent!) { removeReaction(input: {subjectId: $subjectId, content: $content}) { subject { id } } }' \
               -f subjectId="$subject_id" \

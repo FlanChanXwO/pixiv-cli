@@ -74,6 +74,37 @@ func TestTrustedPRVerificationFeedbackContract(t *testing.T) {
 	}
 }
 
+func TestDeletedTriggerCommentIsTheOnlyIgnoredReactionLookupError(t *testing.T) {
+	t.Parallel()
+
+	workflow, err := os.ReadFile(filepath.Join(repositoryRoot(t), ".github", "workflows", "pr-verification.yml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	body := string(workflow)
+
+	// coordinate 与 aggregate 都会清理 trigger reaction；两处都必须只把
+	// “触发评论已删除”的 HTTP 404 映射成空 reaction target。
+	if got := strings.Count(body, "(HTTP 404)"); got != 2 {
+		t.Fatalf("deleted-comment handling markers = %d, want 2", got)
+	}
+	if got := strings.Count(body, `*"(HTTP 404)"*) return 0 ;;`); got != 2 {
+		t.Fatalf("deleted-comment empty-target returns = %d, want 2", got)
+	}
+	if got := strings.Count(body, `[ -n "$subject_id" ] || return 0`); got != 4 {
+		t.Fatalf("reaction helpers do not skip missing deleted-comment targets: %d markers", got)
+	}
+
+	for _, forbidden := range []string{
+		"removeReaction(input: {subjectId: $subjectId, content: $content}) { subject { id } } }' \\\n              -f subjectId=\"$subject_id\" \\\n              -f content=\"$2\" >/dev/null 2>&1 || true",
+		"reaction_subject \"$1\") || return 0",
+	} {
+		if strings.Contains(body, forbidden) {
+			t.Fatalf("reaction cleanup contains broad error suppression %q", forbidden)
+		}
+	}
+}
+
 func repositoryRoot(t *testing.T) string {
 	t.Helper()
 	dir, err := os.Getwd()
