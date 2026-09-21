@@ -67,6 +67,38 @@ func TestQueryReturnsPlaintextAndTrailingEmptyBlobColumn(t *testing.T) {
 	}
 }
 
+func TestQueryForcesSingleNewlineForCSV(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("synthetic sqlite3 helper uses POSIX printf; Windows is covered by browser evidence")
+	}
+	dir := t.TempDir()
+	command := filepath.Join(dir, "sqlite3")
+	contents := `#!/bin/sh
+case " $* " in
+  *" -newline "*) printf '.fanbox.cc,plain-session,""\r\n' ;;
+  *) printf '.fanbox.cc,plain-session,""\r\r\n' ;;
+esac
+`
+	if err := os.WriteFile(command, []byte(contents), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", dir+string(os.PathListSeparator)+os.Getenv("PATH"))
+
+	rows, err := sqliteio.Query(
+		context.Background(),
+		filepath.Join(dir, "Cookies"),
+		"SELECT host_key, value, hex(encrypted_value) FROM cookies;",
+		nil,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []string{".fanbox.cc", "plain-session", ""}
+	if len(rows) != 1 || !slices.Equal(rows[0], want) {
+		t.Fatalf("rows = %#v, want %#v", rows, [][]string{want})
+	}
+}
+
 func TestQueryMapsPermissionFailureWithoutLeakingCommandOutput(t *testing.T) {
 	dir := t.TempDir()
 	command := filepath.Join(dir, "sqlite3")
