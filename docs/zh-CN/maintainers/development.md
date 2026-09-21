@@ -537,9 +537,10 @@ archive/container 集合与 checksums。各 publisher workflow 只保留自身�
 检测和发布命令；recovery run 可以只验证成功的 `Release` handoff，而原有契约明确要求 run 与 tag
 同一提交的 publisher（例如 Docker Hub）则继续额外绑定 handoff run 与 immutable tag commit。
 
-`scripts/cmd/nativeevidence/` 按 evidence 生命周期分卷：`main.go` 负责 subcommand 与 flag；`models.go` 保存
-target 和 evidence schema；`record.go` 记录单 runner evidence；`consolidate.go` 校验并合并六目标结果；
-`archive.go` 负责 release archive member 与 JSON；`filesystem.go` 负责路径、hash 和安全文件操作。
+`scripts/cmd/nativeevidence/` 只保留 CLI 入口与参数分发；具体 evidence 生命周期实现在
+`scripts/internal/nativeevidence/`：`models.go` 保存 target 和 evidence schema；`record.go` 记录单 runner
+evidence；`consolidate.go` 校验并合并六目标结果；`archive.go` 负责 release archive member 与 JSON；
+`filesystem.go` 负责路径、hash 和安全文件操作。
 `scripts/cmd/nativeevidence/` 只分发 `record` 与 `consolidate`；workflow 测试只覆盖 credential、action
 固定与 build ownership 等安全/行为边界，不再重新实现 workflow 的精确 YAML 形状。
 

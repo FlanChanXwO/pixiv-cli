@@ -65,14 +65,19 @@ func TestBrowserEvidenceWorkflowKeepsSecurityAndFixtureBoundaries(t *testing.T) 
 	for line := range strings.SplitSeq(workflow, "\n") {
 		trimmed := strings.TrimSpace(line)
 		trimmed = strings.TrimPrefix(trimmed, "- ")
-		if !strings.HasPrefix(trimmed, "uses: actions/") {
+		if !strings.HasPrefix(trimmed, "uses: ") {
 			continue
 		}
-		if !pinnedAction.MatchString(strings.TrimPrefix(trimmed, "uses: ")) {
+		reference := strings.TrimPrefix(trimmed, "uses: ")
+		if strings.HasPrefix(reference, "./") || strings.HasPrefix(reference, "$/") {
+			continue
+		}
+		if !pinnedAction.MatchString(reference) {
 			t.Fatalf("GitHub action must be pinned to a full commit SHA: %s", trimmed)
 		}
 	}
 }
+
 func TestFirefoxEvidenceHelpersUseIsolatedPathsAndEnvironment(t *testing.T) {
 	home := filepath.Join(t.TempDir(), "home")
 	root, err := firefoxDataRootFor(home)
