@@ -36,7 +36,6 @@ func TestBrowserEvidenceWorkflowKeepsSecurityAndFixtureBoundaries(t *testing.T) 
 		"firefox_sha256:",
 		"go run ./scripts/cmd/browsernativeevidence firefox-contract --firefox",
 		"go test ./internal/browsercookies/... -count=1 -v",
-		"go test ./e2e -run '^TestNativeBrowserNamesRejectInvalidInput$' -count=1",
 		"Remove Firefox package and installation on Unix",
 		"Remove Firefox package and installation on Windows",
 	} {
@@ -52,6 +51,7 @@ func TestBrowserEvidenceWorkflowKeepsSecurityAndFixtureBoundaries(t *testing.T) 
 		"security find-generic-password",
 		"--from-browser",
 		"actions/upload-artifact@",
+		"go test ./e2e",
 	} {
 		if strings.Contains(workflow, forbidden) {
 			t.Fatalf("browser evidence workflow contains forbidden boundary %q", forbidden)
@@ -159,30 +159,6 @@ func TestValidateFirefoxExecutablePath(t *testing.T) {
 	}
 }
 
-func TestCurrentGoEnvironmentIsPreservedAcrossHomeIsolation(t *testing.T) {
-	values, err := currentGoEnvironment(os.Environ())
-	if err != nil {
-		t.Fatal(err)
-	}
-	for _, key := range []string{"GOPATH", "GOMODCACHE", "GOCACHE"} {
-		value := values[key]
-		if value == "" {
-			t.Fatalf("current Go environment has empty %s", key)
-		}
-		isolated := setEnvironment([]string{"HOME=/temporary-home"}, key, value)
-		found := false
-		for _, entry := range isolated {
-			if entry == key+"="+value {
-				found = true
-				break
-			}
-		}
-		if !found {
-			t.Fatalf("isolated environment did not preserve %s", key)
-		}
-	}
-}
-
 func TestSeedSyntheticFirefoxCookieUsesExpectedSchema(t *testing.T) {
 	if _, err := exec.LookPath("sqlite3"); err != nil {
 		t.Skip("sqlite3 command-line tool not available")
@@ -208,6 +184,55 @@ UNIQUE(name, host, path, originAttributes)
 	}
 	if got := strings.TrimSpace(string(output)); got != "FANBOXSESSID|browser-native-evidence-synthetic|.fanbox.cc" {
 		t.Fatalf("synthetic cookie row = %q", got)
+	}
+}
+
+func TestVerifySyntheticFirefoxProviderContractReadsIsolatedProfile(t *testing.T) {
+	if _, err := exec.LookPath("sqlite3"); err != nil {
+		t.Skip("sqlite3 command-line tool not available")
+	}
+	originalEnvironment := map[string]string{
+		"HOME":            "before-home",
+		"XDG_CONFIG_HOME": "before-xdg",
+		"USERPROFILE":     "before-userprofile",
+		"APPDATA":         "before-appdata",
+		"LOCALAPPDATA":    "before-localappdata",
+	}
+	for key, value := range originalEnvironment {
+		t.Setenv(key, value)
+	}
+	home := filepath.Join(t.TempDir(), "home")
+	dataRoot, err := firefoxDataRootFor(home)
+	if err != nil {
+		t.Fatal(err)
+	}
+	profileID := "ci.default-release"
+	profileDir := filepath.Join(dataRoot, profileID)
+	if err := os.MkdirAll(profileDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := writeFirefoxProfilesINI(dataRoot, profileID); err != nil {
+		t.Fatal(err)
+	}
+	databasePath := filepath.Join(profileDir, "cookies.sqlite")
+	create := exec.Command("sqlite3", databasePath, `CREATE TABLE moz_cookies (
+name TEXT, value TEXT, host TEXT, path TEXT,
+UNIQUE(name, host, path)
+);`)
+	if output, err := create.CombinedOutput(); err != nil {
+		t.Fatalf("create Firefox fixture schema: %v: %s", err, output)
+	}
+	if err := seedSyntheticFirefoxCookie(databasePath); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := verifySyntheticFirefoxProviderContract(home, profileID); err != nil {
+		t.Fatalf("verify synthetic Firefox provider contract: %v", err)
+	}
+	for key, want := range originalEnvironment {
+		if got := os.Getenv(key); got != want {
+			t.Fatalf("%s after provider contract = %q, want %q", key, got, want)
+		}
 	}
 }
 

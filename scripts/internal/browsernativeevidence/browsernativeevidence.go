@@ -11,6 +11,8 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+
+	"github.com/FlanChanXwO/pixiv-cli/internal/browsercookies/system"
 )
 
 // Run 是 scripts/cmd/browsernativeevidence 的入口 owner：解析参数并映射 exit code。
@@ -33,10 +35,6 @@ func Run(args []string) int {
 // evidence test。这样 CI 可以验证真实 Firefox profile layout，而不会读取用户凭据。
 func runFirefoxContract(firefoxPath string) (runErr error) {
 	if err := validateFirefoxExecutablePath(firefoxPath); err != nil {
-		return err
-	}
-	goEnvironment, err := currentGoEnvironment(os.Environ())
-	if err != nil {
 		return err
 	}
 	temporary, err := os.MkdirTemp("", "pixiv-cli-firefox-evidence-")
@@ -77,70 +75,74 @@ func runFirefoxContract(firefoxPath string) (runErr error) {
 	if err := seedSyntheticFirefoxCookie(databasePath); err != nil {
 		return err
 	}
+	return verifySyntheticFirefoxProviderContract(home, profileID)
+}
 
-	testEnv := setEnvironment(env, "BROWSER_NATIVE_E2E", "1")
-	testEnv = setEnvironment(testEnv, "BROWSER_NATIVE_BROWSERS", "firefox")
-	testEnv = setEnvironment(testEnv, "BROWSER_NATIVE_PROFILE_FIREFOX", profileID)
-	for key, value := range goEnvironment {
-		testEnv = setEnvironment(testEnv, key, value)
+// verifySyntheticFirefoxProviderContract 直接通过正式 provider 读取隔离 profile，
+// 避免 browser evidence 为一个 provider contract 编译整个 e2e package 及无关媒体/cgo 链。
+func verifySyntheticFirefoxProviderContract(home, profileID string) (runErr error) {
+	isolated := map[string]string{
+		"HOME":            home,
+		"XDG_CONFIG_HOME": filepath.Join(home, ".config"),
+		"USERPROFILE":     home,
+		"APPDATA":         filepath.Join(home, "AppData", "Roaming"),
+		"LOCALAPPDATA":    filepath.Join(home, "AppData", "Local"),
 	}
-	repositoryRoot, err := findModuleRoot()
+	type originalValue struct {
+		value string
+		set   bool
+	}
+	original := make(map[string]originalValue, len(isolated))
+	for key := range isolated {
+		previous, set := os.LookupEnv(key)
+		original[key] = originalValue{value: previous, set: set}
+	}
+	defer func() {
+		for key, previous := range original {
+			var err error
+			if previous.set {
+				err = os.Setenv(key, previous.value)
+			} else {
+				err = os.Unsetenv(key)
+			}
+			if err != nil && runErr == nil {
+				runErr = errors.New("restore Firefox environment failed")
+			}
+		}
+	}()
+	for key, value := range isolated {
+		if err := os.Setenv(key, value); err != nil {
+			return errors.New("set isolated Firefox environment failed")
+		}
+	}
+
+	provider, err := system.New("firefox")
 	if err != nil {
-		return err
+		return errors.New("create Firefox provider failed")
 	}
-	test := exec.CommandContext(context.Background(), "go", "test", "./e2e", "-run", "^TestRealNativeBrowserProvider$", "-count=1", "-v")
-	test.Dir = repositoryRoot
-	test.Env = testEnv
-	test.Stdout = os.Stdout
-	test.Stderr = os.Stderr
-	if err := test.Run(); err != nil {
-		return errors.New("Firefox provider contract failed")
+	defer func() {
+		if err := provider.Close(); err != nil && runErr == nil {
+			runErr = errors.New("close Firefox provider failed")
+		}
+	}()
+
+	ctx := context.Background()
+	profiles, err := provider.DiscoverProfiles(ctx)
+	if err != nil {
+		return errors.New("discover Firefox profile failed")
+	}
+	profile, err := system.SelectProfile(profiles, profileID)
+	if err != nil {
+		return errors.New("select Firefox profile failed")
+	}
+	secrets, err := provider.Read(ctx, system.DefaultQuery, profile.ID)
+	if err != nil {
+		return errors.New("read synthetic Firefox cookie failed")
+	}
+	if len(secrets) != 1 || strings.TrimSpace(secrets[0].Value()) == "" {
+		return errors.New("Firefox provider contract returned an invalid allowlisted cookie set")
 	}
 	return nil
-}
-
-// currentGoEnvironment 在替换 Firefox 的 HOME 之前保存 Go 的 cache 路径。
-// 临时 profile 不应让嵌套 contract test 重新解析 GOPATH，也不应在离线 runner
-// 上把已有 module cache 误判为缺依赖。
-func currentGoEnvironment(base []string) (map[string]string, error) {
-	command := exec.Command("go", "env", "GOPATH", "GOMODCACHE", "GOCACHE")
-	command.Env = base
-	output, err := command.Output()
-	if err != nil {
-		return nil, errors.New("resolve Go cache environment failed")
-	}
-	lines := strings.Split(strings.TrimRight(string(output), "\r\n"), "\n")
-	if len(lines) != 3 {
-		return nil, errors.New("Go cache environment is incomplete")
-	}
-	values := map[string]string{
-		"GOPATH":     strings.TrimSuffix(lines[0], "\r"),
-		"GOMODCACHE": strings.TrimSuffix(lines[1], "\r"),
-		"GOCACHE":    strings.TrimSuffix(lines[2], "\r"),
-	}
-	for _, value := range values {
-		if value == "" {
-			return nil, errors.New("Go cache environment contains an empty path")
-		}
-	}
-	return values, nil
-}
-
-func findModuleRoot() (string, error) {
-	root, err := os.Getwd()
-	if err != nil {
-		return "", errors.New("find repository root failed")
-	}
-	for {
-		if _, err := os.Stat(filepath.Join(root, "go.mod")); err == nil {
-			return root, nil
-		}
-		parent := filepath.Dir(root)
-		if parent == root {
-			return "", errors.New("repository root with go.mod was not found")
-		}
-		root = parent
-	}
 }
 
 func validateFirefoxExecutablePath(path string) error {
