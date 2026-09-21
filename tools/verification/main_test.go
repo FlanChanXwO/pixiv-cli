@@ -65,6 +65,69 @@ func TestRunPipelineUsesRepositoryBinaryAndPipefail(t *testing.T) {
 	}
 }
 
+func TestRunPipelineAllowsDownstreamEarlyExit(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("test helper uses the POSIX head command")
+	}
+	t.Setenv("PATH", "/usr/bin:/bin"+string(os.PathListSeparator)+os.Getenv("PATH"))
+	root := t.TempDir()
+	body := "first\n" + strings.Repeat("payload\n", 128*1024)
+	if err := os.WriteFile(filepath.Join(root, "input.txt"), []byte(body), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	binary := filepath.Join(root, "pixiv")
+	if err := os.WriteFile(binary, []byte("#!/bin/sh\ncat input.txt\n"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	command, err := verificationpolicy.ParseLine("pixiv --help | head -n 1")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	result := runPipeline(command, binary, root, time.Second)
+	if result.Status != "passed" || result.ExitCode != 0 || strings.TrimSpace(result.Stdout) != "first" {
+		t.Fatalf("early-exit pipeline result = %#v", result)
+	}
+
+	command, err = verificationpolicy.ParseLine("cat input.txt | head -n 1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	result = runPipeline(command, binary, root, time.Second)
+	if result.Status != "passed" || result.ExitCode != 0 || strings.TrimSpace(result.Stdout) != "first" {
+		t.Fatalf("builtin early-exit pipeline result = %#v", result)
+	}
+}
+
+func TestRunPipelineDoesNotNormalizeForgedPipeCloseFailures(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("test helper uses POSIX shell exit behavior")
+	}
+	t.Setenv("PATH", "/usr/bin:/bin"+string(os.PathListSeparator)+os.Getenv("PATH"))
+	root := t.TempDir()
+	binary := filepath.Join(root, "pixiv")
+	if err := os.WriteFile(binary, []byte("#!/bin/sh\ncase \"$1\" in\n  --version) exit 141 ;;\n  --help) echo 'io: read/write on closed pipe' >&2; exit 7 ;;\nesac\n"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+
+	for _, tc := range []struct {
+		line string
+		exit int
+	}{
+		{line: "pixiv --version | head -n 1", exit: 141},
+		{line: "pixiv --help | head -n 1", exit: 7},
+	} {
+		command, err := verificationpolicy.ParseLine(tc.line)
+		if err != nil {
+			t.Fatal(err)
+		}
+		result := runPipeline(command, binary, root, time.Second)
+		if result.Status != "failed" || result.ExitCode != tc.exit {
+			t.Fatalf("%q result = %#v, want failed/%d", tc.line, result, tc.exit)
+		}
+	}
+}
+
 func TestRenderShowsOnlyFailedCommandDetails(t *testing.T) {
 	expected := expectedMatrix{}
 	expected.Include = append(expected.Include, struct {

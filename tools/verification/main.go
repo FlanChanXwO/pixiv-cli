@@ -18,6 +18,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/FlanChanXwO/pixiv-cli/tools/internal/verificationpolicy"
@@ -31,6 +32,20 @@ type stageResult struct {
 	ExitCode   int    `json:"exit_code"`
 	DurationMS int64  `json:"duration_ms"`
 	Stderr     string `json:"stderr,omitempty"`
+	pipeClosed bool
+}
+
+type pipeAwareWriter struct {
+	writer io.Writer
+	closed atomic.Bool
+}
+
+func (writer *pipeAwareWriter) Write(body []byte) (int, error) {
+	written, err := writer.writer.Write(body)
+	if errors.Is(err, io.ErrClosedPipe) {
+		writer.closed.Store(true)
+	}
+	return written, err
 }
 
 type commandResult struct {
@@ -191,6 +206,7 @@ func runPipeline(command verificationpolicy.Command, binary, workspace string, t
 		}()
 	}
 	wg.Wait()
+	normalizeDownstreamPipeClose(results)
 
 	overallExit := 0
 	status := "passed"
@@ -221,16 +237,17 @@ func runStage(ctx context.Context, stage verificationpolicy.Stage, binary, works
 	started := time.Now()
 	result := stageResult{Command: strings.Join(stage.Argv, " "), Status: "passed"}
 	var stderr cappedBuffer
+	trackedStdout := &pipeAwareWriter{writer: stdout}
 	name := stage.Argv[0]
 	args := append([]string(nil), stage.Argv[1:]...)
 	var err error
 	switch name {
 	case "cat":
-		err = builtinCat(workspace, args, stdout)
+		err = builtinCat(workspace, args, trackedStdout)
 	case "echo":
-		_, err = io.WriteString(stdout, strings.Join(args, " ")+"\n")
+		_, err = io.WriteString(trackedStdout, strings.Join(args, " ")+"\n")
 	case "printf":
-		err = builtinPrintf(args, stdout)
+		err = builtinPrintf(args, trackedStdout)
 	default:
 		program := name
 		if name == "pixiv" {
@@ -239,7 +256,7 @@ func runStage(ctx context.Context, stage verificationpolicy.Stage, binary, works
 		command := exec.CommandContext(ctx, program, args...)
 		command.Dir = workspace
 		command.Stdin = stdin
-		command.Stdout = stdout
+		command.Stdout = trackedStdout
 		command.Stderr = &stderr
 		command.Env = safeEnvironment()
 		err = command.Run()
@@ -252,8 +269,25 @@ func runStage(ctx context.Context, stage verificationpolicy.Stage, binary, works
 		if result.Stderr == "" {
 			result.Stderr = sanitize(err.Error())
 		}
+		result.pipeClosed = trackedStdout.closed.Load() && (errors.Is(err, io.ErrClosedPipe) || processTerminatedBySIGPIPE(err) || result.ExitCode == 141)
 	}
 	return result
+}
+
+// normalizeDownstreamPipeClose 保留 pipefail，但允许 head 等成功消费者主动提前关闭输入。
+// 只有右侧所有 stage 都成功时才规范化上游 SIGPIPE/closed-pipe；真实下游失败仍保持失败。
+func normalizeDownstreamPipeClose(results []stageResult) {
+	downstreamPassed := true
+	for index := len(results) - 1; index >= 0; index-- {
+		result := &results[index]
+		if index < len(results)-1 && downstreamPassed && result.pipeClosed {
+			result.Status = "passed"
+			result.ExitCode = 0
+		}
+		if result.ExitCode != 0 {
+			downstreamPassed = false
+		}
+	}
 }
 
 func isBuiltin(name string) bool {
