@@ -228,7 +228,7 @@ cache、显式更新策略与 Release binary 安装协议分别由 `internal/upd
   GitHub 已标记的 prerelease。签名、checksum、不可变 tag 和安装前预检共同构成 Release 信任边界。
 
 该包不得把签名、checksum、HTTP、archive、替换或权限错误伪装成“无更新”。production trusted key、
-签名私钥与 Keychain 恢复副本、受保护 `release` Environment 和公开 remote 已按 Task 20 配置；完整六目标
+签名私钥与 Keychain 恢复副本、受保护 `release` Environment 和公开 remote 已按正式发布链路配置；完整六目标
 native evidence 与 staticlib manifest 已回填。v0.3.0 已完成正式 tag、受签名 Release 与 stable tap formula；
 Release 安装的失败语义仍是保护边界，而不是临时降级。
 
@@ -236,10 +236,11 @@ Release 安装的失败语义仍是保护边界，而不是临时降级。
 
 每个仍在使用的脚本入口位于 `scripts/cmd/<name>/main.go`，只负责参数解析和调用对应的 owner
 package。纯测试载体位于 `scripts/tests/`：它们只验证 workflow、文档或 installer 行为，不承载生产实现。
-实现逻辑与同包测试位于 `scripts/internal/<name>`。共享 verifier/发布契约位于
-`scripts/internal/workflow/yaml`（release 与 native evidence verifier 共用的 YAML AST 安全操作）、
-`scripts/internal/releasecontract`（Release/native-evidence 契约与 per-target Rust toolchain 映射）与
+实现逻辑与同包测试位于 `scripts/internal/<name>`。共享发布契约位于
+`scripts/internal/releasecontract`（release target/archive identity）与
 `scripts/internal/releasenotesrender`（GitHub Release 正文渲染，被 `releaseassets` 与历史同步共用）。
+平台 runner/Rust/CC metadata 由 `ci/platforms.json` 单独拥有，并通过 `tools/platformmatrix` 提供给 workflow；
+workflow 测试只验证行为/安全边界，不再维护第二份精确 YAML policy model。
 
 ### `sdk`、`sdk/pixiv`、`sdk/fanbox`
 
@@ -362,7 +363,7 @@ full-SHA Actions，并在草稿 Release 上传后核对 asset 集合才发布。
 job 才能读取独立 tap deploy key 并只 push 对应 formula。
 v0.3.0 的正式 tag 已走完此发布路径并推送 stable formula；后续 tag 仍必须独立满足同一安装 gate。完整
 六目标 native 成功证据已回填 staticlib/manifest。production signing 私钥、Environment 与公开 remote
-已按 Task 20 配置，受支持 binary 的公开 trust root 已在 `internal/update/installer/release_installer.go` 配置。Rust crates.io 依赖已由
+已按正式发布链路配置，受支持 binary 的公开 trust root 已在 `internal/update/installer/release_installer.go` 配置。Rust crates.io 依赖已由
 crate 内 source replacement 固定到完整 vendor 闭包，并以空 Cargo cache 离线 metadata/build/test 与六
 target 许可证检查验证。
 

@@ -53,9 +53,6 @@ jobs:
       - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff
         with:
           go-version-file: go.mod
-      - name: Check browser evidence workflow policy
-        shell: bash
-        run: go run ./scripts/cmd/browsernativeevidence policy --workflow .github/workflows/browser-evidence.yml
       - name: Require SQLite CLI for browser database contracts
         shell: bash
         run: |
@@ -115,9 +112,6 @@ jobs:
       - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff
         with:
           go-version-file: go.mod
-      - name: Check browser evidence workflow policy
-        shell: bash
-        run: go run ./scripts/cmd/browsernativeevidence policy --workflow .github/workflows/browser-evidence.yml
       - name: Require SQLite CLI for Firefox database contract
         shell: bash
         run: |

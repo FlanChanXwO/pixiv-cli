@@ -4,54 +4,77 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"runtime"
 	"strings"
 	"testing"
 )
 
-func TestValidateCheckedInWorkflow(t *testing.T) {
-	if err := Validate(filepath.Join(findRepositoryRoot(t), ".github", "workflows", "browser-evidence.yml")); err != nil {
-		t.Fatal(err)
+func TestPolicySubcommandIsNoLongerPublic(t *testing.T) {
+	t.Parallel()
+
+	if got := Run([]string{"policy", "--workflow", ".github/workflows/browser-evidence.yml"}); got != 2 {
+		t.Fatalf("Run(policy) exit = %d, want usage exit 2", got)
 	}
 }
 
-func TestValidateRejectsCredentialAndUnpinnedActionMutations(t *testing.T) {
+func TestBrowserEvidenceWorkflowKeepsSecurityAndFixtureBoundaries(t *testing.T) {
+	t.Parallel()
+
 	root := findRepositoryRoot(t)
 	body, err := os.ReadFile(filepath.Join(root, ".github", "workflows", "browser-evidence.yml"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, mutation := range []string{
-		string(body) + "\n      - run: echo ${{ secrets.FANBOX_SESSION }}\n",
-		strings.Replace(string(body), checkoutAction, "actions/checkout@main", 1),
+	workflow := string(body)
+	for _, required := range []string{
+		"workflow_dispatch: {}",
+		"permissions: {}",
+		"browser_provider:",
+		"firefox_native:",
+		"firefox_url:",
+		"firefox_sha256:",
+		"go run ./scripts/cmd/browsernativeevidence firefox-contract --firefox",
+		"go test ./internal/browsercookies/... -count=1 -v",
+		"go test ./e2e -run '^TestNativeBrowserNamesRejectInvalidInput$' -count=1",
+		"Remove Firefox package and installation on Unix",
+		"Remove Firefox package and installation on Windows",
 	} {
-		path := filepath.Join(t.TempDir(), "browser-evidence.yml")
-		if err := os.WriteFile(path, []byte(mutation), 0o600); err != nil {
-			t.Fatal(err)
-		}
-		if err := Validate(path); err == nil {
-			t.Fatalf("Validate accepted unsafe workflow mutation in %s", path)
+		if !strings.Contains(workflow, required) {
+			t.Fatalf("browser evidence workflow missing contract %q", required)
 		}
 	}
-}
-
-func TestValidateRejectsFirefoxChecksumArchitectureSwap(t *testing.T) {
-	root := findRepositoryRoot(t)
-	body, err := os.ReadFile(filepath.Join(root, ".github", "workflows", "browser-evidence.yml"))
-	if err != nil {
-		t.Fatal(err)
+	for _, forbidden := range []string{
+		"secrets.",
+		"environment:",
+		"FANBOXSESSID",
+		"BROWSER_NATIVE_E2E=1",
+		"security find-generic-password",
+		"--from-browser",
+		"actions/upload-artifact@",
+	} {
+		if strings.Contains(workflow, forbidden) {
+			t.Fatalf("browser evidence workflow contains forbidden boundary %q", forbidden)
+		}
 	}
-	linuxAMD64 := "22b312280900bfb174b685ece32c7b3c6d72e7f8e53d6d30f21ac41a8dc500a2"
-	linuxARM64 := "c19b325accedebbc3a1235e3c7104d80c5a4412b368f7d0935b4718114416870"
-	mutated := strings.Replace(string(body), linuxAMD64, "checksum-swap-placeholder", 1)
-	mutated = strings.Replace(mutated, linuxARM64, linuxAMD64, 1)
-	mutated = strings.Replace(mutated, "checksum-swap-placeholder", linuxARM64, 1)
-	path := filepath.Join(t.TempDir(), "browser-evidence.yml")
-	if err := os.WriteFile(path, []byte(mutated), 0o600); err != nil {
-		t.Fatal(err)
+	writePermission := regexp.MustCompile("(?m)^\\s+[A-Za-z-]+:\\s*write\\s*$")
+	if writePermission.MatchString(workflow) {
+		t.Fatal("browser evidence workflow must not grant write permissions")
 	}
-	if err := Validate(path); err == nil {
-		t.Fatal("Validate accepted a Firefox architecture/checksum swap")
+	pinnedAction := regexp.MustCompile("^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+@[0-9a-f]{40}$")
+	for line := range strings.SplitSeq(workflow, "\n") {
+		trimmed := strings.TrimSpace(line)
+		trimmed = strings.TrimPrefix(trimmed, "- ")
+		if !strings.HasPrefix(trimmed, "uses: ") {
+			continue
+		}
+		reference := strings.TrimPrefix(trimmed, "uses: ")
+		if strings.HasPrefix(reference, "./") || strings.HasPrefix(reference, "$/") {
+			continue
+		}
+		if !pinnedAction.MatchString(reference) {
+			t.Fatalf("GitHub action must be pinned to a full commit SHA: %s", trimmed)
+		}
 	}
 }
 

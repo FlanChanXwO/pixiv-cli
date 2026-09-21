@@ -217,7 +217,7 @@ and re-exported by the root package to the CLI composition root:
   prereleases before verification. Signatures, checksums, immutable tags, and the pre-install preflight together form the Release trust boundary.
 
 This package must not disguise signature, checksum, HTTP, archive, replacement, or permission errors as "no update". The production trusted key,
-signing private key and Keychain recovery copy, the protected `release` Environment, and the public remote have been configured per Task 20; the complete six-target
+signing private key and Keychain recovery copy, the protected `release` Environment, and the public remote have been configured for the production release path; the complete six-target
 native evidence and staticlib manifest have been backfilled. v0.3.0 has completed the official tag, signed Release, and stable tap formula;
 the failure semantics of Release installation remain a protective boundary, not a temporary degradation.
 
@@ -225,10 +225,11 @@ the failure semantics of Release installation remain a protective boundary, not 
 
 Each script entry still in use lives at `scripts/cmd/<name>/main.go`, which only handles argument parsing and calls the corresponding owner
 package. Pure test carriers live in `scripts/tests/`: they only verify workflow, documentation, or installer behavior and carry no production implementation.
-Implementation logic and same-package tests live in `scripts/internal/<name>`. Shared verifier/release contracts live in
-`scripts/internal/workflow/yaml` (safe YAML AST operations shared by release and native-evidence verifiers),
-`scripts/internal/releasecontract` (Release/native-evidence contracts and per-target Rust toolchain mapping), and
-`scripts/internal/releasenotesrender` (GitHub Release body rendering, shared by `releaseassets` and history sync).
+Implementation logic and same-package tests live in `scripts/internal/<name>`. Shared release contracts live in
+`scripts/internal/releasecontract` (release target/archive identity) and `scripts/internal/releasenotesrender`
+(GitHub Release body rendering, shared by `releaseassets` and history sync). Platform runner/Rust/CC metadata is owned
+by `ci/platforms.json` and exposed to workflows through `tools/platformmatrix`; workflow tests validate behavior/security
+boundaries instead of maintaining a second exact YAML policy model.
 
 ### `sdk`, `sdk/pixiv`, `sdk/fanbox`
 
@@ -352,7 +353,7 @@ the public tap, and the trust required by Homebrew 6 is only written to the temp
 job can read the independent tap deploy key and push only the corresponding formula.
 The official tag of v0.3.0 has gone through this release path and pushed the stable formula; subsequent tags must still independently satisfy the same installation gate. The complete
 six-target native success evidence has backfilled the staticlib/manifest. The production signing private key, Environment, and public remote
-have been configured per Task 20, and the public trust root for supported binaries has been configured in `internal/update/installer/release_installer.go`. The Rust crates.io dependency has been pinned by
+have been configured for the production release path, and the public trust root for supported binaries has been configured in `internal/update/installer/release_installer.go`. The Rust crates.io dependency has been pinned by
 in-crate source replacement to a complete vendor closure, and verified with an empty Cargo cache for offline metadata/build/test and the six
 target license checks.
 
