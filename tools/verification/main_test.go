@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -12,7 +13,7 @@ import (
 )
 
 func TestBuiltinPrintfAndSanitize(t *testing.T) {
-	var out cappedBuffer
+	var out bytes.Buffer
 	if err := builtinPrintf([]string{"%s\\n", "hello"}, &out); err != nil {
 		t.Fatal(err)
 	}
@@ -62,6 +63,71 @@ func TestRunPipelineUsesRepositoryBinaryAndPipefail(t *testing.T) {
 	result = runPipeline(command, binary, root, time.Second)
 	if result.Status != "failed" || result.ExitCode != 7 {
 		t.Fatalf("pipefail result = %#v", result)
+	}
+}
+
+func TestRunPipelineOnlyAppliesExplicitPositiveTimeout(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("test helper uses a POSIX executable")
+	}
+	root := t.TempDir()
+	binary := filepath.Join(root, "pixiv")
+	body := "#!/bin/sh\nsleep 0.05\nprintf 'done\\n'\n"
+	if err := os.WriteFile(binary, []byte(body), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	command, err := verificationpolicy.ParseLine("pixiv --version")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	withoutDeadline := runPipeline(command, binary, root, 0)
+	if withoutDeadline.Status != "passed" || withoutDeadline.ExitCode != 0 || strings.TrimSpace(withoutDeadline.Stdout) != "done" {
+		t.Fatalf("zero timeout should impose no deadline: %#v", withoutDeadline)
+	}
+
+	withDeadline := runPipeline(command, binary, root, 10*time.Millisecond)
+	if withDeadline.Status != "failed" || strings.TrimSpace(withDeadline.Stdout) == "done" {
+		t.Fatalf("explicit positive timeout should stop the command: %#v", withDeadline)
+	}
+}
+
+func TestRunPipelinePreservesCompleteOutputInResult(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("test helper uses a POSIX executable")
+	}
+	root := t.TempDir()
+	stdout := strings.Repeat("stdout-payload\n", 2048) + "stdout-tail\n"
+	stderr := strings.Repeat("stderr-payload\n", 2048) + "stderr-tail\n"
+	if err := os.WriteFile(filepath.Join(root, "stdout.txt"), []byte(stdout), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "stderr.txt"), []byte(stderr), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	binary := filepath.Join(root, "pixiv")
+	body := "#!/bin/sh\ncat stdout.txt\ncat stderr.txt >&2\nexit 7\n"
+	if err := os.WriteFile(binary, []byte(body), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	command, err := verificationpolicy.ParseLine("pixiv --version")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	result := runPipeline(command, binary, root, 0)
+	if result.Status != "failed" || result.ExitCode != 7 {
+		t.Fatalf("unexpected command result: %#v", result)
+	}
+	if result.Stdout != strings.TrimSpace(stdout) {
+		t.Fatalf("stdout was not preserved completely: got %d bytes, want %d", len(result.Stdout), len(strings.TrimSpace(stdout)))
+	}
+	if len(result.Stages) != 1 || result.Stages[0].Stderr != strings.TrimSpace(stderr) {
+		got := ""
+		if len(result.Stages) == 1 {
+			got = result.Stages[0].Stderr
+		}
+		t.Fatalf("stderr was not preserved completely: got %d bytes, want %d", len(got), len(strings.TrimSpace(stderr)))
 	}
 }
 

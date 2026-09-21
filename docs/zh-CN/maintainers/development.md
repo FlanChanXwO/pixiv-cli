@@ -390,7 +390,7 @@ smoke、版本化 archive 内容和 Homebrew 安装验收。
 `scripts/tests/installers` 使用本地伪 Release、伪 `curl` 与 checksum fixture 验证安装器，不访问 GitHub。Unix
 job 实际运行 `install.sh`，覆盖 SHA-256、带空格目录、版本预检和校验失败不覆盖旧 binary；Windows
 amd64/arm64 platform-smoke 还会用真实 `cmd.exe`、`certutil.exe` 与 `tar.exe` 运行 `install.cmd`，并始终
-传入 `--no-path`，因此测试不修改 runner 用户注册表。平台 workflow policy 固定要求这项测试存在。
+传入 `--no-path`，因此测试不修改 runner 用户注册表。platform-smoke workflow 会直接运行这项 installer contract，作为平台 job 的一部分；这里不存在另一套 runtime workflow policy 实现。
 
 其中 Windows 的 `.zip` 由 GitHub runner 镜像预装的 `7z` 生成；其他平台继续使用 `zip`。
 `scripts/test-package-release.sh` 会在 Windows runner 把伪造的调用委托给真实 `7z`，在其他开发机使用
@@ -420,7 +420,7 @@ amd64/arm64 platform-smoke 还会用真实 `cmd.exe`、`certutil.exe` 与 `tar.e
 | `scripts/internal/homebrewformula` | 测试直接调用未导出的 formula 渲染与版本校验（`renderFormula`、`validateFormulaVersion`、`checkDynamicVersionNeeds`）。 |
 | `scripts/internal/licensebundle` | 测试观察未导出的 `defaultBundleFileOps`、`generateFromTargetMetadata` 与 license 文本归一化，注入假 cargo metadata。 |
 | `scripts/internal/linuxabi` | 测试直接调用未导出的 glibc 版本解析与 ABI 比对（`parseGLIBCVersion`、`checkImportedSymbols`）。 |
-| `scripts/internal/nativeevidence` | 测试直接调用未导出的 record/consolidate/policy seam，覆盖 schema 2、独立 `source_commit`、精确 binary `--version` 输出、六目标 hash/archive 校验与 mutation 回滚。 |
+| `scripts/internal/nativeevidence` | 测试直接调用未导出的 record/consolidate seam；同包内的聚焦 workflow contract 锁定 workflow ownership 与安全边界。两者共同覆盖 schema 2、独立 `source_commit`、精确 binary `--version` 输出、六目标 hash/archive 校验与 mutation 回滚。 |
 | `scripts/internal/publicapi` | 测试观察未导出的 `unexported`/`hidden` 符号解析与 golden 比对逻辑，用 `writeFixture` 生成 fixture。 |
 | `scripts/internal/releaseassets` | 测试注入未导出的 `injectReleaseSources`/`injectWindowsReleaseSources`，观察 asset archive 命名（`archiveName`）与 checksums 生成。 |
 | `scripts/internal/releasenotes` | 测试观察未导出的 GitHub client 调用映射，注入 fake client 断言来源审计。 |

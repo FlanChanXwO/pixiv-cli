@@ -292,7 +292,11 @@ jobs:
               done
               old_run=$(printf '%s' "$old_state" | jq -r '.run_id // 0')
               if [ "$old_run" != 0 ] && [ "$old_run" != "$GITHUB_RUN_ID" ]; then
-                gh api --method POST "repos/$REPO/actions/runs/$old_run/cancel" >/dev/null 2>&1 || true
+                if cancel_output=$(gh api --method POST "repos/$REPO/actions/runs/$old_run/cancel" 2>&1); then
+                  :
+                else
+                  printf 'warning: failed to cancel superseded verification run %s: %s\n' "$old_run" "$cancel_output" >&2
+                fi
               fi
             fi
           fi
