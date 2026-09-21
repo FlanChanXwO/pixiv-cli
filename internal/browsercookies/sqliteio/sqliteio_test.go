@@ -45,6 +45,18 @@ func TestQueryReturnsPlaintextAndTrailingEmptyBlobColumn(t *testing.T) {
 		map[string]string{"@h1": ".fanbox.cc", "@h2": "fanbox.cc", "@n": "FANBOXSESSID"},
 	)
 	if err != nil {
+		if runtime.GOOS == "windows" {
+			args := []string{
+				"-readonly", "-noheader", "-csv",
+				"-cmd", ".parameter set @h1 .fanbox.cc",
+				"-cmd", ".parameter set @h2 fanbox.cc",
+				"-cmd", ".parameter set @n FANBOXSESSID",
+				path,
+				`SELECT host_key, value, hex(encrypted_value) FROM cookies WHERE (host_key = @h1 OR host_key = @h2) AND name = @n;`,
+			}
+			output, rawErr := exec.Command("sqlite3", args...).CombinedOutput()
+			t.Fatalf("Query error = %v; [DEBUG-sqlite-win] raw error = %v, output = %q, hex = %x", err, rawErr, output, output)
+		}
 		t.Fatal(err)
 	}
 	if len(rows) != 1 || len(rows[0]) != 3 {
