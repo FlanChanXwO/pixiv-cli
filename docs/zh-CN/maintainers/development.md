@@ -157,8 +157,11 @@ go test ./scripts/internal/nativeevidence -count=1
 Release。
 
 `.github/workflows/browser-evidence.yml` 是另一条 credential-free 的原生 provider contract matrix，
-在 macOS、Linux、Windows 的 amd64/arm64 runner 上执行 `internal/browsercookies/...` 的平台代码与合成 fixture 回归，
-聚焦的 test-only workflow contract 只锁 credential、full-SHA action、fixture 与 cleanup 等安全边界，
+在 macOS、Linux、Windows 的 amd64/arm64 runner 上执行 `internal/browsercookies/...` 的平台代码与合成 fixture 回归。
+GitHub Windows runner 不提供该 contract 需要的 `sqlite3` CLI，因此两个 Windows job 都通过
+`scripts/install-browser-sqlite.ps1` 安装与架构匹配的 SQLite 3.53.4 官方 tools 包，并在原有 SQLite preflight
+之前用固定 URL 与 SHA-256 校验下载内容。聚焦的 test-only workflow contract 只锁 credential、full-SHA action、
+fixture、固定 SQLite provisioning 与 cleanup 等安全边界，
 不再由生产代码重新实现整份 workflow；`scripts/cmd/browsernativeevidence firefox-contract` 仅保留为
 隔离 Firefox profile/schema 的真实运行时 helper。`firefox_native` job 只在 runner 临时目录解包官方包，
 让 Firefox 生成隔离 profile/schema，再注入明确的 synthetic cookie 运行 provider contract；它不读取

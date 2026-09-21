@@ -78,6 +78,42 @@ func TestBrowserEvidenceWorkflowKeepsSecurityAndFixtureBoundaries(t *testing.T) 
 	}
 }
 
+func TestWindowsBrowserEvidencePinsSQLiteCLIProvisioning(t *testing.T) {
+	t.Parallel()
+
+	root := findRepositoryRoot(t)
+	workflowBody, err := os.ReadFile(filepath.Join(root, ".github", "workflows", "browser-evidence.yml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	workflow := string(workflowBody)
+	const installCommand = "./scripts/install-browser-sqlite.ps1 -GoArch '${{ matrix.goarch }}'"
+	if got := strings.Count(workflow, installCommand); got != 2 {
+		t.Fatalf("Windows SQLite provisioning calls = %d, want 2", got)
+	}
+	if !strings.Contains(workflow, "- 'scripts/install-browser-sqlite.ps1'") {
+		t.Fatal("browser evidence workflow must run when the pinned SQLite provisioning script changes")
+	}
+
+	scriptBody, err := os.ReadFile(filepath.Join(root, "scripts", "install-browser-sqlite.ps1"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	script := string(scriptBody)
+	for _, required := range []string{
+		"https://www.sqlite.org/2026/sqlite-tools-win-x64-3530400.zip",
+		"https://www.sqlite.org/2026/sqlite-tools-win-arm64-3530400.zip",
+		"f46ee2475de4cbe287e6e5f7d43c838796b14e7379cd216bdbb28d391429f9fc",
+		"8a7c30165f6e9b054fbbe5ba6048acf23c967fd76955f7a5d66dc519542d3393",
+		"Get-FileHash -Algorithm SHA256",
+		"$env:GITHUB_PATH",
+	} {
+		if !strings.Contains(script, required) {
+			t.Fatalf("Windows SQLite provisioning script missing %q", required)
+		}
+	}
+}
+
 func TestFirefoxEvidenceHelpersUseIsolatedPathsAndEnvironment(t *testing.T) {
 	home := filepath.Join(t.TempDir(), "home")
 	root, err := firefoxDataRootFor(home)
