@@ -106,41 +106,41 @@ func verifySyntheticFirefoxProviderContract(home, profileID string) (runErr erro
 				err = os.Unsetenv(key)
 			}
 			if err != nil && runErr == nil {
-				runErr = errors.New("restore Firefox environment failed")
+				runErr = errors.New("restore firefox environment failed")
 			}
 		}
 	}()
 	for key, value := range isolated {
 		if err := os.Setenv(key, value); err != nil {
-			return errors.New("set isolated Firefox environment failed")
+			return errors.New("set isolated firefox environment failed")
 		}
 	}
 
 	provider, err := system.New("firefox")
 	if err != nil {
-		return errors.New("create Firefox provider failed")
+		return errors.New("create firefox provider failed")
 	}
 	defer func() {
 		if err := provider.Close(); err != nil && runErr == nil {
-			runErr = errors.New("close Firefox provider failed")
+			runErr = errors.New("close firefox provider failed")
 		}
 	}()
 
 	ctx := context.Background()
 	profiles, err := provider.DiscoverProfiles(ctx)
 	if err != nil {
-		return errors.New("discover Firefox profile failed")
+		return errors.New("discover firefox profile failed")
 	}
 	profile, err := system.SelectProfile(profiles, profileID)
 	if err != nil {
-		return errors.New("select Firefox profile failed")
+		return errors.New("select firefox profile failed")
 	}
 	secrets, err := provider.Read(ctx, system.DefaultQuery, profile.ID)
 	if err != nil {
-		return errors.New("read synthetic Firefox cookie failed")
+		return errors.New("read synthetic firefox cookie failed")
 	}
-	if len(secrets) != 1 || strings.TrimSpace(secrets[0].Value()) == "" {
-		return errors.New("Firefox provider contract returned an invalid allowlisted cookie set")
+	if len(secrets) != 1 || secrets[0].Value() != syntheticFirefoxCookieValue {
+		return errors.New("firefox provider contract returned an invalid allowlisted cookie set")
 	}
 	return nil
 }
@@ -228,10 +228,12 @@ func writeFirefoxProfilesINI(dataRoot, profileID string) error {
 // 合成值。这里只依赖 Firefox schema 长期稳定、且 provider 查询实际需要的四个
 // 核心字段；其他版本字段由 Firefox 自己提供默认值，不能把可选 migration 字段
 // 的增删误报成 provider 失败。
+const syntheticFirefoxCookieValue = "browser-native-evidence-synthetic"
+
 func seedSyntheticFirefoxCookie(databasePath string) error {
 	const statement = `INSERT OR REPLACE INTO moz_cookies
 (name, value, host, path)
-VALUES ('FANBOXSESSID', 'browser-native-evidence-synthetic', '.fanbox.cc', '/');`
+VALUES ('FANBOXSESSID', '` + syntheticFirefoxCookieValue + `', '.fanbox.cc', '/');`
 	command := exec.Command("sqlite3", databasePath, statement)
 	command.Stdout = io.Discard
 	command.Stderr = io.Discard

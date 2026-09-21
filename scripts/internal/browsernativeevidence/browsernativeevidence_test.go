@@ -236,6 +236,40 @@ UNIQUE(name, host, path)
 	}
 }
 
+func TestVerifySyntheticFirefoxProviderContractRejectsWrongCookieValue(t *testing.T) {
+	if _, err := exec.LookPath("sqlite3"); err != nil {
+		t.Skip("sqlite3 command-line tool not available")
+	}
+	home := filepath.Join(t.TempDir(), "home")
+	dataRoot, err := firefoxDataRootFor(home)
+	if err != nil {
+		t.Fatal(err)
+	}
+	profileID := "ci.default-release"
+	profileDir := filepath.Join(dataRoot, profileID)
+	if err := os.MkdirAll(profileDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := writeFirefoxProfilesINI(dataRoot, profileID); err != nil {
+		t.Fatal(err)
+	}
+	databasePath := filepath.Join(profileDir, "cookies.sqlite")
+	statement := `CREATE TABLE moz_cookies (
+name TEXT, value TEXT, host TEXT, path TEXT,
+UNIQUE(name, host, path)
+);
+INSERT INTO moz_cookies (name, value, host, path)
+VALUES ('FANBOXSESSID', 'wrong-but-nonempty', '.fanbox.cc', '/');`
+	create := exec.Command("sqlite3", databasePath, statement)
+	if output, err := create.CombinedOutput(); err != nil {
+		t.Fatalf("create Firefox fixture with wrong cookie: %v: %s", err, output)
+	}
+
+	if err := verifySyntheticFirefoxProviderContract(home, profileID); err == nil {
+		t.Fatal("wrong synthetic Firefox cookie value unexpectedly accepted")
+	}
+}
+
 func findRepositoryRoot(t *testing.T) string {
 	t.Helper()
 	root, err := os.Getwd()

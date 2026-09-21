@@ -62,10 +62,13 @@ func TestQueryForcesSingleNewlineForCSV(t *testing.T) {
 	dir := t.TempDir()
 	command := filepath.Join(dir, "sqlite3")
 	contents := `#!/bin/sh
-case " $* " in
-  *" -newline "*) printf '.fanbox.cc,plain-session,""\r\n' ;;
-  *) printf '.fanbox.cc,plain-session,""\r\r\n' ;;
-esac
+expected_newline='
+'
+if [ "$4" = "-newline" ] && [ "$5" = "$expected_newline" ]; then
+  printf '.fanbox.cc,plain-session,""\r\n'
+else
+  printf '.fanbox.cc,plain-session,""\r\r\n'
+fi
 `
 	if err := os.WriteFile(command, []byte(contents), 0o700); err != nil {
 		t.Fatal(err)
