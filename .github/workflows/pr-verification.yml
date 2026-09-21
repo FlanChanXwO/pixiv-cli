@@ -207,11 +207,11 @@ jobs:
           }
           remove_reaction() {
             local subject_id
-            subject_id=$(reaction_subject "$1") || return 0
+            subject_id=$(reaction_subject "$1")
             gh api graphql \
               -f query='mutation($subjectId: ID!, $content: ReactionContent!) { removeReaction(input: {subjectId: $subjectId, content: $content}) { subject { id } } }' \
               -f subjectId="$subject_id" \
-              -f content="$2" >/dev/null 2>&1 || true
+              -f content="$2" >/dev/null
           }
           fail_trigger() {
             local reason="$1"
@@ -453,11 +453,11 @@ jobs:
           }
           remove_reaction() {
             local subject_id
-            subject_id=$(reaction_subject "$1") || return 0
+            subject_id=$(reaction_subject "$1")
             gh api graphql \
               -f query='mutation($subjectId: ID!, $content: ReactionContent!) { removeReaction(input: {subjectId: $subjectId, content: $content}) { subject { id } } }' \
               -f subjectId="$subject_id" \
-              -f content="$2" >/dev/null 2>&1 || true
+              -f content="$2" >/dev/null
           }
           comment_id=$(gh api --paginate "repos/$REPO/issues/$PR/comments" --jq '.[] | select(.user.login == "github-actions[bot]" and (.body | contains("<!-- pr-test-result -->"))) | .id' | head -1)
           test -n "$comment_id"

@@ -5,7 +5,16 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"gopkg.in/yaml.v3"
 )
+
+type workflowDocument struct {
+	Permissions map[string]string `yaml:"permissions"`
+	Jobs        map[string]struct {
+		Permissions map[string]string `yaml:"permissions"`
+	} `yaml:"jobs"`
+}
 
 // TestTrustedPRVerificationFeedbackContract 只锁住 /test 的信任边界：
 // reaction 走 GraphQL、trusted executor 跟随当前 base branch tip，反馈 job 具备写 PR 的权限。
@@ -27,14 +36,37 @@ func TestTrustedPRVerificationFeedbackContract(t *testing.T) {
 			t.Fatalf("PR verification workflow missing trusted feedback contract %q", required)
 		}
 	}
-	if !strings.Contains(body, "pull-requests: write") {
-		t.Fatal("trusted PR feedback path must be able to write PR feedback")
+	var document workflowDocument
+	if err := yaml.Unmarshal(workflow, &document); err != nil {
+		t.Fatalf("parse PR verification workflow: %v", err)
+	}
+	if document.Permissions["pull-requests"] == "write" {
+		t.Fatal("workflow-level permissions must not grant pull request write access")
+	}
+	for _, name := range []string{"dispatch", "aggregate"} {
+		job, ok := document.Jobs[name]
+		if !ok {
+			t.Fatalf("PR verification workflow missing trusted feedback job %q", name)
+		}
+		if job.Permissions["pull-requests"] != "write" {
+			t.Fatalf("trusted feedback job %q must grant pull-requests: write", name)
+		}
+	}
+	for name, job := range document.Jobs {
+		if name == "dispatch" || name == "aggregate" {
+			continue
+		}
+		if job.Permissions["pull-requests"] == "write" {
+			t.Fatalf("non-feedback job %q must not grant pull-requests: write", name)
+		}
 	}
 	for _, forbidden := range []string{
 		"jq -r '.base.sha'",
 		"issues/comments/$comment_id/reactions",
 		"issues/comments/$trigger_comment/reactions",
 		"reaction_id",
+		"subject_id=$(reaction_subject \"$1\") || return 0",
+		"-f content=\"$2\" >/dev/null 2>&1 || true",
 	} {
 		if strings.Contains(body, forbidden) {
 			t.Fatalf("PR verification workflow contains obsolete trust path %q", forbidden)
