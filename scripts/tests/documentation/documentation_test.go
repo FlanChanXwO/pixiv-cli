@@ -214,6 +214,58 @@ func TestMaintainerDocsDocumentContainerReleaseVerification(t *testing.T) {
 	}
 }
 
+func TestMaintainerDocsDescribeCurrentEvidenceAndInstallerOwnership(t *testing.T) {
+	t.Parallel()
+
+	contracts := []struct {
+		locale    string
+		path      string
+		required  []string
+		forbidden []string
+	}{
+		{
+			locale: "English",
+			path:   "docs/en/maintainers/development.md",
+			required: []string{
+				"unexported record/consolidate seams",
+				"focused workflow contract",
+				"platform-smoke workflow runs this installer contract directly",
+			},
+			forbidden: []string{
+				"record/consolidate/policy seams",
+				"platform workflow policy requires this test to exist",
+			},
+		},
+		{
+			locale: "Simplified Chinese",
+			path:   "docs/zh-CN/maintainers/development.md",
+			required: []string{
+				"未导出的 record/consolidate seam",
+				"聚焦 workflow contract",
+				"platform-smoke workflow 会直接运行这项 installer contract",
+			},
+			forbidden: []string{
+				"record/consolidate/policy seam",
+				"平台 workflow policy 固定要求这项测试存在",
+			},
+		},
+	}
+
+	for _, contract := range contracts {
+		document := readUserGuide(t, contract.path)
+		for _, required := range contract.required {
+			if !strings.Contains(document, required) {
+				t.Errorf("%s maintainer documentation is missing current CI ownership phrase %q", contract.locale, required)
+			}
+		}
+		for _, forbidden := range contract.forbidden {
+			if strings.Contains(document, forbidden) {
+				t.Errorf("%s maintainer documentation still contains obsolete CI ownership phrase %q", contract.locale, forbidden)
+			}
+		}
+	}
+}
+
 type documentationContract struct {
 	path       string
 	localePath string

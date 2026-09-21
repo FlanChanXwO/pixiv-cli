@@ -24,8 +24,6 @@ import (
 	"github.com/FlanChanXwO/pixiv-cli/tools/internal/verificationpolicy"
 )
 
-const outputLimit = 16 * 1024
-
 type stageResult struct {
 	Command    string `json:"command"`
 	Status     string `json:"status"`
@@ -109,7 +107,7 @@ func executeResult(args []string) {
 	workspace := set.String("workspace", ".", "verification workspace")
 	whitelistPath := set.String("whitelist", "tools/verification/command-whitelist.txt", "trusted whitelist")
 	output := set.String("output", "", "result file")
-	timeout := set.Duration("timeout", 2*time.Minute, "timeout for each declared command")
+	timeout := set.Duration("timeout", 0, "optional timeout for each declared command; positive values enable it")
 	_ = set.Parse(args)
 	if *platform == "" || *binary == "" || *commandsJSON == "" || *output == "" {
 		fatal(errors.New("platform, binary, commands-json, and output are required"))
@@ -167,7 +165,11 @@ func preflight(commands verificationpolicy.Commands, binary string) error {
 }
 
 func runPipeline(command verificationpolicy.Command, binary, workspace string, timeout time.Duration) commandResult {
-	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	var ctx context.Context = context.Background()
+	var cancel context.CancelFunc = func() {}
+	if timeout > 0 {
+		ctx, cancel = context.WithTimeout(ctx, timeout)
+	}
 	defer cancel()
 	started := time.Now()
 	results := make([]stageResult, len(command.Stages))
@@ -178,7 +180,7 @@ func runPipeline(command verificationpolicy.Command, binary, workspace string, t
 	for index := range pipes {
 		pipes[index].reader, pipes[index].writer = io.Pipe()
 	}
-	var finalOutput cappedBuffer
+	var finalOutput bytes.Buffer
 	var wg sync.WaitGroup
 	for index, stage := range command.Stages {
 		index := index
@@ -236,7 +238,7 @@ func runPipeline(command verificationpolicy.Command, binary, workspace string, t
 func runStage(ctx context.Context, stage verificationpolicy.Stage, binary, workspace string, stdin io.Reader, stdout io.Writer) stageResult {
 	started := time.Now()
 	result := stageResult{Command: strings.Join(stage.Argv, " "), Status: "passed"}
-	var stderr cappedBuffer
+	var stderr bytes.Buffer
 	trackedStdout := &pipeAwareWriter{writer: stdout}
 	name := stage.Argv[0]
 	args := append([]string(nil), stage.Argv[1:]...)
@@ -393,38 +395,6 @@ func exitCode(err error) int {
 		return 124
 	}
 	return 1
-}
-
-type cappedBuffer struct {
-	buffer    bytes.Buffer
-	omitted   int
-	maxLength int
-}
-
-func (b *cappedBuffer) Write(value []byte) (int, error) {
-	limit := b.maxLength
-	if limit == 0 {
-		limit = outputLimit
-	}
-	remaining := limit - b.buffer.Len()
-	if remaining > 0 {
-		write := len(value)
-		if write > remaining {
-			write = remaining
-		}
-		_, _ = b.buffer.Write(value[:write])
-		b.omitted += len(value) - write
-	} else {
-		b.omitted += len(value)
-	}
-	return len(value), nil
-}
-
-func (b *cappedBuffer) String() string {
-	if b.omitted == 0 {
-		return b.buffer.String()
-	}
-	return b.buffer.String() + fmt.Sprintf("\n... %d byte(s) omitted ...", b.omitted)
 }
 
 var (

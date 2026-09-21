@@ -105,6 +105,29 @@ func TestDeletedTriggerCommentIsTheOnlyIgnoredReactionLookupError(t *testing.T) 
 	}
 }
 
+func TestSupersededRunCancellationFailureIsObservableAndBestEffort(t *testing.T) {
+	t.Parallel()
+
+	workflow, err := os.ReadFile(filepath.Join(repositoryRoot(t), ".github", "workflows", "pr-verification.yml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	body := string(workflow)
+
+	if strings.Contains(body, `gh api --method POST "repos/$REPO/actions/runs/$old_run/cancel" >/dev/null 2>&1 || true`) {
+		t.Fatal("superseded run cancellation must not silently discard failures")
+	}
+	for _, required := range []string{
+		`if cancel_output=$(gh api --method POST "repos/$REPO/actions/runs/$old_run/cancel" 2>&1); then`,
+		`failed to cancel superseded verification run %s: %s`,
+		`"$old_run" "$cancel_output" >&2`,
+	} {
+		if !strings.Contains(body, required) {
+			t.Fatalf("superseded run cancellation missing observable best-effort contract %q", required)
+		}
+	}
+}
+
 func repositoryRoot(t *testing.T) string {
 	t.Helper()
 	dir, err := os.Getwd()
