@@ -2,15 +2,58 @@ package sqliteio_test
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"testing"
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/browsercookies"
 	"github.com/FlanChanXwO/pixiv-cli/internal/browsercookies/sqliteio"
+	_ "modernc.org/sqlite"
 )
+
+func TestQueryReturnsPlaintextAndTrailingEmptyBlobColumn(t *testing.T) {
+	if _, err := exec.LookPath("sqlite3"); err != nil {
+		t.Skip("sqlite3 command-line tool not available")
+	}
+	path := filepath.Join(t.TempDir(), "cookies.sqlite")
+	db, err := sql.Open("sqlite", "file:"+path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, statement := range []string{
+		`CREATE TABLE cookies (host_key TEXT, name TEXT, value TEXT, encrypted_value BLOB NOT NULL DEFAULT '');`,
+		`INSERT INTO cookies (host_key, name, value, encrypted_value) VALUES ('.fanbox.cc', 'FANBOXSESSID', 'plain-session', X'');`,
+	} {
+		if _, err := db.Exec(statement); err != nil {
+			_ = db.Close()
+			t.Fatal(err)
+		}
+	}
+	if err := db.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	rows, err := sqliteio.Query(
+		context.Background(),
+		path,
+		`SELECT host_key, value, hex(encrypted_value) FROM cookies WHERE (host_key = @h1 OR host_key = @h2) AND name = @n;`,
+		map[string]string{"@h1": ".fanbox.cc", "@h2": "fanbox.cc", "@n": "FANBOXSESSID"},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(rows) != 1 || len(rows[0]) != 3 {
+		t.Fatalf("rows shape = %#v, want one row with three columns", rows)
+	}
+	if got, want := rows[0], []string{".fanbox.cc", "plain-session", ""}; !slices.Equal(got, want) {
+		t.Fatalf("row = %#v, want %#v", got, want)
+	}
+}
 
 func TestQueryMapsPermissionFailureWithoutLeakingCommandOutput(t *testing.T) {
 	dir := t.TempDir()

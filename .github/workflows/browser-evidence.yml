@@ -3,6 +3,12 @@ name: Browser provider native contracts
 # 该 workflow 只运行无凭据的 provider contract；真实浏览器 session 只允许在受保护
 # release-prep host 运行，不把 Keychain/DPAPI/Secret Service value 带入 CI。
 on:
+  # 临时诊断入口：仅用于 Windows sqlite3/browsercookies 兼容性反馈环。
+  # Task 7A 收敛后必须删除，不进入最终 main。
+  pull_request:
+    paths:
+      - '.github/workflows/browser-evidence.yml'
+      - 'internal/browsercookies/**'
   push:
     branches:
       - main
