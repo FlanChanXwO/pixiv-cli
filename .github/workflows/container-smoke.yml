@@ -53,9 +53,8 @@ jobs:
           go run ./scripts/cmd/changescope --base "$BASE_SHA" --head "$HEAD_SHA" --github-output "$GITHUB_OUTPUT"
 
   resolve_platforms:
-    name: Resolve container matrix
+    name: Container setup
     needs: classify_changes
-    if: needs.classify_changes.outputs.container_required == 'true'
     runs-on: ubuntu-24.04
     permissions:
       contents: read
@@ -71,13 +70,28 @@ jobs:
       - name: Resolve container platforms
         id: matrix
         shell: bash
-        run: go run ./tools/platformmatrix --capability container --github-output "$GITHUB_OUTPUT"
+        env:
+          REQUIRED: ${{ needs.classify_changes.outputs.container_required }}
+        run: |
+          set -euo pipefail
+          # worker 始终运行：被 skip 的 matrix job 会让 GitHub 原样显示
+          # `${{ matrix.* }}` 占位符。非必需时只产出单个占位条目，名称里说明
+          # 跳过原因，并落到便宜的 ubuntu runner，不占用容器 runner。
+          if [ "$REQUIRED" = true ]; then
+            raw=$(go run ./tools/platformmatrix --capability container)
+            matrix=$(printf '%s' "$raw" | jq -c '.include |= map(. + {display: (.goos + "/" + .goarch), required: "true"})')
+          else
+            matrix=$(jq -nc '{include:[{display:"not required", required:"false", runner:"ubuntu-24.04"}]}')
+          fi
+          printf 'matrix=%s\n' "$matrix" >> "$GITHUB_OUTPUT"
 
   container_smoke:
     needs: [classify_changes, resolve_platforms]
-    if: ${{ needs.classify_changes.outputs.container_required == 'true' }}
-    name: Container smoke ${{ matrix.goos }}/${{ matrix.goarch }}
-    runs-on: ${{ matrix.runner }}
+    # 刻意不加 job 级 if：被 skip 的 matrix job 会让 GitHub 原样显示
+    # `${{ matrix.* }}` 占位符。改为始终运行，非必需时落到便宜的
+    # ubuntu-24.04 并在 step 层跳过全部重活。
+    name: Container smoke · ${{ matrix.display }}
+    runs-on: ${{ matrix.required == 'true' && matrix.runner || 'ubuntu-24.04' }}
     permissions:
       contents: read
     strategy:
@@ -87,16 +101,25 @@ jobs:
       CC: ${{ matrix.cc }}
       RUSTUP_TOOLCHAIN: ${{ matrix.rust_toolchain }}
     steps:
+      - name: Mark the change as not requiring container smoke
+        if: matrix.required != 'true'
+        shell: bash
+        run: printf '%s\n' 'Container smoke is not required for this change.'
+
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        if: matrix.required == 'true'
         with:
           persist-credentials: false
       - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff
+        if: matrix.required == 'true'
         with:
           go-version-file: go.mod
       - name: Install the native Rust toolchain
+        if: matrix.required == 'true'
         shell: bash
         run: rustup toolchain install '${{ matrix.rust_toolchain }}' --profile minimal --target '${{ matrix.rust_target }}' --no-self-update
       - name: Build the versioned Linux binary
+        if: matrix.required == 'true'
         shell: bash
         run: |
           set -euo pipefail
@@ -108,9 +131,11 @@ jobs:
             --output-dir dist)
           test "$binary" = dist/pixiv
       - name: Build the container image
+        if: matrix.required == 'true'
         shell: bash
         run: docker build -t pixiv-cli-smoke:${{ matrix.goarch }} .
       - name: Verify non-root user
+        if: matrix.required == 'true'
         shell: bash
         run: |
           uid=$(docker run --rm --entrypoint id pixiv-cli-smoke:${{ matrix.goarch }} -u)
@@ -119,6 +144,7 @@ jobs:
             exit 1
           fi
       - name: Verify exact release version
+        if: matrix.required == 'true'
         shell: bash
         run: |
           version=$(docker run --rm pixiv-cli-smoke:${{ matrix.goarch }} --version)
@@ -127,6 +153,7 @@ jobs:
             exit 1
           fi
       - name: Verify state path
+        if: matrix.required == 'true'
         shell: bash
         run: |
           config_path=$(docker run --rm pixiv-cli-smoke:${{ matrix.goarch }} config path)
@@ -135,6 +162,7 @@ jobs:
             exit 1
           fi
       - name: Verify working directory
+        if: matrix.required == 'true'
         shell: bash
         run: |
           workdir=$(docker run --rm --entrypoint sh pixiv-cli-smoke:${{ matrix.goarch }} -c 'pwd')
@@ -143,6 +171,7 @@ jobs:
             exit 1
           fi
       - name: Verify embedded license-notices bundle
+        if: matrix.required == 'true'
         shell: bash
         run: |
           docker run --rm --entrypoint sh pixiv-cli-smoke:${{ matrix.goarch }} -c '
@@ -151,6 +180,7 @@ jobs:
             find /usr/share/doc/pixiv-cli/third_party/licenses -type f | grep -q .
           '
       - name: Run container release contract tests
+        if: matrix.required == 'true'
         shell: bash
         run: go test ./scripts/tests/containerrelease -count=1
 
@@ -170,11 +200,20 @@ jobs:
           MATRIX_RESULT: ${{ needs.container_smoke.result }}
         run: |
           set -euo pipefail
-          test "$CLASSIFY_RESULT" = success
+          # §12.1：失败时必须给出可操作原因，而不是只有退出码。
+          if [ "$CLASSIFY_RESULT" != success ]; then
+            echo '::error::Container configuration could not be resolved.'
+            exit 1
+          fi
+          if [ "$RESOLVE_RESULT" != success ]; then
+            echo '::error::Container configuration could not be resolved.'
+            exit 1
+          fi
+          if [ "$MATRIX_RESULT" != success ]; then
+            echo '::error::Container smoke failed on one or more required platforms.'
+            exit 1
+          fi
+          # §12.2：合法跳过必须解释原因。
           if [ "$CONTAINER_REQUIRED" != true ]; then
-            test "$RESOLVE_RESULT" = skipped
-            test "$MATRIX_RESULT" = skipped
-          else
-            test "$RESOLVE_RESULT" = success
-            test "$MATRIX_RESULT" = success
+            printf '%s\n' 'Container smoke is not required for this change.'
           fi

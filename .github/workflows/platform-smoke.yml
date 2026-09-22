@@ -54,9 +54,8 @@ jobs:
           go run ./scripts/cmd/changescope --base "$BASE_SHA" --head "$HEAD_SHA" --github-output "$GITHUB_OUTPUT"
 
   resolve_platforms:
-    name: Resolve platform matrix
+    name: Platform setup
     needs: classify_changes
-    if: needs.classify_changes.outputs.platform_required == 'true'
     runs-on: ubuntu-24.04
     permissions:
       contents: read
@@ -72,13 +71,29 @@ jobs:
       - name: Resolve smoke platforms
         id: matrix
         shell: bash
-        run: go run ./tools/platformmatrix --capability smoke --github-output "$GITHUB_OUTPUT"
+        env:
+          REQUIRED: ${{ needs.classify_changes.outputs.platform_required }}
+        run: |
+          set -euo pipefail
+          # worker 始终运行：被 skip 的 matrix job 会让 GitHub 原样显示
+          # `${{ matrix.* }}` 占位符；静态名则会被自动追加整个 matrix tuple，
+          # 两者都违反用户可见 Check name 规范。非必需时只产出单个占位条目，
+          # 名称里说明跳过原因，并落到便宜的 ubuntu runner。
+          if [ "$REQUIRED" = true ]; then
+            raw=$(go run ./tools/platformmatrix --capability smoke)
+            matrix=$(printf '%s' "$raw" | jq -c '.include |= map(. + {display: (.goos + "/" + .goarch), required: "true"})')
+          else
+            matrix=$(jq -nc '{include:[{display:"not required", required:"false", runner:"ubuntu-24.04"}]}')
+          fi
+          printf 'matrix=%s\n' "$matrix" >> "$GITHUB_OUTPUT"
 
   packaged_binary_smoke:
     needs: [classify_changes, resolve_platforms]
-    if: ${{ needs.classify_changes.outputs.platform_required == 'true' }}
-    name: Packaged binary smoke
-    runs-on: ${{ matrix.runner }}
+    # 刻意不加 job 级 if：被 skip 的 matrix job 会让 GitHub 原样显示
+    # `${{ matrix.* }}` 占位符；静态名则会被追加整个 matrix tuple。改为始终
+    # 运行，非必需时落到便宜的 ubuntu-24.04 并在 step 层跳过全部重活。
+    name: Platform smoke · ${{ matrix.display }}
+    runs-on: ${{ matrix.required == 'true' && matrix.runner || 'ubuntu-24.04' }}
     permissions:
       contents: read
     env:
@@ -88,25 +103,37 @@ jobs:
       fail-fast: false
       matrix: ${{ fromJSON(needs.resolve_platforms.outputs.matrix) }}
     steps:
+      - name: Mark the change as not requiring platform smoke
+        if: matrix.required != 'true'
+        shell: bash
+        run: printf '%s\n' 'Documentation-only change; platform smoke is not required.'
+
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        if: matrix.required == 'true'
         with:
           persist-credentials: false
       - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff
+        if: matrix.required == 'true'
         with:
           go-version-file: go.mod
       - name: Install the pinned native Rust toolchain
+        if: matrix.required == 'true'
         shell: bash
         run: rustup toolchain install '${{ matrix.rust_toolchain }}' --profile minimal --target '${{ matrix.rust_target }}' --no-self-update
       - name: Check vendored Rust sources
+        if: matrix.required == 'true'
         shell: bash
         run: sh scripts/test-rust-vendor.sh
       - name: Test the platform installer
+        if: matrix.required == 'true'
         shell: bash
         run: go test ./scripts/tests/installers -count=1
       - name: Test platform OAuth callback integration
+        if: matrix.required == 'true'
         shell: bash
         run: go test ./internal/cli/commands/pixiv/auth/loginhelper -count=1
       - name: Build and package the platform binary
+        if: matrix.required == 'true'
         shell: bash
         run: |
           set -euo pipefail
@@ -120,6 +147,7 @@ jobs:
             --package)
           printf 'PLATFORM_ARCHIVE=%s\n' "$archive" >> "$GITHUB_ENV"
       - name: Run native GIF/APNG smoke
+        if: matrix.required == 'true'
         shell: bash
         run: |
           set +e
@@ -133,6 +161,7 @@ jobs:
             exit "$status"
           fi
       - name: Extract and smoke the packaged binary
+        if: matrix.required == 'true'
         shell: bash
         run: |
           set -euo pipefail
@@ -171,11 +200,21 @@ jobs:
           MATRIX_RESULT: ${{ needs.packaged_binary_smoke.result }}
         run: |
           set -euo pipefail
-          test "$CLASSIFY_RESULT" = success
-          if [ "$PLATFORM_REQUIRED" != true ]; then
-            test "$RESOLVE_RESULT" = skipped
-            test "$MATRIX_RESULT" = skipped
-            exit 0
+          # §12.1：失败时必须给出可操作原因，而不是只有退出码。
+          if [ "$CLASSIFY_RESULT" != success ]; then
+            echo '::error::Platform configuration could not be resolved.'
+            exit 1
           fi
-          test "$RESOLVE_RESULT" = success
-          test "$MATRIX_RESULT" = success
+          if [ "$RESOLVE_RESULT" != success ]; then
+            echo '::error::Platform configuration could not be resolved.'
+            exit 1
+          fi
+          if [ "$MATRIX_RESULT" != success ]; then
+            echo '::error::Platform smoke failed on one or more required platforms.'
+            exit 1
+          fi
+          # §12.2：合法跳过必须解释原因。worker 始终运行，非必需时在 step 层
+          # 跳过重活，因此这里断言 setup 与 worker 都必须 success。
+          if [ "$PLATFORM_REQUIRED" != true ]; then
+            printf '%s\n' 'Documentation-only change; platform smoke is not required.'
+          fi

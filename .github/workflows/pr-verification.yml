@@ -19,7 +19,9 @@ permissions: {}
 jobs:
   dispatch:
     name: Dispatch verification
-    if: github.event_name == 'workflow_dispatch' || github.event.issue.pull_request
+    # 无条件运行：job 级 if 会让非 PR 的 issue 评论把整条链跳过，而被 skip 的
+    # matrix worker 不会展开 name 表达式，用户会看到原始 `${{ matrix.display }}`。
+    # 非 PR 的情况由 authorize 内部以 accepted=false 收敛。
     concurrency:
       group: pr-test-${{ github.repository }}-${{ github.event_name == 'workflow_dispatch' && inputs.pr_number || github.event.issue.number }}
       cancel-in-progress: false
@@ -62,8 +64,13 @@ jobs:
           INPUT_COMMENT_ID: ${{ inputs.trigger_comment_id }}
           EVENT_COMMENT_BODY: ${{ github.event.comment.body }}
           EVENT_COMMENTER: ${{ github.event.comment.user.login }}
+          EVENT_IS_PR: ${{ github.event.issue.pull_request != null }}
         run: |
           set -euo pipefail
+          if [ "$EVENT_NAME" != workflow_dispatch ] && [ "$EVENT_IS_PR" != true ]; then
+            printf '%s\n' 'accepted=false' >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
           if [ "$EVENT_NAME" = workflow_dispatch ]; then
             pr="$INPUT_PR_NUMBER"
             comment_id="$INPUT_COMMENT_ID"
