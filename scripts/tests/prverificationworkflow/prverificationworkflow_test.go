@@ -31,6 +31,13 @@ func TestTrustedPRVerificationFeedbackContract(t *testing.T) {
 		"gh api graphql",
 		"jq -r '.base.ref'",
 		"branches/$base_ref_encoded",
+		// §5.1/§5.3/§5.4：触发判定与有效命令解析都由单一 trusted policy 负责，
+		// 评论 override 完全覆盖 PR 声明，且声明但无效时必须 fail closed。
+		"--check-trigger --comment-file",
+		"--resolve",
+		"OVERRIDE_DECLARED: ${{ steps.resolve.outputs.override_declared }}",
+		"fail_trigger \"$RESOLVE_DESC\"",
+		"verification_identity()",
 	} {
 		if !strings.Contains(body, required) {
 			t.Fatalf("PR verification workflow missing trusted feedback contract %q", required)
@@ -62,6 +69,7 @@ func TestTrustedPRVerificationFeedbackContract(t *testing.T) {
 	}
 	for _, forbidden := range []string{
 		"jq -r '.base.sha'",
+		"trimmed=",
 		"issues/comments/$comment_id/reactions",
 		"issues/comments/$trigger_comment/reactions",
 		"reaction_id",

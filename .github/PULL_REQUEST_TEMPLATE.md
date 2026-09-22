@@ -22,8 +22,8 @@ Bullet the change and why. Link an issue with `Closes #123` (closes on merge).
 - `sh scripts/build.sh`
 未测试时说明原因。 / If not tested, explain why.
 
-需要按需运行真实服务验证时，可额外提供一个 fenced test block。
-When live service verification is useful, optionally provide one fenced test block.
+需要按需运行真实服务验证时，可额外提供一个 \`\`\`commands fenced block。
+When live service verification is useful, optionally provide one \`\`\`commands fenced block.
 只允许受信任白名单中的命令与受控管道；不会执行 shell。
 Only trusted-whitelist commands and controlled pipelines are accepted; no shell is invoked.
 -->
