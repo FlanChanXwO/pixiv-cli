@@ -40,6 +40,7 @@ func (c *Client) mapArtworkEntity(value artwork.Artwork) (Artwork, error) {
 		Visible:               value.Visible,
 		SanityLevel:           value.SanityLevel,
 		RestrictionAttributes: append([]string(nil), value.RestrictionAttributes...),
+		TotalComments:         value.TotalComments,
 	}
 	if value.Series != nil {
 		result.Series = &ArtworkSeriesSummary{ID: value.Series.ID, Title: value.Series.Title}

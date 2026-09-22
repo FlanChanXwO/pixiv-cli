@@ -79,6 +79,7 @@ type Artwork struct {
 	SanityLevel           int
 	RestrictionAttributes []string
 	Series                *SeriesSummary
+	TotalComments         *int
 }
 
 // UgoiraMetadata 是 ugoira detail family 的规范化播放元数据。

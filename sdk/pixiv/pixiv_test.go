@@ -648,6 +648,49 @@ func TestArtworkWiresDetailPreservesPagesAndResources(t *testing.T) {
 	}
 }
 
+func TestArtworkDetailPreservesViewerFieldsSeriesAndOptionalComments(t *testing.T) {
+	tests := []struct {
+		name         string
+		series       string
+		comments     string
+		wantSeries   bool
+		wantComments bool
+	}{
+		{name: "series with zero comments", series: `{"id":123,"title":"chapter"}`, comments: `0`, wantSeries: true, wantComments: true},
+		{name: "null series without comments", series: `null`, comments: `null`},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			calls := 0
+			rt := roundTripFunc(func(req *http.Request) (*http.Response, error) {
+				calls++
+				if req.URL.Path != "/v1/illust/detail" {
+					t.Fatalf("path = %s", req.URL.Path)
+				}
+				return jsonResponse(`{"illust":{"id":5,"title":"one","type":"illust","create_date":"2024-01-01T00:00:00Z","image_urls":{"original":"https://i.pximg.net/img/5.png"},"user":{"id":9,"name":"u","account":"u"},"tags":[],"is_bookmarked":true,"is_muted":true,"visible":true,"sanity_level":2,"restriction_attributes":["restricted_mode"],"series":` + test.series + `,"total_comments":` + test.comments + `}}`), nil
+			})
+			client, _ := NewWith("token", Options{HTTPClient: &http.Client{Transport: rt}})
+			got, err := client.Artwork(context.Background(), ArtworkRequest{ArtworkID: 5})
+			if err != nil {
+				t.Fatalf("Artwork: %v", err)
+			}
+			if calls != 1 || !got.IsBookmarked || !got.IsMuted || !got.Visible || got.SanityLevel != 2 ||
+				!reflect.DeepEqual(got.RestrictionAttributes, []string{"restricted_mode"}) {
+				t.Fatalf("calls=%d artwork fields=%+v", calls, got)
+			}
+			if (got.Series != nil) != test.wantSeries || (got.TotalComments != nil) != test.wantComments {
+				t.Fatalf("series=%+v comments=%v, want presence %t/%t", got.Series, got.TotalComments, test.wantSeries, test.wantComments)
+			}
+			if test.wantSeries && (got.Series.ID != 123 || got.Series.Title != "chapter") {
+				t.Fatalf("series = %+v", got.Series)
+			}
+			if test.wantComments && *got.TotalComments != 0 {
+				t.Fatalf("total_comments = %d, want 0", *got.TotalComments)
+			}
+		})
+	}
+}
+
 func TestPixivFamiliesNoWebFallbackTokenMatrix(t *testing.T) {
 	families := []struct {
 		name string

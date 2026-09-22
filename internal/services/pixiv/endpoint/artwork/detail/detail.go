@@ -104,6 +104,14 @@ type illustDTO struct {
 	Width          int           `json:"width"`
 	Height         int           `json:"height"`
 	Tools          []string      `json:"tools"`
+
+	IsBookmarked          bool                   `json:"is_bookmarked"`
+	IsMuted               bool                   `json:"is_muted"`
+	Visible               bool                   `json:"visible"`
+	SanityLevel           int                    `json:"sanity_level"`
+	RestrictionAttributes []string               `json:"restriction_attributes"`
+	Series                *artwork.SeriesSummary `json:"series"`
+	TotalComments         *int                   `json:"total_comments"`
 }
 
 func (d *illustDTO) UnmarshalJSON(data []byte) error {
@@ -256,6 +264,14 @@ func mapArtwork(dto illustDTO) artwork.Artwork {
 		Width:          dto.Width,
 		Height:         dto.Height,
 		Tools:          append([]string(nil), dto.Tools...),
+
+		IsBookmarked:          dto.IsBookmarked,
+		IsMuted:               dto.IsMuted,
+		Visible:               dto.Visible,
+		SanityLevel:           dto.SanityLevel,
+		RestrictionAttributes: append([]string(nil), dto.RestrictionAttributes...),
+		Series:                dto.Series,
+		TotalComments:         dto.TotalComments,
 	}
 }
 

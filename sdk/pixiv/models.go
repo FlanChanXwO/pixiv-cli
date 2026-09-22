@@ -96,6 +96,7 @@ type Artwork struct {
 	SanityLevel           int
 	RestrictionAttributes []string
 	Series                *ArtworkSeriesSummary
+	TotalComments         *int
 }
 
 // Novel is an addressable novel entry. List operations populate identity,
