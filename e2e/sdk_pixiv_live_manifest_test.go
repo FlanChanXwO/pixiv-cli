@@ -108,8 +108,8 @@ func TestSelectLiveReadAccountFallsBackToConfiguredDefault(t *testing.T) {
 	}
 }
 
-// TestRealPixivSDKLiveManifestRead 执行 goal-1 Live Manifest（§11.1/§11.4）中
-// artwork/novel/feed 的 live read 场景：manifest 明确要求的两页 continuation、
+// TestRealPixivSDKLiveManifestRead 覆盖 artwork/novel/feed 的 live read 场景：
+// 明确要求的两页 continuation、
 // 关键 query、错误边界与 #41 的三条 recommended 流。数据受限（例如无法安全构造
 // series ID、follow feed 为空、上游无 continuation）按 manifest 记录
 // data-limited/blocked_external 并在 t.Logf 中输出，不得伪造第二页；契约违规
@@ -393,8 +393,7 @@ func firstNovelWithComments(items []pixivsdk.Novel, hasComments func(int64) bool
 	return 0, false
 }
 
-// TestRealPixivSDKLiveManifestBookmarkUserRead 执行 goal-1 Live Manifest
-// bookmark（14–16、18–20、23–24）、comments（27、29）、user（30–35、37）的
+// TestRealPixivSDKLiveManifestBookmarkUserRead 覆盖 bookmark、comments 与 user 的
 // live read 场景。数据受限按 manifest 记录 blocked_external/data-limited；
 // 契约违规（请求错误、必需字段缺失）使测试失败转 correction。
 func TestRealPixivSDKLiveManifestBookmarkUserRead(t *testing.T) {

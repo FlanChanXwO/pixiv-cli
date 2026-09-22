@@ -1789,9 +1789,9 @@ func resourceTestClient(t *testing.T, server *httptest.Server) (*Client, *http.C
 	return client, httpClient
 }
 
-// legacyPixivClient models the v1 Client surface consumed by callers before
-// the Goal-3 additive API. Keeping this interface compile-checked prevents a
-// future migration from silently removing an old method signature.
+// legacyPixivClient models the established Client surface consumed by callers.
+// Keeping this interface compile-checked prevents a future migration from
+// silently removing an old method signature.
 type legacyPixivClient interface {
 	SearchArtworks(context.Context, SearchArtworksRequest) (sdk.Page[Artwork], error)
 	Artwork(context.Context, ArtworkRequest) (Artwork, error)

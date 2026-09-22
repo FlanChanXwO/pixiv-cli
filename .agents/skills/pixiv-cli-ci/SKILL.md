@@ -70,7 +70,6 @@ go test ./tools/release ./tools/platformmatrix -count=1
 sh scripts/test-homebrew-formula.sh
 go test ./scripts/internal/nativeevidence -run '^TestNativeEvidenceWorkflowKeepsSecurityAndOwnershipBoundaries$' -count=1
 go test ./scripts/internal/browsernativeevidence -run '^TestBrowserEvidenceWorkflowKeepsSecurityAndFixtureBoundaries$' -count=1
-go test ./scripts/tests/clawhubworkflow -count=1
 ```
 
 只运行与受影响 workflow 对应的命令；优先验证外部行为、artifact 与安全边界，不为 YAML 排版、job 名称或具体实现形状新增脆弱测试。
@@ -95,12 +94,16 @@ go test ./scripts/tests/clawhubworkflow -count=1
 
    保存原 run、rerun attempt、授权理由和最终结果。代码或 policy 失败先修复并提交新的受审计 commit，不要重复 rerun。
 2. 仅对确实声明 `workflow_dispatch` 的 workflow 使用 `gh workflow run`，并显式指定受审计的 ref。PR/main 常规验证、native/browser evidence 和 platform smoke 的手动运行必须遵守各自 workflow 的 branch/path 条件和无凭据边界。
-3. Homebrew prepublish 只验证已公开、非 draft、非 prerelease 的 stable Release；默认 `deploy=false`。只有用户明确要求部署且四个平台安装门禁通过时才允许 `deploy=true`，不能把它当作 release.yml 的替代品：
+3. Homebrew prepublish 只读验证已公开、非 draft、非 prerelease 的 stable Release；它不读取 deploy key，也不写 tap。需要恢复 Homebrew 发布时，使用 `publish-homebrew.yml` 并传入原始受信 Release workflow 的 `release_run_id`，不能把 prepublish 当作发布入口：
 
    ```bash
    gh workflow run homebrew-prepublish-verify.yml \
      --ref <default-branch> \
      -f release_tag=vX.Y.Z
+
+   gh workflow run publish-homebrew.yml \
+     --ref <default-branch> \
+     -f release_run_id=<trusted-release-run-id>
    ```
 4. Release 成功并公开同一 immutable tag 后，SkillHub/ClawHub 才可做下游恢复；输入必须是已存在的精确 tag，不能使用后续 main 内容：
 

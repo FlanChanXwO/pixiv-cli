@@ -338,7 +338,7 @@ A production file `x.go` corresponds to at most one `x_test.go` in the same dire
 
 There are currently no temporary items. This list does not accept open-ended phrases like "migration period" or "in the future". Adding a directory requires explaining the specific unexported symbol being observed and confirming that exporting a minimal interface is not a viable substitute; removing a directory requires a deletion task and test migration evidence (external package compiles + coverage unchanged).
 
-`e2e/` and `scripts/tests/clawhubworkflow/` are also `package X`, but they have no production code (pure test carriers), so the "observing unexported production state" problem does not apply and they are outside the scope of this list. Cross-platform differences: test files with build tags (such as `scripts/internal/*`) have a different number of visible files under different `GOOS`/`GOARCH` combinations; when verifying, run `go list` separately with `GOOS=darwin`, `GOOS=windows`, and `GOOS=linux` to confirm the directory set is consistent.
+`e2e/` is also `package X`, but it has no production code (a pure test carrier), so the "observing unexported production state" problem does not apply and it is outside the scope of this list. Cross-platform differences: test files with build tags (such as `scripts/internal/*`) have a different number of visible files under different `GOOS`/`GOARCH` combinations; when verifying, run `go list` separately with `GOOS=darwin`, `GOOS=windows`, and `GOOS=linux` to confirm the directory set is consistent.
 
 ```bash
 # List all directories whose tests stay inside the production package (package X rather than X_test)

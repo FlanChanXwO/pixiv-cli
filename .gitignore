@@ -15,8 +15,6 @@ downloads/
 /output/
 /goals/
 /goal-*/
-!/goal-3/
-!/goal-3/**
 *.db
 *.sqlite
 *.sqlite3
