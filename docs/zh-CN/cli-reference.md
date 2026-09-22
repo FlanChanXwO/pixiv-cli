@@ -313,7 +313,7 @@ artwork、novel、user 搜索记录都会从 `type` 推断对应详情，不需�
 
 `pixiv vector sync local PATH` 递归扫描明确目录下的普通图片文件，将内容指纹变化写入独立的私有
 `~/.pixiv-cli/vector.db`（Windows 为 `%USERPROFILE%\.pixiv-cli\vector.db`），随后以一个短生命周期
-worker 处理尚缺的本地向量。它不复制图片、不访问 Pixiv、不读取账号凭证，也不创建 `config.toml`。
+worker 只处理该目录下尚缺的本地向量，其他图库的待处理资产保持不动。它不复制图片、不访问 Pixiv、不读取账号凭证，也不创建 `config.toml`。
 命令输出 `scanned`、`changed`，以及 `embedded` 数量。重复扫描未变化图片不会重复计算。
 源文件变化、缺失或推理失败时保留待处理工作，需之后显式重扫；当前不自动清理已删除文件。
 `pixiv vector status` 报告持久化的 `assets` 与 `embeddings` 总数；数据库尚不存在时会创建。

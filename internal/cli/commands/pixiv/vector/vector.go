@@ -56,7 +56,7 @@ func syncLocal(ctx context.Context, out io.Writer, open func() (*index.Store, er
 		return err
 	}
 	var runtime *index.SigLIP2
-	processed, processErr := index.ProcessLocalPending(ctx, store, index.ModelID, index.Generation, func(ctx context.Context, path string) ([]float32, error) {
+	processed, processErr := index.ProcessLocalPending(ctx, store, path, index.ModelID, index.Generation, func(ctx context.Context, path string) ([]float32, error) {
 		if runtime == nil {
 			var err error
 			runtime, err = start(ctx)

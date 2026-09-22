@@ -403,7 +403,8 @@ unsupported.
 
 `pixiv vector sync local PATH` recursively scans regular image files under the explicit directory, records
 content-fingerprint changes in a separate private `~/.pixiv-cli/vector.db` (`%USERPROFILE%\.pixiv-cli\vector.db`
-on Windows), then embeds outstanding local assets with one transient worker. It does not copy the images, contact
+on Windows), then embeds pending assets under that same directory with one transient worker. Pending assets from other
+galleries remain untouched. It does not copy the images, contact
 Pixiv, read account credentials, or create `config.toml`. It reports `scanned`, `changed`, and
 `embedded` counts. Repeating an unchanged scan does not re-embed. A changed or missing source and a failed
 embedding leave the work pending for a later explicit scan; removed files are not yet purged from the index.

@@ -100,9 +100,21 @@ func fileFingerprint(path string) (string, error) {
 	return hex.EncodeToString(hash.Sum(nil)), nil
 }
 
-// ProcessLocalPending processes one image at a time and leaves failures pending for a later sync.
+// ProcessLocalPending processes pending images under the explicitly synced gallery only.
+// Failures remain pending for a later sync.
 // ponytail: one worker bounds model memory; add parallel workers only after measuring throughput.
-func ProcessLocalPending(ctx context.Context, store *Store, model, generation string, embed func(context.Context, string) ([]float32, error)) (int, error) {
+func ProcessLocalPending(ctx context.Context, store *Store, root, model, generation string, embed func(context.Context, string) ([]float32, error)) (int, error) {
+	if strings.TrimSpace(root) == "" {
+		return 0, errors.New("vector: gallery path is required")
+	}
+	root, err := filepath.Abs(root)
+	if err != nil {
+		return 0, fmt.Errorf("vector: resolve gallery: %w", err)
+	}
+	root, err = filepath.EvalSymlinks(root)
+	if err != nil {
+		return 0, fmt.Errorf("vector: resolve gallery: %w", err)
+	}
 	pending, err := store.Pending(ctx, model, generation)
 	if err != nil {
 		return 0, err
@@ -110,6 +122,10 @@ func ProcessLocalPending(ctx context.Context, store *Store, model, generation st
 	processed := 0
 	for _, asset := range pending {
 		if asset.Key.Source != "local" {
+			continue
+		}
+		rel, err := filepath.Rel(root, asset.Key.ID)
+		if err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(os.PathSeparator)) {
 			continue
 		}
 		if err := ctx.Err(); err != nil {

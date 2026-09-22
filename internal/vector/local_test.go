@@ -172,7 +172,7 @@ func TestProcessLocalPendingRetriesAndRejectsStaleWork(t *testing.T) {
 		t.Fatal(err)
 	}
 	failure := errors.New("model failed")
-	if _, err := vector.ProcessLocalPending(ctx, store, "model", "one", func(context.Context, string) ([]float32, error) {
+	if _, err := vector.ProcessLocalPending(ctx, store, gallery, "model", "one", func(context.Context, string) ([]float32, error) {
 		return nil, failure
 	}); !errors.Is(err, failure) {
 		t.Fatalf("failure lost: %v", err)
@@ -181,7 +181,7 @@ func TestProcessLocalPendingRetriesAndRejectsStaleWork(t *testing.T) {
 	if err != nil || len(pending) != 1 {
 		t.Fatalf("failed work must remain pending: %v %v", pending, err)
 	}
-	if _, err := vector.ProcessLocalPending(ctx, store, "model", "one", func(_ context.Context, file string) ([]float32, error) {
+	if _, err := vector.ProcessLocalPending(ctx, store, gallery, "model", "one", func(_ context.Context, file string) ([]float32, error) {
 		if file != pending[0].Key.ID {
 			t.Fatalf("wrong file: %s", file)
 		}
@@ -196,11 +196,11 @@ func TestProcessLocalPendingRetriesAndRejectsStaleWork(t *testing.T) {
 	if _, err := vector.SyncLocal(ctx, store, gallery); err != nil {
 		t.Fatal(err)
 	}
-	processed, err := vector.ProcessLocalPending(ctx, store, "model", "one", func(context.Context, string) ([]float32, error) { return []float32{1, 0}, nil })
+	processed, err := vector.ProcessLocalPending(ctx, store, gallery, "model", "one", func(context.Context, string) ([]float32, error) { return []float32{1, 0}, nil })
 	if err != nil || processed != 1 {
 		t.Fatalf("retry: processed=%d err=%v", processed, err)
 	}
-	processed, err = vector.ProcessLocalPending(ctx, store, "model", "one", nil)
+	processed, err = vector.ProcessLocalPending(ctx, store, gallery, "model", "one", nil)
 	if err != nil || processed != 0 {
 		t.Fatalf("completed work reran: processed=%d err=%v", processed, err)
 	}
@@ -220,10 +220,49 @@ func TestProcessLocalPendingCancellation(t *testing.T) {
 	}
 	canceled, cancel := context.WithCancel(ctx)
 	cancel()
-	if _, err := vector.ProcessLocalPending(canceled, store, "model", "one", func(context.Context, string) ([]float32, error) {
+	if _, err := vector.ProcessLocalPending(canceled, store, gallery, "model", "one", func(context.Context, string) ([]float32, error) {
 		t.Fatal("embedding called after cancel")
 		return nil, nil
 	}); !errors.Is(err, context.Canceled) {
 		t.Fatalf("cancellation lost: %v", err)
+	}
+}
+
+func TestProcessLocalPendingOnlyEmbedsRequestedGallery(t *testing.T) {
+	ctx := context.Background()
+	first := t.TempDir()
+	second := t.TempDir()
+	writePNG(t, filepath.Join(first, "a.png"), 0xff)
+	writePNG(t, filepath.Join(second, "b.png"), 0x7f)
+	store, err := vector.Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	for _, gallery := range []string{first, second} {
+		if _, err := vector.SyncLocal(ctx, store, gallery); err != nil {
+			t.Fatal(err)
+		}
+	}
+	firstRoot, err := filepath.EvalSymlinks(first)
+	if err != nil {
+		t.Fatal(err)
+	}
+	secondRoot, err := filepath.EvalSymlinks(second)
+	if err != nil {
+		t.Fatal(err)
+	}
+	processed, err := vector.ProcessLocalPending(ctx, store, second, "model", "one", func(_ context.Context, path string) ([]float32, error) {
+		if filepath.Dir(path) != secondRoot {
+			t.Fatalf("indexed outside requested gallery: %s", path)
+		}
+		return []float32{1, 0}, nil
+	})
+	if err != nil || processed != 1 {
+		t.Fatalf("requested gallery: processed=%d err=%v", processed, err)
+	}
+	pending, err := store.Pending(ctx, "model", "one")
+	if err != nil || len(pending) != 1 || filepath.Dir(pending[0].Key.ID) != firstRoot {
+		t.Fatalf("other gallery must remain pending: %v %v", pending, err)
 	}
 }
