@@ -27,11 +27,15 @@
 
 ## 给自动化工具
 
-先读根目录的 `AGENTS.md`。具体任务再进入对应 skill：
+先读根目录的 [AGENTS.md](../AGENTS.md) 获取完整任务路由。仓库技能不依赖个人全局指令或 CCS；不支持技能发现的客户端可以直接读取各个 `SKILL.md`。常用路由：
 
 | 任务 | Skill |
 | --- | --- |
 | 准备 PR | `.agents/skills/pixiv-cli-pr/` |
+| Go 实现与设计 | `.agents/skills/pixiv-cli-develop/` |
+| 聚焦测试与验证证据 | `.agents/skills/pixiv-cli-test/` |
+| MCP tool 变更 | `.agents/skills/pixiv-cli-mcp-tool/` |
+| Rust/cgo 与 native evidence | `.agents/skills/pixiv-cli-native/` |
 | 诊断 CI | `.agents/skills/pixiv-cli-ci/` |
 | 审查改动 | `.agents/skills/pixiv-cli-review/` |
 | 整理文档 | `.agents/skills/pixiv-cli-docs/` |

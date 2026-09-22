@@ -451,7 +451,7 @@ for ip,n in sorted(same): print(ip,n)'
 
 | ID | 唯一 owner | 当前证据 | close-out 条件 |
 | --- | --- | --- | --- |
-| `ART-SEARCH-RATING` | `internal/cli/commands/pixiv/search` + `sdk/pixiv` | CLI `--rating` 报告 "rating filter is not supported by the v1 App API search contract"；MCP `search_illust` schema 无 rating 参数 | 仅当 v1 App API search contract 新增 rating 语义；届时同步 SDK 字段、CLI flag、MCP schema、locale 文档与本清单 |
+| `ART-SEARCH-RATING` | `internal/cli/commands/pixiv/search` + `internal/shared/searchfilter` + `sdk/pixiv` | CLI artwork search 对规范化的 `x_restrict` 做本地过滤，并将过滤条件绑定到 cursor；不发送上游 rating 字段。MCP `search_illust` 没有独立 rating 参数 | 保留 CLI 本地过滤契约并测试 cursor 与过滤条件的一致性；新增 MCP 参数或上游字段需要独立的行为依据，并同步 schema 与文档 |
 | `NOVEL-SEARCH-ADVANCED` | 无 owner（不得新增） | SDK/MCP schema 无 advanced 字段 | 上游 contract 出现后可评估；禁止 schema 占位 |
 
 **Evidence-gated（可存在 SDK-only migration seam；可发布入口仍须先满足 close-out 条件）：**
@@ -627,29 +627,30 @@ production Ed25519 public trust root 已在
   Release 停止使用旧 key。不得让既有二进制突然依赖一个未提交、不可验证的新信任根。
 
 Homebrew tap 是独立发布面：stable 使用 `pixiv-cli`，pre-release 使用 `pixiv-cli-beta`，二者
-都安装 `pixiv` 并相互冲突。专用 tap deploy key 的私钥只放在 source repository
-的受保护 `release` Environment secret `HOMEBREW_TAP_DEPLOY_KEY`，公开 tap 只登记对应公钥。workflow
-在独立 renderer 中生成 staging formula，并在四个原生 runner 验证安装，再由最终 protected job 做
-受限提交/push。后续 stable/beta 发布仍不能从本仓库或
-workflow artifact 读取、生成或记录 deploy key。
+都安装 `pixiv` 并相互冲突。`publish-homebrew.yml` 先验证原始 Release handoff 与归档 checksum，
+再渲染并推送 formula；原生安装检查使用平台注册表。专用 `HOMEBREW_TAP_DEPLOY_KEY` 只通过
+`release` Environment 提供给授权的 tap 写入步骤，不得进入源码、日志或 artifact。
+这个下游 publisher 不增加人工审批边界；唯一的最终审批由 `release-approval` 承担。
 
 当前 Release 不会进行 Apple notarization 或 Windows Authenticode。直接下载仍可能被 Gatekeeper
 或 SmartScreen 拦截/提示；这是需要在用户文档中保留的系统信誉边界，不能通过文档或脚本绕过。
 
-成功结束的 `Release` workflow 会同时触发 `.github/workflows/publish-dockerhub.yml`、`.github/workflows/publish-skillhub.yml` 与
-`.github/workflows/publish-clawhub.yml`。GitHub 以
-`github.token` 创建 Release 时不会递归触发 `release` event，因此不能将该 event 用作可靠的自动化
-交接。完成 Homebrew 部署的 Release 会交出只含精确 release tag 的短期 artifact；这避免恢复发布的
-`workflow_run.head_branch` 为 `main` 时把分支名误作版本。Docker Hub、SkillHub 和 ClawHub workflow 都使用这个不可变
-handoff，并在发布前独立重新校验 tag。SkillHub workflow 只 checkout 该不可变 tag，
-并确认该 tag 属于默认分支、对应 GitHub Release 已公开且版本满足 SemVer 后，才对
-`skills/pixiv-cli/` 与前一个已合并的语义版本 tag 比较。目录未变化时工作流成功跳过；目录变化时才运行
-SkillHub CLI 的 dry-run 和提交。产品 `SKILL.md` 的 SemVer 必须与 CLI Release tag 相同；release 的 tag-source
-validation 会在受保护 E2E 和任何发布凭据之前拒绝不匹配的版本。`SKILLHUB_TOKEN`
-仅进入最后的提交步骤，CLI 必须返回 `skillId` 和审核状态；这证明 SkillHub 已接收提交，但平台审核完成前
-公开详情页可能仍不可见。
-若任一独立发布失败，可通过对应 workflow 的 `workflow_dispatch` 输入既有发布 tag 恢复，不能用 main 的
-后续内容替代该 tag。ClawHub workflow 与 SkillHub 使用同一不可变 tag handoff：它先验证公开非 draft Release、默认分支祖先关系、`SKILL.md` 版本与 tag 一致性以及产品 skill 的改动，再在不含凭据的环境运行固定版本的 ClawHub CLI dry-run，并以其 SHA-256 产物指纹校验实际发布物。只有最终 publish/inspect 步骤，以及不重发版本的 `verify_only` 人工恢复步骤会收到 `CLAWHUB_TOKEN`；后者只登录并读取审核结果，绝不调用 publish。正常 publish 必须确认产品 skill、对应版本和精确产物指纹；当 ClawHub static scan 已 clean、但聚合安全结论仍为 `pending` 时，会明确 warning 而不把已接收的发布物误报为失败。`skill-card.md` 也可能异步生成并产生 warning。两类 warning 都不等同于最终安全结论：`verify_only` 只在 aggregate security 为 clean 时通过，便于在平台扫描完成后作不重发的最终核验。任何其他原因仍会失败。当前平台也不会为普通 CLI publish 暴露 server-resolved GitHub provenance，因此该项以受信 tag checkout 和指纹匹配替代，并同样保留 warning。
+成功结束的 `Release` workflow 通过 `workflow_run` 触发独立的 Homebrew、Docker Hub、SkillHub
+与 ClawHub publisher。Release handoff 绑定原始 run、tag、commit 与已准备产物的身份，不是仅含 tag
+的文件，也不依赖 Homebrew 部署先完成。各 publisher 在发布前重新验证身份与自身需要的产物。
+不得从 `workflow_run.head_branch` 推断版本，也不得用后续 main 内容替代。
+
+SkillHub 检查不可变 tag、默认分支祖先关系、公开 Release、SemVer，以及产品 skill 相对前一个已合并
+语义版本 tag 的变更。未变化时跳过发布；变化时执行 dry-run 和提交。产品 `SKILL.md` 的版本必须与
+CLI Release tag 相同。`SKILLHUB_TOKEN` 仅进入最终提交步骤；返回 `skillId` 和审核状态证明已接收，
+不代表立即公开或审核通过。
+
+经授权的人工恢复向对应 publisher 提供原始 `release_run_id`，不接受替代 tag 或当前 main。
+ClawHub 另有 `verify_only`，只核验已经提交的版本，不重发。其 dry-run 不含凭据，最终 publish/inspect
+核对精确产物指纹。static scan 已 clean 但 aggregate security 仍 pending，或 `skill-card.md` 延迟生成，
+会明确 warning，不把已接收误报成失败；这些 warning 也不证明最终通过，`verify_only` 仍要求聚合安全
+结论为 clean。平台未暴露服务端解析的 GitHub provenance 时，明确该限制，以受信 tag checkout 和指纹
+作为现有证据，不宣称已经独立验证 provenance。
 
 </details>
 

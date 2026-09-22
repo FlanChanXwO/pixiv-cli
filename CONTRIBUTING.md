@@ -51,7 +51,11 @@ Use a red-green-refactor loop for code changes:
 
 Test public behavior through the public boundary whenever practical. Do not hide real authentication, network, Pixiv API, filesystem, or encoding failures behind empty success results or silent fallback. Do not add arbitrary timeouts, truncation, pagination caps, retry limits, or hidden downgrade paths.
 
-Real Pixiv Web and authenticated App canaries are opt-in. Never run them with a user's local account unless that user has explicitly authorized it; never put a real token on a command line that may be stored in shell history.
+Real Pixiv/FANBOX SDK and reverse-search checks are opt-in. Never run them with a user's local account or upload an image without explicit authorization; never put a real token on a command line that may be stored in shell history.
+
+## Agent-assisted development
+
+Start with [AGENTS.md](AGENTS.md). The checked-in `pixiv-cli-*` maintenance skills define Go design, focused testing, MCP/native work, review, PR, and release workflows without requiring any personal global instructions or CCS installation. Clients without skill discovery can read their `SKILL.md` files directly. Keep agent contracts, skill content, references, and UI metadata English; public locale documentation remains bilingual.
 
 ## Documentation
 
@@ -70,17 +74,15 @@ Keep stable rules in one authoritative document and link to them elsewhere inste
 Before requesting review:
 
 - [ ] The change is focused and its user-visible behavior is explained.
-- [ ] New or changed code has focused tests that first demonstrated the failure.
-- [ ] `go test ./... -count=1` passes.
-- [ ] `go test -race ./... -count=1` passes for shared, authentication, download, CLI, MCP, or SDK behavior.
-- [ ] `go vet ./...` passes.
-- [ ] `sh scripts/build.sh` passes.
-- [ ] `python -m pre_commit run --all-files` passes when pre-commit is available.
+- [ ] Behavior changes have observed Red/Green and relevant regression evidence, or an explicitly accepted blocker; document-only work has document/link/metadata checks.
+- [ ] Applicable local checks from [pixiv-cli-test](.agents/skills/pixiv-cli-test/SKILL.md) passed, including full/race/native checks when their scope applies; unrun checks are identified.
+- [ ] Required CI is evaluated on the current head and its actual path classifier, not a presumed Markdown exemption.
+- [ ] Existing pre-commit checks pass when installed and applicable; missing tooling is reported rather than installed silently.
 - [ ] `git diff --check` passes.
 - [ ] English and Simplified Chinese documentation are synchronized where required.
 - [ ] No credential, downloaded content, local state, or machine-specific artifact is included.
 
-Conventional Commits are recommended for commit messages, for example `feat(cli): add account selection` or `docs: clarify anonymous fallback`. The project does not require a CLA, DCO sign-off, or signed commits unless a future policy explicitly says otherwise.
+Conventional Commits are recommended for commit messages, for example `fix(cli): preserve record identity` or `docs: clarify account selection`. The project does not require a CLA, DCO sign-off, or signed commits unless a future policy explicitly says otherwise.
 
 ## License
 

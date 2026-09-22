@@ -1,0 +1,4 @@
+interface:
+  display_name: "Pixiv CLI Development"
+  short_description: "Make scoped Go changes with project-owned boundaries."
+  default_prompt: "Use $pixiv-cli-develop to implement the requested repository change."

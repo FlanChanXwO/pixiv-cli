@@ -43,10 +43,11 @@ safe metadata output does not make raw token or bundle stdout safe to display.
 
 ## Network / proxy
 
-- Timeouts or connection resets reaching `oauth.secure.pixiv.net` /
-  `app-api.pixiv.net`: likely needs a proxy. Try once with
-  `--proxy http://127.0.0.1:7890` (tell the user first); persist only on
-  explicit request via `pixiv config set https_proxy ...`.
+- For timeouts or connection resets reaching `oauth.secure.pixiv.net` or
+  `app-api.pixiv.net`, inspect the actual transport failure. Use a supplied or
+  explicitly authorized proxy with `--proxy URL` for the requested operation;
+  do not assume a loopback proxy exists on this host or that every failure
+  needs one. Persist a proxy only on an explicit configuration request.
 - `--proxy` and `--no-proxy` are mutually exclusive and never persisted.
 - Env fallback: lowercase `https_proxy` is preferred over `HTTPS_PROXY`.
 - Pixiv service configuration can be scoped with `[pixiv.network].proxy_url`;

@@ -1,0 +1,4 @@
+interface:
+  display_name: "Pixiv CLI"
+  short_description: "Operate Pixiv with explicit scope and safe credentials."
+  default_prompt: "Use $pixiv-cli to carry out the requested Pixiv operation safely."
