@@ -558,8 +558,7 @@ test matrix 还固定 `GIT_CONFIG_*` 为 `core.autocrlf=false`，使 Git for Win
 tag 的 LF blob bytes；否则 pre-commit 的 `gofmt` 会把 runner 的 CRLF 转换误报为源码未格式化。该配置
 仅用于 test gate，独立 production build 仍从 tag 的干净默认 checkout 构建资产。
 
-publish 核对并公开 Release 后，立即上传同一份 `release/checksums.txt`；policy 拒绝中间 step、路径
-替换或发布后改写。`render_homebrew_formula` 只下载该 artifact，并把 releaseassets 的 stable/
+Release 的 preparation 阶段固化一份 immutable handoff（`release/release-handoff.json`），记录 release run、tag、commit 以及每个 production/container 产物的 size 与 SHA256，publish 再以已批准的 `release/checksums.txt` 复验；policy 拒绝中间 step、路径替换或发布后改写。Homebrew 不再属于 Release workflow：独立 publisher `publish-homebrew.yml` 消费该 handoff、校验 production section，并把 releaseassets 的 stable/
 prerelease 结果直接映射为 `pixiv-cli`/`pixiv-cli-beta`。随后精确四目标 matrix（macOS Intel/arm64、
 Linux amd64/arm64）先用 `brew tap-new pixiv-cli-release/staging --no-git` 创建各 runner 的隔离
 local tap，再以 `brew trust --tap pixiv-cli-release/staging` 显式信任这一个临时命名空间；将唯一
@@ -567,7 +566,7 @@ staging formula 放入其 `Formula/`，随后用 `pixiv-cli-release/staging/<for
 `brew install --formula`。macOS 在原生 runner 的临时 tap 中运行；Linux 在短生命周期、固定 digest 的
 `homebrew/brew` 容器内运行，并将 staging formula 目录以只读 bind mount 传入容器。随后执行
 `test "$(pixiv --version)" = "pixiv $RELEASE_TAG"` 并与 tag 比较。它不使用 workspace formula path、developer/环境变量 bypass，
-也不克隆、写入或信任公开 tap。只有全部成功，最终受保护 `deploy_homebrew_tap` 才以 HTTPS
+也不克隆、写入或信任公开 tap。只有全部成功，`publish-homebrew.yml` 中受保护的 `deploy_homebrew_tap` 才以 HTTPS
 clone public tap、核对唯一 staged formula，并在最后一个 step 读取 deploy key；SSH push 固定官方
 GitHub ED25519 known_hosts、启用 strict checking，目标精确为 `HEAD:main`。任何前置 job 失败都不会
 写 tap。

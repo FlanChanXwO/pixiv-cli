@@ -95,6 +95,33 @@ func TestReleaseNoLongerPublishesHomebrewInline(t *testing.T) {
 	}
 }
 
+// TestHomebrewHasExactlyOnePublishPath 覆盖 §18/§25.3：Homebrew 只能有一个
+// 发布路径。若 prepublish 验证 workflow 也保留 deploy 分支去写同一个 tap，
+// 就出现了第二个不经 immutable handoff 校验的发布入口。
+func TestHomebrewHasExactlyOnePublishPath(t *testing.T) {
+	t.Parallel()
+
+	root := repositoryRoot(t)
+	entries, err := os.ReadDir(filepath.Join(root, ".github", "workflows"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var writers []string
+	for _, entry := range entries {
+		if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".yml") {
+			continue
+		}
+		body := readWorkflow(t, root, entry.Name())
+		// tap 写入的唯一特征是携带 Homebrew 部署密钥并 push 到 tap。
+		if strings.Contains(body, "HOMEBREW_TAP_DEPLOY_KEY") {
+			writers = append(writers, entry.Name())
+		}
+	}
+	if len(writers) != 1 || writers[0] != "publish-homebrew.yml" {
+		t.Fatalf("Homebrew tap must have exactly one publisher (publish-homebrew.yml), got %v", writers)
+	}
+}
+
 // TestPublishersAcceptOnlyReleaseRunID 覆盖 §17：手动恢复只接受 release_run_id。
 func TestPublishersAcceptOnlyReleaseRunID(t *testing.T) {
 	t.Parallel()
