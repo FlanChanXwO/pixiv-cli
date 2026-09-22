@@ -5,6 +5,8 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"io"
+	"net/http"
 	"os"
 	"strings"
 	"testing"
@@ -12,6 +14,50 @@ import (
 	"github.com/FlanChanXwO/pixiv-cli/internal/services/reversesearch"
 	pixiv "github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
 )
+
+type searchRoundTripFunc func(*http.Request) (*http.Response, error)
+
+func (f searchRoundTripFunc) RoundTrip(req *http.Request) (*http.Response, error) { return f(req) }
+
+func TestCommandDeepArtworkPageStartsAtRawOffset(t *testing.T) {
+	calls := 0
+	rt := searchRoundTripFunc(func(req *http.Request) (*http.Response, error) {
+		calls++
+		if got := req.URL.Query().Get("offset"); got != "270" {
+			t.Errorf("first search offset = %q, want 270", got)
+		}
+		body := `{"illusts":[{"id":901,"title":"cat","type":"illust","create_date":"2024-05-01T10:00:00+09:00","user":{"id":7,"name":"artist"},"tags":[]}],"next_url":null}`
+		return &http.Response{StatusCode: http.StatusOK, Header: http.Header{"Content-Type": {"application/json"}}, Body: io.NopCloser(strings.NewReader(body))}, nil
+	})
+	client, err := pixiv.NewWith("token", pixiv.Options{HTTPClient: &http.Client{Transport: rt}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var output bytes.Buffer
+	cmd := New(Dependencies{
+		Input: strings.NewReader(""), Output: &output,
+		JSONOut: func(*bool) (bool, error) { return true, nil },
+		Pooled: func(ctx context.Context, _ Request, attempt func(context.Context, *pixiv.Client) (bool, error)) error {
+			_, err := attempt(ctx, client)
+			return err
+		},
+	})
+	cmd.SetArgs([]string{"cat", "--page", "10", "--limit", "30", "--json"})
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("search page: %v", err)
+	}
+	var result struct {
+		Illusts []struct {
+			ID int64 `json:"id"`
+		} `json:"illusts"`
+	}
+	if err := json.Unmarshal(output.Bytes(), &result); err != nil {
+		t.Fatal(err)
+	}
+	if calls != 1 || len(result.Illusts) != 1 || result.Illusts[0].ID != 901 {
+		t.Fatalf("calls=%d output=%s, want one request and artwork 901", calls, output.String())
+	}
+}
 
 func TestCommandRejectsInvalidFilterBeforeOpeningClient(t *testing.T) {
 	opened := false

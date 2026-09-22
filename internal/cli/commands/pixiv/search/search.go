@@ -355,6 +355,10 @@ func (a command) run(cmd *cobra.Command, args []string, opts options) error {
 		}
 		return a.runBookmarkFiltered(cmd, listing.Request(clientReq), plan, jsonOut, ndjson, word, query, strategy)
 	}
+	if aiMode != pixiv.SearchAIModeOnly && plan.PagePlan().Skip > 0 {
+		// AI-only 在 SDK 内本地过滤，不能把过滤后的逻辑位置当作原始 offset。
+		plan, query.Offset = plan.PushDownSkip()
+	}
 	fetch := func(client *pixiv.Client, ctx context.Context, cursor sdk.Cursor) ([]pixiv.Artwork, sdk.Cursor, error) {
 		request := query
 		request.Cursor = cursor
