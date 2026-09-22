@@ -36,7 +36,6 @@ jobs:
       head_sha: ${{ steps.authorize.outputs.head_sha }}
       head_repo: ${{ steps.authorize.outputs.head_repo }}
       base_sha: ${{ steps.authorize.outputs.base_sha }}
-      same_repo: ${{ steps.authorize.outputs.same_repo }}
       commands: ${{ steps.resolve.outputs.effective_commands }}
       verification_hash: ${{ steps.resolve.outputs.effective_hash }}
       matrix: ${{ steps.matrix.outputs.matrix }}
@@ -136,8 +135,8 @@ jobs:
               -f content="$2" >/dev/null
           }
           add_reaction "$comment_id" EYES
-          same_repo=false
-          [ "$head_repo" = "$REPO" ] && same_repo=true
+          # 凭据边界是结构性的：本 workflow 不声明任何仓库秘密或发布环境，
+          # 因此同仓库 PR 与 fork PR 都不持有受保护凭据，无需额外的同源标志。
           # 与 metadata gate 共用同一份 PR body 快照，避免校验与执行错位。
           gh api "repos/$REPO/pulls/$pr" --jq '.body // ""' > "$RUNNER_TEMP/pr-body.md"
           {
@@ -147,8 +146,7 @@ jobs:
             printf 'head_sha=%s\n' "$head_sha"
             printf 'head_repo=%s\n' "$head_repo"
             printf 'base_sha=%s\n' "$base_sha"
-            printf 'same_repo=%s\n' "$same_repo"
-          } >> "$GITHUB_OUTPUT"
+            } >> "$GITHUB_OUTPUT"
 
       - name: Validate the current PR declaration
         id: policy
