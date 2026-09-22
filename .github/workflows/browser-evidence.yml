@@ -21,7 +21,7 @@ permissions: {}
 
 jobs:
   browser_provider:
-    name: Browser provider ${{ matrix.goos }}/${{ matrix.goarch }}
+    name: Browser provider · ${{ matrix.goos }}/${{ matrix.goarch }}
     runs-on: ${{ matrix.runner }}
     permissions:
       contents: read
@@ -71,7 +71,7 @@ jobs:
           go test ./internal/browsercookies/... -count=1 -v
 
   firefox_native:
-    name: Firefox temporary profile ${{ matrix.goos }}/${{ matrix.goarch }}
+    name: Firefox profile · ${{ matrix.goos }}/${{ matrix.goarch }}
     runs-on: ${{ matrix.runner }}
     permissions:
       contents: read

@@ -54,6 +54,7 @@ jobs:
           go run ./scripts/cmd/changescope --base "$BASE_SHA" --head "$HEAD_SHA" --github-output "$GITHUB_OUTPUT"
 
   quality:
+    name: Quality checks
     needs: classify_changes
     runs-on: ubuntu-24.04
     permissions:
@@ -143,10 +144,18 @@ jobs:
           WINDOWS_RESULT: ${{ needs.windows_login_handler.result }}
         run: |
           set -euo pipefail
-          test "$CLASSIFY_RESULT" = success
-          test "$QUALITY_RESULT" = success
+          # §12.1：失败时必须给出可操作原因，而不是只有退出码。
+          if [ "$CLASSIFY_RESULT" != success ]; then
+            echo '::error::Required quality checks did not complete successfully.'
+            exit 1
+          fi
+          if [ "$QUALITY_RESULT" != success ]; then
+            echo '::error::Required quality checks did not complete successfully.'
+            exit 1
+          fi
           if [ "$DOCS_ONLY" = true ]; then
             test "$WINDOWS_RESULT" = skipped
-          else
-            test "$WINDOWS_RESULT" = success
+          elif [ "$WINDOWS_RESULT" != success ]; then
+            echo '::error::Required quality checks did not complete successfully.'
+            exit 1
           fi
