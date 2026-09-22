@@ -348,7 +348,8 @@ func TestContainerArtifactRetentionSupportsRecovery(t *testing.T) {
 }
 
 // TestDockerHubPublishWorkflowUsesTrustedReleaseArtifacts 锁定 Docker Hub 发布的
-// immutable tag、已验证 artifact 和 protected release Environment 边界。
+// release_run_id 恢复输入、immutable handoff 校验与 protected release
+// Environment 边界（§15/§17/§19/§23）。
 func TestDockerHubPublishWorkflowUsesTrustedReleaseArtifacts(t *testing.T) {
 	t.Parallel()
 	root := repositoryRoot(t)
@@ -363,14 +364,16 @@ func TestDockerHubPublishWorkflowUsesTrustedReleaseArtifacts(t *testing.T) {
 		"- Release",
 		"- completed",
 		"workflow_dispatch:",
-		"release_tag:",
 		"release_run_id:",
+		"release_run_id must be a positive decimal number",
 		"environment: release",
 		"actions: read",
 		"contents: read",
-		"name: skillhub-release-tag",
-		"name: verified-container-linux-amd64",
-		"name: verified-container-linux-arm64",
+		"name: prepared-release-checksums",
+		"pattern: verified-container-*",
+		"verify-handoff-set",
+		"--section container",
+		"--run-head-sha",
 		"secrets.DOCKER_HUB_TOKEN",
 		"docker login docker.io --username",
 		"--password-stdin",

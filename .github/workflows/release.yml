@@ -396,6 +396,9 @@ jobs:
     runs-on: ubuntu-24.04
     permissions:
       contents: read
+    outputs:
+      commit: ${{ steps.trust.outputs.commit }}
+      version: ${{ steps.trust.outputs.version }}
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
         with:
@@ -406,12 +409,13 @@ jobs:
         with:
           go-version-file: go.mod
       - name: Require the tag commit on the default release branch
+        id: trust
         shell: bash
         env:
           DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
         run: |
           set -euo pipefail
-          go run ./tools/release verify-source --tag "$RELEASE_TAG" --default-branch "$DEFAULT_BRANCH"
+          go run ./tools/release verify-source --tag "$RELEASE_TAG" --default-branch "$DEFAULT_BRANCH" --github-output "$GITHUB_OUTPUT"
 
   prepare_release:
     name: Prepare release materials
@@ -434,20 +438,63 @@ jobs:
           pattern: verified-release-*
           path: dist
           merge-multiple: true
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          pattern: verified-container-*
+          path: containers
+          merge-multiple: true
       - name: Verify the registry-defined release archive set
         shell: bash
         run: |
           set -euo pipefail
           version="${RELEASE_TAG#v}"
           go run ./tools/release verify-artifact-set --dir dist --version "$version"
+          go run ./tools/release verify-container-set --dir containers
           go run ./tools/release checksums --dir dist --version "$version" --output dist/checksums.txt
           test -s dist/checksums.txt
+
+      # §14/§15：一次性固化 build-once 产物的 identity 与 checksum。所有 downstream
+      # publisher 只消费这份 immutable handoff，不再自行构建或推断身份。
+      - name: Write the immutable release handoff
+        shell: bash
+        env:
+          TAG_COMMIT: ${{ needs.verify_release_source.outputs.commit }}
+          REPOSITORY: ${{ github.repository }}
+          RUN_ID: ${{ github.run_id }}
+          RUN_ATTEMPT: ${{ github.run_attempt }}
+          RUN_HEAD_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          version="${RELEASE_TAG#v}"
+          mkdir -p release
+          go run ./tools/release write-handoff \
+            --repository "$REPOSITORY" \
+            --run-id "$RUN_ID" \
+            --run-attempt "$RUN_ATTEMPT" \
+            --workflow 'Release' \
+            --tag "$RELEASE_TAG" \
+            --commit-sha "$TAG_COMMIT" \
+            --run-head-sha "$RUN_HEAD_SHA" \
+            --version "$version" \
+            --dist-dir dist \
+            --container-dir containers \
+            --output release/release-handoff.json
+          go run ./tools/release verify-handoff-set \
+            --handoff release/release-handoff.json \
+            --dist-dir dist \
+            --container-dir containers \
+            --repository "$REPOSITORY" \
+            --run-id "$RUN_ID" \
+            --tag "$RELEASE_TAG"
+
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: prepared-release-checksums
-          path: dist/checksums.txt
+          path: |
+            dist/checksums.txt
+            release/release-handoff.json
           if-no-files-found: error
-          retention-days: 1
+          retention-days: 90
 
   approve_release:
     name: Approve final release publication
@@ -455,7 +502,6 @@ jobs:
       - build_container
       - verify_release_source
       - prepare_release
-      - verify_homebrew_formula
     runs-on: ubuntu-24.04
     environment: release-approval
     permissions: {}
@@ -470,7 +516,6 @@ jobs:
       - build_container
       - verify_release_source
       - prepare_release
-      - verify_homebrew_formula
       - approve_release
     runs-on: ubuntu-24.04
     environment: release
@@ -659,209 +704,3 @@ jobs:
               exit 1
               ;;
           esac
-
-  render_homebrew_formula:
-    name: Render the channel Homebrew formula
-    needs:
-      - validate
-      - prepare_release
-    runs-on: ubuntu-24.04
-    permissions:
-      contents: read
-    steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
-        with:
-          persist-credentials: false
-          ref: ${{ env.RELEASE_TAG }}
-      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff
-        with:
-          go-version-file: go.mod
-      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
-        with:
-          name: prepared-release-checksums
-          path: verified-release
-      - name: Render exactly one channel formula from the published checksums
-        shell: bash
-        run: |
-          set -eu
-          version="${RELEASE_TAG#v}"
-          case "$(go run ./scripts/cmd/releaseassets channel --version "$version")" in
-            stable)
-              formula_name=pixiv-cli
-              ;;
-            prerelease)
-              formula_name=pixiv-cli-beta
-              ;;
-            *)
-              printf '%s\n' 'unexpected release classification' >&2
-              exit 1
-              ;;
-          esac
-          mkdir -p staging-formula
-          go run ./scripts/cmd/homebrewformula render \
-            --formula "$formula_name" \
-            --version "$version" \
-            --checksums verified-release/checksums.txt \
-            --output "staging-formula/$formula_name.rb"
-          printf '%s\n' "$formula_name" > staging-formula/formula-name
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
-        with:
-          name: staging-homebrew-formula
-          path: staging-formula
-          if-no-files-found: error
-          retention-days: 1
-
-  verify_homebrew_formula:
-    name: Verify Homebrew on ${{ matrix.goos }}/${{ matrix.goarch }}
-    needs:
-      - render_homebrew_formula
-      - resolve_platforms
-    runs-on: ${{ matrix.runner }}
-    permissions:
-      contents: read
-    strategy:
-      fail-fast: false
-      matrix: ${{ fromJSON(needs.resolve_platforms.outputs.homebrew) }}
-    steps:
-      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
-        with:
-          name: staging-homebrew-formula
-          path: staging-formula
-      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
-        with:
-          name: verified-release-${{ matrix.artifact }}
-          path: release-assets
-      - name: Install the staging formula against the exact production archive
-        shell: bash
-        run: |
-          set -euo pipefail
-          formula_name=$(cat staging-formula/formula-name)
-          case "$formula_name" in
-            pixiv-cli|pixiv-cli-beta) ;;
-            *) exit 1 ;;
-          esac
-          test "$(find staging-formula -maxdepth 1 -type f -print | LC_ALL=C sort)" = "$(printf '%s\n%s\n' staging-formula/formula-name "staging-formula/$formula_name.rb" | LC_ALL=C sort)"
-          version="${RELEASE_TAG#v}"
-          archive="pixiv-cli_${version}_${{ matrix.goos }}_${{ matrix.goarch }}.tar.gz"
-          test -f "release-assets/$archive"
-          public_url="https://github.com/$GITHUB_REPOSITORY/releases/download/$RELEASE_TAG/$archive"
-          if [ '${{ matrix.goos }}' = linux ]; then
-            verify_url="file:///release-assets/$archive"
-          else
-            verify_url="file://$(pwd)/release-assets/$archive"
-          fi
-          python3 - "$public_url" "$verify_url" "staging-formula/$formula_name.rb" "staging-formula/$formula_name-verify.rb" <<'PY'
-          import pathlib
-          import sys
-          old, new, source, target = sys.argv[1:]
-          body = pathlib.Path(source).read_text(encoding="utf-8")
-          if body.count(old) != 1:
-              raise SystemExit("expected exactly one production archive URL in formula")
-          pathlib.Path(target).write_text(body.replace(old, new), encoding="utf-8")
-          PY
-          if [ '${{ matrix.goos }}' = linux ]; then
-            staging_dir="$(pwd)/staging-formula"
-            assets_dir="$(pwd)/release-assets"
-            case "$staging_dir" in /*) ;; *) exit 1 ;; esac
-            docker run --rm \
-              --mount "type=bind,src=$staging_dir,dst=/staging-formula,readonly" \
-              --mount "type=bind,src=$assets_dir,dst=/release-assets,readonly" \
-              --env RELEASE_TAG \
-              --env HOMEBREW_NO_AUTO_UPDATE=1 \
-              --env HOMEBREW_NO_ENV_HINTS=1 \
-              --entrypoint bash \
-              homebrew/brew@sha256:b0072bfdebf5934ae24b93b44a1928a88057399b3283ffa0177bb86084fdedfd \
-              -euo pipefail -c '
-                formula_name=$(cat /staging-formula/formula-name)
-                case "$formula_name" in
-                  pixiv-cli|pixiv-cli-beta) ;;
-                  *) exit 1 ;;
-                esac
-                test "$(find /staging-formula -maxdepth 1 -type f -print | LC_ALL=C sort)" = "$(printf "%s\\n%s\\n" /staging-formula/formula-name "/staging-formula/$formula_name.rb" | LC_ALL=C sort)"
-                staging_tap=pixiv-cli-release/staging
-                tap_dir="$(brew --repository)/Library/Taps/pixiv-cli-release/homebrew-staging"
-                brew tap-new "$staging_tap" --no-git
-                cp "/staging-formula/$formula_name-verify.rb" "$tap_dir/Formula/$formula_name.rb"
-                brew install --formula "$staging_tap/$formula_name"
-                test "$(pixiv --version)" = "pixiv $RELEASE_TAG"
-              '
-          else
-            staging_tap=pixiv-cli-release/staging
-            tap_dir="$(brew --repository)/Library/Taps/pixiv-cli-release/homebrew-staging"
-            brew tap-new "$staging_tap" --no-git
-            brew trust --tap "$staging_tap"
-            cp "staging-formula/$formula_name-verify.rb" "$tap_dir/Formula/$formula_name.rb"
-            brew install --formula "$staging_tap/$formula_name"
-            test "$(pixiv --version)" = "pixiv $RELEASE_TAG"
-          fi
-
-  deploy_homebrew_tap:
-    name: Deploy the verified Homebrew formula
-    needs:
-      - verify_homebrew_formula
-      - publish
-    runs-on: ubuntu-24.04
-    environment: release
-    permissions:
-      contents: read
-    steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
-        with:
-          persist-credentials: false
-          ref: ${{ env.RELEASE_TAG }}
-      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
-        with:
-          name: staging-homebrew-formula
-          path: staging-formula
-      - name: Prepare an exact one-formula tap commit over public HTTPS
-        shell: bash
-        run: |
-          set -euo pipefail
-          formula_name=$(cat staging-formula/formula-name)
-          case "$formula_name" in
-            pixiv-cli|pixiv-cli-beta) ;;
-            *) exit 1 ;;
-          esac
-          test -f "staging-formula/$formula_name.rb"
-          test "$(find staging-formula -maxdepth 1 -type f -print | LC_ALL=C sort)" = "$(printf '%s\n%s\n' staging-formula/formula-name "staging-formula/$formula_name.rb" | LC_ALL=C sort)"
-          tap_dir="$RUNNER_TEMP/homebrew-tap"
-          git clone https://github.com/FlanChanXwO/homebrew-tap.git "$tap_dir"
-          git -C "$tap_dir" config user.name github-actions[bot]
-          git -C "$tap_dir" config user.email 41898282+github-actions[bot]@users.noreply.github.com
-          mkdir -p "$tap_dir/Formula"
-          cp "staging-formula/$formula_name.rb" "$tap_dir/Formula/$formula_name.rb"
-          git -C "$tap_dir" add -- "Formula/$formula_name.rb"
-          test "$(git -C "$tap_dir" diff --cached --name-only)" = "Formula/$formula_name.rb"
-          test -z "$(git -C "$tap_dir" status --porcelain | sed -n '\|^?? |p')"
-          git -C "$tap_dir" commit -m "${RELEASE_TAG}: update $formula_name formula"
-      - name: Push the verified formula with the protected deploy key
-        shell: bash
-        env:
-          HOMEBREW_TAP_DEPLOY_KEY: ${{ secrets.HOMEBREW_TAP_DEPLOY_KEY }}
-        run: |
-          set -eu
-          umask 077
-          key_path="$RUNNER_TEMP/homebrew-tap-deploy-key"
-          trap 'rm -f "$key_path"' EXIT HUP INT TERM
-          test -n "$HOMEBREW_TAP_DEPLOY_KEY"
-          # OpenSSH 私钥必须以换行结尾；secret 是否保留末尾 LF 不应影响部署。
-          printf '%s\n' "$HOMEBREW_TAP_DEPLOY_KEY" > "$key_path"
-          chmod 600 "$key_path"
-          tap_dir="$RUNNER_TEMP/homebrew-tap"
-          git -C "$tap_dir" remote set-url origin git@github.com:FlanChanXwO/homebrew-tap.git
-          GIT_SSH_COMMAND="ssh -i $key_path -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile=$GITHUB_WORKSPACE/templates/homebrew/github.com-known-hosts" \
-            git -C "$tap_dir" push origin HEAD:main
-      # workflow_run 在恢复发布时的 head_branch 是 main，不能据此推断版本。仅在公开
-      # Release 与 Homebrew 都成功后交出精确 tag，供下游 SkillHub workflow 重新验证。
-      - name: Export the completed release tag for the SkillHub handoff
-        shell: bash
-        run: |
-          set -eu
-          mkdir -p skillhub-release-tag
-          printf '%s\n' "$RELEASE_TAG" > skillhub-release-tag/release-tag
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
-        with:
-          name: skillhub-release-tag
-          path: skillhub-release-tag/release-tag
-          if-no-files-found: error
-          retention-days: 1
