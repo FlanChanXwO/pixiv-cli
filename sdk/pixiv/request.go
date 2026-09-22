@@ -116,7 +116,9 @@ type SearchArtworksRequest struct {
 	Tool        string
 	BookmarkMin *int
 	BookmarkMax *int
-	Cursor      sdk.Cursor
+	// Offset 是原始搜索结果流的初始位置；使用 Cursor 续页时须重复此值。
+	Offset int
+	Cursor sdk.Cursor
 }
 
 // ArtworkRequest selects one artwork by its stable ID.

@@ -21,6 +21,9 @@ func (c *Client) SearchArtworks(ctx context.Context, request SearchArtworksReque
 	if err := validateSearchWord("SearchArtworks", request.Word); err != nil {
 		return sdk.Page[Artwork]{}, err
 	}
+	if request.Offset < 0 {
+		return sdk.Page[Artwork]{}, newError("SearchArtworks", sdk.InvalidArgument, "offset must be non-negative")
+	}
 	if err := validateSearchArtworksRequest("SearchArtworks", request); err != nil {
 		return sdk.Page[Artwork]{}, err
 	}
@@ -76,9 +79,16 @@ func (c *Client) SearchArtworks(ctx context.Context, request SearchArtworksReque
 	if request.BookmarkMax != nil {
 		query.Set("bookmark_num_max", itoa(int64(*request.BookmarkMax)))
 	}
+	if request.Offset > 0 {
+		// 只绑定初始窗口；上游 offset 由当前 cursor 或首次请求决定。
+		query.Set("initial_offset", itoa(int64(request.Offset)))
+	}
 	offset, err := c.continuationOffset("SearchArtworks", query, request.Cursor)
 	if err != nil {
 		return sdk.Page[Artwork]{}, err
+	}
+	if request.Cursor.IsZero() {
+		offset = request.Offset
 	}
 	filters := artworksearch.Filters{
 		AIMode:      string(request.AIMode),
