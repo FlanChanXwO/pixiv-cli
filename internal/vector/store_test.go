@@ -73,7 +73,7 @@ func TestStorePersistsEmbeddingsByPageAndGeneration(t *testing.T) {
 		{second, "one", []float32{0, 1}},
 		{first, "two", []float32{0.5, 0.5}},
 	} {
-		if err := store.PutEmbedding(ctx, tc.key, "siglip2", tc.generation, tc.value); err != nil {
+		if err := store.PutEmbedding(ctx, tc.key, "", "siglip2", tc.generation, tc.value); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -116,7 +116,7 @@ func TestStoreInvalidatesEmbeddingOnlyWhenContentChanges(t *testing.T) {
 	if changed, err := store.Upsert(ctx, initial); err != nil || !changed {
 		t.Fatalf("first observe: changed=%v err=%v", changed, err)
 	}
-	if err := store.PutEmbedding(ctx, key, "siglip2", "one", []float32{1, 0}); err != nil {
+	if err := store.PutEmbedding(ctx, key, initial.Fingerprint, "siglip2", "one", []float32{1, 0}); err != nil {
 		t.Fatal(err)
 	}
 	initial.Metadata = []byte(`{"title":"new"}`)
@@ -156,13 +156,13 @@ func TestStoreRejectsInvalidAssetsAndEmbeddings(t *testing.T) {
 			t.Fatalf("accepted invalid asset: %+v", asset)
 		}
 	}
-	if err := store.PutEmbedding(ctx, key, "siglip2", "one", []float32{1}); err == nil {
+	if err := store.PutEmbedding(ctx, key, "", "siglip2", "one", []float32{1}); err == nil {
 		t.Fatal("stored orphan embedding")
 	}
 	if _, err := store.Upsert(ctx, vector.Asset{Key: key}); err != nil {
 		t.Fatal(err)
 	}
-	if err := store.PutEmbedding(ctx, key, "siglip2", "one", []float32{float32(math.NaN())}); err == nil {
+	if err := store.PutEmbedding(ctx, key, "", "siglip2", "one", []float32{float32(math.NaN())}); err == nil {
 		t.Fatal("stored non-finite embedding")
 	}
 }

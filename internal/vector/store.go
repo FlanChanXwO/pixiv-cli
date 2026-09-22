@@ -211,8 +211,11 @@ func validateKey(key Key) error {
 	return nil
 }
 
-// PutEmbedding records a real model vector for exactly one asset and generation.
-func (s *Store) PutEmbedding(ctx context.Context, key Key, model, generation string, values []float32) error {
+// ErrStaleAsset means the image changed or disappeared while its embedding was computed.
+var ErrStaleAsset = errors.New("vector: asset changed before embedding was stored")
+
+// PutEmbedding writes only if the asset still has the fingerprint read by the worker.
+func (s *Store) PutEmbedding(ctx context.Context, key Key, fingerprint, model, generation string, values []float32) error {
 	if err := validateKey(key); err != nil {
 		return err
 	}
@@ -226,11 +229,21 @@ func (s *Store) PutEmbedding(ctx context.Context, key Key, model, generation str
 		}
 		binary.LittleEndian.PutUint32(data[i*4:], math.Float32bits(value))
 	}
-	_, err := s.db.ExecContext(ctx, `INSERT INTO embedding (source,source_id,page_index,model,generation,vector)
-		VALUES (?,?,?,?,?,?) ON CONFLICT (source,source_id,page_index,model,generation)
-		DO UPDATE SET vector=excluded.vector`, key.Source, key.ID, key.Page, model, generation, data)
+	result, err := s.db.ExecContext(ctx, `INSERT INTO embedding (source,source_id,page_index,model,generation,vector)
+		SELECT source,source_id,page_index,?,?,? FROM asset
+		WHERE source=? AND source_id=? AND page_index=? AND fingerprint=?
+		ON CONFLICT (source,source_id,page_index,model,generation)
+		DO UPDATE SET vector=excluded.vector`, model, generation, data,
+		key.Source, key.ID, key.Page, fingerprint)
 	if err != nil {
 		return fmt.Errorf("vector: put embedding: %w", err)
+	}
+	rows, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("vector: count embedding writes: %w", err)
+	}
+	if rows == 0 {
+		return ErrStaleAsset
 	}
 	return nil
 }
@@ -257,4 +270,34 @@ func (s *Store) Embedding(ctx context.Context, key Key, model, generation string
 		values[i] = math.Float32frombits(binary.LittleEndian.Uint32(data[i*4:]))
 	}
 	return values, nil
+}
+
+// Pending returns assets without an embedding for the requested model generation.
+// Successful work has no separate job history; absence is durable across restarts.
+// ponytail: materializes pending assets; stream rows if index size strains memory.
+func (s *Store) Pending(ctx context.Context, model, generation string) ([]Asset, error) {
+	if strings.TrimSpace(model) == "" || strings.TrimSpace(generation) == "" {
+		return nil, errors.New("vector: model and generation are required")
+	}
+	rows, err := s.db.QueryContext(ctx, `SELECT a.source,a.source_id,a.page_index,a.fingerprint,a.metadata
+		FROM asset a WHERE NOT EXISTS (
+			SELECT 1 FROM embedding e WHERE e.source=a.source AND e.source_id=a.source_id
+			AND e.page_index=a.page_index AND e.model=? AND e.generation=?
+		) ORDER BY a.source,a.source_id,a.page_index`, model, generation)
+	if err != nil {
+		return nil, fmt.Errorf("vector: query pending assets: %w", err)
+	}
+	defer rows.Close()
+	var pending []Asset
+	for rows.Next() {
+		var asset Asset
+		if err := rows.Scan(&asset.Key.Source, &asset.Key.ID, &asset.Key.Page, &asset.Fingerprint, &asset.Metadata); err != nil {
+			return nil, fmt.Errorf("vector: read pending asset: %w", err)
+		}
+		pending = append(pending, asset)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("vector: list pending assets: %w", err)
+	}
+	return pending, nil
 }
