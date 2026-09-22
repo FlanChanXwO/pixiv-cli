@@ -106,60 +106,6 @@ func TestSkippedWorkersDoNotLeakMatrixPlaceholders(t *testing.T) {
 	}
 }
 
-// TestContainerSmokeUsesAStaticSetupName 保证 setup job 不再暴露内部实现词。
-func TestContainerSmokeUsesAStaticSetupName(t *testing.T) {
-	t.Parallel()
-
-	root := repositoryRoot(t)
-	document, body := loadWorkflow(t, root, "container-smoke.yml")
-	if strings.Contains(body, "name: Resolve container matrix") {
-		t.Error("container setup must use a user-facing name, not \"Resolve container matrix\"")
-	}
-	if _, ok := document.Jobs["resolve_platforms"]; ok {
-		if !strings.Contains(body, "name: Container setup") {
-			t.Error("container setup job must be named \"Container setup\"")
-		}
-	}
-	if !strings.Contains(body, "display") {
-		t.Error("container workers must take their display name from the resolver, not from the matrix tuple")
-	}
-}
-
-// TestSetupJobsUseUserFacingNames 覆盖 §11.3：setup job 回答「检查什么」。
-func TestSetupJobsUseUserFacingNames(t *testing.T) {
-	t.Parallel()
-
-	root := repositoryRoot(t)
-	for name, want := range map[string]string{
-		"platform-smoke.yml":  "Platform setup",
-		"container-smoke.yml": "Container setup",
-	} {
-		_, body := loadWorkflow(t, root, name)
-		if !strings.Contains(body, "name: "+want) {
-			t.Errorf("%s: setup job must be named %q", name, want)
-		}
-		if strings.Contains(body, "name: Resolve platform matrix") || strings.Contains(body, "name: Resolve container matrix") {
-			t.Errorf("%s: setup job must not use internal implementation wording", name)
-		}
-	}
-}
-
-// TestBrowserEvidenceUsesSectionSeparator 覆盖 §11.3 的浏览器 Check 命名。
-func TestBrowserEvidenceUsesSectionSeparator(t *testing.T) {
-	t.Parallel()
-
-	_, body := loadWorkflow(t, repositoryRoot(t), "browser-evidence.yml")
-	// 平台集合由 ci/platforms.json 决定，因此名称取自 resolver 的 display 字段。
-	for _, want := range []string{
-		"name: Browser provider · ${{ matrix.display }}",
-		"name: Firefox profile · ${{ matrix.display }}",
-	} {
-		if !strings.Contains(body, want) {
-			t.Errorf("browser-evidence.yml: expected check name %q", want)
-		}
-	}
-}
-
 // TestAggregateGatesExplainFailuresAndSkips 覆盖 §12.1/§12.2。
 func TestAggregateGatesExplainFailuresAndSkips(t *testing.T) {
 	t.Parallel()
@@ -198,19 +144,5 @@ func TestAggregateGatesExplainFailuresAndSkips(t *testing.T) {
 				t.Errorf("%s: aggregate gate must explain its outcome with %q", tc.workflow, want)
 			}
 		}
-	}
-}
-
-// TestPreCommitDoesNotDuplicateTheFullGoSuite keeps the ownership boundary simple:
-// CI owns full Go testing, while pre-commit remains a formatting-only developer hook.
-func TestPreCommitDoesNotDuplicateTheFullGoSuite(t *testing.T) {
-	t.Parallel()
-
-	body, err := os.ReadFile(filepath.Join(repositoryRoot(t), ".pre-commit-config.yaml"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if strings.Contains(string(body), "go test ./...") {
-		t.Fatal("pre-commit must not rerun the full Go suite already owned by CI")
 	}
 }

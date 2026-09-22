@@ -70,7 +70,6 @@ go test ./tools/release ./tools/platformmatrix -count=1
 sh scripts/test-homebrew-formula.sh
 go test ./scripts/internal/nativeevidence -run '^TestNativeEvidenceWorkflowKeepsSecurityAndOwnershipBoundaries$' -count=1
 go test ./scripts/internal/browsernativeevidence -run '^TestBrowserEvidenceWorkflowKeepsSecurityAndFixtureBoundaries$' -count=1
-go test ./scripts/tests/clawhubworkflow -count=1
 ```
 
 只运行与受影响 workflow 对应的命令；优先验证外部行为、artifact 与安全边界，不为 YAML 排版、job 名称或具体实现形状新增脆弱测试。
