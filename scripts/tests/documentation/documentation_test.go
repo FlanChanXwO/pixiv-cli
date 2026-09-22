@@ -303,10 +303,10 @@ func TestReverseSearchDocumentationAndLocaleRoutes(t *testing.T) {
 			"../../en/maintainers/architecture.md", "### reverse-search Facade 例外", "私有快照", "可信本机 client 边界",
 		}},
 		{path: "docs/en/maintainers/development.md", localePath: "../../zh-CN/maintainers/development.md", phrases: []string{
-			"../../zh-CN/maintainers/development.md", "PIXIV_REVERSE_SEARCH_E2E=1", "scripts/test-reverse-search-e2e.sh", "SAUCENAO_API_KEY",
+			"../../zh-CN/maintainers/development.md", "PIXIV_REVERSE_SEARCH_E2E=1", "TestRealReverseSearch", "SAUCENAO_API_KEY",
 		}},
 		{path: "docs/zh-CN/maintainers/development.md", localePath: "../../en/maintainers/development.md", phrases: []string{
-			"../../en/maintainers/development.md", "PIXIV_REVERSE_SEARCH_E2E=1", "scripts/test-reverse-search-e2e.sh", "SAUCENAO_API_KEY",
+			"../../en/maintainers/development.md", "PIXIV_REVERSE_SEARCH_E2E=1", "TestRealReverseSearch", "SAUCENAO_API_KEY",
 		}},
 		{path: "skills/pixiv-cli/SKILL.md", phrases: []string{
 			"reverse-search images", "saucenao_api_key", "reverse_search_pixiv_only", "partial",
