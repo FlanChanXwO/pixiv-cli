@@ -427,7 +427,7 @@ amd64/arm64 platform-smoke 还会用真实 `cmd.exe`、`certutil.exe` 与 `tar.e
 
 当前没有 temporary 项。本清单不接受「迁移期」「未来」类无期限表述。新增目录须说明观察的**具体未导出符号**并确认导出最小接口不可行；删除目录须提供删除任务与测试迁移证据（external package 可编译 + 覆盖率不变）。
 
-`e2e/` 与 `scripts/tests/clawhubworkflow/` 也是 `package X`，但它们没有生产代码（纯测试载体），「观察未导出生产状态」问题不适用，不在本清单范围。跨平台差异：带 build tag 的测试文件（如 `scripts/internal/*`）在不同 `GOOS`/`GOARCH` 下可见文件数不同；验证时分别用 `GOOS=darwin`、`GOOS=windows`、`GOOS=linux` 运行 `go list` 确认目录集合一致。
+`e2e/` 也是 `package X`，但它没有生产代码（纯测试载体），「观察未导出生产状态」问题不适用，不在本清单范围。跨平台差异：带 build tag 的测试文件（如 `scripts/internal/*`）在不同 `GOOS`/`GOARCH` 下可见文件数不同；验证时分别用 `GOOS=darwin`、`GOOS=windows`、`GOOS=linux` 运行 `go list` 确认目录集合一致。
 
 ```bash
 # 列出测试留在生产包内的目录（package X 而非 X_test）
@@ -490,18 +490,13 @@ overlay。tag run 失败时应修复默认分支上的原因，并按正常的�
 build、production build 与 publish 都绑定同一个 tag；生产构建在独立 runner 上从 clean tag tree 重建
 staticlib，并继续以 `git diff --exit-code` 做 byte-for-byte 校验。
 
-GitHub Release 与 registry 是独立系统，无法原子提交。因此 GHCR 容器发布拆成 Release 前的 `build_container`
-和 Release 后的 `publish_container`。若 GHCR 发布失败，release workflow 必须保持 failed；恢复方式是用
-同一批 verified-container artifact（保留 90 天）和 immutable tag 重跑失败的 `publish_container` job——不要为了修复
-registry 发布而重建或重签 native 资产。exact-version manifest 总是推送；只有现有 channel classifier
-报告 stable 时才推进 `latest`。不使用 retry loop 隐藏 push 失败。
-
-`.github/workflows/publish-dockerhub.yml` 是独立的 Release 后 workflow。它从完成的 Release run 接收精确 tag
-handoff 和两份 verified container artifact，校验 release tag、source commit、公开 Release 与 channel，随后只在
-通过 stdin 执行 `docker login` 时使用受保护 `release` Environment 的 secret `DOCKER_HUB_TOKEN`，再发布到
-`docker.io/flanchanxwo/pixiv-cli`。它不会重建镜像。若 Docker Hub 发布失败，应从默认分支使用原始
-`release_tag` 与 `release_run_id` dispatch，以复用同一批 verified artifact；exact-version tag 总是发布，恢复旧
-stable 时即使不更新 `latest` 也会成功，只有最新 stable release 才推进 `latest`。
+GitHub Release 与 registry 是独立系统，无法原子提交。因此 `.github/workflows/publish-dockerhub.yml` 作为独立的
+Release 后容器 publisher，同时负责 GHCR 与 Docker Hub。它从完成的 Release run 接收 immutable handoff 和两份
+verified container artifact，校验 release tag 与 source identity，再把同一批已加载镜像 bytes 发布到
+`ghcr.io/flanchanxwo/pixiv-cli` 与 `docker.io/flanchanxwo/pixiv-cli`；只有 Docker Hub 登录使用受保护
+`release` Environment 的 secret `DOCKER_HUB_TOKEN`，并通过 stdin 传入。它不会重建镜像。若 registry 发布失败，
+应从默认分支只使用原始 `release_run_id` dispatch，以复用同一批 verified artifact。exact-version tag 总是发布，
+恢复旧 stable 时即使不更新 `latest` 也会成功，只有最新 stable release 才推进 `latest`。不使用 retry loop 隐藏 push 失败。
 
 ### 容器发布验证
 
@@ -511,7 +506,7 @@ immutable tag checkout，在 clean tree 重建对应 Rust staticlib，通过 Lin
 运行容器打包测试，构建 pinned glibc runtime 镜像，并验证非 root 执行、精确版本、`/home/pixiv/.pixiv-cli/`
 下的 `pixiv config path`、`/work` 以及 OCI provenance（`org.opencontainers.image.source`、revision、version
 和 licenses），最后导出 `verified-container-linux-amd64` 与 `verified-container-linux-arm64`。build job 只持有
-`contents: read`；只有 `publish_container` 在 GitHub Release 后用 `packages: write` 消费这些 artifact。
+`contents: read`；只有独立容器 publisher 在 GitHub Release 后消费这些 artifact，并为 GHCR 推送申请 `packages: write`。
 
 维护者聚焦检查：
 

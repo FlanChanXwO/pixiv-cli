@@ -34,7 +34,7 @@ Use [pixiv-cli-test](../pixiv-cli-test/SKILL.md) for local reproduction. `ci.yml
 
 Before rerun, cancel, dispatch, or repair, state the exact run/workflow/target and why. A changed source or documented infrastructure hypothesis may justify a rerun; repeated deterministic failure does not. Preserve the original failure and attempt identity even after recovery succeeds.
 
-`release.yml` is tag-triggered and has no manual dispatch input. Its approved immutable artifacts precede the single `release-approval` boundary. Independent Homebrew, Docker Hub, SkillHub, and ClawHub publishers consume a completed Release handoff; manual recovery uses the original `release_run_id`, not a guessed tag or current main. ClawHub also exposes `verify_only` for a non-republishing review check. Inspect live YAML before dispatching.
+`release.yml` is tag-triggered and has no manual dispatch input. Its verified immutable artifacts precede the single `release-approval` boundary. Independent Homebrew, container, SkillHub, and ClawHub publishers consume a completed Release handoff; `publish-dockerhub.yml` publishes both GHCR and Docker Hub. Manual publisher recovery uses the original `release_run_id`, not a guessed tag or current main. ClawHub also exposes `verify_only` for a non-republishing review check. Inspect live YAML before dispatching.
 
 Do not move a tag, rebuild different bytes under an old release identity, bypass approval, invent a `deploy` input, or enable production secrets to rescue a check. Use [release preparation](../pixiv-cli-release-notes/SKILL.md) for release-specific work.
 

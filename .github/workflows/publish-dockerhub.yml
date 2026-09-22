@@ -1,4 +1,4 @@
-name: Publish Docker Hub image
+name: Publish container images
 
 on:
   # Release 完成后异步接收 immutable tag 和已验证容器 artifact；不依赖
@@ -8,7 +8,7 @@ on:
       - Release
     types:
       - completed
-  # Docker Hub 推送失败时，可使用原 Release run 的 artifact 做显式恢复，避免重建镜像。
+  # Registry 推送失败时，可使用原 Release run 的 artifact 做显式恢复，避免重建镜像。
   workflow_dispatch:
     inputs:
       # §17：手动恢复只接受原始的 release_run_id，不接受 tag/latest 等模糊解析。
@@ -23,10 +23,11 @@ permissions: {}
 env:
   DOCKER_HUB_IMAGE: docker.io/flanchanxwo/pixiv-cli
   DOCKER_HUB_USERNAME: flanchanxwo
+  GHCR_IMAGE: ghcr.io/flanchanxwo/pixiv-cli
 
 jobs:
   publish:
-    name: Publish pixiv-cli to Docker Hub
+    name: Publish pixiv-cli container images
     if: >-
       github.event_name == 'workflow_dispatch' ||
       github.event.workflow_run.conclusion == 'success'
@@ -35,6 +36,7 @@ jobs:
     permissions:
       actions: read
       contents: read
+      packages: write
     steps:
       - name: Resolve the trusted release run
         id: release
@@ -129,14 +131,16 @@ jobs:
             test "$(inspect_label org.opencontainers.image.source "$image")" = "https://github.com/FlanChanXwO/pixiv-cli"
             test "$(inspect_label org.opencontainers.image.licenses "$image")" = MIT
           done
-      - name: Authenticate to Docker Hub
+      - name: Authenticate to container registries
         shell: bash
         env:
           DOCKER_HUB_TOKEN: ${{ secrets.DOCKER_HUB_TOKEN }}
+          GITHUB_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
           test -n "$DOCKER_HUB_TOKEN"
           printf '%s' "$DOCKER_HUB_TOKEN" | docker login docker.io --username "$DOCKER_HUB_USERNAME" --password-stdin
+          printf '%s' "$GITHUB_TOKEN" | docker login ghcr.io --username "$GITHUB_ACTOR" --password-stdin
       - name: Push architecture-specific verified images
         shell: bash
         env:
@@ -145,9 +149,11 @@ jobs:
           set -euo pipefail
           for arch in amd64 arm64; do
             source_image="pixiv-cli:${RELEASE_TAG}-linux-${arch}"
-            target_image="${DOCKER_HUB_IMAGE}:${RELEASE_TAG}-linux-${arch}"
-            docker tag "$source_image" "$target_image"
-            docker push "$target_image"
+            for registry_image in "$DOCKER_HUB_IMAGE" "$GHCR_IMAGE"; do
+              target_image="${registry_image}:${RELEASE_TAG}-linux-${arch}"
+              docker tag "$source_image" "$target_image"
+              docker push "$target_image"
+            done
           done
       - name: Publish the exact-version multi-architecture manifest
         shell: bash
@@ -155,10 +161,12 @@ jobs:
           RELEASE_TAG: ${{ steps.verify.outputs.tag }}
         run: |
           set -euo pipefail
-          docker manifest create "${DOCKER_HUB_IMAGE}:${RELEASE_TAG}" \
-            --amend "${DOCKER_HUB_IMAGE}:${RELEASE_TAG}-linux-amd64" \
-            --amend "${DOCKER_HUB_IMAGE}:${RELEASE_TAG}-linux-arm64"
-          docker manifest push "${DOCKER_HUB_IMAGE}:${RELEASE_TAG}"
+          for registry_image in "$DOCKER_HUB_IMAGE" "$GHCR_IMAGE"; do
+            docker manifest create "${registry_image}:${RELEASE_TAG}" \
+              --amend "${registry_image}:${RELEASE_TAG}-linux-amd64" \
+              --amend "${registry_image}:${RELEASE_TAG}-linux-arm64"
+            docker manifest push "${registry_image}:${RELEASE_TAG}"
+          done
       - name: Advance latest only for the newest stable release
         shell: bash
         env:
@@ -177,10 +185,12 @@ jobs:
                 | sort -Vr | head -n1
               )
               if [ "$RELEASE_TAG" = "$latest_stable_tag" ]; then
-                docker manifest create "${DOCKER_HUB_IMAGE}:latest" \
-                  --amend "${DOCKER_HUB_IMAGE}:${RELEASE_TAG}-linux-amd64" \
-                  --amend "${DOCKER_HUB_IMAGE}:${RELEASE_TAG}-linux-arm64"
-                docker manifest push "${DOCKER_HUB_IMAGE}:latest"
+                for registry_image in "$DOCKER_HUB_IMAGE" "$GHCR_IMAGE"; do
+                  docker manifest create "${registry_image}:latest" \
+                    --amend "${registry_image}:${RELEASE_TAG}-linux-amd64" \
+                    --amend "${registry_image}:${RELEASE_TAG}-linux-arm64"
+                  docker manifest push "${registry_image}:latest"
+                done
               else
                 printf '%s\n' 'older stable release keeps the latest tag unchanged' >&2
               fi
