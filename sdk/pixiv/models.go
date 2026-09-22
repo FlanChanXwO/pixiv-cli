@@ -56,6 +56,12 @@ type ArtworkPage struct {
 	Height    int
 }
 
+// ArtworkSeriesSummary 是作品响应中的系列标识摘要。
+type ArtworkSeriesSummary struct {
+	ID    int64  `json:"id"`
+	Title string `json:"title"`
+}
+
 // Artwork unifies illustrations, manga, and ugoira. It is addressable by its
 // stable upstream ID. PublishedAt is always the UTC publication time; UpdatedAt
 // is set only when upstream provides a modification time, and is nil otherwise.
@@ -83,6 +89,13 @@ type Artwork struct {
 	Tools          []string
 	Cover          ImageResource
 	Pages          []ArtworkPage
+
+	IsBookmarked          bool
+	IsMuted               bool
+	Visible               bool
+	SanityLevel           int
+	RestrictionAttributes []string
+	Series                *ArtworkSeriesSummary
 }
 
 // Novel is an addressable novel entry. List operations populate identity,

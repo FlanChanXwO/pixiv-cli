@@ -34,6 +34,15 @@ func (c *Client) mapArtworkEntity(value artwork.Artwork) (Artwork, error) {
 		XRestrict:      value.XRestrict,
 		AIType:         value.AIType,
 		Tools:          append([]string(nil), value.Tools...),
+
+		IsBookmarked:          value.IsBookmarked,
+		IsMuted:               value.IsMuted,
+		Visible:               value.Visible,
+		SanityLevel:           value.SanityLevel,
+		RestrictionAttributes: append([]string(nil), value.RestrictionAttributes...),
+	}
+	if value.Series != nil {
+		result.Series = &ArtworkSeriesSummary{ID: value.Series.ID, Title: value.Series.Title}
 	}
 	result.Cover, err = c.mapArtworkEntityCover(value)
 	if err != nil {
