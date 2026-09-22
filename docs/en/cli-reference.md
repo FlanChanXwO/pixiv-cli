@@ -548,7 +548,10 @@ pool) and the App API. App failures are final; the CLI does not fall back to an 
 filters are bound to the opaque SDK cursor, and logical `--page`/`--limit` traversal continues across upstream
 batches until the requested logical results are filled or the upstream cursor ends. Omitting `--limit` reads one
 upstream batch; `--limit 0` traverses the current upstream result until exhaustion. A positive `--page` requires a
-positive `--limit`.
+positive `--limit`. Ordinary artwork search without client-side filtering starts a deep page at its raw App offset
+(`--page 10 --limit 30` starts at offset 270), without requesting earlier batches. AI-only and bookmark-count
+filtering still apply logical skip after local filtering, so they may need the preceding raw batches. Other list
+commands retain their existing pagination behavior.
 
 `--rating` is retained only as a compatibility diagnostic. Passing any value returns an unsupported usage error
 before the SDK request; it is not a filter. Artwork `--bookmark-min`/`--bookmark-max` are inclusive non-negative
@@ -557,8 +560,13 @@ currently uses exact local filtering over fetched candidates, `local` has the sa
 App candidate bounds but reports partial completeness, and `server` fails explicitly because reliable server-side
 evidence is not yet available. Premium is not a local hard gate, and bookmark counts are not like counts.
 
-Artwork JSON/NDJSON preserves public entity data and an opaque resource reference where needed; it does not emit
-resolved/signed resource URLs, request headers, Cookies, expiry metadata, tokens, or other transport credentials.
+Artwork `search --json/--ndjson` and `detail --json` preserve upstream `is_bookmarked`, `is_muted`, `visible`,
+`sanity_level`, `restriction_attributes`, and optional `series` (`id`, `title`). Detail also preserves
+`total_comments` when provided upstream; search does not invent it. The viewer flags belong to the account used
+for that read, not necessarily the account for a later write. An absent series is omitted and absent
+`restriction_attributes` serialize as `[]`. No per-result enrichment request is made. Artwork JSON/NDJSON retains
+opaque resource references where needed; it does not emit resolved/signed resource URLs, request headers, Cookies,
+expiry metadata, tokens, or other transport credentials.
 Download is an action: success keeps stdout empty; ugoira filename fallback warnings are stderr-only, while failures are explicit diagnostics and a non-zero exit.
 
 ### Drawing-tool catalog

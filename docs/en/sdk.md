@@ -157,7 +157,8 @@ the native proxy. The public constructor performs no network I/O.
 List operations return `sdk.Page[T]` with an opaque `Cursor`:
 
 ```go
-page, err := client.SearchArtworks(ctx, pixiv.SearchArtworksRequest{Word: "miku"})
+request := pixiv.SearchArtworksRequest{Word: "miku"}
+page, err := client.SearchArtworks(ctx, request)
 for {
     for _, artwork := range page.Items { /* ... */ }
     if page.Next.IsZero() { break }   // stop when no cursor remains
@@ -170,6 +171,8 @@ for {
 > Cursors are bound to the product, operation, binding version, and query digest.
 > Reusing one with a different query returns `InvalidCursor`.
 
+`SearchArtworksRequest.Offset` is the non-negative initial position in the raw App search stream (0 by default), not a logical page after local filtering. A continuation must repeat the same `Offset` alongside `Cursor`; changing or omitting a nonzero starting offset returns `InvalidCursor`.
+
 For identity-scoped operations, a client created with `pixiv.New` has no
 verified account ID. Its continuation cursor is ephemeral and carries a
 non-secret binding for that Client instance; the same Client may continue it,
@@ -180,7 +183,7 @@ through `pixiv.Open` binds the cursor to the verified account identity instead.
 
 | Operation | Input highlights | Returns | Common errors |
 | --- | --- | --- | --- |
-| `SearchArtworks` | word, target, sort, date bounds, type, AI mode, aspect ratio, resolution, tool, bookmark bounds | `Page[Artwork]` | `InvalidArgument` (unknown enum, bad dates, bad bookmark range) |
+| `SearchArtworks` | word, target, sort, date bounds, type, AI mode, aspect ratio, resolution, tool, bookmark bounds, raw initial `Offset` | `Page[Artwork]` | `InvalidArgument` (unknown enum, bad dates, bad bookmark range) |
 | `SearchNovels` | word, target, sort, duration | `Page[Novel]` | `InvalidArgument` |
 | `SearchUsers` | word | `Page[User]` | `InvalidArgument` |
 | `ArtworkRanking` | mode (default `day`), optional `YYYY-MM-DD` | `Page[Artwork]` | `InvalidArgument` |
@@ -293,6 +296,8 @@ opaque `ref` and optional `requires_credentials` metadata. The CLI and MCP
 servers encode only these DTOs, pipeline `Record` values, and typed envelopes;
 they never reflect over or JSON-marshal runtime product models.
 
+`Artwork` preserves the upstream `IsBookmarked`, `IsMuted`, `Visible`, `SanityLevel`, and `RestrictionAttributes` values on search/detail, plus an optional `Series` summary (`ID`, `Title`). Detail may also supply `TotalComments`; search does not synthesize it. Viewer state belongs to the account used for that read. These values come from the existing response, without per-result enrichment requests.
+
 For Pixiv, `Resource.Ref` contains only the resource kind, stable ID, page, and
 optional variant. It never embeds the current or signed media URL. The SDK can
 reuse the current locator held by the client, or re-fetch the corresponding
@@ -332,7 +337,7 @@ emitting `null` or empty values: for example `ArtworkDTO` omits `updated_at`,
 `tools` and `pages` when the SDK has no update time, no tool list, or no page
 list (pages are populated on the detail path only). Consumers must treat a
 missing key the same as an unknown value; the JSON schema published for MCP
-tools marks these fields optional accordingly.
+tools marks these fields optional accordingly. An absent `series` or `total_comments` is omitted; a missing `restriction_attributes` is encoded as `[]`. Viewer booleans on other Artwork endpoints must not be assumed verified when their upstream response did not provide them.
 
 ## FANBOX
 

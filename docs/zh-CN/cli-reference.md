@@ -448,14 +448,20 @@ Content-Type 与 URL 后缀不一致（例如 URL 为 `.png`、实体为 JPEG）
 所有 Pixiv 内容读取都使用 `pixiv auth use` 选定的本地账号（或账号池中的 eligible 账号）和 App API。App
 失败即为最终错误；CLI 不会切换到匿名 Web/API 路径。搜索筛选绑定 opaque SDK cursor，逻辑
 `--page`/`--limit` 会跨上游批次读取，直到填满逻辑结果或上游 cursor 结束。省略 `--limit` 读取一个上游批次，
-`--limit 0` 遍历当前上游结果直到耗尽；正数 `--page` 必须与正数 `--limit` 同用。
+`--limit 0` 遍历当前上游结果直到耗尽；正数 `--page` 必须与正数 `--limit` 同用。普通无本地筛选的作品搜索
+从原始 App offset 开始请求深页（`--page 10 --limit 30` 从 offset 270 开始），无需读取之前的批次。
+AI-only 和收藏数筛选仍在本地筛选后执行逻辑 skip，可能需要读取前面的原始批次。其他列表命令保持原分页行为。
 
 `--rating` 仅保留为兼容诊断；任何非空值都会在 SDK 请求前返回不支持错误，绝不执行筛选。作品
 `--bookmark-min`/`--bookmark-max` 是公开 `TotalBookmarks` 的非负闭区间条件。application 会在结果中报告策略
 和完整性：`auto` 当前使用已取得候选上的精确 local 筛选，`local` 同义，`best_effort` 保留 App candidate bounds
 并标记 partial，`server` 因缺少可靠服务端证据而显式失败。Premium 不是本地硬门槛，收藏数也不是点赞数。
 
-作品 JSON/NDJSON 保留公开实体字段与必要的 opaque resource reference，不输出已解析/签名资源 URL、请求头、
+作品 `search --json/--ndjson` 和 `detail --json` 保留上游 `is_bookmarked`、`is_muted`、`visible`、
+`sanity_level`、`restriction_attributes` 与可选 `series`（`id`、`title`）。详情还保留上游提供的
+`total_comments`；搜索不虚构此值。viewer 状态属于本次读取使用的账号，不一定是后续写入使用的账号。
+无 series 时省略；缺失的 `restriction_attributes` 序列化为 `[]`。不会对每条结果发额外的补全请求。
+作品 JSON/NDJSON 保留必要的 opaque resource reference，不输出已解析/签名资源 URL、请求头、
 Cookie、过期 metadata、token 或其他 transport 凭据。`download` 是动作：成功 stdout 为空；Ugoira 文件名回退 warning 只写 stderr，失败保留明确诊断并以非零退出。
 
 ### 绘图工具目录

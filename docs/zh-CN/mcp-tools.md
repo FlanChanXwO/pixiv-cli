@@ -118,6 +118,8 @@ application outcome 的 `filter` 会报告 `min`、`max`、`membership`、`strat
 
 ## 读取工具
 
+`search_illust` 与 `illust_detail` record 保留上游作品的 `is_bookmarked`、`is_muted`、`visible`、`sanity_level`、`restriction_attributes` 和可选 `series`（`id`、`title`）；详情还会保留上游提供的 `total_comments`。viewer 状态属于本次读取账号。不会逐条请求补全；缺失的 series/comments 省略，缺失的 restriction attributes 编码为 `[]`。
+
 | Tool | 输入与语义 |
 | --- | --- |
 | `search_illust` | 必填 `word`；可选 `search_target`、`sort`、`duration`、`start_date`、`end_date`、`content_type`、`ai_mode`、`aspect_ratio`、`resolution`、精确 `tool`、收藏范围/策略、`illust_filter`、`page`、`limit`。稳定 enum/date 会在打开 SDK 前校验。 |

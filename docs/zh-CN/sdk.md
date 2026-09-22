@@ -152,7 +152,8 @@ solver service URL 与 upstream proxy 独立于 native proxy；public constructo
 列表操作返回 `sdk.Page[T]` 与不透明 `Cursor`：
 
 ```go
-page, err := client.SearchArtworks(ctx, pixiv.SearchArtworksRequest{Word: "miku"})
+request := pixiv.SearchArtworksRequest{Word: "miku"}
+page, err := client.SearchArtworks(ctx, request)
 for {
     for _, artwork := range page.Items { /* ... */ }
     if page.Next.IsZero() { break }   // 没有剩余 cursor 时停止
@@ -164,6 +165,8 @@ for {
 > [!NOTE]
 > 游标绑定 product、operation、binding version 与查询摘要；用不同查询复用游标会返回 `InvalidCursor`。
 
+`SearchArtworksRequest.Offset` 是原始 App 搜索结果流的非负初始位置（默认 0），不是本地筛选后的逻辑页。续页须同时传回相同 `Offset` 与 `Cursor`；更改或省略非零的初始 offset 会返回 `InvalidCursor`。
+
 对 identity-scoped operation，`pixiv.New` 创建的 Client 没有已验证的账号 ID，
 因此其续页 cursor 是 ephemeral，并携带只用于绑定该 Client 实例的非敏感标识；
 同一 Client 可以继续，其他 Client 或进程会返回 `InvalidCursor`。通过
@@ -173,7 +176,7 @@ for {
 
 | 操作 | 入参要点 | 返回 | 常见错误 |
 | --- | --- | --- | --- |
-| `SearchArtworks` | 关键词、target、排序、日期边界、类型、AI、横纵比、分辨率、工具、收藏数边界 | `Page[Artwork]` | `InvalidArgument`（未知枚举、非法日期、非法收藏范围） |
+| `SearchArtworks` | 关键词、target、排序、日期边界、类型、AI、横纵比、分辨率、工具、收藏数边界、原始初始 `Offset` | `Page[Artwork]` | `InvalidArgument`（未知枚举、非法日期、非法收藏范围） |
 | `SearchNovels` | 关键词、target、排序、duration | `Page[Novel]` | `InvalidArgument` |
 | `SearchUsers` | 关键词 | `Page[User]` | `InvalidArgument` |
 | `ArtworkRanking` | mode（默认 `day`）、可选 `YYYY-MM-DD` | `Page[Artwork]` | `InvalidArgument` |
@@ -255,6 +258,8 @@ path 非空的 HTTPS URL；host 必须是官方 Pixiv media host（`i.pximg.net`
 
 序列化结果时使用显式的逐字段转换器：Pixiv 使用 `pixiv.ToArtworkDTO`、`pixiv.ToNovelDTO`、`pixiv.ToUserDTO`、`pixiv.ToUserDetailDTO`、`pixiv.ToUserPreviewDTO`、`pixiv.ToCommentDTO`、`pixiv.ToNovelContentDTO`、`pixiv.ToUgoiraMetadataDTO` 及其相关转换器；FANBOX 使用对应的 `fanbox.To*DTO` 转换 creator、post、block、asset、user 与 tag。`sdk.ToResourceDTO` 只输出 opaque `ref` 与可选的 `requires_credentials` metadata。CLI/MCP 只编码这些 DTO、管道 `Record` 与 typed envelope，不反射遍历或直接 JSON 编码运行时 product model。
 
+`Artwork` 在搜索/详情中保留上游 `IsBookmarked`、`IsMuted`、`Visible`、`SanityLevel`、`RestrictionAttributes`，以及可选的 `Series` 摘要（`ID`、`Title`）。详情还可能提供 `TotalComments`；搜索不虚构它。viewer 状态属于本次读取使用的账号。这些值直接来自已有响应，不逐条请求补全。
+
 Pixiv 的 `Resource.Ref` 只包含资源 kind、稳定 ID、page 和可选 variant，绝不嵌入当前或签名媒体 URL。SDK 会优先复用当前 Client 保存的 locator，或重新读取对应 artwork、novel、user、ugoira 或小说正文 metadata 后再打开；解析出的 URL 与每次 redirect 都会再次通过 allowlist 校验。`SaveResource` 通过原子目标写入；上游提供 `Content-Length` 时，`SaveProgress.Total` 会报告该值。资源请求只使用显式允许的 header，绝不发送调用方 Cookie jar。
 
 FANBOX 的 `Resource.Ref` 只包含稳定 identity（资源 kind、所属 creator 或 post，以及 attachment id），绝不嵌入当前可用或签名媒体 URL，因此 locator 轮换不会改变缓存键，存储的 ref 可跨 session 重新打开。`OpenResource` 与 `SaveResource` 优先复用 session 内 locator，否则通过重新拉取所属 creator 或 post 并按稳定 id 定位附件来重新解析出新鲜且经 allowlist 校验的 locator。session cookie 只发送给需要凭据的 `downloads.fanbox.cc` host，绝不发送给公开 CDN 或第三方 host；`RequiresCredentials` 表示该 locator 仍需要 session。
@@ -271,7 +276,7 @@ canonical := ref.CanonicalURL()
 
 ### 可选 DTO 字段
 
-输出 DTO 对上游响应未提供的字段采用**省略**而不是发 `null` 或空值：例如 `ArtworkDTO` 在 SDK 没有更新时间、没有工具列表或没有页面列表时省略 `updated_at`、`tools` 与 `pages`（pages 只在 detail 路径填充）。调用方应把缺失的 key 视为未知值；MCP tool 发布的 JSON schema 相应把这些字段标为可选。
+输出 DTO 对上游响应未提供的字段采用**省略**而不是发 `null` 或空值：例如 `ArtworkDTO` 在 SDK 没有更新时间、没有工具列表或没有页面列表时省略 `updated_at`、`tools` 与 `pages`（pages 只在 detail 路径填充）。调用方应把缺失的 key 视为未知值；MCP tool 发布的 JSON schema 相应把这些字段标为可选。缺失的 `series` 或 `total_comments` 省略；缺失的 `restriction_attributes` 编码为 `[]`。其他 Artwork endpoint 未提供 viewer 布尔值时，不应视为已验证的状态。
 
 ## FANBOX
 
