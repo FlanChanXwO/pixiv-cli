@@ -209,19 +209,19 @@ func TestDockerfileUsesDebianSlimBase(t *testing.T) {
 }
 
 // TestMaintainerDocsDocumentContainerRecoveryBoundary 锁定双语维护者文档中的
-// GHCR 恢复语义：GitHub Release 与 GHCR 非原子，失败必须显式重跑发布 job。
+// registry 恢复语义：GitHub Release 与 registry 非原子，失败必须复用原 Release run。
 func TestMaintainerDocsDocumentContainerRecoveryBoundary(t *testing.T) {
 	t.Parallel()
 	root := repositoryRoot(t)
 	requiredFragments := map[string][]string{
 		"docs/en/maintainers/development.md": {
-			"If GHCR publication fails",
-			"same verified container artifacts",
+			"independent post-Release container publisher",
+			"only the original `release_run_id`",
 			"No retry loop",
 		},
 		"docs/zh-CN/maintainers/development.md": {
-			"若 GHCR 发布失败",
-			"同一批 verified-container artifact",
+			"Release 后容器 publisher",
+			"只使用原始 `release_run_id`",
 			"不使用 retry loop",
 		},
 	}
@@ -324,7 +324,7 @@ func TestContainerWorkflowsVerifyLicenseNotices(t *testing.T) {
 }
 
 // TestContainerArtifactRetentionSupportsRecovery 锁定发布恢复窗口；
-// 一天过期会使 publish_container 失败后无法按文档重用同一批 artifact。
+// artifact 过早过期会让独立 registry publisher 无法复用同一批产物恢复发布。
 func TestContainerArtifactRetentionSupportsRecovery(t *testing.T) {
 	t.Parallel()
 	root := repositoryRoot(t)
@@ -347,10 +347,10 @@ func TestContainerArtifactRetentionSupportsRecovery(t *testing.T) {
 	}
 }
 
-// TestDockerHubPublishWorkflowUsesTrustedReleaseArtifacts 锁定 Docker Hub 发布的
+// TestContainerPublishWorkflowUsesTrustedReleaseArtifacts 锁定两个 registry 共用的
 // release_run_id 恢复输入、immutable handoff 校验与 protected release
 // Environment 边界（§15/§17/§19/§23）。
-func TestDockerHubPublishWorkflowUsesTrustedReleaseArtifacts(t *testing.T) {
+func TestContainerPublishWorkflowUsesTrustedReleaseArtifacts(t *testing.T) {
 	t.Parallel()
 	root := repositoryRoot(t)
 	body, err := os.ReadFile(filepath.Join(root, ".github/workflows/publish-dockerhub.yml"))
@@ -359,7 +359,8 @@ func TestDockerHubPublishWorkflowUsesTrustedReleaseArtifacts(t *testing.T) {
 	}
 	text := string(body)
 	for _, fragment := range []string{
-		"name: Publish Docker Hub image",
+		"name: Publish container images",
+		"name: Publish pixiv-cli container images",
 		"workflow_run:",
 		"- Release",
 		"- completed",
@@ -369,6 +370,7 @@ func TestDockerHubPublishWorkflowUsesTrustedReleaseArtifacts(t *testing.T) {
 		"environment: release",
 		"actions: read",
 		"contents: read",
+		"packages: write",
 		"name: prepared-release-checksums",
 		"pattern: verified-container-*",
 		"verify-handoff-set",
@@ -378,6 +380,8 @@ func TestDockerHubPublishWorkflowUsesTrustedReleaseArtifacts(t *testing.T) {
 		"docker login docker.io --username",
 		"--password-stdin",
 		"docker.io/flanchanxwo/pixiv-cli",
+		"ghcr.io/flanchanxwo/pixiv-cli",
+		"docker login ghcr.io --username",
 		"docker manifest create",
 		"docker manifest push",
 	} {
@@ -385,11 +389,16 @@ func TestDockerHubPublishWorkflowUsesTrustedReleaseArtifacts(t *testing.T) {
 			t.Fatalf("Docker Hub publish workflow must contain %q", fragment)
 		}
 	}
-	if strings.Contains(text, "packages: write") {
-		t.Fatal("Docker Hub publish workflow must not request GitHub package write permission")
-	}
 	if strings.Contains(text, "docker login docker.io --username \"$DOCKER_HUB_USERNAME\" --password \"$DOCKER_HUB_TOKEN\"") {
 		t.Fatal("Docker Hub token must be passed through docker login stdin, not argv")
+	}
+	releaseBody, err := os.ReadFile(filepath.Join(root, ".github/workflows/release.yml"))
+	if err != nil {
+		t.Fatalf("read release workflow: %v", err)
+	}
+	releaseText := string(releaseBody)
+	if strings.Contains(releaseText, "publish_container:") || strings.Contains(releaseText, "docker push \"ghcr.io/flanchanxwo/pixiv-cli") {
+		t.Fatal("Release workflow must not publish registry images; the independent container publisher owns registry pushes")
 	}
 }
 
@@ -408,7 +417,7 @@ func TestDockerHubPublishWorkflowDoesNotRunARM64ImageOnX64Runner(t *testing.T) {
 	}
 
 	const verifyStep = "      - name: Load and verify the trusted container artifacts"
-	const nextStep = "      - name: Authenticate to Docker Hub"
+	const nextStep = "      - name: Authenticate to container registries"
 	start := strings.Index(text, verifyStep)
 	if start < 0 {
 		t.Fatalf("Docker Hub publish workflow must contain %q", verifyStep)
@@ -474,8 +483,9 @@ func TestDockerHubPublishWorkflowLeavesLatestUnchangedForOlderStableRelease(t *t
 
 	for _, fragment := range []string{
 		`if [ "$RELEASE_TAG" = "$latest_stable_tag" ]; then`,
-		`docker manifest create "${DOCKER_HUB_IMAGE}:latest"`,
-		`docker manifest push "${DOCKER_HUB_IMAGE}:latest"`,
+		`for registry_image in "$DOCKER_HUB_IMAGE" "$GHCR_IMAGE"; do`,
+		`docker manifest create "${registry_image}:latest"`,
+		`docker manifest push "${registry_image}:latest"`,
 		"else",
 		"older stable release keeps the latest tag unchanged",
 	} {
