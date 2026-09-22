@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/url"
+	"slices"
 	"strconv"
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/endpoint/artwork"
@@ -301,7 +302,7 @@ func mapArtwork(value illustDTO) artwork.Artwork {
 		IsMuted:               value.IsMuted,
 		Visible:               value.Visible,
 		SanityLevel:           value.SanityLevel,
-		RestrictionAttributes: append([]string(nil), value.RestrictionAttributes...),
+		RestrictionAttributes: slices.Clone(value.RestrictionAttributes),
 		Series:                value.Series,
 	}
 }

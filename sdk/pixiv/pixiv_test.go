@@ -549,7 +549,7 @@ func TestSearchArtworksPreservesViewerFieldsAndSeries(t *testing.T) {
 		if req.URL.Path != "/v1/search/illust" {
 			t.Fatalf("path = %s", req.URL.Path)
 		}
-		return jsonResponse(`{"illusts":[{"id":9001,"title":"art","type":"illust","create_date":"2024-05-01T10:00:00+09:00","image_urls":{"original":"https://i.pximg.net/img/9001.png"},"user":{"id":7,"name":"n","account":"a"},"tags":[],"is_bookmarked":true,"is_muted":true,"visible":true,"sanity_level":4,"restriction_attributes":["restricted_mode"],"series":{"id":123,"title":"chapter"}},{"id":9002,"title":"other","type":"illust","create_date":"2024-05-01T10:00:00+09:00","image_urls":{"original":"https://i.pximg.net/img/9002.png"},"user":{"id":7,"name":"n","account":"a"},"tags":[],"series":null}],"next_url":null}`), nil
+		return jsonResponse(`{"illusts":[{"id":9001,"title":"art","type":"illust","create_date":"2024-05-01T10:00:00+09:00","image_urls":{"original":"https://i.pximg.net/img/9001.png"},"user":{"id":7,"name":"n","account":"a"},"tags":[],"is_bookmarked":true,"is_muted":true,"visible":true,"sanity_level":4,"restriction_attributes":["restricted_mode"],"series":{"id":123,"title":"chapter"}},{"id":9002,"title":"other","type":"illust","create_date":"2024-05-01T10:00:00+09:00","image_urls":{"original":"https://i.pximg.net/img/9002.png"},"user":{"id":7,"name":"n","account":"a"},"tags":[],"restriction_attributes":[],"series":null}],"next_url":null}`), nil
 	})
 	client, _ := NewWith("token", Options{HTTPClient: &http.Client{Transport: rt}})
 	page, err := client.SearchArtworks(context.Background(), SearchArtworksRequest{Word: "test"})
@@ -564,6 +564,9 @@ func TestSearchArtworksPreservesViewerFieldsAndSeries(t *testing.T) {
 		!reflect.DeepEqual(got.RestrictionAttributes, []string{"restricted_mode"}) ||
 		got.Series == nil || got.Series.ID != 123 || got.Series.Title != "chapter" {
 		t.Fatalf("search artwork fields = %+v", got)
+	}
+	if page.Items[1].RestrictionAttributes == nil || len(page.Items[1].RestrictionAttributes) != 0 {
+		t.Fatalf("empty restriction attributes = %#v, want []", page.Items[1].RestrictionAttributes)
 	}
 	if page.Items[1].Series != nil {
 		t.Fatalf("null series = %+v, want nil", page.Items[1].Series)

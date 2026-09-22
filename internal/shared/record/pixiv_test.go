@@ -12,15 +12,20 @@ import (
 
 func TestRecordFromArtworkPreservesSDKFieldsAndNormalizesID(t *testing.T) {
 	artwork := pixiv.Artwork{
-		ID:             9_007_199_254_740_993,
-		Title:          "作品标题",
-		Caption:        "说明",
-		Kind:           pixiv.ArtworkKindUgoira,
-		PageCount:      2,
-		TotalBookmarks: 8,
-		TotalViews:     42,
-		User:           pixiv.User{ID: 99, Name: "作者"},
-		Tags:           []pixiv.Tag{{Name: "tag-a", TranslatedName: "标签 A"}},
+		ID:                    9_007_199_254_740_993,
+		Title:                 "作品标题",
+		Caption:               "说明",
+		Kind:                  pixiv.ArtworkKindUgoira,
+		PageCount:             2,
+		TotalBookmarks:        8,
+		TotalViews:            42,
+		IsBookmarked:          true,
+		Visible:               true,
+		SanityLevel:           2,
+		RestrictionAttributes: []string{"restricted_mode"},
+		Series:                &pixiv.ArtworkSeriesSummary{ID: 123, Title: "chapter"},
+		User:                  pixiv.User{ID: 99, Name: "作者"},
+		Tags:                  []pixiv.Tag{{Name: "tag-a", TranslatedName: "标签 A"}},
 	}
 
 	record, err := recordpkg.RecordFromArtworkDTO(pixiv.ToArtworkDTO(artwork))
@@ -40,6 +45,9 @@ func TestRecordFromArtworkPreservesSDKFieldsAndNormalizesID(t *testing.T) {
 	require.NoError(t, err)
 
 	assert.JSONEq(t, string(want), string(got))
+	assert.Contains(t, string(got), `"is_bookmarked":true`)
+	assert.Contains(t, string(got), `"sanity_level":2`)
+	assert.Contains(t, string(got), `"series":{"id":123,"title":"chapter"}`)
 	assert.Equal(t, "9007199254740993", record.ID())
 	assert.Equal(t, "ugoira", record.Type())
 	assert.Equal(t, "https://www.pixiv.net/artworks/9007199254740993", record.URL())
