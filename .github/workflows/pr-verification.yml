@@ -35,8 +35,8 @@ jobs:
       head_repo: ${{ steps.authorize.outputs.head_repo }}
       base_sha: ${{ steps.authorize.outputs.base_sha }}
       same_repo: ${{ steps.authorize.outputs.same_repo }}
-      commands: ${{ steps.policy.outputs.commands }}
-      verification_hash: ${{ steps.policy.outputs.verification_hash }}
+      commands: ${{ steps.resolve.outputs.effective_commands }}
+      verification_hash: ${{ steps.resolve.outputs.effective_hash }}
       matrix: ${{ steps.matrix.outputs.matrix }}
       identity: ${{ steps.coordinate.outputs.identity }}
     steps:
@@ -76,10 +76,11 @@ jobs:
             comment_body="$EVENT_COMMENT_BODY"
             commenter="$EVENT_COMMENTER"
           fi
-          trimmed="$comment_body"
-          trimmed="${trimmed#"${trimmed%%[![:space:]]*}"}"
-          trimmed="${trimmed%"${trimmed##*[![:space:]]}"}"
-          if [ "$trimmed" != /test ]; then
+          printf '%s' "$comment_body" > "$RUNNER_TEMP/comment-body.md"
+          # §5.1：触发必须是评论首个非空行且精确为 /test。判定归 trusted policy，
+          # workflow 不扫描整条评论，也不自建第二套 parser。
+          trigger=$(go run ./tools/prmeta --check-trigger --comment-file "$RUNNER_TEMP/comment-body.md")
+          if [ "$trigger" != "trigger=true" ]; then
             printf '%s\n' 'accepted=false' >> "$GITHUB_OUTPUT"
             exit 0
           fi
@@ -130,6 +131,8 @@ jobs:
           add_reaction "$comment_id" EYES
           same_repo=false
           [ "$head_repo" = "$REPO" ] && same_repo=true
+          # 与 metadata gate 共用同一份 PR body 快照，避免校验与执行错位。
+          gh api "repos/$REPO/pulls/$pr" --jq '.body // ""' > "$RUNNER_TEMP/pr-body.md"
           {
             printf '%s\n' 'accepted=true'
             printf 'pr=%s\n' "$pr"
@@ -147,22 +150,28 @@ jobs:
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
-          REPO: ${{ github.repository }}
-          PR: ${{ steps.authorize.outputs.pr }}
         run: |
           set -euo pipefail
-          gh api "repos/$REPO/pulls/$PR" --jq '.body // ""' > "$RUNNER_TEMP/pr-body.md"
           go run ./tools/prmeta --body-file "$RUNNER_TEMP/pr-body.md" --whitelist tools/verification/command-whitelist.txt --cli pixiv --github-output "$GITHUB_OUTPUT"
 
-      - name: Resolve trusted verification platforms
-        id: matrix
-        if: >-
-          steps.authorize.outputs.accepted == 'true' &&
-          steps.policy.outputs.template_ok == 'true' &&
-          steps.policy.outputs.test_ok == 'true' &&
-          steps.policy.outputs.command_count != '0'
+      - name: Resolve effective verification commands
+        id: resolve
+        if: steps.authorize.outputs.accepted == 'true'
+        # resolver 的致命错误也必须让 coordinate 继续运行，否则本次 /test 既没有
+        # 失败结果也没有终态 reaction，触发者只会看到静默。
+        continue-on-error: true
         shell: bash
-        run: go run ./tools/platformmatrix --capability verification --github-output "$GITHUB_OUTPUT"
+        run: |
+          set -euo pipefail
+          # 评论里的 commands block 完全覆盖 PR 声明；无效声明 fail closed，
+          # 绝不回落到 PR body（§5.3/§5.4）。
+          go run ./tools/prmeta \
+            --resolve \
+            --body-file "$RUNNER_TEMP/pr-body.md" \
+            --comment-file "$RUNNER_TEMP/comment-body.md" \
+            --whitelist tools/verification/command-whitelist.txt \
+            --cli pixiv \
+            --github-output "$GITHUB_OUTPUT"
 
       - name: Coordinate duplicate and superseded runs
         id: coordinate
@@ -175,10 +184,11 @@ jobs:
           COMMENT_ID: ${{ steps.authorize.outputs.comment_id }}
           HEAD_SHA: ${{ steps.authorize.outputs.head_sha }}
           TEMPLATE_OK: ${{ steps.policy.outputs.template_ok }}
-          TEST_OK: ${{ steps.policy.outputs.test_ok }}
-          TEST_DESC: ${{ steps.policy.outputs.test_desc }}
-          COMMAND_COUNT: ${{ steps.policy.outputs.command_count }}
-          VERIFICATION_HASH: ${{ steps.policy.outputs.verification_hash }}
+          RESOLVE_OK: ${{ steps.resolve.outputs.resolve_ok }}
+          RESOLVE_DESC: ${{ steps.resolve.outputs.resolve_desc }}
+          OVERRIDE_DECLARED: ${{ steps.resolve.outputs.override_declared }}
+          EFFECTIVE_COUNT: ${{ steps.resolve.outputs.effective_count }}
+          VERIFICATION_HASH: ${{ steps.resolve.outputs.effective_hash }}
         run: |
           set -euo pipefail
 
@@ -231,7 +241,7 @@ jobs:
             remove_reaction "$COMMENT_ID" EYES
             add_reaction "$COMMENT_ID" THUMBS_DOWN
             local state
-            state=$(jq -nc --arg identity "$HEAD_SHA:$VERIFICATION_HASH" --arg head "$HEAD_SHA" --arg hash "$VERIFICATION_HASH" --argjson run "$GITHUB_RUN_ID" --argjson comment "$COMMENT_ID" "{identity:\$identity,run_id:\$run,status:\"failed\",head_sha:\$head,verification_hash:\$hash,triggers:[{comment_id:\$comment}]}")
+            state=$(jq -nc --arg identity "$(verification_identity)" --arg head "$HEAD_SHA" --arg hash "$VERIFICATION_HASH" --argjson run "$GITHUB_RUN_ID" --argjson comment "$COMMENT_ID" "{identity:\$identity,run_id:\$run,status:\"failed\",head_sha:\$head,verification_hash:\$hash,triggers:[{comment_id:\$comment}]}")
             {
               printf '%s\n' '<!-- pr-test-result -->'
               printf '<!-- pr-test-state:%s -->\n\n' "$state"
@@ -248,16 +258,32 @@ jobs:
             } >> "$GITHUB_OUTPUT"
           }
 
-          if [ "$TEMPLATE_OK" != true ] || [ "$TEST_OK" != true ]; then
-            fail_trigger "The current PR metadata or verification declaration is invalid."
+          # §6：identity 绑定 PR、HEAD 与实际执行的命令 hash，因此 override
+          # 是一次独立的执行身份。
+          verification_identity() {
+            printf '%s:%s:%s' "$PR" "$HEAD_SHA" "$VERIFICATION_HASH"
+          }
+
+          if [ "$TEMPLATE_OK" != true ]; then
+            fail_trigger "The current PR metadata is invalid."
             exit 0
           fi
-          if [ "$COMMAND_COUNT" = 0 ]; then
+          # resolver 已考虑 PR 声明，因此有效 override 不会被陈旧的 PR commands
+          # 否决（§5.3），而声明但无效的 override 仍然 fail closed（§5.4）。
+          if [ "$RESOLVE_OK" != true ]; then
+            if [ "$OVERRIDE_DECLARED" = true ]; then
+              fail_trigger "$RESOLVE_DESC"
+            else
+              fail_trigger "The current PR verification declaration is invalid."
+            fi
+            exit 0
+          fi
+          if [ "$EFFECTIVE_COUNT" = 0 ]; then
             fail_trigger "No live verification commands are declared in the PR Verification section."
             exit 0
           fi
 
-          identity="$HEAD_SHA:$VERIFICATION_HASH"
+          identity=$(verification_identity)
           trigger=$(jq -nc --argjson comment "$COMMENT_ID" "{comment_id:\$comment}")
           comment_id=$(find_result_comment)
           old_state=
@@ -315,11 +341,33 @@ jobs:
             printf 'identity=%s\n' "$identity"
           } >> "$GITHUB_OUTPUT"
 
+      - name: Resolve trusted verification platforms
+        id: matrix
+        # 无条件运行：下游 verify job 直接 fromJSON 这个 output，而被 skip 的
+        # matrix job 不会展开 name 里的表达式（§11.1）。始终产出合法 matrix，
+        # 否则非触发 /test 会让 Check name 显示原始 `${{ matrix.display }}`。
+        if: ${{ always() }}
+        shell: bash
+        env:
+          EXECUTE: ${{ steps.coordinate.outputs.execute }}
+        run: |
+          set -euo pipefail
+          if [ "${EXECUTE:-}" = true ]; then
+            raw=$(go run ./tools/platformmatrix --capability verification)
+            matrix=$(printf '%s' "$raw" | jq -c '.include |= map(. + {display: (.goos + "/" + .goarch), required: "true"})')
+          else
+            matrix=$(jq -nc '{include:[{display:"not required", required:"false", runner:"ubuntu-24.04"}]}')
+          fi
+          printf 'matrix=%s\n' "$matrix" >> "$GITHUB_OUTPUT"
+
   verify:
-    name: Verify ${{ matrix.goos }}/${{ matrix.goarch }}
+    name: Verification · ${{ matrix.display }}
     needs: dispatch
-    if: needs.dispatch.outputs.execute == 'true'
-    runs-on: ${{ matrix.runner }}
+    # §11.1：worker 始终运行，因为被 skip 的 matrix job 不会展开 name 中的
+    # `${{ matrix.* }}`，GitHub 会直接显示占位符。非执行时 matrix 只含一个
+    # 说明性占位条目，并落到便宜的 ubuntu runner，所有重活 step 均被跳过。
+    if: ${{ always() && needs.dispatch.result != 'skipped' }}
+    runs-on: ${{ matrix.required == 'true' && matrix.runner || 'ubuntu-24.04' }}
     permissions:
       contents: read
     strategy:
@@ -327,18 +375,34 @@ jobs:
       max-parallel: 2
       matrix: ${{ fromJSON(needs.dispatch.outputs.matrix) }}
     steps:
+      # dispatch 失败时仍要保留失败信号：名字必须干净，但结论不能变成成功。
+      - name: Require a completed dispatch
+        if: matrix.required != 'true' && needs.dispatch.result != 'success'
+        shell: bash
+        run: |
+          echo '::error::Verification dispatch did not complete successfully.'
+          exit 1
+
+      - name: Mark verification as not required
+        if: matrix.required != 'true' && needs.dispatch.result == 'success'
+        shell: bash
+        run: printf '%s\n' 'No live verification commands are declared for this run.'
+
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        if: matrix.required == 'true'
         with:
           path: _trusted
           persist-credentials: false
           ref: ${{ needs.dispatch.outputs.base_sha }}
 
       - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff
+        if: matrix.required == 'true'
         with:
           go-version-file: _trusted/go.mod
           cache: false
 
       - name: Initialize infrastructure-failure result
+        if: matrix.required == 'true'
         shell: bash
         working-directory: _trusted
         run: |
@@ -347,6 +411,7 @@ jobs:
           go run ./tools/verification init --platform '${{ matrix.goos }}/${{ matrix.goarch }}' --output "$RUNNER_TEMP/verification-result/${{ matrix.artifact }}.json"
 
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        if: matrix.required == 'true'
         with:
           repository: ${{ needs.dispatch.outputs.head_repo }}
           ref: ${{ needs.dispatch.outputs.head_sha }}
@@ -354,16 +419,19 @@ jobs:
           persist-credentials: false
 
       - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff
+        if: matrix.required == 'true'
         with:
           go-version-file: pr/go.mod
           cache: true
 
       - name: Install the pinned native Rust toolchain
+        if: matrix.required == 'true'
         shell: bash
         working-directory: pr
         run: rustup toolchain install '${{ matrix.rust_toolchain }}' --profile minimal --target '${{ matrix.rust_target }}' --no-self-update
 
       - name: Build the exact PR binary
+        if: matrix.required == 'true'
         shell: bash
         working-directory: pr
         env:
@@ -382,6 +450,7 @@ jobs:
           printf 'VERIFICATION_HOME=%s\n' "$RUNNER_TEMP/verification-home" >> "$GITHUB_ENV"
 
       - name: Execute declared verification
+        if: matrix.required == 'true'
         shell: bash
         working-directory: _trusted
         env:
@@ -395,12 +464,12 @@ jobs:
           go run ./tools/verification execute --platform '${{ matrix.goos }}/${{ matrix.goarch }}' --binary "$VERIFICATION_BINARY" --commands-json "$COMMANDS_JSON" --workspace "$GITHUB_WORKSPACE/pr" --whitelist tools/verification/command-whitelist.txt --output "$RUNNER_TEMP/verification-result/${{ matrix.artifact }}.json"
 
       - name: Remove isolated credential state
-        if: always()
+        if: always() && matrix.required == 'true'
         shell: bash
         run: rm -rf "$RUNNER_TEMP/verification-home"
 
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
-        if: always()
+        if: matrix.required == 'true'
         with:
           name: verification-result-${{ matrix.artifact }}
           path: ${{ runner.temp }}/verification-result/${{ matrix.artifact }}.json

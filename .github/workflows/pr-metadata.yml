@@ -88,16 +88,16 @@ jobs:
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
           TEMPLATE_OK: ${{ steps.policy.outputs.template_ok }}
           TEMPLATE_DESC: ${{ steps.policy.outputs.template_desc }}
-          TEST_OK: ${{ steps.policy.outputs.test_ok }}
-          TEST_DESC: ${{ steps.policy.outputs.test_desc }}
+          COMMANDS_OK: ${{ steps.policy.outputs.commands_ok }}
+          COMMANDS_DESC: ${{ steps.policy.outputs.commands_desc }}
         run: |
           set -euo pipefail
           template_state=failure
-          test_state=failure
+          commands_state=failure
           [ "$TEMPLATE_OK" = true ] && template_state=success
-          [ "$TEST_OK" = true ] && test_state=success
+          [ "$COMMANDS_OK" = true ] && commands_state=success
           gh api --method POST "repos/$REPO/statuses/$HEAD_SHA" -f state="$template_state" -f context='PR template gate' -f description="${TEMPLATE_DESC:0:140}" -f target_url="$RUN_URL"
-          gh api --method POST "repos/$REPO/statuses/$HEAD_SHA" -f state="$test_state" -f context='PR test command gate' -f description="${TEST_DESC:0:140}" -f target_url="$RUN_URL"
+          gh api --method POST "repos/$REPO/statuses/$HEAD_SHA" -f state="$commands_state" -f context='PR commands gate' -f description="${COMMANDS_DESC:0:140}" -f target_url="$RUN_URL"
       - name: Maintain invalid-PR age state
         shell: bash
         env:
@@ -106,11 +106,11 @@ jobs:
           PR: ${{ github.event.pull_request.number }}
           PR_BODY: ${{ github.event.pull_request.body }}
           TEMPLATE_OK: ${{ steps.policy.outputs.template_ok }}
-          TEST_OK: ${{ steps.policy.outputs.test_ok }}
+          COMMANDS_OK: ${{ steps.policy.outputs.commands_ok }}
         run: |
           set -euo pipefail
           state_comment=$(gh api --paginate "repos/$REPO/issues/$PR/comments" --jq '.[] | select(.user.login == "github-actions[bot]" and (.body | contains("<!-- pr-policy-state:"))) | .id' | head -1)
-          if [ "$TEMPLATE_OK" = true ] && [ "$TEST_OK" = true ]; then
+          if [ "$TEMPLATE_OK" = true ] && [ "$COMMANDS_OK" = true ]; then
             if [ -n "$state_comment" ]; then
               gh api --method DELETE "repos/$REPO/issues/comments/$state_comment" >/dev/null
             fi
@@ -146,8 +146,8 @@ jobs:
         shell: bash
         env:
           TEMPLATE_OK: ${{ steps.policy.outputs.template_ok }}
-          TEST_OK: ${{ steps.policy.outputs.test_ok }}
+          COMMANDS_OK: ${{ steps.policy.outputs.commands_ok }}
         run: |
           set -euo pipefail
           test "$TEMPLATE_OK" = true
-          test "$TEST_OK" = true
+          test "$COMMANDS_OK" = true
