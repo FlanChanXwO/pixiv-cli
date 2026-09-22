@@ -11,8 +11,9 @@ on:
       - completed
   workflow_dispatch:
     inputs:
-      release_tag:
-        description: Existing published immutable SemVer tag to publish to ClawHub
+      # §17：手动恢复只接受原始的 release_run_id。
+      release_run_id:
+        description: Original trusted Release workflow run ID
         required: true
         type: string
       verify_only:
@@ -34,35 +35,63 @@ jobs:
       actions: read
       contents: read
     steps:
-      - name: Download the trusted completed-release tag
-        if: github.event_name == 'workflow_run'
+      - name: Resolve the trusted release run
+        id: run
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EVENT_NAME: ${{ github.event_name }}
+          EVENT_RUN_ID: ${{ github.event.workflow_run.id }}
+          INPUT_RUN_ID: ${{ inputs.release_run_id }}
+        run: |
+          set -euo pipefail
+          if [ "$EVENT_NAME" = workflow_dispatch ]; then
+            run_id="$INPUT_RUN_ID"
+          else
+            run_id="$EVENT_RUN_ID"
+          fi
+          case "$run_id" in
+            ''|*[!0-9]*) echo "release_run_id must be a positive decimal number: $run_id" >&2; exit 1 ;;
+          esac
+          run=$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$run_id")
+          test "$(printf '%s' "$run" | jq -r '.name')" = 'Release'
+          test "$(printf '%s' "$run" | jq -r '.conclusion')" = success
+          test "$(printf '%s' "$run" | jq -r '.repository.full_name')" = "$GITHUB_REPOSITORY"
+          printf 'run_id=%s\n' "$run_id" >> "$GITHUB_OUTPUT"
+          printf 'head_sha=%s\n' "$(printf '%s' "$run" | jq -r '.head_sha')" >> "$GITHUB_OUTPUT"
+
+      - name: Download the prepared handoff
         uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
         with:
-          name: skillhub-release-tag
-          path: ${{ runner.temp }}/skill-release-tag
+          name: prepared-release-checksums
+          path: prepared
           github-token: ${{ github.token }}
           repository: ${{ github.repository }}
-          run-id: ${{ github.event.workflow_run.id }}
-      - name: Resolve the immutable release tag
+          run-id: ${{ steps.run.outputs.run_id }}
+      - name: Resolve and verify the immutable release tag
         id: release_tag
         shell: bash
         env:
-          WORKFLOW_DISPATCH_RELEASE_TAG: ${{ inputs.release_tag }}
+          REPOSITORY: ${{ github.repository }}
+          RUN_ID: ${{ steps.run.outputs.run_id }}
+          RUN_HEAD_SHA: ${{ steps.run.outputs.head_sha }}
         run: |
           set -euo pipefail
-          if [ "$GITHUB_EVENT_NAME" = workflow_dispatch ]; then
-            release_tag="$WORKFLOW_DISPATCH_RELEASE_TAG"
-          else
-            handoff_dir="$RUNNER_TEMP/skill-release-tag"
-            test "$(find "$handoff_dir" -maxdepth 1 -type f -print | LC_ALL=C sort)" = "$handoff_dir/release-tag"
-            release_tag=$(cat "$handoff_dir/release-tag")
-          fi
+          # §15：只发布 skill 的 publisher 不下载归档/镜像，用 identity-only 模式
+          # 证明这份 handoff 确实来自刚解析出的那个 run。
+          go run ./tools/release verify-handoff-identity \
+            --handoff prepared/release-handoff.json \
+            --repository "$REPOSITORY" \
+            --run-id "$RUN_ID" \
+            --run-head-sha "$RUN_HEAD_SHA"
+          release_tag=$(jq -r '.tag' prepared/release-handoff.json)
+          test -n "$release_tag"
           printf 'value=%s\n' "$release_tag" >> "$GITHUB_OUTPUT"
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
         with:
           fetch-depth: 0
           persist-credentials: false
-          ref: ${{ steps.release_tag.outputs.value }}
+          ref: ${{ steps.run.outputs.head_sha }}
       - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff
         with:
           go-version-file: go.mod
@@ -73,7 +102,7 @@ jobs:
           RELEASE_TAG: ${{ steps.release_tag.outputs.value }}
           DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
           GH_TOKEN: ${{ github.token }}
-          WORKFLOW_RUN_ID: ${{ github.event.workflow_run.id }}
+          WORKFLOW_RUN_ID: ${{ steps.run.outputs.run_id }}
         run: |
           set -euo pipefail
           go run ./tools/release verify-source --tag "$RELEASE_TAG" --default-branch "$DEFAULT_BRANCH" --github-output "$GITHUB_OUTPUT"
