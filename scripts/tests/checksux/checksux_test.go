@@ -200,3 +200,17 @@ func TestAggregateGatesExplainFailuresAndSkips(t *testing.T) {
 		}
 	}
 }
+
+// TestPreCommitDoesNotDuplicateTheFullGoSuite keeps the ownership boundary simple:
+// CI owns full Go testing, while pre-commit remains a formatting-only developer hook.
+func TestPreCommitDoesNotDuplicateTheFullGoSuite(t *testing.T) {
+	t.Parallel()
+
+	body, err := os.ReadFile(filepath.Join(repositoryRoot(t), ".pre-commit-config.yaml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(body), "go test ./...") {
+		t.Fatal("pre-commit must not rerun the full Go suite already owned by CI")
+	}
+}

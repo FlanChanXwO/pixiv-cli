@@ -171,12 +171,15 @@ jobs:
       - name: Test release packages
         shell: bash
         run: sh scripts/test-package-release.sh
-      - name: Install the pinned pre-commit version
+      - name: Check Go formatting
         shell: bash
-        run: python -m pip install --disable-pip-version-check pre-commit==4.6.0
-      - name: Run pre-commit checks
-        shell: bash
-        run: python -m pre_commit run --all-files
+        run: |
+          set -euo pipefail
+          unformatted="$(git ls-files -z -- '*.go' | xargs -0 gofmt -l)"
+          test -z "$unformatted" || {
+            printf '%s\n' "$unformatted"
+            exit 1
+          }
 
   # 生产资产在独立 runner 上从 immutable tag 重建，避免测试进程的副作用影响 Release。
   build_production:

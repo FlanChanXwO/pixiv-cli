@@ -427,3 +427,25 @@ func TestDockerAuthImportExamplesUseCorrectTTYMode(t *testing.T) {
 		}
 	}
 }
+
+// TestHomebrewRecoveryDocumentationStaysReadOnly prevents maintainer guidance from
+// advertising the removed deploy branch of homebrew-prepublish-verify.yml.
+func TestHomebrewRecoveryDocumentationStaysReadOnly(t *testing.T) {
+	t.Parallel()
+
+	root := repositoryRoot(t)
+	for _, relativePath := range []string{
+		"templates/homebrew/TAP_DEPLOYMENT.md",
+		".agents/skills/pixiv-cli-ci/SKILL.md",
+	} {
+		document := readDocumentation(t, root, relativePath)
+		if strings.Contains(document, "deploy=true") {
+			t.Errorf("%s must not advertise the removed Homebrew prepublish deploy path", relativePath)
+		}
+		for _, required := range []string{"publish-homebrew.yml", "release_run_id"} {
+			if !strings.Contains(document, required) {
+				t.Errorf("%s must point recovery at %q", relativePath, required)
+			}
+		}
+	}
+}

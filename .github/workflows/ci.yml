@@ -86,22 +86,20 @@ jobs:
         if: ${{ needs.classify_changes.outputs.docs_only != 'true' }}
         shell: bash
         run: sh scripts/build.sh
-      - name: Test release behavior contracts
+      - name: Test release packaging
+        if: ${{ needs.classify_changes.outputs.docs_only != 'true' }}
+        shell: bash
+        run: sh scripts/test-package-release.sh
+      - name: Check Go formatting
         if: ${{ needs.classify_changes.outputs.docs_only != 'true' }}
         shell: bash
         run: |
-          sh scripts/test-package-release.sh
-          go test ./scripts/tests/clawhubworkflow -count=1
-          go test ./scripts/tests/containerrelease -count=1
-          go test ./tools/release ./tools/platformmatrix -count=1
-      - name: Install pinned pre-commit
-        if: ${{ needs.classify_changes.outputs.docs_only != 'true' }}
-        shell: bash
-        run: python -m pip install --disable-pip-version-check pre-commit==4.6.0
-      - name: Run pre-commit checks
-        if: ${{ needs.classify_changes.outputs.docs_only != 'true' }}
-        shell: bash
-        run: python -m pre_commit run --all-files
+          set -euo pipefail
+          unformatted="$(git ls-files -z -- '*.go' | xargs -0 gofmt -l)"
+          test -z "$unformatted" || {
+            printf '%s\n' "$unformatted"
+            exit 1
+          }
 
   windows_login_handler:
     name: Windows login handler contracts
