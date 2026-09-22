@@ -184,8 +184,30 @@ jobs:
           mkdir -p "$(dirname "$CLAWHUB_CONFIG_PATH")"
           clawhub --no-input login --token "$CLAWHUB_TOKEN"
           clawhub skill publish skills/pixiv-cli --version "$SKILL_VERSION" --source-repo "$GITHUB_REPOSITORY" --source-ref "$RELEASE_TAG" --source-commit "$RELEASE_COMMIT" --source-path skills/pixiv-cli --json > "$RUNNER_TEMP/clawhub-publish.json"
-          verify_exit=0
-          clawhub skill verify pixiv-cli --version "$SKILL_VERSION" > "$RUNNER_TEMP/clawhub-verify.json" || verify_exit=$?
+          verify_file="$RUNNER_TEMP/clawhub-verify.json"
+          verify_error="$RUNNER_TEMP/clawhub-verify.err"
+          while :; do
+            : > "$verify_file"
+            : > "$verify_error"
+            set +e
+            clawhub skill verify pixiv-cli --version "$SKILL_VERSION" > "$verify_file" 2> "$verify_error"
+            verify_exit=$?
+            set -e
+            if [ -s "$verify_file" ]; then
+              break
+            fi
+            if [ "$verify_exit" -eq 0 ]; then
+              printf '%s\n' 'ClawHub verify succeeded without returning verification JSON.' >&2
+              exit 1
+            fi
+            reset_seconds=$(sed -n 's/^Version not found (reset in \([0-9][0-9]*\)s)$/\1/p' "$verify_error" | head -n 1)
+            if [ -z "$reset_seconds" ] || grep -Ev '^(Version not found \(reset in [0-9]+s\)|Error: Version not found \(reset in [0-9]+s\))$' "$verify_error" | grep -q .; then
+              cat "$verify_error" >&2
+              exit "$verify_exit"
+            fi
+            printf 'ClawHub version is not visible yet; retrying after registry reset in %ss.\n' "$reset_seconds"
+            sleep "$reset_seconds"
+          done
           node - "$RUNNER_TEMP/clawhub-publish.json" "$RUNNER_TEMP/clawhub-verify.json" "$SKILL_VERSION" "$EXPECTED_FINGERPRINT" "$verify_exit" <<'NODE'
           const fs = require("fs");
           const [publishFile, verifyFile, version, fingerprint, exitCode] = process.argv.slice(2);
