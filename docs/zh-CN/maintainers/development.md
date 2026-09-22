@@ -322,19 +322,16 @@ FANBOX_SDK_E2E=1 go test ./e2e -run TestRealFanboxSDKRead -count=1 -v
 # 单帖 post.info 验收；只需要 post id/page URL，允许合法的零文件资源详情。
 FANBOX_E2E_POST_ID=<non-secret-post-id> FANBOX_E2E_POST_URL=<non-secret-post-url> \
 FANBOX_SDK_E2E=1 FANBOX_E2E_POST_ONLY=1 go test ./e2e -run TestRealFanboxSDKPostInfo -count=1 -v
-# 运行两项当前 SDK E2E；脚本不接受 token 或其他凭据输入。
-scripts/test-e2e.sh
-# 只运行其中一项，或只验证单帖 post.info。
-scripts/test-e2e.sh --pixiv-only
-scripts/test-e2e.sh --fanbox-post-only
 # 显式观察反向搜图上游兼容性；默认不会运行。
 # 请预先从私有环境 export SAUCENAO_API_KEY，不要内联在命令行中。
 export SAUCENAO_API_KEY
 PIXIV_REVERSE_SEARCH_E2E=1 \
 PIXIV_REVERSE_SEARCH_SOURCE=<private-test-image-path-or-url> \
 PIXIV_REVERSE_SEARCH_PROVIDER=all \
-scripts/test-reverse-search-e2e.sh
+go test ./e2e -run TestRealReverseSearch -count=1 -v
 ```
+
+没有独立的 E2E wrapper 脚本：真实联网观测直接运行上方的 `go test` 命令，使离线套件与带凭据观测共用同一条 orchestration。
 
 `go test ./...` 保持默认离线稳定；真实 SDK e2e 在未显式设置 `PIXIV_SDK_E2E=1` 或 `FANBOX_SDK_E2E=1` 时跳过。
 显式启用后，缺少本机授权凭据或 FANBOX 非 secret target 会直接失败并暴露缺口，不会以 skip 伪装 release evidence。
@@ -349,7 +346,7 @@ scripts/test-reverse-search-e2e.sh
 upstream proxy，不代理 solver control request 或 native ascii2d image upload，solver session state 和 source 也不会
 作为 test evidence 持久化。
 
-`scripts/test-e2e.sh` 只选择当前的 public SDK E2E 测试：Pixiv 测试从本地 `pixiv-cli.db` 读取选中账号；`PIXIV_E2E_READ_USER_ID` 是可选的非 secret 本地账号 selector，显式提供时必须命中已保存 Pixiv 账号，格式错误或账号不存在都会在联网前 fail closed，且不会 fallback 到 configured default；release evidence 应显式选择获授权的 secondary account，省略时才保留 configured-default 兼容行为。
+上方的 `PIXIV_SDK_E2E=1` / `FANBOX_SDK_E2E=1` 命令只选择当前的 public SDK E2E 测试：Pixiv 测试从本地 `pixiv-cli.db` 读取选中账号；`PIXIV_E2E_READ_USER_ID` 是可选的非 secret 本地账号 selector，显式提供时必须命中已保存 Pixiv 账号，格式错误或账号不存在都会在联网前 fail closed，且不会 fallback 到 configured default；release evidence 应显式选择获授权的 secondary account，省略时才保留 configured-default 兼容行为。
 FANBOX 测试从约定的 macOS Keychain item 读取 `FANBOXSESSID`。FANBOX 的
 `FANBOX_E2E_CREATOR_ID`、`FANBOX_E2E_TAG`、`FANBOX_E2E_POST_ID` 与 `FANBOX_E2E_POST_URL` 只接受
 显式、非 secret 的测试目标；不接受 refresh token、session 或完整 Cookie 作为参数/环境变量。可选的

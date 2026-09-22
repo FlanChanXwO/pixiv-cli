@@ -248,26 +248,24 @@ FANBOX_SDK_E2E=1 go test ./e2e -run TestRealFanboxSDKRead -count=1 -v
 # Single-post post.info acceptance; only requires a post id/page URL and allows a legitimate zero-file resource summary.
 FANBOX_E2E_POST_ID=<non-secret-post-id> FANBOX_E2E_POST_URL=<non-secret-post-url> \
 FANBOX_SDK_E2E=1 FANBOX_E2E_POST_ONLY=1 go test ./e2e -run TestRealFanboxSDKPostInfo -count=1 -v
-# Run both current SDK E2E tests; the script does not accept token or other credential input.
-scripts/test-e2e.sh
-# Run only one of them, or only verify single-post post.info.
-scripts/test-e2e.sh --pixiv-only
-scripts/test-e2e.sh --fanbox-post-only
 # Explicit reverse-search upstream compatibility observation; never run by default.
 # Pre-export SAUCENAO_API_KEY from a private environment; do not inline it.
 export SAUCENAO_API_KEY
 PIXIV_REVERSE_SEARCH_E2E=1 \
 PIXIV_REVERSE_SEARCH_SOURCE=<private-test-image-path-or-url> \
 PIXIV_REVERSE_SEARCH_PROVIDER=all \
-scripts/test-reverse-search-e2e.sh
+go test ./e2e -run TestRealReverseSearch -count=1 -v
 ```
+
+There is no separate E2E wrapper script. Real network observation runs the `go test` commands above directly, so the
+offline suite and the credentialed observation share one orchestration path.
 
 `go test ./...` stays offline-stable by default; real SDK e2e is skipped when `PIXIV_SDK_E2E=1` or `FANBOX_SDK_E2E=1` is not explicitly set. Once explicitly enabled, missing local authorization credentials or a missing non-secret FANBOX target fails directly and exposes the gap, rather than disguising a skip as release evidence.
 
 Reverse-search provider fixtures and CLI/MCP/config regressions remain part of the offline suite. Real reverse-search
 network observation is separate and runs only when `PIXIV_REVERSE_SEARCH_E2E=1` is explicitly set; the source is
-required, and SauceNAO or `all` additionally requires `SAUCENAO_API_KEY` while ascii2d-only runs do not. The script
-accepts no source or key arguments, does not echo either value, and must be run only with an authorized test image.
+required, and SauceNAO or `all` additionally requires `SAUCENAO_API_KEY` while ascii2d-only runs do not. The test
+takes no source or key arguments, does not echo either value, and must be run only with an authorized test image.
 It observes third-party compatibility, not a default release gate; a skipped or unavailable upstream must not be
 reported as a successful real-network result.
 
@@ -276,7 +274,7 @@ The separate `TestRealReverseSearchMCPReusesSolverSession` check additionally re
 only the FlareSolverr browser upstream proxy. It does not proxy solver control requests or the native ascii2d image
 upload, and neither solver session state nor the source is persisted as test evidence.
 
-`scripts/test-e2e.sh` only selects the current public SDK E2E tests: the Pixiv test reads the selected account from the local `pixiv-cli.db`, and the FANBOX test reads `FANBOXSESSID` from the agreed macOS Keychain item. `PIXIV_E2E_READ_USER_ID` is an optional non-secret local-account selector: when supplied it must name a stored Pixiv account and fails closed before network access if malformed or missing, with no fallback to the configured default; release evidence should explicitly select a secondary account. Omitting it preserves the configured-default compatibility behavior. The FANBOX `FANBOX_E2E_CREATOR_ID`, `FANBOX_E2E_TAG`, `FANBOX_E2E_POST_ID` and `FANBOX_E2E_POST_URL` only accept explicit, non-secret test targets; refresh tokens, sessions or full cookies are not accepted as arguments or environment variables. The optional `PIXIV_E2E_PROXY` only denotes a non-secret proxy URI; `FANBOX_E2E_SOLVER_URL` and `FANBOX_E2E_SOLVER_PROXY` are optional non-secret recovery topology configuration and the solver is not enabled by default. When real E2E is not explicitly enabled, tests skip by default; when explicitly enabled but missing local credentials or FANBOX targets, they fail, and a default skip or automatic discovery must not be recorded as release evidence.
+The `PIXIV_SDK_E2E=1` / `FANBOX_SDK_E2E=1` commands above only select the current public SDK E2E tests: the Pixiv test reads the selected account from the local `pixiv-cli.db`, and the FANBOX test reads `FANBOXSESSID` from the agreed macOS Keychain item. `PIXIV_E2E_READ_USER_ID` is an optional non-secret local-account selector: when supplied it must name a stored Pixiv account and fails closed before network access if malformed or missing, with no fallback to the configured default; release evidence should explicitly select a secondary account. Omitting it preserves the configured-default compatibility behavior. The FANBOX `FANBOX_E2E_CREATOR_ID`, `FANBOX_E2E_TAG`, `FANBOX_E2E_POST_ID` and `FANBOX_E2E_POST_URL` only accept explicit, non-secret test targets; refresh tokens, sessions or full cookies are not accepted as arguments or environment variables. The optional `PIXIV_E2E_PROXY` only denotes a non-secret proxy URI; `FANBOX_E2E_SOLVER_URL` and `FANBOX_E2E_SOLVER_PROXY` are optional non-secret recovery topology configuration and the solver is not enabled by default. When real E2E is not explicitly enabled, tests skip by default; when explicitly enabled but missing local credentials or FANBOX targets, they fail, and a default skip or automatic discovery must not be recorded as release evidence.
 
 The real SDK E2E for v1 is `TestRealPixivSDKRead` and `TestRealFanboxSDKRead` (see the `PIXIV_SDK_E2E=1` / `FANBOX_SDK_E2E=1` commands under [Tests](#tests)). The Pixiv test process only reads the refresh token of the selected account from the local `pixiv-cli.db`; release-prep should set `PIXIV_E2E_READ_USER_ID` to an authorized secondary account so the configured main/default account is not selected implicitly. It opens `sdk/pixiv` to verify identity and completes a stable detail/list and `Resource` read; the rotated credentials are first persisted via a normal repository transaction before continuing content requests. The FANBOX side directly reads the authorized `FANBOXSESSID` item from the macOS Keychain, and uses explicit creator/tag/post/page URL targets to verify `Creator`, `Creators`, `CreatorTags`, `CreatorPosts`, `TaggedPosts`, `Post`, `Home`, `Supporting`, `ResolveURL`, `OpenResource` and `SaveResource` one by one; list targets each follow up one continuation when the server returns a cursor, and post details must discover a file attachment and fully read it in a temporary directory. On session expiry, it explicitly reports `credentials_expired` and asks for re-import, without fallback. After release-prep runs, the operator scans stdout, stderr, test logs and evidence; tokens, cookies, signed URLs and raw response bodies must not end up in argv, environment dumps, logs, test names, artifacts or failure diffs. The above describes test coverage, not that real e2e has already been run; do not write tokens into shell history, logs or repository files.
 
