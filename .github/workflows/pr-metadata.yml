@@ -38,10 +38,34 @@ jobs:
       issues: write
       statuses: write
     steps:
+      # PR .base.sha 是 PR 创建/同步时捕获的基线，可能远落后于当前受保护分支。
+      # 若按它 checkout，trusted 工具（tools/prmeta 等）会是从旧提交里取，甚至
+      # 根本不存在，导致元数据门无法运行或运行到陈旧策略。这里统一解析 base
+      # 分支当前 tip，与 pr-verification 的受信执行源保持一致。
+      - name: Resolve the protected base branch tip
+        id: base
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          PR: ${{ github.event.pull_request.number }}
+        run: |
+          set -euo pipefail
+          pr_json=$(gh api "repos/$REPO/pulls/$PR")
+          base_ref=$(printf '%s' "$pr_json" | jq -r '.base.ref')
+          if [ -z "$base_ref" ] || [ "$base_ref" = null ]; then
+            echo 'Pull request base branch is unavailable.' >&2
+            exit 1
+          fi
+          base_ref_encoded=$(printf '%s' "$base_ref" | jq -sRr @uri)
+          sha=$(gh api "repos/$REPO/branches/$base_ref_encoded" --jq '.commit.sha')
+          test -n "$sha"
+          printf 'sha=%s\n' "$sha" >> "$GITHUB_OUTPUT"
+
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
         with:
           persist-credentials: false
-          ref: ${{ github.event.pull_request.base.sha }}
+          ref: ${{ steps.base.outputs.sha }}
       - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff
         with:
           go-version-file: go.mod

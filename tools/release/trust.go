@@ -249,8 +249,27 @@ func (client githubReleaseClient) get(path string, destination any) error {
 	return nil
 }
 
+// gitEnv 返回针对指定仓库根运行 git 的环境变量。git 会让继承的
+// GIT_DIR/GIT_WORK_TREE/GIT_INDEX_FILE 优先于 `-C`，而 pre-commit 在运行 hook
+// 时会导出这三个变量；若不剥离，release 工具的 git 调用会直接作用在真实仓库上。
+func gitEnv(repoRoot string) []string {
+	env := make([]string, 0, len(os.Environ()))
+	for _, entry := range os.Environ() {
+		if strings.HasPrefix(entry, "GIT_") {
+			continue
+		}
+		env = append(env, entry)
+	}
+	return append(env,
+		"GIT_DIR="+filepath.Join(repoRoot, ".git"),
+		"GIT_WORK_TREE="+repoRoot,
+		"GIT_INDEX_FILE="+filepath.Join(repoRoot, ".git", "index"),
+	)
+}
+
 func runGit(repoRoot string, args ...string) error {
 	command := exec.Command("git", append([]string{"-C", repoRoot}, args...)...)
+	command.Env = gitEnv(repoRoot)
 	output, err := command.CombinedOutput()
 	if err != nil {
 		return fmt.Errorf("git %s: %w: %s", strings.Join(args, " "), err, strings.TrimSpace(string(output)))
@@ -260,6 +279,7 @@ func runGit(repoRoot string, args ...string) error {
 
 func captureGit(repoRoot string, args ...string) (string, error) {
 	command := exec.Command("git", append([]string{"-C", repoRoot}, args...)...)
+	command.Env = gitEnv(repoRoot)
 	output, err := command.CombinedOutput()
 	if err != nil {
 		return "", fmt.Errorf("git %s: %w: %s", strings.Join(args, " "), err, strings.TrimSpace(string(output)))
