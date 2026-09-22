@@ -203,3 +203,30 @@ func TestStoreProtectsAccountDatabaseBoundary(t *testing.T) {
 		t.Fatal("accepted account database as vector index")
 	}
 }
+
+func TestStoreStatusCountsAssetsAndEmbeddings(t *testing.T) {
+	ctx := context.Background()
+	store, err := vector.Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	key := vector.Key{Source: "local", ID: "/a.png"}
+	if _, err := store.Upsert(ctx, vector.Asset{Key: key, Fingerprint: "a"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.PutEmbedding(ctx, key, "a", "model", "one", []float32{1}); err != nil {
+		t.Fatal(err)
+	}
+	assets, embeddings, err := store.Status(ctx)
+	if err != nil || assets != 1 || embeddings != 1 {
+		t.Fatalf("status: assets=%d embeddings=%d err=%v", assets, embeddings, err)
+	}
+	if _, err := store.Upsert(ctx, vector.Asset{Key: key, Fingerprint: "b"}); err != nil {
+		t.Fatal(err)
+	}
+	assets, embeddings, err = store.Status(ctx)
+	if err != nil || assets != 1 || embeddings != 0 {
+		t.Fatalf("invalidated status: assets=%d embeddings=%d err=%v", assets, embeddings, err)
+	}
+}

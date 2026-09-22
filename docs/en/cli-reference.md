@@ -399,6 +399,41 @@ the same detail path. `search --json` is a complete aggregate document, not a
 canonical record stream, so `pixiv search ... --json | pixiv detail` is
 unsupported.
 
+### Local vector index (current commands)
+
+`pixiv vector sync local PATH` recursively scans regular image files under the explicit directory, records
+content-fingerprint changes in a separate private `~/.pixiv-cli/vector.db` (`%USERPROFILE%\.pixiv-cli\vector.db`
+on Windows), then embeds outstanding local assets with one transient worker. It does not copy the images, contact
+Pixiv, read account credentials, or create `config.toml`. It reports `scanned`, `changed`, and
+`embedded` counts. Repeating an unchanged scan does not re-embed. A changed or missing source and a failed
+embedding leave the work pending for a later explicit scan; removed files are not yet purged from the index.
+`pixiv vector status` shows total durable `assets` and `embeddings`; it creates the private vector database if
+none exists. Neither command exposes `--json`.
+
+Embedding requires Python 3.12 with `torch==2.14.0`, `transformers==5.17.0`, and `pillow==12.1.1`, plus
+preloaded `google/siglip2-base-patch16-512` weights at revision
+`a89f5c5093f902bf39d3cd4d81d2c09867f0724b`. These dependencies and weights are **not bundled** with the Go
+binary. For example, on macOS/Linux, in a private user directory:
+
+```bash
+mkdir -p ~/.pixiv-cli && chmod 700 ~/.pixiv-cli
+python3.12 -m venv ~/.pixiv-cli/vector-python
+~/.pixiv-cli/vector-python/bin/python -m pip install 'torch==2.14.0' 'transformers==5.17.0' 'pillow==12.1.1'
+~/.pixiv-cli/vector-python/bin/python - <<'PYMODEL'
+from huggingface_hub import snapshot_download
+snapshot_download('google/siglip2-base-patch16-512', revision='a89f5c5093f902bf39d3cd4d81d2c09867f0724b', allow_patterns=['*.json', '*.model', '*.safetensors'])
+PYMODEL
+PIXIV_VECTOR_PYTHON="$HOME/.pixiv-cli/vector-python/bin/python" pixiv vector sync local ~/Pictures/gallery
+pixiv vector status
+```
+
+Windows uses the venv's `Scripts/python.exe` as `PIXIV_VECTOR_PYTHON`. The model cache follows the Python
+Hugging Face `HF_HOME` setting. Sync uses the pinned safetensors revision with remote custom code disabled and
+**never downloads weights implicitly**. Missing runtime/weights makes the command non-zero after recording the
+scanned assets. An unchanged gallery with no pending embeddings does not load the model. The current model
+candidate still needs broader real-Pixiv retrieval validation; `pixiv vector search`, `sync bookmarks`, and
+`rebuild` are not registered yet.
+
 ### Reverse image search
 
 `pixiv search SOURCE` enters image mode before any Pixiv SDK or account-pool setup:
@@ -493,6 +528,7 @@ Only the structured entity filters documented by each command are accepted. The 
 | `config set` | `pixiv config set KEY [VALUE]` | Writes one known config key, including `account_pool_enabled`, `account_pool_strategy`, `download_path`, `filename_template`, `directory_template`, `request_interval`, `https_proxy`, `log_level`, `log_format`, `reverse_search_provider`, `reverse_search_pixiv_only`, and the stdin-only `saucenao_api_key`. |
 | `config unset` | `pixiv config unset KEY` | Deletes one known config key from `config.toml`. |
 | `update` | `pixiv update [--check] [--prerelease] [--proxy URL]` | Checks for or performs an update matching the current install source; `--json` is only valid together with `--check`. |
+| `vector` | `pixiv vector sync local PATH`; `pixiv vector status` | Explicitly scan a local gallery and embed pending images, or show durable asset/embedding counts. No Pixiv credentials or App API. Text/image vector search, bookmarks sync, and rebuild are not yet available. |
 | `search` | `pixiv search [WORD\|IMAGE_PATH_OR_URL] [-t artwork\|novel\|user] [options]` | Canonical entity search or automatic reverse-image search. A regular file or explicit HTTP(S) source selects image mode; `--trending-tags` is the no-word artwork tag-list mode and does not accept search filters or pagination. |
 | `detail` | `pixiv detail [ID_OR_URL] [-t artwork\|novel\|user] [--content] [--json\|--ndjson]` | Reads one artwork, novel, or user, or consumes canonical NDJSON records. `--content` is a retained novel-only compatibility flag; the v1 App content endpoint is unavailable, so it returns `content_unavailable` before opening the account pool or requesting the rejected endpoint. |
 | `ranking` | `pixiv ranking [-t artwork\|novel] [--mode MODE --date YYYY-MM-DD --page N --limit N]` | Reads artwork or novel rankings. `artwork` is the default; `--date` is supported only for artwork ranking. |
@@ -782,6 +818,7 @@ with v1. The transfer is explicit so a stale or unexpected local file cannot bec
 | `PIXIV_REQUEST_INTERVAL` | empty | Minimum interval between network request starts. |
 | `PIXIV_LOG_LEVEL` | `info` | Diagnostic level: `info` or `debug`; overrides `[logging].level`. |
 | `PIXIV_LOG_FORMAT` | `text` | Diagnostic stderr format: `text` or `json`; overrides `[logging].format`. |
+| `PIXIV_VECTOR_PYTHON` | `python3` | Local Python interpreter with preinstalled SigLIP2 inference dependencies; only used when local embeddings are pending. |
 | `SAUCENAO_API_KEY` | empty | SauceNAO credential; overrides the private config value and is never printed. |
 | `https_proxy` / `HTTPS_PROXY` | empty | Proxy URI (`http`, `https`, `socks5`, or `socks5h`); the lowercase `https_proxy` takes precedence. |
 

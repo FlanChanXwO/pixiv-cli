@@ -157,3 +157,73 @@ func TestSyncLocalRejectsEmptyRoot(t *testing.T) {
 		t.Fatal("empty gallery path scanned the current working directory")
 	}
 }
+
+func TestProcessLocalPendingRetriesAndRejectsStaleWork(t *testing.T) {
+	ctx := context.Background()
+	gallery := t.TempDir()
+	path := filepath.Join(gallery, "a.png")
+	writePNG(t, path, 0xff)
+	store, err := vector.Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	if _, err := vector.SyncLocal(ctx, store, gallery); err != nil {
+		t.Fatal(err)
+	}
+	failure := errors.New("model failed")
+	if _, err := vector.ProcessLocalPending(ctx, store, "model", "one", func(context.Context, string) ([]float32, error) {
+		return nil, failure
+	}); !errors.Is(err, failure) {
+		t.Fatalf("failure lost: %v", err)
+	}
+	pending, err := store.Pending(ctx, "model", "one")
+	if err != nil || len(pending) != 1 {
+		t.Fatalf("failed work must remain pending: %v %v", pending, err)
+	}
+	if _, err := vector.ProcessLocalPending(ctx, store, "model", "one", func(_ context.Context, file string) ([]float32, error) {
+		if file != pending[0].Key.ID {
+			t.Fatalf("wrong file: %s", file)
+		}
+		writePNG(t, path, 0x7f)
+		return []float32{1, 0}, nil
+	}); !errors.Is(err, vector.ErrStaleAsset) {
+		t.Fatalf("changed file accepted: %v", err)
+	}
+	if _, err := store.Embedding(ctx, pending[0].Key, "model", "one"); !errors.Is(err, sql.ErrNoRows) {
+		t.Fatalf("stale vector stored: %v", err)
+	}
+	if _, err := vector.SyncLocal(ctx, store, gallery); err != nil {
+		t.Fatal(err)
+	}
+	processed, err := vector.ProcessLocalPending(ctx, store, "model", "one", func(context.Context, string) ([]float32, error) { return []float32{1, 0}, nil })
+	if err != nil || processed != 1 {
+		t.Fatalf("retry: processed=%d err=%v", processed, err)
+	}
+	processed, err = vector.ProcessLocalPending(ctx, store, "model", "one", nil)
+	if err != nil || processed != 0 {
+		t.Fatalf("completed work reran: processed=%d err=%v", processed, err)
+	}
+}
+
+func TestProcessLocalPendingCancellation(t *testing.T) {
+	ctx := context.Background()
+	gallery := t.TempDir()
+	writePNG(t, filepath.Join(gallery, "a.png"), 0xff)
+	store, err := vector.Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	if _, err := vector.SyncLocal(ctx, store, gallery); err != nil {
+		t.Fatal(err)
+	}
+	canceled, cancel := context.WithCancel(ctx)
+	cancel()
+	if _, err := vector.ProcessLocalPending(canceled, store, "model", "one", func(context.Context, string) ([]float32, error) {
+		t.Fatal("embedding called after cancel")
+		return nil, nil
+	}); !errors.Is(err, context.Canceled) {
+		t.Fatalf("cancellation lost: %v", err)
+	}
+}

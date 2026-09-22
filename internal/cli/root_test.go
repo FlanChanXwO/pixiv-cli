@@ -698,3 +698,31 @@ func TestMCPReverseSearchRegistersSearcherForStdioLifetime(t *testing.T) {
 	require.Equal(t, int32(1), searcher.closeCalls.Load())
 	require.Empty(t, stdout.String())
 }
+
+func TestVectorLocalStagesWithoutAuthOrFakeEmbedding(t *testing.T) {
+	t.Setenv("PIXIV_VECTOR_PYTHON", filepath.Join(t.TempDir(), "missing-python"))
+	databasePath, configPath := useTempPaths(t)
+	gallery := t.TempDir()
+	if err := os.WriteFile(filepath.Join(gallery, "a.png"), []byte("image bytes"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	var stdout, stderr bytes.Buffer
+	code := Run([]string{"pixiv", "vector", "sync", "local", gallery}, strings.NewReader(""), &stdout, &stderr)
+	if code != 1 || !strings.Contains(stderr.String(), "embedding runtime unavailable") {
+		t.Fatalf("sync must report staged-but-not-embedded: code=%d stdout=%q stderr=%q", code, stdout.String(), stderr.String())
+	}
+	if !strings.Contains(stdout.String(), "scanned: 1\nchanged: 1\n") {
+		t.Fatalf("staging summary missing: %q", stdout.String())
+	}
+	stdout.Reset()
+	stderr.Reset()
+	code = Run([]string{"pixiv", "vector", "status"}, strings.NewReader(""), &stdout, &stderr)
+	if code != 0 || !strings.Contains(stdout.String(), "assets: 1\nembeddings: 0\n") {
+		t.Fatalf("status after staging: code=%d stdout=%q stderr=%q", code, stdout.String(), stderr.String())
+	}
+	for _, path := range []string{databasePath, configPath} {
+		if _, err := os.Stat(path); !errors.Is(err, os.ErrNotExist) {
+			t.Fatalf("local vector command touched auth/config state %q: %v", path, err)
+		}
+	}
+}

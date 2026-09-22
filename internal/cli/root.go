@@ -38,6 +38,7 @@ import (
 	pixivseries "github.com/FlanChanXwO/pixiv-cli/internal/cli/commands/pixiv/series"
 	pixivtimeline "github.com/FlanChanXwO/pixiv-cli/internal/cli/commands/pixiv/timeline"
 	pixivuser "github.com/FlanChanXwO/pixiv-cli/internal/cli/commands/pixiv/user"
+	vectorcommands "github.com/FlanChanXwO/pixiv-cli/internal/cli/commands/pixiv/vector"
 	updatecommands "github.com/FlanChanXwO/pixiv-cli/internal/cli/commands/update"
 	clidiagnostics "github.com/FlanChanXwO/pixiv-cli/internal/cli/diagnostics"
 	"github.com/FlanChanXwO/pixiv-cli/internal/cli/invocation"
@@ -62,6 +63,7 @@ import (
 	database "github.com/FlanChanXwO/pixiv-cli/internal/storage/database"
 	filesecret "github.com/FlanChanXwO/pixiv-cli/internal/storage/file/secret"
 	"github.com/FlanChanXwO/pixiv-cli/internal/update"
+	"github.com/FlanChanXwO/pixiv-cli/internal/vector"
 	fanbox "github.com/FlanChanXwO/pixiv-cli/sdk/fanbox"
 	pixiv "github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
 	"github.com/spf13/cobra"
@@ -554,6 +556,13 @@ func (a app) newRootCommand() *cobra.Command {
 	cmd.AddCommand(authcommands.New(a.authDeps()))
 	configcommands.Register(cmd, a)
 	cmd.AddCommand(a.pixivCommands()...)
+	cmd.AddCommand(vectorcommands.New(a.out, func() (*vector.Store, error) {
+		dir, err := paths.AppDataDir()
+		if err != nil {
+			return nil, err
+		}
+		return vector.Open(dir)
+	}, vector.StartSigLIP2))
 	cmd.AddCommand(downloadcommands.New(a.downloadDeps()))
 	fanboxData := a.fanboxDataDeps()
 	cmd.AddCommand(fanboxcommands.New(fanboxData, fanboxcommands.CommandSet{

@@ -309,6 +309,38 @@ artwork、novel、user 搜索记录都会从 `type` 推断对应详情，不需�
 `--type` 只是 compatibility constraint，必须与推断出的 Record 类型兼容，绝不会覆盖 Record 类型。反向搜图的
 `artwork`、`user` identity record 也能走同一条 detail 管道。`pixiv detail` 也可直接消费规范 NDJSON：`illust`、`manga`、`ugoira` 和通用 `artwork` 记录进入作品详情，`novel` 与 `user` 记录进入对应详情。record 模式下，显式 `--ndjson` 输出规范 Record，显式 `--json` 输出完整 JSON 数组；省略输出 flag 时，非 TTY stdout 自动使用 NDJSON。`search --json` 是完整聚合 JSON 文档，不是规范 NDJSON 流，不能直接作为 `detail` 的输入。
 
+### 本地向量索引（当前命令）
+
+`pixiv vector sync local PATH` 递归扫描明确目录下的普通图片文件，将内容指纹变化写入独立的私有
+`~/.pixiv-cli/vector.db`（Windows 为 `%USERPROFILE%\.pixiv-cli\vector.db`），随后以一个短生命周期
+worker 处理尚缺的本地向量。它不复制图片、不访问 Pixiv、不读取账号凭证，也不创建 `config.toml`。
+命令输出 `scanned`、`changed`，以及 `embedded` 数量。重复扫描未变化图片不会重复计算。
+源文件变化、缺失或推理失败时保留待处理工作，需之后显式重扫；当前不自动清理已删除文件。
+`pixiv vector status` 报告持久化的 `assets` 与 `embeddings` 总数；数据库尚不存在时会创建。
+两条命令都没有 `--json`。
+
+运行 embedding 需自行准备 Python 3.12、`torch==2.14.0`、`transformers==5.17.0`、
+`pillow==12.1.1`，并提前下载 `google/siglip2-base-patch16-512` 的固定 revision
+`a89f5c5093f902bf39d3cd4d81d2c09867f0724b`；Go 二进制**不包含**这些依赖与权重。
+macOS/Linux 示例（使用私有用户目录）：
+
+```bash
+mkdir -p ~/.pixiv-cli && chmod 700 ~/.pixiv-cli
+python3.12 -m venv ~/.pixiv-cli/vector-python
+~/.pixiv-cli/vector-python/bin/python -m pip install 'torch==2.14.0' 'transformers==5.17.0' 'pillow==12.1.1'
+~/.pixiv-cli/vector-python/bin/python - <<'PYMODEL'
+from huggingface_hub import snapshot_download
+snapshot_download('google/siglip2-base-patch16-512', revision='a89f5c5093f902bf39d3cd4d81d2c09867f0724b', allow_patterns=['*.json', '*.model', '*.safetensors'])
+PYMODEL
+PIXIV_VECTOR_PYTHON="$HOME/.pixiv-cli/vector-python/bin/python" pixiv vector sync local ~/Pictures/gallery
+pixiv vector status
+```
+
+Windows 请将 `PIXIV_VECTOR_PYTHON` 设为虚拟环境中的 `Scripts/python.exe`。模型缓存遵循 Python
+Hugging Face 的 `HF_HOME`。同步只加载固定的 safetensors revision、禁用远端自定义代码，**不会隐式下载
+权重**；运行时或权重缺失时，扫描资产仍保留，但命令非零退出。无待处理向量时不会加载模型。
+默认模型候选仍需更多真实 Pixiv 样本验证；`pixiv vector search`、`sync bookmarks`、`rebuild` 尚未注册。
+
 ### 反向搜图
 
 `pixiv search SOURCE` 会在任何 Pixiv SDK 或账号池初始化之前进入图片模式：
@@ -390,6 +422,7 @@ canonical 数据 action 是 `search`、`detail`、`ranking`、`series`、`commen
 | `config set` | `pixiv config set KEY [VALUE]` | 写入已知配置键，包括 `account_pool_enabled`、`account_pool_strategy`、`download_path`、`filename_template`、`directory_template`、`request_interval`、`https_proxy`、`log_level`、`log_format`、`reverse_search_provider`、`reverse_search_pixiv_only` 和仅限 stdin 的 `saucenao_api_key`。 |
 | `config unset` | `pixiv config unset KEY` | 从 `config.toml` 删除一个已知配置键。 |
 | `update` | `pixiv update [--check] [--prerelease] [--proxy URL]` | 检查或执行与当前安装来源匹配的更新；`--json` 仅可与 `--check` 同用。 |
+| `vector` | `pixiv vector sync local PATH`；`pixiv vector status` | 显式扫描本地图库并处理待生成向量，或查看持久化 Asset/embedding 数量。不读取 Pixiv 凭证、不请求 App API；搜索、bookmarks 同步和 rebuild 尚未开放。 |
 | `search` | `pixiv search [WORD\|IMAGE_PATH_OR_URL] [-t artwork\|novel\|user] [options]` | canonical 实体搜索或自动反向搜图。常规文件或显式 HTTP(S) source 选择图片模式；`--trending-tags` 是无 WORD 的完整作品趋势标签模式，不接受搜索筛选或分页。 |
 | `detail` | `pixiv detail [ID_OR_URL] [-t artwork\|novel\|user] [--content] [--json\|--ndjson]` | 读取一件作品、一本小说或一个用户，也可消费规范 NDJSON Record；`--content` 是保留的小说兼容 flag，但 v1 App 正文 endpoint 不可用，会在打开账号池或请求 rejected endpoint 前返回 `content_unavailable`。 |
 | `ranking` | `pixiv ranking [-t artwork\|novel] [--mode MODE --date YYYY-MM-DD --page N --limit N]` | 读取作品或小说排行；默认是 `artwork`，`--date` 只适用于作品排行。 |
@@ -643,6 +676,7 @@ v1 CLI 不会读取或迁移旧的 `~/.pixiv-cli/auth.json`。从旧版本切换
 | `PIXIV_REQUEST_INTERVAL` | 空 | 请求起始间隔。 |
 | `PIXIV_LOG_LEVEL` | `info` | 诊断级别：`info` 或 `debug`，覆盖 `[logging].level`。 |
 | `PIXIV_LOG_FORMAT` | `text` | 诊断 stderr 格式：`text` 或 `json`，覆盖 `[logging].format`。 |
+| `PIXIV_VECTOR_PYTHON` | `python3` | 含已安装 SigLIP2 推理依赖的本地 Python 解释器；仅有待处理本地向量时使用。 |
 | `SAUCENAO_API_KEY` | 空 | SauceNAO credential；覆盖私有配置值且永不打印。 |
 | `https_proxy` / `HTTPS_PROXY` | 空 | `http`、`https`、`socks5` 或 `socks5h` 代理 URI；优先使用小写 `https_proxy`。 |
 

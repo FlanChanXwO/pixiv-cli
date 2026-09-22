@@ -99,3 +99,47 @@ func fileFingerprint(path string) (string, error) {
 	}
 	return hex.EncodeToString(hash.Sum(nil)), nil
 }
+
+// ProcessLocalPending processes one image at a time and leaves failures pending for a later sync.
+// ponytail: one worker bounds model memory; add parallel workers only after measuring throughput.
+func ProcessLocalPending(ctx context.Context, store *Store, model, generation string, embed func(context.Context, string) ([]float32, error)) (int, error) {
+	pending, err := store.Pending(ctx, model, generation)
+	if err != nil {
+		return 0, err
+	}
+	processed := 0
+	for _, asset := range pending {
+		if asset.Key.Source != "local" {
+			continue
+		}
+		if err := ctx.Err(); err != nil {
+			return processed, err
+		}
+		if embed == nil {
+			return processed, errors.New("vector: embedding runtime unavailable")
+		}
+		fingerprint, err := fileFingerprint(asset.Key.ID)
+		if err != nil {
+			return processed, fmt.Errorf("vector: verify source image: %w", err)
+		}
+		if fingerprint != asset.Fingerprint {
+			return processed, ErrStaleAsset
+		}
+		values, err := embed(ctx, asset.Key.ID)
+		if err != nil {
+			return processed, fmt.Errorf("vector: embed image: %w", err)
+		}
+		fingerprint, err = fileFingerprint(asset.Key.ID)
+		if err != nil {
+			return processed, fmt.Errorf("vector: verify source image: %w", err)
+		}
+		if fingerprint != asset.Fingerprint {
+			return processed, ErrStaleAsset
+		}
+		if err := store.PutEmbedding(ctx, asset.Key, fingerprint, model, generation, values); err != nil {
+			return processed, err
+		}
+		processed++
+	}
+	return processed, nil
+}

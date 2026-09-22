@@ -301,3 +301,14 @@ func (s *Store) Pending(ctx context.Context, model, generation string) ([]Asset,
 	}
 	return pending, nil
 }
+
+// Status reports durable rows; an embedding invalidated by a changed asset is not counted.
+func (s *Store) Status(ctx context.Context) (assets, embeddings int, err error) {
+	if err = s.db.QueryRowContext(ctx, `SELECT count(*) FROM asset`).Scan(&assets); err != nil {
+		return 0, 0, fmt.Errorf("vector: count assets: %w", err)
+	}
+	if err = s.db.QueryRowContext(ctx, `SELECT count(*) FROM embedding`).Scan(&embeddings); err != nil {
+		return 0, 0, fmt.Errorf("vector: count embeddings: %w", err)
+	}
+	return assets, embeddings, nil
+}
