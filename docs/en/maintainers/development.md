@@ -492,3 +492,5 @@ When any of the following change, update the bilingual README, the bilingual CLI
 - Install channels, update channels, signing trust roots, Release/tap release gates or system reputation hints.
 - New limits, retries, timeouts, truncation, degradation or error-handling policies.
 - Test or build commands.
+
+<!-- scenario matrix probe: docs-only, does not change CLI behaviour -->
