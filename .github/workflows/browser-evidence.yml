@@ -20,33 +20,54 @@ on:
 permissions: {}
 
 jobs:
+  # §13.1：平台集合的唯一事实源是 ci/platforms.json；这里经 tools/platformmatrix
+  # 解析 browser capability，workflow 不再硬编码六个平台。
+  resolve_platforms:
+    name: Browser setup
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    outputs:
+      matrix: ${{ steps.matrix.outputs.matrix }}
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff
+        with:
+          go-version-file: go.mod
+      - name: Resolve browser platforms and Firefox fixtures
+        id: matrix
+        shell: bash
+        run: |
+          set -euo pipefail
+          # §13.2：平台身份来自 ci/platforms.json，Firefox 版本/URL/SHA256 来自
+          # 独立的 ci/browser-fixtures.json；两者在这里合并成 matrix。
+          platforms=$(go run ./tools/platformmatrix --capability browser)
+          printf 'matrix=%s\n' "$(printf '%s' "$platforms" | jq -c --slurpfile fixtures ci/browser-fixtures.json '
+            .include |= map(
+              (.goos + "/" + .goarch) as $key
+              | . + {
+                  display: ($key),
+                  key: $key,
+                  firefox_version: $fixtures[0][$key].version,
+                  firefox_url: $fixtures[0][$key].url,
+                  firefox_sha256: $fixtures[0][$key].sha256
+                }
+            )
+            | .include |= map(select(.firefox_version != null and .firefox_url != null and .firefox_sha256 != null))
+          ')" >> "$GITHUB_OUTPUT"
+          test "$(printf '%s' "$platforms" | jq '.include | length')" = "$(jq 'length' ci/browser-fixtures.json)"
+
   browser_provider:
-    name: Browser provider · ${{ matrix.goos }}/${{ matrix.goarch }}
+    needs: resolve_platforms
+    name: Browser provider · ${{ matrix.display }}
     runs-on: ${{ matrix.runner }}
     permissions:
       contents: read
     strategy:
       fail-fast: false
-      matrix:
-        include:
-          - runner: macos-15-intel
-            goos: darwin
-            goarch: amd64
-          - runner: macos-15
-            goos: darwin
-            goarch: arm64
-          - runner: ubuntu-22.04
-            goos: linux
-            goarch: amd64
-          - runner: ubuntu-22.04-arm
-            goos: linux
-            goarch: arm64
-          - runner: windows-2025
-            goos: windows
-            goarch: amd64
-          - runner: windows-11-arm
-            goos: windows
-            goarch: arm64
+      matrix: ${{ fromJSON(needs.resolve_platforms.outputs.matrix) }}
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
         with:
@@ -71,44 +92,14 @@ jobs:
           go test ./internal/browsercookies/... -count=1 -v
 
   firefox_native:
-    name: Firefox profile · ${{ matrix.goos }}/${{ matrix.goarch }}
+    needs: resolve_platforms
+    name: Firefox profile · ${{ matrix.display }}
     runs-on: ${{ matrix.runner }}
     permissions:
       contents: read
     strategy:
       fail-fast: false
-      matrix:
-        include:
-          - runner: macos-15-intel
-            goos: darwin
-            goarch: amd64
-            firefox_url: https://ftp.mozilla.org/pub/firefox/releases/153.0.3/mac/en-US/Firefox%20153.0.3.dmg
-            firefox_sha256: a0523b6f2f10f13c6071d8b53ed7678193d693febd8a5d4fd8d7417b3c661045
-          - runner: macos-15
-            goos: darwin
-            goarch: arm64
-            firefox_url: https://ftp.mozilla.org/pub/firefox/releases/153.0.3/mac/en-US/Firefox%20153.0.3.dmg
-            firefox_sha256: a0523b6f2f10f13c6071d8b53ed7678193d693febd8a5d4fd8d7417b3c661045
-          - runner: ubuntu-22.04
-            goos: linux
-            goarch: amd64
-            firefox_url: https://ftp.mozilla.org/pub/firefox/releases/153.0.3/linux-x86_64/en-US/firefox-153.0.3.tar.xz
-            firefox_sha256: 22b312280900bfb174b685ece32c7b3c6d72e7f8e53d6d30f21ac41a8dc500a2
-          - runner: ubuntu-22.04-arm
-            goos: linux
-            goarch: arm64
-            firefox_url: https://ftp.mozilla.org/pub/firefox/releases/153.0.3/linux-aarch64/en-US/firefox-153.0.3.tar.xz
-            firefox_sha256: c19b325accedebbc3a1235e3c7104d80c5a4412b368f7d0935b4718114416870
-          - runner: windows-2025
-            goos: windows
-            goarch: amd64
-            firefox_url: https://ftp.mozilla.org/pub/firefox/releases/153.0.3/win64/en-US/Firefox%20Setup%20153.0.3.exe
-            firefox_sha256: 8de41917930c35937a46eac6d0e16c633ed7456c771b32b89dc6fd65d55e512e
-          - runner: windows-11-arm
-            goos: windows
-            goarch: arm64
-            firefox_url: https://ftp.mozilla.org/pub/firefox/releases/153.0.3/win64-aarch64/en-US/Firefox%20Setup%20153.0.3.exe
-            firefox_sha256: 1a79277ac3595d226f40b96c22bc9e9b7d709f614ae77530a58b363644ef4aa9
+      matrix: ${{ fromJSON(needs.resolve_platforms.outputs.matrix) }}
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
         with:
@@ -131,9 +122,9 @@ jobs:
         env:
           FIREFOX_SHA256: ${{ matrix.firefox_sha256 }}
         run: |
-          printf 'Firefox version: 153.0.3\n'
+          printf 'Firefox version: %s\n' '${{ matrix.firefox_version }}'
           printf 'Firefox package SHA-256: %s\n' "$FIREFOX_SHA256"
-          printf 'Firefox runner target: %s/%s\n' '${{ matrix.goos }}' '${{ matrix.goarch }}'
+          printf 'Firefox runner target: %s\n' '${{ matrix.display }}'
       - name: Download and verify the pinned Firefox package on Unix
         if: runner.os != 'Windows'
         shell: bash

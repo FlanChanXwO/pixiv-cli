@@ -58,7 +58,7 @@ type matrix struct {
 }
 
 var allowedCapabilities = map[string]struct{}{
-	"container": {}, "homebrew": {}, "native-evidence": {}, "race": {}, "release": {}, "smoke": {}, "verification": {},
+	"browser": {}, "container": {}, "homebrew": {}, "native-evidence": {}, "race": {}, "release": {}, "smoke": {}, "verification": {},
 }
 
 func main() {

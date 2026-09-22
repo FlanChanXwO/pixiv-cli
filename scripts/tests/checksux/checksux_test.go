@@ -149,9 +149,10 @@ func TestBrowserEvidenceUsesSectionSeparator(t *testing.T) {
 	t.Parallel()
 
 	_, body := loadWorkflow(t, repositoryRoot(t), "browser-evidence.yml")
+	// 平台集合由 ci/platforms.json 决定，因此名称取自 resolver 的 display 字段。
 	for _, want := range []string{
-		"name: Browser provider · ${{ matrix.goos }}/${{ matrix.goarch }}",
-		"name: Firefox profile · ${{ matrix.goos }}/${{ matrix.goarch }}",
+		"name: Browser provider · ${{ matrix.display }}",
+		"name: Firefox profile · ${{ matrix.display }}",
 	} {
 		if !strings.Contains(body, want) {
 			t.Errorf("browser-evidence.yml: expected check name %q", want)
