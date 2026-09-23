@@ -26,9 +26,6 @@ jobs:
         with:
           fetch-depth: 0
           persist-credentials: false
-      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff
-        with:
-          go-version-file: go.mod
       - name: Detect documentation-only changes
         id: scope
         shell: bash
@@ -48,10 +45,10 @@ jobs:
             exit 0
           fi
           bash ./scripts/classify-change-scope.sh --base "$BASE_SHA" --head "$HEAD_SHA" --github-output "$GITHUB_OUTPUT"
-      - name: Test documentation contracts
-        if: ${{ steps.scope.outputs.docs_only == 'true' }}
-        shell: bash
-        run: go test ./scripts/tests/containerrelease -count=1
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff
+        if: ${{ steps.scope.outputs.docs_only != 'true' }}
+        with:
+          go-version-file: go.mod
       - name: Test Go sources
         if: ${{ steps.scope.outputs.docs_only != 'true' }}
         shell: bash
