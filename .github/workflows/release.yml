@@ -570,7 +570,7 @@ jobs:
             --changelog-zh "changelog/v${RELEASE_TAG#v}/zh-CN.md"
           while read -r expected_hash expected_name; do
             grep -Fx "$expected_hash  $expected_name" release/checksums.txt >/dev/null
-          done < prepared-release/checksums.txt
+          done < prepared-release/dist/checksums.txt
       - name: Publish only the verified assets
         shell: bash
         env:

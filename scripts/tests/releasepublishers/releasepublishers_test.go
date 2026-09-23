@@ -60,6 +60,51 @@ func TestReleasePreparesImmutableHandoff(t *testing.T) {
 	}
 }
 
+// TestPreparedReleaseArtifactConsumersUsePreservedPaths 锁定 upload-artifact
+// 对多路径 artifact 保留相对目录的契约：下载到目标目录后，checksums 与
+// handoff 仍分别位于 dist/ 与 release/ 下，所有消费者必须按该布局读取。
+func TestPreparedReleaseArtifactConsumersUsePreservedPaths(t *testing.T) {
+	t.Parallel()
+
+	root := repositoryRoot(t)
+	release := readWorkflow(t, root, "release.yml")
+	for _, want := range []string{
+		"dist/checksums.txt",
+		"release/release-handoff.json",
+		"done < prepared-release/dist/checksums.txt",
+	} {
+		if !strings.Contains(release, want) {
+			t.Errorf("release.yml must preserve and consume prepared artifact path %q", want)
+		}
+	}
+
+	for name, wants := range map[string][]string{
+		"publish-homebrew.yml": {
+			"cp prepared/dist/checksums.txt release-assets/checksums.txt",
+			"--handoff prepared/release/release-handoff.json",
+		},
+		"publish-dockerhub.yml": {
+			"--handoff prepared/release/release-handoff.json",
+			"--dist-dir prepared/dist",
+		},
+		"publish-clawhub.yml": {
+			"--handoff prepared/release/release-handoff.json",
+			"jq -r '.tag' prepared/release/release-handoff.json",
+		},
+		"publish-skillhub.yml": {
+			"--handoff prepared/release/release-handoff.json",
+			"jq -r '.tag' prepared/release/release-handoff.json",
+		},
+	} {
+		body := readWorkflow(t, root, name)
+		for _, want := range wants {
+			if !strings.Contains(body, want) {
+				t.Errorf("%s must consume the prepared artifact using preserved path %q", name, want)
+			}
+		}
+	}
+}
+
 // TestReleaseNoLongerPublishesHomebrewInline 覆盖 §16.2/§20：Homebrew 是独立
 // publisher，release.yml 不得再内联渲染、验证或部署 formula。
 func TestReleaseNoLongerPublishesHomebrewInline(t *testing.T) {
