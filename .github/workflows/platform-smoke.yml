@@ -177,6 +177,7 @@ jobs:
             fi
           fi
           run_url="$GITHUB_SERVER_URL/$REPO/actions/runs/$GITHUB_RUN_ID"
+          # required `Platform smoke` 由 pr-metadata.yml 的真实 job 提供；此 Check Run 只桥接 worker 结果。
           gh api --method PATCH "repos/$REPO/check-runs/$CHECK_RUN_ID" \
             -f status=completed \
             -f conclusion="$state" \
