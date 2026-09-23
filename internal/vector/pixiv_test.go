@@ -241,3 +241,88 @@ func TestSyncPixivArtworksIgnoresPagesWithoutIdentity(t *testing.T) {
 		t.Fatal("a page without an image identity must not become an asset")
 	}
 }
+
+// detailPageRef / listingCoverRef 模拟两条真实路径产生的身份文本（已用真实 SDK 实测确认）：
+// detail 第 0 页为 page=0/variant=original，listing cover 为 page=-1/variant=large。
+// 它们描述同一张图，指纹必须一致。
+const (
+	detailPage0Ref  = `{"k":"artwork","id":500,"v":"original"}`
+	listingCoverRef = `{"k":"artwork","id":500,"p":-1,"v":"large"}`
+	detailPage1Ref  = `{"k":"artwork","id":500,"p":1,"v":"original"}`
+)
+
+// TestSyncPixivArtworksFingerprintStableAcrossCoverAndDetailIdentity 锁定 Task 16A：
+// 同一作品的 page 0 经 listing cover 或 detail 观察必须得到同一指纹，否则普通列表命令
+// 会静默失效 detail 已存的向量。
+func TestSyncPixivArtworksFingerprintStableAcrossCoverAndDetailIdentity(t *testing.T) {
+	ctx := context.Background()
+	store, err := vector.Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	key := vector.Key{Source: "pixiv", ID: "500", Page: 0}
+	// 1. detail 观察：记录 page 0 与 page 1。
+	if _, err := vector.SyncPixivArtworks(ctx, store, []vector.PixivArtwork{{
+		ID: 500, PageCount: 2,
+		Pages: []vector.PixivPage{{Index: 0, Ref: detailPage0Ref}, {Index: 1, Ref: detailPage1Ref}},
+	}}); err != nil {
+		t.Fatal(err)
+	}
+	asset, err := store.Get(ctx, key)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := store.PutEmbedding(ctx, key, asset.Fingerprint, vector.ModelID, vector.Generation, []float32{1, 0}); err != nil {
+		t.Fatal(err)
+	}
+	// 2. 随后的普通列表命令只看到 cover：page 0 指纹必须不变。
+	stats, err := vector.SyncPixivArtworks(ctx, store, []vector.PixivArtwork{{
+		ID: 500, PageCount: 2, CoverRef: listingCoverRef,
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if stats.Changed != 0 {
+		t.Fatalf("cover observation reported changed=%d, want 0 (identity must be path-independent)", stats.Changed)
+	}
+	if _, err := store.Embedding(ctx, key, vector.ModelID, vector.Generation); err != nil {
+		t.Fatalf("cover observation invalidated the stored page-0 vector: %v", err)
+	}
+}
+
+// TestSyncPixivArtworksInterleavedObservationKeepsEmbedding 覆盖反复交错的观察序列。
+func TestSyncPixivArtworksInterleavedObservationKeepsEmbedding(t *testing.T) {
+	ctx := context.Background()
+	store, err := vector.Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	key := vector.Key{Source: "pixiv", ID: "500", Page: 0}
+	detail := vector.PixivArtwork{ID: 500, PageCount: 2, Pages: []vector.PixivPage{{Index: 0, Ref: detailPage0Ref}, {Index: 1, Ref: detailPage1Ref}}}
+	listing := vector.PixivArtwork{ID: 500, PageCount: 2, CoverRef: listingCoverRef}
+	if _, err := vector.SyncPixivArtworks(ctx, store, []vector.PixivArtwork{detail}); err != nil {
+		t.Fatal(err)
+	}
+	asset, err := store.Get(ctx, key)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := store.PutEmbedding(ctx, key, asset.Fingerprint, vector.ModelID, vector.Generation, []float32{1, 0}); err != nil {
+		t.Fatal(err)
+	}
+	// detail → listing → detail → listing 交错，向量必须始终保留。
+	for _, artwork := range []vector.PixivArtwork{listing, detail, listing} {
+		stats, err := vector.SyncPixivArtworks(ctx, store, []vector.PixivArtwork{artwork})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if stats.Changed != 0 {
+			t.Fatalf("interleaved observation reported changed=%d, want 0", stats.Changed)
+		}
+		if _, err := store.Embedding(ctx, key, vector.ModelID, vector.Generation); err != nil {
+			t.Fatalf("interleaved observation dropped the stored vector: %v", err)
+		}
+	}
+}

@@ -90,7 +90,7 @@ func SyncPixivArtworks(ctx context.Context, store *Store, artworks []PixivArtwor
 			}
 			changed, err := store.Upsert(ctx, Asset{
 				Key:              Key{Source: "pixiv", ID: strconv.FormatInt(artwork.ID, 10), Page: page.Index},
-				Fingerprint:      pixivCoverFingerprint(page.Ref),
+				Fingerprint:      pixivPageFingerprint(artwork.ID, page.Index),
 				Metadata:         metadata,
 				TargetModel:      ModelID,
 				TargetGeneration: Generation,
@@ -106,12 +106,15 @@ func SyncPixivArtworks(ctx context.Context, store *Store, artworks []PixivArtwor
 	return stats, nil
 }
 
-// pixivCoverFingerprint keys on the stable resource identity, not the signed CDN URL, so a
-// refreshed signature does not invalidate an unchanged cover while a genuinely different
-// cover still retargets the asset.
-// ponytail: identity is a proxy for content; hash the fetched bytes if a same-identity cover ever changes.
-func pixivCoverFingerprint(coverRef string) string {
-	sum := sha256.Sum256([]byte(coverRef))
+// pixivPageFingerprint keys a Pixiv page by its canonical identity instead of the raw
+// resource reference. A listing advertises an artwork's page 0 as its cover (page -1, the
+// "large" variant) while detail advertises the same page as page 0 with the "original"
+// variant; hashing the raw references would make those two views of one image look like
+// different content and silently invalidate the stored vector. Pixiv image bytes are
+// immutable for a given artwork ID and page index, so that identity is the content key.
+// ponytail: identity is the content key; byte-hash the fetched image if Pixiv ever allows replacing a page.
+func pixivPageFingerprint(artworkID int64, page int) string {
+	sum := sha256.Sum256([]byte(strconv.FormatInt(artworkID, 10) + ":" + strconv.Itoa(page)))
 	return hex.EncodeToString(sum[:])
 }
 
