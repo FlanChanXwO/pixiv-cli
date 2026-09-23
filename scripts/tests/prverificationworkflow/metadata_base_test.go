@@ -158,11 +158,10 @@ func TestQualityGateUsesJobLevelScopeSkip(t *testing.T) {
 	for _, bootstrap := range []string{
 		"smoke_context_bootstrap_platform:",
 		"smoke_context_bootstrap_container:",
-		`if: ${{ github.event_name == 'workflow_dispatch' }}`,
-		"Required smoke context bootstrap; remove after the trusted job names are live on main.",
+		"Required smoke context bootstrap",
 	} {
-		if !strings.Contains(body, bootstrap) {
-			t.Fatalf("temporary smoke-context bootstrap missing %q", bootstrap)
+		if strings.Contains(body, bootstrap) {
+			t.Fatalf("temporary smoke-context bootstrap remains after migration: %q", bootstrap)
 		}
 	}
 }
