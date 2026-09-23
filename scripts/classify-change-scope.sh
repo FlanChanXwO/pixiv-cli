@@ -19,7 +19,7 @@ if [[ -z "$head" ]]; then
 fi
 
 repo_root=$(git rev-parse --show-toplevel)
-rules="$repo_root/.github/ci-docs-only.gitignore"
+rules="$repo_root/.github/ci-change-scope.gitignore"
 [[ -f "$rules" ]] || { printf 'classify change scope: rules file not found: %s\n' "$rules" >&2; exit 1; }
 
 tmpdir=$(mktemp -d)
