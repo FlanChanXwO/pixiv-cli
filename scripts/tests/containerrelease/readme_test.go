@@ -1,8 +1,5 @@
-// Package documentation_test 锁定面向用户的官方 Docker 使用契约。
-//
-// 这些测试在双语 README 更新前编写（Red 阶段）；它们只约束可复制执行的命令、
-// 路径、镜像标签和安全语义，不要求两种语言逐句直译。
-package documentation_test
+// Package containerrelease_test keeps executable and security-sensitive container documentation contracts.
+package containerrelease_test
 
 import (
 	"os"
@@ -10,25 +7,6 @@ import (
 	"strings"
 	"testing"
 )
-
-// repositoryRoot 返回仓库根目录，供测试读取 canonical 英文与简体中文 README。
-func repositoryRoot(t *testing.T) string {
-	t.Helper()
-	dir, err := os.Getwd()
-	if err != nil {
-		t.Fatalf("get current directory: %v", err)
-	}
-	for {
-		if info, err := os.Stat(filepath.Join(dir, "go.mod")); err == nil && info.Mode().IsRegular() {
-			return dir
-		}
-		parent := filepath.Dir(dir)
-		if parent == dir {
-			t.Fatal("could not find repository root")
-		}
-		dir = parent
-	}
-}
 
 // readUserGuide 读取指定 README；不存在时直接失败。
 func readUserGuide(t *testing.T, relativePath string) string {

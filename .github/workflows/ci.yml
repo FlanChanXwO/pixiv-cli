@@ -51,7 +51,7 @@ jobs:
       - name: Test documentation contracts
         if: ${{ steps.scope.outputs.docs_only == 'true' }}
         shell: bash
-        run: go test ./scripts/tests/documentation -count=1
+        run: go test ./scripts/tests/containerrelease -count=1
       - name: Test Go sources
         if: ${{ steps.scope.outputs.docs_only != 'true' }}
         shell: bash
