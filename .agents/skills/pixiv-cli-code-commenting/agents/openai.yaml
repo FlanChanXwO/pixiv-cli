@@ -1,0 +1,4 @@
+interface:
+  display_name: "pixiv-cli Code Commenting"
+  short_description: "Clarify code intent and contracts in pixiv-cli."
+  default_prompt: "Use $pixiv-cli-code-commenting for concise, accurate comments without a language quota."

@@ -15,7 +15,7 @@ Use available LSP definitions, references, callers, and impact analysis before c
 
 ## Go design and language rules
 
-- Use the `go.mod` toolchain and `gofmt`. Preserve Go initialisms, descriptive package names, and consistent receiver names. Document exported contracts in English, including cancellation, ownership, optional values, and side effects. Explain non-obvious intent in comments; do not rewrite unrelated comments for style.
+- Use the `go.mod` toolchain and `gofmt`. Preserve Go initialisms, descriptive package names, and consistent receiver names. Document affected exported contracts, including cancellation, ownership, optional values, and side effects. Apply [pixiv-cli-code-commenting](../pixiv-cli-code-commenting/SKILL.md) to comments and numbered stages; English and Chinese prose are both acceptable, with valid Go doc syntax.
 - Prefer concrete types and existing owners. Define small interfaces at a real consumer seam, not one interface per implementation; avoid public abstractions introduced only for tests. Keep constructors explicit and side-effect boundaries visible.
 - Keep Cobra, terminal input, JSON presentation, and exit handling in CLI owners. Keep MCP schema/presentation in its tool owner. Reuse shared records and traversal rather than copying pagination, filtering, or output rules into each adapter.
 - Pass `context.Context` as the first parameter where cancellation applies and propagate it through requests and loops. The caller owns cancellation policy. Keep goroutine lifetime and resource closure explicit; avoid detached workers, shared mutable globals, and unbounded background activity.
@@ -26,9 +26,17 @@ Use available LSP definitions, references, callers, and impact analysis before c
 
 Use the official [Go Code Review Comments](https://go.dev/wiki/CodeReviewComments) for additional language guidance; the repository's concrete API, storage, and ownership contracts above still apply.
 
+## Readability and the smallest design
+
+- Keep a coherent operation understandable in its owner. Extract a helper or package when it names a real responsibility, hides relevant complexity, or removes stable semantic duplication, not merely to shorten a function. Count the reader's cross-file jumps and parameters, not only lines removed.
+- A useful interface makes its consumer simpler while its implementation owns the difficult details. Reject pass-through layers, option bags, and general frameworks whose callers still manage those details. Use SOLID as a diagnostic for actual coupling, not a requirement for one interface per type or an extension point per branch.
+- Prefer explicit data flow, descriptive names, and a visible normal path over compressed expressions or clever reuse. Keep related validation and transformations near their data; remove nesting when it improves clarity without hiding distinct failures.
+- Tolerate small duplication when the cases have different reasons to change. Share code only when their semantics are stable; avoid boolean modes and configuration added merely to combine unrelated cases.
+- Do not build production abstractions to support oversized mocks. Select a real test boundary and the smallest fixture before changing design for test convenience. Preserve existing caller/security contracts while simplifying.
+
 ## Execute with evidence
 
-Read [the test workflow](../pixiv-cli-test/SKILL.md). For new behavior or a fix, run a focused test and observe the expected behavioral failure before implementation. Do not accept an import/toolchain error as Red. Make the smallest implementation pass; then refactor while retaining the regression. For behavior-preserving restructuring, bracket the move with passing characterization tests, and use a failing test for any actual behavior correction. If the required Red cannot be established, obtain an explicit exception before editing source.
+Read [the test workflow](../pixiv-cli-test/SKILL.md), including its coverage-gap decision before adding tests. For new behavior or a fix, reuse or extend a focused test and observe the expected behavioral failure before implementation. Do not accept an import/toolchain error as Red. Make the smallest implementation pass; then refactor while retaining the regression. For behavior-preserving restructuring, reuse passing characterization before and after, and use a failing test for any actual behavior correction. If an applicable Red requirement cannot be established, obtain an explicit exception before editing source.
 
 Read [the MCP workflow](../pixiv-cli-mcp-tool/SKILL.md) for tool changes or [the native workflow](../pixiv-cli-native/SKILL.md) for Rust/cgo changes; do not force either on a Go-only task.
 

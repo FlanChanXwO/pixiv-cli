@@ -42,12 +42,14 @@ Native library 校验、opt-in 真实 API 测试、发布门禁和平台细节�
 
 ## 使用测试驱动开发
 
-代码变更采用 red-green-refactor：
+功能和行为修复采用 red-green-refactor：
 
-1. 添加一个会因目标行为尚未实现而失败的聚焦测试。
+1. 先检查已有断言，复用失败测试或扩充最小相关用例，实际证明目标行为失败；只为覆盖缺口新增测试，不按函数或文件配额添加。
 2. 实现让它通过的最小完整变更。
 3. 在不改变已验证公开行为的前提下重构。
 4. 先运行聚焦测试，再运行相关回归。
+
+纯结构调整复用改动前后的特征测试；普通注释修改执行文档与相关工具检查。覆盖缺口、重复测试与适用的 Red 例外见[测试选择](.agents/skills/pixiv-cli-test/SKILL.md#decide-whether-test-code-must-change)。不能因为实现短就省略必要的回归或安全检查。
 
 可行时通过 public boundary 测试公开行为。不得把真实的认证、网络、Pixiv API、文件系统或编码失败隐藏为空成功或静默 fallback；不得增加无依据的 timeout、截断、分页上限、重试限制或隐藏降级。
 
@@ -58,6 +60,8 @@ Native library 校验、opt-in 真实 API 测试、发布门禁和平台细节�
 从 [AGENTS.md](AGENTS.md) 开始。仓库内的 `pixiv-cli-*` 维护技能定义 Go 设计、聚焦测试、MCP/native、审查、PR 与发布流程，不依赖个人全局指令或 CCS 安装。不支持技能发现的客户端可直接读取对应 `SKILL.md`。Agent 指令、技能正文、引用文件与 UI 元数据使用英文；公开文档保留双语。
 
 ## 文档
+
+代码注释可使用中文或英文。按[代码注释规范](.agents/skills/pixiv-cli-code-commenting/SKILL.md)维护准确的 API 契约、意图和按需编号的流程阶段；指令文件要求英文，不等于强制英文注释或每个函数都要加注释。
 
 修改命令、flag、SDK API、MCP tool、配置键、环境变量、输出契约、认证流程、代理行为、下载行为或已知限制时，在同一 pull request 同步文档。
 

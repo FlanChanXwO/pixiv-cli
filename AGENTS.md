@@ -10,6 +10,7 @@ Read the relevant local skill below before its task. These are checked-in instru
 | --- | --- |
 | Implement, debug, refactor, or design Go changes | [pixiv-cli-develop](.agents/skills/pixiv-cli-develop/SKILL.md) |
 | Select tests, run Red/Green, or validate a change | [pixiv-cli-test](.agents/skills/pixiv-cli-test/SKILL.md) |
+| Write or review code comments, API docs, or numbered stages | [pixiv-cli-code-commenting](.agents/skills/pixiv-cli-code-commenting/SKILL.md) |
 | Add or change an MCP tool | [pixiv-cli-mcp-tool](.agents/skills/pixiv-cli-mcp-tool/SKILL.md) |
 | Change Rust, cgo, native libraries, or platform evidence | [pixiv-cli-native](.agents/skills/pixiv-cli-native/SKILL.md) |
 | Edit documentation or either kind of skill | [pixiv-cli-docs](.agents/skills/pixiv-cli-docs/SKILL.md) |
@@ -36,12 +37,12 @@ The separately distributed [product skill](skills/pixiv-cli/SKILL.md) teaches us
 
 - Identify the requested behavior and acceptance evidence before editing. Keep small changes small; clarify consequential unknowns for larger work. Reuse the issue, PR, or conversation for decisions rather than creating process files automatically.
 - Inspect the branch and existing changes; preserve unrelated work and use an isolated worktree when none exists. Use only available tools, explicit working directories, and safely quoted inputs. Prefer available semantic navigation for symbols and callers; disclose when only targeted search/compiler checks are available.
-- For source changes, actually run a relevant failing test before implementation, then make it pass and refactor with regression checks. If a meaningful Red cannot run, report the blocker and obtain an explicit exception. Documentation-only edits need document, link, metadata, and affected-contract validation, not invented runtime tests.
+- For features and behavior fixes, observe a relevant failing test before implementation, then Green and regression. Reuse or extend existing coverage before adding tests; a new function or file is not a test quota. Pure restructuring uses before/after characterization; obtain an explicit exception if an applicable Red requirement cannot be met. Ordinary comment/document edits need relevant document and tooling checks, not invented runtime tests; consumed directives or examples may require behavioral checks.
 - Use the Go version in `go.mod`, `gofmt`, and existing tests/vet/hooks. Follow the develop/test skills for language and ownership rules. Preserve native build requirements; a Linux fixture pass is not all-platform evidence.
 - Reuse standard-library, platform, and existing project capabilities. Obtain approval before adding dependencies or installing missing tools; explain necessity, alternatives, and material lockfile, license, security, or deployment effects.
 - Explain network access and material side effects before execution. Real Pixiv/FANBOX calls, browser credential access, image uploads, and account writes require explicit scope and authorization; they are not routine offline verification.
 - Keep multi-step progress visible with the client's plan tool when available, otherwise a concise checklist. Restore actual state on continuation. Delegate only bounded work with clear ownership; integrated verification remains the main agent's responsibility.
-- Write `AGENTS.md`, agent bridges, maintenance/product skills, their references, and UI metadata in English. Keep public English/Simplified Chinese documentation behaviorally aligned. Use the user's requested conversation language; do not impose a private maintainer's chat preferences on contributors.
+- Write `AGENTS.md`, maintenance/product skills, their references, and UI metadata in English. Source comments may be English or Chinese: follow the local audience and [commenting rules](.agents/skills/pixiv-cli-code-commenting/SKILL.md), not the language of this file. Keep public English/Simplified Chinese documentation behaviorally aligned and use the user's requested conversation language.
 - Review meaningful changes before handoff. Report the actual diff, exact checks and outcomes, remaining risks, and PR/worktree location. A local review is not a GitHub approval, and a pending or skipped check is not a pass.
 - Creating a PR does not authorize merging it, moving tags, publishing, changing branch protection, or using production secrets. Release authorization is separate and version-specific.
 

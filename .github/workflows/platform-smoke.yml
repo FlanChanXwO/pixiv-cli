@@ -1,61 +1,28 @@
-name: Platform packaged binary smoke
+name: Platform smoke workers
 
 on:
-  pull_request:
-    branches:
-      - main
-  push:
-    branches:
-      - main
-  workflow_dispatch: {}
+  workflow_dispatch:
+    inputs:
+      pr_number:
+        description: Pull request number for this worker run
+        required: false
+        default: ''
+        type: string
+      head_sha:
+        description: Exact source commit to verify
+        required: false
+        default: ''
+        type: string
 
 concurrency:
-  group: platform-smoke-${{ github.event.pull_request.number || github.ref }}
+  group: platform-smoke-worker-${{ inputs.pr_number || github.ref }}
   cancel-in-progress: true
 
 permissions: {}
 
 jobs:
-  # 与 Quality gate 使用相同的严格文档 allowlist，避免 README 等改动占用六个平台 runner。
-  classify_changes:
-    name: Classify change scope
-    runs-on: ubuntu-24.04
-    outputs:
-      docs_only: ${{ steps.scope.outputs.docs_only }}
-      platform_required: ${{ steps.scope.outputs.platform_required }}
-    permissions:
-      contents: read
-    steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
-        with:
-          fetch-depth: 0
-          persist-credentials: false
-      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff
-        with:
-          go-version-file: go.mod
-      - name: Detect documentation-only changes
-        id: scope
-        shell: bash
-        env:
-          BASE_SHA: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || github.event.before }}
-          HEAD_SHA: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
-        run: |
-          set -euo pipefail
-          if [ "$GITHUB_EVENT_NAME" = workflow_dispatch ]; then
-            {
-              printf '%s\n' 'docs_only=false'
-              printf '%s\n' 'quality_required=true'
-              printf '%s\n' 'platform_required=true'
-              printf '%s\n' 'container_required=true'
-              printf '%s\n' 'native_required=true'
-            } >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-          go run ./scripts/cmd/changescope --base "$BASE_SHA" --head "$HEAD_SHA" --github-output "$GITHUB_OUTPUT"
-
-  resolve_platforms:
-    name: Platform setup
-    needs: classify_changes
+  setup:
+    name: Resolve platform workers
     runs-on: ubuntu-24.04
     permissions:
       contents: read
@@ -68,32 +35,16 @@ jobs:
       - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff
         with:
           go-version-file: go.mod
-      - name: Resolve smoke platforms
+          cache: false
+      - name: Resolve native platform matrix
         id: matrix
         shell: bash
-        env:
-          REQUIRED: ${{ needs.classify_changes.outputs.platform_required }}
-        run: |
-          set -euo pipefail
-          # worker 始终运行：被 skip 的 matrix job 会让 GitHub 原样显示
-          # `${{ matrix.* }}` 占位符；静态名则会被自动追加整个 matrix tuple，
-          # 两者都违反用户可见 Check name 规范。非必需时只产出单个占位条目，
-          # 名称里说明跳过原因，并落到便宜的 ubuntu runner。
-          if [ "$REQUIRED" = true ]; then
-            raw=$(go run ./tools/platformmatrix --capability smoke)
-            matrix=$(printf '%s' "$raw" | jq -c '.include |= map(. + {display: (.goos + "/" + .goarch), required: "true"})')
-          else
-            matrix=$(jq -nc '{include:[{display:"not required", required:"false", runner:"ubuntu-24.04"}]}')
-          fi
-          printf 'matrix=%s\n' "$matrix" >> "$GITHUB_OUTPUT"
+        run: go run ./tools/platformmatrix --capability smoke --github-output "$GITHUB_OUTPUT"
 
-  packaged_binary_smoke:
-    needs: [classify_changes, resolve_platforms]
-    # 刻意不加 job 级 if：被 skip 的 matrix job 会让 GitHub 原样显示
-    # `${{ matrix.* }}` 占位符；静态名则会被追加整个 matrix tuple。改为始终
-    # 运行，非必需时落到便宜的 ubuntu-24.04 并在 step 层跳过全部重活。
-    name: Platform smoke · ${{ matrix.display }}
-    runs-on: ${{ matrix.required == 'true' && matrix.runner || 'ubuntu-24.04' }}
+  worker:
+    needs: setup
+    name: Native platform - ${{ matrix.goos }}/${{ matrix.goarch }}
+    runs-on: ${{ matrix.runner }}
     permissions:
       contents: read
     env:
@@ -101,39 +52,45 @@ jobs:
       RUSTUP_TOOLCHAIN: ${{ matrix.rust_toolchain }}
     strategy:
       fail-fast: false
-      matrix: ${{ fromJSON(needs.resolve_platforms.outputs.matrix) }}
+      matrix: ${{ fromJSON(needs.setup.outputs.matrix) }}
     steps:
-      - name: Mark the change as not requiring platform smoke
-        if: matrix.required != 'true'
-        shell: bash
-        run: printf '%s\n' 'Documentation-only change; platform smoke is not required.'
-
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
-        if: matrix.required == 'true'
         with:
+          ref: ${{ inputs.pr_number != '' && format('refs/pull/{0}/head', inputs.pr_number) || inputs.head_sha || github.sha }}
           persist-credentials: false
       - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff
-        if: matrix.required == 'true'
         with:
           go-version-file: go.mod
+          cache: false
+      - name: Require the requested source
+        if: ${{ inputs.head_sha != '' }}
+        shell: bash
+        env:
+          HEAD_SHA: ${{ inputs.head_sha }}
+        run: test "$(git rev-parse HEAD)" = "$HEAD_SHA"
+      - name: Require the declared native target
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(go env GOOS)" = '${{ matrix.goos }}'
+          test "$(go env GOARCH)" = '${{ matrix.goarch }}'
       - name: Install the pinned native Rust toolchain
-        if: matrix.required == 'true'
         shell: bash
         run: rustup toolchain install '${{ matrix.rust_toolchain }}' --profile minimal --target '${{ matrix.rust_target }}' --no-self-update
       - name: Check vendored Rust sources
-        if: matrix.required == 'true'
         shell: bash
         run: sh scripts/test-rust-vendor.sh
       - name: Test the platform installer
-        if: matrix.required == 'true'
         shell: bash
         run: go test ./scripts/tests/installers -count=1
       - name: Test platform OAuth callback integration
-        if: matrix.required == 'true'
         shell: bash
         run: go test ./internal/cli/commands/pixiv/auth/loginhelper -count=1
+      - name: Test Windows login handler wiring
+        if: ${{ matrix.goos == 'windows' }}
+        shell: bash
+        run: go test ./internal/cli -run '^(TestAuthURLCallback|TestAuthURLHandlerInstall|TestNormalCLIInvocationEnsuresPersistentHandlerWithoutBlockingCommand)$' -count=1
       - name: Build and package the platform binary
-        if: matrix.required == 'true'
         shell: bash
         run: |
           set -euo pipefail
@@ -147,7 +104,6 @@ jobs:
             --package)
           printf 'PLATFORM_ARCHIVE=%s\n' "$archive" >> "$GITHUB_ENV"
       - name: Run native GIF/APNG smoke
-        if: matrix.required == 'true'
         shell: bash
         run: |
           set +e
@@ -161,7 +117,6 @@ jobs:
             exit "$status"
           fi
       - name: Extract and smoke the packaged binary
-        if: matrix.required == 'true'
         shell: bash
         run: |
           set -euo pipefail
@@ -179,42 +134,59 @@ jobs:
           PIXIV_E2E_EXPECTED_VERSION="v${version}" \
           go test ./e2e -run '^TestPixivBinaryPackagedSmoke$' -count=1
 
-  # 分支保护只要求此汇总 job：完整变更必须等全部六个 matrix job 成功，文档改动
-  # 则确认 matrix 被有意跳过，避免缺失 matrix check 导致 PR 永远处于 pending。
-  platform_smoke_gate:
-    name: Platform smoke gate
-    needs:
-      - classify_changes
-      - resolve_platforms
-      - packaged_binary_smoke
-    if: ${{ always() }}
+  publish:
+    if: ${{ always() && inputs.head_sha != '' }}
+    needs: [setup, worker]
+    name: Publish platform smoke result
     runs-on: ubuntu-24.04
-    permissions: {}
+    permissions:
+      actions: read
+      statuses: write
     steps:
-      - name: Require the expected matrix outcome
+      - name: Publish aggregate platform smoke status
         shell: bash
         env:
-          CLASSIFY_RESULT: ${{ needs.classify_changes.result }}
-          PLATFORM_REQUIRED: ${{ needs.classify_changes.outputs.platform_required }}
-          RESOLVE_RESULT: ${{ needs.resolve_platforms.result }}
-          MATRIX_RESULT: ${{ needs.packaged_binary_smoke.result }}
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          HEAD_SHA: ${{ inputs.head_sha }}
+          SETUP_RESULT: ${{ needs.setup.result }}
+          WORKER_RESULT: ${{ needs.worker.result }}
         run: |
           set -euo pipefail
-          # §12.1：失败时必须给出可操作原因，而不是只有退出码。
-          if [ "$CLASSIFY_RESULT" != success ]; then
-            echo '::error::Platform configuration could not be resolved.'
-            exit 1
+          state=failure
+          description='Platform smoke failed on one or more required platforms.'
+          failures=
+          if [ "$SETUP_RESULT" != success ]; then
+            description='Platform configuration could not be resolved.'
+          elif [ "$WORKER_RESULT" = success ]; then
+            state=success
+            description='All required native platforms passed.'
+          else
+            failures=$(gh api --method GET "repos/$REPO/actions/runs/$GITHUB_RUN_ID/jobs" \
+              -f filter=all \
+              -f per_page=100 \
+              --jq '.jobs[] | select(.name | startswith("Native platform - ")) | select(.conclusion != "success" and .conclusion != "skipped") | "\(.name) (\(.conclusion // .status))"')
+            if [ -n "$failures" ]; then
+              message=$(printf '%s\n' "$failures" | paste -sd ';' -)
+              description="Platform smoke failed: $message"
+            fi
           fi
-          if [ "$RESOLVE_RESULT" != success ]; then
-            echo '::error::Platform configuration could not be resolved.'
-            exit 1
-          fi
-          if [ "$MATRIX_RESULT" != success ]; then
-            echo '::error::Platform smoke failed on one or more required platforms.'
-            exit 1
-          fi
-          # §12.2：合法跳过必须解释原因。worker 始终运行，非必需时在 step 层
-          # 跳过重活，因此这里断言 setup 与 worker 都必须 success。
-          if [ "$PLATFORM_REQUIRED" != true ]; then
-            printf '%s\n' 'Documentation-only change; platform smoke is not required.'
+          run_url="$GITHUB_SERVER_URL/$REPO/actions/runs/$GITHUB_RUN_ID"
+          gh api --method POST "repos/$REPO/statuses/$HEAD_SHA" \
+            -f state="$state" \
+            -f context='Platform smoke gate' \
+            -f description="${description:0:140}" \
+            -f target_url="$run_url" >/dev/null
+          if [ "$state" = success ]; then
+            printf '%s\n' '### Platform smoke' '' "$description" >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "::error title=Platform smoke failed::$description"
+            {
+              printf '%s\n' '### Platform smoke failed' ''
+              if [ -n "$failures" ]; then
+                printf '%s\n' "$failures" | sed 's/^/- /'
+              else
+                printf '%s\n' "- $description"
+              fi
+            } >> "$GITHUB_STEP_SUMMARY"
           fi

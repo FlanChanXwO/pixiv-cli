@@ -29,6 +29,8 @@ Replace `BODY_PATH` with the actual file. This checks local metadata/declared-co
 
 When authorized, push the dedicated branch and create/update the PR against the verified base. Do not force-push, merge, change protections, or release implicitly. Read checks and review threads on the **current head SHA**, not an earlier green revision. Use [the CI workflow](../pixiv-cli-ci/SKILL.md) for failures.
 
+Include the head's commit statuses as well as check runs. Platform/Container worker runs execute under the trusted base ref; follow their aggregate status links instead of treating the absence of a PR-head workflow run as missing smoke evidence. Identify not-required skips separately from executed passes.
+
 `/test` can make real service requests; posting it is a separate action with its own scope. A repeated request may reuse or supersede evidence according to the current workflow; inspect its actual dispatch/result rather than promising a new run from the comment alone.
 
 Deliver the PR URL, commit, actual validation, and pending blockers. Distinguish a review-ready draft from a merge-ready PR; do not mark required checks successful because their workflow exists.

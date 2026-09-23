@@ -41,4 +41,4 @@
 | 整理文档 | `.agents/skills/pixiv-cli-docs/` |
 | 准备发布说明 | `.agents/skills/pixiv-cli-release-notes/` |
 
-`CLAUDE.md` 只引用 `AGENTS.md`，Copilot 也只保留短提示。长期规则不要复制到各个工具的配置里。
+`CLAUDE.md` 只引用 `AGENTS.md`。不支持自动发现的客户端读取同一主契约与本地路由，不恢复已删除的客户端专用副本。代码注释的语言与技能文件的英文要求相互独立；注释流程见 `.agents/skills/pixiv-cli-code-commenting/`。

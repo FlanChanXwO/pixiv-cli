@@ -24,11 +24,13 @@ Classify deterministic code/contract failure, missing environment, upstream/netw
 
 ## Select the owning checks
 
-Use [pixiv-cli-test](../pixiv-cli-test/SKILL.md) for local reproduction. `ci.yml`/`platform-smoke.yml` use the change classifier and aggregate gates; do not change classification or skip conditions to make this run green. Run relevant safely independent downstream phases if fail-fast hid their results.
+Use [pixiv-cli-test](../pixiv-cli-test/SKILL.md) for local reproduction. `ci.yml` owns the read-only, untrusted Quality check. Trusted `pr-metadata.yml` checks out base-branch policy, validates template/command declarations, classifies the PR, and dispatches base-ref Platform/Container workers. Only worker matrix jobs execute the exact PR head with read-only permissions; separate publishers write aggregate commit statuses without executing PR code. Preserve the fork-safe boundary and classifier. Run relevant safely independent downstream phases if fail-fast hid their results.
 
-`pr-metadata.yml` handles trusted metadata; `pr-verification.yml` handles explicit `/test` requests using trusted parser/runner code and an exact PR head. Keep write-capable control jobs separate from untrusted PR execution. Never execute a PR body or title as shell code, expose privileged credentials to it, or treat a returned artifact as trusted without the existing identity checks.
+Inspect both check runs and commit statuses on the exact PR SHA: `Quality gate`, `PR template gate`, `PR commands gate`, `Platform smoke gate`, and `Container smoke gate`. A successful not-required status documents an intentional skip; it is not native execution evidence. Smoke worker runs use the trusted base ref, so filtering workflow runs only by PR head can miss them; follow the aggregate status's target URL and worker inputs. Ordinary branch/main pushes do not run CI; matching tag pushes use Quality and Release rather than duplicate PR smoke matrices.
 
-`native-evidence.yml` and `browser-evidence.yml` are credential-free evidence providers; synthetic browser data does not prove real user-profile access. `homebrew-prepublish-verify.yml` is a read-only rehearsal, not a deployment workflow. Native linking and real API tests remain different evidence classes.
+`pr-verification.yml` handles explicit `/test` requests using trusted parser/runner code and an exact PR head. Keep write-capable control jobs separate from untrusted PR execution. Never execute a PR body or title as shell code, expose privileged credentials to it, or treat a returned artifact as trusted without the existing identity checks.
+
+`native-evidence.yml` and `browser-evidence.yml` are explicit manual, credential-free evidence providers, not automatic main-push gates; synthetic browser data does not prove real user-profile access. `homebrew-prepublish-verify.yml` is a read-only rehearsal, not a deployment workflow. Native linking and real API tests remain different evidence classes.
 
 ## Operate only the authorized action
 
