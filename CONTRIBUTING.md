@@ -53,7 +53,7 @@ Pure restructuring reuses characterization before and after; ordinary comment-on
 
 Test public behavior through the public boundary whenever practical. Do not hide real authentication, network, Pixiv API, filesystem, or encoding failures behind empty success results or silent fallback. Do not add arbitrary timeouts, truncation, pagination caps, retry limits, or hidden downgrade paths.
 
-Real Pixiv/FANBOX SDK and reverse-search checks are opt-in. Never run them with a user's local account or upload an image without explicit authorization; never put a real token on a command line that may be stored in shell history.
+Real Pixiv/FANBOX SDK and reverse-search checks are opt-in. Do not run them with a user's local account or upload an image unless the user has explicitly authorized that action; never put a real token on a command line that may be stored in shell history.
 
 ## Agent-assisted development
 
