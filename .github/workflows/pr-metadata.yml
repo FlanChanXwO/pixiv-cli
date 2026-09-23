@@ -2,6 +2,8 @@ name: Pull request metadata
 
 on:
   pull_request_target:
+    branches:
+      - main
     types: [opened, edited, reopened, ready_for_review, synchronize]
 
 # 默认不授予权限；验证 job 只读取受信策略并发布稳定 gate status。
