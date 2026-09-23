@@ -915,3 +915,56 @@ func testRecordDependencies(output io.Writer, input io.Reader) Dependencies {
 		},
 	}
 }
+
+// TestArtworkDetailObservesEveryFetchedPage 锁定 Task 15 的 detail 接线：
+// detail 是唯一能提供完整 page-level 身份的普通命令，观察端口必须收到全部页面，
+// 且不改变命令输出。
+func TestArtworkDetailObservesEveryFetchedPage(t *testing.T) {
+	const body = `{"illust":{"id":124,"title":"two pages","type":"manga","page_count":2,"create_date":"2026-01-02T03:04:05Z","user":{"id":9,"name":"artist"},"tags":[],"image_urls":{"large":"https://i.pximg.net/img/124_cover.jpg"},"meta_pages":[{"image_urls":{"original":"https://i.pximg.net/img/124_p0.jpg"}},{"image_urls":{"original":"https://i.pximg.net/img/124_p1.jpg"}}]}}`
+	output := &bytes.Buffer{}
+	var observed []pixiv.Artwork
+	cmd := New(Dependencies{
+		Input:      strings.NewReader(""),
+		Output:     output,
+		UsageError: func(err error) error { return err },
+		BuildRequest: func(*cobra.Command, Options) (Request, error) {
+			return Request{}, nil
+		},
+		Pooled: func(ctx context.Context, _ Request, attempt func(context.Context, *pixiv.Client) (bool, error)) error {
+			client, err := pixiv.NewWith("token", pixiv.Options{HTTPClient: &http.Client{Transport: detailRoundTripFunc(func(req *http.Request) (*http.Response, error) {
+				return &http.Response{
+					StatusCode: http.StatusOK,
+					Header:     http.Header{"Content-Type": {"application/json"}},
+					Body:       io.NopCloser(strings.NewReader(body)),
+					Request:    req,
+				}, nil
+			})}})
+			if err != nil {
+				return err
+			}
+			_, err = attempt(ctx, client)
+			return err
+		},
+		FetchArtwork: func(ctx context.Context, client *pixiv.Client, id int64) (pixiv.Artwork, error) {
+			return client.Artwork(ctx, pixiv.ArtworkRequest{ArtworkID: id})
+		},
+		Observe: func(items []pixiv.Artwork) { observed = append(observed, items...) },
+		JSONOut: func(*bool) (bool, error) { return false, nil },
+	})
+	cmd.SetArgs([]string{"--type", "artwork", "124"})
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("Execute: %v", err)
+	}
+	if len(observed) != 1 {
+		t.Fatalf("observer saw %d artworks, want 1", len(observed))
+	}
+	if got := len(observed[0].Pages); got != 2 {
+		t.Fatalf("observer saw %d pages, want the full detail page set", got)
+	}
+	if observed[0].Pages[1].PageIndex != 1 || observed[0].Pages[1].Image.Resource.Ref.IsZero() {
+		t.Fatalf("page 1 identity lost: %+v", observed[0].Pages[1])
+	}
+	if !strings.Contains(output.String(), "https://www.pixiv.net/artworks/124") {
+		t.Fatalf("detail output missing artwork URL: %q", output.String())
+	}
+}
