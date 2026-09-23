@@ -1,0 +1,4 @@
+interface:
+  display_name: "Pixiv CLI MCP Tools"
+  short_description: "Maintain MCP schemas, SDK routing, and stdio contracts."
+  default_prompt: "Use $pixiv-cli-mcp-tool to implement and verify this MCP tool change."

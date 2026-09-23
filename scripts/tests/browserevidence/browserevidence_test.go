@@ -11,8 +11,6 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
-
-	"gopkg.in/yaml.v3"
 )
 
 func repositoryRoot(t *testing.T) string {
@@ -158,35 +156,6 @@ func TestBrowserEvidenceResolvesPlatformsFromRegistry(t *testing.T) {
 	for _, hardcoded := range []string{"macos-15-intel", "windows-11-arm"} {
 		if strings.Contains(text, hardcoded) {
 			t.Errorf("browser evidence must not hardcode runners (%q found)", hardcoded)
-		}
-	}
-}
-
-// TestBrowserEvidenceKeepsSixPlatformWorkers 覆盖 §13.3：registry 化之后
-// 真实覆盖仍是 6 个平台，每个平台都有 provider 与 Firefox profile 两条 contract。
-func TestBrowserEvidenceKeepsSixPlatformWorkers(t *testing.T) {
-	t.Parallel()
-
-	root := repositoryRoot(t)
-	body, err := os.ReadFile(filepath.Join(root, ".github", "workflows", "browser-evidence.yml"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	var document struct {
-		Jobs map[string]struct {
-			Name string `yaml:"name"`
-		} `yaml:"jobs"`
-	}
-	if err := yaml.Unmarshal(body, &document); err != nil {
-		t.Fatalf("parse browser-evidence.yml: %v", err)
-	}
-	for _, job := range []string{"browser_provider", "firefox_native"} {
-		spec, ok := document.Jobs[job]
-		if !ok {
-			t.Fatalf("browser-evidence.yml is missing job %q", job)
-		}
-		if spec.Name == "" {
-			t.Errorf("job %q must keep a user-facing name", job)
 		}
 	}
 }

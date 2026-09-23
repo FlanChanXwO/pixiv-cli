@@ -2,6 +2,8 @@ name: Pull request metadata
 
 on:
   pull_request_target:
+    branches:
+      - main
     types: [opened, edited, reopened, ready_for_review, synchronize]
 
 # 默认不授予权限；验证 job 只读取受信策略并发布稳定 gate status。
@@ -17,6 +19,7 @@ jobs:
     runs-on: ubuntu-24.04
     permissions:
       actions: write
+      checks: write
       contents: read
       issues: write
       statuses: write
@@ -118,7 +121,7 @@ jobs:
         env:
           BASE_SHA: ${{ steps.base.outputs.sha }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
-        run: go run ./scripts/cmd/changescope --base "$BASE_SHA" --head "$HEAD_SHA" --github-output "$GITHUB_OUTPUT"
+        run: bash ./scripts/classify-change-scope.sh --base "$BASE_SHA" --head "$HEAD_SHA" --github-output "$GITHUB_OUTPUT"
 
       - name: Publish smoke classification failure
         if: ${{ always() && (github.event.action != 'edited' || github.event.changes.base != null) && (steps.smoke_head.outcome == 'failure' || steps.smoke_scope.outcome == 'failure') }}
@@ -131,13 +134,12 @@ jobs:
         run: |
           set -euo pipefail
           for context in 'Platform smoke gate' 'Container smoke gate'; do
-            if ! gh api --method POST "repos/$REPO/statuses/$HEAD_SHA" \
-              -f state=failure \
-              -f context="$context" \
-              -f description='Trusted smoke preparation failed.' \
-              -f target_url="$RUN_URL" >/dev/null; then
-              echo "::warning title=Smoke status publication failed::Failed to publish smoke failure status for $context."
-            fi
+            payload=$(jq -nc \
+              --arg name "$context" \
+              --arg head_sha "$HEAD_SHA" \
+              --arg details_url "$RUN_URL" \
+              '{name:$name, head_sha:$head_sha, status:"completed", conclusion:"failure", details_url:$details_url, output:{title:$name, summary:"Trusted smoke preparation failed."}}')
+            gh api --method POST "repos/$REPO/check-runs" --input - <<<"$payload" >/dev/null
           done
           exit 1
 
@@ -156,38 +158,63 @@ jobs:
         run: |
           set -euo pipefail
 
-          post_status() {
-            state=$1
-            context=$2
-            description=$3
-            target_url=$4
-            gh api --method POST "repos/$REPO/statuses/$HEAD_SHA" \
-              -f state="$state" \
-              -f context="$context" \
-              -f description="${description:0:140}" \
-              -f target_url="$target_url" >/dev/null
+          create_check() {
+            name=$1
+            status=$2
+            conclusion=$3
+            summary=$4
+            if [ -n "$conclusion" ]; then
+              payload=$(jq -nc \
+                --arg name "$name" \
+                --arg head_sha "$HEAD_SHA" \
+                --arg status "$status" \
+                --arg conclusion "$conclusion" \
+                --arg details_url "$RUN_URL" \
+                --arg summary "$summary" \
+                '{name:$name, head_sha:$head_sha, status:$status, conclusion:$conclusion, details_url:$details_url, output:{title:$name, summary:$summary}}')
+            else
+              payload=$(jq -nc \
+                --arg name "$name" \
+                --arg head_sha "$HEAD_SHA" \
+                --arg status "$status" \
+                --arg details_url "$RUN_URL" \
+                --arg summary "$summary" \
+                '{name:$name, head_sha:$head_sha, status:$status, details_url:$details_url, output:{title:$name, summary:$summary}}')
+            fi
+            gh api --method POST "repos/$REPO/check-runs" --input - <<<"$payload" --jq '.id'
+          }
+
+          fail_check() {
+            check_run_id=$1
+            summary=$2
+            payload=$(jq -nc \
+              --arg details_url "$RUN_URL" \
+              --arg summary "$summary" \
+              '{status:"completed", conclusion:"failure", details_url:$details_url, output:{title:"Smoke gate", summary:$summary}}')
+            gh api --method PATCH "repos/$REPO/check-runs/$check_run_id" --input - <<<"$payload" >/dev/null
           }
 
           dispatch_worker() {
             workflow=$1
             context=$2
             description=$3
-            post_status pending "$context" "$description" "$RUN_URL"
+            check_run_id=$(create_check "$context" in_progress '' "$description")
             payload=$(jq -nc \
               --arg ref "$BASE_REF" \
               --arg pr_number "$PR" \
               --arg head_sha "$HEAD_SHA" \
-              '{ref:$ref, inputs:{pr_number:$pr_number, head_sha:$head_sha}}')
+              --arg check_run_id "$check_run_id" \
+              '{ref:$ref, inputs:{pr_number:$pr_number, head_sha:$head_sha, check_run_id:$check_run_id}}')
             if ! response=$(gh api --method POST \
               -H 'X-GitHub-Api-Version: 2026-03-10' \
               "repos/$REPO/actions/workflows/$workflow/dispatches" \
               --input - <<<"$payload"); then
-              post_status failure "$context" "Failed to dispatch trusted smoke workers." "$RUN_URL"
+              fail_check "$check_run_id" "Failed to dispatch trusted smoke workers."
               return 1
             fi
             run_id=$(printf '%s' "$response" | jq -r '.workflow_run_id')
             if [ -z "$run_id" ] || [ "$run_id" = null ]; then
-              post_status failure "$context" "Trusted smoke worker run id was not returned." "$RUN_URL"
+              fail_check "$check_run_id" "Trusted smoke worker run id was not returned."
               return 1
             fi
           }
@@ -196,13 +223,13 @@ jobs:
           if [ "$PLATFORM_REQUIRED" = true ]; then
             dispatch_worker platform-smoke.yml 'Platform smoke gate' 'Native platform smoke is running in parallel.' || failed=1
           else
-            post_status success 'Platform smoke gate' 'Documentation-only change; platform smoke is not required.' "$RUN_URL"
+            create_check 'Platform smoke gate' completed skipped 'Platform smoke is not required for this change.' >/dev/null
           fi
 
           if [ "$CONTAINER_REQUIRED" = true ]; then
             dispatch_worker container-smoke.yml 'Container smoke gate' 'Container smoke is running in parallel.' || failed=1
           else
-            post_status success 'Container smoke gate' 'Container smoke is not required for this change.' "$RUN_URL"
+            create_check 'Container smoke gate' completed skipped 'Container smoke is not required for this change.' >/dev/null
           fi
 
           exit "$failed"

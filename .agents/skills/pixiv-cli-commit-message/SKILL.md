@@ -1,23 +1,12 @@
 ---
 name: pixiv-cli-commit-message
-description: Generate a one-line Conventional Commits message for pixiv-cli from staged changes.
+description: Write a pixiv-cli commit message grounded in the staged diff. Use when asked to name or prepare a commit, not to stage, commit, push, merge, or publish automatically.
 ---
 
-# pixiv-cli Commit Message
+# Write a pixiv-cli Commit Message
 
-根据暂存区生成一行提交信息。默认只看 staged changes；暂存区为空时直接说明，不编造。
+Inspect `git diff --cached --stat` and `git diff --cached`. If nothing is staged, identify the requested diff before writing; do not stage unrelated files. Describe the actual outcome in concise English, using the repository's recent commit style and a suitable type such as `fix`, `feat`, `docs`, or `refactor`.
 
-## 读取
+Use an imperative subject. Add a body only for non-obvious motivation, compatibility, or consequences. Do not claim tests passed unless their results were observed, list unchanged non-features, or invent issue numbers. Mention breaking behavior only when the diff really changes a supported contract.
 
-```bash
-git status --short
-git diff --cached
-git log --oneline -10
-```
-
-## 风格
-
-- 一行输出，不加解释、项目符号或代码块。
-- Conventional Commits，贴近仓库近期风格：`feat` / `fix` / `docs` / `refactor` / `test` / `chore`。
-- subject 英文、小写开头，约 72 字符；不写 `misc`、`update files`、`wip`。
-- type 判断：行为修复 `fix`；包边界或内部结构 `refactor`；文档和 agent 文件 `docs`；测试补充 `test`；构建/脚本/依赖 `chore`。
+Return the message. A request for wording alone does not authorize creating the commit or pushing it.

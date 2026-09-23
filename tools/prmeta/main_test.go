@@ -157,3 +157,16 @@ func TestValidateTemplateMessages(t *testing.T) {
 		t.Fatalf("unexpected description: %q", unchecked.TemplateDesc)
 	}
 }
+
+func TestRepositoryPRTemplateMatchesValidator(t *testing.T) {
+	w := loadWhitelist(t, "pixiv *\n")
+	template, err := os.ReadFile(filepath.Join("..", "..", ".github", "PULL_REQUEST_TEMPLATE.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	body := strings.ReplaceAll(string(template), "- [ ]", "- [x]")
+	got := validate(body, w, "pixiv", t.TempDir())
+	if !got.TemplateOK {
+		t.Fatalf("repository PR template is incompatible with validator: %s", got.TemplateDesc)
+	}
+}

@@ -1,0 +1,4 @@
+interface:
+  display_name: "Pixiv CLI Releases"
+  short_description: "Audit bilingual release notes and immutable handoffs."
+  default_prompt: "Use $pixiv-cli-release-notes for the explicitly authorized release scope."

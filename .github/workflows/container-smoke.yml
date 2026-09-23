@@ -13,6 +13,11 @@ on:
         required: false
         default: ''
         type: string
+      check_run_id:
+        description: PR gate check run to complete
+        required: false
+        default: ''
+        type: string
 
 concurrency:
   group: container-smoke-worker-${{ inputs.pr_number || github.ref }}
@@ -130,20 +135,20 @@ jobs:
         run: go test ./scripts/tests/containerrelease -count=1
 
   publish:
-    if: ${{ always() && inputs.head_sha != '' }}
+    if: ${{ always() && inputs.check_run_id != '' }}
     needs: [setup, worker]
     name: Publish container smoke result
     runs-on: ubuntu-24.04
     permissions:
       actions: read
-      statuses: write
+      checks: write
     steps:
       - name: Publish aggregate container smoke status
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}
-          HEAD_SHA: ${{ inputs.head_sha }}
+          CHECK_RUN_ID: ${{ inputs.check_run_id }}
           SETUP_RESULT: ${{ needs.setup.result }}
           WORKER_RESULT: ${{ needs.worker.result }}
         run: |
@@ -167,11 +172,12 @@ jobs:
             fi
           fi
           run_url="$GITHUB_SERVER_URL/$REPO/actions/runs/$GITHUB_RUN_ID"
-          gh api --method POST "repos/$REPO/statuses/$HEAD_SHA" \
-            -f state="$state" \
-            -f context='Container smoke gate' \
-            -f description="${description:0:140}" \
-            -f target_url="$run_url" >/dev/null
+          gh api --method PATCH "repos/$REPO/check-runs/$CHECK_RUN_ID" \
+            -f status=completed \
+            -f conclusion="$state" \
+            -f details_url="$run_url" \
+            -f 'output[title]=Container smoke gate' \
+            -f "output[summary]=$description" >/dev/null
           if [ "$state" = success ]; then
             printf '%s\n' '### Container smoke' '' "$description" >> "$GITHUB_STEP_SUMMARY"
           else

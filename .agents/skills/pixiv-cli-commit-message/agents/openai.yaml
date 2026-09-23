@@ -1,0 +1,4 @@
+interface:
+  display_name: "Pixiv CLI Commit Message"
+  short_description: "Describe the staged change without inventing work."
+  default_prompt: "Use $pixiv-cli-commit-message to write a message for the staged diff."

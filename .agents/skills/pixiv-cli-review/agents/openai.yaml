@@ -1,0 +1,4 @@
+interface:
+  display_name: "Pixiv CLI Review"
+  short_description: "Review behavior, boundaries, security, and evidence."
+  default_prompt: "Use $pixiv-cli-review to review the requested diff without changing it."
