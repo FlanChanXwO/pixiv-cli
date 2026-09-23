@@ -20,33 +20,16 @@ fi
 
 repo_root=$(git rev-parse --show-toplevel)
 rules="$repo_root/.github/ci-docs-only.gitignore"
-if [[ ! -f "$rules" ]]; then
-  printf 'classify change scope: rules file not found: %s\n' "$rules" >&2
-  exit 1
-fi
-
-tmp=$(mktemp -d)
-trap 'rm -rf "$tmp"' EXIT
-changed="$tmp/changed"
-matched="$tmp/matched"
-matcher="$tmp/matcher"
-mkdir "$matcher"
-git -C "$matcher" init -q
+[[ -f "$rules" ]] || { printf 'classify change scope: rules file not found: %s\n' "$rules" >&2; exit 1; }
 
 emit_scope() {
-  local docs_only=$1 quality_required=$2 platform_required=$3 container_required=$4 native_required=$5
   local output
-  output=$(printf 'docs_only=%s\nquality_required=%s\nplatform_required=%s\ncontainer_required=%s\nnative_required=%s\n' \
-    "$docs_only" "$quality_required" "$platform_required" "$container_required" "$native_required")
+  output=$(printf 'docs_only=%s\nquality_required=%s\nplatform_required=%s\ncontainer_required=%s\nnative_required=%s\n' "$@")
   printf '%s\n' "$output"
-  if [[ -n "$github_output" ]]; then
-    printf '%s\n' "$output" >> "$github_output"
-  fi
+  [[ -z "$github_output" ]] || printf '%s\n' "$output" >> "$github_output"
 }
 
-full_scope() {
-  emit_scope false true true "$1" true
-}
+full_scope() { emit_scope false true true "$1" true; }
 
 if [[ -z "$base" || "$base" =~ ^0+$ ]]; then
   full_scope true
@@ -54,6 +37,8 @@ if [[ -z "$base" || "$base" =~ ^0+$ ]]; then
   exit 0
 fi
 
+changed=$(mktemp)
+trap 'rm -f "$changed"' EXIT
 if ! git diff --name-only --no-renames -z "$base" "$head" > "$changed"; then
   printf 'classify change scope: diff %s..%s failed\n' "$base" "$head" >&2
   exit 1
@@ -64,28 +49,24 @@ if [[ ! -s "$changed" ]]; then
   exit 0
 fi
 
-# Match in an isolated temporary repository so the project's own .gitignore cannot widen this allowlist.
-match_status=0
-git -C "$matcher" -c core.excludesFile="$rules" check-ignore --no-index -z --stdin < "$changed" > "$matched" || match_status=$?
-if ((match_status > 1)); then
-  printf '%s\n' 'classify change scope: documentation rule matching failed' >&2
-  exit "$match_status"
-fi
-if cmp -s "$changed" "$matched"; then
-  emit_scope true false false false false
-  printf '%s\n' 'only approved documentation paths changed; selecting documentation validation' >&2
-  exit 0
-fi
+matches_docs_rule() {
+  git --literal-pathspecs ls-files --cached --ignored --exclude-from="$rules" --with-tree="$head" --error-unmatch -- "$1" >/dev/null 2>&1 ||
+    git --literal-pathspecs ls-files --cached --ignored --exclude-from="$rules" --with-tree="$base" --error-unmatch -- "$1" >/dev/null 2>&1
+}
 
+docs_only=true
 container_required=false
 while IFS= read -r -d '' path; do
+  matches_docs_rule "$path" || docs_only=false
   case "$path" in
-    Dockerfile|.dockerignore|go.mod|go.sum|Cargo.toml|Cargo.lock|cmd/*|internal/*|sdk/*|native/*|ci/*|tools/platformmatrix/*|.github/workflows/container-smoke.yml|scripts/build-platform.sh|scripts/build-staticlibs*|scripts/cmd/releaseassets/*)
-      container_required=true
-      break
-      ;;
+    Dockerfile|.dockerignore|go.mod|go.sum|Cargo.toml|Cargo.lock|cmd/*|internal/*|sdk/*|native/*|ci/*|tools/platformmatrix/*|.github/workflows/container-smoke.yml|scripts/build-platform.sh|scripts/build-staticlibs*|scripts/cmd/releaseassets/*) container_required=true ;;
   esac
 done < "$changed"
 
-full_scope "$container_required"
-printf '%s\n' 'non-document change detected; selecting required validation' >&2
+if [[ "$docs_only" = true ]]; then
+  emit_scope true false false false false
+  printf '%s\n' 'only approved documentation paths changed; selecting documentation validation' >&2
+else
+  full_scope "$container_required"
+  printf '%s\n' 'non-document change detected; selecting required validation' >&2
+fi
