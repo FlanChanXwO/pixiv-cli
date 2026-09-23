@@ -320,6 +320,12 @@ worker 只处理该目录下尚缺的本地向量，其他图库的待处理资�
 Asset 指向当前模型代；旧向量不删除，每张成功后替换当前代向量。模型失败或源文件缺失/变化时非零退出并
 报告已完成数量，保留最后一次存储的向量；修复源文件后重试会重新处理所有已记录图片，包括此前成功的图片，
 不发生自动历史迁移。当前尚不能重建 Pixiv Asset。
+`pixiv vector sync bookmarks` 通过公开 SDK 的 bookmark listing 索引当前账号收藏的作品，覆盖 public 与 private 两种可见性。
+每个作品只用 listing 自身返回的 cover 建立 page 0，绝不请求 artwork detail，因此不会产生逐作品的额外 App API 请求。
+多页作品以 cover 存入并标记 `cover_only` 与真实 `page_count`；其余页面既不抓取也不伪造，需由后续来源补齐。
+它需要本地已认证账号（`pixiv auth use`），并像其他 Pixiv 数据命令一样会创建 `config.toml`。
+listing 未给出可用 cover 的作品记为 `skipped`，不会存成无图片的资产；输出包含 `scanned`、`changed`、
+`skipped` 与 `embedded` 数量。
 `pixiv vector status` 报告持久化的 `assets` 与 `embeddings` 总数；数据库尚不存在时会创建。
 `pixiv vector search QUERY_OR_IMAGE` 使用同一个离线 SigLIP2 模型处理文本或现有本地图片，再对持久化
 page-level 向量做 exact cosine 排序；不请求 Pixiv 或反向搜图服务，也不修改索引。现有普通文件按图片查询；
@@ -356,7 +362,7 @@ Hugging Face 的 `HF_HOME`。同步只加载固定的 safetensors revision、禁
 私有索引打开时将 schema v1 升级为 v2，并记录每个 Asset 的目标 model/generation。未来模型 revision
 变化时，未变化的旧 Asset 和向量保留旧代；仅新观察或内容变化的 Asset 面向新代。搜索只比较当前代，
 status 计入所有已存代；旧本地 Asset 不会自动重新生成向量，需显式 rebuild。默认模型候选
-仍需更多真实 Pixiv 样本验证；`sync bookmarks` 尚未注册。
+仍需更多真实 Pixiv 样本验证。
 
 ### 反向搜图
 
@@ -439,7 +445,7 @@ canonical 数据 action 是 `search`、`detail`、`ranking`、`series`、`commen
 | `config set` | `pixiv config set KEY [VALUE]` | 写入已知配置键，包括 `account_pool_enabled`、`account_pool_strategy`、`download_path`、`filename_template`、`directory_template`、`request_interval`、`https_proxy`、`log_level`、`log_format`、`reverse_search_provider`、`reverse_search_pixiv_only` 和仅限 stdin 的 `saucenao_api_key`。 |
 | `config unset` | `pixiv config unset KEY` | 从 `config.toml` 删除一个已知配置键。 |
 | `update` | `pixiv update [--check] [--prerelease] [--proxy URL]` | 检查或执行与当前安装来源匹配的更新；`--json` 仅可与 `--check` 同用。 |
-| `vector` | `pixiv vector sync local PATH`；`pixiv vector search QUERY_OR_IMAGE`；`pixiv vector status`；`pixiv vector rebuild` | 显式索引本地图库、离线搜索持久化向量、查看数量或重建已记录的本地图片。不读取 Pixiv 凭证、不请求 App API；bookmarks 同步尚未开放。 |
+| `vector` | `pixiv vector sync local PATH`；`pixiv vector sync bookmarks`；`pixiv vector search QUERY_OR_IMAGE`；`pixiv vector status`；`pixiv vector rebuild` | 显式索引本地图库或当前账号收藏作品的 cover、离线搜索持久化向量、查看数量或重建已记录的本地图片。本地命令不需 Pixiv 凭证；`sync bookmarks` 使用本地账号且不请求 artwork detail。 |
 | `search` | `pixiv search [WORD\|IMAGE_PATH_OR_URL] [-t artwork\|novel\|user] [options]` | canonical 实体搜索或自动反向搜图。常规文件或显式 HTTP(S) source 选择图片模式；`--trending-tags` 是无 WORD 的完整作品趋势标签模式，不接受搜索筛选或分页。 |
 | `detail` | `pixiv detail [ID_OR_URL] [-t artwork\|novel\|user] [--content] [--json\|--ndjson]` | 读取一件作品、一本小说或一个用户，也可消费规范 NDJSON Record；`--content` 是保留的小说兼容 flag，但 v1 App 正文 endpoint 不可用，会在打开账号池或请求 rejected endpoint 前返回 `content_unavailable`。 |
 | `ranking` | `pixiv ranking [-t artwork\|novel] [--mode MODE --date YYYY-MM-DD --page N --limit N]` | 读取作品或小说排行；默认是 `artwork`，`--date` 只适用于作品排行。 |

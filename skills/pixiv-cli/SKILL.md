@@ -182,6 +182,7 @@ pixiv follow add USER_ID                  # write op
 pixiv follow remove USER_ID               # write op
 pixiv download [SRC...] [--pages 1,3-5] [--quality original|regular|small|thumb|mini] [--ugoira-mode gif|apng] [--output DIR] [--on-error skip|fail-fast]
 pixiv vector sync local PATH               # explicit local scan and embedding; preinstalled runtime required
+pixiv vector sync bookmarks                # index current account's bookmark covers; needs a local account
 pixiv vector status                        # private index counts; no Pixiv account needed
 pixiv vector rebuild                       # explicit re-embedding of all recorded local images
 pixiv vector search "white hair"           # offline text → image; NDJSON, best page per Pixiv artwork

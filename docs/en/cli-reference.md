@@ -414,6 +414,13 @@ successful image replaces its current-generation vector; on model failure or a m
 nonzero, reports the completed count, and preserves the last stored vector. Rerun after fixing the source to
 refresh all recorded local images, including those already completed; no automatic historical migration occurs.
 Pixiv assets cannot yet be rebuilt.
+`pixiv vector sync bookmarks` indexes the current account's bookmarked artworks from the public SDK bookmark
+listing, covering both public and private visibility. It records page 0 from the listing's own cover for each artwork
+and never requests artwork detail, so it adds no per-artwork App API request. A multi-page artwork is stored as its
+cover with `cover_only` and its real `page_count`; the remaining pages are neither fetched nor fabricated and must
+come from a later source. It needs a locally authenticated account (`pixiv auth use`) and creates `config.toml` like
+other Pixiv data commands. An artwork the listing returns without a usable cover is counted as `skipped` rather than
+stored as an image-less asset, and it reports `scanned`, `changed`, `skipped`, and `embedded` counts.
 `pixiv vector status` shows total durable `assets` and `embeddings`; it creates the private vector database if
 none exists. `pixiv vector search QUERY_OR_IMAGE` uses the same offline SigLIP2 model for text and an existing
 local image file, then exact-cosine ranks persistent page-level embeddings. It makes no Pixiv or reverse-search
@@ -455,7 +462,7 @@ index upgrades schema v1 to v2 on open and persists each asset's target model/ge
 revision, unchanged existing assets and their embeddings stay in the old generation; only newly observed or
 content-changed assets target the new generation. Search compares only the current generation; status counts all
 stored generations. Historical local assets are not re-embedded without an explicit rebuild.
-The current model candidate still needs broader real-Pixiv retrieval validation; `sync bookmarks` is not registered yet.
+The current model candidate still needs broader real-Pixiv retrieval validation.
 
 ### Reverse image search
 
@@ -551,7 +558,7 @@ Only the structured entity filters documented by each command are accepted. The 
 | `config set` | `pixiv config set KEY [VALUE]` | Writes one known config key, including `account_pool_enabled`, `account_pool_strategy`, `download_path`, `filename_template`, `directory_template`, `request_interval`, `https_proxy`, `log_level`, `log_format`, `reverse_search_provider`, `reverse_search_pixiv_only`, and the stdin-only `saucenao_api_key`. |
 | `config unset` | `pixiv config unset KEY` | Deletes one known config key from `config.toml`. |
 | `update` | `pixiv update [--check] [--prerelease] [--proxy URL]` | Checks for or performs an update matching the current install source; `--json` is only valid together with `--check`. |
-| `vector` | `pixiv vector sync local PATH`; `pixiv vector search QUERY_OR_IMAGE`; `pixiv vector status`; `pixiv vector rebuild` | Explicitly index a local gallery, search persistent vectors, show counts, or re-embed recorded local images. No Pixiv credentials or App API. Bookmarks sync is not yet available. |
+| `vector` | `pixiv vector sync local PATH`; `pixiv vector sync bookmarks`; `pixiv vector search QUERY_OR_IMAGE`; `pixiv vector status`; `pixiv vector rebuild` | Explicitly index a local gallery or the current account's bookmarked artwork covers, search persistent vectors, show counts, or re-embed recorded local images. Local commands need no Pixiv credentials; `sync bookmarks` uses the local account and never requests artwork detail. |
 | `search` | `pixiv search [WORD\|IMAGE_PATH_OR_URL] [-t artwork\|novel\|user] [options]` | Canonical entity search or automatic reverse-image search. A regular file or explicit HTTP(S) source selects image mode; `--trending-tags` is the no-word artwork tag-list mode and does not accept search filters or pagination. |
 | `detail` | `pixiv detail [ID_OR_URL] [-t artwork\|novel\|user] [--content] [--json\|--ndjson]` | Reads one artwork, novel, or user, or consumes canonical NDJSON records. `--content` is a retained novel-only compatibility flag; the v1 App content endpoint is unavailable, so it returns `content_unavailable` before opening the account pool or requesting the rejected endpoint. |
 | `ranking` | `pixiv ranking [-t artwork\|novel] [--mode MODE --date YYYY-MM-DD --page N --limit N]` | Reads artwork or novel rankings. `artwork` is the default; `--date` is supported only for artwork ranking. |

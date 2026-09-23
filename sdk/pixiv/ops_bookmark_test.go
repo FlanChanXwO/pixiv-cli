@@ -2,8 +2,11 @@ package pixiv_test
 
 import (
 	"context"
+	"errors"
 	"io"
 	"net/http"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -178,5 +181,57 @@ func TestExplicitNovelBookmarkSDKRejectsUnsupportedInputsBeforeNetwork(t *testin
 	}
 	if calls != 0 {
 		t.Fatalf("invalid request reached upstream %d time(s)", calls)
+	}
+}
+
+// TestBookmarkListingCoverResolvesWithoutArtworkDetail 证明 Task 13 依赖的核心契约：
+// bookmark listing 给出的 cover 引用可以在同一 client 上直接取回，且过程不触发
+// artwork detail。若这里出现 /v1/illust/detail，就说明“不做 N+1”已被破坏。
+func TestBookmarkListingCoverResolvesWithoutArtworkDetail(t *testing.T) {
+	const mediaURL = "https://i.pximg.net/img/101_large.jpg?signature=sentinel"
+	var paths []string
+	rt := roundTripFunc(func(req *http.Request) (*http.Response, error) {
+		paths = append(paths, req.URL.Host+req.URL.Path)
+		switch req.URL.Host {
+		case "app-api.pixiv.net":
+			if req.URL.Path != "/v1/user/bookmarks/illust" {
+				return nil, errors.New("unexpected app path: " + req.URL.Path)
+			}
+			return jsonResponse(`{"illusts":[{"id":101,"title":"multi","page_count":3,"user":{"id":7,"name":"artist"},"image_urls":{"large":"` + mediaURL + `"},"create_date":"2024-01-02T03:04:05+00:00"}]}`), nil
+		case "i.pximg.net":
+			return &http.Response{StatusCode: http.StatusOK, Header: http.Header{"Content-Type": {"image/jpeg"}}, Body: io.NopCloser(strings.NewReader("IMAGE"))}, nil
+		default:
+			return nil, errors.New("unexpected host " + req.URL.Host)
+		}
+	})
+	client, err := pixiv.NewWith("token", pixiv.Options{HTTPClient: &http.Client{Transport: rt}})
+	if err != nil {
+		t.Fatalf("NewWith: %v", err)
+	}
+	page, err := client.UserArtworkBookmarks(context.Background(), pixiv.UserArtworkBookmarksRequest{UserID: 7, Restrict: pixiv.RestrictPublic})
+	if err != nil {
+		t.Fatalf("UserArtworkBookmarks: %v", err)
+	}
+	if len(page.Items) != 1 {
+		t.Fatalf("items = %d", len(page.Items))
+	}
+	// listing 必须只给 cover，且不伪装成多页结果。
+	if len(page.Items[0].Pages) != 0 {
+		t.Fatalf("listing must not expose pages: %+v", page.Items[0].Pages)
+	}
+	if page.Items[0].Cover.Resource.Ref.IsZero() {
+		t.Fatal("listing must expose a cover reference")
+	}
+	destination := filepath.Join(t.TempDir(), "cover.jpg")
+	if _, err := client.SaveResource(context.Background(), page.Items[0].Cover.Resource.Ref, sdk.SaveOptions{Path: destination}); err != nil {
+		t.Fatalf("SaveResource: %v", err)
+	}
+	if body, err := os.ReadFile(destination); err != nil || string(body) != "IMAGE" {
+		t.Fatalf("saved cover = %q err=%v", body, err)
+	}
+	for _, path := range paths {
+		if strings.Contains(path, "/v1/illust/detail") {
+			t.Fatalf("cover resolution issued artwork detail (N+1): %v", paths)
+		}
 	}
 }

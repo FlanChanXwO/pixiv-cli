@@ -15,6 +15,9 @@ import (
 type SyncStats struct {
 	Scanned int
 	Changed int
+	// Skipped counts entries an explicit sync deliberately did not record, such as an
+	// artwork whose listing carried no usable image.
+	Skipped int
 }
 
 // SyncLocal explicitly scans a gallery and records changed images; it does not embed them.

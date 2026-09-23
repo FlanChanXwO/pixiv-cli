@@ -175,7 +175,12 @@ var (
 		return a.newFanboxAccountService()
 	}
 	newCLIDownloadService = func() downloader.DownloadService { return defaultDownloadService() }
-	newCLIReverseSearch   = func(options reverseassembly.Options) (reversesearch.Searcher, error) {
+	// newCLIVectorEncoder 是 root 拥有的本地编码 seam；生产用离线 SigLIP2 子进程，
+	// 测试可注入纯内存替身，不依赖 POSIX shell 或已安装的 Python 运行时。
+	newCLIVectorEncoder = func(ctx context.Context) (vectorcommands.ImageEncoder, error) {
+		return vector.StartSigLIP2(ctx)
+	}
+	newCLIReverseSearch = func(options reverseassembly.Options) (reversesearch.Searcher, error) {
 		return reverseassembly.New(options)
 	}
 	newCLIMCPReverseSearch = func(options reverseassembly.Options) (reversesearch.Searcher, error) {
@@ -562,7 +567,9 @@ func (a app) newRootCommand() *cobra.Command {
 			return nil, err
 		}
 		return vector.Open(dir)
-	}, vector.StartSigLIP2))
+	}, func(ctx context.Context) (vectorcommands.ImageEncoder, error) {
+		return newCLIVectorEncoder(ctx)
+	}, a.vectorBookmarkPort()))
 	cmd.AddCommand(downloadcommands.New(a.downloadDeps()))
 	fanboxData := a.fanboxDataDeps()
 	cmd.AddCommand(fanboxcommands.New(fanboxData, fanboxcommands.CommandSet{
@@ -689,6 +696,29 @@ func (a app) pixivDataDeps() pixivdeps.Data {
 			}
 			return sdk.jsonOut(override)
 		},
+	}
+}
+
+// vectorBookmarkPort 让 `vector sync bookmarks` 复用账号池的账号选择与安全重放边界。
+// attempt 拿到的同一个已认证 client 同时用于 listing 与 cover 取图：只有同实例才能命中
+// 资源 URL 缓存，否则 cover 解析会退化为 artwork detail（禁止的 N+1）。
+func (a app) vectorBookmarkPort() vectorcommands.BookmarkPort {
+	var once sync.Once
+	var ports pixivSDKPorts
+	var portsErr error
+	load := func() (pixivSDKPorts, error) {
+		once.Do(func() { ports, portsErr = newCLIPixivSDKPorts(a) })
+		return ports, portsErr
+	}
+	return func(ctx context.Context, attempt func(context.Context, vectorcommands.BookmarkSource) (bool, error)) error {
+		sdkPorts, err := load()
+		if err != nil {
+			return err
+		}
+		// 认证数据命令不接受 --uid/--refresh-token；账号由本地 auth use 解析。
+		return sdkPorts.run(ctx, pixivdeps.Request{}, func(ctx context.Context, client *pixiv.Client) (bool, error) {
+			return attempt(ctx, client)
+		})
 	}
 }
 
