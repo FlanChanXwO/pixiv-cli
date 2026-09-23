@@ -36,10 +36,9 @@ func TestPRMetadataValidatesAgainstTheCurrentBaseTip(t *testing.T) {
 
 // TestPRMetadataPreservesSmokeDispatchSafety locks the PR metadata invariants
 // that prevent stale heads or stale PR-body events from publishing incorrect
-// results, and ensure optional smoke checks use real skipped checks rather than
-// synthetic success statuses. Their check-run names intentionally differ from
-// the legacy commit-status contexts so branch protection never requires both
-// status types for the same context.
+// results. Required smoke contexts belong to real GitHub Actions jobs so an
+// unnecessary smoke gate is represented by a native job-level skip; trusted
+// pull_request_target coordination only owns distinct worker Check Runs.
 func TestPRMetadataPreservesSmokeDispatchSafety(t *testing.T) {
 	t.Parallel()
 
@@ -73,17 +72,37 @@ func TestPRMetadataPreservesSmokeDispatchSafety(t *testing.T) {
 
 	for _, required := range []string{
 		`"repos/$REPO/check-runs"`,
-		`create_check 'Platform smoke' completed skipped`,
-		`create_check 'Container smoke' completed skipped`,
+		`dispatch_worker platform-smoke.yml 'Platform smoke worker'`,
+		`dispatch_worker container-smoke.yml 'Container smoke worker'`,
 		`--arg check_run_id "$check_run_id"`,
 	} {
 		if !strings.Contains(body, required) {
 			t.Fatalf("PR metadata workflow missing check-run contract %q", required)
 		}
 	}
-	for _, legacy := range []string{"'Platform smoke gate'", "'Container smoke gate'"} {
+	for _, legacy := range []string{
+		"'Platform smoke gate'",
+		"'Container smoke gate'",
+		`create_check 'Platform smoke'`,
+		`create_check 'Container smoke'`,
+	} {
 		if strings.Contains(body, legacy) {
-			t.Fatalf("PR metadata workflow retains legacy commit-status context %q", legacy)
+			t.Fatalf("PR metadata workflow publishes a required smoke context manually %q", legacy)
+		}
+	}
+
+	for _, required := range []string{
+		"platform_smoke:",
+		`'Platform smoke metadata refresh' || 'Platform smoke'`,
+		`needs.validate.outputs.platform_required == 'true'`,
+		`WORKER_CHECK: Platform smoke worker`,
+		"container_smoke:",
+		`'Container smoke metadata refresh' || 'Container smoke'`,
+		`needs.validate.outputs.container_required == 'true'`,
+		`WORKER_CHECK: Container smoke worker`,
+	} {
+		if !strings.Contains(body, required) {
+			t.Fatalf("PR metadata workflow missing required smoke job contract %q", required)
 		}
 	}
 
