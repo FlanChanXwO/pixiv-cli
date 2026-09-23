@@ -22,6 +22,12 @@ repo_root=$(git rev-parse --show-toplevel)
 rules="$repo_root/.github/ci-docs-only.gitignore"
 [[ -f "$rules" ]] || { printf 'classify change scope: rules file not found: %s\n' "$rules" >&2; exit 1; }
 
+tmpdir=$(mktemp -d)
+trap 'rm -rf "$tmpdir"' EXIT
+container_rules="$tmpdir/container-required"
+awk '/^!/ { print substr($0, 2) }' "$rules" > "$container_rules"
+[[ -s "$container_rules" ]] || { printf '%s\n' 'classify change scope: container rules are missing' >&2; exit 1; }
+
 emit_scope() {
   local output
   output=$(printf 'docs_only=%s\nquality_required=%s\nplatform_required=%s\ncontainer_required=%s\nnative_required=%s\n' "$@")
@@ -37,8 +43,7 @@ if [[ -z "$base" || "$base" =~ ^0+$ ]]; then
   exit 0
 fi
 
-changed=$(mktemp)
-trap 'rm -f "$changed"' EXIT
+changed="$tmpdir/changed"
 if ! git diff --name-only --no-renames -z "$base" "$head" > "$changed"; then
   printf 'classify change scope: diff %s..%s failed\n' "$base" "$head" >&2
   exit 1
@@ -49,18 +54,18 @@ if [[ ! -s "$changed" ]]; then
   exit 0
 fi
 
-matches_docs_rule() {
-  git --literal-pathspecs ls-files --cached --ignored --exclude-from="$rules" --with-tree="$head" --error-unmatch -- "$1" >/dev/null 2>&1 ||
-    git --literal-pathspecs ls-files --cached --ignored --exclude-from="$rules" --with-tree="$base" --error-unmatch -- "$1" >/dev/null 2>&1
+matches_rule() {
+  local rule_file=$1
+  local path=$2
+  git --literal-pathspecs ls-files --cached --ignored --exclude-from="$rule_file" --with-tree="$head" --error-unmatch -- "$path" >/dev/null 2>&1 ||
+    git --literal-pathspecs ls-files --cached --ignored --exclude-from="$rule_file" --with-tree="$base" --error-unmatch -- "$path" >/dev/null 2>&1
 }
 
 docs_only=true
 container_required=false
 while IFS= read -r -d '' path; do
-  matches_docs_rule "$path" || docs_only=false
-  case "$path" in
-    Dockerfile|.dockerignore|LICENSE|THIRD_PARTY_LICENSES.md|third_party/licenses/*|go.mod|go.sum|Cargo.toml|Cargo.lock|cmd/*|internal/*|sdk/*|native/*|ci/*|tools/platformmatrix/*|.github/workflows/container-smoke.yml|scripts/build-platform.sh|scripts/build-staticlibs*|scripts/cmd/releaseassets/*) container_required=true ;;
-  esac
+  matches_rule "$rules" "$path" || docs_only=false
+  matches_rule "$container_rules" "$path" && container_required=true
 done < "$changed"
 
 if [[ "$docs_only" = true ]]; then
