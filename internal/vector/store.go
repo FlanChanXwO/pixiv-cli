@@ -349,3 +349,30 @@ func (s *Store) Status(ctx context.Context) (assets, embeddings int, err error) 
 	}
 	return assets, embeddings, nil
 }
+
+// localRebuildAssets retargets only local assets. Existing vectors remain readable until replaced.
+func (s *Store) localRebuildAssets(ctx context.Context, model, generation string) ([]Asset, error) {
+	if strings.TrimSpace(model) == "" || strings.TrimSpace(generation) == "" {
+		return nil, errors.New("vector: model and generation are required")
+	}
+	if _, err := s.db.ExecContext(ctx, `UPDATE asset SET target_model=?, target_generation=? WHERE source='local'`, model, generation); err != nil {
+		return nil, fmt.Errorf("vector: retarget local assets: %w", err)
+	}
+	rows, err := s.db.QueryContext(ctx, `SELECT source_id, page_index, fingerprint FROM asset WHERE source='local' ORDER BY source_id, page_index`)
+	if err != nil {
+		return nil, fmt.Errorf("vector: list local assets: %w", err)
+	}
+	defer rows.Close()
+	var assets []Asset
+	for rows.Next() {
+		asset := Asset{Key: Key{Source: "local"}}
+		if err := rows.Scan(&asset.Key.ID, &asset.Key.Page, &asset.Fingerprint); err != nil {
+			return nil, fmt.Errorf("vector: read local asset: %w", err)
+		}
+		assets = append(assets, asset)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("vector: list local assets: %w", err)
+	}
+	return assets, nil
+}

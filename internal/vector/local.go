@@ -129,34 +129,55 @@ func ProcessLocalPending(ctx context.Context, store *Store, root, model, generat
 		if err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(os.PathSeparator)) {
 			continue
 		}
-		if err := ctx.Err(); err != nil {
-			return processed, err
-		}
-		if embed == nil {
-			return processed, errors.New("vector: embedding runtime unavailable")
-		}
-		fingerprint, err := fileFingerprint(asset.Key.ID)
-		if err != nil {
-			return processed, fmt.Errorf("vector: verify source image: %w", err)
-		}
-		if fingerprint != asset.Fingerprint {
-			return processed, ErrStaleAsset
-		}
-		values, err := embed(ctx, asset.Key.ID)
-		if err != nil {
-			return processed, fmt.Errorf("vector: embed image: %w", err)
-		}
-		fingerprint, err = fileFingerprint(asset.Key.ID)
-		if err != nil {
-			return processed, fmt.Errorf("vector: verify source image: %w", err)
-		}
-		if fingerprint != asset.Fingerprint {
-			return processed, ErrStaleAsset
-		}
-		if err := store.PutEmbedding(ctx, asset.Key, fingerprint, model, generation, values); err != nil {
+		if err := embedLocalAsset(ctx, store, asset, model, generation, embed); err != nil {
 			return processed, err
 		}
 		processed++
 	}
 	return processed, nil
+}
+
+// RebuildLocal explicitly re-embeds every recorded local image; it never crawls Pixiv.
+// A failed image leaves its last good vector intact, and rerunning refreshes every image.
+func RebuildLocal(ctx context.Context, store *Store, model, generation string, embed func(context.Context, string) ([]float32, error)) (int, error) {
+	assets, err := store.localRebuildAssets(ctx, model, generation)
+	if err != nil {
+		return 0, err
+	}
+	processed := 0
+	for _, asset := range assets {
+		if err := embedLocalAsset(ctx, store, asset, model, generation, embed); err != nil {
+			return processed, err
+		}
+		processed++
+	}
+	return processed, nil
+}
+
+func embedLocalAsset(ctx context.Context, store *Store, asset Asset, model, generation string, embed func(context.Context, string) ([]float32, error)) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	if embed == nil {
+		return errors.New("vector: embedding runtime unavailable")
+	}
+	fingerprint, err := fileFingerprint(asset.Key.ID)
+	if err != nil {
+		return fmt.Errorf("vector: verify source image: %w", err)
+	}
+	if fingerprint != asset.Fingerprint {
+		return ErrStaleAsset
+	}
+	values, err := embed(ctx, asset.Key.ID)
+	if err != nil {
+		return fmt.Errorf("vector: embed image: %w", err)
+	}
+	fingerprint, err = fileFingerprint(asset.Key.ID)
+	if err != nil {
+		return fmt.Errorf("vector: verify source image: %w", err)
+	}
+	if fingerprint != asset.Fingerprint {
+		return ErrStaleAsset
+	}
+	return store.PutEmbedding(ctx, asset.Key, fingerprint, model, generation, values)
 }

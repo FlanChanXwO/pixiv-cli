@@ -700,6 +700,21 @@ func TestMCPReverseSearchRegistersSearcherForStdioLifetime(t *testing.T) {
 	require.Empty(t, stdout.String())
 }
 
+func TestVectorRebuildEmptyIndexWithoutRuntimeOrAuth(t *testing.T) {
+	t.Setenv("PIXIV_VECTOR_PYTHON", filepath.Join(t.TempDir(), "missing-python"))
+	databasePath, configPath := useTempPaths(t)
+	var stdout, stderr bytes.Buffer
+	code := Run([]string{"pixiv", "vector", "rebuild"}, strings.NewReader(""), &stdout, &stderr)
+	if code != 0 || stdout.String() != "embedded: 0\n" || stderr.Len() != 0 {
+		t.Fatalf("empty rebuild: code=%d stdout=%q stderr=%q", code, stdout.String(), stderr.String())
+	}
+	for _, path := range []string{databasePath, configPath} {
+		if _, err := os.Stat(path); !errors.Is(err, os.ErrNotExist) {
+			t.Fatalf("rebuild touched auth/config %s: %v", path, err)
+		}
+	}
+}
+
 func TestVectorLocalStagesWithoutAuthOrFakeEmbedding(t *testing.T) {
 	t.Setenv("PIXIV_VECTOR_PYTHON", filepath.Join(t.TempDir(), "missing-python"))
 	databasePath, configPath := useTempPaths(t)

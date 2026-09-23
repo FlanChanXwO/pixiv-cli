@@ -9,6 +9,7 @@ import (
 	"image/png"
 	"os"
 	"path/filepath"
+	"slices"
 	"testing"
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/vector"
@@ -264,5 +265,99 @@ func TestProcessLocalPendingOnlyEmbedsRequestedGallery(t *testing.T) {
 	pending, err := store.Pending(ctx, vector.ModelID, vector.Generation)
 	if err != nil || len(pending) != 1 || filepath.Dir(pending[0].Key.ID) != firstRoot {
 		t.Fatalf("other gallery must remain pending: %v %v", pending, err)
+	}
+}
+
+func TestRebuildLocalRetainsOldVectorsAndRetriesFailedWork(t *testing.T) {
+	ctx := context.Background()
+	gallery, err := filepath.EvalSymlinks(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	a := filepath.Join(gallery, "a.png")
+	b := filepath.Join(gallery, "b.png")
+	writePNG(t, a, 0xff)
+	writePNG(t, b, 0x7f)
+	dbDir := t.TempDir()
+	store, err := vector.Open(dbDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = store.Close() }()
+	if _, err := vector.SyncLocal(ctx, store, gallery); err != nil {
+		t.Fatal(err)
+	}
+	for _, path := range []string{a, b} {
+		asset, err := store.Get(ctx, vector.Key{Source: "local", ID: path})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := store.PutEmbedding(ctx, asset.Key, asset.Fingerprint, "old", "one", []float32{1, 0}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	pixivKey := vector.Key{Source: "pixiv", ID: "123", Page: 2}
+	if _, err := store.Upsert(ctx, vector.Asset{Key: pixivKey, TargetModel: "old", TargetGeneration: "one"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.PutEmbedding(ctx, pixivKey, "", "old", "one", []float32{1, 0}); err != nil {
+		t.Fatal(err)
+	}
+	failure := errors.New("model failed")
+	n, err := vector.RebuildLocal(ctx, store, "new", "two", func(_ context.Context, path string) ([]float32, error) {
+		if path == b {
+			return nil, failure
+		}
+		return []float32{0, 1}, nil
+	})
+	if n != 1 || !errors.Is(err, failure) {
+		t.Fatalf("failed rebuild: n=%d err=%v", n, err)
+	}
+	for _, path := range []string{a, b} {
+		key := vector.Key{Source: "local", ID: path}
+		if got, err := store.Embedding(ctx, key, "old", "one"); err != nil || !slices.Equal(got, []float32{1, 0}) {
+			t.Fatalf("old vector lost: %v %v", got, err)
+		}
+		asset, err := store.Get(ctx, key)
+		if err != nil || asset.TargetModel != "new" || asset.TargetGeneration != "two" {
+			t.Fatalf("rebuild intent: %+v %v", asset, err)
+		}
+	}
+	pixivAsset, err := store.Get(ctx, pixivKey)
+	if err != nil || pixivAsset.TargetModel != "old" || pixivAsset.TargetGeneration != "one" {
+		t.Fatalf("pixiv intent changed: %+v %v", pixivAsset, err)
+	}
+	if _, err := store.Embedding(ctx, vector.Key{Source: "local", ID: b}, "new", "two"); !errors.Is(err, sql.ErrNoRows) {
+		t.Fatalf("failed image got vector: %v", err)
+	}
+	if err := store.Close(); err != nil {
+		t.Fatal(err)
+	}
+	store, err = vector.Open(dbDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	n, err = vector.RebuildLocal(ctx, store, "new", "two", func(context.Context, string) ([]float32, error) { return []float32{0, 1}, nil })
+	if n != 2 || err != nil {
+		t.Fatalf("retry: %d %v", n, err)
+	}
+	n, err = vector.RebuildLocal(ctx, store, "new", "two", func(context.Context, string) ([]float32, error) { return []float32{1, 0}, nil })
+	if n != 2 || err != nil {
+		t.Fatalf("repeat: %d %v", n, err)
+	}
+	got, err := store.Embedding(ctx, vector.Key{Source: "local", ID: a}, "new", "two")
+	if err != nil || !slices.Equal(got, []float32{1, 0}) {
+		t.Fatalf("repeat did not refresh: %v %v", got, err)
+	}
+	if err := os.Remove(b); err != nil {
+		t.Fatal(err)
+	}
+	n, err = vector.RebuildLocal(ctx, store, "new", "two", func(context.Context, string) ([]float32, error) { return []float32{0, 1}, nil })
+	if n != 1 || !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("missing source must fail after first: %d %v", n, err)
+	}
+	got, err = store.Embedding(ctx, vector.Key{Source: "local", ID: b}, "new", "two")
+	if err != nil || !slices.Equal(got, []float32{1, 0}) {
+		t.Fatalf("missing source's last vector lost: %v %v", got, err)
 	}
 }

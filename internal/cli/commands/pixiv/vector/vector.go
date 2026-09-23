@@ -35,6 +35,12 @@ func New(out io.Writer, open func() (*index.Store, error), start func(context.Co
 		},
 	})
 	cmd.AddCommand(&cobra.Command{
+		Use: "rebuild", Short: "Explicitly re-embed recorded local images", Args: cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			return rebuild(cmd.Context(), out, open, start)
+		},
+	})
+	cmd.AddCommand(&cobra.Command{
 		Use: "status", Short: "Show durable vector index counts", Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) (err error) {
 			store, err := open()
@@ -68,6 +74,30 @@ func syncLocal(ctx context.Context, out io.Writer, open func() (*index.Store, er
 	}
 	var runtime *index.SigLIP2
 	processed, processErr := index.ProcessLocalPending(ctx, store, path, index.ModelID, index.Generation, func(ctx context.Context, path string) ([]float32, error) {
+		if runtime == nil {
+			var err error
+			runtime, err = start(ctx)
+			if err != nil {
+				return nil, err
+			}
+		}
+		return runtime.Image(ctx, path)
+	})
+	if runtime != nil {
+		processErr = errors.Join(processErr, runtime.Close())
+	}
+	_, writeErr := fmt.Fprintf(out, "embedded: %d\n", processed)
+	return errors.Join(processErr, writeErr)
+}
+
+func rebuild(ctx context.Context, out io.Writer, open func() (*index.Store, error), start func(context.Context) (*index.SigLIP2, error)) (err error) {
+	store, err := open()
+	if err != nil {
+		return err
+	}
+	defer func() { err = errors.Join(err, store.Close()) }()
+	var runtime *index.SigLIP2
+	processed, processErr := index.RebuildLocal(ctx, store, index.ModelID, index.Generation, func(ctx context.Context, path string) ([]float32, error) {
 		if runtime == nil {
 			var err error
 			runtime, err = start(ctx)

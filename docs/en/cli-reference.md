@@ -408,6 +408,12 @@ galleries remain untouched. It does not copy the images, contact
 Pixiv, read account credentials, or create `config.toml`. It reports `scanned`, `changed`, and
 `embedded` counts. Repeating an unchanged scan does not re-embed. A changed or missing source and a failed
 embedding leave the work pending for a later explicit scan; removed files are not yet purged from the index.
+`pixiv vector rebuild` explicitly re-embeds every recorded local image across galleries (no rescan or Pixiv
+requests). It retargets local assets to the current model generation without deleting previous vectors. Each
+successful image replaces its current-generation vector; on model failure or a missing/changed source, it exits
+nonzero, reports the completed count, and preserves the last stored vector. Rerun after fixing the source to
+refresh all recorded local images, including those already completed; no automatic historical migration occurs.
+Pixiv assets cannot yet be rebuilt.
 `pixiv vector status` shows total durable `assets` and `embeddings`; it creates the private vector database if
 none exists. `pixiv vector search QUERY_OR_IMAGE` uses the same offline SigLIP2 model for text and an existing
 local image file, then exact-cosine ranks persistent page-level embeddings. It makes no Pixiv or reverse-search
@@ -434,6 +440,7 @@ snapshot_download('google/siglip2-base-patch16-512', revision='a89f5c5093f902bf3
 PYMODEL
 PIXIV_VECTOR_PYTHON="$HOME/.pixiv-cli/vector-python/bin/python" pixiv vector sync local ~/Pictures/gallery
 pixiv vector status
+PIXIV_VECTOR_PYTHON="$HOME/.pixiv-cli/vector-python/bin/python" pixiv vector rebuild
 PIXIV_VECTOR_PYTHON="$HOME/.pixiv-cli/vector-python/bin/python" pixiv vector search "white hair red eyes"
 PIXIV_VECTOR_PYTHON="$HOME/.pixiv-cli/vector-python/bin/python" pixiv vector search ./reference.jpg
 ```
@@ -445,7 +452,7 @@ scanned assets. An unchanged gallery with no pending embeddings does not load th
 index upgrades schema v1 to v2 on open and persists each asset's target model/generation. After a future model
 revision, unchanged existing assets and their embeddings stay in the old generation; only newly observed or
 content-changed assets target the new generation. Search compares only the current generation; status counts all
-stored generations. Historical assets are not re-embedded without an explicit rebuild, which is not registered yet.
+stored generations. Historical local assets are not re-embedded without an explicit rebuild.
 The current model candidate still needs broader real-Pixiv retrieval validation; `sync bookmarks` is not registered yet.
 
 ### Reverse image search
@@ -542,7 +549,7 @@ Only the structured entity filters documented by each command are accepted. The 
 | `config set` | `pixiv config set KEY [VALUE]` | Writes one known config key, including `account_pool_enabled`, `account_pool_strategy`, `download_path`, `filename_template`, `directory_template`, `request_interval`, `https_proxy`, `log_level`, `log_format`, `reverse_search_provider`, `reverse_search_pixiv_only`, and the stdin-only `saucenao_api_key`. |
 | `config unset` | `pixiv config unset KEY` | Deletes one known config key from `config.toml`. |
 | `update` | `pixiv update [--check] [--prerelease] [--proxy URL]` | Checks for or performs an update matching the current install source; `--json` is only valid together with `--check`. |
-| `vector` | `pixiv vector sync local PATH`; `pixiv vector search QUERY_OR_IMAGE`; `pixiv vector status` | Explicitly index a local gallery, search persistent vectors with the offline model, or show durable counts. No Pixiv credentials or App API. Bookmarks sync and rebuild are not yet available. |
+| `vector` | `pixiv vector sync local PATH`; `pixiv vector search QUERY_OR_IMAGE`; `pixiv vector status`; `pixiv vector rebuild` | Explicitly index a local gallery, search persistent vectors, show counts, or re-embed recorded local images. No Pixiv credentials or App API. Bookmarks sync is not yet available. |
 | `search` | `pixiv search [WORD\|IMAGE_PATH_OR_URL] [-t artwork\|novel\|user] [options]` | Canonical entity search or automatic reverse-image search. A regular file or explicit HTTP(S) source selects image mode; `--trending-tags` is the no-word artwork tag-list mode and does not accept search filters or pagination. |
 | `detail` | `pixiv detail [ID_OR_URL] [-t artwork\|novel\|user] [--content] [--json\|--ndjson]` | Reads one artwork, novel, or user, or consumes canonical NDJSON records. `--content` is a retained novel-only compatibility flag; the v1 App content endpoint is unavailable, so it returns `content_unavailable` before opening the account pool or requesting the rejected endpoint. |
 | `ranking` | `pixiv ranking [-t artwork\|novel] [--mode MODE --date YYYY-MM-DD --page N --limit N]` | Reads artwork or novel rankings. `artwork` is the default; `--date` is supported only for artwork ranking. |
