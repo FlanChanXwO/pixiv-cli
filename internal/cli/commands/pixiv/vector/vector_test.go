@@ -232,3 +232,41 @@ func TestVectorCommandLifecycleKeepsLocalLeavesCredentialFree(t *testing.T) {
 		}
 	}
 }
+
+// TestVectorCommandSurfaceStaysInsideV1NonGoals 锁定原方案 §26 的非目标：
+// v1 不提供 seed crawler，也不把 vector 扩展成额外子命令面（无 daemon/watcher 入口）。
+func TestVectorCommandSurfaceStaysInsideV1NonGoals(t *testing.T) {
+	cmd := vector.New(io.Discard, func() (*index.Store, error) { return nil, nil },
+		func(context.Context) (vector.ImageEncoder, error) { return nil, nil }, nil)
+	want := map[string][]string{
+		"sync":    {"bookmarks", "local"}, // cobra sorts children by name
+		"search":  nil,
+		"status":  nil,
+		"rebuild": nil,
+	}
+	got := make(map[string][]string, len(cmd.Commands()))
+	for _, child := range cmd.Commands() {
+		names := make([]string, 0, len(child.Commands()))
+		for _, leaf := range child.Commands() {
+			names = append(names, leaf.Name())
+		}
+		got[child.Name()] = names
+	}
+	if len(got) != len(want) {
+		t.Fatalf("vector surface = %v, want exactly %v (no seed/daemon extras)", got, want)
+	}
+	for name, children := range want {
+		actual, ok := got[name]
+		if !ok {
+			t.Fatalf("missing vector subcommand %q", name)
+		}
+		if len(actual) != len(children) {
+			t.Fatalf("%s children = %v, want %v", name, actual, children)
+		}
+		for i := range children {
+			if actual[i] != children[i] {
+				t.Fatalf("%s children = %v, want %v", name, actual, children)
+			}
+		}
+	}
+}
