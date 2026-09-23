@@ -176,7 +176,7 @@ jobs:
             -f status=completed \
             -f conclusion="$state" \
             -f details_url="$run_url" \
-            -f 'output[title]=Container smoke gate' \
+            -f 'output[title]=Container smoke' \
             -f "output[summary]=$description" >/dev/null
           if [ "$state" = success ]; then
             printf '%s\n' '### Container smoke' '' "$description" >> "$GITHUB_STEP_SUMMARY"
