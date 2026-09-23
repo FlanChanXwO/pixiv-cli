@@ -347,7 +347,10 @@ PIXIV_VECTOR_PYTHON="$HOME/.pixiv-cli/vector-python/bin/python" pixiv vector sea
 Windows 请将 `PIXIV_VECTOR_PYTHON` 设为虚拟环境中的 `Scripts/python.exe`。模型缓存遵循 Python
 Hugging Face 的 `HF_HOME`。同步只加载固定的 safetensors revision、禁用远端自定义代码，**不会隐式下载
 权重**；运行时或权重缺失时，扫描资产仍保留，但命令非零退出。无待处理向量时不会加载模型。
-默认模型候选仍需更多真实 Pixiv 样本验证；`sync bookmarks`、`rebuild` 尚未注册。
+私有索引打开时将 schema v1 升级为 v2，并记录每个 Asset 的目标 model/generation。未来模型 revision
+变化时，未变化的旧 Asset 和向量保留旧代；仅新观察或内容变化的 Asset 面向新代。搜索只比较当前代，
+status 计入所有已存代；旧 Asset 不会自动重新生成向量，需显式 rebuild（目前尚未注册）。默认模型候选
+仍需更多真实 Pixiv 样本验证；`sync bookmarks` 尚未注册。
 
 ### 反向搜图
 

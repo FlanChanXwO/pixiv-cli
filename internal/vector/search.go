@@ -31,7 +31,7 @@ func (s *Store) Search(ctx context.Context, model, generation string, query []fl
 	if querySquared == 0 {
 		return nil, errors.New("vector: zero query vector")
 	}
-	rows, err := s.db.QueryContext(ctx, `SELECT a.source,a.source_id,a.page_index,a.fingerprint,a.metadata,e.vector
+	rows, err := s.db.QueryContext(ctx, `SELECT a.source,a.source_id,a.page_index,a.fingerprint,a.metadata,a.target_model,a.target_generation,e.vector
 		FROM embedding e JOIN asset a ON a.source=e.source AND a.source_id=e.source_id AND a.page_index=e.page_index
 		WHERE e.model=? AND e.generation=?`, model, generation)
 	if err != nil {
@@ -43,7 +43,7 @@ func (s *Store) Search(ctx context.Context, model, generation string, query []fl
 		var match Match
 		var data []byte
 		if err := rows.Scan(&match.Asset.Key.Source, &match.Asset.Key.ID, &match.Asset.Key.Page,
-			&match.Asset.Fingerprint, &match.Asset.Metadata, &data); err != nil {
+			&match.Asset.Fingerprint, &match.Asset.Metadata, &match.Asset.TargetModel, &match.Asset.TargetGeneration, &data); err != nil {
 			return nil, fmt.Errorf("vector: read embedding: %w", err)
 		}
 		if len(data) != len(query)*4 {

@@ -77,18 +77,18 @@ func TestPendingLocalWorkSurvivesRestartAndContentChange(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	pending, err := store.Pending(ctx, "siglip2", "one")
+	pending, err := store.Pending(ctx, vector.ModelID, vector.Generation)
 	if err != nil || len(pending) != 1 || pending[0].Key.ID != canonicalPath {
 		t.Fatalf("first pending: got=%+v err=%v", pending, err)
 	}
 	oldFingerprint := pending[0].Fingerprint
-	if err := store.PutEmbedding(ctx, pending[0].Key, pending[0].Fingerprint, "siglip2", "one", []float32{1, 0}); err != nil {
+	if err := store.PutEmbedding(ctx, pending[0].Key, pending[0].Fingerprint, vector.ModelID, vector.Generation, []float32{1, 0}); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := vector.SyncLocal(ctx, store, gallery); err != nil {
 		t.Fatal(err)
 	}
-	pending, err = store.Pending(ctx, "siglip2", "one")
+	pending, err = store.Pending(ctx, vector.ModelID, vector.Generation)
 	if err != nil || len(pending) != 0 {
 		t.Fatalf("unchanged image should be done: got=%+v err=%v", pending, err)
 	}
@@ -116,7 +116,7 @@ func TestPendingLocalWorkSurvivesRestartAndContentChange(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer store.Close()
-	pending, err = store.Pending(ctx, "siglip2", "one")
+	pending, err = store.Pending(ctx, vector.ModelID, vector.Generation)
 	if err != nil || len(pending) != 1 || pending[0].Fingerprint == oldFingerprint {
 		t.Fatalf("changed image pending after restart: got=%+v err=%v", pending, err)
 	}
@@ -130,10 +130,10 @@ func TestStoreRejectsStaleEmbeddingAfterFileChanges(t *testing.T) {
 	}
 	defer store.Close()
 	key := vector.Key{Source: "local", ID: "/gallery/a.png", Page: 0}
-	if _, err := store.Upsert(ctx, vector.Asset{Key: key, Fingerprint: "old-hash"}); err != nil {
+	if _, err := store.Upsert(ctx, vector.Asset{Key: key, Fingerprint: "old-hash", TargetModel: "siglip2", TargetGeneration: "one"}); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := store.Upsert(ctx, vector.Asset{Key: key, Fingerprint: "new-hash"}); err != nil {
+	if _, err := store.Upsert(ctx, vector.Asset{Key: key, Fingerprint: "new-hash", TargetModel: "siglip2", TargetGeneration: "one"}); err != nil {
 		t.Fatal(err)
 	}
 	if err := store.PutEmbedding(ctx, key, "old-hash", "siglip2", "one", []float32{1, 0}); !errors.Is(err, vector.ErrStaleAsset) {
@@ -172,16 +172,16 @@ func TestProcessLocalPendingRetriesAndRejectsStaleWork(t *testing.T) {
 		t.Fatal(err)
 	}
 	failure := errors.New("model failed")
-	if _, err := vector.ProcessLocalPending(ctx, store, gallery, "model", "one", func(context.Context, string) ([]float32, error) {
+	if _, err := vector.ProcessLocalPending(ctx, store, gallery, vector.ModelID, vector.Generation, func(context.Context, string) ([]float32, error) {
 		return nil, failure
 	}); !errors.Is(err, failure) {
 		t.Fatalf("failure lost: %v", err)
 	}
-	pending, err := store.Pending(ctx, "model", "one")
+	pending, err := store.Pending(ctx, vector.ModelID, vector.Generation)
 	if err != nil || len(pending) != 1 {
 		t.Fatalf("failed work must remain pending: %v %v", pending, err)
 	}
-	if _, err := vector.ProcessLocalPending(ctx, store, gallery, "model", "one", func(_ context.Context, file string) ([]float32, error) {
+	if _, err := vector.ProcessLocalPending(ctx, store, gallery, vector.ModelID, vector.Generation, func(_ context.Context, file string) ([]float32, error) {
 		if file != pending[0].Key.ID {
 			t.Fatalf("wrong file: %s", file)
 		}
@@ -190,17 +190,17 @@ func TestProcessLocalPendingRetriesAndRejectsStaleWork(t *testing.T) {
 	}); !errors.Is(err, vector.ErrStaleAsset) {
 		t.Fatalf("changed file accepted: %v", err)
 	}
-	if _, err := store.Embedding(ctx, pending[0].Key, "model", "one"); !errors.Is(err, sql.ErrNoRows) {
+	if _, err := store.Embedding(ctx, pending[0].Key, vector.ModelID, vector.Generation); !errors.Is(err, sql.ErrNoRows) {
 		t.Fatalf("stale vector stored: %v", err)
 	}
 	if _, err := vector.SyncLocal(ctx, store, gallery); err != nil {
 		t.Fatal(err)
 	}
-	processed, err := vector.ProcessLocalPending(ctx, store, gallery, "model", "one", func(context.Context, string) ([]float32, error) { return []float32{1, 0}, nil })
+	processed, err := vector.ProcessLocalPending(ctx, store, gallery, vector.ModelID, vector.Generation, func(context.Context, string) ([]float32, error) { return []float32{1, 0}, nil })
 	if err != nil || processed != 1 {
 		t.Fatalf("retry: processed=%d err=%v", processed, err)
 	}
-	processed, err = vector.ProcessLocalPending(ctx, store, gallery, "model", "one", nil)
+	processed, err = vector.ProcessLocalPending(ctx, store, gallery, vector.ModelID, vector.Generation, nil)
 	if err != nil || processed != 0 {
 		t.Fatalf("completed work reran: processed=%d err=%v", processed, err)
 	}
@@ -220,7 +220,7 @@ func TestProcessLocalPendingCancellation(t *testing.T) {
 	}
 	canceled, cancel := context.WithCancel(ctx)
 	cancel()
-	if _, err := vector.ProcessLocalPending(canceled, store, gallery, "model", "one", func(context.Context, string) ([]float32, error) {
+	if _, err := vector.ProcessLocalPending(canceled, store, gallery, vector.ModelID, vector.Generation, func(context.Context, string) ([]float32, error) {
 		t.Fatal("embedding called after cancel")
 		return nil, nil
 	}); !errors.Is(err, context.Canceled) {
@@ -252,7 +252,7 @@ func TestProcessLocalPendingOnlyEmbedsRequestedGallery(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	processed, err := vector.ProcessLocalPending(ctx, store, second, "model", "one", func(_ context.Context, path string) ([]float32, error) {
+	processed, err := vector.ProcessLocalPending(ctx, store, second, vector.ModelID, vector.Generation, func(_ context.Context, path string) ([]float32, error) {
 		if filepath.Dir(path) != secondRoot {
 			t.Fatalf("indexed outside requested gallery: %s", path)
 		}
@@ -261,7 +261,7 @@ func TestProcessLocalPendingOnlyEmbedsRequestedGallery(t *testing.T) {
 	if err != nil || processed != 1 {
 		t.Fatalf("requested gallery: processed=%d err=%v", processed, err)
 	}
-	pending, err := store.Pending(ctx, "model", "one")
+	pending, err := store.Pending(ctx, vector.ModelID, vector.Generation)
 	if err != nil || len(pending) != 1 || filepath.Dir(pending[0].Key.ID) != firstRoot {
 		t.Fatalf("other gallery must remain pending: %v %v", pending, err)
 	}

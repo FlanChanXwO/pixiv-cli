@@ -21,6 +21,10 @@ import (
 
 const applicationID = 0x50495856 // PIXV, distinct from the account database's PIXC.
 
+// Schema v1 had one production model. These migration defaults must not change with future releases.
+const v1ModelID = "google/siglip2-base-patch16-512"
+const v1Generation = "a89f5c5093f902bf39d3cd4d81d2c09867f0724b"
+
 type Key struct {
 	Source string
 	ID     string
@@ -28,9 +32,11 @@ type Key struct {
 }
 
 type Asset struct {
-	Key         Key
-	Fingerprint string
-	Metadata    json.RawMessage
+	Key              Key
+	Fingerprint      string
+	Metadata         json.RawMessage
+	TargetModel      string
+	TargetGeneration string
 }
 
 type Store struct{ db *sql.DB }
@@ -106,7 +112,7 @@ func (s *Store) init(path string) error {
 	if err := s.db.QueryRow(`PRAGMA user_version`).Scan(&version); err != nil {
 		return fmt.Errorf("vector: read schema version: %w", err)
 	}
-	if version != 0 && version != 1 {
+	if version != 0 && version != 1 && version != 2 {
 		return fmt.Errorf("vector: unsupported schema version %d", version)
 	}
 	// Mark ownership before schema writes so an interrupted first open can resume safely.
@@ -128,8 +134,30 @@ func (s *Store) init(path string) error {
 	)`); err != nil {
 		return fmt.Errorf("vector: create embedding table: %w", err)
 	}
-	if _, err := s.db.Exec(`PRAGMA user_version = 1`); err != nil {
-		return fmt.Errorf("vector: set schema version: %w", err)
+	if version == 0 || version == 1 {
+		// Both columns and the version marker commit atomically; an interrupted upgrade keeps its prior version.
+		tx, err := s.db.Begin()
+		if err != nil {
+			return fmt.Errorf("vector: begin schema migration: %w", err)
+		}
+		defer tx.Rollback()
+		for _, statement := range []string{
+			`ALTER TABLE asset ADD COLUMN target_model TEXT NOT NULL DEFAULT ''`,
+			`ALTER TABLE asset ADD COLUMN target_generation TEXT NOT NULL DEFAULT ''`,
+		} {
+			if _, err := tx.Exec(statement); err != nil {
+				return fmt.Errorf("vector: migrate asset intent: %w", err)
+			}
+		}
+		if _, err := tx.Exec(`UPDATE asset SET target_model=?, target_generation=?`, v1ModelID, v1Generation); err != nil {
+			return fmt.Errorf("vector: migrate asset generation: %w", err)
+		}
+		if _, err := tx.Exec(`PRAGMA user_version = 2`); err != nil {
+			return fmt.Errorf("vector: set schema version: %w", err)
+		}
+		if err := tx.Commit(); err != nil {
+			return fmt.Errorf("vector: commit schema migration: %w", err)
+		}
 	}
 	if err := os.Chmod(path, paths.PrivateFileMode); err != nil {
 		return fmt.Errorf("vector: protect database: %w", err)
@@ -144,9 +172,13 @@ func (s *Store) Close() error {
 	return s.db.Close()
 }
 
+// Upsert preserves the target generation when content is unchanged; a new fingerprint retargets the asset.
 func (s *Store) Upsert(ctx context.Context, asset Asset) (bool, error) {
 	if err := validateKey(asset.Key); err != nil {
 		return false, err
+	}
+	if strings.TrimSpace(asset.TargetModel) == "" || strings.TrimSpace(asset.TargetGeneration) == "" {
+		return false, errors.New("vector: asset model and generation are required")
 	}
 	if len(asset.Metadata) == 0 {
 		asset.Metadata = json.RawMessage(`{}`)
@@ -168,13 +200,18 @@ func (s *Store) Upsert(ctx context.Context, asset Asset) (bool, error) {
 		return false, fmt.Errorf("vector: read asset: %w", err)
 	}
 	if changed {
-		_, err = tx.ExecContext(ctx, `INSERT INTO asset (source,source_id,page_index,fingerprint,metadata)
-			VALUES (?,?,?,?,?)`, asset.Key.Source, asset.Key.ID, asset.Key.Page, asset.Fingerprint, []byte(asset.Metadata))
+		_, err = tx.ExecContext(ctx, `INSERT INTO asset (source,source_id,page_index,fingerprint,metadata,target_model,target_generation)
+			VALUES (?,?,?,?,?,?,?)`, asset.Key.Source, asset.Key.ID, asset.Key.Page, asset.Fingerprint, []byte(asset.Metadata), asset.TargetModel, asset.TargetGeneration)
 	} else {
 		changed = oldFingerprint != asset.Fingerprint
-		_, err = tx.ExecContext(ctx, `UPDATE asset SET fingerprint=?, metadata=?
-			WHERE source=? AND source_id=? AND page_index=?`, asset.Fingerprint, []byte(asset.Metadata),
-			asset.Key.Source, asset.Key.ID, asset.Key.Page)
+		if changed {
+			_, err = tx.ExecContext(ctx, `UPDATE asset SET fingerprint=?, metadata=?, target_model=?, target_generation=?
+				WHERE source=? AND source_id=? AND page_index=?`, asset.Fingerprint, []byte(asset.Metadata), asset.TargetModel, asset.TargetGeneration,
+				asset.Key.Source, asset.Key.ID, asset.Key.Page)
+		} else {
+			_, err = tx.ExecContext(ctx, `UPDATE asset SET metadata=? WHERE source=? AND source_id=? AND page_index=?`,
+				[]byte(asset.Metadata), asset.Key.Source, asset.Key.ID, asset.Key.Page)
+		}
 	}
 	if err != nil {
 		return false, fmt.Errorf("vector: write asset: %w", err)
@@ -197,7 +234,7 @@ func (s *Store) Get(ctx context.Context, key Key) (Asset, error) {
 	}
 	var asset Asset
 	asset.Key = key
-	err := s.db.QueryRowContext(ctx, `SELECT fingerprint,metadata FROM asset WHERE source=? AND source_id=? AND page_index=?`, key.Source, key.ID, key.Page).Scan(&asset.Fingerprint, &asset.Metadata)
+	err := s.db.QueryRowContext(ctx, `SELECT fingerprint,metadata,target_model,target_generation FROM asset WHERE source=? AND source_id=? AND page_index=?`, key.Source, key.ID, key.Page).Scan(&asset.Fingerprint, &asset.Metadata, &asset.TargetModel, &asset.TargetGeneration)
 	if err != nil {
 		return Asset{}, fmt.Errorf("vector: get asset: %w", err)
 	}
@@ -272,18 +309,18 @@ func (s *Store) Embedding(ctx context.Context, key Key, model, generation string
 	return values, nil
 }
 
-// Pending returns assets without an embedding for the requested model generation.
+// Pending returns assets assigned to the requested generation that still need an embedding.
 // Successful work has no separate job history; absence is durable across restarts.
 // ponytail: materializes pending assets; stream rows if index size strains memory.
 func (s *Store) Pending(ctx context.Context, model, generation string) ([]Asset, error) {
 	if strings.TrimSpace(model) == "" || strings.TrimSpace(generation) == "" {
 		return nil, errors.New("vector: model and generation are required")
 	}
-	rows, err := s.db.QueryContext(ctx, `SELECT a.source,a.source_id,a.page_index,a.fingerprint,a.metadata
-		FROM asset a WHERE NOT EXISTS (
+	rows, err := s.db.QueryContext(ctx, `SELECT a.source,a.source_id,a.page_index,a.fingerprint,a.metadata,a.target_model,a.target_generation
+		FROM asset a WHERE a.target_model=? AND a.target_generation=? AND NOT EXISTS (
 			SELECT 1 FROM embedding e WHERE e.source=a.source AND e.source_id=a.source_id
 			AND e.page_index=a.page_index AND e.model=? AND e.generation=?
-		) ORDER BY a.source,a.source_id,a.page_index`, model, generation)
+		) ORDER BY a.source,a.source_id,a.page_index`, model, generation, model, generation)
 	if err != nil {
 		return nil, fmt.Errorf("vector: query pending assets: %w", err)
 	}
@@ -291,7 +328,7 @@ func (s *Store) Pending(ctx context.Context, model, generation string) ([]Asset,
 	var pending []Asset
 	for rows.Next() {
 		var asset Asset
-		if err := rows.Scan(&asset.Key.Source, &asset.Key.ID, &asset.Key.Page, &asset.Fingerprint, &asset.Metadata); err != nil {
+		if err := rows.Scan(&asset.Key.Source, &asset.Key.ID, &asset.Key.Page, &asset.Fingerprint, &asset.Metadata, &asset.TargetModel, &asset.TargetGeneration); err != nil {
 			return nil, fmt.Errorf("vector: read pending asset: %w", err)
 		}
 		pending = append(pending, asset)

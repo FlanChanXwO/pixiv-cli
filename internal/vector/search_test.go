@@ -25,7 +25,7 @@ func TestSearchRanksPagesAcrossRestartWithoutMixingGenerations(t *testing.T) {
 		{vector.Key{Source: "pixiv", ID: "123", Page: 1}, "one", []float32{0, 1}, `{"title":"second"}`},
 		{vector.Key{Source: "local", ID: "/gallery/a.png"}, "two", []float32{1, 0}, `{}`},
 	} {
-		if _, err := store.Upsert(ctx, vector.Asset{Key: item.key, Fingerprint: "same", Metadata: []byte(item.metadata)}); err != nil {
+		if _, err := store.Upsert(ctx, vector.Asset{Key: item.key, Fingerprint: "same", Metadata: []byte(item.metadata), TargetModel: "model", TargetGeneration: item.generation}); err != nil {
 			t.Fatal(err)
 		}
 		if err := store.PutEmbedding(ctx, item.key, "same", "model", item.generation, item.values); err != nil {

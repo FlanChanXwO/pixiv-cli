@@ -53,7 +53,7 @@ func SyncLocal(ctx context.Context, store *Store, root string) (SyncStats, error
 		if err != nil {
 			return err
 		}
-		changed, err := store.Upsert(ctx, Asset{Key: Key{Source: "local", ID: path}, Fingerprint: fingerprint})
+		changed, err := store.Upsert(ctx, Asset{Key: Key{Source: "local", ID: path}, Fingerprint: fingerprint, TargetModel: ModelID, TargetGeneration: Generation})
 		if err != nil {
 			return err
 		}

@@ -740,7 +740,7 @@ func TestVectorSearchUsesLocalIndexWithoutPixivAuth(t *testing.T) {
 		t.Fatal(err)
 	}
 	key := vector.Key{Source: "local", ID: "/gallery/a.png"}
-	if _, err := store.Upsert(context.Background(), vector.Asset{Key: key, Fingerprint: "a"}); err != nil {
+	if _, err := store.Upsert(context.Background(), vector.Asset{Key: key, Fingerprint: "a", TargetModel: vector.ModelID, TargetGeneration: vector.Generation}); err != nil {
 		t.Fatal(err)
 	}
 	if err := store.PutEmbedding(context.Background(), key, "a", vector.ModelID, vector.Generation, []float32{1, 0}); err != nil {

@@ -441,8 +441,12 @@ PIXIV_VECTOR_PYTHON="$HOME/.pixiv-cli/vector-python/bin/python" pixiv vector sea
 Windows uses the venv's `Scripts/python.exe` as `PIXIV_VECTOR_PYTHON`. The model cache follows the Python
 Hugging Face `HF_HOME` setting. Sync uses the pinned safetensors revision with remote custom code disabled and
 **never downloads weights implicitly**. Missing runtime/weights makes the command non-zero after recording the
-scanned assets. An unchanged gallery with no pending embeddings does not load the model. The current model
-candidate still needs broader real-Pixiv retrieval validation; `sync bookmarks` and `rebuild` are not registered yet.
+scanned assets. An unchanged gallery with no pending embeddings does not load the model. The private
+index upgrades schema v1 to v2 on open and persists each asset's target model/generation. After a future model
+revision, unchanged existing assets and their embeddings stay in the old generation; only newly observed or
+content-changed assets target the new generation. Search compares only the current generation; status counts all
+stored generations. Historical assets are not re-embedded without an explicit rebuild, which is not registered yet.
+The current model candidate still needs broader real-Pixiv retrieval validation; `sync bookmarks` is not registered yet.
 
 ### Reverse image search
 
