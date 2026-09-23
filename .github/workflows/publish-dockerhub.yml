@@ -63,14 +63,6 @@ jobs:
           printf 'run_id=%s\n' "$run_id" >> "$GITHUB_OUTPUT"
           printf 'head_sha=%s\n' "$(printf '%s' "$run" | jq -r '.head_sha')" >> "$GITHUB_OUTPUT"
 
-      - name: Download the prepared handoff
-        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
-        with:
-          name: prepared-release-checksums
-          path: prepared
-          github-token: ${{ github.token }}
-          repository: ${{ github.repository }}
-          run-id: ${{ steps.release.outputs.run_id }}
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
         with:
           fetch-depth: 0
@@ -79,6 +71,14 @@ jobs:
       - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff
         with:
           go-version-file: go.mod
+      - name: Download the prepared handoff
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: prepared-release-checksums
+          path: prepared
+          github-token: ${{ github.token }}
+          repository: ${{ github.repository }}
+          run-id: ${{ steps.release.outputs.run_id }}
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
         with:
           pattern: verified-container-*
