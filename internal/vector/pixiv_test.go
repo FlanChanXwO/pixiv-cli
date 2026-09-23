@@ -148,3 +148,96 @@ func TestEmbedPixivArtworksEmbedsMissingCoversAndLeavesFailuresPending(t *testin
 		t.Fatalf("already embedded cover was re-fetched: %v", requested)
 	}
 }
+
+// TestSyncPixivArtworksRecordsEveryKnownPageIdempotently 锁定 Task 14 契约：
+// 已知多页时每个页面建立独立 Asset；重复 observe 不产生新 Asset 或重复 embedding work。
+func TestSyncPixivArtworksRecordsEveryKnownPageIdempotently(t *testing.T) {
+	ctx := context.Background()
+	store, err := vector.Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	// detail 路径已取得全部三页；listing-only 作品只有 cover。
+	artworks := []vector.PixivArtwork{
+		{
+			ID: 101, Title: "multi", UserID: 7, PageCount: 3,
+			Pages: []vector.PixivPage{{Index: 0, Ref: "ref-101-p0"}, {Index: 1, Ref: "ref-101-p1"}, {Index: 2, Ref: "ref-101-p2"}},
+		},
+		{ID: 202, Title: "cover only", UserID: 8, PageCount: 2, CoverRef: "ref-202-cover"},
+	}
+	stats, err := vector.SyncPixivArtworks(ctx, store, artworks)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if stats.Scanned != 2 || stats.Changed != 4 || stats.Skipped != 0 {
+		t.Fatalf("stats = %+v, want scanned=2 changed=4 (3 pages + 1 cover)", stats)
+	}
+	assets, embeddings, err := store.Status(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if assets != 4 || embeddings != 0 {
+		t.Fatalf("assets/embeddings = %d/%d, want 4/0 (observe records assets, never embeds)", assets, embeddings)
+	}
+	// 全部页面已知的作品不得被标成 cover_only，且保留真实页数。
+	asset, err := store.Get(ctx, vector.Key{Source: "pixiv", ID: "101", Page: 2})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(asset.Metadata), `"cover_only":true`) {
+		t.Fatalf("fully known pages must not claim cover_only: %s", asset.Metadata)
+	}
+	pending, err := store.Pending(ctx, vector.ModelID, vector.Generation)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(pending) != 4 {
+		t.Fatalf("pending = %d, want every observed page pending for a later sync", len(pending))
+	}
+	// 同 Asset 重复 observe 不得重复产生 Asset 或 embedding work。
+	stats, err = vector.SyncPixivArtworks(ctx, store, artworks)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if stats.Changed != 0 {
+		t.Fatalf("repeat observe reported changes: %+v", stats)
+	}
+	assets, _, err = store.Status(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if assets != 4 {
+		t.Fatalf("repeat observe duplicated assets: %d", assets)
+	}
+	pending, err = store.Pending(ctx, vector.ModelID, vector.Generation)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(pending) != 4 {
+		t.Fatalf("repeat observe changed pending work: %d", len(pending))
+	}
+}
+
+// TestSyncPixivArtworksIgnoresPagesWithoutIdentity 保证缺身份的页面不会被写成假 Asset。
+func TestSyncPixivArtworksIgnoresPagesWithoutIdentity(t *testing.T) {
+	ctx := context.Background()
+	store, err := vector.Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	stats, err := vector.SyncPixivArtworks(ctx, store, []vector.PixivArtwork{{
+		ID: 303, PageCount: 2,
+		Pages: []vector.PixivPage{{Index: 0, Ref: "ref-p0"}, {Index: 1, Ref: ""}},
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if stats.Changed != 1 {
+		t.Fatalf("only the page with a real identity must be recorded: %+v", stats)
+	}
+	if _, err := store.Get(ctx, vector.Key{Source: "pixiv", ID: "303", Page: 1}); err == nil {
+		t.Fatal("a page without an image identity must not become an asset")
+	}
+}

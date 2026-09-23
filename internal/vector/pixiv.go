@@ -10,15 +10,24 @@ import (
 	"strconv"
 )
 
-// PixivArtwork 是一次 bookmark listing 已取得的公开字段快照。
-// listing 只提供 cover，其余页面的 URL 需要 artwork detail，因此这里不假设多页图片可得。
-// CoverRef 是不含签名 URL 的稳定资源身份文本；空值表示 listing 没有给出可用图片。
+// PixivPage 是一个已取得身份的页面。Ref 是不含签名 URL 的稳定资源身份文本；
+// 空 Ref 表示该页已知存在但没有可用图片，不能写成假 Asset。
+type PixivPage struct {
+	Index int
+	Ref   string
+}
+
+// PixivArtwork 是一次 Pixiv 读取已取得的公开字段快照。
+// Pages 非空表示已取得全部页面身份（例如 detail）；为空时只能使用 CoverRef，
+// 因为 listing 只提供 cover，其余页面的 URL 需要 artwork detail。
+// CoverRef 是不含签名 URL 的稳定资源身份文本；空值表示没有给出可用图片。
 type PixivArtwork struct {
 	ID        int64
 	Title     string
 	UserID    int64
 	PageCount int
 	CoverRef  string
+	Pages     []PixivPage
 }
 
 // pixivAssetMetadata 是写入 Asset 的稳定最小身份，便于搜索时恢复作品 URL。
@@ -31,10 +40,12 @@ type pixivAssetMetadata struct {
 	URL       string `json:"url"`
 }
 
-// SyncPixivArtworks records the pages a bookmark listing actually provided.
-// Only page 0 is known from a listing: multi-page artworks are stored as their cover with
-// cover_only set, because resolving the remaining pages requires artwork detail, which
-// bookmark sync deliberately never issues. Artworks without an image are skipped, not faked.
+// SyncPixivArtworks records every page the source actually provided, one Asset per page,
+// and is idempotent: repeating an unchanged observation adds no Asset and no embedding work.
+// When Pages is empty only page 0 is known, so a multi-page artwork is stored as its cover
+// with cover_only set; resolving the remaining pages would require artwork detail, which
+// bookmark sync and the passive observer deliberately never issue. Missing image identity is
+// counted as skipped rather than stored as an image-less asset.
 func SyncPixivArtworks(ctx context.Context, store *Store, artworks []PixivArtwork) (SyncStats, error) {
 	if store == nil {
 		return SyncStats{}, errors.New("vector: store is required")
@@ -48,33 +59,48 @@ func SyncPixivArtworks(ctx context.Context, store *Store, artworks []PixivArtwor
 			return stats, fmt.Errorf("vector: artwork ID must be positive, got %d", artwork.ID)
 		}
 		stats.Scanned++
-		if artwork.CoverRef == "" {
-			// 没有图片的作品不产生 Asset；这不是失败，而是 listing 未提供可用图片。
-			stats.Skipped++
-			continue
+		pages := artwork.Pages
+		coverOnly := false
+		if len(pages) == 0 {
+			if artwork.CoverRef == "" {
+				// 没有图片的作品不产生 Asset；这不是失败，而是上游未提供可用图片。
+				stats.Skipped++
+				continue
+			}
+			pages = []PixivPage{{Index: 0, Ref: artwork.CoverRef}}
+			coverOnly = artwork.PageCount > 1
 		}
-		metadata, err := json.Marshal(pixivAssetMetadata{
-			Title:     artwork.Title,
-			UserID:    artwork.UserID,
-			PageCount: artwork.PageCount,
-			CoverOnly: artwork.PageCount > 1,
-			URL:       "https://www.pixiv.net/artworks/" + strconv.FormatInt(artwork.ID, 10),
-		})
-		if err != nil {
-			return stats, fmt.Errorf("vector: encode artwork metadata: %w", err)
-		}
-		changed, err := store.Upsert(ctx, Asset{
-			Key:              Key{Source: "pixiv", ID: strconv.FormatInt(artwork.ID, 10), Page: 0},
-			Fingerprint:      pixivCoverFingerprint(artwork.CoverRef),
-			Metadata:         metadata,
-			TargetModel:      ModelID,
-			TargetGeneration: Generation,
-		})
-		if err != nil {
-			return stats, err
-		}
-		if changed {
-			stats.Changed++
+		for _, page := range pages {
+			if err := ctx.Err(); err != nil {
+				return stats, err
+			}
+			if page.Ref == "" {
+				stats.Skipped++
+				continue
+			}
+			metadata, err := json.Marshal(pixivAssetMetadata{
+				Title:     artwork.Title,
+				UserID:    artwork.UserID,
+				PageCount: artwork.PageCount,
+				CoverOnly: coverOnly,
+				URL:       "https://www.pixiv.net/artworks/" + strconv.FormatInt(artwork.ID, 10),
+			})
+			if err != nil {
+				return stats, fmt.Errorf("vector: encode artwork metadata: %w", err)
+			}
+			changed, err := store.Upsert(ctx, Asset{
+				Key:              Key{Source: "pixiv", ID: strconv.FormatInt(artwork.ID, 10), Page: page.Index},
+				Fingerprint:      pixivCoverFingerprint(page.Ref),
+				Metadata:         metadata,
+				TargetModel:      ModelID,
+				TargetGeneration: Generation,
+			})
+			if err != nil {
+				return stats, err
+			}
+			if changed {
+				stats.Changed++
+			}
 		}
 	}
 	return stats, nil
