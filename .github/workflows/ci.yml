@@ -47,7 +47,7 @@ jobs:
             } >> "$GITHUB_OUTPUT"
             exit 0
           fi
-          go run ./scripts/cmd/changescope --base "$BASE_SHA" --head "$HEAD_SHA" --github-output "$GITHUB_OUTPUT"
+          bash ./scripts/classify-change-scope.sh --base "$BASE_SHA" --head "$HEAD_SHA" --github-output "$GITHUB_OUTPUT"
       - name: Test documentation contracts
         if: ${{ steps.scope.outputs.docs_only == 'true' }}
         shell: bash

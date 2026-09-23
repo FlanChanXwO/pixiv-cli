@@ -327,7 +327,6 @@ A production file `x.go` corresponds to at most one `x_test.go` in the same dire
 | `internal/storage/database` | Tests observe the unexported `tableInfoQuery` allowlist and migration-compatibility seams so SQL identifiers remain fixed literals and legacy schemas cannot silently bypass their contract. |
 | `sdk/pixiv` | `cursor_test.go` observes unexported cursor construction and client-instance binding to verify exact query-bound invalid continuations without widening the public SDK surface. |
 | `scripts/internal/browsernativeevidence` | Tests observe unexported environment probes and inject synthetic Firefox cookie seeds. |
-| `scripts/internal/changescope` | Tests directly call unexported path parsing (`splitNULPaths`, `docsOnlyPaths`) and change-scope determination. |
 | `scripts/internal/homebrewformula` | Tests directly call unexported formula rendering and version validation (`renderFormula`, `validateFormulaVersion`, `checkDynamicVersionNeeds`). |
 | `scripts/internal/licensebundle` | Tests observe unexported `defaultBundleFileOps`, `generateFromTargetMetadata`, and license text normalization, and inject fake cargo metadata. |
 | `scripts/internal/linuxabi` | Tests directly call unexported glibc version parsing and ABI comparison (`parseGLIBCVersion`, `checkImportedSymbols`). |

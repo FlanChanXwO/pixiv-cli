@@ -118,7 +118,7 @@ jobs:
         env:
           BASE_SHA: ${{ steps.base.outputs.sha }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
-        run: go run ./scripts/cmd/changescope --base "$BASE_SHA" --head "$HEAD_SHA" --github-output "$GITHUB_OUTPUT"
+        run: bash ./scripts/classify-change-scope.sh --base "$BASE_SHA" --head "$HEAD_SHA" --github-output "$GITHUB_OUTPUT"
 
       - name: Publish smoke classification failure
         if: ${{ always() && (github.event.action != 'edited' || github.event.changes.base != null) && (steps.smoke_head.outcome == 'failure' || steps.smoke_scope.outcome == 'failure') }}
