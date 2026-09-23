@@ -105,7 +105,6 @@ jobs:
 
       - name: Fetch pull request head for trusted smoke classification
         id: smoke_head
-        if: ${{ github.event.action != 'edited' || github.event.changes.base != null }}
         continue-on-error: true
         shell: bash
         env:
@@ -117,7 +116,7 @@ jobs:
           test "$(git rev-parse "refs/remotes/pull/$PR/head")" = "$HEAD_SHA"
 
       - name: Classify smoke scope with trusted policy
-        if: ${{ (github.event.action != 'edited' || github.event.changes.base != null) && steps.smoke_head.outcome == 'success' }}
+        if: ${{ steps.smoke_head.outcome == 'success' }}
         id: smoke_scope
         continue-on-error: true
         shell: bash
@@ -127,7 +126,7 @@ jobs:
         run: bash ./scripts/classify-change-scope.sh --base "$BASE_SHA" --head "$HEAD_SHA" --github-output "$GITHUB_OUTPUT"
 
       - name: Publish smoke classification failure
-        if: ${{ always() && (github.event.action != 'edited' || github.event.changes.base != null) && (steps.smoke_head.outcome == 'failure' || steps.smoke_scope.outcome == 'failure') }}
+        if: ${{ always() && (steps.smoke_head.outcome == 'failure' || steps.smoke_scope.outcome == 'failure') }}
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
@@ -295,9 +294,9 @@ jobs:
           test "$COMMANDS_OK" = true
 
   platform_smoke:
-    name: ${{ github.event.action == 'edited' && github.event.changes.base == null && 'Platform smoke metadata refresh' || 'Platform smoke' }}
+    name: Platform smoke
     needs: validate
-    if: ${{ always() && (github.event.action != 'edited' || github.event.changes.base != null) && (needs.validate.result != 'success' || needs.validate.outputs.platform_required == 'true') }}
+    if: ${{ always() && (needs.validate.result != 'success' || needs.validate.outputs.platform_required == 'true') }}
     runs-on: ubuntu-24.04
     permissions:
       checks: read
@@ -318,14 +317,14 @@ jobs:
           WORKER_CHECK: Platform smoke worker
         run: |
           set -euo pipefail
-          check=$(gh api --method GET "repos/$REPO/commits/$HEAD_SHA/check-runs" \
-            -f check_name="$WORKER_CHECK" -f filter=latest -f per_page=1)
-          check_run_id=$(printf '%s' "$check" | jq -r '.check_runs[0].id // empty')
-          if [ -z "$check_run_id" ]; then
-            echo '::error::Trusted platform smoke worker check was not published.'
-            exit 1
-          fi
           while :; do
+            check=$(gh api --method GET "repos/$REPO/commits/$HEAD_SHA/check-runs" \
+              -f check_name="$WORKER_CHECK" -f filter=latest -f per_page=1)
+            check_run_id=$(printf '%s' "$check" | jq -r '.check_runs[0].id // empty')
+            if [ -z "$check_run_id" ]; then
+              sleep 5
+              continue
+            fi
             check=$(gh api "repos/$REPO/check-runs/$check_run_id")
             status=$(printf '%s' "$check" | jq -r '.status')
             if [ "$status" = completed ]; then
@@ -341,9 +340,9 @@ jobs:
           done
 
   container_smoke:
-    name: ${{ github.event.action == 'edited' && github.event.changes.base == null && 'Container smoke metadata refresh' || 'Container smoke' }}
+    name: Container smoke
     needs: validate
-    if: ${{ always() && (github.event.action != 'edited' || github.event.changes.base != null) && (needs.validate.result != 'success' || needs.validate.outputs.container_required == 'true') }}
+    if: ${{ always() && (needs.validate.result != 'success' || needs.validate.outputs.container_required == 'true') }}
     runs-on: ubuntu-24.04
     permissions:
       checks: read
@@ -364,14 +363,14 @@ jobs:
           WORKER_CHECK: Container smoke worker
         run: |
           set -euo pipefail
-          check=$(gh api --method GET "repos/$REPO/commits/$HEAD_SHA/check-runs" \
-            -f check_name="$WORKER_CHECK" -f filter=latest -f per_page=1)
-          check_run_id=$(printf '%s' "$check" | jq -r '.check_runs[0].id // empty')
-          if [ -z "$check_run_id" ]; then
-            echo '::error::Trusted container smoke worker check was not published.'
-            exit 1
-          fi
           while :; do
+            check=$(gh api --method GET "repos/$REPO/commits/$HEAD_SHA/check-runs" \
+              -f check_name="$WORKER_CHECK" -f filter=latest -f per_page=1)
+            check_run_id=$(printf '%s' "$check" | jq -r '.check_runs[0].id // empty')
+            if [ -z "$check_run_id" ]; then
+              sleep 5
+              continue
+            fi
             check=$(gh api "repos/$REPO/check-runs/$check_run_id")
             status=$(printf '%s' "$check" | jq -r '.status')
             if [ "$status" = completed ]; then
