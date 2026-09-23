@@ -128,6 +128,18 @@ func TestPublishersCheckoutBeforePreparedHandoffConsumption(t *testing.T) {
 	}
 }
 
+// TestHomebrewLinuxVerificationAcceptsGeneratedVerifyFormula 锁定 Linux Homebrew
+// 验证的 staging 契约：宿主机会先生成 *-verify.rb，容器内不能再按生成前的
+// 两文件集合做重复断言，否则会在真正执行 brew install 前静默失败。
+func TestHomebrewLinuxVerificationAcceptsGeneratedVerifyFormula(t *testing.T) {
+	t.Parallel()
+
+	body := readWorkflow(t, repositoryRoot(t), "publish-homebrew.yml")
+	if strings.Contains(body, "find /staging-formula -maxdepth 1 -type f -print") {
+		t.Fatal("publish-homebrew.yml must not re-check the pre-generation staging file set inside the Linux container")
+	}
+}
+
 // TestReleaseNoLongerPublishesHomebrewInline 覆盖 §16.2/§20：Homebrew 是独立
 // publisher，release.yml 不得再内联渲染、验证或部署 formula。
 func TestReleaseNoLongerPublishesHomebrewInline(t *testing.T) {
