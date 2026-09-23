@@ -79,11 +79,11 @@ jobs:
           # §15：只发布 skill 的 publisher 不下载归档/镜像，用 identity-only 模式
           # 证明这份 handoff 确实来自刚解析出的那个 run。
           go run ./tools/release verify-handoff-identity \
-            --handoff prepared/release-handoff.json \
+            --handoff prepared/release/release-handoff.json \
             --repository "$REPOSITORY" \
             --run-id "$RUN_ID" \
             --run-head-sha "$RUN_HEAD_SHA"
-          release_tag=$(jq -r '.tag' prepared/release-handoff.json)
+          release_tag=$(jq -r '.tag' prepared/release/release-handoff.json)
           test -n "$release_tag"
           printf 'value=%s\n' "$release_tag" >> "$GITHUB_OUTPUT"
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5

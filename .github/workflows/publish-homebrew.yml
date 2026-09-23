@@ -103,9 +103,9 @@ jobs:
           RUN_HEAD_SHA: ${{ steps.handoff.outputs.head_sha }}
         run: |
           set -euo pipefail
-          cp prepared/checksums.txt release-assets/checksums.txt
+          cp prepared/dist/checksums.txt release-assets/checksums.txt
           go run ./tools/release verify-handoff-set \
-            --handoff prepared/release-handoff.json \
+            --handoff prepared/release/release-handoff.json \
             --section production \
             --dist-dir release-assets \
             --container-dir containers \

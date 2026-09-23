@@ -100,7 +100,7 @@ jobs:
         run: |
           set -euo pipefail
           go run ./tools/release verify-handoff-set \
-            --handoff prepared/release-handoff.json \
+            --handoff prepared/release/release-handoff.json \
             --section container \
             --dist-dir prepared/dist \
             --container-dir containers \
