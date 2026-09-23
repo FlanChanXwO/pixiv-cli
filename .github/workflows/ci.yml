@@ -99,19 +99,3 @@ jobs:
         if: ${{ failure() }}
         shell: bash
         run: echo '::error::Required quality checks did not complete successfully.'
-
-  # Required smoke context bootstrap; remove after the trusted job names are live on main.
-  smoke_context_bootstrap_platform:
-    name: Platform smoke
-    if: ${{ github.event_name == 'workflow_dispatch' }}
-    runs-on: ubuntu-24.04
-    steps:
-      - run: echo 'Platform smoke context bootstrap.'
-
-  # Required smoke context bootstrap; remove after the trusted job names are live on main.
-  smoke_context_bootstrap_container:
-    name: Container smoke
-    if: ${{ github.event_name == 'workflow_dispatch' }}
-    runs-on: ubuntu-24.04
-    steps:
-      - run: echo 'Container smoke context bootstrap.'
