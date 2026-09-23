@@ -335,7 +335,9 @@ listing 只提供 cover 并标记 `cover_only`。观察不下载图片，待处�
 page-level 向量做 exact cosine 排序；不请求 Pixiv 或反向搜图服务，也不修改索引。现有普通文件按图片查询；
 形似路径但不存在的输入（`./...`、绝对路径或常见图片扩展名）会报错，不当作文本，其余输入按文本查询。
 搜索不隐式扫描图库或同步 bookmarks。输出为按相似度降序的逐行 JSON（NDJSON），每行含 `source`、
-`source_id`、从零开始的 `page_index`、`score`、`metadata`，Pixiv Asset 另含 `url`；同一 Pixiv 作品的多个页面在 CLI 输出中
+`source_id`、从零开始的 `page_index`、`score`、`metadata`，Pixiv Asset 另含 `url`；`metadata` 对本地 Asset 为 `{}`，
+Pixiv Asset 含 `title`、`user_id`、`page_count` 与 `url`，仅取得 listing cover 时另有 `cover_only`。
+同一 Pixiv 作品的多个页面在 CLI 输出中
 合并，只输出该作品相似度最高的页面，持久索引仍保持 page-level；不暗设结果条数上限。
 这些结果不是供 `detail`/`download` 使用的规范 Pixiv Record。CLI 重启后不重新计算已存图片向量，
 但每次查询仍需已预装的模型。sync/status 无 `--json`，search 无需输出 flag 即为 NDJSON。
