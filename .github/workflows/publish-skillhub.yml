@@ -59,6 +59,14 @@ jobs:
           printf 'run_id=%s\n' "$run_id" >> "$GITHUB_OUTPUT"
           printf 'head_sha=%s\n' "$(printf '%s' "$run" | jq -r '.head_sha')" >> "$GITHUB_OUTPUT"
 
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+          ref: ${{ steps.run.outputs.head_sha }}
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff
+        with:
+          go-version-file: go.mod
       - name: Download the prepared handoff
         uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
         with:
@@ -86,14 +94,6 @@ jobs:
           release_tag=$(jq -r '.tag' prepared/release/release-handoff.json)
           test -n "$release_tag"
           printf 'value=%s\n' "$release_tag" >> "$GITHUB_OUTPUT"
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
-        with:
-          fetch-depth: 0
-          persist-credentials: false
-          ref: ${{ steps.run.outputs.head_sha }}
-      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff
-        with:
-          go-version-file: go.mod
       - name: Verify the published release tag belongs to the default branch
         id: skill_change
         shell: bash
