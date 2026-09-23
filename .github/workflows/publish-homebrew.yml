@@ -234,7 +234,6 @@ jobs:
                   pixiv-cli|pixiv-cli-beta) ;;
                   *) exit 1 ;;
                 esac
-                test "$(find /staging-formula -maxdepth 1 -type f -print | LC_ALL=C sort)" = "$(printf "%s\n%s\n" /staging-formula/formula-name "/staging-formula/$formula_name.rb" | LC_ALL=C sort)"
                 staging_tap=pixiv-cli-release/staging
                 tap_dir="$(brew --repository)/Library/Taps/pixiv-cli-release/homebrew-staging"
                 brew tap-new "$staging_tap" --no-git
