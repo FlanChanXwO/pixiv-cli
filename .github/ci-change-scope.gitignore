@@ -45,3 +45,5 @@
 !/scripts/build-platform.sh
 !/scripts/build-staticlibs*
 !/scripts/cmd/releaseassets/**
+
+# E2E probe: this temporary branch verifies Quality-only scope and will not be merged.
