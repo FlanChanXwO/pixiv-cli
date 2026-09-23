@@ -80,7 +80,9 @@ func TestPreparedReleaseArtifactConsumersUsePreservedPaths(t *testing.T) {
 
 	for name, wants := range map[string][]string{
 		"publish-homebrew.yml": {
-			"cp prepared/dist/checksums.txt release-assets/checksums.txt",
+			"name: verified-release-checksums",
+			"--checksums prepared/dist/checksums.txt",
+			"--checksums published-release/checksums.txt",
 			"--handoff prepared/release/release-handoff.json",
 		},
 		"publish-dockerhub.yml": {
@@ -101,6 +103,27 @@ func TestPreparedReleaseArtifactConsumersUsePreservedPaths(t *testing.T) {
 			if !strings.Contains(body, want) {
 				t.Errorf("%s must consume the prepared artifact using preserved path %q", name, want)
 			}
+		}
+	}
+}
+
+// TestPublishersCheckoutBeforePreparedHandoffConsumption 锁定 publisher 的工作区顺序：
+// checkout 会清理未跟踪文件，而 handoff 校验又依赖仓库内的 Go 工具，因此必须先
+// checkout/setup-go，再下载并消费 prepared handoff。
+func TestPublishersCheckoutBeforePreparedHandoffConsumption(t *testing.T) {
+	t.Parallel()
+
+	root := repositoryRoot(t)
+	for _, name := range []string{"publish-clawhub.yml", "publish-skillhub.yml", "publish-dockerhub.yml"} {
+		body := readWorkflow(t, root, name)
+		checkout := strings.Index(body, "actions/checkout@")
+		setupGo := strings.Index(body, "actions/setup-go@")
+		download := strings.Index(body, "name: Download the prepared handoff")
+		if checkout < 0 || setupGo < 0 || download < 0 {
+			t.Fatalf("%s must contain checkout, setup-go, and prepared handoff download", name)
+		}
+		if checkout > download || setupGo > download {
+			t.Errorf("%s must checkout and setup Go before downloading the prepared handoff", name)
 		}
 	}
 }
