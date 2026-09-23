@@ -86,8 +86,8 @@ func splitNULPaths(value []byte) []string {
 	return parts[:len(parts)-1]
 }
 
-// docsOnlyPaths 是刻意严格的 allowlist。任何代码、依赖、脚本、workflow 或未列出的
-// 文件都会保留完整 CI，避免路径分类成为绕过发布验证的途径。
+// docsOnlyPaths 是刻意严格的 allowlist。仅仓库说明、Agent 指令和不影响运行产物的
+// 协作元数据可以跳过完整 CI；代码、依赖、构建/发布输入、workflow 和未列出的文件保留完整验证。
 func docsOnlyPaths(paths []string) bool {
 	if len(paths) == 0 {
 		return false
@@ -102,10 +102,20 @@ func docsOnlyPaths(paths []string) bool {
 
 func isApprovedDocumentationPath(path string) bool {
 	return path == "README.md" ||
+		path == "AGENTS.md" ||
+		path == "CLAUDE.md" ||
+		path == ".gitignore" ||
+		path == ".pre-commit-config.yaml" ||
+		path == ".github/CODEOWNERS" ||
+		path == ".github/PULL_REQUEST_TEMPLATE.md" ||
 		(strings.HasPrefix(path, "README.") && strings.HasSuffix(path, ".md")) ||
+		(strings.HasPrefix(path, "CONTRIBUTING.") && strings.HasSuffix(path, ".md")) ||
+		path == "CONTRIBUTING.md" ||
 		strings.HasPrefix(path, "docs/") ||
 		strings.HasPrefix(path, "changelog/") ||
-		strings.HasPrefix(path, "skills/")
+		strings.HasPrefix(path, "skills/") ||
+		strings.HasPrefix(path, ".agents/skills/") ||
+		strings.HasPrefix(path, ".github/ISSUE_TEMPLATE/")
 }
 
 // WriteOutput 追加写入 GitHub Actions 的输出文件；空路径表示跳过。

@@ -12,13 +12,15 @@ func TestDocsOnlyPaths(t *testing.T) {
 	}{
 		{
 			name:  "approved documentation paths",
-			paths: []string{"README.md", "README.zh-CN.md", "docs/zh-CN/maintainers/development.md", "changelog/unreleased/en.md", "skills/pixiv-cli/SKILL.md"},
+			paths: []string{"README.md", "README.zh-CN.md", "AGENTS.md", "CLAUDE.md", "CONTRIBUTING.md", "CONTRIBUTING.zh-CN.md", ".gitignore", ".pre-commit-config.yaml", "docs/zh-CN/maintainers/development.md", "changelog/unreleased/en.md", "skills/pixiv-cli/SKILL.md", ".agents/skills/pixiv-cli-review/SKILL.md", ".github/CODEOWNERS", ".github/ISSUE_TEMPLATE/bug-report.yml", ".github/PULL_REQUEST_TEMPLATE.md"},
 			want:  true,
 		},
 		{name: "empty diff stays full", paths: nil, want: false},
 		{name: "source change stays full", paths: []string{"README.md", "internal/cli/root.go"}, want: false},
 		{name: "workflow change stays full", paths: []string{".github/workflows/ci.yml"}, want: false},
 		{name: "dependency change stays full", paths: []string{"go.mod"}, want: false},
+		{name: "packaging input stays full", paths: []string{"THIRD_PARTY_LICENSES.md"}, want: false},
+		{name: "toolchain metadata stays full", paths: []string{".tool-versions"}, want: false},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			t.Parallel()
