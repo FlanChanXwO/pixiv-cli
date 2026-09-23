@@ -23,6 +23,7 @@ import (
 	"github.com/FlanChanXwO/pixiv-cli/internal/services/reversesearch"
 	reverseassembly "github.com/FlanChanXwO/pixiv-cli/internal/services/reversesearch/assembly"
 	"github.com/FlanChanXwO/pixiv-cli/internal/storage/database"
+	"github.com/FlanChanXwO/pixiv-cli/internal/vector"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/spf13/cobra"
 	"github.com/stretchr/testify/assert"
@@ -723,6 +724,39 @@ func TestVectorLocalStagesWithoutAuthOrFakeEmbedding(t *testing.T) {
 	for _, path := range []string{databasePath, configPath} {
 		if _, err := os.Stat(path); !errors.Is(err, os.ErrNotExist) {
 			t.Fatalf("local vector command touched auth/config state %q: %v", path, err)
+		}
+	}
+}
+
+func TestVectorSearchUsesLocalIndexWithoutPixivAuth(t *testing.T) {
+	t.Setenv("PIXIV_VECTOR_PYTHON", filepath.Join(t.TempDir(), "missing-python"))
+	databasePath, configPath := useTempPaths(t)
+	dir, err := paths.AppDataDir()
+	if err != nil {
+		t.Fatal(err)
+	}
+	store, err := vector.Open(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	key := vector.Key{Source: "local", ID: "/gallery/a.png"}
+	if _, err := store.Upsert(context.Background(), vector.Asset{Key: key, Fingerprint: "a"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.PutEmbedding(context.Background(), key, "a", vector.ModelID, vector.Generation, []float32{1, 0}); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.Close(); err != nil {
+		t.Fatal(err)
+	}
+	var stdout, stderr bytes.Buffer
+	code := Run([]string{"pixiv", "vector", "search", "white hair"}, strings.NewReader(""), &stdout, &stderr)
+	if code != 1 || !strings.Contains(stderr.String(), "embedding runtime unavailable") {
+		t.Fatalf("search should reach local inference: code=%d stdout=%q stderr=%q", code, stdout.String(), stderr.String())
+	}
+	for _, path := range []string{databasePath, configPath} {
+		if _, err := os.Stat(path); !errors.Is(err, os.ErrNotExist) {
+			t.Fatalf("vector search touched auth/config state %q: %v", path, err)
 		}
 	}
 }

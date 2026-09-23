@@ -17,11 +17,14 @@ print(json.dumps({"ready": True}), flush=True)
 for line in sys.stdin:
     request = json.loads(line)
     try:
-        with Image.open(request["image"]) as source:
-            image = source.convert("RGB")
         with torch.inference_mode():
-            features = model.get_image_features(**processor(images=[image], return_tensors="pt")).pooler_output
+            if "text" in request:
+                features = model.get_text_features(**processor(text=[request["text"]], padding="max_length", return_tensors="pt")).pooler_output
+            else:
+                with Image.open(request["image"]) as source:
+                    image = source.convert("RGB")
+                features = model.get_image_features(**processor(images=[image], return_tensors="pt")).pooler_output
             vector = torch.nn.functional.normalize(features.float(), dim=-1)[0].tolist()
         print(json.dumps({"vector": vector}), flush=True)
     except (OSError, ValueError, KeyError):
-        print(json.dumps({"error": "cannot_read_image"}), flush=True)
+        print(json.dumps({"error": "cannot_encode_text" if "text" in request else "cannot_read_image"}), flush=True)

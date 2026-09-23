@@ -79,7 +79,7 @@ the installed binary's `pixiv <cmd> --help` output.
 | Account diagnosis | `auth list/check` | List only for authentication/account/fallback decisions; check only when network validation is needed |
 | Account maintenance | `auth refresh` | Rotates saved OAuth credentials and refreshes the cached account profile/Premium status; run only on an explicit request |
 | Write | `comment create/reply/stamp/delete` `bookmark add/remove` `follow add/remove` | State the target (artwork/novel/comment ID) and explicit type in one line before executing; comment mutations require positive numeric IDs and their required body/parent/stamp fields; for NDJSON stdin actions, state the record type and scope before starting |
-| Local index | `vector sync local PATH` `vector status` | For sync, confirm the exact gallery path and local indexing scope; it reads images and writes a private vector DB without Pixiv requests. Requires preinstalled Python/model (see the CLI reference); never download weights implicitly. Status reads private index counts. Do not claim `vector search`, bookmarks sync, or rebuild exists yet. |
+| Local index | `vector sync local PATH` `vector search QUERY_OR_IMAGE` `vector status` | For sync, confirm the exact gallery path and local indexing scope. Search locally over the existing private index without Pixiv requests; a file argument reads that image and results contain local paths, so confirm image scope before use. Sync and search require the preinstalled Python/model (see the CLI reference); never download weights implicitly. Status reads private index counts. Do not claim bookmarks sync or rebuild exists yet. |
 | Disk | `download` | Confirm target directory and exact targets (IDs or supported Pixiv URLs) before each invocation; a user URL expands every visual work, so state that scope explicitly; approval never carries over; see `references/download.md` |
 | Interactive credential | `auth login` | Read `references/auth.md`, then run only on an explicit request while the user is present for browser OAuth; use the one-time desktop hand-off URL when the account host is remote |
 | Account/config state | `auth use/remove` `config set/unset` `update` (actual install) | Ask for explicit confirmation each time; approval does not carry over |
@@ -183,6 +183,8 @@ pixiv follow remove USER_ID               # write op
 pixiv download [SRC...] [--pages 1,3-5] [--quality original|regular|small|thumb|mini] [--ugoira-mode gif|apng] [--output DIR] [--on-error skip|fail-fast]
 pixiv vector sync local PATH               # explicit local scan and embedding; preinstalled runtime required
 pixiv vector status                        # private index counts; no Pixiv account needed
+pixiv vector search "white hair"           # offline text → image; NDJSON page-level results
+pixiv vector search ./reference.jpg         # offline image → image; reads that local file
 pixiv update --check --json               # read-only update check
 ```
 

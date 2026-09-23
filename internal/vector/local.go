@@ -46,7 +46,7 @@ func SyncLocal(ctx context.Context, store *Store, root string) (SyncStats, error
 			return err
 		}
 		// 只读取明确目录下的常见位图，symlink 不跟随到目录外。
-		if !entry.Type().IsRegular() || !imageExtension(filepath.Ext(path)) {
+		if !entry.Type().IsRegular() || !IsImageExtension(filepath.Ext(path)) {
 			return nil
 		}
 		fingerprint, err := fileFingerprint(path)
@@ -69,7 +69,8 @@ func SyncLocal(ctx context.Context, store *Store, root string) (SyncStats, error
 	return stats, nil
 }
 
-func imageExtension(ext string) bool {
+// IsImageExtension reports the extensions scanned from local galleries.
+func IsImageExtension(ext string) bool {
 	switch strings.ToLower(ext) {
 	case ".jpg", ".jpeg", ".png", ".gif", ".webp", ".avif", ".bmp", ".tif", ".tiff":
 		return true

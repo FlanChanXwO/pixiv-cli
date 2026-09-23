@@ -3,9 +3,14 @@ package vector
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
+	"net/url"
+	"os"
+	"path/filepath"
+	"strings"
 
 	requirements "github.com/FlanChanXwO/pixiv-cli/internal/cli/commands"
 	index "github.com/FlanChanXwO/pixiv-cli/internal/vector"
@@ -23,6 +28,12 @@ func New(out io.Writer, open func() (*index.Store, error), start func(context.Co
 		},
 	})
 	cmd.AddCommand(sync)
+	cmd.AddCommand(&cobra.Command{
+		Use: "search QUERY_OR_IMAGE", Short: "Search the persistent local vector index", Args: cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return search(cmd.Context(), out, open, start, args[0])
+		},
+	})
 	cmd.AddCommand(&cobra.Command{
 		Use: "status", Short: "Show durable vector index counts", Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) (err error) {
@@ -71,4 +82,65 @@ func syncLocal(ctx context.Context, out io.Writer, open func() (*index.Store, er
 	}
 	_, writeErr := fmt.Fprintf(out, "embedded: %d\n", processed)
 	return errors.Join(processErr, writeErr)
+}
+
+// search has no Pixiv SDK or reverse-search dependency; it only reads the private index.
+func search(ctx context.Context, out io.Writer, open func() (*index.Store, error), start func(context.Context) (*index.SigLIP2, error), input string) (err error) {
+	if strings.TrimSpace(input) == "" {
+		return errors.New("vector: query is required")
+	}
+	file, statErr := os.Stat(input)
+	image := statErr == nil
+	if image && !file.Mode().IsRegular() {
+		return errors.New("vector: image must be a regular file")
+	}
+	if statErr != nil {
+		if !errors.Is(statErr, os.ErrNotExist) {
+			return fmt.Errorf("vector: inspect query: %w", statErr)
+		}
+		if filepath.IsAbs(input) || strings.HasPrefix(input, "./") || strings.HasPrefix(input, "../") || index.IsImageExtension(filepath.Ext(input)) {
+			return errors.New("vector: image file does not exist")
+		}
+	}
+	store, err := open()
+	if err != nil {
+		return err
+	}
+	defer func() { err = errors.Join(err, store.Close()) }()
+	runtime, err := start(ctx)
+	if err != nil {
+		return err
+	}
+	var query []float32
+	if image {
+		query, err = runtime.Image(ctx, input)
+	} else {
+		query, err = runtime.Text(ctx, input)
+	}
+	err = errors.Join(err, runtime.Close())
+	if err != nil {
+		return err
+	}
+	matches, err := store.Search(ctx, index.ModelID, index.Generation, query)
+	if err != nil {
+		return err
+	}
+	encoder := json.NewEncoder(out)
+	for _, match := range matches {
+		result := struct {
+			Source   string          `json:"source"`
+			SourceID string          `json:"source_id"`
+			Page     int             `json:"page_index"`
+			Score    float64         `json:"score"`
+			Metadata json.RawMessage `json:"metadata"`
+			URL      string          `json:"url,omitempty"`
+		}{match.Asset.Key.Source, match.Asset.Key.ID, match.Asset.Key.Page, match.Score, match.Asset.Metadata, ""}
+		if result.Source == "pixiv" {
+			result.URL = "https://www.pixiv.net/artworks/" + url.PathEscape(result.SourceID)
+		}
+		if err := encoder.Encode(result); err != nil {
+			return err
+		}
+	}
+	return nil
 }

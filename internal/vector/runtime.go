@@ -61,10 +61,18 @@ func StartSigLIP2(ctx context.Context) (*SigLIP2, error) {
 }
 
 func (r *SigLIP2) Image(ctx context.Context, path string) ([]float32, error) {
+	return r.embed(ctx, map[string]string{"image": path})
+}
+
+func (r *SigLIP2) Text(ctx context.Context, text string) ([]float32, error) {
+	return r.embed(ctx, map[string]string{"text": text})
+}
+
+func (r *SigLIP2) embed(ctx context.Context, request map[string]string) ([]float32, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
-	if err := r.encode.Encode(map[string]string{"image": path}); err != nil {
+	if err := r.encode.Encode(request); err != nil {
 		return nil, fmt.Errorf("vector: send image to embedding runtime: %w", err)
 	}
 	var result struct {
@@ -80,6 +88,9 @@ func (r *SigLIP2) Image(ctx context.Context, path string) ([]float32, error) {
 	if result.Error != "" {
 		if result.Error == "cannot_read_image" {
 			return nil, errors.New("vector: embedding runtime cannot read image")
+		}
+		if result.Error == "cannot_encode_text" {
+			return nil, errors.New("vector: embedding runtime cannot encode text")
 		}
 		return nil, errors.New("vector: embedding runtime failed")
 	}
