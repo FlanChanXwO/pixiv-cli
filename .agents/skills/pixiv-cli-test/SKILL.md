@@ -32,7 +32,7 @@ Start with the affected package and named test, for example `go test ./path/to/o
 
 | Change | Relevant checks |
 | --- | --- |
-| Documentation, instructions, product skills | `go test ./scripts/tests/documentation -count=1`; inspect links, skill metadata, examples, and `git diff --check` |
+| Documentation, instructions, product skills | Inspect links, skill metadata, examples, and `git diff --check`; run affected existing script/tool contracts |
 | Local Go implementation | Focused test, affected integration packages, and scoped `go vet`; run `sh scripts/build.sh` when the change affects the build or executable |
 | Shared contract, public SDK, core behavior, or release candidate | `go test ./... -count=1`, `go vet ./...`, and `sh scripts/build.sh`, in addition to focused regression |
 | Concurrency, account lifecycle, persistence, shared runtime | Add `go test -race ./... -count=1`; use native platform checks where platform code is involved |
@@ -42,7 +42,7 @@ Start with the affected package and named test, for example `go test ./path/to/o
 
 Use `gofmt -l` on affected Go files and the existing `.pre-commit-config.yaml`. Run installed pre-commit when applicable; do not introduce a new linter or download hook environments silently. `sh -n` checks shell syntax, not shell behavior. Cross-compilation checks compilation, not execution on another operating system.
 
-CI scope is determined by `scripts/internal/changescope`, not the file extension or this table. In particular, do not assume root instruction files qualify as docs-only. `ci.yml` owns Quality; trusted `pr-metadata.yml` classifies PRs and dispatches base-ref Platform/Container workers, whose final statuses belong to the exact PR head. Honor those gates without changing classification to save a run. Ordinary branch/main pushes do not run CI; matching tags retain the current Quality/release path.
+CI scope is determined by `.github/ci-change-scope.gitignore` through `scripts/classify-change-scope.sh`, not the file extension or this table. `ci.yml` owns Quality; trusted `pr-metadata.yml` classifies PRs and dispatches base-ref Platform/Container workers. Required smoke gates are Check Runs on the exact PR head and use a real skipped conclusion when their scope is not required. Honor those gates without changing classification to save a run. Ordinary branch/main pushes do not run CI; matching tags retain the current Quality/release path.
 
 ## Live and native boundaries
 

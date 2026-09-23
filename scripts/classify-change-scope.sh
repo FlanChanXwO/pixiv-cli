@@ -24,21 +24,28 @@ rules="$repo_root/.github/ci-change-scope.gitignore"
 
 tmpdir=$(mktemp -d)
 trap 'rm -rf "$tmpdir"' EXIT
+docs_rules="$tmpdir/docs-only"
+quality_rules="$tmpdir/quality-only"
 container_rules="$tmpdir/container-required"
-awk '/^!/ { print substr($0, 2) }' "$rules" > "$container_rules"
-[[ -s "$container_rules" ]] || { printf '%s\n' 'classify change scope: container rules are missing' >&2; exit 1; }
+awk -v docs="$docs_rules" -v quality="$quality_rules" -v container="$container_rules" '
+  /^[[:space:]]*$/ || /^#/ { next }
+  /^\?/ { print substr($0, 2) >> quality; next }
+  /^!/ { print substr($0, 2) >> container; next }
+  { print >> docs }
+' "$rules"
+touch "$docs_rules" "$quality_rules" "$container_rules"
 
 emit_scope() {
   local output
-  output=$(printf 'docs_only=%s\nquality_required=%s\nplatform_required=%s\ncontainer_required=%s\nnative_required=%s\n' "$@")
+  output=$(printf 'quality_required=%s\nplatform_required=%s\ncontainer_required=%s\n' "$@")
   printf '%s\n' "$output"
   [[ -z "$github_output" ]] || printf '%s\n' "$output" >> "$github_output"
 }
 
-full_scope() { emit_scope false true true "$1" true; }
+full_scope() { emit_scope true true true; }
 
 if [[ -z "$base" || "$base" =~ ^0+$ ]]; then
-  full_scope true
+  full_scope
   printf '%s\n' 'no usable base commit; selecting full validation' >&2
   exit 0
 fi
@@ -49,7 +56,7 @@ if ! git diff --name-only --no-renames -z "$base" "$head" > "$changed"; then
   exit 1
 fi
 if [[ ! -s "$changed" ]]; then
-  full_scope true
+  full_scope
   printf '%s\n' 'empty diff; selecting full validation' >&2
   exit 0
 fi
@@ -61,17 +68,31 @@ matches_rule() {
     git --literal-pathspecs ls-files --cached --ignored --exclude-from="$rule_file" --with-tree="$base" --error-unmatch -- "$path" >/dev/null 2>&1
 }
 
-docs_only=true
+quality_required=false
+platform_required=false
 container_required=false
 while IFS= read -r -d '' path; do
-  matches_rule "$rules" "$path" || docs_only=false
-  matches_rule "$container_rules" "$path" && container_required=true
+  if matches_rule "$container_rules" "$path"; then
+    quality_required=true
+    platform_required=true
+    container_required=true
+  elif matches_rule "$quality_rules" "$path"; then
+    quality_required=true
+  elif matches_rule "$docs_rules" "$path"; then
+    :
+  else
+    quality_required=true
+    platform_required=true
+  fi
 done < "$changed"
 
-if [[ "$docs_only" = true ]]; then
-  emit_scope true false false false false
+emit_scope "$quality_required" "$platform_required" "$container_required"
+if [[ "$quality_required" = false ]]; then
   printf '%s\n' 'only approved documentation paths changed; selecting documentation validation' >&2
+elif [[ "$platform_required" = false ]]; then
+  printf '%s\n' 'only quality-scoped paths changed; selecting quality validation' >&2
+elif [[ "$container_required" = true ]]; then
+  printf '%s\n' 'container-relevant change detected; selecting full validation' >&2
 else
-  full_scope "$container_required"
-  printf '%s\n' 'non-document change detected; selecting required validation' >&2
+  printf '%s\n' 'runtime change detected; selecting quality and platform validation' >&2
 fi

@@ -36,6 +36,6 @@ Do not bump product versions, edit published release notes, or publish a skill d
 
 ## Verify
 
-Check local links, referenced files/symbols/commands, English skill text, frontmatter names, and `agents/openai.yaml` routes. Remove stale references to deleted owners. Run `go test ./scripts/tests/documentation -count=1` and `git diff --check`; run relevant existing tool/workflow tests when their documented behavior changes. Use the actual change classifier to determine CI requirements, not an assumed Markdown exemption.
+Check local links, referenced files/symbols/commands, English skill text, frontmatter names, and `agents/openai.yaml` routes. Remove stale references to deleted owners. Run `git diff --check` and relevant existing tool/workflow tests when their documented behavior changes; no separate documentation test framework is required. Use the actual change classifier to determine CI requirements, not an assumed Markdown exemption.
 
 Review as a contributor with no personal skills: every required workflow must be reachable from `AGENTS.md` or an explicit local link. Report document verification separately from application or native execution.

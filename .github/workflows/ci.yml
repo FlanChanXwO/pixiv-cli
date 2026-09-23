@@ -16,17 +16,19 @@ concurrency:
 permissions: {}
 
 jobs:
-  quality_gate:
-    name: Quality gate
+  scope:
+    name: Classify change scope
     runs-on: ubuntu-24.04
     permissions:
       contents: read
+    outputs:
+      quality_required: ${{ steps.scope.outputs.quality_required }}
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
         with:
           fetch-depth: 0
           persist-credentials: false
-      - name: Detect documentation-only changes
+      - name: Classify change scope
         id: scope
         shell: bash
         env:
@@ -35,42 +37,55 @@ jobs:
         run: |
           set -euo pipefail
           if [ "$GITHUB_EVENT_NAME" != pull_request ]; then
-            {
-              printf '%s\n' 'docs_only=false'
-              printf '%s\n' 'quality_required=true'
-              printf '%s\n' 'platform_required=true'
-              printf '%s\n' 'container_required=true'
-              printf '%s\n' 'native_required=true'
-            } >> "$GITHUB_OUTPUT"
+            printf '%s\n' 'quality_required=true' >> "$GITHUB_OUTPUT"
             exit 0
           fi
           bash ./scripts/classify-change-scope.sh --base "$BASE_SHA" --head "$HEAD_SHA" --github-output "$GITHUB_OUTPUT"
+
+  quality_gate:
+    name: Quality gate
+    needs: scope
+    if: ${{ always() && (needs.scope.result != 'success' || needs.scope.outputs.quality_required == 'true') }}
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    steps:
+      - name: Require successful scope classification
+        if: ${{ needs.scope.result != 'success' }}
+        shell: bash
+        run: |
+          echo '::error::Change-scope classification failed.'
+          exit 1
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        if: ${{ needs.scope.result == 'success' }}
+        with:
+          persist-credentials: false
       - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff
-        if: ${{ steps.scope.outputs.docs_only != 'true' }}
+        if: ${{ needs.scope.result == 'success' }}
         with:
           go-version-file: go.mod
       - name: Test Go sources
-        if: ${{ steps.scope.outputs.docs_only != 'true' }}
+        if: ${{ needs.scope.result == 'success' }}
         shell: bash
         run: go test ./... -count=1
       - name: Test Go sources with the race detector
-        if: ${{ steps.scope.outputs.docs_only != 'true' }}
+        if: ${{ needs.scope.result == 'success' }}
         shell: bash
         run: go test -race ./... -count=1
       - name: Vet Go sources
-        if: ${{ steps.scope.outputs.docs_only != 'true' }}
+        if: ${{ needs.scope.result == 'success' }}
         shell: bash
         run: go vet ./...
       - name: Build the local binary
-        if: ${{ steps.scope.outputs.docs_only != 'true' }}
+        if: ${{ needs.scope.result == 'success' }}
         shell: bash
         run: sh scripts/build.sh
       - name: Test release packaging
-        if: ${{ steps.scope.outputs.docs_only != 'true' }}
+        if: ${{ needs.scope.result == 'success' }}
         shell: bash
         run: sh scripts/test-package-release.sh
       - name: Check Go formatting
-        if: ${{ steps.scope.outputs.docs_only != 'true' }}
+        if: ${{ needs.scope.result == 'success' }}
         shell: bash
         run: |
           set -euo pipefail

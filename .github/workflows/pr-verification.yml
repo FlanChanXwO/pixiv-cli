@@ -19,9 +19,7 @@ permissions: {}
 jobs:
   dispatch:
     name: Dispatch verification
-    # 无条件运行：job 级 if 会让非 PR 的 issue 评论把整条链跳过，而被 skip 的
-    # matrix worker 不会展开 name 表达式，用户会看到原始 `${{ matrix.display }}`。
-    # 非 PR 的情况由 authorize 内部以 accepted=false 收敛。
+    if: github.event_name == 'workflow_dispatch' || github.event.issue.pull_request
     concurrency:
       group: pr-test-${{ github.repository }}-${{ github.event_name == 'workflow_dispatch' && inputs.pr_number || github.event.issue.number }}
       cancel-in-progress: false
@@ -348,31 +346,17 @@ jobs:
 
       - name: Resolve trusted verification platforms
         id: matrix
-        # 无条件运行：下游 verify job 直接 fromJSON 这个 output，而被 skip 的
-        # matrix job 不会展开 name 里的表达式（§11.1）。始终产出合法 matrix，
-        # 否则非触发 /test 会让 Check name 显示原始 `${{ matrix.display }}`。
-        if: ${{ always() }}
+        if: ${{ steps.coordinate.outputs.execute == 'true' }}
         shell: bash
-        env:
-          EXECUTE: ${{ steps.coordinate.outputs.execute }}
         run: |
           set -euo pipefail
-          if [ "${EXECUTE:-}" = true ]; then
-            raw=$(go run ./tools/platformmatrix --capability verification)
-            matrix=$(printf '%s' "$raw" | jq -c '.include |= map(. + {display: (.goos + "/" + .goarch), required: "true"})')
-          else
-            matrix=$(jq -nc '{include:[{display:"not required", required:"false", runner:"ubuntu-24.04"}]}')
-          fi
+          matrix=$(go run ./tools/platformmatrix --capability verification)
           printf 'matrix=%s\n' "$matrix" >> "$GITHUB_OUTPUT"
 
   verify:
-    name: Verification · ${{ matrix.display }}
     needs: dispatch
-    # §11.1：worker 始终运行，因为被 skip 的 matrix job 不会展开 name 中的
-    # `${{ matrix.* }}`，GitHub 会直接显示占位符。非执行时 matrix 只含一个
-    # 说明性占位条目，并落到便宜的 ubuntu runner，所有重活 step 均被跳过。
-    if: ${{ always() && needs.dispatch.result != 'skipped' }}
-    runs-on: ${{ matrix.required == 'true' && matrix.runner || 'ubuntu-24.04' }}
+    if: ${{ needs.dispatch.result == 'success' && needs.dispatch.outputs.execute == 'true' }}
+    runs-on: ${{ matrix.runner }}
     permissions:
       contents: read
     strategy:
@@ -380,34 +364,18 @@ jobs:
       max-parallel: 2
       matrix: ${{ fromJSON(needs.dispatch.outputs.matrix) }}
     steps:
-      # dispatch 失败时仍要保留失败信号：名字必须干净，但结论不能变成成功。
-      - name: Require a completed dispatch
-        if: matrix.required != 'true' && needs.dispatch.result != 'success'
-        shell: bash
-        run: |
-          echo '::error::Verification dispatch did not complete successfully.'
-          exit 1
-
-      - name: Mark verification as not required
-        if: matrix.required != 'true' && needs.dispatch.result == 'success'
-        shell: bash
-        run: printf '%s\n' 'No live verification commands are declared for this run.'
-
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
-        if: matrix.required == 'true'
         with:
           path: _trusted
           persist-credentials: false
           ref: ${{ needs.dispatch.outputs.base_sha }}
 
       - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff
-        if: matrix.required == 'true'
         with:
           go-version-file: _trusted/go.mod
           cache: false
 
       - name: Initialize infrastructure-failure result
-        if: matrix.required == 'true'
         shell: bash
         working-directory: _trusted
         run: |
@@ -416,7 +384,6 @@ jobs:
           go run ./tools/verification init --platform '${{ matrix.goos }}/${{ matrix.goarch }}' --output "$RUNNER_TEMP/verification-result/${{ matrix.artifact }}.json"
 
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
-        if: matrix.required == 'true'
         with:
           repository: ${{ needs.dispatch.outputs.head_repo }}
           ref: ${{ needs.dispatch.outputs.head_sha }}
@@ -424,19 +391,16 @@ jobs:
           persist-credentials: false
 
       - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff
-        if: matrix.required == 'true'
         with:
           go-version-file: pr/go.mod
           cache: true
 
       - name: Install the pinned native Rust toolchain
-        if: matrix.required == 'true'
         shell: bash
         working-directory: pr
         run: rustup toolchain install '${{ matrix.rust_toolchain }}' --profile minimal --target '${{ matrix.rust_target }}' --no-self-update
 
       - name: Build the exact PR binary
-        if: matrix.required == 'true'
         shell: bash
         working-directory: pr
         env:
@@ -455,7 +419,6 @@ jobs:
           printf 'VERIFICATION_HOME=%s\n' "$RUNNER_TEMP/verification-home" >> "$GITHUB_ENV"
 
       - name: Execute declared verification
-        if: matrix.required == 'true'
         shell: bash
         working-directory: _trusted
         env:
@@ -469,12 +432,11 @@ jobs:
           go run ./tools/verification execute --platform '${{ matrix.goos }}/${{ matrix.goarch }}' --binary "$VERIFICATION_BINARY" --commands-json "$COMMANDS_JSON" --workspace "$GITHUB_WORKSPACE/pr" --whitelist tools/verification/command-whitelist.txt --output "$RUNNER_TEMP/verification-result/${{ matrix.artifact }}.json"
 
       - name: Remove isolated credential state
-        if: always() && matrix.required == 'true'
+        if: always()
         shell: bash
         run: rm -rf "$RUNNER_TEMP/verification-home"
 
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
-        if: matrix.required == 'true'
         with:
           name: verification-result-${{ matrix.artifact }}
           path: ${{ runner.temp }}/verification-result/${{ matrix.artifact }}.json

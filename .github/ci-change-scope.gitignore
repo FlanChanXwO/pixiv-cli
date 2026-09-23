@@ -1,5 +1,6 @@
 # Scoped Git-ignore syntax consumed by scripts/classify-change-scope.sh.
-# Positive patterns are documentation-only. Negated patterns are container-required.
+# Plain patterns are documentation-only, ?patterns require Quality only,
+# and !patterns require Quality + Platform + Container.
 /README.md
 /README.*.md
 /AGENTS.md
@@ -9,26 +10,35 @@
 /.gitignore
 /.pre-commit-config.yaml
 /.github/CODEOWNERS
-/.github/PULL_REQUEST_TEMPLATE.md
 /.github/ISSUE_TEMPLATE/**
 /docs/**
 /changelog/**
 /skills/**
 /.agents/skills/**
 
+?/.github/PULL_REQUEST_TEMPLATE.md
+?/.github/ci-change-scope.gitignore
+?/.github/workflows/ci.yml
+?/.github/workflows/pr-invalid-close.yml
+?/.github/workflows/pr-metadata.yml
+?/.github/workflows/pr-verification.yml
+?/scripts/classify-change-scope.sh
+?/scripts/tests/prverificationworkflow/**
+?/tools/internal/verificationpolicy/**
+?/tools/prmeta/**
+?/tools/verification/**
+
 !/Dockerfile
 !/.dockerignore
 !/LICENSE
 !/THIRD_PARTY_LICENSES.md
 !/third_party/licenses/**
+!/third_party/rust/**
 !/go.mod
 !/go.sum
-!/Cargo.toml
-!/Cargo.lock
 !/cmd/**
 !/internal/**
 !/sdk/**
-!/native/**
 !/ci/**
 !/tools/platformmatrix/**
 !/.github/workflows/container-smoke.yml
