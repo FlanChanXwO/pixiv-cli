@@ -111,37 +111,143 @@ func TestAggregateGatesExplainFailuresAndSkips(t *testing.T) {
 	t.Parallel()
 
 	root := repositoryRoot(t)
-	cases := []struct {
-		workflow string
-		required []string
-	}{
-		{
-			workflow: "platform-smoke.yml",
-			required: []string{
-				"Platform smoke failed on one or more required platforms.",
-				"Platform configuration could not be resolved.",
-				"Documentation-only change; platform smoke is not required.",
-			},
-		},
-		{
-			workflow: "container-smoke.yml",
-			required: []string{
-				"Container smoke failed on one or more required platforms.",
-				"Container smoke is not required for this change.",
-			},
-		},
-		{
-			workflow: "ci.yml",
-			required: []string{
-				"Required quality checks did not complete successfully.",
-			},
-		},
+	_, qualityBody := loadWorkflow(t, root, "ci.yml")
+	if !strings.Contains(qualityBody, "Required quality checks did not complete successfully.") {
+		t.Errorf("ci.yml: quality gate must explain failures")
 	}
-	for _, tc := range cases {
-		_, body := loadWorkflow(t, root, tc.workflow)
-		for _, want := range tc.required {
+
+	_, metadataBody := loadWorkflow(t, root, "pr-metadata.yml")
+	for _, want := range []string{
+		"Documentation-only change; platform smoke is not required.",
+		"Container smoke is not required for this change.",
+	} {
+		if !strings.Contains(metadataBody, want) {
+			t.Errorf("pr-metadata.yml: aggregate gate must explain its outcome with %q", want)
+		}
+	}
+
+	for name, want := range map[string]string{
+		"platform-smoke.yml":  "Platform smoke failed on one or more required platforms.",
+		"container-smoke.yml": "Container smoke failed on one or more required platforms.",
+	} {
+		_, body := loadWorkflow(t, root, name)
+		if !strings.Contains(body, want) {
+			t.Errorf("%s: aggregate gate must explain failures with %q", name, want)
+		}
+	}
+}
+
+// TestTrustedPolicyOwnsSmokeDispatch 保证不受信的 pull_request 只运行 Quality；
+// 高权限 worker dispatch 与稳定 smoke status 只存在于 pull_request_target 策略流。
+func TestTrustedPolicyOwnsSmokeDispatch(t *testing.T) {
+	t.Parallel()
+
+	root := repositoryRoot(t)
+	document, qualityBody := loadWorkflow(t, root, "ci.yml")
+	if _, ok := document.Jobs["quality_gate"]; !ok {
+		t.Error("ci.yml must expose PR job \"quality_gate\"")
+	}
+	if len(document.Jobs) != 1 {
+		t.Errorf("ci.yml exposes %d jobs, want only the untrusted Quality gate", len(document.Jobs))
+	}
+	for _, forbidden := range []string{"actions: write", "/dispatches"} {
+		if strings.Contains(qualityBody, forbidden) {
+			t.Errorf("ci.yml must not contain trusted smoke capability %q", forbidden)
+		}
+	}
+
+	_, metadataBody := loadWorkflow(t, root, "pr-metadata.yml")
+	for _, required := range []string{
+		"pull_request_target:",
+		"actions: write",
+		"statuses: write",
+		"group: pr-gates-${{ github.event.pull_request.number }}-${{ github.event.action == 'edited' && github.event.changes.base == null && 'metadata' || 'head' }}",
+		"cancel-in-progress: true",
+		"id: smoke_head",
+		"steps.smoke_head.outcome == 'success'",
+		"steps.smoke_head.outcome == 'failure'",
+		"'Platform smoke gate'",
+		"'Container smoke gate'",
+		"platform-smoke.yml",
+		"container-smoke.yml",
+	} {
+		if !strings.Contains(metadataBody, required) {
+			t.Errorf("pr-metadata.yml must contain trusted smoke contract %q", required)
+		}
+	}
+	if strings.Count(metadataBody, "PR body changed since this event; skipping stale metadata") != 2 {
+		t.Error("pr-metadata.yml must reject stale PR-body snapshots before status and state publication")
+	}
+	if strings.Count(metadataBody, `jq -j '.body // ""'`) != 2 {
+		t.Error("pr-metadata.yml must re-read the current PR body at both metadata publication boundaries")
+	}
+	stateStart := strings.Index(metadataBody, "name: Maintain invalid-PR age state")
+	stateEnd := strings.Index(metadataBody, "name: Require metadata gates")
+	if stateStart < 0 || stateEnd <= stateStart {
+		t.Fatal("pr-metadata.yml must contain invalid-PR state maintenance before the final metadata gate")
+	}
+	stateBlock := metadataBody[stateStart:stateEnd]
+	if !strings.Contains(stateBlock, "if: ${{ !cancelled() && steps.policy.outcome != 'skipped' }}") {
+		t.Error("invalid-PR state maintenance must survive unrelated smoke failures")
+	}
+	if strings.Contains(metadataBody, "return_run_details") {
+		t.Error("pr-metadata.yml must use the 2026-03-10 dispatch contract without return_run_details")
+	}
+	if strings.Count(metadataBody, "github.event.action != 'edited' || github.event.changes.base != null") < 4 {
+		t.Error("pr-metadata.yml must rerun smoke coordination when an edited event retargets the PR base branch")
+	}
+	if !strings.Contains(metadataBody, "Failed to publish smoke failure status for $context.") {
+		t.Error("pr-metadata.yml must attempt both smoke failure statuses even if one status API call fails")
+	}
+	headStart := strings.Index(metadataBody, "name: Fetch pull request head for trusted smoke classification")
+	headEnd := strings.Index(metadataBody, "name: Classify smoke scope with trusted policy")
+	if headStart < 0 || headEnd <= headStart {
+		t.Fatal("pr-metadata.yml must contain the trusted PR-head fetch before smoke classification")
+	}
+	headBlock := metadataBody[headStart:headEnd]
+	if !strings.Contains(headBlock, "continue-on-error: true") {
+		t.Error("trusted PR-head fetch must preserve a terminal smoke failure path")
+	}
+	pending := strings.Index(metadataBody, `post_status pending "$context"`)
+	dispatch := strings.Index(metadataBody, `"repos/$REPO/actions/workflows/$workflow/dispatches"`)
+	if pending < 0 || dispatch < 0 || pending >= dispatch {
+		t.Error("smoke pending status must be published before worker dispatch")
+	}
+
+	for _, name := range []string{"platform-smoke.yml", "container-smoke.yml"} {
+		_, body := loadWorkflow(t, root, name)
+		if !strings.Contains(body, "workflow_dispatch:") {
+			t.Errorf("%s must remain manually dispatchable for hidden workers", name)
+		}
+		for _, trigger := range []string{"  pull_request:", "  push:"} {
+			if strings.Contains(body, trigger) {
+				t.Errorf("%s must not expose worker jobs through %q", name, strings.TrimSpace(trigger))
+			}
+		}
+		if strings.Count(body, "ref: ${{ inputs.pr_number != ''") != 1 {
+			t.Errorf("%s must checkout untrusted PR code only in the matrix worker job", name)
+		}
+		if !strings.Contains(body, `test "$(git rev-parse HEAD)" = "$HEAD_SHA"`) {
+			t.Errorf("%s must verify that the matrix worker tested the dispatched head SHA", name)
+		}
+	}
+
+	for name, required := range map[string][]string{
+		"platform-smoke.yml": {
+			"name: Publish platform smoke result",
+			"statuses: write",
+			"'Platform smoke gate'",
+		},
+		"container-smoke.yml": {
+			"name: Publish container smoke result",
+			"statuses: write",
+			"'Container smoke gate'",
+		},
+	} {
+		_, body := loadWorkflow(t, root, name)
+		for _, want := range required {
 			if !strings.Contains(body, want) {
-				t.Errorf("%s: aggregate gate must explain its outcome with %q", tc.workflow, want)
+				t.Errorf("%s must contain trusted result publisher contract %q", name, want)
 			}
 		}
 	}

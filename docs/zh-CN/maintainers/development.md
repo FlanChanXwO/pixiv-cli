@@ -130,9 +130,9 @@ sh scripts/test-rust-vendor.sh
 
 ### Native runner evidence
 
-`.github/workflows/native-evidence.yml` 是独立的、非发布的 runner 入口：只允许审计后的、包含非文档输入的 `main`
-push 或指向 `refs/heads/main` 的 `workflow_dispatch`。仅 `README*.md`、`docs/**`、`changelog/**` 或 `skills/**` 的 push
-不启动它；任一其他路径以及手动触发仍运行完整矩阵。全局 `permissions: {}`、job 仅 `contents: read`。它没有 `environment`、
+`.github/workflows/native-evidence.yml` 是独立的、非发布维护入口，只通过默认分支上的显式
+`workflow_dispatch` 运行。普通 `main` push 不会在 PR 验证之后再重复启动六平台 evidence 矩阵。
+全局 `permissions: {}`、job 仅 `contents: read`。它没有 `environment`、
 secret、tag/Release/tap/signing 命令。平台矩阵来自 `ci/platforms.json` 的 `native-evidence` capability；
 workflow 安装 registry 指定的 Rust toolchain、检查 vendored Rust 输入、通过 `scripts/build-platform.sh`
 完成目标 staticlib/binary/archive 链路，再运行真实 cgo GIF/APNG smoke、记录并上传 evidence。full-SHA
@@ -156,8 +156,9 @@ go test ./scripts/internal/nativeevidence -count=1
 `third_party/licenses` 常规文件树。它不持有 release/tap/signing credential，也不会创建 tag 或
 Release。
 
-`.github/workflows/browser-evidence.yml` 是另一条 credential-free 的原生 provider contract matrix，
-在 macOS、Linux、Windows 的 amd64/arm64 runner 上执行 `internal/browsercookies/...` 的平台代码与合成 fixture 回归。
+`.github/workflows/browser-evidence.yml` 是另一条显式手动触发、credential-free 的原生 provider contract matrix，
+在 macOS、Linux、Windows 的 amd64/arm64 runner 上执行 `internal/browsercookies/...` 的平台代码与合成 fixture 回归，
+普通 `main` push 不再附带重复运行该矩阵。
 GitHub Windows runner 不提供该 contract 需要的 `sqlite3` CLI，因此两个 Windows job 都通过
 `scripts/install-browser-sqlite.ps1` 安装与架构匹配的 SQLite 3.53.4 官方 tools 包，并在原有 SQLite preflight
 之前用固定 URL 与 SHA-256 校验下载内容。聚焦的 test-only workflow contract 只锁 credential、full-SHA action、
@@ -383,9 +384,9 @@ git diff --check
 fixture 只证明格式、失败语义和本地策略，不替代六个 native runner 的真实静态链接、GIF/APNG
 smoke、版本化 archive 内容和 Homebrew 安装验收。
 
-`.github/workflows/ci.yml` 与 `.github/workflows/platform-smoke.yml` 会先对 PR/main 的 diff 执行严格路径分类。仅 `README*.md`、`docs/**`、`changelog/**` 或 `skills/**` 的改动保留名称稳定的 Quality gate，但只运行 `go test ./scripts/tests/documentation -count=1`；六平台 packaged-binary smoke 会被标记为 skipped，始终执行的 `Platform smoke gate` 会核对这是预期结果。任一其他路径、空 diff、无法比较的初始 push 或手动触发都执行完整 Linux quality gate（test、race、vet、build、package/release policy、pre-commit）和六平台离线已打包 binary smoke；同一汇总 gate 只有在全部 matrix 成功后才通过。CI 的 Windows runner job 聚焦 root callback wiring 的 `TestAuthURLCallback*`、`TestAuthURLHandlerInstall` 与 `TestNormalCLIInvocationEnsuresPersistentHandlerWithoutBlockingCommand`，再运行 `internal/cli/commands/pixiv/auth/loginhelper` 的完整原生 callback-handler 契约；完整 `internal/cli` 已由 Linux quality gate 覆盖，避免把无关的全包 SQLite 压力拖入 Windows handler job。`.github/workflows/browser-evidence.yml` 只在 browser provider 相关输入变更的 `main` push 或手动 dispatch 上运行无凭据的 macOS/Linux/Windows provider contract matrix。分类器无法读取 diff 时明确失败，绝不静默跳过。所有 workflow 都使用只读权限与固定 SHA action；真实 Pixiv/FANBOX SDK E2E 不进入 PR/main 常规 CI。仅发布 tag 的 `release.yml` 会在 validate 后运行无凭据 SDK E2E contract gate，production build 明确依赖该 job；真实 SDK E2E 仍按 release-prep 在授权环境独立验收。
+`.github/workflows/ci.yml` 只承载不受信的 `Quality gate`：它执行 PR 代码时只有仓库只读权限，也不再负责 dispatch worker。`.github/workflows/pr-metadata.yml` 是受信的 `pull_request_target` coordinator，只从 base branch 运行策略代码：验证 PR 模板与 verification declaration、分类 PR diff，并发布 `PR template gate`、`PR commands gate`、`Platform smoke gate` 与 `Container smoke gate`。需要 smoke 时它只 dispatch PR base 分支上的 worker，不执行 PR 代码；纯文档或不影响容器的改动直接发布成功 skip status。
 
-`.github/workflows/pr-metadata.yml` 在 PR `opened`、`reopened` 与 `synchronize` 时使用 `pull_request_target` 更新元数据：`actions/labeler` 从 base branch 的 `.github/labeler.yml` 按路径叠加已有的 `area: docs`、`area: frontend`、`area: backend`、`area: github-actions`、`area: tests` 和 `release` 标签；随后只将 PR 作者追加为 assignee，绝不移除人工指派或标签。该 job 仅有 `contents: read` 与 `pull-requests: write`，不 checkout、不运行 PR 分支代码，因此 fork PR 也不会获得写权限或执行不受信任输入。工作流与配置首次合并到默认分支后才会对后续 PR 生效；引入该配置本身的 PR 需要在 GitHub 手动补标签。
+Platform worker 从受信 workflow ref 解析六平台 matrix，只有 matrix job checkout 精确 PR head，并且 token 仅为 `contents: read`；独立 publish job 不 checkout PR，只持有发布最终 aggregate status 所需的最小 `statuses: write`。Container worker 对 Linux amd64/arm64 使用同样的隔离模型。六个原生 job 继续并行运行，其中 Windows worker 仍承担 root callback wiring 与原生 `loginhelper` 契约；两个容器 job 也继续并行。内部 matrix 不进入 PR Checks，失败的 aggregate status 会列出具体失败 worker/platform。普通分支与 `main` push 不运行 CI；稳定 `vX.Y.Z` tag push 运行 Quality 与 `release.yml`，Release 自己执行正式六平台测试/构建与两平台容器验证，因此 tag 不重复 PR smoke matrix。browser/native evidence 保留为显式维护入口。真实 Pixiv/FANBOX SDK E2E 不进入普通 PR CI；仅发布 tag 的 `release.yml` 在 validate 后运行无凭据 SDK E2E contract gate，真实 SDK E2E 仍按 release-prep 在授权环境独立验收。
 
 `scripts/tests/installers` 使用本地伪 Release、伪 `curl` 与 checksum fixture 验证安装器，不访问 GitHub。Unix
 job 实际运行 `install.sh`，覆盖 SHA-256、带空格目录、版本预检和校验失败不覆盖旧 binary；Windows

@@ -22,6 +22,7 @@ func TestNativeEvidenceWorkflowKeepsSecurityAndOwnershipBoundaries(t *testing.T)
 	}
 	workflow := string(body)
 	for _, required := range []string{
+		"workflow_dispatch:",
 		"./tools/platformmatrix --capability native-evidence",
 		"scripts/build-platform.sh",
 		"--cc '${{ matrix.cc }}'",
@@ -34,6 +35,7 @@ func TestNativeEvidenceWorkflowKeepsSecurityAndOwnershipBoundaries(t *testing.T)
 		}
 	}
 	for _, forbidden := range []string{
+		"\n  push:",
 		"build-staticlibs.sh",
 		"go build -trimpath",
 		"releaseassets package",
