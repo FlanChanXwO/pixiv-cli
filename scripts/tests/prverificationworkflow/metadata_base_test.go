@@ -93,17 +93,25 @@ func TestPRMetadataPreservesSmokeDispatchSafety(t *testing.T) {
 
 	for _, required := range []string{
 		"platform_smoke:",
-		`'Platform smoke metadata refresh' || 'Platform smoke'`,
+		"name: Platform smoke",
 		`needs.validate.outputs.platform_required == 'true'`,
 		`WORKER_CHECK: Platform smoke worker`,
 		"container_smoke:",
-		`'Container smoke metadata refresh' || 'Container smoke'`,
+		"name: Container smoke",
 		`needs.validate.outputs.container_required == 'true'`,
 		`WORKER_CHECK: Container smoke worker`,
 	} {
 		if !strings.Contains(body, required) {
 			t.Fatalf("PR metadata workflow missing required smoke job contract %q", required)
 		}
+	}
+	for _, forbidden := range []string{"Platform smoke metadata refresh", "Container smoke metadata refresh"} {
+		if strings.Contains(body, forbidden) {
+			t.Fatalf("required smoke job name must be static; found %q", forbidden)
+		}
+	}
+	if got := strings.Count(body, `github.event.action != 'edited' || github.event.changes.base != null`); got != 1 {
+		t.Fatalf("body-edit exclusion count = %d, want 1 only on worker dispatch", got)
 	}
 
 	for _, path := range []string{"platform-smoke.yml", "container-smoke.yml"} {
@@ -146,6 +154,15 @@ func TestQualityGateUsesJobLevelScopeSkip(t *testing.T) {
 	}
 	if strings.Contains(body, "steps.scope.outputs.docs_only") {
 		t.Fatal("Quality gate must not emulate a skipped job by running a shell job with skipped steps")
+	}
+	for _, bootstrap := range []string{
+		"smoke_context_bootstrap_platform:",
+		"smoke_context_bootstrap_container:",
+		"Required smoke context bootstrap",
+	} {
+		if strings.Contains(body, bootstrap) {
+			t.Fatalf("temporary smoke-context bootstrap remains after migration: %q", bootstrap)
+		}
 	}
 }
 
