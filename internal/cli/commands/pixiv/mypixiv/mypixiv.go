@@ -219,7 +219,7 @@ func (a command) runWorks(cmd *cobra.Command, args []string, opts options) error
 func (a command) runner() listing.Runner {
 	return listing.New(a.data.Output, func(ctx context.Context, request listing.Request, attempt func(context.Context, *pixiv.Client) (bool, error)) error {
 		return a.data.Pooled(ctx, deps.Request(request), attempt)
-	})
+	}).WithObserver(a.data.Observe)
 }
 
 func printArtworks(out io.Writer, items []pixiv.Artwork) error {

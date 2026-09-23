@@ -662,6 +662,18 @@ func (a app) downloadDeps() downloadcommands.Deps {
 	}
 }
 
+// vectorObserver 返回 passive Artwork 观察端口。它只在普通 Pixiv 命令已经取得
+// Artwork 后才写本地索引，从不发新请求，也不加载模型；索引不可用时静默降级。
+func (a app) vectorObserver() *vectorcommands.ArtworkObserver {
+	return vectorcommands.NewArtworkObserver(func() (*vector.Store, error) {
+		dir, err := paths.AppDataDir()
+		if err != nil {
+			return nil, err
+		}
+		return vector.Open(dir)
+	})
+}
+
 func (a app) pixivDataDeps() pixivdeps.Data {
 	var once sync.Once
 	var ports pixivSDKPorts
@@ -675,6 +687,7 @@ func (a app) pixivDataDeps() pixivdeps.Data {
 		Output:      a.out,
 		ErrorOutput: a.errOut,
 		UsageError:  newUsageError,
+		Observe:     a.vectorObserver().Observe,
 		Open: func(request pixivdeps.Request) (*pixiv.Client, error) {
 			sdk, err := load()
 			if err != nil {
@@ -748,6 +761,7 @@ func (a app) searchDeps() pixivsearch.Dependencies {
 		Output:      data.Output,
 		ErrorOutput: data.ErrorOutput,
 		UsageError:  data.UsageError,
+		Observe:     data.Observe,
 		JSONOut: func(override *bool) (bool, error) {
 			if override != nil {
 				return *override, nil
@@ -798,6 +812,7 @@ func (a app) recommendedDeps() pixivrecommended.Dependencies {
 		Output:     data.Output,
 		UsageError: data.UsageError,
 		JSONOut:    data.JSONOut,
+		Observe:    data.Observe,
 		Pooled: func(ctx context.Context, request pixivrecommended.Request, attempt func(context.Context, *pixiv.Client) (bool, error)) error {
 			return data.Pooled(ctx, pixivdeps.Request(request), attempt)
 		},
@@ -813,6 +828,7 @@ func (a app) userDeps() pixivuser.Dependencies {
 		Output:     data.Output,
 		UsageError: data.UsageError,
 		JSONOut:    data.JSONOut,
+		Observe:    data.Observe,
 		Pooled: func(ctx context.Context, request pixivuser.Request, attempt func(context.Context, *pixiv.Client) (bool, error)) error {
 			return data.Pooled(ctx, pixivdeps.Request(request), attempt)
 		},
@@ -838,6 +854,7 @@ func (a app) detailDeps() pixivdetail.Dependencies {
 		JSONOut:     data.JSONOut,
 		ErrorOutput: a.errOut,
 		OutputIsTTY: func() bool { return outputIsTTY(a.out) },
+		Observe:     data.Observe,
 		Pooled: func(ctx context.Context, request pixivdetail.Request, attempt func(context.Context, *pixiv.Client) (bool, error)) error {
 			return data.Pooled(ctx, pixivdeps.Request{
 				UserID:             request.UserID,

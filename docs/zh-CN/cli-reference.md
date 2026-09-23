@@ -326,6 +326,10 @@ Asset 指向当前模型代；旧向量不删除，每张成功后替换当前�
 它需要本地已认证账号（`pixiv auth use`），并像其他 Pixiv 数据命令一样会创建 `config.toml`。
 listing 未给出可用 cover 的作品记为 `skipped`，不会存成无图片的资产；输出包含 `scanned`、`changed`、
 `skipped` 与 `embedded` 数量。
+已经返回作品的普通 Pixiv 读取命令（`search`、`ranking`、`recommended`、`timeline`、`mypixiv`、`user`、
+`series`、`bookmark list` 与 `detail`）会把本次已取得的 Artwork 以 best-effort 方式记入私有索引。该观察
+**不新增**任何 Pixiv 请求、不加载模型、并吞掉索引错误，因此命令输出与退出状态不变。`detail` 提供全部页面，
+listing 只提供 cover 并标记 `cover_only`。观察不下载图片，待处理向量仍需显式 `pixiv vector sync`。
 `pixiv vector status` 报告持久化的 `assets` 与 `embeddings` 总数；数据库尚不存在时会创建。
 `pixiv vector search QUERY_OR_IMAGE` 使用同一个离线 SigLIP2 模型处理文本或现有本地图片，再对持久化
 page-level 向量做 exact cosine 排序；不请求 Pixiv 或反向搜图服务，也不修改索引。现有普通文件按图片查询；

@@ -52,6 +52,8 @@ type Dependencies struct {
 	JSONOut    func(*bool) (bool, error)
 	Pooled     func(context.Context, Request, func(context.Context, *pixiv.Client) (bool, error)) error
 	Follow     func() *cobra.Command
+	// Observe 是可选 best-effort 观察端口，只接收已取得的 Artwork。
+	Observe func([]pixiv.Artwork)
 }
 
 type command struct {
@@ -718,5 +720,5 @@ func (a command) runBlocked(cmd *cobra.Command, args []string, opts listOptions)
 func (a command) runner() listing.Runner {
 	return listing.New(a.data.Output, func(ctx context.Context, request listing.Request, attempt func(context.Context, *pixiv.Client) (bool, error)) error {
 		return a.data.Pooled(ctx, Request(request), attempt)
-	})
+	}).WithObserver(a.data.Observe)
 }

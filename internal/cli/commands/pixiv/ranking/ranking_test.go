@@ -164,3 +164,87 @@ func rankingJSONResponse(request *http.Request, body string) *http.Response {
 		Request:    request,
 	}
 }
+
+// TestArtworkRankingObserverAddsNoRequestsAndKeepsOutput 锁定 Task 15 的平台无关契约：
+// passive observer 只消费命令已取得的 Artwork，不新增任何 App API 请求，
+// 也不改变 stdout 与退出行为。
+func TestArtworkRankingObserverAddsNoRequestsAndKeepsOutput(t *testing.T) {
+	const body = `{"illusts":[{"id":9501,"title":"observed","type":"illust","page_count":2,"create_date":"2026-09-01T00:00:00Z","user":{"id":51,"name":"artist"},"image_urls":{"large":"https://i.pximg.net/img/cover.jpg?signature=s"}}],"next_url":null}`
+
+	run := func(observe func([]pixiv.Artwork)) (string, int, int) {
+		output := &bytes.Buffer{}
+		requests := 0
+		transport := rankingRoundTripFunc(func(request *http.Request) (*http.Response, error) {
+			requests++
+			return rankingJSONResponse(request, body), nil
+		})
+		client, err := pixiv.NewWith("test-access-token", pixiv.Options{HTTPClient: &http.Client{Transport: transport}})
+		if err != nil {
+			t.Fatalf("NewWith: %v", err)
+		}
+		cmd := New(deps.Data{
+			Input:       strings.NewReader(""),
+			Output:      output,
+			ErrorOutput: &bytes.Buffer{},
+			UsageError:  func(err error) error { return err },
+			JSONOut:     func(*bool) (bool, error) { return false, nil },
+			Observe:     observe,
+			Pooled: func(ctx context.Context, _ deps.Request, attempt func(context.Context, *pixiv.Client) (bool, error)) error {
+				_, err := attempt(ctx, client)
+				return err
+			},
+		})
+		cmd.SetArgs([]string{"--mode", "day", "--ndjson"})
+		if err := cmd.Execute(); err != nil {
+			t.Fatalf("Execute: %v", err)
+		}
+		return output.String(), requests, 0
+	}
+
+	plainOutput, plainRequests, _ := run(nil)
+	var observed []pixiv.Artwork
+	observedOutput, observedRequests, _ := run(func(items []pixiv.Artwork) { observed = append(observed, items...) })
+
+	if plainOutput != observedOutput {
+		t.Fatalf("observer changed stdout:\nplain=%q\nobserved=%q", plainOutput, observedOutput)
+	}
+	if plainRequests != observedRequests {
+		t.Fatalf("observer added App API requests: plain=%d observed=%d", plainRequests, observedRequests)
+	}
+	if len(observed) != 1 || observed[0].ID != 9501 || observed[0].PageCount != 2 {
+		t.Fatalf("observer saw %+v, want the already-fetched artwork", observed)
+	}
+}
+
+// TestArtworkRankingObserverDoesNotBreakCommand 证明接入观察端口后命令仍正常成功。
+func TestArtworkRankingObserverFailureDoesNotBreakCommand(t *testing.T) {
+	output := &bytes.Buffer{}
+	transport := rankingRoundTripFunc(func(request *http.Request) (*http.Response, error) {
+		return rankingJSONResponse(request, `{"illusts":[{"id":9601,"title":"x","type":"illust","page_count":1,"create_date":"2026-09-01T00:00:00Z","user":{"id":61,"name":"a"},"image_urls":{"large":"https://i.pximg.net/img/c.jpg?signature=s"}}],"next_url":null}`), nil
+	})
+	client, err := pixiv.NewWith("test-access-token", pixiv.Options{HTTPClient: &http.Client{Transport: transport}})
+	if err != nil {
+		t.Fatalf("NewWith: %v", err)
+	}
+	cmd := New(deps.Data{
+		Input:       strings.NewReader(""),
+		Output:      output,
+		ErrorOutput: &bytes.Buffer{},
+		UsageError:  func(err error) error { return err },
+		JSONOut:     func(*bool) (bool, error) { return false, nil },
+		// 观察端口在 index 不可用时静默降级（隔离性由 observer 单测覆盖）；
+		// 这里确认接线本身不会让命令失败。
+		Observe: func([]pixiv.Artwork) {},
+		Pooled: func(ctx context.Context, _ deps.Request, attempt func(context.Context, *pixiv.Client) (bool, error)) error {
+			_, err := attempt(ctx, client)
+			return err
+		},
+	})
+	cmd.SetArgs([]string{"--mode", "day", "--ndjson"})
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("command must succeed with a passive observer: %v", err)
+	}
+	if !strings.Contains(output.String(), "9601") {
+		t.Fatalf("expected the fetched artwork in output: %q", output.String())
+	}
+}

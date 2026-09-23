@@ -421,6 +421,12 @@ cover with `cover_only` and its real `page_count`; the remaining pages are neith
 come from a later source. It needs a locally authenticated account (`pixiv auth use`) and creates `config.toml` like
 other Pixiv data commands. An artwork the listing returns without a usable cover is counted as `skipped` rather than
 stored as an image-less asset, and it reports `scanned`, `changed`, `skipped`, and `embedded` counts.
+Ordinary Pixiv read commands that already return artworks (`search`, `ranking`, `recommended`, `timeline`,
+`mypixiv`, `user`, `series`, `bookmark list`, and `detail`) also record what they already fetched into the private
+index as a best-effort side effect. The observation adds **no** Pixiv request, never loads the embedding model, and
+swallows index failures, so command output and exit status are unchanged. `detail` supplies every page, while a
+listing supplies only the cover with `cover_only`. Observation never downloads images; pending vectors still need an
+explicit `pixiv vector sync`.
 `pixiv vector status` shows total durable `assets` and `embeddings`; it creates the private vector database if
 none exists. `pixiv vector search QUERY_OR_IMAGE` uses the same offline SigLIP2 model for text and an existing
 local image file, then exact-cosine ranks persistent page-level embeddings. It makes no Pixiv or reverse-search

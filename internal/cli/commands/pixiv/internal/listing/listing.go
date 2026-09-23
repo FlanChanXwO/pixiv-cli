@@ -81,10 +81,19 @@ func ParsePlan(cmd *cobra.Command, limit, page int) (Plan, error) {
 type Runner struct {
 	out      io.Writer
 	executor Executor
+	// observer 是可选 best-effort 观察端口，只接收本次命令已经取得的 Artwork；
+	// 它不返回错误，因此观察失败不会变成命令失败。
+	observer func([]pixiv.Artwork)
 }
 
 func New(out io.Writer, executor Executor) Runner {
 	return Runner{out: out, executor: executor}
+}
+
+// WithObserver 返回一个带观察端口的 Runner 副本。nil observer 表示不观察。
+func (a Runner) WithObserver(observer func([]pixiv.Artwork)) Runner {
+	a.observer = observer
+	return a
 }
 
 // Executor 把一次 request 绑定为共享 traversal 的可重入执行函数；逻辑分页、
@@ -166,6 +175,10 @@ func (a Runner) runPooledIllustListWithKey(ctx context.Context, request Request,
 		func(ctx context.Context, client *pixiv.Client, cursor sdk.Cursor) ([]pixiv.Artwork, sdk.Cursor, error) {
 			return fetch(client, ctx, cursor)
 		}, func(items []pixiv.Artwork) (bool, error) {
+			// 观察的是本次命令已经取得的 Artwork；它不发新请求，也不改变输出。
+			if a.observer != nil {
+				a.observer(items)
+			}
 			if postFilter != nil {
 				items = postFilter(items)
 			}
