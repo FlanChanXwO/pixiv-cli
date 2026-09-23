@@ -83,6 +83,15 @@ jobs:
           repository: ${{ github.repository }}
           run-id: ${{ steps.handoff.outputs.run_id }}
 
+      - name: Download the published release checksums
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: verified-release-checksums
+          path: published-release
+          github-token: ${{ github.token }}
+          repository: ${{ github.repository }}
+          run-id: ${{ steps.handoff.outputs.run_id }}
+
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
         with:
           pattern: verified-release-*
@@ -103,13 +112,12 @@ jobs:
           RUN_HEAD_SHA: ${{ steps.handoff.outputs.head_sha }}
         run: |
           set -euo pipefail
-          cp prepared/dist/checksums.txt release-assets/checksums.txt
           go run ./tools/release verify-handoff-set \
             --handoff prepared/release/release-handoff.json \
             --section production \
             --dist-dir release-assets \
             --container-dir containers \
-            --checksums release-assets/checksums.txt \
+            --checksums prepared/dist/checksums.txt \
             --repository "$REPOSITORY" \
             --run-id "$RUN_ID" \
             --run-head-sha "$RUN_HEAD_SHA"
@@ -145,7 +153,7 @@ jobs:
           go run ./scripts/cmd/homebrewformula render \
             --formula "$formula_name" \
             --version "$VERSION" \
-            --checksums release-assets/checksums.txt \
+            --checksums published-release/checksums.txt \
             --output "staging-formula/$formula_name.rb"
           printf '%s\n' "$formula_name" > staging-formula/formula-name
 
