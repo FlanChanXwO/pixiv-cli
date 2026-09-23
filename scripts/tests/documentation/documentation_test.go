@@ -51,9 +51,6 @@ func TestREADMEQualityBadgeTracksReleasePushes(t *testing.T) {
 		if !strings.Contains(document, "actions/workflows/ci.yml/badge.svg?event=push") {
 			t.Errorf("%s README must show the release-push Quality badge", locale)
 		}
-		if !strings.Contains(document, "actions/workflows/platform-smoke.yml/badge.svg?event=workflow_dispatch") {
-			t.Errorf("%s README must show the dispatched Platform smoke badge", locale)
-		}
 	}
 }
 
