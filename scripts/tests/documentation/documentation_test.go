@@ -40,6 +40,23 @@ func readUserGuide(t *testing.T, relativePath string) string {
 	return string(body)
 }
 
+func TestREADMEQualityBadgeTracksReleasePushes(t *testing.T) {
+	t.Parallel()
+
+	for locale, path := range map[string]string{
+		"English":            "README.md",
+		"Simplified Chinese": "README.zh-CN.md",
+	} {
+		document := readUserGuide(t, path)
+		if !strings.Contains(document, "actions/workflows/ci.yml/badge.svg?event=push") {
+			t.Errorf("%s README must show the release-push Quality badge", locale)
+		}
+		if !strings.Contains(document, "actions/workflows/platform-smoke.yml/badge.svg?event=workflow_dispatch") {
+			t.Errorf("%s README must show the dispatched Platform smoke badge", locale)
+		}
+	}
+}
+
 // requireFragments 确认文档包含稳定契约片段；fragment 保持英文命令与路径。
 func requireFragments(t *testing.T, locale, document string, fragments []string) {
 	t.Helper()

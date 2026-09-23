@@ -2,19 +2,8 @@ name: Browser provider native contracts
 
 # 该 workflow 只运行无凭据的 provider contract；真实浏览器 session 只允许在受保护
 # release-prep host 运行，不把 Keychain/DPAPI/Secret Service value 带入 CI。
+# 这是显式维护者 evidence，不在普通 main push 后重复运行。
 on:
-  push:
-    branches:
-      - main
-    paths:
-      - '.github/workflows/browser-evidence.yml'
-      - 'e2e/native_browser_evidence_test.go'
-      - 'go.mod'
-      - 'go.sum'
-      - 'internal/browsercookies/**'
-      - 'scripts/install-browser-sqlite.ps1'
-      - 'scripts/cmd/browsernativeevidence/**'
-      - 'scripts/internal/browsernativeevidence/**'
   workflow_dispatch: {}
 
 permissions: {}

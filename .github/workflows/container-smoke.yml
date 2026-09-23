@@ -1,60 +1,28 @@
-name: Container image smoke
+name: Container smoke workers
 
 on:
-  pull_request:
-    branches:
-      - main
-  push:
-    branches:
-      - main
-  workflow_dispatch: {}
+  workflow_dispatch:
+    inputs:
+      pr_number:
+        description: Pull request number for this worker run
+        required: false
+        default: ''
+        type: string
+      head_sha:
+        description: Exact source commit to verify
+        required: false
+        default: ''
+        type: string
 
 concurrency:
-  group: container-smoke-${{ github.event.pull_request.number || github.ref }}
+  group: container-smoke-worker-${{ inputs.pr_number || github.ref }}
   cancel-in-progress: true
 
 permissions: {}
 
 jobs:
-  classify_changes:
-    name: Classify change scope
-    runs-on: ubuntu-24.04
-    outputs:
-      docs_only: ${{ steps.scope.outputs.docs_only }}
-      container_required: ${{ steps.scope.outputs.container_required }}
-    permissions:
-      contents: read
-    steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
-        with:
-          fetch-depth: 0
-          persist-credentials: false
-      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff
-        with:
-          go-version-file: go.mod
-      - name: Detect documentation-only changes
-        id: scope
-        shell: bash
-        env:
-          BASE_SHA: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || github.event.before }}
-          HEAD_SHA: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
-        run: |
-          set -euo pipefail
-          if [ "$GITHUB_EVENT_NAME" = workflow_dispatch ]; then
-            {
-              printf '%s\n' 'docs_only=false'
-              printf '%s\n' 'quality_required=true'
-              printf '%s\n' 'platform_required=true'
-              printf '%s\n' 'container_required=true'
-              printf '%s\n' 'native_required=true'
-            } >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-          go run ./scripts/cmd/changescope --base "$BASE_SHA" --head "$HEAD_SHA" --github-output "$GITHUB_OUTPUT"
-
-  resolve_platforms:
-    name: Container setup
-    needs: classify_changes
+  setup:
+    name: Resolve container workers
     runs-on: ubuntu-24.04
     permissions:
       contents: read
@@ -67,59 +35,43 @@ jobs:
       - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff
         with:
           go-version-file: go.mod
-      - name: Resolve container platforms
+          cache: false
+      - name: Resolve container matrix
         id: matrix
         shell: bash
-        env:
-          REQUIRED: ${{ needs.classify_changes.outputs.container_required }}
-        run: |
-          set -euo pipefail
-          # worker 始终运行：被 skip 的 matrix job 会让 GitHub 原样显示
-          # `${{ matrix.* }}` 占位符。非必需时只产出单个占位条目，名称里说明
-          # 跳过原因，并落到便宜的 ubuntu runner，不占用容器 runner。
-          if [ "$REQUIRED" = true ]; then
-            raw=$(go run ./tools/platformmatrix --capability container)
-            matrix=$(printf '%s' "$raw" | jq -c '.include |= map(. + {display: (.goos + "/" + .goarch), required: "true"})')
-          else
-            matrix=$(jq -nc '{include:[{display:"not required", required:"false", runner:"ubuntu-24.04"}]}')
-          fi
-          printf 'matrix=%s\n' "$matrix" >> "$GITHUB_OUTPUT"
+        run: go run ./tools/platformmatrix --capability container --github-output "$GITHUB_OUTPUT"
 
-  container_smoke:
-    needs: [classify_changes, resolve_platforms]
-    # 刻意不加 job 级 if：被 skip 的 matrix job 会让 GitHub 原样显示
-    # `${{ matrix.* }}` 占位符。改为始终运行，非必需时落到便宜的
-    # ubuntu-24.04 并在 step 层跳过全部重活。
-    name: Container smoke · ${{ matrix.display }}
-    runs-on: ${{ matrix.required == 'true' && matrix.runner || 'ubuntu-24.04' }}
+  worker:
+    needs: setup
+    name: Container platform - ${{ matrix.goos }}/${{ matrix.goarch }}
+    runs-on: ${{ matrix.runner }}
     permissions:
       contents: read
-    strategy:
-      fail-fast: false
-      matrix: ${{ fromJSON(needs.resolve_platforms.outputs.matrix) }}
     env:
       CC: ${{ matrix.cc }}
       RUSTUP_TOOLCHAIN: ${{ matrix.rust_toolchain }}
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.setup.outputs.matrix) }}
     steps:
-      - name: Mark the change as not requiring container smoke
-        if: matrix.required != 'true'
-        shell: bash
-        run: printf '%s\n' 'Container smoke is not required for this change.'
-
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
-        if: matrix.required == 'true'
         with:
+          ref: ${{ inputs.pr_number != '' && format('refs/pull/{0}/head', inputs.pr_number) || inputs.head_sha || github.sha }}
           persist-credentials: false
       - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff
-        if: matrix.required == 'true'
         with:
           go-version-file: go.mod
+          cache: false
+      - name: Require the requested source
+        if: ${{ inputs.head_sha != '' }}
+        shell: bash
+        env:
+          HEAD_SHA: ${{ inputs.head_sha }}
+        run: test "$(git rev-parse HEAD)" = "$HEAD_SHA"
       - name: Install the native Rust toolchain
-        if: matrix.required == 'true'
         shell: bash
         run: rustup toolchain install '${{ matrix.rust_toolchain }}' --profile minimal --target '${{ matrix.rust_target }}' --no-self-update
       - name: Build the versioned Linux binary
-        if: matrix.required == 'true'
         shell: bash
         run: |
           set -euo pipefail
@@ -131,11 +83,9 @@ jobs:
             --output-dir dist)
           test "$binary" = dist/pixiv
       - name: Build the container image
-        if: matrix.required == 'true'
         shell: bash
         run: docker build -t pixiv-cli-smoke:${{ matrix.goarch }} .
       - name: Verify non-root user
-        if: matrix.required == 'true'
         shell: bash
         run: |
           uid=$(docker run --rm --entrypoint id pixiv-cli-smoke:${{ matrix.goarch }} -u)
@@ -144,7 +94,6 @@ jobs:
             exit 1
           fi
       - name: Verify exact release version
-        if: matrix.required == 'true'
         shell: bash
         run: |
           version=$(docker run --rm pixiv-cli-smoke:${{ matrix.goarch }} --version)
@@ -153,7 +102,6 @@ jobs:
             exit 1
           fi
       - name: Verify state path
-        if: matrix.required == 'true'
         shell: bash
         run: |
           config_path=$(docker run --rm pixiv-cli-smoke:${{ matrix.goarch }} config path)
@@ -162,7 +110,6 @@ jobs:
             exit 1
           fi
       - name: Verify working directory
-        if: matrix.required == 'true'
         shell: bash
         run: |
           workdir=$(docker run --rm --entrypoint sh pixiv-cli-smoke:${{ matrix.goarch }} -c 'pwd')
@@ -171,7 +118,6 @@ jobs:
             exit 1
           fi
       - name: Verify embedded license-notices bundle
-        if: matrix.required == 'true'
         shell: bash
         run: |
           docker run --rm --entrypoint sh pixiv-cli-smoke:${{ matrix.goarch }} -c '
@@ -180,40 +126,62 @@ jobs:
             find /usr/share/doc/pixiv-cli/third_party/licenses -type f | grep -q .
           '
       - name: Run container release contract tests
-        if: matrix.required == 'true'
         shell: bash
         run: go test ./scripts/tests/containerrelease -count=1
 
-  container_smoke_gate:
-    name: Container smoke gate
-    needs: [classify_changes, resolve_platforms, container_smoke]
-    if: ${{ always() }}
+  publish:
+    if: ${{ always() && inputs.head_sha != '' }}
+    needs: [setup, worker]
+    name: Publish container smoke result
     runs-on: ubuntu-24.04
-    permissions: {}
+    permissions:
+      actions: read
+      statuses: write
     steps:
-      - name: Require expected container outcome
+      - name: Publish aggregate container smoke status
         shell: bash
         env:
-          CLASSIFY_RESULT: ${{ needs.classify_changes.result }}
-          CONTAINER_REQUIRED: ${{ needs.classify_changes.outputs.container_required }}
-          RESOLVE_RESULT: ${{ needs.resolve_platforms.result }}
-          MATRIX_RESULT: ${{ needs.container_smoke.result }}
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          HEAD_SHA: ${{ inputs.head_sha }}
+          SETUP_RESULT: ${{ needs.setup.result }}
+          WORKER_RESULT: ${{ needs.worker.result }}
         run: |
           set -euo pipefail
-          # §12.1：失败时必须给出可操作原因，而不是只有退出码。
-          if [ "$CLASSIFY_RESULT" != success ]; then
-            echo '::error::Container configuration could not be resolved.'
-            exit 1
+          state=failure
+          description='Container smoke failed on one or more required platforms.'
+          failures=
+          if [ "$SETUP_RESULT" != success ]; then
+            description='Container configuration could not be resolved.'
+          elif [ "$WORKER_RESULT" = success ]; then
+            state=success
+            description='All required container platforms passed.'
+          else
+            failures=$(gh api --method GET "repos/$REPO/actions/runs/$GITHUB_RUN_ID/jobs" \
+              -f filter=all \
+              -f per_page=100 \
+              --jq '.jobs[] | select(.name | startswith("Container platform - ")) | select(.conclusion != "success" and .conclusion != "skipped") | "\(.name) (\(.conclusion // .status))"')
+            if [ -n "$failures" ]; then
+              message=$(printf '%s\n' "$failures" | paste -sd ';' -)
+              description="Container smoke failed: $message"
+            fi
           fi
-          if [ "$RESOLVE_RESULT" != success ]; then
-            echo '::error::Container configuration could not be resolved.'
-            exit 1
-          fi
-          if [ "$MATRIX_RESULT" != success ]; then
-            echo '::error::Container smoke failed on one or more required platforms.'
-            exit 1
-          fi
-          # §12.2：合法跳过必须解释原因。
-          if [ "$CONTAINER_REQUIRED" != true ]; then
-            printf '%s\n' 'Container smoke is not required for this change.'
+          run_url="$GITHUB_SERVER_URL/$REPO/actions/runs/$GITHUB_RUN_ID"
+          gh api --method POST "repos/$REPO/statuses/$HEAD_SHA" \
+            -f state="$state" \
+            -f context='Container smoke gate' \
+            -f description="${description:0:140}" \
+            -f target_url="$run_url" >/dev/null
+          if [ "$state" = success ]; then
+            printf '%s\n' '### Container smoke' '' "$description" >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "::error title=Container smoke failed::$description"
+            {
+              printf '%s\n' '### Container smoke failed' ''
+              if [ -n "$failures" ]; then
+                printf '%s\n' "$failures" | sed 's/^/- /'
+              else
+                printf '%s\n' "- $description"
+              fi
+            } >> "$GITHUB_STEP_SUMMARY"
           fi

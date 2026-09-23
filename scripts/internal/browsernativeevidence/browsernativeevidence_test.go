@@ -44,6 +44,7 @@ func TestBrowserEvidenceWorkflowKeepsSecurityAndFixtureBoundaries(t *testing.T) 
 		}
 	}
 	for _, forbidden := range []string{
+		"\n  push:",
 		"secrets.",
 		"environment:",
 		"FANBOXSESSID",
@@ -90,9 +91,6 @@ func TestWindowsBrowserEvidencePinsSQLiteCLIProvisioning(t *testing.T) {
 	const installCommand = "./scripts/install-browser-sqlite.ps1 -GoArch '${{ matrix.goarch }}'"
 	if got := strings.Count(workflow, installCommand); got != 2 {
 		t.Fatalf("Windows SQLite provisioning calls = %d, want 2", got)
-	}
-	if !strings.Contains(workflow, "- 'scripts/install-browser-sqlite.ps1'") {
-		t.Fatal("browser evidence workflow must run when the pinned SQLite provisioning script changes")
 	}
 
 	scriptBody, err := os.ReadFile(filepath.Join(root, "scripts", "install-browser-sqlite.ps1"))
