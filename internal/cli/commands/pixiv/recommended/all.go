@@ -24,6 +24,10 @@ func (a command) runAll(ctx context.Context, client *pixiv.Client, plan listing.
 
 	var visualItems []pixiv.Artwork
 	if err := listing.PageItems(ctx, plan, fetchRecommendedArtworks(client, searchfilter.Filter{}), func(items []pixiv.Artwork) error {
+		// 观察本次命令已经取得的 Artwork；best-effort，不改变输出与请求。
+		if a.data.Observe != nil {
+			a.data.Observe(items)
+		}
 		visualItems = append(visualItems, items...)
 		return nil
 	}); err != nil {

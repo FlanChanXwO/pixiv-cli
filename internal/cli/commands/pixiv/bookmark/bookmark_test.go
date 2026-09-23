@@ -794,3 +794,52 @@ func TestBookmarkAddRejectsArtworkRecordWithNovelType(t *testing.T) {
 		t.Fatalf("Execute error = %v, diagnostics = %q, want unsupported_type", err, diagnostics.String())
 	}
 }
+
+// TestBookmarkListAllObservesFetchedArtworks 锁定 Task 20A：`bookmark list --type all`
+// 经聚合流返回 Artwork，必须同样交给 best-effort 观察端口，且不改变输出与请求数。
+func TestBookmarkListAllObservesFetchedArtworks(t *testing.T) {
+	output := &bytes.Buffer{}
+	requests := 0
+	transport := bookmarkRoundTripFunc(func(request *http.Request) (*http.Response, error) {
+		requests++
+		switch request.URL.Path {
+		case "/v1/user/bookmarks/illust":
+			return bookmarkJSONResponse(request, http.StatusOK, `{"illusts":[{"id":1001,"title":"artwork","type":"illust","create_date":"2024-05-01T10:00:00+09:00","user":{"id":7,"name":"artist"},"image_urls":{"large":"https://i.pximg.net/img/c.jpg"},"tags":[]}],"next_url":null}`), nil
+		case "/v1/user/bookmarks/novel":
+			return bookmarkJSONResponse(request, http.StatusOK, `{"novels":[{"id":2001,"title":"novel","create_date":"2024-05-01T10:00:00+09:00","user":{"id":7,"name":"writer"},"tags":[]}],"next_url":null}`), nil
+		default:
+			return nil, io.ErrUnexpectedEOF
+		}
+	})
+	client, err := pixiv.NewWith("test-access-token", pixiv.Options{HTTPClient: &http.Client{Transport: transport}})
+	if err != nil {
+		t.Fatalf("NewWith: %v", err)
+	}
+	var observed []pixiv.Artwork
+	cmd := New(deps.Data{
+		Input:       strings.NewReader(""),
+		Output:      output,
+		ErrorOutput: &bytes.Buffer{},
+		UsageError:  func(err error) error { return err },
+		JSONOut:     func(*bool) (bool, error) { return false, nil },
+		Observe:     func(items []pixiv.Artwork) { observed = append(observed, items...) },
+		Pooled: func(ctx context.Context, _ deps.Request, attempt func(context.Context, *pixiv.Client) (bool, error)) error {
+			_, err := attempt(ctx, client)
+			return err
+		},
+	})
+	cmd.SetArgs([]string{"list", "401", "--type", "all", "--limit", "2", "--ndjson"})
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("Execute: %v", err)
+	}
+	if !strings.Contains(output.String(), "1001") {
+		t.Fatalf("output missing the fetched artwork: %q", output.String())
+	}
+	if len(observed) != 1 || observed[0].ID != 1001 {
+		t.Fatalf("observed %+v, want the fetched artwork", observed)
+	}
+	// 观察不得增加上游请求：artwork 与 novel 各一次。
+	if requests != 2 {
+		t.Fatalf("requests = %d, want exactly one per stream with no observation-triggered fetch", requests)
+	}
+}

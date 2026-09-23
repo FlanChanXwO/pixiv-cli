@@ -429,6 +429,18 @@ func (a command) runAllList(cmd *cobra.Command, args []string, opts listOptions)
 		if err != nil {
 			return false, err
 		}
+		// 聚合流已取得的 Artwork 同样交给 best-effort 观察端口；不新增请求、不影响输出。
+		if a.data.Observe != nil {
+			artworks := make([]pixiv.Artwork, 0, len(items))
+			for _, item := range items {
+				if item.kind == "artwork" {
+					artworks = append(artworks, item.artwork)
+				}
+			}
+			if len(artworks) > 0 {
+				a.data.Observe(artworks)
+			}
+		}
 
 		var staged bytes.Buffer
 		if ndjson {
