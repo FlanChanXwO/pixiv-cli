@@ -156,15 +156,8 @@ func search(ctx context.Context, out io.Writer, open func() (*index.Store, error
 		return err
 	}
 	encoder := json.NewEncoder(out)
-	// Store.Search is already score-sorted; the first page is the best hit for each artwork.
-	seenPixiv := make(map[string]bool)
-	for _, match := range matches {
-		if match.Asset.Key.Source == "pixiv" {
-			if seenPixiv[match.Asset.Key.ID] {
-				continue
-			}
-			seenPixiv[match.Asset.Key.ID] = true
-		}
+	// Grouping is shared with the index package so its behavior is verifiable without a CLI process.
+	for _, match := range index.CollapsePixivPages(matches) {
 		result := struct {
 			Source   string          `json:"source"`
 			SourceID string          `json:"source_id"`

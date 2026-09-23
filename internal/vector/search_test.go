@@ -51,3 +51,35 @@ func TestSearchRanksPagesAcrossRestartWithoutMixingGenerations(t *testing.T) {
 		t.Fatalf("expected exact cosine, not dot product: %+v", matches)
 	}
 }
+
+// TestCollapsePixivPagesKeepsBestPagePerArtwork pins the display-time grouping without a
+// CLI process or shell fixture, so it also runs on Windows.
+func TestCollapsePixivPagesKeepsBestPagePerArtwork(t *testing.T) {
+	matches := []vector.Match{
+		{Asset: vector.Asset{Key: vector.Key{Source: "pixiv", ID: "123", Page: 1}, Metadata: []byte(`{"title":"best"}`)}, Score: 0.9},
+		{Asset: vector.Asset{Key: vector.Key{Source: "pixiv", ID: "456", Page: 0}}, Score: 0.8},
+		{Asset: vector.Asset{Key: vector.Key{Source: "pixiv", ID: "123", Page: 0}, Metadata: []byte(`{"title":"weaker"}`)}, Score: 0.7},
+		{Asset: vector.Asset{Key: vector.Key{Source: "local", ID: "123"}}, Score: 0.6},
+		{Asset: vector.Asset{Key: vector.Key{Source: "local", ID: "/g/a.png"}}, Score: 0.5},
+	}
+	got := vector.CollapsePixivPages(matches)
+	if len(got) != 4 {
+		t.Fatalf("want one result per Pixiv artwork plus every local asset, got %+v", got)
+	}
+	for i, want := range []vector.Key{
+		{Source: "pixiv", ID: "123", Page: 1},
+		{Source: "pixiv", ID: "456", Page: 0},
+		{Source: "local", ID: "123"},
+		{Source: "local", ID: "/g/a.png"},
+	} {
+		if got[i].Asset.Key != want {
+			t.Fatalf("result %d = %+v, want %+v (score order must survive grouping)", i, got[i].Asset.Key, want)
+		}
+	}
+	if string(got[0].Asset.Metadata) != `{"title":"best"}` || got[0].Score != 0.9 {
+		t.Fatalf("best page lost its own metadata/score: %+v", got[0])
+	}
+	if len(vector.CollapsePixivPages(nil)) != 0 {
+		t.Fatal("empty input must stay empty")
+	}
+}

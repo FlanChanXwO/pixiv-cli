@@ -15,6 +15,24 @@ type Match struct {
 	Score float64
 }
 
+// CollapsePixivPages keeps one best match per Pixiv artwork for display, while every
+// local asset stays as its own result. Input must already be score-sorted, as returned
+// by Store.Search; the index itself stays page-level.
+func CollapsePixivPages(matches []Match) []Match {
+	collapsed := make([]Match, 0, len(matches))
+	seen := make(map[string]bool)
+	for _, match := range matches {
+		if match.Asset.Key.Source == "pixiv" {
+			if seen[match.Asset.Key.ID] {
+				continue
+			}
+			seen[match.Asset.Key.ID] = true
+		}
+		collapsed = append(collapsed, match)
+	}
+	return collapsed
+}
+
 // Search compares only embeddings from one model generation using exact cosine.
 // ponytail: exact scan materializes results; add an index only if a real latency benchmark warrants it.
 func (s *Store) Search(ctx context.Context, model, generation string, query []float32) ([]Match, error) {
