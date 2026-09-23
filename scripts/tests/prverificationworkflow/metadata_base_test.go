@@ -155,6 +155,16 @@ func TestQualityGateUsesJobLevelScopeSkip(t *testing.T) {
 	if strings.Contains(body, "steps.scope.outputs.docs_only") {
 		t.Fatal("Quality gate must not emulate a skipped job by running a shell job with skipped steps")
 	}
+	for _, bootstrap := range []string{
+		"smoke_context_bootstrap_platform:",
+		"smoke_context_bootstrap_container:",
+		`if: ${{ github.event_name == 'workflow_dispatch' }}`,
+		"Required smoke context bootstrap; remove after the trusted job names are live on main.",
+	} {
+		if !strings.Contains(body, bootstrap) {
+			t.Fatalf("temporary smoke-context bootstrap missing %q", bootstrap)
+		}
+	}
 }
 
 func TestVerificationUsesJobLevelSkip(t *testing.T) {
