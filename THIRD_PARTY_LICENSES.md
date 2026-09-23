@@ -640,4 +640,3 @@
   - [LICENSE-APACHE](third_party/licenses/zune-jpeg-0.5.15/LICENSE-APACHE)
   - [LICENSE-MIT](third_party/licenses/zune-jpeg-0.5.15/LICENSE-MIT)
   - [LICENSE-ZLIB](third_party/licenses/zune-jpeg-0.5.15/LICENSE-ZLIB)
-

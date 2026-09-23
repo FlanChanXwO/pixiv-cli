@@ -62,3 +62,4 @@ USER pixiv
 
 # pixiv CLI 入口点——不使用 wrapper script，直接执行二进制。
 ENTRYPOINT ["/usr/local/bin/pixiv"]
+
