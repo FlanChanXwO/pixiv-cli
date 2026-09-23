@@ -5,7 +5,9 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
+	"net/http"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -25,6 +27,7 @@ import (
 	reverseassembly "github.com/FlanChanXwO/pixiv-cli/internal/services/reversesearch/assembly"
 	"github.com/FlanChanXwO/pixiv-cli/internal/storage/database"
 	"github.com/FlanChanXwO/pixiv-cli/internal/vector"
+	sdkpixiv "github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/spf13/cobra"
 	"github.com/stretchr/testify/assert"
@@ -851,3 +854,93 @@ func TestVectorSearchGroupsPixivArtworkByBestPage(t *testing.T) {
 	require.Greater(t, results[0].Score, results[1].Score)
 	require.Greater(t, results[1].Score, results[2].Score)
 }
+
+// TestVectorObserverEndToEndThroughCompositionRoot 锁定 Task 18 的端到端契约：
+// 经真实 root 组装运行一次普通 Pixiv 列表命令后，已取得的作品必须落进私有索引，
+// 且观察不产生任何额外 App API 请求、不改变 stdout 与退出码。
+func TestVectorObserverEndToEndThroughCompositionRoot(t *testing.T) {
+	useTempPaths(t)
+	dir, err := paths.AppDataDir()
+	require.NoError(t, err)
+
+	calls := 0
+	transport := rootRoundTripFunc(func(req *http.Request) (*http.Response, error) {
+		calls++
+		if req.URL.Path != "/v1/illust/ranking" {
+			return nil, fmt.Errorf("unexpected path %s", req.URL.Path)
+		}
+		body := `{"illusts":[{"id":9701,"title":"observed artwork","type":"illust","page_count":1,"create_date":"2026-09-01T00:00:00Z","user":{"id":71,"name":"artist"},"image_urls":{"large":"https://i.pximg.net/img/9701_cover.jpg"}}],"next_url":null}`
+		return &http.Response{StatusCode: 200, Header: http.Header{"Content-Type": {"application/json"}}, Body: io.NopCloser(strings.NewReader(body))}, nil
+	})
+	client, err := sdkpixiv.NewWith("test-access-token", sdkpixiv.Options{HTTPClient: &http.Client{Transport: transport}})
+	require.NoError(t, err)
+
+	oldSDK := newCLIPixivSDKPorts
+	newCLIPixivSDKPorts = func(app) (pixivSDKPorts, error) {
+		return pixivSDKPorts{
+			open: func(pixivdeps.Request) (*sdkpixiv.Client, error) { return client, nil },
+			execute: func(ctx context.Context, _ pixivdeps.Request, attempt func(context.Context, *sdkpixiv.Client) (bool, error)) error {
+				_, err := attempt(ctx, client)
+				return err
+			},
+			jsonOut: func(*bool) (bool, error) { return false, nil },
+		}, nil
+	}
+	t.Cleanup(func() { newCLIPixivSDKPorts = oldSDK })
+
+	var stdout, stderr bytes.Buffer
+	code := Run([]string{"pixiv", "ranking", "--mode", "day", "--ndjson"}, strings.NewReader(""), &stdout, &stderr)
+	require.Equal(t, 0, code, stderr.String())
+	require.Equal(t, 1, calls, "ranking makes exactly one upstream pass, and observation adds none")
+
+	// 观察必须在命令结束后落进独立私有索引，且不含任何向量（观察不加载模型）。
+	store, err := vector.Open(dir)
+	require.NoError(t, err)
+	defer store.Close()
+	assets, embeddings, err := store.Status(context.Background())
+	require.NoError(t, err)
+	require.Equal(t, 1, assets, "the fetched artwork must be observed into the index")
+	require.Equal(t, 0, embeddings, "observation must never embed")
+	asset, err := store.Get(context.Background(), vector.Key{Source: "pixiv", ID: "9701", Page: 0})
+	require.NoError(t, err)
+	require.Contains(t, string(asset.Metadata), `"url":"https://www.pixiv.net/artworks/9701"`)
+}
+
+// TestVectorObserverEndToEndSurvivesIndexFailure 证明观察失败不影响普通命令。
+func TestVectorObserverEndToEndSurvivesIndexFailure(t *testing.T) {
+	useTempPaths(t)
+	// 只让索引不可用：把 vector.db 占位为目录，config/账号路径保持正常，
+	// 从而确认失败隔离来自观察本身而非命令装配。
+	dir, err := paths.AppDataDir()
+	require.NoError(t, err)
+	require.NoError(t, os.MkdirAll(filepath.Join(dir, "vector.db"), 0o700))
+
+	transport := rootRoundTripFunc(func(*http.Request) (*http.Response, error) {
+		body := `{"illusts":[{"id":9801,"title":"x","type":"illust","page_count":1,"create_date":"2026-09-01T00:00:00Z","user":{"id":81,"name":"a"},"image_urls":{"large":"https://i.pximg.net/img/c.jpg"}}],"next_url":null}`
+		return &http.Response{StatusCode: 200, Header: http.Header{"Content-Type": {"application/json"}}, Body: io.NopCloser(strings.NewReader(body))}, nil
+	})
+	client, err := sdkpixiv.NewWith("test-access-token", sdkpixiv.Options{HTTPClient: &http.Client{Transport: transport}})
+	require.NoError(t, err)
+
+	oldSDK := newCLIPixivSDKPorts
+	newCLIPixivSDKPorts = func(app) (pixivSDKPorts, error) {
+		return pixivSDKPorts{
+			open: func(pixivdeps.Request) (*sdkpixiv.Client, error) { return client, nil },
+			execute: func(ctx context.Context, _ pixivdeps.Request, attempt func(context.Context, *sdkpixiv.Client) (bool, error)) error {
+				_, err := attempt(ctx, client)
+				return err
+			},
+			jsonOut: func(*bool) (bool, error) { return false, nil },
+		}, nil
+	}
+	t.Cleanup(func() { newCLIPixivSDKPorts = oldSDK })
+
+	var stdout, stderr bytes.Buffer
+	code := Run([]string{"pixiv", "ranking", "--mode", "day", "--ndjson"}, strings.NewReader(""), &stdout, &stderr)
+	require.Equal(t, 0, code, "an unusable index must not fail the command: %s", stderr.String())
+	require.Contains(t, stdout.String(), "9801")
+}
+
+type rootRoundTripFunc func(*http.Request) (*http.Response, error)
+
+func (f rootRoundTripFunc) RoundTrip(req *http.Request) (*http.Response, error) { return f(req) }
