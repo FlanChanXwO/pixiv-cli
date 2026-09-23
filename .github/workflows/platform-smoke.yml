@@ -181,7 +181,7 @@ jobs:
             -f status=completed \
             -f conclusion="$state" \
             -f details_url="$run_url" \
-            -f 'output[title]=Platform smoke' \
+            -f 'output[title]=Platform smoke worker' \
             -f "output[summary]=$description" >/dev/null
           if [ "$state" = success ]; then
             printf '%s\n' '### Platform smoke' '' "$description" >> "$GITHUB_STEP_SUMMARY"

@@ -17,6 +17,9 @@ jobs:
   validate:
     name: Validate PR metadata
     runs-on: ubuntu-24.04
+    outputs:
+      platform_required: ${{ steps.smoke_scope.outputs.platform_required }}
+      container_required: ${{ steps.smoke_scope.outputs.container_required }}
     permissions:
       actions: write
       checks: write
@@ -133,7 +136,7 @@ jobs:
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
           set -euo pipefail
-          for context in 'Platform smoke' 'Container smoke'; do
+          for context in 'Platform smoke worker' 'Container smoke worker'; do
             payload=$(jq -nc \
               --arg name "$context" \
               --arg head_sha "$HEAD_SHA" \
@@ -221,15 +224,11 @@ jobs:
 
           failed=0
           if [ "$PLATFORM_REQUIRED" = true ]; then
-            dispatch_worker platform-smoke.yml 'Platform smoke' 'Native platform smoke is running in parallel.' || failed=1
-          else
-            create_check 'Platform smoke' completed skipped 'Platform smoke is not required for this change.' >/dev/null
+            dispatch_worker platform-smoke.yml 'Platform smoke worker' 'Native platform smoke is running in parallel.' || failed=1
           fi
 
           if [ "$CONTAINER_REQUIRED" = true ]; then
-            dispatch_worker container-smoke.yml 'Container smoke' 'Container smoke is running in parallel.' || failed=1
-          else
-            create_check 'Container smoke' completed skipped 'Container smoke is not required for this change.' >/dev/null
+            dispatch_worker container-smoke.yml 'Container smoke worker' 'Container smoke is running in parallel.' || failed=1
           fi
 
           exit "$failed"
@@ -294,3 +293,95 @@ jobs:
           set -euo pipefail
           test "$TEMPLATE_OK" = true
           test "$COMMANDS_OK" = true
+
+  platform_smoke:
+    name: ${{ github.event.action == 'edited' && github.event.changes.base == null && 'Platform smoke metadata refresh' || 'Platform smoke' }}
+    needs: validate
+    if: ${{ always() && (github.event.action != 'edited' || github.event.changes.base != null) && (needs.validate.result != 'success' || needs.validate.outputs.platform_required == 'true') }}
+    runs-on: ubuntu-24.04
+    permissions:
+      checks: read
+    steps:
+      - name: Require successful smoke preparation
+        if: ${{ needs.validate.result != 'success' }}
+        shell: bash
+        run: |
+          echo '::error::Trusted PR metadata preparation failed.'
+          exit 1
+      - name: Wait for trusted platform smoke worker
+        if: ${{ needs.validate.result == 'success' }}
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          WORKER_CHECK: Platform smoke worker
+        run: |
+          set -euo pipefail
+          check=$(gh api --method GET "repos/$REPO/commits/$HEAD_SHA/check-runs" \
+            -f check_name="$WORKER_CHECK" -f filter=latest -f per_page=1)
+          check_run_id=$(printf '%s' "$check" | jq -r '.check_runs[0].id // empty')
+          if [ -z "$check_run_id" ]; then
+            echo '::error::Trusted platform smoke worker check was not published.'
+            exit 1
+          fi
+          while :; do
+            check=$(gh api "repos/$REPO/check-runs/$check_run_id")
+            status=$(printf '%s' "$check" | jq -r '.status')
+            if [ "$status" = completed ]; then
+              conclusion=$(printf '%s' "$check" | jq -r '.conclusion // ""')
+              if [ "$conclusion" = success ]; then
+                exit 0
+              fi
+              details=$(printf '%s' "$check" | jq -r '.details_url // ""')
+              echo "::error::Trusted platform smoke worker finished with $conclusion. $details"
+              exit 1
+            fi
+            sleep 5
+          done
+
+  container_smoke:
+    name: ${{ github.event.action == 'edited' && github.event.changes.base == null && 'Container smoke metadata refresh' || 'Container smoke' }}
+    needs: validate
+    if: ${{ always() && (github.event.action != 'edited' || github.event.changes.base != null) && (needs.validate.result != 'success' || needs.validate.outputs.container_required == 'true') }}
+    runs-on: ubuntu-24.04
+    permissions:
+      checks: read
+    steps:
+      - name: Require successful smoke preparation
+        if: ${{ needs.validate.result != 'success' }}
+        shell: bash
+        run: |
+          echo '::error::Trusted PR metadata preparation failed.'
+          exit 1
+      - name: Wait for trusted container smoke worker
+        if: ${{ needs.validate.result == 'success' }}
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          WORKER_CHECK: Container smoke worker
+        run: |
+          set -euo pipefail
+          check=$(gh api --method GET "repos/$REPO/commits/$HEAD_SHA/check-runs" \
+            -f check_name="$WORKER_CHECK" -f filter=latest -f per_page=1)
+          check_run_id=$(printf '%s' "$check" | jq -r '.check_runs[0].id // empty')
+          if [ -z "$check_run_id" ]; then
+            echo '::error::Trusted container smoke worker check was not published.'
+            exit 1
+          fi
+          while :; do
+            check=$(gh api "repos/$REPO/check-runs/$check_run_id")
+            status=$(printf '%s' "$check" | jq -r '.status')
+            if [ "$status" = completed ]; then
+              conclusion=$(printf '%s' "$check" | jq -r '.conclusion // ""')
+              if [ "$conclusion" = success ]; then
+                exit 0
+              fi
+              details=$(printf '%s' "$check" | jq -r '.details_url // ""')
+              echo "::error::Trusted container smoke worker finished with $conclusion. $details"
+              exit 1
+            fi
+            sleep 5
+          done
