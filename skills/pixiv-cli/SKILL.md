@@ -184,7 +184,7 @@ pixiv download [SRC...] [--pages 1,3-5] [--quality original|regular|small|thumb|
 pixiv vector sync local PATH               # explicit local scan and embedding; preinstalled runtime required
 pixiv vector status                        # private index counts; no Pixiv account needed
 pixiv vector rebuild                       # explicit re-embedding of all recorded local images
-pixiv vector search "white hair"           # offline text → image; NDJSON page-level results
+pixiv vector search "white hair"           # offline text → image; NDJSON, best page per Pixiv artwork
 pixiv vector search ./reference.jpg         # offline image → image; reads that local file
 pixiv update --check --json               # read-only update check
 ```

@@ -8,6 +8,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -774,4 +775,79 @@ func TestVectorSearchUsesLocalIndexWithoutPixivAuth(t *testing.T) {
 			t.Fatalf("vector search touched auth/config state %q: %v", path, err)
 		}
 	}
+}
+
+func TestVectorSearchGroupsPixivArtworkByBestPage(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("test runtime uses a POSIX shell fixture")
+	}
+	useTempPaths(t)
+	dir, err := paths.AppDataDir()
+	require.NoError(t, err)
+	store, err := vector.Open(dir)
+	require.NoError(t, err)
+	ctx := context.Background()
+	for _, item := range []struct {
+		key      vector.Key
+		metadata string
+		x, y     float32
+	}{
+		{vector.Key{Source: "pixiv", ID: "123", Page: 0}, `{"title":"weaker"}`, .6, .8},
+		{vector.Key{Source: "pixiv", ID: "123", Page: 1}, `{"title":"best"}`, 1, 0},
+		{vector.Key{Source: "pixiv", ID: "456", Page: 0}, `{"title":"other"}`, .8, .6},
+		{vector.Key{Source: "local", ID: "/gallery/a.png"}, `{}`, .2, .98},
+	} {
+		_, err := store.Upsert(ctx, vector.Asset{Key: item.key, Fingerprint: "same", Metadata: []byte(item.metadata), TargetModel: vector.ModelID, TargetGeneration: vector.Generation})
+		require.NoError(t, err)
+		values := make([]float32, 768)
+		values[0], values[1] = item.x, item.y
+		require.NoError(t, store.PutEmbedding(ctx, item.key, "same", vector.ModelID, vector.Generation, values))
+	}
+	require.NoError(t, store.Close())
+	query := make([]float32, 768)
+	query[0] = 1
+	response, err := json.Marshal(struct {
+		Vector []float32 `json:"vector"`
+	}{query})
+	require.NoError(t, err)
+	script := filepath.Join(t.TempDir(), "fake-python")
+	require.NoError(t, os.WriteFile(script, []byte("#!/bin/sh\nprintf '%s\\n' '{\"ready\":true}'\nwhile IFS= read -r line; do printf '%s\\n' '"+string(response)+"'; done\n"), 0o700))
+	t.Setenv("PIXIV_VECTOR_PYTHON", script)
+	var stdout, stderr bytes.Buffer
+	code := Run([]string{"pixiv", "vector", "search", "white hair"}, strings.NewReader(""), &stdout, &stderr)
+	require.Equal(t, 0, code, stderr.String())
+	var results []struct {
+		Source   string          `json:"source"`
+		SourceID string          `json:"source_id"`
+		Page     int             `json:"page_index"`
+		Score    float64         `json:"score"`
+		Metadata json.RawMessage `json:"metadata"`
+		URL      string          `json:"url"`
+	}
+	decoder := json.NewDecoder(&stdout)
+	for decoder.More() {
+		var result struct {
+			Source   string          `json:"source"`
+			SourceID string          `json:"source_id"`
+			Page     int             `json:"page_index"`
+			Score    float64         `json:"score"`
+			Metadata json.RawMessage `json:"metadata"`
+			URL      string          `json:"url"`
+		}
+		require.NoError(t, decoder.Decode(&result))
+		results = append(results, result)
+	}
+	require.Len(t, results, 3, "one result per Pixiv Artwork, every local asset retained")
+	require.Equal(t, "pixiv", results[0].Source)
+	require.Equal(t, "123", results[0].SourceID)
+	require.Equal(t, 1, results[0].Page)
+	require.Equal(t, `{"title":"best"}`, string(results[0].Metadata))
+	require.Equal(t, "https://www.pixiv.net/artworks/123", results[0].URL)
+	require.InDelta(t, 1, results[0].Score, 1e-6)
+	require.Equal(t, "456", results[1].SourceID)
+	require.Equal(t, 0, results[1].Page)
+	require.Equal(t, "local", results[2].Source)
+	require.Equal(t, "/gallery/a.png", results[2].SourceID)
+	require.Greater(t, results[0].Score, results[1].Score)
+	require.Greater(t, results[1].Score, results[2].Score)
 }

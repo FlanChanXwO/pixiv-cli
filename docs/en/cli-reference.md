@@ -421,6 +421,8 @@ request and does not mutate the index. An existing regular file is an image quer
 (`./...`, absolute path, or an image extension) is an error rather than text. Other input is text. A search does
 not scan galleries or implicitly sync bookmarks. Search emits one JSON object per result (NDJSON) in descending
 score order, with `source`, `source_id`, zero-based `page_index`, `score`, `metadata`, and for Pixiv assets `url`.
+Multiple pages of the same Pixiv artwork are grouped in CLI output; only the highest-scoring page is emitted for that artwork.
+The persistent index remains page-level.
 It returns all matching results without a hidden count limit. The search output is not a canonical Pixiv Record
 for piping into `detail` or `download`. Search needs the preinstalled model even after an index restart; it does
 not re-embed stored images. Status and sync have no `--json`; search emits NDJSON without an output flag.
