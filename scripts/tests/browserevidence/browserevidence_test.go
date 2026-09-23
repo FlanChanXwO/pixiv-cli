@@ -11,7 +11,6 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
-
 )
 
 func repositoryRoot(t *testing.T) string {
