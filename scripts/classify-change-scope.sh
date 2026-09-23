@@ -59,7 +59,7 @@ container_required=false
 while IFS= read -r -d '' path; do
   matches_docs_rule "$path" || docs_only=false
   case "$path" in
-    Dockerfile|.dockerignore|go.mod|go.sum|Cargo.toml|Cargo.lock|cmd/*|internal/*|sdk/*|native/*|ci/*|tools/platformmatrix/*|.github/workflows/container-smoke.yml|scripts/build-platform.sh|scripts/build-staticlibs*|scripts/cmd/releaseassets/*) container_required=true ;;
+    Dockerfile|.dockerignore|LICENSE|THIRD_PARTY_LICENSES.md|third_party/licenses/*|go.mod|go.sum|Cargo.toml|Cargo.lock|cmd/*|internal/*|sdk/*|native/*|ci/*|tools/platformmatrix/*|.github/workflows/container-smoke.yml|scripts/build-platform.sh|scripts/build-staticlibs*|scripts/cmd/releaseassets/*) container_required=true ;;
   esac
 done < "$changed"
 
