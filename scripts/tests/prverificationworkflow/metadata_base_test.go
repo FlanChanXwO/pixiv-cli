@@ -36,8 +36,10 @@ func TestPRMetadataValidatesAgainstTheCurrentBaseTip(t *testing.T) {
 
 // TestPRMetadataPreservesSmokeDispatchSafety locks the PR metadata invariants
 // that prevent stale heads or stale PR-body events from publishing incorrect
-// results, and ensure optional smoke gates use real skipped checks rather than
-// synthetic success statuses.
+// results, and ensure optional smoke checks use real skipped checks rather than
+// synthetic success statuses. Their check-run names intentionally differ from
+// the legacy commit-status contexts so branch protection never requires both
+// status types for the same context.
 func TestPRMetadataPreservesSmokeDispatchSafety(t *testing.T) {
 	t.Parallel()
 
@@ -71,12 +73,17 @@ func TestPRMetadataPreservesSmokeDispatchSafety(t *testing.T) {
 
 	for _, required := range []string{
 		`"repos/$REPO/check-runs"`,
-		`create_check 'Platform smoke gate' completed skipped`,
-		`create_check 'Container smoke gate' completed skipped`,
+		`create_check 'Platform smoke' completed skipped`,
+		`create_check 'Container smoke' completed skipped`,
 		`--arg check_run_id "$check_run_id"`,
 	} {
 		if !strings.Contains(body, required) {
 			t.Fatalf("PR metadata workflow missing check-run contract %q", required)
+		}
+	}
+	for _, legacy := range []string{"'Platform smoke gate'", "'Container smoke gate'"} {
+		if strings.Contains(body, legacy) {
+			t.Fatalf("PR metadata workflow retains legacy commit-status context %q", legacy)
 		}
 	}
 

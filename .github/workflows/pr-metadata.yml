@@ -133,7 +133,7 @@ jobs:
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
           set -euo pipefail
-          for context in 'Platform smoke gate' 'Container smoke gate'; do
+          for context in 'Platform smoke' 'Container smoke'; do
             payload=$(jq -nc \
               --arg name "$context" \
               --arg head_sha "$HEAD_SHA" \
@@ -221,15 +221,15 @@ jobs:
 
           failed=0
           if [ "$PLATFORM_REQUIRED" = true ]; then
-            dispatch_worker platform-smoke.yml 'Platform smoke gate' 'Native platform smoke is running in parallel.' || failed=1
+            dispatch_worker platform-smoke.yml 'Platform smoke' 'Native platform smoke is running in parallel.' || failed=1
           else
-            create_check 'Platform smoke gate' completed skipped 'Platform smoke is not required for this change.' >/dev/null
+            create_check 'Platform smoke' completed skipped 'Platform smoke is not required for this change.' >/dev/null
           fi
 
           if [ "$CONTAINER_REQUIRED" = true ]; then
-            dispatch_worker container-smoke.yml 'Container smoke gate' 'Container smoke is running in parallel.' || failed=1
+            dispatch_worker container-smoke.yml 'Container smoke' 'Container smoke is running in parallel.' || failed=1
           else
-            create_check 'Container smoke gate' completed skipped 'Container smoke is not required for this change.' >/dev/null
+            create_check 'Container smoke' completed skipped 'Container smoke is not required for this change.' >/dev/null
           fi
 
           exit "$failed"
