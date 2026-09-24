@@ -1,4 +1,5 @@
 name: Pull request metadata
+# Acceptance probe only: changing this smoke controller must require full smoke.
 
 on:
   pull_request_target:
