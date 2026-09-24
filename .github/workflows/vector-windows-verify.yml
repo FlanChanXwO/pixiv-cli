@@ -1,0 +1,21 @@
+# 临时验证 workflow（二次审查 §10）：Windows 真实运行 internal/vector 测试。
+# 验证完成后即删除，不作为 permanent workflow 保留。
+name: Vector Windows verify
+on:
+  workflow_dispatch:
+jobs:
+  test:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
+      - uses: actions/setup-go@4dfa82810997d0f4d3fd9fe3f5ad06929a3d28f3 # v6.5.0
+        with:
+          go-version-file: go.mod
+      - name: Test vector package on Windows
+        shell: bash
+        run: go test ./internal/vector -count=1 -v 2>&1 | tee vector-test.log
+      - name: Confirm cross-platform runtime tests ran
+        shell: bash
+        run: |
+          grep -q "TestStartSigLIP2MapsStartupErrors" vector-test.log
+          grep -c "^--- PASS" vector-test.log
