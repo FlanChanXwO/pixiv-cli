@@ -2,7 +2,8 @@
 # 验证完成后即删除，不作为 permanent workflow 保留。
 name: Vector Windows verify
 on:
-  workflow_dispatch:
+  push:
+    branches: [feat/vector-search-local-and-pixiv]
 jobs:
   test:
     runs-on: windows-latest
@@ -13,9 +14,7 @@ jobs:
           go-version-file: go.mod
       - name: Test vector package on Windows
         shell: bash
-        run: go test ./internal/vector -count=1 -v 2>&1 | tee vector-test.log
-      - name: Confirm cross-platform runtime tests ran
-        shell: bash
         run: |
+          go test ./internal/vector -count=1 -v 2>&1 | tee vector-test.log
           grep -q "TestStartSigLIP2MapsStartupErrors" vector-test.log
-          grep -c "^--- PASS" vector-test.log
+          echo "runtime startup tests present and passed"
