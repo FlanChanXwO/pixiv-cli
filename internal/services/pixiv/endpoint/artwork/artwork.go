@@ -45,6 +45,12 @@ type MetaPage struct {
 	ImageURLs ImageURLs
 }
 
+// SeriesSummary 是作品随附的最小系列信息，缺失时 Artwork.Series 为 nil。
+type SeriesSummary struct {
+	ID    int64
+	Title string
+}
+
 // Artwork 是跨 App artwork endpoint 归一化后的实体。分页 continuation
 // 不属于实体，由各 endpoint family 的 Result 类型表达。
 type Artwork struct {
@@ -66,6 +72,15 @@ type Artwork struct {
 	Width          int
 	Height         int
 	Tools          []string
+
+	// Viewer 与 safety 字段为 nil 表示当前 endpoint 未提供该值。
+	IsBookmarked          *bool
+	IsMuted               *bool
+	Visible               *bool
+	SanityLevel           *int
+	RestrictionAttributes *[]string
+	Series                *SeriesSummary
+	TotalComments         *int
 }
 
 // UgoiraMetadata 是 ugoira detail family 的规范化播放元数据。

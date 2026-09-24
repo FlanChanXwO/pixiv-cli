@@ -836,6 +836,107 @@ func TestSearchArtworksWiresOperation(t *testing.T) {
 	}
 }
 
+func TestArtworkViewerFieldPresence(t *testing.T) {
+	for _, endpoint := range []string{"search", "detail", "ranking"} {
+		for _, state := range []struct {
+			name    string
+			fields  string
+			present bool
+		}{
+			{name: "absent"},
+			{name: "null", fields: `,"is_bookmarked":null,"is_muted":null,"visible":null,"sanity_level":null,"restriction_attributes":null`},
+			{name: "explicit zero", fields: `,"is_bookmarked":false,"is_muted":false,"visible":false,"sanity_level":0,"restriction_attributes":[]`, present: true},
+		} {
+			if endpoint == "ranking" && state.name != "absent" {
+				continue
+			}
+			t.Run(endpoint+"/"+state.name, func(t *testing.T) {
+				calls := 0
+				rt := roundTripFunc(func(req *http.Request) (*http.Response, error) {
+					calls++
+					item := `{"id":5,"title":"art","type":"illust","create_date":"2024-01-01T00:00:00Z","user":{"id":7},"tags":[]` + state.fields + `}`
+					if endpoint == "detail" {
+						return jsonResponse(`{"illust":` + item + `}`), nil
+					}
+					return jsonResponse(`{"illusts":[` + item + `],"next_url":null}`), nil
+				})
+				client, err := NewWith("token", Options{HTTPClient: &http.Client{Transport: rt}})
+				if err != nil {
+					t.Fatal(err)
+				}
+				var got Artwork
+				switch endpoint {
+				case "detail":
+					got, err = client.Artwork(context.Background(), ArtworkRequest{ArtworkID: 5})
+				default:
+					var page sdk.Page[Artwork]
+					if endpoint == "search" {
+						page, err = client.SearchArtworks(context.Background(), SearchArtworksRequest{Word: "test"})
+					} else {
+						page, err = client.ArtworkRanking(context.Background(), ArtworkRankingRequest{Mode: RankingModeDay})
+					}
+					if err == nil && len(page.Items) == 1 {
+						got = page.Items[0]
+					} else {
+						t.Fatalf("page=%+v error=%v", page, err)
+					}
+				}
+				if err != nil {
+					t.Fatal(err)
+				}
+				if calls != 1 {
+					t.Fatalf("requests=%d, want no enrichment", calls)
+				}
+				raw, err := json.Marshal(ToArtworkDTO(got))
+				if err != nil {
+					t.Fatal(err)
+				}
+				var fields map[string]json.RawMessage
+				if err := json.Unmarshal(raw, &fields); err != nil {
+					t.Fatal(err)
+				}
+				for key, want := range map[string]string{"is_bookmarked": "false", "is_muted": "false", "visible": "false", "sanity_level": "0", "restriction_attributes": "[]"} {
+					value, present := fields[key]
+					if present != state.present || (present && string(value) != want) {
+						t.Errorf("%s=%s (present=%t), want %s (present=%t)", key, value, present, want, state.present)
+					}
+				}
+			})
+		}
+	}
+}
+
+func TestSearchArtworksPreservesViewerFieldsAndSeries(t *testing.T) {
+	calls := 0
+	rt := roundTripFunc(func(req *http.Request) (*http.Response, error) {
+		calls++
+		if req.URL.Path != "/v1/search/illust" {
+			t.Fatalf("path = %s", req.URL.Path)
+		}
+		return jsonResponse(`{"illusts":[{"id":9001,"title":"art","type":"illust","create_date":"2024-05-01T10:00:00+09:00","image_urls":{"original":"https://i.pximg.net/img/9001.png"},"user":{"id":7,"name":"n","account":"a"},"tags":[],"is_bookmarked":true,"is_muted":true,"visible":true,"sanity_level":4,"restriction_attributes":["restricted_mode"],"series":{"id":123,"title":"chapter"}},{"id":9002,"title":"other","type":"illust","create_date":"2024-05-01T10:00:00+09:00","image_urls":{"original":"https://i.pximg.net/img/9002.png"},"user":{"id":7,"name":"n","account":"a"},"tags":[],"restriction_attributes":[],"series":null}],"next_url":null}`), nil
+	})
+	client, _ := NewWith("token", Options{HTTPClient: &http.Client{Transport: rt}})
+	page, err := client.SearchArtworks(context.Background(), SearchArtworksRequest{Word: "test"})
+	if err != nil {
+		t.Fatalf("SearchArtworks: %v", err)
+	}
+	if calls != 1 || len(page.Items) != 2 {
+		t.Fatalf("calls=%d items=%d, want 1/2", calls, len(page.Items))
+	}
+	got := page.Items[0]
+	if got.IsBookmarked == nil || !*got.IsBookmarked || got.IsMuted == nil || !*got.IsMuted || got.Visible == nil || !*got.Visible || got.SanityLevel == nil || *got.SanityLevel != 4 ||
+		got.RestrictionAttributes == nil || !reflect.DeepEqual(*got.RestrictionAttributes, []string{"restricted_mode"}) ||
+		got.Series == nil || got.Series.ID != 123 || got.Series.Title != "chapter" {
+		t.Fatalf("search artwork fields = %+v", got)
+	}
+	if page.Items[1].RestrictionAttributes == nil || len(*page.Items[1].RestrictionAttributes) != 0 {
+		t.Fatalf("empty restriction attributes = %#v, want []", page.Items[1].RestrictionAttributes)
+	}
+	if page.Items[1].Series != nil {
+		t.Fatalf("null series = %+v, want nil", page.Items[1].Series)
+	}
+}
+
 func TestSearchArtworksRejectsChangedQuery(t *testing.T) {
 	rt := roundTripFunc(func(req *http.Request) (*http.Response, error) {
 		body := `{"illusts":[],"next_url":"https://app-api.pixiv.net/v1/search/illust?word=test&offset=30"}`
@@ -1012,6 +1113,49 @@ func TestArtworkWiresDetailPreservesPagesAndResources(t *testing.T) {
 	}
 	if !strings.Contains(artwork.Pages[1].Image.Resource.URL, "5_p1.png") {
 		t.Fatalf("page URL = %q", artwork.Pages[1].Image.Resource.URL)
+	}
+}
+
+func TestArtworkDetailPreservesViewerFieldsSeriesAndOptionalComments(t *testing.T) {
+	tests := []struct {
+		name         string
+		series       string
+		comments     string
+		wantSeries   bool
+		wantComments bool
+	}{
+		{name: "series with zero comments", series: `{"id":123,"title":"chapter"}`, comments: `0`, wantSeries: true, wantComments: true},
+		{name: "null series without comments", series: `null`, comments: `null`},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			calls := 0
+			rt := roundTripFunc(func(req *http.Request) (*http.Response, error) {
+				calls++
+				if req.URL.Path != "/v1/illust/detail" {
+					t.Fatalf("path = %s", req.URL.Path)
+				}
+				return jsonResponse(`{"illust":{"id":5,"title":"one","type":"illust","create_date":"2024-01-01T00:00:00Z","image_urls":{"original":"https://i.pximg.net/img/5.png"},"user":{"id":9,"name":"u","account":"u"},"tags":[],"is_bookmarked":true,"is_muted":true,"visible":true,"sanity_level":2,"restriction_attributes":["restricted_mode"],"series":` + test.series + `,"total_comments":` + test.comments + `}}`), nil
+			})
+			client, _ := NewWith("token", Options{HTTPClient: &http.Client{Transport: rt}})
+			got, err := client.Artwork(context.Background(), ArtworkRequest{ArtworkID: 5})
+			if err != nil {
+				t.Fatalf("Artwork: %v", err)
+			}
+			if calls != 1 || got.IsBookmarked == nil || !*got.IsBookmarked || got.IsMuted == nil || !*got.IsMuted || got.Visible == nil || !*got.Visible || got.SanityLevel == nil || *got.SanityLevel != 2 ||
+				got.RestrictionAttributes == nil || !reflect.DeepEqual(*got.RestrictionAttributes, []string{"restricted_mode"}) {
+				t.Fatalf("calls=%d artwork fields=%+v", calls, got)
+			}
+			if (got.Series != nil) != test.wantSeries || (got.TotalComments != nil) != test.wantComments {
+				t.Fatalf("series=%+v comments=%v, want presence %t/%t", got.Series, got.TotalComments, test.wantSeries, test.wantComments)
+			}
+			if test.wantSeries && (got.Series.ID != 123 || got.Series.Title != "chapter") {
+				t.Fatalf("series = %+v", got.Series)
+			}
+			if test.wantComments && *got.TotalComments != 0 {
+				t.Fatalf("total_comments = %d, want 0", *got.TotalComments)
+			}
+		})
 	}
 }
 

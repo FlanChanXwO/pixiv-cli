@@ -50,13 +50,13 @@ pixiv search "landscape" --type artwork --limit 10 --json
 - Search requires an authenticated local account. `tag-title-caption` and
   bookmark-count filtering are App-only in this branch. Never add a Cookie
   workaround or report an authentication failure as an empty result.
-- Need page 2+: `--page N` (1-based) with a positive `--limit`.
+- Need page 2+: `--page N` (1-based) with a positive `--limit`. Ordinary artwork search without local filtering starts at the target raw offset; AI-only and bookmark-count filtering still skip after local filtering and may read preceding batches.
 - Local filters skip leading empty upstream batches until the first non-empty
   logical batch or true end. `--limit N` fills filtered results across batches;
   `--limit 0` walks all filtered results. Do not invent request caps.
 - There is no like-count field; do not treat bookmark totals as likes.
 - Artwork JSON/text include the stable page URL
-  `https://www.pixiv.net/artworks/{id}` as the first field/line.
+  `https://www.pixiv.net/artworks/{id}` as the first field/line. Search JSON also carries available viewer `is_bookmarked`/`is_muted`, `visible`, `sanity_level`, `restriction_attributes`, and optional `series`; detail may add `total_comments`. Viewer state applies to the read account, so recheck before writing under a different account. Omitted viewer/safety keys are unknown, not `false` or `0`; an explicit empty `restriction_attributes` remains `[]`.
 
 ## Reverse-search an image
 

@@ -15,6 +15,114 @@ import (
 	pixiv "github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
 )
 
+type searchRoundTripFunc func(*http.Request) (*http.Response, error)
+
+func (f searchRoundTripFunc) RoundTrip(req *http.Request) (*http.Response, error) { return f(req) }
+
+func TestCommandDeepArtworkPageStartsAtRawOffset(t *testing.T) {
+	calls := 0
+	rt := searchRoundTripFunc(func(req *http.Request) (*http.Response, error) {
+		calls++
+		if got := req.URL.Query().Get("offset"); got != "270" {
+			t.Errorf("first search offset = %q, want 270", got)
+		}
+		body := `{"illusts":[{"id":901,"title":"cat","type":"illust","create_date":"2024-05-01T10:00:00+09:00","user":{"id":7,"name":"artist"},"tags":[]}],"next_url":null}`
+		return &http.Response{StatusCode: http.StatusOK, Header: http.Header{"Content-Type": {"application/json"}}, Body: io.NopCloser(strings.NewReader(body))}, nil
+	})
+	client, err := pixiv.NewWith("token", pixiv.Options{HTTPClient: &http.Client{Transport: rt}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var output bytes.Buffer
+	cmd := New(Dependencies{
+		Input: strings.NewReader(""), Output: &output,
+		JSONOut: func(*bool) (bool, error) { return true, nil },
+		Pooled: func(ctx context.Context, _ Request, attempt func(context.Context, *pixiv.Client) (bool, error)) error {
+			_, err := attempt(ctx, client)
+			return err
+		},
+	})
+	cmd.SetArgs([]string{"cat", "--page", "10", "--limit", "30", "--json"})
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("search page: %v", err)
+	}
+	var result struct {
+		Illusts []struct {
+			ID int64 `json:"id"`
+		} `json:"illusts"`
+	}
+	if err := json.Unmarshal(output.Bytes(), &result); err != nil {
+		t.Fatal(err)
+	}
+	if calls != 1 || len(result.Illusts) != 1 || result.Illusts[0].ID != 901 {
+		t.Fatalf("calls=%d output=%s, want one request and artwork 901", calls, output.String())
+	}
+}
+
+func TestCommandFilteredArtworkPagesKeepLogicalSkip(t *testing.T) {
+	for _, tt := range []struct {
+		name string
+		flag []string
+		want int64
+	}{
+		{name: "AI-only", flag: []string{"--ai-mode", "only"}, want: 4},
+		{name: "bookmark count", flag: []string{"--bookmark-min", "10"}, want: 3},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			calls := 0
+			rt := searchRoundTripFunc(func(req *http.Request) (*http.Response, error) {
+				calls++
+				wantOffset := ""
+				if calls == 2 {
+					wantOffset = "30"
+				}
+				if got := req.URL.Query().Get("offset"); got != wantOffset {
+					t.Errorf("request %d offset = %q, want %q", calls, got, wantOffset)
+				}
+				if got := req.URL.Query().Get("bookmark_num_min"); got != "" {
+					t.Errorf("unverified server bookmark filter sent: %q", got)
+				}
+				if got := req.URL.Query().Get("search_ai_type"); got != "0" {
+					t.Errorf("search_ai_type = %q, want 0", got)
+				}
+				body := `{"illusts":[{"id":1,"title":"human","type":"illust","ai_type":1,"total_bookmarks":5,"create_date":"2024-05-01T10:00:00+09:00","user":{"id":7,"name":"artist"},"tags":[]},{"id":2,"title":"AI","type":"illust","ai_type":2,"total_bookmarks":12,"create_date":"2024-05-01T10:00:00+09:00","user":{"id":7,"name":"artist"},"tags":[]}],"next_url":"https://app-api.pixiv.net/v1/search/illust?word=cat&offset=30"}`
+				if calls == 2 {
+					body = `{"illusts":[{"id":3,"title":"human","type":"illust","ai_type":1,"total_bookmarks":20,"create_date":"2024-05-01T10:00:00+09:00","user":{"id":7,"name":"artist"},"tags":[]},{"id":4,"title":"AI","type":"illust","ai_type":2,"total_bookmarks":21,"create_date":"2024-05-01T10:00:00+09:00","user":{"id":7,"name":"artist"},"tags":[]}],"next_url":null}`
+				}
+				return &http.Response{StatusCode: http.StatusOK, Header: http.Header{"Content-Type": {"application/json"}}, Body: io.NopCloser(strings.NewReader(body))}, nil
+			})
+			client, err := pixiv.NewWith("token", pixiv.Options{HTTPClient: &http.Client{Transport: rt}})
+			if err != nil {
+				t.Fatal(err)
+			}
+			var output bytes.Buffer
+			cmd := New(Dependencies{
+				Input: strings.NewReader(""), Output: &output,
+				JSONOut: func(*bool) (bool, error) { return true, nil },
+				Pooled: func(ctx context.Context, _ Request, attempt func(context.Context, *pixiv.Client) (bool, error)) error {
+					_, err := attempt(ctx, client)
+					return err
+				},
+			})
+			cmd.SetArgs(append([]string{"cat", "--page", "2", "--limit", "1", "--json"}, tt.flag...))
+			if err := cmd.Execute(); err != nil {
+				t.Fatalf("filtered search: %v", err)
+			}
+			var result struct {
+				Illusts []struct {
+					ID int64 `json:"id"`
+				} `json:"illusts"`
+			}
+			if err := json.Unmarshal(output.Bytes(), &result); err != nil {
+				t.Fatal(err)
+			}
+			if calls != 2 || len(result.Illusts) != 1 || result.Illusts[0].ID != tt.want {
+				t.Fatalf("calls=%d output=%s, want artwork %d after local skip", calls, output.String(), tt.want)
+			}
+		})
+	}
+}
+
 func TestCommandRejectsInvalidFilterBeforeOpeningClient(t *testing.T) {
 	opened := false
 	cmd := New(Dependencies{

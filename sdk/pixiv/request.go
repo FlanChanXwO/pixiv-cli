@@ -120,6 +120,8 @@ type SearchArtworksRequest struct {
 	// CursorContext binds caller-side filtering semantics; it is hashed into
 	// the cursor binding and is never sent to Pixiv. Repeat it when resuming.
 	CursorContext string
+	// Offset 是原始搜索结果流的初始位置；使用 Cursor 续页时须重复此值。
+	Offset int
 }
 
 // ArtworkRequest selects one artwork by its stable ID.

@@ -57,6 +57,14 @@ type ArtworkDTO struct {
 	Tools          []string         `json:"tools,omitempty"`
 	Cover          ImageResourceDTO `json:"cover"`
 	Pages          []ArtworkPageDTO `json:"pages,omitempty"`
+
+	IsBookmarked          *bool                 `json:"is_bookmarked,omitempty"`
+	IsMuted               *bool                 `json:"is_muted,omitempty"`
+	Visible               *bool                 `json:"visible,omitempty"`
+	SanityLevel           *int                  `json:"sanity_level,omitempty"`
+	RestrictionAttributes *[]string             `json:"restriction_attributes,omitempty"`
+	Series                *ArtworkSeriesSummary `json:"series,omitempty"`
+	TotalComments         *int                  `json:"total_comments,omitempty"`
 }
 
 // NovelDTO is the output-safe form of Novel.
@@ -348,6 +356,16 @@ func ToArtworkDTO(value Artwork) ArtworkDTO {
 	for _, page := range value.Pages {
 		pages = append(pages, ToArtworkPageDTO(page))
 	}
+	var series *ArtworkSeriesSummary
+	if value.Series != nil {
+		copy := *value.Series
+		series = &copy
+	}
+	var comments *int
+	if value.TotalComments != nil {
+		copy := *value.TotalComments
+		comments = &copy
+	}
 	return ArtworkDTO{
 		ID:             value.ID,
 		Title:          value.Title,
@@ -368,6 +386,14 @@ func ToArtworkDTO(value Artwork) ArtworkDTO {
 		Tools:          append([]string(nil), value.Tools...),
 		Cover:          ToImageResourceDTO(value.Cover),
 		Pages:          pages,
+
+		IsBookmarked:          cloneValue(value.IsBookmarked),
+		IsMuted:               cloneValue(value.IsMuted),
+		Visible:               cloneValue(value.Visible),
+		SanityLevel:           cloneValue(value.SanityLevel),
+		RestrictionAttributes: cloneStringSlice(value.RestrictionAttributes),
+		Series:                series,
+		TotalComments:         comments,
 	}
 }
 

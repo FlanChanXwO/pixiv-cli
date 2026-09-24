@@ -19,6 +19,10 @@ func (c *Client) SearchArtworks(ctx context.Context, request SearchArtworksReque
 	if err != nil {
 		return sdk.Page[Artwork]{}, err
 	}
+	offset := int(state.Value)
+	if request.Cursor.IsZero() {
+		offset = request.Offset
+	}
 	filters := artworksearch.Filters{
 		AIMode:      string(request.AIMode),
 		ContentType: string(request.ContentType),
@@ -35,7 +39,7 @@ func (c *Client) SearchArtworks(ctx context.Context, request SearchArtworksReque
 		Duration:  string(request.Duration),
 		StartDate: request.StartDate,
 		EndDate:   request.EndDate,
-		Offset:    int(state.Value),
+		Offset:    offset,
 		Filters:   filters,
 	})
 	if err != nil {
@@ -74,6 +78,9 @@ func (c *Client) SearchArtworks(ctx context.Context, request SearchArtworksReque
 func searchArtworksQuery(request SearchArtworksRequest) (SearchArtworksRequest, url.Values, error) {
 	if err := validateSearchWord("SearchArtworks", request.Word); err != nil {
 		return request, nil, err
+	}
+	if request.Offset < 0 {
+		return request, nil, newError("SearchArtworks", sdk.InvalidArgument, "offset must be non-negative")
 	}
 	if err := validateSearchArtworksRequest("SearchArtworks", request); err != nil {
 		return request, nil, err
@@ -132,6 +139,10 @@ func searchArtworksQuery(request SearchArtworksRequest) (SearchArtworksRequest, 
 	}
 	if request.BookmarkMax != nil {
 		query.Set("bookmark_num_max", itoa(int64(*request.BookmarkMax)))
+	}
+	if request.Offset > 0 {
+		// 只绑定初始窗口；上游 offset 由当前 cursor 或首次请求决定。
+		query.Set("initial_offset", itoa(int64(request.Offset)))
 	}
 	return request, query, nil
 }

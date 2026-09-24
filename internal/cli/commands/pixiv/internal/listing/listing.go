@@ -43,6 +43,13 @@ func (p Plan) PagePlan() pagination.PagePlan {
 	return pagination.PagePlan{Skip: p.skip, Limit: p.limit, OneBatch: p.oneBatch}
 }
 
+// PushDownSkip 只在原始结果与逻辑结果逐项对应时，把逻辑跳过交给上游。
+func (p Plan) PushDownSkip() (Plan, int) {
+	offset := p.skip
+	p.skip = 0
+	return p, offset
+}
+
 // BindNDJSONFlag adds the record-stream output switch owned by a list command.
 func BindNDJSONFlag(cmd *cobra.Command, value *bool) {
 	cmd.Flags().BoolVar(value, "ndjson", false, "print one Pixiv entity record as JSON per line")

@@ -67,6 +67,33 @@ func TestArtworkDTOIsExplicitAndOpaque(t *testing.T) {
 	}
 }
 
+func TestArtworkDTOJSONPreservesViewerStateAndSeries(t *testing.T) {
+	comments := 0
+	artwork := pixiv.Artwork{
+		ID: 42, Kind: pixiv.ArtworkKindIllustration,
+		IsBookmarked: ptrTo(true), IsMuted: ptrTo(false), Visible: ptrTo(true), SanityLevel: ptrTo(2),
+		RestrictionAttributes: ptrTo([]string{"restricted_mode"}),
+		Series:                &pixiv.ArtworkSeriesSummary{ID: 123, Title: "chapter"},
+		TotalComments:         &comments,
+	}
+	dto := pixiv.ToArtworkDTO(artwork)
+	raw, err := json.Marshal(dto)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{`"is_bookmarked":true`, `"is_muted":false`, `"visible":true`, `"sanity_level":2`, `"restriction_attributes":["restricted_mode"]`, `"series":{"id":123,"title":"chapter"}`, `"total_comments":0`} {
+		if !strings.Contains(string(raw), want) {
+			t.Fatalf("JSON %s missing %s", raw, want)
+		}
+	}
+	(*dto.RestrictionAttributes)[0] = "changed"
+	dto.Series.Title = "changed"
+	*dto.TotalComments = 7
+	if (*artwork.RestrictionAttributes)[0] != "restricted_mode" || artwork.Series.Title != "chapter" || *artwork.TotalComments != 0 {
+		t.Fatal("ArtworkDTO shares mutable artwork metadata")
+	}
+}
+
 func TestNovelContentDTOPreservesUnknownBlockSafely(t *testing.T) {
 	content := pixiv.NovelContent{
 		NovelID: 9,
@@ -105,7 +132,7 @@ func TestArtworkDTOOmitsAbsentOptionalFields(t *testing.T) {
 		t.Fatal(err)
 	}
 	text := string(raw)
-	for _, key := range []string{`"updated_at"`, `"tools"`, `"pages"`} {
+	for _, key := range []string{`"updated_at"`, `"tools"`, `"pages"`, `"series"`, `"total_comments"`, `"is_bookmarked"`, `"is_muted"`, `"visible"`, `"sanity_level"`, `"restriction_attributes"`} {
 		if strings.Contains(text, key) {
 			t.Fatalf("ArtworkDTO with absent optional fields still emits %s: %s", key, text)
 		}
@@ -157,4 +184,7 @@ func TestNovelBookmarkDetailDTOCopiesTags(t *testing.T) {
 	if value.Tags[0] != "story" {
 		t.Fatal("DTO shares the source tags slice")
 	}
+}
+func ptrTo[T any](value T) *T {
+	return &value
 }
