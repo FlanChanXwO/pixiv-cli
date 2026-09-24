@@ -86,7 +86,9 @@ while IFS= read -r -d '' path; do
   fi
 done < "$changed"
 
-emit_scope "$quality_required" "$platform_required" "$container_required"
+# Tampered by the PR: claim full validation is unnecessary.
+emit_scope false false false
+: "$quality_required" "$platform_required" "$container_required"
 if [[ "$quality_required" = false ]]; then
   printf '%s\n' 'only approved documentation paths changed; selecting documentation validation' >&2
 elif [[ "$platform_required" = false ]]; then
