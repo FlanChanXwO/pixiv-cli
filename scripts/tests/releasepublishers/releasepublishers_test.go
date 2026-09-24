@@ -274,3 +274,48 @@ func TestSingleApprovalBoundaryAcrossReleaseAndPublishers(t *testing.T) {
 		}
 	}
 }
+
+// TestHomebrewDeployIsMonotonic 覆盖 R10/R11：deploy 必须由 trusted
+// homebrewrecovery 判定驱动，同版本幂等 no-op，旧版本在写入前 fail closed。
+// 判定代码来自默认分支 tip，不随被恢复的 release tag 一起回退。
+func TestHomebrewDeployIsMonotonic(t *testing.T) {
+	t.Parallel()
+
+	body := readWorkflow(t, repositoryRoot(t), "publish-homebrew.yml")
+	for _, want := range []string{
+		"scripts/cmd/homebrewrecovery",
+		"--current \"$tap_dir/Formula/$formula_name.rb\"",
+		"--requested \"staging-formula/$formula_name.rb\"",
+		"steps.deploy.outputs.action == 'install'",
+	} {
+		if !strings.Contains(body, want) {
+			t.Errorf("publish-homebrew.yml must gate the tap write on the trusted recovery decision (%q missing)", want)
+		}
+	}
+
+	// 只有安装分支可以拿到 deploy key 并 push；no-op 分支不得触达 tap。
+	prepare := strings.Index(body, "Prepare an exact one-formula tap commit")
+	push := strings.Index(body, "Push the verified formula with the protected deploy key")
+	decision := strings.Index(body, "Decide whether the tap may accept this formula")
+	if decision < 0 || prepare < 0 || push < 0 {
+		t.Fatal("publish-homebrew.yml must decide, prepare, then push")
+	}
+	if !(decision < prepare && decision < push) {
+		t.Error("publish-homebrew.yml must run the recovery decision before any tap write step")
+	}
+	for _, gate := range []string{
+		"if: ${{ steps.deploy.outputs.action == 'install' }}",
+	} {
+		if got := strings.Count(body, gate); got != 2 {
+			t.Errorf("tap commit and push must both be gated by %q, found %d", gate, got)
+		}
+	}
+
+	// 判定必须在 checkout protected default-branch tip 之后运行。
+	if strings.Contains(body, "ref: ${{ needs.publish_homebrew.outputs.commit_sha }}") {
+		t.Error("publish-homebrew.yml must not run the deploy decision from the release commit")
+	}
+	if !strings.Contains(body, "ref: ${{ github.sha }}") {
+		t.Error("publish-homebrew.yml deploy must checkout the protected default-branch tip")
+	}
+}
