@@ -21,12 +21,7 @@ jobs:
         run: |
           set -euo pipefail
           ensure_label() {
-            local name=$1
-            local color=$2
-            local description=$3
-            if ! gh label view "$name" --repo "$REPO" >/dev/null 2>&1; then
-              gh label create "$name" --repo "$REPO" --color "$color" --description "$description"
-            fi
+            gh label create "$1" --repo "$REPO" --color "$2" --description "$3" --force
           }
           ensure_label "area: docs" "0E8A16" "Documentation changes"
           ensure_label "area: frontend" "1D76DB" "Frontend changes"
