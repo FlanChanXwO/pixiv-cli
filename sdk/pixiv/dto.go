@@ -58,11 +58,11 @@ type ArtworkDTO struct {
 	Cover          ImageResourceDTO `json:"cover"`
 	Pages          []ArtworkPageDTO `json:"pages,omitempty"`
 
-	IsBookmarked          bool                  `json:"is_bookmarked"`
-	IsMuted               bool                  `json:"is_muted"`
-	Visible               bool                  `json:"visible"`
-	SanityLevel           int                   `json:"sanity_level"`
-	RestrictionAttributes []string              `json:"restriction_attributes"`
+	IsBookmarked          *bool                 `json:"is_bookmarked,omitempty"`
+	IsMuted               *bool                 `json:"is_muted,omitempty"`
+	Visible               *bool                 `json:"visible,omitempty"`
+	SanityLevel           *int                  `json:"sanity_level,omitempty"`
+	RestrictionAttributes *[]string             `json:"restriction_attributes,omitempty"`
 	Series                *ArtworkSeriesSummary `json:"series,omitempty"`
 	TotalComments         *int                  `json:"total_comments,omitempty"`
 }
@@ -387,12 +387,11 @@ func ToArtworkDTO(value Artwork) ArtworkDTO {
 		Cover:          ToImageResourceDTO(value.Cover),
 		Pages:          pages,
 
-		IsBookmarked: value.IsBookmarked,
-		IsMuted:      value.IsMuted,
-		Visible:      value.Visible,
-		SanityLevel:  value.SanityLevel,
-		// MCP schema 将此字段视为数组；未提供时也不能编码成 null。
-		RestrictionAttributes: append([]string{}, value.RestrictionAttributes...),
+		IsBookmarked:          cloneValue(value.IsBookmarked),
+		IsMuted:               cloneValue(value.IsMuted),
+		Visible:               cloneValue(value.Visible),
+		SanityLevel:           cloneValue(value.SanityLevel),
+		RestrictionAttributes: cloneStringSlice(value.RestrictionAttributes),
 		Series:                series,
 		TotalComments:         comments,
 	}

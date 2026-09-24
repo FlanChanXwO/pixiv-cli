@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/url"
-	"slices"
 	"strconv"
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/endpoint/artwork"
@@ -196,11 +195,11 @@ type illustDTO struct {
 	Height         int           `json:"height"`
 	Tools          []string      `json:"tools"`
 
-	IsBookmarked          bool                   `json:"is_bookmarked"`
-	IsMuted               bool                   `json:"is_muted"`
-	Visible               bool                   `json:"visible"`
-	SanityLevel           int                    `json:"sanity_level"`
-	RestrictionAttributes []string               `json:"restriction_attributes"`
+	IsBookmarked          *bool                  `json:"is_bookmarked"`
+	IsMuted               *bool                  `json:"is_muted"`
+	Visible               *bool                  `json:"visible"`
+	SanityLevel           *int                   `json:"sanity_level"`
+	RestrictionAttributes *[]string              `json:"restriction_attributes"`
 	Series                *artwork.SeriesSummary `json:"series"`
 }
 
@@ -304,7 +303,7 @@ func mapArtwork(value illustDTO) artwork.Artwork {
 		IsMuted:               value.IsMuted,
 		Visible:               value.Visible,
 		SanityLevel:           value.SanityLevel,
-		RestrictionAttributes: slices.Clone(value.RestrictionAttributes),
+		RestrictionAttributes: value.RestrictionAttributes,
 		Series:                value.Series,
 	}
 }

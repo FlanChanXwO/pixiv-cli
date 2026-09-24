@@ -3,7 +3,6 @@ package pixiv
 import (
 	"net/url"
 	"path"
-	"slices"
 	"strings"
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/endpoint/artwork"
@@ -36,11 +35,11 @@ func (c *Client) mapArtworkEntity(value artwork.Artwork) (Artwork, error) {
 		AIType:         value.AIType,
 		Tools:          append([]string(nil), value.Tools...),
 
-		IsBookmarked:          value.IsBookmarked,
-		IsMuted:               value.IsMuted,
-		Visible:               value.Visible,
-		SanityLevel:           value.SanityLevel,
-		RestrictionAttributes: slices.Clone(value.RestrictionAttributes),
+		IsBookmarked:          cloneValue(value.IsBookmarked),
+		IsMuted:               cloneValue(value.IsMuted),
+		Visible:               cloneValue(value.Visible),
+		SanityLevel:           cloneValue(value.SanityLevel),
+		RestrictionAttributes: cloneStringSlice(value.RestrictionAttributes),
 		TotalComments:         value.TotalComments,
 	}
 	if value.Series != nil {

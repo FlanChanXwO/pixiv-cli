@@ -19,10 +19,10 @@ func TestRecordFromArtworkPreservesSDKFieldsAndNormalizesID(t *testing.T) {
 		PageCount:             2,
 		TotalBookmarks:        8,
 		TotalViews:            42,
-		IsBookmarked:          true,
-		Visible:               true,
-		SanityLevel:           2,
-		RestrictionAttributes: []string{"restricted_mode"},
+		IsBookmarked:          testPtr(true),
+		Visible:               testPtr(true),
+		SanityLevel:           testPtr(2),
+		RestrictionAttributes: testPtr([]string{"restricted_mode"}),
 		Series:                &pixiv.ArtworkSeriesSummary{ID: 123, Title: "chapter"},
 		User:                  pixiv.User{ID: 99, Name: "作者"},
 		Tags:                  []pixiv.Tag{{Name: "tag-a", TranslatedName: "标签 A"}},
@@ -266,4 +266,7 @@ func recordSourceDTO(source any) any {
 	default:
 		return source
 	}
+}
+func testPtr[T any](value T) *T {
+	return &value
 }

@@ -132,7 +132,7 @@ application outcome 的 `filter` 会报告 `min`、`max`、`membership`、`strat
 
 ## 读取工具
 
-`search_illust` 与 `illust_detail` record 保留上游作品的 `is_bookmarked`、`is_muted`、`visible`、`sanity_level`、`restriction_attributes` 和可选 `series`（`id`、`title`）；详情还会保留上游提供的 `total_comments`。viewer 状态属于本次读取账号。不会逐条请求补全；缺失的 series/comments 省略，缺失的 restriction attributes 编码为 `[]`。
+`search_illust` 与 `illust_detail` record 保留上游作品的 `is_bookmarked`、`is_muted`、`visible`、`sanity_level`、`restriction_attributes` 和可选 `series`（`id`、`title`）；详情还会保留上游提供的 `total_comments`。viewer 状态属于本次读取账号。不会逐条请求补全。缺失的 viewer/safety 字段与 series/comments 会省略；上游明确提供空 restriction attributes 时仍编码为 `[]`。字段缺失表示未知，不等于 `false` 或 `0`。
 
 | Tool | 输入与语义 |
 | --- | --- |

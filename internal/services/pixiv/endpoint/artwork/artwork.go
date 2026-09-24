@@ -73,11 +73,12 @@ type Artwork struct {
 	Height         int
 	Tools          []string
 
-	IsBookmarked          bool
-	IsMuted               bool
-	Visible               bool
-	SanityLevel           int
-	RestrictionAttributes []string
+	// Viewer 与 safety 字段为 nil 表示当前 endpoint 未提供该值。
+	IsBookmarked          *bool
+	IsMuted               *bool
+	Visible               *bool
+	SanityLevel           *int
+	RestrictionAttributes *[]string
 	Series                *SeriesSummary
 	TotalComments         *int
 }

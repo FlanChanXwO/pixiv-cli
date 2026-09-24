@@ -836,6 +836,76 @@ func TestSearchArtworksWiresOperation(t *testing.T) {
 	}
 }
 
+func TestArtworkViewerFieldPresence(t *testing.T) {
+	for _, endpoint := range []string{"search", "detail", "ranking"} {
+		for _, state := range []struct {
+			name    string
+			fields  string
+			present bool
+		}{
+			{name: "absent"},
+			{name: "null", fields: `,"is_bookmarked":null,"is_muted":null,"visible":null,"sanity_level":null,"restriction_attributes":null`},
+			{name: "explicit zero", fields: `,"is_bookmarked":false,"is_muted":false,"visible":false,"sanity_level":0,"restriction_attributes":[]`, present: true},
+		} {
+			if endpoint == "ranking" && state.name != "absent" {
+				continue
+			}
+			t.Run(endpoint+"/"+state.name, func(t *testing.T) {
+				calls := 0
+				rt := roundTripFunc(func(req *http.Request) (*http.Response, error) {
+					calls++
+					item := `{"id":5,"title":"art","type":"illust","create_date":"2024-01-01T00:00:00Z","user":{"id":7},"tags":[]` + state.fields + `}`
+					if endpoint == "detail" {
+						return jsonResponse(`{"illust":` + item + `}`), nil
+					}
+					return jsonResponse(`{"illusts":[` + item + `],"next_url":null}`), nil
+				})
+				client, err := NewWith("token", Options{HTTPClient: &http.Client{Transport: rt}})
+				if err != nil {
+					t.Fatal(err)
+				}
+				var got Artwork
+				switch endpoint {
+				case "detail":
+					got, err = client.Artwork(context.Background(), ArtworkRequest{ArtworkID: 5})
+				default:
+					var page sdk.Page[Artwork]
+					if endpoint == "search" {
+						page, err = client.SearchArtworks(context.Background(), SearchArtworksRequest{Word: "test"})
+					} else {
+						page, err = client.ArtworkRanking(context.Background(), ArtworkRankingRequest{Mode: RankingModeDay})
+					}
+					if err == nil && len(page.Items) == 1 {
+						got = page.Items[0]
+					} else {
+						t.Fatalf("page=%+v error=%v", page, err)
+					}
+				}
+				if err != nil {
+					t.Fatal(err)
+				}
+				if calls != 1 {
+					t.Fatalf("requests=%d, want no enrichment", calls)
+				}
+				raw, err := json.Marshal(ToArtworkDTO(got))
+				if err != nil {
+					t.Fatal(err)
+				}
+				var fields map[string]json.RawMessage
+				if err := json.Unmarshal(raw, &fields); err != nil {
+					t.Fatal(err)
+				}
+				for key, want := range map[string]string{"is_bookmarked": "false", "is_muted": "false", "visible": "false", "sanity_level": "0", "restriction_attributes": "[]"} {
+					value, present := fields[key]
+					if present != state.present || (present && string(value) != want) {
+						t.Errorf("%s=%s (present=%t), want %s (present=%t)", key, value, present, want, state.present)
+					}
+				}
+			})
+		}
+	}
+}
+
 func TestSearchArtworksPreservesViewerFieldsAndSeries(t *testing.T) {
 	calls := 0
 	rt := roundTripFunc(func(req *http.Request) (*http.Response, error) {
@@ -854,12 +924,12 @@ func TestSearchArtworksPreservesViewerFieldsAndSeries(t *testing.T) {
 		t.Fatalf("calls=%d items=%d, want 1/2", calls, len(page.Items))
 	}
 	got := page.Items[0]
-	if !got.IsBookmarked || !got.IsMuted || !got.Visible || got.SanityLevel != 4 ||
-		!reflect.DeepEqual(got.RestrictionAttributes, []string{"restricted_mode"}) ||
+	if got.IsBookmarked == nil || !*got.IsBookmarked || got.IsMuted == nil || !*got.IsMuted || got.Visible == nil || !*got.Visible || got.SanityLevel == nil || *got.SanityLevel != 4 ||
+		got.RestrictionAttributes == nil || !reflect.DeepEqual(*got.RestrictionAttributes, []string{"restricted_mode"}) ||
 		got.Series == nil || got.Series.ID != 123 || got.Series.Title != "chapter" {
 		t.Fatalf("search artwork fields = %+v", got)
 	}
-	if page.Items[1].RestrictionAttributes == nil || len(page.Items[1].RestrictionAttributes) != 0 {
+	if page.Items[1].RestrictionAttributes == nil || len(*page.Items[1].RestrictionAttributes) != 0 {
 		t.Fatalf("empty restriction attributes = %#v, want []", page.Items[1].RestrictionAttributes)
 	}
 	if page.Items[1].Series != nil {
@@ -1072,8 +1142,8 @@ func TestArtworkDetailPreservesViewerFieldsSeriesAndOptionalComments(t *testing.
 			if err != nil {
 				t.Fatalf("Artwork: %v", err)
 			}
-			if calls != 1 || !got.IsBookmarked || !got.IsMuted || !got.Visible || got.SanityLevel != 2 ||
-				!reflect.DeepEqual(got.RestrictionAttributes, []string{"restricted_mode"}) {
+			if calls != 1 || got.IsBookmarked == nil || !*got.IsBookmarked || got.IsMuted == nil || !*got.IsMuted || got.Visible == nil || !*got.Visible || got.SanityLevel == nil || *got.SanityLevel != 2 ||
+				got.RestrictionAttributes == nil || !reflect.DeepEqual(*got.RestrictionAttributes, []string{"restricted_mode"}) {
 				t.Fatalf("calls=%d artwork fields=%+v", calls, got)
 			}
 			if (got.Series != nil) != test.wantSeries || (got.TotalComments != nil) != test.wantComments {

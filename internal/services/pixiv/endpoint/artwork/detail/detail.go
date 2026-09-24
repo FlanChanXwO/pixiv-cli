@@ -7,7 +7,6 @@ import (
 	"errors"
 	"net/url"
 	"path"
-	"slices"
 	"strconv"
 	"strings"
 
@@ -131,11 +130,11 @@ type illustDTO struct {
 	Height         int           `json:"height"`
 	Tools          []string      `json:"tools"`
 
-	IsBookmarked          bool                   `json:"is_bookmarked"`
-	IsMuted               bool                   `json:"is_muted"`
-	Visible               bool                   `json:"visible"`
-	SanityLevel           int                    `json:"sanity_level"`
-	RestrictionAttributes []string               `json:"restriction_attributes"`
+	IsBookmarked          *bool                  `json:"is_bookmarked"`
+	IsMuted               *bool                  `json:"is_muted"`
+	Visible               *bool                  `json:"visible"`
+	SanityLevel           *int                   `json:"sanity_level"`
+	RestrictionAttributes *[]string              `json:"restriction_attributes"`
 	Series                *artwork.SeriesSummary `json:"series"`
 	TotalComments         *int                   `json:"total_comments"`
 }
@@ -296,7 +295,7 @@ func mapArtwork(dto illustDTO) artwork.Artwork {
 		IsMuted:               dto.IsMuted,
 		Visible:               dto.Visible,
 		SanityLevel:           dto.SanityLevel,
-		RestrictionAttributes: slices.Clone(dto.RestrictionAttributes),
+		RestrictionAttributes: dto.RestrictionAttributes,
 		Series:                dto.Series,
 		TotalComments:         dto.TotalComments,
 	}

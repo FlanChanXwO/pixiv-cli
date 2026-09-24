@@ -21,10 +21,9 @@ import (
 
 // Plan is the resolved logical page selection shared by Pixiv list commands.
 type Plan struct {
-	limit       int
-	skip        int
-	displaySkip int
-	oneBatch    bool
+	limit    int
+	skip     int
+	oneBatch bool
 }
 
 // Request 是一次 Pixiv data execution 的传输覆写快照。listing 只传递它，
@@ -44,12 +43,10 @@ func (p Plan) PagePlan() pagination.PagePlan {
 	return pagination.PagePlan{Skip: p.skip, Limit: p.limit, OneBatch: p.oneBatch}
 }
 
-// PushDownSkip 只在原始结果与逻辑结果逐项对应时，把逻辑跳过交给上游；
-// 输出序号保留原始逻辑位置。
+// PushDownSkip 只在原始结果与逻辑结果逐项对应时，把逻辑跳过交给上游。
 func (p Plan) PushDownSkip() (Plan, int) {
 	offset := p.skip
 	p.skip = 0
-	p.displaySkip = offset
 	return p, offset
 }
 
@@ -169,7 +166,7 @@ func (a Runner) runPooledIllustListWithKey(ctx context.Context, request Request,
 		spool, err = newJSONArraySpool(jsonKey)
 		return err
 	}
-	position := plan.skip + plan.displaySkip
+	position := plan.skip
 	headingWritten := false
 	encoder := json.NewEncoder(a.out)
 	err := runPages(ctx, a.Executor(request), plan.PagePlan(), begin,

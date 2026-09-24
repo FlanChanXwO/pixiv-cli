@@ -71,8 +71,8 @@ func TestArtworkDTOJSONPreservesViewerStateAndSeries(t *testing.T) {
 	comments := 0
 	artwork := pixiv.Artwork{
 		ID: 42, Kind: pixiv.ArtworkKindIllustration,
-		IsBookmarked: true, IsMuted: false, Visible: true, SanityLevel: 2,
-		RestrictionAttributes: []string{"restricted_mode"},
+		IsBookmarked: ptrTo(true), IsMuted: ptrTo(false), Visible: ptrTo(true), SanityLevel: ptrTo(2),
+		RestrictionAttributes: ptrTo([]string{"restricted_mode"}),
 		Series:                &pixiv.ArtworkSeriesSummary{ID: 123, Title: "chapter"},
 		TotalComments:         &comments,
 	}
@@ -86,10 +86,10 @@ func TestArtworkDTOJSONPreservesViewerStateAndSeries(t *testing.T) {
 			t.Fatalf("JSON %s missing %s", raw, want)
 		}
 	}
-	dto.RestrictionAttributes[0] = "changed"
+	(*dto.RestrictionAttributes)[0] = "changed"
 	dto.Series.Title = "changed"
 	*dto.TotalComments = 7
-	if artwork.RestrictionAttributes[0] != "restricted_mode" || artwork.Series.Title != "chapter" || *artwork.TotalComments != 0 {
+	if (*artwork.RestrictionAttributes)[0] != "restricted_mode" || artwork.Series.Title != "chapter" || *artwork.TotalComments != 0 {
 		t.Fatal("ArtworkDTO shares mutable artwork metadata")
 	}
 }
@@ -132,12 +132,12 @@ func TestArtworkDTOOmitsAbsentOptionalFields(t *testing.T) {
 		t.Fatal(err)
 	}
 	text := string(raw)
-	for _, key := range []string{`"updated_at"`, `"tools"`, `"pages"`, `"series"`, `"total_comments"`} {
+	for _, key := range []string{`"updated_at"`, `"tools"`, `"pages"`, `"series"`, `"total_comments"`, `"is_bookmarked"`, `"is_muted"`, `"visible"`, `"sanity_level"`, `"restriction_attributes"`} {
 		if strings.Contains(text, key) {
 			t.Fatalf("ArtworkDTO with absent optional fields still emits %s: %s", key, text)
 		}
 	}
-	for _, key := range []string{`"id"`, `"title"`, `"kind"`, `"raw_kind"`, `"tags"`, `"published_at"`, `"restriction_attributes":[]`} {
+	for _, key := range []string{`"id"`, `"title"`, `"kind"`, `"raw_kind"`, `"tags"`, `"published_at"`} {
 		if !strings.Contains(text, key) {
 			t.Fatalf("ArtworkDTO missing required key %s: %s", key, text)
 		}
@@ -184,4 +184,7 @@ func TestNovelBookmarkDetailDTOCopiesTags(t *testing.T) {
 	if value.Tags[0] != "story" {
 		t.Fatal("DTO shares the source tags slice")
 	}
+}
+func ptrTo[T any](value T) *T {
+	return &value
 }

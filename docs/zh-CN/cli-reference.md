@@ -502,7 +502,7 @@ AI-only 和收藏数筛选仍在本地筛选后执行逻辑 skip，可能需要�
 作品 `search --json/--ndjson` 和 `detail --json` 保留上游 `is_bookmarked`、`is_muted`、`visible`、
 `sanity_level`、`restriction_attributes` 与可选 `series`（`id`、`title`）。详情还保留上游提供的
 `total_comments`；搜索不虚构此值。viewer 状态属于本次读取使用的账号，不一定是后续写入使用的账号。
-无 series 时省略；缺失的 `restriction_attributes` 序列化为 `[]`。不会对每条结果发额外的补全请求。
+缺失的 viewer/safety 字段与 series 会省略；上游明确提供空 `restriction_attributes` 时仍序列化为 `[]`。字段缺失表示未知，不等于 `false` 或 `0`。不会对每条结果发额外的补全请求。
 作品 JSON/NDJSON 保留必要的 opaque resource reference，不输出已解析/签名资源 URL、请求头、
 Cookie、过期 metadata、token 或其他 transport 凭据。`download` 是动作：成功 stdout 为空；Ugoira 文件名回退 warning 只写 stderr，失败保留明确诊断并以非零退出。
 

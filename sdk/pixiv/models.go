@@ -97,11 +97,12 @@ type Artwork struct {
 	Cover          ImageResource
 	Pages          []ArtworkPage
 
-	IsBookmarked          bool
-	IsMuted               bool
-	Visible               bool
-	SanityLevel           int
-	RestrictionAttributes []string
+	// Viewer 与 safety 字段为 nil 表示当前 endpoint 未提供该值。
+	IsBookmarked          *bool
+	IsMuted               *bool
+	Visible               *bool
+	SanityLevel           *int
+	RestrictionAttributes *[]string
 	Series                *ArtworkSeriesSummary
 	TotalComments         *int
 }

@@ -175,7 +175,7 @@ not treated as an artwork detail request.
 
 ## Read tools
 
-`search_illust` and `illust_detail` records retain upstream artwork `is_bookmarked`, `is_muted`, `visible`, `sanity_level`, `restriction_attributes`, and optional `series` (`id`, `title`); detail also includes `total_comments` when supplied. Viewer state reflects the account used for the read. No per-result enrichment request is made; absent series/comments are omitted, and absent restriction attributes encode as `[]`.
+`search_illust` and `illust_detail` records retain upstream artwork `is_bookmarked`, `is_muted`, `visible`, `sanity_level`, `restriction_attributes`, and optional `series` (`id`, `title`); detail also includes `total_comments` when supplied. Viewer state reflects the account used for the read. No per-result enrichment request is made. Absent viewer/safety fields and series/comments are omitted; an explicitly supplied empty restriction-attribute list remains `[]`. Missing means unknown, not `false` or `0`.
 
 | Tool | Input and semantics |
 | --- | --- |

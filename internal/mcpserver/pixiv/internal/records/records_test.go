@@ -24,8 +24,8 @@ func TestRecordSerializationOmitsResourceTransport(t *testing.T) {
 		ID:           1,
 		Kind:         pixiv.ArtworkKindIllustration,
 		Title:        "safe artwork",
-		IsBookmarked: true,
-		Visible:      true,
+		IsBookmarked: testPtr(true),
+		Visible:      testPtr(true),
 		Series:       &pixiv.ArtworkSeriesSummary{ID: 123, Title: "chapter"},
 		Cover: pixiv.ImageResource{Resource: sdk.Resource{
 			Ref:            ref,
@@ -103,4 +103,7 @@ func assertSensitiveMCPValuesAbsent(t *testing.T, raw []byte) {
 			t.Fatalf("MCP output contains sensitive resource transport value %q: %s", forbidden, raw)
 		}
 	}
+}
+func testPtr[T any](value T) *T {
+	return &value
 }

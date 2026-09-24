@@ -440,7 +440,7 @@ opaque `ref` and optional `requires_credentials` metadata. The CLI and MCP
 servers encode only these DTOs, pipeline `Record` values, and typed envelopes;
 they never reflect over or JSON-marshal runtime product models.
 
-`Artwork` preserves the upstream `IsBookmarked`, `IsMuted`, `Visible`, `SanityLevel`, and `RestrictionAttributes` values on search/detail, plus an optional `Series` summary (`ID`, `Title`). Detail may also supply `TotalComments`; search does not synthesize it. Viewer state belongs to the account used for that read. These values come from the existing response, without per-result enrichment requests.
+`Artwork` preserves the upstream `IsBookmarked`, `IsMuted`, `Visible`, `SanityLevel`, and `RestrictionAttributes` values on search/detail as pointers, plus an optional `Series` summary (`ID`, `Title`). A non-nil pointer preserves explicit `false`, `0`, or an empty array; nil means the current endpoint did not provide the field. Detail may also supply `TotalComments`; search does not synthesize it. Viewer state belongs to the account used for that read. These values come from the existing response, without per-result enrichment requests.
 
 For Pixiv, `Resource.Ref` contains only the resource kind, stable ID, page, and
 optional variant. It never embeds the current or signed media URL. The SDK can
@@ -481,7 +481,7 @@ emitting `null` or empty values: for example `ArtworkDTO` omits `updated_at`,
 `tools` and `pages` when the SDK has no update time, no tool list, or no page
 list (pages are populated on the detail path only). Consumers must treat a
 missing key the same as an unknown value; the JSON schema published for MCP
-tools marks these fields optional accordingly. An absent `series` or `total_comments` is omitted; a missing `restriction_attributes` is encoded as `[]`. Viewer booleans on other Artwork endpoints must not be assumed verified when their upstream response did not provide them.
+tools marks these fields optional accordingly. Absent viewer/safety fields, `series`, and `total_comments` are omitted. An explicitly supplied empty `restriction_attributes` remains `[]`; an absent one is omitted. Therefore an absent field is unknown, not `false` or `0`.
 
 ## FANBOX
 

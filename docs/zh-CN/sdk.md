@@ -357,7 +357,7 @@ path 非空的 HTTPS URL；host 必须是官方 Pixiv media host（`i.pximg.net`
 
 序列化结果时使用显式的逐字段转换器：Pixiv 使用 `pixiv.ToArtworkDTO`、`pixiv.ToNovelDTO`、`pixiv.ToUserDTO`、`pixiv.ToUserDetailDTO`、`pixiv.ToUserPreviewDTO`、`pixiv.ToCommentDTO`、`pixiv.ToStampDTO`、`pixiv.ToNovelContentDTO`、`pixiv.ToUgoiraMetadataDTO` 及其相关转换器；FANBOX 使用对应的 `fanbox.To*DTO` 转换 creator、post、block、asset、user 与 tag。`sdk.ToResourceDTO` 只输出 opaque `ref` 与可选的 `requires_credentials` metadata。CLI/MCP 只编码这些 DTO、管道 `Record` 与 typed envelope，不反射遍历或直接 JSON 编码运行时 product model。
 
-`Artwork` 在搜索/详情中保留上游 `IsBookmarked`、`IsMuted`、`Visible`、`SanityLevel`、`RestrictionAttributes`，以及可选的 `Series` 摘要（`ID`、`Title`）。详情还可能提供 `TotalComments`；搜索不虚构它。viewer 状态属于本次读取使用的账号。这些值直接来自已有响应，不逐条请求补全。
+`Artwork` 在搜索/详情中用指针保留上游 `IsBookmarked`、`IsMuted`、`Visible`、`SanityLevel`、`RestrictionAttributes`，以及可选的 `Series` 摘要（`ID`、`Title`）。非 nil 指针保留明确的 `false`、`0` 或空数组；nil 表示当前 endpoint 未提供该字段。详情还可能提供 `TotalComments`；搜索不虚构它。viewer 状态属于本次读取使用的账号。这些值直接来自已有响应，不逐条请求补全。
 
 Pixiv 的 `Resource.Ref` 只包含资源 kind、稳定 ID、page 和可选 variant，绝不嵌入当前或签名媒体 URL。SDK 会优先复用当前 Client 保存的 locator，或重新读取对应 artwork、novel、user、ugoira、小说正文或 stamp metadata 后再打开；解析出的 URL 与每次 redirect 都会再次通过 allowlist 校验。`SaveResource` 通过原子目标写入；上游提供 `Content-Length` 时，`SaveProgress.Total` 会报告该值。资源请求只使用显式允许的 header，绝不发送调用方 Cookie jar。
 
@@ -375,7 +375,7 @@ canonical := ref.CanonicalURL()
 
 ### 可选 DTO 字段
 
-输出 DTO 对上游响应未提供的字段采用**省略**而不是发 `null` 或空值：例如 `ArtworkDTO` 在 SDK 没有更新时间、没有工具列表或没有页面列表时省略 `updated_at`、`tools` 与 `pages`（pages 只在 detail 路径填充）。调用方应把缺失的 key 视为未知值；MCP tool 发布的 JSON schema 相应把这些字段标为可选。缺失的 `series` 或 `total_comments` 省略；缺失的 `restriction_attributes` 编码为 `[]`。其他 Artwork endpoint 未提供 viewer 布尔值时，不应视为已验证的状态。
+输出 DTO 对上游响应未提供的字段采用**省略**而不是发 `null` 或空值：例如 `ArtworkDTO` 在 SDK 没有更新时间、没有工具列表或没有页面列表时省略 `updated_at`、`tools` 与 `pages`（pages 只在 detail 路径填充）。调用方应把缺失的 key 视为未知值；MCP tool 发布的 JSON schema 相应把这些字段标为可选。缺失的 viewer/safety 字段、`series` 与 `total_comments` 都会省略。上游明确提供空 `restriction_attributes` 时仍编码为 `[]`，未提供时省略。因此字段缺失表示未知，不等于 `false` 或 `0`。
 
 ## FANBOX
 

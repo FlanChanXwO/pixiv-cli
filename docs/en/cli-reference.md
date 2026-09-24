@@ -612,8 +612,9 @@ evidence is not yet available. Premium is not a local hard gate, and bookmark co
 Artwork `search --json/--ndjson` and `detail --json` preserve upstream `is_bookmarked`, `is_muted`, `visible`,
 `sanity_level`, `restriction_attributes`, and optional `series` (`id`, `title`). Detail also preserves
 `total_comments` when provided upstream; search does not invent it. The viewer flags belong to the account used
-for that read, not necessarily the account for a later write. An absent series is omitted and absent
-`restriction_attributes` serialize as `[]`. No per-result enrichment request is made. Artwork JSON/NDJSON retains
+for that read, not necessarily the account for a later write. Absent viewer/safety fields and series are omitted;
+an explicitly supplied empty `restriction_attributes` remains `[]`. Missing means unknown, not `false` or `0`.
+No per-result enrichment request is made. Artwork JSON/NDJSON retains
 opaque resource references where needed; it does not emit resolved/signed resource URLs, request headers, Cookies,
 expiry metadata, tokens, or other transport credentials.
 Download is an action: success keeps stdout empty; ugoira filename fallback warnings are stderr-only, while failures are explicit diagnostics and a non-zero exit.

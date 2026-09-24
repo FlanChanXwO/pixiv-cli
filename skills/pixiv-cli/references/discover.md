@@ -56,7 +56,7 @@ pixiv search "landscape" --type artwork --limit 10 --json
   `--limit 0` walks all filtered results. Do not invent request caps.
 - There is no like-count field; do not treat bookmark totals as likes.
 - Artwork JSON/text include the stable page URL
-  `https://www.pixiv.net/artworks/{id}` as the first field/line. Search JSON also carries available viewer `is_bookmarked`/`is_muted`, `visible`, `sanity_level`, `restriction_attributes`, and optional `series`; detail may add `total_comments`. Viewer state applies to the read account, so recheck before writing under a different account.
+  `https://www.pixiv.net/artworks/{id}` as the first field/line. Search JSON also carries available viewer `is_bookmarked`/`is_muted`, `visible`, `sanity_level`, `restriction_attributes`, and optional `series`; detail may add `total_comments`. Viewer state applies to the read account, so recheck before writing under a different account. Omitted viewer/safety keys are unknown, not `false` or `0`; an explicit empty `restriction_attributes` remains `[]`.
 
 ## Reverse-search an image
 
