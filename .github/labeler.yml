@@ -1,0 +1,50 @@
+"area: docs":
+  - changed-files:
+      - any-glob-to-any-file:
+          - "AGENTS.md"
+          - "CONTEXT.md"
+          - "CONTRIBUTING*.md"
+          - "README*.md"
+          - ".agents/skills/**"
+          - "docs/**"
+          - "skills/**"
+
+"area: frontend":
+  - changed-files:
+      - any-glob-to-any-file:
+          - "assets/**"
+          - "frontend/**"
+          - "web/**"
+
+"area: backend":
+  - changed-files:
+      - any-glob-to-any-file:
+          - "cmd/**"
+          - "internal/**"
+          - "sdk/**"
+          - "go.mod"
+          - "go.sum"
+
+"area: tests":
+  - changed-files:
+      - any-glob-to-any-file:
+          - "**/*_test.go"
+          - "e2e/**"
+
+"area: github-actions":
+  - changed-files:
+      - any-glob-to-any-file:
+          - ".github/**"
+
+"release":
+  - changed-files:
+      - any-glob-to-any-file:
+          - "changelog/**"
+          - ".github/workflows/release.yml"
+          - ".github/workflows/publish-*.yml"
+          - "scripts/cmd/homebrewformula/**"
+          - "scripts/cmd/releaseassets/**"
+          - "scripts/cmd/releasenotes/**"
+          - "tools/release/**"
+          - "tools/platformmatrix/**"
+          - "templates/homebrew/**"
