@@ -136,7 +136,14 @@ func Run(args []string) error {
 	if err != nil {
 		return err
 	}
-	defer file.Close()
-	_, err = fmt.Fprint(file, output)
-	return err
+	_, writeErr := fmt.Fprint(file, output)
+	// Close 错误必须暴露：关闭失败时 action 可能未持久化，而 workflow 会因
+	// steps.deploy.outputs.action 为空而静默跳过必须执行的 tap 写入。
+	if closeErr := file.Close(); closeErr != nil {
+		if writeErr != nil {
+			return errors.Join(writeErr, closeErr)
+		}
+		return closeErr
+	}
+	return writeErr
 }
