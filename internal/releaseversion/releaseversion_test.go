@@ -70,3 +70,30 @@ func TestCompareFollowsSemverPrecedence(t *testing.T) {
 		}
 	}
 }
+
+// 数字 identifier 不受 uint64 限制：长度更大即数值更大。溢出会静默降级为
+// 字符串比较并给出错误顺序，因此必须用规范十进制串比较。
+func TestCompareHandlesNumericIdentifiersBeyondUint64(t *testing.T) {
+	t.Parallel()
+
+	order, err := Compare("1.0.0-99999999999999999999", "1.0.0-100000000000000000000")
+	if err != nil {
+		t.Fatalf("Compare() error = %v", err)
+	}
+	if order >= 0 {
+		t.Errorf("Compare(1.0.0-99999999999999999999, 1.0.0-100000000000000000000) = %d, want negative", order)
+	}
+
+	// core 数字同样可能有巨大位数，且必须比较数值而不是字符串。
+	order, err = Compare("99999999999999999999.0.0", "100000000000000000000.0.0")
+	if err != nil {
+		t.Fatalf("Compare() error = %v", err)
+	}
+	if order >= 0 {
+		t.Errorf("large core comparison = %d, want negative", order)
+	}
+
+	if order, err := Compare("1.0.0-100000000000000000000", "1.0.0-100000000000000000000"); err != nil || order != 0 {
+		t.Errorf("identical large prerelease identifiers: order=%d err=%v, want 0/nil", order, err)
+	}
+}

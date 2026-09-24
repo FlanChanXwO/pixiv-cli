@@ -4,7 +4,6 @@ package releaseversion
 import (
 	"fmt"
 	"regexp"
-	"strconv"
 	"strings"
 )
 
@@ -19,8 +18,8 @@ func Validate(version string) error {
 }
 
 // Compare 按 SemVer 2.0 precedence 比较两个已通过 Validate 的 version：
-// 返回负数、零或正数分别表示 a 低于、等于或高于 b。build metadata 只用于
-// 相等性之外的显示，不参与 precedence。
+// 返回负数、零或正数分别表示 a 低于、等于或高于 b。build metadata 不参与 precedence。
+// 数字 identifier 按规范十进制字符串比较（先长度后字典序），因此任意长度都不会溢出。
 func Compare(a, b string) (int, error) {
 	aCore, aPre, err := splitVersion(a)
 	if err != nil {
@@ -31,19 +30,17 @@ func Compare(a, b string) (int, error) {
 		return 0, err
 	}
 	for index := range aCore {
-		if aCore[index] != bCore[index] {
-			if aCore[index] < bCore[index] {
-				return -1, nil
-			}
-			return 1, nil
+		if order := compareNumeric(aCore[index], bCore[index]); order != 0 {
+			return order, nil
 		}
 	}
 	return comparePrerelease(aPre, bPre), nil
 }
 
-// splitVersion 把 version 拆成三个数字 core 与 prerelease identifiers。
-func splitVersion(version string) ([3]uint64, []string, error) {
-	var core [3]uint64
+// splitVersion 把 version 拆成三个 core 数字与 prerelease identifiers；
+// core 保留为规范化十进制字符串，比较时不经过定长整数。
+func splitVersion(version string) ([3]string, []string, error) {
+	var core [3]string
 	if err := Validate(version); err != nil {
 		return core, nil, err
 	}
@@ -51,11 +48,16 @@ func splitVersion(version string) ([3]uint64, []string, error) {
 	if index := strings.IndexAny(main, "-+"); index >= 0 {
 		main = main[:index]
 	}
-	numeric, err := parseNumericIdentifiers(main, ".", 3)
-	if err != nil {
-		return core, nil, fmt.Errorf("version core %q: %w", main, err)
+	fields := strings.Split(main, ".")
+	if len(fields) != 3 {
+		return core, nil, fmt.Errorf("version core %q must have three numeric identifiers", main)
 	}
-	copy(core[:], numeric)
+	for index, field := range fields {
+		if !isCanonicalDecimal(field) {
+			return core, nil, fmt.Errorf("version core identifier %q is not a canonical decimal number", field)
+		}
+		core[index] = field
+	}
 	prerelease := ""
 	if rest, found := strings.CutPrefix(version, main+"-"); found {
 		prerelease, _, _ = strings.Cut(rest, "+")
@@ -83,17 +85,14 @@ func comparePrerelease(a, b []string) int {
 }
 
 func compareIdentifier(a, b string) (order int, equal bool) {
-	aNumeric, aIsNumeric := numericIdentifier(a)
-	bNumeric, bIsNumeric := numericIdentifier(b)
+	aIsNumeric := isCanonicalDecimal(a)
+	bIsNumeric := isCanonicalDecimal(b)
 	switch {
 	case aIsNumeric && bIsNumeric:
-		if aNumeric == bNumeric {
-			return 0, true
+		if order := compareNumeric(a, b); order != 0 {
+			return order, false
 		}
-		if aNumeric < bNumeric {
-			return -1, false
-		}
-		return 1, false
+		return 0, true
 	case aIsNumeric:
 		return -1, false
 	case bIsNumeric:
@@ -102,17 +101,30 @@ func compareIdentifier(a, b string) (order int, equal bool) {
 	return strings.Compare(a, b), a == b
 }
 
-// numericIdentifier 只在 identifier 无前导零时按数字处理，避免 "01" 与 "1"
-// 被误判为相等；正则已排除该形式，这里仍显式保留判定。
-func numericIdentifier(identifier string) (uint64, bool) {
-	if identifier == "" || (len(identifier) > 1 && identifier[0] == '0') {
-		return 0, false
+// compareNumeric 比较两个规范十进制字符串：先比长度，再比字典序。
+// 两者都不带前导零，所以长度更大则数值更大；这样任意位数都不会溢出。
+func compareNumeric(a, b string) int {
+	if len(a) != len(b) {
+		if len(a) < len(b) {
+			return -1
+		}
+		return 1
 	}
-	value, err := strconv.ParseUint(identifier, 10, 64)
-	if err != nil {
-		return 0, false
+	return strings.Compare(a, b)
+}
+
+// isCanonicalDecimal 只接受无前导零的纯十进制串，与 SemVer 对数字 identifier
+// 的要求一致（"0" 合法，"01" 不合法）。
+func isCanonicalDecimal(value string) bool {
+	if value == "" {
+		return false
 	}
-	return value, true
+	for index := 0; index < len(value); index++ {
+		if value[index] < '0' || value[index] > '9' {
+			return false
+		}
+	}
+	return value == "0" || value[0] != '0'
 }
 
 // splitIdentifiers 按 "." 拆分 identifier 列表，空串返回 nil。
@@ -121,23 +133,6 @@ func splitIdentifiers(value string) []string {
 		return nil
 	}
 	return strings.Split(value, ".")
-}
-
-// parseNumericIdentifiers 解析恰好 count 个以 separator 分隔的十进制 identifier。
-func parseNumericIdentifiers(value, separator string, count int) ([]uint64, error) {
-	fields := strings.Split(value, separator)
-	if len(fields) != count {
-		return nil, fmt.Errorf("expected %d numeric identifiers, got %d", count, len(fields))
-	}
-	numeric := make([]uint64, count)
-	for index, field := range fields {
-		parsed, ok := numericIdentifier(field)
-		if !ok {
-			return nil, fmt.Errorf("identifier %q is not a canonical decimal number", field)
-		}
-		numeric[index] = parsed
-	}
-	return numeric, nil
 }
 
 // Channel 将已通过 Validate 的 version 分类为 stable 或 prerelease。
