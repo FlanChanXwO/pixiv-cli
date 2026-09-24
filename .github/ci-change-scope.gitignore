@@ -20,7 +20,6 @@
 ?/.github/ci-change-scope.gitignore
 ?/.github/workflows/ci.yml
 ?/.github/workflows/pr-invalid-close.yml
-?/.github/workflows/pr-metadata.yml
 ?/.github/workflows/pr-verification.yml
 ?/scripts/classify-change-scope.sh
 ?/scripts/tests/prverificationworkflow/**
@@ -41,6 +40,9 @@
 !/sdk/**
 !/ci/**
 !/tools/platformmatrix/**
+# pr-metadata.yml 是 smoke controller：它决定 smoke classification、dispatch 两个
+# worker，并持有 Platform/Container required gate，因此改动它必须真的跑 full smoke。
+!/.github/workflows/pr-metadata.yml
 !/.github/workflows/container-smoke.yml
 !/scripts/build-platform.sh
 !/scripts/build-staticlibs*

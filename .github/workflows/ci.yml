@@ -1,12 +1,10 @@
 name: Quality gate
 
+# R15：tag push 由 Release 独占门禁，Quality 只服务 PR 与 manual dispatch。
 on:
   pull_request:
     branches:
       - main
-  push:
-    tags:
-      - 'v[0-9]*'
   workflow_dispatch: {}
 
 concurrency:
@@ -16,6 +14,9 @@ concurrency:
 permissions: {}
 
 jobs:
+  # R6：Quality 的 skip 判定必须与 pr-metadata 的 smoke classification 使用同一
+  # 信任模型。PR 能修改 scripts/classify-change-scope.sh 与
+  # .github/ci-change-scope.gitignore，因此分类绝不能从 PR 自己的 checkout 执行。
   scope:
     name: Classify change scope
     runs-on: ubuntu-24.04
@@ -24,15 +25,54 @@ jobs:
     outputs:
       quality_required: ${{ steps.scope.outputs.quality_required }}
     steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+      # PR .base.sha 是 PR 创建/同步时捕获的基线，可能远落后于当前受保护分支。
+      # 按其 checkout 会运行到陈旧（甚至可被 PR 影响）的分类策略，因此统一解析
+      # base 分支当前 tip，与 pr-metadata 的受信执行源保持一致。
+      - name: Resolve the protected base branch tip
+        id: base
+        if: ${{ github.event_name == 'pull_request' }}
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          PR: ${{ github.event.pull_request.number }}
+        run: |
+          set -euo pipefail
+          pr_json=$(gh api "repos/$REPO/pulls/$PR")
+          base_ref=$(printf '%s' "$pr_json" | jq -r '.base.ref')
+          if [ -z "$base_ref" ] || [ "$base_ref" = null ]; then
+            echo 'Pull request base branch is unavailable.' >&2
+            exit 1
+          fi
+          base_ref_encoded=$(printf '%s' "$base_ref" | jq -sRr @uri)
+          sha=$(gh api "repos/$REPO/branches/$base_ref_encoded" --jq '.commit.sha')
+          test -n "$sha"
+          printf 'sha=%s\n' "$sha" >> "$GITHUB_OUTPUT"
+
+      # 只取受信 base tip 的策略与脚本；PR HEAD 只用于 diff 范围。
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           fetch-depth: 0
           persist-credentials: false
-      - name: Classify change scope
+          ref: ${{ github.event_name == 'pull_request' && steps.base.outputs.sha || github.sha }}
+
+      - name: Fetch the exact pull request head
+        if: ${{ github.event_name == 'pull_request' }}
+        shell: bash
+        env:
+          PR: ${{ github.event.pull_request.number }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+          # 被分类的 diff 必须就是 PR 当前 head，否则分类结果与实际测试内容错位。
+          git fetch --no-tags origin "+refs/pull/$PR/head:refs/remotes/pull/$PR/head"
+          test "$(git rev-parse "refs/remotes/pull/$PR/head")" = "$HEAD_SHA"
+
+      - name: Classify change scope with trusted policy
         id: scope
         shell: bash
         env:
-          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          BASE_SHA: ${{ steps.base.outputs.sha }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         run: |
           set -euo pipefail
@@ -40,6 +80,7 @@ jobs:
             printf '%s\n' 'quality_required=true' >> "$GITHUB_OUTPUT"
             exit 0
           fi
+          # 分类器与规则文件均来自上面的 trusted base checkout。
           bash ./scripts/classify-change-scope.sh --base "$BASE_SHA" --head "$HEAD_SHA" --github-output "$GITHUB_OUTPUT"
 
   quality_gate:
@@ -56,12 +97,12 @@ jobs:
         run: |
           echo '::error::Change-scope classification failed.'
           exit 1
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         if: ${{ needs.scope.result == 'success' }}
         with:
           fetch-depth: 0
           persist-credentials: false
-      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e
         if: ${{ needs.scope.result == 'success' }}
         with:
           go-version-file: go.mod
