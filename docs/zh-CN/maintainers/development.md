@@ -384,9 +384,9 @@ git diff --check
 fixture 只证明格式、失败语义和本地策略，不替代六个 native runner 的真实静态链接、GIF/APNG
 smoke、版本化 archive 内容和 Homebrew 安装验收。
 
-`.github/workflows/ci.yml` 只承载只读的 `Quality gate`。`.github/workflows/pr-metadata.yml` 是受信的 `pull_request_target` coordinator：从当前 base tip 验证 PR 模板与 verification declaration，使用 `.github/ci-change-scope.gitignore` 对精确 PR-head diff 做可信分类，发布 `PR template gate` / `PR commands gate` commit status，dispatch 所需 smoke worker，并把 `Platform smoke` / `Container smoke` 作为真实 job-level required check 暴露出来；coordinator job 本身不执行 PR 代码。独立的 `Platform smoke worker` / `Container smoke worker` Check Run 只作为由 base-ref worker workflow 完成的可信结果桥接，required smoke job 等待这些结果。普通 pattern 表示纯文档，`?pattern` 表示只需 Quality，`!pattern` 表示需要 Quality + Platform + Container。不需要的 Quality 与 smoke job 都由 GitHub Actions 原生显示为 `Skipped`，不再伪装成 success。仅修改 PR body 时也会重新对未变化的 head 做可信分类：需要 smoke 的 job 复用同一 head 已有的 worker 结果，真正不需要 smoke 的 job 才继续显示 `Skipped`，因此编辑 PR body 不能把失败 smoke 替换成可绕过的 skip。
+`.github/workflows/ci.yml` 只承载只读的 `Quality gate`，只响应 `pull_request` 与 `workflow_dispatch`，不再响应 tag push。它的 change-scope classification 与 `pr-metadata.yml` 使用同一信任模型：先解析受保护 base branch 的当前 tip，从该 tip checkout 出 `scripts/classify-change-scope.sh` 与 `.github/ci-change-scope.gitignore`，再 fetch 精确 PR HEAD 只用于 diff 范围，因此 PR 无法修改自己的 skip 判定；分类器失败 fail closed，不会退化为 skip。`.github/workflows/pr-metadata.yml` 是受信的 `pull_request_target` coordinator：从当前 base tip 验证 PR 模板与 verification declaration，使用 `.github/ci-change-scope.gitignore` 对精确 PR-head diff 做可信分类，发布 `PR template gate` / `PR commands gate` commit status，dispatch 所需 smoke worker，并把 `Platform smoke` / `Container smoke` 作为真实 job-level required check 暴露出来；coordinator job 本身不执行 PR 代码。独立的 `Platform smoke worker` / `Container smoke worker` Check Run 只作为由 base-ref worker workflow 完成的可信结果桥接，required smoke job 等待这些结果。普通 pattern 表示纯文档，`?pattern` 表示只需 Quality，`!pattern` 表示需要 Quality + Platform + Container；`pr-metadata.yml` 是 smoke controller（它决定分类、dispatch 两个 worker 并持有 required gate），因此必须使用 `!pattern`。不需要的 Quality 与 smoke job 都由 GitHub Actions 原生显示为 `Skipped`，不再伪装成 success。仅修改 PR body 时也会重新对未变化的 head 做可信分类：需要 smoke 的 job 复用同一 head 已有的 worker 结果，真正不需要 smoke 的 job 才继续显示 `Skipped`，因此编辑 PR body 不能把失败 smoke 替换成可绕过的 skip。
 
-Platform worker 从受信 workflow ref 解析六平台 matrix，只有 matrix job checkout 精确 PR head，并且 token 仅为 `contents: read`；独立 publish job 不 checkout PR，只持有完成内部 worker Check Run 所需的最小 `checks: write`。Container worker 对 Linux amd64/arm64 使用同样的隔离模型。六个原生 job 继续并行运行，其中 Windows worker 仍承担 root callback wiring 与原生 `loginhelper` 契约；两个容器 job 也继续并行。内部 matrix 不作为 required PR check，最终由对应的 PR gate job 镜像 aggregate worker 结果，失败时保留 worker details URL。普通分支与 `main` push 不运行 CI；稳定 `vX.Y.Z` tag push 运行 Quality 与 `release.yml`，Release 自己执行正式六平台测试/构建与两平台容器验证，因此 tag 不重复 PR smoke matrix。browser/native evidence 保留为显式维护入口。真实 Pixiv/FANBOX SDK E2E 不进入普通 PR CI；仅发布 tag 的 `release.yml` 在 validate 后运行无凭据 SDK E2E contract gate，真实 SDK E2E 仍按 release-prep 在授权环境独立验收。
+Platform worker 从受信 workflow ref 解析六平台 matrix，只有 matrix job checkout 精确 PR head，并且 token 仅为 `contents: read`；独立 publish job 不 checkout PR，只持有完成内部 worker Check Run 所需的最小 `checks: write`。Container worker 对 Linux amd64/arm64 使用同样的隔离模型。六个原生 job 继续并行运行，其中 Windows worker 仍承担 root callback wiring 与原生 `loginhelper` 契约；两个容器 job 也继续并行。内部 matrix 不作为 required PR check，最终由对应的 PR gate job 镜像 aggregate worker 结果，失败时保留 worker details URL。普通分支与 `main` push 不运行 CI；稳定 `vX.Y.Z` tag push 只运行 `release.yml`（Quality gate 不再响应 tag，tag 上的正式门禁由 Release 独占），Release 自己执行正式六平台测试/构建与两平台容器验证，因此 tag 不重复 PR smoke matrix。`pr-verification.yml` 的 `dispatch` job 在分配 runner 前先用 `contains(github.event.comment.body, '/test')` 做廉价预过滤：它是 `tools/prmeta --check-trigger` 的宽松超集，只产生少量 false positive，不会漏掉合法触发，最终授权仍由 `tools/prmeta` 判定。browser/native evidence 保留为显式维护入口。真实 Pixiv/FANBOX SDK E2E 不进入普通 PR CI；仅发布 tag 的 `release.yml` 在 validate 后运行无凭据 SDK E2E contract gate，真实 SDK E2E 仍按 release-prep 在授权环境独立验收。
 
 `scripts/tests/installers` 使用本地伪 Release、伪 `curl` 与 checksum fixture 验证安装器，不访问 GitHub。Unix
 job 实际运行 `install.sh`，覆盖 SHA-256、带空格目录、版本预检和校验失败不覆盖旧 binary；Windows
@@ -559,9 +559,13 @@ staging formula 放入其 `Formula/`，随后用 `pixiv-cli-release/staging/<for
 `homebrew/brew` 容器内运行，并将 staging formula 目录以只读 bind mount 传入容器。随后执行
 `test "$(pixiv --version)" = "pixiv $RELEASE_TAG"` 并与 tag 比较。它不使用 workspace formula path、developer/环境变量 bypass，
 也不克隆、写入或信任公开 tap。只有全部成功，`publish-homebrew.yml` 中受保护的 `deploy_homebrew_tap` 才以 HTTPS
-clone public tap、核对唯一 staged formula，并在最后一个 step 读取 deploy key；SSH push 固定官方
-GitHub ED25519 known_hosts、启用 strict checking，目标精确为 `HEAD:main`。任何前置 job 失败都不会
-写 tap。
+clone public tap，并由受信默认分支 tip 上的 `scripts/cmd/homebrewrecovery` 做单调判定：请求版本必须
+不低于 tap 当前 Formula 版本（优先复用 `internal/releaseversion` 的 SemVer 比较，不做字符串比较）；
+同版本且 bytes 完全一致时判定为已发布而 no-op 成功，不产生任何 commit 或 push；请求版本更旧，或同版本
+但内容不同，都在读取 deploy key 之前 fail closed，从而同一 `release_run_id` 的重复恢复幂等，较旧的恢复
+请求无法回退已发布 Formula（`pixiv-cli` 与 `pixiv-cli-beta` 各自独立比较）。仅当判定为需要写入时，才核对唯一
+staged formula，并在最后一个 step 读取 deploy key；SSH push 固定官方 GitHub ED25519 known_hosts、启用
+strict checking，目标精确为 `HEAD:main`。任何前置 job 失败都不会写 tap。
 
 这套本地检查只证明 workflow 声明的依赖和语义，**不**验证 GitHub `release` Environment、
 secret 和 tag protection 的远端实际状态；它不替代远端配置审计，也不替代正式 tag
