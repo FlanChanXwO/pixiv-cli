@@ -7,6 +7,7 @@ import (
 	"errors"
 	"io"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -92,7 +93,7 @@ func runBookmarkSync(t *testing.T, source *fakeSource, encoder *fakeEncoder) (st
 		func(ctx context.Context, attempt func(context.Context, vector.BookmarkSource) (bool, error)) error {
 			_, err := attempt(ctx, source)
 			return err
-		})
+		}, nil)
 	cmd.SetArgs([]string{"sync", "bookmarks"})
 	cmd.SetOut(&out)
 	cmd.SetErr(&out)
@@ -147,7 +148,7 @@ func TestSyncBookmarksMarksMultiPageArtworkAsCoverOnly(t *testing.T) {
 		func(ctx context.Context, attempt func(context.Context, vector.BookmarkSource) (bool, error)) error {
 			_, err := attempt(ctx, source)
 			return err
-		})
+		}, nil)
 	cmd.SetArgs([]string{"sync", "bookmarks"})
 	if err := cmd.ExecuteContext(context.Background()); err != nil {
 		t.Fatalf("sync bookmarks: %v\n%s", err, out.String())
@@ -207,7 +208,7 @@ func TestSyncBookmarksRejectsMissingAccount(t *testing.T) {
 // 只有 sync bookmarks 进入普通 Pixiv 数据命令的启动/config 生命周期，本地命令不需要凭证。
 func TestVectorCommandLifecycleKeepsLocalLeavesCredentialFree(t *testing.T) {
 	cmd := vector.New(io.Discard, func() (*index.Store, error) { return nil, nil },
-		func(context.Context) (vector.ImageEncoder, error) { return nil, nil }, nil)
+		func(context.Context) (vector.ImageEncoder, error) { return nil, nil }, nil, nil)
 	wanted := map[string]bool{"bookmarks": true, "local": false, "status": false, "search": false, "rebuild": false}
 	seen := make(map[string]bool)
 	for _, top := range cmd.Commands() {
@@ -237,7 +238,7 @@ func TestVectorCommandLifecycleKeepsLocalLeavesCredentialFree(t *testing.T) {
 // v1 不提供 seed crawler，也不把 vector 扩展成额外子命令面（无 daemon/watcher 入口）。
 func TestVectorCommandSurfaceStaysInsideV1NonGoals(t *testing.T) {
 	cmd := vector.New(io.Discard, func() (*index.Store, error) { return nil, nil },
-		func(context.Context) (vector.ImageEncoder, error) { return nil, nil }, nil)
+		func(context.Context) (vector.ImageEncoder, error) { return nil, nil }, nil, nil)
 	want := map[string][]string{
 		"sync":    {"bookmarks", "local"}, // cobra sorts children by name
 		"search":  nil,
@@ -269,4 +270,220 @@ func TestVectorCommandSurfaceStaysInsideV1NonGoals(t *testing.T) {
 			}
 		}
 	}
+}
+
+func TestSyncBookmarksProcessesObservedPagesAfterRestart(t *testing.T) {
+	ctx := context.Background()
+	dir := t.TempDir()
+	open := func() (*index.Store, error) { return index.Open(dir) }
+	observer := vector.NewArtworkObserver(open, io.Discard)
+	pages := []pixiv.ArtworkPage{
+		{PageIndex: 0, Image: pixiv.ImageResource{Resource: artworkRef(t, 900, 0)}},
+		{PageIndex: 1, Image: pixiv.ImageResource{Resource: artworkRef(t, 900, 1)}},
+		{PageIndex: 2, Image: pixiv.ImageResource{Resource: artworkRef(t, 900, 2)}},
+	}
+	observer.Observe(ctx, []pixiv.Artwork{{ID: 900, PageCount: 3, Pages: pages}, {ID: 901, PageCount: 1, Cover: pixiv.ImageResource{Resource: artworkRef(t, 901, -1)}}})
+	// The observer has closed its store; the next invocation only has persisted identities.
+	source := &fakeSource{userID: 7}
+	encoder := &fakeEncoder{}
+	var out bytes.Buffer
+	cmd := vector.New(&out, open, func(context.Context) (vector.ImageEncoder, error) { return encoder, nil },
+		func(ctx context.Context, attempt func(context.Context, vector.BookmarkSource) (bool, error)) error {
+			_, err := attempt(ctx, source)
+			return err
+		}, nil)
+	cmd.SetArgs([]string{"sync", "bookmarks"})
+	if err := cmd.ExecuteContext(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if len(source.saved) != 4 {
+		t.Fatalf("downloaded %d persisted pages, want 4; output=%s", len(source.saved), out.String())
+	}
+	for i, page := range pages {
+		if source.saved[i] != page.Image.Resource.Ref {
+			t.Fatalf("page %d reference lost", i)
+		}
+	}
+	store, err := open()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	pending, err := store.Pending(ctx, index.ModelID, index.Generation)
+	if err != nil || len(pending) != 0 {
+		t.Fatalf("pending=%v err=%v", pending, err)
+	}
+	matches, err := store.Search(ctx, index.ModelID, index.Generation, []float32{1, 0, 0})
+	if err != nil || len(matches) != 4 {
+		t.Fatalf("search results=%d err=%v", len(matches), err)
+	}
+	for _, path := range encoder.images {
+		if _, err := os.Stat(path); !errors.Is(err, os.ErrNotExist) {
+			t.Fatalf("temporary image remains: %v", err)
+		}
+	}
+}
+
+// fakePixivPort 是 rebuild 的 Pixiv 资源端口替身，记录是否被进入以及每次取图。
+type fakePixivPort struct {
+	entered int
+	saver   *fakeSource
+}
+
+func (f *fakePixivPort) port(ctx context.Context, attempt func(context.Context, vector.ResourceSaver) error) error {
+	f.entered++
+	return attempt(ctx, f.saver)
+}
+
+// runRebuild 执行 rebuild，可注入 Pixiv 端口。
+func runRebuild(t *testing.T, dir string, encoder *fakeEncoder, pixivPort func(context.Context, func(context.Context, vector.ResourceSaver) error) error) (string, error) {
+	t.Helper()
+	var out bytes.Buffer
+	cmd := vector.New(&out, func() (*index.Store, error) { return index.Open(dir) },
+		func(context.Context) (vector.ImageEncoder, error) { return encoder, nil }, nil, pixivPort)
+	cmd.SetArgs([]string{"rebuild"})
+	cmd.SetOut(&out)
+	cmd.SetErr(&out)
+	err := cmd.ExecuteContext(context.Background())
+	return out.String(), err
+}
+
+// TestRebuildMigratesLocalAndPixivTogether 锁定 Workstream C：rebuild 迁移全部
+// Asset 来源——本地文件与持久化 ResourceRef 的 Pixiv 页面（含 page>0）。
+func TestRebuildMigratesLocalAndPixivTogether(t *testing.T) {
+	ctx := context.Background()
+	dir := t.TempDir()
+	gallery := t.TempDir()
+	if err := os.WriteFile(filepath.Join(gallery, "a.png"), []byte("image"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	store, err := index.Open(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := index.SyncLocal(ctx, store, gallery); err != nil {
+		t.Fatal(err)
+	}
+	// 一个 observer 风格的多页 Pixiv Asset：身份持久化，向量缺失。
+	if _, err := index.SyncPixivArtworks(ctx, store, []index.PixivArtwork{{
+		ID: 900, PageCount: 3,
+		Pages: []index.PixivPage{
+			{Index: 0, Ref: artworkRef(t, 900, 0).Ref.String()},
+			{Index: 1, Ref: artworkRef(t, 900, 1).Ref.String()},
+			{Index: 2, Ref: artworkRef(t, 900, 2).Ref.String()},
+		},
+	}}); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.Close(); err != nil {
+		t.Fatal(err)
+	}
+	pixivPort := &fakePixivPort{saver: &fakeSource{userID: 7}}
+	encoder := &fakeEncoder{}
+	out, err := runRebuild(t, dir, encoder, pixivPort.port)
+	if err != nil {
+		t.Fatalf("rebuild: %v\n%s", err, out)
+	}
+	if !strings.Contains(out, "embedded: 4\n") {
+		t.Fatalf("summary = %q, want 4 embeddings (1 local + 3 pixiv pages)", out)
+	}
+	if pixivPort.entered == 0 {
+		t.Fatal("pixiv port must be entered when pixiv assets exist")
+	}
+	if len(pixivPort.saver.saved) != 3 {
+		t.Fatalf("pixiv pages fetched = %d, want 3 (all pages incl. page>0)", len(pixivPort.saver.saved))
+	}
+	store, err = index.Open(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	pending, err := store.Pending(ctx, index.ModelID, index.Generation)
+	if err != nil || len(pending) != 0 {
+		t.Fatalf("pending after rebuild = %v (err=%v), want none", pending, err)
+	}
+	matches, err := store.Search(ctx, index.ModelID, index.Generation, []float32{1, 0, 0})
+	if err != nil || len(matches) != 4 {
+		t.Fatalf("search after rebuild = %d (err=%v), want 4", len(matches), err)
+	}
+}
+
+// TestRebuildKeepsOldGenerationOnPixivFailure 锁定：Pixiv 页面 rebuild 失败时，
+// 已完成的本地迁移保留、旧 generation 向量保留、失败页可重试、命令非零退出。
+func TestRebuildKeepsOldGenerationOnPixivFailure(t *testing.T) {
+	ctx := context.Background()
+	dir := t.TempDir()
+	store, err := index.Open(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := index.SyncPixivArtworks(ctx, store, []index.PixivArtwork{{
+		ID: 900, PageCount: 2,
+		Pages: []index.PixivPage{{Index: 0, Ref: artworkRef(t, 900, 0).Ref.String()}, {Index: 1, Ref: artworkRef(t, 900, 1).Ref.String()}},
+	}}); err != nil {
+		t.Fatal(err)
+	}
+	// 旧 generation 已有向量：rebuild 失败后必须保留。
+	if err := store.PutEmbedding(ctx, index.Key{Source: "pixiv", ID: "900", Page: 0}, storeFingerprint(t, store, index.Key{Source: "pixiv", ID: "900", Page: 0}), "old-model", "old-gen", []float32{1, 0}); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.Close(); err != nil {
+		t.Fatal(err)
+	}
+	pixivPort := &fakePixivPort{saver: &fakeSource{userID: 7, saveFail: true}}
+	out, err := runRebuild(t, dir, &fakeEncoder{}, pixivPort.port)
+	if err == nil {
+		t.Fatalf("failed pixiv rebuild must exit non-zero: %q", out)
+	}
+	store, err = index.Open(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	if _, err := store.Embedding(ctx, index.Key{Source: "pixiv", ID: "900", Page: 0}, "old-model", "old-gen"); err != nil {
+		t.Fatalf("old generation vector lost on failed rebuild: %v", err)
+	}
+	pending, err := store.Pending(ctx, index.ModelID, index.Generation)
+	if err != nil || len(pending) != 2 {
+		t.Fatalf("failed pages must stay retryable: %v (err=%v)", pending, err)
+	}
+}
+
+// TestRebuildLocalOnlyNeverEntersPixivPort 锁定：索引只有本地 Asset 时，
+// rebuild 不初始化 Pixiv 账号端口。
+func TestRebuildLocalOnlyNeverEntersPixivPort(t *testing.T) {
+	ctx := context.Background()
+	dir := t.TempDir()
+	gallery := t.TempDir()
+	if err := os.WriteFile(filepath.Join(gallery, "a.png"), []byte("image"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	store, err := index.Open(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := index.SyncLocal(ctx, store, gallery); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.Close(); err != nil {
+		t.Fatal(err)
+	}
+	pixivPort := &fakePixivPort{saver: &fakeSource{userID: 7}}
+	out, err := runRebuild(t, dir, &fakeEncoder{}, pixivPort.port)
+	if err != nil {
+		t.Fatalf("rebuild: %v\n%s", err, out)
+	}
+	if pixivPort.entered != 0 {
+		t.Fatalf("local-only rebuild entered the pixiv port %d times", pixivPort.entered)
+	}
+}
+
+// storeFingerprint 读取一个已落库 Asset 的指纹。
+func storeFingerprint(t *testing.T, store *index.Store, key index.Key) string {
+	t.Helper()
+	asset, err := store.Get(context.Background(), key)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return asset.Fingerprint
 }

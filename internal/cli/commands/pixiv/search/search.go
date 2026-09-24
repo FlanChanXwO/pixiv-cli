@@ -79,7 +79,7 @@ type Dependencies struct {
 	Pooled        func(context.Context, Request, func(context.Context, *pixiv.Client) (bool, error)) error
 	ReverseSearch ReverseSearchFunc
 	// Observe 是可选 best-effort 观察端口，只接收已取得的 Artwork。
-	Observe func([]pixiv.Artwork)
+	Observe func(context.Context, []pixiv.Artwork)
 }
 
 type command struct {

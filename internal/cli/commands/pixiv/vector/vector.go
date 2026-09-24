@@ -10,7 +10,6 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
-	"strconv"
 	"strings"
 
 	requirements "github.com/FlanChanXwO/pixiv-cli/internal/cli/commands"
@@ -40,7 +39,17 @@ type BookmarkSource interface {
 // cover 取图必须落在同一个 client 实例上，否则 cover 解析会退化为 artwork detail。
 type BookmarkPort func(ctx context.Context, attempt func(context.Context, BookmarkSource) (bool, error)) error
 
-func New(out io.Writer, open func() (*index.Store, error), start func(context.Context) (ImageEncoder, error), bookmarks BookmarkPort) *cobra.Command {
+// PixivPort 在账号池安全重放边界内提供已认证的 Pixiv 资源读取面，供显式 pending
+// 处理与 rebuild 使用。它只在索引确实存在 Pixiv 工作时才会被调用，因此纯本地用户
+// 不会被强制初始化账号。
+type PixivPort func(ctx context.Context, attempt func(context.Context, ResourceSaver) error) error
+
+// ResourceSaver 把一个已持久化的资源身份保存到目标路径（tempFile）。
+type ResourceSaver interface {
+	SaveResource(ctx context.Context, ref sdk.ResourceRef, options sdk.SaveOptions) (sdk.SavedResource, error)
+}
+
+func New(out io.Writer, open func() (*index.Store, error), start func(context.Context) (ImageEncoder, error), bookmarks BookmarkPort, pixivPixiv PixivPort) *cobra.Command {
 	cmd := &cobra.Command{Use: "vector", Short: "Manage the local vector index"}
 	requirements.Bind(cmd, requirements.Execution{})
 	sync := &cobra.Command{Use: "sync", Short: "Synchronize explicit sources"}
@@ -67,9 +76,9 @@ func New(out io.Writer, open func() (*index.Store, error), start func(context.Co
 		},
 	})
 	cmd.AddCommand(&cobra.Command{
-		Use: "rebuild", Short: "Explicitly re-embed recorded local images", Args: cobra.NoArgs,
+		Use: "rebuild", Short: "Explicitly re-embed recorded local images and Pixiv pages", Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			return rebuild(cmd.Context(), out, open, start)
+			return rebuild(cmd.Context(), out, open, start, pixivPixiv)
 		},
 	})
 	cmd.AddCommand(&cobra.Command{
@@ -122,9 +131,11 @@ func syncLocal(ctx context.Context, out io.Writer, open func() (*index.Store, er
 	return errors.Join(processErr, writeErr)
 }
 
-// syncBookmarks records page 0 of every bookmarked artwork the account can list.
-// It never issues artwork detail, so a multi-page artwork is stored as its listing cover
-// with cover_only set rather than fabricating the pages the listing did not provide.
+// syncBookmarks records page 0 of every bookmarked artwork the account can list, then
+// embeds every Pixiv page that still needs a vector — the listing covers plus any pending
+// pages recorded earlier by the passive observer. It never issues artwork detail during
+// listing; resolving an observed pending page uses the account's authenticated resource
+// port, which the bookmark client shares so cover fetches stay cache-hits.
 func syncBookmarks(ctx context.Context, out io.Writer, open func() (*index.Store, error), start func(context.Context) (ImageEncoder, error), bookmarks BookmarkPort) (err error) {
 	if bookmarks == nil {
 		return errors.New("vector: bookmark sync is not configured")
@@ -144,14 +155,13 @@ func syncBookmarks(ctx context.Context, out io.Writer, open func() (*index.Store
 		}
 		// 1. 只用 listing 已返回的数据收集作品与其 cover 引用，不发起 detail 请求。
 		artworks := make([]index.PixivArtwork, 0, 64)
-		covers := make(map[string]sdk.ResourceRef)
 		for _, restrict := range []pixiv.Restrict{pixiv.RestrictPublic, pixiv.RestrictPrivate} {
-			page, err := collectBookmarks(ctx, source, userID, restrict, &artworks, covers)
+			pageStats, err := collectBookmarks(ctx, source, userID, restrict, &artworks)
 			if err != nil {
 				return false, err
 			}
-			stats.Scanned += page.Scanned
-			stats.Skipped += page.Skipped
+			stats.Scanned += pageStats.Scanned
+			stats.Skipped += pageStats.Skipped
 		}
 		// 2. 记录 Asset；此处开始改动本地索引，因此之后不再让账号池重放已持久化的工作。
 		pageStats, err := index.SyncPixivArtworks(ctx, store, artworks)
@@ -159,29 +169,14 @@ func syncBookmarks(ctx context.Context, out io.Writer, open func() (*index.Store
 			return true, err
 		}
 		stats.Changed += pageStats.Changed
-		// 3. 用同一个 client 取回缺向量的 cover，绝不请求 artwork detail。
-		count, err := index.EmbedPixivArtworks(ctx, store, index.ModelID, index.Generation, artworks, func(ctx context.Context, artwork index.PixivArtwork) ([]float32, error) {
-			ref, ok := covers[strconv.FormatInt(artwork.ID, 10)]
-			if !ok {
-				return nil, errors.New("vector: bookmark cover reference is unavailable")
-			}
+		// 3. 同一 client 上处理全部 pending：封面引用直接解析（缓存命中），
+		// observer 记录的页面用其持久化 ResourceRef 重新取图。
+		count, err := index.ProcessPixivPending(ctx, store, index.ModelID, index.Generation, pixivResourceFetcher(source), func(ctx context.Context, path string) ([]float32, error) {
 			if runtime == nil {
 				runtime, err = start(ctx)
 				if err != nil {
 					return nil, err
 				}
-			}
-			temp, err := os.CreateTemp("", "pixiv-vector-cover-*")
-			if err != nil {
-				return nil, err
-			}
-			path := temp.Name()
-			if closeErr := temp.Close(); closeErr != nil {
-				return nil, closeErr
-			}
-			defer func() { _ = os.Remove(path) }()
-			if _, err := source.SaveResource(ctx, ref, sdk.SaveOptions{Path: path}); err != nil {
-				return nil, err
 			}
 			return runtime.Image(ctx, path)
 		})
@@ -196,8 +191,8 @@ func syncBookmarks(ctx context.Context, out io.Writer, open func() (*index.Store
 }
 
 // collectBookmarks 遍历一个 restrict 下的全部 bookmark listing 页，把 listing 已取得的
-// 字段追加到 artworks，并记录每个作品的 cover 引用。它不设结果条数上限。
-func collectBookmarks(ctx context.Context, source BookmarkSource, userID int64, restrict pixiv.Restrict, artworks *[]index.PixivArtwork, covers map[string]sdk.ResourceRef) (index.SyncStats, error) {
+// 字段追加到 artworks。它不设结果条数上限。
+func collectBookmarks(ctx context.Context, source BookmarkSource, userID int64, restrict pixiv.Restrict, artworks *[]index.PixivArtwork) (index.SyncStats, error) {
 	var stats index.SyncStats
 	cursor := sdk.Cursor{}
 	for {
@@ -207,12 +202,10 @@ func collectBookmarks(ctx context.Context, source BookmarkSource, userID int64, 
 		}
 		for _, item := range page.Items {
 			stats.Scanned++
-			artwork := index.PixivArtwork{ID: item.ID, Title: item.Title, UserID: item.User.ID, PageCount: item.PageCount}
-			ref := item.Cover.Resource.Ref
-			if item.ID > 0 && !ref.IsZero() {
-				covers[strconv.FormatInt(item.ID, 10)] = ref
+			artwork := artworkFromListing(item)
+			if item.ID > 0 && !item.Cover.Resource.Ref.IsZero() {
 				// 用不含签名 URL 的稳定身份作为指纹键，避免 CDN 换签导致重复嵌入。
-				artwork.CoverRef = ref.String()
+				artwork.CoverRef = item.Cover.Resource.Ref.String()
 			} else {
 				// listing 没有给出可用 cover；记为 skipped，不写入无图片的假 Asset。
 				stats.Skipped++
@@ -226,13 +219,34 @@ func collectBookmarks(ctx context.Context, source BookmarkSource, userID int64, 
 	}
 }
 
-func rebuild(ctx context.Context, out io.Writer, open func() (*index.Store, error), start func(context.Context) (ImageEncoder, error)) (err error) {
+// artworkFromListing 把 listing 已取得的 Artwork 字段投影到索引快照，不为 metadata 发新请求。
+func artworkFromListing(item pixiv.Artwork) index.PixivArtwork {
+	tags := make([]string, 0, len(item.Tags))
+	for _, tag := range item.Tags {
+		tags = append(tags, tag.Name)
+	}
+	return index.PixivArtwork{
+		ID:        item.ID,
+		Title:     item.Title,
+		Caption:   item.Caption,
+		UserID:    item.User.ID,
+		UserName:  item.User.Name,
+		PageCount: item.PageCount,
+		Kind:      string(item.Kind),
+		Tags:      tags,
+		XRestrict: item.XRestrict,
+		AIType:    item.AIType,
+	}
+}
+
+func rebuild(ctx context.Context, out io.Writer, open func() (*index.Store, error), start func(context.Context) (ImageEncoder, error), pixivPort PixivPort) (err error) {
 	store, err := open()
 	if err != nil {
 		return err
 	}
 	defer func() { err = errors.Join(err, store.Close()) }()
 	var runtime ImageEncoder
+	// 先做本地部分：Pixiv 资源端口只在索引确实存在 Pixiv 工作时才初始化账号。
 	processed, processErr := index.RebuildLocal(ctx, store, index.ModelID, index.Generation, func(ctx context.Context, path string) ([]float32, error) {
 		if runtime == nil {
 			var err error
@@ -243,11 +257,77 @@ func rebuild(ctx context.Context, out io.Writer, open func() (*index.Store, erro
 		}
 		return runtime.Image(ctx, path)
 	})
+	if processErr == nil {
+		hasPixiv, err := store.HasPixivAssets(ctx)
+		if err != nil {
+			processErr = err
+		} else if hasPixiv {
+			if pixivPort == nil {
+				processErr = errors.New("vector: rebuild requires an authenticated Pixiv account to re-fetch recorded Pixiv pages")
+			} else {
+				var pixivProcessed int
+				// rebuild 的取图逐个进入端口；端口内部保证同一认证 client。
+				pixivProcessed, processErr = index.RebuildPixiv(ctx, store, index.ModelID, index.Generation, portResourceFetcher(pixivPort), func(ctx context.Context, path string) ([]float32, error) {
+					if runtime == nil {
+						var err error
+						runtime, err = start(ctx)
+						if err != nil {
+							return nil, err
+						}
+					}
+					return runtime.Image(ctx, path)
+				})
+				processed += pixivProcessed
+			}
+		}
+	}
 	if runtime != nil {
 		processErr = errors.Join(processErr, runtime.Close())
 	}
 	_, writeErr := fmt.Fprintf(out, "embedded: %d\n", processed)
 	return errors.Join(processErr, writeErr)
+}
+
+// pixivResourceFetcher 把 BookmarkSource 适配为 pending 处理器的取图端口。
+func pixivResourceFetcher(source ResourceSaver) index.ResourceFetcher {
+	return func(ctx context.Context, resourceRef string) (string, error) {
+		return saveResourceToTemp(ctx, source, resourceRef)
+	}
+}
+
+// portResourceFetcher 把惰性账号端口适配为取图端口：只有真正需要取一张图时才进入端口。
+func portResourceFetcher(pixivPort PixivPort) index.ResourceFetcher {
+	return func(ctx context.Context, resourceRef string) (string, error) {
+		var path string
+		if err := pixivPort(ctx, func(ctx context.Context, source ResourceSaver) error {
+			saved, err := saveResourceToTemp(ctx, source, resourceRef)
+			path = saved
+			return err
+		}); err != nil {
+			return "", err
+		}
+		return path, nil
+	}
+}
+
+func saveResourceToTemp(ctx context.Context, source ResourceSaver, resourceRef string) (string, error) {
+	ref, err := sdk.ParseResourceRef(resourceRef)
+	if err != nil {
+		return "", fmt.Errorf("vector: parse persisted resource identity: %w", err)
+	}
+	temp, err := os.CreateTemp("", "pixiv-vector-page-*")
+	if err != nil {
+		return "", err
+	}
+	path := temp.Name()
+	if closeErr := temp.Close(); closeErr != nil {
+		return "", closeErr
+	}
+	if _, err := source.SaveResource(ctx, ref, sdk.SaveOptions{Path: path}); err != nil {
+		_ = os.Remove(path)
+		return "", err
+	}
+	return path, nil
 }
 
 // search has no Pixiv SDK or reverse-search dependency; it only reads the private index.

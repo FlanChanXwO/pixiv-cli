@@ -38,7 +38,8 @@ type Data struct {
 	JSONOut func(*bool) (bool, error)
 	// Observe 是可选 best-effort 观察端口：它只接收本次命令已经取得的 Artwork，
 	// 不返回错误也不发新请求，因此观察失败不可能改变命令输出或退出码。
-	Observe func([]pixiv.Artwork)
+	// ctx 来自当前命令，取消后观察停止本地写入。
+	Observe func(context.Context, []pixiv.Artwork)
 }
 
 // ProxyOptions 表示一条数据命令自己的代理覆盖参数。

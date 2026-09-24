@@ -569,7 +569,7 @@ func (a app) newRootCommand() *cobra.Command {
 		return vector.Open(dir)
 	}, func(ctx context.Context) (vectorcommands.ImageEncoder, error) {
 		return newCLIVectorEncoder(ctx)
-	}, a.vectorBookmarkPort()))
+	}, a.vectorBookmarkPort(), a.vectorPixivPort()))
 	cmd.AddCommand(downloadcommands.New(a.downloadDeps()))
 	fanboxData := a.fanboxDataDeps()
 	cmd.AddCommand(fanboxcommands.New(fanboxData, fanboxcommands.CommandSet{
@@ -671,7 +671,7 @@ func (a app) vectorObserver() *vectorcommands.ArtworkObserver {
 			return nil, err
 		}
 		return vector.Open(dir)
-	})
+	}, a.errOut)
 }
 
 func (a app) pixivDataDeps() pixivdeps.Data {
@@ -687,7 +687,7 @@ func (a app) pixivDataDeps() pixivdeps.Data {
 		Output:      a.out,
 		ErrorOutput: a.errOut,
 		UsageError:  newUsageError,
-		Observe:     a.vectorObserver().Observe,
+		Observe:     a.vectorObserver().ObserveWithContext,
 		Open: func(request pixivdeps.Request) (*pixiv.Client, error) {
 			sdk, err := load()
 			if err != nil {
@@ -731,6 +731,27 @@ func (a app) vectorBookmarkPort() vectorcommands.BookmarkPort {
 		// 认证数据命令不接受 --uid/--refresh-token；账号由本地 auth use 解析。
 		return sdkPorts.run(ctx, pixivdeps.Request{}, func(ctx context.Context, client *pixiv.Client) (bool, error) {
 			return attempt(ctx, client)
+		})
+	}
+}
+
+// vectorPixivPort 为 rebuild 的 Pixiv 页面重新取图提供已认证资源读取面。
+// 惰性进入：只有索引中存在 Pixiv Asset 时才会被调用。
+func (a app) vectorPixivPort() vectorcommands.PixivPort {
+	var once sync.Once
+	var ports pixivSDKPorts
+	var portsErr error
+	load := func() (pixivSDKPorts, error) {
+		once.Do(func() { ports, portsErr = newCLIPixivSDKPorts(a) })
+		return ports, portsErr
+	}
+	return func(ctx context.Context, attempt func(context.Context, vectorcommands.ResourceSaver) error) error {
+		sdkPorts, err := load()
+		if err != nil {
+			return err
+		}
+		return sdkPorts.run(ctx, pixivdeps.Request{}, func(ctx context.Context, client *pixiv.Client) (bool, error) {
+			return true, attempt(ctx, client)
 		})
 	}
 }

@@ -4,7 +4,6 @@ import (
 	"context"
 	"database/sql"
 	"errors"
-	"fmt"
 	"math"
 	"os"
 	"path/filepath"
@@ -308,57 +307,5 @@ func TestPendingTargetsOnlyNewlyObservedGeneration(t *testing.T) {
 	pending, err = store.Pending(ctx, "model", "old")
 	if err != nil || len(pending) != 1 || pending[0].Key != old.Key {
 		t.Fatalf("old pending intent must survive restart: %v %v", pending, err)
-	}
-}
-
-func TestStoreMigratesInterruptedAndCompleteV1WithoutLosingEmbeddings(t *testing.T) {
-	const legacyModel = "google/siglip2-base-patch16-512"
-	const legacyGeneration = "a89f5c5093f902bf39d3cd4d81d2c09867f0724b"
-	for _, version := range []int{0, 1} {
-		t.Run(fmt.Sprint(version), func(t *testing.T) {
-			dir := t.TempDir()
-			db, err := sql.Open("sqlite", filepath.Join(dir, "vector.db"))
-			if err != nil {
-				t.Fatal(err)
-			}
-			for _, statement := range []string{
-				`PRAGMA application_id = 0x50495856`,
-				`CREATE TABLE asset (source TEXT NOT NULL, source_id TEXT NOT NULL, page_index INTEGER NOT NULL, fingerprint TEXT NOT NULL, metadata BLOB NOT NULL, PRIMARY KEY (source,source_id,page_index))`,
-				`CREATE TABLE embedding (source TEXT NOT NULL, source_id TEXT NOT NULL, page_index INTEGER NOT NULL, model TEXT NOT NULL, generation TEXT NOT NULL, vector BLOB NOT NULL, PRIMARY KEY (source,source_id,page_index,model,generation), FOREIGN KEY (source,source_id,page_index) REFERENCES asset(source,source_id,page_index) ON DELETE CASCADE)`,
-				`INSERT INTO asset VALUES ('local','/old.png',0,'same',CAST('{}' AS BLOB)), ('local','/pending.png',0,'pending',CAST('{}' AS BLOB))`,
-				`INSERT INTO embedding VALUES ('local','/old.png',0,'google/siglip2-base-patch16-512','a89f5c5093f902bf39d3cd4d81d2c09867f0724b',X'0000803f00000000')`,
-			} {
-				if _, err := db.Exec(statement); err != nil {
-					t.Fatal(err)
-				}
-			}
-			if _, err := db.Exec(fmt.Sprintf(`PRAGMA user_version = %d`, version)); err != nil {
-				t.Fatal(err)
-			}
-			if err := db.Close(); err != nil {
-				t.Fatal(err)
-			}
-			for range 2 { // Migration and the subsequent reopen must agree.
-				store, err := vector.Open(dir)
-				if err != nil {
-					t.Fatal(err)
-				}
-				asset, err := store.Get(context.Background(), vector.Key{Source: "local", ID: "/old.png"})
-				if err != nil || asset.TargetModel != legacyModel || asset.TargetGeneration != legacyGeneration {
-					t.Fatalf("v1 target after migration: %+v %v", asset, err)
-				}
-				pending, err := store.Pending(context.Background(), legacyModel, legacyGeneration)
-				if err != nil || len(pending) != 1 || pending[0].Key.ID != "/pending.png" {
-					t.Fatalf("v1 pending lost: %+v %v", pending, err)
-				}
-				values, err := store.Embedding(context.Background(), vector.Key{Source: "local", ID: "/old.png"}, legacyModel, legacyGeneration)
-				if err != nil || !slices.Equal(values, []float32{1, 0}) {
-					t.Fatalf("v1 embedding lost: %v %v", values, err)
-				}
-				if err := store.Close(); err != nil {
-					t.Fatal(err)
-				}
-			}
-		})
 	}
 }

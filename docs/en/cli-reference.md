@@ -408,25 +408,32 @@ galleries remain untouched. It does not copy the images, contact
 Pixiv, read account credentials, or create `config.toml`. It reports `scanned`, `changed`, and
 `embedded` counts. Repeating an unchanged scan does not re-embed. A changed or missing source and a failed
 embedding leave the work pending for a later explicit scan; removed files are not yet purged from the index.
-`pixiv vector rebuild` explicitly re-embeds every recorded local image across galleries (no rescan or Pixiv
-requests). It retargets local assets to the current model generation without deleting previous vectors. Each
-successful image replaces its current-generation vector; on model failure or a missing/changed source, it exits
-nonzero, reports the completed count, and preserves the last stored vector. Rerun after fixing the source to
-refresh all recorded local images, including those already completed; no automatic historical migration occurs.
-Pixiv assets cannot yet be rebuilt.
+`pixiv vector rebuild` explicitly re-embeds every recorded asset — local images across galleries and
+Pixiv pages — without rescanning or listing. It retargets all assets to the current model generation without
+deleting previous vectors. Local assets re-embed from their recorded local files; Pixiv assets re-fetch each page
+through its persisted stable resource identity (never a signed URL) using an authenticated account, so a rebuild
+with recorded Pixiv pages requires `pixiv auth use`. A rebuild with only local assets never initializes the Pixiv
+account. Each successful item replaces its current-generation vector; on model failure or a missing/changed source,
+it exits nonzero, reports the completed count, and preserves the last stored vector. Rerun after fixing the source to
+refresh all recorded assets, including those already completed; no automatic historical migration occurs.
 `pixiv vector sync bookmarks` indexes the current account's bookmarked artworks from the public SDK bookmark
 listing, covering both public and private visibility. It records page 0 from the listing's own cover for each artwork
 and never requests artwork detail, so it adds no per-artwork App API request. A multi-page artwork is stored as its
 cover with `cover_only` and its real `page_count`; the remaining pages are neither fetched nor fabricated and must
-come from a later source. It needs a locally authenticated account (`pixiv auth use`) and creates `config.toml` like
-other Pixiv data commands. An artwork the listing returns without a usable cover is counted as `skipped` rather than
-stored as an image-less asset, and it reports `scanned`, `changed`, `skipped`, and `embedded` counts.
+come from a later source. It then embeds every Pixiv page still missing a vector for the current generation on the
+same authenticated client — the listing covers it just fetched, plus any pending pages recorded earlier by the
+passive observer (including pages beyond page 0, resolved through their persisted resource identity). It needs a
+locally authenticated account (`pixiv auth use`) and creates `config.toml` like other Pixiv data commands. An artwork
+the listing returns without a usable cover is counted as `skipped` rather than stored as an image-less asset, and it
+reports `scanned`, `changed`, `skipped`, and `embedded` counts.
 Ordinary Pixiv read commands that already return artworks (`search`, `ranking`, `recommended`, `timeline`,
 `mypixiv`, `user`, `series`, `bookmark list`, and `detail`) also record what they already fetched into the private
 index as a best-effort side effect. The observation adds **no** Pixiv request, never loads the embedding model, and
-swallows index failures, so command output and exit status are unchanged. `detail` supplies every page, while a
-listing supplies only the cover with `cover_only`. Observation never downloads images; pending vectors still need an
-explicit `pixiv vector sync`.
+keeps command output and exit status unchanged; index failures are reported as one diagnostic line on stderr, never
+on stdout. `detail` supplies every page, while a listing supplies only the cover with `cover_only`. Observation never
+downloads images; each recorded page keeps its stable resource identity (no signed URL) so a later explicit
+`pixiv vector sync bookmarks` or `pixiv vector rebuild` can resolve it again — including pages beyond page 0 that
+only `detail` observed.
 `pixiv vector status` shows total durable `assets` and `embeddings`; it creates the private vector database if
 none exists. `pixiv vector search QUERY_OR_IMAGE` uses the same offline SigLIP2 model for text and an existing
 local image file, then exact-cosine ranks persistent page-level embeddings. It makes no Pixiv or reverse-search
@@ -435,7 +442,9 @@ request and does not mutate the index. An existing regular file is an image quer
 not scan galleries or implicitly sync bookmarks. Search emits one JSON object per result (NDJSON) in descending
 score order, with `source`, `source_id`, zero-based `page_index`, `score`, `metadata`, and for Pixiv assets `url`.
 `metadata` is `{}` for local assets; a Pixiv asset carries `title`, `user_id`, `page_count`, and `url`, plus
-`cover_only` when only its listing cover is known and further pages were not fetched.
+`cover_only` when only its listing cover is known and further pages were not fetched. Metadata only stores fields the
+fetched artwork already carried (`caption`, `user_name`, `kind`, `tags`, `x_restrict`, `ai_type` when present); no
+field ever triggers an extra App API request.
 Multiple pages of the same Pixiv artwork are grouped in CLI output; only the highest-scoring page is emitted for that
 artwork. The persistent index remains page-level.
 It returns all matching results without a hidden count limit. The search output is not a canonical Pixiv Record
@@ -465,12 +474,13 @@ PIXIV_VECTOR_PYTHON="$HOME/.pixiv-cli/vector-python/bin/python" pixiv vector sea
 Windows uses the venv's `Scripts/python.exe` as `PIXIV_VECTOR_PYTHON`. The model cache follows the Python
 Hugging Face `HF_HOME` setting. Sync uses the pinned safetensors revision with remote custom code disabled and
 **never downloads weights implicitly**. Missing runtime/weights makes the command non-zero after recording the
-scanned assets. An unchanged gallery with no pending embeddings does not load the model. The private
-index upgrades schema v1 to v2 on open and persists each asset's target model/generation. After a future model
-revision, unchanged existing assets and their embeddings stay in the old generation; only newly observed or
-content-changed assets target the new generation. Search compares only the current generation; status counts all
-stored generations. Historical local assets are not re-embedded without an explicit rebuild.
-The current model candidate still needs broader real-Pixiv retrieval validation.
+scanned assets, with a structured startup diagnostic (`dependency_missing`, `dependency_version_mismatch`,
+`model_not_found`, or `model_load_failed`). An unchanged gallery with no pending embeddings does not load the model.
+The private index initializes its schema directly in its final shape (single `user_version` 1) and persists each
+asset's target model/generation alongside its stable resource identity. After a future model revision, unchanged
+existing assets and their embeddings stay in the old generation; only newly observed or content-changed assets target
+the new generation. Search compares only the current generation; status counts all stored generations. Historical
+assets are not re-embedded without an explicit rebuild.
 
 ### Reverse image search
 

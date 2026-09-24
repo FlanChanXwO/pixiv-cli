@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"slices"
 	"strings"
 	"testing"
 
@@ -98,54 +99,172 @@ func TestSyncPixivArtworksRejectsInvalidInput(t *testing.T) {
 	}
 }
 
-// TestEmbedPixivArtworksEmbedsMissingCoversAndLeavesFailuresPending 锁定 bookmark
-// embedding 语义：只嵌入缺向量的覆盖页，失败保持 pending，取消立即停止。
-func TestEmbedPixivArtworksEmbedsMissingCoversAndLeavesFailuresPending(t *testing.T) {
+// TestSyncPixivArtworksPersistsPageResourceIdentity 锁定 Workstream A：每个页面的
+// 稳定资源身份必须随 Asset 持久化，且跨重启可恢复；不得保存会过期的签名 URL。
+func TestSyncPixivArtworksPersistsPageResourceIdentity(t *testing.T) {
+	ctx := context.Background()
+	dir := t.TempDir()
+	store, err := vector.Open(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	artwork := vector.PixivArtwork{
+		ID: 700, Title: "multi", UserID: 7, PageCount: 3,
+		Pages: []vector.PixivPage{{Index: 0, Ref: "ref-700-p0"}, {Index: 1, Ref: "ref-700-p1"}, {Index: 2, Ref: "ref-700-p2"}},
+	}
+	if _, err := vector.SyncPixivArtworks(ctx, store, []vector.PixivArtwork{artwork, {ID: 701, PageCount: 1, CoverRef: "ref-701-cover"}}); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.Close(); err != nil {
+		t.Fatal(err)
+	}
+	store, err = vector.Open(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	for _, page := range artwork.Pages {
+		asset, err := store.Get(ctx, vector.Key{Source: "pixiv", ID: "700", Page: page.Index})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if asset.ResourceRef != page.Ref {
+			t.Fatalf("page %d resource identity = %q, want %q", page.Index, asset.ResourceRef, page.Ref)
+		}
+		if strings.Contains(asset.ResourceRef, "http") {
+			t.Fatalf("signed URL persisted: %q", asset.ResourceRef)
+		}
+	}
+	cover, err := store.Get(ctx, vector.Key{Source: "pixiv", ID: "701", Page: 0})
+	if err != nil || cover.ResourceRef != "ref-701-cover" {
+		t.Fatalf("cover identity lost across restart: %+v %v", cover, err)
+	}
+	// pending 列表同样携带身份，显式处理不需要重新 listing。
+	pending, err := store.Pending(ctx, vector.ModelID, vector.Generation)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(pending) != 4 {
+		t.Fatalf("pending = %d, want 4", len(pending))
+	}
+	for _, asset := range pending {
+		if asset.Key.Source == "pixiv" && asset.ResourceRef == "" {
+			t.Fatalf("pending pixiv asset %s page %d lost its resource identity", asset.Key.ID, asset.Key.Page)
+		}
+	}
+}
+
+// TestSyncPixivArtworksKeepsPageIdentityUnderListingCoverObservation 锁定：
+// detail 已记录的 page>0 身份不因后续只有 listing cover 的观察而丢失。
+func TestSyncPixivArtworksKeepsPageIdentityUnderListingCoverObservation(t *testing.T) {
 	ctx := context.Background()
 	store, err := vector.Open(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer store.Close()
-	artworks := []vector.PixivArtwork{
-		{ID: 101, Title: "one", UserID: 7, PageCount: 1, CoverRef: "ref-101"},
-		{ID: 202, Title: "two", UserID: 8, PageCount: 2, CoverRef: "ref-202-cover"},
-	}
-	if _, err := vector.SyncPixivArtworks(ctx, store, artworks); err != nil {
+	detail := vector.PixivArtwork{ID: 500, PageCount: 2, Pages: []vector.PixivPage{{Index: 0, Ref: detailPage0Ref}, {Index: 1, Ref: detailPage1Ref}}}
+	if _, err := vector.SyncPixivArtworks(ctx, store, []vector.PixivArtwork{detail}); err != nil {
 		t.Fatal(err)
 	}
-	requested := make([]int64, 0, 2)
-	embed := func(_ context.Context, artwork vector.PixivArtwork) ([]float32, error) {
-		requested = append(requested, artwork.ID)
-		if artwork.ID == 202 {
-			return nil, errors.New("cover download failed")
+	// 后续 listing 只有 cover：page 0 身份不得被覆盖，page 1 身份不得被删除。
+	if _, err := vector.SyncPixivArtworks(ctx, store, []vector.PixivArtwork{{ID: 500, PageCount: 2, CoverRef: listingCoverRef}}); err != nil {
+		t.Fatal(err)
+	}
+	for _, page := range detail.Pages {
+		asset, err := store.Get(ctx, vector.Key{Source: "pixiv", ID: "500", Page: page.Index})
+		if err != nil {
+			t.Fatal(err)
 		}
+		if asset.ResourceRef != page.Ref {
+			t.Fatalf("page %d identity = %q, want the detail identity %q", page.Index, asset.ResourceRef, page.Ref)
+		}
+	}
+}
+
+// TestProcessPixivPendingEmbedsAllPagesAndLeavesFailuresRetryable 锁定显式
+// pending 处理器：含 page>0，逐页用持久化身份取图，失败保持 pending，取消立即停止。
+func TestProcessPixivPendingEmbedsAllPagesAndLeavesFailuresRetryable(t *testing.T) {
+	ctx := context.Background()
+	store, err := vector.Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	if _, err := vector.SyncPixivArtworks(ctx, store, []vector.PixivArtwork{
+		{ID: 101, Title: "one", UserID: 7, PageCount: 1, CoverRef: "ref-101"},
+		{ID: 202, Title: "multi", UserID: 8, PageCount: 3, Pages: []vector.PixivPage{
+			{Index: 0, Ref: "ref-202-p0"}, {Index: 1, Ref: "ref-202-p1"}, {Index: 2, Ref: "ref-202-p2"},
+		}},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	fetched := make([]string, 0, 4)
+	failOnce := true
+	fetch := func(_ context.Context, resourceRef string) (string, error) {
+		fetched = append(fetched, resourceRef)
+		if resourceRef == "ref-202-p1" && failOnce {
+			failOnce = false
+			return "", errors.New("download failed")
+		}
+		return "/tmp/fake-" + resourceRef, nil
+	}
+	embedded := 0
+	processed, err := vector.ProcessPixivPending(ctx, store, vector.ModelID, vector.Generation, fetch, func(_ context.Context, _ string) ([]float32, error) {
+		embedded++
 		return []float32{1, 2, 3}, nil
-	}
-	processed, err := vector.EmbedPixivArtworks(ctx, store, vector.ModelID, vector.Generation, artworks, embed)
+	})
 	if err == nil {
-		t.Fatal("a failed cover must surface an error while keeping other work durable")
+		t.Fatal("a failed page must surface an error while keeping other work durable")
 	}
-	if processed != 1 {
-		t.Fatalf("processed = %d, want the successful cover only", processed)
+	if processed != 2 || embedded != 2 {
+		t.Fatalf("processed=%d embedded=%d, want the two pages before the failure", processed, embedded)
 	}
-	if len(requested) != 2 {
-		t.Fatalf("embed calls = %v, want both pending covers", requested)
+	// pending 顺序是 (101,0) (202,0) (202,1) (202,2)：失败页之后不再取图。
+	want := []string{"ref-101", "ref-202-p0", "ref-202-p1"}
+	if !slices.Equal(fetched, want) {
+		t.Fatalf("fetched = %v, want %v", fetched, want)
 	}
 	if _, err := store.Embedding(ctx, vector.Key{Source: "pixiv", ID: "101", Page: 0}, vector.ModelID, vector.Generation); err != nil {
-		t.Fatalf("successful cover must persist: %v", err)
+		t.Fatalf("successful page must persist: %v", err)
 	}
-	if _, err := store.Embedding(ctx, vector.Key{Source: "pixiv", ID: "202", Page: 0}, vector.ModelID, vector.Generation); err == nil {
-		t.Fatal("failed cover must not persist a vector")
+	if _, err := store.Embedding(ctx, vector.Key{Source: "pixiv", ID: "202", Page: 0}, vector.ModelID, vector.Generation); err != nil {
+		t.Fatalf("successful page must persist: %v", err)
 	}
-	// 已完成的覆盖页不应被重复嵌入。
-	requested = requested[:0]
-	if _, err := vector.EmbedPixivArtworks(ctx, store, vector.ModelID, vector.Generation,
-		[]vector.PixivArtwork{artworks[0]}, embed); err != nil {
+	// 失败页与未及处理页保持 pending，可重试。
+	pending, err := store.Pending(ctx, vector.ModelID, vector.Generation)
+	if err != nil || len(pending) != 2 {
+		t.Fatalf("pending after failure = %v (err=%v), want the 2 unfinished pages", pending, err)
+	}
+	// 重试成功后 pending 清零，且不重复嵌入已完成页。
+	processed, err = vector.ProcessPixivPending(ctx, store, vector.ModelID, vector.Generation, fetch, func(_ context.Context, _ string) ([]float32, error) {
+		return []float32{1, 2, 3}, nil
+	})
+	if err != nil || processed != 2 {
+		t.Fatalf("retry: processed=%d err=%v", processed, err)
+	}
+	pending, err = store.Pending(ctx, vector.ModelID, vector.Generation)
+	if err != nil || len(pending) != 0 {
+		t.Fatalf("pending after retry = %v (err=%v), want none", pending, err)
+	}
+}
+
+// TestProcessPixivPendingRejectsMissingIdentity 保证无身份的 pending 是可诊断错误，
+// 不是静默跳过。
+func TestProcessPixivPendingRejectsMissingIdentity(t *testing.T) {
+	ctx := context.Background()
+	store, err := vector.Open(t.TempDir())
+	if err != nil {
 		t.Fatal(err)
 	}
-	if len(requested) != 0 {
-		t.Fatalf("already embedded cover was re-fetched: %v", requested)
+	defer store.Close()
+	key := vector.Key{Source: "pixiv", ID: "999", Page: 0}
+	if _, err := store.Upsert(ctx, vector.Asset{Key: key, Metadata: []byte(`{}`), TargetModel: vector.ModelID, TargetGeneration: vector.Generation}); err != nil {
+		t.Fatal(err)
+	}
+	_, err = vector.ProcessPixivPending(ctx, store, vector.ModelID, vector.Generation, func(context.Context, string) (string, error) { return "/tmp/x", nil }, func(context.Context, string) ([]float32, error) { return []float32{1}, nil })
+	if err == nil || !strings.Contains(err.Error(), "no persisted resource identity") {
+		t.Fatalf("missing identity must be a diagnosable error: %v", err)
 	}
 }
 

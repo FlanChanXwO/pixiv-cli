@@ -49,11 +49,29 @@ func StartSigLIP2(ctx context.Context) (*SigLIP2, error) {
 		return nil, fmt.Errorf("vector: embedding runtime unavailable: %w", err)
 	}
 	runtime := &SigLIP2{cmd: cmd, stdin: stdin, encode: json.NewEncoder(stdin), decode: json.NewDecoder(stdout)}
-	var ready struct{ Ready bool }
+	var ready struct {
+		Ready        bool   `json:"ready"`
+		StartupError string `json:"startup_error"`
+		Detail       string `json:"detail"`
+	}
 	if err := runtime.decode.Decode(&ready); err != nil || !ready.Ready {
 		_ = runtime.Close()
 		if ctx.Err() != nil {
 			return nil, ctx.Err()
+		}
+		if err != nil {
+			return nil, fmt.Errorf("vector: embedding runtime stopped before it was ready: %w", err)
+		}
+		// 结构化 startup error：错误类型可诊断，detail 不含 token 或本地路径。
+		switch ready.StartupError {
+		case "dependency_missing":
+			return nil, fmt.Errorf("vector: embedding runtime dependency %s is missing (requires Python torch, transformers, Pillow)", ready.Detail)
+		case "dependency_version_mismatch":
+			return nil, fmt.Errorf("vector: embedding runtime dependency version mismatch: %s", ready.Detail)
+		case "model_not_found":
+			return nil, fmt.Errorf("vector: embedding model not found locally: %s", ready.Detail)
+		case "model_load_failed":
+			return nil, fmt.Errorf("vector: embedding model failed to load (%s)", ready.Detail)
 		}
 		return nil, errors.New("vector: embedding runtime unavailable (requires preloaded SigLIP2 weights and Python torch, transformers, Pillow)")
 	}
@@ -73,7 +91,7 @@ func (r *SigLIP2) embed(ctx context.Context, request map[string]string) ([]float
 		return nil, err
 	}
 	if err := r.encode.Encode(request); err != nil {
-		return nil, fmt.Errorf("vector: send image to embedding runtime: %w", err)
+		return nil, fmt.Errorf("vector: send request to embedding runtime: %w", err)
 	}
 	var result struct {
 		Vector []float32 `json:"vector"`

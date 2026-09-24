@@ -2,17 +2,32 @@
 import json
 import sys
 
-import torch
-import transformers
-from PIL import Image, __version__ as pillow_version
-from transformers import AutoModel, AutoProcessor
+try:
+    import torch
+    import transformers
+    from PIL import Image, __version__ as pillow_version
+    from transformers import AutoModel, AutoProcessor
+except ImportError as exc:
+    print(json.dumps({"startup_error": "dependency_missing", "detail": exc.name or "unknown"}), flush=True)
+    sys.exit(0)
 
-if (torch.__version__.split("+")[0], transformers.__version__, pillow_version) != ("2.14.0", "5.17.0", "12.1.1"):
-    sys.exit(1)
+WANT = ("2.14.0", "5.17.0", "12.1.1")
+GOT = (torch.__version__.split("+")[0], transformers.__version__, pillow_version)
+if GOT != WANT:
+    print(json.dumps({"startup_error": "dependency_version_mismatch", "detail": "torch=%s transformers=%s pillow=%s, want torch=%s transformers=%s pillow=%s" % (GOT + WANT)}), flush=True)
+    sys.exit(0)
 
 model_id, revision = sys.argv[1:3]
-processor = AutoProcessor.from_pretrained(model_id, revision=revision, local_files_only=True, trust_remote_code=False)
-model = AutoModel.from_pretrained(model_id, revision=revision, local_files_only=True, use_safetensors=True, trust_remote_code=False).eval()
+try:
+    processor = AutoProcessor.from_pretrained(model_id, revision=revision, local_files_only=True, trust_remote_code=False)
+    model = AutoModel.from_pretrained(model_id, revision=revision, local_files_only=True, use_safetensors=True, trust_remote_code=False).eval()
+except OSError:
+    print(json.dumps({"startup_error": "model_not_found", "detail": "preload %s@%s into the local transformers cache" % (model_id, revision)}), flush=True)
+    sys.exit(0)
+except Exception as exc:  # noqa: BLE001 - startup failures must stay diagnosable, not fatal-looking
+    print(json.dumps({"startup_error": "model_load_failed", "detail": type(exc).__name__}), flush=True)
+    sys.exit(0)
+
 print(json.dumps({"ready": True}), flush=True)
 for line in sys.stdin:
     request = json.loads(line)

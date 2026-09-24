@@ -171,7 +171,7 @@ func rankingJSONResponse(request *http.Request, body string) *http.Response {
 func TestArtworkRankingObserverAddsNoRequestsAndKeepsOutput(t *testing.T) {
 	const body = `{"illusts":[{"id":9501,"title":"observed","type":"illust","page_count":2,"create_date":"2026-09-01T00:00:00Z","user":{"id":51,"name":"artist"},"image_urls":{"large":"https://i.pximg.net/img/cover.jpg?signature=s"}}],"next_url":null}`
 
-	run := func(observe func([]pixiv.Artwork)) (string, int, int) {
+	run := func(observe func(context.Context, []pixiv.Artwork)) (string, int, int) {
 		output := &bytes.Buffer{}
 		requests := 0
 		transport := rankingRoundTripFunc(func(request *http.Request) (*http.Response, error) {
@@ -203,7 +203,7 @@ func TestArtworkRankingObserverAddsNoRequestsAndKeepsOutput(t *testing.T) {
 
 	plainOutput, plainRequests, _ := run(nil)
 	var observed []pixiv.Artwork
-	observedOutput, observedRequests, _ := run(func(items []pixiv.Artwork) { observed = append(observed, items...) })
+	observedOutput, observedRequests, _ := run(func(_ context.Context, items []pixiv.Artwork) { observed = append(observed, items...) })
 
 	if plainOutput != observedOutput {
 		t.Fatalf("observer changed stdout:\nplain=%q\nobserved=%q", plainOutput, observedOutput)
@@ -234,7 +234,7 @@ func TestArtworkRankingObserverFailureDoesNotBreakCommand(t *testing.T) {
 		JSONOut:     func(*bool) (bool, error) { return false, nil },
 		// 观察端口在 index 不可用时静默降级（隔离性由 observer 单测覆盖）；
 		// 这里确认接线本身不会让命令失败。
-		Observe: func([]pixiv.Artwork) {},
+		Observe: func(context.Context, []pixiv.Artwork) {},
 		Pooled: func(ctx context.Context, _ deps.Request, attempt func(context.Context, *pixiv.Client) (bool, error)) error {
 			_, err := attempt(ctx, client)
 			return err

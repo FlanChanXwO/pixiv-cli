@@ -822,7 +822,7 @@ func TestBookmarkListAllObservesFetchedArtworks(t *testing.T) {
 		ErrorOutput: &bytes.Buffer{},
 		UsageError:  func(err error) error { return err },
 		JSONOut:     func(*bool) (bool, error) { return false, nil },
-		Observe:     func(items []pixiv.Artwork) { observed = append(observed, items...) },
+		Observe:     func(_ context.Context, items []pixiv.Artwork) { observed = append(observed, items...) },
 		Pooled: func(ctx context.Context, _ deps.Request, attempt func(context.Context, *pixiv.Client) (bool, error)) error {
 			_, err := attempt(ctx, client)
 			return err

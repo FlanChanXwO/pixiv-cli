@@ -40,7 +40,7 @@ func TestRunPooledIllustListObservesAlreadyFetchedArtworks(t *testing.T) {
 		return err
 	})
 	var observed []pixiv.Artwork
-	runner := New(io.Discard, executor).WithObserver(func(items []pixiv.Artwork) {
+	runner := New(io.Discard, executor).WithObserver(func(_ context.Context, items []pixiv.Artwork) {
 		observed = append(observed, items...)
 	})
 	printed := 0

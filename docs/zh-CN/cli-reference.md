@@ -316,20 +316,26 @@ artwork、novel、user 搜索记录都会从 `type` 推断对应详情，不需�
 worker 只处理该目录下尚缺的本地向量，其他图库的待处理资产保持不动。它不复制图片、不访问 Pixiv、不读取账号凭证，也不创建 `config.toml`。
 命令输出 `scanned`、`changed`，以及 `embedded` 数量。重复扫描未变化图片不会重复计算。
 源文件变化、缺失或推理失败时保留待处理工作，需之后显式重扫；当前不自动清理已删除文件。
-`pixiv vector rebuild` 显式重新计算已记录的所有图库本地图片（不重新扫描、不请求 Pixiv），并将本地
-Asset 指向当前模型代；旧向量不删除，每张成功后替换当前代向量。模型失败或源文件缺失/变化时非零退出并
-报告已完成数量，保留最后一次存储的向量；修复源文件后重试会重新处理所有已记录图片，包括此前成功的图片，
-不发生自动历史迁移。当前尚不能重建 Pixiv Asset。
+`pixiv vector rebuild` 显式重新计算已记录的全部 Asset——各图库的本地图片与 Pixiv 页面（不重新扫描、
+不重新 listing），并将所有 Asset 指向当前模型代；旧向量不删除，每项成功后替换当前代向量。本地 Asset
+从已记录的本地文件重算；Pixiv Asset 通过各自持久化的稳定资源身份（绝非会过期的签名 URL）重新取图，
+需要已认证账号（`pixiv auth use`）；索引中只有本地 Asset 时不初始化 Pixiv 账号。模型失败或源文件
+缺失/变化时非零退出并报告已完成数量，保留最后一次存储的向量；修复源文件后重试会重新处理所有已记录
+Asset，包括此前成功的项，不发生自动历史迁移。
 `pixiv vector sync bookmarks` 通过公开 SDK 的 bookmark listing 索引当前账号收藏的作品，覆盖 public 与 private 两种可见性。
 每个作品只用 listing 自身返回的 cover 建立 page 0，绝不请求 artwork detail，因此不会产生逐作品的额外 App API 请求。
 多页作品以 cover 存入并标记 `cover_only` 与真实 `page_count`；其余页面既不抓取也不伪造，需由后续来源补齐。
-它需要本地已认证账号（`pixiv auth use`），并像其他 Pixiv 数据命令一样会创建 `config.toml`。
+随后在同一已认证 client 上处理当前代仍缺向量的全部 Pixiv 页面——刚抓到的 listing cover，以及之前被被动
+观察记录的 pending 页面（含超过 page 0 的页面，经其持久化资源身份重新取图）。它需要本地已认证账号
+（`pixiv auth use`），并像其他 Pixiv 数据命令一样会创建 `config.toml`。
 listing 未给出可用 cover 的作品记为 `skipped`，不会存成无图片的资产；输出包含 `scanned`、`changed`、
 `skipped` 与 `embedded` 数量。
 已经返回作品的普通 Pixiv 读取命令（`search`、`ranking`、`recommended`、`timeline`、`mypixiv`、`user`、
 `series`、`bookmark list` 与 `detail`）会把本次已取得的 Artwork 以 best-effort 方式记入私有索引。该观察
-**不新增**任何 Pixiv 请求、不加载模型、并吞掉索引错误，因此命令输出与退出状态不变。`detail` 提供全部页面，
-listing 只提供 cover 并标记 `cover_only`。观察不下载图片，待处理向量仍需显式 `pixiv vector sync`。
+**不新增**任何 Pixiv 请求、不加载模型，索引失败只在 stderr 写一行诊断，不进入 stdout，命令输出与退出
+状态不变。`detail` 提供全部页面，listing 只提供 cover 并标记 `cover_only`。观察不下载图片；每个已记录
+页面都保留稳定资源身份（不含签名 URL），因此之后的显式 `pixiv vector sync bookmarks` 或 `pixiv vector
+rebuild` 可以重新解析它——包括只有 `detail` 观察到的超过 page 0 的页面。
 `pixiv vector status` 报告持久化的 `assets` 与 `embeddings` 总数；数据库尚不存在时会创建。
 `pixiv vector search QUERY_OR_IMAGE` 使用同一个离线 SigLIP2 模型处理文本或现有本地图片，再对持久化
 page-level 向量做 exact cosine 排序；不请求 Pixiv 或反向搜图服务，也不修改索引。现有普通文件按图片查询；
@@ -337,6 +343,8 @@ page-level 向量做 exact cosine 排序；不请求 Pixiv 或反向搜图服务
 搜索不隐式扫描图库或同步 bookmarks。输出为按相似度降序的逐行 JSON（NDJSON），每行含 `source`、
 `source_id`、从零开始的 `page_index`、`score`、`metadata`，Pixiv Asset 另含 `url`；`metadata` 对本地 Asset 为 `{}`，
 Pixiv Asset 含 `title`、`user_id`、`page_count` 与 `url`，仅取得 listing cover 时另有 `cover_only`。
+metadata 只保存已取得 Artwork 自带的字段（存在时含 `caption`、`user_name`、`kind`、`tags`、`x_restrict`、
+`ai_type`）；任何字段都不会触发额外 App API 请求。
 同一 Pixiv 作品的多个页面在 CLI 输出中
 合并，只输出该作品相似度最高的页面，持久索引仍保持 page-level；不暗设结果条数上限。
 这些结果不是供 `detail`/`download` 使用的规范 Pixiv Record。CLI 重启后不重新计算已存图片向量，
@@ -364,11 +372,12 @@ PIXIV_VECTOR_PYTHON="$HOME/.pixiv-cli/vector-python/bin/python" pixiv vector sea
 
 Windows 请将 `PIXIV_VECTOR_PYTHON` 设为虚拟环境中的 `Scripts/python.exe`。模型缓存遵循 Python
 Hugging Face 的 `HF_HOME`。同步只加载固定的 safetensors revision、禁用远端自定义代码，**不会隐式下载
-权重**；运行时或权重缺失时，扫描资产仍保留，但命令非零退出。无待处理向量时不会加载模型。
-私有索引打开时将 schema v1 升级为 v2，并记录每个 Asset 的目标 model/generation。未来模型 revision
-变化时，未变化的旧 Asset 和向量保留旧代；仅新观察或内容变化的 Asset 面向新代。搜索只比较当前代，
-status 计入所有已存代；旧本地 Asset 不会自动重新生成向量，需显式 rebuild。默认模型候选
-仍需更多真实 Pixiv 样本验证。
+权重**；运行时或权重缺失时，扫描资产仍保留，但命令非零退出，并给出结构化启动诊断
+（`dependency_missing`、`dependency_version_mismatch`、`model_not_found` 或 `model_load_failed`）。
+无待处理向量时不会加载模型。私有索引首次打开时直接以最终结构初始化 schema（单一 `user_version` 1），
+并记录每个 Asset 的目标 model/generation 与稳定资源身份。未来模型 revision 变化时，未变化的旧 Asset
+和向量保留旧代；仅新观察或内容变化的 Asset 面向新代。搜索只比较当前代，status 计入所有已存代；
+旧 Asset 不会自动重新生成向量，需显式 rebuild。
 
 ### 反向搜图
 

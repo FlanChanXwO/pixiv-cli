@@ -54,7 +54,7 @@ type Dependencies struct {
 	FetchNovelContent func(context.Context, *pixiv.Client, int64) (pixiv.NovelContent, error)
 	FetchUser         func(context.Context, *pixiv.Client, int64) (pixiv.UserDetail, error)
 	// Observe 是可选 best-effort 观察端口，只接收已取得的 Artwork（含全部页面）。
-	Observe func([]pixiv.Artwork)
+	Observe func(context.Context, []pixiv.Artwork)
 }
 
 type command struct {
@@ -273,7 +273,7 @@ func (a command) runOneWithOutput(ctx context.Context, cmd *cobra.Command, entit
 		}
 		// detail 已取得全部页面，是唯一能提供完整 page-level 身份的路径。
 		if a.data.Observe != nil {
-			a.data.Observe([]pixiv.Artwork{result})
+			a.data.Observe(ctx, []pixiv.Artwork{result})
 		}
 		if ndjson || (jsonOut && pipeline.ModeOf(cmd) == pipeline.RecordMode) {
 			value, err := record.RecordFromArtworkDTO(pixiv.ToArtworkDTO(result))

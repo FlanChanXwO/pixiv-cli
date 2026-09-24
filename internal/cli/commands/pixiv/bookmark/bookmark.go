@@ -438,7 +438,7 @@ func (a command) runAllList(cmd *cobra.Command, args []string, opts listOptions)
 				}
 			}
 			if len(artworks) > 0 {
-				a.data.Observe(artworks)
+				a.data.Observe(ctx, artworks)
 			}
 		}
 

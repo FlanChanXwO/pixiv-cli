@@ -21,9 +21,9 @@ import (
 
 const applicationID = 0x50495856 // PIXV, distinct from the account database's PIXC.
 
-// Schema v1 had one production model. These migration defaults must not change with future releases.
-const v1ModelID = "google/siglip2-base-patch16-512"
-const v1Generation = "a89f5c5093f902bf39d3cd4d81d2c09867f0724b"
+// schemaVersion 是首个也是当前唯一的 schema 版本。vector.db 从未随正式 release
+// 发布过，因此不存在需要兼容的旧库；首次打开直接建立最终结构。
+const schemaVersion = 1
 
 type Key struct {
 	Source string
@@ -32,9 +32,12 @@ type Key struct {
 }
 
 type Asset struct {
-	Key              Key
-	Fingerprint      string
-	Metadata         json.RawMessage
+	Key         Key
+	Fingerprint string
+	Metadata    json.RawMessage
+	// ResourceRef 是 Pixiv 页面的稳定资源身份（sdk.ResourceRef 文本）；本地 Asset
+	// 恒为空。它从不包含会过期的签名 URL，因此可以跨进程重启重新解析。
+	ResourceRef      string
 	TargetModel      string
 	TargetGeneration string
 }
@@ -112,7 +115,7 @@ func (s *Store) init(path string) error {
 	if err := s.db.QueryRow(`PRAGMA user_version`).Scan(&version); err != nil {
 		return fmt.Errorf("vector: read schema version: %w", err)
 	}
-	if version != 0 && version != 1 && version != 2 {
+	if version != 0 && version != schemaVersion {
 		return fmt.Errorf("vector: unsupported schema version %d", version)
 	}
 	// Mark ownership before schema writes so an interrupted first open can resume safely.
@@ -121,7 +124,8 @@ func (s *Store) init(path string) error {
 	}
 	if _, err := s.db.Exec(`CREATE TABLE IF NOT EXISTS asset (
 		source TEXT NOT NULL, source_id TEXT NOT NULL, page_index INTEGER NOT NULL,
-		fingerprint TEXT NOT NULL, metadata BLOB NOT NULL,
+		fingerprint TEXT NOT NULL, metadata BLOB NOT NULL, resource_ref TEXT NOT NULL DEFAULT '',
+		target_model TEXT NOT NULL DEFAULT '', target_generation TEXT NOT NULL DEFAULT '',
 		PRIMARY KEY (source, source_id, page_index)
 	)`); err != nil {
 		return fmt.Errorf("vector: create asset table: %w", err)
@@ -134,29 +138,9 @@ func (s *Store) init(path string) error {
 	)`); err != nil {
 		return fmt.Errorf("vector: create embedding table: %w", err)
 	}
-	if version == 0 || version == 1 {
-		// Both columns and the version marker commit atomically; an interrupted upgrade keeps its prior version.
-		tx, err := s.db.Begin()
-		if err != nil {
-			return fmt.Errorf("vector: begin schema migration: %w", err)
-		}
-		defer tx.Rollback()
-		for _, statement := range []string{
-			`ALTER TABLE asset ADD COLUMN target_model TEXT NOT NULL DEFAULT ''`,
-			`ALTER TABLE asset ADD COLUMN target_generation TEXT NOT NULL DEFAULT ''`,
-		} {
-			if _, err := tx.Exec(statement); err != nil {
-				return fmt.Errorf("vector: migrate asset intent: %w", err)
-			}
-		}
-		if _, err := tx.Exec(`UPDATE asset SET target_model=?, target_generation=?`, v1ModelID, v1Generation); err != nil {
-			return fmt.Errorf("vector: migrate asset generation: %w", err)
-		}
-		if _, err := tx.Exec(`PRAGMA user_version = 2`); err != nil {
+	if version == 0 {
+		if _, err := s.db.Exec(fmt.Sprintf(`PRAGMA user_version = %d`, schemaVersion)); err != nil {
 			return fmt.Errorf("vector: set schema version: %w", err)
-		}
-		if err := tx.Commit(); err != nil {
-			return fmt.Errorf("vector: commit schema migration: %w", err)
 		}
 	}
 	if err := os.Chmod(path, paths.PrivateFileMode); err != nil {
@@ -193,24 +177,27 @@ func (s *Store) Upsert(ctx context.Context, asset Asset) (bool, error) {
 	}
 	defer tx.Rollback()
 	var oldFingerprint string
-	err = tx.QueryRowContext(ctx, `SELECT fingerprint FROM asset WHERE source=? AND source_id=? AND page_index=?`,
-		asset.Key.Source, asset.Key.ID, asset.Key.Page).Scan(&oldFingerprint)
+	var oldResourceRef string
+	err = tx.QueryRowContext(ctx, `SELECT fingerprint, resource_ref FROM asset WHERE source=? AND source_id=? AND page_index=?`,
+		asset.Key.Source, asset.Key.ID, asset.Key.Page).Scan(&oldFingerprint, &oldResourceRef)
 	changed := errors.Is(err, sql.ErrNoRows)
 	if err != nil && !changed {
 		return false, fmt.Errorf("vector: read asset: %w", err)
 	}
 	if changed {
-		_, err = tx.ExecContext(ctx, `INSERT INTO asset (source,source_id,page_index,fingerprint,metadata,target_model,target_generation)
-			VALUES (?,?,?,?,?,?,?)`, asset.Key.Source, asset.Key.ID, asset.Key.Page, asset.Fingerprint, []byte(asset.Metadata), asset.TargetModel, asset.TargetGeneration)
+		_, err = tx.ExecContext(ctx, `INSERT INTO asset (source,source_id,page_index,fingerprint,metadata,resource_ref,target_model,target_generation)
+			VALUES (?,?,?,?,?,?,?,?)`, asset.Key.Source, asset.Key.ID, asset.Key.Page, asset.Fingerprint, []byte(asset.Metadata), asset.ResourceRef, asset.TargetModel, asset.TargetGeneration)
 	} else {
 		changed = oldFingerprint != asset.Fingerprint
 		if changed {
-			_, err = tx.ExecContext(ctx, `UPDATE asset SET fingerprint=?, metadata=?, target_model=?, target_generation=?
-				WHERE source=? AND source_id=? AND page_index=?`, asset.Fingerprint, []byte(asset.Metadata), asset.TargetModel, asset.TargetGeneration,
+			// 内容变化时同时刷新资源身份：新观察路径可能带来不同的 variant，但同一页的身份升级是无害的。
+			_, err = tx.ExecContext(ctx, `UPDATE asset SET fingerprint=?, metadata=?, resource_ref=?, target_model=?, target_generation=?
+				WHERE source=? AND source_id=? AND page_index=?`, asset.Fingerprint, []byte(asset.Metadata), asset.ResourceRef, asset.TargetModel, asset.TargetGeneration,
 				asset.Key.Source, asset.Key.ID, asset.Key.Page)
 		} else {
-			_, err = tx.ExecContext(ctx, `UPDATE asset SET metadata=? WHERE source=? AND source_id=? AND page_index=?`,
-				[]byte(asset.Metadata), asset.Key.Source, asset.Key.ID, asset.Key.Page)
+			// 指纹不变时只刷新可变展示字段与资源身份（detail 路径可能补充 listing 未给出的页面身份）。
+			_, err = tx.ExecContext(ctx, `UPDATE asset SET metadata=?, resource_ref=? WHERE source=? AND source_id=? AND page_index=?`,
+				[]byte(asset.Metadata), pickResourceRef(oldResourceRef, asset.ResourceRef), asset.Key.Source, asset.Key.ID, asset.Key.Page)
 		}
 	}
 	if err != nil {
@@ -234,11 +221,20 @@ func (s *Store) Get(ctx context.Context, key Key) (Asset, error) {
 	}
 	var asset Asset
 	asset.Key = key
-	err := s.db.QueryRowContext(ctx, `SELECT fingerprint,metadata,target_model,target_generation FROM asset WHERE source=? AND source_id=? AND page_index=?`, key.Source, key.ID, key.Page).Scan(&asset.Fingerprint, &asset.Metadata, &asset.TargetModel, &asset.TargetGeneration)
+	err := s.db.QueryRowContext(ctx, `SELECT fingerprint,metadata,resource_ref,target_model,target_generation FROM asset WHERE source=? AND source_id=? AND page_index=?`, key.Source, key.ID, key.Page).Scan(&asset.Fingerprint, &asset.Metadata, &asset.ResourceRef, &asset.TargetModel, &asset.TargetGeneration)
 	if err != nil {
 		return Asset{}, fmt.Errorf("vector: get asset: %w", err)
 	}
 	return asset, nil
+}
+
+// pickResourceRef 保留已有身份：指纹不变时，新观察可能来自只携带 cover 的 listing，
+// 其 page 0 身份（large variant）不应覆盖 detail 已记录的页面身份（original variant）。
+func pickResourceRef(oldRef, newRef string) string {
+	if oldRef != "" {
+		return oldRef
+	}
+	return newRef
 }
 
 func validateKey(key Key) error {
@@ -316,7 +312,7 @@ func (s *Store) Pending(ctx context.Context, model, generation string) ([]Asset,
 	if strings.TrimSpace(model) == "" || strings.TrimSpace(generation) == "" {
 		return nil, errors.New("vector: model and generation are required")
 	}
-	rows, err := s.db.QueryContext(ctx, `SELECT a.source,a.source_id,a.page_index,a.fingerprint,a.metadata,a.target_model,a.target_generation
+	rows, err := s.db.QueryContext(ctx, `SELECT a.source,a.source_id,a.page_index,a.fingerprint,a.metadata,a.resource_ref,a.target_model,a.target_generation
 		FROM asset a WHERE a.target_model=? AND a.target_generation=? AND NOT EXISTS (
 			SELECT 1 FROM embedding e WHERE e.source=a.source AND e.source_id=a.source_id
 			AND e.page_index=a.page_index AND e.model=? AND e.generation=?
@@ -328,7 +324,7 @@ func (s *Store) Pending(ctx context.Context, model, generation string) ([]Asset,
 	var pending []Asset
 	for rows.Next() {
 		var asset Asset
-		if err := rows.Scan(&asset.Key.Source, &asset.Key.ID, &asset.Key.Page, &asset.Fingerprint, &asset.Metadata, &asset.TargetModel, &asset.TargetGeneration); err != nil {
+		if err := rows.Scan(&asset.Key.Source, &asset.Key.ID, &asset.Key.Page, &asset.Fingerprint, &asset.Metadata, &asset.ResourceRef, &asset.TargetModel, &asset.TargetGeneration); err != nil {
 			return nil, fmt.Errorf("vector: read pending asset: %w", err)
 		}
 		pending = append(pending, asset)
@@ -348,6 +344,16 @@ func (s *Store) Status(ctx context.Context) (assets, embeddings int, err error) 
 		return 0, 0, fmt.Errorf("vector: count embeddings: %w", err)
 	}
 	return assets, embeddings, nil
+}
+
+// HasPixivAssets reports whether the index holds any Pixiv asset, so `vector rebuild`
+// only enters the authenticated Pixiv port when there is Pixiv work to re-embed.
+func (s *Store) HasPixivAssets(ctx context.Context) (bool, error) {
+	var count int
+	if err := s.db.QueryRowContext(ctx, `SELECT count(*) FROM asset WHERE source='pixiv'`).Scan(&count); err != nil {
+		return false, fmt.Errorf("vector: count pixiv assets: %w", err)
+	}
+	return count > 0, nil
 }
 
 // localRebuildAssets retargets only local assets. Existing vectors remain readable until replaced.
@@ -373,6 +379,35 @@ func (s *Store) localRebuildAssets(ctx context.Context, model, generation string
 	}
 	if err := rows.Err(); err != nil {
 		return nil, fmt.Errorf("vector: list local assets: %w", err)
+	}
+	return assets, nil
+}
+
+// pixivRebuildAssets retargets Pixiv assets and returns them with their persisted resource
+// identities so a rebuild can re-fetch each page. Existing vectors remain readable until
+// replaced.
+func (s *Store) pixivRebuildAssets(ctx context.Context, model, generation string) ([]Asset, error) {
+	if strings.TrimSpace(model) == "" || strings.TrimSpace(generation) == "" {
+		return nil, errors.New("vector: model and generation are required")
+	}
+	if _, err := s.db.ExecContext(ctx, `UPDATE asset SET target_model=?, target_generation=? WHERE source='pixiv'`, model, generation); err != nil {
+		return nil, fmt.Errorf("vector: retarget pixiv assets: %w", err)
+	}
+	rows, err := s.db.QueryContext(ctx, `SELECT source_id,page_index,fingerprint,resource_ref FROM asset WHERE source='pixiv' ORDER BY source_id,page_index`)
+	if err != nil {
+		return nil, fmt.Errorf("vector: list pixiv assets: %w", err)
+	}
+	defer rows.Close()
+	var assets []Asset
+	for rows.Next() {
+		asset := Asset{Key: Key{Source: "pixiv"}}
+		if err := rows.Scan(&asset.Key.ID, &asset.Key.Page, &asset.Fingerprint, &asset.ResourceRef); err != nil {
+			return nil, fmt.Errorf("vector: read pixiv asset: %w", err)
+		}
+		assets = append(assets, asset)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("vector: list pixiv assets: %w", err)
 	}
 	return assets, nil
 }

@@ -142,7 +142,7 @@ func ProcessLocalPending(ctx context.Context, store *Store, root, model, generat
 
 // RebuildLocal explicitly re-embeds every recorded local image; it never crawls Pixiv.
 // A failed image leaves its last good vector intact, and rerunning refreshes every image.
-func RebuildLocal(ctx context.Context, store *Store, model, generation string, embed func(context.Context, string) ([]float32, error)) (int, error) {
+func RebuildLocal(ctx context.Context, store *Store, model, generation string, embed func(ctx context.Context, path string) ([]float32, error)) (int, error) {
 	assets, err := store.localRebuildAssets(ctx, model, generation)
 	if err != nil {
 		return 0, err
@@ -150,6 +150,25 @@ func RebuildLocal(ctx context.Context, store *Store, model, generation string, e
 	processed := 0
 	for _, asset := range assets {
 		if err := embedLocalAsset(ctx, store, asset, model, generation, embed); err != nil {
+			return processed, err
+		}
+		processed++
+	}
+	return processed, nil
+}
+
+// RebuildPixiv explicitly re-embeds every recorded Pixiv page through its persisted
+// resource identity. A failed page leaves its last good vector intact and stays retryable;
+// the caller owns authentication. fetch resolves one persisted resource identity to a
+// readable local image path.
+func RebuildPixiv(ctx context.Context, store *Store, model, generation string, fetch ResourceFetcher, embed func(ctx context.Context, path string) ([]float32, error)) (int, error) {
+	assets, err := store.pixivRebuildAssets(ctx, model, generation)
+	if err != nil {
+		return 0, err
+	}
+	processed := 0
+	for _, asset := range assets {
+		if err := embedPixivAsset(ctx, store, asset, model, generation, fetch, embed); err != nil {
 			return processed, err
 		}
 		processed++

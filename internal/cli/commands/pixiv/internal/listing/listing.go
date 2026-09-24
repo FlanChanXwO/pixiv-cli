@@ -83,7 +83,7 @@ type Runner struct {
 	executor Executor
 	// observer 是可选 best-effort 观察端口，只接收本次命令已经取得的 Artwork；
 	// 它不返回错误，因此观察失败不会变成命令失败。
-	observer func([]pixiv.Artwork)
+	observer func(context.Context, []pixiv.Artwork)
 }
 
 func New(out io.Writer, executor Executor) Runner {
@@ -91,7 +91,7 @@ func New(out io.Writer, executor Executor) Runner {
 }
 
 // WithObserver 返回一个带观察端口的 Runner 副本。nil observer 表示不观察。
-func (a Runner) WithObserver(observer func([]pixiv.Artwork)) Runner {
+func (a Runner) WithObserver(observer func(context.Context, []pixiv.Artwork)) Runner {
 	a.observer = observer
 	return a
 }
@@ -177,7 +177,7 @@ func (a Runner) runPooledIllustListWithKey(ctx context.Context, request Request,
 		}, func(items []pixiv.Artwork) (bool, error) {
 			// 观察的是本次命令已经取得的 Artwork；它不发新请求，也不改变输出。
 			if a.observer != nil {
-				a.observer(items)
+				a.observer(ctx, items)
 			}
 			if postFilter != nil {
 				items = postFilter(items)

@@ -421,7 +421,7 @@ func TestRecommendedAllObservesFetchedArtworks(t *testing.T) {
 				Output:     output,
 				UsageError: func(err error) error { return err },
 				JSONOut:    func(*bool) (bool, error) { return true, nil },
-				Observe:    func(items []pixiv.Artwork) { observed = append(observed, items...) },
+				Observe:    func(_ context.Context, items []pixiv.Artwork) { observed = append(observed, items...) },
 				Pooled: func(ctx context.Context, _ Request, attempt func(context.Context, *pixiv.Client) (bool, error)) error {
 					_, err := attempt(ctx, recommendedTestClient(t, transport))
 					return err

@@ -948,7 +948,7 @@ func TestArtworkDetailObservesEveryFetchedPage(t *testing.T) {
 		FetchArtwork: func(ctx context.Context, client *pixiv.Client, id int64) (pixiv.Artwork, error) {
 			return client.Artwork(ctx, pixiv.ArtworkRequest{ArtworkID: id})
 		},
-		Observe: func(items []pixiv.Artwork) { observed = append(observed, items...) },
+		Observe: func(_ context.Context, items []pixiv.Artwork) { observed = append(observed, items...) },
 		JSONOut: func(*bool) (bool, error) { return false, nil },
 	})
 	cmd.SetArgs([]string{"--type", "artwork", "124"})
