@@ -530,3 +530,104 @@ func TestSyncBookmarksReplayStatsReflectFinalAttempt(t *testing.T) {
 		t.Fatalf("stats must reflect only the final attempt: %q", out.String())
 	}
 }
+
+// TestVectorSyncLocalStopsAfterRuntimeStartFailure 锁定二次审查 §3.7：runtime 启动
+// 失败属于命令级 fatal，不得对本画廊每个后续 Asset 重复启动一次。
+func TestVectorSyncLocalStopsAfterRuntimeStartFailure(t *testing.T) {
+	gallery, err := filepath.EvalSymlinks(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range []string{"a.png", "b.png", "c.png"} {
+		// 纯数据文件即可：fakeEncoder 启动失败时不会走到图片解码。
+		if err := os.WriteFile(filepath.Join(gallery, name), []byte("image"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	starts := 0
+	var out bytes.Buffer
+	cmd := vector.New(&out,
+		func() (*index.Store, error) { return index.Open(t.TempDir()) },
+		func(context.Context) (vector.ImageEncoder, error) {
+			starts++
+			return nil, errors.New("python missing")
+		}, nil, nil)
+	cmd.SetArgs([]string{"sync", "local", gallery})
+	cmd.SetOut(&out)
+	cmd.SetErr(&out)
+	if err := cmd.ExecuteContext(context.Background()); err == nil {
+		t.Fatal("runtime start failure must fail the command")
+	}
+	if starts != 1 {
+		t.Fatalf("runtime started %d times, want exactly 1 (start failure is fatal)", starts)
+	}
+}
+
+// TestVectorRebuildStopsAfterRuntimeStartFailure 同上，覆盖 rebuild 命令。
+func TestVectorRebuildStopsAfterRuntimeStartFailure(t *testing.T) {
+	gallery, err := filepath.EvalSymlinks(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(gallery, "a.png"), []byte("image"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	dir := t.TempDir()
+	open := func() (*index.Store, error) { return index.Open(dir) }
+	store, err := open()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := index.SyncLocal(context.Background(), store, gallery); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.Close(); err != nil {
+		t.Fatal(err)
+	}
+	starts := 0
+	var out bytes.Buffer
+	cmd := vector.New(&out,
+		open,
+		func(context.Context) (vector.ImageEncoder, error) {
+			starts++
+			return nil, errors.New("python missing")
+		}, nil, nil)
+	cmd.SetArgs([]string{"rebuild"})
+	cmd.SetOut(&out)
+	cmd.SetErr(&out)
+	if err := cmd.ExecuteContext(context.Background()); err == nil {
+		t.Fatal("runtime start failure must fail the command")
+	}
+	if starts != 1 {
+		t.Fatalf("runtime started %d times, want exactly 1 (start failure is fatal)", starts)
+	}
+}
+
+// TestVectorSyncBookmarksStopsAfterRuntimeStartFailure 同上，覆盖 sync bookmarks：
+// runtime 启动失败不得导致后续 pending 页面逐个重试启动。
+func TestVectorSyncBookmarksStopsAfterRuntimeStartFailure(t *testing.T) {
+	source := &fakeSource{userID: 7, pages: [][]pixiv.Artwork{
+		{coverArtwork(t, 101, "a", 1), coverArtwork(t, 202, "b", 1)},
+	}}
+	starts := 0
+	var out bytes.Buffer
+	cmd := vector.New(&out,
+		func() (*index.Store, error) { return index.Open(t.TempDir()) },
+		func(context.Context) (vector.ImageEncoder, error) {
+			starts++
+			return nil, errors.New("python missing")
+		},
+		func(ctx context.Context, attempt func(context.Context, vector.BookmarkSource) (bool, error)) error {
+			_, err := attempt(ctx, source)
+			return err
+		}, nil)
+	cmd.SetArgs([]string{"sync", "bookmarks"})
+	cmd.SetOut(&out)
+	cmd.SetErr(&out)
+	if err := cmd.ExecuteContext(context.Background()); err == nil {
+		t.Fatal("runtime start failure must fail the command")
+	}
+	if starts != 1 {
+		t.Fatalf("runtime started %d times, want exactly 1 (start failure is fatal)", starts)
+	}
+}

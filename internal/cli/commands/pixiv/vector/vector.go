@@ -113,20 +113,9 @@ func syncLocal(ctx context.Context, out io.Writer, open func() (*index.Store, er
 	if _, err = fmt.Fprintf(out, "scanned: %d\nchanged: %d\n", stats.Scanned, stats.Changed); err != nil {
 		return err
 	}
-	var runtime ImageEncoder
-	processed, processErr := index.ProcessLocalPending(ctx, store, path, index.ModelID, index.Generation, func(ctx context.Context, path string) ([]float32, error) {
-		if runtime == nil {
-			var err error
-			runtime, err = start(ctx)
-			if err != nil {
-				return nil, err
-			}
-		}
-		return runtime.Image(ctx, path)
-	})
-	if runtime != nil {
-		processErr = errors.Join(processErr, runtime.Close())
-	}
+	encoder := newLazyEncoder(start)
+	processed, processErr := index.ProcessLocalPending(ctx, store, path, index.ModelID, index.Generation, encoder.image)
+	processErr = errors.Join(processErr, encoder.close())
 	_, writeErr := fmt.Fprintf(out, "embedded: %d\n", processed)
 	return errors.Join(processErr, writeErr)
 }
@@ -145,7 +134,7 @@ func syncBookmarks(ctx context.Context, out io.Writer, open func() (*index.Store
 		return err
 	}
 	defer func() { err = errors.Join(err, store.Close()) }()
-	var runtime ImageEncoder
+	encoder := newLazyEncoder(start)
 	var stats index.SyncStats
 	processed := 0
 	runErr := bookmarks(ctx, func(ctx context.Context, source BookmarkSource) (bool, error) {
@@ -175,21 +164,11 @@ func syncBookmarks(ctx context.Context, out io.Writer, open func() (*index.Store
 		stats.Changed += pageStats.Changed
 		// 3. 同一 client 上处理全部 pending：封面引用直接解析（缓存命中），
 		// observer 记录的页面用其持久化 ResourceRef 重新取图。
-		count, err := index.ProcessPixivPending(ctx, store, index.ModelID, index.Generation, pixivResourceFetcher(source), func(ctx context.Context, path string) ([]float32, error) {
-			if runtime == nil {
-				runtime, err = start(ctx)
-				if err != nil {
-					return nil, err
-				}
-			}
-			return runtime.Image(ctx, path)
-		})
+		count, err := index.ProcessPixivPending(ctx, store, index.ModelID, index.Generation, pixivResourceFetcher(source), encoder.image)
 		processed += count
 		return true, err
 	})
-	if runtime != nil {
-		runErr = errors.Join(runErr, runtime.Close())
-	}
+	runErr = errors.Join(runErr, encoder.close())
 	_, writeErr := fmt.Fprintf(out, "scanned: %d\nchanged: %d\nskipped: %d\nembedded: %d\n", stats.Scanned, stats.Changed, stats.Skipped, processed)
 	return errors.Join(runErr, writeErr)
 }
@@ -249,18 +228,9 @@ func rebuild(ctx context.Context, out io.Writer, open func() (*index.Store, erro
 		return err
 	}
 	defer func() { err = errors.Join(err, store.Close()) }()
-	var runtime ImageEncoder
+	encoder := newLazyEncoder(start)
 	// 先做本地部分：Pixiv 资源端口只在索引确实存在 Pixiv 工作时才初始化账号。
-	processed, processErr := index.RebuildLocal(ctx, store, index.ModelID, index.Generation, func(ctx context.Context, path string) ([]float32, error) {
-		if runtime == nil {
-			var err error
-			runtime, err = start(ctx)
-			if err != nil {
-				return nil, err
-			}
-		}
-		return runtime.Image(ctx, path)
-	})
+	processed, processErr := index.RebuildLocal(ctx, store, index.ModelID, index.Generation, encoder.image)
 	if processErr == nil {
 		hasPixiv, err := store.HasPixivAssets(ctx)
 		if err != nil {
@@ -271,23 +241,12 @@ func rebuild(ctx context.Context, out io.Writer, open func() (*index.Store, erro
 			} else {
 				var pixivProcessed int
 				// rebuild 的取图逐个进入端口；端口内部保证同一认证 client。
-				pixivProcessed, processErr = index.RebuildPixiv(ctx, store, index.ModelID, index.Generation, portResourceFetcher(pixivPort), func(ctx context.Context, path string) ([]float32, error) {
-					if runtime == nil {
-						var err error
-						runtime, err = start(ctx)
-						if err != nil {
-							return nil, err
-						}
-					}
-					return runtime.Image(ctx, path)
-				})
+				pixivProcessed, processErr = index.RebuildPixiv(ctx, store, index.ModelID, index.Generation, portResourceFetcher(pixivPort), encoder.image)
 				processed += pixivProcessed
 			}
 		}
 	}
-	if runtime != nil {
-		processErr = errors.Join(processErr, runtime.Close())
-	}
+	processErr = errors.Join(processErr, encoder.close())
 	_, writeErr := fmt.Fprintf(out, "embedded: %d\n", processed)
 	return errors.Join(processErr, writeErr)
 }
@@ -394,4 +353,33 @@ func search(ctx context.Context, out io.Writer, open func() (*index.Store, error
 		}
 	}
 	return nil
+}
+
+// lazyEncoder 包装命令级的惰性 runtime 启动：启动失败是命令级 fatal（Python 缺失、
+// 依赖版本不符、模型不可用），记住错误并对后续 Asset 直接返回，绝不逐项重复启动。
+type lazyEncoder struct {
+	start   func(context.Context) (ImageEncoder, error)
+	runtime ImageEncoder
+	err     error
+}
+
+func newLazyEncoder(start func(context.Context) (ImageEncoder, error)) *lazyEncoder {
+	return &lazyEncoder{start: start}
+}
+
+func (l *lazyEncoder) image(ctx context.Context, path string) ([]float32, error) {
+	if l.runtime == nil && l.err == nil {
+		l.runtime, l.err = l.start(ctx)
+	}
+	if l.err != nil {
+		return nil, l.err
+	}
+	return l.runtime.Image(ctx, path)
+}
+
+func (l *lazyEncoder) close() error {
+	if l.runtime == nil {
+		return nil
+	}
+	return l.runtime.Close()
 }
