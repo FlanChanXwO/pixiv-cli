@@ -205,3 +205,24 @@ func TestRunEmitsDecisionAndAcceptsMissingCurrentFormula(t *testing.T) {
 		t.Fatal("Run(older version) error = nil, want fail closed")
 	}
 }
+
+// 决策必须被发布给调用方：若允许省略 --github-output，install 判定仍会 exit 0，
+// 但 workflow 的 `action == 'install'` 门会因 output 为空而跳过 tap 写入，同时
+// 报告成功——这正是 fail-open。要求输出路径可把“决策丢失”变成硬失败。
+func TestRunRequiresGitHubOutputSoDecisionsCannotBeDropped(t *testing.T) {
+	dir := t.TempDir()
+	requested := filepath.Join(dir, "staging.rb")
+	if err := os.WriteFile(requested, formula("PixivCli", "1.1.2"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	current := filepath.Join(dir, "current.rb")
+	if err := os.WriteFile(current, formula("PixivCli", "1.1.1"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := homebrewrecovery.Run([]string{
+		"--current", current,
+		"--requested", requested,
+	}); err == nil {
+		t.Fatal("Run without --github-output must fail instead of dropping the install decision")
+	}
+}

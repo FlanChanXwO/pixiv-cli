@@ -48,7 +48,13 @@ jobs:
           INPUT_RUN_ID: ${{ inputs.release_run_id }}
         run: |
           set -euo pipefail
+          # §17：手动恢复必须从受保护的默认分支执行。`release` environment 也允许
+          # `v*` tag 部署，而旧 tag 自带的 workflow YAML 没有单调判定；若从 tag 触发，
+          # 恢复就会用旧 YAML 跑，绕过 homebrewrecovery。workflow_run 的 ref 不是分支，
+          # 因此这个约束只适用于 workflow_dispatch。
           if [ "$EVENT_NAME" = workflow_dispatch ]; then
+            default_branch=$(gh api "repos/$GITHUB_REPOSITORY" --jq '.default_branch')
+            test "$GITHUB_REF" = "refs/heads/$default_branch"
             run_id="$INPUT_RUN_ID"
           else
             run_id="$EVENT_RUN_ID"

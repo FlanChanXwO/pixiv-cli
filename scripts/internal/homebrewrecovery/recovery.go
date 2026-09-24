@@ -107,16 +107,22 @@ func Run(args []string) error {
 	if flags.NArg() != 0 {
 		return fmt.Errorf("decide accepts no positional arguments: %q", flags.Arg(0))
 	}
+	if *currentPath == "" {
+		return errors.New("--current is required (pass an empty existing path only when the formula is absent)")
+	}
+	// 决策必须被发布；省略 --github-output 会让 install 判定静默丢失，使 workflow
+	// 在报告成功的同时跳过 tap 写入，因此这里要求显式输出路径。
+	if *githubOutput == "" {
+		return errors.New("--github-output is required so the deploy decision reaches the workflow")
+	}
 	requested, err := os.ReadFile(*requestedPath)
 	if err != nil {
 		return fmt.Errorf("read requested formula %q: %w", *requestedPath, err)
 	}
 	var current []byte
-	if *currentPath != "" {
-		current, err = os.ReadFile(*currentPath)
-		if err != nil && !errors.Is(err, os.ErrNotExist) {
-			return fmt.Errorf("read current formula %q: %w", *currentPath, err)
-		}
+	current, err = os.ReadFile(*currentPath)
+	if err != nil && !errors.Is(err, os.ErrNotExist) {
+		return fmt.Errorf("read current formula %q: %w", *currentPath, err)
 	}
 	decision, err := Decide(current, requested)
 	if err != nil {
@@ -125,9 +131,6 @@ func Run(args []string) error {
 	output := fmt.Sprintf("action=%s\nversion=%s\ncurrent_version=%s\n", decision.Action, decision.Version, decision.CurrentVersion)
 	if _, err := fmt.Print(output); err != nil {
 		return err
-	}
-	if *githubOutput == "" {
-		return nil
 	}
 	file, err := os.OpenFile(*githubOutput, os.O_WRONLY|os.O_APPEND|os.O_CREATE, 0o600)
 	if err != nil {

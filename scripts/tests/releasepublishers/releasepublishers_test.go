@@ -319,3 +319,25 @@ func TestHomebrewDeployIsMonotonic(t *testing.T) {
 		t.Error("publish-homebrew.yml deploy must checkout the protected default-branch tip")
 	}
 }
+
+// TestHomebrewRecoveryRunsOnlyFromTheDefaultBranch 覆盖 CodeRabbit 指出的信任边界：
+// `release` environment 允许 `v*` tag 部署，而旧 tag 自带的 publish-homebrew.yml
+// 没有单调判定。若允许从 tag ref 触发恢复，workflow 会用旧 YAML 执行，恢复就绕过
+// 了 monotonic 检查。因此手动恢复必须显式约束在当前默认分支。
+func TestHomebrewRecoveryRunsOnlyFromTheDefaultBranch(t *testing.T) {
+	t.Parallel()
+
+	body := readWorkflow(t, repositoryRoot(t), "publish-homebrew.yml")
+	for _, required := range []string{
+		`default_branch=$(gh api "repos/$GITHUB_REPOSITORY" --jq '.default_branch')`,
+		`test "$GITHUB_REF" = "refs/heads/$default_branch"`,
+	} {
+		if !strings.Contains(body, required) {
+			t.Errorf("publish-homebrew.yml manual recovery must be pinned to the default branch (%q missing)", required)
+		}
+	}
+	// guard 必须只约束 workflow_dispatch；workflow_run 的 ref 不是分支。
+	if !strings.Contains(body, `if [ "$EVENT_NAME" = workflow_dispatch ]; then`) {
+		t.Error("the default-branch guard must be scoped to workflow_dispatch")
+	}
+}
