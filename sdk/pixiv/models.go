@@ -47,6 +47,13 @@ type ImageResource struct {
 	Height   int
 }
 
+// Stamp is a Pixiv comment stamp. Image is a first-party resource identified
+// by the stable stamp ID; upstream does not provide image dimensions here.
+type Stamp struct {
+	ID    int64
+	Image ImageResource
+}
+
 // ArtworkPage is one page of a multi-page artwork. PageIndex is zero-based and
 // follows the upstream display order. Image is a usable image resource.
 type ArtworkPage struct {
@@ -208,11 +215,22 @@ type Comment struct {
 	ParentComment *Comment
 }
 
+// CommentMutationResult reports the comment ID returned by an upstream
+// create or reply response. The ID does not prove that a later read-back
+// succeeded; callers must perform that verification separately.
+type CommentMutationResult struct {
+	CommentID int64
+}
+
 // CommentAccessControl records the upstream access-control state for a comment
 // page when upstream provided it.
 type CommentAccessControl struct {
 	CanComment bool
 	IsLocked   bool
+	// NumericValue preserves the current App API scalar without assigning it
+	// business meaning. CanComment and IsLocked are meaningful only when the
+	// legacy object form was supplied by upstream.
+	NumericValue *int64
 }
 
 // CommentPage wraps a paged list of comments together with optional upstream
@@ -240,9 +258,9 @@ type NovelSeriesResult struct {
 	Novels sdk.Page[Novel]
 }
 
-// BookmarkTag is one tag used by a user's artwork bookmarks. Count is the
-// number of bookmarks carrying the tag when upstream provided it, otherwise
-// zero.
+// BookmarkTag is one tag used by a user's artwork or novel bookmarks. Count
+// is the number of bookmarks carrying the tag when upstream provided it,
+// otherwise zero.
 type BookmarkTag struct {
 	Name  string
 	Count int
@@ -258,6 +276,13 @@ type TrendingTag struct {
 // ArtworkBookmarkDetail is the current user's bookmark state for one artwork.
 // A zero-value Restrict means the artwork is not bookmarked.
 type ArtworkBookmarkDetail struct {
+	Restrict Restrict
+	Tags     []string
+}
+
+// NovelBookmarkDetail is the current user's bookmark state for one novel.
+// A zero-value Restrict means the novel is not bookmarked.
+type NovelBookmarkDetail struct {
 	Restrict Restrict
 	Tags     []string
 }

@@ -29,11 +29,20 @@ func (c *Client) commentPage(op string, query url.Values, values []novel.Comment
 	}
 	if access != nil {
 		page.AccessControl = &CommentAccessControl{
-			CanComment: access.CanComment,
-			IsLocked:   access.IsLocked,
+			CanComment:   access.CanComment,
+			IsLocked:     access.IsLocked,
+			NumericValue: cloneInt64(access.NumericValue),
 		}
 	}
 	return page, nil
+}
+
+func cloneInt64(value *int64) *int64 {
+	if value == nil {
+		return nil
+	}
+	cloned := *value
+	return &cloned
 }
 
 func (c *Client) mapComment(m novel.Comment) (Comment, error) {

@@ -6,6 +6,12 @@
 credential selection; it does not accept CLI data-command account overrides.
 The stdout stream is reserved for JSON-RPC.
 
+`novel_content` remains registered for wire compatibility, but its App API
+content endpoint is no longer available. A positive `novel_id` returns a
+structured `content_unavailable` error with `isError=true` and an empty content
+block list; it does not call `/v1/novel/content` and does not fall back to WebView.
+Use `novel_detail` for novel metadata.
+
 ## Errors, pagination, and output
 
 Schema-invalid input is rejected as a JSON-RPC/tool input error before the SDK
@@ -23,6 +29,18 @@ List tools accept `page` and `limit`:
 - Entity filters are applied before logical pagination and duplicate records are
   removed by their stable entity identity.
 
+`illust_comments` and `novel_comments` publish the closed input object
+`{id, page, limit}`. `id` must be positive; the output envelope is
+`{comments, pagination}` with optional `total` and `access_control` fields that
+are omitted when the upstream response does not provide them. Artwork comments
+use the current artwork-comments operation and novel comments use the current
+novel-comments operation. When the current App API supplies the opaque numeric
+`comment_access_control` wire field, it is preserved as
+`access_control.comment_access_control`; the SDK and server do not infer
+`can_comment` or `is_locked` from that number. Neither read tool accepts
+mutation-only `stamp_id`, and the legacy MCP registry does not add a standalone
+`stamps` tool.
+
 Opaque SDK cursors never leave the server. List results expose `pagination.page`,
 `limit`, `returned`, and `has_more`; they may also expose `next_page` when another
 logical page is available. `recommended(kind="all")` exposes independent
@@ -31,7 +49,8 @@ pagination objects for illustration, manga, novel, and user streams.
 Records keep public entity fields and an opaque resource reference when one is
 needed. They do not expose resolved/signed resource URLs, request headers,
 Cookies, expiry metadata, access tokens, or other resource transport credentials.
-Novel content blocks and comment/profile-image references follow the same rule.
+Available novel content blocks and comment/profile-image references follow the
+same rule.
 Structured results use explicit DTOs and typed envelopes rather than runtime SDK
 models. The separate FANBOX MCP server follows the same resource shape: a
 first-party resource contains its opaque `ref` and optional
@@ -164,15 +183,15 @@ not treated as an artwork detail request.
 | `search_novel` | Required `word`; optional `search_target`, `sort`, `duration`, `novel_filter`, `page`, `limit`. Rating, text-length, and original-only fields are intentionally not published. |
 | `reverse_search` | Required `source` (regular local file or HTTP(S) URL); optional `provider` enum. Uses the startup proxy/key/pixiv-only snapshot and returns the reverse-search envelope described above. |
 | `illust_detail` | Exactly one of positive `illust_id` or a supported artwork `url`; returns one safe record. |
-| `novel_detail` / `novel_content` | Positive `novel_id`; the first returns metadata and the second returns complete structured content blocks. |
+| `novel_detail` / `novel_content` | Positive `novel_id`; the first returns metadata. The second is a retained compatibility tool that returns `content_unavailable` with empty blocks and does not call the rejected content endpoint. |
 | `illust_related` | Positive `illust_id`, optional `illust_filter`, `page`, `limit`. |
 | `illust_series` / `novel_series` | Positive `series_id`, `page`, `limit`; novel series also returns safe series metadata. |
-| `illust_comments` / `novel_comments` | Positive artwork/novel `id`, `page`, `limit`; output includes safe comments, pagination, and available `total`/`access_control` metadata. |
-| `illust_ranking` | Optional `mode`, `date`, `illust_filter`, `page`, `limit`; omitted mode is `day`. |
-| `search_user` | Required `word`, optional `user_filter`, `page`, `limit`; uses the App user-search operation. |
+| `illust_comments` / `novel_comments` | Closed input `{id, page, limit}` with positive `id`; output is `{comments, pagination}` plus optional `total`/`access_control` metadata. An opaque numeric `comment_access_control` is retained inside `access_control` without boolean inference. Read tools do not accept mutation-only `stamp_id`, and no standalone `stamps` tool is exposed in the legacy registry. |
+| `illust_ranking` | Optional `mode`, `date`, `illust_filter`, `page`, `limit`; `mode` is a closed ranking enum, dates must be valid `YYYY-MM-DD`, and omitted mode is `day`. |
+| `search_user` | Required non-blank `word`, optional `user_filter`, `page`, `limit`; blank input is rejected before SDK execution and valid input uses the App user-search operation. |
 | `illust_recommended` | Artwork recommendations with optional `illust_filter`, `page`, `limit`. |
-| `recommended` | Required `kind`: `all`, `illust`, `manga`, `novel`, or `user`; optional matching typed filters, `page`, `limit`. |
-| `trending_tags_illust` | No input; returns the complete current artwork trending-tag list. |
+| `recommended` | Required `kind`: `all`, `illust`, `manga`, `novel`, or `user`; optional matching typed filters, `page`, `limit`. `illust`/`manga` select the corresponding artwork subtype, conflicting filters are rejected before SDK execution, and `all` keeps four independent streams with atomic failure semantics. |
+| `trending_tags_illust` | No input; returns the complete current artwork trending-tag list. An empty upstream list is a successful empty result. |
 | `timeline_illust_following` / `timeline_novel_following` | `restrict` (`public`/`private`), matching entity filter, `page`, `limit`. |
 | `timeline_illust_latest` | Required `content_type` (`illust` or `manga`), optional `illust_filter`, `page`, `limit`. |
 | `timeline_novel_latest` | Optional `novel_filter`, `page`, `limit`. |
@@ -183,9 +202,14 @@ not treated as an artwork detail request.
 | `user_novels` | Optional `user_id`, `novel_filter`, `page`, `limit`; omitted ID resolves to the authenticated user. |
 | `user_bookmarks` | Optional `user_id`, `restrict`, `tag`, `illust_filter`, `page`, `limit`; reads artwork bookmarks. |
 | `user_novel_bookmarks` | Optional `user_id`, `restrict`, `tag`, `page`, `limit`; reads novel bookmarks. |
-| `user_following` / `user_followers` | Optional `user_id`, `restrict`, `user_filter`, `page`, `limit`; omitted ID resolves to the authenticated user. |
-| `related_users` | Positive `user_id`, optional `user_filter`, `page`, `limit`. |
-| `blocked_users` | Optional `user_id`, `page`, `limit`; omitted ID resolves to the authenticated user. App API failure is reported and never changed to a Web fallback. |
+| `bookmark_list_all` | Optional `user_id`, `restrict`, `tag`, `page`, `limit`; additive aggregate that reads artwork bookmarks before novel bookmarks. `page`/`limit` apply to the concatenated streams, and any required stream failure returns an error with no partial records. |
+| `bookmark_tags_all` | Optional `user_id`, `restrict`, `page`, `limit`; additive aggregate that reads artwork tags before novel tags. Each tag retains `content_type` and its original `count`; same-name tags are not merged, and any required stream failure returns no partial tags. |
+| `novel_bookmark_tags` | Optional `user_id`, `restrict`, `page`, `limit`; returns `{bookmark_tags, pagination}` for novel bookmarks. The current candidate App API has no continuation contract; a continuation outside that contract is reported as a typed error. |
+| `novel_bookmark_detail` | Required positive `novel_id`; returns `{bookmarked, restrict, tags}` for one novel and preserves the absent/unbookmarked state. It uses the candidate novel-bookmark detail App API. |
+| `user_following` | Optional `user_id`, `restrict`, `user_filter`, `page`, `limit`; omitted ID resolves to the authenticated user. |
+| `user_followers` | Optional `user_id`, `restrict`, `page`, `limit`; omitted ID resolves to the authenticated user. |
+| `related_users` | Optional positive `user_id` (defaults to the authenticated user), compatibility `restrict`, optional `user_filter`, `page`, `limit`. |
+| `blocked_users` | Optional `user_id`, compatibility `restrict`, `page`, `limit`; omitted ID resolves to the authenticated user. App API failure is reported and never changed to a Web fallback. |
 | `bookmark_tags` | Optional `user_id`, `restrict`, `page`, `limit`; returns `{bookmark_tags, pagination}`. |
 | `bookmark_detail` | Required positive `illust_id`; returns `{bookmarked, restrict, tags}` and preserves the unbookmarked state. |
 
@@ -199,12 +223,27 @@ optional port or a failed App request.
 | Tool | Input | Structured output |
 | --- | --- | --- |
 | `add_bookmark` | `illust_id`, optional `restrict`, repeated `tags` | `{success, action, illust_id}` |
+| `add_novel_bookmark` | `novel_id`, optional `restrict`, repeated `tags` | `{success, action, novel_id}` |
 | `remove_bookmark` | `illust_id` | `{success, action, illust_id}` |
+| `remove_novel_bookmark` | `novel_id` | `{success, action, novel_id}` |
+| `create_artwork_comment` | positive `illust_id`, non-empty `comment` | `{success, action, illust_id, comment_id}` |
+| `reply_artwork_comment` | positive `illust_id`, non-empty `comment`, positive `parent_comment_id` | `{success, action, illust_id, comment_id}` |
+| `stamp_artwork_comment` | positive `illust_id`, optional `comment` (empty for sticker-only), positive `stamp_id` | `{success, action, illust_id, comment_id}` |
+| `delete_artwork_comment` | positive `comment_id` | `{success, action, comment_id}` |
+| `create_novel_comment` | positive `novel_id`, non-empty `comment` | `{success, action, novel_id, comment_id}` |
+| `reply_novel_comment` | positive `novel_id`, non-empty `comment`, positive `parent_comment_id` | `{success, action, novel_id, comment_id}` |
+| `stamp_novel_comment` | positive `novel_id`, optional `comment` (empty for sticker-only), positive `stamp_id` | `{success, action, novel_id, comment_id}` |
+| `delete_novel_comment` | positive `comment_id` | `{success, action, comment_id}` |
 | `follow_user` | `user_id`, optional `restrict` | `{success, action, user_id}` |
 | `unfollow_user` | `user_id` | `{success, action, user_id}` |
 
-Writes are artwork-bookmark and user-follow mutations only. A post-submit
-unknown state is not replayed under another account. Failed writes return
+Writes are artwork/novel-bookmark, artwork/novel-comment/stamp, and user-follow
+mutations. An empty `restrict` on an add defaults to `public`; only `public`
+and `private` are accepted. Artwork and novel comment create/reply/stamp
+operations return the upstream `comment_id`; delete returns the supplied
+comment ID. The server never reads the latest comment to guess an ID, never
+falls back to the candidate v3 comments contract, and a post-submit unknown
+state is not replayed under another account. Failed writes return
 `success=false` with `isError=true` and a safe diagnostic.
 
 ## Authentication and fallback

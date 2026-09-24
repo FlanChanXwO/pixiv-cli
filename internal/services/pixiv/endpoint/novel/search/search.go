@@ -8,6 +8,7 @@ import (
 	"net/url"
 	"strconv"
 
+	endpointcontinuation "github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/endpoint/continuation"
 	"github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/endpoint/novel"
 	"github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/protocol"
 )
@@ -206,15 +207,13 @@ func cloneString(value *string) *string {
 }
 
 func continuationOffset(rawURL string) (int, error) {
-	parsed, err := url.Parse(rawURL)
-	if err != nil {
-		return 0, protocol.MalformedResponse()
-	}
-	values, err := url.ParseQuery(parsed.RawQuery)
-	if err != nil || len(values["offset"]) != 1 {
-		return 0, protocol.MalformedResponse()
-	}
-	offset, err := strconv.ParseInt(values.Get("offset"), 10, 64)
+	_, offset, err := endpointcontinuation.Parse(rawURL, endpointcontinuation.Spec{
+		Path: protocol.AppSearchNovel,
+		Keys: []string{"offset"},
+		AllowedQueryKeys: []string{
+			"word", "search_target", "sort", "duration",
+		},
+	})
 	if err != nil || offset <= 0 || int64(int(offset)) != offset {
 		return 0, protocol.MalformedResponse()
 	}

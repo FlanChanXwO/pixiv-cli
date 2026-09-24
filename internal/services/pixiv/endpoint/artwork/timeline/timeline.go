@@ -9,6 +9,7 @@ import (
 	"strconv"
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/endpoint/artwork"
+	endpointcontinuation "github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/endpoint/continuation"
 	"github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/protocol"
 )
 
@@ -64,7 +65,7 @@ func (c *Client) List(ctx context.Context, request Request) (Result, error) {
 	}
 	items := make([]artwork.Artwork, len(raw.Illusts.Items))
 	for index, value := range raw.Illusts.Items {
-		if value.ID <= 0 {
+		if value.ID <= 0 || (request.Kind == MyPixiv && value.User.ID <= 0) {
 			return Result{}, protocol.MalformedResponse()
 		}
 		items[index] = mapArtwork(value)
@@ -73,7 +74,7 @@ func (c *Client) List(ctx context.Context, request Request) (Result, error) {
 	if request.Kind == Latest {
 		continuationKeys = []string{"max_illust_id", "offset"}
 	}
-	nextKey, nextValue, hasNext, err := continuation(raw.NextURL, continuationKeys)
+	nextKey, nextValue, hasNext, err := continuation(raw.NextURL, path, continuationKeys)
 	if err != nil {
 		return Result{}, err
 	}
@@ -91,11 +92,22 @@ func requestValues(request Request) (string, url.Values, error) {
 		setOffset(query, request.Offset)
 		return protocol.AppIllustFollow, query, nil
 	case Latest:
-		query := url.Values{"content_type": {request.ContentType}, "filter": {"for_android"}}
+		// 最新作品的新续页目标是 max_illust_id；拒绝 offset 输入，避免把旧
+		// continuation 静默降级为首页请求并造成重复数据。响应解析仍保留
+		// offset 兼容分支，供后续兼容层明确处理历史响应。
+		if request.Offset != 0 {
+			return "", nil, errors.New("latest artwork continuation must use max_illust_id")
+		}
+		if request.MaxIllustID < 0 {
+			return "", nil, errors.New("max illust ID must be non-negative")
+		}
+		contentType, err := normalizeLatestContentType(request.ContentType)
+		if err != nil {
+			return "", nil, err
+		}
+		query := url.Values{"content_type": {contentType}, "filter": {"for_android"}}
 		if request.MaxIllustID > 0 {
 			query.Set("max_illust_id", strconv.FormatInt(request.MaxIllustID, 10))
-		} else {
-			setOffset(query, request.Offset)
 		}
 		return protocol.AppIllustNew, query, nil
 	case MyPixiv:
@@ -103,11 +115,44 @@ func requestValues(request Request) (string, url.Values, error) {
 		setOffset(query, request.Offset)
 		return protocol.AppIllustMyPixiv, query, nil
 	case UserArtworks:
-		query := url.Values{"user_id": {strconv.FormatInt(request.UserID, 10)}, "type": {request.ArtworkType}}
+		if request.UserID <= 0 {
+			return "", nil, errors.New("user artwork user ID must be positive")
+		}
+		artworkType, err := normalizeUserArtworkType(request.ArtworkType)
+		if err != nil {
+			return "", nil, err
+		}
+		query := url.Values{"user_id": {strconv.FormatInt(request.UserID, 10)}, "type": {artworkType}}
 		setOffset(query, request.Offset)
 		return protocol.AppUserIllusts, query, nil
 	default:
 		return "", nil, errors.New("unsupported artwork timeline kind")
+	}
+}
+
+func normalizeLatestContentType(value string) (string, error) {
+	// 目前只有 illust 具备该 endpoint 的确认两页证据；manga 是既有 CLI/MCP
+	// 兼容输入，继续保留，但在 ugoira 或 compound subtype 的独立证据完成前拒绝它们，
+	// 避免把候选能力误当成目标 contract。
+	switch value {
+	case "", "illust":
+		return "illust", nil
+	case "manga":
+		return value, nil
+	default:
+		return "", errors.New("unsupported latest artwork content type")
+	}
+}
+
+func normalizeUserArtworkType(value string) (string, error) {
+	switch value {
+	case "", "illustration", "illust":
+		// 空值和 ArtworkKindIllustration 的既有拼写都使用默认的 illust。
+		return "illust", nil
+	case "manga", "ugoira":
+		return value, nil
+	default:
+		return "", errors.New("unsupported user artwork subtype")
 	}
 }
 
@@ -218,40 +263,32 @@ func (l *requiredList[T]) UnmarshalJSON(data []byte) error {
 	return nil
 }
 
-func continuation(rawURL *string, keys []string) (string, int64, bool, error) {
+func continuation(rawURL *string, path string, keys []string) (string, int64, bool, error) {
 	if rawURL == nil {
 		return "", 0, false, nil
 	}
-	if *rawURL == "" {
-		return "", 0, false, protocol.MalformedResponse()
-	}
-	parsed, err := url.Parse(*rawURL)
-	if err != nil {
-		return "", 0, false, protocol.MalformedResponse()
-	}
-	values, err := url.ParseQuery(parsed.RawQuery)
-	if err != nil {
-		return "", 0, false, protocol.MalformedResponse()
-	}
-	key := ""
-	for _, candidate := range keys {
-		entries, present := values[candidate]
-		if !present {
-			continue
-		}
-		if len(entries) != 1 || key != "" {
-			return "", 0, false, protocol.MalformedResponse()
-		}
-		key = candidate
-	}
-	if key == "" {
-		return "", 0, false, protocol.MalformedResponse()
-	}
-	value, err := strconv.ParseInt(values.Get(key), 10, 64)
+	key, value, err := endpointcontinuation.Parse(*rawURL, endpointcontinuation.Spec{
+		Path:             path,
+		Keys:             keys,
+		AllowedQueryKeys: allowedContinuationQueryKeys(path),
+	})
 	if err != nil || value <= 0 || (key == "offset" && int64(int(value)) != value) {
 		return "", 0, false, protocol.MalformedResponse()
 	}
 	return key, value, true, nil
+}
+
+func allowedContinuationQueryKeys(path string) []string {
+	switch path {
+	case protocol.AppIllustFollow:
+		return []string{"restrict"}
+	case protocol.AppIllustNew:
+		return []string{"content_type", "filter"}
+	case protocol.AppUserIllusts:
+		return []string{"user_id", "type"}
+	default:
+		return nil
+	}
 }
 
 func mapArtwork(dto illustDTO) artwork.Artwork {

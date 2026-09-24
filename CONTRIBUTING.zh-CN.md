@@ -15,7 +15,7 @@
 
 受支持的源码构建使用：
 
-- Go `1.26.3`；
+- `go.mod` 声明的 Go 版本；
 - `CGO_ENABLED=1` 和目标平台可用的 C linker；
 - 仓库中经 manifest 校验、与目标平台匹配的 Rust ugoira static library。
 
@@ -42,18 +42,26 @@ Native library 校验、opt-in 真实 API 测试、发布门禁和平台细节�
 
 ## 使用测试驱动开发
 
-代码变更采用 red-green-refactor：
+功能和行为修复采用 red-green-refactor：
 
-1. 添加一个会因目标行为尚未实现而失败的聚焦测试。
+1. 先检查已有断言，复用失败测试或扩充最小相关用例，实际证明目标行为失败；只为覆盖缺口新增测试，不按函数或文件配额添加。
 2. 实现让它通过的最小完整变更。
 3. 在不改变已验证公开行为的前提下重构。
 4. 先运行聚焦测试，再运行相关回归。
 
+纯结构调整复用改动前后的特征测试；普通注释修改执行文档与相关工具检查。覆盖缺口、重复测试与适用的 Red 例外见[测试选择](.agents/skills/pixiv-cli-test/SKILL.md#decide-whether-test-code-must-change)。不能因为实现短就省略必要的回归或安全检查。
+
 可行时通过 public boundary 测试公开行为。不得把真实的认证、网络、Pixiv API、文件系统或编码失败隐藏为空成功或静默 fallback；不得增加无依据的 timeout、截断、分页上限、重试限制或隐藏降级。
 
-真实 Pixiv Web 与已认证 App canary 均为 opt-in。未经用户明确授权，不得使用其本地账号运行；也不要把真实 token 放入可能写入 shell history 的命令行。
+真实 Pixiv/FANBOX SDK 与反向搜图检查均为 opt-in。未经用户明确授权，不得使用其本地账号运行或上传图片；也不要把真实 token 放入可能写入 shell history 的命令行。
+
+## Agent 辅助开发
+
+从 [AGENTS.md](AGENTS.md) 开始。仓库内的 `pixiv-cli-*` 维护技能定义 Go 设计、聚焦测试、MCP/native、审查、PR 与发布流程，不依赖个人全局指令或 CCS 安装。不支持技能发现的客户端可直接读取对应 `SKILL.md`。Agent 指令、技能正文、引用文件与 UI 元数据使用英文；公开文档保留双语。
 
 ## 文档
+
+代码注释可使用中文或英文。按[代码注释规范](.agents/skills/pixiv-cli-code-commenting/SKILL.md)维护准确的 API 契约、意图和按需编号的流程阶段；指令文件要求英文，不等于强制英文注释或每个函数都要加注释。
 
 修改命令、flag、SDK API、MCP tool、配置键、环境变量、输出契约、认证流程、代理行为、下载行为或已知限制时，在同一 pull request 同步文档。
 
@@ -70,17 +78,15 @@ Native library 校验、opt-in 真实 API 测试、发布门禁和平台细节�
 请求 review 前确认：
 
 - [ ] 改动保持聚焦，并说明了用户可感知行为。
-- [ ] 新增或修改代码有聚焦测试，并且测试曾先证明失败。
-- [ ] `go test ./... -count=1` 通过。
-- [ ] 涉及共享、认证、下载、CLI、MCP 或 SDK 行为时，`go test -race ./... -count=1` 通过。
-- [ ] `go vet ./...` 通过。
-- [ ] `sh scripts/build.sh` 通过。
-- [ ] pre-commit 可用时，`python -m pre_commit run --all-files` 通过。
+- [ ] 行为变更有实际 Red/Green 和相关回归证据，或明确接受的阻塞；纯文档变更已检查内容、链接与元数据。
+- [ ] [pixiv-cli-test](.agents/skills/pixiv-cli-test/SKILL.md) 中适用的本地检查通过，包括适用范围内的全量、race、native 检查；未执行项目已注明。
+- [ ] 必需 CI 按当前 head 与实际路径分类器判断，不把 Markdown 变更自动视为豁免。
+- [ ] 已安装且适用的既有 pre-commit 检查通过；缺少工具时据实报告，不静默安装。
 - [ ] `git diff --check` 通过。
 - [ ] 需要同步的英文与简体中文文档已对应。
 - [ ] 未包含凭据、下载内容、本地状态或机器相关产物。
 
-Commit message 推荐使用 Conventional Commits，例如 `feat(cli): add account selection` 或 `docs: clarify anonymous fallback`。除非未来规范明确要求，项目不要求 CLA、DCO sign-off 或 signed commit。
+Commit message 推荐使用 Conventional Commits，例如 `fix(cli): preserve record identity` 或 `docs: clarify account selection`。除非未来规范明确要求，项目不要求 CLA、DCO sign-off 或 signed commit。
 
 ## 许可证
 

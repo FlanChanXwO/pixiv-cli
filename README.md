@@ -6,7 +6,7 @@
 
 [English](README.md) · [简体中文](README.zh-CN.md)
 
-<p><a href="https://github.com/FlanChanXwO/pixiv-cli/actions/workflows/ci.yml"><img alt="Quality gate" src="https://github.com/FlanChanXwO/pixiv-cli/actions/workflows/ci.yml/badge.svg"></a> <a href="https://github.com/FlanChanXwO/pixiv-cli/releases/latest"><img alt="Release" src="https://img.shields.io/github/v/release/FlanChanXwO/pixiv-cli?style=flat-square"></a> <a href="go.mod"><img alt="Go" src="https://img.shields.io/github/go-mod/go-version/FlanChanXwO/pixiv-cli?style=flat-square"></a> <a href="LICENSE"><img alt="License" src="https://img.shields.io/github/license/FlanChanXwO/pixiv-cli?style=flat-square"></a> <img alt="Views" src="https://hits.sh/github.com/FlanChanXwO/pixiv-cli.svg?style=flat-square&amp;label=views"></p>
+<p><a href="https://github.com/FlanChanXwO/pixiv-cli/actions/workflows/ci.yml"><img alt="Quality gate" src="https://github.com/FlanChanXwO/pixiv-cli/actions/workflows/ci.yml/badge.svg?event=push"></a> <a href="https://github.com/FlanChanXwO/pixiv-cli/releases/latest"><img alt="Release" src="https://img.shields.io/github/v/release/FlanChanXwO/pixiv-cli?style=flat-square"></a> <a href="go.mod"><img alt="Go" src="https://img.shields.io/github/go-mod/go-version/FlanChanXwO/pixiv-cli?style=flat-square"></a> <a href="LICENSE"><img alt="License" src="https://img.shields.io/github/license/FlanChanXwO/pixiv-cli?style=flat-square"></a> <img alt="Views" src="https://hits.sh/github.com/FlanChanXwO/pixiv-cli.svg?style=flat-square&amp;label=views"></p>
 
 [Install](#install) · [Quick start](#60-second-quick-start) · [Interfaces](#choose-your-interface) · [Documentation](#documentation) · [Contributing](CONTRIBUTING.md)
 
@@ -55,13 +55,16 @@ pass SHA-256 verification. This changes transport availability, never Release id
 
 ### Docker (Linux amd64/arm64)
 
-Official images are published to GHCR as `ghcr.io/flanchanxwo/pixiv-cli`. Pull an exact release when reproducibility matters:
+Official images are published to GHCR as `ghcr.io/flanchanxwo/pixiv-cli` and Docker Hub as
+`docker.io/flanchanxwo/pixiv-cli`. Both registries carry the same native `linux/amd64` and `linux/arm64`
+release images. Pull an exact release from either registry when reproducibility matters:
 
 ```bash
 docker pull ghcr.io/flanchanxwo/pixiv-cli:v1.2.3
+docker pull docker.io/flanchanxwo/pixiv-cli:v1.2.3
 ```
 
-`latest` follows stable releases only; Prerelease tags never move `latest`. To track the current stable release, pull `ghcr.io/flanchanxwo/pixiv-cli:latest`. Images are built natively for `linux/amd64` and `linux/arm64`. The container runs the same `pixiv` binary and uses the same `~/.pixiv-cli` state namespace as other installations.
+`latest` follows stable releases only; Prerelease tags never move `latest`. To track the current stable release, pull either `ghcr.io/flanchanxwo/pixiv-cli:latest` or `docker.io/flanchanxwo/pixiv-cli:latest`. Images are built natively for `linux/amd64` and `linux/arm64`. The container runs the same `pixiv` binary and uses the same `~/.pixiv-cli` state namespace as other installations.
 
 Keep account state persistent and expose a download workspace:
 
@@ -227,7 +230,7 @@ pixiv timeline latest --type illust --limit 10 --json
 
 ### MCP
 
-Reverse-image search is available through the CLI/MCP integration; the public Go SDK remains unchanged.
+Reverse-image search is available through the CLI/MCP integration; the public Go SDK also exposes typed artwork/novel bookmark and comment mutations.
 
 Start the stdio server explicitly. stdout remains reserved for JSON-RPC; tool failures are returned as structured results with `isError=true`. No project-level or daily log files are created by default.
 
@@ -249,6 +252,9 @@ the [CLI reference](docs/en/cli-reference.md). FlareSolverr is a JSON
 challenge-recovery control path and never receives the native ascii2d image upload.
 
 ### Go SDK
+
+**The Go version declared in `go.mod` is the official source-build and SDK-development baseline.**
+The repository, CI, release builds, and native packaging all consume that single toolchain declaration.
 
 The public SDK receives credentials explicitly and does not read the CLI's local account store or process environment. Obtain the credential from your application's secret store and persist the rotated credentials returned by `Open`:
 

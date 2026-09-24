@@ -1,11 +1,10 @@
-// Package releasecontract 只拥有 release 与 native evidence verifier 共用的发布契约：
-// Version/Channel、六平台、Go↔Rust 映射与工具链 pins、archive identity/name。
+// Package releasecontract 只拥有 release 与 native evidence 共用的发布 identity：
+// Version/Channel、六个 archive 目标、确定性的 Go↔Rust target 映射与 archive name。
+// runner、Rust toolchain 与 CC 等可变平台 metadata 只由 ci/platforms.json 持有。
 package releasecontract
 
 import (
-	"fmt"
-	"regexp"
-	"strings"
+	"github.com/FlanChanXwO/pixiv-cli/internal/releaseversion"
 )
 
 // Target 是固定的 release 目标（GOOS/GOARCH 对）。
@@ -61,38 +60,13 @@ func ArchiveName(version string, target Target) string {
 	return "pixiv-cli_" + version + "_" + target.GOOS + "_" + target.GOARCH + extension
 }
 
-var semanticVersionPattern = regexp.MustCompile(`^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(?:-(?:(?:0|[1-9][0-9]*|[0-9]*[A-Za-z-][0-9A-Za-z-]*)(?:\.(?:0|[1-9][0-9]*|[0-9]*[A-Za-z-][0-9A-Za-z-]*))*))?(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?$`)
-
 // ValidateVersion 要求 version 是不带前导 v 的 semantic version。
 func ValidateVersion(version string) error {
-	if !semanticVersionPattern.MatchString(version) {
-		return fmt.Errorf("version must be a semantic version without a leading v: %q", version)
-	}
-	return nil
+	return releaseversion.Validate(version)
 }
 
 // Channel 返回 release 的稳定渠道名称。调用方必须先 ValidateVersion；build metadata
 // 内合法的连字符不会被视为 prerelease 分隔符。
 func Channel(version string) string {
-	coreVersion, _, _ := strings.Cut(version, "+")
-	if strings.Contains(coreVersion, "-") {
-		return "prerelease"
-	}
-	return "stable"
-}
-
-var pinnedRustToolchains = map[string]string{
-	"x86_64-apple-darwin":       "1.96.0",
-	"aarch64-apple-darwin":      "1.96.1",
-	"x86_64-unknown-linux-gnu":  "1.96.1",
-	"aarch64-unknown-linux-gnu": "1.96.1",
-	"x86_64-pc-windows-msvc":    "1.96.0",
-	"aarch64-pc-windows-msvc":   "1.96.1",
-}
-
-// PinnedRustToolchain 返回 release 与 native evidence 共同审计的目标工具链。
-// staticlib 的字节身份包含 rustc，因此未知目标必须 fail closed。
-func PinnedRustToolchain(target string) (string, bool) {
-	toolchain, ok := pinnedRustToolchains[target]
-	return toolchain, ok
+	return releaseversion.Channel(version)
 }

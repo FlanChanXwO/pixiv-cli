@@ -16,7 +16,7 @@ import (
 	"strings"
 )
 
-// Manifest 是 Task 13 生成的跨平台 staticlib 清单格式。
+// Manifest 是跨平台 staticlib 的完整清单格式。
 // 每个 artifact 都显式绑定 source identity、Rust target、仓库内固定相对路径和内容摘要。
 type Manifest struct {
 	Schema       int                      `json:"schema"`
@@ -113,7 +113,7 @@ func isDigestSource(rel string, includeLock bool) bool {
 	return strings.HasPrefix(rel, "src/") && strings.HasSuffix(rel, ".rs")
 }
 
-// ValidateManifest 严格校验 Task 13 清单，锁住全部六个目标和源码身份。
+// ValidateManifest 严格校验清单，锁住全部六个目标和源码身份。
 func ValidateManifest(body []byte, sourceDigest string) error {
 	if !isSHA256(sourceDigest) {
 		return fmt.Errorf("expected ugoira source digest is not a SHA-256: %q", sourceDigest)

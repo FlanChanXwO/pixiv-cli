@@ -1,6 +1,13 @@
 #!/bin/sh
 set -eu
 
+repo_root=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
+required_go=$(awk '$1 == "go" { print "go" $2; exit }' "$repo_root/go.mod")
+[ -n "$required_go" ] || {
+	printf 'go.mod does not declare a Go version\n' >&2
+	exit 1
+}
+
 goos=$(go env GOOS)
 goarch=$(go env GOARCH)
 out=build/pixiv
@@ -9,28 +16,28 @@ if [ "$goos" = "windows" ]; then
 	out=build/pixiv.exe
 fi
 
-[ "$(go env GOVERSION)" = 'go1.26.3' ] || {
-	printf 'Go 1.26.3 is required to build pixiv-cli with the committed Rust ugoira staticlib (found %s)\n' "$(go env GOVERSION)" >&2
+[ "$(go env GOVERSION)" = "$required_go" ] || {
+	printf 'Go %s is required to build pixiv-cli with the committed Rust ugoira staticlib (found %s)\n' "${required_go#go}" "$(go env GOVERSION)" >&2
 	exit 1
 }
 [ "$(go env CGO_ENABLED)" = '1' ] || {
-	printf 'Go 1.26.3 with CGO_ENABLED=1 and a working target C linker is required to link the committed Rust ugoira staticlib\n' >&2
+	printf 'The Go version declared in go.mod with CGO_ENABLED=1 and a working target C linker is required to link the committed Rust ugoira staticlib\n' >&2
 	exit 1
 }
 cc=$(go env CC)
 command -v "$cc" >/dev/null 2>&1 || {
-	printf 'Go 1.26.3 with CGO_ENABLED=1 requires a working target C linker; Go selected CC=%s\n' "$cc" >&2
+	printf 'The Go version declared in go.mod with CGO_ENABLED=1 requires a working target C linker; Go selected CC=%s\n' "$cc" >&2
 	exit 1
 }
 case "$goos/$goarch" in
 	darwin/amd64|darwin/arm64|linux/amd64|linux/arm64|windows/amd64|windows/arm64) ;;
 	*)
-	printf 'Rust ugoira staticlib is unavailable for %s/%s; Go 1.26.3 with CGO_ENABLED=1 and a supported target C linker are required\n' "$goos" "$goarch" >&2
+	printf 'Rust ugoira staticlib is unavailable for %s/%s; the Go version declared in go.mod with CGO_ENABLED=1 and a supported target C linker are required\n' "$goos" "$goarch" >&2
 	exit 1
 	;;
 esac
 [ -f internal/media/ugoira/rust/staticlib/manifest.json ] || {
-	printf 'committed six-target Rust staticlib manifest is missing; source/release builds require all native artifacts before Go 1.26.3+cgo can link them\n' >&2
+	printf 'committed six-target Rust staticlib manifest is missing; source/release builds require all native artifacts before the go.mod toolchain with cgo can link them\n' >&2
 	exit 1
 }
 

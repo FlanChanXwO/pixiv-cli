@@ -14,11 +14,7 @@
 
 ## 环境检查
 
-项目是 Go module，当前 `go.mod` 声明：
-
-```text
-go 1.26.3
-```
+项目是 Go module，所需 Go toolchain 版本只以 `go.mod` 为事实来源。
 
 开工前建议检查 Go/cgo、Rust 与常规测试环境：
 
@@ -45,7 +41,7 @@ ZIP；这一限制的目的仅是防止帧源在 decoder 自身限制生效前�
 
 受支持的 Go 源码构建需要下列条件：
 
-- Go `1.26.3`；
+- `go.mod` 声明的 Go 版本；
 - `CGO_ENABLED=1`；
 - 当前 `GOOS/GOARCH` 对应的 C linker；
 - Rust crate 对应 target 的 committed `staticlib`；
@@ -55,6 +51,13 @@ ZIP；这一限制的目的仅是防止帧源在 decoder 自身限制生效前�
 Cargo 输入生成 target library；只有同一次成功得到全部六个真实库并逐个核验 SHA-256 后，才会
 写入带 Rust source digest 的 `manifest.json`。单 target 调用会使已有 manifest 失效，避免用
 局部重建证明全平台一致性。
+
+CI 与 release 在需要构建单个精确平台 binary 时统一调用 `scripts/build-platform.sh`。调用方传入由
+platform registry matrix 派生的 `GOOS/GOARCH`、Rust target 与 C compiler；primitive 负责重建该
+target 的 Rust staticlib、恢复调用前的跨平台 manifest、生成正确后缀/版本的 binary、在 Linux 上
+执行 ABI gate，并可选生成 canonical release archive，最后输出 binary 或 archive 路径。workflow
+自己的测试、immutable-source 断言、credential、审批与发布职责仍显式留在 workflow 中，不变成该
+脚本的 mode。
 
 Linux Release 的公开 ABI 基线是 glibc 2.35。release test/production、native evidence、packaged
 binary smoke 与 Homebrew install matrix 的 Linux runner 必须固定为 `ubuntu-22.04` 和
@@ -72,13 +75,14 @@ go run ./scripts/cmd/linuxabi --binary <linux-elf>
 六个 committed library 与 `manifest.json` 是已验证输入：manifest 绑定 Rust source digest、六 target、
 path 与逐目标 SHA-256，由 `internal/media/ugoira/staticlib` 的完整性测试锁定。当前 manifest 的 source
 digest 与六库 SHA-256 与受审计 source 逐字节一致；升级 Rust 时必须从同一受审计 source 完整重建、链接并
-smoke 验证六目标，同时更新六库、manifest、native evidence 与 release matrix——不得只更新单个平台的 pin。
+smoke 验证六目标，同时更新六库、manifest、native evidence 与 `ci/platforms.json`——不得只更新单个平台的 pin。
 
 合规 committed library 的编译器 provenance 必须按 target 固定，而不是使用可移动的 runner 默认
 toolchain：`x86_64-apple-darwin` 与 `x86_64-pc-windows-msvc` 使用 Rust `1.96.0`；
 `aarch64-apple-darwin`、`aarch64-pc-windows-msvc`、`x86_64-unknown-linux-gnu` 与
 `aarch64-unknown-linux-gnu` 来自 Rust `1.96.1`。release test 与 production matrix 都必须携带这份
-精确映射，并通过 `RUSTUP_TOOLCHAIN` 和带 `--no-self-update` 的 `rustup toolchain install` 使用它；
+精确映射只由 `ci/platforms.json` 维护；release、smoke 与 native-evidence matrix 通过 `tools/platformmatrix`
+消费它，并通过 `RUSTUP_TOOLCHAIN` 和带 `--no-self-update` 的 `rustup toolchain install` 使用；
 不能让 runner image 的 `stable` 更新改变重建 bytes。该映射记录来源，不是允许永久混用工具链的惯例；
 升级 Rust 时必须重建并同步固定全部六目标。
 
@@ -126,33 +130,25 @@ sh scripts/test-rust-vendor.sh
 
 ### Native runner evidence
 
-`.github/workflows/native-evidence.yml` 是独立的、非发布的 runner 入口：只允许审计后的、包含非文档输入的 `main`
-push 或指向 `refs/heads/main` 的 `workflow_dispatch`。仅 `README*.md`、`docs/**`、`changelog/**` 或 `skills/**` 的 push
-不启动它；任一其他路径以及手动触发仍运行完整矩阵。全局 `permissions: {}`、job 仅 `contents: read`。它没有 `environment`、
-secret、tag/Release/tap/signing 命令；YAML AST policy 同时固定六个 runner、full-SHA action、无凭据
-checkout、vendored Rust 检查、单目标 staticlib、真实 cgo GIF/APNG smoke、版本化 binary 的
-`pixiv --version`、release-style archive 以及 artifact upload。可离线检查声明本身：
-
-matrix 的每个 target 还必须声明与 release test/production 完全相同的 `rust_toolchain`，job 通过
-`RUSTUP_TOOLCHAIN` 绑定该值，并执行带 `--profile minimal --target ... --no-self-update` 的精确
-`rustup toolchain install`。两个 verifier 共用 `scripts/internal/releasecontract` 中唯一的目标版本映射；
-任一 workflow 删除、替换、重复或错误插值该映射，policy 都会 fail closed。
+`.github/workflows/native-evidence.yml` 是独立的、非发布维护入口，只通过默认分支上的显式
+`workflow_dispatch` 运行。普通 `main` push 不会在 PR 验证之后再重复启动六平台 evidence 矩阵。
+全局 `permissions: {}`、job 仅 `contents: read`。它没有 `environment`、
+secret、tag/Release/tap/signing 命令。平台矩阵来自 `ci/platforms.json` 的 `native-evidence` capability；
+workflow 安装 registry 指定的 Rust toolchain、检查 vendored Rust 输入、通过 `scripts/build-platform.sh`
+完成目标 staticlib/binary/archive 链路，再运行真实 cgo GIF/APNG smoke、记录并上传 evidence。full-SHA
+action、无凭据 checkout、无 secret/发布副作用以及 build ownership 由聚焦的 test-only workflow contract
+覆盖，不再由 runtime YAML self-policy 固定整份 workflow 结构。
 
 Windows 两个 target 的 Rust library 使用 `*-pc-windows-msvc`；相应 cgo selector 必须以
 `-L${SRCDIR}/… -lugoira_rs` 声明库，不能把带盘符的绝对 `.lib` 路径直接传给 cgo；还必须显式携带
 Rust `std` 所需的 `advapi32`、`ntdll`、`userenv`、`ws2_32` 与 `dbghelp` import libraries。native evidence
-仅在 Windows 的 smoke 和版本化 binary 构建中显式设 `CC='clang -fuse-ld=lld'`：LLD 既能处理 MSVC
+把 registry 选择的 `CC='clang -fuse-ld=lld'` 同时传给 `scripts/build-platform.sh` 与 native smoke：LLD 既能处理 MSVC
 `.lib`，也让 Go 跳过 GCC 专属的 debug linker script；这不是运行时 fallback，也不改变 darwin/linux
 的 C linker 选择。
 
 ```bash
 go test ./scripts/internal/nativeevidence -count=1
-go run ./scripts/cmd/nativeevidence policy --workflow .github/workflows/native-evidence.yml
 ```
-
-该 policy command 只依赖 `internal/media/ugoira/staticlib` 的 source-digest/manifest 契约，不导入 cgo
-encoder；因此它必须能在每个 runner 构建目标 staticlib **之前**执行。若 policy gate 因缺库或 cgo
-link 失败，属于 workflow bootstrap 缺陷，而不是可接受的“尚无 native evidence”结果。
 
 每个 runner artifact 只有 `evidence/`：实际链接的 staticlib、版本化 binary、archive 及
 `native-evidence.json`。schema 2 record 会独立记录 workflow 提供的 `source_commit`，重算 Rust source digest
@@ -160,10 +156,15 @@ link 失败，属于 workflow bootstrap 缺陷，而不是可接受的“尚无 
 `third_party/licenses` 常规文件树。它不持有 release/tap/signing credential，也不会创建 tag 或
 Release。
 
-`.github/workflows/browser-evidence.yml` 是另一条 credential-free 的原生 provider contract matrix，
+`.github/workflows/browser-evidence.yml` 是另一条显式手动触发、credential-free 的原生 provider contract matrix，
 在 macOS、Linux、Windows 的 amd64/arm64 runner 上执行 `internal/browsercookies/...` 的平台代码与合成 fixture 回归，
-并由 `scripts/cmd/browsernativeevidence` 校验 workflow 的 runner、action SHA、固定 Firefox 153.0.3
-发行包 checksum、清理命令和 secret boundary。`firefox_native` job 只在 runner 临时目录解包官方包，
+普通 `main` push 不再附带重复运行该矩阵。
+GitHub Windows runner 不提供该 contract 需要的 `sqlite3` CLI，因此两个 Windows job 都通过
+`scripts/install-browser-sqlite.ps1` 安装与架构匹配的 SQLite 3.53.4 官方 tools 包，并在原有 SQLite preflight
+之前用固定 URL 与 SHA-256 校验下载内容。聚焦的 test-only workflow contract 只锁 credential、full-SHA action、
+fixture、固定 SQLite provisioning 与 cleanup 等安全边界，
+不再由生产代码重新实现整份 workflow；`scripts/cmd/browsernativeevidence firefox-contract` 仅保留为
+隔离 Firefox profile/schema 的真实运行时 helper。`firefox_native` job 只在 runner 临时目录解包官方包，
 让 Firefox 生成隔离 profile/schema，再注入明确的 synthetic cookie 运行 provider contract；它不读取
 用户浏览器 profile、Keychain、DPAPI 或 Secret Service，也不上传 package/profile/database。真实
 profile/session evidence 仍只能在受保护的 release-prep host 取得，不能把该 workflow 的成功当作真实
@@ -308,6 +309,7 @@ sh scripts/build.sh
 # 浏览器 provider 的离线 fixture/crypto/权限分类回归；真实跨平台 host evidence 另按 release-prep 执行。
 go test ./internal/browsercookies/... -count=1
 # 真实 SDK e2e 需要本机凭据（Pixiv 读本地 pixiv-cli.db 选中账号，FANBOX 读 Keychain）：
+PIXIV_E2E_READ_USER_ID=<secondary-uid> \
 PIXIV_SDK_E2E=1 go test ./e2e -run TestRealPixivSDKRead -count=1 -v
 FANBOX_E2E_CREATOR_ID=<non-secret-creator-id> FANBOX_E2E_TAG=<non-secret-tag> \
 FANBOX_E2E_POST_ID=<non-secret-post-id> FANBOX_E2E_POST_URL=<non-secret-post-url> \
@@ -321,19 +323,16 @@ FANBOX_SDK_E2E=1 go test ./e2e -run TestRealFanboxSDKRead -count=1 -v
 # 单帖 post.info 验收；只需要 post id/page URL，允许合法的零文件资源详情。
 FANBOX_E2E_POST_ID=<non-secret-post-id> FANBOX_E2E_POST_URL=<non-secret-post-url> \
 FANBOX_SDK_E2E=1 FANBOX_E2E_POST_ONLY=1 go test ./e2e -run TestRealFanboxSDKPostInfo -count=1 -v
-# 运行两项当前 SDK E2E；脚本不接受 token 或其他凭据输入。
-scripts/test-e2e.sh
-# 只运行其中一项，或只验证单帖 post.info。
-scripts/test-e2e.sh --pixiv-only
-scripts/test-e2e.sh --fanbox-post-only
 # 显式观察反向搜图上游兼容性；默认不会运行。
 # 请预先从私有环境 export SAUCENAO_API_KEY，不要内联在命令行中。
 export SAUCENAO_API_KEY
 PIXIV_REVERSE_SEARCH_E2E=1 \
 PIXIV_REVERSE_SEARCH_SOURCE=<private-test-image-path-or-url> \
 PIXIV_REVERSE_SEARCH_PROVIDER=all \
-scripts/test-reverse-search-e2e.sh
+go test ./e2e -run TestRealReverseSearch -count=1 -v
 ```
+
+没有独立的 E2E wrapper 脚本：真实联网观测直接运行上方的 `go test` 命令，使离线套件与带凭据观测共用同一条 orchestration。
 
 `go test ./...` 保持默认离线稳定；真实 SDK e2e 在未显式设置 `PIXIV_SDK_E2E=1` 或 `FANBOX_SDK_E2E=1` 时跳过。
 显式启用后，缺少本机授权凭据或 FANBOX 非 secret target 会直接失败并暴露缺口，不会以 skip 伪装 release evidence。
@@ -348,7 +347,7 @@ scripts/test-reverse-search-e2e.sh
 upstream proxy，不代理 solver control request 或 native ascii2d image upload，solver session state 和 source 也不会
 作为 test evidence 持久化。
 
-`scripts/test-e2e.sh` 只选择当前的 public SDK E2E 测试：Pixiv 测试从本地 `pixiv-cli.db` 读取选中账号，
+上方的 `PIXIV_SDK_E2E=1` / `FANBOX_SDK_E2E=1` 命令只选择当前的 public SDK E2E 测试：Pixiv 测试从本地 `pixiv-cli.db` 读取选中账号；`PIXIV_E2E_READ_USER_ID` 是可选的非 secret 本地账号 selector，显式提供时必须命中已保存 Pixiv 账号，格式错误或账号不存在都会在联网前 fail closed，且不会 fallback 到 configured default；release evidence 应显式选择获授权的 secondary account，省略时才保留 configured-default 兼容行为。
 FANBOX 测试从约定的 macOS Keychain item 读取 `FANBOXSESSID`。FANBOX 的
 `FANBOX_E2E_CREATOR_ID`、`FANBOX_E2E_TAG`、`FANBOX_E2E_POST_ID` 与 `FANBOX_E2E_POST_URL` 只接受
 显式、非 secret 的测试目标；不接受 refresh token、session 或完整 Cookie 作为参数/环境变量。可选的
@@ -356,7 +355,7 @@ FANBOX 测试从约定的 macOS Keychain item 读取 `FANBOXSESSID`。FANBOX 的
 `FANBOX_E2E_SOLVER_PROXY` 是可选的非 secret recovery 拓扑配置，默认不启用 solver。未显式启用真实 E2E 时测试默认 skip；显式启用但缺少本机
 凭据或 FANBOX 目标时会失败，不能把默认 skip 或自动发现记为 release evidence。
 
-v1 的真实 SDK E2E 是 `TestRealPixivSDKRead` 与 `TestRealFanboxSDKRead`（见 [测试](#测试) 的 `PIXIV_SDK_E2E=1` / `FANBOX_SDK_E2E=1` 命令）。Pixiv 侧测试进程只从本地 `pixiv-cli.db` 的选中账号读取 refresh token，打开 `sdk/pixiv` 验证 identity 并完成一个稳定 detail/list 与 `Resource` 读取，rotation 后的 credentials 先按正常 repository transaction 持久化再继续内容请求。FANBOX 侧直接通过 macOS Keychain 读取授权 `FANBOXSESSID` item，并使用显式 creator/tag/post/page URL 目标逐项验证 `Creator`、`Creators`、`CreatorTags`、`CreatorPosts`、`TaggedPosts`、`Post`、`Home`、`Supporting`、`ResolveURL`、`OpenResource` 与 `SaveResource`；列表目标在服务端返回 cursor 时各跟进一次 continuation，帖子详情必须发现 file attachment 并在临时目录完整读取。session 失效时明确报 `credentials_expired` 并要求重新导入，不 fallback。release-prep 运行后由操作者扫描 stdout、stderr、test log 与 evidence；token、Cookie、signed URL 与原始 response body 不得进入 argv、环境 dump、日志、test name、artifact 或失败 diff。以上说明描述测试覆盖，不表示真实 e2e 已经运行；请勿把 token 写入 shell history、日志或仓库文件。
+v1 的真实 SDK E2E 是 `TestRealPixivSDKRead` 与 `TestRealFanboxSDKRead`（见 [测试](#测试) 的 `PIXIV_SDK_E2E=1` / `FANBOX_SDK_E2E=1` 命令）。Pixiv 侧测试进程只从本地 `pixiv-cli.db` 的选中账号读取 refresh token；release-prep 应设置 `PIXIV_E2E_READ_USER_ID` 显式选择获授权的 secondary account，避免隐式使用 configured main/default account。随后打开 `sdk/pixiv` 验证 identity 并完成一个稳定 detail/list 与 `Resource` 读取，rotation 后的 credentials 先按正常 repository transaction 持久化再继续内容请求。FANBOX 侧直接通过 macOS Keychain 读取授权 `FANBOXSESSID` item，并使用显式 creator/tag/post/page URL 目标逐项验证 `Creator`、`Creators`、`CreatorTags`、`CreatorPosts`、`TaggedPosts`、`Post`、`Home`、`Supporting`、`ResolveURL`、`OpenResource` 与 `SaveResource`；列表目标在服务端返回 cursor 时各跟进一次 continuation，帖子详情必须发现 file attachment 并在临时目录完整读取。session 失效时明确报 `credentials_expired` 并要求重新导入，不 fallback。release-prep 运行后由操作者扫描 stdout、stderr、test log 与 evidence；token、Cookie、signed URL 与原始 response body 不得进入 argv、环境 dump、日志、test name、artifact 或失败 diff。以上说明描述测试覆盖，不表示真实 e2e 已经运行；请勿把 token 写入 shell history、日志或仓库文件。
 
 对于合法但没有 file attachment 的文章详情，补充使用 `TestRealFanboxSDKPostInfo`：它只要求显式
 post ID/page URL，验证公共 SDK 的 `Post`、非空 body、`ResolveURL` 与资源清单，并允许
@@ -373,13 +372,11 @@ file attachment 完成 HEAD、完整保存和字节数核对。
 
 ```bash
 sh scripts/test-build-staticlibs.sh
+sh scripts/test-build-platform.sh
 sh scripts/test-package-release.sh
-go run ./scripts/cmd/releaseworkflow --workflow .github/workflows/release.yml
-go test ./scripts/cmd/nativeevidence -count=1
-go run ./scripts/cmd/nativeevidence policy --workflow .github/workflows/native-evidence.yml
+go test ./tools/release ./tools/platformmatrix -count=1
+go test ./scripts/internal/nativeevidence -count=1
 go test ./scripts/internal/browsernativeevidence -count=1
-go run ./scripts/cmd/browsernativeevidence policy --workflow .github/workflows/browser-evidence.yml
-go test ./scripts/tests/platformsmokeworkflow -count=1
 sh scripts/test-homebrew-formula.sh
 git diff --check
 ```
@@ -387,14 +384,14 @@ git diff --check
 fixture 只证明格式、失败语义和本地策略，不替代六个 native runner 的真实静态链接、GIF/APNG
 smoke、版本化 archive 内容和 Homebrew 安装验收。
 
-`.github/workflows/ci.yml` 与 `.github/workflows/platform-smoke.yml` 会先对 PR/main 的 diff 执行严格路径分类。仅 `README*.md`、`docs/**`、`changelog/**` 或 `skills/**` 的改动保留名称稳定的 Quality gate，但只运行 `go test ./scripts/tests/documentation -count=1`；六平台 packaged-binary smoke 会被标记为 skipped，始终执行的 `Platform smoke gate` 会核对这是预期结果。任一其他路径、空 diff、无法比较的初始 push 或手动触发都执行完整 Linux quality gate（test、race、vet、build、package/release policy、pre-commit）和六平台离线已打包 binary smoke；同一汇总 gate 只有在全部 matrix 成功后才通过。CI 的 Windows runner job 聚焦 root callback wiring 的 `TestAuthURLCallback*`、`TestAuthURLHandlerInstall` 与 `TestNormalCLIInvocationEnsuresPersistentHandlerWithoutBlockingCommand`，再运行 `internal/cli/commands/pixiv/auth/loginhelper` 的完整原生 callback-handler 契约；完整 `internal/cli` 已由 Linux quality gate 覆盖，避免把无关的全包 SQLite 压力拖入 Windows handler job。`.github/workflows/browser-evidence.yml` 只在 browser provider 相关输入变更的 `main` push 或手动 dispatch 上运行无凭据的 macOS/Linux/Windows provider contract matrix。分类器无法读取 diff 时明确失败，绝不静默跳过。所有 workflow 都使用只读权限与固定 SHA action；真实 Pixiv/FANBOX SDK E2E 不进入 PR/main 常规 CI。仅发布 tag 的 `release.yml` 会在 validate 后运行无凭据 SDK E2E contract gate，production build 明确依赖该 job；真实 SDK E2E 仍按 release-prep 在授权环境独立验收。
+`.github/workflows/ci.yml` 只承载只读的 `Quality gate`，只响应 `pull_request` 与 `workflow_dispatch`，不再响应 tag push。它的 change-scope classification 与 `pr-metadata.yml` 使用同一信任模型：先解析受保护 base branch 的当前 tip，从该 tip checkout 出 `scripts/classify-change-scope.sh` 与 `.github/ci-change-scope.gitignore`，再 fetch 精确 PR HEAD 只用于 diff 范围，因此 PR 无法修改自己的 skip 判定；分类器失败 fail closed，不会退化为 skip。`.github/workflows/pr-metadata.yml` 是受信的 `pull_request_target` coordinator：从当前 base tip 验证 PR 模板与 verification declaration，使用 `.github/ci-change-scope.gitignore` 对精确 PR-head diff 做可信分类，发布 `PR template gate` / `PR commands gate` commit status，dispatch 所需 smoke worker，并把 `Platform smoke` / `Container smoke` 作为真实 job-level required check 暴露出来；coordinator job 本身不执行 PR 代码。独立的 `Platform smoke worker` / `Container smoke worker` Check Run 只作为由 base-ref worker workflow 完成的可信结果桥接，required smoke job 等待这些结果。普通 pattern 表示纯文档，`?pattern` 表示只需 Quality，`!pattern` 表示需要 Quality + Platform + Container；`pr-metadata.yml` 是 smoke controller（它决定分类、dispatch 两个 worker 并持有 required gate），因此必须使用 `!pattern`。不需要的 Quality 与 smoke job 都由 GitHub Actions 原生显示为 `Skipped`，不再伪装成 success。仅修改 PR body 时也会重新对未变化的 head 做可信分类：需要 smoke 的 job 复用同一 head 已有的 worker 结果，真正不需要 smoke 的 job 才继续显示 `Skipped`，因此编辑 PR body 不能把失败 smoke 替换成可绕过的 skip。
 
-`.github/workflows/pr-metadata.yml` 在 PR `opened`、`reopened` 与 `synchronize` 时使用 `pull_request_target` 更新元数据：`actions/labeler` 从 base branch 的 `.github/labeler.yml` 按路径叠加已有的 `area: docs`、`area: frontend`、`area: backend`、`area: github-actions`、`area: tests` 和 `release` 标签；随后只将 PR 作者追加为 assignee，绝不移除人工指派或标签。该 job 仅有 `contents: read` 与 `pull-requests: write`，不 checkout、不运行 PR 分支代码，因此 fork PR 也不会获得写权限或执行不受信任输入。工作流与配置首次合并到默认分支后才会对后续 PR 生效；引入该配置本身的 PR 需要在 GitHub 手动补标签。
+Platform worker 从受信 workflow ref 解析六平台 matrix，只有 matrix job checkout 精确 PR head，并且 token 仅为 `contents: read`；独立 publish job 不 checkout PR，只持有完成内部 worker Check Run 所需的最小 `checks: write`。Container worker 对 Linux amd64/arm64 使用同样的隔离模型。六个原生 job 继续并行运行，其中 Windows worker 仍承担 root callback wiring 与原生 `loginhelper` 契约；两个容器 job 也继续并行。内部 matrix 不作为 required PR check，最终由对应的 PR gate job 镜像 aggregate worker 结果，失败时保留 worker details URL。普通分支与 `main` push 不运行 CI；稳定 `vX.Y.Z` tag push 只运行 `release.yml`（Quality gate 不再响应 tag，tag 上的正式门禁由 Release 独占），Release 自己执行正式六平台测试/构建与两平台容器验证，因此 tag 不重复 PR smoke matrix。`pr-verification.yml` 的 `dispatch` job 在分配 runner 前先用 `contains(github.event.comment.body, '/test')` 做廉价预过滤：它是 `tools/prmeta --check-trigger` 的宽松超集，只产生少量 false positive，不会漏掉合法触发，最终授权仍由 `tools/prmeta` 判定。browser/native evidence 保留为显式维护入口。真实 Pixiv/FANBOX SDK E2E 不进入普通 PR CI；仅发布 tag 的 `release.yml` 在 validate 后运行无凭据 SDK E2E contract gate，真实 SDK E2E 仍按 release-prep 在授权环境独立验收。
 
 `scripts/tests/installers` 使用本地伪 Release、伪 `curl` 与 checksum fixture 验证安装器，不访问 GitHub。Unix
 job 实际运行 `install.sh`，覆盖 SHA-256、带空格目录、版本预检和校验失败不覆盖旧 binary；Windows
 amd64/arm64 platform-smoke 还会用真实 `cmd.exe`、`certutil.exe` 与 `tar.exe` 运行 `install.cmd`，并始终
-传入 `--no-path`，因此测试不修改 runner 用户注册表。平台 workflow policy 固定要求这项测试存在。
+传入 `--no-path`，因此测试不修改 runner 用户注册表。platform-smoke workflow 会直接运行这项 installer contract，作为平台 job 的一部分；这里不存在另一套 runtime workflow policy 实现。
 
 其中 Windows 的 `.zip` 由 GitHub runner 镜像预装的 `7z` 生成；其他平台继续使用 `zip`。
 `scripts/test-package-release.sh` 会在 Windows runner 把伪造的调用委托给真实 `7z`，在其他开发机使用
@@ -409,6 +406,8 @@ amd64/arm64 platform-smoke 还会用真实 `cmd.exe`、`certutil.exe` 与 `tar.e
 | 目录 | same-package 理由 |
 | --- | --- |
 | `internal/cli` | composition root 测试观察未导出的 root wiring、invocation lifecycle 与 close ordering；这些 seam 不构成公开 API。 |
+| `internal/cli/commands/pixiv/search` | 通过真实 SDK 与 HTTP fixture 观察私有 searchArtworks 逻辑页续读。CLI/MCP wire 不暴露这些 cursor，为测试导出应用内部接口会扩大公开契约。 |
+| `internal/mcpserver/pixiv/tools/search_illust` | 通过真实 SDK 与 HTTP fixture 观察私有 searchArtworks 逻辑页续读。CLI/MCP wire 不暴露这些 cursor，为测试导出应用内部接口会扩大公开契约。 |
 | `internal/browsercookies/chromium` | 测试直接构造 provider 并注入 encryption key override，观察未导出的 cookie 记录解密路径与 profile 发现逻辑。 |
 | `internal/browsercookies/firefox` | 测试观察未导出的 profile 发现（`profiles.ini` 解析）、cookie 数据库路径解析与记录布局。 |
 | `internal/browsercookies/safari` | 测试直接调用未导出的 `parseBinaryCookies`，断言 binarycookies 记录布局。 |
@@ -416,21 +415,19 @@ amd64/arm64 platform-smoke 还会用真实 `cmd.exe`、`certutil.exe` 与 `tar.e
 | `internal/update/installer` | 测试注入未导出的 `assetURLValidator` seam 与 checksum 校验函数，用真实 fixture 二进制验证 root `--version` 预检与失败时不替换旧可执行。 |
 | `internal/update/release` | `source_route_test.go` 观察未导出的 source route 选择与 canonical API URL cache 状态；该目录其余测试已用 external package。 |
 | `internal/storage/database` | 测试观察未导出的 `tableInfoQuery` 白名单与迁移兼容 seam，确保 SQL 标识符始终来自固定字面量，旧 schema 不能静默绕过契约。 |
+| `sdk/pixiv` | `cursor_test.go` 观察未导出的 cursor 构造与 client-instance binding，以验证精确的 query-bound 无效 continuation，而不扩大 public SDK surface。 |
 | `scripts/internal/browsernativeevidence` | 测试观察未导出的环境探测并注入合成 Firefox cookie 种子。 |
-| `scripts/internal/changescope` | 测试直接调用未导出的路径解析（`splitNULPaths`、`docsOnlyPaths`）与 change-scope 判定。 |
 | `scripts/internal/homebrewformula` | 测试直接调用未导出的 formula 渲染与版本校验（`renderFormula`、`validateFormulaVersion`、`checkDynamicVersionNeeds`）。 |
 | `scripts/internal/licensebundle` | 测试观察未导出的 `defaultBundleFileOps`、`generateFromTargetMetadata` 与 license 文本归一化，注入假 cargo metadata。 |
 | `scripts/internal/linuxabi` | 测试直接调用未导出的 glibc 版本解析与 ABI 比对（`parseGLIBCVersion`、`checkImportedSymbols`）。 |
-| `scripts/internal/nativeevidence` | 测试直接调用未导出的 record/consolidate/policy seam，覆盖 schema 2、独立 `source_commit`、精确 binary `--version` 输出、六目标 hash/archive 校验与 mutation 回滚。 |
-| `scripts/internal/prepublishhomebrew` | 测试注入未导出的 `test.mutate` 与 CI 变更检测，观察 formula 生成与预发布检查的失败路径。 |
+| `scripts/internal/nativeevidence` | 测试直接调用未导出的 record/consolidate seam；同包内的聚焦 workflow contract 锁定 workflow ownership 与安全边界。两者共同覆盖 schema 2、独立 `source_commit`、精确 binary `--version` 输出、六目标 hash/archive 校验与 mutation 回滚。 |
 | `scripts/internal/publicapi` | 测试观察未导出的 `unexported`/`hidden` 符号解析与 golden 比对逻辑，用 `writeFixture` 生成 fixture。 |
 | `scripts/internal/releaseassets` | 测试注入未导出的 `injectReleaseSources`/`injectWindowsReleaseSources`，观察 asset archive 命名（`archiveName`）与 checksums 生成。 |
 | `scripts/internal/releasenotes` | 测试观察未导出的 GitHub client 调用映射，注入 fake client 断言来源审计。 |
-| `scripts/internal/releaseworkflow` | 测试注入未导出的 `mutation.mutate`/`mutation.run` 观察工作流状态机与 git 环境注入，锁定 Version-only linker 与 root `--version` Homebrew 门禁。 |
 
 当前没有 temporary 项。本清单不接受「迁移期」「未来」类无期限表述。新增目录须说明观察的**具体未导出符号**并确认导出最小接口不可行；删除目录须提供删除任务与测试迁移证据（external package 可编译 + 覆盖率不变）。
 
-`e2e/` 与 `scripts/tests/clawhubworkflow/` 也是 `package X`，但它们没有生产代码（纯测试载体），「观察未导出生产状态」问题不适用，不在本清单范围。跨平台差异：带 build tag 的测试文件（如 `scripts/internal/*`）在不同 `GOOS`/`GOARCH` 下可见文件数不同；验证时分别用 `GOOS=darwin`、`GOOS=windows`、`GOOS=linux` 运行 `go list` 确认目录集合一致。
+`e2e/` 也是 `package X`，但它没有生产代码（纯测试载体），「观察未导出生产状态」问题不适用，不在本清单范围。跨平台差异：带 build tag 的测试文件（如 `scripts/internal/*`）在不同 `GOOS`/`GOARCH` 下可见文件数不同；验证时分别用 `GOOS=darwin`、`GOOS=windows`、`GOOS=linux` 运行 `go list` 确认目录集合一致。
 
 ```bash
 # 列出测试留在生产包内的目录（package X 而非 X_test）
@@ -448,22 +445,22 @@ for ip,n in sorted(same): print(ip,n)'
 
 ### 能力边界
 
-这是 v1 中**不得有任何入口**的能力的维护者侧权威清单，是负面契约：为下列能力新增 CLI/MCP/SDK 入口即为缺陷。禁止以 schema 占位或 mock 空结果「预留」。
+这是 v1 中**不得有可发布入口**的能力的维护者侧权威清单，是负面契约：为下列能力新增已发布的 CLI/MCP/SDK 入口即为缺陷。Evidence-gated 表中记录的 SDK-only migration seam 不属于可发布入口，也不得据此记为 capability 已完成。禁止以 schema 占位或 mock 空结果「预留」。
 
 **Unsupported（v1 明确不支持；新增入口即缺陷）：**
 
 | ID | 唯一 owner | 当前证据 | close-out 条件 |
 | --- | --- | --- | --- |
-| `ART-SEARCH-RATING` | `internal/cli/commands/pixiv/search` + `sdk/pixiv` | CLI `--rating` 报告 "rating filter is not supported by the v1 App API search contract"；MCP `search_illust` schema 无 rating 参数 | 仅当 v1 App API search contract 新增 rating 语义；届时同步 SDK 字段、CLI flag、MCP schema、locale 文档与本清单 |
+| `ART-SEARCH-RATING` | `internal/cli/commands/pixiv/search` + `internal/shared/searchfilter` + `sdk/pixiv` | CLI artwork search 对规范化的 `x_restrict` 做本地过滤，并将过滤条件绑定到 cursor；不发送上游 rating 字段。MCP `search_illust` 没有独立 rating 参数 | 保留 CLI 本地过滤契约并测试 cursor 与过滤条件的一致性；新增 MCP 参数或上游字段需要独立的行为依据，并同步 schema 与文档 |
 | `NOVEL-SEARCH-ADVANCED` | 无 owner（不得新增） | SDK/MCP schema 无 advanced 字段 | 上游 contract 出现后可评估；禁止 schema 占位 |
 
-**Evidence-gated（当前无入口；新增须先满足 close-out 条件）：**
+**Evidence-gated（可存在 SDK-only migration seam；可发布入口仍须先满足 close-out 条件）：**
 
 | ID | 唯一 owner | 当前证据 | close-out 条件 |
 | --- | --- | --- | --- |
-| `NOVEL-RANKING` | 无 owner | SDK 无 `NovelRanking` 导出；MCP 无 `novel_ranking` tool | 上游 App API 提供小说排行后 |
-| `NOVEL-BOOKMARK-MUTATION` | 无 owner | SDK 无 `AddNovelBookmark` 类导出；`user_novel_bookmarks` 只读 | 同上 |
-| `COMMENT-WRITE` | 无 owner | MCP `comment_post`/`comment_add` 目录 = 0；SDK `PostComment`/`DeleteComment` 导出 = 0 | 上游提供可验证的写入 contract 后 |
+| `NOVEL-RANKING` | `sdk/pixiv` + `internal/cli/commands/pixiv/ranking`（T18/T30；MCP 后续） | SDK 与 CLI 已在 internal `/v1/novel/ranking` adapter 之上暴露 additive `NovelRanking` seam；CLI 通过 `--type novel` 显式选择；MCP 无 `novel_ranking` tool，live/public 发布 evidence 仍未闭合 | 完成 live 第二页、shared cursor、MCP 与发布兼容门禁；此前仍是 evidence-gated，不得记为 `public_ready` |
+| `NOVEL-BOOKMARK-MUTATION` | `sdk/pixiv` + `internal/mcpserver/pixiv`（G1-T13；CLI 后续） | SDK 已暴露 additive typed `AddNovelBookmark`/`RemoveNovelBookmark`；MCP 已暴露 `add_novel_bookmark`/`remove_novel_bookmark`；offline outcome、校验与 no-replay evidence 已存在，strict/live、read-back 与发布 evidence 仍未闭合 | 完成 strict/live mutation evidence、同账号 read-back、清理及兼容/发布门禁；此前仍是 evidence-gated，不得记为 `public_ready` |
+| `COMMENT-WRITE` | `sdk/pixiv`（T16；CLI/MCP 后续） | SDK 已暴露按 namespace 区分的 `PostArtworkComment`/`ReplyArtworkComment`/`DeleteArtworkComment` 及 novel 对应方法；MCP `comment_post`/`comment_add` 目录仍 = 0；响应 ID、read-back、清理和 strict live evidence 尚未闭合 | 完成 strict/live 写入 evidence、同账号 read-back、清理及 T33/T38 兼容门禁后；此前仍是 evidence-gated，不得记为 `public_ready` |
 | `NOTIFICATION` | 无 owner | MCP `notification` 目录 = 0；SDK `Notification*` 导出 = 0 | 同上 |
 | `AUTOCOMPLETE` | 无 owner | MCP `autocomplete` 目录 = 0；SDK `Autocomplete*` 导出 = 0；未并入 `search` | 同上 |
 | `WEB-RESTRICTED-READ` | 无 owner | 无 `webapi` 包；`web_fallback_enabled` 是 tombstone key（`config get/set` → `removed_setting`） | 不得重开匿名 Web 路径；任何恢复 Web/AJAX 的提议须先修订 AGENTS 冻结契约并经 ADR |
@@ -493,11 +490,13 @@ overlay。tag run 失败时应修复默认分支上的原因，并按正常的�
 build、production build 与 publish 都绑定同一个 tag；生产构建在独立 runner 上从 clean tag tree 重建
 staticlib，并继续以 `git diff --exit-code` 做 byte-for-byte 校验。
 
-GitHub Release 与 GHCR 是独立系统，无法原子提交。因此容器发布拆成 Release 前的 `build_container`
-和 Release 后的 `publish_container`。若 GHCR 发布失败，release workflow 必须保持 failed；恢复方式是用
-同一批 verified-container artifact（保留 90 天）和 immutable tag 重跑失败的 `publish_container` job——不要为了修复
-registry 发布而重建或重签 native 资产。exact-version manifest 总是推送；只有现有 channel classifier
-报告 stable 时才推进 `latest`。不使用 retry loop 隐藏 push 失败。
+GitHub Release 与 registry 是独立系统，无法原子提交。因此 `.github/workflows/publish-dockerhub.yml` 作为独立的
+Release 后容器 publisher，同时负责 GHCR 与 Docker Hub。它从完成的 Release run 接收 immutable handoff 和两份
+verified container artifact，校验 release tag 与 source identity，再把同一批已加载镜像 bytes 发布到
+`ghcr.io/flanchanxwo/pixiv-cli` 与 `docker.io/flanchanxwo/pixiv-cli`；只有 Docker Hub 登录使用受保护
+`release` Environment 的 secret `DOCKER_HUB_TOKEN`，并通过 stdin 传入。它不会重建镜像。若 registry 发布失败，
+应从默认分支只使用原始 `release_run_id` dispatch，以复用同一批 verified artifact。exact-version tag 总是发布，
+恢复旧 stable 时即使不更新 `latest` 也会成功，只有最新 stable release 才推进 `latest`。不使用 retry loop 隐藏 push 失败。
 
 ### 容器发布验证
 
@@ -507,74 +506,51 @@ immutable tag checkout，在 clean tree 重建对应 Rust staticlib，通过 Lin
 运行容器打包测试，构建 pinned glibc runtime 镜像，并验证非 root 执行、精确版本、`/home/pixiv/.pixiv-cli/`
 下的 `pixiv config path`、`/work` 以及 OCI provenance（`org.opencontainers.image.source`、revision、version
 和 licenses），最后导出 `verified-container-linux-amd64` 与 `verified-container-linux-arm64`。build job 只持有
-`contents: read`；只有 `publish_container` 在 GitHub Release 后用 `packages: write` 消费这些 artifact。
+`contents: read`；只有独立容器 publisher 在 GitHub Release 后消费这些 artifact，并为 GHCR 推送申请 `packages: write`。
 
 维护者聚焦检查：
 
 ```bash
-go test ./scripts/internal/releaseworkflow -count=1
 go test ./scripts/tests/containerrelease -count=1
-go run ./scripts/cmd/releaseworkflow --workflow .github/workflows/release.yml
+go test ./tools/release ./tools/platformmatrix -count=1
 ```
 
 无凭据容器 smoke workflow 会在相关变更时构建两个原生架构，并执行 version、非 root、state-path 和工作目录
 断言；正式 tagged release 不能用这些本地检查替代该 CI evidence。
 
-Release policy 的共享契约位于 `scripts/internal/releasecontract` 与 `scripts/internal/workflow/yaml`。
-前者持有唯一的 per-target Rust toolchain 映射和六平台契约，后者提供 YAML AST 安全操作；两者都直接
-参与正常 release policy 和 production build 校验。保留的 release verifier 测试只覆盖 tag trigger、
-build quality、production isolation、publish/Homebrew policy、release notes 与 workflow YAML 安全边界；
-历史 recovery 计划和验收报告保留原始文字与路径，不作为当前流程说明。
+共享平台 runner/Rust/CC metadata 只位于 `ci/platforms.json`，由 `tools/platformmatrix` 校验并输出；
+release archive identity 仍由 `scripts/internal/releasecontract` 持有。workflow 测试只保留行为与安全边界，
+不再镜像 job 数量、step 位置或 multiline shell 全文。历史 recovery 计划和验收报告保留原始文字与路径，
+不作为当前流程说明。
 
 ### Verifier 源码导航
 
-`scripts/cmd/releaseworkflow/` 按发布职责分卷：`main.go` 负责命令入口、文件读取与顶层 dispatch；
-`build_policy.go` 负责 validate、test build 与 production build；`e2e_policy.go` 锁定受保护真实 E2E 的
-Environment、secret 可达性、输入映射与 build 依赖；`workflow_policy.go` 负责 tag trigger、
-job、step、command、action 与 permission helper；`publish_policy.go` 负责 source verification、发布、签名与 channel；
-`homebrew_policy.go` 负责 formula render、四平台验证与 tap deploy。测试集中在各 policy 文件及
-`releaseworkflow_test.go`、`homebrew_policy_test.go`、`release_notes_policy_test.go` 与
-`workflow_policy_test.go`；命令入口不再保留只验证透传的顶层 `main_test.go`。
+Release 验证现在优先检查真实行为，不再维护第二套 workflow policy 实现。`tools/platformmatrix`
+负责校验共享平台注册表；`tools/release` 统一负责可复用的发布信任与 artifact 校验，包括 immutable
+tag/default-branch ancestry、published Release 状态、Release-run handoff identity、精确的
+archive/container 集合与 checksums。各 publisher workflow 只保留自身渠道的 credential、权限、变更
+检测和发布命令；recovery run 可以只验证成功的 `Release` handoff，而原有契约明确要求 run 与 tag
+同一提交的 publisher（例如 Docker Hub）则继续额外绑定 handoff run 与 immutable tag commit。
 
-`scripts/cmd/nativeevidence/` 按 evidence 生命周期分卷：`main.go` 负责 subcommand 与 flag；`models.go` 保存
-target 和 evidence schema；`record.go` 记录单 runner evidence；`consolidate.go` 校验并合并六目标结果；
-`archive.go` 负责 release archive member 与 JSON；`filesystem.go` 负责路径、hash 和安全文件操作；
-`workflow_policy.go` 只验证 native-evidence workflow。测试分别覆盖 policy、record、consolidate，fixture
-helper 再按 workflow 与 evidence/archive 分开，避免把策略测试重新堆进单一文件。
+`scripts/cmd/nativeevidence/` 只保留 CLI 入口与参数分发；具体 evidence 生命周期实现在
+`scripts/internal/nativeevidence/`：`models.go` 保存 target 和 evidence schema；`record.go` 记录单 runner
+evidence；`consolidate.go` 校验并合并六目标结果；`archive.go` 负责 release archive member 与 JSON；
+`filesystem.go` 负责路径、hash 和安全文件操作。
+`scripts/cmd/nativeevidence/` 只分发 `record` 与 `consolidate`；workflow 测试只覆盖 credential、action
+固定与 build ownership 等安全/行为边界，不再重新实现 workflow 的精确 YAML 形状。
 
-`go run ./scripts/cmd/releaseworkflow --workflow .github/workflows/release.yml` 启动 release workflow 的 YAML AST policy，而不是依赖
-文本排版或行号。它精确检查 tag trigger、九份 job 的权限/依赖、受保护 E2E 的 secret 映射和发布阻断、六个 test/production runner matrix、每一个
-`uses` 的 40 位 SHA，以及 publish 的 SemVer channel 调用。默认分支 ancestry 必须在无
-`environment`、无 secret 的 `verify_release_source` job 中完成；只有该 job 成功后，publish 才可
-依赖它并声明精确的 `release` Environment、使用签名 metadata step 的两个预期 secret。policy 对所有
-scalar 中的 GitHub expression 按表达式边界扫描 `secrets` context；单引号字符串中的 `}`/`}}`
-以及两个单引号转义不会提前结束扫描，因此签名 metadata step 之外的格式化 secret 引用也会
-fail-closed。policy 还会拒绝 required job、默认分支 ancestry step 与 quality gate 的 `continue-on-error` 或条件 `if`；validate
-与 build checkout 也必须显式 `persist-credentials: false`。为避免 shell 控制流隐藏 gate，每项质量
-检查都是唯一的单命令 `bash` step：policy 精确验证其 run、crate cwd（Rust gate）和 shell，并拒绝
-未审计的 `env`、`defaults` 或其它 step 字段。唯一允许的变量是 root 的 `RELEASE_TAG`，以及 build
-matrix 绑定的 `CC` 与 per-target `RUSTUP_TOOLCHAIN`；Windows 必须使用 `clang -fuse-ld=lld` 链接 MSVC Rust staticlib，避免 MinGW
-GCC 与 `.lib` ABI 混用。解析器同时 fail-closed 地拒绝 YAML alias、merge key 和任何重复 mapping key，
-因此 GitHub 的覆盖或工作目录语义不会与本地检查分叉。validate 固定 checkout 受审计的 workflow SHA；
-其余生产 source checkout 固定为精确 tag。尤其
-`verify_release_source` 只能按顺序执行 full-history、无凭据的 tag checkout 与默认分支 ancestry gate
-这两个步骤，禁止 `ref`、`repository`、`path` 或中间切换 HEAD 的 step 改变被验证的提交。publish 的
-checkout 同样只允许无凭据 tag source，避免签名 metadata 与构建 asset 所属提交不一致。
-build job 必须实际运行 vendored Rust 离线检查、crate cwd 的 `cargo fmt --check` 与 locked/offline
-Clippy `-D warnings`、普通 Go 测试、vet、许可证、封装、固定版本 `pre-commit==4.6.0`、
-pre-commit 和 `git diff --check`；production build job 只从 clean tag tree 生成
-`verified-release-*` artifact。发布渠道仅可由
-`go run ./scripts/cmd/releaseassets channel --version ...` 判定；build metadata 中的连字符不会使 stable
-tag 误变为 prerelease。
+release workflow 本身就是顺序与权限的事实来源。生产 archive、container、prepared checksums 以及针对
+真实 production archive 的 Homebrew 安装验证都必须在 `release-approval` 前完成；审批后由
+保存发布 secrets 的 `release` environment 消费已经批准的同一批 artifact，不重新构建。
 
-Go 1.26.3 不支持 Windows ARM64 的 race detector，因此该唯一 matrix entry 显式跳过 `go test -race`；
-其余五个原生目标仍运行 race gate，workflow policy 固定这个条件，禁止扩张为任意条件跳过。
+`go.mod` 当前声明的 Go toolchain 不支持 Windows ARM64 的 race detector，但 release matrix 仍会在六个原生目标上实际执行 race gate：
+其中五个平台运行 `go test -race ./...`，Windows ARM64 则必须执行同一命令并精确匹配 Go 官方
+`-race is not supported on windows/arm64` 诊断；其他任何失败仍视为 gate 失败，因此不会再出现 matrix step skip。
 test matrix 还固定 `GIT_CONFIG_*` 为 `core.autocrlf=false`，使 Git for Windows checkout 保留 immutable
 tag 的 LF blob bytes；否则 pre-commit 的 `gofmt` 会把 runner 的 CRLF 转换误报为源码未格式化。该配置
 仅用于 test gate，独立 production build 仍从 tag 的干净默认 checkout 构建资产。
 
-publish 核对并公开 Release 后，立即上传同一份 `release/checksums.txt`；policy 拒绝中间 step、路径
-替换或发布后改写。`render_homebrew_formula` 只下载该 artifact，并把 releaseassets 的 stable/
+Release 的 preparation 阶段固化一份 immutable handoff（`release/release-handoff.json`），记录 release run、tag、commit 以及每个 production/container 产物的 size 与 SHA256，publish 再以已批准的 `release/checksums.txt` 复验；policy 拒绝中间 step、路径替换或发布后改写。Homebrew 不再属于 Release workflow：独立 publisher `publish-homebrew.yml` 消费该 handoff、校验 production section，并把 releaseassets 的 stable/
 prerelease 结果直接映射为 `pixiv-cli`/`pixiv-cli-beta`。随后精确四目标 matrix（macOS Intel/arm64、
 Linux amd64/arm64）先用 `brew tap-new pixiv-cli-release/staging --no-git` 创建各 runner 的隔离
 local tap，再以 `brew trust --tap pixiv-cli-release/staging` 显式信任这一个临时命名空间；将唯一
@@ -582,10 +558,14 @@ staging formula 放入其 `Formula/`，随后用 `pixiv-cli-release/staging/<for
 `brew install --formula`。macOS 在原生 runner 的临时 tap 中运行；Linux 在短生命周期、固定 digest 的
 `homebrew/brew` 容器内运行，并将 staging formula 目录以只读 bind mount 传入容器。随后执行
 `test "$(pixiv --version)" = "pixiv $RELEASE_TAG"` 并与 tag 比较。它不使用 workspace formula path、developer/环境变量 bypass，
-也不克隆、写入或信任公开 tap。只有全部成功，最终受保护 `deploy_homebrew_tap` 才以 HTTPS
-clone public tap、核对唯一 staged formula，并在最后一个 step 读取 deploy key；SSH push 固定官方
-GitHub ED25519 known_hosts、启用 strict checking，目标精确为 `HEAD:main`。任何前置 job 失败都不会
-写 tap。
+也不克隆、写入或信任公开 tap。只有全部成功，`publish-homebrew.yml` 中受保护的 `deploy_homebrew_tap` 才以 HTTPS
+clone public tap，并由受信默认分支 tip 上的 `scripts/cmd/homebrewrecovery` 做单调判定：请求版本必须
+不低于 tap 当前 Formula 版本（优先复用 `internal/releaseversion` 的 SemVer 比较，不做字符串比较）；
+同版本且 bytes 完全一致时判定为已发布而 no-op 成功，不产生任何 commit 或 push；请求版本更旧，或同版本
+但内容不同，都在读取 deploy key 之前 fail closed，从而同一 `release_run_id` 的重复恢复幂等，较旧的恢复
+请求无法回退已发布 Formula（`pixiv-cli` 与 `pixiv-cli-beta` 各自独立比较）。仅当判定为需要写入时，才核对唯一
+staged formula，并在最后一个 step 读取 deploy key；SSH push 固定官方 GitHub ED25519 known_hosts、启用
+strict checking，目标精确为 `HEAD:main`。任何前置 job 失败都不会写 tap。
 
 这套本地检查只证明 workflow 声明的依赖和语义，**不**验证 GitHub `release` Environment、
 secret 和 tag protection 的远端实际状态；它不替代远端配置审计，也不替代正式 tag
@@ -622,7 +602,7 @@ macOS Intel/arm64 与 Linux amd64/arm64 四个生产同款 runner 上执行真�
 也不会 clone、提交或推送 Homebrew tap。Linux 分支在固定 digest、短生命周期 Homebrew 容器中安装只读挂载的
 本地 staging formula；macOS 保持原生普通安装命令。
 它用于在正式发布之前复现 Homebrew 安装链路，**不替代**正式 tag 发布、签名 Release、tap 部署或发布后的
-安装验收。`go run ./scripts/cmd/prepublishhomebrew --workflow .github/workflows/homebrew-prepublish-verify.yml` 会在本地和质量门中检查该 workflow 的不可变边界。
+安装验收。质量门只保留 formula 与 artifact 的行为级校验，不再复制一套 workflow policy 实现。
 
 正式发布目前仍必须被正式 tag、签名 GitHub Release、tap formula 与后续安装验收阻断。完整
 six-target staticlib/manifest 与真实 native artifact 证据必须已受控收集并回填（见「Rust ugoira staticlib」一节）；
@@ -646,27 +626,30 @@ production Ed25519 public trust root 已在
   Release 停止使用旧 key。不得让既有二进制突然依赖一个未提交、不可验证的新信任根。
 
 Homebrew tap 是独立发布面：stable 使用 `pixiv-cli`，pre-release 使用 `pixiv-cli-beta`，二者
-都安装 `pixiv` 并相互冲突。专用 tap deploy key 的私钥只放在 source repository
-的受保护 `release` Environment secret `HOMEBREW_TAP_DEPLOY_KEY`，公开 tap 只登记对应公钥。workflow
-在独立 renderer 中生成 staging formula，并在四个原生 runner 验证安装，再由最终 protected job 做
-受限提交/push。后续 stable/beta 发布仍不能从本仓库或
-workflow artifact 读取、生成或记录 deploy key。
+都安装 `pixiv` 并相互冲突。`publish-homebrew.yml` 先验证原始 Release handoff 与归档 checksum，
+再渲染并推送 formula；原生安装检查使用平台注册表。专用 `HOMEBREW_TAP_DEPLOY_KEY` 只通过
+`release` Environment 提供给授权的 tap 写入步骤，不得进入源码、日志或 artifact。
+这个下游 publisher 不增加人工审批边界；唯一的最终审批由 `release-approval` 承担。
 
 当前 Release 不会进行 Apple notarization 或 Windows Authenticode。直接下载仍可能被 Gatekeeper
 或 SmartScreen 拦截/提示；这是需要在用户文档中保留的系统信誉边界，不能通过文档或脚本绕过。
 
-成功结束的 `Release` workflow 会同时触发 `.github/workflows/publish-skillhub.yml` 与 `.github/workflows/publish-clawhub.yml`。GitHub 以
-`github.token` 创建 Release 时不会递归触发 `release` event，因此不能将该 event 用作可靠的自动化
-交接。完成 Homebrew 部署的 Release 会交出只含精确 release tag 的短期 artifact；这避免恢复发布的
-`workflow_run.head_branch` 为 `main` 时把分支名误作版本。SkillHub workflow 只 checkout 该不可变 tag，
-并确认该 tag 属于默认分支、对应 GitHub Release 已公开且版本满足 SemVer 后，才对
-`skills/pixiv-cli/` 与前一个已合并的语义版本 tag 比较。目录未变化时工作流成功跳过；目录变化时才运行
-SkillHub CLI 的 dry-run 和提交。产品 `SKILL.md` 的 SemVer 必须与 CLI Release tag 相同；release 的 tag-source
-validation 会在受保护 E2E 和任何发布凭据之前拒绝不匹配的版本。`SKILLHUB_TOKEN`
-仅进入最后的提交步骤，CLI 必须返回 `skillId` 和审核状态；这证明 SkillHub 已接收提交，但平台审核完成前
-公开详情页可能仍不可见。
-若任一独立发布失败，可通过对应 workflow 的 `workflow_dispatch` 输入既有发布 tag 恢复，不能用 main 的
-后续内容替代该 tag。ClawHub workflow 与 SkillHub 使用同一不可变 tag handoff：它先验证公开非 draft Release、默认分支祖先关系、`SKILL.md` 版本与 tag 一致性以及产品 skill 的改动，再在不含凭据的环境运行固定版本的 ClawHub CLI dry-run，并以其 SHA-256 产物指纹校验实际发布物。只有最终 publish/inspect 步骤，以及不重发版本的 `verify_only` 人工恢复步骤会收到 `CLAWHUB_TOKEN`；后者只登录并读取审核结果，绝不调用 publish。正常 publish 必须确认产品 skill、对应版本和精确产物指纹；当 ClawHub static scan 已 clean、但聚合安全结论仍为 `pending` 时，会明确 warning 而不把已接收的发布物误报为失败。`skill-card.md` 也可能异步生成并产生 warning。两类 warning 都不等同于最终安全结论：`verify_only` 只在 aggregate security 为 clean 时通过，便于在平台扫描完成后作不重发的最终核验。任何其他原因仍会失败。当前平台也不会为普通 CLI publish 暴露 server-resolved GitHub provenance，因此该项以受信 tag checkout 和指纹匹配替代，并同样保留 warning。
+成功结束的 `Release` workflow 通过 `workflow_run` 触发独立的 Homebrew、Docker Hub、SkillHub
+与 ClawHub publisher。Release handoff 绑定原始 run、tag、commit 与已准备产物的身份，不是仅含 tag
+的文件，也不依赖 Homebrew 部署先完成。各 publisher 在发布前重新验证身份与自身需要的产物。
+不得从 `workflow_run.head_branch` 推断版本，也不得用后续 main 内容替代。
+
+SkillHub 检查不可变 tag、默认分支祖先关系、公开 Release、SemVer，以及产品 skill 相对前一个已合并
+语义版本 tag 的变更。未变化时跳过发布；变化时执行 dry-run 和提交。产品 `SKILL.md` 的版本必须与
+CLI Release tag 相同。`SKILLHUB_TOKEN` 仅进入最终提交步骤；返回 `skillId` 和审核状态证明已接收，
+不代表立即公开或审核通过。
+
+经授权的人工恢复向对应 publisher 提供原始 `release_run_id`，不接受替代 tag 或当前 main。
+ClawHub 另有 `verify_only`，只核验已经提交的版本，不重发。其 dry-run 不含凭据，最终 publish/inspect
+核对精确产物指纹。static scan 已 clean 但 aggregate security 仍 pending，或 `skill-card.md` 延迟生成，
+会明确 warning，不把已接收误报成失败；这些 warning 也不证明最终通过，`verify_only` 仍要求聚合安全
+结论为 clean。平台未暴露服务端解析的 GitHub provenance 时，明确该限制，以受信 tag checkout 和指纹
+作为现有证据，不宣称已经独立验证 provenance。
 
 </details>
 

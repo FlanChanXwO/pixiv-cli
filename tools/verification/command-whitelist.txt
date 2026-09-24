@@ -1,0 +1,31 @@
+# Repository CLI
+pixiv *
+pixiv !auth
+pixiv !config
+pixiv !bookmark
+pixiv !comment
+pixiv !download
+pixiv !fanbox
+pixiv !follow
+pixiv !mcp
+pixiv !mypixiv
+pixiv !timeline
+pixiv !recommended
+pixiv !update
+pixiv !user
+
+# Portable sources
+cat @
+echo *
+printf *
+
+# Stream helpers
+jq *
+grep *
+head *
+tail *
+wc *
+sort *
+uniq *
+cut *
+tr *

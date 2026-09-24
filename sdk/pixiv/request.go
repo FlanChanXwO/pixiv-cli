@@ -33,7 +33,7 @@ const (
 	DurationLastMonth DurationFilter = "within_last_month"
 )
 
-// RankingMode selects an artwork ranking category.
+// RankingMode selects an artwork or novel ranking category.
 type RankingMode string
 
 // RankingMode values define the supported RankingMode filesystem.
@@ -116,9 +116,12 @@ type SearchArtworksRequest struct {
 	Tool        string
 	BookmarkMin *int
 	BookmarkMax *int
+	Cursor      sdk.Cursor
+	// CursorContext binds caller-side filtering semantics; it is hashed into
+	// the cursor binding and is never sent to Pixiv. Repeat it when resuming.
+	CursorContext string
 	// Offset 是原始搜索结果流的初始位置；使用 Cursor 续页时须重复此值。
 	Offset int
-	Cursor sdk.Cursor
 }
 
 // ArtworkRequest selects one artwork by its stable ID.
@@ -190,6 +193,16 @@ type UserArtworkBookmarkTagsRequest struct {
 	Cursor   sdk.Cursor
 }
 
+// UserNovelBookmarkTagsRequest lists the bookmark tags of one user's
+// bookmarked novels. The candidate upstream endpoint currently has no
+// continuation contract; Cursor is retained so the public page shape can be
+// extended without replacing this request type when that contract is frozen.
+type UserNovelBookmarkTagsRequest struct {
+	UserID   int64
+	Restrict Restrict
+	Cursor   sdk.Cursor
+}
+
 // MyPixivArtworksRequest lists artworks from the current user's MyPixiv feed.
 type MyPixivArtworksRequest struct {
 	Cursor sdk.Cursor
@@ -197,6 +210,10 @@ type MyPixivArtworksRequest struct {
 
 // TrendingArtworkTagsRequest lists currently trending artwork tags.
 type TrendingArtworkTagsRequest struct{}
+
+// StampsRequest lists the comment stamps available to the authenticated user.
+// The current upstream contract has no query or continuation fields.
+type StampsRequest struct{}
 
 // UgoiraMetadataRequest selects the ugoira metadata of one artwork. The
 // artwork must be a ugoira.
@@ -210,10 +227,43 @@ type ArtworkCommentsRequest struct {
 	Cursor    sdk.Cursor
 }
 
+// PostArtworkCommentRequest posts a top-level comment on one artwork.
+type PostArtworkCommentRequest struct {
+	ArtworkID int64
+	Comment   string
+}
+
+// ReplyArtworkCommentRequest replies to one artwork comment.
+type ReplyArtworkCommentRequest struct {
+	ArtworkID       int64
+	Comment         string
+	ParentCommentID int64
+}
+
+// DeleteArtworkCommentRequest deletes one artwork comment by its comment ID.
+type DeleteArtworkCommentRequest struct {
+	CommentID int64
+}
+
+// StampArtworkCommentRequest posts a stamp comment on one artwork. Comment is
+// optional and may be empty for the sticker-only wire form; StampID is an
+// independent upstream field.
+type StampArtworkCommentRequest struct {
+	ArtworkID int64
+	Comment   string
+	StampID   int64
+}
+
 // ArtworkBookmarkRequest reads the current user's bookmark detail for one
 // artwork.
 type ArtworkBookmarkRequest struct {
 	ArtworkID int64
+}
+
+// NovelBookmarkRequest reads the current user's bookmark detail for one
+// novel.
+type NovelBookmarkRequest struct {
+	NovelID int64
 }
 
 // SearchNovelsRequest searches novels. Repeat the original fields when
@@ -248,8 +298,41 @@ type NovelCommentsRequest struct {
 	Cursor  sdk.Cursor
 }
 
+// PostNovelCommentRequest posts a top-level comment on one novel.
+type PostNovelCommentRequest struct {
+	NovelID int64
+	Comment string
+}
+
+// ReplyNovelCommentRequest replies to one novel comment.
+type ReplyNovelCommentRequest struct {
+	NovelID         int64
+	Comment         string
+	ParentCommentID int64
+}
+
+// DeleteNovelCommentRequest deletes one novel comment by its comment ID.
+type DeleteNovelCommentRequest struct {
+	CommentID int64
+}
+
+// StampNovelCommentRequest posts a stamp comment on one novel. Comment is
+// optional and may be empty for the sticker-only wire form; StampID is an
+// independent upstream field.
+type StampNovelCommentRequest struct {
+	NovelID int64
+	Comment string
+	StampID int64
+}
+
 // RecommendedNovelsRequest lists recommended novels.
 type RecommendedNovelsRequest struct {
+	Cursor sdk.Cursor
+}
+
+// NovelRankingRequest lists the current novel ranking.
+type NovelRankingRequest struct {
+	Mode   RankingMode
 	Cursor sdk.Cursor
 }
 
@@ -341,9 +424,37 @@ type AddBookmarkRequest struct {
 	Tags      []string
 }
 
+// AddArtworkBookmarkRequest bookmarks one artwork. Tags are applied as
+// bookmark tags when non-empty.
+type AddArtworkBookmarkRequest struct {
+	ArtworkID int64
+	Restrict  Restrict
+	Tags      []string
+}
+
+// RemoveArtworkBookmarkRequest removes the current user's bookmark from one
+// artwork.
+type RemoveArtworkBookmarkRequest struct {
+	ArtworkID int64
+}
+
 // RemoveBookmarkRequest removes the current user's bookmark from one artwork.
 type RemoveBookmarkRequest struct {
 	ArtworkID int64
+}
+
+// AddNovelBookmarkRequest bookmarks one novel. Tags are applied as bookmark
+// tags when non-empty.
+type AddNovelBookmarkRequest struct {
+	NovelID  int64
+	Restrict Restrict
+	Tags     []string
+}
+
+// RemoveNovelBookmarkRequest removes the current user's bookmark from one
+// novel.
+type RemoveNovelBookmarkRequest struct {
+	NovelID int64
 }
 
 // FollowUserRequest follows one user.
@@ -357,8 +468,8 @@ type UnfollowUserRequest struct {
 	UserID int64
 }
 
-// SetAIArtworkVisibilityRequest sets whether AI-generated artworks are shown
-// in the current user's feeds.
+// SetAIArtworkVisibilityRequest is retained for source compatibility with the
+// deprecated SetAIArtworkVisibility entry point.
 type SetAIArtworkVisibilityRequest struct {
 	Visible bool
 }

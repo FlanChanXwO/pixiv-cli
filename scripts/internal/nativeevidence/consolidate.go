@@ -17,7 +17,7 @@ import (
 
 // consolidateEvidence 只接受六个完整且同源的 runner artifact 目录；它先在全新 sibling
 // 目录验证和组装，再一次 rename 发布。已有输出、缺目标、hash 变化或 symlink 一律失败，
-// 因而不会把部分或混代库伪装成 Task 13 的可提交 staticlib 集合。
+// 因而不会把部分或混代库伪装成可提交的完整 staticlib 集合。
 func consolidateEvidence(options consolidateOptions) error {
 	if !strings.HasPrefix(options.expectedVersion, "v") || !semanticVersionPattern.MatchString(strings.TrimPrefix(options.expectedVersion, "v")) {
 		return fmt.Errorf("expected version is not a v-prefixed semantic version: %q", options.expectedVersion)

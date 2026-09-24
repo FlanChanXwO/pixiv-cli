@@ -1,0 +1,4 @@
+interface:
+  display_name: "Pixiv CLI Native Code"
+  short_description: "Maintain Rust, cgo, staticlibs, and native evidence."
+  default_prompt: "Use $pixiv-cli-native to verify this native-boundary change."

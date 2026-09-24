@@ -6,7 +6,7 @@
 
 [English](README.md) · [简体中文](README.zh-CN.md)
 
-<p><a href="https://github.com/FlanChanXwO/pixiv-cli/actions/workflows/ci.yml"><img alt="Quality gate" src="https://github.com/FlanChanXwO/pixiv-cli/actions/workflows/ci.yml/badge.svg"></a> <a href="https://github.com/FlanChanXwO/pixiv-cli/releases/latest"><img alt="Release" src="https://img.shields.io/github/v/release/FlanChanXwO/pixiv-cli?style=flat-square"></a> <a href="go.mod"><img alt="Go" src="https://img.shields.io/github/go-mod/go-version/FlanChanXwO/pixiv-cli?style=flat-square"></a> <a href="LICENSE"><img alt="License" src="https://img.shields.io/github/license/FlanChanXwO/pixiv-cli?style=flat-square"></a> <img alt="Views" src="https://hits.sh/github.com/FlanChanXwO/pixiv-cli.svg?style=flat-square&amp;label=views"></p>
+<p><a href="https://github.com/FlanChanXwO/pixiv-cli/actions/workflows/ci.yml"><img alt="Quality gate" src="https://github.com/FlanChanXwO/pixiv-cli/actions/workflows/ci.yml/badge.svg?event=push"></a> <a href="https://github.com/FlanChanXwO/pixiv-cli/releases/latest"><img alt="Release" src="https://img.shields.io/github/v/release/FlanChanXwO/pixiv-cli?style=flat-square"></a> <a href="go.mod"><img alt="Go" src="https://img.shields.io/github/go-mod/go-version/FlanChanXwO/pixiv-cli?style=flat-square"></a> <a href="LICENSE"><img alt="License" src="https://img.shields.io/github/license/FlanChanXwO/pixiv-cli?style=flat-square"></a> <img alt="Views" src="https://hits.sh/github.com/FlanChanXwO/pixiv-cli.svg?style=flat-square&amp;label=views"></p>
 
 [安装](#安装) · [快速开始](#60-秒快速开始) · [使用入口](#选择使用入口) · [文档](#文档) · [参与贡献](CONTRIBUTING.zh-CN.md)
 
@@ -53,14 +53,17 @@ binary，并在修改 PATH 前完成用户级安装。可用 `--no-path` 保持 
 
 ### Docker（Linux amd64/arm64）
 
-官方镜像发布到 GHCR：`ghcr.io/flanchanxwo/pixiv-cli`。需要可复现部署时，请拉取精确 release：
+官方镜像同时发布到 GHCR：`ghcr.io/flanchanxwo/pixiv-cli` 和 Docker Hub：
+`docker.io/flanchanxwo/pixiv-cli`。两个 registry 都提供相同的 `linux/amd64` 与 `linux/arm64` 原生构建镜像。
+需要可复现部署时，请从任一 registry 拉取精确 release：
 
 ```bash
 docker pull ghcr.io/flanchanxwo/pixiv-cli:v1.2.3
+docker pull docker.io/flanchanxwo/pixiv-cli:v1.2.3
 ```
 
 `latest` 只跟随 stable release；prerelease tag 绝不移动 `latest`。要跟踪当前 stable release，可拉取
-`ghcr.io/flanchanxwo/pixiv-cli:latest`。镜像分别为 `linux/amd64` 和 `linux/arm64` 原生构建。容器运行同一个
+`ghcr.io/flanchanxwo/pixiv-cli:latest` 或 `docker.io/flanchanxwo/pixiv-cli:latest`。镜像分别为 `linux/amd64` 和 `linux/arm64` 原生构建。容器运行同一个
 `pixiv` binary，并使用与其他安装方式相同的 `~/.pixiv-cli` 状态命名空间。
 
 持久保存账号状态，并挂载下载工作区：
@@ -227,7 +230,7 @@ pixiv timeline latest --type illust --limit 10 --json
 
 ### MCP
 
-反向搜图属于 CLI/MCP integration；public Go SDK 保持不变。
+反向搜图属于 CLI/MCP integration；public Go SDK 现在也暴露 typed artwork/novel bookmark 与 comment mutation。
 
 显式启动 stdio server。stdout 只用于 JSON-RPC；tool 运行失败会以 `isError=true` 的 structured result 返回。默认不创建项目级或每日日志文件。
 
@@ -248,6 +251,9 @@ MCP 固定状态、错误和展示文本使用英文；Pixiv 元数据及用户�
 challenge-recovery control path，绝不会收到 native ascii2d image upload。
 
 ### Go SDK
+
+**`go.mod` 声明的 Go 版本是源码构建与 SDK 开发的正式基线。**
+仓库、CI、正式发布构建与原生打包统一消费这一处 toolchain 声明。
 
 Public SDK 显式接收 credential，不读取 CLI 的本地账号库或进程环境。应用应从自己的 secret store 取得 credential，并自行保存 `Open` 返回的 rotation 后 credential：
 

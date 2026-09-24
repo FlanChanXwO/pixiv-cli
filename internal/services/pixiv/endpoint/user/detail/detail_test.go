@@ -3,10 +3,12 @@ package detail_test
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/url"
 	"testing"
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/endpoint/user/detail"
+	"github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/protocol"
 )
 
 type fakeTransport struct {
@@ -42,8 +44,22 @@ func TestCurrentUsesVerifiedUserIDAndRejectsMissingEnvelope(t *testing.T) {
 	}
 	for _, body := range []string{`{}`, `{"user":null,"profile":{},"profile_publicity":{},"workspace":{}}`} {
 		_, err := detail.New(&fakeTransport{body: body}).Detail(context.Background(), 51)
-		if err == nil {
-			t.Fatalf("body %s unexpectedly succeeded", body)
+		if !errors.Is(err, protocol.ErrMalformedResponse) {
+			t.Fatalf("body %s error = %v, want malformed response", body, err)
+		}
+	}
+}
+
+func TestDetailRejectsInvalidRequiredObjectsAndVisibility(t *testing.T) {
+	for _, body := range []string{
+		`{"user":{"id":51},"profile":{},"profile_publicity":{},"workspace":null}`,
+		`{"user":{"id":51},"profile":null,"profile_publicity":{},"workspace":{}}`,
+		`{"user":{"id":51},"profile":{},"profile_publicity":{"gender":"hidden"},"workspace":{}}`,
+		`{"user":{"id":0},"profile":{},"profile_publicity":{},"workspace":{}}`,
+	} {
+		_, err := detail.New(&fakeTransport{body: body}).Detail(context.Background(), 51)
+		if !errors.Is(err, protocol.ErrMalformedResponse) {
+			t.Fatalf("body %s error = %v, want malformed response", body, err)
 		}
 	}
 }

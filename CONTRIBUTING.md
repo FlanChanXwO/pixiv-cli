@@ -15,7 +15,7 @@ Thanks for helping improve `pixiv-cli`. Focused bug reports, documentation fixes
 
 The supported source build uses:
 
-- Go `1.26.3`;
+- the Go version declared in `go.mod`;
 - `CGO_ENABLED=1` and a working C linker for the target;
 - the committed, manifest-verified Rust ugoira static library for the target.
 
@@ -42,18 +42,26 @@ Read [the architecture guide](docs/en/maintainers/architecture.md) and the repos
 
 ## Develop with tests
 
-Use a red-green-refactor loop for code changes:
+Use a red-green-refactor loop for features and behavior fixes:
 
-1. Add a focused test that fails for the intended behavioral reason.
+1. Inspect existing assertions; reuse a failing test or extend the smallest relevant case to expose the intended behavioral failure. Add a new test only for a coverage gap, not for each function or file.
 2. Implement the smallest coherent change that makes it pass.
 3. Refactor without changing the verified public behavior.
 4. Run the focused tests, then the relevant regression suite.
 
+Pure restructuring reuses characterization before and after; ordinary comment-only edits use document/tool checks. See [test selection](.agents/skills/pixiv-cli-test/SKILL.md#decide-whether-test-code-must-change) for coverage gaps, duplication, and applicable Red exceptions. A required regression or security check is not optional merely because its implementation is short.
+
 Test public behavior through the public boundary whenever practical. Do not hide real authentication, network, Pixiv API, filesystem, or encoding failures behind empty success results or silent fallback. Do not add arbitrary timeouts, truncation, pagination caps, retry limits, or hidden downgrade paths.
 
-Real Pixiv Web and authenticated App canaries are opt-in. Never run them with a user's local account unless that user has explicitly authorized it; never put a real token on a command line that may be stored in shell history.
+Real Pixiv/FANBOX SDK and reverse-search checks are opt-in. Do not run them with a user's local account or upload an image unless the user has explicitly authorized that action; never put a real token on a command line that may be stored in shell history.
+
+## Agent-assisted development
+
+Start with [AGENTS.md](AGENTS.md). The checked-in `pixiv-cli-*` maintenance skills define Go design, focused testing, MCP/native work, review, PR, and release workflows without requiring any personal global instructions or CCS installation. Clients without skill discovery can read their `SKILL.md` files directly. Keep agent contracts, skill content, references, and UI metadata English; public locale documentation remains bilingual.
 
 ## Documentation
+
+Source comments may be English or Chinese. Follow [code commenting](.agents/skills/pixiv-cli-code-commenting/SKILL.md) for accurate API contracts, intent, and optional numbered phases; the English instruction-file requirement does not impose English comments or per-function comment quotas.
 
 Update documentation in the same pull request when changing a command, flag, SDK API, MCP tool, configuration key, environment variable, output contract, authentication flow, proxy behavior, download behavior, or known limitation.
 
@@ -70,17 +78,15 @@ Keep stable rules in one authoritative document and link to them elsewhere inste
 Before requesting review:
 
 - [ ] The change is focused and its user-visible behavior is explained.
-- [ ] New or changed code has focused tests that first demonstrated the failure.
-- [ ] `go test ./... -count=1` passes.
-- [ ] `go test -race ./... -count=1` passes for shared, authentication, download, CLI, MCP, or SDK behavior.
-- [ ] `go vet ./...` passes.
-- [ ] `sh scripts/build.sh` passes.
-- [ ] `python -m pre_commit run --all-files` passes when pre-commit is available.
+- [ ] Behavior changes have observed Red/Green and relevant regression evidence, or an explicitly accepted blocker; document-only work has document/link/metadata checks.
+- [ ] Applicable local checks from [pixiv-cli-test](.agents/skills/pixiv-cli-test/SKILL.md) passed, including full/race/native checks when their scope applies; unrun checks are identified.
+- [ ] Required CI is evaluated on the current head and its actual path classifier, not a presumed Markdown exemption.
+- [ ] Existing pre-commit checks pass when installed and applicable; missing tooling is reported rather than installed silently.
 - [ ] `git diff --check` passes.
 - [ ] English and Simplified Chinese documentation are synchronized where required.
 - [ ] No credential, downloaded content, local state, or machine-specific artifact is included.
 
-Conventional Commits are recommended for commit messages, for example `feat(cli): add account selection` or `docs: clarify anonymous fallback`. The project does not require a CLA, DCO sign-off, or signed commits unless a future policy explicitly says otherwise.
+Conventional Commits are recommended for commit messages, for example `fix(cli): preserve record identity` or `docs: clarify account selection`. The project does not require a CLA, DCO sign-off, or signed commits unless a future policy explicitly says otherwise.
 
 ## License
 

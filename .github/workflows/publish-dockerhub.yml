@@ -1,0 +1,205 @@
+name: Publish container images
+
+on:
+  # Release 完成后异步接收 immutable tag 和已验证容器 artifact；不依赖
+  # workflow_run.head_branch，因为恢复运行时该字段可能是默认分支。
+  workflow_run:
+    workflows:
+      - Release
+    types:
+      - completed
+  # Registry 推送失败时，可使用原 Release run 的 artifact 做显式恢复，避免重建镜像。
+  workflow_dispatch:
+    inputs:
+      # §17：手动恢复只接受原始的 release_run_id，不接受 tag/latest 等模糊解析。
+      # tag 由 immutable handoff 提供，调用方不必也不应自行推断。
+      release_run_id:
+        description: Original trusted Release workflow run ID
+        required: true
+        type: string
+
+permissions: {}
+
+env:
+  DOCKER_HUB_IMAGE: docker.io/flanchanxwo/pixiv-cli
+  DOCKER_HUB_USERNAME: flanchanxwo
+  GHCR_IMAGE: ghcr.io/flanchanxwo/pixiv-cli
+
+jobs:
+  publish:
+    name: Publish pixiv-cli container images
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-24.04
+    environment: release
+    permissions:
+      actions: read
+      contents: read
+      packages: write
+    steps:
+      - name: Resolve the trusted release run
+        id: release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EVENT_NAME: ${{ github.event_name }}
+          EVENT_RUN_ID: ${{ github.event.workflow_run.id }}
+          INPUT_RUN_ID: ${{ inputs.release_run_id }}
+        run: |
+          set -euo pipefail
+          if [ "$EVENT_NAME" = workflow_dispatch ]; then
+            run_id="$INPUT_RUN_ID"
+          else
+            run_id="$EVENT_RUN_ID"
+          fi
+          case "$run_id" in
+            ''|*[!0-9]*) echo "release_run_id must be a positive decimal number: $run_id" >&2; exit 1 ;;
+          esac
+          run=$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$run_id")
+          test "$(printf '%s' "$run" | jq -r '.name')" = 'Release'
+          test "$(printf '%s' "$run" | jq -r '.conclusion')" = success
+          test "$(printf '%s' "$run" | jq -r '.repository.full_name')" = "$GITHUB_REPOSITORY"
+          printf 'run_id=%s\n' "$run_id" >> "$GITHUB_OUTPUT"
+          printf 'head_sha=%s\n' "$(printf '%s' "$run" | jq -r '.head_sha')" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+          ref: ${{ steps.release.outputs.head_sha }}
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e
+        with:
+          go-version-file: go.mod
+      - name: Download the prepared handoff
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
+        with:
+          name: prepared-release-checksums
+          path: prepared
+          github-token: ${{ github.token }}
+          repository: ${{ github.repository }}
+          run-id: ${{ steps.release.outputs.run_id }}
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
+        with:
+          pattern: verified-container-*
+          path: containers
+          merge-multiple: true
+          github-token: ${{ github.token }}
+          repository: ${{ github.repository }}
+          run-id: ${{ steps.release.outputs.run_id }}
+
+      # §15/§19：只校验 container section，并重新计算每个 tar 的 checksum，确保
+      # 推送的是 Release run 原始产生并验证过的同一批 bytes。
+      - name: Verify the immutable handoff and container bytes
+        id: verify
+        shell: bash
+        env:
+          REPOSITORY: ${{ github.repository }}
+          RUN_ID: ${{ steps.release.outputs.run_id }}
+          RUN_HEAD_SHA: ${{ steps.release.outputs.head_sha }}
+        run: |
+          set -euo pipefail
+          go run ./tools/release verify-handoff-set \
+            --handoff prepared/release/release-handoff.json \
+            --section container \
+            --dist-dir prepared/dist \
+            --container-dir containers \
+            --repository "$REPOSITORY" \
+            --run-id "$RUN_ID" \
+            --run-head-sha "$RUN_HEAD_SHA"
+
+      - name: Load and verify the trusted container artifacts
+        shell: bash
+        env:
+          RELEASE_TAG: ${{ steps.verify.outputs.tag }}
+        run: |
+          set -euo pipefail
+          docker load --input containers/pixiv-cli-linux-amd64.tar
+          docker load --input containers/pixiv-cli-linux-arm64.tar
+          release_commit=$(git rev-parse "$RELEASE_TAG^{commit}")
+          inspect_label() {
+            docker image inspect --format '{{ index .Config.Labels "'"$1"'" }}' "$2"
+          }
+          for arch in amd64 arm64; do
+            image="pixiv-cli:${RELEASE_TAG}-linux-${arch}"
+            test "$(docker image inspect --format '{{.Architecture}}' "$image")" = "$arch"
+            if [ "$arch" = amd64 ]; then
+              test "$(docker run --rm "$image" --version)" = "pixiv ${RELEASE_TAG}"
+            fi
+            test "$(inspect_label org.opencontainers.image.revision "$image")" = "$release_commit"
+            test "$(inspect_label org.opencontainers.image.version "$image")" = "$RELEASE_TAG"
+            test "$(inspect_label org.opencontainers.image.source "$image")" = "https://github.com/FlanChanXwO/pixiv-cli"
+            test "$(inspect_label org.opencontainers.image.licenses "$image")" = MIT
+          done
+      - name: Authenticate to container registries
+        shell: bash
+        env:
+          DOCKER_HUB_TOKEN: ${{ secrets.DOCKER_HUB_TOKEN }}
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          test -n "$DOCKER_HUB_TOKEN"
+          printf '%s' "$DOCKER_HUB_TOKEN" | docker login docker.io --username "$DOCKER_HUB_USERNAME" --password-stdin
+          printf '%s' "$GITHUB_TOKEN" | docker login ghcr.io --username "$GITHUB_ACTOR" --password-stdin
+      - name: Push architecture-specific verified images
+        shell: bash
+        env:
+          RELEASE_TAG: ${{ steps.verify.outputs.tag }}
+        run: |
+          set -euo pipefail
+          for arch in amd64 arm64; do
+            source_image="pixiv-cli:${RELEASE_TAG}-linux-${arch}"
+            for registry_image in "$DOCKER_HUB_IMAGE" "$GHCR_IMAGE"; do
+              target_image="${registry_image}:${RELEASE_TAG}-linux-${arch}"
+              docker tag "$source_image" "$target_image"
+              docker push "$target_image"
+            done
+          done
+      - name: Publish the exact-version multi-architecture manifest
+        shell: bash
+        env:
+          RELEASE_TAG: ${{ steps.verify.outputs.tag }}
+        run: |
+          set -euo pipefail
+          for registry_image in "$DOCKER_HUB_IMAGE" "$GHCR_IMAGE"; do
+            docker manifest create "${registry_image}:${RELEASE_TAG}" \
+              --amend "${registry_image}:${RELEASE_TAG}-linux-amd64" \
+              --amend "${registry_image}:${RELEASE_TAG}-linux-arm64"
+            docker manifest push "${registry_image}:${RELEASE_TAG}"
+          done
+      - name: Advance latest only for the newest stable release
+        shell: bash
+        env:
+          RELEASE_TAG: ${{ steps.verify.outputs.tag }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          channel=$(go run ./scripts/cmd/releaseassets channel --version "${RELEASE_TAG#v}")
+          case "$channel" in
+            stable)
+              latest_stable_tag=$(
+                gh api --paginate \
+                  "repos/$GITHUB_REPOSITORY/git/matching-refs/tags/v" \
+                  --jq '.[].ref | sub("^refs/tags/"; "")' \
+                | grep -E '^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$' \
+                | sort -Vr | head -n1
+              )
+              if [ "$RELEASE_TAG" = "$latest_stable_tag" ]; then
+                for registry_image in "$DOCKER_HUB_IMAGE" "$GHCR_IMAGE"; do
+                  docker manifest create "${registry_image}:latest" \
+                    --amend "${registry_image}:${RELEASE_TAG}-linux-amd64" \
+                    --amend "${registry_image}:${RELEASE_TAG}-linux-arm64"
+                  docker manifest push "${registry_image}:latest"
+                done
+              else
+                printf '%s\n' 'older stable release keeps the latest tag unchanged' >&2
+              fi
+              ;;
+            prerelease)
+              printf '%s\n' 'prerelease keeps the latest tag unchanged' >&2
+              ;;
+            *)
+              printf '%s\n' 'unexpected release classification' >&2
+              exit 1
+              ;;
+          esac

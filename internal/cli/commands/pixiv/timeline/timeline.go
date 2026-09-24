@@ -11,6 +11,7 @@ import (
 	requirements "github.com/FlanChanXwO/pixiv-cli/internal/cli/commands"
 	deps "github.com/FlanChanXwO/pixiv-cli/internal/cli/commands/pixiv"
 	"github.com/FlanChanXwO/pixiv-cli/internal/cli/commands/pixiv/internal/listing"
+	"github.com/FlanChanXwO/pixiv-cli/internal/shared/searchfilter"
 	"github.com/FlanChanXwO/pixiv-cli/sdk"
 	pixiv "github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
 	"github.com/spf13/cobra"
@@ -47,7 +48,7 @@ func (a command) newFollowingCommand() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "following",
 		Short: "Browse new works from followed users",
-		Args:  a.data.ExactArgs(0, "pixiv timeline following --type illust|novel"),
+		Args:  a.data.ExactArgs(0, "pixiv timeline following --type artwork|novel"),
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			return a.runFollowing(cmd, opts)
 		},
@@ -91,6 +92,16 @@ func (a command) runFollowing(cmd *cobra.Command, opts options) error {
 	if entity != "artwork" && entity != "novel" {
 		return errors.New("type must be one of: artwork, novel")
 	}
+	var artworkFilter searchfilter.Filter
+	if entity == "artwork" {
+		contentType, err := searchfilter.NormalizeContentType(opts.artworkType)
+		if err != nil {
+			return err
+		}
+		artworkFilter.ContentType = contentType
+	} else if cmd.Flags().Changed("content-type") {
+		return errors.New("--content-type is only supported when --type artwork")
+	}
 	plan, request, jsonOut, ndjson, err := a.resolve(cmd, opts)
 	if err != nil {
 		return err
@@ -101,7 +112,9 @@ func (a command) runFollowing(cmd *cobra.Command, opts options) error {
 			if err != nil {
 				return nil, sdk.Cursor{}, err
 			}
-			return result.Items, result.Next, nil
+			// following upstream 只提供 restrict，没有 content_type；必须在保留
+			// upstream cursor 的同时本地筛选，才能让 logical limit 跨批次补足。
+			return filterFollowingArtworks(result.Items, artworkFilter), result.Next, nil
 		}
 		return a.runner().RunPooledIllustList(cmd.Context(), listing.Request(request), plan, jsonOut, ndjson, "new artworks from followed users", fetch,
 			func(items []pixiv.Artwork, start int) error { return printArtworks(a.data.Output, items) })
@@ -128,6 +141,9 @@ func (a command) runLatest(cmd *cobra.Command, opts options) error {
 	}
 	if entity != "artwork" && entity != "novel" {
 		return errors.New("type must be one of: artwork, novel")
+	}
+	if entity == "novel" && cmd.Flags().Changed("content-type") {
+		return errors.New("--content-type is only supported when --type artwork")
 	}
 	if entity == "artwork" && opts.artworkType != string(pixiv.SearchContentTypeIllust) && opts.artworkType != string(pixiv.SearchContentTypeManga) {
 		return errors.New("content-type must be one of: illust, manga")
@@ -213,4 +229,17 @@ func printNovels(out io.Writer, items []pixiv.Novel) error {
 		}
 	}
 	return nil
+}
+
+func filterFollowingArtworks(items []pixiv.Artwork, filter searchfilter.Filter) []pixiv.Artwork {
+	if filter.ContentType == "" || filter.ContentType == searchfilter.ContentTypeAll {
+		return items
+	}
+	filtered := make([]pixiv.Artwork, 0, len(items))
+	for _, item := range items {
+		if filter.Matches(item.XRestrict, string(item.Kind)) {
+			filtered = append(filtered, item)
+		}
+	}
+	return filtered
 }

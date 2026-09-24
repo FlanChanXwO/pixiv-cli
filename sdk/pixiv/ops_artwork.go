@@ -9,134 +9,10 @@ import (
 	"github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/endpoint/artwork/ranking"
 	"github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/endpoint/artwork/recommended"
 	"github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/endpoint/artwork/related"
-	artworksearch "github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/endpoint/artwork/search"
 	"github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/endpoint/artwork/series"
 	"github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/endpoint/artwork/timeline"
 	"github.com/FlanChanXwO/pixiv-cli/sdk"
 )
-
-// SearchArtworks searches artworks. Repeat the original request fields when
-// continuing with a non-zero Cursor.
-func (c *Client) SearchArtworks(ctx context.Context, request SearchArtworksRequest) (sdk.Page[Artwork], error) {
-	if err := validateSearchWord("SearchArtworks", request.Word); err != nil {
-		return sdk.Page[Artwork]{}, err
-	}
-	if request.Offset < 0 {
-		return sdk.Page[Artwork]{}, newError("SearchArtworks", sdk.InvalidArgument, "offset must be non-negative")
-	}
-	if err := validateSearchArtworksRequest("SearchArtworks", request); err != nil {
-		return sdk.Page[Artwork]{}, err
-	}
-	if err := validateBookmarkRange("SearchArtworks", request.BookmarkMin, request.BookmarkMax); err != nil {
-		return sdk.Page[Artwork]{}, err
-	}
-	if request.Target == "" {
-		request.Target = SearchTargetPartialMatchForTags
-	}
-	if request.Sort == "" {
-		request.Sort = SortModeDateDesc
-	}
-	query := url.Values{}
-	if request.Word != "" {
-		query.Set("word", request.Word)
-	}
-	if request.Target != "" {
-		query.Set("search_target", string(request.Target))
-	}
-	if request.Sort != "" {
-		query.Set("sort", string(request.Sort))
-	}
-	if request.Duration != "" {
-		query.Set("duration", string(request.Duration))
-	}
-	if request.StartDate != "" {
-		query.Set("start_date", request.StartDate)
-	}
-	if request.EndDate != "" {
-		query.Set("end_date", request.EndDate)
-	}
-	if request.ContentType != "" && request.ContentType != SearchContentTypeAll {
-		query.Set("content_type", string(request.ContentType))
-	}
-	if request.AIMode != "" && request.AIMode != SearchAIModeAll {
-		// The App adapter uses search_ai_type=0 for both all and only. Keep the
-		// public mode in the cursor digest so changing local filtering cannot
-		// reuse a continuation produced for another result set.
-		query.Set("ai_mode", string(request.AIMode))
-	}
-	if request.AspectRatio != "" && request.AspectRatio != SearchAspectRatioAll {
-		query.Set("ratio_pattern", string(request.AspectRatio))
-	}
-	if request.Resolution != "" && request.Resolution != SearchResolutionAll {
-		query.Set("resolution", string(request.Resolution))
-	}
-	if request.Tool != "" {
-		query.Set("tool", request.Tool)
-	}
-	if request.BookmarkMin != nil {
-		query.Set("bookmark_num_min", itoa(int64(*request.BookmarkMin)))
-	}
-	if request.BookmarkMax != nil {
-		query.Set("bookmark_num_max", itoa(int64(*request.BookmarkMax)))
-	}
-	if request.Offset > 0 {
-		// 只绑定初始窗口；上游 offset 由当前 cursor 或首次请求决定。
-		query.Set("initial_offset", itoa(int64(request.Offset)))
-	}
-	offset, err := c.continuationOffset("SearchArtworks", query, request.Cursor)
-	if err != nil {
-		return sdk.Page[Artwork]{}, err
-	}
-	if request.Cursor.IsZero() {
-		offset = request.Offset
-	}
-	filters := artworksearch.Filters{
-		AIMode:      string(request.AIMode),
-		ContentType: string(request.ContentType),
-		AspectRatio: string(request.AspectRatio),
-		Resolution:  string(request.Resolution),
-		Tool:        request.Tool,
-		BookmarkMin: request.BookmarkMin,
-		BookmarkMax: request.BookmarkMax,
-	}
-	result, err := c.artworkSearch.Search(ctx, artworksearch.Request{
-		Word:      request.Word,
-		Target:    string(request.Target),
-		Sort:      string(request.Sort),
-		Duration:  string(request.Duration),
-		StartDate: request.StartDate,
-		EndDate:   request.EndDate,
-		Offset:    offset,
-		Filters:   filters,
-	})
-	if err != nil {
-		return sdk.Page[Artwork]{}, classifyAppError(err, "SearchArtworks")
-	}
-	items := make([]Artwork, len(result.Items))
-	for index, item := range result.Items {
-		items[index], err = c.mapArtworkEntity(item)
-		if err != nil {
-			return sdk.Page[Artwork]{}, err
-		}
-	}
-	page := sdk.Page[Artwork]{Items: items}
-	if result.HasNext {
-		page.Next, err = c.buildCursor("SearchArtworks", query, "offset", int64(result.NextOffset), true)
-		if err != nil {
-			return sdk.Page[Artwork]{}, err
-		}
-	}
-	if request.AIMode == SearchAIModeOnly {
-		filtered := make([]Artwork, 0, len(page.Items))
-		for _, artwork := range page.Items {
-			if artwork.AIType == 2 {
-				filtered = append(filtered, artwork)
-			}
-		}
-		page.Items = filtered
-	}
-	return page, nil
-}
 
 // Artwork returns one artwork by its stable ID, including every image page.
 func (c *Client) Artwork(ctx context.Context, request ArtworkRequest) (Artwork, error) {
@@ -168,15 +44,15 @@ func (c *Client) RelatedArtworks(ctx context.Context, request RelatedArtworksReq
 		return sdk.Page[Artwork]{}, newError("RelatedArtworks", sdk.InvalidArgument, "artwork ID must be positive")
 	}
 	query := url.Values{"illust_id": {itoa(request.ArtworkID)}}
-	offset, err := c.continuationOffset("RelatedArtworks", query, request.Cursor)
+	params, err := c.continuationParams("RelatedArtworks", query, request.Cursor)
 	if err != nil {
 		return sdk.Page[Artwork]{}, err
 	}
-	list, err := c.artworkRelated.List(ctx, related.Request{ArtworkID: request.ArtworkID, Offset: offset})
+	list, err := c.artworkRelated.List(ctx, related.Request{ArtworkID: request.ArtworkID, ContinuationParams: params})
 	if err != nil {
 		return sdk.Page[Artwork]{}, classifyAppError(err, "RelatedArtworks")
 	}
-	return c.artworkPage("RelatedArtworks", query, "offset", list.Items, int64(list.NextOffset), list.HasNext)
+	return c.artworkParamsPage("RelatedArtworks", query, list.Items, list.NextParams, list.HasNext)
 }
 
 // ArtworkSeries lists artworks within one illustration series.
@@ -185,15 +61,39 @@ func (c *Client) ArtworkSeries(ctx context.Context, request ArtworkSeriesRequest
 		return sdk.Page[Artwork]{}, newError("ArtworkSeries", sdk.InvalidArgument, "series ID must be positive")
 	}
 	query := url.Values{"illust_series_id": {itoa(request.SeriesID)}}
-	lastOrder, err := c.continuationValue("ArtworkSeries", query, request.Cursor, "last_order")
-	if err != nil {
-		return sdk.Page[Artwork]{}, err
+	continuationKey := ""
+	continuationValue := int64(0)
+	if !request.Cursor.IsZero() {
+		key, value, err := c.continuationFromCursor("ArtworkSeries", query, request.Cursor)
+		if err != nil {
+			return sdk.Page[Artwork]{}, err
+		}
+		if value <= 0 {
+			return sdk.Page[Artwork]{}, newError("ArtworkSeries", sdk.InvalidCursor, "cursor continuation value must be positive")
+		}
+		switch key {
+		case "offset":
+			if int64(int(value)) != value {
+				return sdk.Page[Artwork]{}, newError("ArtworkSeries", sdk.InvalidCursor, "cursor continuation offset is out of range")
+			}
+		case "last_order":
+		default:
+			return sdk.Page[Artwork]{}, newError("ArtworkSeries", sdk.InvalidCursor, "cursor continuation kind mismatch")
+		}
+		continuationKey, continuationValue = key, value
 	}
-	list, err := c.artworkSeries.List(ctx, series.Request{SeriesID: request.SeriesID, LastOrder: lastOrder})
+	seriesRequest := series.Request{SeriesID: request.SeriesID}
+	switch continuationKey {
+	case "offset":
+		seriesRequest.Offset = continuationValue
+	case "last_order":
+		seriesRequest.LastOrder = continuationValue
+	}
+	list, err := c.artworkSeries.List(ctx, seriesRequest)
 	if err != nil {
 		return sdk.Page[Artwork]{}, classifyAppError(err, "ArtworkSeries")
 	}
-	return c.artworkPage("ArtworkSeries", query, "last_order", list.Items, list.NextLastOrder, list.HasNext)
+	return c.artworkPage("ArtworkSeries", query, list.NextKey, list.Items, list.NextValue, list.HasNext)
 }
 
 // ArtworkRanking lists the current artwork ranking.
@@ -211,7 +111,7 @@ func (c *Client) ArtworkRanking(ctx context.Context, request ArtworkRankingReque
 	if request.Date != "" {
 		query.Set("date", request.Date)
 	}
-	offset, err := c.continuationOffset("ArtworkRanking", query, request.Cursor)
+	offset, err := c.continuationPositiveOffset("ArtworkRanking", query, request.Cursor)
 	if err != nil {
 		return sdk.Page[Artwork]{}, err
 	}
@@ -222,28 +122,34 @@ func (c *Client) ArtworkRanking(ctx context.Context, request ArtworkRankingReque
 	return c.artworkPage("ArtworkRanking", query, "offset", list.Items, int64(list.NextOffset), list.HasNext)
 }
 
-// RecommendedArtworks lists recommended artworks.
+// RecommendedArtworks lists recommended artworks. 上游以多参数 next_url
+// 表达续页（offset=0 特例 + bookmark 游标 + viewed 下标数组），cursor 以
+// 结构化参数集整体回放，不保存 raw next_url。
 func (c *Client) RecommendedArtworks(ctx context.Context, request RecommendedArtworksRequest) (sdk.Page[Artwork], error) {
 	query := url.Values{}
-	offset, contExists, err := c.continuationOffsetExists("RecommendedArtworks", query, request.Cursor)
+	params, err := c.continuationParams("RecommendedArtworks", query, request.Cursor)
 	if err != nil {
 		return sdk.Page[Artwork]{}, err
 	}
-	list, err := c.artworkRecommended.List(ctx, recommended.Request{Offset: offset, ContinuationExists: contExists})
+	list, err := c.artworkRecommended.List(ctx, recommended.Request{ContinuationParams: params})
 	if err != nil {
 		return sdk.Page[Artwork]{}, classifyAppError(err, "RecommendedArtworks")
 	}
-	return c.artworkPage("RecommendedArtworks", query, "offset", list.Items, int64(list.NextOffset), list.HasNext)
+	return c.artworkParamsPage("RecommendedArtworks", query, list.Items, list.NextParams, list.HasNext)
 }
 
 // FollowingArtworks lists artworks by followed users.
 func (c *Client) FollowingArtworks(ctx context.Context, request FollowingArtworksRequest) (sdk.Page[Artwork], error) {
-	query := url.Values{"restrict": {string(request.Restrict)}}
-	offset, err := c.continuationOffset("FollowingArtworks", query, request.Cursor)
+	restrict, err := normalizeFollowingRestrict("FollowingArtworks", request.Restrict)
 	if err != nil {
 		return sdk.Page[Artwork]{}, err
 	}
-	list, err := c.artworkTimeline.List(ctx, timeline.Request{Kind: timeline.Following, Restrict: string(request.Restrict), Offset: offset})
+	query := url.Values{"restrict": {string(restrict)}}
+	offset, err := c.continuationPositiveOffset("FollowingArtworks", query, request.Cursor)
+	if err != nil {
+		return sdk.Page[Artwork]{}, err
+	}
+	list, err := c.artworkTimeline.List(ctx, timeline.Request{Kind: timeline.Following, Restrict: string(restrict), Offset: offset})
 	if err != nil {
 		return sdk.Page[Artwork]{}, classifyAppError(err, "FollowingArtworks")
 	}
@@ -253,9 +159,9 @@ func (c *Client) FollowingArtworks(ctx context.Context, request FollowingArtwork
 // LatestArtworks lists the newest artworks.
 func (c *Client) LatestArtworks(ctx context.Context, request LatestArtworksRequest) (sdk.Page[Artwork], error) {
 	query := url.Values{}
-	contentType := string(request.ContentType)
-	if contentType == "" {
-		contentType = "illust"
+	contentType, err := normalizeLatestArtworkContentType("LatestArtworks", request.ContentType)
+	if err != nil {
+		return sdk.Page[Artwork]{}, err
 	}
 	// Bind the resolved content type into the cursor digest so a continuation
 	// produced for one feed (e.g. illust) cannot be replayed against another
@@ -270,8 +176,15 @@ func (c *Client) LatestArtworks(ctx context.Context, request LatestArtworksReque
 		}
 		switch key {
 		case "offset":
+			// 两种兼容续页形式都必须指向真实的下一页；接受零值会重放首页。
+			if value <= 0 || int64(int(value)) != value {
+				return sdk.Page[Artwork]{}, newError("LatestArtworks", sdk.InvalidCursor, "cursor continuation offset must be positive")
+			}
 			offset = int(value)
 		case "max_illust_id":
+			if value <= 0 {
+				return sdk.Page[Artwork]{}, newError("LatestArtworks", sdk.InvalidCursor, "cursor continuation value must be positive")
+			}
 			maxIllustID = value
 		default:
 			return sdk.Page[Artwork]{}, newError("LatestArtworks", sdk.InvalidCursor, "cursor continuation kind mismatch")
@@ -289,9 +202,12 @@ func (c *Client) UserArtworks(ctx context.Context, request UserArtworksRequest) 
 	if request.UserID <= 0 {
 		return sdk.Page[Artwork]{}, newError("UserArtworks", sdk.InvalidArgument, "user ID must be positive")
 	}
-	kind := string(request.Kind)
+	kind, err := normalizeUserArtworkKind("UserArtworks", request.Kind)
+	if err != nil {
+		return sdk.Page[Artwork]{}, err
+	}
 	query := url.Values{"user_id": {itoa(request.UserID)}, "type": {kind}}
-	offset, err := c.continuationOffset("UserArtworks", query, request.Cursor)
+	offset, err := c.continuationPositiveOffset("UserArtworks", query, request.Cursor)
 	if err != nil {
 		return sdk.Page[Artwork]{}, err
 	}
@@ -314,7 +230,7 @@ func (c *Client) UserArtworkBookmarks(ctx context.Context, request UserArtworkBo
 	if request.Tag != "" {
 		query.Set("tag", request.Tag)
 	}
-	maxID, err := c.continuationValue("UserArtworkBookmarks", query, request.Cursor, "max_bookmark_id")
+	maxID, err := c.continuationPositiveValue("UserArtworkBookmarks", query, request.Cursor, "max_bookmark_id")
 	if err != nil {
 		return sdk.Page[Artwork]{}, err
 	}
@@ -335,7 +251,7 @@ func (c *Client) UserArtworkBookmarkTags(ctx context.Context, request UserArtwor
 		return sdk.Page[BookmarkTag]{}, err
 	}
 	query := url.Values{"user_id": {itoa(request.UserID)}, "restrict": {string(request.Restrict)}}
-	offset, err := c.continuationOffset("UserArtworkBookmarkTags", query, request.Cursor)
+	offset, err := c.continuationPositiveOffset("UserArtworkBookmarkTags", query, request.Cursor)
 	if err != nil {
 		return sdk.Page[BookmarkTag]{}, err
 	}
@@ -357,7 +273,7 @@ func (c *Client) UserArtworkBookmarkTags(ctx context.Context, request UserArtwor
 // MyPixivArtworks lists artworks from the current user's MyPixiv feed.
 func (c *Client) MyPixivArtworks(ctx context.Context, request MyPixivArtworksRequest) (sdk.Page[Artwork], error) {
 	query := url.Values{}
-	offset, err := c.continuationOffset("MyPixivArtworks", query, request.Cursor)
+	offset, err := c.continuationPositiveOffset("MyPixivArtworks", query, request.Cursor)
 	if err != nil {
 		return sdk.Page[Artwork]{}, err
 	}
@@ -404,7 +320,7 @@ func (c *Client) ArtworkComments(ctx context.Context, request ArtworkCommentsReq
 		return CommentPage{}, newError("ArtworkComments", sdk.InvalidArgument, "artwork ID must be positive")
 	}
 	query := url.Values{"illust_id": {itoa(request.ArtworkID)}}
-	offset, err := c.continuationOffset("ArtworkComments", query, request.Cursor)
+	offset, err := c.continuationPositiveOffset("ArtworkComments", query, request.Cursor)
 	if err != nil {
 		return CommentPage{}, err
 	}

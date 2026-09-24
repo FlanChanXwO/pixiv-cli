@@ -17,9 +17,9 @@ func printArtworks(out io.Writer, items []pixiv.Artwork) error {
 		}
 		tags := make([]string, 0, len(item.Tags))
 		for _, tag := range item.Tags {
-			tags = append(tags, tag.Name)
+			tags = append(tags, text.SafeLine(tag.Name))
 		}
-		if _, err := fmt.Fprintf(out, "%d %q by %s bookmarks:%d views:%d tags:%s\n", item.ID, item.Title, item.User.Name, item.TotalBookmarks, item.TotalViews, strings.Join(tags, ",")); err != nil {
+		if _, err := fmt.Fprintf(out, "%d %q by %s bookmarks:%d views:%d tags:%s\n", item.ID, item.Title, text.SafeLine(item.User.Name), item.TotalBookmarks, item.TotalViews, strings.Join(tags, ",")); err != nil {
 			return err
 		}
 	}
@@ -28,7 +28,7 @@ func printArtworks(out io.Writer, items []pixiv.Artwork) error {
 
 func printNovels(out io.Writer, items []pixiv.Novel) error {
 	for _, item := range items {
-		if _, err := fmt.Fprintf(out, "%d %s — %s\n", item.ID, item.Title, item.User.Name); err != nil {
+		if _, err := fmt.Fprintf(out, "%d %s — %s\n", item.ID, text.SafeLine(item.Title), text.SafeLine(item.User.Name)); err != nil {
 			return err
 		}
 	}
@@ -37,7 +37,7 @@ func printNovels(out io.Writer, items []pixiv.Novel) error {
 
 func printUserPreviews(out io.Writer, users []pixiv.UserPreview) error {
 	for _, item := range users {
-		if _, err := fmt.Fprintf(out, "%d %s\n", item.User.ID, item.User.Name); err != nil {
+		if _, err := fmt.Fprintf(out, "%d %s\n", item.User.ID, text.SafeLine(item.User.Name)); err != nil {
 			return err
 		}
 	}
@@ -67,25 +67,25 @@ func printUserSearchPreviews(out io.Writer, items []pixiv.UserPreview) error {
 func printUserDetail(out io.Writer, result pixiv.UserDetail) error {
 	lines := []string{fmt.Sprintf("user id: %d", result.User.ID)}
 	if result.User.Name != "" {
-		lines = append(lines, fmt.Sprintf("name: %s", result.User.Name))
+		lines = append(lines, fmt.Sprintf("name: %s", text.SafeLine(result.User.Name)))
 	}
 	if result.User.Account != "" {
-		lines = append(lines, fmt.Sprintf("account: %s", result.User.Account))
+		lines = append(lines, fmt.Sprintf("account: %s", text.SafeLine(result.User.Account)))
 	}
 	if result.User.Comment != "" {
-		lines = append(lines, fmt.Sprintf("comment: %s", result.User.Comment))
+		lines = append(lines, fmt.Sprintf("comment: %s", text.SafeLine(result.User.Comment)))
 	}
 	if webpage := publicWebpage(result.Profile.Webpage); webpage != "" {
-		lines = append(lines, fmt.Sprintf("webpage: %s", webpage))
+		lines = append(lines, fmt.Sprintf("webpage: %s", text.SafeLine(webpage)))
 	}
 	if result.Profile.Region != "" {
-		lines = append(lines, fmt.Sprintf("region: %s", result.Profile.Region))
+		lines = append(lines, fmt.Sprintf("region: %s", text.SafeLine(result.Profile.Region)))
 	}
 	if result.Profile.CountryCode != "" {
-		lines = append(lines, fmt.Sprintf("country: %s", result.Profile.CountryCode))
+		lines = append(lines, fmt.Sprintf("country: %s", text.SafeLine(result.Profile.CountryCode)))
 	}
 	if result.Profile.Job != "" {
-		lines = append(lines, fmt.Sprintf("job: %s", result.Profile.Job))
+		lines = append(lines, fmt.Sprintf("job: %s", text.SafeLine(result.Profile.Job)))
 	}
 	lines = append(lines,
 		fmt.Sprintf("artworks: %d", result.Profile.TotalIllusts),
@@ -111,7 +111,7 @@ func printUserDetail(out io.Writer, result pixiv.UserDetail) error {
 		{"workspace comment", result.Workspace.Comment},
 	} {
 		if field.value != "" {
-			lines = append(lines, fmt.Sprintf("%s: %s", field.name, field.value))
+			lines = append(lines, fmt.Sprintf("%s: %s", field.name, text.SafeLine(field.value)))
 		}
 	}
 	for _, line := range lines {

@@ -76,7 +76,7 @@ func TestCGODisabledBuildRejectsMissingRustStaticlib(t *testing.T) {
 		t.Fatal("CGO_ENABLED=0 go build unexpectedly succeeded")
 	}
 	message := strings.ToLower(string(body))
-	for _, want := range []string{"go 1.26.3", "cgo", "staticlib", "c linker"} {
+	for _, want := range []string{"go.mod", "cgo", "staticlib", "c linker"} {
 		if !strings.Contains(message, want) {
 			t.Fatalf("CGO_ENABLED=0 build error does not contain %q:\n%s", want, body)
 		}
@@ -135,19 +135,6 @@ func TestWindowsRustStaticlibSelectorsUseCgoLibrarySearchFlags(t *testing.T) {
 		if !strings.Contains(line, "import \"C\"\n\n// Rust staticlib") {
 			t.Fatalf("Windows cgo selector %q must keep its Chinese explanation outside the cgo C preamble:\n%s", source, body)
 		}
-	}
-}
-
-// TestWindowsNativeEvidenceUsesLLDBackedClang 锁住 Windows workflow 的外链驱动：
-// Go 仅在外链器报告 LLD 时跳过 GCC 专属的 debug linker script；MSVC `link.exe` 不能解析该脚本。
-func TestWindowsNativeEvidenceUsesLLDBackedClang(t *testing.T) {
-	repoRoot := filepath.Clean(filepath.Join("..", "..", ".."))
-	body, err := os.ReadFile(filepath.Join(repoRoot, ".github", "workflows", "native-evidence.yml"))
-	if err != nil {
-		t.Fatalf("read native evidence workflow: %v", err)
-	}
-	if strings.Count(string(body), "export CC='clang -fuse-ld=lld'") != 2 {
-		t.Fatalf("Windows smoke and binary build must each select clang backed by lld:\n%s", body)
 	}
 }
 

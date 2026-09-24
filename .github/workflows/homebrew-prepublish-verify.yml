@@ -7,14 +7,12 @@ on:
         description: Existing public stable Release tag to verify or recover
         required: true
         type: string
-      deploy:
-        description: Deploy the formula only after the four native checks pass
-        required: false
-        default: false
-        type: boolean
+      # 该 workflow 只做发布前验证与恢复核验，不再拥有 deploy 分支：Homebrew 的
+      # 唯一发布入口是 publish-homebrew.yml（消费 immutable handoff）。保留第二个
+      # 写 tap 的路径会让发布绕过 handoff/checksum 校验（§18/§25.3）。
 
 # 手动恢复只从执行所在的默认分支读取受审 workflow；输入 tag 仅绑定已公开的 Release
-# 资产。deploy 默认关闭；即使显式开启，也必须先经过四个原生 Homebrew 安装门禁。
+# 资产。该 workflow 验证安装链是否可用，但不写入 tap。
 env:
   RELEASE_TAG: ${{ inputs.release_tag }}
 
@@ -28,13 +26,14 @@ jobs:
     permissions:
       contents: read
     steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
+          fetch-depth: 0
           persist-credentials: false
           ref: ${{ github.sha }}
-      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e
         with:
-          go-version: '1.26.3'
+          go-version-file: go.mod
       - name: Validate the manual tag and the public Release
         shell: bash
         env:
@@ -43,24 +42,8 @@ jobs:
         run: |
           set -euo pipefail
           test "$GITHUB_REF" = "refs/heads/$DEFAULT_BRANCH"
-          go run ./scripts/cmd/releaseassets validate --version "${RELEASE_TAG#v}"
-          case "$RELEASE_TAG" in
-            v[0-9]*) ;;
-            *) printf '%s\n' 'release tag must start with v and a digit' >&2; exit 1 ;;
-          esac
-          gh api "repos/$GITHUB_REPOSITORY/releases/tags/$RELEASE_TAG" > release.json
-          python3 - "$RELEASE_TAG" release.json <<'PY'
-          import json
-          import pathlib
-          import sys
-
-          tag = sys.argv[1]
-          release = json.loads(pathlib.Path(sys.argv[2]).read_text(encoding="utf-8"))
-          if release.get("tag_name") != tag:
-              raise SystemExit("release tag does not match the requested tag")
-          if release.get("draft") or release.get("prerelease") or not release.get("published_at"):
-              raise SystemExit("requested release must already be public and stable")
-          PY
+          go run ./tools/release verify-source --tag "$RELEASE_TAG" --default-branch "$DEFAULT_BRANCH"
+          go run ./tools/release verify-published-release --repository "$GITHUB_REPOSITORY" --tag "$RELEASE_TAG" --stable
 
   render_stable_formula:
     name: Render a stable formula from Release checksums
@@ -69,13 +52,13 @@ jobs:
     permissions:
       contents: read
     steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           persist-credentials: false
           ref: ${{ github.sha }}
-      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e
         with:
-          go-version: '1.26.3'
+          go-version-file: go.mod
       - name: Download only the public Release checksums
         shell: bash
         env:
@@ -98,13 +81,13 @@ jobs:
             --checksums verified-release/checksums.txt \
             --output staging-formula/pixiv-cli.rb
           printf '%s\n' pixiv-cli > staging-formula/formula-name
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
           name: staging-homebrew-formula
           path: staging-formula
           if-no-files-found: error
           retention-days: 1
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
           name: verified-release-checksums
           path: verified-release/checksums.txt
@@ -134,7 +117,7 @@ jobs:
             os: linux
             arch: arm64
     steps:
-      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
         with:
           name: staging-homebrew-formula
           path: staging-formula
@@ -175,57 +158,3 @@ jobs:
             brew install --formula "$staging_tap/$formula_name"
             test "$(pixiv --version)" = "pixiv $RELEASE_TAG"
           fi
-
-  deploy_homebrew_tap:
-    name: Deploy the verified Homebrew formula
-    needs: verify_homebrew_formula
-    if: inputs.deploy == true
-    runs-on: ubuntu-24.04
-    environment: release
-    permissions:
-      contents: read
-    steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
-        with:
-          persist-credentials: false
-          ref: ${{ github.sha }}
-      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
-        with:
-          name: staging-homebrew-formula
-          path: staging-formula
-      - name: Stage exactly one verified formula
-        shell: bash
-        run: |
-          set -euo pipefail
-          formula_name=$(cat staging-formula/formula-name)
-          test "$formula_name" = pixiv-cli
-          test "$(find staging-formula -maxdepth 1 -type f -print | LC_ALL=C sort)" = "$(printf '%s\n%s\n' staging-formula/formula-name staging-formula/pixiv-cli.rb | LC_ALL=C sort)"
-          tap_dir="$RUNNER_TEMP/homebrew-tap"
-          git clone https://github.com/FlanChanXwO/homebrew-tap.git "$tap_dir"
-          git -C "$tap_dir" config user.name github-actions[bot]
-          git -C "$tap_dir" config user.email 41898282+github-actions[bot]@users.noreply.github.com
-          mkdir -p "$tap_dir/Formula"
-          cp staging-formula/pixiv-cli.rb "$tap_dir/Formula/pixiv-cli.rb"
-          git -C "$tap_dir" add -- Formula/pixiv-cli.rb
-          staged=$(git -C "$tap_dir" diff --cached --name-only)
-          test "$staged" = "" || test "$staged" = Formula/pixiv-cli.rb
-          test -z "$(git -C "$tap_dir" status --porcelain | sed -n '\|^?? |p')"
-          if [ -n "$staged" ]; then
-            git -C "$tap_dir" commit -m "${RELEASE_TAG}: update pixiv-cli formula"
-          fi
-      - name: Push with the release Environment deploy key
-        shell: bash
-        env:
-          HOMEBREW_TAP_DEPLOY_KEY: ${{ secrets.HOMEBREW_TAP_DEPLOY_KEY }}
-        run: |
-          set -eu
-          umask 077
-          key_path="$RUNNER_TEMP/homebrew-tap-deploy-key"
-          trap 'rm -f "$key_path"' EXIT HUP INT TERM
-          test -n "$HOMEBREW_TAP_DEPLOY_KEY"
-          printf '%s\n' "$HOMEBREW_TAP_DEPLOY_KEY" > "$key_path"
-          chmod 600 "$key_path"
-          tap_dir="$RUNNER_TEMP/homebrew-tap"
-          git -C "$tap_dir" remote set-url origin git@github.com:FlanChanXwO/homebrew-tap.git
-          GIT_SSH_COMMAND="ssh -i $key_path -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile=$GITHUB_WORKSPACE/templates/homebrew/github.com-known-hosts" \
-            git -C "$tap_dir" push origin HEAD:main

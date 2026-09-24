@@ -44,13 +44,14 @@ type Novel struct {
 	TotalView      int
 }
 
-// Detail 是 novel detail endpoint 的 normalized 结果，系列引用仅保留稳定 ID
-// 与当前上游提供的系列标题。
+// Detail 是 novel detail endpoint 的 normalized 结果，系列引用保留稳定 ID
+// 与当前上游提供的前后系列标题。
 type Detail struct {
-	Novel        Novel
-	SeriesNextID int64
-	SeriesPrevID int64
-	SeriesTitle  string
+	Novel           Novel
+	SeriesNextID    int64
+	SeriesPrevID    int64
+	SeriesTitle     string
+	SeriesPrevTitle string
 }
 
 type Series struct {
@@ -72,4 +73,7 @@ type Comment struct {
 type CommentAccessControl struct {
 	CanComment bool
 	IsLocked   bool
+	// NumericValue 保留当前 App API 标量，不赋予业务含义；CanComment 与
+	// IsLocked 只在上游提供 legacy object shape 时有效。
+	NumericValue *int64
 }

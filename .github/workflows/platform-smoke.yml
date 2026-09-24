@@ -1,104 +1,87 @@
-name: Platform packaged binary smoke
+name: Platform smoke workers
 
 on:
-  pull_request:
-    branches:
-      - main
-  push:
-    branches:
-      - main
-  workflow_dispatch: {}
+  workflow_dispatch:
+    inputs:
+      pr_number:
+        description: Pull request number for this worker run
+        required: false
+        default: ''
+        type: string
+      head_sha:
+        description: Exact source commit to verify
+        required: false
+        default: ''
+        type: string
+      check_run_id:
+        description: PR gate check run to complete
+        required: false
+        default: ''
+        type: string
 
 concurrency:
-  group: platform-smoke-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  group: platform-smoke-worker-${{ inputs.pr_number || github.ref }}
   cancel-in-progress: true
 
 permissions: {}
 
 jobs:
-  # 与 Quality gate 使用相同的严格文档 allowlist，避免 README 等改动占用六个平台 runner。
-  classify_changes:
-    name: Classify change scope
+  setup:
+    name: Resolve platform workers
     runs-on: ubuntu-24.04
-    outputs:
-      docs_only: ${{ steps.scope.outputs.docs_only }}
     permissions:
       contents: read
+    outputs:
+      matrix: ${{ steps.matrix.outputs.matrix }}
     steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
-          fetch-depth: 0
           persist-credentials: false
-      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e
         with:
-          go-version: '1.26.3'
-      - name: Detect documentation-only changes
-        id: scope
+          go-version-file: go.mod
+          cache: false
+      - name: Resolve native platform matrix
+        id: matrix
         shell: bash
-        env:
-          BASE_SHA: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || github.event.before }}
-          HEAD_SHA: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
-        run: |
-          set -euo pipefail
-          if [ "$GITHUB_EVENT_NAME" = workflow_dispatch ]; then
-            printf '%s\n' 'docs_only=false' >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-          go run ./scripts/cmd/changescope --base "$BASE_SHA" --head "$HEAD_SHA" --github-output "$GITHUB_OUTPUT"
+        run: go run ./tools/platformmatrix --capability smoke --github-output "$GITHUB_OUTPUT"
 
-  packaged_binary_smoke:
-    needs: classify_changes
-    if: ${{ needs.classify_changes.outputs.docs_only != 'true' }}
-    name: Packaged binary smoke
+  worker:
+    needs: setup
+    name: Native platform - ${{ matrix.goos }}/${{ matrix.goarch }}
     runs-on: ${{ matrix.runner }}
     permissions:
       contents: read
     env:
       CC: ${{ matrix.cc }}
+      RUSTUP_TOOLCHAIN: ${{ matrix.rust_toolchain }}
     strategy:
       fail-fast: false
-      matrix:
-        include:
-          - runner: macos-15-intel
-            goos: darwin
-            goarch: amd64
-            rust_target: x86_64-apple-darwin
-            cc: clang
-          - runner: macos-15
-            goos: darwin
-            goarch: arm64
-            rust_target: aarch64-apple-darwin
-            cc: clang
-          - runner: ubuntu-22.04
-            goos: linux
-            goarch: amd64
-            rust_target: x86_64-unknown-linux-gnu
-            cc: gcc
-          - runner: ubuntu-22.04-arm
-            goos: linux
-            goarch: arm64
-            rust_target: aarch64-unknown-linux-gnu
-            cc: gcc
-          - runner: windows-2025
-            goos: windows
-            goarch: amd64
-            rust_target: x86_64-pc-windows-msvc
-            cc: clang -fuse-ld=lld
-          - runner: windows-11-arm
-            goos: windows
-            goarch: arm64
-            rust_target: aarch64-pc-windows-msvc
-            cc: clang -fuse-ld=lld
+      matrix: ${{ fromJSON(needs.setup.outputs.matrix) }}
     steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
+          ref: ${{ inputs.pr_number != '' && format('refs/pull/{0}/head', inputs.pr_number) || inputs.head_sha || github.sha }}
           persist-credentials: false
-      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e
         with:
-          go-version: '1.26.3'
-      - name: Install the native Rust target
+          go-version-file: go.mod
+          cache: false
+      - name: Require the requested source
+        if: ${{ inputs.head_sha != '' }}
         shell: bash
-        run: rustup target add '${{ matrix.rust_target }}'
+        env:
+          HEAD_SHA: ${{ inputs.head_sha }}
+        run: test "$(git rev-parse HEAD)" = "$HEAD_SHA"
+      - name: Require the declared native target
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(go env GOOS)" = '${{ matrix.goos }}'
+          test "$(go env GOARCH)" = '${{ matrix.goarch }}'
+      - name: Install the pinned native Rust toolchain
+        shell: bash
+        run: rustup toolchain install '${{ matrix.rust_toolchain }}' --profile minimal --target '${{ matrix.rust_target }}' --no-self-update
       - name: Check vendored Rust sources
         shell: bash
         run: sh scripts/test-rust-vendor.sh
@@ -108,73 +91,108 @@ jobs:
       - name: Test platform OAuth callback integration
         shell: bash
         run: go test ./internal/cli/commands/pixiv/auth/loginhelper -count=1
-      - name: Build the native Rust static library
+      - name: Test Windows login handler wiring
+        if: ${{ matrix.goos == 'windows' }}
         shell: bash
-        run: bash scripts/build-staticlibs.sh --target '${{ matrix.rust_target }}'
-      - name: Run native GIF/APNG smoke
-        shell: bash
-        run: go test ./internal/media/ugoira -run '^TestRustUgoiraEncoderNativeGIFAndAPNG$' -count=1
-      - name: Build and package a versioned binary
+        run: go test ./internal/cli -run '^(TestAuthURLCallback|TestAuthURLHandlerInstall|TestNormalCLIInvocationEnsuresPersistentHandlerWithoutBlockingCommand)$' -count=1
+      - name: Build and package the platform binary
         shell: bash
         run: |
           set -euo pipefail
           version="0.2.0-ci.${GITHUB_RUN_ID}"
-          mkdir -p dist
-          binary='dist/pixiv'
-          if [ '${{ matrix.goos }}' = windows ]; then
-            binary='dist/pixiv.exe'
-          fi
-          go build -trimpath -buildvcs=false \
-            -ldflags "-X github.com/FlanChanXwO/pixiv-cli/internal/shared/buildinfo.Version=v${version}" \
-            -o "$binary" ./cmd/pixiv
-          if [ '${{ matrix.goos }}' = linux ]; then
-            go run ./scripts/cmd/linuxabi --binary "$binary"
-          fi
-          go run ./scripts/cmd/releaseassets package \
-            --repo-root . \
-            --version "$version" \
+          archive=$(sh scripts/build-platform.sh \
             --target '${{ matrix.goos }}/${{ matrix.goarch }}' \
-            --binary "$binary" \
-            --output-dir dist
+            --rust-target '${{ matrix.rust_target }}' \
+            --cc '${{ matrix.cc }}' \
+            --version "$version" \
+            --output-dir dist \
+            --package)
+          printf 'PLATFORM_ARCHIVE=%s\n' "$archive" >> "$GITHUB_ENV"
+      - name: Run native GIF/APNG smoke
+        shell: bash
+        run: |
+          set +e
+          native_smoke_log="$RUNNER_TEMP/native-ugoira-smoke.log"
+          go test ./internal/media/ugoira -run '^TestRustUgoiraEncoderNativeGIFAndAPNG$' -count=1 >"$native_smoke_log" 2>&1
+          status=$?
+          cat "$native_smoke_log"
+          if [ "$status" -ne 0 ]; then
+            message=$(tail -n 40 "$native_smoke_log" | tr '\r\n' ' ' | sed 's/%/%25/g')
+            printf '::error title=Native GIF/APNG smoke::%s\n' "$message"
+            exit "$status"
+          fi
       - name: Extract and smoke the packaged binary
         shell: bash
         run: |
           set -euo pipefail
           version="0.2.0-ci.${GITHUB_RUN_ID}"
-          archive="dist/pixiv-cli_${version}_${{ matrix.goos }}_${{ matrix.goarch }}"
           mkdir -p smoke
           binary='smoke/pixiv'
           if [ '${{ matrix.goos }}' = windows ]; then
-            7z x "${archive}.zip" -osmoke
+            7z x "$PLATFORM_ARCHIVE" -osmoke
             binary='smoke/pixiv.exe'
           else
-            tar -xzf "${archive}.tar.gz" -C smoke
+            tar -xzf "$PLATFORM_ARCHIVE" -C smoke
           fi
           test -f "$binary"
           PIXIV_E2E_BINARY="$(pwd)/$binary" \
           PIXIV_E2E_EXPECTED_VERSION="v${version}" \
           go test ./e2e -run '^TestPixivBinaryPackagedSmoke$' -count=1
 
-  # 分支保护只要求此汇总 job：完整变更必须等全部六个 matrix job 成功，文档改动
-  # 则确认 matrix 被有意跳过，避免缺失 matrix check 导致 PR 永远处于 pending。
-  platform_smoke_gate:
-    name: Platform smoke gate
-    needs:
-      - classify_changes
-      - packaged_binary_smoke
-    if: ${{ always() }}
+  publish:
+    if: ${{ always() && inputs.check_run_id != '' }}
+    needs: [setup, worker]
+    name: Publish platform smoke result
     runs-on: ubuntu-24.04
-    permissions: {}
+    permissions:
+      actions: read
+      checks: write
     steps:
-      - name: Require the expected matrix outcome
+      - name: Publish aggregate platform smoke status
         shell: bash
         env:
-          DOCS_ONLY: ${{ needs.classify_changes.outputs.docs_only }}
-          MATRIX_RESULT: ${{ needs.packaged_binary_smoke.result }}
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          CHECK_RUN_ID: ${{ inputs.check_run_id }}
+          SETUP_RESULT: ${{ needs.setup.result }}
+          WORKER_RESULT: ${{ needs.worker.result }}
         run: |
           set -euo pipefail
-          if [ "$DOCS_ONLY" = true ]; then
-            test "$MATRIX_RESULT" = skipped
-            exit 0
+          state=failure
+          description='Platform smoke failed on one or more required platforms.'
+          failures=
+          if [ "$SETUP_RESULT" != success ]; then
+            description='Platform configuration could not be resolved.'
+          elif [ "$WORKER_RESULT" = success ]; then
+            state=success
+            description='All required native platforms passed.'
+          else
+            failures=$(gh api --method GET "repos/$REPO/actions/runs/$GITHUB_RUN_ID/jobs" \
+              -f filter=all \
+              -f per_page=100 \
+              --jq '.jobs[] | select(.name | startswith("Native platform - ")) | select(.conclusion != "success" and .conclusion != "skipped") | "\(.name) (\(.conclusion // .status))"')
+            if [ -n "$failures" ]; then
+              message=$(printf '%s\n' "$failures" | paste -sd ';' -)
+              description="Platform smoke failed: $message"
+            fi
           fi
-          test "$MATRIX_RESULT" = success
+          run_url="$GITHUB_SERVER_URL/$REPO/actions/runs/$GITHUB_RUN_ID"
+          gh api --method PATCH "repos/$REPO/check-runs/$CHECK_RUN_ID" \
+            -f status=completed \
+            -f conclusion="$state" \
+            -f details_url="$run_url" \
+            -f 'output[title]=Platform smoke worker' \
+            -f "output[summary]=$description" >/dev/null
+          if [ "$state" = success ]; then
+            printf '%s\n' '### Platform smoke' '' "$description" >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "::error title=Platform smoke failed::$description"
+            {
+              printf '%s\n' '### Platform smoke failed' ''
+              if [ -n "$failures" ]; then
+                printf '%s\n' "$failures" | sed 's/^/- /'
+              else
+                printf '%s\n' "- $description"
+              fi
+            } >> "$GITHUB_STEP_SUMMARY"
+          fi

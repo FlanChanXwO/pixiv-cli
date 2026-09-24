@@ -2,7 +2,10 @@ package pixiv_test
 
 import (
 	"context"
+	"encoding/base64"
+	"encoding/json"
 	"errors"
+	"fmt"
 
 	"github.com/FlanChanXwO/pixiv-cli/sdk"
 	"io"
@@ -181,6 +184,38 @@ func TestSearchNovelsWiresQueryAndCursor(t *testing.T) {
 	}
 }
 
+func TestSearchNovelsRejectsNonPositiveContinuationBeforeNetwork(t *testing.T) {
+	calls := 0
+	rt := roundTripFunc(func(req *http.Request) (*http.Response, error) {
+		calls++
+		if calls > 1 {
+			return nil, errors.New("invalid novel search cursor reached transport")
+		}
+		if req.URL.Path != "/v1/search/novel" {
+			t.Errorf("path = %q", req.URL.Path)
+		}
+		return jsonResponse(`{"novels":[],"next_url":"https://app-api.pixiv.net/v1/search/novel?word=novel&offset=30"}`), nil
+	})
+	client, err := NewWith("token", Options{HTTPClient: &http.Client{Transport: rt}})
+	if err != nil {
+		t.Fatalf("NewWith: %v", err)
+	}
+	first, err := client.SearchNovels(context.Background(), SearchNovelsRequest{Word: "novel"})
+	if err != nil {
+		t.Fatalf("SearchNovels first page: %v", err)
+	}
+	_, err = client.SearchNovels(context.Background(), SearchNovelsRequest{
+		Word:   "novel",
+		Cursor: cursorWithPayload(t, first.Next, `{"k":"offset","v":0}`),
+	})
+	if sdk.ReasonOf(err) != sdk.InvalidCursor {
+		t.Fatalf("ReasonOf = %q, want %q (err=%v)", sdk.ReasonOf(err), sdk.InvalidCursor, err)
+	}
+	if calls != 1 {
+		t.Fatalf("invalid continuation reached transport %d time(s)", calls-1)
+	}
+}
+
 func TestSearchUsersWiresQueryAndCursor(t *testing.T) {
 	calls := 0
 	rt := roundTripFunc(func(req *http.Request) (*http.Response, error) {
@@ -224,6 +259,56 @@ func TestSearchUsersWiresQueryAndCursor(t *testing.T) {
 	}
 	if page.Items == nil || len(page.Items) != 0 || !page.Next.IsZero() || calls != 2 {
 		t.Fatalf("second page = %#v calls=%d", page, calls)
+	}
+}
+
+func TestSearchNovelsAndUsersCursorsArePublicScoped(t *testing.T) {
+	newClient := func(userID int64) *Client {
+		rt := roundTripFunc(func(req *http.Request) (*http.Response, error) {
+			if req.URL.Host == "oauth.secure.pixiv.net" {
+				return jsonResponse(fmt.Sprintf(`{"access_token":"access-%d","refresh_token":"refresh-%d","expires_in":3600,"user":{"id":%d}}`, userID, userID, userID)), nil
+			}
+			switch req.URL.Path {
+			case "/v1/search/novel":
+				if req.URL.Query().Get("offset") != "" {
+					return jsonResponse(`{"novels":[],"next_url":null}`), nil
+				}
+				return jsonResponse(`{"novels":[{"id":2001,"title":"novel","create_date":"2026-01-01T00:00:00Z","user":{"id":7,"name":"writer"},"x_restrict":0,"text_length":12,"is_original":true}],"next_url":"https://app-api.pixiv.net/v1/search/novel?word=novel&offset=30"}`), nil
+			case "/v1/search/user":
+				if req.URL.Query().Get("offset") != "" {
+					return jsonResponse(`{"user_previews":[],"next_url":null}`), nil
+				}
+				return jsonResponse(`{"user_previews":[{"user":{"id":3001,"name":"artist"}}],"next_url":"https://app-api.pixiv.net/v1/search/user?word=artist&offset=20"}`), nil
+			default:
+				return nil, errors.New("unexpected path " + req.URL.Path)
+			}
+		})
+		client, _, err := OpenWith(context.Background(), "refresh", Options{HTTPClient: &http.Client{Transport: rt}})
+		if err != nil {
+			t.Fatalf("OpenWith: %v", err)
+		}
+		return client
+	}
+
+	first, second := newClient(42), newClient(43)
+	novelRequest := SearchNovelsRequest{Word: "novel"}
+	page, err := first.SearchNovels(context.Background(), novelRequest)
+	if err != nil {
+		t.Fatalf("SearchNovels first page: %v", err)
+	}
+	novelRequest.Cursor = page.Next
+	if _, err := second.SearchNovels(context.Background(), novelRequest); err != nil {
+		t.Fatalf("SearchNovels public-scoped cursor: %v", err)
+	}
+
+	userRequest := SearchUsersRequest{Word: "artist"}
+	pageUsers, err := first.SearchUsers(context.Background(), userRequest)
+	if err != nil {
+		t.Fatalf("SearchUsers first page: %v", err)
+	}
+	userRequest.Cursor = pageUsers.Next
+	if _, err := second.SearchUsers(context.Background(), userRequest); err != nil {
+		t.Fatalf("SearchUsers public-scoped cursor: %v", err)
 	}
 }
 
@@ -319,11 +404,57 @@ func TestArtworkSeriesWiresCursor(t *testing.T) {
 	}
 }
 
+func TestArtworkSeriesWiresOffsetCursor(t *testing.T) {
+	calls := 0
+	rt := roundTripFunc(func(req *http.Request) (*http.Response, error) {
+		calls++
+		if req.URL.Path != "/v1/illust/series" {
+			t.Errorf("path = %q", req.URL.Path)
+		}
+		query := req.URL.Query()
+		if query.Get("illust_series_id") != "5001" {
+			t.Errorf("series id = %q", query.Get("illust_series_id"))
+		}
+		wantOffset := ""
+		if calls == 2 {
+			wantOffset = "30"
+		}
+		if query.Get("offset") != wantOffset || query.Get("last_order") != "" {
+			t.Errorf("continuation query = %v, want offset=%q and no last_order", query, wantOffset)
+		}
+		body := `{"illust_series_detail":{"user":{"id":7,"name":"artist"}},"illusts":[{"id":5002,"title":"chapter","type":"manga","create_date":"2026-01-01T00:00:00Z","user":{"id":7,"name":"artist"}}],"next_url":"https://app-api.pixiv.net/v1/illust/series?illust_series_id=5001&offset=30"}`
+		if calls == 2 {
+			body = `{"illust_series_detail":{"user":{"id":7,"name":"artist"}},"illusts":[{"id":5003,"title":"chapter 2","type":"manga","create_date":"2026-01-02T00:00:00Z","user":{"id":7,"name":"artist"}}],"next_url":null}`
+		}
+		return &http.Response{StatusCode: http.StatusOK, Header: http.Header{"Content-Type": {"application/json"}}, Body: io.NopCloser(strings.NewReader(body))}, nil
+	})
+	client, err := NewWith("token", Options{HTTPClient: &http.Client{Transport: rt}})
+	if err != nil {
+		t.Fatalf("NewWith: %v", err)
+	}
+	request := ArtworkSeriesRequest{SeriesID: 5001}
+	page, err := client.ArtworkSeries(context.Background(), request)
+	if err != nil {
+		t.Fatalf("ArtworkSeries: %v", err)
+	}
+	if len(page.Items) != 1 || page.Items[0].ID != 5002 || page.Next.IsZero() {
+		t.Fatalf("first page = %#v", page)
+	}
+	request.Cursor = page.Next
+	page, err = client.ArtworkSeries(context.Background(), request)
+	if err != nil {
+		t.Fatalf("ArtworkSeries continuation: %v", err)
+	}
+	if len(page.Items) != 1 || page.Items[0].ID != 5003 || !page.Next.IsZero() || calls != 2 {
+		t.Fatalf("second page = %#v calls=%d", page, calls)
+	}
+}
+
 func TestNovelSeriesWiresCursorAndMetadata(t *testing.T) {
 	calls := 0
 	rt := roundTripFunc(func(req *http.Request) (*http.Response, error) {
 		calls++
-		if req.URL.Path != "/v1/novel/series" {
+		if req.URL.Path != "/v2/novel/series" {
 			t.Errorf("path = %q", req.URL.Path)
 		}
 		query := req.URL.Query()
@@ -337,7 +468,7 @@ func TestNovelSeriesWiresCursorAndMetadata(t *testing.T) {
 		if query.Get("last_order") != wantLastOrder {
 			t.Errorf("last_order = %q, want %q", query.Get("last_order"), wantLastOrder)
 		}
-		body := `{"novel_series_detail":{"id":6001,"title":"series","caption":"caption","is_concluded":true,"user":{"id":8,"name":"writer"}},"novels":[{"id":6002,"title":"chapter","create_date":"2026-01-01T00:00:00Z","user":{"id":8,"name":"writer"}}],"next_url":"https://app-api.pixiv.net/v1/novel/series?series_id=6001&last_order=9"}`
+		body := `{"novel_series_detail":{"id":6001,"title":"series","caption":"caption","is_concluded":true,"user":{"id":8,"name":"writer"}},"novels":[{"id":6002,"title":"chapter","create_date":"2026-01-01T00:00:00Z","user":{"id":8,"name":"writer"}}],"next_url":"https://app-api.pixiv.net/v2/novel/series?series_id=6001&last_order=9"}`
 		if calls == 2 {
 			body = `{"novel_series_detail":{"id":6001,"title":"series","user":{"id":8,"name":"writer"}},"novels":[],"next_url":null}`
 		}
@@ -353,7 +484,8 @@ func TestNovelSeriesWiresCursorAndMetadata(t *testing.T) {
 		t.Fatalf("NovelSeries: %v", err)
 	}
 	if result.Series.ID != 6001 || result.Series.Title != "series" || !result.Series.IsConcluded ||
-		result.Series.User.ID != 8 || len(result.Novels.Items) != 1 || result.Novels.Items[0].ID != 6002 || result.Novels.Next.IsZero() {
+		result.Series.Caption != "caption" || result.Series.User.ID != 8 || result.Series.User.Name != "writer" ||
+		len(result.Novels.Items) != 1 || result.Novels.Items[0].ID != 6002 || result.Novels.Next.IsZero() {
 		t.Fatalf("first result = %#v", result)
 	}
 	request.Cursor = result.Novels.Next
@@ -364,6 +496,129 @@ func TestNovelSeriesWiresCursorAndMetadata(t *testing.T) {
 	if result.Novels.Items == nil || len(result.Novels.Items) != 0 || !result.Novels.Next.IsZero() || calls != 2 {
 		t.Fatalf("second result = %#v calls=%d", result, calls)
 	}
+}
+
+func TestNovelSeriesRejectsNonPositiveContinuationBeforeNetwork(t *testing.T) {
+	calls := 0
+	rt := roundTripFunc(func(req *http.Request) (*http.Response, error) {
+		calls++
+		if calls > 1 {
+			return nil, errors.New("invalid novel series cursor reached transport")
+		}
+		if req.URL.Path != "/v2/novel/series" {
+			t.Errorf("path = %q", req.URL.Path)
+		}
+		return jsonResponse(`{"novel_series_detail":{"id":6001,"user":{"id":8}},"novels":[],"next_url":"https://app-api.pixiv.net/v2/novel/series?series_id=6001&last_order=9"}`), nil
+	})
+	client, err := NewWith("token", Options{HTTPClient: &http.Client{Transport: rt}})
+	if err != nil {
+		t.Fatalf("NewWith: %v", err)
+	}
+	first, err := client.NovelSeries(context.Background(), NovelSeriesRequest{SeriesID: 6001})
+	if err != nil {
+		t.Fatalf("NovelSeries first page: %v", err)
+	}
+	request := NovelSeriesRequest{SeriesID: 6001, Cursor: cursorWithPayload(t, first.Novels.Next, `{"k":"last_order","v":0}`)}
+	_, err = client.NovelSeries(context.Background(), request)
+	if sdk.ReasonOf(err) != sdk.InvalidCursor {
+		t.Fatalf("ReasonOf = %q, want %q (err=%v)", sdk.ReasonOf(err), sdk.InvalidCursor, err)
+	}
+	if calls != 1 {
+		t.Fatalf("invalid continuation reached transport %d time(s)", calls-1)
+	}
+}
+
+func TestUserNovelsRejectsNonPositiveContinuationBeforeNetwork(t *testing.T) {
+	calls := 0
+	rt := roundTripFunc(func(req *http.Request) (*http.Response, error) {
+		calls++
+		if calls > 1 {
+			return nil, errors.New("invalid user novels cursor reached transport")
+		}
+		if req.URL.Path != "/v1/user/novels" {
+			t.Errorf("path = %q", req.URL.Path)
+		}
+		return jsonResponse(`{"novels":[],"next_url":"https://app-api.pixiv.net/v1/user/novels?user_id=77&filter=for_android&offset=30"}`), nil
+	})
+	client, err := NewWith("token", Options{HTTPClient: &http.Client{Transport: rt}})
+	if err != nil {
+		t.Fatalf("NewWith: %v", err)
+	}
+	first, err := client.UserNovels(context.Background(), UserNovelsRequest{UserID: 77})
+	if err != nil {
+		t.Fatalf("UserNovels first page: %v", err)
+	}
+	_, err = client.UserNovels(context.Background(), UserNovelsRequest{
+		UserID: 77,
+		Cursor: cursorWithPayload(t, first.Next, `{"k":"offset","v":0}`),
+	})
+	if sdk.ReasonOf(err) != sdk.InvalidCursor {
+		t.Fatalf("ReasonOf = %q, want %q (err=%v)", sdk.ReasonOf(err), sdk.InvalidCursor, err)
+	}
+	if calls != 1 {
+		t.Fatalf("invalid continuation reached transport %d time(s)", calls-1)
+	}
+}
+
+func TestMyPixivNovelsRejectsNonPositiveContinuationBeforeNetwork(t *testing.T) {
+	calls := 0
+	rt := roundTripFunc(func(req *http.Request) (*http.Response, error) {
+		calls++
+		if calls > 1 {
+			return nil, errors.New("invalid MyPixiv novels cursor reached transport")
+		}
+		if req.URL.Path != "/v1/novel/mypixiv" {
+			t.Errorf("path = %q", req.URL.Path)
+		}
+		return jsonResponse(`{"novels":[],"next_url":"https://app-api.pixiv.net/v1/novel/mypixiv?offset=30"}`), nil
+	})
+	client, err := NewWith("token", Options{HTTPClient: &http.Client{Transport: rt}})
+	if err != nil {
+		t.Fatalf("NewWith: %v", err)
+	}
+	first, err := client.MyPixivNovels(context.Background(), MyPixivNovelsRequest{})
+	if err != nil {
+		t.Fatalf("MyPixivNovels first page: %v", err)
+	}
+	_, err = client.MyPixivNovels(context.Background(), MyPixivNovelsRequest{
+		Cursor: cursorWithPayload(t, first.Next, `{"k":"offset","v":0}`),
+	})
+	if sdk.ReasonOf(err) != sdk.InvalidCursor {
+		t.Fatalf("ReasonOf = %q, want %q (err=%v)", sdk.ReasonOf(err), sdk.InvalidCursor, err)
+	}
+	if calls != 1 {
+		t.Fatalf("invalid continuation reached transport %d time(s)", calls-1)
+	}
+}
+
+func cursorWithPayload(t *testing.T, cursor sdk.Cursor, payload string) sdk.Cursor {
+	t.Helper()
+	text, err := cursor.MarshalText()
+	if err != nil {
+		t.Fatalf("MarshalText: %v", err)
+	}
+	raw, err := base64.RawURLEncoding.DecodeString(string(text))
+	if err != nil {
+		t.Fatalf("Decode cursor: %v", err)
+	}
+	var envelope map[string]json.RawMessage
+	if err := json.Unmarshal(raw, &envelope); err != nil {
+		t.Fatalf("Unmarshal cursor: %v", err)
+	}
+	envelope["pl"], err = json.Marshal([]byte(payload))
+	if err != nil {
+		t.Fatalf("Marshal payload: %v", err)
+	}
+	raw, err = json.Marshal(envelope)
+	if err != nil {
+		t.Fatalf("Marshal cursor: %v", err)
+	}
+	var tampered sdk.Cursor
+	encoded := base64.RawURLEncoding.EncodeToString(raw)
+	if err := tampered.UnmarshalText([]byte(encoded)); err != nil {
+		t.Fatalf("UnmarshalText: %v", err)
+	}
+	return tampered
 }
 
 func TestArtworkCommentsPreserveMetadataAndCursor(t *testing.T) {
@@ -413,10 +668,49 @@ func TestArtworkCommentsPreserveMetadataAndCursor(t *testing.T) {
 	}
 }
 
+func TestArtworkCommentsPreserveNumericAccessControl(t *testing.T) {
+	rt := roundTripFunc(func(req *http.Request) (*http.Response, error) {
+		if req.URL.Path != "/v3/illust/comments" || req.URL.Query().Get("illust_id") != "7001" {
+			t.Errorf("request = %s?%s", req.URL.Path, req.URL.RawQuery)
+		}
+		body := `{"comments":[{"id":7002,"comment":"hello","date":"2026-01-01T00:00:00Z","user":{"id":7,"name":"commenter"}}],"comment_access_control":0,"next_url":null}`
+		return &http.Response{StatusCode: http.StatusOK, Header: http.Header{"Content-Type": {"application/json"}}, Body: io.NopCloser(strings.NewReader(body))}, nil
+	})
+	client, err := NewWith("token", Options{HTTPClient: &http.Client{Transport: rt}})
+	if err != nil {
+		t.Fatalf("NewWith: %v", err)
+	}
+	page, err := client.ArtworkComments(context.Background(), ArtworkCommentsRequest{ArtworkID: 7001})
+	if err != nil {
+		t.Fatalf("ArtworkComments: %v", err)
+	}
+	if page.AccessControl == nil || page.AccessControl.NumericValue == nil || *page.AccessControl.NumericValue != 0 {
+		t.Fatalf("access control = %#v, want preserved numeric zero", page.AccessControl)
+	}
+	if page.AccessControl.CanComment || page.AccessControl.IsLocked {
+		t.Fatalf("numeric access control was assigned object semantics: %#v", page.AccessControl)
+	}
+
+	encoded, err := json.Marshal(ToCommentAccessControlDTO(*page.AccessControl))
+	if err != nil {
+		t.Fatalf("marshal access control DTO: %v", err)
+	}
+	var wire map[string]any
+	if err := json.Unmarshal(encoded, &wire); err != nil {
+		t.Fatalf("decode access control DTO: %v", err)
+	}
+	if wire["comment_access_control"] != float64(0) {
+		t.Fatalf("access control DTO = %s, want opaque numeric value", encoded)
+	}
+	if _, ok := wire["can_comment"]; ok {
+		t.Fatalf("access control DTO invented can_comment: %s", encoded)
+	}
+}
+
 func TestNovelAndUserDetailsWireOperation(t *testing.T) {
 	rt := roundTripFunc(func(req *http.Request) (*http.Response, error) {
 		switch req.URL.Path {
-		case "/v1/novel/detail":
+		case "/v2/novel/detail":
 			if req.URL.Query().Get("novel_id") != "9001" {
 				t.Errorf("novel query = %v", req.URL.Query())
 			}
@@ -621,6 +915,107 @@ func TestLatestArtworksBindsCursorToContentType(t *testing.T) {
 	// The same content type must continue successfully.
 	if _, err := client.LatestArtworks(context.Background(), LatestArtworksRequest{ContentType: SearchContentTypeIllust, Cursor: page.Next}); err != nil {
 		t.Fatalf("continuation LatestArtworks: %v", err)
+	}
+}
+
+func TestFollowingArtworksDefaultsEmptyRestrictAndRejectsUnknownBeforeNetwork(t *testing.T) {
+	calls := 0
+	rt := roundTripFunc(func(req *http.Request) (*http.Response, error) {
+		calls++
+		if req.URL.Path != "/v2/illust/follow" {
+			t.Errorf("path = %s", req.URL.Path)
+		}
+		if got := req.URL.Query().Get("restrict"); got != "public" {
+			t.Errorf("restrict = %q, want %q", got, "public")
+		}
+		return jsonResponse(`{"illusts":[],"next_url":null}`), nil
+	})
+	client, err := NewWith("token", Options{HTTPClient: &http.Client{Transport: rt}})
+	if err != nil {
+		t.Fatalf("NewWith: %v", err)
+	}
+	if _, err := client.FollowingArtworks(context.Background(), FollowingArtworksRequest{}); err != nil {
+		t.Fatalf("empty restrict: %v", err)
+	}
+	if calls != 1 {
+		t.Fatalf("calls after default restrict = %d, want 1", calls)
+	}
+	_, err = client.FollowingArtworks(context.Background(), FollowingArtworksRequest{Restrict: Restrict("friends")})
+	if sdk.ReasonOf(err) != sdk.InvalidArgument {
+		t.Fatalf("unknown restrict reason = %q, want %q", sdk.ReasonOf(err), sdk.InvalidArgument)
+	}
+	if calls != 1 {
+		t.Fatalf("unknown restrict reached transport %d time(s)", calls-1)
+	}
+}
+
+func TestLatestArtworksRejectsUnapprovedContentTypeBeforeNetwork(t *testing.T) {
+	calls := 0
+	rt := roundTripFunc(func(req *http.Request) (*http.Response, error) {
+		calls++
+		return nil, errors.New("latest artwork transport must not be called")
+	})
+	client, err := NewWith("token", Options{HTTPClient: &http.Client{Transport: rt}})
+	if err != nil {
+		t.Fatalf("NewWith: %v", err)
+	}
+	for _, contentType := range []SearchContentType{
+		SearchContentTypeAll,
+		SearchContentTypeIllustAndUgoira,
+		SearchContentTypeUgoira,
+		SearchContentType("unknown"),
+	} {
+		_, err := client.LatestArtworks(context.Background(), LatestArtworksRequest{ContentType: contentType})
+		if sdk.ReasonOf(err) != sdk.InvalidArgument {
+			t.Errorf("content type %q reason = %q, want %q", contentType, sdk.ReasonOf(err), sdk.InvalidArgument)
+		}
+	}
+	if calls != 0 {
+		t.Fatalf("invalid latest content types reached transport %d time(s)", calls)
+	}
+}
+
+func TestUserArtworksNormalizesLegacyKindAndBindsCursorToCanonicalType(t *testing.T) {
+	calls := 0
+	rt := roundTripFunc(func(req *http.Request) (*http.Response, error) {
+		calls++
+		if req.URL.Path != "/v1/user/illusts" {
+			t.Errorf("path = %s", req.URL.Path)
+		}
+		if got := req.URL.Query().Get("user_id"); got != "77" {
+			t.Errorf("user_id = %q, want %q", got, "77")
+		}
+		if got := req.URL.Query().Get("type"); got != "illust" {
+			t.Errorf("type = %q, want %q", got, "illust")
+		}
+		if calls == 2 && req.URL.Query().Get("offset") != "30" {
+			t.Errorf("continuation query = %v", req.URL.Query())
+		}
+		return jsonResponse(`{"illusts":[],"next_url":"https://app-api.pixiv.net/v1/user/illusts?user_id=77&type=illust&offset=30"}`), nil
+	})
+	client, err := NewWith("token", Options{HTTPClient: &http.Client{Transport: rt}})
+	if err != nil {
+		t.Fatalf("NewWith: %v", err)
+	}
+	page, err := client.UserArtworks(context.Background(), UserArtworksRequest{UserID: 77, Kind: ArtworkKindIllustration})
+	if err != nil {
+		t.Fatalf("legacy illustration kind: %v", err)
+	}
+	if page.Next.IsZero() {
+		t.Fatal("expected continuation cursor")
+	}
+	if _, err := client.UserArtworks(context.Background(), UserArtworksRequest{UserID: 77, Kind: ArtworkKind("illust"), Cursor: page.Next}); err != nil {
+		t.Fatalf("canonical illust continuation: %v", err)
+	}
+	if calls != 2 {
+		t.Fatalf("calls after canonical continuation = %d, want 2", calls)
+	}
+	_, err = client.UserArtworks(context.Background(), UserArtworksRequest{UserID: 77, Kind: ArtworkKind("all")})
+	if sdk.ReasonOf(err) != sdk.InvalidArgument {
+		t.Fatalf("unknown user artwork kind reason = %q, want %q", sdk.ReasonOf(err), sdk.InvalidArgument)
+	}
+	if calls != 2 {
+		t.Fatalf("unknown user artwork kind reached transport %d time(s)", calls-2)
 	}
 }
 
@@ -961,6 +1356,30 @@ func TestArtworkPagesPublicMappingDerivesSinglePage(t *testing.T) {
 	}
 }
 
+func TestArtworkPagesPublicMappingDerivesPageIndexesFromOrder(t *testing.T) {
+	rt := roundTripFunc(func(*http.Request) (*http.Response, error) {
+		return jsonResponse(`{"illust":{"id":42,"type":"manga","page_count":2,"create_date":"2026-01-01T00:00:00Z","image_urls":{"original":"https://i.pximg.net/img/42_p0.png"},"meta_pages":[{"image_urls":{"original":"https://i.pximg.net/img/42_p0.png"}},{"image_urls":{"original":"https://i.pximg.net/img/42_p1.png"}}],"user":{"id":7,"name":"artist"}}}`), nil
+	})
+	client, err := NewWith("token", Options{HTTPClient: &http.Client{Transport: rt}})
+	if err != nil {
+		t.Fatalf("NewWith: %v", err)
+	}
+
+	pages, err := client.ArtworkPages(context.Background(), ArtworkPagesRequest{ArtworkID: 42})
+	if err != nil {
+		t.Fatalf("ArtworkPages: %v", err)
+	}
+	if len(pages) != 2 {
+		t.Fatalf("len(pages) = %d, want 2", len(pages))
+	}
+	if pages[0].PageIndex != 0 || pages[1].PageIndex != 1 {
+		t.Fatalf("page indexes = %d, %d; want 0, 1", pages[0].PageIndex, pages[1].PageIndex)
+	}
+	if pages[0].Image.Resource.Ref == pages[1].Image.Resource.Ref {
+		t.Fatalf("page resource refs collide: %q", pages[0].Image.Resource.Ref)
+	}
+}
+
 func TestUgoiraMetadataMapsFramesAndRejectsUnsafeFilename(t *testing.T) {
 	t.Run("valid", func(t *testing.T) {
 		rt := roundTripFunc(func(*http.Request) (*http.Response, error) {
@@ -991,24 +1410,47 @@ func TestUgoiraMetadataMapsFramesAndRejectsUnsafeFilename(t *testing.T) {
 	})
 }
 
-func TestNovelContentPublicParserPreservesUnknownBlock(t *testing.T) {
-	rt := roundTripFunc(func(req *http.Request) (*http.Response, error) {
-		if req.URL.Path != "/v1/novel/content" {
-			t.Fatalf("path = %q", req.URL.Path)
-		}
-		body := `<html><body><div class="novel-view"><div class="novel-body"><p class="noveltext">known text</p><div class="novel_something">unknown block payload</div></div></div></body></html>`
-		return &http.Response{StatusCode: http.StatusOK, Header: http.Header{"Content-Type": {"text/html"}}, Body: io.NopCloser(strings.NewReader(body))}, nil
+func TestNovelContentDeprecatedEntryPointDoesNotCallRejectedEndpoint(t *testing.T) {
+	calls := 0
+	rt := roundTripFunc(func(*http.Request) (*http.Response, error) {
+		calls++
+		return nil, io.ErrUnexpectedEOF
 	})
 	client, err := NewWith("token", Options{HTTPClient: &http.Client{Transport: rt}})
 	if err != nil {
 		t.Fatalf("NewWith: %v", err)
 	}
-	content, err := client.NovelContent(context.Background(), NovelContentRequest{NovelID: 1})
-	if err != nil {
-		t.Fatalf("NovelContent: %v", err)
+	_, err = client.NovelContent(context.Background(), NovelContentRequest{NovelID: 1})
+	if sdk.ReasonOf(err) != sdk.ContentUnavailable {
+		t.Fatalf("reason = %q, want %q", sdk.ReasonOf(err), sdk.ContentUnavailable)
 	}
-	if len(content.Blocks) != 2 || content.Blocks[1].Kind != NovelBlockUnknown || content.Blocks[1].Unknown == nil {
-		t.Fatalf("content = %+v", content)
+	if err == nil || !strings.Contains(err.Error(), "unsupported") {
+		t.Fatalf("error = %v, want an explicit unsupported detail", err)
+	}
+	if calls != 0 {
+		t.Fatalf("rejected novel content endpoint was called %d time(s)", calls)
+	}
+}
+
+func TestSetAIArtworkVisibilityDeprecatedEntryPointDoesNotCallRejectedEndpoint(t *testing.T) {
+	calls := 0
+	rt := roundTripFunc(func(*http.Request) (*http.Response, error) {
+		calls++
+		return nil, io.ErrUnexpectedEOF
+	})
+	client, err := NewWith("token", Options{HTTPClient: &http.Client{Transport: rt}})
+	if err != nil {
+		t.Fatalf("NewWith: %v", err)
+	}
+	err = client.SetAIArtworkVisibility(context.Background(), SetAIArtworkVisibilityRequest{Visible: true})
+	if sdk.ReasonOf(err) != sdk.ContentUnavailable {
+		t.Fatalf("reason = %q, want %q", sdk.ReasonOf(err), sdk.ContentUnavailable)
+	}
+	if err == nil || !strings.Contains(err.Error(), "unsupported") {
+		t.Fatalf("error = %v, want an explicit unsupported detail", err)
+	}
+	if calls != 0 {
+		t.Fatalf("rejected AI visibility endpoint was called %d time(s)", calls)
 	}
 }
 
@@ -1215,7 +1657,7 @@ func TestArtworkBookmarkPreservesBookmarkedAndAbsentStates(t *testing.T) {
 		}
 		body := `{"bookmark_detail":{"is_bookmarked":true,"restrict":"private","tags":[{"name":"cat","is_registered":true},{"name":"fav","is_registered":false}]}}`
 		if calls == 2 {
-			body = `{"bookmark_detail":{"is_bookmarked":false,"restrict":"public","tags":[{"name":"cat","is_registered":false}]}}`
+			body = `{"bookmark_detail":{"is_bookmarked":false,"restrict":"","tags":[]}}`
 		}
 		return &http.Response{StatusCode: http.StatusOK, Header: http.Header{"Content-Type": {"application/json"}}, Body: io.NopCloser(strings.NewReader(body))}, nil
 	})
@@ -1227,7 +1669,7 @@ func TestArtworkBookmarkPreservesBookmarkedAndAbsentStates(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ArtworkBookmark: %v", err)
 	}
-	if detail.Restrict != RestrictPrivate || len(detail.Tags) != 2 {
+	if detail.Restrict != RestrictPrivate || len(detail.Tags) != 1 || detail.Tags[0] != "cat" {
 		t.Fatalf("bookmarked detail = %#v", detail)
 	}
 	detail, err = client.ArtworkBookmark(context.Background(), ArtworkBookmarkRequest{ArtworkID: 77})
@@ -1236,30 +1678,6 @@ func TestArtworkBookmarkPreservesBookmarkedAndAbsentStates(t *testing.T) {
 	}
 	if detail.Restrict != "" || detail.Tags == nil || len(detail.Tags) != 0 {
 		t.Fatalf("absent bookmark state = %#v", detail)
-	}
-}
-
-func TestArtworkPagesPublicMappingDerivesPageIndexesFromOrder(t *testing.T) {
-	rt := roundTripFunc(func(*http.Request) (*http.Response, error) {
-		return jsonResponse(`{"illust":{"id":42,"type":"manga","page_count":2,"create_date":"2026-01-01T00:00:00Z","image_urls":{"original":"https://i.pximg.net/img/42_p0.png"},"meta_pages":[{"image_urls":{"original":"https://i.pximg.net/img/42_p0.png"}},{"image_urls":{"original":"https://i.pximg.net/img/42_p1.png"}}],"user":{"id":7,"name":"artist"}}}`), nil
-	})
-	client, err := NewWith("token", Options{HTTPClient: &http.Client{Transport: rt}})
-	if err != nil {
-		t.Fatalf("NewWith: %v", err)
-	}
-
-	pages, err := client.ArtworkPages(context.Background(), ArtworkPagesRequest{ArtworkID: 42})
-	if err != nil {
-		t.Fatalf("ArtworkPages: %v", err)
-	}
-	if len(pages) != 2 {
-		t.Fatalf("len(pages) = %d, want 2", len(pages))
-	}
-	if pages[0].PageIndex != 0 || pages[1].PageIndex != 1 {
-		t.Fatalf("page indexes = %d, %d; want 0, 1", pages[0].PageIndex, pages[1].PageIndex)
-	}
-	if pages[0].Image.Resource.Ref == pages[1].Image.Resource.Ref {
-		t.Fatalf("page resource refs collide: %q", pages[0].Image.Resource.Ref)
 	}
 }
 
@@ -1444,3 +1862,136 @@ func resourceTestClient(t *testing.T, server *httptest.Server) (*Client, *http.C
 	}
 	return client, httpClient
 }
+
+// legacyPixivClient models the established Client surface consumed by callers.
+// Keeping this interface compile-checked prevents a future migration from
+// silently removing an old method signature.
+type legacyPixivClient interface {
+	SearchArtworks(context.Context, SearchArtworksRequest) (sdk.Page[Artwork], error)
+	Artwork(context.Context, ArtworkRequest) (Artwork, error)
+	ArtworkPages(context.Context, ArtworkPagesRequest) ([]ArtworkPage, error)
+	RelatedArtworks(context.Context, RelatedArtworksRequest) (sdk.Page[Artwork], error)
+	ArtworkSeries(context.Context, ArtworkSeriesRequest) (sdk.Page[Artwork], error)
+	ArtworkRanking(context.Context, ArtworkRankingRequest) (sdk.Page[Artwork], error)
+	RecommendedArtworks(context.Context, RecommendedArtworksRequest) (sdk.Page[Artwork], error)
+	FollowingArtworks(context.Context, FollowingArtworksRequest) (sdk.Page[Artwork], error)
+	LatestArtworks(context.Context, LatestArtworksRequest) (sdk.Page[Artwork], error)
+	UserArtworks(context.Context, UserArtworksRequest) (sdk.Page[Artwork], error)
+	UserArtworkBookmarks(context.Context, UserArtworkBookmarksRequest) (sdk.Page[Artwork], error)
+	UserArtworkBookmarkTags(context.Context, UserArtworkBookmarkTagsRequest) (sdk.Page[BookmarkTag], error)
+	MyPixivArtworks(context.Context, MyPixivArtworksRequest) (sdk.Page[Artwork], error)
+	TrendingArtworkTags(context.Context, TrendingArtworkTagsRequest) ([]TrendingTag, error)
+	UgoiraMetadata(context.Context, UgoiraMetadataRequest) (UgoiraMetadata, error)
+	ArtworkComments(context.Context, ArtworkCommentsRequest) (CommentPage, error)
+	ArtworkBookmark(context.Context, ArtworkBookmarkRequest) (ArtworkBookmarkDetail, error)
+	SearchNovels(context.Context, SearchNovelsRequest) (sdk.Page[Novel], error)
+	Novel(context.Context, NovelRequest) (Novel, error)
+	NovelSeries(context.Context, NovelSeriesRequest) (NovelSeriesResult, error)
+	NovelContent(context.Context, NovelContentRequest) (NovelContent, error)
+	NovelComments(context.Context, NovelCommentsRequest) (CommentPage, error)
+	RecommendedNovels(context.Context, RecommendedNovelsRequest) (sdk.Page[Novel], error)
+	FollowingNovels(context.Context, FollowingNovelsRequest) (sdk.Page[Novel], error)
+	LatestNovels(context.Context, LatestNovelsRequest) (sdk.Page[Novel], error)
+	UserNovels(context.Context, UserNovelsRequest) (sdk.Page[Novel], error)
+	UserNovelBookmarks(context.Context, UserNovelBookmarksRequest) (sdk.Page[Novel], error)
+	MyPixivNovels(context.Context, MyPixivNovelsRequest) (sdk.Page[Novel], error)
+	SearchUsers(context.Context, SearchUsersRequest) (sdk.Page[UserPreview], error)
+	User(context.Context, UserRequest) (UserDetail, error)
+	RecommendedUsers(context.Context, RecommendedUsersRequest) (sdk.Page[UserPreview], error)
+	RelatedUsers(context.Context, RelatedUsersRequest) (sdk.Page[UserPreview], error)
+	UserFollowing(context.Context, UserFollowingRequest) (sdk.Page[UserPreview], error)
+	UserFollowers(context.Context, UserFollowersRequest) (sdk.Page[UserPreview], error)
+	UserBlockedUsers(context.Context, UserBlockedUsersRequest) (sdk.Page[UserPreview], error)
+	MyPixivUsers(context.Context, MyPixivUsersRequest) (sdk.Page[UserPreview], error)
+	CurrentUser(context.Context, CurrentUserRequest) (UserDetail, error)
+	AddBookmark(context.Context, AddBookmarkRequest) error
+	RemoveBookmark(context.Context, RemoveBookmarkRequest) error
+	FollowUser(context.Context, FollowUserRequest) error
+	UnfollowUser(context.Context, UnfollowUserRequest) error
+	SetAIArtworkVisibility(context.Context, SetAIArtworkVisibilityRequest) error
+	OpenResource(context.Context, sdk.OpenResourceRequest) (*sdk.ResourceResponse, error)
+	SaveResource(context.Context, sdk.ResourceRef, sdk.SaveOptions) (sdk.SavedResource, error)
+	CloseIdleConnections()
+	UserID() int64
+	Username() string
+}
+
+var _ legacyPixivClient = (*Client)(nil)
+
+func TestLegacySDKConsumerCompiles(t *testing.T) {
+	var client legacyPixivClient = (*Client)(nil)
+	_ = client
+
+	// These literals intentionally use the pre-existing request fields and
+	// named types that a source-compatible consumer can compile against.
+	_ = SearchArtworksRequest{
+		Word: "word", Target: SearchTargetKeyword, Sort: SortModePopularDesc,
+		Duration: DurationLastWeek, StartDate: "2026-01-01", EndDate: "2026-01-02",
+		ContentType: SearchContentTypeIllust, AIMode: SearchAIModeExclude,
+		AspectRatio: SearchAspectRatioSquare, Resolution: SearchResolutionMedium,
+		Tool: "pen", BookmarkMin: intPointer(1), BookmarkMax: intPointer(2), Cursor: sdk.Cursor{},
+	}
+	_ = SearchNovelsRequest{Word: "word", Target: SearchTargetKeyword, Sort: SortModePopularDesc, Duration: DurationLastWeek, Cursor: sdk.Cursor{}}
+	_ = SearchUsersRequest{Word: "word", Cursor: sdk.Cursor{}}
+	_ = ArtworkRequest{ArtworkID: 1}
+	_ = ArtworkPagesRequest{ArtworkID: 1}
+	_ = RelatedArtworksRequest{ArtworkID: 1, Cursor: sdk.Cursor{}}
+	_ = ArtworkSeriesRequest{SeriesID: 1, Cursor: sdk.Cursor{}}
+	_ = ArtworkRankingRequest{Mode: RankingModeDay, Date: "2026-01-01", Cursor: sdk.Cursor{}}
+	_ = RecommendedArtworksRequest{Cursor: sdk.Cursor{}}
+	_ = FollowingArtworksRequest{Restrict: RestrictPublic, Cursor: sdk.Cursor{}}
+	_ = LatestArtworksRequest{ContentType: SearchContentTypeIllust, Cursor: sdk.Cursor{}}
+	_ = UserArtworksRequest{UserID: 1, Kind: ArtworkKindIllustration, Cursor: sdk.Cursor{}}
+	_ = UserArtworkBookmarksRequest{UserID: 1, Restrict: RestrictPublic, Tag: "tag", Cursor: sdk.Cursor{}}
+	_ = UserArtworkBookmarkTagsRequest{UserID: 1, Restrict: RestrictPublic, Cursor: sdk.Cursor{}}
+	_ = MyPixivArtworksRequest{Cursor: sdk.Cursor{}}
+	_ = TrendingArtworkTagsRequest{}
+	_ = UgoiraMetadataRequest{ArtworkID: 1}
+	_ = ArtworkCommentsRequest{ArtworkID: 1, Cursor: sdk.Cursor{}}
+	_ = ArtworkBookmarkRequest{ArtworkID: 1}
+	_ = NovelRequest{NovelID: 1}
+	_ = NovelSeriesRequest{SeriesID: 1, Cursor: sdk.Cursor{}}
+	_ = NovelContentRequest{NovelID: 1}
+	_ = NovelCommentsRequest{NovelID: 1, Cursor: sdk.Cursor{}}
+	_ = RecommendedNovelsRequest{Cursor: sdk.Cursor{}}
+	_ = FollowingNovelsRequest{Restrict: RestrictPublic, Cursor: sdk.Cursor{}}
+	_ = LatestNovelsRequest{Cursor: sdk.Cursor{}}
+	_ = UserNovelsRequest{UserID: 1, Cursor: sdk.Cursor{}}
+	_ = UserNovelBookmarksRequest{UserID: 1, Restrict: RestrictPublic, Tag: "tag", Cursor: sdk.Cursor{}}
+	_ = MyPixivNovelsRequest{Cursor: sdk.Cursor{}}
+	_ = UserRequest{UserID: 1}
+	_ = RecommendedUsersRequest{Cursor: sdk.Cursor{}}
+	_ = RelatedUsersRequest{UserID: 1, Cursor: sdk.Cursor{}}
+	_ = UserFollowingRequest{UserID: 1, Restrict: RestrictPublic, Cursor: sdk.Cursor{}}
+	_ = UserFollowersRequest{UserID: 1, Restrict: RestrictPublic, Cursor: sdk.Cursor{}}
+	_ = UserBlockedUsersRequest{UserID: 1, Cursor: sdk.Cursor{}}
+	_ = MyPixivUsersRequest{Cursor: sdk.Cursor{}}
+	_ = CurrentUserRequest{}
+	_ = AddBookmarkRequest{ArtworkID: 1, Restrict: RestrictPublic, Tags: []string{"tag"}}
+	_ = RemoveBookmarkRequest{ArtworkID: 1}
+	_ = FollowUserRequest{UserID: 1, Restrict: RestrictPublic}
+	_ = UnfollowUserRequest{UserID: 1}
+	_ = SetAIArtworkVisibilityRequest{Visible: true}
+
+	_ = Artwork{}
+	_ = ArtworkPage{}
+	_ = ArtworkBookmarkDetail{}
+	_ = BookmarkTag{}
+	_ = Comment{}
+	_ = CommentPage{}
+	_ = ImageResource{}
+	_ = Novel{}
+	_ = NovelContent{}
+	_ = NovelSeries{}
+	_ = NovelSeriesResult{}
+	_ = TrendingTag{}
+	_ = UgoiraMetadata{}
+	_ = User{}
+	_ = UserDetail{}
+	_ = UserPreview{}
+	_ = UserProfile{}
+	_ = UserProfilePublicity{}
+	_ = UserWorkspace{}
+}
+
+func intPointer(value int) *int { return &value }

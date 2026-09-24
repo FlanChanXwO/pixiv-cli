@@ -2,8 +2,11 @@ package search
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/shared/pagination"
+	"github.com/FlanChanXwO/pixiv-cli/internal/shared/searchfilter"
 	"github.com/FlanChanXwO/pixiv-cli/internal/shared/traversal"
 	"github.com/FlanChanXwO/pixiv-cli/sdk"
 	product "github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
@@ -12,6 +15,7 @@ import (
 // artworkSearchClient 是 bookmark 过滤所需的最小 public SDK capability。
 type artworkSearchClient interface {
 	SearchArtworks(context.Context, product.SearchArtworksRequest) (sdk.Page[product.Artwork], error)
+	CheckpointSearchArtworks(product.SearchArtworksRequest, int) (sdk.Cursor, error)
 }
 
 type artworkSearchOutcome struct {
@@ -56,6 +60,7 @@ type artworkSearchRequest struct {
 	Plan       pagination.PagePlan
 	Membership bookmarkMembership
 	Strategy   bookmarkFilterStrategy
+	Include    func(product.Artwork) (bool, error)
 }
 
 // searchArtworks 在 CLI 的 execution scope 内执行 bookmark 候选筛选。
@@ -81,7 +86,7 @@ func searchArtworks[C artworkSearchClient](ctx context.Context, execute traversa
 
 	err = execute(ctx, func(ctx context.Context, client C) (bool, error) {
 		if !hasRange {
-			page, err := searchArtworkPages(ctx, client, request.Query, request.Plan)
+			page, err := searchArtworkPages(ctx, client, request.Query, request.Plan, request.Include)
 			if err != nil {
 				return false, err
 			}
@@ -90,6 +95,7 @@ func searchArtworks[C artworkSearchClient](ctx context.Context, execute traversa
 		}
 
 		candidateQuery := request.Query
+		candidateQuery.CursorContext = combineCursorContexts(candidateQuery.CursorContext, searchfilter.BookmarkContext(min, max, string(strategy)))
 		if strategy == bookmarkFilterStrategyLocal {
 			// App API bounds 只是 candidate 条件；local 必须枚举正常候选流再本地复核。
 			candidateQuery.BookmarkMin = nil
@@ -112,7 +118,16 @@ func searchArtworks[C artworkSearchClient](ctx context.Context, execute traversa
 					return false, sdk.NewError("pixiv", "SearchArtworks", sdk.MalformedUpstreamResponse,
 						sdk.WithDetail("artwork bookmark count is negative"))
 				}
-				return (min == nil || item.TotalBookmarks >= *min) && (max == nil || item.TotalBookmarks <= *max), nil
+				keep := (min == nil || item.TotalBookmarks >= *min) && (max == nil || item.TotalBookmarks <= *max)
+				if !keep || request.Include == nil {
+					return keep, nil
+				}
+				return request.Include(item)
+			},
+			func(cursor sdk.Cursor, consumed int) (sdk.Cursor, error) {
+				checkpointQuery := candidateQuery
+				checkpointQuery.Cursor = cursor
+				return client.CheckpointSearchArtworks(checkpointQuery, consumed)
 			},
 		)
 		if err != nil {
@@ -197,25 +212,50 @@ func resolveBookmarkStrategy(requested bookmarkFilterStrategy, membership bookma
 	}
 }
 
-func searchArtworkPages[C artworkSearchClient](ctx context.Context, client C, query product.SearchArtworksRequest, plan pagination.PagePlan) (sdk.Page[product.Artwork], error) {
-	items := make([]product.Artwork, 0)
-	var next sdk.Cursor
-	_, err := pagination.TraversePagesFrom(ctx, plan, query.Cursor, func(ctx context.Context, cursor sdk.Cursor) ([]product.Artwork, sdk.Cursor, error) {
-		query.Cursor = cursor
-		page, err := client.SearchArtworks(ctx, query)
-		if err != nil {
-			return nil, sdk.Cursor{}, err
-		}
-		next = page.Next
-		return page.Items, page.Next, nil
-	}, func(page []product.Artwork) error {
-		items = append(items, page...)
-		return nil
+func searchArtworkPages[C artworkSearchClient](ctx context.Context, client C, query product.SearchArtworksRequest, plan pagination.PagePlan, include func(product.Artwork) (bool, error)) (sdk.Page[product.Artwork], error) {
+	if include == nil {
+		include = func(product.Artwork) (bool, error) { return true, nil }
+	}
+	items, next, _, err := pagination.CollectFilteredPagesFrom(ctx, plan, query.Cursor, func(ctx context.Context, cursor sdk.Cursor) ([]product.Artwork, sdk.Cursor, error) {
+		fetchQuery := query
+		fetchQuery.Cursor = cursor
+		page, err := client.SearchArtworks(ctx, fetchQuery)
+		return page.Items, page.Next, err
+	}, include, func(cursor sdk.Cursor, consumed int) (sdk.Cursor, error) {
+		checkpointQuery := query
+		checkpointQuery.Cursor = cursor
+		return client.CheckpointSearchArtworks(checkpointQuery, consumed)
 	})
 	if err != nil {
 		return sdk.Page[product.Artwork]{}, err
 	}
 	return sdk.Page[product.Artwork]{Items: items, Next: next}, nil
+}
+
+// combineCursorContexts 将多个已经脱敏的本地语义摘要绑定为一个摘要；空值
+// 保持原摘要，以兼容没有组合本地筛选时既有的 bookmark cursor 语义。
+func combineCursorContexts(values ...string) string {
+	if len(values) == 0 {
+		return ""
+	}
+	parts := make([]string, 0, len(values))
+	for _, value := range values {
+		if value != "" {
+			parts = append(parts, value)
+		}
+	}
+	if len(parts) == 0 {
+		return ""
+	}
+	if len(parts) == 1 {
+		return parts[0]
+	}
+	payload := "search/v1\n"
+	for _, part := range parts {
+		payload += part + "\n"
+	}
+	sum := sha256.Sum256([]byte(payload))
+	return hex.EncodeToString(sum[:])
 }
 
 func cloneIntPointer(value *int) *int {

@@ -526,7 +526,18 @@ func directResourceBasename(rawURL string) (string, error) {
 	if name == "" || name == "." || name == ".." {
 		return "", errors.New("direct resource URL has no usable basename")
 	}
-	return name, nil
+	// 直链可能共享可读 basename；将完整解析 URL 的摘要追加到扩展名前，
+	// 让不同路径或 query 的资源不会静默写入同一个目标。签名 query 只参与
+	// 摘要计算，不会原样进入文件名。
+	digest := sha256.Sum256([]byte(parsed.String()))
+	suffix := hex.EncodeToString(digest[:6])
+	ext := path.Ext(name)
+	stem := strings.TrimSuffix(name, ext)
+	if stem == "" {
+		stem = name
+		ext = ""
+	}
+	return stem + "-" + suffix + ext, nil
 }
 
 func redactDirectResourceError(rawURL string, err error) error {
@@ -541,13 +552,8 @@ func redactDirectResourceError(rawURL string, err error) error {
 			if parsed.RawQuery != "" {
 				redacted = strings.ReplaceAll(redacted, parsed.RawQuery, "[redacted]")
 			}
-			for key, values := range parsed.Query() {
+			for key := range parsed.Query() {
 				redacted = redactDirectResourceQueryParameter(redacted, key)
-				for _, value := range values {
-					if value != "" {
-						redacted = strings.ReplaceAll(redacted, value, "[redacted]")
-					}
-				}
 			}
 		}
 	}

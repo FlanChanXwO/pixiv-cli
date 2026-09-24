@@ -5,6 +5,11 @@
 通过 `pixiv mcp` 启动 Pixiv stdio MCP server。MCP 使用自身 runtime 的凭据选择，
 不接受 CLI 数据命令的账号覆盖；stdout 始终保留给 JSON-RPC。
 
+`novel_content` 为保持 wire 兼容仍然注册，但其 App API 正文 endpoint 已不可用。
+传入正数 `novel_id` 时返回 structured `content_unavailable`、`isError=true` 和空
+正文 block 列表；不会请求 `/v1/novel/content`，也不会 fallback 到 WebView。小说
+metadata 请使用 `novel_detail`。
+
 ## 错误、分页与输出
 
 不符合 schema 的输入会在打开 SDK operation 前作为 JSON-RPC/tool input error
@@ -20,13 +25,22 @@
 - `page` 从 1 开始，必须配合正数 `limit`。
 - 实体 filter 在逻辑分页前执行，并按稳定实体身份去重。
 
+`illust_comments` 与 `novel_comments` 发布封闭的 `{id, page, limit}` 输入 object。
+`id` 必须为正数；输出 envelope 为 `{comments, pagination}`，并在上游明确提供时
+附带 `total` 与 `access_control`，否则省略这些字段。作品评论与小说评论分别使用
+当前的 comments operation。当当前 App API 提供 opaque numeric
+`comment_access_control` wire 字段时，将其保留为
+`access_control.comment_access_control`；SDK 与 server 不从该数值推断
+`can_comment` 或 `is_locked`。两个 read tool 都不接受只用于 mutation 的
+`stamp_id`，legacy MCP 注册表也不新增独立的 `stamps` tool。
+
 SDK opaque cursor 不离开 server。列表结果提供 `pagination.page`、`limit`、
 `returned`、`has_more`，适用时提供 `next_page`。`recommended(kind="all")`
 对 artwork、manga、novel、user 分别提供独立的分页对象。
 
 Record 保留公开实体字段以及必要的 opaque resource reference，但不会输出已解析/签名资源 URL、
-请求头、Cookie、过期 metadata、access token 或其他资源传输凭据。小说正文 block、评论和 profile image
-引用同样遵循此规则。
+请求头、Cookie、过期 metadata、access token 或其他资源传输凭据。可用的小说正文 block、评论和
+profile image 引用同样遵循此规则。
 Structured result 使用显式 DTO 与 typed envelope，不直接编码 runtime SDK model。独立的
 FANBOX MCP server 也遵循相同资源形状：第一方 resource 只包含 opaque `ref` 与可选的
 `requires_credentials`，不会包含 `url`、`request_headers` 或 `expires_at`。
@@ -126,15 +140,15 @@ application outcome 的 `filter` 会报告 `min`、`max`、`membership`、`strat
 | `search_novel` | 必填 `word`；可选 `search_target`、`sort`、`duration`、`novel_filter`、`page`、`limit`。rating、正文长度和 original 字段明确不发布。 |
 | `reverse_search` | 必填 `source`（常规本地文件或 HTTP(S) URL）；可选 `provider` enum。使用启动时固定的代理/key/pixiv-only 配置，返回上文的反向搜图 envelope。 |
 | `illust_detail` | 正数 `illust_id` 与受支持作品 `url` 必须二选一；返回一条安全 record。 |
-| `novel_detail` / `novel_content` | 正数 `novel_id`；前者返回 metadata，后者返回完整结构化正文 block。 |
+| `novel_detail` / `novel_content` | 正数 `novel_id`；前者返回 metadata，后者是保留的兼容 tool，返回 `content_unavailable` 与空 block，不请求已 rejected 的正文 endpoint。 |
 | `illust_related` | 正数 `illust_id`，可选 `illust_filter`、`page`、`limit`。 |
 | `illust_series` / `novel_series` | 正数 `series_id`、`page`、`limit`；小说系列额外返回安全 series metadata。 |
-| `illust_comments` / `novel_comments` | 正数作品/小说 `id`、`page`、`limit`；输出安全 comments、pagination，以及可取得的 `total`/`access_control` metadata。 |
-| `illust_ranking` | 可选 `mode`、`date`、`illust_filter`、`page`、`limit`；省略 mode 为 `day`。 |
-| `search_user` | 必填 `word`，可选 `user_filter`、`page`、`limit`；调用 App user-search operation。 |
+| `illust_comments` / `novel_comments` | 封闭输入 `{id, page, limit}`，其中 `id` 为正数；输出 `{comments, pagination}`，并可选返回 `total`/`access_control` metadata。opaque numeric `comment_access_control` 会保留在 `access_control` 内，不推断布尔权限。read tool 不接受只用于 mutation 的 `stamp_id`，legacy 注册表不暴露独立 `stamps` tool。 |
+| `illust_ranking` | 可选 `mode`、`date`、`illust_filter`、`page`、`limit`；`mode` 是封闭的 ranking enum，日期必须是有效 `YYYY-MM-DD`，省略 mode 为 `day`。 |
+| `search_user` | 必填非空白 `word`，可选 `user_filter`、`page`、`limit`；空白输入会在 SDK 执行前拒绝，合法输入调用 App user-search operation。 |
 | `illust_recommended` | 作品推荐，可选 `illust_filter`、`page`、`limit`。 |
-| `recommended` | 必填 `kind`：`all`、`illust`、`manga`、`novel` 或 `user`；可选匹配的 typed filter、`page`、`limit`。 |
-| `trending_tags_illust` | 无输入；返回完整当前作品趋势标签列表。 |
+| `recommended` | 必填 `kind`：`all`、`illust`、`manga`、`novel` 或 `user`；可选匹配的 typed filter、`page`、`limit`。`illust`/`manga` 选择对应 artwork subtype，冲突 filter 会在 SDK 执行前拒绝；`all` 保持四路独立流，并采用原子失败语义。 |
+| `trending_tags_illust` | 无输入；返回完整当前作品趋势标签列表。上游返回空列表时仍是成功的空结果。 |
 | `timeline_illust_following` / `timeline_novel_following` | `restrict`（`public`/`private`）、匹配实体 filter、`page`、`limit`。 |
 | `timeline_illust_latest` | 必填 `content_type`（`illust` 或 `manga`），可选 `illust_filter`、`page`、`limit`。 |
 | `timeline_novel_latest` | 可选 `novel_filter`、`page`、`limit`。 |
@@ -145,9 +159,14 @@ application outcome 的 `filter` 会报告 `min`、`max`、`membership`、`strat
 | `user_novels` | 可选 `user_id`、`novel_filter`、`page`、`limit`；省略 ID 使用认证账号。 |
 | `user_bookmarks` | 可选 `user_id`、`restrict`、`tag`、`illust_filter`、`page`、`limit`；读取作品收藏。 |
 | `user_novel_bookmarks` | 可选 `user_id`、`restrict`、`tag`、`page`、`limit`；读取小说收藏。 |
-| `user_following` / `user_followers` | 可选 `user_id`、`restrict`、`user_filter`、`page`、`limit`；省略 ID 使用认证账号。 |
-| `related_users` | 正数 `user_id`，可选 `user_filter`、`page`、`limit`。 |
-| `blocked_users` | 可选 `user_id`、`page`、`limit`；省略 ID 使用认证账号。App API 失败会显露，不切换 Web fallback。 |
+| `bookmark_list_all` | 可选 `user_id`、`restrict`、`tag`、`page`、`limit`；新增的聚合 tool，先读取作品收藏再读取小说收藏。`page`/`limit` 作用于拼接后的统一逻辑流；任一 required 流失败时返回错误，不返回部分 records。 |
+| `bookmark_tags_all` | 可选 `user_id`、`restrict`、`page`、`limit`；新增的聚合 tool，先读取作品标签再读取小说标签。每个标签保留 `content_type` 与原始 `count`；同名标签不合并，任一 required 流失败时不返回部分标签。 |
+| `novel_bookmark_tags` | 可选 `user_id`、`restrict`、`page`、`limit`；返回小说收藏的 `{bookmark_tags, pagination}`。当前 candidate App API 没有续页 contract；超出该 contract 的 continuation 会返回 typed error。 |
+| `novel_bookmark_detail` | 必填正数 `novel_id`；返回单篇小说的 `{bookmarked, restrict, tags}`，保留缺失/未收藏状态；使用 candidate novel-bookmark detail App API。 |
+| `user_following` | 可选 `user_id`、`restrict`、`user_filter`、`page`、`limit`；省略 ID 使用认证账号。 |
+| `user_followers` | 可选 `user_id`、`restrict`、`page`、`limit`；省略 ID 使用认证账号。 |
+| `related_users` | 可选正数 `user_id`（省略时使用认证账号），兼容字段 `restrict`，可选 `user_filter`、`page`、`limit`。 |
+| `blocked_users` | 可选 `user_id`、兼容字段 `restrict`、`page`、`limit`；省略 ID 使用认证账号。App API 失败会显露，不切换 Web fallback。 |
 | `bookmark_tags` | 可选 `user_id`、`restrict`、`page`、`limit`；返回 `{bookmark_tags, pagination}`。 |
 | `bookmark_detail` | 必填正数 `illust_id`；返回 `{bookmarked, restrict, tags}`，保留未收藏状态。 |
 
@@ -159,12 +178,25 @@ application outcome 的 `filter` 会报告 `min`、`max`、`membership`、`strat
 | Tool | 输入 | Structured output |
 | --- | --- | --- |
 | `add_bookmark` | `illust_id`，可选 `restrict`、可重复 `tags` | `{success, action, illust_id}` |
+| `add_novel_bookmark` | `novel_id`，可选 `restrict`、可重复 `tags` | `{success, action, novel_id}` |
 | `remove_bookmark` | `illust_id` | `{success, action, illust_id}` |
+| `remove_novel_bookmark` | `novel_id` | `{success, action, novel_id}` |
+| `create_artwork_comment` | 正数 `illust_id`、非空 `comment` | `{success, action, illust_id, comment_id}` |
+| `reply_artwork_comment` | 正数 `illust_id`、非空 `comment`、正数 `parent_comment_id` | `{success, action, illust_id, comment_id}` |
+| `stamp_artwork_comment` | 正数 `illust_id`、可选 `comment`（sticker-only 时为空）、正数 `stamp_id` | `{success, action, illust_id, comment_id}` |
+| `delete_artwork_comment` | 正数 `comment_id` | `{success, action, comment_id}` |
+| `create_novel_comment` | 正数 `novel_id`、非空 `comment` | `{success, action, novel_id, comment_id}` |
+| `reply_novel_comment` | 正数 `novel_id`、非空 `comment`、正数 `parent_comment_id` | `{success, action, novel_id, comment_id}` |
+| `stamp_novel_comment` | 正数 `novel_id`、可选 `comment`（sticker-only 时为空）、正数 `stamp_id` | `{success, action, novel_id, comment_id}` |
+| `delete_novel_comment` | 正数 `comment_id` | `{success, action, comment_id}` |
 | `follow_user` | `user_id`，可选 `restrict` | `{success, action, user_id}` |
 | `unfollow_user` | `user_id` | `{success, action, user_id}` |
 
-写操作只包含作品收藏和用户关注 mutation。提交后状态未知时不会换账号重放；失败写操作返回
-`success=false`、`isError=true` 和安全诊断。
+写操作包含作品/小说收藏、作品/小说评论/印章评论和用户关注 mutation。add 省略 `restrict` 时默认为
+`public`，只接受 `public` 或 `private`。作品与小说评论 create/reply/stamp 会直接返回上游给出的
+`comment_id`；delete 返回输入的评论 ID。server 不会读取最新评论来猜测 ID，不会回退到 candidate
+v3 comments contract，提交后状态未知时不会换账号重放；失败写操作返回 `success=false`、
+`isError=true` 和安全诊断。
 
 ## 认证与 fallback
 

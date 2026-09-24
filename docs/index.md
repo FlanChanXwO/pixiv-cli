@@ -27,14 +27,19 @@ English docs define the canonical public interface. Simplified Chinese may rephr
 
 ## For automation
 
-Read `AGENTS.md` at the repository root first. Then enter the matching skill for the task:
+Read [AGENTS.md](../AGENTS.md) at the repository root first for the complete task routing table. The checked-in skills require no personal global instructions or CCS; clients without skill discovery can read each `SKILL.md` directly. Common routes:
 
 | Task | Skill |
 | --- | --- |
 | Preparing a PR | `.agents/skills/pixiv-cli-pr/` |
+| Go implementation and design | `.agents/skills/pixiv-cli-develop/` |
+| Focused testing and evidence | `.agents/skills/pixiv-cli-test/` |
+| Code contracts, intent comments, and numbered phases | `.agents/skills/pixiv-cli-code-commenting/` |
+| MCP tool changes | `.agents/skills/pixiv-cli-mcp-tool/` |
+| Rust/cgo and native evidence | `.agents/skills/pixiv-cli-native/` |
 | Diagnosing CI | `.agents/skills/pixiv-cli-ci/` |
 | Reviewing changes | `.agents/skills/pixiv-cli-review/` |
 | Maintaining docs | `.agents/skills/pixiv-cli-docs/` |
 | Release notes | `.agents/skills/pixiv-cli-release-notes/` |
 
-`CLAUDE.md` only references `AGENTS.md`; Copilot keeps a short hint. Long-term rules are not duplicated into each tool's config.
+`CLAUDE.md` only references `AGENTS.md`. Clients without native discovery read the same contract and local routes; do not restore removed client-specific copies. Source-comment language is independent of the English skill files.

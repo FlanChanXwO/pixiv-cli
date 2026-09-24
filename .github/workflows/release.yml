@@ -19,17 +19,14 @@ jobs:
     permissions:
       contents: read
     steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           fetch-depth: 0
           persist-credentials: false
           ref: ${{ github.sha }}
-      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e
         with:
-          go-version: '1.26.3'
-      - name: Validate release SemVer
-        shell: bash
-        run: go run ./scripts/cmd/releaseassets validate --version "${RELEASE_TAG#v}"
+          go-version-file: go.mod
       - name: Verify the exact immutable release tag
         shell: bash
         env:
@@ -37,17 +34,10 @@ jobs:
           DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
         run: |
           set -euo pipefail
-          case "$RELEASE_TAG" in
-            v[0-9]*) ;;
-            *) printf '%s\n' 'release tag must start with v and a digit' >&2; exit 1 ;;
-          esac
-          git show-ref --verify --quiet "refs/tags/$RELEASE_TAG"
-          tag_commit=$(git rev-parse "$RELEASE_TAG^{commit}")
+          go run ./tools/release verify-source --tag "$RELEASE_TAG" --default-branch "$DEFAULT_BRANCH"
           tag_skill="$RUNNER_TEMP/pixiv-cli-SKILL.md"
           git show "$RELEASE_TAG:skills/pixiv-cli/SKILL.md" > "$tag_skill"
           go run ./scripts/cmd/releaseassets validate-source --version "${RELEASE_TAG#v}" --product-skill "$tag_skill"
-          git show-ref --verify --quiet "refs/remotes/origin/$DEFAULT_BRANCH"
-          git merge-base --is-ancestor "$tag_commit" "origin/$DEFAULT_BRANCH"
           set +e
           response=$(gh api --include "repos/$GITHUB_REPOSITORY/releases/tags/$RELEASE_TAG" 2>&1)
           api_status=$?
@@ -57,9 +47,9 @@ jobs:
             exit 1
           fi
           printf '%s\n' "$response" | grep -Eq 'HTTP/[0-9.]+ 404|HTTP 404'
-      - name: Statically check release workflow policy
+      - name: Check release behavior contracts
         shell: bash
-        run: go run ./scripts/cmd/releaseworkflow --workflow .github/workflows/release.yml
+        run: go test ./tools/release ./tools/platformmatrix -count=1
 
   e2e:
     name: SDK E2E contract gate
@@ -69,14 +59,14 @@ jobs:
     permissions:
       contents: read
     steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           fetch-depth: 0
           persist-credentials: false
           ref: ${{ env.RELEASE_TAG }}
-      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e
         with:
-          go-version: '1.26.3'
+          go-version-file: go.mod
       - name: Run offline SDK E2E contract tests
         shell: bash
         run: |
@@ -85,11 +75,44 @@ jobs:
           test -z "${FANBOX_SDK_E2E:-}"
           go test ./e2e -count=1 -v
 
+  resolve_platforms:
+    name: Resolve release platform matrices
+    needs:
+      - validate
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    outputs:
+      release: ${{ steps.release.outputs.matrix }}
+      container: ${{ steps.container.outputs.matrix }}
+      homebrew: ${{ steps.homebrew.outputs.matrix }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+          ref: ${{ env.RELEASE_TAG }}
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e
+        with:
+          go-version-file: go.mod
+      - name: Resolve release platforms
+        id: release
+        shell: bash
+        run: go run ./tools/platformmatrix --capability release --github-output "$GITHUB_OUTPUT"
+      - name: Resolve container platforms
+        id: container
+        shell: bash
+        run: go run ./tools/platformmatrix --capability container --github-output "$GITHUB_OUTPUT"
+      - name: Resolve Homebrew platforms
+        id: homebrew
+        shell: bash
+        run: go run ./tools/platformmatrix --capability homebrew --github-output "$GITHUB_OUTPUT"
+
   build:
     name: Build ${{ matrix.goos }}/${{ matrix.goarch }}
     needs:
       - validate
       - e2e
+      - resolve_platforms
     runs-on: ${{ matrix.runner }}
     permissions:
       contents: read
@@ -103,59 +126,16 @@ jobs:
       GIT_CONFIG_VALUE_0: 'false'
     strategy:
       fail-fast: false
-      matrix:
-        include:
-          - runner: macos-15-intel
-            goos: darwin
-            goarch: amd64
-            rust_target: x86_64-apple-darwin
-            rust_toolchain: '1.96.0'
-            artifact: darwin-amd64
-            cc: clang
-          - runner: macos-15
-            goos: darwin
-            goarch: arm64
-            rust_target: aarch64-apple-darwin
-            rust_toolchain: '1.96.1'
-            artifact: darwin-arm64
-            cc: clang
-          - runner: ubuntu-22.04
-            goos: linux
-            goarch: amd64
-            rust_target: x86_64-unknown-linux-gnu
-            rust_toolchain: '1.96.1'
-            artifact: linux-amd64
-            cc: gcc
-          - runner: ubuntu-22.04-arm
-            goos: linux
-            goarch: arm64
-            rust_target: aarch64-unknown-linux-gnu
-            rust_toolchain: '1.96.1'
-            artifact: linux-arm64
-            cc: gcc
-          - runner: windows-2025
-            goos: windows
-            goarch: amd64
-            rust_target: x86_64-pc-windows-msvc
-            rust_toolchain: '1.96.0'
-            artifact: windows-amd64
-            cc: clang -fuse-ld=lld
-          - runner: windows-11-arm
-            goos: windows
-            goarch: arm64
-            rust_target: aarch64-pc-windows-msvc
-            rust_toolchain: '1.96.1'
-            artifact: windows-arm64
-            cc: clang -fuse-ld=lld
+      matrix: ${{ fromJSON(needs.resolve_platforms.outputs.release) }}
     steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           fetch-depth: 0
           persist-credentials: false
           ref: ${{ env.RELEASE_TAG }}
-      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e
         with:
-          go-version: '1.26.3'
+          go-version-file: go.mod
       # 质量门从不可变 tag 读取 workflow、版本、CHANGELOG 与 Release notes。
       - name: Validate the exact immutable release source
         shell: bash
@@ -178,10 +158,10 @@ jobs:
         shell: bash
         run: go test ./...
       - name: Test Go sources with the race detector
-        # Go 1.26.3 明确不支持 windows/arm64 的 -race；其余五个原生目标仍必须执行 race gate。
-        if: matrix.goos != 'windows' || matrix.goarch != 'arm64'
+        # 六个平台都实际执行 gate。go.mod 当前声明的工具链不支持 windows/arm64 的 -race，因此该目标
+        # 必须精确验证 Go 官方“不支持”诊断；其他五个平台实际运行 race tests。
         shell: bash
-        run: go test -race ./...
+        run: sh scripts/test-race-gate.sh
       - name: Vet Go sources
         shell: bash
         run: go vet ./...
@@ -191,17 +171,22 @@ jobs:
       - name: Test release packages
         shell: bash
         run: sh scripts/test-package-release.sh
-      - name: Install the pinned pre-commit version
+      - name: Check Go formatting
         shell: bash
-        run: python -m pip install --disable-pip-version-check pre-commit==4.6.0
-      - name: Run pre-commit checks
-        shell: bash
-        run: python -m pre_commit run --all-files
+        run: |
+          set -euo pipefail
+          unformatted="$(git ls-files -z -- '*.go' | xargs -0 gofmt -l)"
+          test -z "$unformatted" || {
+            printf '%s\n' "$unformatted"
+            exit 1
+          }
 
   # 生产资产在独立 runner 上从 immutable tag 重建，避免测试进程的副作用影响 Release。
   build_production:
     name: Build production ${{ matrix.goos }}/${{ matrix.goarch }}
-    needs: build
+    needs:
+      - build
+      - resolve_platforms
     runs-on: ${{ matrix.runner }}
     permissions:
       contents: read
@@ -210,60 +195,17 @@ jobs:
       RUSTUP_TOOLCHAIN: ${{ matrix.rust_toolchain }}
     strategy:
       fail-fast: false
-      matrix:
-        include:
-          - runner: macos-15-intel
-            goos: darwin
-            goarch: amd64
-            rust_target: x86_64-apple-darwin
-            rust_toolchain: '1.96.0'
-            artifact: darwin-amd64
-            cc: clang
-          - runner: macos-15
-            goos: darwin
-            goarch: arm64
-            rust_target: aarch64-apple-darwin
-            rust_toolchain: '1.96.1'
-            artifact: darwin-arm64
-            cc: clang
-          - runner: ubuntu-22.04
-            goos: linux
-            goarch: amd64
-            rust_target: x86_64-unknown-linux-gnu
-            rust_toolchain: '1.96.1'
-            artifact: linux-amd64
-            cc: gcc
-          - runner: ubuntu-22.04-arm
-            goos: linux
-            goarch: arm64
-            rust_target: aarch64-unknown-linux-gnu
-            rust_toolchain: '1.96.1'
-            artifact: linux-arm64
-            cc: gcc
-          - runner: windows-2025
-            goos: windows
-            goarch: amd64
-            rust_target: x86_64-pc-windows-msvc
-            rust_toolchain: '1.96.0'
-            artifact: windows-amd64
-            cc: clang -fuse-ld=lld
-          - runner: windows-11-arm
-            goos: windows
-            goarch: arm64
-            rust_target: aarch64-pc-windows-msvc
-            rust_toolchain: '1.96.1'
-            artifact: windows-arm64
-            cc: clang -fuse-ld=lld
+      matrix: ${{ fromJSON(needs.resolve_platforms.outputs.release) }}
     steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           clean: true
           fetch-depth: 0
           persist-credentials: false
           ref: ${{ env.RELEASE_TAG }}
-      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e
         with:
-          go-version: '1.26.3'
+          go-version-file: go.mod
           cache: false
       - name: Validate the exact immutable production source
         shell: bash
@@ -271,46 +213,43 @@ jobs:
       - name: Install the pinned native Rust toolchain
         shell: bash
         run: rustup toolchain install '${{ matrix.rust_toolchain }}' --profile minimal --target '${{ matrix.rust_target }}' --no-self-update
-      - name: Rebuild the selected static library from the immutable tag
+      - name: Build the exact production archive
         shell: bash
         run: |
           set -euo pipefail
           test "$(git rev-parse HEAD)" = "$(git rev-parse "$RELEASE_TAG^{commit}")"
           test -z "$(git status --porcelain --untracked-files=all)"
           test -z "$(git clean -ndx)"
-          bash scripts/build-staticlibs.sh --target '${{ matrix.rust_target }}'
-          git restore --source="$RELEASE_TAG^{commit}" -- internal/media/ugoira/rust/staticlib/manifest.json
+          archive=$(sh scripts/build-platform.sh \
+            --target '${{ matrix.goos }}/${{ matrix.goarch }}' \
+            --rust-target '${{ matrix.rust_target }}' \
+            --cc '${{ matrix.cc }}' \
+            --version "${RELEASE_TAG#v}" \
+            --output-dir "$RUNNER_TEMP/platform-build" \
+            --package)
+          git diff --check
           git diff --exit-code
           test -z "$(git status --porcelain --untracked-files=all)"
           test -z "$(git clean -ndx)"
-      - name: Check the generated diff
-        shell: bash
-        run: git diff --check
-      - name: Build the versioned native executable
-        shell: bash
-        run: |
-          set -eu
           mkdir -p dist
-          output='dist/pixiv'
-          if [ '${{ matrix.goos }}' = windows ]; then
-            output='dist/pixiv.exe'
-          fi
-          go build -trimpath -buildvcs=false \
-            -ldflags "-X github.com/FlanChanXwO/pixiv-cli/internal/shared/buildinfo.Version=${RELEASE_TAG}" \
-            -o "$output" ./cmd/pixiv
-          if [ '${{ matrix.goos }}' = linux ]; then
-            go run ./scripts/cmd/linuxabi --binary "$output"
-          fi
-      - name: Package the fixed-name platform asset
+          destination="dist/$(basename "$archive")"
+          cp "$archive" "$destination"
+          printf 'PLATFORM_ARCHIVE=%s\n' "$destination" >> "$GITHUB_ENV"
+      - name: Smoke the exact production package
         shell: bash
         run: |
-          go run ./scripts/cmd/releaseassets package \
-            --repo-root . \
-            --version "${RELEASE_TAG#v}" \
-            --target '${{ matrix.goos }}/${{ matrix.goarch }}' \
-            --binary "dist/pixiv${{ matrix.goos == 'windows' && '.exe' || '' }}" \
-            --output-dir dist
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+          set -euo pipefail
+          mkdir -p smoke
+          binary='smoke/pixiv'
+          if [ '${{ matrix.goos }}' = windows ]; then
+            7z x "$PLATFORM_ARCHIVE" -osmoke
+            binary='smoke/pixiv.exe'
+          else
+            tar -xzf "$PLATFORM_ARCHIVE" -C smoke
+          fi
+          test -f "$binary"
+          test "$("$binary" --version)" = "pixiv $RELEASE_TAG"
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
           name: verified-release-${{ matrix.artifact }}
           path: dist/pixiv-cli_*
@@ -323,36 +262,22 @@ jobs:
     name: Build container ${{ matrix.goos }}/${{ matrix.goarch }}
     needs:
       - build
+      - resolve_platforms
     runs-on: ${{ matrix.runner }}
     permissions:
       contents: read
     strategy:
       fail-fast: false
-      matrix:
-        include:
-          - runner: ubuntu-22.04
-            goos: linux
-            goarch: amd64
-            rust_target: x86_64-unknown-linux-gnu
-            rust_toolchain: '1.96.1'
-            artifact: linux-amd64
-            cc: gcc
-          - runner: ubuntu-22.04-arm
-            goos: linux
-            goarch: arm64
-            rust_target: aarch64-unknown-linux-gnu
-            rust_toolchain: '1.96.1'
-            artifact: linux-arm64
-            cc: gcc
+      matrix: ${{ fromJSON(needs.resolve_platforms.outputs.container) }}
     steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           fetch-depth: 0
           persist-credentials: false
           ref: ${{ env.RELEASE_TAG }}
-      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e
         with:
-          go-version: '1.26.3'
+          go-version-file: go.mod
       - name: Validate the immutable container source
         shell: bash
         run: |
@@ -362,24 +287,24 @@ jobs:
       - name: Install the pinned native Rust toolchain
         shell: bash
         run: rustup toolchain install '${{ matrix.rust_toolchain }}' --profile minimal --target '${{ matrix.rust_target }}' --no-self-update
-      - name: Rebuild the selected static library from the immutable tag
-        shell: bash
-        run: |
-          set -euo pipefail
-          CC='${{ matrix.cc }}' RUSTUP_TOOLCHAIN='${{ matrix.rust_toolchain }}' bash scripts/build-staticlibs.sh --target '${{ matrix.rust_target }}'
-          git restore --source="$RELEASE_TAG^{commit}" -- internal/media/ugoira/rust/staticlib/manifest.json
-          git diff --exit-code
-          test -z "$(git status --porcelain --untracked-files=all)"
-          test -z "$(git clean -ndx)"
       - name: Build and verify the versioned Linux executable
         shell: bash
         run: |
           set -euo pipefail
+          test -z "$(git status --porcelain --untracked-files=all)"
+          test -z "$(git clean -ndx)"
+          binary=$(RUSTUP_TOOLCHAIN='${{ matrix.rust_toolchain }}' sh scripts/build-platform.sh \
+            --target '${{ matrix.goos }}/${{ matrix.goarch }}' \
+            --rust-target '${{ matrix.rust_target }}' \
+            --cc '${{ matrix.cc }}' \
+            --version "${RELEASE_TAG#v}" \
+            --output-dir "$RUNNER_TEMP/platform-build")
+          git diff --check
+          git diff --exit-code
+          test -z "$(git status --porcelain --untracked-files=all)"
+          test -z "$(git clean -ndx)"
           mkdir -p dist
-          CC='${{ matrix.cc }}' go build -trimpath -buildvcs=false \
-            -ldflags "-X github.com/FlanChanXwO/pixiv-cli/internal/shared/buildinfo.Version=${RELEASE_TAG}" \
-            -o dist/pixiv ./cmd/pixiv
-          go run ./scripts/cmd/linuxabi --binary dist/pixiv
+          cp "$binary" dist/pixiv
       - name: Check the container packaging contract
         shell: bash
         run: go test ./scripts/tests/containerrelease -count=1
@@ -419,7 +344,7 @@ jobs:
       - name: Export the verified image artifact
         shell: bash
         run: docker save --output "${RUNNER_TEMP}/pixiv-cli-${{ matrix.artifact }}.tar" "pixiv-cli:${RELEASE_TAG}-${{ matrix.artifact }}"
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
           name: verified-container-${{ matrix.artifact }}
           path: ${{ runner.temp }}/pixiv-cli-${{ matrix.artifact }}.tar
@@ -436,14 +361,14 @@ jobs:
       contents: read
       pull-requests: read
     steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           fetch-depth: 0
           persist-credentials: false
           ref: ${{ env.RELEASE_TAG }}
-      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e
         with:
-          go-version: '1.26.3'
+          go-version-file: go.mod
       - name: Audit release sources and validate the bilingual tag notes
         shell: bash
         env:
@@ -474,64 +399,151 @@ jobs:
     runs-on: ubuntu-24.04
     permissions:
       contents: read
+    outputs:
+      commit: ${{ steps.trust.outputs.commit }}
+      version: ${{ steps.trust.outputs.version }}
     steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           fetch-depth: 0
           persist-credentials: false
           ref: ${{ env.RELEASE_TAG }}
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e
+        with:
+          go-version-file: go.mod
       - name: Require the tag commit on the default release branch
+        id: trust
         shell: bash
         env:
           DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
         run: |
-          set -eu
-          git show-ref --verify --quiet "refs/remotes/origin/$DEFAULT_BRANCH"
-          git merge-base --is-ancestor HEAD "origin/$DEFAULT_BRANCH"
+          set -euo pipefail
+          go run ./tools/release verify-source --tag "$RELEASE_TAG" --default-branch "$DEFAULT_BRANCH" --github-output "$GITHUB_OUTPUT"
+
+  prepare_release:
+    name: Prepare release materials
+    needs:
+      - validate
+      - verify_release_source
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+          ref: ${{ env.RELEASE_TAG }}
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e
+        with:
+          go-version-file: go.mod
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
+        with:
+          pattern: verified-release-*
+          path: dist
+          merge-multiple: true
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
+        with:
+          pattern: verified-container-*
+          path: containers
+          merge-multiple: true
+      - name: Verify the registry-defined release archive set
+        shell: bash
+        run: |
+          set -euo pipefail
+          version="${RELEASE_TAG#v}"
+          go run ./tools/release verify-artifact-set --dir dist --version "$version"
+          go run ./tools/release verify-container-set --dir containers
+          go run ./tools/release checksums --dir dist --version "$version" --output dist/checksums.txt
+          test -s dist/checksums.txt
+
+      # §14/§15：一次性固化 build-once 产物的 identity 与 checksum。所有 downstream
+      # publisher 只消费这份 immutable handoff，不再自行构建或推断身份。
+      - name: Write the immutable release handoff
+        shell: bash
+        env:
+          TAG_COMMIT: ${{ needs.verify_release_source.outputs.commit }}
+          REPOSITORY: ${{ github.repository }}
+          RUN_ID: ${{ github.run_id }}
+          RUN_ATTEMPT: ${{ github.run_attempt }}
+          RUN_HEAD_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          version="${RELEASE_TAG#v}"
+          mkdir -p release
+          go run ./tools/release write-handoff \
+            --repository "$REPOSITORY" \
+            --run-id "$RUN_ID" \
+            --run-attempt "$RUN_ATTEMPT" \
+            --workflow 'Release' \
+            --tag "$RELEASE_TAG" \
+            --commit-sha "$TAG_COMMIT" \
+            --run-head-sha "$RUN_HEAD_SHA" \
+            --version "$version" \
+            --dist-dir dist \
+            --container-dir containers \
+            --output release/release-handoff.json
+          go run ./tools/release verify-handoff-set \
+            --handoff release/release-handoff.json \
+            --dist-dir dist \
+            --container-dir containers \
+            --repository "$REPOSITORY" \
+            --run-id "$RUN_ID" \
+            --tag "$RELEASE_TAG"
+
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: prepared-release-checksums
+          path: |
+            dist/checksums.txt
+            release/release-handoff.json
+          if-no-files-found: error
+          retention-days: 90
+
+  approve_release:
+    name: Approve final release publication
+    needs:
+      - build_container
+      - verify_release_source
+      - prepare_release
+    runs-on: ubuntu-24.04
+    environment: release-approval
+    permissions: {}
+    steps:
+      - name: Record final release approval
+        shell: bash
+        run: 'true'
 
   publish:
     name: Sign and publish the GitHub Release
     needs:
       - build_container
       - verify_release_source
+      - prepare_release
+      - approve_release
     runs-on: ubuntu-24.04
-    # Task 20 must create this protected Environment and store the signing values
-    # as its secrets, rather than repository secrets available to arbitrary tags.
     environment: release
     permissions:
       contents: write
     steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           persist-credentials: false
           ref: ${{ env.RELEASE_TAG }}
-      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e
         with:
-          go-version: '1.26.3'
-      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+          go-version-file: go.mod
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
         with:
-          name: verified-release-darwin-amd64
+          pattern: verified-release-*
           path: dist
-      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+          merge-multiple: true
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
         with:
-          name: verified-release-darwin-arm64
-          path: dist
-      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
-        with:
-          name: verified-release-linux-amd64
-          path: dist
-      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
-        with:
-          name: verified-release-linux-arm64
-          path: dist
-      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
-        with:
-          name: verified-release-windows-amd64
-          path: dist
-      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
-        with:
-          name: verified-release-windows-arm64
-          path: dist
+          name: prepared-release-checksums
+          path: prepared-release
+      - name: Re-verify the approved archive set
+        shell: bash
+        run: go run ./tools/release verify-artifact-set --dir dist --version "${RELEASE_TAG#v}"
       - name: Create the signed release metadata
         shell: bash
         env:
@@ -556,6 +568,9 @@ jobs:
             --private-key "$key_path" \
             --changelog "changelog/v${RELEASE_TAG#v}/en.md" \
             --changelog-zh "changelog/v${RELEASE_TAG#v}/zh-CN.md"
+          while read -r expected_hash expected_name; do
+            grep -Fx "$expected_hash  $expected_name" release/checksums.txt >/dev/null
+          done < prepared-release/dist/checksums.txt
       - name: Publish only the verified assets
         shell: bash
         env:
@@ -596,284 +611,9 @@ jobs:
           fi
           gh release edit "$RELEASE_TAG" --draft=false
       # 该 artifact 与已发布 Release 使用同一个本地 checksums.txt；下游不得重新下载或重算。
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
           name: verified-release-checksums
           path: release/checksums.txt
-          if-no-files-found: error
-          retention-days: 1
-
-
-  # GHCR 与 GitHub Release 无法原子提交；这里把推送隔离为 post-Release 恢复路径。
-  # 失败必须保留 workflow failure，可通过重跑本 job 复用同一批已验证 artifact。
-  publish_container:
-    name: Publish the multi-architecture container image
-    needs:
-      - build_container
-      - publish
-    runs-on: ubuntu-24.04
-    permissions:
-      contents: read
-      packages: write
-    steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
-        with:
-          persist-credentials: false
-          ref: ${{ env.RELEASE_TAG }}
-      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff
-        with:
-          go-version: '1.26.3'
-      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
-        with:
-          name: verified-container-linux-amd64
-          path: containers/linux-amd64
-      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
-        with:
-          name: verified-container-linux-arm64
-          path: containers/linux-arm64
-      - name: Load the verified container artifacts
-        shell: bash
-        run: |
-          set -euo pipefail
-          docker load --input containers/linux-amd64/pixiv-cli-linux-amd64.tar
-          docker load --input containers/linux-arm64/pixiv-cli-linux-arm64.tar
-      - name: Authenticate to GHCR
-        shell: bash
-        env:
-          GITHUB_TOKEN: ${{ github.token }}
-        run: printf '%s' "$GITHUB_TOKEN" | docker login ghcr.io --username "$GITHUB_ACTOR" --password-stdin
-      - name: Push architecture-specific verified images
-        shell: bash
-        run: |
-          set -euo pipefail
-          docker tag "pixiv-cli:${RELEASE_TAG}-linux-amd64" "ghcr.io/flanchanxwo/pixiv-cli:${RELEASE_TAG}-linux-amd64"
-          docker push "ghcr.io/flanchanxwo/pixiv-cli:${RELEASE_TAG}-linux-amd64"
-          docker tag "pixiv-cli:${RELEASE_TAG}-linux-arm64" "ghcr.io/flanchanxwo/pixiv-cli:${RELEASE_TAG}-linux-arm64"
-          docker push "ghcr.io/flanchanxwo/pixiv-cli:${RELEASE_TAG}-linux-arm64"
-      - name: Publish the exact-version multi-architecture manifest
-        shell: bash
-        run: |
-          set -euo pipefail
-          docker manifest create "ghcr.io/flanchanxwo/pixiv-cli:${RELEASE_TAG}" \
-            --amend "ghcr.io/flanchanxwo/pixiv-cli:${RELEASE_TAG}-linux-amd64" \
-            --amend "ghcr.io/flanchanxwo/pixiv-cli:${RELEASE_TAG}-linux-arm64"
-          docker manifest push "ghcr.io/flanchanxwo/pixiv-cli:${RELEASE_TAG}"
-      - name: Advance latest only for the newest stable release
-        shell: bash
-        env:
-          GITHUB_TOKEN: ${{ github.token }}
-        run: |
-          set -euo pipefail
-          channel=$(go run ./scripts/cmd/releaseassets channel --version "${RELEASE_TAG#v}")
-          case "$channel" in
-            stable)
-              latest_stable_tag=$(
-                GH_TOKEN="$GITHUB_TOKEN" gh api --paginate \
-                  "repos/$GITHUB_REPOSITORY/git/matching-refs/tags/v" \
-                  --jq '.[].ref | sub("^refs/tags/"; "")' \
-                | grep -E '^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$' \
-                | sort -Vr | head -n1
-              )
-              test "${RELEASE_TAG}" = "${latest_stable_tag}"
-              docker manifest create "ghcr.io/flanchanxwo/pixiv-cli:latest" \
-                --amend "ghcr.io/flanchanxwo/pixiv-cli:${RELEASE_TAG}-linux-amd64" \
-                --amend "ghcr.io/flanchanxwo/pixiv-cli:${RELEASE_TAG}-linux-arm64"
-              docker manifest push "ghcr.io/flanchanxwo/pixiv-cli:latest"
-              ;;
-            prerelease)
-              printf '%s\n' 'prerelease keeps the latest tag unchanged' >&2
-              ;;
-            *)
-              printf '%s\n' 'unexpected release classification' >&2
-              exit 1
-              ;;
-          esac
-
-  render_homebrew_formula:
-    name: Render the channel Homebrew formula
-    needs: publish
-    runs-on: ubuntu-24.04
-    permissions:
-      contents: read
-    steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
-        with:
-          persist-credentials: false
-          ref: ${{ env.RELEASE_TAG }}
-      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff
-        with:
-          go-version: '1.26.3'
-      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
-        with:
-          name: verified-release-checksums
-          path: verified-release
-      - name: Render exactly one channel formula from the published checksums
-        shell: bash
-        run: |
-          set -eu
-          version="${RELEASE_TAG#v}"
-          case "$(go run ./scripts/cmd/releaseassets channel --version "$version")" in
-            stable)
-              formula_name=pixiv-cli
-              ;;
-            prerelease)
-              formula_name=pixiv-cli-beta
-              ;;
-            *)
-              printf '%s\n' 'unexpected release classification' >&2
-              exit 1
-              ;;
-          esac
-          mkdir -p staging-formula
-          go run ./scripts/cmd/homebrewformula render \
-            --formula "$formula_name" \
-            --version "$version" \
-            --checksums verified-release/checksums.txt \
-            --output "staging-formula/$formula_name.rb"
-          printf '%s\n' "$formula_name" > staging-formula/formula-name
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
-        with:
-          name: staging-homebrew-formula
-          path: staging-formula
-          if-no-files-found: error
-          retention-days: 1
-
-  verify_homebrew_formula:
-    name: Verify Homebrew on ${{ matrix.os }}/${{ matrix.arch }}
-    needs: render_homebrew_formula
-    runs-on: ${{ matrix.runner }}
-    permissions:
-      contents: read
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - runner: macos-15-intel
-            os: darwin
-            arch: amd64
-          - runner: macos-15
-            os: darwin
-            arch: arm64
-          - runner: ubuntu-22.04
-            os: linux
-            arch: amd64
-          - runner: ubuntu-22.04-arm
-            os: linux
-            arch: arm64
-    steps:
-      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
-        with:
-          name: staging-homebrew-formula
-          path: staging-formula
-      - name: Install the staging formula and verify its embedded version
-        shell: bash
-        run: |
-          set -euo pipefail
-          formula_name=$(cat staging-formula/formula-name)
-          case "$formula_name" in
-            pixiv-cli|pixiv-cli-beta) ;;
-            *) exit 1 ;;
-          esac
-          test "$(find staging-formula -maxdepth 1 -type f -print | LC_ALL=C sort)" = "$(printf '%s\n%s\n' staging-formula/formula-name "staging-formula/$formula_name.rb" | LC_ALL=C sort)"
-          if [ '${{ matrix.os }}' = linux ]; then
-            staging_dir="$(pwd)/staging-formula"
-            case "$staging_dir" in /*) ;; *) exit 1 ;; esac
-            docker run --rm \
-              --mount "type=bind,src=$staging_dir,dst=/staging-formula,readonly" \
-              --env RELEASE_TAG \
-              --env HOMEBREW_NO_AUTO_UPDATE=1 \
-              --env HOMEBREW_NO_ENV_HINTS=1 \
-              --entrypoint bash \
-              homebrew/brew@sha256:b0072bfdebf5934ae24b93b44a1928a88057399b3283ffa0177bb86084fdedfd \
-              -euo pipefail -c '
-                formula_name=$(cat /staging-formula/formula-name)
-                case "$formula_name" in
-                  pixiv-cli|pixiv-cli-beta) ;;
-                  *) exit 1 ;;
-                esac
-                test "$(find /staging-formula -maxdepth 1 -type f -print | LC_ALL=C sort)" = "$(printf "%s\\n%s\\n" /staging-formula/formula-name "/staging-formula/$formula_name.rb" | LC_ALL=C sort)"
-                staging_tap=pixiv-cli-release/staging
-                tap_dir="$(brew --repository)/Library/Taps/pixiv-cli-release/homebrew-staging"
-                brew tap-new "$staging_tap" --no-git
-                cp "/staging-formula/$formula_name.rb" "$tap_dir/Formula/$formula_name.rb"
-                brew install --formula "$staging_tap/$formula_name"
-                test "$(pixiv --version)" = "pixiv $RELEASE_TAG"
-              '
-          else
-            staging_tap=pixiv-cli-release/staging
-            tap_dir="$(brew --repository)/Library/Taps/pixiv-cli-release/homebrew-staging"
-            brew tap-new "$staging_tap" --no-git
-            brew trust --tap "$staging_tap"
-            cp "staging-formula/$formula_name.rb" "$tap_dir/Formula/$formula_name.rb"
-            brew install --formula "$staging_tap/$formula_name"
-            test "$(pixiv --version)" = "pixiv $RELEASE_TAG"
-          fi
-
-  deploy_homebrew_tap:
-    name: Deploy the verified Homebrew formula
-    needs: verify_homebrew_formula
-    runs-on: ubuntu-24.04
-    environment: release
-    permissions:
-      contents: read
-    steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
-        with:
-          persist-credentials: false
-          ref: ${{ env.RELEASE_TAG }}
-      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
-        with:
-          name: staging-homebrew-formula
-          path: staging-formula
-      - name: Prepare an exact one-formula tap commit over public HTTPS
-        shell: bash
-        run: |
-          set -euo pipefail
-          formula_name=$(cat staging-formula/formula-name)
-          case "$formula_name" in
-            pixiv-cli|pixiv-cli-beta) ;;
-            *) exit 1 ;;
-          esac
-          test -f "staging-formula/$formula_name.rb"
-          test "$(find staging-formula -maxdepth 1 -type f -print | LC_ALL=C sort)" = "$(printf '%s\n%s\n' staging-formula/formula-name "staging-formula/$formula_name.rb" | LC_ALL=C sort)"
-          tap_dir="$RUNNER_TEMP/homebrew-tap"
-          git clone https://github.com/FlanChanXwO/homebrew-tap.git "$tap_dir"
-          git -C "$tap_dir" config user.name github-actions[bot]
-          git -C "$tap_dir" config user.email 41898282+github-actions[bot]@users.noreply.github.com
-          mkdir -p "$tap_dir/Formula"
-          cp "staging-formula/$formula_name.rb" "$tap_dir/Formula/$formula_name.rb"
-          git -C "$tap_dir" add -- "Formula/$formula_name.rb"
-          test "$(git -C "$tap_dir" diff --cached --name-only)" = "Formula/$formula_name.rb"
-          test -z "$(git -C "$tap_dir" status --porcelain | sed -n '\|^?? |p')"
-          git -C "$tap_dir" commit -m "${RELEASE_TAG}: update $formula_name formula"
-      - name: Push the verified formula with the protected deploy key
-        shell: bash
-        env:
-          HOMEBREW_TAP_DEPLOY_KEY: ${{ secrets.HOMEBREW_TAP_DEPLOY_KEY }}
-        run: |
-          set -eu
-          umask 077
-          key_path="$RUNNER_TEMP/homebrew-tap-deploy-key"
-          trap 'rm -f "$key_path"' EXIT HUP INT TERM
-          test -n "$HOMEBREW_TAP_DEPLOY_KEY"
-          # OpenSSH 私钥必须以换行结尾；secret 是否保留末尾 LF 不应影响部署。
-          printf '%s\n' "$HOMEBREW_TAP_DEPLOY_KEY" > "$key_path"
-          chmod 600 "$key_path"
-          tap_dir="$RUNNER_TEMP/homebrew-tap"
-          git -C "$tap_dir" remote set-url origin git@github.com:FlanChanXwO/homebrew-tap.git
-          GIT_SSH_COMMAND="ssh -i $key_path -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile=$GITHUB_WORKSPACE/templates/homebrew/github.com-known-hosts" \
-            git -C "$tap_dir" push origin HEAD:main
-      # workflow_run 在恢复发布时的 head_branch 是 main，不能据此推断版本。仅在公开
-      # Release 与 Homebrew 都成功后交出精确 tag，供下游 SkillHub workflow 重新验证。
-      - name: Export the completed release tag for the SkillHub handoff
-        shell: bash
-        run: |
-          set -eu
-          mkdir -p skillhub-release-tag
-          printf '%s\n' "$RELEASE_TAG" > skillhub-release-tag/release-tag
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
-        with:
-          name: skillhub-release-tag
-          path: skillhub-release-tag/release-tag
           if-no-files-found: error
           retention-days: 1

@@ -2,30 +2,385 @@ name: Pull request metadata
 
 on:
   pull_request_target:
-    types: [opened, reopened, synchronize]
+    branches:
+      - main
+    types: [opened, edited, reopened, ready_for_review, synchronize]
 
-# 默认不授予权限；此工作流只需读取标签配置并更新 PR 元数据。
+# 默认不授予权限；验证 job 只读取受信策略并发布稳定 gate status。
 permissions: {}
 
+concurrency:
+  group: pr-gates-${{ github.event.pull_request.number }}-${{ github.event.action == 'edited' && github.event.changes.base == null && 'metadata' || 'head' }}
+  cancel-in-progress: true
+
 jobs:
-  label_and_assign:
-    name: Label and assign pull request
+  validate:
+    name: Validate PR metadata
+    runs-on: ubuntu-24.04
+    outputs:
+      platform_required: ${{ steps.smoke_scope.outputs.platform_required }}
+      container_required: ${{ steps.smoke_scope.outputs.container_required }}
+    permissions:
+      actions: write
+      checks: write
+      contents: read
+      issues: write
+      statuses: write
+    steps:
+      # PR .base.sha 是 PR 创建/同步时捕获的基线，可能远落后于当前受保护分支。
+      # 若按它 checkout，trusted 工具（tools/prmeta 等）会是从旧提交里取，甚至
+      # 根本不存在，导致元数据门无法运行或运行到陈旧策略。这里统一解析 base
+      # 分支当前 tip，与 pr-verification 的受信执行源保持一致。
+      - name: Resolve the protected base branch tip
+        id: base
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          PR: ${{ github.event.pull_request.number }}
+        run: |
+          set -euo pipefail
+          pr_json=$(gh api "repos/$REPO/pulls/$PR")
+          base_ref=$(printf '%s' "$pr_json" | jq -r '.base.ref')
+          if [ -z "$base_ref" ] || [ "$base_ref" = null ]; then
+            echo 'Pull request base branch is unavailable.' >&2
+            exit 1
+          fi
+          base_ref_encoded=$(printf '%s' "$base_ref" | jq -sRr @uri)
+          sha=$(gh api "repos/$REPO/branches/$base_ref_encoded" --jq '.commit.sha')
+          test -n "$sha"
+          printf 'sha=%s\n' "$sha" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+          ref: ${{ steps.base.outputs.sha }}
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e
+        with:
+          go-version-file: go.mod
+      - name: Validate template and verification declaration
+        id: policy
+        continue-on-error: true
+        shell: bash
+        env:
+          PR_BODY: ${{ github.event.pull_request.body }}
+        run: |
+          set -euo pipefail
+          printf '%s' "$PR_BODY" > "$RUNNER_TEMP/pr-body.md"
+          go run ./tools/prmeta --body-file "$RUNNER_TEMP/pr-body.md" --whitelist tools/verification/command-whitelist.txt --cli pixiv --github-output "$GITHUB_OUTPUT"
+      - name: Publish stable PR gate statuses
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          PR: ${{ github.event.pull_request.number }}
+          PR_BODY: ${{ github.event.pull_request.body }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          TEMPLATE_OK: ${{ steps.policy.outputs.template_ok }}
+          TEMPLATE_DESC: ${{ steps.policy.outputs.template_desc }}
+          COMMANDS_OK: ${{ steps.policy.outputs.commands_ok }}
+          COMMANDS_DESC: ${{ steps.policy.outputs.commands_desc }}
+        run: |
+          set -euo pipefail
+          event_body="$RUNNER_TEMP/event-pr-body.md"
+          current_body="$RUNNER_TEMP/current-pr-body.md"
+          printf '%s' "$PR_BODY" > "$event_body"
+          metadata_is_current() {
+            gh api "repos/$REPO/pulls/$PR" | jq -j '.body // ""' > "$current_body"
+            if ! cmp -s "$event_body" "$current_body"; then
+              echo 'PR body changed since this event; skipping stale metadata status publication.'
+              return 1
+            fi
+          }
+          template_state=failure
+          commands_state=failure
+          [ "$TEMPLATE_OK" = true ] && template_state=success
+          [ "$COMMANDS_OK" = true ] && commands_state=success
+          metadata_is_current || exit 0
+          gh api --method POST "repos/$REPO/statuses/$HEAD_SHA" -f state="$template_state" -f context='PR template gate' -f description="${TEMPLATE_DESC:0:140}" -f target_url="$RUN_URL"
+          metadata_is_current || exit 0
+          gh api --method POST "repos/$REPO/statuses/$HEAD_SHA" -f state="$commands_state" -f context='PR commands gate' -f description="${COMMANDS_DESC:0:140}" -f target_url="$RUN_URL"
+
+      - name: Fetch pull request head for trusted smoke classification
+        id: smoke_head
+        continue-on-error: true
+        shell: bash
+        env:
+          PR: ${{ github.event.pull_request.number }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+          git fetch --no-tags origin "+refs/pull/$PR/head:refs/remotes/pull/$PR/head"
+          test "$(git rev-parse "refs/remotes/pull/$PR/head")" = "$HEAD_SHA"
+
+      - name: Classify smoke scope with trusted policy
+        if: ${{ steps.smoke_head.outcome == 'success' }}
+        id: smoke_scope
+        continue-on-error: true
+        shell: bash
+        env:
+          BASE_SHA: ${{ steps.base.outputs.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: bash ./scripts/classify-change-scope.sh --base "$BASE_SHA" --head "$HEAD_SHA" --github-output "$GITHUB_OUTPUT"
+
+      - name: Publish smoke classification failure
+        if: ${{ always() && (steps.smoke_head.outcome == 'failure' || steps.smoke_scope.outcome == 'failure') }}
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          set -euo pipefail
+          for context in 'Platform smoke worker' 'Container smoke worker'; do
+            payload=$(jq -nc \
+              --arg name "$context" \
+              --arg head_sha "$HEAD_SHA" \
+              --arg details_url "$RUN_URL" \
+              '{name:$name, head_sha:$head_sha, status:"completed", conclusion:"failure", details_url:$details_url, output:{title:$name, summary:"Trusted smoke preparation failed."}}')
+            gh api --method POST "repos/$REPO/check-runs" --input - <<<"$payload" >/dev/null
+          done
+          exit 1
+
+      - name: Publish smoke state and dispatch trusted workers
+        if: ${{ (github.event.action != 'edited' || github.event.changes.base != null) && steps.smoke_head.outcome == 'success' && steps.smoke_scope.outcome == 'success' }}
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          BASE_REF: ${{ github.event.pull_request.base.ref }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          PR: ${{ github.event.pull_request.number }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          PLATFORM_REQUIRED: ${{ steps.smoke_scope.outputs.platform_required }}
+          CONTAINER_REQUIRED: ${{ steps.smoke_scope.outputs.container_required }}
+        run: |
+          set -euo pipefail
+
+          create_check() {
+            name=$1
+            status=$2
+            conclusion=$3
+            summary=$4
+            if [ -n "$conclusion" ]; then
+              payload=$(jq -nc \
+                --arg name "$name" \
+                --arg head_sha "$HEAD_SHA" \
+                --arg status "$status" \
+                --arg conclusion "$conclusion" \
+                --arg details_url "$RUN_URL" \
+                --arg summary "$summary" \
+                '{name:$name, head_sha:$head_sha, status:$status, conclusion:$conclusion, details_url:$details_url, output:{title:$name, summary:$summary}}')
+            else
+              payload=$(jq -nc \
+                --arg name "$name" \
+                --arg head_sha "$HEAD_SHA" \
+                --arg status "$status" \
+                --arg details_url "$RUN_URL" \
+                --arg summary "$summary" \
+                '{name:$name, head_sha:$head_sha, status:$status, details_url:$details_url, output:{title:$name, summary:$summary}}')
+            fi
+            gh api --method POST "repos/$REPO/check-runs" --input - <<<"$payload" --jq '.id'
+          }
+
+          fail_check() {
+            check_run_id=$1
+            summary=$2
+            payload=$(jq -nc \
+              --arg details_url "$RUN_URL" \
+              --arg summary "$summary" \
+              '{status:"completed", conclusion:"failure", details_url:$details_url, output:{title:"Smoke gate", summary:$summary}}')
+            gh api --method PATCH "repos/$REPO/check-runs/$check_run_id" --input - <<<"$payload" >/dev/null
+          }
+
+          dispatch_worker() {
+            workflow=$1
+            context=$2
+            description=$3
+            check_run_id=$(create_check "$context" in_progress '' "$description")
+            payload=$(jq -nc \
+              --arg ref "$BASE_REF" \
+              --arg pr_number "$PR" \
+              --arg head_sha "$HEAD_SHA" \
+              --arg check_run_id "$check_run_id" \
+              '{ref:$ref, inputs:{pr_number:$pr_number, head_sha:$head_sha, check_run_id:$check_run_id}}')
+            if ! response=$(gh api --method POST \
+              -H 'X-GitHub-Api-Version: 2026-03-10' \
+              "repos/$REPO/actions/workflows/$workflow/dispatches" \
+              --input - <<<"$payload"); then
+              fail_check "$check_run_id" "Failed to dispatch trusted smoke workers."
+              return 1
+            fi
+            run_id=$(printf '%s' "$response" | jq -r '.workflow_run_id')
+            if [ -z "$run_id" ] || [ "$run_id" = null ]; then
+              fail_check "$check_run_id" "Trusted smoke worker run id was not returned."
+              return 1
+            fi
+          }
+
+          failed=0
+          if [ "$PLATFORM_REQUIRED" = true ]; then
+            dispatch_worker platform-smoke.yml 'Platform smoke worker' 'Native platform smoke is running in parallel.' || failed=1
+          fi
+
+          if [ "$CONTAINER_REQUIRED" = true ]; then
+            dispatch_worker container-smoke.yml 'Container smoke worker' 'Container smoke is running in parallel.' || failed=1
+          fi
+
+          exit "$failed"
+
+      - name: Maintain invalid-PR age state
+        if: ${{ !cancelled() && steps.policy.outcome != 'skipped' }}
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          PR: ${{ github.event.pull_request.number }}
+          PR_BODY: ${{ github.event.pull_request.body }}
+          TEMPLATE_OK: ${{ steps.policy.outputs.template_ok }}
+          COMMANDS_OK: ${{ steps.policy.outputs.commands_ok }}
+        run: |
+          set -euo pipefail
+          printf '%s' "$PR_BODY" > "$RUNNER_TEMP/event-pr-body-state.md"
+          gh api "repos/$REPO/pulls/$PR" | jq -j '.body // ""' > "$RUNNER_TEMP/current-pr-body-state.md"
+          if ! cmp -s "$RUNNER_TEMP/event-pr-body-state.md" "$RUNNER_TEMP/current-pr-body-state.md"; then
+            echo 'PR body changed since this event; skipping stale metadata state publication.'
+            exit 0
+          fi
+          state_comment=$(gh api --paginate "repos/$REPO/issues/$PR/comments" --jq '.[] | select(.user.login == "github-actions[bot]" and (.body | contains("<!-- pr-policy-state:"))) | .id' | head -1)
+          if [ "$TEMPLATE_OK" = true ] && [ "$COMMANDS_OK" = true ]; then
+            if [ -n "$state_comment" ]; then
+              gh api --method DELETE "repos/$REPO/issues/comments/$state_comment" >/dev/null
+            fi
+            exit 0
+          fi
+          printf '%s\n' "$PR_BODY" > "$RUNNER_TEMP/pr-body-state.md"
+          body_hash=$(sha256sum "$RUNNER_TEMP/pr-body-state.md" | awk '{print $1}')
+          first_failed_at=
+          if [ -n "$state_comment" ]; then
+            old_body=$(gh api "repos/$REPO/issues/comments/$state_comment" --jq '.body')
+            old_state=$(printf '%s\n' "$old_body" | sed -n 's/^<!-- pr-policy-state:\(.*\) -->$/\1/p' | head -1)
+            if [ -n "$old_state" ] && printf '%s' "$old_state" | jq -e . >/dev/null 2>&1; then
+              old_hash=$(printf '%s' "$old_state" | jq -r '.body_sha256 // ""')
+              if [ "$old_hash" = "$body_hash" ]; then
+                first_failed_at=$(printf '%s' "$old_state" | jq -r '.first_failed_at // ""')
+              fi
+            fi
+          fi
+          if [ -z "$first_failed_at" ]; then
+            first_failed_at=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+          fi
+          state=$(jq -nc --arg hash "$body_hash" --arg first "$first_failed_at" '{body_sha256:$hash,first_failed_at:$first}')
+          {
+            printf '<!-- pr-policy-state:%s -->\n\n' "$state"
+            printf '%s\n' 'PR metadata is currently invalid. If the PR body remains unchanged and invalid for 7 days, the PR will be closed automatically.'
+          } > "$RUNNER_TEMP/pr-policy-state.md"
+          if [ -n "$state_comment" ]; then
+            gh api --method PATCH "repos/$REPO/issues/comments/$state_comment" -F body=@"$RUNNER_TEMP/pr-policy-state.md" >/dev/null
+          else
+            gh api --method POST "repos/$REPO/issues/$PR/comments" -F body=@"$RUNNER_TEMP/pr-policy-state.md" >/dev/null
+          fi
+      - name: Require metadata gates
+        shell: bash
+        env:
+          TEMPLATE_OK: ${{ steps.policy.outputs.template_ok }}
+          COMMANDS_OK: ${{ steps.policy.outputs.commands_ok }}
+        run: |
+          set -euo pipefail
+          test "$TEMPLATE_OK" = true
+          test "$COMMANDS_OK" = true
+
+  platform_smoke:
+    name: Platform smoke
+    needs: validate
+    if: ${{ always() && (needs.validate.result != 'success' || needs.validate.outputs.platform_required == 'true') }}
     runs-on: ubuntu-24.04
     permissions:
-      contents: read
-      pull-requests: write
+      checks: read
     steps:
-      # labeler 通过 API 读取 base branch 的配置；不 checkout 或执行 PR 分支代码。
-      - name: Apply path labels
-        uses: actions/labeler@bf12e9b00b37c5c0ca2b87b79b2daf7891dbda13
-      # 仅追加 PR 作者，不覆盖维护者已有的人工指派。
-      - name: Assign pull request author
-        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3
-        with:
-          script: |
-            await github.rest.issues.addAssignees({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              issue_number: context.payload.pull_request.number,
-              assignees: [context.payload.pull_request.user.login],
-            });
+      - name: Require successful smoke preparation
+        if: ${{ needs.validate.result != 'success' }}
+        shell: bash
+        run: |
+          echo '::error::Trusted PR metadata preparation failed.'
+          exit 1
+      - name: Wait for trusted platform smoke worker
+        if: ${{ needs.validate.result == 'success' }}
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          WORKER_CHECK: Platform smoke worker
+        run: |
+          set -euo pipefail
+          check=$(gh api --method GET "repos/$REPO/commits/$HEAD_SHA/check-runs" \
+            -f check_name="$WORKER_CHECK" -f filter=latest -f per_page=1)
+          check_run_id=$(printf '%s' "$check" | jq -r '.check_runs[0].id // empty')
+          if [ -z "$check_run_id" ]; then
+            echo '::error::Trusted platform smoke worker check was not published.'
+            exit 1
+          fi
+          while :; do
+            check=$(gh api "repos/$REPO/check-runs/$check_run_id")
+            status=$(printf '%s' "$check" | jq -r '.status')
+            if [ "$status" = completed ]; then
+              conclusion=$(printf '%s' "$check" | jq -r '.conclusion // ""')
+              if [ "$conclusion" = success ]; then
+                exit 0
+              fi
+              details=$(printf '%s' "$check" | jq -r '.details_url // ""')
+              echo "::error::Trusted platform smoke worker finished with $conclusion. $details"
+              exit 1
+            fi
+            sleep 5
+          done
+
+  container_smoke:
+    name: Container smoke
+    needs: validate
+    if: ${{ always() && (needs.validate.result != 'success' || needs.validate.outputs.container_required == 'true') }}
+    runs-on: ubuntu-24.04
+    permissions:
+      checks: read
+    steps:
+      - name: Require successful smoke preparation
+        if: ${{ needs.validate.result != 'success' }}
+        shell: bash
+        run: |
+          echo '::error::Trusted PR metadata preparation failed.'
+          exit 1
+      - name: Wait for trusted container smoke worker
+        if: ${{ needs.validate.result == 'success' }}
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          WORKER_CHECK: Container smoke worker
+        run: |
+          set -euo pipefail
+          check=$(gh api --method GET "repos/$REPO/commits/$HEAD_SHA/check-runs" \
+            -f check_name="$WORKER_CHECK" -f filter=latest -f per_page=1)
+          check_run_id=$(printf '%s' "$check" | jq -r '.check_runs[0].id // empty')
+          if [ -z "$check_run_id" ]; then
+            echo '::error::Trusted container smoke worker check was not published.'
+            exit 1
+          fi
+          while :; do
+            check=$(gh api "repos/$REPO/check-runs/$check_run_id")
+            status=$(printf '%s' "$check" | jq -r '.status')
+            if [ "$status" = completed ]; then
+              conclusion=$(printf '%s' "$check" | jq -r '.conclusion // ""')
+              if [ "$conclusion" = success ]; then
+                exit 0
+              fi
+              details=$(printf '%s' "$check" | jq -r '.details_url // ""')
+              echo "::error::Trusted container smoke worker finished with $conclusion. $details"
+              exit 1
+            fi
+            sleep 5
+          done

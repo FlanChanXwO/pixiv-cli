@@ -27,7 +27,10 @@ func Query(ctx context.Context, dbPath, sql string, params map[string]string) ([
 	if strings.TrimSpace(dbPath) == "" || strings.TrimSpace(sql) == "" {
 		return nil, browsercookies.ErrQueryFailed
 	}
-	args := []string{"-readonly", "-noheader", "-csv"}
+	// SQLite 的 Windows CLI 默认 row separator 会与 C runtime 的文本换行转换叠加，
+	// 实际产生 \r\r\n，encoding/csv 会拒绝该记录。显式要求单个 \n，让 Windows
+	// 文本模式最终输出标准 CRLF；Unix 仍输出 LF。
+	args := []string{"-readonly", "-noheader", "-csv", "-newline", "\n"}
 	for name, value := range params {
 		if !safeParam(name) || !safeParam(value) {
 			return nil, browsercookies.ErrQueryFailed

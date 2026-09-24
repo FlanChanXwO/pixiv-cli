@@ -208,37 +208,6 @@ func TestDockerfileUsesDebianSlimBase(t *testing.T) {
 	}
 }
 
-// TestMaintainerDocsDocumentContainerRecoveryBoundary 锁定双语维护者文档中的
-// GHCR 恢复语义：GitHub Release 与 GHCR 非原子，失败必须显式重跑发布 job。
-func TestMaintainerDocsDocumentContainerRecoveryBoundary(t *testing.T) {
-	t.Parallel()
-	root := repositoryRoot(t)
-	requiredFragments := map[string][]string{
-		"docs/en/maintainers/development.md": {
-			"If GHCR publication fails",
-			"same verified container artifacts",
-			"No retry loop",
-		},
-		"docs/zh-CN/maintainers/development.md": {
-			"若 GHCR 发布失败",
-			"同一批 verified-container artifact",
-			"不使用 retry loop",
-		},
-	}
-	for relativePath, fragments := range requiredFragments {
-		body, err := os.ReadFile(filepath.Join(root, filepath.FromSlash(relativePath)))
-		if err != nil {
-			t.Fatalf("read %s: %v", relativePath, err)
-		}
-		document := string(body)
-		for _, fragment := range fragments {
-			if !strings.Contains(document, fragment) {
-				t.Fatalf("%s must document container recovery boundary with %q", relativePath, fragment)
-			}
-		}
-	}
-}
-
 // TestDockerfilePrecreatesWritableStateDirectory 锁定命名 volume 的初始属主：
 // Docker 首次挂载空 volume 时会复制镜像内目录的 ownership，缺失会导致非 root 无法写入。
 func TestDockerfilePrecreatesWritableStateDirectory(t *testing.T) {
@@ -324,7 +293,7 @@ func TestContainerWorkflowsVerifyLicenseNotices(t *testing.T) {
 }
 
 // TestContainerArtifactRetentionSupportsRecovery 锁定发布恢复窗口；
-// 一天过期会使 publish_container 失败后无法按文档重用同一批 artifact。
+// artifact 过早过期会让独立 registry publisher 无法复用同一批产物恢复发布。
 func TestContainerArtifactRetentionSupportsRecovery(t *testing.T) {
 	t.Parallel()
 	root := repositoryRoot(t)
@@ -344,6 +313,157 @@ func TestContainerArtifactRetentionSupportsRecovery(t *testing.T) {
 	}
 	if !strings.Contains(remainder, "retention-days: 90") {
 		t.Fatal("verified container artifacts must be retained for the documented 90-day recovery window")
+	}
+}
+
+// TestContainerPublishWorkflowUsesTrustedReleaseArtifacts 锁定两个 registry 共用的
+// release_run_id 恢复输入、immutable handoff 校验与 protected release
+// Environment 边界（§15/§17/§19/§23）。
+func TestContainerPublishWorkflowUsesTrustedReleaseArtifacts(t *testing.T) {
+	t.Parallel()
+	root := repositoryRoot(t)
+	body, err := os.ReadFile(filepath.Join(root, ".github/workflows/publish-dockerhub.yml"))
+	if err != nil {
+		t.Fatalf("read Docker Hub publish workflow: %v", err)
+	}
+	text := string(body)
+	for _, fragment := range []string{
+		"name: Publish container images",
+		"name: Publish pixiv-cli container images",
+		"workflow_run:",
+		"- Release",
+		"- completed",
+		"workflow_dispatch:",
+		"release_run_id:",
+		"release_run_id must be a positive decimal number",
+		"environment: release",
+		"actions: read",
+		"contents: read",
+		"packages: write",
+		"name: prepared-release-checksums",
+		"pattern: verified-container-*",
+		"verify-handoff-set",
+		"--section container",
+		"--run-head-sha",
+		"secrets.DOCKER_HUB_TOKEN",
+		"docker login docker.io --username",
+		"--password-stdin",
+		"docker.io/flanchanxwo/pixiv-cli",
+		"ghcr.io/flanchanxwo/pixiv-cli",
+		"docker login ghcr.io --username",
+		"docker manifest create",
+		"docker manifest push",
+	} {
+		if !strings.Contains(text, fragment) {
+			t.Fatalf("Docker Hub publish workflow must contain %q", fragment)
+		}
+	}
+	if strings.Contains(text, "docker login docker.io --username \"$DOCKER_HUB_USERNAME\" --password \"$DOCKER_HUB_TOKEN\"") {
+		t.Fatal("Docker Hub token must be passed through docker login stdin, not argv")
+	}
+	releaseBody, err := os.ReadFile(filepath.Join(root, ".github/workflows/release.yml"))
+	if err != nil {
+		t.Fatalf("read release workflow: %v", err)
+	}
+	releaseText := string(releaseBody)
+	if strings.Contains(releaseText, "publish_container:") || strings.Contains(releaseText, "docker push \"ghcr.io/flanchanxwo/pixiv-cli") {
+		t.Fatal("Release workflow must not publish registry images; the independent container publisher owns registry pushes")
+	}
+}
+
+// TestDockerHubPublishWorkflowDoesNotRunARM64ImageOnX64Runner 锁定 Docker Hub
+// 后置发布只在 x64 runner 上做 amd64 runtime smoke，arm64 仅加载并校验架构与标签。
+func TestDockerHubPublishWorkflowDoesNotRunARM64ImageOnX64Runner(t *testing.T) {
+	t.Parallel()
+	root := repositoryRoot(t)
+	body, err := os.ReadFile(filepath.Join(root, ".github/workflows/publish-dockerhub.yml"))
+	if err != nil {
+		t.Fatalf("read Docker Hub publish workflow: %v", err)
+	}
+	text := string(body)
+	if !strings.Contains(text, "    runs-on: ubuntu-24.04") {
+		t.Fatal("Docker Hub publish workflow must keep the publish job on the x64 ubuntu-24.04 runner")
+	}
+
+	const verifyStep = "      - name: Load and verify the trusted container artifacts"
+	const nextStep = "      - name: Authenticate to container registries"
+	start := strings.Index(text, verifyStep)
+	if start < 0 {
+		t.Fatalf("Docker Hub publish workflow must contain %q", verifyStep)
+	}
+	end := strings.Index(text[start:], "\n"+nextStep)
+	if end < 0 {
+		t.Fatalf("Docker Hub publish workflow must contain the step after %q", verifyStep)
+	}
+	verifyScript := text[start : start+end]
+
+	const architectureCheck = `test "$(docker image inspect --format '{{.Architecture}}' "$image")" = "$arch"`
+	if !strings.Contains(verifyScript, architectureCheck) {
+		t.Fatalf("Docker Hub publish workflow must verify each loaded image architecture with %q", architectureCheck)
+	}
+
+	if !strings.Contains(verifyScript, "for arch in amd64 arm64; do") {
+		t.Fatal("Docker Hub publish workflow must verify both Linux architectures in one loop")
+	}
+	if runIndex := strings.Index(verifyScript, "docker run"); runIndex >= 0 && strings.Index(verifyScript, architectureCheck) > runIndex {
+		t.Fatal("Docker Hub publish workflow must verify the image architecture before any runtime smoke")
+	}
+
+	amd64Guard := `if [ "$arch" = amd64 ]; then`
+	guardDepth := 0
+	for _, line := range strings.Split(verifyScript, "\n") {
+		trimmed := strings.TrimSpace(line)
+		switch {
+		case trimmed == amd64Guard:
+			guardDepth++
+		case trimmed == "fi" && guardDepth > 0:
+			guardDepth--
+		case strings.Contains(trimmed, "docker run") && guardDepth == 0:
+			t.Fatalf("Docker Hub publish workflow must not run an image outside the amd64 guard; arm64 must not execute on the x64 runner: %q", trimmed)
+		}
+	}
+	if guardDepth != 0 {
+		t.Fatal("Docker Hub publish workflow must close the amd64-only runtime smoke guard")
+	}
+}
+
+// TestDockerHubPublishWorkflowLeavesLatestUnchangedForOlderStableRelease 锁定
+// 手动恢复旧 stable 时 exact-version 发布成功，只有 latest 更新被跳过而不是令 job 失败。
+func TestDockerHubPublishWorkflowLeavesLatestUnchangedForOlderStableRelease(t *testing.T) {
+	t.Parallel()
+	root := repositoryRoot(t)
+	body, err := os.ReadFile(filepath.Join(root, ".github/workflows/publish-dockerhub.yml"))
+	if err != nil {
+		t.Fatalf("read Docker Hub publish workflow: %v", err)
+	}
+	text := string(body)
+
+	const stableCase = "            stable)\n"
+	const prereleaseCase = "            prerelease)"
+	start := strings.Index(text, stableCase)
+	if start < 0 {
+		t.Fatalf("Docker Hub publish workflow must contain %q", stableCase)
+	}
+	end := strings.Index(text[start:], prereleaseCase)
+	if end < 0 {
+		t.Fatalf("Docker Hub publish workflow must contain the case after %q", stableCase)
+	}
+	stableBlock := text[start : start+end]
+
+	for _, fragment := range []string{
+		`if [ "$RELEASE_TAG" = "$latest_stable_tag" ]; then`,
+		`for registry_image in "$DOCKER_HUB_IMAGE" "$GHCR_IMAGE"; do`,
+		`docker manifest create "${registry_image}:latest"`,
+		`docker manifest push "${registry_image}:latest"`,
+		"else",
+		"older stable release keeps the latest tag unchanged",
+	} {
+		if !strings.Contains(stableBlock, fragment) {
+			t.Fatalf("stable Docker Hub publish path must contain %q", fragment)
+		}
+	}
+	if strings.Contains(stableBlock, `test "$RELEASE_TAG" = "$latest_stable_tag"`) {
+		t.Fatal("an older stable release must not fail the Docker Hub publish job when latest is unchanged")
 	}
 }
 

@@ -8,6 +8,7 @@ import (
 	"net/url"
 	"strconv"
 
+	endpointcontinuation "github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/endpoint/continuation"
 	"github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/endpoint/novel"
 	"github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/protocol"
 )
@@ -25,14 +26,17 @@ const (
 )
 
 type Request struct {
-	Kind     Kind
-	Restrict string
-	Offset   int
+	Kind       Kind
+	Restrict   string
+	Offset     int
+	MaxNovelID int64
 }
 
 type Result struct {
 	Items      []novel.Novel
 	NextOffset int
+	NextKey    string
+	NextValue  int64
 	HasNext    bool
 }
 
@@ -67,11 +71,19 @@ func (c *Client) List(ctx context.Context, request Request) (Result, error) {
 		if *raw.NextURL == "" {
 			return Result{}, protocol.MalformedResponse()
 		}
-		next, err := continuation(*raw.NextURL)
-		if err != nil {
-			return Result{}, err
+		if request.Kind == Latest {
+			next, err := latestContinuation(*raw.NextURL)
+			if err != nil {
+				return Result{}, err
+			}
+			result.NextKey, result.NextValue, result.HasNext = "max_novel_id", next, true
+		} else {
+			next, err := continuation(*raw.NextURL, path)
+			if err != nil {
+				return Result{}, err
+			}
+			result.NextKey, result.NextValue, result.NextOffset, result.HasNext = "offset", int64(next), next, true
 		}
-		result.NextOffset, result.HasNext = next, true
 	}
 	return result, nil
 }
@@ -80,12 +92,28 @@ func requestValues(request Request) (string, url.Values, error) {
 	query := url.Values{}
 	switch request.Kind {
 	case Following:
+		// follow contract 只接受可选的 public/private scope 与非负 offset；在
+		// transport 前拒绝非法输入，避免无效 cursor 被静默解释为首页请求。
+		if request.Restrict != "" && request.Restrict != "public" && request.Restrict != "private" {
+			return "", nil, errors.New("novel follow restrict must be public or private")
+		}
+		if request.Offset < 0 {
+			return "", nil, errors.New("novel follow offset must not be negative")
+		}
 		query.Set("restrict", request.Restrict)
 		setOffset(query, request.Offset)
 		return protocol.AppNovelFollow, query, nil
 	case Latest:
+		if request.Offset != 0 {
+			return "", nil, errors.New("latest novel continuation must use max_novel_id")
+		}
+		if request.MaxNovelID < 0 {
+			return "", nil, errors.New("max novel ID must be non-negative")
+		}
 		query.Set("filter", "for_android")
-		setOffset(query, request.Offset)
+		if request.MaxNovelID > 0 {
+			query.Set("max_novel_id", strconv.FormatInt(request.MaxNovelID, 10))
+		}
 		return protocol.AppNovelNew, query, nil
 	case MyPixiv:
 		setOffset(query, request.Offset)
@@ -191,18 +219,37 @@ func cloneString(value *string) *string {
 	copy := *value
 	return &copy
 }
-func continuation(rawURL string) (int, error) {
-	parsed, err := url.Parse(rawURL)
-	if err != nil {
-		return 0, protocol.MalformedResponse()
-	}
-	values, err := url.ParseQuery(parsed.RawQuery)
-	if err != nil || len(values["offset"]) != 1 {
-		return 0, protocol.MalformedResponse()
-	}
-	value, err := strconv.ParseInt(values.Get("offset"), 10, 64)
+func continuation(rawURL, path string) (int, error) {
+	_, value, err := endpointcontinuation.Parse(rawURL, endpointcontinuation.Spec{
+		Path:             path,
+		Keys:             []string{"offset"},
+		AllowedQueryKeys: allowedContinuationQueryKeys(path),
+	})
 	if err != nil || value <= 0 || int64(int(value)) != value {
 		return 0, protocol.MalformedResponse()
 	}
 	return int(value), nil
+}
+
+func allowedContinuationQueryKeys(path string) []string {
+	switch path {
+	case protocol.AppNovelFollow:
+		return []string{"restrict"}
+	case protocol.AppNovelNew:
+		return []string{"filter"}
+	default:
+		return nil
+	}
+}
+
+func latestContinuation(rawURL string) (int64, error) {
+	_, value, err := endpointcontinuation.Parse(rawURL, endpointcontinuation.Spec{
+		Path:             protocol.AppNovelNew,
+		Keys:             []string{"max_novel_id"},
+		AllowedQueryKeys: []string{"filter"},
+	})
+	if err != nil || value <= 0 {
+		return 0, protocol.MalformedResponse()
+	}
+	return value, nil
 }

@@ -39,7 +39,7 @@ type recordOptions struct {
 }
 
 // evidenceRecord 是单个真实 runner 输出的可迁移审计记录。测试可构造 fixture 验证格式，
-// 但只有 workflow 产生、绑定 main SHA 的记录才是 Task 33 所要求的 native evidence。
+// 但只有 workflow 产生、绑定 main SHA 的记录才是可用于审计和回填的 native evidence。
 type evidenceRecord struct {
 	Schema int            `json:"schema"`
 	Target evidenceTarget `json:"target"`

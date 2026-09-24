@@ -1,48 +1,50 @@
-# 变更可同时命中多个区域标签，保留人工添加的标签不受此文件影响。
 "area: docs":
   - changed-files:
       - any-glob-to-any-file:
-          - AGENTS.md
-          - CONTEXT.md
-          - CONTRIBUTING*.md
-          - README*.md
-          - .agents/skills/**
-          - docs/**
-          - skills/**
+          - "AGENTS.md"
+          - "CONTEXT.md"
+          - "CONTRIBUTING*.md"
+          - "README*.md"
+          - ".agents/skills/**"
+          - "docs/**"
+          - "skills/**"
 
 "area: frontend":
   - changed-files:
       - any-glob-to-any-file:
-          - assets/**
-          - frontend/**
-          - web/**
+          - "assets/**"
+          - "frontend/**"
+          - "web/**"
 
 "area: backend":
   - changed-files:
       - any-glob-to-any-file:
-          - cmd/**
-          - internal/**
-          - pixiv/**
-          - go.mod
-          - go.sum
-
-"area: github-actions":
-  - changed-files:
-      - any-glob-to-any-file: .github/**
+          - "cmd/**"
+          - "internal/**"
+          - "sdk/**"
+          - "go.mod"
+          - "go.sum"
 
 "area: tests":
   - changed-files:
       - any-glob-to-any-file:
           - "**/*_test.go"
-          - e2e/**
+          - "e2e/**"
 
-release:
+"area: github-actions":
   - changed-files:
       - any-glob-to-any-file:
-          - changelog/**
-          - scripts/cmd/homebrewformula/**
-          - scripts/cmd/prepublishhomebrew/**
-          - scripts/cmd/releaseassets/**
-          - scripts/cmd/releasenotes/**
-          - scripts/cmd/releaseworkflow/**
-          - templates/homebrew/**
+          - ".github/**"
+
+"release":
+  - changed-files:
+      - any-glob-to-any-file:
+          - "changelog/**"
+          - ".github/workflows/release.yml"
+          - ".github/workflows/publish-*.yml"
+          - "scripts/cmd/homebrewformula/**"
+          - "scripts/cmd/releaseassets/**"
+          - "scripts/cmd/releasenotes/**"
+          - "tools/release/**"
+          - "tools/platformmatrix/**"
+          - "templates/homebrew/**"

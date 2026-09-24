@@ -74,7 +74,7 @@ CLI 不导出跨命令 locator，也没有独立 bootstrap constructor 或 `inte
 根级 `internal/cli/commands/{config,mcp,update}`，Pixiv `internal/cli/commands/pixiv/{auth,bookmark,comment,detail,download,follow,mypixiv,ranking,recommended,search,series,timeline,user}`，
 FANBOX `internal/cli/commands/fanbox/{auth,download,mcp,post}`。数据命令经 owner-local 窄
 `Data` 端口（`Open`/`Pooled`/`JSONOut` 等）使用 public SDK `*pixiv.Client`/`*fanbox.Client`，不直连内部协议适配包；
-共享 stdin codec 位于 `internal/cli/pipeline`，CLI/MCP 共用的稳定 Pixiv record 投影位于 `internal/shared/record`；该包只承接记录协议、JSON 归一化与 public SDK DTO 映射，不能依赖 CLI、MCP 或内部协议适配包，也不能扩展为通用杂物包。这些子包不反向导入 `internal/cli` 根包。
+共享 stdin codec 位于 `internal/cli/pipeline`，CLI/MCP 共用的稳定 Pixiv record 投影位于 `internal/shared/record`；命令级 Pixiv target resolver 位于 `internal/shared/resolver`，只消费 command contract、record 与纯本地 `sdk/pixiv.ParseURL`，受控 bare-ID probe 必须由 owner 显式注入，resolver 不持有 client、凭据或协议适配。`record` 包只承接记录协议、JSON 归一化与 public SDK DTO 映射，不能依赖 CLI、MCP 或内部协议适配包，也不能扩展为通用杂物包。这些子包不反向导入 `internal/cli` 根包。
 
 root `--version` stdout 精确为一行 `pixiv <version>`，stderr 为空且不运行 startup update check。已删除的
 `version` 子命令在解析阶段返回 unknown-command、stdout 为空。自动更新只在普通业务命令成功后运行，跳过 MCP、help、root
@@ -108,12 +108,21 @@ XDG desktop entry 与 `gio`。headless Linux 不注册 handler，但可运行 re
 该包不依赖 CLI、MCP 或 `internal/services` 协议适配包；MCP 自身的输出 schema 与 DTO 包装仍由
 `internal/mcpserver/pixiv/internal/records` 负责。
 
+### `internal/shared/searchfilter`
+
+负责 CLI/MCP 共用的 artwork 本地筛选语义：将 rating 与 content-type 输入归一化为
+canonical 值，按 DTO 的 `x_restrict` 和 artwork kind 做 client-side matching，并为本地筛选
+生成不暴露原始值的 cursor context。rating 不映射为未经确认的 upstream `x_restrict` 请求参数；
+具体命令是否允许某个字段、以及 endpoint 已确认的 content-type wire 参数，仍由各 owner contract
+决定。该包不持有 client、凭据或协议 adapter。
+
 ### 业务 Facade、账号与通用遍历
 
 - `internal/services/pixiv` 是 Pixiv 业务 Facade，聚合 `account` 与 `pool` 等业务叶 Module。`account` 负责本地账号、登录完成、默认账号、凭据 identity/rotation 与账号管理；`pool` 负责选择、冻结、Gate、safe replay 与相关错误语义。
 - `internal/services/fanbox` 是 FANBOX 业务 Facade，聚合 FANBOX `account` 叶 Module 与 client lifecycle；FANBOX session 不与 Pixiv refresh token 共享类型或生命周期。
 - `internal/shared/lifecycle` 只承载协议无关的生命周期、Lease 与 Attempt；它不拥有 Pixiv/FANBOX 账号选择、凭据或重放策略。
-- `internal/shared/traversal` 只承载泛型可重入分页遍历（opaque cursor、逻辑 skip/limit、单批兼容语义与重复 cursor 止环）；bookmark 等产品筛选策略仍留在各 CLI/MCP search adapter。
+- `internal/shared/pagination` 负责协议无关的单流与有序聚合流逻辑分页：先对候选执行筛选，再统一应用 skip/limit；`OneBatch` 在当前流找到首个匹配源批次后停止；批内截断通过源序列位置 checkpoint 续读。其 `StreamState` 只包含当前流和各流 cursor，不编码产品语义；产品 owner 负责把它与 query/account/subtype binding 一起编码进 opaque cursor。
+- `internal/shared/traversal` 负责单流与聚合读的可重入 execute lifecycle，在安全 replay 前清空未提交结果。命令级筛选接入仍留在各 CLI/MCP owner，规范化的 artwork rating/content-type 语义由 `internal/shared/searchfilter` 提供。
 
 配置 schema、`config.toml` path/get/set/unset、自动生成的默认文件与一次执行所需的 immutable `Snapshot` 位于 `internal/config/settings`；协议无关的日期按月截断纯函数位于 `internal/utils/date`。CLI/MCP 经 owner-local 窄 Seam 与 MCP runtime `SDKPorts` 使用业务 Facade，不直接依赖上游 Adapter。`internal/account` 与 `internal/session` 已删除，不保留兼容 alias。
 
@@ -219,7 +228,7 @@ cache、显式更新策略与 Release binary 安装协议分别由 `internal/upd
   GitHub 已标记的 prerelease。签名、checksum、不可变 tag 和安装前预检共同构成 Release 信任边界。
 
 该包不得把签名、checksum、HTTP、archive、替换或权限错误伪装成“无更新”。production trusted key、
-签名私钥与 Keychain 恢复副本、受保护 `release` Environment 和公开 remote 已按 Task 20 配置；完整六目标
+签名私钥与 Keychain 恢复副本、受保护 `release` Environment 和公开 remote 已按正式发布链路配置；完整六目标
 native evidence 与 staticlib manifest 已回填。v0.3.0 已完成正式 tag、受签名 Release 与 stable tap formula；
 Release 安装的失败语义仍是保护边界，而不是临时降级。
 
@@ -227,17 +236,18 @@ Release 安装的失败语义仍是保护边界，而不是临时降级。
 
 每个仍在使用的脚本入口位于 `scripts/cmd/<name>/main.go`，只负责参数解析和调用对应的 owner
 package。纯测试载体位于 `scripts/tests/`：它们只验证 workflow、文档或 installer 行为，不承载生产实现。
-实现逻辑与同包测试位于 `scripts/internal/<name>`。共享 verifier/发布契约位于
-`scripts/internal/workflow/yaml`（release 与 native evidence verifier 共用的 YAML AST 安全操作）、
-`scripts/internal/releasecontract`（Release/native-evidence 契约与 per-target Rust toolchain 映射）与
+实现逻辑与同包测试位于 `scripts/internal/<name>`。共享发布契约位于
+`scripts/internal/releasecontract`（release target/archive identity）与
 `scripts/internal/releasenotesrender`（GitHub Release 正文渲染，被 `releaseassets` 与历史同步共用）。
+平台 runner/Rust/CC metadata 由 `ci/platforms.json` 单独拥有，并通过 `tools/platformmatrix` 提供给 workflow；
+workflow 测试只验证行为/安全边界，不再维护第二份精确 YAML policy model。
 
 ### `sdk`、`sdk/pixiv`、`sdk/fanbox`
 
 公开 SDK 是唯一对外契约面，只从这三个 package 导出：
 
 - `sdk`：共享的 `Page[T]`、`Cursor`（Text/JSON codec）、`Error`（sentinel、context chain、脱敏）、`ResourceRef`/`Resource` 与资源 request/response/save 类型。
-- `sdk/pixiv`：Pixiv App-only SDK。`Open/OpenWith/New/NewWith` 构造器、OAuth `LoginSession`、credentials rotation、规范化模型、opaque cursor、`ParseURL` 与资源读取。没有匿名 Web 路径。
+- `sdk/pixiv`：Pixiv App-only SDK。`Open/OpenWith/New/NewWith` 构造器、OAuth `LoginSession`、credentials rotation、artwork/novel/user/comment/stamp 规范化模型、opaque cursor、`ParseURL`、comment mutation、stamp read 与资源读取。没有匿名 Web 路径。
 - `sdk/fanbox`：FANBOX SDK。`Client.ValidateSession`、creator/tag/post/home/supporting、两类 pagination 与资源读取；不读取浏览器、DB 或 Pixiv credentials，也不 import `sdk/pixiv`。
 
 FANBOX native transport 使用 Chrome 146 TLS profile 与内置 Firefox 148 HTTP User-Agent baseline，并只在构造时接收显式的 HTTP client、proxy、UA 与可选
@@ -353,7 +363,7 @@ full-SHA Actions，并在草稿 Release 上传后核对 asset 集合才发布。
 job 才能读取独立 tap deploy key 并只 push 对应 formula。
 v0.3.0 的正式 tag 已走完此发布路径并推送 stable formula；后续 tag 仍必须独立满足同一安装 gate。完整
 六目标 native 成功证据已回填 staticlib/manifest。production signing 私钥、Environment 与公开 remote
-已按 Task 20 配置，受支持 binary 的公开 trust root 已在 `internal/update/installer/release_installer.go` 配置。Rust crates.io 依赖已由
+已按正式发布链路配置，受支持 binary 的公开 trust root 已在 `internal/update/installer/release_installer.go` 配置。Rust crates.io 依赖已由
 crate 内 source replacement 固定到完整 vendor 闭包，并以空 Cargo cache 离线 metadata/build/test 与六
 target 许可证检查验证。
 

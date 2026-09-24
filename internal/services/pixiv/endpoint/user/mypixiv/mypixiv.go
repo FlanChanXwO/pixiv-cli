@@ -8,6 +8,7 @@ import (
 	"net/url"
 	"strconv"
 
+	endpointcontinuation "github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/endpoint/continuation"
 	"github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/endpoint/user"
 	"github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/protocol"
 )
@@ -30,6 +31,9 @@ func New(transport Transport) *Client { return &Client{transport: transport} }
 func (c *Client) List(ctx context.Context, request Request) (Result, error) {
 	if c == nil || c.transport == nil {
 		return Result{}, errors.New("user mypixiv transport is not configured")
+	}
+	if request.UserID <= 0 {
+		return Result{}, errors.New("user mypixiv user ID must be positive")
 	}
 	query := url.Values{"user_id": {strconv.FormatInt(request.UserID, 10)}, "filter": {"for_android"}}
 	if request.Offset > 0 {
@@ -109,16 +113,12 @@ func cloneString(value *string) *string {
 	return &copy
 }
 func continuation(rawURL string) (int, error) {
-	parsed, err := url.Parse(rawURL)
-	if err != nil {
-		return 0, protocol.MalformedResponse()
-	}
-	values, err := url.ParseQuery(parsed.RawQuery)
-	if err != nil || len(values["offset"]) != 1 {
-		return 0, protocol.MalformedResponse()
-	}
-	value, err := strconv.ParseInt(values.Get("offset"), 10, 64)
-	if err != nil || value <= 0 || int64(int(value)) != value {
+	_, value, err := endpointcontinuation.Parse(rawURL, endpointcontinuation.Spec{
+		Path:             protocol.AppUserMyPixiv,
+		Keys:             []string{"offset"},
+		AllowedQueryKeys: []string{"user_id", "filter"},
+	})
+	if err != nil || int64(int(value)) != value {
 		return 0, protocol.MalformedResponse()
 	}
 	return int(value), nil

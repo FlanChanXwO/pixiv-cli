@@ -1,0 +1,4 @@
+interface:
+  display_name: "Pixiv CLI Testing"
+  short_description: "Select focused regression and honest evidence gates."
+  default_prompt: "Use $pixiv-cli-test to verify the affected behavior and report evidence."

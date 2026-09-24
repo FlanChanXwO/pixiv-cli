@@ -79,7 +79,7 @@ func TestTimelineAndMyPixivToolsRouteAppSDKRequestsWithRecords(t *testing.T) {
 		t.Fatalf("timeline_novel_following request=%+v structured=%#v", followingNovel, following)
 	}
 
-	illustNew := assertRecords("timeline_illust_latest", map[string]any{"content_type": "manga", "limit": 1}, "2", "illustration")
+	illustNew := assertRecords("timeline_illust_latest", map[string]any{"content_type": "manga", "limit": 1}, "2", "illust")
 	if latestIllust.ContentType != pixiv.SearchContentTypeManga || !paginationHasMore(t, illustNew) {
 		t.Fatalf("timeline_illust_latest request=%+v structured=%#v", latestIllust, illustNew)
 	}
@@ -94,7 +94,7 @@ func TestTimelineAndMyPixivToolsRouteAppSDKRequestsWithRecords(t *testing.T) {
 		t.Fatalf("mypixiv_users request=%+v", myPixivUsers)
 	}
 
-	assertRecords("mypixiv_illusts", map[string]any{}, "5", "illustration")
+	assertRecords("mypixiv_illusts", map[string]any{}, "5", "illust")
 	if !myPixivIllusts.Cursor.IsZero() {
 		t.Fatalf("mypixiv_illusts request=%+v", myPixivIllusts)
 	}
@@ -118,12 +118,19 @@ func TestTimelineToolsValidateInputAndExposeSDKErrors(t *testing.T) {
 	session, closeSession := newSDKTestSession(t, client)
 	defer closeSession()
 
+	result, err := session.CallTool(context.Background(), &mcp.CallToolParams{
+		Name:      "timeline_illust_latest",
+		Arguments: map[string]any{"content_type": "ugoira"},
+	})
+	if err == nil && (result == nil || !result.IsError) {
+		t.Fatalf("timeline_illust_latest invalid content_type result=%+v error=%v", result, err)
+	}
+
 	for _, tool := range []struct {
 		name string
 		args map[string]any
 	}{
-		{"timeline_illust_latest", map[string]any{"content_type": "ugoira"}},
-		{"mypixiv_novels", map[string]any{"page": 0, "limit": 1}},
+		{"mypixiv_novels", map[string]any{"page": 1, "limit": 0}},
 		{"timeline_illust_latest", map[string]any{"content_type": "illust"}},
 	} {
 		result := callTool(t, session, tool.name, tool.args)
@@ -168,6 +175,21 @@ func TestTrendingTagsIllustReturnsTagsAndText(t *testing.T) {
 	}
 }
 
+func TestTrendingTagsIllustEmptyResultIsSuccessful(t *testing.T) {
+	session, closeSession := newSDKTestSession(t, &fakeSDKClient{trendingTags: []pixiv.TrendingTag{}})
+	defer closeSession()
+
+	result := callTool(t, session, "trending_tags_illust", map[string]any{})
+	if result.IsError || !resultHasText(result, "No trending tags found.") {
+		t.Fatalf("empty trending result=%+v", result)
+	}
+	var out outputs.TrendingTags
+	decodeStructured(t, result, &out)
+	if out.Tags == nil || len(out.Tags) != 0 || out.Text != "No trending tags found." {
+		t.Fatalf("empty trending output=%+v", out)
+	}
+}
+
 func TestTrendingTagsIllustSDKErrorIsStructured(t *testing.T) {
 	client := openWireClient(t, &fakeSDKClient{trendingTags: []pixiv.TrendingTag{{Tag: "never", TranslatedName: ""}}})
 	ports := pixivmcpserver.SDKPorts{
@@ -197,16 +219,16 @@ func TestSDKListValidationReturnsMCPErrorWithStructuredOutput(t *testing.T) {
 	session, closeSession := newSDKTestSession(t, &fakeSDKClient{})
 	defer closeSession()
 
-	result := callTool(t, session, "user_artworks", map[string]any{"user_id": 9, "page": 0, "limit": 1})
+	result := callTool(t, session, "user_artworks", map[string]any{"user_id": 9, "page": 1, "limit": 0})
 	if !result.IsError {
-		t.Fatalf("invalid page must be an MCP error result: %+v", result)
+		t.Fatalf("invalid logical page must be an MCP error result: %+v", result)
 	}
 	if len(result.Content) != 1 {
 		t.Fatalf("error result must retain text content: %+v", result.Content)
 	}
 	var out outputs.Records
 	decodeStructured(t, result, &out)
-	if len(out.Records) != 0 || !resultHasText(result, "page must be a positive integer") {
+	if len(out.Records) != 0 || !resultHasText(result, "page requires limit to be a positive integer") {
 		t.Fatalf("structured validation error = %+v", out)
 	}
 }
@@ -242,10 +264,13 @@ func TestSDKUserDetailRejectsInvalidInputAndReturnsSDKFailuresAsMCPError(t *test
 	for _, input := range []map[string]any{{"user_id": 0}, {"user_id": -1}} {
 		client := &fakeSDKClient{}
 		session, closeSession := newSDKTestSession(t, client)
-		result := callTool(t, session, "user_detail", input)
+		result, err := session.CallTool(context.Background(), &mcp.CallToolParams{Name: "user_detail", Arguments: input})
 		closeSession()
-		if !result.IsError || client.userDetailRequest != (pixiv.UserRequest{}) {
-			t.Fatalf("input=%v result=%+v captured=%+v", input, result, client.userDetailRequest)
+		if err == nil && (result == nil || !result.IsError) {
+			t.Fatalf("input=%v result=%+v err=%v captured=%+v", input, result, err, client.userDetailRequest)
+		}
+		if client.userDetailRequest != (pixiv.UserRequest{}) {
+			t.Fatalf("input=%v result=%+v err=%v captured=%+v", input, result, err, client.userDetailRequest)
 		}
 	}
 	for _, input := range []map[string]any{{}, {"user_id": "not-an-integer"}} {

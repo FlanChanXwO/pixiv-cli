@@ -21,7 +21,7 @@ func (c *Client) SearchUsers(ctx context.Context, request SearchUsersRequest) (s
 		return sdk.Page[UserPreview]{}, err
 	}
 	query := url.Values{"word": {request.Word}}
-	offset, err := c.continuationOffset("SearchUsers", query, request.Cursor)
+	offset, err := c.continuationPositiveOffset("SearchUsers", query, request.Cursor)
 	if err != nil {
 		return sdk.Page[UserPreview]{}, err
 	}
@@ -72,7 +72,7 @@ func (c *Client) RelatedUsers(ctx context.Context, request RelatedUsersRequest) 
 		return sdk.Page[UserPreview]{}, newError("RelatedUsers", sdk.InvalidArgument, "user ID must be positive")
 	}
 	query := url.Values{"seed_user_id": {itoa(request.UserID)}}
-	offset, err := c.continuationOffset("RelatedUsers", query, request.Cursor)
+	offset, err := c.continuationPositiveOffset("RelatedUsers", query, request.Cursor)
 	if err != nil {
 		return sdk.Page[UserPreview]{}, err
 	}
@@ -88,12 +88,16 @@ func (c *Client) UserFollowing(ctx context.Context, request UserFollowingRequest
 	if request.UserID <= 0 {
 		return sdk.Page[UserPreview]{}, newError("UserFollowing", sdk.InvalidArgument, "user ID must be positive")
 	}
-	query := url.Values{"user_id": {itoa(request.UserID)}, "restrict": {string(request.Restrict)}}
-	offset, err := c.continuationOffset("UserFollowing", query, request.Cursor)
+	restrict, err := normalizeFollowingRestrict("UserFollowing", request.Restrict)
 	if err != nil {
 		return sdk.Page[UserPreview]{}, err
 	}
-	list, err := c.userFollowing.List(ctx, userfollowing.Request{UserID: request.UserID, Restrict: string(request.Restrict), Offset: offset})
+	query := url.Values{"user_id": {itoa(request.UserID)}, "restrict": {string(restrict)}}
+	offset, err := c.continuationPositiveOffset("UserFollowing", query, request.Cursor)
+	if err != nil {
+		return sdk.Page[UserPreview]{}, err
+	}
+	list, err := c.userFollowing.List(ctx, userfollowing.Request{UserID: request.UserID, Restrict: string(restrict), Offset: offset})
 	if err != nil {
 		return sdk.Page[UserPreview]{}, classifyAppError(err, "UserFollowing")
 	}
@@ -105,12 +109,16 @@ func (c *Client) UserFollowers(ctx context.Context, request UserFollowersRequest
 	if request.UserID <= 0 {
 		return sdk.Page[UserPreview]{}, newError("UserFollowers", sdk.InvalidArgument, "user ID must be positive")
 	}
-	query := url.Values{"user_id": {itoa(request.UserID)}, "restrict": {string(request.Restrict)}}
-	offset, err := c.continuationOffset("UserFollowers", query, request.Cursor)
+	restrict, err := normalizeFollowingRestrict("UserFollowers", request.Restrict)
 	if err != nil {
 		return sdk.Page[UserPreview]{}, err
 	}
-	list, err := c.userFollowers.List(ctx, userfollowers.Request{UserID: request.UserID, Restrict: string(request.Restrict), Offset: offset})
+	query := url.Values{"user_id": {itoa(request.UserID)}, "restrict": {string(restrict)}}
+	offset, err := c.continuationPositiveOffset("UserFollowers", query, request.Cursor)
+	if err != nil {
+		return sdk.Page[UserPreview]{}, err
+	}
+	list, err := c.userFollowers.List(ctx, userfollowers.Request{UserID: request.UserID, Restrict: string(restrict), Offset: offset})
 	if err != nil {
 		return sdk.Page[UserPreview]{}, classifyAppError(err, "UserFollowers")
 	}
@@ -123,7 +131,7 @@ func (c *Client) UserBlockedUsers(ctx context.Context, request UserBlockedUsersR
 		return sdk.Page[UserPreview]{}, newError("UserBlockedUsers", sdk.InvalidArgument, "user ID must be positive")
 	}
 	query := url.Values{"user_id": {itoa(request.UserID)}}
-	offset, err := c.continuationOffset("UserBlockedUsers", query, request.Cursor)
+	offset, err := c.continuationPositiveOffset("UserBlockedUsers", query, request.Cursor)
 	if err != nil {
 		return sdk.Page[UserPreview]{}, err
 	}
@@ -142,7 +150,7 @@ func (c *Client) MyPixivUsers(ctx context.Context, request MyPixivUsersRequest) 
 		return sdk.Page[UserPreview]{}, newError("MyPixivUsers", sdk.Unauthorized, "current user identity is unknown")
 	}
 	query := url.Values{}
-	offset, err := c.continuationOffset("MyPixivUsers", query, request.Cursor)
+	offset, err := c.continuationPositiveOffset("MyPixivUsers", query, request.Cursor)
 	if err != nil {
 		return sdk.Page[UserPreview]{}, err
 	}

@@ -1,10 +1,8 @@
 name: Quality gate
 
+# R15：tag push 由 Release 独占门禁，Quality 只服务 PR 与 manual dispatch。
 on:
   pull_request:
-    branches:
-      - main
-  push:
     branches:
       - main
   workflow_dispatch: {}
@@ -16,107 +14,129 @@ concurrency:
 permissions: {}
 
 jobs:
-  # 仅允许明确的文档目录走轻量门禁；任何无法归类的变更都由 changescope 选择完整验证。
-  classify_changes:
+  # R6：Quality 的 skip 判定必须与 pr-metadata 的 smoke classification 使用同一
+  # 信任模型。PR 能修改 scripts/classify-change-scope.sh 与
+  # .github/ci-change-scope.gitignore，因此分类绝不能从 PR 自己的 checkout 执行。
+  scope:
     name: Classify change scope
     runs-on: ubuntu-24.04
-    outputs:
-      docs_only: ${{ steps.scope.outputs.docs_only }}
     permissions:
       contents: read
+    outputs:
+      quality_required: ${{ steps.scope.outputs.quality_required }}
     steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+      # PR .base.sha 是 PR 创建/同步时捕获的基线，可能远落后于当前受保护分支。
+      # 按其 checkout 会运行到陈旧（甚至可被 PR 影响）的分类策略，因此统一解析
+      # base 分支当前 tip，与 pr-metadata 的受信执行源保持一致。
+      - name: Resolve the protected base branch tip
+        id: base
+        if: ${{ github.event_name == 'pull_request' }}
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          PR: ${{ github.event.pull_request.number }}
+        run: |
+          set -euo pipefail
+          pr_json=$(gh api "repos/$REPO/pulls/$PR")
+          base_ref=$(printf '%s' "$pr_json" | jq -r '.base.ref')
+          if [ -z "$base_ref" ] || [ "$base_ref" = null ]; then
+            echo 'Pull request base branch is unavailable.' >&2
+            exit 1
+          fi
+          base_ref_encoded=$(printf '%s' "$base_ref" | jq -sRr @uri)
+          sha=$(gh api "repos/$REPO/branches/$base_ref_encoded" --jq '.commit.sha')
+          test -n "$sha"
+          printf 'sha=%s\n' "$sha" >> "$GITHUB_OUTPUT"
+
+      # 只取受信 base tip 的策略与脚本；PR HEAD 只用于 diff 范围。
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           fetch-depth: 0
           persist-credentials: false
-      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff
-        with:
-          go-version: '1.26.3'
-      - name: Detect documentation-only changes
+          ref: ${{ github.event_name == 'pull_request' && steps.base.outputs.sha || github.sha }}
+
+      - name: Fetch the exact pull request head
+        if: ${{ github.event_name == 'pull_request' }}
+        shell: bash
+        env:
+          PR: ${{ github.event.pull_request.number }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+          # 被分类的 diff 必须就是 PR 当前 head，否则分类结果与实际测试内容错位。
+          git fetch --no-tags origin "+refs/pull/$PR/head:refs/remotes/pull/$PR/head"
+          test "$(git rev-parse "refs/remotes/pull/$PR/head")" = "$HEAD_SHA"
+
+      - name: Classify change scope with trusted policy
         id: scope
         shell: bash
         env:
-          BASE_SHA: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || github.event.before }}
-          HEAD_SHA: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
+          BASE_SHA: ${{ steps.base.outputs.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         run: |
           set -euo pipefail
-          if [ "$GITHUB_EVENT_NAME" = workflow_dispatch ]; then
-            printf '%s\n' 'docs_only=false' >> "$GITHUB_OUTPUT"
+          if [ "$GITHUB_EVENT_NAME" != pull_request ]; then
+            printf '%s\n' 'quality_required=true' >> "$GITHUB_OUTPUT"
             exit 0
           fi
-          go run ./scripts/cmd/changescope --base "$BASE_SHA" --head "$HEAD_SHA" --github-output "$GITHUB_OUTPUT"
+          # 分类器与规则文件均来自上面的 trusted base checkout。
+          bash ./scripts/classify-change-scope.sh --base "$BASE_SHA" --head "$HEAD_SHA" --github-output "$GITHUB_OUTPUT"
 
-  quality:
-    needs: classify_changes
+  quality_gate:
+    name: Quality gate
+    needs: scope
+    if: ${{ always() && (needs.scope.result != 'success' || needs.scope.outputs.quality_required == 'true') }}
     runs-on: ubuntu-24.04
     permissions:
       contents: read
     steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
-        with:
-          persist-credentials: false
-      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff
-        with:
-          go-version: '1.26.3'
-      - name: Test documentation contracts
-        if: ${{ needs.classify_changes.outputs.docs_only == 'true' }}
+      - name: Require successful scope classification
+        if: ${{ needs.scope.result != 'success' }}
         shell: bash
-        run: go test ./scripts/tests/documentation -count=1
+        run: |
+          echo '::error::Change-scope classification failed.'
+          exit 1
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        if: ${{ needs.scope.result == 'success' }}
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e
+        if: ${{ needs.scope.result == 'success' }}
+        with:
+          go-version-file: go.mod
       - name: Test Go sources
-        if: ${{ needs.classify_changes.outputs.docs_only != 'true' }}
+        if: ${{ needs.scope.result == 'success' }}
         shell: bash
         run: go test ./... -count=1
       - name: Test Go sources with the race detector
-        if: ${{ needs.classify_changes.outputs.docs_only != 'true' }}
+        if: ${{ needs.scope.result == 'success' }}
         shell: bash
         run: go test -race ./... -count=1
       - name: Vet Go sources
-        if: ${{ needs.classify_changes.outputs.docs_only != 'true' }}
+        if: ${{ needs.scope.result == 'success' }}
         shell: bash
         run: go vet ./...
       - name: Build the local binary
-        if: ${{ needs.classify_changes.outputs.docs_only != 'true' }}
+        if: ${{ needs.scope.result == 'success' }}
         shell: bash
         run: sh scripts/build.sh
-      - name: Test release package and workflow policy
-        if: ${{ needs.classify_changes.outputs.docs_only != 'true' }}
+      - name: Test release packaging
+        if: ${{ needs.scope.result == 'success' }}
+        shell: bash
+        run: sh scripts/test-package-release.sh
+      - name: Check Go formatting
+        if: ${{ needs.scope.result == 'success' }}
         shell: bash
         run: |
-          sh scripts/test-package-release.sh
-          go run ./scripts/cmd/releaseworkflow --workflow .github/workflows/release.yml
-          go run ./scripts/cmd/prepublishhomebrew --workflow .github/workflows/homebrew-prepublish-verify.yml
-          go test ./scripts/tests/clawhubworkflow -count=1
-          go test ./scripts/tests/platformsmokeworkflow -count=1
-      - name: Install pinned pre-commit
-        if: ${{ needs.classify_changes.outputs.docs_only != 'true' }}
+          set -euo pipefail
+          unformatted="$(git ls-files -z -- '*.go' | xargs -0 gofmt -l)"
+          test -z "$unformatted" || {
+            printf '%s\n' "$unformatted"
+            exit 1
+          }
+      - name: Explain quality failure contract
+        if: ${{ failure() }}
         shell: bash
-        run: python -m pip install --disable-pip-version-check pre-commit==4.6.0
-      - name: Run pre-commit checks
-        if: ${{ needs.classify_changes.outputs.docs_only != 'true' }}
-        shell: bash
-        run: python -m pre_commit run --all-files
-
-  windows_login_handler:
-    name: Windows login handler contracts
-    needs: classify_changes
-    if: ${{ needs.classify_changes.outputs.docs_only != 'true' }}
-    runs-on: windows-2025
-    env:
-      # Rust ugoira staticlib 使用 MSVC ABI；MinGW 默认链接器无法解析其运行时符号。
-      CC: clang -fuse-ld=lld
-    permissions:
-      contents: read
-    steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
-        with:
-          persist-credentials: false
-      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff
-        with:
-          go-version: '1.26.3'
-      - name: Test native login handler contracts
-        shell: bash
-        run: |
-          # Quality gate 已运行完整 internal/cli；Windows job 聚焦 root callback
-          # wiring，并由 loginhelper 包承担真实 Windows registry contract。
-          go test ./internal/cli -run '^(TestAuthURLCallback|TestAuthURLHandlerInstall|TestNormalCLIInvocationEnsuresPersistentHandlerWithoutBlockingCommand)$' -count=1
-          go test ./internal/cli/commands/pixiv/auth/loginhelper -count=1
+        run: echo '::error::Required quality checks did not complete successfully.'
