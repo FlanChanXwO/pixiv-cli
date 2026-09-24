@@ -187,3 +187,97 @@ func TestVerificationUsesJobLevelSkip(t *testing.T) {
 		}
 	}
 }
+
+// TestQualityScopeClassificationUsesTrustedBase 覆盖 R6：Quality 的 skip 判定
+// 必须与 pr-metadata 的 smoke classification 使用同一信任模型。PR 能修改
+// scripts/classify-change-scope.sh 与 .github/ci-change-scope.gitignore，因此
+// 分类绝不能从 PR 自己的 checkout 执行，否则 PR 可以决定自己的 Quality 是否运行。
+func TestQualityScopeClassificationUsesTrustedBase(t *testing.T) {
+	t.Parallel()
+
+	workflow, err := os.ReadFile(filepath.Join(repositoryRoot(t), ".github", "workflows", "ci.yml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	body := string(workflow)
+
+	// 必须解析受保护 base branch 的当前 tip，而不是 PR 捕获的 .base.sha。
+	if strings.Contains(body, "github.event.pull_request.base.sha") {
+		t.Fatal("Quality scope must not classify against the PR-captured base commit")
+	}
+	for _, required := range []string{
+		"jq -r '.base.ref'",
+		"branches/$base_ref_encoded",
+		"steps.base.outputs.sha",
+	} {
+		if !strings.Contains(body, required) {
+			t.Fatalf("Quality scope workflow missing current-base resolution contract %q", required)
+		}
+	}
+
+	// 分类步骤必须运行 base tip 中的 trusted 脚本。
+	if !strings.Contains(body, "bash ./scripts/classify-change-scope.sh") {
+		t.Fatal("Quality scope must delegate to the repository classify-change-scope.sh")
+	}
+	classify := strings.Index(body, "bash ./scripts/classify-change-scope.sh")
+	baseCheckout := strings.Index(body, "ref: ${{ github.event_name == 'pull_request' && steps.base.outputs.sha || github.sha }}")
+	if baseCheckout < 0 || classify < 0 || baseCheckout > classify {
+		t.Fatal("Quality scope must check out the trusted base tip before running the classifier")
+	}
+
+	// 必须 fetch 精确的 PR HEAD，保证被分类的 diff 就是被测试的 diff。
+	for _, required := range []string{
+		`git fetch --no-tags origin "+refs/pull/$PR/head:refs/remotes/pull/$PR/head"`,
+		`test "$(git rev-parse "refs/remotes/pull/$PR/head")" = "$HEAD_SHA"`,
+	} {
+		if !strings.Contains(body, required) {
+			t.Fatalf("Quality scope workflow missing exact-head contract %q", required)
+		}
+	}
+
+	// classifier 失败必须 fail closed：不得退化为 skip。
+	for _, required := range []string{
+		"Require successful scope classification",
+		`needs.scope.result != 'success'`,
+	} {
+		if !strings.Contains(body, required) {
+			t.Fatalf("Quality scope workflow must fail closed on classifier failure (%q missing)", required)
+		}
+	}
+	if strings.Contains(body, "|| true") && strings.Contains(body, "classify-change-scope.sh") {
+		t.Fatal("Quality scope must not swallow classifier failures")
+	}
+}
+
+// TestQualityGateDoesNotRunOnTagPush 覆盖 R15：stable/prerelease tag 由 Release
+// 独占发布门禁。同一个 tag push 不应再并行启动一遍 Quality gate 跑重复的
+// go test / race / vet / package，那是让 tag 承担两次同一套验证。
+func TestQualityGateDoesNotRunOnTagPush(t *testing.T) {
+	t.Parallel()
+
+	root := repositoryRoot(t)
+	qualityBody, err := os.ReadFile(filepath.Join(root, ".github", "workflows", "ci.yml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	quality := string(qualityBody)
+	if !strings.Contains(quality, "pull_request:") {
+		t.Fatal("Quality gate must still serve pull requests")
+	}
+	for _, forbidden := range []string{"push:", "tags:"} {
+		if strings.Contains(quality, forbidden) {
+			t.Fatalf("Quality gate must not respond to %q; Release owns tag publication", forbidden)
+		}
+	}
+
+	releaseBody, err := os.ReadFile(filepath.Join(root, ".github", "workflows", "release.yml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	release := string(releaseBody)
+	for _, required := range []string{"push:", "tags:", "'v[0-9]*'"} {
+		if !strings.Contains(release, required) {
+			t.Fatalf("Release must own the tag push trigger (%q missing)", required)
+		}
+	}
+}

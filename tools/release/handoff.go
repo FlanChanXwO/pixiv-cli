@@ -102,6 +102,11 @@ func writeReleaseHandoff(input releaseHandoffInput) (releaseHandoff, error) {
 		return releaseHandoff{}, err
 	}
 	if input.Output != "" {
+		// write-handoff 拥有自己的输出路径：调用方只给定目标文件，工具负责
+		// 补齐缺失的父目录，避免每个 caller 各自复制一份 mkdir -p。
+		if err := os.MkdirAll(filepath.Dir(input.Output), 0o755); err != nil {
+			return releaseHandoff{}, err
+		}
 		if err := os.WriteFile(input.Output, append(encoded, '\n'), 0o600); err != nil {
 			return releaseHandoff{}, err
 		}

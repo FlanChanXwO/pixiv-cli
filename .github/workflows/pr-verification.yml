@@ -19,7 +19,13 @@ permissions: {}
 jobs:
   dispatch:
     name: Dispatch verification
-    if: github.event_name == 'workflow_dispatch' || github.event.issue.pull_request
+    # R14：廉价资源预过滤。普通 PR 评论（LGTM 等）不该占用 verification runner。
+    # `contains(comment.body, '/test')` 是 tools/prmeta --check-trigger 的宽松超集
+    # （后者要求首个非空行精确等于 /test），因此只会产生少量 false positive，
+    # 不可能把合法触发过滤掉。最终授权与触发判定仍归 tools/prmeta。
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.issue.pull_request && contains(github.event.comment.body, '/test'))
     concurrency:
       group: pr-test-${{ github.repository }}-${{ github.event_name == 'workflow_dispatch' && inputs.pr_number || github.event.issue.number }}
       cancel-in-progress: false
@@ -39,11 +45,11 @@ jobs:
       matrix: ${{ steps.matrix.outputs.matrix }}
       identity: ${{ steps.coordinate.outputs.identity }}
     steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           persist-credentials: false
 
-      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e
         with:
           go-version-file: go.mod
           cache: true
@@ -364,13 +370,13 @@ jobs:
       max-parallel: 2
       matrix: ${{ fromJSON(needs.dispatch.outputs.matrix) }}
     steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           path: _trusted
           persist-credentials: false
           ref: ${{ needs.dispatch.outputs.base_sha }}
 
-      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e
         with:
           go-version-file: _trusted/go.mod
           cache: false
@@ -383,14 +389,14 @@ jobs:
           mkdir -p "$RUNNER_TEMP/verification-result"
           go run ./tools/verification init --platform '${{ matrix.goos }}/${{ matrix.goarch }}' --output "$RUNNER_TEMP/verification-result/${{ matrix.artifact }}.json"
 
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           repository: ${{ needs.dispatch.outputs.head_repo }}
           ref: ${{ needs.dispatch.outputs.head_sha }}
           path: pr
           persist-credentials: false
 
-      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e
         with:
           go-version-file: pr/go.mod
           cache: true
@@ -436,7 +442,7 @@ jobs:
         shell: bash
         run: rm -rf "$RUNNER_TEMP/verification-home"
 
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
           name: verification-result-${{ matrix.artifact }}
           path: ${{ runner.temp }}/verification-result/${{ matrix.artifact }}.json
@@ -453,12 +459,12 @@ jobs:
       issues: write
       pull-requests: write
     steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           persist-credentials: false
           ref: ${{ needs.dispatch.outputs.base_sha }}
 
-      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e
         with:
           go-version-file: go.mod
           cache: true
@@ -467,7 +473,7 @@ jobs:
         shell: bash
         run: mkdir -p "$RUNNER_TEMP/verification-results"
 
-      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
         continue-on-error: true
         with:
           pattern: verification-result-*
