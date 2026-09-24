@@ -1,18 +1,8 @@
 name: Native staticlib evidence
 
-# 这个入口绝不发布、签名、推送或创建 tag。受审计的 main push
-# 触发六个平台 runner；手动 dispatch 只限同一受审计 main workflow 使用。
+# 这个入口绝不发布、签名、推送或创建 tag。它只作为显式的维护者
+# evidence 入口，不在普通 main push 后重复运行六个平台 runner。
 on:
-  push:
-    branches:
-      - main
-    # 文档专用改动不改变受审计 staticlib 或打包输入，避免无意义地占用六个平台 runner。
-    # 未匹配的任一文件仍会触发完整 evidence；手动 dispatch 也始终运行完整矩阵。
-    paths-ignore:
-      - 'README*.md'
-      - 'docs/**'
-      - 'changelog/**'
-      - 'skills/**'
   workflow_dispatch: {}
 
 permissions: {}
@@ -26,10 +16,10 @@ jobs:
     outputs:
       matrix: ${{ steps.matrix.outputs.matrix }}
     steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           persist-credentials: false
-      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e
         with:
           go-version-file: go.mod
       - name: Resolve native evidence platforms
@@ -49,10 +39,10 @@ jobs:
       fail-fast: false
       matrix: ${{ fromJSON(needs.resolve_platforms.outputs.matrix) }}
     steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           persist-credentials: false
-      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e
         with:
           go-version-file: go.mod
       - name: Require audited main ref
@@ -112,7 +102,7 @@ jobs:
             --archive "$EVIDENCE_ARCHIVE" \
             --output evidence/native-evidence.json
       - name: Upload native evidence
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
           name: native-evidence-${{ matrix.artifact }}
           path: evidence

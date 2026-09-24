@@ -60,6 +60,86 @@ func TestReleasePreparesImmutableHandoff(t *testing.T) {
 	}
 }
 
+// TestPreparedReleaseArtifactConsumersUsePreservedPaths 锁定 upload-artifact
+// 对多路径 artifact 保留相对目录的契约：下载到目标目录后，checksums 与
+// handoff 仍分别位于 dist/ 与 release/ 下，所有消费者必须按该布局读取。
+func TestPreparedReleaseArtifactConsumersUsePreservedPaths(t *testing.T) {
+	t.Parallel()
+
+	root := repositoryRoot(t)
+	release := readWorkflow(t, root, "release.yml")
+	for _, want := range []string{
+		"dist/checksums.txt",
+		"release/release-handoff.json",
+		"done < prepared-release/dist/checksums.txt",
+	} {
+		if !strings.Contains(release, want) {
+			t.Errorf("release.yml must preserve and consume prepared artifact path %q", want)
+		}
+	}
+
+	for name, wants := range map[string][]string{
+		"publish-homebrew.yml": {
+			"name: verified-release-checksums",
+			"--checksums prepared/dist/checksums.txt",
+			"--checksums published-release/checksums.txt",
+			"--handoff prepared/release/release-handoff.json",
+		},
+		"publish-dockerhub.yml": {
+			"--handoff prepared/release/release-handoff.json",
+			"--dist-dir prepared/dist",
+		},
+		"publish-clawhub.yml": {
+			"--handoff prepared/release/release-handoff.json",
+			"jq -r '.tag' prepared/release/release-handoff.json",
+		},
+		"publish-skillhub.yml": {
+			"--handoff prepared/release/release-handoff.json",
+			"jq -r '.tag' prepared/release/release-handoff.json",
+		},
+	} {
+		body := readWorkflow(t, root, name)
+		for _, want := range wants {
+			if !strings.Contains(body, want) {
+				t.Errorf("%s must consume the prepared artifact using preserved path %q", name, want)
+			}
+		}
+	}
+}
+
+// TestPublishersCheckoutBeforePreparedHandoffConsumption 锁定 publisher 的工作区顺序：
+// checkout 会清理未跟踪文件，而 handoff 校验又依赖仓库内的 Go 工具，因此必须先
+// checkout/setup-go，再下载并消费 prepared handoff。
+func TestPublishersCheckoutBeforePreparedHandoffConsumption(t *testing.T) {
+	t.Parallel()
+
+	root := repositoryRoot(t)
+	for _, name := range []string{"publish-clawhub.yml", "publish-skillhub.yml", "publish-dockerhub.yml"} {
+		body := readWorkflow(t, root, name)
+		checkout := strings.Index(body, "actions/checkout@")
+		setupGo := strings.Index(body, "actions/setup-go@")
+		download := strings.Index(body, "name: Download the prepared handoff")
+		if checkout < 0 || setupGo < 0 || download < 0 {
+			t.Fatalf("%s must contain checkout, setup-go, and prepared handoff download", name)
+		}
+		if checkout > download || setupGo > download {
+			t.Errorf("%s must checkout and setup Go before downloading the prepared handoff", name)
+		}
+	}
+}
+
+// TestHomebrewLinuxVerificationAcceptsGeneratedVerifyFormula 锁定 Linux Homebrew
+// 验证的 staging 契约：宿主机会先生成 *-verify.rb，容器内不能再按生成前的
+// 两文件集合做重复断言，否则会在真正执行 brew install 前静默失败。
+func TestHomebrewLinuxVerificationAcceptsGeneratedVerifyFormula(t *testing.T) {
+	t.Parallel()
+
+	body := readWorkflow(t, repositoryRoot(t), "publish-homebrew.yml")
+	if strings.Contains(body, "find /staging-formula -maxdepth 1 -type f -print") {
+		t.Fatal("publish-homebrew.yml must not re-check the pre-generation staging file set inside the Linux container")
+	}
+}
+
 // TestReleaseNoLongerPublishesHomebrewInline 覆盖 §16.2/§20：Homebrew 是独立
 // publisher，release.yml 不得再内联渲染、验证或部署 formula。
 func TestReleaseNoLongerPublishesHomebrewInline(t *testing.T) {
@@ -192,5 +272,72 @@ func TestSingleApprovalBoundaryAcrossReleaseAndPublishers(t *testing.T) {
 				t.Errorf("%s must not add a second approval boundary", entry.Name())
 			}
 		}
+	}
+}
+
+// TestHomebrewDeployIsMonotonic 覆盖 R10/R11：deploy 必须由 trusted
+// homebrewrecovery 判定驱动，同版本幂等 no-op，旧版本在写入前 fail closed。
+// 判定代码来自默认分支 tip，不随被恢复的 release tag 一起回退。
+func TestHomebrewDeployIsMonotonic(t *testing.T) {
+	t.Parallel()
+
+	body := readWorkflow(t, repositoryRoot(t), "publish-homebrew.yml")
+	for _, want := range []string{
+		"scripts/cmd/homebrewrecovery",
+		"--current \"$tap_dir/Formula/$formula_name.rb\"",
+		"--requested \"staging-formula/$formula_name.rb\"",
+		"steps.deploy.outputs.action == 'install'",
+	} {
+		if !strings.Contains(body, want) {
+			t.Errorf("publish-homebrew.yml must gate the tap write on the trusted recovery decision (%q missing)", want)
+		}
+	}
+
+	// 只有安装分支可以拿到 deploy key 并 push；no-op 分支不得触达 tap。
+	prepare := strings.Index(body, "Prepare an exact one-formula tap commit")
+	push := strings.Index(body, "Push the verified formula with the protected deploy key")
+	decision := strings.Index(body, "Decide whether the tap may accept this formula")
+	if decision < 0 || prepare < 0 || push < 0 {
+		t.Fatal("publish-homebrew.yml must decide, prepare, then push")
+	}
+	if !(decision < prepare && decision < push) {
+		t.Error("publish-homebrew.yml must run the recovery decision before any tap write step")
+	}
+	for _, gate := range []string{
+		"if: ${{ steps.deploy.outputs.action == 'install' }}",
+	} {
+		if got := strings.Count(body, gate); got != 2 {
+			t.Errorf("tap commit and push must both be gated by %q, found %d", gate, got)
+		}
+	}
+
+	// 判定必须在 checkout protected default-branch tip 之后运行。
+	if strings.Contains(body, "ref: ${{ needs.publish_homebrew.outputs.commit_sha }}") {
+		t.Error("publish-homebrew.yml must not run the deploy decision from the release commit")
+	}
+	if !strings.Contains(body, "ref: ${{ github.sha }}") {
+		t.Error("publish-homebrew.yml deploy must checkout the protected default-branch tip")
+	}
+}
+
+// TestHomebrewRecoveryRunsOnlyFromTheDefaultBranch 覆盖 CodeRabbit 指出的信任边界：
+// `release` environment 允许 `v*` tag 部署，而旧 tag 自带的 publish-homebrew.yml
+// 没有单调判定。若允许从 tag ref 触发恢复，workflow 会用旧 YAML 执行，恢复就绕过
+// 了 monotonic 检查。因此手动恢复必须显式约束在当前默认分支。
+func TestHomebrewRecoveryRunsOnlyFromTheDefaultBranch(t *testing.T) {
+	t.Parallel()
+
+	body := readWorkflow(t, repositoryRoot(t), "publish-homebrew.yml")
+	for _, required := range []string{
+		`default_branch=$(gh api "repos/$GITHUB_REPOSITORY" --jq '.default_branch')`,
+		`test "$GITHUB_REF" = "refs/heads/$default_branch"`,
+	} {
+		if !strings.Contains(body, required) {
+			t.Errorf("publish-homebrew.yml manual recovery must be pinned to the default branch (%q missing)", required)
+		}
+	}
+	// guard 必须只约束 workflow_dispatch；workflow_run 的 ref 不是分支。
+	if !strings.Contains(body, `if [ "$EVENT_NAME" = workflow_dispatch ]; then`) {
+		t.Error("the default-branch guard must be scoped to workflow_dispatch")
 	}
 }

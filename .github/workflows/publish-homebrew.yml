@@ -35,7 +35,6 @@ jobs:
     outputs:
       release_tag: ${{ steps.verify.outputs.tag }}
       version: ${{ steps.verify.outputs.version }}
-      commit_sha: ${{ steps.verify.outputs.commit_sha }}
       run_id: ${{ steps.handoff.outputs.run_id }}
       matrix: ${{ steps.matrix.outputs.matrix }}
     steps:
@@ -49,7 +48,13 @@ jobs:
           INPUT_RUN_ID: ${{ inputs.release_run_id }}
         run: |
           set -euo pipefail
+          # §17：手动恢复必须从受保护的默认分支执行。`release` environment 也允许
+          # `v*` tag 部署，而旧 tag 自带的 workflow YAML 没有单调判定；若从 tag 触发，
+          # 恢复就会用旧 YAML 跑，绕过 homebrewrecovery。workflow_run 的 ref 不是分支，
+          # 因此这个约束只适用于 workflow_dispatch。
           if [ "$EVENT_NAME" = workflow_dispatch ]; then
+            default_branch=$(gh api "repos/$GITHUB_REPOSITORY" --jq '.default_branch')
+            test "$GITHUB_REF" = "refs/heads/$default_branch"
             run_id="$INPUT_RUN_ID"
           else
             run_id="$EVENT_RUN_ID"
@@ -64,18 +69,18 @@ jobs:
           printf 'run_id=%s\n' "$run_id" >> "$GITHUB_OUTPUT"
           printf 'head_sha=%s\n' "$(printf '%s' "$run" | jq -r '.head_sha')" >> "$GITHUB_OUTPUT"
 
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           fetch-depth: 0
           persist-credentials: false
           ref: ${{ steps.handoff.outputs.head_sha }}
 
-      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e
         with:
           go-version-file: go.mod
 
       - name: Download the prepared handoff and release archives
-        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
         with:
           name: prepared-release-checksums
           path: prepared
@@ -83,7 +88,16 @@ jobs:
           repository: ${{ github.repository }}
           run-id: ${{ steps.handoff.outputs.run_id }}
 
-      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+      - name: Download the published release checksums
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
+        with:
+          name: verified-release-checksums
+          path: published-release
+          github-token: ${{ github.token }}
+          repository: ${{ github.repository }}
+          run-id: ${{ steps.handoff.outputs.run_id }}
+
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
         with:
           pattern: verified-release-*
           path: release-assets
@@ -103,13 +117,12 @@ jobs:
           RUN_HEAD_SHA: ${{ steps.handoff.outputs.head_sha }}
         run: |
           set -euo pipefail
-          cp prepared/checksums.txt release-assets/checksums.txt
           go run ./tools/release verify-handoff-set \
-            --handoff prepared/release-handoff.json \
+            --handoff prepared/release/release-handoff.json \
             --section production \
             --dist-dir release-assets \
             --container-dir containers \
-            --checksums release-assets/checksums.txt \
+            --checksums prepared/dist/checksums.txt \
             --repository "$REPOSITORY" \
             --run-id "$RUN_ID" \
             --run-head-sha "$RUN_HEAD_SHA"
@@ -145,11 +158,11 @@ jobs:
           go run ./scripts/cmd/homebrewformula render \
             --formula "$formula_name" \
             --version "$VERSION" \
-            --checksums release-assets/checksums.txt \
+            --checksums published-release/checksums.txt \
             --output "staging-formula/$formula_name.rb"
           printf '%s\n' "$formula_name" > staging-formula/formula-name
 
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
           name: staging-homebrew-formula
           path: staging-formula
@@ -166,11 +179,11 @@ jobs:
       fail-fast: false
       matrix: ${{ fromJSON(needs.publish_homebrew.outputs.matrix) }}
     steps:
-      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
         with:
           name: staging-homebrew-formula
           path: staging-formula
-      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
         with:
           pattern: verified-release-*
           path: release-assets
@@ -226,7 +239,6 @@ jobs:
                   pixiv-cli|pixiv-cli-beta) ;;
                   *) exit 1 ;;
                 esac
-                test "$(find /staging-formula -maxdepth 1 -type f -print | LC_ALL=C sort)" = "$(printf "%s\n%s\n" /staging-formula/formula-name "/staging-formula/$formula_name.rb" | LC_ALL=C sort)"
                 staging_tap=pixiv-cli-release/staging
                 tap_dir="$(brew --repository)/Library/Taps/pixiv-cli-release/homebrew-staging"
                 brew tap-new "$staging_tap" --no-git
@@ -252,18 +264,24 @@ jobs:
     permissions:
       contents: read
     steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+      # 单调 deploy 的判定逻辑属于 trusted policy，必须来自受保护的默认分支 tip，
+      # 而不是 release tag 自身携带的提交。否则恢复一个旧 release_run_id 时，
+      # 判定代码会随 tag 一起回退（旧版本根本没有修复后的状态机）。
+      # workflow_dispatch / workflow_run 下 github.sha 都是默认分支 tip。
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           persist-credentials: false
-          ref: ${{ needs.publish_homebrew.outputs.commit_sha }}
-      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+          ref: ${{ github.sha }}
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e
+        with:
+          go-version-file: go.mod
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
         with:
           name: staging-homebrew-formula
           path: staging-formula
-      - name: Prepare an exact one-formula tap commit over public HTTPS
+      - name: Decide whether the tap may accept this formula
+        id: deploy
         shell: bash
-        env:
-          RELEASE_TAG: ${{ needs.publish_homebrew.outputs.release_tag }}
         run: |
           set -euo pipefail
           formula_name=$(cat staging-formula/formula-name)
@@ -274,16 +292,33 @@ jobs:
           test -f "staging-formula/$formula_name.rb"
           test "$(find staging-formula -maxdepth 1 -type f -print | LC_ALL=C sort)" = "$(printf '%s\n%s\n' staging-formula/formula-name "staging-formula/$formula_name.rb" | LC_ALL=C sort)"
           tap_dir="$RUNNER_TEMP/homebrew-tap"
+          rm -rf "$tap_dir"
           git clone https://github.com/FlanChanXwO/homebrew-tap.git "$tap_dir"
+          mkdir -p "$tap_dir/Formula"
+          # §17/§21：单调 deploy。同版本且字节一致 → no-op；请求版本更旧，或同版本
+          # 但内容不同 → 在拿到 deploy key 之前 fail closed，绝不回退已发布 Formula。
+          go run ./scripts/cmd/homebrewrecovery \
+            --current "$tap_dir/Formula/$formula_name.rb" \
+            --requested "staging-formula/$formula_name.rb" \
+            --github-output "$GITHUB_OUTPUT"
+      - name: Prepare an exact one-formula tap commit over public HTTPS
+        if: ${{ steps.deploy.outputs.action == 'install' }}
+        shell: bash
+        env:
+          RELEASE_TAG: ${{ needs.publish_homebrew.outputs.release_tag }}
+        run: |
+          set -euo pipefail
+          formula_name=$(cat staging-formula/formula-name)
+          tap_dir="$RUNNER_TEMP/homebrew-tap"
           git -C "$tap_dir" config user.name github-actions[bot]
           git -C "$tap_dir" config user.email 41898282+github-actions[bot]@users.noreply.github.com
-          mkdir -p "$tap_dir/Formula"
           cp "staging-formula/$formula_name.rb" "$tap_dir/Formula/$formula_name.rb"
           git -C "$tap_dir" add -- "Formula/$formula_name.rb"
           test "$(git -C "$tap_dir" diff --cached --name-only)" = "Formula/$formula_name.rb"
           test -z "$(git -C "$tap_dir" status --porcelain | sed -n '\|^?? |p')"
           git -C "$tap_dir" commit -m "${RELEASE_TAG}: update $formula_name formula"
       - name: Push the verified formula with the protected deploy key
+        if: ${{ steps.deploy.outputs.action == 'install' }}
         shell: bash
         env:
           HOMEBREW_TAP_DEPLOY_KEY: ${{ secrets.HOMEBREW_TAP_DEPLOY_KEY }}

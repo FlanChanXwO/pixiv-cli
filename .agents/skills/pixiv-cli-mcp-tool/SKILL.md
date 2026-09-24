@@ -1,23 +1,26 @@
 ---
 name: pixiv-cli-mcp-tool
-description: Add or change a pixiv-cli MCP tool with full sync of registration, tests, localized MCP docs, README, and CHANGELOG.
+description: Add, change, or review a pixiv-cli Pixiv or FANBOX MCP tool, including schema, SDK routing, structured output, errors, and stdio behavior. Use for MCP tool implementation or compatibility work, not routine installed-CLI operation.
 ---
 
-# pixiv-cli MCP Tool
+# Maintain pixiv-cli MCP Tools
 
-新增或修改 MCP tool 时使用，防止漏同步测试和文档。
+Read root `AGENTS.md`, [pixiv-cli-develop](../pixiv-cli-develop/SKILL.md), and the relevant locale MCP reference. Find a current neighboring tool and its registration/tests; do not copy an obsolete bootstrap or application-service pattern.
 
-## 边界
+## Identify ownership and contract
 
-- tool 注册、参数 schema、structured output 和 tool 文本在 `internal/mcpserver`；stdio runtime 由 `internal/bootstrap` 启动。
-- Pixiv 能力只经 `internal/application.SDKService` 调用顶层 `pixiv` public SDK，不直连 `internal/pixiv/appapi`、`webapi`、`oauth` 或 `resource`。
-- MCP stdout 保留给 JSON-RPC；运行期失败必须保留 structured result 并设 `isError=true`。
-- web fallback 遵守 `AGENTS.md` 注意事项中的唯一规则；fallback 不支持的能力要报真实错误，不伪造数据。
+Pixiv tools live in `internal/mcpserver/pixiv/tools/<tool>`; FANBOX tools in the parallel FANBOX owner. Their product roots aggregate registrations. CLI MCP commands start separate stdio servers. Use existing owner-local runtime, record, output, and filter helpers, and the public SDK for product operations.
 
-## 变更 checklist
+For reverse search, tool code may depend on the top-level reverse-search service contract, never provider/assembly internals. Keep provider transport and credential wiring in production assembly. Do not introduce a general service locator, shared mutable global client, or anonymous Web fallback.
 
-1. 在 `internal/mcpserver` 注册/修改 tool；认证类错误要暴露真实原因。
-2. 补充或更新 `internal/mcpserver` 聚焦测试，运行 `go test ./internal/mcpserver/...`，涉及共享行为时运行 `go test ./...`。
-3. 同步 `docs/en/mcp-tools.md` 与 `docs/zh-CN/mcp-tools.md`：名称、参数、返回语义和 fallback 行为。
-4. 用户可见变化同步 `README.md`，并写入 `CHANGELOG.md` 的 `[Unreleased]`。
-5. 新增任何 timeout、截断、条数或重试限制必须有依据，并落实代码注释 + 文档 + 测试。
+Define the tool name, input validation, output schema, optional fields, cursor/record semantics, side effects, and error result before implementation. Distinguish unsupported upstream behavior from locally implementable filtering. Exposing a parameter without working semantics is not a capability.
+
+## Implement through tests
+
+1. Apply [the coverage-gap decision](../pixiv-cli-test/SKILL.md#decide-whether-test-code-must-change): reuse or extend a registration/schema or real-handler test with synthetic SDK/HTTP fixtures, and add a new case only for a missing contract. Run it and observe the missing behavior before implementation; do not require one test per adapter function.
+2. Validate schema and local inputs before opening an SDK snapshot or issuing requests. Reuse typed enums and shared record/pagination contracts where they are the owner.
+3. Keep `context.Context`, cancellation, account selection, resource lifetime, and operation-specific permissions intact. FANBOX sessions and Pixiv pool selection remain separate.
+4. Emit the declared structured result; failures set `isError=true` without corrupting stdout or exposing credentials. Legitimate empty results remain successful; partial outcomes must not be mislabeled complete.
+5. Run handler/schema tests, registration tests, and relevant SDK/stdio integration tests. A built MCP server is long-lived: use an existing fixture client for smoke verification instead of starting it and waiting for output indefinitely.
+
+Update both locale MCP references and any affected CLI/SDK/product-skill documentation. Run the existing documentation tests and review the actual diff. Record live/network behavior as unverified unless an authorized real test ran; do not create a new release note or publish a tool as part of ordinary implementation.

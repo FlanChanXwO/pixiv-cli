@@ -1,59 +1,51 @@
-# AGENTS.md
+# pixiv-cli Agent Contract
 
-这是一个 Go 版 Pixiv CLI 与 MCP stdio server。它通过 `pixiv` CLI 和 `pixiv mcp` 暴露 Pixiv 搜索、详情、排行、推荐、用户、收藏、下载、token refresh 和缩略图能力，通过 `pixiv fanbox` CLI 与 `pixiv fanbox mcp` 暴露 FANBOX 能力。公开能力只来自 `sdk`、`sdk/pixiv`、`sdk/fanbox`。
+This repository provides the `pixiv` CLI, two MCP stdio servers, and the public Go packages `sdk`, `sdk/pixiv`, and `sdk/fanbox`.
 
-## 核心命令
+## Start here
 
-```bash
-go test ./...
-sh scripts/build.sh
-```
+Read the relevant local skill below before its task. These are checked-in instructions, not dependencies on a contributor's personal configuration, CCS installation, or global skills. When the client cannot discover `.agents/skills`, open the linked `SKILL.md` directly. Read only the routes needed for the change.
 
-真实 SDK e2e 默认跳过；需要本机凭据时显式运行（Pixiv 读本地 `pixiv-cli.db` 选中账号，FANBOX 读 macOS Keychain 授权 session）：
+| Task | Local instructions |
+| --- | --- |
+| Implement, debug, refactor, or design Go changes | [pixiv-cli-develop](.agents/skills/pixiv-cli-develop/SKILL.md) |
+| Select tests, run Red/Green, or validate a change | [pixiv-cli-test](.agents/skills/pixiv-cli-test/SKILL.md) |
+| Write or review code comments, API docs, or numbered stages | [pixiv-cli-code-commenting](.agents/skills/pixiv-cli-code-commenting/SKILL.md) |
+| Add or change an MCP tool | [pixiv-cli-mcp-tool](.agents/skills/pixiv-cli-mcp-tool/SKILL.md) |
+| Change Rust, cgo, native libraries, or platform evidence | [pixiv-cli-native](.agents/skills/pixiv-cli-native/SKILL.md) |
+| Edit documentation or either kind of skill | [pixiv-cli-docs](.agents/skills/pixiv-cli-docs/SKILL.md) |
+| Review code or assess a PR | [pixiv-cli-review](.agents/skills/pixiv-cli-review/SKILL.md) |
+| Prepare, update, or verify a PR | [pixiv-cli-pr](.agents/skills/pixiv-cli-pr/SKILL.md) |
+| Diagnose checks or operate an authorized workflow run | [pixiv-cli-ci](.agents/skills/pixiv-cli-ci/SKILL.md) |
+| Prepare a release or recover a publisher | [pixiv-cli-release-notes](.agents/skills/pixiv-cli-release-notes/SKILL.md) |
+| Write a commit message from staged changes | [pixiv-cli-commit-message](.agents/skills/pixiv-cli-commit-message/SKILL.md) |
 
-```bash
-PIXIV_E2E_READ_USER_ID=<secondary-uid> \
-PIXIV_SDK_E2E=1 go test ./e2e -run TestRealPixivSDKRead -count=1 -v
-FANBOX_E2E_CREATOR_ID=<non-secret-creator-id> FANBOX_E2E_TAG=<non-secret-tag> \
-FANBOX_E2E_POST_ID=<non-secret-post-id> FANBOX_E2E_POST_URL=<non-secret-post-url> \
-FANBOX_SDK_E2E=1 go test ./e2e -run TestRealFanboxSDKRead -count=1 -v
-```
+The separately distributed [product skill](skills/pixiv-cli/SKILL.md) teaches use of an installed binary; it is not a repository development workflow. Keep maintenance skill names prefixed with `pixiv-cli-` and the product name `pixiv-cli`.
 
-`PIXIV_E2E_READ_USER_ID` 是可选的非 secret 本地账号 UID selector；显式设置时必须命中本地已保存账号，否则在联网前 fail closed，且不会 fallback 到默认账号。release evidence 应显式选择 secondary account；未设置时保留默认账号兼容行为。
+## Non-negotiable boundaries
 
-FANBOX E2E target variables are explicit non-secret test targets; the session remains in the macOS Keychain.
+- Keep `cmd/pixiv` thin. `internal/cli/root.go` assembles the command tree and production dependencies; command owners live under `internal/cli/commands`. Do not resurrect a global service locator or the removed bootstrap/resource graph.
+- CLI/MCP Pixiv and FANBOX operations use the public SDK and owner-local narrow ports, not protocol adapters. MCP tools belong to `internal/mcpserver/{pixiv,fanbox}/tools/<tool>`; their stdio runtimes are started by CLI commands.
+- Reverse search is the explicit exception: only the CLI composition root may import `internal/services/reversesearch/assembly`; command and MCP owners may use the top-level `internal/services/reversesearch` contract, never its provider subpackages.
+- Keep shared mechanisms in their existing owners: record, pagination, traversal, lifecycle, configuration, file persistence, and downloader. Generic utilities must not acquire product protocol or account semantics. See [architecture](docs/en/maintainers/architecture.md) for detailed ownership.
+- Preserve the App-only boundary. Content requires an authenticated local account or an eligible database-managed pool account; errors never select an anonymous Web path. Data commands do not accept `--uid` or `--refresh-token`; the public SDK and MCP retain their own explicit credential contracts.
+- Keep secrets out of logs, errors, fixtures, PRs, and artifacts. Only an explicitly requested bare `auth export [UID]` or `auth export --all` may emit secret stdout; otherwise use the documented private-output/transfer path. The SQLite account store is secret-bearing; never inspect real credentials as a debugging shortcut.
+- Preserve clean CLI machine output and MCP JSON-RPC stdout. MCP runtime failures retain structured output with `isError=true`. Report cancellation, transport, authentication, upstream, and persistence failures rather than success-shaped empty data.
+- Introduce limits, timeouts, retries, truncation, or fallbacks only for a verified requirement, platform constraint, established contract, or reproducible failure. Explain and test the trigger without silently discarding valid data.
 
-`TestRealFanboxSDKRead` 是唯一可以记为「完整 FANBOX read」的测试，它强制要求 post 目标带 first-party file attachment。`TestRealFanboxSDKPostInfo`（额外需要 `FANBOX_E2E_POST_ONLY=1`）只覆盖 `Post`/body/`ResolveURL`，通过时记为 **partial-pass**，不得替代完整 read 的状态。
+## Working agreement
 
-## 边界规则
+- Identify the requested behavior and acceptance evidence before editing. Keep small changes small; clarify consequential unknowns for larger work. Reuse the issue, PR, or conversation for decisions rather than creating process files automatically.
+- Inspect the branch and existing changes; preserve unrelated work and use an isolated worktree when none exists. Use only available tools, explicit working directories, and safely quoted inputs. Prefer available semantic navigation for symbols and callers; disclose when only targeted search/compiler checks are available.
+- For features and behavior fixes, observe a relevant failing test before implementation, then Green and regression. Reuse or extend existing coverage before adding tests; a new function or file is not a test quota. Pure restructuring uses before/after characterization; obtain an explicit exception if an applicable Red requirement cannot be met. Ordinary comment/document edits need relevant document and tooling checks, not invented runtime tests; consumed directives or examples may require behavioral checks.
+- Use the Go version in `go.mod`, `gofmt`, and existing tests/vet/hooks. Follow the develop/test skills for language and ownership rules. Preserve native build requirements; a Linux fixture pass is not all-platform evidence.
+- Reuse standard-library, platform, and existing project capabilities. Obtain approval before adding dependencies or installing missing tools; explain necessity, alternatives, and material lockfile, license, security, or deployment effects.
+- Explain network access and material side effects before execution. Real Pixiv/FANBOX calls, browser credential access, image uploads, and account writes require explicit scope and authorization; they are not routine offline verification.
+- Keep multi-step progress visible with the client's plan tool when available, otherwise a concise checklist. Restore actual state on continuation. Delegate only bounded work with clear ownership; integrated verification remains the main agent's responsibility.
+- Write `AGENTS.md`, maintenance/product skills, their references, and UI metadata in English. Source comments may be English or Chinese: follow the local audience and [commenting rules](.agents/skills/pixiv-cli-code-commenting/SKILL.md), not the language of this file. Keep public English/Simplified Chinese documentation behaviorally aligned and use the user's requested conversation language.
+- Review meaningful changes before handoff. Report the actual diff, exact checks and outcomes, remaining risks, and PR/worktree location. A local review is not a GitHub approval, and a pending or skipped check is not a pass.
+- Creating a PR does not authorize merging it, moving tags, publishing, changing branch protection, or using production secrets. Release authorization is separate and version-specific.
 
-各包职责描述见 `docs/zh-CN/maintainers/architecture.md`；以下是不可违反的规则：
+## Authoritative references
 
-- `cmd/pixiv` 只委托 `internal/cli`；`internal/cli/root.go` 负责命令树、全局生命周期与生产组装，具体命令位于 `internal/cli/commands` 及其 Pixiv/FANBOX owner 子目录，不恢复旧 resource graph/requirements 层。
-- CLI/MCP 的 Pixiv/FANBOX 能力只经公开 `sdk/pixiv`、`sdk/fanbox` 及 owner-local 窄端口调用；不得直连 `internal/services/{pixiv,fanbox}` 协议适配包。
-- reverse-search is the only cross-boundary exception：生产组装仅允许 `internal/cli/root.go` 依赖 `internal/services/reversesearch/assembly`；`internal/cli/commands` 与 `internal/mcpserver` 只能依赖 `internal/services/reversesearch` 顶层契约，不得导入 `internal/services/reversesearch/saucenao`、`internal/services/reversesearch/ascii2d` 或其他其子包。provider 协议构造、HTTP client、凭据与代理只由 composition root/assembly 持有。
-- MCP 聚合与输入/输出适配在 `internal/mcpserver/{pixiv,fanbox}`，具体 tool 位于各自 `tools/<tool>`；stdio runtime 由 CLI MCP 命令启动。
-- `internal/shared/*` 承载跨命令共享机制，`internal/utils/{parse,text,uri}` 保持协议无关；配置 schema/snapshot 在 `internal/config/settings`，本地路径和权限在 `internal/config/paths`，文件机制在 `internal/storage/file/*`。
-- 测试文件遵循 [`docs/zh-CN/maintainers/development.md` 测试文件布局](docs/zh-CN/maintainers/development.md#测试文件布局)的 same-stem、平台后缀和 same-package 例外规则；该节是唯一 canonical test-layout 规则。
-
-## 注意事项
-
-- 不提交 token、下载内容、本地数据库、缓存或机器相关配置。
-- refresh token 只允许用户显式执行不带 `--output` 的 `pixiv auth export [UID]` 或 `pixiv auth export --all` 时写 stdout；前者输出 raw token，后者输出含 secret 的 bundle。除此之外不得写入 stdout、stderr、JSON、MCP 或错误；完整契约见现有 locale 的 CLI reference。
-- 没有匿名 Web fallback：内容命令要求认证态本地账号（`pixiv auth use` 或手工 `[account_pool]`），否则返回认证要求；已删除的 `web_fallback_enabled` 若仍显式存在则返回 `removed_setting`，用 `pixiv config unset web_fallback_enabled` 清理。
-- CLI 数据命令只使用本地 `auth use` 账号或手工 `[account_pool]`，拒绝 `--uid`/`--refresh-token` 并忽略 `PIXIV_REFRESH_TOKEN`；公开 SDK 仍可显式提供凭据。MCP 凭据选择遵循其独立 runtime 配置。
-- MCP 模式 stdout 保留给 JSON-RPC；运行期失败保留 structured result 并设置 `isError=true`，不创建项目级日志。
-- 不新增无依据的固定超时、截断、条数限制、重试上限、静默 fallback 或隐藏降级。确需新增时，必须有证据、代码注释、测试或文档说明。
-- 修改 CLI/MCP tool、配置键、环境变量、输出语义、下载/认证/代理流程时，同步更新现有 locale 的 README、CLI reference 或对应 `docs/<locale>/`；涉及命令语义时同步检查 `skills/pixiv-cli/`。
-- PR 只写改动、验证结果和检查清单。发布准备阶段用 `scripts/cmd/releasenotes audit` 审计 tag 范围，再直接整理 `changelog/vX.Y.Z/` 双语说明；每个 PR 或 direct commit 都要在两种语言中有来源，纯内部改动归入 `Maintenance`。
-- 代码改动必须补充或更新聚焦测试，并运行相关回归；不能测试时说明原因和风险。
-
-## 文档路由
-
-- 架构与包职责：`docs/zh-CN/maintainers/architecture.md`。
-- CLI 完整契约：`docs/en/cli-reference.md`、`docs/zh-CN/cli-reference.md`；README 只作为多语言入口。
-- MCP tools：`docs/en/mcp-tools.md`、`docs/zh-CN/mcp-tools.md`；改 tool 时用 `.agents/skills/pixiv-cli-mcp-tool/`。
-- 开发流程、配置、测试：`docs/zh-CN/maintainers/development.md`（含测试文件布局与能力边界）。
-- AI 协作规则：`docs/index.md`（英文）与 `docs/index-zh-CN.md`；文档规范位于 `.agents/skills/pixiv-cli-docs/`，review checklist 位于 `.agents/skills/pixiv-cli-review/`。
-- Repo-local skills：`.agents/skills/`（PR / CI / release-notes / review / docs / commit-msg / mcp-tool），只在对应任务需要时读取。
-- 产品 skill（教 agent 使用 `pixiv` CLI，面向使用者分发）：`skills/pixiv-cli/`，全英文；改 CLI 命令/flag/语义时同步更新。
+[Development and test layout](docs/en/maintainers/development.md), [CLI contract](docs/en/cli-reference.md), [MCP contract](docs/en/mcp-tools.md), and [contributing](CONTRIBUTING.md) explain the checked-in behavior. Workflow YAML, `ci/platforms.json`, and tool manifests own executable configuration. When prose and implementation disagree, verify the disputed behavior and update the affected contract; do not guess or rewrite unrelated history.

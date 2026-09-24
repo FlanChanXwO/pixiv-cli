@@ -1,0 +1,44 @@
+name: PR Triage
+
+on:
+  pull_request_target:
+    types: [opened, reopened, synchronize, ready_for_review]
+
+permissions:
+  contents: read
+  pull-requests: write
+  issues: write
+
+jobs:
+  triage:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Ensure triage labels exist
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          ensure_label() {
+            gh label create "$1" --repo "$REPO" --color "$2" --description "$3" --force
+          }
+          ensure_label "area: docs" "0E8A16" "Documentation changes"
+          ensure_label "area: frontend" "1D76DB" "Frontend changes"
+          ensure_label "area: backend" "5319E7" "Backend changes"
+          ensure_label "area: tests" "C5DEF5" "Test changes"
+          ensure_label "area: github-actions" "FBCA04" "GitHub workflow or repository automation changes"
+          ensure_label "release" "BFD4F2" "Release metadata or changelog changes"
+
+      - name: Apply path labels
+        uses: actions/labeler@8558fd74291d67161a8a78ce36a881fa63b766a9
+        with:
+          repo-token: ${{ github.token }}
+          configuration-path: .github/labeler.yml
+          sync-labels: true
+
+      - name: Assign maintainer
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_URL: ${{ github.event.pull_request.html_url }}
+        run: gh pr edit "$PR_URL" --add-assignee FlanChanXwO

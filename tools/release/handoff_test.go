@@ -108,6 +108,67 @@ func TestReleaseHandoffBindsIdentityAndChecksums(t *testing.T) {
 	}
 }
 
+// write-handoff 拥有自己输出路径的父目录：调用方只给定目标文件，工具负责
+// 创建缺失的祖先目录，避免每个 caller 各自复制一份 `mkdir -p`。
+func TestWriteReleaseHandoffCreatesMissingOutputParent(t *testing.T) {
+	version := "1.2.3"
+	dist := t.TempDir()
+	containers := t.TempDir()
+	appendPlatformArtifacts(t, dist, version, "pixiv-cli_1.2.3_linux_amd64.tar.gz")
+	appendPlatformArtifacts(t, containers, version, "pixiv-cli-linux-amd64.tar")
+
+	output := filepath.Join(t.TempDir(), "missing", "nested", "release", "release-handoff.json")
+	if _, err := writeReleaseHandoff(releaseHandoffInput{
+		Repository:   "FlanChanXwO/pixiv-cli",
+		RunID:        4243,
+		Workflow:     "Release",
+		Tag:          "v" + version,
+		CommitSHA:    strings.Repeat("f", 40),
+		RunHeadSHA:   strings.Repeat("f", 40),
+		Version:      version,
+		DistDir:      dist,
+		ContainerDir: containers,
+		Output:       output,
+	}); err != nil {
+		t.Fatalf("write handoff into a missing parent: %v", err)
+	}
+	if _, err := os.Stat(output); err != nil {
+		t.Fatalf("handoff was not written to %q: %v", output, err)
+	}
+
+	// Output 是裸文件名时 filepath.Dir 返回 "."，必须仍能正常写入当前目录。
+	workingDirectory := t.TempDir()
+	previous, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chdir(workingDirectory); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		if err := os.Chdir(previous); err != nil {
+			t.Errorf("restore working directory: %v", err)
+		}
+	})
+	if _, err := writeReleaseHandoff(releaseHandoffInput{
+		Repository:   "FlanChanXwO/pixiv-cli",
+		RunID:        4244,
+		Workflow:     "Release",
+		Tag:          "v" + version,
+		CommitSHA:    strings.Repeat("f", 40),
+		RunHeadSHA:   strings.Repeat("f", 40),
+		Version:      version,
+		DistDir:      dist,
+		ContainerDir: containers,
+		Output:       "handoff.json",
+	}); err != nil {
+		t.Fatalf("write handoff with a bare filename: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(workingDirectory, "handoff.json")); err != nil {
+		t.Fatalf("bare-filename handoff was not written: %v", err)
+	}
+}
+
 // 篡改产物字节后，handoff 校验必须失败——这正是 publisher 复用 handoff 的意义。
 func TestVerifyHandoffArtifactsRejectsTamperedBytes(t *testing.T) {
 	version := "1.2.3"

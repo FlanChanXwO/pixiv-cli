@@ -9,6 +9,7 @@ internal-only changes are grouped under `Maintenance`.
 | Version | Date | Release notes |
 | --- | --- | --- |
 | Unreleased | — | [English](unreleased/en.md) · [简体中文](unreleased/zh-CN.md) |
+| [v1.1.1](https://github.com/FlanChanXwO/pixiv-cli/compare/v1.1.0...v1.1.1) | 2026-09-23 | [English](v1.1.1/en.md) · [简体中文](v1.1.1/zh-CN.md) |
 | [v1.1.0](https://github.com/FlanChanXwO/pixiv-cli/compare/v1.0.2...v1.1.0) | 2026-09-20 | [English](v1.1.0/en.md) · [简体中文](v1.1.0/zh-CN.md) |
 | [v1.0.2](https://github.com/FlanChanXwO/pixiv-cli/compare/v1.0.1...v1.0.2) | 2026-09-10 | [English](v1.0.2/en.md) · [简体中文](v1.0.2/zh-CN.md) |
 | [v1.0.1](https://github.com/FlanChanXwO/pixiv-cli/compare/v1.0.0...v1.0.1) | 2026-09-02 | [English](v1.0.1/en.md) · [简体中文](v1.0.1/zh-CN.md) |

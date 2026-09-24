@@ -6,7 +6,7 @@ in SKILL.md already ran. Verify flags with `pixiv <cmd> --help`.
 ## Find works by keyword/tag
 
 ```
-pixiv search "初音ミク" --type artwork --limit 10 --json
+pixiv search "landscape" --type artwork --limit 10 --json
 ```
 
 - Default search field is partial tag match (`--search-by tag-partial`); switch
@@ -45,7 +45,7 @@ pixiv search "初音ミク" --type artwork --limit 10 --json
   unsupported-field rule applies when a flag is not valid for the selected
   entity.
 - Drawing-tool names use the fixed catalog for this CLI version. Choose an exact
-  value from the [CLI reference](../../../docs/en/cli-reference.md#drawing-tool-catalog);
+  value from the [CLI reference](https://github.com/FlanChanXwO/pixiv-cli/blob/main/docs/en/cli-reference.md#drawing-tool-catalog), checking the installed version's help when versions differ;
   a unique one-edit spelling correction is shown in the validation error.
 - Search requires an authenticated local account. `tag-title-caption` and
   bookmark-count filtering are App-only in this branch. Never add a Cookie
@@ -103,7 +103,7 @@ pixiv search https://your-image-url.example/image.png --provider all --ndjson
 ## Find novels by keyword/tag
 
 ```
-pixiv search "初音ミク" --type novel --limit 10 --json
+pixiv search "fantasy" --type novel --limit 10 --json
 ```
 
 - The canonical route uses `--type novel` and supports only
@@ -179,7 +179,7 @@ prefer one `detail` call over re-searching the same work.
 pixiv user detail 11
 pixiv user artworks 11 --limit 20
 pixiv user novels 11 --limit 20
-pixiv user bookmarks 11 --tag "初音ミク" --limit 20
+pixiv user bookmarks 11 --tag "landscape" --limit 20
 pixiv user following 11 --limit 20
 pixiv user followers 11 --limit 20
 pixiv user follow add 123456 --restrict private

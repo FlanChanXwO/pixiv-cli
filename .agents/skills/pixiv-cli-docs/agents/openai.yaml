@@ -1,0 +1,4 @@
+interface:
+  display_name: "Pixiv CLI Documentation"
+  short_description: "Keep public contracts and agent instructions aligned."
+  default_prompt: "Use $pixiv-cli-docs to update the affected documentation and skills."

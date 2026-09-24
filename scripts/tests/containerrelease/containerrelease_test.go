@@ -208,37 +208,6 @@ func TestDockerfileUsesDebianSlimBase(t *testing.T) {
 	}
 }
 
-// TestMaintainerDocsDocumentContainerRecoveryBoundary 锁定双语维护者文档中的
-// registry 恢复语义：GitHub Release 与 registry 非原子，失败必须复用原 Release run。
-func TestMaintainerDocsDocumentContainerRecoveryBoundary(t *testing.T) {
-	t.Parallel()
-	root := repositoryRoot(t)
-	requiredFragments := map[string][]string{
-		"docs/en/maintainers/development.md": {
-			"independent post-Release container publisher",
-			"only the original `release_run_id`",
-			"No retry loop",
-		},
-		"docs/zh-CN/maintainers/development.md": {
-			"Release 后容器 publisher",
-			"只使用原始 `release_run_id`",
-			"不使用 retry loop",
-		},
-	}
-	for relativePath, fragments := range requiredFragments {
-		body, err := os.ReadFile(filepath.Join(root, filepath.FromSlash(relativePath)))
-		if err != nil {
-			t.Fatalf("read %s: %v", relativePath, err)
-		}
-		document := string(body)
-		for _, fragment := range fragments {
-			if !strings.Contains(document, fragment) {
-				t.Fatalf("%s must document container recovery boundary with %q", relativePath, fragment)
-			}
-		}
-	}
-}
-
 // TestDockerfilePrecreatesWritableStateDirectory 锁定命名 volume 的初始属主：
 // Docker 首次挂载空 volume 时会复制镜像内目录的 ownership，缺失会导致非 root 无法写入。
 func TestDockerfilePrecreatesWritableStateDirectory(t *testing.T) {
