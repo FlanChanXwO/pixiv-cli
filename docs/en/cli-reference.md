@@ -866,7 +866,7 @@ with v1. The transfer is explicit so a stale or unexpected local file cannot bec
 | `PIXIV_REQUEST_INTERVAL` | empty | Minimum interval between network request starts. |
 | `PIXIV_LOG_LEVEL` | `info` | Diagnostic level: `info` or `debug`; overrides `[logging].level`. |
 | `PIXIV_LOG_FORMAT` | `text` | Diagnostic stderr format: `text` or `json`; overrides `[logging].format`. |
-| `PIXIV_VECTOR_PYTHON` | `python3` | Local Python interpreter with preinstalled SigLIP2 inference dependencies; only used when local embeddings are pending. |
+| `PIXIV_VECTOR_PYTHON` | `python3` | Local Python interpreter with preinstalled SigLIP2 inference dependencies; used by every `vector search`, and by sync/rebuild when images still need embeddings. |
 | `SAUCENAO_API_KEY` | empty | SauceNAO credential; overrides the private config value and is never printed. |
 | `https_proxy` / `HTTPS_PROXY` | empty | Proxy URI (`http`, `https`, `socks5`, or `socks5h`); the lowercase `https_proxy` takes precedence. |
 

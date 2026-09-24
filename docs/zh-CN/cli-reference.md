@@ -714,7 +714,7 @@ v1 CLI 不会读取或迁移旧的 `~/.pixiv-cli/auth.json`。从旧版本切换
 | `PIXIV_REQUEST_INTERVAL` | 空 | 请求起始间隔。 |
 | `PIXIV_LOG_LEVEL` | `info` | 诊断级别：`info` 或 `debug`，覆盖 `[logging].level`。 |
 | `PIXIV_LOG_FORMAT` | `text` | 诊断 stderr 格式：`text` 或 `json`，覆盖 `[logging].format`。 |
-| `PIXIV_VECTOR_PYTHON` | `python3` | 含已安装 SigLIP2 推理依赖的本地 Python 解释器；仅有待处理本地向量时使用。 |
+| `PIXIV_VECTOR_PYTHON` | `python3` | 含已安装 SigLIP2 推理依赖的本地 Python 解释器；`vector search` 每次使用，sync/rebuild 存在待嵌入图片时使用。 |
 | `SAUCENAO_API_KEY` | 空 | SauceNAO credential；覆盖私有配置值且永不打印。 |
 | `https_proxy` / `HTTPS_PROXY` | 空 | `http`、`https`、`socks5` 或 `socks5h` 代理 URI；优先使用小写 `https_proxy`。 |
 
