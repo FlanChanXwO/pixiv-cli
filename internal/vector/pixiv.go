@@ -148,8 +148,8 @@ type ResourceFetcher func(ctx context.Context, resourceRef string) (string, erro
 // generation, using the resource identity persisted with each Asset. This is the explicit
 // processing path for Observer-created pending pages, including pages > 0: the listing
 // covers that bookmark sync resolves directly stay usable without a persisted identity.
-// fetch resolves and saves one page; the first failure stops the pass and is returned with
-// the completed count, so successful pages stay durable and the rest remain pending.
+// fetch resolves and saves one page. A failed page records its error and later pages
+// continue, so one bad page cannot starve the queue; failures stay pending for a retry.
 func ProcessPixivPending(ctx context.Context, store *Store, model, generation string, fetch ResourceFetcher, embed func(ctx context.Context, path string) ([]float32, error)) (int, error) {
 	if store == nil {
 		return 0, errors.New("vector: store is required")
@@ -162,19 +162,25 @@ func ProcessPixivPending(ctx context.Context, store *Store, model, generation st
 		return 0, err
 	}
 	processed := 0
+	var assetErrs []error
 	for _, asset := range pending {
 		if err := ctx.Err(); err != nil {
-			return processed, err
+			return processed, errors.Join(append(assetErrs, err)...)
 		}
 		if asset.Key.Source != "pixiv" {
 			continue
 		}
 		if err := embedPixivAsset(ctx, store, asset, model, generation, fetch, embed); err != nil {
-			return processed, err
+			// cancel 是命令层停止信号；单项失败继续后续页，保持 pending 可重试。
+			if ctx.Err() != nil {
+				return processed, errors.Join(append(assetErrs, err)...)
+			}
+			assetErrs = append(assetErrs, err)
+			continue
 		}
 		processed++
 	}
-	return processed, nil
+	return processed, errors.Join(assetErrs...)
 }
 
 func embedPixivAsset(ctx context.Context, store *Store, asset Asset, model, generation string, fetch ResourceFetcher, embed func(context.Context, string) ([]float32, error)) error {

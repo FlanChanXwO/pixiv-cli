@@ -76,6 +76,10 @@ func Open(appDataDir string) (*Store, error) {
 	query.Add("_pragma", "foreign_keys(1)")
 	query.Add("_pragma", "trusted_schema(off)")
 	query.Add("_pragma", "synchronous(FULL)")
+	// 跨进程写竞争用 SQLite 自带等待。写事务用 IMMEDIATE：deferred 事务在锁升级时
+	// 会触发 SQLite 死锁规避而直接 SQLITE_BUSY，IMMEDIATE 让 busy_timeout 真正生效。
+	query.Add("_pragma", "busy_timeout(5000)")
+	query.Add("_txlock", "immediate")
 	name := filepath.ToSlash(path)
 	if filepath.VolumeName(path) != "" && !strings.HasPrefix(name, "/") {
 		name = "/" + name

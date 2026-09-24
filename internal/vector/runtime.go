@@ -32,7 +32,15 @@ func StartSigLIP2(ctx context.Context) (*SigLIP2, error) {
 	if python == "" {
 		python = "python3"
 	}
-	cmd := exec.CommandContext(ctx, python, "-I", "-u", "-c", siglip2Script, ModelID, Generation)
+	return StartSigLIP2WithCommand(ctx, func(ctx context.Context) *exec.Cmd {
+		return exec.CommandContext(ctx, python, "-I", "-u", "-c", siglip2Script, ModelID, Generation)
+	})
+}
+
+// StartSigLIP2WithCommand 是测试 seam：command 构造可注入（helper-process 模式），
+// 使 startup 错误映射测试不依赖 Unix shebang，在 Windows 上同样可执行。
+func StartSigLIP2WithCommand(ctx context.Context, command func(context.Context) *exec.Cmd) (*SigLIP2, error) {
+	cmd := command(ctx)
 	cmd.Stderr = io.Discard // Python tracebacks can contain private local image paths.
 	stdin, err := cmd.StdinPipe()
 	if err != nil {

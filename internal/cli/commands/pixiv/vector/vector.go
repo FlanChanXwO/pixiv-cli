@@ -149,6 +149,10 @@ func syncBookmarks(ctx context.Context, out io.Writer, open func() (*index.Store
 	var stats index.SyncStats
 	processed := 0
 	runErr := bookmarks(ctx, func(ctx context.Context, source BookmarkSource) (bool, error) {
+		// 统计只代表最终 committed attempt；账号池重放时丢弃失败 attempt 的累计值。
+		// runtime 不重置：本地持久化之后 callback 返回 committed=true，不会再重放。
+		stats = index.SyncStats{}
+		processed = 0
 		userID := source.UserID()
 		if userID <= 0 {
 			return false, errors.New("vector: cannot determine the current user ID")

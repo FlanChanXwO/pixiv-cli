@@ -37,9 +37,6 @@ func (o *ArtworkObserver) Observe(ctx context.Context, artworks []pixiv.Artwork)
 	if err := ctx.Err(); err != nil {
 		return
 	}
-	if err := ctx.Err(); err != nil {
-		return
-	}
 	observed := make([]index.PixivArtwork, 0, len(artworks))
 	for _, artwork := range artworks {
 		converted, ok := observedArtwork(artwork)

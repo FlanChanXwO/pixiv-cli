@@ -10,6 +10,7 @@ import (
 	"runtime"
 	"slices"
 	"testing"
+	"time"
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/storage/database"
 	"github.com/FlanChanXwO/pixiv-cli/internal/vector"
@@ -307,5 +308,56 @@ func TestPendingTargetsOnlyNewlyObservedGeneration(t *testing.T) {
 	pending, err = store.Pending(ctx, "model", "old")
 	if err != nil || len(pending) != 1 || pending[0].Key != old.Key {
 		t.Fatalf("old pending intent must survive restart: %v %v", pending, err)
+	}
+}
+
+// TestStoreWaitsForCrossProcessWriteLock 锁定二次审查修复：两个独立 Store
+// （等价于两个进程）短暂竞争同一 vector.db 写锁时，后到者等待而不是立即失败。
+func TestStoreWaitsForCrossProcessWriteLock(t *testing.T) {
+	dir := t.TempDir()
+	first, err := vector.Open(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer first.Close()
+	second, err := vector.Open(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer second.Close()
+
+	done := make(chan error, 1)
+	// Connection A 用同驱动独立连接（等价于另一进程）持有写锁 1 秒后主动释放。
+	holder, err := sql.Open("sqlite", "file:"+filepath.ToSlash(filepath.Join(dir, "vector.db")))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer holder.Close()
+	go func() {
+		tx, err := holder.Begin()
+		if err != nil {
+			done <- err
+			return
+		}
+		defer tx.Rollback()
+		if _, err := tx.Exec(`INSERT INTO asset (source,source_id,page_index,fingerprint,metadata)
+			VALUES ('local','holder.png',0,'fp','{}')`); err != nil {
+			done <- err
+			return
+		}
+		time.Sleep(1 * time.Second)
+		done <- nil
+	}()
+	// 等 A 拿到写锁再让 B 写同一张表：B 应等待而不是立即 SQLITE_BUSY。
+	time.Sleep(200 * time.Millisecond)
+	_, err = second.Upsert(context.Background(), vector.Asset{
+		Key: vector.Key{Source: "local", ID: "waiter.png"}, Fingerprint: "fp",
+		Metadata: []byte(`{}`), TargetModel: "m", TargetGeneration: "g",
+	})
+	if err != nil {
+		t.Fatalf("second writer failed under brief cross-store lock contention: %v", err)
+	}
+	if holderErr := <-done; holderErr != nil {
+		t.Fatal(holderErr)
 	}
 }

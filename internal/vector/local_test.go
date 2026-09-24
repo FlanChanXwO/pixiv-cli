@@ -353,11 +353,125 @@ func TestRebuildLocalRetainsOldVectorsAndRetriesFailedWork(t *testing.T) {
 		t.Fatal(err)
 	}
 	n, err = vector.RebuildLocal(ctx, store, "new", "two", func(context.Context, string) ([]float32, error) { return []float32{0, 1}, nil })
+	// 坏文件不再阻塞后续 Asset：a 仍被重嵌入，b 的旧向量保留，错误仍非零退出。
 	if n != 1 || !errors.Is(err, os.ErrNotExist) {
-		t.Fatalf("missing source must fail after first: %d %v", n, err)
+		t.Fatalf("missing source must continue healthy work: %d %v", n, err)
 	}
 	got, err = store.Embedding(ctx, vector.Key{Source: "local", ID: b}, "new", "two")
 	if err != nil || !slices.Equal(got, []float32{1, 0}) {
 		t.Fatalf("missing source's last vector lost: %v %v", got, err)
+	}
+}
+
+// TestRebuildLocalContinuesAfterDeletedSource 锁定二次审查修复：单个坏 Asset
+// 永久失败时不得饥饿排序在它之后的健康 Asset。
+func TestRebuildLocalContinuesAfterDeletedSource(t *testing.T) {
+	ctx := context.Background()
+	gallery, err := filepath.EvalSymlinks(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	a := filepath.Join(gallery, "a.png")
+	b := filepath.Join(gallery, "b.png")
+	c := filepath.Join(gallery, "c.png")
+	for _, path := range []string{a, b, c} {
+		writePNG(t, path, 0xff)
+	}
+	store, err := vector.Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = store.Close() }()
+	if _, err := vector.SyncLocal(ctx, store, gallery); err != nil {
+		t.Fatal(err)
+	}
+	// 预置旧代向量，验证失败项保留旧向量。
+	for _, path := range []string{a, b, c} {
+		asset, err := store.Get(ctx, vector.Key{Source: "local", ID: path})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := store.PutEmbedding(ctx, asset.Key, asset.Fingerprint, "old", "one", []float32{1, 0}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := os.Remove(b); err != nil {
+		t.Fatal(err)
+	}
+	processed, err := vector.RebuildLocal(ctx, store, "new", "two", func(context.Context, string) ([]float32, error) { return []float32{0, 1}, nil })
+	if processed != 2 || !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("processed=%d err=%v, want 2 with a joined ErrNotExist", processed, err)
+	}
+	for _, path := range []string{a, c} {
+		if got, err := store.Embedding(ctx, vector.Key{Source: "local", ID: path}, "new", "two"); err != nil || !slices.Equal(got, []float32{0, 1}) {
+			t.Fatalf("healthy asset %s starved: %v %v", path, got, err)
+		}
+	}
+	if got, err := store.Embedding(ctx, vector.Key{Source: "local", ID: b}, "new", "two"); !errors.Is(err, sql.ErrNoRows) {
+		t.Fatalf("deleted file must not gain a vector: %v %v", got, err)
+	}
+	if got, err := store.Embedding(ctx, vector.Key{Source: "local", ID: b}, "old", "one"); err != nil || !slices.Equal(got, []float32{1, 0}) {
+		t.Fatalf("failed asset's old vector lost: %v %v", got, err)
+	}
+}
+
+// TestProcessLocalPendingContinuesAfterMissingSource 同上，覆盖 pending 处理循环。
+func TestProcessLocalPendingContinuesAfterMissingSource(t *testing.T) {
+	ctx := context.Background()
+	gallery, err := filepath.EvalSymlinks(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	a := filepath.Join(gallery, "a.png")
+	b := filepath.Join(gallery, "b.png")
+	writePNG(t, a, 0xff)
+	writePNG(t, b, 0x7f)
+	store, err := vector.Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	if _, err := vector.SyncLocal(ctx, store, gallery); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Remove(a); err != nil {
+		t.Fatal(err)
+	}
+	processed, err := vector.ProcessLocalPending(ctx, store, gallery, vector.ModelID, vector.Generation, func(context.Context, string) ([]float32, error) { return []float32{1, 0}, nil })
+	if processed != 1 || !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("processed=%d err=%v, want 1 with a joined ErrNotExist", processed, err)
+	}
+	if _, err := store.Embedding(ctx, vector.Key{Source: "local", ID: b}, vector.ModelID, vector.Generation); err != nil {
+		t.Fatalf("healthy asset after the broken one starved: %v", err)
+	}
+}
+
+// TestProcessLocalPendingCancellationStopsImmediately 补充：cancel 后不再处理后续 Asset。
+func TestProcessLocalPendingCancellationStopsImmediately(t *testing.T) {
+	ctx := context.Background()
+	gallery := t.TempDir()
+	b := filepath.Join(gallery, "b.png")
+	writePNG(t, filepath.Join(gallery, "a.png"), 0xff)
+	writePNG(t, b, 0x7f)
+	store, err := vector.Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	if _, err := vector.SyncLocal(ctx, store, gallery); err != nil {
+		t.Fatal(err)
+	}
+	var embeds int
+	canceled, cancel := context.WithCancel(ctx)
+	_, err = vector.ProcessLocalPending(canceled, store, gallery, vector.ModelID, vector.Generation, func(_ context.Context, _ string) ([]float32, error) {
+		embeds++
+		cancel()
+		return []float32{1, 0}, nil
+	})
+	if !errors.Is(err, context.Canceled) || embeds != 1 {
+		t.Fatalf("err=%v embeds=%d, want cancel to stop after the in-flight asset", err, embeds)
+	}
+	if _, err := store.Embedding(ctx, vector.Key{Source: "local", ID: b}, vector.ModelID, vector.Generation); !errors.Is(err, sql.ErrNoRows) {
+		t.Fatalf("asset after cancellation must not be processed: %v", err)
 	}
 }

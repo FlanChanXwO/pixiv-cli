@@ -217,11 +217,11 @@ func TestProcessPixivPendingEmbedsAllPagesAndLeavesFailuresRetryable(t *testing.
 	if err == nil {
 		t.Fatal("a failed page must surface an error while keeping other work durable")
 	}
-	if processed != 2 || embedded != 2 {
-		t.Fatalf("processed=%d embedded=%d, want the two pages before the failure", processed, embedded)
+	if processed != 3 || embedded != 3 {
+		t.Fatalf("processed=%d embedded=%d, want all pages attempted despite the one failure", processed, embedded)
 	}
-	// pending 顺序是 (101,0) (202,0) (202,1) (202,2)：失败页之后不再取图。
-	want := []string{"ref-101", "ref-202-p0", "ref-202-p1"}
+	// pending 顺序是 (101,0) (202,0) (202,1) (202,2)：坏页之后继续取图。
+	want := []string{"ref-101", "ref-202-p0", "ref-202-p1", "ref-202-p2"}
 	if !slices.Equal(fetched, want) {
 		t.Fatalf("fetched = %v, want %v", fetched, want)
 	}
@@ -231,16 +231,20 @@ func TestProcessPixivPendingEmbedsAllPagesAndLeavesFailuresRetryable(t *testing.
 	if _, err := store.Embedding(ctx, vector.Key{Source: "pixiv", ID: "202", Page: 0}, vector.ModelID, vector.Generation); err != nil {
 		t.Fatalf("successful page must persist: %v", err)
 	}
-	// 失败页与未及处理页保持 pending，可重试。
+	// 坏页之后的健康页不得被饥饿：202/2 必须已嵌入。
+	if _, err := store.Embedding(ctx, vector.Key{Source: "pixiv", ID: "202", Page: 2}, vector.ModelID, vector.Generation); err != nil {
+		t.Fatalf("page after the failed one must persist: %v", err)
+	}
+	// 失败页保持 pending，可重试。
 	pending, err := store.Pending(ctx, vector.ModelID, vector.Generation)
-	if err != nil || len(pending) != 2 {
-		t.Fatalf("pending after failure = %v (err=%v), want the 2 unfinished pages", pending, err)
+	if err != nil || len(pending) != 1 {
+		t.Fatalf("pending after failure = %v (err=%v), want the 1 unfinished page", pending, err)
 	}
 	// 重试成功后 pending 清零，且不重复嵌入已完成页。
 	processed, err = vector.ProcessPixivPending(ctx, store, vector.ModelID, vector.Generation, fetch, func(_ context.Context, _ string) ([]float32, error) {
 		return []float32{1, 2, 3}, nil
 	})
-	if err != nil || processed != 2 {
+	if err != nil || processed != 1 {
 		t.Fatalf("retry: processed=%d err=%v", processed, err)
 	}
 	pending, err = store.Pending(ctx, vector.ModelID, vector.Generation)
@@ -265,6 +269,36 @@ func TestProcessPixivPendingRejectsMissingIdentity(t *testing.T) {
 	_, err = vector.ProcessPixivPending(ctx, store, vector.ModelID, vector.Generation, func(context.Context, string) (string, error) { return "/tmp/x", nil }, func(context.Context, string) ([]float32, error) { return []float32{1}, nil })
 	if err == nil || !strings.Contains(err.Error(), "no persisted resource identity") {
 		t.Fatalf("missing identity must be a diagnosable error: %v", err)
+	}
+}
+
+// TestProcessPixivPendingMissingIdentityDoesNotStarveLaterAssets 锁定：
+// 无身份的 pending 只影响自身，不得饥饿后续有身份的 Asset。
+func TestProcessPixivPendingMissingIdentityDoesNotStarveLaterAssets(t *testing.T) {
+	ctx := context.Background()
+	store, err := vector.Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	// 先写入无身份 Asset（ID 100，字符串排序在前），再写入有身份的健康 Asset（ID 999）。
+	if _, err := store.Upsert(ctx, vector.Asset{Key: vector.Key{Source: "pixiv", ID: "100", Page: 0}, Metadata: []byte(`{}`), TargetModel: vector.ModelID, TargetGeneration: vector.Generation}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := vector.SyncPixivArtworks(ctx, store, []vector.PixivArtwork{
+		{ID: 999, Title: "healthy", UserID: 7, PageCount: 1, CoverRef: "ref-999"},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	processed, err := vector.ProcessPixivPending(ctx, store, vector.ModelID, vector.Generation, func(context.Context, string) (string, error) { return "/tmp/x", nil }, func(context.Context, string) ([]float32, error) { return []float32{1}, nil })
+	if err == nil || !strings.Contains(err.Error(), "no persisted resource identity") {
+		t.Fatalf("missing identity must surface: %v", err)
+	}
+	if processed != 1 {
+		t.Fatalf("healthy asset starved: processed=%d", processed)
+	}
+	if _, err := store.Embedding(ctx, vector.Key{Source: "pixiv", ID: "999", Page: 0}, vector.ModelID, vector.Generation); err != nil {
+		t.Fatalf("healthy asset must persist: %v", err)
 	}
 }
 

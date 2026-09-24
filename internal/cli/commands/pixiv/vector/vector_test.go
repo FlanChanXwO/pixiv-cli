@@ -45,12 +45,20 @@ type fakeSource struct {
 	dataPages int
 	saved     []sdk.ResourceRef
 	saveFail  bool
+	// listErrOn 非负时，第 listErrOn 次请求返回 listErr，模拟持久化前的可重放失败。
+	listErrOn int
+	listErr   error
 }
 
 func (f *fakeSource) UserID() int64 { return f.userID }
 
 func (f *fakeSource) UserArtworkBookmarks(_ context.Context, _ pixiv.UserArtworkBookmarksRequest) (sdk.Page[pixiv.Artwork], error) {
-	page, ok := 0, f.requests < len(f.pages)
+	if f.listErr != nil && f.requests == f.listErrOn {
+		f.requests++
+		return sdk.Page[pixiv.Artwork]{}, f.listErr
+	}
+	// 按请求序号顺序消费预置页：第一个 restrict 取 pages[0]，第二个取 pages[1]……
+	page, ok := f.requests, f.requests < len(f.pages)
 	f.requests++
 	if !ok {
 		return sdk.Page[pixiv.Artwork]{}, nil
@@ -486,4 +494,39 @@ func storeFingerprint(t *testing.T, store *index.Store, key index.Key) string {
 		t.Fatal(err)
 	}
 	return asset.Fingerprint
+}
+
+// TestSyncBookmarksReplayStatsReflectFinalAttempt 锁定二次审查修复：账号池重放时，
+// 统计只代表最终 committed attempt，失败 attempt 的 scanned/skipped 不重复累计。
+func TestSyncBookmarksReplayStatsReflectFinalAttempt(t *testing.T) {
+	// attempt 1: public listing 成功（scanned 2）后 private listing 失败——持久化之前，
+	// 账号池会安全重放。attempt 2: public 2 项 + private 1 项，成功提交。
+	firstSource := &fakeSource{userID: 7, pages: [][]pixiv.Artwork{
+		{coverArtwork(t, 101, "a", 1), coverArtwork(t, 202, "b", 1)},
+	}, listErrOn: 1, listErr: errors.New("account replay required")}
+	secondSource := &fakeSource{userID: 7, pages: [][]pixiv.Artwork{
+		{coverArtwork(t, 101, "a", 1), coverArtwork(t, 202, "b", 1)},
+		{coverArtwork(t, 303, "c", 1)},
+	}}
+	var out bytes.Buffer
+	cmd := vector.New(&out,
+		func() (*index.Store, error) { return index.Open(t.TempDir()) },
+		func(context.Context) (vector.ImageEncoder, error) { return &fakeEncoder{}, nil },
+		func(ctx context.Context, attempt func(context.Context, vector.BookmarkSource) (bool, error)) error {
+			if _, err := attempt(ctx, firstSource); err == nil {
+				return errors.New("first attempt must fail to trigger replay")
+			}
+			_, err := attempt(ctx, secondSource)
+			return err
+		}, nil)
+	cmd.SetArgs([]string{"sync", "bookmarks"})
+	cmd.SetOut(&out)
+	cmd.SetErr(&out)
+	if err := cmd.ExecuteContext(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	// 最终 attempt 只有 3 项 listing；失败 attempt 的 2 项不得重复累计（bug 时为 5）。
+	if !strings.Contains(out.String(), "scanned: 3\n") {
+		t.Fatalf("stats must reflect only the final attempt: %q", out.String())
+	}
 }

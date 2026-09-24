@@ -105,7 +105,8 @@ func fileFingerprint(path string) (string, error) {
 }
 
 // ProcessLocalPending processes pending images under the explicitly synced gallery only.
-// Failures remain pending for a later sync.
+// Failures remain pending for a later sync. A permanently broken image records its
+// error and lets later assets continue, so one bad file cannot starve the queue.
 // ponytail: one worker bounds model memory; add parallel workers only after measuring throughput.
 func ProcessLocalPending(ctx context.Context, store *Store, root, model, generation string, embed func(context.Context, string) ([]float32, error)) (int, error) {
 	if strings.TrimSpace(root) == "" {
@@ -124,7 +125,11 @@ func ProcessLocalPending(ctx context.Context, store *Store, root, model, generat
 		return 0, err
 	}
 	processed := 0
+	var assetErrs []error
 	for _, asset := range pending {
+		if err := ctx.Err(); err != nil {
+			return processed, errors.Join(append(assetErrs, err)...)
+		}
 		if asset.Key.Source != "local" {
 			continue
 		}
@@ -133,47 +138,71 @@ func ProcessLocalPending(ctx context.Context, store *Store, root, model, generat
 			continue
 		}
 		if err := embedLocalAsset(ctx, store, asset, model, generation, embed); err != nil {
-			return processed, err
+			// cancel 属于命令层停止信号，逐项失败则继续后续 Asset。
+			if ctx.Err() != nil {
+				return processed, errors.Join(append(assetErrs, err)...)
+			}
+			assetErrs = append(assetErrs, err)
+			continue
 		}
 		processed++
 	}
-	return processed, nil
+	return processed, errors.Join(assetErrs...)
 }
 
 // RebuildLocal explicitly re-embeds every recorded local image; it never crawls Pixiv.
-// A failed image leaves its last good vector intact, and rerunning refreshes every image.
+// A failed image records its error, keeps its last good vector, and later images continue;
+// rerunning refreshes every image and retries the failures.
 func RebuildLocal(ctx context.Context, store *Store, model, generation string, embed func(ctx context.Context, path string) ([]float32, error)) (int, error) {
 	assets, err := store.localRebuildAssets(ctx, model, generation)
 	if err != nil {
 		return 0, err
 	}
 	processed := 0
+	var assetErrs []error
 	for _, asset := range assets {
+		if err := ctx.Err(); err != nil {
+			return processed, errors.Join(append(assetErrs, err)...)
+		}
 		if err := embedLocalAsset(ctx, store, asset, model, generation, embed); err != nil {
-			return processed, err
+			// cancel 是命令层停止信号；单项失败继续后续 Asset，保持旧向量与可重试。
+			if ctx.Err() != nil {
+				return processed, errors.Join(append(assetErrs, err)...)
+			}
+			assetErrs = append(assetErrs, err)
+			continue
 		}
 		processed++
 	}
-	return processed, nil
+	return processed, errors.Join(assetErrs...)
 }
 
 // RebuildPixiv explicitly re-embeds every recorded Pixiv page through its persisted
-// resource identity. A failed page leaves its last good vector intact and stays retryable;
-// the caller owns authentication. fetch resolves one persisted resource identity to a
-// readable local image path.
+// resource identity. A failed page records its error, keeps its last good vector, stays
+// retryable, and later pages continue; the caller owns authentication. fetch resolves
+// one persisted resource identity to a readable local image path.
 func RebuildPixiv(ctx context.Context, store *Store, model, generation string, fetch ResourceFetcher, embed func(ctx context.Context, path string) ([]float32, error)) (int, error) {
 	assets, err := store.pixivRebuildAssets(ctx, model, generation)
 	if err != nil {
 		return 0, err
 	}
 	processed := 0
+	var assetErrs []error
 	for _, asset := range assets {
+		if err := ctx.Err(); err != nil {
+			return processed, errors.Join(append(assetErrs, err)...)
+		}
 		if err := embedPixivAsset(ctx, store, asset, model, generation, fetch, embed); err != nil {
-			return processed, err
+			// cancel 是命令层停止信号；单项失败继续后续 Asset，保持旧向量与可重试。
+			if ctx.Err() != nil {
+				return processed, errors.Join(append(assetErrs, err)...)
+			}
+			assetErrs = append(assetErrs, err)
+			continue
 		}
 		processed++
 	}
-	return processed, nil
+	return processed, errors.Join(assetErrs...)
 }
 
 func embedLocalAsset(ctx context.Context, store *Store, asset Asset, model, generation string, embed func(context.Context, string) ([]float32, error)) error {
