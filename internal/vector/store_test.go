@@ -334,13 +334,13 @@ func TestStoreWaitsForCrossProcessWriteLock(t *testing.T) {
 	}
 	defer holder.Close()
 	go func() {
-		tx, err := holder.Begin()
+		tx, err := holder.BeginTx(context.Background(), nil)
 		if err != nil {
 			done <- err
 			return
 		}
 		defer tx.Rollback()
-		if _, err := tx.Exec(`INSERT INTO asset (source,source_id,page_index,fingerprint,metadata)
+		if _, err := tx.ExecContext(context.Background(), `INSERT INTO asset (source,source_id,page_index,fingerprint,metadata)
 			VALUES ('local','holder.png',0,'fp','{}')`); err != nil {
 			done <- err
 			return
