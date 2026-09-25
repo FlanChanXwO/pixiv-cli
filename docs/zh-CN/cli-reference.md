@@ -309,6 +309,76 @@ artwork、novel、user 搜索记录都会从 `type` 推断对应详情，不需�
 `--type` 只是 compatibility constraint，必须与推断出的 Record 类型兼容，绝不会覆盖 Record 类型。反向搜图的
 `artwork`、`user` identity record 也能走同一条 detail 管道。`pixiv detail` 也可直接消费规范 NDJSON：`illust`、`manga`、`ugoira` 和通用 `artwork` 记录进入作品详情，`novel` 与 `user` 记录进入对应详情。record 模式下，显式 `--ndjson` 输出规范 Record，显式 `--json` 输出完整 JSON 数组；省略输出 flag 时，非 TTY stdout 自动使用 NDJSON。`search --json` 是完整聚合 JSON 文档，不是规范 NDJSON 流，不能直接作为 `detail` 的输入。
 
+### 本地向量索引（当前命令）
+
+`pixiv vector sync local PATH` 递归扫描明确目录下的普通图片文件，将内容指纹变化写入独立的私有
+`~/.pixiv-cli/vector.db`（Windows 为 `%USERPROFILE%\.pixiv-cli\vector.db`），随后以一个短生命周期
+worker 只处理该目录下尚缺的本地向量，其他图库的待处理资产保持不动。它不复制图片、不访问 Pixiv、不读取账号凭证，也不创建 `config.toml`。
+命令输出 `scanned`、`changed`，以及 `embedded` 数量。重复扫描未变化图片不会重复计算。
+源文件变化、缺失或推理失败时保留待处理工作，需之后显式重扫；当前不自动清理已删除文件。
+`pixiv vector rebuild` 显式重新计算已记录的全部 Asset——各图库的本地图片与 Pixiv 页面（不重新扫描、
+不重新 listing），并将所有 Asset 指向当前模型代；旧向量不删除，每项成功后替换当前代向量。本地 Asset
+从已记录的本地文件重算；Pixiv Asset 通过各自持久化的稳定资源身份（绝非会过期的签名 URL）重新取图，
+需要已认证账号（`pixiv auth use`）；索引中只有本地 Asset 时不初始化 Pixiv 账号。模型失败或源文件
+缺失/变化时非零退出并报告已完成数量，保留最后一次存储的向量；修复源文件后重试会重新处理所有已记录
+Asset，包括此前成功的项，不发生自动历史迁移。
+`pixiv vector sync bookmarks` 通过公开 SDK 的 bookmark listing 索引当前账号收藏的作品，覆盖 public 与 private 两种可见性。
+每个作品只用 listing 自身返回的 cover 建立 page 0，绝不请求 artwork detail，因此不会产生逐作品的额外 App API 请求。
+多页作品以 cover 存入并标记 `cover_only` 与真实 `page_count`；其余页面既不抓取也不伪造，需由后续来源补齐。
+随后在同一已认证 client 上处理当前代仍缺向量的全部 Pixiv 页面——刚抓到的 listing cover，以及之前被被动
+观察记录的 pending 页面（含超过 page 0 的页面，经其持久化资源身份重新取图）。它需要本地已认证账号
+（`pixiv auth use`），并像其他 Pixiv 数据命令一样会创建 `config.toml`。
+listing 未给出可用 cover 的作品记为 `skipped`，不会存成无图片的资产；输出包含 `scanned`、`changed`、
+`skipped` 与 `embedded` 数量。
+已经返回作品的普通 Pixiv 读取命令（`search`、`ranking`、`recommended`、`timeline`、`mypixiv`、`user`、
+`series`、`bookmark list` 与 `detail`）会把本次已取得的 Artwork 以 best-effort 方式记入私有索引。该观察
+**不新增**任何 Pixiv 请求、不加载模型，索引失败只在 stderr 写一行诊断，不进入 stdout，命令输出与退出
+状态不变。`detail` 提供全部页面，listing 只提供 cover 并标记 `cover_only`。观察不下载图片；每个已记录
+页面都保留稳定资源身份（不含签名 URL），因此之后的显式 `pixiv vector sync bookmarks` 或 `pixiv vector
+rebuild` 可以重新解析它——包括只有 `detail` 观察到的超过 page 0 的页面。
+`pixiv vector status` 报告持久化的 `assets` 与 `embeddings` 总数；数据库尚不存在时会创建。
+`pixiv vector search QUERY_OR_IMAGE` 使用同一个离线 SigLIP2 模型处理文本或现有本地图片，再对持久化
+page-level 向量做 exact cosine 排序；不请求 Pixiv 或反向搜图服务，也不修改索引。现有普通文件按图片查询；
+形似路径但不存在的输入（`./...`、绝对路径或常见图片扩展名）会报错，不当作文本，其余输入按文本查询。
+搜索不隐式扫描图库或同步 bookmarks。输出为按相似度降序的逐行 JSON（NDJSON），每行含 `source`、
+`source_id`、从零开始的 `page_index`、`score`、`metadata`，Pixiv Asset 另含 `url`；`metadata` 对本地 Asset 为 `{}`，
+Pixiv Asset 含 `title`、`user_id`、`page_count` 与 `url`，仅取得 listing cover 时另有 `cover_only`。
+metadata 只保存已取得 Artwork 自带的字段（存在时含 `caption`、`user_name`、`kind`、`tags`、`x_restrict`、
+`ai_type`）；任何字段都不会触发额外 App API 请求。
+同一 Pixiv 作品的多个页面在 CLI 输出中
+合并，只输出该作品相似度最高的页面，持久索引仍保持 page-level；不暗设结果条数上限。
+这些结果不是供 `detail`/`download` 使用的规范 Pixiv Record。CLI 重启后不重新计算已存图片向量，
+但每次查询仍需已预装的模型。sync/status 无 `--json`，search 无需输出 flag 即为 NDJSON。
+
+运行 embedding 需自行准备 Python 3.12、`torch==2.14.0`、`transformers==5.17.0`、
+`pillow==12.1.1`，并提前下载 `google/siglip2-base-patch16-512` 的固定 revision
+`a89f5c5093f902bf39d3cd4d81d2c09867f0724b`；Go 二进制**不包含**这些依赖与权重。
+macOS/Linux 示例（使用私有用户目录）：
+
+```bash
+mkdir -p ~/.pixiv-cli && chmod 700 ~/.pixiv-cli
+python3.12 -m venv ~/.pixiv-cli/vector-python
+~/.pixiv-cli/vector-python/bin/python -m pip install 'torch==2.14.0' 'transformers==5.17.0' 'pillow==12.1.1'
+~/.pixiv-cli/vector-python/bin/python - <<'PYMODEL'
+from huggingface_hub import snapshot_download
+snapshot_download('google/siglip2-base-patch16-512', revision='a89f5c5093f902bf39d3cd4d81d2c09867f0724b', allow_patterns=['*.json', '*.model', '*.safetensors'])
+PYMODEL
+PIXIV_VECTOR_PYTHON="$HOME/.pixiv-cli/vector-python/bin/python" pixiv vector sync local ~/Pictures/gallery
+pixiv vector status
+PIXIV_VECTOR_PYTHON="$HOME/.pixiv-cli/vector-python/bin/python" pixiv vector rebuild
+PIXIV_VECTOR_PYTHON="$HOME/.pixiv-cli/vector-python/bin/python" pixiv vector search "白发 红眼"
+PIXIV_VECTOR_PYTHON="$HOME/.pixiv-cli/vector-python/bin/python" pixiv vector search ./reference.jpg
+```
+
+Windows 请将 `PIXIV_VECTOR_PYTHON` 设为虚拟环境中的 `Scripts/python.exe`。模型缓存遵循 Python
+Hugging Face 的 `HF_HOME`。同步只加载固定的 safetensors revision、禁用远端自定义代码，**不会隐式下载
+权重**；运行时或权重缺失时，扫描资产仍保留，但命令非零退出，并给出结构化启动诊断
+（`dependency_missing`、`dependency_version_mismatch`、`model_not_found` 或 `model_load_failed`）。
+无待处理向量时不会加载模型。私有索引首次打开时直接以最终结构初始化 schema（单一 `user_version` 1），
+并记录每个 Asset 的目标 model/generation 与稳定资源身份。未来模型 revision 变化时，未变化的旧 Asset
+和向量保留旧代；仅新观察或内容变化的 Asset 面向新代。搜索只比较当前代，status 计入所有已存代；
+旧 Asset 不会自动重新生成向量，需显式 rebuild。
+
 ### 反向搜图
 
 `pixiv search SOURCE` 会在任何 Pixiv SDK 或账号池初始化之前进入图片模式：
@@ -390,6 +460,7 @@ canonical 数据 action 是 `search`、`detail`、`ranking`、`series`、`commen
 | `config set` | `pixiv config set KEY [VALUE]` | 写入已知配置键，包括 `account_pool_enabled`、`account_pool_strategy`、`download_path`、`filename_template`、`directory_template`、`request_interval`、`https_proxy`、`log_level`、`log_format`、`reverse_search_provider`、`reverse_search_pixiv_only` 和仅限 stdin 的 `saucenao_api_key`。 |
 | `config unset` | `pixiv config unset KEY` | 从 `config.toml` 删除一个已知配置键。 |
 | `update` | `pixiv update [--check] [--prerelease] [--proxy URL]` | 检查或执行与当前安装来源匹配的更新；`--json` 仅可与 `--check` 同用。 |
+| `vector` | `pixiv vector sync local PATH`；`pixiv vector sync bookmarks`；`pixiv vector search QUERY_OR_IMAGE`；`pixiv vector status`；`pixiv vector rebuild` | 显式索引本地图库或当前账号收藏作品的 cover、离线搜索持久化向量、查看数量或重建已记录的本地图片。本地命令不需 Pixiv 凭证；`sync bookmarks` 使用本地账号且不请求 artwork detail。 |
 | `search` | `pixiv search [WORD\|IMAGE_PATH_OR_URL] [-t artwork\|novel\|user] [options]` | canonical 实体搜索或自动反向搜图。常规文件或显式 HTTP(S) source 选择图片模式；`--trending-tags` 是无 WORD 的完整作品趋势标签模式，不接受搜索筛选或分页。 |
 | `detail` | `pixiv detail [ID_OR_URL] [-t artwork\|novel\|user] [--content] [--json\|--ndjson]` | 读取一件作品、一本小说或一个用户，也可消费规范 NDJSON Record；`--content` 是保留的小说兼容 flag，但 v1 App 正文 endpoint 不可用，会在打开账号池或请求 rejected endpoint 前返回 `content_unavailable`。 |
 | `ranking` | `pixiv ranking [-t artwork\|novel] [--mode MODE --date YYYY-MM-DD --page N --limit N]` | 读取作品或小说排行；默认是 `artwork`，`--date` 只适用于作品排行。 |
@@ -643,6 +714,7 @@ v1 CLI 不会读取或迁移旧的 `~/.pixiv-cli/auth.json`。从旧版本切换
 | `PIXIV_REQUEST_INTERVAL` | 空 | 请求起始间隔。 |
 | `PIXIV_LOG_LEVEL` | `info` | 诊断级别：`info` 或 `debug`，覆盖 `[logging].level`。 |
 | `PIXIV_LOG_FORMAT` | `text` | 诊断 stderr 格式：`text` 或 `json`，覆盖 `[logging].format`。 |
+| `PIXIV_VECTOR_PYTHON` | `python3` | 含已安装 SigLIP2 推理依赖的本地 Python 解释器；`vector search` 每次使用，sync/rebuild 存在待嵌入图片时使用。 |
 | `SAUCENAO_API_KEY` | 空 | SauceNAO credential；覆盖私有配置值且永不打印。 |
 | `https_proxy` / `HTTPS_PROXY` | 空 | `http`、`https`、`socks5` 或 `socks5h` 代理 URI；优先使用小写 `https_proxy`。 |
 

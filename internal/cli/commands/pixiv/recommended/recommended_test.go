@@ -391,3 +391,56 @@ func equalInt64s(left, right []int64) bool {
 	}
 	return true
 }
+
+// TestRecommendedAllObservesFetchedArtworks 锁定 Task 20A：`recommended all` 与单实体
+// 列表一样，必须把它已取得的 Artwork 交给 best-effort 观察端口，且不改变输出与请求数。
+func TestRecommendedAllObservesFetchedArtworks(t *testing.T) {
+	for _, test := range []struct {
+		name string
+		args []string
+	}{{"json", []string{"all", "--limit", "5", "--json"}}, {"ndjson", []string{"all", "--limit", "5", "--ndjson"}}} {
+		t.Run(test.name, func(t *testing.T) {
+			output := &bytes.Buffer{}
+			requests := 0
+			transport := recommendedRoundTripFunc(func(request *http.Request) (*http.Response, error) {
+				requests++
+				switch request.URL.Path {
+				case "/v1/illust/recommended":
+					return recommendedJSONResponse(request, `{"illusts":[{"id":7711,"title":"rec","type":"illust","create_date":"2026-01-05T00:00:00Z","user":{"id":21,"name":"artist"},"image_urls":{"large":"https://i.pximg.net/img/c.jpg"}}],"next_url":null}`), nil
+				case "/v1/novel/recommended":
+					return recommendedJSONResponse(request, `{"novels":[],"next_url":null}`), nil
+				case "/v1/user/recommended":
+					return recommendedJSONResponse(request, `{"user_previews":[],"next_url":null}`), nil
+				default:
+					return nil, io.ErrUnexpectedEOF
+				}
+			})
+			var observed []pixiv.Artwork
+			cmd := New(Dependencies{
+				Input:      strings.NewReader(""),
+				Output:     output,
+				UsageError: func(err error) error { return err },
+				JSONOut:    func(*bool) (bool, error) { return true, nil },
+				Observe:    func(_ context.Context, items []pixiv.Artwork) { observed = append(observed, items...) },
+				Pooled: func(ctx context.Context, _ Request, attempt func(context.Context, *pixiv.Client) (bool, error)) error {
+					_, err := attempt(ctx, recommendedTestClient(t, transport))
+					return err
+				},
+			})
+			cmd.SetArgs(test.args)
+			if err := cmd.Execute(); err != nil {
+				t.Fatalf("Execute: %v", err)
+			}
+			if !strings.Contains(output.String(), "7711") {
+				t.Fatalf("output missing the fetched artwork: %q", output.String())
+			}
+			if len(observed) != 1 || observed[0].ID != 7711 {
+				t.Fatalf("observed %+v, want the fetched artwork", observed)
+			}
+			// 观察不得增加上游请求：三个分区各一次。
+			if requests != 3 {
+				t.Fatalf("requests = %d, want exactly one per section with no observation-triggered fetch", requests)
+			}
+		})
+	}
+}

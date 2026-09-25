@@ -38,6 +38,7 @@ import (
 	pixivseries "github.com/FlanChanXwO/pixiv-cli/internal/cli/commands/pixiv/series"
 	pixivtimeline "github.com/FlanChanXwO/pixiv-cli/internal/cli/commands/pixiv/timeline"
 	pixivuser "github.com/FlanChanXwO/pixiv-cli/internal/cli/commands/pixiv/user"
+	vectorcommands "github.com/FlanChanXwO/pixiv-cli/internal/cli/commands/pixiv/vector"
 	updatecommands "github.com/FlanChanXwO/pixiv-cli/internal/cli/commands/update"
 	clidiagnostics "github.com/FlanChanXwO/pixiv-cli/internal/cli/diagnostics"
 	"github.com/FlanChanXwO/pixiv-cli/internal/cli/invocation"
@@ -62,6 +63,7 @@ import (
 	database "github.com/FlanChanXwO/pixiv-cli/internal/storage/database"
 	filesecret "github.com/FlanChanXwO/pixiv-cli/internal/storage/file/secret"
 	"github.com/FlanChanXwO/pixiv-cli/internal/update"
+	"github.com/FlanChanXwO/pixiv-cli/internal/vector"
 	fanbox "github.com/FlanChanXwO/pixiv-cli/sdk/fanbox"
 	pixiv "github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
 	"github.com/spf13/cobra"
@@ -173,7 +175,12 @@ var (
 		return a.newFanboxAccountService()
 	}
 	newCLIDownloadService = func() downloader.DownloadService { return defaultDownloadService() }
-	newCLIReverseSearch   = func(options reverseassembly.Options) (reversesearch.Searcher, error) {
+	// newCLIVectorEncoder 是 root 拥有的本地编码 seam；生产用离线 SigLIP2 子进程，
+	// 测试可注入纯内存替身，不依赖 POSIX shell 或已安装的 Python 运行时。
+	newCLIVectorEncoder = func(ctx context.Context) (vectorcommands.ImageEncoder, error) {
+		return vector.StartSigLIP2(ctx)
+	}
+	newCLIReverseSearch = func(options reverseassembly.Options) (reversesearch.Searcher, error) {
 		return reverseassembly.New(options)
 	}
 	newCLIMCPReverseSearch = func(options reverseassembly.Options) (reversesearch.Searcher, error) {
@@ -554,6 +561,15 @@ func (a app) newRootCommand() *cobra.Command {
 	cmd.AddCommand(authcommands.New(a.authDeps()))
 	configcommands.Register(cmd, a)
 	cmd.AddCommand(a.pixivCommands()...)
+	cmd.AddCommand(vectorcommands.New(a.out, func() (*vector.Store, error) {
+		dir, err := paths.AppDataDir()
+		if err != nil {
+			return nil, err
+		}
+		return vector.Open(dir)
+	}, func(ctx context.Context) (vectorcommands.ImageEncoder, error) {
+		return newCLIVectorEncoder(ctx)
+	}, a.vectorBookmarkPort(), a.vectorPixivPort()))
 	cmd.AddCommand(downloadcommands.New(a.downloadDeps()))
 	fanboxData := a.fanboxDataDeps()
 	cmd.AddCommand(fanboxcommands.New(fanboxData, fanboxcommands.CommandSet{
@@ -646,6 +662,18 @@ func (a app) downloadDeps() downloadcommands.Deps {
 	}
 }
 
+// vectorObserver 返回 passive Artwork 观察端口。它只在普通 Pixiv 命令已经取得
+// Artwork 后才写本地索引，从不发新请求，也不加载模型；索引不可用时静默降级。
+func (a app) vectorObserver() *vectorcommands.ArtworkObserver {
+	return vectorcommands.NewArtworkObserver(func() (*vector.Store, error) {
+		dir, err := paths.AppDataDir()
+		if err != nil {
+			return nil, err
+		}
+		return vector.Open(dir)
+	}, a.errOut)
+}
+
 func (a app) pixivDataDeps() pixivdeps.Data {
 	var once sync.Once
 	var ports pixivSDKPorts
@@ -659,6 +687,7 @@ func (a app) pixivDataDeps() pixivdeps.Data {
 		Output:      a.out,
 		ErrorOutput: a.errOut,
 		UsageError:  newUsageError,
+		Observe:     a.vectorObserver().ObserveWithContext,
 		Open: func(request pixivdeps.Request) (*pixiv.Client, error) {
 			sdk, err := load()
 			if err != nil {
@@ -680,6 +709,50 @@ func (a app) pixivDataDeps() pixivdeps.Data {
 			}
 			return sdk.jsonOut(override)
 		},
+	}
+}
+
+// vectorBookmarkPort 让 `vector sync bookmarks` 复用账号池的账号选择与安全重放边界。
+// attempt 拿到的同一个已认证 client 同时用于 listing 与 cover 取图：只有同实例才能命中
+// 资源 URL 缓存，否则 cover 解析会退化为 artwork detail（禁止的 N+1）。
+func (a app) vectorBookmarkPort() vectorcommands.BookmarkPort {
+	var once sync.Once
+	var ports pixivSDKPorts
+	var portsErr error
+	load := func() (pixivSDKPorts, error) {
+		once.Do(func() { ports, portsErr = newCLIPixivSDKPorts(a) })
+		return ports, portsErr
+	}
+	return func(ctx context.Context, attempt func(context.Context, vectorcommands.BookmarkSource) (bool, error)) error {
+		sdkPorts, err := load()
+		if err != nil {
+			return err
+		}
+		// 认证数据命令不接受 --uid/--refresh-token；账号由本地 auth use 解析。
+		return sdkPorts.run(ctx, pixivdeps.Request{}, func(ctx context.Context, client *pixiv.Client) (bool, error) {
+			return attempt(ctx, client)
+		})
+	}
+}
+
+// vectorPixivPort 为 rebuild 的 Pixiv 页面重新取图提供已认证资源读取面。
+// 惰性进入：只有索引中存在 Pixiv Asset 时才会被调用。
+func (a app) vectorPixivPort() vectorcommands.PixivPort {
+	var once sync.Once
+	var ports pixivSDKPorts
+	var portsErr error
+	load := func() (pixivSDKPorts, error) {
+		once.Do(func() { ports, portsErr = newCLIPixivSDKPorts(a) })
+		return ports, portsErr
+	}
+	return func(ctx context.Context, attempt func(context.Context, vectorcommands.ResourceSaver) error) error {
+		sdkPorts, err := load()
+		if err != nil {
+			return err
+		}
+		return sdkPorts.run(ctx, pixivdeps.Request{}, func(ctx context.Context, client *pixiv.Client) (bool, error) {
+			return true, attempt(ctx, client)
+		})
 	}
 }
 
@@ -709,6 +782,7 @@ func (a app) searchDeps() pixivsearch.Dependencies {
 		Output:      data.Output,
 		ErrorOutput: data.ErrorOutput,
 		UsageError:  data.UsageError,
+		Observe:     data.Observe,
 		JSONOut: func(override *bool) (bool, error) {
 			if override != nil {
 				return *override, nil
@@ -759,6 +833,7 @@ func (a app) recommendedDeps() pixivrecommended.Dependencies {
 		Output:     data.Output,
 		UsageError: data.UsageError,
 		JSONOut:    data.JSONOut,
+		Observe:    data.Observe,
 		Pooled: func(ctx context.Context, request pixivrecommended.Request, attempt func(context.Context, *pixiv.Client) (bool, error)) error {
 			return data.Pooled(ctx, pixivdeps.Request(request), attempt)
 		},
@@ -774,6 +849,7 @@ func (a app) userDeps() pixivuser.Dependencies {
 		Output:     data.Output,
 		UsageError: data.UsageError,
 		JSONOut:    data.JSONOut,
+		Observe:    data.Observe,
 		Pooled: func(ctx context.Context, request pixivuser.Request, attempt func(context.Context, *pixiv.Client) (bool, error)) error {
 			return data.Pooled(ctx, pixivdeps.Request(request), attempt)
 		},
@@ -799,6 +875,7 @@ func (a app) detailDeps() pixivdetail.Dependencies {
 		JSONOut:     data.JSONOut,
 		ErrorOutput: a.errOut,
 		OutputIsTTY: func() bool { return outputIsTTY(a.out) },
+		Observe:     data.Observe,
 		Pooled: func(ctx context.Context, request pixivdetail.Request, attempt func(context.Context, *pixiv.Client) (bool, error)) error {
 			return data.Pooled(ctx, pixivdeps.Request{
 				UserID:             request.UserID,

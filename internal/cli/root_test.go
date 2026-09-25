@@ -5,9 +5,12 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
+	"net/http"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -23,6 +26,8 @@ import (
 	"github.com/FlanChanXwO/pixiv-cli/internal/services/reversesearch"
 	reverseassembly "github.com/FlanChanXwO/pixiv-cli/internal/services/reversesearch/assembly"
 	"github.com/FlanChanXwO/pixiv-cli/internal/storage/database"
+	"github.com/FlanChanXwO/pixiv-cli/internal/vector"
+	sdkpixiv "github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/spf13/cobra"
 	"github.com/stretchr/testify/assert"
@@ -698,3 +703,244 @@ func TestMCPReverseSearchRegistersSearcherForStdioLifetime(t *testing.T) {
 	require.Equal(t, int32(1), searcher.closeCalls.Load())
 	require.Empty(t, stdout.String())
 }
+
+func TestVectorRebuildEmptyIndexWithoutRuntimeOrAuth(t *testing.T) {
+	t.Setenv("PIXIV_VECTOR_PYTHON", filepath.Join(t.TempDir(), "missing-python"))
+	databasePath, configPath := useTempPaths(t)
+	var stdout, stderr bytes.Buffer
+	code := Run([]string{"pixiv", "vector", "rebuild"}, strings.NewReader(""), &stdout, &stderr)
+	if code != 0 || stdout.String() != "embedded: 0\n" || stderr.Len() != 0 {
+		t.Fatalf("empty rebuild: code=%d stdout=%q stderr=%q", code, stdout.String(), stderr.String())
+	}
+	for _, path := range []string{databasePath, configPath} {
+		if _, err := os.Stat(path); !errors.Is(err, os.ErrNotExist) {
+			t.Fatalf("rebuild touched auth/config %s: %v", path, err)
+		}
+	}
+}
+
+func TestVectorLocalStagesWithoutAuthOrFakeEmbedding(t *testing.T) {
+	t.Setenv("PIXIV_VECTOR_PYTHON", filepath.Join(t.TempDir(), "missing-python"))
+	databasePath, configPath := useTempPaths(t)
+	gallery := t.TempDir()
+	if err := os.WriteFile(filepath.Join(gallery, "a.png"), []byte("image bytes"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	var stdout, stderr bytes.Buffer
+	code := Run([]string{"pixiv", "vector", "sync", "local", gallery}, strings.NewReader(""), &stdout, &stderr)
+	if code != 1 || !strings.Contains(stderr.String(), "embedding runtime unavailable") {
+		t.Fatalf("sync must report staged-but-not-embedded: code=%d stdout=%q stderr=%q", code, stdout.String(), stderr.String())
+	}
+	if !strings.Contains(stdout.String(), "scanned: 1\nchanged: 1\n") {
+		t.Fatalf("staging summary missing: %q", stdout.String())
+	}
+	stdout.Reset()
+	stderr.Reset()
+	code = Run([]string{"pixiv", "vector", "status"}, strings.NewReader(""), &stdout, &stderr)
+	if code != 0 || !strings.Contains(stdout.String(), "assets: 1\nembeddings: 0\n") {
+		t.Fatalf("status after staging: code=%d stdout=%q stderr=%q", code, stdout.String(), stderr.String())
+	}
+	for _, path := range []string{databasePath, configPath} {
+		if _, err := os.Stat(path); !errors.Is(err, os.ErrNotExist) {
+			t.Fatalf("local vector command touched auth/config state %q: %v", path, err)
+		}
+	}
+}
+
+func TestVectorSearchUsesLocalIndexWithoutPixivAuth(t *testing.T) {
+	t.Setenv("PIXIV_VECTOR_PYTHON", filepath.Join(t.TempDir(), "missing-python"))
+	databasePath, configPath := useTempPaths(t)
+	dir, err := paths.AppDataDir()
+	if err != nil {
+		t.Fatal(err)
+	}
+	store, err := vector.Open(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	key := vector.Key{Source: "local", ID: "/gallery/a.png"}
+	if _, err := store.Upsert(context.Background(), vector.Asset{Key: key, Fingerprint: "a", TargetModel: vector.ModelID, TargetGeneration: vector.Generation}); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.PutEmbedding(context.Background(), key, "a", vector.ModelID, vector.Generation, []float32{1, 0}); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.Close(); err != nil {
+		t.Fatal(err)
+	}
+	var stdout, stderr bytes.Buffer
+	code := Run([]string{"pixiv", "vector", "search", "white hair"}, strings.NewReader(""), &stdout, &stderr)
+	if code != 1 || !strings.Contains(stderr.String(), "embedding runtime unavailable") {
+		t.Fatalf("search should reach local inference: code=%d stdout=%q stderr=%q", code, stdout.String(), stderr.String())
+	}
+	for _, path := range []string{databasePath, configPath} {
+		if _, err := os.Stat(path); !errors.Is(err, os.ErrNotExist) {
+			t.Fatalf("vector search touched auth/config state %q: %v", path, err)
+		}
+	}
+}
+
+func TestVectorSearchGroupsPixivArtworkByBestPage(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("test runtime uses a POSIX shell fixture")
+	}
+	useTempPaths(t)
+	dir, err := paths.AppDataDir()
+	require.NoError(t, err)
+	store, err := vector.Open(dir)
+	require.NoError(t, err)
+	ctx := context.Background()
+	for _, item := range []struct {
+		key      vector.Key
+		metadata string
+		x, y     float32
+	}{
+		{vector.Key{Source: "pixiv", ID: "123", Page: 0}, `{"title":"weaker"}`, .6, .8},
+		{vector.Key{Source: "pixiv", ID: "123", Page: 1}, `{"title":"best"}`, 1, 0},
+		{vector.Key{Source: "pixiv", ID: "456", Page: 0}, `{"title":"other"}`, .8, .6},
+		{vector.Key{Source: "local", ID: "/gallery/a.png"}, `{}`, .2, .98},
+	} {
+		_, err := store.Upsert(ctx, vector.Asset{Key: item.key, Fingerprint: "same", Metadata: []byte(item.metadata), TargetModel: vector.ModelID, TargetGeneration: vector.Generation})
+		require.NoError(t, err)
+		values := make([]float32, 768)
+		values[0], values[1] = item.x, item.y
+		require.NoError(t, store.PutEmbedding(ctx, item.key, "same", vector.ModelID, vector.Generation, values))
+	}
+	require.NoError(t, store.Close())
+	query := make([]float32, 768)
+	query[0] = 1
+	response, err := json.Marshal(struct {
+		Vector []float32 `json:"vector"`
+	}{query})
+	require.NoError(t, err)
+	script := filepath.Join(t.TempDir(), "fake-python")
+	require.NoError(t, os.WriteFile(script, []byte("#!/bin/sh\nprintf '%s\\n' '{\"ready\":true}'\nwhile IFS= read -r line; do printf '%s\\n' '"+string(response)+"'; done\n"), 0o700))
+	t.Setenv("PIXIV_VECTOR_PYTHON", script)
+	var stdout, stderr bytes.Buffer
+	code := Run([]string{"pixiv", "vector", "search", "white hair"}, strings.NewReader(""), &stdout, &stderr)
+	require.Equal(t, 0, code, stderr.String())
+	var results []struct {
+		Source   string          `json:"source"`
+		SourceID string          `json:"source_id"`
+		Page     int             `json:"page_index"`
+		Score    float64         `json:"score"`
+		Metadata json.RawMessage `json:"metadata"`
+		URL      string          `json:"url"`
+	}
+	decoder := json.NewDecoder(&stdout)
+	for decoder.More() {
+		var result struct {
+			Source   string          `json:"source"`
+			SourceID string          `json:"source_id"`
+			Page     int             `json:"page_index"`
+			Score    float64         `json:"score"`
+			Metadata json.RawMessage `json:"metadata"`
+			URL      string          `json:"url"`
+		}
+		require.NoError(t, decoder.Decode(&result))
+		results = append(results, result)
+	}
+	require.Len(t, results, 3, "one result per Pixiv Artwork, every local asset retained")
+	require.Equal(t, "pixiv", results[0].Source)
+	require.Equal(t, "123", results[0].SourceID)
+	require.Equal(t, 1, results[0].Page)
+	require.Equal(t, `{"title":"best"}`, string(results[0].Metadata))
+	require.Equal(t, "https://www.pixiv.net/artworks/123", results[0].URL)
+	require.InDelta(t, 1, results[0].Score, 1e-6)
+	require.Equal(t, "456", results[1].SourceID)
+	require.Equal(t, 0, results[1].Page)
+	require.Equal(t, "local", results[2].Source)
+	require.Equal(t, "/gallery/a.png", results[2].SourceID)
+	require.Greater(t, results[0].Score, results[1].Score)
+	require.Greater(t, results[1].Score, results[2].Score)
+}
+
+// TestVectorObserverEndToEndThroughCompositionRoot 锁定 Task 18 的端到端契约：
+// 经真实 root 组装运行一次普通 Pixiv 列表命令后，已取得的作品必须落进私有索引，
+// 且观察不产生任何额外 App API 请求、不改变 stdout 与退出码。
+func TestVectorObserverEndToEndThroughCompositionRoot(t *testing.T) {
+	useTempPaths(t)
+	dir, err := paths.AppDataDir()
+	require.NoError(t, err)
+
+	calls := 0
+	transport := rootRoundTripFunc(func(req *http.Request) (*http.Response, error) {
+		calls++
+		if req.URL.Path != "/v1/illust/ranking" {
+			return nil, fmt.Errorf("unexpected path %s", req.URL.Path)
+		}
+		body := `{"illusts":[{"id":9701,"title":"observed artwork","type":"illust","page_count":1,"create_date":"2026-09-01T00:00:00Z","user":{"id":71,"name":"artist"},"image_urls":{"large":"https://i.pximg.net/img/9701_cover.jpg"}}],"next_url":null}`
+		return &http.Response{StatusCode: 200, Header: http.Header{"Content-Type": {"application/json"}}, Body: io.NopCloser(strings.NewReader(body))}, nil
+	})
+	client, err := sdkpixiv.NewWith("test-access-token", sdkpixiv.Options{HTTPClient: &http.Client{Transport: transport}})
+	require.NoError(t, err)
+
+	oldSDK := newCLIPixivSDKPorts
+	newCLIPixivSDKPorts = func(app) (pixivSDKPorts, error) {
+		return pixivSDKPorts{
+			open: func(pixivdeps.Request) (*sdkpixiv.Client, error) { return client, nil },
+			execute: func(ctx context.Context, _ pixivdeps.Request, attempt func(context.Context, *sdkpixiv.Client) (bool, error)) error {
+				_, err := attempt(ctx, client)
+				return err
+			},
+			jsonOut: func(*bool) (bool, error) { return false, nil },
+		}, nil
+	}
+	t.Cleanup(func() { newCLIPixivSDKPorts = oldSDK })
+
+	var stdout, stderr bytes.Buffer
+	code := Run([]string{"pixiv", "ranking", "--mode", "day", "--ndjson"}, strings.NewReader(""), &stdout, &stderr)
+	require.Equal(t, 0, code, stderr.String())
+	require.Equal(t, 1, calls, "ranking makes exactly one upstream pass, and observation adds none")
+
+	// 观察必须在命令结束后落进独立私有索引，且不含任何向量（观察不加载模型）。
+	store, err := vector.Open(dir)
+	require.NoError(t, err)
+	defer store.Close()
+	assets, embeddings, err := store.Status(context.Background())
+	require.NoError(t, err)
+	require.Equal(t, 1, assets, "the fetched artwork must be observed into the index")
+	require.Equal(t, 0, embeddings, "observation must never embed")
+	asset, err := store.Get(context.Background(), vector.Key{Source: "pixiv", ID: "9701", Page: 0})
+	require.NoError(t, err)
+	require.Contains(t, string(asset.Metadata), `"url":"https://www.pixiv.net/artworks/9701"`)
+}
+
+// TestVectorObserverEndToEndSurvivesIndexFailure 证明观察失败不影响普通命令。
+func TestVectorObserverEndToEndSurvivesIndexFailure(t *testing.T) {
+	useTempPaths(t)
+	// 只让索引不可用：把 vector.db 占位为目录，config/账号路径保持正常，
+	// 从而确认失败隔离来自观察本身而非命令装配。
+	dir, err := paths.AppDataDir()
+	require.NoError(t, err)
+	require.NoError(t, os.MkdirAll(filepath.Join(dir, "vector.db"), 0o700))
+
+	transport := rootRoundTripFunc(func(*http.Request) (*http.Response, error) {
+		body := `{"illusts":[{"id":9801,"title":"x","type":"illust","page_count":1,"create_date":"2026-09-01T00:00:00Z","user":{"id":81,"name":"a"},"image_urls":{"large":"https://i.pximg.net/img/c.jpg"}}],"next_url":null}`
+		return &http.Response{StatusCode: 200, Header: http.Header{"Content-Type": {"application/json"}}, Body: io.NopCloser(strings.NewReader(body))}, nil
+	})
+	client, err := sdkpixiv.NewWith("test-access-token", sdkpixiv.Options{HTTPClient: &http.Client{Transport: transport}})
+	require.NoError(t, err)
+
+	oldSDK := newCLIPixivSDKPorts
+	newCLIPixivSDKPorts = func(app) (pixivSDKPorts, error) {
+		return pixivSDKPorts{
+			open: func(pixivdeps.Request) (*sdkpixiv.Client, error) { return client, nil },
+			execute: func(ctx context.Context, _ pixivdeps.Request, attempt func(context.Context, *sdkpixiv.Client) (bool, error)) error {
+				_, err := attempt(ctx, client)
+				return err
+			},
+			jsonOut: func(*bool) (bool, error) { return false, nil },
+		}, nil
+	}
+	t.Cleanup(func() { newCLIPixivSDKPorts = oldSDK })
+
+	var stdout, stderr bytes.Buffer
+	code := Run([]string{"pixiv", "ranking", "--mode", "day", "--ndjson"}, strings.NewReader(""), &stdout, &stderr)
+	require.Equal(t, 0, code, "an unusable index must not fail the command: %s", stderr.String())
+	require.Contains(t, stdout.String(), "9801")
+}
+
+type rootRoundTripFunc func(*http.Request) (*http.Response, error)
+
+func (f rootRoundTripFunc) RoundTrip(req *http.Request) (*http.Response, error) { return f(req) }

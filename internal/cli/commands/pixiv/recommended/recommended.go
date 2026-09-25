@@ -49,6 +49,8 @@ type Dependencies struct {
 	UsageError func(error) error
 	JSONOut    func(*bool) (bool, error)
 	Pooled     func(context.Context, Request, func(context.Context, *pixiv.Client) (bool, error)) error
+	// Observe 是可选 best-effort 观察端口，只接收已取得的 Artwork；ctx 取消后停止写入。
+	Observe func(context.Context, []pixiv.Artwork)
 }
 
 type command struct {
@@ -317,6 +319,10 @@ func (a command) runAllNDJSON(ctx context.Context, client *pixiv.Client, plan li
 	}
 	var visualItems []pixiv.Artwork
 	if err := listing.PageItems(ctx, plan, fetchRecommendedArtworks(client, searchfilter.Filter{}), func(items []pixiv.Artwork) error {
+		// 观察本次命令已经取得的 Artwork；best-effort，不改变输出与请求。
+		if a.data.Observe != nil {
+			a.data.Observe(ctx, items)
+		}
 		visualItems = append(visualItems, items...)
 		return nil
 	}); err != nil {
@@ -375,7 +381,7 @@ func (a command) runAllNDJSON(ctx context.Context, client *pixiv.Client, plan li
 func (a command) runner() listing.Runner {
 	return listing.New(a.data.Output, func(ctx context.Context, request listing.Request, attempt func(context.Context, *pixiv.Client) (bool, error)) error {
 		return a.data.Pooled(ctx, Request(request), attempt)
-	})
+	}).WithObserver(a.data.Observe)
 }
 
 func printArtworks(out io.Writer, items []pixiv.Artwork) error {

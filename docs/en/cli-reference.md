@@ -399,6 +399,89 @@ the same detail path. `search --json` is a complete aggregate document, not a
 canonical record stream, so `pixiv search ... --json | pixiv detail` is
 unsupported.
 
+### Local vector index (current commands)
+
+`pixiv vector sync local PATH` recursively scans regular image files under the explicit directory, records
+content-fingerprint changes in a separate private `~/.pixiv-cli/vector.db` (`%USERPROFILE%\.pixiv-cli\vector.db`
+on Windows), then embeds pending assets under that same directory with one transient worker. Pending assets from other
+galleries remain untouched. It does not copy the images, contact
+Pixiv, read account credentials, or create `config.toml`. It reports `scanned`, `changed`, and
+`embedded` counts. Repeating an unchanged scan does not re-embed. A changed or missing source and a failed
+embedding leave the work pending for a later explicit scan; removed files are not yet purged from the index.
+`pixiv vector rebuild` explicitly re-embeds every recorded asset — local images across galleries and
+Pixiv pages — without rescanning or listing. It retargets all assets to the current model generation without
+deleting previous vectors. Local assets re-embed from their recorded local files; Pixiv assets re-fetch each page
+through its persisted stable resource identity (never a signed URL) using an authenticated account, so a rebuild
+with recorded Pixiv pages requires `pixiv auth use`. A rebuild with only local assets never initializes the Pixiv
+account. Each successful item replaces its current-generation vector; on model failure or a missing/changed source,
+it exits nonzero, reports the completed count, and preserves the last stored vector. Rerun after fixing the source to
+refresh all recorded assets, including those already completed; no automatic historical migration occurs.
+`pixiv vector sync bookmarks` indexes the current account's bookmarked artworks from the public SDK bookmark
+listing, covering both public and private visibility. It records page 0 from the listing's own cover for each artwork
+and never requests artwork detail, so it adds no per-artwork App API request. A multi-page artwork is stored as its
+cover with `cover_only` and its real `page_count`; the remaining pages are neither fetched nor fabricated and must
+come from a later source. It then embeds every Pixiv page still missing a vector for the current generation on the
+same authenticated client — the listing covers it just fetched, plus any pending pages recorded earlier by the
+passive observer (including pages beyond page 0, resolved through their persisted resource identity). It needs a
+locally authenticated account (`pixiv auth use`) and creates `config.toml` like other Pixiv data commands. An artwork
+the listing returns without a usable cover is counted as `skipped` rather than stored as an image-less asset, and it
+reports `scanned`, `changed`, `skipped`, and `embedded` counts.
+Ordinary Pixiv read commands that already return artworks (`search`, `ranking`, `recommended`, `timeline`,
+`mypixiv`, `user`, `series`, `bookmark list`, and `detail`) also record what they already fetched into the private
+index as a best-effort side effect. The observation adds **no** Pixiv request, never loads the embedding model, and
+keeps command output and exit status unchanged; index failures are reported as one diagnostic line on stderr, never
+on stdout. `detail` supplies every page, while a listing supplies only the cover with `cover_only`. Observation never
+downloads images; each recorded page keeps its stable resource identity (no signed URL) so a later explicit
+`pixiv vector sync bookmarks` or `pixiv vector rebuild` can resolve it again — including pages beyond page 0 that
+only `detail` observed.
+`pixiv vector status` shows total durable `assets` and `embeddings`; it creates the private vector database if
+none exists. `pixiv vector search QUERY_OR_IMAGE` uses the same offline SigLIP2 model for text and an existing
+local image file, then exact-cosine ranks persistent page-level embeddings. It makes no Pixiv or reverse-search
+request and does not mutate the index. An existing regular file is an image query; a missing path-looking input
+(`./...`, absolute path, or an image extension) is an error rather than text. Other input is text. A search does
+not scan galleries or implicitly sync bookmarks. Search emits one JSON object per result (NDJSON) in descending
+score order, with `source`, `source_id`, zero-based `page_index`, `score`, `metadata`, and for Pixiv assets `url`.
+`metadata` is `{}` for local assets; a Pixiv asset carries `title`, `user_id`, `page_count`, and `url`, plus
+`cover_only` when only its listing cover is known and further pages were not fetched. Metadata only stores fields the
+fetched artwork already carried (`caption`, `user_name`, `kind`, `tags`, `x_restrict`, `ai_type` when present); no
+field ever triggers an extra App API request.
+Multiple pages of the same Pixiv artwork are grouped in CLI output; only the highest-scoring page is emitted for that
+artwork. The persistent index remains page-level.
+It returns all matching results without a hidden count limit. The search output is not a canonical Pixiv Record
+for piping into `detail` or `download`. Search needs the preinstalled model even after an index restart; it does
+not re-embed stored images. Status and sync have no `--json`; search emits NDJSON without an output flag.
+
+Embedding requires Python 3.12 with `torch==2.14.0`, `transformers==5.17.0`, and `pillow==12.1.1`, plus
+preloaded `google/siglip2-base-patch16-512` weights at revision
+`a89f5c5093f902bf39d3cd4d81d2c09867f0724b`. These dependencies and weights are **not bundled** with the Go
+binary. For example, on macOS/Linux, in a private user directory:
+
+```bash
+mkdir -p ~/.pixiv-cli && chmod 700 ~/.pixiv-cli
+python3.12 -m venv ~/.pixiv-cli/vector-python
+~/.pixiv-cli/vector-python/bin/python -m pip install 'torch==2.14.0' 'transformers==5.17.0' 'pillow==12.1.1'
+~/.pixiv-cli/vector-python/bin/python - <<'PYMODEL'
+from huggingface_hub import snapshot_download
+snapshot_download('google/siglip2-base-patch16-512', revision='a89f5c5093f902bf39d3cd4d81d2c09867f0724b', allow_patterns=['*.json', '*.model', '*.safetensors'])
+PYMODEL
+PIXIV_VECTOR_PYTHON="$HOME/.pixiv-cli/vector-python/bin/python" pixiv vector sync local ~/Pictures/gallery
+pixiv vector status
+PIXIV_VECTOR_PYTHON="$HOME/.pixiv-cli/vector-python/bin/python" pixiv vector rebuild
+PIXIV_VECTOR_PYTHON="$HOME/.pixiv-cli/vector-python/bin/python" pixiv vector search "white hair red eyes"
+PIXIV_VECTOR_PYTHON="$HOME/.pixiv-cli/vector-python/bin/python" pixiv vector search ./reference.jpg
+```
+
+Windows uses the venv's `Scripts/python.exe` as `PIXIV_VECTOR_PYTHON`. The model cache follows the Python
+Hugging Face `HF_HOME` setting. Sync uses the pinned safetensors revision with remote custom code disabled and
+**never downloads weights implicitly**. Missing runtime/weights makes the command non-zero after recording the
+scanned assets, with a structured startup diagnostic (`dependency_missing`, `dependency_version_mismatch`,
+`model_not_found`, or `model_load_failed`). An unchanged gallery with no pending embeddings does not load the model.
+The private index initializes its schema directly in its final shape (single `user_version` 1) and persists each
+asset's target model/generation alongside its stable resource identity. After a future model revision, unchanged
+existing assets and their embeddings stay in the old generation; only newly observed or content-changed assets target
+the new generation. Search compares only the current generation; status counts all stored generations. Historical
+assets are not re-embedded without an explicit rebuild.
+
 ### Reverse image search
 
 `pixiv search SOURCE` enters image mode before any Pixiv SDK or account-pool setup:
@@ -493,6 +576,7 @@ Only the structured entity filters documented by each command are accepted. The 
 | `config set` | `pixiv config set KEY [VALUE]` | Writes one known config key, including `account_pool_enabled`, `account_pool_strategy`, `download_path`, `filename_template`, `directory_template`, `request_interval`, `https_proxy`, `log_level`, `log_format`, `reverse_search_provider`, `reverse_search_pixiv_only`, and the stdin-only `saucenao_api_key`. |
 | `config unset` | `pixiv config unset KEY` | Deletes one known config key from `config.toml`. |
 | `update` | `pixiv update [--check] [--prerelease] [--proxy URL]` | Checks for or performs an update matching the current install source; `--json` is only valid together with `--check`. |
+| `vector` | `pixiv vector sync local PATH`; `pixiv vector sync bookmarks`; `pixiv vector search QUERY_OR_IMAGE`; `pixiv vector status`; `pixiv vector rebuild` | Explicitly index a local gallery or the current account's bookmarked artwork covers, search persistent vectors, show counts, or re-embed recorded local images. Local commands need no Pixiv credentials; `sync bookmarks` uses the local account and never requests artwork detail. |
 | `search` | `pixiv search [WORD\|IMAGE_PATH_OR_URL] [-t artwork\|novel\|user] [options]` | Canonical entity search or automatic reverse-image search. A regular file or explicit HTTP(S) source selects image mode; `--trending-tags` is the no-word artwork tag-list mode and does not accept search filters or pagination. |
 | `detail` | `pixiv detail [ID_OR_URL] [-t artwork\|novel\|user] [--content] [--json\|--ndjson]` | Reads one artwork, novel, or user, or consumes canonical NDJSON records. `--content` is a retained novel-only compatibility flag; the v1 App content endpoint is unavailable, so it returns `content_unavailable` before opening the account pool or requesting the rejected endpoint. |
 | `ranking` | `pixiv ranking [-t artwork\|novel] [--mode MODE --date YYYY-MM-DD --page N --limit N]` | Reads artwork or novel rankings. `artwork` is the default; `--date` is supported only for artwork ranking. |
@@ -782,6 +866,7 @@ with v1. The transfer is explicit so a stale or unexpected local file cannot bec
 | `PIXIV_REQUEST_INTERVAL` | empty | Minimum interval between network request starts. |
 | `PIXIV_LOG_LEVEL` | `info` | Diagnostic level: `info` or `debug`; overrides `[logging].level`. |
 | `PIXIV_LOG_FORMAT` | `text` | Diagnostic stderr format: `text` or `json`; overrides `[logging].format`. |
+| `PIXIV_VECTOR_PYTHON` | `python3` | Local Python interpreter with preinstalled SigLIP2 inference dependencies; used by every `vector search`, and by sync/rebuild when images still need embeddings. |
 | `SAUCENAO_API_KEY` | empty | SauceNAO credential; overrides the private config value and is never printed. |
 | `https_proxy` / `HTTPS_PROXY` | empty | Proxy URI (`http`, `https`, `socks5`, or `socks5h`); the lowercase `https_proxy` takes precedence. |
 
