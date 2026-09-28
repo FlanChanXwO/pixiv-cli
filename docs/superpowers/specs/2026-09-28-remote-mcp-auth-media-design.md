@@ -346,7 +346,7 @@ Pixiv 与 FANBOX 的媒体实现可以复用窄的 MCP content conversion helper
 
 ## MCP Apps Gallery
 
-MCP Apps Gallery 第一版纳入实现，并默认开启，但只能作为 progressive enhancement。
+MCP Apps Gallery 第一版纳入实现，并作为 server 固有能力始终声明，但只能作为 progressive enhancement。第一版不增加 `mcp_apps_enabled`、`gallery_enabled` 等配置或 feature flag；不支持 MCP Apps 的 host 直接忽略 UI extension/resource，继续使用 structured result 与媒体 fallback。只有未来出现可复现的 host 兼容性故障时，才评估是否需要禁用开关。
 
 UI resource 使用标准 MCP Apps，不依赖 ChatGPT 私有 UI API。视觉 discovery tools 直接关联同一个 `ui://pixiv-cli/gallery` resource（使用当前 MCP Apps 标准的 tool metadata），不额外增加只为“渲染”而存在的公开 tool。Gallery 通过标准 app bridge 调用已有 MCP tools。
 
@@ -565,6 +565,6 @@ config 保存非 secret 服务配置：
 - MCP transport 不再存在 stdio/SSE/旧 transport。
 - 三家 connector 授权共享一个单 owner，但 Pixiv current account 可持久切换。
 - 用户可以在聊天中真正看到/取得 Pixiv 单图、多图与 Ugoira，而不是只收到 server-local path 或 URL。
-- 支持 MCP Apps 的 host 默认获得 Gallery；不支持的 host 仍有完整媒体能力。
+- 支持 MCP Apps 的 host 获得 Gallery；不支持的 host 忽略 UI 能力并仍有完整媒体能力，不需要用户配置开关。
 - ChatGPT 可直接把用户上传图片用于反向搜图；其他 host 至少有标准 URL / browser upload fallback。
 - CLI 的下载/归档能力继续存在，但 MCP 不再承担 server filesystem download contract。
