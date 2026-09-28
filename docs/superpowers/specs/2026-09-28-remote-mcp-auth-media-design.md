@@ -131,6 +131,7 @@ owner
 - email / registration / password recovery
 - roles / organizations / tenants
 - per-client Pixiv account state
+- 本次不新增 FANBOX account login/switch MCP tools；FANBOX 继续使用现有本地 account/session 选择规则
 
 ### Owner secret
 
@@ -407,6 +408,16 @@ _meta["openai/fileParams"] = ["image"]
 
 保留通用 `url` 输入，供任意 host 搜索已有网络图片。
 
+与 trusted-local stdio 时代不同，remote MCP 的 URL fetch 必须经过 public-network guard：
+
+- 只接受 HTTP(S)。
+- 拒绝 localhost、loopback、private、link-local、multicast/unspecified 等非公网目标。
+- DNS 解析后的目标地址也必须满足公网约束，不能只校验字符串 host。
+- 每次 redirect 都重新执行同样校验，不能通过 redirect 跳进内网。
+- ChatGPT `openai/fileParams` 提供的临时 `download_url` 走同一 remote-source guard。
+
+现有 reverse-search core 仍可服务 CLI 的 trusted-local 文件/私网语义；限制应放在 remote MCP adapter/trust boundary，不把 CLI 能力一起砍掉。
+
 ### 3. Browser upload fallback
 
 对于不能把用户上传文件传给 custom MCP 的 host，同一个 `pixiv_reverse_search` 提供一次性 browser upload fallback：
@@ -435,6 +446,7 @@ Gemini 的核心验收使用 URL / browser-upload fallback，不假定 Gemini �
 - MCP/Pixiv/FANBOX credential、PKCE verifier、provider API keys 不进入 tool structured output、日志或 Gallery payload。
 - remote MCP 不接受 arbitrary server local file path。
 - reverse-search upload URL 是 one-time capability，不提供目录浏览或任意文件读取。
+- remote reverse-search URL/fileParams fetch 拒绝非公网目标，并对 DNS 解析与 redirect 逐跳复验，避免把 remote MCP 变成 SSRF 入口。
 - OAuth 认证只证明 MCP owner；Pixiv/FANBOX credential domain 继续独立。
 
 ## 错误语义
@@ -507,6 +519,7 @@ config 保存非 secret 服务配置：
 - `pixiv_artwork_media` 单图、多图、regular/original、GIF/APNG。
 - `fanbox_open_resource` 实际 media/binary content。
 - ChatGPT fileParams metadata schema。
+- remote reverse-search public-network guard（直连、DNS 解析、redirect）以及 CLI trusted-local 行为不回归。
 - reverse-search HTTP URL 与 one-time browser upload flow。
 - Gallery tool/resource contract 在无 UI host 时仍保持完整 structured/media fallback。
 
