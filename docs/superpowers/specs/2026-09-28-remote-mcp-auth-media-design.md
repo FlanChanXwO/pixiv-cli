@@ -67,6 +67,7 @@ Claude  ─┘                                      │
 
 - pixiv-cli 只负责 HTTP 应用服务，不内置证书申请或 ACME。
 - 配置一个 listen address 与一个 external/public HTTPS base URL。
+- OAuth issuer、metadata URL、redirect/resource URL 全部只从配置的 public base URL 构造，不信任请求的 `Host` / `X-Forwarded-*` 来决定安全边界。
 - 推荐 listen 在 loopback/private address 后由 Caddy、nginx、Cloudflare 等现有反向代理负责 TLS。
 - 三家连接器使用同一个公开 `https://.../mcp`。
 
@@ -141,6 +142,14 @@ pixiv mcp auth init
 
 生成高熵随机 owner secret。只展示给实例管理员一次；server 仅保存其 SHA-256 verifier。由于 secret 是机器生成的高熵随机值，不接受用户自定义弱密码，因此无需引入密码哈希依赖。
 
+本地恢复命令：
+
+```text
+pixiv mcp auth reset
+```
+
+重新生成 owner secret，并使所有未完成 authorization code、现有 access token 与 refresh token 失效；DCR client registration 可保留，使 ChatGPT/Gemini/Claude 重新授权时不必强制重新注册 client。该命令只能在 MCP server 所在机器本地执行。
+
 OAuth authorize 页面要求用户输入 owner secret。该 secret：
 
 - 不进入 MCP tool arguments。
@@ -170,7 +179,9 @@ POST /mcp
 - `resource` 参数按 MCP authorization 规范传播并验证。
 - redirect URI 必须与注册 metadata 精确匹配。
 - authorization code 单次使用。
+- DCR 第一版注册 public client，使用 `token_endpoint_auth_method=none`，不签发或保存 client secret；PKCE S256 是 authorization code exchange 的必需保护。
 - access/refresh token 为高熵 opaque token，server 只保存不可逆 hash。
+- refresh token 每次成功 exchange 后旋转：旧 refresh token 立即失效，并签发新的 access/refresh token pair。
 - `/mcp` 每次请求验证 bearer token；未授权返回 HTTP 401 + 正确的 `WWW-Authenticate`，不伪装成 MCP tool error。
 
 为三家共同兼容，第一版只暴露 DCR，不实现 CIMD；不写 `if ChatGPT` / `if Gemini` / `if Claude` 分支。
@@ -336,7 +347,9 @@ Pixiv 与 FANBOX 的媒体实现可以复用窄的 MCP content conversion helper
 
 MCP Apps Gallery 第一版纳入实现，并默认开启，但只能作为 progressive enhancement。
 
-UI resource 使用标准 MCP Apps，不依赖 ChatGPT 私有 UI API。Gallery 面向视觉 discovery：
+UI resource 使用标准 MCP Apps，不依赖 ChatGPT 私有 UI API。视觉 discovery tools 直接关联同一个 `ui://pixiv-cli/gallery` resource（使用当前 MCP Apps 标准的 tool metadata），不额外增加只为“渲染”而存在的公开 tool。Gallery 通过标准 app bridge 调用已有 MCP tools。
+
+Gallery 面向视觉 discovery：
 
 - search results
 - ranking
@@ -403,6 +416,7 @@ _meta["openai/fileParams"] = ["image"]
 - 用户在任意浏览器打开 URL 并选择图片。
 - 上传完成后，再次调用同一个 `pixiv_reverse_search` 并提供 `upload_id`。
 - session 只能消费一次，不能成为通用文件托管。
+- session 带 `created_at` / `expires_at` 并自动清理；生命周期只覆盖一次正常浏览器上传，不暴露为用户可调的通用 session 配置。
 - 上传内容只用于该次 reverse search，不进入持久作品归档。
 
 若 negotiated MCP/host 支持 URL elicitation，可用它改善打开 URL 的体验；核心 fallback 不依赖 elicitation 或 MCP Apps。
@@ -413,6 +427,7 @@ Gemini 的核心验收使用 URL / browser-upload fallback，不假定 Gemini �
 
 - 所有公开 connector 流量必须经 HTTPS。
 - OAuth authorize/token/register 与 `/mcp` 共用 canonical public origin。
+- canonical public origin 只来自显式配置，不从反向代理请求头推断。
 - DCR redirect URI 精确匹配。
 - PKCE 只允许 S256。
 - authorization code 一次性。
@@ -482,7 +497,7 @@ config 保存非 secret 服务配置：
 - DCR client registration validation。
 - Authorization Code + PKCE S256。
 - one-time code consumption。
-- bearer/refresh token hash lookup、rotation/revocation语义。
+- bearer/refresh token hash lookup、refresh rotation 与 owner-reset invalidation。
 - owner secret verification。
 - unified Pixiv + FANBOX tool discovery。
 - 所有 Pixiv tool name 都有 `pixiv_`，所有 FANBOX tool name 都有 `fanbox_`。
