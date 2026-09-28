@@ -66,10 +66,11 @@ Claude  ─┘                                      │
 公共部署要求：
 
 - pixiv-cli 只负责 HTTP 应用服务，不内置证书申请或 ACME。
-- 配置一个 listen address 与一个 external/public HTTPS base URL。
-- OAuth issuer、metadata URL、redirect/resource URL 全部只从配置的 public base URL 构造，不信任请求的 `Host` / `X-Forwarded-*` 来决定安全边界。
-- 推荐 listen 在 loopback/private address 后由 Caddy、nginx、Cloudflare 等现有反向代理负责 TLS。
-- 三家连接器使用同一个公开 `https://.../mcp`。
+- 配置一个 listen address 与一个 canonical base URL。
+- pixiv-cli 本身不强制 TLS。本地 Agent / Inspector 可以直接连接 `http://127.0.0.1:<port>/mcp` 或其他明确的本地 HTTP 地址。
+- OAuth issuer、metadata URL、redirect/resource URL 全部只从配置的 canonical base URL 构造，不信任请求的 `Host` / `X-Forwarded-*` 来决定 URL。
+- 当服务需要给 ChatGPT/Gemini/Claude 这类云端 connector 使用时，canonical base URL 配置为公网 HTTPS 地址，并由 Caddy、nginx、Cloudflare 或其他现有反向代理负责 TLS。
+- 三家云端 connector 使用同一个公开 `https://.../mcp`；本地 Agent 不需要为了使用同一 Streamable HTTP server 额外部署 HTTPS。
 
 ## MCP SDK 与协议
 
@@ -388,9 +389,9 @@ structured result
 
 ## Reverse image search input
 
-`pixiv_reverse_search` 不再接受 MCP server 任意本地文件路径。Remote MCP 的 trust boundary 下，本地 path 没有用户语义且会扩大 server filesystem capability。
+`pixiv_reverse_search` 继续支持 MCP server 本地文件，并新增 remote-host 需要的输入方式。所有本地文件语义都明确指向 **运行 pixiv-cli MCP server 的机器**，而不是 ChatGPT/Gemini/Claude 所在设备。
 
-支持三种输入路径：
+支持以下输入路径：
 
 ### 1. ChatGPT uploaded file
 
@@ -404,21 +405,24 @@ _meta["openai/fileParams"] = ["image"]
 
 这是 ChatGPT 增强，不改变标准 MCP server contract，也不增加 OpenAI SDK dependency；Go MCP SDK 的 tool `_meta` 可直接承载该 metadata。
 
-### 2. HTTP(S) URL
+### 2. Local path / file://
 
-保留通用 `url` 输入，供任意 host 搜索已有网络图片。
+保留现有本地文件能力：
 
-与 trusted-local stdio 时代不同，remote MCP 的 URL fetch 必须经过 public-network guard：
+- 常规本地文件路径。
+- `file://` URI。
+- 文件必须由 MCP server 进程可读，并继续复用现有 regular-file / snapshot 校验与清理逻辑。
+- 这些路径永远解释为 MCP server 所在机器的文件系统，不假装是 connector 客户端的本地文件。
 
-- 只接受 HTTP(S)。
-- 拒绝 localhost、loopback、private、link-local、multicast/unspecified 等非公网目标。
-- DNS 解析后的目标地址也必须满足公网约束，不能只校验字符串 host。
-- 每次 redirect 都重新执行同样校验，不能通过 redirect 跳进内网。
-- ChatGPT `openai/fileParams` 提供的临时 `download_url` 走同一 remote-source guard。
+不增加 `allow_local_file_access` feature flag。该能力是经过 OAuth 授权的单 owner MCP 的一部分，并在文档中明确其 server-side filesystem 语义。
 
-现有 reverse-search core 仍可服务 CLI 的 trusted-local 文件/私网语义；限制应放在 remote MCP adapter/trust boundary，不把 CLI 能力一起砍掉。
+### 3. HTTP(S) URL
 
-### 3. Browser upload fallback
+保留通用 HTTP(S) URL 输入，包括 localhost、私网、loopback/link-local 等现有能力；不额外为 remote MCP 增加 public-network-only guard。该设计延续当前 trusted-owner 语义：被授权的 connector 可以要求 pixiv-cli 读取 server 可访问的 URL。
+
+ChatGPT `openai/fileParams` 的临时 `download_url` 也按普通 HTTP(S) source 读取，不引入厂商专用网络策略。
+
+### 4. Browser upload fallback
 
 对于不能把用户上传文件传给 custom MCP 的 host，同一个 `pixiv_reverse_search` 提供一次性 browser upload fallback：
 
@@ -436,17 +440,17 @@ Gemini 的核心验收使用 URL / browser-upload fallback，不假定 Gemini �
 
 ## 安全边界
 
-- 所有公开 connector 流量必须经 HTTPS。
-- OAuth authorize/token/register 与 `/mcp` 共用 canonical public origin。
-- canonical public origin 只来自显式配置，不从反向代理请求头推断。
+- pixiv-cli 不在应用层全局强制 HTTPS；本地 loopback/private deployment 可以使用 HTTP。
+- ChatGPT/Gemini/Claude 云端 connector 的公开入口使用公网 HTTPS；TLS 可由现有反向代理终止。
+- OAuth authorize/token/register 与 `/mcp` 共用配置的 canonical origin。
+- canonical origin 只来自显式配置，不从反向代理请求头推断。
 - DCR redirect URI 精确匹配。
 - PKCE 只允许 S256。
 - authorization code 一次性。
 - owner secret、OAuth access/refresh token 使用高熵随机值；持久化只存 verifier/hash。
 - MCP/Pixiv/FANBOX credential、PKCE verifier、provider API keys 不进入 tool structured output、日志或 Gallery payload。
-- remote MCP 不接受 arbitrary server local file path。
+- `pixiv_reverse_search` 可读取 server 本地 regular file、`file://` URI 与 server 可访问的 HTTP(S) URL；这是单 owner 授权后的显式能力，文档必须说明它访问的是 server 侧资源。
 - reverse-search upload URL 是 one-time capability，不提供目录浏览或任意文件读取。
-- remote reverse-search URL/fileParams fetch 拒绝非公网目标，并对 DNS 解析与 redirect 逐跳复验，避免把 remote MCP 变成 SSRF 入口。
 - OAuth 认证只证明 MCP owner；Pixiv/FANBOX credential domain 继续独立。
 
 ## 错误语义
@@ -494,7 +498,7 @@ config 保存非 secret 服务配置：
 - Pixiv 旧 tool names。
 - MCP `download` / `download_random_from_recommendation`。
 - remote MCP 中 server local path / `file://` 作为媒体交付 contract。
-- `reverse_search` 的 server-local-file input。
+- 旧 `reverse_search` tool 名；server-local-file / `file://` 输入能力保留在新的 `pixiv_reverse_search`。
 
 不保留 deprecated alias、compat flags 或 fallback transport。
 
@@ -519,7 +523,7 @@ config 保存非 secret 服务配置：
 - `pixiv_artwork_media` 单图、多图、regular/original、GIF/APNG。
 - `fanbox_open_resource` 实际 media/binary content。
 - ChatGPT fileParams metadata schema。
-- remote reverse-search public-network guard（直连、DNS 解析、redirect）以及 CLI trusted-local 行为不回归。
+- reverse-search local path / `file://` / HTTP(S) source 与现有 snapshot 安全输出行为不回归。
 - reverse-search HTTP URL 与 one-time browser upload flow。
 - Gallery tool/resource contract 在无 UI host 时仍保持完整 structured/media fallback。
 
