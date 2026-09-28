@@ -12,8 +12,9 @@ metadata 请使用 `novel_detail`。
 
 ## 错误、分页与输出
 
-不符合 schema 的输入会在打开 SDK operation 前作为 JSON-RPC/tool input error
-拒绝。handler 执行后的失败会保留该 tool 的 structured result 并设置
+不符合 schema 的输入会在打开 SDK operation 前拒绝：MCP SDK 返回
+`isError=true` 和文本诊断，不含 handler 的 structured output；这不是 JSON-RPC 协议错误。
+handler 执行后的失败会保留该 tool 的 structured result 并设置
 `isError=true`：实体读取返回空 `records`，下载保留下载报告形状。正常空页是成功，
 不会被转换为错误。
 

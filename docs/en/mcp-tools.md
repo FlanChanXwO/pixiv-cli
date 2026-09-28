@@ -14,8 +14,10 @@ Use `novel_detail` for novel metadata.
 
 ## Errors, pagination, and output
 
-Schema-invalid input is rejected as a JSON-RPC/tool input error before the SDK
-operation is opened. A failure after handler execution preserves the tool's
+Schema-invalid input is rejected before the SDK operation is opened: the MCP SDK
+returns a tool result with `isError=true` and a text diagnostic, without the
+handler's structured output. It is not a JSON-RPC protocol error. A failure after
+handler execution preserves the tool's
 structured result and sets `isError=true`; an entity read returns an empty
 `records` collection, while a download returns its report shape. A normal empty
 page is successful and is not converted into an error.

@@ -1,8 +1,12 @@
 package pixiv_test
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
+	"net/http"
+	"net/http/httptest"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -291,3 +295,62 @@ func (d *fakeDownloads) Download(_ context.Context, request downloader.DownloadR
 }
 
 // 收藏/关注 mutation tool 的 owner 契约：结构化成功结果。
+
+// 同一产品 registry 必须由官方 stateless transport 支持新发现协议和旧初始化协议。
+func TestStatelessHTTPProtocolNegotiation(t *testing.T) {
+	server := pixivmcpserver.New(nil, nil)
+	handler := mcp.NewStreamableHTTPHandler(func(*http.Request) *mcp.Server { return server },
+		&mcp.StreamableHTTPOptions{Stateless: true, JSONResponse: true})
+	for _, version := range []string{"2025-06-18", "2026-07-28"} {
+		t.Run(version, func(t *testing.T) {
+			method := "initialize"
+			params := map[string]any{"protocolVersion": version, "capabilities": map[string]any{},
+				"clientInfo": map[string]any{"name": "protocol-test", "version": "1"}}
+			if version == "2026-07-28" {
+				method = "server/discover"
+				params = map[string]any{"_meta": map[string]any{
+					"io.modelcontextprotocol/protocolVersion":    version,
+					"io.modelcontextprotocol/clientInfo":         map[string]any{"name": "protocol-test", "version": "1"},
+					"io.modelcontextprotocol/clientCapabilities": map[string]any{},
+				}}
+			}
+			body, err := json.Marshal(map[string]any{"jsonrpc": "2.0", "id": 1, "method": method, "params": params})
+			if err != nil {
+				t.Fatal(err)
+			}
+			request := httptest.NewRequest(http.MethodPost, "http://localhost/mcp", bytes.NewReader(body)).WithContext(t.Context())
+			request.Header.Set("Content-Type", "application/json")
+			request.Header.Set("Accept", "application/json, text/event-stream")
+			request.Header.Set("MCP-Protocol-Version", version)
+			request.Header.Set("Mcp-Method", method)
+			response := httptest.NewRecorder()
+			handler.ServeHTTP(response, request)
+			if response.Code != http.StatusOK {
+				t.Fatalf("status = %d: %s", response.Code, response.Body.String())
+			}
+			var wire struct {
+				Result struct {
+					ProtocolVersion   string   `json:"protocolVersion"`
+					SupportedVersions []string `json:"supportedVersions"`
+				} `json:"result"`
+				Error json.RawMessage `json:"error"`
+			}
+			if err := json.Unmarshal(response.Body.Bytes(), &wire); err != nil {
+				t.Fatalf("decode response: %v; body=%s", err, response.Body.String())
+			}
+			if len(wire.Error) != 0 {
+				t.Fatalf("protocol negotiation failed: %s", wire.Error)
+			}
+			if version == "2026-07-28" {
+				if !slices.Contains(wire.Result.SupportedVersions, version) {
+					t.Errorf("supported versions = %v, missing %s", wire.Result.SupportedVersions, version)
+				}
+			} else if wire.Result.ProtocolVersion != version {
+				t.Errorf("negotiated version = %q, want %q", wire.Result.ProtocolVersion, version)
+			}
+			if id := response.Header().Get("Mcp-Session-Id"); id != "" {
+				t.Errorf("stateless response created session %q", id)
+			}
+		})
+	}
+}

@@ -276,9 +276,9 @@ func TestSDKUserDetailRejectsInvalidInputAndReturnsSDKFailuresAsMCPError(t *test
 	for _, input := range []map[string]any{{}, {"user_id": "not-an-integer"}} {
 		client := &fakeSDKClient{}
 		session, closeSession := newSDKTestSession(t, client)
-		_, err := session.CallTool(context.Background(), &mcp.CallToolParams{Name: "user_detail", Arguments: input})
+		result, err := session.CallTool(context.Background(), &mcp.CallToolParams{Name: "user_detail", Arguments: input})
 		closeSession()
-		if err == nil || client.userDetailRequest != (pixiv.UserRequest{}) {
+		if err != nil || result == nil || !result.IsError || !resultHasText(result, `validating "arguments"`) || client.userDetailRequest != (pixiv.UserRequest{}) {
 			t.Fatalf("input=%v error=%v captured=%+v", input, err, client.userDetailRequest)
 		}
 	}
@@ -369,8 +369,8 @@ func TestSDKUserListToolsSchemaRejectsRemovedLegacyFields(t *testing.T) {
 		{"user_following", map[string]any{"user_id_to_check": 8}},
 		{"user_following", map[string]any{"user_id": 8, "offset": 1}},
 	} {
-		_, err := session.CallTool(context.Background(), &mcp.CallToolParams{Name: call.name, Arguments: call.args})
-		if err == nil || !strings.Contains(err.Error(), "additional properties") {
+		result, err := session.CallTool(context.Background(), &mcp.CallToolParams{Name: call.name, Arguments: call.args})
+		if err != nil || result == nil || !result.IsError || !resultHasText(result, "additional properties") {
 			t.Fatalf("%s args=%v err=%v", call.name, call.args, err)
 		}
 	}

@@ -237,14 +237,14 @@ func BookmarkDetailOutputSchema() *jsonschema.Schema {
 // 未知字段，不能由 Go 的未导出字段自动推导为封闭对象；因此显式允许记录对象的
 // 额外属性，同时约束每条记录都具备稳定身份字段。
 func RecordsOutputSchema() *jsonschema.Schema {
-	allowAdditionalProperties := &jsonschema.Schema{}
+	// jsonschema resolver 要求树形节点；开放属性 schema 也不能跨位置共享指针。
 	return &jsonschema.Schema{
 		Type: "object",
 		Properties: map[string]*jsonschema.Schema{
 			"records": recordArraySchema(),
 			"pagination": {
 				Type:                 "object",
-				AdditionalProperties: allowAdditionalProperties,
+				AdditionalProperties: &jsonschema.Schema{},
 			},
 			"filter": {
 				Type: "object",
@@ -259,22 +259,22 @@ func RecordsOutputSchema() *jsonschema.Schema {
 			},
 			"series": {
 				Type:                 "object",
-				AdditionalProperties: allowAdditionalProperties,
+				AdditionalProperties: &jsonschema.Schema{},
 			},
 			"comments": {
 				Type:  "array",
-				Items: &jsonschema.Schema{Type: "object", AdditionalProperties: allowAdditionalProperties},
+				Items: &jsonschema.Schema{Type: "object", AdditionalProperties: &jsonschema.Schema{}},
 			},
 			"total": {
 				Type: "integer",
 			},
 			"access_control": {
 				Type:                 "object",
-				AdditionalProperties: allowAdditionalProperties,
+				AdditionalProperties: &jsonschema.Schema{},
 			},
 			"bookmark_tags": {
 				Type:  "array",
-				Items: &jsonschema.Schema{Type: "object", AdditionalProperties: allowAdditionalProperties},
+				Items: &jsonschema.Schema{Type: "object", AdditionalProperties: &jsonschema.Schema{}},
 			},
 			"bookmarked": {
 				Type: "boolean",
@@ -288,7 +288,7 @@ func RecordsOutputSchema() *jsonschema.Schema {
 			},
 			"content": {
 				Type:                 "object",
-				AdditionalProperties: allowAdditionalProperties,
+				AdditionalProperties: &jsonschema.Schema{},
 			},
 		},
 		Required:             []string{"records"},

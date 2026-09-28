@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"slices"
-	"strings"
 	"testing"
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/internal/outputs"
@@ -160,8 +159,8 @@ func TestTypedBookmarkSchemasKeepLegacyFieldsClosed(t *testing.T) {
 		{"novel_bookmark_detail", map[string]any{"illust_id": 9}},
 		{"bookmark_detail", map[string]any{"novel_id": 9}},
 	} {
-		_, err := session.CallTool(context.Background(), &mcp.CallToolParams{Name: call.name, Arguments: call.args})
-		if err == nil || !strings.Contains(err.Error(), "additional properties") {
+		result, err := session.CallTool(context.Background(), &mcp.CallToolParams{Name: call.name, Arguments: call.args})
+		if err != nil || result == nil || !result.IsError || !resultHasText(result, "additional properties") {
 			t.Fatalf("%s args=%v err=%v", call.name, call.args, err)
 		}
 	}

@@ -158,8 +158,8 @@ func TestSearchIllustSchemaRejectsRemovedLegacyWireFields(t *testing.T) {
 		{"word": "cat", "filter": "bookmarkCount >= 2"},
 		{"word": "cat", "rating": "r18"},
 	} {
-		_, err := session.CallTool(context.Background(), &mcp.CallToolParams{Name: "search_illust", Arguments: args})
-		if err == nil || !strings.Contains(err.Error(), "additional properties") {
+		result, err := session.CallTool(context.Background(), &mcp.CallToolParams{Name: "search_illust", Arguments: args})
+		if err != nil || result == nil || !result.IsError || !resultHasText(result, "additional properties") {
 			t.Fatalf("args=%v err=%v", args, err)
 		}
 	}
