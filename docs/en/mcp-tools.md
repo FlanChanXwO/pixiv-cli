@@ -12,6 +12,8 @@ structured `content_unavailable` error with `isError=true` and an empty content
 block list; it does not call `/v1/novel/content` and does not fall back to WebView.
 Use `pixiv_novel_detail` for novel metadata.
 
+The separate local `pixiv mcp auth init [--reset]` administration command prepares owner state and prints a secret once; it is not a tool or a server launch. See [owner initialization](cli-reference.md#mcp-owner-initialization).
+
 ## Errors, pagination, and output
 
 Schema-invalid input is rejected before the SDK operation is opened: the MCP SDK

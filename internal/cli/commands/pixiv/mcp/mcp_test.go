@@ -11,6 +11,8 @@ import (
 
 type testHost struct{}
 
+func (testHost) InitMCPAuth(context.Context, bool) (string, error) { return "fixture-owner", nil }
+
 func (testHost) RequireExactArgs(count int, usage string) cobra.PositionalArgs {
 	return cobra.ExactArgs(count)
 }

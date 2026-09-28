@@ -45,6 +45,7 @@ import (
 	"github.com/FlanChanXwO/pixiv-cli/internal/config/paths"
 	configapp "github.com/FlanChanXwO/pixiv-cli/internal/config/settings"
 	unifiedmcp "github.com/FlanChanXwO/pixiv-cli/internal/mcpserver"
+	mcpauth "github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/auth"
 	fanboxmcpserver "github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/fanbox"
 	mcpserver "github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv"
 	downloader "github.com/FlanChanXwO/pixiv-cli/internal/media/downloader"
@@ -961,6 +962,14 @@ func (a app) ClientRequest(cmd *cobra.Command, options mcpcommands.ProxyOptions)
 	}
 	request := mcpcommands.Request{HTTPSProxyOverride: proxyOverride}
 	return request, nil
+}
+
+func (a app) InitMCPAuth(ctx context.Context, reset bool) (string, error) {
+	filename, err := paths.UserDataFile(paths.AppDataDirName, "mcp-state.json")
+	if err != nil {
+		return "", err
+	}
+	return (mcpauth.Store{Path: filename}).Init(ctx, reset)
 }
 
 func (a app) RunMCP(ctx context.Context, request mcpcommands.Request) error {

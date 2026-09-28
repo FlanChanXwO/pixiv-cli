@@ -102,3 +102,5 @@ Downloads write files and have empty successful stdout; inspect exit status and 
 ## MCP namespace
 
 One MCP server exposes `pixiv_*` and `fanbox_*` tools with independent product credentials. Use discovery for exact names; unprefixed Pixiv aliases do not exist. MCP filesystem download tools have been removed; use the explicitly authorized CLI download workflow for local files. Standard read-only, destructive, idempotent and open-world annotations are approval hints, not a replacement for the user's authorization. Reverse search uploads the chosen source to third-party providers.
+
+Local `pixiv mcp auth init [--reset]` is owner administration, not an MCP tool or server-start probe. Run it only on an explicit setup/reset request: it prints a new secret once after committing only its verifier. Never copy that secret into chat or tool arguments. Ordinary re-init does not reveal it; reset revokes OAuth grants but preserves registered clients and MCP account selection. It does not enable HTTP/OAuth or alter current stdio authentication.

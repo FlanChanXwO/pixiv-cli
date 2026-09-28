@@ -240,10 +240,12 @@ pixiv mcp
 pixiv fanbox mcp
 ```
 
+本地 owner 初始化使用 `pixiv mcp auth init [--reset]`，只显示一次 secret；详见[管理与 reset 合同](docs/zh-CN/cli-reference.md#mcp-owner-初始化)。此命令不启动远程 server。
+
 [MCP tool 契约](docs/zh-CN/mcp-tools.md)记录了 tools、参数、structured output 和认证行为。
 MCP 固定状态、错误和展示文本使用英文；Pixiv 元数据及用户提供的文本保持原文。
 
-`reverse_search` 接受常规本地文件或 HTTP(S) URL，并可能把图片上传给第三方 provider。
+`pixiv_reverse_search` 接受常规本地文件或 HTTP(S) URL，并可能把图片上传给第三方 provider。
 可信本机 MCP client 可以请求私有文件以及私网/loopback/link-local URL，因此只应在可信 client
 中运行；详见 [MCP 反向搜图契约](docs/zh-CN/mcp-tools.md#反向搜图)。
 高级 reverse-search proxy、User-Agent 和 challenge-recovery 配置见

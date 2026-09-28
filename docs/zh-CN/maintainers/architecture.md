@@ -300,11 +300,13 @@ FlareSolverr 的 upstream proxy 只用于 browser `sessions.create`；solver con
 
 各产品保留独立 SDK ports、账号选择与 runtime。注册/discovery 不打开 FANBOX 账号；root 在 FANBOX tool 调用时才懒加载其独立 service。各 tool package 拥有名称、annotations、schema 和 handler。Pixiv adapter 解析 nullable `page`/`limit`，遍历仍由 `internal/shared/traversal` 执行。handler 失败保留 structured output 并设置 `isError=true`，正常空结果保持成功。完整合同见 [MCP 工具](../mcp-tools.md)。
 
+`internal/mcpserver/auth` 拥有单一版本化 JSON state 与 owner 初始化/reset。root 注入 app-data 路径，只有 CLI 输出一次性 secret。每次修改在侧车锁内读取最新状态并原子替换，读取不缓存状态。owner verifier 同时是后续内存授权状态的 generation 边界。不新增数据库或 HTTP endpoint。
+
 ### `internal/media/downloader`
 
 负责下载和本地文件落盘：
 
-`internal/media/downloader` 是 CLI/MCP 的下载 owner。它以 `DownloadTargetClient`/`DownloadClient` 接收 public SDK client execution snapshot，统一负责来源展开、ID 去重、页码和质量校验、文件获取与 publication、进度事件和 ugoira 格式选择；这些语义不能在 adapter 中复制。`ResourceRef` 仅由产品 Client 解析，下载器只消费已验证的 opaque ref。公开 SDK 只保留原子资源解析/保存能力，不暴露批量下载工作流。
+`internal/media/downloader` 是 CLI 的下载 owner。它以 `DownloadTargetClient`/`DownloadClient` 接收 public SDK client execution snapshot，统一负责来源展开、ID 去重、页码和质量校验、文件获取与 publication、进度事件和 ugoira 格式选择；这些语义不能在 adapter 中复制。`ResourceRef` 仅由产品 Client 解析，下载器只消费已验证的 opaque ref。公开 SDK 只保留原子资源解析/保存能力，不暴露批量下载工作流。
 
 - `Download` 会同步下载 ID 列表，并返回每个作品的实际产物路径。
 - 单页作品保存到下载目录。

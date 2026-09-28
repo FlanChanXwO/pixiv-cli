@@ -508,6 +508,7 @@ Only the structured entity filters documented by each command are accepted. The 
 | `user search` | `pixiv user search WORD [options]` | Compatibility route for user search; prefer `pixiv search WORD --type user`. |
 | `follow` | `pixiv follow add\|remove USER_ID ...` | Compatibility route for user follow mutation; it shares the same owner and input contract as `pixiv user follow add\|remove`. |
 | `mcp` | `pixiv mcp [--proxy URL\|--no-proxy]` | Starts the MCP stdio server; the proxy override applies only to this launch. |
+| `mcp auth init` | `pixiv mcp auth init [--reset]` | Initialize the local MCP owner and print its secret once; reset revokes grants, preserving clients and selected account. |
 | `fanbox auth` | `pixiv fanbox auth import|list|use|remove|status` | Imports and manages local FANBOX sessions. Session values are never printed. Native `--proxy`/`--no-proxy` applies only to the FANBOX command. |
 | `fanbox creators` | `pixiv fanbox creators [--kind supporting\|following] [--page N --limit N]` | Lists supporting or following FANBOX creators. |
 | `fanbox posts` | `pixiv fanbox posts SOURCE [--page N --limit N]` | Lists posts from a creator, tag, post ID, or supported FANBOX URL. |
@@ -803,6 +804,16 @@ it.
 
 Invalid tokens and App API network or server errors return a safe, classified
 failure.
+
+## MCP owner initialization
+
+`pixiv mcp auth init` is local administration, not an MCP tool or a server launch. It writes `<app-data>/mcp-state.json` using a private sidecar lock and atomic replacement. On Unix the directory is `0700` and state/lock files are `0600`. It changes no Pixiv/FANBOX credentials, CLI default, database schema or configuration, and does not run updates or desktop-helper setup.
+
+Successful stdout contains only the new 256-bit random owner secret plus a newline. Keep it in a password manager; never put it in chat, MCP arguments, logs or source control. Only its SHA-256 verifier is persisted. Ordinary re-init fails without replacing state or showing the old secret. Explicit `--reset` rotates the verifier/generation and clears all OAuth grants/token hashes, preserving client metadata and `selected_pixiv_user_id`.
+
+Corrupt/incomplete JSON, unsupported versions, non-regular/symlink state files and private-file permission errors fail rather than silently resetting state. A disk write error does not publish a secret. If stdout fails after commit, the owner remains saved; recover with `pixiv mcp auth init --reset`, which also revokes grants.
+
+This prepares local owner state; it does not enable HTTP/OAuth endpoints or change current stdio authentication.
 
 ## Version and updates
 

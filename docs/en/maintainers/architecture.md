@@ -290,11 +290,13 @@ The three parent packages only own the normalized entities/values shared by thei
 
 Each product retains its own SDK ports, account selection and runtime. Registration/discovery does not open a FANBOX account; the root lazily opens its independent service when a FANBOX tool runs. Each tool package owns its name, annotations, schema and handler. Pixiv nullable `page`/`limit` are parsed by its adapter and traversal stays in `internal/shared/traversal`. Handler failures retain structured output with `isError=true`; legitimate empty results remain successful. See [MCP tools](../mcp-tools.md).
 
+`internal/mcpserver/auth` owns one concrete versioned JSON state and owner initialization/reset. Root injects its app-data path; the CLI alone prints the one-time secret. Mutations lock the sidecar, read fresh state and atomically replace it; reads do not cache state. Owner verifier is also the generation boundary for later in-memory authorization state. No database or HTTP endpoint is added.
+
 ### `internal/media/downloader`
 
 Owns download and local file persistence:
 
-`internal/media/downloader` is the CLI/MCP download owner. It takes the public SDK client execution snapshot via the `DownloadTargetClient`/`DownloadClient` interfaces, and centrally owns source expansion, ID deduplication, page and quality validation, file acquisition and publication, progress events, and ugoira format selection; these semantics cannot be duplicated in adapters. `ResourceRef` is only resolved by the product Client; the downloader only consumes the verified opaque ref. The public SDK only retains atomic resource resolution/save capabilities and does not expose batch download workflows.
+`internal/media/downloader` is the CLI download owner. It takes the public SDK client execution snapshot via the `DownloadTargetClient`/`DownloadClient` interfaces, and centrally owns source expansion, ID deduplication, page and quality validation, file acquisition and publication, progress events, and ugoira format selection; these semantics cannot be duplicated in adapters. `ResourceRef` is only resolved by the product Client; the downloader only consumes the verified opaque ref. The public SDK only retains atomic resource resolution/save capabilities and does not expose batch download workflows.
 
 - `Download` synchronously downloads a list of IDs and returns the actual artifact path for each work.
 - Single-page works are saved to the download directory.

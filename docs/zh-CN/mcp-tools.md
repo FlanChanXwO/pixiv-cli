@@ -10,6 +10,8 @@
 正文 block 列表；不会请求 `/v1/novel/content`，也不会 fallback 到 WebView。小说
 metadata 请使用 `pixiv_novel_detail`。
 
+独立本地命令 `pixiv mcp auth init [--reset]` 准备 owner state 并只输出一次 secret；它不是 tool，也不启动此 server。见 [owner 初始化](cli-reference.md#mcp-owner-初始化)。
+
 ## 错误、分页与输出
 
 不符合 schema 的输入会在打开 SDK operation 前拒绝：MCP SDK 返回

@@ -240,10 +240,12 @@ pixiv mcp
 pixiv fanbox mcp
 ```
 
+Local owner setup uses `pixiv mcp auth init [--reset]` and prints a secret once. See the [administration and reset contract](docs/en/cli-reference.md#mcp-owner-initialization); this does not start a remote server.
+
 See the [MCP tool contract](docs/en/mcp-tools.md) for tools, parameters, structured output, and authentication behavior.
 Fixed MCP status, error, and display text is English; Pixiv metadata and user-supplied text are preserved verbatim.
 
-The `reverse_search` tool accepts a regular local file or HTTP(S) URL and may upload
+The `pixiv_reverse_search` tool accepts a regular local file or HTTP(S) URL and may upload
 that source to third-party providers. Because trusted local MCP clients may request
 private files and private/loopback/link-local URLs, run it only from a client you
 trust; see the [reverse-search MCP contract](docs/en/mcp-tools.md#reverse-image-search).

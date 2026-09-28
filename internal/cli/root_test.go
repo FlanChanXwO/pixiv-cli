@@ -717,3 +717,83 @@ func TestMCPReverseSearchRegistersSearcherForStdioLifetime(t *testing.T) {
 	require.Equal(t, int32(1), searcher.closeCalls.Load())
 	require.Empty(t, stdout.String())
 }
+
+func TestMCPAuthInitPersistsPrivateVerifierOnce(t *testing.T) {
+	_, configPath := useTempPaths(t)
+	var stdout, stderr bytes.Buffer
+	code := RunContext(context.Background(), []string{"pixiv", "mcp", "auth", "init"}, strings.NewReader(""), &stdout, &stderr)
+	require.Equal(t, 0, code, "init failed: %s", stderr.String())
+	secret := strings.TrimSpace(stdout.String())
+	require.NotEmpty(t, secret)
+	require.Empty(t, stderr.String())
+	filename := filepath.Join(filepath.Dir(configPath), "mcp-state.json")
+	body, err := os.ReadFile(filename)
+	require.NoError(t, err)
+	require.False(t, bytes.Contains(body, []byte(secret)), "raw owner secret was persisted")
+	var state struct {
+		Version       int    `json:"version"`
+		OwnerVerifier string `json:"owner_verifier"`
+	}
+	require.NoError(t, json.Unmarshal(body, &state))
+	require.Equal(t, 1, state.Version)
+	require.Len(t, state.OwnerVerifier, 64)
+	stdout.Reset()
+	stderr.Reset()
+	code = RunContext(context.Background(), []string{"pixiv", "mcp", "auth", "init"}, strings.NewReader(""), &stdout, &stderr)
+	require.NotEqual(t, 0, code)
+	require.Empty(t, stdout.String(), "ordinary re-init must not reveal a secret")
+	unchanged, err := os.ReadFile(filename)
+	require.NoError(t, err)
+	require.True(t, bytes.Equal(body, unchanged), "ordinary re-init replaced state")
+}
+
+func TestMCPAuthResetPreservesClientsAndSelection(t *testing.T) {
+	_, configPath := useTempPaths(t)
+	var stdout, stderr bytes.Buffer
+	run := func(args ...string) int {
+		stdout.Reset()
+		stderr.Reset()
+		return RunContext(t.Context(), append([]string{"pixiv", "mcp", "auth", "init"}, args...), strings.NewReader(""), &stdout, &stderr)
+	}
+	require.Zero(t, run())
+	oldSecret := strings.TrimSpace(stdout.String())
+	filename := filepath.Join(filepath.Dir(configPath), "mcp-state.json")
+	body, err := os.ReadFile(filename)
+	require.NoError(t, err)
+	var state map[string]any
+	require.NoError(t, json.Unmarshal(body, &state))
+	state["clients"] = map[string]any{"connector": map[string]any{"client_name": "Fixture", "redirect_uris": []any{"https://client.example/callback"}}}
+	state["grants"] = map[string]any{"grant": map[string]any{"client_id": "connector", "resource": "https://server.example/mcp", "scope": "mcp", "refresh_hash": strings.Repeat("a", 64), "access_tokens": map[string]string{strings.Repeat("b", 64): "2026-09-28T01:00:00Z"}, "used_refresh_hashes": []string{}, "revoked": false}}
+	state["selected_pixiv_user_id"] = 72
+	body, err = json.Marshal(state)
+	require.NoError(t, err)
+	require.NoError(t, os.WriteFile(filename, body, 0600))
+	require.Zero(t, run("--reset"), "reset failed: %s", stderr.String())
+	newSecret := strings.TrimSpace(stdout.String())
+	require.NotEmpty(t, newSecret)
+	require.False(t, oldSecret == newSecret, "reset reused the owner secret")
+	var after map[string]any
+	body, err = os.ReadFile(filename)
+	require.NoError(t, err)
+	require.NoError(t, json.Unmarshal(body, &after))
+	require.Equal(t, state["clients"], after["clients"])
+	require.Equal(t, float64(72), after["selected_pixiv_user_id"])
+	require.Empty(t, after["grants"])
+	require.False(t, state["owner_verifier"] == after["owner_verifier"], "owner generation did not change")
+	require.False(t, bytes.Contains(body, []byte(oldSecret)) || bytes.Contains(body, []byte(newSecret)), "raw secret persisted")
+	require.Empty(t, stderr.String())
+}
+
+func TestMCPAuthInitOutputFailureReportsSavedState(t *testing.T) {
+	_, configPath := useTempPaths(t)
+	reader, writer := io.Pipe()
+	require.NoError(t, reader.Close())
+	defer writer.Close()
+	var stderr bytes.Buffer
+	code := RunContext(t.Context(), []string{"pixiv", "mcp", "auth", "init"}, strings.NewReader(""), writer, &stderr)
+	require.NotZero(t, code)
+	_, err := os.Stat(filepath.Join(filepath.Dir(configPath), "mcp-state.json"))
+	require.NoError(t, err, "output failure must not pretend to roll back a committed owner")
+	require.Contains(t, stderr.String(), "saved")
+	require.Contains(t, stderr.String(), "pixiv mcp auth init --reset")
+}

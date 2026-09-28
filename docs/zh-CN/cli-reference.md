@@ -405,6 +405,7 @@ canonical 数据 action 是 `search`、`detail`、`ranking`、`series`、`commen
 | `user search` | `pixiv user search WORD [options]` | 用户搜索兼容路径；优先使用 `pixiv search WORD --type user`。 |
 | `follow` | `pixiv follow add\|remove USER_ID ...` | 用户关注兼容路径；与 `pixiv user follow add\|remove` 共享同一 owner 和输入契约。 |
 | `mcp` | `pixiv mcp [--proxy URL\|--no-proxy]` | 启动 MCP stdio server；代理覆盖只在本次启动时生效。 |
+| `mcp auth init` | `pixiv mcp auth init [--reset]` | 初始化本地 MCP owner 并只输出一次 secret；reset 撤销 grants，保留 clients 与选中账号。 |
 | `fanbox auth` | `pixiv fanbox auth import|list|use|remove|status` | 导入并管理本地 FANBOX session；session 值永不输出。native `--proxy`/`--no-proxy` 只影响本次 FANBOX 命令。 |
 | `fanbox creators` | `pixiv fanbox creators [--kind supporting\|following] [--page N --limit N]` | 列出 supporting 或 following FANBOX creator。 |
 | `fanbox posts` | `pixiv fanbox posts SOURCE [--page N --limit N]` | 按 creator、tag、post ID 或支持的 FANBOX URL 列出帖子。 |
@@ -658,6 +659,16 @@ v1 已删除匿名 Web API fallback。内容命令要求先通过 `pixiv auth us
 可用 `pixiv config unset web_fallback_enabled` 清除。
 
 无效 token 与 App API 网络或服务器错误会返回安全的、已分类的失败。
+
+## MCP owner 初始化
+
+`pixiv mcp auth init` 是本地管理命令，不是 MCP tool，也不启动 server。状态保存在 `<app-data>/mcp-state.json`，复用私有侧车锁与原子替换。Unix 目录权限为 `0700`，state/lock 文件为 `0600`。不修改 Pixiv/FANBOX 凭据、CLI default、数据库 schema 或配置，不执行自动更新或桌面 helper 初始化。
+
+成功时 stdout 只有新生成的 256 位随机 owner secret 和换行。请保存到密码管理器，不放进聊天、MCP 参数、日志或源码；文件只保存 SHA-256 verifier。普通重复 init 失败，不替换状态或再次显示旧 secret。显式 `--reset` 生成新的 verifier/generation 并清除全部 OAuth grants/token hashes，保留 client metadata 和 `selected_pixiv_user_id`。
+
+损坏/缺字段的 JSON、不支持的版本、非常规文件/符号链接及私有文件权限错误都明确失败，不能靠 reset 静默抹去。磁盘写入失败不输出 secret；若提交后 stdout 输出失败，owner 已保存，错误提示使用 `pixiv mcp auth init --reset` 恢复（同时撤销 grants）。
+
+此命令仅准备本地 owner state，不启用 HTTP/OAuth endpoint，也不改变当前 stdio 认证。
 
 ## 版本与更新
 
