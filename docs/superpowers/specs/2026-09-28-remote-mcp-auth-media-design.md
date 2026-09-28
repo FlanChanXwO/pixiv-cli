@@ -144,13 +144,13 @@ pixiv mcp auth init
 
 生成高熵随机 owner secret。只展示给实例管理员一次；server 仅保存其 SHA-256 verifier。由于 secret 是机器生成的高熵随机值，不接受用户自定义弱密码，因此无需引入密码哈希依赖。
 
-本地恢复命令：
+如需重新初始化，使用同一命令的显式 `--reset`：
 
 ```text
-pixiv mcp auth reset
+pixiv mcp auth init --reset
 ```
 
-重新生成 owner secret，并使所有未完成 authorization code、现有 access token 与 refresh token 失效；DCR client registration 可保留，使 ChatGPT/Gemini/Claude 重新授权时不必强制重新注册 client。该命令只能在 MCP server 所在机器本地执行。
+它重新生成 owner secret，并使现有 OAuth grant/token 失效。第一版不再为此增加独立的 reset 子命令。
 
 OAuth authorize 页面要求用户输入 owner secret。该 secret：
 
@@ -422,21 +422,14 @@ _meta["openai/fileParams"] = ["image"]
 
 ChatGPT `openai/fileParams` 的临时 `download_url` 也按普通 HTTP(S) source 读取，不引入厂商专用网络策略。
 
-### 4. Browser upload fallback
+### Gemini / other host fallback
 
-对于不能把用户上传文件传给 custom MCP 的 host，同一个 `pixiv_reverse_search` 提供一次性 browser upload fallback：
+第一版不实现自建 browser-upload session、上传页面或临时文件托管服务。对于无法把聊天附件直接传给第三方 MCP 的 host，`pixiv_reverse_search` 仍可使用：
 
-- 调用时没有 `image` 或 `url`，server 创建 one-time upload session。
-- 返回 `upload_id` 与 HTTPS `upload_url`。
-- 用户在任意浏览器打开 URL 并选择图片。
-- 上传完成后，再次调用同一个 `pixiv_reverse_search` 并提供 `upload_id`。
-- session 只能消费一次，不能成为通用文件托管。
-- session 带 `created_at` / `expires_at` 并自动清理；生命周期只覆盖一次正常浏览器上传，不暴露为用户可调的通用 session 配置。
-- 上传内容只用于该次 reverse search，不进入持久作品归档。
+- MCP server 本地路径 / `file://`（本地 Agent 或 server-side 文件）。
+- HTTP(S) image URL。
 
-若 negotiated MCP/host 支持 URL elicitation，可用它改善打开 URL 的体验；核心 fallback 不依赖 elicitation 或 MCP Apps。
-
-Gemini 的核心验收使用 URL / browser-upload fallback，不假定 Gemini 会把 Spark task 上传图片直接转发给第三方 MCP。
+ChatGPT 额外获得 `openai/fileParams` 的直接附件输入。若未来 Gemini 或其他 host 的真实使用证明 URL / local-file 路径不足，再单独设计上传 fallback；本版本不预埋。
 
 ## 安全边界
 
@@ -450,7 +443,6 @@ Gemini 的核心验收使用 URL / browser-upload fallback，不假定 Gemini �
 - owner secret、OAuth access/refresh token 使用高熵随机值；持久化只存 verifier/hash。
 - MCP/Pixiv/FANBOX credential、PKCE verifier、provider API keys 不进入 tool structured output、日志或 Gallery payload。
 - `pixiv_reverse_search` 可读取 server 本地 regular file、`file://` URI 与 server 可访问的 HTTP(S) URL；这是单 owner 授权后的显式能力，文档必须说明它访问的是 server 侧资源。
-- reverse-search upload URL 是 one-time capability，不提供目录浏览或任意文件读取。
 - OAuth 认证只证明 MCP owner；Pixiv/FANBOX credential domain 继续独立。
 
 ## 错误语义
@@ -469,24 +461,36 @@ Tool boundary：
 
 ## 配置与持久化
 
-继续使用现有 SQLite + config 分工：
+**本次不新增 SQLite database、table 或 migration。** 现有 `pixiv-cli.db` 继续只承担既有 Pixiv/FANBOX account storage，不为 MCP OAuth 扩表。
 
-SQLite 持久化：
+MCP 只新增一个私有状态文件，例如：
+
+```text
+<app-data>/mcp-state.json
+```
+
+复用仓库现有 private-file 原子写入能力，不新增存储依赖。该文件只保存必须跨进程重启存在的少量状态：
 
 - owner secret verifier。
-- DCR client metadata。
-- one-time authorization code state。
-- opaque access/refresh token verifier 与 grant metadata。
-- singleton MCP owner state（至少包含 selected Pixiv account）。
-- short-lived reverse-search upload session state。
+- DCR client 的最小 metadata 与 client ID。
+- OAuth grant/token verifier/hash。
+- shared `selected_pixiv_user_id`。
 
-config 保存非 secret 服务配置：
+以下状态只放内存，不持久化：
+
+- authorization code。
+- Pixiv `pixiv_account_login_start` 的 one-shot login session。
+- MCP Streamable HTTP session state。
+
+因此 server 重启可以中断尚未完成的授权/登录流程，但不会丢失已连接 connector 的注册/grant 或 MCP 当前 Pixiv 账号；这是单 owner 自托管场景可接受的最小状态模型。
+
+config 只保存服务启动所需的非 secret 配置：
 
 - MCP listen address。
-- public HTTPS base URL。
+- canonical/public base URL（本地可为 HTTP，云端 connector 部署时为 HTTPS）。
 - 现有 proxy / reverse-search provider 配置继续沿用既有 owner。
 
-不要引入泛化 IAM、通用 session framework 或额外数据库。
+不新增泛化 IAM、session store、KV abstraction、额外数据库或 schema migration。
 
 ## 迁移与删除
 
@@ -501,6 +505,8 @@ config 保存非 secret 服务配置：
 - 旧 `reverse_search` tool 名；server-local-file / `file://` 输入能力保留在新的 `pixiv_reverse_search`。
 
 不保留 deprecated alias、compat flags 或 fallback transport。
+
+MCP OAuth/state 实现不得新增 SQLite migration 或 table；若实现计划出现数据库 schema 变更，应视为偏离本设计并重新审查。
 
 ## 验收
 
@@ -524,7 +530,7 @@ config 保存非 secret 服务配置：
 - `fanbox_open_resource` 实际 media/binary content。
 - ChatGPT fileParams metadata schema。
 - reverse-search local path / `file://` / HTTP(S) source 与现有 snapshot 安全输出行为不回归。
-- reverse-search HTTP URL 与 one-time browser upload flow。
+- reverse-search local path / file:// / HTTP(S) 与 ChatGPT fileParams 输入。
 - Gallery tool/resource contract 在无 UI host 时仍保持完整 structured/media fallback。
 
 ### ChatGPT live E2E — blocking
@@ -551,7 +557,7 @@ config 保存非 secret 服务配置：
 3. tool annotations 不阻止正常 read/write approval flow。
 4. `pixiv_artwork_media` 在没有 MCP Apps Gallery 的前提下实际交付图片。
 5. 多图作品可完整取得。
-6. reverse search 可通过 HTTP URL 或 browser-upload fallback 完成。
+6. reverse search 可通过 HTTP(S) URL 完成；本地 Agent 可继续使用 local path / file://。
 
 不以 Gemini MCP Apps Gallery 作为验收项。
 
@@ -570,5 +576,5 @@ config 保存非 secret 服务配置：
 - 三家 connector 授权共享一个单 owner，但 Pixiv current account 可持久切换。
 - 用户可以在聊天中真正看到/取得 Pixiv 单图、多图与 Ugoira，而不是只收到 server-local path 或 URL。
 - 支持 MCP Apps 的 host 获得 Gallery；不支持的 host 忽略 UI 能力并仍有完整媒体能力，不需要用户配置开关。
-- ChatGPT 可直接把用户上传图片用于反向搜图；其他 host 至少有标准 URL / browser upload fallback。
+- ChatGPT 可直接把用户上传图片用于反向搜图；其他 host 使用 HTTP(S) URL，本地 Agent 还可继续使用 local path / file://。
 - CLI 的下载/归档能力继续存在，但 MCP 不再承担 server filesystem download contract。
