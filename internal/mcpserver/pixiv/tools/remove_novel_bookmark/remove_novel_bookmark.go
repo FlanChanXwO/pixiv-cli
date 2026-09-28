@@ -1,4 +1,4 @@
-// Package remove_novel_bookmark 实现 remove_novel_bookmark tool。
+// Package remove_novel_bookmark 实现 pixiv_remove_novel_bookmark tool。
 package remove_novel_bookmark
 
 import (
@@ -11,9 +11,9 @@ import (
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
-// Register 注册 remove_novel_bookmark。
+// Register 注册 pixiv_remove_novel_bookmark。
 func Register(app *runtime.App, server *mcp.Server) {
-	runtime.AddTool(app, server, &mcp.Tool{Name: "remove_novel_bookmark", Description: "Remove a novel from bookmarks."}, func(ctx context.Context, request *mcp.CallToolRequest, input In) (*mcp.CallToolResult, outputs.Mutation, error) {
+	runtime.AddTool(app, server, &mcp.Tool{Name: "pixiv_remove_novel_bookmark", Annotations: &mcp.ToolAnnotations{ReadOnlyHint: false, DestructiveHint: new(true), IdempotentHint: true, OpenWorldHint: new(true)}, Description: "Remove a novel from bookmarks."}, func(ctx context.Context, request *mcp.CallToolRequest, input In) (*mcp.CallToolResult, outputs.Mutation, error) {
 		return handleRemoveNovelBookmark(ctx, app, input)
 	})
 }

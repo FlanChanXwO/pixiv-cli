@@ -361,7 +361,7 @@ This is the maintainer-side authority for capabilities that **must not have a re
 
 | ID | Unique owner | Current evidence | Close-out condition |
 | --- | --- | --- | --- |
-| `ART-SEARCH-RATING` | `internal/cli/commands/pixiv/search` + `internal/shared/searchfilter` + `sdk/pixiv` | CLI artwork search filters normalized `x_restrict` locally and binds the filter to its cursor; it does not send an upstream rating field. MCP `search_illust` has no standalone rating parameter | Preserve the local CLI contract and test cursor/filter consistency; exposing a new MCP parameter or upstream field requires its own supported behavior and synchronized schema/docs |
+| `ART-SEARCH-RATING` | `internal/cli/commands/pixiv/search` + `internal/shared/searchfilter` + `sdk/pixiv` | CLI artwork search filters normalized `x_restrict` locally and binds the filter to its cursor; it does not send an upstream rating field. MCP `pixiv_search_illust` has no standalone rating parameter | Preserve the local CLI contract and test cursor/filter consistency; exposing a new MCP parameter or upstream field requires its own supported behavior and synchronized schema/docs |
 | `NOVEL-SEARCH-ADVANCED` | No owner (must not be added) | SDK/MCP schema has no advanced field | May be evaluated once the upstream contract appears; schema-only placeholders are forbidden |
 
 **Evidence-gated (an SDK-only migration seam may exist; release-ready entry points still require the close-out condition):**

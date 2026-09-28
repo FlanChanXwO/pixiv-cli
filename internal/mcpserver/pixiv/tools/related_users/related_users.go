@@ -1,4 +1,4 @@
-// Package related_users 实现 related_users tool。
+// Package related_users 实现 pixiv_related_users tool。
 package related_users
 
 import (
@@ -12,9 +12,9 @@ import (
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
-// Register 注册 related_users。
+// Register 注册 pixiv_related_users。
 func Register(app *runtime.App, server *mcp.Server) {
-	runtime.AddTool(app, server, &mcp.Tool{Name: "related_users", Description: "Find users related to a Pixiv user.", InputSchema: schemas.List(map[string]any{
+	runtime.AddTool(app, server, &mcp.Tool{Name: "pixiv_related_users", Annotations: &mcp.ToolAnnotations{ReadOnlyHint: true, DestructiveHint: new(false), IdempotentHint: true, OpenWorldHint: new(true)}, Description: "Find users related to a Pixiv user.", InputSchema: schemas.List(map[string]any{
 		"user_id":     schemas.PositiveInteger("Optional positive Pixiv user ID; defaults to the authenticated user."),
 		"restrict":    schemas.EnumString("Compatibility visibility field.", "public", "private"),
 		"user_filter": filters.UserFilterSchema(),

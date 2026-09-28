@@ -13,7 +13,7 @@ import (
 
 // Register 注册 fanbox_open_resource。
 func Register(app *runtime.App, server *mcp.Server) {
-	runtime.AddTool(app, server, &mcp.Tool{Name: "fanbox_open_resource", Description: "Open a FANBOX media resource by ref and return its safe metadata and status without the bytes."}, func(ctx context.Context, request *mcp.CallToolRequest, input In) (*mcp.CallToolResult, Out, error) {
+	runtime.AddTool(app, server, &mcp.Tool{Name: "fanbox_open_resource", Annotations: &mcp.ToolAnnotations{ReadOnlyHint: true, DestructiveHint: new(false), IdempotentHint: true, OpenWorldHint: new(true)}, Description: "Open a FANBOX media resource by ref and return its safe metadata and status without the bytes."}, func(ctx context.Context, request *mcp.CallToolRequest, input In) (*mcp.CallToolResult, Out, error) {
 		return handle(ctx, app, input)
 	})
 }

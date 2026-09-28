@@ -1,4 +1,4 @@
-// Package mypixiv_users 实现 mypixiv_users tool。
+// Package mypixiv_users 实现 pixiv_mypixiv_users tool。
 package mypixiv_users
 
 import (
@@ -14,9 +14,9 @@ import (
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
-// Register 注册 mypixiv_users。
+// Register 注册 pixiv_mypixiv_users。
 func Register(app *runtime.App, server *mcp.Server) {
-	runtime.AddTool(app, server, &mcp.Tool{Name: "mypixiv_users", Description: "Browse MyPixiv users for the authenticated account through the App API.", InputSchema: schemas.List(map[string]any{
+	runtime.AddTool(app, server, &mcp.Tool{Name: "pixiv_mypixiv_users", Annotations: &mcp.ToolAnnotations{ReadOnlyHint: true, DestructiveHint: new(false), IdempotentHint: true, OpenWorldHint: new(true)}, Description: "Browse MyPixiv users for the authenticated account through the App API.", InputSchema: schemas.List(map[string]any{
 		"user_filter": filters.UserFilterSchema(),
 	}), OutputSchema: records.RecordsOutputSchema()}, func(ctx context.Context, request *mcp.CallToolRequest, input In) (*mcp.CallToolResult, outputs.Records, error) {
 		return handleMyPixivUsers(ctx, app, input)

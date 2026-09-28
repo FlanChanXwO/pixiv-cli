@@ -1,4 +1,4 @@
-// Package delete_artwork_comment 实现 delete_artwork_comment tool。
+// Package delete_artwork_comment 实现 pixiv_delete_artwork_comment tool。
 package delete_artwork_comment
 
 import (
@@ -12,10 +12,10 @@ import (
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
-// Register 注册 delete_artwork_comment。
+// Register 注册 pixiv_delete_artwork_comment。
 func Register(app *runtime.App, server *mcp.Server) {
 	runtime.AddTool(app, server, &mcp.Tool{
-		Name:        "delete_artwork_comment",
+		Name: "pixiv_delete_artwork_comment", Annotations: &mcp.ToolAnnotations{ReadOnlyHint: false, DestructiveHint: new(true), IdempotentHint: true, OpenWorldHint: new(true)},
 		Description: "Delete a Pixiv artwork comment by comment ID.",
 		InputSchema: schemas.ClosedObject(map[string]any{
 			"comment_id": schemas.PositiveInteger("Positive Pixiv comment ID."),

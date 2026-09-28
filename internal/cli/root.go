@@ -44,7 +44,7 @@ import (
 	"github.com/FlanChanXwO/pixiv-cli/internal/cli/pipeline"
 	"github.com/FlanChanXwO/pixiv-cli/internal/config/paths"
 	configapp "github.com/FlanChanXwO/pixiv-cli/internal/config/settings"
-	stdiotransport "github.com/FlanChanXwO/pixiv-cli/internal/mcpserver"
+	unifiedmcp "github.com/FlanChanXwO/pixiv-cli/internal/mcpserver"
 	fanboxmcpserver "github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/fanbox"
 	mcpserver "github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv"
 	downloader "github.com/FlanChanXwO/pixiv-cli/internal/media/downloader"
@@ -142,7 +142,7 @@ var (
 	runMCPServer = func(a app, ctx context.Context, request mcpcommands.Request) error {
 		return a.runPixivMCP(ctx, request)
 	}
-	runMCPStdio          = stdiotransport.RunStdio
+	runMCPStdio          = unifiedmcp.RunStdio
 	ensureURLSchemeRelay = loginhelper.EnsurePersistentIfNeeded
 	canPrompt            = func(a app) bool { return authcommands.CanPrompt(a.in, a.out) }
 	promptInput          = func(a app, message, defaultValue string) (string, error) {
@@ -850,13 +850,8 @@ func (a app) fanboxDataDeps() fanboxcommands.Data {
 		PromptConfirmFn: func(message string, defaultValue bool) (bool, error) {
 			return promptConfirm(a, message, defaultValue)
 		},
-		RunMCPServer: func(cmd *cobra.Command, service *fanboxapp.Facade, proxy *string) error {
-			ports := fanboxmcpserver.SDKPorts{
-				OpenLease: func(ctx context.Context, account fanboxmcpserver.Account) (*lifecycle.Lease[*fanbox.Client], error) {
-					return service.Open(ctx, fanboxapp.OpenRequest{ProxyOverride: account.HTTPSProxyOverride})
-				},
-			}
-			return stdiotransport.RunStdio(cmd.Context(), fanboxmcpserver.NewWithProxy(ports, proxy))
+		RunMCPServer: func(cmd *cobra.Command, _ *fanboxapp.Facade, proxy *string) error {
+			return a.runPixivMCP(cmd.Context(), mcpcommands.Request{HTTPSProxyOverride: proxy})
 		},
 	}
 }
@@ -994,13 +989,8 @@ func (a app) runPixivMCP(ctx context.Context, request mcpcommands.Request) error
 	account := mcpserver.Account{
 		HTTPSProxyOverride: request.HTTPSProxyOverride,
 	}
-	manager := downloader.NewManager(nil, runtime.DownloadPath, runtime.FilenameTemplate)
-	manager.SetDirectoryTemplate(runtime.DirectoryTemplate)
-	server := mcpserver.NewWithSDKDownloadFactory(manager, func(client *pixiv.Client) mcpserver.DownloadManager {
-		snapshot := downloader.NewManager(client, runtime.DownloadPath, runtime.FilenameTemplate)
-		snapshot.SetDirectoryTemplate(runtime.DirectoryTemplate)
-		return snapshot
-	}, mcpserver.SDKPorts{
+	fanboxService := a.fanboxDataDeps().ServiceFactory
+	server := unifiedmcp.New(mcpserver.SDKPorts{
 		Open: func(account mcpserver.Account) (*pixiv.Client, error) {
 			return ports.open(pixivdeps.Request{UserID: account.UserID, HTTPSProxyOverride: account.HTTPSProxyOverride})
 		},
@@ -1011,7 +1001,15 @@ func (a app) runPixivMCP(ctx context.Context, request mcpcommands.Request) error
 			return ports.run(ctx, pixivdeps.Request{UserID: account.UserID, HTTPSProxyOverride: account.HTTPSProxyOverride}, attempt)
 		},
 		ReverseSearch: reverseSearchPorts,
-	}, account)
+	}, account, fanboxmcpserver.SDKPorts{
+		OpenLease: func(ctx context.Context, account fanboxmcpserver.Account) (*lifecycle.Lease[*fanbox.Client], error) {
+			service, err := fanboxService()
+			if err != nil {
+				return nil, err
+			}
+			return service.Open(ctx, fanboxapp.OpenRequest{ProxyOverride: account.HTTPSProxyOverride})
+		},
+	}, request.HTTPSProxyOverride)
 	return runMCPStdio(ctx, server)
 }
 

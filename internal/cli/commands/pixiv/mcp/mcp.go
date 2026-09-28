@@ -35,7 +35,7 @@ func NewCommand(host Host) *cobra.Command {
 	var options ProxyOptions
 	cmd := &cobra.Command{
 		Use:     "mcp",
-		Short:   "Run the MCP stdio server",
+		Short:   "Run the unified Pixiv/FANBOX MCP stdio server",
 		Example: "pixiv mcp",
 		Args:    host.RequireExactArgs(0, "pixiv mcp"),
 		RunE: func(cmd *cobra.Command, args []string) error {

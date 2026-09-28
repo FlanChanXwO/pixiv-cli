@@ -8,7 +8,6 @@ import (
 	"strings"
 	"testing"
 
-	pixivmcpserver "github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv"
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/internal/outputs"
 	"github.com/FlanChanXwO/pixiv-cli/sdk"
 	pixiv "github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
@@ -28,7 +27,7 @@ func TestIllustRankingPassesRequestAndReturnsRecord(t *testing.T) {
 	session, closeSession := newSDKTestSession(t, client)
 	defer closeSession()
 
-	result := callTool(t, session, "illust_ranking", map[string]any{
+	result := callTool(t, session, "pixiv_illust_ranking", map[string]any{
 		"mode": "day_male", "date": "2025-02-03", "page": 3, "limit": 1,
 	})
 	var out outputs.Records
@@ -51,7 +50,7 @@ func TestIllustSeriesMapsRequestAndReturnsRecords(t *testing.T) {
 	session, closeSession := newSDKTestSession(t, client)
 	defer closeSession()
 
-	result := callTool(t, session, "illust_series", map[string]any{"series_id": 10})
+	result := callTool(t, session, "pixiv_illust_series", map[string]any{"series_id": 10})
 	if result.IsError || client.artworkSeriesRequest.SeriesID != 10 {
 		t.Fatalf("illust series result=%+v request=%+v", result, client.artworkSeriesRequest)
 	}
@@ -69,7 +68,7 @@ func TestNovelDetailMapsRequestAndReturnsRecords(t *testing.T) {
 	session, closeSession := newSDKTestSession(t, client)
 	defer closeSession()
 
-	result := callTool(t, session, "novel_detail", map[string]any{"novel_id": 12})
+	result := callTool(t, session, "pixiv_novel_detail", map[string]any{"novel_id": 12})
 	if result.IsError || client.novelRequest.NovelID != 12 {
 		t.Fatalf("novel detail result=%+v request=%+v", result, client.novelRequest)
 	}
@@ -85,7 +84,7 @@ func TestNovelContentReportsUnsupportedWithoutCallingRejectedEndpoint(t *testing
 	session, closeSession := newSDKTestSession(t, client)
 	defer closeSession()
 
-	result := callTool(t, session, "novel_content", map[string]any{"novel_id": 12})
+	result := callTool(t, session, "pixiv_novel_content", map[string]any{"novel_id": 12})
 	if !result.IsError || client.novelContentRequest.NovelID != 0 {
 		t.Fatalf("novel content result=%+v request=%+v", result, client.novelContentRequest)
 	}
@@ -114,7 +113,7 @@ func TestIllustCommentsMapsRequestAndPreservesEnvelope(t *testing.T) {
 	session, closeSession := newSDKTestSession(t, client)
 	defer closeSession()
 
-	result := callTool(t, session, "illust_comments", map[string]any{"id": 20})
+	result := callTool(t, session, "pixiv_illust_comments", map[string]any{"id": 20})
 	if result.IsError || client.artworkCommentsRequest.ArtworkID != 20 {
 		t.Fatalf("artwork comments result=%+v request=%+v", result, client.artworkCommentsRequest)
 	}
@@ -136,7 +135,7 @@ func TestIllustCommentsPreservesOpaqueNumericAccessControl(t *testing.T) {
 	session, closeSession := newSDKTestSession(t, client)
 	defer closeSession()
 
-	result := callTool(t, session, "illust_comments", map[string]any{"id": 20})
+	result := callTool(t, session, "pixiv_illust_comments", map[string]any{"id": 20})
 	if result.IsError {
 		t.Fatalf("artwork comments result=%+v", result)
 	}
@@ -180,7 +179,7 @@ func TestSDKRecommendedAllReturnsEveryStreamAndPagination(t *testing.T) {
 	session, closeSession := newSDKTestSession(t, client)
 	defer closeSession()
 
-	result := callTool(t, session, "recommended", map[string]any{"kind": "all", "limit": 2})
+	result := callTool(t, session, "pixiv_recommended", map[string]any{"kind": "all", "limit": 2})
 	if result.IsError || !slices.Equal(order, []string{"visual", "novel", "user"}) {
 		t.Fatalf("recommended all result=%+v order=%v", result, order)
 	}
@@ -228,7 +227,7 @@ func TestSDKRecommendedSingleKindsAndInputFailures(t *testing.T) {
 			}
 			session, closeSession := newSDKTestSession(t, client)
 			defer closeSession()
-			result := callTool(t, session, "recommended", map[string]any{"kind": test.kind})
+			result := callTool(t, session, "pixiv_recommended", map[string]any{"kind": test.kind})
 			wantCall := test.want
 			if wantCall == "illust" || wantCall == "manga" {
 				wantCall = "visual"
@@ -243,15 +242,15 @@ func TestSDKRecommendedSingleKindsAndInputFailures(t *testing.T) {
 	session, closeSession := newSDKTestSession(t, client)
 	defer closeSession()
 	for _, input := range []map[string]any{{"kind": "unknown"}, {}, {"kind": 9}} {
-		result, err := session.CallTool(context.Background(), &mcp.CallToolParams{Name: "recommended", Arguments: input})
+		result, err := session.CallTool(context.Background(), &mcp.CallToolParams{Name: "pixiv_recommended", Arguments: input})
 		if err == nil && (result == nil || !result.IsError) {
 			t.Fatalf("input=%v result=%+v error=%v", input, result, err)
 		}
 	}
 
-	noSDKSession, closeNoSDKSession := newTestSession(t, &fakeDownloads{})
+	noSDKSession, closeNoSDKSession := newTestSession(t)
 	defer closeNoSDKSession()
-	result := callTool(t, noSDKSession, "recommended", map[string]any{"kind": "illust"})
+	result := callTool(t, noSDKSession, "pixiv_recommended", map[string]any{"kind": "illust"})
 	if !result.IsError {
 		t.Fatalf("unconfigured SDK result=%+v", result)
 	}
@@ -269,7 +268,7 @@ func TestSDKRecommendedMangaLimitDoesNotScanPastLogicalArtworkWindow(t *testing.
 	session, closeSession := newSDKTestSession(t, client)
 	defer closeSession()
 
-	result := callTool(t, session, "recommended", map[string]any{"kind": "manga", "limit": 1})
+	result := callTool(t, session, "pixiv_recommended", map[string]any{"kind": "manga", "limit": 1})
 	if result.IsError {
 		t.Fatalf("recommended manga result=%+v", result)
 	}
@@ -291,7 +290,7 @@ func TestSDKRecommendedAllFailureDoesNotExposePartialStructuredOutput(t *testing
 	}
 	session, closeSession := newSDKTestSession(t, client)
 	defer closeSession()
-	result := callTool(t, session, "recommended", map[string]any{"kind": "all"})
+	result := callTool(t, session, "pixiv_recommended", map[string]any{"kind": "all"})
 	if !result.IsError {
 		t.Fatalf("all failure result=%+v", result)
 	}
@@ -315,7 +314,7 @@ func TestIllustRecommendedUsesSDKAndLogicalPageSkip(t *testing.T) {
 	}
 	session, closeSession := newSDKTestSession(t, client)
 	defer closeSession()
-	result := callTool(t, session, "illust_recommended", map[string]any{"page": 2, "limit": 1})
+	result := callTool(t, session, "pixiv_illust_recommended", map[string]any{"page": 2, "limit": 1})
 	var out outputs.Records
 	decodeStructured(t, result, &out)
 	if result.IsError || len(requests) != 1 || !requests[0].Cursor.IsZero() || len(out.Records) != 1 || out.Records[0].ID() != "77" {
@@ -341,7 +340,7 @@ func TestSearchIllustFilterFillsLogicalLimitAndDeduplicatesAcrossPages(t *testin
 	session, closeSession := newSDKTestSession(t, client)
 	defer closeSession()
 
-	result := callTool(t, session, "search_illust", map[string]any{
+	result := callTool(t, session, "pixiv_search_illust", map[string]any{
 		"word": "cat", "limit": 2,
 		"illust_filter": map[string]any{"tags": []string{"keep"}, "min_views": 10, "min_pages": 2},
 	})
@@ -391,7 +390,7 @@ func TestEntityToolsExposeOnlyRecordsContract(t *testing.T) {
 			return sdk.Page[pixiv.Artwork]{Items: []pixiv.Artwork{testSDKIllust(5, "ranking", 5)}}, nil
 		},
 		recommendedArtworks: func(context.Context, pixiv.RecommendedArtworksRequest, int) (sdk.Page[pixiv.Artwork], error) {
-			return sdk.Page[pixiv.Artwork]{Items: []pixiv.Artwork{testSDKIllust(6, "recommended", 6)}}, nil
+			return sdk.Page[pixiv.Artwork]{Items: []pixiv.Artwork{testSDKIllust(6, "pixiv_recommended", 6)}}, nil
 		},
 		userDetailResult: pixiv.UserDetail{User: pixiv.User{ID: 7, Name: "detail-user"}, Profile: pixiv.UserProfile{Region: "Tokyo"}},
 	}
@@ -402,18 +401,18 @@ func TestEntityToolsExposeOnlyRecordsContract(t *testing.T) {
 		name string
 		args map[string]any
 	}{
-		{"search_illust", map[string]any{"word": "record"}},
-		{"search_novel", map[string]any{"word": "record"}},
-		{"illust_detail", map[string]any{"illust_id": 4}},
-		{"illust_related", map[string]any{"illust_id": 4}},
-		{"illust_ranking", map[string]any{}},
-		{"illust_recommended", map[string]any{}},
-		{"timeline_illust_following", map[string]any{}},
-		{"search_user", map[string]any{"word": "record"}},
-		{"user_detail", map[string]any{"user_id": 7}},
-		{"user_artworks", map[string]any{"user_id": 90}},
-		{"user_bookmarks", map[string]any{"user_id": 90}},
-		{"user_following", map[string]any{"user_id": 90}},
+		{"pixiv_search_illust", map[string]any{"word": "record"}},
+		{"pixiv_search_novel", map[string]any{"word": "record"}},
+		{"pixiv_illust_detail", map[string]any{"illust_id": 4}},
+		{"pixiv_illust_related", map[string]any{"illust_id": 4}},
+		{"pixiv_illust_ranking", map[string]any{}},
+		{"pixiv_illust_recommended", map[string]any{}},
+		{"pixiv_timeline_illust_following", map[string]any{}},
+		{"pixiv_search_user", map[string]any{"word": "record"}},
+		{"pixiv_user_detail", map[string]any{"user_id": 7}},
+		{"pixiv_user_artworks", map[string]any{"user_id": 90}},
+		{"pixiv_user_bookmarks", map[string]any{"user_id": 90}},
+		{"pixiv_user_following", map[string]any{"user_id": 90}},
 	} {
 		t.Run(tool.name, func(t *testing.T) {
 			result := callTool(t, session, tool.name, tool.args)
@@ -422,23 +421,6 @@ func TestEntityToolsExposeOnlyRecordsContract(t *testing.T) {
 			}
 			assertRecordsOnlyStructuredOutput(t, result)
 		})
-	}
-}
-
-func TestServerImplementationVersionIsProtocolOnlyException(t *testing.T) {
-	server := pixivmcpserver.New(&fakeAPI{}, &fakeDownloads{})
-	clientTransport, serverTransport := mcp.NewInMemoryTransports()
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-	go func() { _ = server.Run(ctx, serverTransport) }()
-	client := mcp.NewClient(&mcp.Implementation{Name: "test", Version: "1"}, nil)
-	session, err := client.Connect(ctx, clientTransport, nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer func() { _ = session.Close() }()
-	if session.InitializeResult().ServerInfo.Version != "3.0.0" {
-		t.Fatalf("serverInfo.version=%q, want 3.0.0", session.InitializeResult().ServerInfo.Version)
 	}
 }
 

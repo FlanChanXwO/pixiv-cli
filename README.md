@@ -16,7 +16,7 @@
 
 ## Why pixiv-cli?
 
-- **One capability surface** — keyword search, details, rankings, recommendations, users, bookmarks, follows, downloads, and ugoira across CLI, MCP, and SDK; reverse-image search is integrated into the CLI/MCP surface.
+- **One capability surface** — keyword search, details, rankings, recommendations, users, bookmarks, and follows across CLI, MCP, and SDK; local downloads and ugoira encoding remain CLI/SDK capabilities; reverse-image search is integrated into the CLI/MCP surface.
 - **Read-only FANBOX access** — authenticate with `FANBOXSESSID`, inspect creators, posts, home/supporting feeds, tags, and first-party file resources through the CLI, MCP, or `sdk/fanbox`.
 - **Composable visual pipelines** — visual lists automatically emit canonical NDJSON when piped; use `--filter` for typed local artwork rules and pass matching records straight to `download`.
 - **Local account pools** — enable database-backed scheduling for read workloads with `pixiv auth pool status|enable|disable`; selection honors Pixiv `Retry-After` responses without exposing credentials.
@@ -232,7 +232,7 @@ pixiv timeline latest --type illust --limit 10 --json
 
 Reverse-image search is available through the CLI/MCP integration; the public Go SDK also exposes typed artwork/novel bookmark and comment mutations.
 
-Start the stdio server explicitly. stdout remains reserved for JSON-RPC; tool failures are returned as structured results with `isError=true`. No project-level or daily log files are created by default.
+Start the unified Pixiv/FANBOX stdio server explicitly. stdout remains reserved for JSON-RPC; tool failures are returned as structured results with `isError=true`. No project-level or daily log files are created by default.
 
 ```bash
 pixiv mcp

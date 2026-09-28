@@ -16,7 +16,7 @@ import (
 func New(data deps.Data) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:     "mcp",
-		Short:   "Run the FANBOX MCP stdio server",
+		Short:   "Run the unified Pixiv/FANBOX MCP stdio server",
 		Example: "pixiv fanbox mcp",
 		Args:    data.RequireExactArgs(0, "pixiv fanbox mcp"),
 		RunE: func(cmd *cobra.Command, _ []string) error {

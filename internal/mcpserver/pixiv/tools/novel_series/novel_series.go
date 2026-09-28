@@ -1,4 +1,4 @@
-// Package novel_series 实现 novel_series tool。
+// Package novel_series 实现 pixiv_novel_series tool。
 package novel_series
 
 import (
@@ -13,9 +13,9 @@ import (
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
-// Register 注册 novel_series。
+// Register 注册 pixiv_novel_series。
 func Register(app *runtime.App, server *mcp.Server) {
-	runtime.AddTool(app, server, &mcp.Tool{Name: "novel_series", Description: "Browse novels in a Pixiv series.", OutputSchema: records.NovelSeriesOutputSchema()}, func(ctx context.Context, request *mcp.CallToolRequest, input In) (*mcp.CallToolResult, outputs.NovelSeries, error) {
+	runtime.AddTool(app, server, &mcp.Tool{Name: "pixiv_novel_series", Annotations: &mcp.ToolAnnotations{ReadOnlyHint: true, DestructiveHint: new(false), IdempotentHint: true, OpenWorldHint: new(true)}, Description: "Browse novels in a Pixiv series.", OutputSchema: records.NovelSeriesOutputSchema()}, func(ctx context.Context, request *mcp.CallToolRequest, input In) (*mcp.CallToolResult, outputs.NovelSeries, error) {
 		return handleNovelSeries(ctx, app, input)
 	})
 }

@@ -34,9 +34,9 @@ func TestArtworkNovelReadOutputSchemasMatchWireEnvelopes(t *testing.T) {
 		required []string
 		fields   []string
 	}{
-		{name: "illust_detail", required: []string{"records"}, fields: []string{"records"}},
-		{name: "novel_detail", required: []string{"records"}, fields: []string{"records"}},
-		{name: "novel_series", required: []string{"series", "records", "pagination"}, fields: []string{"series", "records", "pagination"}},
+		{name: "pixiv_illust_detail", required: []string{"records"}, fields: []string{"records"}},
+		{name: "pixiv_novel_detail", required: []string{"records"}, fields: []string{"records"}},
+		{name: "pixiv_novel_series", required: []string{"series", "records", "pagination"}, fields: []string{"series", "records", "pagination"}},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			schema, ok := byName[test.name]
@@ -95,14 +95,14 @@ func TestArtworkNovelReadInputSchemasMatchLegacyWireFields(t *testing.T) {
 		required []string
 		fields   []string
 	}{
-		{name: "search_illust", required: []string{"word"}, fields: []string{"word", "search_target", "sort", "duration", "start_date", "end_date", "page", "limit", "content_type", "ai_mode", "aspect_ratio", "resolution", "tool", "bookmark_min", "bookmark_max", "bookmark_strategy", "illust_filter"}},
-		{name: "search_novel", required: []string{"word"}, fields: []string{"word", "search_target", "sort", "duration", "page", "limit", "novel_filter"}},
-		{name: "illust_detail", fields: []string{"illust_id", "url"}},
-		{name: "illust_related", required: []string{"illust_id"}, fields: []string{"illust_id", "illust_filter", "page", "limit"}},
-		{name: "illust_series", required: []string{"series_id"}, fields: []string{"series_id", "page", "limit"}},
-		{name: "novel_detail", required: []string{"novel_id"}, fields: []string{"novel_id"}},
-		{name: "novel_content", required: []string{"novel_id"}, fields: []string{"novel_id"}},
-		{name: "novel_series", required: []string{"series_id"}, fields: []string{"series_id", "page", "limit"}},
+		{name: "pixiv_search_illust", required: []string{"word"}, fields: []string{"word", "search_target", "sort", "duration", "start_date", "end_date", "page", "limit", "content_type", "ai_mode", "aspect_ratio", "resolution", "tool", "bookmark_min", "bookmark_max", "bookmark_strategy", "illust_filter"}},
+		{name: "pixiv_search_novel", required: []string{"word"}, fields: []string{"word", "search_target", "sort", "duration", "page", "limit", "novel_filter"}},
+		{name: "pixiv_illust_detail", fields: []string{"illust_id", "url"}},
+		{name: "pixiv_illust_related", required: []string{"illust_id"}, fields: []string{"illust_id", "illust_filter", "page", "limit"}},
+		{name: "pixiv_illust_series", required: []string{"series_id"}, fields: []string{"series_id", "page", "limit"}},
+		{name: "pixiv_novel_detail", required: []string{"novel_id"}, fields: []string{"novel_id"}},
+		{name: "pixiv_novel_content", required: []string{"novel_id"}, fields: []string{"novel_id"}},
+		{name: "pixiv_novel_series", required: []string{"series_id"}, fields: []string{"series_id", "page", "limit"}},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			schema, ok := byName[test.name]
@@ -151,7 +151,7 @@ func TestArtworkNovelReadLegacyJSONReplayPreservesStructuredContracts(t *testing
 		assert  func(*testing.T, *fakeSDKClient, *mcp.CallToolResult)
 	}{
 		{
-			name:    "search_illust",
+			name:    "pixiv_search_illust",
 			fixture: `{"word":"cat"}`,
 			client: func() *fakeSDKClient {
 				return &fakeSDKClient{searchIllust: func(_ context.Context, _ pixiv.SearchArtworksRequest) (sdk.Page[pixiv.Artwork], error) {
@@ -161,7 +161,7 @@ func TestArtworkNovelReadLegacyJSONReplayPreservesStructuredContracts(t *testing
 			assert: assertArtworkNovelReplaySuccess("101"),
 		},
 		{
-			name:    "search_novel",
+			name:    "pixiv_search_novel",
 			fixture: `{"word":"cat"}`,
 			client: func() *fakeSDKClient {
 				return &fakeSDKClient{searchNovel: func(_ context.Context, _ pixiv.SearchNovelsRequest) (sdk.Page[pixiv.Novel], error) {
@@ -171,7 +171,7 @@ func TestArtworkNovelReadLegacyJSONReplayPreservesStructuredContracts(t *testing
 			assert: assertArtworkNovelReplaySuccess("201"),
 		},
 		{
-			name:    "illust_detail",
+			name:    "pixiv_illust_detail",
 			fixture: `{"illust_id":101}`,
 			client: func() *fakeSDKClient {
 				return &fakeSDKClient{illustDetail: func(_ context.Context, id int64) (pixiv.Artwork, error) {
@@ -181,7 +181,7 @@ func TestArtworkNovelReadLegacyJSONReplayPreservesStructuredContracts(t *testing
 			assert: assertArtworkNovelReplaySuccess("101"),
 		},
 		{
-			name:    "illust_related",
+			name:    "pixiv_illust_related",
 			fixture: `{"illust_id":101}`,
 			client: func() *fakeSDKClient {
 				return &fakeSDKClient{relatedArtworks: func(_ context.Context, request pixiv.RelatedArtworksRequest) (sdk.Page[pixiv.Artwork], error) {
@@ -194,7 +194,7 @@ func TestArtworkNovelReadLegacyJSONReplayPreservesStructuredContracts(t *testing
 			assert: assertArtworkNovelReplaySuccess("102"),
 		},
 		{
-			name:    "illust_series",
+			name:    "pixiv_illust_series",
 			fixture: `{"series_id":301}`,
 			client: func() *fakeSDKClient {
 				return &fakeSDKClient{artworkSeriesPage: sdk.Page[pixiv.Artwork]{Items: []pixiv.Artwork{testSDKIllust(302, "series", 1)}}}
@@ -202,7 +202,7 @@ func TestArtworkNovelReadLegacyJSONReplayPreservesStructuredContracts(t *testing
 			assert: assertArtworkNovelReplaySuccess("302"),
 		},
 		{
-			name:    "novel_detail",
+			name:    "pixiv_novel_detail",
 			fixture: `{"novel_id":201}`,
 			client: func() *fakeSDKClient {
 				return &fakeSDKClient{novelDetailResult: pixiv.Novel{ID: 201, Title: "detail", User: pixiv.User{ID: 1}}}
@@ -210,7 +210,7 @@ func TestArtworkNovelReadLegacyJSONReplayPreservesStructuredContracts(t *testing
 			assert: assertArtworkNovelReplaySuccess("201"),
 		},
 		{
-			name:    "novel_content",
+			name:    "pixiv_novel_content",
 			fixture: `{"novel_id":201}`,
 			client:  func() *fakeSDKClient { return &fakeSDKClient{} },
 			assert: func(t *testing.T, client *fakeSDKClient, result *mcp.CallToolResult) {
@@ -223,7 +223,7 @@ func TestArtworkNovelReadLegacyJSONReplayPreservesStructuredContracts(t *testing
 			},
 		},
 		{
-			name:    "novel_series",
+			name:    "pixiv_novel_series",
 			fixture: `{"series_id":302}`,
 			client: func() *fakeSDKClient {
 				return &fakeSDKClient{novelSeries: func(_ context.Context, request pixiv.NovelSeriesRequest) (pixiv.NovelSeriesResult, error) {
@@ -263,7 +263,7 @@ func TestArtworkNovelReadSDKFailuresPreserveSafeStructuredEnvelopes(t *testing.T
 		client  func() *fakeSDKClient
 	}{
 		{
-			name:    "search_illust",
+			name:    "pixiv_search_illust",
 			fixture: `{"word":"cat"}`,
 			client: func() *fakeSDKClient {
 				return &fakeSDKClient{searchIllust: func(context.Context, pixiv.SearchArtworksRequest) (sdk.Page[pixiv.Artwork], error) {
@@ -272,7 +272,7 @@ func TestArtworkNovelReadSDKFailuresPreserveSafeStructuredEnvelopes(t *testing.T
 			},
 		},
 		{
-			name:    "search_novel",
+			name:    "pixiv_search_novel",
 			fixture: `{"word":"cat"}`,
 			client: func() *fakeSDKClient {
 				return &fakeSDKClient{searchNovel: func(context.Context, pixiv.SearchNovelsRequest) (sdk.Page[pixiv.Novel], error) {
@@ -281,7 +281,7 @@ func TestArtworkNovelReadSDKFailuresPreserveSafeStructuredEnvelopes(t *testing.T
 			},
 		},
 		{
-			name:    "illust_detail",
+			name:    "pixiv_illust_detail",
 			fixture: `{"illust_id":101}`,
 			client: func() *fakeSDKClient {
 				return &fakeSDKClient{illustDetail: func(context.Context, int64) (pixiv.Artwork, error) {
@@ -290,7 +290,7 @@ func TestArtworkNovelReadSDKFailuresPreserveSafeStructuredEnvelopes(t *testing.T
 			},
 		},
 		{
-			name:    "illust_related",
+			name:    "pixiv_illust_related",
 			fixture: `{"illust_id":101}`,
 			client: func() *fakeSDKClient {
 				return &fakeSDKClient{relatedArtworks: func(context.Context, pixiv.RelatedArtworksRequest) (sdk.Page[pixiv.Artwork], error) {
@@ -299,7 +299,7 @@ func TestArtworkNovelReadSDKFailuresPreserveSafeStructuredEnvelopes(t *testing.T
 			},
 		},
 		{
-			name:    "illust_series",
+			name:    "pixiv_illust_series",
 			fixture: `{"series_id":301}`,
 			client: func() *fakeSDKClient {
 				return &fakeSDKClient{artworkSeries: func(context.Context, pixiv.ArtworkSeriesRequest) (sdk.Page[pixiv.Artwork], error) {
@@ -308,7 +308,7 @@ func TestArtworkNovelReadSDKFailuresPreserveSafeStructuredEnvelopes(t *testing.T
 			},
 		},
 		{
-			name:    "novel_detail",
+			name:    "pixiv_novel_detail",
 			fixture: `{"novel_id":201}`,
 			client: func() *fakeSDKClient {
 				return &fakeSDKClient{novelDetail: func(context.Context, int64) (pixiv.Novel, error) {
@@ -317,7 +317,7 @@ func TestArtworkNovelReadSDKFailuresPreserveSafeStructuredEnvelopes(t *testing.T
 			},
 		},
 		{
-			name:    "novel_series",
+			name:    "pixiv_novel_series",
 			fixture: `{"series_id":302}`,
 			client: func() *fakeSDKClient {
 				return &fakeSDKClient{novelSeries: func(context.Context, pixiv.NovelSeriesRequest) (pixiv.NovelSeriesResult, error) {
@@ -378,10 +378,10 @@ func TestIllustRelatedRejectsNonPositiveIDBeforeSDKExecution(t *testing.T) {
 			return errors.New("unexpected SDK execution")
 		},
 	}
-	session, closeSession := newSDKTestSessionWithPorts(t, &fakeAPI{}, ports, pixivmcpserver.Account{})
+	session, closeSession := newSDKTestSessionWithPorts(t, ports, pixivmcpserver.Account{})
 	defer closeSession()
 
-	result := callTool(t, session, "illust_related", map[string]any{"illust_id": 0})
+	result := callTool(t, session, "pixiv_illust_related", map[string]any{"illust_id": 0})
 	if !result.IsError || !resultHasText(result, "illust_id must be a positive integer") {
 		t.Fatalf("invalid illust_related input result=%+v", result)
 	}

@@ -1,4 +1,4 @@
-// Package mypixiv_illusts 实现 mypixiv_illusts tool。
+// Package mypixiv_illusts 实现 pixiv_mypixiv_illusts tool。
 package mypixiv_illusts
 
 import (
@@ -14,9 +14,9 @@ import (
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
-// Register 注册 mypixiv_illusts。
+// Register 注册 pixiv_mypixiv_illusts。
 func Register(app *runtime.App, server *mcp.Server) {
-	runtime.AddTool(app, server, &mcp.Tool{Name: "mypixiv_illusts", Description: "Browse aggregated MyPixiv artworks through the App API.", InputSchema: schemas.List(map[string]any{
+	runtime.AddTool(app, server, &mcp.Tool{Name: "pixiv_mypixiv_illusts", Annotations: &mcp.ToolAnnotations{ReadOnlyHint: true, DestructiveHint: new(false), IdempotentHint: true, OpenWorldHint: new(true)}, Description: "Browse aggregated MyPixiv artworks through the App API.", InputSchema: schemas.List(map[string]any{
 		"illust_filter": filters.IllustFilterSchema(),
 	}), OutputSchema: records.RecordsOutputSchema()}, func(ctx context.Context, request *mcp.CallToolRequest, input In) (*mcp.CallToolResult, outputs.Records, error) {
 		return handleMyPixivIllusts(ctx, app, input)

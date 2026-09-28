@@ -16,7 +16,7 @@
 
 ## 为什么选择 pixiv-cli？
 
-- **一致的能力面**——CLI、MCP 与 SDK 均可完成关键词搜索、详情、排行、推荐、用户、收藏、关注、下载和 ugoira 处理；反向搜图接入 CLI/MCP 能力面。
+- **一致的能力面**——CLI、MCP 与 SDK 均可完成关键词搜索、详情、排行、推荐、用户、收藏和关注；本地下载与 ugoira 编码保留在 CLI/SDK；反向搜图接入 CLI/MCP 能力面。
 - **只读 FANBOX 能力**——通过 `FANBOXSESSID` 登录后，可从 CLI、MCP 或 `sdk/fanbox` 查看创作者、帖子、主页/支持中 feed、标签和第一方文件资源。
 - **组合式视觉作品管道**——视觉列表接入管道时自动输出 canonical NDJSON；用 `--filter` 编写有类型的本地作品筛选，并可直接传给 `download`。
 - **本地账号池**——为读取型任务选择符合条件的本地账号，并在分页和下载准备阶段遵循 Pixiv 的 `Retry-After` 响应。
@@ -232,7 +232,7 @@ pixiv timeline latest --type illust --limit 10 --json
 
 反向搜图属于 CLI/MCP integration；public Go SDK 现在也暴露 typed artwork/novel bookmark 与 comment mutation。
 
-显式启动 stdio server。stdout 只用于 JSON-RPC；tool 运行失败会以 `isError=true` 的 structured result 返回。默认不创建项目级或每日日志文件。
+显式启动统一 Pixiv/FANBOX stdio server。stdout 只用于 JSON-RPC；tool 运行失败会以 `isError=true` 的 structured result 返回。默认不创建项目级或每日日志文件。
 
 ```bash
 pixiv mcp

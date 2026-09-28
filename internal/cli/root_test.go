@@ -677,7 +677,26 @@ func TestMCPReverseSearchRegistersSearcherForStdioLifetime(t *testing.T) {
 	newCLIPixivSDKPorts = func(app) (pixivSDKPorts, error) {
 		return pixivSDKPorts{}, nil
 	}
-	runMCPStdio = func(context.Context, *mcp.Server) error { return nil }
+	runMCPStdio = func(ctx context.Context, server *mcp.Server) error {
+		clientTransport, serverTransport := mcp.NewInMemoryTransports()
+		serverSession, err := server.Connect(ctx, serverTransport, nil)
+		require.NoError(t, err)
+		defer serverSession.Close()
+		client := mcp.NewClient(&mcp.Implementation{Name: "root-test", Version: "1"}, nil)
+		session, err := client.Connect(ctx, clientTransport, nil)
+		require.NoError(t, err)
+		defer session.Close()
+		tools, err := session.ListTools(ctx, nil)
+		require.NoError(t, err)
+		names := make([]string, 0, len(tools.Tools))
+		for _, tool := range tools.Tools {
+			names = append(names, tool.Name)
+		}
+		require.Contains(t, names, "pixiv_search_illust")
+		require.Contains(t, names, "fanbox_current_user")
+		require.NotContains(t, names, "download")
+		return nil
+	}
 	t.Cleanup(func() {
 		loadCLIRuntimeConfig = oldConfig
 		newCLIMCPReverseSearch = oldReverse

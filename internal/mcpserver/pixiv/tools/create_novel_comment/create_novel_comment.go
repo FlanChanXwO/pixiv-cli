@@ -1,4 +1,4 @@
-// Package create_novel_comment 实现 create_novel_comment tool。
+// Package create_novel_comment 实现 pixiv_create_novel_comment tool。
 package create_novel_comment
 
 import (
@@ -12,10 +12,10 @@ import (
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
-// Register 注册 create_novel_comment。
+// Register 注册 pixiv_create_novel_comment。
 func Register(app *runtime.App, server *mcp.Server) {
 	runtime.AddTool(app, server, &mcp.Tool{
-		Name:        "create_novel_comment",
+		Name: "pixiv_create_novel_comment", Annotations: &mcp.ToolAnnotations{ReadOnlyHint: false, DestructiveHint: new(false), IdempotentHint: false, OpenWorldHint: new(true)},
 		Description: "Create a top-level comment on a Pixiv novel.",
 		InputSchema: schemas.ClosedObject(novelCommentProperties(), []string{"novel_id", "comment"}),
 	}, func(ctx context.Context, request *mcp.CallToolRequest, input In) (*mcp.CallToolResult, outputs.Mutation, error) {

@@ -1,6 +1,6 @@
 # pixiv-cli Agent Contract
 
-This repository provides the `pixiv` CLI, two MCP stdio servers, and the public Go packages `sdk`, `sdk/pixiv`, and `sdk/fanbox`.
+This repository provides the `pixiv` CLI, one unified Pixiv/FANBOX MCP stdio server, and the public Go packages `sdk`, `sdk/pixiv`, and `sdk/fanbox`.
 
 ## Start here
 

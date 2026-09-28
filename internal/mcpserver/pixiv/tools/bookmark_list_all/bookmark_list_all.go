@@ -21,7 +21,7 @@ import (
 // user_bookmarks 或 user_novel_bookmarks 的 wire contract。
 func Register(app *runtime.App, server *mcp.Server) {
 	runtime.AddTool(app, server, &mcp.Tool{
-		Name:        "bookmark_list_all",
+		Name: "pixiv_bookmark_list_all", Annotations: &mcp.ToolAnnotations{ReadOnlyHint: true, DestructiveHint: new(false), IdempotentHint: true, OpenWorldHint: new(true)},
 		Description: "Browse artwork bookmarks followed by novel bookmarks with one logical budget.",
 		InputSchema: schemas.List(map[string]any{
 			"user_id":  schemas.PositiveInteger("Optional positive Pixiv user ID; defaults to the authenticated user."),

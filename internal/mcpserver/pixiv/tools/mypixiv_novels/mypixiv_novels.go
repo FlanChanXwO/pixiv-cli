@@ -1,4 +1,4 @@
-// Package mypixiv_novels 实现 mypixiv_novels tool。
+// Package mypixiv_novels 实现 pixiv_mypixiv_novels tool。
 package mypixiv_novels
 
 import (
@@ -14,9 +14,9 @@ import (
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
-// Register 注册 mypixiv_novels。
+// Register 注册 pixiv_mypixiv_novels。
 func Register(app *runtime.App, server *mcp.Server) {
-	runtime.AddTool(app, server, &mcp.Tool{Name: "mypixiv_novels", Description: "Browse aggregated MyPixiv novels through the App API.", InputSchema: schemas.List(map[string]any{
+	runtime.AddTool(app, server, &mcp.Tool{Name: "pixiv_mypixiv_novels", Annotations: &mcp.ToolAnnotations{ReadOnlyHint: true, DestructiveHint: new(false), IdempotentHint: true, OpenWorldHint: new(true)}, Description: "Browse aggregated MyPixiv novels through the App API.", InputSchema: schemas.List(map[string]any{
 		"novel_filter": filters.NovelFilterSchema(),
 	}), OutputSchema: records.RecordsOutputSchema()}, func(ctx context.Context, request *mcp.CallToolRequest, input In) (*mcp.CallToolResult, outputs.Records, error) {
 		return handleMyPixivNovels(ctx, app, input)

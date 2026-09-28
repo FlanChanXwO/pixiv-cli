@@ -28,7 +28,7 @@ func TestSDKMutationTypedErrorIsMCPError(t *testing.T) {
 	session, closeSession := newSDKTestSession(t, client)
 	defer closeSession()
 
-	result := callTool(t, session, "add_bookmark", map[string]any{"illust_id": 41})
+	result := callTool(t, session, "pixiv_add_bookmark", map[string]any{"illust_id": 41})
 	if !result.IsError {
 		t.Fatalf("typed SDK mutation failure must be an MCP error: %+v", result)
 	}
@@ -49,7 +49,7 @@ func TestNovelBookmarkMutationTypedErrorIsMCPError(t *testing.T) {
 	session, closeSession := newSDKTestSession(t, client)
 	defer closeSession()
 
-	result := callTool(t, session, "add_novel_bookmark", map[string]any{"novel_id": 41})
+	result := callTool(t, session, "pixiv_add_novel_bookmark", map[string]any{"novel_id": 41})
 	if !result.IsError {
 		t.Fatalf("typed SDK novel mutation failure must be an MCP error: %+v", result)
 	}
@@ -68,8 +68,8 @@ func TestFollowMutationTypedErrorIsMCPError(t *testing.T) {
 		err  *sdk.Error
 		tool string
 	}{
-		{name: "follow_user", err: &sdk.Error{Product: "pixiv", Operation: "FollowUser", Reason: sdk.UpstreamError, HTTPStatus: http.StatusBadGateway}, tool: "follow_user"},
-		{name: "unfollow_user", err: &sdk.Error{Product: "pixiv", Operation: "UnfollowUser", Reason: sdk.UpstreamError, HTTPStatus: http.StatusBadGateway}, tool: "unfollow_user"},
+		{name: "pixiv_follow_user", err: &sdk.Error{Product: "pixiv", Operation: "FollowUser", Reason: sdk.UpstreamError, HTTPStatus: http.StatusBadGateway}, tool: "pixiv_follow_user"},
+		{name: "pixiv_unfollow_user", err: &sdk.Error{Product: "pixiv", Operation: "UnfollowUser", Reason: sdk.UpstreamError, HTTPStatus: http.StatusBadGateway}, tool: "pixiv_unfollow_user"},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			client := &fakeSDKClient{followUserErr: test.err, unfollowUserErr: test.err}
@@ -100,12 +100,12 @@ func TestSDKMutationToolsReturnStructuredSuccess(t *testing.T) {
 		want     string
 		wantText string
 	}{
-		{"add_bookmark", map[string]any{"illust_id": 9, "restrict": "private", "tags": []string{"one"}}, "add_bookmark", "Bookmarked artwork 9."},
-		{"remove_bookmark", map[string]any{"illust_id": 9}, "remove_bookmark", "Removed bookmark from artwork 9."},
-		{"add_novel_bookmark", map[string]any{"novel_id": 9, "restrict": "private", "tags": []string{"one"}}, "add_novel_bookmark", "Bookmarked novel 9."},
-		{"remove_novel_bookmark", map[string]any{"novel_id": 9}, "remove_novel_bookmark", "Removed bookmark from novel 9."},
-		{"follow_user", map[string]any{"user_id": 8, "restrict": "private"}, "follow_user", "Followed user 8."},
-		{"unfollow_user", map[string]any{"user_id": 8}, "unfollow_user", "Unfollowed user 8."},
+		{"pixiv_add_bookmark", map[string]any{"illust_id": 9, "restrict": "private", "tags": []string{"one"}}, "add_bookmark", "Bookmarked artwork 9."},
+		{"pixiv_remove_bookmark", map[string]any{"illust_id": 9}, "remove_bookmark", "Removed bookmark from artwork 9."},
+		{"pixiv_add_novel_bookmark", map[string]any{"novel_id": 9, "restrict": "private", "tags": []string{"one"}}, "add_novel_bookmark", "Bookmarked novel 9."},
+		{"pixiv_remove_novel_bookmark", map[string]any{"novel_id": 9}, "remove_novel_bookmark", "Removed bookmark from novel 9."},
+		{"pixiv_follow_user", map[string]any{"user_id": 8, "restrict": "private"}, "follow_user", "Followed user 8."},
+		{"pixiv_unfollow_user", map[string]any{"user_id": 8}, "unfollow_user", "Unfollowed user 8."},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			result := callTool(t, session, test.name, test.args)
@@ -227,7 +227,7 @@ func unsafeSchemaKeys(node any, path string) []string {
 
 func connectAndListTools(t *testing.T) []*mcp.Tool {
 	t.Helper()
-	server := pixivmcpserver.New(&fakeAPI{}, &fakeDownloads{})
+	server := newTestServer(pixivmcpserver.SDKPorts{}, pixivmcpserver.Account{})
 	clientTransport, serverTransport := mcp.NewInMemoryTransports()
 	ctx, cancel := context.WithCancel(context.Background())
 	t.Cleanup(cancel)
@@ -387,8 +387,8 @@ func TestToolOutputValuesDoNotLeakResourceTransportCanary(t *testing.T) {
 		tool string
 		args map[string]any
 	}{
-		{"user_artworks", map[string]any{"user_id": 7, "limit": 1}},
-		{"user_bookmarks", map[string]any{"user_id": 7, "limit": 1}},
+		{"pixiv_user_artworks", map[string]any{"user_id": 7, "limit": 1}},
+		{"pixiv_user_bookmarks", map[string]any{"user_id": 7, "limit": 1}},
 	} {
 		result := callTool(t, session, tc.tool, tc.args)
 		if result.IsError {
@@ -407,7 +407,7 @@ func TestToolErrorOutputDoesNotLeakCanary(t *testing.T) {
 	session, closeSession := newSDKTestSession(t, client)
 	defer closeSession()
 
-	result := callTool(t, session, "search_illust", map[string]any{"word": "canary"})
+	result := callTool(t, session, "pixiv_search_illust", map[string]any{"word": "canary"})
 	if !result.IsError {
 		t.Fatalf("search must fail: %+v", result)
 	}

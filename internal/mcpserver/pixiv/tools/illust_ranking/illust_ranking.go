@@ -1,4 +1,4 @@
-// Package illust_ranking 实现 illust_ranking tool。
+// Package illust_ranking 实现 pixiv_illust_ranking tool。
 package illust_ranking
 
 import (
@@ -16,9 +16,9 @@ import (
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
-// Register 注册 illust_ranking。
+// Register 注册 pixiv_illust_ranking。
 func Register(app *runtime.App, server *mcp.Server) {
-	runtime.AddTool(app, server, &mcp.Tool{Name: "illust_ranking", Description: "Browse Pixiv rankings.", InputSchema: rankingInputSchema(), OutputSchema: records.RecordsOutputSchema()}, func(ctx context.Context, request *mcp.CallToolRequest, input rankingIn) (*mcp.CallToolResult, outputs.Records, error) {
+	runtime.AddTool(app, server, &mcp.Tool{Name: "pixiv_illust_ranking", Annotations: &mcp.ToolAnnotations{ReadOnlyHint: true, DestructiveHint: new(false), IdempotentHint: true, OpenWorldHint: new(true)}, Description: "Browse Pixiv rankings.", InputSchema: rankingInputSchema(), OutputSchema: records.RecordsOutputSchema()}, func(ctx context.Context, request *mcp.CallToolRequest, input rankingIn) (*mcp.CallToolResult, outputs.Records, error) {
 		return handleIllustRanking(ctx, app, input)
 	})
 }

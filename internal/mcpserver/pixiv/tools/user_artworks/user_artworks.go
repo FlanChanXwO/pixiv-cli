@@ -1,4 +1,4 @@
-// Package user_artworks 实现 user_artworks tool。
+// Package user_artworks 实现 pixiv_user_artworks tool。
 package user_artworks
 
 import (
@@ -14,9 +14,9 @@ import (
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
-// Register 注册 user_artworks。
+// Register 注册 pixiv_user_artworks。
 func Register(app *runtime.App, server *mcp.Server) {
-	runtime.AddTool(app, server, &mcp.Tool{Name: "user_artworks", Description: "Browse a user's artworks.", InputSchema: schemas.List(map[string]any{
+	runtime.AddTool(app, server, &mcp.Tool{Name: "pixiv_user_artworks", Annotations: &mcp.ToolAnnotations{ReadOnlyHint: true, DestructiveHint: new(false), IdempotentHint: true, OpenWorldHint: new(true)}, Description: "Browse a user's artworks.", InputSchema: schemas.List(map[string]any{
 		"user_id":       schemas.PositiveInteger("Optional positive Pixiv user ID; defaults to the authenticated user."),
 		"type":          schemas.EnumString("Artwork type.", "illust", "manga", "ugoira"),
 		"illust_filter": filters.IllustFilterSchema(),

@@ -1,4 +1,4 @@
-// Package bookmark_tags 实现 bookmark_tags tool。
+// Package bookmark_tags 实现 pixiv_bookmark_tags tool。
 package bookmark_tags
 
 import (
@@ -12,9 +12,9 @@ import (
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
-// Register 注册 bookmark_tags。
+// Register 注册 pixiv_bookmark_tags。
 func Register(app *runtime.App, server *mcp.Server) {
-	runtime.AddTool(app, server, &mcp.Tool{Name: "bookmark_tags", Description: "List artwork bookmark tags.", OutputSchema: records.BookmarkTagsOutputSchema()}, func(ctx context.Context, request *mcp.CallToolRequest, input In) (*mcp.CallToolResult, outputs.BookmarkTags, error) {
+	runtime.AddTool(app, server, &mcp.Tool{Name: "pixiv_bookmark_tags", Annotations: &mcp.ToolAnnotations{ReadOnlyHint: true, DestructiveHint: new(false), IdempotentHint: true, OpenWorldHint: new(true)}, Description: "List artwork bookmark tags.", OutputSchema: records.BookmarkTagsOutputSchema()}, func(ctx context.Context, request *mcp.CallToolRequest, input In) (*mcp.CallToolResult, outputs.BookmarkTags, error) {
 		return handleBookmarkTags(ctx, app, input)
 	})
 }

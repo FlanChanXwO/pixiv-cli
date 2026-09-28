@@ -412,7 +412,7 @@ canonical 数据 action 是 `search`、`detail`、`ranking`、`series`、`commen
 | `fanbox home` / `supporting` | `pixiv fanbox home|supporting [--page N --limit N]` | 读取认证 FANBOX home 或 supporting feed。 |
 | `fanbox post` | `pixiv fanbox post POST_ID` | 读取一个帖子及其安全 asset 摘要。 |
 | `fanbox download` | `pixiv fanbox download SOURCE...` | 将 FANBOX 帖子 asset 保存到配置的下载目录下。 |
-| `fanbox mcp` | `pixiv fanbox mcp [--proxy URL\|--no-proxy]` | 启动只读 FANBOX MCP stdio server；native 代理不会修改 FlareSolverr 配置。 |
+| `fanbox mcp` | `pixiv fanbox mcp [--proxy URL\|--no-proxy]` | 启动统一 Pixiv/FANBOX MCP stdio server；native 代理不会修改 FlareSolverr 配置。 |
 
 下载文件名会规范化文件名模板以及 URL 推导扩展名中的跨平台非法字符。Pixiv 缩略图若资源响应的
 Content-Type 与 URL 后缀不一致（例如 URL 为 `.png`、实体为 JPEG），会按实际媒体类型修正发布后的扩展名；

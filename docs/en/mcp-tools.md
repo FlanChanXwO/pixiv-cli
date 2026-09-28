@@ -2,15 +2,15 @@
 
 [简体中文](../zh-CN/mcp-tools.md) | English | [Documentation index](../index.md)
 
-`pixiv mcp` starts the Pixiv stdio MCP server. MCP uses its configured runtime
+`pixiv mcp` starts the unified Pixiv/FANBOX stdio MCP server. MCP uses its configured runtime
 credential selection; it does not accept CLI data-command account overrides.
 The stdout stream is reserved for JSON-RPC.
 
-`novel_content` remains registered for wire compatibility, but its App API
+`pixiv_novel_content` retains the unavailable-content error contract; its App API
 content endpoint is no longer available. A positive `novel_id` returns a
 structured `content_unavailable` error with `isError=true` and an empty content
 block list; it does not call `/v1/novel/content` and does not fall back to WebView.
-Use `novel_detail` for novel metadata.
+Use `pixiv_novel_detail` for novel metadata.
 
 ## Errors, pagination, and output
 
@@ -19,7 +19,7 @@ returns a tool result with `isError=true` and a text diagnostic, without the
 handler's structured output. It is not a JSON-RPC protocol error. A failure after
 handler execution preserves the tool's
 structured result and sets `isError=true`; an entity read returns an empty
-`records` collection, while a download returns its report shape. A normal empty
+`records` collection. A normal empty
 page is successful and is not converted into an error.
 
 List tools accept `page` and `limit`:
@@ -31,7 +31,7 @@ List tools accept `page` and `limit`:
 - Entity filters are applied before logical pagination and duplicate records are
   removed by their stable entity identity.
 
-`illust_comments` and `novel_comments` publish the closed input object
+`pixiv_illust_comments` and `pixiv_novel_comments` publish the closed input object
 `{id, page, limit}`. `id` must be positive; the output envelope is
 `{comments, pagination}` with optional `total` and `access_control` fields that
 are omitted when the upstream response does not provide them. Artwork comments
@@ -45,7 +45,7 @@ mutation-only `stamp_id`, and the legacy MCP registry does not add a standalone
 
 Opaque SDK cursors never leave the server. List results expose `pagination.page`,
 `limit`, `returned`, and `has_more`; they may also expose `next_page` when another
-logical page is available. `recommended(kind="all")` exposes independent
+logical page is available. `pixiv_recommended(kind="all")` exposes independent
 pagination objects for illustration, manga, novel, and user streams.
 
 Records keep public entity fields and an opaque resource reference when one is
@@ -54,13 +54,13 @@ Cookies, expiry metadata, access tokens, or other resource transport credentials
 Available novel content blocks and comment/profile-image references follow the
 same rule.
 Structured results use explicit DTOs and typed envelopes rather than runtime SDK
-models. The separate FANBOX MCP server follows the same resource shape: a
+models. FANBOX tools follow the same resource shape: a
 first-party resource contains its opaque `ref` and optional
 `requires_credentials`, never `url`, `request_headers`, or `expires_at`.
 
 ## Reverse image search
 
-`reverse_search` is a Pixiv MCP tool with a closed input object:
+`pixiv_reverse_search` is a Pixiv MCP tool with a closed input object:
 
 ```json
 {"source":"/private/path/image.png","provider":"ascii2d-color"}
@@ -155,63 +155,53 @@ inclusive and non-negative. The application outcome reports `filter.min`,
 Unknown membership is not treated as non-Premium. Premium is not a local hard
 gate, and a bookmark count must not be described as a like count.
 
-## Download tools
+## Tool annotations and downloads
 
-| Tool | Input | Structured output |
-| --- | --- | --- |
-| `download` | Exactly one of `src` or non-empty `srcs`; each source is an artwork PID, supported Pixiv artwork/user/public-bookmark URL, or allowed CDN URL. Optional `pages` uses individual 1-based page numbers and closed ranges such as `1,3-5`; `quality` is `original`, `regular`, `small`, `thumb`, or `mini`; `ugoira_mode` is `gif` or `apng`; `delivery` is `local_path`. | `{delivery, items, failures, warnings, files, text}`; each file includes its safe local path/URI, MIME type, size, and page. `warnings` contains non-blocking ugoira filename fallbacks; a warning alone does not set `isError`. Any failure keeps its entry and sets `isError=true`. |
-| `download_random_from_recommendation` | Optional `count` (default `5`, explicit `1..20`), `pages`, `quality`, `ugoira_mode`, and `delivery: "local_path"`. | The same local-file report shape, including `warnings` and retained `failures`. |
+Pixiv tools use the `pixiv_` prefix and FANBOX tools use `fanbox_`; old Pixiv names are not aliases. Both products share one server, with independent SDK runtimes and credential selection.
 
-The download schema does not publish concurrency, filter, archive,
-directory-template, metadata-sidecar, retry-count, or retry-delay fields because
-the current MCP handler does not map them to `DownloadRequest`. Downloads use
-the configured application path/template and surface option errors rather than
-silently ignoring input. An invalid or empty-rendered ugoira filename template falls back to the default
-filename and is recorded in `warnings` without changing a successful item into a failure. Partial reports retain
-completed items and files when another item or the operation fails; a retained failure or operation error sets `isError=true`, while a warning alone does not.
+All tools publish explicit standard annotations. Reads are read-only, non-destructive and idempotent. Bookmark/follow additions are non-destructive, idempotent writes; removals and comment deletion are destructive, idempotent writes. Comment create/reply/stamp operations are non-destructive, non-idempotent writes. These hints support host approval and are not server-enforced authorization.
 
-User and public-bookmark URLs expand authenticated visual works in source order
-and do not include novels; artwork-series URLs are not download sources. URL parsing is local and does
-not fetch HTML or follow redirects. A CDN source has no artwork metadata and is
-not treated as an artwork detail request.
+`openWorldHint` is true for external operations, including reverse-search uploads to third-party providers and Pixiv reads that may authenticate. `fanbox_resolve_url` is closed-world: opening its local account snapshot and parsing the URL do not access the network.
+
+MCP no longer registers `download` or `download_random_from_recommendation`, nor any renamed download alias. Use CLI `pixiv download` for server/local filesystem downloads.
 
 ## Read tools
 
 | Tool | Input and semantics |
 | --- | --- |
-| `search_illust` | Required `word`; optional `search_target`, `sort`, `duration`, `start_date`, `end_date`, `content_type`, `ai_mode`, `aspect_ratio`, `resolution`, exact `tool`, bookmark range/strategy, `illust_filter`, `page`, `limit`. Stable enum/date validation happens before opening the SDK. |
-| `search_novel` | Required `word`; optional `search_target`, `sort`, `duration`, `novel_filter`, `page`, `limit`. Rating, text-length, and original-only fields are intentionally not published. |
-| `reverse_search` | Required `source` (regular local file or HTTP(S) URL); optional `provider` enum. Uses the startup proxy/key/pixiv-only snapshot and returns the reverse-search envelope described above. |
-| `illust_detail` | Exactly one of positive `illust_id` or a supported artwork `url`; returns one safe record. |
-| `novel_detail` / `novel_content` | Positive `novel_id`; the first returns metadata. The second is a retained compatibility tool that returns `content_unavailable` with empty blocks and does not call the rejected content endpoint. |
-| `illust_related` | Positive `illust_id`, optional `illust_filter`, `page`, `limit`. |
-| `illust_series` / `novel_series` | Positive `series_id`, `page`, `limit`; novel series also returns safe series metadata. |
-| `illust_comments` / `novel_comments` | Closed input `{id, page, limit}` with positive `id`; output is `{comments, pagination}` plus optional `total`/`access_control` metadata. An opaque numeric `comment_access_control` is retained inside `access_control` without boolean inference. Read tools do not accept mutation-only `stamp_id`, and no standalone `stamps` tool is exposed in the legacy registry. |
-| `illust_ranking` | Optional `mode`, `date`, `illust_filter`, `page`, `limit`; `mode` is a closed ranking enum, dates must be valid `YYYY-MM-DD`, and omitted mode is `day`. |
-| `search_user` | Required non-blank `word`, optional `user_filter`, `page`, `limit`; blank input is rejected before SDK execution and valid input uses the App user-search operation. |
-| `illust_recommended` | Artwork recommendations with optional `illust_filter`, `page`, `limit`. |
-| `recommended` | Required `kind`: `all`, `illust`, `manga`, `novel`, or `user`; optional matching typed filters, `page`, `limit`. `illust`/`manga` select the corresponding artwork subtype, conflicting filters are rejected before SDK execution, and `all` keeps four independent streams with atomic failure semantics. |
-| `trending_tags_illust` | No input; returns the complete current artwork trending-tag list. An empty upstream list is a successful empty result. |
-| `timeline_illust_following` / `timeline_novel_following` | `restrict` (`public`/`private`), matching entity filter, `page`, `limit`. |
-| `timeline_illust_latest` | Required `content_type` (`illust` or `manga`), optional `illust_filter`, `page`, `limit`. |
-| `timeline_novel_latest` | Optional `novel_filter`, `page`, `limit`. |
-| `mypixiv_users` | Optional `user_filter`, `page`, `limit`. |
-| `mypixiv_illusts` / `mypixiv_novels` | Matching typed filter, `page`, `limit`. |
-| `user_detail` | Required positive `user_id`; returns one safe public profile record. |
-| `user_artworks` | Optional `user_id`, `type` (`illust`, `manga`, `ugoira`), `illust_filter`, `page`, `limit`; omitted ID resolves to the authenticated user. |
-| `user_novels` | Optional `user_id`, `novel_filter`, `page`, `limit`; omitted ID resolves to the authenticated user. |
-| `user_bookmarks` | Optional `user_id`, `restrict`, `tag`, `illust_filter`, `page`, `limit`; reads artwork bookmarks. |
-| `user_novel_bookmarks` | Optional `user_id`, `restrict`, `tag`, `page`, `limit`; reads novel bookmarks. |
-| `bookmark_list_all` | Optional `user_id`, `restrict`, `tag`, `page`, `limit`; additive aggregate that reads artwork bookmarks before novel bookmarks. `page`/`limit` apply to the concatenated streams, and any required stream failure returns an error with no partial records. |
-| `bookmark_tags_all` | Optional `user_id`, `restrict`, `page`, `limit`; additive aggregate that reads artwork tags before novel tags. Each tag retains `content_type` and its original `count`; same-name tags are not merged, and any required stream failure returns no partial tags. |
-| `novel_bookmark_tags` | Optional `user_id`, `restrict`, `page`, `limit`; returns `{bookmark_tags, pagination}` for novel bookmarks. The current candidate App API has no continuation contract; a continuation outside that contract is reported as a typed error. |
-| `novel_bookmark_detail` | Required positive `novel_id`; returns `{bookmarked, restrict, tags}` for one novel and preserves the absent/unbookmarked state. It uses the candidate novel-bookmark detail App API. |
-| `user_following` | Optional `user_id`, `restrict`, `user_filter`, `page`, `limit`; omitted ID resolves to the authenticated user. |
-| `user_followers` | Optional `user_id`, `restrict`, `page`, `limit`; omitted ID resolves to the authenticated user. |
-| `related_users` | Optional positive `user_id` (defaults to the authenticated user), compatibility `restrict`, optional `user_filter`, `page`, `limit`. |
-| `blocked_users` | Optional `user_id`, compatibility `restrict`, `page`, `limit`; omitted ID resolves to the authenticated user. App API failure is reported and never changed to a Web fallback. |
-| `bookmark_tags` | Optional `user_id`, `restrict`, `page`, `limit`; returns `{bookmark_tags, pagination}`. |
-| `bookmark_detail` | Required positive `illust_id`; returns `{bookmarked, restrict, tags}` and preserves the unbookmarked state. |
+| `pixiv_search_illust` | Required `word`; optional `search_target`, `sort`, `duration`, `start_date`, `end_date`, `content_type`, `ai_mode`, `aspect_ratio`, `resolution`, exact `tool`, bookmark range/strategy, `illust_filter`, `page`, `limit`. Stable enum/date validation happens before opening the SDK. |
+| `pixiv_search_novel` | Required `word`; optional `search_target`, `sort`, `duration`, `novel_filter`, `page`, `limit`. Rating, text-length, and original-only fields are intentionally not published. |
+| `pixiv_reverse_search` | Required `source` (regular local file or HTTP(S) URL); optional `provider` enum. Uses the startup proxy/key/pixiv-only snapshot and returns the reverse-search envelope described above. |
+| `pixiv_illust_detail` | Exactly one of positive `illust_id` or a supported artwork `url`; returns one safe record. |
+| `pixiv_novel_detail` / `pixiv_novel_content` | Positive `novel_id`; the first returns metadata. The second is a retained compatibility tool that returns `content_unavailable` with empty blocks and does not call the rejected content endpoint. |
+| `pixiv_illust_related` | Positive `illust_id`, optional `illust_filter`, `page`, `limit`. |
+| `pixiv_illust_series` / `pixiv_novel_series` | Positive `series_id`, `page`, `limit`; novel series also returns safe series metadata. |
+| `pixiv_illust_comments` / `pixiv_novel_comments` | Closed input `{id, page, limit}` with positive `id`; output is `{comments, pagination}` plus optional `total`/`access_control` metadata. An opaque numeric `comment_access_control` is retained inside `access_control` without boolean inference. Read tools do not accept mutation-only `stamp_id`, and no standalone `stamps` tool is exposed in the legacy registry. |
+| `pixiv_illust_ranking` | Optional `mode`, `date`, `illust_filter`, `page`, `limit`; `mode` is a closed ranking enum, dates must be valid `YYYY-MM-DD`, and omitted mode is `day`. |
+| `pixiv_search_user` | Required non-blank `word`, optional `user_filter`, `page`, `limit`; blank input is rejected before SDK execution and valid input uses the App user-search operation. |
+| `pixiv_illust_recommended` | Artwork recommendations with optional `illust_filter`, `page`, `limit`. |
+| `pixiv_recommended` | Required `kind`: `all`, `illust`, `manga`, `novel`, or `user`; optional matching typed filters, `page`, `limit`. `illust`/`manga` select the corresponding artwork subtype, conflicting filters are rejected before SDK execution, and `all` keeps four independent streams with atomic failure semantics. |
+| `pixiv_trending_tags_illust` | No input; returns the complete current artwork trending-tag list. An empty upstream list is a successful empty result. |
+| `pixiv_timeline_illust_following` / `pixiv_timeline_novel_following` | `restrict` (`public`/`private`), matching entity filter, `page`, `limit`. |
+| `pixiv_timeline_illust_latest` | Required `content_type` (`illust` or `manga`), optional `illust_filter`, `page`, `limit`. |
+| `pixiv_timeline_novel_latest` | Optional `novel_filter`, `page`, `limit`. |
+| `pixiv_mypixiv_users` | Optional `user_filter`, `page`, `limit`. |
+| `pixiv_mypixiv_illusts` / `pixiv_mypixiv_novels` | Matching typed filter, `page`, `limit`. |
+| `pixiv_user_detail` | Required positive `user_id`; returns one safe public profile record. |
+| `pixiv_user_artworks` | Optional `user_id`, `type` (`illust`, `manga`, `ugoira`), `illust_filter`, `page`, `limit`; omitted ID resolves to the authenticated user. |
+| `pixiv_user_novels` | Optional `user_id`, `novel_filter`, `page`, `limit`; omitted ID resolves to the authenticated user. |
+| `pixiv_user_bookmarks` | Optional `user_id`, `restrict`, `tag`, `illust_filter`, `page`, `limit`; reads artwork bookmarks. |
+| `pixiv_user_novel_bookmarks` | Optional `user_id`, `restrict`, `tag`, `page`, `limit`; reads novel bookmarks. |
+| `pixiv_bookmark_list_all` | Optional `user_id`, `restrict`, `tag`, `page`, `limit`; additive aggregate that reads artwork bookmarks before novel bookmarks. `page`/`limit` apply to the concatenated streams, and any required stream failure returns an error with no partial records. |
+| `pixiv_bookmark_tags_all` | Optional `user_id`, `restrict`, `page`, `limit`; additive aggregate that reads artwork tags before novel tags. Each tag retains `content_type` and its original `count`; same-name tags are not merged, and any required stream failure returns no partial tags. |
+| `pixiv_novel_bookmark_tags` | Optional `user_id`, `restrict`, `page`, `limit`; returns `{bookmark_tags, pagination}` for novel bookmarks. The current candidate App API has no continuation contract; a continuation outside that contract is reported as a typed error. |
+| `pixiv_novel_bookmark_detail` | Required positive `novel_id`; returns `{bookmarked, restrict, tags}` for one novel and preserves the absent/unbookmarked state. It uses the candidate novel-bookmark detail App API. |
+| `pixiv_user_following` | Optional `user_id`, `restrict`, `user_filter`, `page`, `limit`; omitted ID resolves to the authenticated user. |
+| `pixiv_user_followers` | Optional `user_id`, `restrict`, `page`, `limit`; omitted ID resolves to the authenticated user. |
+| `pixiv_related_users` | Optional positive `user_id` (defaults to the authenticated user), compatibility `restrict`, optional `user_filter`, `page`, `limit`. |
+| `pixiv_blocked_users` | Optional `user_id`, compatibility `restrict`, `page`, `limit`; omitted ID resolves to the authenticated user. App API failure is reported and never changed to a Web fallback. |
+| `pixiv_bookmark_tags` | Optional `user_id`, `restrict`, `page`, `limit`; returns `{bookmark_tags, pagination}`. |
+| `pixiv_bookmark_detail` | Required positive `illust_id`; returns `{bookmarked, restrict, tags}` and preserves the unbookmarked state. |
 
 All read tools use the same application/public-SDK path and preserve typed
 authentication, authorization, not-found, upstream, cancellation, and malformed
@@ -222,20 +212,20 @@ optional port or a failed App request.
 
 | Tool | Input | Structured output |
 | --- | --- | --- |
-| `add_bookmark` | `illust_id`, optional `restrict`, repeated `tags` | `{success, action, illust_id}` |
-| `add_novel_bookmark` | `novel_id`, optional `restrict`, repeated `tags` | `{success, action, novel_id}` |
-| `remove_bookmark` | `illust_id` | `{success, action, illust_id}` |
-| `remove_novel_bookmark` | `novel_id` | `{success, action, novel_id}` |
-| `create_artwork_comment` | positive `illust_id`, non-empty `comment` | `{success, action, illust_id, comment_id}` |
-| `reply_artwork_comment` | positive `illust_id`, non-empty `comment`, positive `parent_comment_id` | `{success, action, illust_id, comment_id}` |
-| `stamp_artwork_comment` | positive `illust_id`, optional `comment` (empty for sticker-only), positive `stamp_id` | `{success, action, illust_id, comment_id}` |
-| `delete_artwork_comment` | positive `comment_id` | `{success, action, comment_id}` |
-| `create_novel_comment` | positive `novel_id`, non-empty `comment` | `{success, action, novel_id, comment_id}` |
-| `reply_novel_comment` | positive `novel_id`, non-empty `comment`, positive `parent_comment_id` | `{success, action, novel_id, comment_id}` |
-| `stamp_novel_comment` | positive `novel_id`, optional `comment` (empty for sticker-only), positive `stamp_id` | `{success, action, novel_id, comment_id}` |
-| `delete_novel_comment` | positive `comment_id` | `{success, action, comment_id}` |
-| `follow_user` | `user_id`, optional `restrict` | `{success, action, user_id}` |
-| `unfollow_user` | `user_id` | `{success, action, user_id}` |
+| `pixiv_add_bookmark` | `illust_id`, optional `restrict`, repeated `tags` | `{success, action, illust_id}` |
+| `pixiv_add_novel_bookmark` | `novel_id`, optional `restrict`, repeated `tags` | `{success, action, novel_id}` |
+| `pixiv_remove_bookmark` | `illust_id` | `{success, action, illust_id}` |
+| `pixiv_remove_novel_bookmark` | `novel_id` | `{success, action, novel_id}` |
+| `pixiv_create_artwork_comment` | positive `illust_id`, non-empty `comment` | `{success, action, illust_id, comment_id}` |
+| `pixiv_reply_artwork_comment` | positive `illust_id`, non-empty `comment`, positive `parent_comment_id` | `{success, action, illust_id, comment_id}` |
+| `pixiv_stamp_artwork_comment` | positive `illust_id`, optional `comment` (empty for sticker-only), positive `stamp_id` | `{success, action, illust_id, comment_id}` |
+| `pixiv_delete_artwork_comment` | positive `comment_id` | `{success, action, comment_id}` |
+| `pixiv_create_novel_comment` | positive `novel_id`, non-empty `comment` | `{success, action, novel_id, comment_id}` |
+| `pixiv_reply_novel_comment` | positive `novel_id`, non-empty `comment`, positive `parent_comment_id` | `{success, action, novel_id, comment_id}` |
+| `pixiv_stamp_novel_comment` | positive `novel_id`, optional `comment` (empty for sticker-only), positive `stamp_id` | `{success, action, novel_id, comment_id}` |
+| `pixiv_delete_novel_comment` | positive `comment_id` | `{success, action, comment_id}` |
+| `pixiv_follow_user` | `user_id`, optional `restrict` | `{success, action, user_id}` |
+| `pixiv_unfollow_user` | `user_id` | `{success, action, user_id}` |
 
 Writes are artwork/novel-bookmark, artwork/novel-comment/stamp, and user-follow
 mutations. An empty `restrict` on an add defaults to `public`; only `public`
@@ -246,11 +236,25 @@ falls back to the candidate v3 comments contract, and a post-submit unknown
 state is not replayed under another account. Failed writes return
 `success=false` with `isError=true` and a safe diagnostic.
 
+## FANBOX tools
+
+The same server exposes these unchanged FANBOX names. Their schemas are available through `tools/list`; credentials remain FANBOX-specific.
+
+| Tools | Semantics |
+| --- | --- |
+| `fanbox_current_user` | Current authenticated FANBOX user. |
+| `fanbox_creator`, `fanbox_creators` | One creator profile, or supporting/following creators. |
+| `fanbox_creator_tags` | Tags used by a creator. |
+| `fanbox_creator_posts`, `fanbox_tagged_posts` | Posts for a creator or one creator tag. |
+| `fanbox_post` | One post and its safe resource references. |
+| `fanbox_home`, `fanbox_supporting` | Authenticated home/supporting feeds. |
+| `fanbox_resolve_url` | Local URL parsing into a typed reference. |
+| `fanbox_open_resource` | Opens an opaque `ref` with `GET` or `HEAD`; currently returns status, content type and length, not media bytes. |
+
 ## Authentication and fallback
 
 Pixiv reads and writes require the configured App API access path. There is no
 anonymous or Web fallback, and an App API error is final. A removed
 `web_fallback_enabled` setting is reported as `removed_setting`.
 
-FANBOX uses a separate MCP server and does not share Pixiv credentials, proxy
-settings, tools, or routes.
+FANBOX tools share the protocol server, not Pixiv credentials or its account pool. Each product retains its own SDK and service configuration; a command-level proxy override applies to both native clients.

@@ -50,7 +50,7 @@ func TestCollectWithFromResetsLocalFilterOnSafeReplay(t *testing.T) {
 	minViews := 10
 	ctx, err := filters.WithIllustFilter(context.Background(), &filters.IllustFilter{MinViews: &minViews})
 	require.NoError(t, err)
-	app := NewApp(nil, nil, SDKPorts{Execute: func(ctx context.Context, _ Account, attempt func(context.Context, *pixiv.Client) (bool, error)) error {
+	app := NewApp(SDKPorts{Execute: func(ctx context.Context, _ Account, attempt func(context.Context, *pixiv.Client) (bool, error)) error {
 		committed, err := attempt(ctx, firstAttempt)
 		require.False(t, committed)
 		require.Error(t, err)

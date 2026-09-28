@@ -1,4 +1,4 @@
-// Package illust_comments 实现 illust_comments tool。
+// Package illust_comments 实现 pixiv_illust_comments tool。
 package illust_comments
 
 import (
@@ -10,9 +10,9 @@ import (
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
-// Register 注册 illust_comments。
+// Register 注册 pixiv_illust_comments。
 func Register(app *runtime.App, server *mcp.Server) {
-	runtime.AddTool(app, server, &mcp.Tool{Name: "illust_comments", Description: "Read comments for a Pixiv artwork.", InputSchema: records.CommentInputSchema(), OutputSchema: records.CommentOutputSchema()}, func(ctx context.Context, request *mcp.CallToolRequest, input In) (*mcp.CallToolResult, outputs.Comments, error) {
+	runtime.AddTool(app, server, &mcp.Tool{Name: "pixiv_illust_comments", Annotations: &mcp.ToolAnnotations{ReadOnlyHint: true, DestructiveHint: new(false), IdempotentHint: true, OpenWorldHint: new(true)}, Description: "Read comments for a Pixiv artwork.", InputSchema: records.CommentInputSchema(), OutputSchema: records.CommentOutputSchema()}, func(ctx context.Context, request *mcp.CallToolRequest, input In) (*mcp.CallToolResult, outputs.Comments, error) {
 		return handleIllustComments(ctx, app, input)
 	})
 }

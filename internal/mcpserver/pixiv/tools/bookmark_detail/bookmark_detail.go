@@ -1,4 +1,4 @@
-// Package bookmark_detail 实现 bookmark_detail tool。
+// Package bookmark_detail 实现 pixiv_bookmark_detail tool。
 package bookmark_detail
 
 import (
@@ -12,9 +12,9 @@ import (
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
-// Register 注册 bookmark_detail。
+// Register 注册 pixiv_bookmark_detail。
 func Register(app *runtime.App, server *mcp.Server) {
-	runtime.AddTool(app, server, &mcp.Tool{Name: "bookmark_detail", Description: "Get the current user's bookmark state for one artwork.", OutputSchema: records.BookmarkDetailOutputSchema()}, func(ctx context.Context, request *mcp.CallToolRequest, input In) (*mcp.CallToolResult, outputs.BookmarkDetail, error) {
+	runtime.AddTool(app, server, &mcp.Tool{Name: "pixiv_bookmark_detail", Annotations: &mcp.ToolAnnotations{ReadOnlyHint: true, DestructiveHint: new(false), IdempotentHint: true, OpenWorldHint: new(true)}, Description: "Get the current user's bookmark state for one artwork.", OutputSchema: records.BookmarkDetailOutputSchema()}, func(ctx context.Context, request *mcp.CallToolRequest, input In) (*mcp.CallToolResult, outputs.BookmarkDetail, error) {
 		return handleBookmarkDetail(ctx, app, input)
 	})
 }

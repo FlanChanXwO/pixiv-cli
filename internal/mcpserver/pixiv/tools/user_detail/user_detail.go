@@ -1,4 +1,4 @@
-// Package user_detail 实现 user_detail tool。
+// Package user_detail 实现 pixiv_user_detail tool。
 package user_detail
 
 import (
@@ -14,9 +14,9 @@ import (
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
-// Register 注册 user_detail。
+// Register 注册 pixiv_user_detail。
 func Register(app *runtime.App, server *mcp.Server) {
-	runtime.AddTool(app, server, &mcp.Tool{Name: "user_detail", Description: "Get a user's complete profile through the authenticated Pixiv SDK.", InputSchema: schemas.ClosedObject(map[string]any{
+	runtime.AddTool(app, server, &mcp.Tool{Name: "pixiv_user_detail", Annotations: &mcp.ToolAnnotations{ReadOnlyHint: true, DestructiveHint: new(false), IdempotentHint: true, OpenWorldHint: new(true)}, Description: "Get a user's complete profile through the authenticated Pixiv SDK.", InputSchema: schemas.ClosedObject(map[string]any{
 		"user_id": schemas.PositiveInteger("Positive Pixiv user ID."),
 	}, []string{"user_id"}), OutputSchema: records.UserDetailOutputSchema()}, func(ctx context.Context, request *mcp.CallToolRequest, input In) (*mcp.CallToolResult, outputs.UserDetail, error) {
 		return handleUserDetail(ctx, app, input)

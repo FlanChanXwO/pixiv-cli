@@ -1,4 +1,4 @@
-// Package novel_bookmark_tags 实现 novel_bookmark_tags tool。
+// Package novel_bookmark_tags 实现 pixiv_novel_bookmark_tags tool。
 package novel_bookmark_tags
 
 import (
@@ -12,9 +12,9 @@ import (
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
-// Register 注册 novel_bookmark_tags。
+// Register 注册 pixiv_novel_bookmark_tags。
 func Register(app *runtime.App, server *mcp.Server) {
-	runtime.AddTool(app, server, &mcp.Tool{Name: "novel_bookmark_tags", Description: "List novel bookmark tags.", OutputSchema: records.BookmarkTagsOutputSchema()}, func(ctx context.Context, request *mcp.CallToolRequest, input In) (*mcp.CallToolResult, outputs.BookmarkTags, error) {
+	runtime.AddTool(app, server, &mcp.Tool{Name: "pixiv_novel_bookmark_tags", Annotations: &mcp.ToolAnnotations{ReadOnlyHint: true, DestructiveHint: new(false), IdempotentHint: true, OpenWorldHint: new(true)}, Description: "List novel bookmark tags.", OutputSchema: records.BookmarkTagsOutputSchema()}, func(ctx context.Context, request *mcp.CallToolRequest, input In) (*mcp.CallToolResult, outputs.BookmarkTags, error) {
 		return handleNovelBookmarkTags(ctx, app, input)
 	})
 }

@@ -19,7 +19,7 @@ func TestCommentReadSchemasMatchLegacyContracts(t *testing.T) {
 		byName[tool.Name] = tool
 	}
 
-	for _, name := range []string{"illust_comments", "novel_comments"} {
+	for _, name := range []string{"pixiv_illust_comments", "pixiv_novel_comments"} {
 		t.Run("input/"+name, func(t *testing.T) {
 			tool, ok := byName[name]
 			if !ok {
@@ -57,7 +57,7 @@ func TestCommentReadLegacyJSONReplayPreservesStructuredContracts(t *testing.T) {
 		wantNovelID   int64
 	}{
 		{
-			name:          "illust_comments",
+			name:          "pixiv_illust_comments",
 			fixture:       `{"id":101}`,
 			wantCommentID: 11,
 			wantTotal:     total,
@@ -69,7 +69,7 @@ func TestCommentReadLegacyJSONReplayPreservesStructuredContracts(t *testing.T) {
 			}},
 		},
 		{
-			name:          "novel_comments",
+			name:          "pixiv_novel_comments",
 			fixture:       `{"id":201}`,
 			wantCommentID: 21,
 			wantTotal:     total,
@@ -122,7 +122,7 @@ func TestCommentReadKeepsStampBoundary(t *testing.T) {
 	if _, ok := byName["stamps"]; ok {
 		t.Fatal("comments task must not add an unfrozen stamps tool")
 	}
-	for _, name := range []string{"illust_comments", "novel_comments"} {
+	for _, name := range []string{"pixiv_illust_comments", "pixiv_novel_comments"} {
 		schema := feedSchemaObject(t, name+" input", byName[name].InputSchema)
 		properties := schema["properties"].(map[string]any)
 		if _, ok := properties["stamp_id"]; ok {
@@ -132,7 +132,7 @@ func TestCommentReadKeepsStampBoundary(t *testing.T) {
 }
 
 func TestCommentReadRejectsNonPositiveIDBeforeSDKExecution(t *testing.T) {
-	for _, name := range []string{"illust_comments", "novel_comments"} {
+	for _, name := range []string{"pixiv_illust_comments", "pixiv_novel_comments"} {
 		t.Run(name, func(t *testing.T) {
 			client := &fakeSDKClient{}
 			ports := testSDKPorts(t, client)
@@ -142,7 +142,7 @@ func TestCommentReadRejectsNonPositiveIDBeforeSDKExecution(t *testing.T) {
 				executions++
 				return baseExecute(ctx, account, attempt)
 			}
-			session, closeSession := newSDKTestSessionWithPorts(t, &fakeAPI{}, ports, pixivmcpserver.Account{})
+			session, closeSession := newSDKTestSessionWithPorts(t, ports, pixivmcpserver.Account{})
 			defer closeSession()
 
 			result, err := session.CallTool(context.Background(), &mcp.CallToolParams{Name: name, Arguments: map[string]any{"id": 0}})

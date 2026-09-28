@@ -25,17 +25,17 @@ func TestUserReadSchemasMatchLegacyContracts(t *testing.T) {
 		required []string
 		fields   []string
 	}{
-		{name: "search_user", required: []string{"word"}, fields: []string{"word", "user_filter", "page", "limit"}},
-		{name: "mypixiv_users", fields: []string{"user_filter", "page", "limit"}},
-		{name: "mypixiv_illusts", fields: []string{"illust_filter", "page", "limit"}},
-		{name: "mypixiv_novels", fields: []string{"novel_filter", "page", "limit"}},
-		{name: "user_detail", required: []string{"user_id"}, fields: []string{"user_id"}},
-		{name: "user_artworks", fields: []string{"user_id", "type", "illust_filter", "page", "limit"}},
-		{name: "user_novels", fields: []string{"user_id", "novel_filter", "page", "limit"}},
-		{name: "user_following", fields: []string{"user_id", "restrict", "user_filter", "page", "limit"}},
-		{name: "user_followers", fields: []string{"user_id", "restrict", "page", "limit"}},
-		{name: "related_users", fields: []string{"user_id", "restrict", "user_filter", "page", "limit"}},
-		{name: "blocked_users", fields: []string{"user_id", "restrict", "page", "limit"}},
+		{name: "pixiv_search_user", required: []string{"word"}, fields: []string{"word", "user_filter", "page", "limit"}},
+		{name: "pixiv_mypixiv_users", fields: []string{"user_filter", "page", "limit"}},
+		{name: "pixiv_mypixiv_illusts", fields: []string{"illust_filter", "page", "limit"}},
+		{name: "pixiv_mypixiv_novels", fields: []string{"novel_filter", "page", "limit"}},
+		{name: "pixiv_user_detail", required: []string{"user_id"}, fields: []string{"user_id"}},
+		{name: "pixiv_user_artworks", fields: []string{"user_id", "type", "illust_filter", "page", "limit"}},
+		{name: "pixiv_user_novels", fields: []string{"user_id", "novel_filter", "page", "limit"}},
+		{name: "pixiv_user_following", fields: []string{"user_id", "restrict", "user_filter", "page", "limit"}},
+		{name: "pixiv_user_followers", fields: []string{"user_id", "restrict", "page", "limit"}},
+		{name: "pixiv_related_users", fields: []string{"user_id", "restrict", "user_filter", "page", "limit"}},
+		{name: "pixiv_blocked_users", fields: []string{"user_id", "restrict", "page", "limit"}},
 	} {
 		t.Run(test.name+"/input", func(t *testing.T) {
 			tool, ok := byName[test.name].(*mcp.Tool)
@@ -45,29 +45,29 @@ func TestUserReadSchemasMatchLegacyContracts(t *testing.T) {
 			schema := feedSchemaObject(t, test.name+" input", tool.InputSchema)
 			assertSchemaFields(t, schema, test.fields)
 			assertSchemaRequired(t, schema, test.required)
-			if test.name != "user_detail" {
+			if test.name != "pixiv_user_detail" {
 				assertSchemaMinimum(t, feedSchemaProperty(t, schema, "page"), 1)
 				assertSchemaMinimum(t, feedSchemaProperty(t, schema, "limit"), 0)
 			}
-			if test.name == "search_user" {
+			if test.name == "pixiv_search_user" {
 				property := feedSchemaProperty(t, schema, "word")
 				minLength, ok := property["minLength"].(float64)
 				if property["type"] != "string" || !ok || minLength != 1 {
 					t.Fatalf("search_user word schema=%#v", property)
 				}
 			}
-			if test.name == "user_detail" {
+			if test.name == "pixiv_user_detail" {
 				assertSchemaMinimum(t, feedSchemaProperty(t, schema, "user_id"), 1)
 			}
-			for _, name := range []string{"user_artworks", "user_novels", "user_following", "user_followers", "related_users", "blocked_users"} {
+			for _, name := range []string{"pixiv_user_artworks", "pixiv_user_novels", "pixiv_user_following", "pixiv_user_followers", "pixiv_related_users", "pixiv_blocked_users"} {
 				if test.name == name {
 					assertSchemaMinimum(t, feedSchemaProperty(t, schema, "user_id"), 1)
 				}
 			}
-			if test.name == "user_artworks" {
+			if test.name == "pixiv_user_artworks" {
 				assertSchemaEnum(t, feedSchemaProperty(t, schema, "type"), []string{"illust", "manga", "ugoira"})
 			}
-			for _, name := range []string{"user_following", "user_followers", "related_users", "blocked_users"} {
+			for _, name := range []string{"pixiv_user_following", "pixiv_user_followers", "pixiv_related_users", "pixiv_blocked_users"} {
 				if test.name == name {
 					assertSchemaEnum(t, feedSchemaProperty(t, schema, "restrict"), []string{"public", "private"})
 				}
@@ -75,7 +75,7 @@ func TestUserReadSchemasMatchLegacyContracts(t *testing.T) {
 		})
 	}
 
-	tool, ok := byName["user_detail"].(*mcp.Tool)
+	tool, ok := byName["pixiv_user_detail"].(*mcp.Tool)
 	if !ok {
 		t.Fatal("user_detail is not registered")
 	}
@@ -97,10 +97,10 @@ func TestSearchUserRejectsBlankWordBeforeSDKExecution(t *testing.T) {
 			return err
 		},
 	}
-	session, closeSession := newSDKTestSessionWithPorts(t, &fakeAPI{}, ports, pixivmcpserver.Account{})
+	session, closeSession := newSDKTestSessionWithPorts(t, ports, pixivmcpserver.Account{})
 	defer closeSession()
 
-	result := callTool(t, session, "search_user", map[string]any{"word": " \t"})
+	result := callTool(t, session, "pixiv_search_user", map[string]any{"word": " \t"})
 	if !result.IsError || executions != 0 || !resultHasText(result, "search word is required") {
 		t.Fatalf("blank search_user result=%+v executions=%d", result, executions)
 	}
@@ -121,7 +121,7 @@ func TestSearchUserSDKFailureRemainsStructured(t *testing.T) {
 	session, closeSession := newSDKTestSession(t, client)
 	defer closeSession()
 
-	result := callTool(t, session, "search_user", map[string]any{"word": "miku"})
+	result := callTool(t, session, "pixiv_search_user", map[string]any{"word": "miku"})
 	if !result.IsError || calls != 1 || !resultHasText(result, typed.Error()) {
 		t.Fatalf("search_user failure result=%+v calls=%d", result, calls)
 	}
@@ -137,7 +137,7 @@ func TestUserDetailSDKFailureRemainsStructured(t *testing.T) {
 	session, closeSession := newSDKTestSession(t, &fakeSDKClient{userDetailErr: typed})
 	defer closeSession()
 
-	result := callTool(t, session, "user_detail", map[string]any{"user_id": 401})
+	result := callTool(t, session, "pixiv_user_detail", map[string]any{"user_id": 401})
 	if !result.IsError || !resultHasText(result, typed.Error()) {
 		t.Fatalf("user_detail failure result=%+v", result)
 	}
@@ -164,7 +164,7 @@ func TestRelatedUsersResolvesCurrentIdentityAndFiltersBeforeLogicalPagination(t 
 	session, closeSession := newSDKTestSession(t, client)
 	defer closeSession()
 
-	result := callTool(t, session, "related_users", map[string]any{
+	result := callTool(t, session, "pixiv_related_users", map[string]any{
 		"user_filter": map[string]any{"id": 71},
 		"limit":       1,
 	})
@@ -194,7 +194,7 @@ func TestUserReadLegacyJSONReplayPreservesStructuredContracts(t *testing.T) {
 		checkReq func(*testing.T, *fakeSDKClient)
 	}{
 		{
-			name:    "search_user",
+			name:    "pixiv_search_user",
 			fixture: `{"word":"miku"}`,
 			client: &fakeSDKClient{searchUser: func(_ context.Context, request pixiv.SearchUsersRequest) (sdk.Page[pixiv.UserPreview], error) {
 				if request.Word != "miku" {
@@ -205,7 +205,7 @@ func TestUserReadLegacyJSONReplayPreservesStructuredContracts(t *testing.T) {
 			wantID: "101",
 		},
 		{
-			name:    "user_detail",
+			name:    "pixiv_user_detail",
 			fixture: `{"user_id":401}`,
 			client:  &fakeSDKClient{userDetailResult: pixiv.UserDetail{User: pixiv.User{ID: 401, Name: "artist"}}},
 			wantID:  "401",
@@ -216,7 +216,7 @@ func TestUserReadLegacyJSONReplayPreservesStructuredContracts(t *testing.T) {
 			},
 		},
 		{
-			name:    "user_artworks",
+			name:    "pixiv_user_artworks",
 			fixture: `{}`,
 			client:  &fakeSDKClient{userID: 401, artworks: []pixiv.Artwork{testSDKIllust(501, "artwork", 401)}},
 			wantID:  "501",
@@ -227,7 +227,7 @@ func TestUserReadLegacyJSONReplayPreservesStructuredContracts(t *testing.T) {
 			},
 		},
 		{
-			name:    "user_novels",
+			name:    "pixiv_user_novels",
 			fixture: `{}`,
 			client: &fakeSDKClient{userID: 401, userNovels: func(_ context.Context, request pixiv.UserNovelsRequest) (sdk.Page[pixiv.Novel], error) {
 				if request.UserID != 401 {
@@ -238,7 +238,7 @@ func TestUserReadLegacyJSONReplayPreservesStructuredContracts(t *testing.T) {
 			wantID: "601",
 		},
 		{
-			name:    "mypixiv_users",
+			name:    "pixiv_mypixiv_users",
 			fixture: `{}`,
 			client: &fakeSDKClient{userID: 401, myPixivUsers: func(_ context.Context, _ pixiv.MyPixivUsersRequest) (sdk.Page[pixiv.UserPreview], error) {
 				return sdk.Page[pixiv.UserPreview]{Items: []pixiv.UserPreview{{User: pixiv.User{ID: 701, Name: "friend"}}}}, nil
@@ -246,7 +246,7 @@ func TestUserReadLegacyJSONReplayPreservesStructuredContracts(t *testing.T) {
 			wantID: "701",
 		},
 		{
-			name:    "mypixiv_illusts",
+			name:    "pixiv_mypixiv_illusts",
 			fixture: `{}`,
 			client: &fakeSDKClient{userID: 401, myPixivIllusts: func(_ context.Context, _ pixiv.MyPixivArtworksRequest) (sdk.Page[pixiv.Artwork], error) {
 				return sdk.Page[pixiv.Artwork]{Items: []pixiv.Artwork{testSDKIllust(801, "friend artwork", 401)}}, nil
@@ -254,7 +254,7 @@ func TestUserReadLegacyJSONReplayPreservesStructuredContracts(t *testing.T) {
 			wantID: "801",
 		},
 		{
-			name:    "mypixiv_novels",
+			name:    "pixiv_mypixiv_novels",
 			fixture: `{}`,
 			client: &fakeSDKClient{userID: 401, myPixivNovels: func(_ context.Context, _ pixiv.MyPixivNovelsRequest) (sdk.Page[pixiv.Novel], error) {
 				return sdk.Page[pixiv.Novel]{Items: []pixiv.Novel{{ID: 901, Title: "friend novel", User: pixiv.User{ID: 401}}}}, nil
@@ -262,7 +262,7 @@ func TestUserReadLegacyJSONReplayPreservesStructuredContracts(t *testing.T) {
 			wantID: "901",
 		},
 		{
-			name:    "user_following",
+			name:    "pixiv_user_following",
 			fixture: `{}`,
 			client: &fakeSDKClient{userID: 401, userFollowing: func(_ context.Context, request pixiv.UserFollowingRequest) (sdk.Page[pixiv.UserPreview], error) {
 				if request.UserID != 401 || request.Restrict != pixiv.RestrictPublic {
@@ -273,7 +273,7 @@ func TestUserReadLegacyJSONReplayPreservesStructuredContracts(t *testing.T) {
 			wantID: "1001",
 		},
 		{
-			name:    "user_followers",
+			name:    "pixiv_user_followers",
 			fixture: `{}`,
 			client: &fakeSDKClient{userID: 401, userFollowers: func(_ context.Context, request pixiv.UserFollowersRequest) (sdk.Page[pixiv.UserPreview], error) {
 				if request.UserID != 401 || request.Restrict != pixiv.RestrictPublic {
@@ -284,7 +284,7 @@ func TestUserReadLegacyJSONReplayPreservesStructuredContracts(t *testing.T) {
 			wantID: "1101",
 		},
 		{
-			name:    "related_users",
+			name:    "pixiv_related_users",
 			fixture: `{"user_id":401}`,
 			client: &fakeSDKClient{relatedUsers: func(_ context.Context, request pixiv.RelatedUsersRequest) (sdk.Page[pixiv.UserPreview], error) {
 				if request.UserID != 401 {
@@ -295,7 +295,7 @@ func TestUserReadLegacyJSONReplayPreservesStructuredContracts(t *testing.T) {
 			wantID: "1201",
 		},
 		{
-			name:    "blocked_users",
+			name:    "pixiv_blocked_users",
 			fixture: `{}`,
 			client: &fakeSDKClient{userID: 401, userBlockedUsers: func(_ context.Context, request pixiv.UserBlockedUsersRequest) (sdk.Page[pixiv.UserPreview], error) {
 				if request.UserID != 401 {
@@ -319,7 +319,7 @@ func TestUserReadLegacyJSONReplayPreservesStructuredContracts(t *testing.T) {
 			if result.IsError {
 				t.Fatalf("%s replay result=%+v", test.name, result)
 			}
-			if test.name == "user_detail" {
+			if test.name == "pixiv_user_detail" {
 				var out outputs.UserDetail
 				decodeStructured(t, result, &out)
 				if len(out.Records) != 1 || out.Records[0].ID() != test.wantID {
@@ -346,7 +346,7 @@ func TestUserReadFiltersFillLogicalPagesAcrossSDKCursors(t *testing.T) {
 		client *fakeSDKClient
 	}{
 		{
-			name: "search_user",
+			name: "pixiv_search_user",
 			args: map[string]any{"word": "miku", "user_filter": map[string]any{"id": 2}, "limit": 1},
 			client: &fakeSDKClient{searchUser: func(_ context.Context, request pixiv.SearchUsersRequest) (sdk.Page[pixiv.UserPreview], error) {
 				if request.Cursor.IsZero() {
@@ -356,7 +356,7 @@ func TestUserReadFiltersFillLogicalPagesAcrossSDKCursors(t *testing.T) {
 			}},
 		},
 		{
-			name: "mypixiv_users",
+			name: "pixiv_mypixiv_users",
 			args: map[string]any{"user_filter": map[string]any{"id": 2}, "limit": 1},
 			client: &fakeSDKClient{myPixivUsers: func(_ context.Context, request pixiv.MyPixivUsersRequest) (sdk.Page[pixiv.UserPreview], error) {
 				if request.Cursor.IsZero() {
@@ -366,7 +366,7 @@ func TestUserReadFiltersFillLogicalPagesAcrossSDKCursors(t *testing.T) {
 			}},
 		},
 		{
-			name: "user_novels",
+			name: "pixiv_user_novels",
 			args: map[string]any{"user_id": 71, "novel_filter": map[string]any{"id": 2}, "limit": 1},
 			client: &fakeSDKClient{userNovels: func(_ context.Context, request pixiv.UserNovelsRequest) (sdk.Page[pixiv.Novel], error) {
 				if request.Cursor.IsZero() {
@@ -376,7 +376,7 @@ func TestUserReadFiltersFillLogicalPagesAcrossSDKCursors(t *testing.T) {
 			}},
 		},
 		{
-			name: "user_artworks",
+			name: "pixiv_user_artworks",
 			args: map[string]any{"user_id": 71, "illust_filter": map[string]any{"id": 2}, "limit": 1},
 			client: &fakeSDKClient{userArtworksFunc: func(request pixiv.UserArtworksRequest, call int) (sdk.Page[pixiv.Artwork], error) {
 				if call == 1 {
@@ -386,7 +386,7 @@ func TestUserReadFiltersFillLogicalPagesAcrossSDKCursors(t *testing.T) {
 			}},
 		},
 		{
-			name: "user_following",
+			name: "pixiv_user_following",
 			args: map[string]any{"user_id": 71, "user_filter": map[string]any{"id": 2}, "limit": 1},
 			client: &fakeSDKClient{userFollowing: func(_ context.Context, request pixiv.UserFollowingRequest) (sdk.Page[pixiv.UserPreview], error) {
 				if request.Cursor.IsZero() {
@@ -396,7 +396,7 @@ func TestUserReadFiltersFillLogicalPagesAcrossSDKCursors(t *testing.T) {
 			}},
 		},
 		{
-			name: "related_users",
+			name: "pixiv_related_users",
 			args: map[string]any{"user_id": 71, "user_filter": map[string]any{"id": 2}, "limit": 1},
 			client: &fakeSDKClient{relatedUsers: func(_ context.Context, request pixiv.RelatedUsersRequest) (sdk.Page[pixiv.UserPreview], error) {
 				if request.Cursor.IsZero() {
@@ -442,7 +442,7 @@ func TestBlockedUsersSDKFailureRemainsStructuredAndDoesNotFallback(t *testing.T)
 	session, closeSession := newSDKTestSession(t, client)
 	defer closeSession()
 
-	result := callTool(t, session, "blocked_users", map[string]any{})
+	result := callTool(t, session, "pixiv_blocked_users", map[string]any{})
 	if !result.IsError || calls != 1 || !resultHasText(result, typed.Error()) {
 		t.Fatalf("blocked_users failure result=%+v calls=%d", result, calls)
 	}

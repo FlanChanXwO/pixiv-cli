@@ -1,4 +1,4 @@
-// Package timeline_illust_following 实现 timeline_illust_following tool。
+// Package timeline_illust_following 实现 pixiv_timeline_illust_following tool。
 package timeline_illust_following
 
 import (
@@ -13,9 +13,9 @@ import (
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
-// Register 注册 timeline_illust_following。
+// Register 注册 pixiv_timeline_illust_following。
 func Register(app *runtime.App, server *mcp.Server) {
-	runtime.AddTool(app, server, &mcp.Tool{Name: "timeline_illust_following", Description: "Browse artworks from followed artists.", InputSchema: followInputSchema(), OutputSchema: records.RecordsOutputSchema()}, func(ctx context.Context, request *mcp.CallToolRequest, input followIn) (*mcp.CallToolResult, outputs.Records, error) {
+	runtime.AddTool(app, server, &mcp.Tool{Name: "pixiv_timeline_illust_following", Annotations: &mcp.ToolAnnotations{ReadOnlyHint: true, DestructiveHint: new(false), IdempotentHint: true, OpenWorldHint: new(true)}, Description: "Browse artworks from followed artists.", InputSchema: followInputSchema(), OutputSchema: records.RecordsOutputSchema()}, func(ctx context.Context, request *mcp.CallToolRequest, input followIn) (*mcp.CallToolResult, outputs.Records, error) {
 		return handleIllustFollow(ctx, app, input)
 	})
 }

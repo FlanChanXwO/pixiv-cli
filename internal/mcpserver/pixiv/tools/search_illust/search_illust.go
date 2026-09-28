@@ -1,4 +1,4 @@
-// Package search_illust 实现 search_illust tool。
+// Package search_illust 实现 pixiv_search_illust tool。
 package search_illust
 
 import (
@@ -17,9 +17,9 @@ import (
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
-// Register 注册 search_illust。
+// Register 注册 pixiv_search_illust。
 func Register(app *runtime.App, server *mcp.Server) {
-	runtime.AddTool(app, server, &mcp.Tool{Name: "search_illust", Description: "Search for illustrations using keywords with filters.", InputSchema: searchIllustInputSchema(), OutputSchema: records.RecordsOutputSchema()}, func(ctx context.Context, request *mcp.CallToolRequest, input searchIllustIn) (*mcp.CallToolResult, outputs.Records, error) {
+	runtime.AddTool(app, server, &mcp.Tool{Name: "pixiv_search_illust", Annotations: &mcp.ToolAnnotations{ReadOnlyHint: true, DestructiveHint: new(false), IdempotentHint: true, OpenWorldHint: new(true)}, Description: "Search for illustrations using keywords with filters.", InputSchema: searchIllustInputSchema(), OutputSchema: records.RecordsOutputSchema()}, func(ctx context.Context, request *mcp.CallToolRequest, input searchIllustIn) (*mcp.CallToolResult, outputs.Records, error) {
 		return handleSearchIllust(ctx, app, input)
 	})
 }

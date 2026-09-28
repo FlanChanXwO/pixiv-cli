@@ -1,4 +1,4 @@
-// Package user_followers 实现 user_followers tool。
+// Package user_followers 实现 pixiv_user_followers tool。
 package user_followers
 
 import (
@@ -11,9 +11,9 @@ import (
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
-// Register 注册 user_followers。
+// Register 注册 pixiv_user_followers。
 func Register(app *runtime.App, server *mcp.Server) {
-	runtime.AddTool(app, server, &mcp.Tool{Name: "user_followers", Description: "View user's followers list.", InputSchema: schemas.List(map[string]any{
+	runtime.AddTool(app, server, &mcp.Tool{Name: "pixiv_user_followers", Annotations: &mcp.ToolAnnotations{ReadOnlyHint: true, DestructiveHint: new(false), IdempotentHint: true, OpenWorldHint: new(true)}, Description: "View user's followers list.", InputSchema: schemas.List(map[string]any{
 		"user_id":  schemas.PositiveInteger("Optional positive Pixiv user ID; defaults to the authenticated user."),
 		"restrict": schemas.EnumString("Follower visibility.", "public", "private"),
 	}), OutputSchema: records.RecordsOutputSchema()}, func(ctx context.Context, request *mcp.CallToolRequest, input In) (*mcp.CallToolResult, outputs.Records, error) {

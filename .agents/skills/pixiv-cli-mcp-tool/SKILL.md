@@ -9,11 +9,11 @@ Read root `AGENTS.md`, [pixiv-cli-develop](../pixiv-cli-develop/SKILL.md), and t
 
 ## Identify ownership and contract
 
-Pixiv tools live in `internal/mcpserver/pixiv/tools/<tool>`; FANBOX tools in the parallel FANBOX owner. Their product roots aggregate registrations. CLI MCP commands start separate stdio servers. Use existing owner-local runtime, record, output, and filter helpers, and the public SDK for product operations.
+Pixiv tools live in `internal/mcpserver/pixiv/tools/<tool>`; FANBOX tools in the parallel FANBOX owner. Their product roots register into one server constructed by `internal/mcpserver.New`; product runtimes remain independent. Pixiv tool names use `pixiv_`, FANBOX uses `fanbox_`, and old Pixiv aliases and filesystem download tools are not registered. CLI MCP commands currently start this unified stdio server. Use existing owner-local runtime, record, output, and filter helpers, and the public SDK for product operations.
 
 For reverse search, tool code may depend on the top-level reverse-search service contract, never provider/assembly internals. Keep provider transport and credential wiring in production assembly. Do not introduce a general service locator, shared mutable global client, or anonymous Web fallback.
 
-Define the tool name, input validation, output schema, optional fields, cursor/record semantics, side effects, and error result before implementation. Distinguish unsupported upstream behavior from locally implementable filtering. Exposing a parameter without working semantics is not a capability.
+Define the tool name, input validation, output schema, optional fields, cursor/record semantics, side effects, standard tool annotations, and error result before implementation. Distinguish unsupported upstream behavior from locally implementable filtering. Exposing a parameter without working semantics is not a capability.
 
 ## Implement through tests
 

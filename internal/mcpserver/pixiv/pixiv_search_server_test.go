@@ -33,7 +33,7 @@ func TestSearchIllustMapsStableFiltersToPublicSDK(t *testing.T) {
 	session, closeSession := newSDKTestSession(t, client)
 	defer closeSession()
 
-	result := callTool(t, session, "search_illust", map[string]any{
+	result := callTool(t, session, "pixiv_search_illust", map[string]any{
 		"word": "cat", "search_target": "keyword", "start_date": "2026-01-01", "end_date": "2026-01-31",
 		"content_type": "manga", "ai_mode": "only",
 		"aspect_ratio": "landscape", "resolution": "high", "tool": "CLIP STUDIO PAINT",
@@ -59,7 +59,7 @@ func TestSearchIllustExpandsLongQuickDurationToTokyoDateRange(t *testing.T) {
 	session, closeSession := newSDKTestSession(t, client)
 	defer closeSession()
 
-	result := callTool(t, session, "search_illust", map[string]any{"word": "cat", "duration": "within_half_year"})
+	result := callTool(t, session, "pixiv_search_illust", map[string]any{"word": "cat", "duration": "within_half_year"})
 	if result.IsError {
 		t.Fatalf("search_illust returned MCP error: %+v", result)
 	}
@@ -77,7 +77,7 @@ func TestSearchNovelMapsStableFiltersAndReturnsStructuredOutput(t *testing.T) {
 	session, closeSession := newSDKTestSession(t, client)
 	defer closeSession()
 
-	result := callTool(t, session, "search_novel", map[string]any{
+	result := callTool(t, session, "pixiv_search_novel", map[string]any{
 		"word": "miku", "search_target": "title_and_caption", "sort": "date_asc", "duration": "within_last_week",
 		"limit": 1,
 	})
@@ -103,7 +103,7 @@ func TestIllustDetailAcceptsArtworkURLAndReturnsStructuredOutput(t *testing.T) {
 	session, closeSession := newSDKTestSession(t, client)
 	defer closeSession()
 
-	result := callTool(t, session, "illust_detail", map[string]any{"url": "https://www.pixiv.net/en/artworks/42?from=share"})
+	result := callTool(t, session, "pixiv_illust_detail", map[string]any{"url": "https://www.pixiv.net/en/artworks/42?from=share"})
 	if result.IsError {
 		t.Fatalf("illust_detail returned MCP error: %+v", result)
 	}
@@ -113,7 +113,7 @@ func TestIllustDetailAcceptsArtworkURLAndReturnsStructuredOutput(t *testing.T) {
 		t.Fatalf("illust_detail id=%d output=%+v, want URL-resolved artwork", gotID, out)
 	}
 
-	invalid := callTool(t, session, "illust_detail", map[string]any{"illust_id": 42, "url": "https://www.pixiv.net/artworks/42"})
+	invalid := callTool(t, session, "pixiv_illust_detail", map[string]any{"illust_id": 42, "url": "https://www.pixiv.net/artworks/42"})
 	if !invalid.IsError {
 		t.Fatalf("illust_detail accepted both references: %+v", invalid)
 	}
@@ -132,7 +132,7 @@ func TestSearchUserReturnsSourceAndStructuredPreviews(t *testing.T) {
 	session, closeSession := newSDKTestSession(t, client)
 	defer closeSession()
 
-	result := callTool(t, session, "search_user", map[string]any{"word": "author", "limit": 1})
+	result := callTool(t, session, "pixiv_search_user", map[string]any{"word": "author", "limit": 1})
 	if result.IsError {
 		t.Fatalf("search_user returned MCP error: %+v", result)
 	}
@@ -158,7 +158,7 @@ func TestSearchIllustSchemaRejectsRemovedLegacyWireFields(t *testing.T) {
 		{"word": "cat", "filter": "bookmarkCount >= 2"},
 		{"word": "cat", "rating": "r18"},
 	} {
-		result, err := session.CallTool(context.Background(), &mcp.CallToolParams{Name: "search_illust", Arguments: args})
+		result, err := session.CallTool(context.Background(), &mcp.CallToolParams{Name: "pixiv_search_illust", Arguments: args})
 		if err != nil || result == nil || !result.IsError || !resultHasText(result, "additional properties") {
 			t.Fatalf("args=%v err=%v", args, err)
 		}
@@ -181,7 +181,7 @@ func TestSearchFailurePreservesStructuredErrorResult(t *testing.T) {
 	session, closeSession := newSDKTestSession(t, client)
 	defer closeSession()
 
-	result := callTool(t, session, "search_illust", map[string]any{"word": "ordinary-query"})
+	result := callTool(t, session, "pixiv_search_illust", map[string]any{"word": "ordinary-query"})
 	if !result.IsError || !resultHasText(result, "Error: "+typedErr.Error()) {
 		t.Fatalf("structured search failure changed: %+v", result)
 	}
@@ -192,7 +192,7 @@ func TestSearchFailurePreservesStructuredErrorResult(t *testing.T) {
 	}
 }
 func TestServerListsExpectedTools(t *testing.T) {
-	server := pixivmcpserver.New(&fakeAPI{}, &fakeDownloads{})
+	server := newTestServer(pixivmcpserver.SDKPorts{}, pixivmcpserver.Account{})
 	clientTransport, serverTransport := mcp.NewInMemoryTransports()
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -214,21 +214,21 @@ func TestServerListsExpectedTools(t *testing.T) {
 			t.Fatalf("tools: %v", err)
 		}
 		names = append(names, tool.Name)
-		if tool.Name == "search_illust" {
+		if tool.Name == "pixiv_search_illust" {
 			searchIllustTool = tool
 		}
-		if tool.Name == "search_novel" {
+		if tool.Name == "pixiv_search_novel" {
 			searchNovelTool = tool
 		}
 	}
 	want := []string{
-		"download", "download_random_from_recommendation", "search_illust", "search_novel", "illust_detail",
-		"illust_related", "illust_ranking", "search_user", "illust_recommended", "novel_detail", "novel_content",
-		"illust_series", "novel_series", "illust_comments", "novel_comments",
-		"recommended", "trending_tags_illust", "timeline_illust_following", "timeline_novel_following",
-		"timeline_illust_latest", "timeline_novel_latest", "mypixiv_users", "mypixiv_illusts", "mypixiv_novels",
-		"user_detail", "user_artworks", "user_novels", "user_bookmarks", "user_novel_bookmarks", "user_following", "user_followers", "related_users", "blocked_users", "bookmark_tags", "bookmark_tags_all", "bookmark_detail", "bookmark_list_all", "novel_bookmark_tags", "novel_bookmark_detail", "add_bookmark", "add_novel_bookmark",
-		"remove_bookmark", "remove_novel_bookmark", "follow_user", "unfollow_user", "create_artwork_comment", "reply_artwork_comment", "stamp_artwork_comment", "delete_artwork_comment", "create_novel_comment", "reply_novel_comment", "stamp_novel_comment", "delete_novel_comment", "reverse_search",
+		"pixiv_search_illust", "pixiv_search_novel", "pixiv_illust_detail",
+		"pixiv_illust_related", "pixiv_illust_ranking", "pixiv_search_user", "pixiv_illust_recommended", "pixiv_novel_detail", "pixiv_novel_content",
+		"pixiv_illust_series", "pixiv_novel_series", "pixiv_illust_comments", "pixiv_novel_comments",
+		"pixiv_recommended", "pixiv_trending_tags_illust", "pixiv_timeline_illust_following", "pixiv_timeline_novel_following",
+		"pixiv_timeline_illust_latest", "pixiv_timeline_novel_latest", "pixiv_mypixiv_users", "pixiv_mypixiv_illusts", "pixiv_mypixiv_novels",
+		"pixiv_user_detail", "pixiv_user_artworks", "pixiv_user_novels", "pixiv_user_bookmarks", "pixiv_user_novel_bookmarks", "pixiv_user_following", "pixiv_user_followers", "pixiv_related_users", "pixiv_blocked_users", "pixiv_bookmark_tags", "pixiv_bookmark_tags_all", "pixiv_bookmark_detail", "pixiv_bookmark_list_all", "pixiv_novel_bookmark_tags", "pixiv_novel_bookmark_detail", "pixiv_add_bookmark", "pixiv_add_novel_bookmark",
+		"pixiv_remove_bookmark", "pixiv_remove_novel_bookmark", "pixiv_follow_user", "pixiv_unfollow_user", "pixiv_create_artwork_comment", "pixiv_reply_artwork_comment", "pixiv_stamp_artwork_comment", "pixiv_delete_artwork_comment", "pixiv_create_novel_comment", "pixiv_reply_novel_comment", "pixiv_stamp_novel_comment", "pixiv_delete_novel_comment", "pixiv_reverse_search",
 	}
 	slices.Sort(names)
 	slices.Sort(want)
@@ -295,7 +295,7 @@ func TestServerListsExpectedTools(t *testing.T) {
 }
 
 func TestNovelBookmarkMutationSchemasExposeInputs(t *testing.T) {
-	server := pixivmcpserver.New(&fakeAPI{}, &fakeDownloads{})
+	server := newTestServer(pixivmcpserver.SDKPorts{}, pixivmcpserver.Account{})
 	clientTransport, serverTransport := mcp.NewInMemoryTransports()
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -315,11 +315,11 @@ func TestNovelBookmarkMutationSchemasExposeInputs(t *testing.T) {
 		if err != nil {
 			t.Fatalf("tools: %v", err)
 		}
-		if tool.Name == "add_novel_bookmark" || tool.Name == "remove_novel_bookmark" {
+		if tool.Name == "pixiv_add_novel_bookmark" || tool.Name == "pixiv_remove_novel_bookmark" {
 			tools[tool.Name] = tool
 		}
 	}
-	for _, name := range []string{"add_novel_bookmark", "remove_novel_bookmark"} {
+	for _, name := range []string{"pixiv_add_novel_bookmark", "pixiv_remove_novel_bookmark"} {
 		tool := tools[name]
 		if tool == nil {
 			t.Fatalf("%s tool is not registered", name)
@@ -338,7 +338,7 @@ func TestNovelBookmarkMutationSchemasExposeInputs(t *testing.T) {
 		if _, ok := schema.Properties["novel_id"]; !ok || !slices.Contains(schema.Required, "novel_id") {
 			t.Fatalf("%s schema = %s, want required novel_id", name, encoded)
 		}
-		if name == "add_novel_bookmark" {
+		if name == "pixiv_add_novel_bookmark" {
 			for _, field := range []string{"restrict", "tags"} {
 				if _, ok := schema.Properties[field]; !ok {
 					t.Fatalf("%s schema missing %q: %s", name, field, encoded)
@@ -371,9 +371,9 @@ func TestMCPStdioKeepsJSONRPCOnStdout(t *testing.T) {
 	for _, message := range []string{
 		`{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"test","version":"1"}}}`,
 		`{"jsonrpc":"2.0","method":"notifications/initialized","params":{}}`,
-		`{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"search_illust","arguments":{"word":"stdio-secret-canary"}}}`,
-		`{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"add_bookmark","arguments":{"illust_id":41}}}`,
-		`{"jsonrpc":"2.0","id":4,"method":"tools/call","params":{"name":"reverse_search","arguments":{"source":"https://stdio-source-secret.example/image.png?token=stdio-key"}}}`,
+		`{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"pixiv_search_illust","arguments":{"word":"stdio-secret-canary"}}}`,
+		`{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"pixiv_add_bookmark","arguments":{"illust_id":41}}}`,
+		`{"jsonrpc":"2.0","id":4,"method":"tools/call","params":{"name":"pixiv_reverse_search","arguments":{"source":"https://stdio-source-secret.example/image.png?token=stdio-key"}}}`,
 	} {
 		if _, err := io.WriteString(stdin, message+"\n"); err != nil {
 			t.Fatal(err)
@@ -412,7 +412,7 @@ func TestMCPStdioHelper(t *testing.T) {
 		return
 	}
 	client := &fakeSDKClient{addBookmarkErr: &sdk.Error{Product: "pixiv", Operation: "AddBookmark", Reason: sdk.UpstreamError}}
-	server := pixivmcpserver.NewWithSDK(&fakeAPI{}, &fakeDownloads{}, testSDKPorts(t, client), pixivmcpserver.Account{})
+	server := newTestServer(testSDKPorts(t, client), pixivmcpserver.Account{})
 	if err := server.Run(context.Background(), &mcp.StdioTransport{}); err != nil {
 		os.Exit(1)
 	}
@@ -420,7 +420,7 @@ func TestMCPStdioHelper(t *testing.T) {
 }
 
 func TestToolErrorResultPreservesStructuredContent(t *testing.T) {
-	app := runtime.NewApp(nil, nil, pixivmcpserver.SDKPorts{}, pixivmcpserver.Account{})
+	app := runtime.NewApp(pixivmcpserver.SDKPorts{}, pixivmcpserver.Account{})
 	server := mcp.NewServer(&mcp.Implementation{Name: "test", Version: "1"}, nil)
 	runtime.AddTool(app, server, &mcp.Tool{Name: "structured_error"}, func(context.Context, *mcp.CallToolRequest, struct{}) (*mcp.CallToolResult, map[string]string, error) {
 		return &mcp.CallToolResult{
@@ -453,7 +453,7 @@ func TestOpenClientPassesCanceledContextAndClosesLease(t *testing.T) {
 	var calls atomic.Int32
 	var closeCalls atomic.Int32
 	client := openWireClient(t, &fakeSDKClient{userID: 42})
-	app := runtime.NewApp(nil, nil, pixivmcpserver.SDKPorts{
+	app := runtime.NewApp(pixivmcpserver.SDKPorts{
 		OpenLease: func(ctx context.Context, _ pixivmcpserver.Account) (*lifecycle.Lease[*pixiv.Client], error) {
 			calls.Add(1)
 			if err := ctx.Err(); err != nil {
@@ -489,9 +489,9 @@ func TestOpenClientPassesCanceledContextAndClosesLease(t *testing.T) {
 }
 
 func TestSDKToolsWithoutSDKReturnStructuredConfigurationError(t *testing.T) {
-	session, closeSession := newTestSession(t, &fakeDownloads{})
+	session, closeSession := newTestSession(t)
 	defer closeSession()
-	result := callTool(t, session, "add_bookmark", map[string]any{"illust_id": 1})
+	result := callTool(t, session, "pixiv_add_bookmark", map[string]any{"illust_id": 1})
 	if !result.IsError {
 		t.Fatalf("SDK configuration failure must be an MCP error result: %+v", result)
 	}

@@ -717,11 +717,12 @@ func (fanboxMCPDefaults) ClearFanboxDefaultUserID() error {
 
 func newFanboxMCPSession(t *testing.T, service *fanboxapp.Service) (*mcp.ClientSession, func()) {
 	t.Helper()
-	server := fanboxmcpserver.New(fanboxmcpserver.SDKPorts{
+	server := mcp.NewServer(&mcp.Implementation{Name: "test", Version: "1"}, nil)
+	fanboxmcpserver.Register(server, fanboxmcpserver.SDKPorts{
 		Open: func(ctx context.Context, account fanboxmcpserver.Account) (*fanboxsdk.Client, error) {
 			return service.OpenClientWithProxy(ctx, account.HTTPSProxyOverride)
 		},
-	})
+	}, nil)
 	clientTransport, serverTransport := mcp.NewInMemoryTransports()
 	ctx, cancel := context.WithCancel(context.Background())
 	go func() { _ = server.Run(ctx, serverTransport) }()

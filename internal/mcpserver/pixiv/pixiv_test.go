@@ -13,7 +13,8 @@ import (
 	"time"
 
 	pixivmcpserver "github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv"
-	downloader "github.com/FlanChanXwO/pixiv-cli/internal/media/downloader"
+	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/internal/runtime"
+	"github.com/FlanChanXwO/pixiv-cli/internal/shared/diagnostics"
 	"github.com/FlanChanXwO/pixiv-cli/sdk"
 	pixiv "github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
@@ -39,40 +40,26 @@ func testPageCursor(seed byte) sdk.Cursor {
 	return cursor
 }
 
-// fakeAPI 只占据 New/NewWithSDK 保留的已废弃兼容参数；MCP 不得调用它。
-type fakeAPI struct{}
+func newTestServer(ports pixivmcpserver.SDKPorts, account pixivmcpserver.Account) *mcp.Server {
+	server := mcp.NewServer(&mcp.Implementation{Name: "test", Version: "1"}, nil)
+	pixivmcpserver.Register(server, ports, account)
+	return server
+}
 
-func newTestSession(t *testing.T, downloads *fakeDownloads) (*mcp.ClientSession, func()) {
+func newTestSession(t *testing.T) (*mcp.ClientSession, func()) {
 	t.Helper()
-	server := pixivmcpserver.New(&fakeAPI{}, downloads)
-	clientTransport, serverTransport := mcp.NewInMemoryTransports()
-	ctx, cancel := context.WithCancel(context.Background())
-	go func() { _ = server.Run(ctx, serverTransport) }()
-	client := mcp.NewClient(&mcp.Implementation{Name: "test", Version: "0.0.0"}, nil)
-	session, err := client.Connect(ctx, clientTransport, nil)
-	if err != nil {
-		cancel()
-		t.Fatalf("connect: %v", err)
-	}
-	return session, func() {
-		_ = session.Close()
-		cancel()
-	}
+	return newSDKTestSessionWithPorts(t, pixivmcpserver.SDKPorts{}, pixivmcpserver.Account{})
 }
 
 func newSDKTestSession(t *testing.T, sdkClient *fakeSDKClient) (*mcp.ClientSession, func()) {
-	return newSDKTestSessionWithAPI(t, &fakeAPI{}, sdkClient)
-}
-
-func newSDKTestSessionWithAPI(t *testing.T, api any, sdkClient *fakeSDKClient) (*mcp.ClientSession, func()) {
 	t.Helper()
 	ports, _ := newTestSDKPorts(t, sdkClient)
-	return newSDKTestSessionWithPorts(t, api, ports, pixivmcpserver.Account{})
+	return newSDKTestSessionWithPorts(t, ports, pixivmcpserver.Account{})
 }
 
-func newSDKTestSessionWithPorts(t *testing.T, api any, ports pixivmcpserver.SDKPorts, account pixivmcpserver.Account) (*mcp.ClientSession, func()) {
+func newSDKTestSessionWithPorts(t *testing.T, ports pixivmcpserver.SDKPorts, account pixivmcpserver.Account) (*mcp.ClientSession, func()) {
 	t.Helper()
-	server := pixivmcpserver.NewWithSDKDownloadFactory(&fakeDownloads{}, func(*pixiv.Client) pixivmcpserver.DownloadManager { return &fakeDownloads{} }, ports, account)
+	server := newTestServer(ports, account)
 	clientTransport, serverTransport := mcp.NewInMemoryTransports()
 	ctx, cancel := context.WithCancel(context.Background())
 	go func() { _ = server.Run(ctx, serverTransport) }()
@@ -256,49 +243,11 @@ type fakeSDKClient struct {
 	relatedRequest            pixiv.RelatedUsersRequest
 }
 
-func assertEmptyDownloadResult(t *testing.T, result *mcp.CallToolResult, wantDelivery, wantText string) {
-	t.Helper()
-	out := decodeDownloadOut(t, result)
-	if !result.IsError || out.Delivery != wantDelivery || out.Text != wantText || out.Items == nil || len(out.Items) != 0 || out.Files == nil || len(out.Files) != 0 {
-		t.Fatalf("result=%+v output=%+v", result, out)
-	}
-	if len(result.Content) != 1 {
-		t.Fatalf("content=%+v want one text item without image", result.Content)
-	}
-	text, ok := result.Content[0].(*mcp.TextContent)
-	if !ok || text.Text != wantText {
-		t.Fatalf("content=%+v want text %q", result.Content, wantText)
-	}
-}
-
-type fakeDownloads struct {
-	artworks      []downloader.DownloadedArtwork
-	result        downloader.DownloadBatchResult
-	downloadCalls int
-	downloadIDs   []int64
-	lastRequest   downloader.DownloadRequest
-	err           error
-}
-
-func (fakeDownloads) SetDownloadPath(string) error { return nil }
-func (d *fakeDownloads) Download(_ context.Context, request downloader.DownloadRequest) (downloader.DownloadBatchResult, error) {
-	ids := request.IllustIDs
-
-	d.downloadCalls++
-	d.downloadIDs = append([]int64(nil), ids...)
-	d.lastRequest = request
-	result := d.result
-	if result.Items == nil && d.artworks != nil {
-		result.Items = d.artworks
-	}
-	return result, d.err
-}
-
 // 收藏/关注 mutation tool 的 owner 契约：结构化成功结果。
 
 // 同一产品 registry 必须由官方 stateless transport 支持新发现协议和旧初始化协议。
 func TestStatelessHTTPProtocolNegotiation(t *testing.T) {
-	server := pixivmcpserver.New(nil, nil)
+	server := newTestServer(pixivmcpserver.SDKPorts{}, pixivmcpserver.Account{})
 	handler := mcp.NewStreamableHTTPHandler(func(*http.Request) *mcp.Server { return server },
 		&mcp.StreamableHTTPOptions{Stateless: true, JSONResponse: true})
 	for _, version := range []string{"2025-06-18", "2026-07-28"} {
@@ -352,5 +301,47 @@ func TestStatelessHTTPProtocolNegotiation(t *testing.T) {
 				t.Errorf("stateless response created session %q", id)
 			}
 		})
+	}
+}
+
+func TestPixivMCPDiagnosticsUseStableLocalRequestIDs(t *testing.T) {
+	var (
+		mu     sync.Mutex
+		events []diagnostics.Event
+	)
+	sink := diagnostics.SinkFunc(func(event diagnostics.Event) {
+		mu.Lock()
+		defer mu.Unlock()
+		events = append(events, event)
+	})
+	rootCtx, cancel := context.WithCancel(diagnostics.WithScope(context.Background(), sink, diagnostics.ModulePixivCLI, 0))
+	defer cancel()
+
+	server := mcp.NewServer(&mcp.Implementation{Name: "debug-test", Version: "1"}, nil)
+	runtime.AddTool(runtime.NewApp(runtime.SDKPorts{}, runtime.Account{}), server, &mcp.Tool{Name: "diagnostic_test"}, func(context.Context, *mcp.CallToolRequest, struct{}) (*mcp.CallToolResult, struct{}, error) {
+		return &mcp.CallToolResult{}, struct{}{}, nil
+	})
+	clientTransport, serverTransport := mcp.NewInMemoryTransports()
+	go func() { _ = server.Run(rootCtx, serverTransport) }()
+	client := mcp.NewClient(&mcp.Implementation{Name: "debug-client", Version: "1"}, nil)
+	session, err := client.Connect(rootCtx, clientTransport, nil)
+	if err != nil {
+		t.Fatalf("connect: %v", err)
+	}
+	defer func() { _ = session.Close() }()
+
+	callTool(t, session, "diagnostic_test", map[string]any{})
+	callTool(t, session, "diagnostic_test", map[string]any{})
+
+	mu.Lock()
+	defer mu.Unlock()
+	if len(events) != 4 {
+		t.Fatalf("events=%+v want two start/complete pairs", events)
+	}
+	for index, event := range events {
+		wantID := uint64(index/2 + 1)
+		if event.Module != diagnostics.ModulePixivMCPServer || event.RequestID != wantID {
+			t.Fatalf("event[%d]=%+v", index, event)
+		}
 	}
 }

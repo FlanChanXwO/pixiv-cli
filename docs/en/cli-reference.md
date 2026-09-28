@@ -515,7 +515,7 @@ Only the structured entity filters documented by each command are accepted. The 
 | `fanbox home` / `supporting` | `pixiv fanbox home|supporting [--page N --limit N]` | Reads the authenticated FANBOX home or supporting feed. |
 | `fanbox post` | `pixiv fanbox post POST_ID` | Reads one post and its safe asset summary. |
 | `fanbox download` | `pixiv fanbox download SOURCE...` | Saves FANBOX post assets below the configured download path. |
-| `fanbox mcp` | `pixiv fanbox mcp [--proxy URL\|--no-proxy]` | Starts the read-only FANBOX MCP stdio server; the native proxy override does not alter FlareSolverr settings. |
+| `fanbox mcp` | `pixiv fanbox mcp [--proxy URL\|--no-proxy]` | Starts the unified Pixiv/FANBOX MCP stdio server; the native proxy override does not alter FlareSolverr settings. |
 
 Downloaded filenames normalize cross-platform-invalid characters in both the filename template and URL-derived
 extension. For Pixiv thumbnail artwork, a successful resource Content-Type may replace an ambiguous URL extension

@@ -1,4 +1,4 @@
-// Package timeline_novel_latest 实现 timeline_novel_latest tool。
+// Package timeline_novel_latest 实现 pixiv_timeline_novel_latest tool。
 package timeline_novel_latest
 
 import (
@@ -13,9 +13,9 @@ import (
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
-// Register 注册 timeline_novel_latest。
+// Register 注册 pixiv_timeline_novel_latest。
 func Register(app *runtime.App, server *mcp.Server) {
-	runtime.AddTool(app, server, &mcp.Tool{Name: "timeline_novel_latest", Description: "Browse latest novels through the App API.", InputSchema: latestInputSchema(), OutputSchema: records.RecordsOutputSchema()}, func(ctx context.Context, request *mcp.CallToolRequest, input In) (*mcp.CallToolResult, outputs.Records, error) {
+	runtime.AddTool(app, server, &mcp.Tool{Name: "pixiv_timeline_novel_latest", Annotations: &mcp.ToolAnnotations{ReadOnlyHint: true, DestructiveHint: new(false), IdempotentHint: true, OpenWorldHint: new(true)}, Description: "Browse latest novels through the App API.", InputSchema: latestInputSchema(), OutputSchema: records.RecordsOutputSchema()}, func(ctx context.Context, request *mcp.CallToolRequest, input In) (*mcp.CallToolResult, outputs.Records, error) {
 		return handleNovelNew(ctx, app, input)
 	})
 }

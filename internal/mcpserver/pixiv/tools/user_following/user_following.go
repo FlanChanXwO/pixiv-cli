@@ -1,4 +1,4 @@
-// Package user_following 实现 user_following tool。
+// Package user_following 实现 pixiv_user_following tool。
 package user_following
 
 import (
@@ -14,9 +14,9 @@ import (
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
-// Register 注册 user_following。
+// Register 注册 pixiv_user_following。
 func Register(app *runtime.App, server *mcp.Server) {
-	runtime.AddTool(app, server, &mcp.Tool{Name: "user_following", Description: "View user's following list.", InputSchema: schemas.List(map[string]any{
+	runtime.AddTool(app, server, &mcp.Tool{Name: "pixiv_user_following", Annotations: &mcp.ToolAnnotations{ReadOnlyHint: true, DestructiveHint: new(false), IdempotentHint: true, OpenWorldHint: new(true)}, Description: "View user's following list.", InputSchema: schemas.List(map[string]any{
 		"user_id":     schemas.PositiveInteger("Optional positive Pixiv user ID; defaults to the authenticated user."),
 		"restrict":    schemas.EnumString("Following visibility.", "public", "private"),
 		"user_filter": filters.UserFilterSchema(),

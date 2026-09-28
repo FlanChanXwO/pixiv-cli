@@ -1,4 +1,4 @@
-// Package user_bookmarks 实现 user_bookmarks tool。
+// Package user_bookmarks 实现 pixiv_user_bookmarks tool。
 package user_bookmarks
 
 import (
@@ -13,9 +13,9 @@ import (
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
-// Register 注册 user_bookmarks。
+// Register 注册 pixiv_user_bookmarks。
 func Register(app *runtime.App, server *mcp.Server) {
-	runtime.AddTool(app, server, &mcp.Tool{Name: "user_bookmarks", Description: "Browse user's bookmarked artworks.", OutputSchema: records.RecordsOutputSchema()}, func(ctx context.Context, request *mcp.CallToolRequest, input In) (*mcp.CallToolResult, outputs.Records, error) {
+	runtime.AddTool(app, server, &mcp.Tool{Name: "pixiv_user_bookmarks", Annotations: &mcp.ToolAnnotations{ReadOnlyHint: true, DestructiveHint: new(false), IdempotentHint: true, OpenWorldHint: new(true)}, Description: "Browse user's bookmarked artworks.", OutputSchema: records.RecordsOutputSchema()}, func(ctx context.Context, request *mcp.CallToolRequest, input In) (*mcp.CallToolResult, outputs.Records, error) {
 		return handleUserBookmarks(ctx, app, input)
 	})
 }

@@ -1,4 +1,4 @@
-// Package timeline_novel_following 实现 timeline_novel_following tool。
+// Package timeline_novel_following 实现 pixiv_timeline_novel_following tool。
 package timeline_novel_following
 
 import (
@@ -13,9 +13,9 @@ import (
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
-// Register 注册 timeline_novel_following。
+// Register 注册 pixiv_timeline_novel_following。
 func Register(app *runtime.App, server *mcp.Server) {
-	runtime.AddTool(app, server, &mcp.Tool{Name: "timeline_novel_following", Description: "Browse new novels from followed users through the App API.", InputSchema: novelFollowingInputSchema(), OutputSchema: records.RecordsOutputSchema()}, func(ctx context.Context, request *mcp.CallToolRequest, input In) (*mcp.CallToolResult, outputs.Records, error) {
+	runtime.AddTool(app, server, &mcp.Tool{Name: "pixiv_timeline_novel_following", Annotations: &mcp.ToolAnnotations{ReadOnlyHint: true, DestructiveHint: new(false), IdempotentHint: true, OpenWorldHint: new(true)}, Description: "Browse new novels from followed users through the App API.", InputSchema: novelFollowingInputSchema(), OutputSchema: records.RecordsOutputSchema()}, func(ctx context.Context, request *mcp.CallToolRequest, input In) (*mcp.CallToolResult, outputs.Records, error) {
 		return handleNovelFollow(ctx, app, input)
 	})
 }

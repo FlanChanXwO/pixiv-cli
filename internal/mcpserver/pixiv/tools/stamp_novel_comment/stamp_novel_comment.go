@@ -1,4 +1,4 @@
-// Package stamp_novel_comment 实现 stamp_novel_comment tool。
+// Package stamp_novel_comment 实现 pixiv_stamp_novel_comment tool。
 package stamp_novel_comment
 
 import (
@@ -12,10 +12,10 @@ import (
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
-// Register 注册 stamp_novel_comment。
+// Register 注册 pixiv_stamp_novel_comment。
 func Register(app *runtime.App, server *mcp.Server) {
 	runtime.AddTool(app, server, &mcp.Tool{
-		Name:        "stamp_novel_comment",
+		Name: "pixiv_stamp_novel_comment", Annotations: &mcp.ToolAnnotations{ReadOnlyHint: false, DestructiveHint: new(false), IdempotentHint: false, OpenWorldHint: new(true)},
 		Description: "Add a stamp comment to a Pixiv novel.",
 		InputSchema: schemas.ClosedObject(novelCommentProperties(), []string{"novel_id", "stamp_id"}),
 	}, func(ctx context.Context, request *mcp.CallToolRequest, input In) (*mcp.CallToolResult, outputs.Mutation, error) {

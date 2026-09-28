@@ -20,7 +20,7 @@ import (
 // bookmark_tags 或 novel_bookmark_tags 的 output contract。
 func Register(app *runtime.App, server *mcp.Server) {
 	runtime.AddTool(app, server, &mcp.Tool{
-		Name:        "bookmark_tags_all",
+		Name: "pixiv_bookmark_tags_all", Annotations: &mcp.ToolAnnotations{ReadOnlyHint: true, DestructiveHint: new(false), IdempotentHint: true, OpenWorldHint: new(true)},
 		Description: "List artwork bookmark tags followed by novel bookmark tags without merging names.",
 		InputSchema: schemas.List(map[string]any{
 			"user_id":  schemas.PositiveInteger("Optional positive Pixiv user ID; defaults to the authenticated user."),

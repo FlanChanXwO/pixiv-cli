@@ -1,4 +1,4 @@
-// Package timeline_illust_latest 实现 timeline_illust_latest tool。
+// Package timeline_illust_latest 实现 pixiv_timeline_illust_latest tool。
 package timeline_illust_latest
 
 import (
@@ -14,9 +14,9 @@ import (
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
-// Register 注册 timeline_illust_latest。
+// Register 注册 pixiv_timeline_illust_latest。
 func Register(app *runtime.App, server *mcp.Server) {
-	runtime.AddTool(app, server, &mcp.Tool{Name: "timeline_illust_latest", Description: "Browse latest illustrations or manga through the App API.", InputSchema: latestInputSchema(), OutputSchema: records.RecordsOutputSchema()}, func(ctx context.Context, request *mcp.CallToolRequest, input In) (*mcp.CallToolResult, outputs.Records, error) {
+	runtime.AddTool(app, server, &mcp.Tool{Name: "pixiv_timeline_illust_latest", Annotations: &mcp.ToolAnnotations{ReadOnlyHint: true, DestructiveHint: new(false), IdempotentHint: true, OpenWorldHint: new(true)}, Description: "Browse latest illustrations or manga through the App API.", InputSchema: latestInputSchema(), OutputSchema: records.RecordsOutputSchema()}, func(ctx context.Context, request *mcp.CallToolRequest, input In) (*mcp.CallToolResult, outputs.Records, error) {
 		return handleIllustNew(ctx, app, input)
 	})
 }

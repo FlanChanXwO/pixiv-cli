@@ -1,4 +1,4 @@
-// Package user_novel_bookmarks 实现 user_novel_bookmarks tool。
+// Package user_novel_bookmarks 实现 pixiv_user_novel_bookmarks tool。
 package user_novel_bookmarks
 
 import (
@@ -12,9 +12,9 @@ import (
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
-// Register 注册 user_novel_bookmarks。
+// Register 注册 pixiv_user_novel_bookmarks。
 func Register(app *runtime.App, server *mcp.Server) {
-	runtime.AddTool(app, server, &mcp.Tool{Name: "user_novel_bookmarks", Description: "Browse user's bookmarked novels.", OutputSchema: records.RecordsOutputSchema()}, func(ctx context.Context, request *mcp.CallToolRequest, input In) (*mcp.CallToolResult, outputs.Records, error) {
+	runtime.AddTool(app, server, &mcp.Tool{Name: "pixiv_user_novel_bookmarks", Annotations: &mcp.ToolAnnotations{ReadOnlyHint: true, DestructiveHint: new(false), IdempotentHint: true, OpenWorldHint: new(true)}, Description: "Browse user's bookmarked novels.", OutputSchema: records.RecordsOutputSchema()}, func(ctx context.Context, request *mcp.CallToolRequest, input In) (*mcp.CallToolResult, outputs.Records, error) {
 		return handleUserNovelBookmarks(ctx, app, input)
 	})
 }

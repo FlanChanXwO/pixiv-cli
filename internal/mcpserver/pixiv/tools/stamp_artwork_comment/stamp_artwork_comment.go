@@ -1,4 +1,4 @@
-// Package stamp_artwork_comment 实现 stamp_artwork_comment tool。
+// Package stamp_artwork_comment 实现 pixiv_stamp_artwork_comment tool。
 package stamp_artwork_comment
 
 import (
@@ -12,10 +12,10 @@ import (
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
-// Register 注册 stamp_artwork_comment。
+// Register 注册 pixiv_stamp_artwork_comment。
 func Register(app *runtime.App, server *mcp.Server) {
 	runtime.AddTool(app, server, &mcp.Tool{
-		Name:        "stamp_artwork_comment",
+		Name: "pixiv_stamp_artwork_comment", Annotations: &mcp.ToolAnnotations{ReadOnlyHint: false, DestructiveHint: new(false), IdempotentHint: false, OpenWorldHint: new(true)},
 		Description: "Add a stamp comment to a Pixiv artwork.",
 		InputSchema: schemas.ClosedObject(artworkCommentProperties(), []string{"illust_id", "stamp_id"}),
 	}, func(ctx context.Context, request *mcp.CallToolRequest, input In) (*mcp.CallToolResult, outputs.Mutation, error) {

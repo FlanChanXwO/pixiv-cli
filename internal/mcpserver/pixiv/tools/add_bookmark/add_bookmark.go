@@ -1,4 +1,4 @@
-// Package add_bookmark 实现 add_bookmark tool。
+// Package add_bookmark 实现 pixiv_add_bookmark tool。
 package add_bookmark
 
 import (
@@ -11,9 +11,9 @@ import (
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
-// Register 注册 add_bookmark。
+// Register 注册 pixiv_add_bookmark。
 func Register(app *runtime.App, server *mcp.Server) {
-	runtime.AddTool(app, server, &mcp.Tool{Name: "add_bookmark", Description: "Add an artwork to bookmarks."}, func(ctx context.Context, request *mcp.CallToolRequest, input In) (*mcp.CallToolResult, outputs.Mutation, error) {
+	runtime.AddTool(app, server, &mcp.Tool{Name: "pixiv_add_bookmark", Annotations: &mcp.ToolAnnotations{ReadOnlyHint: false, DestructiveHint: new(false), IdempotentHint: true, OpenWorldHint: new(true)}, Description: "Add an artwork to bookmarks."}, func(ctx context.Context, request *mcp.CallToolRequest, input In) (*mcp.CallToolResult, outputs.Mutation, error) {
 		return handleAddBookmark(ctx, app, input)
 	})
 }

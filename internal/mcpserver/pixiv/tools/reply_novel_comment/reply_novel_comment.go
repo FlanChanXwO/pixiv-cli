@@ -1,4 +1,4 @@
-// Package reply_novel_comment 实现 reply_novel_comment tool。
+// Package reply_novel_comment 实现 pixiv_reply_novel_comment tool。
 package reply_novel_comment
 
 import (
@@ -12,10 +12,10 @@ import (
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
-// Register 注册 reply_novel_comment。
+// Register 注册 pixiv_reply_novel_comment。
 func Register(app *runtime.App, server *mcp.Server) {
 	runtime.AddTool(app, server, &mcp.Tool{
-		Name:        "reply_novel_comment",
+		Name: "pixiv_reply_novel_comment", Annotations: &mcp.ToolAnnotations{ReadOnlyHint: false, DestructiveHint: new(false), IdempotentHint: false, OpenWorldHint: new(true)},
 		Description: "Reply to a comment on a Pixiv novel.",
 		InputSchema: schemas.ClosedObject(novelCommentProperties(), []string{"novel_id", "comment", "parent_comment_id"}),
 	}, func(ctx context.Context, request *mcp.CallToolRequest, input In) (*mcp.CallToolResult, outputs.Mutation, error) {

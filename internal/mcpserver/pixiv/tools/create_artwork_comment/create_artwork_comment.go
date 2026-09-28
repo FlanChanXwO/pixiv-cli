@@ -1,4 +1,4 @@
-// Package create_artwork_comment 实现 create_artwork_comment tool。
+// Package create_artwork_comment 实现 pixiv_create_artwork_comment tool。
 package create_artwork_comment
 
 import (
@@ -12,10 +12,10 @@ import (
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
-// Register 注册 create_artwork_comment。
+// Register 注册 pixiv_create_artwork_comment。
 func Register(app *runtime.App, server *mcp.Server) {
 	runtime.AddTool(app, server, &mcp.Tool{
-		Name:        "create_artwork_comment",
+		Name: "pixiv_create_artwork_comment", Annotations: &mcp.ToolAnnotations{ReadOnlyHint: false, DestructiveHint: new(false), IdempotentHint: false, OpenWorldHint: new(true)},
 		Description: "Create a top-level comment on a Pixiv artwork.",
 		InputSchema: schemas.ClosedObject(artworkCommentProperties(), []string{"illust_id", "comment"}),
 	}, func(ctx context.Context, request *mcp.CallToolRequest, input In) (*mcp.CallToolResult, outputs.Mutation, error) {

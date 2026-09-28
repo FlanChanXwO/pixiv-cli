@@ -11,7 +11,6 @@ import (
 	"time"
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/internal/filters"
-	downloader "github.com/FlanChanXwO/pixiv-cli/internal/media/downloader"
 	"github.com/FlanChanXwO/pixiv-cli/internal/services/reversesearch"
 	"github.com/FlanChanXwO/pixiv-cli/internal/shared/diagnostics"
 	"github.com/FlanChanXwO/pixiv-cli/internal/shared/lifecycle"
@@ -21,12 +20,6 @@ import (
 	pixiv "github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
-
-// DownloadManager 是下载器在 MCP 侧的窄能力接口。
-type DownloadManager interface {
-	SetDownloadPath(string) error
-	Download(context.Context, downloader.DownloadRequest) (downloader.DownloadBatchResult, error)
-}
 
 // Account 是 MCP 请求的本地值；只携带传输覆写与账号选择，不持有
 // client 或凭据。
@@ -60,25 +53,15 @@ type ReverseSearchPorts struct {
 
 // App 是 Pixiv MCP 应用。
 type App struct {
-	downloads DownloadManager
-	// newDownloads 在每个 SDK client 的稳定认证 snapshot 上创建下载器。
-	// 固定 downloads 仅保留给未注入 SDK 的嵌入测试兼容路径。
-	newDownloads   func(*pixiv.Client) DownloadManager
 	sdk            SDKPorts
 	sdkAccount     Account
 	requestCounter atomic.Uint64
 }
 
-// NewApp 构造带下载器、下载器工厂、SDK ports 与账号的 Pixiv MCP 应用。
-func NewApp(downloads DownloadManager, newDownloads func(*pixiv.Client) DownloadManager, ports SDKPorts, account Account) *App {
-	return &App{downloads: downloads, newDownloads: newDownloads, sdk: ports, sdkAccount: account}
+// NewApp 构造独立的 Pixiv SDK 与账号运行时。
+func NewApp(ports SDKPorts, account Account) *App {
+	return &App{sdk: ports, sdkAccount: account}
 }
-
-// Downloads 返回固定下载器（仅嵌入测试兼容路径使用）。
-func (a *App) Downloads() DownloadManager { return a.downloads }
-
-// NewDownloads 返回 snapshot-scoped 下载器工厂。
-func (a *App) NewDownloads() func(*pixiv.Client) DownloadManager { return a.newDownloads }
 
 // SDKPorts 返回注入的 SDK 端口。
 func (a *App) SDKPorts() SDKPorts { return a.sdk }

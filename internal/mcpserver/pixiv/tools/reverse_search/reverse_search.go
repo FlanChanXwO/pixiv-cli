@@ -1,4 +1,4 @@
-// Package reverse_search 实现 reverse_search MCP tool。
+// Package reverse_search 实现 pixiv_reverse_search MCP tool。
 package reverse_search
 
 import (
@@ -13,12 +13,12 @@ import (
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
-// Register 注册 reverse_search。source 只在当前请求中传给 Facade，输出永远只
+// Register 注册 pixiv_reverse_search。source 只在当前请求中传给 Facade，输出永远只
 // 暴露 source kind/hash 摘要；provider、pixiv-only、代理和凭据来自启动快照。
 func Register(app *runtime.App, server *mcp.Server) {
 	runtime.AddTool(app, server, &mcp.Tool{
-		Name:         "reverse_search",
-		Description:  "Search an image source with SauceNAO or ascii2d and return Pixiv matches.",
+		Name: "pixiv_reverse_search", Annotations: &mcp.ToolAnnotations{ReadOnlyHint: true, DestructiveHint: new(false), IdempotentHint: true, OpenWorldHint: new(true)},
+		Description:  "Upload an image source to SauceNAO or ascii2d and return Pixiv matches.",
 		InputSchema:  reverseSearchInputSchema(),
 		OutputSchema: reverseSearchOutputSchema(),
 	}, func(ctx context.Context, _ *mcp.CallToolRequest, input reverseSearchInput) (*mcp.CallToolResult, reverseSearchOutput, error) {

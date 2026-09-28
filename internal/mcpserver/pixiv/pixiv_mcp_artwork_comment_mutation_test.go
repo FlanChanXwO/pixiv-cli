@@ -34,28 +34,28 @@ func TestArtworkCommentMutationToolsReturnStructuredSuccess(t *testing.T) {
 		wantCommentID int64
 	}{
 		{
-			name:          "create_artwork_comment",
+			name:          "pixiv_create_artwork_comment",
 			args:          map[string]any{"illust_id": 9, "comment": "hello"},
 			wantAction:    "create_artwork_comment",
 			wantText:      "Created comment on artwork 9.",
 			wantCommentID: 901,
 		},
 		{
-			name:          "reply_artwork_comment",
+			name:          "pixiv_reply_artwork_comment",
 			args:          map[string]any{"illust_id": 9, "comment": "reply", "parent_comment_id": 11},
 			wantAction:    "reply_artwork_comment",
 			wantText:      "Replied to comment 11 on artwork 9.",
 			wantCommentID: 902,
 		},
 		{
-			name:          "stamp_artwork_comment",
+			name:          "pixiv_stamp_artwork_comment",
 			args:          map[string]any{"illust_id": 9, "comment": "stamp", "stamp_id": 7},
 			wantAction:    "stamp_artwork_comment",
 			wantText:      "Added stamp comment to artwork 9.",
 			wantCommentID: 903,
 		},
 		{
-			name:          "delete_artwork_comment",
+			name:          "pixiv_delete_artwork_comment",
 			args:          map[string]any{"comment_id": 12},
 			wantAction:    "delete_artwork_comment",
 			wantText:      "Deleted comment 12.",
@@ -72,7 +72,7 @@ func TestArtworkCommentMutationToolsReturnStructuredSuccess(t *testing.T) {
 			if !out.Success || out.Action != test.wantAction || out.Text != test.wantText || out.CommentID != test.wantCommentID {
 				t.Fatalf("mutation output = %+v, want action=%q text=%q comment_id=%d", out, test.wantAction, test.wantText, test.wantCommentID)
 			}
-			if out.IllustID != 9 && test.name != "delete_artwork_comment" {
+			if out.IllustID != 9 && test.name != "pixiv_delete_artwork_comment" {
 				t.Fatalf("artwork mutation output = %+v", out)
 			}
 		})
@@ -102,7 +102,7 @@ func TestArtworkCommentMutationTypedErrorIsMCPErrorAndDoesNotReplay(t *testing.T
 	session, closeSession := newSDKTestSession(t, client)
 	defer closeSession()
 
-	result := callTool(t, session, "create_artwork_comment", map[string]any{"illust_id": 41, "comment": "uncertain"})
+	result := callTool(t, session, "pixiv_create_artwork_comment", map[string]any{"illust_id": 41, "comment": "uncertain"})
 	if !result.IsError {
 		t.Fatalf("typed artwork comment failure must be an MCP error: %+v", result)
 	}
@@ -117,7 +117,7 @@ func TestArtworkCommentMutationTypedErrorIsMCPErrorAndDoesNotReplay(t *testing.T
 }
 
 func TestArtworkCommentMutationSchemasExposeOnlyContractInputs(t *testing.T) {
-	serverSession, closeSession := newTestSession(t, &fakeDownloads{})
+	serverSession, closeSession := newTestSession(t)
 	defer closeSession()
 
 	tools := map[string]map[string]any{}
@@ -139,10 +139,10 @@ func TestArtworkCommentMutationSchemasExposeOnlyContractInputs(t *testing.T) {
 	}
 
 	want := map[string][]string{
-		"create_artwork_comment": {"illust_id", "comment"},
-		"reply_artwork_comment":  {"illust_id", "comment", "parent_comment_id"},
-		"stamp_artwork_comment":  {"illust_id", "stamp_id"},
-		"delete_artwork_comment": {"comment_id"},
+		"pixiv_create_artwork_comment": {"illust_id", "comment"},
+		"pixiv_reply_artwork_comment":  {"illust_id", "comment", "parent_comment_id"},
+		"pixiv_stamp_artwork_comment":  {"illust_id", "stamp_id"},
+		"pixiv_delete_artwork_comment": {"comment_id"},
 	}
 	for name, required := range want {
 		schema, ok := tools[name]
@@ -167,25 +167,25 @@ func TestArtworkCommentMutationSchemasExposeOnlyContractInputs(t *testing.T) {
 			}
 		}
 		for _, field := range []string{"comment"} {
-			if property, ok := properties[field].(map[string]any); ok && name != "stamp_artwork_comment" {
+			if property, ok := properties[field].(map[string]any); ok && name != "pixiv_stamp_artwork_comment" {
 				if got, ok := property["minLength"].(float64); !ok || got != 1 {
 					t.Fatalf("%s %s schema minLength=%#v, want 1", name, field, property["minLength"])
 				}
 			}
 		}
-		if name == "stamp_artwork_comment" {
+		if name == "pixiv_stamp_artwork_comment" {
 			if property, ok := properties["comment"].(map[string]any); ok {
 				if _, ok := property["minLength"]; ok {
 					t.Fatalf("%s comment schema must allow empty text: %#v", name, property)
 				}
 			}
 		}
-		if name != "stamp_artwork_comment" {
+		if name != "pixiv_stamp_artwork_comment" {
 			if _, ok := properties["stamp_id"]; ok {
 				t.Fatalf("%s schema must not expose stamp_id: %#v", name, schema)
 			}
 		}
-		if name != "reply_artwork_comment" {
+		if name != "pixiv_reply_artwork_comment" {
 			if _, ok := properties["parent_comment_id"]; ok {
 				t.Fatalf("%s schema must not expose parent_comment_id: %#v", name, schema)
 			}
@@ -198,7 +198,7 @@ func TestArtworkStampCommentAllowsOmittedComment(t *testing.T) {
 	session, closeSession := newSDKTestSession(t, client)
 	defer closeSession()
 
-	result := callTool(t, session, "stamp_artwork_comment", map[string]any{"illust_id": 9, "stamp_id": 7})
+	result := callTool(t, session, "pixiv_stamp_artwork_comment", map[string]any{"illust_id": 9, "stamp_id": 7})
 	if result.IsError {
 		t.Fatalf("stamp artwork comment without text failed: %+v", result)
 	}
@@ -212,10 +212,10 @@ func TestArtworkCommentMutationRejectsInvalidInputBeforeSDKExecution(t *testing.
 		name string
 		args map[string]any
 	}{
-		{name: "create_artwork_comment", args: map[string]any{"illust_id": 0, "comment": "hello"}},
-		{name: "reply_artwork_comment", args: map[string]any{"illust_id": 9, "comment": "reply", "parent_comment_id": 0}},
-		{name: "stamp_artwork_comment", args: map[string]any{"illust_id": 9, "comment": "stamp", "stamp_id": 0}},
-		{name: "delete_artwork_comment", args: map[string]any{"comment_id": 0}},
+		{name: "pixiv_create_artwork_comment", args: map[string]any{"illust_id": 0, "comment": "hello"}},
+		{name: "pixiv_reply_artwork_comment", args: map[string]any{"illust_id": 9, "comment": "reply", "parent_comment_id": 0}},
+		{name: "pixiv_stamp_artwork_comment", args: map[string]any{"illust_id": 9, "comment": "stamp", "stamp_id": 0}},
+		{name: "pixiv_delete_artwork_comment", args: map[string]any{"comment_id": 0}},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			client := &fakeSDKClient{}
@@ -226,7 +226,7 @@ func TestArtworkCommentMutationRejectsInvalidInputBeforeSDKExecution(t *testing.
 				executions++
 				return baseExecute(ctx, account, attempt)
 			}
-			session, closeSession := newSDKTestSessionWithPorts(t, &fakeAPI{}, ports, pixivmcpserver.Account{})
+			session, closeSession := newSDKTestSessionWithPorts(t, ports, pixivmcpserver.Account{})
 			defer closeSession()
 
 			result, err := session.CallTool(context.Background(), &mcp.CallToolParams{Name: test.name, Arguments: test.args})

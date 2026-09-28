@@ -16,7 +16,6 @@ import (
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/tools/create_novel_comment"
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/tools/delete_artwork_comment"
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/tools/delete_novel_comment"
-	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/tools/download"
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/tools/follow_user"
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/tools/illust_comments"
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/tools/illust_detail"
@@ -58,12 +57,8 @@ import (
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/tools/user_following"
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/tools/user_novel_bookmarks"
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/tools/user_novels"
-	pixiv "github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
-
-// DownloadManager 是下载器在 MCP 侧的窄能力接口。
-type DownloadManager = runtime.DownloadManager
 
 // Account 是 MCP 请求的本地值；只携带传输覆写与账号选择，不持有
 // client 或凭据。
@@ -76,32 +71,9 @@ type SDKPorts = runtime.SDKPorts
 // ReverseSearchPorts 是 reverse_search 的启动时配置与能力注入。
 type ReverseSearchPorts = runtime.ReverseSearchPorts
 
-// New 保留构造参数位置以便嵌入方平滑升级；第一个参数不再被读取，所有 Pixiv
-// 能力必须由 public SDK ports 提供。
-func New(_ any, downloads DownloadManager) *mcp.Server {
-	return newServer(runtime.NewApp(downloads, nil, SDKPorts{}, Account{}))
-}
-
-// NewWithSDK 通过 services Facade 的窄端口为每个 MCP tool 建立独立 client snapshot。
-// 首个参数仅是已废弃的兼容占位，绝不构成内容、认证或资源调用链。
-func NewWithSDK(_ any, downloads DownloadManager, ports SDKPorts, account Account) *mcp.Server {
-	return newServer(runtime.NewApp(downloads, nil, ports, account))
-}
-
-// NewWithSDKDownloadFactory 为生产 MCP 注入 snapshot-scoped 下载器构造器。
-func NewWithSDKDownloadFactory(downloads DownloadManager, newDownloads func(*pixiv.Client) DownloadManager, ports SDKPorts, account Account) *mcp.Server {
-	return newServer(runtime.NewApp(downloads, newDownloads, ports, account))
-}
-
-func newServer(app *runtime.App) *mcp.Server {
-	server := mcp.NewServer(&mcp.Implementation{Name: "pixiv-cli", Version: "3.0.0"}, &mcp.ServerOptions{
-		Instructions: "Pixiv MCP server for searching, browsing, and downloading Pixiv content.",
-	})
-	register(app, server)
-	return server
-}
-
-func register(app *runtime.App, server *mcp.Server) {
+// Register 将 Pixiv tools 注册到共享 server，账号和 SDK 生命周期仍由 Pixiv runtime 持有。
+func Register(server *mcp.Server, ports SDKPorts, account Account) {
+	app := runtime.NewApp(ports, account)
 	add_bookmark.Register(app, server)
 	add_novel_bookmark.Register(app, server)
 	blocked_users.Register(app, server)
@@ -113,7 +85,6 @@ func register(app *runtime.App, server *mcp.Server) {
 	bookmark_list_all.Register(app, server)
 	bookmark_tags.Register(app, server)
 	bookmark_tags_all.Register(app, server)
-	download.Register(app, server)
 	follow_user.Register(app, server)
 	illust_comments.Register(app, server)
 	illust_detail.Register(app, server)

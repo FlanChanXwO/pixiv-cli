@@ -38,14 +38,8 @@ type SDKPorts struct {
 	OpenLease func(context.Context, Account) (*lifecycle.Lease[*fanboxsdk.Client], error)
 }
 
-// New 构造 FANBOX MCP server。
-func New(ports SDKPorts) *mcp.Server {
-	return NewWithProxy(ports, nil)
-}
-
-// NewWithProxy constructs the server with a native FANBOX proxy override. It
-// does not alter FlareSolverr service or upstream proxy configuration.
-func NewWithProxy(ports SDKPorts, proxyOverride *string) *mcp.Server {
+// Register 将 FANBOX tools 注册到共享 server；proxyOverride 只作用于 FANBOX 原生连接。
+func Register(server *mcp.Server, ports SDKPorts, proxyOverride *string) {
 	runtimePorts := runtime.SDKPorts{Open: func(ctx context.Context, account runtime.Account) (*fanboxsdk.Client, error) {
 		if ports.Open == nil {
 			return nil, errors.New("fanbox SDK ports are not configured")
@@ -61,11 +55,7 @@ func NewWithProxy(ports SDKPorts, proxyOverride *string) *mcp.Server {
 		runtimePorts.Open = nil
 	}
 	app := runtime.NewApp(runtimePorts, runtime.Account{HTTPSProxyOverride: proxyOverride})
-	server := mcp.NewServer(&mcp.Implementation{Name: "pixiv-cli-fanbox", Version: "1.0.0"}, &mcp.ServerOptions{
-		Instructions: "FANBOX MCP server for browsing creators, posts, tags, and media resources.",
-	})
 	register(app, server)
-	return server
 }
 
 func register(app *runtime.App, server *mcp.Server) {

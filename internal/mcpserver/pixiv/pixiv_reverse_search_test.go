@@ -32,7 +32,7 @@ func TestReverseSearchPublishesClosedInputAndEnvelopeSchemas(t *testing.T) {
 	var reverseToolName string
 	var inputSchema, outputSchema any
 	for _, tool := range tools {
-		if tool.Name != "reverse_search" {
+		if tool.Name != "pixiv_reverse_search" {
 			continue
 		}
 		reverseToolName = tool.Name
@@ -79,7 +79,7 @@ func TestReverseSearchPublishesClosedInputAndEnvelopeSchemas(t *testing.T) {
 
 func TestReverseSearchReturnsStructuredEnvelopeAndRecord(t *testing.T) {
 	var got reversesearch.Request
-	session, closeSession := newSDKTestSessionWithPorts(t, &fakeAPI{}, pixivmcpserver.SDKPorts{
+	session, closeSession := newSDKTestSessionWithPorts(t, pixivmcpserver.SDKPorts{
 		ReverseSearch: pixivmcpserver.ReverseSearchPorts{
 			Searcher: reverseSearcherFunc(func(_ context.Context, request reversesearch.Request) (reversesearch.Response, error) {
 				got = request
@@ -95,7 +95,7 @@ func TestReverseSearchReturnsStructuredEnvelopeAndRecord(t *testing.T) {
 	}, pixivmcpserver.Account{})
 	defer closeSession()
 
-	result := callTool(t, session, "reverse_search", map[string]any{
+	result := callTool(t, session, "pixiv_reverse_search", map[string]any{
 		"source": "/private/source-secret.png", "provider": "ascii2d-color",
 	})
 	if result.IsError {
@@ -122,7 +122,7 @@ func TestReverseSearchReturnsStructuredEnvelopeAndRecord(t *testing.T) {
 
 func TestReverseSearchUsesStartupProviderWhenInputOmitsOverride(t *testing.T) {
 	var got reversesearch.Request
-	session, closeSession := newSDKTestSessionWithPorts(t, &fakeAPI{}, pixivmcpserver.SDKPorts{
+	session, closeSession := newSDKTestSessionWithPorts(t, pixivmcpserver.SDKPorts{
 		ReverseSearch: pixivmcpserver.ReverseSearchPorts{
 			Searcher: reverseSearcherFunc(func(_ context.Context, request reversesearch.Request) (reversesearch.Response, error) {
 				got = request
@@ -134,7 +134,7 @@ func TestReverseSearchUsesStartupProviderWhenInputOmitsOverride(t *testing.T) {
 	}, pixivmcpserver.Account{})
 	defer closeSession()
 
-	result := callTool(t, session, "reverse_search", map[string]any{"source": "https://image.example.test/picture.png"})
+	result := callTool(t, session, "pixiv_reverse_search", map[string]any{"source": "https://image.example.test/picture.png"})
 	if result.IsError {
 		t.Fatalf("reverse_search returned MCP error: %+v", result)
 	}
@@ -144,7 +144,7 @@ func TestReverseSearchUsesStartupProviderWhenInputOmitsOverride(t *testing.T) {
 }
 
 func TestReverseSearchPartialResultIsNotMCPError(t *testing.T) {
-	session, closeSession := newSDKTestSessionWithPorts(t, &fakeAPI{}, pixivmcpserver.SDKPorts{
+	session, closeSession := newSDKTestSessionWithPorts(t, pixivmcpserver.SDKPorts{
 		ReverseSearch: pixivmcpserver.ReverseSearchPorts{
 			Searcher: reverseSearcherFunc(func(context.Context, reversesearch.Request) (reversesearch.Response, error) {
 				return reversesearch.Response{
@@ -162,7 +162,7 @@ func TestReverseSearchPartialResultIsNotMCPError(t *testing.T) {
 	}, pixivmcpserver.Account{})
 	defer closeSession()
 
-	result := callTool(t, session, "reverse_search", map[string]any{"source": "https://image.example.test/picture.png", "provider": "all"})
+	result := callTool(t, session, "pixiv_reverse_search", map[string]any{"source": "https://image.example.test/picture.png", "provider": "all"})
 	if result.IsError {
 		t.Fatalf("partial reverse search must not be an MCP error: %+v", result)
 	}
@@ -175,7 +175,7 @@ func TestReverseSearchPartialResultIsNotMCPError(t *testing.T) {
 
 func TestReverseSearchStableSolverErrorKeepsStructuredErrorEnvelope(t *testing.T) {
 	const secret = "solver-secret source-secret csrf-secret"
-	session, closeSession := newSDKTestSessionWithPorts(t, &fakeAPI{}, pixivmcpserver.SDKPorts{
+	session, closeSession := newSDKTestSessionWithPorts(t, pixivmcpserver.SDKPorts{
 		ReverseSearch: pixivmcpserver.ReverseSearchPorts{
 			Searcher: reverseSearcherFunc(func(context.Context, reversesearch.Request) (reversesearch.Response, error) {
 				return reversesearch.Response{
@@ -192,7 +192,7 @@ func TestReverseSearchStableSolverErrorKeepsStructuredErrorEnvelope(t *testing.T
 	}, pixivmcpserver.Account{})
 	defer closeSession()
 
-	result := callTool(t, session, "reverse_search", map[string]any{
+	result := callTool(t, session, "pixiv_reverse_search", map[string]any{
 		"source": "https://source-secret.example.test/image?token=solver-secret", "provider": "ascii2d-color",
 	})
 	if !result.IsError {
@@ -216,7 +216,7 @@ func TestReverseSearchStableSolverErrorKeepsStructuredErrorEnvelope(t *testing.T
 }
 
 func TestReverseSearchFailurePreservesSafeStructuredEnvelope(t *testing.T) {
-	session, closeSession := newSDKTestSessionWithPorts(t, &fakeAPI{}, pixivmcpserver.SDKPorts{
+	session, closeSession := newSDKTestSessionWithPorts(t, pixivmcpserver.SDKPorts{
 		ReverseSearch: pixivmcpserver.ReverseSearchPorts{
 			Searcher: reverseSearcherFunc(func(context.Context, reversesearch.Request) (reversesearch.Response, error) {
 				return reversesearch.Response{
@@ -228,7 +228,7 @@ func TestReverseSearchFailurePreservesSafeStructuredEnvelope(t *testing.T) {
 	}, pixivmcpserver.Account{})
 	defer closeSession()
 
-	result := callTool(t, session, "reverse_search", map[string]any{
+	result := callTool(t, session, "pixiv_reverse_search", map[string]any{
 		"source": "https://source-secret.example.test/image?token=api-key-secret", "provider": "all",
 	})
 	if !result.IsError {
@@ -248,10 +248,10 @@ func TestReverseSearchFailurePreservesSafeStructuredEnvelope(t *testing.T) {
 }
 
 func TestReverseSearchConfigurationFailureKeepsEmptyEnvelope(t *testing.T) {
-	session, closeSession := newTestSession(t, &fakeDownloads{})
+	session, closeSession := newTestSession(t)
 	defer closeSession()
 
-	result := callTool(t, session, "reverse_search", map[string]any{"source": "/private/source-secret.png"})
+	result := callTool(t, session, "pixiv_reverse_search", map[string]any{"source": "/private/source-secret.png"})
 	if !result.IsError {
 		t.Fatalf("unconfigured reverse search must be an MCP error: %+v", result)
 	}
