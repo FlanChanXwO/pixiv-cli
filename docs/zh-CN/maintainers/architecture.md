@@ -302,12 +302,15 @@ FlareSolverr 的 upstream proxy 只用于 browser `sessions.create`；solver con
 
 `internal/mcpserver/auth` 拥有单一版本化 JSON state 与 owner 初始化/reset。root 注入 app-data 路径，只有 CLI 输出一次性 secret。每次修改在侧车锁内读取最新状态并原子替换，读取不缓存状态。owner verifier 同时是后续内存授权状态的 generation 边界。不新增数据库。
 
-`auth.NewHandler` 已实现独立、尚未接入 CLI listener 的 discovery 与 DCR HTTP handler；当前 `pixiv mcp` 仍使用 stdio，authorize/token/bearer 与远程启动将在后续切片接入。canonical base URL 由构造参数指定，允许本地 HTTP；拒绝凭据、query、fragment 与会被客户端归一化的 dot-segment 路径，绝不读取请求 Host 或转发头构造 issuer。
+`auth.NewHandler` 已实现独立、尚未接入 CLI listener 的 discovery、DCR 与 authorize HTTP handler；当前 `pixiv mcp` 仍使用 stdio，token/bearer 与远程启动将在后续切片接入。canonical base URL 由构造参数指定，允许本地 HTTP；拒绝凭据、query、fragment 与会被客户端归一化的 dot-segment 路径，绝不读取请求 Host 或转发头构造 issuer。
 
 - root protected-resource metadata 与 resource-specific 路径共用 SDK handler。例如 base 为 `https://example.test/pixiv` 时，resource 是 `https://example.test/pixiv/mcp`，metadata 位于 `/.well-known/oauth-protected-resource` 与 `/.well-known/oauth-protected-resource/pixiv/mcp`，AS metadata 位于 `/.well-known/oauth-authorization-server/pixiv`，注册位于 `/pixiv/oauth/register`。反向代理需同时转发这些 well-known 路径；不能仅转发 `/pixiv/`。
 - DCR 仅接受 JSON public-client 注册；省略 auth method 时采用 `none`，不签发或保存 client secret。响应明确返回固定 profile：code、authorization_code/refresh_token、mcp；请求中未知扩展 metadata 被忽略，不访问 logo/client/JWKS URL。非支持的 auth method、grant、response type 或 scope 返回 OAuth JSON 错误。
-- redirect 原样保存，不作 URL 归一化；接受 HTTPS、loopback HTTP（含 localhost）与带点的 reverse-domain native scheme，拒绝 fragment、相对 URI、普通远程 HTTP、执行性 scheme 与无效 URI。authorize 的精确匹配仍属于后续授权切片。
+- redirect 原样保存，不作 URL 归一化；接受 HTTPS、loopback HTTP（含 localhost）与带点的 reverse-domain native scheme，拒绝 fragment、相对 URI、普通远程 HTTP、执行性 scheme 与无效 URI。authorize 必须精确匹配已注册 redirect。callback query 不可解析或预置 OAuth 响应参数（`code`、`error`、`error_description`、`error_uri`、`state`、`iss`）时在本地拒绝，避免覆盖注册 query 或返回歧义结果；其它 query 参数保留。
 - 注册与 owner reset 使用同一侧车锁，每次锁内读取最新文件。成功原子写入后才返回 201/client_id；持久化失败返回不含路径、原始 metadata 或凭据的 `server_error`。reset 保留注册及 selected account。
+- authorize 要求 code、canonical resource、`mcp` scope（省略时也取此值）与有效 S256 challenge。未知 client 或无效 redirect 在本地失败；其它已确认 redirect 的授权错误回跳并携带原 state 和 canonical `iss`，AS metadata 同步声明 issuer response 支持。
+- 经转义的同意页标注 client name 未验证并展示 redirect origin 与 URI。独立、一次性 CSRF 将表单绑定 browser/request/owner generation；owner 验证后旋转 HttpOnly/SameSite=Lax cookie，HTTPS canonical base 使用 Secure。每次授权仍必须明确 Allow/Deny；POST 拒绝跨源请求与参数覆盖，同源比较处理 host 大小写与默认端口。
+- CSP 禁止 script、嵌入与 base 覆盖；form-action 只允许 self 和已验证 callback origin，兼容 Chromium 对表单重定向的检查。`strict-origin` 不泄漏授权 query，同时保留同源表单 POST 校验所需 Origin。会话、待确认表单与 hash code 仅存内存，reset/restart 后失效。code 绑定 client/redirect/resource/scope/PKCE/generation 并记录十分钟截止时间；兑换端的期限检查与一次性消费仍待 token 切片，不把 consent 重放检查当作 code 兑换验证。
 
 路径和注册规则依据 RFC 8414 §3、RFC 9728 §3、RFC 7591 §2/§3.2 与 RFC 8252 §7/§8.4。临时文件和 HTTP fixture 测试不代表真实 connector OAuth 已通过。
 

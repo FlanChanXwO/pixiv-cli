@@ -16,8 +16,8 @@ import (
 	"github.com/modelcontextprotocol/go-sdk/oauthex"
 )
 
-// NewHandler 构造独立 discovery/DCR handler；canonicalBase 不从请求头推断。
-// 不启动 listener 或读取文件；注册要求 store 已初始化，并在每次请求内读取最新状态。
+// NewHandler 构造独立 discovery/DCR/authorize handler；canonicalBase 不从请求头推断。
+// 不启动 listener 或读取文件；注册与授权要求 store 已初始化，并在每次请求内读取最新状态。
 func NewHandler(canonicalBase string, store Store) (http.Handler, error) {
 	base, err := url.Parse(strings.TrimRight(canonicalBase, "/"))
 	if err != nil || base.User != nil || base.Opaque != "" ||
@@ -34,6 +34,7 @@ func NewHandler(canonicalBase string, store Store) (http.Handler, error) {
 	if store.Path == "" {
 		return nil, errors.New("MCP state path is required")
 	}
+	authorize := newAuthorizer(base, store)
 	issuer := base.String()
 	prefix := base.EscapedPath()
 	resource := sdkauth.ProtectedResourceMetadataHandler(&oauthex.ProtectedResourceMetadata{
@@ -41,6 +42,7 @@ func NewHandler(canonicalBase string, store Store) (http.Handler, error) {
 	})
 	// RFC 8414 §3 / RFC 9728 §3：well-known 插入 host 与 path 之间。
 	metadata := map[string]any{
+		"authorization_response_iss_parameter_supported": true,
 		"issuer":                                issuer,
 		"authorization_endpoint":                issuer + "/oauth/authorize",
 		"token_endpoint":                        issuer + "/oauth/token",
@@ -63,6 +65,8 @@ func NewHandler(canonicalBase string, store Store) (http.Handler, error) {
 			}
 			w.Header().Set("Content-Type", "application/json")
 			_ = json.NewEncoder(w).Encode(metadata)
+		case prefix + "/oauth/authorize":
+			authorize.serveHTTP(w, r)
 		case prefix + "/oauth/register":
 			register(w, r, store)
 		default:

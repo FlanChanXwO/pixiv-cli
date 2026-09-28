@@ -49,6 +49,7 @@ func TestDiscoveryUsesCanonicalURLs(t *testing.T) {
 			require.Equal(t, []any{tc.issuer}, prm["authorization_servers"])
 			meta := get("/.well-known/oauth-authorization-server" + tc.prefix)
 			require.Equal(t, map[string]any{
+				"authorization_response_iss_parameter_supported": true,
 				"issuer":                                tc.issuer,
 				"authorization_endpoint":                tc.issuer + "/oauth/authorize",
 				"token_endpoint":                        tc.issuer + "/oauth/token",
