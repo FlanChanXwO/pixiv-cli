@@ -156,11 +156,7 @@ func (s Store) Init(ctx context.Context, reset bool) (string, error) {
 		digest := sha256.Sum256([]byte(candidate))
 		state.OwnerVerifier = hex.EncodeToString(digest[:])
 		state.Grants = map[string]Grant{}
-		body, err := json.MarshalIndent(state, "", "  ")
-		if err != nil {
-			return err
-		}
-		if _, err := atomic.AtomicWrite(ctx, s.Path, bytes.NewReader(append(body, '\n'))); err != nil {
+		if err := s.save(ctx, state); err != nil {
 			return err
 		}
 		secret = candidate
@@ -175,4 +171,39 @@ func (s Store) Init(ctx context.Context, reset bool) (string, error) {
 func validHash(value string) bool {
 	decoded, err := hex.DecodeString(value)
 	return err == nil && len(decoded) == sha256.Size
+}
+
+func (s Store) registerClient(ctx context.Context, client Client) (string, error) {
+	var id string
+	err := lock.WithPrivateLock(ctx, s.Path, func() error {
+		state, err := s.Read(ctx)
+		if err != nil {
+			return err
+		}
+		value := make([]byte, 32)
+		if _, err := rand.Read(value); err != nil {
+			return err
+		}
+		candidate := base64.RawURLEncoding.EncodeToString(value)
+		if _, exists := state.Clients[candidate]; exists {
+			return errors.New("MCP client ID collision")
+		}
+		state.Clients[candidate] = client
+		if err := s.save(ctx, state); err != nil {
+			return err
+		}
+		id = candidate
+		return nil
+	})
+	return id, err
+}
+
+// save 仅供持有侧车锁的事务调用；成功落盘前不发布 secret、client 或 token。
+func (s Store) save(ctx context.Context, state State) error {
+	body, err := json.MarshalIndent(state, "", "  ")
+	if err != nil {
+		return err
+	}
+	_, err = atomic.AtomicWrite(ctx, s.Path, bytes.NewReader(append(body, '\n')))
+	return err
 }

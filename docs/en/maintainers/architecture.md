@@ -290,7 +290,16 @@ The three parent packages only own the normalized entities/values shared by thei
 
 Each product retains its own SDK ports, account selection and runtime. Registration/discovery does not open a FANBOX account; the root lazily opens its independent service when a FANBOX tool runs. Each tool package owns its name, annotations, schema and handler. Pixiv nullable `page`/`limit` are parsed by its adapter and traversal stays in `internal/shared/traversal`. Handler failures retain structured output with `isError=true`; legitimate empty results remain successful. See [MCP tools](../mcp-tools.md).
 
-`internal/mcpserver/auth` owns one concrete versioned JSON state and owner initialization/reset. Root injects its app-data path; the CLI alone prints the one-time secret. Mutations lock the sidecar, read fresh state and atomically replace it; reads do not cache state. Owner verifier is also the generation boundary for later in-memory authorization state. No database or HTTP endpoint is added.
+`internal/mcpserver/auth` owns one concrete versioned JSON state and owner initialization/reset. Root injects its app-data path; the CLI alone prints the one-time secret. Mutations lock the sidecar, read fresh state and atomically replace it; reads do not cache state. Owner verifier is also the generation boundary for later in-memory authorization state. No database is added.
+
+`auth.NewHandler` implements a standalone discovery and DCR HTTP handler, not yet wired into a CLI listener. `pixiv mcp` still uses stdio; authorize/token/bearer and remote startup are later slices. Its explicit canonical base URL permits local HTTP and rejects credentials, query, fragment, and dot-segment paths that clients would normalize. Issuer construction never trusts Host or forwarded headers.
+
+- Root and resource-specific protected-resource metadata share the SDK handler. For base `https://example.test/pixiv`, the resource is `https://example.test/pixiv/mcp`; metadata routes are `/.well-known/oauth-protected-resource` and `/.well-known/oauth-protected-resource/pixiv/mcp`, AS metadata is `/.well-known/oauth-authorization-server/pixiv`, and registration is `/pixiv/oauth/register`. A reverse proxy must forward these well-known routes as well as `/pixiv/`.
+- DCR accepts only JSON public-client registrations, defaults an omitted auth method to `none`, and never issues or saves a client secret. Responses explicitly return the fixed profile: code, authorization_code/refresh_token, and mcp. Unknown extension metadata is ignored; logo/client/JWKS URLs are never fetched. Unsupported auth methods, grants, response types, or scopes return OAuth JSON errors.
+- Redirects are stored verbatim, without URL normalization. HTTPS, loopback HTTP (including localhost), and dotted reverse-domain native schemes are accepted; fragments, relative URIs, ordinary remote HTTP, executable schemes, and malformed URIs are rejected. Exact matching at authorize remains part of the later authorization slice.
+- Registration and owner reset share the sidecar lock and read fresh state under it. Only a successful atomic write releases a 201/client_id response. Persistence failures return `server_error` without paths, raw metadata, or credentials. Reset preserves registrations and the selected account.
+
+Path and registration rules follow RFC 8414 §3, RFC 9728 §3, RFC 7591 §2/§3.2, and RFC 8252 §7/§8.4. Temporary-file and HTTP fixture checks do not establish live connector OAuth compatibility.
 
 ### `internal/media/downloader`
 
