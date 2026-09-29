@@ -16,9 +16,9 @@ import (
 	"github.com/modelcontextprotocol/go-sdk/oauthex"
 )
 
-// NewHandler 构造独立 discovery/DCR/authorize handler；canonicalBase 不从请求头推断。
-// 不启动 listener 或读取文件；注册与授权要求 store 已初始化，并在每次请求内读取最新状态。
-func NewHandler(canonicalBase string, store Store) (http.Handler, error) {
+// NewHandler 构造独立 discovery/DCR/authorize/token handler 及 bearer 包装器；canonicalBase 不从请求头推断。
+// 不启动 listener 或读取文件；注册、授权与 token 操作要求 store 已初始化，并在每次请求内读取最新状态。
+func NewHandler(canonicalBase string, store Store) (*Handler, error) {
 	base, err := url.Parse(strings.TrimRight(canonicalBase, "/"))
 	if err != nil || base.User != nil || base.Opaque != "" ||
 		(base.Scheme != "http" && base.Scheme != "https") || !validHTTPAuthority(base) ||
@@ -53,7 +53,7 @@ func NewHandler(canonicalBase string, store Store) (http.Handler, error) {
 		"token_endpoint_auth_methods_supported": []string{"none"},
 		"scopes_supported":                      []string{"mcp"},
 	}
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	routes := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.EscapedPath() {
 		case "/.well-known/oauth-protected-resource", "/.well-known/oauth-protected-resource" + prefix + "/mcp":
 			resource.ServeHTTP(w, r)
@@ -67,12 +67,15 @@ func NewHandler(canonicalBase string, store Store) (http.Handler, error) {
 			_ = json.NewEncoder(w).Encode(metadata)
 		case prefix + "/oauth/authorize":
 			authorize.serveHTTP(w, r)
+		case prefix + "/oauth/token":
+			authorize.token(w, r)
 		case prefix + "/oauth/register":
 			register(w, r, store)
 		default:
 			http.NotFound(w, r)
 		}
-	}), nil
+	})
+	return &Handler{routes: routes, store: store, resource: issuer + "/mcp", metadataURL: base.Scheme + "://" + base.Host + "/.well-known/oauth-protected-resource" + prefix + "/mcp"}, nil
 }
 
 func validHTTPAuthority(u *url.URL) bool {

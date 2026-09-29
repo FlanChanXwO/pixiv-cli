@@ -304,7 +304,7 @@ FlareSolverr 的 upstream proxy 只用于 browser `sessions.create`；solver con
 
 Grant 记录必须显式包含布尔字段 `revoked` 和历史字段 `used_refresh_hashes`。缺失字段或错误类型失败关闭；空 refresh 历史允许空数组或现有序列化器对 nil slice 输出的 `null`。损坏状态阻止读取、owner init/reset 与注册，且不覆盖原文件。
 
-`auth.NewHandler` 已实现独立、尚未接入 CLI listener 的 discovery、DCR 与 authorize HTTP handler；当前 `pixiv mcp` 仍使用 stdio，token/bearer 与远程启动将在后续切片接入。canonical base URL 由构造参数指定，允许本地 HTTP；拒绝凭据、query、fragment 与会被客户端归一化的 dot-segment 路径，绝不读取请求 Host 或转发头构造 issuer。
+`auth.NewHandler` 已实现独立、尚未接入 CLI listener 的 discovery、DCR、authorize 与 token HTTP handler，并提供 `Handler.RequireBearer` 包装 MCP 请求；当前 `pixiv mcp` 仍使用 stdio，生产 listener 与远程启动将在后续切片接入。canonical base URL 由构造参数指定，允许本地 HTTP；拒绝凭据、query、fragment 与会被客户端归一化的 dot-segment 路径，绝不读取请求 Host 或转发头构造 issuer。
 
 - root protected-resource metadata 与 resource-specific 路径共用 SDK handler。例如 base 为 `https://example.test/pixiv` 时，resource 是 `https://example.test/pixiv/mcp`，metadata 位于 `/.well-known/oauth-protected-resource` 与 `/.well-known/oauth-protected-resource/pixiv/mcp`，AS metadata 位于 `/.well-known/oauth-authorization-server/pixiv`，注册位于 `/pixiv/oauth/register`。反向代理需同时转发这些 well-known 路径；不能仅转发 `/pixiv/`。
 - DCR 仅接受 JSON public-client 注册；省略 auth method 时采用 `none`，不签发或保存 client secret。响应明确返回固定 profile：code、authorization_code/refresh_token、mcp；请求中未知扩展 metadata 被忽略，不访问 logo/client/JWKS URL。非支持的 auth method、grant、response type 或 scope 返回 OAuth JSON 错误。
@@ -313,7 +313,12 @@ Grant 记录必须显式包含布尔字段 `revoked` 和历史字段 `used_refre
 - authorize 要求 code、canonical resource、`mcp` scope（省略时也取此值）与有效 S256 challenge。未知 client 或无效 redirect 在本地失败；其它已确认 redirect 的授权错误回跳并携带原 state 和 canonical `iss`，AS metadata 同步声明 issuer response 支持。
 - 经转义的同意页标注 client name 未验证并展示 redirect origin 与 URI。独立、一次性 CSRF 将表单绑定 browser/request/owner generation；owner 验证后旋转 HttpOnly/SameSite=Lax cookie，HTTPS canonical base 使用 Secure。每次授权仍必须明确 Allow/Deny；POST 拒绝跨源请求与参数覆盖，同源比较处理 host 大小写与默认端口。
 - 表单 action 使用完整 canonical 授权 URL，而非仅路径引用，避免合法双斜线 prefix 被浏览器解释为跨源提交目标。请求 Host/转发头与 client redirect 均不能改变 action；cookie path 保留转义后的 prefix。
-- CSP 禁止 script、嵌入与 base 覆盖；form-action 只允许 self 和已验证 callback origin，兼容 Chromium 对表单重定向的检查。`strict-origin` 不泄漏授权 query，同时保留同源表单 POST 校验所需 Origin。会话、待确认表单与 hash code 仅存内存，reset/restart 后失效。code 绑定 client/redirect/resource/scope/PKCE/generation 并记录十分钟截止时间；兑换端的期限检查与一次性消费仍待 token 切片，不把 consent 重放检查当作 code 兑换验证。
+- CSP 禁止 script、嵌入与 base 覆盖；form-action 只允许 self 和已验证 callback origin，兼容 Chromium 对表单重定向的检查。`strict-origin` 不泄漏授权 query，同时保留同源表单 POST 校验所需 Origin。会话、待确认表单与 hash code 仅存内存，reset/restart 后失效。code 绑定 client/redirect/resource/scope/PKCE/generation 并记录十分钟截止时间；token 兑换在同一文件事务中核验这些绑定及当前 generation，十分钟截止时拒绝兑换；成功持久化后才消费 code。
+
+- token 仅接收标准 form POST；拒绝 query 凭证、重复参数、缺失必需参数及不支持的 grant type，错误只输出 OAuth JSON 类别。PKCE verifier 按 RFC 7636 的 43–128 个 unreserved ASCII 字符校验，再核验 S256。access/refresh 为独立 256-bit 随机 opaque 值，持久化仅存 SHA-256 hash；access 有效一小时（`expires_in=3600`），refresh 无闲置期限。
+- refresh 在与 reset 共用的侧车锁内重新读取 state，绑定当前 canonical resource、client 和 scope；每次成功旋转，保留已用 hash。旧值重放先持久撤销对应 grant，再返回 `invalid_grant`；随机错误值不撤销其它 grant。写盘失败不发布 token、不消费 code 或旧 refresh，撤销失败也不虚报成功；可重试。重启保留 clients/grants/refresh，不保留待交换 code。
+- `Handler.RequireBearer` 复用 SDK middleware，按每次请求读取最新 state、检查 resource/撤销/一小时期限，拒绝多重 Authorization header。未授权返回 HTTP 401 与 canonical `resource_metadata` challenge，不转为 MCP result；损坏状态安全失败且不暴露路径。响应 `no-store`，过期/reset 只影响后续鉴权，不取消已授权的长请求。
+- HTTP 与真实临时文件测试覆盖期限边界、并发兑换/refresh/reset、重启与实际写盘失败；期限测试用标准库 `testing/synctest`，不添加生产 clock 配置。
 
 路径和注册规则依据 RFC 8414 §3、RFC 9728 §3、RFC 7591 §2/§3.2 与 RFC 8252 §7/§8.4。临时文件和 HTTP fixture 测试不代表真实 connector OAuth 已通过。
 
