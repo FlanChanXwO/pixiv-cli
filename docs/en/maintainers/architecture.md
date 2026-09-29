@@ -292,6 +292,8 @@ Each product retains its own SDK ports, account selection and runtime. Registrat
 
 `internal/mcpserver/auth` owns one concrete versioned JSON state and owner initialization/reset. Root injects its app-data path; the CLI alone prints the one-time secret. Mutations lock the sidecar, read fresh state and atomically replace it; reads do not cache state. Owner verifier is also the generation boundary for later in-memory authorization state. No database is added.
 
+Grant records must explicitly include a boolean `revoked` field and a `used_refresh_hashes` field. Missing fields or invalid types fail closed; refresh history may be an empty array or the existing serializer’s `null` for a nil slice. Invalid state blocks reads, owner init/reset, and registration without overwriting the file.
+
 `auth.NewHandler` implements a standalone discovery, DCR, and authorize HTTP handler, not yet wired into a CLI listener. `pixiv mcp` still uses stdio; token/bearer and remote startup are later slices. Its explicit canonical base URL permits local HTTP and rejects credentials, query, fragment, and dot-segment paths that clients would normalize. Issuer construction never trusts Host or forwarded headers.
 
 - Root and resource-specific protected-resource metadata share the SDK handler. For base `https://example.test/pixiv`, the resource is `https://example.test/pixiv/mcp`; metadata routes are `/.well-known/oauth-protected-resource` and `/.well-known/oauth-protected-resource/pixiv/mcp`, AS metadata is `/.well-known/oauth-authorization-server/pixiv`, and registration is `/pixiv/oauth/register`. A reverse proxy must forward these well-known routes as well as `/pixiv/`.

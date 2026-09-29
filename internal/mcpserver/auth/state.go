@@ -87,6 +87,19 @@ func (s Store) Read(ctx context.Context) (State, error) {
 			return State{}, ErrInvalidState
 		}
 	}
+	// 撤销标记不能默认为 false；空历史可为 null，但不能缺失。
+	var grants map[string]struct {
+		Revoked           *bool           `json:"revoked"`
+		UsedRefreshHashes json.RawMessage `json:"used_refresh_hashes"`
+	}
+	if err := json.Unmarshal(fields["grants"], &grants); err != nil {
+		return State{}, ErrInvalidState
+	}
+	for _, grant := range grants {
+		if grant.Revoked == nil || len(grant.UsedRefreshHashes) == 0 {
+			return State{}, ErrInvalidState
+		}
+	}
 	var state State
 	decoder := json.NewDecoder(bytes.NewReader(body))
 	decoder.DisallowUnknownFields()

@@ -8,11 +8,15 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/auth"
 	"github.com/stretchr/testify/require"
@@ -188,4 +192,99 @@ func TestStoreEmptyPathHasNoFilesystemSideEffect(t *testing.T) {
 	entries, err := os.ReadDir(directory)
 	require.NoError(t, err)
 	require.Empty(t, entries, "invalid store created files in working directory")
+}
+
+func TestStoreRequiresExplicitGrantRevocationAndRefreshHistory(t *testing.T) {
+	for _, test := range []struct {
+		name, field, value string
+	}{
+		{"missing revocation", "revoked", ""},
+		{"null revocation", "revoked", "null"},
+		{"string revocation", "revoked", `"fixture-secret"`},
+		{"numeric revocation", "revoked", "0"},
+		{"missing history", "used_refresh_hashes", ""},
+		{"string history", "used_refresh_hashes", `"fixture-secret"`},
+		{"object history", "used_refresh_hashes", `{}`},
+		{"null history entry", "used_refresh_hashes", `[null]`},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			store := auth.Store{Path: filepath.Join(t.TempDir(), "state.json")}
+			_, err := store.Init(t.Context(), false)
+			require.NoError(t, err)
+			state, err := store.Read(t.Context())
+			require.NoError(t, err)
+			state.Clients["fixture"] = auth.Client{RedirectURIs: []string{"https://fixture.test/callback"}}
+			state.Grants["fixture"] = auth.Grant{ClientID: "fixture", Resource: "https://instance.test/mcp", Scope: "mcp", RefreshHash: strings.Repeat("a", 64), AccessTokens: map[string]time.Time{}, UsedRefreshHashes: []string{strings.Repeat("b", 64)}, Revoked: true}
+			body, err := json.Marshal(state)
+			require.NoError(t, err)
+			require.NoError(t, os.WriteFile(store.Path, body, 0600))
+			_, err = store.Read(t.Context())
+			require.NoError(t, err, "complete grant must be valid before corruption")
+			var raw map[string]json.RawMessage
+			require.NoError(t, json.Unmarshal(body, &raw))
+			var grants map[string]map[string]json.RawMessage
+			require.NoError(t, json.Unmarshal(raw["grants"], &grants))
+			if test.value == "" {
+				delete(grants["fixture"], test.field)
+			} else {
+				grants["fixture"][test.field] = json.RawMessage(test.value)
+			}
+			raw["grants"], err = json.Marshal(grants)
+			require.NoError(t, err)
+			body, err = json.Marshal(raw)
+			require.NoError(t, err)
+			require.NoError(t, os.WriteFile(store.Path, body, 0600))
+			reopened := auth.Store{Path: store.Path}
+			_, err = reopened.Read(t.Context())
+			require.ErrorIs(t, err, auth.ErrInvalidState)
+			for _, reset := range []bool{false, true} {
+				secret, err := reopened.Init(t.Context(), reset)
+				require.ErrorIs(t, err, auth.ErrInvalidState)
+				require.Empty(t, secret)
+			}
+			handler, err := auth.NewHandler("https://instance.test", reopened)
+			require.NoError(t, err)
+			request := httptest.NewRequest(http.MethodPost, "https://instance.test/oauth/register", strings.NewReader(`{"redirect_uris":["https://new.test/callback"]}`))
+			request.Header.Set("Content-Type", "application/json")
+			recorder := httptest.NewRecorder()
+			handler.ServeHTTP(recorder, request)
+			require.Equal(t, http.StatusInternalServerError, recorder.Code)
+			require.JSONEq(t, `{"error":"server_error"}`, recorder.Body.String())
+			unchanged, err := os.ReadFile(store.Path)
+			require.NoError(t, err)
+			require.Equal(t, body, unchanged, "invalid grant was overwritten")
+		})
+	}
+}
+
+func TestStorePreservesExplicitGrantRevocationAndEmptyHistory(t *testing.T) {
+	for _, revoked := range []bool{false, true} {
+		for _, history := range [][]string{nil, {}, {strings.Repeat("b", 64)}} {
+			store := auth.Store{Path: filepath.Join(t.TempDir(), "state.json")}
+			_, err := store.Init(t.Context(), false)
+			require.NoError(t, err)
+			state, err := store.Read(t.Context())
+			require.NoError(t, err)
+			state.Clients["fixture"] = auth.Client{RedirectURIs: []string{"https://fixture.test/callback"}}
+			grant := auth.Grant{ClientID: "fixture", Resource: "https://instance.test/mcp", Scope: "mcp", RefreshHash: strings.Repeat("a", 64), AccessTokens: map[string]time.Time{}, UsedRefreshHashes: history, Revoked: revoked}
+			state.Grants["fixture"] = grant
+			body, err := json.Marshal(state)
+			require.NoError(t, err)
+			require.NoError(t, os.WriteFile(store.Path, body, 0600))
+			reopened := auth.Store{Path: store.Path}
+			got, err := reopened.Read(t.Context())
+			require.NoError(t, err)
+			require.Equal(t, grant, got.Grants["fixture"])
+			handler, err := auth.NewHandler("https://instance.test", reopened)
+			require.NoError(t, err)
+			request := httptest.NewRequest(http.MethodPost, "https://instance.test/oauth/register", strings.NewReader(`{"redirect_uris":["https://new.test/callback"]}`))
+			request.Header.Set("Content-Type", "application/json")
+			recorder := httptest.NewRecorder()
+			handler.ServeHTTP(recorder, request)
+			require.Equal(t, http.StatusCreated, recorder.Code)
+			got, err = reopened.Read(t.Context())
+			require.NoError(t, err)
+			require.Equal(t, grant, got.Grants["fixture"], "registration changed grant status/history")
+		}
+	}
 }

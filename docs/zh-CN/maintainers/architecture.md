@@ -302,6 +302,8 @@ FlareSolverr 的 upstream proxy 只用于 browser `sessions.create`；solver con
 
 `internal/mcpserver/auth` 拥有单一版本化 JSON state 与 owner 初始化/reset。root 注入 app-data 路径，只有 CLI 输出一次性 secret。每次修改在侧车锁内读取最新状态并原子替换，读取不缓存状态。owner verifier 同时是后续内存授权状态的 generation 边界。不新增数据库。
 
+Grant 记录必须显式包含布尔字段 `revoked` 和历史字段 `used_refresh_hashes`。缺失字段或错误类型失败关闭；空 refresh 历史允许空数组或现有序列化器对 nil slice 输出的 `null`。损坏状态阻止读取、owner init/reset 与注册，且不覆盖原文件。
+
 `auth.NewHandler` 已实现独立、尚未接入 CLI listener 的 discovery、DCR 与 authorize HTTP handler；当前 `pixiv mcp` 仍使用 stdio，token/bearer 与远程启动将在后续切片接入。canonical base URL 由构造参数指定，允许本地 HTTP；拒绝凭据、query、fragment 与会被客户端归一化的 dot-segment 路径，绝不读取请求 Host 或转发头构造 issuer。
 
 - root protected-resource metadata 与 resource-specific 路径共用 SDK handler。例如 base 为 `https://example.test/pixiv` 时，resource 是 `https://example.test/pixiv/mcp`，metadata 位于 `/.well-known/oauth-protected-resource` 与 `/.well-known/oauth-protected-resource/pixiv/mcp`，AS metadata 位于 `/.well-known/oauth-authorization-server/pixiv`，注册位于 `/pixiv/oauth/register`。反向代理需同时转发这些 well-known 路径；不能仅转发 `/pixiv/`。
