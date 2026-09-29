@@ -310,6 +310,7 @@ FlareSolverr 的 upstream proxy 只用于 browser `sessions.create`；solver con
 - 注册与 owner reset 使用同一侧车锁，每次锁内读取最新文件。成功原子写入后才返回 201/client_id；持久化失败返回不含路径、原始 metadata 或凭据的 `server_error`。reset 保留注册及 selected account。
 - authorize 要求 code、canonical resource、`mcp` scope（省略时也取此值）与有效 S256 challenge。未知 client 或无效 redirect 在本地失败；其它已确认 redirect 的授权错误回跳并携带原 state 和 canonical `iss`，AS metadata 同步声明 issuer response 支持。
 - 经转义的同意页标注 client name 未验证并展示 redirect origin 与 URI。独立、一次性 CSRF 将表单绑定 browser/request/owner generation；owner 验证后旋转 HttpOnly/SameSite=Lax cookie，HTTPS canonical base 使用 Secure。每次授权仍必须明确 Allow/Deny；POST 拒绝跨源请求与参数覆盖，同源比较处理 host 大小写与默认端口。
+- 表单 action 使用完整 canonical 授权 URL，而非仅路径引用，避免合法双斜线 prefix 被浏览器解释为跨源提交目标。请求 Host/转发头与 client redirect 均不能改变 action；cookie path 保留转义后的 prefix。
 - CSP 禁止 script、嵌入与 base 覆盖；form-action 只允许 self 和已验证 callback origin，兼容 Chromium 对表单重定向的检查。`strict-origin` 不泄漏授权 query，同时保留同源表单 POST 校验所需 Origin。会话、待确认表单与 hash code 仅存内存，reset/restart 后失效。code 绑定 client/redirect/resource/scope/PKCE/generation 并记录十分钟截止时间；兑换端的期限检查与一次性消费仍待 token 切片，不把 consent 重放检查当作 code 兑换验证。
 
 路径和注册规则依据 RFC 8414 §3、RFC 9728 §3、RFC 7591 §2/§3.2 与 RFC 8252 §7/§8.4。临时文件和 HTTP fixture 测试不代表真实 connector OAuth 已通过。

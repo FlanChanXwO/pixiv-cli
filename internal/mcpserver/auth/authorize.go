@@ -71,7 +71,8 @@ func newAuthorizer(base *url.URL, store Store) *authorizer {
 	return &authorizer{
 		now: time.Now, codes: map[[32]byte]authorizationCode{}, store: store,
 		issuer: base.String(), origin: browserOrigin(base.Scheme + "://" + base.Host),
-		endpoint: base.EscapedPath() + "/oauth/authorize", cookiePath: base.EscapedPath() + "/oauth",
+		// 完整 URL 防止双斜线 prefix 被浏览器解释为跨 origin action。
+		endpoint: base.String() + "/oauth/authorize", cookiePath: base.EscapedPath() + "/oauth",
 		secure: base.Scheme == "https", sessions: map[string]ownerSession{}, forms: map[string]consentForm{},
 	}
 }

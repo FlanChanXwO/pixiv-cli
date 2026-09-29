@@ -2,6 +2,7 @@ package auth_test
 
 import (
 	"encoding/json"
+	"html"
 	"io"
 	"net/http"
 	"net/http/cookiejar"
@@ -412,5 +413,35 @@ func TestAuthorizeCookieUsesEscapedPathPrefix(t *testing.T) {
 	handler.ServeHTTP(recorder, request)
 	require.Equal(t, http.StatusOK, recorder.Code)
 	require.Equal(t, "/my%20instance/oauth", recorder.Result().Cookies()[0].Path)
-	require.Contains(t, recorder.Body.String(), `action="/my%20instance/oauth/authorize"`)
+	require.Contains(t, recorder.Body.String(), `action="http://instance.test/my%20instance/oauth/authorize"`)
+}
+
+func TestAuthorizeFormTargetsCanonicalEndpoint(t *testing.T) {
+	for _, prefix := range []string{"/prefix", "/my%20instance", "//client.test"} {
+		t.Run(prefix, func(t *testing.T) {
+			f := newAuthorizationFixture(t)
+			base := "http://instance.test" + prefix
+			handler, err := auth.NewHandler(base, f.store)
+			require.NoError(t, err)
+			f.query.Set("resource", base+"/mcp")
+			page, err := url.Parse(base + "/oauth/authorize?" + f.query.Encode())
+			require.NoError(t, err)
+			request := httptest.NewRequest(http.MethodGet, page.String(), nil)
+			request.Host = "attacker.test"
+			request.Header.Set("Forwarded", "host=attacker.test;proto=https")
+			request.Header.Set("X-Forwarded-Host", "attacker.test")
+			request.Header.Set("X-Forwarded-Proto", "https")
+			recorder := httptest.NewRecorder()
+			handler.ServeHTTP(recorder, request)
+			require.Equal(t, http.StatusOK, recorder.Code)
+			matches := regexp.MustCompile(`<form method="post" action="([^"]+)"`).FindStringSubmatch(recorder.Body.String())
+			require.Len(t, matches, 2)
+			action, err := url.Parse(html.UnescapeString(matches[1]))
+			require.NoError(t, err)
+			destination := page.ResolveReference(action)
+			require.Equal(t, "http", destination.Scheme)
+			require.Equal(t, "instance.test", destination.Host)
+			require.Equal(t, base+"/oauth/authorize", destination.String())
+		})
+	}
 }
