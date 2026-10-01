@@ -45,6 +45,17 @@ func settingSpecsFromTags() ([]settingSpecFromTags, error) {
 	return schemaOnce()
 }
 
+// envNamesFor 返回某个别名按 env 标签声明顺序排列的环境变量名。顺序即优先级，
+// 因此这里不排序也不去重：调用方按顺序返回第一个**存在**的变量即可。
+func envNamesFor(alias string) []string {
+	for _, entry := range mustSettingSpecs() {
+		if entry.spec.Alias == alias {
+			return entry.env
+		}
+	}
+	return nil
+}
+
 // deriveSchemaFromTags 读取 RuntimeConfig（含嵌套配置组）的公开字段标签并派生
 // 配置元数据。它同时执行 schema 校验：重复 config 路径、重复 alias、非法默认值、
 // example 缺少默认值，以及 secret 与 example 的冲突都会返回明确错误。

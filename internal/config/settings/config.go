@@ -228,38 +228,21 @@ func CLISettingAliases() []string {
 	return keys
 }
 
+// EnvValue 返回 spec 对应别名按 env 标签声明顺序解析到的环境变量值。
+//
+// 契约：
+//   - 顺序即优先级，返回第一个**存在**的变量；某个变量存在但为空也算命中，
+//     绝不继续回退到后续变量（这是服务级代理"显式直连"语义依赖的行为）。
+//   - 未声明 env 标签的别名返回 ("", false)。
+//
+// 来源完全来自字段标签，不再维护独立的 alias switch。
 func EnvValue(spec SettingSpec) (string, bool) {
-	switch spec.Alias {
-	case "download_path":
-		return envLookup("DOWNLOAD_PATH")
-	case "filename_template":
-		return envLookup("FILENAME_TEMPLATE")
-	case "directory_template":
-		return envLookup("DIRECTORY_TEMPLATE")
-	case "request_interval":
-		return envLookup("PIXIV_REQUEST_INTERVAL")
-	case "log_level":
-		return envLookup("PIXIV_LOG_LEVEL")
-	case "log_format":
-		return envLookup("PIXIV_LOG_FORMAT")
-	case "https_proxy":
-		if value, ok := envLookup("https_proxy"); ok {
+	for _, name := range envNamesFor(spec.Alias) {
+		if value, present := os.LookupEnv(name); present {
 			return value, true
 		}
-		return envLookup("HTTPS_PROXY")
-	case "saucenao_api_key":
-		return envLookup("SAUCENAO_API_KEY")
-	default:
-		return "", false
 	}
-}
-
-func envLookup(name string) (string, bool) {
-	value, ok := os.LookupEnv(name)
-	if !ok {
-		return "", false
-	}
-	return value, true
+	return "", false
 }
 
 func LoadSnapshot() (Snapshot, error) {
