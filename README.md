@@ -244,7 +244,7 @@ Connect to `http://127.0.0.1:8080/mcp` locally. For cloud connectors, use an exi
 See the [MCP tool contract](docs/en/mcp-tools.md) for tools, parameters, structured output, and authentication behavior.
 Fixed MCP status, error, and display text is English; Pixiv metadata and user-supplied text are preserved verbatim.
 
-The `pixiv_reverse_search` tool accepts a regular local file or HTTP(S) URL and may upload
+The `pixiv_reverse_search` tool accepts exactly one of `source` (a server-local regular file, local `file://` URI, or HTTP(S) URL) or a host attachment `image` (`openai/fileParams`) and may upload
 that source to third-party providers. Authorized connectors may request files and private/loopback/link-local URLs
 accessible to the server, not the connector device. Grant access only to clients you
 trust; see the [reverse-search MCP contract](docs/en/mcp-tools.md#reverse-image-search).

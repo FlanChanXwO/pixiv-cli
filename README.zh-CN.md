@@ -244,7 +244,7 @@ pixiv mcp --listen-addr 127.0.0.1:8080 --base-url http://127.0.0.1:8080
 [MCP tool 契约](docs/zh-CN/mcp-tools.md)记录了 tools、参数、structured output 和认证行为。
 MCP 固定状态、错误和展示文本使用英文；Pixiv 元数据及用户提供的文本保持原文。
 
-`pixiv_reverse_search` 接受常规本地文件或 HTTP(S) URL，并可能把图片上传给第三方 provider。
+`pixiv_reverse_search` 要求 `source`（server 本机常规文件、本机 `file://` URI 或 HTTP(S) URL）与 host 附件 `image`（`openai/fileParams`）恰好提供一个，并可能把图片上传给第三方 provider。
 已授权 connector 可以请求 server 可访问的私有文件以及私网/loopback/link-local URL，路径不指向 connector 所在设备；因此只应授权可信 client；详见 [MCP 反向搜图契约](docs/zh-CN/mcp-tools.md#反向搜图)。
 高级 reverse-search proxy、User-Agent 和 challenge-recovery 配置见
 [CLI reference](docs/zh-CN/cli-reference.md)。FlareSolverr 只负责 JSON

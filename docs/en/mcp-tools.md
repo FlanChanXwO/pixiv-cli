@@ -72,7 +72,30 @@ first-party resource contains its opaque `ref` and optional
 {"source":"/private/path/image.png","provider":"ascii2d-color"}
 ```
 
-`source` is required and `provider` is optional. The provider enum is
+Provide exactly one of `source` or `image`; supplying neither or both is an error.
+`source` is a server-local regular-file path, a local `file://` URI, or an HTTP(S) URL.
+For host attachments, the tool advertises `_meta["openai/fileParams"] = ["image"]`:
+
+```json
+{"image":{"download_url":"https://host.example/image?signature=temporary","file_id":"host-file-id","mime_type":"image/png","file_name":"image.png"}}
+```
+
+`image` is a closed object with exactly four declared string fields: required
+`download_url` and `file_id`, optional `mime_type` and `file_name`. The download
+URL must use HTTP(S), have a host and no user information; local paths and file
+URIs are not valid download URLs. `file_id` must be non-empty and is descriptive,
+never a download address. Only the download URL enters the existing snapshot
+loader; file ID, MIME type and file name are not forwarded to providers. If the
+host URL is expired or unavailable, the error asks the user to reattach the image;
+the server does not guess another URL or retry it.
+
+Local file URIs must have an absolute path and an empty or `localhost` authority.
+Other authorities, user information, query strings, fragments, NULs and UNC paths
+are rejected rather than silently discarded or reinterpreted. Percent-encode
+literal path characters such as spaces, `#` and `%`. These URI rules apply to
+this MCP input, not CLI keyword/image mode selection.
+
+`provider` is optional. The provider enum is
 `saucenao`, `ascii2d-color`, `ascii2d-bovw`, or `all`; omitting it uses the
 MCP process's startup configuration, whose default is `saucenao`. The
 `reverse_search_pixiv_only` configuration is also captured at startup and
@@ -90,14 +113,16 @@ User-Agents omit those Chromium hints. `[reverse_search.flaresolverr].proxy_url`
 is only the browser upstream proxy sent in `sessions.create`; solver control
 traffic does not inherit either native route.
 
-The source may be any readable regular file on the MCP server or an HTTP(S) URL
-fetched through the server network, not the connector device. Private, loopback,
+The source may be any readable regular file (path or local file URI) on the MCP
+server or an HTTP(S) URL fetched through the server network, not the connector
+device. Private, loopback,
 and link-local URL targets are allowed, and the server may read private files.
 A single-owner OAuth grant permits the connector to request these server-side
 resources; authorize only connectors you trust. The server fetches or opens the
 source once into a private snapshot, uploads it to the selected third-party
-provider(s), and never returns the original source, temporary path, request
-headers, cookies, API key, CSRF value, redirect `Location`, or upstream response
+provider(s), and never returns or logs the original source, attachment download
+URL, file ID, file name, temporary path, request headers, cookies, API key, CSRF
+value, redirect `Location`, or upstream response
 body. SauceNAO/ascii2d processing and retention follow their own policies; URL
 queries may be cached. ascii2d accepts JPEG, PNG, and WEBP and applies its
 provider-specific 10 MB limit.
@@ -115,8 +140,9 @@ External-only results remain outside `records`.
 When at least one provider succeeds and another fails, `partial=true` and the
 tool result is successful (`isError=false`). A single-provider failure or an
 all-provider failure preserves the envelope and sets `isError=true`; schema
-errors are rejected before provider execution. Cancellation remains a full
-request cancellation, not a partial success.
+errors return a safe `invalid_request` envelope before provider execution, without
+echoing invalid values. Snapshots are removed on completion, failure, or
+cancellation. Cancellation remains a full request cancellation, not a partial success.
 
 The image is uploaded natively to ascii2d's `/search/file` multipart endpoint;
 FlareSolverr receives only JSON challenge-recovery requests and never receives
@@ -178,7 +204,7 @@ MCP no longer registers `download` or `download_random_from_recommendation`, nor
 | --- | --- |
 | `pixiv_search_illust` | Required `word`; optional `search_target`, `sort`, `duration`, `start_date`, `end_date`, `content_type`, `ai_mode`, `aspect_ratio`, `resolution`, exact `tool`, bookmark range/strategy, `illust_filter`, `page`, `limit`. Stable enum/date validation happens before opening the SDK. |
 | `pixiv_search_novel` | Required `word`; optional `search_target`, `sort`, `duration`, `novel_filter`, `page`, `limit`. Rating, text-length, and original-only fields are intentionally not published. |
-| `pixiv_reverse_search` | Required `source` (regular local file or HTTP(S) URL); optional `provider` enum. Uses the startup proxy/key/pixiv-only snapshot and returns the reverse-search envelope described above. |
+| `pixiv_reverse_search` | Exactly one of `source` (server-local regular file, local `file://` URI, HTTP(S) URL) or host `image` object; optional `provider` enum. Uses the startup proxy/key/pixiv-only snapshot and returns the reverse-search envelope described above. |
 | `pixiv_illust_detail` | Exactly one of positive `illust_id` or a supported artwork `url`; returns one safe record. |
 | `pixiv_novel_detail` / `pixiv_novel_content` | Positive `novel_id`; the first returns metadata. The second is a retained compatibility tool that returns `content_unavailable` with empty blocks and does not call the rejected content endpoint. |
 | `pixiv_illust_related` | Positive `illust_id`, optional `illust_filter`, `page`, `limit`. |

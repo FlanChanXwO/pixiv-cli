@@ -5,6 +5,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net/url"
+	"path/filepath"
 	"strings"
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/internal/runtime"
@@ -16,9 +18,29 @@ import (
 // Register 注册 pixiv_reverse_search。source 只在当前请求中传给 Facade，输出永远只
 // 暴露 source kind/hash 摘要；provider、pixiv-only、代理和凭据来自启动快照。
 func Register(app *runtime.App, server *mcp.Server) {
+	// SDK 的 schema/type 错误会包含输入值；仅拦截本 tool 尚未进入 typed handler 的失败。
+	// handler 总是返回完整 envelope，不能覆盖其 provider partial/error 结果。
+	server.AddReceivingMiddleware(func(next mcp.MethodHandler) mcp.MethodHandler {
+		return func(ctx context.Context, method string, request mcp.Request) (mcp.Result, error) {
+			result, err := next(ctx, method, request)
+			call, ok := request.(*mcp.CallToolRequest)
+			if !ok || call.Params.Name != "pixiv_reverse_search" {
+				return result, err
+			}
+			failed, ok := result.(*mcp.CallToolResult)
+			if ok && failed.IsError && failed.StructuredContent == nil {
+				out := emptyReverseSearchOutput()
+				safe := reverseSearchError(out, reversesearch.CodeInvalidRequest)
+				safe.StructuredContent = out
+				return safe, nil
+			}
+			return result, err
+		}
+	})
 	runtime.AddTool(app, server, &mcp.Tool{
+		Meta: mcp.Meta{"openai/fileParams": []string{"image"}},
 		Name: "pixiv_reverse_search", Annotations: &mcp.ToolAnnotations{ReadOnlyHint: true, DestructiveHint: new(false), IdempotentHint: true, OpenWorldHint: new(true)},
-		Description:  "Upload an image source to SauceNAO or ascii2d and return Pixiv matches.",
+		Description:  "Upload a server-side image source or a host-provided image to SauceNAO or ascii2d and return Pixiv matches. Provide exactly one of source or image.",
 		InputSchema:  reverseSearchInputSchema(),
 		OutputSchema: reverseSearchOutputSchema(),
 	}, func(ctx context.Context, _ *mcp.CallToolRequest, input reverseSearchInput) (*mcp.CallToolResult, reverseSearchOutput, error) {
@@ -27,8 +49,17 @@ func Register(app *runtime.App, server *mcp.Server) {
 }
 
 type reverseSearchInput struct {
-	Source   string `json:"source"`
-	Provider string `json:"provider,omitempty"`
+	Source   *string             `json:"source,omitempty"`
+	Image    *reverseSearchImage `json:"image,omitempty"`
+	Provider string              `json:"provider,omitempty"`
+}
+
+// reverseSearchImage 仅从 host 文件对象取下载地址；其余字段不进入 provider 或输出。
+type reverseSearchImage struct {
+	DownloadURL string `json:"download_url"`
+	FileID      string `json:"file_id"`
+	MIMEType    string `json:"mime_type,omitempty"`
+	FileName    string `json:"file_name,omitempty"`
 }
 
 // reverseSearchOutput 是 MCP 的完整 wire envelope。它刻意不把原始 source、
@@ -46,11 +77,21 @@ func reverseSearchInputSchema() map[string]any {
 	return map[string]any{
 		"type":                 "object",
 		"additionalProperties": false,
-		"required":             []string{"source"},
+		"oneOf":                []map[string]any{{"required": []string{"source"}}, {"required": []string{"image"}}},
 		"properties": map[string]any{
 			"source": map[string]any{
 				"type":        "string",
-				"description": "Readable regular file path or HTTP(S) image URL. The source is fetched/uploaded by the trusted local MCP server and is never returned.",
+				"description": "Readable regular file path, local file:// URI, or HTTP(S) image URL on the MCP server, not the connector device. The source is fetched/uploaded and is never returned.",
+			},
+			"image": map[string]any{
+				"type": "object", "additionalProperties": false,
+				"required": []string{"download_url", "file_id"},
+				"properties": map[string]any{
+					"download_url": map[string]any{"type": "string", "description": "HTTP(S) download URL supplied by the host."},
+					"file_id":      map[string]any{"type": "string", "description": "Host file identifier; not a download address."},
+					"mime_type":    map[string]any{"type": "string"},
+					"file_name":    map[string]any{"type": "string"},
+				},
 			},
 			"provider": map[string]any{
 				"type":        "string",
@@ -153,7 +194,35 @@ func reverseSearchOutputSchema() map[string]any {
 
 func handleReverseSearch(ctx context.Context, app *runtime.App, input reverseSearchInput) (*mcp.CallToolResult, reverseSearchOutput, error) {
 	out := emptyReverseSearchOutput()
-	if strings.TrimSpace(input.Source) == "" {
+	if (input.Source == nil) == (input.Image == nil) {
+		return reverseSearchError(out, reversesearch.CodeInvalidRequest), out, nil
+	}
+	var source string
+	if input.Source != nil {
+		source = *input.Source
+		if strings.HasPrefix(strings.ToLower(source), "file://") {
+			parsed, err := url.Parse(source)
+			// file URI 只表示 server 本机绝对路径；不能静默丢弃 authority、查询或片段。
+			if err != nil || parsed.User != nil || (parsed.Host != "" && !strings.EqualFold(parsed.Host, "localhost")) || parsed.RawQuery != "" || parsed.ForceQuery || strings.Contains(source, "#") || strings.ContainsRune(parsed.Path, 0) {
+				return reverseSearchError(out, reversesearch.CodeInvalidSource), out, nil
+			}
+			source = filepath.FromSlash(parsed.Path)
+			// Windows file:///C:/... 的首分隔符不属于盘符；其他平台不改路径。
+			if len(source) > 0 && filepath.VolumeName(source[1:]) != "" {
+				source = source[1:]
+			}
+			if !filepath.IsAbs(source) || strings.HasPrefix(filepath.ToSlash(source), "//") {
+				return reverseSearchError(out, reversesearch.CodeInvalidSource), out, nil
+			}
+		}
+	} else {
+		source = input.Image.DownloadURL
+		parsed, err := url.Parse(source)
+		if strings.TrimSpace(input.Image.FileID) == "" || err != nil || parsed.Host == "" || parsed.User != nil || (parsed.Scheme != "http" && parsed.Scheme != "https") {
+			return reverseSearchError(out, reversesearch.CodeInvalidRequest), out, nil
+		}
+	}
+	if strings.TrimSpace(source) == "" {
 		return reverseSearchError(out, reversesearch.CodeInvalidRequest), out, nil
 	}
 	ports := app.ReverseSearchPorts()
@@ -168,7 +237,7 @@ func handleReverseSearch(ctx context.Context, app *runtime.App, input reverseSea
 		provider = reversesearch.ProviderSauceNAO
 	}
 	response, err := ports.Searcher.Search(ctx, reversesearch.Request{
-		Source: input.Source, Provider: provider, PixivOnly: ports.PixivOnly,
+		Source: source, Provider: provider, PixivOnly: ports.PixivOnly,
 	})
 	out = outputFromResponse(response)
 	// 即使 Search 返回错误，response 也可能包含已完成的 Pixiv 结果（例如 Snapshot.Close 失败）。
@@ -178,7 +247,12 @@ func handleReverseSearch(ctx context.Context, app *runtime.App, input reverseSea
 		out.Records = records
 	}
 	if err != nil {
-		return reverseSearchError(out, safeErrorCode(ctx, err)), out, nil
+		code := safeErrorCode(ctx, err)
+		result := reverseSearchError(out, code)
+		if input.Image != nil && (code == reversesearch.CodeSourceHTTPStatus || code == reversesearch.CodeSourceReadFailed) {
+			result.Content = append(result.Content, &mcp.TextContent{Text: "The host image could not be downloaded. Reattach the image and try again."})
+		}
+		return result, out, nil
 	}
 	if recordsErr != nil {
 		return reverseSearchError(out, reversesearch.CodeUnknown), out, nil

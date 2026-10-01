@@ -61,7 +61,25 @@ FANBOX tools 也遵循相同资源形状：第一方 resource 只包含 opaque `
 {"source":"/private/path/image.png","provider":"ascii2d-color"}
 ```
 
-`source` 必填，`provider` 可选。provider enum 为 `saucenao`、`ascii2d-color`、`ascii2d-bovw` 或 `all`；省略时
+必须恰好提供 `source` 或 `image`；两者都不提供或同时提供均为错误。
+`source` 可以是 server 本机常规文件路径、本机 `file://` URI 或 HTTP(S) URL。
+为支持 host 附件，tool 发布 `_meta["openai/fileParams"] = ["image"]`：
+
+```json
+{"image":{"download_url":"https://host.example/image?signature=temporary","file_id":"host-file-id","mime_type":"image/png","file_name":"image.png"}}
+```
+
+`image` 是封闭 object，精确声明四个 string 字段：必填 `download_url`、`file_id`，可选
+`mime_type`、`file_name`。下载 URL 只接受有 host、无 userinfo 的 HTTP(S)，不接受本地路径或 file URI。
+`file_id` 不能为空，只是描述信息，不能当成下载地址。只有下载 URL 进入现有 snapshot loader；
+文件 ID、MIME type 和文件名不会转发给 provider。host URL 过期或无法读取时，错误会提示用户重新附加图片；
+server 不猜测其他 URL，也不重试。
+
+本机 file URI 必须使用绝对路径，authority 只能为空或 `localhost`；其他 authority、userinfo、query、
+fragment、NUL 和 UNC 路径会被拒绝，不能静默丢弃或重新解释。路径中的空格、`#`、`%` 等字面字符需要
+percent-encode。这些 URI 规则仅适用于该 MCP 输入，不改变 CLI 的关键词/图片模式选择。
+
+`provider` 可选。provider enum 为 `saucenao`、`ascii2d-color`、`ascii2d-bovw` 或 `all`；省略时
 使用 MCP 进程启动时的配置，默认是 `saucenao`。`reverse_search_pixiv_only` 也在启动时固定，并控制
 `results` 是否保留非 Pixiv 命中。单次 tool call 不能改变代理、API key 或其他传输配置。
 
@@ -72,10 +90,10 @@ ascii2d。Chromium User-Agent 会得到匹配的 `Sec-CH-UA`、`Sec-CH-UA-Mobile
 Chromium User-Agent 则省略这些 Chromium hint。`[reverse_search.flaresolverr].proxy_url` 只作为
 `sessions.create` 中发送的 browser upstream proxy；solver control traffic 不继承任一 native route。
 
-source 可以是 MCP server 上任意可读常规文件，或通过 server 网络抓取的 HTTP(S) URL，而非 connector
+source 可以是 MCP server 上任意可读常规文件（路径或本机 file URI），或通过 server 网络抓取的 HTTP(S) URL，而非 connector
 所在设备的文件或网络。允许私网、loopback、link-local URL 目标，server 也可以读取私有文件。单 owner OAuth
 grant 允许 connector 请求这些 server 侧资源，因此只应授权可信 connector。server 只抓取或打开一次私有
-快照，再上传给所选第三方 provider；不会返回原始 source、临时路径、请求头、cookie、API key、CSRF 值、
+快照，再上传给所选第三方 provider；不会在结果或日志中回显原始 source、附件下载 URL、文件 ID、文件名、临时路径、请求头、cookie、API key、CSRF 值、
 redirect `Location` 或上游 response body。SauceNAO/ascii2d 的处理与保存遵循各自政策，URL 查询也可能被缓存；
 ascii2d 接受 JPEG、PNG、WEBP，并执行 provider 自身的 10 MB 限制。
 
@@ -86,7 +104,7 @@ canonical `artwork` 或 `user` record。因为 provider 无法确定 Pixiv 作�
 类型，tool 不会调用作品详情来猜测。纯外部结果不会进入 `records`。
 
 至少一个 provider 成功且另一个失败时，`partial=true`，tool 成功（`isError=false`）。单 provider 失败或全部
-provider 失败时保留 envelope 并设置 `isError=true`；schema 错误在 provider 执行前拒绝。取消仍是完整请求取消，
+provider 失败时保留 envelope 并设置 `isError=true`；schema 错误在 provider 执行前返回安全的 `invalid_request` envelope，不回显无效值。快照在完成、失败或取消后删除。取消仍是完整请求取消，
 不会伪装为 partial 成功。
 
 图片由 native ascii2d `/search/file` multipart endpoint 上传；FlareSolverr 只接收 JSON challenge-recovery request，
@@ -139,7 +157,7 @@ MCP 不再注册 `download`、`download_random_from_recommendation` 或任何改
 | --- | --- |
 | `pixiv_search_illust` | 必填 `word`；可选 `search_target`、`sort`、`duration`、`start_date`、`end_date`、`content_type`、`ai_mode`、`aspect_ratio`、`resolution`、精确 `tool`、收藏范围/策略、`illust_filter`、`page`、`limit`。稳定 enum/date 会在打开 SDK 前校验。 |
 | `pixiv_search_novel` | 必填 `word`；可选 `search_target`、`sort`、`duration`、`novel_filter`、`page`、`limit`。rating、正文长度和 original 字段明确不发布。 |
-| `pixiv_reverse_search` | 必填 `source`（常规本地文件或 HTTP(S) URL）；可选 `provider` enum。使用启动时固定的代理/key/pixiv-only 配置，返回上文的反向搜图 envelope。 |
+| `pixiv_reverse_search` | `source`（server 本机常规文件、本机 `file://` URI、HTTP(S) URL）与 host `image` object 恰好提供一个；可选 `provider` enum。使用启动时固定的代理/key/pixiv-only 配置，返回上文的反向搜图 envelope。 |
 | `pixiv_illust_detail` | 正数 `illust_id` 与受支持作品 `url` 必须二选一；返回一条安全 record。 |
 | `pixiv_novel_detail` / `pixiv_novel_content` | 正数 `novel_id`；前者返回 metadata，后者是保留的兼容 tool，返回 `content_unavailable` 与空 block，不请求已 rejected 的正文 endpoint。 |
 | `pixiv_illust_related` | 正数 `illust_id`，可选 `illust_filter`、`page`、`limit`。 |
