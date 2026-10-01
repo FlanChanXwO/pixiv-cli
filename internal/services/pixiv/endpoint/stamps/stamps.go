@@ -1,7 +1,6 @@
 package stamps
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -55,31 +54,13 @@ func (c *Client) List(ctx context.Context) (Result, error) {
 }
 
 type responseDTO struct {
-	Stamps  requiredList[stampDTO] `json:"stamps"`
-	NextURL *json.RawMessage       `json:"next_url"`
+	Stamps  protocol.RequiredList[stampDTO] `json:"stamps"`
+	NextURL *json.RawMessage                `json:"next_url"`
 }
 
 type stampDTO struct {
 	ID  int64  `json:"stamp_id"`
 	URL string `json:"stamp_url"`
-}
-
-type requiredList[T any] struct {
-	Items   []T
-	Present bool
-	Valid   bool
-}
-
-func (l *requiredList[T]) UnmarshalJSON(data []byte) error {
-	*l = requiredList[T]{Present: true}
-	if bytes.Equal(bytes.TrimSpace(data), []byte("null")) {
-		return nil
-	}
-	if err := json.Unmarshal(data, &l.Items); err != nil {
-		return err
-	}
-	l.Valid = true
-	return nil
 }
 
 func validResourceURL(rawURL string) bool {

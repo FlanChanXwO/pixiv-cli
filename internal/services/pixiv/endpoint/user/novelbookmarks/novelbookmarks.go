@@ -1,9 +1,7 @@
 package novelbookmarks
 
 import (
-	"bytes"
 	"context"
-	"encoding/json"
 	"errors"
 	"net/http"
 	"net/url"
@@ -199,13 +197,13 @@ func (c *Client) Remove(ctx context.Context, novelID int64) error {
 }
 
 type responseDTO struct {
-	Novels  requiredList[novelDTO] `json:"novels"`
-	NextURL *string                `json:"next_url"`
+	Novels  protocol.RequiredList[novelDTO] `json:"novels"`
+	NextURL *string                         `json:"next_url"`
 }
 
 type tagsResponseDTO struct {
-	Tags    requiredList[bookmarkTagDTO] `json:"bookmark_tags"`
-	NextURL *string                      `json:"next_url"`
+	Tags    protocol.RequiredList[bookmarkTagDTO] `json:"bookmark_tags"`
+	NextURL *string                               `json:"next_url"`
 }
 
 type bookmarkTagDTO struct {
@@ -266,24 +264,6 @@ type imageURLsDTO struct {
 	Medium       string `json:"medium"`
 	Large        string `json:"large"`
 	Original     string `json:"original"`
-}
-
-type requiredList[T any] struct {
-	Items   []T
-	Present bool
-	Valid   bool
-}
-
-func (l *requiredList[T]) UnmarshalJSON(data []byte) error {
-	*l = requiredList[T]{Present: true}
-	if bytes.Equal(bytes.TrimSpace(data), []byte("null")) {
-		return nil
-	}
-	if err := json.Unmarshal(data, &l.Items); err != nil {
-		return err
-	}
-	l.Valid = true
-	return nil
 }
 
 func mapNovel(value novelDTO) novel.Novel {
