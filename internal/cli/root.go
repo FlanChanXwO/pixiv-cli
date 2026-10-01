@@ -463,7 +463,6 @@ func (a app) newPixivSDKPorts() (pixivSDKPorts, error) {
 		open:      open,
 		openLease: openLease,
 		execute:   execute,
-		pooled:    execute,
 		jsonOut: func(override *bool) (bool, error) {
 			if override != nil {
 				return *override, nil
@@ -1222,17 +1221,12 @@ type pixivSDKPorts struct {
 	open      func(pixivdeps.Request) (*pixiv.Client, error)
 	openLease func(context.Context, pixivdeps.Request) (*lifecycle.Lease[*pixiv.Client], error)
 	execute   func(context.Context, pixivdeps.Request, func(context.Context, *pixiv.Client) (bool, error)) error
-	// pooled 保留为当前 CLI 测试 seam 的兼容字段；生产组合根只注入 execute。
-	pooled  func(context.Context, pixivdeps.Request, func(context.Context, *pixiv.Client) (bool, error)) error
-	jsonOut func(*bool) (bool, error)
+	jsonOut   func(*bool) (bool, error)
 }
 
 func (p pixivSDKPorts) run(ctx context.Context, request pixivdeps.Request, attempt func(context.Context, *pixiv.Client) (bool, error)) error {
 	if p.execute != nil {
 		return p.execute(ctx, request, attempt)
-	}
-	if p.pooled != nil {
-		return p.pooled(ctx, request, attempt)
 	}
 	return errors.New("pixiv sdk execution port is not configured")
 }
