@@ -83,7 +83,7 @@ type RuntimeConfig struct {
 	// 是高级可选配置，只在用户显式写入 TOML 表时生效，且不经过扁平 config set。
 	// 它们的绑定规则保留在 snapshot.go 中（服务级代理的"缺失 vs 显式空串"语义
 	// 与 Pixiv 不接受 user_agent 的差异无法用扁平的 config 标签表达）。
-	PixivNetwork              ServiceNetworkConfig `config:"-"`
+	PixivNetwork              PixivNetworkConfig   `config:"-"`
 	FanboxNetwork             ServiceNetworkConfig `config:"-"`
 	ReverseSearchNetwork      ServiceNetworkConfig `config:"-"`
 	FanboxFlareSolverr        *FlareSolverrConfig  `config:"-"`
@@ -130,6 +130,16 @@ type OptionalString struct {
 type ServiceNetworkConfig struct {
 	ProxyURL  OptionalString `json:"proxy_url"`
 	UserAgent OptionalString `json:"user_agent"`
+}
+
+// PixivNetworkConfig 是 Pixiv 服务级网络的**窄类型**：它只有 proxy_url。
+//
+// Pixiv 与 FANBOX/反搜的网络字段并不相同：Pixiv 不接受服务级 user_agent。之前用
+// 共享结构体 + `includeUserAgent` 程序分支来维持这个差异，容易在重构中被误删。
+// 用独立类型表达后，`pixiv.network.user_agent` 在类型层面就无法表达，也无法被绑定，
+// 因此不会在重构中意外变成新的用户可配置能力。
+type PixivNetworkConfig struct {
+	ProxyURL OptionalString `json:"proxy_url"`
 }
 
 // FlareSolverrConfig describes the optional external challenge-recovery
@@ -421,15 +431,15 @@ func (s Snapshot) Runtime() (RuntimeConfig, error) {
 	if err != nil {
 		return RuntimeConfig{}, err
 	}
-	pixivNetwork, err := s.serviceNetwork("pixiv.network", false)
+	pixivNetwork, err := s.pixivNetwork()
 	if err != nil {
 		return RuntimeConfig{}, err
 	}
-	fanboxNetwork, err := s.serviceNetwork("fanbox.network", true)
+	fanboxNetwork, err := s.serviceNetwork("fanbox.network")
 	if err != nil {
 		return RuntimeConfig{}, err
 	}
-	reverseSearchNetwork, err := s.serviceNetwork("reverse_search.network", true)
+	reverseSearchNetwork, err := s.serviceNetwork("reverse_search.network")
 	if err != nil {
 		return RuntimeConfig{}, err
 	}
@@ -475,20 +485,29 @@ func (s Snapshot) Runtime() (RuntimeConfig, error) {
 	return cfg, nil
 }
 
-func (s Snapshot) serviceNetwork(prefix string, includeUserAgent bool) (ServiceNetworkConfig, error) {
+// pixivNetwork 绑定 Pixiv 服务级网络。它只读取 proxy_url：Pixiv 不接受服务级
+// user_agent，因此即使配置文件里写了 `pixiv.network.user_agent` 也不得生效
+// （该差异由 PixivNetworkConfig 这个窄类型在类型层面保证）。
+func (s Snapshot) pixivNetwork() (PixivNetworkConfig, error) {
+	proxyURL, err := s.optionalString("pixiv.network.proxy_url")
+	if err != nil {
+		return PixivNetworkConfig{}, err
+	}
+	return PixivNetworkConfig{ProxyURL: proxyURL}, nil
+}
+
+// serviceNetwork 绑定 FANBOX / 反搜的服务级网络。它们同时支持 proxy_url 与
+// user_agent，两者都保持"缺失 vs 显式空串"的可区分语义。
+func (s Snapshot) serviceNetwork(prefix string) (ServiceNetworkConfig, error) {
 	proxyURL, err := s.optionalString(prefix + ".proxy_url")
 	if err != nil {
 		return ServiceNetworkConfig{}, err
 	}
-	network := ServiceNetworkConfig{ProxyURL: proxyURL}
-	if includeUserAgent {
-		userAgent, err := s.optionalString(prefix + ".user_agent")
-		if err != nil {
-			return ServiceNetworkConfig{}, err
-		}
-		network.UserAgent = userAgent
+	userAgent, err := s.optionalString(prefix + ".user_agent")
+	if err != nil {
+		return ServiceNetworkConfig{}, err
 	}
-	return network, nil
+	return ServiceNetworkConfig{ProxyURL: proxyURL, UserAgent: userAgent}, nil
 }
 
 func (s Snapshot) optionalString(path string) (OptionalString, error) {
