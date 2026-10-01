@@ -45,14 +45,22 @@ type fieldTags struct {
 	hasSec  bool
 }
 
-// runtimeConfigTags 读取公开的 config.RuntimeConfig 类型的字段标签。
-// 只读取导出字段；没有标签的字段返回零值视图。
+// runtimeConfigTags 读取公开的 config.RuntimeConfig 类型的字段标签，并递归展开
+// 嵌套配置组（如 AccountPoolConfig），使“标签声明”与“派生元数据”的覆盖面可以
+// 逐字段比对。只读取导出字段；没有标签的字段返回零值视图。
 func runtimeConfigTags(t *testing.T) map[string]fieldTags {
 	t.Helper()
-	typeOf := reflect.TypeOf(config.RuntimeConfig{})
-	out := make(map[string]fieldTags, typeOf.NumField())
-	for i := 0; i < typeOf.NumField(); i++ {
-		field := typeOf.Field(i)
+	out := make(map[string]fieldTags)
+	collectRuntimeConfigTags(t, reflect.TypeOf(config.RuntimeConfig{}), out)
+	return out
+}
+
+// collectRuntimeConfigTags 递归收集一个配置结构体（含嵌套组）的字段标签，
+// 键为字段名；嵌套组的字段也用其自身字段名，以保持与派生 alias 一一对应。
+func collectRuntimeConfigTags(t *testing.T, structType reflect.Type, out map[string]fieldTags) {
+	t.Helper()
+	for i := 0; i < structType.NumField(); i++ {
+		field := structType.Field(i)
 		if !field.IsExported() {
 			continue
 		}
@@ -74,8 +82,22 @@ func runtimeConfigTags(t *testing.T) map[string]fieldTags {
 		view.cli, view.hasCLI = tag.Lookup("cli")
 		view.secret, view.hasSec = tag.Lookup("secret")
 		out[field.Name] = view
+
+		// config:"-" 的结构体字段是嵌套配置组，其字段各自声明路径。
+		if view.config == "-" && field.Type.Kind() == reflect.Struct && hasConfigTaggedField(field.Type) {
+			collectRuntimeConfigTags(t, field.Type, out)
+		}
 	}
-	return out
+}
+
+// hasConfigTaggedField 报告一个结构体是否有任何字段声明了 config 标签。
+func hasConfigTaggedField(structType reflect.Type) bool {
+	for i := 0; i < structType.NumField(); i++ {
+		if _, ok := structType.Field(i).Tag.Lookup("config"); ok {
+			return true
+		}
+	}
+	return false
 }
 
 // requireTagged 断言某个公开字段已经声明了配置标签，并返回其视图。

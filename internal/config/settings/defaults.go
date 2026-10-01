@@ -21,7 +21,8 @@ func generatedDefaultConfig() ([]byte, error) {
 	}
 	sections := make(map[string]*tomledit.Section)
 
-	for _, spec := range settingSpecs {
+	for _, entry := range mustSettingSpecs() {
+		spec := entry.spec
 		if spec.Removed || !spec.DefaultInFile {
 			continue
 		}

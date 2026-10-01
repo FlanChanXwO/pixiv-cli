@@ -17,11 +17,6 @@ import (
 	"github.com/knadh/koanf/v2"
 )
 
-const (
-	DefaultDownloadPath     = "./downloads"
-	DefaultFilenameTemplate = "{author} - {title}_{id}"
-)
-
 type settingKind string
 
 const (
@@ -68,34 +63,56 @@ type snapshotEnvValue struct {
 }
 
 type RuntimeConfig struct {
-	DownloadPath              string
-	FilenameTemplate          string
-	DirectoryTemplate         string
-	HTTPSProxy                string
-	LogLevel                  string
-	LogFormat                 string
-	PixivNetwork              ServiceNetworkConfig
-	FanboxNetwork             ServiceNetworkConfig
-	ReverseSearchNetwork      ServiceNetworkConfig
-	FanboxFlareSolverr        *FlareSolverrConfig
-	ReverseSearchFlareSolverr *FlareSolverrConfig
-	RequestInterval           time.Duration
-	UpdateCheckEnabled        bool
-	OutputJSON                bool
-	LoginOpenBrowser          bool
-	LoginUseAfterLogin        bool
-	ReverseSearchProvider     string
-	ReverseSearchPixivOnly    bool
-	SauceNAOAPIKey            string
+	// DownloadPath 是作品下载根目录；未配置时使用相对当前工作目录的路径。
+	DownloadPath string `config:"download.path" alias:"download_path" env:"DOWNLOAD_PATH" default:"./downloads" cli:"true" example:"true"`
+
+	// FilenameTemplate 是下载文件名模板，进入首次生成的精简配置。
+	FilenameTemplate string `config:"download.filename_template" alias:"filename_template" env:"FILENAME_TEMPLATE" default:"{author} - {title}_{id}" cli:"true" example:"true"`
+
+	// DirectoryTemplate 是可选下载子目录模板；没有默认值，因此不进入精简配置。
+	DirectoryTemplate string `config:"download.directory_template" alias:"directory_template" env:"DIRECTORY_TEMPLATE" cli:"true"`
+
+	// HTTPSProxy 保留小写环境变量优先于大写环境变量的现有顺序，且没有默认值。
+	HTTPSProxy string `config:"network.https_proxy" alias:"https_proxy" env:"https_proxy,HTTPS_PROXY" cli:"true"`
+
+	// LogLevel 与 LogFormat 具有默认值并进入精简配置。
+	LogLevel  string `config:"logging.level" alias:"log_level" env:"PIXIV_LOG_LEVEL" default:"info" cli:"true" example:"true"`
+	LogFormat string `config:"logging.format" alias:"log_format" env:"PIXIV_LOG_FORMAT" default:"text" cli:"true" example:"true"`
+
+	// PixivNetwork / FanboxNetwork / ReverseSearchNetwork 以及两个 FlareSolverr 组
+	// 是高级可选配置，只在用户显式写入 TOML 表时生效，且不经过扁平 config set。
+	// 它们的绑定规则保留在 snapshot.go 中（服务级代理的"缺失 vs 显式空串"语义
+	// 与 Pixiv 不接受 user_agent 的差异无法用扁平的 config 标签表达）。
+	PixivNetwork              ServiceNetworkConfig `config:"-"`
+	FanboxNetwork             ServiceNetworkConfig `config:"-"`
+	ReverseSearchNetwork      ServiceNetworkConfig `config:"-"`
+	FanboxFlareSolverr        *FlareSolverrConfig  `config:"-"`
+	ReverseSearchFlareSolverr *FlareSolverrConfig  `config:"-"`
+
+	// RequestInterval 具有运行时默认值，但不写入精简初始文件。
+	RequestInterval time.Duration `config:"network.request_interval" alias:"request_interval" env:"PIXIV_REQUEST_INTERVAL" default:"0s" cli:"true"`
+
+	// 布尔开关：除 account_pool 外都不由 config 命令管理。
+	UpdateCheckEnabled bool `config:"update.check_enabled" alias:"update_check_enabled" default:"true" example:"true"`
+	OutputJSON         bool `config:"output.json" alias:"output_json" default:"false" example:"true"`
+	LoginOpenBrowser   bool `config:"login.open_browser" alias:"login_open_browser" default:"true" example:"true"`
+	LoginUseAfterLogin bool `config:"login.use_after_login" alias:"login_use_after_login" default:"false" example:"true"`
+
+	// 反搜设置。SauceNAOAPIKey 只能经过现有私密输入链路写入，不进入初始配置或公开输出。
+	ReverseSearchProvider  string `config:"reverse_search.provider" alias:"reverse_search_provider" default:"saucenao" cli:"true" example:"true"`
+	ReverseSearchPixivOnly bool   `config:"reverse_search.pixiv_only" alias:"reverse_search_pixiv_only" default:"true" cli:"true" example:"true"`
+	SauceNAOAPIKey         string `config:"reverse_search.saucenao_api_key" alias:"saucenao_api_key" env:"SAUCENAO_API_KEY" cli:"true" secret:"true"`
+
 	// LoginRelay* 描述本次运行时创建的跨机器浏览器中继。历史 secret/target
 	// 配置项仍可留在私有配置文件中，但不会载入 runtime，避免恢复旧 client relay。
-	LoginRelayPublicURL   string
-	LoginRelayListenAddr  string
-	LoginRelayTLSCertFile string
-	LoginRelayTLSKeyFile  string
+	LoginRelayPublicURL   string `config:"login.relay_public_url" alias:"login_relay_public_url"`
+	LoginRelayListenAddr  string `config:"login.relay_listen_addr" alias:"login_relay_listen_addr"`
+	LoginRelayTLSCertFile string `config:"login.relay_tls_cert_file" alias:"login_relay_tls_cert_file"`
+	LoginRelayTLSKeyFile  string `config:"login.relay_tls_key_file" alias:"login_relay_tls_key_file"`
+
 	// AccountPool 只能在 config.toml 的 [account_pool] 表中手工维护，避免普通
 	// config set 的扁平字符串接口误写账号白名单。
-	AccountPool AccountPoolConfig
+	AccountPool AccountPoolConfig `config:"-"`
 }
 
 // OptionalString preserves the difference between an absent advanced TOML
@@ -131,46 +148,32 @@ const (
 )
 
 // AccountPoolConfig 描述内容读取和作品下载是否启用数据库账号调度及其策略。
-// UID、冻结时间和 marker 不进入 config.toml。
+// UID、冻结时间和 marker 不进入 config.toml。字段标签驱动声明；[account_pool]
+// 表仍直接读取，策略枚举由 accountPool() 的领域校验负责。
 type AccountPoolConfig struct {
-	Enabled  bool
-	Strategy AccountPoolStrategy
-}
-
-var settingSpecs = []SettingSpec{
-	{Alias: "download_path", KoanfKey: "download.path", Table: []string{"download"}, Key: "path", Kind: settingString, HasDefault: true, Default: DefaultDownloadPath, DefaultInFile: true, CLIManaged: true},
-	{Alias: "filename_template", KoanfKey: "download.filename_template", Table: []string{"download"}, Key: "filename_template", Kind: settingString, HasDefault: true, Default: DefaultFilenameTemplate, DefaultInFile: true, CLIManaged: true},
-	{Alias: "directory_template", KoanfKey: "download.directory_template", Table: []string{"download"}, Key: "directory_template", Kind: settingString, CLIManaged: true},
-	{Alias: "output_json", KoanfKey: "output.json", Table: []string{"output"}, Key: "json", Kind: settingBool, HasDefault: true, Default: false, DefaultInFile: true},
-	{Alias: "login_open_browser", KoanfKey: "login.open_browser", Table: []string{"login"}, Key: "open_browser", Kind: settingBool, HasDefault: true, Default: true, DefaultInFile: true},
-	{Alias: "login_use_after_login", KoanfKey: "login.use_after_login", Table: []string{"login"}, Key: "use_after_login", Kind: settingBool, HasDefault: true, Default: false, DefaultInFile: true},
-	{Alias: "update_check_enabled", KoanfKey: "update.check_enabled", Table: []string{"update"}, Key: "check_enabled", Kind: settingBool, HasDefault: true, Default: true, DefaultInFile: true},
-	{Alias: "log_level", KoanfKey: "logging.level", Table: []string{"logging"}, Key: "level", Kind: settingString, HasDefault: true, Default: "info", DefaultInFile: true, CLIManaged: true},
-	{Alias: "log_format", KoanfKey: "logging.format", Table: []string{"logging"}, Key: "format", Kind: settingString, HasDefault: true, Default: "text", DefaultInFile: true, CLIManaged: true},
-	{Alias: "https_proxy", KoanfKey: "network.https_proxy", Table: []string{"network"}, Key: "https_proxy", Kind: settingString, CLIManaged: true},
-	{Alias: "request_interval", KoanfKey: "network.request_interval", Table: []string{"network"}, Key: "request_interval", Kind: settingDuration, HasDefault: true, Default: time.Duration(0), CLIManaged: true},
-	{Alias: "reverse_search_provider", KoanfKey: "reverse_search.provider", Table: []string{"reverse_search"}, Key: "provider", Kind: settingString, HasDefault: true, Default: "saucenao", DefaultInFile: true, CLIManaged: true},
-	{Alias: "reverse_search_pixiv_only", KoanfKey: "reverse_search.pixiv_only", Table: []string{"reverse_search"}, Key: "pixiv_only", Kind: settingBool, HasDefault: true, Default: true, DefaultInFile: true, CLIManaged: true},
-	{Alias: "saucenao_api_key", KoanfKey: "reverse_search.saucenao_api_key", Table: []string{"reverse_search"}, Key: "saucenao_api_key", Kind: settingString, Sensitive: true, CLIManaged: true},
-	{Alias: "web_fallback_enabled", KoanfKey: "web.fallback_enabled", Table: []string{"web"}, Key: "fallback_enabled", Kind: settingBool, Removed: true},
-	{Alias: "login_relay_public_url", KoanfKey: "login.relay_public_url", Table: []string{"login"}, Key: "relay_public_url", Kind: settingString},
-	{Alias: "login_relay_listen_addr", KoanfKey: "login.relay_listen_addr", Table: []string{"login"}, Key: "relay_listen_addr", Kind: settingString},
-	{Alias: "login_relay_tls_cert_file", KoanfKey: "login.relay_tls_cert_file", Table: []string{"login"}, Key: "relay_tls_cert_file", Kind: settingString},
-	{Alias: "login_relay_tls_key_file", KoanfKey: "login.relay_tls_key_file", Table: []string{"login"}, Key: "relay_tls_key_file", Kind: settingString},
-	{Alias: "account_pool_enabled", KoanfKey: "account_pool.enabled", Table: []string{"account_pool"}, Key: "enabled", Kind: settingBool, HasDefault: true, Default: false, CLIManaged: true},
-	{Alias: "account_pool_strategy", KoanfKey: "account_pool.strategy", Table: []string{"account_pool"}, Key: "strategy", Kind: settingString, HasDefault: true, Default: string(AccountPoolStrategyRoundRobin), CLIManaged: true},
-	{Alias: "account_pool_accounts", KoanfKey: "account_pool.accounts", Table: []string{"account_pool"}, Key: "accounts", Kind: settingString, Removed: true},
+	Enabled  bool                `config:"account_pool.enabled" alias:"account_pool_enabled" default:"false" cli:"true"`
+	Strategy AccountPoolStrategy `config:"account_pool.strategy" alias:"account_pool_strategy" default:"round_robin" cli:"true"`
 }
 
 // SettingSpecByAlias 返回 alias 对应的 spec。已移除键仍可被查询，以便 config unset
-// 执行清理、config get/set 返回 removed_setting。
+// 执行清理、config get/set 返回 removed_setting。元数据完全来自字段标签声明。
 func SettingSpecByAlias(alias string) (SettingSpec, bool) {
-	for _, spec := range settingSpecs {
-		if spec.Alias == alias {
-			return spec, true
+	for _, entry := range mustSettingSpecs() {
+		if entry.spec.Alias == alias {
+			return entry.spec, true
 		}
 	}
 	return SettingSpec{}, false
+}
+
+// mustSettingSpecs 返回派生 schema；声明错误在此以 panic 暴露，因为它是编程错误，
+// 只能在首次使用时才能通过 public API 观察到。
+func mustSettingSpecs() []settingSpecFromTags {
+	derived, err := settingSpecsFromTags()
+	if err != nil {
+		panic(fmt.Sprintf("invalid configuration schema: %v", err))
+	}
+	return derived
 }
 
 // ErrRemovedSetting 表示该配置键已随版本删除。旧配置仍显式包含它时返回；用户
@@ -199,12 +202,13 @@ func PublicSettingText(alias, text string) string {
 }
 
 func ValidSettingAliases() []string {
-	keys := make([]string, 0, len(settingSpecs))
-	for _, spec := range settingSpecs {
-		if spec.Removed {
+	derived := mustSettingSpecs()
+	keys := make([]string, 0, len(derived))
+	for _, entry := range derived {
+		if entry.spec.Removed {
 			continue
 		}
-		keys = append(keys, spec.Alias)
+		keys = append(keys, entry.spec.Alias)
 	}
 	slices.Sort(keys)
 	return keys
@@ -212,12 +216,13 @@ func ValidSettingAliases() []string {
 
 // CLISettingAliases 返回由 pixiv config 命令管理的非移除配置键。
 func CLISettingAliases() []string {
-	keys := make([]string, 0, len(settingSpecs))
-	for _, spec := range settingSpecs {
-		if spec.Removed || !spec.CLIManaged {
+	derived := mustSettingSpecs()
+	keys := make([]string, 0, len(derived))
+	for _, entry := range derived {
+		if entry.spec.Removed || !entry.spec.CLIManaged {
 			continue
 		}
-		keys = append(keys, spec.Alias)
+		keys = append(keys, entry.spec.Alias)
 	}
 	slices.Sort(keys)
 	return keys
@@ -290,9 +295,9 @@ func LoadSnapshotAtWithFileStore(path string, store FileStore) (Snapshot, error)
 // 读取 os.Environ，命令运行中修改环境会让同一个 snapshot 产生不同结果。
 func captureEnvironment() map[string]snapshotEnvValue {
 	values := make(map[string]snapshotEnvValue)
-	for _, spec := range settingSpecs {
-		if raw, present := EnvValue(spec); present {
-			values[spec.Alias] = snapshotEnvValue{value: raw, present: true}
+	for _, entry := range mustSettingSpecs() {
+		if raw, present := EnvValue(entry.spec); present {
+			values[entry.spec.Alias] = snapshotEnvValue{value: raw, present: true}
 		}
 	}
 	return values
