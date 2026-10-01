@@ -24,7 +24,6 @@ type CommandSet struct {
 	Auth     *cobra.Command
 	Posts    []*cobra.Command
 	Download *cobra.Command
-	MCP      *cobra.Command
 }
 
 // FANBOX 命令共享的依赖能力与防御性校验。
@@ -49,10 +48,6 @@ type Data struct {
 	CanPromptFn           func() bool
 	PromptSecretFn        func(string) (string, error)
 	PromptConfirmFn       func(string, bool) (bool, error)
-
-	// RunMCPServer 启动 FANBOX MCP stdio server。composition root 注入真实
-	// mcpserver wiring；命令 owner 不直接依赖 protocol/infrastructure。
-	RunMCPServer func(*cobra.Command, *fanboxapp.Facade, *string) error
 }
 
 func (d Data) UsageError(err error) error {
@@ -228,7 +223,7 @@ func (d Data) BindNoInput(cmd *cobra.Command) {
 	})
 }
 
-// New 构造 FANBOX 产品命令组；资源与 MCP stdio 生命周期由 root host 注入。
+// New 构造 FANBOX 产品命令组；资源生命周期由 root host 注入。
 func New(data Data, children CommandSet) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "fanbox",
@@ -244,7 +239,7 @@ func New(data Data, children CommandSet) *cobra.Command {
 	childrenList := make([]*cobra.Command, 0, 3+len(children.Posts))
 	childrenList = append(childrenList, children.Auth)
 	childrenList = append(childrenList, children.Posts...)
-	childrenList = append(childrenList, children.Download, children.MCP)
+	childrenList = append(childrenList, children.Download)
 	for _, child := range childrenList {
 		if child != nil {
 			cmd.AddCommand(child)

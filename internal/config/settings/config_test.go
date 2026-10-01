@@ -473,3 +473,46 @@ func TestRuntimeSilentlyIgnoresLegacySharedSecretRelayConfiguration(t *testing.T
 	require.False(t, hasSecret)
 	require.False(t, hasTarget)
 }
+
+func TestMCPEndpointSettingsAreExplicit(t *testing.T) {
+	for _, alias := range []string{"mcp_listen_addr", "mcp_base_url"} {
+		t.Run(alias, func(t *testing.T) {
+			path := filepath.Join(t.TempDir(), "config.toml")
+			snapshot, err := config.LoadSnapshotAt(path)
+			require.NoError(t, err)
+			value, err := snapshot.Effective(alias)
+			require.NoError(t, err)
+			require.False(t, value.HasValue, "deployment endpoints must not have implicit defaults")
+			spec, ok := config.SettingSpecByAlias(alias)
+			require.True(t, ok)
+			require.True(t, spec.CLIManaged)
+		})
+	}
+}
+
+func TestRuntimeMCPEndpoints(t *testing.T) {
+	for _, test := range []struct {
+		name, body, listen, base string
+	}{
+		{name: "unset"},
+		{name: "explicit deployment", body: `[mcp]
+listen_addr = '127.0.0.1:8080'
+base_url = 'https://mcp.example.test/pixiv'
+`, listen: "127.0.0.1:8080", base: "https://mcp.example.test/pixiv"},
+		{name: "explicit empty", body: `[mcp]
+listen_addr = ''
+base_url = ''
+`},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			path := filepath.Join(t.TempDir(), "config.toml")
+			require.NoError(t, os.WriteFile(path, []byte(test.body), 0o600))
+			snapshot, err := config.LoadSnapshotAt(path)
+			require.NoError(t, err)
+			runtime, err := snapshot.Runtime()
+			require.NoError(t, err)
+			require.Equal(t, test.listen, runtime.MCPListenAddr)
+			require.Equal(t, test.base, runtime.MCPBaseURL)
+		})
+	}
+}

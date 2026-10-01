@@ -43,7 +43,7 @@ Do not ask for an undisclosed token in chat or launch a hidden prompt in an agen
 | `download` | Confirm exact targets and destination for each invocation; a user URL expands the whole supported visual listing |
 | `auth use/remove`, pool enable/disable, `config set/unset`, actual `update` | Explicit current state-change authorization; it does not carry to later targets |
 | `auth login` | Explicit request and a user present for browser OAuth; follow the documented desktop/remote handoff |
-| `mcp` or `fanbox mcp` | Explicit server-start request; these start the unified long-lived stdio server, not preflight probes |
+| `mcp` | Explicit server-start request; starts the unified long-lived HTTP server, not a preflight probe |
 
 `config path` can create baseline configuration if missing. A successful read-looking command is not necessarily filesystem-side-effect-free. `update --check --json` checks only; actual installation does not emit JSON and requires authorization.
 
@@ -99,8 +99,10 @@ Providers are SauceNAO, ascii2d color/BoVW, and `all`. `reverse_search_pixiv_onl
 
 Downloads write files and have empty successful stdout; inspect exit status and the requested destination, following `download.md`. A legitimate long encode/download is not a timeout failure. Share generated files only through an available attachment API; otherwise report the source artwork URL and do not claim an image was sent.
 
-## MCP namespace
+## MCP transport and namespace
 
-One MCP server exposes `pixiv_*` and `fanbox_*` tools with independent product credentials. Use discovery for exact names; unprefixed Pixiv aliases do not exist. MCP filesystem download tools have been removed; use the explicitly authorized CLI download workflow for local files. Standard read-only, destructive, idempotent and open-world annotations are approval hints, not a replacement for the user's authorization. Reverse search uploads the chosen source to third-party providers.
+`pixiv mcp` requires explicit `--listen-addr` and `--base-url` values or persisted `mcp_listen_addr`/`mcp_base_url` settings. For an authorized local launch, use `pixiv mcp --listen-addr 127.0.0.1:8080 --base-url http://127.0.0.1:8080` and connect to `/mcp`. Cloud connectors need the configured public HTTPS base through an existing reverse proxy; do not deploy or change persistent configuration without authorization. The endpoint is printed to stderr; JSON-RPC uses HTTP, not stdin/stdout. `pixiv fanbox mcp` is removed.
 
-Local `pixiv mcp auth init [--reset]` is owner administration, not an MCP tool or server-start probe. Run it only on an explicit setup/reset request: it prints a new secret once after committing only its verifier. Never copy that secret into chat or tool arguments. Ordinary re-init does not reveal it; reset revokes OAuth grants but preserves registered clients and MCP account selection. It does not enable HTTP/OAuth or alter current stdio authentication.
+One MCP server exposes `pixiv_*` and `fanbox_*` tools with independent product credentials. Use discovery for exact names; unprefixed Pixiv aliases do not exist. MCP filesystem download tools have been removed; use the explicitly authorized CLI download workflow for local files. Standard read-only, destructive, idempotent and open-world annotations are approval hints, not a replacement for the user's authorization. Reverse search uploads the chosen source to third-party providers. MCP paths refer to the server filesystem, and URLs are fetched from the server network; authorize only trusted connectors. OAuth uses DCR, owner consent and PKCE, with bearer validation on every MCP request. Do not treat a local fixture or successful launch as proof that a cloud connector completed authorization.
+
+Local `pixiv mcp auth init [--reset]` is owner administration, not an MCP tool or server-start probe. Run it only on an explicit setup/reset request: it prints a new secret once after committing only its verifier. Never copy that secret into chat or tool arguments. Ordinary re-init does not reveal it; reset revokes OAuth grants but preserves registered clients and MCP account selection. It does not start a listener. Start `pixiv mcp` separately after owner initialization and explicit address/base configuration.

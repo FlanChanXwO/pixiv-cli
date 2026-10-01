@@ -111,3 +111,32 @@ func TestBearerRejectsAmbiguousAuthorizationHeaders(t *testing.T) {
 	require.Equal(t, 401, response.Code)
 	require.NotEmpty(t, response.Header().Get("WWW-Authenticate"))
 }
+
+func TestBearerPreventsDownstreamCachingAtCommit(t *testing.T) {
+	h, _, form := directCode(t)
+	token := decodedToken(t, directToken(h, form))["access_token"].(string)
+	for _, mode := range []string{"header", "write", "flush"} {
+		t.Run(mode, func(t *testing.T) {
+			protected := h.RequireBearer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				w.Header().Set("Cache-Control", "public, max-age=60")
+				switch mode {
+				case "header":
+					w.WriteHeader(http.StatusOK)
+				case "write":
+					_, err := w.Write([]byte("private result"))
+					require.NoError(t, err)
+				case "flush":
+					require.NoError(t, http.NewResponseController(w).Flush())
+				}
+			}))
+			response := bearerRequest(protected, token)
+			result := response.Result()
+			defer result.Body.Close()
+			require.Equal(t, http.StatusOK, result.StatusCode)
+			require.Equal(t, "no-store", result.Header.Get("Cache-Control"))
+			if mode == "flush" {
+				require.True(t, response.Flushed)
+			}
+		})
+	}
+}

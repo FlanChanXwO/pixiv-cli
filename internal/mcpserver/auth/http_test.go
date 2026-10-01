@@ -289,3 +289,37 @@ func TestRegistrationFailsClosedOnUnavailableState(t *testing.T) {
 		}
 	}
 }
+
+func TestCanonicalRequestBoundary(t *testing.T) {
+	h, err := auth.NewHandler("https://Example.test:443/prefix", auth.Store{Path: filepath.Join(t.TempDir(), "state.json")})
+	require.NoError(t, err)
+	protected := h.RequireCanonical(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(204) }))
+	for _, tc := range []struct {
+		name, host string
+		origins    []string
+		status     int
+	}{
+		{"native client", "example.test", nil, 204},
+		{"canonical browser", "example.test:443", []string{"https://example.test"}, 204},
+		{"normalized browser", "EXAMPLE.test", []string{"https://EXAMPLE.test:443"}, 204},
+		{"host spoof", "evil.test", nil, 403},
+		{"same evil host origin", "evil.test", []string{"https://evil.test"}, 403},
+		{"origin spoof", "example.test", []string{"https://evil.test"}, 403},
+		{"null origin", "example.test", []string{"null"}, 403},
+		{"empty origin", "example.test", []string{""}, 403},
+		{"multiple origins", "example.test", []string{"https://example.test", "https://example.test"}, 403},
+		{"wrong port", "example.test:8443", nil, 403},
+		{"origin path", "example.test", []string{"https://example.test/path"}, 403},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			req := httptest.NewRequest("POST", "http://localhost/prefix/mcp", nil)
+			req.Host = tc.host
+			req.Header["Origin"] = tc.origins
+			req.Header.Set("X-Forwarded-Host", "example.test")
+			req.Header.Set("X-Forwarded-Proto", "https")
+			response := httptest.NewRecorder()
+			protected.ServeHTTP(response, req)
+			require.Equal(t, tc.status, response.Code)
+		})
+	}
+}

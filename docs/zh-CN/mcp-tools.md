@@ -2,8 +2,7 @@
 
 [English](../en/mcp-tools.md) | 简体中文 | [文档索引](../index-zh-CN.md)
 
-通过 `pixiv mcp` 启动统一 Pixiv/FANBOX stdio MCP server。MCP 使用自身 runtime 的凭据选择，
-不接受 CLI 数据命令的账号覆盖；stdout 始终保留给 JSON-RPC。
+通过 `pixiv mcp` 在 canonical `/mcp` endpoint 启动单一、经认证的 Pixiv/FANBOX Streamable HTTP server。MCP 使用自身 runtime 的凭据选择，不接受 CLI 数据命令的账号覆盖。JSON-RPC 经 HTTP 传输，不使用 stdin/stdout。详见 [HTTP 启动与代理配置](cli-reference.md#mcp-http-server)。`pixiv fanbox mcp`、stdio transport 与旧版独立 SSE transport 已删除；Streamable HTTP 仍可使用 SSE 响应。
 
 `pixiv_novel_content` 保留正文不可用的错误合同；其 App API 正文 endpoint 已不可用。
 传入正数 `novel_id` 时返回 structured `content_unavailable`、`isError=true` 和空
@@ -11,6 +10,12 @@
 metadata 请使用 `pixiv_novel_detail`。
 
 独立本地命令 `pixiv mcp auth init [--reset]` 准备 owner state 并只输出一次 secret；它不是 tool，也不启动此 server。见 [owner 初始化](cli-reference.md#mcp-owner-初始化)。
+
+## HTTP 授权
+
+内置单 owner OAuth server 发布 protected-resource 与 authorization-server metadata，接受 DCR public client（`token_endpoint_auth_method=none`），使用 Authorization Code + PKCE S256，scope 为 `mcp`。owner 只在实例同意页输入本地初始化 secret，不放入聊天或 tool 参数；每次授权都须明确同意。云端部署使用 HTTPS 反向代理，本地支持 HTTP。该协议合同不代表 ChatGPT 或 Gemini 的真实连接验收已通过。
+
+每次 `/mcp` 请求都须携带有效 bearer token。缺失、过期或撤销返回 HTTP 401 和 canonical `WWW-Authenticate` metadata，不伪装为 tool result；私有鉴权状态不可读时失败关闭。MCP 响应（含 SSE）使用 `Cache-Control: no-store`。access token 有效一小时；refresh 旋转 token pair，旧 refresh token 重放会撤销对应 grant。reset 撤销 grant 并使 owner session、未兑换 code 失效，但保留已注册 client；重启只丢弃内存授权 session/code，不丢失持久 client/grant。过期/reset 影响新请求，不中断已授权工作。服务取消时停止接收请求，取消并等待在途 handler；新版 revision 请求取消经官方 SDK 传播。
 
 ## 错误、分页与输出
 

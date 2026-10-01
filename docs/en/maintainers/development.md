@@ -117,16 +117,17 @@ pixiv search "初音ミク" --json
 pixiv download 123456
 ```
 
-Run MCP stdio:
+Run the authenticated unified MCP HTTP server:
 
 ```bash
 pixiv auth use 12345678
-DOWNLOAD_PATH=./downloads \
-FILENAME_TEMPLATE="{author} - {title}_{id}" \
+./build/pixiv mcp auth init
+./build/pixiv config set mcp_listen_addr 127.0.0.1:8080
+./build/pixiv config set mcp_base_url http://127.0.0.1:8080
 ./build/pixiv mcp
 ```
 
-MCP uses the Pixiv account selected by local `auth use`; refresh token is not a config-file or environment-variable input.
+MCP keeps its product runtime credential rules; the owner OAuth grant is separate from Pixiv/FANBOX credentials. Save the one-time owner secret privately, never in test output or chat. The local endpoint is `http://127.0.0.1:8080/mcp`; cloud connectors require a configured public HTTPS reverse proxy. See [HTTP startup](../cli-reference.md#mcp-http-server). CLI downloads retain their own settings; MCP does not download to server-local files.
 
 If your network environment requires a proxy, you can additionally set:
 
@@ -282,7 +283,7 @@ For legitimate article details without a file attachment, `TestRealFanboxSDKPost
 
 Under an explicit proxy, resource transport is fixed to negotiate HTTP/1.1, while App API and OAuth keep their original protocol negotiation. The resource read of this e2e is used to regress this resource-transport boundary; it does not add a fixed timeout for slow normal downloads. If Pixiv returns a 429 without a valid `Retry-After`, the real e2e retains the diagnostic and fails explicitly, without guessing a wait or retrying indefinitely.
 
-`PIXIV_E2E_BINARY` and `PIXIV_E2E_EXPECTED_VERSION` let CI run offline e2e against a built, unpacked release binary; they do not inject tokens and do not enable the real Pixiv API. `platform-smoke.yml` builds, packages, unpacks and runs this set of CLI/config/MCP stdio verifications on six supported runners.
+`PIXIV_E2E_BINARY` and `PIXIV_E2E_EXPECTED_VERSION` let CI run offline e2e against a built, unpacked release binary; they do not inject tokens and do not enable the real Pixiv API. `platform-smoke.yml` builds, packages, unpacks and runs this set of CLI/config and MCP command-surface verifications on six supported runners.
 
 Before code changes are complete, tests should be added or updated according to the scope of the change. If tests cannot be run, the reason and risk must be stated in the delivery notes.
 

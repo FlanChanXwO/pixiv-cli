@@ -1,6 +1,6 @@
 # pixiv-cli Agent Contract
 
-This repository provides the `pixiv` CLI, one unified Pixiv/FANBOX MCP stdio server, and the public Go packages `sdk`, `sdk/pixiv`, and `sdk/fanbox`.
+This repository provides the `pixiv` CLI, one unified Pixiv/FANBOX MCP Streamable HTTP server, and the public Go packages `sdk`, `sdk/pixiv`, and `sdk/fanbox`.
 
 ## Start here
 
@@ -25,12 +25,12 @@ The separately distributed [product skill](skills/pixiv-cli/SKILL.md) teaches us
 ## Non-negotiable boundaries
 
 - Keep `cmd/pixiv` thin. `internal/cli/root.go` assembles the command tree and production dependencies; command owners live under `internal/cli/commands`. Do not resurrect a global service locator or the removed bootstrap/resource graph.
-- CLI/MCP Pixiv and FANBOX operations use the public SDK and owner-local narrow ports, not protocol adapters. MCP tools belong to `internal/mcpserver/{pixiv,fanbox}/tools/<tool>`; their stdio runtimes are started by CLI commands.
+- CLI/MCP Pixiv and FANBOX operations use the public SDK and owner-local narrow ports, not protocol adapters. MCP tools belong to `internal/mcpserver/{pixiv,fanbox}/tools/<tool>`; `pixiv mcp` starts their unified HTTP runtime; `internal/mcpserver` owns transport/lifecycle and `internal/mcpserver/auth` owns OAuth and private state.
 - Reverse search is the explicit exception: only the CLI composition root may import `internal/services/reversesearch/assembly`; command and MCP owners may use the top-level `internal/services/reversesearch` contract, never its provider subpackages.
 - Keep shared mechanisms in their existing owners: record, pagination, traversal, lifecycle, configuration, file persistence, and downloader. Generic utilities must not acquire product protocol or account semantics. See [architecture](docs/en/maintainers/architecture.md) for detailed ownership.
 - Preserve the App-only boundary. Content requires an authenticated local account or an eligible database-managed pool account; errors never select an anonymous Web path. Data commands do not accept `--uid` or `--refresh-token`; the public SDK and MCP retain their own explicit credential contracts.
-- Keep secrets out of logs, errors, fixtures, PRs, and artifacts. Only an explicitly requested bare `auth export [UID]` or `auth export --all` may emit secret stdout; otherwise use the documented private-output/transfer path. The SQLite account store is secret-bearing; never inspect real credentials as a debugging shortcut.
-- Preserve clean CLI machine output and MCP JSON-RPC stdout. MCP runtime failures retain structured output with `isError=true`. Report cancellation, transport, authentication, upstream, and persistence failures rather than success-shaped empty data.
+- Keep secrets out of logs, errors, fixtures, PRs, and artifacts. Only an explicitly requested bare `auth export [UID]`, `auth export --all`, or local `mcp auth init [--reset]` may emit its documented secret stdout; otherwise use the documented private-output/transfer path. The SQLite account store is secret-bearing; never inspect real credentials as a debugging shortcut.
+- Preserve clean CLI machine output; MCP JSON-RPC travels over authenticated HTTP, not stdin/stdout. MCP runtime failures retain structured output with `isError=true`. Report cancellation, transport, authentication, upstream, and persistence failures rather than success-shaped empty data.
 - Introduce limits, timeouts, retries, truncation, or fallbacks only for a verified requirement, platform constraint, established contract, or reproducible failure. Explain and test the trigger without silently discarding valid data.
 
 ## Working agreement

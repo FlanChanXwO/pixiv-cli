@@ -2,9 +2,7 @@
 
 [简体中文](../zh-CN/mcp-tools.md) | English | [Documentation index](../index.md)
 
-`pixiv mcp` starts the unified Pixiv/FANBOX stdio MCP server. MCP uses its configured runtime
-credential selection; it does not accept CLI data-command account overrides.
-The stdout stream is reserved for JSON-RPC.
+`pixiv mcp` starts one authenticated Pixiv/FANBOX Streamable HTTP server at the canonical `/mcp` endpoint. MCP uses its configured runtime credential selection; it does not accept CLI data-command account overrides. JSON-RPC is carried over HTTP, never stdin/stdout. See [HTTP startup and proxy configuration](cli-reference.md#mcp-http-server). The `pixiv fanbox mcp` command, stdio transport and standalone legacy SSE transport are removed; Streamable HTTP may still use SSE responses.
 
 `pixiv_novel_content` retains the unavailable-content error contract; its App API
 content endpoint is no longer available. A positive `novel_id` returns a
@@ -13,6 +11,12 @@ block list; it does not call `/v1/novel/content` and does not fall back to WebVi
 Use `pixiv_novel_detail` for novel metadata.
 
 The separate local `pixiv mcp auth init [--reset]` administration command prepares owner state and prints a secret once; it is not a tool or a server launch. See [owner initialization](cli-reference.md#mcp-owner-initialization).
+
+## HTTP authorization
+
+The built-in single-owner OAuth server publishes protected-resource and authorization-server metadata, accepts DCR public clients (`token_endpoint_auth_method=none`), and uses Authorization Code + PKCE S256 with scope `mcp`. The owner enters the local initialization secret only on the instance consent page, never in chat or tool arguments; each authorization requires explicit consent. Cloud deployment requires an HTTPS reverse proxy. Local HTTP is supported. This protocol contract is not evidence that ChatGPT or Gemini live connection testing has passed.
+
+Every `/mcp` request needs a valid bearer token. Missing, expired or revoked credentials return HTTP 401 with canonical `WWW-Authenticate` metadata, not a tool result; unavailable private auth state fails closed. MCP responses are `Cache-Control: no-store`, including SSE. Access tokens last one hour. Refresh rotates the token pair; reusing an old refresh token revokes its grant. Reset revokes grants and invalidates owner sessions and unexchanged codes while retaining registered clients. Restart drops in-memory authorization sessions/codes, not persisted clients or grants. Expiration/reset affects new requests, not work already authorized. Server cancellation stops acceptance and cancels/waits for active handlers; modern-revision request cancellation is propagated through the official SDK.
 
 ## Errors, pagination, and output
 

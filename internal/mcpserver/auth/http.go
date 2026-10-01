@@ -201,3 +201,24 @@ func validRedirect(raw string) bool {
 		return strings.Contains(u.Scheme, ".") && (u.Path != "" || u.Opaque != "" || u.Host != "")
 	}
 }
+
+// RequireCanonical 将入站 Host/Origin 绑定到配置的部署地址，不信任转发头。
+func (h *Handler) RequireCanonical(next http.Handler) http.Handler {
+	// resource 只由已验证的 canonical base 构造。
+	base, _ := url.Parse(h.resource)
+	origin := browserOrigin(base.Scheme + "://" + base.Host)
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		origins := r.Header.Values("Origin")
+		if browserOrigin(base.Scheme+"://"+r.Host) != origin || len(origins) > 1 ||
+			(len(origins) == 1 && browserOrigin(origins[0]) != origin) {
+			http.Error(w, "Forbidden: request does not match canonical MCP origin", http.StatusForbidden)
+			return
+		}
+		// 标准库 trusted-origin 使用字符串比较；仅在同源校验通过后统一大小写/默认端口表示。
+		if len(origins) == 1 && origins[0] != base.Scheme+"://"+base.Host {
+			r = r.Clone(r.Context())
+			r.Header.Set("Origin", base.Scheme+"://"+base.Host)
+		}
+		next.ServeHTTP(w, r)
+	})
+}

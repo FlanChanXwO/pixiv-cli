@@ -51,6 +51,8 @@ func TestCLIManagedAliasesComeFromSchema(t *testing.T) {
 		"https_proxy",
 		"log_format",
 		"log_level",
+		"mcp_base_url",
+		"mcp_listen_addr",
 		"request_interval",
 		"reverse_search_pixiv_only",
 		"reverse_search_provider",
@@ -72,7 +74,7 @@ func TestCLIManagedAliasesComeFromSchema(t *testing.T) {
 	}
 }
 
-func TestCLIManagesLoggingAndRuntimeDownloadAliases(t *testing.T) {
+func TestCLIManagesRuntimeAliases(t *testing.T) {
 	path := t.TempDir() + "/config.toml"
 	host := testHost{
 		in:    bytes.NewReader(nil),
@@ -89,6 +91,8 @@ func TestCLIManagesLoggingAndRuntimeDownloadAliases(t *testing.T) {
 		{alias: "request_interval", value: "2s"},
 		{alias: "log_level", value: "debug"},
 		{alias: "log_format", value: "json"},
+		{alias: "mcp_listen_addr", value: "127.0.0.1:8123"},
+		{alias: "mcp_base_url", value: "https://example.test/pixiv"},
 	} {
 		require.NoError(t, set(host, test.alias, test.value))
 		host.out.Reset()

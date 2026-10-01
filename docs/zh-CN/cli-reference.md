@@ -404,7 +404,7 @@ canonical 数据 action 是 `search`、`detail`、`ranking`、`series`、`commen
 | `novel search` | `pixiv novel search WORD [options]` | 小说搜索兼容路径；优先使用 `pixiv search WORD --type novel`，只暴露基础小说搜索字段。 |
 | `user search` | `pixiv user search WORD [options]` | 用户搜索兼容路径；优先使用 `pixiv search WORD --type user`。 |
 | `follow` | `pixiv follow add\|remove USER_ID ...` | 用户关注兼容路径；与 `pixiv user follow add\|remove` 共享同一 owner 和输入契约。 |
-| `mcp` | `pixiv mcp [--proxy URL\|--no-proxy]` | 启动 MCP stdio server；代理覆盖只在本次启动时生效。 |
+| `mcp` | `pixiv mcp [--listen-addr ADDR] [--base-url URL] [--proxy URL\|--no-proxy]` | 启动经认证的统一 HTTP server；须显式配置地址/base 并初始化 owner。 |
 | `mcp auth init` | `pixiv mcp auth init [--reset]` | 初始化本地 MCP owner 并只输出一次 secret；reset 撤销 grants，保留 clients 与选中账号。 |
 | `fanbox auth` | `pixiv fanbox auth import|list|use|remove|status` | 导入并管理本地 FANBOX session；session 值永不输出。native `--proxy`/`--no-proxy` 只影响本次 FANBOX 命令。 |
 | `fanbox creators` | `pixiv fanbox creators [--kind supporting\|following] [--page N --limit N]` | 列出 supporting 或 following FANBOX creator。 |
@@ -413,7 +413,6 @@ canonical 数据 action 是 `search`、`detail`、`ranking`、`series`、`commen
 | `fanbox home` / `supporting` | `pixiv fanbox home|supporting [--page N --limit N]` | 读取认证 FANBOX home 或 supporting feed。 |
 | `fanbox post` | `pixiv fanbox post POST_ID` | 读取一个帖子及其安全 asset 摘要。 |
 | `fanbox download` | `pixiv fanbox download SOURCE...` | 将 FANBOX 帖子 asset 保存到配置的下载目录下。 |
-| `fanbox mcp` | `pixiv fanbox mcp [--proxy URL\|--no-proxy]` | 启动统一 Pixiv/FANBOX MCP stdio server；native 代理不会修改 FlareSolverr 配置。 |
 
 下载文件名会规范化文件名模板以及 URL 推导扩展名中的跨平台非法字符。Pixiv 缩略图若资源响应的
 Content-Type 与 URL 后缀不一致（例如 URL 为 `.png`、实体为 JPEG），会按实际媒体类型修正发布后的扩展名；
@@ -628,7 +627,7 @@ native reverse-search route，协议是 JSON 而不是 image multipart。默认 
 与 FlareSolverr table，但仍可能生成 baseline
 `[reverse_search]` provider/filter 值。
 
-`[account_pool]` 只保存 `enabled` 与 `strategy`；每个账号的 `schedulable`、冻结和 marker 状态位于 `pixiv-cli.db`。已移除的 `account_pool.accounts` 不会自动迁移；若仍存在，runtime 配置会返回 `removed_setting`，必须显式执行 `pixiv config unset account_pool_accounts` 清理。不要把 refresh token 写入 `config.toml`。历史 `data/account-pool.json` scheduler 不会被自动读取、迁移或删除。`[logging].level` 只接受 `info`、`debug`，`[logging].format` 只接受 `text`、`json`；`PIXIV_LOG_LEVEL` 与 `PIXIV_LOG_FORMAT` 覆盖文件值。debug 诊断只写 stderr，不输出 query、header、Cookie、token、响应体或 proxy userinfo，也不创建日志文件；config 管理与 secret export 继续静默，MCP stdout 仍只保留 JSON-RPC。
+`[account_pool]` 只保存 `enabled` 与 `strategy`；每个账号的 `schedulable`、冻结和 marker 状态位于 `pixiv-cli.db`。已移除的 `account_pool.accounts` 不会自动迁移；若仍存在，runtime 配置会返回 `removed_setting`，必须显式执行 `pixiv config unset account_pool_accounts` 清理。不要把 refresh token 写入 `config.toml`。历史 `data/account-pool.json` scheduler 不会被自动读取、迁移或删除。`[logging].level` 只接受 `info`、`debug`，`[logging].format` 只接受 `text`、`json`；`PIXIV_LOG_LEVEL` 与 `PIXIV_LOG_FORMAT` 覆盖文件值。debug 诊断只写 stderr，不输出 query、header、Cookie、token、响应体或 proxy userinfo，也不创建日志文件；config 管理与 secret export 继续静默，MCP JSON-RPC 只经 HTTP 传输。
 
 v1 CLI 不会读取或迁移旧的 `~/.pixiv-cli/auth.json`。从旧版本切换前，请在旧 CLI 执行
 `pixiv auth export --all --output <private bundle>`，再通过 shell 重定向或管道在 v1 执行
@@ -660,6 +659,24 @@ v1 已删除匿名 Web API fallback。内容命令要求先通过 `pixiv auth us
 
 无效 token 与 App API 网络或服务器错误会返回安全的、已分类的失败。
 
+## MCP HTTP server
+
+先由管理员执行一次 `pixiv mcp auth init`，然后显式配置两项启动设置：
+
+```bash
+pixiv config set mcp_listen_addr 127.0.0.1:8080
+pixiv config set mcp_base_url http://127.0.0.1:8080
+pixiv mcp
+# 单次启动覆写，不修改 config.toml：
+pixiv mcp --listen-addr 127.0.0.1:8080 --base-url https://mcp.example.com
+```
+
+别名 `mcp_listen_addr`、`mcp_base_url` 分别对应 `[mcp].listen_addr`、`[mcp].base_url`，默认均为空，支持 `config get/set/unset`。命令 flag 覆盖文件值，显式空值也会覆盖并导致启动失败；不新增 MCP 环境变量。listen address 必须包含显式非零 TCP 端口。缺失配置、canonical URL 无效、owner 未初始化/状态不可读或端口绑定失败都会停止启动，不会悄悄换端口。未初始化时提示管理员执行 `pixiv mcp auth init`。
+
+endpoint 为 base URL 加 `/mcp`，与 owner 已初始化状态一起写 stderr，不打印 owner secret。server stdout 不再传输 JSON-RPC。两产品共享 endpoint，但保留独立凭据与 runtime。`pixiv fanbox mcp` 与 stdio transport 已删除。`--proxy` / `--no-proxy` 仍只覆盖本次上游网络请求，不配置入站 TLS，也不改写 FlareSolverr 设置。
+
+本地支持 HTTP；云端 connector 使用公网 HTTPS base，由既有反向代理终止 TLS，pixiv-cli 不申请证书。代理须保留公网 Host 和原始转义路径。入站 Host 及存在的 Origin 必须匹配 canonical 部署 origin（接受 host 大小写、默认端口的等价表示），转发头不能建立信任。base 为 `https://mcp.example.com/pixiv` 时，转发 `/pixiv/mcp`、`/pixiv/oauth/authorize`、`/pixiv/oauth/register`、`/pixiv/oauth/token`、`/.well-known/oauth-protected-resource`、`/.well-known/oauth-protected-resource/pixiv/mcp` 和 `/.well-known/oauth-authorization-server/pixiv`；不要去掉 prefix 或归一化转义/双斜线路径。详见 [MCP HTTP 授权](mcp-tools.md#http-授权)；本地 fixture 不代表云端 host 互操作验收。
+
 ## MCP owner 初始化
 
 `pixiv mcp auth init` 是本地管理命令，不是 MCP tool，也不启动 server。状态保存在 `<app-data>/mcp-state.json`，复用私有侧车锁与原子替换。Unix 目录权限为 `0700`，state/lock 文件为 `0600`。不修改 Pixiv/FANBOX 凭据、CLI default、数据库 schema 或配置，不执行自动更新或桌面 helper 初始化。
@@ -668,7 +685,7 @@ v1 已删除匿名 Web API fallback。内容命令要求先通过 `pixiv auth us
 
 损坏/缺字段的 JSON、不支持的版本、非常规文件/符号链接及私有文件权限错误都明确失败，不能靠 reset 静默抹去。磁盘写入失败不输出 secret；若提交后 stdout 输出失败，owner 已保存，错误提示使用 `pixiv mcp auth init --reset` 恢复（同时撤销 grants）。
 
-此命令仅准备本地 owner state，不启用 HTTP/OAuth endpoint，也不改变当前 stdio 认证。
+此命令不启动 listener；请按 [HTTP 启动合同](#mcp-http-server) 单独运行 `pixiv mcp`。
 
 ## 版本与更新
 
@@ -709,7 +726,7 @@ SemVer tag，检查会报告该 tag 并 fail-closed。
 普通 CLI 命令成功后会尽力检查 stable 更新。它跳过 MCP、help 与根 `--version`、`update`、全部 `auth export`、bundle 形式的 `auth import` 与开发构建，
 对同一用户 cache 最多每 24 小时查询一次，并为自动检查设定最多 3 秒的等待时间。发现新版本或
 检查失败只写 stderr（失败为 warning），不改变业务命令退出码，也不会污染 JSON stdout 或 MCP
-JSON-RPC stdout。可关闭自动检查：
+HTTP JSON-RPC 响应。可关闭自动检查：
 
 ```bash
 # ~/.pixiv-cli/config.toml
@@ -722,7 +739,7 @@ check_enabled = false
 本参考手册只定义 CLI 边界；其他接口与维护流程以对应权威文档为准：
 
 - [Go SDK](sdk.md)：public client、模型、分页、资源和 typed error。
-- [MCP tools](mcp-tools.md)：tool 名称、输入 schema、输出和 stdio 行为。
+- [MCP tools](mcp-tools.md)：tool 名称、输入 schema、输出和 HTTP 授权。
 - [架构](maintainers/architecture.md)：包职责和运行流程。
 - [开发流程](maintainers/development.md)：环境、测试、构建和发布门禁。
 - [Agent skill](../../skills/pixiv-cli/SKILL.md)：供 Agent 安全驱动已安装 CLI 的说明。

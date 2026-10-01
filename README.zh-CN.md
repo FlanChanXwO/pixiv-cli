@@ -2,7 +2,7 @@
 
 # pixiv-cli
 
-**Pixiv CLI · MCP stdio server · Go SDK**
+**Pixiv CLI · Remote MCP server · Go SDK**
 
 [English](README.md) · [简体中文](README.zh-CN.md)
 
@@ -27,7 +27,7 @@
 - **实用搜索筛选**——支持分级、作品类型、AI 模式、横纵比、分辨率和版本内置的绘图工具目录；反向搜图支持从本地文件或 URL 查询 SauceNAO、ascii2d。
 - **直达 Pixiv 引用**——可把受支持作品 URL 直接粘贴给详情或下载；已认证的作者主页/作品页 URL 会展开为该作者的视觉作品。
 - **本地多账号 OAuth**——支持浏览器登录、账号选择、refresh token rotation 和可选的跨机器 callback relay。
-- **适合自动化**——typed SDK error、JSON 输出、纯净 MCP stdio、签名更新和完整结果报告。
+- **适合自动化**——typed SDK error、JSON 输出、经认证的 MCP HTTP、签名更新和完整结果报告。
 
 ## 安装
 
@@ -232,22 +232,20 @@ pixiv timeline latest --type illust --limit 10 --json
 
 反向搜图属于 CLI/MCP integration；public Go SDK 现在也暴露 typed artwork/novel bookmark 与 comment mutation。
 
-显式启动统一 Pixiv/FANBOX stdio server。stdout 只用于 JSON-RPC；tool 运行失败会以 `isError=true` 的 structured result 返回。默认不创建项目级或每日日志文件。
+显式启动单一、经认证的 Pixiv/FANBOX Streamable HTTP server。MCP 流量经 HTTP 传输，不使用 stdin/stdout；endpoint 写入 stderr。tool 运行失败保留 `isError=true` 的 structured result。默认不创建项目级或每日日志文件。
 
 ```bash
-pixiv mcp
-# FANBOX tools 使用独立的 runtime credential 选择。
-pixiv fanbox mcp
+pixiv mcp auth init  # 仅由本地管理员执行，安全保存一次性 secret。
+pixiv mcp --listen-addr 127.0.0.1:8080 --base-url http://127.0.0.1:8080
 ```
 
-本地 owner 初始化使用 `pixiv mcp auth init [--reset]`，只显示一次 secret；详见[管理与 reset 合同](docs/zh-CN/cli-reference.md#mcp-owner-初始化)。此命令不启动远程 server。
+本地连接 `http://127.0.0.1:8080/mcp`。云端 connector 使用既有 HTTPS 反向代理，并将其公网地址配置为 canonical base URL。OAuth 使用 DCR、owner 同意与 PKCE；Pixiv/FANBOX 凭据仍独立。详见[启动合同](docs/zh-CN/cli-reference.md#mcp-http-server)与[owner/reset 管理](docs/zh-CN/cli-reference.md#mcp-owner-初始化)。`pixiv fanbox mcp` 与 stdio transport 已删除。
 
 [MCP tool 契约](docs/zh-CN/mcp-tools.md)记录了 tools、参数、structured output 和认证行为。
 MCP 固定状态、错误和展示文本使用英文；Pixiv 元数据及用户提供的文本保持原文。
 
 `pixiv_reverse_search` 接受常规本地文件或 HTTP(S) URL，并可能把图片上传给第三方 provider。
-可信本机 MCP client 可以请求私有文件以及私网/loopback/link-local URL，因此只应在可信 client
-中运行；详见 [MCP 反向搜图契约](docs/zh-CN/mcp-tools.md#反向搜图)。
+已授权 connector 可以请求 server 可访问的私有文件以及私网/loopback/link-local URL，路径不指向 connector 所在设备；因此只应授权可信 client；详见 [MCP 反向搜图契约](docs/zh-CN/mcp-tools.md#反向搜图)。
 高级 reverse-search proxy、User-Agent 和 challenge-recovery 配置见
 [CLI reference](docs/zh-CN/cli-reference.md)。FlareSolverr 只负责 JSON
 challenge-recovery control path，绝不会收到 native ascii2d image upload。

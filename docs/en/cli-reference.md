@@ -507,7 +507,7 @@ Only the structured entity filters documented by each command are accepted. The 
 | `novel search` | `pixiv novel search WORD [options]` | Compatibility route for novel search; prefer `pixiv search WORD --type novel`. It exposes only the documented basic novel search fields. |
 | `user search` | `pixiv user search WORD [options]` | Compatibility route for user search; prefer `pixiv search WORD --type user`. |
 | `follow` | `pixiv follow add\|remove USER_ID ...` | Compatibility route for user follow mutation; it shares the same owner and input contract as `pixiv user follow add\|remove`. |
-| `mcp` | `pixiv mcp [--proxy URL\|--no-proxy]` | Starts the MCP stdio server; the proxy override applies only to this launch. |
+| `mcp` | `pixiv mcp [--listen-addr ADDR] [--base-url URL] [--proxy URL\|--no-proxy]` | Starts the authenticated unified HTTP server; explicit address/base and initialized owner are required. |
 | `mcp auth init` | `pixiv mcp auth init [--reset]` | Initialize the local MCP owner and print its secret once; reset revokes grants, preserving clients and selected account. |
 | `fanbox auth` | `pixiv fanbox auth import|list|use|remove|status` | Imports and manages local FANBOX sessions. Session values are never printed. Native `--proxy`/`--no-proxy` applies only to the FANBOX command. |
 | `fanbox creators` | `pixiv fanbox creators [--kind supporting\|following] [--page N --limit N]` | Lists supporting or following FANBOX creators. |
@@ -516,7 +516,6 @@ Only the structured entity filters documented by each command are accepted. The 
 | `fanbox home` / `supporting` | `pixiv fanbox home|supporting [--page N --limit N]` | Reads the authenticated FANBOX home or supporting feed. |
 | `fanbox post` | `pixiv fanbox post POST_ID` | Reads one post and its safe asset summary. |
 | `fanbox download` | `pixiv fanbox download SOURCE...` | Saves FANBOX post assets below the configured download path. |
-| `fanbox mcp` | `pixiv fanbox mcp [--proxy URL\|--no-proxy]` | Starts the unified Pixiv/FANBOX MCP stdio server; the native proxy override does not alter FlareSolverr settings. |
 
 Downloaded filenames normalize cross-platform-invalid characters in both the filename template and URL-derived
 extension. For Pixiv thumbnail artwork, a successful resource Content-Type may replace an ambiguous URL extension
@@ -719,7 +718,7 @@ key in shell history, diagnostics, JSON, MCP input, or a checked-in TOML file.
 
 Manual TOML may contain advanced runtime sections such as `[account_pool]`, `[network]`, `[pixiv.network]`,
 `[fanbox.network]`, `[fanbox.flaresolverr]`, `[reverse_search]`, `[reverse_search.network]`,
-`[reverse_search.flaresolverr]`, `[login]`, and `[update]`:
+`[reverse_search.flaresolverr]`, `[mcp]`, `[login]`, and `[update]`:
 
 ```toml
 [network]
@@ -767,7 +766,7 @@ Never put a refresh token in `config.toml`. The historical
 are no longer ignored: `[logging].level` accepts `info` or `debug`, and `[logging].format` accepts `text` or
 `json`. `PIXIV_LOG_LEVEL` and `PIXIV_LOG_FORMAT` override the file values. Debug diagnostics are emitted only to
 stderr, omit query strings, headers, cookies, tokens, response bodies, and proxy userinfo, and never create log
-files; `config` management and secret export remain quiet, while MCP stdout remains JSON-RPC only.
+files; `config` management and secret export remain quiet, while MCP JSON-RPC travels only over HTTP.
 
 The v1 CLI does not read or migrate a legacy `~/.pixiv-cli/auth.json`. Before switching from an older CLI, run
 `pixiv auth export --all --output <private bundle>` with the old version, then run `pixiv auth import < bundle.json`
@@ -805,6 +804,24 @@ it.
 Invalid tokens and App API network or server errors return a safe, classified
 failure.
 
+## MCP HTTP server
+
+Initialize the owner once with `pixiv mcp auth init`, then explicitly configure both startup values:
+
+```bash
+pixiv config set mcp_listen_addr 127.0.0.1:8080
+pixiv config set mcp_base_url http://127.0.0.1:8080
+pixiv mcp
+# Per-launch overrides; these do not change config.toml:
+pixiv mcp --listen-addr 127.0.0.1:8080 --base-url https://mcp.example.com
+```
+
+The aliases `mcp_listen_addr` and `mcp_base_url` map to `[mcp].listen_addr` and `[mcp].base_url`. Both default to empty and support `config get/set/unset`. Flags override file values, including an explicit empty override (which fails startup). There are no additional MCP environment variables. Listen address requires an explicit nonzero TCP port. Missing settings, invalid canonical URL, unreadable/uninitialized owner state or bind failure stop startup; the server never silently selects another port. Missing owner state directs the administrator to `pixiv mcp auth init`.
+
+The endpoint is the base URL plus `/mcp` and is printed to stderr with the owner-initialized status, never the owner secret. Server stdout is not a JSON-RPC channel. Both products share the endpoint but retain separate credential/runtime owners. `pixiv fanbox mcp` and stdio transport are removed. `--proxy` / `--no-proxy` remain per-launch upstream network overrides, not inbound TLS configuration; they do not rewrite FlareSolverr settings.
+
+Local HTTP is supported. For cloud connectors, configure the public HTTPS base and terminate TLS in an existing reverse proxy; pixiv-cli does not provision certificates. Preserve the public Host header and original escaped paths. Incoming Host and any Origin must match the canonical deployment origin (host case and default-port equivalents are accepted); forwarding headers cannot establish trust. For base `https://mcp.example.com/pixiv`, forward `/pixiv/mcp`, `/pixiv/oauth/authorize`, `/pixiv/oauth/register`, `/pixiv/oauth/token`, `/.well-known/oauth-protected-resource`, `/.well-known/oauth-protected-resource/pixiv/mcp` and `/.well-known/oauth-authorization-server/pixiv`. Do not strip the prefix or normalize encoded/double-slash paths. See [MCP HTTP authorization](mcp-tools.md#http-authorization); local fixture checks do not establish cloud-host interoperability.
+
 ## MCP owner initialization
 
 `pixiv mcp auth init` is local administration, not an MCP tool or a server launch. It writes `<app-data>/mcp-state.json` using a private sidecar lock and atomic replacement. On Unix the directory is `0700` and state/lock files are `0600`. It changes no Pixiv/FANBOX credentials, CLI default, database schema or configuration, and does not run updates or desktop-helper setup.
@@ -813,7 +830,7 @@ Successful stdout contains only the new 256-bit random owner secret plus a newli
 
 Corrupt/incomplete JSON, unsupported versions, non-regular/symlink state files and private-file permission errors fail rather than silently resetting state. A disk write error does not publish a secret. If stdout fails after commit, the owner remains saved; recover with `pixiv mcp auth init --reset`, which also revokes grants.
 
-This prepares local owner state; it does not enable HTTP/OAuth endpoints or change current stdio authentication.
+This command does not start a listener. Start `pixiv mcp` separately using the [HTTP startup contract](#mcp-http-server).
 
 ## Version and updates
 
@@ -863,7 +880,7 @@ verifying the selected version's assets, checksums, and signatures at install ti
 Successful regular CLI commands make a best-effort stable-update check. It skips MCP, help and root `--version`, `update`, every `auth export`, and bundle-form `auth import`,
 and development builds, queries at most once per 24 hours per user cache, and caps the automatic check at 3
 seconds. A discovered new version or a failed check only writes to stderr (failures as warnings), never changes
-the business command's exit code, and never pollutes JSON stdout or MCP JSON-RPC stdout. To disable the automatic
+the business command's exit code, and never pollutes JSON stdout or MCP HTTP JSON-RPC responses. To disable the automatic
 check:
 
 ```bash
@@ -878,7 +895,7 @@ This reference intentionally stops at the CLI boundary. Use the authoritative gu
 maintainer workflows:
 
 - [Go SDK](sdk.md): public client, models, pagination, resources, and typed errors.
-- [MCP tools](mcp-tools.md): tool names, input schemas, output, and stdio behavior.
+- [MCP tools](mcp-tools.md): tool names, input schemas, output, and HTTP authorization.
 - [Architecture](maintainers/architecture.md): package responsibilities and runtime flow.
 - [Development](maintainers/development.md): environment, tests, builds, and release gates.
 - [Agent skill](../../skills/pixiv-cli/SKILL.md): safe instructions for an agent driving the installed CLI.

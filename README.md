@@ -2,7 +2,7 @@
 
 # pixiv-cli
 
-**Pixiv CLI · MCP stdio server · Go SDK**
+**Pixiv CLI · Remote MCP server · Go SDK**
 
 [English](README.md) · [简体中文](README.zh-CN.md)
 
@@ -27,7 +27,7 @@
 - **Useful search filters** — rating, content type, AI mode, aspect ratio, resolution, and a versioned drawing-tool catalog; reverse-image search can query SauceNAO or ascii2d from a local file or URL.
 - **Direct Pixiv references** — paste supported artwork URLs into detail or download; authenticated profile and artworks URLs expand to that creator's visual works.
 - **Local multi-account OAuth** — browser login, account selection, refresh-token rotation, and an optional cross-machine callback relay.
-- **Automation-ready integration** — typed SDK errors, JSON output, clean MCP stdio, signed release updates, and complete result reporting.
+- **Automation-ready integration** — typed SDK errors, JSON output, authenticated MCP HTTP, signed release updates, and complete result reporting.
 
 ## Install
 
@@ -232,22 +232,21 @@ pixiv timeline latest --type illust --limit 10 --json
 
 Reverse-image search is available through the CLI/MCP integration; the public Go SDK also exposes typed artwork/novel bookmark and comment mutations.
 
-Start the unified Pixiv/FANBOX stdio server explicitly. stdout remains reserved for JSON-RPC; tool failures are returned as structured results with `isError=true`. No project-level or daily log files are created by default.
+Start one authenticated Pixiv/FANBOX Streamable HTTP server. MCP traffic uses HTTP, not stdin/stdout; the endpoint is printed to stderr. Tool failures retain structured results with `isError=true`. No project-level or daily log files are created by default.
 
 ```bash
-pixiv mcp
-# FANBOX tools use their own runtime credential selection.
-pixiv fanbox mcp
+pixiv mcp auth init  # Local administrator only; save the one-time secret securely.
+pixiv mcp --listen-addr 127.0.0.1:8080 --base-url http://127.0.0.1:8080
 ```
 
-Local owner setup uses `pixiv mcp auth init [--reset]` and prints a secret once. See the [administration and reset contract](docs/en/cli-reference.md#mcp-owner-initialization); this does not start a remote server.
+Connect to `http://127.0.0.1:8080/mcp` locally. For cloud connectors, use an existing HTTPS reverse proxy and configure its canonical public base URL. OAuth uses DCR, owner consent and PKCE; Pixiv/FANBOX credentials remain separate. See [startup](docs/en/cli-reference.md#mcp-http-server) and [owner/reset administration](docs/en/cli-reference.md#mcp-owner-initialization). `pixiv fanbox mcp` and stdio transport are removed.
 
 See the [MCP tool contract](docs/en/mcp-tools.md) for tools, parameters, structured output, and authentication behavior.
 Fixed MCP status, error, and display text is English; Pixiv metadata and user-supplied text are preserved verbatim.
 
 The `pixiv_reverse_search` tool accepts a regular local file or HTTP(S) URL and may upload
-that source to third-party providers. Because trusted local MCP clients may request
-private files and private/loopback/link-local URLs, run it only from a client you
+that source to third-party providers. Authorized connectors may request files and private/loopback/link-local URLs
+accessible to the server, not the connector device. Grant access only to clients you
 trust; see the [reverse-search MCP contract](docs/en/mcp-tools.md#reverse-image-search).
 For advanced reverse-search proxy, User-Agent, and challenge-recovery settings, see
 the [CLI reference](docs/en/cli-reference.md). FlareSolverr is a JSON

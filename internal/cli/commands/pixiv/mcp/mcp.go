@@ -12,7 +12,8 @@ import (
 
 // Request 是 mcp 命令解析 flags 后的本地请求值；传输覆写由 root host 桥接。
 type Request struct {
-	HTTPSProxyOverride *string
+	HTTPSProxyOverride  *string
+	ListenAddr, BaseURL *string
 }
 
 type Host interface {
@@ -32,22 +33,31 @@ func Register(root *cobra.Command, host Host) {
 	root.AddCommand(NewCommand(host))
 }
 
-// NewCommand 构造 Pixiv MCP 入口；runtime 与 stdio lifecycle 由 root host 注入。
+// NewCommand 构造 Pixiv MCP 入口；runtime 与 HTTP lifecycle 由 root host 注入。
 func NewCommand(host Host) *cobra.Command {
 	var options ProxyOptions
+	var listenAddr, baseURL string
 	cmd := &cobra.Command{
 		Use:     "mcp",
-		Short:   "Run the unified Pixiv/FANBOX MCP stdio server",
-		Example: "pixiv mcp",
+		Short:   "Run the unified Pixiv/FANBOX MCP Streamable HTTP server",
+		Example: "pixiv mcp --listen-addr 127.0.0.1:8080 --base-url http://127.0.0.1:8080",
 		Args:    host.RequireExactArgs(0, "pixiv mcp"),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			request, err := host.ClientRequest(cmd, options)
 			if err != nil {
 				return err
 			}
+			if cmd.Flags().Changed("listen-addr") {
+				request.ListenAddr = &listenAddr
+			}
+			if cmd.Flags().Changed("base-url") {
+				request.BaseURL = &baseURL
+			}
 			return host.RunMCP(cmd.Context(), request)
 		},
 	}
+	cmd.Flags().StringVar(&listenAddr, "listen-addr", "", "HTTP listen address (overrides mcp.listen_addr)")
+	cmd.Flags().StringVar(&baseURL, "base-url", "", "Canonical HTTP(S) base URL (overrides mcp.base_url)")
 	host.BindProxyFlags(cmd, &options)
 	pipeline.Bind(cmd, pipeline.InputSpec{Codec: pipeline.NoInput, MinArgs: 0, MaxArgs: 0})
 	requirements.Bind(cmd, requirements.PixivMCP())

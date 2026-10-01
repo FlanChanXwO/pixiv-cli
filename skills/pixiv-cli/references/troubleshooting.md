@@ -99,6 +99,6 @@ safe metadata output does not make raw token or bundle stdout safe to display.
   safe typed diagnostics on stderr. `log_format=json` (or
   `PIXIV_LOG_FORMAT=json`) emits one JSON event per stderr line. Diagnostics are
   startup-scoped, omit query strings, headers, cookies, tokens, response bodies,
-  and proxy userinfo, and never mix with MCP stdout.
+  and proxy userinfo, and never mix with MCP HTTP JSON-RPC responses.
 - `pixiv update --check --json` is read-only and safe; a real `pixiv update`
   installs a new binary — treat as account/config-state tier (confirm).

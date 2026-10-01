@@ -68,6 +68,8 @@ type snapshotEnvValue struct {
 }
 
 type RuntimeConfig struct {
+	MCPListenAddr             string
+	MCPBaseURL                string
 	DownloadPath              string
 	FilenameTemplate          string
 	DirectoryTemplate         string
@@ -138,6 +140,8 @@ type AccountPoolConfig struct {
 }
 
 var settingSpecs = []SettingSpec{
+	{Alias: "mcp_listen_addr", KoanfKey: "mcp.listen_addr", Table: []string{"mcp"}, Key: "listen_addr", Kind: settingString, CLIManaged: true},
+	{Alias: "mcp_base_url", KoanfKey: "mcp.base_url", Table: []string{"mcp"}, Key: "base_url", Kind: settingString, CLIManaged: true},
 	{Alias: "download_path", KoanfKey: "download.path", Table: []string{"download"}, Key: "path", Kind: settingString, HasDefault: true, Default: DefaultDownloadPath, DefaultInFile: true, CLIManaged: true},
 	{Alias: "filename_template", KoanfKey: "download.filename_template", Table: []string{"download"}, Key: "filename_template", Kind: settingString, HasDefault: true, Default: DefaultFilenameTemplate, DefaultInFile: true, CLIManaged: true},
 	{Alias: "directory_template", KoanfKey: "download.directory_template", Table: []string{"download"}, Key: "directory_template", Kind: settingString, CLIManaged: true},
@@ -344,6 +348,14 @@ func (s Snapshot) Effective(alias string) (SettingValue, error) {
 }
 
 func (s Snapshot) Runtime() (RuntimeConfig, error) {
+	mcpListenAddr, err := s.Effective("mcp_listen_addr")
+	if err != nil {
+		return RuntimeConfig{}, err
+	}
+	mcpBaseURL, err := s.Effective("mcp_base_url")
+	if err != nil {
+		return RuntimeConfig{}, err
+	}
 	downloadPath, err := s.Effective("download_path")
 	if err != nil {
 		return RuntimeConfig{}, err
@@ -454,6 +466,8 @@ func (s Snapshot) Runtime() (RuntimeConfig, error) {
 		return RuntimeConfig{}, err
 	}
 	cfg := RuntimeConfig{
+		MCPListenAddr:             settingStringValue(mcpListenAddr),
+		MCPBaseURL:                settingStringValue(mcpBaseURL),
 		DownloadPath:              downloadPath.Value.(string),
 		FilenameTemplate:          filenameTemplate.Value.(string),
 		DirectoryTemplate:         settingStringValue(directoryTemplate),

@@ -193,16 +193,17 @@ pixiv search "初音ミク" --json
 pixiv download 123456
 ```
 
-MCP stdio 运行：
+运行经认证的统一 MCP HTTP server：
 
 ```bash
 pixiv auth use 12345678
-DOWNLOAD_PATH=./downloads \
-FILENAME_TEMPLATE="{author} - {title}_{id}" \
+./build/pixiv mcp auth init
+./build/pixiv config set mcp_listen_addr 127.0.0.1:8080
+./build/pixiv config set mcp_base_url http://127.0.0.1:8080
 ./build/pixiv mcp
 ```
 
-MCP 使用本地 `auth use` 选定的 Pixiv 账号；refresh token 不属于配置文件或环境变量入口。
+MCP 保留自身产品 runtime 凭据规则；owner OAuth grant 与 Pixiv/FANBOX 凭据相互独立。一次性 owner secret 必须私下保存，不写测试输出或聊天。本地 endpoint 是 `http://127.0.0.1:8080/mcp`；云端 connector 须配置公网 HTTPS 反向代理，详见 [HTTP 启动](../cli-reference.md#mcp-http-server)。CLI 下载保留自身设置；MCP 不负责下载到 server 本地文件。
 
 如网络环境需要代理，可额外设置：
 
@@ -364,7 +365,7 @@ file attachment 完成 HEAD、完整保存和字节数核对。
 
 显式代理下，资源传输固定协商 HTTP/1.1，而 App API、OAuth 保持原有协议协商。该 e2e 的资源读取用于回归这一资源传输边界；它不为慢速正常下载增加固定超时。若 Pixiv 返回不带有效 `Retry-After` 的 429，真实 e2e 保留诊断并明确失败，不会猜测等待或无限重试。
 
-`PIXIV_E2E_BINARY` 与 `PIXIV_E2E_EXPECTED_VERSION` 供 CI 对已构建、已解压的 release binary 执行离线 e2e；它们不注入 token，也不启用真实 Pixiv API。`platform-smoke.yml` 在六个受支持 runner 上构建、封装、解压并运行这组 CLI/config/MCP stdio 验证。
+`PIXIV_E2E_BINARY` 与 `PIXIV_E2E_EXPECTED_VERSION` 供 CI 对已构建、已解压的 release binary 执行离线 e2e；它们不注入 token，也不启用真实 Pixiv API。`platform-smoke.yml` 在六个受支持 runner 上构建、封装、解压并运行这组 CLI/config 与 MCP 命令入口验证。
 
 代码改动完成前，应按变更范围补充或更新测试。若不能运行测试，需要在交付说明中写明原因和风险。
 

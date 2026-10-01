@@ -1,6 +1,6 @@
 ---
 name: pixiv-cli-mcp-tool
-description: Add, change, or review a pixiv-cli Pixiv or FANBOX MCP tool, including schema, SDK routing, structured output, errors, and stdio behavior. Use for MCP tool implementation or compatibility work, not routine installed-CLI operation.
+description: Add, change, or review a pixiv-cli Pixiv or FANBOX MCP tool, including schema, SDK routing, structured output, errors, and HTTP authorization boundaries. Use for MCP tool implementation or compatibility work, not routine installed-CLI operation.
 ---
 
 # Maintain pixiv-cli MCP Tools
@@ -9,7 +9,7 @@ Read root `AGENTS.md`, [pixiv-cli-develop](../pixiv-cli-develop/SKILL.md), and t
 
 ## Identify ownership and contract
 
-Pixiv tools live in `internal/mcpserver/pixiv/tools/<tool>`; FANBOX tools in the parallel FANBOX owner. Their product roots register into one server constructed by `internal/mcpserver.New`; product runtimes remain independent. Pixiv tool names use `pixiv_`, FANBOX uses `fanbox_`, and old Pixiv aliases and filesystem download tools are not registered. CLI MCP commands currently start this unified stdio server. Use existing owner-local runtime, record, output, and filter helpers, and the public SDK for product operations.
+Pixiv tools live in `internal/mcpserver/pixiv/tools/<tool>`; FANBOX tools in the parallel FANBOX owner. Their product roots register into one server constructed by `internal/mcpserver.New`; product runtimes remain independent. Pixiv tool names use `pixiv_`, FANBOX uses `fanbox_`, and old Pixiv aliases and filesystem download tools are not registered. `pixiv mcp` starts the unified Streamable HTTP server, with OAuth/bearer checks before the SDK transport. Use existing owner-local runtime, record, output, and filter helpers, and the public SDK for product operations.
 
 For reverse search, tool code may depend on the top-level reverse-search service contract, never provider/assembly internals. Keep provider transport and credential wiring in production assembly. Do not introduce a general service locator, shared mutable global client, or anonymous Web fallback.
 
@@ -20,7 +20,7 @@ Define the tool name, input validation, output schema, optional fields, cursor/r
 1. Apply [the coverage-gap decision](../pixiv-cli-test/SKILL.md#decide-whether-test-code-must-change): reuse or extend a registration/schema or real-handler test with synthetic SDK/HTTP fixtures, and add a new case only for a missing contract. Run it and observe the missing behavior before implementation; do not require one test per adapter function.
 2. Validate schema and local inputs before opening an SDK snapshot or issuing requests. Reuse typed enums and shared record/pagination contracts where they are the owner.
 3. Keep `context.Context`, cancellation, account selection, resource lifetime, and operation-specific permissions intact. FANBOX sessions and Pixiv pool selection remain separate.
-4. Emit the declared structured result; failures set `isError=true` without corrupting stdout or exposing credentials. Legitimate empty results remain successful; partial outcomes must not be mislabeled complete.
-5. Run handler/schema tests, registration tests, and relevant SDK/stdio integration tests. A built MCP server is long-lived: use an existing fixture client for smoke verification instead of starting it and waiting for output indefinitely.
+4. Emit the declared structured result; failures set `isError=true` without exposing credentials. HTTP authentication failures remain HTTP errors, not tool results. Legitimate empty results remain successful; partial outcomes must not be mislabeled complete.
+5. Run handler/schema tests, registration tests, and relevant SDK/HTTP integration tests. A built MCP server is long-lived: use an existing fixture client for smoke verification instead of starting it and waiting for output indefinitely.
 
 Update both locale MCP references and any affected CLI/SDK/product-skill documentation. Run the existing documentation tests and review the actual diff. Record live/network behavior as unverified unless an authorized real test ran; do not create a new release note or publish a tool as part of ordinary implementation.

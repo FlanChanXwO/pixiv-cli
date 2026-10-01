@@ -32,3 +32,11 @@ func TestNewCommandPreservesMCPSurface(t *testing.T) {
 	assert.NotNil(t, cmd.Flags().Lookup("proxy"))
 	assert.NotNil(t, cmd.Flags().Lookup("no-proxy"))
 }
+
+func TestNewCommandExposesExplicitHTTPEndpoint(t *testing.T) {
+	cmd := NewCommand(testHost{})
+	require.NotNil(t, cmd.Flags().Lookup("listen-addr"))
+	require.NotNil(t, cmd.Flags().Lookup("base-url"))
+	require.Contains(t, cmd.Short, "HTTP")
+	require.NotContains(t, cmd.Short, "stdio")
+}

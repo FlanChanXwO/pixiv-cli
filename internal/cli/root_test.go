@@ -19,6 +19,7 @@ import (
 	"github.com/FlanChanXwO/pixiv-cli/internal/cli/pipeline"
 	"github.com/FlanChanXwO/pixiv-cli/internal/config/paths"
 	configapp "github.com/FlanChanXwO/pixiv-cli/internal/config/settings"
+	mcpauth "github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/auth"
 	pixivaccount "github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/account"
 	"github.com/FlanChanXwO/pixiv-cli/internal/services/reversesearch"
 	reverseassembly "github.com/FlanChanXwO/pixiv-cli/internal/services/reversesearch/assembly"
@@ -244,32 +245,24 @@ func TestBrokenPipeSignalsAreScopedByOutputProtocol(t *testing.T) {
 		args         []string
 		wantExit     int
 		wantPipeline int
-		wantMCP      int
 	}{
 		{name: "ndjson", args: []string{"pixiv", "search", "miku", "--ndjson"}, wantExit: 1, wantPipeline: 1},
-		{name: "mcp", args: []string{"pixiv", "mcp"}, wantExit: 0, wantMCP: 1},
+		{name: "mcp", args: []string{"pixiv", "mcp"}, wantExit: 0},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			pipelineEnabled, pipelineStopped := 0, 0
-			mcpEnabled, mcpStopped := 0, 0
 			enablePipeline := func() func() {
 				pipelineEnabled++
 				return func() { pipelineStopped++ }
 			}
-			enableMCP := func() func() {
-				mcpEnabled++
-				return func() { mcpStopped++ }
-			}
 
 			var stdout, stderr bytes.Buffer
-			code := RunContextWithBrokenPipeSignals(context.Background(), test.args, strings.NewReader(""), &stdout, &stderr, enablePipeline, enableMCP)
+			code := RunContextWithPipelineSignal(context.Background(), test.args, strings.NewReader(""), &stdout, &stderr, enablePipeline)
 
 			assert.Equal(t, test.wantExit, code, stderr.String())
 			assert.Equal(t, test.wantPipeline, pipelineEnabled)
 			assert.Equal(t, test.wantPipeline, pipelineStopped)
-			assert.Equal(t, test.wantMCP, mcpEnabled)
-			assert.Equal(t, test.wantMCP, mcpStopped)
 		})
 	}
 }
@@ -659,17 +652,17 @@ func TestCLIReverseSearchClosesSearcherOnceAndKeepsJSONOnStdout(t *testing.T) {
 	require.Equal(t, int32(1), searcher.closeCalls.Load())
 }
 
-func TestMCPReverseSearchRegistersSearcherForStdioLifetime(t *testing.T) {
+func TestMCPReverseSearchRegistersSearcherForHTTPLifetime(t *testing.T) {
 	useTempPaths(t)
 	oldConfig := loadCLIRuntimeConfig
 	oldReverse := newCLIMCPReverseSearch
 	oldSDK := newCLIPixivSDKPorts
-	oldStdio := runMCPStdio
+	oldHTTP := runMCPHTTP
 	closeErr := errors.New("mcp reverse search close failed")
 	searcher := &closeTrackingReverseSearcher{closeErr: closeErr}
 
 	loadCLIRuntimeConfig = func() (configapp.RuntimeConfig, error) {
-		return configapp.RuntimeConfig{}, nil
+		return configapp.RuntimeConfig{MCPListenAddr: "127.0.0.1:8123", MCPBaseURL: "http://127.0.0.1:8123"}, nil
 	}
 	newCLIMCPReverseSearch = func(reverseassembly.Options) (reversesearch.Searcher, error) {
 		return searcher, nil
@@ -677,7 +670,7 @@ func TestMCPReverseSearchRegistersSearcherForStdioLifetime(t *testing.T) {
 	newCLIPixivSDKPorts = func(app) (pixivSDKPorts, error) {
 		return pixivSDKPorts{}, nil
 	}
-	runMCPStdio = func(ctx context.Context, server *mcp.Server) error {
+	runMCPHTTP = func(ctx context.Context, server *mcp.Server, listenAddr, baseURL string, store mcpauth.Store, out io.Writer) error {
 		clientTransport, serverTransport := mcp.NewInMemoryTransports()
 		serverSession, err := server.Connect(ctx, serverTransport, nil)
 		require.NoError(t, err)
@@ -701,7 +694,7 @@ func TestMCPReverseSearchRegistersSearcherForStdioLifetime(t *testing.T) {
 		loadCLIRuntimeConfig = oldConfig
 		newCLIMCPReverseSearch = oldReverse
 		newCLIPixivSDKPorts = oldSDK
-		runMCPStdio = oldStdio
+		runMCPHTTP = oldHTTP
 	})
 
 	var stdout, stderr bytes.Buffer
@@ -711,6 +704,8 @@ func TestMCPReverseSearchRegistersSearcherForStdioLifetime(t *testing.T) {
 		errOut:     &stderr,
 		closeState: &closeState{},
 	}
+	_, err := a.InitMCPAuth(t.Context(), false)
+	require.NoError(t, err)
 	require.NoError(t, a.runPixivMCP(context.Background(), mcpcommands.Request{}))
 	require.ErrorIs(t, a.closeResources(), closeErr)
 	require.ErrorIs(t, a.closeResources(), closeErr)
@@ -796,4 +791,82 @@ func TestMCPAuthInitOutputFailureReportsSavedState(t *testing.T) {
 	require.NoError(t, err, "output failure must not pretend to roll back a committed owner")
 	require.Contains(t, stderr.String(), "saved")
 	require.Contains(t, stderr.String(), "pixiv mcp auth init --reset")
+}
+
+func TestMCPHTTPPreflightFailsBeforeStarting(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		args []string
+		want string
+	}{
+		{"missing endpoints", nil, "--listen-addr"},
+		{"missing owner", []string{"--listen-addr", "127.0.0.1:8123", "--base-url", "http://127.0.0.1:8123"}, "pixiv mcp auth init"},
+		{"invalid canonical", []string{"--listen-addr", "127.0.0.1:8123", "--base-url", "relative"}, "canonical MCP base URL"},
+		{"ephemeral port", []string{"--listen-addr", "127.0.0.1:0", "--base-url", "http://127.0.0.1:8123"}, "nonzero port"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			useTempPaths(t)
+			var stdout, stderr bytes.Buffer
+			args := append([]string{"pixiv", "mcp"}, tc.args...)
+			code := RunContext(t.Context(), args, strings.NewReader(""), &stdout, &stderr)
+			require.NotZero(t, code)
+			require.Contains(t, stderr.String(), tc.want)
+			require.Empty(t, stdout.String())
+		})
+	}
+}
+
+func TestFanboxMCPCommandIsRemoved(t *testing.T) {
+	useTempPaths(t)
+	var stdout, stderr bytes.Buffer
+	code := RunContext(t.Context(), []string{"pixiv", "fanbox", "mcp"}, strings.NewReader(""), &stdout, &stderr)
+	require.NotZero(t, code)
+	require.Contains(t, stderr.String(), "usage: pixiv fanbox <command>")
+}
+
+func TestMCPHTTPEndpointFlagPrecedence(t *testing.T) {
+	for _, tc := range []struct {
+		name         string
+		args         []string
+		listen, base string
+	}{
+		{"config", nil, "127.0.0.1:8123", "http://127.0.0.1:8123"},
+		{"listen override", []string{"--listen-addr", "127.0.0.1:8124"}, "127.0.0.1:8124", "http://127.0.0.1:8123"},
+		{"base override", []string{"--base-url", "https://public.test/prefix"}, "127.0.0.1:8123", "https://public.test/prefix"},
+		{"empty listen", []string{"--listen-addr="}, "", ""},
+		{"empty base", []string{"--base-url="}, "", ""},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			_, configPath := useTempPaths(t)
+			var stdout, stderr bytes.Buffer
+			a := app{in: strings.NewReader(""), out: &stdout, errOut: &stderr}
+			_, err := a.InitMCPAuth(t.Context(), false)
+			require.NoError(t, err)
+			require.NoError(t, os.WriteFile(configPath, []byte(`[mcp]
+listen_addr = "127.0.0.1:8123"
+base_url = "http://127.0.0.1:8123"
+`), 0600))
+			oldHTTP, oldSDK := runMCPHTTP, newCLIPixivSDKPorts
+			t.Cleanup(func() { runMCPHTTP, newCLIPixivSDKPorts = oldHTTP, oldSDK })
+			newCLIPixivSDKPorts = func(app) (pixivSDKPorts, error) { return pixivSDKPorts{}, nil }
+			called := false
+			runMCPHTTP = func(_ context.Context, _ *mcp.Server, listen, base string, _ mcpauth.Store, out io.Writer) error {
+				called = true
+				require.Equal(t, tc.listen, listen)
+				require.Equal(t, tc.base, base)
+				require.Same(t, &stderr, out)
+				return nil
+			}
+			code := RunContext(t.Context(), append([]string{"pixiv", "mcp"}, tc.args...), strings.NewReader(""), &stdout, &stderr)
+			if tc.listen == "" {
+				require.NotZero(t, code)
+				require.False(t, called)
+				require.Contains(t, stderr.String(), "MCP requires")
+			} else {
+				require.Equal(t, 0, code, stderr.String())
+				require.True(t, called)
+			}
+			require.Empty(t, stdout.String())
+		})
+	}
 }

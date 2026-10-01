@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net"
 	"os"
 	"path/filepath"
 	"slices"
@@ -20,7 +21,6 @@ import (
 	fanboxcommands "github.com/FlanChanXwO/pixiv-cli/internal/cli/commands/fanbox"
 	fanboxauth "github.com/FlanChanXwO/pixiv-cli/internal/cli/commands/fanbox/auth"
 	fanboxdownload "github.com/FlanChanXwO/pixiv-cli/internal/cli/commands/fanbox/download"
-	fanboxmcpcommand "github.com/FlanChanXwO/pixiv-cli/internal/cli/commands/fanbox/mcp"
 	fanboxpost "github.com/FlanChanXwO/pixiv-cli/internal/cli/commands/fanbox/post"
 	pixivdeps "github.com/FlanChanXwO/pixiv-cli/internal/cli/commands/pixiv"
 	authcommands "github.com/FlanChanXwO/pixiv-cli/internal/cli/commands/pixiv/auth"
@@ -71,13 +71,12 @@ import (
 )
 
 type app struct {
-	in                  io.Reader
-	out                 io.Writer
-	errOut              io.Writer
-	pipelineSignal      *brokenPipeSignalState
-	mcpBrokenPipeSignal *brokenPipeSignalState
-	closeState          *closeState
-	diagnostics         *diagnosticState
+	in             io.Reader
+	out            io.Writer
+	errOut         io.Writer
+	pipelineSignal *brokenPipeSignalState
+	closeState     *closeState
+	diagnostics    *diagnosticState
 }
 
 type diagnosticState struct {
@@ -143,7 +142,7 @@ var (
 	runMCPServer = func(a app, ctx context.Context, request mcpcommands.Request) error {
 		return a.runPixivMCP(ctx, request)
 	}
-	runMCPStdio          = unifiedmcp.RunStdio
+	runMCPHTTP           = unifiedmcp.RunHTTP
 	ensureURLSchemeRelay = loginhelper.EnsurePersistentIfNeeded
 	canPrompt            = func(a app) bool { return authcommands.CanPrompt(a.in, a.out) }
 	promptInput          = func(a app, message, defaultValue string) (string, error) {
@@ -190,66 +189,46 @@ const internalURLHandlerInstallCommand = "_install-handler"
 type systemFanboxBrowserSessionReader = fanboxauth.SystemBrowserProvider
 
 func Run(args []string, in io.Reader, out io.Writer, errOut io.Writer) int {
-	return runContext(context.Background(), args, in, out, errOut, nil, nil)
+	return runContext(context.Background(), args, in, out, errOut, nil)
 }
 
 // RunContext 让嵌入式调用方把取消信号传到每一条网络数据命令。
 func RunContext(ctx context.Context, args []string, in io.Reader, out io.Writer, errOut io.Writer) int {
-	return runContext(ctx, args, in, out, errOut, nil, nil)
+	return runContext(ctx, args, in, out, errOut, nil)
 }
 
 // RunContextWithPipelineSignal 仅由二进制入口传入 SIGPIPE 控制器。控制器会在
 // filter 或已解析的 --ndjson 查询命令运行期间启用，并在命令退出时恢复。
 func RunContextWithPipelineSignal(ctx context.Context, args []string, in io.Reader, out io.Writer, errOut io.Writer, enablePipelineSignal func() func()) int {
-	return RunContextWithBrokenPipeSignals(ctx, args, in, out, errOut, enablePipelineSignal, nil)
-}
-
-// RunContextWithBrokenPipeSignals 仅供二进制入口传入平台的 SIGPIPE 控制器。普通
-// NDJSON 输出和 MCP stdio 必须分别传入控制器：前者的 EPIPE 是下游正常停止，后者
-// 则是 JSON-RPC transport 错误。
-func RunContextWithBrokenPipeSignals(ctx context.Context, args []string, in io.Reader, out io.Writer, errOut io.Writer, enablePipelineSignal, enableMCPBrokenPipeSignal func() func()) int {
-	var pipelineSignal, mcpBrokenPipeSignal *brokenPipeSignalState
+	var pipelineSignal *brokenPipeSignalState
 	if enablePipelineSignal != nil {
 		pipelineSignal = &brokenPipeSignalState{enable: enablePipelineSignal}
 	}
-	if enableMCPBrokenPipeSignal != nil {
-		mcpBrokenPipeSignal = &brokenPipeSignalState{enable: enableMCPBrokenPipeSignal}
-	}
-	return runContext(ctx, args, in, out, errOut, pipelineSignal, mcpBrokenPipeSignal)
+	return runContext(ctx, args, in, out, errOut, pipelineSignal)
 }
 
-// RunContextWithDefaultBrokenPipeSignals 为二进制入口装配当前平台的默认 SIGPIPE
-// 控制器：普通 NDJSON 输出与 MCP stdio 各自独立。嵌入式调用方若需要自定义信号
-// 策略，应直接调用 RunContext 或 RunContextWithBrokenPipeSignals。
+// RunContextWithDefaultBrokenPipeSignals 只为普通 NDJSON 管道装配平台 SIGPIPE 控制器。
 func RunContextWithDefaultBrokenPipeSignals(ctx context.Context, args []string, in io.Reader, out io.Writer, errOut io.Writer) int {
-	return RunContextWithBrokenPipeSignals(ctx, args, in, out, errOut, enablePipelineBrokenPipeSignal, enableMCPBrokenPipeSignal)
+	return RunContextWithPipelineSignal(ctx, args, in, out, errOut, enablePipelineBrokenPipeSignal)
 }
 
-func runContext(ctx context.Context, args []string, in io.Reader, out io.Writer, errOut io.Writer, pipelineSignal, mcpBrokenPipeSignal *brokenPipeSignalState) int {
+func runContext(ctx context.Context, args []string, in io.Reader, out io.Writer, errOut io.Writer, pipelineSignal *brokenPipeSignalState) int {
 	if len(args) == 0 {
 		args = []string{"pixiv"}
 	}
 	streams := invocation.NewStreams(in, out, errOut)
 	a := app{
-		in:                  streams.In,
-		out:                 streams.Out,
-		errOut:              streams.Err,
-		pipelineSignal:      pipelineSignal,
-		mcpBrokenPipeSignal: mcpBrokenPipeSignal,
-		closeState:          &closeState{},
-		diagnostics:         &diagnosticState{},
+		in:             streams.In,
+		out:            streams.Out,
+		errOut:         streams.Err,
+		pipelineSignal: pipelineSignal,
+		closeState:     &closeState{},
+		diagnostics:    &diagnosticState{},
 	}
 	if pipelineSignal != nil {
 		defer func() {
 			if pipelineSignal.stop != nil {
 				pipelineSignal.stop()
-			}
-		}()
-	}
-	if mcpBrokenPipeSignal != nil {
-		defer func() {
-			if mcpBrokenPipeSignal.stop != nil {
-				mcpBrokenPipeSignal.stop()
 			}
 		}()
 	}
@@ -517,7 +496,6 @@ func (a app) newRootCommand() *cobra.Command {
 		PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
 			requirement := requirements.For(cmd)
 			a.enablePipelineSignal(cmd)
-			a.enableMCPBrokenPipeSignal(requirement)
 			if requirement.StartupHooks {
 				if err := cleanupPendingWindowsUpdate(); err != nil {
 					return &startupError{err: fmt.Errorf("clean pending update: %w", err)}
@@ -561,7 +539,6 @@ func (a app) newRootCommand() *cobra.Command {
 		Auth:     fanboxauth.New(fanboxData),
 		Posts:    fanboxpost.Commands(fanboxData),
 		Download: fanboxdownload.New(fanboxData),
-		MCP:      fanboxmcpcommand.New(fanboxData),
 	}))
 	mcpcommands.Register(cmd, a)
 	updatecommands.Register(cmd, a)
@@ -851,9 +828,6 @@ func (a app) fanboxDataDeps() fanboxcommands.Data {
 		PromptConfirmFn: func(message string, defaultValue bool) (bool, error) {
 			return promptConfirm(a, message, defaultValue)
 		},
-		RunMCPServer: func(cmd *cobra.Command, _ *fanboxapp.Facade, proxy *string) error {
-			return a.runPixivMCP(cmd.Context(), mcpcommands.Request{HTTPSProxyOverride: proxy})
-		},
 	}
 }
 
@@ -986,6 +960,36 @@ func (a app) runPixivMCP(ctx context.Context, request mcpcommands.Request) error
 			return err
 		}
 	}
+	listenAddr, baseURL := runtime.MCPListenAddr, runtime.MCPBaseURL
+	if request.ListenAddr != nil {
+		listenAddr = *request.ListenAddr
+	}
+	if request.BaseURL != nil {
+		baseURL = *request.BaseURL
+	}
+	if listenAddr == "" || baseURL == "" {
+		return errors.New("MCP requires mcp.listen_addr and mcp.base_url; local: pixiv mcp --listen-addr 127.0.0.1:8080 --base-url http://127.0.0.1:8080; public behind HTTPS proxy: pixiv mcp --listen-addr 127.0.0.1:8080 --base-url https://mcp.example.com")
+	}
+	_, port, err := net.SplitHostPort(listenAddr)
+	if err != nil {
+		return fmt.Errorf("MCP listen address: %w", err)
+	}
+	portNumber, err := net.LookupPort("tcp", port)
+	if err != nil || portNumber == 0 {
+		return errors.New("MCP listen address requires an explicit nonzero port")
+	}
+	filename, err := paths.UserDataFile(paths.AppDataDirName, "mcp-state.json")
+	if err != nil {
+		return err
+	}
+	store := mcpauth.Store{Path: filename}
+	if _, err := mcpauth.NewHandler(baseURL, store); err != nil {
+		return err
+	}
+	if _, err := store.Read(ctx); err != nil {
+		return err
+	}
+
 	reverseSearchPorts, err := newMCPReverseSearchPorts(runtime, request)
 	if err != nil {
 		return err
@@ -1019,7 +1023,7 @@ func (a app) runPixivMCP(ctx context.Context, request mcpcommands.Request) error
 			return service.Open(ctx, fanboxapp.OpenRequest{ProxyOverride: account.HTTPSProxyOverride})
 		},
 	}, request.HTTPSProxyOverride)
-	return runMCPStdio(ctx, server)
+	return runMCPHTTP(ctx, server, listenAddr, baseURL, store, a.errOut)
 }
 
 func reverseSearchFlareSolverr(runtime configapp.RuntimeConfig) *reverseassembly.FlareSolverrOptions {
@@ -1043,7 +1047,7 @@ func reverseSearchProxies(runtime configapp.RuntimeConfig, override *string) (st
 	return standardProxy, standardProxy
 }
 
-// newMCPReverseSearchPorts 在 MCP stdio 启动时创建一次反向搜图 Facade，并
+// newMCPReverseSearchPorts 在 MCP HTTP 启动时创建一次反向搜图 Facade，并
 // 固定 standard/ascii2d 两个代理网络面、凭据和配置默认值。后续 tool input
 // 只允许覆盖 provider，不能改变传输或 credential 依赖，避免同一 MCP session
 // 的运行时语义漂移。
@@ -1135,13 +1139,6 @@ func (a app) enablePipelineSignal(cmd *cobra.Command) {
 		return
 	}
 	a.pipelineSignal.stop = a.pipelineSignal.enable()
-}
-
-func (a app) enableMCPBrokenPipeSignal(requirement requirements.Execution) {
-	if a.mcpBrokenPipeSignal == nil || a.mcpBrokenPipeSignal.enable == nil || a.mcpBrokenPipeSignal.stop != nil || !requirement.MCP {
-		return
-	}
-	a.mcpBrokenPipeSignal.stop = a.mcpBrokenPipeSignal.enable()
 }
 
 func (a app) bindCommonFlags(cmd *cobra.Command, opts *commandOptions) {

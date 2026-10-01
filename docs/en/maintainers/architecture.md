@@ -5,7 +5,7 @@ English | [简体中文](../../zh-CN/maintainers/architecture.md) | [Documentati
 ```mermaid
 flowchart LR
     ENTRY["cmd/pixiv<br/>single binary entry"] --> CLI["internal/cli<br/>commands and lifecycle"]
-    CLI -->|"starts stdio"| MCP["internal/mcpserver<br/>Pixiv / FANBOX tools"]
+    CLI -->|"starts HTTP"| MCP["internal/mcpserver<br/>Pixiv / FANBOX tools"]
     CLI --> SDK["public SDK<br/>sdk/pixiv · sdk/fanbox"]
     MCP --> SDK
     SDK --> FACADE["internal/services<br/>business Facade"]
@@ -38,7 +38,7 @@ flowchart LR
 
 1. `pixiv` with no arguments shows CLI help.
 2. `pixiv auth/config/update/search/timeline/detail/ranking/recommended/user/bookmark/follow/download` enters CLI mode; root `--version` is a standalone read-only flag; `pixiv fanbox` enters FANBOX mode; `auth import` handles direct token import or bundle restore, and `auth export` handles the local secret snapshot.
-3. `pixiv mcp` and `pixiv fanbox mcp` are assembled and run as independent MCP stdio servers by the CLI MCP commands.
+3. `pixiv mcp` assembles and starts the unified Pixiv/FANBOX Streamable HTTP server; `pixiv fanbox mcp` is removed.
 4. CLI and MCP construct production resources explicitly per command owner:
    - Account credentials come from `~/.pixiv-cli/pixiv-cli.db` (SQLite, `internal/storage/database`; Windows: `%USERPROFILE%\.pixiv-cli\pixiv-cli.db`); the legacy `auth.json` is not read automatically — users must explicitly export/import a bundle
    - Global configuration comes from `~/.pixiv-cli/config.toml` (Windows: `%USERPROFILE%\.pixiv-cli\config.toml`)
@@ -131,7 +131,7 @@ The config schema, `config.toml` path/get/set/unset, generated baseline, and the
 Provides an explicit, in-memory typed diagnostics scope. Pixiv MCP, FANBOX MCP, Pixiv/FANBOX
 network transport, account pool, download, and FlareSolverr emit only the allowed module, operation, route, status,
 proxy, UA, request ID, reason, and count fields through the scope; the default sink is Nop. The MCP request scope only
-affects diagnostics, not JSON-RPC stdout. This package creates no log files, stores no response body,
+affects diagnostics, not HTTP JSON-RPC responses. This package creates no log files, stores no response body,
 Cookie, token, signed query, or arbitrary error dump; the public SDK stays silent when no explicit scope is present.
 
 ### Release trust root (`internal/update/installer`)
@@ -286,7 +286,7 @@ The three parent packages only own the normalized entities/values shared by thei
 
 ### `internal/mcpserver`
 
-`New` constructs the single protocol server and calls each product's `Register`. Pixiv tools use `pixiv_` and FANBOX tools keep `fanbox_`; no old-name aliases or MCP filesystem download tools remain. CLI downloads still belong to `internal/media/downloader`. The stdio runner remains in the parent package and is started by the CLI.
+`New` constructs the single protocol server and calls each product's `Register`. Pixiv tools use `pixiv_` and FANBOX tools keep `fanbox_`; no old-name aliases or MCP filesystem download tools remain. CLI downloads still belong to `internal/media/downloader`. `NewHTTPHandler` assembles stateless Streamable HTTP and OAuth routing in the parent package; `RunHTTP` owns the listener and server lifecycle. The stdio runner and MCP-specific SIGPIPE wiring are removed; normal CLI pipeline handling remains.
 
 Each product retains its own SDK ports, account selection and runtime. Registration/discovery does not open a FANBOX account; the root lazily opens its independent service when a FANBOX tool runs. Each tool package owns its name, annotations, schema and handler. Pixiv nullable `page`/`limit` are parsed by its adapter and traversal stays in `internal/shared/traversal`. Handler failures retain structured output with `isError=true`; legitimate empty results remain successful. See [MCP tools](../mcp-tools.md).
 
@@ -294,7 +294,7 @@ Each product retains its own SDK ports, account selection and runtime. Registrat
 
 Grant records must explicitly include a boolean `revoked` field and a `used_refresh_hashes` field. Missing fields or invalid types fail closed; refresh history may be an empty array or the existing serializer’s `null` for a nil slice. Invalid state blocks reads, owner init/reset, and registration without overwriting the file.
 
-`auth.NewHandler` provides standalone discovery, DCR, authorize and token HTTP routes plus `Handler.RequireBearer` for MCP requests. They are not connected to the CLI listener yet: `pixiv mcp` still uses stdio; production HTTP startup is a later slice. The constructor takes the canonical base URL, permits local HTTP, and rejects credentials, query, fragment and client-normalized dot segments. Issuer URLs never come from request Host or forwarding headers.
+`auth.NewHandler` provides discovery, DCR, authorize and token routes plus `Handler.RequireBearer`. `NewHTTPHandler` mounts these alongside `/mcp`, validates owner state before listening, and applies canonical Host/Origin checks before the OAuth or SDK handler. The constructor takes the canonical base URL, permits local HTTP, and rejects credentials, query, fragment and client-normalized dot segments. Issuer URLs never come from request Host or forwarding headers.
 
 - Root and resource-specific protected-resource metadata share the SDK handler. For base `https://example.test/pixiv`, the resource is `https://example.test/pixiv/mcp`; metadata routes are `/.well-known/oauth-protected-resource` and `/.well-known/oauth-protected-resource/pixiv/mcp`, AS metadata is `/.well-known/oauth-authorization-server/pixiv`, and registration is `/pixiv/oauth/register`. A reverse proxy must forward these well-known routes as well as `/pixiv/`.
 - DCR accepts only JSON public-client registrations, defaults an omitted auth method to `none`, and never issues or saves a client secret. Responses explicitly return the fixed profile: code, authorization_code/refresh_token, and mcp. Unknown extension metadata is ignored; logo/client/JWKS URLs are never fetched. Unsupported auth methods, grants, response types, or scopes return OAuth JSON errors.
@@ -309,6 +309,8 @@ Grant records must explicitly include a boolean `revoked` field and a `used_refr
 - Refresh rereads state under the same sidecar lock as reset and binds the current canonical resource, client and scope. Successful exchanges rotate refresh tokens and retain used hashes. Replay persists revocation of that grant before returning `invalid_grant`; random invalid values cannot revoke other grants. Failed writes publish no tokens and retain retryable codes/refresh tokens; failed revocation does not claim success. Restart preserves clients/grants/refresh but drops pending codes.
 - `Handler.RequireBearer` reuses SDK middleware, reads current state on every request, validates resource/revocation/expiry, and rejects multiple Authorization headers. Unauthorized requests receive HTTP 401 and a canonical `resource_metadata` challenge, not an MCP result. Invalid state fails safely without exposing paths. Responses use `no-store`; expiry/reset affects subsequent authorization, not already authorized long requests.
 - HTTP and real temporary-file tests cover exact deadlines, concurrent code/refresh/reset, restart and actual write failure. Deadline tests use standard-library `testing/synctest`, without adding production clock configuration.
+
+The HTTP owner uses exact escaped paths rather than ServeMux path cleaning. Incoming Host and any Origin must match the configured canonical origin; forwarding headers never establish trust. Reverse proxies must retain public Host and path prefixes. MCP responses enforce `no-store` at response commit, including SDK SSE responses. On service cancellation or listener failure, the server cancels its own context and waits for active handlers without a fixed cleanup timeout; the original listener error is preserved and the caller context is not canceled by the server. Receiving middleware binds legacy SDK sessions to the service context; the SDK propagates modern-revision HTTP request cancellation. No custom protocol session store or transport fallback is added.
 
 Path and registration rules follow RFC 8414 §3, RFC 9728 §3, RFC 7591 §2/§3.2, and RFC 8252 §7/§8.4. Temporary-file and HTTP fixture checks do not establish live connector OAuth compatibility.
 
@@ -394,7 +396,7 @@ an error that the CLI can silently bypass.
 
 No generic constants package is retained. `config/paths` is the sole owner of app-managed paths, `AppDataDirName`, and
 Unix-like private directory/file permission constants; it does not read business configuration and does not implement file writes. Pixiv protocol values, MCP delivery
-values, and config keys/defaults still live in their owning domain packages. `internal/shared/diagnostics` owns the typed, protocol-neutral event contract, while `internal/cli/diagnostics` owns the optional text/JSON stderr presenter configured by `[logging]`. This is not a persistent operation log or the historical generic `slog` chain; MCP stdout remains reserved for JSON-RPC and errors still pass through the existing CLI, MCP, or public SDK interfaces.
+values, and config keys/defaults still live in their owning domain packages. `internal/shared/diagnostics` owns the typed, protocol-neutral event contract, while `internal/cli/diagnostics` owns the optional text/JSON stderr presenter configured by `[logging]`. This is not a persistent operation log or the historical generic `slog` chain; MCP JSON-RPC travels only over HTTP and errors still pass through the existing CLI, MCP, or public SDK interfaces.
 
 ### `internal/storage/file/{atomic,lock,replace,secret}`
 
@@ -417,9 +419,7 @@ refresh-token validation lives in `internal/services/pixiv/oauth`; paths/permiss
 > The following constraints are non-negotiable hard boundaries. Any new timeout, truncation, count limit, retry cap, silent fallback, or hidden degradation must have evidence, a comment, a test, or documentation, otherwise it is treated as a violation.
 
 - `appapi`, `oauth`, and resource transport use the HTTP client injected by the caller/SDK; the default client is dedicated to the current SDK client, has no fixed whole-request timeout, and cancellation/deadline is propagated via context. An explicit client retains the caller's policy.
-- `pixiv mcp` and `pixiv fanbox mcp` are the explicit ways to start two independent MCP stdio servers; running `pixiv` directly does not start MCP.
+- `pixiv mcp` explicitly starts the unified HTTP server; running `pixiv` directly shows help. It requires initialized owner state and explicit `[mcp].listen_addr`/`base_url` values or per-launch flag overrides; see [HTTP startup](../cli-reference.md#mcp-http-server).
 - No persistent account import/export MCP tool is added; the existing session-scoped MCP auth tools and wire contracts are unchanged.
 - Account credentials are stored in the SQLite `pixiv-cli.db` (BLOB, unencrypted); Unix-like DB/journal file permissions are `0600`. An attacker with file access for the current user can still read credentials, and automatic backups are prohibited.
 - `config.toml` uses sparse writes and never persists the full set of defaults to disk.
-- The default `count` for `download_random_from_recommendation` is 5; an explicit value must be 1..20, and out-of-range values return a parameter error rather than silent clamping. The 20 limit is on the number of requested works: a single request can trigger multiple work downloads, and each work can in turn expand into multiple pages/files; all artifact metadata enters the same structured response. This boundary prevents unbounded amplification of download work and JSON-RPC output, and does not truncate a single work's files. When the recommendation list has fewer items than requested, the actual available number is downloaded.
-- `download` only returns local paths, `file://` URIs, `mime_type`, page numbers, and sizes; it does not embed ImageContent or base64 thumbnails.

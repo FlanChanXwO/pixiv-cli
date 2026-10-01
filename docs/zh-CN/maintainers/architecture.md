@@ -5,7 +5,7 @@
 ```mermaid
 flowchart LR
     ENTRY["cmd/pixiv<br/>唯一二进制入口"] --> CLI["internal/cli<br/>命令与生命周期"]
-    CLI -->|"启动 stdio"| MCP["internal/mcpserver<br/>Pixiv / FANBOX tools"]
+    CLI -->|"启动 HTTP"| MCP["internal/mcpserver<br/>Pixiv / FANBOX tools"]
     CLI --> SDK["public SDK<br/>sdk/pixiv · sdk/fanbox"]
     MCP --> SDK
     SDK --> FACADE["internal/services<br/>业务 Facade"]
@@ -38,7 +38,7 @@ flowchart LR
 
 1. `pixiv` 无参数显示 CLI 帮助。
 2. `pixiv auth/config/update/search/timeline/detail/ranking/recommended/user/bookmark/follow/download` 进入 CLI 模式；root `--version` 是独立的只读 flag；`pixiv fanbox` 进入 FANBOX 模式；`auth import` 负责 direct token import 或 bundle restore，`auth export` 负责本地 secret snapshot。
-3. `pixiv mcp` 与 `pixiv fanbox mcp` 由 CLI MCP 命令组装并运行统一的 Pixiv/FANBOX MCP stdio server。
+3. `pixiv mcp` 组装并启动统一 Pixiv/FANBOX Streamable HTTP server；`pixiv fanbox mcp` 已删除。
 4. CLI 与 MCP 按命令 owner 显式构造生产资源：
    - 账号凭据来自 `~/.pixiv-cli/pixiv-cli.db`（SQLite，`internal/storage/database`；Windows：`%USERPROFILE%\.pixiv-cli\pixiv-cli.db`）；旧 `auth.json` 不自动读取，用户须显式导出/导入 bundle
    - 全局配置来自 `~/.pixiv-cli/config.toml`（Windows：`%USERPROFILE%\.pixiv-cli\config.toml`）
@@ -131,7 +131,7 @@ canonical 值，按 DTO 的 `x_restrict` 和 artwork kind 做 client-side matchi
 提供显式、内存内的 typed diagnostics scope。Pixiv MCP、FANBOX MCP、Pixiv/FANBOX
 network transport、账号池、下载与 FlareSolverr 只通过 scope 发出允许的模块、operation、route、status、
 proxy、UA、request ID、reason 和计数等字段；默认使用 Nop sink。MCP request scope 只影响诊断，不改变
-JSON-RPC stdout。该包不创建日志文件、不保存 response body、
+HTTP JSON-RPC 响应。该包不创建日志文件、不保存 response body、
 Cookie、token、signed query 或 arbitrary error dump；公共 SDK 在没有显式 scope 时保持静默。
 
 ### Release trust root（`internal/update/installer`）
@@ -296,7 +296,7 @@ FlareSolverr 的 upstream proxy 只用于 browser `sessions.create`；solver con
 
 ### `internal/mcpserver`
 
-`New` 构造唯一 protocol server，分别调用两产品的 `Register`。Pixiv tools 使用 `pixiv_`，FANBOX 保留 `fanbox_`；不保留旧名 alias 或 MCP 本地文件下载工具。CLI 下载仍归 `internal/media/downloader`。stdio runner 暂留父包，由 CLI 启动。
+`New` 构造唯一 protocol server，分别调用两产品的 `Register`。Pixiv tools 使用 `pixiv_`，FANBOX 保留 `fanbox_`；不保留旧名 alias 或 MCP 本地文件下载工具。CLI 下载仍归 `internal/media/downloader`。父包的 `NewHTTPHandler` 组装 stateless Streamable HTTP 与 OAuth 路由，`RunHTTP` 拥有 listener 和服务生命周期。stdio runner 与 MCP 专属 SIGPIPE wiring 已删除，普通 CLI pipeline 处理保留。
 
 各产品保留独立 SDK ports、账号选择与 runtime。注册/discovery 不打开 FANBOX 账号；root 在 FANBOX tool 调用时才懒加载其独立 service。各 tool package 拥有名称、annotations、schema 和 handler。Pixiv adapter 解析 nullable `page`/`limit`，遍历仍由 `internal/shared/traversal` 执行。handler 失败保留 structured output 并设置 `isError=true`，正常空结果保持成功。完整合同见 [MCP 工具](../mcp-tools.md)。
 
@@ -304,7 +304,7 @@ FlareSolverr 的 upstream proxy 只用于 browser `sessions.create`；solver con
 
 Grant 记录必须显式包含布尔字段 `revoked` 和历史字段 `used_refresh_hashes`。缺失字段或错误类型失败关闭；空 refresh 历史允许空数组或现有序列化器对 nil slice 输出的 `null`。损坏状态阻止读取、owner init/reset 与注册，且不覆盖原文件。
 
-`auth.NewHandler` 已实现独立、尚未接入 CLI listener 的 discovery、DCR、authorize 与 token HTTP handler，并提供 `Handler.RequireBearer` 包装 MCP 请求；当前 `pixiv mcp` 仍使用 stdio，生产 listener 与远程启动将在后续切片接入。canonical base URL 由构造参数指定，允许本地 HTTP；拒绝凭据、query、fragment 与会被客户端归一化的 dot-segment 路径，绝不读取请求 Host 或转发头构造 issuer。
+`auth.NewHandler` 提供 discovery、DCR、authorize、token 路由和 `Handler.RequireBearer`。`NewHTTPHandler` 将其与 `/mcp` 一起挂载，监听前验证 owner state，在 OAuth/SDK handler 前执行 canonical Host/Origin 校验。canonical base URL 由构造参数指定，允许本地 HTTP；拒绝凭据、query、fragment 与会被客户端归一化的 dot-segment 路径，绝不读取请求 Host 或转发头构造 issuer。
 
 - root protected-resource metadata 与 resource-specific 路径共用 SDK handler。例如 base 为 `https://example.test/pixiv` 时，resource 是 `https://example.test/pixiv/mcp`，metadata 位于 `/.well-known/oauth-protected-resource` 与 `/.well-known/oauth-protected-resource/pixiv/mcp`，AS metadata 位于 `/.well-known/oauth-authorization-server/pixiv`，注册位于 `/pixiv/oauth/register`。反向代理需同时转发这些 well-known 路径；不能仅转发 `/pixiv/`。
 - DCR 仅接受 JSON public-client 注册；省略 auth method 时采用 `none`，不签发或保存 client secret。响应明确返回固定 profile：code、authorization_code/refresh_token、mcp；请求中未知扩展 metadata 被忽略，不访问 logo/client/JWKS URL。非支持的 auth method、grant、response type 或 scope 返回 OAuth JSON 错误。
@@ -319,6 +319,8 @@ Grant 记录必须显式包含布尔字段 `revoked` 和历史字段 `used_refre
 - refresh 在与 reset 共用的侧车锁内重新读取 state，绑定当前 canonical resource、client 和 scope；每次成功旋转，保留已用 hash。旧值重放先持久撤销对应 grant，再返回 `invalid_grant`；随机错误值不撤销其它 grant。写盘失败不发布 token、不消费 code 或旧 refresh，撤销失败也不虚报成功；可重试。重启保留 clients/grants/refresh，不保留待交换 code。
 - `Handler.RequireBearer` 复用 SDK middleware，按每次请求读取最新 state、检查 resource/撤销/一小时期限，拒绝多重 Authorization header。未授权返回 HTTP 401 与 canonical `resource_metadata` challenge，不转为 MCP result；损坏状态安全失败且不暴露路径。响应 `no-store`，过期/reset 只影响后续鉴权，不取消已授权的长请求。
 - HTTP 与真实临时文件测试覆盖期限边界、并发兑换/refresh/reset、重启与实际写盘失败；期限测试用标准库 `testing/synctest`，不添加生产 clock 配置。
+
+HTTP owner 精确匹配转义路径，不使用 ServeMux 路径归一化。入站 Host 与存在的 Origin 必须匹配 canonical origin，转发头不建立信任；反向代理须保留公网 Host 和路径 prefix。MCP 响应在提交时强制 `no-store`，包括 SDK SSE 响应。服务取消或 listener 失败时，服务取消其专属 context 并等待在途 handler 退出，不添加固定清理超时；保留原始 listener 错误，不反向取消调用方 context。receiving middleware 将旧版 SDK session 绑定服务 context；新版 HTTP 请求取消由 SDK 传播。不新增协议 session store 或 transport fallback。
 
 路径和注册规则依据 RFC 8414 §3、RFC 9728 §3、RFC 7591 §2/§3.2 与 RFC 8252 §7/§8.4。临时文件和 HTTP fixture 测试不代表真实 connector OAuth 已通过。
 
@@ -406,7 +408,7 @@ SmartScreen 提示时，必须回到已验证的项目 GitHub Release、checksum
 Unix-like 私有目录/文件权限常量；它不读取业务配置，也不实现文件写入。Pixiv 协议值、MCP delivery
 值与 config key/default 仍留在所属领域包。`internal/shared/diagnostics` 拥有 typed、协议无关的事件契约，
 `internal/cli/diagnostics` 拥有由 `[logging]` 控制的 text/JSON stderr presenter；这不是持久 operation 日志，
-也不是历史通用 `slog` 链路。MCP stdout 仍保留给 JSON-RPC，错误继续经 CLI、MCP 或 public SDK 的既有接口传递。
+也不是历史通用 `slog` 链路。MCP JSON-RPC 只经 HTTP 传输，错误继续经 CLI、MCP 或 public SDK 的既有接口传递。
 
 ### `internal/storage/file/{atomic,lock,replace,secret}`
 
@@ -429,9 +431,7 @@ refresh-token 校验归 `internal/services/pixiv/oauth`；路径/权限归
 > 以下约束是不可违反的硬边界。任何新增 timeout、截断、条数限制、重试上限、静默 fallback 或隐藏降级都必须有证据、注释、测试或文档说明，否则视为违规。
 
 - `appapi`、`oauth` 与 resource transport 使用 caller/SDK 注入的 HTTP client；默认 client 专用于当前 SDK client、无整请求固定 timeout，取消与 deadline 由 context 传播。显式 client 保持调用方策略。
-- `pixiv mcp` 与 `pixiv fanbox mcp` 是两个独立 MCP stdio server 的显式启动方式；直接执行 `pixiv` 不会启动 MCP。
+- `pixiv mcp` 显式启动统一 HTTP server；直接执行 `pixiv` 只显示帮助。启动要求已初始化 owner，并显式提供 `[mcp].listen_addr`/`base_url` 或单次 flag 覆写，详见 [HTTP 启动](../cli-reference.md#mcp-http-server)。
 - 不新增持久账号 import/export MCP tool；既有 session-scoped MCP 认证 tool 与 wire contract 不变。
 - 账号 credential 保存在 SQLite `pixiv-cli.db`（BLOB，非加密）；Unix-like DB/journal 文件权限为 `0600`。获得当前用户文件访问权的攻击者仍能读取 credential，自动 backup 被禁止。
 - `config.toml` 采用稀疏写入，不会把默认值整份落盘。
-- `download_random_from_recommendation` 的 `count` 缺省为 5，显式值须为 1..20，超范围会返回参数错误而非静默钳制。20 限制的是请求作品数：一次请求可触发多个作品下载，每个作品又可展开为多页/多文件，全部产物元数据会进入同一 structured response；该边界避免无界放大下载工作与 JSON-RPC 输出，不截断单个作品的文件。推荐列表不足请求数时下载实际可用数量。
-- `download` 只返回本地路径、`file://` URI、`mime_type`、页号与大小；不内嵌 ImageContent 或 base64 缩略图。
