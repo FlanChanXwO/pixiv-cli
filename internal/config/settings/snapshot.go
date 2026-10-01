@@ -30,15 +30,29 @@ func LoadSnapshotAt(path string) (Snapshot, error) {
 
 // LoadSnapshotAtWithFileStore 从明确路径和注入的文件端口加载配置。它
 // 让 composition root 可以把 platform/file mechanism 适配传入 schema owner。
+// LoadSnapshotAtWithFileStore 从明确路径与注入的文件端口生成一次不可变快照。
+//
+// 配置绑定整体分四个阶段，本函数只负责**阶段 1**：
+//
+//  1. 固定本次读取的文件与环境视图，避免同一个快照内出现不同结果；
+//  2. 按**存在性**选择来源（见 Effective）；
+//  3. 按既有输入契约解析类型并执行领域校验（见 coerceSettingValue 与
+//     Runtime 中的领域规则）；
+//  4. 返回类型化配置；读取过程**不回写**用户文件（写回只属 document.go）。
+//
+// 阶段 1 的具体含义：文件内容在此一次性装入 koanf，环境变量在此一次性捕获；
+// 之后无论 Effective 被调用多少次，同一快照都看到同一份输入。
 func LoadSnapshotAtWithFileStore(path string, store FileStore) (Snapshot, error) {
 	store, err := requireFileStore(store)
 	if err != nil {
 		return Snapshot{}, err
 	}
+	// 阶段 1：装入文件视图。
 	fileState := koanf.New(".")
 	if err := loadConfigFileInto(fileState, path, store.ReadFile); err != nil {
 		return Snapshot{}, err
 	}
+	// 阶段 1：捕获环境视图。两者共同构成这个不可变快照的输入。
 	return Snapshot{file: fileState, env: captureEnvironment()}, nil
 }
 
@@ -76,6 +90,19 @@ func loadConfigFileInto(target *koanf.Koanf, path string, readFile func(string) 
 	return target.Load(rawFileProvider{body: body}, toml.Parser())
 }
 
+// Effective 解析单个配置别名的最终值，返回该值及其来源。
+//
+// 契约：
+//   - 来源优先级固定为 env → file → default；返回的 Source 就是实际选中的那一层。
+//   - 选择依据是**存在性**，不是"值是否非零"：显式配置的空字符串、false、0s
+//     都与"缺失"区分开，并且一旦某层命中就不再回退到更低优先级。
+//   - 全部未命中时返回 Source="unset"、HasValue=false，调用方据此区分
+//     "没有配置"与"配置成了零值"。
+//   - 退役键（spec.Removed）仅在**显式出现**于文件时报 removed_setting；缺失时静默
+//     返回 unset，因此 config unset 仍能清理它。
+//
+// 这是绑定四阶段中的**阶段 2**（按存在性选择来源）；类型解析与领域校验由
+// coerceSettingValue（阶段 3）负责，本函数不回写任何文件（阶段 4）。
 func (s Snapshot) Effective(alias string) (SettingValue, error) {
 	spec, ok := SettingSpecByAlias(alias)
 	if !ok {
@@ -87,12 +114,15 @@ func (s Snapshot) Effective(alias string) (SettingValue, error) {
 		}
 		return SettingValue{Source: "unset"}, nil
 	}
+	// 阶段 2：env 优先。存在即为命中（即使值为空），不回退到 file。
 	if raw, ok := s.env[spec.Alias]; ok && raw.present {
 		return coerceSettingValue(spec, raw.value, "env")
 	}
+	// 阶段 2：其次文件。同样按存在性判断，保留显式空值与显式 false。
 	if s.file.Exists(spec.KoanfKey) {
 		return coerceSettingValue(spec, s.file.Get(spec.KoanfKey), "file")
 	}
+	// 阶段 2：最后默认值（来自字段的 default 标签）。
 	if spec.HasDefault {
 		return coerceSettingValue(spec, spec.Default, "default")
 	}

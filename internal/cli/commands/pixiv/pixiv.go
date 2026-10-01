@@ -198,9 +198,8 @@ func (d Data) BindProxyFlags(cmd *cobra.Command, opts *ProxyOptions) {
 	flags.BoolVar(&opts.NoProxy, "no-proxy", false, "clear the configured proxy for this command")
 }
 
-// Request resolves command-local transport overrides without creating a
-// client. The composition root has already constructed the exact Pixiv SDK
-// resource graph selected by the command requirement.
+// Request 解析命令本地的传输覆写，不创建 client。公开 SDK client 由 composition
+// root 按 command requirement 构造，并通过 Open/Pooled 端口注入。
 func (d Data) Request(cmd *cobra.Command, opts CommandOptions) (Request, error) {
 	request := Request{}
 	proxy, err := proxyOverrideFromFlags(cmd, opts.ProxyOptions)
@@ -256,9 +255,14 @@ func (d Data) Client(request Request) (*pixiv.Client, error) {
 	return d.Open(request)
 }
 
-// Write 在账号池安全重放边界内执行一次 mutation。public SDK 一旦被调用，无法
-// 从所有网络错误可靠判断服务端是否已接受请求，因此即使返回错误也标记
-// committed=true，禁止账号池在未知提交状态下换号重放。
+// Write 在账号池安全重放边界内执行一次 mutation。
+//
+// 契约：
+//   - 一旦调用 public SDK 就标记 committed=true：写操作无法从所有网络错误可靠
+//     判断服务端是否已接受请求，因此在未知提交状态下禁止账号池换号重放。
+//   - 与 Read 的 committed=false 语义**刻意分开**，不合并成带布尔模式的单一函数：
+//     两者对"失败后能否重放"的回答相反，合并会把这一差异隐藏在参数里。
+//   - 端口未配置（nil）返回 "pixiv pooled operation is not configured"，不 panic。
 func Write(d Data, ctx context.Context, request Request, invoke func(context.Context, *pixiv.Client) error) error {
 	return d.Pooled(ctx, request, func(ctx context.Context, client *pixiv.Client) (bool, error) {
 		return true, invoke(ctx, client)

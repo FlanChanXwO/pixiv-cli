@@ -40,7 +40,8 @@ type Options struct {
 }
 
 // Dependencies 是 detail owner 的最小执行端口。资源 factory 由 composition root
-// 在输入验证后通过 BuildRequest/Pooled 注入；detail 不导入旧 CLI resource graph。
+// 在输入验证后通过 BuildRequest/Pooled 注入；detail 只依赖这些窄端口，不依赖
+// CLI composition root 的内部状态。
 type Dependencies struct {
 	Input             io.Reader
 	Output            io.Writer

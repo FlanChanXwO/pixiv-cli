@@ -664,8 +664,9 @@ func pixivOptionsFromRequest(request pixivdeps.Request, loadRuntime func() (conf
 	return options, nil
 }
 
-// fanboxsdkOptions names the exact public SDK options type locally so the
-// resource graph remains the only place translating one config snapshot.
+// fanboxsdkOptions 是本包对公开 SDK options 类型的本地别名。保留别名的原因：
+// 让 composition root 成为**唯一**把一份 config snapshot 翻译为 SDK options 的
+// 地方，命令 owner 不需要（也不应该）直接依赖 SDK 的 options 形状。
 type fanboxsdkOptions = fanbox.Options
 
 func fanboxOptionsFromRuntime(loadRuntime func() (configapp.RuntimeConfig, error)) (fanboxsdkOptions, error) {

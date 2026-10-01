@@ -35,6 +35,14 @@ type diagnosticState struct {
 
 // closeState tracks resources opened by the current invocation. It is only a
 // reverse-order close list; it does not cache services or expose a graph.
+// closeState 持有一次 CLI 执行期间打开的资源，并负责它们的关闭责任。
+//
+// 契约：
+//   - 所有权：谁打开资源，谁调用 add 登记关闭函数；资源在登记前不得被其他人假定已可用。
+//   - 关闭顺序：close 按登记的**逆序**关闭（后打开的先关闭），符合依赖关系。
+//   - 幂等：close 只真正执行一次（sync.Once），重复调用返回同一结果。
+//   - 错误聚合：关闭错误全部并入同一个 error，不因第一个失败而漏关其余资源。
+//   - 并发安全：add 与 close 可由不同 goroutine 调用。
 type closeState struct {
 	mu      sync.Mutex
 	closers []func() error
@@ -42,6 +50,8 @@ type closeState struct {
 	once    sync.Once
 }
 
+// add 登记一个关闭函数。nil 接收者或 nil 关闭函数被静默忽略，使调用点无需
+// 额外判空（例如可选配置组未启用时没有资源可关）。
 func (s *closeState) add(closer func() error) {
 	if s == nil || closer == nil {
 		return
@@ -51,6 +61,7 @@ func (s *closeState) add(closer func() error) {
 	s.mu.Unlock()
 }
 
+// close 逆序关闭全部已登记资源并返回聚合错误；它是幂等的。
 func (s *closeState) close() error {
 	if s == nil {
 		return nil
@@ -108,10 +119,19 @@ func RunContextWithDefaultBrokenPipeSignals(ctx context.Context, args []string, 
 	return RunContextWithBrokenPipeSignals(ctx, args, in, out, errOut, enablePipelineBrokenPipeSignal, enableMCPBrokenPipeSignal)
 }
 
+// runContext 是一次 CLI 执行的完整生命周期。阶段划分如下：
+//
+//  1. 构造本次执行的 app：只绑定输入/输出流与资源登记表，**不**打开任何资源；
+//  2. 装配命令树并绑定流与参数（assembling 依赖发生在各命令的 deps 调用点）；
+//  3. 执行命令：资源只有在命令真正请求时才会创建，因此 help/version/config path
+//     这类入口不会提前打开数据库或构造网络 client；
+//  4. 关闭资源：无论成功与否都按登记顺序逆序关闭，并把关闭错误并入退出原因；
+//  5. 结束诊断并决定退出码，其中 NDJSON 输出命令使用成功语义、其余按失败退出。
 func runContext(ctx context.Context, args []string, in io.Reader, out io.Writer, errOut io.Writer, pipelineSignal, mcpBrokenPipeSignal *brokenPipeSignalState) int {
 	if len(args) == 0 {
 		args = []string{"pixiv"}
 	}
+	// 阶段 1：只用流与状态容器构造 app；closeState 在此登记，资源稍后按需打开。
 	streams := invocation.NewStreams(in, out, errOut)
 	a := app{
 		in:                  streams.In,
@@ -136,6 +156,7 @@ func runContext(ctx context.Context, args []string, in io.Reader, out io.Writer,
 			}
 		}()
 	}
+	// 阶段 2：装配命令树并绑定流/参数。
 	cmd := a.newRootCommand()
 	defer pipeline.Clear(cmd)
 	defer authcommands.ClearInputState(cmd)
@@ -148,7 +169,10 @@ func runContext(ctx context.Context, args []string, in io.Reader, out io.Writer,
 	if found, _, findErr := cmd.Find(args[1:]); findErr == nil && found != nil {
 		target = found
 	}
+	// 阶段 3：执行命令。资源在这一步按需创建，因此不触达资源的入口没有副作用。
 	err := cmd.Execute()
+	// 阶段 4：关闭资源。即使执行失败也要关闭，并把关闭错误并入退出原因，
+	// 避免"命令成功但资源未释放"被报成成功。
 	if closeErr := a.closeResources(); closeErr != nil {
 		if err == nil {
 			err = closeErr
@@ -156,6 +180,7 @@ func runContext(ctx context.Context, args []string, in io.Reader, out io.Writer,
 			err = errors.Join(err, closeErr)
 		}
 	}
+	// 阶段 5：结束诊断并映射退出码（NDJSON 命令走成功语义）。
 	err = a.finishDiagnostics(err)
 	return a.exitWithNDJSONScope(err, commandWritesNDJSON(target) || commandAutoWritesNDJSON(target, out))
 }
