@@ -322,6 +322,8 @@ Grant 记录必须显式包含布尔字段 `revoked` 和历史字段 `used_refre
 
 HTTP owner 精确匹配转义路径，不使用 ServeMux 路径归一化。入站 Host 与存在的 Origin 必须匹配 canonical origin，转发头不建立信任；反向代理须保留公网 Host 和路径 prefix。MCP 响应在提交时强制 `no-store`，包括 SDK SSE 响应。服务取消或 listener 失败时，服务取消其专属 context 并等待在途 handler 退出，不添加固定清理超时；保留原始 listener 错误，不反向取消调用方 context。receiving middleware 将旧版 SDK session 绑定服务 context；新版 HTTP 请求取消由 SDK 传播。不新增协议 session store 或 transport fallback。
 
+标准客户端 fixture 覆盖 401 discovery、DCR、PKCE、两产品 SDK 读取以及同地址重启后的持久 grant。锁定的 Go MCP SDK v1.8.0 默认 refresh token source 不发送 `resource`，会得到 `invalid_request`；服务器不为此放宽校验。测试另外通过 SDK 可配置 HTTP client 补入[规范要求的 resource 参数](https://modelcontextprotocol.io/specification/2026-07-28/basic/authorization#resource-parameter-implementation)到 form，验证刷新旋转与重连读取。该对照不是原样 SDK 刷新兼容性或 ChatGPT/Gemini 产品验收。
+
 路径和注册规则依据 RFC 8414 §3、RFC 9728 §3、RFC 7591 §2/§3.2 与 RFC 8252 §7/§8.4。临时文件和 HTTP fixture 测试不代表真实 connector OAuth 已通过。
 
 ### `internal/media/downloader`

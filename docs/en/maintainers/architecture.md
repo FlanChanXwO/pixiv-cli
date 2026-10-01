@@ -312,6 +312,8 @@ Grant records must explicitly include a boolean `revoked` field and a `used_refr
 
 The HTTP owner uses exact escaped paths rather than ServeMux path cleaning. Incoming Host and any Origin must match the configured canonical origin; forwarding headers never establish trust. Reverse proxies must retain public Host and path prefixes. MCP responses enforce `no-store` at response commit, including SDK SSE responses. On service cancellation or listener failure, the server cancels its own context and waits for active handlers without a fixed cleanup timeout; the original listener error is preserved and the caller context is not canceled by the server. Receiving middleware binds legacy SDK sessions to the service context; the SDK propagates modern-revision HTTP request cancellation. No custom protocol session store or transport fallback is added.
 
+The standard-client fixture covers 401 discovery, DCR, PKCE, both product SDK reads, and persisted grants after restarting at the same address. The pinned Go MCP SDK v1.8.0 default refresh token source omits `resource` and receives `invalid_request`; the server does not relax validation for it. A separate control uses the SDK-configurable HTTP client to add the [required resource parameter](https://modelcontextprotocol.io/specification/2026-07-28/basic/authorization#resource-parameter-implementation) to the form and verifies rotation and reconnected reads. That control is not evidence of unmodified SDK refresh compatibility or ChatGPT/Gemini product acceptance.
+
 Path and registration rules follow RFC 8414 §3, RFC 9728 §3, RFC 7591 §2/§3.2, and RFC 8252 §7/§8.4. Temporary-file and HTTP fixture checks do not establish live connector OAuth compatibility.
 
 ### `internal/media/downloader`
