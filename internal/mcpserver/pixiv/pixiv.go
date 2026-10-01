@@ -1,6 +1,6 @@
 // Package pixiv 聚合 Pixiv MCP tool 注册。它只负责把 tool packages 注册到
 // server；具体 input/output/schema/adapter 与业务逻辑归各 tool package，共享
-// runtime/records/filters/outputs 在 internal 子包，stdio runtime 由父包提供。
+// runtime/records/filters/outputs 在 internal 子包，HTTP transport 与服务生命周期由父包提供。
 package pixiv
 
 import (

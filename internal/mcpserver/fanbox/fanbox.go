@@ -1,6 +1,6 @@
 // Package fanbox 聚合 FANBOX MCP tool 注册。它只负责把 tool packages 注册到
-// server；具体 input/output/schema/adapter 与业务逻辑归各 tool package，stdio
-// runtime 由父包提供。
+// server；具体 input/output/schema/adapter 与业务逻辑归各 tool package；HTTP transport
+// 与服务生命周期由父包提供。
 package fanbox
 
 import (
