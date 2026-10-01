@@ -90,16 +90,17 @@ User-Agents omit those Chromium hints. `[reverse_search.flaresolverr].proxy_url`
 is only the browser upstream proxy sent in `sessions.create`; solver control
 traffic does not inherit either native route.
 
-The source may be any readable regular local file or HTTP(S) URL. Under the
-intentional trusted-local-client model, private, loopback, and link-local URL
-targets are allowed, and the server may read private files. The server fetches
-or opens the source once into a private snapshot, uploads it to the selected
-third-party provider(s), and never returns the original source, temporary path,
-request headers, cookies, API key, CSRF value, redirect `Location`, or upstream
-response body. Run `pixiv mcp` only for MCP clients that are trusted to request
-these local resources. SauceNAO/ascii2d processing and retention follow their
-own policies; URL queries may be cached. ascii2d accepts JPEG, PNG, and WEBP
-and applies its provider-specific 10 MB limit.
+The source may be any readable regular file on the MCP server or an HTTP(S) URL
+fetched through the server network, not the connector device. Private, loopback,
+and link-local URL targets are allowed, and the server may read private files.
+A single-owner OAuth grant permits the connector to request these server-side
+resources; authorize only connectors you trust. The server fetches or opens the
+source once into a private snapshot, uploads it to the selected third-party
+provider(s), and never returns the original source, temporary path, request
+headers, cookies, API key, CSRF value, redirect `Location`, or upstream response
+body. SauceNAO/ascii2d processing and retention follow their own policies; URL
+queries may be cached. ascii2d accepts JPEG, PNG, and WEBP and applies its
+provider-specific 10 MB limit.
 
 The structured output is always the closed envelope
 `{input, providers, results, records, provider_errors, partial}`. `input`

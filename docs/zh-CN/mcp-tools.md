@@ -72,11 +72,12 @@ ascii2d。Chromium User-Agent 会得到匹配的 `Sec-CH-UA`、`Sec-CH-UA-Mobile
 Chromium User-Agent 则省略这些 Chromium hint。`[reverse_search.flaresolverr].proxy_url` 只作为
 `sessions.create` 中发送的 browser upstream proxy；solver control traffic 不继承任一 native route。
 
-source 可以是任意可读常规本地文件或 HTTP(S) URL。按明确的可信本机 client 信任模型，允许私网、loopback、
-link-local URL 目标，server 也可以读取私有文件。server 只抓取或打开一次私有快照，再上传给所选第三方
-provider；不会返回原始 source、临时路径、请求头、cookie、API key、CSRF 值、redirect `Location` 或上游
-response body。只有在信任 MCP client 会请求这些本地资源时才运行 `pixiv mcp`。SauceNAO/ascii2d 的处理与
-保存遵循各自政策，URL 查询也可能被缓存；ascii2d 接受 JPEG、PNG、WEBP，并执行 provider 自身的 10 MB 限制。
+source 可以是 MCP server 上任意可读常规文件，或通过 server 网络抓取的 HTTP(S) URL，而非 connector
+所在设备的文件或网络。允许私网、loopback、link-local URL 目标，server 也可以读取私有文件。单 owner OAuth
+grant 允许 connector 请求这些 server 侧资源，因此只应授权可信 connector。server 只抓取或打开一次私有
+快照，再上传给所选第三方 provider；不会返回原始 source、临时路径、请求头、cookie、API key、CSRF 值、
+redirect `Location` 或上游 response body。SauceNAO/ascii2d 的处理与保存遵循各自政策，URL 查询也可能被缓存；
+ascii2d 接受 JPEG、PNG、WEBP，并执行 provider 自身的 10 MB 限制。
 
 structured output 始终是封闭 envelope：`{input, providers, results, records, provider_errors, partial}`。
 `input` 只包含 `kind` 和 `sha256`；`providers` 是固定 provider 状态列表；`results` 保留 provider evidence
