@@ -395,7 +395,7 @@ func (a app) newPixivAccountServices() (authcommands.AccountService, pixivaccoun
 	if err != nil {
 		return authcommands.AccountService{}, pixivaccount.LoginService{}, err
 	}
-	service := pixivaccount.NewService(db, configDefaultStore{store: configapp.DefaultStore()})
+	service := pixivaccount.NewService(db, configapp.DefaultStore())
 	if service == nil {
 		return authcommands.AccountService{}, pixivaccount.LoginService{}, errors.New("pixiv account service is not configured")
 	}
@@ -407,7 +407,7 @@ func (a app) newPixivSDKPorts() (pixivSDKPorts, error) {
 	if err != nil {
 		return pixivSDKPorts{}, err
 	}
-	service := pixivaccount.NewService(db, configDefaultStore{store: configapp.DefaultStore()})
+	service := pixivaccount.NewService(db, configapp.DefaultStore())
 	if service == nil {
 		return pixivSDKPorts{}, errors.New("pixiv account service is not configured")
 	}
@@ -482,7 +482,7 @@ func (a app) newFanboxAccountService() (*fanboxaccount.Service, error) {
 	if err != nil {
 		return nil, err
 	}
-	service := fanboxaccount.NewService(db, configDefaultStore{store: configapp.DefaultStore()})
+	service := fanboxaccount.NewService(db, configapp.DefaultStore())
 	service.LoadOptionsFunc = func() (fanboxsdkOptions, error) {
 		return fanboxOptionsFromRuntime(a.runtimeConfig)
 	}
@@ -1247,34 +1247,6 @@ func openCLIAuthDatabase() (*database.DB, error) {
 		return nil, err
 	}
 	return db, nil
-}
-
-// configDefaultStore adapts the concrete CLI config store to the narrow
-// account-domain default selection ports.
-type configDefaultStore struct{ store configapp.Store }
-
-func (s configDefaultStore) ReadPixivDefaultUserID() (int64, bool, error) {
-	return s.store.ReadPixivDefaultUserID()
-}
-
-func (s configDefaultStore) SetPixivDefaultUserID(userID int64) error {
-	return s.store.SetPixivDefaultUserID(userID)
-}
-
-func (s configDefaultStore) ClearPixivDefaultUserID() error {
-	return s.store.ClearPixivDefaultUserID()
-}
-
-func (s configDefaultStore) ReadFanboxDefaultUserID() (int64, bool, error) {
-	return s.store.ReadFanboxDefaultUserID()
-}
-
-func (s configDefaultStore) SetFanboxDefaultUserID(userID int64) error {
-	return s.store.SetFanboxDefaultUserID(userID)
-}
-
-func (s configDefaultStore) ClearFanboxDefaultUserID() error {
-	return s.store.ClearFanboxDefaultUserID()
 }
 
 func pixivOptionsFromRequest(request pixivdeps.Request, loadRuntime func() (configapp.RuntimeConfig, error)) (pixiv.Options, error) {
