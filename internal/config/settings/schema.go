@@ -1,8 +1,11 @@
 package settings
 
 import (
+	"errors"
 	"fmt"
+	"os"
 	"reflect"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -289,4 +292,94 @@ func parseDefaultForField(field reflect.StructField, kind settingKind, raw strin
 	default:
 		return nil, fmt.Errorf("unsupported setting kind %q", kind)
 	}
+}
+
+// SettingSpecByAlias 返回 alias 对应的 spec。已移除键仍可被查询，以便 config unset
+// 执行清理、config get/set 返回 removed_setting。元数据完全来自字段标签声明。
+func SettingSpecByAlias(alias string) (SettingSpec, bool) {
+	for _, entry := range mustSettingSpecs() {
+		if entry.spec.Alias == alias {
+			return entry.spec, true
+		}
+	}
+	return SettingSpec{}, false
+}
+
+// mustSettingSpecs 返回派生 schema；声明错误在此以 panic 暴露，因为它是编程错误，
+// 只能在首次使用时才能通过 public API 观察到。
+func mustSettingSpecs() []settingSpecFromTags {
+	derived, err := settingSpecsFromTags()
+	if err != nil {
+		panic(fmt.Sprintf("invalid configuration schema: %v", err))
+	}
+	return derived
+}
+
+// ErrRemovedSetting 表示该配置键已随版本删除。旧配置仍显式包含它时返回；用户
+// 通过 `pixiv config unset` 清理后不再出现。
+var ErrRemovedSetting = errors.New("removed_setting")
+
+// RemovedSettingError 构造一个同时能被 errors.Is 匹配 ErrRemovedSetting 的错误，
+// 明确指导用户如何清理旧配置。已移除键在显式写入配置时对 runtime 生效，不设置
+// 默认值，也不进入可写别名集合。
+func RemovedSettingError(alias string) error {
+	return fmt.Errorf("%w: config key %q was removed; clear it with `pixiv config unset %s`", ErrRemovedSetting, alias, alias)
+}
+
+// IsSensitiveSetting 标记禁止通过公开配置查询回显的凭据型值。
+func IsSensitiveSetting(alias string) bool {
+	spec, ok := SettingSpecByAlias(alias)
+	return ok && spec.Sensitive
+}
+
+// PublicSettingText 返回可安全进入 CLI、SDK JSON 与日志边界的配置值。
+func PublicSettingText(alias, text string) string {
+	if IsSensitiveSetting(alias) && text != "" {
+		return "<redacted>"
+	}
+	return text
+}
+
+func ValidSettingAliases() []string {
+	derived := mustSettingSpecs()
+	keys := make([]string, 0, len(derived))
+	for _, entry := range derived {
+		if entry.spec.Removed {
+			continue
+		}
+		keys = append(keys, entry.spec.Alias)
+	}
+	slices.Sort(keys)
+	return keys
+}
+
+// CLISettingAliases 返回由 pixiv config 命令管理的非移除配置键。
+func CLISettingAliases() []string {
+	derived := mustSettingSpecs()
+	keys := make([]string, 0, len(derived))
+	for _, entry := range derived {
+		if entry.spec.Removed || !entry.spec.CLIManaged {
+			continue
+		}
+		keys = append(keys, entry.spec.Alias)
+	}
+	slices.Sort(keys)
+	return keys
+}
+
+// EnvValue 返回 spec 对应别名按 env 标签声明顺序解析到的环境变量值。
+//
+// 契约：
+//   - 顺序即优先级，返回第一个**存在**的变量；某个变量存在但为空也算命中，
+//     绝不继续回退到后续变量（这是服务级代理"显式直连"语义依赖的行为）。
+//   - 未声明 env 标签的别名返回 ("", false)。
+//
+// 来源完全来自字段标签，不再维护独立的 alias switch。
+func EnvValue(spec SettingSpec) (string, bool) {
+	for _, name := range envNamesFor(spec.Alias) {
+		if value, present := os.LookupEnv(name); present {
+			return value, true
+		}
+	}
+	return "", false
 }
