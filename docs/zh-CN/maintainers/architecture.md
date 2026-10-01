@@ -65,7 +65,9 @@ flowchart LR
 - root `--version` 与 `pixiv update` 的输入/输出适配；已删除的 `version` 子命令在 Cobra 解析阶段返回 unknown-command。
 - 普通 CLI 成功命令后的只读自动更新提示；提示和失败 warning 仅写 stderr。
 
-当前 `internal/cli/root.go` 负责命令树、全局 flag、退出码与生产组装；一次执行的 close resource list 由其中的私有 `closeState` 持有。
+`internal/cli` 是 CLI 组合根，按职责拆为同包三个文件（不新增目录层级）：`root.go` 持有命令树、全局 flag 与命令 owner 共享的接线；
+`execution.go` 负责执行入口、退出码、资源关闭（一次执行的 close resource list 由其中的私有 `closeState` 持有，按登记逆序幂等关闭）与启动/结束处理；
+`composition.go` 负责 Pixiv/FANBOX/MCP 的生产依赖装配。
 `internal/cli/invocation` 只负责 `Streams`。命令 owner 通过显式 factory 与窄端口构造
 config snapshot、DB、业务 Facade、lifecycle、media/download 与 update 依赖，并按逆序关闭资源。
 CLI 不导出跨命令 locator，也没有独立 bootstrap constructor 或 `internal/cli/runtime`。
@@ -167,9 +169,38 @@ key ID 与 public key 常量位于 `internal/update/installer/release_installer.
 配置拆分如下：
 
 - `pixiv-cli.db`：保存账号 identity 与 credential（`pixiv_account`/`fanbox_account`），DB 文件权限为 `0600`；旧 `auth.json` 不自动读取。
-- `config.toml`：保存全局配置键，包括 `[pixiv.auth].default_user_id` 与 `[fanbox.auth].default_user_id`；Unix-like 文件权限为 `0600`。首次生成的精简基线由 `SettingSpec` 元数据生成，只包含标记为 `DefaultInFile` 的项；高级配置在显式写入前继续省略。未设置默认账号时按 `sort_order` 选首个账号。
+- `config.toml`：保存全局配置键，包括 `[pixiv.auth].default_user_id` 与 `[fanbox.auth].default_user_id`；Unix-like 文件权限为 `0600`。首次生成的精简基线由**字段标签**驱动的元数据生成，只写入标记 `example:"true"` 的项；带默认值但未开 `example` 的键与高级配置在显式写入前继续省略。未设置默认账号时按 `sort_order` 选首个账号。
 
 运行时设置使用 `koanf` 合并 `config.toml` 与公开环境变量；`config set/unset` 使用 `tomledit` 写回，尽量保留注释、顺序和布局。
+
+#### 配置声明：结构体字段标签是唯一事实来源
+
+`RuntimeConfig`（及嵌套的 `AccountPoolConfig`）的公开字段用标签声明全部静态事实，运行时绑定、CLI 元数据与初始配置生成都复用同一份声明：
+
+| 标签 | 含义 |
+|---|---|
+| `config` | TOML 路径；`"-"` 表示不参与扁平绑定（配置组由 `snapshot.go` 的领域规则处理） |
+| `alias` | `config get/set/unset` 使用的别名 |
+| `env` | 允许读取的环境变量，按声明顺序决定优先级（存在即命中，空值不回退） |
+| `default` | 缺失时使用的默认值，按字段类型解释（用标签**是否存在**区分，而非字符串是否为空） |
+| `example` | 是否进入首次生成的精简配置；仅 `"true"` 进入，且必须以 `default` 为前提 |
+| `cli` | 是否由 `config get/set/unset` 管理 |
+| `secret` | 是否必须在公开输出中隐藏且禁止进入初始示例（与 `example:"true"` 冲突时 schema 报错） |
+
+因此**新增一项普通配置只需**：加字段与标签、补行为测试、更新对应文档。不再需要同时维护注册表、环境变量 `switch`、逐字段运行时赋值、初始文件清单或 CLI 别名清单。
+`SettingSpec` 保留为这份声明的**公开派生视图**（CLI 仍消费它），不再是手写事实表。
+
+`internal/config/settings` 的文件职责：
+
+- `config.go`：类型、字段标签与字段契约。
+- `schema.go`：标签派生元数据、声明校验、查找、退役墓碑与公开 `SettingSpec` 视图。
+- `snapshot.go`：文件与环境快照、来源选择与运行时绑定（含服务级网络、FlareSolverr、账号池的领域规则）。
+- `values.go`：类型解析、规范化与领域校验。
+- `document.go`：TOML 定位与稀疏修改。
+- `defaults.go`：初始配置文档生成。
+- `store.go`：`Store` 操作入口（路径、读取、稀疏写回）。
+- `auth.go`：默认账号选择的读取与修改（**不并入**普通 runtime 绑定）。
+- `paths.go`：`FileStore` port 与默认文件 adapter。
 
 `internal/config/settings` 定义 `FileStore` port，由 CLI private composition graph 注入 `internal/storage/file/{atomic,lock,replace,secret}` 的协议无关文件机制：于目标同目录使用不含
 凭据内容的随机文件名创建临时文件，完成全部写入并执行 file `Sync`，关闭文件后才替换目标。Unix-like 平台

@@ -65,7 +65,9 @@ Owns command dispatch and output for the CLI user mode:
 - Input/output adaptation for root `--version` and `pixiv update`; the removed `version` subcommand returns unknown-command during Cobra parsing.
 - Read-only automatic update notice after a successful normal CLI command; the notice and failure warnings are written only to stderr.
 
-Currently `internal/cli/root.go` owns the command tree, global flags, exit codes, and production assembly; the close-resource list for a single execution is held by a private `closeState` there.
+`internal/cli` is the CLI composition root, split by responsibility into three same-package files (no new directory levels): `root.go` holds the command tree, global flags, and wiring shared by command owners;
+`execution.go` owns the execution entry points, exit codes, resource closing (the close-resource list for a single execution is held by a private `closeState` there, closed idempotently in reverse registration order), and startup/finish handling;
+`composition.go` owns production dependency assembly for Pixiv/FANBOX/MCP.
 `internal/cli/invocation` only owns `Streams`. Command owners construct
 config snapshot, DB, business Facade, lifecycle, media/download, and update dependencies through explicit factories and narrow ports, and close resources in reverse order.
 CLI does not export a cross-command locator, nor does it have an independent bootstrap constructor or `internal/cli/runtime`.
@@ -167,9 +169,38 @@ Owns `config.toml` and runtime configuration:
 The configuration is split as follows:
 
 - `pixiv-cli.db`: stores account identity and credentials (`pixiv_account`/`fanbox_account`), DB file permission `0600`; the legacy `auth.json` is not read automatically.
-- `config.toml`: stores global configuration keys, including `[pixiv.auth].default_user_id` and `[fanbox.auth].default_user_id`; Unix-like file permission `0600`. The first-run compact baseline is generated from `SettingSpec` metadata and includes only entries marked `DefaultInFile`; advanced settings remain omitted until explicitly written. When no default account is set, the first account is selected by `sort_order`.
+- `config.toml`: stores global configuration keys, including `[pixiv.auth].default_user_id` and `[fanbox.auth].default_user_id`; Unix-like file permission `0600`. The first-run compact baseline is generated from **struct field tag** metadata and writes only entries marked `example:"true"`; keys that have a default but no `example`, plus advanced settings, remain omitted until explicitly written. When no default account is set, the first account is selected by `sort_order`.
 
 Runtime settings use `koanf` to merge `config.toml` with public environment variables; `config set/unset` uses `tomledit` for write-back, preserving comments, order, and layout as much as possible.
+
+#### Configuration declaration: struct field tags are the single source of truth
+
+The exported fields of `RuntimeConfig` (and the nested `AccountPoolConfig`) declare all static facts via tags; runtime binding, CLI metadata, and baseline generation all reuse that one declaration:
+
+| Tag | Meaning |
+|---|---|
+| `config` | TOML path; `"-"` means it does not participate in flat binding (config groups are handled by domain rules in `snapshot.go`) |
+| `alias` | The alias used by `config get/set/unset` |
+| `env` | Environment variables that may be read, in declaration order (that order is the precedence; presence counts as a hit and an empty value does not fall through) |
+| `default` | Value used when absent, interpreted by field type (distinguished by tag **presence**, not by whether the string is empty) |
+| `example` | Whether the entry enters the first-run compact config; only `"true"` does, and it requires a `default` |
+| `cli` | Whether `config get/set/unset` manages it |
+| `secret` | Whether it must be hidden from public output and kept out of the example config (a `secret:"true"` + `example:"true"` pair is a schema error) |
+
+Adding one ordinary setting therefore requires only: a field plus tags, a behavioural test, and the matching documentation. There is no longer a registry, environment `switch`, per-field runtime assignment, baseline list, or CLI alias list to keep in sync.
+`SettingSpec` remains the **public derived view** of that declaration (the CLI still consumes it); it is no longer a hand-written fact table.
+
+File responsibilities inside `internal/config/settings`:
+
+- `config.go`: types, field tags, and field contracts.
+- `schema.go`: tag-derived metadata, declaration validation, lookup, retirement tombstones, and the public `SettingSpec` view.
+- `snapshot.go`: file and environment snapshot, source selection, and runtime binding (including the domain rules for service networks, FlareSolverr, and the account pool).
+- `values.go`: type parsing, normalization, and domain validation.
+- `document.go`: TOML targeting and sparse mutation.
+- `defaults.go`: baseline config document generation.
+- `store.go`: `Store` operations (path, read, sparse write-back).
+- `auth.go`: default account selection read/write (deliberately **not** part of ordinary runtime binding).
+- `paths.go`: the `FileStore` port and the default file adapter.
 
 `internal/config/settings` defines the `FileStore` port, injected by the CLI private composition graph from the protocol-agnostic file mechanisms in `internal/storage/file/{atomic,lock,replace,secret}`: a temporary file with a random name (containing no credentials) is created in the same directory as the target, the full content is written, file `Sync` is performed, the file is closed, and only then is the target replaced. On Unix-like platforms the parent directory and file are proactively tightened to `0700` and `0600` respectively, and after atomic replacement the target directory is synced again;
 if this call created one or more directory levels, then after the replacement is committed the target directory and each new directory's outer parent are synced in leaf→root order, so that both the file entry and the new directory entries fall within the durability boundary; existing directories still only sync the target directory.
