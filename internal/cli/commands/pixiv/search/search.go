@@ -12,6 +12,7 @@ import (
 	"time"
 
 	requirements "github.com/FlanChanXwO/pixiv-cli/internal/cli/commands"
+	"github.com/FlanChanXwO/pixiv-cli/internal/cli/commands/pixiv"
 	"github.com/FlanChanXwO/pixiv-cli/internal/cli/commands/pixiv/internal/listing"
 	"github.com/FlanChanXwO/pixiv-cli/internal/cli/commands/pixiv/user"
 	"github.com/FlanChanXwO/pixiv-cli/internal/cli/pipeline"
@@ -76,7 +77,7 @@ type Dependencies struct {
 	ErrorOutput   io.Writer
 	UsageError    func(error) error
 	JSONOut       func(*bool) (bool, error)
-	Pooled        func(context.Context, Request, func(context.Context, *pixiv.Client) (bool, error)) error
+	Pooled        deps.Pooled[Request]
 	ReverseSearch ReverseSearchFunc
 }
 
@@ -175,23 +176,6 @@ func (d Dependencies) writeJSON(value any) error {
 	}
 	_, err = io.WriteString(d.Output, out.String()+"\n")
 	return err
-}
-
-func read[T any](d Dependencies, ctx context.Context, request Request, invoke func(context.Context, *pixiv.Client) (T, error)) (T, error) {
-	var zero T
-	if d.Pooled == nil {
-		return zero, errors.New("pixiv pooled operation is not configured")
-	}
-	var result T
-	err := d.Pooled(ctx, request, func(ctx context.Context, client *pixiv.Client) (bool, error) {
-		var err error
-		result, err = invoke(ctx, client)
-		return false, err
-	})
-	if err != nil {
-		return zero, err
-	}
-	return result, nil
 }
 
 // New builds the actual root `pixiv search` command.
@@ -474,7 +458,7 @@ func (a command) runTrendingTags(cmd *cobra.Command, options CommandOptions) err
 	if err != nil {
 		return err
 	}
-	tags, err := read(a.data, cmd.Context(), request, func(ctx context.Context, client *pixiv.Client) ([]pixiv.TrendingTag, error) {
+	tags, err := a.data.Pooled.Read(cmd.Context(), request, func(ctx context.Context, client *pixiv.Client) ([]pixiv.TrendingTag, error) {
 		return client.TrendingArtworkTags(ctx, pixiv.TrendingArtworkTagsRequest{})
 	})
 	if err != nil {
