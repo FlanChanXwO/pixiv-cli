@@ -822,6 +822,8 @@ The endpoint is the base URL plus `/mcp` and is printed to stderr with the owner
 
 Local HTTP is supported. For cloud connectors, configure the public HTTPS base and terminate TLS in an existing reverse proxy; pixiv-cli does not provision certificates. Preserve the public Host header and original escaped paths. Incoming Host and any Origin must match the canonical deployment origin (host case and default-port equivalents are accepted); forwarding headers cannot establish trust. For base `https://mcp.example.com/pixiv`, forward `/pixiv/mcp`, `/pixiv/oauth/authorize`, `/pixiv/oauth/register`, `/pixiv/oauth/token`, `/.well-known/oauth-protected-resource`, `/.well-known/oauth-protected-resource/pixiv/mcp` and `/.well-known/oauth-authorization-server/pixiv`. Do not strip the prefix or normalize encoded/double-slash paths. See [MCP HTTP authorization](mcp-tools.md#http-authorization); local fixture checks do not establish cloud-host interoperability.
 
+On Unix, `SIGINT` (Ctrl+C) and `SIGTERM` cancel the server and wait for in-flight HTTP handlers to finish cleanup. Cancellation is reported on stderr with exit code `1`; there is no fixed cleanup timeout.
+
 ## MCP owner initialization
 
 `pixiv mcp auth init` is local administration, not an MCP tool or a server launch. It writes `<app-data>/mcp-state.json` using a private sidecar lock and atomic replacement. On Unix the directory is `0700` and state/lock files are `0600`. It changes no Pixiv/FANBOX credentials, CLI default, database schema or configuration, and does not run updates or desktop-helper setup.

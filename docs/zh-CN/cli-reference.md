@@ -677,6 +677,8 @@ endpoint 为 base URL 加 `/mcp`，与 owner 已初始化状态一起写 stderr�
 
 本地支持 HTTP；云端 connector 使用公网 HTTPS base，由既有反向代理终止 TLS，pixiv-cli 不申请证书。代理须保留公网 Host 和原始转义路径。入站 Host 及存在的 Origin 必须匹配 canonical 部署 origin（接受 host 大小写、默认端口的等价表示），转发头不能建立信任。base 为 `https://mcp.example.com/pixiv` 时，转发 `/pixiv/mcp`、`/pixiv/oauth/authorize`、`/pixiv/oauth/register`、`/pixiv/oauth/token`、`/.well-known/oauth-protected-resource`、`/.well-known/oauth-protected-resource/pixiv/mcp` 和 `/.well-known/oauth-authorization-server/pixiv`；不要去掉 prefix 或归一化转义/双斜线路径。详见 [MCP HTTP 授权](mcp-tools.md#http-授权)；本地 fixture 不代表云端 host 互操作验收。
 
+Unix 下，`SIGINT`（Ctrl+C）与 `SIGTERM` 会取消服务并等待在途 HTTP handler 完成清理。取消信息写入 stderr，退出码为 `1`；不设置固定清理超时。
+
 ## MCP owner 初始化
 
 `pixiv mcp auth init` 是本地管理命令，不是 MCP tool，也不启动 server。状态保存在 `<app-data>/mcp-state.json`，复用私有侧车锁与原子替换。Unix 目录权限为 `0700`，state/lock 文件为 `0600`。不修改 Pixiv/FANBOX 凭据、CLI default、数据库 schema 或配置，不执行自动更新或桌面 helper 初始化。
