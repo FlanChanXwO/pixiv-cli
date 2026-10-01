@@ -163,6 +163,27 @@ func TestBaselineSectionsAreDeterministicAndGrouped(t *testing.T) {
 	}
 }
 
+// TestBaselineSectionOrderIsStableAndMatchesTheLegacyLayout 断言生成的精简文件
+// 的 section **呈现顺序**被固定下来。
+//
+// 为什么需要单独断言顺序：元数据顺序来自 RuntimeConfig 的字段声明顺序（绑定的
+// 自然顺序），而文件布局是独立的产品决定。t22 审查发现标签化之后声明顺序改变了
+// section 顺序——成员/分组/确定性都有测试，顺序却没有，于是一个用户可见的布局
+// 变化可以悄悄通过。这里把它钉死。
+func TestBaselineSectionOrderIsStableAndMatchesTheLegacyLayout(t *testing.T) {
+	files := &injectedFileStore{path: "injected/config.toml", files: make(map[string][]byte)}
+	require.NoError(t, (config.Store{Files: files}).EnsureDefaultConfigFile())
+
+	var order []string
+	for _, line := range strings.Split(string(files.files["injected/config.toml"]), "\n") {
+		if strings.HasPrefix(line, "[") {
+			order = append(order, strings.Trim(line, "[]"))
+		}
+	}
+	want := []string{"download", "output", "login", "update", "logging", "reverse_search"}
+	assert.Equal(t, want, order, "baseline section order is user-visible; keep it stable")
+}
+
 // TestEnsureDefaultConfigFileNeverOverwritesAndUsesPrivateSemantics 断言
 // "已存在不覆盖"与私密文件写入语义在标签驱动之后仍成立。
 func TestEnsureDefaultConfigFileNeverOverwritesAndUsesPrivateSemantics(t *testing.T) {

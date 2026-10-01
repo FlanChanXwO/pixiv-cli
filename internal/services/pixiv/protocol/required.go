@@ -12,11 +12,22 @@ import (
 // "应当拒绝"。收口前每个 endpoint 各自复制了一份完全相同的实现，因此这里提供
 // 两个共享类型，由各 endpoint 继续保留自己的完整性判断与上下文错误。
 //
-// 语义（与收口前的局部实现逐字一致）：
+// 语义：
 //   - Present 表达"字段出现在 JSON 中"，在 UnmarshalJSON 被调用时即为 true；
 //   - Valid 表达"字段存在且成功解码为 T"；
 //   - null 属"存在但无效"（Present=true, Valid=false），不是缺失；
 //   - UnmarshalJSON 整体重置状态，因此对同一个值重新解码不会残留旧结果。
+//
+// 关于两个类型的收口来源（精确说明，勿简化为"全部逐字相同"）：
+//   - RequiredList 来自 26 处**逐字相同**的局部实现。
+//   - RequiredObject 来自 3 处，其中 2 处（artwork/detail、artwork/trending）多一个
+//     分支：当载荷不是以 '{' 开头时直接 json.Unmarshal 到 Value 且**不设置 Valid**。
+//     该分支对结构体 T 与另一处实现完全等价（已用差分测试覆盖 absent/null/合法对象/
+//     类型错误/数组/字符串/布尔等场景，零差异），而 RequiredObject 的全部生产实例
+//     都是结构体（ugoiraMetadataDTO、ugoiraZipURLsDTO、illustDTO、userDTO、
+//     profileDTO、profilePublicityDTO、workspaceDTO）。因此收口后统一采用不带该分支
+//     的实现；保留此说明是为了让"结构体假设"显式可查，而不是隐式依赖。
+//     若未来用非结构体 T 实例化 RequiredObject，须先评估该差异。
 
 // RequiredList 解码一个必需数组字段，并保留其存在性与有效性。
 type RequiredList[T any] struct {
