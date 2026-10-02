@@ -23,7 +23,7 @@ body{margin:0;padding:16px}h1{font-size:20px;margin:0 0 8px}p{overflow-wrap:anyw
   const pending = new Map();
   const urls = new Set();
   let serial = 0, view = 0, ready = false, disposed = false;
-  let hostContext = {};
+  let hostContext = {}, discovery;
   let hostOrigin = "*", serverTools = false, downloadFiles = false, observer, resize;
   const send = message => window.parent.postMessage({jsonrpc: "2.0", ...message}, hostOrigin);
   function request(method, params, epoch) {
@@ -267,6 +267,49 @@ body{margin:0;padding:16px}h1{font-size:20px;margin:0 0 8px}p{overflow-wrap:anyw
     buttons.push(action("Bookmark public", section, () => mutate("public")), action("Bookmark private", section, () => mutate("private")), action("Remove bookmark", section, () => mutate("")));
     enable(); query();
   }
+  function continuationControls(result, epoch) {
+    const pagination = result.structuredContent?.pagination;
+    if (!pagination || !discovery) return;
+    const {name, arguments: original} = discovery;
+    const mixed = name === "pixiv_recommended";
+    if (!mixed && !["pixiv_search_illust", "pixiv_illust_related", "pixiv_illust_ranking", "pixiv_illust_recommended"].includes(name)) return;
+    const streams = mixed ? ["illust", "manga", "novel", "user"] : [""];
+    let busy = false;
+    for (const kind of streams) {
+      // Mixed artwork filters are applied after the shared upstream window;
+      // has_more can be true even for a kind excluded by the original filter.
+      if (["illust", "manga"].includes(kind) && original.illust_filter?.type && original.illust_filter.type !== kind) continue;
+      const page = mixed ? pagination[kind] : pagination;
+      if (!page?.has_more) continue;
+      if (!Number.isSafeInteger(page.page) || !Number.isSafeInteger(page.next_page) || page.next_page <= page.page || !Number.isSafeInteger(page.limit) || page.limit <= 0) {
+        text("p", "More " + kind + " results exist, but this response has no usable continuation. Discovery continuation is not complete.", cards);
+        continue;
+      }
+      const message = text("p", "", cards);
+      const next = action(kind ? "Load next " + kind + " page" : "Load next page", cards, async () => {
+        if (busy || epoch !== view || !serverTools) return;
+        busy = true; next.disabled = true; message.textContent = "Loading next page…";
+        const args = {...original, page: page.next_page, limit: page.limit};
+        if (mixed) {
+          args.kind = kind;
+          // Each kind rejects filters belonging to another stream.
+          if (kind !== "illust" && kind !== "manga") delete args.illust_filter;
+          if (kind !== "novel") delete args.novel_filter;
+          if (kind !== "user") delete args.user_filter;
+        }
+        try {
+          const response = await request("tools/call", {name, arguments: args}, epoch);
+          if (epoch !== view || disposed) return;
+          const output = response.structuredContent;
+          const nextPage = mixed ? output?.pagination?.[kind] : output?.pagination;
+          if (response.isError || !Array.isArray(output?.records) || nextPage?.page !== page.next_page || nextPage.limit !== page.limit) throw new Error("Invalid continuation");
+          render({...response, structuredContent: {...output, records: [...result.structuredContent.records, ...output.records], pagination: mixed ? {...pagination, [kind]: nextPage} : nextPage}});
+        } catch (_) { if (epoch === view) message.textContent = "Continuation failed; loaded records are retained. Retry explicitly."; }
+        finally { busy = false; next.disabled = !serverTools; }
+      });
+      next.disabled = !serverTools;
+    }
+  }
   function render(result) {
     clearView();
     const epoch = view;
@@ -316,6 +359,7 @@ body{margin:0;padding:16px}h1{font-size:20px;margin:0 0 8px}p{overflow-wrap:anyw
       if (observer) observer.observe(card);
       else message.textContent = "Load preview when needed.";
     }
+    continuationControls(result, epoch);
   }
   function dispose() {
     if (disposed) return;
@@ -342,7 +386,9 @@ body{margin:0;padding:16px}h1{font-size:20px;margin:0 0 8px}p{overflow-wrap:anyw
     if (!ready) return;
     switch (message.method) {
       case "ui/notifications/host-context-changed": applyContext(message.params); break;
-      case "ui/notifications/tool-input": clearView(); status.textContent = "Loading results…"; break;
+      case "ui/notifications/tool-input":
+        discovery = message.params?.arguments && hostContext.toolInfo?.tool?.name ? {name: hostContext.toolInfo.tool.name, arguments: message.params.arguments} : undefined;
+        clearView(); status.textContent = "Loading results…"; break;
       case "ui/notifications/tool-result": render(message.params ?? {}); break;
       case "ui/notifications/tool-cancelled": clearView(); status.textContent = "Tool execution cancelled."; break;
       case "ui/resource-teardown": dispose(); send({id: message.id, result: {}}); break;

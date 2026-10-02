@@ -204,6 +204,53 @@ const apngRetry = latest('tools/call');
 receive({id:apngRetry.id,result:{content:[{type:'resource',resource:{uri:'urn:sha256:apng-fixture',mimeType:'image/apng',blob:data}},{type:'image',mimeType:'image/png',data}],structuredContent:{complete:true,pages:[{page:1,content_index:0,preview_content_index:1,filename:'42.apng',mime_type:'image/apng',size:bytes.length}]}}});
 await flush();
 assert.ok(button('Download 42.apng'));
+
+// Continue the host-provided logical page without guessing a cursor or dropping records.
+receive({method:'ui/notifications/host-context-changed',params:{toolInfo:{tool:{name:'pixiv_search_illust'}}}});
+receive({method:'ui/notifications/tool-input',params:{arguments:{word:'cat',limit:2,sort:'date_desc'}}});
+const pageMeta = (page, more) => ({page,limit:2,returned:2,has_more:more,next_page:more?page+1:null});
+receive({method:'ui/notifications/tool-result',params:{structuredContent:{records:[record,{...record,id:'43'}],pagination:pageMeta(1,true)}}});
+assert.ok(button('Load next page'),'missing discovery continuation');
+button('Load next page').events.click();
+const continuation = latest('tools/call');
+assert.deepEqual(continuation.params,{name:'pixiv_search_illust',arguments:{word:'cat',limit:2,sort:'date_desc',page:2}});
+receive({id:continuation.id,result:{structuredContent:{records:[{...record,id:'44'},{...record,id:'45'}],pagination:pageMeta(2,false)}}});
+await flush();
+assert.equal(cards.children.filter(node=>node.tag==='article').length,4,'continuation must append every record');
+assert.equal(button('Load next page'),undefined);
+
+
+receive({method:'ui/notifications/host-context-changed',params:{toolInfo:{tool:{name:'pixiv_recommended'}}}});
+receive({method:'ui/notifications/tool-input',params:{arguments:{kind:'all',limit:2,illust_filter:{type:'manga'},novel_filter:{min_views:3},user_filter:{id:8}}}});
+receive({method:'ui/notifications/tool-result',params:{structuredContent:{records:[{...record,type:'manga'},{type:'novel',id:'9',title:'Novel'},{type:'user',id:'8'}],pagination:{illust:pageMeta(1,true),manga:pageMeta(1,true),novel:pageMeta(1,true),user:pageMeta(1,false)}}}});
+assert.ok(button('Load next manga page'),'missing mixed stream continuation');
+assert.equal(button('Load next illust page'),undefined,'manga-only filter cannot continue an illust stream');
+button('Load next manga page').events.click();
+const mangaNext = latest('tools/call');
+assert.deepEqual(mangaNext.params.arguments,{kind:'manga',limit:2,page:2,illust_filter:{type:'manga'}});
+receive({id:mangaNext.id,result:{isError:true,structuredContent:{records:[]}}});
+await flush();
+assert.equal(cards.children.filter(node=>node.tag==='article').length,3,'failed page preserves all streams');
+button('Load next manga page').events.click();
+receive({id:latest('tools/call').id,result:{structuredContent:{records:[{...record,id:'46',type:'manga'}],pagination:{manga:pageMeta(2,false)}}}});
+await flush();
+assert.equal(cards.children.filter(node=>node.tag==='article').length,4);
+assert.ok(button('Load next novel page'),'other stream continuation must survive');
+button('Load next novel page').events.click();
+const novelNext = latest('tools/call');
+assert.deepEqual(novelNext.params.arguments,{kind:'novel',limit:2,page:2,novel_filter:{min_views:3}});
+receive({method:'ui/notifications/tool-input',params:{arguments:{kind:'novel',limit:2}}});
+receive({id:novelNext.id,result:{structuredContent:{records:[{type:'novel',id:'late'}],pagination:{novel:pageMeta(2,false)}}}});
+await flush();
+assert.equal(cards.children.length,0,'old continuation cannot replace a new view');
+
+
+receive({method:'ui/notifications/host-context-changed',params:{toolInfo:{tool:{name:'pixiv_search_illust'}}}});
+receive({method:'ui/notifications/tool-input',params:{arguments:{word:'unbounded'}}});
+receive({method:'ui/notifications/tool-result',params:{structuredContent:{records:[record],pagination:{page:1,limit:null,returned:1,has_more:true,next_page:null}}}});
+assert.equal(button('Load next page'),undefined,'must not invent a page size or cursor');
+assert.ok(elements(cards).some(node=>node.textContent.includes('no usable continuation')));
+
 receive({method:'ui/notifications/tool-result',params:{structuredContent:{records:[null, {type:'illust',id:'invalid',title:'bad-id'}]}}});
 assert.equal(cards.children.length, 2, 'malformed records remain explicit, not silently dropped');
 receive({method:'ui/resource-teardown',id:99,params:{}});
