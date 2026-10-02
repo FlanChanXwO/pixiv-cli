@@ -172,22 +172,30 @@ application outcome 的 `filter` 会报告 `min`、`max`、`membership`、`strat
 
 ## 作品媒体
 
-`pixiv_artwork_media` 通过选中账号的 SDK resource client 交付静态作品 bytes，不是下载到服务器文件系统。搜索、详情和列表仍只返回 metadata，不隐式下载全部图片。
+`pixiv_artwork_media` 通过选中账号的 SDK resource client 交付作品 bytes，不是下载到服务器文件系统。搜索、详情和列表仍只返回 metadata，不隐式下载全部图片。
 
 | 输入 | 合同 |
 | --- | --- |
 | `illust_id` | 必填正整数。 |
 | `pages` | 可选的 1-based 页码数组，省略代表全部页；空数组、非正数和越界页码报错；重复页码按请求顺序去重。 |
-| `quality` | 默认 `regular`；`thumbnail` 使用 SDK thumb 变体；`original` 必须显式请求。不在本地缩放。 |
-| `animation_format` | 用于后续 GIF/APNG 动画交付；静态作品不接受该参数。Ugoira 当前明确返回 `animation_not_supported`，不会把首帧当完整动画成功返回。 |
+| `quality` | 静态图片默认 `regular`；`thumbnail` 使用 SDK thumb 变体；`original` 必须显式请求。不在本地缩放。 |
+| `animation_format` | Ugoira 可选 `gif`（默认）或 `apng`；静态作品不接受该参数。 |
 
-输入为封闭 object；可本地检查的参数在打开账号快照前校验，页码上界在读取作品 metadata 后、任何媒体读取前校验。一个 SDK lease 将详情与所有图片固定在同一账号，保留 Pixiv Referer 和资源 host 校验；成功、失败、取消均关闭 body 和 lease。不创建临时文件、不设隐式页数/字节截断，也不跨账号重放部分交付。
+输入为封闭 object；可本地检查的参数在打开账号快照前校验，页码上界在读取作品 metadata 后、任何媒体读取前校验。一个 SDK lease 将详情与所有图片固定在同一账号，保留 Pixiv Referer 和资源 host 校验；成功、失败、取消均关闭 body 和 lease。静态读取不创建临时文件；不设隐式页数/字节截断，也不跨账号重放部分交付。
 
-structured result 包含 `illust_id`、`title`、`total_pages`、`requested_pages`、`delivered_pages`、`pages`、`failures`、`complete`。每个已交付页记录 1-based `page`、实际 `mime_type`、字节数 `size` 和指向 MCP content 数组的 0-based `content_index`；对应项是携带真实 bytes 的标准 `ImageContent`，不是 URL 或本地路径。MIME 从 bytes 检测，不信任文件名或 header。非预期 HTTP 状态、body 读取/关闭错误或非图片响应不计为已交付。
+structured result 包含 `illust_id`、`title`、`total_pages`、`requested_pages`、`delivered_pages`、`pages`、`failures`、`complete`。每个已交付页记录 1-based `page`、实际 `mime_type`、字节数 `size` 和指向 MCP content 数组的 0-based `content_index`；静态作品对应项是携带真实 bytes 的标准 `ImageContent`，不是 URL 或本地路径。MIME 从 bytes 检测，不信任文件名或 header。非预期 HTTP 状态、body 读取/关闭错误或非图片响应不计为已交付。
 
 部分成功保留按请求顺序排列的成功图片，在 `failures` 记录各失败页的 `error` 类别及可选 `http_status`，并设置 `complete=false`、`isError=true`；可显式指定失败页重试。输入错误包括 `invalid_request`（schema）、`invalid_illust_id`、`invalid_pages`、`invalid_quality`、`invalid_animation_format`、`animation_format_not_applicable`。页 metadata 无效、页资源缺失、SDK 失败、取消或本地读取/清理失败均明确报错，不回显上游 body、URL 或凭据。整次调用错误在顶层 `error`，逐页错误在 `failures`。
 
 `complete=true` 仅描述服务器构造的响应，不证明 host 已接受或展示。host 拒绝整个 payload 时不得声称交付，应改用显式页码调用；不虚构统一 payload 限制。工具注解为 read-only、non-destructive、idempotent、open-world。合成 SDK/MCP 测试不证明 ChatGPT/Gemini 展示能力；真实 host 验收继续后置。
+
+### Ugoira 动画
+
+Ugoira 调用必须省略静态 `pages` 和 `quality` 参数；显式提供任意一个会在读取 archive 前返回 `static_parameters_not_applicable`。`animation_format` 默认 `gif`，可选 `apng`。复用 CLI 既有 archive 选择策略：优先 original，否则使用可用 archive；输出 `archive_quality` 记录实际选择，medium 绝不标成 original。静态 regular 默认值不是动画缩放配置。
+
+动画作为一个逻辑页（`total_pages=1`，成功时请求/交付第1页）。`pages` 项包含 `filename`（`<illust_id>.gif` 或 `.apng`）、实际 MIME 与字节数、`archive_quality`，以及指向完整动画标准 embedded-resource blob 的 `content_index`。另一个 `preview_content_index` 指向从生成动画首帧解码的 PNG `ImageContent`；它仅为预览，不能代替完整动画。没有引入 ffmpeg 或新编码器。
+
+原生 encoder 使用私有临时工作目录；SDK archive 保存、编码、预览解码与清理均在同一账号 lease 内完成，成功响应前移除目录。失败/取消不公开本地路径，也不把仅有预览的结果标成完成。host 的播放/下载支持仍需后置真实验收；本地 GIF/APNG 解码与清理测试不替代该验收。
 
 ## Tool annotations 与下载
 

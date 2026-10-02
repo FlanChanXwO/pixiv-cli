@@ -19,19 +19,20 @@ import (
 type input struct {
 	IllustID        int64  `json:"illust_id" jsonschema:"Positive artwork ID"`
 	Pages           []int  `json:"pages,omitempty" jsonschema:"One-based pages; omitted means all pages; duplicates retain first occurrence"`
-	Quality         string `json:"quality,omitempty" jsonschema:"regular (default), thumbnail, or original"`
+	Quality         string `json:"quality,omitempty" jsonschema:"Static artwork only: regular (default), thumbnail, or original; omit for Ugoira"`
 	AnimationFormat string `json:"animation_format,omitempty" jsonschema:"gif or apng; not applicable to static artwork"`
 }
 
 func Register(app *runtime.App, server *mcp.Server) {
 	outputs.ProtectMediaInput(server, "pixiv_artwork_media")
-	runtime.AddTool(app, server, &mcp.Tool{Name: "pixiv_artwork_media", Description: "Read actual artwork image bytes. Defaults to regular quality and all pages; use original only when requested. Results map each delivered page to a content index and explicitly report partial failures. Does not save files on the server.", Annotations: &mcp.ToolAnnotations{ReadOnlyHint: true, DestructiveHint: new(false), IdempotentHint: true, OpenWorldHint: new(true)}}, func(ctx context.Context, _ *mcp.CallToolRequest, in input) (*mcp.CallToolResult, outputs.ArtworkMedia, error) {
+	runtime.AddTool(app, server, &mcp.Tool{Name: "pixiv_artwork_media", Description: "Read artwork bytes: static images default to regular quality and all pages; Ugoira defaults to GIF with a separate PNG preview. Omit static pages/quality for Ugoira; use animation_format=apng for APNG. Use static original only when requested. Results map each delivered page to a content index and explicitly report partial failures. Does not save files on the server.", Annotations: &mcp.ToolAnnotations{ReadOnlyHint: true, DestructiveHint: new(false), IdempotentHint: true, OpenWorldHint: new(true)}}, func(ctx context.Context, _ *mcp.CallToolRequest, in input) (*mcp.CallToolResult, outputs.ArtworkMedia, error) {
 		return handle(ctx, app, in)
 	})
 }
 
 func handle(ctx context.Context, app *runtime.App, in input) (*mcp.CallToolResult, outputs.ArtworkMedia, error) {
 	out := outputs.NewArtworkMedia(in.IllustID)
+	requestedQuality := in.Quality
 	if in.Quality == "" {
 		in.Quality = "regular"
 	}
@@ -60,7 +61,8 @@ func handle(ctx context.Context, app *runtime.App, in input) (*mcp.CallToolResul
 	}
 	var content []mcp.Content
 	// One lease binds detail and every page to the same account; partial bytes are
-	// never replayed with another account and no temporary download files exist.
+	// never replayed with another account. Static reads stay in memory; the native
+	// animation encoder owns a per-call temporary workspace that is removed before delivery.
 	err := lifecycle.Run(ctx, app.OpenClient, func(ctx context.Context, client *pixiv.Client, _ *lifecycle.Attempt) error {
 		artwork, err := client.Artwork(ctx, pixiv.ArtworkRequest{ArtworkID: in.IllustID})
 		if err != nil {
@@ -69,7 +71,20 @@ func handle(ctx context.Context, app *runtime.App, in input) (*mcp.CallToolResul
 		out.Title = artwork.Title
 		out.TotalPages = artwork.PageCount
 		if artwork.Kind == pixiv.ArtworkKindUgoira {
-			out.Error = "animation_not_supported"
+			if in.Pages != nil || requestedQuality != "" {
+				out.Error = "static_parameters_not_applicable"
+				return nil
+			}
+			out.TotalPages = 1
+			out.RequestedPages = []int{1}
+			media, page, err := readAnimation(ctx, client, in.IllustID, in.AnimationFormat)
+			if err != nil {
+				out.Failures = append(out.Failures, outputs.MediaFailure{Page: 1, Error: errorCode(err)})
+				return err
+			}
+			content = media
+			out.Pages = append(out.Pages, page)
+			out.DeliveredPages = []int{1}
 			return nil
 		}
 		if in.AnimationFormat != "" {

@@ -16,10 +16,13 @@ type ArtworkMedia struct {
 }
 
 type MediaPage struct {
-	Page         int    `json:"page"`
-	MIMEType     string `json:"mime_type"`
-	Size         int    `json:"size"`
-	ContentIndex int    `json:"content_index"`
+	Filename            string `json:"filename,omitempty"`
+	PreviewContentIndex *int   `json:"preview_content_index,omitempty"`
+	ArchiveQuality      string `json:"archive_quality,omitempty"`
+	Page                int    `json:"page"`
+	MIMEType            string `json:"mime_type"`
+	Size                int    `json:"size"`
+	ContentIndex        int    `json:"content_index"`
 }
 
 type MediaFailure struct {
