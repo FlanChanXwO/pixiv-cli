@@ -64,6 +64,9 @@ type RuntimeConfig struct {
 	// HTTPSProxy 保留小写环境变量优先于大写环境变量的现有顺序，且没有默认值。
 	HTTPSProxy string `config:"network.https_proxy" alias:"https_proxy" env:"https_proxy,HTTPS_PROXY" cli:"true"`
 
+	// RequestInterval 具有运行时默认值，但不写入精简初始文件。
+	RequestInterval time.Duration `config:"network.request_interval" alias:"request_interval" env:"PIXIV_REQUEST_INTERVAL" default:"0s" cli:"true"`
+
 	// LogLevel 与 LogFormat 具有默认值并进入精简配置。
 	LogLevel  string `config:"logging.level" alias:"log_level" env:"PIXIV_LOG_LEVEL" default:"info" cli:"true" example:"true"`
 	LogFormat string `config:"logging.format" alias:"log_format" env:"PIXIV_LOG_FORMAT" default:"text" cli:"true" example:"true"`
@@ -78,12 +81,9 @@ type RuntimeConfig struct {
 	FanboxFlareSolverr        *FlareSolverrConfig  `config:"-"`
 	ReverseSearchFlareSolverr *FlareSolverrConfig  `config:"-"`
 
-	// RequestInterval 具有运行时默认值，但不写入精简初始文件。
-	RequestInterval time.Duration `config:"network.request_interval" alias:"request_interval" env:"PIXIV_REQUEST_INTERVAL" default:"0s" cli:"true"`
-
 	// 布尔开关：除 account_pool 外都不由 config 命令管理。
-	UpdateCheckEnabled bool `config:"update.check_enabled" alias:"update_check_enabled" default:"true" example:"true"`
 	OutputJSON         bool `config:"output.json" alias:"output_json" default:"false" example:"true"`
+	UpdateCheckEnabled bool `config:"update.check_enabled" alias:"update_check_enabled" default:"true" example:"true"`
 	LoginOpenBrowser   bool `config:"login.open_browser" alias:"login_open_browser" default:"true" example:"true"`
 	LoginUseAfterLogin bool `config:"login.use_after_login" alias:"login_use_after_login" default:"false" example:"true"`
 

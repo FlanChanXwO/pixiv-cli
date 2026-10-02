@@ -6,7 +6,6 @@ import (
 	"os"
 	"reflect"
 	"strings"
-	"time"
 )
 
 import (
@@ -136,152 +135,57 @@ func (s Snapshot) effectiveSpec(spec SettingSpec) (SettingValue, error) {
 }
 
 func (s Snapshot) Runtime() (RuntimeConfig, error) {
-	downloadPath, err := s.Effective("download_path")
+	var cfg RuntimeConfig
+	target := reflect.ValueOf(&cfg).Elem()
+	// 字段声明顺序保留历史普通配置错误优先级；账号池由领域读取处理严格类型。
+	entries := make([]settingSpecFromTags, 0, len(mustSettingSpecs()))
+	for _, entry := range mustSettingSpecs() {
+		if entry.spec.Removed || len(entry.fieldIndex) == 0 {
+			continue
+		}
+		if target.Type().Field(entry.fieldIndex[0]).Type == reflect.TypeOf(AccountPoolConfig{}) {
+			continue
+		}
+		entries = append(entries, entry)
+		// 此迁移墓碑历史上位于 output_json 与后续配置校验之间，不能提前到 Snapshot 加载。
+		if entry.spec.Alias == "output_json" {
+			if err := s.bindDeclared(target, entries); err != nil {
+				return RuntimeConfig{}, err
+			}
+			if _, err := s.Effective("web_fallback_enabled"); err != nil {
+				return RuntimeConfig{}, err
+			}
+			entries = entries[:0]
+		}
+	}
+	if err := s.bindDeclared(target, entries); err != nil {
+		return RuntimeConfig{}, err
+	}
+	var err error
+	cfg.AccountPool, err = s.accountPool()
 	if err != nil {
 		return RuntimeConfig{}, err
 	}
-	filenameTemplate, err := s.Effective("filename_template")
+	cfg.PixivNetwork, err = s.pixivNetwork()
 	if err != nil {
 		return RuntimeConfig{}, err
 	}
-	directoryTemplate, err := s.Effective("directory_template")
+	cfg.FanboxNetwork, err = s.serviceNetwork("fanbox.network")
 	if err != nil {
 		return RuntimeConfig{}, err
 	}
-	httpsProxy, err := s.Effective("https_proxy")
+	cfg.ReverseSearchNetwork, err = s.serviceNetwork("reverse_search.network")
 	if err != nil {
 		return RuntimeConfig{}, err
 	}
-	requestInterval, err := s.Effective("request_interval")
+	cfg.FanboxFlareSolverr, err = s.flareSolverr()
 	if err != nil {
 		return RuntimeConfig{}, err
 	}
-	logLevel, err := s.Effective("log_level")
+	cfg.ReverseSearchFlareSolverr, err = s.flareSolverrAt("reverse_search.flaresolverr")
 	if err != nil {
 		return RuntimeConfig{}, err
 	}
-	logFormat, err := s.Effective("log_format")
-	if err != nil {
-		return RuntimeConfig{}, err
-	}
-	outputJSON, err := s.Effective("output_json")
-	if err != nil {
-		return RuntimeConfig{}, err
-	}
-	// web_fallback_enabled 是 v1 迁移墓碑：旧配置仍显式包含它时在此失败并要求清理，
-	// 但不再驱动任何运行时分支。
-	if _, err := s.Effective("web_fallback_enabled"); err != nil {
-		return RuntimeConfig{}, err
-	}
-	updateCheckEnabled, err := s.Effective("update_check_enabled")
-	if err != nil {
-		return RuntimeConfig{}, err
-	}
-	loginOpenBrowser, err := s.Effective("login_open_browser")
-	if err != nil {
-		return RuntimeConfig{}, err
-	}
-	loginUseAfterLogin, err := s.Effective("login_use_after_login")
-	if err != nil {
-		return RuntimeConfig{}, err
-	}
-	reverseSearchProvider, err := s.Effective("reverse_search_provider")
-	if err != nil {
-		return RuntimeConfig{}, err
-	}
-	reverseSearchPixivOnly, err := s.Effective("reverse_search_pixiv_only")
-	if err != nil {
-		return RuntimeConfig{}, err
-	}
-	sauceNAOAPIKey, err := s.Effective("saucenao_api_key")
-	if err != nil {
-		return RuntimeConfig{}, err
-	}
-	loginRelayPublicURL, err := s.Effective("login_relay_public_url")
-	if err != nil {
-		return RuntimeConfig{}, err
-	}
-	loginRelayListenAddr, err := s.Effective("login_relay_listen_addr")
-	if err != nil {
-		return RuntimeConfig{}, err
-	}
-	loginRelayTLSCertFile, err := s.Effective("login_relay_tls_cert_file")
-	if err != nil {
-		return RuntimeConfig{}, err
-	}
-	loginRelayTLSKeyFile, err := s.Effective("login_relay_tls_key_file")
-	if err != nil {
-		return RuntimeConfig{}, err
-	}
-	normalizedLogLevel, err := normalizeLogLevel(settingStringValue(logLevel))
-	if err != nil {
-		return RuntimeConfig{}, err
-	}
-	normalizedLogFormat, err := normalizeLogFormat(settingStringValue(logFormat))
-	if err != nil {
-		return RuntimeConfig{}, err
-	}
-	accountPool, err := s.accountPool()
-	if err != nil {
-		return RuntimeConfig{}, err
-	}
-	pixivNetwork, err := s.pixivNetwork()
-	if err != nil {
-		return RuntimeConfig{}, err
-	}
-	fanboxNetwork, err := s.serviceNetwork("fanbox.network")
-	if err != nil {
-		return RuntimeConfig{}, err
-	}
-	reverseSearchNetwork, err := s.serviceNetwork("reverse_search.network")
-	if err != nil {
-		return RuntimeConfig{}, err
-	}
-	flareSolverr, err := s.flareSolverr()
-	if err != nil {
-		return RuntimeConfig{}, err
-	}
-	reverseSearchFlareSolverr, err := s.flareSolverrAt("reverse_search.flaresolverr")
-	if err != nil {
-		return RuntimeConfig{}, err
-	}
-	cfg := RuntimeConfig{
-		DownloadPath:              downloadPath.Value.(string),
-		FilenameTemplate:          filenameTemplate.Value.(string),
-		DirectoryTemplate:         settingStringValue(directoryTemplate),
-		HTTPSProxy:                "",
-		LogLevel:                  normalizedLogLevel,
-		LogFormat:                 normalizedLogFormat,
-		PixivNetwork:              pixivNetwork,
-		FanboxNetwork:             fanboxNetwork,
-		ReverseSearchNetwork:      reverseSearchNetwork,
-		FanboxFlareSolverr:        flareSolverr,
-		ReverseSearchFlareSolverr: reverseSearchFlareSolverr,
-		UpdateCheckEnabled:        updateCheckEnabled.Value.(bool),
-		OutputJSON:                outputJSON.Value.(bool),
-		LoginOpenBrowser:          loginOpenBrowser.Value.(bool),
-		LoginUseAfterLogin:        loginUseAfterLogin.Value.(bool),
-		ReverseSearchProvider:     reverseSearchProvider.Value.(string),
-		ReverseSearchPixivOnly:    reverseSearchPixivOnly.Value.(bool),
-		SauceNAOAPIKey:            settingStringValue(sauceNAOAPIKey),
-		LoginRelayPublicURL:       settingStringValue(loginRelayPublicURL),
-		LoginRelayListenAddr:      settingStringValue(loginRelayListenAddr),
-		LoginRelayTLSCertFile:     settingStringValue(loginRelayTLSCertFile),
-		LoginRelayTLSKeyFile:      settingStringValue(loginRelayTLSKeyFile),
-		AccountPool:               accountPool,
-	}
-	if requestInterval.HasValue {
-		cfg.RequestInterval = requestInterval.Value.(time.Duration)
-	}
-	if httpsProxy.HasValue {
-		cfg.HTTPSProxy = httpsProxy.Value.(string)
-	}
-	// 迁移阶段保留既有领域读取顺序；T06 将移除上方重复的普通字段接线。
-	if err := s.bindDeclared(reflect.ValueOf(&cfg).Elem(), mustSettingSpecs()); err != nil {
-		return RuntimeConfig{}, err
-	}
-	cfg.LogLevel, cfg.LogFormat = normalizedLogLevel, normalizedLogFormat
-	cfg.AccountPool = accountPool
 	return cfg, nil
 }
 
@@ -373,26 +277,28 @@ func (s Snapshot) flareSolverrAt(prefix string) (*FlareSolverrConfig, error) {
 }
 
 func (s Snapshot) accountPool() (AccountPoolConfig, error) {
-	pool := AccountPoolConfig{Strategy: AccountPoolStrategyRoundRobin}
+	enabledSpec, _ := SettingSpecByAlias("account_pool_enabled")
+	strategySpec, _ := SettingSpecByAlias("account_pool_strategy")
+	// 默认值只来自字段声明；文件值仍走下面的严格 bool/string 与枚举校验。
+	pool := AccountPoolConfig{Enabled: enabledSpec.Default.(bool), Strategy: AccountPoolStrategy(strategySpec.Default.(string))}
 	if _, err := s.Effective("account_pool_accounts"); err != nil {
 		return AccountPoolConfig{}, err
 	}
-	if s.file == nil || !s.file.Exists("account_pool") {
-		return pool, nil
-	}
-	if raw := s.file.Get("account_pool.enabled"); raw != nil {
-		enabled, ok := raw.(bool)
-		if !ok {
-			return AccountPoolConfig{}, errors.New("account_pool.enabled must be a boolean")
+	if s.file != nil && s.file.Exists("account_pool") {
+		if raw := s.file.Get("account_pool.enabled"); raw != nil {
+			enabled, ok := raw.(bool)
+			if !ok {
+				return AccountPoolConfig{}, errors.New("account_pool.enabled must be a boolean")
+			}
+			pool.Enabled = enabled
 		}
-		pool.Enabled = enabled
-	}
-	if raw := s.file.Get("account_pool.strategy"); raw != nil {
-		value, ok := raw.(string)
-		if !ok {
-			return AccountPoolConfig{}, errors.New("account_pool.strategy must be one of: round_robin, random")
+		if raw := s.file.Get("account_pool.strategy"); raw != nil {
+			value, ok := raw.(string)
+			if !ok {
+				return AccountPoolConfig{}, errors.New("account_pool.strategy must be one of: round_robin, random")
+			}
+			pool.Strategy = AccountPoolStrategy(strings.TrimSpace(value))
 		}
-		pool.Strategy = AccountPoolStrategy(strings.TrimSpace(value))
 	}
 	switch pool.Strategy {
 	case AccountPoolStrategyRoundRobin, AccountPoolStrategyRandom:

@@ -311,3 +311,24 @@ func TestDeclaredBindingDoesNotAllocateOptionalGroupsOrCacheTargets(t *testing.T
 		t.Fatalf("targets shared binding state: %q %q", first.Group.Value, second.Group.Value)
 	}
 }
+
+func TestRuntimePreservesValidationOrderAndStrictPoolTypes(t *testing.T) {
+	for _, tc := range []struct{ name, body, want string }{
+		{"interval before logging", "[network]\nrequest_interval='bad'\n[logging]\nlevel='bad'", `request_interval: time: invalid duration "bad"`},
+		{"logging before tombstone", "[logging]\nlevel='bad'\n[web]\nfallback_enabled=true", "log_level must be one of: info, debug"},
+		{"tombstone before reverse provider", "[web]\nfallback_enabled=true\n[reverse_search]\nprovider='bad'", "removed_setting: config key \"web_fallback_enabled\" was removed; clear it with `pixiv config unset web_fallback_enabled`"},
+		{"pool boolean remains strict", "[account_pool]\nenabled='true'", "account_pool.enabled must be a boolean"},
+		{"pool strategy remains strict", "[account_pool]\nstrategy=123", "account_pool.strategy must be one of: round_robin, random"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			state := koanf.New(".")
+			if err := loadConfigFileInto(state, "fixture", func(string) ([]byte, error) { return []byte(tc.body), nil }); err != nil {
+				t.Fatal(err)
+			}
+			_, err := (Snapshot{file: state}).Runtime()
+			if err == nil || err.Error() != tc.want {
+				t.Fatalf("want %q, got %v", tc.want, err)
+			}
+		})
+	}
+}

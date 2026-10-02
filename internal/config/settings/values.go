@@ -10,14 +10,6 @@ import (
 	"github.com/creachadair/tomledit/parser"
 )
 
-func settingStringValue(value SettingValue) string {
-	if !value.HasValue {
-		return ""
-	}
-	text, _ := value.Value.(string)
-	return text
-}
-
 func coerceSettingValue(spec SettingSpec, raw any, source string) (SettingValue, error) {
 	switch spec.Kind {
 	case settingString:
