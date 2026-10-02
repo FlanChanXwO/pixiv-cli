@@ -251,9 +251,7 @@ CLI 的认证、配置、回调桥接、Release 检查缓存与 callback helper 
 
 新增一项**普通配置**（可由 `config get/set/unset` 管理、或仅从 `config.toml`/环境变量读取）只需三步：
 
-1. 在 `internal/config/settings/config.go` 的 `RuntimeConfig`（或嵌套配置组）字段上声明标签：
-   `config`（TOML 路径）、`alias`、可选 `env`（按声明顺序即优先级）、可选 `default`、可选
-   `cli:"true"`、可选 `example:"true"`、可选 `secret:"true"`。
+1. 按下方链接的标签约定，在 `internal/config/settings/config.go` 的 `RuntimeConfig`（或嵌套配置组）添加字段与声明。
 2. 补一个聚焦的行为测试（默认值/来源/可见性或 schema 错误）。
 3. 更新对应文档。
 

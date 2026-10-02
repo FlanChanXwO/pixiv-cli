@@ -169,7 +169,7 @@ func runContext(ctx context.Context, args []string, in io.Reader, out io.Writer,
 	if found, _, findErr := cmd.Find(args[1:]); findErr == nil && found != nil {
 		target = found
 	}
-	// 阶段 3：执行命令。资源在这一步按需创建，因此不触达资源的入口没有副作用。
+	// 阶段 3：执行命令，按需创建资源；启动钩子的文件/系统副作用由命令需求决定。
 	err := cmd.Execute()
 	// 阶段 4：关闭资源。即使执行失败也要关闭，并把关闭错误并入退出原因，
 	// 避免"命令成功但资源未释放"被报成成功。

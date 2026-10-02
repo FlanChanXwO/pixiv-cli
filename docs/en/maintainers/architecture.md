@@ -68,6 +68,9 @@ Owns command dispatch and output for the CLI user mode:
 `internal/cli` is the CLI composition root, split by responsibility into three same-package files (no new directory levels): `root.go` holds the command tree, global flags, and wiring shared by command owners;
 `execution.go` owns the execution entry points, exit codes, resource closing (the close-resource list for a single execution is held by a private `closeState` there, closed idempotently in reverse registration order), and startup/finish handling;
 `composition.go` owns production dependency assembly for Pixiv/FANBOX/MCP.
+
+Before closing, callers must stop resource producers and finish registration. The `closeState` mutex protects the list, not late registrations; closers must not register into or recursively close the same scope. Closing follows command completion, and MCP stdio waits for in-flight handlers; close errors are joined.
+
 `internal/cli/invocation` only owns `Streams`. Command owners construct
 config snapshot, DB, business Facade, lifecycle, media/download, and update dependencies through explicit factories and narrow ports, and close resources in reverse order.
 CLI does not export a cross-command locator, nor does it have an independent bootstrap constructor or `internal/cli/runtime`.
@@ -125,6 +128,8 @@ package holds no client, credentials, or protocol adapter.
 - `internal/shared/lifecycle` only carries protocol-agnostic lifecycle, Lease, and Attempt; it does not own Pixiv/FANBOX account selection, credentials, or replay strategy.
 - `internal/shared/pagination` owns product-agnostic logical pagination for one ordered stream and ordered aggregate streams: filters run before the global skip/limit budget, `OneBatch` stops at the first matching source batch, and batch truncation is resumed through a source-position checkpoint. Its `StreamState` contains only the current stream and per-stream cursors; product owners encode that state together with query/account/subtype bindings in their opaque cursors.
 - `internal/shared/traversal` owns the reentrant execute lifecycle for single-stream and aggregate reads, clearing uncommitted results before a safe replay. Command-level filter wiring remains in each CLI/MCP owner, while normalized artwork rating/content-type semantics come from `internal/shared/searchfilter`.
+
+Ordinary CLI reads use `Pooled[R].Read[T]` on a concrete function type: failure returns the zero T and callbacks do not commit results; owners retain their own Request types. `Write` marks an invoked SDK call committed even on error, preventing cross-account replay with an unknown write outcome; a missing pooled port returns an error. Streaming NDJSON, pagination, and partial delivery remain with owners and traversal/lifecycle, not ordinary Read.
 
 The config schema, `config.toml` path/get/set/unset, generated baseline, and the immutable `Snapshot` required for a single execution live in `internal/config/settings`; the protocol-agnostic month-truncation pure function lives in `internal/utils/date`. CLI/MCP use business Facades via owner-local narrow Seams and the MCP runtime `SDKPorts`, without directly depending on upstream Adapters. `internal/account` and `internal/session` have been deleted, with no compatibility alias retained.
 
@@ -299,6 +304,8 @@ These existing paths remain upstream Adapters after the migration, composed only
 - `resource`: policy-constrained resource transport, redirect/header/body boundaries.
 
 v1 has deleted `internal/services/pixiv/webapi` and the anonymous Web/AJAX path: App API errors return a normalized error directly, without automatic protocol switching. Pixiv endpoint families live in `internal/services/pixiv/endpoint/{artwork,novel,user}/<leaf>`, where each family owns its own route, request, raw DTO, mapper, and continuation/error validation, and the parent package only owns normalized entities/values. FANBOX's `internal/services/fanbox/protocol` only owns product-specific session, cookie, challenge, URL policy, and narrow transport; `internal/services/fanbox/endpoint/{creator,post}/<leaf>` and `resource` each own their endpoint route/fixture/conversion. `sdk/fanbox` directly composes these Adapter capabilities, without depending on the business Facade.
+
+`RequiredList` / `RequiredObject` share field-presence decoding only; endpoints retain completeness checks and mapping. `null` means Present=true and Valid=false; a decoded empty object need not be complete. Missing fields do not call the decoder, so callers must clear or recreate a reused outer DTO. An invoked decoder resets old state, but failure may leave partial data from the current input: handle the error and check Valid first. Historical object-decoder parity is limited to the verified production DTOs and inputs, not arbitrary generic types or custom decoders.
 
 ### `internal/services/pixiv`, `internal/services/fanbox` (business Facade)
 

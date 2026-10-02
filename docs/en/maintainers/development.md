@@ -177,9 +177,8 @@ entries marked `example:"true"`, and never overwrites an existing file.
 Adding one **ordinary setting** (manageable via `config get/set/unset`, or readable only from `config.toml` /
 the environment) takes three steps:
 
-1. Declare tags on the field in `RuntimeConfig` (or a nested config group) in
-   `internal/config/settings/config.go`: `config` (TOML path), `alias`, optional `env` (declaration order is the
-   precedence), optional `default`, optional `cli:"true"`, optional `example:"true"`, optional `secret:"true"`.
+1. Add the field and its declaration to `RuntimeConfig` (or a nested config group) in
+   `internal/config/settings/config.go`, following the tag contract linked below.
 2. Add one focused behavioural test (defaults, source, visibility, or a schema error).
 3. Update the matching documentation.
 

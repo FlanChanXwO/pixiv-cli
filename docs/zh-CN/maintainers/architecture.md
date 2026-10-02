@@ -68,6 +68,9 @@ flowchart LR
 `internal/cli` 是 CLI 组合根，按职责拆为同包三个文件（不新增目录层级）：`root.go` 持有命令树、全局 flag 与命令 owner 共享的接线；
 `execution.go` 负责执行入口、退出码、资源关闭（一次执行的 close resource list 由其中的私有 `closeState` 持有，按登记逆序幂等关闭）与启动/结束处理；
 `composition.go` 负责 Pixiv/FANBOX/MCP 的生产依赖装配。
+
+关闭前，调用方必须停止资源生产者并完成登记。`closeState` 的 mutex 只保护登记表，不保证晚到资源会被关闭；closer 不得向同一 scope 再登记或递归关闭。命令返回后才执行关闭，MCP stdio 等待在途 handler 结束；关闭错误聚合返回。
+
 `internal/cli/invocation` 只负责 `Streams`。命令 owner 通过显式 factory 与窄端口构造
 config snapshot、DB、业务 Facade、lifecycle、media/download 与 update 依赖，并按逆序关闭资源。
 CLI 不导出跨命令 locator，也没有独立 bootstrap constructor 或 `internal/cli/runtime`。
@@ -125,6 +128,8 @@ canonical 值，按 DTO 的 `x_restrict` 和 artwork kind 做 client-side matchi
 - `internal/shared/lifecycle` 只承载协议无关的生命周期、Lease 与 Attempt；它不拥有 Pixiv/FANBOX 账号选择、凭据或重放策略。
 - `internal/shared/pagination` 负责协议无关的单流与有序聚合流逻辑分页：先对候选执行筛选，再统一应用 skip/limit；`OneBatch` 在当前流找到首个匹配源批次后停止；批内截断通过源序列位置 checkpoint 续读。其 `StreamState` 只包含当前流和各流 cursor，不编码产品语义；产品 owner 负责把它与 query/account/subtype binding 一起编码进 opaque cursor。
 - `internal/shared/traversal` 负责单流与聚合读的可重入 execute lifecycle，在安全 replay 前清空未提交结果。命令级筛选接入仍留在各 CLI/MCP owner，规范化的 artwork rating/content-type 语义由 `internal/shared/searchfilter` 提供。
+
+普通 CLI 读取使用具体函数类型的 `Pooled[R].Read[T]`：失败返回 T 零值，回调不提交结果；各 owner 保留自己的 Request。`Write` 调用 SDK 后即使失败也标记 committed=true，禁止未知提交状态下换号重放；缺少 pooled 端口时返回错误。流式 NDJSON、分页及部分交付仍由 owner 和 traversal/lifecycle 管理，不套用普通 Read。
 
 配置 schema、`config.toml` path/get/set/unset、自动生成的默认文件与一次执行所需的 immutable `Snapshot` 位于 `internal/config/settings`；协议无关的日期按月截断纯函数位于 `internal/utils/date`。CLI/MCP 经 owner-local 窄 Seam 与 MCP runtime `SDKPorts` 使用业务 Facade，不直接依赖上游 Adapter。`internal/account` 与 `internal/session` 已删除，不保留兼容 alias。
 
@@ -310,6 +315,8 @@ challenge 之外的 API/资源错误不自动进入 solver。
 - `resource`：受 policy 约束的 resource transport、redirect/header/body 边界。
 
 v1 已删除 `internal/services/pixiv/webapi` 与匿名 Web/AJAX 路径：App API 出错直接返回规范化错误，不自动切换协议。Pixiv endpoint family 位于 `internal/services/pixiv/endpoint/{artwork,novel,user}/<leaf>`，各 family 自有 route、request、raw DTO、mapper 与 continuation/error 校验，父包只拥有 normalized entity/value。FANBOX 的 `internal/services/fanbox/protocol` 只拥有产品专属 session、cookie、challenge、URL policy 与窄 transport；`internal/services/fanbox/endpoint/{creator,post}/<leaf>` 与 `resource` 各自拥有 endpoint route/fixture/转换。`sdk/fanbox` 直接组合这些 Adapter capability，不依赖业务 Facade。
+
+`RequiredList` / `RequiredObject` 只共享字段存在性解码，endpoint 继续负责完整性校验与映射。`null` 表示 Present=true、Valid=false；空对象成功解码不代表业务完整。字段缺失不会调用 decoder，复用外层 DTO 必须先清零或新建；被调用的 decoder 会重置旧状态，但失败仍可能留下本次部分数据，调用方须先处理错误并检查 Valid。历史对象实现的差分只覆盖已验证的生产 DTO 与输入，不能外推到任意泛型或自定义 decoder。
 
 ### `internal/services/pixiv`、`internal/services/fanbox`（业务 Facade）
 

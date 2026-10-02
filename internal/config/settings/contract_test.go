@@ -13,11 +13,8 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// 本文件是声明式配置迁移（goal-1）的等价性守门层。它把迁移前已经生效的配置表面
-// 固化为断言，使"标签成为唯一事实来源"的改造不可能悄悄改变任何一条契约。断言全部
-// 以公开 API（ValidSettingAliases / CLISettingAliases / SettingSpecByAlias / Effective /
-// Runtime / ParseSettingInput / Store）为 oracle，因此这些测试必须在迁移过程中持续
-// 通过，并且不得为了让实现通过而被改写。
+// 以独立的已发布配置预期检查公开 API，防止声明与实现同时改错仍自洽通过。
+// 这些断言不从当前生产标签计算预期。
 
 // authoritativeEnvNames 是"哪个别名能读取哪个环境变量"的权威清单，覆盖全部 8 个可读
 // 环境的别名（与迁移前 EnvValue 的行为逐条一致）。顺序即优先级：https_proxy 先于

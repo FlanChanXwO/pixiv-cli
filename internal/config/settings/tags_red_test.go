@@ -14,18 +14,8 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// 本文件是 goal-1 阶段 B 的 Red 层：它描述"结构体标签成为配置唯一事实来源"之后必须
-// 成立的 6 项契约，并刻意只以**现有稳定公开 API**（SettingSpecByAlias / Effective /
-// Runtime / EnvValue / ValidSettingAliases / CLISettingAliases / ParseSettingInput /
-// Store / LoadSnapshotAt）以及一个经由**公开 RuntimeConfig 类型的标签反射**读取的
-// 只读探针为观察面。
-//
-// 这样做的原因：若改用尚不存在的导出符号（例如 Schema() / BuildSchema()），整个测试包
-// 会因编译错误而失败，而 t4 要求的是"断言失败，不是未定义符号"。反射探针只读取
-// **公开导出字段的标签**，因此它在 Green 阶段（给字段加标签）之前读不到任何标签，
-// 断言必然失败；加完标签后同一条断言自然转绿，无需修改测试。
-//
-// 重要：本文件在 Green 完成前预期失败。t2 的 contract_test.go 必须继续全绿。
+// 通过公开 API 与只读字段标签探针验证声明和运行时行为。
+// 非法声明的生产拒绝路径由同包 schema_test.go 验证；这里不导出测试专用接口。
 
 // ---------------------------------------------------------------- 反射探针
 
@@ -314,8 +304,7 @@ func TestEnvTagDeclaresNameAndOrder(t *testing.T) {
 		view := requireTagged(t, tags, field)
 		assert.Equalf(t, names, view.env, "字段 %q 的 env 标签名与顺序必须保持", field)
 
-		// 派生 spec 必须能通过 EnvValue 看见同一顺序（EnvValue 契约在 t6 改为标签驱动，
-		// 但对调用方必须保持"先声明者优先"）。
+		// 派生 spec 的 EnvValue 保持先声明者优先。
 		spec, ok := config.SettingSpecByAlias(view.alias)
 		require.Truef(t, ok, "alias %q 必须可解析", view.alias)
 		_, _ = config.EnvValue(spec) // 只要求可调用；顺序行为在下方用真实环境验证

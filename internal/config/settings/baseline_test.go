@@ -12,14 +12,8 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// 本文件是 goal-1 阶段 B 的 t8 行为层：证明初始 config.toml 的内容**完全由声明驱动**
-// ——进入文件的键集合与写入值分别由 example 与 default 标签决定，而不是由第二份
-// 手写的"示例清单"维护。
-//
-// 与 t4 的分工：t4 断言"标签本身"（反射读取）与生成文件的一致性；本文件从**文档
-// 结构**反向验证，直接遍历生成的 TOML 树，因此即使标签与生成逻辑同时改错、彼此
-// 仍然自洽，也会被这里发现。t4 的 TestExampleTagControlsTheGeneratedBaselineFile
-// 保持不变。
+// 从生成的 TOML 树检查初始键集合与值，预期独立于生产标签。
+// 与 tags_red_test.go 的标签一致性检查互补，不维护第二份生产示例清单。
 
 // generatedConfigKeys 解析生成的初始文件，返回 "table.key" -> 文本值。
 // 使用真实 TOML 解析而不是字符串匹配，避免子串误判（例如 request_interval 与
@@ -167,9 +161,7 @@ func TestBaselineSectionsAreDeterministicAndGrouped(t *testing.T) {
 // 的 section **呈现顺序**被固定下来。
 //
 // 为什么需要单独断言顺序：元数据顺序来自 RuntimeConfig 的字段声明顺序（绑定的
-// 自然顺序），而文件布局是独立的产品决定。t22 审查发现标签化之后声明顺序改变了
-// section 顺序——成员/分组/确定性都有测试，顺序却没有，于是一个用户可见的布局
-// 变化可以悄悄通过。这里把它钉死。
+// 自然顺序），而文件布局是独立的产品决定；仅检查成员和分组不能保护呈现顺序。
 func TestBaselineSectionOrderIsStableAndMatchesTheLegacyLayout(t *testing.T) {
 	files := &injectedFileStore{path: "injected/config.toml", files: make(map[string][]byte)}
 	require.NoError(t, (config.Store{Files: files}).EnsureDefaultConfigFile())
