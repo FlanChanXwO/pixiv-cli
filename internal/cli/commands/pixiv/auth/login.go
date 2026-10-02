@@ -14,6 +14,7 @@ import (
 	requirements "github.com/FlanChanXwO/pixiv-cli/internal/cli/commands"
 	"github.com/FlanChanXwO/pixiv-cli/internal/cli/commands/pixiv/auth/loginhelper"
 	pixivaccount "github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/account"
+	"github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/account/loginrelay"
 	"github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/account/loginrelay/loginpage"
 	pixiv "github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
 	"github.com/pkg/browser"
@@ -431,13 +432,7 @@ func WriteLoginCallbackRelayPage(w http.ResponseWriter) {
 // WriteLoginFinalPage 在 OAuth 真正完成后返回最终页。
 // 成功/失败标题与正文均居中；失败页使用固定文案，不回显敏感原因。
 func WriteLoginFinalPage(w http.ResponseWriter, ok bool) {
-	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	if !ok {
-		w.WriteHeader(http.StatusBadRequest)
-	}
-	if err := loginpage.WriteResult(w, ok); err != nil {
-		http.Error(w, "could not render login page", http.StatusInternalServerError)
-	}
+	loginrelay.WriteFinalPage(w, ok)
 }
 
 // classifyLoginInput 只解析并校验用户提交；HTTP fallback 可以让原浏览器继续 relay，
