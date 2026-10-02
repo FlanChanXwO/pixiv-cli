@@ -29,12 +29,23 @@ The first SDK access in a tool call fixes its account snapshot for subsequent re
 | Tool | Input and semantics |
 | --- | --- |
 | `pixiv_account_list` | Empty object; all local account summaries and the shared selection. |
-| `pixiv_account_status` | Empty object; local selection and credential-presence state, without network refresh. |
+| `pixiv_account_status` | Empty object for local selection/credential presence; optional string `login_id` queries login progress without reading account storage. |
 | `pixiv_account_use` | Required positive integer `user_id`; checks local existence, then persists the selection for all connectors. |
+| `pixiv_account_login_start` | Optional boolean `restart` (default `false`); starts or reuses the server-owned helper login. |
 
-Inputs are closed objects. All three return `selected_user_id`, `selection_state`, `credential_state`, and `accounts` (each with `user_id`, `username`, `has_credentials`). Status inspection may persist the initial default/sole-account choice; therefore all three publish `readOnlyHint=false`, `destructiveHint=false`, `idempotentHint=true`, and `openWorldHint=false`. A successful status query can report an unusable account; it is not an upstream authentication check.
+Inputs are closed objects. The three local account operations (status without `login_id`) return `selected_user_id`, `selection_state`, `credential_state`, and `accounts` (each with `user_id`, `username`, `has_credentials`). Status inspection may persist the initial default/sole-account choice; therefore all three publish `readOnlyHint=false`, `destructiveHint=false`, `idempotentHint=true`, and `openWorldHint=false`. A successful status query can report an unusable account; it is not an upstream authentication check.
 
-Failures keep the structured envelope with an `error` category and `isError=true`. Categories are `invalid_request` (schema), `invalid_user_id`, `account_not_found`, `owner_not_initialized`, `canceled`, `deadline_exceeded`, or `local_state_error`. Unavailable state reports selection/credential state as `unknown`, not as a successful empty account. Raw arguments, credential values, filesystem paths, and internal storage causes are not echoed in these error results. Login startup and `login_id` status are not yet exposed.
+Failures keep the structured envelope with an `error` category and `isError=true`. Categories are `invalid_request` (schema), `invalid_user_id`, `account_not_found`, `owner_not_initialized`, `canceled`, `deadline_exceeded`, or `local_state_error`. Unavailable state reports selection/credential state as `unknown`, not as a successful empty account. Raw arguments, credential values, filesystem paths, and internal storage causes are not echoed in these error results.
+
+### New-account login
+
+`pixiv_account_login_start` returns `login_id`, `authorization_url` (this server's relay entry, not the SDK OAuth URL), `status`, `requires_local_helper`, and `instructions`. `requires_local_helper` is true for successful starts. Open the URL on a computer with pixiv-cli installed and its `pixiv://` helper registered; if the helper does not open, install/reinstall using the official installer and reopen the URL. No timer guesses helper availability. Never paste callback URLs, authorization codes, or refresh tokens into chat.
+
+Repeated starts reuse a waiting/exchanging flow. `restart=true` cancels and joins the previous flow before replacing it. After a finished flow, a new start replaces its result; no history is accumulated. This tool advertises `readOnlyHint=false`, `destructiveHint=true`, `idempotentHint=false`, `openWorldHint=true`: restarting discards a pending login, and the flow can exchange credentials, save an account and update shared MCP selection. CLI default selection is untouched.
+
+`pixiv_account_status({"login_id":"..."})` returns progress in the `login` object: `waiting_for_user`, `exchanging`, `completed`, `failed`, or `not_found`. It does not read local account storage, so the usual selection/credential fields are `unknown` with zero/empty placeholders; query without `login_id` for actual selection. Successful persistence includes `login.account`, `account_saved=true` and `selection_updated=true`. If selection fails after saving, the query sets `isError=true`, retains `account_saved=true`, and reports `selection_updated=false`; fix the local write problem and use `pixiv_account_use` rather than logging in again. `login.error_code` is `login_failed` or `login_cancelled`, never a raw storage cause. An unknown/replaced ID returns `not_found` without an error.
+
+Start failures return the login envelope with `status=failed`, `error=login_start_failed` and `isError=true`; invalid input uses the same envelope with `error=invalid_request`. The login lifetime belongs to the server, not the start request or helper connection. Explicit restart and shutdown cancel and join it; no fixed login timeout or raw-callback completion tool is added. Loopback fixtures cover this contract, not real helper installation or target-host browser acceptance.
 
 ## Errors, pagination, and output
 

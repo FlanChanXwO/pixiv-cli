@@ -6,6 +6,7 @@ package pixiv
 import (
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/internal/runtime"
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/tools/account_list"
+	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/tools/account_login_start"
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/tools/account_status"
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/tools/account_use"
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/tools/add_bookmark"
@@ -80,6 +81,7 @@ func Register(server *mcp.Server, ports SDKPorts, account Account) {
 	account_use.Register(app, server)
 	account_status.Register(app, server)
 	account_list.Register(app, server)
+	account_login_start.Register(app, server)
 	add_bookmark.Register(app, server)
 	add_novel_bookmark.Register(app, server)
 	blocked_users.Register(app, server)

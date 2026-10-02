@@ -80,7 +80,8 @@ func TestUnifiedToolRegistry(t *testing.T) {
 	}
 	seen := map[string]bool{}
 	writes := map[string]struct{ destructive, idempotent bool }{
-		"pixiv_account_list": {false, true}, "pixiv_account_status": {false, true}, "pixiv_account_use": {false, true},
+		"pixiv_account_login_start": {true, false},
+		"pixiv_account_list":        {false, true}, "pixiv_account_status": {false, true}, "pixiv_account_use": {false, true},
 		"pixiv_add_bookmark": {false, true}, "pixiv_add_novel_bookmark": {false, true}, "pixiv_follow_user": {false, true},
 		"pixiv_remove_bookmark": {true, true}, "pixiv_remove_novel_bookmark": {true, true}, "pixiv_unfollow_user": {true, true},
 		"pixiv_create_artwork_comment": {false, false}, "pixiv_create_novel_comment": {false, false},

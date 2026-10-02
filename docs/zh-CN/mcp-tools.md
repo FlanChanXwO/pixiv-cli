@@ -28,12 +28,23 @@ MCP owner 的 Pixiv 选择持久化保存，所有 connector 共享。首次使�
 | Tool | 输入与语义 |
 | --- | --- |
 | `pixiv_account_list` | 空 object；返回全部本地账号摘要及共享选择。 |
-| `pixiv_account_status` | 空 object；查看本地选择与凭据是否存在，不联网 refresh。 |
+| `pixiv_account_status` | 空 object 查看本地选择/凭据；可选字符串 `login_id` 查询登录进度，不读取账号存储。 |
 | `pixiv_account_use` | 必填正整数 `user_id`；先检查本地存在，再持久化供所有 connector 共享。 |
+| `pixiv_account_login_start` | 可选布尔 `restart`（默认 `false`）；启动或复用服务端 helper 登录流程。 |
 
-输入均为封闭 object。三个工具均返回 `selected_user_id`、`selection_state`、`credential_state`、`accounts`（每项含 `user_id`、`username`、`has_credentials`）。状态查询可能持久化首次 default/唯一账号选择，因此三者均标注 `readOnlyHint=false`、`destructiveHint=false`、`idempotentHint=true`、`openWorldHint=false`。查询成功可以报告账号不可用，不代表上游认证成功。
+输入均为封闭 object。三个本地账号操作（status 不传 `login_id`）返回 `selected_user_id`、`selection_state`、`credential_state`、`accounts`（每项含 `user_id`、`username`、`has_credentials`）。状态查询可能持久化首次 default/唯一账号选择，因此三者均标注 `readOnlyHint=false`、`destructiveHint=false`、`idempotentHint=true`、`openWorldHint=false`。查询成功可以报告账号不可用，不代表上游认证成功。
 
-失败保留 structured envelope、`error` 类别及 `isError=true`。类别为 `invalid_request`（schema）、`invalid_user_id`、`account_not_found`、`owner_not_initialized`、`canceled`、`deadline_exceeded` 或 `local_state_error`。状态不可用时 selection/credential state 为 `unknown`，不伪装为成功的空账号。错误结果不回显原始参数、凭据值、文件路径或内部存储原因。登录启动及 `login_id` 状态查询尚未开放。
+失败保留 structured envelope、`error` 类别及 `isError=true`。类别为 `invalid_request`（schema）、`invalid_user_id`、`account_not_found`、`owner_not_initialized`、`canceled`、`deadline_exceeded` 或 `local_state_error`。状态不可用时 selection/credential state 为 `unknown`，不伪装为成功的空账号。错误结果不回显原始参数、凭据值、文件路径或内部存储原因。
+
+### 新账号登录
+
+`pixiv_account_login_start` 返回 `login_id`、`authorization_url`（本服务的 relay 入口，不是 SDK OAuth URL）、`status`、`requires_local_helper` 和 `instructions`；启动成功时 `requires_local_helper=true`。在已安装 pixiv-cli 并注册 `pixiv://` helper 的电脑上打开 URL；未唤起 helper 时通过官方安装器安装/重装，再打开 URL。不用定时器猜测 helper 是否可用，也不向聊天粘贴 callback URL、授权码或 refresh token。
+
+重复启动复用 waiting/exchanging 流程；`restart=true` 取消并等待旧流程后再替换。已结束流程在下一次启动时被替换，不积累历史。该工具标注 `readOnlyHint=false`、`destructiveHint=true`、`idempotentHint=false`、`openWorldHint=true`：restart 会丢弃待完成登录，后续流程可兑换凭据、保存账号并更新 MCP 共享选择，但不修改 CLI default。
+
+`pixiv_account_status({"login_id":"..."})` 在 `login` object 中返回 `waiting_for_user`、`exchanging`、`completed`、`failed` 或 `not_found`。该查询不读取本地账号存储，因此原 selection/credential 字段为 `unknown`，账号ID/列表为零值/空占位；查看实际选择时不传 `login_id`。保存成功包含 `login.account`、`account_saved=true`、`selection_updated=true`。保存后 selection 写入失败时 `isError=true`，保留 `account_saved=true`、`selection_updated=false`；修复本地写入问题后执行 `pixiv_account_use`，不要求重新登录。`login.error_code` 仅为 `login_failed` 或 `login_cancelled`，不含底层存储原因；未知/已替换ID返回 `not_found`，不作为错误。
+
+启动失败保留登录 envelope，返回 `status=failed`、`error=login_start_failed` 和 `isError=true`；输入无效使用同一 envelope 的 `error=invalid_request`。登录生命周期归服务器，不归启动请求或 helper 连接；显式 restart、shutdown 负责取消与等待，不增加固定登录超时或 raw callback 完成工具。本地 fixture 验证不等于真实 helper 安装或目标产品浏览器验收。
 
 ## 错误、分页与输出
 

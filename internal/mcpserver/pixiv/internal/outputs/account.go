@@ -12,7 +12,8 @@ import (
 // AccountStatus preserves the local status envelope even when account storage fails.
 type AccountStatus struct {
 	accounts.Status
-	Error string `json:"error,omitempty"`
+	Login *accounts.LoginStatus `json:"login,omitempty"`
+	Error string                `json:"error,omitempty"`
 }
 
 // AccountResult only exposes stable local error categories, never database paths or causes.
@@ -45,6 +46,14 @@ func accountFailure(code string) (*mcp.CallToolResult, AccountStatus, error) {
 // ProtectAccountInput replaces SDK validation diagnostics that otherwise echo raw arguments.
 // Typed handlers always return structured content, so their storage errors remain intact.
 func ProtectAccountInput(server *mcp.Server, name string) {
+	protectInput(server, name, func() *mcp.CallToolResult {
+		safe, out, _ := accountFailure("invalid_request")
+		safe.StructuredContent = out
+		return safe
+	})
+}
+
+func protectInput(server *mcp.Server, name string, failure func() *mcp.CallToolResult) {
 	server.AddReceivingMiddleware(func(next mcp.MethodHandler) mcp.MethodHandler {
 		return func(ctx context.Context, method string, request mcp.Request) (mcp.Result, error) {
 			result, err := next(ctx, method, request)
@@ -56,9 +65,7 @@ func ProtectAccountInput(server *mcp.Server, name string) {
 			if !ok || !failed.IsError || failed.StructuredContent != nil {
 				return result, err
 			}
-			safe, out, _ := accountFailure("invalid_request")
-			safe.StructuredContent = out
-			return safe, nil
+			return failure(), nil
 		}
 	})
 }

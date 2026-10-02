@@ -281,7 +281,7 @@ v1 已删除 `internal/services/pixiv/webapi` 与匿名 Web/AJAX 路径：App AP
 
 纯登录页面及嵌入的模板/CSS 位于 `internal/services/pixiv/account/loginrelay/loginpage`。CLI 页面响应包装复用它；该模块不依赖 CLI、账号库、浏览器或 listener。可复用 HTTP handler/session 位于父级 `loginrelay` 包，接收 OAuth 会话校验器并向 owner 交付一次 callback，不开启 listener、不兑换或持久化凭据。CLI 保留 listener/TLS/终端编排；主 mux 可剥离公开路径前缀后挂载 handler，生产 MCP 将 handler 挂在规范化 base 后的 `/pixiv-login/`，仍受相同 Host/Origin 校验保护，但以 handoff proof 而非 MCP bearer 认证。生成的 relay URL 与路由分发均保留转义路径前缀。会话取消后新请求返回 HTTP 410，并在接收已校验 callback 前再次检查取消，拒绝在校验期间被 restart/shutdown 取消的 callback。 共享 callback URL 白名单、start 响应协议类型与结果页 URL header 位于 `internal/services/pixiv/account/loginrelay`；CLI relay 与 desktop helper 共用它们，共享模块不反向依赖 CLI。
 
-MCP account owner 另提供单当前登录 manager：重复 start 复用 pending 流程，显式 restart 取消并等待前次流程，shutdown 等待兑换/持久化退出。完成状态保留非敏感的 account-saved/selection-updated 标记，包括部分失败；组合根将校验与兑换绑定同一 SDK 登录会话，保存账号时不修改 CLI default，再独立写 MCP selection。重启登录复用同一账号服务，每次 SDK 登录完成后释放其自有 HTTP 空闲连接；显式代理/直连选项由组合根创建的 client，则由组合根在完成路径的所有出口释放空闲连接。公开登录工具仍待注册。
+MCP account owner 另提供单当前登录 manager：重复 start 复用 pending 流程，显式 restart 取消并等待前次流程，shutdown 等待兑换/持久化退出。完成状态保留非敏感的 account-saved/selection-updated 标记，包括部分失败；组合根将校验与兑换绑定同一 SDK 登录会话，保存账号时不修改 CLI default，再独立写 MCP selection。重启登录复用同一账号服务，每次 SDK 登录完成后释放其自有 HTTP 空闲连接；显式代理/直连选项由组合根创建的 client，则由组合根在完成路径的所有出口释放空闲连接。登录启动工具与 login_id 状态查询复用此 manager。
 
 ### reverse-search Facade 例外
 
