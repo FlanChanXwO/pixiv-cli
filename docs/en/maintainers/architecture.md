@@ -292,6 +292,8 @@ The three parent packages only own the normalized entities/values shared by thei
 
 ### `internal/mcpserver`
 
+`pixiv/tools/artwork_media` owns static MCP image delivery. One existing SDK lease binds artwork metadata and all page resources to the selected account; resource responses are closed after each read and the lease is closed on every exit. It returns image bytes and explicit per-page content indexes/failures, with no server file publication or replay after partial delivery. `pixiv/internal/outputs` owns the structured media envelope and schema-error redaction. Ugoira binary delivery is a separate pending implementation, not a static-image fallback.
+
 `New` constructs the single protocol server and calls each product's `Register`. Pixiv tools use `pixiv_` and FANBOX tools keep `fanbox_`; no old-name aliases or MCP filesystem download tools remain. CLI downloads still belong to `internal/media/downloader`. `NewHTTPHandler` assembles stateless Streamable HTTP and OAuth routing in the parent package; `RunHTTP` owns the listener and server lifecycle. The stdio runner and MCP-specific SIGPIPE wiring are removed; normal CLI pipeline handling remains.
 
 Each product retains its own SDK ports, account selection and runtime. Registration/discovery does not open a FANBOX account; the root lazily opens its independent service when a FANBOX tool runs. Each tool package owns its name, annotations, schema and handler. Pixiv nullable `page`/`limit` are parsed by its adapter and traversal stays in `internal/shared/traversal`. Handler failures retain structured output with `isError=true`; legitimate empty results remain successful. See [MCP tools](../mcp-tools.md).

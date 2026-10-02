@@ -244,6 +244,8 @@ Connect to `http://127.0.0.1:8080/mcp` locally. For cloud connectors, use an exi
 Use `pixiv_account_list` / `pixiv_account_status` to inspect local accounts and `pixiv_account_use` to select the shared MCP account without changing the CLI default.
 Start a new account login with `pixiv_account_login_start`, open its relay URL with the installed local helper, then query `pixiv_account_status` with `login_id`; do not paste callbacks or credentials into chat.
 
+Use `pixiv_artwork_media` for actual static image bytes (regular quality and all pages by default); partial page failures are explicit, and no server-local download path is returned.
+
 See the [MCP tool contract](docs/en/mcp-tools.md) for tools, parameters, structured output, and authentication behavior.
 Fixed MCP status, error, and display text is English; Pixiv metadata and user-supplied text are preserved verbatim.
 

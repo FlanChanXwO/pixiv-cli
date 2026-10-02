@@ -291,6 +291,11 @@ func assertOptionalSchemaKeys(t *testing.T, toolName string, node any, optional 
 			}
 		}
 		for key := range optional {
+			// 媒体 envelope 的 pages 是必需的交付索引表，不是 ArtworkDTO.Pages；
+			// 仍递归检查它的子节点，不能按 tool 名跳过整个 schema。
+			if key == "pages" && properties["delivered_pages"] != nil {
+				continue
+			}
 			if _, ok := properties[key]; ok {
 				optional[key] = true
 				if required[key] {

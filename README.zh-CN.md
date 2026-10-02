@@ -244,6 +244,8 @@ pixiv mcp --listen-addr 127.0.0.1:8080 --base-url http://127.0.0.1:8080
 使用 `pixiv_account_list` / `pixiv_account_status` 查看本地账号，通过 `pixiv_account_use` 切换共享 MCP 账号，不修改 CLI default。
 新账号使用 `pixiv_account_login_start` 获取 relay URL，通过本机已安装的 helper 登录，再以 `login_id` 查询 `pixiv_account_status`；不要向聊天粘贴 callback 或凭据。
 
+使用 `pixiv_artwork_media` 获取真实静态图片 bytes（默认 regular 质量和全部页）；逐页失败明确报告，不返回服务器本地下载路径。
+
 [MCP tool 契约](docs/zh-CN/mcp-tools.md)记录了 tools、参数、structured output 和认证行为。
 MCP 固定状态、错误和展示文本使用英文；Pixiv 元数据及用户提供的文本保持原文。
 

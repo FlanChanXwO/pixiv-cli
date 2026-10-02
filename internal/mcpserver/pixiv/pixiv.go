@@ -11,6 +11,7 @@ import (
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/tools/account_use"
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/tools/add_bookmark"
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/tools/add_novel_bookmark"
+	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/tools/artwork_media"
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/tools/blocked_users"
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/tools/bookmark_detail"
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/tools/bookmark_list_all"
@@ -82,6 +83,7 @@ func Register(server *mcp.Server, ports SDKPorts, account Account) {
 	account_status.Register(app, server)
 	account_list.Register(app, server)
 	account_login_start.Register(app, server)
+	artwork_media.Register(app, server)
 	add_bookmark.Register(app, server)
 	add_novel_bookmark.Register(app, server)
 	blocked_users.Register(app, server)

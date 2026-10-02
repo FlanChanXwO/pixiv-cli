@@ -222,7 +222,7 @@ func TestServerListsExpectedTools(t *testing.T) {
 		}
 	}
 	want := []string{
-		"pixiv_account_list", "pixiv_account_status", "pixiv_account_use", "pixiv_account_login_start",
+		"pixiv_account_list", "pixiv_account_status", "pixiv_account_use", "pixiv_account_login_start", "pixiv_artwork_media",
 		"pixiv_search_illust", "pixiv_search_novel", "pixiv_illust_detail",
 		"pixiv_illust_related", "pixiv_illust_ranking", "pixiv_search_user", "pixiv_illust_recommended", "pixiv_novel_detail", "pixiv_novel_content",
 		"pixiv_illust_series", "pixiv_novel_series", "pixiv_illust_comments", "pixiv_novel_comments",

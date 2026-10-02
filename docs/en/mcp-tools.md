@@ -217,6 +217,25 @@ inclusive and non-negative. The application outcome reports `filter.min`,
 Unknown membership is not treated as non-Premium. Premium is not a local hard
 gate, and a bookmark count must not be described as a like count.
 
+## Artwork media
+
+`pixiv_artwork_media` reads static artwork bytes through the selected account's SDK resource client, not a server filesystem download. Search/detail/list tools remain metadata-only; they do not download every image implicitly.
+
+| Input | Contract |
+| --- | --- |
+| `illust_id` | Required positive integer. |
+| `pages` | Optional array of one-based page numbers; omission means every page. Empty arrays, nonpositive or out-of-range pages fail. Duplicates are removed in request order. |
+| `quality` | `regular` by default; `thumbnail` uses the SDK thumb variant, and `original` must be explicitly requested. No local resizing. |
+| `animation_format` | Reserved for GIF/APNG animation delivery; any supplied value on static artwork fails. Ugoira currently returns `animation_not_supported`, never a first-frame success. |
+
+The closed input object is validated before opening an account snapshot where possible; page bounds require artwork metadata but are checked before reading any media. One SDK lease binds detail and all media reads to one account, preserves Pixiv Referer and resource-host validation, and closes bodies and the lease on success, failure, or cancellation. There are no temporary files, implicit page/byte caps, or cross-account retries of partial delivery.
+
+The structured result contains `illust_id`, `title`, `total_pages`, `requested_pages`, `delivered_pages`, `pages`, `failures`, and `complete`. Each delivered page has its one-based `page`, actual `mime_type`, byte `size`, and zero-based `content_index` into the MCP content array. That entry is standard `ImageContent` with real bytes, not a URL or local path. MIME is detected from bytes rather than assumed from a filename or header. An unexpected HTTP status, body read/close error, or non-image body is not a delivered page.
+
+Partial results retain successful images in requested order, list each failed page with an `error` category and optional `http_status`, and set `complete=false` and `isError=true`. Retry explicitly selected failed pages. Input errors use `invalid_request` (schema), `invalid_illust_id`, `invalid_pages`, `invalid_quality`, `invalid_animation_format`, or `animation_format_not_applicable`. Invalid page metadata, unavailable pages, SDK failures, cancellation, or local read/cleanup failures are explicit and redact raw upstream bodies, URLs, and credentials. A top-level `error` describes a whole-call failure; page failures live in `failures`.
+
+`complete=true` describes the response constructed by the server, not proof that a host accepted/displayed it. If a host rejects the entire payload, do not claim delivery; request explicit pages instead. No universal payload limit is invented. Tool annotations are read-only, non-destructive, idempotent, and open-world. Synthetic SDK/MCP tests do not establish ChatGPT/Gemini display support; real-host validation remains deferred.
+
 ## Tool annotations and downloads
 
 Pixiv tools use the `pixiv_` prefix and FANBOX tools use `fanbox_`; old Pixiv names are not aliases. Both products share one server, with independent SDK runtimes and credential selection.
