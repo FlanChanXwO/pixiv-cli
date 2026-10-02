@@ -277,6 +277,8 @@ v1 已删除 `internal/services/pixiv/webapi` 与匿名 Web/AJAX 路径：App AP
 
 `internal/services/pixiv` 的业务 Facade 统一账号打开、登录完成、凭据 rotation、账号池选择/冻结/safe replay 与 Lease 生命周期；`internal/services/fanbox` 统一账号选择、session 校验与独立 client 生命周期，但不引入 Pixiv 账号池策略。
 
+显式非零 `Request.UserID` 将读取与写入固定到该本地账号，即使启用账号池也不换号。打开账号及业务调用失败直接返回，不切换到其他账号；未指定 UID 的请求继续使用原有池调度。这不修改 CLI default。
+
 ### reverse-search Facade 例外
 
 反向搜图是唯一跨越常规 public SDK 边界的产品能力。顶层契约与 Facade 位于 `internal/services/reversesearch`，provider 协议适配只位于 `internal/services/reversesearch/saucenao` 与 `internal/services/reversesearch/ascii2d`。生产组装 `internal/cli/root.go` 可以依赖 `internal/services/reversesearch/assembly`，在每个命令/session 启动时绑定 HTTP client、代理和 SauceNAO key；`internal/cli/commands` 下的 CLI owner 与全部 `internal/mcpserver` 只能 import 顶层 `internal/services/reversesearch` 契约，不得 import provider 子包或 assembly。Facade 返回领域结果，CLI/MCP 只在输出边界投影 canonical Record。

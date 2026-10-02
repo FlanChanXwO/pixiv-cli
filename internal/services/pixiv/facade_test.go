@@ -3,6 +3,7 @@ package pixiv_test
 import (
 	"context"
 	"errors"
+	"fmt"
 	"reflect"
 	"testing"
 	"time"
@@ -330,4 +331,49 @@ func TestFacadeUseReportsMissingPoolConfiguration(t *testing.T) {
 	if !errors.Is(err, pixivservice.ErrPoolRuntimeLoaderNotConfigured) {
 		t.Fatalf("Use() error = %v, want %v", err, pixivservice.ErrPoolRuntimeLoaderNotConfigured)
 	}
+}
+
+func TestFacadeExplicitAccountOverridesEnabledPool(t *testing.T) {
+	for _, committed := range []bool{false, true} {
+		t.Run(fmt.Sprint(committed), func(t *testing.T) {
+			accounts := &fakeAccounts{}
+			gate := &fakeGate{}
+			pool := &fakePool{userIDs: []int64{11, 22}}
+			facade := pixivservice.New(pixivservice.Dependencies{
+				Accounts: accounts, Gate: gate,
+				LoadPoolConfig: func() (pixivservice.PoolConfig, error) { return pixivservice.PoolConfig{Enabled: true}, nil },
+				Pool:           func(pixivservice.PoolConfig) (pixivservice.PoolExecutor, error) { return pool, nil },
+			})
+			want := sdk.NewError("pixiv", "fixture", sdk.RateLimited, sdk.WithRetry(sdk.RetryAdvice{Safe: true}))
+			calls := 0
+			err := facade.Use(t.Context(), pixivservice.Request{UserID: 42}, func(context.Context, *sdkpixiv.Client) (bool, error) { calls++; return committed, want })
+			require.ErrorIs(t, err, want)
+			require.Equal(t, []int64{42}, accounts.openedIDs)
+			require.Equal(t, 1, calls)
+			require.Zero(t, pool.calls)
+			require.Equal(t, 1, gate.acquired)
+			require.Equal(t, 1, gate.released)
+		})
+	}
+}
+
+func TestFacadeExplicitMissingAccountDoesNotTryPool(t *testing.T) {
+	want := errors.New("account missing")
+	accounts := &fakeAccounts{err: want}
+	gate := &fakeGate{}
+	facade := pixivservice.New(pixivservice.Dependencies{
+		Accounts: accounts, Gate: gate,
+		LoadPoolConfig: func() (pixivservice.PoolConfig, error) { return pixivservice.PoolConfig{Enabled: true}, nil },
+		Pool: func(pixivservice.PoolConfig) (pixivservice.PoolExecutor, error) {
+			t.Error("pool created for explicit account")
+			return nil, nil
+		},
+	})
+	err := facade.Use(t.Context(), pixivservice.Request{UserID: 42}, func(context.Context, *sdkpixiv.Client) (bool, error) {
+		t.Error("callback called for missing account")
+		return false, nil
+	})
+	require.ErrorIs(t, err, want)
+	require.Equal(t, []int64{42}, accounts.openedIDs)
+	require.Equal(t, 1, gate.released)
 }

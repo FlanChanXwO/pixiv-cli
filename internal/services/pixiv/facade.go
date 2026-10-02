@@ -214,7 +214,8 @@ func (f *Facade) Use(ctx context.Context, request Request, callback func(context
 		return err
 	}
 
-	if !config.Enabled {
+	// 显式账号属于调用快照，账号池不能改写身份或在错误后换号。
+	if request.UserID != 0 || !config.Enabled {
 		return useAttempt(ctx, request, &lifecycle.Attempt{})
 	}
 	if f.poolFactory == nil {
