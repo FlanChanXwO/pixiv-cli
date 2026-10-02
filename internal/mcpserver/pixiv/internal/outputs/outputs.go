@@ -59,7 +59,8 @@ func UserDetailError(err error) (*mcp.CallToolResult, UserDetail, error) {
 	return records.Result(out.Records, true, records.ErrorMessage(err)), out, nil
 }
 
-// RecommendedPagination 分别表达每条推荐流的逻辑分页；SDK opaque cursor 不离开适配层。
+// RecommendedPagination 分别表达每条推荐流的逻辑页与默认批次续读；
+// next_cursor 是绑定单个 kind/filter 的 MCP envelope。
 type RecommendedPagination struct {
 	Illust *runtime.PaginationOut `json:"illust,omitempty"`
 	Manga  *runtime.PaginationOut `json:"manga,omitempty"`

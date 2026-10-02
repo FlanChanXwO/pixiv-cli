@@ -281,7 +281,7 @@ body{margin:0;padding:16px}h1{font-size:20px;margin:0 0 8px}p{overflow-wrap:anyw
       if (["illust", "manga"].includes(kind) && original.illust_filter?.type && original.illust_filter.type !== kind) continue;
       const page = mixed ? pagination[kind] : pagination;
       if (!page?.has_more) continue;
-      const cursor = ["pixiv_illust_related", "pixiv_illust_ranking", "pixiv_illust_recommended", "pixiv_search_illust"].includes(name) && typeof page.next_cursor === "string" && page.next_cursor !== "" ? page.next_cursor : undefined;
+      const cursor = ["pixiv_illust_related", "pixiv_illust_ranking", "pixiv_illust_recommended", "pixiv_search_illust", "pixiv_recommended"].includes(name) && typeof page.next_cursor === "string" && page.next_cursor !== "" ? page.next_cursor : undefined;
       if (!cursor && (!Number.isSafeInteger(page.page) || !Number.isSafeInteger(page.next_page) || page.next_page <= page.page || !Number.isSafeInteger(page.limit) || page.limit <= 0)) {
         text("p", "More " + kind + " results exist, but this response has no usable continuation. Discovery continuation is not complete.", cards);
         continue;

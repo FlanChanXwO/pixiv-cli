@@ -22,6 +22,7 @@ func Register(app *runtime.App, server *mcp.Server) {
 }
 
 type In struct {
+	Cursor       *string               `json:"cursor,omitempty"`
 	Kind         string                `json:"kind" jsonschema:"required: all, illust, manga, novel, or user"`
 	IllustFilter *filters.IllustFilter `json:"illust_filter,omitempty"`
 	NovelFilter  *filters.NovelFilter  `json:"novel_filter,omitempty"`
@@ -35,6 +36,7 @@ func recommendedInputSchema() map[string]any {
 		"additionalProperties": false,
 		"required":             []string{"kind"},
 		"properties": map[string]any{
+			"cursor":        map[string]any{"type": "string", "description": "Opaque default-batch continuation for a single kind; omit page and limit."},
 			"kind":          map[string]any{"type": "string", "enum": []string{"all", "illust", "manga", "novel", "user"}},
 			"illust_filter": filters.IllustFilterSchema(),
 			"novel_filter":  filters.NovelFilterSchema(),
@@ -107,20 +109,37 @@ func handleRecommended(ctx context.Context, app *runtime.App, in In) (*mcp.CallT
 	if err != nil {
 		return outputs.RecommendedError(err)
 	}
+	var initial sdk.Cursor
+	if in.Cursor != nil {
+		if !plan.OneBatch || in.Kind == "all" {
+			return outputs.RecommendedError(errors.New("cursor requires a single kind and omitted page and limit"))
+		}
+		binding, err := runtime.BindCursor("recommended", streamInput(in, in.Kind))
+		if err != nil {
+			return outputs.RecommendedError(err)
+		}
+		initial, err = binding.Decode(in.Cursor)
+		if err != nil {
+			return outputs.RecommendedError(err)
+		}
+	}
 	execute := app.Execute()
 	if execute == nil {
 		return outputs.RecommendedError(sdk.NewError("pixiv", "Recommended", sdk.LocalStateError,
 			sdk.WithDetail("sdk pooled operation is not configured")))
 	}
 	err = execute(ctx, func(ctx context.Context, client *pixiv.Client) (bool, error) {
+		// 重放必须丢弃前一账号/尝试的记录与分页状态。
+		out = outputs.NewRecommended()
 		var visualItems []pixiv.Artwork
 		var visualMore bool
+		var visualNext sdk.Cursor
 		if in.Kind == "all" || in.Kind == "illust" || in.Kind == "manga" {
 			rawArtworkCtx, filterErr := filters.WithIllustFilter(ctx, nil)
 			if filterErr != nil {
 				return false, filterErr
 			}
-			visualItems, visualMore, filterErr = runtime.CollectPages(rawArtworkCtx, plan, func(ctx context.Context, c sdk.Cursor) ([]pixiv.Artwork, sdk.Cursor, error) {
+			visualItems, visualMore, visualNext, filterErr = runtime.CollectPagesFrom(rawArtworkCtx, plan, initial, func(ctx context.Context, c sdk.Cursor) ([]pixiv.Artwork, sdk.Cursor, error) {
 				r, e := client.RecommendedArtworks(ctx, pixiv.RecommendedArtworksRequest{Cursor: c})
 				if e != nil {
 					return nil, sdk.Cursor{}, e
@@ -143,6 +162,10 @@ func handleRecommended(ctx context.Context, app *runtime.App, in In) (*mcp.CallT
 			}
 			out.Records = append(out.Records, recordItems...)
 			out.Pagination.Illust = outputs.RecommendedPage(plan, in.Limit, len(items), visualMore)
+			out.Pagination.Illust.NextCursor, err = streamContinuation(in, "illust", visualNext)
+			if err != nil {
+				return false, err
+			}
 		}
 		if in.Kind == "all" || in.Kind == "manga" {
 			artworkCtx, filterErr := filters.WithIllustFilter(ctx, artworkFilterForKind("manga", in.IllustFilter))
@@ -156,13 +179,17 @@ func handleRecommended(ctx context.Context, app *runtime.App, in In) (*mcp.CallT
 			}
 			out.Records = append(out.Records, recordItems...)
 			out.Pagination.Manga = outputs.RecommendedPage(plan, in.Limit, len(items), visualMore)
+			out.Pagination.Manga.NextCursor, err = streamContinuation(in, "manga", visualNext)
+			if err != nil {
+				return false, err
+			}
 		}
 		if in.Kind == "all" || in.Kind == "novel" {
 			novelCtx, filterErr := filters.WithNovelFilter(ctx, in.NovelFilter)
 			if filterErr != nil {
 				return false, filterErr
 			}
-			items, more, fetchErr := runtime.CollectPages(novelCtx, plan, func(ctx context.Context, c sdk.Cursor) ([]pixiv.Novel, sdk.Cursor, error) {
+			items, more, next, fetchErr := runtime.CollectPagesFrom(novelCtx, plan, initial, func(ctx context.Context, c sdk.Cursor) ([]pixiv.Novel, sdk.Cursor, error) {
 				r, e := client.RecommendedNovels(ctx, pixiv.RecommendedNovelsRequest{Cursor: c})
 				if e != nil {
 					return nil, sdk.Cursor{}, e
@@ -178,13 +205,17 @@ func handleRecommended(ctx context.Context, app *runtime.App, in In) (*mcp.CallT
 			}
 			out.Records = append(out.Records, recordItems...)
 			out.Pagination.Novel = outputs.RecommendedPage(plan, in.Limit, len(items), more)
+			out.Pagination.Novel.NextCursor, err = streamContinuation(in, "novel", next)
+			if err != nil {
+				return false, err
+			}
 		}
 		if in.Kind == "all" || in.Kind == "user" {
 			userCtx, filterErr := filters.WithUserFilter(ctx, in.UserFilter)
 			if filterErr != nil {
 				return false, filterErr
 			}
-			items, more, fetchErr := runtime.CollectPages(userCtx, plan, func(ctx context.Context, c sdk.Cursor) ([]pixiv.UserPreview, sdk.Cursor, error) {
+			items, more, next, fetchErr := runtime.CollectPagesFrom(userCtx, plan, initial, func(ctx context.Context, c sdk.Cursor) ([]pixiv.UserPreview, sdk.Cursor, error) {
 				r, e := client.RecommendedUsers(ctx, pixiv.RecommendedUsersRequest{Cursor: c})
 				if e != nil {
 					return nil, sdk.Cursor{}, e
@@ -200,6 +231,10 @@ func handleRecommended(ctx context.Context, app *runtime.App, in In) (*mcp.CallT
 			}
 			out.Records = append(out.Records, recordItems...)
 			out.Pagination.User = outputs.RecommendedPage(plan, in.Limit, len(items), more)
+			out.Pagination.User.NextCursor, err = streamContinuation(in, "user", next)
+			if err != nil {
+				return false, err
+			}
 		}
 		return false, nil
 	})
@@ -207,4 +242,34 @@ func handleRecommended(ctx context.Context, app *runtime.App, in In) (*mcp.CallT
 		return outputs.RecommendedError(err)
 	}
 	return records.Result(out.Records, false, ""), out, nil
+}
+
+// streamInput 与客户端单 kind 续读参数一致，不把 all 的其他流筛选带过去。
+func streamInput(in In, kind string) In {
+	in.Kind = kind
+	in.Cursor = nil
+	if kind != "illust" && kind != "manga" {
+		in.IllustFilter = nil
+	}
+	if kind != "novel" {
+		in.NovelFilter = nil
+	}
+	if kind != "user" {
+		in.UserFilter = nil
+	}
+	return in
+}
+
+func streamContinuation(in In, kind string, next sdk.Cursor) (string, error) {
+	if next.IsZero() {
+		return "", nil
+	}
+	if (kind == "illust" || kind == "manga") && in.IllustFilter != nil && in.IllustFilter.Type != "" && in.IllustFilter.Type != kind {
+		return "", nil
+	}
+	binding, err := runtime.BindCursor("recommended", streamInput(in, kind))
+	if err != nil {
+		return "", err
+	}
+	return binding.Encode(next)
 }

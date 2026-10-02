@@ -3,6 +3,7 @@ package pixiv_test
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"sort"
 	"testing"
 
@@ -26,7 +27,7 @@ func TestFeedRecommendationSchemasMatchLegacyContracts(t *testing.T) {
 	}{
 		{name: "pixiv_illust_ranking", fields: []string{"cursor", "date", "illust_filter", "limit", "mode", "page"}},
 		{name: "pixiv_illust_recommended", fields: []string{"cursor", "illust_filter", "limit", "page"}},
-		{name: "pixiv_recommended", fields: []string{"illust_filter", "kind", "limit", "novel_filter", "page", "user_filter"}},
+		{name: "pixiv_recommended", fields: []string{"cursor", "illust_filter", "kind", "limit", "novel_filter", "page", "user_filter"}},
 		{name: "pixiv_timeline_illust_following", fields: []string{"illust_filter", "limit", "page", "restrict"}},
 		{name: "pixiv_timeline_novel_following", fields: []string{"limit", "novel_filter", "page", "restrict"}},
 		{name: "pixiv_timeline_illust_latest", fields: []string{"content_type", "illust_filter", "limit", "page"}},
@@ -458,4 +459,137 @@ func feedResultText(result *mcp.CallToolResult) string {
 		}
 	}
 	return "<no text content>"
+}
+
+func TestMixedRecommendedDefaultCursors(t *testing.T) {
+	calls := map[string]int{}
+	client := &fakeSDKClient{userID: 7,
+		recommendedArtworks: func(_ context.Context, r pixiv.RecommendedArtworksRequest, _ int) (sdk.Page[pixiv.Artwork], error) {
+			calls["art"]++
+			a := testSDKIllust(1, "art", 7)
+			m := testSDKIllust(2, "manga", 7)
+			m.Kind = pixiv.ArtworkKindManga
+			var next sdk.Cursor
+			if r.Cursor.IsZero() {
+				next = testPageCursor(1)
+			} else {
+				a.ID = 11
+				m.ID = 12
+			}
+			return sdk.Page[pixiv.Artwork]{Items: []pixiv.Artwork{a, m}, Next: next}, nil
+		},
+		novelRecommended: func(_ context.Context, r pixiv.RecommendedNovelsRequest) (sdk.Page[pixiv.Novel], error) {
+			calls["novel"]++
+			id := int64(3)
+			var next sdk.Cursor
+			if r.Cursor.IsZero() {
+				next = testPageCursor(2)
+			} else {
+				id = 13
+			}
+			return sdk.Page[pixiv.Novel]{Items: []pixiv.Novel{{ID: id, Title: "novel", User: pixiv.User{ID: 7}}}, Next: next}, nil
+		},
+		userRecommended: func(_ context.Context, r pixiv.RecommendedUsersRequest) (sdk.Page[pixiv.UserPreview], error) {
+			calls["user"]++
+			id := int64(4)
+			var next sdk.Cursor
+			if r.Cursor.IsZero() {
+				next = testPageCursor(3)
+			} else {
+				id = 14
+			}
+			return sdk.Page[pixiv.UserPreview]{Items: []pixiv.UserPreview{{User: pixiv.User{ID: id, Name: "user"}}}, Next: next}, nil
+		},
+	}
+	session, closeSession := newSDKTestSession(t, client)
+	defer closeSession()
+	first := callTool(t, session, "pixiv_recommended", map[string]any{"kind": "all"})
+	var out outputs.Recommended
+	decodeStructured(t, first, &out)
+	if first.IsError || len(out.Records) != 4 {
+		t.Fatalf("first error=%v records=%d", first.IsError, len(out.Records))
+	}
+	cursors := map[string]string{"illust": out.Pagination.Illust.NextCursor, "manga": out.Pagination.Manga.NextCursor, "novel": out.Pagination.Novel.NextCursor, "user": out.Pagination.User.NextCursor}
+	for kind, cursor := range cursors {
+		if cursor == "" {
+			t.Fatalf("missing %s continuation", kind)
+		}
+		result := callTool(t, session, "pixiv_recommended", map[string]any{"kind": kind, "cursor": cursor})
+		var continued outputs.Recommended
+		decodeStructured(t, result, &continued)
+		if result.IsError || len(continued.Records) != 1 {
+			t.Fatalf("kind=%s error=%v records=%d", kind, result.IsError, len(continued.Records))
+		}
+		want := map[string]string{"illust": "11", "manga": "12", "novel": "13", "user": "14"}[kind]
+		if continued.Records[0].ID() != want {
+			t.Fatalf("kind=%s id=%s", kind, continued.Records[0].ID())
+		}
+	}
+	if calls["art"] != 3 || calls["novel"] != 2 || calls["user"] != 2 {
+		t.Fatalf("other streams refetched: %v", calls)
+	}
+	for _, args := range []map[string]any{{"kind": "all", "cursor": cursors["illust"]}, {"kind": "manga", "cursor": cursors["illust"]}, {"kind": "novel", "cursor": cursors["novel"], "limit": 1}} {
+		if r := callTool(t, session, "pixiv_recommended", args); !r.IsError {
+			t.Fatal("invalid cursor accepted")
+		}
+	}
+}
+
+func TestMixedRecommendedReplayDiscardsPreviousAttempt(t *testing.T) {
+	novels := 0
+	client := &fakeSDKClient{userID: 7, recommendedArtworks: func(context.Context, pixiv.RecommendedArtworksRequest, int) (sdk.Page[pixiv.Artwork], error) {
+		return sdk.Page[pixiv.Artwork]{Items: []pixiv.Artwork{testSDKIllust(1, "art", 7)}}, nil
+	}, novelRecommended: func(context.Context, pixiv.RecommendedNovelsRequest) (sdk.Page[pixiv.Novel], error) {
+		novels++
+		if novels == 1 {
+			return sdk.Page[pixiv.Novel]{}, errors.New("fixture failure")
+		}
+		return sdk.Page[pixiv.Novel]{Items: []pixiv.Novel{{ID: 2, Title: "novel", User: pixiv.User{ID: 7}}}}, nil
+	}}
+	ports, account := newTestSDKPorts(t, client)
+	execute := ports.Execute
+	ports.Execute = func(ctx context.Context, a pixivmcpserver.Account, attempt func(context.Context, *pixiv.Client) (bool, error)) error {
+		if err := execute(ctx, a, attempt); err != nil {
+			return execute(ctx, a, attempt)
+		}
+		return nil
+	}
+	session, closeSession := newSDKTestSessionWithPorts(t, ports, account)
+	defer closeSession()
+	result := callTool(t, session, "pixiv_recommended", map[string]any{"kind": "all"})
+	var out outputs.Recommended
+	decodeStructured(t, result, &out)
+	if result.IsError || novels != 2 || len(out.Records) != 2 {
+		t.Fatalf("replay leaked prior records: error=%v novels=%d records=%d", result.IsError, novels, len(out.Records))
+	}
+}
+
+func TestMixedRecommendedEmptyVisualBatchKeepsCursor(t *testing.T) {
+	calls := 0
+	client := &fakeSDKClient{userID: 7, recommendedArtworks: func(_ context.Context, r pixiv.RecommendedArtworksRequest, _ int) (sdk.Page[pixiv.Artwork], error) {
+		calls++
+		item := testSDKIllust(1, "filtered", 7)
+		var next sdk.Cursor
+		if r.Cursor.IsZero() {
+			next = testPageCursor(1)
+		} else {
+			item.PageCount = 2
+		}
+		return sdk.Page[pixiv.Artwork]{Items: []pixiv.Artwork{item}, Next: next}, nil
+	}}
+	session, closeSession := newSDKTestSession(t, client)
+	defer closeSession()
+	filter := map[string]any{"min_pages": 2}
+	first := callTool(t, session, "pixiv_recommended", map[string]any{"kind": "all", "illust_filter": filter})
+	var out outputs.Recommended
+	decodeStructured(t, first, &out)
+	if first.IsError || len(out.Records) != 0 || out.Pagination.Illust.NextCursor == "" || calls != 1 {
+		t.Fatalf("empty visual batch lost continuation: error=%v calls=%d", first.IsError, calls)
+	}
+	second := callTool(t, session, "pixiv_recommended", map[string]any{"kind": "illust", "illust_filter": filter, "cursor": out.Pagination.Illust.NextCursor})
+	out = outputs.Recommended{}
+	decodeStructured(t, second, &out)
+	if second.IsError || len(out.Records) != 1 || out.Pagination.Illust.HasMore || out.Pagination.Illust.NextCursor != "" || calls != 2 {
+		t.Fatalf("filtered continuation error=%v calls=%d", second.IsError, calls)
+	}
 }

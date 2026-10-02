@@ -325,23 +325,37 @@ func CollectStreamsWith[T any, C pagination.Cursor](ctx context.Context, app *Ap
 // CollectPages 仅把 MCP 的兼容 sentinel 映射到共享分页语义；成功空结果
 // 仍保持 non-nil slice，失败时共享 collector 会丢弃部分结果。
 func CollectPages[T any](ctx context.Context, plan ListPlan, fetch func(context.Context, sdk.Cursor) ([]T, sdk.Cursor, error)) ([]T, bool, error) {
+	items, more, _, err := CollectPagesFrom(ctx, plan, sdk.Cursor{}, fetch)
+	return items, more, err
+}
+
+// CollectPagesFrom 保持流内过滤语义，默认完整批次才返回可安全续读的 cursor。
+func CollectPagesFrom[T any](ctx context.Context, plan ListPlan, initial sdk.Cursor, fetch func(context.Context, sdk.Cursor) ([]T, sdk.Cursor, error)) ([]T, bool, sdk.Cursor, error) {
+	var continuation sdk.Cursor
 	limit := max(0, plan.Limit)
 	seen := make(map[string]struct{})
-	items, result, err := pagination.CollectPages(ctx, pagination.PagePlan{
+	items, result, err := pagination.CollectPagesFrom(ctx, pagination.PagePlan{
 		Skip:     plan.Skip,
 		Limit:    limit,
 		OneBatch: plan.OneBatch,
-	}, func(ctx context.Context, cursor sdk.Cursor) ([]T, sdk.Cursor, error) {
+	}, initial, func(ctx context.Context, cursor sdk.Cursor) ([]T, sdk.Cursor, error) {
 		items, next, err := fetch(ctx, cursor)
 		if err != nil {
 			return nil, sdk.Cursor{}, err
 		}
+		if plan.OneBatch && !next.IsZero() && next == cursor {
+			return nil, sdk.Cursor{}, errors.New("batch continuation cursor repeated")
+		}
+		continuation = next
 		return filters.FilterPage(ctx, items, seen), next, nil
 	})
 	if err != nil {
-		return nil, false, err
+		return nil, false, sdk.Cursor{}, err
 	}
-	return items, result.HasMore, nil
+	if !plan.OneBatch {
+		continuation = sdk.Cursor{}
+	}
+	return items, result.HasMore, continuation, nil
 }
 
 // OpenClient 打开一次由 services Facade 管理的独立 SDK snapshot，并返回

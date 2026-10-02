@@ -77,6 +77,8 @@ handler 执行后的失败会保留该 tool 的 structured result 并设置
 
 `pixiv_search_illust`、`pixiv_illust_related`、`pixiv_illust_ranking`、`pixiv_illust_recommended` 的默认批次仍有后续内容时，额外返回 `pagination.next_cursor`。重复原始参数（包括适用的搜索查询/策略、作品 ID、排行 mode/date 及筛选），把 opaque 值原样作为 `cursor` 传回，同时省略 `page`/`limit`。MCP envelope 绑定原始参数并封装 SDK continuation state，不含凭据；这是编码，不是加密或授权凭证。每次续读仍由 SDK 验证 operation/query/账号绑定。参数改变、账号不兼容、畸形或原地重复 cursor 均明确失败。批次交付全部条目后才前进，过滤后为空的上游批次继续遍历；已有正数 limit 的逻辑分页不变。结束或失败时省略该字段。
 
+`pixiv_recommended` 的默认批次在对应流仍可续读时，分别在 `pagination.illust`、`manga`、`novel`、`user` 附带 `next_cursor`。续读要求匹配的单个 `kind`、同一适用筛选，并省略 `page`/`limit`；拒绝 `kind=all` 携带 cursor，其他种类筛选应移除。首次插画/漫画投影共用一个上游窗口，继续其中一流不消耗另一流。过滤后为空的视觉窗口仍可能可续读；筛选明确排除的视觉 kind 不生成 cursor。失败或执行重放不会混入上一尝试的记录/分页状态。
+
 Record 保留公开实体字段以及必要的 opaque resource reference，但不会输出已解析/签名资源 URL、
 请求头、Cookie、过期 metadata、access token 或其他资源传输凭据。可用的小说正文 block、评论和
 profile image 引用同样遵循此规则。
@@ -224,7 +226,7 @@ MCP 不再注册 `download`、`download_random_from_recommendation` 或任何改
 | `pixiv_illust_ranking` | 可选 `mode`、`date`、`illust_filter`、`page`、`limit`；`mode` 是封闭的 ranking enum，日期必须是有效 `YYYY-MM-DD`，省略 mode 为 `day`。 默认批次 `cursor` 要求省略 `page`/`limit`。 |
 | `pixiv_search_user` | 必填非空白 `word`，可选 `user_filter`、`page`、`limit`；空白输入会在 SDK 执行前拒绝，合法输入调用 App user-search operation。 |
 | `pixiv_illust_recommended` | 作品推荐，可选 `illust_filter`、`page`、`limit`。 默认批次 `cursor` 要求省略 `page`/`limit`。 |
-| `pixiv_recommended` | 必填 `kind`：`all`、`illust`、`manga`、`novel` 或 `user`；可选匹配的 typed filter、`page`、`limit`。`illust`/`manga` 选择对应 artwork subtype，冲突 filter 会在 SDK 执行前拒绝；`all` 保持四路独立流，并采用原子失败语义。 |
+| `pixiv_recommended` | 必填 `kind`：`all`、`illust`、`manga`、`novel` 或 `user`；可选匹配的 typed filter、`page`、`limit`。`illust`/`manga` 选择对应 artwork subtype，冲突 filter 会在 SDK 执行前拒绝；`all` 保持四路独立流，并采用原子失败语义。 默认批次 `cursor` 要求匹配的单一 kind 并省略 page/limit。 |
 | `pixiv_trending_tags_illust` | 无输入；返回完整当前作品趋势标签列表。上游返回空列表时仍是成功的空结果。 |
 | `pixiv_timeline_illust_following` / `pixiv_timeline_novel_following` | `restrict`（`public`/`private`）、匹配实体 filter、`page`、`limit`。 |
 | `pixiv_timeline_illust_latest` | 必填 `content_type`（`illust` 或 `manga`），可选 `illust_filter`、`page`、`limit`。 |
@@ -309,7 +311,7 @@ FANBOX tools 共享协议 server，不共享 Pixiv 凭据或账号池。两产�
 
 视觉 discovery tools（`pixiv_search_illust`, `pixiv_illust_detail`, `pixiv_illust_related`, `pixiv_illust_ranking`, `pixiv_illust_recommended`, `pixiv_recommended`）始终通过 _meta.ui.resourceUri 关联单个内嵌 Gallery resource：URI 为 ui://pixiv-cli/gallery，MIME 为 text/html;profile=mcp-app。其 structured result 不变；不支持 UI 的 host 仍使用原记录与媒体工具，不新增配置开关或仅为渲染存在的 tool。
 
-当前视图将标题、作者、标签作为文本呈现。静态作品卡片进入可见区域后，以 `pages=[1]`、`quality="thumbnail"` 调用 `pixiv_artwork_media`，从返回 bytes 创建可释放 Blob URL，不直接使用 CDN URL 或服务器路径。Ugoira 卡片标记为动画，不发送无效的静态缩略图请求；详情按需加载完整 GIF（默认）或 APNG，并提供独立 PNG 预览。Play animation 选择完整 blob，Show preview 恢复静态图；实际展示/播放仍取决于 host。打开作品后读取详情，可选择静态页码与质量（默认 regular），或明确请求全部页，不截断图片。partial 媒体保留成功图片并列出未交付页。详情打开时读取收藏状态；公开/私密收藏及删除均需明确点击，保留已有标签，成功后重新读取状态。写入失败或被拒绝不报告成功，重试前应刷新状态。仅在 host 声明 `downloadFile` 能力时，静态页与动画才可通过标准 `ui/download-file` 请求下载，直接传完整内嵌 bytes，不传服务器路径或临时链接；拒绝/失败不报下载成功。成功响应仅表示 host 确认操作，保存位置和文件名由 host 控制（界面显示建议文件名）。主题及固定/最大容器尺寸跟随 host context，不注入远程字体/CSS。对于带正数 limit 与明确 next_page 的响应，视图保留原 discovery 参数并追加全部续页记录。混合推荐按 kind 独立续读，保留其他流，省略目标 kind 不接受的其他种类筛选。续页失败保留已加载记录并要求明确重试；切换视图取消旧请求。此功能需要标准 host toolInfo 和完整 tool-input 通知。搜索、相关作品、排行和作品推荐的默认批次通过原样传回 next_cursor 续读，不指定页大小。混合推荐的默认单批次响应没有 next_page 时仍不支持视图内续读，明确提示缺口，不猜测 cursor 或页大小；完整 discovery 连续读取仍未完成。
+当前视图将标题、作者、标签作为文本呈现。静态作品卡片进入可见区域后，以 `pages=[1]`、`quality="thumbnail"` 调用 `pixiv_artwork_media`，从返回 bytes 创建可释放 Blob URL，不直接使用 CDN URL 或服务器路径。Ugoira 卡片标记为动画，不发送无效的静态缩略图请求；详情按需加载完整 GIF（默认）或 APNG，并提供独立 PNG 预览。Play animation 选择完整 blob，Show preview 恢复静态图；实际展示/播放仍取决于 host。打开作品后读取详情，可选择静态页码与质量（默认 regular），或明确请求全部页，不截断图片。partial 媒体保留成功图片并列出未交付页。详情打开时读取收藏状态；公开/私密收藏及删除均需明确点击，保留已有标签，成功后重新读取状态。写入失败或被拒绝不报告成功，重试前应刷新状态。仅在 host 声明 `downloadFile` 能力时，静态页与动画才可通过标准 `ui/download-file` 请求下载，直接传完整内嵌 bytes，不传服务器路径或临时链接；拒绝/失败不报下载成功。成功响应仅表示 host 确认操作，保存位置和文件名由 host 控制（界面显示建议文件名）。主题及固定/最大容器尺寸跟随 host context，不注入远程字体/CSS。对于带正数 limit 与明确 next_page 的响应，视图保留原 discovery 参数并追加全部续页记录。混合推荐按 kind 独立续读，保留其他流，省略目标 kind 不接受的其他种类筛选。续页失败保留已加载记录并要求明确重试；切换视图取消旧请求。此功能需要标准 host toolInfo 和完整 tool-input 通知。搜索、相关作品、排行和作品推荐的默认批次通过原样传回 next_cursor 续读，不指定页大小。混合推荐的默认批次使用各流 next_cursor，以对应 kind 和适用的筛选续读。继续一个流时保留全部已加载记录及其他流的分页状态，不重新请求已耗尽的流。
 
 bridge 使用标准 `ui/initialize` / `ui/notifications/initialized`、tool-result 通知及 `tools/call`。替换视图时取消未完成预览并释放 Blob URL；teardown 同时断开 observers。CSP 只允许 Blob 图片与内嵌脚本/样式，不允许直接联网。iframe 不接收 bearer、Pixiv 凭据或 FANBOX session。参见 [MCP Apps 规范](https://github.com/modelcontextprotocol/ext-apps/blob/main/specification/2026-01-26/apps.mdx)。
 

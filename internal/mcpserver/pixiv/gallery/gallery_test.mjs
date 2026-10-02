@@ -259,6 +259,19 @@ assert.equal(cards.children.filter(node=>node.tag==='article').length,2);
 assert.equal(button('Load next page'),undefined);
 
 }
+receive({method:'ui/notifications/host-context-changed',params:{toolInfo:{tool:{name:'pixiv_recommended'}}}});
+receive({method:'ui/notifications/tool-input',params:{arguments:{kind:'all',illust_filter:{min_pages:2},novel_filter:{min_views:3}}}});
+const cursorPage = token => ({page:1,limit:null,has_more:true,next_page:null,next_cursor:token});
+receive({method:'ui/notifications/tool-result',params:{structuredContent:{records:[record],pagination:{illust:cursorPage('illust-cursor'),manga:cursorPage('manga-cursor'),novel:cursorPage('novel-cursor'),user:{has_more:false}}}}});
+assert.ok(button('Load next novel page'),'missing mixed default cursor');
+button('Load next novel page').events.click();
+const mixedCursorCall=latest('tools/call');
+assert.deepEqual(mixedCursorCall.params,{name:'pixiv_recommended',arguments:{kind:'novel',novel_filter:{min_views:3},cursor:'novel-cursor'}});
+receive({id:mixedCursorCall.id,result:{structuredContent:{records:[{type:'novel',id:'55',title:'Novel'}],pagination:{novel:{page:1,limit:null,has_more:false,next_page:null}}}}});
+await flush();
+assert.equal(cards.children.filter(node=>node.tag==='article').length,2);
+assert.ok(button('Load next manga page'),'other default stream lost');
+
 receive({method:'ui/notifications/host-context-changed',params:{toolInfo:{tool:{name:'pixiv_search_illust'}}}});
 receive({method:'ui/notifications/tool-input',params:{arguments:{word:'unbounded'}}});
 receive({method:'ui/notifications/tool-result',params:{structuredContent:{records:[record],pagination:{page:1,limit:null,returned:1,has_more:true,next_page:null}}}});
