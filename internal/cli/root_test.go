@@ -20,10 +20,12 @@ import (
 	"github.com/FlanChanXwO/pixiv-cli/internal/config/paths"
 	configapp "github.com/FlanChanXwO/pixiv-cli/internal/config/settings"
 	mcpauth "github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/auth"
+	mcpaccounts "github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/accounts"
 	pixivaccount "github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/account"
 	"github.com/FlanChanXwO/pixiv-cli/internal/services/reversesearch"
 	reverseassembly "github.com/FlanChanXwO/pixiv-cli/internal/services/reversesearch/assembly"
 	"github.com/FlanChanXwO/pixiv-cli/internal/storage/database"
+	sdkpixiv "github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/spf13/cobra"
 	"github.com/stretchr/testify/assert"
@@ -869,4 +871,84 @@ base_url = "http://127.0.0.1:8123"
 			require.Empty(t, stdout.String())
 		})
 	}
+}
+
+func TestMCPProductionResolvesSharedSelectionBeforeSDK(t *testing.T) {
+	useTempPaths(t)
+	oldConfig, oldSDK, oldHTTP, oldReverse := loadCLIRuntimeConfig, newCLIPixivSDKPorts, runMCPHTTP, newCLIMCPReverseSearch
+	t.Cleanup(func() {
+		loadCLIRuntimeConfig, newCLIPixivSDKPorts, runMCPHTTP, newCLIMCPReverseSearch = oldConfig, oldSDK, oldHTTP, oldReverse
+	})
+	loadCLIRuntimeConfig = func() (configapp.RuntimeConfig, error) {
+		return configapp.RuntimeConfig{MCPListenAddr: "127.0.0.1:8123", MCPBaseURL: "http://127.0.0.1:8123"}, nil
+	}
+	newCLIMCPReverseSearch = func(reverseassembly.Options) (reversesearch.Searcher, error) {
+		return rootReverseSearcherFunc(func(context.Context, reversesearch.Request) (reversesearch.Response, error) {
+			return reversesearch.Response{}, nil
+		}), nil
+	}
+	local := mcpaccounts.LocalSnapshot{DefaultUserID: 42, Accounts: []mcpaccounts.Account{{UserID: 42, HasCredentials: true}, {UserID: 73, HasCredentials: true}}}
+	var ids []int64
+	newCLIPixivSDKPorts = func(app) (pixivSDKPorts, error) {
+		return pixivSDKPorts{
+			localAccounts: func(context.Context) (mcpaccounts.LocalSnapshot, error) { return local, nil },
+			execute: func(_ context.Context, req pixivdeps.Request, _ func(context.Context, *sdkpixiv.Client) (bool, error)) error {
+				ids = append(ids, req.UserID)
+				return errors.New("fixture SDK boundary")
+			},
+		}, nil
+	}
+	runMCPHTTP = func(ctx context.Context, server *mcp.Server, _, _ string, store mcpauth.Store, _ io.Writer) error {
+		require.NoError(t, store.SelectPixivUser(ctx, 73))
+		ct, st := mcp.NewInMemoryTransports()
+		ss, err := server.Connect(ctx, st, nil)
+		require.NoError(t, err)
+		defer ss.Close()
+		client := mcp.NewClient(&mcp.Implementation{Name: "fixture", Version: "1"}, nil)
+		session, err := client.Connect(ctx, ct, nil)
+		require.NoError(t, err)
+		defer session.Close()
+		result, err := session.CallTool(ctx, &mcp.CallToolParams{Name: "pixiv_illust_detail", Arguments: map[string]any{"illust_id": 1}})
+		require.NoError(t, err)
+		require.True(t, result.IsError)
+		require.Equal(t, []int64{73}, ids)
+		local.Accounts = local.Accounts[:1]
+		result, err = session.CallTool(ctx, &mcp.CallToolParams{Name: "pixiv_illust_detail", Arguments: map[string]any{"illust_id": 1}})
+		require.NoError(t, err)
+		require.True(t, result.IsError)
+		require.Equal(t, []int64{73}, ids, "removed selection reached SDK or fell back to default")
+		return nil
+	}
+	a := app{in: strings.NewReader(""), out: io.Discard, errOut: io.Discard, closeState: &closeState{}}
+	_, err := a.InitMCPAuth(t.Context(), false)
+	require.NoError(t, err)
+	require.NoError(t, a.runPixivMCP(t.Context(), mcpcommands.Request{}))
+	require.NoError(t, a.closeResources())
+}
+
+func TestMCPAccountSnapshotContainsOnlyLocalSummaryAndExplicitDefault(t *testing.T) {
+	dbPath, _ := useTempPaths(t)
+	db, err := database.Open(filepath.Dir(dbPath))
+	require.NoError(t, err)
+	defer db.Close()
+	require.NoError(t, db.SavePixivCredential(t.Context(), pixivaccount.New(42, "fixture-a", []byte("fixture-secret-a"))))
+	require.NoError(t, db.SavePixivCredential(t.Context(), pixivaccount.New(73, "fixture-b", []byte("fixture-secret-b"))))
+	a := app{closeState: &closeState{}}
+	ports, err := a.newPixivSDKPorts()
+	require.NoError(t, err)
+	defer a.closeResources()
+	local, err := ports.localAccounts(t.Context())
+	require.NoError(t, err)
+	require.Zero(t, local.DefaultUserID, "implicit first account must not become explicit default")
+	require.Len(t, local.Accounts, 2)
+	for _, account := range local.Accounts {
+		require.True(t, account.HasCredentials)
+	}
+	body, err := json.Marshal(local)
+	require.NoError(t, err)
+	require.NotContains(t, string(body), "fixture-secret")
+	require.NoError(t, configapp.SetPixivDefaultUserID(73))
+	local, err = ports.localAccounts(t.Context())
+	require.NoError(t, err)
+	require.Equal(t, int64(73), local.DefaultUserID)
 }

@@ -390,3 +390,39 @@ func TestStoreSelectPixivUserDoesNotRepairOrIgnoreCanceledState(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, []byte("broken"), after)
 }
+
+func TestInitialPixivSelectionNeverOverwritesAnExplicitSelection(t *testing.T) {
+	store := auth.Store{Path: filepath.Join(t.TempDir(), "state.json")}
+	_, err := store.Init(t.Context(), false)
+	require.NoError(t, err)
+	require.NoError(t, store.SelectPixivUser(t.Context(), 73))
+	selected, err := store.InitializePixivUser(t.Context(), 42)
+	require.NoError(t, err)
+	require.Equal(t, int64(73), selected)
+	saved, err := store.Read(t.Context())
+	require.NoError(t, err)
+	require.Equal(t, int64(73), saved.SelectedPixivUserID)
+}
+
+func TestInitialPixivSelectionRacingExplicitSelectionPreservesExplicit(t *testing.T) {
+	store := auth.Store{Path: filepath.Join(t.TempDir(), "state.json")}
+	_, err := store.Init(t.Context(), false)
+	require.NoError(t, err)
+	var workers sync.WaitGroup
+	for range 8 {
+		workers.Go(func() {
+			if _, err := store.InitializePixivUser(t.Context(), 42); err != nil {
+				t.Error(err)
+			}
+		})
+		workers.Go(func() {
+			if err := store.SelectPixivUser(t.Context(), 73); err != nil {
+				t.Error(err)
+			}
+		})
+	}
+	workers.Wait()
+	saved, err := store.Read(t.Context())
+	require.NoError(t, err)
+	require.Equal(t, int64(73), saved.SelectedPixivUserID)
+}

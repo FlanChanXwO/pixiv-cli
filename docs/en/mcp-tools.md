@@ -18,6 +18,12 @@ The built-in single-owner OAuth server publishes protected-resource and authoriz
 
 Every `/mcp` request needs a valid bearer token. Missing, expired or revoked credentials return HTTP 401 with canonical `WWW-Authenticate` metadata, not a tool result; unavailable private auth state fails closed. MCP responses are `Cache-Control: no-store`, including SSE. Access tokens last one hour. Refresh rotates the token pair; reusing an old refresh token revokes its grant. Reset revokes grants and invalidates owner sessions and unexchanged codes while retaining registered clients. Restart drops in-memory authorization sessions/codes, not persisted clients or grants. Expiration/reset affects new requests, not work already authorized. Server cancellation stops acceptance and cancels/waits for active handlers; modern-revision request cancellation is propagated through the official SDK.
 
+## Pixiv account selection
+
+The MCP owner has one persisted Pixiv selection shared by connectors. On first use it adopts the explicit CLI default, or the sole local account when no explicit default exists. Multiple accounts without a default return `selection_required`; no local accounts return `no_local_account`. An existing selection is never replaced implicitly: a removed account returns `account_not_found`, and a missing local credential returns `credentials_missing`. Local credential presence does not prove upstream validity.
+
+The first SDK access in a tool call fixes its account snapshot for subsequent reads and writes. Explicit selection overrides pool scheduling without modifying the CLI default. Account-management tools are not yet registered in this candidate; the persisted selection and production resolver are implemented.
+
 ## Errors, pagination, and output
 
 Schema-invalid input is rejected before the SDK operation is opened: the MCP SDK

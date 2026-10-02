@@ -223,18 +223,38 @@ func (s Store) save(ctx context.Context, state State) error {
 
 // SelectPixivUser 只保存账号 ID；调用方先核验本地账号，不在此复制凭据或修改 CLI default。
 func (s Store) SelectPixivUser(ctx context.Context, userID int64) error {
+	_, err := s.selectPixivUser(ctx, userID, false)
+	return err
+}
+
+// InitializePixivUser adopts the initial account only if no selection has committed yet.
+func (s Store) InitializePixivUser(ctx context.Context, userID int64) (int64, error) {
+	return s.selectPixivUser(ctx, userID, true)
+}
+
+func (s Store) selectPixivUser(ctx context.Context, userID int64, onlyIfUnset bool) (int64, error) {
 	if s.Path == "" {
-		return errors.New("MCP state path is required")
+		return 0, errors.New("MCP state path is required")
 	}
 	if userID <= 0 {
-		return errors.New("MCP Pixiv user ID must be positive")
+		return 0, errors.New("MCP Pixiv user ID must be positive")
 	}
-	return lock.WithPrivateLock(ctx, s.Path, func() error {
+	var selected int64
+	err := lock.WithPrivateLock(ctx, s.Path, func() error {
 		state, err := s.Read(ctx)
 		if err != nil {
 			return err
 		}
+		if onlyIfUnset && state.SelectedPixivUserID != 0 {
+			selected = state.SelectedPixivUserID
+			return nil
+		}
 		state.SelectedPixivUserID = userID
-		return s.save(ctx, state)
+		if err := s.save(ctx, state); err != nil {
+			return err
+		}
+		selected = userID
+		return nil
 	})
+	return selected, err
 }

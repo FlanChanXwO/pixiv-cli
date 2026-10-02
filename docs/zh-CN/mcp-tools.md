@@ -17,6 +17,12 @@ metadata 请使用 `pixiv_novel_detail`。
 
 每次 `/mcp` 请求都须携带有效 bearer token。缺失、过期或撤销返回 HTTP 401 和 canonical `WWW-Authenticate` metadata，不伪装为 tool result；私有鉴权状态不可读时失败关闭。MCP 响应（含 SSE）使用 `Cache-Control: no-store`。access token 有效一小时；refresh 旋转 token pair，旧 refresh token 重放会撤销对应 grant。reset 撤销 grant 并使 owner session、未兑换 code 失效，但保留已注册 client；重启只丢弃内存授权 session/code，不丢失持久 client/grant。过期/reset 影响新请求，不中断已授权工作。服务取消时停止接收请求，取消并等待在途 handler；新版 revision 请求取消经官方 SDK 传播。
 
+## Pixiv 账号选择
+
+MCP owner 的 Pixiv 选择持久化保存，所有 connector 共享。首次使用优先采用 CLI 显式 default；没有显式 default 时，仅在本地恰有一个账号时自动采用。多个账号且无 default 返回 `selection_required`，没有本地账号返回 `no_local_account`。已有选择不会被隐式替换：账号已删除返回 `account_not_found`，缺少本地凭据返回 `credentials_missing`。本地凭据存在不代表上游实时有效。
+
+一次 tool 调用在首次 SDK 访问时固定账号快照，后续读取和写入继续使用它。显式选择覆盖账号池调度，不修改 CLI default。此候选尚未注册账号管理 tools；已实现持久选择与生产 resolver。
+
 ## 错误、分页与输出
 
 不符合 schema 的输入会在打开 SDK operation 前拒绝：MCP SDK 返回

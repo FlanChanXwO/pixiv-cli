@@ -48,6 +48,7 @@ import (
 	mcpauth "github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/auth"
 	fanboxmcpserver "github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/fanbox"
 	mcpserver "github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv"
+	mcpaccounts "github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/accounts"
 	downloader "github.com/FlanChanXwO/pixiv-cli/internal/media/downloader"
 	fanboxapp "github.com/FlanChanXwO/pixiv-cli/internal/services/fanbox"
 	fanboxaccount "github.com/FlanChanXwO/pixiv-cli/internal/services/fanbox/account"
@@ -440,6 +441,24 @@ func (a app) newPixivSDKPorts() (pixivSDKPorts, error) {
 		return facade.Use(ctx, pixivapp.Request{UserID: request.UserID, Options: options}, callback)
 	}
 	return pixivSDKPorts{
+		localAccounts: func(ctx context.Context) (mcpaccounts.LocalSnapshot, error) {
+			records, err := db.ListPixiv(ctx)
+			if err != nil {
+				return mcpaccounts.LocalSnapshot{}, err
+			}
+			defaultID, explicit, err := (configDefaultStore{store: configapp.DefaultStore()}).ReadPixivDefaultUserID()
+			if err != nil {
+				return mcpaccounts.LocalSnapshot{}, err
+			}
+			local := mcpaccounts.LocalSnapshot{Accounts: make([]mcpaccounts.Account, 0, len(records))}
+			if explicit {
+				local.DefaultUserID = defaultID
+			}
+			for _, record := range records {
+				local.Accounts = append(local.Accounts, mcpaccounts.Account{UserID: record.UserID, Username: record.Username, HasCredentials: record.HasRefreshToken()})
+			}
+			return local, nil
+		},
 		open:      open,
 		openLease: openLease,
 		execute:   execute,
@@ -1003,7 +1022,16 @@ func (a app) runPixivMCP(ctx context.Context, request mcpcommands.Request) error
 		HTTPSProxyOverride: request.HTTPSProxyOverride,
 	}
 	fanboxService := a.fanboxDataDeps().ServiceFactory
+	manager := mcpaccounts.Manager{Store: store, Load: ports.localAccounts}
 	server := unifiedmcp.New(mcpserver.SDKPorts{
+		ResolveAccount: func(ctx context.Context, account mcpserver.Account) (mcpserver.Account, error) {
+			userID, err := manager.Resolve(ctx)
+			if err != nil {
+				return mcpserver.Account{}, err
+			}
+			account.UserID = userID
+			return account, nil
+		},
 		Open: func(account mcpserver.Account) (*pixiv.Client, error) {
 			return ports.open(pixivdeps.Request{UserID: account.UserID, HTTPSProxyOverride: account.HTTPSProxyOverride})
 		},
@@ -1223,9 +1251,10 @@ func defaultCLIRuntimeConfig() (configapp.RuntimeConfig, error) {
 var loadCLIRuntimeConfig = defaultCLIRuntimeConfig
 
 type pixivSDKPorts struct {
-	open      func(pixivdeps.Request) (*pixiv.Client, error)
-	openLease func(context.Context, pixivdeps.Request) (*lifecycle.Lease[*pixiv.Client], error)
-	execute   func(context.Context, pixivdeps.Request, func(context.Context, *pixiv.Client) (bool, error)) error
+	localAccounts func(context.Context) (mcpaccounts.LocalSnapshot, error)
+	open          func(pixivdeps.Request) (*pixiv.Client, error)
+	openLease     func(context.Context, pixivdeps.Request) (*lifecycle.Lease[*pixiv.Client], error)
+	execute       func(context.Context, pixivdeps.Request, func(context.Context, *pixiv.Client) (bool, error)) error
 	// pooled 保留为当前 CLI 测试 seam 的兼容字段；生产组合根只注入 execute。
 	pooled  func(context.Context, pixivdeps.Request, func(context.Context, *pixiv.Client) (bool, error)) error
 	jsonOut func(*bool) (bool, error)
