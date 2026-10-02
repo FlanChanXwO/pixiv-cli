@@ -264,7 +264,7 @@ func (d Data) Client(request Request) (*pixiv.Client, error) {
 //     两者对"失败后能否重放"的回答相反，合并会把这一差异隐藏在参数里。
 //   - 端口未配置（nil）返回 "pixiv pooled operation is not configured"，不 panic。
 func Write(d Data, ctx context.Context, request Request, invoke func(context.Context, *pixiv.Client) error) error {
-	return d.Pooled(ctx, request, func(ctx context.Context, client *pixiv.Client) (bool, error) {
+	return d.Executor(request)(ctx, func(ctx context.Context, client *pixiv.Client) (bool, error) {
 		return true, invoke(ctx, client)
 	})
 }

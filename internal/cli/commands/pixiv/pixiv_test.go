@@ -113,3 +113,54 @@ func TestPooledReadMissingPortAndPreAttemptCancellation(t *testing.T) {
 		t.Fatalf("cancel result=%q err=%v", result, err)
 	}
 }
+
+func TestWriteMissingPooledPort(t *testing.T) {
+	err := deps.Write(deps.Data{}, context.Background(), deps.Request{}, func(context.Context, *pixiv.Client) error {
+		t.Fatal("nil port invoked write callback")
+		return nil
+	})
+	if err == nil || err.Error() != "pixiv pooled operation is not configured" {
+		t.Fatalf("missing port error=%v", err)
+	}
+}
+
+func TestWriteCommitsEveryInvokedAttempt(t *testing.T) {
+	failure := errors.New("SDK write failed")
+	for _, tc := range []struct {
+		name string
+		err  error
+	}{{"success", nil}, {"failure", failure}, {"cancelled", context.Canceled}} {
+		t.Run(tc.name, func(t *testing.T) {
+			parent := context.Background()
+			attemptCtx, cancel := context.WithCancel(parent)
+			defer cancel()
+			if tc.err == context.Canceled {
+				cancel()
+			}
+			proxy := "http://proxy.example"
+			request := deps.Request{UserID: 123, HTTPSProxyOverride: &proxy}
+			client := &pixiv.Client{}
+			calls := 0
+			data := deps.Data{Pooled: func(ctx context.Context, got deps.Request, attempt func(context.Context, *pixiv.Client) (bool, error)) error {
+				if ctx != parent || got != request {
+					t.Fatal("pool input was replaced")
+				}
+				committed, err := attempt(attemptCtx, client)
+				if !committed || !errors.Is(err, tc.err) {
+					t.Fatalf("write committed=%v error=%v", committed, err)
+				}
+				return err
+			}}
+			err := deps.Write(data, parent, request, func(ctx context.Context, got *pixiv.Client) error {
+				calls++
+				if ctx != attemptCtx || got != client {
+					t.Fatal("attempt context or client was replaced")
+				}
+				return tc.err
+			})
+			if calls != 1 || !errors.Is(err, tc.err) {
+				t.Fatalf("calls=%d error=%v", calls, err)
+			}
+		})
+	}
+}
