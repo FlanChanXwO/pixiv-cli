@@ -307,7 +307,7 @@ FANBOX tools 共享协议 server，不共享 Pixiv 凭据或账号池。两产�
 
 视觉 discovery tools（`pixiv_search_illust`, `pixiv_illust_detail`, `pixiv_illust_related`, `pixiv_illust_ranking`, `pixiv_illust_recommended`, `pixiv_recommended`）始终通过 _meta.ui.resourceUri 关联单个内嵌 Gallery resource：URI 为 ui://pixiv-cli/gallery，MIME 为 text/html;profile=mcp-app。其 structured result 不变；不支持 UI 的 host 仍使用原记录与媒体工具，不新增配置开关或仅为渲染存在的 tool。
 
-当前视图将标题、作者、标签作为文本呈现。静态作品卡片进入可见区域后，以 `pages=[1]`、`quality="thumbnail"` 调用 `pixiv_artwork_media`，从返回 bytes 创建可释放 Blob URL，不直接使用 CDN URL 或服务器路径。Ugoira 仅标记为动画，不发送无效的静态缩略图请求。此预览视图尚未实现完整页码选择、discovery 分页、收藏控制和视图内动画播放/下载控制；目前通过聊天中的对应工具操作。
+当前视图将标题、作者、标签作为文本呈现。静态作品卡片进入可见区域后，以 `pages=[1]`、`quality="thumbnail"` 调用 `pixiv_artwork_media`，从返回 bytes 创建可释放 Blob URL，不直接使用 CDN URL 或服务器路径。Ugoira 仅标记为动画，不发送无效的静态缩略图请求。打开作品后读取详情，可选择静态页码与质量（默认 regular），或明确请求全部页，不截断图片。partial 媒体保留成功图片并列出未交付页。详情打开时读取收藏状态；公开/私密收藏及删除均需明确点击，保留已有标签，成功后重新读取状态。写入失败或被拒绝不报告成功，重试前应刷新状态。discovery 分页及视图内动画播放/下载控制仍未实现，这些操作暂通过聊天中的对应工具完成。
 
 bridge 使用标准 `ui/initialize` / `ui/notifications/initialized`、tool-result 通知及 `tools/call`。替换视图时取消未完成预览并释放 Blob URL；teardown 同时断开 observers。CSP 只允许 Blob 图片与内嵌脚本/样式，不允许直接联网。iframe 不接收 bearer、Pixiv 凭据或 FANBOX session。参见 [MCP Apps 规范](https://github.com/modelcontextprotocol/ext-apps/blob/main/specification/2026-01-26/apps.mdx)。
 

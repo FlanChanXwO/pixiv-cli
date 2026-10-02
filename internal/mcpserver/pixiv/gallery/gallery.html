@@ -7,7 +7,7 @@
 <title>Pixiv Gallery</title>
 <style>
 :root{color-scheme:light dark;font:14px system-ui,sans-serif;background:var(--color-background-primary,Canvas);color:var(--color-text-primary,CanvasText)}
-body{margin:0;padding:16px}h1{font-size:20px;margin:0 0 8px}p{overflow-wrap:anywhere}#status{min-height:1.5em}#cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(210px,100%),1fr));gap:16px}article{border:1px solid GrayText;border-radius:12px;padding:12px;min-width:0}h2{font-size:16px;margin:10px 0 6px}img{width:100%;aspect-ratio:1;object-fit:contain;background:var(--color-background-secondary,Canvas);border-radius:6px}button{font:inherit;padding:8px 12px;border:1px solid GrayText;border-radius:6px;cursor:pointer;background:Canvas;color:CanvasText}button:focus-visible{outline:3px solid Highlight;outline-offset:2px}.muted{opacity:.8}.error{color:var(--color-text-danger,#c43c39)}
+body{margin:0;padding:16px}h1{font-size:20px;margin:0 0 8px}p{overflow-wrap:anywhere}#status{min-height:1.5em}#cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(210px,100%),1fr));gap:16px}article{border:1px solid GrayText;border-radius:12px;padding:12px;min-width:0}h2{font-size:16px;margin:10px 0 6px}img{width:100%;aspect-ratio:1;object-fit:contain;background:var(--color-background-secondary,Canvas);border-radius:6px}button{font:inherit;padding:8px 12px;border:1px solid GrayText;border-radius:6px;cursor:pointer;background:Canvas;color:CanvasText}button:focus-visible{outline:3px solid Highlight;outline-offset:2px}#cards>button{grid-column:1/-1;justify-self:start}#cards>article:only-of-type{grid-column:1/-1}label{display:inline-block;margin:8px 6px 8px 0}input{max-width:7em;font:inherit}select{font:inherit}button{margin:3px}.muted{opacity:.8}.error{color:var(--color-text-danger,#c43c39)}
 </style>
 </head>
 <body>
@@ -64,19 +64,128 @@ body{margin:0;padding:16px}h1{font-size:20px;margin:0 0 8px}p{overflow-wrap:anyw
       const output = result.structuredContent;
       const page = output?.pages?.find(item => item.page === 1);
       const content = page && result.content?.[page.content_index];
-      if (!content || content.type !== "image" || !["image/png","image/jpeg","image/webp","image/gif","image/bmp"].includes(content.mimeType) || typeof content.data !== "string") {
-        throw new Error("Preview unavailable");
-      }
-      const bytes = Uint8Array.from(atob(content.data), char => char.charCodeAt(0));
-      if (bytes.byteLength !== page.size || content.mimeType !== page.mime_type) throw new Error("Invalid preview metadata");
-      const url = URL.createObjectURL(new Blob([bytes], {type: content.mimeType}));
-      urls.add(url);
+      const url = imageURL(content, page);
       image.src = url;
       image.hidden = false;
       message.textContent = output.complete && !result.isError ? "Page 1 preview" : "Partial preview — see tool result for failures";
     } catch (_) {
       if (epoch === view && !disposed) { message.textContent = "Preview failed. Retry or use pixiv_artwork_media in chat."; }
     }
+  }
+  function action(label, parent, handler) {
+    const button = text("button", label, parent);
+    button.type = "button";
+    button.addEventListener("click", handler);
+    return button;
+  }
+  function imageURL(content, page) {
+    if (!content || content.type !== "image" || typeof content.data !== "string" || !["image/png","image/jpeg","image/webp","image/gif","image/bmp"].includes(content.mimeType)) throw new Error("Invalid image content");
+    const bytes = Uint8Array.from(atob(content.data), char => char.charCodeAt(0));
+    if (page && (bytes.byteLength !== page.size || content.mimeType !== page.mime_type)) throw new Error("Invalid image metadata");
+    const url = URL.createObjectURL(new Blob([bytes], {type: content.mimeType}));
+    urls.add(url);
+    return url;
+  }
+  async function openDetail(record, previous) {
+    clearView();
+    const epoch = view;
+    const id = Number(record.id);
+    action("Back to results", cards, () => render(previous));
+    if (!serverTools || !Number.isSafeInteger(id) || id <= 0) { status.textContent = "Artwork detail unavailable."; return; }
+    status.textContent = "Loading artwork…";
+    try {
+      const result = await request("tools/call", {name: "pixiv_illust_detail", arguments: {illust_id: id}}, epoch);
+      if (epoch !== view || disposed) return;
+      const artwork = result.structuredContent?.records?.find(item => item && Number(item.id) === id);
+      if (result.isError || !artwork) throw new Error("Artwork unavailable");
+      status.textContent = "Artwork detail";
+      const section = document.createElement("article"); cards.append(section);
+      text("h2", artwork.title, section);
+      text("p", artwork.user?.name, section);
+      if (artwork.type === "ugoira") {
+        text("p", "Ugoira animation — full GIF/APNG is available through pixiv_artwork_media in chat.", section);
+      } else {
+        const total = artwork.page_count;
+        if (!Number.isSafeInteger(total) || total < 1) throw new Error("Invalid page count");
+        text("p", total + " pages", section);
+        const label = text("label", "Page ", section);
+        const pageInput = document.createElement("input");
+        pageInput.type = "number"; pageInput.min = "1"; pageInput.max = String(total); pageInput.step = "1"; pageInput.value = "1";
+        label.append(pageInput);
+        const qualityLabel = text("label", " Quality ", section);
+        const quality = document.createElement("select");
+        for (const variant of ["regular", "thumbnail", "original"]) { const option = text("option", variant, quality); option.value = variant; }
+        quality.value = "regular"; qualityLabel.append(quality);
+        const mediaMessage = text("p", "Choose a page or load all pages.", section);
+        const media = document.createElement("div"); section.append(media);
+        let reading = false;
+        const controls = [];
+        const load = async all => {
+          if (reading || epoch !== view) return;
+          const selected = Number(pageInput.value);
+          if (!all && (!Number.isSafeInteger(selected) || selected < 1 || selected > total)) { mediaMessage.textContent = "Page is outside this artwork."; return; }
+          if (!["regular","thumbnail","original"].includes(quality.value)) { mediaMessage.textContent = "Invalid quality."; return; }
+          reading = true; controls.forEach(button => button.disabled = true); mediaMessage.textContent = "Loading media…";
+          const args = {illust_id: id, quality: quality.value};
+          if (!all) args.pages = [selected];
+          try {
+            const response = await request("tools/call", {name: "pixiv_artwork_media", arguments: args}, epoch);
+            if (epoch !== view || disposed) return;
+            for (const url of urls) URL.revokeObjectURL(url); urls.clear(); media.replaceChildren();
+            const output = response.structuredContent;
+            if (!Array.isArray(output?.pages)) throw new Error("Invalid media result");
+            for (const page of output.pages) {
+              const image = document.createElement("img"); image.alt = String(artwork.title) + " — page " + page.page;
+              image.src = imageURL(response.content?.[page.content_index], page);
+              image.addEventListener("error", () => { if (epoch === view && media.contains(image)) mediaMessage.textContent = "Host could not display delivered image bytes."; });
+              media.append(image); text("p", "Page " + page.page + " · " + page.size + " bytes", media);
+            }
+            const failed = Array.isArray(output.failures) ? output.failures.map(item => item?.page).join(", ") : "";
+            mediaMessage.textContent = output.complete && !response.isError ? "Requested pages delivered." : "Partial or failed media. Undelivered pages: " + (failed || "see tool result");
+          } catch (_) { if (epoch === view) mediaMessage.textContent = "Media read failed. Retry the requested pages."; }
+          finally { reading = false; controls.forEach(button => button.disabled = false); }
+        };
+        controls.push(action("Load page", section, () => load(false)), action("Load all pages", section, () => load(true)));
+      }
+      bookmarkControls(id, section, epoch);
+    } catch (_) { if (epoch === view && !disposed) status.textContent = "Artwork detail failed. Return to results and retry."; }
+  }
+  function bookmarkControls(id, section, epoch) {
+    const message = text("p", "Loading bookmark state…", section);
+    let state, busy = false;
+    const buttons = [];
+    const enable = () => { buttons.forEach(button => button.disabled = busy || !state); refresh.disabled = busy; };
+    const query = async () => {
+      if (busy || epoch !== view) return;
+      busy = true; enable();
+      try {
+        const result = await request("tools/call", {name: "pixiv_bookmark_detail", arguments: {illust_id: id}}, epoch);
+        if (epoch !== view || disposed) return;
+        const value = result.structuredContent;
+        if (result.isError || typeof value?.bookmarked !== "boolean" || (value.tags !== null && (!Array.isArray(value.tags) || !value.tags.every(tag => typeof tag === "string")))) throw new Error("Unknown bookmark state");
+        state = {...value, tags: value.tags ?? []};
+        message.textContent = value.bookmarked ? "Bookmarked (" + value.restrict + ")" : "Not bookmarked";
+      } catch (_) { if (epoch === view) { state = undefined; message.textContent = "Bookmark state unavailable. Refresh before writing."; } }
+      finally { busy = false; enable(); }
+    };
+    const mutate = async restrict => {
+      if (busy || !state || epoch !== view) return;
+      busy = true; enable();
+      const args = {illust_id: id};
+      if (restrict) { args.restrict = restrict; args.tags = state.tags; }
+      let success = false;
+      try {
+        const result = await request("tools/call", {name: restrict ? "pixiv_add_bookmark" : "pixiv_remove_bookmark", arguments: args}, epoch);
+        if (epoch !== view || disposed) return;
+        if (result.isError) throw new Error("Bookmark operation failed");
+        success = true;
+      } catch (_) { if (epoch === view) { state = undefined; message.textContent = "Bookmark change not confirmed. Refresh state before retrying."; } }
+      finally { busy = false; enable(); }
+      if (success) await query();
+    };
+    const refresh = action("Refresh bookmark", section, query);
+    buttons.push(action("Bookmark public", section, () => mutate("public")), action("Bookmark private", section, () => mutate("private")), action("Remove bookmark", section, () => mutate("")));
+    enable(); query();
   }
   function render(result) {
     clearView();
@@ -104,6 +213,7 @@ body{margin:0;padding:16px}h1{font-size:20px;margin:0 0 8px}p{overflow-wrap:anyw
         message.textContent = "Non-artwork result — full metadata is available in chat.";
         continue;
       }
+      action("Open artwork", card, () => openDetail(record, result));
       if (record.type === "ugoira") {
         message.textContent = "Ugoira animation — request the complete GIF/APNG with pixiv_artwork_media in chat.";
         continue;
