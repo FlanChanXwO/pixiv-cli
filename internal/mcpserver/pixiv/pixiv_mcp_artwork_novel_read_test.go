@@ -503,3 +503,53 @@ func TestRelatedBatchSkipsFilteredEmptyUpstream(t *testing.T) {
 		t.Fatalf("filtered last batch=%+v calls=%d", out, calls)
 	}
 }
+
+func TestRankingAndRecommendedDefaultBatchContinuation(t *testing.T) {
+	for _, name := range []string{"pixiv_illust_ranking", "pixiv_illust_recommended"} {
+		t.Run(name, func(t *testing.T) {
+			calls := 0
+			page := func(cursor sdk.Cursor) (sdk.Page[pixiv.Artwork], error) {
+				calls++
+				if cursor.IsZero() {
+					return sdk.Page[pixiv.Artwork]{Items: []pixiv.Artwork{testSDKIllust(201, "first", 7)}, Next: testPageCursor(1)}, nil
+				}
+				return sdk.Page[pixiv.Artwork]{Items: []pixiv.Artwork{testSDKIllust(202, "second", 7)}}, nil
+			}
+			client := &fakeSDKClient{userID: 7, illustRanking: func(_ context.Context, r pixiv.ArtworkRankingRequest) (sdk.Page[pixiv.Artwork], error) {
+				return page(r.Cursor)
+			}, recommendedArtworks: func(_ context.Context, r pixiv.RecommendedArtworksRequest, _ int) (sdk.Page[pixiv.Artwork], error) {
+				return page(r.Cursor)
+			}}
+			session, closeSession := newSDKTestSession(t, client)
+			defer closeSession()
+			first := callTool(t, session, name, map[string]any{})
+			var out outputs.Records
+			decodeStructured(t, first, &out)
+			if first.IsError || out.Pagination.NextCursor == "" || calls != 1 {
+				t.Fatalf("missing default batch continuation error=%v calls=%d", first.IsError, calls)
+			}
+			cursor := out.Pagination.NextCursor
+			second := callTool(t, session, name, map[string]any{"cursor": cursor})
+			out = outputs.Records{}
+			decodeStructured(t, second, &out)
+			if second.IsError || calls != 2 || len(out.Records) != 1 || out.Records[0].ID() != "202" || out.Pagination.NextCursor != "" || out.Pagination.HasMore {
+				t.Fatalf("second batch error=%v calls=%d output=%+v", second.IsError, calls, out)
+			}
+			for _, args := range []map[string]any{{"cursor": cursor, "limit": 1}, {"cursor": cursor, "illust_filter": map[string]any{"min_pages": 2}}, {"cursor": "bad"}} {
+				if r := callTool(t, session, name, args); !r.IsError {
+					t.Fatal("invalid continuation accepted")
+				}
+			}
+			other := "pixiv_illust_ranking"
+			if name == other {
+				other = "pixiv_illust_recommended"
+			}
+			if r := callTool(t, session, other, map[string]any{"cursor": cursor}); !r.IsError {
+				t.Fatal("cross-operation cursor accepted")
+			}
+			if calls != 2 {
+				t.Fatalf("invalid cursor reached data API: %d", calls)
+			}
+		})
+	}
+}

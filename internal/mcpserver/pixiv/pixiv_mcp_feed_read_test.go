@@ -24,8 +24,8 @@ func TestFeedRecommendationSchemasMatchLegacyContracts(t *testing.T) {
 		name   string
 		fields []string
 	}{
-		{name: "pixiv_illust_ranking", fields: []string{"date", "illust_filter", "limit", "mode", "page"}},
-		{name: "pixiv_illust_recommended", fields: []string{"illust_filter", "limit", "page"}},
+		{name: "pixiv_illust_ranking", fields: []string{"cursor", "date", "illust_filter", "limit", "mode", "page"}},
+		{name: "pixiv_illust_recommended", fields: []string{"cursor", "illust_filter", "limit", "page"}},
 		{name: "pixiv_recommended", fields: []string{"illust_filter", "kind", "limit", "novel_filter", "page", "user_filter"}},
 		{name: "pixiv_timeline_illust_following", fields: []string{"illust_filter", "limit", "page", "restrict"}},
 		{name: "pixiv_timeline_novel_following", fields: []string{"limit", "novel_filter", "page", "restrict"}},

@@ -24,6 +24,7 @@ func Register(app *runtime.App, server *mcp.Server) {
 }
 
 type rankingIn struct {
+	Cursor       *string               `json:"cursor,omitempty" jsonschema:"opaque default-batch continuation; repeat original arguments and omit page and limit"`
 	Mode         string                `json:"mode,omitempty"`
 	Date         string                `json:"date,omitempty"`
 	IllustFilter *filters.IllustFilter `json:"illust_filter,omitempty"`
@@ -44,6 +45,7 @@ func rankingInputSchema() map[string]any {
 			"mode":          map[string]any{"type": "string", "enum": rankingModes, "description": "Pixiv ranking mode; omitted defaults to day."},
 			"date":          map[string]any{"type": "string", "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$", "description": "Ranking date in YYYY-MM-DD."},
 			"illust_filter": filters.IllustFilterSchema(),
+			"cursor":        map[string]any{"type": "string", "description": "Opaque default-batch continuation; repeat original arguments and omit page and limit."},
 			"page":          map[string]any{"type": "integer", "minimum": 1, "description": "1-based logical page; requires a positive limit."},
 			"limit":         map[string]any{"type": "integer", "minimum": 0, "description": "Maximum logical results; 0 returns all; omitted reads one upstream batch."},
 		},
@@ -66,15 +68,13 @@ func handleIllustRanking(ctx context.Context, app *runtime.App, in rankingIn) (*
 			return outputs.Error(errors.New("date must be a valid YYYY-MM-DD calendar date"))
 		}
 	}
-	plan, err := runtime.ParseListPlan(in.PageLimitIn)
+	ctx, err := filters.WithIllustFilter(ctx, in.IllustFilter)
 	if err != nil {
 		return outputs.Error(err)
 	}
-	ctx, err = filters.WithIllustFilter(ctx, in.IllustFilter)
-	if err != nil {
-		return outputs.Error(err)
-	}
-	items, more, err := runtime.CollectWith(ctx, app, plan, func(ctx context.Context, client *pixiv.Client, cursor sdk.Cursor) ([]pixiv.Artwork, sdk.Cursor, error) {
+	bindingInput := in
+	bindingInput.Cursor = nil
+	items, page, err := runtime.CollectCursorWith(ctx, app, "illust_ranking", bindingInput, in.Cursor, in.PageLimitIn, func(ctx context.Context, client *pixiv.Client, cursor sdk.Cursor) ([]pixiv.Artwork, sdk.Cursor, error) {
 		result, err := client.ArtworkRanking(ctx, pixiv.ArtworkRankingRequest{Mode: pixiv.RankingMode(in.Mode), Date: in.Date, Cursor: cursor})
 		if err != nil {
 			return nil, sdk.Cursor{}, err
@@ -88,6 +88,6 @@ func handleIllustRanking(ctx context.Context, app *runtime.App, in rankingIn) (*
 	if err != nil {
 		return outputs.Error(err)
 	}
-	out := outputs.Records{Records: recordItems, Pagination: runtime.ListPagination(plan, in.Limit, len(items), more)}
+	out := outputs.Records{Records: recordItems, Pagination: page}
 	return outputs.Result(out, false), out, nil
 }

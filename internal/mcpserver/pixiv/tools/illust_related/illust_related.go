@@ -3,9 +3,6 @@ package illust_related
 
 import (
 	"context"
-	"crypto/sha256"
-	"encoding/hex"
-	"encoding/json"
 	"errors"
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/internal/filters"
@@ -35,40 +32,7 @@ func handleIllustRelated(ctx context.Context, app *runtime.App, in relatedIn) (*
 	if in.IllustID <= 0 {
 		return outputs.Error(errors.New("illust_id must be a positive integer"))
 	}
-	plan, err := runtime.ParseListPlan(in.PageLimitIn)
-	if err != nil {
-		return outputs.Error(err)
-	}
-	var initial sdk.Cursor
-	if in.Cursor != nil && (in.Page != nil || in.Limit != nil) {
-		return outputs.Error(errors.New("cursor requires omitted page and limit"))
-	}
-	bindingInput := in
-	bindingInput.Cursor = nil
-	encoded, err := json.Marshal(bindingInput)
-	if err != nil {
-		return outputs.Error(err)
-	}
-	digest := sha256.Sum256(encoded)
-	binding := hex.EncodeToString(digest[:])
-	if in.Cursor != nil {
-		cursor, parseErr := sdk.ParseCursor(*in.Cursor)
-		if parseErr != nil {
-			return outputs.Error(parseErr)
-		}
-		if err := sdk.ValidateCursor(cursor, "pixiv-mcp", "illust_related", 1, binding); err != nil {
-			return outputs.Error(err)
-		}
-		payload, err := sdk.CursorPayload(cursor)
-		if err != nil {
-			return outputs.Error(err)
-		}
-		initial, err = sdk.ParseCursor(string(payload))
-		if err != nil {
-			return outputs.Error(err)
-		}
-	}
-	ctx, err = filters.WithIllustFilter(ctx, in.IllustFilter)
+	ctx, err := filters.WithIllustFilter(ctx, in.IllustFilter)
 	if err != nil {
 		return outputs.Error(err)
 	}
@@ -79,15 +43,9 @@ func handleIllustRelated(ctx context.Context, app *runtime.App, in relatedIn) (*
 		}
 		return result.Items, result.Next, nil
 	}
-	var items []pixiv.Artwork
-	var more bool
-	var next sdk.Cursor
-	if plan.OneBatch {
-		items, next, err = runtime.CollectBatchWith(ctx, app, initial, fetch)
-		more = !next.IsZero()
-	} else {
-		items, more, err = runtime.CollectWith(ctx, app, plan, fetch)
-	}
+	bindingInput := in
+	bindingInput.Cursor = nil
+	items, page, err := runtime.CollectCursorWith(ctx, app, "illust_related", bindingInput, in.Cursor, in.PageLimitIn, fetch)
 	if err != nil {
 		return outputs.Error(err)
 	}
@@ -95,13 +53,6 @@ func handleIllustRelated(ctx context.Context, app *runtime.App, in relatedIn) (*
 	if err != nil {
 		return outputs.Error(err)
 	}
-	out := outputs.Records{Records: recordItems, Pagination: runtime.ListPagination(plan, in.Limit, len(items), more)}
-	if !next.IsZero() {
-		cursor, err := sdk.NewCursor("pixiv-mcp", "illust_related", 1, binding, []byte(next.String()))
-		if err != nil {
-			return outputs.Error(err)
-		}
-		out.Pagination.NextCursor = cursor.String()
-	}
+	out := outputs.Records{Records: recordItems, Pagination: page}
 	return outputs.Result(out, false), out, nil
 }
