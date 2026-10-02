@@ -188,6 +188,9 @@ key ID 与 public key 常量位于 `internal/update/installer/release_installer.
 | `secret` | 是否必须在公开输出中隐藏且禁止进入初始示例（与 `example:"true"` 冲突时 schema 报错） |
 
 因此**新增一项普通配置只需**：加字段与标签、补行为测试、更新对应文档。不再需要同时维护注册表、环境变量 `switch`、逐字段运行时赋值、初始文件清单或 CLI 别名清单。
+
+开发者声明的 `cli`、`secret`、`example` 属性在存在时只接受 `"true"` 或 `"false"`，其他拼写属于 schema 错误；此检查不改变用户配置值的解析规则。
+
 `SettingSpec` 保留为这份声明的**公开派生视图**（CLI 仍消费它），不再是手写事实表。
 
 `internal/config/settings` 的文件职责：

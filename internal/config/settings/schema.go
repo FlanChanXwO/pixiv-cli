@@ -36,11 +36,9 @@ type settingSpecFromTags struct {
 	env  []string
 }
 
-// schemaOnce 保证派生结果只构建一次。schemaErr 记录构建期间发现的声明错误，
-// 由调用方决定在何处暴露（当前公开访问器保持既有签名，因此错误在构建期以
-// panic 之外的方式记录并在 schema 自检中可见；见 schemaProblem）。
+// schemaOnce 只缓存静态声明；声明错误由 mustSettingSpecs 作为编程错误报告。
 var schemaOnce = sync.OnceValues(func() ([]settingSpecFromTags, error) {
-	return deriveSchemaFromTags()
+	return deriveSchemaFromTags(reflect.TypeOf(RuntimeConfig{}))
 })
 
 // settingSpecsFromTags 返回派生元数据；schema 声明错误在此处暴露。
@@ -59,13 +57,13 @@ func envNamesFor(alias string) []string {
 	return nil
 }
 
-// deriveSchemaFromTags 读取 RuntimeConfig（含嵌套配置组）的公开字段标签并派生
+// deriveSchemaFromTags 读取配置类型（含嵌套配置组）的公开字段标签并派生
 // 配置元数据。它同时执行 schema 校验：重复 config 路径、重复 alias、非法默认值、
 // example 缺少默认值，以及 secret 与 example 的冲突都会返回明确错误。
-func deriveSchemaFromTags() ([]settingSpecFromTags, error) {
+func deriveSchemaFromTags(configType reflect.Type) ([]settingSpecFromTags, error) {
 	// 1. 按声明顺序遍历公开字段，跳过不参与绑定的字段，并递归展开嵌套配置组。
 	derived := make([]settingSpecFromTags, 0, 24)
-	derived, err := appendTaggedFields(derived, reflect.TypeOf(RuntimeConfig{}), nil)
+	derived, err := appendTaggedFields(derived, configType, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -166,7 +164,13 @@ func appendTaggedFields(derived []settingSpecFromTags, structType reflect.Type, 
 			spec.Default = value
 		}
 
-		// 3. 布尔属性：只有显式 "true" 才算开启。
+		// 开发者属性仅接受 true/false，避免拼写错误静默关闭安全或公开行为。
+		// 这里不改变用户配置值的既有解析规则。
+		for _, attribute := range []string{tagCLI, tagSecret, tagExample} {
+			if raw, present := field.Tag.Lookup(attribute); present && raw != "true" && raw != "false" {
+				return nil, fmt.Errorf("config field %q: %s must be true or false", field.Name, attribute)
+			}
+		}
 		spec.CLIManaged = field.Tag.Get(tagCLI) == "true"
 		spec.Sensitive = field.Tag.Get(tagSecret) == "true"
 		spec.DefaultInFile = field.Tag.Get(tagExample) == "true"

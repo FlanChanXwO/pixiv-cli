@@ -328,6 +328,7 @@ A production file `x.go` corresponds to at most one `x_test.go` in the same dire
 
 | Directory | Reason for same-package |
 | --- | --- |
+| `internal/config/settings` | `schema_test.go` passes synthetic types to the private `deriveSchemaFromTags` compiler to test declaration rejection without exporting reflection metadata or resetting the production cache. |
 | `internal/cli` | The composition root test observes unexported root wiring, invocation lifecycle, and close ordering; these seams are not a public API. |
 | `internal/cli/commands/pixiv/search` | Tests observe private searchArtworks logical-page continuation through a real SDK with an HTTP fixture. CLI/MCP wire contracts do not expose these cursors; exporting application internals only for tests would widen the public surface. |
 | `internal/mcpserver/pixiv/tools/search_illust` | Tests observe private searchArtworks logical-page continuation through a real SDK with an HTTP fixture. CLI/MCP wire contracts do not expose these cursors; exporting application internals only for tests would widen the public surface. |

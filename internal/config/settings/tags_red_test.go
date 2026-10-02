@@ -369,9 +369,9 @@ func TestSecretTagKeepsValuesOutOfBaselineAndPublicOutput(t *testing.T) {
 	assert.NotContains(t, string(files.files["injected/config.toml"]), "saucenao_api_key")
 }
 
-// TestSecretAndExampleConflictIsRejected 断言 secret:"true" 与 example:"true"
-// 同时出现必须被明确拒绝，而不是静默写出敏感值。
-func TestSecretAndExampleConflictIsRejected(t *testing.T) {
+// TestRuntimeDeclarationsKeepSecretsOutOfExamples 保留当前合法声明的兼容性检查。
+// 非法声明的生产拒绝路径由 schema_test.go 覆盖。
+func TestRuntimeDeclarationsKeepSecretsOutOfExamples(t *testing.T) {
 	tags := runtimeConfigTags(t)
 	for field, view := range tags {
 		if view.secret == "true" && view.example == "true" {
@@ -388,9 +388,8 @@ func TestSecretAndExampleConflictIsRejected(t *testing.T) {
 
 // ---------------------------------------------------------------- 契约 6：schema 错误
 
-// TestSchemaRejectsDuplicateConfigPathsAndAliases 断言重复的 TOML 路径与重复别名
-// 必须被明确拒绝。判据：标签声明的 (config, alias) 对在全部公开字段中唯一。
-func TestSchemaRejectsDuplicateConfigPathsAndAliases(t *testing.T) {
+// TestRuntimeDeclarationsHaveUniquePathsAndAliases 保留当前声明的路径和别名唯一性检查。
+func TestRuntimeDeclarationsHaveUniquePathsAndAliases(t *testing.T) {
 	tags := runtimeConfigTags(t)
 
 	seenPaths := map[string]string{}
@@ -426,9 +425,8 @@ func TestSchemaRejectsDuplicateConfigPathsAndAliases(t *testing.T) {
 	}
 }
 
-// TestSchemaRejectsInvalidDefaultForFieldType 断言 default 标签必须能按字段类型解释，
-// 无法解释的声明必须失败而不是被静默接受。
-func TestSchemaRejectsInvalidDefaultForFieldType(t *testing.T) {
+// TestRuntimeDefaultsMatchDeclaredFieldTypes 保留当前默认值与字段类型的兼容性检查。
+func TestRuntimeDefaultsMatchDeclaredFieldTypes(t *testing.T) {
 	tags := runtimeConfigTags(t)
 
 	// 正例：可解释的默认值必须能派生为对应的 Go 值。
@@ -442,7 +440,7 @@ func TestSchemaRejectsInvalidDefaultForFieldType(t *testing.T) {
 	require.True(t, ok)
 	assert.IsTypef(t, time.Duration(0), spec.Default, "duration 字段的默认值必须被解释为 time.Duration")
 
-	// 负例：布尔字段的默认值必须能按布尔解释。
+	// 当前布尔字段的默认值也必须保持可解析。
 	boolView := requireTagged(t, tags, "OutputJSON")
 	require.True(t, boolView.hasDef)
 	_, err = parseBoolTag(boolView.def)

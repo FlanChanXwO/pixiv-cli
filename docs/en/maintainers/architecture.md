@@ -188,6 +188,9 @@ The exported fields of `RuntimeConfig` (and the nested `AccountPoolConfig`) decl
 | `secret` | Whether it must be hidden from public output and kept out of the example config (a `secret:"true"` + `example:"true"` pair is a schema error) |
 
 Adding one ordinary setting therefore requires only: a field plus tags, a behavioural test, and the matching documentation. There is no longer a registry, environment `switch`, per-field runtime assignment, baseline list, or CLI alias list to keep in sync.
+
+The developer-declared `cli`, `secret`, and `example` attributes accept only `"true"` or `"false"` when present; other spellings are schema errors. This does not change parsing of user configuration values.
+
 `SettingSpec` remains the **public derived view** of that declaration (the CLI still consumes it); it is no longer a hand-written fact table.
 
 File responsibilities inside `internal/config/settings`:
