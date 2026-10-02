@@ -13,6 +13,7 @@ import (
 	"strings"
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/config/paths"
+	"github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/account/loginrelay"
 	filelock "github.com/FlanChanXwO/pixiv-cli/internal/storage/file/lock"
 	filesecret "github.com/FlanChanXwO/pixiv-cli/internal/storage/file/secret"
 )
@@ -58,10 +59,6 @@ type RemoteLoginStart struct {
 	Origin    string
 	SessionID string
 	Proof     string
-}
-
-type RemoteLoginStartResponse struct {
-	AuthorizationURL string `json:"authorization_url"`
 }
 
 type remoteLoginStartRequest struct {
@@ -132,7 +129,7 @@ func StartRemoteLogin(ctx context.Context, start RemoteLoginStart) (string, erro
 	if response.StatusCode != http.StatusOK {
 		return "", errors.New("remote Pixiv login relay rejected login handoff")
 	}
-	var result RemoteLoginStartResponse
+	var result loginrelay.RemoteLoginStartResponse
 	decoder := json.NewDecoder(response.Body)
 	if err := decoder.Decode(&result); err != nil {
 		return "", errors.New("remote Pixiv login relay returned an invalid sign-in address")
@@ -154,7 +151,7 @@ func StartRemoteLogin(ctx context.Context, start RemoteLoginStart) (string, erro
 // 明确启动的会话。服务端接收成功即清理私有 transient state，避免后续 callback
 // 被错误重用或转发到旧会话。
 func ForwardActiveRemoteLoginCallback(ctx context.Context, rawCallbackURL string) (*RemoteCallbackSession, error) {
-	if !IsAllowedPixivCallbackURL(rawCallbackURL) {
+	if !loginrelay.IsAllowedPixivCallbackURL(rawCallbackURL) {
 		return nil, errors.New("this Pixiv login link cannot be used for remote sign-in")
 	}
 	active, err := LoadActiveRemoteLogin()
@@ -181,7 +178,7 @@ func ForwardActiveRemoteLoginCallback(ctx context.Context, rawCallbackURL string
 		_ = response.Body.Close()
 		return nil, errors.New("remote Pixiv login relay rejected the login result")
 	}
-	resultURL := strings.TrimSpace(response.Header.Get(RelayResultURLHeader))
+	resultURL := strings.TrimSpace(response.Header.Get(loginrelay.RelayResultURLHeader))
 	if err := validateRelayResultURL(active.Origin, resultURL); err != nil {
 		_ = response.Body.Close()
 		return nil, err

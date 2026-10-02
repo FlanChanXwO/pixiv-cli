@@ -279,7 +279,7 @@ v1 已删除 `internal/services/pixiv/webapi` 与匿名 Web/AJAX 路径：App AP
 
 显式非零 `Request.UserID` 将读取与写入固定到该本地账号，即使启用账号池也不换号。打开账号及业务调用失败直接返回，不切换到其他账号；未指定 UID 的请求继续使用原有池调度。这不修改 CLI default。
 
-纯登录页面及嵌入的模板/CSS 位于 `internal/services/pixiv/account/loginrelay/loginpage`。CLI 页面响应包装复用它；该模块不依赖 CLI、账号库、浏览器或 listener。远程 handler/session 的抽取与页面模块独立。
+纯登录页面及嵌入的模板/CSS 位于 `internal/services/pixiv/account/loginrelay/loginpage`。CLI 页面响应包装复用它；该模块不依赖 CLI、账号库、浏览器或 listener。远程 handler/session 的抽取与页面模块独立。 共享 callback URL 白名单、start 响应协议类型与结果页 URL header 位于 `internal/services/pixiv/account/loginrelay`；CLI relay 与 desktop helper 共用它们，共享模块不反向依赖 CLI。
 
 ### reverse-search Facade 例外
 

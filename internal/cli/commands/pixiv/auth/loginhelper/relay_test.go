@@ -12,6 +12,7 @@ import (
 	"testing"
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/cli/commands/pixiv/auth/loginhelper"
+	"github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/account/loginrelay"
 	pixiv "github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
 	"github.com/stretchr/testify/require"
 )
@@ -150,7 +151,7 @@ func TestForwardRemoteLoginCallbackFailsWhenLocalHandoffCannotBeConsumed(t *test
 
 	body := &trackingReadCloser{Reader: strings.NewReader("{}")}
 	resultHeaders := make(http.Header)
-	resultHeaders.Set(loginhelper.RelayResultURLHeader, "https://relay.example/result/YWJj")
+	resultHeaders.Set(loginrelay.RelayResultURLHeader, "https://relay.example/result/YWJj")
 	t.Cleanup(loginhelper.SetHandoffHTTPClient(&http.Client{Transport: handoffRoundTripper(func(request *http.Request) (*http.Response, error) {
 		return &http.Response{
 			StatusCode: http.StatusOK,

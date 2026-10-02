@@ -268,7 +268,7 @@ The business Facade of `internal/services/pixiv` unifies account opening, login 
 
 An explicit nonzero `Request.UserID` pins both reads and writes to that local account, even when the pool is enabled. Account-opening and business errors are returned without switching accounts; requests with no explicit UID retain configured pool scheduling. This does not change the CLI default account.
 
-The pure login renderer and its embedded templates/CSS live in `internal/services/pixiv/account/loginrelay/loginpage`. CLI page-response wrappers reuse it; it has no CLI, account-store, browser, or listener dependency. Remote handler/session extraction is separate from this renderer.
+The pure login renderer and its embedded templates/CSS live in `internal/services/pixiv/account/loginrelay/loginpage`. CLI page-response wrappers reuse it; it has no CLI, account-store, browser, or listener dependency. Remote handler/session extraction is separate from this renderer. The shared callback URL allowlist, start-response wire type, and result URL header live in `internal/services/pixiv/account/loginrelay`; both the CLI relay and desktop helper reuse them without reverse dependencies.
 
 ### Reverse-search Facade exception
 

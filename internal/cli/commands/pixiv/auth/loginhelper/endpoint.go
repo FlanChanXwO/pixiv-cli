@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/config/paths"
+	"github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/account/loginrelay"
 	filesecret "github.com/FlanChanXwO/pixiv-cli/internal/storage/file/secret"
 )
 
@@ -57,8 +58,7 @@ func WriteCallbackEndpoint(callbackRelayURL string) (string, error) {
 // CallbackRelayURL 将系统交给 handler 的 pixiv:// URL 放入 bridge fragment。
 // fragment 不会进入 loopback GET 或浏览器历史；bridge 页面会在 POST ��清除它。
 func CallbackRelayURL(callbackURL string) (string, error) {
-	callback, err := url.Parse(strings.TrimSpace(callbackURL))
-	if err != nil || !isPixivCallback(callback) {
+	if !loginrelay.IsAllowedPixivCallbackURL(callbackURL) {
 		return "", errors.New("invalid Pixiv callback URL")
 	}
 	path, err := CallbackEndpointPath()
@@ -101,16 +101,4 @@ func validatedCallbackEndpoint(raw string) (string, error) {
 		return "", errors.New("callback endpoint must be loopback")
 	}
 	return endpoint.String(), nil
-}
-
-func isPixivCallback(parsed *url.URL) bool {
-	return parsed != nil && strings.EqualFold(parsed.Scheme, "pixiv") && strings.EqualFold(parsed.Host, "account") && parsed.Path == "/login" && strings.TrimSpace(parsed.Query().Get("code")) != ""
-}
-
-// IsAllowedPixivCallbackURL 是持久协议 handler 的精确白名单。未来若 Pixiv
-// 增加可转发路径，应在这里以 host/path 规则明确扩展，不能把任意 pixiv:// URL
-// 发给远程服务端。
-func IsAllowedPixivCallbackURL(rawURL string) bool {
-	parsed, err := url.Parse(strings.TrimSpace(rawURL))
-	return err == nil && isPixivCallback(parsed)
 }

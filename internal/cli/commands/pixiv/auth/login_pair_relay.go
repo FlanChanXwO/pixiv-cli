@@ -16,7 +16,7 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/FlanChanXwO/pixiv-cli/internal/cli/commands/pixiv/auth/loginhelper"
+	"github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/account/loginrelay"
 )
 
 type remoteLoginStartRequest struct {
@@ -138,7 +138,7 @@ func (a controller) waitForHandoffRelayLoginCode(ctx context.Context, opts Relay
 		return candidate != "" && subtle.ConstantTimeCompare([]byte(candidate), []byte(proof)) == 1
 	}
 	submitCallback := func(raw string) error {
-		if !loginhelper.IsAllowedPixivCallbackURL(raw) {
+		if !loginrelay.IsAllowedPixivCallbackURL(raw) {
 			return errors.New("invalid Pixiv login result")
 		}
 		result := LoginCodeFromInput(raw, acceptsCallback)
@@ -194,7 +194,7 @@ func (a controller) waitForHandoffRelayLoginCode(ctx context.Context, opts Relay
 			return
 		}
 		w.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(w).Encode(loginhelper.RemoteLoginStartResponse{AuthorizationURL: loginURL})
+		_ = json.NewEncoder(w).Encode(loginrelay.RemoteLoginStartResponse{AuthorizationURL: loginURL})
 	})
 	mux.HandleFunc("/callback/", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost || !handoffRelayPathMatches(r.URL.Path, "callback", sessionID) {
@@ -216,7 +216,7 @@ func (a controller) waitForHandoffRelayLoginCode(ctx context.Context, opts Relay
 			}
 			return
 		}
-		w.Header().Set(loginhelper.RelayResultURLHeader, resultURL)
+		w.Header().Set(loginrelay.RelayResultURLHeader, resultURL)
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
 		if flusher, ok := w.(http.Flusher); ok {
