@@ -268,6 +268,8 @@ The business Facade of `internal/services/pixiv` unifies account opening, login 
 
 An explicit nonzero `Request.UserID` pins both reads and writes to that local account, even when the pool is enabled. Account-opening and business errors are returned without switching accounts; requests with no explicit UID retain configured pool scheduling. This does not change the CLI default account.
 
+The pure login renderer and its embedded templates/CSS live in `internal/services/pixiv/account/loginrelay/loginpage`. CLI page-response wrappers reuse it; it has no CLI, account-store, browser, or listener dependency. Remote handler/session extraction is separate from this renderer.
+
 ### Reverse-search Facade exception
 
 Reverse image search is the only product capability that crosses the normal public-SDK boundary. The top-level contract and Facade live in `internal/services/reversesearch`; the provider protocol adapters live only in `internal/services/reversesearch/saucenao` and `internal/services/reversesearch/ascii2d`. Production assembly in `internal/cli/root.go` may depend on `internal/services/reversesearch/assembly` to bind the HTTP client, proxy, and SauceNAO key once per command/session. CLI owners under `internal/cli/commands` and all of `internal/mcpserver` may import only the top-level `internal/services/reversesearch` contract; they must not import the provider subpackages or the assembly package. The Facade returns domain results, while CLI/MCP adapters project canonical records at their output boundary.

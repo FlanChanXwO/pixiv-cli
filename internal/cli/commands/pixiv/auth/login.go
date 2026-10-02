@@ -13,8 +13,8 @@ import (
 
 	requirements "github.com/FlanChanXwO/pixiv-cli/internal/cli/commands"
 	"github.com/FlanChanXwO/pixiv-cli/internal/cli/commands/pixiv/auth/loginhelper"
-	"github.com/FlanChanXwO/pixiv-cli/internal/cli/commands/pixiv/auth/loginpage"
 	pixivaccount "github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/account"
+	"github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/account/loginrelay/loginpage"
 	pixiv "github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
 	"github.com/pkg/browser"
 	"github.com/spf13/cobra"

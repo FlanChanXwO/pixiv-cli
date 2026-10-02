@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/FlanChanXwO/pixiv-cli/internal/cli/commands/pixiv/auth/loginpage"
+	"github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/account/loginrelay/loginpage"
 )
 
 func TestWriteManualEscapesLoginURL(t *testing.T) {

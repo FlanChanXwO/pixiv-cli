@@ -1,4 +1,4 @@
-// Package loginpage 负责渲染 CLI 登录流程临时 HTTP 服务使用的页面。
+// Package loginpage 渲染 CLI 与远程登录 relay 共用的纯页面。
 //
 // 页面与路由、OAuth 会话分离：本包不读取账号数据，也不处理表单提交，只渲染经
 // html/template 转义后的展示内容。模板嵌入 binary，使手工安装的 CLI 不依赖外部文件。
