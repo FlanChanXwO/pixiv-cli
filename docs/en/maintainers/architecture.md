@@ -72,7 +72,7 @@ Owns command dispatch and output for the CLI user mode:
 config snapshot, DB, business Facade, lifecycle, media/download, and update dependencies through explicit factories and narrow ports, and close resources in reverse order.
 CLI does not export a cross-command locator, nor does it have an independent bootstrap constructor or `internal/cli/runtime`.
 
-The command tree is handled uniformly by `root.go` for global flags, requirement-driven startup lifecycle, and exit codes, then owner command packages register their domain commands:
+The command tree is handled uniformly by `root.go` for global flags and the requirement-driven startup lifecycle; exit codes are decided by the execution entry points in `execution.go`, and owner command packages then register their domain commands:
 root-level `internal/cli/commands/{config,mcp,update}`, Pixiv `internal/cli/commands/pixiv/{auth,bookmark,comment,detail,download,follow,mypixiv,ranking,recommended,search,series,timeline,user}`,
 FANBOX `internal/cli/commands/fanbox/{auth,download,mcp,post}`. Data commands consume the public SDK `*pixiv.Client`/`*fanbox.Client` via the owner-local narrow
 `Data` port (`Open`/`Pooled`/`JSONOut`, etc.) and never reach internal protocol adapter packages;
@@ -140,7 +140,7 @@ Cookie, token, signed query, or arbitrary error dump; the public SDK stays silen
 
 `internal/bootstrap` was deleted as part of the v1 migration and is no longer the CLI/MCP composition root. The production Ed25519 public trust root's
 key ID and public key constants live in `internal/update/installer/release_installer.go`; `internal/cli/commands/update/production.go`
-assembles the key ID→public key map and hands it to the Release installer, so callers cannot pollute the trust root. `internal/cli/root.go` only delegates to the update command
+assembles the key ID→public key map and hands it to the Release installer, so callers cannot pollute the trust root. `internal/cli/root.go` only holds the update command seams; registration and execution are delegated to `internal/cli/commands/update`
 and does not construct the trust root. The public key fingerprint and known signing fixtures are verified by installer same-package tests; the private key is not in source or runtime config.
 Read-only update checks do not need this key; this wiring itself cannot replace the independent release acceptance for each version.
 
@@ -299,7 +299,7 @@ The business Facade of `internal/services/pixiv` unifies account opening, login 
 
 ### Reverse-search Facade exception
 
-Reverse image search is the only product capability that crosses the normal public-SDK boundary. The top-level contract and Facade live in `internal/services/reversesearch`; the provider protocol adapters live only in `internal/services/reversesearch/saucenao` and `internal/services/reversesearch/ascii2d`. Production assembly in `internal/cli/root.go` may depend on `internal/services/reversesearch/assembly` to bind the HTTP client, proxy, and SauceNAO key once per command/session. CLI owners under `internal/cli/commands` and all of `internal/mcpserver` may import only the top-level `internal/services/reversesearch` contract; they must not import the provider subpackages or the assembly package. The Facade returns domain results, while CLI/MCP adapters project canonical records at their output boundary.
+Reverse image search is the only product capability that crosses the normal public-SDK boundary. The top-level contract and Facade live in `internal/services/reversesearch`; the provider protocol adapters live only in `internal/services/reversesearch/saucenao` and `internal/services/reversesearch/ascii2d`. Production assembly in `internal/cli/composition.go` may depend on `internal/services/reversesearch/assembly` to bind the HTTP client, proxy, and SauceNAO key once per command/session. CLI owners under `internal/cli/commands` and all of `internal/mcpserver` may import only the top-level `internal/services/reversesearch` contract; they must not import the provider subpackages or the assembly package. The Facade returns domain results, while CLI/MCP adapters project canonical records at their output boundary.
 
 The Facade loads a regular file or HTTP(S) source into one private snapshot, hashes it, and removes it after the provider work finishes. The deliberate source policy permits arbitrary readable regular files and private, loopback, or link-local URLs; the MCP server therefore belongs behind a trusted local-client boundary. Neither the source nor provider transport material crosses the output boundary: only source kind/hash, safe provider summaries/errors, domain evidence, and canonical `artwork`/`user` records are publishable.
 

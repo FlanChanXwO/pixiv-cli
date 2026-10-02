@@ -72,7 +72,7 @@ flowchart LR
 config snapshot、DB、业务 Facade、lifecycle、media/download 与 update 依赖，并按逆序关闭资源。
 CLI 不导出跨命令 locator，也没有独立 bootstrap constructor 或 `internal/cli/runtime`。
 
-命令树由 `root.go` 统一处理全局 flag、需求驱动的启动生命周期与退出码，再交给 owner 命令包注册各领域命令：
+命令树由 `root.go` 统一处理全局 flag 与需求驱动的启动生命周期，退出码由 `execution.go` 的执行入口决定，命令注册再交给 owner 命令包：
 根级 `internal/cli/commands/{config,mcp,update}`，Pixiv `internal/cli/commands/pixiv/{auth,bookmark,comment,detail,download,follow,mypixiv,ranking,recommended,search,series,timeline,user}`，
 FANBOX `internal/cli/commands/fanbox/{auth,download,mcp,post}`。数据命令经 owner-local 窄
 `Data` 端口（`Open`/`Pooled`/`JSONOut` 等）使用 public SDK `*pixiv.Client`/`*fanbox.Client`，不直连内部协议适配包；
@@ -140,7 +140,7 @@ Cookie、token、signed query 或 arbitrary error dump；公共 SDK 在没有显
 
 `internal/bootstrap` 已随 v1 迁移删除，不再是 CLI/MCP composition root。production Ed25519 public trust root 的
 key ID 与 public key 常量位于 `internal/update/installer/release_installer.go`；`internal/cli/commands/update/production.go`
-组装 key ID→public key map 并交给 Release installer，避免调用方污染 trust root。`internal/cli/root.go` 只委托 update command，
+组装 key ID→public key map 并交给 Release installer，避免调用方污染 trust root。`internal/cli/root.go` 只持有 update 命令的 seam，注册与执行分别委托 `internal/cli/commands/update`，
 不构造 trust root。公开 key 的 fingerprint 与已知签名 fixture 由 installer 同包测试验证；私钥不在源码或运行时配置中。
 只读更新检查不需要该 key；该 wiring 本身也不能代替每个版本独立的发布验收。
 
@@ -310,7 +310,7 @@ v1 已删除 `internal/services/pixiv/webapi` 与匿名 Web/AJAX 路径：App AP
 
 ### reverse-search Facade 例外
 
-反向搜图是唯一跨越常规 public SDK 边界的产品能力。顶层契约与 Facade 位于 `internal/services/reversesearch`，provider 协议适配只位于 `internal/services/reversesearch/saucenao` 与 `internal/services/reversesearch/ascii2d`。生产组装 `internal/cli/root.go` 可以依赖 `internal/services/reversesearch/assembly`，在每个命令/session 启动时绑定 HTTP client、代理和 SauceNAO key；`internal/cli/commands` 下的 CLI owner 与全部 `internal/mcpserver` 只能 import 顶层 `internal/services/reversesearch` 契约，不得 import provider 子包或 assembly。Facade 返回领域结果，CLI/MCP 只在输出边界投影 canonical Record。
+反向搜图是唯一跨越常规 public SDK 边界的产品能力。顶层契约与 Facade 位于 `internal/services/reversesearch`，provider 协议适配只位于 `internal/services/reversesearch/saucenao` 与 `internal/services/reversesearch/ascii2d`。生产组装 `internal/cli/composition.go` 可以依赖 `internal/services/reversesearch/assembly`，在每个命令/session 启动时绑定 HTTP client、代理和 SauceNAO key；`internal/cli/commands` 下的 CLI owner 与全部 `internal/mcpserver` 只能 import 顶层 `internal/services/reversesearch` 契约，不得 import provider 子包或 assembly。Facade 返回领域结果，CLI/MCP 只在输出边界投影 canonical Record。
 
 Facade 会把常规文件或 HTTP(S) source 载入一个私有快照、计算 hash，并在 provider 工作结束后清理。已确认的 source policy 有意允许任意可读常规文件以及私网、loopback、link-local URL；因此 MCP 必须处在可信本机 client 边界之后。source 与 provider transport 都不能跨过输出边界；可发布的只有 source kind/hash、安全的 provider 摘要/错误、领域 evidence 和 canonical `artwork`/`user` Record。
 
