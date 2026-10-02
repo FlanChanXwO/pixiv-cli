@@ -35,6 +35,8 @@ type Account struct {
 type SDKPorts struct {
 	// Accounts shares the owner-local manager used by production ResolveAccount.
 	Accounts accounts.Manager
+	// Login is shared with the HTTP relay and owned by the server lifecycle.
+	Login *accounts.LoginManager
 	// ResolveAccount 固定一次业务调用的本地账号选择；不读取或刷新上游凭据。
 	ResolveAccount func(context.Context, Account) (Account, error)
 	// Open is the raw-client compatibility adapter for existing embeddings. New

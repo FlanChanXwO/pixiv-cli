@@ -1023,8 +1023,14 @@ func (a app) runPixivMCP(ctx context.Context, request mcpcommands.Request) error
 	}
 	fanboxService := a.fanboxDataDeps().ServiceFactory
 	manager := mcpaccounts.Manager{Store: store, Load: ports.localAccounts}
+	login, err := a.newMCPLoginManager(ctx, baseURL, store, request.HTTPSProxyOverride)
+	if err != nil {
+		return err
+	}
+	defer login.Close()
 	server := unifiedmcp.New(mcpserver.SDKPorts{
 		Accounts: manager,
+		Login:    login,
 		ResolveAccount: func(ctx context.Context, account mcpserver.Account) (mcpserver.Account, error) {
 			userID, err := manager.Resolve(ctx)
 			if err != nil {
@@ -1052,7 +1058,45 @@ func (a app) runPixivMCP(ctx context.Context, request mcpcommands.Request) error
 			return service.Open(ctx, fanboxapp.OpenRequest{ProxyOverride: account.HTTPSProxyOverride})
 		},
 	}, request.HTTPSProxyOverride)
-	return runMCPHTTP(ctx, server, listenAddr, baseURL, store, a.errOut)
+	return runMCPHTTP(ctx, server, listenAddr, baseURL, store, a.errOut, login)
+}
+
+// newMCPLoginManager captures one SDK LoginStart for validation and exchange.
+// Saving an account never changes the CLI default; MCP selection is a separate write.
+func (a app) newMCPLoginManager(ctx context.Context, baseURL string, store mcpauth.Store, proxy *string) (*mcpaccounts.LoginManager, error) {
+	return mcpaccounts.NewLoginManager(ctx, strings.TrimRight(baseURL, "/")+"/pixiv-login", func() (mcpaccounts.LoginAttempt, error) {
+		_, service, err := newCLIAccountServices(a)
+		if err != nil {
+			return mcpaccounts.LoginAttempt{}, err
+		}
+		options := pixiv.LoginOptions{}
+		if proxy != nil {
+			options.HTTPClient, err = network.HTTPClient(*proxy)
+			if err != nil {
+				return mcpaccounts.LoginAttempt{}, err
+			}
+		}
+		start, err := service.Start(pixivaccount.LoginRequest{Options: options})
+		if err != nil {
+			return mcpaccounts.LoginAttempt{}, err
+		}
+		return mcpaccounts.LoginAttempt{
+			AuthorizationURL: start.AuthorizationURL,
+			AcceptsCallback:  start.AcceptsCallbackURL,
+			Complete: func(ctx context.Context, callback string) (mcpaccounts.LoginResult, error) {
+				account, err := service.Complete(ctx, start, pixivaccount.LoginCompleteRequest{CallbackOrCode: callback, PreserveDefault: true})
+				result := mcpaccounts.LoginResult{Account: mcpaccounts.Account{UserID: account.UserID, Username: account.Username, HasCredentials: account.UserID > 0}, AccountSaved: account.UserID > 0}
+				if err != nil {
+					return result, err
+				}
+				if err := store.SelectPixivUser(ctx, account.UserID); err != nil {
+					return result, err
+				}
+				result.SelectionUpdated = true
+				return result, nil
+			},
+		}, nil
+	})
 }
 
 func reverseSearchFlareSolverr(runtime configapp.RuntimeConfig) *reverseassembly.FlareSolverrOptions {

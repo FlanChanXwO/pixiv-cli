@@ -672,7 +672,8 @@ func TestMCPReverseSearchRegistersSearcherForHTTPLifetime(t *testing.T) {
 	newCLIPixivSDKPorts = func(app) (pixivSDKPorts, error) {
 		return pixivSDKPorts{}, nil
 	}
-	runMCPHTTP = func(ctx context.Context, server *mcp.Server, listenAddr, baseURL string, store mcpauth.Store, out io.Writer) error {
+	runMCPHTTP = func(ctx context.Context, server *mcp.Server, listenAddr, baseURL string, store mcpauth.Store, out io.Writer, login *mcpaccounts.LoginManager) error {
+		require.NotNil(t, login, "production HTTP must receive the shared login manager")
 		clientTransport, serverTransport := mcp.NewInMemoryTransports()
 		serverSession, err := server.Connect(ctx, serverTransport, nil)
 		require.NoError(t, err)
@@ -852,7 +853,7 @@ base_url = "http://127.0.0.1:8123"
 			t.Cleanup(func() { runMCPHTTP, newCLIPixivSDKPorts = oldHTTP, oldSDK })
 			newCLIPixivSDKPorts = func(app) (pixivSDKPorts, error) { return pixivSDKPorts{}, nil }
 			called := false
-			runMCPHTTP = func(_ context.Context, _ *mcp.Server, listen, base string, _ mcpauth.Store, out io.Writer) error {
+			runMCPHTTP = func(_ context.Context, _ *mcp.Server, listen, base string, _ mcpauth.Store, out io.Writer, login *mcpaccounts.LoginManager) error {
 				called = true
 				require.Equal(t, tc.listen, listen)
 				require.Equal(t, tc.base, base)
@@ -898,7 +899,7 @@ func TestMCPProductionResolvesSharedSelectionBeforeSDK(t *testing.T) {
 			},
 		}, nil
 	}
-	runMCPHTTP = func(ctx context.Context, server *mcp.Server, _, _ string, store mcpauth.Store, _ io.Writer) error {
+	runMCPHTTP = func(ctx context.Context, server *mcp.Server, _, _ string, store mcpauth.Store, _ io.Writer, login *mcpaccounts.LoginManager) error {
 
 		ct, st := mcp.NewInMemoryTransports()
 		ss, err := server.Connect(ctx, st, nil)

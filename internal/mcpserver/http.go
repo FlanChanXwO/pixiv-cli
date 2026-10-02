@@ -12,12 +12,14 @@ import (
 	"strings"
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/auth"
+	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/accounts"
+	"github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/account/loginrelay"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
 // NewHTTPHandler 将专用 server 绑定到 ctx 的服务生命周期并组装 HTTP/OAuth 路由。
 // owner 必须已初始化；同一 server 不应再次绑定到另一生命周期。
-func NewHTTPHandler(ctx context.Context, server *mcp.Server, baseURL string, store auth.Store) (http.Handler, error) {
+func NewHTTPHandler(ctx context.Context, server *mcp.Server, baseURL string, store auth.Store, login *accounts.LoginManager) (http.Handler, error) {
 	authorization, err := auth.NewHandler(baseURL, store)
 	if err != nil {
 		return nil, err
@@ -52,10 +54,23 @@ func NewHTTPHandler(ctx context.Context, server *mcp.Server, baseURL string, sto
 		CrossOriginProtection:      protection,
 	})
 	protected := authorization.RequireBearer(protocol)
+	relayBase, err := loginrelay.CanonicalPublicURL(strings.TrimRight(baseURL, "/") + "/pixiv-login")
+	if err != nil {
+		return nil, err
+	}
+	relayURL, _ := url.Parse(relayBase)
 	return authorization.RequireCanonical(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// ServeMux 会清理双斜线和转义路径，破坏已发布的 canonical resource。
 		if r.URL.EscapedPath() == base.EscapedPath()+"/mcp" {
 			protected.ServeHTTP(w, r)
+			return
+		}
+		if login != nil && strings.HasPrefix(r.URL.EscapedPath(), relayURL.EscapedPath()+"/") {
+			// Preserve escaped canonical prefixes instead of ServeMux path cleaning.
+			request := r.Clone(r.Context())
+			request.URL.Path = strings.TrimPrefix(r.URL.Path, relayURL.Path)
+			request.URL.RawPath = strings.TrimPrefix(r.URL.EscapedPath(), relayURL.EscapedPath())
+			login.ServeHTTP(w, request)
 			return
 		}
 		authorization.ServeHTTP(w, r)
@@ -63,10 +78,13 @@ func NewHTTPHandler(ctx context.Context, server *mcp.Server, baseURL string, sto
 }
 
 // RunHTTP 监听显式地址；取消或 listener 失败时取消并等待在途 handler 退出，不切换端口。
-func RunHTTP(ctx context.Context, server *mcp.Server, listenAddr, baseURL string, store auth.Store, out io.Writer) error {
+func RunHTTP(ctx context.Context, server *mcp.Server, listenAddr, baseURL string, store auth.Store, out io.Writer, login *accounts.LoginManager) error {
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
-	handler, err := NewHTTPHandler(ctx, server, baseURL, store)
+	if login != nil {
+		defer login.Close()
+	}
+	handler, err := NewHTTPHandler(ctx, server, baseURL, store, login)
 	if err != nil {
 		return err
 	}

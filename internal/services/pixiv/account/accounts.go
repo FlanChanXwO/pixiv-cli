@@ -317,6 +317,10 @@ func (s *Service) RefreshAccountWith(ctx context.Context, userID int64, options 
 // CompleteLogin 保存一次完成登录会话后得到的账号凭据，并按 setDefault 或
 // 默认账号缺失规则设置默认账号。
 func (s *Service) CompleteLogin(ctx context.Context, credentials pixiv.Credentials, setDefault bool) (AccountSummary, error) {
+	return s.completeLogin(ctx, credentials, setDefault, false)
+}
+
+func (s *Service) completeLogin(ctx context.Context, credentials pixiv.Credentials, setDefault, preserveDefault bool) (AccountSummary, error) {
 	if credentials.UserID <= 0 || credentials.RefreshToken() == "" {
 		return AccountSummary{}, errors.New("login credentials are incomplete")
 	}
@@ -324,6 +328,14 @@ func (s *Service) CompleteLogin(ctx context.Context, credentials pixiv.Credentia
 	account.CredentialRevision = 1
 	if err := s.repo.SavePixivCredential(ctx, account); err != nil {
 		return AccountSummary{}, fmt.Errorf("save pixiv account: %w", err)
+	}
+	if preserveDefault {
+		summary, err := s.summary(ctx, credentials.UserID)
+		if err != nil {
+			// 持久化已成功；新调用方仍需知道账号已保存，不能宣称回滚。
+			return accountSummary(account, false), err
+		}
+		return summary, nil
 	}
 	hasDefault, err := s.hasDefault()
 	if err != nil {

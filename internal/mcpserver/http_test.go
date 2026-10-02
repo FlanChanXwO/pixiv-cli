@@ -27,6 +27,7 @@ import (
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/auth"
 	fanboxmcp "github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/fanbox"
 	pixivmcp "github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv"
+	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/accounts"
 	fanboxsdk "github.com/FlanChanXwO/pixiv-cli/sdk/fanbox"
 	pixivsdk "github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
 	mcpauth "github.com/modelcontextprotocol/go-sdk/auth"
@@ -43,7 +44,7 @@ func TestHTTPRoutesProtectMCPWithoutNormalizingPaths(t *testing.T) {
 			_, err := store.Init(t.Context(), false)
 			require.NoError(t, err)
 			protocol := mcp.NewServer(&mcp.Implementation{Name: "fixture", Version: "1"}, nil)
-			handler, err := server.NewHTTPHandler(t.Context(), protocol, base, store)
+			handler, err := server.NewHTTPHandler(t.Context(), protocol, base, store, nil)
 			require.NoError(t, err)
 			for _, method := range []string{"POST", "GET", "DELETE"} {
 				request := httptest.NewRequest(method, base+"/mcp", nil)
@@ -75,10 +76,10 @@ func TestHTTPRoutesProtectMCPWithoutNormalizingPaths(t *testing.T) {
 func TestHTTPRequiresValidConfigurationAndOwner(t *testing.T) {
 	store := auth.Store{Path: filepath.Join(t.TempDir(), "state.json")}
 	protocol := mcp.NewServer(&mcp.Implementation{Name: "fixture", Version: "1"}, nil)
-	_, err := server.NewHTTPHandler(t.Context(), protocol, "https://example.test", store)
+	_, err := server.NewHTTPHandler(t.Context(), protocol, "https://example.test", store, nil)
 	require.ErrorIs(t, err, auth.ErrNotInitialized)
 	for _, base := range []string{"", "relative", "https://user:secret@example.test"} {
-		_, err = server.NewHTTPHandler(t.Context(), protocol, base, store)
+		_, err = server.NewHTTPHandler(t.Context(), protocol, base, store, nil)
 		require.Error(t, err)
 		require.False(t, strings.Contains(err.Error(), "secret"))
 	}
@@ -92,7 +93,7 @@ func TestHTTPListenerReportsBindFailure(t *testing.T) {
 	_, err = store.Init(t.Context(), false)
 	require.NoError(t, err)
 	protocol := mcp.NewServer(&mcp.Implementation{Name: "fixture", Version: "1"}, nil)
-	err = server.RunHTTP(t.Context(), protocol, listener.Addr().String(), "http://"+listener.Addr().String(), store, io.Discard)
+	err = server.RunHTTP(t.Context(), protocol, listener.Addr().String(), "http://"+listener.Addr().String(), store, io.Discard, nil)
 	require.Error(t, err)
 	require.Contains(t, err.Error(), listener.Addr().String())
 }
@@ -142,7 +143,7 @@ func TestHTTPListenerServesAndStopsOnCancellation(t *testing.T) {
 			defer reader.Close()
 			finished := make(chan error, 1)
 			go func() {
-				err := server.RunHTTP(ctx, protocol, addr, "http://"+addr, store, writer)
+				err := server.RunHTTP(ctx, protocol, addr, "http://"+addr, store, writer, nil)
 				writer.CloseWithError(err)
 				finished <- err
 			}()
@@ -232,7 +233,7 @@ func TestHTTPAuthenticatedSDKNegotiationAndReset(t *testing.T) {
 	require.NoError(t, err)
 	require.NoError(t, os.WriteFile(store.Path, body, 0600))
 	protocol := mcp.NewServer(&mcp.Implementation{Name: "fixture", Version: "1"}, nil)
-	handler, err := server.NewHTTPHandler(t.Context(), protocol, "https://example.test", store)
+	handler, err := server.NewHTTPHandler(t.Context(), protocol, "https://example.test", store, nil)
 	require.NoError(t, err)
 	for _, version := range []string{"2025-11-25", "2026-07-28"} {
 		for _, origin := range []string{"https://example.test", "https://EXAMPLE.test:443"} {
@@ -324,7 +325,7 @@ func TestHTTPOAuthClientReadsBothProductsAfterRestart(t *testing.T) {
 			require.NoError(t, err)
 		}
 		base := "http://" + instance.Listener.Addr().String() + "/remote"
-		instance.Config.Handler, err = server.NewHTTPHandler(lifetime, protocol, base, auth.Store{Path: store.Path})
+		instance.Config.Handler, err = server.NewHTTPHandler(lifetime, protocol, base, auth.Store{Path: store.Path}, nil)
 		require.NoError(t, err)
 		instance.Start()
 		t.Cleanup(func() { cancel(); instance.Close() })
@@ -570,4 +571,41 @@ func TestHTTPOAuthClientReadsBothProductsAfterRestart(t *testing.T) {
 	}
 	require.Equal(t, int32(2), pixivReads.Load())
 	require.Equal(t, int32(2), fanboxReads.Load())
+}
+
+func TestHTTPMountsLoginRelayUnderCanonicalHostWithoutBearer(t *testing.T) {
+	for _, base := range []string{"https://example.test", "https://example.test/a%2Fb", "https://example.test//prefix"} {
+		t.Run(base, func(t *testing.T) {
+			store := auth.Store{Path: filepath.Join(t.TempDir(), "state.json")}
+			_, err := store.Init(t.Context(), false)
+			require.NoError(t, err)
+			login, err := accounts.NewLoginManager(t.Context(), base+"/pixiv-login", func() (accounts.LoginAttempt, error) {
+				return accounts.LoginAttempt{AuthorizationURL: "https://app-api.pixiv.net/web/v1/login", AcceptsCallback: func(string) bool { return true }, Complete: func(context.Context, string) (accounts.LoginResult, error) { return accounts.LoginResult{}, nil }}, nil
+			})
+			require.NoError(t, err)
+			defer login.Close()
+			started, err := login.Start(false)
+			require.NoError(t, err)
+			protocol := mcp.NewServer(&mcp.Implementation{Name: "fixture", Version: "1"}, nil)
+			handler, err := server.NewHTTPHandler(t.Context(), protocol, base, store, login)
+			require.NoError(t, err)
+			page := httptest.NewRecorder()
+			handler.ServeHTTP(page, httptest.NewRequest("GET", started.AuthorizationURL, nil))
+			require.Equal(t, http.StatusSeeOther, page.Code)
+			link, err := url.Parse(page.Header().Get("Location"))
+			require.NoError(t, err)
+			startURL := link.Query().Get("origin") + "/start/" + link.Query().Get("session")
+			wrong := httptest.NewRecorder()
+			handler.ServeHTTP(wrong, httptest.NewRequest("POST", startURL, strings.NewReader(`{"proof":"wrong"}`)))
+			require.Equal(t, http.StatusUnauthorized, wrong.Code)
+			correct := httptest.NewRecorder()
+			handler.ServeHTTP(correct, httptest.NewRequest("POST", startURL, strings.NewReader(`{"proof":"`+link.Query().Get("access")+`"}`)))
+			require.Equal(t, http.StatusOK, correct.Code)
+			request := httptest.NewRequest("GET", started.AuthorizationURL, nil)
+			request.Host = "attacker.invalid"
+			denied := httptest.NewRecorder()
+			handler.ServeHTTP(denied, request)
+			require.Equal(t, http.StatusForbidden, denied.Code)
+		})
+	}
 }

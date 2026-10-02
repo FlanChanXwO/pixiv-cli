@@ -27,6 +27,9 @@ type LoginStart struct {
 type LoginCompleteRequest struct {
 	CallbackOrCode string
 	UseAfterLogin  bool
+	// PreserveDefault leaves CLI selection untouched; on post-save summary failure,
+	// the returned identity still reports the account that was persisted.
+	PreserveDefault bool
 }
 
 func (s LoginService) Start(requests ...LoginRequest) (LoginStart, error) {
@@ -59,9 +62,9 @@ func (s LoginService) Complete(ctx context.Context, start LoginStart, request Lo
 	if err != nil {
 		return AccountSummary{}, err
 	}
-	account, err := service.CompleteLogin(ctx, credentials, request.UseAfterLogin)
+	account, err := service.completeLogin(ctx, credentials, request.UseAfterLogin, request.PreserveDefault)
 	if err != nil {
-		return AccountSummary{}, err
+		return account, err
 	}
 	return account, nil
 }

@@ -285,7 +285,9 @@ func handoffRelayURL(publicURL, segment, id string) (string, error) {
 		return "", err
 	}
 	parsed, _ := url.Parse(canonical)
+	escapedBase := parsed.EscapedPath()
 	parsed.Path = path.Join("/", parsed.Path, segment, id)
+	parsed.RawPath = path.Join("/", escapedBase, url.PathEscape(segment), url.PathEscape(id))
 	return parsed.String(), nil
 }
 
