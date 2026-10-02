@@ -25,6 +25,7 @@ func Register(app *runtime.App, server *mcp.Server) {
 }
 
 type searchIllustIn struct {
+	Cursor           *string               `json:"cursor,omitempty"`
 	Word             string                `json:"word"`
 	SearchTarget     string                `json:"search_target,omitempty"`
 	Sort             string                `json:"sort,omitempty"`
@@ -61,6 +62,7 @@ func searchIllustInputSchema() map[string]any {
 		"required":             []string{"word"},
 		"properties": map[string]any{
 			"word":              stringProperty("Illustration search keyword."),
+			"cursor":            stringProperty("Opaque default-batch continuation; repeat original arguments and omit page and limit."),
 			"search_target":     enumProperty("Pixiv search target.", "partial_match_for_tags", "exact_match_for_tags", "title_and_caption", "keyword"),
 			"sort":              stringProperty("Pixiv result order."),
 			"duration":          enumProperty("Pixiv quick date range; cannot be combined with start_date or end_date.", "within_last_day", "within_last_week", "within_last_month", "within_half_year", "within_year"),
@@ -105,6 +107,11 @@ func handleSearchIllust(ctx context.Context, app *runtime.App, in searchIllustIn
 	if err != nil {
 		return outputs.Error(err)
 	}
+	if in.Cursor != nil && !plan.OneBatch {
+		return outputs.Error(errors.New("cursor requires omitted page and limit"))
+	}
+	bindingInput := in
+	bindingInput.Cursor = nil
 	ctx, err = filters.WithIllustFilter(ctx, in.IllustFilter)
 	if err != nil {
 		return outputs.Error(err)
@@ -119,6 +126,15 @@ func handleSearchIllust(ctx context.Context, app *runtime.App, in searchIllustIn
 		if (in.BookmarkMin != nil || in.BookmarkMax != nil) && in.IllustFilter != nil {
 			return outputs.Error(errors.New("bookmark range cannot be combined with illust_filter"))
 		}
+		binding, err := runtime.BindCursor("search_illust", bindingInput)
+		if err != nil {
+			return outputs.Error(err)
+		}
+		initial, err := binding.Decode(in.Cursor)
+		if err != nil {
+			return outputs.Error(err)
+		}
+		query.Cursor = initial
 		outcome, err := searchArtworks(ctx, app.Execute(), artworkSearchRequest{
 			Query:      query,
 			Plan:       pagination.PagePlan{Skip: plan.Skip, Limit: max(0, plan.Limit), OneBatch: plan.OneBatch},
@@ -137,9 +153,18 @@ func handleSearchIllust(ctx context.Context, app *runtime.App, in searchIllustIn
 			Pagination: runtime.ListPagination(plan, in.Limit, len(outcome.Page.Items), !outcome.Page.Next.IsZero()),
 			Filter:     bookmarkFilterFrom(outcome.Filter),
 		}
+		if plan.OneBatch {
+			if !outcome.Page.Next.IsZero() && outcome.Page.Next == initial {
+				return outputs.Error(errors.New("batch continuation cursor repeated"))
+			}
+			out.Pagination.NextCursor, err = binding.Encode(outcome.Page.Next)
+			if err != nil {
+				return outputs.Error(err)
+			}
+		}
 		return outputs.Result(out, false), out, nil
 	}
-	items, more, err := runtime.CollectWith(ctx, app, plan, func(ctx context.Context, client *pixiv.Client, cursor sdk.Cursor) ([]pixiv.Artwork, sdk.Cursor, error) {
+	items, page, err := runtime.CollectCursorWith(ctx, app, "search_illust", bindingInput, in.Cursor, runtime.PageLimitIn{Page: in.Page, Limit: in.Limit}, func(ctx context.Context, client *pixiv.Client, cursor sdk.Cursor) ([]pixiv.Artwork, sdk.Cursor, error) {
 		query.Cursor = cursor
 		result, err := client.SearchArtworks(ctx, query)
 		if err != nil {
@@ -154,7 +179,7 @@ func handleSearchIllust(ctx context.Context, app *runtime.App, in searchIllustIn
 	if err != nil {
 		return outputs.Error(err)
 	}
-	out := outputs.Records{Records: recordItems, Pagination: runtime.ListPagination(plan, in.Limit, len(items), more)}
+	out := outputs.Records{Records: recordItems, Pagination: page}
 	return outputs.Result(out, false), out, nil
 }
 

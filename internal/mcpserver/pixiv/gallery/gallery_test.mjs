@@ -245,7 +245,7 @@ await flush();
 assert.equal(cards.children.length,0,'old continuation cannot replace a new view');
 
 
-for (const [name,args] of [['pixiv_illust_related',{illust_id:42}],['pixiv_illust_ranking',{mode:'day'}],['pixiv_illust_recommended',{}]]) {
+for (const [name,args] of [['pixiv_illust_related',{illust_id:42}],['pixiv_illust_ranking',{mode:'day'}],['pixiv_illust_recommended',{}],['pixiv_search_illust',{word:'cats'}]]) {
 receive({method:'ui/notifications/host-context-changed',params:{toolInfo:{name:'ignored',tool:{name}}}});
 receive({method:'ui/notifications/tool-input',params:{arguments:args}});
 receive({method:'ui/notifications/tool-result',params:{structuredContent:{records:[record],pagination:{page:1,limit:null,has_more:true,next_page:null,next_cursor:'opaque-fixture'}}}});

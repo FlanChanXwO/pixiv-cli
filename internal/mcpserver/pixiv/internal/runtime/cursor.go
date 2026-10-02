@@ -26,41 +26,69 @@ func CollectCursorWith[T any](ctx context.Context, app *App, operation string, b
 		items, more, err := CollectWith(ctx, app, plan, fetch)
 		return items, ListPagination(plan, input.Limit, len(items), more), err
 	}
-	encoded, err := json.Marshal(bindingInput)
+	binding, err := BindCursor(operation, bindingInput)
 	if err != nil {
 		return nil, PaginationOut{}, err
 	}
-	digest := sha256.Sum256(encoded)
-	binding := hex.EncodeToString(digest[:])
-	var initial sdk.Cursor
-	if cursor != nil {
-		envelope, err := sdk.ParseCursor(*cursor)
-		if err != nil {
-			return nil, PaginationOut{}, err
-		}
-		if err := sdk.ValidateCursor(envelope, "pixiv-mcp", operation, 1, binding); err != nil {
-			return nil, PaginationOut{}, err
-		}
-		payload, err := sdk.CursorPayload(envelope)
-		if err != nil {
-			return nil, PaginationOut{}, err
-		}
-		initial, err = sdk.ParseCursor(string(payload))
-		if err != nil {
-			return nil, PaginationOut{}, err
-		}
+	initial, err := binding.Decode(cursor)
+	if err != nil {
+		return nil, PaginationOut{}, err
 	}
 	items, next, err := CollectBatchWith(ctx, app, initial, fetch)
 	if err != nil {
 		return nil, PaginationOut{}, err
 	}
 	page := ListPagination(plan, nil, len(items), !next.IsZero())
-	if !next.IsZero() {
-		envelope, err := sdk.NewCursor("pixiv-mcp", operation, 1, binding, []byte(next.String()))
-		if err != nil {
-			return nil, PaginationOut{}, err
-		}
-		page.NextCursor = envelope.String()
+	page.NextCursor, err = binding.Encode(next)
+	if err != nil {
+		return nil, PaginationOut{}, err
 	}
 	return items, page, nil
+}
+
+// CursorBinding 只封装参数摘要与 wire codec，不提供身份或访问权限。
+type CursorBinding struct {
+	operation string
+	query     string
+}
+
+// BindCursor 绑定清除 cursor 后的原始 typed input，供不同分页策略共用。
+func BindCursor(operation string, input any) (CursorBinding, error) {
+	encoded, err := json.Marshal(input)
+	if err != nil {
+		return CursorBinding{}, err
+	}
+	digest := sha256.Sum256(encoded)
+	return CursorBinding{operation: operation, query: hex.EncodeToString(digest[:])}, nil
+}
+
+// Decode 校验外层 tool/query，再交由 SDK 验证内部 continuation。
+func (b CursorBinding) Decode(cursor *string) (sdk.Cursor, error) {
+	if cursor == nil {
+		return sdk.Cursor{}, nil
+	}
+	envelope, err := sdk.ParseCursor(*cursor)
+	if err != nil {
+		return sdk.Cursor{}, err
+	}
+	if err := sdk.ValidateCursor(envelope, "pixiv-mcp", b.operation, 1, b.query); err != nil {
+		return sdk.Cursor{}, err
+	}
+	payload, err := sdk.CursorPayload(envelope)
+	if err != nil {
+		return sdk.Cursor{}, err
+	}
+	return sdk.ParseCursor(string(payload))
+}
+
+// Encode 保留完整 SDK checkpoint；耗尽时不生成 wire cursor。
+func (b CursorBinding) Encode(next sdk.Cursor) (string, error) {
+	if next.IsZero() {
+		return "", nil
+	}
+	envelope, err := sdk.NewCursor("pixiv-mcp", b.operation, 1, b.query, []byte(next.String()))
+	if err != nil {
+		return "", err
+	}
+	return envelope.String(), nil
 }

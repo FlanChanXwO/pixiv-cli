@@ -95,7 +95,7 @@ func TestArtworkNovelReadInputSchemasMatchLegacyWireFields(t *testing.T) {
 		required []string
 		fields   []string
 	}{
-		{name: "pixiv_search_illust", required: []string{"word"}, fields: []string{"word", "search_target", "sort", "duration", "start_date", "end_date", "page", "limit", "content_type", "ai_mode", "aspect_ratio", "resolution", "tool", "bookmark_min", "bookmark_max", "bookmark_strategy", "illust_filter"}},
+		{name: "pixiv_search_illust", required: []string{"word"}, fields: []string{"cursor", "word", "search_target", "sort", "duration", "start_date", "end_date", "page", "limit", "content_type", "ai_mode", "aspect_ratio", "resolution", "tool", "bookmark_min", "bookmark_max", "bookmark_strategy", "illust_filter"}},
 		{name: "pixiv_search_novel", required: []string{"word"}, fields: []string{"word", "search_target", "sort", "duration", "page", "limit", "novel_filter"}},
 		{name: "pixiv_illust_detail", fields: []string{"illust_id", "url"}},
 		{name: "pixiv_illust_related", required: []string{"illust_id"}, fields: []string{"illust_id", "illust_filter", "page", "limit", "cursor"}},
@@ -546,6 +546,60 @@ func TestRankingAndRecommendedDefaultBatchContinuation(t *testing.T) {
 			}
 			if r := callTool(t, session, other, map[string]any{"cursor": cursor}); !r.IsError {
 				t.Fatal("cross-operation cursor accepted")
+			}
+			if calls != 2 {
+				t.Fatalf("invalid cursor reached data API: %d", calls)
+			}
+		})
+	}
+}
+
+func TestSearchDefaultBatchContinuation(t *testing.T) {
+	for _, strategy := range []string{"", "auto", "local", "best_effort"} {
+		t.Run("strategy="+strategy, func(t *testing.T) {
+			calls := 0
+			client := &fakeSDKClient{userID: 7, searchIllust: func(_ context.Context, r pixiv.SearchArtworksRequest) (sdk.Page[pixiv.Artwork], error) {
+				calls++
+				item := testSDKIllust(301, "first", 7)
+				item.TotalBookmarks = 25
+				if r.Cursor.IsZero() {
+					return sdk.Page[pixiv.Artwork]{Items: []pixiv.Artwork{item}, Next: testPageCursor(1)}, nil
+				}
+				item.ID = 302
+				return sdk.Page[pixiv.Artwork]{Items: []pixiv.Artwork{item}}, nil
+			}}
+			session, closeSession := newSDKTestSession(t, client)
+			defer closeSession()
+			args := map[string]any{"word": "cats"}
+			if strategy != "" {
+				args["bookmark_min"] = 20
+				args["bookmark_strategy"] = strategy
+			}
+			first := callTool(t, session, "pixiv_search_illust", args)
+			var out outputs.Records
+			decodeStructured(t, first, &out)
+			if first.IsError || out.Pagination.NextCursor == "" || calls != 1 {
+				t.Fatalf("missing search continuation error=%v calls=%d", first.IsError, calls)
+			}
+			cursor := out.Pagination.NextCursor
+			args["cursor"] = cursor
+			second := callTool(t, session, "pixiv_search_illust", args)
+			out = outputs.Records{}
+			decodeStructured(t, second, &out)
+			if second.IsError || calls != 2 || len(out.Records) != 1 || out.Records[0].ID() != "302" || out.Pagination.HasMore || out.Pagination.NextCursor != "" {
+				t.Fatalf("search second batch error=%v output=%+v calls=%d", second.IsError, out, calls)
+			}
+			if strategy != "" && (out.Filter == nil || out.Filter.Completeness != "complete_for_source") {
+				t.Fatalf("filter metadata lost: %+v", out.Filter)
+			}
+			args["word"] = "dogs"
+			if r := callTool(t, session, "pixiv_search_illust", args); !r.IsError {
+				t.Fatal("changed query accepted")
+			}
+			args["word"] = "cats"
+			args["limit"] = 1
+			if r := callTool(t, session, "pixiv_search_illust", args); !r.IsError {
+				t.Fatal("cursor plus limit accepted")
 			}
 			if calls != 2 {
 				t.Fatalf("invalid cursor reached data API: %d", calls)
