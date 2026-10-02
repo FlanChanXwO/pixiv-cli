@@ -32,6 +32,8 @@ type Session struct {
 	Done <-chan struct{}
 }
 
+const inactiveSessionMessage = "remote login session is no longer active"
+
 type remoteLoginStartRequest struct {
 	Proof string `json:"proof"`
 }
@@ -136,6 +138,10 @@ func New(ctx context.Context, publicURL, loginURL string, acceptsCallback func(s
 		}
 		sessionMu.Lock()
 		defer sessionMu.Unlock()
+		// restart/shutdown 可能发生在 SDK 校验期间；取消的会话不能再交付凭据。
+		if ctx.Err() != nil {
+			return errors.New(inactiveSessionMessage)
+		}
 		if !started {
 			return errors.New("remote login session is not ready")
 		}
@@ -175,6 +181,11 @@ func New(ctx context.Context, publicURL, loginURL string, acceptsCallback func(s
 			return
 		}
 		sessionMu.Lock()
+		if ctx.Err() != nil {
+			sessionMu.Unlock()
+			http.Error(w, inactiveSessionMessage, http.StatusGone)
+			return
+		}
 		alreadySubmitted := submitted
 		started = true
 		sessionMu.Unlock()
@@ -198,6 +209,8 @@ func New(ctx context.Context, publicURL, loginURL string, acceptsCallback func(s
 		}
 		if err := submitCallback(request.CallbackURL); err != nil {
 			switch err.Error() {
+			case inactiveSessionMessage:
+				http.Error(w, inactiveSessionMessage, http.StatusGone)
 			case "login result has already been received", "remote login session is not ready":
 				http.Error(w, err.Error(), http.StatusConflict)
 			default:
@@ -248,7 +261,14 @@ func New(ctx context.Context, publicURL, loginURL string, acceptsCallback func(s
 		}
 	})
 
-	return &Session{URL: sessionURL, Handler: mux, Callback: resultCh, Complete: notifyFinal, Stop: stopContextWaiter, Done: waiterDone}, nil
+	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if ctx.Err() != nil {
+			http.Error(w, inactiveSessionMessage, http.StatusGone)
+			return
+		}
+		mux.ServeHTTP(w, r)
+	})
+	return &Session{URL: sessionURL, Handler: handler, Callback: resultCh, Complete: notifyFinal, Stop: stopContextWaiter, Done: waiterDone}, nil
 }
 
 func newRelayResultID() (string, error) {

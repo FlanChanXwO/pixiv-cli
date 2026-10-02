@@ -161,3 +161,76 @@ func TestSessionMountedOnMainMux(t *testing.T) {
 		})
 	}
 }
+
+func TestSessionCancellationRejectsNewAndInFlightCallbacks(t *testing.T) {
+	for _, inFlight := range []bool{false, true} {
+		name := "new-request"
+		if inFlight {
+			name = "in-flight-validation"
+		}
+		t.Run(name, func(t *testing.T) {
+			ctx, cancel := context.WithCancel(context.Background())
+			defer cancel()
+			entered, release := make(chan struct{}), make(chan struct{})
+			session, err := loginrelay.New(ctx, "https://relay.example", "https://app-api.pixiv.net/web/v1/login", func(string) bool {
+				if inFlight {
+					close(entered)
+					<-release
+				}
+				return true
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer session.Stop()
+			page := httptest.NewRecorder()
+			session.Handler.ServeHTTP(page, httptest.NewRequest(http.MethodGet, session.URL, nil))
+			link, err := url.Parse(page.Header().Get("Location"))
+			if err != nil {
+				t.Fatal(err)
+			}
+			id, proof := link.Query().Get("session"), link.Query().Get("access")
+			start := func() *httptest.ResponseRecorder {
+				result := httptest.NewRecorder()
+				session.Handler.ServeHTTP(result, httptest.NewRequest(http.MethodPost, "/start/"+id, strings.NewReader(`{"proof":"`+proof+`"}`)))
+				return result
+			}
+			if inFlight && start().Code != http.StatusOK {
+				t.Fatal("start failed")
+			}
+			result := httptest.NewRecorder()
+			done := make(chan struct{})
+			request := httptest.NewRequest(http.MethodPost, "/callback/"+id, strings.NewReader(`{"proof":"`+proof+`","callback_url":"pixiv://account/login?code=fixture"}`))
+			if !inFlight {
+				cancel()
+			}
+			go func() { session.Handler.ServeHTTP(result, request); close(done) }()
+			if inFlight {
+				<-entered
+				cancel()
+				close(release)
+			}
+			select {
+			case <-done:
+			case <-time.After(5 * time.Second):
+				t.Fatal("canceled callback handler did not exit")
+			}
+			if result.Code != http.StatusGone {
+				t.Fatalf("canceled callback status = %d, want 410", result.Code)
+			}
+			if got := start().Code; got != http.StatusGone {
+				t.Fatalf("canceled start status = %d, want 410", got)
+			}
+			select {
+			case <-session.Callback:
+				t.Fatal("canceled session delivered a callback")
+			default:
+			}
+			select {
+			case <-session.Done:
+			case <-time.After(5 * time.Second):
+				t.Fatal("canceled session waiter leaked")
+			}
+		})
+	}
+}
