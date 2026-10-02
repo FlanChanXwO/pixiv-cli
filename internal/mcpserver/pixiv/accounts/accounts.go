@@ -129,3 +129,28 @@ func (m Manager) Resolve(ctx context.Context) (int64, error) {
 	}
 	return status.SelectedUserID, nil
 }
+
+// SelectAfterLogin adopts a saved account only when the current selection lacks
+// local credentials. The state lock spans the lookup and conditional commit so
+// an explicit choice cannot be overwritten using stale availability, even for the same ID.
+func (m Manager) SelectAfterLogin(ctx context.Context, userID int64) (bool, error) {
+	if userID <= 0 {
+		return false, ErrInvalidUserID
+	}
+	if m.Load == nil {
+		return false, errors.New("MCP account reader is not configured")
+	}
+	return m.Store.SelectPixivUserIf(ctx, userID, func(selected int64) (bool, error) {
+		local, err := m.Load(ctx)
+		if err != nil {
+			return false, err
+		}
+		if statusFor(local.Accounts, selected).SelectionState == "selected" {
+			return false, nil
+		}
+		if statusFor(local.Accounts, userID).SelectionState != "selected" {
+			return false, ErrAccountNotFound
+		}
+		return true, nil
+	})
+}

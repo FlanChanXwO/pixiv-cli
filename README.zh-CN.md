@@ -242,7 +242,7 @@ pixiv mcp --listen-addr 127.0.0.1:8080 --base-url http://127.0.0.1:8080
 本地连接 `http://127.0.0.1:8080/mcp`。云端 connector 使用既有 HTTPS 反向代理，并将其公网地址配置为 canonical base URL。OAuth 使用 DCR、owner 同意与 PKCE；Pixiv/FANBOX 凭据仍独立。详见[启动合同](docs/zh-CN/cli-reference.md#mcp-http-server)与[owner/reset 管理](docs/zh-CN/cli-reference.md#mcp-owner-初始化)。`pixiv fanbox mcp` 与 stdio transport 已删除。
 
 使用 `pixiv_account_list` / `pixiv_account_status` 查看本地账号，通过 `pixiv_account_use` 切换共享 MCP 账号，不修改 CLI default。
-新账号使用 `pixiv_account_login_start` 获取 relay URL，通过本机已安装的 helper 登录，再以 `login_id` 查询 `pixiv_account_status`；不要向聊天粘贴 callback 或凭据。
+新账号使用 `pixiv_account_login_start` 获取 relay URL，通过本机已安装的 helper 登录，再以 `login_id` 查询 `pixiv_account_status`；不要向聊天粘贴 callback 或凭据。登录保留具备本地凭据的 MCP 当前账号；需要切换时显式使用 `pixiv_account_use`。
 
 使用 `pixiv_artwork_media` 获取真实静态图片 bytes（默认 regular 质量和全部页），或完整 Ugoira GIF/APNG blob 与独立 PNG 预览。Ugoira 需省略静态 pages/quality；失败明确报告，不返回服务器本地下载路径。
 

@@ -42,7 +42,7 @@ MCP owner 的 Pixiv 选择持久化保存，所有 connector 共享。首次使�
 
 重复启动复用 waiting/exchanging 流程；`restart=true` 取消并等待旧流程后再替换。已结束流程在下一次启动时被替换，不积累历史。该工具标注 `readOnlyHint=false`、`destructiveHint=true`、`idempotentHint=false`、`openWorldHint=true`：restart 会丢弃待完成登录，后续流程可兑换凭据、保存账号并更新 MCP 共享选择，但不修改 CLI default。
 
-`pixiv_account_status({"login_id":"..."})` 在 `login` object 中返回 `waiting_for_user`、`exchanging`、`completed`、`failed` 或 `not_found`。该查询不读取本地账号存储，因此原 selection/credential 字段为 `unknown`，账号ID/列表为零值/空占位；查看实际选择时不传 `login_id`。保存成功包含 `login.account`、`account_saved=true`、`selection_updated=true`。保存后 selection 写入失败时 `isError=true`，保留 `account_saved=true`、`selection_updated=false`；修复本地写入问题后执行 `pixiv_account_use`，不要求重新登录。`login.error_code` 仅为 `login_failed` 或 `login_cancelled`，不含底层存储原因；未知/已替换ID返回 `not_found`，不作为错误。
+`pixiv_account_status({"login_id":"..."})` 在 `login` object 中返回 `waiting_for_user`、`exchanging`、`completed`、`failed` 或 `not_found`。该查询不读取本地账号存储，因此原 selection/credential 字段为 `unknown`，账号ID/列表为零值/空占位；查看实际选择时不传 `login_id`。保存成功包含 `login.account`、`account_saved=true`。已有选择的账号具备本地凭据时保持该选择（不额外探测上游有效性）；仅未选择、已选账号不存在或无本地凭据时采用登录账号。`selection_updated=true` 表示本次登录提交了选择变更；保留原选择时为 `selection_updated=false`，仍返回 `status=completed`。可用性检查与选择写入共用 state 锁，不用旧快照覆盖并发显式选择。保存后 selection 写入失败时 `isError=true`，保留 `account_saved=true`、`selection_updated=false`；修复本地写入问题后执行 `pixiv_account_use`，不要求重新登录。`login.error_code` 仅为 `login_failed` 或 `login_cancelled`，不含底层存储原因；未知/已替换ID返回 `not_found`，不作为错误。
 
 启动失败保留登录 envelope，返回 `status=failed`、`error=login_start_failed` 和 `isError=true`；输入无效使用同一 envelope 的 `error=invalid_request`。登录生命周期归服务器，不归启动请求或 helper 连接；显式 restart、shutdown 负责取消与等待，不增加固定登录超时或 raw callback 完成工具。本地 fixture 验证不等于真实 helper 安装或目标产品浏览器验收。
 

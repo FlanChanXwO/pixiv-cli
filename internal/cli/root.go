@@ -1023,7 +1023,7 @@ func (a app) runPixivMCP(ctx context.Context, request mcpcommands.Request) error
 	}
 	fanboxService := a.fanboxDataDeps().ServiceFactory
 	manager := mcpaccounts.Manager{Store: store, Load: ports.localAccounts}
-	login, err := a.newMCPLoginManager(ctx, baseURL, store, request.HTTPSProxyOverride)
+	login, err := a.newMCPLoginManager(ctx, baseURL, manager, request.HTTPSProxyOverride)
 	if err != nil {
 		return err
 	}
@@ -1063,7 +1063,7 @@ func (a app) runPixivMCP(ctx context.Context, request mcpcommands.Request) error
 
 // newMCPLoginManager captures one SDK LoginStart for validation and exchange.
 // Saving an account never changes the CLI default; MCP selection is a separate write.
-func (a app) newMCPLoginManager(ctx context.Context, baseURL string, store mcpauth.Store, proxy *string) (*mcpaccounts.LoginManager, error) {
+func (a app) newMCPLoginManager(ctx context.Context, baseURL string, manager mcpaccounts.Manager, proxy *string) (*mcpaccounts.LoginManager, error) {
 	// LoginManager serializes starts; retain one successfully opened account service.
 	var service *pixivaccount.LoginService
 	return mcpaccounts.NewLoginManager(ctx, strings.TrimRight(baseURL, "/")+"/pixiv-login", func() (mcpaccounts.LoginAttempt, error) {
@@ -1099,11 +1099,8 @@ func (a app) newMCPLoginManager(ctx context.Context, baseURL string, store mcpau
 				if err != nil {
 					return result, err
 				}
-				if err := store.SelectPixivUser(ctx, account.UserID); err != nil {
-					return result, err
-				}
-				result.SelectionUpdated = true
-				return result, nil
+				result.SelectionUpdated, err = manager.SelectAfterLogin(ctx, account.UserID)
+				return result, err
 			},
 		}, nil
 	})

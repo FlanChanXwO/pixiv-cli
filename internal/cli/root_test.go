@@ -967,7 +967,7 @@ func TestMCPAccountSnapshotContainsOnlyLocalSummaryAndExplicitDefault(t *testing
 // This fixture keeps the real SDK, account service, SQLite, selection store and
 // HTTP relay; only the OAuth network destination is replaced with loopback TLS.
 func TestMCPLoginProductionChain(t *testing.T) {
-	for _, scenario := range []string{"success", "helper-disconnect", "selection-failure", "restart", "shutdown", "explicit-direct/success", "explicit-direct/helper-disconnect", "explicit-direct/selection-failure", "explicit-direct/restart", "explicit-direct/shutdown"} {
+	for _, scenario := range []string{"success", "existing-selection", "selection-during-login", "missing-selection", "helper-disconnect", "selection-failure", "restart", "shutdown", "explicit-direct/success", "explicit-direct/helper-disconnect", "explicit-direct/selection-failure", "explicit-direct/restart", "explicit-direct/shutdown"} {
 		t.Run(scenario, func(t *testing.T) {
 			scenario, explicitProxy := strings.CutPrefix(scenario, "explicit-direct/")
 			dbPath, _ := useTempPaths(t)
@@ -1033,6 +1033,18 @@ func TestMCPLoginProductionChain(t *testing.T) {
 			store := mcpauth.Store{Path: filepath.Join(t.TempDir(), "mcp-state.json")}
 			_, err = store.Init(ctx, false)
 			require.NoError(t, err)
+			preserveSelection := scenario == "existing-selection" || scenario == "selection-during-login"
+			if preserveSelection {
+				seedDB, err := database.Open(filepath.Dir(dbPath))
+				require.NoError(t, err)
+				require.NoError(t, seedDB.SavePixivCredential(ctx, pixivaccount.New(42, "fixture-existing", []byte("fixture-existing-token"))))
+				require.NoError(t, seedDB.Close())
+			}
+			if scenario == "existing-selection" {
+				require.NoError(t, store.SelectPixivUser(ctx, 42))
+			} else if scenario == "missing-selection" {
+				require.NoError(t, store.SelectPixivUser(ctx, 99))
+			}
 			relayServer := httptest.NewUnstartedServer(nil)
 			defer relayServer.Close()
 			base := "http://" + relayServer.Listener.Addr().String() + "/fixture"
@@ -1041,7 +1053,10 @@ func TestMCPLoginProductionChain(t *testing.T) {
 				direct := ""
 				proxy = &direct
 			}
-			login, err := a.newMCPLoginManager(ctx, base, store, proxy)
+			ports, err := newCLIPixivSDKPorts(a)
+			require.NoError(t, err)
+			manager := mcpaccounts.Manager{Store: store, Load: ports.localAccounts}
+			login, err := a.newMCPLoginManager(ctx, base, manager, proxy)
 			require.NoError(t, err)
 			defer login.Close()
 			protocol := mcp.NewServer(&mcp.Implementation{Name: "fixture", Version: "1"}, nil)
@@ -1134,6 +1149,9 @@ func TestMCPLoginProductionChain(t *testing.T) {
 					require.NoError(t, os.Remove(store.Path))
 					require.NoError(t, os.Mkdir(store.Path, 0o700))
 				}
+				if scenario == "selection-during-login" {
+					require.NoError(t, store.SelectPixivUser(ctx, 42))
+				}
 				close(release)
 				if scenario != "helper-disconnect" {
 					resultPage, err := client.Get(accepted.Header.Get("X-Pixiv-Relay-Result-URL"))
@@ -1154,14 +1172,18 @@ func TestMCPLoginProductionChain(t *testing.T) {
 				require.True(t, state.AccountSaved)
 				require.NotNil(t, state.Account)
 				require.Equal(t, int64(73), state.Account.UserID)
-				require.Equal(t, scenario != "selection-failure", state.SelectionUpdated)
+				require.Equal(t, scenario != "selection-failure" && !preserveSelection, state.SelectionUpdated)
 				if scenario == "selection-failure" {
 					require.Equal(t, "failed", state.Status)
 				} else {
 					require.Equal(t, "completed", state.Status)
 					saved, err := store.Read(ctx)
 					require.NoError(t, err)
-					require.Equal(t, int64(73), saved.SelectedPixivUserID)
+					expected := int64(73)
+					if preserveSelection {
+						expected = 42
+					}
+					require.Equal(t, expected, saved.SelectedPixivUserID)
 				}
 				serialized, err := json.Marshal(state)
 				require.NoError(t, err)
@@ -1176,7 +1198,11 @@ func TestMCPLoginProductionChain(t *testing.T) {
 			if scenario == "restart" || scenario == "shutdown" {
 				require.Empty(t, local)
 			} else {
-				require.Len(t, local, 1)
+				expectedAccounts := 1
+				if preserveSelection {
+					expectedAccounts = 2
+				}
+				require.Len(t, local, expectedAccounts)
 				require.True(t, local[0].HasRefreshToken())
 			}
 			_, explicit, err := configapp.DefaultStore().ReadPixivDefaultUserID()

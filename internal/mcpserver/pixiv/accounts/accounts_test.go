@@ -82,3 +82,77 @@ func TestMissingCredentialsDoNotImplyUpstreamValidityOrFallback(t *testing.T) {
 	_, err = manager.Use(t.Context(), 0)
 	require.Error(t, err)
 }
+
+func TestLoginSelectionUsesLocalAvailability(t *testing.T) {
+	for _, tc := range []struct {
+		name           string
+		selected       int64
+		hasCredentials bool
+		want           int64
+		changed        bool
+	}{
+		{"unset", 0, true, 73, true}, {"available", 42, true, 42, false},
+		{"missing", 99, true, 73, true}, {"missing-credentials", 42, false, 73, true},
+		{"already-selected", 73, true, 73, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			store := auth.Store{Path: filepath.Join(t.TempDir(), "state.json")}
+			_, err := store.Init(t.Context(), false)
+			require.NoError(t, err)
+			if tc.selected != 0 {
+				require.NoError(t, store.SelectPixivUser(t.Context(), tc.selected))
+			}
+			manager := accounts.Manager{Store: store, Load: func(context.Context) (accounts.LocalSnapshot, error) {
+				return accounts.LocalSnapshot{DefaultUserID: 42, Accounts: []accounts.Account{{UserID: 42, HasCredentials: tc.hasCredentials}, {UserID: 73, HasCredentials: true}}}, nil
+			}}
+			changed, err := manager.SelectAfterLogin(t.Context(), 73)
+			require.NoError(t, err)
+			require.Equal(t, tc.changed, changed)
+			saved, err := store.Read(t.Context())
+			require.NoError(t, err)
+			require.Equal(t, tc.want, saved.SelectedPixivUserID)
+		})
+	}
+}
+
+func TestLoginSelectionSerializesWithConcurrentUse(t *testing.T) {
+	for _, initial := range []int64{0, 42, 99} {
+		store := auth.Store{Path: filepath.Join(t.TempDir(), "state.json")}
+		_, err := store.Init(t.Context(), false)
+		require.NoError(t, err)
+		if initial != 0 {
+			require.NoError(t, store.SelectPixivUser(t.Context(), initial))
+		}
+		manager := accounts.Manager{Store: store, Load: func(context.Context) (accounts.LocalSnapshot, error) {
+			return accounts.LocalSnapshot{Accounts: []accounts.Account{{UserID: 42, HasCredentials: true}, {UserID: 73, HasCredentials: true}}}, nil
+		}}
+		start := make(chan struct{})
+		done := make(chan error, 2)
+		go func() { <-start; _, err := manager.SelectAfterLogin(t.Context(), 73); done <- err }()
+		go func() { <-start; _, err := manager.Use(t.Context(), 42); done <- err }()
+		close(start)
+		require.NoError(t, <-done)
+		require.NoError(t, <-done)
+		state, err := store.Read(t.Context())
+		require.NoError(t, err)
+		require.Equal(t, int64(42), state.SelectedPixivUserID)
+	}
+}
+
+func TestLoginSelectionFailureDoesNotChangeState(t *testing.T) {
+	store := auth.Store{Path: filepath.Join(t.TempDir(), "state.json")}
+	_, err := store.Init(t.Context(), false)
+	require.NoError(t, err)
+	require.NoError(t, store.SelectPixivUser(t.Context(), 42))
+	original, err := store.Read(t.Context())
+	require.NoError(t, err)
+	manager := accounts.Manager{Store: store, Load: func(context.Context) (accounts.LocalSnapshot, error) {
+		return accounts.LocalSnapshot{}, context.Canceled
+	}}
+	changed, err := manager.SelectAfterLogin(t.Context(), 73)
+	require.ErrorIs(t, err, context.Canceled)
+	require.False(t, changed)
+	after, err := store.Read(t.Context())
+	require.NoError(t, err)
+	require.Equal(t, original, after)
+}

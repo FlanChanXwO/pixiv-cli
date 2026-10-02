@@ -223,38 +223,57 @@ func (s Store) save(ctx context.Context, state State) error {
 
 // SelectPixivUser 只保存账号 ID；调用方先核验本地账号，不在此复制凭据或修改 CLI default。
 func (s Store) SelectPixivUser(ctx context.Context, userID int64) error {
-	_, err := s.selectPixivUser(ctx, userID, false)
+	_, _, err := s.selectPixivUser(ctx, userID, nil)
 	return err
 }
 
 // InitializePixivUser adopts the initial account only if no selection has committed yet.
 func (s Store) InitializePixivUser(ctx context.Context, userID int64) (int64, error) {
-	return s.selectPixivUser(ctx, userID, true)
+	selected, _, err := s.selectPixivUser(ctx, userID, func(selected int64) (bool, error) { return selected == 0, nil })
+	return selected, err
 }
 
-func (s Store) selectPixivUser(ctx context.Context, userID int64, onlyIfUnset bool) (int64, error) {
+// SelectPixivUserIf checks local eligibility and commits under the same state lock.
+// eligible must not write MCP state; it receives identity only, never credentials.
+func (s Store) SelectPixivUserIf(ctx context.Context, userID int64, eligible func(int64) (bool, error)) (bool, error) {
+	if eligible == nil {
+		return false, errors.New("MCP selection condition is required")
+	}
+	_, changed, err := s.selectPixivUser(ctx, userID, eligible)
+	return changed, err
+}
+
+func (s Store) selectPixivUser(ctx context.Context, userID int64, eligible func(int64) (bool, error)) (int64, bool, error) {
 	if s.Path == "" {
-		return 0, errors.New("MCP state path is required")
+		return 0, false, errors.New("MCP state path is required")
 	}
 	if userID <= 0 {
-		return 0, errors.New("MCP Pixiv user ID must be positive")
+		return 0, false, errors.New("MCP Pixiv user ID must be positive")
 	}
 	var selected int64
+	var changed bool
 	err := lock.WithPrivateLock(ctx, s.Path, func() error {
 		state, err := s.Read(ctx)
 		if err != nil {
 			return err
 		}
-		if onlyIfUnset && state.SelectedPixivUserID != 0 {
-			selected = state.SelectedPixivUserID
-			return nil
+		if eligible != nil {
+			allowed, err := eligible(state.SelectedPixivUserID)
+			if err != nil {
+				return err
+			}
+			if !allowed || state.SelectedPixivUserID == userID {
+				selected = state.SelectedPixivUserID
+				return nil
+			}
 		}
 		state.SelectedPixivUserID = userID
 		if err := s.save(ctx, state); err != nil {
 			return err
 		}
 		selected = userID
+		changed = true
 		return nil
 	})
-	return selected, err
+	return selected, changed, err
 }
