@@ -1,0 +1,180 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src blob:; connect-src 'none'; base-uri 'none'; form-action 'none'">
+<title>Pixiv Gallery</title>
+<style>
+:root{color-scheme:light dark;font:14px system-ui,sans-serif;background:var(--color-background-primary,Canvas);color:var(--color-text-primary,CanvasText)}
+body{margin:0;padding:16px}h1{font-size:20px;margin:0 0 8px}p{overflow-wrap:anywhere}#status{min-height:1.5em}#cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(210px,100%),1fr));gap:16px}article{border:1px solid GrayText;border-radius:12px;padding:12px;min-width:0}h2{font-size:16px;margin:10px 0 6px}img{width:100%;aspect-ratio:1;object-fit:contain;background:var(--color-background-secondary,Canvas);border-radius:6px}button{font:inherit;padding:8px 12px;border:1px solid GrayText;border-radius:6px;cursor:pointer;background:Canvas;color:CanvasText}button:focus-visible{outline:3px solid Highlight;outline-offset:2px}.muted{opacity:.8}.error{color:var(--color-text-danger,#c43c39)}
+</style>
+</head>
+<body>
+<h1>Pixiv Gallery</h1>
+<p id="status" role="status" aria-live="polite">Connecting to the host…</p>
+<main id="cards" aria-label="Artwork results"></main>
+<p class="muted">The structured tool result remains available in chat. Use pixiv_artwork_media for complete artwork pages or animation files.</p>
+<script>
+"use strict";
+(() => {
+  const status = document.getElementById("status");
+  const cards = document.getElementById("cards");
+  const pending = new Map();
+  const urls = new Set();
+  let serial = 0, view = 0, ready = false, disposed = false;
+  let hostOrigin = "*", serverTools = false, observer, resize;
+  const send = message => window.parent.postMessage({jsonrpc: "2.0", ...message}, hostOrigin);
+  function request(method, params, epoch) {
+    return new Promise((resolve, reject) => {
+      if (disposed) { reject(new Error("Gallery closed")); return; }
+      const id = ++serial;
+      pending.set(id, {resolve, reject, epoch});
+      send({id, method, params});
+    });
+  }
+  function clearView() {
+    view++;
+    observer?.disconnect();
+    for (const [id, call] of pending) {
+      if (call.epoch !== undefined) {
+        pending.delete(id);
+        send({method: "notifications/cancelled", params: {requestId: id, reason: "Gallery view changed"}});
+        call.reject(new Error("View changed"));
+      }
+    }
+    for (const url of urls) URL.revokeObjectURL(url);
+    urls.clear();
+    cards.replaceChildren();
+  }
+  function text(tag, value, parent, className) {
+    const node = document.createElement(tag);
+    node.textContent = String(value ?? "");
+    if (className) node.className = className;
+    parent.append(node);
+    return node;
+  }
+  async function preview(record, image, message, epoch) {
+    if (!serverTools) { message.textContent = "Host does not allow tool calls; use media tools in chat."; return; }
+    const id = Number(record.id);
+    if (!Number.isSafeInteger(id) || id <= 0) { message.textContent = "Invalid artwork ID"; return; }
+    try {
+      const result = await request("tools/call", {name: "pixiv_artwork_media", arguments: {illust_id: id, pages: [1], quality: "thumbnail"}}, epoch);
+      if (epoch !== view || disposed) return;
+      const output = result.structuredContent;
+      const page = output?.pages?.find(item => item.page === 1);
+      const content = page && result.content?.[page.content_index];
+      if (!content || content.type !== "image" || !["image/png","image/jpeg","image/webp","image/gif","image/bmp"].includes(content.mimeType) || typeof content.data !== "string") {
+        throw new Error("Preview unavailable");
+      }
+      const bytes = Uint8Array.from(atob(content.data), char => char.charCodeAt(0));
+      if (bytes.byteLength !== page.size || content.mimeType !== page.mime_type) throw new Error("Invalid preview metadata");
+      const url = URL.createObjectURL(new Blob([bytes], {type: content.mimeType}));
+      urls.add(url);
+      image.src = url;
+      image.hidden = false;
+      message.textContent = output.complete && !result.isError ? "Page 1 preview" : "Partial preview — see tool result for failures";
+    } catch (_) {
+      if (epoch === view && !disposed) { message.textContent = "Preview failed. Retry or use pixiv_artwork_media in chat."; }
+    }
+  }
+  function render(result) {
+    clearView();
+    const epoch = view;
+    const records = result.structuredContent?.records;
+    if (!Array.isArray(records)) { status.textContent = "No structured records; use the tool result in chat."; return; }
+    status.textContent = result.isError ? "Tool failed or returned partial results." : records.length ? records.length + " results" : "No results.";
+    if (typeof IntersectionObserver === "function") {
+      observer = new IntersectionObserver(entries => {
+        for (const entry of entries) if (entry.isIntersecting) {
+          observer.unobserve(entry.target);
+          entry.target.loadPreview();
+        }
+      });
+    }
+    for (const record of records) {
+      const card = document.createElement("article");
+      cards.append(card);
+      if (!record || typeof record !== "object" || Array.isArray(record)) { text("p", "Invalid record — inspect the tool result in chat.", card, "error"); continue; }
+      text("h2", record.title ?? record.user?.name ?? "Untitled", card);
+      text("p", record.user?.name ?? "", card, "muted");
+      text("p", Array.isArray(record.tags) ? record.tags.map(tag => tag?.name ?? "").join(" · ") : "", card, "muted");
+      const message = text("p", "", card);
+      if (!["illust", "manga", "ugoira"].includes(record.type)) {
+        message.textContent = "Non-artwork result — full metadata is available in chat.";
+        continue;
+      }
+      if (record.type === "ugoira") {
+        message.textContent = "Ugoira animation — request the complete GIF/APNG with pixiv_artwork_media in chat.";
+        continue;
+      }
+      const image = document.createElement("img");
+      image.alt = String(record.title ?? "Artwork preview"); image.hidden = true;
+      card.append(image);
+      image.addEventListener("error", () => { if (epoch === view) message.textContent = "Host could not display this image; bytes remain available through the media tool."; });
+      const retry = text("button", "Load / retry preview", card);
+      retry.type = "button";
+      let loading = false;
+      card.loadPreview = async () => {
+        if (loading || epoch !== view) return;
+        loading = true; retry.disabled = true; message.textContent = "Loading preview…";
+        if (image.src) { URL.revokeObjectURL(image.src); urls.delete(image.src); image.removeAttribute("src"); }
+        await preview(record, image, message, epoch);
+        loading = false; retry.disabled = false;
+      };
+      retry.addEventListener("click", card.loadPreview);
+      if (observer) observer.observe(card);
+      else message.textContent = "Load preview when needed.";
+    }
+  }
+  function dispose() {
+    if (disposed) return;
+    clearView(); disposed = true;
+    resize?.disconnect();
+    for (const call of pending.values()) call.reject(new Error("Gallery closed"));
+    pending.clear();
+  }
+  window.addEventListener("message", event => {
+    if (event.source !== window.parent || disposed) return;
+    const message = event.data;
+    if (!message || message.jsonrpc !== "2.0") return;
+    if (hostOrigin !== "*" && event.origin !== hostOrigin) return;
+    if (!message.method && pending.has(message.id)) {
+      const call = pending.get(message.id);
+      pending.delete(message.id);
+      if (message.error) call.reject(new Error("Host request failed"));
+      else if (Object.hasOwn(message, "result")) {
+        if (hostOrigin === "*" && event.origin && event.origin !== "null") hostOrigin = event.origin;
+        call.resolve(message.result);
+      } else call.reject(new Error("Invalid host response"));
+      return;
+    }
+    if (!ready) return;
+    switch (message.method) {
+      case "ui/notifications/tool-input": clearView(); status.textContent = "Loading results…"; break;
+      case "ui/notifications/tool-result": render(message.params ?? {}); break;
+      case "ui/notifications/tool-cancelled": clearView(); status.textContent = "Tool execution cancelled."; break;
+      case "ui/resource-teardown": dispose(); send({id: message.id, result: {}}); break;
+      case "ping": send({id: message.id, result: {}}); break;
+      default: if (message.id !== undefined) send({id: message.id, error: {code: -32601, message: "Method not supported"}});
+    }
+  });
+  window.addEventListener("pagehide", dispose);
+  request("ui/initialize", {appInfo: {name: "pixiv-gallery", version: "1"}, appCapabilities: {availableDisplayModes: ["inline"]}, protocolVersion: "2026-01-26"})
+    .then(result => {
+      if (disposed) return;
+      if (result.protocolVersion !== "2026-01-26") throw new Error("Unsupported bridge protocol");
+      serverTools = Boolean(result.hostCapabilities?.serverTools);
+      ready = true;
+      send({method: "ui/notifications/initialized", params: {}});
+      status.textContent = "Waiting for tool results…";
+      if (typeof ResizeObserver === "function") {
+        resize = new ResizeObserver(() => { if (!disposed) send({method: "ui/notifications/size-changed", params: {width: document.documentElement.scrollWidth, height: document.documentElement.scrollHeight}}); });
+        resize.observe(document.body);
+        window.addEventListener("pagehide", () => resize.disconnect(), {once: true});
+      }
+    }).catch(() => { if (!disposed) status.textContent = "Gallery bridge unavailable. Use structured results and pixiv_artwork_media in chat."; });
+})();
+</script>
+</body>
+</html>

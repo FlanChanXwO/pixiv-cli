@@ -246,6 +246,8 @@ pixiv mcp --listen-addr 127.0.0.1:8080 --base-url http://127.0.0.1:8080
 
 使用 `pixiv_artwork_media` 获取真实静态图片 bytes（默认 regular 质量和全部页），或完整 Ugoira GIF/APNG blob 与独立 PNG 预览。Ugoira 需省略静态 pages/quality；失败明确报告，不返回服务器本地下载路径。
 
+支持 MCP Apps 的 host 可通过内嵌 Gallery resource 显示作品预览卡片；完整媒体及无 UI host 继续使用上述工具。
+
 `fanbox_open_resource` 的 GET 返回真实 image/blob bytes 及可用的附件文件名；HEAD 仍只返回 metadata。
 
 [MCP tool 契约](docs/zh-CN/mcp-tools.md)记录了 tools、参数、structured output 和认证行为。

@@ -246,6 +246,8 @@ Start a new account login with `pixiv_account_login_start`, open its relay URL w
 
 Use `pixiv_artwork_media` for actual static image bytes (regular quality and all pages by default), or a full Ugoira GIF/APNG blob with a separate PNG preview. Omit static pages/quality for Ugoira; partial failures are explicit, and no server-local download path is returned.
 
+Supporting MCP Apps hosts can show artwork preview cards through the embedded Gallery resource; full media and non-UI hosts continue to use the tools above.
+
 `fanbox_open_resource` returns image/blob bytes and available attachment filenames for GET; HEAD remains metadata-only.
 
 See the [MCP tool contract](docs/en/mcp-tools.md) for tools, parameters, structured output, and authentication behavior.

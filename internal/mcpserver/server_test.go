@@ -2,6 +2,7 @@ package mcpserver_test
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"strings"
 	"sync/atomic"
@@ -148,5 +149,73 @@ func TestServerImplementationVersionIsProtocolOnlyException(t *testing.T) {
 	defer func() { _ = session.Close() }()
 	if session.InitializeResult().ServerInfo.Version != "3.0.0" {
 		t.Fatalf("serverInfo.version=%q, want 3.0.0", session.InitializeResult().ServerInfo.Version)
+	}
+}
+
+func TestGalleryResourceAndToolMetadata(t *testing.T) {
+	server := mcpserver.New(pixiv.SDKPorts{}, pixiv.Account{}, fanbox.SDKPorts{}, nil)
+	c, s := mcp.NewInMemoryTransports()
+	serverSession, err := server.Connect(t.Context(), s, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer serverSession.Close()
+	client := mcp.NewClient(&mcp.Implementation{Name: "no-ui-fixture", Version: "1"}, nil)
+	session, err := client.Connect(t.Context(), c, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer session.Close()
+	resources, err := session.ListResources(t.Context(), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	found := false
+	for _, resource := range resources.Resources {
+		if resource.URI == "ui://pixiv-cli/gallery" {
+			found = true
+			if resource.MIMEType != "text/html;profile=mcp-app" {
+				t.Fatal(resource.MIMEType)
+			}
+		}
+	}
+	if !found {
+		t.Fatal("missing standard Gallery resource even without UI capability")
+	}
+	result, err := session.ReadResource(t.Context(), &mcp.ReadResourceParams{URI: "ui://pixiv-cli/gallery"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(result.Contents) != 1 {
+		t.Fatalf("contents: %+v", result)
+	}
+	content := result.Contents[0]
+	if content.MIMEType != "text/html;profile=mcp-app" || !strings.Contains(content.Text, "ui/initialize") {
+		t.Fatal("missing embedded bridge")
+	}
+	raw, err := json.Marshal(content.Meta)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(raw), "connectDomains") || !strings.Contains(string(raw), "blob:") {
+		t.Fatal("missing explicit local-only CSP")
+	}
+	tools, err := session.ListTools(t.Context(), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	visual := map[string]bool{"pixiv_search_illust": true, "pixiv_illust_detail": true, "pixiv_illust_related": true, "pixiv_illust_ranking": true, "pixiv_illust_recommended": true, "pixiv_recommended": true}
+	for _, tool := range tools.Tools {
+		raw, err := json.Marshal(tool.Meta)
+		if err != nil {
+			t.Fatal(err)
+		}
+		linked := strings.Contains(string(raw), "ui://pixiv-cli/gallery")
+		if linked != visual[tool.Name] {
+			t.Errorf("unexpected gallery association %s: %s", tool.Name, raw)
+		}
+		if visual[tool.Name] && tool.OutputSchema == nil {
+			t.Errorf("lost no-UI structured fallback: %s", tool.Name)
+		}
 	}
 }

@@ -355,3 +355,13 @@ anonymous or Web fallback, and an App API error is final. A removed
 `web_fallback_enabled` setting is reported as `removed_setting`.
 
 FANBOX tools share the protocol server, not Pixiv credentials or its account pool. Each product retains its own SDK and service configuration; a command-level proxy override applies to both native clients.
+
+## MCP Apps artwork previews
+
+Visual discovery tools (`pixiv_search_illust`, `pixiv_illust_detail`, `pixiv_illust_related`, `pixiv_illust_ranking`, `pixiv_illust_recommended`, `pixiv_recommended`) always associate their unchanged structured results with the single embedded Gallery resource. Its URI is ui://pixiv-cli/gallery, its MIME is text/html;profile=mcp-app, and the standard tool metadata is _meta.ui.resourceUri. Other hosts retain the same structured records and media-tool fallback; no configuration switch or rendering-only tool is added.
+
+The current view renders title, artist and tags as text. Visible static cards call `pixiv_artwork_media` with `pages=[1]` and `quality="thumbnail"`, creating revocable Blob URLs from returned bytes, never CDN URLs or server paths. Ugoira is marked as animation without an invalid static-thumbnail call. Complete page selection, discovery pagination, bookmark controls and in-view animation/download controls are not yet implemented in this preview view; use the corresponding tools in chat.
+
+The bridge uses standard `ui/initialize` / `ui/notifications/initialized`, tool-result notifications and `tools/call`. Replacing a view cancels outstanding previews and revokes Blob URLs; teardown also disconnects observers. The CSP permits Blob images and bundled inline script/style, but no direct network connections. The iframe receives no bearer token, Pixiv credential or FANBOX session. See the [MCP Apps specification](https://github.com/modelcontextprotocol/ext-apps/blob/main/specification/2026-01-26/apps.mdx).
+
+Local bridge mocks do not prove that a cloud host displays, downloads or plays media. Without bridge/tool-call support, use the original structured result and media tools directly.

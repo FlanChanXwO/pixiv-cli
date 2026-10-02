@@ -4,6 +4,7 @@
 package pixiv
 
 import (
+	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/gallery"
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/internal/runtime"
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/tools/account_list"
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/tools/account_login_start"
@@ -78,6 +79,7 @@ type ReverseSearchPorts = runtime.ReverseSearchPorts
 
 // Register 将 Pixiv tools 注册到共享 server，账号和 SDK 生命周期仍由 Pixiv runtime 持有。
 func Register(server *mcp.Server, ports SDKPorts, account Account) {
+	gallery.Register(server)
 	app := runtime.NewApp(ports, account)
 	account_use.Register(app, server)
 	account_status.Register(app, server)
