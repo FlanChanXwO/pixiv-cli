@@ -278,7 +278,15 @@ v3 comments contract，提交后状态未知时不会换账号重放；失败写
 | `fanbox_post` | 单个帖子及安全 resource refs。 |
 | `fanbox_home`、`fanbox_supporting` | 已认证主页/支持中 feed。 |
 | `fanbox_resolve_url` | 在本地将 URL 解析成 typed reference。 |
-| `fanbox_open_resource` | 使用 `GET` 或 `HEAD` 打开 opaque `ref`；当前仅返回状态、Content-Type 和长度，不交付媒体 bytes。 |
+| `fanbox_open_resource` | 打开 opaque `ref`；GET 交付真实 image/blob 内容及安全 metadata，HEAD 仅返回 metadata。 |
+
+### FANBOX 资源内容
+
+`fanbox_open_resource` 仅使用独立 FANBOX SDK lease。GET 返回实际 bytes：静态图片用 `ImageContent`，GIF/APNG 和其它附件用标准 embedded-resource blob。PNG/APNG 根据实际 animation-control chunk 区分，不只依赖 Content-Type 声明。有效的非图片专用 MIME 保留；header 缺失或不可解析时从 bytes 检测。不写服务器文件、不新增无依据字节截断。
+
+保留原 `ref`、`status_code`、`content_type` 与声明长度 `content_length`；`size` 为实际字节数，`content_index` 指向返回的 content 项，`delivered` 表示本响应含 bytes，`complete` 表示请求及清理成功。HEAD 仅返回 metadata（`delivered=false`，无 content index）。embedded resource URI 是内容 hash URN，不是服务器路径，也不承诺额外 resources/read endpoint。附件名仍在 post asset metadata 中；本工具暂不重复返回原文件名。
+
+非成功状态、body 读取/关闭失败、取消及 lease 关闭失败均保留 structured error；保留 SDK 错误类别，不回显上游 body、位置或非法输入。`status_code=0` 表示 SDK 未公开状态码，不给 classified forbidden 错误虚构数值状态。schema 错误为 `invalid_request`，本地 ref/method 错误为 `invalid_ref`/`invalid_method`。整条响应传输失败不证明 host 已收到 bytes。这些仅为本地合成测试，不是真实 FANBOX 账号或 host 验收证据。
 
 ## 认证与 fallback
 

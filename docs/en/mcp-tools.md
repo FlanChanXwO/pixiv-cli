@@ -330,7 +330,15 @@ The same server exposes these unchanged FANBOX names. Their schemas are availabl
 | `fanbox_post` | One post and its safe resource references. |
 | `fanbox_home`, `fanbox_supporting` | Authenticated home/supporting feeds. |
 | `fanbox_resolve_url` | Local URL parsing into a typed reference. |
-| `fanbox_open_resource` | Opens an opaque `ref` with `GET` or `HEAD`; currently returns status, content type and length, not media bytes. |
+| `fanbox_open_resource` | Opens an opaque `ref`; GET delivers actual image/blob content and safe metadata, HEAD returns metadata only. |
+
+### FANBOX resource content
+
+`fanbox_open_resource` uses only the independent FANBOX SDK lease. GET returns actual bytes: static images as `ImageContent`, GIF/APNG and other attachments as standard embedded-resource blobs. PNG/APNG is distinguished by its animation-control chunk, not only a Content-Type claim. Valid non-image MIME types are preserved; absent or malformed MIME headers are detected from bytes. Bytes are not written to server files and no arbitrary byte cap is added.
+
+The existing `ref`, `status_code`, `content_type`, and advertised `content_length` remain. `size` is the actual byte count, `content_index` identifies the returned content entry, `delivered` means bytes are included in this response, and `complete` indicates request/cleanup success. HEAD returns metadata only (`delivered=false`, no content index). Embedded resource URIs are content-hash URNs, not server paths or promises of a separate resources/read endpoint. Attachment names remain available in post asset metadata; this tool does not yet repeat the original filename.
+
+Non-success status, body read/close errors, cancellation, and lease-close errors remain structured failures. SDK error categories are retained without raw upstream bodies, locations, or invalid input. `status_code=0` means the SDK did not expose a status; a classified forbidden error is not assigned an invented numeric status. Schema errors return `invalid_request`; local ref/method errors return `invalid_ref`/`invalid_method`. No failed whole-response transmission proves host delivery. These are local synthetic tests, not real FANBOX account or host acceptance evidence.
 
 ## Authentication and fallback
 
