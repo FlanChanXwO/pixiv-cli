@@ -1090,6 +1090,10 @@ func (a app) newMCPLoginManager(ctx context.Context, baseURL string, store mcpau
 			AuthorizationURL: start.AuthorizationURL,
 			AcceptsCallback:  start.AcceptsCallbackURL,
 			Complete: func(ctx context.Context, callback string) (mcpaccounts.LoginResult, error) {
+				// This composition root owns explicit proxy/direct clients, not the SDK.
+				if options.HTTPClient != nil {
+					defer options.HTTPClient.CloseIdleConnections()
+				}
 				account, err := service.Complete(ctx, start, pixivaccount.LoginCompleteRequest{CallbackOrCode: callback, PreserveDefault: true})
 				result := mcpaccounts.LoginResult{Account: mcpaccounts.Account{UserID: account.UserID, Username: account.Username, HasCredentials: account.UserID > 0}, AccountSaved: account.UserID > 0}
 				if err != nil {

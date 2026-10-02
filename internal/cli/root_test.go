@@ -967,8 +967,9 @@ func TestMCPAccountSnapshotContainsOnlyLocalSummaryAndExplicitDefault(t *testing
 // This fixture keeps the real SDK, account service, SQLite, selection store and
 // HTTP relay; only the OAuth network destination is replaced with loopback TLS.
 func TestMCPLoginProductionChain(t *testing.T) {
-	for _, scenario := range []string{"success", "helper-disconnect", "selection-failure", "restart", "shutdown"} {
+	for _, scenario := range []string{"success", "helper-disconnect", "selection-failure", "restart", "shutdown", "explicit-direct/success", "explicit-direct/helper-disconnect", "explicit-direct/selection-failure", "explicit-direct/restart", "explicit-direct/shutdown"} {
 		t.Run(scenario, func(t *testing.T) {
+			scenario, explicitProxy := strings.CutPrefix(scenario, "explicit-direct/")
 			dbPath, _ := useTempPaths(t)
 			ctx, cancel := context.WithCancel(context.Background())
 			defer cancel()
@@ -1035,7 +1036,12 @@ func TestMCPLoginProductionChain(t *testing.T) {
 			relayServer := httptest.NewUnstartedServer(nil)
 			defer relayServer.Close()
 			base := "http://" + relayServer.Listener.Addr().String() + "/fixture"
-			login, err := a.newMCPLoginManager(ctx, base, store, nil)
+			var proxy *string
+			if explicitProxy {
+				direct := ""
+				proxy = &direct
+			}
+			login, err := a.newMCPLoginManager(ctx, base, store, proxy)
 			require.NoError(t, err)
 			defer login.Close()
 			protocol := mcp.NewServer(&mcp.Implementation{Name: "fixture", Version: "1"}, nil)
@@ -1177,7 +1183,7 @@ func TestMCPLoginProductionChain(t *testing.T) {
 			require.NoError(t, err)
 			require.False(t, explicit)
 			require.Equal(t, int32(1), exchanges.Load(), "concurrent callbacks must exchange only once")
-			require.Eventually(t, func() bool { return connections.Load() == 0 }, time.Second, time.Millisecond, "completed SDK login must release its owned idle connection")
+			require.Eventually(t, func() bool { return connections.Load() == 0 }, time.Second, time.Millisecond, "completed login must release its owned idle connection")
 		})
 	}
 }
