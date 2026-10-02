@@ -7,6 +7,7 @@ import (
 	"context"
 	"errors"
 	"math"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -31,6 +32,8 @@ type Account struct {
 // SDKPorts 是 MCP 对 Pixiv services Facade 的窄端口：打开独立认证快照、在账号
 // 池重放边界内执行用例。composition root 注入实现；MCP 不持有 service locator。
 type SDKPorts struct {
+	// ResolveAccount 固定一次业务调用的本地账号选择；不读取或刷新上游凭据。
+	ResolveAccount func(context.Context, Account) (Account, error)
 	// Open is the raw-client compatibility adapter for existing embeddings. New
 	// composition roots should inject OpenLease so the services Facade owns the
 	// complete client lifecycle.
@@ -77,13 +80,36 @@ func (a *App) ReverseSearchPorts() ReverseSearchPorts {
 // Account 返回注入的账号请求值。
 func (a *App) Account() Account { return a.sdkAccount }
 
+type accountSnapshotKey struct{}
+
+type accountSnapshot struct {
+	app     *App
+	once    sync.Once
+	account Account
+	err     error
+}
+
+// resolveAccount 在首次 SDK 访问时取本地选择，避免无账号工具被选择错误阻断。
+// 同一 tool 的后续 SDK 操作与并行子操作复用结果（包括错误），切换只影响后续调用。
+func (a *App) resolveAccount(ctx context.Context) (Account, error) {
+	if a.sdk.ResolveAccount == nil {
+		return a.sdkAccount, nil
+	}
+	if snapshot, ok := ctx.Value(accountSnapshotKey{}).(*accountSnapshot); ok && snapshot.app == a {
+		snapshot.once.Do(func() { snapshot.account, snapshot.err = a.sdk.ResolveAccount(ctx, a.sdkAccount) })
+		return snapshot.account, snapshot.err
+	}
+	return a.sdk.ResolveAccount(ctx, a.sdkAccount)
+}
+
 // AddTool 统一保留注册入口；失败结果直接由各 handler 的 CallToolResult 表达。
-// wrapper 只增加 stderr diagnostics scope，不改变 handler 的输入、structured
-// result、isError 或错误返回。
+// wrapper 增加 diagnostics scope 和惰性账号快照，不改变 handler 的输入、
+// structured result、isError 或错误返回。
 func AddTool[In, Out any](app *App, server *mcp.Server, tool *mcp.Tool, handler mcp.ToolHandlerFor[In, Out]) {
 	mcp.AddTool(server, tool, func(ctx context.Context, request *mcp.CallToolRequest, input In) (*mcp.CallToolResult, Out, error) {
 		requestID := app.requestCounter.Add(1)
 		scoped := diagnostics.WithChildScope(ctx, diagnostics.ModulePixivMCPServer, requestID)
+		scoped = context.WithValue(scoped, accountSnapshotKey{}, &accountSnapshot{app: app})
 		startedAt := time.Now()
 		diagnostics.Emit(scoped, diagnostics.Event{Kind: diagnostics.EventStarted, Operation: "tool " + tool.Name})
 		result, output, err := handler(scoped, request, input)
@@ -169,7 +195,11 @@ func (a *App) Execute() traversal.Execute[*pixiv.Client] {
 		return nil
 	}
 	return func(ctx context.Context, attempt func(context.Context, *pixiv.Client) (bool, error)) error {
-		return a.sdk.Execute(ctx, a.sdkAccount, attempt)
+		account, err := a.resolveAccount(ctx)
+		if err != nil {
+			return err
+		}
+		return a.sdk.Execute(ctx, account, attempt)
 	}
 }
 
@@ -181,7 +211,11 @@ func Read[T any](a *App, ctx context.Context, invoke func(context.Context, *pixi
 			sdk.WithDetail("sdk pooled operation is not configured"))
 	}
 	var result T
-	err := a.sdk.Execute(ctx, a.sdkAccount, func(ctx context.Context, client *pixiv.Client) (bool, error) {
+	account, err := a.resolveAccount(ctx)
+	if err != nil {
+		return zero, err
+	}
+	err = a.sdk.Execute(ctx, account, func(ctx context.Context, client *pixiv.Client) (bool, error) {
 		var err error
 		result, err = invoke(ctx, client)
 		return false, err
@@ -198,7 +232,11 @@ func Write(a *App, ctx context.Context, invoke func(context.Context, *pixiv.Clie
 		return sdk.NewError("pixiv", "Write", sdk.LocalStateError,
 			sdk.WithDetail("sdk pooled operation is not configured"))
 	}
-	return a.sdk.Execute(ctx, a.sdkAccount, func(ctx context.Context, client *pixiv.Client) (bool, error) {
+	account, err := a.resolveAccount(ctx)
+	if err != nil {
+		return err
+	}
+	return a.sdk.Execute(ctx, account, func(ctx context.Context, client *pixiv.Client) (bool, error) {
 		return true, invoke(ctx, client)
 	})
 }
@@ -303,7 +341,11 @@ func (a *App) OpenClient(ctx context.Context) (*lifecycle.Lease[*pixiv.Client], 
 	if openLease == nil {
 		return nil, errors.New("pixiv sdk is not configured")
 	}
-	lease, err := openLease(ctx, a.sdkAccount)
+	account, err := a.resolveAccount(ctx)
+	if err != nil {
+		return nil, err
+	}
+	lease, err := openLease(ctx, account)
 	if err != nil {
 		return nil, err
 	}

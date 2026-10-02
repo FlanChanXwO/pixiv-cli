@@ -2,6 +2,7 @@ package runtime
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -9,8 +10,10 @@ import (
 	"testing"
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/internal/filters"
+	"github.com/FlanChanXwO/pixiv-cli/internal/shared/lifecycle"
 	"github.com/FlanChanXwO/pixiv-cli/sdk"
 	pixiv "github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
+	"github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/stretchr/testify/require"
 )
 
@@ -113,4 +116,79 @@ func runtimeArtworkPage(ids []int, nextURL string) string {
 		next = `,"next_url":"` + nextURL + `"`
 	}
 	return `{"illusts":[` + strings.Join(items, ",") + `]` + next + `}`
+}
+
+func TestToolPinsAccountAcrossSDKOperations(t *testing.T) {
+	var selected int64 = 42
+	var resolutions int
+	var used []int64
+	app := NewApp(SDKPorts{
+		ResolveAccount: func(ctx context.Context, account Account) (Account, error) {
+			resolutions++
+			account.UserID = selected
+			return account, nil
+		},
+		Execute: func(ctx context.Context, account Account, attempt func(context.Context, *pixiv.Client) (bool, error)) error {
+			used = append(used, account.UserID)
+			_, err := attempt(ctx, nil)
+			return err
+		},
+		OpenLease: func(ctx context.Context, account Account) (*lifecycle.Lease[*pixiv.Client], error) {
+			used = append(used, account.UserID)
+			return lifecycle.NewLease(&pixiv.Client{}, func() error { return nil }), nil
+		},
+	}, Account{})
+	server := mcp.NewServer(&mcp.Implementation{Name: "fixture", Version: "1"}, nil)
+	AddTool(app, server, &mcp.Tool{Name: "snapshot"}, func(ctx context.Context, _ *mcp.CallToolRequest, _ struct{}) (*mcp.CallToolResult, struct{}, error) {
+		_, err := Read(app, ctx, func(context.Context, *pixiv.Client) (int, error) { return 1, nil })
+		if err != nil {
+			return nil, struct{}{}, err
+		}
+		selected = 73
+		if err := Write(app, ctx, func(context.Context, *pixiv.Client) error { return nil }); err != nil {
+			return nil, struct{}{}, err
+		}
+		if err := app.Execute()(ctx, func(context.Context, *pixiv.Client) (bool, error) { return false, nil }); err != nil {
+			return nil, struct{}{}, err
+		}
+		lease, err := app.OpenClient(ctx)
+		if err != nil {
+			return nil, struct{}{}, err
+		}
+		return nil, struct{}{}, lease.Close()
+	})
+	clientTransport, serverTransport := mcp.NewInMemoryTransports()
+	serverSession, err := server.Connect(t.Context(), serverTransport, nil)
+	require.NoError(t, err)
+	defer serverSession.Close()
+	client := mcp.NewClient(&mcp.Implementation{Name: "fixture", Version: "1"}, nil)
+	session, err := client.Connect(t.Context(), clientTransport, nil)
+	require.NoError(t, err)
+	defer session.Close()
+	for range 2 {
+		result, err := session.CallTool(t.Context(), &mcp.CallToolParams{Name: "snapshot", Arguments: map[string]any{}})
+		require.NoError(t, err)
+		require.False(t, result.IsError)
+	}
+	require.Equal(t, []int64{42, 42, 42, 42, 73, 73, 73, 73}, used)
+	require.Equal(t, 2, resolutions)
+}
+
+func TestAccountSelectionFailureNeverOpensOrExecutesSDK(t *testing.T) {
+	selectionErr := errors.New("selection_required")
+	app := NewApp(SDKPorts{
+		ResolveAccount: func(context.Context, Account) (Account, error) { return Account{}, selectionErr },
+		Execute: func(context.Context, Account, func(context.Context, *pixiv.Client) (bool, error)) error {
+			t.Error("executed without account")
+			return nil
+		},
+		Open: func(Account) (*pixiv.Client, error) { t.Error("opened without account"); return &pixiv.Client{}, nil },
+	}, Account{UserID: 99})
+	_, err := Read(app, t.Context(), func(context.Context, *pixiv.Client) (int, error) { t.Error("read invoked"); return 0, nil })
+	require.ErrorIs(t, err, selectionErr)
+	require.ErrorIs(t, Write(app, t.Context(), func(context.Context, *pixiv.Client) error { t.Error("write invoked"); return nil }), selectionErr)
+	require.ErrorIs(t, app.Execute()(t.Context(), func(context.Context, *pixiv.Client) (bool, error) { t.Error("attempt invoked"); return false, nil }), selectionErr)
+	lease, err := app.OpenClient(t.Context())
+	require.Nil(t, lease)
+	require.ErrorIs(t, err, selectionErr)
 }
