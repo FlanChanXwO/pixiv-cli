@@ -288,3 +288,105 @@ func TestStorePreservesExplicitGrantRevocationAndEmptyHistory(t *testing.T) {
 		}
 	}
 }
+
+func TestStoreSelectPixivUserPersistsWithoutChangingOAuth(t *testing.T) {
+	store := auth.Store{Path: filepath.Join(t.TempDir(), "state.json")}
+	_, err := store.Init(t.Context(), false)
+	require.NoError(t, err)
+	before, err := store.Read(t.Context())
+	require.NoError(t, err)
+	before.Clients["fixture"] = auth.Client{RedirectURIs: []string{"https://fixture.test/callback"}}
+	before.Grants["fixture"] = auth.Grant{ClientID: "fixture", Resource: "https://instance.test/mcp", Scope: "mcp", RefreshHash: strings.Repeat("a", 64), AccessTokens: map[string]time.Time{}, UsedRefreshHashes: []string{strings.Repeat("b", 64)}, Revoked: true}
+	body, err := json.Marshal(before)
+	require.NoError(t, err)
+	require.NoError(t, os.WriteFile(store.Path, body, 0600))
+	require.NoError(t, store.SelectPixivUser(t.Context(), 42))
+	after, err := (auth.Store{Path: store.Path}).Read(t.Context())
+	require.NoError(t, err)
+	require.Equal(t, int64(42), after.SelectedPixivUserID)
+	before.SelectedPixivUserID = 42
+	require.Equal(t, before, after)
+	require.NoError(t, store.SelectPixivUser(t.Context(), 73))
+	after, err = store.Read(t.Context())
+	require.NoError(t, err)
+	require.Equal(t, int64(73), after.SelectedPixivUserID)
+}
+
+func TestStoreSelectPixivUserRejectsInvalidIDWithoutMutation(t *testing.T) {
+	for _, id := range []int64{0, -1} {
+		store := auth.Store{Path: filepath.Join(t.TempDir(), "state.json")}
+		_, err := store.Init(t.Context(), false)
+		require.NoError(t, err)
+		before, err := os.ReadFile(store.Path)
+		require.NoError(t, err)
+		require.Error(t, store.SelectPixivUser(t.Context(), id))
+		after, err := os.ReadFile(store.Path)
+		require.NoError(t, err)
+		require.Equal(t, before, after)
+	}
+}
+
+func TestStoreSelectPixivUserEmptyPathHasNoSideEffects(t *testing.T) {
+	directory := t.TempDir()
+	t.Chdir(directory)
+	require.Error(t, (auth.Store{}).SelectPixivUser(t.Context(), 42))
+	entries, err := os.ReadDir(directory)
+	require.NoError(t, err)
+	require.Empty(t, entries)
+}
+
+func TestStoreSelectPixivUserSerializesWithOAuthRegistrationAndReset(t *testing.T) {
+	store := auth.Store{Path: filepath.Join(t.TempDir(), "state.json")}
+	_, err := store.Init(t.Context(), false)
+	require.NoError(t, err)
+	handler, err := auth.NewHandler("https://instance.test", store)
+	require.NoError(t, err)
+	var workers sync.WaitGroup
+	for range 8 {
+		workers.Go(func() {
+			request := httptest.NewRequest(http.MethodPost, "https://instance.test/oauth/register", strings.NewReader(`{"redirect_uris":["https://fixture.test/callback"]}`))
+			request.Header.Set("Content-Type", "application/json")
+			response := httptest.NewRecorder()
+			handler.ServeHTTP(response, request)
+			if response.Code != http.StatusCreated {
+				t.Errorf("registration status = %d", response.Code)
+			}
+		})
+		workers.Go(func() {
+			if err := (auth.Store{Path: store.Path}).SelectPixivUser(t.Context(), 42); err != nil {
+				t.Error(err)
+			}
+		})
+	}
+	workers.Wait()
+	got, err := store.Read(t.Context())
+	require.NoError(t, err)
+	require.Len(t, got.Clients, 8)
+	require.Equal(t, int64(42), got.SelectedPixivUserID)
+	_, err = store.Init(t.Context(), true)
+	require.NoError(t, err)
+	got, err = store.Read(t.Context())
+	require.NoError(t, err)
+	require.Len(t, got.Clients, 8)
+	require.Equal(t, int64(42), got.SelectedPixivUserID)
+}
+
+func TestStoreSelectPixivUserDoesNotRepairOrIgnoreCanceledState(t *testing.T) {
+	store := auth.Store{Path: filepath.Join(t.TempDir(), "state.json")}
+	require.ErrorIs(t, store.SelectPixivUser(t.Context(), 42), auth.ErrNotInitialized)
+	_, err := store.Init(t.Context(), false)
+	require.NoError(t, err)
+	before, err := os.ReadFile(store.Path)
+	require.NoError(t, err)
+	ctx, cancel := context.WithCancel(t.Context())
+	cancel()
+	require.ErrorIs(t, store.SelectPixivUser(ctx, 42), context.Canceled)
+	after, err := os.ReadFile(store.Path)
+	require.NoError(t, err)
+	require.Equal(t, before, after)
+	require.NoError(t, os.WriteFile(store.Path, []byte("broken"), 0600))
+	require.ErrorIs(t, store.SelectPixivUser(t.Context(), 42), auth.ErrInvalidState)
+	after, err = os.ReadFile(store.Path)
+	require.NoError(t, err)
+	require.Equal(t, []byte("broken"), after)
+}

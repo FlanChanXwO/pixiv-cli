@@ -220,3 +220,21 @@ func (s Store) save(ctx context.Context, state State) error {
 	_, err = atomic.AtomicWrite(ctx, s.Path, bytes.NewReader(append(body, '\n')))
 	return err
 }
+
+// SelectPixivUser 只保存账号 ID；调用方先核验本地账号，不在此复制凭据或修改 CLI default。
+func (s Store) SelectPixivUser(ctx context.Context, userID int64) error {
+	if s.Path == "" {
+		return errors.New("MCP state path is required")
+	}
+	if userID <= 0 {
+		return errors.New("MCP Pixiv user ID must be positive")
+	}
+	return lock.WithPrivateLock(ctx, s.Path, func() error {
+		state, err := s.Read(ctx)
+		if err != nil {
+			return err
+		}
+		state.SelectedPixivUserID = userID
+		return s.save(ctx, state)
+	})
+}
