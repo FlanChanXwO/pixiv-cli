@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"reflect"
 	"strings"
 	"time"
 )
@@ -108,9 +109,14 @@ func (s Snapshot) Effective(alias string) (SettingValue, error) {
 	if !ok {
 		return SettingValue{}, fmt.Errorf("unknown config key %q", alias)
 	}
+	return s.effectiveSpec(spec)
+}
+
+// effectiveSpec 让绑定器与公开别名读取共享同一来源选择，不再查询另一份声明。
+func (s Snapshot) effectiveSpec(spec SettingSpec) (SettingValue, error) {
 	if spec.Removed {
 		if s.file.Exists(spec.KoanfKey) {
-			return SettingValue{}, RemovedSettingError(alias)
+			return SettingValue{}, RemovedSettingError(spec.Alias)
 		}
 		return SettingValue{Source: "unset"}, nil
 	}
@@ -270,7 +276,41 @@ func (s Snapshot) Runtime() (RuntimeConfig, error) {
 	if httpsProxy.HasValue {
 		cfg.HTTPSProxy = httpsProxy.Value.(string)
 	}
+	// 迁移阶段保留既有领域读取顺序；T06 将移除上方重复的普通字段接线。
+	if err := s.bindDeclared(reflect.ValueOf(&cfg).Elem(), mustSettingSpecs()); err != nil {
+		return RuntimeConfig{}, err
+	}
+	cfg.LogLevel, cfg.LogFormat = normalizedLogLevel, normalizedLogFormat
+	cfg.AccountPool = accountPool
 	return cfg, nil
+}
+
+// bindDeclared 将普通标量写入本次调用的目标；静态元数据不持有运行实例。
+// 私有高级叶子和可选指针组仍由领域读取决定存在性及启用条件。
+func (s Snapshot) bindDeclared(target reflect.Value, entries []settingSpecFromTags) error {
+	for _, entry := range entries {
+		if entry.spec.Removed || entry.spec.Alias == "" {
+			continue
+		}
+		field, err := target.FieldByIndexErr(entry.fieldIndex)
+		if err != nil {
+			// 不因声明而分配尚未启用的可选组。
+			continue
+		}
+		value, err := s.effectiveSpec(entry.spec)
+		if err != nil {
+			return err
+		}
+		if !value.HasValue {
+			continue
+		}
+		raw := reflect.ValueOf(value.Value)
+		if !raw.Type().ConvertibleTo(entry.fieldType) {
+			return fmt.Errorf("config %q cannot bind to %s", entry.spec.Alias, entry.fieldType)
+		}
+		field.Set(raw.Convert(entry.fieldType))
+	}
+	return nil
 }
 
 // pixivNetwork 绑定 Pixiv 服务级网络。它只读取 proxy_url：Pixiv 不接受服务级

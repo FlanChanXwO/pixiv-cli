@@ -1,6 +1,7 @@
 package settings
 
 import (
+	"github.com/knadh/koanf/v2"
 	"reflect"
 	"strings"
 	"testing"
@@ -222,5 +223,91 @@ func TestSchemaRejectsCyclicGroupsAndUnsupportedTypes(t *testing.T) {
 		if err == nil || !strings.Contains(err.Error(), test.want) {
 			t.Errorf("%T: want %q, got %v", test.value, test.want, err)
 		}
+	}
+}
+
+func TestDeclaredFieldsBindSelectedValues(t *testing.T) {
+	type name string
+	type group struct {
+		Name    name          `config:"name" alias:"test_name" default:"fallback"`
+		Wait    time.Duration `config:"wait" alias:"test_wait" default:"3s"`
+		Enabled bool          `config:"enabled" alias:"test_enabled" default:"true"`
+		Empty   string        `config:"empty" alias:"test_empty" default:""`
+		Missing string        `config:"missing" alias:"test_missing"`
+	}
+	type target struct {
+		Value    string `config:"test.value" alias:"test_value" default:"scalar"`
+		Group    group  `config:"nested"`
+		Excluded group  `config:"-"`
+	}
+	entries, err := deriveSchemaFromTags(reflect.TypeOf(target{}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, tc := range []struct {
+		name, file  string
+		env         map[string]snapshotEnvValue
+		wantName    name
+		wantWait    time.Duration
+		wantEnabled bool
+	}{
+		{name: "defaults", wantName: "fallback", wantWait: 3 * time.Second, wantEnabled: true},
+		{name: "file zero values", file: "[nested]\nname = ''\nwait = '0s'\nenabled = false", wantName: "", wantWait: 0, wantEnabled: false},
+		{name: "environment empty wins", file: "[nested]\nname = 'file'", env: map[string]snapshotEnvValue{"test_name": {value: "", present: true}}, wantName: "", wantWait: 3 * time.Second, wantEnabled: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			state := koanf.New(".")
+			if err := loadConfigFileInto(state, "fixture", func(string) ([]byte, error) { return []byte(tc.file), nil }); err != nil {
+				t.Fatal(err)
+			}
+			s := Snapshot{file: state, env: tc.env}
+			cfg := target{Group: group{Empty: "old", Missing: "preserved"}, Excluded: group{Name: "excluded"}}
+			if err := s.bindDeclared(reflect.ValueOf(&cfg).Elem(), entries); err != nil {
+				t.Fatal(err)
+			}
+			if cfg.Value != "scalar" || cfg.Group.Name != tc.wantName || cfg.Group.Wait != tc.wantWait || cfg.Group.Enabled != tc.wantEnabled || cfg.Group.Empty != "" || cfg.Group.Missing != "preserved" || cfg.Excluded.Name != "excluded" {
+				t.Fatalf("binding result: %#v", cfg)
+			}
+			empty, err := s.effectiveSpec(entries[4].spec)
+			if err != nil || !empty.HasValue || empty.Source != "default" || empty.Value != "" {
+				t.Fatalf("explicit empty default: %#v %v", empty, err)
+			}
+			missing, err := s.effectiveSpec(entries[5].spec)
+			if err != nil || missing.HasValue || missing.Source != "unset" {
+				t.Fatalf("absent default: %#v %v", missing, err)
+			}
+		})
+	}
+}
+
+func TestDeclaredBindingDoesNotAllocateOptionalGroupsOrCacheTargets(t *testing.T) {
+	type group struct {
+		Value string `config:"value" alias:"optional_value" default:"fresh"`
+	}
+	type target struct {
+		Group *group `config:"optional"`
+	}
+	entries, err := deriveSchemaFromTags(reflect.TypeOf(target{}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	snapshot := Snapshot{file: koanf.New(".")}
+	absent := target{}
+	if err := snapshot.bindDeclared(reflect.ValueOf(&absent).Elem(), entries); err != nil {
+		t.Fatal(err)
+	}
+	if absent.Group != nil {
+		t.Fatal("ordinary binding allocated an optional domain group")
+	}
+	first, second := target{Group: &group{}}, target{Group: &group{}}
+	if err := snapshot.bindDeclared(reflect.ValueOf(&first).Elem(), entries); err != nil {
+		t.Fatal(err)
+	}
+	first.Group.Value = "changed"
+	if err := snapshot.bindDeclared(reflect.ValueOf(&second).Elem(), entries); err != nil {
+		t.Fatal(err)
+	}
+	if first.Group.Value != "changed" || second.Group.Value != "fresh" {
+		t.Fatalf("targets shared binding state: %q %q", first.Group.Value, second.Group.Value)
 	}
 }

@@ -16,8 +16,7 @@ import (
 // 字段标签是唯一事实来源；本文件负责把它派生为内部元数据，并继续通过既有的
 // 公开 SettingSpec 视图对外提供，避免 CLI 消费者感知迁移。
 //
-// 反射只用于**声明期**解析：派生结果在首次使用时构建一次并被复用，不进入
-// Runtime()、内容查询、分页或下载等执行热路径。
+// 反射用于静态声明解析和配置绑定，不进入内容查询、分页或下载执行路径。
 
 // 标签名。它们由本项目的绑定实现解释，不是 Go 或 TOML 库的原生标签。
 const (
@@ -32,8 +31,10 @@ const (
 
 // settingSpecFromTags 是标签声明派生出的内部元数据。SettingSpec 是它的公开视图。
 type settingSpecFromTags struct {
-	spec SettingSpec
-	env  []string
+	spec       SettingSpec
+	env        []string
+	fieldIndex []int
+	fieldType  reflect.Type
 }
 
 // schemaOnce 只缓存静态声明；声明错误由 mustSettingSpecs 作为编程错误报告。
@@ -63,7 +64,7 @@ func envNamesFor(alias string) []string {
 func deriveSchemaFromTags(configType reflect.Type) ([]settingSpecFromTags, error) {
 	// 1. 按声明顺序遍历公开字段，跳过不参与绑定的字段，并递归展开嵌套配置组。
 	derived := make([]settingSpecFromTags, 0, 24)
-	derived, err := appendTaggedFields(derived, configType, nil)
+	derived, err := appendTaggedFields(derived, configType, nil, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -103,7 +104,7 @@ func deriveSchemaFromTags(configType reflect.Type) ([]settingSpecFromTags, error
 
 // appendTaggedFields 解析组前缀和叶子的相对路径；排除字段不再访问其子树。
 // 可选组只展开类型声明，不分配运行实例；OptionalString 是值而不是组。
-func appendTaggedFields(derived []settingSpecFromTags, structType reflect.Type, pathPrefix []string, ancestors ...reflect.Type) ([]settingSpecFromTags, error) {
+func appendTaggedFields(derived []settingSpecFromTags, structType reflect.Type, pathPrefix []string, indexPrefix []int, ancestors ...reflect.Type) ([]settingSpecFromTags, error) {
 	if structType == nil || structType.Kind() != reflect.Struct {
 		return nil, fmt.Errorf("configuration declaration must be a struct")
 	}
@@ -127,6 +128,7 @@ func appendTaggedFields(derived []settingSpecFromTags, structType reflect.Type, 
 			}
 		}
 		fullPath := append(append([]string(nil), pathPrefix...), parts...)
+		fieldIndex := append(append([]int(nil), indexPrefix...), index)
 		nested := field.Type
 		if nested.Kind() == reflect.Pointer {
 			nested = nested.Elem()
@@ -138,7 +140,7 @@ func appendTaggedFields(derived []settingSpecFromTags, structType reflect.Type, 
 				}
 			}
 			var err error
-			derived, err = appendTaggedFields(derived, nested, fullPath, ancestors...)
+			derived, err = appendTaggedFields(derived, nested, fullPath, fieldIndex, ancestors...)
 			if err != nil {
 				return nil, err
 			}
@@ -199,8 +201,10 @@ func appendTaggedFields(derived []settingSpecFromTags, structType reflect.Type, 
 		}
 
 		derived = append(derived, settingSpecFromTags{
-			spec: spec,
-			env:  parseEnvTag(field.Tag.Get(tagEnv)),
+			spec:       spec,
+			env:        parseEnvTag(field.Tag.Get(tagEnv)),
+			fieldIndex: fieldIndex,
+			fieldType:  field.Type,
 		})
 	}
 	return derived, nil
