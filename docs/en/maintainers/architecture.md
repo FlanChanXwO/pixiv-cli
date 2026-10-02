@@ -191,6 +191,8 @@ Groups declare only a `config` prefix; their leaves declare relative paths. The 
 
 The private schema caches field index chains and Go types, never target instances. Scalar binding uses the same source selection as `Effective`; pointer groups are not allocated by ordinary binding. Advanced readers locate compiled paths by Go field ownership, without adding public aliases or allocating solver groups before the domain enablement check. Ordinary runtime fields have no separate wiring list; account-pool defaults also come from declarations, while strict file types and strategy validation remain domain rules.
 
+Default account selection has a separate private declaration scope. Its `int64` UID leaves have no alias or default; positive-integer parsing remains in the on-demand auth read/write methods. They never enter ordinary Runtime binding or trigger early validation during Snapshot loading.
+
 Adding one ordinary setting therefore requires only: a field plus tags, a behavioural test, and the matching documentation. New declarations need no additional registry, environment `switch`, per-field runtime assignment, baseline list, or CLI alias list.
 
 The developer-declared `cli`, `secret`, and `example` attributes accept only `"true"` or `"false"` when present; other spellings are schema errors. This does not change parsing of user configuration values.

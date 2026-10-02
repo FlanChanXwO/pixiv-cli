@@ -353,3 +353,56 @@ func TestAdvancedPathsArePrivateDeclarations(t *testing.T) {
 		}
 	}
 }
+
+func TestPrivateUIDDeclarationsCompileWithoutRuntimeBinding(t *testing.T) {
+	for product, path := range map[string]string{"Pixiv": "pixiv.auth.default_user_id", "Fanbox": "fanbox.auth.default_user_id"} {
+		spec := defaultAccountSpec(product)
+		if spec.KoanfKey != path || spec.Alias != "" {
+			t.Fatalf("%s production declaration: %#v", product, spec)
+		}
+	}
+
+	type account struct {
+		UserID int64 `config:"default_user_id"`
+	}
+	type selection struct {
+		Pixiv  account `config:"pixiv.auth"`
+		Fanbox account `config:"fanbox.auth"`
+	}
+	entries, err := deriveSchemaFromTags(reflect.TypeOf(selection{}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var paths []string
+	for _, entry := range entries {
+		if !entry.spec.Removed {
+			paths = append(paths, entry.spec.KoanfKey)
+			if entry.spec.Alias != "" || entry.spec.HasDefault || entry.spec.CLIManaged || entry.spec.DefaultInFile {
+				t.Fatalf("UID declaration exposed publicly: %#v", entry.spec)
+			}
+		}
+	}
+	if !reflect.DeepEqual(paths, []string{"pixiv.auth.default_user_id", "fanbox.auth.default_user_id"}) {
+		t.Fatalf("paths=%v", paths)
+	}
+	for _, entry := range mustSettingSpecs() {
+		if strings.HasSuffix(entry.spec.KoanfKey, ".default_user_id") {
+			t.Fatal("UID declaration entered ordinary runtime schema")
+		}
+	}
+}
+
+func TestUIDDeclarationsRejectPublicAliasAndDefault(t *testing.T) {
+	for _, declaration := range []any{
+		struct {
+			UserID int64 `config:"auth.uid" alias:"uid"`
+		}{},
+		struct {
+			UserID int64 `config:"auth.uid" default:"1"`
+		}{},
+	} {
+		if _, err := deriveSchemaFromTags(reflect.TypeOf(declaration)); err == nil {
+			t.Fatal("UID declaration must remain private and domain-parsed")
+		}
+	}
+}

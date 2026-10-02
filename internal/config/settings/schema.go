@@ -157,6 +157,12 @@ func appendTaggedFields(derived []settingSpecFromTags, structType reflect.Type, 
 			return nil, fmt.Errorf("config field %q: %w", field.Name, err)
 		}
 
+		if kind == settingInteger {
+			if _, hasDefault := field.Tag.Lookup(tagDefault); alias != "" || hasDefault {
+				return nil, fmt.Errorf("integer field %q requires private domain parsing without a default", field.Name)
+			}
+		}
+
 		spec := SettingSpec{
 			Alias:    alias,
 			KoanfKey: rawPath,
@@ -273,6 +279,9 @@ func kindForField(field reflect.StructField) (settingKind, error) {
 	case reflect.Int64:
 		if field.Type == reflect.TypeOf(time.Duration(0)) {
 			return settingDuration, nil
+		}
+		if field.Type == reflect.TypeOf(int64(0)) {
+			return settingInteger, nil
 		}
 		return "", fmt.Errorf("unsupported integer field type %s", field.Type)
 	default:
@@ -396,7 +405,10 @@ func EnvValue(spec SettingSpec) (string, bool) {
 // runtimeFieldSpec 按 Go 字段归属定位已编译声明，领域读取不再重复 TOML 路径。
 // 参数只来自内部调用点；缺失声明是编程错误，不读取或缓存任何运行实例。
 func runtimeFieldSpec(names ...string) SettingSpec {
-	typ := reflect.TypeOf(RuntimeConfig{})
+	return declaredFieldSpec(reflect.TypeOf(RuntimeConfig{}), mustSettingSpecs(), names...)
+}
+
+func declaredFieldSpec(typ reflect.Type, entries []settingSpecFromTags, names ...string) SettingSpec {
 	var index []int
 	for _, name := range names {
 		if typ.Kind() == reflect.Pointer {
@@ -404,15 +416,15 @@ func runtimeFieldSpec(names ...string) SettingSpec {
 		}
 		field, ok := typ.FieldByName(name)
 		if !ok {
-			panic(fmt.Sprintf("unknown runtime configuration field %q", name))
+			panic(fmt.Sprintf("unknown configuration field %q", name))
 		}
 		index = append(index, field.Index...)
 		typ = field.Type
 	}
-	for _, entry := range mustSettingSpecs() {
+	for _, entry := range entries {
 		if slices.Equal(entry.fieldIndex, index) {
 			return entry.spec
 		}
 	}
-	panic(fmt.Sprintf("runtime configuration field %v has no declaration", names))
+	panic(fmt.Sprintf("configuration field %v has no declaration", names))
 }

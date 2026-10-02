@@ -12,6 +12,7 @@ const (
 	settingString   settingKind = "string"
 	settingBool     settingKind = "bool"
 	settingDuration settingKind = "duration"
+	settingInteger  settingKind = "integer"
 )
 
 type SettingSpec struct {
@@ -150,4 +151,15 @@ const (
 type AccountPoolConfig struct {
 	Enabled  bool                `config:"enabled" alias:"account_pool_enabled" default:"false" cli:"true"`
 	Strategy AccountPoolStrategy `config:"strategy" alias:"account_pool_strategy" default:"round_robin" cli:"true"`
+}
+
+// defaultAccountSelection 的路径独立派生；UID 不加入 Runtime 的字段遍历。
+// 数值有效性由 auth.go 的按需入口检查，不因加载普通配置提前报错。
+type defaultAccountSelection struct {
+	Pixiv  defaultAccount `config:"pixiv.auth"`
+	Fanbox defaultAccount `config:"fanbox.auth"`
+}
+
+type defaultAccount struct {
+	UserID int64 `config:"default_user_id"`
 }

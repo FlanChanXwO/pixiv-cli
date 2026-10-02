@@ -4,7 +4,8 @@ import (
 	"errors"
 	"fmt"
 
-	"strings"
+	"reflect"
+	"sync"
 
 	"github.com/creachadair/tomledit/parser"
 	"github.com/creachadair/tomledit/transform"
@@ -12,11 +13,18 @@ import (
 
 // 默认账号配置读写。默认账号不进入数据库，只保存对应的非 secret UID。
 
-const (
-	pixivAuthKey   = "pixiv.auth"
-	fanboxAuthKey  = "fanbox.auth"
-	defaultUserKey = "default_user_id"
-)
+// 只缓存声明类型与路径；不缓存文件内容或选中的账号。
+var defaultAccountSchema = sync.OnceValue(func() []settingSpecFromTags {
+	entries, err := deriveSchemaFromTags(reflect.TypeOf(defaultAccountSelection{}))
+	if err != nil {
+		panic(err)
+	}
+	return entries
+})
+
+func defaultAccountSpec(product string) SettingSpec {
+	return declaredFieldSpec(reflect.TypeOf(defaultAccountSelection{}), defaultAccountSchema(), product, "UserID")
+}
 
 // ReadPixivDefaultUserID 返回 [pixiv.auth].default_user_id；未设置时 ok=false。
 func ReadPixivDefaultUserID() (userID int64, ok bool, err error) {
@@ -25,7 +33,7 @@ func ReadPixivDefaultUserID() (userID int64, ok bool, err error) {
 
 // ReadPixivDefaultUserID 从注入的配置文件端口读取默认账号 UID。
 func (s Store) ReadPixivDefaultUserID() (userID int64, ok bool, err error) {
-	return s.readDefaultUserID(pixivAuthKey)
+	return s.readDefaultUserID(defaultAccountSpec("Pixiv"))
 }
 
 // SetPixivDefaultUserID 写入 [pixiv.auth].default_user_id。
@@ -35,7 +43,7 @@ func SetPixivDefaultUserID(userID int64) error {
 
 // SetPixivDefaultUserID 写入注入的配置文件端口。
 func (s Store) SetPixivDefaultUserID(userID int64) error {
-	return s.writeDefaultUserID(pixivAuthKey, userID)
+	return s.writeDefaultUserID(defaultAccountSpec("Pixiv"), userID)
 }
 
 // ClearPixivDefaultUserID 删除 [pixiv.auth].default_user_id，恢复首个入库账号。
@@ -44,7 +52,7 @@ func ClearPixivDefaultUserID() error {
 }
 
 func (s Store) ClearPixivDefaultUserID() error {
-	return s.clearDefaultUserID(pixivAuthKey)
+	return s.clearDefaultUserID(defaultAccountSpec("Pixiv"))
 }
 
 // ReadFanboxDefaultUserID 返回 [fanbox.auth].default_user_id；未设置时 ok=false。
@@ -53,7 +61,7 @@ func ReadFanboxDefaultUserID() (userID int64, ok bool, err error) {
 }
 
 func (s Store) ReadFanboxDefaultUserID() (userID int64, ok bool, err error) {
-	return s.readDefaultUserID(fanboxAuthKey)
+	return s.readDefaultUserID(defaultAccountSpec("Fanbox"))
 }
 
 // SetFanboxDefaultUserID 写入 [fanbox.auth].default_user_id。
@@ -62,7 +70,7 @@ func SetFanboxDefaultUserID(userID int64) error {
 }
 
 func (s Store) SetFanboxDefaultUserID(userID int64) error {
-	return s.writeDefaultUserID(fanboxAuthKey, userID)
+	return s.writeDefaultUserID(defaultAccountSpec("Fanbox"), userID)
 }
 
 // ClearFanboxDefaultUserID 删除 [fanbox.auth].default_user_id，恢复首个入库账号。
@@ -71,14 +79,10 @@ func ClearFanboxDefaultUserID() error {
 }
 
 func (s Store) ClearFanboxDefaultUserID() error {
-	return s.clearDefaultUserID(fanboxAuthKey)
+	return s.clearDefaultUserID(defaultAccountSpec("Fanbox"))
 }
 
-func sectionPath(key string) []string {
-	return strings.Split(key, ".")
-}
-
-func (s Store) readDefaultUserID(sectionKey string) (int64, bool, error) {
+func (s Store) readDefaultUserID(spec SettingSpec) (int64, bool, error) {
 	path, err := s.Path()
 	if err != nil {
 		return 0, false, err
@@ -91,13 +95,13 @@ func (s Store) readDefaultUserID(sectionKey string) (int64, bool, error) {
 	if err != nil {
 		return 0, false, err
 	}
-	raw := state.file.Get(sectionKey + "." + defaultUserKey)
+	raw := state.file.Get(spec.KoanfKey)
 	if raw == nil {
 		return 0, false, nil
 	}
 	value, err := coercePositiveInt64(raw)
 	if err != nil {
-		return 0, false, fmt.Errorf("config: %s.%s must be a positive integer", sectionKey, defaultUserKey)
+		return 0, false, fmt.Errorf("config: %s must be a positive integer", spec.KoanfKey)
 	}
 	return value, true, nil
 }
@@ -124,7 +128,7 @@ func coercePositiveInt64(raw any) (int64, error) {
 	}
 }
 
-func (s Store) writeDefaultUserID(sectionKey string, userID int64) error {
+func (s Store) writeDefaultUserID(spec SettingSpec, userID int64) error {
 	if userID <= 0 {
 		return errors.New("config: default_user_id must be positive")
 	}
@@ -140,18 +144,18 @@ func (s Store) writeDefaultUserID(sectionKey string, userID int64) error {
 	if err != nil {
 		return err
 	}
-	section := ensureConfigSection(doc, sectionPath(sectionKey))
+	section := ensureConfigSection(doc, append([]string(nil), spec.Table...))
 	value, err := parser.ParseValue(fmt.Sprintf("%d", userID))
 	if err != nil {
 		return err
 	}
-	if !transform.InsertMapping(section, &parser.KeyValue{Name: parser.Key{defaultUserKey}, Value: value}, true) {
+	if !transform.InsertMapping(section, &parser.KeyValue{Name: parser.Key{spec.Key}, Value: value}, true) {
 		return errors.New("config: failed to update default_user_id")
 	}
 	return saveConfigDocumentWithFileStore(path, doc, files)
 }
 
-func (s Store) clearDefaultUserID(sectionKey string) error {
+func (s Store) clearDefaultUserID(spec SettingSpec) error {
 	path, err := s.Path()
 	if err != nil {
 		return err
@@ -164,12 +168,12 @@ func (s Store) clearDefaultUserID(sectionKey string) error {
 	if err != nil {
 		return err
 	}
-	entry := doc.First(append(sectionPath(sectionKey), defaultUserKey)...)
+	entry := doc.First(append(append([]string(nil), spec.Table...), spec.Key)...)
 	if entry == nil {
 		return saveConfigDocumentWithFileStore(path, doc, files)
 	}
 	entry.Remove()
-	if sectionEntry := transform.FindTable(doc, sectionPath(sectionKey)...); sectionEntry != nil && len(sectionEntry.Section.Items) == 0 {
+	if sectionEntry := transform.FindTable(doc, spec.Table...); sectionEntry != nil && len(sectionEntry.Section.Items) == 0 {
 		sectionEntry.Remove()
 	}
 	return saveConfigDocumentWithFileStore(path, doc, files)
