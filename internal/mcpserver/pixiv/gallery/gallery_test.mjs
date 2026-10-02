@@ -245,6 +245,18 @@ await flush();
 assert.equal(cards.children.length,0,'old continuation cannot replace a new view');
 
 
+receive({method:'ui/notifications/host-context-changed',params:{toolInfo:{name:'ignored',tool:{name:'pixiv_illust_related'}}}});
+receive({method:'ui/notifications/tool-input',params:{arguments:{illust_id:42}}});
+receive({method:'ui/notifications/tool-result',params:{structuredContent:{records:[record],pagination:{page:1,limit:null,has_more:true,next_page:null,next_cursor:'opaque-fixture'}}}});
+assert.ok(button('Load next page'),'missing default batch cursor control');
+button('Load next page').events.click();
+const cursorCall = latest('tools/call');
+assert.deepEqual(cursorCall.params,{name:'pixiv_illust_related',arguments:{illust_id:42,cursor:'opaque-fixture'}});
+receive({id:cursorCall.id,result:{structuredContent:{records:[{...record,id:'99'}],pagination:{page:1,limit:null,has_more:false,next_page:null}}}});
+await flush();
+assert.equal(cards.children.filter(node=>node.tag==='article').length,2);
+assert.equal(button('Load next page'),undefined);
+
 receive({method:'ui/notifications/host-context-changed',params:{toolInfo:{tool:{name:'pixiv_search_illust'}}}});
 receive({method:'ui/notifications/tool-input',params:{arguments:{word:'unbounded'}}});
 receive({method:'ui/notifications/tool-result',params:{structuredContent:{records:[record],pagination:{page:1,limit:null,returned:1,has_more:true,next_page:null}}}});

@@ -98,7 +98,7 @@ func TestArtworkNovelReadInputSchemasMatchLegacyWireFields(t *testing.T) {
 		{name: "pixiv_search_illust", required: []string{"word"}, fields: []string{"word", "search_target", "sort", "duration", "start_date", "end_date", "page", "limit", "content_type", "ai_mode", "aspect_ratio", "resolution", "tool", "bookmark_min", "bookmark_max", "bookmark_strategy", "illust_filter"}},
 		{name: "pixiv_search_novel", required: []string{"word"}, fields: []string{"word", "search_target", "sort", "duration", "page", "limit", "novel_filter"}},
 		{name: "pixiv_illust_detail", fields: []string{"illust_id", "url"}},
-		{name: "pixiv_illust_related", required: []string{"illust_id"}, fields: []string{"illust_id", "illust_filter", "page", "limit"}},
+		{name: "pixiv_illust_related", required: []string{"illust_id"}, fields: []string{"illust_id", "illust_filter", "page", "limit", "cursor"}},
 		{name: "pixiv_illust_series", required: []string{"series_id"}, fields: []string{"series_id", "page", "limit"}},
 		{name: "pixiv_novel_detail", required: []string{"novel_id"}, fields: []string{"novel_id"}},
 		{name: "pixiv_novel_content", required: []string{"novel_id"}, fields: []string{"novel_id"}},
@@ -392,5 +392,114 @@ func TestIllustRelatedRejectsNonPositiveIDBeforeSDKExecution(t *testing.T) {
 	decodeStructured(t, result, &out)
 	if len(out.Records) != 0 {
 		t.Fatalf("invalid illust_related structured output=%+v", out)
+	}
+}
+
+// Default discovery batches must continue through the actual SDK cursor, not a guessed offset.
+func TestRelatedDefaultBatchContinuation(t *testing.T) {
+	calls := 0
+	client := &fakeSDKClient{userID: 7, relatedArtworks: func(_ context.Context, req pixiv.RelatedArtworksRequest) (sdk.Page[pixiv.Artwork], error) {
+		calls++
+		if req.Cursor.IsZero() {
+			return sdk.Page[pixiv.Artwork]{Items: []pixiv.Artwork{testSDKIllust(101, "first", 7)}, Next: testPageCursor(1)}, nil
+		}
+		return sdk.Page[pixiv.Artwork]{Items: []pixiv.Artwork{testSDKIllust(102, "second", 7)}}, nil
+	}}
+	session, closeSession := newSDKTestSession(t, client)
+	defer closeSession()
+	first := callTool(t, session, "pixiv_illust_related", map[string]any{"illust_id": 9})
+	var out struct {
+		Pagination struct {
+			NextCursor string `json:"next_cursor"`
+		} `json:"pagination"`
+	}
+	decodeStructured(t, first, &out)
+	if first.IsError || out.Pagination.NextCursor == "" || calls != 1 {
+		t.Fatalf("missing batch continuation: error=%v cursor=%q calls=%d", first.IsError, out.Pagination.NextCursor, calls)
+	}
+	second := callTool(t, session, "pixiv_illust_related", map[string]any{"illust_id": 9, "cursor": out.Pagination.NextCursor})
+	if second.IsError {
+		for _, content := range second.Content {
+			if text, ok := content.(*mcp.TextContent); ok {
+				t.Log(text.Text)
+			}
+		}
+	}
+	var records outputs.Records
+	decodeStructured(t, second, &records)
+	if second.IsError || len(records.Records) != 1 || records.Records[0].ID() != "102" || records.Pagination.HasMore || calls != 2 {
+		t.Fatalf("second batch=%+v error=%v calls=%d", records, second.IsError, calls)
+	}
+	for _, args := range []map[string]any{
+		{"illust_id": 10, "cursor": out.Pagination.NextCursor},
+		{"illust_id": 9, "cursor": out.Pagination.NextCursor, "illust_filter": map[string]any{"min_views": 2}},
+		{"illust_id": 9, "cursor": out.Pagination.NextCursor, "limit": 1},
+		{"illust_id": 9, "cursor": "invalid"},
+	} {
+		if result := callTool(t, session, "pixiv_illust_related", args); !result.IsError {
+			t.Fatal("invalid continuation accepted")
+		}
+	}
+	if calls != 2 {
+		t.Fatalf("invalid input reached SDK: calls=%d", calls)
+	}
+	otherCalls := 0
+	other := &fakeSDKClient{userID: 8, relatedArtworks: func(context.Context, pixiv.RelatedArtworksRequest) (sdk.Page[pixiv.Artwork], error) {
+		otherCalls++
+		return sdk.Page[pixiv.Artwork]{}, nil
+	}}
+	otherSession, closeOther := newSDKTestSession(t, other)
+	defer closeOther()
+	rejected := callTool(t, otherSession, "pixiv_illust_related", map[string]any{"illust_id": 9, "cursor": out.Pagination.NextCursor})
+	if !rejected.IsError || otherCalls != 0 {
+		t.Fatalf("cross-account cursor accepted: error=%v calls=%d", rejected.IsError, otherCalls)
+	}
+}
+
+func TestRelatedBatchRejectsRepeatedContinuation(t *testing.T) {
+	client := &fakeSDKClient{userID: 7, relatedArtworks: func(context.Context, pixiv.RelatedArtworksRequest) (sdk.Page[pixiv.Artwork], error) {
+		return sdk.Page[pixiv.Artwork]{Items: []pixiv.Artwork{testSDKIllust(101, "same", 7)}, Next: testPageCursor(1)}, nil
+	}}
+	session, closeSession := newSDKTestSession(t, client)
+	defer closeSession()
+	first := callTool(t, session, "pixiv_illust_related", map[string]any{"illust_id": 9})
+	var out outputs.Records
+	decodeStructured(t, first, &out)
+	second := callTool(t, session, "pixiv_illust_related", map[string]any{"illust_id": 9, "cursor": out.Pagination.NextCursor})
+	if !second.IsError {
+		t.Fatal("repeated continuation must not deliver the same batch again")
+	}
+}
+
+func TestRelatedBatchSkipsFilteredEmptyUpstream(t *testing.T) {
+	calls := 0
+	client := &fakeSDKClient{userID: 7, relatedArtworks: func(_ context.Context, req pixiv.RelatedArtworksRequest) (sdk.Page[pixiv.Artwork], error) {
+		calls++
+		item := testSDKIllust(int64(100+calls), "item", 7)
+		item.PageCount = calls
+		if calls > 1 && req.Cursor.IsZero() {
+			t.Error("continued from zero cursor")
+		}
+		var next sdk.Cursor
+		if calls < 3 {
+			next = testPageCursor(byte(calls))
+		}
+		return sdk.Page[pixiv.Artwork]{Items: []pixiv.Artwork{item}, Next: next}, nil
+	}}
+	session, closeSession := newSDKTestSession(t, client)
+	defer closeSession()
+	args := map[string]any{"illust_id": 9, "illust_filter": map[string]any{"min_pages": 2}}
+	first := callTool(t, session, "pixiv_illust_related", args)
+	var out outputs.Records
+	decodeStructured(t, first, &out)
+	if first.IsError || calls != 2 || len(out.Records) != 1 || out.Records[0].ID() != "102" || out.Pagination.NextCursor == "" {
+		t.Fatalf("filtered first batch=%+v calls=%d", out, calls)
+	}
+	args["cursor"] = out.Pagination.NextCursor
+	second := callTool(t, session, "pixiv_illust_related", args)
+	out = outputs.Records{}
+	decodeStructured(t, second, &out)
+	if second.IsError || calls != 3 || len(out.Records) != 1 || out.Records[0].ID() != "103" || out.Pagination.HasMore || out.Pagination.NextCursor != "" {
+		t.Fatalf("filtered last batch=%+v calls=%d", out, calls)
 	}
 }

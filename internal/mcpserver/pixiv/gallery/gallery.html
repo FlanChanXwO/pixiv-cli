@@ -281,7 +281,8 @@ body{margin:0;padding:16px}h1{font-size:20px;margin:0 0 8px}p{overflow-wrap:anyw
       if (["illust", "manga"].includes(kind) && original.illust_filter?.type && original.illust_filter.type !== kind) continue;
       const page = mixed ? pagination[kind] : pagination;
       if (!page?.has_more) continue;
-      if (!Number.isSafeInteger(page.page) || !Number.isSafeInteger(page.next_page) || page.next_page <= page.page || !Number.isSafeInteger(page.limit) || page.limit <= 0) {
+      const cursor = name === "pixiv_illust_related" && typeof page.next_cursor === "string" && page.next_cursor !== "" ? page.next_cursor : undefined;
+      if (!cursor && (!Number.isSafeInteger(page.page) || !Number.isSafeInteger(page.next_page) || page.next_page <= page.page || !Number.isSafeInteger(page.limit) || page.limit <= 0)) {
         text("p", "More " + kind + " results exist, but this response has no usable continuation. Discovery continuation is not complete.", cards);
         continue;
       }
@@ -289,7 +290,8 @@ body{margin:0;padding:16px}h1{font-size:20px;margin:0 0 8px}p{overflow-wrap:anyw
       const next = action(kind ? "Load next " + kind + " page" : "Load next page", cards, async () => {
         if (busy || epoch !== view || !serverTools) return;
         busy = true; next.disabled = true; message.textContent = "Loading next page…";
-        const args = {...original, page: page.next_page, limit: page.limit};
+        const args = cursor ? {...original, cursor} : {...original, page: page.next_page, limit: page.limit};
+        if (cursor) { delete args.page; delete args.limit; }
         if (mixed) {
           args.kind = kind;
           // Each kind rejects filters belonging to another stream.
@@ -302,7 +304,7 @@ body{margin:0;padding:16px}h1{font-size:20px;margin:0 0 8px}p{overflow-wrap:anyw
           if (epoch !== view || disposed) return;
           const output = response.structuredContent;
           const nextPage = mixed ? output?.pagination?.[kind] : output?.pagination;
-          if (response.isError || !Array.isArray(output?.records) || nextPage?.page !== page.next_page || nextPage.limit !== page.limit) throw new Error("Invalid continuation");
+          if (response.isError || !Array.isArray(output?.records) || !nextPage || (cursor ? nextPage.limit !== null : nextPage.page !== page.next_page || nextPage.limit !== page.limit)) throw new Error("Invalid continuation");
           render({...response, structuredContent: {...output, records: [...result.structuredContent.records, ...output.records], pagination: mixed ? {...pagination, [kind]: nextPage} : nextPage}});
         } catch (_) { if (epoch === view) message.textContent = "Continuation failed; loaded records are retained. Retry explicitly."; }
         finally { busy = false; next.disabled = !serverTools; }

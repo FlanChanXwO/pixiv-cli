@@ -158,11 +158,12 @@ type ListPlan struct {
 
 // PaginationOut 是列表 tool 的稳定分页输出。
 type PaginationOut struct {
-	Page     int  `json:"page"`
-	Limit    *int `json:"limit"`
-	Returned int  `json:"returned"`
-	HasMore  bool `json:"has_more"`
-	NextPage *int `json:"next_page"`
+	NextCursor string `json:"next_cursor,omitempty"`
+	Page       int    `json:"page"`
+	Limit      *int   `json:"limit"`
+	Returned   int    `json:"returned"`
+	HasMore    bool   `json:"has_more"`
+	NextPage   *int   `json:"next_page"`
 }
 
 // ParseListPlan 解析分页输入；nil limit 表示单上游批次。
@@ -257,9 +258,26 @@ func CollectWith[T any](ctx context.Context, app *App, plan ListPlan, fetch func
 	return collectWithFrom(ctx, app, plan, sdk.Cursor{}, fetch)
 }
 
-// collectWithFrom 是 MCP 内部的非 wire continuation seam；公开 tool 仍由
-// CollectWith 从零 cursor 开始，测试与后续 owner 可验证已有 opaque cursor 的
-// execution-attempt 生命周期。
+// CollectBatchWith 从已有 cursor 读取完整过滤批次；不应用逻辑 limit，
+// 因而返回的 SDK cursor 之前不会遗留尚未交付的批次内条目。
+func CollectBatchWith[T any](ctx context.Context, app *App, initial sdk.Cursor, fetch func(context.Context, *pixiv.Client, sdk.Cursor) ([]T, sdk.Cursor, error)) ([]T, sdk.Cursor, error) {
+	var next sdk.Cursor
+	items, _, err := collectWithFrom(ctx, app, ListPlan{Page: 1, OneBatch: true}, initial, func(ctx context.Context, client *pixiv.Client, cursor sdk.Cursor) ([]T, sdk.Cursor, error) {
+		batch, continuation, err := fetch(ctx, client, cursor)
+		if err == nil && !continuation.IsZero() && continuation == cursor {
+			return nil, sdk.Cursor{}, errors.New("batch continuation cursor repeated")
+		}
+		next = continuation
+		return batch, continuation, err
+	})
+	if err != nil {
+		return nil, sdk.Cursor{}, err
+	}
+	return items, next, nil
+}
+
+// collectWithFrom 统一逻辑分页与批次续读的 execution-attempt 生命周期；
+// SDK cursor 的解析与公开 wire envelope 由具体 tool owner 负责。
 func collectWithFrom[T any](ctx context.Context, app *App, plan ListPlan, initial sdk.Cursor, fetch func(context.Context, *pixiv.Client, sdk.Cursor) ([]T, sdk.Cursor, error)) ([]T, bool, error) {
 	seen := make(map[string]struct{})
 	baseExecute := app.Execute()
