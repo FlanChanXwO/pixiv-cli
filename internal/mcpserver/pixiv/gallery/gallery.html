@@ -23,7 +23,8 @@ body{margin:0;padding:16px}h1{font-size:20px;margin:0 0 8px}p{overflow-wrap:anyw
   const pending = new Map();
   const urls = new Set();
   let serial = 0, view = 0, ready = false, disposed = false;
-  let hostOrigin = "*", serverTools = false, observer, resize;
+  let hostContext = {};
+  let hostOrigin = "*", serverTools = false, downloadFiles = false, observer, resize;
   const send = message => window.parent.postMessage({jsonrpc: "2.0", ...message}, hostOrigin);
   function request(method, params, epoch) {
     return new Promise((resolve, reject) => {
@@ -32,6 +33,26 @@ body{margin:0;padding:16px}h1{font-size:20px;margin:0 0 8px}p{overflow-wrap:anyw
       pending.set(id, {resolve, reject, epoch});
       send({id, method, params});
     });
+  }
+  const dimension = value => typeof value === "number" && Number.isFinite(value) && value >= 0 ? value : undefined;
+  function applyContext(update) {
+    if (!update || typeof update !== "object") return;
+    hostContext = {...hostContext, ...update};
+    const style = document.documentElement.style;
+    style.colorScheme = ["light", "dark"].includes(hostContext.theme) ? hostContext.theme : "light dark";
+    const dims = hostContext.containerDimensions ?? {};
+    for (const key of ["width", "height", "maxWidth", "maxHeight"]) {
+      const value = dimension(dims[key]);
+      style[key] = value === undefined ? "" : value + "px";
+    }
+    style.overflow = "auto";
+  }
+  function notifySize() {
+    if (disposed) return;
+    const dims = hostContext.containerDimensions ?? {};
+    const width = dimension(dims.width) ?? Math.min(document.documentElement.scrollWidth, dimension(dims.maxWidth) ?? Infinity);
+    const height = dimension(dims.height) ?? Math.min(document.documentElement.scrollHeight, dimension(dims.maxHeight) ?? Infinity);
+    send({method: "ui/notifications/size-changed", params: {width, height}});
   }
   function clearView() {
     view++;
@@ -86,6 +107,62 @@ body{margin:0;padding:16px}h1{font-size:20px;margin:0 0 8px}p{overflow-wrap:anyw
     urls.add(url);
     return url;
   }
+  function downloadControl(content, filename, parent, epoch) {
+    const message = text("p", downloadFiles ? "Download uses the host confirmation flow." : "This host does not offer file downloads; media bytes remain available in chat.", parent);
+    let busy = false;
+    const button = action("Download " + filename, parent, async () => {
+      if (!downloadFiles || busy || epoch !== view || !parent.contains(button)) return;
+      busy = true; button.disabled = true; message.textContent = "Waiting for host download confirmation…";
+      try {
+        const result = await request("ui/download-file", {contents: [content]}, epoch);
+        if (epoch !== view || disposed) return;
+        if (!result || result.isError) throw new Error("Download not confirmed");
+        message.textContent = "Host confirmed download. File location and naming are controlled by the host.";
+      } catch (_) { if (epoch === view) message.textContent = "Download not confirmed (denied, cancelled or failed)."; }
+      finally { busy = false; button.disabled = !downloadFiles; }
+    });
+    button.disabled = !downloadFiles;
+  }
+  function animationControls(id, artwork, section, epoch) {
+    const label = text("label", "Animation format ", section);
+    const format = document.createElement("select");
+    for (const value of ["gif", "apng"]) { const option = text("option", value, format); option.value = value; }
+    format.value = "gif"; label.append(format);
+    const message = text("p", "Load the full animation with a separate static preview.", section);
+    const media = document.createElement("div"); section.append(media);
+    let reading = false;
+    const load = action("Load animation", section, async () => {
+      if (reading || epoch !== view) return;
+      if (!["gif", "apng"].includes(format.value)) { message.textContent = "Invalid animation format."; return; }
+      const selectedFormat = format.value;
+      reading = true; load.disabled = true; message.textContent = "Loading complete animation…";
+      try {
+        const result = await request("tools/call", {name: "pixiv_artwork_media", arguments: {illust_id: id, animation_format: selectedFormat}}, epoch);
+        if (epoch !== view || disposed) return;
+        const output = result.structuredContent;
+        const page = output?.pages?.find(item => item?.page === 1);
+        const content = page && result.content?.[page.content_index];
+        const resource = content?.resource;
+        if (result.isError || !output.complete || content?.type !== "resource" || resource?.mimeType !== "image/" + selectedFormat || typeof resource.blob !== "string" || typeof resource.uri !== "string" || page.mime_type !== resource.mimeType) throw new Error("Invalid animation");
+        const bytes = Uint8Array.from(atob(resource.blob), char => char.charCodeAt(0));
+        if (bytes.byteLength !== page.size || bytes.byteLength === 0) throw new Error("Invalid animation size");
+        const preview = result.content?.[page.preview_content_index];
+        if (preview?.mimeType !== "image/png" || page.preview_content_index === page.content_index) throw new Error("Missing separate preview");
+        for (const url of urls) URL.revokeObjectURL(url); urls.clear(); media.replaceChildren();
+        const previewURL = imageURL(preview);
+        const animationURL = URL.createObjectURL(new Blob([bytes], {type: resource.mimeType})); urls.add(animationURL);
+        const image = document.createElement("img"); image.alt = String(artwork.title); image.src = previewURL; media.append(image);
+        const filename = typeof page.filename === "string" ? page.filename : id + "." + selectedFormat;
+        text("p", filename + " · " + page.size + " bytes · " + page.mime_type, media);
+        image.addEventListener("error", () => { if (epoch === view && media.contains(image)) message.textContent = "This host could not display the animation/preview. The complete file can still be requested through the media tool."; });
+        action("Play animation", media, () => { if (epoch === view && media.contains(image)) { image.src = animationURL; message.textContent = "Complete animation selected; playback is controlled by the host/browser."; } });
+        action("Show preview", media, () => { if (epoch === view && media.contains(image)) { image.src = previewURL; message.textContent = "Static preview — not the complete animation."; } });
+        downloadControl({type: "resource", resource: {uri: resource.uri, mimeType: resource.mimeType, blob: resource.blob}}, filename, media, epoch);
+        message.textContent = "Complete animation bytes loaded. Showing the separate static preview.";
+      } catch (_) { if (epoch === view) message.textContent = "Animation read failed or incomplete. Retry to obtain the full file."; }
+      finally { reading = false; load.disabled = false; }
+    });
+  }
   async function openDetail(record, previous) {
     clearView();
     const epoch = view;
@@ -103,7 +180,7 @@ body{margin:0;padding:16px}h1{font-size:20px;margin:0 0 8px}p{overflow-wrap:anyw
       text("h2", artwork.title, section);
       text("p", artwork.user?.name, section);
       if (artwork.type === "ugoira") {
-        text("p", "Ugoira animation — full GIF/APNG is available through pixiv_artwork_media in chat.", section);
+        animationControls(id, artwork, section, epoch);
       } else {
         const total = artwork.page_count;
         if (!Number.isSafeInteger(total) || total < 1) throw new Error("Invalid page count");
@@ -139,6 +216,9 @@ body{margin:0;padding:16px}h1{font-size:20px;margin:0 0 8px}p{overflow-wrap:anyw
               image.src = imageURL(response.content?.[page.content_index], page);
               image.addEventListener("error", () => { if (epoch === view && media.contains(image)) mediaMessage.textContent = "Host could not display delivered image bytes."; });
               media.append(image); text("p", "Page " + page.page + " · " + page.size + " bytes", media);
+              const content = response.content[page.content_index];
+              const extension = {"image/png":"png","image/jpeg":"jpg","image/webp":"webp","image/gif":"gif","image/bmp":"bmp"}[content.mimeType];
+              downloadControl({type:"resource",resource:{uri:"urn:pixiv:artwork:" + id + ":page:" + page.page + ":quality:" + args.quality,mimeType:content.mimeType,blob:content.data}}, id + "_p" + page.page + "." + extension, media, epoch);
             }
             const failed = Array.isArray(output.failures) ? output.failures.map(item => item?.page).join(", ") : "";
             mediaMessage.textContent = output.complete && !response.isError ? "Requested pages delivered." : "Partial or failed media. Undelivered pages: " + (failed || "see tool result");
@@ -261,6 +341,7 @@ body{margin:0;padding:16px}h1{font-size:20px;margin:0 0 8px}p{overflow-wrap:anyw
     }
     if (!ready) return;
     switch (message.method) {
+      case "ui/notifications/host-context-changed": applyContext(message.params); break;
       case "ui/notifications/tool-input": clearView(); status.textContent = "Loading results…"; break;
       case "ui/notifications/tool-result": render(message.params ?? {}); break;
       case "ui/notifications/tool-cancelled": clearView(); status.textContent = "Tool execution cancelled."; break;
@@ -275,11 +356,13 @@ body{margin:0;padding:16px}h1{font-size:20px;margin:0 0 8px}p{overflow-wrap:anyw
       if (disposed) return;
       if (result.protocolVersion !== "2026-01-26") throw new Error("Unsupported bridge protocol");
       serverTools = Boolean(result.hostCapabilities?.serverTools);
+      downloadFiles = Boolean(result.hostCapabilities?.downloadFile);
+      applyContext(result.hostContext);
       ready = true;
       send({method: "ui/notifications/initialized", params: {}});
       status.textContent = "Waiting for tool results…";
       if (typeof ResizeObserver === "function") {
-        resize = new ResizeObserver(() => { if (!disposed) send({method: "ui/notifications/size-changed", params: {width: document.documentElement.scrollWidth, height: document.documentElement.scrollHeight}}); });
+        resize = new ResizeObserver(notifySize);
         resize.observe(document.body);
         window.addEventListener("pagehide", () => resize.disconnect(), {once: true});
       }

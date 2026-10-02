@@ -3,6 +3,7 @@ import {readFile} from 'node:fs/promises';
 import vm from 'node:vm';
 
 // Local bridge/DOM fixture: no network, host credentials, browser installation or dependency.
+const downloads = !process.argv.includes('--without-download');
 const html = await readFile(new URL('./gallery.html', import.meta.url), 'utf8');
 const script = html.match(/<script>([\s\S]*?)<\/script>/)[1];
 class Element {
@@ -14,6 +15,7 @@ class Element {
   removeAttribute(name) { this[name] = ''; }
 }
 const status = new Element('p'), cards = new Element('main');
+const rootElement = {scrollWidth:640,scrollHeight:400,style:{}};
 const listeners = {}, sent = [], created = [], revoked = [], intersections = [], resizes = [];
 const parent = {postMessage(message, origin) { sent.push({message: JSON.parse(JSON.stringify(message)), origin}); }};
 const window = {parent, addEventListener(name, callback) { (listeners[name] ??= []).push(callback); }};
@@ -23,7 +25,7 @@ class Observer {
   unobserve(target) { this.targets = this.targets.filter(item => item !== target); }
   disconnect() { this.disconnected = true; this.targets = []; }
 }
-vm.runInNewContext(script, {window, document: {body: new Element('body'), documentElement: {scrollWidth: 640, scrollHeight: 400}, getElementById: id => id === 'status' ? status : cards, createElement: tag => new Element(tag)},
+vm.runInNewContext(script, {window, document: {body: new Element('body'), documentElement: rootElement, getElementById: id => id === 'status' ? status : cards, createElement: tag => new Element(tag)},
   URL: {createObjectURL(blob) { const url = 'blob:fixture-' + created.length; created.push({url, blob}); return url; }, revokeObjectURL: url => revoked.push(url)}, Blob, atob,
   IntersectionObserver: class extends Observer { constructor(callback) { super(callback, intersections); } },
   ResizeObserver: class extends Observer { constructor(callback) { super(callback, resizes); } }
@@ -37,9 +39,20 @@ assert.equal(initialize.params.protocolVersion, '2026-01-26');
 receive({id: initialize.id, result: {}}, {});
 await flush();
 assert.equal(sent.length, 1, 'foreign window cannot initialize');
-receive({id: initialize.id, result: {protocolVersion:'2026-01-26', hostCapabilities: {serverTools:{}}, hostContext:{}}});
+receive({id: initialize.id, result: {protocolVersion:'2026-01-26', hostCapabilities: {serverTools:{}, ...(downloads ? {downloadFile:{}} : {})}, hostContext:{}}});
 await flush();
 assert.ok(latest('ui/notifications/initialized'));
+receive({method:'ui/notifications/host-context-changed',params:{theme:'dark',containerDimensions:{width:500,height:260}}});
+assert.equal(rootElement.style.colorScheme,'dark');
+assert.equal(rootElement.style.height,'260px');
+resizes[0].callback();
+assert.deepEqual(latest('ui/notifications/size-changed').params,{width:500,height:260});
+receive({method:'ui/notifications/host-context-changed',params:{theme:'light',containerDimensions:{maxWidth:420,maxHeight:200}}});
+assert.equal(rootElement.style.height,'');
+assert.equal(rootElement.style.maxHeight,'200px');
+resizes[0].callback();
+assert.deepEqual(latest('ui/notifications/size-changed').params,{width:420,height:200});
+
 const record = {id:'42', type:'illust', title:'<img src=x onerror=alert(1)>', user:{name:'artist'}, tags:[{name:'<script>'}]};
 const show = () => receive({method:'ui/notifications/tool-result',params:{structuredContent:{records:[record]},content:[]}});
 show();
@@ -88,6 +101,16 @@ assert.deepEqual(pageCall.params.arguments,{illust_id:42,pages:[3],quality:'regu
 receive({id:pageCall.id,result:{content:[{type:'image',mimeType:'image/png',data}],structuredContent:{complete:true,pages:[{page:3,content_index:0,mime_type:'image/png',size:bytes.length}],failures:[]}}});
 await flush();
 assert.ok(elements(cards).some(node => node.tag === 'img' && node.src.startsWith('blob:')));
+const staticDownload = button('Download 42_p3.png');
+assert.ok(staticDownload);
+if (downloads) {
+  staticDownload.events.click();
+  const staticRequest = latest('ui/download-file');
+  assert.equal(staticRequest.params.contents[0].resource.blob,data);
+  assert.equal(staticRequest.params.contents[0].resource.mimeType,'image/png');
+  receive({id:staticRequest.id,result:{}});
+  await flush();
+} else assert.equal(staticDownload.disabled,true);
 const oldPageImage = elements(cards).find(node => node.tag === 'img');
 const countBeforeInvalid = sent.length;
 pageInput.value = '0';
@@ -127,6 +150,60 @@ assert.deepEqual(removal.params,{name:'pixiv_remove_bookmark',arguments:{illust_
 receive({id:removal.id,result:{isError:false,content:[]}});
 await flush();
 
+receive({method:'ui/notifications/tool-result',params:{structuredContent:{records:[{...record,type:'ugoira'}]},content:[]}});
+button('Open artwork').events.click();
+const animationDetail = latest('tools/call');
+receive({id:animationDetail.id,result:{structuredContent:{records:[{...record,type:'ugoira',page_count:1}]},content:[]}});
+await flush();
+assert.ok(button('Load animation'), 'missing full animation control');
+button('Load animation').events.click();
+const animationCall = latest('tools/call');
+assert.deepEqual(animationCall.params.arguments,{illust_id:42,animation_format:'gif'});
+const animationData = Buffer.from('GIF89a-fixture-binary').toString('base64');
+const animationContent = {type:'resource',resource:{uri:'urn:sha256:fixture',mimeType:'image/gif',blob:animationData}};
+receive({id:animationCall.id,result:{content:[animationContent,{type:'image',mimeType:'image/png',data}],structuredContent:{complete:true,pages:[{page:1,content_index:0,preview_content_index:1,filename:'42.gif',mime_type:'image/gif',size:Buffer.from(animationData,'base64').length}],failures:[]}}});
+await flush();
+assert.ok(button('Play animation'));
+const animatedImage = elements(cards).find(node => node.tag === 'img');
+const firstFrameURL = animatedImage.src;
+button('Play animation').events.click();
+assert.notEqual(animatedImage.src,firstFrameURL,'must display full animation, not just preview');
+button('Show preview').events.click();
+assert.equal(animatedImage.src,firstFrameURL);
+const downloadButton = button('Download 42.gif');
+assert.ok(downloadButton);
+if (downloads) {
+  downloadButton.events.click();
+  const downloadCall = latest('ui/download-file');
+  assert.deepEqual(downloadCall.params,{contents:[animationContent]});
+  receive({id:downloadCall.id,result:{isError:true}});
+  await flush();
+  assert.ok(elements(cards).some(node => node.textContent.includes('Download not confirmed')));
+  downloadButton.events.click();
+  const secondDownload = latest('ui/download-file');
+  receive({id:secondDownload.id,result:{}});
+  await flush();
+  assert.ok(elements(cards).some(node => node.textContent.includes('Host confirmed download')));
+} else {
+  assert.equal(downloadButton.disabled,true);
+  const before = sent.length;
+  downloadButton.events.click();
+  assert.equal(sent.length,before,'missing capability must not send download requests');
+}
+const animationFormat = elements(cards).find(node => node.tag === 'select');
+animationFormat.value = 'apng';
+button('Load animation').events.click();
+const apngCall = latest('tools/call');
+assert.deepEqual(apngCall.params.arguments,{illust_id:42,animation_format:'apng'});
+receive({id:apngCall.id,result:{content:[],structuredContent:{complete:false,pages:[],failures:[{page:1,error:'media_read_failed'}]},isError:true}});
+await flush();
+assert.ok(elements(cards).some(node => node.textContent.includes('Animation read failed or incomplete')));
+button('Load animation').events.click();
+const apngRetry = latest('tools/call');
+// The VM checks wire routing; real GIF/APNG encoding is covered by the Go media fixture.
+receive({id:apngRetry.id,result:{content:[{type:'resource',resource:{uri:'urn:sha256:apng-fixture',mimeType:'image/apng',blob:data}},{type:'image',mimeType:'image/png',data}],structuredContent:{complete:true,pages:[{page:1,content_index:0,preview_content_index:1,filename:'42.apng',mime_type:'image/apng',size:bytes.length}]}}});
+await flush();
+assert.ok(button('Download 42.apng'));
 receive({method:'ui/notifications/tool-result',params:{structuredContent:{records:[null, {type:'illust',id:'invalid',title:'bad-id'}]}}});
 assert.equal(cards.children.length, 2, 'malformed records remain explicit, not silently dropped');
 receive({method:'ui/resource-teardown',id:99,params:{}});
@@ -134,4 +211,4 @@ assert.deepEqual(new Set(revoked), new Set(created.map(item => item.url)));
 assert.equal(cards.children.length, 0);
 assert.ok(resizes.every(item => item.disconnected), 'teardown must stop size observers');
 assert.ok(sent.some(item => item.message.id === 99 && item.message.result));
-console.log('Gallery bridge mock: initialization/security, previews, detail pages/partial, explicit bookmarks, stale views and cleanup passed');
+console.log('Gallery bridge mock: security/context, pages/partial, bookmarks, GIF/APNG routing, host downloads and cleanup passed');
