@@ -1024,6 +1024,7 @@ func (a app) runPixivMCP(ctx context.Context, request mcpcommands.Request) error
 	fanboxService := a.fanboxDataDeps().ServiceFactory
 	manager := mcpaccounts.Manager{Store: store, Load: ports.localAccounts}
 	server := unifiedmcp.New(mcpserver.SDKPorts{
+		Accounts: manager,
 		ResolveAccount: func(ctx context.Context, account mcpserver.Account) (mcpserver.Account, error) {
 			userID, err := manager.Resolve(ctx)
 			if err != nil {

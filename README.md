@@ -241,6 +241,8 @@ pixiv mcp --listen-addr 127.0.0.1:8080 --base-url http://127.0.0.1:8080
 
 Connect to `http://127.0.0.1:8080/mcp` locally. For cloud connectors, use an existing HTTPS reverse proxy and configure its canonical public base URL. OAuth uses DCR, owner consent and PKCE; Pixiv/FANBOX credentials remain separate. See [startup](docs/en/cli-reference.md#mcp-http-server) and [owner/reset administration](docs/en/cli-reference.md#mcp-owner-initialization). `pixiv fanbox mcp` and stdio transport are removed.
 
+Use `pixiv_account_list` / `pixiv_account_status` to inspect local accounts and `pixiv_account_use` to select the shared MCP account without changing the CLI default.
+
 See the [MCP tool contract](docs/en/mcp-tools.md) for tools, parameters, structured output, and authentication behavior.
 Fixed MCP status, error, and display text is English; Pixiv metadata and user-supplied text are preserved verbatim.
 

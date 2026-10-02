@@ -11,6 +11,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/accounts"
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/internal/filters"
 	"github.com/FlanChanXwO/pixiv-cli/internal/services/reversesearch"
 	"github.com/FlanChanXwO/pixiv-cli/internal/shared/diagnostics"
@@ -32,6 +33,8 @@ type Account struct {
 // SDKPorts 是 MCP 对 Pixiv services Facade 的窄端口：打开独立认证快照、在账号
 // 池重放边界内执行用例。composition root 注入实现；MCP 不持有 service locator。
 type SDKPorts struct {
+	// Accounts shares the owner-local manager used by production ResolveAccount.
+	Accounts accounts.Manager
 	// ResolveAccount 固定一次业务调用的本地账号选择；不读取或刷新上游凭据。
 	ResolveAccount func(context.Context, Account) (Account, error)
 	// Open is the raw-client compatibility adapter for existing embeddings. New
@@ -68,6 +71,9 @@ func NewApp(ports SDKPorts, account Account) *App {
 
 // SDKPorts 返回注入的 SDK 端口。
 func (a *App) SDKPorts() SDKPorts { return a.sdk }
+
+// AccountManager returns the local account manager; it never opens an SDK client.
+func (a *App) AccountManager() accounts.Manager { return a.sdk.Accounts }
 
 // ReverseSearchPorts 返回启动时注入的反向搜图端口与配置。
 func (a *App) ReverseSearchPorts() ReverseSearchPorts {

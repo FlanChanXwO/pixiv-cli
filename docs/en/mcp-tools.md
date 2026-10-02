@@ -22,13 +22,25 @@ Every `/mcp` request needs a valid bearer token. Missing, expired or revoked cre
 
 The MCP owner has one persisted Pixiv selection shared by connectors. On first use it adopts the explicit CLI default, or the sole local account when no explicit default exists. Multiple accounts without a default return `selection_required`; no local accounts return `no_local_account`. An existing selection is never replaced implicitly: a removed account returns `account_not_found`, and a missing local credential returns `credentials_missing`. Local credential presence does not prove upstream validity.
 
-The first SDK access in a tool call fixes its account snapshot for subsequent reads and writes. Explicit selection overrides pool scheduling without modifying the CLI default. Account-management tools are not yet registered in this candidate; the persisted selection and production resolver are implemented.
+The first SDK access in a tool call fixes its account snapshot for subsequent reads and writes. Explicit selection overrides pool scheduling without modifying the CLI default. Use `pixiv_account_list`, `pixiv_account_status`, and `pixiv_account_use` to inspect or change this shared selection.
+
+### Account tools
+
+| Tool | Input and semantics |
+| --- | --- |
+| `pixiv_account_list` | Empty object; all local account summaries and the shared selection. |
+| `pixiv_account_status` | Empty object; local selection and credential-presence state, without network refresh. |
+| `pixiv_account_use` | Required positive integer `user_id`; checks local existence, then persists the selection for all connectors. |
+
+Inputs are closed objects. All three return `selected_user_id`, `selection_state`, `credential_state`, and `accounts` (each with `user_id`, `username`, `has_credentials`). Status inspection may persist the initial default/sole-account choice; therefore all three publish `readOnlyHint=false`, `destructiveHint=false`, `idempotentHint=true`, and `openWorldHint=false`. A successful status query can report an unusable account; it is not an upstream authentication check.
+
+Failures keep the structured envelope with an `error` category and `isError=true`. Categories are `invalid_request` (schema), `invalid_user_id`, `account_not_found`, `owner_not_initialized`, `canceled`, `deadline_exceeded`, or `local_state_error`. Unavailable state reports selection/credential state as `unknown`, not as a successful empty account. Raw arguments, credential values, filesystem paths, and internal storage causes are not echoed in these error results. Login startup and `login_id` status are not yet exposed.
 
 ## Errors, pagination, and output
 
 Schema-invalid input is rejected before the SDK operation is opened: the MCP SDK
 returns a tool result with `isError=true` and a text diagnostic, without the
-handler's structured output. It is not a JSON-RPC protocol error. A failure after
+handler's structured output. It is not a JSON-RPC protocol error. Account tools and reverse search instead return their sanitized structured error envelope for schema failures. A failure after
 handler execution preserves the tool's
 structured result and sets `isError=true`; an entity read returns an empty
 `records` collection. A normal empty
@@ -198,9 +210,9 @@ gate, and a bookmark count must not be described as a like count.
 
 Pixiv tools use the `pixiv_` prefix and FANBOX tools use `fanbox_`; old Pixiv names are not aliases. Both products share one server, with independent SDK runtimes and credential selection.
 
-All tools publish explicit standard annotations. Reads are read-only, non-destructive and idempotent. Bookmark/follow additions are non-destructive, idempotent writes; removals and comment deletion are destructive, idempotent writes. Comment create/reply/stamp operations are non-destructive, non-idempotent writes. These hints support host approval and are not server-enforced authorization.
+All tools publish explicit standard annotations. Account-tool initialization effects are described above; other reads are read-only, non-destructive and idempotent. Bookmark/follow additions are non-destructive, idempotent writes; removals and comment deletion are destructive, idempotent writes. Comment create/reply/stamp operations are non-destructive, non-idempotent writes. These hints support host approval and are not server-enforced authorization.
 
-`openWorldHint` is true for external operations, including reverse-search uploads to third-party providers and Pixiv reads that may authenticate. `fanbox_resolve_url` is closed-world: opening its local account snapshot and parsing the URL do not access the network.
+`openWorldHint` is true for external operations, including reverse-search uploads to third-party providers and Pixiv reads that may authenticate. `pixiv_account_list`, `pixiv_account_status`, and `pixiv_account_use` are closed-world local operations. `fanbox_resolve_url` is also closed-world: opening its local account snapshot and parsing the URL do not access the network.
 
 MCP no longer registers `download` or `download_random_from_recommendation`, nor any renamed download alias. Use CLI `pixiv download` for server/local filesystem downloads.
 

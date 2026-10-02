@@ -21,12 +21,24 @@ metadata 请使用 `pixiv_novel_detail`。
 
 MCP owner 的 Pixiv 选择持久化保存，所有 connector 共享。首次使用优先采用 CLI 显式 default；没有显式 default 时，仅在本地恰有一个账号时自动采用。多个账号且无 default 返回 `selection_required`，没有本地账号返回 `no_local_account`。已有选择不会被隐式替换：账号已删除返回 `account_not_found`，缺少本地凭据返回 `credentials_missing`。本地凭据存在不代表上游实时有效。
 
-一次 tool 调用在首次 SDK 访问时固定账号快照，后续读取和写入继续使用它。显式选择覆盖账号池调度，不修改 CLI default。此候选尚未注册账号管理 tools；已实现持久选择与生产 resolver。
+一次 tool 调用在首次 SDK 访问时固定账号快照，后续读取和写入继续使用它。显式选择覆盖账号池调度，不修改 CLI default。通过 `pixiv_account_list`、`pixiv_account_status`、`pixiv_account_use` 查看或切换这个共享选择。
+
+### 账号工具
+
+| Tool | 输入与语义 |
+| --- | --- |
+| `pixiv_account_list` | 空 object；返回全部本地账号摘要及共享选择。 |
+| `pixiv_account_status` | 空 object；查看本地选择与凭据是否存在，不联网 refresh。 |
+| `pixiv_account_use` | 必填正整数 `user_id`；先检查本地存在，再持久化供所有 connector 共享。 |
+
+输入均为封闭 object。三个工具均返回 `selected_user_id`、`selection_state`、`credential_state`、`accounts`（每项含 `user_id`、`username`、`has_credentials`）。状态查询可能持久化首次 default/唯一账号选择，因此三者均标注 `readOnlyHint=false`、`destructiveHint=false`、`idempotentHint=true`、`openWorldHint=false`。查询成功可以报告账号不可用，不代表上游认证成功。
+
+失败保留 structured envelope、`error` 类别及 `isError=true`。类别为 `invalid_request`（schema）、`invalid_user_id`、`account_not_found`、`owner_not_initialized`、`canceled`、`deadline_exceeded` 或 `local_state_error`。状态不可用时 selection/credential state 为 `unknown`，不伪装为成功的空账号。错误结果不回显原始参数、凭据值、文件路径或内部存储原因。登录启动及 `login_id` 状态查询尚未开放。
 
 ## 错误、分页与输出
 
 不符合 schema 的输入会在打开 SDK operation 前拒绝：MCP SDK 返回
-`isError=true` 和文本诊断，不含 handler 的 structured output；这不是 JSON-RPC 协议错误。
+`isError=true` 和文本诊断，不含 handler 的 structured output；这不是 JSON-RPC 协议错误。账号工具与反搜会为 schema 失败返回脱敏后的 structured 错误 envelope。
 handler 执行后的失败会保留该 tool 的 structured result 并设置
 `isError=true`：实体读取返回空 `records`。正常空页是成功，
 不会被转换为错误。
@@ -151,9 +163,9 @@ application outcome 的 `filter` 会报告 `min`、`max`、`membership`、`strat
 
 Pixiv tools 统一使用 `pixiv_` 前缀，FANBOX 使用 `fanbox_`；不注册旧 Pixiv 名称 alias。两产品注册到同一 server，SDK runtime 和凭据选择保持独立。
 
-所有 tools 显式发布标准 annotations。读取为只读、非破坏、幂等；新增收藏/关注为非破坏、幂等写入；取消收藏/关注及删除评论为破坏、幂等写入；创建/回复/盖章评论为非破坏、非幂等写入。这些 hints 供 host 审批使用，不是 server 强制鉴权。
+所有 tools 显式发布标准 annotations。账号工具的首次初始化副作用见上文；其他读取为只读、非破坏、幂等；新增收藏/关注为非破坏、幂等写入；取消收藏/关注及删除评论为破坏、幂等写入；创建/回复/盖章评论为非破坏、非幂等写入。这些 hints 供 host 审批使用，不是 server 强制鉴权。
 
-外部操作的 `openWorldHint` 为 true，包括上传至第三方的反向搜图及可能触发认证的 Pixiv 读取。`fanbox_resolve_url` 为 closed-world：打开本地账号快照并解析 URL 不产生网络访问。
+外部操作的 `openWorldHint` 为 true，包括上传至第三方的反向搜图及可能触发认证的 Pixiv 读取。`pixiv_account_list`、`pixiv_account_status`、`pixiv_account_use` 是 closed-world 本地操作。`fanbox_resolve_url` 也为 closed-world：打开本地账号快照并解析 URL 不产生网络访问。
 
 MCP 不再注册 `download`、`download_random_from_recommendation` 或任何改名后的下载 alias。需要写入本地文件系统时使用 CLI `pixiv download`。
 

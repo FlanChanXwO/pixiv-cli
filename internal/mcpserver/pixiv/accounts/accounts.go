@@ -8,6 +8,11 @@ import (
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/auth"
 )
 
+var (
+	ErrInvalidUserID   = errors.New("user_id must be positive")
+	ErrAccountNotFound = errors.New("account_not_found")
+)
+
 // Account is a local, non-secret account summary; credentials have not been checked upstream.
 type Account struct {
 	UserID         int64  `json:"user_id"`
@@ -92,7 +97,7 @@ func statusFor(local []Account, selected int64) Status {
 // Use checks local existence before committing the shared selection; CLI defaults are untouched.
 func (m Manager) Use(ctx context.Context, userID int64) (Status, error) {
 	if userID <= 0 {
-		return Status{}, errors.New("user_id must be positive")
+		return Status{}, ErrInvalidUserID
 	}
 	if m.Load == nil {
 		return Status{}, errors.New("MCP account reader is not configured")
@@ -110,7 +115,7 @@ func (m Manager) Use(ctx context.Context, userID int64) (Status, error) {
 		}
 		return statusFor(local.Accounts, userID), nil
 	}
-	return Status{}, errors.New("account_not_found")
+	return Status{}, ErrAccountNotFound
 }
 
 // Resolve requires usable local credentials; their actual upstream validity is checked by the SDK.

@@ -899,7 +899,7 @@ func TestMCPProductionResolvesSharedSelectionBeforeSDK(t *testing.T) {
 		}, nil
 	}
 	runMCPHTTP = func(ctx context.Context, server *mcp.Server, _, _ string, store mcpauth.Store, _ io.Writer) error {
-		require.NoError(t, store.SelectPixivUser(ctx, 73))
+
 		ct, st := mcp.NewInMemoryTransports()
 		ss, err := server.Connect(ctx, st, nil)
 		require.NoError(t, err)
@@ -908,6 +908,9 @@ func TestMCPProductionResolvesSharedSelectionBeforeSDK(t *testing.T) {
 		session, err := client.Connect(ctx, ct, nil)
 		require.NoError(t, err)
 		defer session.Close()
+		switched, err := session.CallTool(ctx, &mcp.CallToolParams{Name: "pixiv_account_use", Arguments: map[string]any{"user_id": 73}})
+		require.NoError(t, err)
+		require.False(t, switched.IsError)
 		result, err := session.CallTool(ctx, &mcp.CallToolParams{Name: "pixiv_illust_detail", Arguments: map[string]any{"illust_id": 1}})
 		require.NoError(t, err)
 		require.True(t, result.IsError)

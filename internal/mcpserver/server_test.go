@@ -80,6 +80,7 @@ func TestUnifiedToolRegistry(t *testing.T) {
 	}
 	seen := map[string]bool{}
 	writes := map[string]struct{ destructive, idempotent bool }{
+		"pixiv_account_list": {false, true}, "pixiv_account_status": {false, true}, "pixiv_account_use": {false, true},
 		"pixiv_add_bookmark": {false, true}, "pixiv_add_novel_bookmark": {false, true}, "pixiv_follow_user": {false, true},
 		"pixiv_remove_bookmark": {true, true}, "pixiv_remove_novel_bookmark": {true, true}, "pixiv_unfollow_user": {true, true},
 		"pixiv_create_artwork_comment": {false, false}, "pixiv_create_novel_comment": {false, false},
@@ -107,7 +108,8 @@ func TestUnifiedToolRegistry(t *testing.T) {
 		if a.ReadOnlyHint == mutates || *a.DestructiveHint != write.destructive || a.IdempotentHint != (!mutates || write.idempotent) {
 			t.Errorf("incorrect effect annotations %s: %+v", tool.Name, a)
 		}
-		if *a.OpenWorldHint != (tool.Name != "fanbox_resolve_url") {
+		localOnly := tool.Name == "fanbox_resolve_url" || tool.Name == "pixiv_account_list" || tool.Name == "pixiv_account_status" || tool.Name == "pixiv_account_use"
+		if *a.OpenWorldHint == localOnly {
 			t.Errorf("incorrect network annotation: %s", tool.Name)
 		}
 		if tool.Name == "pixiv_reverse_search" && !strings.Contains(strings.ToLower(tool.Description), "upload") {

@@ -241,6 +241,8 @@ pixiv mcp --listen-addr 127.0.0.1:8080 --base-url http://127.0.0.1:8080
 
 本地连接 `http://127.0.0.1:8080/mcp`。云端 connector 使用既有 HTTPS 反向代理，并将其公网地址配置为 canonical base URL。OAuth 使用 DCR、owner 同意与 PKCE；Pixiv/FANBOX 凭据仍独立。详见[启动合同](docs/zh-CN/cli-reference.md#mcp-http-server)与[owner/reset 管理](docs/zh-CN/cli-reference.md#mcp-owner-初始化)。`pixiv fanbox mcp` 与 stdio transport 已删除。
 
+使用 `pixiv_account_list` / `pixiv_account_status` 查看本地账号，通过 `pixiv_account_use` 切换共享 MCP 账号，不修改 CLI default。
+
 [MCP tool 契约](docs/zh-CN/mcp-tools.md)记录了 tools、参数、structured output 和认证行为。
 MCP 固定状态、错误和展示文本使用英文；Pixiv 元数据及用户提供的文本保持原文。
 

@@ -5,6 +5,9 @@ package pixiv
 
 import (
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/internal/runtime"
+	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/tools/account_list"
+	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/tools/account_status"
+	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/tools/account_use"
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/tools/add_bookmark"
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/tools/add_novel_bookmark"
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/tools/blocked_users"
@@ -74,6 +77,9 @@ type ReverseSearchPorts = runtime.ReverseSearchPorts
 // Register 将 Pixiv tools 注册到共享 server，账号和 SDK 生命周期仍由 Pixiv runtime 持有。
 func Register(server *mcp.Server, ports SDKPorts, account Account) {
 	app := runtime.NewApp(ports, account)
+	account_use.Register(app, server)
+	account_status.Register(app, server)
+	account_list.Register(app, server)
 	add_bookmark.Register(app, server)
 	add_novel_bookmark.Register(app, server)
 	blocked_users.Register(app, server)
