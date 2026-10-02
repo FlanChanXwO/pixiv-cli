@@ -137,13 +137,21 @@ func TestHTTPListenerServesAndStopsOnCancellation(t *testing.T) {
 				<-released
 				return nil, nil, ctx.Err()
 			})
+			// An independent owner context proves RunHTTP explicitly closes the relay.
+			login, err := accounts.NewLoginManager(t.Context(), "http://"+addr+"/pixiv-login", func() (accounts.LoginAttempt, error) {
+				return accounts.LoginAttempt{AuthorizationURL: "https://app-api.pixiv.net/web/v1/login", AcceptsCallback: func(string) bool { return true }, Complete: func(context.Context, string) (accounts.LoginResult, error) { return accounts.LoginResult{}, nil }}, nil
+			})
+			require.NoError(t, err)
+			defer login.Close()
+			pending, err := login.Start(false)
+			require.NoError(t, err)
 			ctx, cancel := context.WithCancel(t.Context())
 			defer cancel()
 			reader, writer := io.Pipe()
 			defer reader.Close()
 			finished := make(chan error, 1)
 			go func() {
-				err := server.RunHTTP(ctx, protocol, addr, "http://"+addr, store, writer, nil)
+				err := server.RunHTTP(ctx, protocol, addr, "http://"+addr, store, writer, login)
 				writer.CloseWithError(err)
 				finished <- err
 			}()
@@ -210,6 +218,9 @@ func TestHTTPListenerServesAndStopsOnCancellation(t *testing.T) {
 			}
 			release()
 			require.ErrorIs(t, <-finished, context.Canceled)
+			require.Equal(t, "failed", login.Status(pending.LoginID).Status)
+			_, err = login.Start(false)
+			require.ErrorIs(t, err, context.Canceled)
 			<-requested
 			rebound, err := net.Listen("tcp", addr)
 			require.NoError(t, err)

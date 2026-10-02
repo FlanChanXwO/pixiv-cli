@@ -1064,17 +1064,23 @@ func (a app) runPixivMCP(ctx context.Context, request mcpcommands.Request) error
 // newMCPLoginManager captures one SDK LoginStart for validation and exchange.
 // Saving an account never changes the CLI default; MCP selection is a separate write.
 func (a app) newMCPLoginManager(ctx context.Context, baseURL string, store mcpauth.Store, proxy *string) (*mcpaccounts.LoginManager, error) {
+	// LoginManager serializes starts; retain one successfully opened account service.
+	var service *pixivaccount.LoginService
 	return mcpaccounts.NewLoginManager(ctx, strings.TrimRight(baseURL, "/")+"/pixiv-login", func() (mcpaccounts.LoginAttempt, error) {
-		_, service, err := newCLIAccountServices(a)
-		if err != nil {
-			return mcpaccounts.LoginAttempt{}, err
-		}
-		options := pixiv.LoginOptions{}
-		if proxy != nil {
-			options.HTTPClient, err = network.HTTPClient(*proxy)
+		if service == nil {
+			_, loaded, err := newCLIAccountServices(a)
 			if err != nil {
 				return mcpaccounts.LoginAttempt{}, err
 			}
+			service = &loaded
+		}
+		options := pixiv.LoginOptions{}
+		if proxy != nil {
+			client, err := network.HTTPClient(*proxy)
+			if err != nil {
+				return mcpaccounts.LoginAttempt{}, err
+			}
+			options.HTTPClient = client
 		}
 		start, err := service.Start(pixivaccount.LoginRequest{Options: options})
 		if err != nil {

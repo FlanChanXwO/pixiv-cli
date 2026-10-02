@@ -54,6 +54,8 @@ func (s LoginService) Complete(ctx context.Context, start LoginStart, request Lo
 	if start.session == nil {
 		return AccountSummary{}, errors.New("login session is not initialized")
 	}
+	// A login is one-shot; release only the HTTP transport owned by this SDK session.
+	defer start.session.CloseIdleConnections()
 	credentials, err := start.session.Complete(ctx, request.CallbackOrCode)
 	if err != nil {
 		return AccountSummary{}, err

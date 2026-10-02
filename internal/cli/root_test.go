@@ -3,9 +3,15 @@ package cli
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"io"
+	"net"
+	"net/http"
+	"net/http/httptest"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -19,6 +25,7 @@ import (
 	"github.com/FlanChanXwO/pixiv-cli/internal/cli/pipeline"
 	"github.com/FlanChanXwO/pixiv-cli/internal/config/paths"
 	configapp "github.com/FlanChanXwO/pixiv-cli/internal/config/settings"
+	unifiedmcp "github.com/FlanChanXwO/pixiv-cli/internal/mcpserver"
 	mcpauth "github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/auth"
 	mcpaccounts "github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/accounts"
 	pixivaccount "github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/account"
@@ -955,4 +962,222 @@ func TestMCPAccountSnapshotContainsOnlyLocalSummaryAndExplicitDefault(t *testing
 	local, err = ports.localAccounts(t.Context())
 	require.NoError(t, err)
 	require.Equal(t, int64(73), local.DefaultUserID)
+}
+
+// This fixture keeps the real SDK, account service, SQLite, selection store and
+// HTTP relay; only the OAuth network destination is replaced with loopback TLS.
+func TestMCPLoginProductionChain(t *testing.T) {
+	for _, scenario := range []string{"success", "helper-disconnect", "selection-failure", "restart", "shutdown"} {
+		t.Run(scenario, func(t *testing.T) {
+			dbPath, _ := useTempPaths(t)
+			ctx, cancel := context.WithCancel(context.Background())
+			defer cancel()
+			exchange := make(chan url.Values, 1)
+			release := make(chan struct{})
+			upstreamCanceled := make(chan struct{})
+			var exchanges, connections atomic.Int32
+			upstream := httptest.NewUnstartedServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				exchanges.Add(1)
+				if r.URL.Path != "/auth/token" {
+					http.Error(w, "unexpected path", 400)
+					return
+				}
+				if err := r.ParseForm(); err != nil {
+					http.Error(w, "invalid form", 400)
+					return
+				}
+				exchange <- r.Form
+				select {
+				case <-release:
+				case <-r.Context().Done():
+					close(upstreamCanceled)
+					return
+				}
+				w.Header().Set("Content-Type", "application/json")
+				_, _ = io.WriteString(w, `{"access_token":"fixture-access","refresh_token":"fixture-refresh","expires_in":3600,"user":{"id":73,"name":"fixture"}}`)
+			}))
+			upstream.Config.ConnState = func(_ net.Conn, state http.ConnState) {
+				if state == http.StateNew {
+					connections.Add(1)
+				}
+				if state == http.StateClosed {
+					connections.Add(-1)
+				}
+			}
+			upstream.StartTLS()
+			defer upstream.Close()
+			transport := upstream.Client().Transport.(*http.Transport).Clone()
+			transport.Proxy = nil
+			fixtureURL, err := url.Parse(upstream.URL)
+			require.NoError(t, err)
+			transport.TLSClientConfig.ServerName = fixtureURL.Hostname()
+			transport.DialContext = func(ctx context.Context, network, address string) (net.Conn, error) {
+				if address != "oauth.secure.pixiv.net:443" {
+					return nil, errors.New("fixture rejected unexpected network destination")
+				}
+				return (&net.Dialer{}).DialContext(ctx, network, fixtureURL.Host)
+			}
+			previousTransport := http.DefaultTransport
+			http.DefaultTransport = transport
+			defer func() { http.DefaultTransport = previousTransport; transport.CloseIdleConnections() }()
+			a := app{closeState: &closeState{}}
+			defer a.closeResources()
+			oldServices := newCLIAccountServices
+			loads := 0
+			newCLIAccountServices = func(a app) (authcommands.AccountService, pixivaccount.LoginService, error) {
+				loads++
+				return oldServices(a)
+			}
+			defer func() { newCLIAccountServices = oldServices }()
+			store := mcpauth.Store{Path: filepath.Join(t.TempDir(), "mcp-state.json")}
+			_, err = store.Init(ctx, false)
+			require.NoError(t, err)
+			relayServer := httptest.NewUnstartedServer(nil)
+			defer relayServer.Close()
+			base := "http://" + relayServer.Listener.Addr().String() + "/fixture"
+			login, err := a.newMCPLoginManager(ctx, base, store, nil)
+			require.NoError(t, err)
+			defer login.Close()
+			protocol := mcp.NewServer(&mcp.Implementation{Name: "fixture", Version: "1"}, nil)
+			handler, err := unifiedmcp.NewHTTPHandler(ctx, protocol, base, store, login)
+			require.NoError(t, err)
+			relayServer.Config.Handler = handler
+			relayServer.Start()
+			client := &http.Client{Transport: &http.Transport{}, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
+			defer client.CloseIdleConnections()
+			started, err := login.Start(false)
+			require.NoError(t, err)
+			page, err := client.Get(started.AuthorizationURL)
+			require.NoError(t, err)
+			page.Body.Close()
+			require.Equal(t, 303, page.StatusCode)
+			deepLink, err := url.Parse(page.Header.Get("Location"))
+			require.NoError(t, err)
+			origin, id, proof := deepLink.Query().Get("origin"), deepLink.Query().Get("session"), deepLink.Query().Get("access")
+			start, err := client.Post(origin+"/start/"+id, "application/json", strings.NewReader(`{"proof":"`+proof+`"}`))
+			require.NoError(t, err)
+			var authorization struct {
+				URL string `json:"authorization_url"`
+			}
+			require.NoError(t, json.NewDecoder(start.Body).Decode(&authorization))
+			start.Body.Close()
+			authorize, err := url.Parse(authorization.URL)
+			require.NoError(t, err)
+			require.NotEmpty(t, authorize.Query().Get("state"))
+			callback := "pixiv://account/login?code=fixture&state=" + url.QueryEscape(authorize.Query().Get("state"))
+			payload, _ := json.Marshal(map[string]string{"proof": proof, "callback_url": callback})
+			type response struct {
+				r   *http.Response
+				err error
+			}
+			responses := make(chan response, 2)
+			for range 2 {
+				go func() {
+					r, err := client.Post(origin+"/callback/"+id, "application/json", bytes.NewReader(payload))
+					responses <- response{r, err}
+				}()
+			}
+			var accepted *http.Response
+			for range 2 {
+				result := <-responses
+				require.NoError(t, result.err)
+				if result.r.StatusCode == 200 {
+					require.Nil(t, accepted)
+					accepted = result.r
+				} else {
+					require.Equal(t, 409, result.r.StatusCode)
+					result.r.Body.Close()
+				}
+			}
+			require.NotNil(t, accepted)
+			defer accepted.Body.Close()
+			var form url.Values
+			select {
+			case form = <-exchange:
+			case <-time.After(5 * time.Second):
+				t.Fatal("SDK exchange not reached")
+			}
+			digest := sha256.Sum256([]byte(form.Get("code_verifier")))
+			require.Equal(t, authorize.Query().Get("code_challenge"), base64.RawURLEncoding.EncodeToString(digest[:]), "exchange must use the same PKCE session")
+			require.Equal(t, "fixture", form.Get("code"))
+			require.Equal(t, "authorization_code", form.Get("grant_type"))
+			reused, err := login.Start(false)
+			require.NoError(t, err)
+			require.Equal(t, started.LoginID, reused.LoginID)
+			if scenario == "restart" || scenario == "shutdown" {
+				if scenario == "restart" {
+					next, err := login.Start(true)
+					require.NoError(t, err)
+					require.NotEqual(t, started.LoginID, next.LoginID)
+					require.Equal(t, "not_found", login.Status(started.LoginID).Status)
+					require.Equal(t, 1, loads, "restart must reuse the account service instead of accumulating database handles")
+				} else {
+					login.Close()
+					require.Equal(t, "failed", login.Status(started.LoginID).Status)
+				}
+				select {
+				case <-upstreamCanceled:
+				case <-time.After(5 * time.Second):
+					t.Fatal("shutdown/restart did not cancel exchange")
+				}
+			} else {
+				if scenario == "helper-disconnect" {
+					accepted.Body.Close()
+				}
+				if scenario == "selection-failure" {
+					require.NoError(t, os.Remove(store.Path))
+					require.NoError(t, os.Mkdir(store.Path, 0o700))
+				}
+				close(release)
+				if scenario != "helper-disconnect" {
+					resultPage, err := client.Get(accepted.Header.Get("X-Pixiv-Relay-Result-URL"))
+					require.NoError(t, err)
+					body, err := io.ReadAll(resultPage.Body)
+					resultPage.Body.Close()
+					require.NoError(t, err)
+					if scenario == "selection-failure" {
+						require.Equal(t, 400, resultPage.StatusCode)
+						require.Contains(t, string(body), "Login failed")
+					} else {
+						require.Equal(t, 200, resultPage.StatusCode)
+						require.Contains(t, string(body), "Login successful")
+					}
+				}
+				require.Eventually(t, func() bool { s := login.Status(started.LoginID).Status; return s == "completed" || s == "failed" }, 5*time.Second, time.Millisecond)
+				state := login.Status(started.LoginID)
+				require.True(t, state.AccountSaved)
+				require.NotNil(t, state.Account)
+				require.Equal(t, int64(73), state.Account.UserID)
+				require.Equal(t, scenario != "selection-failure", state.SelectionUpdated)
+				if scenario == "selection-failure" {
+					require.Equal(t, "failed", state.Status)
+				} else {
+					require.Equal(t, "completed", state.Status)
+					saved, err := store.Read(ctx)
+					require.NoError(t, err)
+					require.Equal(t, int64(73), saved.SelectedPixivUserID)
+				}
+				serialized, err := json.Marshal(state)
+				require.NoError(t, err)
+				require.NotContains(t, string(serialized), "fixture-refresh")
+				require.NotContains(t, string(serialized), proof)
+			}
+			db, err := database.Open(filepath.Dir(dbPath))
+			require.NoError(t, err)
+			defer db.Close()
+			local, err := db.ListPixiv(ctx)
+			require.NoError(t, err)
+			if scenario == "restart" || scenario == "shutdown" {
+				require.Empty(t, local)
+			} else {
+				require.Len(t, local, 1)
+				require.True(t, local[0].HasRefreshToken())
+			}
+			_, explicit, err := configapp.DefaultStore().ReadPixivDefaultUserID()
+			require.NoError(t, err)
+			require.False(t, explicit)
+			require.Equal(t, int32(1), exchanges.Load(), "concurrent callbacks must exchange only once")
+			require.Eventually(t, func() bool { return connections.Load() == 0 }, time.Second, time.Millisecond, "completed SDK login must release its owned idle connection")
+		})
+	}
 }
