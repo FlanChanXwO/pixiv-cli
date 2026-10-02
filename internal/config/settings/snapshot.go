@@ -170,11 +170,11 @@ func (s Snapshot) Runtime() (RuntimeConfig, error) {
 	if err != nil {
 		return RuntimeConfig{}, err
 	}
-	cfg.FanboxNetwork, err = s.serviceNetwork("fanbox.network")
+	cfg.FanboxNetwork, err = s.serviceNetwork("FanboxNetwork")
 	if err != nil {
 		return RuntimeConfig{}, err
 	}
-	cfg.ReverseSearchNetwork, err = s.serviceNetwork("reverse_search.network")
+	cfg.ReverseSearchNetwork, err = s.serviceNetwork("ReverseSearchNetwork")
 	if err != nil {
 		return RuntimeConfig{}, err
 	}
@@ -182,7 +182,7 @@ func (s Snapshot) Runtime() (RuntimeConfig, error) {
 	if err != nil {
 		return RuntimeConfig{}, err
 	}
-	cfg.ReverseSearchFlareSolverr, err = s.flareSolverrAt("reverse_search.flaresolverr")
+	cfg.ReverseSearchFlareSolverr, err = s.flareSolverrAt("ReverseSearchFlareSolverr")
 	if err != nil {
 		return RuntimeConfig{}, err
 	}
@@ -221,7 +221,7 @@ func (s Snapshot) bindDeclared(target reflect.Value, entries []settingSpecFromTa
 // user_agent，因此即使配置文件里写了 `pixiv.network.user_agent` 也不得生效
 // （该差异由 PixivNetworkConfig 这个窄类型在类型层面保证）。
 func (s Snapshot) pixivNetwork() (PixivNetworkConfig, error) {
-	proxyURL, err := s.optionalString("pixiv.network.proxy_url")
+	proxyURL, err := s.optionalString(runtimeFieldSpec("PixivNetwork", "ProxyURL").KoanfKey)
 	if err != nil {
 		return PixivNetworkConfig{}, err
 	}
@@ -230,12 +230,12 @@ func (s Snapshot) pixivNetwork() (PixivNetworkConfig, error) {
 
 // serviceNetwork 绑定 FANBOX / 反搜的服务级网络。它们同时支持 proxy_url 与
 // user_agent，两者都保持"缺失 vs 显式空串"的可区分语义。
-func (s Snapshot) serviceNetwork(prefix string) (ServiceNetworkConfig, error) {
-	proxyURL, err := s.optionalString(prefix + ".proxy_url")
+func (s Snapshot) serviceNetwork(group string) (ServiceNetworkConfig, error) {
+	proxyURL, err := s.optionalString(runtimeFieldSpec(group, "ProxyURL").KoanfKey)
 	if err != nil {
 		return ServiceNetworkConfig{}, err
 	}
-	userAgent, err := s.optionalString(prefix + ".user_agent")
+	userAgent, err := s.optionalString(runtimeFieldSpec(group, "UserAgent").KoanfKey)
 	if err != nil {
 		return ServiceNetworkConfig{}, err
 	}
@@ -255,15 +255,16 @@ func (s Snapshot) optionalString(path string) (OptionalString, error) {
 }
 
 func (s Snapshot) flareSolverr() (*FlareSolverrConfig, error) {
-	return s.flareSolverrAt("fanbox.flaresolverr")
+	return s.flareSolverrAt("FanboxFlareSolverr")
 }
 
-func (s Snapshot) flareSolverrAt(prefix string) (*FlareSolverrConfig, error) {
-	urlValue, err := s.optionalString(prefix + ".url")
+func (s Snapshot) flareSolverrAt(group string) (*FlareSolverrConfig, error) {
+	urlSpec := runtimeFieldSpec(group, "URL")
+	urlValue, err := s.optionalString(urlSpec.KoanfKey)
 	if err != nil {
 		return nil, err
 	}
-	proxyValue, err := s.optionalString(prefix + ".proxy_url")
+	proxyValue, err := s.optionalString(runtimeFieldSpec(group, "ProxyURL").KoanfKey)
 	if err != nil {
 		return nil, err
 	}
@@ -271,7 +272,7 @@ func (s Snapshot) flareSolverrAt(prefix string) (*FlareSolverrConfig, error) {
 		return nil, nil
 	}
 	if !urlValue.Present || strings.TrimSpace(urlValue.Value) == "" {
-		return nil, fmt.Errorf("%s.url must be set when %s is configured", prefix, prefix)
+		return nil, fmt.Errorf("%s must be set when %s is configured", urlSpec.KoanfKey, strings.Join(urlSpec.Table, "."))
 	}
 	return &FlareSolverrConfig{URL: urlValue.Value, ProxyURL: proxyValue.Value}, nil
 }

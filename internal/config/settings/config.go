@@ -73,13 +73,12 @@ type RuntimeConfig struct {
 
 	// PixivNetwork / FanboxNetwork / ReverseSearchNetwork 以及两个 FlareSolverr 组
 	// 是高级可选配置，只在用户显式写入 TOML 表时生效，且不经过扁平 config set。
-	// 它们的绑定规则保留在 snapshot.go 中（服务级代理的"缺失 vs 显式空串"语义
-	// 与 Pixiv 不接受 user_agent 的差异无法用扁平的 config 标签表达）。
-	PixivNetwork              PixivNetworkConfig   `config:"-"`
-	FanboxNetwork             ServiceNetworkConfig `config:"-"`
-	ReverseSearchNetwork      ServiceNetworkConfig `config:"-"`
-	FanboxFlareSolverr        *FlareSolverrConfig  `config:"-"`
-	ReverseSearchFlareSolverr *FlareSolverrConfig  `config:"-"`
+	// 路径来自声明；存在性、严格类型和 solver 启用条件仍由 snapshot.go 领域读取负责。
+	PixivNetwork              PixivNetworkConfig   `config:"pixiv.network"`
+	FanboxNetwork             ServiceNetworkConfig `config:"fanbox.network"`
+	ReverseSearchNetwork      ServiceNetworkConfig `config:"reverse_search.network"`
+	FanboxFlareSolverr        *FlareSolverrConfig  `config:"fanbox.flaresolverr"`
+	ReverseSearchFlareSolverr *FlareSolverrConfig  `config:"reverse_search.flaresolverr"`
 
 	// 布尔开关：除 account_pool 外都不由 config 命令管理。
 	OutputJSON         bool `config:"output.json" alias:"output_json" default:"false" example:"true"`
@@ -116,8 +115,8 @@ type OptionalString struct {
 // values are not aliases and are intentionally absent from the generated
 // baseline config until a user writes the advanced TOML table.
 type ServiceNetworkConfig struct {
-	ProxyURL  OptionalString `json:"proxy_url"`
-	UserAgent OptionalString `json:"user_agent"`
+	ProxyURL  OptionalString `config:"proxy_url" json:"proxy_url"`
+	UserAgent OptionalString `config:"user_agent" json:"user_agent"`
 }
 
 // PixivNetworkConfig 是 Pixiv 服务级网络的**窄类型**：它只有 proxy_url。
@@ -127,15 +126,15 @@ type ServiceNetworkConfig struct {
 // 用独立类型表达后，`pixiv.network.user_agent` 在类型层面就无法表达，也无法被绑定，
 // 因此不会在重构中意外变成新的用户可配置能力。
 type PixivNetworkConfig struct {
-	ProxyURL OptionalString `json:"proxy_url"`
+	ProxyURL OptionalString `config:"proxy_url" json:"proxy_url"`
 }
 
 // FlareSolverrConfig describes the optional external challenge-recovery
 // service. It is nil when the whole table is absent, which keeps the default
 // runtime free of any solver dependency.
 type FlareSolverrConfig struct {
-	URL      string `json:"url"`
-	ProxyURL string `json:"proxy_url,omitempty"`
+	URL      string `config:"url" json:"url"`
+	ProxyURL string `config:"proxy_url" json:"proxy_url,omitempty"`
 }
 
 type AccountPoolStrategy string

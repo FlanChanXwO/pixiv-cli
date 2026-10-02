@@ -392,3 +392,27 @@ func EnvValue(spec SettingSpec) (string, bool) {
 	}
 	return "", false
 }
+
+// runtimeFieldSpec 按 Go 字段归属定位已编译声明，领域读取不再重复 TOML 路径。
+// 参数只来自内部调用点；缺失声明是编程错误，不读取或缓存任何运行实例。
+func runtimeFieldSpec(names ...string) SettingSpec {
+	typ := reflect.TypeOf(RuntimeConfig{})
+	var index []int
+	for _, name := range names {
+		if typ.Kind() == reflect.Pointer {
+			typ = typ.Elem()
+		}
+		field, ok := typ.FieldByName(name)
+		if !ok {
+			panic(fmt.Sprintf("unknown runtime configuration field %q", name))
+		}
+		index = append(index, field.Index...)
+		typ = field.Type
+	}
+	for _, entry := range mustSettingSpecs() {
+		if slices.Equal(entry.fieldIndex, index) {
+			return entry.spec
+		}
+	}
+	panic(fmt.Sprintf("runtime configuration field %v has no declaration", names))
+}

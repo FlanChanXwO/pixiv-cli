@@ -175,7 +175,7 @@ Runtime settings use `koanf` to merge `config.toml` with public environment vari
 
 #### Configuration declaration: struct field tags are the single source of truth
 
-The exported fields of `RuntimeConfig` (and the nested `AccountPoolConfig`) declare all static facts via tags; runtime binding, CLI metadata, and baseline generation all reuse that one declaration:
+The exported fields of `RuntimeConfig` (including its nested account-pool, network, and FlareSolverr groups) declare all static facts via tags; runtime binding, CLI metadata, and baseline generation all reuse that one declaration:
 
 | Tag | Meaning |
 |---|---|
@@ -189,7 +189,7 @@ The exported fields of `RuntimeConfig` (and the nested `AccountPoolConfig`) decl
 
 Groups declare only a `config` prefix; their leaves declare relative paths. The same group type can be reused under different prefixes. `OptionalString` is a leaf, not a group. Optional pointer groups are inspected as types without allocating runtime values. Duplicate expanded paths, duplicate nonempty aliases, empty path segments, cyclic groups, unsupported leaf types, and leaf-only attributes on groups are declaration errors. Private leaves cannot enable CLI management, baseline examples, or environment bindings without a public alias.
 
-The private schema caches field index chains and Go types, never target instances. Scalar binding uses the same source selection as `Effective`; pointer groups are not allocated by ordinary binding. Ordinary runtime fields have no separate wiring list; account-pool defaults also come from declarations, while strict file types and strategy validation remain domain rules.
+The private schema caches field index chains and Go types, never target instances. Scalar binding uses the same source selection as `Effective`; pointer groups are not allocated by ordinary binding. Advanced readers locate compiled paths by Go field ownership, without adding public aliases or allocating solver groups before the domain enablement check. Ordinary runtime fields have no separate wiring list; account-pool defaults also come from declarations, while strict file types and strategy validation remain domain rules.
 
 Adding one ordinary setting therefore requires only: a field plus tags, a behavioural test, and the matching documentation. New declarations need no additional registry, environment `switch`, per-field runtime assignment, baseline list, or CLI alias list.
 

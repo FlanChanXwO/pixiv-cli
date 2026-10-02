@@ -332,3 +332,24 @@ func TestRuntimePreservesValidationOrderAndStrictPoolTypes(t *testing.T) {
 		})
 	}
 }
+
+func TestAdvancedPathsArePrivateDeclarations(t *testing.T) {
+	entries, err := deriveSchemaFromTags(reflect.TypeOf(RuntimeConfig{}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, path := range []string{"pixiv.network.proxy_url", "fanbox.network.proxy_url", "fanbox.network.user_agent", "reverse_search.network.proxy_url", "reverse_search.network.user_agent", "fanbox.flaresolverr.url", "fanbox.flaresolverr.proxy_url", "reverse_search.flaresolverr.url", "reverse_search.flaresolverr.proxy_url"} {
+		found := false
+		for _, entry := range entries {
+			if entry.spec.KoanfKey == path {
+				found = true
+				if entry.spec.Alias != "" || entry.spec.CLIManaged || entry.spec.DefaultInFile || len(entry.env) != 0 || len(entry.fieldIndex) != 2 {
+					t.Errorf("private declaration %s: %#v", path, entry)
+				}
+			}
+		}
+		if !found {
+			t.Errorf("advanced path %s has no production declaration", path)
+		}
+	}
+}
