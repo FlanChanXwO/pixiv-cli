@@ -50,7 +50,7 @@ func settingSpecsFromTags() ([]settingSpecFromTags, error) {
 // 因此这里不排序也不去重：调用方按顺序返回第一个**存在**的变量即可。
 func envNamesFor(alias string) []string {
 	for _, entry := range mustSettingSpecs() {
-		if entry.spec.Alias == alias {
+		if alias != "" && entry.spec.Alias == alias {
 			return entry.env
 		}
 	}
@@ -76,10 +76,12 @@ func deriveSchemaFromTags(configType reflect.Type) ([]settingSpecFromTags, error
 			return nil, fmt.Errorf("config path %q is declared by both %q and %q", entry.spec.KoanfKey, previous, entry.spec.Alias)
 		}
 		seenPaths[entry.spec.KoanfKey] = entry.spec.Alias
-		if previous, duplicate := seenAliases[entry.spec.Alias]; duplicate {
+		if previous, duplicate := seenAliases[entry.spec.Alias]; entry.spec.Alias != "" && duplicate {
 			return nil, fmt.Errorf("alias %q is declared by both %q and %q", entry.spec.Alias, previous, entry.spec.KoanfKey)
 		}
-		seenAliases[entry.spec.Alias] = entry.spec.KoanfKey
+		if entry.spec.Alias != "" {
+			seenAliases[entry.spec.Alias] = entry.spec.KoanfKey
+		}
 	}
 
 	// 7. 追加不绑定到 RuntimeConfig 字段的迁移墓碑。它们仍可被查询，以便
@@ -99,42 +101,51 @@ func deriveSchemaFromTags(configType reflect.Type) ([]settingSpecFromTags, error
 	return derived, nil
 }
 
-// appendTaggedFields 递归收集一个配置结构体（含嵌套配置组）中带 config 标签的
-// 公开字段。嵌套结构体自身声明 config:"-" 表示"不是独立配置项，其字段各自声明路径"。
-func appendTaggedFields(derived []settingSpecFromTags, structType reflect.Type, pathPrefix []string) ([]settingSpecFromTags, error) {
+// appendTaggedFields 解析组前缀和叶子的相对路径；排除字段不再访问其子树。
+// 可选组只展开类型声明，不分配运行实例；OptionalString 是值而不是组。
+func appendTaggedFields(derived []settingSpecFromTags, structType reflect.Type, pathPrefix []string, ancestors ...reflect.Type) ([]settingSpecFromTags, error) {
+	if structType == nil || structType.Kind() != reflect.Struct {
+		return nil, fmt.Errorf("configuration declaration must be a struct")
+	}
+	if slices.Contains(ancestors, structType) {
+		return nil, fmt.Errorf("cyclic configuration group %s", structType)
+	}
+	ancestors = append(ancestors, structType)
 	for index := 0; index < structType.NumField(); index++ {
 		field := structType.Field(index)
 		if !field.IsExported() {
 			continue
 		}
 		rawPath, hasPath := field.Tag.Lookup(tagConfig)
-
-		// 未声明 config 的字段不参与绑定。
-		if !hasPath || rawPath == "" {
+		if !hasPath || rawPath == "-" {
 			continue
 		}
-		// 显式退出绑定：既可能是真正的非配置字段，也可能是需要递归展开的配置组。
-		if rawPath == "-" {
-			nested, nestedErr := nestedConfigStruct(field)
-			if nestedErr != nil {
-				return nil, fmt.Errorf("config field %q: %w", field.Name, nestedErr)
+		parts := strings.Split(rawPath, ".")
+		for _, part := range parts {
+			if strings.TrimSpace(part) == "" {
+				return nil, fmt.Errorf("config field %q: config path %q contains an empty segment", field.Name, rawPath)
 			}
-			if nested == nil {
-				continue
+		}
+		fullPath := append(append([]string(nil), pathPrefix...), parts...)
+		nested := field.Type
+		if nested.Kind() == reflect.Pointer {
+			nested = nested.Elem()
+		}
+		if nested.Kind() == reflect.Struct && nested != reflect.TypeOf(OptionalString{}) {
+			for _, attribute := range []string{tagAlias, tagEnv, tagDefault, tagCLI, tagSecret, tagExample} {
+				if _, present := field.Tag.Lookup(attribute); present {
+					return nil, fmt.Errorf("config group %q cannot declare %s", field.Name, attribute)
+				}
 			}
-			var expandErr error
-			derived, expandErr = appendTaggedFields(derived, nested, pathPrefix)
-			if expandErr != nil {
-				return nil, expandErr
+			var err error
+			derived, err = appendTaggedFields(derived, nested, fullPath, ancestors...)
+			if err != nil {
+				return nil, err
 			}
 			continue
 		}
-
-		alias, hasAlias := field.Tag.Lookup(tagAlias)
-		if !hasAlias || alias == "" {
-			return nil, fmt.Errorf("config field %q declares config=%q without an alias", field.Name, rawPath)
-		}
-
+		alias := field.Tag.Get(tagAlias)
+		rawPath = strings.Join(fullPath, ".")
 		table, key, err := splitConfigPath(rawPath)
 		if err != nil {
 			return nil, fmt.Errorf("config field %q: %w", field.Name, err)
@@ -174,6 +185,9 @@ func appendTaggedFields(derived []settingSpecFromTags, structType reflect.Type, 
 		spec.CLIManaged = field.Tag.Get(tagCLI) == "true"
 		spec.Sensitive = field.Tag.Get(tagSecret) == "true"
 		spec.DefaultInFile = field.Tag.Get(tagExample) == "true"
+		if alias == "" && (spec.CLIManaged || spec.DefaultInFile || len(parseEnvTag(field.Tag.Get(tagEnv))) != 0) {
+			return nil, fmt.Errorf("config field %q: private leaf cannot declare public cli, example or env attributes", field.Name)
+		}
 
 		// 4. schema 校验：secret 与 example 冲突必须明确拒绝，而不是静默写出敏感值。
 		if spec.Sensitive && spec.DefaultInFile {
@@ -190,22 +204,6 @@ func appendTaggedFields(derived []settingSpecFromTags, structType reflect.Type, 
 		})
 	}
 	return derived, nil
-}
-
-// nestedConfigStruct 判断一个 config:"-" 字段是否是需要递归展开的配置组。
-// 只有值类型结构体（非指针、非切片、非 map）才会被展开；指针类型是可选配置组，
-// 由各自的领域绑定负责，因此这里返回 nil 表示不展开。
-func nestedConfigStruct(field reflect.StructField) (reflect.Type, error) {
-	if field.Type.Kind() != reflect.Struct {
-		return nil, nil
-	}
-	// 不含任何配置标签的结构体不是配置组。
-	for index := 0; index < field.Type.NumField(); index++ {
-		if _, ok := field.Type.Field(index).Tag.Lookup(tagConfig); ok {
-			return field.Type, nil
-		}
-	}
-	return nil, nil
 }
 
 // settingTombstones 是已退役但必须保持可查询的配置键。它们不绑定字段、不驱动
@@ -258,8 +256,11 @@ func splitConfigPath(path string) ([]string, string, error) {
 	return append([]string(nil), parts[:len(parts)-1]...), parts[len(parts)-1], nil
 }
 
-// kindForField 把 Go 字段类型映射为配置类型。只有这三种字段类型允许参与配置绑定。
+// kindForField 识别已有标量及保留存在性的 OptionalString，不展开值类型的内部字段。
 func kindForField(field reflect.StructField) (settingKind, error) {
+	if field.Type == reflect.TypeOf(OptionalString{}) {
+		return settingString, nil
+	}
 	switch field.Type.Kind() {
 	case reflect.String:
 		return settingString, nil
@@ -302,7 +303,7 @@ func parseDefaultForField(field reflect.StructField, kind settingKind, raw strin
 // 执行清理、config get/set 返回 removed_setting。元数据完全来自字段标签声明。
 func SettingSpecByAlias(alias string) (SettingSpec, bool) {
 	for _, entry := range mustSettingSpecs() {
-		if entry.spec.Alias == alias {
+		if alias != "" && entry.spec.Alias == alias {
 			return entry.spec, true
 		}
 	}
@@ -348,7 +349,7 @@ func ValidSettingAliases() []string {
 	derived := mustSettingSpecs()
 	keys := make([]string, 0, len(derived))
 	for _, entry := range derived {
-		if entry.spec.Removed {
+		if entry.spec.Removed || entry.spec.Alias == "" {
 			continue
 		}
 		keys = append(keys, entry.spec.Alias)
@@ -362,7 +363,7 @@ func CLISettingAliases() []string {
 	derived := mustSettingSpecs()
 	keys := make([]string, 0, len(derived))
 	for _, entry := range derived {
-		if entry.spec.Removed || !entry.spec.CLIManaged {
+		if entry.spec.Removed || entry.spec.Alias == "" || !entry.spec.CLIManaged {
 			continue
 		}
 		keys = append(keys, entry.spec.Alias)

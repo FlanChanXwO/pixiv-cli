@@ -51,13 +51,13 @@ type fieldTags struct {
 func runtimeConfigTags(t *testing.T) map[string]fieldTags {
 	t.Helper()
 	out := make(map[string]fieldTags)
-	collectRuntimeConfigTags(t, reflect.TypeOf(config.RuntimeConfig{}), out)
+	collectRuntimeConfigTags(t, reflect.TypeOf(config.RuntimeConfig{}), "", "", out)
 	return out
 }
 
 // collectRuntimeConfigTags 递归收集一个配置结构体（含嵌套组）的字段标签，
-// 键为字段名；嵌套组的字段也用其自身字段名，以保持与派生 alias 一一对应。
-func collectRuntimeConfigTags(t *testing.T, structType reflect.Type, out map[string]fieldTags) {
+// 键为完整字段路径，避免复用类型的同名字段覆盖彼此。
+func collectRuntimeConfigTags(t *testing.T, structType reflect.Type, fieldPrefix, pathPrefix string, out map[string]fieldTags) {
 	t.Helper()
 	for i := 0; i < structType.NumField(); i++ {
 		field := structType.Field(i)
@@ -81,12 +81,22 @@ func collectRuntimeConfigTags(t *testing.T, structType reflect.Type, out map[str
 		view.example, view.hasEx = tag.Lookup("example")
 		view.cli, view.hasCLI = tag.Lookup("cli")
 		view.secret, view.hasSec = tag.Lookup("secret")
-		out[field.Name] = view
-
-		// config:"-" 的结构体字段是嵌套配置组，其字段各自声明路径。
-		if view.config == "-" && field.Type.Kind() == reflect.Struct && hasConfigTaggedField(field.Type) {
-			collectRuntimeConfigTags(t, field.Type, out)
+		if view.config == "-" {
+			continue
 		}
+		if view.config != "" && pathPrefix != "" {
+			view.config = pathPrefix + "." + view.config
+		}
+		fieldPath := fieldPrefix + field.Name
+		nested := field.Type
+		if nested.Kind() == reflect.Pointer {
+			nested = nested.Elem()
+		}
+		if view.config != "" && nested.Kind() == reflect.Struct && hasConfigTaggedField(nested) {
+			collectRuntimeConfigTags(t, nested, fieldPath+".", view.config, out)
+			continue
+		}
+		out[fieldPath] = view
 	}
 }
 

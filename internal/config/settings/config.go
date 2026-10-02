@@ -99,9 +99,8 @@ type RuntimeConfig struct {
 	LoginRelayTLSCertFile string `config:"login.relay_tls_cert_file" alias:"login_relay_tls_cert_file"`
 	LoginRelayTLSKeyFile  string `config:"login.relay_tls_key_file" alias:"login_relay_tls_key_file"`
 
-	// AccountPool 只能在 config.toml 的 [account_pool] 表中手工维护，避免普通
-	// config set 的扁平字符串接口误写账号白名单。
-	AccountPool AccountPoolConfig `config:"-"`
+	// AccountPool 的静态路径来自组前缀；严格类型和策略校验仍由领域读取负责。
+	AccountPool AccountPoolConfig `config:"account_pool"`
 }
 
 // OptionalString preserves the difference between an absent advanced TOML
@@ -150,6 +149,6 @@ const (
 // UID、冻结时间和 marker 不进入 config.toml。字段标签驱动声明；[account_pool]
 // 表仍直接读取，策略枚举由 accountPool() 的领域校验负责。
 type AccountPoolConfig struct {
-	Enabled  bool                `config:"account_pool.enabled" alias:"account_pool_enabled" default:"false" cli:"true"`
-	Strategy AccountPoolStrategy `config:"account_pool.strategy" alias:"account_pool_strategy" default:"round_robin" cli:"true"`
+	Enabled  bool                `config:"enabled" alias:"account_pool_enabled" default:"false" cli:"true"`
+	Strategy AccountPoolStrategy `config:"strategy" alias:"account_pool_strategy" default:"round_robin" cli:"true"`
 }

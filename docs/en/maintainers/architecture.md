@@ -179,13 +179,15 @@ The exported fields of `RuntimeConfig` (and the nested `AccountPoolConfig`) decl
 
 | Tag | Meaning |
 |---|---|
-| `config` | TOML path; `"-"` means it does not participate in flat binding (config groups are handled by domain rules in `snapshot.go`) |
-| `alias` | The alias used by `config get/set/unset` |
+| `config` | TOML path relative to its containing group; `"-"` excludes the field and its entire subtree |
+| `alias` | The public name used by `config get/set/unset`; omitted on groups and private advanced leaves |
 | `env` | Environment variables that may be read, in declaration order (that order is the precedence; presence counts as a hit and an empty value does not fall through) |
 | `default` | Value used when absent, interpreted by field type (distinguished by tag **presence**, not by whether the string is empty) |
 | `example` | Whether the entry enters the first-run compact config; only `"true"` does, and it requires a `default` |
 | `cli` | Whether `config get/set/unset` manages it |
 | `secret` | Whether it must be hidden from public output and kept out of the example config (a `secret:"true"` + `example:"true"` pair is a schema error) |
+
+Groups declare only a `config` prefix; their leaves declare relative paths. The same group type can be reused under different prefixes. `OptionalString` is a leaf, not a group. Optional pointer groups are inspected as types without allocating runtime values. Duplicate expanded paths, duplicate nonempty aliases, empty path segments, cyclic groups, unsupported leaf types, and leaf-only attributes on groups are declaration errors. Private leaves cannot enable CLI management, baseline examples, or environment bindings without a public alias.
 
 Adding one ordinary setting therefore requires only: a field plus tags, a behavioural test, and the matching documentation. There is no longer a registry, environment `switch`, per-field runtime assignment, baseline list, or CLI alias list to keep in sync.
 

@@ -91,3 +91,136 @@ func TestSchemaPreservesExplicitDefaultsAndAttributes(t *testing.T) {
 		t.Fatal("explicit boolean attributes changed")
 	}
 }
+
+func TestSchemaExcludesEntireSubtree(t *testing.T) {
+	type hidden struct {
+		Value string `config:"hidden.value" alias:"hidden_value"`
+	}
+	type declaration struct {
+		Hidden hidden `config:"-"`
+	}
+	entries, err := deriveSchemaFromTags(reflect.TypeOf(declaration{}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, entry := range entries {
+		if !entry.spec.Removed {
+			t.Errorf("excluded subtree produced configuration entry %q", entry.spec.KoanfKey)
+		}
+	}
+}
+
+func TestSchemaResolvesReusableGroupsRelativeToEachPrefix(t *testing.T) {
+	type network struct {
+		Proxy string `config:"proxy_url"`
+	}
+	type declaration struct {
+		Fanbox  network  `config:"fanbox.network"`
+		Reverse *network `config:"reverse_search.network"`
+	}
+	entries, err := deriveSchemaFromTags(reflect.TypeOf(declaration{}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var paths []string
+	for _, entry := range entries {
+		if !entry.spec.Removed {
+			paths = append(paths, entry.spec.KoanfKey)
+			if entry.spec.Alias != "" || entry.spec.CLIManaged || entry.spec.DefaultInFile {
+				t.Errorf("private leaf leaked public metadata: %#v", entry.spec)
+			}
+		}
+	}
+	want := []string{"fanbox.network.proxy_url", "reverse_search.network.proxy_url"}
+	if !reflect.DeepEqual(paths, want) {
+		t.Fatalf("paths = %v, want %v", paths, want)
+	}
+}
+
+func TestSchemaRejectsMalformedGroupsAndPaths(t *testing.T) {
+	type leaf struct {
+		Value string `config:"value"`
+	}
+	cases := []struct {
+		name        string
+		declaration any
+		want        string
+	}{
+		{"empty path", struct {
+			Value string `config:"" alias:"value"`
+		}{}, "empty segment"},
+		{"empty group segment", struct {
+			Group leaf `config:"a..b"`
+		}{}, "empty segment"},
+		{"group alias", struct {
+			Group leaf `config:"a" alias:"group"`
+		}{}, "group"},
+		{"group default", struct {
+			Group leaf `config:"a" default:""`
+		}{}, "group"},
+		{"duplicate expanded path", struct {
+			Group leaf   `config:"a"`
+			Value string `config:"a.value" alias:"other"`
+		}{}, "declared by both"},
+	}
+	for _, test := range cases {
+		t.Run(test.name, func(t *testing.T) {
+			_, err := deriveSchemaFromTags(reflect.TypeOf(test.declaration))
+			if err == nil || !strings.Contains(err.Error(), test.want) {
+				t.Fatalf("want %q, got %v", test.want, err)
+			}
+		})
+	}
+}
+
+func TestSchemaKeepsOptionalStringAsPrivateLeaf(t *testing.T) {
+	type network struct {
+		Proxy OptionalString `config:"proxy_url"`
+	}
+	type declaration struct {
+		Network network `config:"fanbox.network"`
+	}
+	entries, err := deriveSchemaFromTags(reflect.TypeOf(declaration{}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(entries) != 1+len(settingTombstones) || entries[0].spec.KoanfKey != "fanbox.network.proxy_url" || entries[0].spec.Kind != settingString {
+		t.Fatalf("optional string must remain one leaf: %#v", entries)
+	}
+}
+
+func TestSchemaRejectsPublicAttributesOnPrivateLeaves(t *testing.T) {
+	for _, attribute := range []string{`cli:"true"`, `example:"true"`, `env:"PRIVATE_CONFIG_TEST"`} {
+		declaration := reflect.StructOf([]reflect.StructField{{
+			Name: "Value", Type: reflect.TypeOf(""),
+			Tag: reflect.StructTag(`config:"private.value" default:"" ` + attribute),
+		}})
+		if _, err := deriveSchemaFromTags(declaration); err == nil {
+			t.Errorf("private leaf with %s must not expose public configuration", attribute)
+		}
+	}
+}
+
+func TestSchemaRejectsCyclicGroupsAndUnsupportedTypes(t *testing.T) {
+	type recursive struct {
+		Next *recursive `config:"next"`
+	}
+	cases := []struct {
+		value any
+		want  string
+	}{
+		{recursive{}, "cyclic"},
+		{struct {
+			Values []string `config:"test.values"`
+		}{}, "unsupported"},
+		{struct {
+			Value *OptionalString `config:"test.value"`
+		}{}, "unsupported"},
+	}
+	for _, test := range cases {
+		_, err := deriveSchemaFromTags(reflect.TypeOf(test.value))
+		if err == nil || !strings.Contains(err.Error(), test.want) {
+			t.Errorf("%T: want %q, got %v", test.value, test.want, err)
+		}
+	}
+}
