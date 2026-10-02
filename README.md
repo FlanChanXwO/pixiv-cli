@@ -246,7 +246,7 @@ Start a new account login with `pixiv_account_login_start`, open its relay URL w
 
 Use `pixiv_artwork_media` for actual static image bytes (regular quality and all pages by default), or a full Ugoira GIF/APNG blob with a separate PNG preview. Omit static pages/quality for Ugoira; partial failures are explicit, and no server-local download path is returned.
 
-`fanbox_open_resource` now returns image/blob bytes for GET; HEAD remains metadata-only.
+`fanbox_open_resource` returns image/blob bytes and available attachment filenames for GET; HEAD remains metadata-only.
 
 See the [MCP tool contract](docs/en/mcp-tools.md) for tools, parameters, structured output, and authentication behavior.
 Fixed MCP status, error, and display text is English; Pixiv metadata and user-supplied text are preserved verbatim.

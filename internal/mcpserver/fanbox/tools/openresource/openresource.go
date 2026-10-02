@@ -13,6 +13,7 @@ import (
 	"strings"
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/fanbox/internal/runtime"
+	"github.com/FlanChanXwO/pixiv-cli/internal/media/downloader/filename"
 	"github.com/FlanChanXwO/pixiv-cli/internal/shared/lifecycle"
 	"github.com/FlanChanXwO/pixiv-cli/sdk"
 	fanbox "github.com/FlanChanXwO/pixiv-cli/sdk/fanbox"
@@ -49,6 +50,7 @@ type In struct {
 }
 
 type Out struct {
+	Filename      string `json:"filename,omitempty"`
 	Ref           string `json:"ref"`
 	StatusCode    int    `json:"status_code"`
 	ContentType   string `json:"content_type,omitempty"`
@@ -86,6 +88,7 @@ func handle(ctx context.Context, app *runtime.App, input In) (*mcp.CallToolResul
 		if err != nil {
 			return err
 		}
+		out.Filename = filename.Sanitize(response.Filename)
 		out.StatusCode = response.StatusCode
 		out.ContentType = response.ContentType()
 		out.ContentLength = response.ContentLength()

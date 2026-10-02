@@ -840,6 +840,7 @@ func TestFanboxMCPOpenResourceDeliversImagesAndFiles(t *testing.T) {
 	}{
 		{name: "image", mime: "image/png", method: "GET", data: pngBuf.Bytes(), status: 200, image: true},
 		{name: "file", mime: "application/pdf", method: "GET", data: []byte("%PDF-1.7\nfixture"), status: 200},
+		{name: "filename", mime: "application/pdf", method: "GET", data: []byte("%PDF-1.7\nfixture"), status: 200},
 		{name: "head", mime: "application/pdf", method: "HEAD", status: 200},
 		{name: "forbidden", mime: "text/html", method: "GET", data: []byte("fixture-private-upstream-body"), status: 403},
 		{name: "apng", mime: "image/apng", header: "image/png", method: "GET", data: apngData, status: 200},
@@ -852,9 +853,12 @@ func TestFanboxMCPOpenResourceDeliversImagesAndFiles(t *testing.T) {
 				header = tc.mime
 			}
 			host := "i.pximg.net"
-			if tc.name == "file" || tc.name == "head" {
+			if tc.name == "file" || tc.name == "head" || tc.name == "filename" {
 				host = "downloads.fanbox.cc"
 				postBody = `{"body":{"post":{"id":"p-open","title":"resource","publishedDatetime":"2024-01-01T00:00:00Z","isRestricted":false,"isPinned":false,"body":{"files":[{"id":"file-1","name":"fixture","extension":"pdf","url":"https://downloads.fanbox.cc/file-1.pdf"}]}}}}`
+			}
+			if tc.name == "filename" {
+				postBody = strings.Replace(postBody, `"name":"fixture"`, `"name":"folder/报告.PDF"`, 1)
 			}
 			service, _ := fanboxTestService(t, roundTripFunc(func(req *http.Request) (*http.Response, error) {
 				if req.URL.Host == "api.fanbox.cc" && req.URL.Path == "/post.info" {
@@ -908,6 +912,19 @@ func TestFanboxMCPOpenResourceDeliversImagesAndFiles(t *testing.T) {
 			}
 			if out.ContentType != tc.mime {
 				t.Fatalf("MIME=%q", out.ContentType)
+			}
+			if tc.name == "file" || tc.name == "head" || tc.name == "filename" {
+				var named struct {
+					Filename string `json:"filename"`
+				}
+				decodeStructured(t, result, &named)
+				wantFilename := "fixture.pdf"
+				if tc.name == "filename" {
+					wantFilename = "folder_报告.PDF"
+				}
+				if named.Filename != wantFilename {
+					t.Fatalf("resource filename=%q, want %q", named.Filename, wantFilename)
+				}
 			}
 			if tc.method == "HEAD" {
 				if out.Delivered || out.ContentIndex != nil {

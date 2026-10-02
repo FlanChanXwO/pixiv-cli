@@ -292,7 +292,7 @@ v3 comments contract，提交后状态未知时不会换账号重放；失败写
 
 `fanbox_open_resource` 仅使用独立 FANBOX SDK lease。GET 返回实际 bytes：静态图片用 `ImageContent`，GIF/APNG 和其它附件用标准 embedded-resource blob。PNG/APNG 根据实际 animation-control chunk 区分，不只依赖 Content-Type 声明。有效的非图片专用 MIME 保留；header 缺失或不可解析时从 bytes 检测。不写服务器文件、不新增无依据字节截断。
 
-保留原 `ref`、`status_code`、`content_type` 与声明长度 `content_length`；`size` 为实际字节数，`content_index` 指向返回的 content 项，`delivered` 表示本响应含 bytes，`complete` 表示请求及清理成功。HEAD 仅返回 metadata（`delivered=false`，无 content index）。embedded resource URI 是内容 hash URN，不是服务器路径，也不承诺额外 resources/read endpoint。附件名仍在 post asset metadata 中；本工具暂不重复返回原文件名。
+保留原 `ref`、`status_code`、`content_type` 与声明长度 `content_length`；`size` 为实际字节数，`content_index` 指向返回的 content 项，`delivered` 表示本响应含 bytes，`complete` 表示请求及清理成功。HEAD 仅返回 metadata（`delivered=false`，无 content index）。embedded resource URI 是内容 hash URN，不是服务器路径，也不承诺额外 resources/read endpoint。文件 metadata 提供名称时，GET 和 HEAD 还返回 `filename`，包含上游扩展名但不重复已有后缀。名字和 URL 均由 SDK 解析，MCP 不解码 ref、不从 URL 猜测名称。MCP 复用现有 CLI 文件名字符规范化，将分隔符与保留标点替换为下划线；它是建议名称，不是可信目标路径，接收端仍须选择并校验自己的目标位置。上游缺少名称时保持缺省。
 
 非成功状态、body 读取/关闭失败、取消及 lease 关闭失败均保留 structured error；保留 SDK 错误类别，不回显上游 body、位置或非法输入。`status_code=0` 表示 SDK 未公开状态码，不给 classified forbidden 错误虚构数值状态。schema 错误为 `invalid_request`，本地 ref/method 错误为 `invalid_ref`/`invalid_method`。整条响应传输失败不证明 host 已收到 bytes。这些仅为本地合成测试，不是真实 FANBOX 账号或 host 验收证据。
 

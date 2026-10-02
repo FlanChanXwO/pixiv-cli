@@ -328,6 +328,8 @@ defer resp.Body.Close()
 // 按需用 image.URL + image.RequestHeaders 从 resp.Body 读取
 ```
 
+`sdk.ResourceResponse.Filename` 在上游提供名称时携带附件建议文件名。FANBOX 从 file 的 name/extension metadata 构造，保留已有扩展名后缀；不从签名 URL 或响应 header 猜测。SDK 不按文件系统规则改写原始名字，调用方选择本地目标前必须自行校验/规范化。缺少名称时为空。FANBOX 将 URL 与文件名作为同一 cache entry 保存，cache miss 按资源 kind 和 ID 重新解析；image/file ID 相同时不会串用另一种资源。header allowlist 与凭据策略不变。
+
 ```go
 // 通过 SDK 校验路径保存（复验 URL/redirect，原子写入）。
 saved, err := client.SaveResource(ctx, image.Ref, sdk.SaveOptions{

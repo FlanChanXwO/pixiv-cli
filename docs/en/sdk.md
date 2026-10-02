@@ -395,6 +395,8 @@ defer resp.Body.Close()
 // read from resp.Body using image.URL + image.RequestHeaders as needed
 ```
 
+`sdk.ResourceResponse.Filename` carries an upstream-suggested attachment name when available. FANBOX derives it from file name/extension metadata, preserving an existing extension suffix; it is not guessed from a signed URL or response header. The SDK preserves naming metadata without filesystem normalization, so callers must validate/normalize it before choosing a local destination. Missing names remain empty. FANBOX caches the URL and filename together under the stable ref, and cache misses re-resolve by both asset kind and ID; overlapping image/file IDs never select the other kind. The header allowlist and credential policy are unchanged.
+
 ```go
 // Save through the SDK-validated path (revalidates URL/redirects, atomic write).
 saved, err := client.SaveResource(ctx, image.Ref, sdk.SaveOptions{

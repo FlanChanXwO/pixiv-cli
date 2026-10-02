@@ -205,14 +205,14 @@ func (c *Client) mapCreator(profile creatorservice.Creator) (Creator, error) {
 		HasSupportingPlan: profile.HasSupportingPlan,
 	}
 	if profile.IconURL != "" {
-		res, err := c.newResource("creator_icon", profile.ID, "", "", profile.IconURL)
+		res, err := c.newResource("creator_icon", profile.ID, "", "", profile.IconURL, "")
 		if err != nil {
 			return Creator{}, err
 		}
 		out.Icon = ImageResource{Resource: res}
 	}
 	if profile.CoverURL != "" {
-		res, err := c.newResource("creator_cover", profile.ID, "", "", profile.CoverURL)
+		res, err := c.newResource("creator_cover", profile.ID, "", "", profile.CoverURL, "")
 		if err != nil {
 			return Creator{}, err
 		}
@@ -246,7 +246,7 @@ func (c *Client) mapPost(source postservice.Post) (Post, error) {
 	for _, image := range mergePostImages(*source.Body) {
 		imageByID[image.ID] = image
 		if image.OriginalURL != "" {
-			res, err := c.newResource("post_image", source.CreatorID, source.ID, image.ID, image.OriginalURL)
+			res, err := c.newResource("post_image", source.CreatorID, source.ID, image.ID, image.OriginalURL, "")
 			if err != nil {
 				return Post{}, err
 			}
@@ -256,7 +256,7 @@ func (c *Client) mapPost(source postservice.Post) (Post, error) {
 	for _, file := range mergePostFiles(*source.Body) {
 		fileByID[file.ID] = file
 		if file.URL != "" {
-			res, err := c.newResource("post_file", source.CreatorID, source.ID, file.ID, file.URL)
+			res, err := c.newResource("post_file", source.CreatorID, source.ID, file.ID, file.URL, attachmentFilename(file.Name, file.Extension))
 			if err != nil {
 				return Post{}, err
 			}
@@ -267,7 +267,7 @@ func (c *Client) mapPost(source postservice.Post) (Post, error) {
 		switch block.Type {
 		case "image":
 			if image, ok := imageByID[block.ImageID]; ok && image.OriginalURL != "" {
-				res, err := c.newResource("post_image", source.CreatorID, source.ID, image.ID, image.OriginalURL)
+				res, err := c.newResource("post_image", source.CreatorID, source.ID, image.ID, image.OriginalURL, "")
 				if err != nil {
 					return Post{}, err
 				}
@@ -275,7 +275,7 @@ func (c *Client) mapPost(source postservice.Post) (Post, error) {
 			}
 		case "file":
 			if file, ok := fileByID[block.FileID]; ok && file.URL != "" {
-				res, err := c.newResource("post_file", source.CreatorID, source.ID, file.ID, file.URL)
+				res, err := c.newResource("post_file", source.CreatorID, source.ID, file.ID, file.URL, attachmentFilename(file.Name, file.Extension))
 				if err != nil {
 					return Post{}, err
 				}
