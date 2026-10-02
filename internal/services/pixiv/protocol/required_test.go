@@ -9,23 +9,20 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// 本文件是 goal-1 t17 的契约层：RequiredList[T] / RequiredObject[T] 是从
-// 26 + 3 处完全相同的 endpoint 局部实现收口而来的共享存在性解码类型。
-//
-// §5.3 要求必须保护的六种情形在这里逐条固定：字段缺失、字段为 null、合法空数组、
-// 合法对象、字段类型错误、解码失败；另加"同一值被重新解码"。
-//
-// 语义要点（与收口前的局部实现逐字一致）：
-//   - Present 在 UnmarshalJSON 被调用时即为 true——它表达的是"字段出现在 JSON 中"；
-//   - Valid 表示"字段存在且能成功解码为 T"；
-//   - null 属"存在但无效"（Present=true, Valid=false），不是缺失。
+// 通过共享类型的 JSON 边界验证存在性；对象 fixture 与 ugoiraZipURLsDTO 同形。
+// 字段缺失不会调用字段 decoder，复用外层 DTO 前的清零由调用方负责。
 
 type requiredListPayload struct {
 	Items protocol.RequiredList[string] `json:"items"`
 }
 
+type zipURLsDTO struct {
+	Medium   string `json:"medium"`
+	Original string `json:"original"`
+}
+
 type requiredObjectPayload struct {
-	Value protocol.RequiredObject[string] `json:"value"`
+	Value protocol.RequiredObject[zipURLsDTO] `json:"value"`
 }
 
 func TestRequiredListUnmarshalContract(t *testing.T) {
@@ -99,55 +96,20 @@ func TestRequiredListUnmarshalContract(t *testing.T) {
 
 func TestRequiredObjectUnmarshalContract(t *testing.T) {
 	tests := []struct {
-		name        string
-		body        string
-		wantPresent bool
-		wantValid   bool
-		wantValue   string
-		wantErr     bool
+		name, body                      string
+		wantPresent, wantValid, wantErr bool
+		wantValue                       zipURLsDTO
 	}{
-		{
-			name:        "field absent",
-			body:        `{}`,
-			wantPresent: false,
-			wantValid:   false,
-		},
-		{
-			name:        "field is null",
-			body:        `{"value":null}`,
-			wantPresent: true,
-			wantValid:   false,
-		},
-		{
-			name:        "object is present and valid",
-			body:        `{"value":"hello"}`,
-			wantPresent: true,
-			wantValid:   true,
-			wantValue:   "hello",
-		},
-		{
-			name:        "empty string is present and valid",
-			body:        `{"value":""}`,
-			wantPresent: true,
-			wantValid:   true,
-			wantValue:   "",
-		},
-		{
-			name:        "wrong type is present but invalid",
-			body:        `{"value":42}`,
-			wantPresent: true,
-			wantValid:   false,
-			wantErr:     true,
-		},
-		{
-			name:        "array where object expected fails to decode",
-			body:        `{"value":[1]}`,
-			wantPresent: true,
-			wantValid:   false,
-			wantErr:     true,
-		},
+		{name: "field absent", body: `{}`},
+		{name: "field is null", body: `{"value":null}`, wantPresent: true},
+		{name: "empty object", body: `{"value":{}}`, wantPresent: true, wantValid: true},
+		{name: "populated object", body: `{"value":{"medium":"m","original":"o"}}`, wantPresent: true, wantValid: true, wantValue: zipURLsDTO{Medium: "m", Original: "o"}},
+		{name: "wrong field type", body: `{"value":{"medium":42}}`, wantPresent: true, wantErr: true},
+		{name: "number container", body: `{"value":42}`, wantPresent: true, wantErr: true},
+		{name: "string container", body: `{"value":"hello"}`, wantPresent: true, wantErr: true},
+		{name: "boolean container", body: `{"value":true}`, wantPresent: true, wantErr: true},
+		{name: "array container", body: `{"value":[]}`, wantPresent: true, wantErr: true},
 	}
-
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			var payload requiredObjectPayload
@@ -166,8 +128,8 @@ func TestRequiredObjectUnmarshalContract(t *testing.T) {
 	}
 }
 
-// TestRequiredTypesResetOnRepeatedDecode 覆盖 §5.3 点名的"同一值被重新解码"：
-// UnmarshalJSON 必须整体重置状态，不能让上一次的解码结果残留。
+// TestRequiredTypesResetOnRepeatedDecode 覆盖同一值被重新解码：
+// 只有实际被调用的字段 decoder 才能清除旧状态。
 func TestRequiredTypesResetOnRepeatedDecode(t *testing.T) {
 	t.Run("list resets stale state", func(t *testing.T) {
 		var payload requiredListPayload
@@ -182,34 +144,44 @@ func TestRequiredTypesResetOnRepeatedDecode(t *testing.T) {
 		assert.Nil(t, payload.Items.Items, "a null re-decode must not keep the previous items")
 	})
 
-	t.Run("object resets stale state", func(t *testing.T) {
+	t.Run("object resets on present fields", func(t *testing.T) {
 		var payload requiredObjectPayload
-		require.NoError(t, json.Unmarshal([]byte(`{"value":"stale"}`), &payload))
-		require.True(t, payload.Value.Valid)
-		require.Equal(t, "stale", payload.Value.Value)
-
-		// 第二次解码失败：不得保留上一次的值。
-		require.Error(t, json.Unmarshal([]byte(`{"value":42}`), &payload))
+		require.NoError(t, json.Unmarshal([]byte(`{"value":{"medium":"old","original":"stale"}}`), &payload))
+		require.NoError(t, json.Unmarshal([]byte(`{"value":{"medium":"new"}}`), &payload))
+		assert.Equal(t, zipURLsDTO{Medium: "new"}, payload.Value.Value)
+		require.Error(t, json.Unmarshal([]byte(`{"value":{"medium":"partial","original":42}}`), &payload))
 		assert.True(t, payload.Value.Present)
 		assert.False(t, payload.Value.Valid)
-		assert.Empty(t, payload.Value.Value, "a failed re-decode must not keep the previous value")
+		// 失败允许保留本次的部分解码数据，但不能带回上一次的字段。
+		assert.Equal(t, zipURLsDTO{Medium: "partial"}, payload.Value.Value)
+		require.NoError(t, json.Unmarshal([]byte(`{"value":null}`), &payload))
+		assert.True(t, payload.Value.Present)
+		assert.False(t, payload.Value.Valid)
+		assert.Equal(t, zipURLsDTO{}, payload.Value.Value)
 	})
 
-	t.Run("absent field after present resets", func(t *testing.T) {
-		var payload requiredListPayload
-		require.NoError(t, json.Unmarshal([]byte(`{"items":["x"]}`), &payload))
-		require.True(t, payload.Items.Present)
-
-		// 反序列化到新值时字段缺失：不得沿用旧值的 Presence。
-		var fresh requiredListPayload
-		require.NoError(t, json.Unmarshal([]byte(`{}`), &fresh))
-		assert.False(t, fresh.Items.Present)
-		assert.False(t, fresh.Items.Valid)
+	t.Run("caller resets reused outer DTO before missing fields", func(t *testing.T) {
+		type response struct {
+			Items protocol.RequiredList[string]       `json:"items"`
+			Value protocol.RequiredObject[zipURLsDTO] `json:"value"`
+		}
+		var payload response
+		require.NoError(t, json.Unmarshal([]byte(`{"items":["x"],"value":{"medium":"old"}}`), &payload))
+		require.NoError(t, json.Unmarshal([]byte(`{}`), &payload))
+		assert.True(t, payload.Items.Present)
+		assert.True(t, payload.Value.Present)
+		assert.Equal(t, []string{"x"}, payload.Items.Items)
+		assert.Equal(t, "old", payload.Value.Value.Medium)
+		payload = response{}
+		require.NoError(t, json.Unmarshal([]byte(`{}`), &payload))
+		assert.False(t, payload.Items.Present)
+		assert.False(t, payload.Items.Valid)
+		assert.False(t, payload.Value.Present)
+		assert.False(t, payload.Value.Valid)
 	})
 }
 
-// TestRequiredTypesCarryNonStringPayloads 确认收口后的泛型实现仍能承载各 endpoint
-// 实际使用的元素/对象类型（这里用结构体与数字验证 T 不被特化到 string）。
+// 非 struct 实例仅记录泛型的现有行为，不作为生产对象 DTO 的兼容证据。
 func TestRequiredTypesCarryNonStringPayloads(t *testing.T) {
 	type nested struct {
 		ID int `json:"id"`
