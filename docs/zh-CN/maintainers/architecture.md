@@ -72,7 +72,7 @@ CLI 不导出跨命令 locator，也没有独立 bootstrap constructor 或 `inte
 
 命令树由 `root.go` 统一处理全局 flag、需求驱动的启动生命周期与退出码，再交给 owner 命令包注册各领域命令：
 根级 `internal/cli/commands/{config,mcp,update}`，Pixiv `internal/cli/commands/pixiv/{auth,bookmark,comment,detail,download,follow,mypixiv,ranking,recommended,search,series,timeline,user}`，
-FANBOX `internal/cli/commands/fanbox/{auth,download,mcp,post}`。数据命令经 owner-local 窄
+FANBOX `internal/cli/commands/fanbox/{auth,download,post}`。数据命令经 owner-local 窄
 `Data` 端口（`Open`/`Pooled`/`JSONOut` 等）使用 public SDK `*pixiv.Client`/`*fanbox.Client`，不直连内部协议适配包；
 共享 stdin codec 位于 `internal/cli/pipeline`，CLI/MCP 共用的稳定 Pixiv record 投影位于 `internal/shared/record`；命令级 Pixiv target resolver 位于 `internal/shared/resolver`，只消费 command contract、record 与纯本地 `sdk/pixiv.ParseURL`，受控 bare-ID probe 必须由 owner 显式注入，resolver 不持有 client、凭据或协议适配。`record` 包只承接记录协议、JSON 归一化与 public SDK DTO 映射，不能依赖 CLI、MCP 或内部协议适配包，也不能扩展为通用杂物包。这些子包不反向导入 `internal/cli` 根包。
 
@@ -301,6 +301,8 @@ FlareSolverr 的 upstream proxy 只用于 browser `sessions.create`；solver con
 三个 parent 包只拥有各自 endpoint family 共享的 normalized entity/value；route、wire DTO、响应校验、分页与 mutation form 留在对应的子 family。novel 与 user 不再通过共享 model 包传递，避免 appapi 或跨域 mapper 重新成为业务 owner。MCP delivery 等传输层常量仍留在 `internal/mcpserver`。
 
 ### `internal/mcpserver`
+
+`pixiv/gallery` 持有唯一内嵌 MCP Apps resource 与标准 bridge。资源始终注册，`pixiv/internal/runtime.AddTool` 为视觉 discovery 附加 metadata，不替换 structured result。视图只通过 host tool call 请求媒体，不直连上游、不保存凭据；负责视图取消、Blob 清理及按 host 能力开放下载。`pixiv/internal/runtime/cursor.go` 将默认批次 continuation 绑定到工具参数；SDK 仍校验内部 operation/query/账号。正数 limit 的逻辑分页保持独立。参见 [Gallery 与分页合同](../mcp-tools.md)。
 
 `pixiv/tools/artwork_media` 拥有静态 MCP 图片交付。一个既有 SDK lease 将作品 metadata 与所有页资源绑定到选中账号；每次读取后关闭 resource response，所有退出路径均关闭 lease。返回实际图片 bytes、逐页 content 索引与失败项，不发布服务器文件、不重放部分交付。`pixiv/internal/outputs` 拥有媒体 structured envelope 与 schema 错误脱敏。Ugoira 在每次调用的私有临时目录内复用 downloader archive 选择器、SDK SaveResource 与既有 Rust encoder，返回完整动画 blob 和独立索引的 PNG preview，交付前清理临时文件。实际 archive 质量与产物文件名显式返回；静态专用参数拒绝而非忽略。
 

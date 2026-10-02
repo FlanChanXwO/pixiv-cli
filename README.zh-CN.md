@@ -16,7 +16,7 @@
 
 ## 为什么选择 pixiv-cli？
 
-- **一致的能力面**——CLI、MCP 与 SDK 均可完成关键词搜索、详情、排行、推荐、用户、收藏和关注；本地下载与 ugoira 编码保留在 CLI/SDK；反向搜图接入 CLI/MCP 能力面。
+- **一致的能力面**——CLI、MCP 与 SDK 均可完成关键词搜索、详情、排行、推荐、用户、收藏和关注；本地下载保留在 CLI/SDK，MCP 交付图片与 ugoira 动画 bytes；反向搜图接入 CLI/MCP 能力面。
 - **只读 FANBOX 能力**——通过 `FANBOXSESSID` 登录后，可从 CLI、MCP 或 `sdk/fanbox` 查看创作者、帖子、主页/支持中 feed、标签和第一方文件资源。
 - **组合式视觉作品管道**——视觉列表接入管道时自动输出 canonical NDJSON；用 `--filter` 编写有类型的本地作品筛选，并可直接传给 `download`。
 - **本地账号池**——为读取型任务选择符合条件的本地账号，并在分页和下载准备阶段遵循 Pixiv 的 `Retry-After` 响应。

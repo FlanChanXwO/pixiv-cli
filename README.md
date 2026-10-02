@@ -16,7 +16,7 @@
 
 ## Why pixiv-cli?
 
-- **One capability surface** — keyword search, details, rankings, recommendations, users, bookmarks, and follows across CLI, MCP, and SDK; local downloads and ugoira encoding remain CLI/SDK capabilities; reverse-image search is integrated into the CLI/MCP surface.
+- **One capability surface** — keyword search, details, rankings, recommendations, users, bookmarks, and follows across CLI, MCP, and SDK; local downloads remain CLI/SDK capabilities, while MCP delivers image and ugoira animation bytes; reverse-image search is integrated into the CLI/MCP surface.
 - **Read-only FANBOX access** — authenticate with `FANBOXSESSID`, inspect creators, posts, home/supporting feeds, tags, and first-party file resources through the CLI, MCP, or `sdk/fanbox`.
 - **Composable visual pipelines** — visual lists automatically emit canonical NDJSON when piped; use `--filter` for typed local artwork rules and pass matching records straight to `download`.
 - **Local account pools** — enable database-backed scheduling for read workloads with `pixiv auth pool status|enable|disable`; selection honors Pixiv `Retry-After` responses without exposing credentials.
@@ -297,7 +297,7 @@ func main() {
 }
 ```
 
-The import path is `github.com/FlanChanXwO/pixiv-cli/sdk/pixiv`. `sdk/fanbox` accepts a `FANBOXSESSID` explicitly and supports native Chrome 146 TLS routing with the built-in Firefox 148 HTTP User-Agent baseline, with optional service-scoped proxy, user-agent, and challenge-only FlareSolverr options. The public SDK exposes typed Pixiv/FANBOX clients and opaque resource APIs rather than CLI batch-download helpers: `SaveResource` accepts a `ResourceRef`, while Pixiv's `SaveResourceURL` accepts an HTTPS URL from an allowed Pixiv media host. Both save atomically and return the destination path, byte size, and response content type. The [SDK guide](docs/en/sdk.md) documents models, cursors, resources, errors, caller responsibilities, and the explicit DTO boundary used by CLI/MCP JSON output; media resources cross those boundaries only as opaque references.
+The import path is `github.com/FlanChanXwO/pixiv-cli/sdk/pixiv`. `sdk/fanbox` accepts a `FANBOXSESSID` explicitly and supports native Chrome 146 TLS routing with the built-in Firefox 148 HTTP User-Agent baseline, with optional service-scoped proxy, user-agent, and challenge-only FlareSolverr options. The public SDK exposes typed Pixiv/FANBOX clients and opaque resource APIs rather than CLI batch-download helpers: `SaveResource` accepts a `ResourceRef`, while Pixiv's `SaveResourceURL` accepts an HTTPS URL from an allowed Pixiv media host. Both save atomically and return the destination path, byte size, and response content type. The [SDK guide](docs/en/sdk.md) documents models, cursors, resources, errors, caller responsibilities, and the explicit DTO boundary used by CLI/MCP JSON output; discovery exposes opaque resource references, while MCP media tools deliver actual bytes with structured metadata.
 
 ## Authentication and token safety
 
