@@ -406,3 +406,39 @@ func TestUIDDeclarationsRejectPublicAliasAndDefault(t *testing.T) {
 		}
 	}
 }
+
+// 路径来自声明，值与严格类型预期独立；同一测试也用于只改标签的路径探针。
+func TestAccountPoolUsesDeclaredPaths(t *testing.T) {
+	enabled := runtimeFieldSpec("AccountPool", "Enabled")
+	strategy := runtimeFieldSpec("AccountPool", "Strategy")
+	for _, tc := range []struct {
+		name              string
+		enabled, strategy any
+		wantErr           string
+	}{
+		{"configured", true, " random ", ""},
+		{"strict boolean", "true", "random", enabled.KoanfKey + " must be a boolean"},
+		{"strict strategy", true, 123, strategy.KoanfKey + " must be one of: round_robin, random"},
+		{"unknown strategy", true, "weighted", strategy.KoanfKey + " must be one of: round_robin, random"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			state := koanf.New(".")
+			if err := state.Set(enabled.KoanfKey, tc.enabled); err != nil {
+				t.Fatal(err)
+			}
+			if err := state.Set(strategy.KoanfKey, tc.strategy); err != nil {
+				t.Fatal(err)
+			}
+			cfg, err := (Snapshot{file: state}).Runtime()
+			if tc.wantErr != "" {
+				if err == nil || err.Error() != tc.wantErr {
+					t.Fatalf("want %q, got %v", tc.wantErr, err)
+				}
+				return
+			}
+			if err != nil || !cfg.AccountPool.Enabled || cfg.AccountPool.Strategy != AccountPoolStrategyRandom {
+				t.Fatalf("declared pool values: %+v, error: %v", cfg.AccountPool, err)
+			}
+		})
+	}
+}

@@ -278,25 +278,25 @@ func (s Snapshot) flareSolverrAt(group string) (*FlareSolverrConfig, error) {
 }
 
 func (s Snapshot) accountPool() (AccountPoolConfig, error) {
-	enabledSpec, _ := SettingSpecByAlias("account_pool_enabled")
-	strategySpec, _ := SettingSpecByAlias("account_pool_strategy")
-	// 默认值只来自字段声明；文件值仍走下面的严格 bool/string 与枚举校验。
+	enabledSpec := runtimeFieldSpec("AccountPool", "Enabled")
+	strategySpec := runtimeFieldSpec("AccountPool", "Strategy")
+	// 路径与默认值来自字段声明；文件值仍走严格 bool/string 与枚举校验。
 	pool := AccountPoolConfig{Enabled: enabledSpec.Default.(bool), Strategy: AccountPoolStrategy(strategySpec.Default.(string))}
 	if _, err := s.Effective("account_pool_accounts"); err != nil {
 		return AccountPoolConfig{}, err
 	}
-	if s.file != nil && s.file.Exists("account_pool") {
-		if raw := s.file.Get("account_pool.enabled"); raw != nil {
+	if s.file != nil {
+		if raw := s.file.Get(enabledSpec.KoanfKey); raw != nil {
 			enabled, ok := raw.(bool)
 			if !ok {
-				return AccountPoolConfig{}, errors.New("account_pool.enabled must be a boolean")
+				return AccountPoolConfig{}, fmt.Errorf("%s must be a boolean", enabledSpec.KoanfKey)
 			}
 			pool.Enabled = enabled
 		}
-		if raw := s.file.Get("account_pool.strategy"); raw != nil {
+		if raw := s.file.Get(strategySpec.KoanfKey); raw != nil {
 			value, ok := raw.(string)
 			if !ok {
-				return AccountPoolConfig{}, errors.New("account_pool.strategy must be one of: round_robin, random")
+				return AccountPoolConfig{}, fmt.Errorf("%s must be one of: round_robin, random", strategySpec.KoanfKey)
 			}
 			pool.Strategy = AccountPoolStrategy(strings.TrimSpace(value))
 		}
@@ -304,7 +304,7 @@ func (s Snapshot) accountPool() (AccountPoolConfig, error) {
 	switch pool.Strategy {
 	case AccountPoolStrategyRoundRobin, AccountPoolStrategyRandom:
 	default:
-		return AccountPoolConfig{}, errors.New("account_pool.strategy must be one of: round_robin, random")
+		return AccountPoolConfig{}, fmt.Errorf("%s must be one of: round_robin, random", strategySpec.KoanfKey)
 	}
 	return pool, nil
 }
