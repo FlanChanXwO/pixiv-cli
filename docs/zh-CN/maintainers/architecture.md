@@ -281,6 +281,8 @@ v1 已删除 `internal/services/pixiv/webapi` 与匿名 Web/AJAX 路径：App AP
 
 纯登录页面及嵌入的模板/CSS 位于 `internal/services/pixiv/account/loginrelay/loginpage`。CLI 页面响应包装复用它；该模块不依赖 CLI、账号库、浏览器或 listener。可复用 HTTP handler/session 位于父级 `loginrelay` 包，接收 OAuth 会话校验器并向 owner 交付一次 callback，不开启 listener、不兑换或持久化凭据。CLI 保留 listener/TLS/终端编排；主 mux 可剥离公开路径前缀后挂载 handler，生产 MCP 登录生命周期接线仍待完成。会话取消后新请求返回 HTTP 410，并在接收已校验 callback 前再次检查取消，拒绝在校验期间被 restart/shutdown 取消的 callback。 共享 callback URL 白名单、start 响应协议类型与结果页 URL header 位于 `internal/services/pixiv/account/loginrelay`；CLI relay 与 desktop helper 共用它们，共享模块不反向依赖 CLI。
 
+MCP account owner 另提供单当前登录 manager：重复 start 复用 pending 流程，显式 restart 取消并等待前次流程，shutdown 等待兑换/持久化退出。完成状态保留非敏感的 account-saved/selection-updated 标记，包括部分失败；该 manager 尚未接入生产工具与 HTTP 路由。
+
 ### reverse-search Facade 例外
 
 反向搜图是唯一跨越常规 public SDK 边界的产品能力。顶层契约与 Facade 位于 `internal/services/reversesearch`，provider 协议适配只位于 `internal/services/reversesearch/saucenao` 与 `internal/services/reversesearch/ascii2d`。生产组装 `internal/cli/root.go` 可以依赖 `internal/services/reversesearch/assembly`，在每个命令/session 启动时绑定 HTTP client、代理和 SauceNAO key；`internal/cli/commands` 下的 CLI owner 与全部 `internal/mcpserver` 只能 import 顶层 `internal/services/reversesearch` 契约，不得 import provider 子包或 assembly。Facade 返回领域结果，CLI/MCP 只在输出边界投影 canonical Record。
