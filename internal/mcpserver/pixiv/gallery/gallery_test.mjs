@@ -4,6 +4,8 @@ import vm from 'node:vm';
 
 // Local bridge/DOM fixture: no network, host credentials, browser installation or dependency.
 const downloads = !process.argv.includes('--without-download');
+const tools = !process.argv.includes('--without-tools');
+const badProtocol = process.argv.includes('--bad-protocol');
 const html = await readFile(new URL('./gallery.html', import.meta.url), 'utf8');
 const script = html.match(/<script>([\s\S]*?)<\/script>/)[1];
 class Element {
@@ -39,9 +41,24 @@ assert.equal(initialize.params.protocolVersion, '2026-01-26');
 receive({id: initialize.id, result: {}}, {});
 await flush();
 assert.equal(sent.length, 1, 'foreign window cannot initialize');
-receive({id: initialize.id, result: {protocolVersion:'2026-01-26', hostCapabilities: {serverTools:{}, ...(downloads ? {downloadFile:{}} : {})}, hostContext:{}}});
+receive({id: initialize.id, result: {protocolVersion:badProtocol?'unsupported':'2026-01-26', hostCapabilities: {...(tools ? {serverTools:{}} : {}), ...(downloads ? {downloadFile:{}} : {})}, hostContext:{}}});
 await flush();
+if (badProtocol) {
+  assert.ok(status.textContent.includes('Gallery bridge unavailable'));
+  assert.equal(sent.filter(item=>item.message.method==='ui/notifications/initialized').length,0);
+  receive({method:'ui/notifications/tool-result',params:{structuredContent:{records:[{id:42,type:'illust'}]}}});
+  assert.equal(cards.children.length,0,'uninitialized bridge must ignore results');
+  assert.equal(sent.filter(item=>item.message.method==='tools/call').length,0);
+  for (const dispose of listeners.pagehide) dispose();
+  console.log('Gallery mock: unsupported protocol explicitly falls back without tool calls');
+  process.exit(0);
+}
 assert.ok(latest('ui/notifications/initialized'));
+assert.equal(status.textContent,'Waiting for tool results…');
+receive({method:'ui/notifications/tool-result',params:{structuredContent:{records:[]}}});
+assert.equal(status.textContent,'No results.');
+receive({method:'ui/notifications/tool-result',params:{isError:true,structuredContent:{records:[]}}});
+assert.equal(status.textContent,'Tool failed or returned partial results.');
 receive({method:'ui/notifications/host-context-changed',params:{theme:'dark',containerDimensions:{width:500,height:260}}});
 assert.equal(rootElement.style.colorScheme,'dark');
 assert.equal(rootElement.style.height,'260px');
@@ -54,16 +71,44 @@ resizes[0].callback();
 assert.deepEqual(latest('ui/notifications/size-changed').params,{width:420,height:200});
 
 const record = {id:'42', type:'illust', title:'<img src=x onerror=alert(1)>', user:{name:'artist'}, tags:[{name:'<script>'}]};
+const elements = node => [node, ...node.children.flatMap(elements)];
+const button = label => elements(cards).find(node => node.tag === 'button' && node.textContent === label);
 const show = () => receive({method:'ui/notifications/tool-result',params:{structuredContent:{records:[record]},content:[]}});
 show();
 assert.equal(cards.children.length, 1);
 assert.equal(cards.children[0].children[0].textContent, record.title);
 assert.equal(sent.filter(x => x.message.method === 'tools/call').length, 0, 'offscreen cards do not fetch');
+if (!tools) {
+  intersections.at(-1).callback([{isIntersecting:true,target:cards.children[0]}]);
+  await flush();
+  assert.ok(elements(cards).some(node=>node.textContent.includes('Host does not allow tool calls')));
+  button('Load / retry preview').events.click();
+  await flush();
+  button('Open artwork').events.click();
+  await flush();
+  assert.equal(status.textContent,'Artwork detail unavailable.');
+  button('Back to results').events.click();
+  assert.equal(cards.children.filter(node=>node.tag==='article').length,1);
+  receive({method:'ui/notifications/host-context-changed',params:{toolInfo:{tool:{name:'pixiv_search_illust'}}}});
+  receive({method:'ui/notifications/tool-input',params:{arguments:{word:'cat',limit:1}}});
+  receive({method:'ui/notifications/tool-result',params:{structuredContent:{records:[record],pagination:{page:1,limit:1,has_more:true,next_page:2}}}});
+  assert.equal(button('Load next page').disabled,true);
+  button('Load next page').events.click();
+  assert.equal(sent.filter(item=>item.message.method==='tools/call').length,0,'missing capability never sends tools/call');
+  receive({method:'ui/resource-teardown',id:99,params:{}});
+  assert.ok(intersections.every(item=>item.disconnected));
+  assert.ok(resizes.every(item=>item.disconnected));
+  assert.equal(cards.children.length,0);
+  console.log('Gallery mock: no-tool capability preserves records, disables continuation and avoids remote calls');
+  process.exit(0);
+}
+
 let observer = intersections.at(-1);
 observer.callback([{isIntersecting:true, target:cards.children[0]}]);
 const stale = latest('tools/call');
 assert.deepEqual(stale.params, {name:'pixiv_artwork_media',arguments:{illust_id:42,pages:[1],quality:'thumbnail'}});
 receive({method:'ui/notifications/tool-input',params:{arguments:{word:'new'}}});
+assert.equal(status.textContent,'Loading results…');
 assert.equal(latest('notifications/cancelled').params.requestId, stale.id);
 receive({id: stale.id, result:{}});
 await flush();
@@ -80,8 +125,6 @@ assert.equal(created.length, 1);
 assert.deepEqual(Buffer.from(await created[0].blob.arrayBuffer()), bytes);
 receive({method:'ui/notifications/tool-result',params:{structuredContent:{records:[]}}}, parent, 'https://other.test');
 assert.equal(cards.children.length, 1, 'changed origin rejected');
-const elements = node => [node, ...node.children.flatMap(elements)];
-const button = label => elements(cards).find(node => node.tag === 'button' && node.textContent === label);
 assert.ok(button('Open artwork'), 'missing artwork detail control');
 button('Open artwork').events.click();
 const detailCall = latest('tools/call');
