@@ -314,9 +314,11 @@ func parseDefaultForField(field reflect.StructField, kind settingKind, raw strin
 
 // SettingSpecByAlias 返回 alias 对应的 spec。已移除键仍可被查询，以便 config unset
 // 执行清理、config get/set 返回 removed_setting。元数据完全来自字段标签声明。
+// Table 返回独立副本，调用方修改不会污染静态声明。
 func SettingSpecByAlias(alias string) (SettingSpec, bool) {
 	for _, entry := range mustSettingSpecs() {
 		if alias != "" && entry.spec.Alias == alias {
+			entry.spec.Table = slices.Clone(entry.spec.Table)
 			return entry.spec, true
 		}
 	}

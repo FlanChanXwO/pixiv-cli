@@ -2,11 +2,45 @@ package settings
 
 import (
 	"github.com/knadh/koanf/v2"
+	"os"
+	"path/filepath"
 	"reflect"
 	"strings"
 	"testing"
 	"time"
 )
+
+func TestSettingSpecByAliasTableIsDetached(t *testing.T) {
+	spec, ok := SettingSpecByAlias("download_path")
+	if !ok || len(spec.Table) == 0 {
+		t.Fatal("download_path must have a declared table")
+	}
+	originalTable := append([]string(nil), spec.Table...)
+	// 旧实现会共享缓存切片；即使断言失败，也必须还原路径，避免污染后续测试。
+	t.Cleanup(func() { copy(spec.Table, originalTable) })
+	spec.Table[0] = "mutated_table"
+
+	again, ok := SettingSpecByAlias("download_path")
+	if !ok || !reflect.DeepEqual(again.Table, []string{"download"}) {
+		t.Errorf("returned Table mutation changed a later lookup: %v", again.Table)
+	}
+
+	_, value, err := ParseSettingInput("download_path", "./isolated")
+	if err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(t.TempDir(), "config.toml")
+	if err := SetConfigValue(path, "download_path", value); err != nil {
+		t.Fatal(err)
+	}
+	body, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, want := strings.TrimSpace(string(body)), "[download]\npath = \"./isolated\""; got != want {
+		t.Errorf("returned Table mutation changed a later config write: got %q, want %q", got, want)
+	}
+}
 
 func TestSchemaRejectsInvalidBooleanAttributes(t *testing.T) {
 	for _, attribute := range []string{"cli", "secret", "example"} {
