@@ -31,8 +31,8 @@ var baselineSectionOrder = []string{
 	"reverse_search",
 }
 
-// baselineSectionRank 返回 section 在呈现顺序中的位置；未列出的 section 排在
-// 已列出项之后（按名称稳定排序由调用方的排序保证）。
+// baselineSectionRank 返回 section 在呈现顺序中的位置。
+// 未列出的 section 排在已列出项之后；相同 rank 的条目保持声明顺序。
 func baselineSectionRank(table []string) (int, bool) {
 	name := joinTableName(table)
 	for index, ordered := range baselineSectionOrder {
