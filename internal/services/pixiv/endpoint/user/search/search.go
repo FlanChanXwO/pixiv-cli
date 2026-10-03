@@ -1,9 +1,7 @@
 package search
 
 import (
-	"bytes"
 	"context"
-	"encoding/json"
 	"errors"
 	"net/url"
 	"strconv"
@@ -69,8 +67,8 @@ func (c *Client) Search(ctx context.Context, request Request) (Result, error) {
 }
 
 type responseDTO struct {
-	Users   requiredList[userPreviewDTO] `json:"user_previews"`
-	NextURL *string                      `json:"next_url"`
+	Users   protocol.RequiredList[userPreviewDTO] `json:"user_previews"`
+	NextURL *string                               `json:"next_url"`
 }
 type userPreviewDTO struct {
 	User userDTO `json:"user"`
@@ -86,23 +84,7 @@ type userDTO struct {
 type profileImageURLsDTO struct {
 	Medium *string `json:"medium"`
 }
-type requiredList[T any] struct {
-	Items   []T
-	Present bool
-	Valid   bool
-}
 
-func (l *requiredList[T]) UnmarshalJSON(data []byte) error {
-	*l = requiredList[T]{Present: true}
-	if bytes.Equal(bytes.TrimSpace(data), []byte("null")) {
-		return nil
-	}
-	if err := json.Unmarshal(data, &l.Items); err != nil {
-		return err
-	}
-	l.Valid = true
-	return nil
-}
 func mapUser(value userDTO) user.User {
 	return user.User{ID: value.ID, Name: value.Name, Account: value.Account, Comment: value.Comment, IsFollowed: value.IsFollowed, ProfileImageURLs: user.ProfileImageURLs{Medium: cloneString(value.ProfileImageURLs.Medium)}}
 }

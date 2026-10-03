@@ -22,6 +22,43 @@ type Request struct {
 	HTTPSProxyOverride *string
 }
 
+// Pooled 是"在账号池安全重放边界内执行一次 public SDK 调用"的命名函数类型。
+// 类型参数 R 让每个 command owner 保留自己的 Request 类型，而无需把各自的请求
+// 结构统一到同一个宽类型上。
+type Pooled[R any] func(
+	context.Context,
+	R,
+	func(context.Context, *pixiv.Client) (committed bool, err error),
+) error
+
+// Read 在账号池安全重放边界内执行一次**只读**调用，并在成功后才把结果交付给
+// 调用方。
+//
+// 契约：
+//   - 回调始终以 committed=false 结束：读取尚未向调用方提交结果，因此账号池可以
+//     在失败时安全换号重放。
+//   - 失败时不交付部分结果，始终返回 T 的零值与该错误。
+//   - Pooled 为 nil（端口未配置）时返回明确错误，而不是 panic。
+//
+// 注意：Go 的泛型方法不能用于实现 interface 方法，因此这是一个围绕具体类型组织
+// 操作的辅助方法，不构成新的抽象层。
+func (p Pooled[R]) Read[T any](ctx context.Context, request R, invoke func(context.Context, *pixiv.Client) (T, error)) (T, error) {
+	var zero T
+	if p == nil {
+		return zero, errors.New("pixiv pooled operation is not configured")
+	}
+	var result T
+	err := p(ctx, request, func(ctx context.Context, client *pixiv.Client) (bool, error) {
+		var err error
+		result, err = invoke(ctx, client)
+		return false, err
+	})
+	if err != nil {
+		return zero, err
+	}
+	return result, nil
+}
+
 // Data 是 Pixiv 数据命令共同需要的最小运行依赖。它只描述输入、输出、usage
 // 包装和已按 command requirement 构造的 SDK 端口；不暴露根 CLI 或服务定位器。
 type Data struct {
@@ -33,7 +70,7 @@ type Data struct {
 	Open func(Request) (*pixiv.Client, error)
 	// Pooled 在账号池安全重放边界内执行一次内容读取；回调接收同一 execution
 	// snapshot 的 public SDK client。
-	Pooled func(context.Context, Request, func(context.Context, *pixiv.Client) (bool, error)) error
+	Pooled Pooled[Request]
 	// JSONOut 返回 JSON 输出开关（nil override 时读取 runtime config）。
 	JSONOut func(*bool) (bool, error)
 }
@@ -161,9 +198,8 @@ func (d Data) BindProxyFlags(cmd *cobra.Command, opts *ProxyOptions) {
 	flags.BoolVar(&opts.NoProxy, "no-proxy", false, "clear the configured proxy for this command")
 }
 
-// Request resolves command-local transport overrides without creating a
-// client. The composition root has already constructed the exact Pixiv SDK
-// resource graph selected by the command requirement.
+// Request 解析命令本地的传输覆写，不创建 client。公开 SDK client 由 composition
+// root 按 command requirement 构造，并通过 Open/Pooled 端口注入。
 func (d Data) Request(cmd *cobra.Command, opts CommandOptions) (Request, error) {
 	request := Request{}
 	proxy, err := proxyOverrideFromFlags(cmd, opts.ProxyOptions)
@@ -219,27 +255,16 @@ func (d Data) Client(request Request) (*pixiv.Client, error) {
 	return d.Open(request)
 }
 
-// Read 在账号池安全重放边界内执行一次只读用例。读取尚未向调用方提交结果，
-// 因此回调始终以 committed=false 结束；调用方只在成功后拿到结果。
-func Read[T any](d Data, ctx context.Context, request Request, invoke func(context.Context, *pixiv.Client) (T, error)) (T, error) {
-	var zero T
-	var result T
-	err := d.Pooled(ctx, request, func(ctx context.Context, client *pixiv.Client) (bool, error) {
-		var err error
-		result, err = invoke(ctx, client)
-		return false, err
-	})
-	if err != nil {
-		return zero, err
-	}
-	return result, nil
-}
-
-// Write 在账号池安全重放边界内执行一次 mutation。public SDK 一旦被调用，无法
-// 从所有网络错误可靠判断服务端是否已接受请求，因此即使返回错误也标记
-// committed=true，禁止账号池在未知提交状态下换号重放。
+// Write 在账号池安全重放边界内执行一次 mutation。
+//
+// 契约：
+//   - 一旦调用 public SDK 就标记 committed=true：写操作无法从所有网络错误可靠
+//     判断服务端是否已接受请求，因此在未知提交状态下禁止账号池换号重放。
+//   - 与 Read 的 committed=false 语义**刻意分开**，不合并成带布尔模式的单一函数：
+//     两者对"失败后能否重放"的回答相反，合并会把这一差异隐藏在参数里。
+//   - 端口未配置（nil）返回 "pixiv pooled operation is not configured"，不 panic。
 func Write(d Data, ctx context.Context, request Request, invoke func(context.Context, *pixiv.Client) error) error {
-	return d.Pooled(ctx, request, func(ctx context.Context, client *pixiv.Client) (bool, error) {
+	return d.Executor(request)(ctx, func(ctx context.Context, client *pixiv.Client) (bool, error) {
 		return true, invoke(ctx, client)
 	})
 }

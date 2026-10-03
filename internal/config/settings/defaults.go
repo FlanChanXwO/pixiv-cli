@@ -3,6 +3,7 @@ package settings
 import (
 	"bytes"
 	"fmt"
+	"sort"
 	"strconv"
 	"time"
 
@@ -15,13 +16,55 @@ var defaultConfigHeader = parser.Comments{
 	`Use "pixiv config set KEY VALUE" to change a setting.`,
 }
 
+// baselineSectionOrder 固定首次生成的精简 config.toml 的 section 呈现顺序。
+//
+// 元数据的顺序来自 RuntimeConfig 的**字段声明顺序**（那是绑定的自然顺序），而
+// 文件呈现顺序是一个独立的产品决定：先给用户看最常改的 download，再依次是
+// output/login/update/logging/reverse_search。两者不应互相绑架，因此这里显式
+// 列出顺序，而不是依赖字段声明或字母排序。
+var baselineSectionOrder = []string{
+	"download",
+	"output",
+	"login",
+	"update",
+	"logging",
+	"reverse_search",
+}
+
+// baselineSectionRank 返回 section 在呈现顺序中的位置。
+// 未列出的 section 排在已列出项之后；相同 rank 的条目保持声明顺序。
+func baselineSectionRank(table []string) (int, bool) {
+	name := joinTableName(table)
+	for index, ordered := range baselineSectionOrder {
+		if ordered == name {
+			return index, true
+		}
+	}
+	return len(baselineSectionOrder), false
+}
+
 func generatedDefaultConfig() ([]byte, error) {
 	doc := &tomledit.Document{
 		Global: &tomledit.Section{Items: []parser.Item{defaultConfigHeader}},
 	}
 	sections := make(map[string]*tomledit.Section)
 
-	for _, spec := range settingSpecs {
+	// 按固定呈现顺序遍历 section，保持与历史精简文件一致的用户可见布局。
+	entries := make([]settingSpecFromTags, 0, len(mustSettingSpecs()))
+	for _, entry := range mustSettingSpecs() {
+		if entry.spec.Removed || !entry.spec.DefaultInFile {
+			continue
+		}
+		entries = append(entries, entry)
+	}
+	sort.SliceStable(entries, func(i, j int) bool {
+		ri, _ := baselineSectionRank(entries[i].spec.Table)
+		rj, _ := baselineSectionRank(entries[j].spec.Table)
+		return ri < rj
+	})
+
+	for _, entry := range entries {
+		spec := entry.spec
 		if spec.Removed || !spec.DefaultInFile {
 			continue
 		}

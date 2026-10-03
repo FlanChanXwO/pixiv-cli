@@ -328,7 +328,7 @@ func (a command) runStamps(cmd *cobra.Command, opts stampsOptions) error {
 		}
 	}
 	ndjson := a.data.ShouldAutoNDJSON(cmd, opts.ndjson, jsonOut)
-	stamps, err := deps.Read(a.data, cmd.Context(), request, func(ctx context.Context, client *pixiv.Client) ([]pixiv.Stamp, error) {
+	stamps, err := a.data.Pooled.Read(cmd.Context(), request, func(ctx context.Context, client *pixiv.Client) ([]pixiv.Stamp, error) {
 		return client.Stamps(ctx, pixiv.StampsRequest{})
 	})
 	if err != nil {
