@@ -246,8 +246,17 @@ CLI 的认证、配置、回调桥接、Release 检查缓存与 callback helper 
 `reverse_search_provider`、`reverse_search_pixiv_only` 与 `saucenao_api_key`。
 其余高级 TOML 由用户手工维护。尤其是 reverse-search transport 与 challenge recovery 位于
 `[reverse_search.network]` 和 `[reverse_search.flaresolverr]`；这些 table 不会由 baseline config 生成，并在启动时
-读取为 snapshot。首次配置 bootstrap 使用 `internal/config/settings` schema 元数据与 `tomledit` 自动生成精简文件，
-只落盘标记为 baseline 的默认项，且绝不覆盖已有文件。
+读取为 snapshot。首次配置 bootstrap 由 `internal/config/settings` 的**字段标签**驱动，用 `tomledit` 自动生成精简文件，
+只落盘标记 `example:"true"` 的默认项，且绝不覆盖已有文件。
+
+新增一项**普通配置**（可由 `config get/set/unset` 管理、或仅从 `config.toml`/环境变量读取）只需三步：
+
+1. 按下方链接的标签约定，在 `internal/config/settings/config.go` 的 `RuntimeConfig`（或嵌套配置组）添加字段与声明。
+2. 补一个聚焦的行为测试（默认值/来源/可见性或 schema 错误）。
+3. 更新对应文档。
+
+不需要再同步注册表、环境变量 `switch`、`Runtime()` 的逐字段赋值、初始文件清单或 CLI 别名清单。
+标签约定与各文件职责的完整说明见[架构说明的配置声明一节](architecture.md#配置声明结构体字段标签是唯一事实来源)。
 
 > [!NOTE]
 > 已删除的 `[web] fallback_enabled` 若仍存在会返回 `removed_setting`，用 `pixiv config unset web_fallback_enabled` 清理。`[logging].level`（`info|debug`）与 `[logging].format`（`text|json`）是启动时生效的配置；`PIXIV_LOG_LEVEL` 与 `PIXIV_LOG_FORMAT` 覆盖文件值。
@@ -405,6 +414,7 @@ amd64/arm64 platform-smoke 还会用真实 `cmd.exe`、`certutil.exe` 与 `tar.e
 
 | 目录 | same-package 理由 |
 | --- | --- |
+| `internal/config/settings` | `schema_test.go` 将合成类型交给私有 `deriveSchemaFromTags` 编译函数，验证非法声明的生产拒绝路径，避免导出反射元数据或重置生产缓存。 |
 | `internal/cli` | composition root 测试观察未导出的 root wiring、invocation lifecycle 与 close ordering；这些 seam 不构成公开 API。 |
 | `internal/cli/commands/pixiv/search` | 通过真实 SDK 与 HTTP fixture 观察私有 searchArtworks 逻辑页续读。CLI/MCP wire 不暴露这些 cursor，为测试导出应用内部接口会扩大公开契约。 |
 | `internal/mcpserver/pixiv/tools/search_illust` | 通过真实 SDK 与 HTTP fixture 观察私有 searchArtworks 逻辑页续读。CLI/MCP wire 不暴露这些 cursor，为测试导出应用内部接口会扩大公开契约。 |

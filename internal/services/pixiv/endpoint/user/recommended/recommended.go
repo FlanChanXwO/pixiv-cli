@@ -1,7 +1,6 @@
 package recommended
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -88,8 +87,8 @@ func (c *Client) List(ctx context.Context, request Request) (Result, error) {
 }
 
 type responseDTO struct {
-	Users   requiredList[previewDTO] `json:"user_previews"`
-	NextURL *string                  `json:"next_url"`
+	Users   protocol.RequiredList[previewDTO] `json:"user_previews"`
+	NextURL *string                           `json:"next_url"`
 }
 type previewDTO struct {
 	User    userDTO     `json:"user"`
@@ -180,23 +179,7 @@ type metaPageDTO struct {
 	Extension string       `json:"extension"`
 	ImageURLs imageURLsDTO `json:"image_urls"`
 }
-type requiredList[T any] struct {
-	Items   []T
-	Present bool
-	Valid   bool
-}
 
-func (l *requiredList[T]) UnmarshalJSON(data []byte) error {
-	*l = requiredList[T]{Present: true}
-	if bytes.Equal(bytes.TrimSpace(data), []byte("null")) {
-		return nil
-	}
-	if err := json.Unmarshal(data, &l.Items); err != nil {
-		return err
-	}
-	l.Valid = true
-	return nil
-}
 func mapUser(value userDTO) user.User {
 	return user.User{ID: value.ID, Name: value.Name, Account: value.Account, Comment: value.Comment, IsFollowed: value.IsFollowed, ProfileImageURLs: user.ProfileImageURLs{Medium: cloneString(value.ProfileImageURLs.Medium)}}
 }

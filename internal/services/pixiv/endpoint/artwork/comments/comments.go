@@ -1,9 +1,7 @@
 package comments
 
 import (
-	"bytes"
 	"context"
-	"encoding/json"
 	"errors"
 	"net/url"
 	"strconv"
@@ -202,10 +200,10 @@ func validateCommentBody(body string) error {
 }
 
 type responseDTO struct {
-	Comments      requiredList[commentDTO] `json:"comments"`
-	NextURL       *string                  `json:"next_url"`
-	TotalComments *int64                   `json:"total_comments"`
-	AccessControl *commentAccessControlDTO `json:"access_control"`
+	Comments      protocol.RequiredList[commentDTO] `json:"comments"`
+	NextURL       *string                           `json:"next_url"`
+	TotalComments *int64                            `json:"total_comments"`
+	AccessControl *commentAccessControlDTO          `json:"access_control"`
 	// CommentAccessControl 是当前 App API 标量；与 legacy object 分开解码，
 	// 避免猜测其业务含义。
 	CommentAccessControl *int64 `json:"comment_access_control"`
@@ -227,24 +225,6 @@ func (value mutationResponseDTO) commentID() *int64 {
 	if value.Comment != nil {
 		return value.Comment.ID
 	}
-	return nil
-}
-
-type requiredList[T any] struct {
-	Items   []T
-	Present bool
-	Valid   bool
-}
-
-func (l *requiredList[T]) UnmarshalJSON(data []byte) error {
-	*l = requiredList[T]{Present: true}
-	if bytes.Equal(bytes.TrimSpace(data), []byte("null")) {
-		return nil
-	}
-	if err := json.Unmarshal(data, &l.Items); err != nil {
-		return err
-	}
-	l.Valid = true
 	return nil
 }
 

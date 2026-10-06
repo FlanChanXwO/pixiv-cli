@@ -27,7 +27,7 @@ type Plan struct {
 }
 
 // Request 是一次 Pixiv data execution 的传输覆写快照。listing 只传递它，
-// 不创建 client，也不依赖 CLI resource graph。
+// 不创建 client，也不依赖 CLI composition root 的内部状态。
 type Request struct {
 	UserID             int64
 	HTTPSProxyOverride *string
