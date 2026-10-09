@@ -326,3 +326,5 @@ Bug reports, documentation fixes, tests, and focused features are welcome. Read 
 [MIT](LICENSE) © FlanChanXwO
 
 <!-- Temporary docs-fork CI classification probe; do not merge. -->
+
+<!-- Repeat synchronize-event CI probe; do not merge. -->
