@@ -185,22 +185,26 @@ func TestEveryToolInputSchemaSerializesRequiredAsArray(t *testing.T) {
 		if err != nil {
 			t.Fatalf("marshal %s input schema: %v", tool.Name, err)
 		}
-		var schema struct {
-			Required json.RawMessage `json:"required"`
-		}
+		var schema map[string]json.RawMessage
 		if err := json.Unmarshal(encoded, &schema); err != nil {
 			t.Fatalf("decode %s input schema: %v", tool.Name, err)
 		}
-		if len(schema.Required) == 0 {
+		rawRequired, ok := schema["required"]
+		if !ok {
 			continue
 		}
-		if string(schema.Required) == "null" {
+		if string(rawRequired) == "null" {
 			violations = append(violations, tool.Name+": inputSchema.required serializes as null")
+			continue
+		}
+		var names []string
+		if err := json.Unmarshal(rawRequired, &names); err != nil {
+			violations = append(violations, tool.Name+": inputSchema.required is not an array of strings")
 		}
 	}
 	if len(violations) > 0 {
 		sort.Strings(violations)
-		t.Fatalf("tool input schemas do not serialize required as an array:\n  %s", strings.Join(violations, "\n  "))
+		t.Fatalf("tool input schemas do not serialize required as an array of strings:\n  %s", strings.Join(violations, "\n  "))
 	}
 }
 
