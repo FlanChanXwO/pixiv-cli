@@ -168,6 +168,42 @@ func TestEveryToolOutputSchemaOmitsTransportAndCredentialFields(t *testing.T) {
 	}
 }
 
+// TestEveryToolInputSchemaSerializesRequiredAsArray guards the shape MCP clients
+// validate on the wire. JSON Schema requires "required" to be an array of
+// strings; a Go nil slice encodes as null, and strict clients reject the entire
+// tools/list response when they see it — one bad tool is enough to disconnect
+// the server. An absent "required" stays legal and is not reported here.
+func TestEveryToolInputSchemaSerializesRequiredAsArray(t *testing.T) {
+	tools := connectAndListTools(t)
+	if len(tools) == 0 {
+		t.Fatal("no tools registered")
+	}
+
+	violations := make([]string, 0)
+	for _, tool := range tools {
+		encoded, err := json.Marshal(tool.InputSchema)
+		if err != nil {
+			t.Fatalf("marshal %s input schema: %v", tool.Name, err)
+		}
+		var schema struct {
+			Required json.RawMessage `json:"required"`
+		}
+		if err := json.Unmarshal(encoded, &schema); err != nil {
+			t.Fatalf("decode %s input schema: %v", tool.Name, err)
+		}
+		if len(schema.Required) == 0 {
+			continue
+		}
+		if string(schema.Required) == "null" {
+			violations = append(violations, tool.Name+": inputSchema.required serializes as null")
+		}
+	}
+	if len(violations) > 0 {
+		sort.Strings(violations)
+		t.Fatalf("tool input schemas do not serialize required as an array:\n  %s", strings.Join(violations, "\n  "))
+	}
+}
+
 // TestUnsafeOutputPropertyIsDetected proves the walk above can fail. Without
 // it, a schema shape the walker does not understand would silently turn the
 // check into a no-op for every tool.
