@@ -405,3 +405,5 @@ jobs:
             fi
             sleep 5
           done
+
+# Temporary smoke-fork CI classification probe; do not merge.
