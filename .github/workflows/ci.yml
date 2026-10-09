@@ -3,6 +3,8 @@ name: Quality gate
 # R15：tag push 由 Release 独占门禁，Quality 只服务 PR 与 manual dispatch。
 on:
   pull_request:
+    # Base-branch retargets use edited; keep the required Quality job present.
+    types: [opened, synchronize, reopened, edited]
     branches:
       - main
   workflow_dispatch: {}
