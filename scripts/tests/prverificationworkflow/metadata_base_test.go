@@ -474,3 +474,42 @@ esac
 		}
 	}
 }
+
+// Retargeting a PR to main is an edited event, so the required Quality job must exist.
+func TestQualityGateHandlesPullRequestBaseEdits(t *testing.T) {
+	workflow, err := os.ReadFile(filepath.Join(repositoryRoot(t), ".github", "workflows", "ci.yml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var document struct {
+		On map[string]struct {
+			Types []string `yaml:"types"`
+		} `yaml:"on"`
+	}
+	if err := yaml.Unmarshal(workflow, &document); err != nil {
+		t.Fatal(err)
+	}
+	for _, event := range document.On["pull_request"].Types {
+		if event == "edited" {
+			return
+		}
+	}
+	t.Fatal("Quality must handle edited events when a PR is retargeted to main")
+}
+
+// GitHub does not evaluate a dynamic job name when the job is skipped.
+func TestQualityGateKeepsRequiredNameWhenSkipped(t *testing.T) {
+	workflow, err := os.ReadFile(filepath.Join(repositoryRoot(t), ".github", "workflows", "ci.yml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var document struct {
+		Jobs map[string]struct{ Name string } `yaml:"jobs"`
+	}
+	if err := yaml.Unmarshal(workflow, &document); err != nil {
+		t.Fatal(err)
+	}
+	if document.Jobs["quality_gate"].Name != "Quality gate" {
+		t.Fatal("Quality must have a literal required check name even when documentation scope skips it")
+	}
+}
