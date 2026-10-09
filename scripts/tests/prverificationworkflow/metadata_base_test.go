@@ -473,3 +473,25 @@ esac
 		}
 	}
 }
+
+// Retargeting a PR to main is an edited event, so the required Quality job must exist.
+func TestQualityGateHandlesPullRequestBaseEdits(t *testing.T) {
+	workflow, err := os.ReadFile(filepath.Join(repositoryRoot(t), ".github", "workflows", "ci.yml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var document struct {
+		On map[string]struct {
+			Types []string `yaml:"types"`
+		} `yaml:"on"`
+	}
+	if err := yaml.Unmarshal(workflow, &document); err != nil {
+		t.Fatal(err)
+	}
+	for _, event := range document.On["pull_request"].Types {
+		if event == "edited" {
+			return
+		}
+	}
+	t.Fatal("Quality must handle edited events when a PR is retargeted to main")
+}

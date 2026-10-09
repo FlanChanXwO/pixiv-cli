@@ -412,6 +412,8 @@ amd64/arm64 platform-smoke 还会用真实 `cmd.exe`、`certutil.exe` 与 `tar.e
 它用 MSYS 的 `winsymlinks:nativestrict` 创建受检链接：若 runner 不能创建原生 Windows link，测试会显式
 失败，避免 Git Bash 的普通文件伪链接让 output ancestor 安全门形同虚设。
 
+Quality 同时处理 `pull_request.edited`，确保 PR 改为指向 `main` 后会发布必需的 Quality 结果。该事件也包含标题和描述编辑：Quality 重新分类 exact head 并重跑必要验证，不以 skip 覆盖可能失败的代码检查；纯文档改动仍使用真实 job-level skip。
+
 ### 测试文件布局
 
 生产文件 `x.go` 对应同目录最多一个 `x_test.go`；平台专用测试用 `x_<platform>_test.go`，必须有真实 base owner。新 owner 的测试一律用 external test package（`X_test`）；只有下列目录允许 same-package，因为它们观察未导出的内部状态。新增 same-package 例外必须在此登记 permanent 理由，否则视为违规。

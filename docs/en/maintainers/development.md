@@ -325,6 +325,8 @@ The Platform worker resolves its six-platform matrix from the trusted workflow r
 
 The Windows `.zip` is produced by `7z` preinstalled on the GitHub runner image; other platforms continue to use `zip`. `scripts/test-package-release.sh` delegates the faked invocations to the real `7z` on the Windows runner, uses the `zip` fixture on other dev machines, and checks archive members; therefore a Git Bash missing `zip` is directly exposed at the release test gate. It uses MSYS's `winsymlinks:nativestrict` to create the checked links: if the runner cannot create native Windows links, the test explicitly fails, preventing Git Bash's plain-file pseudo-links from neutering the output-ancestor safety gate.
 
+Quality also handles `pull_request.edited`, so retargeting a PR to `main` publishes its required Quality result. This event also covers title/body edits: Quality reclassifies the exact head and reruns required verification rather than publishing a skip that could hide a failed code check. Documentation-only changes retain their real job-level skip.
+
 ### Test file layout
 
 A production file `x.go` corresponds to at most one `x_test.go` in the same directory; platform-specific tests use `x_<platform>_test.go` and must have a real base owner. Tests for new owners always use the external test package (`X_test`); only the directories below are allowed to be same-package, because they observe unexported internal state. New same-package exceptions must be registered here with a permanent reason; otherwise they are treated as violations.
