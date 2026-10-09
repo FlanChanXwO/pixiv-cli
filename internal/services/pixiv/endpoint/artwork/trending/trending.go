@@ -1,7 +1,6 @@
 package trending
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -45,13 +44,13 @@ func (c *Client) List(ctx context.Context) ([]artwork.TrendingTag, error) {
 }
 
 type responseDTO struct {
-	TrendTags requiredList[trendTagDTO] `json:"trend_tags"`
+	TrendTags protocol.RequiredList[trendTagDTO] `json:"trend_tags"`
 }
 
 type trendTagDTO struct {
-	Tag            string                    `json:"tag"`
-	TranslatedName string                    `json:"translated_name"`
-	Illust         requiredObject[illustDTO] `json:"illust"`
+	Tag            string                             `json:"tag"`
+	TranslatedName string                             `json:"translated_name"`
+	Illust         protocol.RequiredObject[illustDTO] `json:"illust"`
 }
 
 type illustDTO struct {
@@ -130,46 +129,6 @@ type metaPageDTO struct {
 	Height    int          `json:"height"`
 	Extension string       `json:"extension"`
 	ImageURLs imageURLsDTO `json:"image_urls"`
-}
-
-type requiredList[T any] struct {
-	Items   []T
-	Present bool
-	Valid   bool
-}
-
-func (l *requiredList[T]) UnmarshalJSON(data []byte) error {
-	*l = requiredList[T]{Present: true}
-	if bytes.Equal(bytes.TrimSpace(data), []byte("null")) {
-		return nil
-	}
-	if err := json.Unmarshal(data, &l.Items); err != nil {
-		return err
-	}
-	l.Valid = true
-	return nil
-}
-
-type requiredObject[T any] struct {
-	Value   T
-	Present bool
-	Valid   bool
-}
-
-func (o *requiredObject[T]) UnmarshalJSON(data []byte) error {
-	*o = requiredObject[T]{Present: true}
-	data = bytes.TrimSpace(data)
-	if bytes.Equal(data, []byte("null")) {
-		return nil
-	}
-	if len(data) == 0 || data[0] != '{' {
-		return json.Unmarshal(data, &o.Value)
-	}
-	if err := json.Unmarshal(data, &o.Value); err != nil {
-		return err
-	}
-	o.Valid = true
-	return nil
 }
 
 func mapArtwork(dto illustDTO) artwork.Artwork {

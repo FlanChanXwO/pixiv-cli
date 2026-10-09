@@ -246,8 +246,17 @@ CLI 的认证、配置、回调桥接、Release 检查缓存与 callback helper 
 `reverse_search_provider`、`reverse_search_pixiv_only` 与 `saucenao_api_key`。
 其余高级 TOML 由用户手工维护。尤其是 reverse-search transport 与 challenge recovery 位于
 `[reverse_search.network]` 和 `[reverse_search.flaresolverr]`；这些 table 不会由 baseline config 生成，并在启动时
-读取为 snapshot。首次配置 bootstrap 使用 `internal/config/settings` schema 元数据与 `tomledit` 自动生成精简文件，
-只落盘标记为 baseline 的默认项，且绝不覆盖已有文件。
+读取为 snapshot。首次配置 bootstrap 由 `internal/config/settings` 的**字段标签**驱动，用 `tomledit` 自动生成精简文件，
+只落盘标记 `example:"true"` 的默认项，且绝不覆盖已有文件。
+
+新增一项**普通配置**（可由 `config get/set/unset` 管理、或仅从 `config.toml`/环境变量读取）只需三步：
+
+1. 按下方链接的标签约定，在 `internal/config/settings/config.go` 的 `RuntimeConfig`（或嵌套配置组）添加字段与声明。
+2. 补一个聚焦的行为测试（默认值/来源/可见性或 schema 错误）。
+3. 更新对应文档。
+
+不需要再同步注册表、环境变量 `switch`、`Runtime()` 的逐字段赋值、初始文件清单或 CLI 别名清单。
+标签约定与各文件职责的完整说明见[架构说明的配置声明一节](architecture.md#配置声明结构体字段标签是唯一事实来源)。
 
 > [!NOTE]
 > 已删除的 `[web] fallback_enabled` 若仍存在会返回 `removed_setting`，用 `pixiv config unset web_fallback_enabled` 清理。`[logging].level`（`info|debug`）与 `[logging].format`（`text|json`）是启动时生效的配置；`PIXIV_LOG_LEVEL` 与 `PIXIV_LOG_FORMAT` 覆盖文件值。
@@ -386,6 +395,10 @@ smoke、版本化 archive 内容和 Homebrew 安装验收。
 
 `.github/workflows/ci.yml` 只承载只读的 `Quality gate`，只响应 `pull_request` 与 `workflow_dispatch`，不再响应 tag push。它的 change-scope classification 与 `pr-metadata.yml` 使用同一信任模型：先解析受保护 base branch 的当前 tip，从该 tip checkout 出 `scripts/classify-change-scope.sh` 与 `.github/ci-change-scope.gitignore`，再 fetch 精确 PR HEAD 只用于 diff 范围，因此 PR 无法修改自己的 skip 判定；分类器失败 fail closed，不会退化为 skip。`.github/workflows/pr-metadata.yml` 是受信的 `pull_request_target` coordinator：从当前 base tip 验证 PR 模板与 verification declaration，使用 `.github/ci-change-scope.gitignore` 对精确 PR-head diff 做可信分类，发布 `PR template gate` / `PR commands gate` commit status，dispatch 所需 smoke worker，并把 `Platform smoke` / `Container smoke` 作为真实 job-level required check 暴露出来；coordinator job 本身不执行 PR 代码。独立的 `Platform smoke worker` / `Container smoke worker` Check Run 只作为由 base-ref worker workflow 完成的可信结果桥接，required smoke job 等待这些结果。普通 pattern 表示纯文档，`?pattern` 表示只需 Quality，`!pattern` 表示需要 Quality + Platform + Container；`pr-metadata.yml` 是 smoke controller（它决定分类、dispatch 两个 worker 并持有 required gate），因此必须使用 `!pattern`。不需要的 Quality 与 smoke job 都由 GitHub Actions 原生显示为 `Skipped`，不再伪装成 success。仅修改 PR body 时也会重新对未变化的 head 做可信分类：需要 smoke 的 job 复用同一 head 已有的 worker 结果，真正不需要 smoke 的 job 才继续显示 `Skipped`，因此编辑 PR body 不能把失败 smoke 替换成可绕过的 skip。
 
+`pr-metadata.yml` 的状态维护只操作 PR，使用 `pull-requests: write`，不申请普通 issue 写权限。读取当前 PR、读取状态评论和创建/更新/删除评论失败时，日志保留 GitHub API 原始错误并标明失败请求；元数据失败仍阻断 required smoke gate。实际 workflow shell 的 API fixture 只在 Linux 运行，匹配 Ubuntu runner 的工具环境；权限契约测试仍跨平台执行。
+
+Smoke gate 按精确 PR head 与 worker 名称使用 `filter=all` 查询并遍历分页，按 `started_at` 选择最新 check，同一时间以 ID 决定先后，不依赖响应顺序。PR 更新后，`filter=latest` 可能隐藏其他 check suite 的 worker；worker 缺失或失败时仍阻断 gate。
+
 Platform worker 从受信 workflow ref 解析六平台 matrix，只有 matrix job checkout 精确 PR head，并且 token 仅为 `contents: read`；独立 publish job 不 checkout PR，只持有完成内部 worker Check Run 所需的最小 `checks: write`。Container worker 对 Linux amd64/arm64 使用同样的隔离模型。六个原生 job 继续并行运行，其中 Windows worker 仍承担 root callback wiring 与原生 `loginhelper` 契约；两个容器 job 也继续并行。内部 matrix 不作为 required PR check，最终由对应的 PR gate job 镜像 aggregate worker 结果，失败时保留 worker details URL。普通分支与 `main` push 不运行 CI；稳定 `vX.Y.Z` tag push 只运行 `release.yml`（Quality gate 不再响应 tag，tag 上的正式门禁由 Release 独占），Release 自己执行正式六平台测试/构建与两平台容器验证，因此 tag 不重复 PR smoke matrix。`pr-verification.yml` 的 `dispatch` job 在分配 runner 前先用 `contains(github.event.comment.body, '/test')` 做廉价预过滤：它是 `tools/prmeta --check-trigger` 的宽松超集，只产生少量 false positive，不会漏掉合法触发，最终授权仍由 `tools/prmeta` 判定。browser/native evidence 保留为显式维护入口。真实 Pixiv/FANBOX SDK E2E 不进入普通 PR CI；仅发布 tag 的 `release.yml` 在 validate 后运行无凭据 SDK E2E contract gate，真实 SDK E2E 仍按 release-prep 在授权环境独立验收。
 
 `scripts/tests/installers` 使用本地伪 Release、伪 `curl` 与 checksum fixture 验证安装器，不访问 GitHub。Unix
@@ -405,6 +418,7 @@ amd64/arm64 platform-smoke 还会用真实 `cmd.exe`、`certutil.exe` 与 `tar.e
 
 | 目录 | same-package 理由 |
 | --- | --- |
+| `internal/config/settings` | `schema_test.go` 将合成类型交给私有 `deriveSchemaFromTags` 编译函数，验证非法声明的生产拒绝路径，避免导出反射元数据或重置生产缓存。 |
 | `internal/cli` | composition root 测试观察未导出的 root wiring、invocation lifecycle 与 close ordering；这些 seam 不构成公开 API。 |
 | `internal/cli/commands/pixiv/search` | 通过真实 SDK 与 HTTP fixture 观察私有 searchArtworks 逻辑页续读。CLI/MCP wire 不暴露这些 cursor，为测试导出应用内部接口会扩大公开契约。 |
 | `internal/mcpserver/pixiv/tools/search_illust` | 通过真实 SDK 与 HTTP fixture 观察私有 searchArtworks 逻辑页续读。CLI/MCP wire 不暴露这些 cursor，为测试导出应用内部接口会扩大公开契约。 |

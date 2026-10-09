@@ -1,7 +1,6 @@
 package search
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -171,8 +170,8 @@ func continuationOffset(rawURL string) (int, error) {
 }
 
 type responseDTO struct {
-	Illusts requiredList[illustDTO] `json:"illusts"`
-	NextURL *string                 `json:"next_url"`
+	Illusts protocol.RequiredList[illustDTO] `json:"illusts"`
+	NextURL *string                          `json:"next_url"`
 }
 
 type illustDTO struct {
@@ -258,24 +257,6 @@ type metaPageDTO struct {
 	Height    int          `json:"height"`
 	Extension string       `json:"extension"`
 	ImageURLs imageURLsDTO `json:"image_urls"`
-}
-
-type requiredList[T any] struct {
-	Items   []T
-	Present bool
-	Valid   bool
-}
-
-func (l *requiredList[T]) UnmarshalJSON(data []byte) error {
-	*l = requiredList[T]{Present: true}
-	if bytes.Equal(bytes.TrimSpace(data), []byte("null")) {
-		return nil
-	}
-	if err := json.Unmarshal(data, &l.Items); err != nil {
-		return err
-	}
-	l.Valid = true
-	return nil
 }
 
 func mapArtwork(value illustDTO) artwork.Artwork {

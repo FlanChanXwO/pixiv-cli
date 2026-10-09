@@ -1,7 +1,6 @@
 package detail
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -197,12 +196,12 @@ type metaPageDTO struct {
 }
 
 type ugoiraResponseDTO struct {
-	Metadata requiredObject[ugoiraMetadataDTO] `json:"ugoira_metadata"`
+	Metadata protocol.RequiredObject[ugoiraMetadataDTO] `json:"ugoira_metadata"`
 }
 
 type ugoiraMetadataDTO struct {
-	ZipURLs requiredObject[ugoiraZipURLsDTO] `json:"zip_urls"`
-	Frames  requiredList[ugoiraFrameDTO]     `json:"frames"`
+	ZipURLs protocol.RequiredObject[ugoiraZipURLsDTO] `json:"zip_urls"`
+	Frames  protocol.RequiredList[ugoiraFrameDTO]     `json:"frames"`
 }
 
 type ugoiraZipURLsDTO struct {
@@ -213,46 +212,6 @@ type ugoiraZipURLsDTO struct {
 type ugoiraFrameDTO struct {
 	File  string `json:"file"`
 	Delay int    `json:"delay"`
-}
-
-type requiredList[T any] struct {
-	Items   []T
-	Present bool
-	Valid   bool
-}
-
-func (l *requiredList[T]) UnmarshalJSON(data []byte) error {
-	*l = requiredList[T]{Present: true}
-	if bytes.Equal(bytes.TrimSpace(data), []byte("null")) {
-		return nil
-	}
-	if err := json.Unmarshal(data, &l.Items); err != nil {
-		return err
-	}
-	l.Valid = true
-	return nil
-}
-
-type requiredObject[T any] struct {
-	Value   T
-	Present bool
-	Valid   bool
-}
-
-func (o *requiredObject[T]) UnmarshalJSON(data []byte) error {
-	*o = requiredObject[T]{Present: true}
-	data = bytes.TrimSpace(data)
-	if bytes.Equal(data, []byte("null")) {
-		return nil
-	}
-	if len(data) == 0 || data[0] != '{' {
-		return json.Unmarshal(data, &o.Value)
-	}
-	if err := json.Unmarshal(data, &o.Value); err != nil {
-		return err
-	}
-	o.Valid = true
-	return nil
 }
 
 func mapArtwork(dto illustDTO) artwork.Artwork {

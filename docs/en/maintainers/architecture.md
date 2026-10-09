@@ -65,12 +65,17 @@ Owns command dispatch and output for the CLI user mode:
 - Input/output adaptation for root `--version` and `pixiv update`; the removed `version` subcommand returns unknown-command during Cobra parsing.
 - Read-only automatic update notice after a successful normal CLI command; the notice and failure warnings are written only to stderr.
 
-Currently `internal/cli/root.go` owns the command tree, global flags, exit codes, and production assembly; the close-resource list for a single execution is held by a private `closeState` there.
+`internal/cli` is the CLI composition root, split by responsibility into three same-package files (no new directory levels): `root.go` holds the command tree, global flags, and wiring shared by command owners;
+`execution.go` owns the execution entry points, exit codes, resource closing (the close-resource list for a single execution is held by a private `closeState` there, closed idempotently in reverse registration order), and startup/finish handling;
+`composition.go` owns production dependency assembly for Pixiv/FANBOX/MCP.
+
+Before closing, callers must stop resource producers and finish registration. The `closeState` mutex protects the list, not late registrations; closers must not register into or recursively close the same scope. Closing follows command completion, and MCP stdio waits for in-flight handlers; close errors are joined.
+
 `internal/cli/invocation` only owns `Streams`. Command owners construct
 config snapshot, DB, business Facade, lifecycle, media/download, and update dependencies through explicit factories and narrow ports, and close resources in reverse order.
 CLI does not export a cross-command locator, nor does it have an independent bootstrap constructor or `internal/cli/runtime`.
 
-The command tree is handled uniformly by `root.go` for global flags, requirement-driven startup lifecycle, and exit codes, then owner command packages register their domain commands:
+The command tree is handled uniformly by `root.go` for global flags and the requirement-driven startup lifecycle; exit codes are decided by the execution entry points in `execution.go`, and owner command packages then register their domain commands:
 root-level `internal/cli/commands/{config,mcp,update}`, Pixiv `internal/cli/commands/pixiv/{auth,bookmark,comment,detail,download,follow,mypixiv,ranking,recommended,search,series,timeline,user}`,
 FANBOX `internal/cli/commands/fanbox/{auth,download,mcp,post}`. Data commands consume the public SDK `*pixiv.Client`/`*fanbox.Client` via the owner-local narrow
 `Data` port (`Open`/`Pooled`/`JSONOut`, etc.) and never reach internal protocol adapter packages;
@@ -124,6 +129,8 @@ package holds no client, credentials, or protocol adapter.
 - `internal/shared/pagination` owns product-agnostic logical pagination for one ordered stream and ordered aggregate streams: filters run before the global skip/limit budget, `OneBatch` stops at the first matching source batch, and batch truncation is resumed through a source-position checkpoint. Its `StreamState` contains only the current stream and per-stream cursors; product owners encode that state together with query/account/subtype bindings in their opaque cursors.
 - `internal/shared/traversal` owns the reentrant execute lifecycle for single-stream and aggregate reads, clearing uncommitted results before a safe replay. Command-level filter wiring remains in each CLI/MCP owner, while normalized artwork rating/content-type semantics come from `internal/shared/searchfilter`.
 
+Ordinary CLI reads use `Pooled[R].Read[T]` on a concrete function type: failure returns the zero T and callbacks do not commit results; owners retain their own Request types. `Write` marks an invoked SDK call committed even on error, preventing cross-account replay with an unknown write outcome; a missing pooled port returns an error. Streaming NDJSON, pagination, and partial delivery remain with owners and traversal/lifecycle, not ordinary Read.
+
 The config schema, `config.toml` path/get/set/unset, generated baseline, and the immutable `Snapshot` required for a single execution live in `internal/config/settings`; the protocol-agnostic month-truncation pure function lives in `internal/utils/date`. CLI/MCP use business Facades via owner-local narrow Seams and the MCP runtime `SDKPorts`, without directly depending on upstream Adapters. `internal/account` and `internal/session` have been deleted, with no compatibility alias retained.
 
 ### `internal/shared/diagnostics`
@@ -138,7 +145,7 @@ Cookie, token, signed query, or arbitrary error dump; the public SDK stays silen
 
 `internal/bootstrap` was deleted as part of the v1 migration and is no longer the CLI/MCP composition root. The production Ed25519 public trust root's
 key ID and public key constants live in `internal/update/installer/release_installer.go`; `internal/cli/commands/update/production.go`
-assembles the key ID→public key map and hands it to the Release installer, so callers cannot pollute the trust root. `internal/cli/root.go` only delegates to the update command
+assembles the key ID→public key map and hands it to the Release installer, so callers cannot pollute the trust root. `internal/cli/root.go` only holds the update command seams; registration and execution are delegated to `internal/cli/commands/update`
 and does not construct the trust root. The public key fingerprint and known signing fixtures are verified by installer same-package tests; the private key is not in source or runtime config.
 Read-only update checks do not need this key; this wiring itself cannot replace the independent release acceptance for each version.
 
@@ -167,9 +174,47 @@ Owns `config.toml` and runtime configuration:
 The configuration is split as follows:
 
 - `pixiv-cli.db`: stores account identity and credentials (`pixiv_account`/`fanbox_account`), DB file permission `0600`; the legacy `auth.json` is not read automatically.
-- `config.toml`: stores global configuration keys, including `[pixiv.auth].default_user_id` and `[fanbox.auth].default_user_id`; Unix-like file permission `0600`. The first-run compact baseline is generated from `SettingSpec` metadata and includes only entries marked `DefaultInFile`; advanced settings remain omitted until explicitly written. When no default account is set, the first account is selected by `sort_order`.
+- `config.toml`: stores global configuration keys, including `[pixiv.auth].default_user_id` and `[fanbox.auth].default_user_id`; Unix-like file permission `0600`. The first-run compact baseline is generated from **struct field tag** metadata and writes only entries marked `example:"true"`; keys that have a default but no `example`, plus advanced settings, remain omitted until explicitly written. When no default account is set, the first account is selected by `sort_order`.
 
 Runtime settings use `koanf` to merge `config.toml` with public environment variables; `config set/unset` uses `tomledit` for write-back, preserving comments, order, and layout as much as possible.
+
+#### Configuration declaration: struct field tags are the single source of truth
+
+The exported fields of `RuntimeConfig` (including its nested account-pool, network, and FlareSolverr groups) declare all static facts via tags; runtime binding, CLI metadata, and baseline generation all reuse that one declaration:
+
+| Tag | Meaning |
+|---|---|
+| `config` | TOML path relative to its containing group; `"-"` excludes the field and its entire subtree |
+| `alias` | The public name used by `config get/set/unset`; omitted on groups and private advanced leaves |
+| `env` | Environment variables that may be read, in declaration order (that order is the precedence; presence counts as a hit and an empty value does not fall through) |
+| `default` | Value used when absent, interpreted by field type (distinguished by tag **presence**, not by whether the string is empty) |
+| `example` | Whether the entry enters the first-run compact config; only `"true"` does, and it requires a `default` |
+| `cli` | Whether `config get/set/unset` manages it |
+| `secret` | Whether it must be hidden from public output and kept out of the example config (a `secret:"true"` + `example:"true"` pair is a schema error) |
+
+Groups declare only a `config` prefix; their leaves declare relative paths. The same group type can be reused under different prefixes. `OptionalString` is a leaf, not a group. Optional pointer groups are inspected as types without allocating runtime values. Duplicate expanded paths, duplicate nonempty aliases, empty path segments, cyclic groups, unsupported leaf types, and leaf-only attributes on groups are declaration errors. Private leaves cannot enable CLI management, baseline examples, or environment bindings without a public alias.
+
+The private schema caches field index chains and Go types, never target instances. Scalar binding uses the same source selection as `Effective`; pointer groups are not allocated by ordinary binding. Advanced readers locate compiled paths by Go field ownership, without adding public aliases or allocating solver groups before the domain enablement check. Ordinary runtime fields have no separate wiring list; account-pool defaults also come from declarations, while strict file types and strategy validation remain domain rules.
+
+Default account selection has a separate private declaration scope. Its `int64` UID leaves have no alias or default; positive-integer parsing remains in the on-demand auth read/write methods. They never enter ordinary Runtime binding or trigger early validation during Snapshot loading.
+
+Adding one ordinary setting therefore requires only: a field plus tags, a behavioural test, and the matching documentation. New declarations need no additional registry, environment `switch`, per-field runtime assignment, baseline list, or CLI alias list.
+
+The developer-declared `cli`, `secret`, and `example` attributes accept only `"true"` or `"false"` when present; other spellings are schema errors. This does not change parsing of user configuration values.
+
+`SettingSpec` remains the **public derived view** of that declaration (the CLI still consumes it); it is no longer a hand-written fact table.
+
+File responsibilities inside `internal/config/settings`:
+
+- `config.go`: types, field tags, and field contracts.
+- `schema.go`: tag-derived metadata, declaration validation, lookup, retirement tombstones, and the public `SettingSpec` view.
+- `snapshot.go`: file and environment snapshot, source selection, and runtime binding (including the domain rules for service networks, FlareSolverr, and the account pool).
+- `values.go`: type parsing, normalization, and domain validation.
+- `document.go`: TOML targeting and sparse mutation.
+- `defaults.go`: baseline config document generation.
+- `store.go`: `Store` operations (path, read, sparse write-back).
+- `auth.go`: default account selection read/write (deliberately **not** part of ordinary runtime binding).
+- `paths.go`: the `FileStore` port and the default file adapter.
 
 `internal/config/settings` defines the `FileStore` port, injected by the CLI private composition graph from the protocol-agnostic file mechanisms in `internal/storage/file/{atomic,lock,replace,secret}`: a temporary file with a random name (containing no credentials) is created in the same directory as the target, the full content is written, file `Sync` is performed, the file is closed, and only then is the target replaced. On Unix-like platforms the parent directory and file are proactively tightened to `0700` and `0600` respectively, and after atomic replacement the target directory is synced again;
 if this call created one or more directory levels, then after the replacement is committed the target directory and each new directory's outer parent are synced in leaf→root order, so that both the file entry and the new directory entries fall within the durability boundary; existing directories still only sync the target directory.
@@ -260,6 +305,8 @@ These existing paths remain upstream Adapters after the migration, composed only
 
 v1 has deleted `internal/services/pixiv/webapi` and the anonymous Web/AJAX path: App API errors return a normalized error directly, without automatic protocol switching. Pixiv endpoint families live in `internal/services/pixiv/endpoint/{artwork,novel,user}/<leaf>`, where each family owns its own route, request, raw DTO, mapper, and continuation/error validation, and the parent package only owns normalized entities/values. FANBOX's `internal/services/fanbox/protocol` only owns product-specific session, cookie, challenge, URL policy, and narrow transport; `internal/services/fanbox/endpoint/{creator,post}/<leaf>` and `resource` each own their endpoint route/fixture/conversion. `sdk/fanbox` directly composes these Adapter capabilities, without depending on the business Facade.
 
+`RequiredList` / `RequiredObject` share field-presence decoding only; endpoints retain completeness checks and mapping. `null` means Present=true and Valid=false; a decoded empty object need not be complete. Missing fields do not call the decoder, so callers must clear or recreate a reused outer DTO. An invoked decoder resets old state, but failure may leave partial data from the current input: handle the error and check Valid first. Historical object-decoder parity is limited to the verified production DTOs and inputs, not arbitrary generic types or custom decoders.
+
 ### `internal/services/pixiv`, `internal/services/fanbox` (business Facade)
 
 After the migration, the two product root packages aggregate account and session business respectively, without bringing CLI/MCP DTOs, filters, records, schemas, or output adaptation into services. The Facade only depends on the Ports of business leaf modules, the config snapshot, protocol-agnostic shared modules, and the public SDK; it must not depend on the concrete implementation of `internal/storage/database`, and the public SDK must not reverse-import it.
@@ -268,7 +315,7 @@ The business Facade of `internal/services/pixiv` unifies account opening, login 
 
 ### Reverse-search Facade exception
 
-Reverse image search is the only product capability that crosses the normal public-SDK boundary. The top-level contract and Facade live in `internal/services/reversesearch`; the provider protocol adapters live only in `internal/services/reversesearch/saucenao` and `internal/services/reversesearch/ascii2d`. Production assembly in `internal/cli/root.go` may depend on `internal/services/reversesearch/assembly` to bind the HTTP client, proxy, and SauceNAO key once per command/session. CLI owners under `internal/cli/commands` and all of `internal/mcpserver` may import only the top-level `internal/services/reversesearch` contract; they must not import the provider subpackages or the assembly package. The Facade returns domain results, while CLI/MCP adapters project canonical records at their output boundary.
+Reverse image search is the only product capability that crosses the normal public-SDK boundary. The top-level contract and Facade live in `internal/services/reversesearch`; the provider protocol adapters live only in `internal/services/reversesearch/saucenao` and `internal/services/reversesearch/ascii2d`. Production assembly in `internal/cli/composition.go` may depend on `internal/services/reversesearch/assembly` to bind the HTTP client, proxy, and SauceNAO key once per command/session. CLI owners under `internal/cli/commands` and all of `internal/mcpserver` may import only the top-level `internal/services/reversesearch` contract; they must not import the provider subpackages or the assembly package. The Facade returns domain results, while CLI/MCP adapters project canonical records at their output boundary.
 
 The Facade loads a regular file or HTTP(S) source into one private snapshot, hashes it, and removes it after the provider work finishes. The deliberate source policy permits arbitrary readable regular files and private, loopback, or link-local URLs; the MCP server therefore belongs behind a trusted local-client boundary. Neither the source nor provider transport material crosses the output boundary: only source kind/hash, safe provider summaries/errors, domain evidence, and canonical `artwork`/`user` records are publishable.
 
