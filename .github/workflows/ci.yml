@@ -10,7 +10,7 @@ on:
   workflow_dispatch: {}
 
 concurrency:
-  group: quality-gate-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  group: quality-gate-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-${{ github.event.action == 'edited' && github.event.changes.base == null && 'metadata' || 'head' }}
   cancel-in-progress: true
 
 permissions: {}
@@ -86,9 +86,10 @@ jobs:
           bash ./scripts/classify-change-scope.sh --base "$BASE_SHA" --head "$HEAD_SHA" --github-output "$GITHUB_OUTPUT"
 
   quality_gate:
-    name: Quality gate
+    # Metadata-only skips use another name so they cannot replace required Quality.
+    name: ${{ github.event.action == 'edited' && github.event.changes.base == null && 'Quality metadata edit' || 'Quality gate' }}
     needs: scope
-    if: ${{ always() && (needs.scope.result != 'success' || needs.scope.outputs.quality_required == 'true') }}
+    if: ${{ always() && (github.event.action != 'edited' || github.event.changes.base != null) && (needs.scope.result != 'success' || needs.scope.outputs.quality_required == 'true') }}
     runs-on: ubuntu-24.04
     permissions:
       contents: read

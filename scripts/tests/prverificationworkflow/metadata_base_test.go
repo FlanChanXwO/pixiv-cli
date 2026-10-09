@@ -259,7 +259,7 @@ func TestQualityGateUsesJobLevelScopeSkip(t *testing.T) {
 	body := string(workflow)
 	for _, required := range []string{
 		"needs: scope",
-		`if: ${{ always() && (needs.scope.result != 'success' || needs.scope.outputs.quality_required == 'true') }}`,
+		`if: ${{ always() && (github.event.action != 'edited' || github.event.changes.base != null) && (needs.scope.result != 'success' || needs.scope.outputs.quality_required == 'true') }}`,
 		"Require successful scope classification",
 	} {
 		if !strings.Contains(body, required) {
@@ -494,4 +494,29 @@ func TestQualityGateHandlesPullRequestBaseEdits(t *testing.T) {
 		}
 	}
 	t.Fatal("Quality must handle edited events when a PR is retargeted to main")
+}
+
+// Body/title edits must not replace a failed required Quality result with a skip.
+func TestQualityMetadataEditsPreserveRequiredResult(t *testing.T) {
+	workflow, err := os.ReadFile(filepath.Join(repositoryRoot(t), ".github", "workflows", "ci.yml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var document struct {
+		Concurrency struct{ Group string }               `yaml:"concurrency"`
+		Jobs        map[string]struct{ Name, If string } `yaml:"jobs"`
+	}
+	if err := yaml.Unmarshal(workflow, &document); err != nil {
+		t.Fatal(err)
+	}
+	gate := document.Jobs["quality_gate"]
+	if !strings.Contains(gate.Name, "github.event.changes.base == null && 'Quality metadata edit' || 'Quality gate'") {
+		t.Fatal("metadata edits must use a distinct check name so their skip cannot hide failed Quality")
+	}
+	if !strings.Contains(gate.If, "github.event.action != 'edited' || github.event.changes.base != null") {
+		t.Fatal("metadata-only edits must preserve existing Quality execution")
+	}
+	if !strings.Contains(document.Concurrency.Group, "github.event.changes.base == null && 'metadata' || 'head'") {
+		t.Fatal("metadata edits must not cancel running Quality head verification")
+	}
 }
