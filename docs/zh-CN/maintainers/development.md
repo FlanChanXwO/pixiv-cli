@@ -397,6 +397,8 @@ smoke、版本化 archive 内容和 Homebrew 安装验收。
 
 `pr-metadata.yml` 的状态维护只操作 PR，使用 `pull-requests: write`，不申请普通 issue 写权限。读取当前 PR、读取状态评论和创建/更新/删除评论失败时，日志保留 GitHub API 原始错误并标明失败请求；元数据失败仍阻断 required smoke gate。实际 workflow shell 的 API fixture 只在 Linux 运行，匹配 Ubuntu runner 的工具环境；权限契约测试仍跨平台执行。
 
+Smoke gate 按精确 PR head 与 worker 名称使用 `filter=all` 查询，取最新匹配的 check。PR 更新后，`filter=latest` 可能隐藏其他 check suite 的 worker；worker 缺失或失败时仍阻断 gate。
+
 Platform worker 从受信 workflow ref 解析六平台 matrix，只有 matrix job checkout 精确 PR head，并且 token 仅为 `contents: read`；独立 publish job 不 checkout PR，只持有完成内部 worker Check Run 所需的最小 `checks: write`。Container worker 对 Linux amd64/arm64 使用同样的隔离模型。六个原生 job 继续并行运行，其中 Windows worker 仍承担 root callback wiring 与原生 `loginhelper` 契约；两个容器 job 也继续并行。内部 matrix 不作为 required PR check，最终由对应的 PR gate job 镜像 aggregate worker 结果，失败时保留 worker details URL。普通分支与 `main` push 不运行 CI；稳定 `vX.Y.Z` tag push 只运行 `release.yml`（Quality gate 不再响应 tag，tag 上的正式门禁由 Release 独占），Release 自己执行正式六平台测试/构建与两平台容器验证，因此 tag 不重复 PR smoke matrix。`pr-verification.yml` 的 `dispatch` job 在分配 runner 前先用 `contains(github.event.comment.body, '/test')` 做廉价预过滤：它是 `tools/prmeta --check-trigger` 的宽松超集，只产生少量 false positive，不会漏掉合法触发，最终授权仍由 `tools/prmeta` 判定。browser/native evidence 保留为显式维护入口。真实 Pixiv/FANBOX SDK E2E 不进入普通 PR CI；仅发布 tag 的 `release.yml` 在 validate 后运行无凭据 SDK E2E contract gate，真实 SDK E2E 仍按 release-prep 在授权环境独立验收。
 
 `scripts/tests/installers` 使用本地伪 Release、伪 `curl` 与 checksum fixture 验证安装器，不访问 GitHub。Unix
