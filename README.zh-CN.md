@@ -322,3 +322,5 @@ pixiv auth check
 ## 许可证
 
 [MIT](LICENSE) © FlanChanXwO
+
+<!-- Temporary docs-owner CI classification probe; do not merge. -->

@@ -324,3 +324,5 @@ Bug reports, documentation fixes, tests, and focused features are welcome. Read 
 ## License
 
 [MIT](LICENSE) © FlanChanXwO
+
+<!-- Temporary docs-owner CI classification probe; do not merge. -->
