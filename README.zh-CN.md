@@ -324,3 +324,5 @@ pixiv auth check
 [MIT](LICENSE) © FlanChanXwO
 
 <!-- Temporary docs-owner CI classification probe; do not merge. -->
+
+<!-- Repeat synchronize-event CI probe; do not merge. -->
