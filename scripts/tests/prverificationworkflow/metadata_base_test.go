@@ -395,3 +395,81 @@ func TestQualityGateDoesNotRunOnTagPush(t *testing.T) {
 		}
 	}
 }
+
+// TestPRMetadataFindsWorkersAcrossCheckSuites 复现 GitHub 的 latest 过滤
+// 隐藏仍在运行的独立 worker check，gate 必须按精确 head/name 查询。
+func TestPRMetadataFindsWorkersAcrossCheckSuites(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("Workflow fixture requires a POSIX shell")
+	}
+	workflow, err := os.ReadFile(filepath.Join(repositoryRoot(t), ".github", "workflows", "pr-metadata.yml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var document struct {
+		Jobs map[string]struct {
+			Steps []struct{ Name, Run string } `yaml:"steps"`
+		} `yaml:"jobs"`
+	}
+	if err := yaml.Unmarshal(workflow, &document); err != nil {
+		t.Fatal(err)
+	}
+	for _, owner := range []struct{ job, name string }{
+		{"platform_smoke", "Platform smoke worker"},
+		{"container_smoke", "Container smoke worker"},
+	} {
+		var script string
+		for _, step := range document.Jobs[owner.job].Steps {
+			if strings.HasPrefix(step.Name, "Wait for trusted") {
+				script = step.Run
+			}
+		}
+		if script == "" {
+			t.Fatalf("%s worker wait step missing", owner.job)
+		}
+		for _, result := range []string{"success", "failure", "missing"} {
+			t.Run(owner.job+"/"+result, func(t *testing.T) {
+				dir := t.TempDir()
+				fakeGH := `#!/bin/bash
+case "$*" in
+  "api --method GET repos/fixture/repo/commits/exact-head/check-runs -f check_name=$WORKER_CHECK -f filter=latest -f per_page=1")
+    printf '{"check_runs":[]}' ;;
+  "api --method GET repos/fixture/repo/commits/exact-head/check-runs -f check_name=$WORKER_CHECK -f filter=all -f per_page=1")
+    if [ "$WORKER_RESULT" = missing ]; then printf '{"check_runs":[]}'; else printf '{"check_runs":[{"id":11}]}'; fi ;;
+  "api --method GET --paginate --slurp repos/fixture/repo/commits/exact-head/check-runs -f check_name=$WORKER_CHECK -f filter=all -f per_page=100")
+    if [ "$WORKER_RESULT" = missing ]; then
+      printf '[{"check_runs":[]}]'
+    else
+      printf '[{"check_runs":[{"id":99,"started_at":"2026-10-08T00:00:00Z"}]},{"check_runs":[{"id":42,"started_at":"2026-10-09T00:00:00Z"},{"id":40,"started_at":"2026-10-09T00:00:00Z"}]}]'
+    fi ;;
+  "api repos/fixture/repo/check-runs/11")
+    printf '{"status":"completed","conclusion":"failure","details_url":"https://example.com/old-worker"}' ;;
+  "api repos/fixture/repo/check-runs/42")
+    printf '{"status":"completed","conclusion":"%s","details_url":"https://example.com/worker"}' "$WORKER_RESULT" ;;
+  *) echo "Unexpected API request: $*" >&2; exit 1 ;;
+esac
+`
+				if err := os.WriteFile(filepath.Join(dir, "gh"), []byte(fakeGH), 0o700); err != nil {
+					t.Fatal(err)
+				}
+				cmd := exec.Command("bash", "-c", script)
+				cmd.Env = append(os.Environ(), "PATH="+dir+string(os.PathListSeparator)+os.Getenv("PATH"),
+					"REPO=fixture/repo", "HEAD_SHA=exact-head", "WORKER_CHECK="+owner.name, "WORKER_RESULT="+result)
+				output, err := cmd.CombinedOutput()
+				if result == "success" {
+					if err != nil {
+						t.Fatalf("existing worker hidden by latest suite: %v\n%s", err, output)
+					}
+				} else {
+					want := "finished with failure. https://example.com/worker"
+					if result == "missing" {
+						want = "worker check was not published"
+					}
+					if err == nil || !strings.Contains(string(output), want) {
+						t.Fatalf("worker %s: err=%v output=%s; want %q", result, err, output, want)
+					}
+				}
+			})
+		}
+	}
+}
