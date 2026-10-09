@@ -2,10 +2,124 @@ package prverificationworkflow_test
 
 import (
 	"os"
+	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
+
+	"gopkg.in/yaml.v3"
 )
+
+// TestPRMetadataCanMaintainPullRequestComments 检查状态评论使用 PR 权限，
+// 避免只操作 PR 的受信 job 持有不相关的 issue 写权限。
+func TestPRMetadataCanMaintainPullRequestComments(t *testing.T) {
+	t.Parallel()
+	workflow, err := os.ReadFile(filepath.Join(repositoryRoot(t), ".github", "workflows", "pr-metadata.yml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var document struct {
+		Jobs map[string]struct {
+			Permissions map[string]string `yaml:"permissions"`
+		} `yaml:"jobs"`
+	}
+	if err := yaml.Unmarshal(workflow, &document); err != nil {
+		t.Fatal(err)
+	}
+	permissions := document.Jobs["validate"].Permissions
+	if permissions["pull-requests"] != "write" {
+		t.Fatal("PR metadata state comments require pull-requests: write")
+	}
+	if permissions["issues"] == "write" {
+		t.Fatal("PR-only metadata job must not request issue write access")
+	}
+}
+
+// TestPRMetadataReportsAgeStateAPIFailures 执行实际 workflow shell，
+// 验证权限错误保留原始原因，并指出读取或写入失败的请求。
+func TestPRMetadataReportsAgeStateAPIFailures(t *testing.T) {
+	if runtime.GOOS != "linux" {
+		t.Skip("PR metadata runs on Ubuntu; API fixture requires a Linux shell environment")
+	}
+	workflow, err := os.ReadFile(filepath.Join(repositoryRoot(t), ".github", "workflows", "pr-metadata.yml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var document struct {
+		Jobs map[string]struct {
+			Steps []struct{ Name, Run string } `yaml:"steps"`
+		} `yaml:"jobs"`
+	}
+	if err := yaml.Unmarshal(workflow, &document); err != nil {
+		t.Fatal(err)
+	}
+	var script string
+	for _, step := range document.Jobs["validate"].Steps {
+		if step.Name == "Maintain invalid-PR age state" {
+			script = step.Run
+		}
+	}
+	if script == "" {
+		t.Fatal("PR age-state step missing")
+	}
+	for _, test := range []struct {
+		operation, commentID, templateOK, wantError string
+	}{
+		{"read_pr", "", "false", "GET pull request failed"},
+		{"list", "", "false", "GET policy-state comments failed"},
+		{"delete", "9", "true", "DELETE policy-state comment failed"},
+		{"read_comment", "9", "false", "GET existing policy-state comment failed"},
+		{"patch", "9", "false", "PATCH policy-state comment failed"},
+		{"post", "", "false", "POST policy-state comment failed"},
+		{"create_success", "", "false", ""},
+		{"update_success", "9", "false", ""},
+		{"delete_success", "9", "true", ""},
+	} {
+		t.Run(test.operation, func(t *testing.T) {
+			dir := t.TempDir()
+			// 只替换 GitHub API 边界，状态比较、hash 与 shell 错误传播均运行原逻辑。
+			fakeGH := `#!/bin/bash
+case "$*" in
+  *"/pulls/"*) operation=read_pr ;;
+  *"--paginate"*) operation=list ;;
+  *"--method DELETE"*) operation=delete ;;
+  *"--method PATCH"*) operation=patch ;;
+  *"--method POST"*) operation=post ;;
+  *) operation=read_comment ;;
+esac
+if [ "$operation" = "$FAIL_OPERATION" ]; then
+  echo 'gh: Resource not accessible by integration (HTTP 403)' >&2
+  exit 1
+fi
+case "$operation" in
+  read_pr) printf '{"body":"unchanged body"}' ;;
+  list) printf '%s' "$STATE_COMMENT" ;;
+  read_comment) printf '' ;;
+  *) touch "$RUNNER_TEMP/mutated" ;;
+esac
+`
+			if err := os.WriteFile(filepath.Join(dir, "gh"), []byte(fakeGH), 0o700); err != nil {
+				t.Fatal(err)
+			}
+			cmd := exec.Command("bash", "-c", script)
+			cmd.Dir = dir
+			cmd.Env = append(os.Environ(), "PATH="+dir+string(os.PathListSeparator)+os.Getenv("PATH"),
+				"REPO=fixture/repo", "PR=135", "PR_BODY=unchanged body", "COMMANDS_OK=true",
+				"RUNNER_TEMP="+dir, "FAIL_OPERATION="+test.operation, "STATE_COMMENT="+test.commentID, "TEMPLATE_OK="+test.templateOK)
+			output, err := cmd.CombinedOutput()
+			if test.wantError != "" {
+				if err == nil || !strings.Contains(string(output), "HTTP 403") || !strings.Contains(string(output), test.wantError) {
+					t.Fatalf("failure = %v, output = %s; want raw 403 and %q", err, output, test.wantError)
+				}
+			} else if err != nil {
+				t.Fatalf("age-state maintenance failed: %v\n%s", err, output)
+			} else if _, err := os.Stat(filepath.Join(dir, "mutated")); err != nil {
+				t.Fatalf("policy-state comment was not maintained: %v", err)
+			}
+		})
+	}
+}
 
 // TestPRMetadataValidatesAgainstTheCurrentBaseTip 锁住元数据门的受信执行源：
 // pr-metadata 运行的是仓库自己的 tools/prmeta，因此必须 checkout base 分支的
