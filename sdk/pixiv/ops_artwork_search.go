@@ -15,13 +15,9 @@ func (c *Client) SearchArtworks(ctx context.Context, request SearchArtworksReque
 	if err != nil {
 		return sdk.Page[Artwork]{}, err
 	}
-	state, err := c.searchArtworksContinuation(query, request.Cursor)
+	state, err := c.searchArtworksContinuation(query, request.Cursor, request.Offset)
 	if err != nil {
 		return sdk.Page[Artwork]{}, err
-	}
-	offset := int(state.Value)
-	if request.Cursor.IsZero() {
-		offset = request.Offset
 	}
 	filters := artworksearch.Filters{
 		AIMode:      string(request.AIMode),
@@ -39,7 +35,7 @@ func (c *Client) SearchArtworks(ctx context.Context, request SearchArtworksReque
 		Duration:  string(request.Duration),
 		StartDate: request.StartDate,
 		EndDate:   request.EndDate,
-		Offset:    offset,
+		Offset:    int(state.Value),
 		Filters:   filters,
 	})
 	if err != nil {
@@ -158,7 +154,7 @@ func (c *Client) CheckpointSearchArtworks(request SearchArtworksRequest, consume
 	if consumed <= 0 {
 		return sdk.Cursor{}, newError("SearchArtworks", sdk.InvalidArgument, "consumed must be positive")
 	}
-	state, err := c.searchArtworksContinuation(query, request.Cursor)
+	state, err := c.searchArtworksContinuation(query, request.Cursor, request.Offset)
 	if err != nil {
 		return sdk.Cursor{}, err
 	}
@@ -170,9 +166,10 @@ func (c *Client) CheckpointSearchArtworks(request SearchArtworksRequest, consume
 	return c.buildContinuationCursor("SearchArtworks", query, state)
 }
 
-func (c *Client) searchArtworksContinuation(query url.Values, cursor sdk.Cursor) (continuationEnvelope, error) {
+func (c *Client) searchArtworksContinuation(query url.Values, cursor sdk.Cursor, initialOffset int) (continuationEnvelope, error) {
 	if cursor.IsZero() {
-		return continuationEnvelope{Key: "offset"}, nil
+		// 首次读取与批内 checkpoint 必须指向同一原始批次。
+		return continuationEnvelope{Key: "offset", Value: int64(initialOffset)}, nil
 	}
 	state, err := c.continuationState("SearchArtworks", query, cursor)
 	if err != nil {

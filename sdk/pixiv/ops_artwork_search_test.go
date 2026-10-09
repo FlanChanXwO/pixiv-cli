@@ -39,6 +39,35 @@ func TestSearchArtworksCheckpointRoundTrip(t *testing.T) {
 	require.True(t, page.Next.IsZero())
 }
 
+func TestSearchArtworksCheckpointPreservesInitialOffset(t *testing.T) {
+	client, err := NewWith("token", Options{HTTPClient: &http.Client{Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+		firstID := 1
+		if req.URL.Query().Get("offset") == "270" {
+			firstID = 271
+		}
+		return jsonResponse(fmt.Sprintf(`{"illusts":[{"id":%d,"type":"illust","create_date":"2024-05-01T10:00:00+09:00","user":{"id":7}},{"id":%d,"type":"illust","create_date":"2024-05-01T10:00:00+09:00","user":{"id":7}},{"id":%d,"type":"illust","create_date":"2024-05-01T10:00:00+09:00","user":{"id":7}}]}`, firstID, firstID+1, firstID+2)), nil
+	})}})
+	require.NoError(t, err)
+	request := SearchArtworksRequest{Word: "test", Offset: 270}
+	page, err := client.SearchArtworks(context.Background(), request)
+	require.NoError(t, err)
+	require.EqualValues(t, 271, page.Items[0].ID)
+
+	request.Cursor, err = client.CheckpointSearchArtworks(request, 1)
+	require.NoError(t, err)
+	page, err = client.SearchArtworks(context.Background(), request)
+	require.NoError(t, err)
+	require.Len(t, page.Items, 2)
+	require.EqualValues(t, 272, page.Items[0].ID)
+
+	request.Cursor, err = client.CheckpointSearchArtworks(request, 1)
+	require.NoError(t, err)
+	page, err = client.SearchArtworks(context.Background(), request)
+	require.NoError(t, err)
+	require.Len(t, page.Items, 1)
+	require.EqualValues(t, 273, page.Items[0].ID)
+}
+
 func TestSearchArtworksCheckpointRejectsChangedBindings(t *testing.T) {
 	makeClient := func() *Client {
 		client, err := NewWith("token", Options{})

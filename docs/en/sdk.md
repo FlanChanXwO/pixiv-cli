@@ -206,7 +206,9 @@ filtered or skipped by your application. A checkpoint created from an already
 resumed request accumulates that consumption. Use `page.Next` when the batch is
 fully consumed. The checkpoint method does no network I/O; a position beyond the
 batch is rejected as `InvalidCursor` when fetched. Non-positive or overflowing
-consumption returns `InvalidArgument`.
+consumption returns `InvalidArgument`. A checkpoint from the initial batch also
+preserves a nonzero `Offset`; resuming it re-fetches that starting batch rather
+than offset 0.
 
 Pass the returned cursor through the same `SearchArtworksRequest.Cursor`.
 Text/JSON codecs support persistence. Repeat every query field and optional

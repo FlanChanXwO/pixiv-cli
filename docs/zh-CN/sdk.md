@@ -193,7 +193,8 @@ for {
 `consumed` 为正数，按 SDK 规范化及 AI 筛选后的条目计数，包含调用方随后过滤或 Skip
 消费的项目。从已恢复请求再次建立 checkpoint 时累计消费位置；批次全部消费后使用
 `page.Next`。checkpoint 构造不联网；超出批次的位置在恢复请求时返回 `InvalidCursor`，
-非正数或整数溢出返回 `InvalidArgument`。
+非正数或整数溢出返回 `InvalidArgument`。首次批次的 checkpoint 也保留非零 `Offset`；
+恢复时重新读取该起始批次，不会回到 offset 0。
 
 将返回 cursor 通过同一 `SearchArtworksRequest.Cursor` 恢复，可用 Text/JSON codec 持久化。
 重复所有查询字段和可选 `CursorContext`；后者由调用方表达本地筛选语义，只进入摘要，
