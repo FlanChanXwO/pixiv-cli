@@ -24,7 +24,8 @@ jobs:
       actions: write
       checks: write
       contents: read
-      issues: write
+      # 状态评论属于 PR；受信协调器不需要普通 issue 的写权限。
+      pull-requests: write
       statuses: write
     steps:
       # PR .base.sha 是 PR 创建/同步时捕获的基线，可能远落后于当前受保护分支。
@@ -245,15 +246,24 @@ jobs:
         run: |
           set -euo pipefail
           printf '%s' "$PR_BODY" > "$RUNNER_TEMP/event-pr-body-state.md"
-          gh api "repos/$REPO/pulls/$PR" | jq -j '.body // ""' > "$RUNNER_TEMP/current-pr-body-state.md"
+          gh api "repos/$REPO/pulls/$PR" | jq -j '.body // ""' > "$RUNNER_TEMP/current-pr-body-state.md" || {
+            echo '::error::PR age state: GET pull request failed.'
+            exit 1
+          }
           if ! cmp -s "$RUNNER_TEMP/event-pr-body-state.md" "$RUNNER_TEMP/current-pr-body-state.md"; then
             echo 'PR body changed since this event; skipping stale metadata state publication.'
             exit 0
           fi
-          state_comment=$(gh api --paginate "repos/$REPO/issues/$PR/comments" --jq '.[] | select(.user.login == "github-actions[bot]" and (.body | contains("<!-- pr-policy-state:"))) | .id' | head -1)
+          state_comment=$(gh api --paginate "repos/$REPO/issues/$PR/comments" --jq '.[] | select(.user.login == "github-actions[bot]" and (.body | contains("<!-- pr-policy-state:"))) | .id' | head -1) || {
+            echo '::error::PR age state: GET policy-state comments failed.'
+            exit 1
+          }
           if [ "$TEMPLATE_OK" = true ] && [ "$COMMANDS_OK" = true ]; then
             if [ -n "$state_comment" ]; then
-              gh api --method DELETE "repos/$REPO/issues/comments/$state_comment" >/dev/null
+              gh api --method DELETE "repos/$REPO/issues/comments/$state_comment" >/dev/null || {
+                echo '::error::PR age state: DELETE policy-state comment failed.'
+                exit 1
+              }
             fi
             exit 0
           fi
@@ -261,7 +271,10 @@ jobs:
           body_hash=$(sha256sum "$RUNNER_TEMP/pr-body-state.md" | awk '{print $1}')
           first_failed_at=
           if [ -n "$state_comment" ]; then
-            old_body=$(gh api "repos/$REPO/issues/comments/$state_comment" --jq '.body')
+            old_body=$(gh api "repos/$REPO/issues/comments/$state_comment" --jq '.body') || {
+              echo '::error::PR age state: GET existing policy-state comment failed.'
+              exit 1
+            }
             old_state=$(printf '%s\n' "$old_body" | sed -n 's/^<!-- pr-policy-state:\(.*\) -->$/\1/p' | head -1)
             if [ -n "$old_state" ] && printf '%s' "$old_state" | jq -e . >/dev/null 2>&1; then
               old_hash=$(printf '%s' "$old_state" | jq -r '.body_sha256 // ""')
@@ -279,9 +292,15 @@ jobs:
             printf '%s\n' 'PR metadata is currently invalid. If the PR body remains unchanged and invalid for 7 days, the PR will be closed automatically.'
           } > "$RUNNER_TEMP/pr-policy-state.md"
           if [ -n "$state_comment" ]; then
-            gh api --method PATCH "repos/$REPO/issues/comments/$state_comment" -F body=@"$RUNNER_TEMP/pr-policy-state.md" >/dev/null
+            gh api --method PATCH "repos/$REPO/issues/comments/$state_comment" -F body=@"$RUNNER_TEMP/pr-policy-state.md" >/dev/null || {
+              echo '::error::PR age state: PATCH policy-state comment failed.'
+              exit 1
+            }
           else
-            gh api --method POST "repos/$REPO/issues/$PR/comments" -F body=@"$RUNNER_TEMP/pr-policy-state.md" >/dev/null
+            gh api --method POST "repos/$REPO/issues/$PR/comments" -F body=@"$RUNNER_TEMP/pr-policy-state.md" >/dev/null || {
+              echo '::error::PR age state: POST policy-state comment failed.'
+              exit 1
+            }
           fi
       - name: Require metadata gates
         shell: bash
