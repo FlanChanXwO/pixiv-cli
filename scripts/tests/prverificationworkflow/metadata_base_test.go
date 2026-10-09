@@ -39,8 +39,8 @@ func TestPRMetadataCanMaintainPullRequestComments(t *testing.T) {
 // TestPRMetadataReportsAgeStateAPIFailures 执行实际 workflow shell，
 // 验证权限错误保留原始原因，并指出读取或写入失败的请求。
 func TestPRMetadataReportsAgeStateAPIFailures(t *testing.T) {
-	if runtime.GOOS == "windows" {
-		t.Skip("PR metadata runs on Ubuntu; API fixture uses a POSIX executable")
+	if runtime.GOOS != "linux" {
+		t.Skip("PR metadata runs on Ubuntu; API fixture requires a Linux shell environment")
 	}
 	workflow, err := os.ReadFile(filepath.Join(repositoryRoot(t), ".github", "workflows", "pr-metadata.yml"))
 	if err != nil {
