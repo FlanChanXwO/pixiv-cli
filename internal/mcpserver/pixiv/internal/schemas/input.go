@@ -3,6 +3,12 @@ package schemas
 
 // ClosedObject 返回拒绝未知字段的 MCP object schema。
 func ClosedObject(properties map[string]any, required []string) map[string]any {
+	// JSON Schema 要求 required 为字符串数组。Go 的 nil 切片会编码成 JSON null，
+	// MCP 客户端（如 TypeScript SDK 的 ToolSchema）会因此拒绝整个 tools/list 响应，
+	// 所以这里必须把 nil 归一化为空数组。
+	if required == nil {
+		required = []string{}
+	}
 	return map[string]any{
 		"type":                 "object",
 		"additionalProperties": false,
