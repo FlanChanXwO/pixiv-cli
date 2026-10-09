@@ -14,7 +14,7 @@ import (
 // TestPRMetadataCanMaintainPullRequestComments 检查状态评论使用 PR 权限，
 // 避免只操作 PR 的受信 job 持有不相关的 issue 写权限。
 func TestPRMetadataCanMaintainPullRequestComments(t *testing.T) {
-	t.Error("Intentional CI probe failure: metadata edits must preserve required Quality failure")
+	// CI probe recovery keeps the test meaningful after proving a required failure.
 	t.Parallel()
 	workflow, err := os.ReadFile(filepath.Join(repositoryRoot(t), ".github", "workflows", "pr-metadata.yml"))
 	if err != nil {
