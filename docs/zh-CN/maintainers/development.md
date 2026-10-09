@@ -412,7 +412,7 @@ amd64/arm64 platform-smoke 还会用真实 `cmd.exe`、`certutil.exe` 与 `tar.e
 它用 MSYS 的 `winsymlinks:nativestrict` 创建受检链接：若 runner 不能创建原生 Windows link，测试会显式
 失败，避免 Git Bash 的普通文件伪链接让 output ancestor 安全门形同虚设。
 
-Quality 同时处理 `pull_request.edited`，确保 PR 改为指向 `main` 后会发布必需的 Quality 结果。标题和描述编辑使用独立 concurrency group 与 skipped `Quality metadata edit` 检查，保留已有必需 Quality 结果，也不取消正在运行的代码验证；纯文档改动仍使用真实 job-level skip。
+Quality 同时处理 `pull_request.edited`，确保 PR 改为指向 `main` 后会发布必需的 Quality 结果。标题和描述编辑也会触发分类及必要的 Quality 验证。job 保持固定必需名称，包括纯文档 skip；GitHub 不会求值 skipped job 的动态名称。纯文档改动仍使用真实 job-level skip。
 
 ### 测试文件布局
 
