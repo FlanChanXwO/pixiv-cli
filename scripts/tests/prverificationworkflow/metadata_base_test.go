@@ -435,11 +435,15 @@ case "$*" in
   "api --method GET repos/fixture/repo/commits/exact-head/check-runs -f check_name=$WORKER_CHECK -f filter=latest -f per_page=1")
     printf '{"check_runs":[]}' ;;
   "api --method GET repos/fixture/repo/commits/exact-head/check-runs -f check_name=$WORKER_CHECK -f filter=all -f per_page=1")
+    if [ "$WORKER_RESULT" = missing ]; then printf '{"check_runs":[]}'; else printf '{"check_runs":[{"id":11}]}'; fi ;;
+  "api --method GET --paginate --slurp repos/fixture/repo/commits/exact-head/check-runs -f check_name=$WORKER_CHECK -f filter=all -f per_page=100")
     if [ "$WORKER_RESULT" = missing ]; then
-      printf '{"check_runs":[]}'
+      printf '[{"check_runs":[]}]'
     else
-      printf '{"check_runs":[{"id":42}]}'
+      printf '[{"check_runs":[{"id":99,"started_at":"2026-10-08T00:00:00Z"}]},{"check_runs":[{"id":42,"started_at":"2026-10-09T00:00:00Z"},{"id":40,"started_at":"2026-10-09T00:00:00Z"}]}]'
     fi ;;
+  "api repos/fixture/repo/check-runs/11")
+    printf '{"status":"completed","conclusion":"failure","details_url":"https://example.com/old-worker"}' ;;
   "api repos/fixture/repo/check-runs/42")
     printf '{"status":"completed","conclusion":"%s","details_url":"https://example.com/worker"}' "$WORKER_RESULT" ;;
   *) echo "Unexpected API request: $*" >&2; exit 1 ;;
