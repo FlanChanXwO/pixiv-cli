@@ -6,7 +6,7 @@ use std::os::raw::c_char;
 use std::panic::{catch_unwind, AssertUnwindSafe};
 use std::path::{Path, PathBuf};
 use std::ptr::null_mut;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 
 use crc32fast::Hasher as Crc32;
 use gif::{DisposalMethod, Encoder, Frame, Repeat};
@@ -27,9 +27,19 @@ const RESERVOIR_SEED: u64 = 0x9e37_79b9_7f4a_7c15;
 const FLOYD_STEINBERG_ERROR_DIFFUSION: f32 = 0.1;
 const PNG_SIGNATURE: &[u8; 8] = b"\x89PNG\r\n\x1a\n";
 
-#[derive(Debug, Default)]
+#[derive(Debug)]
 pub struct CancellationToken {
     canceled: AtomicBool,
+    output_limit: AtomicU64,
+}
+
+impl Default for CancellationToken {
+    fn default() -> Self {
+        Self {
+            canceled: AtomicBool::new(false),
+            output_limit: AtomicU64::new(u64::MAX),
+        }
+    }
 }
 
 impl CancellationToken {
@@ -42,6 +52,33 @@ impl CancellationToken {
             return Err(EncodeError::Canceled);
         }
         Ok(())
+    }
+}
+
+// Each encoder owns this writer; quota is checked before the underlying file write.
+struct BudgetWriter {
+    file: File,
+    remaining: u64,
+}
+impl BudgetWriter {
+    fn create(path: &Path, cancellation: &CancellationToken) -> io::Result<Self> {
+        Ok(Self {
+            file: File::create(path)?,
+            remaining: cancellation.output_limit.load(Ordering::Acquire),
+        })
+    }
+}
+impl Write for BudgetWriter {
+    fn write(&mut self, data: &[u8]) -> io::Result<usize> {
+        if data.len() as u64 > self.remaining {
+            return Err(io::Error::other("animation temporary capacity exhausted"));
+        }
+        let written = self.file.write(data)?;
+        self.remaining -= written as u64;
+        Ok(written)
+    }
+    fn flush(&mut self) -> io::Result<()> {
+        self.file.flush()
     }
 }
 
@@ -269,7 +306,7 @@ pub fn encode_apng(
     let first = resize_frame(first, output_size);
 
     cancellation.check()?;
-    let mut output = File::create(output_path)?;
+    let mut output = BudgetWriter::create(output_path, cancellation)?;
     write_apng_header(&mut output, output_size, frame_count)?;
     let mut sequence = 0u64;
     write_apng_frame(
@@ -414,7 +451,7 @@ fn write_global_palette_gif(
     let mut archive = open_archive(zip_path)?;
     let global_palette = gif_palette_bytes(opaque_palette, first_pass.histogram.has_transparency);
     let mut encoder = Encoder::new(
-        File::create(output_path)?,
+        BudgetWriter::create(output_path, cancellation)?,
         first_pass.output_size.0 as u16,
         first_pass.output_size.1 as u16,
         &global_palette,
@@ -1326,7 +1363,50 @@ pub unsafe extern "C" fn ugoira_encode(
     max_edge: u32,
 ) -> *mut c_char {
     ffi_result("ugoira_encode", || {
+        if !cancellation.is_null() {
+            // Safety: the legacy entry point owns this token for the synchronous encode.
+            unsafe { &*cancellation }
+                .output_limit
+                .store(u64::MAX, Ordering::Release);
+        }
         // Safety: 本 extern 函数的 Safety contract 覆盖所有传入 raw pointer。
+        unsafe {
+            encode_ffi(
+                zip_path,
+                frames_json,
+                output_path,
+                cancellation,
+                format,
+                max_edge,
+            )
+        }
+    })
+}
+
+#[no_mangle]
+/// Encode with an explicit output byte budget; the legacy entry point remains unbounded.
+///
+/// # Safety
+/// Same pointer contracts as `ugoira_encode`; the token must belong exclusively to
+/// this encode call (concurrent cancellation is permitted).
+pub unsafe extern "C" fn ugoira_encode_bounded(
+    zip_path: *const c_char,
+    frames_json: *const c_char,
+    output_path: *const c_char,
+    cancellation: *const CancellationToken,
+    format: u32,
+    max_edge: u32,
+    max_output_bytes: u64,
+) -> *mut c_char {
+    ffi_result("ugoira_encode_bounded", || {
+        if cancellation.is_null() {
+            return Err(EncodeError::NullPointer("cancellation_token"));
+        }
+        // Safety: the caller owns this token until this synchronous call completes.
+        unsafe { &*cancellation }
+            .output_limit
+            .store(max_output_bytes, Ordering::Release);
+        // Safety: this entry point has the same validated caller contract as the legacy one.
         unsafe {
             encode_ffi(
                 zip_path,
@@ -1421,6 +1501,63 @@ mod tests {
     use zip::write::SimpleFileOptions;
 
     type TestRgbaImage = ImageBuffer<Rgba<u8>, Vec<u8>>;
+
+    #[test]
+    fn bounded_encoding_never_writes_beyond_budget() {
+        for apng in [false, true] {
+            let dir = tempdir().unwrap();
+            let zip_path = dir.path().join("input.zip");
+            let output = dir.path().join("output");
+            write_rgba_zip(&zip_path, "0.png", 8, 4, Rgba([255, 0, 0, 255]));
+            let frames = vec![UgoiraFrame {
+                file: "0.png".to_string(),
+                delay: 80,
+            }];
+            let token = CancellationToken::default();
+            token.output_limit.store(16, Ordering::Release);
+            let result = if apng {
+                encode_apng(&zip_path, &frames, &output, 0, &token)
+            } else {
+                encode_gif(&zip_path, &frames, &output, 0, &token)
+            };
+            assert!(result.is_err(), "quota exhaustion must fail encoding");
+            assert!(std::fs::metadata(output).unwrap().len() <= 16);
+        }
+    }
+
+    #[test]
+    fn legacy_entry_does_not_inherit_a_bounded_call_budget() {
+        let dir = tempdir().unwrap();
+        let zip_file = dir.path().join("input.zip");
+        write_rgba_zip(&zip_file, "0.png", 2, 2, Rgba([255, 0, 0, 255]));
+        let zip = CString::new(zip_file.to_string_lossy().as_bytes()).unwrap();
+        let frames = CString::new(r#"[{"file":"0.png","delay":80}]"#).unwrap();
+        let output = CString::new(dir.path().join("out.gif").to_string_lossy().as_bytes()).unwrap();
+        let token = ugoira_cancel_token_new();
+        let error = unsafe {
+            ugoira_encode_bounded(
+                zip.as_ptr(),
+                frames.as_ptr(),
+                output.as_ptr(),
+                token,
+                0,
+                0,
+                16,
+            )
+        };
+        assert!(!error.is_null());
+        unsafe { ugoira_free_error(error) };
+        let error =
+            unsafe { ugoira_encode(zip.as_ptr(), frames.as_ptr(), output.as_ptr(), token, 0, 0) };
+        if !error.is_null() {
+            unsafe { ugoira_free_error(error) };
+        }
+        assert!(unsafe { ugoira_cancel_token_free(token) }.is_null());
+        assert!(
+            error.is_null(),
+            "legacy entry must remain unbounded for a reused token"
+        );
+    }
 
     #[test]
     fn parses_frames_json() {

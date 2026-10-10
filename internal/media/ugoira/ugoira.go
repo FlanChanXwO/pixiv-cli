@@ -3,12 +3,17 @@ package ugoira
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
+	"time"
 
 	filereplace "github.com/FlanChanXwO/pixiv-cli/internal/storage/file/replace"
 )
+
+// ErrOutputCapacity means native output could not fit its reserved temporary budget.
+var ErrOutputCapacity = errors.New("animation temporary capacity exhausted")
 
 type Format string
 
@@ -41,6 +46,10 @@ type Input struct {
 	OutputPath string
 	Format     Format
 	MaxEdge    uint32
+	// MaxOutputBytes, when non-nil, limits native file writes before publication.
+	MaxOutputBytes *uint64
+	// Observe receives gate-wait and encoding durations without file paths.
+	Observe func(string, time.Duration)
 }
 
 type Encoder interface {

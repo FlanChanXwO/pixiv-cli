@@ -255,3 +255,22 @@ func TestRustEncoderDoesNotReplaceExistingDestination(t *testing.T) {
 	require.NoError(t, globErr)
 	require.Empty(t, temporary)
 }
+
+func TestRustBoundedOutputCleansPartialFiles(t *testing.T) {
+	for _, format := range []ugoira.Format{ugoira.FormatGIF, ugoira.FormatAPNG} {
+		t.Run(string(format), func(t *testing.T) {
+			dir := t.TempDir()
+			zipPath := filepath.Join(dir, "frames.zip")
+			createZip(t, zipPath, "000000.jpg", rustUgoiraJPEG(t))
+			limit := uint64(16)
+			output := filepath.Join(dir, "out."+string(format))
+			err := ugoira.NewRustEncoder().Encode(t.Context(), ugoira.Input{ZipPath: zipPath, Frames: []ugoira.Frame{{File: "000000.jpg", Delay: 80}}, OutputPath: output, Format: format, MaxOutputBytes: &limit})
+			require.Error(t, err, "capacity exhaustion must prevent publication")
+			_, err = os.Stat(output)
+			require.True(t, os.IsNotExist(err))
+			partial, err := filepath.Glob(filepath.Join(dir, ".ugoira-*"))
+			require.NoError(t, err)
+			require.Empty(t, partial)
+		})
+	}
+}

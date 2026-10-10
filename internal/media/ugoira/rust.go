@@ -11,6 +11,7 @@ UgoiraCancellationToken* ugoira_cancel_token_new(void);
 char* ugoira_cancel_token_cancel(const UgoiraCancellationToken* token);
 char* ugoira_cancel_token_free(UgoiraCancellationToken* token);
 char* ugoira_encode(const char* zip_path, const char* frames_json, const char* output_path, const UgoiraCancellationToken* token, unsigned int format, unsigned int max_edge);
+char* ugoira_encode_bounded(const char* zip_path, const char* frames_json, const char* output_path, const UgoiraCancellationToken* token, unsigned int format, unsigned int max_edge, unsigned long long max_output_bytes);
 void ugoira_free_error(char* err);
 */
 import "C"
@@ -20,6 +21,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
+	"time"
 	"unsafe"
 )
 
@@ -68,13 +71,32 @@ func (e rustEncoder) Encode(ctx context.Context, input Input) error {
 				cancelled <- nil
 			}
 		}()
+		waiting := time.Now()
 		select {
 		case rustEncodeGate <- struct{}{}:
 		case <-ctx.Done():
 			close(stop)
 			return errors.Join(ctx.Err(), <-cancelled, ffi.Free(token))
 		}
-		encodeErr := ffi.Encode(input.ZipPath, frames, temporaryPath, token, format, input.MaxEdge)
+		if input.Observe != nil {
+			input.Observe("animation_encode_wait", time.Since(waiting))
+		}
+		started := time.Now()
+		var encodeErr error
+		if input.MaxOutputBytes != nil {
+			if bounded, ok := ffi.(interface {
+				EncodeBounded(string, []byte, string, unsafe.Pointer, Format, uint32, uint64) error
+			}); ok {
+				encodeErr = bounded.EncodeBounded(input.ZipPath, frames, temporaryPath, token, format, input.MaxEdge, *input.MaxOutputBytes)
+			} else {
+				encodeErr = errors.New("bounded native encoding unavailable")
+			}
+		} else {
+			encodeErr = ffi.Encode(input.ZipPath, frames, temporaryPath, token, format, input.MaxEdge)
+		}
+		if input.Observe != nil {
+			input.Observe("animation_encode", time.Since(started))
+		}
 		<-rustEncodeGate
 		close(stop)
 		return errors.Join(encodeErr, <-cancelled, ffi.Free(token), ctx.Err())
@@ -114,11 +136,28 @@ func (cgoRustFFI) Encode(zipPath string, frames []byte, outputPath string, token
 	return rustError("rust ugoira encoder failed", C.ugoira_encode(zip, jsonBody, out, (*C.UgoiraCancellationToken)(token), code, C.uint(maxEdge)))
 }
 
+func (cgoRustFFI) EncodeBounded(zipPath string, frames []byte, outputPath string, token unsafe.Pointer, format Format, maxEdge uint32, limit uint64) error {
+	var code C.uint
+	if format == FormatAPNG {
+		code = 1
+	}
+	zip := C.CString(zipPath)
+	defer C.free(unsafe.Pointer(zip))
+	body := C.CString(string(frames))
+	defer C.free(unsafe.Pointer(body))
+	out := C.CString(outputPath)
+	defer C.free(unsafe.Pointer(out))
+	return rustError("rust ugoira encoder failed", C.ugoira_encode_bounded(zip, body, out, (*C.UgoiraCancellationToken)(token), code, C.uint(maxEdge), C.ulonglong(limit)))
+}
+
 func rustError(operation string, pointer *C.char) error {
 	if pointer == nil {
 		return nil
 	}
 	message := C.GoString(pointer)
 	C.ugoira_free_error(pointer)
+	if strings.Contains(message, ErrOutputCapacity.Error()) {
+		return fmt.Errorf("%s: %w", operation, ErrOutputCapacity)
+	}
 	return fmt.Errorf("%s: %s", operation, message)
 }
