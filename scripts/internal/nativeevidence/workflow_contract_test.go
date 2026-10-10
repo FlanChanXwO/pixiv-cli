@@ -187,3 +187,60 @@ func workflowContainsSecretReference(node *yaml.Node) bool {
 	}
 	return false
 }
+
+func TestAnimationNativeEvidenceWorkflowKeepsApprovedBranchBoundary(t *testing.T) {
+	body, err := os.ReadFile(filepath.Join(findRepositoryRoot(t), ".github", "workflows", "animation-native-evidence.yml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var document yaml.Node
+	if err := yaml.Unmarshal(body, &document); err != nil {
+		t.Fatal(err)
+	}
+	root := document.Content[0]
+	if workflowHasAmbiguousYAML(root) || workflowContainsSecretReference(root) {
+		t.Fatal("ambiguous or secret-bearing workflow")
+	}
+	permissions := workflowMappingValue(t, root, "permissions")
+	if permissions.Kind != yaml.MappingNode || len(permissions.Content) != 0 {
+		t.Fatal("global permissions must be empty")
+	}
+	triggers := workflowMappingValue(t, root, "on")
+	push := workflowMappingValue(t, triggers, "push")
+	branches := workflowMappingValue(t, push, "branches")
+	if branches.Kind != yaml.SequenceNode || len(branches.Content) != 1 || branches.Content[0].Value != "codex/mcp-animation-native-evidence" {
+		t.Fatal("push must target only the approved validation branch")
+	}
+	jobs := workflowMappingValue(t, root, "jobs")
+	for index := 0; index+1 < len(jobs.Content); index += 2 {
+		job := jobs.Content[index+1]
+		guard := workflowMappingValue(t, job, "if")
+		if guard.Value != "github.ref == 'refs/heads/codex/mcp-animation-native-evidence'" {
+			t.Fatal("every job must enforce the approved branch")
+		}
+		permissions := workflowMappingValue(t, job, "permissions")
+		if len(permissions.Content) != 2 || permissions.Content[0].Value != "contents" || permissions.Content[1].Value != "read" {
+			t.Fatal("job must have only contents: read")
+		}
+	}
+	walkWorkflowMappings(root, func(mapping *yaml.Node) {
+		if _, ok := workflowOptionalMappingValue(mapping, "environment"); ok {
+			t.Error("environments are forbidden")
+		}
+		uses, ok := workflowOptionalMappingValue(mapping, "uses")
+		if !ok {
+			return
+		}
+		if !pinnedActionPattern.MatchString(uses.Value) {
+			t.Error("actions must be SHA-pinned")
+		}
+		if strings.HasPrefix(uses.Value, "actions/checkout@") && workflowMappingValue(t, workflowMappingValue(t, mapping, "with"), "persist-credentials").Value != "false" {
+			t.Error("checkout must not persist credentials")
+		}
+	})
+	for _, forbidden := range []string{"gh release", "git push", "docker push", "pull_request:"} {
+		if strings.Contains(string(body), forbidden) {
+			t.Errorf("forbidden side effect/trigger: %s", forbidden)
+		}
+	}
+}

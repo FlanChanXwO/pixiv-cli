@@ -1,0 +1,113 @@
+name: Animation native staticlib evidence
+
+# 专用验证入口仅运行用户批准的动图源码分支；不改变 main 的证据入口。
+# 全部 job 只读，不接触发布／签名凭据。
+on:
+  push:
+    branches: [codex/mcp-animation-native-evidence]
+  workflow_dispatch: {}
+
+permissions: {}
+
+jobs:
+  resolve_platforms:
+    if: github.ref == 'refs/heads/codex/mcp-animation-native-evidence'
+    name: Resolve native evidence matrix
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    outputs:
+      matrix: ${{ steps.matrix.outputs.matrix }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e
+        with:
+          go-version-file: go.mod
+      - name: Resolve native evidence platforms
+        id: matrix
+        shell: bash
+        run: go run ./tools/platformmatrix --capability native-evidence --github-output "$GITHUB_OUTPUT"
+
+  native_evidence:
+    if: github.ref == 'refs/heads/codex/mcp-animation-native-evidence'
+    name: Native evidence ${{ matrix.goos }}/${{ matrix.goarch }}
+    needs: resolve_platforms
+    runs-on: ${{ matrix.runner }}
+    permissions:
+      contents: read
+    env:
+      RUSTUP_TOOLCHAIN: ${{ matrix.rust_toolchain }}
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.resolve_platforms.outputs.matrix) }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e
+        with:
+          go-version-file: go.mod
+      - name: Require approved animation validation ref
+        shell: bash
+        run: test "$GITHUB_REF" = 'refs/heads/codex/mcp-animation-native-evidence'
+      - name: Install the pinned native Rust toolchain
+        shell: bash
+        run: rustup toolchain install '${{ matrix.rust_toolchain }}' --profile minimal --target '${{ matrix.rust_target }}' --no-self-update
+      - name: Check vendored Rust sources
+        shell: bash
+        run: sh scripts/test-rust-vendor.sh
+      - name: Build and package the versioned native binary
+        shell: bash
+        run: |
+          set -euo pipefail
+          version="0.1.0-native-evidence.${GITHUB_RUN_ID}"
+          mkdir -p evidence
+          archive=$(sh scripts/build-platform.sh \
+            --target '${{ matrix.goos }}/${{ matrix.goarch }}' \
+            --rust-target '${{ matrix.rust_target }}' \
+            --cc '${{ matrix.cc }}' \
+            --version "$version" \
+            --output-dir evidence \
+            --package)
+          binary='evidence/pixiv'
+          if [ '${{ matrix.goos }}' = windows ]; then
+            binary='evidence/pixiv.exe'
+          fi
+          "$binary" --version
+          {
+            printf 'EVIDENCE_VERSION=%s\n' "$version"
+            printf 'EVIDENCE_BINARY=%s\n' "$binary"
+            printf 'EVIDENCE_ARCHIVE=%s\n' "$archive"
+          } >> "$GITHUB_ENV"
+      - name: Run native GIF/APNG smoke
+        shell: bash
+        run: |
+          set -euo pipefail
+          CC='${{ matrix.cc }}' go test ./internal/media/ugoira -run '^TestRustUgoiraEncoderNativeGIFAndAPNG$|^TestRustBoundedOutputCleansPartialFiles$' -count=1
+      - name: Record staticlib, binary and archive evidence
+        shell: bash
+        run: |
+          set -euo pipefail
+          staticlib='libugoira_rs.a'
+          if [ '${{ matrix.goos }}' = windows ]; then
+            staticlib='ugoira_rs.lib'
+          fi
+          cp "internal/media/ugoira/rust/staticlib/${{ matrix.rust_target }}/$staticlib" "evidence/$staticlib"
+          go run ./scripts/cmd/nativeevidence record \
+            --repo-root . \
+            --version "$EVIDENCE_VERSION" \
+            --source-commit "$GITHUB_SHA" \
+            --target '${{ matrix.goos }}/${{ matrix.goarch }}' \
+            --rust-target '${{ matrix.rust_target }}' \
+            --staticlib "evidence/$staticlib" \
+            --binary "$EVIDENCE_BINARY" \
+            --archive "$EVIDENCE_ARCHIVE" \
+            --output evidence/native-evidence.json
+      - name: Upload native evidence
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: native-evidence-${{ matrix.artifact }}
+          path: evidence
+          if-no-files-found: error
