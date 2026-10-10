@@ -41,8 +41,8 @@ func cloneInt64(value *int64) *int64 {
 	if value == nil {
 		return nil
 	}
-	cloned := *value
-	return &cloned
+	copy := *value
+	return &copy
 }
 
 func (c *Client) mapComment(m novel.Comment) (Comment, error) {
@@ -59,4 +59,21 @@ func (c *Client) mapComment(m novel.Comment) (Comment, error) {
 		out.ParentComment = &parent
 	}
 	return out, nil
+}
+
+func cloneValue[T any](value *T) *T {
+	if value == nil {
+		return nil
+	}
+	copy := *value
+	return &copy
+}
+
+func cloneStringSlice(value *[]string) *[]string {
+	if value == nil {
+		return nil
+	}
+	cloned := make([]string, len(*value))
+	copy(cloned, *value)
+	return &cloned
 }

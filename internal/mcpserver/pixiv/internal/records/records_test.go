@@ -21,9 +21,12 @@ func TestRecordSerializationOmitsResourceTransport(t *testing.T) {
 	}
 	expiresAt := time.Date(2026, time.August, 10, 12, 0, 0, 0, time.UTC)
 	artwork := pixiv.Artwork{
-		ID:    1,
-		Kind:  pixiv.ArtworkKindIllustration,
-		Title: "safe artwork",
+		ID:           1,
+		Kind:         pixiv.ArtworkKindIllustration,
+		Title:        "safe artwork",
+		IsBookmarked: testPtr(true),
+		Visible:      testPtr(true),
+		Series:       &pixiv.ArtworkSeriesSummary{ID: 123, Title: "chapter"},
 		Cover: pixiv.ImageResource{Resource: sdk.Resource{
 			Ref:            ref,
 			URL:            "https://signed.example/private?signature=secret",
@@ -41,6 +44,15 @@ func TestRecordSerializationOmitsResourceTransport(t *testing.T) {
 		t.Fatal(err)
 	}
 	assertMCPResourceTransportAbsent(t, artworkRecords, ref.String())
+	rawArtwork, err := json.Marshal(artworkRecords[0])
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, field := range []string{`"is_bookmarked":true`, `"visible":true`, `"series":{"id":123,"title":"chapter"}`} {
+		if !strings.Contains(string(rawArtwork), field) {
+			t.Fatalf("MCP record %s missing %s", rawArtwork, field)
+		}
+	}
 
 	novels, err := records.FromNovels([]pixiv.Novel{{ID: 2, Cover: pixiv.ImageResource{Resource: artwork.Cover.Resource}}})
 	if err != nil {
@@ -91,4 +103,7 @@ func assertSensitiveMCPValuesAbsent(t *testing.T, raw []byte) {
 			t.Fatalf("MCP output contains sensitive resource transport value %q: %s", forbidden, raw)
 		}
 	}
+}
+func testPtr[T any](value T) *T {
+	return &value
 }

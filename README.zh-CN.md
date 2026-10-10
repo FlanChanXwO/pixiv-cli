@@ -23,7 +23,7 @@
 - **易用的账号登录流程**——运行 `pixiv auth login` 即可在浏览器完成 OAuth，随后可使用 `auth list`、`auth use` 和 `auth check` 管理和确认本地多账号。
 - **Ugoira 输出模式**——可选择 GIF 或 APNG；文件名模板非法或渲染为空时使用稳定默认文件名，并以 warnings 保持可观测。
 - **明确的下载结果**——可选择图片质量和闭区间页码，将允许的 Pixiv CDN URL 作为直链来源，并保留已完成文件、warnings 与 failures。
-- **认证 App API 发现能力**——通过 App API 读取 R18 详情、分页、ugoira metadata 和全部 16 种排行榜。
+- **认证 App API 发现能力**——通过 App API 读取 R18 详情、分页、ugoira metadata 和全部 16 种排行榜；作品搜索/详情保留可用的 viewer 状态与系列信息，普通无本地筛选的深页搜索从目标原始 offset 开始。详见 [CLI 参考](docs/zh-CN/cli-reference.md)。
 - **实用搜索筛选**——支持分级、作品类型、AI 模式、横纵比、分辨率和版本内置的绘图工具目录；反向搜图支持从本地文件或 URL 查询 SauceNAO、ascii2d。
 - **直达 Pixiv 引用**——可把受支持作品 URL 直接粘贴给详情或下载；已认证的作者主页/作品页 URL 会展开为该作者的视觉作品。
 - **本地多账号 OAuth**——支持浏览器登录、账号选择、refresh token rotation 和可选的跨机器 callback relay。

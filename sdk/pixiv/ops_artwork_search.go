@@ -15,7 +15,7 @@ func (c *Client) SearchArtworks(ctx context.Context, request SearchArtworksReque
 	if err != nil {
 		return sdk.Page[Artwork]{}, err
 	}
-	state, err := c.searchArtworksContinuation(query, request.Cursor)
+	state, err := c.searchArtworksContinuation(query, request.Cursor, request.Offset)
 	if err != nil {
 		return sdk.Page[Artwork]{}, err
 	}
@@ -75,6 +75,9 @@ func searchArtworksQuery(request SearchArtworksRequest) (SearchArtworksRequest, 
 	if err := validateSearchWord("SearchArtworks", request.Word); err != nil {
 		return request, nil, err
 	}
+	if request.Offset < 0 {
+		return request, nil, newError("SearchArtworks", sdk.InvalidArgument, "offset must be non-negative")
+	}
 	if err := validateSearchArtworksRequest("SearchArtworks", request); err != nil {
 		return request, nil, err
 	}
@@ -133,6 +136,10 @@ func searchArtworksQuery(request SearchArtworksRequest) (SearchArtworksRequest, 
 	if request.BookmarkMax != nil {
 		query.Set("bookmark_num_max", itoa(int64(*request.BookmarkMax)))
 	}
+	if request.Offset > 0 {
+		// 只绑定初始窗口；上游 offset 由当前 cursor 或首次请求决定。
+		query.Set("initial_offset", itoa(int64(request.Offset)))
+	}
 	return request, query, nil
 }
 
@@ -147,7 +154,7 @@ func (c *Client) CheckpointSearchArtworks(request SearchArtworksRequest, consume
 	if consumed <= 0 {
 		return sdk.Cursor{}, newError("SearchArtworks", sdk.InvalidArgument, "consumed must be positive")
 	}
-	state, err := c.searchArtworksContinuation(query, request.Cursor)
+	state, err := c.searchArtworksContinuation(query, request.Cursor, request.Offset)
 	if err != nil {
 		return sdk.Cursor{}, err
 	}
@@ -159,9 +166,10 @@ func (c *Client) CheckpointSearchArtworks(request SearchArtworksRequest, consume
 	return c.buildContinuationCursor("SearchArtworks", query, state)
 }
 
-func (c *Client) searchArtworksContinuation(query url.Values, cursor sdk.Cursor) (continuationEnvelope, error) {
+func (c *Client) searchArtworksContinuation(query url.Values, cursor sdk.Cursor, initialOffset int) (continuationEnvelope, error) {
 	if cursor.IsZero() {
-		return continuationEnvelope{Key: "offset"}, nil
+		// 首次读取与批内 checkpoint 必须指向同一原始批次。
+		return continuationEnvelope{Key: "offset", Value: int64(initialOffset)}, nil
 	}
 	state, err := c.continuationState("SearchArtworks", query, cursor)
 	if err != nil {

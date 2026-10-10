@@ -23,7 +23,7 @@
 - **Guided account sign-in** — complete browser OAuth with `pixiv auth login`, then use `auth list`, `auth use`, and `auth check` to manage local multi-account access.
 - **Ugoira output modes** — choose GIF or APNG; invalid or empty filename templates use a stable default and remain observable as warnings.
 - **Explicit download reporting** — select image quality and closed page ranges, use allowlisted Pixiv CDN URLs as direct sources, and keep completed files, warnings, and failures observable.
-- **Authenticated App API discovery** — read R18 details, pages, ugoira metadata, and all 16 ranking modes through the App API.
+- **Authenticated App API discovery** — read R18 details, pages, ugoira metadata, and all 16 ranking modes through the App API; artwork search/detail retains available viewer state and series metadata, and unfiltered deep search pages start at the target raw offset. See the [CLI reference](docs/en/cli-reference.md).
 - **Useful search filters** — rating, content type, AI mode, aspect ratio, resolution, and a versioned drawing-tool catalog; reverse-image search can query SauceNAO or ascii2d from a local file or URL.
 - **Direct Pixiv references** — paste supported artwork URLs into detail or download; authenticated profile and artworks URLs expand to that creator's visual works.
 - **Local multi-account OAuth** — browser login, account selection, refresh-token rotation, and an optional cross-machine callback relay.
