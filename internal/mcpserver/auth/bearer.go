@@ -60,10 +60,10 @@ func (h *Handler) verify(ctx context.Context, token string, request *http.Reques
 		return nil, errors.New("MCP authorization state unavailable")
 	}
 	hash := tokenHash(token)
-	for _, grant := range state.Grants {
+	for grantID, grant := range state.Grants {
 		expiry, exists := grant.AccessTokens[hash]
 		if exists && !grant.Revoked && grant.Resource == h.resource && time.Now().Before(expiry) {
-			return &sdkauth.TokenInfo{Scopes: []string{grant.Scope}, Expiration: expiry, UserID: "owner"}, nil
+			return &sdkauth.TokenInfo{Scopes: []string{grant.Scope}, Expiration: expiry, UserID: "owner", Extra: map[string]any{"grant_id": grantID}}, nil
 		}
 	}
 	return nil, sdkauth.ErrInvalidToken

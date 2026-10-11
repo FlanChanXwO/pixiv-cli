@@ -48,6 +48,9 @@ type Input struct {
 	MaxEdge    uint32
 	// MaxOutputBytes, when non-nil, limits native file writes before publication.
 	MaxOutputBytes *uint64
+	// ReserveOutput requests shared capacity before each synchronous native write.
+	// It is not retained after Encode returns; partial reservations are reconciled by the owner.
+	ReserveOutput func(uint64) error
 	// Observe receives gate-wait and encoding durations without file paths.
 	Observe func(string, time.Duration)
 }

@@ -27,6 +27,7 @@ flowchart LR
 | Reader / concern | Go to |
 | --- | --- |
 | Entry-to-SDK call chain | [Overall flow](#overall-flow) |
+| Page sources and embedding | [Frontend source and embedded pages](#frontend-source-and-embedded-pages) |
 | What a package may or may not do | [Package responsibilities](#package-responsibilities) |
 | Release trust root and signing | [Release assets and trust boundary](#release-assets-and-trust-boundary) |
 | Local state, config, path permissions | [internal/config/paths](#internalconfigpaths), [internal/storage/file](#internalstoragefileatomiclockreplacesecret) |
@@ -44,6 +45,12 @@ flowchart LR
    - Global configuration comes from `~/.pixiv-cli/config.toml` (Windows: `%USERPROFILE%\.pixiv-cli\config.toml`)
    - Public environment variables participate as an override layer in the merge
 5. There is no anonymous Web fallback: all content commands require an authenticated local account or explicit credentials; the removed `web_fallback_enabled`, if still present, returns `removed_setting`.
+
+## Frontend source and embedded pages
+
+`frontend/mcp-apps/gallery/` owns the Gallery HTML/CSS/JS and frontend fixture; `frontend/pages/login/` owns login, callback and result templates/styles; `frontend/pages/oauth/` owns the owner consent template/styles. `scripts/cmd/frontendassets` assembles deterministic assets using only the Go standard library. It inlines Gallery CSS/JS and consent CSS and copies login templates/styles into the three Go owners' ignored `generated/` directories for `go:embed`.
+
+Go still owns MCP registration, template data and escaping, CSP and media origin injection, canonical HTTP actions, CSRF and authorization. Public resource URIs, routes and tool interfaces stay stable; the binary is self-contained. Build-time generation is required before compilation; generated resources are neither committed nor runtime files. There is no Web UI or Wails project in this change; a future application may own `frontend/app/` and its own transport adapter. Homebrew templates keep their existing owner.
 
 ## Package responsibilities
 
@@ -143,6 +150,8 @@ and does not construct the trust root. The public key fingerprint and known sign
 Read-only update checks do not need this key; this wiring itself cannot replace the independent release acceptance for each version.
 
 ### `internal/storage/database`
+
+CLI/MCP database owners coordinate initialization, short account/pool transactions and complete snapshot reads through the private `pixiv-cli.db.lock` sidecar. The lock never covers OAuth or content network requests. The coordination file contains no credentials and does not change account data; direct external SQL writers and older processes do not participate. Non-cancellable contexts retain native lock waiting. Cancellable contexts use the same non-blocking lock interface, checking contention every 10ms; cancellation wakes immediately and closes the waiting file handle. There is no overall wait deadline or transaction replay. The account owner cancels its lifecycle before taking the session mutex, so database-lock waits during watcher validation do not block shutdown.
 
 Owns the SQLite authority for local account state:
 
@@ -292,7 +301,11 @@ The three parent packages only own the normalized entities/values shared by thei
 
 ### `internal/mcpserver`
 
-`pixiv/gallery` owns the single embedded MCP Apps resource and its standard bridge. The resource is always registered; `pixiv/internal/runtime.AddTool` attaches its metadata to visual discovery without replacing structured results. The view requests media through host tool calls, never directly from upstream or with stored credentials. It owns view cancellation, Blob cleanup, and capability-gated host downloads. `pixiv/internal/runtime/cursor.go` binds default-batch continuation to tool arguments; the SDK still validates the underlying operation/query/account. Positive-limit logical pagination remains separate. See [Gallery and pagination contracts](../mcp-tools.md).
+`pixiv/gallery` owns the explicit MCP Apps view, attached only to `pixiv_show_gallery`. `pixiv/mediaproxy` owns process-local image capability signing and raster delivery through the public SDK; the HTTP runtime routes `/media/` after canonical-origin validation. Capabilities bind the OAuth grant, account and image selection; neither the browser nor the route accepts upstream credentials or arbitrary URLs. The composition root supplies the same outbound proxy and explicit-account lease factory as other Pixiv operations. Gallery owns lazy image placeholders, explicit retries, view cancellation, Blob cleanup and host-capability downloads. Its independent 256MiB estimated session LRU retains successful loaded static images, metadata and original bytes across internal navigation; fresh tool input/results and teardown clear it. Detached cached images lose view listeners; eviction releases their sources, while active oversized images remain displayable. The original-image modal uses the existing full-byte media tool and shares bytes with host-confirmed downloads. Mutable bookmark state is never cached. Search continuation remains in the original data tools.
+
+`internal/services/pixiv/account/reads.go` owns lifecycle-managed MCP read sessions. It validates the local account revision on acquisition and shares the existing rotation gate only for OAuth refresh and successful rotation persistence. Credential replacement/removal, network changes, expiry and upstream 401 invalidate the generation and release idle connections. Mutation leases and account-pool commit/replay remain in the existing Facade. Root injects a separate read port and opaque session generations; MCP adapters never read credentials.
+
+`pixiv/mediaproxy` owns the grant/session-scoped metadata and image LRU, independent query/image semaphores, same-key metadata flights and streaming response lifecycle. Serialized metadata, in-progress image buffers and pinned cache payloads share the configured budget. Large/unreservable images stream without caching. Every lookup validates current authorization; old account/session generations cannot reuse content. Only complete successful transfers enter the cache, which never stores bookmark state or writes. Grant notifications, credential-generation signals and per-entry expiry reclaim idle entries; pinned bytes remain charged until release. Publication validates grant and generation under the cache mutex so a completed old fill cannot repopulate invalidated content. The SDK registers policy-validated artwork quality variants when mapping trusted metadata. Diagnostics use fixed stages without secret identifiers.
 
 `pixiv/tools/artwork_media` owns static MCP image delivery. One existing SDK lease binds artwork metadata and all page resources to the selected account; resource responses are closed after each read and the lease is closed on every exit. It returns image bytes and explicit per-page content indexes/failures, with no server file publication or replay after partial delivery. `pixiv/internal/outputs` owns the structured media envelope and schema-error redaction. Ugoira uses the shared downloader archive selector, SDK SaveResource, and existing Rust encoder in a private per-call temporary workspace. It returns the full animation blob plus a separately indexed PNG preview, then removes temporary files before delivery. The actual archive quality and output basename are explicit; static-only parameters are rejected rather than ignored.
 
@@ -431,7 +444,10 @@ refresh-token validation lives in `internal/services/pixiv/oauth`; paths/permiss
 > The following constraints are non-negotiable hard boundaries. Any new timeout, truncation, count limit, retry cap, silent fallback, or hidden degradation must have evidence, a comment, a test, or documentation, otherwise it is treated as a violation.
 
 - `appapi`, `oauth`, and resource transport use the HTTP client injected by the caller/SDK; the default client is dedicated to the current SDK client, has no fixed whole-request timeout, and cancellation/deadline is propagated via context. An explicit client retains the caller's policy.
-- `pixiv mcp` explicitly starts the unified HTTP server; running `pixiv` directly shows help. It requires initialized owner state and explicit `[mcp].listen_addr`/`base_url` values or per-launch flag overrides; see [HTTP startup](../cli-reference.md#mcp-http-server).
+- `pixiv mcp` explicitly starts the unified HTTP server; running `pixiv` directly shows help. It requires initialized owner state; `[mcp].listen_addr`/`base_url` default to `127.0.0.1:8080`/`http://127.0.0.1:8080`, with config or per-launch flag overrides for other deployments; see [HTTP startup](../cli-reference.md#mcp-http-server).
 - No persistent account import/export MCP tool is added; the existing session-scoped MCP auth tools and wire contracts are unchanged.
 - Account credentials are stored in the SQLite `pixiv-cli.db` (BLOB, unencrypted); Unix-like DB/journal file permissions are `0600`. An attacker with file access for the current user can still read credentials, and automatic backups are prohibited.
 - `config.toml` uses sparse writes and never persists the full set of defaults to disk.
+
+
+Gallery animation jobs live in `pixiv/mediaproxy`, with control adaptation in `tools/gallery_animation`. The composition root configures a server-owned private temporary workspace and closes it before account read sessions. Jobs are keyed by grant/account/generation/artwork/format; independent opaque subscription handles never expose paths. Binary animation and PNG preview routes reuse canonical origin and authorization checks. ZIP/preview writers reserve disk bytes before writing; a synchronous internal native budget callback reserves each output write against the same pool before touching the file. Ready artifacts are reclaimed only when actual requested bytes do not fit, rather than preemptively reserving their space. The native upper output limit remains enforced. The legacy Rust entry point remains unbounded and the global serial gate remains shared. Temporary producers queue with the native reservation; startup cleanup requires the service marker and a released lifetime OS lock. Reservations are reconciled after atomic output publication; only complete success becomes ready. Files remain pinned during GET/HEAD and cleanup joins active work. Gallery polls through the Apps bridge; direct fetch connections remain prohibited by CSP.

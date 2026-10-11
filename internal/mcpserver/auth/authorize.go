@@ -5,6 +5,7 @@ import (
 	"crypto/rand"
 	"crypto/sha256"
 	"crypto/subtle"
+	_ "embed"
 	"encoding/base64"
 	"encoding/hex"
 	"html/template"
@@ -342,18 +343,7 @@ func randomAuthorizationValue() (string, error) {
 	return base64.RawURLEncoding.EncodeToString(value), nil
 }
 
-var consentTemplate = template.Must(template.New("consent").Parse(`<!doctype html>
-<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Authorize pixiv-cli</title><style>
-body{font:16px/1.6 system-ui,sans-serif;background:#f5f6f8;color:#202838;margin:0;padding:24px}main{max-width:560px;margin:6vh auto;background:white;padding:32px;border-radius:12px;border:1px solid #d9dfe7}h1{font-size:26px;margin-top:0}code{overflow-wrap:anywhere}label{display:block;font-weight:600}input{box-sizing:border-box;width:100%;font:inherit;padding:10px;margin:8px 0 20px;border:1px solid #778396;border-radius:6px}button{font:inherit;padding:10px 22px;margin:8px 8px 0 0;cursor:pointer;border:1px solid #44546e;border-radius:6px;background:white}button[value=allow]{background:#243f70;color:white}button:focus-visible,input:focus-visible{outline:3px solid #6188d0;outline-offset:3px}small{display:block;color:#506078}
-</style></head><body><main><h1>Authorize pixiv-cli</h1>
-<p>Only approve connectors you trust. This grants access to this instance's MCP tools.</p>
-<p>Unverified client name: <strong>{{.ClientName}}</strong></p>
-<p>Redirect origin: <code>{{.RedirectOrigin}}</code><br>Redirect URI: <code>{{.RedirectURI}}</code></p>
-<form method="post" action="{{.Action}}">
-<input type="hidden" name="csrf_token" value="{{.CSRF}}">
-{{if .Verified}}<p>Owner verified in this browser. Your explicit approval is still required.</p>{{else}}
-<label for="owner-secret">Owner secret</label><small>Use the secret from pixiv mcp auth init. Do not share it in chat.</small>
-<input id="owner-secret" name="owner_secret" type="password" autocomplete="current-password">{{end}}
-<button type="submit" name="decision" value="allow">Allow</button><button type="submit" name="decision" value="deny">Deny</button>
-</form></main></body></html>`))
+//go:embed generated/consent.html
+var consentHTML string
+
+var consentTemplate = template.Must(template.New("consent").Parse(consentHTML))

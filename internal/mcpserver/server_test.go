@@ -4,17 +4,127 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"io"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"testing"
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver"
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/fanbox"
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv"
+	"github.com/FlanChanXwO/pixiv-cli/internal/shared/diagnostics"
 	fanboxsdk "github.com/FlanChanXwO/pixiv-cli/sdk/fanbox"
 	pixivsdk "github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
+
+func TestUnifiedMediaSerializationOverIOTransport(t *testing.T) {
+	for _, tc := range []struct {
+		name, version string
+		debug         bool
+	}{
+		{"normal-2025", "2025-11-25", false}, {"debug-2025", "2025-11-25", true},
+		{"normal-2026", "2026-07-28", false}, {"debug-2026", "2026-07-28", true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			var events []diagnostics.Event
+			var mu sync.Mutex
+			ctx := t.Context()
+			if tc.debug {
+				ctx = diagnostics.WithScope(ctx, diagnostics.SinkFunc(func(event diagnostics.Event) {
+					mu.Lock()
+					defer mu.Unlock()
+					events = append(events, event)
+				}), diagnostics.ModulePixivMCP, 0)
+			}
+			server := mcpserver.New(pixiv.SDKPorts{}, pixiv.Account{}, fanbox.SDKPorts{}, nil)
+			var calls atomic.Int32
+			fixture := &mcp.CallToolResult{Content: []mcp.Content{&mcp.ImageContent{MIMEType: "image/png", Data: []byte{1, 2, 3}}}, StructuredContent: countedMediaContent{calls: &calls}}
+			expected, err := json.Marshal(fixture)
+			if err != nil {
+				t.Fatal(err)
+			}
+			before := calls.Load()
+			for _, name := range []string{"pixiv_artwork_media", "pixiv_gallery_animation", "other"} {
+				server.AddTool(&mcp.Tool{Name: name, InputSchema: map[string]any{"type": "object"}}, func(context.Context, *mcp.CallToolRequest) (*mcp.CallToolResult, error) { return fixture, nil })
+			}
+			clientRead, serverWrite := io.Pipe()
+			serverRead, clientWrite := io.Pipe()
+			t.Cleanup(func() {
+				_ = clientRead.Close()
+				_ = serverWrite.Close()
+				_ = serverRead.Close()
+				_ = clientWrite.Close()
+			})
+			serverSession, err := server.Connect(ctx, &mcp.IOTransport{Reader: serverRead, Writer: serverWrite}, nil)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer serverSession.Close()
+			session, err := mcp.NewClient(&mcp.Implementation{Name: "io-observation-test", Version: "1"}, nil).Connect(ctx, &mcp.IOTransport{Reader: clientRead, Writer: clientWrite}, &mcp.ClientSessionOptions{ProtocolVersion: tc.version})
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer session.Close()
+			resultLength := 0
+			for _, name := range []string{"pixiv_artwork_media", "pixiv_gallery_animation", "other"} {
+				result, err := session.CallTool(ctx, &mcp.CallToolParams{Name: name, Arguments: map[string]any{}})
+				if err != nil {
+					t.Fatal(err)
+				}
+				actual, err := json.Marshal(result)
+				if err != nil {
+					t.Fatal(err)
+				}
+				resultLength = len(actual)
+				if tc.version == "2026-07-28" {
+					var fields map[string]json.RawMessage
+					if err := json.Unmarshal(actual, &fields); err != nil {
+						t.Fatal(err)
+					}
+					if string(fields["resultType"]) != `"complete"` || !strings.Contains(string(fields["_meta"]), `"name":"pixiv-cli"`) {
+						t.Fatalf("SDK completion metadata lost: %s", actual)
+					}
+					delete(fields, "_meta")
+					delete(fields, "resultType")
+					actual, err = json.Marshal(fields)
+					if err != nil {
+						t.Fatal(err)
+					}
+				}
+				if string(actual) != string(expected) {
+					t.Fatalf("%s changed delivered result: %s", name, actual)
+				}
+			}
+			if calls.Load() != before+3 {
+				t.Fatalf("result encoded %d times, want 3", calls.Load()-before)
+			}
+			mu.Lock()
+			observed := append([]diagnostics.Event(nil), events...)
+			mu.Unlock()
+			want := 0
+			if tc.debug {
+				want = 2
+			}
+			if len(observed) != want {
+				t.Fatalf("serialization events = %d, want %d", len(observed), want)
+			}
+			for _, event := range observed {
+				if event.Operation != "mcp_response_serialization" || event.Kind != diagnostics.EventCompleted || event.Count != resultLength || event.Duration <= 0 {
+					t.Fatalf("invalid serialization observation: %+v", event)
+				}
+			}
+			safe, err := json.Marshal(observed)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if strings.Contains(string(safe), "signed-url-and-token") {
+				t.Fatal("private media leaked into diagnostics")
+			}
+		})
+	}
+}
 
 func TestUnifiedToolRegistry(t *testing.T) {
 	var pixivCalls, fanboxCalls atomic.Int32
@@ -101,13 +211,29 @@ func TestUnifiedToolRegistry(t *testing.T) {
 		if strings.Contains(tool.Name, "download") {
 			t.Errorf("server-side download remains: %s", tool.Name)
 		}
+		// Check the discovery wire: a nil Go slice becomes null, not a valid required array.
+		for name, schema := range map[string]any{"input": tool.InputSchema, "output": tool.OutputSchema} {
+			data, err := json.Marshal(schema)
+			if err != nil {
+				t.Fatal(err)
+			}
+			var object map[string]any
+			if err := json.Unmarshal(data, &object); err != nil {
+				t.Fatal(err)
+			}
+			if required, present := object["required"]; present {
+				if _, ok := required.([]any); !ok {
+					t.Errorf("%s %s schema: required must be an array, got %s", tool.Name, name, data)
+				}
+			}
+		}
 		a := tool.Annotations
 		if a == nil || a.DestructiveHint == nil || a.OpenWorldHint == nil {
 			t.Errorf("missing explicit annotations: %s", tool.Name)
 			continue
 		}
 		write, mutates := writes[tool.Name]
-		if a.ReadOnlyHint == mutates || *a.DestructiveHint != write.destructive || a.IdempotentHint != (!mutates || write.idempotent) {
+		if a.ReadOnlyHint == mutates || *a.DestructiveHint != write.destructive || a.IdempotentHint != ((!mutates || write.idempotent) && tool.Name != "pixiv_gallery_animation") {
 			t.Errorf("incorrect effect annotations %s: %+v", tool.Name, a)
 		}
 		localOnly := tool.Name == "fanbox_resolve_url" || tool.Name == "pixiv_account_list" || tool.Name == "pixiv_account_status" || tool.Name == "pixiv_account_use"
@@ -118,7 +244,7 @@ func TestUnifiedToolRegistry(t *testing.T) {
 			t.Error("reverse search omits external upload disclosure")
 		}
 	}
-	for _, name := range []string{"pixiv_search_illust", "pixiv_user_detail", "fanbox_current_user", "fanbox_post"} {
+	for _, name := range []string{"pixiv_show_gallery", "pixiv_search_illust", "pixiv_user_detail", "fanbox_current_user", "fanbox_post"} {
 		if !seen[name] {
 			t.Errorf("missing product tool %s", name)
 		}
@@ -204,7 +330,7 @@ func TestGalleryResourceAndToolMetadata(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	visual := map[string]bool{"pixiv_search_illust": true, "pixiv_illust_detail": true, "pixiv_illust_related": true, "pixiv_illust_ranking": true, "pixiv_illust_recommended": true, "pixiv_recommended": true}
+	visual := map[string]bool{"pixiv_show_gallery": true}
 	for _, tool := range tools.Tools {
 		raw, err := json.Marshal(tool.Meta)
 		if err != nil {

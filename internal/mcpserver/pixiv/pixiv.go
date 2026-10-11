@@ -23,6 +23,7 @@ import (
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/tools/delete_artwork_comment"
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/tools/delete_novel_comment"
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/tools/follow_user"
+	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/tools/gallery_animation"
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/tools/illust_comments"
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/tools/illust_detail"
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/tools/illust_ranking"
@@ -48,6 +49,7 @@ import (
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/tools/search_illust"
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/tools/search_novel"
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/tools/search_user"
+	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/tools/show_gallery"
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/tools/stamp_artwork_comment"
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/tools/stamp_novel_comment"
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/tools/timeline_illust_following"
@@ -79,13 +81,15 @@ type ReverseSearchPorts = runtime.ReverseSearchPorts
 
 // Register 将 Pixiv tools 注册到共享 server，账号和 SDK 生命周期仍由 Pixiv runtime 持有。
 func Register(server *mcp.Server, ports SDKPorts, account Account) {
-	gallery.Register(server)
+	gallery.Register(server, ports.Media)
 	app := runtime.NewApp(ports, account)
 	account_use.Register(app, server)
 	account_status.Register(app, server)
 	account_list.Register(app, server)
 	account_login_start.Register(app, server)
 	artwork_media.Register(app, server)
+	gallery_animation.Register(app, server)
+	show_gallery.Register(app, server)
 	add_bookmark.Register(app, server)
 	add_novel_bookmark.Register(app, server)
 	blocked_users.Register(app, server)

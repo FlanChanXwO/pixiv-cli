@@ -4,6 +4,7 @@ import (
 	"archive/zip"
 	"bytes"
 	"context"
+	"fmt"
 
 	"github.com/stretchr/testify/require"
 	"image"
@@ -272,5 +273,63 @@ func TestRustBoundedOutputCleansPartialFiles(t *testing.T) {
 			require.NoError(t, err)
 			require.Empty(t, partial)
 		})
+	}
+}
+
+func TestRustSharedBudgetChecksWritesAndContainsCallbackPanics(t *testing.T) {
+	for _, format := range []ugoira.Format{ugoira.FormatGIF, ugoira.FormatAPNG} {
+		for _, fail := range []bool{false, true} {
+			t.Run(fmt.Sprintf("%s/panic=%t", format, fail), func(t *testing.T) {
+				dir := t.TempDir()
+				zipPath := filepath.Join(dir, "frames.zip")
+				createZip(t, zipPath, "000000.jpg", rustUgoiraJPEG(t))
+				limit := uint64(1 << 20)
+				var reserved uint64
+				calls := 0
+				overrun := false
+				reserve := func(bytes uint64) error {
+					calls++
+					paths, err := filepath.Glob(filepath.Join(dir, ".ugoira-*"))
+					if err != nil {
+						return err
+					}
+					for _, path := range paths {
+						info, err := os.Stat(path)
+						if err != nil {
+							return err
+						}
+						if uint64(info.Size()) > reserved {
+							overrun = true
+							return fmt.Errorf("native write preceded its reservation")
+						}
+					}
+					if fail {
+						panic("fixture callback failure")
+					}
+					if bytes > 16-reserved {
+						return ugoira.ErrOutputCapacity
+					}
+					reserved += bytes
+					return nil
+				}
+				output := filepath.Join(dir, "out."+string(format))
+				err := ugoira.NewRustEncoder().Encode(t.Context(), ugoira.Input{ZipPath: zipPath, Frames: []ugoira.Frame{{File: "000000.jpg", Delay: 80}}, OutputPath: output, Format: format, MaxOutputBytes: &limit, ReserveOutput: reserve})
+				require.Error(t, err)
+				require.Positive(t, calls)
+				require.False(t, overrun, "native callback must reserve before writing")
+				if fail {
+					require.Contains(t, err.Error(), "callback panicked")
+					require.NotErrorIs(t, err, ugoira.ErrOutputCapacity)
+				} else {
+					require.ErrorIs(t, err, ugoira.ErrOutputCapacity)
+					require.LessOrEqual(t, reserved, uint64(16))
+				}
+				_, err = os.Stat(output)
+				require.True(t, os.IsNotExist(err))
+				partial, err := filepath.Glob(filepath.Join(dir, ".ugoira-*"))
+				require.NoError(t, err)
+				require.Empty(t, partial)
+			})
+		}
 	}
 }

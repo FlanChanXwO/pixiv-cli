@@ -40,7 +40,7 @@ func NewCommand(host Host) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:     "mcp",
 		Short:   "Run the unified Pixiv/FANBOX MCP Streamable HTTP server",
-		Example: "pixiv mcp --listen-addr 127.0.0.1:8080 --base-url http://127.0.0.1:8080",
+		Example: "pixiv mcp\npixiv mcp --base-url https://mcp.example.com",
 		Args:    host.RequireExactArgs(0, "pixiv mcp"),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			request, err := host.ClientRequest(cmd, options)
@@ -56,8 +56,8 @@ func NewCommand(host Host) *cobra.Command {
 			return host.RunMCP(cmd.Context(), request)
 		},
 	}
-	cmd.Flags().StringVar(&listenAddr, "listen-addr", "", "HTTP listen address (overrides mcp.listen_addr)")
-	cmd.Flags().StringVar(&baseURL, "base-url", "", "Canonical HTTP(S) base URL (overrides mcp.base_url)")
+	cmd.Flags().StringVar(&listenAddr, "listen-addr", "", "HTTP listen address (overrides mcp.listen_addr; default 127.0.0.1:8080)")
+	cmd.Flags().StringVar(&baseURL, "base-url", "", "Canonical HTTP(S) base URL (overrides mcp.base_url; default http://127.0.0.1:8080)")
 	host.BindProxyFlags(cmd, &options)
 	pipeline.Bind(cmd, pipeline.InputSpec{Codec: pipeline.NoInput, MinArgs: 0, MaxArgs: 0})
 	requirements.Bind(cmd, requirements.PixivMCP())

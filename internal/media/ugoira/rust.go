@@ -83,7 +83,19 @@ func (e rustEncoder) Encode(ctx context.Context, input Input) error {
 		}
 		started := time.Now()
 		var encodeErr error
-		if input.MaxOutputBytes != nil {
+		if input.ReserveOutput != nil {
+			limit := ^uint64(0)
+			if input.MaxOutputBytes != nil {
+				limit = *input.MaxOutputBytes
+			}
+			if budgeted, ok := ffi.(interface {
+				EncodeBudgeted(string, []byte, string, unsafe.Pointer, Format, uint32, uint64, func(uint64) error) error
+			}); ok {
+				encodeErr = budgeted.EncodeBudgeted(input.ZipPath, frames, temporaryPath, token, format, input.MaxEdge, limit, input.ReserveOutput)
+			} else {
+				encodeErr = errors.New("shared-budget native encoding unavailable")
+			}
+		} else if input.MaxOutputBytes != nil {
 			if bounded, ok := ffi.(interface {
 				EncodeBounded(string, []byte, string, unsafe.Pointer, Format, uint32, uint64) error
 			}); ok {

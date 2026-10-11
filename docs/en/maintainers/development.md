@@ -5,6 +5,7 @@ English | [简体中文](../../zh-CN/maintainers/development.md) | [Documentatio
 | What you want to do | Start here |
 | --- | --- |
 | Check the local toolchain | [Environment check](#environment-check) |
+| Edit or regenerate pages | [Frontend assets](#frontend-assets) |
 | Build or verify the ugoira native library | [Rust ugoira staticlib](#rust-ugoira-staticlib) |
 | Run the CLI and MCP | [Run](#run) |
 | Handle login and credentials | [Obtain refresh token](#obtain-refresh-token) |
@@ -22,8 +23,29 @@ Before starting, verify Go/cgo, Rust and the standard test environment:
 go version
 go env GOVERSION CGO_ENABLED CC GOOS GOARCH
 cargo --version
+go run ./scripts/cmd/frontendassets
 go test ./...
 ```
+
+## Frontend assets
+
+Page sources live in `frontend/mcp-apps/gallery/`, `frontend/pages/login/`, and `frontend/pages/oauth/`. Gallery has separate HTML/CSS/JS and a Node fixture; the generator inlines its styles and script and the consent page styles. Login keeps `html/template` composition and inline callback submission. No npm or frontend framework is required.
+
+Run these commands from the repository root before tests, vet, or direct Go compilation:
+
+```bash
+go run ./scripts/cmd/frontendassets
+go run ./scripts/cmd/frontendassets --check
+go test ./...
+go vet ./...
+sh scripts/build.sh
+```
+
+`--check` reports missing or stale outputs without writing. Generated files belong to the three existing Go owners' ignored `generated/` directories; never edit or commit them. Local/platform/race scripts and Quality/Release/Platform workflows generate before compilation. Cross builds run the generator with host GOOS/GOARCH before target compilation. Changes to frontend sources or the generator require Quality, Platform and Container checks. Release clean-tree checks exclude only these generated directories. Docker and installed binaries read no frontend source files at runtime. Homebrew templates remain under `templates/homebrew/`.
+
+Direct `go install ...@tag` cannot generate uncommitted embedded resources. Source installation uses a tag checkout and `scripts/build.sh`; older Go installations must use a Release archive to migrate to this layout, because their self-updater still invokes `go install`.
+
+To exercise the Gallery bridge directly, run `node frontend/mcp-apps/gallery/gallery_test.mjs`; the Go regression also runs all host capability modes when Node is available.
 
 ## Rust ugoira staticlib
 
@@ -122,8 +144,6 @@ Run the authenticated unified MCP HTTP server:
 ```bash
 pixiv auth use 12345678
 ./build/pixiv mcp auth init
-./build/pixiv config set mcp_listen_addr 127.0.0.1:8080
-./build/pixiv config set mcp_base_url http://127.0.0.1:8080
 ./build/pixiv mcp
 ```
 
@@ -230,6 +250,7 @@ Real login depends on the Pixiv OAuth web flow being available. Automated tests 
 Current test coverage spans CLI commands and build metadata, explicit/automatic updates, `internal/services/{pixiv,fanbox}/account` account services, `internal/services/pixiv/pool` account pool, `internal/services/reversesearch` source/provider fixtures and aggregation, `internal/storage/database` auth storage and `internal/config/settings` configuration, `internal/shared/lifecycle` lifecycle, `internal/shared/pagination` logical pagination, `internal/shared/traversal` generic reentrant traversal, Pixiv App API auth retry, the public SDK (`sdk`/`sdk/pixiv`/`sdk/fanbox`), HTTP client wiring, download management, the Rust encoder/staticlib contract and `internal/mcpserver/{pixiv,fanbox}/tools` tool registration. `internal/account` and `internal/session` have been deleted and no compatibility test entry points are retained. Test file layout and same-package exceptions follow [Test file layout](#test-file-layout):
 
 ```bash
+go run ./scripts/cmd/frontendassets
 go test ./...
 sh scripts/build.sh
 # Offline fixture/crypto/permission-classification regression for the browser provider; real cross-platform host evidence is run separately on release-prep.

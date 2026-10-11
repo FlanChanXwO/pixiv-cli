@@ -85,7 +85,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          CC='${{ matrix.cc }}' go test ./internal/media/ugoira -run '^TestRustUgoiraEncoderNativeGIFAndAPNG$|^TestRustBoundedOutputCleansPartialFiles$' -count=1
+          CC='${{ matrix.cc }}' go test ./internal/media/ugoira -run '^TestRustUgoiraEncoderNativeGIFAndAPNG$|^TestRustBoundedOutputCleansPartialFiles$|^TestRustSharedBudgetChecksWritesAndContainsCallbackPanics$' -count=1
       - name: Record staticlib, binary and archive evidence
         shell: bash
         run: |

@@ -192,3 +192,28 @@ func TestAccountSelectionFailureNeverOpensOrExecutesSDK(t *testing.T) {
 	require.Nil(t, lease)
 	require.ErrorIs(t, err, selectionErr)
 }
+
+func TestReadOnlyPortDoesNotEnterMutationExecutor(t *testing.T) {
+	reads, writes := 0, 0
+	port := func(ctx context.Context, _ Account, fn func(context.Context, *pixiv.Client) (bool, error)) error {
+		reads++
+		committed, err := fn(ctx, nil)
+		require.False(t, committed)
+		return err
+	}
+	app := NewApp(SDKPorts{Read: port}, Account{})
+	value, err := Read(app, t.Context(), func(context.Context, *pixiv.Client) (int, error) { return 42, nil })
+	require.NoError(t, err)
+	require.Equal(t, 42, value)
+	require.NotNil(t, app.Execute())
+	require.NoError(t, app.Execute()(t.Context(), func(context.Context, *pixiv.Client) (bool, error) { return false, nil }))
+	app.sdk.Execute = func(ctx context.Context, _ Account, fn func(context.Context, *pixiv.Client) (bool, error)) error {
+		writes++
+		committed, err := fn(ctx, nil)
+		require.True(t, committed)
+		return err
+	}
+	require.NoError(t, Write(app, t.Context(), func(context.Context, *pixiv.Client) error { return nil }))
+	require.Equal(t, 2, reads)
+	require.Equal(t, 1, writes)
+}

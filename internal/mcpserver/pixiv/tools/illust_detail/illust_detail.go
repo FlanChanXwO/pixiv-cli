@@ -31,9 +31,7 @@ func handleIllustDetail(ctx context.Context, app *runtime.App, in illustReferenc
 	if err != nil {
 		return outputs.UserDetailError(err)
 	}
-	result, err := runtime.Read(app, ctx, func(ctx context.Context, client *pixiv.Client) (pixiv.Artwork, error) {
-		return client.Artwork(ctx, pixiv.ArtworkRequest{ArtworkID: id})
-	})
+	result, err := app.Artwork(ctx, id)
 	if err != nil {
 		return outputs.UserDetailError(err)
 	}

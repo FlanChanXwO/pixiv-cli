@@ -106,6 +106,12 @@ jobs:
         if: ${{ needs.scope.result == 'success' }}
         with:
           go-version-file: go.mod
+      - name: Generate embedded frontend assets
+        if: ${{ needs.scope.result == 'success' }}
+        shell: bash
+        run: |
+          GOOS="$(go env GOHOSTOS)" GOARCH="$(go env GOHOSTARCH)" CGO_ENABLED=0 go run ./scripts/cmd/frontendassets
+          GOOS="$(go env GOHOSTOS)" GOARCH="$(go env GOHOSTARCH)" CGO_ENABLED=0 go run ./scripts/cmd/frontendassets --check
       - name: Test Go sources
         if: ${{ needs.scope.result == 'success' }}
         shell: bash

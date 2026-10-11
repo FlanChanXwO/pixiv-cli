@@ -10,10 +10,12 @@ import (
 	"image/png"
 	"os"
 	"path/filepath"
+	"time"
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/internal/outputs"
 	"github.com/FlanChanXwO/pixiv-cli/internal/media/downloader"
 	"github.com/FlanChanXwO/pixiv-cli/internal/media/ugoira"
+	"github.com/FlanChanXwO/pixiv-cli/internal/shared/diagnostics"
 	"github.com/FlanChanXwO/pixiv-cli/sdk"
 	pixiv "github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
@@ -22,10 +24,21 @@ import (
 // readAnimation reuses the CLI archive policy and native encoder, but never
 // publishes their temporary filesystem paths as the MCP delivery contract.
 func readAnimation(ctx context.Context, client *pixiv.Client, id int64, format string) (content []mcp.Content, page outputs.MediaPage, err error) {
+	generationStarted := time.Now()
+	// 在清理之后记录最终结果，包含清理失败且不暴露临时路径。
+	defer func() {
+		count := 0
+		if err == nil {
+			count = page.Size
+		}
+		observeMediaPhase(ctx, "animation_generation", time.Since(generationStarted), count, err)
+	}()
 	if format == "" {
 		format = "gif"
 	}
+	started := time.Now()
 	meta, err := client.UgoiraMetadata(ctx, pixiv.UgoiraMetadataRequest{ArtworkID: id})
+	observeMediaPhase(ctx, "animation_metadata", time.Since(started), 0, err)
 	if err != nil {
 		return nil, page, err
 	}
@@ -39,7 +52,10 @@ func readAnimation(ctx context.Context, client *pixiv.Client, id int64, format s
 	}
 	defer func() { err = errors.Join(err, os.RemoveAll(dir)) }()
 	zipPath := filepath.Join(dir, "frames.zip")
-	if _, err := client.SaveResource(ctx, archive.Resource.Ref, sdk.SaveOptions{Path: zipPath}); err != nil {
+	started = time.Now()
+	saved, err := client.SaveResource(ctx, archive.Resource.Ref, sdk.SaveOptions{Path: zipPath})
+	observeMediaPhase(ctx, "animation_zip_download", time.Since(started), int(saved.Size), err)
+	if err != nil {
 		return nil, page, err
 	}
 	frames := make([]ugoira.Frame, len(meta.Frames))
@@ -48,10 +64,27 @@ func readAnimation(ctx context.Context, client *pixiv.Client, id int64, format s
 	}
 	filename := fmt.Sprintf("%d.%s", id, format)
 	animationPath := filepath.Join(dir, filename)
-	if err := ugoira.NewRustEncoder().Encode(ctx, ugoira.Input{ZipPath: zipPath, Frames: frames, WorkDir: dir, OutputPath: animationPath, Format: ugoira.Format(format)}); err != nil {
+	var waitDuration, encodeDuration time.Duration
+	err = ugoira.NewRustEncoder().Encode(ctx, ugoira.Input{ZipPath: zipPath, Frames: frames, WorkDir: dir, OutputPath: animationPath, Format: ugoira.Format(format), Observe: func(stage string, duration time.Duration) {
+		switch stage {
+		case "animation_encode_wait":
+			waitDuration = duration
+		case "animation_encode":
+			encodeDuration = duration
+		}
+	}})
+	if waitDuration != 0 {
+		observeMediaPhase(ctx, "animation_encode_wait", waitDuration, 0, nil)
+	}
+	if encodeDuration != 0 {
+		observeMediaPhase(ctx, "animation_encode", encodeDuration, 0, err)
+	}
+	if err != nil {
 		return nil, page, err
 	}
+	started = time.Now()
 	data, err := os.ReadFile(animationPath)
+	observeMediaPhase(ctx, "animation_result_read", time.Since(started), len(data), err)
 	if err != nil {
 		return nil, page, err
 	}
@@ -74,4 +107,17 @@ func readAnimation(ctx context.Context, client *pixiv.Client, id int64, format s
 	}
 	page = outputs.MediaPage{Page: 1, Filename: filename, MIMEType: mimeType, Size: len(data), ContentIndex: 0, PreviewContentIndex: new(1), ArchiveQuality: string(archive.Quality)}
 	return []mcp.Content{&mcp.EmbeddedResource{Resource: &mcp.ResourceContents{URI: fmt.Sprintf("urn:sha256:%x", sha256.Sum256(data)), MIMEType: mimeType, Blob: data}}, &mcp.ImageContent{MIMEType: "image/png", Data: preview.Bytes()}}, page, nil
+}
+
+// 阶段失败仅输出固定原因，保留业务错误通过原返回路径交付。
+func observeMediaPhase(ctx context.Context, stage string, duration time.Duration, count int, err error) {
+	event := diagnostics.Event{Module: diagnostics.ModulePixivMCP, Kind: diagnostics.EventCompleted, Operation: stage, Duration: duration, Count: count}
+	if err != nil {
+		event.Kind = diagnostics.EventFailed
+		event.Reason = diagnostics.ReasonToolFailed
+		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+			event.Reason = diagnostics.ReasonRequestCancelled
+		}
+	}
+	diagnostics.Emit(ctx, event)
 }

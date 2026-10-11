@@ -64,19 +64,24 @@ func (s *Service) OpenAccountClientWith(ctx context.Context, userID int64, optio
 }
 
 func (s *Service) openAccount(ctx context.Context, userID int64, options pixiv.Options) (*pixiv.Client, error) {
+	session, err := s.openReadSession(ctx, userID, options)
+	return session.Client, err
+}
+
+func (s *Service) openReadSession(ctx context.Context, userID int64, options pixiv.Options) (ReadSession, error) {
 	account, err := s.repo.GetPixiv(ctx, userID)
 	if err != nil {
-		return nil, fmt.Errorf("select pixiv account: %w", err)
+		return ReadSession{}, fmt.Errorf("select pixiv account: %w", err)
 	}
 	client, credentials, err := pixiv.OpenWith(ctx, string(account.RefreshTokenCopy()), options)
 	if err != nil {
-		return nil, err
+		return ReadSession{}, err
 	}
 	if err := RotateCredential(ctx, s.repo, userID, credentials.UserID, account.CredentialRevision, []byte(credentials.RefreshToken())); err != nil {
 		client.CloseIdleConnections()
-		return nil, fmt.Errorf("persist rotated pixiv credentials: %w", err)
+		return ReadSession{}, fmt.Errorf("persist rotated pixiv credentials: %w", err)
 	}
-	return client, nil
+	return ReadSession{Client: client, Revision: account.CredentialRevision + 1, Expires: credentials.ExpiresAt}, nil
 }
 
 // ImportAccount 保留旧账号服务的默认连接行为；验证失败不产生记录。

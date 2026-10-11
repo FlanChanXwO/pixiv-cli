@@ -13,13 +13,15 @@ import (
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/auth"
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/accounts"
+	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/mediaproxy"
 	"github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/account/loginrelay"
+	"github.com/FlanChanXwO/pixiv-cli/internal/shared/diagnostics"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
 // NewHTTPHandler 将专用 server 绑定到 ctx 的服务生命周期并组装 HTTP/OAuth 路由。
 // owner 必须已初始化；同一 server 不应再次绑定到另一生命周期。
-func NewHTTPHandler(ctx context.Context, server *mcp.Server, baseURL string, store auth.Store, login *accounts.LoginManager) (http.Handler, error) {
+func NewHTTPHandler(ctx context.Context, server *mcp.Server, baseURL string, store auth.Store, login *accounts.LoginManager, media ...*mediaproxy.Service) (http.Handler, error) {
 	authorization, err := auth.NewHandler(baseURL, store)
 	if err != nil {
 		return nil, err
@@ -42,7 +44,15 @@ func NewHTTPHandler(ctx context.Context, server *mcp.Server, baseURL string, sto
 			stop := context.AfterFunc(ctx, cancel)
 			defer stop()
 			defer cancel()
-			return next(requestCtx, method, request)
+			result, err := next(requestCtx, method, request)
+			if err == nil {
+				observationCtx := requestCtx
+				if _, scoped := diagnostics.ScopeFromContext(observationCtx); !scoped {
+					observationCtx = ctx
+				}
+				result = observeMediaResult(observationCtx, request, result)
+			}
+			return result, err
 		}
 	})
 	protocol := mcp.NewStreamableHTTPHandler(func(*http.Request) *mcp.Server { return server }, &mcp.StreamableHTTPOptions{
@@ -60,6 +70,10 @@ func NewHTTPHandler(ctx context.Context, server *mcp.Server, baseURL string, sto
 	}
 	relayURL, _ := url.Parse(relayBase)
 	return authorization.RequireCanonical(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if len(media) > 0 && media[0] != nil && strings.HasPrefix(r.URL.EscapedPath(), media[0].Path()) {
+			media[0].ServeHTTP(w, r)
+			return
+		}
 		// ServeMux 会清理双斜线和转义路径，破坏已发布的 canonical resource。
 		if r.URL.EscapedPath() == base.EscapedPath()+"/mcp" {
 			protected.ServeHTTP(w, r)
@@ -78,13 +92,13 @@ func NewHTTPHandler(ctx context.Context, server *mcp.Server, baseURL string, sto
 }
 
 // RunHTTP 监听显式地址；取消或 listener 失败时取消并等待在途 handler 退出，不切换端口。
-func RunHTTP(ctx context.Context, server *mcp.Server, listenAddr, baseURL string, store auth.Store, out io.Writer, login *accounts.LoginManager) error {
+func RunHTTP(ctx context.Context, server *mcp.Server, listenAddr, baseURL string, store auth.Store, out io.Writer, login *accounts.LoginManager, media ...*mediaproxy.Service) error {
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 	if login != nil {
 		defer login.Close()
 	}
-	handler, err := NewHTTPHandler(ctx, server, baseURL, store, login)
+	handler, err := NewHTTPHandler(ctx, server, baseURL, store, login, media...)
 	if err != nil {
 		return err
 	}

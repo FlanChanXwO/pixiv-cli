@@ -5,6 +5,7 @@
 | 要做的事 | 从这里开始 |
 | --- | --- |
 | 检查本地工具链 | [环境检查](#环境检查) |
+| 修改或重新生成页面 | [前端资源](#前端资源) |
 | 构建或核验 ugoira native library | [Rust ugoira staticlib](#rust-ugoira-staticlib) |
 | 运行 CLI 与 MCP | [运行](#运行) |
 | 处理登录和凭据 | [获取 refresh token](#获取-refresh-token) |
@@ -22,8 +23,29 @@
 go version
 go env GOVERSION CGO_ENABLED CC GOOS GOARCH
 cargo --version
+go run ./scripts/cmd/frontendassets
 go test ./...
 ```
+
+## 前端资源
+
+页面源码位于 `frontend/mcp-apps/gallery/`、`frontend/pages/login/` 与 `frontend/pages/oauth/`。Gallery 独立维护 HTML/CSS/JS 和 Node fixture，生成器内联其样式和脚本及授权页样式。登录页保留 `html/template` 组合与 callback 内联提交脚本。不需要 npm 或前端框架。
+
+在仓库根目录运行以下顺序，再执行测试、vet 或直接 Go 编译：
+
+```bash
+go run ./scripts/cmd/frontendassets
+go run ./scripts/cmd/frontendassets --check
+go test ./...
+go vet ./...
+sh scripts/build.sh
+```
+
+`--check` 对缺失或过期产物报错且不写文件。生成资源属于三个现有 Go owner 的精确忽略目录 `generated/`，不要人工编辑或提交。本地、平台、race 脚本及 Quality/Release/Platform 工作流在编译前生成；交叉构建先用宿主 GOOS/GOARCH 运行生成器，再编译目标平台。前端源码和生成工具的改动要求 Quality、Platform、Container 门禁。Release 干净检出检查仅排除这些生成目录。Docker 和安装后的二进制运行时不读取前端源码。Homebrew 模板仍在 `templates/homebrew/`。
+
+直接 `go install ...@tag` 无法生成未提交的嵌入资源。源码安装需检出 tag 并执行 `scripts/build.sh`；旧 Go 安装的自更新器仍调用 `go install`，迁移到此布局时需改用 Release 压缩包。
+
+直接验证 Gallery bridge 可运行 `node frontend/mcp-apps/gallery/gallery_test.mjs`；Node 可用时 Go 回归也运行全部 host capability 模式。
 
 ## Rust ugoira staticlib
 
@@ -198,8 +220,6 @@ pixiv download 123456
 ```bash
 pixiv auth use 12345678
 ./build/pixiv mcp auth init
-./build/pixiv config set mcp_listen_addr 127.0.0.1:8080
-./build/pixiv config set mcp_base_url http://127.0.0.1:8080
 ./build/pixiv mcp
 ```
 
@@ -305,6 +325,7 @@ restore 原子写失败时检查 public `LocalWriteCommitOutcome`：pre-commit �
 当前测试覆盖 CLI 命令与 build metadata、显式/自动更新、`internal/services/{pixiv,fanbox}/account` 账号服务、`internal/services/pixiv/pool` 账号池、`internal/services/reversesearch` source/provider fixture 与聚合、`internal/storage/database` 认证存储与 `internal/config/settings` 配置、`internal/shared/lifecycle` 生命周期、`internal/shared/pagination` 逻辑分页、`internal/shared/traversal` 泛型可重入遍历、Pixiv App API 认证重试、公开 SDK（`sdk`/`sdk/pixiv`/`sdk/fanbox`）、HTTP client wiring、下载管理、Rust encoder/staticlib 合约和 `internal/mcpserver/{pixiv,fanbox}/tools` tool 注册。`internal/account` 与 `internal/session` 已删除，不保留兼容测试入口。测试文件布局与 same-package 例外见[测试文件布局](#测试文件布局)：
 
 ```bash
+go run ./scripts/cmd/frontendassets
 go test ./...
 sh scripts/build.sh
 # 浏览器 provider 的离线 fixture/crypto/权限分类回归；真实跨平台 host evidence 另按 release-prep 执行。

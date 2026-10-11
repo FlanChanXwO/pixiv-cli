@@ -1,6 +1,8 @@
 package mcpserver
 
 import (
+	"context"
+
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/fanbox"
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
@@ -13,5 +15,14 @@ func New(pixivPorts pixiv.SDKPorts, account pixiv.Account, fanboxPorts fanbox.SD
 	})
 	pixiv.Register(server, pixivPorts, account)
 	fanbox.Register(server, fanboxPorts, fanboxProxy)
+	server.AddReceivingMiddleware(func(next mcp.MethodHandler) mcp.MethodHandler {
+		return func(ctx context.Context, method string, request mcp.Request) (mcp.Result, error) {
+			result, err := next(ctx, method, request)
+			if err == nil {
+				result = observeMediaResult(ctx, request, result)
+			}
+			return result, err
+		}
+	})
 	return server
 }

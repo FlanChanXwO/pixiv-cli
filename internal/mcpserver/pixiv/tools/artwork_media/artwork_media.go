@@ -7,6 +7,7 @@ import (
 	"io"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/internal/outputs"
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/internal/runtime"
@@ -64,7 +65,9 @@ func handle(ctx context.Context, app *runtime.App, in input) (*mcp.CallToolResul
 	// never replayed with another account. Static reads stay in memory; the native
 	// animation encoder owns a per-call temporary workspace that is removed before delivery.
 	err := lifecycle.Run(ctx, app.OpenClient, func(ctx context.Context, client *pixiv.Client, _ *lifecycle.Attempt) error {
+		started := time.Now()
 		artwork, err := client.Artwork(ctx, pixiv.ArtworkRequest{ArtworkID: in.IllustID})
+		observeMediaPhase(ctx, "artwork_query", time.Since(started), 0, err)
 		if err != nil {
 			return err
 		}

@@ -11,6 +11,8 @@ metadata 请使用 `pixiv_novel_detail`。
 
 独立本地命令 `pixiv mcp auth init [--reset]` 准备 owner state 并只输出一次 secret；它不是 tool，也不启动此 server。见 [owner 初始化](cli-reference.md#mcp-owner-初始化)。
 
+工具发现 schema 保持可选参数的可选语义：没有必填字段的对象应省略 `required` 或使用 `required: []`，不能使用 `required: null`。严格客户端可能因任一工具的 schema 无效而拒绝整个工具发现响应。
+
 ## HTTP 授权
 
 内置单 owner OAuth server 发布 protected-resource 与 authorization-server metadata，接受 DCR public client（`token_endpoint_auth_method=none`），使用 Authorization Code + PKCE S256，scope 为 `mcp`。owner 只在实例同意页输入本地初始化 secret，不放入聊天或 tool 参数；每次授权都须明确同意。云端部署使用 HTTPS 反向代理，本地支持 HTTP。该协议合同不代表 ChatGPT 或 Gemini 的真实连接验收已通过。
@@ -309,10 +311,41 @@ FANBOX tools 共享协议 server，不共享 Pixiv 凭据或账号池。两产�
 
 ## MCP Apps 作品预览
 
-视觉 discovery tools（`pixiv_search_illust`, `pixiv_illust_detail`, `pixiv_illust_related`, `pixiv_illust_ranking`, `pixiv_illust_recommended`, `pixiv_recommended`）始终通过 _meta.ui.resourceUri 关联单个内嵌 Gallery resource：URI 为 ui://pixiv-cli/gallery，MIME 为 text/html;profile=mcp-app。其 structured result 不变；不支持 UI 的 host 仍使用原记录与媒体工具，不新增配置开关或仅为渲染存在的 tool。
+只有 `pixiv_show_gallery` 将结果关联到 `ui://pixiv-cli/gallery`（`text/html;profile=mcp-app`、`_meta.ui.resourceUri`）。普通搜索、排行、推荐和详情工具只返回数据，不绑定 UI。仅在用户明确要求看图或画廊时调用展示工具；最终渲染仍由 host 决定。
 
-当前视图将标题、作者、标签作为文本呈现。静态作品卡片进入可见区域后，以 `pages=[1]`、`quality="thumbnail"` 调用 `pixiv_artwork_media`，从返回 bytes 创建可释放 Blob URL，不直接使用 CDN URL 或服务器路径。Ugoira 卡片标记为动画，不发送无效的静态缩略图请求；详情按需加载完整 GIF（默认）或 APNG，并提供独立 PNG 预览。Play animation 选择完整 blob，Show preview 恢复静态图；实际展示/播放仍取决于 host。打开作品后读取详情，可选择静态页码与质量（默认 regular），或明确请求全部页，不截断图片。partial 媒体保留成功图片并列出未交付页。详情打开时读取收藏状态；公开/私密收藏及删除均需明确点击，保留已有标签，成功后重新读取状态。写入失败或被拒绝不报告成功，重试前应刷新状态。仅在 host 声明 `downloadFile` 能力时，静态页与动画才可通过标准 `ui/download-file` 请求下载，直接传完整内嵌 bytes，不传服务器路径或临时链接；拒绝/失败不报下载成功。成功响应仅表示 host 确认操作，保存位置和文件名由 host 控制（界面显示建议文件名）。主题及固定/最大容器尺寸跟随 host context，不注入远程字体/CSS。对于带正数 limit 与明确 next_page 的响应，视图保留原 discovery 参数并追加全部续页记录。混合推荐按 kind 独立续读，保留其他流，省略目标 kind 不接受的其他种类筛选。续页失败保留已加载记录并要求明确重试；切换视图取消旧请求。此功能需要标准 host toolInfo 和完整 tool-input 通知。搜索、相关作品、排行和作品推荐的默认批次通过原样传回 next_cursor 续读，不指定页大小。混合推荐的默认批次使用各流 next_cursor，以对应 kind 和适用的筛选续读。继续一个流时保留全部已加载记录及其他流的分页状态，不重新请求已耗尽的流。
+输入：必填非空正整数数组 `illust_ids`；可选正整数 `page`（默认 1）和 `quality`（默认 `thumbnail`，另支持 `regular`、`original`）。重复 ID 保留首次位置。工具读取 metadata，不重复搜索；返回 `records`、`images`（作品 ID、页码、URL）、`failures`，以及配置反代时的 `media_origin`。逐项失败保留其他结果并设置 `isError`。画廊仅展示传入集合；需要更多作品时，先用原数据工具续页，再明确展示新画廊。
 
-bridge 使用标准 `ui/initialize` / `ui/notifications/initialized`、tool-result 通知及 `tools/call`。替换视图时取消未完成预览并释放 Blob URL；teardown 同时断开 observers。CSP 只允许 Blob 图片与内嵌脚本/样式，不允许直接联网。iframe 不接收 bearer、Pixiv 凭据或 FANBOX session。参见 [MCP Apps 规范](https://github.com/modelcontextprotocol/ext-apps/blob/main/specification/2026-01-26/apps.mdx)。
+静态预览默认使用同域图片反代 URL，不传 base64 工具图片或 CDN 直链。canonical base 下的 `/media/` GET/HEAD 路由校验签名凭证，绑定 OAuth grant、选定账号、作品、页码及画质。有效期不超过签发时 access token；grant 撤销、owner reset 或重启使旧地址失效。切换共享账号不会把旧地址指向新账号。服务端通过公开 SDK 和已有出站代理取图，拒绝任意 URL 与非光栅图片，响应使用 `Cache-Control: private, no-store`。HEAD 同样验证图片但不发送正文。不新增磁盘或共享缓存。完整图片地址属于短期访问凭证，不应分享或写入日志。
 
-本地 bridge mock 不证明真实云端 host 已展示、下载或播放媒体。不支持 bridge/tool-call 时继续直接使用原 structured result 与媒体工具。
+卡片优先显示完整、不裁切的缩略图、两行标题、作者和胶囊标签，不添加内部外框、结果数量或详情标题。R-18／R-18G 红底白字角标来自 `x_restrict`，多图缩略图显示叠图图标和张数；按 Pixiv 信息层级近似还原，不宣称像素级一致。溢出的标签可通过 `...` 按钮展开，保留全部标签。详情直接显示完整标题、标签和简介，并展示数据中存在的作者、发布时间、浏览数、收藏数、作品 ID、尺寸和页数；宽容器中媒体与信息并排，窄容器中上下排列。metadata 作为文本而非 HTML 展示。图标控件具有可访问名称、键盘焦点和宿主主题配色。静态图片进入可见区域才加载；失败时在占位区域显示显式重试入口，点击后经认证画廊工具重新签发地址。点击图片或名称打开详情。单页不显示翻页控件，多页提供首尾禁用的左右箭头、横向滑动和原生进度滑块，位置为只读显示。拖动预览目标，提交后加载并忽略过期响应；纵向手势继续交给聊天页面。尺寸优先使用当前页提供的数据，原图下载对应当前选定页。详情默认 regular 图片；双击静态详情图片或点击可访问的“View original”按钮，可在弹层查看完整质量原图，切换适应窗口／实际尺寸，并通过 Escape／关闭按钮退出或使用 host 确认下载。查看和下载复用已成功读取的原图字节。独立的 256MiB 估算会话 LRU 缓存保存已加载静态图片、详情信息与原图字节；翻页、重进详情复用内容并保留选定页。新查询／结果、取消和关闭画廊清理缓存。不缓存失败或收藏状态；超大图片完整显示但不保留。预算计入解码像素与编码数据估算，并非浏览器／GPU 总内存上限。明确下载原始页时使用完整字节媒体工具和 host 下载能力。Ugoira 保留完整 GIF/APNG 及独立 PNG 预览。收藏工具栏提供主要保存操作、公开／私密选择、已收藏作品的取消入口和显式状态刷新。收藏状态未知或写入未确认时禁止写入；写入仍需明确点击、host approval 和成功后刷新状态。播放与下载确认仍取决于 host。
+
+标准 Apps bridge 处理初始化、工具结果和调用。CSP 只允许 canonical 反代域名及 Blob 图片，不允许直接 fetch 或外部脚本/样式；图片使用 `no-referrer`。iframe 不接收 OAuth bearer、Pixiv 凭据或 FANBOX session。切换视图取消待完成工具请求，释放动图订阅。参见 [MCP Apps 规范](https://github.com/modelcontextprotocol/ext-apps/blob/main/specification/2026-01-26/apps.mdx)。
+
+本地 bridge/浏览器 fixture 不证明云端 host 互操作通过。无 Apps 支持时仍可使用结构化数据及 `pixiv_artwork_media`。
+
+Gallery 去重后在配置并发上限内查询作品，保持输入顺序和逐项失败。MCP 只读会话按账号、凭据版本和网络配置复用 access token 与 HTTP 连接，直到到期。只有刷新和凭据持久化持有轮换锁；持久化成功后才开始内容请求，传输期间不持锁。上游认证失败使会话失效，不自动重试。SDK 从可信作品信息登记质量变体，打开变体时避免再次查询作品。
+
+进程缓存按 grant 隔离，使用 [CLI reference](cli-reference.md#mcp-http-server) 中的启动配置，默认 256 MiB、15 分钟、并发 4。合并同键 metadata 查询，仅缓存成功 metadata 和完整光栅图片；命中仍检查 grant 授权及当前账号／会话版本。收藏状态和写操作不缓存。图片通过上游状态和文件头校验后开始流式发送；有可信 Content-Length 时保留，否则不声明长度。传输中断会关闭上游资源并丢弃填充缓冲，不向图片字节追加错误文本。固定阶段观测区分会话等待／刷新、作品查询、图片首包、传输及缓存命中，不包含 token、grant 或签名地址。
+
+
+### `pixiv_gallery_animation`
+
+Gallery 动图控制支持 `action: prepare`，输入正整数 `illust_id` 和可选 `format`（默认 `gif`，也可选 `apng`）。`status` 与 `release` 只接收不透明 `handle`。每次准备获得独立订阅，控制响应不嵌入动图字节。状态为 `queued`、`downloading`、`encoding`、`ready`、`failed`、`cancelled`、`expired`，不伪造进度百分比。每两秒查询状态；终态停止查询，重试必须由用户明确触发。
+
+就绪输出包括 `animation_url`、独立 PNG 的 `preview_url`、`media_origin`、`filename`、`mime_type`、`size` 和 `expires`。Gallery 在所选图片加载完成前显示加载提示，完成后才确认静态预览或动画播放状态。当前详情页内切换已加载的动画与预览会复用图片元素，不重复发起 HTTP 读取；动画仅在首次点击播放时加载，失败仍需显式重试。离开详情、切换格式或重试时清除两种图片来源。Gallery 初始显示静态预览，播放时选择完整 GIF/APNG HTTP 资源。宿主支持下载时，通过 `ui/download-file` 的 `resource_link` 请求确认。既有 `pixiv_artwork_media` 完整内容合同保持不变。
+
+同一 grant／账号／会话版本／作品／格式的重复准备复用任务与完整成功产物。最后一个订阅释放时取消未完成任务；就绪产物可保留至缓存 TTL 与签发授权到期时间的较早值。`/media/animation/` 的 GET/HEAD 每次检查授权及当前账号版本，响应为 `private, no-store`。地址属于短期访问凭证，不应记录或分享。
+
+私有目录／文件权限为 0700／0600。ZIP、原生输出预留、预览和待交付产物共用独立的启动磁盘预算（`mcp_gallery_animation_temp_capacity_mib`，默认 1024 MiB）。写入前检查容量；原生写入通过内部同步回调按实际字节申请空间，容量足够时生成另一格式仍保留未使用的就绪产物。只有空间确实不足时才淘汰可回收产物；不足时明确失败，不截断交付或降低编码质量。过期／未使用的就绪产物可淘汰，读取中的文件等待句柄关闭再删除。服务关闭时等待任务及读取退出，再删除自身工作目录；启动时仅清理带本服务标记且系统生命周期锁已释放的目录；活跃实例及归属不明的目录保留。临时文件生成与原生输出预留共用队列，避免并发准备误报容量不足；就绪文件仍可并发读取。首次准备仍需要下载和编码，不承诺固定公网耗时。
+
+开启 debug 诊断时，`pixiv_artwork_media` 与 `pixiv_gallery_animation` 的 HTTP 和 stdio 响应会记录 `mcp_response_serialization`，包含实际结果 JSON 编码耗时和字节数，不包含 JSON-RPC 外层及网络传输时间。普通日志级别保留原编码路径；HTTP 与协议诊断 scope 重叠时，不重复编码或记录。动图交付中断记录为失败，使用固定的请求取消／传输中断原因；不写入原始错误、凭据或 capability 地址。
+
+现有 `pixiv_artwork_media` 动图路径还记录作品查询、动图元数据、ZIP 下载、实际观测到的原生编码排队／编码及产物读取阶段。`animation_generation` 在临时文件清理后记录最终生成结果，包含失败和请求取消；失败字节数为零，成功为动画大小。这些生成阶段不包含响应序列化和网络交付。进入原生队列前失败的编码尝试不伪造排队耗时。
+
+后台动图取消在 worker 清理后记录首个取消来源：最后一个订阅释放、服务关闭或媒体到期。CLI 使用固定原因说明，不输出任务句柄或原始取消文本。订阅或媒体检查发现授权／账号会话失效时使用独立的固定原因。已撤销 grant 的订阅检查在拒绝请求的同时取消其既有任务；其他账号不能借句柄取消该任务。控制请求取消（包括取得账号会话期间取消）会返回取消错误，仍有订阅的后台工作继续运行。单次动图 HTTP 请求取消也保留共享产物和独立订阅；真实授权或凭据失效仍会使其过期。在途二进制传输绑定任务生命周期：关闭或撤销后取消传输、关闭文件，并立即设置 HTTP 写入截止以解除阻塞。这是取消触发的中断，不是固定传输超时。取消回调在 handler 返回前结束；传输解除文件占用后再删除私有产物。动图 owner 监听授权目录，识别状态文件的原子替换，无需再次调用状态或媒体接口即可主动停止已撤销／重置 grant 的工作。监听失效时停止动图工作并拒绝新动图请求，关闭时报告固定监听错误。账号会话失效现在发布按版本隔离的取消信号：上游认证失败会停止使用同一版本的其他传输与动图任务，不重试失败请求；旧版本的错误不能取消替代会话。MCP 账号 owner 监听数据库父目录的 DB、WAL 和 journal 变化，只读取本地凭据版本；外部替换／删除会取消旧会话，不额外刷新 token。轮换持久化后、发布新会话前再次校验凭据版本；提前消费了变更通知也不能发布已过期的客户端。元数据变更不取消会话。监听目录或数据库路径丢失时停止旧会话，关闭时报告固定监听错误。监听器等待数据库锁时，关闭先取消账号生命周期，再等待监听退出；正常关闭的取消不标成监听故障。kqueue 对刚删除的 SQLite journal 报 ENOENT lstat 时，仅在父目录监听和常规主数据库仍存在的情况下将其视为提交通知，重新校验当前凭据版本；其他监听错误、目录／数据库丢失及校验失败仍终止监听。
+
+后台动图元数据、ZIP 传输和原生编码观测携带实际失败结果。ZIP 在关闭资源及校验 Content-Length 后才记录成功，编码在编码器返回后才记录成功。最终生成事件成功时包含完整动画大小，失败或取消时为零。部分 ZIP 字节数代表已传输数据，不代表动画已成功交付。
+
+共享作品查询和会话获取观测同样区分失败结果。OAuth 刷新结果包含轮换凭据持久化，持久化失败不会记录为刷新成功。获取轮换锁时取消会记录固定的请求取消原因，不继续刷新或读取内容；现有错误返回及重试行为保持。
+
+动图订阅发布前会在取得账号会话后再次验证授权；授权通知在任务发布 mutex 内读取快照。授权撤销、凭据版本失效和到期会主动回收空闲静态元数据与图片，在途内容释放引用前继续计入预算。迟到缓存填充在缓存 mutex 内验证当前授权和版本。产物删除失败保留占用预算，并在关闭时报告，即使最终清理后来成功；HTTP 运行错误与关闭清理错误合并返回。

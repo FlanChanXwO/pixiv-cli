@@ -14,6 +14,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -28,9 +29,11 @@ import (
 	unifiedmcp "github.com/FlanChanXwO/pixiv-cli/internal/mcpserver"
 	mcpauth "github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/auth"
 	mcpaccounts "github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/accounts"
+	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/mediaproxy"
 	pixivaccount "github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/account"
 	"github.com/FlanChanXwO/pixiv-cli/internal/services/reversesearch"
 	reverseassembly "github.com/FlanChanXwO/pixiv-cli/internal/services/reversesearch/assembly"
+	coreDiagnostics "github.com/FlanChanXwO/pixiv-cli/internal/shared/diagnostics"
 	"github.com/FlanChanXwO/pixiv-cli/internal/storage/database"
 	sdkpixiv "github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
@@ -679,7 +682,7 @@ func TestMCPReverseSearchRegistersSearcherForHTTPLifetime(t *testing.T) {
 	newCLIPixivSDKPorts = func(app) (pixivSDKPorts, error) {
 		return pixivSDKPorts{}, nil
 	}
-	runMCPHTTP = func(ctx context.Context, server *mcp.Server, listenAddr, baseURL string, store mcpauth.Store, out io.Writer, login *mcpaccounts.LoginManager) error {
+	runMCPHTTP = func(ctx context.Context, server *mcp.Server, listenAddr, baseURL string, store mcpauth.Store, out io.Writer, login *mcpaccounts.LoginManager, media ...*mediaproxy.Service) error {
 		require.NotNil(t, login, "production HTTP must receive the shared login manager")
 		clientTransport, serverTransport := mcp.NewInMemoryTransports()
 		serverSession, err := server.Connect(ctx, serverTransport, nil)
@@ -721,6 +724,47 @@ func TestMCPReverseSearchRegistersSearcherForHTTPLifetime(t *testing.T) {
 	require.ErrorIs(t, a.closeResources(), closeErr)
 	require.Equal(t, int32(1), searcher.closeCalls.Load())
 	require.Empty(t, stdout.String())
+}
+
+func TestMCPShutdownPreservesAnimationCleanupError(t *testing.T) {
+	if runtime.GOOS == "windows" || os.Geteuid() == 0 {
+		t.Skip("requires POSIX directory permission enforcement")
+	}
+	useTempPaths(t)
+	temporary := t.TempDir()
+	t.Setenv("TMPDIR", temporary)
+	oldConfig, oldSDK, oldHTTP, oldReverse := loadCLIRuntimeConfig, newCLIPixivSDKPorts, runMCPHTTP, newCLIMCPReverseSearch
+	t.Cleanup(func() {
+		loadCLIRuntimeConfig, newCLIPixivSDKPorts, runMCPHTTP, newCLIMCPReverseSearch = oldConfig, oldSDK, oldHTTP, oldReverse
+	})
+	loadCLIRuntimeConfig = func() (configapp.RuntimeConfig, error) {
+		return configapp.RuntimeConfig{MCPListenAddr: "127.0.0.1:8123", MCPBaseURL: "http://127.0.0.1:8123", MCPGalleryCacheTTL: time.Minute, MCPGalleryConcurrency: 1, MCPGalleryAnimationTempCapacityMiB: 1}, nil
+	}
+	newCLIMCPReverseSearch = func(reverseassembly.Options) (reversesearch.Searcher, error) {
+		return &closeTrackingReverseSearcher{}, nil
+	}
+	newCLIPixivSDKPorts = func(app) (pixivSDKPorts, error) {
+		return pixivSDKPorts{readSession: func(context.Context, pixivdeps.Request) (mediaproxy.Session, error) {
+			return mediaproxy.Session{}, errors.New("unexpected SDK access")
+		}}, nil
+	}
+	serveErr := errors.New("fixture HTTP stopped")
+	runMCPHTTP = func(context.Context, *mcp.Server, string, string, mcpauth.Store, io.Writer, *mcpaccounts.LoginManager, ...*mediaproxy.Service) error {
+		entries, err := os.ReadDir(temporary)
+		require.NoError(t, err)
+		require.Len(t, entries, 1)
+		workspace := filepath.Join(temporary, entries[0].Name())
+		require.NoError(t, os.Chmod(workspace, 0500))
+		t.Cleanup(func() { require.NoError(t, os.Chmod(workspace, 0700)) })
+		return serveErr
+	}
+	a := app{in: strings.NewReader(""), out: io.Discard, errOut: io.Discard, closeState: &closeState{}}
+	_, err := a.InitMCPAuth(t.Context(), false)
+	require.NoError(t, err)
+	err = a.runPixivMCP(t.Context(), mcpcommands.Request{})
+	require.ErrorIs(t, err, serveErr)
+	require.ErrorIs(t, err, os.ErrPermission, "server failure must retain the animation cleanup failure")
+	require.NoError(t, a.closeResources())
 }
 
 func TestMCPAuthInitPersistsPrivateVerifierOnce(t *testing.T) {
@@ -809,7 +853,7 @@ func TestMCPHTTPPreflightFailsBeforeStarting(t *testing.T) {
 		args []string
 		want string
 	}{
-		{"missing endpoints", nil, "--listen-addr"},
+		{"default endpoints require owner", nil, "pixiv mcp auth init"},
 		{"missing owner", []string{"--listen-addr", "127.0.0.1:8123", "--base-url", "http://127.0.0.1:8123"}, "pixiv mcp auth init"},
 		{"invalid canonical", []string{"--listen-addr", "127.0.0.1:8123", "--base-url", "relative"}, "canonical MCP base URL"},
 		{"ephemeral port", []string{"--listen-addr", "127.0.0.1:0", "--base-url", "http://127.0.0.1:8123"}, "nonzero port"},
@@ -840,6 +884,7 @@ func TestMCPHTTPEndpointFlagPrecedence(t *testing.T) {
 		args         []string
 		listen, base string
 	}{
+		{"defaults", nil, "127.0.0.1:8080", "http://127.0.0.1:8080"},
 		{"config", nil, "127.0.0.1:8123", "http://127.0.0.1:8123"},
 		{"listen override", []string{"--listen-addr", "127.0.0.1:8124"}, "127.0.0.1:8124", "http://127.0.0.1:8123"},
 		{"base override", []string{"--base-url", "https://public.test/prefix"}, "127.0.0.1:8123", "https://public.test/prefix"},
@@ -852,15 +897,17 @@ func TestMCPHTTPEndpointFlagPrecedence(t *testing.T) {
 			a := app{in: strings.NewReader(""), out: &stdout, errOut: &stderr}
 			_, err := a.InitMCPAuth(t.Context(), false)
 			require.NoError(t, err)
-			require.NoError(t, os.WriteFile(configPath, []byte(`[mcp]
+			if tc.name != "defaults" {
+				require.NoError(t, os.WriteFile(configPath, []byte(`[mcp]
 listen_addr = "127.0.0.1:8123"
 base_url = "http://127.0.0.1:8123"
 `), 0600))
+			}
 			oldHTTP, oldSDK := runMCPHTTP, newCLIPixivSDKPorts
 			t.Cleanup(func() { runMCPHTTP, newCLIPixivSDKPorts = oldHTTP, oldSDK })
 			newCLIPixivSDKPorts = func(app) (pixivSDKPorts, error) { return pixivSDKPorts{}, nil }
 			called := false
-			runMCPHTTP = func(_ context.Context, _ *mcp.Server, listen, base string, _ mcpauth.Store, out io.Writer, login *mcpaccounts.LoginManager) error {
+			runMCPHTTP = func(_ context.Context, _ *mcp.Server, listen, base string, _ mcpauth.Store, out io.Writer, login *mcpaccounts.LoginManager, media ...*mediaproxy.Service) error {
 				called = true
 				require.Equal(t, tc.listen, listen)
 				require.Equal(t, tc.base, base)
@@ -906,7 +953,7 @@ func TestMCPProductionResolvesSharedSelectionBeforeSDK(t *testing.T) {
 			},
 		}, nil
 	}
-	runMCPHTTP = func(ctx context.Context, server *mcp.Server, _, _ string, store mcpauth.Store, _ io.Writer, login *mcpaccounts.LoginManager) error {
+	runMCPHTTP = func(ctx context.Context, server *mcp.Server, _, _ string, store mcpauth.Store, _ io.Writer, login *mcpaccounts.LoginManager, media ...*mediaproxy.Service) error {
 
 		ct, st := mcp.NewInMemoryTransports()
 		ss, err := server.Connect(ctx, st, nil)
@@ -1210,6 +1257,65 @@ func TestMCPLoginProductionChain(t *testing.T) {
 			require.False(t, explicit)
 			require.Equal(t, int32(1), exchanges.Load(), "concurrent callbacks must exchange only once")
 			require.Eventually(t, func() bool { return connections.Load() == 0 }, time.Second, time.Millisecond, "completed login must release its owned idle connection")
+		})
+	}
+}
+
+func TestMCPMediaObservationsSurviveHTTPContextBoundary(t *testing.T) {
+	var parentEvents, requestEvents []coreDiagnostics.Event
+	parent := coreDiagnostics.WithScope(context.Background(), coreDiagnostics.SinkFunc(func(event coreDiagnostics.Event) { parentEvents = append(parentEvents, event) }), coreDiagnostics.ModulePixivMCP, 0)
+	event := coreDiagnostics.Event{Operation: "animation_encode", Kind: coreDiagnostics.EventCompleted, Count: 32}
+	emitMCPMediaEvent(parent, context.Background(), event)
+	require.Len(t, parentEvents, 1, "HTTP requests do not inherit the CLI diagnostic scope")
+	require.Equal(t, "animation_encode", parentEvents[0].Operation)
+	require.Equal(t, 32, parentEvents[0].Count)
+	request := coreDiagnostics.WithScope(context.Background(), coreDiagnostics.SinkFunc(func(event coreDiagnostics.Event) { requestEvents = append(requestEvents, event) }), coreDiagnostics.ModulePixivMCP, 7)
+	emitMCPMediaEvent(parent, request, event)
+	require.Len(t, parentEvents, 1, "an explicit request scope must not double emit")
+	require.Len(t, requestEvents, 1)
+	require.Equal(t, uint64(7), requestEvents[0].RequestID)
+}
+
+func TestMCPAnimationFailedPhaseKeepsSafeReason(t *testing.T) {
+	var events []coreDiagnostics.Event
+	ctx := coreDiagnostics.WithScope(t.Context(), coreDiagnostics.SinkFunc(func(e coreDiagnostics.Event) { events = append(events, e) }), coreDiagnostics.ModulePixivMCP, 0)
+	emitMCPAnimationEvent(ctx, context.Background(), mediaproxy.AnimationObservation{Stage: "animation_encode", Duration: time.Second, Failed: true})
+	require.Len(t, events, 1)
+	require.Equal(t, coreDiagnostics.EventFailed, events[0].Kind)
+	require.Equal(t, coreDiagnostics.ReasonToolFailed, events[0].Reason)
+	require.Zero(t, events[0].Count)
+}
+
+func TestMCPAnimationObservationsKeepSafeCancellationReasons(t *testing.T) {
+	for _, tc := range []struct {
+		source, reason string
+		failed         bool
+	}{
+		{"request", "request cancelled", true},
+		{"transport", "transport interrupted", true},
+		{"subscription", "subscription released", true},
+		{"service", "service closed", true},
+		{"expiry", "authorization expired", true},
+		{"authorization", "authorization invalidated", true},
+		{"", "", false},
+		{"https://private.test/?token=secret", "tool failed", true},
+	} {
+		t.Run(tc.source, func(t *testing.T) {
+			var events []coreDiagnostics.Event
+			ctx := coreDiagnostics.WithScope(t.Context(), coreDiagnostics.SinkFunc(func(e coreDiagnostics.Event) { events = append(events, e) }), coreDiagnostics.ModulePixivMCP, 0)
+			emitMCPAnimationEvent(ctx, context.Background(), mediaproxy.AnimationObservation{Stage: "animation_delivery", Duration: time.Second, Bytes: 17, CancellationSource: tc.source})
+			require.Len(t, events, 1)
+			require.Equal(t, tc.reason, string(events[0].Reason))
+			kind := coreDiagnostics.EventCompleted
+			if tc.failed {
+				kind = coreDiagnostics.EventFailed
+			}
+			require.Equal(t, kind, events[0].Kind)
+			require.Equal(t, 17, events[0].Count)
+			require.Equal(t, time.Second, events[0].Duration)
+			encoded, err := json.Marshal(events)
+			require.NoError(t, err)
+			require.NotContains(t, string(encoded), "token=secret")
 		})
 	}
 }

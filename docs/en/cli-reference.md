@@ -93,17 +93,17 @@ The working tree ships six runner-verified staticlibs for darwin/linux/windows �
 building the native binary. See [the development guide](maintainers/development.md#rust-ugoira-staticlib) for the full
 requirements, evidence backfill process, and failure semantics.
 
-### Go install
+### Go source installation
 
-After an official tag is published, install with the exact tag:
+Check out the exact published tag and use the build script, which generates frontend resources before Go compilation:
 
 ```bash
-go install github.com/FlanChanXwO/pixiv-cli/cmd/pixiv@vX.Y.Z
+git clone --branch vX.Y.Z --depth 1 https://github.com/FlanChanXwO/pixiv-cli.git
+cd pixiv-cli
+sh scripts/build.sh
 ```
 
-This still uses the local Go toolchain, cgo, a C linker, and the committed staticlib for the target. The six target
-libraries and manifest are complete — for example, the published v0.4.4 release can be installed with `@v0.4.4`;
-always use the exact published tag, never a branch name.
+This requires the local Go toolchain, cgo, a C linker and the committed staticlib for the target. The build outputs `build/pixiv` or `build/pixiv.exe`; direct `go install ...@tag` does not run the resource generator and cannot build tags using this asset layout. Historical tags keep their original installation contract. Existing Go-installed binaries still use the old `go install` self-update path; migrating those installations to a generated-resource release requires installing its Release archive instead.
 
 ### Homebrew
 
@@ -507,7 +507,7 @@ Only the structured entity filters documented by each command are accepted. The 
 | `novel search` | `pixiv novel search WORD [options]` | Compatibility route for novel search; prefer `pixiv search WORD --type novel`. It exposes only the documented basic novel search fields. |
 | `user search` | `pixiv user search WORD [options]` | Compatibility route for user search; prefer `pixiv search WORD --type user`. |
 | `follow` | `pixiv follow add\|remove USER_ID ...` | Compatibility route for user follow mutation; it shares the same owner and input contract as `pixiv user follow add\|remove`. |
-| `mcp` | `pixiv mcp [--listen-addr ADDR] [--base-url URL] [--proxy URL\|--no-proxy]` | Starts the authenticated unified HTTP server; explicit address/base and initialized owner are required. |
+| `mcp` | `pixiv mcp [--listen-addr ADDR] [--base-url URL] [--proxy URL\|--no-proxy]` | Starts the authenticated unified HTTP server; defaults to local HTTP at `127.0.0.1:8080`; initialized owner is required. |
 | `mcp auth init` | `pixiv mcp auth init [--reset]` | Initialize the local MCP owner and print its secret once; reset revokes grants, preserving clients and selected account. |
 | `fanbox auth` | `pixiv fanbox auth import|list|use|remove|status` | Imports and manages local FANBOX sessions. Session values are never printed. Native `--proxy`/`--no-proxy` applies only to the FANBOX command. |
 | `fanbox creators` | `pixiv fanbox creators [--kind supporting\|following] [--page N --limit N]` | Lists supporting or following FANBOX creators. |
@@ -806,17 +806,27 @@ failure.
 
 ## MCP HTTP server
 
-Initialize the owner once with `pixiv mcp auth init`, then explicitly configure both startup values:
+Initialize the owner once, then start with the local defaults:
 
 ```bash
-pixiv config set mcp_listen_addr 127.0.0.1:8080
-pixiv config set mcp_base_url http://127.0.0.1:8080
+pixiv mcp auth init
 pixiv mcp
 # Per-launch overrides; these do not change config.toml:
-pixiv mcp --listen-addr 127.0.0.1:8080 --base-url https://mcp.example.com
+pixiv mcp --base-url https://mcp.example.com
 ```
 
-The aliases `mcp_listen_addr` and `mcp_base_url` map to `[mcp].listen_addr` and `[mcp].base_url`. Both default to empty and support `config get/set/unset`. Flags override file values, including an explicit empty override (which fails startup). There are no additional MCP environment variables. Listen address requires an explicit nonzero TCP port. Missing settings, invalid canonical URL, unreadable/uninitialized owner state or bind failure stop startup; the server never silently selects another port. Missing owner state directs the administrator to `pixiv mcp auth init`.
+The aliases `mcp_listen_addr` and `mcp_base_url` map to `[mcp].listen_addr` and `[mcp].base_url`. They default to `127.0.0.1:8080` and `http://127.0.0.1:8080`, respectively, and support `config get/set/unset`; unset restores the default. The default listener is loopback-only. Override both values when using another local port; cloud connectors require an explicit public HTTPS base URL. Flags override file values, including an explicit empty override (which fails startup). There are no additional MCP environment variables. Listen address requires an explicit nonzero TCP port. Explicit empty settings, invalid canonical URL, unreadable/uninitialized owner state or bind failure stop startup; the server never silently selects another port. Missing owner state directs the administrator to `pixiv mcp auth init`.
+
+Gallery reads use these startup settings, managed with `pixiv config get/set/unset`:
+
+| Alias | TOML key under `[mcp]` | Default | Validation |
+| --- | --- | --- | --- |
+| `mcp_gallery_animation_temp_capacity_mib` | `gallery_animation_temp_capacity_mib` | `1024` | Positive integer; checked MiB conversion; private animation temporary storage |
+| `mcp_gallery_cache_capacity_mib` | `gallery_cache_capacity_mib` | `256` | Integer ≥ 0; checked MiB conversion; `0` disables caching |
+| `mcp_gallery_cache_ttl` | `gallery_cache_ttl` | `"15m"` | Positive duration string |
+| `mcp_gallery_concurrency` | `gallery_concurrency` | `4` | Positive integer; independent metadata and image limits |
+
+Missing keys and `config unset` restore defaults. No additional flags or environment variables are introduced. Restart MCP after changing these settings. The process-local LRU budget includes metadata payloads and image filling buffers; oversized images still stream in full without being cached. Cache expiry is the earliest of the configured TTL, issuing authorization expiry, and upstream read-session expiry. Artwork information may lag updates within that window; bookmark state and writes remain live. Every hit rechecks authorization and account/credential/network generation. Revocation denies further reads; restart clears the cache. HTTP responses stay `private, no-store`, without disk or public CDN caching.
 
 The endpoint is the base URL plus `/mcp` and is printed to stderr with the owner-initialized status, never the owner secret. Server stdout is not a JSON-RPC channel. Both products share the endpoint but retain separate credential/runtime owners. `pixiv fanbox mcp` and stdio transport are removed. `--proxy` / `--no-proxy` remain per-launch upstream network overrides, not inbound TLS configuration; they do not rewrite FlareSolverr settings.
 

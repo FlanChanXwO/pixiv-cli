@@ -25,6 +25,7 @@ const (
 type settingKind string
 
 const (
+	settingInteger  settingKind = "integer"
 	settingString   settingKind = "string"
 	settingBool     settingKind = "bool"
 	settingDuration settingKind = "duration"
@@ -68,27 +69,31 @@ type snapshotEnvValue struct {
 }
 
 type RuntimeConfig struct {
-	MCPListenAddr             string
-	MCPBaseURL                string
-	DownloadPath              string
-	FilenameTemplate          string
-	DirectoryTemplate         string
-	HTTPSProxy                string
-	LogLevel                  string
-	LogFormat                 string
-	PixivNetwork              ServiceNetworkConfig
-	FanboxNetwork             ServiceNetworkConfig
-	ReverseSearchNetwork      ServiceNetworkConfig
-	FanboxFlareSolverr        *FlareSolverrConfig
-	ReverseSearchFlareSolverr *FlareSolverrConfig
-	RequestInterval           time.Duration
-	UpdateCheckEnabled        bool
-	OutputJSON                bool
-	LoginOpenBrowser          bool
-	LoginUseAfterLogin        bool
-	ReverseSearchProvider     string
-	ReverseSearchPixivOnly    bool
-	SauceNAOAPIKey            string
+	MCPGalleryAnimationTempCapacityMiB int64
+	MCPGalleryCacheCapacityMiB         int64
+	MCPGalleryCacheTTL                 time.Duration
+	MCPGalleryConcurrency              int
+	MCPListenAddr                      string
+	MCPBaseURL                         string
+	DownloadPath                       string
+	FilenameTemplate                   string
+	DirectoryTemplate                  string
+	HTTPSProxy                         string
+	LogLevel                           string
+	LogFormat                          string
+	PixivNetwork                       ServiceNetworkConfig
+	FanboxNetwork                      ServiceNetworkConfig
+	ReverseSearchNetwork               ServiceNetworkConfig
+	FanboxFlareSolverr                 *FlareSolverrConfig
+	ReverseSearchFlareSolverr          *FlareSolverrConfig
+	RequestInterval                    time.Duration
+	UpdateCheckEnabled                 bool
+	OutputJSON                         bool
+	LoginOpenBrowser                   bool
+	LoginUseAfterLogin                 bool
+	ReverseSearchProvider              string
+	ReverseSearchPixivOnly             bool
+	SauceNAOAPIKey                     string
 	// LoginRelay* 描述本次运行时创建的跨机器浏览器中继。历史 secret/target
 	// 配置项仍可留在私有配置文件中，但不会载入 runtime，避免恢复旧 client relay。
 	LoginRelayPublicURL   string
@@ -140,8 +145,12 @@ type AccountPoolConfig struct {
 }
 
 var settingSpecs = []SettingSpec{
-	{Alias: "mcp_listen_addr", KoanfKey: "mcp.listen_addr", Table: []string{"mcp"}, Key: "listen_addr", Kind: settingString, CLIManaged: true},
-	{Alias: "mcp_base_url", KoanfKey: "mcp.base_url", Table: []string{"mcp"}, Key: "base_url", Kind: settingString, CLIManaged: true},
+	{Alias: "mcp_gallery_animation_temp_capacity_mib", KoanfKey: "mcp.gallery_animation_temp_capacity_mib", Table: []string{"mcp"}, Key: "gallery_animation_temp_capacity_mib", Kind: settingInteger, HasDefault: true, Default: int64(1024), CLIManaged: true},
+	{Alias: "mcp_gallery_cache_capacity_mib", KoanfKey: "mcp.gallery_cache_capacity_mib", Table: []string{"mcp"}, Key: "gallery_cache_capacity_mib", Kind: settingInteger, HasDefault: true, Default: int64(256), CLIManaged: true},
+	{Alias: "mcp_gallery_cache_ttl", KoanfKey: "mcp.gallery_cache_ttl", Table: []string{"mcp"}, Key: "gallery_cache_ttl", Kind: settingDuration, HasDefault: true, Default: 15 * time.Minute, CLIManaged: true},
+	{Alias: "mcp_gallery_concurrency", KoanfKey: "mcp.gallery_concurrency", Table: []string{"mcp"}, Key: "gallery_concurrency", Kind: settingInteger, HasDefault: true, Default: int64(4), CLIManaged: true},
+	{Alias: "mcp_listen_addr", KoanfKey: "mcp.listen_addr", Table: []string{"mcp"}, Key: "listen_addr", Kind: settingString, HasDefault: true, Default: "127.0.0.1:8080", CLIManaged: true},
+	{Alias: "mcp_base_url", KoanfKey: "mcp.base_url", Table: []string{"mcp"}, Key: "base_url", Kind: settingString, HasDefault: true, Default: "http://127.0.0.1:8080", CLIManaged: true},
 	{Alias: "download_path", KoanfKey: "download.path", Table: []string{"download"}, Key: "path", Kind: settingString, HasDefault: true, Default: DefaultDownloadPath, DefaultInFile: true, CLIManaged: true},
 	{Alias: "filename_template", KoanfKey: "download.filename_template", Table: []string{"download"}, Key: "filename_template", Kind: settingString, HasDefault: true, Default: DefaultFilenameTemplate, DefaultInFile: true, CLIManaged: true},
 	{Alias: "directory_template", KoanfKey: "download.directory_template", Table: []string{"download"}, Key: "directory_template", Kind: settingString, CLIManaged: true},
@@ -348,6 +357,22 @@ func (s Snapshot) Effective(alias string) (SettingValue, error) {
 }
 
 func (s Snapshot) Runtime() (RuntimeConfig, error) {
+	animationCapacity, err := s.Effective("mcp_gallery_animation_temp_capacity_mib")
+	if err != nil {
+		return RuntimeConfig{}, err
+	}
+	capacity, err := s.Effective("mcp_gallery_cache_capacity_mib")
+	if err != nil {
+		return RuntimeConfig{}, err
+	}
+	ttl, err := s.Effective("mcp_gallery_cache_ttl")
+	if err != nil {
+		return RuntimeConfig{}, err
+	}
+	concurrency, err := s.Effective("mcp_gallery_concurrency")
+	if err != nil {
+		return RuntimeConfig{}, err
+	}
 	mcpListenAddr, err := s.Effective("mcp_listen_addr")
 	if err != nil {
 		return RuntimeConfig{}, err
@@ -466,31 +491,35 @@ func (s Snapshot) Runtime() (RuntimeConfig, error) {
 		return RuntimeConfig{}, err
 	}
 	cfg := RuntimeConfig{
-		MCPListenAddr:             settingStringValue(mcpListenAddr),
-		MCPBaseURL:                settingStringValue(mcpBaseURL),
-		DownloadPath:              downloadPath.Value.(string),
-		FilenameTemplate:          filenameTemplate.Value.(string),
-		DirectoryTemplate:         settingStringValue(directoryTemplate),
-		HTTPSProxy:                "",
-		LogLevel:                  normalizedLogLevel,
-		LogFormat:                 normalizedLogFormat,
-		PixivNetwork:              pixivNetwork,
-		FanboxNetwork:             fanboxNetwork,
-		ReverseSearchNetwork:      reverseSearchNetwork,
-		FanboxFlareSolverr:        flareSolverr,
-		ReverseSearchFlareSolverr: reverseSearchFlareSolverr,
-		UpdateCheckEnabled:        updateCheckEnabled.Value.(bool),
-		OutputJSON:                outputJSON.Value.(bool),
-		LoginOpenBrowser:          loginOpenBrowser.Value.(bool),
-		LoginUseAfterLogin:        loginUseAfterLogin.Value.(bool),
-		ReverseSearchProvider:     reverseSearchProvider.Value.(string),
-		ReverseSearchPixivOnly:    reverseSearchPixivOnly.Value.(bool),
-		SauceNAOAPIKey:            settingStringValue(sauceNAOAPIKey),
-		LoginRelayPublicURL:       settingStringValue(loginRelayPublicURL),
-		LoginRelayListenAddr:      settingStringValue(loginRelayListenAddr),
-		LoginRelayTLSCertFile:     settingStringValue(loginRelayTLSCertFile),
-		LoginRelayTLSKeyFile:      settingStringValue(loginRelayTLSKeyFile),
-		AccountPool:               accountPool,
+		MCPGalleryAnimationTempCapacityMiB: animationCapacity.Value.(int64),
+		MCPGalleryCacheCapacityMiB:         capacity.Value.(int64),
+		MCPGalleryCacheTTL:                 ttl.Value.(time.Duration),
+		MCPGalleryConcurrency:              int(concurrency.Value.(int64)),
+		MCPListenAddr:                      settingStringValue(mcpListenAddr),
+		MCPBaseURL:                         settingStringValue(mcpBaseURL),
+		DownloadPath:                       downloadPath.Value.(string),
+		FilenameTemplate:                   filenameTemplate.Value.(string),
+		DirectoryTemplate:                  settingStringValue(directoryTemplate),
+		HTTPSProxy:                         "",
+		LogLevel:                           normalizedLogLevel,
+		LogFormat:                          normalizedLogFormat,
+		PixivNetwork:                       pixivNetwork,
+		FanboxNetwork:                      fanboxNetwork,
+		ReverseSearchNetwork:               reverseSearchNetwork,
+		FanboxFlareSolverr:                 flareSolverr,
+		ReverseSearchFlareSolverr:          reverseSearchFlareSolverr,
+		UpdateCheckEnabled:                 updateCheckEnabled.Value.(bool),
+		OutputJSON:                         outputJSON.Value.(bool),
+		LoginOpenBrowser:                   loginOpenBrowser.Value.(bool),
+		LoginUseAfterLogin:                 loginUseAfterLogin.Value.(bool),
+		ReverseSearchProvider:              reverseSearchProvider.Value.(string),
+		ReverseSearchPixivOnly:             reverseSearchPixivOnly.Value.(bool),
+		SauceNAOAPIKey:                     settingStringValue(sauceNAOAPIKey),
+		LoginRelayPublicURL:                settingStringValue(loginRelayPublicURL),
+		LoginRelayListenAddr:               settingStringValue(loginRelayListenAddr),
+		LoginRelayTLSCertFile:              settingStringValue(loginRelayTLSCertFile),
+		LoginRelayTLSKeyFile:               settingStringValue(loginRelayTLSKeyFile),
+		AccountPool:                        accountPool,
 	}
 	if requestInterval.HasValue {
 		cfg.RequestInterval = requestInterval.Value.(time.Duration)
@@ -591,6 +620,29 @@ func settingStringValue(value SettingValue) string {
 
 func coerceSettingValue(spec SettingSpec, raw any, source string) (SettingValue, error) {
 	switch spec.Kind {
+	case settingInteger:
+		var value int64
+		switch v := raw.(type) {
+		case int64:
+			value = v
+		case int:
+			value = int64(v)
+		case string:
+			if source == "file" {
+				return SettingValue{}, fmt.Errorf("%s expects integer", spec.Alias)
+			}
+			n, err := strconv.ParseInt(strings.TrimSpace(v), 10, 64)
+			if err != nil {
+				return SettingValue{}, fmt.Errorf("%s expects integer", spec.Alias)
+			}
+			value = n
+		default:
+			return SettingValue{}, fmt.Errorf("%s expects integer", spec.Alias)
+		}
+		if value < 0 || (spec.Alias == "mcp_gallery_concurrency" && (value == 0 || uint64(value) > uint64(^uint(0)>>1))) || ((spec.Alias == "mcp_gallery_cache_capacity_mib" || spec.Alias == "mcp_gallery_animation_temp_capacity_mib") && value > (1<<63-1)/(1<<20)) || (spec.Alias == "mcp_gallery_animation_temp_capacity_mib" && value == 0) {
+			return SettingValue{}, fmt.Errorf("%s is out of range", spec.Alias)
+		}
+		return SettingValue{Value: value, Text: strconv.FormatInt(value, 10), Source: source, HasValue: true}, nil
 	case settingString:
 		text, ok := normalizeStringValue(raw)
 		if !ok {
@@ -614,6 +666,9 @@ func coerceSettingValue(spec SettingSpec, raw any, source string) (SettingValue,
 		value, err := normalizeDurationValue(raw)
 		if err != nil {
 			return SettingValue{}, fmt.Errorf("%s: %w", spec.Alias, err)
+		}
+		if spec.Alias == "mcp_gallery_cache_ttl" && value <= 0 {
+			return SettingValue{}, errors.New("mcp_gallery_cache_ttl must be positive")
 		}
 		if spec.Alias == "request_interval" && value < 0 {
 			return SettingValue{}, errors.New("request_interval must not be negative")
@@ -669,6 +724,13 @@ func ParseSettingInput(alias, raw string) (SettingValue, parser.Value, error) {
 	}
 	raw = strings.TrimSpace(raw)
 	switch spec.Kind {
+	case settingInteger:
+		parsed, err := coerceSettingValue(spec, raw, "cli")
+		if err != nil {
+			return SettingValue{}, parser.Value{}, err
+		}
+		value, err := parser.ParseValue(parsed.Text)
+		return parsed, value, err
 	case settingString:
 		normalized, err := normalizeSpecialString(alias, raw)
 		if err != nil {
@@ -694,6 +756,9 @@ func ParseSettingInput(alias, raw string) (SettingValue, parser.Value, error) {
 		parsed, err := time.ParseDuration(raw)
 		if err != nil {
 			return SettingValue{}, parser.Value{}, fmt.Errorf("expects duration value: %w", err)
+		}
+		if spec.Alias == "mcp_gallery_cache_ttl" && parsed <= 0 {
+			return SettingValue{}, parser.Value{}, errors.New("mcp_gallery_cache_ttl must be positive")
 		}
 		if spec.Alias == "request_interval" && parsed < 0 {
 			return SettingValue{}, parser.Value{}, errors.New("request_interval must not be negative")

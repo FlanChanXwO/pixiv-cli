@@ -60,17 +60,23 @@ const (
 type Reason string
 
 const (
-	ReasonNone                 Reason = ""
-	ReasonCommandFailed        Reason = "command failed"
-	ReasonToolFailed           Reason = "tool failed"
-	ReasonChallenge            Reason = "challenge required"
-	ReasonSolverUnavailable    Reason = "solver unavailable"
-	ReasonSolverFailed         Reason = "solver failed"
-	ReasonMalformedSolver      Reason = "malformed solver response"
-	ReasonAccountFrozen        Reason = "account frozen"
-	ReasonAccountExhausted     Reason = "account pool exhausted"
-	ReasonConfigurationFailed  Reason = "configuration failed"
-	ReasonAuthenticationFailed Reason = "authentication failed"
+	ReasonRequestCancelled         Reason = "request cancelled"
+	ReasonTransportInterrupted     Reason = "transport interrupted"
+	ReasonSubscriptionReleased     Reason = "subscription released"
+	ReasonServiceClosed            Reason = "service closed"
+	ReasonAuthorizationExpired     Reason = "authorization expired"
+	ReasonAuthorizationInvalidated Reason = "authorization invalidated"
+	ReasonNone                     Reason = ""
+	ReasonCommandFailed            Reason = "command failed"
+	ReasonToolFailed               Reason = "tool failed"
+	ReasonChallenge                Reason = "challenge required"
+	ReasonSolverUnavailable        Reason = "solver unavailable"
+	ReasonSolverFailed             Reason = "solver failed"
+	ReasonMalformedSolver          Reason = "malformed solver response"
+	ReasonAccountFrozen            Reason = "account frozen"
+	ReasonAccountExhausted         Reason = "account pool exhausted"
+	ReasonConfigurationFailed      Reason = "configuration failed"
+	ReasonAuthenticationFailed     Reason = "authentication failed"
 )
 
 // Event is the complete safe diagnostic payload. Resource and Target are

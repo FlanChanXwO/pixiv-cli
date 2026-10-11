@@ -75,16 +75,17 @@ sh scripts/build.sh
 `manifest.json`；`scripts/build.sh` 会先校验 source digest、target/path 与每个库的 SHA-256，再构建
 本机 binary。完整要求、证据回填流程和失败含义见[开发流程](maintainers/development.md#rust-ugoira-staticlib)。
 
-### Go 安装
+### Go 源码安装
 
-正式 tag 发布后，使用精确 tag 安装：
+检出精确的已发布 tag，再执行会在 Go 编译前生成前端资源的构建脚本：
 
 ```bash
-go install github.com/FlanChanXwO/pixiv-cli/cmd/pixiv@vX.Y.Z
+git clone --branch vX.Y.Z --depth 1 https://github.com/FlanChanXwO/pixiv-cli.git
+cd pixiv-cli
+sh scripts/build.sh
 ```
 
-它仍使用本机 Go、cgo、C linker 和该 target 的 committed staticlib。六目标库与 manifest 已完整，
-例如已发布的 v0.4.4 可使用 `@v0.4.4`；始终使用已发布的精确 tag，而不是分支名。
+仍需要本机 Go、cgo、C linker 和目标平台的 committed staticlib。产物为 `build/pixiv` 或 `build/pixiv.exe`；直接 `go install ...@tag` 不运行资源生成器，无法构建采用此资源布局的 tag。历史 tag 保留其原有安装契约。已有 Go 安装的二进制仍走旧 `go install` 自更新路径；迁移到采用生成资源的 release 时，需要改为安装该版本的 Release 压缩包。
 
 ### Homebrew
 
@@ -404,7 +405,7 @@ canonical 数据 action 是 `search`、`detail`、`ranking`、`series`、`commen
 | `novel search` | `pixiv novel search WORD [options]` | 小说搜索兼容路径；优先使用 `pixiv search WORD --type novel`，只暴露基础小说搜索字段。 |
 | `user search` | `pixiv user search WORD [options]` | 用户搜索兼容路径；优先使用 `pixiv search WORD --type user`。 |
 | `follow` | `pixiv follow add\|remove USER_ID ...` | 用户关注兼容路径；与 `pixiv user follow add\|remove` 共享同一 owner 和输入契约。 |
-| `mcp` | `pixiv mcp [--listen-addr ADDR] [--base-url URL] [--proxy URL\|--no-proxy]` | 启动经认证的统一 HTTP server；须显式配置地址/base 并初始化 owner。 |
+| `mcp` | `pixiv mcp [--listen-addr ADDR] [--base-url URL] [--proxy URL\|--no-proxy]` | 启动经认证的统一 HTTP server；默认使用 `127.0.0.1:8080` 本地 HTTP；须初始化 owner。 |
 | `mcp auth init` | `pixiv mcp auth init [--reset]` | 初始化本地 MCP owner 并只输出一次 secret；reset 撤销 grants，保留 clients 与选中账号。 |
 | `fanbox auth` | `pixiv fanbox auth import|list|use|remove|status` | 导入并管理本地 FANBOX session；session 值永不输出。native `--proxy`/`--no-proxy` 只影响本次 FANBOX 命令。 |
 | `fanbox creators` | `pixiv fanbox creators [--kind supporting\|following] [--page N --limit N]` | 列出 supporting 或 following FANBOX creator。 |
@@ -661,17 +662,27 @@ v1 已删除匿名 Web API fallback。内容命令要求先通过 `pixiv auth us
 
 ## MCP HTTP server
 
-先由管理员执行一次 `pixiv mcp auth init`，然后显式配置两项启动设置：
+先由管理员初始化一次 owner，然后直接使用本地默认配置启动：
 
 ```bash
-pixiv config set mcp_listen_addr 127.0.0.1:8080
-pixiv config set mcp_base_url http://127.0.0.1:8080
+pixiv mcp auth init
 pixiv mcp
 # 单次启动覆写，不修改 config.toml：
-pixiv mcp --listen-addr 127.0.0.1:8080 --base-url https://mcp.example.com
+pixiv mcp --base-url https://mcp.example.com
 ```
 
-别名 `mcp_listen_addr`、`mcp_base_url` 分别对应 `[mcp].listen_addr`、`[mcp].base_url`，默认均为空，支持 `config get/set/unset`。命令 flag 覆盖文件值，显式空值也会覆盖并导致启动失败；不新增 MCP 环境变量。listen address 必须包含显式非零 TCP 端口。缺失配置、canonical URL 无效、owner 未初始化/状态不可读或端口绑定失败都会停止启动，不会悄悄换端口。未初始化时提示管理员执行 `pixiv mcp auth init`。
+别名 `mcp_listen_addr`、`mcp_base_url` 分别对应 `[mcp].listen_addr`、`[mcp].base_url`，默认分别为 `127.0.0.1:8080` 与 `http://127.0.0.1:8080`，支持 `config get/set/unset`；unset 后恢复默认值。默认仅监听 loopback；更换本地端口时须同时覆盖两项，云端 connector 须显式配置公网 HTTPS base URL。命令 flag 覆盖文件值，显式空值也会覆盖并导致启动失败；不新增 MCP 环境变量。listen address 必须包含显式非零 TCP 端口。显式空配置、canonical URL 无效、owner 未初始化/状态不可读或端口绑定失败都会停止启动，不会悄悄换端口。未初始化时提示管理员执行 `pixiv mcp auth init`。
+
+画廊读取使用以下启动配置，通过 `pixiv config get/set/unset` 管理：
+
+| 别名 | `[mcp]` 下的 TOML 键 | 默认值 | 校验 |
+| --- | --- | --- | --- |
+| `mcp_gallery_animation_temp_capacity_mib` | `gallery_animation_temp_capacity_mib` | `1024` | 正整数，校验 MiB 换算溢出；独立的私有动图暂存预算 |
+| `mcp_gallery_cache_capacity_mib` | `gallery_cache_capacity_mib` | `256` | 非负整数，校验 MiB 换算溢出；`0` 关闭缓存 |
+| `mcp_gallery_cache_ttl` | `gallery_cache_ttl` | `"15m"` | 正时长字符串 |
+| `mcp_gallery_concurrency` | `gallery_concurrency` | `4` | 正整数；metadata 与图片各自使用独立并发上限 |
+
+缺失配置和 `config unset` 均恢复默认值，不新增 flag 或环境变量。修改后重启 MCP 生效。进程内 LRU 预算包含 metadata 载荷和图片填充缓冲；超预算图片仍完整流式返回，不缓存、不截断。缓存期限取配置 TTL、签发授权期限与上游只读会话期限中的最早值；作品信息可能在该窗口内延迟反映更新，收藏状态与写操作仍实时执行。命中仍检查授权与账号／凭据／网络版本；撤销后拒绝后续读取，重启清空缓存。HTTP 保持 `private, no-store`，不使用磁盘或公共 CDN 缓存。
 
 endpoint 为 base URL 加 `/mcp`，与 owner 已初始化状态一起写 stderr，不打印 owner secret。server stdout 不再传输 JSON-RPC。两产品共享 endpoint，但保留独立凭据与 runtime。`pixiv fanbox mcp` 与 stdio transport 已删除。`--proxy` / `--no-proxy` 仍只覆盖本次上游网络请求，不配置入站 TLS，也不改写 FlareSolverr 设置。
 

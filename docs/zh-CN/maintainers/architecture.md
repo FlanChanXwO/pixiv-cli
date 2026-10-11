@@ -27,6 +27,7 @@ flowchart LR
 | 读者 / 关注点 | 去哪节 |
 | --- | --- |
 | 从入口到 SDK 的调用链 | [总体流程](#总体流程) |
+| 页面源码与嵌入边界 | [前端源码与页面嵌入](#前端源码与页面嵌入) |
 | 某个包能做什么、不能做什么 | [包职责](#包职责) |
 | 发布信任根与签名 | [Release assets 与信任边界](#release-assets-与信任边界) |
 | 本地状态、配置、路径权限 | [internal/config/paths](#internalconfigpaths)、[internal/storage/file](#internalstoragefileatomiclockreplacesecret) |
@@ -44,6 +45,12 @@ flowchart LR
    - 全局配置来自 `~/.pixiv-cli/config.toml`（Windows：`%USERPROFILE%\.pixiv-cli\config.toml`）
    - 公开环境变量作为覆盖层参与合并
 5. 没有匿名 Web fallback：所有内容命令都要求认证态本地账号或显式凭据；已删除的 `web_fallback_enabled` 若仍显式存在则返回 `removed_setting`。
+
+## 前端源码与页面嵌入
+
+`frontend/mcp-apps/gallery/` 维护 Gallery HTML/CSS/JS 和前端 fixture；`frontend/pages/login/` 维护登录、callback、结果页模板与样式；`frontend/pages/oauth/` 维护 owner 授权同意页模板与样式。`scripts/cmd/frontendassets` 仅用 Go 标准库确定性组装资源：内联 Gallery CSS/JS 与授权页 CSS，原样复制登录模板和样式，输出到三个现有 Go owner 的精确忽略目录 `generated/`，由 `go:embed` 嵌入。
+
+Go 继续负责 MCP 资源注册、模板数据与转义、CSP 和媒体 origin 注入、canonical HTTP action、CSRF 及授权处理。公开资源 URI、路由和工具接口保持不变，二进制仍自包含。编译前必须生成，产物不提交且不作为运行时外部文件。本次没有 Web UI 或 Wails 工程；未来应用可在 `frontend/app/` 拥有独立调用适配。Homebrew 模板保留原 owner。
 
 ## 包职责
 
@@ -143,6 +150,8 @@ key ID 与 public key 常量位于 `internal/update/installer/release_installer.
 只读更新检查不需要该 key；该 wiring 本身也不能代替每个版本独立的发布验收。
 
 ### `internal/storage/database`
+
+CLI/MCP 数据库 owner 的初始化、账号与账号池短事务、完整快照读取共用 `pixiv-cli.db.lock` 私有侧车锁，避免监听读取与跨连接提交冲突；锁不覆盖 OAuth 或内容网络请求。协调文件不保存凭据，不改变账号数据；外部直接 SQL 写入和旧版进程不参与此协调。不可取消的 context 沿用原生锁等待；可取消的 context 使用同一非阻塞锁接口，争用时每 10ms 检查一次，取消直接唤醒并关闭等待者文件句柄。不设置总等待期限，不重放事务。账号 owner 关闭时先取消生命周期，再取得会话互斥锁，避免监听校验的数据库锁等待阻塞退出。
 
 负责本地账号状态的 SQLite authority：
 
@@ -302,7 +311,11 @@ FlareSolverr 的 upstream proxy 只用于 browser `sessions.create`；solver con
 
 ### `internal/mcpserver`
 
-`pixiv/gallery` 持有唯一内嵌 MCP Apps resource 与标准 bridge。资源始终注册，`pixiv/internal/runtime.AddTool` 为视觉 discovery 附加 metadata，不替换 structured result。视图只通过 host tool call 请求媒体，不直连上游、不保存凭据；负责视图取消、Blob 清理及按 host 能力开放下载。`pixiv/internal/runtime/cursor.go` 将默认批次 continuation 绑定到工具参数；SDK 仍校验内部 operation/query/账号。正数 limit 的逻辑分页保持独立。参见 [Gallery 与分页合同](../mcp-tools.md)。
+`pixiv/gallery` 持有显式 MCP Apps 视图，仅绑定 `pixiv_show_gallery`。`pixiv/mediaproxy` 持有进程内图片凭证签名和公开 SDK 光栅图片交付；HTTP runtime 在 canonical origin 校验后路由 `/media/`。凭证绑定 OAuth grant、账号及图片选择；浏览器与反代路由均不接收上游凭据或任意 URL。composition root 注入与其他 Pixiv 操作相同的出站代理和显式账号 lease 工厂。Gallery 负责懒加载占位、明确重试、视图取消、Blob 清理和 host 能力控制的下载。独立的 256MiB 估算会话 LRU 在内部导航间复用成功加载的静态图片、详情和原图字节；新 tool input／result 与关闭清理缓存。缓存图片脱离旧 DOM 并移除视图监听；淘汰释放其图片来源，正在显示的超大图片继续完整显示。原图弹层沿用完整字节媒体工具，与 host 确认下载共享字节；收藏状态不缓存。搜索续页仍由原数据工具负责。
+
+`internal/services/pixiv/account/reads.go` 拥有受生命周期管理的 MCP 只读会话；获取时校验本地账号凭据版本，仅 OAuth 刷新及成功轮换持久化共享原有 gate。凭据替换／账号删除、网络变化、到期及上游 401 使会话 generation 失效并释放空闲连接。写入 lease 与账号池提交／重放仍由原 Facade 负责。root 注入独立 read 端口和 opaque 会话版本，MCP adapter 不读取凭据。
+
+`pixiv/mediaproxy` 拥有按 grant／会话隔离的 metadata 与图片 LRU、独立查询／图片信号量、同键 metadata 合并和流式响应生命周期。序列化 metadata、正在填充的图片缓冲及传输中的缓存载荷共用配置预算；超大或无法预留空间的图片流式返回而不缓存。每次读取校验当前授权，旧账号／会话版本不能复用内容。仅完整成功传输进入缓存，收藏状态与写入不缓存。授权通知、凭据版本信号和条目到期主动回收空闲内容；在途引用释放前继续计入预算。缓存发布在同一 mutex 内校验授权与版本，迟到填充不能重新写入已失效内容。SDK 在映射可信 metadata 时登记经 policy 校验的质量变体。诊断使用固定阶段名，不包含秘密标识。
 
 `pixiv/tools/artwork_media` 拥有静态 MCP 图片交付。一个既有 SDK lease 将作品 metadata 与所有页资源绑定到选中账号；每次读取后关闭 resource response，所有退出路径均关闭 lease。返回实际图片 bytes、逐页 content 索引与失败项，不发布服务器文件、不重放部分交付。`pixiv/internal/outputs` 拥有媒体 structured envelope 与 schema 错误脱敏。Ugoira 在每次调用的私有临时目录内复用 downloader archive 选择器、SDK SaveResource 与既有 Rust encoder，返回完整动画 blob 和独立索引的 PNG preview，交付前清理临时文件。实际 archive 质量与产物文件名显式返回；静态专用参数拒绝而非忽略。
 
@@ -443,7 +456,10 @@ refresh-token 校验归 `internal/services/pixiv/oauth`；路径/权限归
 > 以下约束是不可违反的硬边界。任何新增 timeout、截断、条数限制、重试上限、静默 fallback 或隐藏降级都必须有证据、注释、测试或文档说明，否则视为违规。
 
 - `appapi`、`oauth` 与 resource transport 使用 caller/SDK 注入的 HTTP client；默认 client 专用于当前 SDK client、无整请求固定 timeout，取消与 deadline 由 context 传播。显式 client 保持调用方策略。
-- `pixiv mcp` 显式启动统一 HTTP server；直接执行 `pixiv` 只显示帮助。启动要求已初始化 owner，并显式提供 `[mcp].listen_addr`/`base_url` 或单次 flag 覆写，详见 [HTTP 启动](../cli-reference.md#mcp-http-server)。
+- `pixiv mcp` 显式启动统一 HTTP server；直接执行 `pixiv` 只显示帮助。启动要求已初始化 owner；`[mcp].listen_addr`/`base_url` 默认使用 `127.0.0.1:8080`/`http://127.0.0.1:8080`，其他部署可用配置或单次 flag 覆写，详见 [HTTP 启动](../cli-reference.md#mcp-http-server)。
 - 不新增持久账号 import/export MCP tool；既有 session-scoped MCP 认证 tool 与 wire contract 不变。
 - 账号 credential 保存在 SQLite `pixiv-cli.db`（BLOB，非加密）；Unix-like DB/journal 文件权限为 `0600`。获得当前用户文件访问权的攻击者仍能读取 credential，自动 backup 被禁止。
 - `config.toml` 采用稀疏写入，不会把默认值整份落盘。
+
+
+Gallery 动图任务位于 `pixiv/mediaproxy`，控制适配位于 `tools/gallery_animation`。组合根配置服务自有的私有临时目录，并在账号读取会话关闭前清理。任务按 grant／账号／generation／作品／格式隔离；独立不透明订阅句柄不暴露路径。动画和 PNG 预览路由复用 canonical origin 与授权校验。ZIP／预览写入前预留磁盘字节；原生 writer 经内部同步预算回调逐次申请实际写入空间，仅在确实不足时淘汰未使用的就绪产物，并保留输出硬上限；旧 Rust 入口保持不限额，继续共享全局串行 gate。临时文件生成与原生预算预留共用队列；启动清理要求服务标记及已释放的系统生命周期锁。原子发布后归还未使用预算，仅完整成功产物进入就绪状态。GET/HEAD 固定文件生命周期，清理等待活动任务退出。Gallery 经 Apps bridge 查询状态，CSP 仍禁止直接 fetch 连接。

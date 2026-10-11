@@ -8,9 +8,15 @@ import (
 	"net/http"
 	"sort"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"testing"
+	"testing/synctest"
+	"time"
 
 	accountpixiv "github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/account"
+	poolpixiv "github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/pool"
+	"github.com/FlanChanXwO/pixiv-cli/internal/shared/diagnostics"
 	"github.com/FlanChanXwO/pixiv-cli/sdk"
 	sdkpixiv "github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
 	"github.com/stretchr/testify/require"
@@ -563,4 +569,272 @@ func TestCheckRefreshTokenRejectsCredentialIdentityMismatch(t *testing.T) {
 	_, err := service.CheckRefreshTokenWith(context.Background(), 42, "token", sdkpixiv.Options{HTTPClient: client})
 	require.Error(t, err)
 	require.Equal(t, sdk.LocalStateError, sdk.ReasonOf(err))
+}
+
+type cancelledReadGate struct{ cancel context.CancelFunc }
+
+func (g cancelledReadGate) Acquire(ctx context.Context) error { g.cancel(); return ctx.Err() }
+func (cancelledReadGate) Release()                            { panic("cancelled acquisition must not release the gate") }
+
+func TestReadSessionCancelledGateObservation(t *testing.T) {
+	repo := newPixivTestRepository(pixivAccountFixture(42, "artist", "refresh", 1, true))
+	var events []diagnostics.Event
+	ctx, cancel := context.WithCancel(diagnostics.WithScope(t.Context(), diagnostics.SinkFunc(func(event diagnostics.Event) { events = append(events, event) }), diagnostics.ModulePixivMCP, 0))
+	defer cancel()
+	sessions := accountpixiv.NewReadSessions(newPixivTestService(repo), cancelledReadGate{cancel})
+	defer sessions.Close()
+	_, err := sessions.Open(ctx, 42, "network", sdkpixiv.Options{})
+	require.ErrorIs(t, err, context.Canceled)
+	require.Len(t, events, 1)
+	require.Equal(t, "session_wait", events[0].Operation)
+	require.Equal(t, diagnostics.EventFailed, events[0].Kind)
+	require.Equal(t, diagnostics.ReasonRequestCancelled, events[0].Reason)
+	require.Positive(t, events[0].Duration)
+}
+
+func TestReadSessionsRevalidateExternalCredentialsWithoutRefresh(t *testing.T) {
+	for _, change := range []string{"replace", "delete"} {
+		t.Run(change, func(t *testing.T) {
+			repo := newPixivTestRepository(pixivAccountFixture(42, "artist", "refresh", 1, true))
+			sessions := accountpixiv.NewReadSessions(newPixivTestService(repo), poolpixiv.NewGate())
+			defer sessions.Close()
+			refreshes := 0
+			options := sdkpixiv.Options{HTTPClient: &http.Client{Transport: pixivRoundTripper(func(*http.Request) (*http.Response, error) {
+				refreshes++
+				return pixivJSONResponse(`{"access_token":"access","refresh_token":"rotated","expires_in":3600,"user":{"id":"42","name":"artist"}}`), nil
+			})}}
+			first, err := sessions.Open(t.Context(), 42, "network", options)
+			require.NoError(t, err)
+			cancelled, cancel := context.WithCancel(t.Context())
+			cancel()
+			require.ErrorIs(t, sessions.Revalidate(cancelled), context.Canceled)
+			account := repo.accounts[42]
+			account.Username = "new name"
+			repo.accounts[42] = account
+			require.NoError(t, sessions.Revalidate(t.Context()))
+			select {
+			case <-first.Invalidated:
+				t.Fatal("metadata change invalidated credentials")
+			default:
+			}
+			if change == "replace" {
+				account.CredentialRevision++
+				repo.accounts[42] = account
+			} else {
+				delete(repo.accounts, 42)
+			}
+			require.NoError(t, sessions.Revalidate(t.Context()))
+			select {
+			case <-first.Invalidated:
+			default:
+				t.Fatal("external credential change did not invalidate read generation")
+			}
+			require.Equal(t, 1, refreshes, "local revalidation must not refresh credentials")
+		})
+	}
+}
+
+func TestReadSessionsReuseAndCredentialInvalidation(t *testing.T) {
+	repo := newPixivTestRepository(pixivAccountFixture(42, "artist", "refresh", 1, true))
+	service := newPixivTestService(repo)
+	gate := poolpixiv.NewGate()
+	sessions := accountpixiv.NewReadSessions(service, gate)
+	calls := 0
+	options := sdkpixiv.Options{HTTPClient: &http.Client{Transport: pixivRoundTripper(func(r *http.Request) (*http.Response, error) {
+		calls++
+		return pixivJSONResponse(`{"access_token":"access","refresh_token":"rotated","expires_in":3600,"user":{"id":"42","name":"artist"}}`), nil
+	})}}
+	first, err := sessions.Open(t.Context(), 42, "network", options)
+	require.NoError(t, err)
+	second, err := sessions.Open(t.Context(), 42, "network", options)
+	require.NoError(t, err)
+	require.Same(t, first.Client, second.Client)
+	require.Equal(t, 1, calls)
+	require.NoError(t, gate.Acquire(t.Context()), "read snapshots do not hold the rotation gate")
+	gate.Release()
+	a := repo.accounts[42]
+	a.CredentialRevision++
+	repo.accounts[42] = a
+	third, err := sessions.Open(t.Context(), 42, "network", options)
+	require.NoError(t, err)
+	require.NotSame(t, first.Client, third.Client)
+	require.Equal(t, 2, calls)
+	_, err = sessions.Open(t.Context(), 42, "changed-network", options)
+	require.NoError(t, err)
+	require.Equal(t, 3, calls)
+	repo.rotateErr = errors.New("persist failure")
+	a = repo.accounts[42]
+	a.CredentialRevision++
+	repo.accounts[42] = a
+	var observed []diagnostics.Event
+	ctx := diagnostics.WithScope(t.Context(), diagnostics.SinkFunc(func(event diagnostics.Event) { observed = append(observed, event) }), diagnostics.ModulePixivMCP, 0)
+	failed, err := sessions.Open(ctx, 42, "changed-network", options)
+	require.Error(t, err)
+	require.Nil(t, failed.Client)
+	var refresh []diagnostics.Event
+	for _, event := range observed {
+		if event.Operation == "session_refresh" {
+			refresh = append(refresh, event)
+		}
+	}
+	require.Len(t, refresh, 1)
+	require.Equal(t, diagnostics.EventFailed, refresh[0].Kind)
+	require.Equal(t, diagnostics.ReasonToolFailed, refresh[0].Reason)
+	require.Positive(t, refresh[0].Duration)
+	require.NotContains(t, fmt.Sprint(observed), "persist failure")
+	require.NotContains(t, fmt.Sprint(observed), "rotated")
+	delete(repo.accounts, 42)
+	_, err = sessions.Open(t.Context(), 42, "changed-network", options)
+	require.Error(t, err)
+}
+
+type guardedReadRepository struct {
+	accountpixiv.Repository
+	mu sync.Mutex
+}
+
+func (r *guardedReadRepository) GetPixiv(ctx context.Context, uid int64) (accountpixiv.Account, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.Repository.GetPixiv(ctx, uid)
+}
+func (r *guardedReadRepository) RotatePixivCredentials(ctx context.Context, uid, revision int64, token []byte) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.Repository.RotatePixivCredentials(ctx, uid, revision, token)
+}
+func TestReadSessionsConcurrentRefreshAndCancellation(t *testing.T) {
+	repo := &guardedReadRepository{Repository: newPixivTestRepository(pixivAccountFixture(42, "artist", "refresh", 1, true))}
+	gate := poolpixiv.NewGate()
+	sessions := accountpixiv.NewReadSessions(accountpixiv.NewService(repo, &pixivTestDefaults{}), gate)
+	defer sessions.Close()
+	var calls atomic.Int64
+	options := sdkpixiv.Options{HTTPClient: &http.Client{Transport: pixivRoundTripper(func(r *http.Request) (*http.Response, error) {
+		calls.Add(1)
+		return pixivJSONResponse(`{"access_token":"access","refresh_token":"rotated","expires_in":3600,"user":{"id":"42","name":"artist"}}`), nil
+	})}}
+	var wg sync.WaitGroup
+	results := make(chan accountpixiv.ReadSession, 12)
+	failures := make(chan error, 12)
+	for i := 0; i < 12; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			value, err := sessions.Open(t.Context(), 42, "network", options)
+			if err != nil {
+				failures <- err
+			} else {
+				results <- value
+			}
+		}()
+	}
+	wg.Wait()
+	close(results)
+	close(failures)
+	for err := range failures {
+		require.NoError(t, err)
+	}
+	require.EqualValues(t, 1, calls.Load())
+	var first accountpixiv.ReadSession
+	for value := range results {
+		if first.Client == nil {
+			first = value
+		} else {
+			require.True(t, first.Client == value.Client)
+		}
+	}
+	sessions.Invalidate(42, first.Version, sdk.NewError("pixiv", "Artwork", sdk.Unauthorized))
+	next, err := sessions.Open(t.Context(), 42, "network", options)
+	require.NoError(t, err)
+	require.Greater(t, next.Version, first.Version)
+	require.EqualValues(t, 2, calls.Load())
+	sessions.Invalidate(42, first.Version, sdk.NewError("pixiv", "Artwork", sdk.Unauthorized))
+	same, err := sessions.Open(t.Context(), 42, "network", options)
+	require.NoError(t, err)
+	require.Equal(t, next.Version, same.Version)
+	require.NoError(t, gate.Acquire(t.Context()))
+	ctx, cancel := context.WithCancel(t.Context())
+	cancel()
+	_, err = sessions.Open(ctx, 42, "new-network", options)
+	require.ErrorIs(t, err, context.Canceled)
+	gate.Release()
+}
+func TestReadSessionExpiresWithAccessToken(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		repo := newPixivTestRepository(pixivAccountFixture(42, "artist", "refresh", 1, true))
+		sessions := accountpixiv.NewReadSessions(newPixivTestService(repo), poolpixiv.NewGate())
+		defer sessions.Close()
+		calls := 0
+		options := sdkpixiv.Options{HTTPClient: &http.Client{Transport: pixivRoundTripper(func(r *http.Request) (*http.Response, error) {
+			calls++
+			return pixivJSONResponse(`{"access_token":"access","refresh_token":"rotated","expires_in":1,"user":{"id":"42","name":"artist"}}`), nil
+		})}}
+		first, err := sessions.Open(t.Context(), 42, "network", options)
+		require.NoError(t, err)
+		time.Sleep(2 * time.Second)
+		next, err := sessions.Open(t.Context(), 42, "network", options)
+		require.NoError(t, err)
+		require.Greater(t, next.Version, first.Version)
+		require.Equal(t, 2, calls)
+	})
+}
+
+func TestReadSessionAuthenticationFailureInvalidatesRawReadLease(t *testing.T) {
+	repo := newPixivTestRepository(pixivAccountFixture(42, "artist", "refresh", 1, true))
+	sessions := accountpixiv.NewReadSessions(newPixivTestService(repo), poolpixiv.NewGate())
+	defer sessions.Close()
+	refreshes := 0
+	entered := make(chan struct{})
+	options := sdkpixiv.Options{HTTPClient: &http.Client{Transport: pixivRoundTripper(func(r *http.Request) (*http.Response, error) {
+		if r.URL.Host == "app-api.pixiv.net" {
+			if r.URL.Query().Get("illust_id") == "43" {
+				close(entered)
+				<-r.Context().Done()
+				return nil, r.Context().Err()
+			}
+			response := pixivJSONResponse(`{"error":{"message":"fixture"}}`)
+			response.StatusCode = 401
+			return response, nil
+		}
+		refreshes++
+		return pixivJSONResponse(`{"access_token":"access","refresh_token":"rotated","expires_in":3600,"user":{"id":"42","name":"artist"}}`), nil
+	})}}
+	first, err := sessions.Open(t.Context(), 42, "network", options)
+	require.NoError(t, err)
+	blockedCtx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+	finished := make(chan error, 1)
+	go func() {
+		_, err := first.Client.Artwork(blockedCtx, sdkpixiv.ArtworkRequest{ArtworkID: 43})
+		finished <- err
+	}()
+	select {
+	case <-entered:
+	case <-time.After(time.Second):
+		t.Fatal("concurrent read did not start")
+	}
+	_, err = first.Client.Artwork(t.Context(), sdkpixiv.ArtworkRequest{ArtworkID: 42})
+	require.Error(t, err)
+	require.Equal(t, sdk.CredentialsExpired, sdk.ReasonOf(err))
+	require.NotNil(t, first.Invalidated)
+	select {
+	case <-first.Invalidated:
+	default:
+		t.Fatal("generation invalidation was not published")
+	}
+	select {
+	case err := <-finished:
+		require.Error(t, err)
+	case <-time.After(time.Second):
+		t.Fatal("unauthorized generation did not stop its concurrent read")
+	}
+	replacement, err := sessions.Open(t.Context(), 42, "network", options)
+	require.NoError(t, err)
+	require.Equal(t, 2, refreshes)
+	sessions.Invalidate(42, first.Version, sdk.NewError("pixiv", "Read", sdk.Unauthorized))
+	select {
+	case <-replacement.Invalidated:
+		t.Fatal("stale generation invalidated its replacement")
+	default:
+	}
 }

@@ -41,6 +41,9 @@ esac
 	exit 1
 }
 
+# Generate on the host before compiling packages for the target.
+(cd "$repo_root" && GOOS="$(go env GOHOSTOS)" GOARCH="$(go env GOHOSTARCH)" CGO_ENABLED=0 go run ./scripts/cmd/frontendassets)
+
 printf 'go test ./internal/media/ugoira/staticlib -run ^TestCommittedManifestWhenPresent$ -count=1\n'
 go test ./internal/media/ugoira/staticlib -run '^TestCommittedManifestWhenPresent$' -count=1
 

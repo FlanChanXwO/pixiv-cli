@@ -39,7 +39,30 @@ func (c *Client) mapArtworkEntity(value artwork.Artwork) (Artwork, error) {
 	if err != nil {
 		return Artwork{}, err
 	}
+	// Register only variants resolved from this trusted, policy-validated artwork.
+	for _, page := range append([]int{-1}, artworkPageIndexes(value)...) {
+		for _, variant := range []string{"regular", "small", "thumb", "mini"} {
+			raw, e := artworkResourceURL(value, page, variant)
+			if e != nil {
+				continue
+			}
+			if _, e = c.newResourceWithVariant("artwork", value.ID, page, variant, raw); e != nil {
+				return Artwork{}, e
+			}
+		}
+	}
 	return result, nil
+}
+
+func artworkPageIndexes(value artwork.Artwork) []int {
+	indexes := make([]int, 0, len(value.MetaPages)+1)
+	for _, page := range value.MetaPages {
+		indexes = append(indexes, page.PageIndex)
+	}
+	if len(indexes) == 0 && value.MetaSinglePage.OriginalImageURL != "" {
+		indexes = append(indexes, 0)
+	}
+	return indexes
 }
 
 func (c *Client) mapArtworkEntityCover(value artwork.Artwork) (ImageResource, error) {

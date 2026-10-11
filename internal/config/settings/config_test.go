@@ -474,7 +474,7 @@ func TestRuntimeSilentlyIgnoresLegacySharedSecretRelayConfiguration(t *testing.T
 	require.False(t, hasTarget)
 }
 
-func TestMCPEndpointSettingsAreExplicit(t *testing.T) {
+func TestMCPEndpointSettingsDefaultToLoopback(t *testing.T) {
 	for _, alias := range []string{"mcp_listen_addr", "mcp_base_url"} {
 		t.Run(alias, func(t *testing.T) {
 			path := filepath.Join(t.TempDir(), "config.toml")
@@ -482,7 +482,13 @@ func TestMCPEndpointSettingsAreExplicit(t *testing.T) {
 			require.NoError(t, err)
 			value, err := snapshot.Effective(alias)
 			require.NoError(t, err)
-			require.False(t, value.HasValue, "deployment endpoints must not have implicit defaults")
+			require.True(t, value.HasValue)
+			require.Equal(t, "default", value.Source)
+			want := "127.0.0.1:8080"
+			if alias == "mcp_base_url" {
+				want = "http://127.0.0.1:8080"
+			}
+			require.Equal(t, want, value.Text)
 			spec, ok := config.SettingSpecByAlias(alias)
 			require.True(t, ok)
 			require.True(t, spec.CLIManaged)
@@ -494,7 +500,7 @@ func TestRuntimeMCPEndpoints(t *testing.T) {
 	for _, test := range []struct {
 		name, body, listen, base string
 	}{
-		{name: "unset"},
+		{name: "unset", listen: "127.0.0.1:8080", base: "http://127.0.0.1:8080"},
 		{name: "explicit deployment", body: `[mcp]
 listen_addr = '127.0.0.1:8080'
 base_url = 'https://mcp.example.test/pixiv'
@@ -515,4 +521,34 @@ base_url = ''
 			require.Equal(t, test.base, runtime.MCPBaseURL)
 		})
 	}
+}
+
+func TestGalleryCacheSettings(t *testing.T) {
+	for alias, want := range map[string]string{"mcp_gallery_animation_temp_capacity_mib": "1024", "mcp_gallery_cache_capacity_mib": "256", "mcp_gallery_cache_ttl": "15m0s", "mcp_gallery_concurrency": "4"} {
+		s, err := config.LoadSnapshotAt(filepath.Join(t.TempDir(), "config.toml"))
+		require.NoError(t, err)
+		v, err := s.Effective(alias)
+		require.NoError(t, err)
+		require.Equal(t, want, v.Text)
+		_, _, err = config.ParseSettingInput(alias, want)
+		require.NoError(t, err)
+	}
+	for _, tc := range []struct{ alias, raw string }{
+		{"mcp_gallery_animation_temp_capacity_mib", "0"}, {"mcp_gallery_animation_temp_capacity_mib", "-1"}, {"mcp_gallery_animation_temp_capacity_mib", "8796093022208"}, {"mcp_gallery_animation_temp_capacity_mib", "1.5"}, {"mcp_gallery_cache_capacity_mib", "-1"}, {"mcp_gallery_cache_capacity_mib", "8796093022208"},
+		{"mcp_gallery_cache_capacity_mib", "1.5"}, {"mcp_gallery_concurrency", "0"}, {"mcp_gallery_concurrency", "-1"},
+		{"mcp_gallery_cache_ttl", "0s"}, {"mcp_gallery_cache_ttl", "-1s"},
+	} {
+		_, _, err := config.ParseSettingInput(tc.alias, tc.raw)
+		require.Error(t, err, tc)
+	}
+	for _, raw := range []string{"true", "1.5", "'256'"} {
+		p := filepath.Join(t.TempDir(), "config.toml")
+		require.NoError(t, os.WriteFile(p, []byte("[mcp]\ngallery_cache_capacity_mib = "+raw+"\n"), 0600))
+		s, err := config.LoadSnapshotAt(p)
+		require.NoError(t, err)
+		_, err = s.Runtime()
+		require.Error(t, err, raw)
+	}
+	_, _, err := config.ParseSettingInput("mcp_gallery_cache_capacity_mib", "0")
+	require.NoError(t, err)
 }

@@ -45,3 +45,8 @@ __pycache__/
 /internal/media/ugoira/rust/target/
 
 .worktrees/
+
+# Frontend assets are regenerated before Go compilation; never edit or commit them.
+/internal/mcpserver/pixiv/gallery/generated/
+/internal/mcpserver/auth/generated/
+/internal/services/pixiv/account/loginrelay/loginpage/generated/

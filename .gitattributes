@@ -128,3 +128,6 @@ internal/media/ugoira/rust/vendor/zune-core/src/options/encoder.rs -whitespace
 internal/media/ugoira/rust/vendor/zune-jpeg/src/color_convert/avx.rs -whitespace
 internal/media/ugoira/rust/vendor/zune-jpeg/src/decoder.rs -whitespace
 internal/media/ugoira/rust/vendor/zune-jpeg/src/upsampler/portable_simd.rs -whitespace
+
+# Deterministic frontend assembly uses the same source bytes on every runner.
+frontend/** text eol=lf

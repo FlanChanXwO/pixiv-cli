@@ -2,12 +2,19 @@ package mcpserver_test
 
 import (
 	"bufio"
+	"bytes"
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"fmt"
+	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/mediaproxy"
+	diagnostics "github.com/FlanChanXwO/pixiv-cli/internal/shared/diagnostics"
+	"github.com/FlanChanXwO/pixiv-cli/internal/shared/lifecycle"
 	"html"
+	"image"
+	"image/png"
 	"io"
 	"net"
 	"net/http"
@@ -243,8 +250,20 @@ func TestHTTPAuthenticatedSDKNegotiationAndReset(t *testing.T) {
 	body, err := json.Marshal(state)
 	require.NoError(t, err)
 	require.NoError(t, os.WriteFile(store.Path, body, 0600))
-	protocol := mcp.NewServer(&mcp.Implementation{Name: "fixture", Version: "1"}, nil)
-	handler, err := server.NewHTTPHandler(t.Context(), protocol, "https://example.test", store, nil)
+	protocol := server.New(pixivmcp.SDKPorts{}, pixivmcp.Account{}, fanboxmcp.SDKPorts{}, nil)
+	var events []diagnostics.Event
+	var eventsMu sync.Mutex
+	observedCtx := diagnostics.WithScope(t.Context(), diagnostics.SinkFunc(func(event diagnostics.Event) {
+		eventsMu.Lock()
+		defer eventsMu.Unlock()
+		events = append(events, event)
+	}), diagnostics.ModulePixivMCP, 0)
+	var serializationCalls atomic.Int32
+	mediaResult := &mcp.CallToolResult{Content: []mcp.Content{&mcp.ImageContent{MIMEType: "image/png", Data: []byte{1, 2, 3}}}, StructuredContent: countedMediaContent{calls: &serializationCalls}}
+	for _, name := range []string{"pixiv_artwork_media", "pixiv_gallery_animation", "other"} {
+		protocol.AddTool(&mcp.Tool{Name: name, InputSchema: map[string]any{"type": "object"}}, func(context.Context, *mcp.CallToolRequest) (*mcp.CallToolResult, error) { return mediaResult, nil })
+	}
+	handler, err := server.NewHTTPHandler(observedCtx, protocol, "https://example.test", store, nil)
 	require.NoError(t, err)
 	for _, version := range []string{"2025-11-25", "2026-07-28"} {
 		for _, origin := range []string{"https://example.test", "https://EXAMPLE.test:443"} {
@@ -272,6 +291,40 @@ func TestHTTPAuthenticatedSDKNegotiationAndReset(t *testing.T) {
 			require.Equal(t, "no-store", response.Result().Header.Get("Cache-Control"))
 		}
 	}
+	expectedBytes, err := json.Marshal(mediaResult)
+	require.NoError(t, err)
+	callsBefore := serializationCalls.Load()
+	for _, name := range []string{"pixiv_artwork_media", "pixiv_gallery_animation", "other"} {
+		body, err := json.Marshal(map[string]any{"jsonrpc": "2.0", "id": 2, "method": "tools/call", "params": map[string]any{"name": name, "arguments": map[string]any{}}})
+		require.NoError(t, err)
+		request := httptest.NewRequest("POST", "https://example.test/mcp", bytes.NewReader(body))
+		if name == "pixiv_gallery_animation" {
+			// 请求 scope 与 HTTP lifecycle scope 同时存在时仍只观察一次。
+			request = request.WithContext(observedCtx)
+		}
+		request.Header.Set("Authorization", "Bearer "+token)
+		request.Header.Set("Content-Type", "application/json")
+		request.Header.Set("Accept", "application/json, text/event-stream")
+		request.Header.Set("Mcp-Protocol-Version", "2025-11-25")
+		response := httptest.NewRecorder()
+		handler.ServeHTTP(response, request)
+		require.Equal(t, 200, response.Code)
+		require.Contains(t, response.Body.String(), string(expectedBytes), "observing serialization must preserve the exact result bytes")
+	}
+	require.Equal(t, callsBefore+3, serializationCalls.Load(), "each result must be encoded once, without a diagnostic pre-encoding pass")
+	eventsMu.Lock()
+	observed := append([]diagnostics.Event(nil), events...)
+	eventsMu.Unlock()
+	require.Len(t, observed, 2, "each media response must report its real serialization once; unrelated tools remain unchanged")
+	for _, event := range observed {
+		require.Equal(t, "mcp_response_serialization", event.Operation)
+		require.Equal(t, diagnostics.EventCompleted, event.Kind)
+		require.Equal(t, len(expectedBytes), event.Count)
+		require.Positive(t, event.Duration)
+	}
+	diagnosticJSON, err := json.Marshal(observed)
+	require.NoError(t, err)
+	require.NotContains(t, string(diagnosticJSON), "signed-url-and-token")
 	_, err = store.Init(t.Context(), true)
 	require.NoError(t, err)
 	request := httptest.NewRequest("GET", "https://example.test/mcp", nil)
@@ -619,4 +672,138 @@ func TestHTTPMountsLoginRelayUnderCanonicalHostWithoutBearer(t *testing.T) {
 			require.Equal(t, http.StatusForbidden, denied.Code)
 		})
 	}
+}
+
+func TestHTTPExplicitGalleryProxyDiscovery(t *testing.T) {
+	ctx := t.Context()
+	instance := httptest.NewUnstartedServer(nil)
+	defer instance.Close()
+	base := "http://" + instance.Listener.Addr().String()
+	store := auth.Store{Path: filepath.Join(t.TempDir(), "state.json")}
+	_, err := store.Init(ctx, false)
+	require.NoError(t, err)
+	state, err := store.Read(ctx)
+	require.NoError(t, err)
+	sum := sha256.Sum256([]byte("gallery-fixture"))
+	state.Clients["client"] = auth.Client{RedirectURIs: []string{"https://client.test/callback"}}
+	state.Grants["grant"] = auth.Grant{ClientID: "client", Resource: base + "/mcp", Scope: "mcp", AccessTokens: map[string]time.Time{hex.EncodeToString(sum[:]): time.Now().Add(time.Hour)}, RefreshHash: strings.Repeat("a", 64), UsedRefreshHashes: []string{}}
+	data, err := json.Marshal(state)
+	require.NoError(t, err)
+	require.NoError(t, os.WriteFile(store.Path, data, 0600))
+	var imageBytes bytes.Buffer
+	require.NoError(t, png.Encode(&imageBytes, image.NewRGBA(image.Rect(0, 0, 1, 1))))
+	var ids []string
+	var idsMu sync.Mutex
+	open := func(ctx context.Context, uid int64) (*lifecycle.Lease[*pixivsdk.Client], error) {
+		require.EqualValues(t, 72, uid)
+		client, err := pixivsdk.NewWith("upstream-fixture", pixivsdk.Options{HTTPClient: &http.Client{Transport: oauthFixtureTransport(func(r *http.Request) (*http.Response, error) {
+			if r.URL.Host == "app-api.pixiv.net" {
+				id := r.URL.Query().Get("illust_id")
+				idsMu.Lock()
+				ids = append(ids, id)
+				idsMu.Unlock()
+				if id == "99" {
+					return nil, errors.New("fixture unavailable")
+				}
+				body := fmt.Sprintf(`{"illust":{"id":%s,"title":"fixture","caption":"<b>description</b>","type":"illust","page_count":1,"create_date":"2026-01-01T00:00:00Z","user":{"id":7},"meta_single_page":{"original_image_url":"https://i.pximg.net/img-original/img/2026/01/01/00/00/00/%s_p0.png"}}}`, id, id)
+				return &http.Response{StatusCode: 200, Header: http.Header{}, Body: io.NopCloser(strings.NewReader(body))}, nil
+			}
+			require.Equal(t, "i.pximg.net", r.URL.Host)
+			return &http.Response{StatusCode: 200, Header: http.Header{}, Body: io.NopCloser(bytes.NewReader(imageBytes.Bytes()))}, nil
+		})}})
+		return lifecycle.NewLease(client, func() error { client.CloseIdleConnections(); return nil }), err
+	}
+	media, err := mediaproxy.New(base, store, open)
+	require.NoError(t, err)
+	protocol := server.New(pixivmcp.SDKPorts{Media: media, Execute: func(ctx context.Context, a pixivmcp.Account, invoke func(context.Context, *pixivsdk.Client) (bool, error)) error {
+		lease, e := open(ctx, a.UserID)
+		if e != nil {
+			return e
+		}
+		defer lease.Close()
+		_, e = invoke(ctx, lease.Value())
+		return e
+	}, OpenLease: func(ctx context.Context, a pixivmcp.Account) (*lifecycle.Lease[*pixivsdk.Client], error) {
+		return open(ctx, a.UserID)
+	}}, pixivmcp.Account{UserID: 72}, fanboxmcp.SDKPorts{}, nil)
+	instance.Config.Handler, err = server.NewHTTPHandler(ctx, protocol, base, store, nil, media)
+	require.NoError(t, err)
+	instance.Start()
+	local := http.DefaultTransport.(*http.Transport).Clone()
+	local.Proxy = nil
+	defer local.CloseIdleConnections()
+	httpClient := &http.Client{Transport: oauthFixtureTransport(func(r *http.Request) (*http.Response, error) {
+		require.Equal(t, base, r.URL.Scheme+"://"+r.URL.Host)
+		r = r.Clone(r.Context())
+		r.Header.Set("Authorization", "Bearer gallery-fixture")
+		return local.RoundTrip(r)
+	})}
+	client := mcp.NewClient(&mcp.Implementation{Name: "gallery-fixture", Version: "1"}, nil)
+	session, err := client.Connect(ctx, &mcp.StreamableClientTransport{Endpoint: base + "/mcp", HTTPClient: httpClient}, nil)
+	require.NoError(t, err)
+	defer session.Close()
+	for _, args := range []map[string]any{{"illust_ids": []int{}}, {"illust_ids": []int{0}}, {"illust_ids": []int{42}, "url": "http://127.0.0.1/private"}} {
+		result, e := session.CallTool(ctx, &mcp.CallToolParams{Name: "pixiv_show_gallery", Arguments: args})
+		require.NoError(t, e)
+		require.True(t, result.IsError)
+	}
+	require.Empty(t, ids)
+	result, err := session.CallTool(ctx, &mcp.CallToolParams{Name: "pixiv_show_gallery", Arguments: map[string]any{"illust_ids": []int{43, 99, 42, 43}}})
+	require.NoError(t, err)
+	var out struct {
+		Records []struct {
+			ID json.Number `json:"id"`
+		}
+		Images   []struct{ URL string }
+		Failures []struct {
+			IllustID int64 `json:"illust_id"`
+			Error    string
+		}
+	}
+	data, err = json.Marshal(result.StructuredContent)
+	require.NoError(t, err)
+	require.NoError(t, json.Unmarshal(data, &out))
+	require.Len(t, out.Images, 2, string(data))
+	require.Len(t, out.Records, 2)
+	require.Len(t, out.Failures, 1, string(data))
+	require.EqualValues(t, 99, out.Failures[0].IllustID)
+	require.ElementsMatch(t, []string{"43", "99", "42"}, ids)
+	require.Equal(t, "43", string(out.Records[0].ID))
+	require.Equal(t, "42", string(out.Records[1].ID))
+	require.True(t, result.IsError)
+	for _, version := range []string{"2025-03-26", "2025-11-25"} {
+		body := strings.NewReader(`{"jsonrpc":"2.0","id":81,"method":"tools/call","params":{"name":"pixiv_show_gallery","arguments":{"illust_ids":[42]}}}`)
+		req, e := http.NewRequestWithContext(ctx, "POST", base+"/mcp", body)
+		require.NoError(t, e)
+		req.Header.Set("Accept", "application/json, text/event-stream")
+		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("MCP-Protocol-Version", version)
+		response, e := httpClient.Do(req)
+		require.NoError(t, e)
+		wire, e := io.ReadAll(response.Body)
+		response.Body.Close()
+		require.NoError(t, e)
+		require.Equal(t, 200, response.StatusCode)
+		require.Contains(t, string(wire), base+"/media/")
+		require.NotContains(t, string(wire), "image_authorization_unavailable")
+	}
+	for _, item := range out.Images {
+		req, err := http.NewRequestWithContext(ctx, "GET", item.URL, nil)
+		require.NoError(t, err)
+		response, err := local.RoundTrip(req)
+		require.NoError(t, err)
+		body, err := io.ReadAll(response.Body)
+		response.Body.Close()
+		require.NoError(t, err)
+		require.Equal(t, 200, response.StatusCode)
+		require.Equal(t, imageBytes.Bytes(), body)
+	}
+}
+
+// 计数发生在实际 JSON 编码中，避免把预先重复编码当作传输观测。
+type countedMediaContent struct{ calls *atomic.Int32 }
+
+func (c countedMediaContent) MarshalJSON() ([]byte, error) {
+	c.calls.Add(1)
+	return []byte(`{"private_fixture":"signed-url-and-token-must-not-be-logged"}`), nil
 }

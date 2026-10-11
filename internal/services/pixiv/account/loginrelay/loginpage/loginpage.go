@@ -19,13 +19,13 @@ const (
 	failureMessage = "Login could not be completed. Return to the terminal to view details or try again."
 )
 
-//go:embed templates/*.html assets/page.css
+//go:embed generated/templates/*.html
 var templatesFS embed.FS
 
 // 页面模板与样式均随 CLI 二进制分发；不依赖运行环境中的外部静态文件。
 // 样式为本包维护的静态资源，故以 template.CSS 传入模板，避免被当作不可信内容替换。
 //
-//go:embed assets/page.css
+//go:embed generated/page.css
 var stylesheet string
 
 type pageData struct {
@@ -39,9 +39,9 @@ type pageData struct {
 }
 
 var (
-	manualTemplate   = mustParse("templates/manual.html")
-	callbackTemplate = mustParse("templates/callback-relay.html")
-	resultTemplate   = mustParse("templates/result.html")
+	manualTemplate   = mustParse("generated/templates/manual.html")
+	callbackTemplate = mustParse("generated/templates/callback-relay.html")
+	resultTemplate   = mustParse("generated/templates/result.html")
 
 	callbackPage      = mustRender(callbackTemplate, bridgeData())
 	successResultPage = mustRender(resultTemplate, resultData(true))
@@ -49,7 +49,7 @@ var (
 )
 
 func mustParse(name string) *template.Template {
-	return template.Must(template.ParseFS(templatesFS, "templates/layout.html", name))
+	return template.Must(template.ParseFS(templatesFS, "generated/templates/layout.html", name))
 }
 
 // mustRender 只用于不含运行期数据的嵌入页面；资源损坏是构建不变量，应在启动时显露。

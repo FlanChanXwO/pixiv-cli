@@ -7,6 +7,7 @@ use std::panic::{catch_unwind, AssertUnwindSafe};
 use std::path::{Path, PathBuf};
 use std::ptr::null_mut;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+use std::sync::Mutex;
 
 use crc32fast::Hasher as Crc32;
 use gif::{DisposalMethod, Encoder, Frame, Repeat};
@@ -27,10 +28,17 @@ const RESERVOIR_SEED: u64 = 0x9e37_79b9_7f4a_7c15;
 const FLOYD_STEINBERG_ERROR_DIFFUSION: f32 = 0.1;
 const PNG_SIGNATURE: &[u8; 8] = b"\x89PNG\r\n\x1a\n";
 
+#[derive(Clone, Copy, Debug)]
+struct OutputBudget {
+    reserve: extern "C" fn(u64, u64) -> i32,
+    handle: u64,
+}
+
 #[derive(Debug)]
 pub struct CancellationToken {
     canceled: AtomicBool,
     output_limit: AtomicU64,
+    output_budget: Mutex<Option<OutputBudget>>,
 }
 
 impl Default for CancellationToken {
@@ -38,6 +46,7 @@ impl Default for CancellationToken {
         Self {
             canceled: AtomicBool::new(false),
             output_limit: AtomicU64::new(u64::MAX),
+            output_budget: Mutex::new(None),
         }
     }
 }
@@ -59,12 +68,17 @@ impl CancellationToken {
 struct BudgetWriter {
     file: File,
     remaining: u64,
+    budget: Option<OutputBudget>,
 }
 impl BudgetWriter {
     fn create(path: &Path, cancellation: &CancellationToken) -> io::Result<Self> {
         Ok(Self {
             file: File::create(path)?,
             remaining: cancellation.output_limit.load(Ordering::Acquire),
+            budget: *cancellation
+                .output_budget
+                .lock()
+                .map_err(|_| io::Error::other("animation output budget unavailable"))?,
         })
     }
 }
@@ -72,6 +86,11 @@ impl Write for BudgetWriter {
     fn write(&mut self, data: &[u8]) -> io::Result<usize> {
         if data.len() as u64 > self.remaining {
             return Err(io::Error::other("animation temporary capacity exhausted"));
+        }
+        if let Some(budget) = self.budget {
+            if (budget.reserve)(budget.handle, data.len() as u64) == 0 {
+                return Err(io::Error::other("animation temporary capacity exhausted"));
+            }
         }
         let written = self.file.write(data)?;
         self.remaining -= written as u64;
@@ -1420,6 +1439,63 @@ pub unsafe extern "C" fn ugoira_encode_bounded(
     })
 }
 
+struct OutputBudgetGuard<'a>(&'a CancellationToken);
+impl Drop for OutputBudgetGuard<'_> {
+    fn drop(&mut self) {
+        if let Ok(mut budget) = self.0.output_budget.lock() {
+            *budget = None;
+        }
+    }
+}
+
+#[no_mangle]
+/// Apply a shared budget immediately before each native file write.
+///
+/// # Safety
+/// Same exclusive token/pointer contract as `ugoira_encode_bounded`. The callback
+/// and opaque handle must remain valid until this synchronous call returns; the
+/// callback must not unwind. They are never retained after this call.
+pub unsafe extern "C" fn ugoira_encode_budgeted(
+    zip_path: *const c_char,
+    frames_json: *const c_char,
+    output_path: *const c_char,
+    cancellation: *const CancellationToken,
+    format: u32,
+    max_edge: u32,
+    max_output_bytes: u64,
+    reserve: Option<extern "C" fn(u64, u64) -> i32>,
+    handle: u64,
+) -> *mut c_char {
+    ffi_result("ugoira_encode_budgeted", || {
+        if cancellation.is_null() {
+            return Err(EncodeError::NullPointer("cancellation_token"));
+        }
+        let reserve = reserve.ok_or(EncodeError::NullPointer("output_budget_callback"))?;
+        // Safety: the caller keeps its exclusively owned token alive until return.
+        let token = unsafe { &*cancellation };
+        token
+            .output_limit
+            .store(max_output_bytes, Ordering::Release);
+        *token
+            .output_budget
+            .lock()
+            .map_err(|_| io::Error::other("animation output budget unavailable"))? =
+            Some(OutputBudget { reserve, handle });
+        let _guard = OutputBudgetGuard(token);
+        // Safety: validated caller contract is identical to the bounded entry point.
+        unsafe {
+            encode_ffi(
+                zip_path,
+                frames_json,
+                output_path,
+                cancellation,
+                format,
+                max_edge,
+            )
+        }
+    })
+}
+
 unsafe fn encode_ffi(
     zip_path: *const c_char,
     frames_json: *const c_char,
@@ -1556,6 +1632,48 @@ mod tests {
         assert!(
             error.is_null(),
             "legacy entry must remain unbounded for a reused token"
+        );
+    }
+
+    #[test]
+    fn shared_budget_is_cleared_before_reusing_token() {
+        extern "C" fn deny(_: u64, _: u64) -> i32 {
+            0
+        }
+        let dir = tempdir().unwrap();
+        let zip_file = dir.path().join("input.zip");
+        write_rgba_zip(&zip_file, "0.png", 2, 2, Rgba([255, 0, 0, 255]));
+        let zip = CString::new(zip_file.to_string_lossy().as_bytes()).unwrap();
+        let frames = CString::new(r#"[{"file":"0.png","delay":80}]"#).unwrap();
+        let output = CString::new(dir.path().join("out.gif").to_string_lossy().as_bytes()).unwrap();
+        let token = ugoira_cancel_token_new();
+        // Safety: all strings/token and callback stay alive throughout the synchronous calls.
+        let error = unsafe {
+            ugoira_encode_budgeted(
+                zip.as_ptr(),
+                frames.as_ptr(),
+                output.as_ptr(),
+                token,
+                0,
+                0,
+                u64::MAX,
+                Some(deny),
+                0,
+            )
+        };
+        assert!(!error.is_null());
+        unsafe { ugoira_free_error(error) };
+        // Safety: the token has not yet been freed or shared with another encoder.
+        assert!(unsafe { &*token }.output_budget.lock().unwrap().is_none());
+        let error =
+            unsafe { ugoira_encode(zip.as_ptr(), frames.as_ptr(), output.as_ptr(), token, 0, 0) };
+        if !error.is_null() {
+            unsafe { ugoira_free_error(error) };
+        }
+        assert!(unsafe { ugoira_cancel_token_free(token) }.is_null());
+        assert!(
+            error.is_null(),
+            "legacy encoding must not call an expired budget callback"
         );
     }
 

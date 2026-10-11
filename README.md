@@ -162,13 +162,17 @@ brew update
 brew upgrade pixiv-cli
 ```
 
-### Go
+### Source checkout
 
-Use an exact published tag. A source install requires Go, cgo, a C linker, and the committed Rust static library for your target.
+Use an exact published tag. Source builds require Go, cgo, a C linker and the committed Rust static library for your target. The build script generates the embedded frontend assets before compiling:
 
 ```bash
-go install github.com/FlanChanXwO/pixiv-cli/cmd/pixiv@vX.Y.Z
+git clone --branch vX.Y.Z --depth 1 https://github.com/FlanChanXwO/pixiv-cli.git
+cd pixiv-cli
+sh scripts/build.sh
 ```
+
+Direct `go install ...@tag` cannot generate these uncommitted assets; use the checkout build or a Release archive.
 
 ### Release archive or source build
 
@@ -236,7 +240,7 @@ Start one authenticated Pixiv/FANBOX Streamable HTTP server. MCP traffic uses HT
 
 ```bash
 pixiv mcp auth init  # Local administrator only; save the one-time secret securely.
-pixiv mcp --listen-addr 127.0.0.1:8080 --base-url http://127.0.0.1:8080
+pixiv mcp
 ```
 
 Connect to `http://127.0.0.1:8080/mcp` locally. For cloud connectors, use an existing HTTPS reverse proxy and configure its canonical public base URL. OAuth uses DCR, owner consent and PKCE; Pixiv/FANBOX credentials remain separate. See [startup](docs/en/cli-reference.md#mcp-http-server) and [owner/reset administration](docs/en/cli-reference.md#mcp-owner-initialization). `pixiv fanbox mcp` and stdio transport are removed.
@@ -244,9 +248,11 @@ Connect to `http://127.0.0.1:8080/mcp` locally. For cloud connectors, use an exi
 Use `pixiv_account_list` / `pixiv_account_status` to inspect local accounts and `pixiv_account_use` to select the shared MCP account without changing the CLI default.
 Start a new account login with `pixiv_account_login_start`, open its relay URL with the installed local helper, then query `pixiv_account_status` with `login_id`; do not paste callbacks or credentials into chat. Login preserves an existing MCP selection with local credentials; switch explicitly with `pixiv_account_use`.
 
+Gallery animations use `pixiv_gallery_animation` (`prepare` / `status` / `release`) for short control responses and protected GIF/APNG plus PNG preview delivery.
+
 Use `pixiv_artwork_media` for actual static image bytes (regular quality and all pages by default), or a full Ugoira GIF/APNG blob with a separate PNG preview. Omit static pages/quality for Ugoira; partial failures are explicit, and no server-local download path is returned.
 
-Supporting MCP Apps hosts can show artwork preview cards through the embedded Gallery resource; full media and non-UI hosts continue to use the tools above.
+On supporting MCP Apps hosts, explicitly call `pixiv_show_gallery` with artwork IDs to show image-first cards through the default same-origin image proxy. Ordinary search/ranking/detail tools do not open UI; full media and non-UI hosts continue to use the tools above.
 
 `fanbox_open_resource` returns image/blob bytes and available attachment filenames for GET; HEAD remains metadata-only.
 

@@ -3,6 +3,10 @@ package schemas
 
 // ClosedObject 返回拒绝未知字段的 MCP object schema。
 func ClosedObject(properties map[string]any, required []string) map[string]any {
+	// JSON Schema 的 required 必须是数组；nil slice 会在 tools/list 中编码成 null。
+	if required == nil {
+		required = []string{}
+	}
 	return map[string]any{
 		"type":                 "object",
 		"additionalProperties": false,

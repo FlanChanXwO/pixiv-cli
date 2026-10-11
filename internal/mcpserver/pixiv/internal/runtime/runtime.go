@@ -7,6 +7,7 @@ import (
 	"context"
 	"errors"
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/gallery"
+	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/mediaproxy"
 	"math"
 	"sync"
 	"sync/atomic"
@@ -34,6 +35,7 @@ type Account struct {
 // SDKPorts 是 MCP 对 Pixiv services Facade 的窄端口：打开独立认证快照、在账号
 // 池重放边界内执行用例。composition root 注入实现；MCP 不持有 service locator。
 type SDKPorts struct {
+	Media *mediaproxy.Service
 	// Accounts shares the owner-local manager used by production ResolveAccount.
 	Accounts accounts.Manager
 	// Login is shared with the HTTP relay and owned by the server lifecycle.
@@ -46,6 +48,8 @@ type SDKPorts struct {
 	Open      func(Account) (*pixiv.Client, error)
 	OpenLease func(context.Context, Account) (*lifecycle.Lease[*pixiv.Client], error)
 	Execute   func(context.Context, Account, func(context.Context, *pixiv.Client) (bool, error)) error
+	// Read excludes mutations; Execute retains write commit/replay semantics.
+	Read func(context.Context, Account, func(context.Context, *pixiv.Client) (bool, error)) error
 	// ReverseSearch 是启动时注入的反向搜图能力与配置快照。Searcher 的
 	// HTTP client、代理和凭据均由 composition root 构造，不从 MCP input 传入。
 	ReverseSearch ReverseSearchPorts
@@ -199,10 +203,10 @@ func ListPagination(plan ListPlan, limit *int, returned int, hasMore bool) Pagin
 	return out
 }
 
-// Execute 将 MCP 当前请求接入 services Facade 提供的重放边界；逻辑分页和
+// Execute 将 MCP 读取接入独立只读会话，兼容未注入 Read 的原重放端口；逻辑分页和
 // cursor 处理由 internal/shared/traversal 与 pagination 统一拥有。
 func (a *App) Execute() traversal.Execute[*pixiv.Client] {
-	if a == nil || a.sdk.Execute == nil {
+	if a == nil || (a.sdk.Execute == nil && a.sdk.Read == nil) {
 		return nil
 	}
 	return func(ctx context.Context, attempt func(context.Context, *pixiv.Client) (bool, error)) error {
@@ -210,14 +214,17 @@ func (a *App) Execute() traversal.Execute[*pixiv.Client] {
 		if err != nil {
 			return err
 		}
+		if a.sdk.Read != nil {
+			return a.sdk.Read(ctx, account, attempt)
+		}
 		return a.sdk.Execute(ctx, account, attempt)
 	}
 }
 
-// Read 在账号池重放边界内执行一次只读用例；MCP 只在成功后拿到结果。
+// Read 使用独立只读会话；未注入该端口的 embedding 保留原 Execute 行为。
 func Read[T any](a *App, ctx context.Context, invoke func(context.Context, *pixiv.Client) (T, error)) (T, error) {
 	var zero T
-	if a == nil || a.sdk.Execute == nil {
+	if a == nil || (a.sdk.Execute == nil && a.sdk.Read == nil) {
 		return zero, sdk.NewError("pixiv", "PagedRead", sdk.LocalStateError,
 			sdk.WithDetail("sdk pooled operation is not configured"))
 	}
@@ -226,7 +233,11 @@ func Read[T any](a *App, ctx context.Context, invoke func(context.Context, *pixi
 	if err != nil {
 		return zero, err
 	}
-	err = a.sdk.Execute(ctx, account, func(ctx context.Context, client *pixiv.Client) (bool, error) {
+	execute := a.sdk.Execute
+	if a.sdk.Read != nil {
+		execute = a.sdk.Read
+	}
+	err = execute(ctx, account, func(ctx context.Context, client *pixiv.Client) (bool, error) {
 		var err error
 		result, err = invoke(ctx, client)
 		return false, err
@@ -397,6 +408,9 @@ func (a *App) OpenClient(ctx context.Context) (*lifecycle.Lease[*pixiv.Client], 
 	return lease, nil
 }
 
+// ResolveAccount returns the fixed account for this tool invocation.
+func (a *App) ResolveAccount(ctx context.Context) (Account, error) { return a.resolveAccount(ctx) }
+
 // CurrentUserID 返回当前 client snapshot 的身份 UID；未携带账号时报错，
 // 不静默回退到默认账号语义。
 func (a *App) CurrentUserID(ctx context.Context) (int64, error) {
@@ -418,4 +432,18 @@ func ResolveUserID(app *App, ctx context.Context, requested int64) (int64, error
 		return 0, errors.New("user_id must be positive when provided")
 	}
 	return app.CurrentUserID(ctx)
+}
+
+// Artwork uses grant-scoped Gallery metadata when production read sessions are available.
+func (a *App) Artwork(ctx context.Context, id int64) (pixiv.Artwork, error) {
+	if a.sdk.Media.HasReadSessions() {
+		account, err := a.resolveAccount(ctx)
+		if err != nil {
+			return pixiv.Artwork{}, err
+		}
+		return a.sdk.Media.Artwork(ctx, account.UserID, id)
+	}
+	return Read(a, ctx, func(ctx context.Context, c *pixiv.Client) (pixiv.Artwork, error) {
+		return c.Artwork(ctx, pixiv.ArtworkRequest{ArtworkID: id})
+	})
 }

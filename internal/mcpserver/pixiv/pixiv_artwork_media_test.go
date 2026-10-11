@@ -14,11 +14,13 @@ import (
 	"net/http"
 	"os"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
 
 	pixivserver "github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv"
+	"github.com/FlanChanXwO/pixiv-cli/internal/shared/diagnostics"
 	"github.com/FlanChanXwO/pixiv-cli/internal/shared/lifecycle"
 	pixiv "github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
@@ -284,10 +286,22 @@ func TestArtworkMediaUgoiraDeliversAnimationAndPreview(t *testing.T) {
 				return &http.Response{StatusCode: 200, Header: http.Header{"Content-Type": {"application/json"}}, Body: io.NopCloser(strings.NewReader(body))}, nil
 			})}})
 			require.NoError(t, err)
-			session, closeSession := newSDKTestSessionWithPorts(t, pixivserver.SDKPorts{OpenLease: func(context.Context, pixivserver.Account) (*lifecycle.Lease[*pixiv.Client], error) {
+			var events []diagnostics.Event
+			var eventsMu sync.Mutex
+			ctx, cancel := context.WithCancel(diagnostics.WithScope(t.Context(), diagnostics.SinkFunc(func(event diagnostics.Event) {
+				eventsMu.Lock()
+				defer eventsMu.Unlock()
+				events = append(events, event)
+			}), diagnostics.ModulePixivMCP, 0))
+			defer cancel()
+			protocol := newTestServer(pixivserver.SDKPorts{OpenLease: func(context.Context, pixivserver.Account) (*lifecycle.Lease[*pixiv.Client], error) {
 				return lifecycle.NewLease(client, func() error { closed.Add(1); return nil }), nil
 			}}, pixivserver.Account{})
-			defer closeSession()
+			clientTransport, serverTransport := mcp.NewInMemoryTransports()
+			go func() { _ = protocol.Run(ctx, serverTransport) }()
+			session, err := mcp.NewClient(&mcp.Implementation{Name: "media-observation-test", Version: "1"}, nil).Connect(ctx, clientTransport, nil)
+			require.NoError(t, err)
+			defer session.Close()
 			args := map[string]any{"illust_id": 42}
 			if tc.format != "" {
 				args["animation_format"] = tc.format
@@ -320,6 +334,28 @@ func TestArtworkMediaUgoiraDeliversAnimationAndPreview(t *testing.T) {
 			require.True(t, ok)
 			require.Equal(t, p.Size, len(blob.Resource.Blob))
 			require.Equal(t, tc.mime, blob.Resource.MIMEType)
+			eventsMu.Lock()
+			observed := append([]diagnostics.Event(nil), events...)
+			eventsMu.Unlock()
+			stages := map[string]diagnostics.Event{}
+			for _, event := range observed {
+				stages[event.Operation] = event
+			}
+			for _, stage := range []string{"artwork_query", "animation_metadata", "animation_zip_download", "animation_encode_wait", "animation_encode", "animation_result_read", "animation_generation"} {
+				event, ok := stages[stage]
+				require.True(t, ok, "missing actual stage %s", stage)
+				require.Equal(t, diagnostics.EventCompleted, event.Kind)
+				require.Positive(t, event.Duration)
+			}
+			require.Equal(t, len(archive.Bytes()), stages["animation_zip_download"].Count)
+			require.Equal(t, p.Size, stages["animation_result_read"].Count)
+			require.Equal(t, p.Size, stages["animation_generation"].Count)
+			safe, err := json.Marshal(observed)
+			require.NoError(t, err)
+			require.NotContains(t, string(safe), "fixture-token")
+			require.NotContains(t, string(safe), "pximg.net")
+			require.NotContains(t, string(safe), temp)
+
 			if format == "gif" {
 				decoded, err := gif.DecodeAll(bytes.NewReader(blob.Resource.Blob))
 				require.NoError(t, err)
@@ -380,10 +416,22 @@ func TestArtworkMediaUgoiraFailureAndCancellationCleanTemporaryFiles(t *testing.
 				return &http.Response{StatusCode: 200, Header: http.Header{"Content-Type": {"application/zip"}}, Body: body}, nil
 			})}})
 			require.NoError(t, err)
-			session, closeSession := newSDKTestSessionWithPorts(t, pixivserver.SDKPorts{OpenLease: func(context.Context, pixivserver.Account) (*lifecycle.Lease[*pixiv.Client], error) {
+			var events []diagnostics.Event
+			var eventsMu sync.Mutex
+			lifetime, stop := context.WithCancel(diagnostics.WithScope(t.Context(), diagnostics.SinkFunc(func(event diagnostics.Event) {
+				eventsMu.Lock()
+				defer eventsMu.Unlock()
+				events = append(events, event)
+			}), diagnostics.ModulePixivMCP, 0))
+			defer stop()
+			protocol := newTestServer(pixivserver.SDKPorts{OpenLease: func(context.Context, pixivserver.Account) (*lifecycle.Lease[*pixiv.Client], error) {
 				return lifecycle.NewLease(client, func() error { leaseClosed.Store(true); return nil }), nil
 			}}, pixivserver.Account{})
-			defer closeSession()
+			ct, st := mcp.NewInMemoryTransports()
+			go func() { _ = protocol.Run(lifetime, st) }()
+			session, err := mcp.NewClient(&mcp.Implementation{Name: "media-failure-observation-test", Version: "1"}, nil).Connect(lifetime, ct, nil)
+			require.NoError(t, err)
+			defer session.Close()
 			if mode == "cancel" {
 				ctx, cancel := context.WithCancel(t.Context())
 				defer cancel()
@@ -420,6 +468,48 @@ func TestArtworkMediaUgoiraFailureAndCancellationCleanTemporaryFiles(t *testing.
 			entries, err := os.ReadDir(temp)
 			require.NoError(t, err)
 			require.Empty(t, entries, "failed/canceled encode left temporary files")
+			var terminal diagnostics.Event
+			require.Eventually(t, func() bool {
+				eventsMu.Lock()
+				defer eventsMu.Unlock()
+				for _, event := range events {
+					if event.Operation == "animation_generation" {
+						terminal = event
+						return true
+					}
+				}
+				return false
+			}, 5*time.Second, time.Millisecond)
+			require.Equal(t, diagnostics.EventFailed, terminal.Kind)
+			reason := diagnostics.ReasonToolFailed
+			if mode == "cancel" {
+				reason = diagnostics.ReasonRequestCancelled
+			}
+			require.Equal(t, reason, terminal.Reason)
+			require.Zero(t, terminal.Count, "failed work must not report a delivered animation")
+			eventsMu.Lock()
+			safe, err := json.Marshal(events)
+			eventsMu.Unlock()
+			require.NoError(t, err)
+			require.NotContains(t, string(safe), "fixture-private-corrupt-zip")
+			require.NotContains(t, string(safe), "fixture-token")
+			require.NotContains(t, string(safe), temp)
+
 		})
 	}
+}
+
+func TestGalleryAnimationControlRegistered(t *testing.T) {
+	session, closeSession := newSDKTestSessionWithPorts(t, pixivserver.SDKPorts{}, pixivserver.Account{})
+	defer closeSession()
+	tools, err := session.ListTools(t.Context(), nil)
+	require.NoError(t, err)
+	found := false
+	for _, tool := range tools.Tools {
+		if tool.Name == "pixiv_gallery_animation" {
+			found = true
+			require.True(t, tool.Annotations.ReadOnlyHint)
+		}
+	}
+	require.True(t, found, "Gallery needs a short animation control request")
 }

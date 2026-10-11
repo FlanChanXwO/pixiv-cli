@@ -25,3 +25,17 @@ Go 保留资源注册、模板数据、html/template 转义、CSP、媒体 origi
 ## 实施前审核
 
 主线程已核对三个 owner 和构建入口。安全边界不迁移到前端；生成器无运行时网络和外部依赖。Release 现有 `git clean -ndx` 检查必须仅排除三个生成目录，否则新生成资源会阻止发布。当前子代理 API 不支持用户要求的 fork_turns 参数，设计审核在主线程完成。
+
+## 实施审核补充
+
+生成后的七个资源与迁移前页面源码逐字节一致。构建时生成且不提交产物意味着 `go install ...@tag` 不会获得嵌入资源；源码安装文档已同步改为 tag checkout + `scripts/build.sh`。历史 Go 安装的自更新仍调用 `go install`，本次不改更新器；迁移到此布局的 release 需使用 Release 压缩包。Release/Homebrew 单文件分发不受影响。
+
+前端输入固定为 LF checkout，避免 Windows 文本转换改变确定性资源。Release 干净产物排除规则已通过临时 Git 仓库验证：仅允许生成目录，额外非生成文件仍被检测。
+
+## 验收结果
+
+- 迁移前后 Gallery、登录和授权回归通过，最终七个资源与基线原字节一致；Node fixture 直接执行拆出的 Gallery JS，Go 资源测试覆盖内联与媒体 CSP。
+- `go test -p 1 ./... -count=1`、`go test -race -p 1 ./... -count=1`、`go vet ./...`、全量 Go 格式、`git diff --check`、许可证与打包 fixture 通过。串行包执行避开此前高负载下验证工具测试的超时，测试范围未缩减。
+- 不含生成产物的临时检出通过生成、检查、页面测试、本地构建和打包。宿主生成的交叉环境命令、Release 精确排除规则、race wrapper 的生成失败和 Windows ARM64 诊断分支均通过验证。
+- 临时检出使用已安装的 Rust 1.96.1 离线完成 macOS ARM64 平台构建、版本化归档及解包后的真实 CLI smoke。浏览器验证登录、授权、callback、结果和 Gallery 初始状态；MCP 服务及隧道未重启。
+- 主线程按 code-review-expert 检查生成器错误路径、Go owner 边界、模板转义、安全策略、构建顺序和此次增量，未发现阻塞问题。其他系统的 native runner 和 Docker 运行验收未在本机执行；未启用真实凭据 SDK E2E。
