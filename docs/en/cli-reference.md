@@ -507,7 +507,7 @@ Only the structured entity filters documented by each command are accepted. The 
 | `novel search` | `pixiv novel search WORD [options]` | Compatibility route for novel search; prefer `pixiv search WORD --type novel`. It exposes only the documented basic novel search fields. |
 | `user search` | `pixiv user search WORD [options]` | Compatibility route for user search; prefer `pixiv search WORD --type user`. |
 | `follow` | `pixiv follow add\|remove USER_ID ...` | Compatibility route for user follow mutation; it shares the same owner and input contract as `pixiv user follow add\|remove`. |
-| `mcp` | `pixiv mcp [--listen-addr ADDR] [--base-url URL] [--proxy URL\|--no-proxy]` | Starts the authenticated unified HTTP server; defaults to local HTTP at `127.0.0.1:8080`; initialized owner is required. |
+| `mcp` | `pixiv mcp [--listen-addr ADDR] [--base-url URL] [--proxy URL\|--no-proxy]` | Starts the authenticated unified HTTP server; defaults to local HTTP at `127.0.0.1:1270`; initialized owner is required. |
 | `mcp auth init` | `pixiv mcp auth init [--reset]` | Initialize the local MCP owner and print its secret once; reset revokes grants, preserving clients and selected account. |
 | `fanbox auth` | `pixiv fanbox auth import|list|use|remove|status` | Imports and manages local FANBOX sessions. Session values are never printed. Native `--proxy`/`--no-proxy` applies only to the FANBOX command. |
 | `fanbox creators` | `pixiv fanbox creators [--kind supporting\|following] [--page N --limit N]` | Lists supporting or following FANBOX creators. |
@@ -815,7 +815,7 @@ pixiv mcp
 pixiv mcp --base-url https://mcp.example.com
 ```
 
-The aliases `mcp_listen_addr` and `mcp_base_url` map to `[mcp].listen_addr` and `[mcp].base_url`. They default to `127.0.0.1:8080` and `http://127.0.0.1:8080`, respectively, and support `config get/set/unset`; unset restores the default. The default listener is loopback-only. Override both values when using another local port; cloud connectors require an explicit public HTTPS base URL. Flags override file values, including an explicit empty override (which fails startup). There are no additional MCP environment variables. Listen address requires an explicit nonzero TCP port. Explicit empty settings, invalid canonical URL, unreadable/uninitialized owner state or bind failure stop startup; the server never silently selects another port. Missing owner state directs the administrator to `pixiv mcp auth init`.
+The aliases `mcp_listen_addr` and `mcp_base_url` map to `[mcp].listen_addr` and `[mcp].base_url`. They default to `127.0.0.1:1270` and `http://127.0.0.1:1270`, respectively, and support `config get/set/unset`; unset restores the default. The default listener is loopback-only. Override both values when using another local port; cloud connectors require an explicit public HTTPS base URL. Flags override file values, including an explicit empty override (which fails startup). There are no additional MCP environment variables. Listen address requires an explicit nonzero TCP port. Explicit empty settings, invalid canonical URL, unreadable/uninitialized owner state or bind failure stop startup; the server never silently selects another port. Missing owner state directs the administrator to `pixiv mcp auth init`.
 
 Gallery reads use these startup settings, managed with `pixiv config get/set/unset`:
 

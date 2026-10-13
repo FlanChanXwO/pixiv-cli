@@ -405,7 +405,7 @@ canonical 数据 action 是 `search`、`detail`、`ranking`、`series`、`commen
 | `novel search` | `pixiv novel search WORD [options]` | 小说搜索兼容路径；优先使用 `pixiv search WORD --type novel`，只暴露基础小说搜索字段。 |
 | `user search` | `pixiv user search WORD [options]` | 用户搜索兼容路径；优先使用 `pixiv search WORD --type user`。 |
 | `follow` | `pixiv follow add\|remove USER_ID ...` | 用户关注兼容路径；与 `pixiv user follow add\|remove` 共享同一 owner 和输入契约。 |
-| `mcp` | `pixiv mcp [--listen-addr ADDR] [--base-url URL] [--proxy URL\|--no-proxy]` | 启动经认证的统一 HTTP server；默认使用 `127.0.0.1:8080` 本地 HTTP；须初始化 owner。 |
+| `mcp` | `pixiv mcp [--listen-addr ADDR] [--base-url URL] [--proxy URL\|--no-proxy]` | 启动经认证的统一 HTTP server；默认使用 `127.0.0.1:1270` 本地 HTTP；须初始化 owner。 |
 | `mcp auth init` | `pixiv mcp auth init [--reset]` | 初始化本地 MCP owner 并只输出一次 secret；reset 撤销 grants，保留 clients 与选中账号。 |
 | `fanbox auth` | `pixiv fanbox auth import|list|use|remove|status` | 导入并管理本地 FANBOX session；session 值永不输出。native `--proxy`/`--no-proxy` 只影响本次 FANBOX 命令。 |
 | `fanbox creators` | `pixiv fanbox creators [--kind supporting\|following] [--page N --limit N]` | 列出 supporting 或 following FANBOX creator。 |
@@ -671,7 +671,7 @@ pixiv mcp
 pixiv mcp --base-url https://mcp.example.com
 ```
 
-别名 `mcp_listen_addr`、`mcp_base_url` 分别对应 `[mcp].listen_addr`、`[mcp].base_url`，默认分别为 `127.0.0.1:8080` 与 `http://127.0.0.1:8080`，支持 `config get/set/unset`；unset 后恢复默认值。默认仅监听 loopback；更换本地端口时须同时覆盖两项，云端 connector 须显式配置公网 HTTPS base URL。命令 flag 覆盖文件值，显式空值也会覆盖并导致启动失败；不新增 MCP 环境变量。listen address 必须包含显式非零 TCP 端口。显式空配置、canonical URL 无效、owner 未初始化/状态不可读或端口绑定失败都会停止启动，不会悄悄换端口。未初始化时提示管理员执行 `pixiv mcp auth init`。
+别名 `mcp_listen_addr`、`mcp_base_url` 分别对应 `[mcp].listen_addr`、`[mcp].base_url`，默认分别为 `127.0.0.1:1270` 与 `http://127.0.0.1:1270`，支持 `config get/set/unset`；unset 后恢复默认值。默认仅监听 loopback；更换本地端口时须同时覆盖两项，云端 connector 须显式配置公网 HTTPS base URL。命令 flag 覆盖文件值，显式空值也会覆盖并导致启动失败；不新增 MCP 环境变量。listen address 必须包含显式非零 TCP 端口。显式空配置、canonical URL 无效、owner 未初始化/状态不可读或端口绑定失败都会停止启动，不会悄悄换端口。未初始化时提示管理员执行 `pixiv mcp auth init`。
 
 画廊读取使用以下启动配置，通过 `pixiv config get/set/unset` 管理：
 

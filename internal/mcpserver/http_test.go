@@ -313,7 +313,12 @@ func TestHTTPAuthenticatedSDKNegotiationAndReset(t *testing.T) {
 	}
 	require.Equal(t, callsBefore+3, serializationCalls.Load(), "each result must be encoded once, without a diagnostic pre-encoding pass")
 	eventsMu.Lock()
-	observed := append([]diagnostics.Event(nil), events...)
+	var observed []diagnostics.Event
+	for _, event := range events {
+		if event.Operation == "mcp_response_serialization" {
+			observed = append(observed, event)
+		}
+	}
 	eventsMu.Unlock()
 	require.Len(t, observed, 2, "each media response must report its real serialization once; unrelated tools remain unchanged")
 	for _, event := range observed {
@@ -806,4 +811,158 @@ type countedMediaContent struct{ calls *atomic.Int32 }
 func (c countedMediaContent) MarshalJSON() ([]byte, error) {
 	c.calls.Add(1)
 	return []byte(`{"private_fixture":"signed-url-and-token-must-not-be-logged"}`), nil
+}
+
+// HTTP writer 接受字节与工具完成、JSON 序列化是不同边界。
+func TestHTTPWriteObservation(t *testing.T) {
+	for _, tc := range []struct {
+		name                                                               string
+		writeFailure, flushFailure, cancelRequest, cancelService, unscoped bool
+	}{
+		{name: "success"}, {name: "write_failure", writeFailure: true},
+		{name: "flush_failure", flushFailure: true}, {name: "request_cancelled", cancelRequest: true},
+		{name: "service_closed", cancelService: true}, {name: "unscoped", unscoped: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			store := auth.Store{Path: filepath.Join(t.TempDir(), "state.json")}
+			_, err := store.Init(t.Context(), false)
+			require.NoError(t, err)
+			state, err := store.Read(t.Context())
+			require.NoError(t, err)
+			const token = "private-http-write-fixture-token"
+			sum := sha256.Sum256([]byte(token))
+			state.Clients["fixture"] = auth.Client{RedirectURIs: []string{"https://client.test/callback"}}
+			state.Grants["fixture"] = auth.Grant{ClientID: "fixture", Resource: "https://example.test/mcp", Scope: "mcp", AccessTokens: map[string]time.Time{hex.EncodeToString(sum[:]): time.Now().Add(time.Hour)}, RefreshHash: strings.Repeat("a", 64)}
+			data, err := json.Marshal(state)
+			require.NoError(t, err)
+			require.NoError(t, os.WriteFile(store.Path, data, 0600))
+			var events []diagnostics.Event
+			writeEvents := make(chan diagnostics.Event, 16)
+			var mu sync.Mutex
+			ctx, closeService := context.WithCancel(t.Context())
+			defer closeService()
+			if !tc.unscoped {
+				ctx = diagnostics.WithScope(ctx, diagnostics.SinkFunc(func(event diagnostics.Event) {
+					mu.Lock()
+					defer mu.Unlock()
+					events = append(events, event)
+					if event.Operation == "mcp_http_write" {
+						writeEvents <- event
+					}
+				}), diagnostics.ModulePixivMCP, 0)
+			}
+			protocol := server.New(pixivmcp.SDKPorts{}, pixivmcp.Account{}, fanboxmcp.SDKPorts{}, nil)
+			protocol.AddTool(&mcp.Tool{Name: "pixiv_artwork_media", InputSchema: map[string]any{"type": "object"}}, func(context.Context, *mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+				return &mcp.CallToolResult{Content: []mcp.Content{&mcp.TextContent{Text: "private-response-marker"}}}, nil
+			})
+			handler, err := server.NewHTTPHandler(ctx, protocol, "https://example.test", store, nil)
+			require.NoError(t, err)
+			requestCtx, cancelRequest := context.WithCancel(t.Context())
+			defer cancelRequest()
+			request := httptest.NewRequest("POST", "https://example.test/mcp", strings.NewReader(`{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"pixiv_artwork_media","arguments":{"marker":"private-request-marker"}}}`)).WithContext(requestCtx)
+			request.Header.Set("Authorization", "Bearer "+token)
+			request.Header.Set("Content-Type", "application/json")
+			request.Header.Set("Accept", "application/json, text/event-stream")
+			request.Header.Set("MCP-Protocol-Version", "2025-11-25")
+			writer := &httpObservationWriter{ResponseRecorder: httptest.NewRecorder(), writeFailure: tc.writeFailure, flushFailure: tc.flushFailure}
+			if tc.cancelRequest {
+				writer.onWrite = cancelRequest
+			}
+			if tc.cancelService {
+				writer.onWrite = closeService
+			}
+			handler.ServeHTTP(writer, request)
+			if !tc.unscoped {
+				select {
+				case <-writeEvents:
+				case <-time.After(5 * time.Second):
+					t.Fatal("HTTP write observation missing")
+				}
+			}
+			mu.Lock()
+			observed := append([]diagnostics.Event(nil), events...)
+			mu.Unlock()
+			var writes, flushes []diagnostics.Event
+			for _, event := range observed {
+				if event.Operation == "mcp_http_write" {
+					writes = append(writes, event)
+				}
+				if event.Operation == "mcp_http_flush" {
+					flushes = append(flushes, event)
+				}
+			}
+			if tc.unscoped {
+				require.Empty(t, writes)
+				require.Empty(t, flushes)
+				return
+			}
+			require.NotEmpty(t, writes)
+			wantKind, wantReason := diagnostics.EventCompleted, diagnostics.Reason("")
+			if tc.writeFailure {
+				wantKind, wantReason = diagnostics.EventFailed, diagnostics.ReasonTransportInterrupted
+			}
+			if tc.cancelRequest {
+				wantKind, wantReason = diagnostics.EventFailed, diagnostics.ReasonRequestCancelled
+			}
+			if tc.cancelService {
+				wantKind, wantReason = diagnostics.EventFailed, diagnostics.ReasonServiceClosed
+			}
+			accepted := 0
+			for _, event := range writes {
+				require.Positive(t, event.Duration)
+				require.Equal(t, wantKind, event.Kind)
+				require.Equal(t, wantReason, event.Reason)
+				accepted += event.Count
+			}
+			if !tc.cancelRequest && !tc.cancelService {
+				require.Equal(t, writer.Body.Len(), accepted, "record bytes accepted by the underlying writer")
+				if !tc.writeFailure {
+					require.Contains(t, writer.Body.String(), "private-response-marker")
+					require.True(t, writer.Flushed)
+				}
+			}
+			if tc.flushFailure {
+				require.NotEmpty(t, flushes)
+				for _, event := range flushes {
+					require.Equal(t, diagnostics.EventFailed, event.Kind)
+					require.Equal(t, diagnostics.ReasonTransportInterrupted, event.Reason)
+				}
+			}
+			diagnosticJSON, err := json.Marshal(writes)
+			require.NoError(t, err)
+			for _, private := range []string{token, "private-request-marker", "private-response-marker"} {
+				require.NotContains(t, string(diagnosticJSON), private)
+			}
+		})
+	}
+}
+
+type httpObservationWriter struct {
+	*httptest.ResponseRecorder
+	writeFailure, flushFailure bool
+	onWrite                    func()
+}
+
+func (w *httpObservationWriter) Write(p []byte) (int, error) {
+	n, err := 0, error(nil)
+	if w.writeFailure {
+		n = min(7, len(p))
+		_, _ = w.ResponseRecorder.Write(p[:n])
+		err = io.ErrClosedPipe
+	} else {
+		n, err = w.ResponseRecorder.Write(p)
+	}
+	if w.onWrite != nil {
+		callback := w.onWrite
+		w.onWrite = nil
+		callback()
+	}
+	return n, err
+}
+func (w *httpObservationWriter) FlushError() error {
+	w.ResponseRecorder.Flush()
+	if w.flushFailure {
+		return io.ErrClosedPipe
+	}
+	return nil
 }

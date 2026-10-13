@@ -1,6 +1,8 @@
 package gallery_test
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"os"
 	"os/exec"
@@ -38,12 +40,14 @@ func TestGalleryEmbeddedAssetsAndMediaCSP(t *testing.T) {
 	for _, withMedia := range []bool{false, true} {
 		t.Run(map[bool]string{false: "local", true: "media"}[withMedia], func(t *testing.T) {
 			server := mcp.NewServer(&mcp.Implementation{Name: "gallery-test", Version: "1"}, nil)
+			var media *mediaproxy.Service
 			if withMedia {
 				store := auth.Store{Path: filepath.Join(t.TempDir(), "state.json")}
 				if _, err := store.Init(t.Context(), false); err != nil {
 					t.Fatal(err)
 				}
-				media, err := mediaproxy.New("https://media.example.test/pixiv", store, nil)
+				var err error
+				media, err = mediaproxy.New("https://media.example.test/pixiv", store, nil)
 				if err != nil {
 					t.Fatal(err)
 				}
@@ -63,6 +67,12 @@ func TestGalleryEmbeddedAssetsAndMediaCSP(t *testing.T) {
 				t.Fatal(err)
 			}
 			defer session.Close()
+			tool := &mcp.Tool{Name: "pixiv_show_gallery"}
+			gallery.Attach(tool, media)
+			viewURI, _ := tool.Meta["ui"].(map[string]any)["resourceUri"].(string)
+			if viewURI == gallery.URI || !strings.HasPrefix(viewURI, gallery.URI+"/sha256-") {
+				t.Fatalf("host UI must use a content-version cache key, got %q", viewURI)
+			}
 			result, err := session.ReadResource(t.Context(), &mcp.ReadResourceParams{URI: gallery.URI})
 			if err != nil {
 				t.Fatal(err)
@@ -71,6 +81,24 @@ func TestGalleryEmbeddedAssetsAndMediaCSP(t *testing.T) {
 				t.Fatalf("contents: %d", len(result.Contents))
 			}
 			page := result.Contents[0].Text
+			digest := sha256.Sum256([]byte(page))
+			if viewURI != gallery.URI+"/sha256-"+hex.EncodeToString(digest[:]) {
+				t.Fatal("frontend and injected canonical origin must determine the host cache key")
+			}
+			for _, uri := range []string{viewURI, gallery.URI + "/sha256-" + strings.Repeat("0", 64)} {
+				alias, err := session.ReadResource(t.Context(), &mcp.ReadResourceParams{URI: uri})
+				if err != nil {
+					t.Fatalf("current and historical view aliases remain readable: %v", err)
+				}
+				if len(alias.Contents) != 1 || alias.Contents[0].URI != uri || alias.Contents[0].Text != page {
+					t.Fatalf("alias %q did not deliver the same current embedded view", uri)
+				}
+			}
+			for _, revision := range []string{"invalid", strings.Repeat("A", 64)} {
+				if _, err := session.ReadResource(t.Context(), &mcp.ReadResourceParams{URI: gallery.URI + "/sha256-" + revision}); err == nil {
+					t.Fatal("malformed revision aliases must not be readable")
+				}
+			}
 			for _, part := range []struct{ name, tag string }{{"gallery.css", "style"}, {"gallery.js", "script"}} {
 				source, err := os.ReadFile("../../../../frontend/mcp-apps/gallery/" + part.name)
 				if err != nil {

@@ -33,6 +33,6 @@ func handleBookmarkDetail(ctx context.Context, app *runtime.App, in In) (*mcp.Ca
 	if err != nil {
 		return outputs.BookmarkDetailError(err)
 	}
-	out := outputs.BookmarkDetail{Bookmarked: result.Restrict != "", Restrict: string(result.Restrict), Tags: append([]string(nil), result.Tags...)}
+	out := outputs.BookmarkDetail{Bookmarked: result.Restrict != "", Restrict: string(result.Restrict), Tags: append([]string{}, result.Tags...)}
 	return outputs.BookmarkDetailResult(out, in.IllustID), out, nil
 }

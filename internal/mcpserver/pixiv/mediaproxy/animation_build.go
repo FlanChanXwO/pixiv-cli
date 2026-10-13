@@ -227,6 +227,7 @@ func (s *Service) generateAnimation(ctx context.Context, j *animationJob) error 
 	a.mu.Lock()
 	// 失败时保留预留，直到目录确实删除；删除故障不能隐藏磁盘占用。
 	if err == nil {
+		j.frames = len(frames)
 		a.used -= reserved - size
 		j.used -= reserved - size
 	}

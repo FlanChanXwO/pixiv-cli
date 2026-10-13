@@ -132,13 +132,18 @@ func (s *Service) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Method not allowed", 405)
 		return
 	}
-	if !strings.HasPrefix(r.URL.EscapedPath(), s.Path()) || r.URL.RawQuery != "" {
+	download := r.URL.RawQuery == "download=1"
+	if !strings.HasPrefix(r.URL.EscapedPath(), s.Path()) || (r.URL.RawQuery != "" && !download) {
 		http.Error(w, "Invalid image request", 400)
 		return
 	}
 	c, err := s.verify(r.Context(), strings.TrimPrefix(r.URL.EscapedPath(), s.Path()))
 	if err != nil {
 		http.Error(w, "Image authorization expired or invalid", 401)
+		return
+	}
+	if download && c.Quality != "original" {
+		http.Error(w, "Invalid image request", 400)
 		return
 	}
 	if s.open == nil && s.reads == nil {
@@ -167,7 +172,7 @@ func (s *Service) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			for _, chunk := range chunks {
 				size += int64(len(chunk))
 			}
-			w.Header().Set("Content-Type", http.DetectContentType(chunks[0]))
+			imageHeaders(w, c, http.DetectContentType(chunks[0]), download)
 			w.Header().Set("Content-Length", strconv.FormatInt(size, 10))
 			w.WriteHeader(200)
 			if r.Method == "GET" {
@@ -186,19 +191,28 @@ func (s *Service) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		defer func() { <-s.reads.imageSlots }()
 	}
 	artwork, err := s.metadata(r.Context(), c, session)
-	if err != nil || artwork.Kind == pixiv.ArtworkKindUgoira {
+	if err != nil {
 		http.Error(w, "Image unavailable", 502)
 		return
 	}
 	var ref sdk.ResourceRef
-	for _, page := range artwork.Pages {
-		if page.PageIndex+1 == c.Page {
-			variant := c.Quality
-			if variant == "thumbnail" {
-				variant = "thumb"
+	variant := c.Quality
+	if variant == "thumbnail" {
+		variant = "thumb"
+	}
+	if artwork.Kind == pixiv.ArtworkKindUgoira {
+		if c.Page == 1 && c.Quality != "original" {
+			ref = artwork.Cover.Resource.Ref
+			if c.Quality == "thumbnail" {
+				ref, err = pixiv.ArtworkVariantResource(artwork.Cover.Resource, "square_medium")
 			}
-			ref, err = pixiv.ArtworkVariantResource(page.Image.Resource, variant)
-			break
+		}
+	} else {
+		for _, page := range artwork.Pages {
+			if page.PageIndex+1 == c.Page {
+				ref, err = pixiv.ArtworkVariantResource(page.Image.Resource, variant)
+				break
+			}
 		}
 	}
 	if ref.IsZero() || err != nil {
@@ -254,7 +268,7 @@ func (s *Service) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Image unavailable", 502)
 		return
 	}
-	w.Header().Set("Content-Type", mime)
+	imageHeaders(w, c, mime, download)
 	if length >= 0 {
 		w.Header().Set("Content-Length", strconv.FormatInt(length, 10))
 	}
@@ -310,5 +324,14 @@ func (s *Service) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	if r.Context().Err() == nil && fill != nil {
 		fill.commitValidated(key, s.expiry(c, session), func() bool { return s.canCache(r.Context(), c, session) })
+	}
+}
+
+func imageHeaders(w http.ResponseWriter, c claims, mime string, download bool) {
+	w.Header().Set("Content-Type", mime)
+	if download {
+		extension := map[string]string{"image/png": "png", "image/jpeg": "jpg", "image/gif": "gif", "image/webp": "webp", "image/bmp": "bmp"}[mime]
+		filename := strconv.FormatInt(c.Artwork, 10) + "_p" + strconv.Itoa(c.Page) + "." + extension
+		w.Header().Set("Content-Disposition", `attachment; filename="`+filename+`"`)
 	}
 }

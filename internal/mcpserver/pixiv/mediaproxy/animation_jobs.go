@@ -45,6 +45,7 @@ type animationJob struct {
 	cancel                        context.CancelFunc
 	done                          bool
 	subscribers, pins             int
+	frames                        int
 	used                          int64
 	size                          int64
 	last                          time.Time
@@ -280,6 +281,7 @@ func (s *Service) AnimationSubscription(ctx context.Context, account int64, hand
 func (s *Service) animationOutputLocked(j *animationJob, handle string) AnimationStatus {
 	out := AnimationStatus{Handle: handle, State: j.state, Error: j.code, Expires: j.expiry}
 	if j.state == "ready" {
+		out.FrameCount = j.frames
 		out.AnimationURL = s.animationURL(j, "animation")
 		out.PreviewURL = s.animationURL(j, "preview")
 		out.MediaOrigin = s.Origin()

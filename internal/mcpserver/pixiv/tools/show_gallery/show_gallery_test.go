@@ -68,3 +68,17 @@ func TestGalleryQueriesConcurrentlyAndPreservesOrder(t *testing.T) {
 	require.EqualValues(t, 99, out.Failures[1].IllustID)
 	require.Len(t, entered, 1, "duplicate artwork queried only once")
 }
+
+func TestAnimationThumbnailRequiresImageProxy(t *testing.T) {
+	client, err := pixiv.NewWith("fixture", pixiv.Options{HTTPClient: &http.Client{Transport: transport(func(r *http.Request) (*http.Response, error) {
+		return &http.Response{StatusCode: 200, Header: http.Header{}, Body: io.NopCloser(strings.NewReader(`{"illust":{"id":42,"title":"animation","type":"ugoira","page_count":1,"create_date":"2026-01-01T00:00:00Z","user":{"id":7}}}`))}, nil
+	})}})
+	require.NoError(t, err)
+	app := runtime.NewApp(runtime.SDKPorts{Execute: func(ctx context.Context, _ runtime.Account, fn func(context.Context, *pixiv.Client) (bool, error)) error {
+		_, e := fn(ctx, client)
+		return e
+	}}, runtime.Account{})
+	_, out, _ := handle(t.Context(), app, input{IllustIDs: []int64{42}})
+	require.Len(t, out.Records, 1)
+	require.Equal(t, []failure{{42, "image_proxy_unavailable"}}, out.Failures, "animation thumbnails follow the authorized image path")
+}

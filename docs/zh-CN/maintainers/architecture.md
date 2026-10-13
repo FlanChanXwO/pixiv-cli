@@ -311,7 +311,10 @@ FlareSolverr 的 upstream proxy 只用于 browser `sessions.create`；solver con
 
 ### `internal/mcpserver`
 
-`pixiv/gallery` 持有显式 MCP Apps 视图，仅绑定 `pixiv_show_gallery`。`pixiv/mediaproxy` 持有进程内图片凭证签名和公开 SDK 光栅图片交付；HTTP runtime 在 canonical origin 校验后路由 `/media/`。凭证绑定 OAuth grant、账号及图片选择；浏览器与反代路由均不接收上游凭据或任意 URL。composition root 注入与其他 Pixiv 操作相同的出站代理和显式账号 lease 工厂。Gallery 负责懒加载占位、明确重试、视图取消、Blob 清理和 host 能力控制的下载。独立的 256MiB 估算会话 LRU 在内部导航间复用成功加载的静态图片、详情和原图字节；新 tool input／result 与关闭清理缓存。缓存图片脱离旧 DOM 并移除视图监听；淘汰释放其图片来源，正在显示的超大图片继续完整显示。原图弹层沿用完整字节媒体工具，与 host 确认下载共享字节；收藏状态不缓存。搜索续页仍由原数据工具负责。
+`pixiv/gallery` 持有显式 MCP Apps 视图，仅绑定 `pixiv_show_gallery`。稳定资源 URI 保留，工具 UI 使用按嵌入内容生成的版本别名作为宿主缓存键；有效历史版本别名在重新读取时交付当前页面。`pixiv/mediaproxy` 持有进程内图片凭证签名和公开 SDK 光栅图片交付；HTTP runtime 在 canonical origin 校验后路由 `/media/`。凭证绑定 OAuth grant、账号及图片选择；浏览器与反代路由均不接收上游凭据或任意 URL。composition root 注入与其他 Pixiv 操作相同的出站代理和显式账号 lease 工厂。Gallery 负责懒加载占位、明确重试、视图取消、Blob 清理和 host 能力控制的下载。独立的 256MiB 估算会话 LRU 在内部导航间复用成功加载的静态图片、详情和原图字节；新 tool input／result 与关闭清理缓存。缓存图片脱离旧 DOM 并移除视图监听；淘汰释放其图片来源，正在显示的超大图片继续完整显示。原图弹层沿用完整字节媒体工具，与 host 确认下载共享字节；未声明 host 下载能力时，通过既有 Gallery tool 准备选定页 original 凭证并展示受保护 HTTPS 附件链接，只允许 original 质量的精确下载参数，与普通 HTTP 原图共用服务端缓存；收藏状态不缓存。搜索续页仍由原数据工具负责。
+
+HTTP transport 仅在存在诊断 scope 时观察 POST 底层写入／Flush。字节数表示 writer 接受，不代表对端收齐；ResponseController 的 unwrapping 保留 SDK 流式与 deadline 行为。不保留正文／header，不增加缓冲、等待或重试。
+
 
 `internal/services/pixiv/account/reads.go` 拥有受生命周期管理的 MCP 只读会话；获取时校验本地账号凭据版本，仅 OAuth 刷新及成功轮换持久化共享原有 gate。凭据替换／账号删除、网络变化、到期及上游 401 使会话 generation 失效并释放空闲连接。写入 lease 与账号池提交／重放仍由原 Facade 负责。root 注入独立 read 端口和 opaque 会话版本，MCP adapter 不读取凭据。
 
@@ -456,7 +459,7 @@ refresh-token 校验归 `internal/services/pixiv/oauth`；路径/权限归
 > 以下约束是不可违反的硬边界。任何新增 timeout、截断、条数限制、重试上限、静默 fallback 或隐藏降级都必须有证据、注释、测试或文档说明，否则视为违规。
 
 - `appapi`、`oauth` 与 resource transport 使用 caller/SDK 注入的 HTTP client；默认 client 专用于当前 SDK client、无整请求固定 timeout，取消与 deadline 由 context 传播。显式 client 保持调用方策略。
-- `pixiv mcp` 显式启动统一 HTTP server；直接执行 `pixiv` 只显示帮助。启动要求已初始化 owner；`[mcp].listen_addr`/`base_url` 默认使用 `127.0.0.1:8080`/`http://127.0.0.1:8080`，其他部署可用配置或单次 flag 覆写，详见 [HTTP 启动](../cli-reference.md#mcp-http-server)。
+- `pixiv mcp` 显式启动统一 HTTP server；直接执行 `pixiv` 只显示帮助。启动要求已初始化 owner；`[mcp].listen_addr`/`base_url` 默认使用 `127.0.0.1:1270`/`http://127.0.0.1:1270`，其他部署可用配置或单次 flag 覆写，详见 [HTTP 启动](../cli-reference.md#mcp-http-server)。
 - 不新增持久账号 import/export MCP tool；既有 session-scoped MCP 认证 tool 与 wire contract 不变。
 - 账号 credential 保存在 SQLite `pixiv-cli.db`（BLOB，非加密）；Unix-like DB/journal 文件权限为 `0600`。获得当前用户文件访问权的攻击者仍能读取 credential，自动 backup 被禁止。
 - `config.toml` 采用稀疏写入，不会把默认值整份落盘。

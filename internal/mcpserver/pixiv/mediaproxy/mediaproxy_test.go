@@ -86,6 +86,7 @@ func TestCapabilityLifetimeAndBinding(t *testing.T) {
 	var closes, reads int
 	badImage := false
 	badHost := false
+	ugoira := false
 	service.open = func(ctx context.Context, uid int64) (*lifecycle.Lease[*pixiv.Client], error) {
 		require.EqualValues(t, 72, uid)
 		if ctx.Err() != nil {
@@ -97,7 +98,11 @@ func TestCapabilityLifetimeAndBinding(t *testing.T) {
 				if badHost {
 					imageURL = "http://127.0.0.1/private"
 				}
-				b, _ := json.Marshal(map[string]any{"illust": map[string]any{"id": 42, "title": "fixture", "type": "illust", "page_count": 1, "create_date": "2026-01-01T00:00:00Z", "user": map[string]any{"id": 7}, "meta_single_page": map[string]any{"original_image_url": imageURL}}})
+				kind := "illust"
+				if ugoira {
+					kind = "ugoira"
+				}
+				b, _ := json.Marshal(map[string]any{"illust": map[string]any{"id": 42, "title": "fixture", "type": kind, "image_urls": map[string]any{"medium": imageURL, "square_medium": imageURL}, "page_count": 1, "create_date": "2026-01-01T00:00:00Z", "user": map[string]any{"id": 7}, "meta_single_page": map[string]any{"original_image_url": imageURL}}})
 				return &http.Response{StatusCode: 200, Header: http.Header{}, Body: io.NopCloser(bytes.NewReader(b))}, nil
 			}
 			require.Equal(t, "i.pximg.net", r.URL.Host)
@@ -130,6 +135,12 @@ func TestCapabilityLifetimeAndBinding(t *testing.T) {
 	}
 	require.Equal(t, 2, reads)
 	require.Equal(t, 2, closes)
+	ugoira = true
+	wAnimation := httptest.NewRecorder()
+	service.ServeHTTP(wAnimation, httptest.NewRequest("GET", capability, nil))
+	require.Equal(t, 200, wAnimation.Code, "ugoira uses its trusted static cover for thumbnails")
+	require.Equal(t, pngBytes.Bytes(), wAnimation.Body.Bytes())
+	ugoira = false
 	badImage = true
 	w := httptest.NewRecorder()
 	service.ServeHTTP(w, httptest.NewRequest("GET", capability, nil))
@@ -140,7 +151,7 @@ func TestCapabilityLifetimeAndBinding(t *testing.T) {
 	w = httptest.NewRecorder()
 	service.ServeHTTP(w, httptest.NewRequest("GET", capability, nil))
 	require.Equal(t, 502, w.Code)
-	require.Equal(t, 3, reads, "unsafe resource must never reach the image transport")
+	require.Equal(t, 4, reads, "unsafe resource must never reach the image transport")
 	badHost = false
 	for _, method := range []string{"POST", "DELETE"} {
 		w := httptest.NewRecorder()
@@ -319,6 +330,58 @@ func signFixture(s *Service, c claims) string {
 func fixtureArtwork(id string) *http.Response {
 	body := fmt.Sprintf(`{"illust":{"id":%s,"title":"art","type":"illust","page_count":1,"create_date":"2026-01-01T00:00:00Z","user":{"id":7},"meta_single_page":{"original_image_url":"https://i.pximg.net/img-original/img/2026/01/01/00/00/00/%s_p0.png"}}}`, id, id)
 	return &http.Response{StatusCode: 200, Header: http.Header{}, Body: io.NopCloser(strings.NewReader(body))}
+}
+func TestOriginalAttachmentReusesAuthorizedImageBytes(t *testing.T) {
+	var data bytes.Buffer
+	require.NoError(t, png.Encode(&data, image.NewRGBA(image.Rect(0, 0, 2, 2))))
+	var reads atomic.Int64
+	service, _, _, store := newCachedProxyFixture(t, func(r *http.Request) (*http.Response, error) {
+		if r.URL.Host == "app-api.pixiv.net" {
+			return fixtureArtwork("42"), nil
+		}
+		reads.Add(1)
+		return &http.Response{StatusCode: 200, Header: http.Header{"Content-Length": {strconv.Itoa(data.Len())}}, Body: io.NopCloser(bytes.NewReader(data.Bytes()))}, nil
+	}, 65536)
+	target := signFixture(service, claims{"g", 72, 42, 1, "original", time.Now().Add(time.Hour)})
+	for _, request := range []struct{ method, query string }{{"GET", "?download=1"}, {"GET", ""}, {"GET", "?download=1"}, {"HEAD", "?download=1"}} {
+		w := httptest.NewRecorder()
+		service.ServeHTTP(w, httptest.NewRequest(request.method, target+request.query, nil))
+		require.Equal(t, 200, w.Code)
+		require.Equal(t, "image/png", w.Header().Get("Content-Type"))
+		require.Equal(t, strconv.Itoa(data.Len()), w.Header().Get("Content-Length"))
+		require.Equal(t, "private, no-store", w.Header().Get("Cache-Control"))
+		if request.query != "" {
+			require.Equal(t, `attachment; filename="42_p1.png"`, w.Header().Get("Content-Disposition"))
+		} else {
+			require.Empty(t, w.Header().Get("Content-Disposition"))
+		}
+		if request.method == "GET" {
+			require.Equal(t, data.Bytes(), w.Body.Bytes())
+		} else {
+			require.Empty(t, w.Body.Bytes())
+		}
+	}
+	require.EqualValues(t, 1, reads.Load(), "attachment and playback share the original-quality cache")
+	for _, query := range []string{"?download=0", "?download=1&download=1", "?download=1&url=https://invalid.test"} {
+		w := httptest.NewRecorder()
+		service.ServeHTTP(w, httptest.NewRequest("GET", target+query, nil))
+		require.Equal(t, 400, w.Code)
+	}
+	thumbnail := signFixture(service, claims{"g", 72, 42, 1, "thumbnail", time.Now().Add(time.Hour)})
+	w := httptest.NewRecorder()
+	service.ServeHTTP(w, httptest.NewRequest("GET", thumbnail+"?download=1", nil))
+	require.Equal(t, 400, w.Code, "thumbnail capabilities cannot download original quality")
+	state, err := store.Read(t.Context())
+	require.NoError(t, err)
+	grant := state.Grants["g"]
+	grant.Revoked = true
+	state.Grants["g"] = grant
+	encoded, err := json.Marshal(state)
+	require.NoError(t, err)
+	require.NoError(t, os.WriteFile(store.Path, encoded, 0600))
+	w = httptest.NewRecorder()
+	service.ServeHTTP(w, httptest.NewRequest("GET", target+"?download=1", nil))
+	require.Equal(t, 401, w.Code, "cached attachments still require a live grant")
 }
 func TestImageCacheReauthorizesAndSeparatesGenerations(t *testing.T) {
 	var queries, images atomic.Int64

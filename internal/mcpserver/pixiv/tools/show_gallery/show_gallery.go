@@ -88,7 +88,7 @@ func handle(ctx context.Context, app *runtime.App, in input) (*mcp.CallToolResul
 			return out
 		}
 		out.Records = append(out.Records, rec)
-		if artwork.Kind == pixiv.ArtworkKindUgoira {
+		if artwork.Kind == pixiv.ArtworkKindUgoira && in.Quality == "original" {
 			return out
 		}
 		media := app.SDKPorts().Media

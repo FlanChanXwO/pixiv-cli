@@ -177,6 +177,11 @@ func (m *ReadSessions) Revalidate(ctx context.Context) error {
 		if cancelled := ctx.Err(); cancelled != nil {
 			return errors.Join(failures, cancelled)
 		}
+		if err != nil && !errors.Is(err, ErrNotFound) && m.watchDone != nil {
+			// 在唤醒失效订阅前发布watch失败，防止并发Close取消并掩盖已发生的存储错误。
+			m.watchErr = errors.New("read session credential watcher failed")
+			m.closed = true
+		}
 		if err != nil || account.CredentialRevision != entry.session.Revision || !time.Now().Before(entry.session.Expires) {
 			entry.close()
 			delete(m.sessions, uid)

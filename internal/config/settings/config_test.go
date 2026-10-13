@@ -484,9 +484,9 @@ func TestMCPEndpointSettingsDefaultToLoopback(t *testing.T) {
 			require.NoError(t, err)
 			require.True(t, value.HasValue)
 			require.Equal(t, "default", value.Source)
-			want := "127.0.0.1:8080"
+			want := "127.0.0.1:1270"
 			if alias == "mcp_base_url" {
-				want = "http://127.0.0.1:8080"
+				want = "http://127.0.0.1:1270"
 			}
 			require.Equal(t, want, value.Text)
 			spec, ok := config.SettingSpecByAlias(alias)
@@ -500,7 +500,7 @@ func TestRuntimeMCPEndpoints(t *testing.T) {
 	for _, test := range []struct {
 		name, body, listen, base string
 	}{
-		{name: "unset", listen: "127.0.0.1:8080", base: "http://127.0.0.1:8080"},
+		{name: "unset", listen: "127.0.0.1:1270", base: "http://127.0.0.1:1270"},
 		{name: "explicit deployment", body: `[mcp]
 listen_addr = '127.0.0.1:8080'
 base_url = 'https://mcp.example.test/pixiv'

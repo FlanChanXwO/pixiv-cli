@@ -33,7 +33,8 @@ func (s *Service) serveAnimation(w http.ResponseWriter, r *http.Request) {
 	}
 	a := s.animations
 	parts := strings.Split(strings.TrimPrefix(r.URL.EscapedPath(), s.Path()+"animation/"), ".")
-	if a == nil || len(parts) != 3 || r.URL.RawQuery != "" || (parts[1] != "animation" && parts[1] != "preview") {
+	download := r.URL.RawQuery == "download=1"
+	if a == nil || len(parts) != 3 || (r.URL.RawQuery != "" && !download) || r.URL.ForceQuery || (parts[1] != "animation" && parts[1] != "preview") || (download && parts[1] != "animation") {
 		http.Error(w, "Invalid animation request", 400)
 		return
 	}
@@ -101,6 +102,9 @@ func (s *Service) serveAnimation(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set("Content-Type", mime)
 	w.Header().Set("Content-Length", strconv.FormatInt(info.Size(), 10))
+	if download {
+		w.Header().Set("Content-Disposition", `attachment; filename="`+strconv.FormatInt(j.claim.Artwork, 10)+`.`+j.format+`"`)
+	}
 	w.WriteHeader(200)
 	if r.Method == "HEAD" {
 		return

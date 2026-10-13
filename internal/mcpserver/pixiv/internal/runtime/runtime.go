@@ -119,7 +119,7 @@ func (a *App) resolveAccount(ctx context.Context) (Account, error) {
 // wrapper 增加 diagnostics scope 和惰性账号快照，不改变 handler 的输入、
 // structured result、isError 或错误返回。
 func AddTool[In, Out any](app *App, server *mcp.Server, tool *mcp.Tool, handler mcp.ToolHandlerFor[In, Out]) {
-	gallery.Attach(tool)
+	gallery.Attach(tool, app.sdk.Media)
 	mcp.AddTool(server, tool, func(ctx context.Context, request *mcp.CallToolRequest, input In) (*mcp.CallToolResult, Out, error) {
 		requestID := app.requestCounter.Add(1)
 		scoped := diagnostics.WithChildScope(ctx, diagnostics.ModulePixivMCPServer, requestID)

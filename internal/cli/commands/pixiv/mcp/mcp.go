@@ -56,8 +56,8 @@ func NewCommand(host Host) *cobra.Command {
 			return host.RunMCP(cmd.Context(), request)
 		},
 	}
-	cmd.Flags().StringVar(&listenAddr, "listen-addr", "", "HTTP listen address (overrides mcp.listen_addr; default 127.0.0.1:8080)")
-	cmd.Flags().StringVar(&baseURL, "base-url", "", "Canonical HTTP(S) base URL (overrides mcp.base_url; default http://127.0.0.1:8080)")
+	cmd.Flags().StringVar(&listenAddr, "listen-addr", "", "HTTP listen address (overrides mcp.listen_addr; default 127.0.0.1:1270)")
+	cmd.Flags().StringVar(&baseURL, "base-url", "", "Canonical HTTP(S) base URL (overrides mcp.base_url; default http://127.0.0.1:1270)")
 	host.BindProxyFlags(cmd, &options)
 	pipeline.Bind(cmd, pipeline.InputSpec{Codec: pipeline.NoInput, MinArgs: 0, MaxArgs: 0})
 	requirements.Bind(cmd, requirements.PixivMCP())

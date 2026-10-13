@@ -884,7 +884,7 @@ func TestMCPHTTPEndpointFlagPrecedence(t *testing.T) {
 		args         []string
 		listen, base string
 	}{
-		{"defaults", nil, "127.0.0.1:8080", "http://127.0.0.1:8080"},
+		{"defaults", nil, "127.0.0.1:1270", "http://127.0.0.1:1270"},
 		{"config", nil, "127.0.0.1:8123", "http://127.0.0.1:8123"},
 		{"listen override", []string{"--listen-addr", "127.0.0.1:8124"}, "127.0.0.1:8124", "http://127.0.0.1:8123"},
 		{"base override", []string{"--base-url", "https://public.test/prefix"}, "127.0.0.1:8123", "https://public.test/prefix"},

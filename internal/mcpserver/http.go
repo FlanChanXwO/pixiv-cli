@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+	"time"
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/auth"
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/accounts"
@@ -76,7 +77,7 @@ func NewHTTPHandler(ctx context.Context, server *mcp.Server, baseURL string, sto
 		}
 		// ServeMux 会清理双斜线和转义路径，破坏已发布的 canonical resource。
 		if r.URL.EscapedPath() == base.EscapedPath()+"/mcp" {
-			protected.ServeHTTP(w, r)
+			protected.ServeHTTP(observeHTTPWriter(ctx, r.Context(), w, r.Method), r)
 			return
 		}
 		if login != nil && strings.HasPrefix(r.URL.EscapedPath(), relayURL.EscapedPath()+"/") {
@@ -127,4 +128,53 @@ func RunHTTP(ctx context.Context, server *mcp.Server, listenAddr, baseURL string
 		}
 		return errors.Join(ctx.Err(), shutdownErr, serveErr)
 	}
+}
+
+// 只记录 HTTP writer 接受的字节，不代表客户端收齐；保留 SDK framing 与取消行为。
+func observeHTTPWriter(lifecycleCtx, requestCtx context.Context, writer http.ResponseWriter, method string) http.ResponseWriter {
+	if method != http.MethodPost {
+		return writer
+	}
+	observationCtx := requestCtx
+	if _, ok := diagnostics.ScopeFromContext(observationCtx); !ok {
+		observationCtx = lifecycleCtx
+		if _, ok := diagnostics.ScopeFromContext(observationCtx); !ok {
+			return writer
+		}
+	}
+	return &observedHTTPWriter{ResponseWriter: writer, lifecycleCtx: lifecycleCtx, requestCtx: requestCtx, observationCtx: observationCtx}
+}
+
+type observedHTTPWriter struct {
+	http.ResponseWriter
+	lifecycleCtx, requestCtx, observationCtx context.Context
+}
+
+func (w *observedHTTPWriter) Unwrap() http.ResponseWriter { return w.ResponseWriter }
+func (w *observedHTTPWriter) Write(p []byte) (int, error) {
+	started := time.Now()
+	n, err := w.ResponseWriter.Write(p)
+	w.observe("mcp_http_write", n, started, err != nil || n != len(p))
+	return n, err
+}
+func (w *observedHTTPWriter) FlushError() error {
+	started := time.Now()
+	err := http.NewResponseController(w.ResponseWriter).Flush()
+	w.observe("mcp_http_flush", 0, started, err != nil)
+	return err
+}
+func (w *observedHTTPWriter) observe(operation string, accepted int, started time.Time, failed bool) {
+	event := diagnostics.Event{Module: diagnostics.ModulePixivMCP, Kind: diagnostics.EventCompleted, Operation: operation, Count: accepted, Duration: time.Since(started)}
+	switch {
+	case w.lifecycleCtx.Err() != nil:
+		event.Reason = diagnostics.ReasonServiceClosed
+	case failed:
+		event.Reason = diagnostics.ReasonTransportInterrupted
+	case w.requestCtx.Err() != nil:
+		event.Reason = diagnostics.ReasonRequestCancelled
+	}
+	if event.Reason != "" {
+		event.Kind = diagnostics.EventFailed
+	}
+	diagnostics.Emit(w.observationCtx, event)
 }

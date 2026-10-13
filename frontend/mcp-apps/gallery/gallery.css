@@ -20,10 +20,12 @@ button, select { min-height: 44px; border-radius: 10px; }
 button { display: inline-flex; align-items: center; justify-content: center; gap: 8px; padding: 10px 12px; border: 0; background: var(--surface); cursor: pointer; transition: background 160ms ease; }
 button:hover:not(:disabled) { background: color-mix(in srgb, CanvasText 10%, Canvas); }
 button:disabled, select:disabled { opacity: .5; cursor: not-allowed; }
-button:focus-visible, input:focus-visible, select:focus-visible { outline: 3px solid Highlight; outline-offset: 3px; }
-button[hidden], img[hidden], .media-state[hidden] { display: none; }
+button:focus-visible, input:focus-visible, select:focus-visible, .browser-download:focus-visible { outline: 3px solid Highlight; outline-offset: 3px; }
+button[hidden], img[hidden], .media-state[hidden], .browser-download[hidden] { display: none; }
 svg { flex: 0 0 auto; width: 18px; height: 18px; order: -1; }
 .icon-button { width: 44px; height: 44px; padding: 0; background: transparent; }
+.browser-download { display: inline-flex; align-items: center; justify-content: center; color: inherit; text-decoration: none; border-radius: 10px; }
+.browser-download:hover { background: color-mix(in srgb, CanvasText 10%, Canvas); }
 #cards > button { grid-column: 1 / -1; justify-self: start; }
 img { display: block; width: 100%; object-fit: contain; background: var(--surface); border-radius: 12px; }
 .media-frame { position: relative; aspect-ratio: 1; display: grid; place-items: center; background: var(--surface); border-radius: 12px; overflow: hidden; }
@@ -87,7 +89,11 @@ select { padding: 8px 28px 8px 10px; background: var(--surface); border: 0; }
 .artwork-metadata dt svg { width: 14px; height: 14px; }
 .artwork-metadata dd { margin: 3px 0 0; overflow-wrap: anywhere; }
 .page-viewer { position: relative; }
-.page-media { touch-action: pan-y pinch-zoom; }
+.page-media { position: relative; touch-action: pan-y pinch-zoom; }
+button.artwork-author { padding: 0; background: transparent; text-align: left; }
+img[role="button"] { cursor: zoom-in; }
+img[role="button"]:focus-visible { outline: 3px solid Highlight; outline-offset: -3px; }
+.detail-media .page-pending { position: absolute; inset: 0; background: transparent; }
 .page-viewer > button { position: absolute; top: calc(50% - 22px); z-index: 3; margin: 0; background: #0009; color: #fff; border-radius: 50%; }
 .page-viewer > button:hover:not(:disabled) { background: #000c; }
 .page-previous { left: 8px; }

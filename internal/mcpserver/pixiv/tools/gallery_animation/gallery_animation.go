@@ -47,6 +47,10 @@ func Register(app *runtime.App, server *mcp.Server) {
 		if err != nil {
 			return fail("animation_unavailable")
 		}
-		return &mcp.CallToolResult{IsError: out.State == "failed", Content: []mcp.Content{&mcp.TextContent{Text: "Animation " + out.State}}}, out, nil
+		var meta mcp.Meta
+		if out.State == "ready" && out.FrameCount > 0 {
+			meta = mcp.Meta{"pixiv/animationFrameCount": out.FrameCount}
+		}
+		return &mcp.CallToolResult{Meta: meta, IsError: out.State == "failed", Content: []mcp.Content{&mcp.TextContent{Text: "Animation " + out.State}}}, out, nil
 	})
 }

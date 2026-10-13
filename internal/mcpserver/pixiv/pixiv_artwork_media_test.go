@@ -509,6 +509,9 @@ func TestGalleryAnimationControlRegistered(t *testing.T) {
 		if tool.Name == "pixiv_gallery_animation" {
 			found = true
 			require.True(t, tool.Annotations.ReadOnlyHint)
+			schema, err := json.Marshal(tool.OutputSchema)
+			require.NoError(t, err)
+			require.NotContains(t, string(schema), "FrameCount", "UI hints must not extend public structured schema")
 		}
 	}
 	require.True(t, found, "Gallery needs a short animation control request")

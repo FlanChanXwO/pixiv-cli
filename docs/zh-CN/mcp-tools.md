@@ -249,7 +249,7 @@ MCP 不再注册 `download`、`download_random_from_recommendation` 或任何改
 | `pixiv_related_users` | 可选正数 `user_id`（省略时使用认证账号），兼容字段 `restrict`，可选 `user_filter`、`page`、`limit`。 |
 | `pixiv_blocked_users` | 可选 `user_id`、兼容字段 `restrict`、`page`、`limit`；省略 ID 使用认证账号。App API 失败会显露，不切换 Web fallback。 |
 | `pixiv_bookmark_tags` | 可选 `user_id`、`restrict`、`page`、`limit`；返回 `{bookmark_tags, pagination}`。 |
-| `pixiv_bookmark_detail` | 必填正数 `illust_id`；返回 `{bookmarked, restrict, tags}`，保留未收藏状态。 |
+| `pixiv_bookmark_detail` | 必填正数 `illust_id`；返回 `{bookmarked, restrict, tags}`，保留未收藏状态。无标签时 `tags` 返回空数组，未收藏作品也遵循此规则。 |
 
 所有读取 tool 共用 application/public SDK 路径，保留认证、授权、not found、上游、取消和 malformed response
 等 typed error。可选 port 缺失或 App 请求失败不会伪造空成功结果。
@@ -311,13 +311,13 @@ FANBOX tools 共享协议 server，不共享 Pixiv 凭据或账号池。两产�
 
 ## MCP Apps 作品预览
 
-只有 `pixiv_show_gallery` 将结果关联到 `ui://pixiv-cli/gallery`（`text/html;profile=mcp-app`、`_meta.ui.resourceUri`）。普通搜索、排行、推荐和详情工具只返回数据，不绑定 UI。仅在用户明确要求看图或画廊时调用展示工具；最终渲染仍由 host 决定。
+只有 `pixiv_show_gallery` 将结果关联到 Gallery UI（`text/html;profile=mcp-app`、`_meta.ui.resourceUri`）。稳定入口 `ui://pixiv-cli/gallery` 继续可读取；工具引用按最终前端内容（包含注入的 canonical 媒体 origin）生成的额外 `ui://pixiv-cli/gallery/sha256-<digest>` 别名，使宿主 UI 缓存能够识别更新。历史版本别名在重新读取时交付当前页面；摘要用于缓存身份，不承诺历史内容完整性。普通搜索、排行、推荐和详情工具只返回数据，不绑定 UI。仅在用户明确要求看图或画廊时调用展示工具；最终渲染仍由 host 决定。
 
 输入：必填非空正整数数组 `illust_ids`；可选正整数 `page`（默认 1）和 `quality`（默认 `thumbnail`，另支持 `regular`、`original`）。重复 ID 保留首次位置。工具读取 metadata，不重复搜索；返回 `records`、`images`（作品 ID、页码、URL）、`failures`，以及配置反代时的 `media_origin`。逐项失败保留其他结果并设置 `isError`。画廊仅展示传入集合；需要更多作品时，先用原数据工具续页，再明确展示新画廊。
 
 静态预览默认使用同域图片反代 URL，不传 base64 工具图片或 CDN 直链。canonical base 下的 `/media/` GET/HEAD 路由校验签名凭证，绑定 OAuth grant、选定账号、作品、页码及画质。有效期不超过签发时 access token；grant 撤销、owner reset 或重启使旧地址失效。切换共享账号不会把旧地址指向新账号。服务端通过公开 SDK 和已有出站代理取图，拒绝任意 URL 与非光栅图片，响应使用 `Cache-Control: private, no-store`。HEAD 同样验证图片但不发送正文。不新增磁盘或共享缓存。完整图片地址属于短期访问凭证，不应分享或写入日志。
 
-卡片优先显示完整、不裁切的缩略图、两行标题、作者和胶囊标签，不添加内部外框、结果数量或详情标题。R-18／R-18G 红底白字角标来自 `x_restrict`，多图缩略图显示叠图图标和张数；按 Pixiv 信息层级近似还原，不宣称像素级一致。溢出的标签可通过 `...` 按钮展开，保留全部标签。详情直接显示完整标题、标签和简介，并展示数据中存在的作者、发布时间、浏览数、收藏数、作品 ID、尺寸和页数；宽容器中媒体与信息并排，窄容器中上下排列。metadata 作为文本而非 HTML 展示。图标控件具有可访问名称、键盘焦点和宿主主题配色。静态图片进入可见区域才加载；失败时在占位区域显示显式重试入口，点击后经认证画廊工具重新签发地址。点击图片或名称打开详情。单页不显示翻页控件，多页提供首尾禁用的左右箭头、横向滑动和原生进度滑块，位置为只读显示。拖动预览目标，提交后加载并忽略过期响应；纵向手势继续交给聊天页面。尺寸优先使用当前页提供的数据，原图下载对应当前选定页。详情默认 regular 图片；双击静态详情图片或点击可访问的“View original”按钮，可在弹层查看完整质量原图，切换适应窗口／实际尺寸，并通过 Escape／关闭按钮退出或使用 host 确认下载。查看和下载复用已成功读取的原图字节。独立的 256MiB 估算会话 LRU 缓存保存已加载静态图片、详情信息与原图字节；翻页、重进详情复用内容并保留选定页。新查询／结果、取消和关闭画廊清理缓存。不缓存失败或收藏状态；超大图片完整显示但不保留。预算计入解码像素与编码数据估算，并非浏览器／GPU 总内存上限。明确下载原始页时使用完整字节媒体工具和 host 下载能力。Ugoira 保留完整 GIF/APNG 及独立 PNG 预览。收藏工具栏提供主要保存操作、公开／私密选择、已收藏作品的取消入口和显式状态刷新。收藏状态未知或写入未确认时禁止写入；写入仍需明确点击、host approval 和成功后刷新状态。播放与下载确认仍取决于 host。
+列表卡片仅显示完整、不裁切的缩略图，包括 Ugoira 静态封面，不显示文字信息或角标。详情显示完整标题、标签、简介，以及数据中存在的作者、发布时间、浏览数、收藏数、作品 ID 和尺寸，移除重复的 Pages 字段；分级角标保留在详情中。有效作者 ID 可通过宿主打开对应 Pixiv 作者页面。宽容器中媒体与信息并排，窄容器中上下排列；metadata 作为文本展示；Pixiv 简介中的 `<br>` 转为换行，有效的十进制／十六进制数字实体显示为字符；其他标记与非法数字实体仍作为不可执行文本显示。图标控件具有可访问名称、键盘焦点和宿主主题配色。图片进入可见区域才加载；宿主支持工具调用时，列表在读取图片前通过一次经认证批量请求获取新地址，避免使用因到期或服务重启失效的历史地址。不支持工具调用时仍尝试已有地址。失败保留显式重试，不自动重试。点击缩略图打开详情。单页不显示翻页控件，多页提供首尾禁用的左右箭头、横向滑动和原生进度滑块，位置为只读显示。拖动预览目标，提交后加载并忽略过期响应；纵向手势继续交给聊天页面。尺寸优先使用当前页提供的数据，原图下载对应当前选定页。详情默认 regular 图片；点击／双击静态详情图片，或聚焦图片后按 Enter／Space，可在弹层查看完整质量原图，切换适应窗口／实际尺寸，并通过 Escape／关闭按钮退出或使用 host 确认下载。查看和 host 确认下载复用已成功读取的原图字节。宿主未声明文件下载能力时，已加载的静态原图为当前选定页请求新的 original 质量凭证，提供用户点击的 HTTPS 附件链接；只接受精确的 `?download=1` 参数，文件名由作品 ID、从 1 开始的页码与已校验的图片 MIME 类型生成。附件与普通 HTTP 原图共用授权服务端缓存，每次仍检查 grant、有效期和账号版本。浏览器下载策略仍生效，不提前宣告保存成功。独立的 256MiB 估算会话 LRU 缓存保存已加载静态图片、成功加载的动图／PNG 预览元素、详情信息与原图字节；翻页、重进详情复用内容并保留选定页。切换到尚未缓存的页面时，保留当前图片至下一张加载完成；快速切换会丢弃过期的待显示图片。新查询／结果、取消和关闭画廊清理缓存。未伴随新输入的相同结果重复投递保留当前详情与会话缓存。不缓存失败或收藏状态；超大图片完整显示但不保留。预算计入解码像素与编码数据估算，并非浏览器／GPU 总内存上限。明确下载原始页时使用完整字节媒体工具和 host 下载能力。Ugoira 保留完整 GIF/APNG 及独立 PNG 预览。收藏工具栏提供主要保存操作、公开／私密选择、已收藏作品的取消入口和显式状态刷新。收藏状态未知或写入未确认时禁止写入；写入仍需明确点击、host approval 和成功后刷新状态。播放与下载确认仍取决于 host。
 
 标准 Apps bridge 处理初始化、工具结果和调用。CSP 只允许 canonical 反代域名及 Blob 图片，不允许直接 fetch 或外部脚本/样式；图片使用 `no-referrer`。iframe 不接收 OAuth bearer、Pixiv 凭据或 FANBOX session。切换视图取消待完成工具请求，释放动图订阅。参见 [MCP Apps 规范](https://github.com/modelcontextprotocol/ext-apps/blob/main/specification/2026-01-26/apps.mdx)。
 
@@ -332,13 +332,13 @@ Gallery 去重后在配置并发上限内查询作品，保持输入顺序和逐
 
 Gallery 动图控制支持 `action: prepare`，输入正整数 `illust_id` 和可选 `format`（默认 `gif`，也可选 `apng`）。`status` 与 `release` 只接收不透明 `handle`。每次准备获得独立订阅，控制响应不嵌入动图字节。状态为 `queued`、`downloading`、`encoding`、`ready`、`failed`、`cancelled`、`expired`，不伪造进度百分比。每两秒查询状态；终态停止查询，重试必须由用户明确触发。
 
-就绪输出包括 `animation_url`、独立 PNG 的 `preview_url`、`media_origin`、`filename`、`mime_type`、`size` 和 `expires`。Gallery 在所选图片加载完成前显示加载提示，完成后才确认静态预览或动画播放状态。当前详情页内切换已加载的动画与预览会复用图片元素，不重复发起 HTTP 读取；动画仅在首次点击播放时加载，失败仍需显式重试。离开详情、切换格式或重试时清除两种图片来源。Gallery 初始显示静态预览，播放时选择完整 GIF/APNG HTTP 资源。宿主支持下载时，通过 `ui/download-file` 的 `resource_link` 请求确认。既有 `pixiv_artwork_media` 完整内容合同保持不变。
+就绪输出包括 `animation_url`、独立 PNG 的 `preview_url`、`media_origin`、`filename`、`mime_type`、`size` 和 `expires`。Gallery 在所选图片加载完成前显示加载提示，完成后才确认静态预览或动画播放状态。切换已加载的动画与预览会复用图片元素，不重复发起 HTTP 读取；成功加载的动图及预览也使用现有 256MiB 估算会话 LRU 跨详情复用。重进时先通过新的 prepare 请求验证当前授权，仅在就绪响应的媒体地址一致时复用旧元素；动画仅在首次点击播放时加载，失败仍需显式重试。准备就绪后隐藏多余的加载动画入口；媒体读取失败、宿主下载未确认或切换格式时恢复该入口，不自动重新准备。离开详情时释放订阅并移除该视图的图片事件回调；失败、未完成及超预算图片清除来源，成功保留的元素在 LRU 淘汰、新查询／结果或关闭时释放。切换格式与显式重试仍取得新订阅。动图估算计入编码文件大小与全部帧的解码像素，帧数来自 UI 内部提示 `_meta["pixiv/animationFrameCount"]`；缺失或非法帧数不新增动图缓存。该提示不改变工具输入或公开结构化输出字段。PNG 按解码像素估算，并非实际压缩字节数；浏览器额外解码开销及浏览器／GPU 总内存不属于该估算。Gallery 初始显示静态预览，播放时选择完整 GIF/APNG HTTP 资源。宿主支持下载时，通过 `ui/download-file` 的 `resource_link` 请求确认。否则 Gallery 提供用户点击的浏览器链接，对同一受保护动图使用精确的 `?download=1` 参数。GET／HEAD 仍校验授权、有效期和账号版本，附件文件名由作品 ID 与格式生成；其他查询参数及预览下载被拒绝。浏览器下载策略仍生效，Gallery 不宣告文件已保存。既有 `pixiv_artwork_media` 完整内容合同保持不变。
 
 同一 grant／账号／会话版本／作品／格式的重复准备复用任务与完整成功产物。最后一个订阅释放时取消未完成任务；就绪产物可保留至缓存 TTL 与签发授权到期时间的较早值。`/media/animation/` 的 GET/HEAD 每次检查授权及当前账号版本，响应为 `private, no-store`。地址属于短期访问凭证，不应记录或分享。
 
 私有目录／文件权限为 0700／0600。ZIP、原生输出预留、预览和待交付产物共用独立的启动磁盘预算（`mcp_gallery_animation_temp_capacity_mib`，默认 1024 MiB）。写入前检查容量；原生写入通过内部同步回调按实际字节申请空间，容量足够时生成另一格式仍保留未使用的就绪产物。只有空间确实不足时才淘汰可回收产物；不足时明确失败，不截断交付或降低编码质量。过期／未使用的就绪产物可淘汰，读取中的文件等待句柄关闭再删除。服务关闭时等待任务及读取退出，再删除自身工作目录；启动时仅清理带本服务标记且系统生命周期锁已释放的目录；活跃实例及归属不明的目录保留。临时文件生成与原生输出预留共用队列，避免并发准备误报容量不足；就绪文件仍可并发读取。首次准备仍需要下载和编码，不承诺固定公网耗时。
 
-开启 debug 诊断时，`pixiv_artwork_media` 与 `pixiv_gallery_animation` 的 HTTP 和 stdio 响应会记录 `mcp_response_serialization`，包含实际结果 JSON 编码耗时和字节数，不包含 JSON-RPC 外层及网络传输时间。普通日志级别保留原编码路径；HTTP 与协议诊断 scope 重叠时，不重复编码或记录。动图交付中断记录为失败，使用固定的请求取消／传输中断原因；不写入原始错误、凭据或 capability 地址。
+开启 debug 诊断时，`pixiv_artwork_media` 与 `pixiv_gallery_animation` 的 HTTP 和 stdio 响应会记录 `mcp_response_serialization`，包含实际结果 JSON 编码耗时和字节数，不包含 JSON-RPC 外层及网络传输时间。debug 下 HTTP POST 响应还逐次记录底层 `mcp_http_write`（接受字节数与调用耗时）和 `mcp_http_flush`（调用耗时），区分写入／Flush 失败、请求取消和服务关闭。观测保留 SDK framing，不证明对端收齐，不记录请求／响应正文或 header。普通日志级别保留原编码路径；HTTP 与协议诊断 scope 重叠时，不重复编码或记录。动图交付中断记录为失败，使用固定的请求取消／传输中断原因；不写入原始错误、凭据或 capability 地址。
 
 现有 `pixiv_artwork_media` 动图路径还记录作品查询、动图元数据、ZIP 下载、实际观测到的原生编码排队／编码及产物读取阶段。`animation_generation` 在临时文件清理后记录最终生成结果，包含失败和请求取消；失败字节数为零，成功为动画大小。这些生成阶段不包含响应序列化和网络交付。进入原生队列前失败的编码尝试不伪造排队耗时。
 

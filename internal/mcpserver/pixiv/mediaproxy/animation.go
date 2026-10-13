@@ -6,6 +6,8 @@ import (
 
 // AnimationStatus contains control data only; binaries use protected media URLs.
 type AnimationStatus struct {
+	// FrameCount 仅供 UI 缓存预算，不进入公开结构化输出。
+	FrameCount   int       `json:"-"`
 	Handle       string    `json:"handle,omitempty"`
 	State        string    `json:"state"`
 	AnimationURL string    `json:"animation_url,omitempty"`

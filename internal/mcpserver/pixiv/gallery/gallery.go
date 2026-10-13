@@ -3,7 +3,10 @@ package gallery
 
 import (
 	"context"
+	"crypto/sha256"
 	_ "embed"
+	"encoding/hex"
+	"errors"
 	htmlutil "html"
 	"strings"
 
@@ -17,30 +20,55 @@ const MIME = "text/html;profile=mcp-app"
 //go:embed generated/gallery.html
 var html string
 
+func versionURI(media ...*mediaproxy.Service) string {
+	page, _ := pageAssets(media...)
+	digest := sha256.Sum256([]byte(page))
+	return URI + "/sha256-" + hex.EncodeToString(digest[:])
+}
+
 // Register always publishes the view; non-UI hosts retain the same tool results.
 func Register(server *mcp.Server, media ...*mediaproxy.Service) {
-	server.AddResource(&mcp.Resource{URI: URI, Name: "pixiv_gallery", MIMEType: MIME, Description: "Pixiv artwork previews through the standard MCP Apps bridge."}, func(context.Context, *mcp.ReadResourceRequest) (*mcp.ReadResourceResult, error) {
-		domains := []string{"blob:"}
-		page := html
-		if len(media) > 0 && media[0] != nil {
-			origin := media[0].Origin()
-			domains = append(domains, origin)
-			page = strings.Replace(page, "img-src blob:", "img-src blob: "+htmlutil.EscapeString(origin), 1)
+	read := func(_ context.Context, request *mcp.ReadResourceRequest) (*mcp.ReadResourceResult, error) {
+		uri := request.Params.URI
+		if uri != URI {
+			digest := strings.TrimPrefix(uri, URI+"/sha256-")
+			if len(digest) != hex.EncodedLen(sha256.Size) || digest != strings.ToLower(digest) {
+				return nil, errors.New("Gallery version unavailable")
+			}
+			if _, err := hex.DecodeString(digest); err != nil {
+				return nil, errors.New("Gallery version unavailable")
+			}
 		}
-		content := &mcp.ResourceContents{URI: URI, MIMEType: MIME, Text: page, Meta: mcp.Meta{
+		page, domains := pageAssets(media...)
+		content := &mcp.ResourceContents{URI: uri, MIMEType: MIME, Text: page, Meta: mcp.Meta{
 			"ui": map[string]any{"csp": map[string]any{"connectDomains": []string{}, "resourceDomains": domains}, "prefersBorder": true},
 		}}
 		return &mcp.ReadResourceResult{Contents: []*mcp.ResourceContents{content}}, nil
-	})
+	}
+	server.AddResource(&mcp.Resource{URI: URI, Name: "pixiv_gallery", MIMEType: MIME, Description: "Pixiv artwork previews through the standard MCP Apps bridge."}, read)
+	server.AddResource(&mcp.Resource{URI: versionURI(media...), Name: "pixiv_gallery_versioned", MIMEType: MIME, Description: "Current Gallery UI revision for host resource caching."}, read)
+	// Keep historical view references readable after a build; revisions are cache keys, not integrity proofs.
+	server.AddResourceTemplate(&mcp.ResourceTemplate{URITemplate: URI + "/sha256-{digest}", Name: "pixiv_gallery_history", MIMEType: MIME}, read)
 }
 
 // Attach associates visual discovery with the resource without replacing its structured contract.
-func Attach(tool *mcp.Tool) {
+func Attach(tool *mcp.Tool, media ...*mediaproxy.Service) {
 	switch tool.Name {
 	case "pixiv_show_gallery":
 		if tool.Meta == nil {
 			tool.Meta = mcp.Meta{}
 		}
-		tool.Meta["ui"] = map[string]any{"resourceUri": URI}
+		tool.Meta["ui"] = map[string]any{"resourceUri": versionURI(media...)}
 	}
+}
+
+func pageAssets(media ...*mediaproxy.Service) (string, []string) {
+	page := html
+	domains := []string{"blob:"}
+	if len(media) > 0 && media[0] != nil {
+		origin := media[0].Origin()
+		domains = append(domains, origin)
+		page = strings.Replace(page, "img-src blob:", "img-src blob: "+htmlutil.EscapeString(origin), 1)
+	}
+	return page, domains
 }

@@ -127,6 +127,28 @@ func TestTypedBookmarkReadsPreserveEmptyAndTypedErrors(t *testing.T) {
 	}
 }
 
+func TestArtworkBookmarkDetailEmptyTagsSatisfyOutputSchema(t *testing.T) {
+	for _, restrict := range []pixiv.Restrict{"", pixiv.RestrictPublic} {
+		t.Run(string(restrict), func(t *testing.T) {
+			client := &fakeSDKClient{bookmarkDetailResult: pixiv.ArtworkBookmarkDetail{Restrict: restrict}}
+			session, closeSession := newSDKTestSession(t, client)
+			defer closeSession()
+
+			result, err := session.CallTool(context.Background(), &mcp.CallToolParams{
+				Name: "pixiv_bookmark_detail", Arguments: map[string]any{"illust_id": 101},
+			})
+			if err != nil {
+				t.Fatalf("bookmark_detail schema validation: %v", err)
+			}
+			var out outputs.BookmarkDetail
+			decodeStructured(t, result, &out)
+			if result.IsError || out.Tags == nil || len(out.Tags) != 0 || out.Bookmarked != (restrict != "") || out.Restrict != string(restrict) {
+				t.Fatalf("artwork bookmark detail result=%+v output=%+v, want empty tags and unchanged visibility", result, out)
+			}
+		})
+	}
+}
+
 func TestNovelBookmarkDetailEmptyTagsSatisfyOutputSchema(t *testing.T) {
 	client := &fakeSDKClient{novelBookmarkDetailResult: pixiv.NovelBookmarkDetail{}}
 	session, closeSession := newSDKTestSession(t, client)

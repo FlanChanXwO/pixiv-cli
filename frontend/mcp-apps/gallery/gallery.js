@@ -28,7 +28,7 @@
     sessionCache.delete(key); cacheBytes -= entry.bytes; entry.release();
   }
   function clearCache() { for (const key of sessionCache.keys()) forget(key); }
-  let serial = 0, view = 0, ready = false, disposed = false;
+  let serial = 0, view = 0, ready = false, disposed = false, lastToolResult;
   let hostContext = {};
   let hostOrigin = "*", serverTools = false, downloadFiles = false, observer, resize;
   const send = message => window.parent.postMessage({jsonrpc: "2.0", ...message}, hostOrigin);
@@ -132,7 +132,18 @@
   }
   function artworkAuthor(record, parent) {
     if (typeof record.user?.name === "string" && record.user.name) {
-      const author = text("p", record.user.name, parent, "artwork-author"); author.append(icon("user"));
+      const id = String(record.user.id ?? "");
+      const validID = /^[1-9][0-9]*$/.test(id) && (typeof record.user.id === "string" || Number.isSafeInteger(record.user.id));
+      const author = validID ? action(record.user.name, parent, async () => {
+        if (author.disabled) return;
+        author.disabled = true;
+        const epoch = view;
+        try { await request("ui/open-link", {url:"https://www.pixiv.net/users/" + id}, epoch); }
+        catch (_) { if (epoch === view && !disposed) status.textContent = "Author page could not be opened."; }
+        finally { author.disabled = false; }
+      }) : text("p", record.user.name, parent);
+      author.className = "artwork-author"; author.append(icon("user"));
+      if (validID) { author.title = "Open author page"; author.setAttribute("aria-label", "Open author page — " + record.user.name); }
     }
   }
   function pageDimensions(record, page) {
@@ -148,8 +159,8 @@
       const term = text("dt", label, group); term.append(icon(name));
       return text("dd", value, group, "metadata-value");
     };
-    for (const [key, label, name] of [["total_views", "Views", "eye"], ["total_bookmarks", "Bookmarks", "bookmark"], ["page_count", "Pages", "pages"]]) {
-      if (Number.isSafeInteger(record[key]) && record[key] >= 0 && (key !== "page_count" || record[key] > 0)) row(label, String(record[key]), name);
+    for (const [key, label, name] of [["total_views", "Views", "eye"], ["total_bookmarks", "Bookmarks", "bookmark"]]) {
+      if (Number.isSafeInteger(record[key]) && record[key] >= 0) row(label, String(record[key]), name);
     }
     if (typeof record.id === "string" && /^[1-9][0-9]*$/.test(record.id)) row("Artwork ID", record.id, "id");
     const dimensions = pageDimensions(record, 1);
@@ -187,9 +198,9 @@
     const row = {list, update: () => { toggle.hidden = !expanded && list.scrollWidth <= group.clientWidth; }};
     tagRows.add(row); resize?.observe(list); row.update();
   }
-  function proxyImage(record, parent, initial, epoch, page = 1, quality = "thumbnail", open, openOriginal) {
+  function proxyImage(record, parent, initial, epoch, page = 1, quality = "thumbnail", open, openOriginal, onReady) {
     const frame = document.createElement("div"); frame.className = "media-frame"; parent.append(frame);
-    mediaBadges(record, frame);
+    if (quality !== "thumbnail") mediaBadges(record, frame);
     const key = "image:" + record.id + ":" + page + ":" + quality;
     const retained = cached(key);
     const image = retained?.value ?? document.createElement("img"); image.alt = String(record.title || "Artwork") + " — page " + page; image.hidden = !retained; image.draggable = false; image.referrerPolicy = "no-referrer"; proxyImages.add(image);
@@ -207,10 +218,15 @@
       // Include decoded pixels and an encoded-image allowance; browser/GPU overhead is outside this estimate.
       const bytes = image.naturalWidth * image.naturalHeight * 8;
       remember(key, image, bytes, () => { if (!proxyImages.has(image)) image.removeAttribute("src"); });
+      onReady?.();
     };
     image.addEventListener("load", loaded);
     image.addEventListener("error", failed);
-    if (openOriginal) image.addEventListener("dblclick", openOriginal);
+    const originalKey = event => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); openOriginal(); } };
+    if (openOriginal) {
+      image.tabIndex = 0; image.setAttribute("role", "button"); image.setAttribute("aria-label", "View original — " + String(record.title || "Artwork") + " — page " + page); image.title = "View original";
+      image.addEventListener("click", openOriginal); image.addEventListener("dblclick", openOriginal); image.addEventListener("keydown", originalKey);
+    }
     const assign = result => {
       const output = result?.structuredContent;
       const item = output?.images?.find(p => Number(p.illust_id) === Number(record.id) && p.page === page);
@@ -219,23 +235,25 @@
       image.src = item.url;
     };
     const load = async renew => {
+      if (retained && !renew && active) { onReady?.(); return; }
       if (!active || busy || epoch !== view || disposed || (started && !renew)) return;
       started = true; busy = true; retry.hidden = true; overlay.hidden = false; spinner.style.display = ""; message.className = "sr-only"; message.textContent = "Loading image…";
       try {
-        if (!renew && initial?.structuredContent?.images?.some(p => Number(p.illust_id) === Number(record.id) && p.page === page)) assign(initial);
+        if (!renew && typeof initial === "function") { const response = await initial(); if (!active || epoch !== view || disposed) return; assign(response); }
+        else if (!renew && initial?.structuredContent?.images?.some(p => Number(p.illust_id) === Number(record.id) && p.page === page)) assign(initial);
         else { if (!serverTools) throw new Error("Host does not allow tool calls"); const response = await request("tools/call", {name:"pixiv_show_gallery", arguments:{illust_ids:[Number(record.id)],page,quality}}, epoch); if (!active || epoch !== view || disposed) return; assign(response); }
       } catch (_) { failed(); }
     };
     const dispose = () => {
       if (!active) return;
       active = false; image.removeEventListener("load", loaded); image.removeEventListener("error", failed);
-      if (openOriginal) image.removeEventListener("dblclick", openOriginal);
+      if (openOriginal) { image.removeEventListener("click", openOriginal); image.removeEventListener("dblclick", openOriginal); image.removeEventListener("keydown", originalKey); }
       image.remove(); proxyImages.delete(image);
       if (sessionCache.get(key)?.value !== image) image.removeAttribute("src");
       animationCleanups.delete(dispose);
     };
     animationCleanups.add(dispose);
-    return {load: () => load(false), frame, image, dispose};
+    return {load: () => load(false), frame, image, dispose, page};
   }
   function action(label, parent, handler) {
     const button = text("button", label, parent);
@@ -251,8 +269,16 @@
     urls.add(url);
     return url;
   }
-  function downloadControl(content, filename, parent, epoch) {
-    const message = text("p", downloadFiles ? "Download uses the host confirmation flow." : "This host does not offer file downloads; media bytes remain available in chat.", parent);
+  function downloadControl(content, filename, parent, epoch, failed) {
+    if (!downloadFiles) {
+      const link = text("a", "", parent, "icon-button browser-download");
+      link.setAttribute("aria-label", "Download " + filename); link.title = "Download " + filename;
+      link.append(icon("download")); link.href = content.uri + "?download=1";
+      link.target = "_blank"; link.rel = "noreferrer";
+      text("p", "Save using your browser. Browser download restrictions still apply.", parent);
+      return;
+    }
+    const message = text("p", "Download uses the host confirmation flow.", parent);
     let busy = false;
     const button = iconAction("Download " + filename, "download", parent, async () => {
       if (!downloadFiles || busy || epoch !== view || !parent.contains(button)) return;
@@ -262,16 +288,19 @@
         if (epoch !== view || disposed) return;
         if (!result || result.isError) throw new Error("Download not confirmed");
         message.textContent = "Host confirmed download. File location and naming are controlled by the host.";
-      } catch (_) { if (epoch === view) message.textContent = "Download not confirmed (denied, cancelled or failed)."; }
+      } catch (_) { if (epoch === view && parent.contains(button)) { message.textContent = "Download not confirmed (denied, cancelled or failed)."; failed(); } }
       finally { busy = false; button.disabled = !downloadFiles; }
     });
     button.disabled = !downloadFiles;
   }
   function animationControls(id, artwork, section, epoch) {
+    const stateKey = "animation-state:" + id;
+    const retained = cached(stateKey)?.value;
+    const mediaKey = (format, url) => "animation-image:" + id + ":" + format + ":" + url;
     const label = text("label", "Animation format ", section);
     const format = document.createElement("select");
     for (const value of ["gif", "apng"]) { const option = text("option", value, format); option.value = value; }
-    format.value = "gif"; label.append(format);
+    format.value = ["gif", "apng"].includes(retained?.format) ? retained.format : "gif"; label.append(format);
     const message = text("p", "Prepare animation and a separate static preview.", section);
     const media = document.createElement("div"); section.append(media);
     let reading = false, handle, timer, generation = 0, images = [];
@@ -283,7 +312,11 @@
     const release = () => {
       generation++; clearTimeout(timer); timer = undefined;
       const old = handle; handle = undefined; reading = false;
-      for (const item of images) { item.image.removeAttribute("src"); proxyImages.delete(item.image); }
+      for (const item of images) {
+        item.image.removeEventListener("load", item.loaded); item.image.removeEventListener("error", item.failed);
+        proxyImages.delete(item.image);
+        if (sessionCache.get(item.key)?.value !== item.image) item.image.removeAttribute("src");
+      }
       images = [];
       releaseHandle(old);
     };
@@ -291,7 +324,7 @@
     const current = token => token === generation && epoch === view && !disposed;
     const failed = token => {
       if (!current(token)) return;
-      release(); media.replaceChildren(); load.disabled = false;
+      release(); forget(stateKey); media.replaceChildren(); load.disabled = false; load.hidden = false;
       message.textContent = "Animation read failed or incomplete. Retry explicitly.";
     };
     const validURL = (url, origin) => typeof origin === "string" && /^https?:\/\/[^/?#@]+$/.test(origin) && typeof url === "string" && url.startsWith(origin + "/") && url.includes("/media/animation/") && !/[?#]/.test(url);
@@ -333,25 +366,36 @@
         message.textContent = item.state === "ready" ? item.ready : item.state === "failed" ? failure : item.loading;
       };
       for (const item of images) {
-        const image = document.createElement("img"); item.image = image;
+        item.key = mediaKey(selectedFormat, item.url);
+        const image = cached(item.key)?.value ?? document.createElement("img"); item.image = image;
+        if (sessionCache.get(item.key)?.value === image) item.state = "ready";
         image.alt = String(artwork.title); image.hidden = true; image.referrerPolicy = "no-referrer";
         proxyImages.add(image); media.append(image);
-        image.addEventListener("load", () => {
+        item.loaded = () => {
           if (!current(token)) return;
           item.state = "ready";
+          // Count every decoded animation frame; unknown frame counts are not retained.
+          const pixels = Number(image.naturalWidth || artwork.width) * Number(image.naturalHeight || artwork.height);
+          const frames = result._meta?.["pixiv/animationFrameCount"];
+          let bytes = pixels * 8;
+          if (item.url === output.animation_url) bytes = Number.isSafeInteger(frames) && frames > 0 ? output.size + pixels * 4 * frames : NaN;
+          remember(item.key, image, bytes, () => { if (!proxyImages.has(image)) image.removeAttribute("src"); });
           if (selected === item) message.textContent = item.ready;
-        });
-        image.addEventListener("error", () => {
+        };
+        item.failed = () => {
           if (!current(token)) return;
-          item.state = "failed";
+          item.state = "failed"; forget(item.key); load.hidden = false;
           if (selected === item) message.textContent = failure;
-        });
+        };
+        image.addEventListener("load", item.loaded);
+        image.addEventListener("error", item.failed);
       }
       iconAction("Play animation", "play", media, () => show(images[1]));
       iconAction("Show preview", "image", media, () => show(images[0]));
       show(images[0]);
-      downloadControl({type:"resource_link",uri:output.animation_url,name:output.filename,mimeType:output.mime_type,size:output.size}, output.filename, media, epoch);
-      reading = false; load.disabled = false;
+      downloadControl({type:"resource_link",uri:output.animation_url,name:output.filename,mimeType:output.mime_type,size:output.size}, output.filename, media, epoch, () => { if (current(token)) load.hidden = false; });
+      remember(stateKey, {format:selectedFormat, animation:output.animation_url, preview:output.preview_url}, (output.animation_url.length + output.preview_url.length) * 2 + 16);
+      reading = false; load.disabled = false; load.hidden = true;
     };
     const load = action("Load animation", section, async () => {
       if (reading || epoch !== view || disposed) return;
@@ -362,7 +406,8 @@
       try { receiveState(await request("tools/call", {name:"pixiv_gallery_animation",arguments:{action:"prepare",illust_id:id,format:selectedFormat}}), token, selectedFormat); }
       catch (_) { failed(token); }
     });
-    format.addEventListener("change", () => { release(); media.replaceChildren(); load.disabled = false; message.textContent = "Load the selected animation format."; });
+    format.addEventListener("change", () => { release(); media.replaceChildren(); load.disabled = false; load.hidden = false; message.textContent = "Load the selected animation format."; });
+    if (retained && [retained.preview, retained.animation].some(url => cached(mediaKey(retained.format, url)))) load.click();
   }
   async function originalContent(id, pageNumber, epoch, artwork) {
     const key = "original:" + id + ":" + pageNumber;
@@ -413,13 +458,30 @@
         finally { download.disabled = false; }
       }, true); download.disabled = true;
       dialog.enableDownload = () => { download.disabled = false; };
+    } else {
+      // 宿主外链校验拒绝 Blob；以同一页原图凭证交给浏览器保存。
+      const download = text("a", "", toolbar, "icon-button browser-download");
+      download.setAttribute("aria-label", "Download viewed original"); download.title = "Download viewed original";
+      download.append(icon("download")); download.hidden = true;
+      dialog.enableDownload = async () => {
+        message.textContent = "Preparing original download…";
+        try {
+          const result = await request("tools/call", {name:"pixiv_show_gallery",arguments:{illust_ids:[Number(id)],page,quality:"original"}}, epoch);
+          if (closed || epoch !== view || disposed) return;
+          const output = result.structuredContent;
+          const item = output?.images?.find(item => Number(item.illust_id) === Number(id) && item.page === page);
+          if (result.isError || !item || typeof output.media_origin !== "string" || !/^https?:\/\/[^/?#@]+$/.test(output.media_origin) || typeof item.url !== "string" || !item.url.startsWith(output.media_origin + "/") || !item.url.includes("/media/") || /[?#]/.test(item.url)) throw new Error("Invalid original delivery");
+          download.href = item.url + "?download=1"; download.target = "_blank"; download.rel = "noreferrer"; download.hidden = false;
+          message.textContent = "Save using your browser. Browser download restrictions still apply.";
+        } catch (_) { if (!closed && epoch === view && !disposed) message.textContent = "Original download unavailable. Close and reopen to retry."; }
+      };
     }
     const surface = document.createElement("div"); surface.className = "original-surface"; dialog.append(surface);
     const image = document.createElement("img"); image.className = "original-image"; image.alt = String(artwork.title || "Artwork") + " — original page " + page; image.hidden = true; surface.append(image);
     image.addEventListener("load", () => {
       if (closed) return;
       remember("original:" + id + ":" + page, original, original.data.length * 2 + atob(original.data).length + image.naturalWidth * image.naturalHeight * 4);
-      image.hidden = false; zoom.disabled = false; dialog.enableDownload?.(); message.textContent = "";
+      image.hidden = false; zoom.disabled = false; message.textContent = ""; dialog.enableDownload?.();
     });
     image.addEventListener("error", () => { if (!closed) { forget("original:" + id + ":" + page); message.textContent = "Original unavailable. Close and reopen to retry."; } });
     image.addEventListener("dblclick", () => zoom.click());
@@ -452,7 +514,14 @@
       artworkAuthor(artwork, info);
       if (artwork.type === "ugoira") ratingBadge(artwork, info);
       tagChips(artwork.tags, info);
-      if (artwork.caption) text("p", String(artwork.caption), info, "caption");
+      // Decode Pixiv numeric entities into text; never interpret caption markup.
+      if (artwork.caption) {
+        const caption = String(artwork.caption).replace(/<br\s*\/?>/gi, "\n").replace(/&#(x[0-9a-f]+|[0-9]+);/gi, (entity, digits) => {
+          const code = /^x/i.test(digits) ? Number.parseInt(digits.slice(1), 16) : Number(digits);
+          return code > 0 && code <= 0x10ffff && !(code >= 0xd800 && code <= 0xdfff) ? String.fromCodePoint(code) : entity;
+        });
+        text("p", caption, info, "caption");
+      }
       const updateDimensions = artworkMetadata(artwork, info);
       const detailControls = document.createElement("div"); detailControls.className = "detail-controls";
       if (artwork.type === "ugoira") {
@@ -462,16 +531,29 @@
         if (!Number.isSafeInteger(total) || total < 1) throw new Error("Invalid page count");
         const viewer = document.createElement("div"); viewer.className = "page-viewer"; mediaColumn.append(viewer);
         const media = document.createElement("div"); media.className = "page-media"; viewer.append(media);
-        let selectedPage = 1, preview, previousPage, nextPage, progress, position;
-        // Pointer capture for swipes can retarget double-clicks to this container.
+        let selectedPage = 1, preview, displayed, previousPage, nextPage, progress, position;
+        let swiped = false;
+        // Pointer capture retargets taps to the media container; swipes must not open the original.
+        media.addEventListener("click", event => { if (!swiped && !event.target?.closest("button")) originalViewer(id, selectedPage, artwork, epoch); });
         media.addEventListener("dblclick", event => {
-          if (!event.target?.closest("button")) originalViewer(id, selectedPage, artwork, epoch);
+          if (!swiped && !event.target?.closest("button")) originalViewer(id, selectedPage, artwork, epoch);
         });
         const validPage = page => Number.isSafeInteger(page) && page >= 1 && page <= total;
         const loadPage = page => {
           if (!validPage(page) || epoch !== view || disposed) return;
-          selectedPage = page; remember("page:" + id, page, 8); updateDimensions(page); preview?.dispose(); media.replaceChildren();
-          preview = proxyImage(artwork, media, null, epoch, page, "regular", undefined, () => originalViewer(id, page, artwork, epoch)); preview.load();
+          selectedPage = page; remember("page:" + id, page, 8); updateDimensions(page);
+          if (preview && preview !== displayed) { preview.dispose(); preview.frame.remove(); }
+          if (displayed?.page === page) preview = displayed;
+          else {
+            const replacement = proxyImage(artwork, media, null, epoch, page, "regular", undefined, () => originalViewer(id, page, artwork, epoch), () => {
+              if (selectedPage !== page || epoch !== view || disposed) return;
+              if (displayed) { displayed.dispose(); displayed.frame.remove(); }
+              displayed = replacement; replacement.frame.className = "media-frame";
+            });
+            preview = replacement;
+            if (displayed) replacement.frame.className = "media-frame page-pending";
+            replacement.load();
+          }
           if (progress) { progress.value = String(page); position.textContent = page + " / " + total; previousPage.disabled = page === 1; nextPage.disabled = page === total; }
         };
         if (total > 1) {
@@ -483,19 +565,18 @@
           progress.addEventListener("input", () => { const page = Number(progress.value); if (validPage(page)) position.textContent = page + " / " + total; });
           progress.addEventListener("change", () => { const page = Number(progress.value); if (validPage(page) && page !== selectedPage) loadPage(page); });
           let gesture;
-          media.addEventListener("pointerdown", event => { if (event.target?.closest("button")) return; if (event.isPrimary !== false && event.button === 0) { gesture = {id:event.pointerId, x:event.clientX, y:event.clientY}; media.setPointerCapture?.(event.pointerId); } });
+          media.addEventListener("pointerdown", event => { if (event.target?.closest("button")) return; if (event.isPrimary !== false && event.button === 0) { swiped = false; gesture = {id:event.pointerId, x:event.clientX, y:event.clientY}; media.setPointerCapture?.(event.pointerId); } });
           media.addEventListener("pointercancel", () => { gesture = undefined; });
           media.addEventListener("pointerup", event => {
             const start = gesture; gesture = undefined;
             if (!start || start.id !== event.pointerId) return;
             const dx = event.clientX - start.x, dy = event.clientY - start.y;
             // A full touch target of horizontal travel distinguishes swipes from taps; pan-y preserves chat scrolling.
-            if (Math.abs(dx) >= 44 && Math.abs(dx) > Math.abs(dy) * 1.5) { event.preventDefault(); const page = selectedPage + (dx < 0 ? 1 : -1); if (validPage(page)) loadPage(page); }
+            if (Math.abs(dx) >= 44 && Math.abs(dx) > Math.abs(dy) * 1.5) { swiped = true; event.preventDefault(); const page = selectedPage + (dx < 0 ? 1 : -1); if (validPage(page)) loadPage(page); }
           });
         }
         const retainedPage = cached("page:" + id)?.value;
         loadPage(validPage(retainedPage) ? retainedPage : 1);
-        iconAction("View original", "size", detailControls, () => originalViewer(id, selectedPage, artwork, epoch), true);
         if (downloadFiles && serverTools) {
           const message = text("p", "", detailControls);
           const download = iconAction("Download original page", "download", detailControls, async () => {
@@ -572,21 +653,18 @@
         }
       });
     }
+    let thumbnails;
+    // Historical URLs expire or lose their signing key on restart; acquire current capabilities once per view.
+    const currentThumbnails = serverTools ? () => thumbnails ??= request("tools/call", {name:"pixiv_show_gallery", arguments:{illust_ids:records.filter(record => record && ["illust", "manga", "ugoira"].includes(record.type) && Number.isSafeInteger(Number(record.id)) && Number(record.id) > 0).map(record => Number(record.id)),page:1,quality:"thumbnail"}}, epoch) : result;
     for (const record of records) {
       const card = document.createElement("article"); card.className = "artwork-card";
       cards.append(card);
       if (!record || typeof record !== "object" || Array.isArray(record)) { text("p", "Invalid record — inspect the tool result in chat.", card, "error"); continue; }
-      if (["illust", "manga"].includes(record.type)) {
-        const media = proxyImage(record, card, result, epoch, 1, "thumbnail", () => openDetail(record, result));
+      if (["illust", "manga", "ugoira"].includes(record.type)) {
+        const media = proxyImage(record, card, currentThumbnails, epoch, 1, "thumbnail", () => openDetail(record, result));
         card.loadPreview = media.load;
         if (observer) observer.observe(card); else media.load();
-      } else if (record.type === "ugoira") {
-        const frame = document.createElement("div"); frame.className = "media-frame"; card.append(frame); mediaBadges(record, frame); iconAction("View animation", "play", frame, () => openDetail(record, result));
       }
-      const title = text("h2", "", card); const titleButton = action(String(record.title ?? "Untitled"), title, () => openDetail(record, result)); titleButton.className = "title-button";
-      titleButton.title = String(record.title ?? "Untitled");
-      artworkAuthor(record, card);
-      tagChips(record.tags, card, true);
     }
 
   }
@@ -616,10 +694,16 @@
     switch (message.method) {
       case "ui/notifications/host-context-changed": applyContext(message.params); break;
       case "ui/notifications/tool-input":
-        discovery = message.params?.arguments && hostContext.toolInfo?.tool?.name ? {name: hostContext.toolInfo.tool.name, arguments: message.params.arguments} : undefined;
+        lastToolResult = undefined;
         clearView(); clearCache(); status.textContent = "Loading results…"; break;
-      case "ui/notifications/tool-result": clearView(); clearCache(); render(message.params ?? {}); break;
-      case "ui/notifications/tool-cancelled": clearView(); clearCache(); status.textContent = "Tool execution cancelled."; break;
+      case "ui/notifications/tool-result": {
+        const result = message.params ?? {};
+        const signature = JSON.stringify(result);
+        if (signature === lastToolResult) break;
+        lastToolResult = signature;
+        clearView(); clearCache(); render(result); break;
+      }
+      case "ui/notifications/tool-cancelled": lastToolResult = undefined; clearView(); clearCache(); status.textContent = "Tool execution cancelled."; break;
       case "ui/resource-teardown": dispose(); send({id: message.id, result: {}}); break;
       case "ping": send({id: message.id, result: {}}); break;
       default: if (message.id !== undefined) send({id: message.id, error: {code: -32601, message: "Method not supported"}});
