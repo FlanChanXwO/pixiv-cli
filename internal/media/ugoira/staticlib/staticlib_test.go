@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -211,4 +212,56 @@ func TestValidateManifestRejectsInvalidMapping(t *testing.T) {
 
 func syntheticManifest(sourceDigest string) string {
 	return fmt.Sprintf(`{"schema":1,"source_digest":"%s","artifacts":{"darwin/amd64":{"target":"x86_64-apple-darwin","path":"x86_64-apple-darwin/libugoira_rs.a","sha256":"1111111111111111111111111111111111111111111111111111111111111111"},"darwin/arm64":{"target":"aarch64-apple-darwin","path":"aarch64-apple-darwin/libugoira_rs.a","sha256":"2222222222222222222222222222222222222222222222222222222222222222"},"linux/amd64":{"target":"x86_64-unknown-linux-gnu","path":"x86_64-unknown-linux-gnu/libugoira_rs.a","sha256":"3333333333333333333333333333333333333333333333333333333333333333"},"linux/arm64":{"target":"aarch64-unknown-linux-gnu","path":"aarch64-unknown-linux-gnu/libugoira_rs.a","sha256":"4444444444444444444444444444444444444444444444444444444444444444"},"windows/amd64":{"target":"x86_64-pc-windows-msvc","path":"x86_64-pc-windows-msvc/ugoira_rs.lib","sha256":"5555555555555555555555555555555555555555555555555555555555555555"},"windows/arm64":{"target":"aarch64-pc-windows-msvc","path":"aarch64-pc-windows-msvc/ugoira_rs.lib","sha256":"6666666666666666666666666666666666666666666666666666666666666666"}}}`, sourceDigest)
+}
+
+func TestLocalBuildInvalidatesCGONativeArchiveCache(t *testing.T) {
+	shell, err := exec.LookPath("sh")
+	if err != nil {
+		t.Skip("build script requires a POSIX shell")
+	}
+	body, err := os.ReadFile(filepath.Join("..", "..", "..", "..", "scripts", "build.sh"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	root := t.TempDir()
+	for path, content := range map[string]string{
+		"scripts/build.sh": string(body),
+		"go.mod":           "module fixture\n\ngo 1.0.0\n",
+		"internal/media/ugoira/rust/staticlib/manifest.json": "{}",
+		"bin/go": `#!/bin/sh
+case "$1" in
+  env)
+    case "$2" in
+      GOOS|GOHOSTOS) printf 'darwin\n' ;;
+      GOARCH|GOHOSTARCH) printf 'arm64\n' ;;
+      GOVERSION) printf 'go1.0.0\n' ;;
+      CGO_ENABLED) printf '1\n' ;;
+      CC) printf 'sh\n' ;;
+      *) exit 92 ;;
+    esac ;;
+  run|test) exit 0 ;;
+  build)
+    # Go documents -a as the way to invalidate imported C archive caches.
+    for arg in "$@"; do [ "$arg" != '-a' ] || exit 0; done
+    printf 'updated native archive would reuse cached executable\n' >&2
+    exit 91 ;;
+  *) exit 92 ;;
+esac
+`,
+	} {
+		target := filepath.Join(root, filepath.FromSlash(path))
+		if err := os.MkdirAll(filepath.Dir(target), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(target, []byte(content), 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	command := exec.Command(shell, filepath.Join(root, "scripts", "build.sh"))
+	command.Dir = root
+	command.Env = append(os.Environ(), "PATH="+filepath.Join(root, "bin")+string(os.PathListSeparator)+os.Getenv("PATH"))
+	output, err := command.CombinedOutput()
+	if err != nil {
+		t.Fatalf("native library replacement must rebuild the executable: %v\n%s", err, output)
+	}
 }

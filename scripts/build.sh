@@ -49,6 +49,7 @@ go test ./internal/media/ugoira/staticlib -run '^TestCommittedManifestWhenPresen
 
 mkdir -p build
 
-printf 'GOOS=%s GOARCH=%s go build -trimpath -o %s ./cmd/pixiv\n' "$goos" "$goarch" "$out"
-go build -trimpath -o "$out" ./cmd/pixiv
+# cgo cache does not track replaced Rust archives; rebuild before linking.
+printf 'GOOS=%s GOARCH=%s go build -a -trimpath -o %s ./cmd/pixiv\n' "$goos" "$goarch" "$out"
+go build -a -trimpath -o "$out" ./cmd/pixiv
 printf 'built %s\n' "$out"

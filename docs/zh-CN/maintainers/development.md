@@ -115,6 +115,8 @@ sh scripts/build-staticlibs.sh --target <rust-target>
 go test ./internal/media/ugoira/staticlib -run '^TestCommittedManifestWhenPresent$' -count=1
 ```
 
+Go 构建缓存不会检测 cgo 链接静态库的替换。Rust 库重建／回填后，Go 验证须使用 `go test -a` 或仅限当前命令的全新 `GOCACHE`。本地／平台构建脚本使用 `go build -a`，避免重新部署仍包含旧编码器的缓存二进制。
+
 不要提交 `internal/media/ugoira/rust/target/`；它是机器产物。完成验证的
 `internal/media/ugoira/rust/staticlib/` 及其 `manifest.json` 是可追溯输入，不能以 ignore 规则隐藏。
 

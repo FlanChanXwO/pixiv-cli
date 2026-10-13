@@ -246,6 +246,8 @@ Partial results retain successful images in requested order, list each failed pa
 
 For Ugoira, omit static `pages` and `quality` parameters; supplying either returns `static_parameters_not_applicable` before archive reads. `animation_format` defaults to `gif` and accepts `apng`. The existing CLI archive-selection policy is reused: prefer original, otherwise use the available archive. The returned `archive_quality` records the actual selected quality; medium is never labeled original. The static regular default is not an animation resize setting.
 
+GIF avoids repeated unchanged regions in opaque animations without changing its quantized pixels, frame count or timing; animations containing transparency keep full-frame background clearing.
+
 APNG uses lossless frame differences where compatible with exact alpha compositing; all frames, dimensions and delays remain intact. This reduces redundant encoding without guaranteeing acceptance of large embedded results by every host.
 
 An animation is one logical page (`total_pages=1`, requested/delivered page 1 on success). Its `pages` entry contains `filename` (`<illust_id>.gif` or `.apng`), actual MIME and byte size, `archive_quality`, and `content_index` pointing to a standard embedded-resource blob with all animation bytes. A separate `preview_content_index` points to PNG `ImageContent` decoded from the generated animation's first frame; this is only a preview, never a substitute for the complete animation. No ffmpeg or new encoder is introduced.

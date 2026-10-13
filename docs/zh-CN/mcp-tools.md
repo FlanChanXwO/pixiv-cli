@@ -199,6 +199,8 @@ structured result 包含 `illust_id`、`title`、`total_pages`、`requested_page
 
 Ugoira 调用必须省略静态 `pages` 和 `quality` 参数；显式提供任意一个会在读取 archive 前返回 `static_parameters_not_applicable`。`animation_format` 默认 `gif`，可选 `apng`。复用 CLI 既有 archive 选择策略：优先 original，否则使用可用 archive；输出 `archive_quality` 记录实际选择，medium 绝不标成 original。静态 regular 默认值不是动画缩放配置。
 
+GIF 在不透明动图中减少未变化区域的重复写入，不改变现有调色像素、帧数或时序；包含透明像素的动图保留完整帧与背景清除。
+
 APNG 在能够精确保留透明合成结果时采用无损帧差分；全部帧、尺寸和时序保持完整。该优化减少重复编码，不保证所有宿主都接受大体积内嵌结果。
 
 动画作为一个逻辑页（`total_pages=1`，成功时请求/交付第1页）。`pages` 项包含 `filename`（`<illust_id>.gif` 或 `.apng`）、实际 MIME 与字节数、`archive_quality`，以及指向完整动画标准 embedded-resource blob 的 `content_index`。另一个 `preview_content_index` 指向从生成动画首帧解码的 PNG `ImageContent`；它仅为预览，不能代替完整动画。没有引入 ffmpeg 或新编码器。

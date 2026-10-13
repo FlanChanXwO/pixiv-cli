@@ -28,7 +28,7 @@ From the repository root, relevant checks include:
 
 ```bash
 go test ./internal/media/ugoira/staticlib -run '^TestCommittedManifestWhenPresent$' -count=1
-go test ./internal/media/ugoira/... -count=1
+go test -a -p 4 ./internal/media/ugoira/... -count=1
 go run ./scripts/cmd/licensebundle --check
 sh scripts/test-build-staticlibs.sh
 sh scripts/test-build-platform.sh

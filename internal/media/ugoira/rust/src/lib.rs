@@ -485,6 +485,7 @@ fn write_global_palette_gif(
         Some(QuantizeMethod::from(palette))
     };
 
+    let mut previous: Option<Vec<u8>> = None;
     for frame_meta in frames {
         cancellation.check()?;
         let decoded = decode_frame(&mut archive, frame_meta, cancellation)?;
@@ -500,18 +501,77 @@ fn write_global_palette_gif(
             first_pass.histogram.has_transparency,
         )?;
         cancellation.check()?;
+        let (width, height) = first_pass.output_size;
+        let mut region = FrameRegion {
+            x: 0,
+            y: 0,
+            width,
+            height,
+        };
+        // 不透明帧复用已显示的调色结果；透明帧仍清空背景，避免残影。
+        if let Some(previous) = &previous {
+            let mut bounds: Option<(u32, u32, u32, u32)> = None;
+            for (index, (current, prior)) in indices.iter().zip(previous).enumerate() {
+                if current != prior {
+                    let (x, y) = (index as u32 % width, index as u32 / width);
+                    bounds = Some(match bounds {
+                        None => (x, y, x, y),
+                        Some((left, top, right, bottom)) => {
+                            (left.min(x), top.min(y), right.max(x), bottom.max(y))
+                        }
+                    });
+                }
+            }
+            region = match bounds {
+                Some((left, top, right, bottom)) => FrameRegion {
+                    x: left,
+                    y: top,
+                    width: right - left + 1,
+                    height: bottom - top + 1,
+                },
+                None => FrameRegion {
+                    x: 0,
+                    y: 0,
+                    width: 1,
+                    height: 1,
+                },
+            };
+        }
+        let buffer = if region.width == width && region.height == height {
+            Cow::Borrowed(indices.as_slice())
+        } else {
+            Cow::Owned(
+                (region.y..region.y + region.height)
+                    .flat_map(|y| {
+                        let start = (y * width + region.x) as usize;
+                        indices[start..start + region.width as usize]
+                            .iter()
+                            .copied()
+                    })
+                    .collect(),
+            )
+        };
         let frame = Frame {
-            width: first_pass.output_size.0 as u16,
-            height: first_pass.output_size.1 as u16,
+            left: region.x as u16,
+            top: region.y as u16,
+            width: region.width as u16,
+            height: region.height as u16,
             delay: gif_delay_ticks(frame_meta.delay, &frame_meta.file)?,
-            dispose: DisposalMethod::Background,
+            dispose: if first_pass.histogram.has_transparency {
+                DisposalMethod::Background
+            } else {
+                DisposalMethod::Keep
+            },
             transparent: first_pass.histogram.has_transparency.then_some(0),
-            buffer: Cow::Owned(indices),
+            buffer,
             ..Frame::default()
         };
         cancellation.check()?;
         encoder.write_frame(&frame)?;
         cancellation.check()?;
+        if !first_pass.histogram.has_transparency {
+            previous = Some(indices);
+        }
     }
     Ok(())
 }
@@ -2886,6 +2946,141 @@ mod tests {
         assert_eq!((first.delay, second.delay), (8, 6));
         assert!(first.buffer[0] > first.buffer[1]);
         assert!(second.buffer[1] > second.buffer[0]);
+        assert!(decoder.read_next_frame().unwrap().is_none());
+    }
+
+    #[test]
+    fn gif_changed_regions_preserve_complete_opaque_frames_and_delays() {
+        let dir = tempdir().unwrap();
+        let zip_path = dir.path().join("ugoira.zip");
+        let out_path = dir.path().join("out.gif");
+        let first = ImageBuffer::from_fn(16, 12, |x, y| {
+            if (x + y) % 2 == 0 {
+                Rgba([255, 0, 0, 255])
+            } else {
+                Rgba([0, 255, 0, 255])
+            }
+        });
+        let mut second = first.clone();
+        second.put_pixel(9, 7, Rgba([0, 255, 0, 255]));
+        let mut fourth = second.clone();
+        fourth.put_pixel(2, 3, Rgba([255, 0, 0, 255]));
+        let originals = [first, second.clone(), second, fourth];
+        let names = ["000000.png", "000001.png", "000002.png", "000003.png"];
+        write_images_zip(
+            &zip_path,
+            &names
+                .iter()
+                .zip(&originals)
+                .map(|(name, image)| (*name, image.clone()))
+                .collect::<Vec<_>>(),
+        );
+        let frames = names
+            .iter()
+            .enumerate()
+            .map(|(index, name)| UgoiraFrame {
+                file: name.to_string(),
+                delay: 40 + index as i64 * 10,
+            })
+            .collect::<Vec<_>>();
+        encode_gif(
+            &zip_path,
+            &frames,
+            &out_path,
+            0,
+            &CancellationToken::default(),
+        )
+        .unwrap();
+        let mut options = gif::DecodeOptions::new();
+        options.set_color_output(gif::ColorOutput::RGBA);
+        let mut decoder = options.read_info(File::open(out_path).unwrap()).unwrap();
+        assert_eq!((decoder.width(), decoder.height()), (16, 12));
+        assert_eq!(decoder.repeat(), Repeat::Infinite);
+        let mut canvas = RgbaImage::new(16, 12);
+        for (index, expected) in originals.iter().enumerate() {
+            let frame = decoder.read_next_frame().unwrap().unwrap();
+            assert_eq!(frame.delay, 4 + index as u16);
+            assert_eq!(frame.transparent, None);
+            for y in 0..frame.height as u32 {
+                for x in 0..frame.width as u32 {
+                    let offset = ((y * frame.width as u32 + x) * 4) as usize;
+                    canvas.put_pixel(
+                        frame.left as u32 + x,
+                        frame.top as u32 + y,
+                        Rgba(frame.buffer[offset..offset + 4].try_into().unwrap()),
+                    );
+                }
+            }
+            assert_eq!(&canvas, expected, "decoded canvas differs at frame {index}");
+            if index > 0 {
+                assert_eq!(
+                    (frame.width, frame.height),
+                    (1, 1),
+                    "unchanged pixels must not repeat a full canvas"
+                );
+            }
+            assert_eq!(frame.dispose, DisposalMethod::Keep);
+        }
+        assert!(decoder.read_next_frame().unwrap().is_none());
+    }
+
+    #[test]
+    fn gif_transparent_frames_keep_background_clear_without_opaque_residue() {
+        let dir = tempdir().unwrap();
+        let zip_path = dir.path().join("ugoira.zip");
+        let out_path = dir.path().join("out.gif");
+        let first = ImageBuffer::from_fn(2, 1, |x, _| {
+            if x == 0 {
+                Rgba([255, 0, 0, 255])
+            } else {
+                Rgba([0, 0, 0, 0])
+            }
+        });
+        let second = ImageBuffer::from_fn(2, 1, |x, _| {
+            if x == 1 {
+                Rgba([0, 255, 0, 255])
+            } else {
+                Rgba([0, 0, 0, 0])
+            }
+        });
+        write_images_zip(
+            &zip_path,
+            &[
+                ("000000.png", first.clone()),
+                ("000001.png", second.clone()),
+            ],
+        );
+        let frames = [
+            UgoiraFrame {
+                file: "000000.png".into(),
+                delay: 40,
+            },
+            UgoiraFrame {
+                file: "000001.png".into(),
+                delay: 60,
+            },
+        ];
+        encode_gif(
+            &zip_path,
+            &frames,
+            &out_path,
+            0,
+            &CancellationToken::default(),
+        )
+        .unwrap();
+        let mut options = gif::DecodeOptions::new();
+        options.set_color_output(gif::ColorOutput::RGBA);
+        let mut decoder = options.read_info(File::open(out_path).unwrap()).unwrap();
+        for expected in [first, second] {
+            let frame = decoder.read_next_frame().unwrap().unwrap();
+            assert_eq!(
+                (frame.left, frame.top, frame.width, frame.height),
+                (0, 0, 2, 1)
+            );
+            assert_eq!(frame.dispose, DisposalMethod::Background);
+            assert!(frame.transparent.is_some());
+            assert_eq!(frame.buffer.as_ref(), expected.as_raw());
+        }
         assert!(decoder.read_next_frame().unwrap().is_none());
     }
 
