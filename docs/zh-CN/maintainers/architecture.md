@@ -363,6 +363,7 @@ HTTP owner 精确匹配转义路径，不使用 ServeMux 路径归一化。入�
 - 多页作品和 ugoira 会建立作品子目录。
 - 单页与多页作品从上游 URL path 推导扩展名，并与模板生成的文件名一样规范化跨平台非法字符；Pixiv 缩略图会在资源响应提供明确 Content-Type 时按实际图片格式修正 URL 后缀，未知媒体类型保留 URL 扩展名。
 - ugoira 先下载 SDK 验证的 `download_url` zip，再由 Rust FFI encoder 合成为 GIF/APNG，或由 public SDK 原样发布 ZIP/提取 frames；认证态可合法选择 App medium，绝不把它标记成 original。
+- APNG 保留全部帧与精确时序；变化矩形内仅在所有变化像素均不透明时，将未变化像素编码为透明差分。否则使用原像素覆盖，精确保留透明度。
 
 Rust crate 以 target 专用 staticlib 接入 cgo：darwin/linux/windows 各有 amd64/arm64 selector；Linux
 selector 还显式链接系统 `libm`，承接 Rust/image staticlib 的 `sinf`/`expf` 符号；Windows selector 以

@@ -353,6 +353,7 @@ Owns download and local file persistence:
 - Multi-page works and ugoira create a per-work subdirectory.
 - Single-page and multi-page works derive their extension from the upstream URL path and normalize cross-platform illegal characters the same way as the template-generated filename; Pixiv thumbnails use an explicit resource Content-Type to correct an ambiguous URL suffix when available, while unknown media types retain the URL extension.
 - ugoira first downloads the SDK-verified `download_url` zip, then the Rust FFI encoder synthesizes GIF/APNG, or the public SDK publishes the ZIP/extracted frames as-is; an authenticated session may legitimately select App medium, but it must never be labeled as original.
+- APNG preserves every frame and exact delay; within a changed rectangle, unchanged pixels become transparent only when all changed pixels are opaque. Otherwise the rectangle uses source replacement to preserve alpha exactly.
 
 The Rust crate is wired into cgo as a target-specific staticlib: darwin/linux/windows each have an amd64/arm64 selector; the Linux
 selector also explicitly links the system `libm`, taking over the `sinf`/`expf` symbols of the Rust/image staticlib; the Windows selector passes

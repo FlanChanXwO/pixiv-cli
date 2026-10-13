@@ -338,7 +338,7 @@ pub fn encode_apng(
             height: output_size.1,
         },
         first_delay,
-        true,
+        None,
         &mut sequence,
         cancellation,
     )?;
@@ -360,7 +360,7 @@ pub fn encode_apng(
             &current,
             region,
             delay,
-            false,
+            Some(&previous),
             &mut sequence,
             cancellation,
         )?;
@@ -801,11 +801,26 @@ fn write_apng_frame<W: Write>(
     image: &RgbaImage,
     region: FrameRegion,
     delay: (u16, u16),
-    first_frame: bool,
+    previous: Option<&RgbaImage>,
     sequence: &mut u64,
     cancellation: &CancellationToken,
 ) -> Result<(), EncodeError> {
     cancellation.check()?;
+    let mut unchanged = false;
+    let use_over = previous.is_some_and(|previous| {
+        let opaque_changes = frame_region_rows(image, region)
+            .zip(frame_region_rows(previous, region))
+            .all(|(current, previous)| {
+                current
+                    .chunks_exact(4)
+                    .zip(previous.chunks_exact(4))
+                    .all(|(current, previous)| {
+                        unchanged |= current == previous;
+                        current == previous || current[3] == 255
+                    })
+            });
+        opaque_changes && unchanged
+    });
     let mut control = [0u8; 26];
     control[0..4].copy_from_slice(&next_apng_sequence(sequence)?.to_be_bytes());
     control[4..8].copy_from_slice(&region.width.to_be_bytes());
@@ -815,14 +830,18 @@ fn write_apng_frame<W: Write>(
     control[20..22].copy_from_slice(&delay.0.to_be_bytes());
     control[22..24].copy_from_slice(&delay.1.to_be_bytes());
     control[24] = 0; // DisposeOp::None
-    control[25] = 0; // BlendOp::Source
+    control[25] = u8::from(use_over); // 不透明变化可用 Over；透明变化仍需 Source 覆盖。
     write_png_chunk(output, *b"fcTL", &control)?;
 
     // png 0.18.1 的单个 APNG StreamWriter 在动态 set_frame_dimension 后不会按 bbox
     // 重建 prev/curr/filtered 行缓冲。这里为每个 bbox 创建普通 PNG stream writer，令其
     // 行缓冲从一开始就是 bbox width；relay 只转发 IDAT 压缩字节，不保存 payload。
-    let mut relay =
-        PngFrameDataRelay::new(output, sequence, first_frame, (region.width, region.height));
+    let mut relay = PngFrameDataRelay::new(
+        output,
+        sequence,
+        previous.is_none(),
+        (region.width, region.height),
+    );
     {
         let mut encoder = PngEncoder::new(&mut relay, region.width, region.height);
         encoder.set_color(ColorType::Rgba);
@@ -832,9 +851,30 @@ fn write_apng_frame<W: Write>(
         let mut writer = encoder.write_header()?;
         {
             let mut stream = writer.stream_writer()?;
-            for row in frame_region_rows(image, region) {
-                cancellation.check()?;
-                stream.write_all(row)?;
+            if let Some(previous) = previous.filter(|_| use_over) {
+                let mut delta = vec![0; region.width as usize * 4];
+                for (current, previous) in
+                    frame_region_rows(image, region).zip(frame_region_rows(previous, region))
+                {
+                    cancellation.check()?;
+                    for ((target, current), previous) in delta
+                        .chunks_exact_mut(4)
+                        .zip(current.chunks_exact(4))
+                        .zip(previous.chunks_exact(4))
+                    {
+                        if current == previous {
+                            target.fill(0);
+                        } else {
+                            target.copy_from_slice(current);
+                        }
+                    }
+                    stream.write_all(&delta)?;
+                }
+            } else {
+                for row in frame_region_rows(image, region) {
+                    cancellation.check()?;
+                    stream.write_all(row)?;
+                }
             }
             cancellation.check()?;
             stream.finish()?;
@@ -2455,6 +2495,62 @@ mod tests {
     }
 
     #[test]
+    fn apng_sparse_changes_preserve_pixels_with_smaller_frame_payloads() {
+        let dir = tempdir().unwrap();
+        let zip_path = dir.path().join("ugoira.zip");
+        let out_path = dir.path().join("out.apng");
+        let first = ImageBuffer::from_fn(128, 96, |x, y| {
+            let n = (y * 128 + x).wrapping_mul(2_654_435_761);
+            Rgba([n as u8, (n >> 8) as u8, (n >> 16) as u8, 255])
+        });
+        let mut second = first.clone();
+        second.put_pixel(0, 0, Rgba([255, 255, 255, 255]));
+        second.put_pixel(127, 95, Rgba([0, 0, 0, 255]));
+        write_images_zip(
+            &zip_path,
+            &[
+                ("000000.png", first.clone()),
+                ("000001.png", second.clone()),
+            ],
+        );
+        let frames = vec![
+            UgoiraFrame {
+                file: "000000.png".into(),
+                delay: 80,
+            },
+            UgoiraFrame {
+                file: "000001.png".into(),
+                delay: 125,
+            },
+        ];
+        encode_apng(
+            &zip_path,
+            &frames,
+            &out_path,
+            0,
+            &CancellationToken::default(),
+        )
+        .unwrap();
+        let body = std::fs::read(&out_path).unwrap();
+        let first_bytes: usize = png_chunks_data(&body, b"IDAT")
+            .iter()
+            .map(|data| data.len())
+            .sum();
+        let second_bytes: usize = png_chunks_data(&body, b"fdAT")
+            .iter()
+            .map(|data| data.len() - 4)
+            .sum();
+        assert!(
+            second_bytes < first_bytes / 4,
+            "unchanged texture was repeated: {second_bytes}/{first_bytes}"
+        );
+        assert_eq!(
+            decode_apng_rgba_frames(&out_path),
+            vec![first.into_raw(), second.into_raw()]
+        );
+    }
+
+    #[test]
     fn apng_delta_frames_replay_to_original_rgba_images() {
         let dir = tempdir().unwrap();
         let zip_path = dir.path().join("ugoira.zip");
@@ -2463,13 +2559,16 @@ mod tests {
             Rgba([(x * 40) as u8, (y * 80) as u8, 120, (x * 70 + 40) as u8])
         });
         let mut second = first.clone();
-        second.put_pixel(1, 0, Rgba([200, 10, 20, 0]));
+        second.put_pixel(1, 0, Rgba([200, 10, 20, 128]));
         second.put_pixel(2, 1, Rgba([5, 220, 30, 255]));
+        let mut third = second.clone();
+        third.put_pixel(0, 1, Rgba([80, 20, 10, 0]));
         write_images_zip(
             &zip_path,
             &[
                 ("000000.png", first.clone()),
                 ("000001.png", second.clone()),
+                ("000002.png", third.clone()),
             ],
         );
         let frames = vec![
@@ -2480,6 +2579,10 @@ mod tests {
             UgoiraFrame {
                 file: "000001.png".to_string(),
                 delay: 60,
+            },
+            UgoiraFrame {
+                file: "000002.png".to_string(),
+                delay: 100,
             },
         ];
 
@@ -2493,7 +2596,10 @@ mod tests {
         .unwrap();
 
         let decoded = decode_apng_rgba_frames(&out_path);
-        assert_eq!(decoded, vec![first.into_raw(), second.into_raw()]);
+        assert_eq!(
+            decoded,
+            vec![first.into_raw(), second.into_raw(), third.into_raw()]
+        );
     }
 
     #[test]
@@ -3064,18 +3170,26 @@ mod tests {
                 (ColorType::Rgba, BitDepth::Eight)
             );
             let control = reader.info().frame_control.unwrap();
-            assert_eq!(
-                (control.blend_op, control.dispose_op),
-                (BlendOp::Source, DisposeOp::None)
-            );
+            assert_eq!(control.dispose_op, DisposeOp::None);
             let row_bytes = output.width as usize * 4;
             for row in 0..output.height as usize {
                 let source_start = row * row_bytes;
                 let target_start = ((control.y_offset as usize + row) * canvas_width as usize
                     + control.x_offset as usize)
                     * 4;
-                canvas[target_start..target_start + row_bytes]
-                    .copy_from_slice(&buffer[source_start..source_start + row_bytes]);
+                let target = &mut canvas[target_start..target_start + row_bytes];
+                let source = &buffer[source_start..source_start + row_bytes];
+                if control.blend_op == BlendOp::Source {
+                    target.copy_from_slice(source);
+                } else {
+                    for (target, source) in target.chunks_exact_mut(4).zip(source.chunks_exact(4)) {
+                        match source[3] {
+                            0 => {}
+                            255 => target.copy_from_slice(source),
+                            _ => panic!("delta blend must preserve exact pixels"),
+                        }
+                    }
+                }
             }
             frames.push(canvas.clone());
         }
