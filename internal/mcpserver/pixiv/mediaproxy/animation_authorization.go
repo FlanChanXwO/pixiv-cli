@@ -3,6 +3,7 @@ package mediaproxy
 import (
 	"errors"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"time"
 
@@ -23,6 +24,12 @@ func (s *Service) startAnimationAuthorizationWatch() error {
 	dir := filepath.Dir(path)
 	if err := watcher.Add(dir); err != nil {
 		return errors.Join(err, watcher.Close())
+	}
+	// Windows 只报告目录内部变化；父目录监听补齐目录本身被移动的通知。
+	if runtime.GOOS == "windows" {
+		if err := watcher.Add(filepath.Dir(dir)); err != nil {
+			return errors.Join(err, watcher.Close())
+		}
 	}
 	a := s.animations
 	a.watchDone = make(chan struct{})

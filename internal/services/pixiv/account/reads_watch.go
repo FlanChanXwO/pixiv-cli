@@ -5,6 +5,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"runtime"
 	"slices"
 
 	"github.com/fsnotify/fsnotify"
@@ -32,6 +33,12 @@ func (m *ReadSessions) Watch(ctx context.Context, path string) error {
 	dir := filepath.Dir(path)
 	if err := watcher.Add(dir); err != nil {
 		return errors.Join(err, watcher.Close())
+	}
+	// Windows 只报告目录内部变化；父目录监听补齐目录本身被移动的通知。
+	if runtime.GOOS == "windows" {
+		if err := watcher.Add(filepath.Dir(dir)); err != nil {
+			return errors.Join(err, watcher.Close())
+		}
 	}
 	watchCtx, cancel := context.WithCancel(ctx)
 	m.watchCancel = cancel
