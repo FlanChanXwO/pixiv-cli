@@ -651,7 +651,7 @@ v1 CLI 不会读取或迁移旧的 `~/.pixiv-cli/auth.json`。从旧版本切换
 | `PIXIV_LOG_LEVEL` | `info` | 诊断级别：`info` 或 `debug`，覆盖 `[logging].level`。 |
 | `PIXIV_LOG_FORMAT` | `text` | 诊断 stderr 格式：`text` 或 `json`，覆盖 `[logging].format`。 |
 | `SAUCENAO_API_KEY` | 空 | SauceNAO credential；覆盖私有配置值且永不打印。 |
-| `https_proxy` / `HTTPS_PROXY` | 空 | `http`、`https`、`socks5` 或 `socks5h` 代理 URI；优先使用小写 `https_proxy`。 |
+| `https_proxy` / `HTTPS_PROXY` | 空 | `http`、`https`、`socks5` 或 `socks5h` 代理 URI；在区分大小写的系统上优先使用小写 `https_proxy`；Windows 将这两种拼写视为同一个环境变量。 |
 
 CLI 数据命令在账号池关闭时使用 `pixiv auth use` 的显式/默认账号，启用时从数据库选择 eligible 账号；不接受身份选择参数。
 

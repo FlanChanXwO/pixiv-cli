@@ -792,7 +792,7 @@ with v1. The transfer is explicit so a stale or unexpected local file cannot bec
 | `PIXIV_LOG_LEVEL` | `info` | Diagnostic level: `info` or `debug`; overrides `[logging].level`. |
 | `PIXIV_LOG_FORMAT` | `text` | Diagnostic stderr format: `text` or `json`; overrides `[logging].format`. |
 | `SAUCENAO_API_KEY` | empty | SauceNAO credential; overrides the private config value and is never printed. |
-| `https_proxy` / `HTTPS_PROXY` | empty | Proxy URI (`http`, `https`, `socks5`, or `socks5h`); the lowercase `https_proxy` takes precedence. |
+| `https_proxy` / `HTTPS_PROXY` | empty | Proxy URI (`http`, `https`, `socks5`, or `socks5h`); the lowercase `https_proxy` takes precedence on case-sensitive systems. Windows treats both spellings as the same environment variable. |
 
 CLI data commands select the explicit/default account through `pixiv auth use` when pooling is disabled, or an eligible database account when pooling is enabled; they do not accept credential-selection flags.
 

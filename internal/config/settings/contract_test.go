@@ -367,8 +367,9 @@ func TestEnvironmentPrecedenceKeepsDeclaredOrder(t *testing.T) {
 	t.Run("lowercase proxy wins over uppercase", func(t *testing.T) {
 		path := filepath.Join(t.TempDir(), "config.toml")
 		require.NoError(t, os.WriteFile(path, []byte("[network]\nhttps_proxy = \"http://file-proxy\"\n"), 0o600))
-		t.Setenv("https_proxy", "http://lower-proxy")
+		// Windows 的环境名不区分大小写；先写大写，避免覆盖要验证的小写值。
 		t.Setenv("HTTPS_PROXY", "http://upper-proxy")
+		t.Setenv("https_proxy", "http://lower-proxy")
 
 		state, err := config.LoadSnapshotAt(path)
 		require.NoError(t, err)
@@ -386,8 +387,8 @@ func TestEnvironmentPrecedenceKeepsDeclaredOrder(t *testing.T) {
 	// 因此 HasValue=false、Value=nil；关键是它**不**回退到 HTTPS_PROXY。
 	t.Run("empty lowercase proxy wins over uppercase", func(t *testing.T) {
 		path := filepath.Join(t.TempDir(), "config.toml")
-		t.Setenv("https_proxy", "")
 		t.Setenv("HTTPS_PROXY", "http://upper-proxy")
+		t.Setenv("https_proxy", "")
 
 		state, err := config.LoadSnapshotAt(path)
 		require.NoError(t, err)
