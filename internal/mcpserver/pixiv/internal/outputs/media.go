@@ -2,7 +2,7 @@ package outputs
 
 import "github.com/modelcontextprotocol/go-sdk/mcp"
 
-// ArtworkMedia indexes only bytes actually included in the MCP content array.
+// ArtworkMedia indexes complete media in content or negotiated App metadata.
 type ArtworkMedia struct {
 	IllustID       int64          `json:"illust_id"`
 	Title          string         `json:"title"`

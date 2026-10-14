@@ -67,10 +67,9 @@ jobs:
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e
         with:
           go-version-file: go.mod
-      - name: Generate embedded frontend assets
+      - name: Validate embedded frontend sources
         shell: bash
         run: |
-          GOOS="$(go env GOHOSTOS)" GOARCH="$(go env GOHOSTARCH)" CGO_ENABLED=0 go run ./scripts/cmd/frontendassets
           GOOS="$(go env GOHOSTOS)" GOARCH="$(go env GOHOSTARCH)" CGO_ENABLED=0 go run ./scripts/cmd/frontendassets --check
       - name: Run offline SDK E2E contract tests
         shell: bash
@@ -159,10 +158,9 @@ jobs:
         shell: bash
         working-directory: internal/media/ugoira/rust
         run: cargo clippy --locked --offline --all-targets -- -D warnings
-      - name: Generate embedded frontend assets
+      - name: Validate embedded frontend sources
         shell: bash
         run: |
-          GOOS="$(go env GOHOSTOS)" GOARCH="$(go env GOHOSTARCH)" CGO_ENABLED=0 go run ./scripts/cmd/frontendassets
           GOOS="$(go env GOHOSTOS)" GOARCH="$(go env GOHOSTARCH)" CGO_ENABLED=0 go run ./scripts/cmd/frontendassets --check
       - name: Test Go sources
         shell: bash
@@ -229,7 +227,7 @@ jobs:
           set -euo pipefail
           test "$(git rev-parse HEAD)" = "$(git rev-parse "$RELEASE_TAG^{commit}")"
           test -z "$(git status --porcelain --untracked-files=all)"
-          test -z "$(git clean -ndx -e /internal/mcpserver/pixiv/gallery/generated/ -e /internal/mcpserver/auth/generated/ -e /internal/services/pixiv/account/loginrelay/loginpage/generated/)"
+          test -z "$(git clean -ndx)"
           archive=$(sh scripts/build-platform.sh \
             --target '${{ matrix.goos }}/${{ matrix.goarch }}' \
             --rust-target '${{ matrix.rust_target }}' \
@@ -240,7 +238,7 @@ jobs:
           git diff --check
           git diff --exit-code
           test -z "$(git status --porcelain --untracked-files=all)"
-          test -z "$(git clean -ndx -e /internal/mcpserver/pixiv/gallery/generated/ -e /internal/mcpserver/auth/generated/ -e /internal/services/pixiv/account/loginrelay/loginpage/generated/)"
+          test -z "$(git clean -ndx)"
           mkdir -p dist
           destination="dist/$(basename "$archive")"
           cp "$archive" "$destination"
@@ -302,7 +300,7 @@ jobs:
         run: |
           set -euo pipefail
           test -z "$(git status --porcelain --untracked-files=all)"
-          test -z "$(git clean -ndx -e /internal/mcpserver/pixiv/gallery/generated/ -e /internal/mcpserver/auth/generated/ -e /internal/services/pixiv/account/loginrelay/loginpage/generated/)"
+          test -z "$(git clean -ndx)"
           binary=$(RUSTUP_TOOLCHAIN='${{ matrix.rust_toolchain }}' sh scripts/build-platform.sh \
             --target '${{ matrix.goos }}/${{ matrix.goarch }}' \
             --rust-target '${{ matrix.rust_target }}' \
@@ -312,7 +310,7 @@ jobs:
           git diff --check
           git diff --exit-code
           test -z "$(git status --porcelain --untracked-files=all)"
-          test -z "$(git clean -ndx -e /internal/mcpserver/pixiv/gallery/generated/ -e /internal/mcpserver/auth/generated/ -e /internal/services/pixiv/account/loginrelay/loginpage/generated/)"
+          test -z "$(git clean -ndx)"
           mkdir -p dist
           cp "$binary" dist/pixiv
       - name: Check the container packaging contract

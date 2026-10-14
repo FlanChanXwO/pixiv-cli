@@ -70,6 +70,14 @@ func TestGalleryEmbeddedAssetsAndMediaCSP(t *testing.T) {
 			tool := &mcp.Tool{Name: "pixiv_show_gallery"}
 			gallery.Attach(tool, media)
 			viewURI, _ := tool.Meta["ui"].(map[string]any)["resourceUri"].(string)
+			mediaTool := &mcp.Tool{Name: "pixiv_artwork_media"}
+			gallery.Attach(mediaTool, media)
+			if mediaTool.Meta == nil || mediaTool.Meta["ui"] == nil {
+				t.Fatal("complete media must have a host view instead of metadata-only output")
+			}
+			if mediaTool.Meta["ui"].(map[string]any)["resourceUri"] != viewURI {
+				t.Fatal("complete media must reuse the current embedded view")
+			}
 			if viewURI == gallery.URI || !strings.HasPrefix(viewURI, gallery.URI+"/sha256-") {
 				t.Fatalf("host UI must use a content-version cache key, got %q", viewURI)
 			}

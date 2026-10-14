@@ -77,15 +77,15 @@ sh scripts/build.sh
 
 ### Go 源码安装
 
-检出精确的已发布 tag，再执行会在 Go 编译前生成前端资源的构建脚本：
+安装精确的已发布 Release tag（替换 `vX.Y.Z`）：
 
 ```bash
-git clone --branch vX.Y.Z --depth 1 https://github.com/FlanChanXwO/pixiv-cli.git
-cd pixiv-cli
-sh scripts/build.sh
+go install github.com/FlanChanXwO/pixiv-cli/cmd/pixiv@vX.Y.Z
 ```
 
-仍需要本机 Go、cgo、C linker 和目标平台的 committed staticlib。产物为 `build/pixiv` 或 `build/pixiv.exe`；直接 `go install ...@tag` 不运行资源生成器，无法构建采用此资源布局的 tag。历史 tag 保留其原有安装契约。已有 Go 安装的二进制仍走旧 `go install` 自更新路径；迁移到采用生成资源的 release 时，需要改为安装该版本的 Release 压缩包。
+使用该 tag 的 `go.mod` 声明的 Go 版本、`CGO_ENABLED=1`、目标 C linker 及仓库提交的目标 Rust staticlib。前端源码直接嵌入，无需生成器或 npm。安装目标为 `GOBIN` 或 `GOPATH/bin`。已有 Go 安装继续自更新到选中 Release 的精确 tag；Go 安装失败时保留旧可执行文件。历史 tag 保留各自构建要求。
+
+检出源码后也可运行 `sh scripts/build.sh`，它会校验提交的原生库并输出 `build/pixiv` 或 `build/pixiv.exe`。
 
 ### Homebrew
 

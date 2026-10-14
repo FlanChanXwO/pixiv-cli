@@ -22,6 +22,7 @@ import (
 	"strings"
 	"sync"
 	"sync/atomic"
+	"syscall"
 	"testing"
 	"testing/iotest"
 	"time"
@@ -32,16 +33,33 @@ import (
 )
 
 func TestAnimationFailedPhasesAreNotReportedAsSuccess(t *testing.T) {
-	for _, stage := range []string{"animation_metadata", "animation_zip_download", "animation_encode"} {
-		t.Run(stage, func(t *testing.T) {
+	for _, tc := range []struct {
+		stage, marker string
+		readErr       error
+		length        string
+	}{
+		{stage: "animation_metadata"},
+		{stage: "animation_zip_download", marker: "animation_zip_incomplete", readErr: io.ErrUnexpectedEOF},
+		{stage: "animation_zip_download", marker: "animation_zip_incomplete", length: "28"},
+		{stage: "animation_zip_download", marker: "animation_zip_reset", readErr: syscall.ECONNRESET},
+		{stage: "animation_zip_download", marker: "animation_zip_timeout", readErr: &url.Error{Op: "Get", URL: "https://i.pximg.net/fixture-private?signature=fixture-private", Err: os.ErrDeadlineExceeded}},
+		{stage: "animation_encode"},
+	} {
+		stage := tc.stage
+		t.Run(stage+"/"+tc.marker, func(t *testing.T) {
+			var opened, closed atomic.Int32
 			s, _, _, _ := newCachedProxyFixture(t, func(r *http.Request) (*http.Response, error) {
 				status := 200
+				header := http.Header{}
 				var body io.Reader
 				switch {
 				case r.URL.Host == "i.pximg.net":
 					body = strings.NewReader("fixture-private-corrupt-zip")
-					if stage == "animation_zip_download" {
-						body = io.MultiReader(body, iotest.ErrReader(fmt.Errorf("fixture-private-download-error")))
+					if tc.readErr != nil {
+						body = io.MultiReader(body, iotest.ErrReader(tc.readErr))
+					}
+					if tc.length != "" {
+						header.Set("Content-Length", tc.length)
 					}
 				case strings.Contains(r.URL.Path, "ugoira"):
 					body = strings.NewReader(`{"ugoira_metadata":{"zip_urls":{"medium":"https://i.pximg.net/frames.zip"},"frames":[{"file":"0.png","delay":80}]}}`)
@@ -51,7 +69,8 @@ func TestAnimationFailedPhasesAreNotReportedAsSuccess(t *testing.T) {
 				default:
 					body = strings.NewReader(`{"illust":{"id":42,"title":"animation","type":"ugoira","page_count":1,"create_date":"2026-01-01T00:00:00Z","user":{"id":7,"name":"artist"}}}`)
 				}
-				return &http.Response{StatusCode: status, Header: http.Header{}, Body: io.NopCloser(body)}, nil
+				opened.Add(1)
+				return &http.Response{StatusCode: status, Header: header, Body: animationObservedBody{body, &closed}}, nil
 			}, 1<<20)
 			var mu sync.Mutex
 			var events []AnimationObservation
@@ -65,9 +84,16 @@ func TestAnimationFailedPhasesAreNotReportedAsSuccess(t *testing.T) {
 			ctx := animationContext(t, s)
 			prepared, err := s.PrepareAnimation(ctx, 72, 42, "gif")
 			require.NoError(t, err)
-			require.Equal(t, "failed", awaitAnimation(t, s, ctx, prepared.Handle).State)
+			failed := awaitAnimation(t, s, ctx, prepared.Handle)
+			require.Equal(t, "failed", failed.State)
+			require.Empty(t, failed.AnimationURL, "failed jobs must not publish incomplete artifacts")
 			// 等待 worker 收尾后再读观察结果，不将 status ready/failed 当作观察回调已完成。
 			s.animations.wg.Wait()
+			files, err := os.ReadDir(s.animations.root)
+			require.NoError(t, err)
+			require.Len(t, files, 2, "failed downloads must remove their private workspace")
+			require.Zero(t, s.animations.used, "failed downloads must release the reserved budget")
+			require.Equal(t, opened.Load(), closed.Load(), "failed reads must close every upstream body")
 			mu.Lock()
 			raw, err := json.Marshal(events)
 			mu.Unlock()
@@ -80,15 +106,35 @@ func TestAnimationFailedPhasesAreNotReportedAsSuccess(t *testing.T) {
 			}
 			require.Contains(t, found, stage)
 			require.Equal(t, true, found[stage]["Failed"], "failed phase must not be reported as success")
+			if tc.marker != "" {
+				require.Contains(t, found, tc.marker, "failed archive reads need a safe diagnostic marker")
+				require.Equal(t, true, found[tc.marker]["Failed"])
+				require.Equal(t, float64(27), found[tc.marker]["Bytes"], "report only the bytes received before failure")
+			}
 			require.Contains(t, found, "animation_generation")
 			require.Equal(t, true, found["animation_generation"]["Failed"])
 			require.Equal(t, float64(0), found["animation_generation"]["Bytes"])
 			require.NotContains(t, string(raw), "fixture-private")
 			require.NotContains(t, string(raw), "pximg.net")
 			require.NotContains(t, string(raw), s.animations.root)
+			before := opened.Load()
+			retried, err := s.PrepareAnimation(ctx, 72, 42, "gif")
+			require.NoError(t, err)
+			require.NotEqual(t, prepared.Handle, retried.Handle)
+			require.Equal(t, "failed", awaitAnimation(t, s, ctx, retried.Handle).State)
+			s.animations.wg.Wait()
+			require.Greater(t, opened.Load(), before, "explicit prepare must retry upstream, not cache a failed result")
+			require.Equal(t, opened.Load(), closed.Load())
 		})
 	}
 }
+
+type animationObservedBody struct {
+	io.Reader
+	closed *atomic.Int32
+}
+
+func (b animationObservedBody) Close() error { b.closed.Add(1); return nil }
 
 func animationContext(t *testing.T, s *Service) context.Context {
 	t.Helper()

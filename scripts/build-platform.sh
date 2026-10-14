@@ -125,9 +125,6 @@ cleanup() {
 }
 trap cleanup EXIT HUP INT TERM
 
-# Generate on the host before compiling packages for the target.
-(cd "$repo_root" && GOOS="$(go env GOHOSTOS)" GOARCH="$(go env GOHOSTARCH)" CGO_ENABLED=0 go run ./scripts/cmd/frontendassets)
-
 CC="$cc" bash "$repo_root/scripts/build-staticlibs.sh" --target "$rust_target" >&2
 restore_manifest
 

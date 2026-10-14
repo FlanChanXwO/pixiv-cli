@@ -5,7 +5,6 @@ import (
 	"crypto/rand"
 	"crypto/sha256"
 	"crypto/subtle"
-	_ "embed"
 	"encoding/base64"
 	"encoding/hex"
 	"html/template"
@@ -18,6 +17,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/FlanChanXwO/pixiv-cli/frontend"
 )
 
 type authorizationRequest struct {
@@ -343,7 +344,6 @@ func randomAuthorizationValue() (string, error) {
 	return base64.RawURLEncoding.EncodeToString(value), nil
 }
 
-//go:embed generated/consent.html
-var consentHTML string
+var consentHTML = frontend.MustLoad().ConsentHTML
 
 var consentTemplate = template.Must(template.New("consent").Parse(consentHTML))

@@ -7,9 +7,11 @@ import (
 	"image/gif"
 	"image/png"
 	"io"
+	"net"
 	"os"
 	"path/filepath"
 	"strconv"
+	"syscall"
 	"time"
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/media/downloader"
@@ -164,11 +166,20 @@ func (s *Service) generateAnimation(ctx context.Context, j *animationJob) error 
 	if length := resource.Header().Get("Content-Length"); err == nil && length != "" {
 		expected, e := strconv.ParseInt(length, 10, 64)
 		if e != nil || expected != n {
-			err = errors.New("incomplete animation archive")
+			err = errors.Join(errors.New("incomplete animation archive"), io.ErrUnexpectedEOF)
 		}
 	}
 	s.observeAnimation(ctx, AnimationObservation{Stage: "animation_zip_download", Duration: time.Since(started), Bytes: n, Failed: err != nil})
 	if err != nil {
+		// 只记录固定类别，避免底层读取错误携带签名地址。
+		var timeout net.Error
+		if ctx.Err() == nil && errors.Is(err, io.ErrUnexpectedEOF) {
+			s.observeAnimation(ctx, AnimationObservation{Stage: "animation_zip_incomplete", Bytes: n, Failed: true})
+		} else if ctx.Err() == nil && errors.Is(err, syscall.ECONNRESET) {
+			s.observeAnimation(ctx, AnimationObservation{Stage: "animation_zip_reset", Bytes: n, Failed: true})
+		} else if ctx.Err() == nil && errors.As(err, &timeout) && timeout.Timeout() {
+			s.observeAnimation(ctx, AnimationObservation{Stage: "animation_zip_timeout", Bytes: n, Failed: true})
+		}
 		return err
 	}
 	if err = s.animationSessionValid(ctx, j); err != nil {

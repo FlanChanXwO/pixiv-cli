@@ -243,8 +243,8 @@ func TestArtworkMediaCancellationClosesBodyAndAccountLease(t *testing.T) {
 }
 
 func TestArtworkMediaUgoiraDeliversAnimationAndPreview(t *testing.T) {
-	for _, tc := range []struct{ format, mime, quality string }{{"", "image/gif", "original"}, {"apng", "image/apng", "original"}, {"gif", "image/gif", "medium"}} {
-		t.Run(tc.format+tc.quality, func(t *testing.T) {
+	for _, tc := range []struct{ format, mime, quality, ui string }{{"", "image/gif", "original", ""}, {"apng", "image/apng", "original", ""}, {"gif", "image/gif", "medium", ""}, {"gif", "image/gif", "original", "text/html;profile=mcp-app"}, {"apng", "image/apng", "original", "text/html;profile=mcp-app"}, {"gif", "image/gif", "original", "text/plain"}} {
+		t.Run(tc.format+tc.quality+"/"+tc.ui, func(t *testing.T) {
 			temp := t.TempDir()
 			t.Setenv("TMPDIR", temp)
 			var archive bytes.Buffer
@@ -299,7 +299,11 @@ func TestArtworkMediaUgoiraDeliversAnimationAndPreview(t *testing.T) {
 			}}, pixivserver.Account{})
 			clientTransport, serverTransport := mcp.NewInMemoryTransports()
 			go func() { _ = protocol.Run(ctx, serverTransport) }()
-			session, err := mcp.NewClient(&mcp.Implementation{Name: "media-observation-test", Version: "1"}, nil).Connect(ctx, clientTransport, nil)
+			var options *mcp.ClientOptions
+			if tc.ui != "" {
+				options = &mcp.ClientOptions{Capabilities: &mcp.ClientCapabilities{Extensions: map[string]any{"io.modelcontextprotocol/ui": map[string]any{"mimeTypes": []string{tc.ui}}}}}
+			}
+			session, err := mcp.NewClient(&mcp.Implementation{Name: "media-observation-test", Version: "1"}, options).Connect(ctx, clientTransport, nil)
 			require.NoError(t, err)
 			defer session.Close()
 			args := map[string]any{"illust_id": 42}
@@ -330,10 +334,27 @@ func TestArtworkMediaUgoiraDeliversAnimationAndPreview(t *testing.T) {
 				format = "gif"
 			}
 			require.Equal(t, "42."+format, p.Filename)
-			blob, ok := result.Content[p.ContentIndex].(*mcp.EmbeddedResource)
-			require.True(t, ok)
-			require.Equal(t, p.Size, len(blob.Resource.Blob))
-			require.Equal(t, tc.mime, blob.Resource.MIMEType)
+			contents := result.Content
+			if tc.ui == "text/html;profile=mcp-app" {
+				require.Len(t, result.Content, 1, "model receives only the independent preview")
+				require.Contains(t, result.Meta, "pixiv/mediaContents", "App must receive the complete original inline")
+				wire, err := json.Marshal(map[string]any{"content": result.Meta["pixiv/mediaContents"]})
+				require.NoError(t, err)
+				var appResult mcp.CallToolResult
+				require.NoError(t, json.Unmarshal(wire, &appResult))
+				contents = appResult.Content
+			} else {
+				require.NotContains(t, result.Meta, "pixiv/mediaContents", "non-App clients retain legacy full content")
+			}
+			animation, ok := contents[p.ContentIndex].(*mcp.ImageContent)
+			require.True(t, ok, "animation must be complete image content")
+			contentMIME := tc.mime
+			if format == "apng" {
+				contentMIME = "image/png"
+			}
+			require.Equal(t, contentMIME, animation.MIMEType)
+			animationBytes := animation.Data
+			require.Equal(t, p.Size, len(animationBytes))
 			eventsMu.Lock()
 			observed := append([]diagnostics.Event(nil), events...)
 			eventsMu.Unlock()
@@ -357,19 +378,22 @@ func TestArtworkMediaUgoiraDeliversAnimationAndPreview(t *testing.T) {
 			require.NotContains(t, string(safe), temp)
 
 			if format == "gif" {
-				decoded, err := gif.DecodeAll(bytes.NewReader(blob.Resource.Blob))
+				decoded, err := gif.DecodeAll(bytes.NewReader(animationBytes))
 				require.NoError(t, err)
 				require.Len(t, decoded.Image, 2)
 				require.Equal(t, []int{8, 12}, decoded.Delay)
 			} else {
-				require.True(t, bytes.HasPrefix(blob.Resource.Blob, []byte("\x89PNG\r\n\x1a\n")))
-				require.Contains(t, string(blob.Resource.Blob), "acTL")
+				require.True(t, bytes.HasPrefix(animationBytes, []byte("\x89PNG\r\n\x1a\n")))
+				require.Contains(t, string(animationBytes), "acTL")
 			}
 			require.NotNil(t, p.PreviewIndex)
 			require.NotEqual(t, p.ContentIndex, *p.PreviewIndex)
-			preview, ok := result.Content[*p.PreviewIndex].(*mcp.ImageContent)
+			preview, ok := contents[*p.PreviewIndex].(*mcp.ImageContent)
 			require.True(t, ok)
 			require.Equal(t, "image/png", preview.MIMEType)
+			if tc.ui == "text/html;profile=mcp-app" {
+				require.Equal(t, preview.Data, result.Content[0].(*mcp.ImageContent).Data)
+			}
 			first, err := png.Decode(bytes.NewReader(preview.Data))
 			require.NoError(t, err)
 			require.Equal(t, image.Rect(0, 0, 2, 2), first.Bounds())

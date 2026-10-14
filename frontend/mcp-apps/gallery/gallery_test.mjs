@@ -91,6 +91,87 @@ const record = {id:'42',type:'illust',title:'<img src=x onerror=alert(1)>',capti
 const elements = node => [node, ...node.children.flatMap(elements)];
 const button = label => elements(cards).find(node => node.tag === 'button' && ((node.getAttribute('aria-label') || node.textContent) === label || node.getAttribute('aria-label') === 'Open ' + label));
 const freshResult = value => { receive({method:'ui/notifications/tool-input',params:{arguments:{}}}); receive({method:'ui/notifications/tool-result',params:value}); };
+const fullGIF = 'R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7';
+const mediaPreview = 'iVBORw0KGgo=';
+const mediaResult = {structuredContent:{illust_id:42,title:'Animation',complete:true,pages:[{page:1,filename:'42.gif',mime_type:'image/gif',size:Buffer.from(fullGIF,'base64').length,content_index:1,preview_content_index:0}]},content:[{type:'image',mimeType:'image/png',data:mediaPreview},{type:'image',mimeType:'image/gif',data:fullGIF}]};
+const callsBeforeMedia = sent.filter(x=>x.message.method==='tools/call').length;
+freshResult(mediaResult);
+assert.ok(button('Play animation'),'full media result must expose animation playback');
+const mediaPreviewImage = elements(cards).find(n=>n.tag==='img'&&!n.hidden);
+assert.deepEqual(Buffer.from(await created.find(x=>x.url===mediaPreviewImage.src).blob.arrayBuffer()),Buffer.from(mediaPreview,'base64'));
+button('Play animation').click();
+const mediaAnimationImage = elements(cards).find(n=>n.tag==='img'&&!n.hidden);
+assert.deepEqual(Buffer.from(await created.find(x=>x.url===mediaAnimationImage.src).blob.arrayBuffer()),Buffer.from(fullGIF,'base64'),'play must use the complete indexed GIF, never its preview');
+const mediaURLs = created.length, mediaAnimationURL = mediaAnimationImage.src;
+button('Show preview').click();button('Play animation').click();
+assert.equal(created.length,mediaURLs,'view toggles reuse decoded content sources');
+assert.equal(sent.filter(x=>x.message.method==='tools/call').length,callsBeforeMedia,'embedded playback must not query or encode again');
+if(downloads){button('Download 42.gif').click();const save=latest('ui/download-file');assert.equal(save.params.contents[0].resource.blob,fullGIF);assert.ok(save.params.contents[0].resource.uri.endsWith('/42.gif'));receive({id:save.id,result:{}});await flush();}
+else {assert.ok(elements(cards).some(n=>n.textContent==='File download is unavailable in this host.'));assert.equal(elements(cards).filter(n=>n.tag==='a').length,0,'missing download capability must not create a fake URL');}
+if(!downloads){
+ freshResult({...mediaResult,_meta:{'pixiv/mediaDownloads':{media_origin:'https://media.test',pages:[{page:1,url:'https://media.test/media/animation/opaque.animation.signature'}]}}});
+ const link=elements(cards).find(n=>n.tag==='a'&&n.getAttribute('aria-label')==='Download 42.gif');
+ assert.ok(link,'host without downloadFile must offer the protected original attachment');
+ assert.equal(link.href,'https://media.test/media/animation/opaque.animation.signature?download=1');
+ freshResult({...mediaResult,_meta:{'pixiv/mediaDownloads':{media_origin:'https://media.test',pages:[{page:1,url:'https://evil.test/file'}]}}});
+ assert.equal(elements(cards).filter(n=>n.tag==='a').length,0,'reject cross-origin download metadata');
+}
+freshResult({structuredContent:{records:[]}});
+assert.ok(revoked.includes(mediaAnimationURL),'leaving media must release its Blob URL');
+freshResult({...mediaResult,content:[mediaResult.content[0]],_meta:{'pixiv/mediaContents':mediaResult.content}});
+assert.ok(button('Play animation'),'App-only inline content must expose full animation playback');
+button('Play animation').click();
+const privateAnimationImage=elements(cards).find(n=>n.tag==='img'&&!n.hidden);
+assert.deepEqual(Buffer.from(await created.find(x=>x.url===privateAnimationImage.src).blob.arrayBuffer()),Buffer.from(fullGIF,'base64'),'App-only delivery preserves every original byte');
+if(downloads){button('Download 42.gif').click();const save=latest('ui/download-file');assert.equal(save.params.contents[0].resource.blob,fullGIF);receive({id:save.id,result:{}});await flush();}
+freshResult({...mediaResult,_meta:{'pixiv/mediaContents':{...mediaResult.content}}});
+assert.ok(elements(cards).some(n=>n.textContent==='Media content is unavailable or invalid.'),'App media must be an array, not an array-like object');
+freshResult({...mediaResult,_meta:{'pixiv/mediaContents':{invalid:true}}});
+assert.ok(elements(cards).some(n=>n.textContent==='Media content is unavailable or invalid.'),'malformed private content must not fall back silently');
+const publishedURL='https://media.test/media/animation/published.animation.signature';
+const publishedOriginal={type:'resource_link',uri:publishedURL,name:'42.gif',mimeType:'image/gif',size:Buffer.from(fullGIF,'base64').length};
+const publishedResult={...mediaResult,content:[mediaResult.content[0]],_meta:{'pixiv/mediaContents':[mediaResult.content[0],publishedOriginal],'pixiv/mediaDownloads':{media_origin:'https://media.test',pages:[{page:1,url:publishedURL}]}}};
+freshResult(publishedResult);assert.ok(button('Play animation'),'published full media must remain playable');
+assert.ok(!elements(cards).some(n=>n.tag==='img'&&n.src===publishedURL),'full binary is loaded only after Play');
+button('Play animation').click();assert.equal(elements(cards).find(n=>n.tag==='img'&&!n.hidden).src,publishedURL);
+if(downloads){button('Download 42.gif').click();const save=latest('ui/download-file');assert.deepEqual(save.params.contents,[publishedOriginal]);receive({id:save.id,result:{}});await flush();}
+else assert.equal(elements(cards).find(n=>n.tag==='a').href,publishedURL+'?download=1');
+const renewMedia = button('Refresh animation');
+assert.ok(renewMedia,'linked media must offer authorization renewal even when only its old download has expired');
+assert.equal(renewMedia.disabled,!tools);
+if(tools){
+ const oldImage=elements(cards).find(n=>n.tag==='img'&&!n.hidden);
+ const beforeRenew=sent.filter(x=>x.message.method==='tools/call').length;
+ oldImage.events.error();
+ assert.equal(sent.filter(x=>x.message.method==='tools/call').length,beforeRenew,'failed media never automatically prepares or retries');
+ renewMedia.click();const renewed=latest('tools/call');
+ assert.deepEqual(renewed.params,{name:'pixiv_gallery_animation',arguments:{action:'prepare',illust_id:42,format:'gif'}},'explicit refresh must request a current authorized animation instead of repeating an expired URL');
+ assert.equal(oldImage.src,'','renewal releases the obsolete source');
+ const freshURL='https://media.test/media/animation/renewed.animation.signature';
+ receive({id:renewed.id,result:{structuredContent:{handle:'media-renewal',state:'ready',animation_url:freshURL,preview_url:'https://media.test/media/animation/renewed.preview.signature',media_origin:'https://media.test',filename:'42.gif',mime_type:'image/gif',size:100}}});await flush();
+ button('Play animation').click();assert.equal(elements(cards).find(n=>n.tag==='img'&&!n.hidden).src,freshURL);
+ if(downloads){button('Download 42.gif').click();const save=latest('ui/download-file');assert.equal(save.params.contents[0].uri,freshURL);receive({id:save.id,result:{}});await flush();}
+ else assert.equal(elements(cards).find(n=>n.tag==='a').href,freshURL+'?download=1');
+ freshResult({structuredContent:{records:[]}});
+ assert.deepEqual(latest('tools/call').params.arguments,{action:'release',handle:'media-renewal'},'leaving renewed media releases its subscription');
+}
+if(tools){
+ freshResult({...publishedResult,structuredContent:{...mediaResult.structuredContent,pages:[{...mediaResult.structuredContent.pages[0],filename:'42.apng',mime_type:'image/apng'}]},_meta:{...publishedResult._meta,'pixiv/mediaContents':[mediaResult.content[0],{...publishedOriginal,mimeType:'image/apng',name:'42.apng'}]}});
+ button('Refresh animation').click();const preparing=latest('tools/call');
+ assert.equal(preparing.params.arguments.format,'apng','refresh preserves the original format even after an earlier GIF view');
+ freshResult({structuredContent:{records:[]}});
+ receive({id:preparing.id,result:{structuredContent:{handle:'late-renewal',state:'queued'}}});await flush();
+ assert.equal(cards.children.length,0,'late renewed result cannot replace a newer view');
+ assert.deepEqual(latest('tools/call').params.arguments,{action:'release',handle:'late-renewal'});
+}
+freshResult({...publishedResult,_meta:{...publishedResult._meta,'pixiv/mediaContents':[mediaResult.content[0],{...publishedOriginal,uri:'https://evil.test/media/animation/file'}]}});
+assert.equal(button('Play animation'),undefined,'reject a full-media link outside the authorized download metadata');
+freshResult({...publishedResult,_meta:{...publishedResult._meta,'pixiv/mediaContents':[mediaResult.content[0],{...publishedOriginal,size:publishedOriginal.size+1}]}});
+assert.equal(button('Play animation'),undefined,'reject mismatched full-media byte metadata');
+freshResult({...mediaResult,content:[mediaResult.content[1],mediaResult.content[1]]});
+assert.ok(elements(cards).some(n=>n.textContent==='Media content is unavailable or invalid.'),'a GIF must not be presented as the independent static PNG preview');
+assert.equal(button('Play animation'),undefined);
+freshResult({structuredContent:{records:[]}});
 const result = {structuredContent:{records:[record],media_origin:'https://media.test',images:[{illust_id:42,page:1,url:'https://media.test/media/signed.fixture'}]},content:[]};
 receive({method:'ui/notifications/tool-result',params:{structuredContent:{records:[record,{...record,id:'43',title:'Second artwork',user:{name:'Second artist'}}],media_origin:'https://media.test',images:[{illust_id:42,page:1,url:'https://media.test/media/first'},{illust_id:43,page:1,url:'https://media.test/media/second'}]}}});
 for(const target of cards.children)intersections.at(-1).callback([{isIntersecting:true,target}]);
@@ -109,7 +190,7 @@ assert.ok(!button('Open artwork'));assert.ok(!button('Load / retry preview'));
 const retry=elements(card).find(n=>n.tag==='button' && n.textContent==='Retry image');assert.equal(retry.hidden,true);
 assert.ok(!elements(card).some(n=>n.textContent===record.caption),'list keeps description in detail');
 assert.ok(!elements(card).some(n=>['artwork-author','rating-badge','page-badge','tag-list'].includes(n.className)),'thumbnail-only list has no metadata overlays');
-assert.equal(sent.filter(x=>x.message.method==='tools/call').length,tools?1:0);
+assert.equal(sent.filter(x=>x.message.method==='tools/call'&&x.message.params.name==='pixiv_show_gallery').length,tools?1:0);
 intersections.at(-1).callback([{isIntersecting:true,target:card}]);await flush();
 if(tools){const batch=latest('tools/call');assert.equal(elements(card).find(n=>n.tag==='img').src,'','do not use historical signed URLs before renewal');receive({id:batch.id,result});await flush();}
 const img=elements(card).find(n=>n.tag==='img');assert.equal(img.src,'https://media.test/media/signed.fixture');assert.equal(img.referrerPolicy,'no-referrer');

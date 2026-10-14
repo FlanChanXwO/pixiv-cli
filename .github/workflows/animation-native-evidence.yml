@@ -86,6 +86,12 @@ jobs:
         run: |
           set -euo pipefail
           CC='${{ matrix.cc }}' go test -a -p 4 ./internal/media/ugoira -run '^TestRustUgoiraEncoderNativeGIFAndAPNG$|^TestRustBoundedOutputCleansPartialFiles$|^TestRustSharedBudgetChecksWritesAndContainsCallbackPanics$' -count=1
+      - name: Verify directly embedded pages and MCP regressions
+        shell: bash
+        run: |
+          set -euo pipefail
+          CC='${{ matrix.cc }}' go test -p 4 ./frontend ./scripts/cmd/frontendassets ./internal/mcpserver/... ./internal/services/pixiv/account/... ./internal/update/... -count=1
+          go run ./scripts/cmd/frontendassets --check
       - name: Record staticlib, binary and archive evidence
         shell: bash
         run: |

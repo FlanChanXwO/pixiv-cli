@@ -1,9 +1,6 @@
 #!/bin/sh
 set -eu
 
-repo_root=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
-(cd "$repo_root" && GOOS="$(go env GOHOSTOS)" GOARCH="$(go env GOHOSTARCH)" CGO_ENABLED=0 go run ./scripts/cmd/frontendassets)
-
 target="$(go env GOOS)/$(go env GOARCH)"
 
 if [ "$target" != "windows/arm64" ]; then

@@ -195,6 +195,10 @@ structured result 包含 `illust_id`、`title`、`total_pages`、`requested_page
 
 `complete=true` 仅描述服务器构造的响应，不证明 host 已接受或展示。host 拒绝整个 payload 时不得声称交付，应改用显式页码调用；不虚构统一 payload 限制。工具注解为 read-only、non-destructive、idempotent、open-world。合成 SDK/MCP 测试不证明 ChatGPT/Gemini 展示能力；真实 host 验收继续后置。
 
+媒体工具也会附带既有 MCP App 视图，用于播放完整媒体和切换独立静态预览。宿主声明文件下载能力时使用其确认流程，否则通过可用的受保护 HTTP 附件在浏览器下载，仍受浏览器限制。服务端复用已编码的动画和预览，受既有动图临时容量、grant、账号版本及 TTL 约束，不重新下载或编码。短期地址仅通过私有 UI 元数据交付，不暴露文件路径。可选暂存失败不会改变完整内嵌结果，但浏览器下载不可用；重启、到期或授权变化都会使地址失效。
+
+客户端通过 `io.modelcontextprotocol/ui` 扩展声明支持 `text/html;profile=mcp-app` 时，`_meta["pixiv/mediaContents"]` 提供 App 专用的索引数组，模型可见的 `content` 仅包含独立 PNG 预览。既有私有动图 owner 已暂存完整原文件时，该数组包含动画的受保护 `resource_link` 和内嵌 PNG 预览；点击播放才读取原质量二进制，下载使用同一原文件，保留 grant、账号版本和到期检查。存在该私有数组时，`content_index` 和 `preview_content_index` 均指向它。可选暂存不可用时仍在数组中保留完整内嵌图片内容；宿主仍可能拒绝大响应，不能把服务端准备成功当作已接收。未声明 UI 能力或声明了其他 MIME 的客户端继续收到原有完整 `content`；静态媒体和公开输入保持不变。对链接交付的动图，Refresh animation 会按原格式通过 `pixiv_gallery_animation` 显式重新授权，替换过期的播放／下载地址，并复用现有状态查询和订阅释放流程。图片失败不会自动重新准备；宿主不允许调用服务端工具时无法续签过期链接。
+
 ### Ugoira 动画
 
 Ugoira 调用必须省略静态 `pages` 和 `quality` 参数；显式提供任意一个会在读取 archive 前返回 `static_parameters_not_applicable`。`animation_format` 默认 `gif`，可选 `apng`。复用 CLI 既有 archive 选择策略：优先 original，否则使用可用 archive；输出 `archive_quality` 记录实际选择，medium 绝不标成 original。静态 regular 默认值不是动画缩放配置。
@@ -203,7 +207,7 @@ GIF 在不透明动图中减少未变化区域的重复写入，不改变现有�
 
 APNG 在能够精确保留透明合成结果时采用无损帧差分；全部帧、尺寸和时序保持完整。该优化减少重复编码，不保证所有宿主都接受大体积内嵌结果。
 
-动画作为一个逻辑页（`total_pages=1`，成功时请求/交付第1页）。`pages` 项包含 `filename`（`<illust_id>.gif` 或 `.apng`）、实际 MIME 与字节数、`archive_quality`，以及指向完整动画标准 embedded-resource blob 的 `content_index`。另一个 `preview_content_index` 指向从生成动画首帧解码的 PNG `ImageContent`；它仅为预览，不能代替完整动画。没有引入 ffmpeg 或新编码器。
+动画作为一个逻辑页（`total_pages=1`，成功时请求/交付第1页）。`pages` 项包含 `filename`（`<illust_id>.gif` 或 `.apng`）、实际 MIME 与字节数、`archive_quality`，以及指向包含完整动画字节的标准 `ImageContent` 的 `content_index`。APNG 内容采用 PNG 家族的 `image/png` 媒体类型，全部动画 chunk 保持完整；结构化 `mime_type` 仍为 `image/apng`，文件名仍为 `.apng`。接收方应根据内容索引与文件名区分完整动画和独立预览，不能把每个 `image/png` 内容都视为预览。另一个 `preview_content_index` 指向从生成动画首帧解码的 PNG `ImageContent`；它仅为预览，不能代替完整动画。没有引入 ffmpeg 或新编码器。
 
 原生 encoder 使用私有临时工作目录；SDK archive 保存、编码、预览解码与清理均在同一账号 lease 内完成，成功响应前移除目录。失败/取消不公开本地路径，也不把仅有预览的结果标成完成。host 的播放/下载支持仍需后置真实验收；本地 GIF/APNG 解码与清理测试不替代该验收。
 
@@ -315,7 +319,7 @@ FANBOX tools 共享协议 server，不共享 Pixiv 凭据或账号池。两产�
 
 ## MCP Apps 作品预览
 
-只有 `pixiv_show_gallery` 将结果关联到 Gallery UI（`text/html;profile=mcp-app`、`_meta.ui.resourceUri`）。稳定入口 `ui://pixiv-cli/gallery` 继续可读取；工具引用按最终前端内容（包含注入的 canonical 媒体 origin）生成的额外 `ui://pixiv-cli/gallery/sha256-<digest>` 别名，使宿主 UI 缓存能够识别更新。历史版本别名在重新读取时交付当前页面；摘要用于缓存身份，不承诺历史内容完整性。普通搜索、排行、推荐和详情工具只返回数据，不绑定 UI。仅在用户明确要求看图或画廊时调用展示工具；最终渲染仍由 host 决定。
+`pixiv_show_gallery` 和 `pixiv_artwork_media` 将结果关联到 Gallery UI（`text/html;profile=mcp-app`、`_meta.ui.resourceUri`）。稳定入口 `ui://pixiv-cli/gallery` 继续可读取；工具引用按最终前端内容（包含注入的 canonical 媒体 origin）生成的额外 `ui://pixiv-cli/gallery/sha256-<digest>` 别名，使宿主 UI 缓存能够识别更新。历史版本别名在重新读取时交付当前页面；摘要用于缓存身份，不承诺历史内容完整性。普通搜索、排行、推荐和详情工具只返回数据，不绑定 UI。仅在用户明确要求看图或画廊时调用展示工具；最终渲染仍由 host 决定。
 
 输入：必填非空正整数数组 `illust_ids`；可选正整数 `page`（默认 1）和 `quality`（默认 `thumbnail`，另支持 `regular`、`original`）。重复 ID 保留首次位置。工具读取 metadata，不重复搜索；返回 `records`、`images`（作品 ID、页码、URL）、`failures`，以及配置反代时的 `media_origin`。逐项失败保留其他结果并设置 `isError`。画廊仅展示传入集合；需要更多作品时，先用原数据工具续页，再明确展示新画廊。
 
@@ -332,6 +336,8 @@ Gallery 去重后在配置并发上限内查询作品，保持输入顺序和逐
 进程缓存按 grant 隔离，使用 [CLI reference](cli-reference.md#mcp-http-server) 中的启动配置，默认 256 MiB、15 分钟、并发 4。合并同键 metadata 查询，仅缓存成功 metadata 和完整光栅图片；命中仍检查 grant 授权及当前账号／会话版本。收藏状态和写操作不缓存。图片通过上游状态和文件头校验后开始流式发送；有可信 Content-Length 时保留，否则不声明长度。传输中断会关闭上游资源并丢弃填充缓冲，不向图片字节追加错误文本。固定阶段观测区分会话等待／刷新、作品查询、图片首包、传输及缓存命中，不包含 token、grant 或签名地址。
 
 
+ZIP 正文读取失败且任务上下文仍有效时，提前 EOF 或 Content-Length 不符额外记录固定标记 `animation_zip_incomplete`，连接重置记录 `animation_zip_reset`，底层读取器报告超时时记录 `animation_zip_timeout`。标记仅携带已读取字节数，不包含原始错误或签名地址，不改变重试、时限、输出质量或工具错误。
+
 ### `pixiv_gallery_animation`
 
 Gallery 动图控制支持 `action: prepare`，输入正整数 `illust_id` 和可选 `format`（默认 `gif`，也可选 `apng`）。`status` 与 `release` 只接收不透明 `handle`。每次准备获得独立订阅，控制响应不嵌入动图字节。状态为 `queued`、`downloading`、`encoding`、`ready`、`failed`、`cancelled`、`expired`，不伪造进度百分比。每两秒查询状态；终态停止查询，重试必须由用户明确触发。
@@ -342,7 +348,7 @@ Gallery 动图控制支持 `action: prepare`，输入正整数 `illust_id` 和�
 
 私有目录／文件权限为 0700／0600。ZIP、原生输出预留、预览和待交付产物共用独立的启动磁盘预算（`mcp_gallery_animation_temp_capacity_mib`，默认 1024 MiB）。写入前检查容量；原生写入通过内部同步回调按实际字节申请空间，容量足够时生成另一格式仍保留未使用的就绪产物。只有空间确实不足时才淘汰可回收产物；不足时明确失败，不截断交付或降低编码质量。过期／未使用的就绪产物可淘汰，读取中的文件等待句柄关闭再删除。服务关闭时等待任务及读取退出，再删除自身工作目录；启动时仅清理带本服务标记且系统生命周期锁已释放的目录；活跃实例及归属不明的目录保留。临时文件生成与原生输出预留共用队列，避免并发准备误报容量不足；就绪文件仍可并发读取。首次准备仍需要下载和编码，不承诺固定公网耗时。
 
-开启 debug 诊断时，`pixiv_artwork_media` 与 `pixiv_gallery_animation` 的 HTTP 和 stdio 响应会记录 `mcp_response_serialization`，包含实际结果 JSON 编码耗时和字节数，不包含 JSON-RPC 外层及网络传输时间。debug 下 HTTP POST 响应还逐次记录底层 `mcp_http_write`（接受字节数与调用耗时）和 `mcp_http_flush`（调用耗时），区分写入／Flush 失败、请求取消和服务关闭。观测保留 SDK framing，不证明对端收齐，不记录请求／响应正文或 header。普通日志级别保留原编码路径；HTTP 与协议诊断 scope 重叠时，不重复编码或记录。动图交付中断记录为失败，使用固定的请求取消／传输中断原因；不写入原始错误、凭据或 capability 地址。
+开启 debug 诊断时，`pixiv_artwork_media` 与 `pixiv_gallery_animation` 的 MCP 响应会记录 `mcp_response_serialization`，包含实际结果 JSON 编码耗时和字节数，不包含 JSON-RPC 外层及网络传输时间。debug 下 HTTP POST 响应还逐次记录底层 `mcp_http_write`（接受字节数与调用耗时）和 `mcp_http_flush`（调用耗时），区分写入／Flush 失败、请求取消和服务关闭。观测保留 SDK framing，不证明对端收齐，不记录请求／响应正文或 header。普通日志级别保留原编码路径；HTTP 与协议诊断 scope 重叠时，不重复编码或记录。动图交付中断记录为失败，使用固定的请求取消／传输中断原因；不写入原始错误、凭据或 capability 地址。
 
 现有 `pixiv_artwork_media` 动图路径还记录作品查询、动图元数据、ZIP 下载、实际观测到的原生编码排队／编码及产物读取阶段。`animation_generation` 在临时文件清理后记录最终生成结果，包含失败和请求取消；失败字节数为零，成功为动画大小。这些生成阶段不包含响应序列化和网络交付。进入原生队列前失败的编码尝试不伪造排队耗时。
 

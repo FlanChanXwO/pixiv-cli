@@ -6,9 +6,11 @@ package loginpage
 
 import (
 	"bytes"
-	"embed"
 	"html/template"
 	"io"
+	"io/fs"
+
+	"github.com/FlanChanXwO/pixiv-cli/frontend"
 )
 
 const (
@@ -19,14 +21,16 @@ const (
 	failureMessage = "Login could not be completed. Return to the terminal to view details or try again."
 )
 
-//go:embed generated/templates/*.html
-var templatesFS embed.FS
+var templatesFS = frontend.MustLoad().Login
 
-// 页面模板与样式均随 CLI 二进制分发；不依赖运行环境中的外部静态文件。
-// 样式为本包维护的静态资源，故以 template.CSS 传入模板，避免被当作不可信内容替换。
-//
-//go:embed generated/page.css
-var stylesheet string
+// 样式只来自随程序嵌入的源码，运行时不读取本地文件。
+var stylesheet = func() string {
+	value, err := fs.ReadFile(templatesFS, "page.css")
+	if err != nil {
+		panic(err)
+	}
+	return string(value)
+}()
 
 type pageData struct {
 	Stylesheet template.CSS
@@ -39,9 +43,9 @@ type pageData struct {
 }
 
 var (
-	manualTemplate   = mustParse("generated/templates/manual.html")
-	callbackTemplate = mustParse("generated/templates/callback-relay.html")
-	resultTemplate   = mustParse("generated/templates/result.html")
+	manualTemplate   = mustParse("manual.html")
+	callbackTemplate = mustParse("callback-relay.html")
+	resultTemplate   = mustParse("result.html")
 
 	callbackPage      = mustRender(callbackTemplate, bridgeData())
 	successResultPage = mustRender(resultTemplate, resultData(true))
@@ -49,7 +53,7 @@ var (
 )
 
 func mustParse(name string) *template.Template {
-	return template.Must(template.ParseFS(templatesFS, "generated/templates/layout.html", name))
+	return template.Must(template.ParseFS(templatesFS, "layout.html", name))
 }
 
 // mustRender 只用于不含运行期数据的嵌入页面；资源损坏是构建不变量，应在启动时显露。

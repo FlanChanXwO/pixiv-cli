@@ -330,7 +330,7 @@ func TestGalleryResourceAndToolMetadata(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	visual := map[string]bool{"pixiv_show_gallery": true}
+	visual := map[string]bool{"pixiv_show_gallery": true, "pixiv_artwork_media": true}
 	for _, tool := range tools.Tools {
 		raw, err := json.Marshal(tool.Meta)
 		if err != nil {

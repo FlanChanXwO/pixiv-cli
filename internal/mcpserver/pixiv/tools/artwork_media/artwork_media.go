@@ -3,9 +3,11 @@ package artwork_media
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"io"
 	"net/http"
+	"slices"
 	"strings"
 	"time"
 
@@ -26,9 +28,44 @@ type input struct {
 
 func Register(app *runtime.App, server *mcp.Server) {
 	outputs.ProtectMediaInput(server, "pixiv_artwork_media")
-	runtime.AddTool(app, server, &mcp.Tool{Name: "pixiv_artwork_media", Description: "Read artwork bytes: static images default to regular quality and all pages; Ugoira defaults to GIF with a separate PNG preview. Omit static pages/quality for Ugoira; use animation_format=apng for APNG. Use static original only when requested. Results map each delivered page to a content index and explicitly report partial failures. Does not save files on the server.", Annotations: &mcp.ToolAnnotations{ReadOnlyHint: true, DestructiveHint: new(false), IdempotentHint: true, OpenWorldHint: new(true)}}, func(ctx context.Context, _ *mcp.CallToolRequest, in input) (*mcp.CallToolResult, outputs.ArtworkMedia, error) {
-		return handle(ctx, app, in)
+	runtime.AddTool(app, server, &mcp.Tool{Name: "pixiv_artwork_media", Description: "Read artwork bytes: static images default to regular quality and all pages; Ugoira defaults to GIF with a separate PNG preview. Omit static pages/quality for Ugoira; use animation_format=apng for APNG. Use static original only when requested. Results map each delivered page to a content index and explicitly report partial failures. Returns complete media bytes; the App view may offer protected temporary downloads.", Annotations: &mcp.ToolAnnotations{ReadOnlyHint: true, DestructiveHint: new(false), IdempotentHint: true, OpenWorldHint: new(true)}}, func(ctx context.Context, request *mcp.CallToolRequest, in input) (*mcp.CallToolResult, outputs.ArtworkMedia, error) {
+		result, out, err := handle(ctx, app, in)
+		appAnimationContent(request, result, out)
+		return result, out, err
 	})
+}
+
+func appAnimationContent(request *mcp.CallToolRequest, result *mcp.CallToolResult, out outputs.ArtworkMedia) {
+	if result == nil || len(out.Pages) != 1 || out.Pages[0].PreviewContentIndex == nil {
+		return
+	}
+	caps := request.ClientCapabilities()
+	if caps == nil {
+		return
+	}
+	var ui struct {
+		MIMETypes []string `json:"mimeTypes"`
+	}
+	raw, err := json.Marshal(caps.Extensions["io.modelcontextprotocol/ui"])
+	if err != nil || json.Unmarshal(raw, &ui) != nil || !slices.Contains(ui.MIMETypes, "text/html;profile=mcp-app") {
+		return
+	}
+	// App 优先读取已发布的原质量文件，避免大控制响应阻塞宿主交付。
+	if result.Meta == nil {
+		result.Meta = mcp.Meta{}
+	}
+	contents := slices.Clone(result.Content)
+	page := out.Pages[0]
+	downloads, _ := result.Meta["pixiv/mediaDownloads"].(map[string]any)
+	pages, _ := downloads["pages"].([]map[string]any)
+	for _, download := range pages {
+		if url, ok := download["url"].(string); ok && url != "" && download["page"] == page.Page {
+			contents[page.ContentIndex] = &mcp.ResourceLink{URI: url, Name: page.Filename, MIMEType: page.MIMEType, Size: new(int64(page.Size))}
+			break
+		}
+	}
+	result.Meta["pixiv/mediaContents"] = contents
+	result.Content = []mcp.Content{result.Content[*out.Pages[0].PreviewContentIndex]}
 }
 
 func handle(ctx context.Context, app *runtime.App, in input) (*mcp.CallToolResult, outputs.ArtworkMedia, error) {
@@ -61,10 +98,12 @@ func handle(ctx context.Context, app *runtime.App, in input) (*mcp.CallToolResul
 		return outputs.MediaResult(out, nil)
 	}
 	var content []mcp.Content
+	var source *pixiv.Client
 	// One lease binds detail and every page to the same account; partial bytes are
 	// never replayed with another account. Static reads stay in memory; the native
 	// animation encoder owns a per-call temporary workspace that is removed before delivery.
 	err := lifecycle.Run(ctx, app.OpenClient, func(ctx context.Context, client *pixiv.Client, _ *lifecycle.Attempt) error {
+		source = client
 		started := time.Now()
 		artwork, err := client.Artwork(ctx, pixiv.ArtworkRequest{ArtworkID: in.IllustID})
 		observeMediaPhase(ctx, "artwork_query", time.Since(started), 0, err)
@@ -143,7 +182,32 @@ func handle(ctx context.Context, app *runtime.App, in input) (*mcp.CallToolResul
 		out.Error = errorCode(err)
 	}
 	out.Complete = out.Error == "" && len(out.RequestedPages) > 0 && len(out.DeliveredPages) == len(out.RequestedPages)
-	return outputs.MediaResult(out, content)
+	result, output, resultErr := outputs.MediaResult(out, content)
+	if media := app.SDKPorts().Media; media != nil && len(out.Pages) > 0 && ctx.Err() == nil {
+		account, accountErr := app.ResolveAccount(ctx)
+		if accountErr == nil {
+			downloads := []map[string]any{}
+			for _, page := range out.Pages {
+				var url string
+				if page.PreviewContentIndex != nil {
+					original := content[page.ContentIndex].(*mcp.ImageContent)
+					preview := content[*page.PreviewContentIndex].(*mcp.ImageContent)
+					format := strings.TrimPrefix(page.MIMEType, "image/")
+					published, publishErr := media.PublishAnimation(ctx, account.UserID, in.IllustID, format, source, original.Data, preview.Data)
+					if publishErr == nil {
+						url = published.AnimationURL
+					}
+				} else if in.Quality == "original" {
+					url, _ = media.Issue(ctx, account.UserID, in.IllustID, page.Page, "original")
+				}
+				if url != "" {
+					downloads = append(downloads, map[string]any{"page": page.Page, "url": url})
+				}
+			}
+			result.Meta = mcp.Meta{"pixiv/mediaDownloads": map[string]any{"media_origin": media.Origin(), "pages": downloads}}
+		}
+	}
+	return result, output, resultErr
 }
 
 func readPage(ctx context.Context, client *pixiv.Client, page pixiv.ArtworkPage, variant string) (data []byte, mime string, status int, err error) {

@@ -3,7 +3,6 @@ package artwork_media
 import (
 	"bytes"
 	"context"
-	"crypto/sha256"
 	"errors"
 	"fmt"
 	"image/gif"
@@ -106,7 +105,12 @@ func readAnimation(ctx context.Context, client *pixiv.Client, id int64, format s
 		return nil, page, err
 	}
 	page = outputs.MediaPage{Page: 1, Filename: filename, MIMEType: mimeType, Size: len(data), ContentIndex: 0, PreviewContentIndex: new(1), ArchiveQuality: string(archive.Quality)}
-	return []mcp.Content{&mcp.EmbeddedResource{Resource: &mcp.ResourceContents{URI: fmt.Sprintf("urn:sha256:%x", sha256.Sum256(data)), MIMEType: mimeType, Blob: data}}, &mcp.ImageContent{MIMEType: "image/png", Data: preview.Bytes()}}, page, nil
+	contentMIME := mimeType
+	if format == "apng" {
+		// PNG 家族类型让宿主保留完整 APNG；结构化信息仍明确动画格式。
+		contentMIME = "image/png"
+	}
+	return []mcp.Content{&mcp.ImageContent{MIMEType: contentMIME, Data: data}, &mcp.ImageContent{MIMEType: "image/png", Data: preview.Bytes()}}, page, nil
 }
 
 // 阶段失败仅输出固定原因，保留业务错误通过原返回路径交付。

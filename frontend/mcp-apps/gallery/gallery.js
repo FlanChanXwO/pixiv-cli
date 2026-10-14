@@ -293,14 +293,14 @@
     });
     button.disabled = !downloadFiles;
   }
-  function animationControls(id, artwork, section, epoch) {
+  function animationControls(id, artwork, section, epoch, initialFormat = "gif") {
     const stateKey = "animation-state:" + id;
     const retained = cached(stateKey)?.value;
     const mediaKey = (format, url) => "animation-image:" + id + ":" + format + ":" + url;
     const label = text("label", "Animation format ", section);
     const format = document.createElement("select");
     for (const value of ["gif", "apng"]) { const option = text("option", value, format); option.value = value; }
-    format.value = ["gif", "apng"].includes(retained?.format) ? retained.format : "gif"; label.append(format);
+    format.value = ["gif", "apng"].includes(retained?.format) ? retained.format : initialFormat; label.append(format);
     const message = text("p", "Prepare animation and a separate static preview.", section);
     const media = document.createElement("div"); section.append(media);
     let reading = false, handle, timer, generation = 0, images = [];
@@ -408,6 +408,7 @@
     });
     format.addEventListener("change", () => { release(); media.replaceChildren(); load.disabled = false; load.hidden = false; message.textContent = "Load the selected animation format."; });
     if (retained && [retained.preview, retained.animation].some(url => cached(mediaKey(retained.format, url)))) load.click();
+    return load;
   }
   async function originalContent(id, pageNumber, epoch, artwork) {
     const key = "original:" + id + ":" + pageNumber;
@@ -639,9 +640,100 @@
     const refresh = iconAction("Refresh bookmark", "refresh", toolbar, query, true);
     enable(); query();
   }
+  function renderMedia(result, epoch) {
+    const output = result.structuredContent;
+    const appContent = result._meta?.["pixiv/mediaContents"];
+    const content = appContent === undefined ? result.content : appContent;
+    status.textContent = result.isError ? "Tool failed or returned partial results." : "";
+    if (!output.pages.length) { status.textContent = output.error || "No media available."; return; }
+    for (const page of output.pages) {
+      const section = text("article", "", cards, "artwork-detail");
+      const media = text("div", "", section, "detail-media");
+      const info = text("div", "", section, "detail-info");
+      text("h2", output.title || "Artwork " + output.illust_id, info);
+      const message = text("p", "Loading image…", info);
+      try {
+        if (!Array.isArray(content)) throw new Error("Invalid media content");
+        const original = content?.[page.content_index];
+        const linked = original?.type === "resource_link";
+        const downloads = result._meta?.["pixiv/mediaDownloads"];
+        const item = downloads?.pages?.find(item => item.page === page.page);
+        const origin = downloads?.media_origin;
+        const downloadURL = typeof origin === "string" && /^https?:\/\/[^/?#@]+$/.test(origin) && typeof item?.url === "string" && item.url.startsWith(origin + "/") && item.url.includes("/media/") && !/[?#]/.test(item.url) ? item.url : undefined;
+        if (!Number.isSafeInteger(page.page) || page.page < 1 || !Number.isSafeInteger(page.content_index) || page.content_index < 0 || (!linked && (original?.type !== "image" || typeof original.data !== "string"))) throw new Error("Missing media");
+        if (original.mimeType !== page.mime_type && !(page.mime_type === "image/apng" && original.mimeType === "image/png")) throw new Error("Invalid media type");
+        if (linked) {
+          if (!downloadURL || original.uri !== downloadURL || !Number.isSafeInteger(page.size) || page.size <= 0 || original.size !== page.size) throw new Error("Invalid media link");
+        } else if (atob(original.data).length !== page.size) throw new Error("Incomplete media");
+        const extensions = {"image/png":"png","image/jpeg":"jpg","image/webp":"webp","image/gif":"gif","image/bmp":"bmp","image/apng":"apng"};
+        const extension = extensions[page.mime_type];
+        if (!extension) throw new Error("Unsupported media");
+        const filename = page.filename || output.illust_id + "-p" + page.page + "." + extension;
+        if (typeof filename !== "string" || !/^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(filename)) throw new Error("Invalid filename");
+        const animated = Number.isSafeInteger(page.preview_content_index) && page.preview_content_index >= 0;
+        if (animated && (page.preview_content_index === page.content_index || content?.[page.preview_content_index]?.mimeType !== "image/png")) throw new Error("Invalid static preview");
+        const images = new Map();
+        let selected;
+        const update = () => {
+          if (epoch !== view || !selected) return;
+          retry.hidden = !linked && selected.state !== "failed";
+          message.textContent = selected.state === "failed" ? "Image unavailable." : selected.state === "loading" ? "Loading image…" : animated ? selected.index === page.content_index ? "Animation playing." : "Static preview." : "Image ready.";
+        };
+        const retry = iconAction(linked ? "Refresh animation" : "Retry image", "refresh", info, () => {
+          if (!selected || epoch !== view) return;
+          if (linked) {
+            if (!serverTools) return;
+            // 历史签名地址无法原地恢复；复用现有准备与释放流程重新授权。
+            for (const entry of images.values()) { entry.image.removeAttribute("src"); proxyImages.delete(entry.image); }
+            media.replaceChildren(); info.replaceChildren();
+            text("h2", output.title || "Artwork " + output.illust_id, info);
+            animationControls(output.illust_id, output, media, epoch, extension).click();
+            return;
+          }
+          selected.state = "loading"; selected.image.removeAttribute("src"); selected.image.src = selected.url; update();
+        });
+        retry.hidden = !linked;
+        retry.disabled = linked && !serverTools;
+        const show = index => {
+          if (epoch !== view) return;
+          try {
+            let entry = images.get(index);
+            if (!entry) {
+              const item = content?.[index];
+              const url = linked && index === page.content_index ? original.uri : imageURL(item, index === page.content_index ? {size:page.size,mime_type:original.mimeType} : undefined);
+              const image = text("img", "", media);
+              image.referrerPolicy = "no-referrer";
+              image.alt = (output.title || "Artwork " + output.illust_id) + " — " + filename;
+              entry = {image, url, index, state:"loading"}; images.set(index, entry); proxyImages.add(image);
+              const loaded = () => { entry.state = "ready"; if (selected === entry) update(); };
+              const failed = () => { entry.state = "failed"; if (selected === entry) update(); };
+              image.addEventListener("load", loaded); image.addEventListener("error", failed);
+              animationCleanups.add(() => { image.removeEventListener("load", loaded); image.removeEventListener("error", failed); image.removeAttribute("src"); });
+              image.src = url;
+            }
+            selected = entry;
+            for (const item of images.values()) item.image.hidden = item !== selected;
+            update();
+          } catch (_) { message.textContent = "Media content is unavailable or invalid."; }
+        };
+        if (animated) {
+          iconAction("Play animation", "play", info, () => show(page.content_index));
+          iconAction("Show preview", "image", info, () => show(page.preview_content_index));
+        }
+        show(animated ? page.preview_content_index : page.content_index);
+        if (downloadFiles) downloadControl(linked ? original : {type:"resource",resource:{uri:"urn:pixiv:media:" + output.illust_id + "/" + filename,mimeType:page.mime_type,blob:original.data}}, filename, info, epoch, notifySize);
+        else {
+          if (downloadURL) {
+            downloadControl({type:"resource_link",uri:downloadURL,name:filename,mimeType:page.mime_type,size:page.size}, filename, info, epoch, notifySize);
+          } else text("p", "File download is unavailable in this host.", info);
+        }
+      } catch (_) { message.textContent = "Media content is unavailable or invalid."; }
+    }
+  }
   function render(result) {
     clearView();
     const epoch = view;
+    if (Number.isSafeInteger(result.structuredContent?.illust_id) && result.structuredContent.illust_id > 0 && Array.isArray(result.structuredContent.pages)) { renderMedia(result, epoch); return; }
     const records = result.structuredContent?.records;
     if (!Array.isArray(records)) { status.textContent = "No structured records; use the tool result in chat."; return; }
     status.textContent = result.isError ? "Tool failed or returned partial results." : records.length ? "" : "No results.";

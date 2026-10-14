@@ -162,17 +162,15 @@ brew update
 brew upgrade pixiv-cli
 ```
 
-### 源码检出
+### Go 源码安装
 
-请使用精确的已发布 tag。源码构建需要 Go、cgo、C linker 和仓库中与目标平台匹配的 Rust static library。构建脚本在编译前生成嵌入的前端资源：
+准备声明的 Go 工具链、cgo、目标 C linker 及已提交的原生库后，安装精确 Release tag：
 
 ```bash
-git clone --branch vX.Y.Z --depth 1 https://github.com/FlanChanXwO/pixiv-cli.git
-cd pixiv-cli
-sh scripts/build.sh
+go install github.com/FlanChanXwO/pixiv-cli/cmd/pixiv@vX.Y.Z
 ```
 
-直接 `go install ...@tag` 无法生成这些未提交资源；请使用检出构建或 Release 压缩包。
+前端源码直接嵌入，无需生成步骤。要求与自更新行为见[源码安装](docs/zh-CN/cli-reference.md#go-源码安装)。
 
 ### Release 压缩包或源码构建
 
@@ -250,7 +248,7 @@ pixiv mcp
 
 Gallery 动图通过 `pixiv_gallery_animation`（`prepare` / `status` / `release`）获取短控制响应，使用受保护的 GIF/APNG 与 PNG 预览地址交付。
 
-使用 `pixiv_artwork_media` 获取真实静态图片 bytes（默认 regular 质量和全部页），或完整 Ugoira GIF/APNG blob 与独立 PNG 预览。Ugoira 需省略静态 pages/quality；失败明确报告，不返回服务器本地下载路径。
+使用 `pixiv_artwork_media` 获取真实静态图片 bytes（默认 regular 质量和全部页），或完整 Ugoira GIF/APNG 图片内容与独立 PNG 预览。附带的 App 支持播放、静态预览切换，以及通过宿主确认或可用的受保护浏览器附件下载完整文件。Ugoira 需省略静态 pages/quality；失败明确报告，不返回服务器本地下载路径。
 
 支持 MCP Apps 的 host 可明确调用 `pixiv_show_gallery` 并传入作品 ID，通过默认同域图片反代展示图片优先卡片。普通搜索、排行和详情不打开 UI；完整媒体及无 UI host 继续使用上述工具。
 

@@ -4,12 +4,12 @@ package gallery
 import (
 	"context"
 	"crypto/sha256"
-	_ "embed"
 	"encoding/hex"
 	"errors"
 	htmlutil "html"
 	"strings"
 
+	"github.com/FlanChanXwO/pixiv-cli/frontend"
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/mediaproxy"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
@@ -17,8 +17,7 @@ import (
 const URI = "ui://pixiv-cli/gallery"
 const MIME = "text/html;profile=mcp-app"
 
-//go:embed generated/gallery.html
-var html string
+var html = frontend.MustLoad().GalleryHTML
 
 func versionURI(media ...*mediaproxy.Service) string {
 	page, _ := pageAssets(media...)
@@ -51,10 +50,10 @@ func Register(server *mcp.Server, media ...*mediaproxy.Service) {
 	server.AddResourceTemplate(&mcp.ResourceTemplate{URITemplate: URI + "/sha256-{digest}", Name: "pixiv_gallery_history", MIMEType: MIME}, read)
 }
 
-// Attach associates visual discovery with the resource without replacing its structured contract.
+// Attach associates discovery and complete media with the view without replacing structured results.
 func Attach(tool *mcp.Tool, media ...*mediaproxy.Service) {
 	switch tool.Name {
-	case "pixiv_show_gallery":
+	case "pixiv_show_gallery", "pixiv_artwork_media":
 		if tool.Meta == nil {
 			tool.Meta = mcp.Meta{}
 		}

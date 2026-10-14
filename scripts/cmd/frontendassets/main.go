@@ -1,4 +1,4 @@
-// Command frontendassets generates the pages embedded in the single-file CLI.
+// Command frontendassets validates embedded sources without writing generated files.
 package main
 
 import (
@@ -6,17 +6,17 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/FlanChanXwO/pixiv-cli/scripts/internal/frontendassets"
+	"github.com/FlanChanXwO/pixiv-cli/frontend"
 )
 
 func main() {
-	check := flag.Bool("check", false, "verify generated assets without writing files")
+	flag.Bool("check", false, "validate embedded sources (also the default)")
 	flag.Parse()
 	if flag.NArg() != 0 {
 		fmt.Fprintln(os.Stderr, "frontend assets: unexpected arguments")
 		os.Exit(1)
 	}
-	if err := frontendassets.Generate(".", *check); err != nil {
+	if _, err := frontend.Load(); err != nil {
 		fmt.Fprintf(os.Stderr, "frontend assets: %v\n", err)
 		os.Exit(1)
 	}

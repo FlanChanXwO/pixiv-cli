@@ -95,15 +95,15 @@ requirements, evidence backfill process, and failure semantics.
 
 ### Go source installation
 
-Check out the exact published tag and use the build script, which generates frontend resources before Go compilation:
+Install an exact published Release tag (replace `vX.Y.Z`):
 
 ```bash
-git clone --branch vX.Y.Z --depth 1 https://github.com/FlanChanXwO/pixiv-cli.git
-cd pixiv-cli
-sh scripts/build.sh
+go install github.com/FlanChanXwO/pixiv-cli/cmd/pixiv@vX.Y.Z
 ```
 
-This requires the local Go toolchain, cgo, a C linker and the committed staticlib for the target. The build outputs `build/pixiv` or `build/pixiv.exe`; direct `go install ...@tag` does not run the resource generator and cannot build tags using this asset layout. Historical tags keep their original installation contract. Existing Go-installed binaries still use the old `go install` self-update path; migrating those installations to a generated-resource release requires installing its Release archive instead.
+Use the Go version declared in that tag's `go.mod`, `CGO_ENABLED=1`, a target C linker and the committed target Rust staticlib. Frontend sources are embedded directly; no generator or npm step is needed. The destination is `GOBIN` or `GOPATH/bin`. Existing Go installations continue to self-update to the selected exact Release tag; a failed Go installation leaves the previous executable in place. Historical tags retain their own build requirements.
+
+For a checkout build, use `sh scripts/build.sh`; it validates committed native libraries and outputs `build/pixiv` or `build/pixiv.exe`.
 
 ### Homebrew
 

@@ -162,17 +162,15 @@ brew update
 brew upgrade pixiv-cli
 ```
 
-### Source checkout
+### Go source installation
 
-Use an exact published tag. Source builds require Go, cgo, a C linker and the committed Rust static library for your target. The build script generates the embedded frontend assets before compiling:
+With the declared Go toolchain, cgo, a target C linker and the committed native library, install an exact Release tag:
 
 ```bash
-git clone --branch vX.Y.Z --depth 1 https://github.com/FlanChanXwO/pixiv-cli.git
-cd pixiv-cli
-sh scripts/build.sh
+go install github.com/FlanChanXwO/pixiv-cli/cmd/pixiv@vX.Y.Z
 ```
 
-Direct `go install ...@tag` cannot generate these uncommitted assets; use the checkout build or a Release archive.
+Frontend sources are embedded directly; no generation step is needed. See [source installation](docs/en/cli-reference.md#go-source-installation) for requirements and self-update behavior.
 
 ### Release archive or source build
 
@@ -250,7 +248,7 @@ Start a new account login with `pixiv_account_login_start`, open its relay URL w
 
 Gallery animations use `pixiv_gallery_animation` (`prepare` / `status` / `release`) for short control responses and protected GIF/APNG plus PNG preview delivery.
 
-Use `pixiv_artwork_media` for actual static image bytes (regular quality and all pages by default), or a full Ugoira GIF/APNG blob with a separate PNG preview. Omit static pages/quality for Ugoira; partial failures are explicit, and no server-local download path is returned.
+Use `pixiv_artwork_media` for actual static image bytes (regular quality and all pages by default), or complete Ugoira GIF/APNG image content with a separate PNG preview. The attached App supports playback, preview switching and full-file download through host confirmation or an available protected browser attachment. Omit static pages/quality for Ugoira; partial failures are explicit, and no server-local download path is returned.
 
 On supporting MCP Apps hosts, explicitly call `pixiv_show_gallery` with artwork IDs to show image-first cards through the default same-origin image proxy. Ordinary search/ranking/detail tools do not open UI; full media and non-UI hosts continue to use the tools above.
 
