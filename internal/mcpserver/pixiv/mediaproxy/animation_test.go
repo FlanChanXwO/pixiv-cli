@@ -241,14 +241,15 @@ func TestAnimationGrantReplayInvalidatesOnlyItsReadyArtifact(t *testing.T) {
 }
 
 func TestAnimationPreparationReturnsShortIndependentSubscriptions(t *testing.T) {
-	s, _, _, _ := newCachedProxyFixture(t, func(r *http.Request) (*http.Response, error) { return fixtureArtwork("42"), nil }, 1<<20)
-	require.NoError(t, s.ConfigureAnimations(t.Context(), 1<<20))
-	t.Cleanup(func() { require.NoError(t, s.CloseAnimations()) })
-	ctx := animationContext(t, s)
+	s, ctx, _, _, _ := animationProxy(t, 1<<20)
 	first, err := s.PrepareAnimation(ctx, 72, 42, "gif")
 	require.NoError(t, err)
+	// 使用有效动图并等待完成，避免失败重建清理旧句柄而绕过隔离断言。
+	s.animations.wg.Wait()
 	second, err := s.PrepareAnimation(ctx, 72, 42, "gif")
 	require.NoError(t, err)
+	require.Equal(t, "queued", first.State)
+	require.Equal(t, "ready", second.State)
 	require.NotEmpty(t, first.Handle)
 	require.NotEqual(t, first.Handle, second.Handle)
 	require.Empty(t, first.AnimationURL, "binary must not be embedded in prepare")
