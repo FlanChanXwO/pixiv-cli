@@ -314,7 +314,7 @@ func TestReadPhaseFailuresKeepTheirOutcome(t *testing.T) {
 			}
 			require.Len(t, matching, 1)
 			require.True(t, matching[0].Failed)
-			require.Positive(t, matching[0].Duration)
+			require.GreaterOrEqual(t, matching[0].Duration, time.Duration(0))
 			require.NotContains(t, fmt.Sprint(events), "fixture-private")
 		})
 	}

@@ -64,18 +64,19 @@ func readAnimation(ctx context.Context, client *pixiv.Client, id int64, format s
 	filename := fmt.Sprintf("%d.%s", id, format)
 	animationPath := filepath.Join(dir, filename)
 	var waitDuration, encodeDuration time.Duration
+	var waitObserved, encodeObserved bool
 	err = ugoira.NewRustEncoder().Encode(ctx, ugoira.Input{ZipPath: zipPath, Frames: frames, WorkDir: dir, OutputPath: animationPath, Format: ugoira.Format(format), Observe: func(stage string, duration time.Duration) {
 		switch stage {
 		case "animation_encode_wait":
-			waitDuration = duration
+			waitDuration, waitObserved = duration, true
 		case "animation_encode":
-			encodeDuration = duration
+			encodeDuration, encodeObserved = duration, true
 		}
 	}})
-	if waitDuration != 0 {
+	if waitObserved {
 		observeMediaPhase(ctx, "animation_encode_wait", waitDuration, 0, nil)
 	}
-	if encodeDuration != 0 {
+	if encodeObserved {
 		observeMediaPhase(ctx, "animation_encode", encodeDuration, 0, err)
 	}
 	if err != nil {

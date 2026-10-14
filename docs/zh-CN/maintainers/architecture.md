@@ -316,7 +316,7 @@ FlareSolverr 的 upstream proxy 只用于 browser `sessions.create`；solver con
 HTTP transport 仅在存在诊断 scope 时观察 POST 底层写入／Flush。字节数表示 writer 接受，不代表对端收齐；ResponseController 的 unwrapping 保留 SDK 流式与 deadline 行为。不保留正文／header，不增加缓冲、等待或重试。
 
 
-`internal/services/pixiv/account/reads.go` 拥有受生命周期管理的 MCP 只读会话；获取时校验本地账号凭据版本，仅 OAuth 刷新及成功轮换持久化共享原有 gate。凭据替换／账号删除、网络变化、到期及上游 401 使会话 generation 失效并释放空闲连接。写入 lease 与账号池提交／重放仍由原 Facade 负责。root 注入独立 read 端口和 opaque 会话版本，MCP adapter 不读取凭据。
+`internal/services/pixiv/account/reads.go` 拥有受生命周期管理的 MCP 只读会话；获取时校验本地账号凭据版本，仅 OAuth 刷新及成功轮换持久化共享原有 gate。凭据替换／账号删除、网络变化、到期及上游 401 使会话 generation 失效并释放空闲连接。写入 lease 与账号池提交／重放仍由原 Facade 负责。root 注入独立 read 端口和 opaque 会话版本，MCP adapter 不读取凭据。 账号查询取消时只返回当前请求错误，不使共享 generation 失效，也不触发额外轮换。
 
 `pixiv/mediaproxy` 拥有按 grant／会话隔离的 metadata 与图片 LRU、独立查询／图片信号量、同键 metadata 合并和流式响应生命周期。序列化 metadata、正在填充的图片缓冲及传输中的缓存载荷共用配置预算；超大或无法预留空间的图片流式返回而不缓存。每次读取校验当前授权，旧账号／会话版本不能复用内容。仅完整成功传输进入缓存，收藏状态与写入不缓存。授权通知、凭据版本信号和条目到期主动回收空闲内容；在途引用释放前继续计入预算。缓存发布在同一 mutex 内校验授权与版本，迟到填充不能重新写入已失效内容。SDK 在映射可信 metadata 时登记经 policy 校验的质量变体。诊断使用固定阶段名，不包含秘密标识。
 

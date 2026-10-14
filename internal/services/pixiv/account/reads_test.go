@@ -61,3 +61,41 @@ func TestReadSessionRejectsCredentialChangeBeforePublication(t *testing.T) {
 		})
 	}
 }
+
+func TestReadSessionCancelledCredentialCheckPreservesSharedSession(t *testing.T) {
+	db, err := database.Open(t.TempDir())
+	require.NoError(t, err)
+	defer db.Close()
+	require.NoError(t, db.SavePixivCredential(t.Context(), accountpixiv.New(42, "artist", []byte("refresh"))))
+	var cancelCheck context.CancelFunc
+	repo := observedReadRepository{Repository: db, read: func() {
+		if cancelCheck != nil {
+			cancelCheck()
+		}
+	}}
+	sessions := accountpixiv.NewReadSessions(accountpixiv.NewService(repo, &pixivTestDefaults{}), poolpixiv.NewGate())
+	defer sessions.Close()
+	refreshes := 0
+	options := sdkpixiv.Options{HTTPClient: &http.Client{Transport: pixivRoundTripper(func(*http.Request) (*http.Response, error) {
+		refreshes++
+		return pixivJSONResponse(`{"access_token":"access","refresh_token":"rotated","expires_in":3600,"user":{"id":"42","name":"artist"}}`), nil
+	})}}
+	first, err := sessions.Open(t.Context(), 42, "network", options)
+	require.NoError(t, err)
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+	cancelCheck = cancel
+	_, err = sessions.Open(ctx, 42, "network", options)
+	require.ErrorIs(t, err, context.Canceled)
+	select {
+	case <-first.Invalidated:
+		t.Fatal("one cancelled credential check invalidated unrelated readers")
+	default:
+	}
+	cancelCheck = nil
+	next, err := sessions.Open(t.Context(), 42, "network", options)
+	require.NoError(t, err)
+	require.Equal(t, first.Version, next.Version)
+	require.Same(t, first.Client, next.Client)
+	require.Equal(t, 1, refreshes, "cancelled read must not force another OAuth rotation")
+}

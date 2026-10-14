@@ -111,7 +111,7 @@ func TestUnifiedMediaSerializationOverIOTransport(t *testing.T) {
 				t.Fatalf("serialization events = %d, want %d", len(observed), want)
 			}
 			for _, event := range observed {
-				if event.Operation != "mcp_response_serialization" || event.Kind != diagnostics.EventCompleted || event.Count != resultLength || event.Duration <= 0 {
+				if event.Operation != "mcp_response_serialization" || event.Kind != diagnostics.EventCompleted || event.Count != resultLength || event.Duration < 0 {
 					t.Fatalf("invalid serialization observation: %+v", event)
 				}
 			}

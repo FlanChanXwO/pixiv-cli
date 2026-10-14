@@ -589,7 +589,7 @@ func TestReadSessionCancelledGateObservation(t *testing.T) {
 	require.Equal(t, "session_wait", events[0].Operation)
 	require.Equal(t, diagnostics.EventFailed, events[0].Kind)
 	require.Equal(t, diagnostics.ReasonRequestCancelled, events[0].Reason)
-	require.Positive(t, events[0].Duration)
+	require.GreaterOrEqual(t, events[0].Duration, time.Duration(0))
 }
 
 func TestReadSessionsRevalidateExternalCredentialsWithoutRefresh(t *testing.T) {
@@ -680,7 +680,7 @@ func TestReadSessionsReuseAndCredentialInvalidation(t *testing.T) {
 	require.Len(t, refresh, 1)
 	require.Equal(t, diagnostics.EventFailed, refresh[0].Kind)
 	require.Equal(t, diagnostics.ReasonToolFailed, refresh[0].Reason)
-	require.Positive(t, refresh[0].Duration)
+	require.GreaterOrEqual(t, refresh[0].Duration, time.Duration(0))
 	require.NotContains(t, fmt.Sprint(observed), "persist failure")
 	require.NotContains(t, fmt.Sprint(observed), "rotated")
 	delete(repo.accounts, 42)

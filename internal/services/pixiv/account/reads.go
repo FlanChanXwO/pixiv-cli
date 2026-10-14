@@ -63,6 +63,10 @@ func (m *ReadSessions) cached(ctx context.Context, uid int64, network string) (R
 		return ReadSession{}, false, errors.New("read sessions closed")
 	}
 	a, err := m.service.repo.GetPixiv(ctx, uid)
+	// 单次查询取消不代表凭据失效，不能连带终止共享传输或触发轮换。
+	if cancelled := ctx.Err(); cancelled != nil {
+		return ReadSession{}, false, cancelled
+	}
 	entry, ok := m.sessions[uid]
 	if ok && err == nil && entry.network == network && entry.session.Revision == a.CredentialRevision && time.Now().Before(entry.session.Expires) {
 		return entry.session, true, nil

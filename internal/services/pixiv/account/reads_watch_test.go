@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"runtime"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -123,6 +124,11 @@ func TestReadSessionsWatchExternalDatabaseCredentials(t *testing.T) {
 				return
 			}
 			if mode == "lost" {
+				// Windows keeps SQLite files locked until both database handles close.
+				if runtime.GOOS == "windows" {
+					require.NoError(t, writer.Close())
+					require.NoError(t, reader.Close())
+				}
 				require.NoError(t, os.Rename(dir, filepath.Join(filepath.Dir(dir), "moved")))
 			} else if mode == "delete" {
 				require.NoError(t, writer.RemovePixiv(t.Context(), 42))

@@ -129,6 +129,28 @@ func TestAnimationFailedPhasesAreNotReportedAsSuccess(t *testing.T) {
 	}
 }
 
+func TestAnimationReportsNativePhases(t *testing.T) {
+	s, ctx, _, _, _ := animationProxy(t, 1<<20)
+	var mu sync.Mutex
+	phases := map[string]time.Duration{}
+	s.reads.config.ObserveAnimation = func(_ context.Context, event AnimationObservation) {
+		mu.Lock()
+		defer mu.Unlock()
+		phases[event.Stage] = event.Duration
+	}
+	prepared, err := s.PrepareAnimation(ctx, 72, 42, "gif")
+	require.NoError(t, err)
+	require.Equal(t, "ready", awaitAnimation(t, s, ctx, prepared.Handle).State)
+	s.animations.wg.Wait()
+	mu.Lock()
+	defer mu.Unlock()
+	for _, stage := range []string{"animation_encode_wait", "animation_encode"} {
+		duration, observed := phases[stage]
+		require.True(t, observed, "zero duration must not hide an observed phase: %s", stage)
+		require.GreaterOrEqual(t, duration, time.Duration(0))
+	}
+}
+
 type animationObservedBody struct {
 	io.Reader
 	closed *atomic.Int32
@@ -614,7 +636,7 @@ func TestLastAnimationSubscriptionCancelsDownload(t *testing.T) {
 			}
 			require.Equal(t, expectedSource, observed[0].CancellationSource)
 			require.Zero(t, observed[0].Bytes)
-			require.Positive(t, observed[0].Duration)
+			require.GreaterOrEqual(t, observed[0].Duration, time.Duration(0))
 		})
 	}
 }

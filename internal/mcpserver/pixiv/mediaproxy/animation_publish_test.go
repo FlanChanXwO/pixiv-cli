@@ -7,6 +7,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 )
 
@@ -39,15 +40,21 @@ func TestPublishedAnimationDownloadsExactBytesWithoutEncoding(t *testing.T) {
 			require.Equal(t, published.AnimationURL, again.AnimationURL)
 			require.Equal(t, before, calls.Load(), "publishing must not download or encode again")
 			s.animations.mu.Lock()
+			var filenames []string
 			for _, job := range s.animations.jobs {
-				if job.id == "" {
-					continue
+				if job.id != "" {
+					filenames = append(filenames, filepath.Join(job.dir, "animation."+format))
 				}
-				info, statErr := os.Stat(filepath.Join(job.dir, "animation."+format))
-				require.NoError(t, statErr)
-				require.Equal(t, os.FileMode(0600), info.Mode().Perm())
 			}
 			s.animations.mu.Unlock()
+			for _, filename := range filenames {
+				info, statErr := os.Stat(filename)
+				require.NoError(t, statErr)
+				// Windows file modes do not expose POSIX permission bits.
+				if runtime.GOOS != "windows" {
+					require.Equal(t, os.FileMode(0600), info.Mode().Perm())
+				}
+			}
 			small, smallCtx, _, _, _ := animationProxy(t, int64(len(data)+len(preview)-1))
 			smallSession, err := small.session(smallCtx, 72)
 			require.NoError(t, err)

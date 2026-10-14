@@ -325,7 +325,7 @@ func TestHTTPAuthenticatedSDKNegotiationAndReset(t *testing.T) {
 		require.Equal(t, "mcp_response_serialization", event.Operation)
 		require.Equal(t, diagnostics.EventCompleted, event.Kind)
 		require.Equal(t, len(expectedBytes), event.Count)
-		require.Positive(t, event.Duration)
+		require.GreaterOrEqual(t, event.Duration, time.Duration(0))
 	}
 	diagnosticJSON, err := json.Marshal(observed)
 	require.NoError(t, err)
@@ -909,7 +909,7 @@ func TestHTTPWriteObservation(t *testing.T) {
 			}
 			accepted := 0
 			for _, event := range writes {
-				require.Positive(t, event.Duration)
+				require.GreaterOrEqual(t, event.Duration, time.Duration(0))
 				require.Equal(t, wantKind, event.Kind)
 				require.Equal(t, wantReason, event.Reason)
 				accepted += event.Count

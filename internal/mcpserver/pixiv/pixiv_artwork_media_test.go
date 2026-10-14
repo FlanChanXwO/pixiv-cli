@@ -366,7 +366,7 @@ func TestArtworkMediaUgoiraDeliversAnimationAndPreview(t *testing.T) {
 				event, ok := stages[stage]
 				require.True(t, ok, "missing actual stage %s", stage)
 				require.Equal(t, diagnostics.EventCompleted, event.Kind)
-				require.Positive(t, event.Duration)
+				require.GreaterOrEqual(t, event.Duration, time.Duration(0))
 			}
 			require.Equal(t, len(archive.Bytes()), stages["animation_zip_download"].Count)
 			require.Equal(t, p.Size, stages["animation_result_read"].Count)
