@@ -1,7 +1,6 @@
 package search
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -171,8 +170,8 @@ func continuationOffset(rawURL string) (int, error) {
 }
 
 type responseDTO struct {
-	Illusts requiredList[illustDTO] `json:"illusts"`
-	NextURL *string                 `json:"next_url"`
+	Illusts protocol.RequiredList[illustDTO] `json:"illusts"`
+	NextURL *string                          `json:"next_url"`
 }
 
 type illustDTO struct {
@@ -194,6 +193,13 @@ type illustDTO struct {
 	Width          int           `json:"width"`
 	Height         int           `json:"height"`
 	Tools          []string      `json:"tools"`
+
+	IsBookmarked          *bool                  `json:"is_bookmarked"`
+	IsMuted               *bool                  `json:"is_muted"`
+	Visible               *bool                  `json:"visible"`
+	SanityLevel           *int                   `json:"sanity_level"`
+	RestrictionAttributes *[]string              `json:"restriction_attributes"`
+	Series                *artwork.SeriesSummary `json:"series"`
 }
 
 func (d *illustDTO) UnmarshalJSON(data []byte) error {
@@ -253,24 +259,6 @@ type metaPageDTO struct {
 	ImageURLs imageURLsDTO `json:"image_urls"`
 }
 
-type requiredList[T any] struct {
-	Items   []T
-	Present bool
-	Valid   bool
-}
-
-func (l *requiredList[T]) UnmarshalJSON(data []byte) error {
-	*l = requiredList[T]{Present: true}
-	if bytes.Equal(bytes.TrimSpace(data), []byte("null")) {
-		return nil
-	}
-	if err := json.Unmarshal(data, &l.Items); err != nil {
-		return err
-	}
-	l.Valid = true
-	return nil
-}
-
 func mapArtwork(value illustDTO) artwork.Artwork {
 	return artwork.Artwork{
 		ID:             value.ID,
@@ -291,6 +279,13 @@ func mapArtwork(value illustDTO) artwork.Artwork {
 		Width:          value.Width,
 		Height:         value.Height,
 		Tools:          append([]string(nil), value.Tools...),
+
+		IsBookmarked:          value.IsBookmarked,
+		IsMuted:               value.IsMuted,
+		Visible:               value.Visible,
+		SanityLevel:           value.SanityLevel,
+		RestrictionAttributes: value.RestrictionAttributes,
+		Series:                value.Series,
 	}
 }
 

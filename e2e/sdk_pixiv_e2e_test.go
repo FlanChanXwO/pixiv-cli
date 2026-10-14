@@ -2,6 +2,7 @@ package e2e
 
 import (
 	"context"
+	"encoding/json"
 	"net/http"
 	"net/url"
 	"os"
@@ -157,4 +158,70 @@ func TestRealPixivSDKRead(t *testing.T) {
 	if response.StatusCode != 200 {
 		t.Fatalf("resource HEAD status = %d", response.StatusCode)
 	}
+
+	t.Run("viewer field output", func(t *testing.T) {
+		for _, value := range []pixivsdk.Artwork{searchPage.Items[0], artwork} {
+			raw, err := json.Marshal(pixivsdk.ToArtworkDTO(value))
+			if err != nil {
+				t.Fatal("encode artwork DTO")
+			}
+			var fields map[string]json.RawMessage
+			if err := json.Unmarshal(raw, &fields); err != nil {
+				t.Fatal("decode artwork DTO")
+			}
+			known := 0
+			for key, present := range map[string]bool{
+				"is_bookmarked":          value.IsBookmarked != nil,
+				"is_muted":               value.IsMuted != nil,
+				"visible":                value.Visible != nil,
+				"sanity_level":           value.SanityLevel != nil,
+				"restriction_attributes": value.RestrictionAttributes != nil,
+			} {
+				_, encoded := fields[key]
+				if encoded != present {
+					t.Fatalf("viewer field %s presence differs from SDK", key)
+				}
+				if present {
+					known++
+				}
+			}
+			if known == 0 {
+				t.Fatal("live artwork has no viewer fields to validate")
+			}
+			t.Logf("validated %d supplied viewer/safety fields", known)
+		}
+	})
+
+	t.Run("deep search checkpoint", func(t *testing.T) {
+		// 固定历史窗口减少实时新增作品对批内恢复比较的干扰；仍不把续读当作快照。
+		request := pixivsdk.SearchArtworksRequest{
+			Word: "初音ミク", Sort: pixivsdk.SortModeDateAsc,
+			StartDate: "2024-01-01", EndDate: "2024-01-31", Offset: 270,
+		}
+		page, err := client.SearchArtworks(ctx, request)
+		if err != nil {
+			t.Fatalf("deep SearchArtworks: %v", err)
+		}
+		if len(page.Items) < 3 {
+			t.Fatal("deep search has insufficient items for repeated checkpoint validation")
+		}
+		for consumed := 1; consumed <= 2; consumed++ {
+			request.Cursor, err = client.CheckpointSearchArtworks(request, 1)
+			if err != nil {
+				t.Fatalf("checkpoint: %v", err)
+			}
+			resumed, err := client.SearchArtworks(ctx, request)
+			if err != nil {
+				t.Fatalf("resume: %v", err)
+			}
+			if len(resumed.Items) != len(page.Items)-consumed {
+				t.Fatal("resumed search length differs from the original batch suffix")
+			}
+			for index, item := range resumed.Items {
+				if item.ID != page.Items[index+consumed].ID {
+					t.Fatalf("resumed search differs from the original batch at index %d", index)
+				}
+			}
+		}
+	})
 }

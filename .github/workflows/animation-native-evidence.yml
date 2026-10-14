@@ -90,7 +90,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          CC='${{ matrix.cc }}' go test -p 4 ./frontend ./scripts/cmd/frontendassets ./internal/mcpserver/... ./internal/services/pixiv/account/... ./internal/update/... -count=1
+          CC='${{ matrix.cc }}' go test -p 4 ./frontend ./scripts/cmd/frontendassets ./internal/config/settings/... ./internal/cli/... ./internal/mcpserver/... ./internal/services/pixiv/account/... ./internal/update/... -count=1
           go run ./scripts/cmd/frontendassets --check
       - name: Record staticlib, binary and archive evidence
         shell: bash

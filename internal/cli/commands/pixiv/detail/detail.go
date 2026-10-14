@@ -13,6 +13,7 @@ import (
 	"strings"
 
 	requirements "github.com/FlanChanXwO/pixiv-cli/internal/cli/commands"
+	"github.com/FlanChanXwO/pixiv-cli/internal/cli/commands/pixiv"
 	"github.com/FlanChanXwO/pixiv-cli/internal/cli/pipeline"
 	"github.com/FlanChanXwO/pixiv-cli/internal/shared/record"
 	"github.com/FlanChanXwO/pixiv-cli/internal/utils/text"
@@ -39,7 +40,8 @@ type Options struct {
 }
 
 // Dependencies 是 detail owner 的最小执行端口。资源 factory 由 composition root
-// 在输入验证后通过 BuildRequest/Pooled 注入；detail 不导入旧 CLI resource graph。
+// 在输入验证后通过 BuildRequest/Pooled 注入；detail 只依赖这些窄端口，不依赖
+// CLI composition root 的内部状态。
 type Dependencies struct {
 	Input             io.Reader
 	Output            io.Writer
@@ -48,7 +50,7 @@ type Dependencies struct {
 	UsageError        func(error) error
 	BuildRequest      func(*cobra.Command, Options) (Request, error)
 	JSONOut           func(*bool) (bool, error)
-	Pooled            func(context.Context, Request, func(context.Context, *pixiv.Client) (bool, error)) error
+	Pooled            deps.Pooled[Request]
 	FetchArtwork      func(context.Context, *pixiv.Client, int64) (pixiv.Artwork, error)
 	FetchNovel        func(context.Context, *pixiv.Client, int64) (pixiv.Novel, error)
 	FetchNovelContent func(context.Context, *pixiv.Client, int64) (pixiv.NovelContent, error)
@@ -70,23 +72,6 @@ func (d Dependencies) bindCommonFlags(cmd *cobra.Command, opts *Options) {
 	cmd.Flags().BoolVarP(&opts.JSON, "json", "j", false, "print JSON")
 	cmd.Flags().StringVar(&opts.Proxy, "proxy", "", "proxy URL (http, https, socks5, or socks5h) for this command")
 	cmd.Flags().BoolVar(&opts.NoProxy, "no-proxy", false, "clear the configured proxy for this command")
-}
-
-func readDetail[T any](d Dependencies, ctx context.Context, request Request, invoke func(context.Context, *pixiv.Client) (T, error)) (T, error) {
-	var zero T
-	if d.Pooled == nil {
-		return zero, errors.New("pixiv pooled operation is not configured")
-	}
-	var result T
-	err := d.Pooled(ctx, request, func(ctx context.Context, client *pixiv.Client) (bool, error) {
-		var err error
-		result, err = invoke(ctx, client)
-		return false, err
-	})
-	if err != nil {
-		return zero, err
-	}
-	return result, nil
 }
 
 func (d Dependencies) writeJSON(value any) error {
@@ -263,7 +248,7 @@ func (a command) runOneWithOutput(ctx context.Context, cmd *cobra.Command, entit
 		if a.data.FetchArtwork == nil {
 			return errors.New("pixiv artwork detail fetcher is not configured")
 		}
-		result, err := readDetail(a.data, ctx, request, func(ctx context.Context, client *pixiv.Client) (pixiv.Artwork, error) {
+		result, err := a.data.Pooled.Read(ctx, request, func(ctx context.Context, client *pixiv.Client) (pixiv.Artwork, error) {
 			return a.data.FetchArtwork(ctx, client, id)
 		})
 		if err != nil {
@@ -285,7 +270,7 @@ func (a command) runOneWithOutput(ctx context.Context, cmd *cobra.Command, entit
 			if a.data.FetchNovelContent == nil {
 				return errors.New("pixiv novel content fetcher is not configured")
 			}
-			result, err := readDetail(a.data, ctx, request, func(ctx context.Context, client *pixiv.Client) (pixiv.NovelContent, error) {
+			result, err := a.data.Pooled.Read(ctx, request, func(ctx context.Context, client *pixiv.Client) (pixiv.NovelContent, error) {
 				return a.data.FetchNovelContent(ctx, client, id)
 			})
 			if err != nil {
@@ -306,7 +291,7 @@ func (a command) runOneWithOutput(ctx context.Context, cmd *cobra.Command, entit
 		if a.data.FetchNovel == nil {
 			return errors.New("pixiv novel detail fetcher is not configured")
 		}
-		result, err := readDetail(a.data, ctx, request, func(ctx context.Context, client *pixiv.Client) (pixiv.Novel, error) {
+		result, err := a.data.Pooled.Read(ctx, request, func(ctx context.Context, client *pixiv.Client) (pixiv.Novel, error) {
 			return a.data.FetchNovel(ctx, client, id)
 		})
 		if err != nil {
@@ -327,7 +312,7 @@ func (a command) runOneWithOutput(ctx context.Context, cmd *cobra.Command, entit
 		if a.data.FetchUser == nil {
 			return errors.New("pixiv user detail fetcher is not configured")
 		}
-		result, err := readDetail(a.data, ctx, request, func(ctx context.Context, client *pixiv.Client) (pixiv.UserDetail, error) {
+		result, err := a.data.Pooled.Read(ctx, request, func(ctx context.Context, client *pixiv.Client) (pixiv.UserDetail, error) {
 			return a.data.FetchUser(ctx, client, id)
 		})
 		if err != nil {

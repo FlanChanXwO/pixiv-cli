@@ -43,10 +43,10 @@ func (c *Client) get(ctx context.Context, path string, query url.Values) (user.D
 }
 
 type responseDTO struct {
-	User             requiredObject[userDTO]             `json:"user"`
-	Profile          requiredObject[profileDTO]          `json:"profile"`
-	ProfilePublicity requiredObject[profilePublicityDTO] `json:"profile_publicity"`
-	Workspace        requiredObject[workspaceDTO]        `json:"workspace"`
+	User             protocol.RequiredObject[userDTO]             `json:"user"`
+	Profile          protocol.RequiredObject[profileDTO]          `json:"profile"`
+	ProfilePublicity protocol.RequiredObject[profilePublicityDTO] `json:"profile_publicity"`
+	Workspace        protocol.RequiredObject[workspaceDTO]        `json:"workspace"`
 }
 
 type userDTO struct {
@@ -141,24 +141,7 @@ type workspaceDTO struct {
 	Comment           string  `json:"comment"`
 	WorkspaceImageURL *string `json:"workspace_image_url"`
 }
-type requiredObject[T any] struct {
-	Value   T
-	Present bool
-	Valid   bool
-}
 
-func (o *requiredObject[T]) UnmarshalJSON(data []byte) error {
-	*o = requiredObject[T]{Present: true}
-	data = bytes.TrimSpace(data)
-	if bytes.Equal(data, []byte("null")) {
-		return nil
-	}
-	if err := json.Unmarshal(data, &o.Value); err != nil {
-		return err
-	}
-	o.Valid = true
-	return nil
-}
 func mapUser(value userDTO) user.User {
 	return user.User{ID: value.ID, Name: value.Name, Account: value.Account, Comment: value.Comment, IsFollowed: value.IsFollowed, ProfileImageURLs: user.ProfileImageURLs{Medium: cloneString(value.ProfileImageURLs.Medium)}}
 }

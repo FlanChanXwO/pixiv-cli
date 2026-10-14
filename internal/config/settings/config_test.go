@@ -552,3 +552,28 @@ func TestGalleryCacheSettings(t *testing.T) {
 	_, _, err := config.ParseSettingInput("mcp_gallery_cache_capacity_mib", "0")
 	require.NoError(t, err)
 }
+
+func TestRuntimeGallerySettingsBindDeclaredValues(t *testing.T) {
+	for _, tc := range []struct {
+		name, toml     string
+		capacity, temp int64
+		concurrency    int
+		ttl            time.Duration
+	}{
+		{"defaults", "", 256, 1024, 4, 15 * time.Minute},
+		{"configured", "[mcp]\ngallery_cache_capacity_mib=0\ngallery_animation_temp_capacity_mib=512\ngallery_concurrency=2\ngallery_cache_ttl='3m'\n", 0, 512, 2, 3 * time.Minute},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			path := filepath.Join(t.TempDir(), "config.toml")
+			require.NoError(t, os.WriteFile(path, []byte(tc.toml), 0600))
+			snapshot, err := config.LoadSnapshotAt(path)
+			require.NoError(t, err)
+			cfg, err := snapshot.Runtime()
+			require.NoError(t, err)
+			require.Equal(t, tc.capacity, cfg.MCPGalleryCacheCapacityMiB)
+			require.Equal(t, tc.temp, cfg.MCPGalleryAnimationTempCapacityMiB)
+			require.Equal(t, tc.concurrency, cfg.MCPGalleryConcurrency)
+			require.Equal(t, tc.ttl, cfg.MCPGalleryCacheTTL)
+		})
+	}
+}

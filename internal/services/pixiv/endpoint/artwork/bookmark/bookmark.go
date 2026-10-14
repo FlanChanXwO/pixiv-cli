@@ -1,7 +1,6 @@
 package bookmark
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -180,13 +179,13 @@ func (c *Client) Remove(ctx context.Context, artworkID int64) error {
 }
 
 type artworksResponseDTO struct {
-	Illusts requiredList[illustDTO] `json:"illusts"`
-	NextURL *string                 `json:"next_url"`
+	Illusts protocol.RequiredList[illustDTO] `json:"illusts"`
+	NextURL *string                          `json:"next_url"`
 }
 
 type tagsResponseDTO struct {
-	Tags    requiredList[bookmarkTagDTO] `json:"bookmark_tags"`
-	NextURL *string                      `json:"next_url"`
+	Tags    protocol.RequiredList[bookmarkTagDTO] `json:"bookmark_tags"`
+	NextURL *string                               `json:"next_url"`
 }
 
 type bookmarkTagDTO struct {
@@ -285,24 +284,6 @@ type metaPageDTO struct {
 	Height    int          `json:"height"`
 	Extension string       `json:"extension"`
 	ImageURLs imageURLsDTO `json:"image_urls"`
-}
-
-type requiredList[T any] struct {
-	Items   []T
-	Present bool
-	Valid   bool
-}
-
-func (l *requiredList[T]) UnmarshalJSON(data []byte) error {
-	*l = requiredList[T]{Present: true}
-	if bytes.Equal(bytes.TrimSpace(data), []byte("null")) {
-		return nil
-	}
-	if err := json.Unmarshal(data, &l.Items); err != nil {
-		return err
-	}
-	l.Valid = true
-	return nil
 }
 
 func continuation(rawURL *string, path string, keys []string, allowZero bool, allowedQueryKeys ...string) (int64, bool, error) {

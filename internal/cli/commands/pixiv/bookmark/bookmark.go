@@ -174,7 +174,7 @@ func (a command) newDetail() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			result, err := deps.Read(a.data, cmd.Context(), request, func(ctx context.Context, client *pixiv.Client) (bookmarkDetailResult, error) {
+			result, err := a.data.Pooled.Read(cmd.Context(), request, func(ctx context.Context, client *pixiv.Client) (bookmarkDetailResult, error) {
 				switch target.ResultKind {
 				case resolver.ResultKindArtwork:
 					value, err := client.ArtworkBookmark(ctx, pixiv.ArtworkBookmarkRequest{ArtworkID: target.ID})

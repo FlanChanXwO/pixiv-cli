@@ -1,9 +1,7 @@
 package timeline
 
 import (
-	"bytes"
 	"context"
-	"encoding/json"
 	"errors"
 	"net/url"
 	"strconv"
@@ -130,8 +128,8 @@ func setOffset(query url.Values, offset int) {
 }
 
 type responseDTO struct {
-	Novels  requiredList[novelDTO] `json:"novels"`
-	NextURL *string                `json:"next_url"`
+	Novels  protocol.RequiredList[novelDTO] `json:"novels"`
+	NextURL *string                         `json:"next_url"`
 }
 
 type novelDTO struct {
@@ -169,23 +167,7 @@ type imageURLsDTO struct {
 	Large        string `json:"large"`
 	Original     string `json:"original"`
 }
-type requiredList[T any] struct {
-	Items   []T
-	Present bool
-	Valid   bool
-}
 
-func (l *requiredList[T]) UnmarshalJSON(data []byte) error {
-	*l = requiredList[T]{Present: true}
-	if bytes.Equal(bytes.TrimSpace(data), []byte("null")) {
-		return nil
-	}
-	if err := json.Unmarshal(data, &l.Items); err != nil {
-		return err
-	}
-	l.Valid = true
-	return nil
-}
 func mapNovel(value novelDTO) novel.Novel {
 	return novel.Novel{ID: value.ID, Title: value.Title, Caption: value.Caption, XRestrict: intValue(value.XRestrict), TextLength: intValue(value.TextLength), IsOriginal: boolValue(value.IsOriginal), User: mapUser(value.User), Tags: mapTags(value.Tags), ImageURLs: mapImageURLs(value.ImageURLs), CreateDate: value.CreateDate, TotalBookmarks: value.TotalBookmarks, TotalView: value.TotalView}
 }

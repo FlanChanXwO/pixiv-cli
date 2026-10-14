@@ -27,7 +27,7 @@ type Plan struct {
 }
 
 // Request 是一次 Pixiv data execution 的传输覆写快照。listing 只传递它，
-// 不创建 client，也不依赖 CLI resource graph。
+// 不创建 client，也不依赖 CLI composition root 的内部状态。
 type Request struct {
 	UserID             int64
 	HTTPSProxyOverride *string
@@ -41,6 +41,13 @@ type Executor func(context.Context, Request, func(context.Context, *pixiv.Client
 // workflow directly instead of one of the paged runners here.
 func (p Plan) PagePlan() pagination.PagePlan {
 	return pagination.PagePlan{Skip: p.skip, Limit: p.limit, OneBatch: p.oneBatch}
+}
+
+// PushDownSkip 只在原始结果与逻辑结果逐项对应时，把逻辑跳过交给上游。
+func (p Plan) PushDownSkip() (Plan, int) {
+	offset := p.skip
+	p.skip = 0
+	return p, offset
 }
 
 // BindNDJSONFlag adds the record-stream output switch owned by a list command.

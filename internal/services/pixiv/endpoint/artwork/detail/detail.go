@@ -1,7 +1,6 @@
 package detail
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -129,6 +128,14 @@ type illustDTO struct {
 	Width          int           `json:"width"`
 	Height         int           `json:"height"`
 	Tools          []string      `json:"tools"`
+
+	IsBookmarked          *bool                  `json:"is_bookmarked"`
+	IsMuted               *bool                  `json:"is_muted"`
+	Visible               *bool                  `json:"visible"`
+	SanityLevel           *int                   `json:"sanity_level"`
+	RestrictionAttributes *[]string              `json:"restriction_attributes"`
+	Series                *artwork.SeriesSummary `json:"series"`
+	TotalComments         *int                   `json:"total_comments"`
 }
 
 func (d *illustDTO) UnmarshalJSON(data []byte) error {
@@ -189,12 +196,12 @@ type metaPageDTO struct {
 }
 
 type ugoiraResponseDTO struct {
-	Metadata requiredObject[ugoiraMetadataDTO] `json:"ugoira_metadata"`
+	Metadata protocol.RequiredObject[ugoiraMetadataDTO] `json:"ugoira_metadata"`
 }
 
 type ugoiraMetadataDTO struct {
-	ZipURLs requiredObject[ugoiraZipURLsDTO] `json:"zip_urls"`
-	Frames  requiredList[ugoiraFrameDTO]     `json:"frames"`
+	ZipURLs protocol.RequiredObject[ugoiraZipURLsDTO] `json:"zip_urls"`
+	Frames  protocol.RequiredList[ugoiraFrameDTO]     `json:"frames"`
 }
 
 type ugoiraZipURLsDTO struct {
@@ -205,46 +212,6 @@ type ugoiraZipURLsDTO struct {
 type ugoiraFrameDTO struct {
 	File  string `json:"file"`
 	Delay int    `json:"delay"`
-}
-
-type requiredList[T any] struct {
-	Items   []T
-	Present bool
-	Valid   bool
-}
-
-func (l *requiredList[T]) UnmarshalJSON(data []byte) error {
-	*l = requiredList[T]{Present: true}
-	if bytes.Equal(bytes.TrimSpace(data), []byte("null")) {
-		return nil
-	}
-	if err := json.Unmarshal(data, &l.Items); err != nil {
-		return err
-	}
-	l.Valid = true
-	return nil
-}
-
-type requiredObject[T any] struct {
-	Value   T
-	Present bool
-	Valid   bool
-}
-
-func (o *requiredObject[T]) UnmarshalJSON(data []byte) error {
-	*o = requiredObject[T]{Present: true}
-	data = bytes.TrimSpace(data)
-	if bytes.Equal(data, []byte("null")) {
-		return nil
-	}
-	if len(data) == 0 || data[0] != '{' {
-		return json.Unmarshal(data, &o.Value)
-	}
-	if err := json.Unmarshal(data, &o.Value); err != nil {
-		return err
-	}
-	o.Valid = true
-	return nil
 }
 
 func mapArtwork(dto illustDTO) artwork.Artwork {
@@ -282,6 +249,14 @@ func mapArtwork(dto illustDTO) artwork.Artwork {
 		Width:          dto.Width,
 		Height:         dto.Height,
 		Tools:          append([]string(nil), dto.Tools...),
+
+		IsBookmarked:          dto.IsBookmarked,
+		IsMuted:               dto.IsMuted,
+		Visible:               dto.Visible,
+		SanityLevel:           dto.SanityLevel,
+		RestrictionAttributes: dto.RestrictionAttributes,
+		Series:                dto.Series,
+		TotalComments:         dto.TotalComments,
 	}
 }
 
