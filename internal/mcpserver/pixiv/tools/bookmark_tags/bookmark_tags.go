@@ -3,10 +3,12 @@ package bookmark_tags
 
 import (
 	"context"
+	"errors"
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/internal/outputs"
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/internal/records"
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/internal/runtime"
+	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/internal/schemas"
 	"github.com/FlanChanXwO/pixiv-cli/sdk"
 	pixiv "github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
@@ -14,18 +16,22 @@ import (
 
 // Register 注册 pixiv_bookmark_tags。
 func Register(app *runtime.App, server *mcp.Server) {
-	runtime.AddTool(app, server, &mcp.Tool{Name: "pixiv_bookmark_tags", Annotations: &mcp.ToolAnnotations{ReadOnlyHint: true, DestructiveHint: new(false), IdempotentHint: true, OpenWorldHint: new(true)}, Description: "List artwork bookmark tags.", OutputSchema: records.BookmarkTagsOutputSchema()}, func(ctx context.Context, request *mcp.CallToolRequest, input In) (*mcp.CallToolResult, outputs.BookmarkTags, error) {
+	runtime.AddTool(app, server, &mcp.Tool{Name: "pixiv_bookmark_tags", Annotations: &mcp.ToolAnnotations{ReadOnlyHint: true, DestructiveHint: new(false), IdempotentHint: true, OpenWorldHint: new(true)}, Description: "List artwork (default) or novel bookmark tags.", InputSchema: inputSchema(), OutputSchema: records.BookmarkTagsOutputSchema()}, func(ctx context.Context, request *mcp.CallToolRequest, input In) (*mcp.CallToolResult, outputs.BookmarkTags, error) {
 		return handleBookmarkTags(ctx, app, input)
 	})
 }
 
 type In struct {
+	Kind     string `json:"kind,omitempty"`
 	UserID   int64  `json:"user_id,omitempty" jsonschema:"optional user ID; defaults to authenticated user"`
 	Restrict string `json:"restrict,omitempty" jsonschema:"public or private"`
 	runtime.PageLimitIn
 }
 
 func handleBookmarkTags(ctx context.Context, app *runtime.App, in In) (*mcp.CallToolResult, outputs.BookmarkTags, error) {
+	if in.Kind != "" && in.Kind != "artwork" && in.Kind != "novel" {
+		return outputs.BookmarkTagsError(errors.New("kind must be artwork or novel"))
+	}
 	userID, err := runtime.ResolveUserID(app, ctx, in.UserID)
 	if err != nil {
 		return outputs.BookmarkTagsError(err)
@@ -35,6 +41,13 @@ func handleBookmarkTags(ctx context.Context, app *runtime.App, in In) (*mcp.Call
 		return outputs.BookmarkTagsError(err)
 	}
 	items, more, err := runtime.CollectWith(ctx, app, plan, func(ctx context.Context, client *pixiv.Client, cursor sdk.Cursor) ([]pixiv.BookmarkTag, sdk.Cursor, error) {
+		if in.Kind == "novel" {
+			result, err := client.UserNovelBookmarkTags(ctx, pixiv.UserNovelBookmarkTagsRequest{UserID: userID, Restrict: pixiv.Restrict(in.Restrict), Cursor: cursor})
+			if err != nil {
+				return nil, sdk.Cursor{}, err
+			}
+			return result.Items, result.Next, nil
+		}
 		result, err := client.UserArtworkBookmarkTags(ctx, pixiv.UserArtworkBookmarkTagsRequest{UserID: userID, Restrict: pixiv.Restrict(in.Restrict), Cursor: cursor})
 		if err != nil {
 			return nil, sdk.Cursor{}, err
@@ -50,4 +63,17 @@ func handleBookmarkTags(ctx context.Context, app *runtime.App, in In) (*mcp.Call
 	}
 	out := outputs.BookmarkTags{Tags: tags, Pagination: runtime.ListPagination(plan, in.Limit, len(items), more)}
 	return outputs.BookmarkTagsResult(out, len(items)), out, nil
+}
+
+func inputSchema() map[string]any {
+	return map[string]any{
+		"type": "object", "additionalProperties": false,
+		"properties": map[string]any{
+			"kind":     schemas.EnumString("Content kind; defaults to artwork.", "artwork", "novel"),
+			"user_id":  map[string]any{"type": "integer", "description": "optional user ID; defaults to authenticated user"},
+			"restrict": map[string]any{"type": "string", "description": "public or private"},
+			"page":     map[string]any{"type": []string{"null", "integer"}, "description": "1-based logical page; requires a positive limit"},
+			"limit":    map[string]any{"type": []string{"null", "integer"}, "description": "maximum items; 0 returns all items"},
+		},
+	}
 }

@@ -79,6 +79,7 @@ var (
 	runMCPServer = func(a app, ctx context.Context, request mcpcommands.Request) error {
 		return a.runPixivMCP(ctx, request)
 	}
+	runMCPStdio          = unifiedmcp.RunStdio
 	runMCPHTTP           = unifiedmcp.RunHTTP
 	ensureURLSchemeRelay = loginhelper.EnsurePersistentIfNeeded
 	canPrompt            = func(a app) bool { return authcommands.CanPrompt(a.in, a.out) }

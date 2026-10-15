@@ -22,6 +22,7 @@ import (
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/tools/create_novel_comment"
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/tools/delete_artwork_comment"
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/tools/delete_novel_comment"
+	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/tools/download"
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/tools/follow_user"
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/tools/gallery_animation"
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/tools/illust_comments"
@@ -34,7 +35,6 @@ import (
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/tools/mypixiv_novels"
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/tools/mypixiv_users"
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/tools/novel_bookmark_detail"
-	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/tools/novel_bookmark_tags"
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/tools/novel_comments"
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/tools/novel_content"
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/tools/novel_detail"
@@ -76,20 +76,36 @@ type Account = runtime.Account
 // 执行操作。composition root 注入实现；MCP 不持有 service locator。
 type SDKPorts = runtime.SDKPorts
 
+// LocalDownloads configures stdio filesystem delivery through the shared downloader.
+type LocalDownloads = runtime.LocalDownloads
+
 // ReverseSearchPorts 是 reverse_search 的启动时配置与能力注入。
 type ReverseSearchPorts = runtime.ReverseSearchPorts
 
 // Register 将 Pixiv tools 注册到共享 server，账号和 SDK 生命周期仍由 Pixiv runtime 持有。
 func Register(server *mcp.Server, ports SDKPorts, account Account) {
-	gallery.Register(server, ports.Media)
+	if ports.Media != nil {
+		gallery.Register(server, ports.Media)
+	}
 	app := runtime.NewApp(ports, account)
-	account_use.Register(app, server)
-	account_status.Register(app, server)
-	account_list.Register(app, server)
-	account_login_start.Register(app, server)
+	if ports.Downloads != nil {
+		download.Register(app, server)
+	}
+	if ports.Accounts.Load != nil {
+		account_use.Register(app, server)
+		account_list.Register(app, server)
+	}
+	if ports.Accounts.Load != nil || ports.Login != nil {
+		account_status.Register(app, server)
+	}
+	if ports.Login != nil {
+		account_login_start.Register(app, server)
+	}
 	artwork_media.Register(app, server)
-	gallery_animation.Register(app, server)
-	show_gallery.Register(app, server)
+	if ports.Media != nil {
+		gallery_animation.Register(app, server)
+		show_gallery.Register(app, server)
+	}
 	add_bookmark.Register(app, server)
 	add_novel_bookmark.Register(app, server)
 	blocked_users.Register(app, server)
@@ -112,7 +128,6 @@ func Register(server *mcp.Server, ports SDKPorts, account Account) {
 	mypixiv_novels.Register(app, server)
 	mypixiv_users.Register(app, server)
 	novel_bookmark_detail.Register(app, server)
-	novel_bookmark_tags.Register(app, server)
 	novel_comments.Register(app, server)
 	novel_content.Register(app, server)
 	novel_detail.Register(app, server)

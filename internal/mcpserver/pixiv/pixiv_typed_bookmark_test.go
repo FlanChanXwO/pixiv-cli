@@ -36,7 +36,7 @@ func TestTypedBookmarkReadsRouteNovelOperations(t *testing.T) {
 		t.Fatalf("novel bookmarks records=%+v", listOut.Records)
 	}
 
-	tagsResult := callTool(t, session, "pixiv_novel_bookmark_tags", map[string]any{
+	tagsResult := callTool(t, session, "pixiv_bookmark_tags", map[string]any{"kind": "novel",
 		"user_id": 90, "restrict": "private", "limit": 1,
 	})
 	if tagsResult.IsError || client.novelBookmarkTagsRequest.UserID != 90 || client.novelBookmarkTagsRequest.Restrict != pixiv.RestrictPrivate {
@@ -46,6 +46,11 @@ func TestTypedBookmarkReadsRouteNovelOperations(t *testing.T) {
 	decodeStructured(t, tagsResult, &tagsOut)
 	if len(tagsOut.Tags) != 1 || tagsOut.Tags[0].Name != "story" || tagsOut.Tags[0].Count != 3 {
 		t.Fatalf("novel bookmark tags=%+v", tagsOut)
+	}
+
+	defaultTags := callTool(t, session, "pixiv_bookmark_tags", map[string]any{"kind": "novel", "user_id": 0, "restrict": "", "page": nil, "limit": nil})
+	if defaultTags.IsError || client.novelBookmarkTagsRequest.UserID != 42 {
+		t.Fatal("merged tags must preserve zero/default user, empty visibility and null paging")
 	}
 
 	detailResult := callTool(t, session, "pixiv_novel_bookmark_detail", map[string]any{"novel_id": 101})
@@ -112,7 +117,7 @@ func TestTypedBookmarkReadsPreserveEmptyAndTypedErrors(t *testing.T) {
 		t.Fatalf("empty novel bookmarks result=%+v output=%+v", emptyResult, emptyOut)
 	}
 
-	errorResult := callTool(t, session, "pixiv_novel_bookmark_tags", map[string]any{"user_id": 90})
+	errorResult := callTool(t, session, "pixiv_bookmark_tags", map[string]any{"kind": "novel", "user_id": 90})
 	var errorOut outputs.BookmarkTags
 	decodeStructured(t, errorResult, &errorOut)
 	if !errorResult.IsError || errorOut.Tags == nil || len(errorOut.Tags) != 0 || !resultHasText(errorResult, "UserNovelBookmarkTags") || !resultHasText(errorResult, "upstream_error") {
@@ -177,7 +182,7 @@ func TestTypedBookmarkSchemasKeepLegacyFieldsClosed(t *testing.T) {
 	}{
 		{"pixiv_user_novel_bookmarks", map[string]any{"user_id_to_check": 9}},
 		{"pixiv_user_novel_bookmarks", map[string]any{"user_id": 9, "max_bookmark_id": 1}},
-		{"pixiv_novel_bookmark_tags", map[string]any{"user_id": 9, "offset": 1}},
+		{"pixiv_bookmark_tags", map[string]any{"kind": "novel", "user_id": 9, "offset": 1}},
 		{"pixiv_novel_bookmark_detail", map[string]any{"illust_id": 9}},
 		{"pixiv_bookmark_detail", map[string]any{"novel_id": 9}},
 	} {

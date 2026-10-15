@@ -17,7 +17,7 @@ import (
 )
 
 // Register 注册 additive bookmark_tags_all operation，不改变
-// bookmark_tags 或 novel_bookmark_tags 的 output contract。
+// bookmark_tags(kind=artwork/novel) 的 output contract。
 func Register(app *runtime.App, server *mcp.Server) {
 	runtime.AddTool(app, server, &mcp.Tool{
 		Name: "pixiv_bookmark_tags_all", Annotations: &mcp.ToolAnnotations{ReadOnlyHint: true, DestructiveHint: new(false), IdempotentHint: true, OpenWorldHint: new(true)},

@@ -4,7 +4,11 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/auth"
+	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/accounts"
+	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/mediaproxy"
 	"io"
+	"path/filepath"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -129,15 +133,15 @@ func TestUnifiedMediaSerializationOverIOTransport(t *testing.T) {
 func TestUnifiedToolRegistry(t *testing.T) {
 	var pixivCalls, fanboxCalls atomic.Int32
 	proxy := "http://proxy.invalid"
-	server := mcpserver.New(pixiv.SDKPorts{
-		Execute: func(_ context.Context, account pixiv.Account, _ func(context.Context, *pixivsdk.Client) (bool, error)) error {
-			pixivCalls.Add(1)
-			if account.UserID != 72 {
-				t.Errorf("Pixiv account = %+v", account)
-			}
-			return errors.New("fixture Pixiv port")
-		},
-	}, pixiv.Account{UserID: 72}, fanbox.SDKPorts{
+	ports := httpRegistryPorts(t)
+	ports.Execute = func(_ context.Context, account pixiv.Account, _ func(context.Context, *pixivsdk.Client) (bool, error)) error {
+		pixivCalls.Add(1)
+		if account.UserID != 72 {
+			t.Errorf("Pixiv account = %+v", account)
+		}
+		return errors.New("fixture Pixiv port")
+	}
+	server := mcpserver.New(ports, pixiv.Account{UserID: 72}, fanbox.SDKPorts{
 		Open: func(_ context.Context, account fanbox.Account) (*fanboxsdk.Client, error) {
 			fanboxCalls.Add(1)
 			if account.HTTPSProxyOverride != &proxy {
@@ -279,7 +283,7 @@ func TestServerImplementationVersionIsProtocolOnlyException(t *testing.T) {
 }
 
 func TestGalleryResourceAndToolMetadata(t *testing.T) {
-	server := mcpserver.New(pixiv.SDKPorts{}, pixiv.Account{}, fanbox.SDKPorts{}, nil)
+	server := mcpserver.New(httpRegistryPorts(t), pixiv.Account{}, fanbox.SDKPorts{}, nil)
 	c, s := mcp.NewInMemoryTransports()
 	serverSession, err := server.Connect(t.Context(), s, nil)
 	if err != nil {
@@ -344,4 +348,24 @@ func TestGalleryResourceAndToolMetadata(t *testing.T) {
 			t.Errorf("lost no-UI structured fallback: %s", tool.Name)
 		}
 	}
+}
+
+func httpRegistryPorts(t *testing.T) pixiv.SDKPorts {
+	t.Helper()
+	store := auth.Store{Path: filepath.Join(t.TempDir(), "state.json")}
+	if _, err := store.Init(t.Context(), false); err != nil {
+		t.Fatal(err)
+	}
+	media, err := mediaproxy.New("https://media.test", store, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	login, err := accounts.NewLoginManager(t.Context(), "https://media.test/pixiv-login", func() (accounts.LoginAttempt, error) {
+		return accounts.LoginAttempt{}, errors.New("fixture unavailable")
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(login.Close)
+	return pixiv.SDKPorts{Media: media, Accounts: accounts.Manager{Store: store, Load: func(context.Context) (accounts.LocalSnapshot, error) { return accounts.LocalSnapshot{}, nil }}, Login: login}
 }

@@ -335,17 +335,8 @@ func TestArtworkMediaUgoiraDeliversAnimationAndPreview(t *testing.T) {
 			}
 			require.Equal(t, "42."+format, p.Filename)
 			contents := result.Content
-			if tc.ui == "text/html;profile=mcp-app" {
-				require.Len(t, result.Content, 1, "model receives only the independent preview")
-				require.Contains(t, result.Meta, "pixiv/mediaContents", "App must receive the complete original inline")
-				wire, err := json.Marshal(map[string]any{"content": result.Meta["pixiv/mediaContents"]})
-				require.NoError(t, err)
-				var appResult mcp.CallToolResult
-				require.NoError(t, json.Unmarshal(wire, &appResult))
-				contents = appResult.Content
-			} else {
-				require.NotContains(t, result.Meta, "pixiv/mediaContents", "non-App clients retain legacy full content")
-			}
+			require.Len(t, result.Content, 2, "stdio retains the complete animation and preview even when the host supports Apps")
+			require.NotContains(t, result.Meta, "pixiv/mediaContents")
 			animation, ok := contents[p.ContentIndex].(*mcp.ImageContent)
 			require.True(t, ok, "animation must be complete image content")
 			contentMIME := tc.mime
@@ -391,9 +382,7 @@ func TestArtworkMediaUgoiraDeliversAnimationAndPreview(t *testing.T) {
 			preview, ok := contents[*p.PreviewIndex].(*mcp.ImageContent)
 			require.True(t, ok)
 			require.Equal(t, "image/png", preview.MIMEType)
-			if tc.ui == "text/html;profile=mcp-app" {
-				require.Equal(t, preview.Data, result.Content[0].(*mcp.ImageContent).Data)
-			}
+
 			first, err := png.Decode(bytes.NewReader(preview.Data))
 			require.NoError(t, err)
 			require.Equal(t, image.Rect(0, 0, 2, 2), first.Bounds())
@@ -524,7 +513,7 @@ func TestArtworkMediaUgoiraFailureAndCancellationCleanTemporaryFiles(t *testing.
 }
 
 func TestGalleryAnimationControlRegistered(t *testing.T) {
-	session, closeSession := newSDKTestSessionWithPorts(t, pixivserver.SDKPorts{}, pixivserver.Account{})
+	session, closeSession := newSDKTestSessionWithPorts(t, httpFixturePorts(t), pixivserver.Account{})
 	defer closeSession()
 	tools, err := session.ListTools(t.Context(), nil)
 	require.NoError(t, err)

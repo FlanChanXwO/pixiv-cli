@@ -58,6 +58,9 @@ func appAnimationContent(request *mcp.CallToolRequest, result *mcp.CallToolResul
 	page := out.Pages[0]
 	downloads, _ := result.Meta["pixiv/mediaDownloads"].(map[string]any)
 	pages, _ := downloads["pages"].([]map[string]any)
+	if len(pages) == 0 {
+		return
+	}
 	for _, download := range pages {
 		if url, ok := download["url"].(string); ok && url != "" && download["page"] == page.Page {
 			contents[page.ContentIndex] = &mcp.ResourceLink{URI: url, Name: page.Filename, MIMEType: page.MIMEType, Size: new(int64(page.Size))}

@@ -193,6 +193,9 @@ func (s Store) registerClient(ctx context.Context, client Client) (string, error
 		if err != nil {
 			return err
 		}
+		if len(state.Clients) >= maxOAuthEntries {
+			return errOAuthCapacity
+		}
 		value := make([]byte, 32)
 		if _, err := rand.Read(value); err != nil {
 			return err

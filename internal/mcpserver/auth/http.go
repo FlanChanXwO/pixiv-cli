@@ -11,10 +11,19 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"time"
 
 	sdkauth "github.com/modelcontextprotocol/go-sdk/auth"
 	"github.com/modelcontextprotocol/go-sdk/oauthex"
 )
+
+// OAuth control messages contain metadata and opaque identifiers, never media.
+// Bound unauthenticated allocation and persisted DCR growth for this single-owner server.
+const maxOAuthBody = 64 << 10
+const maxOAuthEntries = 1024
+const authorizationLifetime = 10 * time.Minute
+
+var errOAuthCapacity = errors.New("OAuth capacity reached")
 
 // NewHandler 构造独立 discovery/DCR/authorize/token handler 及 bearer 包装器；canonicalBase 不从请求头推断。
 // 不启动 listener 或读取文件；注册、授权与 token 操作要求 store 已初始化，并在每次请求内读取最新状态。
@@ -54,6 +63,15 @@ func NewHandler(canonicalBase string, store Store) (*Handler, error) {
 		"scopes_supported":                      []string{"mcp"},
 	}
 	routes := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if len(r.URL.RawQuery) > maxOAuthBody {
+			writeJSON(w, http.StatusRequestURITooLong, map[string]string{"error": "invalid_request"})
+			return
+		}
+		if r.ContentLength > maxOAuthBody {
+			writeJSON(w, http.StatusRequestEntityTooLarge, map[string]string{"error": "invalid_request"})
+			return
+		}
+		r.Body = http.MaxBytesReader(w, r.Body, maxOAuthBody)
 		switch r.URL.EscapedPath() {
 		case "/.well-known/oauth-protected-resource", "/.well-known/oauth-protected-resource" + prefix + "/mcp":
 			resource.ServeHTTP(w, r)
@@ -106,6 +124,10 @@ func register(w http.ResponseWriter, r *http.Request, store Store) {
 		return
 	}
 	id, err := store.registerClient(r.Context(), client)
+	if errors.Is(err, errOAuthCapacity) {
+		writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "temporarily_unavailable"})
+		return
+	}
 	if err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "server_error"})
 		return

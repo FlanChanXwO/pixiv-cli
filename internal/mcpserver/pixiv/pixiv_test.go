@@ -4,8 +4,16 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
+	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/auth"
+	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/accounts"
+	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/mediaproxy"
+	"github.com/FlanChanXwO/pixiv-cli/internal/media/downloader"
+	"github.com/stretchr/testify/require"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"slices"
 	"strings"
 	"sync"
@@ -48,7 +56,7 @@ func newTestServer(ports pixivmcpserver.SDKPorts, account pixivmcpserver.Account
 
 func newTestSession(t *testing.T) (*mcp.ClientSession, func()) {
 	t.Helper()
-	return newSDKTestSessionWithPorts(t, pixivmcpserver.SDKPorts{}, pixivmcpserver.Account{})
+	return newSDKTestSessionWithPorts(t, httpFixturePorts(t), pixivmcpserver.Account{})
 }
 
 func newSDKTestSession(t *testing.T, sdkClient *fakeSDKClient) (*mcp.ClientSession, func()) {
@@ -344,4 +352,87 @@ func TestPixivMCPDiagnosticsUseStableLocalRequestIDs(t *testing.T) {
 			t.Fatalf("event[%d]=%+v", index, event)
 		}
 	}
+}
+
+func httpFixturePorts(t *testing.T) pixivmcpserver.SDKPorts {
+	t.Helper()
+	store := auth.Store{Path: filepath.Join(t.TempDir(), "state.json")}
+	if _, err := store.Init(t.Context(), false); err != nil {
+		t.Fatal(err)
+	}
+	media, err := mediaproxy.New("https://media.test", store, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	login, err := accounts.NewLoginManager(t.Context(), "https://media.test/pixiv-login", func() (accounts.LoginAttempt, error) {
+		return accounts.LoginAttempt{}, errors.New("fixture login unavailable")
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(login.Close)
+	return pixivmcpserver.SDKPorts{Media: media, Accounts: accounts.Manager{Store: store, Load: func(context.Context) (accounts.LocalSnapshot, error) { return accounts.LocalSnapshot{}, nil }}, Login: login}
+}
+
+type mcpDownloadFunc func(context.Context, downloader.DownloadRequest) (downloader.DownloadBatchResult, error)
+
+func (f mcpDownloadFunc) Download(ctx context.Context, request downloader.DownloadRequest) (downloader.DownloadBatchResult, error) {
+	return f(ctx, request)
+}
+
+func TestLocalDownloadsUseSharedServiceAndReportPartialFiles(t *testing.T) {
+	fake := &fakeSDKClient{recommendedArtworks: func(context.Context, pixiv.RecommendedArtworksRequest, int) (sdk.Page[pixiv.Artwork], error) {
+		return sdk.Page[pixiv.Artwork]{Items: []pixiv.Artwork{testSDKIllust(42, "sample", 7)}}, nil
+	}}
+	ports, account := newTestSDKPorts(t, fake)
+	root := t.TempDir()
+	file := filepath.Join(root, "42.gif")
+	require.NoError(t, os.WriteFile(file, []byte("fixture"), 0600))
+	var requests []downloader.DownloadRequest
+	fail := false
+	ports.Downloads = &pixivmcpserver.LocalDownloads{Path: root, FilenameTemplate: "{id}", DirectoryTemplate: "{user_id}", Service: downloader.DownloadService{
+		NewManager: func(_ downloader.DownloadClient, path, template string) (downloader.DownloadManager, error) {
+			require.Equal(t, root, path)
+			require.Equal(t, "{id}", template)
+			return mcpDownloadFunc(func(_ context.Context, req downloader.DownloadRequest) (downloader.DownloadBatchResult, error) {
+				requests = append(requests, req)
+				result := downloader.DownloadBatchResult{Items: []downloader.DownloadedArtwork{{IllustID: 42, Files: []downloader.DownloadedFile{{Path: file, Page: 1}}}}}
+				if fail {
+					return result, errors.New("fixture interrupted after write")
+				}
+				return result, nil
+			}), nil
+		},
+	}}
+	session, closeSession := newSDKTestSessionWithPorts(t, ports, account)
+	defer closeSession()
+	result := callTool(t, session, "pixiv_download", map[string]any{"srcs": []string{"42", "https://www.pixiv.net/artworks/43"}, "pages": "1,3-4", "quality": "regular", "ugoira_mode": "apng"})
+	require.False(t, result.IsError)
+	require.Len(t, requests, 1)
+	require.Equal(t, []int64{42, 43}, requests[0].IllustIDs)
+	require.Equal(t, []int{1, 3, 4}, requests[0].Pages)
+	require.Equal(t, downloader.DownloadQuality("regular"), requests[0].Quality)
+	require.Equal(t, downloader.UgoiraFormat("apng"), requests[0].UgoiraFormat)
+	require.Equal(t, "{user_id}", requests[0].DirectoryTemplate)
+	var out struct {
+		Files []struct {
+			Path, FileURI string
+			Size          int64 `json:"size_bytes"`
+		}
+	}
+	decodeStructured(t, result, &out)
+	require.Len(t, out.Files, 1)
+	require.Equal(t, file, out.Files[0].Path)
+	require.EqualValues(t, 7, out.Files[0].Size)
+	fail = true
+	result = callTool(t, session, "pixiv_download_random_from_recommendation", map[string]any{"count": 1})
+	require.True(t, result.IsError)
+	decodeStructured(t, result, &out)
+	require.Len(t, out.Files, 1, "interruption must retain committed paths")
+	require.Equal(t, []int64{42}, requests[1].IllustIDs)
+	before := len(requests)
+	for _, args := range []map[string]any{{}, {"src": "42", "srcs": []string{"43"}}, {"src": "42", "pages": "0"}, {"src": "42", "quality": "invalid"}} {
+		require.True(t, callTool(t, session, "pixiv_download", args).IsError)
+	}
+	require.Equal(t, before, len(requests), "invalid inputs must not write files")
 }

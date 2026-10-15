@@ -3,10 +3,16 @@ package mcp
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"net"
+	"net/url"
+	"strconv"
+	"strings"
 
 	requirements "github.com/FlanChanXwO/pixiv-cli/internal/cli/commands"
 	"github.com/FlanChanXwO/pixiv-cli/internal/cli/pipeline"
+	mcpauth "github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/auth"
 	"github.com/spf13/cobra"
 )
 
@@ -36,28 +42,36 @@ func Register(root *cobra.Command, host Host) {
 // NewCommand 构造 Pixiv MCP 入口；runtime 与 HTTP lifecycle 由 root host 注入。
 func NewCommand(host Host) *cobra.Command {
 	var options ProxyOptions
-	var listenAddr, baseURL string
+	var hostAddr, baseURL string
+	var port int
 	cmd := &cobra.Command{
 		Use:     "mcp",
-		Short:   "Run the unified Pixiv/FANBOX MCP Streamable HTTP server",
-		Example: "pixiv mcp\npixiv mcp --base-url https://mcp.example.com",
+		Short:   "Run unified Pixiv/FANBOX MCP over stdio (default) or HTTP (--port)",
+		Example: "pixiv mcp\npixiv mcp --port 1270\npixiv mcp --port 1270 --base-url https://mcp.example.com",
 		Args:    host.RequireExactArgs(0, "pixiv mcp"),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			request, err := host.ClientRequest(cmd, options)
 			if err != nil {
 				return err
 			}
-			if cmd.Flags().Changed("listen-addr") {
-				request.ListenAddr = &listenAddr
-			}
-			if cmd.Flags().Changed("base-url") {
-				request.BaseURL = &baseURL
+			if !cmd.Flags().Changed("port") {
+				if cmd.Flags().Changed("host") || cmd.Flags().Changed("base-url") {
+					return errors.New("--host and --base-url require --port")
+				}
+			} else {
+				listen, base, err := endpoint(hostAddr, port, baseURL, cmd.Flags().Changed("base-url"))
+				if err != nil {
+					return err
+				}
+				request.ListenAddr, request.BaseURL = &listen, &base
 			}
 			return host.RunMCP(cmd.Context(), request)
 		},
 	}
-	cmd.Flags().StringVar(&listenAddr, "listen-addr", "", "HTTP listen address (overrides mcp.listen_addr; default 127.0.0.1:1270)")
-	cmd.Flags().StringVar(&baseURL, "base-url", "", "Canonical HTTP(S) base URL (overrides mcp.base_url; default http://127.0.0.1:1270)")
+	cmd.Flags().IntVar(&port, "port", 0, "Enable HTTP on this port (1-65535); omitted uses stdio")
+	cmd.Flags().StringVar(&hostAddr, "host", "127.0.0.1", "HTTP listen host; requires --port")
+	cmd.Flags().StringVar(&baseURL, "base-url", "", "Canonical public URL; requires --port and HTTPS outside loopback")
+
 	host.BindProxyFlags(cmd, &options)
 	pipeline.Bind(cmd, pipeline.InputSpec{Codec: pipeline.NoInput, MinArgs: 0, MaxArgs: 0})
 	requirements.Bind(cmd, requirements.PixivMCP())
@@ -85,4 +99,36 @@ func NewCommand(host Host) *cobra.Command {
 	auth.AddCommand(init)
 	cmd.AddCommand(auth)
 	return cmd
+}
+
+// endpoint derives the public origin only from explicit startup values, never request headers.
+func endpoint(host string, port int, rawBase string, explicitBase bool) (string, string, error) {
+	if port < 1 || port > 65535 {
+		return "", "", errors.New("--port must be an integer from 1 to 65535")
+	}
+	if host == "" || strings.TrimSpace(host) != host || strings.ContainsAny(host, "/?#@[]\\") || (net.ParseIP(host) == nil && strings.Contains(host, ":")) {
+		return "", "", errors.New("--host must be a hostname or unbracketed IP address")
+	}
+	listen := net.JoinHostPort(host, strconv.Itoa(port))
+	if _, err := url.Parse("http://" + listen); err != nil {
+		return "", "", errors.New("invalid --host")
+	}
+	if !explicitBase {
+		ip := net.ParseIP(host)
+		if host != "localhost" && (ip == nil || !ip.IsLoopback()) {
+			return "", "", errors.New("non-loopback --host requires --base-url")
+		}
+		rawBase = "http://" + listen
+	}
+	if _, err := mcpauth.NewHandler(rawBase, mcpauth.Store{Path: "unused"}); err != nil {
+		return "", "", err
+	}
+	base, _ := url.Parse(strings.TrimRight(rawBase, "/"))
+	base.Scheme = strings.ToLower(base.Scheme)
+	base.Host = strings.ToLower(base.Host)
+	ip := net.ParseIP(base.Hostname())
+	if base.Scheme != "https" && base.Hostname() != "localhost" && (ip == nil || !ip.IsLoopback()) {
+		return "", "", errors.New("non-loopback --base-url requires HTTPS")
+	}
+	return listen, base.String(), nil
 }

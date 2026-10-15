@@ -192,7 +192,7 @@ func TestSearchFailurePreservesStructuredErrorResult(t *testing.T) {
 	}
 }
 func TestServerListsExpectedTools(t *testing.T) {
-	server := newTestServer(pixivmcpserver.SDKPorts{}, pixivmcpserver.Account{})
+	server := newTestServer(httpFixturePorts(t), pixivmcpserver.Account{})
 	clientTransport, serverTransport := mcp.NewInMemoryTransports()
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -228,7 +228,7 @@ func TestServerListsExpectedTools(t *testing.T) {
 		"pixiv_illust_series", "pixiv_novel_series", "pixiv_illust_comments", "pixiv_novel_comments",
 		"pixiv_recommended", "pixiv_trending_tags_illust", "pixiv_timeline_illust_following", "pixiv_timeline_novel_following",
 		"pixiv_timeline_illust_latest", "pixiv_timeline_novel_latest", "pixiv_mypixiv_users", "pixiv_mypixiv_illusts", "pixiv_mypixiv_novels",
-		"pixiv_user_detail", "pixiv_user_artworks", "pixiv_user_novels", "pixiv_user_bookmarks", "pixiv_user_novel_bookmarks", "pixiv_user_following", "pixiv_user_followers", "pixiv_related_users", "pixiv_blocked_users", "pixiv_bookmark_tags", "pixiv_bookmark_tags_all", "pixiv_bookmark_detail", "pixiv_bookmark_list_all", "pixiv_novel_bookmark_tags", "pixiv_novel_bookmark_detail", "pixiv_add_bookmark", "pixiv_add_novel_bookmark",
+		"pixiv_user_detail", "pixiv_user_artworks", "pixiv_user_novels", "pixiv_user_bookmarks", "pixiv_user_novel_bookmarks", "pixiv_user_following", "pixiv_user_followers", "pixiv_related_users", "pixiv_blocked_users", "pixiv_bookmark_tags", "pixiv_bookmark_tags_all", "pixiv_bookmark_detail", "pixiv_bookmark_list_all", "pixiv_novel_bookmark_detail", "pixiv_add_bookmark", "pixiv_add_novel_bookmark",
 		"pixiv_remove_bookmark", "pixiv_remove_novel_bookmark", "pixiv_follow_user", "pixiv_unfollow_user", "pixiv_create_artwork_comment", "pixiv_reply_artwork_comment", "pixiv_stamp_artwork_comment", "pixiv_delete_artwork_comment", "pixiv_create_novel_comment", "pixiv_reply_novel_comment", "pixiv_stamp_novel_comment", "pixiv_delete_novel_comment", "pixiv_reverse_search",
 	}
 	slices.Sort(names)
@@ -296,7 +296,7 @@ func TestServerListsExpectedTools(t *testing.T) {
 }
 
 func TestNovelBookmarkMutationSchemasExposeInputs(t *testing.T) {
-	server := newTestServer(pixivmcpserver.SDKPorts{}, pixivmcpserver.Account{})
+	server := newTestServer(httpFixturePorts(t), pixivmcpserver.Account{})
 	clientTransport, serverTransport := mcp.NewInMemoryTransports()
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()

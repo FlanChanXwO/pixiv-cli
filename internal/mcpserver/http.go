@@ -111,7 +111,10 @@ func RunHTTP(ctx context.Context, server *mcp.Server, listenAddr, baseURL string
 	if _, err := fmt.Fprintln(out, "MCP owner initialized; endpoint:", strings.TrimRight(baseURL, "/")+"/mcp"); err != nil {
 		return err
 	}
-	httpServer := &http.Server{Handler: handler, BaseContext: func(net.Listener) context.Context { return ctx }}
+	httpServer := &http.Server{Handler: handler,
+		// Bound slow header admission without timing out legitimate media/tool work.
+		ReadHeaderTimeout: 10 * time.Second,
+		BaseContext:       func(net.Listener) context.Context { return ctx }}
 	served := make(chan error, 1)
 	go func() { served <- httpServer.Serve(listener) }()
 	select {

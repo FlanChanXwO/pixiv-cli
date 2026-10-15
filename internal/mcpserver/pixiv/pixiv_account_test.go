@@ -195,7 +195,7 @@ func TestLoginToolsSharePendingSessionAndQueryWithoutLocalState(t *testing.T) {
 }
 
 func TestLoginStartErrorsKeepLoginEnvelopeAndHideArguments(t *testing.T) {
-	session, closeSession := newSDKTestSessionWithPorts(t, pixivserver.SDKPorts{}, pixivserver.Account{})
+	session, closeSession := newSDKTestSessionWithPorts(t, httpFixturePorts(t), pixivserver.Account{})
 	defer closeSession()
 	for _, args := range []map[string]any{{"restart": "fixture-secret"}, {"callback_url": "fixture-secret"}} {
 		result := callTool(t, session, "pixiv_account_login_start", args)

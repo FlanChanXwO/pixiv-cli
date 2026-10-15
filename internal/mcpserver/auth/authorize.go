@@ -27,11 +27,13 @@ type authorizationRequest struct {
 }
 
 type ownerSession struct {
+	ExpiresAt  time.Time
 	Generation string
 	Verified   bool
 }
 
 type consentForm struct {
+	ExpiresAt             time.Time
 	Request               authorizationRequest
 	SessionID, Generation string
 }
@@ -165,6 +167,9 @@ func (a *authorizer) prepare(r *http.Request) authorizationReply {
 	if query.Get("code_challenge_method") != "S256" || len(request.Challenge) != 43 || err != nil || len(challenge) != sha256.Size {
 		return a.callback(request, "", "invalid_request")
 	}
+	if len(a.forms) >= maxOAuthEntries {
+		return authorizationReply{Status: 503, Error: "temporarily_unavailable"}
+	}
 	var sessionID string
 	if cookie, err := r.Cookie("pixiv_mcp_owner"); err == nil {
 		sessionID = cookie.Value
@@ -172,11 +177,14 @@ func (a *authorizer) prepare(r *http.Request) authorizationReply {
 	session, exists := a.sessions[sessionID]
 	var cookie *http.Cookie
 	if !exists || session.Generation != state.OwnerVerifier {
+		if len(a.sessions) >= maxOAuthEntries {
+			return authorizationReply{Status: 503, Error: "temporarily_unavailable"}
+		}
 		sessionID, err = randomAuthorizationValue()
 		if err != nil {
 			return authorizationReply{Status: 500, Error: "server_error"}
 		}
-		session = ownerSession{Generation: state.OwnerVerifier}
+		session = ownerSession{Generation: state.OwnerVerifier, ExpiresAt: a.now().Add(authorizationLifetime)}
 		a.sessions[sessionID] = session
 		cookie = a.cookie(sessionID)
 	}
@@ -184,7 +192,7 @@ func (a *authorizer) prepare(r *http.Request) authorizationReply {
 	if err != nil {
 		return authorizationReply{Status: 500, Error: "server_error"}
 	}
-	a.forms[csrf] = consentForm{Request: request, SessionID: sessionID, Generation: state.OwnerVerifier}
+	a.forms[csrf] = consentForm{ExpiresAt: a.now().Add(authorizationLifetime), Request: request, SessionID: sessionID, Generation: state.OwnerVerifier}
 	origin := redirect.Scheme + ":"
 	if redirect.Host != "" {
 		origin += "//" + redirect.Host
@@ -269,6 +277,9 @@ func (a *authorizer) submit(r *http.Request) authorizationReply {
 			return authorizationReply{Status: 403, Error: "access_denied"}
 		}
 	}
+	if len(a.codes) >= maxOAuthEntries {
+		return authorizationReply{Status: 503, Error: "temporarily_unavailable"}
+	}
 	code, err := randomAuthorizationValue()
 	if err != nil {
 		return authorizationReply{Status: 500, Error: "server_error"}
@@ -286,12 +297,12 @@ func (a *authorizer) submit(r *http.Request) authorizationReply {
 				delete(a.forms, csrf)
 			}
 		}
-		a.sessions[id] = ownerSession{Generation: state.OwnerVerifier, Verified: true}
+		a.sessions[id] = ownerSession{Generation: state.OwnerVerifier, Verified: true, ExpiresAt: a.now().Add(authorizationLifetime)}
 		reply.Cookie = a.cookie(id)
 	}
 	now := a.now()
 	// RFC 6749 §4.1.2：有效期从签发起计，不给浏览器等待或业务请求加超时。
-	a.codes[sha256.Sum256([]byte(code))] = authorizationCode{Request: form.Request, Generation: state.OwnerVerifier, ExpiresAt: now.Add(10 * time.Minute)}
+	a.codes[sha256.Sum256([]byte(code))] = authorizationCode{Request: form.Request, Generation: state.OwnerVerifier, ExpiresAt: now.Add(authorizationLifetime)}
 	return reply
 }
 
@@ -308,6 +319,16 @@ func (a *authorizer) readState(ctx context.Context) (State, error) {
 		a.generation = state.OwnerVerifier
 	}
 	now := a.now()
+	for id, session := range a.sessions {
+		if !now.Before(session.ExpiresAt) {
+			delete(a.sessions, id)
+		}
+	}
+	for id, form := range a.forms {
+		if !now.Before(form.ExpiresAt) {
+			delete(a.forms, id)
+		}
+	}
 	for hash, code := range a.codes {
 		if !now.Before(code.ExpiresAt) {
 			delete(a.codes, hash)

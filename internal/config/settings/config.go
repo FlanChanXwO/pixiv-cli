@@ -57,8 +57,6 @@ type RuntimeConfig struct {
 	MCPGalleryCacheCapacityMiB         int64         `config:"mcp.gallery_cache_capacity_mib" alias:"mcp_gallery_cache_capacity_mib" default:"256" cli:"true"`
 	MCPGalleryCacheTTL                 time.Duration `config:"mcp.gallery_cache_ttl" alias:"mcp_gallery_cache_ttl" default:"15m" cli:"true"`
 	MCPGalleryConcurrency              int           `config:"mcp.gallery_concurrency" alias:"mcp_gallery_concurrency" default:"4" cli:"true"`
-	MCPListenAddr                      string        `config:"mcp.listen_addr" alias:"mcp_listen_addr" default:"127.0.0.1:1270" cli:"true"`
-	MCPBaseURL                         string        `config:"mcp.base_url" alias:"mcp_base_url" default:"http://127.0.0.1:1270" cli:"true"`
 
 	// DownloadPath 是作品下载根目录；未配置时使用相对当前工作目录的路径。
 	DownloadPath string `config:"download.path" alias:"download_path" env:"DOWNLOAD_PATH" default:"./downloads" cli:"true" example:"true"`

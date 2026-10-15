@@ -674,7 +674,7 @@ func TestMCPReverseSearchRegistersSearcherForHTTPLifetime(t *testing.T) {
 	searcher := &closeTrackingReverseSearcher{closeErr: closeErr}
 
 	loadCLIRuntimeConfig = func() (configapp.RuntimeConfig, error) {
-		return configapp.RuntimeConfig{MCPListenAddr: "127.0.0.1:8123", MCPBaseURL: "http://127.0.0.1:8123"}, nil
+		return configapp.RuntimeConfig{}, nil
 	}
 	newCLIMCPReverseSearch = func(reverseassembly.Options) (reversesearch.Searcher, error) {
 		return searcher, nil
@@ -719,7 +719,7 @@ func TestMCPReverseSearchRegistersSearcherForHTTPLifetime(t *testing.T) {
 	}
 	_, err := a.InitMCPAuth(t.Context(), false)
 	require.NoError(t, err)
-	require.NoError(t, a.runPixivMCP(context.Background(), mcpcommands.Request{}))
+	require.NoError(t, a.runPixivMCP(context.Background(), mcpcommands.Request{ListenAddr: new("127.0.0.1:8123"), BaseURL: new("http://127.0.0.1:8123")}))
 	require.ErrorIs(t, a.closeResources(), closeErr)
 	require.ErrorIs(t, a.closeResources(), closeErr)
 	require.Equal(t, int32(1), searcher.closeCalls.Load())
@@ -738,7 +738,7 @@ func TestMCPShutdownPreservesAnimationCleanupError(t *testing.T) {
 		loadCLIRuntimeConfig, newCLIPixivSDKPorts, runMCPHTTP, newCLIMCPReverseSearch = oldConfig, oldSDK, oldHTTP, oldReverse
 	})
 	loadCLIRuntimeConfig = func() (configapp.RuntimeConfig, error) {
-		return configapp.RuntimeConfig{MCPListenAddr: "127.0.0.1:8123", MCPBaseURL: "http://127.0.0.1:8123", MCPGalleryCacheTTL: time.Minute, MCPGalleryConcurrency: 1, MCPGalleryAnimationTempCapacityMiB: 1}, nil
+		return configapp.RuntimeConfig{MCPGalleryCacheTTL: time.Minute, MCPGalleryConcurrency: 1, MCPGalleryAnimationTempCapacityMiB: 1}, nil
 	}
 	newCLIMCPReverseSearch = func(reverseassembly.Options) (reversesearch.Searcher, error) {
 		return &closeTrackingReverseSearcher{}, nil
@@ -761,7 +761,7 @@ func TestMCPShutdownPreservesAnimationCleanupError(t *testing.T) {
 	a := app{in: strings.NewReader(""), out: io.Discard, errOut: io.Discard, closeState: &closeState{}}
 	_, err := a.InitMCPAuth(t.Context(), false)
 	require.NoError(t, err)
-	err = a.runPixivMCP(t.Context(), mcpcommands.Request{})
+	err = a.runPixivMCP(t.Context(), mcpcommands.Request{ListenAddr: new("127.0.0.1:8123"), BaseURL: new("http://127.0.0.1:8123")})
 	require.ErrorIs(t, err, serveErr)
 	require.ErrorIs(t, err, os.ErrPermission, "server failure must retain the animation cleanup failure")
 	require.NoError(t, a.closeResources())
@@ -853,10 +853,10 @@ func TestMCPHTTPPreflightFailsBeforeStarting(t *testing.T) {
 		args []string
 		want string
 	}{
-		{"default endpoints require owner", nil, "pixiv mcp auth init"},
-		{"missing owner", []string{"--listen-addr", "127.0.0.1:8123", "--base-url", "http://127.0.0.1:8123"}, "pixiv mcp auth init"},
-		{"invalid canonical", []string{"--listen-addr", "127.0.0.1:8123", "--base-url", "relative"}, "canonical MCP base URL"},
-		{"ephemeral port", []string{"--listen-addr", "127.0.0.1:0", "--base-url", "http://127.0.0.1:8123"}, "nonzero port"},
+		{"explicit HTTP requires owner", []string{"--port", "1270"}, "pixiv mcp auth init"},
+		{"missing owner", []string{"--port", "8123", "--base-url", "http://127.0.0.1:8123"}, "pixiv mcp auth init"},
+		{"invalid canonical", []string{"--port", "8123", "--base-url", "relative"}, "canonical MCP base URL"},
+		{"ephemeral port", []string{"--port", "0", "--base-url", "http://127.0.0.1:8123"}, "--port must"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			useTempPaths(t)
@@ -884,12 +884,12 @@ func TestMCPHTTPEndpointFlagPrecedence(t *testing.T) {
 		args         []string
 		listen, base string
 	}{
-		{"defaults", nil, "127.0.0.1:1270", "http://127.0.0.1:1270"},
-		{"config", nil, "127.0.0.1:8123", "http://127.0.0.1:8123"},
-		{"listen override", []string{"--listen-addr", "127.0.0.1:8124"}, "127.0.0.1:8124", "http://127.0.0.1:8123"},
-		{"base override", []string{"--base-url", "https://public.test/prefix"}, "127.0.0.1:8123", "https://public.test/prefix"},
-		{"empty listen", []string{"--listen-addr="}, "", ""},
-		{"empty base", []string{"--base-url="}, "", ""},
+		{"defaults", []string{"--port", "1270"}, "127.0.0.1:1270", "http://127.0.0.1:1270"},
+		{"config ignored", []string{"--port", "9000"}, "127.0.0.1:9000", "http://127.0.0.1:9000"},
+		{"IPv6", []string{"--port", "8124", "--host", "::1"}, "[::1]:8124", "http://[::1]:8124"},
+		{"base override", []string{"--port", "8123", "--base-url", "https://public.test/prefix/"}, "127.0.0.1:8123", "https://public.test/prefix"},
+		{"missing port", []string{"--host", "0.0.0.0"}, "", ""},
+		{"empty base", []string{"--port", "8123", "--base-url="}, "", ""},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			_, configPath := useTempPaths(t)
@@ -918,7 +918,7 @@ base_url = "http://127.0.0.1:8123"
 			if tc.listen == "" {
 				require.NotZero(t, code)
 				require.False(t, called)
-				require.Contains(t, stderr.String(), "MCP requires")
+				require.NotEmpty(t, stderr.String())
 			} else {
 				require.Equal(t, 0, code, stderr.String())
 				require.True(t, called)
@@ -935,7 +935,7 @@ func TestMCPProductionResolvesSharedSelectionBeforeSDK(t *testing.T) {
 		loadCLIRuntimeConfig, newCLIPixivSDKPorts, runMCPHTTP, newCLIMCPReverseSearch = oldConfig, oldSDK, oldHTTP, oldReverse
 	})
 	loadCLIRuntimeConfig = func() (configapp.RuntimeConfig, error) {
-		return configapp.RuntimeConfig{MCPListenAddr: "127.0.0.1:8123", MCPBaseURL: "http://127.0.0.1:8123"}, nil
+		return configapp.RuntimeConfig{}, nil
 	}
 	newCLIMCPReverseSearch = func(reverseassembly.Options) (reversesearch.Searcher, error) {
 		return rootReverseSearcherFunc(func(context.Context, reversesearch.Request) (reversesearch.Response, error) {
@@ -980,7 +980,7 @@ func TestMCPProductionResolvesSharedSelectionBeforeSDK(t *testing.T) {
 	a := app{in: strings.NewReader(""), out: io.Discard, errOut: io.Discard, closeState: &closeState{}}
 	_, err := a.InitMCPAuth(t.Context(), false)
 	require.NoError(t, err)
-	require.NoError(t, a.runPixivMCP(t.Context(), mcpcommands.Request{}))
+	require.NoError(t, a.runPixivMCP(t.Context(), mcpcommands.Request{ListenAddr: new("127.0.0.1:8123"), BaseURL: new("http://127.0.0.1:8123")}))
 	require.NoError(t, a.closeResources())
 }
 
@@ -1318,4 +1318,55 @@ func TestMCPAnimationObservationsKeepSafeCancellationReasons(t *testing.T) {
 			require.NotContains(t, string(encoded), "token=secret")
 		})
 	}
+}
+
+func TestDefaultMCPStartsWithoutHTTPOwner(t *testing.T) {
+	_, configPath := useTempPaths(t)
+	var stdout, stderr bytes.Buffer
+	code := RunContext(t.Context(), []string{"pixiv", "mcp"}, strings.NewReader(""), &stdout, &stderr)
+	require.Zero(t, code, stderr.String())
+	require.Empty(t, stdout.String())
+	_, err := os.Stat(filepath.Join(filepath.Dir(configPath), "mcp-state.json"))
+	require.ErrorIs(t, err, os.ErrNotExist)
+}
+
+func TestMCPLocalRegistryWithoutHTTPState(t *testing.T) {
+	_, configPath := useTempPaths(t)
+	oldRun, oldPorts := runMCPStdio, newCLIPixivSDKPorts
+	t.Cleanup(func() { runMCPStdio, newCLIPixivSDKPorts = oldRun, oldPorts })
+	newCLIPixivSDKPorts = func(app) (pixivSDKPorts, error) { return pixivSDKPorts{}, nil }
+	runMCPStdio = func(ctx context.Context, server *mcp.Server, _ io.Reader, _ io.Writer) error {
+		ct, st := mcp.NewInMemoryTransports()
+		ss, err := server.Connect(ctx, st, nil)
+		require.NoError(t, err)
+		defer ss.Close()
+		cs, err := mcp.NewClient(&mcp.Implementation{Name: "local", Version: "1"}, nil).Connect(ctx, ct, nil)
+		require.NoError(t, err)
+		defer cs.Close()
+		listed, err := cs.ListTools(ctx, nil)
+		require.NoError(t, err)
+		names := []string{}
+		for _, tool := range listed.Tools {
+			names = append(names, tool.Name)
+			if strings.HasPrefix(tool.Name, "pixiv_download") {
+				require.False(t, tool.Annotations.ReadOnlyHint)
+				require.True(t, *tool.Annotations.DestructiveHint, "shared downloader can replace an existing destination")
+			}
+		}
+		for _, name := range []string{"pixiv_search_illust", "fanbox_current_user", "pixiv_artwork_media", "pixiv_download", "pixiv_download_random_from_recommendation"} {
+			require.Contains(t, names, name)
+		}
+		for _, name := range []string{"pixiv_show_gallery", "pixiv_gallery_animation", "pixiv_account_login_start", "pixiv_account_use"} {
+			require.NotContains(t, names, name)
+		}
+		resources, err := cs.ListResources(ctx, nil)
+		require.NoError(t, err)
+		require.Empty(t, resources.Resources)
+		return nil
+	}
+	var out, diagnostics bytes.Buffer
+	require.Zero(t, RunContext(t.Context(), []string{"pixiv", "mcp"}, strings.NewReader(""), &out, &diagnostics), diagnostics.String())
+	_, err := os.Stat(filepath.Join(filepath.Dir(configPath), "mcp-state.json"))
+	require.ErrorIs(t, err, os.ErrNotExist)
+	require.Empty(t, out.String())
 }

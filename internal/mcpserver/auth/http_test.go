@@ -2,6 +2,7 @@ package auth_test
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -322,4 +323,44 @@ func TestCanonicalRequestBoundary(t *testing.T) {
 			require.Equal(t, tc.status, response.Code)
 		})
 	}
+}
+
+func TestOAuthRejectsOversizedRegistrationWithoutPersisting(t *testing.T) {
+	store := auth.Store{Path: filepath.Join(t.TempDir(), "state.json")}
+	_, err := store.Init(t.Context(), false)
+	require.NoError(t, err)
+	handler, err := auth.NewHandler("http://127.0.0.1:1270", store)
+	require.NoError(t, err)
+	request := httptest.NewRequest(http.MethodPost, "http://127.0.0.1:1270/oauth/register", strings.NewReader(strings.Repeat(" ", 65537)+`{"redirect_uris":["https://client.test/callback"]}`))
+	request.Header.Set("Content-Type", "application/json")
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, request)
+	require.Equal(t, http.StatusRequestEntityTooLarge, response.Code)
+	state, err := store.Read(t.Context())
+	require.NoError(t, err)
+	require.Empty(t, state.Clients)
+}
+
+func TestDCRCapacityPreservesExistingRegistrations(t *testing.T) {
+	store := auth.Store{Path: filepath.Join(t.TempDir(), "state.json")}
+	_, err := store.Init(t.Context(), false)
+	require.NoError(t, err)
+	state, err := store.Read(t.Context())
+	require.NoError(t, err)
+	for i := 0; i < 1024; i++ {
+		state.Clients[fmt.Sprint(i)] = auth.Client{RedirectURIs: []string{"https://client.test/callback"}}
+	}
+	data, err := json.Marshal(state)
+	require.NoError(t, err)
+	require.NoError(t, os.WriteFile(store.Path, data, 0600))
+	handler, err := auth.NewHandler("http://127.0.0.1:1270", store)
+	require.NoError(t, err)
+	request := httptest.NewRequest(http.MethodPost, "http://127.0.0.1:1270/oauth/register", strings.NewReader(`{"redirect_uris":["https://new.test/callback"]}`))
+	request.Header.Set("Content-Type", "application/json")
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, request)
+	require.Equal(t, http.StatusServiceUnavailable, response.Code)
+	after, err := store.Read(t.Context())
+	require.NoError(t, err)
+	require.Equal(t, state.Clients, after.Clients)
 }

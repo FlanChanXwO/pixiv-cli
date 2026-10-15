@@ -14,6 +14,8 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"testing/synctest"
+	"time"
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/auth"
 	"github.com/stretchr/testify/require"
@@ -444,4 +446,60 @@ func TestAuthorizeFormTargetsCanonicalEndpoint(t *testing.T) {
 			require.Equal(t, base+"/oauth/authorize", destination.String())
 		})
 	}
+}
+
+func TestPendingConsentCapacityFailsWithoutEvictingFirstForm(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		store := auth.Store{Path: filepath.Join(t.TempDir(), "state.json")}
+		_, err := store.Init(t.Context(), false)
+		require.NoError(t, err)
+		handler, err := auth.NewHandler("http://127.0.0.1:1270", store)
+		require.NoError(t, err)
+		registration := httptest.NewRecorder()
+		request := httptest.NewRequest(http.MethodPost, "http://127.0.0.1:1270/oauth/register", strings.NewReader(`{"redirect_uris":["https://client.test/callback"]}`))
+		request.Header.Set("Content-Type", "application/json")
+		handler.ServeHTTP(registration, request)
+		require.Equal(t, http.StatusCreated, registration.Code)
+		var client struct {
+			ID string `json:"client_id"`
+		}
+		require.NoError(t, json.Unmarshal(registration.Body.Bytes(), &client))
+		query := url.Values{"client_id": {client.ID}, "redirect_uri": {"https://client.test/callback"}, "response_type": {"code"}, "resource": {"http://127.0.0.1:1270/mcp"}, "scope": {"mcp"}, "code_challenge_method": {"S256"}, "code_challenge": {"E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM"}}
+		var cookie *http.Cookie
+		var first string
+		for i := 0; i < 1025; i++ {
+			response := httptest.NewRecorder()
+			request := httptest.NewRequest(http.MethodGet, "http://127.0.0.1:1270/oauth/authorize?"+query.Encode(), nil)
+			if cookie != nil {
+				request.AddCookie(cookie)
+			}
+			handler.ServeHTTP(response, request)
+			if i == 1024 {
+				require.Equal(t, http.StatusServiceUnavailable, response.Code)
+				break
+			}
+			require.Equal(t, http.StatusOK, response.Code)
+			if i == 0 {
+				cookie = response.Result().Cookies()[0]
+				first = regexp.MustCompile(`name="csrf_token" value="([^"]+)"`).FindStringSubmatch(response.Body.String())[1]
+			}
+		}
+		response := httptest.NewRecorder()
+		request = httptest.NewRequest(http.MethodPost, "http://127.0.0.1:1270/oauth/authorize", strings.NewReader(url.Values{"csrf_token": {first}, "decision": {"deny"}}.Encode()))
+		request.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		request.Header.Set("Origin", "http://127.0.0.1:1270")
+		request.AddCookie(cookie)
+		handler.ServeHTTP(response, request)
+		require.Equal(t, http.StatusFound, response.Code, "capacity must preserve existing consent state")
+
+		time.Sleep(10*time.Minute + time.Second)
+		renewed := httptest.NewRecorder()
+		request = httptest.NewRequest(http.MethodGet, "http://127.0.0.1:1270/oauth/authorize?"+query.Encode(), nil)
+		request.AddCookie(cookie)
+		handler.ServeHTTP(renewed, request)
+		require.Equal(t, http.StatusOK, renewed.Code, "expired consent entries must release capacity")
+		cookies := renewed.Result().Cookies()
+		require.Len(t, cookies, 1)
+		require.NotEqual(t, cookie.Value, cookies[0].Value, "expired owner sessions must not retain browser identity")
+	})
 }
