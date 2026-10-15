@@ -3,6 +3,7 @@ package auth_test
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -67,6 +68,57 @@ func TestTokenCodeExchangePersistsHashesAndConsumesOnce(t *testing.T) {
 	}
 	failure := tokenRequest(t, f, form, http.StatusBadRequest)
 	require.Equal(t, "invalid_grant", failure["error"])
+}
+
+func TestDCRPressurePreservesApprovedCodeAndLegacyGrant(t *testing.T) {
+	f := newAuthorizationFixture(t)
+	form := codeForm(t, f)
+	state, err := f.store.Read(t.Context())
+	require.NoError(t, err)
+	clientID := f.query.Get("client_id")
+	for i := 0; i < 1022; i++ {
+		state.Clients[fmt.Sprint(i)] = auth.Client{RedirectURIs: []string{"https://client.test/callback"}, OwnerApproved: true}
+	}
+	state.Clients["anonymous"] = auth.Client{RedirectURIs: []string{"https://unused.test/callback"}}
+	writeState := func() {
+		data, err := json.Marshal(state)
+		require.NoError(t, err)
+		require.NoError(t, os.WriteFile(f.store.Path, data, 0600))
+	}
+	writeState()
+	register := func() {
+		response, err := f.browser.Post(f.server.URL+"/prefix/oauth/register", "application/json", strings.NewReader(`{"redirect_uris":["https://new.test/callback"]}`))
+		require.NoError(t, err)
+		response.Body.Close()
+		require.Equal(t, http.StatusCreated, response.StatusCode)
+	}
+	register()
+	state, err = f.store.Read(t.Context())
+	require.NoError(t, err)
+	require.NotContains(t, state.Clients, "anonymous")
+	require.True(t, state.Clients[clientID].OwnerApproved)
+	tokens := tokenRequest(t, f, form, http.StatusOK)
+
+	// Older state has grants but no approval marker; registration must retain both.
+	state, err = f.store.Read(t.Context())
+	require.NoError(t, err)
+	client := state.Clients[clientID]
+	client.OwnerApproved = false
+	state.Clients[clientID] = client
+	writeState()
+	register()
+	after, err := f.store.Read(t.Context())
+	require.NoError(t, err)
+	require.Equal(t, state.Grants, after.Grants)
+	require.Equal(t, client, after.Clients[clientID])
+	tokenRequest(t, f, url.Values{"grant_type": {"refresh_token"}, "refresh_token": {tokens["refresh_token"].(string)}, "client_id": {clientID}, "resource": {f.query.Get("resource")}}, http.StatusOK)
+	_, err = f.store.Init(t.Context(), true)
+	require.NoError(t, err)
+	register()
+	after, err = f.store.Read(t.Context())
+	require.NoError(t, err)
+	require.True(t, after.Clients[clientID].OwnerApproved, "reset must retain legacy approval before clearing grants")
+	require.Empty(t, after.Grants)
 }
 
 func TestTokenRefreshRotatesAndReplayRevokesOnlyItsGrant(t *testing.T) {

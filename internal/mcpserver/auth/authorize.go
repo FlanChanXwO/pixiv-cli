@@ -7,6 +7,7 @@ import (
 	"crypto/subtle"
 	"encoding/base64"
 	"encoding/hex"
+	"errors"
 	"html/template"
 	"io"
 	"mime"
@@ -279,6 +280,12 @@ func (a *authorizer) submit(r *http.Request) authorizationReply {
 	}
 	if len(a.codes) >= maxOAuthEntries {
 		return authorizationReply{Status: 503, Error: "temporarily_unavailable"}
+	}
+	if err := a.store.approveClient(r.Context(), form.Request.ClientID, state.OwnerVerifier, form.Request.RedirectURI); err != nil {
+		if errors.Is(err, errInvalidGrant) {
+			return authorizationReply{Status: 400, Error: "invalid_request"}
+		}
+		return authorizationReply{Status: 500, Error: "server_error"}
 	}
 	code, err := randomAuthorizationValue()
 	if err != nil {

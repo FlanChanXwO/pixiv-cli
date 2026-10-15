@@ -811,7 +811,8 @@ func TestMCPAuthResetPreservesClientsAndSelection(t *testing.T) {
 	require.NoError(t, err)
 	var state map[string]any
 	require.NoError(t, json.Unmarshal(body, &state))
-	state["clients"] = map[string]any{"connector": map[string]any{"client_name": "Fixture", "redirect_uris": []any{"https://client.example/callback"}}}
+	registeredClient := map[string]any{"client_name": "Fixture", "redirect_uris": []any{"https://client.example/callback"}}
+	state["clients"] = map[string]any{"connector": registeredClient}
 	state["grants"] = map[string]any{"grant": map[string]any{"client_id": "connector", "resource": "https://server.example/mcp", "scope": "mcp", "refresh_hash": strings.Repeat("a", 64), "access_tokens": map[string]string{strings.Repeat("b", 64): "2026-09-28T01:00:00Z"}, "used_refresh_hashes": []string{}, "revoked": false}}
 	state["selected_pixiv_user_id"] = 72
 	body, err = json.Marshal(state)
@@ -825,6 +826,7 @@ func TestMCPAuthResetPreservesClientsAndSelection(t *testing.T) {
 	body, err = os.ReadFile(filename)
 	require.NoError(t, err)
 	require.NoError(t, json.Unmarshal(body, &after))
+	registeredClient["owner_approved"] = true
 	require.Equal(t, state["clients"], after["clients"])
 	require.Equal(t, float64(72), after["selected_pixiv_user_id"])
 	require.Empty(t, after["grants"])

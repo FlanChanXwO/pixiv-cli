@@ -262,7 +262,9 @@ func TestRegistrationPreservesStateAcrossConcurrentWritersAndReset(t *testing.T)
 	reopened, err := (auth.Store{Path: store.Path}).Read(t.Context())
 	require.NoError(t, err)
 	require.Len(t, reopened.Clients, 10)
-	require.Equal(t, state.Clients["existing"], reopened.Clients["existing"])
+	approved := state.Clients["existing"]
+	approved.OwnerApproved = true
+	require.Equal(t, approved, reopened.Clients["existing"], "reset retains legacy grant approval")
 	require.Equal(t, state.SelectedPixivUserID, reopened.SelectedPixivUserID)
 	require.NotEqual(t, state.OwnerVerifier, reopened.OwnerVerifier)
 	require.Empty(t, reopened.Grants)
@@ -348,7 +350,11 @@ func TestDCRCapacityPreservesExistingRegistrations(t *testing.T) {
 	state, err := store.Read(t.Context())
 	require.NoError(t, err)
 	for i := 0; i < 1024; i++ {
-		state.Clients[fmt.Sprint(i)] = auth.Client{RedirectURIs: []string{"https://client.test/callback"}}
+		id := fmt.Sprint(i)
+		state.Clients[id] = auth.Client{RedirectURIs: []string{"https://client.test/callback"}, OwnerApproved: i%2 == 0}
+		if i%2 != 0 {
+			state.Grants[id] = auth.Grant{ClientID: id, Resource: "http://127.0.0.1:1270/mcp", Scope: "mcp", AccessTokens: map[string]time.Time{}, RefreshHash: strings.Repeat("a", 64), Revoked: true}
+		}
 	}
 	data, err := json.Marshal(state)
 	require.NoError(t, err)
@@ -363,4 +369,41 @@ func TestDCRCapacityPreservesExistingRegistrations(t *testing.T) {
 	after, err := store.Read(t.Context())
 	require.NoError(t, err)
 	require.Equal(t, state.Clients, after.Clients)
+	require.Equal(t, state.Grants, after.Grants)
+}
+
+func TestDCRCapacityRecoversUnapprovedRegistrations(t *testing.T) {
+	store := auth.Store{Path: filepath.Join(t.TempDir(), "state.json")}
+	_, err := store.Init(t.Context(), false)
+	require.NoError(t, err)
+	state, err := store.Read(t.Context())
+	require.NoError(t, err)
+	for i := 0; i < 1024; i++ {
+		state.Clients[fmt.Sprint(i)] = auth.Client{RedirectURIs: []string{"https://client.test/callback"}}
+	}
+	data, err := json.Marshal(state)
+	require.NoError(t, err)
+	require.NoError(t, os.WriteFile(store.Path, data, 0600))
+	for _, reset := range []bool{false, true} {
+		if reset {
+			_, err = store.Init(t.Context(), true)
+			require.NoError(t, err)
+		}
+		// Reopen both handler and store: recovery cannot depend on process-local state.
+		handler, err := auth.NewHandler("http://127.0.0.1:1270", auth.Store{Path: store.Path})
+		require.NoError(t, err)
+		request := httptest.NewRequest(http.MethodPost, "http://127.0.0.1:1270/oauth/register", strings.NewReader(`{"owner_approved":true,"redirect_uris":["https://new.test/callback"]}`))
+		request.Header.Set("Content-Type", "application/json")
+		response := httptest.NewRecorder()
+		handler.ServeHTTP(response, request)
+		require.Equal(t, http.StatusCreated, response.Code)
+		var registered struct {
+			ClientID string `json:"client_id"`
+		}
+		require.NoError(t, json.Unmarshal(response.Body.Bytes(), &registered))
+		after, err := store.Read(t.Context())
+		require.NoError(t, err)
+		require.Len(t, after.Clients, 1024)
+		require.Equal(t, auth.Client{RedirectURIs: []string{"https://new.test/callback"}}, after.Clients[registered.ClientID], "DCR metadata must not confer owner approval")
+	}
 }

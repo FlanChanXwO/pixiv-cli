@@ -13,6 +13,7 @@ import (
 	"io"
 	"os"
 	"runtime"
+	"slices"
 	"time"
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/storage/file/atomic"
@@ -34,10 +35,12 @@ type State struct {
 	SelectedPixivUserID int64             `json:"selected_pixiv_user_id"`
 }
 
-// Client 只记录 public client metadata；map key 是稳定 client ID，不保存 secret。
+// Client 记录 public client metadata 与本地批准标记；map key 是 client ID，不保存 secret。
 type Client struct {
 	ClientName   string   `json:"client_name"`
 	RedirectURIs []string `json:"redirect_uris"`
+	// 只由 owner 同意流程设置，防止匿名注册挤掉已签发授权码的客户端。
+	OwnerApproved bool `json:"owner_approved,omitempty"`
 }
 
 // Grant 持久化 token verifier 而非原值；已用 refresh hashes 留给重放撤销检查。
@@ -168,6 +171,12 @@ func (s Store) Init(ctx context.Context, reset bool) (string, error) {
 		candidate := base64.RawURLEncoding.EncodeToString(value)
 		digest := sha256.Sum256([]byte(candidate))
 		state.OwnerVerifier = hex.EncodeToString(digest[:])
+		// reset 清空 grant 前保留旧版本已经获得 owner 授权的证据。
+		for _, grant := range state.Grants {
+			client := state.Clients[grant.ClientID]
+			client.OwnerApproved = true
+			state.Clients[grant.ClientID] = client
+		}
 		state.Grants = map[string]Grant{}
 		if err := s.save(ctx, state); err != nil {
 			return err
@@ -194,7 +203,22 @@ func (s Store) registerClient(ctx context.Context, client Client) (string, error
 			return err
 		}
 		if len(state.Clients) >= maxOAuthEntries {
-			return errOAuthCapacity
+			granted := make(map[string]bool, len(state.Grants))
+			for _, grant := range state.Grants {
+				granted[grant.ClientID] = true
+			}
+			// 旧状态可能没有批准标记；任何已有 grant（含撤销项）仍保护其客户端。
+			for id, candidate := range state.Clients {
+				if !candidate.OwnerApproved && !granted[id] {
+					delete(state.Clients, id)
+					if len(state.Clients) < maxOAuthEntries {
+						break
+					}
+				}
+			}
+			if len(state.Clients) >= maxOAuthEntries {
+				return errOAuthCapacity
+			}
 		}
 		value := make([]byte, 32)
 		if _, err := rand.Read(value); err != nil {
@@ -212,6 +236,26 @@ func (s Store) registerClient(ctx context.Context, client Client) (string, error
 		return nil
 	})
 	return id, err
+}
+
+// approveClient 与注册/reset 共用文件锁，批准提交成功后才能签发授权码。
+func (s Store) approveClient(ctx context.Context, clientID, generation, redirectURI string) error {
+	return lock.WithPrivateLock(ctx, s.Path, func() error {
+		state, err := s.Read(ctx)
+		if err != nil {
+			return err
+		}
+		client, exists := state.Clients[clientID]
+		if state.OwnerVerifier != generation || !exists || !slices.Contains(client.RedirectURIs, redirectURI) {
+			return errInvalidGrant
+		}
+		if client.OwnerApproved {
+			return nil
+		}
+		client.OwnerApproved = true
+		state.Clients[clientID] = client
+		return s.save(ctx, state)
+	})
 }
 
 // save 仅供持有侧车锁的事务调用；成功落盘前不发布 secret、client 或 token。

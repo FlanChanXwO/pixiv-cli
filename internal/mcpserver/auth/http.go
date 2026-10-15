@@ -149,11 +149,12 @@ func writeJSON(w http.ResponseWriter, status int, value any) {
 func registrationClient(body io.Reader) (Client, string) {
 	// 未使用的扩展 metadata 按 RFC 7591 忽略，不抓取 logo、JWKS 或 client URL。
 	var input struct {
-		Client
-		Method    json.RawMessage `json:"token_endpoint_auth_method"`
-		Grants    json.RawMessage `json:"grant_types"`
-		Responses json.RawMessage `json:"response_types"`
-		Scope     json.RawMessage `json:"scope"`
+		ClientName   string          `json:"client_name"`
+		RedirectURIs []string        `json:"redirect_uris"`
+		Method       json.RawMessage `json:"token_endpoint_auth_method"`
+		Grants       json.RawMessage `json:"grant_types"`
+		Responses    json.RawMessage `json:"response_types"`
+		Scope        json.RawMessage `json:"scope"`
 	}
 	decoder := json.NewDecoder(body)
 	if err := decoder.Decode(&input); err != nil {
@@ -203,7 +204,7 @@ func registrationClient(body io.Reader) (Client, string) {
 		}
 	}
 	// 所有注册采用同一 public-client profile；响应明确返回实际采用的 metadata。
-	return input.Client, ""
+	return Client{ClientName: input.ClientName, RedirectURIs: input.RedirectURIs}, ""
 }
 
 func validRedirect(raw string) bool {

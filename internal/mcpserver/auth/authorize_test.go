@@ -119,7 +119,7 @@ func (f authorizationFixture) submit(t *testing.T, values url.Values) *http.Resp
 
 func TestAuthorizeIssuesCodeOnlyAfterOwnerAndExplicitConsent(t *testing.T) {
 	f := newAuthorizationFixture(t)
-	before, err := os.ReadFile(f.store.Path)
+	before, err := f.store.Read(t.Context())
 	require.NoError(t, err)
 	csrf, _ := f.consent(t)
 	endpoint, err := url.Parse(f.server.URL + "/prefix/oauth/authorize")
@@ -144,7 +144,14 @@ func TestAuthorizeIssuesCodeOnlyAfterOwnerAndExplicitConsent(t *testing.T) {
 	require.Empty(t, body)
 	after, err := os.ReadFile(f.store.Path)
 	require.NoError(t, err)
-	require.Equal(t, before, after, "authorization codes and sessions must remain in memory")
+	client := before.Clients[f.query.Get("client_id")]
+	client.OwnerApproved = true
+	before.Clients[f.query.Get("client_id")] = client
+	state, err := f.store.Read(t.Context())
+	require.NoError(t, err)
+	require.Equal(t, before, state, "only owner approval is persisted; codes and sessions remain in memory")
+	require.NotContains(t, string(after), code)
+	require.NotContains(t, string(after), f.secret)
 	require.Equal(t, http.StatusForbidden, f.submit(t, url.Values{"csrf_token": {csrf}, "decision": {"allow"}}).StatusCode)
 	next, page := f.consent(t)
 	require.NotContains(t, page, `type="password"`)
@@ -249,6 +256,9 @@ func TestAuthorizeRejectsForgedOrAmbiguousConsent(t *testing.T) {
 			body, err := io.ReadAll(response.Body)
 			require.NoError(t, err)
 			require.False(t, strings.Contains(string(body), f.secret))
+			state, err := f.store.Read(t.Context())
+			require.NoError(t, err)
+			require.False(t, state.Clients[f.query.Get("client_id")].OwnerApproved)
 		})
 	}
 }
