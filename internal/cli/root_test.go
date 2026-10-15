@@ -907,7 +907,10 @@ base_url = "http://127.0.0.1:8123"
 			}
 			oldHTTP, oldSDK := runMCPHTTP, newCLIPixivSDKPorts
 			t.Cleanup(func() { runMCPHTTP, newCLIPixivSDKPorts = oldHTTP, oldSDK })
-			newCLIPixivSDKPorts = func(app) (pixivSDKPorts, error) { return pixivSDKPorts{}, nil }
+			watchCalls := 0
+			newCLIPixivSDKPorts = func(app) (pixivSDKPorts, error) {
+				return pixivSDKPorts{watchReadSessions: func(context.Context) error { watchCalls++; return nil }}, nil
+			}
 			called := false
 			runMCPHTTP = func(_ context.Context, _ *mcp.Server, listen, base string, _ mcpauth.Store, out io.Writer, login *mcpaccounts.LoginManager, media ...*mediaproxy.Service) error {
 				called = true
@@ -920,10 +923,12 @@ base_url = "http://127.0.0.1:8123"
 			if tc.listen == "" {
 				require.NotZero(t, code)
 				require.False(t, called)
+				require.Zero(t, watchCalls)
 				require.NotEmpty(t, stderr.String())
 			} else {
 				require.Equal(t, 0, code, stderr.String())
 				require.True(t, called)
+				require.Equal(t, 1, watchCalls)
 			}
 			require.Empty(t, stdout.String())
 		})
@@ -1336,7 +1341,9 @@ func TestMCPLocalRegistryWithoutHTTPState(t *testing.T) {
 	_, configPath := useTempPaths(t)
 	oldRun, oldPorts := runMCPStdio, newCLIPixivSDKPorts
 	t.Cleanup(func() { runMCPStdio, newCLIPixivSDKPorts = oldRun, oldPorts })
-	newCLIPixivSDKPorts = func(app) (pixivSDKPorts, error) { return pixivSDKPorts{}, nil }
+	newCLIPixivSDKPorts = func(app) (pixivSDKPorts, error) {
+		return pixivSDKPorts{watchReadSessions: func(context.Context) error { return errors.New("stdio must not start the HTTP read-session watcher") }}, nil
+	}
 	runMCPStdio = func(ctx context.Context, server *mcp.Server, _ io.Reader, _ io.Writer) error {
 		ct, st := mcp.NewInMemoryTransports()
 		ss, err := server.Connect(ctx, st, nil)

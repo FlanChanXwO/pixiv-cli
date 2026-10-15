@@ -12,7 +12,7 @@ import (
 )
 
 // Watch binds external credential commits to the read-session lifecycle.
-// Only the MCP composition starts this watcher; ordinary CLI calls do not.
+// Only HTTP MCP composition starts this watcher; stdio and ordinary CLI calls do not.
 func (m *ReadSessions) Watch(ctx context.Context, path string) error {
 	path, err := filepath.Abs(path)
 	if err != nil {

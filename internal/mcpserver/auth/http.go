@@ -1,6 +1,7 @@
 package auth
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
 	"io"
@@ -22,6 +23,7 @@ import (
 const maxOAuthBody = 64 << 10
 const maxOAuthEntries = 1024
 const authorizationLifetime = 10 * time.Minute
+const controlBodyReadTimeout = 10 * time.Second
 
 var errOAuthCapacity = errors.New("OAuth capacity reached")
 
@@ -63,15 +65,17 @@ func NewHandler(canonicalBase string, store Store) (*Handler, error) {
 		"scopes_supported":                      []string{"mcp"},
 	}
 	routes := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if len(r.URL.RawQuery) > maxOAuthBody {
-			writeJSON(w, http.StatusRequestURITooLong, map[string]string{"error": "invalid_request"})
+		if status := readControlRequest(w, r); status != 0 {
+			// 保留失败读取的截止时间并关闭连接，避免 net/http 在返回后无限排空请求体。
+			r.Close = true
+			w.Header().Set("Connection", "close")
+			code := "invalid_request"
+			if status == http.StatusInternalServerError {
+				code = "server_error"
+			}
+			writeJSON(w, status, map[string]string{"error": code})
 			return
 		}
-		if r.ContentLength > maxOAuthBody {
-			writeJSON(w, http.StatusRequestEntityTooLarge, map[string]string{"error": "invalid_request"})
-			return
-		}
-		r.Body = http.MaxBytesReader(w, r.Body, maxOAuthBody)
 		switch r.URL.EscapedPath() {
 		case "/.well-known/oauth-protected-resource", "/.well-known/oauth-protected-resource" + prefix + "/mcp":
 			resource.ServeHTTP(w, r)
@@ -94,6 +98,39 @@ func NewHandler(canonicalBase string, store Store) (*Handler, error) {
 		}
 	})
 	return &Handler{routes: routes, store: store, resource: issuer + "/mcp", metadataURL: base.Scheme + "://" + base.Host + "/.well-known/oauth-protected-resource" + prefix + "/mcp"}, nil
+}
+
+// 仅缓冲最多 64 KiB 的 OAuth 控制消息；读取限时与请求头预算一致，不作用于 MCP/媒体。
+func readControlRequest(w http.ResponseWriter, r *http.Request) int {
+	controller := http.NewResponseController(w)
+	if err := controller.SetReadDeadline(time.Now().Add(controlBodyReadTimeout)); err != nil && !errors.Is(err, http.ErrNotSupported) {
+		return http.StatusInternalServerError
+	}
+	if len(r.URL.RawQuery) > maxOAuthBody {
+		return http.StatusRequestURITooLong
+	}
+	if r.ContentLength > maxOAuthBody {
+		return http.StatusRequestEntityTooLarge
+	}
+	defer r.Body.Close()
+	body, err := io.ReadAll(http.MaxBytesReader(w, r.Body, maxOAuthBody))
+	if err != nil {
+		var timeout net.Error
+		var tooLarge *http.MaxBytesError
+		switch {
+		case errors.As(err, &timeout) && timeout.Timeout():
+			return http.StatusRequestTimeout
+		case errors.As(err, &tooLarge):
+			return http.StatusRequestEntityTooLarge
+		default:
+			return http.StatusBadRequest
+		}
+	}
+	if err := controller.SetReadDeadline(time.Time{}); err != nil && !errors.Is(err, http.ErrNotSupported) {
+		return http.StatusInternalServerError
+	}
+	r.Body = io.NopCloser(bytes.NewReader(body))
+	return 0
 }
 
 func validHTTPAuthority(u *url.URL) bool {

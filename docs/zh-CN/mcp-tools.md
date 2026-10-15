@@ -2,7 +2,7 @@
 
 [English](../en/mcp-tools.md) | 简体中文 | [文档索引](../index-zh-CN.md)
 
-`pixiv mcp` 默认通过本地 stdio 提供 Pixiv/FANBOX；显式 `--port PORT` 在 canonical `/mcp` endpoint 启用经认证的 Streamable HTTP。stdio 使用本地产品凭据，不依赖 HTTP owner；HTTP 保留 owner 持久账号选择。详见[启动与代理配置](cli-reference.md#mcp-http-server)。`pixiv fanbox mcp` 迁移到同一个 `pixiv mcp` 连接。
+`pixiv mcp` 默认通过本地 stdio 提供 Pixiv/FANBOX；显式 `--port PORT` 在 canonical `/mcp` endpoint 启用经认证的 Streamable HTTP。stdio 使用本地产品凭据，不依赖 HTTP owner 或其只读会话文件监听器；HTTP 保留 owner 持久账号选择。详见[启动与代理配置](cli-reference.md#mcp-http-server)。`pixiv fanbox mcp` 迁移到同一个 `pixiv mcp` 连接。
 
 `pixiv_novel_content` 保留正文不可用的错误合同；其 App API 正文 endpoint 已不可用。
 传入正数 `novel_id` 时返回 structured `content_unavailable`、`isError=true` 和空
@@ -29,7 +29,7 @@ metadata 请使用 `pixiv_novel_detail`。
 
 每次 `/mcp` 请求都须携带有效 bearer token。缺失、过期或撤销返回 HTTP 401 和 canonical `WWW-Authenticate` metadata，不伪装为 tool result；私有鉴权状态不可读时失败关闭。MCP 响应（含 SSE）使用 `Cache-Control: no-store`。access token 有效一小时；refresh 旋转 token pair，旧 refresh token 重放会撤销对应 grant。reset 撤销 grant 并使 owner session、未兑换 code 失效，但保留已注册 client；重启只丢弃内存授权 session/code，不丢失持久 client/grant。过期/reset 影响新请求，不中断已授权工作。服务取消时停止接收请求，取消并等待在途 handler；新版 revision 请求取消经官方 SDK 传播。
 
-OAuth 控制请求体及 query string 上限为 64 KiB；已知超大请求体返回 HTTP 413，流式超限明确校验失败，不截断输入。DCR 最多持久化 1024 个客户端。满额时，新注册替换任意一个既未经 owner 批准、也没有 grant 的客户端，避免匿名注册永久占满容量；注册压力下，待授权客户端可能需要重新注册。owner 明确同意后，先持久化保护标记再签发授权码；DCR metadata 不能设置该私有标记。旧状态中已有 grant（包括已撤销 grant）的客户端也受保护；reset 会先保留这一批准证据再清空 grants。全部 1024 个客户端都受保护时，注册返回 `temporarily_unavailable`（503），管理员须停机审查过期的已批准注册及其关联 grant。拒绝未知私有状态字段的旧版二进制无法读取含新批准标记的状态。
+OAuth 控制请求体及 query string 上限为 64 KiB；请求体超限返回 HTTP 413，不截断输入。OAuth 控制请求体须在 10 秒内读完；未完成的慢速请求体返回 HTTP 408 并关闭连接。完整读取后、解析及授权／状态操作前清除读取截止时间；提前拒绝时保留截止时间，避免 HTTP 清理阶段无限排空未完成的请求体。DCR 最多持久化 1024 个客户端。满额时，新注册替换任意一个既未经 owner 批准、也没有 grant 的客户端，避免匿名注册永久占满容量；注册压力下，待授权客户端可能需要重新注册。owner 明确同意后，先持久化保护标记再签发授权码；DCR metadata 不能设置该私有标记。旧状态中已有 grant（包括已撤销 grant）的客户端也受保护；reset 会先保留这一批准证据再清空 grants。全部 1024 个客户端都受保护时，注册返回 `temporarily_unavailable`（503），管理员须停机审查过期的已批准注册及其关联 grant。拒绝未知私有状态字段的旧版二进制无法读取含新批准标记的状态。
 
 owner session、待确认表单、授权码各最多 1024 项，满额返回 `temporarily_unavailable`（503），不淘汰现有项。owner session/表单 10 分钟过期，与授权码时限一致，在下次认证状态读取时回收。HTTP 请求头接收限时 10 秒；工具执行、媒体传输及退出清理不新增完成时限。这些边界用于限制未认证资源增长，不限制上游媒体大小。
 

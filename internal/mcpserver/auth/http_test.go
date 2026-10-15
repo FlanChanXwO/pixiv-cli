@@ -1,8 +1,12 @@
 package auth_test
 
 import (
+	"bufio"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"io"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -341,6 +345,90 @@ func TestOAuthRejectsOversizedRegistrationWithoutPersisting(t *testing.T) {
 	state, err := store.Read(t.Context())
 	require.NoError(t, err)
 	require.Empty(t, state.Clients)
+}
+
+// Shorten socket deadlines in the fixture while checking the production budget.
+type oauthDeadlineWriter struct {
+	http.ResponseWriter
+	deadlines chan time.Time
+}
+
+func (w oauthDeadlineWriter) SetReadDeadline(deadline time.Time) error {
+	w.deadlines <- deadline
+	if !deadline.IsZero() {
+		deadline = time.Now().Add(50 * time.Millisecond)
+	}
+	return http.NewResponseController(w.ResponseWriter).SetReadDeadline(deadline)
+}
+
+func TestOAuthSlowBodiesReleaseConnections(t *testing.T) {
+	for _, tc := range []struct {
+		endpoint       string
+		length, status int
+	}{
+		{"register", 128, http.StatusRequestTimeout},
+		{"authorize", 128, http.StatusRequestTimeout},
+		{"token", 128, http.StatusRequestTimeout},
+		{"register", 65537, http.StatusRequestEntityTooLarge},
+	} {
+		t.Run(fmt.Sprintf("%s/%d", tc.endpoint, tc.length), func(t *testing.T) {
+			store := auth.Store{Path: filepath.Join(t.TempDir(), "state.json")}
+			_, err := store.Init(t.Context(), false)
+			require.NoError(t, err)
+			handler, err := auth.NewHandler("http://instance.test/prefix", store)
+			require.NoError(t, err)
+			deadlines := make(chan time.Time, 4)
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				handler.ServeHTTP(oauthDeadlineWriter{w, deadlines}, r)
+			}))
+			defer server.Close()
+			conn, err := net.Dial("tcp", server.Listener.Addr().String())
+			require.NoError(t, err)
+			defer conn.Close()
+			require.NoError(t, conn.SetReadDeadline(time.Now().Add(2*time.Second)))
+			contentType := "application/x-www-form-urlencoded"
+			if tc.endpoint == "register" {
+				contentType = "application/json"
+			}
+			started := time.Now()
+			_, err = fmt.Fprintf(conn, "POST /prefix/oauth/%s HTTP/1.1\r\nHost: instance.test\r\nContent-Type: %s\r\nContent-Length: %d\r\n\r\n{", tc.endpoint, contentType, tc.length)
+			require.NoError(t, err)
+			reader := bufio.NewReader(conn)
+			response, err := http.ReadResponse(reader, nil)
+			require.NoError(t, err, "an incomplete OAuth body must not retain the connection")
+			defer response.Body.Close()
+			require.Equal(t, tc.status, response.StatusCode)
+			_, err = io.Copy(io.Discard, response.Body)
+			require.NoError(t, err)
+			_, err = reader.ReadByte()
+			require.Error(t, err)
+			var timeout net.Error
+			require.False(t, errors.As(err, &timeout) && timeout.Timeout(), "server must close the failed request connection")
+			deadline := <-deadlines
+			require.WithinDuration(t, started.Add(10*time.Second), deadline, time.Second)
+			state, err := store.Read(t.Context())
+			require.NoError(t, err)
+			require.Empty(t, state.Clients)
+		})
+	}
+}
+
+func TestOAuthClearsReadDeadlineAfterCompleteBody(t *testing.T) {
+	store := auth.Store{Path: filepath.Join(t.TempDir(), "state.json")}
+	_, err := store.Init(t.Context(), false)
+	require.NoError(t, err)
+	handler, err := auth.NewHandler("http://instance.test", store)
+	require.NoError(t, err)
+	deadlines := make(chan time.Time, 4)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		handler.ServeHTTP(oauthDeadlineWriter{w, deadlines}, r)
+	}))
+	defer server.Close()
+	status, _ := registrationRequest(t, server, http.MethodPost, `{"redirect_uris":["https://client.test/callback"]}`, "application/json")
+	require.Equal(t, http.StatusCreated, status)
+	require.Len(t, deadlines, 2)
+	require.False(t, (<-deadlines).IsZero())
+	require.True(t, (<-deadlines).IsZero(), "OAuth parsing/storage must not inherit the body-read deadline")
 }
 
 func TestDCRCapacityPreservesExistingRegistrations(t *testing.T) {

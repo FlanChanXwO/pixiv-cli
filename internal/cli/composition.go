@@ -579,11 +579,6 @@ func (a app) runPixivMCP(ctx context.Context, request mcpcommands.Request) (resu
 	if err != nil {
 		return err
 	}
-	if ports.watchReadSessions != nil {
-		if err := ports.watchReadSessions(ctx); err != nil {
-			return err
-		}
-	}
 	account := mcpserver.Account{
 		HTTPSProxyOverride: request.HTTPSProxyOverride,
 	}
@@ -635,6 +630,11 @@ func (a app) runPixivMCP(ctx context.Context, request mcpcommands.Request) (resu
 			return ports.openLease(ctx, pixivdeps.Request{UserID: account.UserID, HTTPSProxyOverride: account.HTTPSProxyOverride})
 		}
 		return runMCPStdio(ctx, unifiedmcp.New(sdkPorts, account, fanboxPorts, request.HTTPSProxyOverride), a.in, a.out)
+	}
+	if ports.watchReadSessions != nil {
+		if err := ports.watchReadSessions(ctx); err != nil {
+			return err
+		}
 	}
 	listenAddr, baseURL := *request.ListenAddr, *request.BaseURL
 	filename, err := paths.UserDataFile(paths.AppDataDirName, "mcp-state.json")
