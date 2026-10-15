@@ -507,7 +507,7 @@ Only the structured entity filters documented by each command are accepted. The 
 | `novel search` | `pixiv novel search WORD [options]` | Compatibility route for novel search; prefer `pixiv search WORD --type novel`. It exposes only the documented basic novel search fields. |
 | `user search` | `pixiv user search WORD [options]` | Compatibility route for user search; prefer `pixiv search WORD --type user`. |
 | `follow` | `pixiv follow add\|remove USER_ID ...` | Compatibility route for user follow mutation; it shares the same owner and input contract as `pixiv user follow add\|remove`. |
-| `mcp` | `pixiv mcp [--listen-addr ADDR] [--base-url URL] [--proxy URL\|--no-proxy]` | Starts the authenticated unified HTTP server; defaults to local HTTP at `127.0.0.1:1270`; initialized owner is required. |
+| `mcp` | `pixiv mcp [--port PORT [--host HOST] [--base-url URL]] [--proxy URL\|--no-proxy]` | Unified local stdio by default; explicit `--port` enables authenticated HTTP. |
 | `mcp auth init` | `pixiv mcp auth init [--reset]` | Initialize the local MCP owner and print its secret once; reset revokes grants, preserving clients and selected account. |
 | `fanbox auth` | `pixiv fanbox auth import|list|use|remove|status` | Imports and manages local FANBOX sessions. Session values are never printed. Native `--proxy`/`--no-proxy` applies only to the FANBOX command. |
 | `fanbox creators` | `pixiv fanbox creators [--kind supporting\|following] [--page N --limit N]` | Lists supporting or following FANBOX creators. |
@@ -815,16 +815,28 @@ failure.
 
 ## MCP HTTP server
 
-Initialize the owner once, then start with the local defaults:
+`pixiv mcp` defaults to stdio. Configure one local connector for both products:
+
+```json
+{"mcpServers":{"pixiv":{"command":"pixiv","args":["mcp"]}}}
+```
+
+Local calls use CLI account/default or pool selection and the independent FANBOX session. They never initialize or read HTTP owner state. Local login uses `pixiv auth login` / `pixiv fanbox auth`. Stdio stdout contains JSON-RPC only; diagnostics use stderr.
+
+Explicit `--port` is the sole HTTP selector; it must be an integer from 1 to 65535:
 
 ```bash
 pixiv mcp auth init
-pixiv mcp
-# Per-launch overrides; these do not change config.toml:
-pixiv mcp --base-url https://mcp.example.com
+pixiv mcp --port 1270
+pixiv mcp --port 9000
+pixiv mcp --port 1270 --host 0.0.0.0 --base-url https://mcp.example.com/prefix
+# Container, with an existing HTTPS proxy and persistent private app-data volume:
+docker run --rm -p 1270:1270 -v pixiv-data:/home/pixiv/.pixiv-cli IMAGE mcp --port 1270 --host 0.0.0.0 --base-url https://mcp.example.com
 ```
 
-The aliases `mcp_listen_addr` and `mcp_base_url` map to `[mcp].listen_addr` and `[mcp].base_url`. They default to `127.0.0.1:1270` and `http://127.0.0.1:1270`, respectively, and support `config get/set/unset`; unset restores the default. The default listener is loopback-only. Override both values when using another local port; cloud connectors require an explicit public HTTPS base URL. Flags override file values, including an explicit empty override (which fails startup). There are no additional MCP environment variables. Listen address requires an explicit nonzero TCP port. Explicit empty settings, invalid canonical URL, unreadable/uninitialized owner state or bind failure stop startup; the server never silently selects another port. Missing owner state directs the administrator to `pixiv mcp auth init`.
+`--host` defaults to `127.0.0.1`; loopback hosts derive their public URL, including IPv6 (`--host ::1` gives `http://[::1]:PORT`). Other hosts, including `0.0.0.0` and `::`, require `--base-url`. The public URL can differ from the listener; non-loopback public URLs require HTTPS. Canonical URLs reject user information, invalid ports, queries, fragments and dot path segments; a validated path prefix is preserved. Host/Forwarded headers never select the public URL. `--host` or `--base-url` without `--port` is an error. No transport is inferred from TTY, stdin, credentials, environment or configuration. Invalid arguments/owner state and bind errors fail explicitly without selecting another port.
+
+The unpublished PR settings `mcp.listen_addr` / `mcp.base_url` (aliases `mcp_listen_addr` / `mcp_base_url`) are no longer public settings and do not affect startup; remove old development entries from `config.toml` and use these flags. The former `--listen-addr HOST:PORT` maps to `--port PORT --host HOST`. No additional configuration file or transport setting is needed.
 
 Gallery reads use these startup settings, managed with `pixiv config get/set/unset`:
 
@@ -837,7 +849,7 @@ Gallery reads use these startup settings, managed with `pixiv config get/set/uns
 
 Missing keys and `config unset` restore defaults. No additional flags or environment variables are introduced. Restart MCP after changing these settings. The process-local LRU budget includes metadata payloads and image filling buffers; oversized images still stream in full without being cached. Cache expiry is the earliest of the configured TTL, issuing authorization expiry, and upstream read-session expiry. Artwork information may lag updates within that window; bookmark state and writes remain live. Every hit rechecks authorization and account/credential/network generation. Revocation denies further reads; restart clears the cache. HTTP responses stay `private, no-store`, without disk or public CDN caching.
 
-The endpoint is the base URL plus `/mcp` and is printed to stderr with the owner-initialized status, never the owner secret. Server stdout is not a JSON-RPC channel. Both products share the endpoint but retain separate credential/runtime owners. `pixiv fanbox mcp` and stdio transport are removed. `--proxy` / `--no-proxy` remain per-launch upstream network overrides, not inbound TLS configuration; they do not rewrite FlareSolverr settings.
+The endpoint is the base URL plus `/mcp` and is printed to stderr with the owner-initialized status, never the owner secret. Server stdout is not a JSON-RPC channel. Both products share the endpoint but retain separate credential/runtime owners. `pixiv fanbox mcp` migrates to the unified `pixiv mcp`. `--proxy` / `--no-proxy` remain per-launch upstream network overrides, not inbound TLS configuration; they do not rewrite FlareSolverr settings.
 
 Local HTTP is supported. For cloud connectors, configure the public HTTPS base and terminate TLS in an existing reverse proxy; pixiv-cli does not provision certificates. Preserve the public Host header and original escaped paths. Incoming Host and any Origin must match the canonical deployment origin (host case and default-port equivalents are accepted); forwarding headers cannot establish trust. For base `https://mcp.example.com/pixiv`, forward `/pixiv/mcp`, `/pixiv/oauth/authorize`, `/pixiv/oauth/register`, `/pixiv/oauth/token`, `/.well-known/oauth-protected-resource`, `/.well-known/oauth-protected-resource/pixiv/mcp` and `/.well-known/oauth-authorization-server/pixiv`. Do not strip the prefix or normalize encoded/double-slash paths. See [MCP HTTP authorization](mcp-tools.md#http-authorization); local fixture checks do not establish cloud-host interoperability.
 
@@ -851,7 +863,7 @@ Successful stdout contains only the new 256-bit random owner secret plus a newli
 
 Corrupt/incomplete JSON, unsupported versions, non-regular/symlink state files and private-file permission errors fail rather than silently resetting state. A disk write error does not publish a secret. If stdout fails after commit, the owner remains saved; recover with `pixiv mcp auth init --reset`, which also revokes grants.
 
-This command does not start a listener. Start `pixiv mcp` separately using the [HTTP startup contract](#mcp-http-server).
+This command does not start a listener. Start `pixiv mcp --port PORT` separately using the [HTTP startup contract](#mcp-http-server).
 
 ## Version and updates
 

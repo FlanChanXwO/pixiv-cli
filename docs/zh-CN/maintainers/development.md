@@ -220,15 +220,15 @@ pixiv download 123456
 ```bash
 pixiv auth use 12345678
 ./build/pixiv mcp auth init
-./build/pixiv mcp
+./build/pixiv mcp --port 1270
 ```
 
-MCP 保留自身产品 runtime 凭据规则；owner OAuth grant 与 Pixiv/FANBOX 凭据相互独立。一次性 owner secret 必须私下保存，不写测试输出或聊天。本地 endpoint 是 `http://127.0.0.1:1270/mcp`；云端 connector 须配置公网 HTTPS 反向代理，详见 [HTTP 启动](../cli-reference.md#mcp-http-server)。CLI 下载保留自身设置；MCP 不负责下载到 server 本地文件。
+MCP 保留自身产品 runtime 凭据规则；owner OAuth grant 与 Pixiv/FANBOX 凭据相互独立。一次性 owner secret 必须私下保存，不写测试输出或聊天。本地 endpoint 是 `http://127.0.0.1:1270/mcp`；云端 connector 须配置公网 HTTPS 反向代理，详见 [HTTP 启动](../cli-reference.md#mcp-http-server)。CLI 下载保留自身设置；stdio 本地下载工具复用 CLI 设置，HTTP 不暴露文件系统写入。
 
 如网络环境需要代理，可额外设置：
 
 ```bash
-https_proxy=http://127.0.0.1:7890 ./build/pixiv mcp
+https_proxy=http://127.0.0.1:7890 ./build/pixiv mcp --port 1270
 ```
 
 或只给本次启动覆盖代理：

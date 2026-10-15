@@ -5,7 +5,7 @@
 ```mermaid
 flowchart LR
     ENTRY["cmd/pixiv<br/>唯一二进制入口"] --> CLI["internal/cli<br/>命令与生命周期"]
-    CLI -->|"启动 HTTP"| MCP["internal/mcpserver<br/>Pixiv / FANBOX tools"]
+    CLI -->|"stdio / HTTP"| MCP["internal/mcpserver<br/>Pixiv / FANBOX tools"]
     CLI --> SDK["public SDK<br/>sdk/pixiv · sdk/fanbox"]
     MCP --> SDK
     SDK --> FACADE["internal/services<br/>业务 Facade"]
@@ -39,7 +39,7 @@ flowchart LR
 
 1. `pixiv` 无参数显示 CLI 帮助。
 2. `pixiv auth/config/update/search/timeline/detail/ranking/recommended/user/bookmark/follow/download` 进入 CLI 模式；root `--version` 是独立的只读 flag；`pixiv fanbox` 进入 FANBOX 模式；`auth import` 负责 direct token import 或 bundle restore，`auth export` 负责本地 secret snapshot。
-3. `pixiv mcp` 组装并启动统一 Pixiv/FANBOX Streamable HTTP server；`pixiv fanbox mcp` 已删除。
+3. `pixiv mcp` 默认组装统一 Pixiv/FANBOX stdio server，显式 `--port` 启动 HTTP；`pixiv fanbox mcp` 已删除。
 4. CLI 与 MCP 按命令 owner 显式构造生产资源：
    - 账号凭据来自 `~/.pixiv-cli/pixiv-cli.db`（SQLite，`internal/storage/database`；Windows：`%USERPROFILE%\.pixiv-cli\pixiv-cli.db`）；旧 `auth.json` 不自动读取，用户须显式导出/导入 bundle
    - 全局配置来自 `~/.pixiv-cli/config.toml`（Windows：`%USERPROFILE%\.pixiv-cli\config.toml`）
@@ -375,7 +375,7 @@ ZIP 正文读取失败且任务上下文仍有效时，提前 EOF 额外记录�
 
 媒体工具也会附带既有 MCP App 视图，用于播放完整媒体和切换独立静态预览。宿主声明文件下载能力时使用其确认流程，否则通过可用的受保护 HTTP 附件在浏览器下载，仍受浏览器限制。服务端复用已编码的动画和预览，受既有动图临时容量、grant、账号版本及 TTL 约束，不重新下载或编码。短期地址仅通过私有 UI 元数据交付，不暴露文件路径。可选暂存失败不会改变完整内嵌结果，但浏览器下载不可用；重启、到期或授权变化都会使地址失效。
 
-`New` 构造唯一 protocol server，分别调用两产品的 `Register`。Pixiv tools 使用 `pixiv_`，FANBOX 保留 `fanbox_`；不保留旧名 alias 或 MCP 本地文件下载工具。CLI 下载仍归 `internal/media/downloader`。父包的 `NewHTTPHandler` 组装 stateless Streamable HTTP 与 OAuth 路由，`RunHTTP` 拥有 listener 和服务生命周期。stdio runner 与 MCP 专属 SIGPIPE wiring 已删除，普通 CLI pipeline 处理保留。
+`New` 构造唯一 protocol server，分别调用两产品的 `Register`。Pixiv tools 使用 `pixiv_`，FANBOX 保留 `fanbox_`；不保留无前缀旧名 alias。stdio 经 `internal/media/downloader` 注入本地下载，HTTP 不接收该端口。Gallery 与 owner 工具要求对应 media/account/login 端口。父包的 `NewHTTPHandler` 组装 stateless Streamable HTTP 与 OAuth 路由，`RunHTTP` 拥有 listener 和服务生命周期。`RunStdio` 管理本地 JSON-RPC session 并等待清理，HTTP 生命周期独立。
 
 各产品保留独立 SDK ports、账号选择与 runtime。注册/discovery 不打开 FANBOX 账号；root 在 FANBOX tool 调用时才懒加载其独立 service。各 tool package 拥有名称、annotations、schema 和 handler。Pixiv adapter 解析 nullable `page`/`limit`，遍历仍由 `internal/shared/traversal` 执行。handler 失败保留 structured output 并设置 `isError=true`，正常空结果保持成功。完整合同见 [MCP 工具](../mcp-tools.md)。
 
@@ -491,7 +491,7 @@ SmartScreen 提示时，必须回到已验证的项目 GitHub Release、checksum
 Unix-like 私有目录/文件权限常量；它不读取业务配置，也不实现文件写入。Pixiv 协议值、MCP delivery
 值与 config key/default 仍留在所属领域包。`internal/shared/diagnostics` 拥有 typed、协议无关的事件契约，
 `internal/cli/diagnostics` 拥有由 `[logging]` 控制的 text/JSON stderr presenter；这不是持久 operation 日志，
-也不是历史通用 `slog` 链路。MCP JSON-RPC 只经 HTTP 传输，错误继续经 CLI、MCP 或 public SDK 的既有接口传递。
+也不是历史通用 `slog` 链路。MCP JSON-RPC 经干净的 stdio 或经认证的 HTTP 传输，错误继续经 CLI、MCP 或 public SDK 的既有接口传递。
 
 ### `internal/storage/file/{atomic,lock,replace,secret}`
 

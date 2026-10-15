@@ -144,15 +144,15 @@ Run the authenticated unified MCP HTTP server:
 ```bash
 pixiv auth use 12345678
 ./build/pixiv mcp auth init
-./build/pixiv mcp
+./build/pixiv mcp --port 1270
 ```
 
-MCP keeps its product runtime credential rules; the owner OAuth grant is separate from Pixiv/FANBOX credentials. Save the one-time owner secret privately, never in test output or chat. The local endpoint is `http://127.0.0.1:1270/mcp`; cloud connectors require a configured public HTTPS reverse proxy. See [HTTP startup](../cli-reference.md#mcp-http-server). CLI downloads retain their own settings; MCP does not download to server-local files.
+MCP keeps its product runtime credential rules; the owner OAuth grant is separate from Pixiv/FANBOX credentials. Save the one-time owner secret privately, never in test output or chat. The local endpoint is `http://127.0.0.1:1270/mcp`; cloud connectors require a configured public HTTPS reverse proxy. See [HTTP startup](../cli-reference.md#mcp-http-server). CLI downloads retain their own settings; Stdio local-download tools reuse CLI settings; HTTP never exposes filesystem writes.
 
 If your network environment requires a proxy, you can additionally set:
 
 ```bash
-https_proxy=http://127.0.0.1:7890 ./build/pixiv mcp
+https_proxy=http://127.0.0.1:7890 ./build/pixiv mcp --port 1270
 ```
 
 Or override the proxy only for this launch:

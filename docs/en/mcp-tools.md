@@ -2,7 +2,7 @@
 
 [简体中文](../zh-CN/mcp-tools.md) | English | [Documentation index](../index.md)
 
-`pixiv mcp` starts one authenticated Pixiv/FANBOX Streamable HTTP server at the canonical `/mcp` endpoint. MCP uses its configured runtime credential selection; it does not accept CLI data-command account overrides. JSON-RPC is carried over HTTP, never stdin/stdout. See [HTTP startup and proxy configuration](cli-reference.md#mcp-http-server). The `pixiv fanbox mcp` command, stdio transport and standalone legacy SSE transport are removed; Streamable HTTP may still use SSE responses.
+`pixiv mcp` serves Pixiv/FANBOX over local stdio by default. Explicit `--port PORT` enables authenticated Streamable HTTP at the canonical `/mcp` endpoint. Stdio uses local product credentials without HTTP owner state; HTTP uses its persisted owner selection. See [startup and proxy configuration](cli-reference.md#mcp-http-server). Migrate `pixiv fanbox mcp` to the single `pixiv mcp` connector.
 
 `pixiv_novel_content` retains the unavailable-content error contract; its App API
 content endpoint is no longer available. A positive `novel_id` returns a
@@ -14,13 +14,27 @@ The separate local `pixiv mcp auth init [--reset]` administration command prepar
 
 Tool discovery schemas keep optional inputs optional: when an object has no required fields, omit `required` or use `required: []`, never `required: null`. Strict clients may reject the entire tool discovery response when any tool contains an invalid schema.
 
+## Transport capabilities
+
+| Capability | stdio | HTTP |
+| --- | --- | --- |
+| Pixiv/FANBOX query and mutation tools, opaque FANBOX resources | Yes | Yes |
+| `pixiv_artwork_media` complete images / GIF / APNG and PNG preview | Inline content | Inline or protected App delivery |
+| `pixiv_download`, `pixiv_download_random_from_recommendation` | Local files | Unregistered |
+| `pixiv_show_gallery`, `pixiv_gallery_animation`, Gallery resources | Unregistered | Available with media service |
+| `pixiv_account_*` owner management / helper login | Use local CLI authentication | Owner state and relay |
+
 ## HTTP authorization
 
 The built-in single-owner OAuth server publishes protected-resource and authorization-server metadata, accepts DCR public clients (`token_endpoint_auth_method=none`), and uses Authorization Code + PKCE S256 with scope `mcp`. The owner enters the local initialization secret only on the instance consent page, never in chat or tool arguments; each authorization requires explicit consent. Cloud deployment requires an HTTPS reverse proxy. Local HTTP is supported. This protocol contract is not evidence that ChatGPT or Gemini live connection testing has passed.
 
 Every `/mcp` request needs a valid bearer token. Missing, expired or revoked credentials return HTTP 401 with canonical `WWW-Authenticate` metadata, not a tool result; unavailable private auth state fails closed. MCP responses are `Cache-Control: no-store`, including SSE. Access tokens last one hour. Refresh rotates the token pair; reusing an old refresh token revokes its grant. Reset revokes grants and invalidates owner sessions and unexchanged codes while retaining registered clients. Restart drops in-memory authorization sessions/codes, not persisted clients or grants. Expiration/reset affects new requests, not work already authorized. Server cancellation stops acceptance and cancels/waits for active handlers; modern-revision request cancellation is propagated through the official SDK.
 
+OAuth control requests and query strings are limited to 64 KiB; known oversized bodies return HTTP 413 and streaming overflows fail validation without truncation. DCR stores at most 1024 clients; pending owner sessions, forms and codes each allow at most 1024 entries. Full capacity returns `temporarily_unavailable` (503); nothing is silently evicted. Owner sessions/forms expire after 10 minutes, matching authorization-code lifetime, and are reclaimed on the next auth state read. Persisted registrations are retained across reset: at client capacity an administrator must review and remove stale registrations and their associated grants from private state while stopped. HTTP header admission has a 10-second deadline; tool execution, media transfer and shutdown have no new completion deadline. These bounds address unauthenticated resource growth, not upstream media size.
+
 ## Pixiv account selection
+
+This section and the account/login tools apply to HTTP. Stdio uses local CLI account selection and authentication.
 
 The MCP owner has one persisted Pixiv selection shared by connectors. On first use it adopts the explicit CLI default, or the sole local account when no explicit default exists. Multiple accounts without a default return `selection_required`; no local accounts return `no_local_account`. An existing selection is never replaced implicitly: a removed account returns `account_not_found`, and a missing local credential returns `credentials_missing`. Local credential presence does not prove upstream validity.
 
@@ -242,7 +256,7 @@ Partial results retain successful images in requested order, list each failed pa
 
 `complete=true` describes the response constructed by the server, not proof that a host accepted/displayed it. If a host rejects the entire payload, do not claim delivery; request explicit pages instead. No universal payload limit is invented. Tool annotations are read-only, non-destructive, idempotent, and open-world. Synthetic SDK/MCP tests do not establish ChatGPT/Gemini display support; real-host validation remains deferred.
 
-Clients advertising the `io.modelcontextprotocol/ui` extension with `text/html;profile=mcp-app` receive an indexed App-only array in `_meta["pixiv/mediaContents"]`; model-facing `content` contains only the independent PNG preview. When the existing private animation publisher has retained the complete original, that array contains a protected `resource_link` for the animation and its inline PNG preview. Play reads the original binary only on demand; downloads use the same original file, grant/account-version checks and expiry. `content_index` and `preview_content_index` address this private array when present. If optional publication is unavailable, the array retains complete inline image contents; a host can still reject that large response, so server preparation is not proof of receipt. Non-App or unsupported-MIME clients retain the original full `content` response; static media and public inputs are unchanged. For linked animations, Refresh animation explicitly reacquires authorization through `pixiv_gallery_animation` in the original format; it replaces expired playback/download addresses and uses the existing status polling and subscription cleanup. A failed image does not automatically prepare again. Hosts without server tool calls cannot renew expired links.
+HTTP clients advertising the `io.modelcontextprotocol/ui` extension with `text/html;profile=mcp-app` receive an indexed App-only array in `_meta["pixiv/mediaContents"]`; model-facing `content` contains only the independent PNG preview. When the existing private animation publisher has retained the complete original, that array contains a protected `resource_link` for the animation and its inline PNG preview. Play reads the original binary only on demand; downloads use the same original file, grant/account-version checks and expiry. `content_index` and `preview_content_index` address this private array when present. Without a published HTTP artifact, including stdio, the original full inline content is retained; no App metadata hides the animation. Non-App or unsupported-MIME clients retain the original full `content` response; static media and public inputs are unchanged. For linked animations, Refresh animation explicitly reacquires authorization through `pixiv_gallery_animation` in the original format; it replaces expired playback/download addresses and uses the existing status polling and subscription cleanup. A failed image does not automatically prepare again. Hosts without server tool calls cannot renew expired links.
 
 ### Ugoira animation
 
@@ -252,7 +266,7 @@ GIF avoids repeated unchanged regions in opaque animations without changing its 
 
 APNG uses lossless frame differences where compatible with exact alpha compositing; all frames, dimensions and delays remain intact. This reduces redundant encoding without guaranteeing acceptance of large embedded results by every host.
 
-The media tool also attaches the existing MCP App view for complete media playback and its independent static preview. When the host advertises file download, the view requests its confirmation flow. Otherwise an available protected HTTP attachment opens in the browser; browser restrictions still apply. The server retains the already encoded animation and preview under the existing animation temporary capacity, grant, account version and TTL, without another download or encoding. Private UI metadata carries these short-lived addresses; no filesystem path is exposed. Optional publication failure leaves the complete inline result intact but makes the browser download unavailable. Restart, expiry or authorization changes invalidate these addresses.
+The HTTP media tool also attaches the existing MCP App view for complete media playback and its independent static preview. When the host advertises file download, the view requests its confirmation flow. Otherwise an available protected HTTP attachment opens in the browser; browser restrictions still apply. The server retains the already encoded animation and preview under the existing animation temporary capacity, grant, account version and TTL, without another download or encoding. Private UI metadata carries these short-lived addresses; no filesystem path is exposed. Optional publication failure leaves the complete inline result intact but makes the browser download unavailable. Restart, expiry or authorization changes invalidate these addresses.
 
 An animation is one logical page (`total_pages=1`, requested/delivered page 1 on success). Its `pages` entry contains `filename` (`<illust_id>.gif` or `.apng`), actual MIME and byte size, `archive_quality`, and `content_index` pointing to standard `ImageContent` with all animation bytes. APNG uses the PNG-family `image/png` content MIME with all animation chunks intact; structured `mime_type` remains `image/apng` and the filename remains `.apng`. Consumers must use the content index and filename to distinguish it from the independent preview, rather than assume every `image/png` item is a preview. A separate `preview_content_index` points to PNG `ImageContent` decoded from the generated animation's first frame; this is only a preview, never a substitute for the complete animation. No ffmpeg or new encoder is introduced.
 
@@ -266,7 +280,9 @@ All tools publish explicit standard annotations. Account-tool initialization eff
 
 `openWorldHint` is true for external operations, including reverse-search uploads to third-party providers and Pixiv reads that may authenticate. `pixiv_account_list`, `pixiv_account_status`, and `pixiv_account_use` are closed-world local operations. `fanbox_resolve_url` is also closed-world: opening its local account snapshot and parsing the URL do not access the network.
 
-MCP no longer registers `download` or `download_random_from_recommendation`, nor any renamed download alias. Use CLI `pixiv download` for server/local filesystem downloads.
+Stdio registers `pixiv_download` (`src` or `srcs`, optional `pages`, `quality`, `ugoira_mode`, and `delivery=local_path`) and `pixiv_download_random_from_recommendation` (optional `count`, default 5, established range 1–20, and the same download options). They reuse the shared downloader and CLI download directory/filename/directory templates. Results preserve `items`, `files` (path/file URI/MIME/size/page), warnings and partial failures; failures set `isError=true`. Download tools declare write/destructive effects because the shared saver may replace existing destination files. No arbitrary destination parameter is exposed. HTTP never registers these filesystem tools. Migrate old `download` and `download_random_from_recommendation` names to the prefixed names; no permanent aliases are registered.
+
+`pixiv_novel_bookmark_tags` migrates to `pixiv_bookmark_tags` with `kind="novel"`; `kind="artwork"` is the existing default. Input paging/visibility and the tag output envelope are preserved. The old name is unregistered; other prefixed operations retain their contracts.
 
 ## Read tools
 
@@ -299,13 +315,12 @@ MCP no longer registers `download` or `download_random_from_recommendation`, nor
 | `pixiv_user_novel_bookmarks` | Optional `user_id`, `restrict`, `tag`, `page`, `limit`; reads novel bookmarks. |
 | `pixiv_bookmark_list_all` | Optional `user_id`, `restrict`, `tag`, `page`, `limit`; additive aggregate that reads artwork bookmarks before novel bookmarks. `page`/`limit` apply to the concatenated streams, and any required stream failure returns an error with no partial records. |
 | `pixiv_bookmark_tags_all` | Optional `user_id`, `restrict`, `page`, `limit`; additive aggregate that reads artwork tags before novel tags. Each tag retains `content_type` and its original `count`; same-name tags are not merged, and any required stream failure returns no partial tags. |
-| `pixiv_novel_bookmark_tags` | Optional `user_id`, `restrict`, `page`, `limit`; returns `{bookmark_tags, pagination}` for novel bookmarks. The current candidate App API has no continuation contract; a continuation outside that contract is reported as a typed error. |
 | `pixiv_novel_bookmark_detail` | Required positive `novel_id`; returns `{bookmarked, restrict, tags}` for one novel and preserves the absent/unbookmarked state. It uses the candidate novel-bookmark detail App API. |
 | `pixiv_user_following` | Optional `user_id`, `restrict`, `user_filter`, `page`, `limit`; omitted ID resolves to the authenticated user. |
 | `pixiv_user_followers` | Optional `user_id`, `restrict`, `page`, `limit`; omitted ID resolves to the authenticated user. |
 | `pixiv_related_users` | Optional positive `user_id` (defaults to the authenticated user), compatibility `restrict`, optional `user_filter`, `page`, `limit`. |
 | `pixiv_blocked_users` | Optional `user_id`, compatibility `restrict`, `page`, `limit`; omitted ID resolves to the authenticated user. App API failure is reported and never changed to a Web fallback. |
-| `pixiv_bookmark_tags` | Optional `user_id`, `restrict`, `page`, `limit`; returns `{bookmark_tags, pagination}`. |
+| `pixiv_bookmark_tags` | Optional `kind` (`artwork` default or `novel`), `user_id`, `restrict`, `page`, `limit`; returns `{bookmark_tags, pagination}`. |
 | `pixiv_bookmark_detail` | Required positive `illust_id`; returns `{bookmarked, restrict, tags}` and preserves the unbookmarked state. `tags` is an empty array when no tags exist, including unbookmarked artworks. |
 
 All read tools use the same application/public-SDK path and preserve typed

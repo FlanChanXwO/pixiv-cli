@@ -232,16 +232,22 @@ pixiv timeline latest --type illust --limit 10 --json
 
 ### MCP
 
-反向搜图属于 CLI/MCP integration；public Go SDK 现在也暴露 typed artwork/novel bookmark 与 comment mutation。
+一个本地连接同时提供 Pixiv 和 FANBOX。默认 stdio 只需 `pixiv mcp`，使用本地凭据并保留本地下载；stdout 承载 JSON-RPC，诊断写 stderr。
 
-显式启动单一、经认证的 Pixiv/FANBOX Streamable HTTP server。MCP 流量经 HTTP 传输，不使用 stdin/stdout；endpoint 写入 stderr。tool 运行失败保留 `isError=true` 的 structured result。默认不创建项目级或每日日志文件。
-
-```bash
-pixiv mcp auth init  # 仅由本地管理员执行，安全保存一次性 secret。
-pixiv mcp
+```json
+{"mcpServers":{"pixiv":{"command":"pixiv","args":["mcp"]}}}
 ```
 
-本地连接 `http://127.0.0.1:1270/mcp`。云端 connector 使用既有 HTTPS 反向代理，并将其公网地址配置为 canonical base URL。OAuth 使用 DCR、owner 同意与 PKCE；Pixiv/FANBOX 凭据仍独立。详见[启动合同](docs/zh-CN/cli-reference.md#mcp-http-server)与[owner/reset 管理](docs/zh-CN/cli-reference.md#mcp-owner-初始化)。`pixiv fanbox mcp` 与 stdio transport 已删除。
+HTTP 模式先初始化一次 owner，再显式指定端口：
+
+```bash
+pixiv mcp auth init
+pixiv mcp --port 1270
+# 已有 HTTPS 反向代理：
+pixiv mcp --port 1270 --base-url https://mcp.example.com
+```
+
+本地 HTTP 地址为 `http://127.0.0.1:1270/mcp`；非 loopback 监听须显式公开 URL，非本机公开 URL 须用 HTTPS。详见[启动合同](docs/zh-CN/cli-reference.md#mcp-http-server)与[owner 管理](docs/zh-CN/cli-reference.md#mcp-owner-初始化)。`pixiv fanbox mcp` 迁移到 `pixiv mcp`。owner 与 Gallery 工具仅 HTTP 提供，两种传输保留独立产品凭据。
 
 使用 `pixiv_account_list` / `pixiv_account_status` 查看本地账号，通过 `pixiv_account_use` 切换共享 MCP 账号，不修改 CLI default。
 新账号使用 `pixiv_account_login_start` 获取 relay URL，通过本机已安装的 helper 登录，再以 `login_id` 查询 `pixiv_account_status`；不要向聊天粘贴 callback 或凭据。登录保留具备本地凭据的 MCP 当前账号；需要切换时显式使用 `pixiv_account_use`。

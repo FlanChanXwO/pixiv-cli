@@ -232,16 +232,22 @@ pixiv timeline latest --type illust --limit 10 --json
 
 ### MCP
 
-Reverse-image search is available through the CLI/MCP integration; the public Go SDK also exposes typed artwork/novel bookmark and comment mutations.
+Use one local connector for Pixiv and FANBOX. Default stdio needs only `pixiv mcp`, uses local credentials, and preserves local downloads. Stdout carries JSON-RPC; diagnostics use stderr.
 
-Start one authenticated Pixiv/FANBOX Streamable HTTP server. MCP traffic uses HTTP, not stdin/stdout; the endpoint is printed to stderr. Tool failures retain structured results with `isError=true`. No project-level or daily log files are created by default.
-
-```bash
-pixiv mcp auth init  # Local administrator only; save the one-time secret securely.
-pixiv mcp
+```json
+{"mcpServers":{"pixiv":{"command":"pixiv","args":["mcp"]}}}
 ```
 
-Connect to `http://127.0.0.1:1270/mcp` locally. For cloud connectors, use an existing HTTPS reverse proxy and configure its canonical public base URL. OAuth uses DCR, owner consent and PKCE; Pixiv/FANBOX credentials remain separate. See [startup](docs/en/cli-reference.md#mcp-http-server) and [owner/reset administration](docs/en/cli-reference.md#mcp-owner-initialization). `pixiv fanbox mcp` and stdio transport are removed.
+For authenticated HTTP, initialize its owner once and explicitly select a port:
+
+```bash
+pixiv mcp auth init
+pixiv mcp --port 1270
+# Existing HTTPS proxy:
+pixiv mcp --port 1270 --base-url https://mcp.example.com
+```
+
+Local HTTP is `http://127.0.0.1:1270/mcp`; a non-loopback listener requires an explicit public URL and public URLs require HTTPS. See [startup](docs/en/cli-reference.md#mcp-http-server) and [owner administration](docs/en/cli-reference.md#mcp-owner-initialization). Migrate `pixiv fanbox mcp` to `pixiv mcp`. HTTP owner and Gallery tools are available only over HTTP; both modes retain independent product credentials.
 
 Use `pixiv_account_list` / `pixiv_account_status` to inspect local accounts and `pixiv_account_use` to select the shared MCP account without changing the CLI default.
 Start a new account login with `pixiv_account_login_start`, open its relay URL with the installed local helper, then query `pixiv_account_status` with `login_id`; do not paste callbacks or credentials into chat. Login preserves an existing MCP selection with local credentials; switch explicitly with `pixiv_account_use`.

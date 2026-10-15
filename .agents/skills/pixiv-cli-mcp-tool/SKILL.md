@@ -1,6 +1,6 @@
 ---
 name: pixiv-cli-mcp-tool
-description: Add, change, or review a pixiv-cli Pixiv or FANBOX MCP tool, including schema, SDK routing, structured output, errors, and HTTP authorization boundaries. Use for MCP tool implementation or compatibility work, not routine installed-CLI operation.
+description: Add, change, or review a pixiv-cli Pixiv or FANBOX MCP tool, including schema, SDK routing, structured output, errors, stdio delivery and HTTP authorization boundaries. Use for MCP tool implementation or compatibility work, not routine installed-CLI operation.
 ---
 
 # Maintain pixiv-cli MCP Tools
@@ -9,7 +9,7 @@ Read root `AGENTS.md`, [pixiv-cli-develop](../pixiv-cli-develop/SKILL.md), and t
 
 ## Identify ownership and contract
 
-Pixiv tools live in `internal/mcpserver/pixiv/tools/<tool>`; FANBOX tools in the parallel FANBOX owner. Their product roots register into one server constructed by `internal/mcpserver.New`; product runtimes remain independent. Pixiv tool names use `pixiv_`, FANBOX uses `fanbox_`, and old Pixiv aliases and filesystem download tools are not registered. `pixiv mcp` starts the unified Streamable HTTP server, with OAuth/bearer checks before the SDK transport. Use existing owner-local runtime, record, output, and filter helpers, and the public SDK for product operations.
+Pixiv tools live in `internal/mcpserver/pixiv/tools/<tool>`; FANBOX tools in the parallel FANBOX owner. Their product roots register into one server constructed by `internal/mcpserver.New`; product runtimes remain independent. Pixiv tool names use `pixiv_`, FANBOX uses `fanbox_`, and old unprefixed aliases are not registered. `pixiv mcp` defaults to stdio, with local filesystem downloads injected only for that transport; explicit `--port` enables HTTP with OAuth/bearer checks. Register Gallery and owner operations only when their media/account/login ports exist. Use existing owner-local runtime, record, output, and filter helpers, and the public SDK for product operations.
 
 For reverse search, tool code may depend on the top-level reverse-search service contract, never provider/assembly internals. Keep provider transport and credential wiring in production assembly. Do not introduce a general service locator, shared mutable global client, or anonymous Web fallback.
 

@@ -405,7 +405,7 @@ canonical 数据 action 是 `search`、`detail`、`ranking`、`series`、`commen
 | `novel search` | `pixiv novel search WORD [options]` | 小说搜索兼容路径；优先使用 `pixiv search WORD --type novel`，只暴露基础小说搜索字段。 |
 | `user search` | `pixiv user search WORD [options]` | 用户搜索兼容路径；优先使用 `pixiv search WORD --type user`。 |
 | `follow` | `pixiv follow add\|remove USER_ID ...` | 用户关注兼容路径；与 `pixiv user follow add\|remove` 共享同一 owner 和输入契约。 |
-| `mcp` | `pixiv mcp [--listen-addr ADDR] [--base-url URL] [--proxy URL\|--no-proxy]` | 启动经认证的统一 HTTP server；默认使用 `127.0.0.1:1270` 本地 HTTP；须初始化 owner。 |
+| `mcp` | `pixiv mcp [--port PORT [--host HOST] [--base-url URL]] [--proxy URL\|--no-proxy]` | 默认启动统一本地 stdio；显式 `--port` 启用经认证的 HTTP。 |
 | `mcp auth init` | `pixiv mcp auth init [--reset]` | 初始化本地 MCP owner 并只输出一次 secret；reset 撤销 grants，保留 clients 与选中账号。 |
 | `fanbox auth` | `pixiv fanbox auth import|list|use|remove|status` | 导入并管理本地 FANBOX session；session 值永不输出。native `--proxy`/`--no-proxy` 只影响本次 FANBOX 命令。 |
 | `fanbox creators` | `pixiv fanbox creators [--kind supporting\|following] [--page N --limit N]` | 列出 supporting 或 following FANBOX creator。 |
@@ -668,18 +668,30 @@ v1 已删除匿名 Web API fallback。内容命令要求先通过 `pixiv auth us
 
 ## MCP HTTP server
 
-先由管理员初始化一次 owner，然后直接使用本地默认配置启动：
+`pixiv mcp` 默认使用 stdio，一个本地连接同时提供 Pixiv/FANBOX：
+
+```json
+{"mcpServers":{"pixiv":{"command":"pixiv","args":["mcp"]}}}
+```
+
+本地调用使用 CLI 默认账号或账号池及独立 FANBOX session，不读取或初始化 HTTP owner。本地登录沿用 `pixiv auth login` / `pixiv fanbox auth`。stdio stdout 只承载 JSON-RPC，诊断写 stderr。
+
+只有显式 `--port` 才启用 HTTP，端口须为 1–65535 的整数：
 
 ```bash
 pixiv mcp auth init
-pixiv mcp
-# 单次启动覆写，不修改 config.toml：
-pixiv mcp --base-url https://mcp.example.com
+pixiv mcp --port 1270
+pixiv mcp --port 9000
+pixiv mcp --port 1270 --host 0.0.0.0 --base-url https://mcp.example.com/prefix
+# 容器：使用既有 HTTPS 代理和持久私有 app-data volume：
+docker run --rm -p 1270:1270 -v pixiv-data:/home/pixiv/.pixiv-cli IMAGE mcp --port 1270 --host 0.0.0.0 --base-url https://mcp.example.com
 ```
 
-别名 `mcp_listen_addr`、`mcp_base_url` 分别对应 `[mcp].listen_addr`、`[mcp].base_url`，默认分别为 `127.0.0.1:1270` 与 `http://127.0.0.1:1270`，支持 `config get/set/unset`；unset 后恢复默认值。默认仅监听 loopback；更换本地端口时须同时覆盖两项，云端 connector 须显式配置公网 HTTPS base URL。命令 flag 覆盖文件值，显式空值也会覆盖并导致启动失败；不新增 MCP 环境变量。listen address 必须包含显式非零 TCP 端口。显式空配置、canonical URL 无效、owner 未初始化/状态不可读或端口绑定失败都会停止启动，不会悄悄换端口。未初始化时提示管理员执行 `pixiv mcp auth init`。
+`--host` 默认 `127.0.0.1`；loopback 自动推导公开 URL，支持 IPv6（`--host ::1` 对应 `http://[::1]:PORT`）。其他地址（包括 `0.0.0.0`、`::`）须显式提供 `--base-url`。公开 URL 可与监听地址不同，非 loopback 公开地址须为 HTTPS。URL 拒绝用户信息、非法端口、query、fragment 和 dot path segment，保留验证后的路径前缀；不根据 Host/Forwarded headers 推导。单独传 `--host` 或 `--base-url` 报错。不根据 TTY、stdin、凭据、环境变量或配置猜测传输模式。参数、owner 状态或监听失败时明确退出，不另选端口。
 
-画廊读取使用以下启动配置，通过 `pixiv config get/set/unset` 管理：
+未发布 PR 的 `mcp.listen_addr` / `mcp.base_url`（别名 `mcp_listen_addr` / `mcp_base_url`）已从公开配置移除，不影响启动；请从 `config.toml` 清理开发版旧项并使用 flags。旧 `--listen-addr HOST:PORT` 对应 `--port PORT --host HOST`，不需要额外配置文件或传输配置项。
+
+Gallery 读取继续使用以下启动配置（`config get/set/unset`）：
 
 | 别名 | `[mcp]` 下的 TOML 键 | 默认值 | 校验 |
 | --- | --- | --- | --- |
@@ -690,7 +702,7 @@ pixiv mcp --base-url https://mcp.example.com
 
 缺失配置和 `config unset` 均恢复默认值，不新增 flag 或环境变量。修改后重启 MCP 生效。进程内 LRU 预算包含 metadata 载荷和图片填充缓冲；超预算图片仍完整流式返回，不缓存、不截断。缓存期限取配置 TTL、签发授权期限与上游只读会话期限中的最早值；作品信息可能在该窗口内延迟反映更新，收藏状态与写操作仍实时执行。命中仍检查授权与账号／凭据／网络版本；撤销后拒绝后续读取，重启清空缓存。HTTP 保持 `private, no-store`，不使用磁盘或公共 CDN 缓存。
 
-endpoint 为 base URL 加 `/mcp`，与 owner 已初始化状态一起写 stderr，不打印 owner secret。server stdout 不再传输 JSON-RPC。两产品共享 endpoint，但保留独立凭据与 runtime。`pixiv fanbox mcp` 与 stdio transport 已删除。`--proxy` / `--no-proxy` 仍只覆盖本次上游网络请求，不配置入站 TLS，也不改写 FlareSolverr 设置。
+endpoint 为 base URL 加 `/mcp`，与 owner 已初始化状态一起写 stderr，不打印 owner secret。server stdout 不再传输 JSON-RPC。两产品共享 endpoint，但保留独立凭据与 runtime。`pixiv fanbox mcp` 迁移到统一 `pixiv mcp`。`--proxy` / `--no-proxy` 仍只覆盖本次上游网络请求，不配置入站 TLS，也不改写 FlareSolverr 设置。
 
 本地支持 HTTP；云端 connector 使用公网 HTTPS base，由既有反向代理终止 TLS，pixiv-cli 不申请证书。代理须保留公网 Host 和原始转义路径。入站 Host 及存在的 Origin 必须匹配 canonical 部署 origin（接受 host 大小写、默认端口的等价表示），转发头不能建立信任。base 为 `https://mcp.example.com/pixiv` 时，转发 `/pixiv/mcp`、`/pixiv/oauth/authorize`、`/pixiv/oauth/register`、`/pixiv/oauth/token`、`/.well-known/oauth-protected-resource`、`/.well-known/oauth-protected-resource/pixiv/mcp` 和 `/.well-known/oauth-authorization-server/pixiv`；不要去掉 prefix 或归一化转义/双斜线路径。详见 [MCP HTTP 授权](mcp-tools.md#http-授权)；本地 fixture 不代表云端 host 互操作验收。
 

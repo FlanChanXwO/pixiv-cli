@@ -5,7 +5,7 @@ English | [简体中文](../../zh-CN/maintainers/architecture.md) | [Documentati
 ```mermaid
 flowchart LR
     ENTRY["cmd/pixiv<br/>single binary entry"] --> CLI["internal/cli<br/>commands and lifecycle"]
-    CLI -->|"starts HTTP"| MCP["internal/mcpserver<br/>Pixiv / FANBOX tools"]
+    CLI -->|"stdio / HTTP"| MCP["internal/mcpserver<br/>Pixiv / FANBOX tools"]
     CLI --> SDK["public SDK<br/>sdk/pixiv · sdk/fanbox"]
     MCP --> SDK
     SDK --> FACADE["internal/services<br/>business Facade"]
@@ -39,7 +39,7 @@ flowchart LR
 
 1. `pixiv` with no arguments shows CLI help.
 2. `pixiv auth/config/update/search/timeline/detail/ranking/recommended/user/bookmark/follow/download` enters CLI mode; root `--version` is a standalone read-only flag; `pixiv fanbox` enters FANBOX mode; `auth import` handles direct token import or bundle restore, and `auth export` handles the local secret snapshot.
-3. `pixiv mcp` assembles and starts the unified Pixiv/FANBOX Streamable HTTP server; `pixiv fanbox mcp` is removed.
+3. `pixiv mcp` assembles and starts unified Pixiv/FANBOX stdio by default or Streamable HTTP with explicit `--port`; `pixiv fanbox mcp` is removed.
 4. CLI and MCP construct production resources explicitly per command owner:
    - Account credentials come from `~/.pixiv-cli/pixiv-cli.db` (SQLite, `internal/storage/database`; Windows: `%USERPROFILE%\.pixiv-cli\pixiv-cli.db`); the legacy `auth.json` is not read automatically — users must explicitly export/import a bundle
    - Global configuration comes from `~/.pixiv-cli/config.toml` (Windows: `%USERPROFILE%\.pixiv-cli\config.toml`)
@@ -365,7 +365,7 @@ ZIP body failures additionally emit the fixed `animation_zip_incomplete` marker 
 
 The media tool also attaches the existing MCP App view for complete media playback and its independent static preview. When the host advertises file download, the view requests its confirmation flow. Otherwise an available protected HTTP attachment opens in the browser; browser restrictions still apply. The server retains the already encoded animation and preview under the existing animation temporary capacity, grant, account version and TTL, without another download or encoding. Private UI metadata carries these short-lived addresses; no filesystem path is exposed. Optional publication failure leaves the complete inline result intact but makes the browser download unavailable. Restart, expiry or authorization changes invalidate these addresses.
 
-`New` constructs the single protocol server and calls each product's `Register`. Pixiv tools use `pixiv_` and FANBOX tools keep `fanbox_`; no old-name aliases or MCP filesystem download tools remain. CLI downloads still belong to `internal/media/downloader`. `NewHTTPHandler` assembles stateless Streamable HTTP and OAuth routing in the parent package; `RunHTTP` owns the listener and server lifecycle. The stdio runner and MCP-specific SIGPIPE wiring are removed; normal CLI pipeline handling remains.
+`New` constructs the single protocol server and calls each product's `Register`. Pixiv tools use `pixiv_` and FANBOX tools keep `fanbox_`; no unprefixed aliases remain. Stdio injects local downloads through `internal/media/downloader`; HTTP does not receive that port. Gallery and owner tools require their media/account/login ports. `NewHTTPHandler` assembles stateless Streamable HTTP and OAuth routing in the parent package; `RunHTTP` owns the listener and server lifecycle. `RunStdio` owns the local JSON-RPC session and waits for cleanup; `RunHTTP` independently owns HTTP lifecycle.
 
 Each product retains its own SDK ports, account selection and runtime. Registration/discovery does not open a FANBOX account; the root lazily opens its independent service when a FANBOX tool runs. Each tool package owns its name, annotations, schema and handler. Pixiv nullable `page`/`limit` are parsed by its adapter and traversal stays in `internal/shared/traversal`. Handler failures retain structured output with `isError=true`; legitimate empty results remain successful. See [MCP tools](../mcp-tools.md).
 
@@ -479,7 +479,7 @@ an error that the CLI can silently bypass.
 
 No generic constants package is retained. `config/paths` is the sole owner of app-managed paths, `AppDataDirName`, and
 Unix-like private directory/file permission constants; it does not read business configuration and does not implement file writes. Pixiv protocol values, MCP delivery
-values, and config keys/defaults still live in their owning domain packages. `internal/shared/diagnostics` owns the typed, protocol-neutral event contract, while `internal/cli/diagnostics` owns the optional text/JSON stderr presenter configured by `[logging]`. This is not a persistent operation log or the historical generic `slog` chain; MCP JSON-RPC travels only over HTTP and errors still pass through the existing CLI, MCP, or public SDK interfaces.
+values, and config keys/defaults still live in their owning domain packages. `internal/shared/diagnostics` owns the typed, protocol-neutral event contract, while `internal/cli/diagnostics` owns the optional text/JSON stderr presenter configured by `[logging]`. This is not a persistent operation log or the historical generic `slog` chain; MCP JSON-RPC uses protocol-clean stdio or authenticated HTTP and errors still pass through the existing CLI, MCP, or public SDK interfaces.
 
 ### `internal/storage/file/{atomic,lock,replace,secret}`
 
