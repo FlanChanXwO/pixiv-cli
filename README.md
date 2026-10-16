@@ -2,7 +2,7 @@
 
 # pixiv-cli
 
-**Pixiv CLI · Remote MCP server · Go SDK**
+**Pixiv CLI · MCP server (stdio / HTTP) · Go SDK**
 
 [English](README.md) · [简体中文](README.zh-CN.md)
 
@@ -12,22 +12,21 @@
 
 </div>
 
-`pixiv-cli` brings the Pixiv ecosystem to the terminal: discover works and creators, manage accounts and collections, follow artists, bookmark artworks, and download visual works. It is an independent, unofficial third-party CLI, MCP server, and public Go SDK; it is not affiliated with or endorsed by Pixiv Inc. The CLI and MCP server both call the same public Go SDK, with the Pixiv App API as the authenticated source of truth. Use it in accordance with Pixiv's terms and applicable law.
+`pixiv-cli` is an unofficial CLI, MCP server and public Go SDK for Pixiv. Search works and creators, manage accounts, bookmarks and follows, and download visual works. CLI and MCP use the same SDK and authenticated Pixiv App API.
+
+The project is not affiliated with or endorsed by Pixiv Inc. Follow Pixiv's terms and applicable law.
 
 ## Why pixiv-cli?
 
-- **One capability surface** — keyword search, details, rankings, recommendations, users, bookmarks, and follows across CLI, MCP, and SDK; local downloads remain CLI/SDK capabilities, while MCP delivers image and ugoira animation bytes; reverse-image search is integrated into the CLI/MCP surface.
-- **Read-only FANBOX access** — authenticate with `FANBOXSESSID`, inspect creators, posts, home/supporting feeds, tags, and first-party file resources through the CLI, MCP, or `sdk/fanbox`.
-- **Composable visual pipelines** — visual lists automatically emit canonical NDJSON when piped; use `--filter` for typed local artwork rules and pass matching records straight to `download`.
-- **Local account pools** — enable database-backed scheduling for read workloads with `pixiv auth pool status|enable|disable`; selection honors Pixiv `Retry-After` responses without exposing credentials.
-- **Guided account sign-in** — complete browser OAuth with `pixiv auth login`, then use `auth list`, `auth use`, and `auth check` to manage local multi-account access.
-- **Ugoira output modes** — choose GIF or APNG; invalid or empty filename templates use a stable default and remain observable as warnings.
-- **Explicit download reporting** — select image quality and closed page ranges, use allowlisted Pixiv CDN URLs as direct sources, and keep completed files, warnings, and failures observable.
-- **Authenticated App API discovery** — read R18 details, pages, ugoira metadata, and all 16 ranking modes through the App API; artwork search/detail retains available viewer state and series metadata, and unfiltered deep search pages start at the target raw offset. See the [CLI reference](docs/en/cli-reference.md).
-- **Useful search filters** — rating, content type, AI mode, aspect ratio, resolution, and a versioned drawing-tool catalog; reverse-image search can query SauceNAO or ascii2d from a local file or URL.
-- **Direct Pixiv references** — paste supported artwork URLs into detail or download; authenticated profile and artworks URLs expand to that creator's visual works.
-- **Local multi-account OAuth** — browser login, account selection, refresh-token rotation, and an optional cross-machine callback relay.
-- **Automation-ready integration** — typed SDK errors, JSON output, authenticated MCP HTTP, signed release updates, and complete result reporting.
+- Search, details, rankings, recommendations, users, bookmarks and follows share one CLI/MCP/SDK implementation. MCP defaults to local stdio; HTTP is optional. Stdio also supports local downloads; both transports deliver image and Ugoira animation bytes.
+- Use read-only FANBOX access for creators, posts, home/supporting feeds, tags and first-party files through the CLI, MCP or `sdk/fanbox`, using separate `FANBOXSESSID` credentials.
+- Pipe visual lists as canonical NDJSON, apply typed local artwork rules with `--filter`, and pass matching records to `download`.
+- Sign in with `pixiv auth login`; manage accounts with `auth list`, `auth use` and `auth check`, and support refresh-token rotation. An optional cross-machine callback relay supports remote login. Enable the local database-backed read pool with `pixiv auth pool status|enable|disable`; it honors `Retry-After` without exposing credentials.
+- Search by rating, content type, AI mode, aspect ratio, resolution or the versioned drawing-tool catalog. Reverse-search a local image or URL through SauceNAO or ascii2d.
+- Read R18 details, pages, Ugoira metadata and all 16 ranking modes through the App API. Search/detail retains available viewer state and series metadata; unfiltered deep search starts at the requested raw offset. See the [CLI reference](docs/en/cli-reference.md).
+- Pass supported artwork URLs to detail/download. Authenticated creator profile and artworks URLs expand to that creator's visual works.
+- Choose image quality, closed page ranges, GIF or APNG output, or allowlisted Pixiv CDN direct sources. Download results retain completed files, warnings and failures. Invalid or empty filename templates use a stable default with a warning.
+- Integrate with typed SDK errors, JSON output, local stdio or authenticated MCP HTTP, signed release updates and complete result reporting.
 
 ## Install
 
@@ -64,7 +63,7 @@ docker pull ghcr.io/flanchanxwo/pixiv-cli:v1.2.3
 docker pull docker.io/flanchanxwo/pixiv-cli:v1.2.3
 ```
 
-`latest` follows stable releases only; Prerelease tags never move `latest`. To track the current stable release, pull either `ghcr.io/flanchanxwo/pixiv-cli:latest` or `docker.io/flanchanxwo/pixiv-cli:latest`. Images are built natively for `linux/amd64` and `linux/arm64`. The container runs the same `pixiv` binary and uses the same `~/.pixiv-cli` state namespace as other installations.
+`latest` follows stable releases; prereleases never move it. Pull either `ghcr.io/flanchanxwo/pixiv-cli:latest` or `docker.io/flanchanxwo/pixiv-cli:latest`. Images are built natively for `linux/amd64` and `linux/arm64`. The container runs the same `pixiv` binary and uses the same `~/.pixiv-cli` state namespace as other installations.
 
 Keep account state persistent and expose a download workspace:
 
@@ -119,7 +118,7 @@ secret-manager print-token | docker run --rm -i \
   auth import
 ```
 
-This uses the existing `pixiv auth import` behavior; it does not add a Docker-specific OAuth callback flow for `auth login`.
+`auth import` works as on the host. Docker does not add an OAuth callback flow for `auth login`.
 
 For MCP, the transport remains `docker run --rm -i ghcr.io/flanchanxwo/pixiv-cli mcp`, and stdout stays reserved for MCP JSON-RPC. Pin a release as shown below:
 
@@ -247,9 +246,9 @@ pixiv mcp --port 1270
 pixiv mcp --port 1270 --base-url https://mcp.example.com
 ```
 
-Local HTTP is `http://127.0.0.1:1270/mcp`; a non-loopback listener requires an explicit public URL and public URLs require HTTPS. See [startup](docs/en/cli-reference.md#mcp-http-server) and [owner administration](docs/en/cli-reference.md#mcp-owner-initialization). Migrate `pixiv fanbox mcp` to `pixiv mcp`. HTTP owner and Gallery tools are available only over HTTP; both modes retain independent product credentials.
+Local HTTP is `http://127.0.0.1:1270/mcp`; a non-loopback listener requires an explicit public URL and public URLs require HTTPS. See [startup](docs/en/cli-reference.md#mcp-http-server) and [owner administration](docs/en/cli-reference.md#mcp-owner-initialization). Migrate `pixiv fanbox mcp` to `pixiv mcp`. Both modes retain independent product credentials.
 
-Use `pixiv_account_list` / `pixiv_account_status` to inspect local accounts and `pixiv_account_use` to select the shared MCP account without changing the CLI default.
+The following account and Gallery tools are HTTP-only. Use `pixiv_account_list` / `pixiv_account_status` to inspect local accounts and `pixiv_account_use` to select the shared MCP account without changing the CLI default.
 Start a new account login with `pixiv_account_login_start`, open its relay URL with the installed local helper, then query `pixiv_account_status` with `login_id`; do not paste callbacks or credentials into chat. Login preserves an existing MCP selection with local credentials; switch explicitly with `pixiv_account_use`.
 
 Gallery animations use `pixiv_gallery_animation` (`prepare` / `status` / `release`) for short control responses and protected GIF/APNG plus PNG preview delivery.
@@ -260,9 +259,7 @@ On supporting MCP Apps hosts, explicitly call `pixiv_show_gallery` with artwork 
 
 `fanbox_open_resource` returns image/blob bytes and available attachment filenames for GET; HEAD remains metadata-only.
 
-See the [MCP tool contract](docs/en/mcp-tools.md) for tools, parameters, structured output, and authentication behavior.
-
-Comments, bookmark writes and homogeneous feeds use explicit type selectors; see the [tool migration table](docs/en/mcp-tools.md#tool-migration) when updating an existing connector.
+See the [MCP contract](docs/en/mcp-tools.md) for schemas, output and authentication. Comments, bookmark writes and shared list tools use explicit selectors; update existing connectors using the [migration table](docs/en/mcp-tools.md#tool-migration).
 
 Fixed MCP status, error, and display text is English; Pixiv metadata and user-supplied text are preserved verbatim.
 
@@ -276,8 +273,7 @@ challenge-recovery control path and never receives the native ascii2d image uplo
 
 ### Go SDK
 
-**The Go version declared in `go.mod` is the official source-build and SDK-development baseline.**
-The repository, CI, release builds, and native packaging all consume that single toolchain declaration.
+Use the Go version in `go.mod` for SDK development and source, CI, release and native builds.
 
 The public SDK receives credentials explicitly and does not read the CLI's local account store or process environment. Obtain the credential from your application's secret store and persist the rotated credentials returned by `Open`:
 

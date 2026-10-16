@@ -2,7 +2,7 @@
 
 # pixiv-cli
 
-**Pixiv CLI · Remote MCP server · Go SDK**
+**Pixiv CLI · MCP server (stdio / HTTP) · Go SDK**
 
 [English](README.md) · [简体中文](README.zh-CN.md)
 
@@ -12,22 +12,21 @@
 
 </div>
 
-`pixiv-cli` 把 Pixiv 生态带到终端：发现作品与创作者、管理账号和作品收藏、关注创作者，并下载视觉作品。它提供独立的非官方 CLI、MCP server 和 public Go SDK，与 Pixiv Inc. 无隶属或背书关系。CLI 与 MCP server 共同调用 public Go SDK，并以 Pixiv App API 作为已认证能力的数据源；使用时请遵守 Pixiv 条款与适用法律。
+`pixiv-cli` 提供 Pixiv 的非官方 CLI、MCP server 和公开 Go SDK。可搜索作品与创作者，管理账号、收藏和关注，并下载视觉作品。CLI 与 MCP 共用 SDK，内容来自已认证的 Pixiv App API。
+
+本项目与 Pixiv Inc. 无隶属或背书关系。使用时请遵守 Pixiv 条款与适用法律。
 
 ## 为什么选择 pixiv-cli？
 
-- **一致的能力面**——CLI、MCP 与 SDK 均可完成关键词搜索、详情、排行、推荐、用户、收藏和关注；本地下载保留在 CLI/SDK，MCP 交付图片与 ugoira 动画 bytes；反向搜图接入 CLI/MCP 能力面。
-- **只读 FANBOX 能力**——通过 `FANBOXSESSID` 登录后，可从 CLI、MCP 或 `sdk/fanbox` 查看创作者、帖子、主页/支持中 feed、标签和第一方文件资源。
-- **组合式视觉作品管道**——视觉列表接入管道时自动输出 canonical NDJSON；用 `--filter` 编写有类型的本地作品筛选，并可直接传给 `download`。
-- **本地账号池**——为读取型任务选择符合条件的本地账号，并在分页和下载准备阶段遵循 Pixiv 的 `Retry-After` 响应。
-- **易用的账号登录流程**——运行 `pixiv auth login` 即可在浏览器完成 OAuth，随后可使用 `auth list`、`auth use` 和 `auth check` 管理和确认本地多账号。
-- **Ugoira 输出模式**——可选择 GIF 或 APNG；文件名模板非法或渲染为空时使用稳定默认文件名，并以 warnings 保持可观测。
-- **明确的下载结果**——可选择图片质量和闭区间页码，将允许的 Pixiv CDN URL 作为直链来源，并保留已完成文件、warnings 与 failures。
-- **认证 App API 发现能力**——通过 App API 读取 R18 详情、分页、ugoira metadata 和全部 16 种排行榜；作品搜索/详情保留可用的 viewer 状态与系列信息，普通无本地筛选的深页搜索从目标原始 offset 开始。详见 [CLI 参考](docs/zh-CN/cli-reference.md)。
-- **实用搜索筛选**——支持分级、作品类型、AI 模式、横纵比、分辨率和版本内置的绘图工具目录；反向搜图支持从本地文件或 URL 查询 SauceNAO、ascii2d。
-- **直达 Pixiv 引用**——可把受支持作品 URL 直接粘贴给详情或下载；已认证的作者主页/作品页 URL 会展开为该作者的视觉作品。
-- **本地多账号 OAuth**——支持浏览器登录、账号选择、refresh token rotation 和可选的跨机器 callback relay。
-- **适合自动化**——typed SDK error、JSON 输出、经认证的 MCP HTTP、签名更新和完整结果报告。
+- CLI、MCP 与 SDK 共用搜索、详情、排行、推荐、用户、收藏和关注能力。MCP 默认使用本地 stdio，也支持 HTTP。stdio 支持本地下载；两种传输都可交付图片和 Ugoira 动画字节。
+- 使用独立的 `FANBOXSESSID`，从 CLI、MCP 或 `sdk/fanbox` 只读访问 FANBOX 创作者、帖子、主页/支持中 feed、标签和第一方文件。
+- 视觉列表接入管道时自动输出 canonical NDJSON。用 `--filter` 筛选作品，再传给 `download`。
+- 运行 `pixiv auth login` 完成浏览器 OAuth，用 `auth list`、`auth use` 和 `auth check` 管理本地账号；支持 refresh-token 轮换，可选 callback relay 支持跨机器登录。本地数据库账号池为读取任务调度账号，并遵循 Pixiv 的 `Retry-After`。
+- 按分级、作品类型、AI 模式、横纵比、分辨率或版本内置的绘图工具筛选。可用本地图片或 URL 向 SauceNAO、ascii2d 反向搜图。
+- 通过 App API 读取 R18 详情、分页、Ugoira 元数据和全部 16 种排行榜。搜索/详情保留可用的 viewer 状态和系列信息；无本地筛选的深页搜索从目标原始 offset 开始。详见 [CLI 参考](docs/zh-CN/cli-reference.md)。
+- 受支持的作品 URL 可直接用于详情或下载；认证后的作者主页/作品页 URL 会展开为该作者的视觉作品。
+- 可选择图片质量、闭区间页码、GIF/APNG 输出，或使用允许的 Pixiv CDN 直链。下载结果保留已完成文件、warnings 和 failures；文件名模板非法或为空时使用稳定默认值，并给出 warning。
+- 提供 typed SDK error、JSON 输出、本地 stdio 或认证 MCP HTTP、签名更新和完整结果报告，便于自动化。
 
 ## 安装
 
@@ -247,9 +246,9 @@ pixiv mcp --port 1270
 pixiv mcp --port 1270 --base-url https://mcp.example.com
 ```
 
-本地 HTTP 地址为 `http://127.0.0.1:1270/mcp`；非 loopback 监听须显式公开 URL，非本机公开 URL 须用 HTTPS。详见[启动合同](docs/zh-CN/cli-reference.md#mcp-http-server)与[owner 管理](docs/zh-CN/cli-reference.md#mcp-owner-初始化)。`pixiv fanbox mcp` 迁移到 `pixiv mcp`。owner 与 Gallery 工具仅 HTTP 提供，两种传输保留独立产品凭据。
+本地 HTTP 地址为 `http://127.0.0.1:1270/mcp`；非 loopback 监听须显式公开 URL，非本机公开 URL 须用 HTTPS。详见[启动合同](docs/zh-CN/cli-reference.md#mcp-http-server)与[owner 管理](docs/zh-CN/cli-reference.md#mcp-owner-初始化)。`pixiv fanbox mcp` 迁移到 `pixiv mcp`。两种传输保留独立产品凭据。
 
-使用 `pixiv_account_list` / `pixiv_account_status` 查看本地账号，通过 `pixiv_account_use` 切换共享 MCP 账号，不修改 CLI default。
+以下账号管理和 Gallery 工具仅用于 HTTP。使用 `pixiv_account_list` / `pixiv_account_status` 查看本地账号，通过 `pixiv_account_use` 切换共享 MCP 账号，不修改 CLI default。
 新账号使用 `pixiv_account_login_start` 获取 relay URL，通过本机已安装的 helper 登录，再以 `login_id` 查询 `pixiv_account_status`；不要向聊天粘贴 callback 或凭据。登录保留具备本地凭据的 MCP 当前账号；需要切换时显式使用 `pixiv_account_use`。
 
 Gallery 动图通过 `pixiv_gallery_animation`（`prepare` / `status` / `release`）获取短控制响应，使用受保护的 GIF/APNG 与 PNG 预览地址交付。
@@ -260,9 +259,7 @@ Gallery 动图通过 `pixiv_gallery_animation`（`prepare` / `status` / `release
 
 `fanbox_open_resource` 的 GET 返回真实 image/blob bytes 及可用的附件文件名；HEAD 仍只返回 metadata。
 
-[MCP tool 契约](docs/zh-CN/mcp-tools.md)记录了 tools、参数、structured output 和认证行为。
-
-评论、收藏写入及同构列表入口使用显式类型选择；更新已有 connector 时请查看[工具迁移表](docs/zh-CN/mcp-tools.md#工具迁移)。
+工具参数、输出和认证行为见 [MCP 契约](docs/zh-CN/mcp-tools.md)。评论、收藏写入和合并后的列表入口要求显式选择类型；更新已有 connector 时请查看[迁移表](docs/zh-CN/mcp-tools.md#工具迁移)。
 
 MCP 固定状态、错误和展示文本使用英文；Pixiv 元数据及用户提供的文本保持原文。
 
@@ -274,8 +271,7 @@ challenge-recovery control path，绝不会收到 native ascii2d image upload。
 
 ### Go SDK
 
-**`go.mod` 声明的 Go 版本是源码构建与 SDK 开发的正式基线。**
-仓库、CI、正式发布构建与原生打包统一消费这一处 toolchain 声明。
+源码、CI、发布和原生构建，以及 SDK 开发，统一使用 `go.mod` 声明的 Go 版本。
 
 Public SDK 显式接收 credential，不读取 CLI 的本地账号库或进程环境。应用应从自己的 secret store 取得 credential，并自行保存 `Open` 返回的 rotation 后 credential：
 
