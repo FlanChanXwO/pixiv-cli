@@ -39,11 +39,12 @@ var variantCases = []struct {
 }
 
 func TestArtworkVariantResourceDerivesImgMasterURL(t *testing.T) {
-	// detail 返回带 original 路径的作品；OpenResource 再对变体 ref revalidate
-	// 时会把 detail 端点重新拉一次，最终落到 i.pximg.net 的变体 URL。
+	// Trusted artwork metadata should resolve all quality variants without another query.
+	detailCalls := 0
 	rt := roundTripFunc(func(req *http.Request) (*http.Response, error) {
 		switch req.URL.Host {
 		case "app-api.pixiv.net":
+			detailCalls++
 			body := `{"illust":{"id":42,"title":"art","type":"illust","create_date":"2026-01-01T00:00:00Z","image_urls":{"original":"` + originalArtworkURL + `"},"user":{"id":7,"name":"artist"},"tags":[]}}`
 			return jsonResponse(body), nil
 		case "i.pximg.net":
@@ -79,6 +80,11 @@ func TestArtworkVariantResourceDerivesImgMasterURL(t *testing.T) {
 			if !strings.Contains(string(payload), `"v":"`+tc.variant+`"`) {
 				t.Fatalf("variant ref payload = %q, want variant %q", payload, tc.variant)
 			}
+			res, e := client.OpenResource(t.Context(), sdk.OpenResourceRequest{Ref: variantRef})
+			if e != nil {
+				t.Fatal(e)
+			}
+			res.Body.Close()
 			// 推导出的 URL 走 img-master，丢弃签名 query。
 			gotURL, err := resolveVariantURL(t, client, variantRef)
 			if err != nil {
@@ -94,6 +100,9 @@ func TestArtworkVariantResourceDerivesImgMasterURL(t *testing.T) {
 				t.Fatalf("variant URL must not carry the original signature query: %q", gotURL)
 			}
 		})
+	}
+	if detailCalls != 1 {
+		t.Fatalf("detail calls = %d, want 1", detailCalls)
 	}
 }
 

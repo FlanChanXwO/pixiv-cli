@@ -3,11 +3,18 @@ package cli
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"io"
+	"net"
+	"net/http"
+	"net/http/httptest"
+	"net/url"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -19,10 +26,16 @@ import (
 	"github.com/FlanChanXwO/pixiv-cli/internal/cli/pipeline"
 	"github.com/FlanChanXwO/pixiv-cli/internal/config/paths"
 	configapp "github.com/FlanChanXwO/pixiv-cli/internal/config/settings"
+	unifiedmcp "github.com/FlanChanXwO/pixiv-cli/internal/mcpserver"
+	mcpauth "github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/auth"
+	mcpaccounts "github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/accounts"
+	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/mediaproxy"
 	pixivaccount "github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/account"
 	"github.com/FlanChanXwO/pixiv-cli/internal/services/reversesearch"
 	reverseassembly "github.com/FlanChanXwO/pixiv-cli/internal/services/reversesearch/assembly"
+	coreDiagnostics "github.com/FlanChanXwO/pixiv-cli/internal/shared/diagnostics"
 	"github.com/FlanChanXwO/pixiv-cli/internal/storage/database"
+	sdkpixiv "github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/spf13/cobra"
 	"github.com/stretchr/testify/assert"
@@ -244,32 +257,24 @@ func TestBrokenPipeSignalsAreScopedByOutputProtocol(t *testing.T) {
 		args         []string
 		wantExit     int
 		wantPipeline int
-		wantMCP      int
 	}{
 		{name: "ndjson", args: []string{"pixiv", "search", "miku", "--ndjson"}, wantExit: 1, wantPipeline: 1},
-		{name: "mcp", args: []string{"pixiv", "mcp"}, wantExit: 0, wantMCP: 1},
+		{name: "mcp", args: []string{"pixiv", "mcp"}, wantExit: 0},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			pipelineEnabled, pipelineStopped := 0, 0
-			mcpEnabled, mcpStopped := 0, 0
 			enablePipeline := func() func() {
 				pipelineEnabled++
 				return func() { pipelineStopped++ }
 			}
-			enableMCP := func() func() {
-				mcpEnabled++
-				return func() { mcpStopped++ }
-			}
 
 			var stdout, stderr bytes.Buffer
-			code := RunContextWithBrokenPipeSignals(context.Background(), test.args, strings.NewReader(""), &stdout, &stderr, enablePipeline, enableMCP)
+			code := RunContextWithPipelineSignal(context.Background(), test.args, strings.NewReader(""), &stdout, &stderr, enablePipeline)
 
 			assert.Equal(t, test.wantExit, code, stderr.String())
 			assert.Equal(t, test.wantPipeline, pipelineEnabled)
 			assert.Equal(t, test.wantPipeline, pipelineStopped)
-			assert.Equal(t, test.wantMCP, mcpEnabled)
-			assert.Equal(t, test.wantMCP, mcpStopped)
 		})
 	}
 }
@@ -659,12 +664,12 @@ func TestCLIReverseSearchClosesSearcherOnceAndKeepsJSONOnStdout(t *testing.T) {
 	require.Equal(t, int32(1), searcher.closeCalls.Load())
 }
 
-func TestMCPReverseSearchRegistersSearcherForStdioLifetime(t *testing.T) {
+func TestMCPReverseSearchRegistersSearcherForHTTPLifetime(t *testing.T) {
 	useTempPaths(t)
 	oldConfig := loadCLIRuntimeConfig
 	oldReverse := newCLIMCPReverseSearch
 	oldSDK := newCLIPixivSDKPorts
-	oldStdio := runMCPStdio
+	oldHTTP := runMCPHTTP
 	closeErr := errors.New("mcp reverse search close failed")
 	searcher := &closeTrackingReverseSearcher{closeErr: closeErr}
 
@@ -677,12 +682,32 @@ func TestMCPReverseSearchRegistersSearcherForStdioLifetime(t *testing.T) {
 	newCLIPixivSDKPorts = func(app) (pixivSDKPorts, error) {
 		return pixivSDKPorts{}, nil
 	}
-	runMCPStdio = func(context.Context, *mcp.Server) error { return nil }
+	runMCPHTTP = func(ctx context.Context, server *mcp.Server, listenAddr, baseURL string, store mcpauth.Store, out io.Writer, login *mcpaccounts.LoginManager, media ...*mediaproxy.Service) error {
+		require.NotNil(t, login, "production HTTP must receive the shared login manager")
+		clientTransport, serverTransport := mcp.NewInMemoryTransports()
+		serverSession, err := server.Connect(ctx, serverTransport, nil)
+		require.NoError(t, err)
+		defer serverSession.Close()
+		client := mcp.NewClient(&mcp.Implementation{Name: "root-test", Version: "1"}, nil)
+		session, err := client.Connect(ctx, clientTransport, nil)
+		require.NoError(t, err)
+		defer session.Close()
+		tools, err := session.ListTools(ctx, nil)
+		require.NoError(t, err)
+		names := make([]string, 0, len(tools.Tools))
+		for _, tool := range tools.Tools {
+			names = append(names, tool.Name)
+		}
+		require.Contains(t, names, "pixiv_search_illust")
+		require.Contains(t, names, "fanbox_current_user")
+		require.NotContains(t, names, "download")
+		return nil
+	}
 	t.Cleanup(func() {
 		loadCLIRuntimeConfig = oldConfig
 		newCLIMCPReverseSearch = oldReverse
 		newCLIPixivSDKPorts = oldSDK
-		runMCPStdio = oldStdio
+		runMCPHTTP = oldHTTP
 	})
 
 	var stdout, stderr bytes.Buffer
@@ -692,9 +717,665 @@ func TestMCPReverseSearchRegistersSearcherForStdioLifetime(t *testing.T) {
 		errOut:     &stderr,
 		closeState: &closeState{},
 	}
-	require.NoError(t, a.runPixivMCP(context.Background(), mcpcommands.Request{}))
+	_, err := a.InitMCPAuth(t.Context(), false)
+	require.NoError(t, err)
+	require.NoError(t, a.runPixivMCP(context.Background(), mcpcommands.Request{ListenAddr: new("127.0.0.1:8123"), BaseURL: new("http://127.0.0.1:8123")}))
 	require.ErrorIs(t, a.closeResources(), closeErr)
 	require.ErrorIs(t, a.closeResources(), closeErr)
 	require.Equal(t, int32(1), searcher.closeCalls.Load())
 	require.Empty(t, stdout.String())
+}
+
+func TestMCPShutdownPreservesAnimationCleanupError(t *testing.T) {
+	if runtime.GOOS == "windows" || os.Geteuid() == 0 {
+		t.Skip("requires POSIX directory permission enforcement")
+	}
+	useTempPaths(t)
+	temporary := t.TempDir()
+	t.Setenv("TMPDIR", temporary)
+	oldConfig, oldSDK, oldHTTP, oldReverse := loadCLIRuntimeConfig, newCLIPixivSDKPorts, runMCPHTTP, newCLIMCPReverseSearch
+	t.Cleanup(func() {
+		loadCLIRuntimeConfig, newCLIPixivSDKPorts, runMCPHTTP, newCLIMCPReverseSearch = oldConfig, oldSDK, oldHTTP, oldReverse
+	})
+	loadCLIRuntimeConfig = func() (configapp.RuntimeConfig, error) {
+		return configapp.RuntimeConfig{MCPGalleryCacheTTL: time.Minute, MCPGalleryConcurrency: 1, MCPGalleryAnimationTempCapacityMiB: 1}, nil
+	}
+	newCLIMCPReverseSearch = func(reverseassembly.Options) (reversesearch.Searcher, error) {
+		return &closeTrackingReverseSearcher{}, nil
+	}
+	newCLIPixivSDKPorts = func(app) (pixivSDKPorts, error) {
+		return pixivSDKPorts{readSession: func(context.Context, pixivdeps.Request) (mediaproxy.Session, error) {
+			return mediaproxy.Session{}, errors.New("unexpected SDK access")
+		}}, nil
+	}
+	serveErr := errors.New("fixture HTTP stopped")
+	runMCPHTTP = func(context.Context, *mcp.Server, string, string, mcpauth.Store, io.Writer, *mcpaccounts.LoginManager, ...*mediaproxy.Service) error {
+		entries, err := os.ReadDir(temporary)
+		require.NoError(t, err)
+		require.Len(t, entries, 1)
+		workspace := filepath.Join(temporary, entries[0].Name())
+		require.NoError(t, os.Chmod(workspace, 0500))
+		t.Cleanup(func() { require.NoError(t, os.Chmod(workspace, 0700)) })
+		return serveErr
+	}
+	a := app{in: strings.NewReader(""), out: io.Discard, errOut: io.Discard, closeState: &closeState{}}
+	_, err := a.InitMCPAuth(t.Context(), false)
+	require.NoError(t, err)
+	err = a.runPixivMCP(t.Context(), mcpcommands.Request{ListenAddr: new("127.0.0.1:8123"), BaseURL: new("http://127.0.0.1:8123")})
+	require.ErrorIs(t, err, serveErr)
+	require.ErrorIs(t, err, os.ErrPermission, "server failure must retain the animation cleanup failure")
+	require.NoError(t, a.closeResources())
+}
+
+func TestMCPAuthInitPersistsPrivateVerifierOnce(t *testing.T) {
+	_, configPath := useTempPaths(t)
+	var stdout, stderr bytes.Buffer
+	code := RunContext(context.Background(), []string{"pixiv", "mcp", "auth", "init"}, strings.NewReader(""), &stdout, &stderr)
+	require.Equal(t, 0, code, "init failed: %s", stderr.String())
+	secret := strings.TrimSpace(stdout.String())
+	require.NotEmpty(t, secret)
+	require.Empty(t, stderr.String())
+	filename := filepath.Join(filepath.Dir(configPath), "mcp-state.json")
+	body, err := os.ReadFile(filename)
+	require.NoError(t, err)
+	require.False(t, bytes.Contains(body, []byte(secret)), "raw owner secret was persisted")
+	var state struct {
+		Version       int    `json:"version"`
+		OwnerVerifier string `json:"owner_verifier"`
+	}
+	require.NoError(t, json.Unmarshal(body, &state))
+	require.Equal(t, 1, state.Version)
+	require.Len(t, state.OwnerVerifier, 64)
+	stdout.Reset()
+	stderr.Reset()
+	code = RunContext(context.Background(), []string{"pixiv", "mcp", "auth", "init"}, strings.NewReader(""), &stdout, &stderr)
+	require.NotEqual(t, 0, code)
+	require.Empty(t, stdout.String(), "ordinary re-init must not reveal a secret")
+	unchanged, err := os.ReadFile(filename)
+	require.NoError(t, err)
+	require.True(t, bytes.Equal(body, unchanged), "ordinary re-init replaced state")
+}
+
+func TestMCPAuthResetPreservesClientsAndSelection(t *testing.T) {
+	_, configPath := useTempPaths(t)
+	var stdout, stderr bytes.Buffer
+	run := func(args ...string) int {
+		stdout.Reset()
+		stderr.Reset()
+		return RunContext(t.Context(), append([]string{"pixiv", "mcp", "auth", "init"}, args...), strings.NewReader(""), &stdout, &stderr)
+	}
+	require.Zero(t, run())
+	oldSecret := strings.TrimSpace(stdout.String())
+	filename := filepath.Join(filepath.Dir(configPath), "mcp-state.json")
+	body, err := os.ReadFile(filename)
+	require.NoError(t, err)
+	var state map[string]any
+	require.NoError(t, json.Unmarshal(body, &state))
+	registeredClient := map[string]any{"client_name": "Fixture", "redirect_uris": []any{"https://client.example/callback"}}
+	state["clients"] = map[string]any{"connector": registeredClient}
+	state["grants"] = map[string]any{"grant": map[string]any{"client_id": "connector", "resource": "https://server.example/mcp", "scope": "mcp", "refresh_hash": strings.Repeat("a", 64), "access_tokens": map[string]string{strings.Repeat("b", 64): "2026-09-28T01:00:00Z"}, "used_refresh_hashes": []string{}, "revoked": false}}
+	state["selected_pixiv_user_id"] = 72
+	body, err = json.Marshal(state)
+	require.NoError(t, err)
+	require.NoError(t, os.WriteFile(filename, body, 0600))
+	require.Zero(t, run("--reset"), "reset failed: %s", stderr.String())
+	newSecret := strings.TrimSpace(stdout.String())
+	require.NotEmpty(t, newSecret)
+	require.False(t, oldSecret == newSecret, "reset reused the owner secret")
+	var after map[string]any
+	body, err = os.ReadFile(filename)
+	require.NoError(t, err)
+	require.NoError(t, json.Unmarshal(body, &after))
+	registeredClient["owner_approved"] = true
+	require.Equal(t, state["clients"], after["clients"])
+	require.Equal(t, float64(72), after["selected_pixiv_user_id"])
+	require.Empty(t, after["grants"])
+	require.False(t, state["owner_verifier"] == after["owner_verifier"], "owner generation did not change")
+	require.False(t, bytes.Contains(body, []byte(oldSecret)) || bytes.Contains(body, []byte(newSecret)), "raw secret persisted")
+	require.Empty(t, stderr.String())
+}
+
+func TestMCPAuthInitOutputFailureReportsSavedState(t *testing.T) {
+	_, configPath := useTempPaths(t)
+	reader, writer := io.Pipe()
+	require.NoError(t, reader.Close())
+	defer writer.Close()
+	var stderr bytes.Buffer
+	code := RunContext(t.Context(), []string{"pixiv", "mcp", "auth", "init"}, strings.NewReader(""), writer, &stderr)
+	require.NotZero(t, code)
+	_, err := os.Stat(filepath.Join(filepath.Dir(configPath), "mcp-state.json"))
+	require.NoError(t, err, "output failure must not pretend to roll back a committed owner")
+	require.Contains(t, stderr.String(), "saved")
+	require.Contains(t, stderr.String(), "pixiv mcp auth init --reset")
+}
+
+func TestMCPHTTPPreflightFailsBeforeStarting(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		args []string
+		want string
+	}{
+		{"explicit HTTP requires owner", []string{"--port", "1270"}, "pixiv mcp auth init"},
+		{"missing owner", []string{"--port", "8123", "--base-url", "http://127.0.0.1:8123"}, "pixiv mcp auth init"},
+		{"invalid canonical", []string{"--port", "8123", "--base-url", "relative"}, "canonical MCP base URL"},
+		{"ephemeral port", []string{"--port", "0", "--base-url", "http://127.0.0.1:8123"}, "--port must"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			useTempPaths(t)
+			var stdout, stderr bytes.Buffer
+			args := append([]string{"pixiv", "mcp"}, tc.args...)
+			code := RunContext(t.Context(), args, strings.NewReader(""), &stdout, &stderr)
+			require.NotZero(t, code)
+			require.Contains(t, stderr.String(), tc.want)
+			require.Empty(t, stdout.String())
+		})
+	}
+}
+
+func TestFanboxMCPCommandIsRemoved(t *testing.T) {
+	useTempPaths(t)
+	var stdout, stderr bytes.Buffer
+	code := RunContext(t.Context(), []string{"pixiv", "fanbox", "mcp"}, strings.NewReader(""), &stdout, &stderr)
+	require.NotZero(t, code)
+	require.Contains(t, stderr.String(), "usage: pixiv fanbox <command>")
+}
+
+func TestMCPHTTPEndpointFlagPrecedence(t *testing.T) {
+	for _, tc := range []struct {
+		name         string
+		args         []string
+		listen, base string
+	}{
+		{"defaults", []string{"--port", "1270"}, "127.0.0.1:1270", "http://127.0.0.1:1270"},
+		{"config ignored", []string{"--port", "9000"}, "127.0.0.1:9000", "http://127.0.0.1:9000"},
+		{"IPv6", []string{"--port", "8124", "--host", "::1"}, "[::1]:8124", "http://[::1]:8124"},
+		{"base override", []string{"--port", "8123", "--base-url", "https://public.test/prefix/"}, "127.0.0.1:8123", "https://public.test/prefix"},
+		{"missing port", []string{"--host", "0.0.0.0"}, "", ""},
+		{"empty base", []string{"--port", "8123", "--base-url="}, "", ""},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			_, configPath := useTempPaths(t)
+			var stdout, stderr bytes.Buffer
+			a := app{in: strings.NewReader(""), out: &stdout, errOut: &stderr}
+			_, err := a.InitMCPAuth(t.Context(), false)
+			require.NoError(t, err)
+			if tc.name != "defaults" {
+				require.NoError(t, os.WriteFile(configPath, []byte(`[mcp]
+listen_addr = "127.0.0.1:8123"
+base_url = "http://127.0.0.1:8123"
+`), 0600))
+			}
+			oldHTTP, oldSDK := runMCPHTTP, newCLIPixivSDKPorts
+			t.Cleanup(func() { runMCPHTTP, newCLIPixivSDKPorts = oldHTTP, oldSDK })
+			watchCalls := 0
+			newCLIPixivSDKPorts = func(app) (pixivSDKPorts, error) {
+				return pixivSDKPorts{watchReadSessions: func(context.Context) error { watchCalls++; return nil }}, nil
+			}
+			called := false
+			runMCPHTTP = func(_ context.Context, _ *mcp.Server, listen, base string, _ mcpauth.Store, out io.Writer, login *mcpaccounts.LoginManager, media ...*mediaproxy.Service) error {
+				called = true
+				require.Equal(t, tc.listen, listen)
+				require.Equal(t, tc.base, base)
+				require.Same(t, &stderr, out)
+				return nil
+			}
+			code := RunContext(t.Context(), append([]string{"pixiv", "mcp"}, tc.args...), strings.NewReader(""), &stdout, &stderr)
+			if tc.listen == "" {
+				require.NotZero(t, code)
+				require.False(t, called)
+				require.Zero(t, watchCalls)
+				require.NotEmpty(t, stderr.String())
+			} else {
+				require.Equal(t, 0, code, stderr.String())
+				require.True(t, called)
+				require.Equal(t, 1, watchCalls)
+			}
+			require.Empty(t, stdout.String())
+		})
+	}
+}
+
+func TestMCPProductionResolvesSharedSelectionBeforeSDK(t *testing.T) {
+	useTempPaths(t)
+	oldConfig, oldSDK, oldHTTP, oldReverse := loadCLIRuntimeConfig, newCLIPixivSDKPorts, runMCPHTTP, newCLIMCPReverseSearch
+	t.Cleanup(func() {
+		loadCLIRuntimeConfig, newCLIPixivSDKPorts, runMCPHTTP, newCLIMCPReverseSearch = oldConfig, oldSDK, oldHTTP, oldReverse
+	})
+	loadCLIRuntimeConfig = func() (configapp.RuntimeConfig, error) {
+		return configapp.RuntimeConfig{}, nil
+	}
+	newCLIMCPReverseSearch = func(reverseassembly.Options) (reversesearch.Searcher, error) {
+		return rootReverseSearcherFunc(func(context.Context, reversesearch.Request) (reversesearch.Response, error) {
+			return reversesearch.Response{}, nil
+		}), nil
+	}
+	local := mcpaccounts.LocalSnapshot{DefaultUserID: 42, Accounts: []mcpaccounts.Account{{UserID: 42, HasCredentials: true}, {UserID: 73, HasCredentials: true}}}
+	var ids []int64
+	newCLIPixivSDKPorts = func(app) (pixivSDKPorts, error) {
+		return pixivSDKPorts{
+			localAccounts: func(context.Context) (mcpaccounts.LocalSnapshot, error) { return local, nil },
+			execute: func(_ context.Context, req pixivdeps.Request, _ func(context.Context, *sdkpixiv.Client) (bool, error)) error {
+				ids = append(ids, req.UserID)
+				return errors.New("fixture SDK boundary")
+			},
+		}, nil
+	}
+	runMCPHTTP = func(ctx context.Context, server *mcp.Server, _, _ string, store mcpauth.Store, _ io.Writer, login *mcpaccounts.LoginManager, media ...*mediaproxy.Service) error {
+
+		ct, st := mcp.NewInMemoryTransports()
+		ss, err := server.Connect(ctx, st, nil)
+		require.NoError(t, err)
+		defer ss.Close()
+		client := mcp.NewClient(&mcp.Implementation{Name: "fixture", Version: "1"}, nil)
+		session, err := client.Connect(ctx, ct, nil)
+		require.NoError(t, err)
+		defer session.Close()
+		switched, err := session.CallTool(ctx, &mcp.CallToolParams{Name: "pixiv_account_use", Arguments: map[string]any{"user_id": 73}})
+		require.NoError(t, err)
+		require.False(t, switched.IsError)
+		result, err := session.CallTool(ctx, &mcp.CallToolParams{Name: "pixiv_illust_detail", Arguments: map[string]any{"illust_id": 1}})
+		require.NoError(t, err)
+		require.True(t, result.IsError)
+		require.Equal(t, []int64{73}, ids)
+		local.Accounts = local.Accounts[:1]
+		result, err = session.CallTool(ctx, &mcp.CallToolParams{Name: "pixiv_illust_detail", Arguments: map[string]any{"illust_id": 1}})
+		require.NoError(t, err)
+		require.True(t, result.IsError)
+		require.Equal(t, []int64{73}, ids, "removed selection reached SDK or fell back to default")
+		return nil
+	}
+	a := app{in: strings.NewReader(""), out: io.Discard, errOut: io.Discard, closeState: &closeState{}}
+	_, err := a.InitMCPAuth(t.Context(), false)
+	require.NoError(t, err)
+	require.NoError(t, a.runPixivMCP(t.Context(), mcpcommands.Request{ListenAddr: new("127.0.0.1:8123"), BaseURL: new("http://127.0.0.1:8123")}))
+	require.NoError(t, a.closeResources())
+}
+
+func TestMCPAccountSnapshotContainsOnlyLocalSummaryAndExplicitDefault(t *testing.T) {
+	dbPath, _ := useTempPaths(t)
+	db, err := database.Open(filepath.Dir(dbPath))
+	require.NoError(t, err)
+	defer db.Close()
+	require.NoError(t, db.SavePixivCredential(t.Context(), pixivaccount.New(42, "fixture-a", []byte("fixture-secret-a"))))
+	require.NoError(t, db.SavePixivCredential(t.Context(), pixivaccount.New(73, "fixture-b", []byte("fixture-secret-b"))))
+	a := app{closeState: &closeState{}}
+	ports, err := a.newPixivSDKPorts()
+	require.NoError(t, err)
+	defer a.closeResources()
+	local, err := ports.localAccounts(t.Context())
+	require.NoError(t, err)
+	require.Zero(t, local.DefaultUserID, "implicit first account must not become explicit default")
+	require.Len(t, local.Accounts, 2)
+	for _, account := range local.Accounts {
+		require.True(t, account.HasCredentials)
+	}
+	body, err := json.Marshal(local)
+	require.NoError(t, err)
+	require.NotContains(t, string(body), "fixture-secret")
+	require.NoError(t, configapp.SetPixivDefaultUserID(73))
+	local, err = ports.localAccounts(t.Context())
+	require.NoError(t, err)
+	require.Equal(t, int64(73), local.DefaultUserID)
+}
+
+// This fixture keeps the real SDK, account service, SQLite, selection store and
+// HTTP relay; only the OAuth network destination is replaced with loopback TLS.
+func TestMCPLoginProductionChain(t *testing.T) {
+	for _, scenario := range []string{"success", "existing-selection", "selection-during-login", "missing-selection", "helper-disconnect", "selection-failure", "restart", "shutdown", "explicit-direct/success", "explicit-direct/helper-disconnect", "explicit-direct/selection-failure", "explicit-direct/restart", "explicit-direct/shutdown"} {
+		t.Run(scenario, func(t *testing.T) {
+			scenario, explicitProxy := strings.CutPrefix(scenario, "explicit-direct/")
+			dbPath, _ := useTempPaths(t)
+			ctx, cancel := context.WithCancel(context.Background())
+			defer cancel()
+			exchange := make(chan url.Values, 1)
+			release := make(chan struct{})
+			upstreamCanceled := make(chan struct{})
+			var exchanges, connections atomic.Int32
+			upstream := httptest.NewUnstartedServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				exchanges.Add(1)
+				if r.URL.Path != "/auth/token" {
+					http.Error(w, "unexpected path", 400)
+					return
+				}
+				if err := r.ParseForm(); err != nil {
+					http.Error(w, "invalid form", 400)
+					return
+				}
+				exchange <- r.Form
+				select {
+				case <-release:
+				case <-r.Context().Done():
+					close(upstreamCanceled)
+					return
+				}
+				w.Header().Set("Content-Type", "application/json")
+				_, _ = io.WriteString(w, `{"access_token":"fixture-access","refresh_token":"fixture-refresh","expires_in":3600,"user":{"id":73,"name":"fixture"}}`)
+			}))
+			upstream.Config.ConnState = func(_ net.Conn, state http.ConnState) {
+				if state == http.StateNew {
+					connections.Add(1)
+				}
+				if state == http.StateClosed {
+					connections.Add(-1)
+				}
+			}
+			upstream.StartTLS()
+			defer upstream.Close()
+			transport := upstream.Client().Transport.(*http.Transport).Clone()
+			transport.Proxy = nil
+			fixtureURL, err := url.Parse(upstream.URL)
+			require.NoError(t, err)
+			transport.TLSClientConfig.ServerName = fixtureURL.Hostname()
+			transport.DialContext = func(ctx context.Context, network, address string) (net.Conn, error) {
+				if address != "oauth.secure.pixiv.net:443" {
+					return nil, errors.New("fixture rejected unexpected network destination")
+				}
+				return (&net.Dialer{}).DialContext(ctx, network, fixtureURL.Host)
+			}
+			previousTransport := http.DefaultTransport
+			http.DefaultTransport = transport
+			defer func() { http.DefaultTransport = previousTransport; transport.CloseIdleConnections() }()
+			a := app{closeState: &closeState{}}
+			defer a.closeResources()
+			oldServices := newCLIAccountServices
+			loads := 0
+			newCLIAccountServices = func(a app) (authcommands.AccountService, pixivaccount.LoginService, error) {
+				loads++
+				return oldServices(a)
+			}
+			defer func() { newCLIAccountServices = oldServices }()
+			store := mcpauth.Store{Path: filepath.Join(t.TempDir(), "mcp-state.json")}
+			_, err = store.Init(ctx, false)
+			require.NoError(t, err)
+			preserveSelection := scenario == "existing-selection" || scenario == "selection-during-login"
+			if preserveSelection {
+				seedDB, err := database.Open(filepath.Dir(dbPath))
+				require.NoError(t, err)
+				require.NoError(t, seedDB.SavePixivCredential(ctx, pixivaccount.New(42, "fixture-existing", []byte("fixture-existing-token"))))
+				require.NoError(t, seedDB.Close())
+			}
+			if scenario == "existing-selection" {
+				require.NoError(t, store.SelectPixivUser(ctx, 42))
+			} else if scenario == "missing-selection" {
+				require.NoError(t, store.SelectPixivUser(ctx, 99))
+			}
+			relayServer := httptest.NewUnstartedServer(nil)
+			defer relayServer.Close()
+			base := "http://" + relayServer.Listener.Addr().String() + "/fixture"
+			var proxy *string
+			if explicitProxy {
+				direct := ""
+				proxy = &direct
+			}
+			ports, err := newCLIPixivSDKPorts(a)
+			require.NoError(t, err)
+			manager := mcpaccounts.Manager{Store: store, Load: ports.localAccounts}
+			login, err := a.newMCPLoginManager(ctx, base, manager, proxy)
+			require.NoError(t, err)
+			defer login.Close()
+			protocol := mcp.NewServer(&mcp.Implementation{Name: "fixture", Version: "1"}, nil)
+			handler, err := unifiedmcp.NewHTTPHandler(ctx, protocol, base, store, login)
+			require.NoError(t, err)
+			relayServer.Config.Handler = handler
+			relayServer.Start()
+			client := &http.Client{Transport: &http.Transport{}, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
+			defer client.CloseIdleConnections()
+			started, err := login.Start(false)
+			require.NoError(t, err)
+			page, err := client.Get(started.AuthorizationURL)
+			require.NoError(t, err)
+			page.Body.Close()
+			require.Equal(t, 303, page.StatusCode)
+			deepLink, err := url.Parse(page.Header.Get("Location"))
+			require.NoError(t, err)
+			origin, id, proof := deepLink.Query().Get("origin"), deepLink.Query().Get("session"), deepLink.Query().Get("access")
+			start, err := client.Post(origin+"/start/"+id, "application/json", strings.NewReader(`{"proof":"`+proof+`"}`))
+			require.NoError(t, err)
+			var authorization struct {
+				URL string `json:"authorization_url"`
+			}
+			require.NoError(t, json.NewDecoder(start.Body).Decode(&authorization))
+			start.Body.Close()
+			authorize, err := url.Parse(authorization.URL)
+			require.NoError(t, err)
+			require.NotEmpty(t, authorize.Query().Get("state"))
+			callback := "pixiv://account/login?code=fixture&state=" + url.QueryEscape(authorize.Query().Get("state"))
+			payload, _ := json.Marshal(map[string]string{"proof": proof, "callback_url": callback})
+			type response struct {
+				r   *http.Response
+				err error
+			}
+			responses := make(chan response, 2)
+			for range 2 {
+				go func() {
+					r, err := client.Post(origin+"/callback/"+id, "application/json", bytes.NewReader(payload))
+					responses <- response{r, err}
+				}()
+			}
+			var accepted *http.Response
+			for range 2 {
+				result := <-responses
+				require.NoError(t, result.err)
+				if result.r.StatusCode == 200 {
+					require.Nil(t, accepted)
+					accepted = result.r
+				} else {
+					require.Equal(t, 409, result.r.StatusCode)
+					result.r.Body.Close()
+				}
+			}
+			require.NotNil(t, accepted)
+			defer accepted.Body.Close()
+			var form url.Values
+			select {
+			case form = <-exchange:
+			case <-time.After(5 * time.Second):
+				t.Fatal("SDK exchange not reached")
+			}
+			digest := sha256.Sum256([]byte(form.Get("code_verifier")))
+			require.Equal(t, authorize.Query().Get("code_challenge"), base64.RawURLEncoding.EncodeToString(digest[:]), "exchange must use the same PKCE session")
+			require.Equal(t, "fixture", form.Get("code"))
+			require.Equal(t, "authorization_code", form.Get("grant_type"))
+			reused, err := login.Start(false)
+			require.NoError(t, err)
+			require.Equal(t, started.LoginID, reused.LoginID)
+			if scenario == "restart" || scenario == "shutdown" {
+				if scenario == "restart" {
+					next, err := login.Start(true)
+					require.NoError(t, err)
+					require.NotEqual(t, started.LoginID, next.LoginID)
+					require.Equal(t, "not_found", login.Status(started.LoginID).Status)
+					require.Equal(t, 1, loads, "restart must reuse the account service instead of accumulating database handles")
+				} else {
+					login.Close()
+					require.Equal(t, "failed", login.Status(started.LoginID).Status)
+				}
+				select {
+				case <-upstreamCanceled:
+				case <-time.After(5 * time.Second):
+					t.Fatal("shutdown/restart did not cancel exchange")
+				}
+			} else {
+				if scenario == "helper-disconnect" {
+					accepted.Body.Close()
+				}
+				if scenario == "selection-failure" {
+					require.NoError(t, os.Remove(store.Path))
+					require.NoError(t, os.Mkdir(store.Path, 0o700))
+				}
+				if scenario == "selection-during-login" {
+					require.NoError(t, store.SelectPixivUser(ctx, 42))
+				}
+				close(release)
+				if scenario != "helper-disconnect" {
+					resultPage, err := client.Get(accepted.Header.Get("X-Pixiv-Relay-Result-URL"))
+					require.NoError(t, err)
+					body, err := io.ReadAll(resultPage.Body)
+					resultPage.Body.Close()
+					require.NoError(t, err)
+					if scenario == "selection-failure" {
+						require.Equal(t, 400, resultPage.StatusCode)
+						require.Contains(t, string(body), "Login failed")
+					} else {
+						require.Equal(t, 200, resultPage.StatusCode)
+						require.Contains(t, string(body), "Login successful")
+					}
+				}
+				require.Eventually(t, func() bool { s := login.Status(started.LoginID).Status; return s == "completed" || s == "failed" }, 5*time.Second, time.Millisecond)
+				state := login.Status(started.LoginID)
+				require.True(t, state.AccountSaved)
+				require.NotNil(t, state.Account)
+				require.Equal(t, int64(73), state.Account.UserID)
+				require.Equal(t, scenario != "selection-failure" && !preserveSelection, state.SelectionUpdated)
+				if scenario == "selection-failure" {
+					require.Equal(t, "failed", state.Status)
+				} else {
+					require.Equal(t, "completed", state.Status)
+					saved, err := store.Read(ctx)
+					require.NoError(t, err)
+					expected := int64(73)
+					if preserveSelection {
+						expected = 42
+					}
+					require.Equal(t, expected, saved.SelectedPixivUserID)
+				}
+				serialized, err := json.Marshal(state)
+				require.NoError(t, err)
+				require.NotContains(t, string(serialized), "fixture-refresh")
+				require.NotContains(t, string(serialized), proof)
+			}
+			db, err := database.Open(filepath.Dir(dbPath))
+			require.NoError(t, err)
+			defer db.Close()
+			local, err := db.ListPixiv(ctx)
+			require.NoError(t, err)
+			if scenario == "restart" || scenario == "shutdown" {
+				require.Empty(t, local)
+			} else {
+				expectedAccounts := 1
+				if preserveSelection {
+					expectedAccounts = 2
+				}
+				require.Len(t, local, expectedAccounts)
+				require.True(t, local[0].HasRefreshToken())
+			}
+			_, explicit, err := configapp.DefaultStore().ReadPixivDefaultUserID()
+			require.NoError(t, err)
+			require.False(t, explicit)
+			require.Equal(t, int32(1), exchanges.Load(), "concurrent callbacks must exchange only once")
+			require.Eventually(t, func() bool { return connections.Load() == 0 }, time.Second, time.Millisecond, "completed login must release its owned idle connection")
+		})
+	}
+}
+
+func TestMCPMediaObservationsSurviveHTTPContextBoundary(t *testing.T) {
+	var parentEvents, requestEvents []coreDiagnostics.Event
+	parent := coreDiagnostics.WithScope(context.Background(), coreDiagnostics.SinkFunc(func(event coreDiagnostics.Event) { parentEvents = append(parentEvents, event) }), coreDiagnostics.ModulePixivMCP, 0)
+	event := coreDiagnostics.Event{Operation: "animation_encode", Kind: coreDiagnostics.EventCompleted, Count: 32}
+	emitMCPMediaEvent(parent, context.Background(), event)
+	require.Len(t, parentEvents, 1, "HTTP requests do not inherit the CLI diagnostic scope")
+	require.Equal(t, "animation_encode", parentEvents[0].Operation)
+	require.Equal(t, 32, parentEvents[0].Count)
+	request := coreDiagnostics.WithScope(context.Background(), coreDiagnostics.SinkFunc(func(event coreDiagnostics.Event) { requestEvents = append(requestEvents, event) }), coreDiagnostics.ModulePixivMCP, 7)
+	emitMCPMediaEvent(parent, request, event)
+	require.Len(t, parentEvents, 1, "an explicit request scope must not double emit")
+	require.Len(t, requestEvents, 1)
+	require.Equal(t, uint64(7), requestEvents[0].RequestID)
+}
+
+func TestMCPAnimationFailedPhaseKeepsSafeReason(t *testing.T) {
+	var events []coreDiagnostics.Event
+	ctx := coreDiagnostics.WithScope(t.Context(), coreDiagnostics.SinkFunc(func(e coreDiagnostics.Event) { events = append(events, e) }), coreDiagnostics.ModulePixivMCP, 0)
+	emitMCPAnimationEvent(ctx, context.Background(), mediaproxy.AnimationObservation{Stage: "animation_encode", Duration: time.Second, Failed: true})
+	require.Len(t, events, 1)
+	require.Equal(t, coreDiagnostics.EventFailed, events[0].Kind)
+	require.Equal(t, coreDiagnostics.ReasonToolFailed, events[0].Reason)
+	require.Zero(t, events[0].Count)
+}
+
+func TestMCPAnimationObservationsKeepSafeCancellationReasons(t *testing.T) {
+	for _, tc := range []struct {
+		source, reason string
+		failed         bool
+	}{
+		{"request", "request cancelled", true},
+		{"transport", "transport interrupted", true},
+		{"subscription", "subscription released", true},
+		{"service", "service closed", true},
+		{"expiry", "authorization expired", true},
+		{"authorization", "authorization invalidated", true},
+		{"", "", false},
+		{"https://private.test/?token=secret", "tool failed", true},
+	} {
+		t.Run(tc.source, func(t *testing.T) {
+			var events []coreDiagnostics.Event
+			ctx := coreDiagnostics.WithScope(t.Context(), coreDiagnostics.SinkFunc(func(e coreDiagnostics.Event) { events = append(events, e) }), coreDiagnostics.ModulePixivMCP, 0)
+			emitMCPAnimationEvent(ctx, context.Background(), mediaproxy.AnimationObservation{Stage: "animation_delivery", Duration: time.Second, Bytes: 17, CancellationSource: tc.source})
+			require.Len(t, events, 1)
+			require.Equal(t, tc.reason, string(events[0].Reason))
+			kind := coreDiagnostics.EventCompleted
+			if tc.failed {
+				kind = coreDiagnostics.EventFailed
+			}
+			require.Equal(t, kind, events[0].Kind)
+			require.Equal(t, 17, events[0].Count)
+			require.Equal(t, time.Second, events[0].Duration)
+			encoded, err := json.Marshal(events)
+			require.NoError(t, err)
+			require.NotContains(t, string(encoded), "token=secret")
+		})
+	}
+}
+
+func TestDefaultMCPStartsWithoutHTTPOwner(t *testing.T) {
+	_, configPath := useTempPaths(t)
+	var stdout, stderr bytes.Buffer
+	code := RunContext(t.Context(), []string{"pixiv", "mcp"}, strings.NewReader(""), &stdout, &stderr)
+	require.Zero(t, code, stderr.String())
+	require.Empty(t, stdout.String())
+	_, err := os.Stat(filepath.Join(filepath.Dir(configPath), "mcp-state.json"))
+	require.ErrorIs(t, err, os.ErrNotExist)
+}
+
+func TestMCPLocalRegistryWithoutHTTPState(t *testing.T) {
+	_, configPath := useTempPaths(t)
+	oldRun, oldPorts := runMCPStdio, newCLIPixivSDKPorts
+	t.Cleanup(func() { runMCPStdio, newCLIPixivSDKPorts = oldRun, oldPorts })
+	newCLIPixivSDKPorts = func(app) (pixivSDKPorts, error) {
+		return pixivSDKPorts{watchReadSessions: func(context.Context) error { return errors.New("stdio must not start the HTTP read-session watcher") }}, nil
+	}
+	runMCPStdio = func(ctx context.Context, server *mcp.Server, _ io.Reader, _ io.Writer) error {
+		ct, st := mcp.NewInMemoryTransports()
+		ss, err := server.Connect(ctx, st, nil)
+		require.NoError(t, err)
+		defer ss.Close()
+		cs, err := mcp.NewClient(&mcp.Implementation{Name: "local", Version: "1"}, nil).Connect(ctx, ct, nil)
+		require.NoError(t, err)
+		defer cs.Close()
+		listed, err := cs.ListTools(ctx, nil)
+		require.NoError(t, err)
+		names := []string{}
+		for _, tool := range listed.Tools {
+			names = append(names, tool.Name)
+			if strings.HasPrefix(tool.Name, "pixiv_download") {
+				require.False(t, tool.Annotations.ReadOnlyHint)
+				require.True(t, *tool.Annotations.DestructiveHint, "shared downloader can replace an existing destination")
+			}
+		}
+		for _, name := range []string{"pixiv_search_illust", "fanbox_current_user", "pixiv_artwork_media", "pixiv_download", "pixiv_download_random_from_recommendation"} {
+			require.Contains(t, names, name)
+		}
+		for _, name := range []string{"pixiv_show_gallery", "pixiv_gallery_animation", "pixiv_account_login_start", "pixiv_account_use"} {
+			require.NotContains(t, names, name)
+		}
+		resources, err := cs.ListResources(ctx, nil)
+		require.NoError(t, err)
+		require.Empty(t, resources.Resources)
+		return nil
+	}
+	var out, diagnostics bytes.Buffer
+	require.Zero(t, RunContext(t.Context(), []string{"pixiv", "mcp"}, strings.NewReader(""), &out, &diagnostics), diagnostics.String())
+	_, err := os.Stat(filepath.Join(filepath.Dir(configPath), "mcp-state.json"))
+	require.ErrorIs(t, err, os.ErrNotExist)
+	require.Empty(t, out.String())
 }

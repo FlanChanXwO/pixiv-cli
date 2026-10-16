@@ -326,8 +326,9 @@ func TestEnvTagDeclaresNameAndOrder(t *testing.T) {
 		assert.Equal(t, "https_proxy", view.env[0], "第一个声明的变量必须优先级最高")
 		assert.Equal(t, "HTTPS_PROXY", view.env[1])
 
-		t.Setenv("https_proxy", "http://lower")
+		// Windows 的环境名不区分大小写；先写大写，避免覆盖要验证的小写值。
 		t.Setenv("HTTPS_PROXY", "http://upper")
+		t.Setenv("https_proxy", "http://lower")
 		state, err := config.LoadSnapshotAt(filepath.Join(t.TempDir(), "config.toml"))
 		require.NoError(t, err)
 		value, err := state.Effective("https_proxy")

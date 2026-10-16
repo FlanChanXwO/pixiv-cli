@@ -9,6 +9,8 @@ import (
 	"sync/atomic"
 	"testing"
 
+	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver"
+	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/fanbox"
 	pixivmcpserver "github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv"
 	"github.com/FlanChanXwO/pixiv-cli/internal/services/reversesearch"
 	reverseassembly "github.com/FlanChanXwO/pixiv-cli/internal/services/reversesearch/assembly"
@@ -302,11 +304,11 @@ func assertCompleteAllResponse(t *testing.T, providers []reversesearch.ProviderS
 
 func newRealReverseSearchMCPSession(t *testing.T, searcher reversesearch.Searcher) *mcp.ClientSession {
 	t.Helper()
-	server := pixivmcpserver.NewWithSDK(nil, nil, pixivmcpserver.SDKPorts{
+	server := mcpserver.New(pixivmcpserver.SDKPorts{
 		ReverseSearch: pixivmcpserver.ReverseSearchPorts{
 			Searcher: searcher, Provider: reversesearch.ProviderAll, PixivOnly: true,
 		},
-	}, pixivmcpserver.Account{})
+	}, pixivmcpserver.Account{}, fanbox.SDKPorts{}, nil)
 	clientTransport, serverTransport := mcp.NewInMemoryTransports()
 	ctx, cancel := context.WithCancel(context.Background())
 	serverDone := startRealReverseSearchMCPServer(ctx, func(runCtx context.Context) error {
@@ -370,7 +372,7 @@ func reportRealReverseSearchMCPServerError(t *testing.T, err error) {
 func callRealReverseSearchMCP(t *testing.T, session *mcp.ClientSession, source string, provider reversesearch.Provider) realReverseSearchMCPOutput {
 	t.Helper()
 	result, err := session.CallTool(context.Background(), &mcp.CallToolParams{
-		Name: "reverse_search", Arguments: map[string]any{"source": source, "provider": string(provider)},
+		Name: "pixiv_reverse_search", Arguments: map[string]any{"source": source, "provider": string(provider)},
 	})
 	if err != nil {
 		t.Fatalf("call real reverse-search MCP tool: %v", err)

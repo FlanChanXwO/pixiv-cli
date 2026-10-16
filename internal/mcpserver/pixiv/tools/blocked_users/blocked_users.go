@@ -1,4 +1,4 @@
-// Package blocked_users 实现 blocked_users tool。
+// Package blocked_users 实现 pixiv_blocked_users tool。
 package blocked_users
 
 import (
@@ -11,9 +11,9 @@ import (
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
-// Register 注册 blocked_users。
+// Register 注册 pixiv_blocked_users。
 func Register(app *runtime.App, server *mcp.Server) {
-	runtime.AddTool(app, server, &mcp.Tool{Name: "blocked_users", Description: "View users blocked by the authenticated account through the App API.", InputSchema: schemas.List(map[string]any{
+	runtime.AddTool(app, server, &mcp.Tool{Name: "pixiv_blocked_users", Annotations: &mcp.ToolAnnotations{ReadOnlyHint: true, DestructiveHint: new(false), IdempotentHint: true, OpenWorldHint: new(true)}, Description: "View users blocked by the authenticated account through the App API.", InputSchema: schemas.List(map[string]any{
 		"user_id":  schemas.PositiveInteger("Optional positive Pixiv user ID; defaults to the authenticated user."),
 		"restrict": schemas.EnumString("Compatibility visibility field.", "public", "private"),
 	}), OutputSchema: records.RecordsOutputSchema()}, func(ctx context.Context, request *mcp.CallToolRequest, input In) (*mcp.CallToolResult, outputs.Records, error) {

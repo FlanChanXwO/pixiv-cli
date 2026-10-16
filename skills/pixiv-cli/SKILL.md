@@ -24,6 +24,7 @@ Run `pixiv --version` and require a successful `pixiv VERSION` line. A missing o
 | Login, import/export, backup/restore, account pool | [auth.md](references/auth.md) |
 | Search, reverse image, detail, users, feeds, rankings, bookmarks | [discover.md](references/discover.md) |
 | Single, multi-page, batch, or animated downloads | [download.md](references/download.md) |
+| MCP startup, tool selection, Gallery, or media delivery | [mcp.md](references/mcp.md) |
 | Authentication, proxy, output, or incomplete results | [troubleshooting.md](references/troubleshooting.md) |
 
 Do not enumerate accounts on every turn. Use `pixiv auth list --json` only when an account/authentication decision requires it; both `accounts: null` and `accounts: []` mean none. Stored credentials do not prove current validity. Run networked `auth check` only when needed; `auth refresh` rotates credentials and refreshes profile/Premium metadata, so requires an explicit maintenance request.
@@ -43,7 +44,7 @@ Do not ask for an undisclosed token in chat or launch a hidden prompt in an agen
 | `download` | Confirm exact targets and destination for each invocation; a user URL expands the whole supported visual listing |
 | `auth use/remove`, pool enable/disable, `config set/unset`, actual `update` | Explicit current state-change authorization; it does not carry to later targets |
 | `auth login` | Explicit request and a user present for browser OAuth; follow the documented desktop/remote handoff |
-| `mcp` or `fanbox mcp` | Explicit server-start request; these are long-lived stdio servers, not preflight probes |
+| `mcp` | Explicit server-start request; starts the unified long-lived server (stdio by default; HTTP with explicit `--port`), not a preflight probe |
 
 `config path` can create baseline configuration if missing. A successful read-looking command is not necessarily filesystem-side-effect-free. `update --check --json` checks only; actual installation does not emit JSON and requires authorization.
 
@@ -98,3 +99,7 @@ Providers are SauceNAO, ascii2d color/BoVW, and `all`. `reverse_search_pixiv_onl
 `--proxy` and `--no-proxy` are mutually exclusive invocation overrides. Pixiv, FANBOX, reverse-search transport, and solver-browser settings have distinct scopes; the browser's proxy is not automatically inherited. Do not assume a private maintainer's loopback proxy exists. Read `troubleshooting.md` before changing persistent settings or solver configuration.
 
 Downloads write files and have empty successful stdout; inspect exit status and the requested destination, following `download.md`. A legitimate long encode/download is not a timeout failure. Share generated files only through an available attachment API; otherwise report the source artwork URL and do not claim an image was sent.
+
+## MCP
+
+For MCP startup, tool selection, Gallery or media delivery, read [mcp.md](references/mcp.md) before acting. `pixiv mcp` defaults to local stdio; only explicit `--port` enables HTTP. Pixiv and FANBOX use independent credentials in both modes.

@@ -34,29 +34,29 @@ func TestNovelCommentMutationToolsReturnStructuredSuccess(t *testing.T) {
 		wantCommentID int64
 	}{
 		{
-			name:          "create_novel_comment",
-			args:          map[string]any{"novel_id": 9, "comment": "hello"},
+			name:          "pixiv_comment_create",
+			args:          map[string]any{"kind": "novel", "id": 9, "comment": "hello"},
 			wantAction:    "create_novel_comment",
 			wantText:      "Created comment on novel 9.",
 			wantCommentID: 901,
 		},
 		{
-			name:          "reply_novel_comment",
-			args:          map[string]any{"novel_id": 9, "comment": "reply", "parent_comment_id": 11},
+			name:          "pixiv_comment_reply",
+			args:          map[string]any{"kind": "novel", "id": 9, "comment": "reply", "parent_comment_id": 11},
 			wantAction:    "reply_novel_comment",
 			wantText:      "Replied to comment 11 on novel 9.",
 			wantCommentID: 902,
 		},
 		{
-			name:          "stamp_novel_comment",
-			args:          map[string]any{"novel_id": 9, "comment": "stamp", "stamp_id": 7},
+			name:          "pixiv_comment_stamp",
+			args:          map[string]any{"kind": "novel", "id": 9, "comment": "stamp", "stamp_id": 7},
 			wantAction:    "stamp_novel_comment",
 			wantText:      "Added stamp comment to novel 9.",
 			wantCommentID: 903,
 		},
 		{
-			name:          "delete_novel_comment",
-			args:          map[string]any{"comment_id": 12},
+			name:          "pixiv_comment_delete",
+			args:          map[string]any{"kind": "novel", "comment_id": 12},
 			wantAction:    "delete_novel_comment",
 			wantText:      "Deleted comment 12.",
 			wantCommentID: 12,
@@ -72,7 +72,7 @@ func TestNovelCommentMutationToolsReturnStructuredSuccess(t *testing.T) {
 			if !out.Success || out.Action != test.wantAction || out.Text != test.wantText || out.CommentID != test.wantCommentID {
 				t.Fatalf("mutation output = %+v, want action=%q text=%q comment_id=%d", out, test.wantAction, test.wantText, test.wantCommentID)
 			}
-			if out.NovelID != 9 && test.name != "delete_novel_comment" {
+			if out.NovelID != 9 && test.name != "pixiv_comment_delete" {
 				t.Fatalf("novel mutation output = %+v", out)
 			}
 		})
@@ -102,7 +102,7 @@ func TestNovelCommentMutationTypedErrorIsMCPErrorAndDoesNotReplay(t *testing.T) 
 	session, closeSession := newSDKTestSession(t, client)
 	defer closeSession()
 
-	result := callTool(t, session, "create_novel_comment", map[string]any{"novel_id": 41, "comment": "uncertain"})
+	result := callTool(t, session, "pixiv_comment_create", map[string]any{"kind": "novel", "id": 41, "comment": "uncertain"})
 	if !result.IsError {
 		t.Fatalf("typed novel comment failure must be an MCP error: %+v", result)
 	}
@@ -117,7 +117,7 @@ func TestNovelCommentMutationTypedErrorIsMCPErrorAndDoesNotReplay(t *testing.T) 
 }
 
 func TestNovelCommentMutationSchemasExposeOnlyContractInputs(t *testing.T) {
-	serverSession, closeSession := newTestSession(t, &fakeDownloads{})
+	serverSession, closeSession := newTestSession(t)
 	defer closeSession()
 
 	tools := map[string]map[string]any{}
@@ -125,7 +125,7 @@ func TestNovelCommentMutationSchemasExposeOnlyContractInputs(t *testing.T) {
 		if err != nil {
 			t.Fatalf("tools: %v", err)
 		}
-		if strings.HasSuffix(tool.Name, "_novel_comment") {
+		if strings.HasPrefix(tool.Name, "pixiv_comment_") {
 			encoded, err := json.Marshal(tool.InputSchema)
 			if err != nil {
 				t.Fatalf("marshal %s schema: %v", tool.Name, err)
@@ -139,10 +139,10 @@ func TestNovelCommentMutationSchemasExposeOnlyContractInputs(t *testing.T) {
 	}
 
 	want := map[string][]string{
-		"create_novel_comment": {"novel_id", "comment"},
-		"reply_novel_comment":  {"novel_id", "comment", "parent_comment_id"},
-		"stamp_novel_comment":  {"novel_id", "stamp_id"},
-		"delete_novel_comment": {"comment_id"},
+		"pixiv_comment_create": {"kind", "id", "comment"},
+		"pixiv_comment_reply":  {"kind", "id", "comment", "parent_comment_id"},
+		"pixiv_comment_stamp":  {"kind", "id", "stamp_id"},
+		"pixiv_comment_delete": {"kind", "comment_id"},
 	}
 	for name, required := range want {
 		schema, ok := tools[name]
@@ -161,31 +161,31 @@ func TestNovelCommentMutationSchemasExposeOnlyContractInputs(t *testing.T) {
 				t.Fatalf("%s schema missing %q: %#v", name, field, schema)
 			}
 		}
-		for _, field := range []string{"novel_id", "parent_comment_id", "stamp_id", "comment_id"} {
+		for _, field := range []string{"id", "parent_comment_id", "stamp_id", "comment_id"} {
 			if _, ok := properties[field]; ok {
 				assertSchemaMinimum(t, properties[field].(map[string]any), 1)
 			}
 		}
 		for _, field := range []string{"comment"} {
-			if property, ok := properties[field].(map[string]any); ok && name != "stamp_novel_comment" {
+			if property, ok := properties[field].(map[string]any); ok && name != "pixiv_comment_stamp" {
 				if got, ok := property["minLength"].(float64); !ok || got != 1 {
 					t.Fatalf("%s %s schema minLength=%#v, want 1", name, field, property["minLength"])
 				}
 			}
 		}
-		if name == "stamp_novel_comment" {
+		if name == "pixiv_comment_stamp" {
 			if property, ok := properties["comment"].(map[string]any); ok {
 				if _, ok := property["minLength"]; ok {
 					t.Fatalf("%s comment schema must allow empty text: %#v", name, property)
 				}
 			}
 		}
-		if name != "stamp_novel_comment" {
+		if name != "pixiv_comment_stamp" {
 			if _, ok := properties["stamp_id"]; ok {
 				t.Fatalf("%s schema must not expose stamp_id: %#v", name, schema)
 			}
 		}
-		if name != "reply_novel_comment" {
+		if name != "pixiv_comment_reply" {
 			if _, ok := properties["parent_comment_id"]; ok {
 				t.Fatalf("%s schema must not expose parent_comment_id: %#v", name, schema)
 			}
@@ -198,7 +198,7 @@ func TestNovelStampCommentAllowsOmittedComment(t *testing.T) {
 	session, closeSession := newSDKTestSession(t, client)
 	defer closeSession()
 
-	result := callTool(t, session, "stamp_novel_comment", map[string]any{"novel_id": 9, "stamp_id": 7})
+	result := callTool(t, session, "pixiv_comment_stamp", map[string]any{"kind": "novel", "id": 9, "stamp_id": 7})
 	if result.IsError {
 		t.Fatalf("stamp novel comment without text failed: %+v", result)
 	}
@@ -212,10 +212,10 @@ func TestNovelCommentMutationRejectsInvalidInputBeforeSDKExecution(t *testing.T)
 		name string
 		args map[string]any
 	}{
-		{name: "create_novel_comment", args: map[string]any{"novel_id": 0, "comment": "hello"}},
-		{name: "reply_novel_comment", args: map[string]any{"novel_id": 9, "comment": "reply", "parent_comment_id": 0}},
-		{name: "stamp_novel_comment", args: map[string]any{"novel_id": 9, "comment": "stamp", "stamp_id": 0}},
-		{name: "delete_novel_comment", args: map[string]any{"comment_id": 0}},
+		{name: "pixiv_comment_create", args: map[string]any{"kind": "novel", "id": 0, "comment": "hello"}},
+		{name: "pixiv_comment_reply", args: map[string]any{"kind": "novel", "id": 9, "comment": "reply", "parent_comment_id": 0}},
+		{name: "pixiv_comment_stamp", args: map[string]any{"kind": "novel", "id": 9, "comment": "stamp", "stamp_id": 0}},
+		{name: "pixiv_comment_delete", args: map[string]any{"kind": "novel", "comment_id": 0}},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			client := &fakeSDKClient{}
@@ -226,7 +226,7 @@ func TestNovelCommentMutationRejectsInvalidInputBeforeSDKExecution(t *testing.T)
 				executions++
 				return baseExecute(ctx, account, attempt)
 			}
-			session, closeSession := newSDKTestSessionWithPorts(t, &fakeAPI{}, ports, pixivmcpserver.Account{})
+			session, closeSession := newSDKTestSessionWithPorts(t, ports, pixivmcpserver.Account{})
 			defer closeSession()
 
 			result, err := session.CallTool(context.Background(), &mcp.CallToolParams{Name: test.name, Arguments: test.args})

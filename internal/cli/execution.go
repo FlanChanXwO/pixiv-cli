@@ -84,39 +84,27 @@ type brokenPipeSignalState struct {
 }
 
 func Run(args []string, in io.Reader, out io.Writer, errOut io.Writer) int {
-	return runContext(context.Background(), args, in, out, errOut, nil, nil)
+	return runContext(context.Background(), args, in, out, errOut, nil)
 }
 
 // RunContext 让嵌入式调用方把取消信号传到每一条网络数据命令。
 func RunContext(ctx context.Context, args []string, in io.Reader, out io.Writer, errOut io.Writer) int {
-	return runContext(ctx, args, in, out, errOut, nil, nil)
+	return runContext(ctx, args, in, out, errOut, nil)
 }
 
 // RunContextWithPipelineSignal 仅由二进制入口传入 SIGPIPE 控制器。控制器会在
 // filter 或已解析的 --ndjson 查询命令运行期间启用，并在命令退出时恢复。
 func RunContextWithPipelineSignal(ctx context.Context, args []string, in io.Reader, out io.Writer, errOut io.Writer, enablePipelineSignal func() func()) int {
-	return RunContextWithBrokenPipeSignals(ctx, args, in, out, errOut, enablePipelineSignal, nil)
-}
-
-// RunContextWithBrokenPipeSignals 仅供二进制入口传入平台的 SIGPIPE 控制器。普通
-// NDJSON 输出和 MCP stdio 必须分别传入控制器：前者的 EPIPE 是下游正常停止，后者
-// 则是 JSON-RPC transport 错误。
-func RunContextWithBrokenPipeSignals(ctx context.Context, args []string, in io.Reader, out io.Writer, errOut io.Writer, enablePipelineSignal, enableMCPBrokenPipeSignal func() func()) int {
-	var pipelineSignal, mcpBrokenPipeSignal *brokenPipeSignalState
+	var pipelineSignal *brokenPipeSignalState
 	if enablePipelineSignal != nil {
 		pipelineSignal = &brokenPipeSignalState{enable: enablePipelineSignal}
 	}
-	if enableMCPBrokenPipeSignal != nil {
-		mcpBrokenPipeSignal = &brokenPipeSignalState{enable: enableMCPBrokenPipeSignal}
-	}
-	return runContext(ctx, args, in, out, errOut, pipelineSignal, mcpBrokenPipeSignal)
+	return runContext(ctx, args, in, out, errOut, pipelineSignal)
 }
 
-// RunContextWithDefaultBrokenPipeSignals 为二进制入口装配当前平台的默认 SIGPIPE
-// 控制器：普通 NDJSON 输出与 MCP stdio 各自独立。嵌入式调用方若需要自定义信号
-// 策略，应直接调用 RunContext 或 RunContextWithBrokenPipeSignals。
+// RunContextWithDefaultBrokenPipeSignals 只为普通 NDJSON 管道装配平台 SIGPIPE 控制器。
 func RunContextWithDefaultBrokenPipeSignals(ctx context.Context, args []string, in io.Reader, out io.Writer, errOut io.Writer) int {
-	return RunContextWithBrokenPipeSignals(ctx, args, in, out, errOut, enablePipelineBrokenPipeSignal, enableMCPBrokenPipeSignal)
+	return RunContextWithPipelineSignal(ctx, args, in, out, errOut, enablePipelineBrokenPipeSignal)
 }
 
 // runContext 是一次 CLI 执行的完整生命周期。阶段划分如下：
@@ -127,20 +115,18 @@ func RunContextWithDefaultBrokenPipeSignals(ctx context.Context, args []string, 
 //     这类入口不会提前打开数据库或构造网络 client；
 //  4. 关闭资源：无论成功与否都按登记顺序逆序关闭，并把关闭错误并入退出原因；
 //  5. 结束诊断并决定退出码，其中 NDJSON 输出命令使用成功语义、其余按失败退出。
-func runContext(ctx context.Context, args []string, in io.Reader, out io.Writer, errOut io.Writer, pipelineSignal, mcpBrokenPipeSignal *brokenPipeSignalState) int {
+func runContext(ctx context.Context, args []string, in io.Reader, out io.Writer, errOut io.Writer, pipelineSignal *brokenPipeSignalState) int {
 	if len(args) == 0 {
 		args = []string{"pixiv"}
 	}
-	// 阶段 1：只用流与状态容器构造 app；closeState 在此登记，资源稍后按需打开。
 	streams := invocation.NewStreams(in, out, errOut)
 	a := app{
-		in:                  streams.In,
-		out:                 streams.Out,
-		errOut:              streams.Err,
-		pipelineSignal:      pipelineSignal,
-		mcpBrokenPipeSignal: mcpBrokenPipeSignal,
-		closeState:          &closeState{},
-		diagnostics:         &diagnosticState{},
+		in:             streams.In,
+		out:            streams.Out,
+		errOut:         streams.Err,
+		pipelineSignal: pipelineSignal,
+		closeState:     &closeState{},
+		diagnostics:    &diagnosticState{},
 	}
 	if pipelineSignal != nil {
 		defer func() {
@@ -149,14 +135,6 @@ func runContext(ctx context.Context, args []string, in io.Reader, out io.Writer,
 			}
 		}()
 	}
-	if mcpBrokenPipeSignal != nil {
-		defer func() {
-			if mcpBrokenPipeSignal.stop != nil {
-				mcpBrokenPipeSignal.stop()
-			}
-		}()
-	}
-	// 阶段 2：装配命令树并绑定流/参数。
 	cmd := a.newRootCommand()
 	defer pipeline.Clear(cmd)
 	defer authcommands.ClearInputState(cmd)
@@ -169,10 +147,7 @@ func runContext(ctx context.Context, args []string, in io.Reader, out io.Writer,
 	if found, _, findErr := cmd.Find(args[1:]); findErr == nil && found != nil {
 		target = found
 	}
-	// 阶段 3：执行命令，按需创建资源；启动钩子的文件/系统副作用由命令需求决定。
 	err := cmd.Execute()
-	// 阶段 4：关闭资源。即使执行失败也要关闭，并把关闭错误并入退出原因，
-	// 避免"命令成功但资源未释放"被报成成功。
 	if closeErr := a.closeResources(); closeErr != nil {
 		if err == nil {
 			err = closeErr
@@ -180,7 +155,6 @@ func runContext(ctx context.Context, args []string, in io.Reader, out io.Writer,
 			err = errors.Join(err, closeErr)
 		}
 	}
-	// 阶段 5：结束诊断并映射退出码（NDJSON 命令走成功语义）。
 	err = a.finishDiagnostics(err)
 	return a.exitWithNDJSONScope(err, commandWritesNDJSON(target) || commandAutoWritesNDJSON(target, out))
 }
@@ -353,11 +327,4 @@ func (a app) enablePipelineSignal(cmd *cobra.Command) {
 		return
 	}
 	a.pipelineSignal.stop = a.pipelineSignal.enable()
-}
-
-func (a app) enableMCPBrokenPipeSignal(requirement requirements.Execution) {
-	if a.mcpBrokenPipeSignal == nil || a.mcpBrokenPipeSignal.enable == nil || a.mcpBrokenPipeSignal.stop != nil || !requirement.MCP {
-		return
-	}
-	a.mcpBrokenPipeSignal.stop = a.mcpBrokenPipeSignal.enable()
 }

@@ -5,6 +5,8 @@ import (
 	"errors"
 	"net/url"
 	"strings"
+
+	"github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/account/loginrelay"
 )
 
 // CallbackHandlingResult 只携带不含授权码或 token 的本地 bridge URL，或 remote
@@ -59,7 +61,7 @@ func HandleCallback(ctx context.Context, rawURL string) (CallbackHandlingResult,
 		}
 		return CallbackHandlingResult{RemoteLoginStart: &start}, nil
 	}
-	if !IsAllowedPixivCallbackURL(rawURL) {
+	if !loginrelay.IsAllowedPixivCallbackURL(rawURL) {
 		if err := delegateToPreviousForHandler(ctx, rawURL); err != nil {
 			return CallbackHandlingResult{}, err
 		}

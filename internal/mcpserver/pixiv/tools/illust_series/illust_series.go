@@ -1,4 +1,4 @@
-// Package illust_series 实现 illust_series tool。
+// Package illust_series 实现 pixiv_illust_series tool。
 package illust_series
 
 import (
@@ -13,9 +13,9 @@ import (
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
-// Register 注册 illust_series。
+// Register 注册 pixiv_illust_series。
 func Register(app *runtime.App, server *mcp.Server) {
-	runtime.AddTool(app, server, &mcp.Tool{Name: "illust_series", Description: "Browse artworks in a Pixiv series.", OutputSchema: records.RecordsOutputSchema()}, func(ctx context.Context, request *mcp.CallToolRequest, input In) (*mcp.CallToolResult, outputs.Records, error) {
+	runtime.AddTool(app, server, &mcp.Tool{Name: "pixiv_illust_series", Annotations: &mcp.ToolAnnotations{ReadOnlyHint: true, DestructiveHint: new(false), IdempotentHint: true, OpenWorldHint: new(true)}, Description: "Browse artworks in a Pixiv series.", OutputSchema: records.RecordsOutputSchema()}, func(ctx context.Context, request *mcp.CallToolRequest, input In) (*mcp.CallToolResult, outputs.Records, error) {
 		return handleIllustSeries(ctx, app, input)
 	})
 }

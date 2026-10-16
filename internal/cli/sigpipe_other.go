@@ -3,5 +3,3 @@
 package cli
 
 func enablePipelineBrokenPipeSignal() func() { return func() {} }
-
-func enableMCPBrokenPipeSignal() func() { return func() {} }

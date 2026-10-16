@@ -45,3 +45,8 @@ __pycache__/
 /internal/media/ugoira/rust/target/
 
 .worktrees/
+
+# Ignore legacy frontend outputs left by older checkouts; source builds no longer use them.
+/internal/mcpserver/pixiv/gallery/generated/
+/internal/mcpserver/auth/generated/
+/internal/services/pixiv/account/loginrelay/loginpage/generated/

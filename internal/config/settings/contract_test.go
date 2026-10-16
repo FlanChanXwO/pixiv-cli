@@ -116,6 +116,10 @@ var expectedAliases = []string{
 	"login_relay_tls_cert_file",
 	"login_relay_tls_key_file",
 	"login_use_after_login",
+	"mcp_gallery_animation_temp_capacity_mib",
+	"mcp_gallery_cache_capacity_mib",
+	"mcp_gallery_cache_ttl",
+	"mcp_gallery_concurrency",
 	"output_json",
 	"request_interval",
 	"reverse_search_pixiv_only",
@@ -141,6 +145,10 @@ var allResolvableAliases = []string{
 	"login_relay_tls_cert_file",
 	"login_relay_tls_key_file",
 	"login_use_after_login",
+	"mcp_gallery_animation_temp_capacity_mib",
+	"mcp_gallery_cache_capacity_mib",
+	"mcp_gallery_cache_ttl",
+	"mcp_gallery_concurrency",
 	"output_json",
 	"request_interval",
 	"reverse_search_pixiv_only",
@@ -160,6 +168,10 @@ var expectedCLIManagedAliases = []string{
 	"https_proxy",
 	"log_format",
 	"log_level",
+	"mcp_gallery_animation_temp_capacity_mib",
+	"mcp_gallery_cache_capacity_mib",
+	"mcp_gallery_cache_ttl",
+	"mcp_gallery_concurrency",
 	"request_interval",
 	"reverse_search_pixiv_only",
 	"reverse_search_provider",
@@ -349,8 +361,9 @@ func TestEnvironmentPrecedenceKeepsDeclaredOrder(t *testing.T) {
 	t.Run("lowercase proxy wins over uppercase", func(t *testing.T) {
 		path := filepath.Join(t.TempDir(), "config.toml")
 		require.NoError(t, os.WriteFile(path, []byte("[network]\nhttps_proxy = \"http://file-proxy\"\n"), 0o600))
-		t.Setenv("https_proxy", "http://lower-proxy")
+		// Windows 的环境名不区分大小写；先写大写，避免覆盖要验证的小写值。
 		t.Setenv("HTTPS_PROXY", "http://upper-proxy")
+		t.Setenv("https_proxy", "http://lower-proxy")
 
 		state, err := config.LoadSnapshotAt(path)
 		require.NoError(t, err)
@@ -368,8 +381,8 @@ func TestEnvironmentPrecedenceKeepsDeclaredOrder(t *testing.T) {
 	// 因此 HasValue=false、Value=nil；关键是它**不**回退到 HTTPS_PROXY。
 	t.Run("empty lowercase proxy wins over uppercase", func(t *testing.T) {
 		path := filepath.Join(t.TempDir(), "config.toml")
-		t.Setenv("https_proxy", "")
 		t.Setenv("HTTPS_PROXY", "http://upper-proxy")
+		t.Setenv("https_proxy", "")
 
 		state, err := config.LoadSnapshotAt(path)
 		require.NoError(t, err)

@@ -1,0 +1,13 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Authorize pixiv-cli</title><!-- frontend:style --></head><body><main><h1>Authorize pixiv-cli</h1>
+<p>Only approve connectors you trust. This grants access to this instance's MCP tools.</p>
+<p>Unverified client name: <strong>{{.ClientName}}</strong></p>
+<p>Redirect origin: <code>{{.RedirectOrigin}}</code><br>Redirect URI: <code>{{.RedirectURI}}</code></p>
+<form method="post" action="{{.Action}}">
+<input type="hidden" name="csrf_token" value="{{.CSRF}}">
+{{if .Verified}}<p>Owner verified in this browser. Your explicit approval is still required.</p>{{else}}
+<label for="owner-secret">Owner secret</label><small>Use the secret from pixiv mcp auth init. Do not share it in chat.</small>
+<input id="owner-secret" name="owner_secret" type="password" autocomplete="current-password">{{end}}
+<button type="submit" name="decision" value="allow">Allow</button><button type="submit" name="decision" value="deny">Deny</button>
+</form></main></body></html>

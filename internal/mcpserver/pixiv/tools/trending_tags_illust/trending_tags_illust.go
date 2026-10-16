@@ -1,4 +1,4 @@
-// Package trending_tags_illust 实现 trending_tags_illust tool。
+// Package trending_tags_illust 实现 pixiv_trending_tags_illust tool。
 package trending_tags_illust
 
 import (
@@ -13,9 +13,9 @@ import (
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
-// Register 注册 trending_tags_illust。
+// Register 注册 pixiv_trending_tags_illust。
 func Register(app *runtime.App, server *mcp.Server) {
-	runtime.AddTool(app, server, &mcp.Tool{Name: "trending_tags_illust", Description: "Get currently trending illustration tags.", InputSchema: trendingInputSchema(), OutputSchema: records.TrendingTagsOutputSchema()}, func(ctx context.Context, request *mcp.CallToolRequest, input In) (*mcp.CallToolResult, outputs.TrendingTags, error) {
+	runtime.AddTool(app, server, &mcp.Tool{Name: "pixiv_trending_tags_illust", Annotations: &mcp.ToolAnnotations{ReadOnlyHint: true, DestructiveHint: new(false), IdempotentHint: true, OpenWorldHint: new(true)}, Description: "Get currently trending illustration tags.", InputSchema: trendingInputSchema(), OutputSchema: records.TrendingTagsOutputSchema()}, func(ctx context.Context, request *mcp.CallToolRequest, input In) (*mcp.CallToolResult, outputs.TrendingTags, error) {
 		return handleTrendingTags(ctx, app, input)
 	})
 }

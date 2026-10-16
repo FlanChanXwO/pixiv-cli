@@ -157,12 +157,6 @@ func appendTaggedFields(derived []settingSpecFromTags, structType reflect.Type, 
 			return nil, fmt.Errorf("config field %q: %w", field.Name, err)
 		}
 
-		if kind == settingInteger {
-			if _, hasDefault := field.Tag.Lookup(tagDefault); alias != "" || hasDefault {
-				return nil, fmt.Errorf("integer field %q requires private domain parsing without a default", field.Name)
-			}
-		}
-
 		spec := SettingSpec{
 			Alias:    alias,
 			KoanfKey: rawPath,
@@ -276,6 +270,8 @@ func kindForField(field reflect.StructField) (settingKind, error) {
 		return settingString, nil
 	case reflect.Bool:
 		return settingBool, nil
+	case reflect.Int:
+		return settingInteger, nil
 	case reflect.Int64:
 		if field.Type == reflect.TypeOf(time.Duration(0)) {
 			return settingDuration, nil
@@ -293,6 +289,12 @@ func kindForField(field reflect.StructField) (settingKind, error) {
 // 解释失败是 schema 错误，不得被静默接受。
 func parseDefaultForField(field reflect.StructField, kind settingKind, raw string) (any, error) {
 	switch kind {
+	case settingInteger:
+		value, err := strconv.ParseInt(strings.TrimSpace(raw), 10, field.Type.Bits())
+		if err != nil {
+			return nil, fmt.Errorf("default %q is not an integer", raw)
+		}
+		return value, nil
 	case settingString:
 		return raw, nil
 	case settingBool:

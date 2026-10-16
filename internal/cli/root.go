@@ -1,5 +1,5 @@
 // Package cli 是 CLI 组合根：它把命令树、执行生命周期与生产依赖装配
-// 组装成一个可运行的 pixiv 命令（以及 MCP stdio runtime）。
+// 组装成一个可运行的 pixiv 命令（以及 MCP HTTP runtime）。
 //
 // 本文件持有命令树本身：app、命令树构建、常用 positional-args 与
 // prompt/flag 绑定等所有 command owner 共享的接线。
@@ -21,7 +21,6 @@ import (
 	fanboxcommands "github.com/FlanChanXwO/pixiv-cli/internal/cli/commands/fanbox"
 	fanboxauth "github.com/FlanChanXwO/pixiv-cli/internal/cli/commands/fanbox/auth"
 	fanboxdownload "github.com/FlanChanXwO/pixiv-cli/internal/cli/commands/fanbox/download"
-	fanboxmcpcommand "github.com/FlanChanXwO/pixiv-cli/internal/cli/commands/fanbox/mcp"
 	fanboxpost "github.com/FlanChanXwO/pixiv-cli/internal/cli/commands/fanbox/post"
 	authcommands "github.com/FlanChanXwO/pixiv-cli/internal/cli/commands/pixiv/auth"
 	"github.com/FlanChanXwO/pixiv-cli/internal/cli/commands/pixiv/auth/loginhelper"
@@ -40,7 +39,7 @@ import (
 	pixivuser "github.com/FlanChanXwO/pixiv-cli/internal/cli/commands/pixiv/user"
 	updatecommands "github.com/FlanChanXwO/pixiv-cli/internal/cli/commands/update"
 	configapp "github.com/FlanChanXwO/pixiv-cli/internal/config/settings"
-	stdiotransport "github.com/FlanChanXwO/pixiv-cli/internal/mcpserver"
+	unifiedmcp "github.com/FlanChanXwO/pixiv-cli/internal/mcpserver"
 	downloader "github.com/FlanChanXwO/pixiv-cli/internal/media/downloader"
 	fanboxapp "github.com/FlanChanXwO/pixiv-cli/internal/services/fanbox"
 	fanboxaccount "github.com/FlanChanXwO/pixiv-cli/internal/services/fanbox/account"
@@ -54,13 +53,12 @@ import (
 )
 
 type app struct {
-	in                  io.Reader
-	out                 io.Writer
-	errOut              io.Writer
-	pipelineSignal      *brokenPipeSignalState
-	mcpBrokenPipeSignal *brokenPipeSignalState
-	closeState          *closeState
-	diagnostics         *diagnosticState
+	in             io.Reader
+	out            io.Writer
+	errOut         io.Writer
+	pipelineSignal *brokenPipeSignalState
+	closeState     *closeState
+	diagnostics    *diagnosticState
 }
 
 type commandOptions struct {
@@ -81,7 +79,8 @@ var (
 	runMCPServer = func(a app, ctx context.Context, request mcpcommands.Request) error {
 		return a.runPixivMCP(ctx, request)
 	}
-	runMCPStdio          = stdiotransport.RunStdio
+	runMCPStdio          = unifiedmcp.RunStdio
+	runMCPHTTP           = unifiedmcp.RunHTTP
 	ensureURLSchemeRelay = loginhelper.EnsurePersistentIfNeeded
 	canPrompt            = func(a app) bool { return authcommands.CanPrompt(a.in, a.out) }
 	promptInput          = func(a app, message, defaultValue string) (string, error) {
@@ -133,7 +132,6 @@ func (a app) newRootCommand() *cobra.Command {
 		PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
 			requirement := requirements.For(cmd)
 			a.enablePipelineSignal(cmd)
-			a.enableMCPBrokenPipeSignal(requirement)
 			if requirement.StartupHooks {
 				if err := cleanupPendingWindowsUpdate(); err != nil {
 					return &startupError{err: fmt.Errorf("clean pending update: %w", err)}
@@ -177,7 +175,6 @@ func (a app) newRootCommand() *cobra.Command {
 		Auth:     fanboxauth.New(fanboxData),
 		Posts:    fanboxpost.Commands(fanboxData),
 		Download: fanboxdownload.New(fanboxData),
-		MCP:      fanboxmcpcommand.New(fanboxData),
 	}))
 	mcpcommands.Register(cmd, a)
 	updatecommands.Register(cmd, a)

@@ -12,7 +12,7 @@ import (
 
 // Register 注册 fanbox_post。
 func Register(app *runtime.App, server *mcp.Server) {
-	runtime.AddTool(app, server, &mcp.Tool{Name: "fanbox_post", Description: "Get one FANBOX post."}, func(ctx context.Context, request *mcp.CallToolRequest, input in) (*mcp.CallToolResult, runtime.PostOut, error) {
+	runtime.AddTool(app, server, &mcp.Tool{Name: "fanbox_post", Annotations: &mcp.ToolAnnotations{ReadOnlyHint: true, DestructiveHint: new(false), IdempotentHint: true, OpenWorldHint: new(true)}, Description: "Get one FANBOX post."}, func(ctx context.Context, request *mcp.CallToolRequest, input in) (*mcp.CallToolResult, runtime.PostOut, error) {
 		return handle(ctx, app, input)
 	})
 }

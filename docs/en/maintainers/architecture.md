@@ -5,7 +5,7 @@ English | [简体中文](../../zh-CN/maintainers/architecture.md) | [Documentati
 ```mermaid
 flowchart LR
     ENTRY["cmd/pixiv<br/>single binary entry"] --> CLI["internal/cli<br/>commands and lifecycle"]
-    CLI -->|"starts stdio"| MCP["internal/mcpserver<br/>Pixiv / FANBOX tools"]
+    CLI -->|"stdio / HTTP"| MCP["internal/mcpserver<br/>Pixiv / FANBOX tools"]
     CLI --> SDK["public SDK<br/>sdk/pixiv · sdk/fanbox"]
     MCP --> SDK
     SDK --> FACADE["internal/services<br/>business Facade"]
@@ -27,6 +27,7 @@ flowchart LR
 | Reader / concern | Go to |
 | --- | --- |
 | Entry-to-SDK call chain | [Overall flow](#overall-flow) |
+| Page sources and embedding | [Frontend source and embedded pages](#frontend-source-and-embedded-pages) |
 | What a package may or may not do | [Package responsibilities](#package-responsibilities) |
 | Release trust root and signing | [Release assets and trust boundary](#release-assets-and-trust-boundary) |
 | Local state, config, path permissions | [internal/config/paths](#internalconfigpaths), [internal/storage/file](#internalstoragefileatomiclockreplacesecret) |
@@ -38,12 +39,18 @@ flowchart LR
 
 1. `pixiv` with no arguments shows CLI help.
 2. `pixiv auth/config/update/search/timeline/detail/ranking/recommended/user/bookmark/follow/download` enters CLI mode; root `--version` is a standalone read-only flag; `pixiv fanbox` enters FANBOX mode; `auth import` handles direct token import or bundle restore, and `auth export` handles the local secret snapshot.
-3. `pixiv mcp` and `pixiv fanbox mcp` are assembled and run as independent MCP stdio servers by the CLI MCP commands.
+3. `pixiv mcp` assembles and starts unified Pixiv/FANBOX stdio by default or Streamable HTTP with explicit `--port`; `pixiv fanbox mcp` is removed.
 4. CLI and MCP construct production resources explicitly per command owner:
    - Account credentials come from `~/.pixiv-cli/pixiv-cli.db` (SQLite, `internal/storage/database`; Windows: `%USERPROFILE%\.pixiv-cli\pixiv-cli.db`); the legacy `auth.json` is not read automatically — users must explicitly export/import a bundle
    - Global configuration comes from `~/.pixiv-cli/config.toml` (Windows: `%USERPROFILE%\.pixiv-cli\config.toml`)
    - Public environment variables participate as an override layer in the merge
 5. There is no anonymous Web fallback: all content commands require an authenticated local account or explicit credentials; the removed `web_fallback_enabled`, if still present, returns `removed_setting`.
+
+## Frontend source and embedded pages
+
+`frontend/mcp-apps/gallery/` owns Gallery HTML/CSS/JS and its fixture; `frontend/pages/login/` owns login/callback/result templates and styles; `frontend/pages/oauth/` owns consent HTML/CSS. The resource-only `frontend` Go package embeds exact source paths, excluding fixtures, and assembles pages once at process startup using the standard library. Gallery CSS/JS and consent CSS are inlined; login templates/styles remain separate and byte-preserved. `scripts/cmd/frontendassets` and `--check` validate the same embedded sources without writing outputs.
+
+The existing Go owners retain MCP registration, template rendering/data/escaping, CSP/media origin, canonical actions, CSRF and authorization. Current and historical resource URIs remain supported. Clean builds and versioned `go install` require no generation; runtime uses only embedded bytes, with no disk or network reads. Legacy ignored `generated/` outputs are unused. Homebrew templates retain their existing owner.
 
 ## Package responsibilities
 
@@ -77,15 +84,18 @@ CLI does not export a cross-command locator, nor does it have an independent boo
 
 The command tree is handled uniformly by `root.go` for global flags and the requirement-driven startup lifecycle; exit codes are decided by the execution entry points in `execution.go`, and owner command packages then register their domain commands:
 root-level `internal/cli/commands/{config,mcp,update}`, Pixiv `internal/cli/commands/pixiv/{auth,bookmark,comment,detail,download,follow,mypixiv,ranking,recommended,search,series,timeline,user}`,
-FANBOX `internal/cli/commands/fanbox/{auth,download,mcp,post}`. Data commands consume the public SDK `*pixiv.Client`/`*fanbox.Client` via the owner-local narrow
+FANBOX `internal/cli/commands/fanbox/{auth,download,post}`. Data commands consume the public SDK `*pixiv.Client`/`*fanbox.Client` via the owner-local narrow
 `Data` port (`Open`/`Pooled`/`JSONOut`, etc.) and never reach internal protocol adapter packages;
-the shared stdin codec lives in `internal/cli/pipeline`, and the stable Pixiv record projection shared by CLI/MCP lives in `internal/shared/record`; the command-scoped Pixiv target resolver lives in `internal/shared/resolver`, consumes only the command contract, records, and pure-local `sdk/pixiv.ParseURL`, and requires owners to inject any controlled bare-ID probe explicitly, without owning clients, credentials, or protocol adapters. The `record` package only carries record protocol, JSON normalization, and public SDK DTO mapping, must not depend on CLI, MCP, or internal protocol adapter packages, and must not grow into a general dumping ground. These subpackages do not reverse-import the `internal/cli` root package.
+the shared stdin codec lives in `internal/cli/pipeline`, and the stable Pixiv record projection shared by CLI/MCP lives in `internal/shared/record`; the command-scoped Pixiv target resolver lives in `internal/shared/resolver`, consumes only the command contract, records, and pure-local `sdk/pixiv.ParseURL`, and requires owners to inject any controlled bare-ID probe explicitly, without owning clients, credentials, or protocol adapters.
+
+The `record` package only carries record protocol, JSON normalization, and public SDK DTO mapping, must not depend on CLI, MCP, or internal protocol adapter packages, and must not grow into a general dumping ground. These subpackages do not reverse-import the `internal/cli` root package.
 
 root `--version` stdout is exactly one line, `pixiv <version>`, with empty stderr and no startup update check. The removed
 `version` subcommand returns unknown-command during parsing with empty stdout. Automatic update runs only after a successful normal business command; it is skipped for MCP, help, root
 `--version`, `update`, all `auth export`, bundle-form `auth import`, and dev builds. It selects the stable Release, uses a 24-hour
 throttle on the user cache, and waits at most 3 seconds. Configuration, network, and source-identification failures only surface as stderr warnings; they must not
 change the exit code of an already-successful business command, and must not leak into JSON stdout or MCP JSON-RPC.
+
 Windows pending-update cleanup at process startup is also a potential mutation; all `auth export` invocations are identified before Cobra
 parsing and skip that cleanup, while other commands still run the normal startup cleanup. The repeated-override semantics of root bool flags are
 protected by focused tests, so that forms like `--help=false` cannot accidentally bypass the secret export boundary.
@@ -95,7 +105,9 @@ protected by focused tests, so that forms like `--help=false` cannot accidentall
 Owns the system URL scheme helper, persistent handler manifest, one-shot remote handoff private state, and remote callback client for `auth login`.
 `internal/cli` only installs the on-demand handler through this package, retaining OAuth, loopback HTTP, system browser, TTY, and relay server orchestration. The
 handler only allows exact `pixiv://account/login` and `pixiv://account/remote-login` to enter the current round; the active loopback takes priority, and remote callbacks are
-delivered only to the active one-shot handoff, while other `pixiv://` URLs are routed to the handler persisted in the manifest. Desktop private state only stores the current
+delivered only to the active one-shot handoff, while other `pixiv://` URLs are routed to the handler persisted in the manifest.
+
+Desktop private state only stores the current
 handoff's relay origin, session ID, and capability; the server stores no desktop device record, and the public SDK does not expose this state. The remote callback only accepts
 a one-shot result URL on the same relay base; `internal/cli` opens the non-sensitive final page and then waits for OAuth exchange.
 Darwin separately holds the embedded Swift, `Info.plist`, and LaunchServices; Windows uses the current-user registry/class launch; desktop Linux uses
@@ -138,7 +150,7 @@ The config schema, `config.toml` path/get/set/unset, generated baseline, and the
 Provides an explicit, in-memory typed diagnostics scope. Pixiv MCP, FANBOX MCP, Pixiv/FANBOX
 network transport, account pool, download, and FlareSolverr emit only the allowed module, operation, route, status,
 proxy, UA, request ID, reason, and count fields through the scope; the default sink is Nop. The MCP request scope only
-affects diagnostics, not JSON-RPC stdout. This package creates no log files, stores no response body,
+affects diagnostics, not HTTP JSON-RPC responses. This package creates no log files, stores no response body,
 Cookie, token, signed query, or arbitrary error dump; the public SDK stays silent when no explicit scope is present.
 
 ### Release trust root (`internal/update/installer`)
@@ -150,6 +162,8 @@ and does not construct the trust root. The public key fingerprint and known sign
 Read-only update checks do not need this key; this wiring itself cannot replace the independent release acceptance for each version.
 
 ### `internal/storage/database`
+
+CLI/MCP database owners coordinate initialization, short account/pool transactions and complete snapshot reads through the private `pixiv-cli.db.lock` sidecar. The lock never covers OAuth or content network requests. The coordination file contains no credentials and does not change account data; direct external SQL writers and older processes do not participate. Non-cancellable contexts retain native lock waiting. Cancellable contexts use the same non-blocking lock interface, checking contention every 10ms; cancellation wakes immediately and closes the waiting file handle. There is no overall wait deadline or transaction replay. The account owner cancels its lifecycle before taking the session mutex, so database-lock waits during watcher validation do not block shutdown.
 
 Owns the SQLite authority for local account state:
 
@@ -218,9 +232,9 @@ File responsibilities inside `internal/config/settings`:
 
 `internal/config/settings` defines the `FileStore` port, injected by the CLI private composition graph from the protocol-agnostic file mechanisms in `internal/storage/file/{atomic,lock,replace,secret}`: a temporary file with a random name (containing no credentials) is created in the same directory as the target, the full content is written, file `Sync` is performed, the file is closed, and only then is the target replaced. On Unix-like platforms the parent directory and file are proactively tightened to `0700` and `0600` respectively, and after atomic replacement the target directory is synced again;
 if this call created one or more directory levels, then after the replacement is committed the target directory and each new directory's outer parent are synced in leaf→root order, so that both the file entry and the new directory entries fall within the durability boundary; existing directories still only sync the target directory.
+
 If any directory sync fails, the remaining directories are still attempted and the errors are merged; the replacement is already committed, so the caller cannot assume the old file is still present. A failure in the pre-replacement write, file `Sync`, or close keeps the old target; a normal replacement failure and a recoverable partial-completion failure also keep or restore the old target and clean up the temporary
-file. If recovery after a partial completion itself fails, the caller receives a combined error, the target path may be temporarily missing, but the same-directory recovery backup of the old content and the source temp of the new content are both retained for manual recovery; in this case "No temp residual" does not apply.
-Other temporary-file cleanup failures are not swallowed but returned alongside the main error.
+file. If recovery after a partial completion itself fails, the caller receives a combined error, the target path may be temporarily missing, but the same-directory recovery backup of the old content and the source temp of the new content are both retained for manual recovery; in this case "No temp residual" does not apply. Other temporary-file cleanup failures are not swallowed but returned alongside the main error.
 
 On Windows, file `Sync` and close are also performed before replacement: if the target exists, `ReplaceFileW` with a same-directory unique recovery backup is used; first creation uses `MoveFileEx` without overwriting the target. `ERROR_UNABLE_TO_MOVE_REPLACEMENT`
 keeps target/source under their original names; `ERROR_UNABLE_TO_MOVE_REPLACEMENT_2` attempts to restore the old target that was moved to backup, and if restoration fails it keeps backup/source. A backup cleanup failure after a successful replacement is a committed error and is still treated as committed. A file created for the first time on Windows inherits the parent directory ACL, and replacing an existing target preserves that target's ACL; this protocol does not
@@ -313,11 +327,19 @@ After the migration, the two product root packages aggregate account and session
 
 The business Facade of `internal/services/pixiv` unifies account opening, login completion, credential rotation, account-pool selection/freezing/safe replay, and Lease lifecycle; `internal/services/fanbox` unifies account selection, session validation, and independent client lifecycle, but does not introduce Pixiv account-pool strategy.
 
+An explicit nonzero `Request.UserID` pins both reads and writes to that local account, even when the pool is enabled. Account-opening and business errors are returned without switching accounts; requests with no explicit UID retain configured pool scheduling. This does not change the CLI default account.
+
+The pure login renderer lives in `internal/services/pixiv/account/loginrelay/loginpage` and consumes templates/CSS from the resource-only `frontend` package. CLI page-response wrappers reuse it; it has no CLI, account-store, browser, or listener dependency. The reusable HTTP handler/session lives in the parent `loginrelay` package. It accepts the OAuth session validator and delivers one callback to its owner; it neither opens a listener nor exchanges or persists credentials. CLI retains listener/TLS/terminal orchestration. A host mux can mount the handler with its public path prefix stripped; production MCP mounts this handler at the canonicalized base plus `/pixiv-login/`, behind the same Host/Origin checks but authenticated by handoff proof rather than MCP bearer.
+
+Escaped path prefixes are preserved in generated relay URLs and route dispatch. A canceled relay session rejects subsequent requests with HTTP 410 and rechecks cancellation before accepting a validated callback, so a callback whose validation overlaps restart/shutdown is not accepted after cancellation. The shared callback URL allowlist, start-response wire type, and result URL header live in `internal/services/pixiv/account/loginrelay`; both the CLI relay and desktop helper reuse them without reverse dependencies.
+
+The MCP account owner also provides a single-current-login manager: repeated starts reuse pending work, explicit restart cancels and joins the previous attempt, and shutdown joins exchange/persistence. Completion preserves non-secret account-saved/selection-updated flags, including partial failure; the composition root binds it to the same SDK login session for validation and exchange, saves credentials without changing the CLI default, and then writes MCP selection separately. The same account service is reused across restarts, and each completed SDK login releases its session-owned idle HTTP connections. For explicit proxy/direct options, the composition root instead closes the idle connections of the client it created on every completion exit. The login-start tool and login-ID status query reuse this manager.
+
 ### Reverse-search Facade exception
 
 Reverse image search is the only product capability that crosses the normal public-SDK boundary. The top-level contract and Facade live in `internal/services/reversesearch`; the provider protocol adapters live only in `internal/services/reversesearch/saucenao` and `internal/services/reversesearch/ascii2d`. Production assembly in `internal/cli/composition.go` may depend on `internal/services/reversesearch/assembly` to bind the HTTP client, proxy, and SauceNAO key once per command/session. CLI owners under `internal/cli/commands` and all of `internal/mcpserver` may import only the top-level `internal/services/reversesearch` contract; they must not import the provider subpackages or the assembly package. The Facade returns domain results, while CLI/MCP adapters project canonical records at their output boundary.
 
-The Facade loads a regular file or HTTP(S) source into one private snapshot, hashes it, and removes it after the provider work finishes. The deliberate source policy permits arbitrary readable regular files and private, loopback, or link-local URLs; the MCP server therefore belongs behind a trusted local-client boundary. Neither the source nor provider transport material crosses the output boundary: only source kind/hash, safe provider summaries/errors, domain evidence, and canonical `artwork`/`user` records are publishable.
+The Facade loads a regular file or HTTP(S) source into one private snapshot, hashes it, and removes it after the provider work finishes. The deliberate source policy permits arbitrary readable regular files and private, loopback, or link-local URLs. Under single-owner OAuth, authorize only trusted connectors: local paths refer to the MCP server filesystem, and URL requests use the server network, not the connector device. Neither the source nor provider transport material crosses the output boundary: only source kind/hash, safe provider summaries/errors, domain evidence, and canonical `artwork`/`user` records are publishable.
 
 Reverse-search assembly owns three separate network surfaces: the standard source/SauceNAO client, the dedicated
 ascii2d browser client, and the FlareSolverr JSON control client. The reverse-search service proxy may override only
@@ -333,39 +355,95 @@ The three parent packages only own the normalized entities/values shared by thei
 
 ### `internal/mcpserver`
 
-Registers Pixiv and download capabilities as MCP tools. All Pixiv content, auth, resource, and write operations go through the public SDK; downloads are executed by the `DownloadManager` corresponding to the client execution snapshot. MCP's nullable `page`/`limit` are only parsed in this adapter; logical paged traversal is performed by the shared engine in `internal/shared/traversal`, and the legacy offset wire field has been removed. stdio transport and runtime lifecycle stay in each product's internal runtime, assembled and started by the CLI command.
+`pixiv/gallery` owns the explicit MCP Apps view, attached to `pixiv_show_gallery` and `pixiv_artwork_media`. It retains the stable resource URI and publishes a content-version alias for the tool UI cache key; valid historical revision aliases forward fresh reads to the current embedded view. `pixiv/mediaproxy` owns process-local image capability signing and raster delivery through the public SDK; the HTTP runtime routes `/media/` after canonical-origin validation. Capabilities bind the OAuth grant, account and image selection; neither the browser nor the route accepts upstream credentials or arbitrary URLs.
 
-Inside the package, it is split into `internal/mcpserver/pixiv` and `internal/mcpserver/fanbox`, each retaining only construction and registration aggregation; the shared runtime (App, SDK ports, paged read/write, record filter) lives in `internal/mcpserver/{pixiv,fanbox}/internal/{runtime,records,filters,outputs}`. Each tool is one package (e.g. `internal/mcpserver/pixiv/tools/search_illust`), owning its own input/output types, schema, and handler adapter, and only depending on shared narrow ports. MCP does not implement expressions, retries, archiving, or file templates itself: it compiles input before opening an SDK operation, then delegates download adaptation to `internal/media/downloader`; the public SDK does not carry batch download semantics. A runtime handler failure result retains its structured output and uses `isError=true`; a normal empty result is not disguised as a failure. For full wire semantics see [MCP tools](../mcp-tools.md#errors-pagination-and-output).
+The composition root supplies the same outbound proxy and explicit-account lease factory as other Pixiv operations. Gallery owns lazy image placeholders, explicit retries, view cancellation, Blob cleanup and host-capability downloads. Its independent 256MiB estimated session LRU retains successful loaded static images, metadata and original bytes across internal navigation; fresh tool input/results and teardown clear it. Detached cached images lose view listeners; eviction releases their sources, while active oversized images remain displayable. The original-image modal uses the existing full-byte media tool and shares bytes with host-confirmed downloads.
+
+Without host download support, it prepares a selected-page original capability through the existing Gallery tool and exposes a protected HTTPS attachment link; exact download queries are accepted only for original quality and reuse the inline-image server cache. Mutable bookmark state is never cached. Search continuation remains in the original data tools.
+
+The HTTP transport observes underlying POST writes/flushes only when a diagnostic scope exists. Byte counts describe writer acceptance, not peer receipt; ResponseController unwrapping preserves SDK streaming/deadline behavior. No body/header is retained, and observation adds no buffering, wait or retry.
+
+`internal/services/pixiv/account/reads.go` owns lifecycle-managed MCP read sessions. It validates the local account revision on acquisition and shares the existing rotation gate only for OAuth refresh and successful rotation persistence. Credential replacement/removal, network changes, expiry and upstream 401 invalidate the generation and release idle connections. Mutation leases and account-pool commit/replay remain in the existing Facade. Root injects a separate read port and opaque session generations; MCP adapters never read credentials. A cancelled account lookup returns its request error without invalidating the shared generation or forcing another rotation. On Windows, the credential and animation-authorization watchers also watch their parent directories to detect the watched directory itself being moved.
+
+`pixiv/mediaproxy` owns the grant/session-scoped metadata and image LRU, independent query/image semaphores, same-key metadata flights and streaming response lifecycle. Serialized metadata, in-progress image buffers and pinned cache payloads share the configured budget. Large/unreservable images stream without caching. Every lookup validates current authorization; old account/session generations cannot reuse content. Only complete successful transfers enter the cache, which never stores bookmark state or writes. Grant notifications, credential-generation signals and per-entry expiry reclaim idle entries; pinned bytes remain charged until release. Publication validates grant and generation under the cache mutex so a completed old fill cannot repopulate invalidated content. The SDK registers policy-validated artwork quality variants when mapping trusted metadata. Diagnostics use fixed stages without secret identifiers.
+
+`pixiv/tools/artwork_media` owns static MCP image delivery. One existing SDK lease binds artwork metadata and all page resources to the selected account; resource responses are closed after each read and the lease is closed on every exit. It returns image bytes and explicit per-page content indexes/failures, without exposing server paths or replaying partial delivery. `pixiv/internal/outputs` owns the structured media envelope and schema-error redaction. Ugoira uses the shared downloader archive selector, SDK SaveResource, and existing Rust encoder in a private per-call temporary workspace. It returns all GIF/APNG bytes as standard ImageContent plus a separately indexed PNG preview (APNG content uses the PNG-family MIME while its metadata retains the animation subtype), then removes temporary files before delivery. The actual archive quality and output basename are explicit; static-only parameters are rejected rather than ignored.
+
+Clients advertising the `io.modelcontextprotocol/ui` extension with `text/html;profile=mcp-app` receive an indexed App-only array in `_meta["pixiv/mediaContents"]`; model-facing `content` contains only the independent PNG preview. When the existing private animation publisher has retained the complete original, that array contains a protected `resource_link` for the animation and its inline PNG preview. Play reads the original binary only on demand; downloads use the same original file, grant/account-version checks and expiry. `content_index` and `preview_content_index` address this private array when present.
+
+If optional publication is unavailable, the array retains complete inline image contents; a host can still reject that large response, so server preparation is not proof of receipt. Non-App or unsupported-MIME clients retain the original full `content` response; static media and public inputs are unchanged. For linked animations, Refresh animation explicitly reacquires authorization through `pixiv_gallery_animation` in the original format; it replaces expired playback/download addresses and uses the existing status polling and subscription cleanup. A failed image does not automatically prepare again. Hosts without server tool calls cannot renew expired links.
+
+ZIP body failures additionally emit the fixed `animation_zip_incomplete` marker for unexpected EOF or `animation_zip_timeout` for a timeout reported by the underlying reader, provided the job context is still active. These markers contain only the partial byte count; they do not include raw errors or signed addresses and do not change retries, deadlines, output quality or tool errors.
+
+The media tool also attaches the existing MCP App view for complete media playback and its independent static preview. When the host advertises file download, the view requests its confirmation flow. Otherwise an available protected HTTP attachment opens in the browser; browser restrictions still apply. The server retains the already encoded animation and preview under the existing animation temporary capacity, grant, account version and TTL, without another download or encoding. Private UI metadata carries these short-lived addresses; no filesystem path is exposed. Optional publication failure leaves the complete inline result intact but makes the browser download unavailable. Restart, expiry or authorization changes invalidate these addresses.
+
+`New` constructs the single protocol server and calls each product's `Register`. Pixiv tools use `pixiv_` and FANBOX tools keep `fanbox_`; no unprefixed aliases remain. Stdio injects local downloads through `internal/media/downloader`; HTTP does not receive that port. Gallery and owner tools require their media/account/login ports. `NewHTTPHandler` assembles stateless Streamable HTTP and OAuth routing in the parent package; `RunHTTP` owns the listener and server lifecycle. `RunStdio` owns the local JSON-RPC session and waits for cleanup; `RunHTTP` independently owns HTTP lifecycle.
+
+Each product retains its own SDK ports, account selection and runtime. Registration/discovery does not open a FANBOX account; the root lazily opens its independent service when a FANBOX tool runs. Each tool package owns its name, annotations, schema and handler. Pixiv nullable `page`/`limit` are parsed by its adapter and traversal stays in `internal/shared/traversal`. Handler failures retain structured output with `isError=true`; legitimate empty results remain successful. See [MCP tools](../mcp-tools.md).
+
+`internal/mcpserver/auth` owns one concrete versioned JSON state and owner initialization/reset. Root injects its app-data path; the CLI alone prints the one-time secret. Mutations lock the sidecar, read fresh state and atomically replace it; reads do not cache state. Owner verifier is also the generation boundary for later in-memory authorization state. No database is added.
+
+Grant records must explicitly include a boolean `revoked` field and a `used_refresh_hashes` field. Missing fields or invalid types fail closed; refresh history may be an empty array or the existing serializer’s `null` for a nil slice. Invalid state blocks reads, owner init/reset, and registration without overwriting the file.
+
+`auth.NewHandler` provides discovery, DCR, authorize and token routes plus `Handler.RequireBearer`. `NewHTTPHandler` mounts these alongside `/mcp`, validates owner state before listening, and applies canonical Host/Origin checks before the OAuth or SDK handler. The constructor takes the canonical base URL, permits local HTTP, and rejects credentials, query, fragment and client-normalized dot segments. Issuer URLs never come from request Host or forwarding headers.
+
+- Root and resource-specific protected-resource metadata share the SDK handler. For base `https://example.test/pixiv`, the resource is `https://example.test/pixiv/mcp`; metadata routes are `/.well-known/oauth-protected-resource` and `/.well-known/oauth-protected-resource/pixiv/mcp`, AS metadata is `/.well-known/oauth-authorization-server/pixiv`, and registration is `/pixiv/oauth/register`. A reverse proxy must forward these well-known routes as well as `/pixiv/`.
+- DCR accepts only JSON public-client registrations, defaults an omitted auth method to `none`, and never issues or saves a client secret. Responses explicitly return the fixed profile: code, authorization_code/refresh_token, and mcp. Unknown extension metadata is ignored; logo/client/JWKS URLs are never fetched. Unsupported auth methods, grants, response types, or scopes return OAuth JSON errors.
+- Redirects are stored verbatim, without URL normalization. HTTPS, loopback HTTP (including localhost), and dotted reverse-domain native schemes are accepted; fragments, relative URIs, ordinary remote HTTP, executable schemes, and malformed URIs are rejected. Authorize requires an exact registered redirect match. It rejects malformed callback query strings and pre-existing OAuth response parameters (`code`, `error`, `error_description`, `error_uri`, `state`, `iss`) locally, rather than overwriting registered query values or returning ambiguous results. Other callback query parameters are retained.
+- Registration and owner reset share the sidecar lock and read fresh state under it. Only a successful atomic write releases a 201/client_id response. Persistence failures return `server_error` without paths, raw metadata, or credentials. Reset preserves registrations and the selected account.
+- Authorize requires code, canonical resource, `mcp` scope (also the omitted default), and a valid S256 challenge. Unknown clients or invalid redirects fail locally; other validated authorization errors redirect with the original state and canonical `iss`. AS metadata advertises this issuer response support.
+- The escaped consent page labels the client name as unverified and displays the redirect origin and URI. A separate one-use CSRF token binds the form to the browser, request, and owner generation. Owner verification rotates the HttpOnly/SameSite=Lax cookie; HTTPS canonical bases require Secure. Every authorization still requires explicit Allow/Deny. POST rejects cross-origin requests and parameter overrides; origin comparison accounts for host case and default ports.
+- The form action is the full canonical authorization URL, not a path-only reference: a legal double-slash prefix must not become a cross-origin submission target. Request Host/forwarded headers and client redirects cannot change that action. Cookie paths retain the escaped prefix.
+- CSP blocks scripts, framing, and base overrides; form-action permits only self and the validated callback origin, because Chromium checks form redirects too. `strict-origin` avoids leaking authorization query parameters while retaining the Origin header needed for same-origin form POST. Sessions, pending consent, and hashed codes are memory-only and invalidate on reset/restart. Codes carry a ten-minute deadline and bind client/redirect/resource/scope/PKCE/generation. Token exchange validates these bindings and the current generation inside the file transaction, rejects codes at the ten-minute deadline, and consumes them only after successful persistence.
+
+- The token endpoint accepts standard form POST only. Query credentials, duplicate parameters, missing required parameters and unsupported grant types produce OAuth JSON error categories without echoing inputs. PKCE verifiers must contain 43–128 unreserved ASCII characters before S256 validation. Access and refresh tokens are independent 256-bit opaque random values; only SHA-256 hashes persist. Access expires after one hour (`expires_in=3600`); refresh has no idle expiry.
+- Refresh rereads state under the same sidecar lock as reset and binds the current canonical resource, client and scope. Successful exchanges rotate refresh tokens and retain used hashes. Replay persists revocation of that grant before returning `invalid_grant`; random invalid values cannot revoke other grants. Failed writes publish no tokens and retain retryable codes/refresh tokens; failed revocation does not claim success. Restart preserves clients/grants/refresh but drops pending codes.
+- `Handler.RequireBearer` reuses SDK middleware, reads current state on every request, validates resource/revocation/expiry, and rejects multiple Authorization headers. Unauthorized requests receive HTTP 401 and a canonical `resource_metadata` challenge, not an MCP result. Invalid state fails safely without exposing paths. Responses use `no-store`; expiry/reset affects subsequent authorization, not already authorized long requests.
+- HTTP and real temporary-file tests cover exact deadlines, concurrent code/refresh/reset, restart and actual write failure. Deadline tests use standard-library `testing/synctest`, without adding production clock configuration.
+
+The HTTP owner uses exact escaped paths rather than ServeMux path cleaning. Incoming Host and any Origin must match the configured canonical origin; forwarding headers never establish trust. Reverse proxies must retain public Host and path prefixes. MCP responses enforce `no-store` at response commit, including SDK SSE responses. On service cancellation or listener failure, the server cancels its own context and waits for active handlers without a fixed cleanup timeout; the original listener error is preserved and the caller context is not canceled by the server. Receiving middleware binds legacy SDK sessions to the service context; the SDK propagates modern-revision HTTP request cancellation. No custom protocol session store or transport fallback is added.
+
+The standard-client fixture covers 401 discovery, DCR, PKCE, both product SDK reads, and persisted grants after restarting at the same address. The pinned Go MCP SDK v1.8.0 default refresh token source omits `resource` and receives `invalid_request`; the server does not relax validation for it. A separate control uses the SDK-configurable HTTP client to add the [required resource parameter](https://modelcontextprotocol.io/specification/2026-07-28/basic/authorization#resource-parameter-implementation) to the form and verifies rotation and reconnected reads. That control is not evidence of unmodified SDK refresh compatibility or ChatGPT/Gemini product acceptance.
+
+Path and registration rules follow RFC 8414 §3, RFC 9728 §3, RFC 7591 §2/§3.2, and RFC 8252 §7/§8.4. Temporary-file and HTTP fixture checks do not establish live connector OAuth compatibility.
 
 ### `internal/media/downloader`
 
 Owns download and local file persistence:
 
-`internal/media/downloader` is the CLI/MCP download owner. It takes the public SDK client execution snapshot via the `DownloadTargetClient`/`DownloadClient` interfaces, and centrally owns source expansion, ID deduplication, page and quality validation, file acquisition and publication, progress events, and ugoira format selection; these semantics cannot be duplicated in adapters. `ResourceRef` is only resolved by the product Client; the downloader only consumes the verified opaque ref. The public SDK only retains atomic resource resolution/save capabilities and does not expose batch download workflows.
+`internal/media/downloader` is the CLI download owner. It takes the public SDK client execution snapshot via the `DownloadTargetClient`/`DownloadClient` interfaces, and centrally owns source expansion, ID deduplication, page and quality validation, file acquisition and publication, progress events, and ugoira format selection; these semantics cannot be duplicated in adapters. `ResourceRef` is only resolved by the product Client; the downloader only consumes the verified opaque ref. The public SDK only retains atomic resource resolution/save capabilities and does not expose batch download workflows.
 
 - `Download` synchronously downloads a list of IDs and returns the actual artifact path for each work.
 - Single-page works are saved to the download directory.
 - Multi-page works and ugoira create a per-work subdirectory.
 - Single-page and multi-page works derive their extension from the upstream URL path and normalize cross-platform illegal characters the same way as the template-generated filename; Pixiv thumbnails use an explicit resource Content-Type to correct an ambiguous URL suffix when available, while unknown media types retain the URL extension.
 - ugoira first downloads the SDK-verified `download_url` zip, then the Rust FFI encoder synthesizes GIF/APNG, or the public SDK publishes the ZIP/extracted frames as-is; an authenticated session may legitimately select App medium, but it must never be labeled as original.
+- GIF retains its existing quantization and global palette. Opaque animations encode only changed palette-index rectangles with retained display state; fully identical frames still carry their own delay. Animations containing transparency preserve full frames and background disposal.
+- APNG preserves every frame and exact delay; within a changed rectangle, unchanged pixels become transparent only when all changed pixels are opaque. Otherwise the rectangle uses source replacement to preserve alpha exactly.
 
 The Rust crate is wired into cgo as a target-specific staticlib: darwin/linux/windows each have an amd64/arm64 selector; the Linux
 selector also explicitly links the system `libm`, taking over the `sinf`/`expf` symbols of the Rust/image staticlib; the Windows selector passes
 `-L${SRCDIR}/… -lugoira_rs` together with the Windows import libraries of the Rust std to pass `*-pc-windows-msvc` libraries,
 so that cgo does not reject bare `.lib` paths with drive letters; native-evidence on Windows explicitly uses the runner-provided
-`clang -fuse-ld=lld` for the link step, avoiding Go's GCC-only debug linker script being handed to the MSVC linker. Supported
+`clang -fuse-ld=lld` for the link step, avoiding Go's GCC-only debug linker script being handed to the MSVC linker.
+
+Supported
 release/source builds must select and link the real library from the six-target `manifest.json` of the same Rust source digest;
 missing cgo, missing target library, or missing C linker must fail explicitly at compile/build time, and cannot fall back to `ffmpeg` or a runtime
 stub. Source identity is folded into the first-party crate's Cargo/build/source inputs, the vendor closure, and the local
 `quantette`; these paths disable Git text conversion in `.gitattributes`, so that Windows and Unix checkouts keep the same
-Git blob bytes, rather than masking the difference in the digest algorithm. The digest algorithm first converts Windows backslashes from `filepath.Rel` to a
+Git blob bytes, rather than masking the difference in the digest algorithm.
+
+The digest algorithm first converts Windows backslashes from `filepath.Rel` to a
 logical slash path, then filters `src/`, `.cargo/`, and `vendor/`; run `29189725013` proves that if the order is reversed, even
 when all six runner jobs succeed, a Unix/Windows digest split occurs and is caught by consolidation fail-closed.
 This run cannot be backfilled or concatenated with a later run. Rust `target/` is a machine artifact; the staticlib/manifest is a release input that
 can only be committed after native verification.
 The release archive's `LICENSE` and the generated license bundle are also pinned to LF checkout; run `29191200569` had six
 source digests that matched, but the Windows archive's `LICENSE` bytes still diverged from the Unix/Git blob, so
-consolidation failed closed again. This run also cannot be backfilled or concatenated across runs; a full re-run from the fixed SHA is required.
+consolidation failed closed again.
+
+This run also cannot be backfilled or concatenated across runs; a full re-run from the fixed SHA is required.
 `internal/media/ugoira/staticlib` only carries the integrity contract of the source digest and manifest, and does not import the cgo encoder;
 therefore the native-evidence **policy** gate can run before the target library is generated. `record` and `consolidate` also do not
 trigger cgo linking, but respectively still require the already-generated staticlib/binary/archive and the full six evidence inputs; the download runtime
@@ -396,11 +474,15 @@ full-SHA Actions, and only publishes after verifying the asset set on a draft Re
 `release/checksums.txt` to the downstream renderer; stable/prerelease each generate a unique `pixiv-cli`/
 `pixiv-cli-beta` formula. Four native macOS/Linux runners install the formula in their isolated local staging
  tap with a tap-qualified formula name and actually verify `pixiv --version`; this path does not use or write to
-the public tap, and the trust required by Homebrew 6 is only written to the temporary trust store of the runner's local staging tap. Only the final protected
+the public tap, and the trust required by Homebrew 6 is only written to the temporary trust store of the runner's local staging tap.
+
+Only the final protected
 job can read the independent tap deploy key and push only the corresponding formula.
 The official tag of v0.3.0 has gone through this release path and pushed the stable formula; subsequent tags must still independently satisfy the same installation gate. The complete
 six-target native success evidence has backfilled the staticlib/manifest. The production signing private key, Environment, and public remote
-have been configured for the production release path, and the public trust root for supported binaries has been configured in `internal/update/installer/release_installer.go`. The Rust crates.io dependency has been pinned by
+have been configured for the production release path, and the public trust root for supported binaries has been configured in `internal/update/installer/release_installer.go`.
+
+The Rust crates.io dependency has been pinned by
 in-crate source replacement to a complete vendor closure, and verified with an empty Cargo cache for offline metadata/build/test and the six
 target license checks.
 
@@ -419,7 +501,7 @@ an error that the CLI can silently bypass.
 
 No generic constants package is retained. `config/paths` is the sole owner of app-managed paths, `AppDataDirName`, and
 Unix-like private directory/file permission constants; it does not read business configuration and does not implement file writes. Pixiv protocol values, MCP delivery
-values, and config keys/defaults still live in their owning domain packages. `internal/shared/diagnostics` owns the typed, protocol-neutral event contract, while `internal/cli/diagnostics` owns the optional text/JSON stderr presenter configured by `[logging]`. This is not a persistent operation log or the historical generic `slog` chain; MCP stdout remains reserved for JSON-RPC and errors still pass through the existing CLI, MCP, or public SDK interfaces.
+values, and config keys/defaults still live in their owning domain packages. `internal/shared/diagnostics` owns the typed, protocol-neutral event contract, while `internal/cli/diagnostics` owns the optional text/JSON stderr presenter configured by `[logging]`. This is not a persistent operation log or the historical generic `slog` chain; MCP JSON-RPC uses protocol-clean stdio or authenticated HTTP and errors still pass through the existing CLI, MCP, or public SDK interfaces.
 
 ### `internal/storage/file/{atomic,lock,replace,secret}`
 
@@ -442,9 +524,11 @@ refresh-token validation lives in `internal/services/pixiv/oauth`; paths/permiss
 > The following constraints are non-negotiable hard boundaries. Any new timeout, truncation, count limit, retry cap, silent fallback, or hidden degradation must have evidence, a comment, a test, or documentation, otherwise it is treated as a violation.
 
 - `appapi`, `oauth`, and resource transport use the HTTP client injected by the caller/SDK; the default client is dedicated to the current SDK client, has no fixed whole-request timeout, and cancellation/deadline is propagated via context. An explicit client retains the caller's policy.
-- `pixiv mcp` and `pixiv fanbox mcp` are the explicit ways to start two independent MCP stdio servers; running `pixiv` directly does not start MCP.
+- `pixiv mcp` defaults to local stdio. Explicit `--port` enables HTTP and requires initialized owner state. Running `pixiv` alone shows help. Configure HTTP with `--port`, `--host` and `--base-url`, not the removed address settings; see [startup](../cli-reference.md#mcp-http-server).
 - No persistent account import/export MCP tool is added; the existing session-scoped MCP auth tools and wire contracts are unchanged.
 - Account credentials are stored in the SQLite `pixiv-cli.db` (BLOB, unencrypted); Unix-like DB/journal file permissions are `0600`. An attacker with file access for the current user can still read credentials, and automatic backups are prohibited.
 - `config.toml` uses sparse writes and never persists the full set of defaults to disk.
-- The default `count` for `download_random_from_recommendation` is 5; an explicit value must be 1..20, and out-of-range values return a parameter error rather than silent clamping. The 20 limit is on the number of requested works: a single request can trigger multiple work downloads, and each work can in turn expand into multiple pages/files; all artifact metadata enters the same structured response. This boundary prevents unbounded amplification of download work and JSON-RPC output, and does not truncate a single work's files. When the recommendation list has fewer items than requested, the actual available number is downloaded.
-- `download` only returns local paths, `file://` URIs, `mime_type`, page numbers, and sizes; it does not embed ImageContent or base64 thumbnails.
+
+Gallery animation jobs live in `pixiv/mediaproxy`, with control adaptation in `tools/gallery_animation`. The composition root configures a server-owned private temporary workspace and closes it before account read sessions. Jobs are keyed by grant/account/generation/artwork/format; independent opaque subscription handles never expose paths. Binary animation and PNG preview routes reuse canonical origin and authorization checks. ZIP/preview writers reserve disk bytes before writing; a synchronous internal native budget callback reserves each output write against the same pool before touching the file.
+
+Ready artifacts are reclaimed only when actual requested bytes do not fit, rather than preemptively reserving their space. The native upper output limit remains enforced. The legacy Rust entry point remains unbounded and the global serial gate remains shared. Temporary producers queue with the native reservation; startup cleanup requires the service marker and a released lifetime OS lock. Reservations are reconciled after atomic output publication; only complete success becomes ready. Files remain pinned during GET/HEAD and cleanup joins active work. Gallery polls through the Apps bridge; direct fetch connections remain prohibited by CSP.

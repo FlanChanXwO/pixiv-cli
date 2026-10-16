@@ -42,7 +42,7 @@ func TestBookmarkListAllUsesArtworkThenNovelWithOneLogicalPageBudget(t *testing.
 	session, closeSession := newSDKTestSession(t, client)
 	defer closeSession()
 
-	first := callTool(t, session, "bookmark_list_all", map[string]any{"user_id": 90, "limit": 1})
+	first := callTool(t, session, "pixiv_bookmark_list_all", map[string]any{"user_id": 90, "limit": 1})
 	if first.IsError {
 		t.Fatalf("bookmark_list_all first page returned MCP error: %+v", first)
 	}
@@ -52,7 +52,7 @@ func TestBookmarkListAllUsesArtworkThenNovelWithOneLogicalPageBudget(t *testing.
 		t.Fatalf("first aggregate page=%+v, want artwork page with novel continuation", firstOut)
 	}
 
-	second := callTool(t, session, "bookmark_list_all", map[string]any{"user_id": 90, "page": 2, "limit": 1})
+	second := callTool(t, session, "pixiv_bookmark_list_all", map[string]any{"user_id": 90, "page": 2, "limit": 1})
 	if second.IsError {
 		t.Fatalf("bookmark_list_all second page returned MCP error: %+v", second)
 	}
@@ -86,10 +86,10 @@ func TestBookmarkListAllReplaysWithoutLeakingPartialRecords(t *testing.T) {
 		_, err = attempt(ctx, mustOpenWireClient(t, client))
 		return err
 	}
-	session, closeSession := newSDKTestSessionWithPorts(t, &fakeAPI{}, ports, account)
+	session, closeSession := newSDKTestSessionWithPorts(t, ports, account)
 	defer closeSession()
 
-	result := callTool(t, session, "bookmark_list_all", map[string]any{"user_id": 90, "limit": 2})
+	result := callTool(t, session, "pixiv_bookmark_list_all", map[string]any{"user_id": 90, "limit": 2})
 	if result.IsError {
 		t.Fatalf("bookmark_list_all replay returned MCP error: %+v", result)
 	}
@@ -110,7 +110,7 @@ func TestBookmarkListAllFailureDoesNotExposePartialRecords(t *testing.T) {
 	session, closeSession := newSDKTestSession(t, client)
 	defer closeSession()
 
-	result := callTool(t, session, "bookmark_list_all", map[string]any{"user_id": 90, "limit": 2})
+	result := callTool(t, session, "pixiv_bookmark_list_all", map[string]any{"user_id": 90, "limit": 2})
 	if !result.IsError || !resultHasText(result, "Error: pixiv:UserNovelBookmarks: upstream_error") {
 		t.Fatalf("bookmark_list_all failure=%+v, want structured stream error", result)
 	}
@@ -129,7 +129,7 @@ func TestBookmarkTagsAllPreservesSameNameCountsAndContentType(t *testing.T) {
 	session, closeSession := newSDKTestSession(t, client)
 	defer closeSession()
 
-	result := callTool(t, session, "bookmark_tags_all", map[string]any{"user_id": 90, "limit": 0})
+	result := callTool(t, session, "pixiv_bookmark_tags_all", map[string]any{"user_id": 90, "limit": 0})
 	if result.IsError {
 		t.Fatalf("bookmark_tags_all returned MCP error: %+v", result)
 	}
@@ -154,7 +154,7 @@ func TestBookmarkTagsAllFailureDoesNotExposePartialTags(t *testing.T) {
 	session, closeSession := newSDKTestSession(t, client)
 	defer closeSession()
 
-	result := callTool(t, session, "bookmark_tags_all", map[string]any{"user_id": 90, "limit": 2})
+	result := callTool(t, session, "pixiv_bookmark_tags_all", map[string]any{"user_id": 90, "limit": 2})
 	if !result.IsError || !resultHasText(result, "Error: pixiv:UserNovelBookmarkTags: upstream_error") {
 		t.Fatalf("bookmark_tags_all failure=%+v, want structured stream error", result)
 	}

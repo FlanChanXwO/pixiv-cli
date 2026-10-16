@@ -64,19 +64,24 @@ func (s *Service) OpenAccountClientWith(ctx context.Context, userID int64, optio
 }
 
 func (s *Service) openAccount(ctx context.Context, userID int64, options pixiv.Options) (*pixiv.Client, error) {
+	session, err := s.openReadSession(ctx, userID, options)
+	return session.Client, err
+}
+
+func (s *Service) openReadSession(ctx context.Context, userID int64, options pixiv.Options) (ReadSession, error) {
 	account, err := s.repo.GetPixiv(ctx, userID)
 	if err != nil {
-		return nil, fmt.Errorf("select pixiv account: %w", err)
+		return ReadSession{}, fmt.Errorf("select pixiv account: %w", err)
 	}
 	client, credentials, err := pixiv.OpenWith(ctx, string(account.RefreshTokenCopy()), options)
 	if err != nil {
-		return nil, err
+		return ReadSession{}, err
 	}
 	if err := RotateCredential(ctx, s.repo, userID, credentials.UserID, account.CredentialRevision, []byte(credentials.RefreshToken())); err != nil {
 		client.CloseIdleConnections()
-		return nil, fmt.Errorf("persist rotated pixiv credentials: %w", err)
+		return ReadSession{}, fmt.Errorf("persist rotated pixiv credentials: %w", err)
 	}
-	return client, nil
+	return ReadSession{Client: client, Revision: account.CredentialRevision + 1, Expires: credentials.ExpiresAt}, nil
 }
 
 // ImportAccount 保留旧账号服务的默认连接行为；验证失败不产生记录。
@@ -317,6 +322,10 @@ func (s *Service) RefreshAccountWith(ctx context.Context, userID int64, options 
 // CompleteLogin 保存一次完成登录会话后得到的账号凭据，并按 setDefault 或
 // 默认账号缺失规则设置默认账号。
 func (s *Service) CompleteLogin(ctx context.Context, credentials pixiv.Credentials, setDefault bool) (AccountSummary, error) {
+	return s.completeLogin(ctx, credentials, setDefault, false)
+}
+
+func (s *Service) completeLogin(ctx context.Context, credentials pixiv.Credentials, setDefault, preserveDefault bool) (AccountSummary, error) {
 	if credentials.UserID <= 0 || credentials.RefreshToken() == "" {
 		return AccountSummary{}, errors.New("login credentials are incomplete")
 	}
@@ -324,6 +333,14 @@ func (s *Service) CompleteLogin(ctx context.Context, credentials pixiv.Credentia
 	account.CredentialRevision = 1
 	if err := s.repo.SavePixivCredential(ctx, account); err != nil {
 		return AccountSummary{}, fmt.Errorf("save pixiv account: %w", err)
+	}
+	if preserveDefault {
+		summary, err := s.summary(ctx, credentials.UserID)
+		if err != nil {
+			// 持久化已成功；新调用方仍需知道账号已保存，不能宣称回滚。
+			return accountSummary(account, false), err
+		}
+		return summary, nil
 	}
 	hasDefault, err := s.hasDefault()
 	if err != nil {

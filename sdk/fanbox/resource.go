@@ -17,6 +17,12 @@ import (
 // fanboxReferer is the non-secret referer FANBOX media requests carry.
 const fanboxReferer = fanboxresource.Referer
 
+// resourceLocator keeps the URL and its naming metadata in one cache entry.
+type resourceLocator struct {
+	url      string
+	filename string
+}
+
 // resourceRefPayload is the opaque identity payload embedded in a FANBOX
 // ResourceRef. It carries only stable identity (kind, owning creator or post,
 // and attachment id) so locator rotation never changes the cache key and a
@@ -43,7 +49,7 @@ func (c *Client) validateResourceURL(rawURL string) error {
 // locator (Resource.URL) and cached in-session keyed by the opaque ref; the ref
 // envelope encodes only stable identity. RequiresCredentials reflects whether
 // the locator lives on the credentialed downloads host.
-func (c *Client) newResource(kind, creatorID, postID, assetID, rawURL string) (sdk.Resource, error) {
+func (c *Client) newResource(kind, creatorID, postID, assetID, rawURL, filename string) (sdk.Resource, error) {
 	if rawURL == "" {
 		return sdk.Resource{}, nil
 	}
@@ -59,7 +65,7 @@ func (c *Client) newResource(kind, creatorID, postID, assetID, rawURL string) (s
 		return sdk.Resource{}, newError("resource", sdk.UpstreamError, err)
 	}
 	c.resourceMu.Lock()
-	c.resourceURLs[ref.String()] = rawURL
+	c.resourceLocators[ref.String()] = resourceLocator{url: rawURL, filename: filename}
 	c.resourceMu.Unlock()
 	return sdk.Resource{
 		Ref:                 ref,
@@ -78,14 +84,14 @@ func (c *Client) OpenResource(ctx context.Context, request sdk.OpenResourceReque
 	if err := request.Validate(); err != nil {
 		return nil, err
 	}
-	rawURL, err := c.resolveResourceURL(ctx, request.Ref, "OpenResource")
+	locator, err := c.resolveResource(ctx, request.Ref, "OpenResource")
 	if err != nil {
 		return nil, err
 	}
-	if err := c.validateResourceURL(rawURL); err != nil {
+	if err := c.validateResourceURL(locator.url); err != nil {
 		return nil, newError("OpenResource", sdk.ResourceForbidden, errors.New("resource URL is not allowed"))
 	}
-	response, err := c.resource.Open(ctx, rawURL, fanboxresource.Request{
+	response, err := c.resource.Open(ctx, locator.url, fanboxresource.Request{
 		Method:          string(request.Method),
 		Range:           request.Range,
 		IfNoneMatch:     request.IfNoneMatch,
@@ -95,7 +101,9 @@ func (c *Client) OpenResource(ctx context.Context, request sdk.OpenResourceReque
 	if err != nil {
 		return nil, classifyError("OpenResource", err)
 	}
-	return sdk.NewResourceResponse(response.StatusCode, response.Header, response.Body), nil
+	result := sdk.NewResourceResponse(response.StatusCode, response.Header, response.Body)
+	result.Filename = locator.filename
+	return result, nil
 }
 
 // SaveResource writes a single resource by its opaque reference to Path through
@@ -139,46 +147,40 @@ func (c *Client) decodeResourceRef(ref sdk.ResourceRef) (resourceRefPayload, err
 	return rp, nil
 }
 
-// resolveResourceURL returns the currently-usable locator for a ref. It first
-// consults the in-session locator cache (the URL the resource was created
-// with); when no cached locator exists it re-resolves a fresh locator from
-// trusted metadata by re-fetching the owning post or creator and locating the
-// attachment by its stable id. The resolved URL is always revalidated against
-// the media host allowlist before use.
-func (c *Client) resolveResourceURL(ctx context.Context, ref sdk.ResourceRef, operation string) (string, error) {
+// resolveResource keeps the URL and attachment name in the same cache entry.
+// Reopened references resolve metadata by kind and stable identity, never by URL.
+func (c *Client) resolveResource(ctx context.Context, ref sdk.ResourceRef, operation string) (resourceLocator, error) {
 	rp, err := c.decodeResourceRef(ref)
 	if err != nil {
-		return "", newError(operation, sdk.InvalidArgument, errors.New("invalid resource reference"))
+		return resourceLocator{}, newError(operation, sdk.InvalidArgument, errors.New("invalid resource reference"))
 	}
 	c.resourceMu.RLock()
-	rawURL := c.resourceURLs[ref.String()]
+	locator := c.resourceLocators[ref.String()]
 	c.resourceMu.RUnlock()
-	if rawURL != "" {
-		return rawURL, nil
+	if locator.url != "" {
+		return locator, nil
 	}
-
-	var resolved string
 	switch rp.Kind {
 	case "creator_icon", "creator_cover":
-		resolved, err = c.resolveCreatorAssetURL(ctx, rp)
+		locator.url, err = c.resolveCreatorAssetURL(ctx, rp)
 	case "post_image", "post_file":
-		resolved, err = c.resolvePostAssetURL(ctx, rp)
+		locator, err = c.resolvePostAsset(ctx, rp)
 	default:
-		return "", newError(operation, sdk.InvalidArgument, errors.New("resource kind is unsupported"))
+		return resourceLocator{}, newError(operation, sdk.InvalidArgument, errors.New("resource kind is unsupported"))
 	}
 	if err != nil {
 		if _, ok := err.(*sdk.Error); ok {
-			return "", err
+			return resourceLocator{}, err
 		}
-		return "", newError(operation, sdk.MalformedUpstreamResponse, errors.New("resource metadata has no usable URL"))
+		return resourceLocator{}, newError(operation, sdk.MalformedUpstreamResponse, errors.New("resource metadata has no usable URL"))
 	}
-	if err := c.validateResourceURL(resolved); err != nil {
-		return "", newError(operation, sdk.ResourceForbidden, errors.New("resolved resource URL is not allowed"))
+	if err := c.validateResourceURL(locator.url); err != nil {
+		return resourceLocator{}, newError(operation, sdk.ResourceForbidden, errors.New("resolved resource URL is not allowed"))
 	}
 	c.resourceMu.Lock()
-	c.resourceURLs[ref.String()] = resolved
+	c.resourceLocators[ref.String()] = locator
 	c.resourceMu.Unlock()
-	return resolved, nil
+	return locator, nil
 }
 
 // resolveCreatorAssetURL re-resolves a creator icon or cover locator by
@@ -207,32 +209,40 @@ func (c *Client) resolveCreatorAssetURL(ctx context.Context, rp resourceRefPaylo
 	}
 }
 
-// resolvePostAssetURL re-resolves a post image or file locator by re-fetching
-// the post and locating the attachment by its stable id across the merged
-// image/file maps (mirroring mapPost's asset merge so block-only attachments
-// resolve identically).
-func (c *Client) resolvePostAssetURL(ctx context.Context, rp resourceRefPayload) (string, error) {
+// resolvePostAsset selects kind as well as ID: image and file ID spaces may overlap.
+func (c *Client) resolvePostAsset(ctx context.Context, rp resourceRefPayload) (resourceLocator, error) {
 	if rp.Post == "" || rp.Asset == "" {
-		return "", errors.New("post resource reference is missing post or attachment id")
+		return resourceLocator{}, errors.New("post resource reference is missing post or attachment id")
 	}
 	source, err := c.postInfo.Get(ctx, postinfo.Request{PostID: rp.Post})
 	if err != nil {
-		return "", classifyError("resource", err)
+		return resourceLocator{}, classifyError("resource", err)
 	}
 	if source.Body == nil {
-		return "", errors.New("post body is unavailable")
+		return resourceLocator{}, errors.New("post body is unavailable")
 	}
-	for _, image := range mergePostImages(*source.Body) {
-		if image.ID == rp.Asset && image.OriginalURL != "" {
-			return image.OriginalURL, nil
+	if rp.Kind == "post_image" {
+		for _, image := range mergePostImages(*source.Body) {
+			if image.ID == rp.Asset && image.OriginalURL != "" {
+				return resourceLocator{url: image.OriginalURL}, nil
+			}
+		}
+	} else if rp.Kind == "post_file" {
+		for _, file := range mergePostFiles(*source.Body) {
+			if file.ID == rp.Asset && file.URL != "" {
+				return resourceLocator{url: file.URL, filename: attachmentFilename(file.Name, file.Extension)}, nil
+			}
 		}
 	}
-	for _, file := range mergePostFiles(*source.Body) {
-		if file.ID == rp.Asset && file.URL != "" {
-			return file.URL, nil
-		}
+	return resourceLocator{}, errors.New("post attachment is unavailable")
+}
+
+// attachmentFilename retains upstream naming, without guessing a name from a locator.
+func attachmentFilename(name, extension string) string {
+	if name == "" || extension == "" || strings.HasSuffix(strings.ToLower(name), "."+strings.ToLower(extension)) {
+		return name
 	}
-	return "", errors.New("post attachment is unavailable")
+	return name + "." + extension
 }
 
 type progressReader struct {

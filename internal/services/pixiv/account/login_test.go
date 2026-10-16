@@ -2,6 +2,7 @@ package pixiv_test
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"net/url"
 	"testing"
@@ -55,4 +56,38 @@ func TestLoginServiceCompleteRejectsInvalidCallback(t *testing.T) {
 func TestLoginStartAcceptsCallbackRequiresSession(t *testing.T) {
 	var empty accountpixiv.LoginStart
 	assert.False(t, empty.AcceptsCallbackURL(protocol.OAuthRedirectURI+"?code=x"))
+}
+
+func TestLoginServicePreservesCLISelectionWhenRequested(t *testing.T) {
+	for _, name := range []string{"no-default", "existing-default", "summary-error"} {
+		t.Run(name, func(t *testing.T) {
+			repo := newPixivTestRepository()
+			defaults := &pixivTestDefaults{}
+			if name == "existing-default" {
+				defaults.userID, defaults.ok = 99, true
+			}
+			if name == "summary-error" {
+				defaults.readErr = errors.New("fixture default read failure")
+			}
+			service := accountpixiv.LoginService{Pixiv: accountpixiv.NewService(repo, defaults)}
+			client := &http.Client{Transport: pixivRoundTripper(func(r *http.Request) (*http.Response, error) {
+				return pixivJSONResponse(`{"access_token":"fixture-access","refresh_token":"fixture-refresh","expires_in":3600,"user":{"id":73,"name":"fixture"}}`), nil
+			})}
+			start, err := service.Start(accountpixiv.LoginRequest{Options: sdkpixiv.LoginOptions{HTTPClient: client}})
+			require.NoError(t, err)
+			account, err := service.Complete(t.Context(), start, accountpixiv.LoginCompleteRequest{CallbackOrCode: "pixiv://account/login?code=fixture", PreserveDefault: true})
+			if name == "summary-error" {
+				require.ErrorIs(t, err, defaults.readErr)
+			} else {
+				require.NoError(t, err)
+			}
+			require.Equal(t, int64(73), account.UserID)
+			require.True(t, repo.accounts[73].HasRefreshToken())
+			if name == "existing-default" {
+				require.Equal(t, int64(99), defaults.userID)
+			} else {
+				require.False(t, defaults.ok, "MCP login must not create a CLI default")
+			}
+		})
+	}
 }

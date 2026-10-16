@@ -1,6 +1,7 @@
 package database
 
 import (
+	"context"
 	"database/sql"
 	"fmt"
 	"net/url"
@@ -8,6 +9,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/FlanChanXwO/pixiv-cli/internal/storage/file/lock"
 	_ "modernc.org/sqlite"
 )
 
@@ -32,13 +34,14 @@ func Open(appDataDir string) (*DB, error) {
 		return nil, fmt.Errorf("database: open database: %w", err)
 	}
 	sqlDB.SetMaxOpenConns(1)
-	// sql.Open 不建立连接；先 ping 以暴露路径/权限错误。
-	if err := sqlDB.Ping(); err != nil {
-		_ = sqlDB.Close()
-		return nil, fmt.Errorf("database: ping database: %w", err)
-	}
 	db := &DB{db: sqlDB, path: path}
-	if err := db.initialize(); err != nil {
+	// 首次连接和迁移也参与协调，避免另一进程的监听读取撞上schema写入。
+	if err := db.withLock(context.Background(), func() error {
+		if err := sqlDB.Ping(); err != nil {
+			return fmt.Errorf("database: ping database: %w", err)
+		}
+		return db.initialize()
+	}); err != nil {
 		_ = sqlDB.Close()
 		return nil, err
 	}
@@ -64,6 +67,21 @@ func dsnWithPragmas(path string) string {
 type DB struct {
 	db   *sql.DB
 	path string
+}
+
+// 同一路径的CLI/MCP短事务和完整快照读取共用侧车锁；不持锁执行上游请求。
+func (d *DB) withLock(ctx context.Context, action func() error) error {
+	return lock.WithPrivateLock(ctx, d.path, action)
+}
+
+func withDatabaseValue[T any](ctx context.Context, d *DB, action func() (T, error)) (T, error) {
+	var value T
+	err := d.withLock(ctx, func() error {
+		var err error
+		value, err = action()
+		return err
+	})
+	return value, err
 }
 
 // ApplicationID 是数据库文件的固定 SQLite application_id（ASCII "PIXC"）。

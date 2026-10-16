@@ -67,6 +67,10 @@ jobs:
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e
         with:
           go-version-file: go.mod
+      - name: Validate embedded frontend sources
+        shell: bash
+        run: |
+          GOOS="$(go env GOHOSTOS)" GOARCH="$(go env GOHOSTARCH)" CGO_ENABLED=0 go run ./scripts/cmd/frontendassets --check
       - name: Run offline SDK E2E contract tests
         shell: bash
         run: |
@@ -154,6 +158,10 @@ jobs:
         shell: bash
         working-directory: internal/media/ugoira/rust
         run: cargo clippy --locked --offline --all-targets -- -D warnings
+      - name: Validate embedded frontend sources
+        shell: bash
+        run: |
+          GOOS="$(go env GOHOSTOS)" GOARCH="$(go env GOHOSTARCH)" CGO_ENABLED=0 go run ./scripts/cmd/frontendassets --check
       - name: Test Go sources
         shell: bash
         run: go test ./...

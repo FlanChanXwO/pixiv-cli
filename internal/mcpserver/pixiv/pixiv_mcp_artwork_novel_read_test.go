@@ -34,9 +34,9 @@ func TestArtworkNovelReadOutputSchemasMatchWireEnvelopes(t *testing.T) {
 		required []string
 		fields   []string
 	}{
-		{name: "illust_detail", required: []string{"records"}, fields: []string{"records"}},
-		{name: "novel_detail", required: []string{"records"}, fields: []string{"records"}},
-		{name: "novel_series", required: []string{"series", "records", "pagination"}, fields: []string{"series", "records", "pagination"}},
+		{name: "pixiv_illust_detail", required: []string{"records"}, fields: []string{"records"}},
+		{name: "pixiv_novel_detail", required: []string{"records"}, fields: []string{"records"}},
+		{name: "pixiv_novel_series", required: []string{"series", "records", "pagination"}, fields: []string{"series", "records", "pagination"}},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			schema, ok := byName[test.name]
@@ -95,14 +95,14 @@ func TestArtworkNovelReadInputSchemasMatchLegacyWireFields(t *testing.T) {
 		required []string
 		fields   []string
 	}{
-		{name: "search_illust", required: []string{"word"}, fields: []string{"word", "search_target", "sort", "duration", "start_date", "end_date", "page", "limit", "content_type", "ai_mode", "aspect_ratio", "resolution", "tool", "bookmark_min", "bookmark_max", "bookmark_strategy", "illust_filter"}},
-		{name: "search_novel", required: []string{"word"}, fields: []string{"word", "search_target", "sort", "duration", "page", "limit", "novel_filter"}},
-		{name: "illust_detail", fields: []string{"illust_id", "url"}},
-		{name: "illust_related", required: []string{"illust_id"}, fields: []string{"illust_id", "illust_filter", "page", "limit"}},
-		{name: "illust_series", required: []string{"series_id"}, fields: []string{"series_id", "page", "limit"}},
-		{name: "novel_detail", required: []string{"novel_id"}, fields: []string{"novel_id"}},
-		{name: "novel_content", required: []string{"novel_id"}, fields: []string{"novel_id"}},
-		{name: "novel_series", required: []string{"series_id"}, fields: []string{"series_id", "page", "limit"}},
+		{name: "pixiv_search_illust", required: []string{"word"}, fields: []string{"cursor", "word", "search_target", "sort", "duration", "start_date", "end_date", "page", "limit", "content_type", "ai_mode", "aspect_ratio", "resolution", "tool", "bookmark_min", "bookmark_max", "bookmark_strategy", "illust_filter"}},
+		{name: "pixiv_search_novel", required: []string{"word"}, fields: []string{"word", "search_target", "sort", "duration", "page", "limit", "novel_filter"}},
+		{name: "pixiv_illust_detail", fields: []string{"illust_id", "url"}},
+		{name: "pixiv_illust_related", required: []string{"illust_id"}, fields: []string{"illust_id", "illust_filter", "page", "limit", "cursor"}},
+		{name: "pixiv_illust_series", required: []string{"series_id"}, fields: []string{"series_id", "page", "limit"}},
+		{name: "pixiv_novel_detail", required: []string{"novel_id"}, fields: []string{"novel_id"}},
+		{name: "pixiv_novel_content", required: []string{"novel_id"}, fields: []string{"novel_id"}},
+		{name: "pixiv_novel_series", required: []string{"series_id"}, fields: []string{"series_id", "page", "limit"}},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			schema, ok := byName[test.name]
@@ -151,7 +151,7 @@ func TestArtworkNovelReadLegacyJSONReplayPreservesStructuredContracts(t *testing
 		assert  func(*testing.T, *fakeSDKClient, *mcp.CallToolResult)
 	}{
 		{
-			name:    "search_illust",
+			name:    "pixiv_search_illust",
 			fixture: `{"word":"cat"}`,
 			client: func() *fakeSDKClient {
 				return &fakeSDKClient{searchIllust: func(_ context.Context, _ pixiv.SearchArtworksRequest) (sdk.Page[pixiv.Artwork], error) {
@@ -161,7 +161,7 @@ func TestArtworkNovelReadLegacyJSONReplayPreservesStructuredContracts(t *testing
 			assert: assertArtworkNovelReplaySuccess("101"),
 		},
 		{
-			name:    "search_novel",
+			name:    "pixiv_search_novel",
 			fixture: `{"word":"cat"}`,
 			client: func() *fakeSDKClient {
 				return &fakeSDKClient{searchNovel: func(_ context.Context, _ pixiv.SearchNovelsRequest) (sdk.Page[pixiv.Novel], error) {
@@ -171,7 +171,7 @@ func TestArtworkNovelReadLegacyJSONReplayPreservesStructuredContracts(t *testing
 			assert: assertArtworkNovelReplaySuccess("201"),
 		},
 		{
-			name:    "illust_detail",
+			name:    "pixiv_illust_detail",
 			fixture: `{"illust_id":101}`,
 			client: func() *fakeSDKClient {
 				return &fakeSDKClient{illustDetail: func(_ context.Context, id int64) (pixiv.Artwork, error) {
@@ -181,7 +181,7 @@ func TestArtworkNovelReadLegacyJSONReplayPreservesStructuredContracts(t *testing
 			assert: assertArtworkNovelReplaySuccess("101"),
 		},
 		{
-			name:    "illust_related",
+			name:    "pixiv_illust_related",
 			fixture: `{"illust_id":101}`,
 			client: func() *fakeSDKClient {
 				return &fakeSDKClient{relatedArtworks: func(_ context.Context, request pixiv.RelatedArtworksRequest) (sdk.Page[pixiv.Artwork], error) {
@@ -194,7 +194,7 @@ func TestArtworkNovelReadLegacyJSONReplayPreservesStructuredContracts(t *testing
 			assert: assertArtworkNovelReplaySuccess("102"),
 		},
 		{
-			name:    "illust_series",
+			name:    "pixiv_illust_series",
 			fixture: `{"series_id":301}`,
 			client: func() *fakeSDKClient {
 				return &fakeSDKClient{artworkSeriesPage: sdk.Page[pixiv.Artwork]{Items: []pixiv.Artwork{testSDKIllust(302, "series", 1)}}}
@@ -202,7 +202,7 @@ func TestArtworkNovelReadLegacyJSONReplayPreservesStructuredContracts(t *testing
 			assert: assertArtworkNovelReplaySuccess("302"),
 		},
 		{
-			name:    "novel_detail",
+			name:    "pixiv_novel_detail",
 			fixture: `{"novel_id":201}`,
 			client: func() *fakeSDKClient {
 				return &fakeSDKClient{novelDetailResult: pixiv.Novel{ID: 201, Title: "detail", User: pixiv.User{ID: 1}}}
@@ -210,7 +210,7 @@ func TestArtworkNovelReadLegacyJSONReplayPreservesStructuredContracts(t *testing
 			assert: assertArtworkNovelReplaySuccess("201"),
 		},
 		{
-			name:    "novel_content",
+			name:    "pixiv_novel_content",
 			fixture: `{"novel_id":201}`,
 			client:  func() *fakeSDKClient { return &fakeSDKClient{} },
 			assert: func(t *testing.T, client *fakeSDKClient, result *mcp.CallToolResult) {
@@ -223,7 +223,7 @@ func TestArtworkNovelReadLegacyJSONReplayPreservesStructuredContracts(t *testing
 			},
 		},
 		{
-			name:    "novel_series",
+			name:    "pixiv_novel_series",
 			fixture: `{"series_id":302}`,
 			client: func() *fakeSDKClient {
 				return &fakeSDKClient{novelSeries: func(_ context.Context, request pixiv.NovelSeriesRequest) (pixiv.NovelSeriesResult, error) {
@@ -263,7 +263,7 @@ func TestArtworkNovelReadSDKFailuresPreserveSafeStructuredEnvelopes(t *testing.T
 		client  func() *fakeSDKClient
 	}{
 		{
-			name:    "search_illust",
+			name:    "pixiv_search_illust",
 			fixture: `{"word":"cat"}`,
 			client: func() *fakeSDKClient {
 				return &fakeSDKClient{searchIllust: func(context.Context, pixiv.SearchArtworksRequest) (sdk.Page[pixiv.Artwork], error) {
@@ -272,7 +272,7 @@ func TestArtworkNovelReadSDKFailuresPreserveSafeStructuredEnvelopes(t *testing.T
 			},
 		},
 		{
-			name:    "search_novel",
+			name:    "pixiv_search_novel",
 			fixture: `{"word":"cat"}`,
 			client: func() *fakeSDKClient {
 				return &fakeSDKClient{searchNovel: func(context.Context, pixiv.SearchNovelsRequest) (sdk.Page[pixiv.Novel], error) {
@@ -281,7 +281,7 @@ func TestArtworkNovelReadSDKFailuresPreserveSafeStructuredEnvelopes(t *testing.T
 			},
 		},
 		{
-			name:    "illust_detail",
+			name:    "pixiv_illust_detail",
 			fixture: `{"illust_id":101}`,
 			client: func() *fakeSDKClient {
 				return &fakeSDKClient{illustDetail: func(context.Context, int64) (pixiv.Artwork, error) {
@@ -290,7 +290,7 @@ func TestArtworkNovelReadSDKFailuresPreserveSafeStructuredEnvelopes(t *testing.T
 			},
 		},
 		{
-			name:    "illust_related",
+			name:    "pixiv_illust_related",
 			fixture: `{"illust_id":101}`,
 			client: func() *fakeSDKClient {
 				return &fakeSDKClient{relatedArtworks: func(context.Context, pixiv.RelatedArtworksRequest) (sdk.Page[pixiv.Artwork], error) {
@@ -299,7 +299,7 @@ func TestArtworkNovelReadSDKFailuresPreserveSafeStructuredEnvelopes(t *testing.T
 			},
 		},
 		{
-			name:    "illust_series",
+			name:    "pixiv_illust_series",
 			fixture: `{"series_id":301}`,
 			client: func() *fakeSDKClient {
 				return &fakeSDKClient{artworkSeries: func(context.Context, pixiv.ArtworkSeriesRequest) (sdk.Page[pixiv.Artwork], error) {
@@ -308,7 +308,7 @@ func TestArtworkNovelReadSDKFailuresPreserveSafeStructuredEnvelopes(t *testing.T
 			},
 		},
 		{
-			name:    "novel_detail",
+			name:    "pixiv_novel_detail",
 			fixture: `{"novel_id":201}`,
 			client: func() *fakeSDKClient {
 				return &fakeSDKClient{novelDetail: func(context.Context, int64) (pixiv.Novel, error) {
@@ -317,7 +317,7 @@ func TestArtworkNovelReadSDKFailuresPreserveSafeStructuredEnvelopes(t *testing.T
 			},
 		},
 		{
-			name:    "novel_series",
+			name:    "pixiv_novel_series",
 			fixture: `{"series_id":302}`,
 			client: func() *fakeSDKClient {
 				return &fakeSDKClient{novelSeries: func(context.Context, pixiv.NovelSeriesRequest) (pixiv.NovelSeriesResult, error) {
@@ -378,10 +378,10 @@ func TestIllustRelatedRejectsNonPositiveIDBeforeSDKExecution(t *testing.T) {
 			return errors.New("unexpected SDK execution")
 		},
 	}
-	session, closeSession := newSDKTestSessionWithPorts(t, &fakeAPI{}, ports, pixivmcpserver.Account{})
+	session, closeSession := newSDKTestSessionWithPorts(t, ports, pixivmcpserver.Account{})
 	defer closeSession()
 
-	result := callTool(t, session, "illust_related", map[string]any{"illust_id": 0})
+	result := callTool(t, session, "pixiv_illust_related", map[string]any{"illust_id": 0})
 	if !result.IsError || !resultHasText(result, "illust_id must be a positive integer") {
 		t.Fatalf("invalid illust_related input result=%+v", result)
 	}
@@ -392,5 +392,218 @@ func TestIllustRelatedRejectsNonPositiveIDBeforeSDKExecution(t *testing.T) {
 	decodeStructured(t, result, &out)
 	if len(out.Records) != 0 {
 		t.Fatalf("invalid illust_related structured output=%+v", out)
+	}
+}
+
+// Default discovery batches must continue through the actual SDK cursor, not a guessed offset.
+func TestRelatedDefaultBatchContinuation(t *testing.T) {
+	calls := 0
+	client := &fakeSDKClient{userID: 7, relatedArtworks: func(_ context.Context, req pixiv.RelatedArtworksRequest) (sdk.Page[pixiv.Artwork], error) {
+		calls++
+		if req.Cursor.IsZero() {
+			return sdk.Page[pixiv.Artwork]{Items: []pixiv.Artwork{testSDKIllust(101, "first", 7)}, Next: testPageCursor(1)}, nil
+		}
+		return sdk.Page[pixiv.Artwork]{Items: []pixiv.Artwork{testSDKIllust(102, "second", 7)}}, nil
+	}}
+	session, closeSession := newSDKTestSession(t, client)
+	defer closeSession()
+	first := callTool(t, session, "pixiv_illust_related", map[string]any{"illust_id": 9})
+	var out struct {
+		Pagination struct {
+			NextCursor string `json:"next_cursor"`
+		} `json:"pagination"`
+	}
+	decodeStructured(t, first, &out)
+	if first.IsError || out.Pagination.NextCursor == "" || calls != 1 {
+		t.Fatalf("missing batch continuation: error=%v cursor=%q calls=%d", first.IsError, out.Pagination.NextCursor, calls)
+	}
+	second := callTool(t, session, "pixiv_illust_related", map[string]any{"illust_id": 9, "cursor": out.Pagination.NextCursor})
+	if second.IsError {
+		for _, content := range second.Content {
+			if text, ok := content.(*mcp.TextContent); ok {
+				t.Log(text.Text)
+			}
+		}
+	}
+	var records outputs.Records
+	decodeStructured(t, second, &records)
+	if second.IsError || len(records.Records) != 1 || records.Records[0].ID() != "102" || records.Pagination.HasMore || calls != 2 {
+		t.Fatalf("second batch=%+v error=%v calls=%d", records, second.IsError, calls)
+	}
+	for _, args := range []map[string]any{
+		{"illust_id": 10, "cursor": out.Pagination.NextCursor},
+		{"illust_id": 9, "cursor": out.Pagination.NextCursor, "illust_filter": map[string]any{"min_views": 2}},
+		{"illust_id": 9, "cursor": out.Pagination.NextCursor, "limit": 1},
+		{"illust_id": 9, "cursor": "invalid"},
+	} {
+		if result := callTool(t, session, "pixiv_illust_related", args); !result.IsError {
+			t.Fatal("invalid continuation accepted")
+		}
+	}
+	if calls != 2 {
+		t.Fatalf("invalid input reached SDK: calls=%d", calls)
+	}
+	otherCalls := 0
+	other := &fakeSDKClient{userID: 8, relatedArtworks: func(context.Context, pixiv.RelatedArtworksRequest) (sdk.Page[pixiv.Artwork], error) {
+		otherCalls++
+		return sdk.Page[pixiv.Artwork]{}, nil
+	}}
+	otherSession, closeOther := newSDKTestSession(t, other)
+	defer closeOther()
+	rejected := callTool(t, otherSession, "pixiv_illust_related", map[string]any{"illust_id": 9, "cursor": out.Pagination.NextCursor})
+	if !rejected.IsError || otherCalls != 0 {
+		t.Fatalf("cross-account cursor accepted: error=%v calls=%d", rejected.IsError, otherCalls)
+	}
+}
+
+func TestRelatedBatchRejectsRepeatedContinuation(t *testing.T) {
+	client := &fakeSDKClient{userID: 7, relatedArtworks: func(context.Context, pixiv.RelatedArtworksRequest) (sdk.Page[pixiv.Artwork], error) {
+		return sdk.Page[pixiv.Artwork]{Items: []pixiv.Artwork{testSDKIllust(101, "same", 7)}, Next: testPageCursor(1)}, nil
+	}}
+	session, closeSession := newSDKTestSession(t, client)
+	defer closeSession()
+	first := callTool(t, session, "pixiv_illust_related", map[string]any{"illust_id": 9})
+	var out outputs.Records
+	decodeStructured(t, first, &out)
+	second := callTool(t, session, "pixiv_illust_related", map[string]any{"illust_id": 9, "cursor": out.Pagination.NextCursor})
+	if !second.IsError {
+		t.Fatal("repeated continuation must not deliver the same batch again")
+	}
+}
+
+func TestRelatedBatchSkipsFilteredEmptyUpstream(t *testing.T) {
+	calls := 0
+	client := &fakeSDKClient{userID: 7, relatedArtworks: func(_ context.Context, req pixiv.RelatedArtworksRequest) (sdk.Page[pixiv.Artwork], error) {
+		calls++
+		item := testSDKIllust(int64(100+calls), "item", 7)
+		item.PageCount = calls
+		if calls > 1 && req.Cursor.IsZero() {
+			t.Error("continued from zero cursor")
+		}
+		var next sdk.Cursor
+		if calls < 3 {
+			next = testPageCursor(byte(calls))
+		}
+		return sdk.Page[pixiv.Artwork]{Items: []pixiv.Artwork{item}, Next: next}, nil
+	}}
+	session, closeSession := newSDKTestSession(t, client)
+	defer closeSession()
+	args := map[string]any{"illust_id": 9, "illust_filter": map[string]any{"min_pages": 2}}
+	first := callTool(t, session, "pixiv_illust_related", args)
+	var out outputs.Records
+	decodeStructured(t, first, &out)
+	if first.IsError || calls != 2 || len(out.Records) != 1 || out.Records[0].ID() != "102" || out.Pagination.NextCursor == "" {
+		t.Fatalf("filtered first batch=%+v calls=%d", out, calls)
+	}
+	args["cursor"] = out.Pagination.NextCursor
+	second := callTool(t, session, "pixiv_illust_related", args)
+	out = outputs.Records{}
+	decodeStructured(t, second, &out)
+	if second.IsError || calls != 3 || len(out.Records) != 1 || out.Records[0].ID() != "103" || out.Pagination.HasMore || out.Pagination.NextCursor != "" {
+		t.Fatalf("filtered last batch=%+v calls=%d", out, calls)
+	}
+}
+
+func TestRankingAndRecommendedDefaultBatchContinuation(t *testing.T) {
+	for _, name := range []string{"pixiv_illust_ranking", "pixiv_illust_recommended"} {
+		t.Run(name, func(t *testing.T) {
+			calls := 0
+			page := func(cursor sdk.Cursor) (sdk.Page[pixiv.Artwork], error) {
+				calls++
+				if cursor.IsZero() {
+					return sdk.Page[pixiv.Artwork]{Items: []pixiv.Artwork{testSDKIllust(201, "first", 7)}, Next: testPageCursor(1)}, nil
+				}
+				return sdk.Page[pixiv.Artwork]{Items: []pixiv.Artwork{testSDKIllust(202, "second", 7)}}, nil
+			}
+			client := &fakeSDKClient{userID: 7, illustRanking: func(_ context.Context, r pixiv.ArtworkRankingRequest) (sdk.Page[pixiv.Artwork], error) {
+				return page(r.Cursor)
+			}, recommendedArtworks: func(_ context.Context, r pixiv.RecommendedArtworksRequest, _ int) (sdk.Page[pixiv.Artwork], error) {
+				return page(r.Cursor)
+			}}
+			session, closeSession := newSDKTestSession(t, client)
+			defer closeSession()
+			first := callTool(t, session, name, map[string]any{})
+			var out outputs.Records
+			decodeStructured(t, first, &out)
+			if first.IsError || out.Pagination.NextCursor == "" || calls != 1 {
+				t.Fatalf("missing default batch continuation error=%v calls=%d", first.IsError, calls)
+			}
+			cursor := out.Pagination.NextCursor
+			second := callTool(t, session, name, map[string]any{"cursor": cursor})
+			out = outputs.Records{}
+			decodeStructured(t, second, &out)
+			if second.IsError || calls != 2 || len(out.Records) != 1 || out.Records[0].ID() != "202" || out.Pagination.NextCursor != "" || out.Pagination.HasMore {
+				t.Fatalf("second batch error=%v calls=%d output=%+v", second.IsError, calls, out)
+			}
+			for _, args := range []map[string]any{{"cursor": cursor, "limit": 1}, {"cursor": cursor, "illust_filter": map[string]any{"min_pages": 2}}, {"cursor": "bad"}} {
+				if r := callTool(t, session, name, args); !r.IsError {
+					t.Fatal("invalid continuation accepted")
+				}
+			}
+			other := "pixiv_illust_ranking"
+			if name == other {
+				other = "pixiv_illust_recommended"
+			}
+			if r := callTool(t, session, other, map[string]any{"cursor": cursor}); !r.IsError {
+				t.Fatal("cross-operation cursor accepted")
+			}
+			if calls != 2 {
+				t.Fatalf("invalid cursor reached data API: %d", calls)
+			}
+		})
+	}
+}
+
+func TestSearchDefaultBatchContinuation(t *testing.T) {
+	for _, strategy := range []string{"", "auto", "local", "best_effort"} {
+		t.Run("strategy="+strategy, func(t *testing.T) {
+			calls := 0
+			client := &fakeSDKClient{userID: 7, searchIllust: func(_ context.Context, r pixiv.SearchArtworksRequest) (sdk.Page[pixiv.Artwork], error) {
+				calls++
+				item := testSDKIllust(301, "first", 7)
+				item.TotalBookmarks = 25
+				if r.Cursor.IsZero() {
+					return sdk.Page[pixiv.Artwork]{Items: []pixiv.Artwork{item}, Next: testPageCursor(1)}, nil
+				}
+				item.ID = 302
+				return sdk.Page[pixiv.Artwork]{Items: []pixiv.Artwork{item}}, nil
+			}}
+			session, closeSession := newSDKTestSession(t, client)
+			defer closeSession()
+			args := map[string]any{"word": "cats"}
+			if strategy != "" {
+				args["bookmark_min"] = 20
+				args["bookmark_strategy"] = strategy
+			}
+			first := callTool(t, session, "pixiv_search_illust", args)
+			var out outputs.Records
+			decodeStructured(t, first, &out)
+			if first.IsError || out.Pagination.NextCursor == "" || calls != 1 {
+				t.Fatalf("missing search continuation error=%v calls=%d", first.IsError, calls)
+			}
+			cursor := out.Pagination.NextCursor
+			args["cursor"] = cursor
+			second := callTool(t, session, "pixiv_search_illust", args)
+			out = outputs.Records{}
+			decodeStructured(t, second, &out)
+			if second.IsError || calls != 2 || len(out.Records) != 1 || out.Records[0].ID() != "302" || out.Pagination.HasMore || out.Pagination.NextCursor != "" {
+				t.Fatalf("search second batch error=%v output=%+v calls=%d", second.IsError, out, calls)
+			}
+			if strategy != "" && (out.Filter == nil || out.Filter.Completeness != "complete_for_source") {
+				t.Fatalf("filter metadata lost: %+v", out.Filter)
+			}
+			args["word"] = "dogs"
+			if r := callTool(t, session, "pixiv_search_illust", args); !r.IsError {
+				t.Fatal("changed query accepted")
+			}
+			args["word"] = "cats"
+			args["limit"] = 1
+			if r := callTool(t, session, "pixiv_search_illust", args); !r.IsError {
+				t.Fatal("cursor plus limit accepted")
+			}
+			if calls != 2 {
+				t.Fatalf("invalid cursor reached data API: %d", calls)
+			}
+		})
 	}
 }
