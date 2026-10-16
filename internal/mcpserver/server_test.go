@@ -197,12 +197,12 @@ func TestUnifiedToolRegistry(t *testing.T) {
 	writes := map[string]struct{ destructive, idempotent bool }{
 		"pixiv_account_login_start": {true, false},
 		"pixiv_account_list":        {false, true}, "pixiv_account_status": {false, true}, "pixiv_account_use": {false, true},
-		"pixiv_add_bookmark": {false, true}, "pixiv_add_novel_bookmark": {false, true}, "pixiv_follow_user": {false, true},
-		"pixiv_remove_bookmark": {true, true}, "pixiv_remove_novel_bookmark": {true, true}, "pixiv_unfollow_user": {true, true},
-		"pixiv_create_artwork_comment": {false, false}, "pixiv_create_novel_comment": {false, false},
-		"pixiv_reply_artwork_comment": {false, false}, "pixiv_reply_novel_comment": {false, false},
-		"pixiv_stamp_artwork_comment": {false, false}, "pixiv_stamp_novel_comment": {false, false},
-		"pixiv_delete_artwork_comment": {true, true}, "pixiv_delete_novel_comment": {true, true},
+		"pixiv_bookmark_add": {false, true}, "pixiv_follow_user": {false, true},
+		"pixiv_bookmark_remove": {true, true}, "pixiv_unfollow_user": {true, true},
+		"pixiv_comment_create": {false, false},
+		"pixiv_comment_reply":  {false, false},
+		"pixiv_comment_stamp":  {false, false},
+		"pixiv_comment_delete": {true, true},
 	}
 	for _, tool := range tools.Tools {
 		if seen[tool.Name] {
@@ -368,4 +368,40 @@ func httpRegistryPorts(t *testing.T) pixiv.SDKPorts {
 	}
 	t.Cleanup(login.Close)
 	return pixiv.SDKPorts{Media: media, Accounts: accounts.Manager{Store: store, Load: func(context.Context) (accounts.LocalSnapshot, error) { return accounts.LocalSnapshot{}, nil }}, Login: login}
+}
+
+func TestConsolidatedToolRegistry(t *testing.T) {
+	server := mcpserver.New(httpRegistryPorts(t), pixiv.Account{}, fanbox.SDKPorts{}, nil)
+	ct, st := mcp.NewInMemoryTransports()
+	ss, err := server.Connect(t.Context(), st, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer ss.Close()
+	cs, err := mcp.NewClient(&mcp.Implementation{Name: "consolidated-registry", Version: "1"}, nil).Connect(t.Context(), ct, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer cs.Close()
+	result, err := cs.ListTools(t.Context(), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	names := map[string]bool{}
+	for _, tool := range result.Tools {
+		names[tool.Name] = true
+	}
+	for _, name := range []string{"pixiv_comments", "pixiv_comment_create", "pixiv_comment_reply", "pixiv_comment_stamp", "pixiv_comment_delete", "pixiv_bookmark_add", "pixiv_bookmark_remove", "fanbox_creator_posts", "fanbox_feed", "pixiv_user_bookmarks", "pixiv_user_relations", "pixiv_timeline_following", "pixiv_timeline_latest", "pixiv_mypixiv"} {
+		if !names[name] {
+			t.Errorf("missing unified tool %s", name)
+		}
+	}
+	for _, name := range []string{"fanbox_home", "fanbox_supporting", "fanbox_tagged_posts", "pixiv_add_bookmark", "pixiv_add_novel_bookmark", "pixiv_create_artwork_comment", "pixiv_create_novel_comment", "pixiv_delete_artwork_comment", "pixiv_delete_novel_comment", "pixiv_illust_comments", "pixiv_mypixiv_illusts", "pixiv_mypixiv_novels", "pixiv_mypixiv_users", "pixiv_novel_comments", "pixiv_related_users", "pixiv_remove_bookmark", "pixiv_remove_novel_bookmark", "pixiv_reply_artwork_comment", "pixiv_reply_novel_comment", "pixiv_stamp_artwork_comment", "pixiv_stamp_novel_comment", "pixiv_timeline_illust_following", "pixiv_timeline_illust_latest", "pixiv_timeline_novel_following", "pixiv_timeline_novel_latest", "pixiv_user_followers", "pixiv_user_following", "pixiv_user_novel_bookmarks"} {
+		if names[name] {
+			t.Errorf("retired tool remains registered: %s", name)
+		}
+	}
+	if len(result.Tools) != 53 {
+		t.Errorf("HTTP tools=%d, want 53", len(result.Tools))
+	}
 }

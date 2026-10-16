@@ -3,6 +3,7 @@ package pixiv_test
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"slices"
@@ -28,7 +29,7 @@ func TestSDKMutationTypedErrorIsMCPError(t *testing.T) {
 	session, closeSession := newSDKTestSession(t, client)
 	defer closeSession()
 
-	result := callTool(t, session, "pixiv_add_bookmark", map[string]any{"illust_id": 41})
+	result := callTool(t, session, "pixiv_bookmark_add", map[string]any{"kind": "artwork", "id": 41})
 	if !result.IsError {
 		t.Fatalf("typed SDK mutation failure must be an MCP error: %+v", result)
 	}
@@ -49,7 +50,7 @@ func TestNovelBookmarkMutationTypedErrorIsMCPError(t *testing.T) {
 	session, closeSession := newSDKTestSession(t, client)
 	defer closeSession()
 
-	result := callTool(t, session, "pixiv_add_novel_bookmark", map[string]any{"novel_id": 41})
+	result := callTool(t, session, "pixiv_bookmark_add", map[string]any{"kind": "novel", "id": 41})
 	if !result.IsError {
 		t.Fatalf("typed SDK novel mutation failure must be an MCP error: %+v", result)
 	}
@@ -100,10 +101,10 @@ func TestSDKMutationToolsReturnStructuredSuccess(t *testing.T) {
 		want     string
 		wantText string
 	}{
-		{"pixiv_add_bookmark", map[string]any{"illust_id": 9, "restrict": "private", "tags": []string{"one"}}, "add_bookmark", "Bookmarked artwork 9."},
-		{"pixiv_remove_bookmark", map[string]any{"illust_id": 9}, "remove_bookmark", "Removed bookmark from artwork 9."},
-		{"pixiv_add_novel_bookmark", map[string]any{"novel_id": 9, "restrict": "private", "tags": []string{"one"}}, "add_novel_bookmark", "Bookmarked novel 9."},
-		{"pixiv_remove_novel_bookmark", map[string]any{"novel_id": 9}, "remove_novel_bookmark", "Removed bookmark from novel 9."},
+		{"pixiv_bookmark_add", map[string]any{"kind": "artwork", "id": 9, "restrict": "private", "tags": []string{"one"}}, "add_bookmark", "Bookmarked artwork 9."},
+		{"pixiv_bookmark_remove", map[string]any{"kind": "artwork", "id": 9}, "remove_bookmark", "Removed bookmark from artwork 9."},
+		{"pixiv_bookmark_add", map[string]any{"kind": "novel", "id": 9, "restrict": "private", "tags": []string{"one"}}, "add_novel_bookmark", "Bookmarked novel 9."},
+		{"pixiv_bookmark_remove", map[string]any{"kind": "novel", "id": 9}, "remove_novel_bookmark", "Removed bookmark from novel 9."},
 		{"pixiv_follow_user", map[string]any{"user_id": 8, "restrict": "private"}, "follow_user", "Followed user 8."},
 		{"pixiv_unfollow_user", map[string]any{"user_id": 8}, "unfollow_user", "Unfollowed user 8."},
 	} {
@@ -433,7 +434,7 @@ func TestToolOutputValuesDoNotLeakResourceTransportCanary(t *testing.T) {
 		args map[string]any
 	}{
 		{"pixiv_user_artworks", map[string]any{"user_id": 7, "limit": 1}},
-		{"pixiv_user_bookmarks", map[string]any{"user_id": 7, "limit": 1}},
+		{"pixiv_user_bookmarks", map[string]any{"kind": "artwork", "user_id": 7, "limit": 1}},
 	} {
 		result := callTool(t, session, tc.tool, tc.args)
 		if result.IsError {
@@ -460,3 +461,54 @@ func TestToolErrorOutputDoesNotLeakCanary(t *testing.T) {
 }
 
 // illust_ranking 的 owner 契约：请求映射与全部 mode。
+
+func TestConsolidatedToolsRejectInvalidInputsBeforeAccountAccess(t *testing.T) {
+	tests := []struct {
+		name string
+		args map[string]any
+	}{
+		{"pixiv_comments", map[string]any{"id": 1}},
+		{"pixiv_comments", map[string]any{"kind": "all", "id": 1}},
+		{"pixiv_comment_create", map[string]any{"kind": "novel", "id": 1, "comment": ""}},
+		{"pixiv_bookmark_add", map[string]any{"kind": "artwork", "id": 0}},
+		{"pixiv_bookmark_remove", map[string]any{"kind": "artwork", "id": 1, "restrict": "private"}},
+		{"pixiv_user_bookmarks", map[string]any{}},
+		{"pixiv_user_bookmarks", map[string]any{"kind": "all"}},
+		{"pixiv_user_bookmarks", map[string]any{"kind": "novel", "illust_filter": map[string]any{}}},
+		{"pixiv_user_bookmarks", map[string]any{"kind": "artwork", "page": 2}},
+		{"pixiv_user_relations", map[string]any{}},
+		{"pixiv_user_relations", map[string]any{"relation": "blocked"}},
+		{"pixiv_user_relations", map[string]any{"relation": "followers", "user_filter": map[string]any{}}},
+		{"pixiv_timeline_following", map[string]any{}},
+		{"pixiv_timeline_following", map[string]any{"kind": "artwork", "novel_filter": map[string]any{}}},
+		{"pixiv_timeline_following", map[string]any{"kind": "novel", "illust_filter": map[string]any{}}},
+		{"pixiv_timeline_latest", map[string]any{}},
+		{"pixiv_timeline_latest", map[string]any{"content_type": "artwork"}},
+		{"pixiv_timeline_latest", map[string]any{"content_type": "novel", "illust_filter": map[string]any{}}},
+		{"pixiv_timeline_latest", map[string]any{"content_type": "manga", "novel_filter": map[string]any{}}},
+		{"pixiv_mypixiv", map[string]any{}},
+		{"pixiv_mypixiv", map[string]any{"kind": "all"}},
+		{"pixiv_mypixiv", map[string]any{"kind": "user", "illust_filter": map[string]any{}}},
+		{"pixiv_mypixiv", map[string]any{"kind": "artwork", "novel_filter": map[string]any{}}},
+		{"pixiv_mypixiv", map[string]any{"kind": "novel", "user_filter": map[string]any{}}},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			ports := testSDKPorts(t, &fakeSDKClient{})
+			accesses := 0
+			ports.ResolveAccount = func(context.Context, pixivmcpserver.Account) (pixivmcpserver.Account, error) {
+				accesses++
+				return pixivmcpserver.Account{}, errors.New("unexpected account access")
+			}
+			session, closeSession := newSDKTestSessionWithPorts(t, ports, pixivmcpserver.Account{})
+			defer closeSession()
+			result, err := session.CallTool(t.Context(), &mcp.CallToolParams{Name: tc.name, Arguments: tc.args})
+			if err == nil && (result == nil || !result.IsError) {
+				t.Fatalf("invalid input accepted: %+v", result)
+			}
+			if accesses != 0 {
+				t.Fatalf("invalid input accessed account %d times", accesses)
+			}
+		})
+	}
+}

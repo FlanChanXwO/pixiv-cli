@@ -13,12 +13,10 @@ import (
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/fanbox/tools/creators"
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/fanbox/tools/creatortags"
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/fanbox/tools/currentuser"
-	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/fanbox/tools/home"
+	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/fanbox/tools/feed"
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/fanbox/tools/openresource"
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/fanbox/tools/post"
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/fanbox/tools/resolveurl"
-	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/fanbox/tools/supporting"
-	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/fanbox/tools/taggedposts"
 	"github.com/FlanChanXwO/pixiv-cli/internal/shared/lifecycle"
 	fanboxsdk "github.com/FlanChanXwO/pixiv-cli/sdk/fanbox"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
@@ -64,10 +62,8 @@ func register(app *runtime.App, server *mcp.Server) {
 	creators.Register(app, server)
 	creatortags.Register(app, server)
 	creatorposts.Register(app, server)
-	taggedposts.Register(app, server)
 	post.Register(app, server)
-	home.Register(app, server)
-	supporting.Register(app, server)
+	feed.Register(app, server)
 	resolveurl.Register(app, server)
 	openresource.Register(app, server)
 }

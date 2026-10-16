@@ -222,14 +222,50 @@ func TestServerListsExpectedTools(t *testing.T) {
 		}
 	}
 	want := []string{
-		"pixiv_account_list", "pixiv_account_status", "pixiv_account_use", "pixiv_account_login_start", "pixiv_artwork_media", "pixiv_gallery_animation", "pixiv_show_gallery",
-		"pixiv_search_illust", "pixiv_search_novel", "pixiv_illust_detail",
-		"pixiv_illust_related", "pixiv_illust_ranking", "pixiv_search_user", "pixiv_illust_recommended", "pixiv_novel_detail", "pixiv_novel_content",
-		"pixiv_illust_series", "pixiv_novel_series", "pixiv_illust_comments", "pixiv_novel_comments",
-		"pixiv_recommended", "pixiv_trending_tags_illust", "pixiv_timeline_illust_following", "pixiv_timeline_novel_following",
-		"pixiv_timeline_illust_latest", "pixiv_timeline_novel_latest", "pixiv_mypixiv_users", "pixiv_mypixiv_illusts", "pixiv_mypixiv_novels",
-		"pixiv_user_detail", "pixiv_user_artworks", "pixiv_user_novels", "pixiv_user_bookmarks", "pixiv_user_novel_bookmarks", "pixiv_user_following", "pixiv_user_followers", "pixiv_related_users", "pixiv_blocked_users", "pixiv_bookmark_tags", "pixiv_bookmark_tags_all", "pixiv_bookmark_detail", "pixiv_bookmark_list_all", "pixiv_novel_bookmark_detail", "pixiv_add_bookmark", "pixiv_add_novel_bookmark",
-		"pixiv_remove_bookmark", "pixiv_remove_novel_bookmark", "pixiv_follow_user", "pixiv_unfollow_user", "pixiv_create_artwork_comment", "pixiv_reply_artwork_comment", "pixiv_stamp_artwork_comment", "pixiv_delete_artwork_comment", "pixiv_create_novel_comment", "pixiv_reply_novel_comment", "pixiv_stamp_novel_comment", "pixiv_delete_novel_comment", "pixiv_reverse_search",
+		"pixiv_account_list",
+		"pixiv_account_status",
+		"pixiv_account_use",
+		"pixiv_account_login_start",
+		"pixiv_artwork_media",
+		"pixiv_gallery_animation",
+		"pixiv_show_gallery",
+		"pixiv_search_illust",
+		"pixiv_search_novel",
+		"pixiv_illust_detail",
+		"pixiv_illust_related",
+		"pixiv_illust_ranking",
+		"pixiv_search_user",
+		"pixiv_illust_recommended",
+		"pixiv_novel_detail",
+		"pixiv_novel_content",
+		"pixiv_illust_series",
+		"pixiv_novel_series",
+		"pixiv_comments",
+		"pixiv_recommended",
+		"pixiv_trending_tags_illust",
+		"pixiv_timeline_following",
+		"pixiv_timeline_latest",
+		"pixiv_mypixiv",
+		"pixiv_user_detail",
+		"pixiv_user_artworks",
+		"pixiv_user_novels",
+		"pixiv_user_bookmarks",
+		"pixiv_user_relations",
+		"pixiv_blocked_users",
+		"pixiv_bookmark_tags",
+		"pixiv_bookmark_tags_all",
+		"pixiv_bookmark_detail",
+		"pixiv_bookmark_list_all",
+		"pixiv_novel_bookmark_detail",
+		"pixiv_bookmark_add",
+		"pixiv_bookmark_remove",
+		"pixiv_follow_user",
+		"pixiv_unfollow_user",
+		"pixiv_comment_create",
+		"pixiv_comment_reply",
+		"pixiv_comment_stamp",
+		"pixiv_comment_delete",
+		"pixiv_reverse_search",
 	}
 	slices.Sort(names)
 	slices.Sort(want)
@@ -316,11 +352,11 @@ func TestNovelBookmarkMutationSchemasExposeInputs(t *testing.T) {
 		if err != nil {
 			t.Fatalf("tools: %v", err)
 		}
-		if tool.Name == "pixiv_add_novel_bookmark" || tool.Name == "pixiv_remove_novel_bookmark" {
+		if tool.Name == "pixiv_bookmark_add" || tool.Name == "pixiv_bookmark_remove" {
 			tools[tool.Name] = tool
 		}
 	}
-	for _, name := range []string{"pixiv_add_novel_bookmark", "pixiv_remove_novel_bookmark"} {
+	for _, name := range []string{"pixiv_bookmark_add", "pixiv_bookmark_remove"} {
 		tool := tools[name]
 		if tool == nil {
 			t.Fatalf("%s tool is not registered", name)
@@ -336,10 +372,10 @@ func TestNovelBookmarkMutationSchemasExposeInputs(t *testing.T) {
 		if err := json.Unmarshal(encoded, &schema); err != nil {
 			t.Fatalf("decode %s input schema: %v", name, err)
 		}
-		if _, ok := schema.Properties["novel_id"]; !ok || !slices.Contains(schema.Required, "novel_id") {
-			t.Fatalf("%s schema = %s, want required novel_id", name, encoded)
+		if _, ok := schema.Properties["id"]; !ok || !slices.Contains(schema.Required, "id") {
+			t.Fatalf("%s schema = %s, want required id", name, encoded)
 		}
-		if name == "pixiv_add_novel_bookmark" {
+		if name == "pixiv_bookmark_add" {
 			for _, field := range []string{"restrict", "tags"} {
 				if _, ok := schema.Properties[field]; !ok {
 					t.Fatalf("%s schema missing %q: %s", name, field, encoded)
@@ -373,7 +409,7 @@ func TestMCPStdioKeepsJSONRPCOnStdout(t *testing.T) {
 		`{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"test","version":"1"}}}`,
 		`{"jsonrpc":"2.0","method":"notifications/initialized","params":{}}`,
 		`{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"pixiv_search_illust","arguments":{"word":"stdio-secret-canary"}}}`,
-		`{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"pixiv_add_bookmark","arguments":{"illust_id":41}}}`,
+		`{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"pixiv_bookmark_add","arguments":{"illust_id":41}}}`,
 		`{"jsonrpc":"2.0","id":4,"method":"tools/call","params":{"name":"pixiv_reverse_search","arguments":{"source":"https://stdio-source-secret.example/image.png?token=stdio-key"}}}`,
 	} {
 		if _, err := io.WriteString(stdin, message+"\n"); err != nil {
@@ -492,7 +528,7 @@ func TestOpenClientPassesCanceledContextAndClosesLease(t *testing.T) {
 func TestSDKToolsWithoutSDKReturnStructuredConfigurationError(t *testing.T) {
 	session, closeSession := newTestSession(t)
 	defer closeSession()
-	result := callTool(t, session, "pixiv_add_bookmark", map[string]any{"illust_id": 1})
+	result := callTool(t, session, "pixiv_bookmark_add", map[string]any{"kind": "artwork", "id": 1})
 	if !result.IsError {
 		t.Fatalf("SDK configuration failure must be an MCP error result: %+v", result)
 	}

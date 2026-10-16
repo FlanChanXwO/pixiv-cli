@@ -24,7 +24,7 @@ func TestTypedBookmarkReadsRouteNovelOperations(t *testing.T) {
 	session, closeSession := newSDKTestSession(t, client)
 	defer closeSession()
 
-	listResult := callTool(t, session, "pixiv_user_novel_bookmarks", map[string]any{
+	listResult := callTool(t, session, "pixiv_user_bookmarks", map[string]any{"kind": "novel",
 		"user_id": 90, "restrict": "public", "tag": "story", "limit": 1,
 	})
 	if listResult.IsError || client.novelBookmarksRequest.UserID != 90 || client.novelBookmarksRequest.Restrict != pixiv.RestrictPublic || client.novelBookmarksRequest.Tag != "story" {
@@ -82,7 +82,7 @@ func TestArtworkBookmarkSubtypeFiltersBeforeLogicalPagination(t *testing.T) {
 	session, closeSession := newSDKTestSession(t, client)
 	defer closeSession()
 
-	result := callTool(t, session, "pixiv_user_bookmarks", map[string]any{
+	result := callTool(t, session, "pixiv_user_bookmarks", map[string]any{"kind": "artwork",
 		"user_id":       90,
 		"restrict":      "private",
 		"illust_filter": map[string]any{"type": "manga"},
@@ -110,7 +110,7 @@ func TestTypedBookmarkReadsPreserveEmptyAndTypedErrors(t *testing.T) {
 	session, closeSession := newSDKTestSession(t, client)
 	defer closeSession()
 
-	emptyResult := callTool(t, session, "pixiv_user_novel_bookmarks", map[string]any{"user_id": 90})
+	emptyResult := callTool(t, session, "pixiv_user_bookmarks", map[string]any{"kind": "novel", "user_id": 90})
 	var emptyOut outputs.Records
 	decodeStructured(t, emptyResult, &emptyOut)
 	if emptyResult.IsError || emptyOut.Records == nil || len(emptyOut.Records) != 0 {
@@ -180,8 +180,8 @@ func TestTypedBookmarkSchemasKeepLegacyFieldsClosed(t *testing.T) {
 		name string
 		args map[string]any
 	}{
-		{"pixiv_user_novel_bookmarks", map[string]any{"user_id_to_check": 9}},
-		{"pixiv_user_novel_bookmarks", map[string]any{"user_id": 9, "max_bookmark_id": 1}},
+		{"pixiv_user_bookmarks", map[string]any{"kind": "novel", "user_id_to_check": 9}},
+		{"pixiv_user_bookmarks", map[string]any{"kind": "novel", "user_id": 9, "max_bookmark_id": 1}},
 		{"pixiv_bookmark_tags", map[string]any{"kind": "novel", "user_id": 9, "offset": 1}},
 		{"pixiv_novel_bookmark_detail", map[string]any{"illust_id": 9}},
 		{"pixiv_bookmark_detail", map[string]any{"novel_id": 9}},
@@ -190,5 +190,25 @@ func TestTypedBookmarkSchemasKeepLegacyFieldsClosed(t *testing.T) {
 		if err != nil || result == nil || !result.IsError || !resultHasText(result, "additional properties") {
 			t.Fatalf("%s args=%v err=%v", call.name, call.args, err)
 		}
+	}
+}
+
+func TestConsolidatedBookmarkReadsPreserveNullAndDefaultInputs(t *testing.T) {
+	client := &fakeSDKClient{}
+	session, closeSession := newSDKTestSession(t, client)
+	defer closeSession()
+	for _, kind := range []string{"artwork", "novel"} {
+		result := callTool(t, session, "pixiv_user_bookmarks", map[string]any{"kind": kind, "user_id": 0, "restrict": "", "page": nil, "limit": nil, "illust_filter": nil})
+		if result.IsError {
+			t.Fatalf("%s null/default inputs failed: %+v", kind, result)
+		}
+		var out outputs.Records
+		decodeStructured(t, result, &out)
+		if out.Records == nil {
+			t.Fatalf("%s empty result lost records array", kind)
+		}
+	}
+	if client.bookmarksRequest.UserID != 42 || client.novelBookmarksRequest.UserID != 42 {
+		t.Fatalf("default account mismatch: artwork=%+v novel=%+v", client.bookmarksRequest, client.novelBookmarksRequest)
 	}
 }

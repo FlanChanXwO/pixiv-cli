@@ -261,6 +261,9 @@ Gallery 动图通过 `pixiv_gallery_animation`（`prepare` / `status` / `release
 `fanbox_open_resource` 的 GET 返回真实 image/blob bytes 及可用的附件文件名；HEAD 仍只返回 metadata。
 
 [MCP tool 契约](docs/zh-CN/mcp-tools.md)记录了 tools、参数、structured output 和认证行为。
+
+评论、收藏写入及同构列表入口使用显式类型选择；更新已有 connector 时请查看[工具迁移表](docs/zh-CN/mcp-tools.md#工具迁移)。
+
 MCP 固定状态、错误和展示文本使用英文；Pixiv 元数据及用户提供的文本保持原文。
 
 `pixiv_reverse_search` 要求 `source`（server 本机常规文件、本机 `file://` URI 或 HTTP(S) URL）与 host 附件 `image`（`openai/fileParams`）恰好提供一个，并可能把图片上传给第三方 provider。

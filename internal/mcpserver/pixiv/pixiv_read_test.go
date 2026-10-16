@@ -113,7 +113,7 @@ func TestIllustCommentsMapsRequestAndPreservesEnvelope(t *testing.T) {
 	session, closeSession := newSDKTestSession(t, client)
 	defer closeSession()
 
-	result := callTool(t, session, "pixiv_illust_comments", map[string]any{"id": 20})
+	result := callTool(t, session, "pixiv_comments", map[string]any{"kind": "artwork", "id": 20})
 	if result.IsError || client.artworkCommentsRequest.ArtworkID != 20 {
 		t.Fatalf("artwork comments result=%+v request=%+v", result, client.artworkCommentsRequest)
 	}
@@ -135,7 +135,7 @@ func TestIllustCommentsPreservesOpaqueNumericAccessControl(t *testing.T) {
 	session, closeSession := newSDKTestSession(t, client)
 	defer closeSession()
 
-	result := callTool(t, session, "pixiv_illust_comments", map[string]any{"id": 20})
+	result := callTool(t, session, "pixiv_comments", map[string]any{"kind": "artwork", "id": 20})
 	if result.IsError {
 		t.Fatalf("artwork comments result=%+v", result)
 	}
@@ -407,12 +407,12 @@ func TestEntityToolsExposeOnlyRecordsContract(t *testing.T) {
 		{"pixiv_illust_related", map[string]any{"illust_id": 4}},
 		{"pixiv_illust_ranking", map[string]any{}},
 		{"pixiv_illust_recommended", map[string]any{}},
-		{"pixiv_timeline_illust_following", map[string]any{}},
+		{"pixiv_timeline_following", map[string]any{"kind": "artwork"}},
 		{"pixiv_search_user", map[string]any{"word": "record"}},
 		{"pixiv_user_detail", map[string]any{"user_id": 7}},
 		{"pixiv_user_artworks", map[string]any{"user_id": 90}},
-		{"pixiv_user_bookmarks", map[string]any{"user_id": 90}},
-		{"pixiv_user_following", map[string]any{"user_id": 90}},
+		{"pixiv_user_bookmarks", map[string]any{"kind": "artwork", "user_id": 90}},
+		{"pixiv_user_relations", map[string]any{"relation": "following", "user_id": 90}},
 	} {
 		t.Run(tool.name, func(t *testing.T) {
 			result := callTool(t, session, tool.name, tool.args)

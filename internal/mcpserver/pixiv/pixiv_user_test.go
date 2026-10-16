@@ -74,32 +74,32 @@ func TestTimelineAndMyPixivToolsRouteAppSDKRequestsWithRecords(t *testing.T) {
 		return structured
 	}
 
-	following := assertRecords("pixiv_timeline_novel_following", map[string]any{"restrict": "private", "limit": 1}, "1", "novel")
+	following := assertRecords("pixiv_timeline_following", map[string]any{"kind": "novel", "restrict": "private", "limit": 1}, "1", "novel")
 	if followingNovel.Restrict != pixiv.RestrictPrivate || !paginationHasMore(t, following) {
 		t.Fatalf("timeline_novel_following request=%+v structured=%#v", followingNovel, following)
 	}
 
-	illustNew := assertRecords("pixiv_timeline_illust_latest", map[string]any{"content_type": "manga", "limit": 1}, "2", "illust")
+	illustNew := assertRecords("pixiv_timeline_latest", map[string]any{"content_type": "manga", "limit": 1}, "2", "illust")
 	if latestIllust.ContentType != pixiv.SearchContentTypeManga || !paginationHasMore(t, illustNew) {
 		t.Fatalf("timeline_illust_latest request=%+v structured=%#v", latestIllust, illustNew)
 	}
 
-	assertRecords("pixiv_timeline_novel_latest", map[string]any{}, "3", "novel")
+	assertRecords("pixiv_timeline_latest", map[string]any{"content_type": "novel"}, "3", "novel")
 	if !latestNovel.Cursor.IsZero() {
 		t.Fatalf("timeline_novel_latest request=%+v", latestNovel)
 	}
 
-	assertRecords("pixiv_mypixiv_users", map[string]any{}, "4", "user")
+	assertRecords("pixiv_mypixiv", map[string]any{"kind": "user"}, "4", "user")
 	if !myPixivUsers.Cursor.IsZero() {
 		t.Fatalf("mypixiv_users request=%+v", myPixivUsers)
 	}
 
-	assertRecords("pixiv_mypixiv_illusts", map[string]any{}, "5", "illust")
+	assertRecords("pixiv_mypixiv", map[string]any{"kind": "artwork"}, "5", "illust")
 	if !myPixivIllusts.Cursor.IsZero() {
 		t.Fatalf("mypixiv_illusts request=%+v", myPixivIllusts)
 	}
 
-	assertRecords("pixiv_mypixiv_novels", map[string]any{}, "6", "novel")
+	assertRecords("pixiv_mypixiv", map[string]any{"kind": "novel"}, "6", "novel")
 	if !myPixivNovels.Cursor.IsZero() {
 		t.Fatalf("mypixiv_novels request=%+v", myPixivNovels)
 	}
@@ -119,7 +119,7 @@ func TestTimelineToolsValidateInputAndExposeSDKErrors(t *testing.T) {
 	defer closeSession()
 
 	result, err := session.CallTool(context.Background(), &mcp.CallToolParams{
-		Name:      "pixiv_timeline_illust_latest",
+		Name:      "pixiv_timeline_latest",
 		Arguments: map[string]any{"content_type": "ugoira"},
 	})
 	if err == nil && (result == nil || !result.IsError) {
@@ -130,8 +130,8 @@ func TestTimelineToolsValidateInputAndExposeSDKErrors(t *testing.T) {
 		name string
 		args map[string]any
 	}{
-		{"pixiv_mypixiv_novels", map[string]any{"page": 1, "limit": 0}},
-		{"pixiv_timeline_illust_latest", map[string]any{"content_type": "illust"}},
+		{"pixiv_mypixiv", map[string]any{"kind": "novel", "page": 1, "limit": 0}},
+		{"pixiv_timeline_latest", map[string]any{"content_type": "illust"}},
 	} {
 		result := callTool(t, session, tool.name, tool.args)
 		if !result.IsError {
@@ -328,7 +328,7 @@ func TestSDKUserListToolsUseCanonicalUserIDAndFilters(t *testing.T) {
 	session, closeSession := newSDKTestSession(t, client)
 	defer closeSession()
 
-	bookmarkResult := callTool(t, session, "pixiv_user_bookmarks", map[string]any{
+	bookmarkResult := callTool(t, session, "pixiv_user_bookmarks", map[string]any{"kind": "artwork",
 		"user_id": 9, "restrict": "private", "tag": "tag-a", "limit": 1,
 	})
 	var bookmarksOut outputs.Records
@@ -337,7 +337,7 @@ func TestSDKUserListToolsUseCanonicalUserIDAndFilters(t *testing.T) {
 		t.Fatalf("bookmarks request=%+v output=%+v", client.bookmarksRequest, bookmarksOut)
 	}
 
-	followingResult := callTool(t, session, "pixiv_user_following", map[string]any{
+	followingResult := callTool(t, session, "pixiv_user_relations", map[string]any{"relation": "following",
 		"user_id": 8, "restrict": "private", "page": 2, "limit": 1,
 	})
 	var followingOut outputs.Records
@@ -348,9 +348,9 @@ func TestSDKUserListToolsUseCanonicalUserIDAndFilters(t *testing.T) {
 
 	client.bookmarks = []pixiv.Artwork{}
 	client.following = []pixiv.UserPreview{}
-	bookmarkResult = callTool(t, session, "pixiv_user_bookmarks", map[string]any{"user_id": 9})
+	bookmarkResult = callTool(t, session, "pixiv_user_bookmarks", map[string]any{"kind": "artwork", "user_id": 9})
 	decodeStructured(t, bookmarkResult, &bookmarksOut)
-	followingResult = callTool(t, session, "pixiv_user_following", map[string]any{"user_id": 8})
+	followingResult = callTool(t, session, "pixiv_user_relations", map[string]any{"relation": "following", "user_id": 8})
 	decodeStructured(t, followingResult, &followingOut)
 	if len(bookmarksOut.Records) != 0 || len(followingOut.Records) != 0 {
 		t.Fatalf("empty records bookmarks=%+v following=%+v", bookmarksOut, followingOut)
@@ -364,10 +364,10 @@ func TestSDKUserListToolsSchemaRejectsRemovedLegacyFields(t *testing.T) {
 		name string
 		args map[string]any
 	}{
-		{"pixiv_user_bookmarks", map[string]any{"user_id_to_check": 9}},
-		{"pixiv_user_bookmarks", map[string]any{"user_id": 9, "max_bookmark_id": 1}},
-		{"pixiv_user_following", map[string]any{"user_id_to_check": 8}},
-		{"pixiv_user_following", map[string]any{"user_id": 8, "offset": 1}},
+		{"pixiv_user_bookmarks", map[string]any{"kind": "artwork", "user_id_to_check": 9}},
+		{"pixiv_user_bookmarks", map[string]any{"kind": "artwork", "user_id": 9, "max_bookmark_id": 1}},
+		{"pixiv_user_relations", map[string]any{"relation": "following", "user_id_to_check": 8}},
+		{"pixiv_user_relations", map[string]any{"relation": "following", "user_id": 8, "offset": 1}},
 	} {
 		result, err := session.CallTool(context.Background(), &mcp.CallToolParams{Name: call.name, Arguments: call.args})
 		if err != nil || result == nil || !result.IsError || !resultHasText(result, "additional properties") {

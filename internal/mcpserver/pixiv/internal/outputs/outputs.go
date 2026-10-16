@@ -349,7 +349,7 @@ func ListComments(ctx context.Context, app *runtime.App, id int64, novel bool, i
 	return CommentsResult(out, false, ""), out, nil
 }
 
-// ListUserRelations 在账号池重放边界内收集 followers/related/blocked 用户列表并
+// ListUserRelations 在账号池重放边界内收集 followers/following/related/blocked 用户列表并
 // 输出统一 records envelope。
 func ListUserRelations(ctx context.Context, app *runtime.App, kind string, userID int64, restrict string, input runtime.PageLimitIn, limit *int) (*mcp.CallToolResult, Records, error) {
 	userID, err := runtime.ResolveUserID(app, ctx, userID)
@@ -366,6 +366,8 @@ func ListUserRelations(ctx context.Context, app *runtime.App, kind string, userI
 		switch kind {
 		case "followers":
 			result, err = client.UserFollowers(ctx, pixiv.UserFollowersRequest{UserID: userID, Restrict: pixiv.Restrict(restrict), Cursor: cursor})
+		case "following":
+			result, err = client.UserFollowing(ctx, pixiv.UserFollowingRequest{UserID: userID, Restrict: pixiv.Restrict(restrict), Cursor: cursor})
 		case "related":
 			result, err = client.RelatedUsers(ctx, pixiv.RelatedUsersRequest{UserID: userID, Cursor: cursor})
 		case "blocked":

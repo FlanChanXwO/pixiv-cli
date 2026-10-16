@@ -261,8 +261,8 @@ func TestFanboxCreatorMissingIDIsStructuredError(t *testing.T) {
 		{name: "creator posts", tool: "fanbox_creator_posts", args: map[string]any{"creator_id": ""}, want: "creator_id is required"},
 		{name: "creator tags", tool: "fanbox_creator_tags", args: map[string]any{"creator_id": ""}, want: "creator_id is required"},
 		{name: "post", tool: "fanbox_post", args: map[string]any{"post_id": ""}, want: "post_id is required"},
-		{name: "tagged posts missing creator", tool: "fanbox_tagged_posts", args: map[string]any{"creator_id": "", "tag": "fanart"}, want: "creator_id and tag are required"},
-		{name: "tagged posts missing tag", tool: "fanbox_tagged_posts", args: map[string]any{"creator_id": "c", "tag": ""}, want: "creator_id and tag are required"},
+		{name: "tagged posts missing creator", tool: "fanbox_creator_posts", args: map[string]any{"creator_id": "", "tag": "fanart"}, want: "creator_id is required"},
+		{name: "tagged posts missing tag", tool: "fanbox_creator_posts", args: map[string]any{"creator_id": "c", "tag": ""}, want: "tag must be non-empty"},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
@@ -298,17 +298,17 @@ func TestFanboxPostListToolsMapIDsAndReturnPosts(t *testing.T) {
 			wantID: "p1", wantTitle: "creator posts",
 		},
 		{
-			name: "home", tool: "fanbox_home", args: map[string]any{}, wantURL: "/post.listHome?limit=10",
+			name: "home", tool: "fanbox_feed", args: map[string]any{"source": "home"}, wantURL: "/post.listHome?limit=10",
 			body:   `{"body":{"items":[{"id":"h1","title":"home","publishedDatetime":"2024-01-01T00:00:00Z","creatorId":"c","isRestricted":false,"isPinned":false}],"nextUrl":""}}`,
 			wantID: "h1", wantTitle: "home",
 		},
 		{
-			name: "supporting", tool: "fanbox_supporting", args: map[string]any{}, wantURL: "/post.listSupporting?limit=10",
+			name: "supporting", tool: "fanbox_feed", args: map[string]any{"source": "supporting"}, wantURL: "/post.listSupporting?limit=10",
 			body:   `{"body":{"items":[{"id":"s1","title":"supporting","publishedDatetime":"2024-01-01T00:00:00Z","creatorId":"c","isRestricted":false,"isPinned":false}],"nextUrl":""}}`,
 			wantID: "s1", wantTitle: "supporting",
 		},
 		{
-			name: "tagged posts", tool: "fanbox_tagged_posts",
+			name: "tagged posts", tool: "fanbox_creator_posts",
 			args: map[string]any{"creator_id": "c", "tag": "fanart"}, wantURL: "/post.listTagged?creatorId=c&tag=fanart",
 			body:   `{"body":{"posts":[{"id":"t1","title":"tagged","publishedDatetime":"2024-01-01T00:00:00Z","creatorId":"c","isRestricted":false,"isPinned":false}],"pageUrls":[]}}`,
 			wantID: "t1", wantTitle: "tagged",
@@ -432,7 +432,7 @@ func TestFanboxHomeMapsFeedAndReturnsPosts(t *testing.T) {
 	session, closeSession := newFanboxMCPSession(t, service)
 	defer closeSession()
 
-	result, err := session.CallTool(context.Background(), &mcp.CallToolParams{Name: "fanbox_home", Arguments: map[string]any{}})
+	result, err := session.CallTool(context.Background(), &mcp.CallToolParams{Name: "fanbox_feed", Arguments: map[string]any{"source": "home"}})
 	if err != nil {
 		t.Fatalf("call tool: %v", err)
 	}
@@ -459,8 +459,8 @@ func TestFanboxHomeUpstreamFailureIsStructuredError(t *testing.T) {
 		name string
 		tool string
 	}{
-		{name: "home", tool: "fanbox_home"},
-		{name: "supporting", tool: "fanbox_supporting"},
+		{name: "home", tool: "fanbox_feed"},
+		{name: "supporting", tool: "fanbox_feed"},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			service, _ := fanboxTestService(t, roundTripFunc(func(*http.Request) (*http.Response, error) {
@@ -469,7 +469,7 @@ func TestFanboxHomeUpstreamFailureIsStructuredError(t *testing.T) {
 			session, closeSession := newFanboxMCPSession(t, service)
 			defer closeSession()
 
-			result, err := session.CallTool(context.Background(), &mcp.CallToolParams{Name: test.tool, Arguments: map[string]any{}})
+			result, err := session.CallTool(context.Background(), &mcp.CallToolParams{Name: test.tool, Arguments: map[string]any{"source": test.name}})
 			if err != nil {
 				t.Fatalf("call tool: %v", err)
 			}
@@ -554,7 +554,7 @@ func TestFanboxSupportingMapsFeedAndReturnsPosts(t *testing.T) {
 	session, closeSession := newFanboxMCPSession(t, service)
 	defer closeSession()
 
-	result, err := session.CallTool(context.Background(), &mcp.CallToolParams{Name: "fanbox_supporting", Arguments: map[string]any{}})
+	result, err := session.CallTool(context.Background(), &mcp.CallToolParams{Name: "fanbox_feed", Arguments: map[string]any{"source": "supporting"}})
 	if err != nil {
 		t.Fatalf("call tool: %v", err)
 	}
@@ -585,7 +585,7 @@ func TestFanboxTaggedPostsMapsCreatorAndTag(t *testing.T) {
 	session, closeSession := newFanboxMCPSession(t, service)
 	defer closeSession()
 
-	result, err := session.CallTool(context.Background(), &mcp.CallToolParams{Name: "fanbox_tagged_posts", Arguments: map[string]any{"creator_id": "c", "tag": "fanart"}})
+	result, err := session.CallTool(context.Background(), &mcp.CallToolParams{Name: "fanbox_creator_posts", Arguments: map[string]any{"creator_id": "c", "tag": "fanart"}})
 	if err != nil {
 		t.Fatalf("call tool: %v", err)
 	}
@@ -1053,5 +1053,44 @@ func TestFanboxMCPOpenResourceCancellationClosesBody(t *testing.T) {
 	case <-done:
 	case <-time.After(5 * time.Second):
 		t.Fatal("canceled call did not return")
+	}
+}
+
+func TestConsolidatedFeedInputsRejectBeforeOpeningSession(t *testing.T) {
+	opens := 0
+	server := mcp.NewServer(&mcp.Implementation{Name: "input-validation", Version: "1"}, nil)
+	fanboxmcpserver.Register(server, fanboxmcpserver.SDKPorts{Open: func(context.Context, fanboxmcpserver.Account) (*fanboxsdk.Client, error) {
+		opens++
+		return nil, errors.New("unexpected session access")
+	}}, nil)
+	ct, st := mcp.NewInMemoryTransports()
+	ss, err := server.Connect(t.Context(), st, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer ss.Close()
+	cs, err := mcp.NewClient(&mcp.Implementation{Name: "validation-client", Version: "1"}, nil).Connect(t.Context(), ct, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer cs.Close()
+	for _, tc := range []struct {
+		name string
+		args map[string]any
+	}{
+		{"fanbox_feed", map[string]any{}},
+		{"fanbox_feed", map[string]any{"source": "all"}},
+		{"fanbox_feed", map[string]any{"source": "home", "unknown": true}},
+		{"fanbox_feed", map[string]any{"source": "supporting", "page": 2}},
+		{"fanbox_creator_posts", map[string]any{"creator_id": "c", "tag": ""}},
+		{"fanbox_creator_posts", map[string]any{"creator_id": "c", "tag": nil}},
+	} {
+		result, err := cs.CallTool(t.Context(), &mcp.CallToolParams{Name: tc.name, Arguments: tc.args})
+		if err == nil && (result == nil || !result.IsError) {
+			t.Fatalf("invalid %s args accepted: %+v", tc.name, result)
+		}
+		if opens != 0 {
+			t.Fatalf("invalid %s args opened session %d times", tc.name, opens)
+		}
 	}
 }

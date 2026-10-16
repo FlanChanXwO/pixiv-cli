@@ -10,61 +10,47 @@ import (
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/tools/account_login_start"
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/tools/account_status"
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/tools/account_use"
-	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/tools/add_bookmark"
-	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/tools/add_novel_bookmark"
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/tools/artwork_media"
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/tools/blocked_users"
+	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/tools/bookmark_add"
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/tools/bookmark_detail"
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/tools/bookmark_list_all"
+	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/tools/bookmark_remove"
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/tools/bookmark_tags"
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/tools/bookmark_tags_all"
-	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/tools/create_artwork_comment"
-	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/tools/create_novel_comment"
-	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/tools/delete_artwork_comment"
-	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/tools/delete_novel_comment"
+	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/tools/comment_create"
+	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/tools/comment_delete"
+	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/tools/comment_reply"
+	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/tools/comment_stamp"
+	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/tools/comments"
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/tools/download"
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/tools/follow_user"
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/tools/gallery_animation"
-	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/tools/illust_comments"
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/tools/illust_detail"
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/tools/illust_ranking"
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/tools/illust_recommended"
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/tools/illust_related"
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/tools/illust_series"
-	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/tools/mypixiv_illusts"
-	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/tools/mypixiv_novels"
-	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/tools/mypixiv_users"
+	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/tools/mypixiv"
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/tools/novel_bookmark_detail"
-	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/tools/novel_comments"
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/tools/novel_content"
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/tools/novel_detail"
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/tools/novel_series"
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/tools/recommended"
-	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/tools/related_users"
-	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/tools/remove_bookmark"
-	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/tools/remove_novel_bookmark"
-	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/tools/reply_artwork_comment"
-	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/tools/reply_novel_comment"
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/tools/reverse_search"
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/tools/search_illust"
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/tools/search_novel"
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/tools/search_user"
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/tools/show_gallery"
-	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/tools/stamp_artwork_comment"
-	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/tools/stamp_novel_comment"
-	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/tools/timeline_illust_following"
-	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/tools/timeline_illust_latest"
-	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/tools/timeline_novel_following"
-	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/tools/timeline_novel_latest"
+	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/tools/timeline_following"
+	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/tools/timeline_latest"
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/tools/trending_tags_illust"
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/tools/unfollow_user"
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/tools/user_artworks"
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/tools/user_bookmarks"
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/tools/user_detail"
-	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/tools/user_followers"
-	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/tools/user_following"
-	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/tools/user_novel_bookmarks"
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/tools/user_novels"
+	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/tools/user_relations"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
@@ -106,55 +92,41 @@ func Register(server *mcp.Server, ports SDKPorts, account Account) {
 		gallery_animation.Register(app, server)
 		show_gallery.Register(app, server)
 	}
-	add_bookmark.Register(app, server)
-	add_novel_bookmark.Register(app, server)
+	bookmark_add.Register(app, server)
 	blocked_users.Register(app, server)
-	create_artwork_comment.Register(app, server)
-	create_novel_comment.Register(app, server)
-	delete_artwork_comment.Register(app, server)
-	delete_novel_comment.Register(app, server)
+	comment_create.Register(app, server)
+	comment_delete.Register(app, server)
 	bookmark_detail.Register(app, server)
 	bookmark_list_all.Register(app, server)
 	bookmark_tags.Register(app, server)
 	bookmark_tags_all.Register(app, server)
 	follow_user.Register(app, server)
-	illust_comments.Register(app, server)
+	comments.Register(app, server)
 	illust_detail.Register(app, server)
 	illust_ranking.Register(app, server)
 	illust_recommended.Register(app, server)
 	illust_related.Register(app, server)
 	illust_series.Register(app, server)
-	mypixiv_illusts.Register(app, server)
-	mypixiv_novels.Register(app, server)
-	mypixiv_users.Register(app, server)
+	mypixiv.Register(app, server)
 	novel_bookmark_detail.Register(app, server)
-	novel_comments.Register(app, server)
 	novel_content.Register(app, server)
 	novel_detail.Register(app, server)
 	novel_series.Register(app, server)
 	recommended.Register(app, server)
-	related_users.Register(app, server)
-	reply_artwork_comment.Register(app, server)
-	reply_novel_comment.Register(app, server)
-	remove_bookmark.Register(app, server)
-	remove_novel_bookmark.Register(app, server)
+	comment_reply.Register(app, server)
+	bookmark_remove.Register(app, server)
 	reverse_search.Register(app, server)
 	search_illust.Register(app, server)
 	search_novel.Register(app, server)
 	search_user.Register(app, server)
-	stamp_artwork_comment.Register(app, server)
-	stamp_novel_comment.Register(app, server)
-	timeline_illust_following.Register(app, server)
-	timeline_illust_latest.Register(app, server)
-	timeline_novel_following.Register(app, server)
-	timeline_novel_latest.Register(app, server)
+	comment_stamp.Register(app, server)
+	timeline_following.Register(app, server)
+	timeline_latest.Register(app, server)
 	trending_tags_illust.Register(app, server)
 	unfollow_user.Register(app, server)
 	user_artworks.Register(app, server)
 	user_bookmarks.Register(app, server)
 	user_detail.Register(app, server)
-	user_followers.Register(app, server)
-	user_following.Register(app, server)
-	user_novel_bookmarks.Register(app, server)
+	user_relations.Register(app, server)
 	user_novels.Register(app, server)
 }

@@ -28,10 +28,8 @@ func TestFeedRecommendationSchemasMatchLegacyContracts(t *testing.T) {
 		{name: "pixiv_illust_ranking", fields: []string{"cursor", "date", "illust_filter", "limit", "mode", "page"}},
 		{name: "pixiv_illust_recommended", fields: []string{"cursor", "illust_filter", "limit", "page"}},
 		{name: "pixiv_recommended", fields: []string{"cursor", "illust_filter", "kind", "limit", "novel_filter", "page", "user_filter"}},
-		{name: "pixiv_timeline_illust_following", fields: []string{"illust_filter", "limit", "page", "restrict"}},
-		{name: "pixiv_timeline_novel_following", fields: []string{"limit", "novel_filter", "page", "restrict"}},
-		{name: "pixiv_timeline_illust_latest", fields: []string{"content_type", "illust_filter", "limit", "page"}},
-		{name: "pixiv_timeline_novel_latest", fields: []string{"limit", "novel_filter", "page"}},
+		{name: "pixiv_timeline_following", fields: []string{"kind", "illust_filter", "novel_filter", "limit", "page", "restrict"}},
+		{name: "pixiv_timeline_latest", fields: []string{"content_type", "illust_filter", "novel_filter", "limit", "page"}},
 		{name: "pixiv_trending_tags_illust", fields: []string{}},
 	} {
 		t.Run("input/"+test.name, func(t *testing.T) {
@@ -50,9 +48,9 @@ func TestFeedRecommendationSchemasMatchLegacyContracts(t *testing.T) {
 		"day_female_r18", "week_r18", "week_r18g",
 	})
 	assertSchemaEnum(t, feedSchemaProperty(t, byName["pixiv_recommended"].InputSchema, "kind"), []string{"all", "illust", "manga", "novel", "user"})
-	assertSchemaEnum(t, feedSchemaProperty(t, byName["pixiv_timeline_illust_following"].InputSchema, "restrict"), []string{"public", "private"})
-	assertSchemaEnum(t, feedSchemaProperty(t, byName["pixiv_timeline_novel_following"].InputSchema, "restrict"), []string{"public", "private"})
-	assertSchemaEnum(t, feedSchemaProperty(t, byName["pixiv_timeline_illust_latest"].InputSchema, "content_type"), []string{"illust", "manga"})
+	assertSchemaEnum(t, feedSchemaProperty(t, byName["pixiv_timeline_following"].InputSchema, "restrict"), []string{"public", "private"})
+	assertSchemaEnum(t, feedSchemaProperty(t, byName["pixiv_timeline_following"].InputSchema, "restrict"), []string{"public", "private"})
+	assertSchemaEnum(t, feedSchemaProperty(t, byName["pixiv_timeline_latest"].InputSchema, "content_type"), []string{"illust", "manga", "novel"})
 
 	recommendedOutput := feedSchemaObject(t, "recommended output", byName["pixiv_recommended"].OutputSchema)
 	assertSchemaFields(t, recommendedOutput, []string{"pagination", "records"})
@@ -229,8 +227,8 @@ func TestFeedRecommendationLegacyJSONReplayPreservesStructuredContracts(t *testi
 		},
 		{
 			name: "illust following defaults public",
-			tool: "pixiv_timeline_illust_following",
-			args: map[string]any{},
+			tool: "pixiv_timeline_following",
+			args: map[string]any{"kind": "artwork"},
 			client: &fakeSDKClient{followingIllusts: func(context.Context, pixiv.FollowingArtworksRequest) (sdk.Page[pixiv.Artwork], error) {
 				return sdk.Page[pixiv.Artwork]{Items: []pixiv.Artwork{testSDKIllust(31, "following", 3)}}, nil
 			}},
@@ -238,8 +236,8 @@ func TestFeedRecommendationLegacyJSONReplayPreservesStructuredContracts(t *testi
 		},
 		{
 			name: "novel following defaults public",
-			tool: "pixiv_timeline_novel_following",
-			args: map[string]any{},
+			tool: "pixiv_timeline_following",
+			args: map[string]any{"kind": "novel"},
 			client: &fakeSDKClient{followingNovels: func(context.Context, pixiv.FollowingNovelsRequest) (sdk.Page[pixiv.Novel], error) {
 				return sdk.Page[pixiv.Novel]{Items: []pixiv.Novel{{ID: 32, User: pixiv.User{ID: 3}, Tags: []pixiv.Tag{}}}}, nil
 			}},
@@ -247,7 +245,7 @@ func TestFeedRecommendationLegacyJSONReplayPreservesStructuredContracts(t *testi
 		},
 		{
 			name: "latest illust preserves content type",
-			tool: "pixiv_timeline_illust_latest",
+			tool: "pixiv_timeline_latest",
 			args: map[string]any{"content_type": "manga"},
 			client: &fakeSDKClient{latestIllusts: func(context.Context, pixiv.LatestArtworksRequest) (sdk.Page[pixiv.Artwork], error) {
 				return sdk.Page[pixiv.Artwork]{Items: []pixiv.Artwork{testSDKIllust(33, "latest", 3)}}, nil
@@ -256,8 +254,8 @@ func TestFeedRecommendationLegacyJSONReplayPreservesStructuredContracts(t *testi
 		},
 		{
 			name: "latest novel",
-			tool: "pixiv_timeline_novel_latest",
-			args: map[string]any{},
+			tool: "pixiv_timeline_latest",
+			args: map[string]any{"content_type": "novel"},
 			client: &fakeSDKClient{latestNovels: func(context.Context, pixiv.LatestNovelsRequest) (sdk.Page[pixiv.Novel], error) {
 				return sdk.Page[pixiv.Novel]{Items: []pixiv.Novel{{ID: 34, User: pixiv.User{ID: 3}, Tags: []pixiv.Tag{}}}}, nil
 			}},
@@ -320,7 +318,7 @@ func TestTimelineIllustFilterFillsLogicalPageAcrossBatches(t *testing.T) {
 	session, closeSession := newSDKTestSession(t, client)
 	defer closeSession()
 
-	result := callTool(t, session, "pixiv_timeline_illust_latest", map[string]any{
+	result := callTool(t, session, "pixiv_timeline_latest", map[string]any{
 		"content_type":  "illust",
 		"illust_filter": map[string]any{"type": "illust"},
 		"limit":         1,

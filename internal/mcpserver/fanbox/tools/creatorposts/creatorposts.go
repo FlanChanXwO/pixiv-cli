@@ -7,18 +7,20 @@ import (
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/fanbox/internal/runtime"
 	"github.com/FlanChanXwO/pixiv-cli/sdk"
 	fanbox "github.com/FlanChanXwO/pixiv-cli/sdk/fanbox"
+	"github.com/google/jsonschema-go/jsonschema"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
 // Register 注册 fanbox_creator_posts。
 func Register(app *runtime.App, server *mcp.Server) {
-	runtime.AddTool(app, server, &mcp.Tool{Name: "fanbox_creator_posts", Annotations: &mcp.ToolAnnotations{ReadOnlyHint: true, DestructiveHint: new(false), IdempotentHint: true, OpenWorldHint: new(true)}, Description: "List posts from a FANBOX creator."}, func(ctx context.Context, request *mcp.CallToolRequest, input in) (*mcp.CallToolResult, runtime.PostsOut, error) {
+	runtime.AddTool(app, server, &mcp.Tool{Name: "fanbox_creator_posts", Annotations: &mcp.ToolAnnotations{ReadOnlyHint: true, DestructiveHint: new(false), IdempotentHint: true, OpenWorldHint: new(true)}, InputSchema: inputSchema(), Description: "List posts from a FANBOX creator, optionally for one non-empty tag."}, func(ctx context.Context, request *mcp.CallToolRequest, input in) (*mcp.CallToolResult, runtime.PostsOut, error) {
 		return handle(ctx, app, input)
 	})
 }
 
 type in struct {
-	CreatorID string `json:"creator_id" jsonschema:"required FANBOX creator id"`
+	Tag       *string `json:"tag,omitempty" jsonschema:"optional non-empty tag"`
+	CreatorID string  `json:"creator_id" jsonschema:"required FANBOX creator id"`
 	runtime.ListIn
 }
 
@@ -31,6 +33,9 @@ func handle(ctx context.Context, app *runtime.App, input in) (*mcp.CallToolResul
 	if input.CreatorID == "" {
 		return runtime.Result(out, true, "Error: creator_id is required"), out, nil
 	}
+	if input.Tag != nil && *input.Tag == "" {
+		return runtime.Result(out, true, "Error: tag must be non-empty"), out, nil
+	}
 	lease, err := app.OpenClient(ctx)
 	if err != nil {
 		return runtime.Result(out, true, "Error: "+err.Error()), out, nil
@@ -39,6 +44,18 @@ func handle(ctx context.Context, app *runtime.App, input in) (*mcp.CallToolResul
 	client := lease.Value()
 	creatorID := input.CreatorID
 	return runtime.PostList(ctx, app, client, input.Limit, plan, func(ctx context.Context, client *fanbox.Client, cursor sdk.Cursor) (sdk.Page[fanbox.Post], error) {
+		if input.Tag != nil {
+			return client.TaggedPosts(ctx, fanbox.TaggedPostsRequest{CreatorID: creatorID, Tag: *input.Tag, Cursor: cursor})
+		}
 		return client.CreatorPosts(ctx, fanbox.CreatorPostsRequest{CreatorID: creatorID, Cursor: cursor})
 	})
+}
+
+func inputSchema() *jsonschema.Schema {
+	schema, err := jsonschema.For[in](nil)
+	if err != nil {
+		panic(err)
+	}
+	schema.Properties["tag"] = &jsonschema.Schema{Type: "string", Description: "Optional non-empty creator tag."}
+	return schema
 }

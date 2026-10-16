@@ -221,12 +221,12 @@ assert.ok(visibility);assert.equal(bookmark.disabled,true,'unknown state prohibi
 const query=latest('tools/call');assert.equal(query.params.name,'pixiv_bookmark_detail');
 receive({id:query.id,result:{structuredContent:{bookmarked:false,restrict:'public',tags:['keep']}}});await flush();
 assert.equal(bookmark.disabled,false);assert.equal(remove.hidden,true);visibility.value='private';bookmark.events.click();
-const add=latest('tools/call');assert.deepEqual(add.params,{name:'pixiv_add_bookmark',arguments:{illust_id:42,restrict:'private',tags:['keep']}});
+const add=latest('tools/call');assert.deepEqual(add.params,{name:'pixiv_bookmark_add',arguments:{kind:'artwork',id:42,restrict:'private',tags:['keep']}});
 assert.equal(bookmark.disabled,true);receive({id:add.id,result:{}});await flush();
 const confirm=latest('tools/call');assert.equal(confirm.params.name,'pixiv_bookmark_detail');
 receive({id:confirm.id,result:{structuredContent:{bookmarked:true,restrict:'private',tags:['keep']}}});await flush();
 assert.ok(button('Save bookmark'));assert.equal(remove.hidden,false);assert.equal(visibility.value,'private');
-remove.events.click();const removal=latest('tools/call');assert.equal(removal.params.name,'pixiv_remove_bookmark');
+remove.events.click();const removal=latest('tools/call');assert.deepEqual(removal.params,{name:'pixiv_bookmark_remove',arguments:{kind:'artwork',id:42}});
 receive({id:removal.id,result:{isError:true}});await flush();assert.equal(bookmark.disabled,true,'unconfirmed write requires state refresh');
 assert.ok(elements(cards).some(n=>n.textContent.includes('Bookmark change not confirmed')));
 refresh.events.click();const recovery=latest('tools/call');receive({id:recovery.id,result:{structuredContent:{bookmarked:false,restrict:'public',tags:[]}}});await flush();assert.equal(bookmark.disabled,false);

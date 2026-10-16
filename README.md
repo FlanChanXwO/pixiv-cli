@@ -261,6 +261,9 @@ On supporting MCP Apps hosts, explicitly call `pixiv_show_gallery` with artwork 
 `fanbox_open_resource` returns image/blob bytes and available attachment filenames for GET; HEAD remains metadata-only.
 
 See the [MCP tool contract](docs/en/mcp-tools.md) for tools, parameters, structured output, and authentication behavior.
+
+Comments, bookmark writes and homogeneous feeds use explicit type selectors; see the [tool migration table](docs/en/mcp-tools.md#tool-migration) when updating an existing connector.
+
 Fixed MCP status, error, and display text is English; Pixiv metadata and user-supplied text are preserved verbatim.
 
 The `pixiv_reverse_search` tool accepts exactly one of `source` (a server-local regular file, local `file://` URI, or HTTP(S) URL) or a host attachment `image` (`openai/fileParams`) and may upload

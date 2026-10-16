@@ -126,10 +126,18 @@ func TestPixivBinaryUnifiedStdioWithoutOwner(t *testing.T) {
 	for _, tool := range tools.Tools {
 		names = append(names, tool.Name)
 	}
+	require.Len(t, names, 49)
+	require.Contains(t, names, "pixiv_comments")
+	require.Contains(t, names, "fanbox_feed")
+	require.NotContains(t, names, "pixiv_illust_comments")
 	require.Contains(t, names, "pixiv_search_illust")
 	require.Contains(t, names, "fanbox_post")
 	require.Contains(t, names, "pixiv_download")
 	require.NotContains(t, names, "pixiv_show_gallery")
+	invalid, callErr := session.CallTool(t.Context(), &mcp.CallToolParams{Name: "pixiv_comments", Arguments: map[string]any{"kind": "novel", "id": 0}})
+	require.NoError(t, callErr)
+	require.True(t, invalid.IsError)
+
 	result, err := session.CallTool(t.Context(), &mcp.CallToolParams{Name: "pixiv_download", Arguments: map[string]any{"pages": "0", "src": "42"}})
 	require.NoError(t, err)
 	require.True(t, result.IsError)
@@ -240,9 +248,17 @@ func TestPixivBinaryHTTPOAuthDiscovery(t *testing.T) {
 	for _, tool := range tools.Tools {
 		names = append(names, tool.Name)
 	}
+	require.Len(t, names, 53)
+	require.Contains(t, names, "pixiv_comments")
+	require.Contains(t, names, "fanbox_feed")
+	require.NotContains(t, names, "fanbox_home")
 	require.Contains(t, names, "pixiv_show_gallery")
 	require.Contains(t, names, "fanbox_current_user")
 	require.NotContains(t, names, "pixiv_download")
+	invalid, callErr := session.CallTool(t.Context(), &mcp.CallToolParams{Name: "pixiv_comments", Arguments: map[string]any{"kind": "novel", "id": 0}})
+	require.NoError(t, callErr)
+	require.True(t, invalid.IsError)
+
 	result, err := session.CallTool(ctx, &mcp.CallToolParams{Name: "pixiv_illust_detail", Arguments: map[string]any{"illust_id": 1}})
 	require.NoError(t, err)
 	require.True(t, result.IsError, "empty local accounts must fail structurally without upstream access")

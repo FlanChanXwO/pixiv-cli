@@ -80,7 +80,7 @@ handler 执行后的失败会保留该 tool 的 structured result 并设置
 - `page` 从 1 开始，必须配合正数 `limit`。
 - 实体 filter 在逻辑分页前执行，并按稳定实体身份去重。
 
-`pixiv_illust_comments` 与 `pixiv_novel_comments` 发布封闭的 `{id, page, limit}` 输入 object。
+`pixiv_comments` 发布封闭的 `{kind, id, page, limit}` 输入 object，必填 `kind=artwork|novel`。
 `id` 必须为正数；输出 envelope 为 `{comments, pagination}`，并在上游明确提供时
 附带 `total` 与 `access_control`，否则省略这些字段。作品评论与小说评论分别使用
 当前的 comments operation。当当前 App API 提供 opaque numeric
@@ -237,7 +237,32 @@ Pixiv tools 统一使用 `pixiv_` 前缀，FANBOX 使用 `fanbox_`；不注册�
 
 stdio 注册 `pixiv_download`（`src` 或 `srcs`，可选 `pages`、`quality`、`ugoira_mode`、`delivery=local_path`）与 `pixiv_download_random_from_recommendation`（可选 `count`，默认 5，沿用 1–20 范围，及相同下载选项）。复用共享 downloader 和 CLI 的下载目录、文件名与目录模板；返回 `items`、`files`（路径、file URI、MIME、大小、页码）、warning 与 partial failure，失败设 `isError=true`。下载工具声明 write/destructive，因为共享保存器可能替换已有目标文件。不暴露任意目标目录参数；HTTP 不注册文件系统下载工具。旧 `download`、`download_random_from_recommendation` 迁移到带前缀的新名，不注册永久别名。
 
-`pixiv_novel_bookmark_tags` 迁移到 `pixiv_bookmark_tags(kind="novel")`，`kind="artwork"` 为原有默认行为。保留分页、可见性及标签输出 envelope；不注册旧名称，其他带前缀操作保留契约。
+`pixiv_novel_bookmark_tags` 迁移到 `pixiv_bookmark_tags(kind="novel")`，`kind="artwork"` 为原有默认行为。保留分页、可见性及标签输出 envelope；不注册旧名称；其它合并入口见下方迁移表。
+
+## 工具迁移
+
+统一工具要求显式选择类型，不默认目标类型。下列旧名称不再注册，也不保留永久别名。输出 Schema、mutation `action` 值与输出 ID 字段不变；仅表中指定的目标输入统一为 `id`。错误实体的 filter 在访问账号前拒绝。
+
+| 原入口 | 当前调用与参数迁移 |
+| --- | --- |
+| `pixiv_illust_comments`、`pixiv_novel_comments` | `pixiv_comments`；分别增加 `kind=artwork`、`novel`，保留 `id` |
+| `pixiv_create_artwork_comment`、`pixiv_create_novel_comment` | `pixiv_comment_create`；分别增加 `kind=artwork`、`novel`，`illust_id`、`novel_id` 改为 `id` |
+| `pixiv_reply_artwork_comment`、`pixiv_reply_novel_comment` | `pixiv_comment_reply`；同上目标映射，保留 `parent_comment_id` |
+| `pixiv_stamp_artwork_comment`、`pixiv_stamp_novel_comment` | `pixiv_comment_stamp`；同上目标映射，保留 `stamp_id` 和可选 `comment` |
+| `pixiv_delete_artwork_comment`、`pixiv_delete_novel_comment` | `pixiv_comment_delete`；分别增加 `kind=artwork`、`novel`，保留 `comment_id` |
+| `pixiv_add_bookmark`、`pixiv_add_novel_bookmark` | `pixiv_bookmark_add`；分别增加 `kind=artwork`、`novel`，目标改为 `id`，保留 `restrict` 和 `tags` |
+| `pixiv_remove_bookmark`、`pixiv_remove_novel_bookmark` | `pixiv_bookmark_remove`；分别增加 `kind=artwork`、`novel`，目标改为 `id` |
+| `fanbox_creator_posts`、`fanbox_tagged_posts` | `fanbox_creator_posts`；前者省略 `tag`，后者保留必填非空 tag |
+| `fanbox_home`、`fanbox_supporting` | `fanbox_feed(source=home)`、`fanbox_feed(source=supporting)` |
+| `pixiv_user_bookmarks`、`pixiv_user_novel_bookmarks` | `pixiv_user_bookmarks`；分别增加 `kind=artwork`、`novel` |
+| `pixiv_user_followers`、`pixiv_user_following`、`pixiv_related_users` | `pixiv_user_relations`；分别增加 `relation=followers`、`following`、`related` |
+| `pixiv_timeline_illust_following`、`pixiv_timeline_novel_following` | `pixiv_timeline_following`；分别增加 `kind=artwork`、`novel` |
+| `pixiv_timeline_illust_latest`、`pixiv_timeline_novel_latest` | `pixiv_timeline_latest`；前者保留 `content_type=illust\|manga`，后者增加 `content_type=novel` |
+| `pixiv_mypixiv_illusts`、`pixiv_mypixiv_novels`、`pixiv_mypixiv_users` | `pixiv_mypixiv`；分别增加 `kind=artwork`、`novel`、`user` |
+
+`kind=artwork` 保留原 artwork 操作中的漫画与 Ugoira。仅允许对应的 `illust_filter`、`novel_filter` 或 `user_filter`；小说用户收藏不新增 filter。`restrict` 仅影响 followers/following，related 保留原先忽略该字段的行为。
+
+`pixiv_bookmark_list_all` 保持独立：它对 artwork 后 novel 的流使用一个逻辑预算。`pixiv_illust_recommended` 与 `pixiv_recommended` 也保持独立：前者在收集时筛选并返回 records 分页，后者从已读取窗口投影 typed streams，cursor 绑定与输出分页不同。读写、添加/删除、账号登录/状态、Gallery/媒体、本地下载/HTTP 保护媒体，以及 Pixiv/FANBOX 凭据仍保持各自边界。
 
 ## 读取工具
 
@@ -252,28 +277,23 @@ stdio 注册 `pixiv_download`（`src` 或 `srcs`，可选 `pages`、`quality`、
 | `pixiv_novel_detail` / `pixiv_novel_content` | 正数 `novel_id`；前者返回 metadata，后者是保留的兼容 tool，返回 `content_unavailable` 与空 block，不请求已 rejected 的正文 endpoint。 |
 | `pixiv_illust_related` | 正数 `illust_id`，可选 `illust_filter`、`page`、`limit`；默认批次 `cursor` 要求省略 `page`/`limit`。 |
 | `pixiv_illust_series` / `pixiv_novel_series` | 正数 `series_id`、`page`、`limit`；小说系列额外返回安全 series metadata。 |
-| `pixiv_illust_comments` / `pixiv_novel_comments` | 封闭输入 `{id, page, limit}`，其中 `id` 为正数；输出 `{comments, pagination}`，并可选返回 `total`/`access_control` metadata。opaque numeric `comment_access_control` 会保留在 `access_control` 内，不推断布尔权限。read tool 不接受只用于 mutation 的 `stamp_id`，legacy 注册表不暴露独立 `stamps` tool。 |
+| `pixiv_comments` | 必填 `kind=artwork\|novel` 和正数 `id`，可选 `page`、`limit`；返回 `{comments, pagination}` 及可选 `total`/`access_control`，保留不透明数值权限 metadata；不接受 mutation 专用 `stamp_id`。 |
 | `pixiv_illust_ranking` | 可选 `mode`、`date`、`illust_filter`、`page`、`limit`；`mode` 是封闭的 ranking enum，日期必须是有效 `YYYY-MM-DD`，省略 mode 为 `day`。 默认批次 `cursor` 要求省略 `page`/`limit`。 |
 | `pixiv_search_user` | 必填非空白 `word`，可选 `user_filter`、`page`、`limit`；空白输入会在 SDK 执行前拒绝，合法输入调用 App user-search operation。 |
 | `pixiv_illust_recommended` | 作品推荐，可选 `illust_filter`、`page`、`limit`。 默认批次 `cursor` 要求省略 `page`/`limit`。 |
 | `pixiv_recommended` | 必填 `kind`：`all`、`illust`、`manga`、`novel` 或 `user`；可选匹配的 typed filter、`page`、`limit`。`illust`/`manga` 选择对应 artwork subtype，冲突 filter 会在 SDK 执行前拒绝；`all` 保持四路独立流，并采用原子失败语义。 默认批次 `cursor` 要求匹配的单一 kind 并省略 page/limit。 |
 | `pixiv_trending_tags_illust` | 无输入；返回完整当前作品趋势标签列表。上游返回空列表时仍是成功的空结果。 |
-| `pixiv_timeline_illust_following` / `pixiv_timeline_novel_following` | `restrict`（`public`/`private`）、匹配实体 filter、`page`、`limit`。 |
-| `pixiv_timeline_illust_latest` | 必填 `content_type`（`illust` 或 `manga`），可选 `illust_filter`、`page`、`limit`。 |
-| `pixiv_timeline_novel_latest` | 可选 `novel_filter`、`page`、`limit`。 |
-| `pixiv_mypixiv_users` | 可选 `user_filter`、`page`、`limit`。 |
-| `pixiv_mypixiv_illusts` / `pixiv_mypixiv_novels` | 对应 typed filter、`page`、`limit`。 |
+| `pixiv_timeline_following` | 必填 `kind=artwork\|novel`；可选 `restrict`（默认 `public`，或 `private`）、匹配实体 filter、`page`、`limit`。`artwork` 包含插画、漫画与 Ugoira。 |
+| `pixiv_timeline_latest` | 必填 `content_type=illust\|manga\|novel`；可选匹配实体 filter、`page`、`limit`。 |
+| `pixiv_mypixiv` | 必填 `kind=artwork\|novel\|user`；可选匹配实体 filter、`page`、`limit`。仅读取认证账号的 MyPixiv，不接受任意用户 ID。 |
 | `pixiv_user_detail` | 必填正数 `user_id`；返回一条安全公开 profile record。 |
 | `pixiv_user_artworks` | 可选 `user_id`、`type`（`illust`、`manga`、`ugoira`）、`illust_filter`、`page`、`limit`；省略 ID 使用认证账号。 |
 | `pixiv_user_novels` | 可选 `user_id`、`novel_filter`、`page`、`limit`；省略 ID 使用认证账号。 |
-| `pixiv_user_bookmarks` | 可选 `user_id`、`restrict`、`tag`、`illust_filter`、`page`、`limit`；读取作品收藏。 |
-| `pixiv_user_novel_bookmarks` | 可选 `user_id`、`restrict`、`tag`、`page`、`limit`；读取小说收藏。 |
+| `pixiv_user_bookmarks` | 必填 `kind=artwork\|novel`；可选 `user_id`、`restrict`、`tag`、`page`、`limit`。`illust_filter` 仅用于 artwork；省略或零用户 ID 使用认证账号，保留分页与筛选的既有 null 语义。 |
 | `pixiv_bookmark_list_all` | 可选 `user_id`、`restrict`、`tag`、`page`、`limit`；新增的聚合 tool，先读取作品收藏再读取小说收藏。`page`/`limit` 作用于拼接后的统一逻辑流；任一 required 流失败时返回错误，不返回部分 records。 |
 | `pixiv_bookmark_tags_all` | 可选 `user_id`、`restrict`、`page`、`limit`；新增的聚合 tool，先读取作品标签再读取小说标签。每个标签保留 `content_type` 与原始 `count`；同名标签不合并，任一 required 流失败时不返回部分标签。 |
 | `pixiv_novel_bookmark_detail` | 必填正数 `novel_id`；返回单篇小说的 `{bookmarked, restrict, tags}`，保留缺失/未收藏状态；使用 candidate novel-bookmark detail App API。 |
-| `pixiv_user_following` | 可选 `user_id`、`restrict`、`user_filter`、`page`、`limit`；省略 ID 使用认证账号。 |
-| `pixiv_user_followers` | 可选 `user_id`、`restrict`、`page`、`limit`；省略 ID 使用认证账号。 |
-| `pixiv_related_users` | 可选正数 `user_id`（省略时使用认证账号），兼容字段 `restrict`，可选 `user_filter`、`page`、`limit`。 |
+| `pixiv_user_relations` | 必填 `relation=followers\|following\|related`；可选 `user_id`、`restrict`、`page`、`limit`。`user_filter` 仅支持 following/related；省略 ID 使用认证账号。related 继续接受但不使用 `restrict`。 |
 | `pixiv_blocked_users` | 可选 `user_id`、兼容字段 `restrict`、`page`、`limit`；省略 ID 使用认证账号。App API 失败会显露，不切换 Web fallback。 |
 | `pixiv_bookmark_tags` | 可选 `kind`（默认 `artwork`，或 `novel`）、`user_id`、`restrict`、`page`、`limit`；返回 `{bookmark_tags, pagination}`。 |
 | `pixiv_bookmark_detail` | 必填正数 `illust_id`；返回 `{bookmarked, restrict, tags}`，保留未收藏状态。无标签时 `tags` 返回空数组，未收藏作品也遵循此规则。 |
@@ -285,18 +305,12 @@ stdio 注册 `pixiv_download`（`src` 或 `srcs`，可选 `pages`、`quality`、
 
 | Tool | 输入 | Structured output |
 | --- | --- | --- |
-| `pixiv_add_bookmark` | `illust_id`，可选 `restrict`、可重复 `tags` | `{success, action, illust_id}` |
-| `pixiv_add_novel_bookmark` | `novel_id`，可选 `restrict`、可重复 `tags` | `{success, action, novel_id}` |
-| `pixiv_remove_bookmark` | `illust_id` | `{success, action, illust_id}` |
-| `pixiv_remove_novel_bookmark` | `novel_id` | `{success, action, novel_id}` |
-| `pixiv_create_artwork_comment` | 正数 `illust_id`、非空 `comment` | `{success, action, illust_id, comment_id}` |
-| `pixiv_reply_artwork_comment` | 正数 `illust_id`、非空 `comment`、正数 `parent_comment_id` | `{success, action, illust_id, comment_id}` |
-| `pixiv_stamp_artwork_comment` | 正数 `illust_id`、可选 `comment`（sticker-only 时为空）、正数 `stamp_id` | `{success, action, illust_id, comment_id}` |
-| `pixiv_delete_artwork_comment` | 正数 `comment_id` | `{success, action, comment_id}` |
-| `pixiv_create_novel_comment` | 正数 `novel_id`、非空 `comment` | `{success, action, novel_id, comment_id}` |
-| `pixiv_reply_novel_comment` | 正数 `novel_id`、非空 `comment`、正数 `parent_comment_id` | `{success, action, novel_id, comment_id}` |
-| `pixiv_stamp_novel_comment` | 正数 `novel_id`、可选 `comment`（sticker-only 时为空）、正数 `stamp_id` | `{success, action, novel_id, comment_id}` |
-| `pixiv_delete_novel_comment` | 正数 `comment_id` | `{success, action, comment_id}` |
+| `pixiv_bookmark_add` | 必填 `kind=artwork\|novel`、正数 `id`；可选 `restrict`、`tags` | `{success, action, illust_id}` 或 `{success, action, novel_id}` |
+| `pixiv_bookmark_remove` | 必填 `kind=artwork\|novel`、正数 `id` | `{success, action, illust_id}` 或 `{success, action, novel_id}` |
+| `pixiv_comment_create` | 必填 `kind=artwork\|novel`、正数 `id`、非空 `comment` | `{success, action, illust_id/novel_id, comment_id}` |
+| `pixiv_comment_reply` | 同上目标与正文，并需正数 `parent_comment_id` | `{success, action, illust_id/novel_id, comment_id}` |
+| `pixiv_comment_stamp` | 必填 `kind=artwork\|novel`、正数 `id` 和 `stamp_id`；可选 `comment`（空值表示仅贴图） | `{success, action, illust_id/novel_id, comment_id}` |
+| `pixiv_comment_delete` | 必填 `kind=artwork\|novel`、正数 `comment_id`；不需内容 ID | `{success, action, comment_id}` |
 | `pixiv_follow_user` | `user_id`，可选 `restrict` | `{success, action, user_id}` |
 | `pixiv_unfollow_user` | `user_id` | `{success, action, user_id}` |
 
@@ -308,16 +322,16 @@ v3 comments contract，提交后状态未知时不会换账号重放；失败写
 
 ## FANBOX tools
 
-同一 server 注册以下名称不变的 FANBOX tools。完整输入 schema 由 `tools/list` 提供，凭据仍归 FANBOX 独立管理。
+同一 server 注册以下 FANBOX tools。完整输入 schema 由 `tools/list` 提供，凭据仍归 FANBOX 独立管理。
 
 | Tools | 语义 |
 | --- | --- |
 | `fanbox_current_user` | 当前已认证 FANBOX 用户。 |
 | `fanbox_creator`、`fanbox_creators` | 单个创作者 profile，或支持中/关注中的创作者。 |
 | `fanbox_creator_tags` | 创作者使用的标签。 |
-| `fanbox_creator_posts`、`fanbox_tagged_posts` | 创作者或某个创作者标签下的帖子。 |
+| `fanbox_creator_posts` | 必填 `creator_id`；可选非空 `tag`、`page`、`limit`。省略 tag 使用原作者投稿 API，指定时使用原标签投稿 API，显式空 tag 报错。 |
 | `fanbox_post` | 单个帖子及安全 resource refs。 |
-| `fanbox_home`、`fanbox_supporting` | 已认证主页/支持中 feed。 |
+| `fanbox_feed` | 必填 `source=home\|supporting`；可选 `page`、`limit`，保留对应 feed API、帖子结构及 FANBOX 认证。 |
 | `fanbox_resolve_url` | 在本地将 URL 解析成 typed reference。 |
 | `fanbox_open_resource` | 打开 opaque `ref`；GET 交付真实 image/blob 内容及安全 metadata，HEAD 仅返回 metadata。 |
 
@@ -353,7 +367,6 @@ FANBOX tools 共享协议 server，不共享 Pixiv 凭据或账号池。两产�
 Gallery 去重后在配置并发上限内查询作品，保持输入顺序和逐项失败。MCP 只读会话按账号、凭据版本和网络配置复用 access token 与 HTTP 连接，直到到期。只有刷新和凭据持久化持有轮换锁；持久化成功后才开始内容请求，传输期间不持锁。上游认证失败使会话失效，不自动重试。SDK 从可信作品信息登记质量变体，打开变体时避免再次查询作品。 单次凭据检查取消会保留共享会话及其他传输；真实凭据或授权失效仍会取消它们。
 
 进程缓存按 grant 隔离，使用 [CLI reference](cli-reference.md#mcp-http-server) 中的启动配置，默认 256 MiB、15 分钟、并发 4。合并同键 metadata 查询，仅缓存成功 metadata 和完整光栅图片；命中仍检查 grant 授权及当前账号／会话版本。收藏状态和写操作不缓存。图片通过上游状态和文件头校验后开始流式发送；有可信 Content-Length 时保留，否则不声明长度。传输中断会关闭上游资源并丢弃填充缓冲，不向图片字节追加错误文本。固定阶段观测区分会话等待／刷新、作品查询、图片首包、传输及缓存命中，不包含 token、grant 或签名地址。
-
 
 ZIP 正文读取失败且任务上下文仍有效时，提前 EOF 或 Content-Length 不符额外记录固定标记 `animation_zip_incomplete`，连接重置记录 `animation_zip_reset`，底层读取器报告超时时记录 `animation_zip_timeout`。标记仅携带已读取字节数，不包含原始错误或签名地址，不改变重试、时限、输出质量或工具错误。
 

@@ -620,11 +620,11 @@
     const mutate = async restrict => {
       if (busy || !state || epoch !== view || (restrict && !["public", "private"].includes(restrict))) return;
       busy = true; enable();
-      const args = {illust_id: id};
+      const args = {kind: "artwork", id};
       if (restrict) { args.restrict = restrict; args.tags = state.tags; }
       let success = false;
       try {
-        const result = await request("tools/call", {name: restrict ? "pixiv_add_bookmark" : "pixiv_remove_bookmark", arguments: args}, epoch);
+        const result = await request("tools/call", {name: restrict ? "pixiv_bookmark_add" : "pixiv_bookmark_remove", arguments: args}, epoch);
         if (epoch !== view || disposed) return;
         if (result.isError) throw new Error("Bookmark operation failed");
         success = true;
