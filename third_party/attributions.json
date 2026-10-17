@@ -14,7 +14,7 @@
       "license": "MIT",
       "repository": "https://github.com/image-rs/image-png",
       "directory": "third_party/attributions/png-0.18.1",
-      "note": "Paeth predictor in internal/media/ugoira/png_filter.go"
+      "note": "Sub predictor in internal/media/ugoira/png_filter.go"
     },
     {
       "name": "quantette",

@@ -386,7 +386,7 @@ is kept in that package; the zune-jpeg MIT attribution must remain in the final 
 without requiring Rust, FFmpeg or jpegtran at test time. The Go resize kernel uses bounded sine/cosine
 polynomials with explicit `math.FMA`, fixed against the legacy runtime `sinf` results. Its 1,031 numeric
 references in `testdata/lanczos-kernel.json` preserve Lanczos3 rounding without calling a platform math library.
-The Go APNG writer uses fixed Paeth prediction and an independent level-7 zlib stream per frame, retaining
+The Go APNG writer uses fixed Sub prediction and an independent level-7 zlib stream per frame, retaining
 RGBA8, lossless pixels and Source/None rectangle playback. Go 1.27's fast compression levels exceeded the original
 10% output-size allowance on the high-texture corpus; the deterministic opaque-texture regression preserves the
 same allowance against its frozen Rust reference. Compressed bytes may change with the toolchain; reuse prior

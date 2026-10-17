@@ -165,18 +165,16 @@ func (w *apngWriter) frame(img *image.NRGBA, region image.Rectangle, numerator, 
 		w.compressor.Reset(w.chunkBuffer)
 	}
 	rowBytes := region.Dx() * 4
-	previous := make([]byte, rowBytes)
 	filtered := make([]byte, rowBytes+1)
 	for y := region.Min.Y; y < region.Max.Y; y++ {
 		if err := w.ctx.Err(); err != nil {
 			return err
 		}
 		row := img.Pix[img.PixOffset(region.Min.X, y):][:rowBytes]
-		filterAPNGRow(row, previous, filtered)
+		filterAPNGRow(row, filtered)
 		if _, err := w.compressor.Write(filtered); err != nil {
 			return errors.Join(err, w.ctx.Err())
 		}
-		previous = row
 	}
 	if err := w.ctx.Err(); err != nil {
 		return err
