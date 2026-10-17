@@ -84,14 +84,7 @@ relay server without registering a desktop handler.
 sh scripts/build.sh
 ```
 
-A supported source build requires the Go version declared in `go.mod`, `CGO_ENABLED=1`, a working C linker for the target platform, and a
-Rust ugoira staticlib matching the target. It outputs `build/pixiv` or `build/pixiv.exe`. On Windows, run the build
-command via Git Bash, MSYS2, or WSL.
-
-The working tree ships six runner-verified staticlibs for darwin/linux/windows × amd64/arm64 plus a same-origin
-`manifest.json`; `scripts/build.sh` verifies the source digest, target/path, and each library's SHA-256 before
-building the native binary. See [the development guide](maintainers/development.md#rust-ugoira-staticlib) for the full
-requirements, evidence backfill process, and failure semantics.
+Current source builds use the Go version declared in `go.mod`. `scripts/build.sh` sets `CGO_ENABLED=0` and writes `build/pixiv` (`build/pixiv.exe` on Windows), without a Rust toolchain, native library or C linker. On Windows, use Git Bash, MSYS2, or WSL. See [the development guide](maintainers/development.md#ugoira-go-encoder) for encoding, licenses and platform evidence.
 
 ### Go install
 
@@ -101,9 +94,7 @@ After an official tag is published, install with the exact tag:
 go install github.com/FlanChanXwO/pixiv-cli/cmd/pixiv@vX.Y.Z
 ```
 
-This still uses the local Go toolchain, cgo, a C linker, and the committed staticlib for the target. The six target
-libraries and manifest are complete — for example, the published v0.4.4 release can be installed with `@v0.4.4`;
-always use the exact published tag, never a branch name.
+Use an exact published tag, not a branch name, and follow that tag's requirements. Versions containing the Go encoder can build with `CGO_ENABLED=0`. Legacy v0.4.4 still requires its declared Go toolchain, cgo, a C linker and its committed Rust static library; installing an old tag does not adopt the current checkout's build requirements.
 
 ### Homebrew
 

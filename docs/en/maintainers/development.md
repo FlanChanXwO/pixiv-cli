@@ -5,7 +5,7 @@ English | [简体中文](../../zh-CN/maintainers/development.md) | [Documentatio
 | What you want to do | Start here |
 | --- | --- |
 | Check the local toolchain | [Environment check](#environment-check) |
-| Build or verify the ugoira native library | [Rust ugoira staticlib](#rust-ugoira-staticlib) |
+| Build or verify ugoira encoding | [Ugoira Go encoder](#ugoira-go-encoder) |
 | Run the CLI and MCP | [Run](#run) |
 | Handle login and credentials | [Obtain refresh token](#obtain-refresh-token) |
 | Choose test scope | [Tests](#tests) |
@@ -16,32 +16,30 @@ English | [简体中文](../../zh-CN/maintainers/development.md) | [Documentatio
 
 The project is a Go module. `go.mod` is the single source of truth for the required Go toolchain version.
 
-Before starting, verify Go/cgo, Rust and the standard test environment:
+Before starting, verify the declared Go toolchain and standard test environment:
 
 ```bash
 go version
-go env GOVERSION CGO_ENABLED CC GOOS GOARCH
-cargo --version
-go test ./...
+go env GOVERSION CGO_ENABLED GOOS GOARCH
+CGO_ENABLED=0 go test ./...
 ```
 
-## Rust ugoira staticlib
+## Ugoira Go encoder
 
-Production ugoira GIF/APNG is produced by the built-in Rust encoder; it does not depend on `ffmpeg` at runtime. `ffmpeg` is only used as a development quality comparison: only after explicitly setting `PIXIV_UGOIRA_QUALITY_FFMPEG=1` will the Rust quality gate call it; it is not a prerequisite for local builds or end-user execution.
+The default downloader constructs `ugoira.NewEncoder()` and produces GIF/APNG in Go, without `ffmpeg`. PNG frames use Go's standard decoder; JPEG frames use the owner-local `internal/media/ugoira/jpeg` decoder.
 
-Frame source reading shares the same memory boundary as the image decoder: the boundary value is taken directly from the pinned `image` crate `Limits::default().max_alloc`, rather than a separate empirical constant. ZIP member declared sizes exceeding this value fail before reading; actual expanded bytes exceeding it, failed memory reservation or cancellation also fail explicitly during chunked reading, without truncating input or falling back to another encoder. The cancellation token is checked before and after every read chunk and before and after image decode; however, the `image` crate's single-frame decoder has no cancellation callback, so a decode already entered cannot be interrupted midway and cancellation is only observed immediately after it returns. Focused regression covers declared-size overflow, actual cumulative-byte overflow, cancellation during reading, normal boundary inputs, normal GIF/APNG and corrupted ZIP; the purpose of this limit is solely to prevent frame sources from consuming unbounded memory before the decoder's own limits take effect, and the impact is that oversized works fail explicitly.
+The 512 MiB per-frame bound applies separately to ZIP member source bytes and the pre-decode allocation estimate, inheriting the pinned Rust `image` crate's `Limits::default().max_alloc`. Declared source sizes above this bound fail before reading; actual expanded sizes above it fail during chunked reading. Invalid or overflowing dimensions and decode estimates above the bound also return errors, without truncation or a backend fallback. Cancellation is checked before and after each read chunk and before and after image decoding. The PNG/JPEG decoding loops have no cancellation callback, so cancellation during a single-frame decode is observed when that decode returns.
 
-Supported Go source builds require:
+Source builds use the Go version declared in `go.mod`. `scripts/build.sh` explicitly sets `CGO_ENABLED=0` and writes `build/pixiv` (`build/pixiv.exe` on Windows). No Rust toolchain, native library or C linker is needed:
 
-- the Go version declared in `go.mod`;
-- `CGO_ENABLED=1`;
-- a C linker for the current `GOOS/GOARCH`;
-- the committed `staticlib` for the corresponding Rust crate target;
-- the six-target `staticlib/manifest.json` generated from the same Rust source.
+```bash
+sh scripts/build.sh
+CGO_ENABLED=0 go test ./internal/media/ugoira/... -count=1
+```
 
-The fixed targets are darwin/linux/windows for amd64/arm64. `scripts/build-staticlibs.sh` uses locked Cargo inputs to generate the target libraries; only after a single successful run produces all six real libraries and verifies each SHA-256 does it write `manifest.json` with the Rust source digest. Single-target invocations invalidate the existing manifest, preventing a partial rebuild from proving full-platform consistency.
+Only race-detector tests need `CGO_ENABLED=1` and a working C toolchain. The encoder has no backend selector or runtime fallback.
 
-CI and release callers that need one exact platform binary use `scripts/build-platform.sh`. The caller supplies the registry-derived `GOOS/GOARCH`, Rust target and C compiler; the primitive rebuilds that target's Rust staticlib, restores the pre-existing cross-platform manifest, builds the correctly suffixed/versioned binary, applies the Linux ABI gate when relevant, and optionally creates the canonical release archive. It prints the resulting binary or archive path. Workflow-specific tests, immutable-source assertions, credentials, approval and publication remain in their workflows rather than becoming modes of this script.
+`scripts/build-platform.sh` owns an exact-target CGO0 build and optional canonical archive. It accepts `--target GOOS/GOARCH`, `--output-dir DIR`, optional `--version VERSION` (without `v`) and `--package` (requires a version). It retains Windows executable suffixes and the Linux ABI gate. Runner/capability metadata stays in `ci/platforms.json`; tests, source identity, permissions, approvals and publication stay in workflows.
 
 The public ABI baseline for Linux releases is glibc 2.35. Linux runners for release test/production, native evidence, packaged-binary smoke and the Homebrew install matrix must be pinned to `ubuntu-22.04` and `ubuntu-22.04-arm`; quality, validate, publish and other jobs that do not produce Linux binaries may continue to use newer runners. After every Linux executable is produced, the following must be run:
 
@@ -51,53 +49,36 @@ go run ./scripts/cmd/linuxabi --binary <linux-elf>
 
 This gate reads the real loader contract from the ELF `SHT_GNU_verneed` and also checks imported symbol versions; any dependency above `GLIBC_2.35` fails before packaging. Relying solely on "the binary runs on the build runner" is not acceptable, because that lets the runner's own newer glibc hide backward-compatibility regressions.
 
-The six committed libraries and `manifest.json` are verified inputs: the manifest binds the Rust source digest, six targets, paths and per-target SHA-256s, and is locked by the integrity test of `internal/media/ugoira/staticlib`. The current manifest's source digest and the six library SHA-256s are byte-for-byte consistent with the audited source; upgrading Rust requires fully rebuilding, linking and smoke-verifying all six targets from the same audited source, and updating the six libraries, the manifest, native evidence and `ci/platforms.json` at the same time — never update only a single platform's pin.
+The release archive's `LICENSE`, `THIRD_PARTY_LICENSES.md` and `third_party/licenses/**` retain `text eol=lf` in `.gitattributes`, keeping archive audits and byte-for-byte license checks stable on Windows.
 
-Compiler provenance of the committed libraries is pinned per target rather than using a movable runner-default toolchain: `x86_64-apple-darwin` and `x86_64-pc-windows-msvc` use Rust `1.96.0`; `aarch64-apple-darwin`, `aarch64-pc-windows-msvc`, `x86_64-unknown-linux-gnu` and `aarch64-unknown-linux-gnu` come from Rust `1.96.1`. `ci/platforms.json` is the single owner of this mapping; release, smoke and native-evidence matrices consume it through `tools/platformmatrix`, bind `RUSTUP_TOOLCHAIN`, and run `rustup toolchain install` with `--no-self-update`. Runner image `stable` updates must not change rebuild bytes. This mapping records provenance, not a standing license to mix toolchains; when upgrading Rust, rebuild and re-pin all six targets together.
+### Historical Rust provenance
 
-In a controlled environment with the target toolchain available, run:
+The removed libraries came from native run `29567721284`, superseding the initial collection in run `29192425899`. The historical compiler versions were Rust `1.96.0` for `x86_64-apple-darwin` and `x86_64-pc-windows-msvc`, and Rust `1.96.1` for `aarch64-apple-darwin`, `aarch64-pc-windows-msvc`, `x86_64-unknown-linux-gnu` and `aarch64-unknown-linux-gnu`. Their sources, vendor tree, libraries and manifest remain in Git history; they are not inputs to current builds. Independent ported-source notices remain below.
 
-```bash
-sh scripts/build-staticlibs.sh --target <rust-target>
-go test ./internal/media/ugoira/staticlib -run '^TestCommittedManifestWhenPresent$' -count=1
-```
+### License bundle
 
-Do not commit `internal/media/ugoira/rust/target/`; it is a machine artifact. The verified `internal/media/ugoira/rust/staticlib/` and its `manifest.json` are traceable inputs and must not be hidden by ignore rules.
+`go run ./scripts/cmd/licensebundle` unions the production modules selected by `go list -mod=readonly -deps -json ./cmd/pixiv` on the fixed six release targets with `CGO_ENABLED=0`. Resolution is offline (`GOPROXY=off`, `GOSUMDB=off`) and ignores local workspace/flag overrides; the required module sources must already be cached. It does not use Cargo or include test/tool-only modules that are absent from the production graph. `--check` compares both the index and the complete generated text tree without publishing changes.
 
-The `.cargo/config.toml` of the Rust crate replaces crates.io with the complete locked dependency closure in the adjacent `vendor/`. Every package in `vendor/` carries a Cargo-generated `.cargo-checksum.json`; it, the Cargo config, `Cargo.toml`/`Cargo.lock`, `build.rs`, `.cargo/**`, the Rust source and the local `quantette` all count toward the staticlib source digest. Do not hand-edit vendor contents; when upgrading dependencies you must regenerate the full closure with `cargo vendor --locked --offline` and update the digest fixture and license bundle. The root `.gitattributes` sets `-text` for these first-party crate inputs, all of `vendor/**` and the pinned local `quantette` source; this only preserves the original Git blob bytes without rewriting normal content, and prevents Windows checkout from changing LF to CRLF and breaking Cargo checksums, source digests or license bundles. For the release archive `LICENSE`, the license bundle `THIRD_PARTY_LICENSES.md` and `third_party/licenses/**`, `text eol=lf` is fixed instead, so archive member audit and byte-for-byte `--check` stay stable on Windows. The digester must also normalize the platform separators from `filepath.Rel` to slashes before deciding `src/`, `.cargo/` and `vendor/`; otherwise Windows backslash paths would silently miss these inputs. `target/` remains a machine artifact, is not included in the digest, and must not be committed.
-
-When running Cargo directly, you must start in the crate directory so Cargo discovers the source replacement:
-
-```bash
-(
-  cd internal/media/ugoira/rust
-  cargo test --locked --offline
-  cargo clippy --locked --offline --all-targets -- -D warnings
-)
-go run ./scripts/cmd/licensebundle --check
-sh scripts/test-rust-vendor.sh
-```
-
-`scripts/test-rust-vendor.sh` is the focused supply-chain regression for the release workflow: it sets up a temporary empty `CARGO_HOME` and `CARGO_TARGET_DIR`, then runs `cargo metadata/build/test --locked --offline` in turn, and with the same environment runs `go run ./scripts/cmd/licensebundle --check` for the six release targets. Therefore registry cache, network fallback, missing vendor contents or invalid checksums all fail explicitly; a runner's pre-warmed cache cannot serve as offline-reproducibility evidence.
+`third_party/attributions.json` pins the additional ported-source notices. Their maintained texts live in `third_party/attributions/`, separately from generated `third_party/licenses/`; selected MIT texts, the Go BSD/patent grant, and the SunPro notice remain after Rust source removal. The version-specific `fhttp v0.6.8` entry supplies the Go BSD text referenced by its source headers because that module archive omits a standalone license file. Missing or empty texts fail generation before publication. Nested component notices are included; CRLF is normalized to LF for the archive's existing checkout contract, with the full text retained. The index and text tree retain their existing rollback-safe publication and release archive member contract.
 
 ### Native runner evidence
 
-`.github/workflows/native-evidence.yml` is an independent, non-publishing maintenance entry point and only runs through explicit `workflow_dispatch` on the audited default branch. Ordinary `main` pushes do not start another six-platform evidence matrix after PR verification. Global `permissions: {}`, job-only `contents: read`. It has no `environment`, secret, tag/Release/tap/signing command. Its platform matrix comes from the `native-evidence` capability in `ci/platforms.json`; the workflow installs the registry-selected Rust toolchain, checks vendored Rust inputs, calls `scripts/build-platform.sh` for the target staticlib/binary/archive chain, runs the real cgo GIF/APNG smoke, records evidence, and uploads only the evidence directory. Full-SHA actions, credential-free checkout, no-secret/no-publish boundaries and build ownership are covered by the focused test-only workflow contract rather than a runtime YAML self-policy.
+`.github/workflows/native-evidence.yml` remains an explicit maintenance entry point requiring `refs/heads/main`, not an ordinary main-push gate. It retains empty global permissions, job-only `contents: read`, full-SHA actions, credential-free checkout and no publishing/signing environment. The registry's `native-evidence` capability selects runners. Each runs the Go license check, `scripts/build-platform.sh`, and Go GIF/APNG regressions, then uploads a versioned binary/archive record.
 
-For the two Windows targets, the Rust library uses `*-pc-windows-msvc`; the corresponding cgo selector must declare the library via `-L${SRCDIR}/… -lugoira_rs` and must not pass a drive-letter absolute `.lib` path directly to cgo; it must also explicitly carry the `advapi32`, `ntdll`, `userenv`, `ws2_32` and `dbghelp` import libraries required by the Rust `std`. Native evidence passes the registry-selected `CC='clang -fuse-ld=lld'` to `scripts/build-platform.sh` and to the native smoke; LLD can handle MSVC `.lib` and also lets Go skip the GCC-specific debug linker script. This is not a runtime fallback and does not change the C linker choice on darwin/linux.
+Schema 3 binds the workflow's exact `source_commit`, target, binary version and binary/archive/member SHA-256 values. It executes `--version` and checks the archive's binary, root notices and complete license tree. It rejects old schemas and Rust source-digest/staticlib fields. `consolidate` rechecks exactly six complete, same-source, same-version bundles, rejects symlinks and unsafe file/directory paths, and atomically publishes a new directory with per-target bundles and `summary.json`. It does not backfill libraries into source.
+
+Set `RUN_ID` and `SOURCE_COMMIT` from one audited native-evidence run, download its six artifacts, and use new absolute paths:
 
 ```bash
-go test ./scripts/internal/nativeevidence -count=1
+go run ./scripts/cmd/nativeevidence consolidate \
+  --repo-root . --expected-version "v0.1.0-native-evidence.${RUN_ID}" \
+  --expected-commit "$SOURCE_COMMIT" --input-dir /absolute/evidence \
+  --output-dir /absolute/new-complete-evidence
 ```
 
-Each runner artifact is only `evidence/`: the actually linked staticlib, the versioned binary, the archive and `native-evidence.json`. A schema 2 record independently records the `source_commit` provided by the workflow, recomputes the Rust source digest and the three SHA-256 values, runs the binary's `--version` and requires an exact single-line output, then checks the archive's binary, `LICENSE`, `THIRD_PARTY_LICENSES.md` and the full `third_party/licenses` regular-file tree one by one. It does not hold release/tap/signing credentials and does not create tags or Releases.
+PR Platform workers also upload schema 3 `native-evidence-<goos>-<goarch>` bundles after native and unpacked-binary smoke, at `v0.2.0-ci.<run-id>`. Their producer remains the trusted base-ref workflow: editing a PR-head workflow does not update that trusted producer. Inspect the actual run and exact head; never splice runs or treat a fixture, cross-build or workflow definition as six-platform execution.
 
 `.github/workflows/browser-evidence.yml` is another explicitly dispatched, credential-free native provider contract matrix: it runs platform code and synthetic-fixture regression for `internal/browsercookies/...` on macOS, Linux and Windows amd64/arm64 runners without attaching another matrix to ordinary `main` pushes. GitHub Windows runners do not provide the required `sqlite3` CLI, so both Windows jobs provision the architecture-matched official SQLite 3.53.4 tools archive through `scripts/install-browser-sqlite.ps1`, with fixed URLs and SHA-256 verification before the existing SQLite preflight runs. A focused test-only workflow contract covers the credential, pinned-action, fixture, pinned SQLite provisioning and cleanup boundaries without reimplementing the workflow in production code; `scripts/cmd/browsernativeevidence firefox-contract` remains the runtime helper that exercises the isolated Firefox profile/schema. The `firefox_native` job only unpacks the official package in the runner's temporary directory, lets Firefox generate an isolated profile/schema, then injects explicit synthetic cookies to exercise the provider contract; it does not read user browser profiles, Keychain, DPAPI or Secret Service, nor upload package/profile/database. Real profile/session evidence can still only be obtained on the protected release-prep host; the success of this workflow must not be treated as real user-browser import success.
-
-> [!WARNING]
-> Native evidence must not be backfilled or spliced across runs. If the runner records of any single workflow run show divergent source digests, even if all six jobs completed, they must not be mixed and backfilled; the six-target evidence must be fully rerun from the fixed new SHA. Local unit fixtures, workflow-contract success or the mere existence of a workflow file are not six-target native evidence.
-
-When a controlled backfill of the committed six-target libraries is needed, the workflow run's main SHA and the `v0.1.0-native-evidence.<run-id>` version it produced must match exactly; download exactly six `native-evidence-{darwin,linux,windows}-{amd64,arm64}` artifacts, then run `scripts/cmd/nativeevidence consolidate` against a clean non-symlink output directory. The consolidator only accepts the full six targets with the same source digest and the same expected version/commit; it re-verifies the staticlib/binary/archive SHA and archive member hashes and generates exactly six `manifest.json` entries, blocking on any missing/duplicated/mismatched target, metadata, archive member, hash or symlink. After manual review, backfill the six libraries and `manifest.json` into `internal/media/ugoira/rust/staticlib/`, then run `TestCommittedManifestWhenPresent`, `TestRustUgoiraEncoderNativeGIFAndAPNG` and `git diff --check` before committing the six blobs and manifest as an independent review commit. Any verification failure blocks release; partial artifacts must not be used.
 
 ## Run
 
@@ -238,7 +219,7 @@ Real login depends on the Pixiv OAuth web flow being available. Automated tests 
 
 ## Tests
 
-Current test coverage spans CLI commands and build metadata, explicit/automatic updates, `internal/services/{pixiv,fanbox}/account` account services, `internal/services/pixiv/pool` account pool, `internal/services/reversesearch` source/provider fixtures and aggregation, `internal/storage/database` auth storage and `internal/config/settings` configuration, `internal/shared/lifecycle` lifecycle, `internal/shared/pagination` logical pagination, `internal/shared/traversal` generic reentrant traversal, Pixiv App API auth retry, the public SDK (`sdk`/`sdk/pixiv`/`sdk/fanbox`), HTTP client wiring, download management, the Rust encoder/staticlib contract and `internal/mcpserver/{pixiv,fanbox}/tools` tool registration. `internal/account` and `internal/session` have been deleted and no compatibility test entry points are retained. Test file layout and same-package exceptions follow [Test file layout](#test-file-layout):
+Current test coverage spans CLI commands and build metadata, explicit/automatic updates, `internal/services/{pixiv,fanbox}/account` account services, `internal/services/pixiv/pool` account pool, `internal/services/reversesearch` source/provider fixtures and aggregation, `internal/storage/database` auth storage and `internal/config/settings` configuration, `internal/shared/lifecycle` lifecycle, `internal/shared/pagination` logical pagination, `internal/shared/traversal` generic reentrant traversal, Pixiv App API auth retry, the public SDK (`sdk`/`sdk/pixiv`/`sdk/fanbox`), HTTP client wiring, download management, the Go encoder/native-evidence contract and `internal/mcpserver/{pixiv,fanbox}/tools` tool registration. `internal/account` and `internal/session` have been deleted and no compatibility test entry points are retained. Test file layout and same-package exceptions follow [Test file layout](#test-file-layout):
 
 ```bash
 go test ./...
@@ -301,7 +282,6 @@ Before code changes are complete, tests should be added or updated according to 
 Release-related local fixture/policy gates also include:
 
 ```bash
-sh scripts/test-build-staticlibs.sh
 sh scripts/test-build-platform.sh
 sh scripts/test-package-release.sh
 go test ./tools/release ./tools/platformmatrix -count=1
@@ -311,7 +291,7 @@ sh scripts/test-homebrew-formula.sh
 git diff --check
 ```
 
-The fixtures only prove format, failure semantics and local policy; they do not replace the real static linking, GIF/APNG smoke, versioned archive content and Homebrew install acceptance of the six native runners.
+The fixtures only prove format, failure semantics and local policy; they do not replace the real native GIF/APNG smoke, versioned archive content and Homebrew install acceptance of the six native runners.
 
 `.github/workflows/ci.yml` owns only the read-only `Quality gate`, responding to `pull_request` and `workflow_dispatch` but no longer to tag pushes. Its change-scope classification uses the same trust model as `pr-metadata.yml`: it resolves the protected base branch's current tip, checks out `scripts/classify-change-scope.sh` and `.github/ci-change-scope.gitignore` from that tip, and then fetches the exact PR HEAD only for the diff range, so a PR cannot change its own skip decision; classifier failure fails closed instead of degrading to a skip. `.github/workflows/pr-metadata.yml` is the trusted `pull_request_target` coordinator: from the current base tip it validates the PR template and verification declaration, classifies the exact PR-head diff with `.github/ci-change-scope.gitignore`, publishes `PR template gate` / `PR commands gate` commit statuses, dispatches required smoke workers, and exposes `Platform smoke` / `Container smoke` as real job-level required checks without executing PR code in the coordinator jobs. Distinct `Platform smoke worker` / `Container smoke worker` Check Runs are only the trusted result bridge completed by the base-ref worker workflows; the required smoke jobs wait for those results. Plain scope patterns are documentation-only, `?pattern` requires Quality only, and `!pattern` requires Quality + Platform + Container; `pr-metadata.yml` is the smoke controller (it owns classification, both worker dispatches and the required gates), so it must use `!pattern`. Unneeded Quality and smoke jobs are native job-level `Skipped`, never synthetic success. Body-only PR metadata edits reclassify the unchanged head: required smoke jobs mirror its existing worker result, while genuinely unnecessary smoke jobs remain skipped, so editing the PR body cannot replace a failed smoke result with a bypassing skip.
 
@@ -327,12 +307,137 @@ The Windows `.zip` is produced by `7z` preinstalled on the GitHub runner image; 
 
 Quality also handles `pull_request.edited`, so retargeting a PR to `main` publishes its required Quality result. Title/body edits also trigger classification and any required Quality verification. The job keeps its literal required name, including documentation-only skips; skipped dynamic job names are not evaluated by GitHub. Documentation-only changes retain their real job-level skip.
 
+### Offline ugoira parity
+
+Ugoira encoder comparisons use the separate, opt-in `TestRealPixivUgoiraCapture`. It shares the selected local account
+and credential-rotation persistence with `TestRealPixivSDKRead`, then calls public SDK `UgoiraMetadata` and
+`SaveResource`. Choose positive comma-separated artwork IDs and an explicit `original` or `medium` quality;
+an unavailable quality fails without substitution. Only enable this with authorization to download the samples.
+
+```bash
+PIXIV_UGOIRA_CAPTURE=1 PIXIV_UGOIRA_IDS=150808387,150247639,150356234 \
+PIXIV_UGOIRA_QUALITY=medium PIXIV_UGOIRA_DIR="$PWD/build/ugoira-parity/samples" \
+go test ./e2e -run '^TestRealPixivUgoiraCapture$' -count=1 -v
+```
+
+This command captures medium archives. The 1080p original in the corpus table below was acquired separately
+from the documented `originalSrc` and saved in its own directory.
+
+Each new ID directory contains the complete `frames.zip` and a `sample.json` with ordered filenames/delays,
+actual quality, dimensions, duration, byte count, ZIP SHA-256 and frame-metadata SHA-256. The log also records the
+manifest SHA-256. URL, resource ref, headers and credentials are not serialized. Existing samples are refused;
+a failed capture removes only its newly created directory. Keep these private artifacts under ignored `build/`,
+never commit them. `PIXIV_E2E_PROXY` has the same non-secret meaning as in the SDK E2E. Ordinary tests skip capture.
+
+Compile the old baseline from its pre-migration source once, record its source commit, Go/build settings and binary
+SHA-256, and keep that binary unchanged. The current test-only driver uses the same `ugoira.NewEncoder()` as the
+default downloader and needs no credentials or network. Build it separately; never overwrite `baseline.test`:
+
+```bash
+mkdir -p build/ugoira-parity
+CGO_ENABLED=0 go test -c -trimpath -o build/ugoira-parity/current.test ./e2e
+GOMAXPROCS=1 RAYON_NUM_THREADS=1 \
+UGOIRA_PARITY_SAMPLE="$PWD/build/ugoira-parity/samples/150808387" \
+UGOIRA_PARITY_OUTPUT="$PWD/build/ugoira-parity/current-150808387.gif" \
+UGOIRA_PARITY_FORMAT=gif UGOIRA_PARITY_MAX_EDGE=0 \
+build/ugoira-parity/current.test -test.run '^TestUgoiraParityEncode$' -test.v
+```
+
+The driver requires absolute paths, a new output matching `gif` or `apng`, and a uint32 maximum edge (`0` means no
+resize). It checks the ZIP and frame hashes before encoding and emits `UGOIRA_PARITY_RESULT` with the input hashes,
+format, maximum edge, time spent in `Encode`, output bytes, Go version and `GOMAXPROCS`. Use a new output for each
+trial and preserve the same inputs and runtime settings across implementations. Measure peak process RSS separately
+with the same host tool; the logged time excludes compilation, acquisition, input hashing and process startup.
+This fixture/driver is not itself proof of real-image quality, performance or six-platform parity.
+
+When the toolchain changes, retain the frozen baseline and build a separately named legacy comparator from the same audited producer if needed. Verify its output against the frozen output and record both build modes; compare both implementations under the same toolchain. Migration resource acceptance uses a warmup and five alternating trials per real sample/format, with time, peak process RSS and output-byte ratios each at most 1.10. RSS is not Go heap usage.
+
+Set `GOMAXPROCS=1` and `RAYON_NUM_THREADS=1` for every frozen-legacy/Go comparison. The legacy Rust quantizer's worker count can change output pixels as well as runtime. Match the fixed baseline's worker settings when selecting saved outputs for quality scoring.
+
+`TestUgoiraSyntheticCorpus` writes the three original quality scenes plus transparency/repeated-frame, single-pixel
+and odd-dimension cases. Without `UGOIRA_PARITY_CORPUS` it uses temporary directories; an explicit absolute directory
+preserves schema-1 samples for both binaries. Existing sample directories are refused. `TestUgoiraParityInspect`
+independently decodes full-canvas GIF frames and replays APNG Source/None rectangles, checking frame count, size,
+loop, delays and GIF transparency. It requires unscaled output (`MaxEdge=0`). PNG inputs must reconstruct exactly;
+JPEG pixel differences are reported separately because the reference uses Go's JPEG decoder. Inspection is outside
+performance measurements and emits per-frame `UGOIRA_QUALITY_RESULT` with input/output hashes.
+
+```bash
+UGOIRA_PARITY_CORPUS="$PWD/build/ugoira-parity/synthetic" \
+go test ./e2e -run '^TestUgoiraSyntheticCorpus$' -count=1
+UGOIRA_PARITY_SAMPLE="$PWD/build/ugoira-parity/samples/150808387" \
+UGOIRA_PARITY_OUTPUT="$PWD/build/ugoira-parity/baseline-150808387.gif" \
+go test ./e2e -run '^TestUgoiraParityInspect$' -count=1 -v
+```
+
+RGB SSIM averages the three channel scores. MSSIMSimple uses non-overlapping 8×8 windows weighted by actual area,
+including smaller edge windows; its covariance is a sum, not a population variance. The old `image` 0.25 CICP
+conversion used by `DynamicImage::into_luma8` uses the BT.709/D65 matrix, float32 multiply-accumulate and rounding.
+The metric preserves the measured arm64/FMA baseline; the older integer `Pixel::to_luma` helper is not that path.
+`UGOIRA_PARITY_RUST_QUALITY` enables `TestUgoiraSSIMRustCalibration` against the old quality gate's saved
+`<scene>-rust.gif` and `<scene>-ssim.csv`, with 1e-9 tolerance for its nine-decimal CSV.
+
+The production Go encoder uses the owner-local `internal/media/ugoira/jpeg` decoder: Go 1.26.3's JPEG parsing with
+the legacy zune-jpeg 0.5.15 integer IDCT and 14-bit BT.601 conversion. Standard-library IDCT rounding changed
+palette selection enough to fail the fixed quality gate; matching only the color coefficients did not fix all
+samples. This decoder does not register a global image format or add a module dependency. The parser's BSD license
+is kept in that package; the zune-jpeg MIT attribution must remain in the final license bundle. The synthetic
+17×9 `jpeg-{444,progressive,gray,restart}` fixtures and their legacy-decoded RGBA references cover these paths
+without requiring Rust, FFmpeg or jpegtran at test time. The Go resize kernel uses bounded sine/cosine
+polynomials with explicit `math.FMA`, fixed against the legacy runtime `sinf` results. Its 1,031 numeric
+references in `testdata/lanczos-kernel.json` preserve Lanczos3 rounding without calling a platform math library.
+The Go APNG writer uses fixed Paeth prediction and an independent BestSpeed zlib stream per frame, retaining
+RGBA8, lossless pixels and Source/None rectangle playback.
+
+The migration corpus's six public artwork IDs are listed below. Archive dimensions were verified by decoding every
+frame; artwork display dimensions alone are insufficient. The first original ZIP was explicitly provided by Pixiv's
+public `ugoira_meta` `originalSrc`, with its complete frame list checked against authenticated SDK metadata; the
+SDK had only offered medium for that artwork. This was a test-data acquisition step, not a product fallback.
+
+| Artwork ID | Archive quality | Actual dimensions | Frames | Coverage |
+| --- | --- | --- | --- | --- |
+| 150808387 | original | 1920×1080 | 63 | High resolution, local motion, fine lines |
+| 150247639 | medium | 423×600 | 8 | Complex illustration, broad changes |
+| 150356234 | medium | 219×320 | 121 | Small canvas, long sequence, gradients |
+| 150863948 | medium | 600×420 | 12 | Local motion, flat colors |
+| 150863611 | medium | 600×338 | 37 | Gradients, texture, local motion |
+| 150863218 | medium | 480×270 | 128 | Full-frame changes, dense texture |
+
+Keep the original and medium archives in separate directories. Preserve full metadata and hashes locally;
+never infer an original ZIP URL or relabel a medium sample. These sources do not replace later per-sample quality
+and five-trial alternating old/new performance checks.
+
+
+### Optional FFmpeg quality reference
+
+Set `PIXIV_UGOIRA_QUALITY_FFMPEG=1` to compare the Go GIF encoder with a local FFmpeg executable. Without that exact opt-in, both tests skip before looking for FFmpeg or reading input files. The default command is `ffmpeg`; `PIXIV_UGOIRA_QUALITY_FFMPEG_BIN` selects another executable. An enabled comparison fails visibly if the executable is missing or fails; it never installs a tool or switches the production encoder.
+
+```bash
+PIXIV_UGOIRA_QUALITY_FFMPEG=1 \
+PIXIV_UGOIRA_QUALITY_OUTPUT_DIR="$PWD/build/ugoira-parity/ffmpeg-synthetic" \
+go test ./e2e -run '^TestUgoiraFFmpegSynthetic$' -count=1 -v
+
+PIXIV_UGOIRA_QUALITY_FFMPEG=1 \
+PIXIV_UGOIRA_QUALITY_ZIP=/absolute/path/to/frames.zip \
+PIXIV_UGOIRA_QUALITY_FRAMES=/absolute/path/to/frames.json \
+PIXIV_UGOIRA_QUALITY_CASE=public-sample \
+PIXIV_UGOIRA_QUALITY_OUTPUT_DIR="$PWD/build/ugoira-parity/ffmpeg-public" \
+go test ./e2e -run '^TestUgoiraFFmpegPublic$' -count=1 -v
+```
+
+The public test reads local files only. `frames.json` must contain the complete ordered `[{"file":"000000.jpg","delay":80}]` array, not a `sample.json` wrapper; extract its full `frames` array when using a captured sample. Quality input filenames must be flat, as in the old gate. The reference uses the original concat durations and `palettegen=stats_mode=full`/`paletteuse` filter, with generated extraction names so metadata cannot inject concat directives.
+
+The three original synthetic scenes require each frame and the averages to meet the FFmpeg RGB/luma MSSIMSimple scores. Public inputs require the averages; both use the original `1e-12` comparison tolerance. GIF delta/transparent frames and disposal are replayed, both loops and frame counts are checked, and Go delays must match the metadata rounded up to centiseconds. This comparator's JPEG reference uses the legacy IDCT/14-bit color conversion, and 16-bit source channels retain the old rounding; alpha is dropped for the original RGB metric. The separate parity inspector's standard-library JPEG reference stays unchanged.
+
+`QUALITY_RESULT` logs the case, frame count and four means. An output directory preserves `<case>-go.gif`, `<case>-go-ffmpeg.gif` and `<case>-go-ssim.csv` (columns `go_luma_ssim`, `ffmpeg_luma_ssim`, `go_rgb_ssim`, `ffmpeg_rgb_ssim`), including when a quality comparison fails. Choose a new directory for each trial; saved case names must be flat artifact names. The Go-run filenames are separate from historical `*-rust.gif`, `*-ffmpeg.gif` and `*-ssim.csv` calibration records, so those remain untouched. A public sample can fail this optional FFmpeg comparison even when its legacy encoder also did; retain the negative result and compare the same frozen legacy output before attributing it to migration.
+
 ### Test file layout
 
 A production file `x.go` corresponds to at most one `x_test.go` in the same directory; platform-specific tests use `x_<platform>_test.go` and must have a real base owner. Tests for new owners always use the external test package (`X_test`); only the directories below are allowed to be same-package, because they observe unexported internal state. New same-package exceptions must be registered here with a permanent reason; otherwise they are treated as violations.
 
 | Directory | Reason for same-package |
 | --- | --- |
+| `internal/media/ugoira` | Tests exercise `readFrameSource`, `frameSource`, `validateDecodedSize`, `frameNRGBA`, `decodeInto`, `resizeFrame`, and `apngWriter` directly to verify allocation boundaries and cancellation without huge allocations, preserve transparent RGB and ownership of the previous frame during buffer reuse, compare Lanczos3 pixels with fixed upstream reference vectors, exercise APNG sequence overflow and write failures, and check reservoir state, deduplication weights/indices, Oklab/Wu reference values, fixed-seed K-means centers and per-pixel dither indices. `colorGrid` tests verify exact candidate bounds at cell edges; `frameQuantizer` tests verify that reused error rows are cleared, ordinary quantization returns independent indices, and explicit buffer reuse starts only after the previous frame is consumed. LZW tests cover dictionary/code-width reset across frames and recovery after a write failure. GIF tests observe `gifWriter`/`gifBlocks` to verify global tables, streaming LZW sub-blocks and write failures; lifecycle tests observe `encodeGate` to coordinate queued cancellation without sleeps. Exposing these codec internals would expand the `Encoder` contract solely for tests. |
 | `internal/config/settings` | `schema_test.go` passes synthetic types to the private `deriveSchemaFromTags` compiler to test declaration rejection without exporting reflection metadata or resetting the production cache. |
 | `internal/cli` | The composition root test observes unexported root wiring, invocation lifecycle, and close ordering; these seams are not a public API. |
 | `internal/cli/commands/pixiv/search` | Tests observe private searchArtworks logical-page continuation through a real SDK with an HTTP fixture. CLI/MCP wire contracts do not expose these cursors; exporting application internals only for tests would widen the public surface. |
@@ -347,9 +452,9 @@ A production file `x.go` corresponds to at most one `x_test.go` in the same dire
 | `sdk/pixiv` | `cursor_test.go` observes unexported cursor construction and client-instance binding to verify exact query-bound invalid continuations without widening the public SDK surface. |
 | `scripts/internal/browsernativeevidence` | Tests observe unexported environment probes and inject synthetic Firefox cookie seeds. |
 | `scripts/internal/homebrewformula` | Tests directly call unexported formula rendering and version validation (`renderFormula`, `validateFormulaVersion`, `checkDynamicVersionNeeds`). |
-| `scripts/internal/licensebundle` | Tests observe unexported `defaultBundleFileOps`, `generateFromTargetMetadata`, and license text normalization, and inject fake cargo metadata. |
+| `scripts/internal/licensebundle` | Tests observe unexported `defaultBundleFileOps`, `modulesFromMetadata`, `packageLicenseFiles`, and license text normalization; executable Go fixtures verify the six-target offline command contract. |
 | `scripts/internal/linuxabi` | Tests directly call unexported glibc version parsing and ABI comparison (`parseGLIBCVersion`, `checkImportedSymbols`). |
-| `scripts/internal/nativeevidence` | Tests directly call unexported record/consolidate seams; the focused workflow contract in the same package locks workflow ownership and security boundaries. Together they cover schema 2, independent `source_commit`, exact binary `--version` output, six-target hash/archive verification, and mutation rollback. |
+| `scripts/internal/nativeevidence` | Tests observe unexported record/consolidate state and the workflow security/ownership contract, covering schema 3, independent `source_commit`, exact binary `--version` output, six-target hash/archive verification, and mutation rollback. |
 | `scripts/internal/publicapi` | Tests observe the unexported parser handling of `unexported`/`hidden` symbols and the golden comparison logic, using `writeFixture` to generate fixtures. |
 | `scripts/internal/releaseassets` | Tests inject unexported `injectReleaseSources`/`injectWindowsReleaseSources`, observing asset archive naming (`archiveName`) and checksums generation. |
 | `scripts/internal/releasenotes` | Tests observe unexported GitHub client call mappings, injecting a fake client to assert source auditing. |
@@ -402,17 +507,17 @@ Adding or restoring an entry point for any capability above is a functional chan
 
 ## Release gates, signing and Homebrew boundaries
 
-`.github/workflows/release.yml` is triggered by `v[0-9]*` tags by default: it first verifies SemVer, then runs the credential-free SDK E2E contract gate on the immutable tag to confirm that test entry points and the default skip/offline boundary have not been broken; only then does it build the Rust staticlib for darwin/linux/windows × amd64/arm64, test Go/Rust, check licenses and package the fixed-name archives. This workflow does not read or inject Pixiv/FANBOX credentials. Real SDK E2E, native browser and one-time solver acceptance must be completed in an authorized environment per the corresponding process on this page; the contract gate must not be treated as real release evidence.
+`.github/workflows/release.yml` is triggered by `v[0-9]*` tags by default: it first verifies SemVer, then runs the credential-free SDK E2E contract gate on the immutable tag to confirm that test entry points and the default skip/offline boundary have not been broken; only then does it build Go binaries for darwin/linux/windows × amd64/arm64 with CGO0, run Go tests (race steps separately enable cgo), check licenses and package the fixed-name archives. This workflow does not read or inject Pixiv/FANBOX credentials. Real SDK E2E, native browser and one-time solver acceptance must be completed in an authorized environment per the corresponding process on this page; the contract gate must not be treated as real release evidence.
 
 `releaseassets finalize` also reads `scripts/install.sh` and `scripts/install.cmd` from the immutable tag, copies them into the Release under fixed names, and writes `checksums.txt` and the Ed25519 signature manifest alongside the six platform archives. The publish policy locks the finalize parameters and the complete eight-asset upload set; the Homebrew renderer also requires the checksum set to include both installers, but the formula still only downloads the platform-appropriate archive.
 
-release.yml only accepts `v[0-9]*` tag pushes and no longer offers `workflow_dispatch`, a `release_tag` input or a test-only overlay. When a tag run fails, fix the cause on the default branch and re-run the normal immutable-tag release process; new verifiers, tests or production sources are not injected into an old tag from the default branch, and no manual recovery entry is provided for an existing Release. validate, test build, production build and publish are all bound to the same tag; the production build rebuilds the staticlib from a clean tag tree on a separate runner and continues to use `git diff --exit-code` for byte-for-byte verification.
+release.yml only accepts `v[0-9]*` tag pushes and no longer offers `workflow_dispatch`, a `release_tag` input or a test-only overlay. When a tag run fails, fix the cause on the default branch and re-run the normal immutable-tag release process; new verifiers, tests or production sources are not injected into an old tag from the default branch, and no manual recovery entry is provided for an existing Release. validate, test build, production build and publish are all bound to the same tag; the production build uses CGO0 from a clean tag tree on a separate runner and continues to use `git diff --exit-code` for byte-for-byte verification.
 
 GitHub Release and the registries are separate systems and cannot commit atomically. `.github/workflows/publish-dockerhub.yml` is therefore the independent post-Release container publisher for both GHCR and Docker Hub. It receives the immutable handoff and both verified container artifacts from the completed Release run, checks the release tag and source identity, then publishes the same loaded image bytes to `ghcr.io/flanchanxwo/pixiv-cli` and `docker.io/flanchanxwo/pixiv-cli`; only Docker Hub authentication uses the protected `release` Environment secret `DOCKER_HUB_TOKEN`, passed through stdin. It never rebuilds the image. If registry publication fails, dispatch it from the default branch with only the original `release_run_id` so the same verified artifacts are reused. Exact-version tags are always published, an older stable recovery succeeds without changing `latest`, and only the newest stable release advances `latest`. No retry loop hides push failures.
 
 ### Container release verification
 
-`build_container` runs after the shared `build` gate and beside `build_production`; it never waits for production assets to be rebuilt. The two native targets are `ubuntu-22.04` for `linux/amd64` and `ubuntu-22.04-arm` for `linux/arm64`. Each target checks out the immutable tag, rebuilds its Rust staticlib from that clean tree, builds a versioned Linux binary through the Linux ABI gate, runs container packaging tests, builds a pinned glibc runtime image, verifies non-root execution, the exact version, `pixiv config path` under `/home/pixiv/.pixiv-cli/`, `/work`, and OCI provenance (`org.opencontainers.image.source`, revision, version, and licenses), then exports `verified-container-linux-amd64` and `verified-container-linux-arm64`. Build jobs receive only `contents: read`; only the independent container publisher requests `packages: write` when it consumes those artifacts after GitHub Release.
+`build_container` runs after the shared `build` gate and beside `build_production`; it never waits for production assets to be rebuilt. The two native targets are `ubuntu-22.04` for `linux/amd64` and `ubuntu-22.04-arm` for `linux/arm64`. Each target checks out the immutable tag and builds a versioned CGO0 Linux binary through the Linux ABI gate, runs container packaging tests, builds a pinned glibc runtime image, verifies non-root execution, the exact version, `pixiv config path` under `/home/pixiv/.pixiv-cli/`, `/work`, and OCI provenance (`org.opencontainers.image.source`, revision, version, and licenses), then exports `verified-container-linux-amd64` and `verified-container-linux-arm64`. Build jobs receive only `contents: read`; only the independent container publisher requests `packages: write` when it consumes those artifacts after GitHub Release.
 
 Focused maintainer checks are:
 
@@ -423,7 +528,7 @@ go test ./tools/release ./tools/platformmatrix -count=1
 
 The credential-free container smoke workflow builds both native architectures on relevant changes and executes version, non-root, state-path, and working-directory assertions; these local checks do not replace that CI evidence for a tagged release.
 
-The shared platform runner/Rust/CC metadata lives in `ci/platforms.json` and is validated/emitted by `tools/platformmatrix`; release archive identity remains in `scripts/internal/releasecontract`. Workflow tests keep behavior and security boundaries rather than mirroring exact job counts, step positions or multiline shell text. Historical recovery plans and acceptance reports retain their original text and paths and do not serve as current process descriptions.
+The shared platform runner/capability metadata lives in `ci/platforms.json` and is validated/emitted by `tools/platformmatrix`; release archive identity remains in `scripts/internal/releasecontract`. Workflow tests keep behavior and security boundaries rather than mirroring exact job counts, step positions or multiline shell text. Historical recovery plans and acceptance reports retain their original text and paths and do not serve as current process descriptions.
 
 ### Verifier source navigation
 
@@ -451,7 +556,7 @@ Before creating any new tag or Release, a maintainer may manually run `.github/w
 This is a read-only rehearsal: it has no `release` Environment, secret, tag checkout, Release/asset editing or creation, and does not clone, commit or push the Homebrew tap. Homebrew has exactly one publishing path; the rehearsal workflow deliberately has no deploy job, so a tap write can never bypass the immutable handoff and checksum verification. The Linux branch installs the read-only-mounted local staging formula in a fixed-digest, short-lived Homebrew container; macOS keeps the native ordinary install command.
 It is used to reproduce the Homebrew install chain before a formal release, and **does not replace** formal tag publishing, signed Releases, tap deployment or post-publish install acceptance. The quality gate keeps behavior-level formula and artifact checks instead of mirroring the workflow as a second policy implementation.
 
-The formal release must still be blocked by a formal tag, signed GitHub Release, tap formula and subsequent install acceptance. The complete six-target staticlib/manifest and real native artifact evidence must have been collected and backfilled under control (see the "Rust ugoira staticlib" section); the protected `release` Environment, the production signing private key and the public repository must also be configured, but these preconditions themselves do not mean that a Release/tap has been created or that the install path has been accepted.
+The formal release must still be blocked by a formal tag, signed GitHub Release, tap formula and subsequent install acceptance. Complete same-source/version six-target Go binary/archive evidence must have been collected and verified (see [Native runner evidence](#native-runner-evidence)); the protected `release` Environment, the production signing private key and the public repository must also be configured, but these preconditions themselves do not mean that a Release/tap has been created or that the install path has been accepted.
 
 The production Ed25519 public trust root is committed in source at [`internal/update/installer/release_installer.go`](../../../internal/update/installer/release_installer.go): the key ID is `ed25519-2c27e77742d3c33a`, and its SPKI DER SHA-256 fingerprint is `2c27e77742d3c33ad14be867d4e0519229a220898c9a7c868447eaef0951b4cf`. The same-package test verifies this mapping against a known real signature; it only proves that the public trust root has entered production wiring, not that actual signing, Release assets or install acceptance have been completed.
 
@@ -482,7 +587,6 @@ An authorized recovery dispatch supplies the original `release_run_id` to the sp
 - local download directories `downloads/`
 - local databases `*.db`
 - common cache and temporary files
-- Rust `internal/media/ugoira/rust/target/`
 
 Do not commit Pixiv tokens, downloaded content, local databases, machine-specific configuration, Ed25519 private keys or tap deploy keys.
 

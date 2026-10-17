@@ -67,13 +67,7 @@ binary 预检会在替换现有安装前显露 loader 失败。
 sh scripts/build.sh
 ```
 
-受支持的源码构建需要 `go.mod` 声明的 Go 版本、`CGO_ENABLED=1`、目标平台可用的 C linker，以及与
-目标匹配的 Rust ugoira staticlib。它会输出 `build/pixiv` 或 `build/pixiv.exe`。Windows
-可通过 Git Bash、MSYS2 或 WSL 运行构建命令。
-
-当前工作树已保存 darwin/linux/windows × amd64/arm64 的六个 runner-verified staticlib 与同源
-`manifest.json`；`scripts/build.sh` 会先校验 source digest、target/path 与每个库的 SHA-256，再构建
-本机 binary。完整要求、证据回填流程和失败含义见[开发流程](maintainers/development.md#rust-ugoira-staticlib)。
+当前源码构建使用 `go.mod` 声明的 Go 版本。`scripts/build.sh` 设置 `CGO_ENABLED=0`，输出 `build/pixiv`（Windows 为 `build/pixiv.exe`），不需要 Rust 工具链、native library 或 C linker。Windows 可通过 Git Bash、MSYS2 或 WSL 运行。编码、许可证与平台证据见[开发流程](maintainers/development.md#ugoira-go-encoder)。
 
 ### Go 安装
 
@@ -83,8 +77,7 @@ sh scripts/build.sh
 go install github.com/FlanChanXwO/pixiv-cli/cmd/pixiv@vX.Y.Z
 ```
 
-它仍使用本机 Go、cgo、C linker 和该 target 的 committed staticlib。六目标库与 manifest 已完整，
-例如已发布的 v0.4.4 可使用 `@v0.4.4`；始终使用已发布的精确 tag，而不是分支名。
+使用已发布的精确 tag，并遵循该 tag 的要求，不使用分支名。包含 Go encoder 的源码版本可用 `CGO_ENABLED=0` 构建。历史 v0.4.4 仍需要其声明的 Go toolchain、cgo、C linker 与当时提交的 Rust static library；安装旧 tag 不会采用当前 checkout 的构建要求。
 
 ### Homebrew
 

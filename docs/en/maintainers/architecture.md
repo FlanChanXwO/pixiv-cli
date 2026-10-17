@@ -263,7 +263,7 @@ and re-exported by the root package to the CLI composition root:
 
 This package must not disguise signature, checksum, HTTP, archive, replacement, or permission errors as "no update". The production trusted key,
 signing private key and Keychain recovery copy, the protected `release` Environment, and the public remote have been configured for the production release path; the complete six-target
-native evidence and staticlib manifest have been backfilled. v0.3.0 has completed the official tag, signed Release, and stable tap formula;
+native evidence and staticlib manifest were backfilled for the legacy Rust release. v0.3.0 has completed the official tag, signed Release, and stable tap formula;
 the failure semantics of Release installation remain a protective boundary, not a temporary degradation.
 
 ### `scripts/cmd`, `scripts/tests`, and `scripts/internal`
@@ -272,7 +272,7 @@ Each script entry still in use lives at `scripts/cmd/<name>/main.go`, which only
 package. Pure test carriers live in `scripts/tests/`: they only verify workflow, documentation, or installer behavior and carry no production implementation.
 Implementation logic and same-package tests live in `scripts/internal/<name>`. Shared release contracts live in
 `scripts/internal/releasecontract` (release target/archive identity) and `scripts/internal/releasenotesrender`
-(GitHub Release body rendering, shared by `releaseassets` and history sync). Platform runner/Rust/CC metadata is owned
+(GitHub Release body rendering, shared by `releaseassets` and history sync). Platform runner/capability metadata is owned
 by `ci/platforms.json` and exposed to workflows through `tools/platformmatrix`; workflow tests validate behavior/security
 boundaries instead of maintaining a second exact YAML policy model.
 
@@ -347,39 +347,13 @@ Owns download and local file persistence:
 - Single-page works are saved to the download directory.
 - Multi-page works and ugoira create a per-work subdirectory.
 - Single-page and multi-page works derive their extension from the upstream URL path and normalize cross-platform illegal characters the same way as the template-generated filename; Pixiv thumbnails use an explicit resource Content-Type to correct an ambiguous URL suffix when available, while unknown media types retain the URL extension.
-- ugoira first downloads the SDK-verified `download_url` zip, then the Rust FFI encoder synthesizes GIF/APNG, or the public SDK publishes the ZIP/extracted frames as-is; an authenticated session may legitimately select App medium, but it must never be labeled as original.
+- ugoira first downloads the SDK-verified `download_url` zip, then the Go encoder produces GIF/APNG, or the public SDK publishes the ZIP/extracted frames as-is; an authenticated session may legitimately select App medium, but it must never be labeled as original.
 
-The Rust crate is wired into cgo as a target-specific staticlib: darwin/linux/windows each have an amd64/arm64 selector; the Linux
-selector also explicitly links the system `libm`, taking over the `sinf`/`expf` symbols of the Rust/image staticlib; the Windows selector passes
-`-L${SRCDIR}/… -lugoira_rs` together with the Windows import libraries of the Rust std to pass `*-pc-windows-msvc` libraries,
-so that cgo does not reject bare `.lib` paths with drive letters; native-evidence on Windows explicitly uses the runner-provided
-`clang -fuse-ld=lld` for the link step, avoiding Go's GCC-only debug linker script being handed to the MSVC linker. Supported
-release/source builds must select and link the real library from the six-target `manifest.json` of the same Rust source digest;
-missing cgo, missing target library, or missing C linker must fail explicitly at compile/build time, and cannot fall back to `ffmpeg` or a runtime
-stub. Source identity is folded into the first-party crate's Cargo/build/source inputs, the vendor closure, and the local
-`quantette`; these paths disable Git text conversion in `.gitattributes`, so that Windows and Unix checkouts keep the same
-Git blob bytes, rather than masking the difference in the digest algorithm. The digest algorithm first converts Windows backslashes from `filepath.Rel` to a
-logical slash path, then filters `src/`, `.cargo/`, and `vendor/`; run `29189725013` proves that if the order is reversed, even
-when all six runner jobs succeed, a Unix/Windows digest split occurs and is caught by consolidation fail-closed.
-This run cannot be backfilled or concatenated with a later run. Rust `target/` is a machine artifact; the staticlib/manifest is a release input that
-can only be committed after native verification.
-The release archive's `LICENSE` and the generated license bundle are also pinned to LF checkout; run `29191200569` had six
-source digests that matched, but the Windows archive's `LICENSE` bytes still diverged from the Unix/Git blob, so
-consolidation failed closed again. This run also cannot be backfilled or concatenated across runs; a full re-run from the fixed SHA is required.
-`internal/media/ugoira/staticlib` only carries the integrity contract of the source digest and manifest, and does not import the cgo encoder;
-therefore the native-evidence **policy** gate can run before the target library is generated. `record` and `consolidate` also do not
-trigger cgo linking, but respectively still require the already-generated staticlib/binary/archive and the full six evidence inputs; the download runtime
-is still only linked to `internal/media/ugoira/rust` through the single FFI entry by `internal/media/ugoira`.
-
-Run `29192425899` completed native build, real cgo GIF/APNG smoke, and binary/archive record on all six platforms,
-and backfilled the six target libraries and the unified manifest via local fail-closed consolidation (this run was the first evidence
-collection, and its responsibility has since been superseded by the pinned-toolchain rebuild of run `29567721284` as the sole source of the currently
-committed six libraries; see the provenance note in `development.md`); source build validates
-this manifest and the library hashes before linking. `ffmpeg` is only retained for explicitly enabled dev-quality comparison and is not in the production download path.
+The default download path constructs `ugoira.NewEncoder()`; it has no backend selector or external-encoder fallback. Source and release builds use `CGO_ENABLED=0`. Rust sources, native libraries and the FFI/staticlib adapter are removed; legacy provenance remains in Git history.
 
 ### `internal/media/ugoira`
 
-Owns the ugoira `Format`, frame input, `Encoder`, the single cgo FFI entry, the Rust crate, and the staticlib/source-digest integrity contract. The downloader only depends on this package's `Encoder` interface and constructs the Rust encoder; it must not duplicate the FFI adapter or publication behavior. `internal/media/ugoira/staticlib` only validates the manifest, source digest, and committed target library files, and does not reverse-import the cgo encoder.
+Owns `Format`, ordered frame input, `Encoder`, ZIP validation/decoding, resizing, GIF quantization/dithering, APNG streaming and atomic publication. The downloader consumes its `Encoder` contract and constructs `NewEncoder()`; it must not duplicate encoding or publication. PNG decoding uses the standard library; owner-local `jpeg` retains legacy IDCT/color rounding. Six-target source/version/binary/archive/member evidence is owned by `scripts/internal/nativeevidence`, separate from the runtime encoder.
 
 ## Release assets and trust boundary
 
@@ -399,8 +373,8 @@ full-SHA Actions, and only publishes after verifying the asset set on a draft Re
 the public tap, and the trust required by Homebrew 6 is only written to the temporary trust store of the runner's local staging tap. Only the final protected
 job can read the independent tap deploy key and push only the corresponding formula.
 The official tag of v0.3.0 has gone through this release path and pushed the stable formula; subsequent tags must still independently satisfy the same installation gate. The complete
-six-target native success evidence has backfilled the staticlib/manifest. The production signing private key, Environment, and public remote
-have been configured for the production release path, and the public trust root for supported binaries has been configured in `internal/update/installer/release_installer.go`. The Rust crates.io dependency has been pinned by
+six-target legacy Rust evidence backfilled its staticlib/manifest. The production signing private key, Environment, and public remote
+have been configured for the production release path, and the public trust root for supported binaries has been configured in `internal/update/installer/release_installer.go`. The legacy Rust crates.io dependency was pinned by
 in-crate source replacement to a complete vendor closure, and verified with an empty Cargo cache for offline metadata/build/test and the six
 target license checks.
 

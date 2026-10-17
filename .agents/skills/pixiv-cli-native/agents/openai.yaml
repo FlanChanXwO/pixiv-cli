@@ -1,4 +1,4 @@
 interface:
-  display_name: "Pixiv CLI Native Code"
-  short_description: "Maintain Rust, cgo, staticlibs, and native evidence."
+  display_name: "Pixiv CLI Encoding and Platforms"
+  short_description: "Verify Go encoding, platform builds, and native evidence."
   default_prompt: "Use $pixiv-cli-native to verify this native-boundary change."

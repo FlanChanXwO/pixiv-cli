@@ -1,48 +1,35 @@
 ---
 name: pixiv-cli-native
-description: Change or validate pixiv-cli Rust ugoira, cgo/FFI, committed static libraries, vendored dependencies, Linux ABI, and native runner evidence. Use when native sources, library hashes, target toolchains, or encoder behavior change; not for routine Go-only or documentation edits.
+description: Change or validate pixiv-cli ugoira encoding, pure-Go platform builds, Linux ABI, and native runner evidence. Use when encoder behavior, target builds, or artifact provenance change; routine leaf Go changes use the develop/test workflow.
 ---
 
-# Maintain pixiv-cli Native Code
+# Maintain Encoding and Platform Builds
 
-Read `AGENTS.md`, the affected FFI/encoder owner, and the Rust/staticlib sections of `docs/en/maintainers/development.md`. Use `ci/platforms.json` for target/compiler/toolchain metadata; do not maintain a second platform list in a new helper or skill.
+Read `AGENTS.md`, the affected encoder/build owner, and [Ugoira Go encoder](../../../docs/en/maintainers/development.md#ugoira-go-encoder). `ci/platforms.json` owns runners and capabilities; `go.mod` owns the toolchain. `scripts/build-platform.sh` owns exact-target Go builds and canonical archives.
 
-## Change safely
+## Change the responsible boundary
 
-1. Identify whether the change affects Rust source, the C ABI, cgo selection, vendoring, staticlib provenance, or release linking. Record the affected behavior and evidence required before altering binary inputs.
-2. Use the repository's Red/Green workflow for behavior changes. Keep unsafe FFI ownership, allocation/free pairing, panic containment, cancellation, and error translation explicit. Avoid `unwrap`/`expect` on fallible external input or crossing the FFI boundary with unwinding.
-3. Work in `internal/media/ugoira/rust` for Cargo commands so its `.cargo/config.toml` source replacement applies. Use locked/offline dependency resolution. Never hand-edit vendored crates or hide a network fallback; approved dependency changes must regenerate the complete closure and license evidence.
-4. Preserve the single encoder/FFI seam. A slow normal encode is not a timeout failure. Keep decoder-derived resource constraints and explicit errors; do not add another encoder or ffmpeg runtime fallback.
+Use [the test workflow](../pixiv-cli-test/SKILL.md) for behavior changes. Keep the downloader's `ugoira.Encoder` seam: ZIP metadata order, frame timing, resizing, transparency, playback, cancellation and atomic publication belong to `internal/media/ugoira`. Preserve the documented decoder-derived allocation boundary and buffer ownership. A slow encode is not a timeout failure.
 
-## Verify the touched boundary
+Production builds use `CGO_ENABLED=0`; only explicit race-detector steps enable cgo. Ported algorithms keep their source/license notices through `third_party/attributions.json` and the generated license bundle. A toolchain change needs verification of affected targets, not just a version-field edit.
 
-From the crate directory, run the appropriate focused test, then:
+## Verify the changed behavior
 
-```bash
-cargo fmt --check
-cargo test --locked --offline
-cargo clippy --locked --offline --all-targets -- -D warnings
-```
-
-From the repository root, relevant checks include:
+Select the relevant existing checks:
 
 ```bash
-go test ./internal/media/ugoira/staticlib -run '^TestCommittedManifestWhenPresent$' -count=1
-go test ./internal/media/ugoira/... -count=1
+CGO_ENABLED=0 go test ./internal/media/ugoira/... ./internal/media/downloader -count=1
 go run ./scripts/cmd/licensebundle --check
-sh scripts/test-build-staticlibs.sh
 sh scripts/test-build-platform.sh
-sh scripts/test-rust-vendor.sh
+go test ./tools/platformmatrix ./scripts/internal/nativeevidence -count=1
 ```
 
-These commands can compile native code and consume significant resources; confirm the required existing toolchains and scope first. Report missing targets, compilers, or components instead of installing or pretending to validate them.
+The license check consumes cached module sources. Report missing inputs instead of downloading or installing tools without approval. For quality/resource comparisons, use the documented offline corpus and fixed legacy/Go settings. Keep frozen baselines and complete inputs; compare each required sample/format rather than hiding failures in an overall average. FFmpeg is an explicit test reference, not a runtime backend.
 
-`scripts/build-platform.sh` owns the exact-target Rust/Go/archive build. Linux release binaries must pass `go run ./scripts/cmd/linuxabi --binary PATH` against the actual ELF, not merely execute on a newer host. Read the existing script and workflow before supplying target/version/compiler arguments.
+Linux artifacts pass `scripts/cmd/linuxabi` against the actual ELF, including static binaries. Cross-compilation proves compilation, not native execution. Check the built and unpacked binary's version and complete archive/license contents.
 
-## Provenance and publication
+## Consume matching evidence
 
-Committed libraries and `manifest.json` bind every shipped target from the registry to one source digest. A single-target rebuild invalidates cross-platform completeness; do not manufacture a new manifest around partial evidence. Do not commit `rust/target/`. Preserve `.gitattributes` byte rules for source/vendor/license inputs.
+The explicit `native-evidence.yml` entry requires audited main. PR Platform workers also emit schema 3 binary/archive bundles; their executable workflow comes from the trusted base ref. Inspect the actual producer and source SHA rather than assuming a PR-head workflow edit changes it.
 
-Use the credential-free `native-evidence.yml` workflow for actual native runner evidence. Consolidate only a complete same-source, same-version run using the existing `nativeevidence` tool. Never splice successful artifacts from different source digests or label a fixture test as all-target native evidence. Review any backfilled libraries and manifest together, then rerun integrity and real GIF/APNG linking smoke.
-
-A toolchain upgrade requires rebuilding and verifying every affected shipped target, not just editing a version field. Release, signing, tags, and publisher actions remain separately authorized. Report which native executions actually occurred and which remain unverified.
+Consolidate exactly six complete bundles from one source/version/run into a new directory with `scripts/cmd/nativeevidence`. Keep failed or missing results visible; fixture success is not six-platform evidence. Report actual native executions and outstanding platforms. Release, signing, tags and publisher actions require separate authorization.
