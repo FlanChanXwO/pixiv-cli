@@ -53,8 +53,7 @@ jobs:
     permissions:
       contents: read
     env:
-      CC: ${{ matrix.cc }}
-      RUSTUP_TOOLCHAIN: ${{ matrix.rust_toolchain }}
+      CGO_ENABLED: '0'
     strategy:
       fail-fast: false
       matrix: ${{ fromJSON(needs.setup.outputs.matrix) }}
@@ -73,23 +72,30 @@ jobs:
         env:
           HEAD_SHA: ${{ inputs.head_sha }}
         run: test "$(git rev-parse HEAD)" = "$HEAD_SHA"
-      - name: Install the native Rust toolchain
+      - name: Download locked Go module sources
         shell: bash
-        run: rustup toolchain install '${{ matrix.rust_toolchain }}' --profile minimal --target '${{ matrix.rust_target }}' --no-self-update
+        run: go mod download
+      - name: Verify Go license bundle
+        shell: bash
+        run: go run ./scripts/cmd/licensebundle --check
       - name: Build the versioned Linux binary
         shell: bash
         run: |
           set -euo pipefail
           binary=$(sh scripts/build-platform.sh \
             --target '${{ matrix.goos }}/${{ matrix.goarch }}' \
-            --rust-target '${{ matrix.rust_target }}' \
-            --cc '${{ matrix.cc }}' \
             --version 0.0.0-smoke \
             --output-dir dist)
           test "$binary" = dist/pixiv
       - name: Build the container image
         shell: bash
-        run: docker build -t pixiv-cli-smoke:${{ matrix.goarch }} .
+        run: docker build --build-arg REVISION="$(git rev-parse HEAD)" --build-arg VERSION=v0.0.0-smoke -t pixiv-cli-smoke:${{ matrix.goarch }} .
+      - name: Verify source revision
+        shell: bash
+        run: |
+          set -euo pipefail
+          revision=$(docker image inspect --format '{{ index .Config.Labels "org.opencontainers.image.revision" }}' pixiv-cli-smoke:${{ matrix.goarch }})
+          test "$revision" = "$(git rev-parse HEAD)"
       - name: Verify non-root user
         shell: bash
         run: |

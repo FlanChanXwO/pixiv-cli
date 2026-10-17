@@ -112,6 +112,9 @@ func readTarGzMembers(path string) (map[string]string, error) {
 		if err != nil {
 			return nil, fmt.Errorf("read tar member: %w", err)
 		}
+		if err := validateArchiveMemberPath(header.Name); err != nil {
+			return nil, err
+		}
 		if header.Typeflag == tar.TypeDir {
 			continue
 		}
@@ -133,6 +136,9 @@ func readZIPMembers(path string) (map[string]string, error) {
 	defer reader.Close()
 	members := make(map[string]string)
 	for _, member := range reader.File {
+		if err := validateArchiveMemberPath(member.Name); err != nil {
+			return nil, err
+		}
 		info := member.FileInfo()
 		if info.IsDir() {
 			continue
@@ -156,10 +162,16 @@ func readZIPMembers(path string) (map[string]string, error) {
 	return members, nil
 }
 
-func addArchiveMember(members map[string]string, name string, body io.Reader) error {
-	if name == "" || strings.HasPrefix(name, "/") || strings.Contains(name, "\\") || strings.Contains(name, "../") || name == ".." {
+// 目录同样需要校验；drive 前缀不随运行主机的平台放行。
+func validateArchiveMemberPath(name string) error {
+	hasDrive := len(name) >= 2 && name[1] == ':'
+	if name == "" || strings.HasPrefix(name, "/") || strings.Contains(name, "\\") || strings.Contains(name, "../") || name == ".." || strings.HasSuffix(name, "/..") || hasDrive {
 		return fmt.Errorf("archive member path is unsafe: %q", name)
 	}
+	return nil
+}
+
+func addArchiveMember(members map[string]string, name string, body io.Reader) error {
 	if _, duplicate := members[name]; duplicate {
 		return fmt.Errorf("archive contains duplicate regular member %q", name)
 	}

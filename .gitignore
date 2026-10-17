@@ -41,7 +41,4 @@ temp/
 __pycache__/
 *.py[cod]
 
-# Rust compiler output is machine-specific; verified staticlib/manifest stays tracked.
-/internal/media/ugoira/rust/target/
-
 .worktrees/

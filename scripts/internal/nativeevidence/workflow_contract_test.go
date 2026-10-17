@@ -25,8 +25,8 @@ func TestNativeEvidenceWorkflowKeepsSecurityAndOwnershipBoundaries(t *testing.T)
 		"workflow_dispatch:",
 		"./tools/platformmatrix --capability native-evidence",
 		"scripts/build-platform.sh",
-		"--cc '${{ matrix.cc }}'",
-		"CC='${{ matrix.cc }}' go test ./internal/media/ugoira",
+		"go run ./scripts/cmd/licensebundle --check",
+		"go test ./internal/media/ugoira/... -count=1",
 		"scripts/cmd/nativeevidence record",
 		"refs/heads/main",
 	} {
@@ -37,6 +37,9 @@ func TestNativeEvidenceWorkflowKeepsSecurityAndOwnershipBoundaries(t *testing.T)
 	for _, forbidden := range []string{
 		"\n  push:",
 		"build-staticlibs.sh",
+		"rustup ",
+		"matrix.rust_target",
+		"matrix.cc",
 		"go build -trimpath",
 		"releaseassets package",
 		"gh release",
@@ -74,6 +77,13 @@ func TestNativeEvidenceWorkflowKeepsSecurityAndOwnershipBoundaries(t *testing.T)
 	for index := 0; index+1 < len(jobs.Content); index += 2 {
 		jobName := jobs.Content[index].Value
 		job := jobs.Content[index+1]
+		if jobName == "native_evidence" {
+			env := workflowMappingValue(t, job, "env")
+			cgo := workflowMappingValue(t, env, "CGO_ENABLED")
+			if cgo.Kind != yaml.ScalarNode || cgo.Value != "0" {
+				t.Fatal("native evidence must run with CGO_ENABLED=0")
+			}
+		}
 		permissions := workflowMappingValue(t, job, "permissions")
 		if permissions.Kind != yaml.MappingNode || len(permissions.Content) != 2 ||
 			permissions.Content[0].Value != "contents" || permissions.Content[1].Value != "read" {

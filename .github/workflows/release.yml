@@ -58,6 +58,8 @@ jobs:
     runs-on: ubuntu-24.04
     permissions:
       contents: read
+    env:
+      CGO_ENABLED: '0'
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
@@ -117,8 +119,7 @@ jobs:
     permissions:
       contents: read
     env:
-      CC: ${{ matrix.cc }}
-      RUSTUP_TOOLCHAIN: ${{ matrix.rust_toolchain }}
+      CGO_ENABLED: '0'
       # Git for Windows 会按 runner 默认值把 immutable tag 的 Go 源码转换为 CRLF；质量门必须
       # 检查 Git blob 的 LF bytes，避免 gofmt 将 checkout 转换误报为源码格式错误。
       GIT_CONFIG_COUNT: '1'
@@ -140,24 +141,15 @@ jobs:
       - name: Validate the exact immutable release source
         shell: bash
         run: go run ./scripts/cmd/releaseassets validate-source --version "${RELEASE_TAG#v}" --product-skill skills/pixiv-cli/SKILL.md
-      - name: Install the pinned native Rust toolchain
+      - name: Download locked Go module sources
         shell: bash
-        run: rustup toolchain install '${{ matrix.rust_toolchain }}' --profile minimal --component 'clippy,rustfmt' --target '${{ matrix.rust_target }}' --no-self-update
-      - name: Check vendored Rust sources
-        shell: bash
-        run: sh scripts/test-rust-vendor.sh
-      - name: Check Rust formatting from vendored sources
-        shell: bash
-        working-directory: internal/media/ugoira/rust
-        run: cargo fmt --check
-      - name: Lint vendored Rust sources
-        shell: bash
-        working-directory: internal/media/ugoira/rust
-        run: cargo clippy --locked --offline --all-targets -- -D warnings
+        run: go mod download
       - name: Test Go sources
         shell: bash
         run: go test ./...
       - name: Test Go sources with the race detector
+        env:
+          CGO_ENABLED: '1'
         # 六个平台都实际执行 gate。go.mod 当前声明的工具链不支持 windows/arm64 的 -race，因此该目标
         # 必须精确验证 Go 官方“不支持”诊断；其他五个平台实际运行 race tests。
         shell: bash
@@ -191,8 +183,7 @@ jobs:
     permissions:
       contents: read
     env:
-      CC: ${{ matrix.cc }}
-      RUSTUP_TOOLCHAIN: ${{ matrix.rust_toolchain }}
+      CGO_ENABLED: '0'
     strategy:
       fail-fast: false
       matrix: ${{ fromJSON(needs.resolve_platforms.outputs.release) }}
@@ -210,9 +201,12 @@ jobs:
       - name: Validate the exact immutable production source
         shell: bash
         run: go run ./scripts/cmd/releaseassets validate-source --version "${RELEASE_TAG#v}" --product-skill skills/pixiv-cli/SKILL.md
-      - name: Install the pinned native Rust toolchain
+      - name: Download locked Go module sources
         shell: bash
-        run: rustup toolchain install '${{ matrix.rust_toolchain }}' --profile minimal --target '${{ matrix.rust_target }}' --no-self-update
+        run: go mod download
+      - name: Verify Go license bundle
+        shell: bash
+        run: go run ./scripts/cmd/licensebundle --check
       - name: Build the exact production archive
         shell: bash
         run: |
@@ -222,8 +216,6 @@ jobs:
           test -z "$(git clean -ndx)"
           archive=$(sh scripts/build-platform.sh \
             --target '${{ matrix.goos }}/${{ matrix.goarch }}' \
-            --rust-target '${{ matrix.rust_target }}' \
-            --cc '${{ matrix.cc }}' \
             --version "${RELEASE_TAG#v}" \
             --output-dir "$RUNNER_TEMP/platform-build" \
             --package)
@@ -266,6 +258,8 @@ jobs:
     runs-on: ${{ matrix.runner }}
     permissions:
       contents: read
+    env:
+      CGO_ENABLED: '0'
     strategy:
       fail-fast: false
       matrix: ${{ fromJSON(needs.resolve_platforms.outputs.container) }}
@@ -284,19 +278,20 @@ jobs:
           set -euo pipefail
           test "$(git rev-parse HEAD)" = "$(git rev-parse "$RELEASE_TAG^{commit}")"
           go run ./scripts/cmd/releaseassets validate-source --version "${RELEASE_TAG#v}" --product-skill skills/pixiv-cli/SKILL.md
-      - name: Install the pinned native Rust toolchain
+      - name: Download locked Go module sources
         shell: bash
-        run: rustup toolchain install '${{ matrix.rust_toolchain }}' --profile minimal --target '${{ matrix.rust_target }}' --no-self-update
+        run: go mod download
+      - name: Verify Go license bundle
+        shell: bash
+        run: go run ./scripts/cmd/licensebundle --check
       - name: Build and verify the versioned Linux executable
         shell: bash
         run: |
           set -euo pipefail
           test -z "$(git status --porcelain --untracked-files=all)"
           test -z "$(git clean -ndx)"
-          binary=$(RUSTUP_TOOLCHAIN='${{ matrix.rust_toolchain }}' sh scripts/build-platform.sh \
+          binary=$(sh scripts/build-platform.sh \
             --target '${{ matrix.goos }}/${{ matrix.goarch }}' \
-            --rust-target '${{ matrix.rust_target }}' \
-            --cc '${{ matrix.cc }}' \
             --version "${RELEASE_TAG#v}" \
             --output-dir "$RUNNER_TEMP/platform-build")
           git diff --check

@@ -53,8 +53,7 @@ jobs:
     permissions:
       contents: read
     env:
-      CC: ${{ matrix.cc }}
-      RUSTUP_TOOLCHAIN: ${{ matrix.rust_toolchain }}
+      CGO_ENABLED: '0'
     strategy:
       fail-fast: false
       matrix: ${{ fromJSON(needs.setup.outputs.matrix) }}
@@ -79,12 +78,12 @@ jobs:
           set -euo pipefail
           test "$(go env GOOS)" = '${{ matrix.goos }}'
           test "$(go env GOARCH)" = '${{ matrix.goarch }}'
-      - name: Install the pinned native Rust toolchain
+      - name: Download locked Go module sources
         shell: bash
-        run: rustup toolchain install '${{ matrix.rust_toolchain }}' --profile minimal --target '${{ matrix.rust_target }}' --no-self-update
-      - name: Check vendored Rust sources
+        run: go mod download
+      - name: Verify Go license bundle
         shell: bash
-        run: sh scripts/test-rust-vendor.sh
+        run: go run ./scripts/cmd/licensebundle --check
       - name: Test the platform installer
         shell: bash
         run: go test ./scripts/tests/installers -count=1
@@ -102,8 +101,6 @@ jobs:
           version="0.2.0-ci.${GITHUB_RUN_ID}"
           archive=$(sh scripts/build-platform.sh \
             --target '${{ matrix.goos }}/${{ matrix.goarch }}' \
-            --rust-target '${{ matrix.rust_target }}' \
-            --cc '${{ matrix.cc }}' \
             --version "$version" \
             --output-dir dist \
             --package)
@@ -113,7 +110,7 @@ jobs:
         run: |
           set +e
           native_smoke_log="$RUNNER_TEMP/native-ugoira-smoke.log"
-          go test ./internal/media/ugoira -run '^TestRustUgoiraEncoderNativeGIFAndAPNG$' -count=1 >"$native_smoke_log" 2>&1
+          go test ./internal/media/ugoira/... -count=1 >"$native_smoke_log" 2>&1
           status=$?
           cat "$native_smoke_log"
           if [ "$status" -ne 0 ]; then
@@ -138,6 +135,29 @@ jobs:
           PIXIV_E2E_BINARY="$(pwd)/$binary" \
           PIXIV_E2E_EXPECTED_VERSION="v${version}" \
           go test ./e2e -run '^TestPixivBinaryPackagedSmoke$' -count=1
+
+      - name: Record Go binary and archive evidence
+        shell: bash
+        run: |
+          set -euo pipefail
+          binary='dist/pixiv'
+          if [ '${{ matrix.goos }}' = windows ]; then
+            binary='dist/pixiv.exe'
+          fi
+          go run ./scripts/cmd/nativeevidence record \
+            --repo-root . \
+            --version "0.2.0-ci.${GITHUB_RUN_ID}" \
+            --source-commit "$(git rev-parse HEAD)" \
+            --target '${{ matrix.goos }}/${{ matrix.goarch }}' \
+            --binary "$binary" \
+            --archive "$PLATFORM_ARCHIVE" \
+            --output dist/native-evidence.json
+      - name: Upload native evidence
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: native-evidence-${{ matrix.artifact }}
+          path: dist
+          if-no-files-found: error
 
   publish:
     if: ${{ always() && inputs.check_run_id != '' }}

@@ -21,7 +21,7 @@
 - **组合式视觉作品管道**——视觉列表接入管道时自动输出 canonical NDJSON；用 `--filter` 编写有类型的本地作品筛选，并可直接传给 `download`。
 - **本地账号池**——为读取型任务选择符合条件的本地账号，并在分页和下载准备阶段遵循 Pixiv 的 `Retry-After` 响应。
 - **易用的账号登录流程**——运行 `pixiv auth login` 即可在浏览器完成 OAuth，随后可使用 `auth list`、`auth use` 和 `auth check` 管理和确认本地多账号。
-- **Ugoira 输出模式**——可选择 GIF 或 APNG；文件名模板非法或渲染为空时使用稳定默认文件名，并以 warnings 保持可观测。
+- **Ugoira 输出模式**——在 Go 中编码 GIF（默认）或 APNG，无需 `ffmpeg`；文件名模板非法或渲染为空时使用稳定默认文件名，并以 warnings 保持可观测。
 - **明确的下载结果**——可选择图片质量和闭区间页码，将允许的 Pixiv CDN URL 作为直链来源，并保留已完成文件、warnings 与 failures。
 - **认证 App API 发现能力**——通过 App API 读取 R18 详情、分页、ugoira metadata 和全部 16 种排行榜；作品搜索/详情保留可用的 viewer 状态与系列信息，普通无本地筛选的深页搜索从目标原始 offset 开始。详见 [CLI 参考](docs/zh-CN/cli-reference.md)。
 - **实用搜索筛选**——支持分级、作品类型、AI 模式、横纵比、分辨率和版本内置的绘图工具目录；反向搜图支持从本地文件或 URL 查询 SauceNAO、ascii2d。
@@ -164,7 +164,7 @@ brew upgrade pixiv-cli
 
 ### Go
 
-请使用精确的已发布 tag。源码安装需要 Go、cgo、C linker 和仓库中与目标平台匹配的 Rust static library。
+请使用精确的已发布 tag，并遵循该 tag 的构建要求。历史版本 v0.4.4 需要 cgo、C linker 和当时提交的 Rust static library，详见 [Go 安装](docs/zh-CN/cli-reference.md#go-安装)。
 
 ```bash
 go install github.com/FlanChanXwO/pixiv-cli/cmd/pixiv@vX.Y.Z
@@ -172,7 +172,7 @@ go install github.com/FlanChanXwO/pixiv-cli/cmd/pixiv@vX.Y.Z
 
 ### Release 压缩包或源码构建
 
-从 [GitHub Releases](https://github.com/FlanChanXwO/pixiv-cli/releases) 下载受支持的压缩包，或构建当前 checkout：
+从 [GitHub Releases](https://github.com/FlanChanXwO/pixiv-cli/releases) 下载受支持的压缩包，或使用 `go.mod` 声明的 Go 版本构建当前 checkout。构建脚本设置 `CGO_ENABLED=0`，不需要 Rust 工具链或 C linker：
 
 ```bash
 sh scripts/build.sh

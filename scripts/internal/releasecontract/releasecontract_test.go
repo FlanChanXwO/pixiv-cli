@@ -28,24 +28,6 @@ func TestFixedTargetsCoverSixReleasePlatforms(t *testing.T) {
 	}
 }
 
-func TestTargetRustTargetMapsGoTriples(t *testing.T) {
-	t.Parallel()
-
-	want := map[string]string{
-		"darwin/amd64":  "x86_64-apple-darwin",
-		"darwin/arm64":  "aarch64-apple-darwin",
-		"linux/amd64":   "x86_64-unknown-linux-gnu",
-		"linux/arm64":   "aarch64-unknown-linux-gnu",
-		"windows/amd64": "x86_64-pc-windows-msvc",
-		"windows/arm64": "aarch64-pc-windows-msvc",
-	}
-	for _, target := range releasecontract.FixedTargets() {
-		if got := target.RustTarget(); got != want[target.String()] {
-			t.Errorf("(%s).RustTarget() = %q, want %q", target.String(), got, want[target.String()])
-		}
-	}
-}
-
 func TestArchiveNameMatchesFixedTargetIdentity(t *testing.T) {
 	t.Parallel()
 

@@ -1,15 +1,13 @@
-// Package licensebundle 从六个 release Rust target 的锁定离线依赖图生成许可证 bundle。
+// Package licensebundle 从六个平台的 Go 生产依赖及移植来源生成许可证 bundle。
 package licensebundle
 
 import (
 	"bytes"
-	"encoding/json"
 	"errors"
 	"flag"
 	"fmt"
 	"io/fs"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"regexp"
 	"sort"
@@ -18,39 +16,15 @@ import (
 	"github.com/FlanChanXwO/pixiv-cli/scripts/internal/releasecontract"
 )
 
-var releaseTargets = func() []string {
-	targets := releasecontract.FixedTargets()
-	names := make([]string, 0, len(targets))
-	for _, target := range targets {
-		names = append(names, target.RustTarget())
-	}
-	return names
-}()
+var releaseTargets = releasecontract.FixedTargets()
 
-type cargoMetadata struct {
-	Packages []cargoPackage `json:"packages"`
-	Resolve  struct {
-		Nodes []cargoNode `json:"nodes"`
-	} `json:"resolve"`
-}
-
-type cargoPackage struct {
-	ID           string  `json:"id"`
-	Name         string  `json:"name"`
-	Version      string  `json:"version"`
-	License      string  `json:"license"`
-	LicenseFile  *string `json:"license_file"`
-	ManifestPath string  `json:"manifest_path"`
-	Repository   string  `json:"repository"`
-}
-
-type cargoNode struct {
-	ID   string         `json:"id"`
-	Deps []cargoNodeDep `json:"deps"`
-}
-
-type cargoNodeDep struct {
-	PackageID string `json:"pkg"`
+type packageMetadata struct {
+	Name       string `json:"name"`
+	Version    string `json:"version"`
+	License    string `json:"license,omitempty"`
+	Repository string `json:"repository,omitempty"`
+	Directory  string `json:"directory"`
+	Note       string `json:"note,omitempty"`
 }
 
 type licenseFile struct {
@@ -59,16 +33,15 @@ type licenseFile struct {
 }
 
 type bundledPackage struct {
-	Package cargoPackage
+	Package packageMetadata
 	Files   []licenseFile
 }
 
 type options struct {
-	Manifest   string
 	Index      string
 	Licenses   string
 	Check      bool
-	Cargo      string
+	Go         string
 	Repository string
 }
 
@@ -81,11 +54,10 @@ func run(args []string) error {
 	flags := flag.NewFlagSet("licensebundle", flag.ContinueOnError)
 	flags.SetOutput(os.Stderr)
 	opts := options{}
-	flags.StringVar(&opts.Manifest, "manifest", "internal/media/ugoira/rust/Cargo.toml", "Rust crate manifest")
 	flags.StringVar(&opts.Index, "index", "THIRD_PARTY_LICENSES.md", "generated bundle index")
 	flags.StringVar(&opts.Licenses, "licenses-dir", "third_party/licenses", "generated license text directory")
 	flags.BoolVar(&opts.Check, "check", false, "verify generated files without modifying them")
-	flags.StringVar(&opts.Cargo, "cargo", "cargo", "cargo executable")
+	flags.StringVar(&opts.Go, "go", "go", "Go executable")
 	flags.StringVar(&opts.Repository, "repository", ".", "repository root")
 	if err := flags.Parse(args); err != nil {
 		return err
@@ -101,7 +73,6 @@ func generate(opts options) error {
 	if err != nil {
 		return err
 	}
-	manifest := absoluteFrom(repository, opts.Manifest)
 	index, err := repositoryOutputPath(repository, opts.Index, "index")
 	if err != nil {
 		return err
@@ -113,13 +84,9 @@ func generate(opts options) error {
 	if bundleOutputPathsOverlap(index, licenses) {
 		return fmt.Errorf("index and licenses directory output paths must not overlap")
 	}
-	metadata := make([][]byte, 0, len(releaseTargets))
-	for _, target := range releaseTargets {
-		body, err := cargoMetadataJSON(opts.Cargo, repository, manifest, target)
-		if err != nil {
-			return fmt.Errorf("resolve %s dependency closure: %w", target, err)
-		}
-		metadata = append(metadata, body)
+	bundle, err := collectDependencies(opts.Go, repository)
+	if err != nil {
+		return err
 	}
 	if opts.Check {
 		temporary, err := os.MkdirTemp("", "pixiv-license-bundle-check-*")
@@ -127,7 +94,7 @@ func generate(opts options) error {
 			return err
 		}
 		defer os.RemoveAll(temporary)
-		if err := generateFromTargetMetadata(metadata, manifest, filepath.Join(temporary, "THIRD_PARTY_LICENSES.md"), filepath.Join(temporary, "third_party", "licenses")); err != nil {
+		if err := writeBundle(bundle, filepath.Join(temporary, "THIRD_PARTY_LICENSES.md"), filepath.Join(temporary, "third_party", "licenses")); err != nil {
 			return err
 		}
 		if err := compareFile(index, filepath.Join(temporary, "THIRD_PARTY_LICENSES.md")); err != nil {
@@ -138,14 +105,7 @@ func generate(opts options) error {
 		}
 		return nil
 	}
-	return generateFromTargetMetadata(metadata, manifest, index, licenses)
-}
-
-func absoluteFrom(root, path string) string {
-	if filepath.IsAbs(path) {
-		return filepath.Clean(path)
-	}
-	return filepath.Join(root, path)
+	return writeBundle(bundle, index, licenses)
 }
 
 // repositoryOutputPath 只接受 repository 内部的相对输出路径。许可证生成会替换目录，
@@ -197,128 +157,31 @@ func bundleOutputPathsOverlap(first, second string) bool {
 	return false
 }
 
-func cargoMetadataJSON(cargo, repository, manifest, target string) ([]byte, error) {
-	command := exec.Command(cargo, "metadata", "--locked", "--offline", "--format-version", "1", "--filter-platform", target, "--manifest-path", manifest)
-	// Cargo 仅从 command.Dir 及其父目录读取 .cargo/config.toml；必须从 crate 目录启动，
-	// 才能让六目标许可证元数据与 staticlib 构建使用同一份仓库内 vendor 闭包。
-	command.Dir = filepath.Dir(manifest)
-	var stdout bytes.Buffer
-	var stderr bytes.Buffer
-	command.Stdout = &stdout
-	command.Stderr = &stderr
-	if err := command.Run(); err != nil {
-		detail := strings.TrimSpace(stderr.String())
-		if detail == "" {
-			return nil, fmt.Errorf("run cargo metadata --locked --offline for %s: %w", target, err)
+func packageLicenseFiles(pkg packageMetadata) ([]licenseFile, error) {
+	directory := pkg.Directory
+	names := map[string]bool{}
+	err := filepath.WalkDir(directory, func(path string, entry fs.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			return walkErr
 		}
-		return nil, fmt.Errorf("run cargo metadata --locked --offline for %s: %w: %s", target, err, detail)
-	}
-	return stdout.Bytes(), nil
-}
-
-func generateFromTargetMetadata(rawMetadata [][]byte, rootManifest, indexPath, licensesDir string) error {
-	rootManifest, err := filepath.Abs(rootManifest)
-	if err != nil {
-		return err
-	}
-	packages := map[string]cargoPackage{}
-	closure := map[string]bool{}
-	for _, raw := range rawMetadata {
-		var metadata cargoMetadata
-		if err := json.Unmarshal(raw, &metadata); err != nil {
-			return fmt.Errorf("decode cargo metadata: %w", err)
+		if !entry.Type().IsRegular() {
+			return nil
 		}
-		rootID, err := rootPackageID(metadata.Packages, rootManifest)
+		relative, err := filepath.Rel(directory, path)
 		if err != nil {
 			return err
 		}
-		for _, pkg := range metadata.Packages {
-			if previous, ok := packages[pkg.ID]; ok && previous.ManifestPath != pkg.ManifestPath {
-				return fmt.Errorf("package %s resolves to conflicting manifest paths", pkg.ID)
-			}
-			packages[pkg.ID] = pkg
-		}
-		for id := range dependencyClosure(rootID, metadata.Resolve.Nodes) {
-			if id != rootID {
-				closure[id] = true
+		// 子组件可能把多份许可单列在嵌套 LICENSES 目录。
+		for _, part := range strings.Split(relative, string(filepath.Separator)) {
+			if isLicenseName(part) {
+				names[relative] = true
+				break
 			}
 		}
-	}
-	bundle := make([]bundledPackage, 0, len(closure))
-	for id := range closure {
-		pkg, ok := packages[id]
-		if !ok {
-			return fmt.Errorf("resolved dependency %s is missing package metadata", id)
-		}
-		files, err := packageLicenseFiles(pkg)
-		if err != nil {
-			return err
-		}
-		bundle = append(bundle, bundledPackage{Package: pkg, Files: files})
-	}
-	sort.Slice(bundle, func(i, j int) bool {
-		if bundle[i].Package.Name == bundle[j].Package.Name {
-			return bundle[i].Package.Version < bundle[j].Package.Version
-		}
-		return bundle[i].Package.Name < bundle[j].Package.Name
+		return nil
 	})
-	return writeBundle(bundle, indexPath, licensesDir)
-}
-
-func rootPackageID(packages []cargoPackage, rootManifest string) (string, error) {
-	for _, pkg := range packages {
-		manifest, err := filepath.Abs(pkg.ManifestPath)
-		if err != nil {
-			return "", err
-		}
-		if filepath.Clean(manifest) == filepath.Clean(rootManifest) {
-			return pkg.ID, nil
-		}
-	}
-	return "", fmt.Errorf("root package for manifest %s not found in cargo metadata", rootManifest)
-}
-
-func dependencyClosure(root string, nodes []cargoNode) map[string]bool {
-	byID := make(map[string]cargoNode, len(nodes))
-	for _, node := range nodes {
-		byID[node.ID] = node
-	}
-	seen := map[string]bool{}
-	queue := []string{root}
-	for len(queue) > 0 {
-		id := queue[0]
-		queue = queue[1:]
-		if seen[id] {
-			continue
-		}
-		seen[id] = true
-		for _, dependency := range byID[id].Deps {
-			if !seen[dependency.PackageID] {
-				queue = append(queue, dependency.PackageID)
-			}
-		}
-	}
-	return seen
-}
-
-func packageLicenseFiles(pkg cargoPackage) ([]licenseFile, error) {
-	directory := filepath.Dir(pkg.ManifestPath)
-	entries, err := os.ReadDir(directory)
 	if err != nil {
 		return nil, fmt.Errorf("read package %s %s: %w", pkg.Name, pkg.Version, err)
-	}
-	names := map[string]bool{}
-	for _, entry := range entries {
-		if entry.Type().IsRegular() && isLicenseName(entry.Name()) {
-			names[entry.Name()] = true
-		}
-	}
-	if pkg.LicenseFile != nil && *pkg.LicenseFile != "" {
-		name := filepath.Clean(*pkg.LicenseFile)
-		if filepath.IsAbs(name) || name == ".." || strings.HasPrefix(name, ".."+string(filepath.Separator)) {
-			return nil, fmt.Errorf("package %s %s has unsafe license_file %q", pkg.Name, pkg.Version, name)
-		}
-		names[name] = true
 	}
 	if len(names) == 0 {
 		return nil, fmt.Errorf("package %s %s has no LICENSE/COPYING/NOTICE files", pkg.Name, pkg.Version)
@@ -342,15 +205,17 @@ func packageLicenseFiles(pkg cargoPackage) ([]licenseFile, error) {
 	return files, nil
 }
 
-// normalizeLicenseText 仅移除许可证正文末尾的多余空行，避免 Git 将生成的上游文本判为
-// blank-at-EOF；其余字节（包括正文内的换行风格）保持不变。
+// 归档固定 LF checkout；统一上游 CRLF 并移除末尾空行，正文内容不变。
 func normalizeLicenseText(body []byte) []byte {
-	return append(bytes.TrimRight(body, "\r\n"), '\n')
+	return append(bytes.TrimRight(bytes.ReplaceAll(body, []byte("\r\n"), []byte("\n")), "\r\n"), '\n')
 }
 
 func isLicenseName(name string) bool {
 	upper := strings.ToUpper(name)
-	return strings.HasPrefix(upper, "LICENSE") || strings.HasPrefix(upper, "COPYING") || strings.HasPrefix(upper, "NOTICE")
+	if strings.HasSuffix(upper, ".GO") {
+		return false
+	}
+	return strings.HasPrefix(upper, "LICENSE") || strings.HasPrefix(upper, "COPYING") || strings.HasPrefix(upper, "NOTICE") || strings.HasPrefix(upper, "PATENTS") || strings.HasPrefix(upper, "COPYRIGHT")
 }
 
 type bundleFileOps struct {
@@ -564,7 +429,7 @@ func renderIndex(bundle []bundledPackage, indexPath, licensesDir string) string 
 	}
 	var out strings.Builder
 	out.WriteString("# Third-party licenses\n\n")
-	out.WriteString("本文件由 `go run ./scripts/cmd/licensebundle` 根据 `Cargo.lock` 与六个 Rust release target 的 `cargo metadata --locked --offline` 并集生成。发布包必须携带本索引和完整许可证正文目录；不要手工编辑。\n")
+	out.WriteString("Generated by `go run ./scripts/cmd/licensebundle` from the six-target production Go module union (`CGO_ENABLED=0 go list -mod=readonly -deps -json ./cmd/pixiv`) and `third_party/attributions.json`. Release archives include this index and every license text; do not edit generated files.\n")
 	out.WriteString("\n## Six-target release dependency union\n")
 	for _, pkg := range bundle {
 		out.WriteString("\n### " + pkg.Package.Name + " " + pkg.Package.Version + "\n\n")
@@ -573,6 +438,9 @@ func renderIndex(bundle []bundledPackage, indexPath, licensesDir string) string 
 		}
 		if pkg.Package.Repository != "" {
 			out.WriteString("- Repository: " + pkg.Package.Repository + "\n")
+		}
+		if pkg.Package.Note != "" {
+			out.WriteString("- Scope: " + pkg.Package.Note + "\n")
 		}
 		out.WriteString("- License texts:\n")
 		for _, file := range pkg.Files {
@@ -585,7 +453,7 @@ func renderIndex(bundle []bundledPackage, indexPath, licensesDir string) string 
 
 var unsafePathPart = regexp.MustCompile(`[^A-Za-z0-9._+-]+`)
 
-func packageDirectory(pkg cargoPackage) string {
+func packageDirectory(pkg packageMetadata) string {
 	return unsafePathPart.ReplaceAllString(pkg.Name, "_") + "-" + unsafePathPart.ReplaceAllString(pkg.Version, "_")
 }
 

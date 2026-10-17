@@ -49,15 +49,9 @@ func persistPixivE2ERotation(
 	return rotate(ctx, account.UserID, account.CredentialRevision, []byte(refreshToken))
 }
 
-// TestRealPixivSDKRead is the v1 release-prep real Pixiv SDK e2e. It runs only
-// when PIXIV_SDK_E2E=1 and a local pixiv-cli.db account exists. The refresh
-// token is read from the auth database inside the test process and never enters
-// argv, env dumps, logs, test names, or diffs. Rotated credentials are persisted
-// back through the repository before any content request.
-func TestRealPixivSDKRead(t *testing.T) {
-	if os.Getenv("PIXIV_SDK_E2E") != "1" {
-		t.Skip("set PIXIV_SDK_E2E=1 to run the real Pixiv SDK e2e")
-	}
+// 调用方先检查各自的 opt-in；账号选择和 rotation 必须共用同一条路径。
+func openPixivE2EClient(t *testing.T) (*pixivsdk.Client, int64) {
+	t.Helper()
 	home, err := os.UserHomeDir()
 	if err != nil {
 		t.Fatalf("home: %v", err)
@@ -67,7 +61,7 @@ func TestRealPixivSDKRead(t *testing.T) {
 	if err != nil {
 		t.Fatalf("open database: %v", err)
 	}
-	defer db.Close()
+	t.Cleanup(func() { _ = db.Close() })
 	accounts, err := db.ListPixiv(context.Background())
 	if err != nil {
 		t.Fatalf("list local pixiv accounts: %v", err)
@@ -100,7 +94,7 @@ func TestRealPixivSDKRead(t *testing.T) {
 	if err != nil {
 		t.Fatalf("pixiv.Open: %v", err)
 	}
-	defer client.CloseIdleConnections()
+	t.Cleanup(client.CloseIdleConnections)
 	if credentials.UserID <= 0 || credentials.AccessToken() == "" || credentials.RefreshToken() == "" {
 		t.Fatal("open did not return verified credentials")
 	}
@@ -111,6 +105,20 @@ func TestRealPixivSDKRead(t *testing.T) {
 	if err := persistPixivE2ERotation(ctx, db.RotatePixivCredentials, account, credentials.RefreshToken()); err != nil {
 		t.Fatalf("persist rotation: %v", err)
 	}
+	return client, account.UserID
+}
+
+// TestRealPixivSDKRead is the v1 release-prep real Pixiv SDK e2e. It runs only
+// when PIXIV_SDK_E2E=1 and a local pixiv-cli.db account exists. The refresh
+// token is read from the auth database inside the test process and never enters
+// argv, env dumps, logs, test names, or diffs. Rotated credentials are persisted
+// back through the repository before any content request.
+func TestRealPixivSDKRead(t *testing.T) {
+	if os.Getenv("PIXIV_SDK_E2E") != "1" {
+		t.Skip("set PIXIV_SDK_E2E=1 to run the real Pixiv SDK e2e")
+	}
+	client, accountID := openPixivE2EClient(t)
+	ctx := t.Context()
 
 	// 验证身份 + 一个稳定 detail + 一个 Resource HEAD。
 	//
@@ -126,8 +134,8 @@ func TestRealPixivSDKRead(t *testing.T) {
 	if user.User.ID <= 0 {
 		t.Fatal("current user has no id")
 	}
-	if user.User.ID != account.UserID {
-		t.Fatalf("current user identity differs from selected account: stored user %d, current user %d", account.UserID, user.User.ID)
+	if user.User.ID != accountID {
+		t.Fatalf("current user identity differs from selected account: stored user %d, current user %d", accountID, user.User.ID)
 	}
 
 	searchPage, err := client.SearchArtworks(ctx, pixivsdk.SearchArtworksRequest{Word: "初音ミク"})
