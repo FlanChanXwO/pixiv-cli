@@ -293,6 +293,32 @@ func decodeAPNGTest(t *testing.T, body []byte) []apngTestFrame {
 	return nil
 }
 
+func TestAPNGOpaqueTextureCompression(t *testing.T) {
+	img := image.NewNRGBA(image.Rect(0, 0, 256, 128))
+	state := uint32(1)
+	for i := 0; i < len(img.Pix); i += 4 {
+		for c := range 3 {
+			state = 1664525*state + 1013904223
+			img.Pix[i+c] = byte(state >> 24)
+		}
+		img.Pix[i+3] = 255
+	}
+	input := Input{ZipPath: writeFrameArchive(t, []frameZipEntry{{"a.png", framePNG(t, img)}}), Frames: []Frame{{File: "a.png", Delay: 80}}}
+	var out bytes.Buffer
+	if err := encodeAPNG(t.Context(), &out, input); err != nil {
+		t.Fatal(err)
+	}
+	// 同一像素 fixture 的封存 Rust 输出为113171字节；保留原10%体积门槛。
+	const maximumBytes = 113171 * 110 / 100
+	if out.Len() > maximumBytes {
+		t.Fatalf("opaque texture APNG is %d bytes, exceeds legacy +10%% (%d)", out.Len(), maximumBytes)
+	}
+	decoded := decodeAPNGTest(t, out.Bytes())
+	if len(decoded) != 1 || !bytes.Equal(decoded[0].image.Pix, img.Pix) {
+		t.Fatal("opaque texture pixels changed")
+	}
+}
+
 func TestAPNGCoalescesCompressedWrites(t *testing.T) {
 	img := image.NewNRGBA(image.Rect(0, 0, 256, 128))
 	rng := rand.New(rand.NewPCG(3, 7))

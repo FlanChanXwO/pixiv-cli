@@ -155,8 +155,8 @@ func (w *apngWriter) frame(img *image.NRGBA, region image.Rectangle, numerator, 
 		w.chunkBuffer.Reset(data)
 	}
 	if w.compressor == nil {
-		// 固定 BestSpeed 降低匹配搜索开销；保持无损，体积受同一验收门槛约束。
-		w.compressor, err = zlib.NewWriterLevel(w.chunkBuffer, zlib.BestSpeed)
+		// Go 1.27 快速档的高纹理样本超出原10%体积门槛，改用level 7的完整匹配。
+		w.compressor, err = zlib.NewWriterLevel(w.chunkBuffer, 7)
 		if err != nil {
 			return err
 		}

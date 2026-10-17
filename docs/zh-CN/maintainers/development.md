@@ -418,8 +418,10 @@ zune-jpeg 0.5.15 的整数 IDCT 与 14-bit BT.601 转换。标准库 IDCT 的舍
 Rust、FFmpeg 或 jpegtran。Go 缩放核使用限定区间内的正弦/余弦多项式，以 `math.FMA` 固定求值次序，
 与旧基准运行时 `sinf` 的结果对齐。`testdata/lanczos-kernel.json` 中的 1,031 组数值参考保护
 Lanczos3 舍入行为，Go 路径不调用平台数学库。
-Go APNG writer 使用固定 Paeth 预测与逐帧独立的 BestSpeed zlib 流，保留 RGBA8、无损像素及
-Source/None 差分矩形播放语义。
+Go APNG writer 使用固定 Paeth 预测与逐帧独立的 level-7 zlib 流，保留 RGBA8、无损像素及
+Source/None 差分矩形播放语义。Go 1.27 的快速压缩档在高纹理语料上超过原10%体积回退门槛；
+确定性 opaque-texture 回归以封存的 Rust fixture 为参考，保留相同门槛。工具链可能改变压缩字节；
+只有完整帧控制与解压像素相同才能复用既有画质证据，不能只看文件大小。
 
 迁移样本的六个公开作品 ID 如下。尺寸来自所有 ZIP 帧的完整解码，不能只用作品展示尺寸。
 第一个 original ZIP 由 Pixiv 公开 `ugoira_meta` 的 `originalSrc` 明确给出，完整帧列表与已认证 SDK 元数据
