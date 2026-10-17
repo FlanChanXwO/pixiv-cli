@@ -1,4 +1,4 @@
-name: Native staticlib evidence
+name: Native Go evidence
 
 # 这个入口绝不发布、签名、推送或创建 tag。它只作为显式的维护者
 # evidence 入口，不在普通 main push 后重复运行六个平台 runner。
@@ -34,7 +34,7 @@ jobs:
     permissions:
       contents: read
     env:
-      RUSTUP_TOOLCHAIN: ${{ matrix.rust_toolchain }}
+      CGO_ENABLED: '0'
     strategy:
       fail-fast: false
       matrix: ${{ fromJSON(needs.resolve_platforms.outputs.matrix) }}
@@ -48,12 +48,12 @@ jobs:
       - name: Require audited main ref
         shell: bash
         run: test "$GITHUB_REF" = 'refs/heads/main'
-      - name: Install the pinned native Rust toolchain
+      - name: Download locked Go module sources
         shell: bash
-        run: rustup toolchain install '${{ matrix.rust_toolchain }}' --profile minimal --target '${{ matrix.rust_target }}' --no-self-update
-      - name: Check vendored Rust sources
+        run: go mod download
+      - name: Verify Go license bundle
         shell: bash
-        run: sh scripts/test-rust-vendor.sh
+        run: go run ./scripts/cmd/licensebundle --check
       - name: Build and package the versioned native binary
         shell: bash
         run: |
@@ -62,8 +62,6 @@ jobs:
           mkdir -p evidence
           archive=$(sh scripts/build-platform.sh \
             --target '${{ matrix.goos }}/${{ matrix.goarch }}' \
-            --rust-target '${{ matrix.rust_target }}' \
-            --cc '${{ matrix.cc }}' \
             --version "$version" \
             --output-dir evidence \
             --package)
@@ -81,23 +79,16 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          CC='${{ matrix.cc }}' go test ./internal/media/ugoira -run '^TestRustUgoiraEncoderNativeGIFAndAPNG$' -count=1
-      - name: Record staticlib, binary and archive evidence
+          go test ./internal/media/ugoira/... -count=1
+      - name: Record Go binary and archive evidence
         shell: bash
         run: |
           set -euo pipefail
-          staticlib='libugoira_rs.a'
-          if [ '${{ matrix.goos }}' = windows ]; then
-            staticlib='ugoira_rs.lib'
-          fi
-          cp "internal/media/ugoira/rust/staticlib/${{ matrix.rust_target }}/$staticlib" "evidence/$staticlib"
           go run ./scripts/cmd/nativeevidence record \
             --repo-root . \
             --version "$EVIDENCE_VERSION" \
             --source-commit "$GITHUB_SHA" \
             --target '${{ matrix.goos }}/${{ matrix.goarch }}' \
-            --rust-target '${{ matrix.rust_target }}' \
-            --staticlib "evidence/$staticlib" \
             --binary "$EVIDENCE_BINARY" \
             --archive "$EVIDENCE_ARCHIVE" \
             --output evidence/native-evidence.json

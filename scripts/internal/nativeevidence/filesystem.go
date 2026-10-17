@@ -9,26 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-
-	"github.com/FlanChanXwO/pixiv-cli/internal/media/ugoira/staticlib"
 )
-
-func writeFreshFile(path string, body []byte) error {
-	file, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o644)
-	if err != nil {
-		return err
-	}
-	if _, err := file.Write(body); err != nil {
-		_ = file.Close()
-		_ = os.Remove(path)
-		return err
-	}
-	if err := file.Close(); err != nil {
-		_ = os.Remove(path)
-		return err
-	}
-	return nil
-}
 
 func isSHA256(value string) bool {
 	if len(value) != sha256.Size*2 || strings.ToLower(value) != value {
@@ -71,17 +52,6 @@ func requireSecureDirectory(path, label string) (string, error) {
 		}
 	}
 	return directory, nil
-}
-
-func calculateSourceDigest(repoRoot string) (string, error) {
-	digest, err := staticlib.CalculateRustSourceDigest(
-		filepath.Join(repoRoot, "internal", "media", "ugoira", "rust"),
-		filepath.Join(repoRoot, "third_party", "rust", "quantette-0.6.0"),
-	)
-	if err != nil {
-		return "", fmt.Errorf("calculate Rust source digest: %w", err)
-	}
-	return digest, nil
 }
 
 func requireRegularFile(path, label string) error {

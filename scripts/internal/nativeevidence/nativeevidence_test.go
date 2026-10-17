@@ -33,16 +33,11 @@ func TestMain(m *testing.M) {
 	os.Exit(m.Run())
 }
 
-func writeConsolidationFixture(t *testing.T, inputDir, platform string, target nativeTarget, sourceDigest string) {
+func writeConsolidationFixture(t *testing.T, inputDir, platform string, target nativeTarget) {
 	t.Helper()
 	directory := filepath.Join(inputDir, strings.ReplaceAll(platform, "/", "-"))
 	if err := os.Mkdir(directory, 0o755); err != nil {
 		t.Fatalf("create fixture directory: %v", err)
-	}
-	staticlibBody := []byte("staticlib for " + platform)
-	staticlibPath := filepath.Join(directory, target.staticlib)
-	if err := os.WriteFile(staticlibPath, staticlibBody, 0o644); err != nil {
-		t.Fatalf("write staticlib fixture: %v", err)
 	}
 	binaryName := "pixiv"
 	if target.goos == "windows" {
@@ -52,10 +47,6 @@ func writeConsolidationFixture(t *testing.T, inputDir, platform string, target n
 	archivePath := filepath.Join(directory, expectedArchiveName("0.1.0-native-evidence.test", target))
 	if err := os.WriteFile(binaryPath, []byte("binary for "+platform), 0o755); err != nil {
 		t.Fatalf("write binary fixture: %v", err)
-	}
-	staticlibDigest, err := fileSHA256(staticlibPath)
-	if err != nil {
-		t.Fatalf("hash staticlib fixture: %v", err)
 	}
 	binaryDigest, err := fileSHA256(binaryPath)
 	if err != nil {
@@ -68,10 +59,8 @@ func writeConsolidationFixture(t *testing.T, inputDir, platform string, target n
 	}
 	record := evidenceRecord{
 		Schema:       evidenceSchemaVersion,
-		Target:       evidenceTarget{GOOS: target.goos, GOARCH: target.goarch, RustTarget: target.rustTarget},
+		Target:       evidenceTarget{GOOS: target.goos, GOARCH: target.goarch},
 		SourceCommit: testEvidenceCommit,
-		SourceDigest: sourceDigest,
-		Staticlib:    evidenceFile{Name: target.staticlib, SHA256: staticlibDigest},
 		Binary:       evidenceBinary{evidenceFile: evidenceFile{Name: binaryName, SHA256: binaryDigest}, Version: "v0.1.0-native-evidence.test"},
 		Archive:      evidenceArchive{evidenceFile: evidenceFile{Name: filepath.Base(archivePath), SHA256: archiveDigest}, Members: members},
 	}
@@ -105,15 +94,6 @@ func packageConsolidationArchive(t *testing.T, repoRoot, binary, archive string,
 	}
 	sort.Slice(members, func(left, right int) bool { return members[left].Name < members[right].Name })
 	return members
-}
-
-func testSourceDigest(t *testing.T) string {
-	t.Helper()
-	digest, err := calculateSourceDigest(findRepositoryRoot(t))
-	if err != nil {
-		t.Fatalf("calculate test source digest: %v", err)
-	}
-	return digest
 }
 
 func newRepositoryWorkDir(t *testing.T) string {
@@ -150,12 +130,12 @@ func copyTestExecutable(t *testing.T, output string) {
 	}
 }
 
-func packageReleaseArchive(t *testing.T, repoRoot, binary, outputDir string) {
+func packageReleaseArchive(t *testing.T, repoRoot, binary, outputDir, target string) {
 	t.Helper()
 	command := exec.Command("go", "run", "./scripts/cmd/releaseassets", "package",
 		"--repo-root", repoRoot,
 		"--version", "0.1.0-native-evidence.test",
-		"--target", "linux/amd64",
+		"--target", target,
 		"--binary", binary,
 		"--output-dir", outputDir,
 	)

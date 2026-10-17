@@ -21,7 +21,7 @@
 - **Composable visual pipelines** — visual lists automatically emit canonical NDJSON when piped; use `--filter` for typed local artwork rules and pass matching records straight to `download`.
 - **Local account pools** — enable database-backed scheduling for read workloads with `pixiv auth pool status|enable|disable`; selection honors Pixiv `Retry-After` responses without exposing credentials.
 - **Guided account sign-in** — complete browser OAuth with `pixiv auth login`, then use `auth list`, `auth use`, and `auth check` to manage local multi-account access.
-- **Ugoira output modes** — choose GIF or APNG; invalid or empty filename templates use a stable default and remain observable as warnings.
+- **Ugoira output modes** — Go-encoded GIF (default) or APNG without `ffmpeg`; invalid or empty filename templates use a stable default and remain observable as warnings.
 - **Explicit download reporting** — select image quality and closed page ranges, use allowlisted Pixiv CDN URLs as direct sources, and keep completed files, warnings, and failures observable.
 - **Authenticated App API discovery** — read R18 details, pages, ugoira metadata, and all 16 ranking modes through the App API; artwork search/detail retains available viewer state and series metadata, and unfiltered deep search pages start at the target raw offset. See the [CLI reference](docs/en/cli-reference.md).
 - **Useful search filters** — rating, content type, AI mode, aspect ratio, resolution, and a versioned drawing-tool catalog; reverse-image search can query SauceNAO or ascii2d from a local file or URL.
@@ -164,7 +164,7 @@ brew upgrade pixiv-cli
 
 ### Go
 
-Use an exact published tag. A source install requires Go, cgo, a C linker, and the committed Rust static library for your target.
+Use an exact published tag and follow that tag's build requirements. Legacy v0.4.4 requires cgo, a C linker, and its committed Rust static library; see [Go install](docs/en/cli-reference.md#go-install).
 
 ```bash
 go install github.com/FlanChanXwO/pixiv-cli/cmd/pixiv@vX.Y.Z
@@ -172,7 +172,7 @@ go install github.com/FlanChanXwO/pixiv-cli/cmd/pixiv@vX.Y.Z
 
 ### Release archive or source build
 
-Download a supported archive from [GitHub Releases](https://github.com/FlanChanXwO/pixiv-cli/releases), or build the checkout:
+Download a supported archive from [GitHub Releases](https://github.com/FlanChanXwO/pixiv-cli/releases), or build the current checkout with the Go version declared in `go.mod`. The build script sets `CGO_ENABLED=0`; no Rust toolchain or C linker is needed:
 
 ```bash
 sh scripts/build.sh

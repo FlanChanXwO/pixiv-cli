@@ -6,12 +6,12 @@ import (
 	"testing"
 )
 
-func TestResolveFiltersCapabilityAndCarriesNativeMetadata(t *testing.T) {
+func TestResolveFiltersCapabilityWithGoMetadata(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "platforms.json")
 	body := "{\"platforms\":[" +
-		"{\"goos\":\"linux\",\"goarch\":\"amd64\",\"runner\":\"linux\",\"rust_target\":\"x86_64-unknown-linux-gnu\",\"rust_toolchain\":\"1.96.1\",\"cc\":\"gcc\",\"capabilities\":[\"smoke\",\"container\",\"native-evidence\"]}," +
-		"{\"goos\":\"darwin\",\"goarch\":\"arm64\",\"runner\":\"mac\",\"rust_target\":\"aarch64-apple-darwin\",\"rust_toolchain\":\"1.96.1\",\"cc\":\"clang\",\"capabilities\":[\"smoke\"]}" +
+		"{\"goos\":\"linux\",\"goarch\":\"amd64\",\"runner\":\"linux\",\"capabilities\":[\"smoke\",\"container\",\"native-evidence\"]}," +
+		"{\"goos\":\"darwin\",\"goarch\":\"arm64\",\"runner\":\"mac\",\"capabilities\":[\"smoke\"]}" +
 		"]}"
 	if err := os.WriteFile(path, []byte(body), 0o600); err != nil {
 		t.Fatal(err)
@@ -20,7 +20,7 @@ func TestResolveFiltersCapabilityAndCarriesNativeMetadata(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(result.Include) != 1 || result.Include[0]["artifact"] != "linux-amd64" || result.Include[0]["rust_target"] != "x86_64-unknown-linux-gnu" {
+	if len(result.Include) != 1 || result.Include[0]["artifact"] != "linux-amd64" || result.Include[0]["runner"] != "linux" {
 		t.Fatalf("unexpected matrix: %#v", result)
 	}
 	native, err := resolve(path, "native-evidence")
@@ -32,21 +32,25 @@ func TestResolveFiltersCapabilityAndCarriesNativeMetadata(t *testing.T) {
 	}
 }
 
-func TestCheckedInWindowsNativeEvidenceUsesLLDBackedClang(t *testing.T) {
+func TestCheckedInNativeEvidenceUsesGoOnlyMetadata(t *testing.T) {
 	t.Parallel()
 
 	result, err := resolve(filepath.Join("..", "..", "ci", "platforms.json"), "native-evidence")
 	if err != nil {
 		t.Fatal(err)
 	}
+	if len(result.Include) != 6 {
+		t.Fatalf("native evidence targets = %d, want 6", len(result.Include))
+	}
 	windows := 0
 	for _, item := range result.Include {
-		if item["goos"] != "windows" {
-			continue
+		if item["goos"] == "windows" {
+			windows++
 		}
-		windows++
-		if got := item["cc"]; got != "clang -fuse-ld=lld" {
-			t.Fatalf("Windows native evidence cc = %v, want clang -fuse-ld=lld", got)
+		for _, key := range []string{"rust_target", "rust_toolchain", "cc"} {
+			if _, exists := item[key]; exists {
+				t.Fatalf("pure Go matrix retains %s", key)
+			}
 		}
 	}
 	if windows != 2 {

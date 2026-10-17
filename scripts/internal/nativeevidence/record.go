@@ -5,8 +5,6 @@ import (
 	"fmt"
 	"os/exec"
 	"path/filepath"
-
-	"github.com/FlanChanXwO/pixiv-cli/internal/media/ugoira/staticlib"
 )
 
 func recordEvidence(options recordOptions) (evidenceRecord, error) {
@@ -17,14 +15,15 @@ func recordEvidence(options recordOptions) (evidenceRecord, error) {
 		return evidenceRecord{}, fmt.Errorf("source commit must be a 40-character lowercase Git SHA: %q", options.sourceCommit)
 	}
 	target, ok := nativeTargets[options.target]
-	if !ok || target.rustTarget != options.rustTarget {
-		return evidenceRecord{}, fmt.Errorf("unsupported target binding %q / %q", options.target, options.rustTarget)
+	if !ok {
+		return evidenceRecord{}, fmt.Errorf("unsupported target %q", options.target)
 	}
-	if err := requireRegularFile(options.staticlib, "staticlib"); err != nil {
-		return evidenceRecord{}, err
+	binaryName := "pixiv"
+	if target.goos == "windows" {
+		binaryName = "pixiv.exe"
 	}
-	if filepath.Base(options.staticlib) != target.staticlib {
-		return evidenceRecord{}, fmt.Errorf("staticlib name %q does not match %s", filepath.Base(options.staticlib), target.staticlib)
+	if filepath.Base(options.binary) != binaryName {
+		return evidenceRecord{}, fmt.Errorf("binary name must be %q for target %s", binaryName, options.target)
 	}
 	if err := requireRegularFile(options.binary, "binary"); err != nil {
 		return evidenceRecord{}, err
@@ -39,17 +38,6 @@ func recordEvidence(options recordOptions) (evidenceRecord, error) {
 		return evidenceRecord{}, fmt.Errorf("archive name %q does not match target %s", filepath.Base(options.archive), options.target)
 	}
 	root, err := requireDirectory(options.repoRoot, "repository root")
-	if err != nil {
-		return evidenceRecord{}, err
-	}
-	sourceDigest, err := staticlib.CalculateRustSourceDigest(
-		filepath.Join(root, "internal", "media", "ugoira", "rust"),
-		filepath.Join(root, "third_party", "rust", "quantette-0.6.0"),
-	)
-	if err != nil {
-		return evidenceRecord{}, fmt.Errorf("calculate Rust source digest: %w", err)
-	}
-	staticlibDigest, err := fileSHA256(options.staticlib)
 	if err != nil {
 		return evidenceRecord{}, err
 	}
@@ -71,10 +59,8 @@ func recordEvidence(options recordOptions) (evidenceRecord, error) {
 	}
 	record := evidenceRecord{
 		Schema:       evidenceSchemaVersion,
-		Target:       evidenceTarget{GOOS: target.goos, GOARCH: target.goarch, RustTarget: target.rustTarget},
+		Target:       evidenceTarget{GOOS: target.goos, GOARCH: target.goarch},
 		SourceCommit: options.sourceCommit,
-		SourceDigest: sourceDigest,
-		Staticlib:    evidenceFile{Name: filepath.Base(options.staticlib), SHA256: staticlibDigest},
 		Binary: evidenceBinary{
 			evidenceFile: evidenceFile{Name: filepath.Base(options.binary), SHA256: binaryDigest},
 			Version:      binaryVersion,

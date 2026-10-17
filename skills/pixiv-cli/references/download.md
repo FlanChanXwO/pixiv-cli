@@ -71,6 +71,9 @@ pixiv download https://www.pixiv.net/users/12345678/bookmarks/artworks
 
 ## Animated works
 
+GIF and APNG are produced by the built-in Go encoder. They need no external
+FFmpeg installation or backend-selection option.
+
 Animated downloads may take noticeable time. Do not impose an arbitrary timeout
 or kill the process merely because it is slow — wait for completion, user
 cancellation, or a real error.

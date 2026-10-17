@@ -32,9 +32,6 @@ output/
 __pycache__/
 *.py[cod]
 
-# Rust compiler output (machine-specific; committed staticlib/manifest stays in context)
-internal/media/ugoira/rust/target/
-
 # Worktrees
 .worktrees/
 
