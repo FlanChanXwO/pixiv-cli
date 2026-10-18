@@ -235,6 +235,8 @@ Real login depends on the Pixiv OAuth web flow being available. Automated tests 
 
 ## Tests
 
+Default to existing checks without adding permanent tests. The [test admission rules](../../../.agents/skills/pixiv-cli-test/SKILL.md#decide-whether-test-code-must-change) define which durable core regressions may enter main and how to run local-only probes under `tmp/test/`. Verification evidence does not automatically belong in the maintained suite.
+
 Current test coverage spans CLI commands and build metadata, explicit/automatic updates, `internal/services/{pixiv,fanbox}/account` account services, `internal/services/pixiv/pool` account pool, `internal/services/reversesearch` source/provider fixtures and aggregation, `internal/storage/database` auth storage and `internal/config/settings` configuration, `internal/shared/lifecycle` lifecycle, `internal/shared/pagination` logical pagination, `internal/shared/traversal` generic reentrant traversal, Pixiv App API auth retry, the public SDK (`sdk`/`sdk/pixiv`/`sdk/fanbox`), HTTP client wiring, download management, the Go encoder/native-evidence contract and `internal/mcpserver/{pixiv,fanbox}/tools` tool registration. `internal/account` and `internal/session` have been deleted and no compatibility test entry points are retained. Test file layout and same-package exceptions follow [Test file layout](#test-file-layout):
 
 ```bash

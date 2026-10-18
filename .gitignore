@@ -34,7 +34,7 @@ downloads/
 .vscode/
 
 # Temporary/cache files
-tmp/
+**/tmp/**
 temp/
 .cache/
 .repo/

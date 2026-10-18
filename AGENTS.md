@@ -9,7 +9,7 @@ Read the relevant local skill below before its task. These are checked-in instru
 | Task | Local instructions |
 | --- | --- |
 | Implement, debug, refactor, or design Go changes | [pixiv-cli-develop](.agents/skills/pixiv-cli-develop/SKILL.md) |
-| Select tests, run Red/Green, or validate a change | [pixiv-cli-test](.agents/skills/pixiv-cli-test/SKILL.md) |
+| Decide test admission, run Red/Green, or validate a change | [pixiv-cli-test](.agents/skills/pixiv-cli-test/SKILL.md) |
 | Write or review code comments, API docs, or numbered stages | [pixiv-cli-code-commenting](.agents/skills/pixiv-cli-code-commenting/SKILL.md) |
 | Add or change an MCP tool | [pixiv-cli-mcp-tool](.agents/skills/pixiv-cli-mcp-tool/SKILL.md) |
 | Change ugoira encoding, platform builds, or native evidence | [pixiv-cli-native](.agents/skills/pixiv-cli-native/SKILL.md) |
@@ -37,7 +37,7 @@ The separately distributed [product skill](skills/pixiv-cli/SKILL.md) teaches us
 
 - Identify the requested behavior and acceptance evidence before editing. Keep small changes small; clarify consequential unknowns for larger work. Reuse the issue, PR, or conversation for decisions rather than creating process files automatically.
 - Inspect the branch and existing changes; preserve unrelated work and use an isolated worktree when none exists. Use only available tools, explicit working directories, and safely quoted inputs. Prefer available semantic navigation for symbols and callers; disclose when only targeted search/compiler checks are available.
-- For features and behavior fixes, observe a relevant failing test before implementation, then Green and regression. Reuse or extend existing coverage before adding tests; a new function or file is not a test quota. Pure restructuring uses before/after characterization; obtain an explicit exception if an applicable Red requirement cannot be met. Ordinary comment/document edits need relevant document and tooling checks, not invented runtime tests; consumed directives or examples may require behavioral checks.
+- For features and behavior fixes, observe a relevant failing test before implementation, then Green and regression. Default to existing checks with no new permanent tests; apply the [test admission rules](.agents/skills/pixiv-cli-test/SKILL.md#decide-whether-test-code-must-change) before retaining test code. Pure restructuring uses before/after characterization; obtain an explicit exception if an applicable Red requirement cannot be met. Ordinary comment/document edits need relevant document and tooling checks, not invented runtime tests; consumed directives or examples may require behavioral checks.
 - Frontend sources are embedded directly by `frontend`; clean `go test`, `go vet`, `go build`, and `go install` need no generation step. The existing `frontend` package tests validate the embedded sources.
 - Use the Go version in `go.mod`, `gofmt`, and existing tests/vet/hooks. Follow the develop/test skills for language and ownership rules. Preserve native build requirements; a Linux fixture pass is not all-platform evidence.
 - Reuse standard-library, platform, and existing project capabilities. Obtain approval before adding dependencies or installing missing tools; explain necessity, alternatives, and material lockfile, license, security, or deployment effects.
