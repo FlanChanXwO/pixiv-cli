@@ -59,7 +59,8 @@ func UserDetailError(err error) (*mcp.CallToolResult, UserDetail, error) {
 	return records.Result(out.Records, true, records.ErrorMessage(err)), out, nil
 }
 
-// RecommendedPagination 分别表达每条推荐流的逻辑分页；SDK opaque cursor 不离开适配层。
+// RecommendedPagination 分别表达每条推荐流的逻辑页与默认批次续读；
+// next_cursor 是绑定单个 kind/filter 的 MCP envelope。
 type RecommendedPagination struct {
 	Illust *runtime.PaginationOut `json:"illust,omitempty"`
 	Manga  *runtime.PaginationOut `json:"manga,omitempty"`
@@ -348,7 +349,7 @@ func ListComments(ctx context.Context, app *runtime.App, id int64, novel bool, i
 	return CommentsResult(out, false, ""), out, nil
 }
 
-// ListUserRelations 在账号池重放边界内收集 followers/related/blocked 用户列表并
+// ListUserRelations 在账号池重放边界内收集 followers/following/related/blocked 用户列表并
 // 输出统一 records envelope。
 func ListUserRelations(ctx context.Context, app *runtime.App, kind string, userID int64, restrict string, input runtime.PageLimitIn, limit *int) (*mcp.CallToolResult, Records, error) {
 	userID, err := runtime.ResolveUserID(app, ctx, userID)
@@ -365,6 +366,8 @@ func ListUserRelations(ctx context.Context, app *runtime.App, kind string, userI
 		switch kind {
 		case "followers":
 			result, err = client.UserFollowers(ctx, pixiv.UserFollowersRequest{UserID: userID, Restrict: pixiv.Restrict(restrict), Cursor: cursor})
+		case "following":
+			result, err = client.UserFollowing(ctx, pixiv.UserFollowingRequest{UserID: userID, Restrict: pixiv.Restrict(restrict), Cursor: cursor})
 		case "related":
 			result, err = client.RelatedUsers(ctx, pixiv.RelatedUsersRequest{UserID: userID, Cursor: cursor})
 		case "blocked":

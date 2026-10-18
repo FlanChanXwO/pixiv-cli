@@ -27,6 +27,9 @@ type LoginStart struct {
 type LoginCompleteRequest struct {
 	CallbackOrCode string
 	UseAfterLogin  bool
+	// PreserveDefault leaves CLI selection untouched; on post-save summary failure,
+	// the returned identity still reports the account that was persisted.
+	PreserveDefault bool
 }
 
 func (s LoginService) Start(requests ...LoginRequest) (LoginStart, error) {
@@ -51,6 +54,8 @@ func (s LoginService) Complete(ctx context.Context, start LoginStart, request Lo
 	if start.session == nil {
 		return AccountSummary{}, errors.New("login session is not initialized")
 	}
+	// A login is one-shot; release only the HTTP transport owned by this SDK session.
+	defer start.session.CloseIdleConnections()
 	credentials, err := start.session.Complete(ctx, request.CallbackOrCode)
 	if err != nil {
 		return AccountSummary{}, err
@@ -59,9 +64,9 @@ func (s LoginService) Complete(ctx context.Context, start LoginStart, request Lo
 	if err != nil {
 		return AccountSummary{}, err
 	}
-	account, err := service.CompleteLogin(ctx, credentials, request.UseAfterLogin)
+	account, err := service.completeLogin(ctx, credentials, request.UseAfterLogin, request.PreserveDefault)
 	if err != nil {
-		return AccountSummary{}, err
+		return account, err
 	}
 	return account, nil
 }

@@ -1,6 +1,6 @@
 # pixiv-cli Agent Contract
 
-This repository provides the `pixiv` CLI, two MCP stdio servers, and the public Go packages `sdk`, `sdk/pixiv`, and `sdk/fanbox`.
+This repository provides the `pixiv` CLI, one unified Pixiv/FANBOX MCP server (default stdio; HTTP via explicit `--port`), and the public Go packages `sdk`, `sdk/pixiv`, and `sdk/fanbox`.
 
 ## Start here
 
@@ -25,12 +25,12 @@ The separately distributed [product skill](skills/pixiv-cli/SKILL.md) teaches us
 ## Non-negotiable boundaries
 
 - Keep `cmd/pixiv` thin. `internal/cli/root.go` assembles the command tree and production dependencies; command owners live under `internal/cli/commands`. Do not resurrect a global service locator or the removed bootstrap/resource graph.
-- CLI/MCP Pixiv and FANBOX operations use the public SDK and owner-local narrow ports, not protocol adapters. MCP tools belong to `internal/mcpserver/{pixiv,fanbox}/tools/<tool>`; their stdio runtimes are started by CLI commands.
+- CLI/MCP Pixiv and FANBOX operations use the public SDK and owner-local narrow ports, not protocol adapters. MCP tools belong to `internal/mcpserver/{pixiv,fanbox}/tools/<tool>`; `pixiv mcp` starts stdio by default or HTTP with explicit `--port`; `internal/mcpserver` owns transport/lifecycle and `internal/mcpserver/auth` owns OAuth and private state.
 - Reverse search is the explicit exception: only the CLI composition root may import `internal/services/reversesearch/assembly`; command and MCP owners may use the top-level `internal/services/reversesearch` contract, never its provider subpackages.
 - Keep shared mechanisms in their existing owners: record, pagination, traversal, lifecycle, configuration, file persistence, and downloader. Generic utilities must not acquire product protocol or account semantics. See [architecture](docs/en/maintainers/architecture.md) for detailed ownership.
 - Preserve the App-only boundary. Content requires an authenticated local account or an eligible database-managed pool account; errors never select an anonymous Web path. Data commands do not accept `--uid` or `--refresh-token`; the public SDK and MCP retain their own explicit credential contracts.
-- Keep secrets out of logs, errors, fixtures, PRs, and artifacts. Only an explicitly requested bare `auth export [UID]` or `auth export --all` may emit secret stdout; otherwise use the documented private-output/transfer path. The SQLite account store is secret-bearing; never inspect real credentials as a debugging shortcut.
-- Preserve clean CLI machine output and MCP JSON-RPC stdout. MCP runtime failures retain structured output with `isError=true`. Report cancellation, transport, authentication, upstream, and persistence failures rather than success-shaped empty data.
+- Keep secrets out of logs, errors, fixtures, PRs, and artifacts. Only an explicitly requested bare `auth export [UID]`, `auth export --all`, or local `mcp auth init [--reset]` may emit its documented secret stdout; otherwise use the documented private-output/transfer path. The SQLite account store is secret-bearing; never inspect real credentials as a debugging shortcut.
+- Preserve clean CLI machine output; MCP stdio stdout is reserved for JSON-RPC; HTTP requires OAuth bearer authorization. MCP runtime failures retain structured output with `isError=true`. Report cancellation, transport, authentication, upstream, and persistence failures rather than success-shaped empty data.
 - Introduce limits, timeouts, retries, truncation, or fallbacks only for a verified requirement, platform constraint, established contract, or reproducible failure. Explain and test the trigger without silently discarding valid data.
 
 ## Working agreement
@@ -38,6 +38,7 @@ The separately distributed [product skill](skills/pixiv-cli/SKILL.md) teaches us
 - Identify the requested behavior and acceptance evidence before editing. Keep small changes small; clarify consequential unknowns for larger work. Reuse the issue, PR, or conversation for decisions rather than creating process files automatically.
 - Inspect the branch and existing changes; preserve unrelated work and use an isolated worktree when none exists. Use only available tools, explicit working directories, and safely quoted inputs. Prefer available semantic navigation for symbols and callers; disclose when only targeted search/compiler checks are available.
 - For features and behavior fixes, observe a relevant failing test before implementation, then Green and regression. Reuse or extend existing coverage before adding tests; a new function or file is not a test quota. Pure restructuring uses before/after characterization; obtain an explicit exception if an applicable Red requirement cannot be met. Ordinary comment/document edits need relevant document and tooling checks, not invented runtime tests; consumed directives or examples may require behavioral checks.
+- Frontend sources are embedded directly by `frontend`; clean `go test`, `go vet`, `go build`, and `go install` need no generation step. The existing `frontend` package tests validate the embedded sources.
 - Use the Go version in `go.mod`, `gofmt`, and existing tests/vet/hooks. Follow the develop/test skills for language and ownership rules. Preserve native build requirements; a Linux fixture pass is not all-platform evidence.
 - Reuse standard-library, platform, and existing project capabilities. Obtain approval before adding dependencies or installing missing tools; explain necessity, alternatives, and material lockfile, license, security, or deployment effects.
 - Explain network access and material side effects before execution. Real Pixiv/FANBOX calls, browser credential access, image uploads, and account writes require explicit scope and authorization; they are not routine offline verification.

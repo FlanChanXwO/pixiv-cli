@@ -77,7 +77,7 @@ func TestGIFPaletteAndLZW(t *testing.T) {
 				indices[i] = byte((state >> 16) % uint32(count))
 			}
 			for range 2 {
-				if err := w.frame(size, indices, 8, false); err != nil {
+				if err := w.frame(image.Rectangle{Max: size}, size.X, indices, 8, false); err != nil {
 					t.Fatal(err)
 				}
 			}
@@ -168,7 +168,7 @@ func TestGIFTransparentFullPalette(t *testing.T) {
 	if err := w.header(image.Pt(256, 1), palette, true); err != nil {
 		t.Fatal(err)
 	}
-	if err := w.frame(image.Pt(256, 1), indices, 1, true); err != nil {
+	if err := w.frame(image.Rect(0, 0, 256, 1), 256, indices, 1, true); err != nil {
 		t.Fatal(err)
 	}
 	if err := w.write([]byte{0x3b}); err != nil {
@@ -261,7 +261,7 @@ func TestGIFCompressorResetsBetweenFrames(t *testing.T) {
 					}
 					return len(p), nil
 				})
-				if err := w.frame(size, make([]byte, size.X*size.Y), 8, false); !errors.Is(err, failure) {
+				if err := w.frame(image.Rectangle{Max: size}, size.X, make([]byte, size.X*size.Y), 8, false); !errors.Is(err, failure) {
 					t.Fatalf("sub-block failure lost: %v", err)
 				}
 				w.output = &out
@@ -281,7 +281,7 @@ func TestGIFCompressorResetsBetweenFrames(t *testing.T) {
 					state = state*1664525 + 1013904223
 					indices[i] = byte((state >> 16) % uint32(count))
 				}
-				if err := w.frame(size, indices, 8, false); err != nil {
+				if err := w.frame(image.Rectangle{Max: size}, size.X, indices, 8, false); err != nil {
 					t.Fatal(err)
 				}
 				frames = append(frames, indices)

@@ -61,7 +61,7 @@ func encodeGIF(ctx context.Context, output io.Writer, input Input) (err error) {
 	if err := w.header(size, palette, hasTransparency); err != nil {
 		return err
 	}
-	var indices []byte
+	var indices, previous []byte
 	for _, frame := range input.Frames {
 		current, err = archive.decodeInto(ctx, frame, current)
 		if err != nil {
@@ -79,8 +79,18 @@ func encodeGIF(ctx context.Context, output io.Writer, input Input) (err error) {
 		if err != nil {
 			return err
 		}
-		if err := w.frame(size, indices, delay, hasTransparency); err != nil {
+		region := image.Rectangle{Max: size}
+		if previous != nil {
+			region, err = changedIndexRegion(ctx, previous, indices, size)
+			if err != nil {
+				return err
+			}
+		}
+		if err := w.frame(region, size.X, indices, delay, hasTransparency); err != nil {
 			return fmt.Errorf("encode GIF frame %q: %w", frame.File, err)
+		}
+		if !hasTransparency {
+			previous = append(previous[:0], indices...)
 		}
 	}
 	return w.write([]byte{0x3b})
@@ -129,27 +139,32 @@ func (w *gifWriter) header(size image.Point, palette []rgb, transparent bool) er
 	return w.write([]byte("\x21\xff\x0bNETSCAPE2.0\x03\x01\x00\x00\x00"))
 }
 
-func (w *gifWriter) frame(size image.Point, indices []byte, delay uint16, transparent bool) error {
+func (w *gifWriter) frame(region image.Rectangle, stride int, indices []byte, delay uint16, transparent bool) error {
 	control := [8]byte{0x21, 0xf9, 4, 2 << 2, 0, 0, 0, 0} // Background disposal。
 	if transparent {
 		control[3] |= 1
+	} else {
+		control[3] = 1 << 2
 	}
 	binary.LittleEndian.PutUint16(control[4:6], delay)
 	if err := w.write(control[:]); err != nil {
 		return err
 	}
 	descriptor := [10]byte{0x2c}
-	binary.LittleEndian.PutUint16(descriptor[5:7], uint16(size.X))
-	binary.LittleEndian.PutUint16(descriptor[7:9], uint16(size.Y))
+	binary.LittleEndian.PutUint16(descriptor[1:3], uint16(region.Min.X))
+	binary.LittleEndian.PutUint16(descriptor[3:5], uint16(region.Min.Y))
+	binary.LittleEndian.PutUint16(descriptor[5:7], uint16(region.Dx()))
+	binary.LittleEndian.PutUint16(descriptor[7:9], uint16(region.Dy()))
 	if err := w.write(descriptor[:]); err != nil {
 		return err
 	}
 	var highest byte
-	for row := 0; row < len(indices); row += size.X {
+	for y := region.Min.Y; y < region.Max.Y; y++ {
+		row := y*stride + region.Min.X
 		if err := w.ctx.Err(); err != nil {
 			return err
 		}
-		for _, index := range indices[row : row+size.X] {
+		for _, index := range indices[row : row+region.Dx()] {
 			highest = max(highest, index)
 		}
 		if highest > 127 {
@@ -163,11 +178,12 @@ func (w *gifWriter) frame(size image.Point, indices []byte, delay uint16, transp
 	blocks := gifBlocks{writer: w}
 	compressor := &w.compressor
 	compressor.Reset(&blocks, lzw.LSB, codeSize)
-	for row := 0; row < len(indices); row += size.X {
+	for y := region.Min.Y; y < region.Max.Y; y++ {
+		row := y*stride + region.Min.X
 		if err := w.ctx.Err(); err != nil {
 			return err
 		}
-		if _, err := compressor.Write(indices[row : row+size.X]); err != nil {
+		if _, err := compressor.Write(indices[row : row+region.Dx()]); err != nil {
 			return errors.Join(err, w.ctx.Err())
 		}
 	}
@@ -223,4 +239,27 @@ func (b *gifBlocks) Flush() error {
 	}
 	b.used = 0
 	return nil
+}
+
+func changedIndexRegion(ctx context.Context, previous, current []byte, size image.Point) (image.Rectangle, error) {
+	region := image.Rectangle{Min: size}
+	for y := 0; y < size.Y; y++ {
+		if err := ctx.Err(); err != nil {
+			return image.Rectangle{}, err
+		}
+		for x := 0; x < size.X; x++ {
+			i := y*size.X + x
+			if previous[i] == current[i] {
+				continue
+			}
+			region.Min.X = min(region.Min.X, x)
+			region.Min.Y = min(region.Min.Y, y)
+			region.Max.X = max(region.Max.X, x+1)
+			region.Max.Y = max(region.Max.Y, y+1)
+		}
+	}
+	if region.Empty() {
+		return image.Rect(0, 0, 1, 1), nil
+	}
+	return region, nil
 }

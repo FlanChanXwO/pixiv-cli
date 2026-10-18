@@ -7,3 +7,6 @@ scripts/install.cmd text eol=crlf
 LICENSE text eol=lf
 THIRD_PARTY_LICENSES.md text eol=lf
 third_party/licenses/** text eol=lf
+
+# Deterministic frontend assembly uses the same source bytes on every runner.
+frontend/** text eol=lf

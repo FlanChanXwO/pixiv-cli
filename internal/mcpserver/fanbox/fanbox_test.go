@@ -1,6 +1,8 @@
 package fanbox_test
 
 import (
+	"archive/zip"
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -11,20 +13,25 @@ import (
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/fanbox/internal/runtime"
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/fanbox/tools/currentuser"
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/fanbox/tools/openresource"
+	ugoira "github.com/FlanChanXwO/pixiv-cli/internal/media/ugoira"
 	accountfanbox "github.com/FlanChanXwO/pixiv-cli/internal/services/fanbox/account"
 	fanboxapp "github.com/FlanChanXwO/pixiv-cli/internal/services/fanbox/account"
 	"github.com/FlanChanXwO/pixiv-cli/internal/shared/diagnostics"
 	"github.com/FlanChanXwO/pixiv-cli/internal/storage/database"
 	fanboxsdk "github.com/FlanChanXwO/pixiv-cli/sdk/fanbox"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
+	"image"
+	"image/png"
 	"io"
 	"net/http"
+	"os"
 	"path/filepath"
 	"sort"
 	"strconv"
 	"strings"
 	"sync"
 	"testing"
+	"time"
 )
 
 func TestFanboxMCPDiagnosticsUseFanboxModuleAndRequestID(t *testing.T) {
@@ -254,8 +261,8 @@ func TestFanboxCreatorMissingIDIsStructuredError(t *testing.T) {
 		{name: "creator posts", tool: "fanbox_creator_posts", args: map[string]any{"creator_id": ""}, want: "creator_id is required"},
 		{name: "creator tags", tool: "fanbox_creator_tags", args: map[string]any{"creator_id": ""}, want: "creator_id is required"},
 		{name: "post", tool: "fanbox_post", args: map[string]any{"post_id": ""}, want: "post_id is required"},
-		{name: "tagged posts missing creator", tool: "fanbox_tagged_posts", args: map[string]any{"creator_id": "", "tag": "fanart"}, want: "creator_id and tag are required"},
-		{name: "tagged posts missing tag", tool: "fanbox_tagged_posts", args: map[string]any{"creator_id": "c", "tag": ""}, want: "creator_id and tag are required"},
+		{name: "tagged posts missing creator", tool: "fanbox_creator_posts", args: map[string]any{"creator_id": "", "tag": "fanart"}, want: "creator_id is required"},
+		{name: "tagged posts missing tag", tool: "fanbox_creator_posts", args: map[string]any{"creator_id": "c", "tag": ""}, want: "tag must be non-empty"},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
@@ -291,17 +298,17 @@ func TestFanboxPostListToolsMapIDsAndReturnPosts(t *testing.T) {
 			wantID: "p1", wantTitle: "creator posts",
 		},
 		{
-			name: "home", tool: "fanbox_home", args: map[string]any{}, wantURL: "/post.listHome?limit=10",
+			name: "home", tool: "fanbox_feed", args: map[string]any{"source": "home"}, wantURL: "/post.listHome?limit=10",
 			body:   `{"body":{"items":[{"id":"h1","title":"home","publishedDatetime":"2024-01-01T00:00:00Z","creatorId":"c","isRestricted":false,"isPinned":false}],"nextUrl":""}}`,
 			wantID: "h1", wantTitle: "home",
 		},
 		{
-			name: "supporting", tool: "fanbox_supporting", args: map[string]any{}, wantURL: "/post.listSupporting?limit=10",
+			name: "supporting", tool: "fanbox_feed", args: map[string]any{"source": "supporting"}, wantURL: "/post.listSupporting?limit=10",
 			body:   `{"body":{"items":[{"id":"s1","title":"supporting","publishedDatetime":"2024-01-01T00:00:00Z","creatorId":"c","isRestricted":false,"isPinned":false}],"nextUrl":""}}`,
 			wantID: "s1", wantTitle: "supporting",
 		},
 		{
-			name: "tagged posts", tool: "fanbox_tagged_posts",
+			name: "tagged posts", tool: "fanbox_creator_posts",
 			args: map[string]any{"creator_id": "c", "tag": "fanart"}, wantURL: "/post.listTagged?creatorId=c&tag=fanart",
 			body:   `{"body":{"posts":[{"id":"t1","title":"tagged","publishedDatetime":"2024-01-01T00:00:00Z","creatorId":"c","isRestricted":false,"isPinned":false}],"pageUrls":[]}}`,
 			wantID: "t1", wantTitle: "tagged",
@@ -425,7 +432,7 @@ func TestFanboxHomeMapsFeedAndReturnsPosts(t *testing.T) {
 	session, closeSession := newFanboxMCPSession(t, service)
 	defer closeSession()
 
-	result, err := session.CallTool(context.Background(), &mcp.CallToolParams{Name: "fanbox_home", Arguments: map[string]any{}})
+	result, err := session.CallTool(context.Background(), &mcp.CallToolParams{Name: "fanbox_feed", Arguments: map[string]any{"source": "home"}})
 	if err != nil {
 		t.Fatalf("call tool: %v", err)
 	}
@@ -452,8 +459,8 @@ func TestFanboxHomeUpstreamFailureIsStructuredError(t *testing.T) {
 		name string
 		tool string
 	}{
-		{name: "home", tool: "fanbox_home"},
-		{name: "supporting", tool: "fanbox_supporting"},
+		{name: "home", tool: "fanbox_feed"},
+		{name: "supporting", tool: "fanbox_feed"},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			service, _ := fanboxTestService(t, roundTripFunc(func(*http.Request) (*http.Response, error) {
@@ -462,7 +469,7 @@ func TestFanboxHomeUpstreamFailureIsStructuredError(t *testing.T) {
 			session, closeSession := newFanboxMCPSession(t, service)
 			defer closeSession()
 
-			result, err := session.CallTool(context.Background(), &mcp.CallToolParams{Name: test.tool, Arguments: map[string]any{}})
+			result, err := session.CallTool(context.Background(), &mcp.CallToolParams{Name: test.tool, Arguments: map[string]any{"source": test.name}})
 			if err != nil {
 				t.Fatalf("call tool: %v", err)
 			}
@@ -547,7 +554,7 @@ func TestFanboxSupportingMapsFeedAndReturnsPosts(t *testing.T) {
 	session, closeSession := newFanboxMCPSession(t, service)
 	defer closeSession()
 
-	result, err := session.CallTool(context.Background(), &mcp.CallToolParams{Name: "fanbox_supporting", Arguments: map[string]any{}})
+	result, err := session.CallTool(context.Background(), &mcp.CallToolParams{Name: "fanbox_feed", Arguments: map[string]any{"source": "supporting"}})
 	if err != nil {
 		t.Fatalf("call tool: %v", err)
 	}
@@ -578,7 +585,7 @@ func TestFanboxTaggedPostsMapsCreatorAndTag(t *testing.T) {
 	session, closeSession := newFanboxMCPSession(t, service)
 	defer closeSession()
 
-	result, err := session.CallTool(context.Background(), &mcp.CallToolParams{Name: "fanbox_tagged_posts", Arguments: map[string]any{"creator_id": "c", "tag": "fanart"}})
+	result, err := session.CallTool(context.Background(), &mcp.CallToolParams{Name: "fanbox_creator_posts", Arguments: map[string]any{"creator_id": "c", "tag": "fanart"}})
 	if err != nil {
 		t.Fatalf("call tool: %v", err)
 	}
@@ -717,11 +724,12 @@ func (fanboxMCPDefaults) ClearFanboxDefaultUserID() error {
 
 func newFanboxMCPSession(t *testing.T, service *fanboxapp.Service) (*mcp.ClientSession, func()) {
 	t.Helper()
-	server := fanboxmcpserver.New(fanboxmcpserver.SDKPorts{
+	server := mcp.NewServer(&mcp.Implementation{Name: "test", Version: "1"}, nil)
+	fanboxmcpserver.Register(server, fanboxmcpserver.SDKPorts{
 		Open: func(ctx context.Context, account fanboxmcpserver.Account) (*fanboxsdk.Client, error) {
 			return service.OpenClientWithProxy(ctx, account.HTTPSProxyOverride)
 		},
-	})
+	}, nil)
 	clientTransport, serverTransport := mcp.NewInMemoryTransports()
 	ctx, cancel := context.WithCancel(context.Background())
 	go func() { _ = server.Run(ctx, serverTransport) }()
@@ -792,52 +800,158 @@ func TestFanboxMCPFailureReturnsStructuredError(t *testing.T) {
 	}
 }
 
-func TestFanboxMCPOpenResourceReturnsSafeMetadataWithoutBytes(t *testing.T) {
-	postBody := `{"body":{"post":{"id":"p-open","title":"resource","publishedDatetime":"2024-01-01T00:00:00Z","isRestricted":false,"isPinned":false,"body":{"images":[{"id":"image-1","originalUrl":"https://i.pximg.net/image-1.png"}]}}}}`
-	service, _ := fanboxTestService(t, roundTripFunc(func(req *http.Request) (*http.Response, error) {
-		if req.URL.Host == "api.fanbox.cc" && req.URL.Path == "/post.info" {
-			return jsonResponse(postBody), nil
-		}
-		if req.URL.Host == "i.pximg.net" {
-			return &http.Response{StatusCode: http.StatusOK, Header: http.Header{"Content-Type": {"image/png"}, "Content-Length": {"4"}}, Body: io.NopCloser(strings.NewReader("PNG!"))}, nil
-		}
-		return &http.Response{StatusCode: http.StatusNotFound, Header: http.Header{}, Body: io.NopCloser(strings.NewReader(""))}, nil
-	}))
-	session, closeSession := newFanboxMCPSession(t, service)
-	defer closeSession()
+func TestFanboxMCPOpenResourceDeliversImagesAndFiles(t *testing.T) {
+	var pngBuf bytes.Buffer
+	if err := png.Encode(&pngBuf, image.NewRGBA(image.Rect(0, 0, 1, 1))); err != nil {
+		t.Fatal(err)
+	}
+	dir := t.TempDir()
+	archivePath := filepath.Join(dir, "frames.zip")
+	archive, err := os.Create(archivePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	zipWriter := zip.NewWriter(archive)
+	frame, err := zipWriter.Create("frame.png")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := frame.Write(pngBuf.Bytes()); err != nil {
+		t.Fatal(err)
+	}
+	if err := errors.Join(zipWriter.Close(), archive.Close()); err != nil {
+		t.Fatal(err)
+	}
+	animationPath := filepath.Join(dir, "animation.apng")
+	if err := ugoira.NewEncoder().Encode(t.Context(), ugoira.Input{ZipPath: archivePath, Frames: []ugoira.Frame{{File: "frame.png", Delay: 80}}, OutputPath: animationPath, Format: ugoira.FormatAPNG}); err != nil {
+		t.Fatal(err)
+	}
+	apngData, err := os.ReadFile(animationPath)
+	if err != nil {
+		t.Fatal(err)
+	}
 
-	// Obtain a ref through the real SDK path so it carries only stable identity
-	// (no embedded URL) and is bound to the in-session locator cache.
-	client, err := service.OpenClient(context.Background())
-	if err != nil {
-		t.Fatalf("open client: %v", err)
-	}
-	post, err := client.Post(context.Background(), fanboxsdk.PostRequest{PostID: "p-open"})
-	if err != nil {
-		t.Fatalf("Post: %v", err)
-	}
-	if len(post.Body.Assets) != 1 || post.Body.Assets[0].Resource.Ref.IsZero() {
-		t.Fatalf("post resource = %+v", post.Body)
-	}
-	ref := post.Body.Assets[0].Resource.Ref
-
-	result, err := session.CallTool(context.Background(), &mcp.CallToolParams{
-		Name:      "fanbox_open_resource",
-		Arguments: map[string]any{"ref": ref.String()},
-	})
-	if err != nil {
-		t.Fatalf("call tool: %v", err)
-	}
-	if result.IsError {
-		t.Fatalf("open_resource failed: %+v", result)
-	}
-	var out openresource.Out
-	decodeStructured(t, result, &out)
-	if out.StatusCode != http.StatusOK || out.ContentType != "image/png" {
-		t.Fatalf("open_resource output=%+v", out)
-	}
-	if text, ok := result.Content[0].(*mcp.TextContent); ok && strings.Contains(text.Text, "PNG!") {
-		t.Fatalf("resource bytes leaked into content: %s", text.Text)
+	for _, tc := range []struct {
+		name, mime, method string
+		header             string
+		image              bool
+		data               []byte
+		status             int
+	}{
+		{name: "image", mime: "image/png", method: "GET", data: pngBuf.Bytes(), status: 200, image: true},
+		{name: "file", mime: "application/pdf", method: "GET", data: []byte("%PDF-1.7\nfixture"), status: 200},
+		{name: "filename", mime: "application/pdf", method: "GET", data: []byte("%PDF-1.7\nfixture"), status: 200},
+		{name: "head", mime: "application/pdf", method: "HEAD", status: 200},
+		{name: "forbidden", mime: "text/html", method: "GET", data: []byte("fixture-private-upstream-body"), status: 403},
+		{name: "apng", mime: "image/apng", header: "image/png", method: "GET", data: apngData, status: 200},
+		{name: "false-apng-header", mime: "image/png", header: "image/apng", method: "GET", data: pngBuf.Bytes(), status: 200, image: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			postBody := `{"body":{"post":{"id":"p-open","title":"resource","publishedDatetime":"2024-01-01T00:00:00Z","isRestricted":false,"isPinned":false,"body":{"images":[{"id":"image-1","originalUrl":"https://i.pximg.net/image-1.png"}]}}}}`
+			header := tc.header
+			if header == "" {
+				header = tc.mime
+			}
+			host := "i.pximg.net"
+			if tc.name == "file" || tc.name == "head" || tc.name == "filename" {
+				host = "downloads.fanbox.cc"
+				postBody = `{"body":{"post":{"id":"p-open","title":"resource","publishedDatetime":"2024-01-01T00:00:00Z","isRestricted":false,"isPinned":false,"body":{"files":[{"id":"file-1","name":"fixture","extension":"pdf","url":"https://downloads.fanbox.cc/file-1.pdf"}]}}}}`
+			}
+			if tc.name == "filename" {
+				postBody = strings.Replace(postBody, `"name":"fixture"`, `"name":"folder/报告.PDF"`, 1)
+			}
+			service, _ := fanboxTestService(t, roundTripFunc(func(req *http.Request) (*http.Response, error) {
+				if req.URL.Host == "api.fanbox.cc" && req.URL.Path == "/post.info" {
+					return jsonResponse(postBody), nil
+				}
+				if req.URL.Host != host {
+					t.Errorf("unexpected fixture request: %s", req.URL.Host)
+					return nil, errors.New("unexpected request")
+				}
+				if req.Method != tc.method {
+					t.Errorf("method=%s want %s", req.Method, tc.method)
+				}
+				if (req.Header.Get("Cookie") != "") != (host == "downloads.fanbox.cc") {
+					t.Error("credentialed resource host policy mismatch")
+				}
+				return &http.Response{StatusCode: tc.status, Header: http.Header{"Content-Type": {header}, "Content-Length": {strconv.Itoa(len(tc.data))}}, Body: io.NopCloser(bytes.NewReader(tc.data))}, nil
+			}))
+			session, closeSession := newFanboxMCPSession(t, service)
+			defer closeSession()
+			client, err := service.OpenClient(t.Context())
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer client.CloseIdleConnections()
+			post, err := client.Post(t.Context(), fanboxsdk.PostRequest{PostID: "p-open"})
+			if err != nil {
+				t.Fatal(err)
+			}
+			ref := post.Body.Assets[0].Resource.Ref
+			result, err := session.CallTool(t.Context(), &mcp.CallToolParams{Name: "fanbox_open_resource", Arguments: map[string]any{"ref": ref.String(), "method": tc.method}})
+			if err != nil {
+				t.Fatal(err)
+			}
+			var out openresource.Out
+			decodeStructured(t, result, &out)
+			if tc.status == 200 && out.StatusCode != tc.status {
+				t.Fatalf("status=%d", out.StatusCode)
+			}
+			if tc.status != 200 {
+				if !result.IsError || out.Error != "forbidden" {
+					t.Fatal("HTTP failure reported success")
+				}
+				raw, _ := json.Marshal(result)
+				if bytes.Contains(raw, tc.data) {
+					t.Fatal("raw upstream body leaked")
+				}
+				return
+			}
+			if result.IsError {
+				t.Fatalf("resource failed: %+v", result)
+			}
+			if out.ContentType != tc.mime {
+				t.Fatalf("MIME=%q", out.ContentType)
+			}
+			if tc.name == "file" || tc.name == "head" || tc.name == "filename" {
+				var named struct {
+					Filename string `json:"filename"`
+				}
+				decodeStructured(t, result, &named)
+				wantFilename := "fixture.pdf"
+				if tc.name == "filename" {
+					wantFilename = "folder_报告.PDF"
+				}
+				if named.Filename != wantFilename {
+					t.Fatalf("resource filename=%q, want %q", named.Filename, wantFilename)
+				}
+			}
+			if tc.method == "HEAD" {
+				if out.Delivered || out.ContentIndex != nil {
+					t.Fatal("HEAD claimed delivery")
+				}
+				for _, c := range result.Content {
+					if _, ok := c.(*mcp.TextContent); !ok {
+						t.Fatal("HEAD returned media bytes")
+					}
+				}
+				return
+			}
+			if !out.Delivered || !out.Complete || out.Size != len(tc.data) || out.ContentIndex == nil || *out.ContentIndex != 0 {
+				t.Fatalf("delivery metadata=%+v", out)
+			}
+			if tc.image {
+				img, ok := result.Content[0].(*mcp.ImageContent)
+				if !ok || !bytes.Equal(img.Data, tc.data) || img.MIMEType != tc.mime {
+					t.Fatalf("missing real ImageContent: %#v", result.Content)
+				}
+			} else {
+				blob, ok := result.Content[0].(*mcp.EmbeddedResource)
+				if !ok || !bytes.Equal(blob.Resource.Blob, tc.data) || blob.Resource.MIMEType != tc.mime {
+					t.Fatalf("missing real blob: %#v", result.Content)
+				}
+			}
+		})
 	}
 }
 
@@ -845,16 +959,21 @@ func TestFanboxMCPOpenResourceRejectsInvalidRef(t *testing.T) {
 	service, _ := fanboxTestService(t, fanboxsdkOKRoundTripper())
 	session, closeSession := newFanboxMCPSession(t, service)
 	defer closeSession()
-
-	result, err := session.CallTool(context.Background(), &mcp.CallToolParams{
-		Name:      "fanbox_open_resource",
-		Arguments: map[string]any{"ref": "not-a-valid-ref"},
-	})
-	if err != nil {
-		t.Fatalf("call tool: %v", err)
-	}
-	if !result.IsError {
-		t.Fatalf("invalid ref must be an MCP error: %+v", result)
+	for _, args := range []map[string]any{{"ref": "fixture-private-invalid-ref"}, {"ref": []string{"fixture-private-schema"}}, {"ref": "invalid", "extra": "fixture-private-extra"}} {
+		result, err := session.CallTool(t.Context(), &mcp.CallToolParams{Name: "fanbox_open_resource", Arguments: args})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !result.IsError || result.StructuredContent == nil {
+			t.Fatalf("invalid input missing structured error: %+v", result)
+		}
+		raw, err := json.Marshal(result)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if strings.Contains(string(raw), "fixture-private") {
+			t.Fatalf("input echoed: %s", raw)
+		}
 	}
 }
 
@@ -875,5 +994,103 @@ func decodeStructured(t *testing.T, result *mcp.CallToolResult, target any) {
 	}
 	if err := json.Unmarshal(raw, target); err != nil {
 		t.Fatalf("decode structured content: %v (raw=%s)", err, raw)
+	}
+}
+
+type fanboxWaitingBody struct {
+	ctx             context.Context
+	started, closed chan struct{}
+}
+
+func (b *fanboxWaitingBody) Read([]byte) (int, error) {
+	close(b.started)
+	<-b.ctx.Done()
+	return 0, b.ctx.Err()
+}
+func (b *fanboxWaitingBody) Close() error { close(b.closed); return nil }
+
+func TestFanboxMCPOpenResourceCancellationClosesBody(t *testing.T) {
+	started, closed := make(chan struct{}), make(chan struct{})
+	service, _ := fanboxTestService(t, roundTripFunc(func(r *http.Request) (*http.Response, error) {
+		if r.URL.Host == "api.fanbox.cc" {
+			return jsonResponse(`{"body":{"post":{"id":"p-cancel","title":"resource","publishedDatetime":"2024-01-01T00:00:00Z","isRestricted":false,"isPinned":false,"body":{"images":[{"id":"image-1","originalUrl":"https://i.pximg.net/image-1.png"}]}}}}`), nil
+		}
+		if r.URL.Host != "i.pximg.net" {
+			return nil, errors.New("unexpected fixture host")
+		}
+		return &http.Response{StatusCode: 200, Header: http.Header{"Content-Type": {"image/png"}}, Body: &fanboxWaitingBody{ctx: r.Context(), started: started, closed: closed}}, nil
+	}))
+	client, err := service.OpenClient(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer client.CloseIdleConnections()
+	post, err := client.Post(t.Context(), fanboxsdk.PostRequest{PostID: "p-cancel"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	session, closeSession := newFanboxMCPSession(t, service)
+	defer closeSession()
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		_, _ = session.CallTool(ctx, &mcp.CallToolParams{Name: "fanbox_open_resource", Arguments: map[string]any{"ref": post.Body.Assets[0].Resource.Ref.String()}})
+	}()
+	select {
+	case <-started:
+	case <-time.After(5 * time.Second):
+		t.Fatal("resource body read did not start")
+	}
+	cancel()
+	select {
+	case <-closed:
+	case <-time.After(5 * time.Second):
+		t.Fatal("cancellation did not close resource body")
+	}
+	select {
+	case <-done:
+	case <-time.After(5 * time.Second):
+		t.Fatal("canceled call did not return")
+	}
+}
+
+func TestConsolidatedFeedInputsRejectBeforeOpeningSession(t *testing.T) {
+	opens := 0
+	server := mcp.NewServer(&mcp.Implementation{Name: "input-validation", Version: "1"}, nil)
+	fanboxmcpserver.Register(server, fanboxmcpserver.SDKPorts{Open: func(context.Context, fanboxmcpserver.Account) (*fanboxsdk.Client, error) {
+		opens++
+		return nil, errors.New("unexpected session access")
+	}}, nil)
+	ct, st := mcp.NewInMemoryTransports()
+	ss, err := server.Connect(t.Context(), st, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer ss.Close()
+	cs, err := mcp.NewClient(&mcp.Implementation{Name: "validation-client", Version: "1"}, nil).Connect(t.Context(), ct, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer cs.Close()
+	for _, tc := range []struct {
+		name string
+		args map[string]any
+	}{
+		{"fanbox_feed", map[string]any{}},
+		{"fanbox_feed", map[string]any{"source": "all"}},
+		{"fanbox_feed", map[string]any{"source": "home", "unknown": true}},
+		{"fanbox_feed", map[string]any{"source": "supporting", "page": 2}},
+		{"fanbox_creator_posts", map[string]any{"creator_id": "c", "tag": ""}},
+		{"fanbox_creator_posts", map[string]any{"creator_id": "c", "tag": nil}},
+	} {
+		result, err := cs.CallTool(t.Context(), &mcp.CallToolParams{Name: tc.name, Arguments: tc.args})
+		if err == nil && (result == nil || !result.IsError) {
+			t.Fatalf("invalid %s args accepted: %+v", tc.name, result)
+		}
+		if opens != 0 {
+			t.Fatalf("invalid %s args opened session %d times", tc.name, opens)
+		}
 	}
 }

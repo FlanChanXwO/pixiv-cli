@@ -1,4 +1,4 @@
-// Package user_novels 实现 user_novels tool。
+// Package user_novels 实现 pixiv_user_novels tool。
 package user_novels
 
 import (
@@ -14,9 +14,9 @@ import (
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
-// Register 注册 user_novels。
+// Register 注册 pixiv_user_novels。
 func Register(app *runtime.App, server *mcp.Server) {
-	runtime.AddTool(app, server, &mcp.Tool{Name: "user_novels", Description: "Browse a user's novels through the App API.", InputSchema: schemas.List(map[string]any{
+	runtime.AddTool(app, server, &mcp.Tool{Name: "pixiv_user_novels", Annotations: &mcp.ToolAnnotations{ReadOnlyHint: true, DestructiveHint: new(false), IdempotentHint: true, OpenWorldHint: new(true)}, Description: "Browse a user's novels through the App API.", InputSchema: schemas.List(map[string]any{
 		"user_id":      schemas.PositiveInteger("Optional positive Pixiv user ID; defaults to the authenticated user."),
 		"novel_filter": filters.NovelFilterSchema(),
 	}), OutputSchema: records.RecordsOutputSchema()}, func(ctx context.Context, request *mcp.CallToolRequest, input In) (*mcp.CallToolResult, outputs.Records, error) {

@@ -57,7 +57,7 @@ func encodeAPNG(ctx context.Context, output io.Writer, input Input) (err error) 
 				return err
 			}
 		}
-		if err := w.frame(current, region, numerator, denominator, i == 0); err != nil {
+		if err := w.frame(current, previous, region, numerator, denominator); err != nil {
 			return fmt.Errorf("encode APNG frame %q: %w", frame.File, err)
 		}
 		previous, spare = current, previous
@@ -132,7 +132,11 @@ func (w *apngWriter) header(size image.Point, count uint32) error {
 	return w.chunk("acTL", animation[:])
 }
 
-func (w *apngWriter) frame(img *image.NRGBA, region image.Rectangle, numerator, denominator uint16, first bool) error {
+func (w *apngWriter) frame(img, previous *image.NRGBA, region image.Rectangle, numerator, denominator uint16) error {
+	over, err := apngOverRegion(w.ctx, previous, img, region)
+	if err != nil {
+		return err
+	}
 	sequence, err := w.nextSequence()
 	if err != nil {
 		return err
@@ -143,11 +147,14 @@ func (w *apngWriter) frame(img *image.NRGBA, region image.Rectangle, numerator, 
 	}
 	binary.BigEndian.PutUint16(control[20:22], numerator)
 	binary.BigEndian.PutUint16(control[22:24], denominator)
-	// control[24:26] 固定为 None/Source，透明像素必须替换上一帧而非叠加。
+	// 只有不透明变化允许 Over；透明变化仍以 Source 精确替换。
+	if over {
+		control[25] = 1
+	}
 	if err := w.chunk("fcTL", control[:]); err != nil {
 		return err
 	}
-	data := apngFrameData{writer: w, first: first}
+	data := apngFrameData{writer: w, first: previous == nil}
 	if w.chunkBuffer == nil {
 		// 与标准库 PNG 一样合并为32KiB写入，避免每次 flate 小刷新都分配一个 chunk。
 		w.chunkBuffer = bufio.NewWriterSize(data, 1<<15)
@@ -166,11 +173,26 @@ func (w *apngWriter) frame(img *image.NRGBA, region image.Rectangle, numerator, 
 	}
 	rowBytes := region.Dx() * 4
 	filtered := make([]byte, rowBytes+1)
+	var delta []byte
+	if over {
+		delta = make([]byte, rowBytes)
+	}
 	for y := region.Min.Y; y < region.Max.Y; y++ {
 		if err := w.ctx.Err(); err != nil {
 			return err
 		}
 		row := img.Pix[img.PixOffset(region.Min.X, y):][:rowBytes]
+		if over {
+			prior := previous.Pix[previous.PixOffset(region.Min.X, y):][:rowBytes]
+			for i := 0; i < rowBytes; i += 4 {
+				if bytes.Equal(row[i:i+4], prior[i:i+4]) {
+					clear(delta[i : i+4])
+				} else {
+					copy(delta[i:i+4], row[i:i+4])
+				}
+			}
+			row = delta
+		}
 		filterAPNGRow(row, filtered)
 		if _, err := w.compressor.Write(filtered); err != nil {
 			return errors.Join(err, w.ctx.Err())
@@ -256,4 +278,26 @@ func (d apngFrameData) Write(data []byte) (int, error) {
 		return 0, err
 	}
 	return len(data), nil
+}
+
+func apngOverRegion(ctx context.Context, previous, current *image.NRGBA, region image.Rectangle) (bool, error) {
+	if previous == nil {
+		return false, nil
+	}
+	unchanged := false
+	for y := region.Min.Y; y < region.Max.Y; y++ {
+		if err := ctx.Err(); err != nil {
+			return false, err
+		}
+		old := previous.Pix[previous.PixOffset(region.Min.X, y):][:region.Dx()*4]
+		row := current.Pix[current.PixOffset(region.Min.X, y):][:region.Dx()*4]
+		for i := 0; i < len(row); i += 4 {
+			if bytes.Equal(row[i:i+4], old[i:i+4]) {
+				unchanged = true
+			} else if row[i+3] != 255 {
+				return false, nil
+			}
+		}
+	}
+	return unchanged, nil
 }

@@ -86,15 +86,17 @@ sh scripts/build.sh
 
 Current source builds use the Go version declared in `go.mod`. `scripts/build.sh` sets `CGO_ENABLED=0` and writes `build/pixiv` (`build/pixiv.exe` on Windows), without a Rust toolchain, native library or C linker. On Windows, use Git Bash, MSYS2, or WSL. See [the development guide](maintainers/development.md#ugoira-go-encoder) for encoding, licenses and platform evidence.
 
-### Go install
+### Go source installation
 
-After an official tag is published, install with the exact tag:
+Install an exact published Release tag (replace `vX.Y.Z`):
 
 ```bash
 go install github.com/FlanChanXwO/pixiv-cli/cmd/pixiv@vX.Y.Z
 ```
 
 Use an exact published tag, not a branch name, and follow that tag's requirements. Versions containing the Go encoder can build with `CGO_ENABLED=0`. Legacy v0.4.4 still requires its declared Go toolchain, cgo, a C linker and its committed Rust static library; installing an old tag does not adopt the current checkout's build requirements.
+
+Frontend sources are embedded directly, without a generator or npm step. Installation uses `GOBIN` or `GOPATH/bin`; self-update installs the selected exact Release tag and preserves the previous executable on failure.
 
 ### Homebrew
 
@@ -354,7 +356,9 @@ the Release-check cache, and the macOS callback helper. Account credentials are 
 Unix-like systems actively use `0700` parent directories and `0600` files. On Windows, first creation inherits the
 parent ACL and replacement preserves the existing target ACL; the CLI does not claim to tighten or loosen the DACL.
 On the first ordinary command, a missing `config.toml` is created with the common download, output, login, and
-update settings. It never overwrites an existing file. Advanced settings such as proxy, login
+update settings.
+
+It never overwrites an existing file. Advanced settings such as proxy, login
 timeout, and the Premium-status cache are intentionally omitted until explicitly configured; help, the root
 `--version` flag, secret export, and the internal OAuth callback do not create it.
 Output defaults to text; commands that expose `--json` can produce machine-parseable JSON. `auth export`
@@ -366,7 +370,9 @@ The CLI uses Cobra/pflag, so options may appear before or after positional argum
 
 All non-mutating data reads, recommendations, timelines, and downloads use the local account selected by `pixiv auth use` when the account pool is disabled. Account pooling is active only when `[account_pool]` explicitly sets `enabled = true`; the database `schedulable` flag controls membership and `strategy` defaults to `round_robin` with `random` also supported. Use `pixiv auth pool status|enable|disable` to inspect or change membership. Writes, authentication, and configuration do not use the pool. Data commands reject `--uid` and `--refresh-token`.
 
-Visual lists write canonical Record NDJSON automatically when stdout is a non-terminal and no explicit output format was selected. Each line has stable string `id`, `type`, and `url`; `download`, `bookmark add/remove`, and `follow add/remove` consume compatible records without positional IDs; bookmark add/remove only consume records whose namespace matches the selected `--type` (artwork types by default, `novel` with `--type novel`). Explicit follow targets must otherwise be positive numeric user IDs; user URLs are rejected locally. `pixiv user follow add/remove` and the root `pixiv follow add/remove` route share the same owner, with `add --restrict public|private` defaulting to `public`. `comment create/reply/stamp/delete` use one positive numeric ID and do not consume Record input. Comment reads preserve optional `total`/`access_control` metadata; when upstream supplies opaque numeric `comment_access_control`, JSON keeps it under `access_control.comment_access_control` without inferring boolean permission fields. Comment create/reply/stamp return the upstream positive `comment_id` directly; delete returns a success status only. `comment stamps` is a read-only, non-paginated list. `--json` and explicit `--ndjson` retain precedence.
+Visual lists write canonical Record NDJSON automatically when stdout is a non-terminal and no explicit output format was selected. Each line has stable string `id`, `type`, and `url`; `download`, `bookmark add/remove`, and `follow add/remove` consume compatible records without positional IDs; bookmark add/remove only consume records whose namespace matches the selected `--type` (artwork types by default, `novel` with `--type novel`). Explicit follow targets must otherwise be positive numeric user IDs; user URLs are rejected locally. `pixiv user follow add/remove` and the root `pixiv follow add/remove` route share the same owner, with `add --restrict public|private` defaulting to `public`.
+
+`comment create/reply/stamp/delete` use one positive numeric ID and do not consume Record input. Comment reads preserve optional `total`/`access_control` metadata; when upstream supplies opaque numeric `comment_access_control`, JSON keeps it under `access_control.comment_access_control` without inferring boolean permission fields. Comment create/reply/stamp return the upstream positive `comment_id` directly; delete returns a success status only. `comment stamps` is a read-only, non-paginated list. `--json` and explicit `--ndjson` retain precedence.
 
 For the supported search-to-detail pipeline, prefer letting the pipe select canonical NDJSON:
 
@@ -498,7 +504,8 @@ Only the structured entity filters documented by each command are accepted. The 
 | `novel search` | `pixiv novel search WORD [options]` | Compatibility route for novel search; prefer `pixiv search WORD --type novel`. It exposes only the documented basic novel search fields. |
 | `user search` | `pixiv user search WORD [options]` | Compatibility route for user search; prefer `pixiv search WORD --type user`. |
 | `follow` | `pixiv follow add\|remove USER_ID ...` | Compatibility route for user follow mutation; it shares the same owner and input contract as `pixiv user follow add\|remove`. |
-| `mcp` | `pixiv mcp [--proxy URL\|--no-proxy]` | Starts the MCP stdio server; the proxy override applies only to this launch. |
+| `mcp` | `pixiv mcp [--port PORT [--host HOST] [--base-url URL]] [--proxy URL\|--no-proxy]` | Unified local stdio by default; explicit `--port` enables authenticated HTTP. |
+| `mcp auth init` | `pixiv mcp auth init [--reset]` | Initialize the local MCP owner and print its secret once; reset revokes grants, preserving clients and selected account. |
 | `fanbox auth` | `pixiv fanbox auth import|list|use|remove|status` | Imports and manages local FANBOX sessions. Session values are never printed. Native `--proxy`/`--no-proxy` applies only to the FANBOX command. |
 | `fanbox creators` | `pixiv fanbox creators [--kind supporting\|following] [--page N --limit N]` | Lists supporting or following FANBOX creators. |
 | `fanbox posts` | `pixiv fanbox posts SOURCE [--page N --limit N]` | Lists posts from a creator, tag, post ID, or supported FANBOX URL. |
@@ -506,7 +513,6 @@ Only the structured entity filters documented by each command are accepted. The 
 | `fanbox home` / `supporting` | `pixiv fanbox home|supporting [--page N --limit N]` | Reads the authenticated FANBOX home or supporting feed. |
 | `fanbox post` | `pixiv fanbox post POST_ID` | Reads one post and its safe asset summary. |
 | `fanbox download` | `pixiv fanbox download SOURCE...` | Saves FANBOX post assets below the configured download path. |
-| `fanbox mcp` | `pixiv fanbox mcp [--proxy URL\|--no-proxy]` | Starts the read-only FANBOX MCP stdio server; the native proxy override does not alter FlareSolverr settings. |
 
 Downloaded filenames normalize cross-platform-invalid characters in both the filename template and URL-derived
 extension. For Pixiv thumbnail artwork, a successful resource Content-Type may replace an ambiguous URL extension
@@ -652,7 +658,9 @@ in the form `/artworks/{id}` (an optional locale segment, query, and fragment ar
 and `detail --type user` require positive numeric IDs. User and novel URLs are not silently interpreted as artwork
 URLs; unsupported URL shapes fail locally. `detail` also consumes canonical NDJSON records from stdin: `illust`,
 `manga`, `ugoira`, and generic `artwork` records resolve to artwork detail, while `novel` and `user` records resolve
-to their matching detail endpoints. Artwork, novel, and user search records therefore need no explicit `--type`; when
+to their matching detail endpoints.
+
+Artwork, novel, and user search records therefore need no explicit `--type`; when
 `--type` is supplied in record mode, it is only a compatibility constraint and never overrides the record type. The
 `artwork` and `user` identity records emitted by reverse search are valid `detail` inputs as well. In record mode,
 `--ndjson` emits canonical records and `--json` emits one JSON array; an omitted output flag auto-selects NDJSON for
@@ -667,7 +675,9 @@ and `/users/{id}/bookmarks/artworks` URLs. User and public-bookmarks sources fol
 `manga`, and `ugoira`, deduplicating artwork IDs by first appearance. Artwork-series URLs are rejected as unsupported
 download sources. All need App OAuth and have no anonymous Web fallback. URL
 parsing is local only: it does not fetch HTML or follow redirects. The current CLI download contract exposes page
-selection, static quality, GIF/APNG mode, output directory, filename template, and `--on-error`; unsupported options fail as unknown flags. `--pages` accepts only individual 1-based pages and
+selection, static quality, GIF/APNG mode, output directory, filename template, and `--on-error`; unsupported options fail as unknown flags.
+
+`--pages` accepts only individual 1-based pages and
 closed ranges. An invalid or empty-rendered ugoira filename template falls back to the default filename and emits
 a warning on stderr without failing that item. Record-level input errors follow `--on-error`; reported artwork
 failures remain visible and make the command non-zero. Cancellation stops immediately.
@@ -718,7 +728,7 @@ key in shell history, diagnostics, JSON, MCP input, or a checked-in TOML file.
 
 Manual TOML may contain advanced runtime sections such as `[account_pool]`, `[network]`, `[pixiv.network]`,
 `[fanbox.network]`, `[fanbox.flaresolverr]`, `[reverse_search]`, `[reverse_search.network]`,
-`[reverse_search.flaresolverr]`, `[login]`, and `[update]`:
+`[reverse_search.flaresolverr]`, `[mcp]`, `[login]`, and `[update]`:
 
 ```toml
 [network]
@@ -762,11 +772,9 @@ provider/filter values may still be generated.
 in `pixiv-cli.db`. The removed `account_pool.accounts` key is not migrated; if present, runtime configuration
 returns `removed_setting` and it must be cleared explicitly with `pixiv config unset account_pool_accounts`.
 Never put a refresh token in `config.toml`. The historical
-`data/account-pool.json` scheduler is not read, migrated, or deleted automatically. Legacy `[logging]` tables
-are no longer ignored: `[logging].level` accepts `info` or `debug`, and `[logging].format` accepts `text` or
-`json`. `PIXIV_LOG_LEVEL` and `PIXIV_LOG_FORMAT` override the file values. Debug diagnostics are emitted only to
-stderr, omit query strings, headers, cookies, tokens, response bodies, and proxy userinfo, and never create log
-files; `config` management and secret export remain quiet, while MCP stdout remains JSON-RPC only.
+`data/account-pool.json` scheduler is not read, migrated, or deleted automatically.
+
+Legacy `[logging]` tables are no longer ignored: `[logging].level` accepts `info` or `debug`, and `[logging].format` accepts `text` or `json`. `PIXIV_LOG_LEVEL` and `PIXIV_LOG_FORMAT` override the file values. Debug diagnostics are emitted only to stderr, omit query strings, headers, cookies, tokens, response bodies, and proxy userinfo, and never create log files. `config` management and secret export remain quiet. MCP JSON-RPC uses stdout in stdio mode and HTTP when `--port` is set.
 
 The v1 CLI does not read or migrate a legacy `~/.pixiv-cli/auth.json`. Before switching from an older CLI, run
 `pixiv auth export --all --output <private bundle>` with the old version, then run `pixiv auth import < bundle.json`
@@ -783,7 +791,7 @@ with v1. The transfer is explicit so a stale or unexpected local file cannot bec
 | `PIXIV_LOG_LEVEL` | `info` | Diagnostic level: `info` or `debug`; overrides `[logging].level`. |
 | `PIXIV_LOG_FORMAT` | `text` | Diagnostic stderr format: `text` or `json`; overrides `[logging].format`. |
 | `SAUCENAO_API_KEY` | empty | SauceNAO credential; overrides the private config value and is never printed. |
-| `https_proxy` / `HTTPS_PROXY` | empty | Proxy URI (`http`, `https`, `socks5`, or `socks5h`); the lowercase `https_proxy` takes precedence. |
+| `https_proxy` / `HTTPS_PROXY` | empty | Proxy URI (`http`, `https`, `socks5`, or `socks5h`); the lowercase `https_proxy` takes precedence on case-sensitive systems. Windows treats both spellings as the same environment variable. |
 
 CLI data commands select the explicit/default account through `pixiv auth use` when pooling is disabled, or an eligible database account when pooling is enabled; they do not accept credential-selection flags.
 
@@ -803,6 +811,58 @@ it.
 
 Invalid tokens and App API network or server errors return a safe, classified
 failure.
+
+## MCP HTTP server
+
+`pixiv mcp` defaults to stdio. Configure one local connector for both products:
+
+```json
+{"mcpServers":{"pixiv":{"command":"pixiv","args":["mcp"]}}}
+```
+
+Local calls use CLI account/default or pool selection and the independent FANBOX session. They never initialize or read HTTP owner state. Local login uses `pixiv auth login` / `pixiv fanbox auth`. Stdio stdout contains JSON-RPC only; diagnostics use stderr.
+
+Explicit `--port` is the sole HTTP selector; it must be an integer from 1 to 65535:
+
+```bash
+pixiv mcp auth init
+pixiv mcp --port 1270
+pixiv mcp --port 9000
+pixiv mcp --port 1270 --host 0.0.0.0 --base-url https://mcp.example.com/prefix
+# Container, with an existing HTTPS proxy and persistent private app-data volume:
+docker run --rm -p 1270:1270 -v pixiv-data:/home/pixiv/.pixiv-cli IMAGE mcp --port 1270 --host 0.0.0.0 --base-url https://mcp.example.com
+```
+
+`--host` defaults to `127.0.0.1`; loopback hosts derive their public URL, including IPv6 (`--host ::1` gives `http://[::1]:PORT`). Other hosts, including `0.0.0.0` and `::`, require `--base-url`. The public URL can differ from the listener; non-loopback public URLs require HTTPS. Canonical URLs reject user information, invalid ports, queries, fragments and dot path segments; a validated path prefix is preserved. Host/Forwarded headers never select the public URL. `--host` or `--base-url` without `--port` is an error. No transport is inferred from TTY, stdin, credentials, environment or configuration. Invalid arguments/owner state and bind errors fail explicitly without selecting another port.
+
+The unpublished PR settings `mcp.listen_addr` / `mcp.base_url` (aliases `mcp_listen_addr` / `mcp_base_url`) are no longer public settings and do not affect startup; remove old development entries from `config.toml` and use these flags. The former `--listen-addr HOST:PORT` maps to `--port PORT --host HOST`. No additional configuration file or transport setting is needed.
+
+Gallery reads use these startup settings, managed with `pixiv config get/set/unset`:
+
+| Alias | TOML key under `[mcp]` | Default | Validation |
+| --- | --- | --- | --- |
+| `mcp_gallery_animation_temp_capacity_mib` | `gallery_animation_temp_capacity_mib` | `1024` | Positive integer; checked MiB conversion; private animation temporary storage |
+| `mcp_gallery_cache_capacity_mib` | `gallery_cache_capacity_mib` | `256` | Integer ≥ 0; checked MiB conversion; `0` disables caching |
+| `mcp_gallery_cache_ttl` | `gallery_cache_ttl` | `"15m"` | Positive duration string |
+| `mcp_gallery_concurrency` | `gallery_concurrency` | `4` | Positive integer; independent metadata and image limits |
+
+Missing keys and `config unset` restore defaults. No additional flags or environment variables are introduced. Restart MCP after changing these settings. The process-local LRU budget includes metadata payloads and image filling buffers; oversized images still stream in full without being cached. Cache expiry is the earliest of the configured TTL, issuing authorization expiry, and upstream read-session expiry. Artwork information may lag updates within that window; bookmark state and writes remain live. Every hit rechecks authorization and account/credential/network generation. Revocation denies further reads; restart clears the cache. HTTP responses stay `private, no-store`, without disk or public CDN caching.
+
+The endpoint is the base URL plus `/mcp` and is printed to stderr with the owner-initialized status, never the owner secret. In HTTP mode, stdout is not a JSON-RPC channel. Both products share the endpoint but retain separate credential/runtime owners. `pixiv fanbox mcp` migrates to the unified `pixiv mcp`. `--proxy` / `--no-proxy` remain per-launch upstream network overrides, not inbound TLS configuration; they do not rewrite FlareSolverr settings.
+
+Local HTTP is supported. For cloud connectors, configure the public HTTPS base and terminate TLS in an existing reverse proxy; pixiv-cli does not provision certificates. Preserve the public Host header and original escaped paths. Incoming Host and any Origin must match the canonical deployment origin (host case and default-port equivalents are accepted); forwarding headers cannot establish trust. For base `https://mcp.example.com/pixiv`, forward `/pixiv/mcp`, `/pixiv/oauth/authorize`, `/pixiv/oauth/register`, `/pixiv/oauth/token`, `/.well-known/oauth-protected-resource`, `/.well-known/oauth-protected-resource/pixiv/mcp` and `/.well-known/oauth-authorization-server/pixiv`. Do not strip the prefix or normalize encoded/double-slash paths. See [MCP HTTP authorization](mcp-tools.md#http-authorization); local fixture checks do not establish cloud-host interoperability.
+
+On Unix, `SIGINT` (Ctrl+C) and `SIGTERM` cancel the server and wait for in-flight HTTP handlers to finish cleanup. Cancellation is reported on stderr with exit code `1`; there is no fixed cleanup timeout.
+
+## MCP owner initialization
+
+`pixiv mcp auth init` is local administration, not an MCP tool or a server launch. It writes `<app-data>/mcp-state.json` using a private sidecar lock and atomic replacement. On Unix the directory is `0700` and state/lock files are `0600`. It changes no Pixiv/FANBOX credentials, CLI default, database schema or configuration, and does not run updates or desktop-helper setup.
+
+Successful stdout contains only the new 256-bit random owner secret plus a newline. Keep it in a password manager; never put it in chat, MCP arguments, logs or source control. Only its SHA-256 verifier is persisted. Ordinary re-init fails without replacing state or showing the old secret. Explicit `--reset` rotates the verifier/generation and clears all OAuth grants/token hashes, preserving client metadata and `selected_pixiv_user_id`.
+
+Corrupt/incomplete JSON, unsupported versions, non-regular/symlink state files and private-file permission errors fail rather than silently resetting state. A disk write error does not publish a secret. If stdout fails after commit, the owner remains saved; recover with `pixiv mcp auth init --reset`, which also revokes grants.
+
+This command does not start a listener. Start `pixiv mcp --port PORT` separately using the [HTTP startup contract](#mcp-http-server).
 
 ## Version and updates
 
@@ -852,7 +912,7 @@ verifying the selected version's assets, checksums, and signatures at install ti
 Successful regular CLI commands make a best-effort stable-update check. It skips MCP, help and root `--version`, `update`, every `auth export`, and bundle-form `auth import`,
 and development builds, queries at most once per 24 hours per user cache, and caps the automatic check at 3
 seconds. A discovered new version or a failed check only writes to stderr (failures as warnings), never changes
-the business command's exit code, and never pollutes JSON stdout or MCP JSON-RPC stdout. To disable the automatic
+the business command's exit code, and never pollutes JSON stdout or MCP HTTP JSON-RPC responses. To disable the automatic
 check:
 
 ```bash
@@ -867,7 +927,7 @@ This reference intentionally stops at the CLI boundary. Use the authoritative gu
 maintainer workflows:
 
 - [Go SDK](sdk.md): public client, models, pagination, resources, and typed errors.
-- [MCP tools](mcp-tools.md): tool names, input schemas, output, and stdio behavior.
+- [MCP tools](mcp-tools.md): tool names, input schemas, output, and HTTP authorization.
 - [Architecture](maintainers/architecture.md): package responsibilities and runtime flow.
 - [Development](maintainers/development.md): environment, tests, builds, and release gates.
 - [Agent skill](../../skills/pixiv-cli/SKILL.md): safe instructions for an agent driving the installed CLI.

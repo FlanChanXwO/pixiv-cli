@@ -252,6 +252,18 @@ func operationOr(value, fallback string) string {
 
 func reasonText(reason core.Reason) string {
 	switch reason {
+	case core.ReasonRequestCancelled:
+		return ": the request was cancelled"
+	case core.ReasonTransportInterrupted:
+		return ": the transport was interrupted"
+	case core.ReasonSubscriptionReleased:
+		return ": the last subscription was released"
+	case core.ReasonServiceClosed:
+		return ": the service was closed"
+	case core.ReasonAuthorizationExpired:
+		return ": the media authorization expired"
+	case core.ReasonAuthorizationInvalidated:
+		return ": the media authorization was invalidated"
 	case core.ReasonCommandFailed:
 		return ": the command returned an error"
 	case core.ReasonToolFailed:

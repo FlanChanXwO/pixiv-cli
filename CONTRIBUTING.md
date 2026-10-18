@@ -2,7 +2,7 @@
 
 English | [简体中文](CONTRIBUTING.zh-CN.md)
 
-Thanks for helping improve `pixiv-cli`. Focused bug reports, documentation fixes, tests, and well-scoped features are welcome.
+We welcome focused bug reports, documentation fixes, tests, and well-scoped features.
 
 ## Before you start
 

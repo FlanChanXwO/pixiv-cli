@@ -207,7 +207,7 @@ func TestUgoiraParityInspect(t *testing.T) {
 			t.Fatal("GIF loop or canvas changed")
 		}
 		for i, img := range animation.Image {
-			if animation.Disposal[i] != gif.DisposalBackground {
+			if animation.Disposal[i] != gif.DisposalBackground && animation.Disposal[i] != gif.DisposalNone {
 				t.Fatalf("frame %d disposal changed", i)
 			}
 			if err := visit(i, ugoiraNRGBA(img), float64(animation.Delay[i]*10)); err != nil {

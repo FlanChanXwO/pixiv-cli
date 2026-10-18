@@ -4,13 +4,16 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"fmt"
 	"image"
 	"image/color"
 	"image/gif"
 	"io/fs"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
+	"time"
 )
 
 func encoderInput(t *testing.T, format Format) Input {
@@ -234,4 +237,132 @@ type encoderQueuedContext struct {
 func (c *encoderQueuedContext) Done() <-chan struct{} {
 	close(c.reached)
 	return c.Context.Done()
+}
+
+func TestEncoderOutputBudget(t *testing.T) {
+	for _, format := range []Format{FormatGIF, FormatAPNG} {
+		t.Run(string(format), func(t *testing.T) {
+			input := encoderInput(t, format)
+			if err := NewEncoder().Encode(t.Context(), input); err != nil {
+				t.Fatal(err)
+			}
+			original, err := os.ReadFile(input.OutputPath)
+			if err != nil {
+				t.Fatal(err)
+			}
+			for _, limit := range []uint64{0, 16, uint64(len(original) - 1), uint64(len(original)), uint64(len(original) + 1)} {
+				t.Run(fmt.Sprint(limit), func(t *testing.T) {
+					input.MaxOutputBytes = &limit
+					err := NewEncoder().Encode(t.Context(), input)
+					if limit < uint64(len(original)) && !errors.Is(err, ErrOutputCapacity) {
+						t.Fatalf("capacity failure lost: %v", err)
+					}
+					if limit >= uint64(len(original)) && err != nil {
+						t.Fatal(err)
+					}
+					body, err := os.ReadFile(input.OutputPath)
+					if err != nil || !bytes.Equal(body, original) {
+						t.Fatal("existing destination changed")
+					}
+					checkNoAnimationTemps(t, input.OutputPath)
+				})
+			}
+		})
+	}
+}
+
+func TestEncoderSharedBudget(t *testing.T) {
+	failure := errors.New("shared capacity refused")
+	for _, format := range []Format{FormatGIF, FormatAPNG} {
+		for _, mode := range []string{"success", "failure", "panic", "cancel"} {
+			t.Run(string(format)+"/"+mode, func(t *testing.T) {
+				input := encoderInput(t, format)
+				ctx, cancel := context.WithCancel(t.Context())
+				defer cancel()
+				var reserved uint64
+				calls := 0
+				input.ReserveOutput = func(n uint64) error {
+					calls++
+					paths, err := filepath.Glob(filepath.Join(filepath.Dir(input.OutputPath), ".ugoira-*"))
+					if err != nil {
+						return err
+					}
+					for _, p := range paths {
+						info, err := os.Stat(p)
+						if err != nil {
+							return err
+						}
+						if uint64(info.Size()) > reserved {
+							t.Fatal("write preceded reservation")
+						}
+					}
+					switch mode {
+					case "failure":
+						return failure
+					case "panic":
+						panic("fixture")
+					case "cancel":
+						cancel()
+						return ctx.Err()
+					}
+					reserved += n
+					return nil
+				}
+				err := NewEncoder().Encode(ctx, input)
+				if calls == 0 {
+					t.Fatal("missing reservation")
+				}
+				switch mode {
+				case "success":
+					if err != nil {
+						t.Fatal(err)
+					}
+					info, err := os.Stat(input.OutputPath)
+					if err != nil || uint64(info.Size()) != reserved {
+						t.Fatalf("reservation mismatch: %v", err)
+					}
+				case "failure":
+					if !errors.Is(err, failure) {
+						t.Fatalf("callback cause lost: %v", err)
+					}
+				case "panic":
+					if err == nil || !strings.Contains(err.Error(), "callback panicked") {
+						t.Fatalf("panic not contained: %v", err)
+					}
+				case "cancel":
+					if !errors.Is(err, context.Canceled) {
+						t.Fatalf("cancellation lost: %v", err)
+					}
+				}
+				checkNoAnimationTemps(t, input.OutputPath)
+				if mode != "success" {
+					if _, err := os.Stat(input.OutputPath); !errors.Is(err, fs.ErrNotExist) {
+						t.Fatalf("failed output published: %v", err)
+					}
+				}
+				// 每次调用独立拥有预算，后续普通调用不继承回调或限制。
+				input.ReserveOutput = nil
+				if err := NewEncoder().Encode(t.Context(), input); err != nil {
+					t.Fatal(err)
+				}
+			})
+		}
+	}
+}
+
+func TestEncoderObservesWaitAndEncode(t *testing.T) {
+	input := encoderInput(t, FormatGIF)
+	var stages []string
+	input.Observe = func(stage string, d time.Duration) {
+		if d < 0 {
+			t.Fatal("negative duration")
+		}
+		stages = append(stages, stage)
+	}
+	if err := NewEncoder().Encode(t.Context(), input); err != nil {
+		t.Fatal(err)
+	}
+	if fmt.Sprint(stages) != "[animation_encode_wait animation_encode]" {
+		t.Fatalf("stages: %v", stages)
+	}
 }

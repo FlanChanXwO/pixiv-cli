@@ -209,7 +209,7 @@ func decodeAPNGTest(t *testing.T, body []byte) []apngTestFrame {
 		w, h := binary.BigEndian.Uint32(control[4:8]), binary.BigEndian.Uint32(control[8:12])
 		x, y := binary.BigEndian.Uint32(control[12:16]), binary.BigEndian.Uint32(control[16:20])
 		region := image.Rect(int(x), int(y), int(x+w), int(y+h))
-		if region.Empty() || !region.In(canvas.Rect) || len(frames) == 0 && region != canvas.Rect || control[24] != 0 || control[25] != 0 {
+		if region.Empty() || !region.In(canvas.Rect) || len(frames) == 0 && region != canvas.Rect || control[24] != 0 || control[25] > 1 {
 			t.Fatal("frame bounds or disposal/blend differ")
 		}
 		ihdr := bytes.Clone(header)
@@ -230,7 +230,22 @@ func decodeAPNGTest(t *testing.T, body []byte) []apngTestFrame {
 		if err != nil {
 			t.Fatal(err)
 		}
-		draw.Draw(canvas, region, img, image.Point{}, draw.Src)
+		if control[25] == 0 {
+			draw.Draw(canvas, region, img, image.Point{}, draw.Src)
+		} else {
+			for y := 0; y < region.Dy(); y++ {
+				for x := 0; x < region.Dx(); x++ {
+					pixel := color.NRGBAModel.Convert(img.At(x, y)).(color.NRGBA)
+					if pixel.A == 0 {
+						continue
+					}
+					if pixel.A != 255 {
+						t.Fatal("Over delta must contain only opaque changes")
+					}
+					canvas.SetNRGBA(region.Min.X+x, region.Min.Y+y, pixel)
+				}
+			}
+		}
 		frames = append(frames, apngTestFrame{cloneAPNGFrame(canvas), region, binary.BigEndian.Uint16(control[20:22]), binary.BigEndian.Uint16(control[22:24])})
 		compressed.Reset()
 	}
@@ -331,7 +346,11 @@ func TestAPNGCoalescesCompressedWrites(t *testing.T) {
 		t.Fatal(err)
 	}
 	for i := range 2 {
-		if err := w.frame(img, img.Rect, 1, 100, i == 0); err != nil {
+		var previous *image.NRGBA
+		if i > 0 {
+			previous = img
+		}
+		if err := w.frame(img, previous, img.Rect, 1, 100); err != nil {
 			t.Fatal(err)
 		}
 	}

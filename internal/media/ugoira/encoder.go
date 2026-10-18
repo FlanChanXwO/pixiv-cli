@@ -4,7 +4,9 @@ import (
 	"bufio"
 	"context"
 	"errors"
+	"io"
 	"os"
+	"time"
 )
 
 type encoder struct{}
@@ -23,12 +25,20 @@ func (encoder) Encode(ctx context.Context, input Input) error {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
+	waiting := time.Now()
 	select {
 	case encodeGate <- struct{}{}:
 	case <-ctx.Done():
 		return ctx.Err()
 	}
 	defer func() { <-encodeGate }()
+	if input.Observe != nil {
+		input.Observe("animation_encode_wait", time.Since(waiting))
+	}
+	started := time.Now()
+	if input.Observe != nil {
+		defer func() { input.Observe("animation_encode", time.Since(started)) }()
+	}
 	if err := ctx.Err(); err != nil {
 		return err
 	}
@@ -38,7 +48,15 @@ func (encoder) Encode(ctx context.Context, input Input) error {
 			return err
 		}
 		// profile 中默认 4 KiB 缓冲让 APNG 过半 CPU 花在文件写入；合并小 chunk，不缓存整帧。
-		output := bufio.NewWriterSize(file, 64*1024)
+		var destination io.Writer = file
+		if input.MaxOutputBytes != nil || input.ReserveOutput != nil {
+			limit := ^uint64(0)
+			if input.MaxOutputBytes != nil {
+				limit = *input.MaxOutputBytes
+			}
+			destination = &outputBudgetWriter{writer: file, remaining: limit, reserve: input.ReserveOutput}
+		}
+		output := bufio.NewWriterSize(destination, 64*1024)
 		if format == FormatGIF {
 			err = encodeGIF(ctx, output, input)
 		} else {
@@ -49,4 +67,34 @@ func (encoder) Encode(ctx context.Context, input Input) error {
 		}
 		return errors.Join(err, file.Close(), ctx.Err())
 	})
+}
+
+// 预算位于缓冲器下游，在每次实际落盘前预留容量；普通调用不受限。
+type outputBudgetWriter struct {
+	writer    io.Writer
+	remaining uint64
+	reserve   func(uint64) error
+}
+
+func (w *outputBudgetWriter) Write(data []byte) (int, error) {
+	if uint64(len(data)) > w.remaining {
+		return 0, ErrOutputCapacity
+	}
+	if w.reserve != nil {
+		if err := reserveOutput(w.reserve, uint64(len(data))); err != nil {
+			return 0, err
+		}
+	}
+	n, err := w.writer.Write(data)
+	w.remaining -= uint64(n)
+	return n, err
+}
+
+func reserveOutput(reserve func(uint64) error, size uint64) (err error) {
+	defer func() {
+		if recover() != nil {
+			err = errors.New("animation output budget callback panicked")
+		}
+	}()
+	return reserve(size)
 }

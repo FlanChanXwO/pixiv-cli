@@ -5,13 +5,14 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"time"
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/config/paths"
 )
 
 // WithPrivateLock 在原子替换目标文件之外使用同目录侧车锁串行化事务。锁文件不随
 // JSON replacement 被替换，因此多个 CLI/MCP 进程始终竞争同一个协调点。
-func WithPrivateLock(ctx context.Context, path string, action func() error) error {
+func WithPrivateLock(ctx context.Context, path string, action func() error) (err error) {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
@@ -22,16 +23,53 @@ func WithPrivateLock(ctx context.Context, path string, action func() error) erro
 	if err != nil {
 		return err
 	}
-	release, err := acquire(file)
+	release, err := acquireContext(ctx, file)
 	if err != nil {
-		_ = file.Close()
-		return err
+		return errors.Join(err, file.Close())
 	}
-	defer func() { _ = release() }()
+	defer func() { err = errors.Join(err, release()) }()
 	if err := ctx.Err(); err != nil {
 		return err
 	}
 	return action()
+}
+
+func acquireContext(ctx context.Context, file *os.File) (func() error, error) {
+	if ctx.Done() == nil {
+		return acquire(file)
+	}
+	release, acquired, err := tryAcquire(file)
+	if acquired || err != nil {
+		return release, err
+	}
+	// 原生阻塞锁不能被context唤醒；仅争用时轮询锁，不重放事务、不设总等待期限。
+	// 10ms限制空转开销；取消直接由Done唤醒，不等待下次检查。
+	ticker := time.NewTicker(10 * time.Millisecond)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		case <-ticker.C:
+			release, acquired, err := tryAcquire(file)
+			if acquired || err != nil {
+				return release, err
+			}
+		}
+	}
+}
+
+// TryPrivateLock checks instance liveness without waiting for a running owner.
+func TryPrivateLock(path string) (release func() error, acquired bool, err error) {
+	file, err := openLockFile(path)
+	if err != nil {
+		return nil, false, err
+	}
+	release, acquired, err = tryAcquire(file)
+	if !acquired {
+		err = errors.Join(err, file.Close())
+	}
+	return
 }
 
 func openLockFile(path string) (*os.File, error) {

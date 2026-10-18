@@ -1,4 +1,4 @@
-// Package follow_user 实现 follow_user tool。
+// Package follow_user 实现 pixiv_follow_user tool。
 package follow_user
 
 import (
@@ -11,9 +11,9 @@ import (
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
-// Register 注册 follow_user。
+// Register 注册 pixiv_follow_user。
 func Register(app *runtime.App, server *mcp.Server) {
-	runtime.AddTool(app, server, &mcp.Tool{Name: "follow_user", Description: "Follow a Pixiv user."}, func(ctx context.Context, request *mcp.CallToolRequest, input In) (*mcp.CallToolResult, outputs.Mutation, error) {
+	runtime.AddTool(app, server, &mcp.Tool{Name: "pixiv_follow_user", Annotations: &mcp.ToolAnnotations{ReadOnlyHint: false, DestructiveHint: new(false), IdempotentHint: true, OpenWorldHint: new(true)}, Description: "Follow a Pixiv user."}, func(ctx context.Context, request *mcp.CallToolRequest, input In) (*mcp.CallToolResult, outputs.Mutation, error) {
 		return handleFollowUser(ctx, app, input)
 	})
 }

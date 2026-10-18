@@ -6,12 +6,16 @@ package runtime
 import (
 	"context"
 	"errors"
+	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/gallery"
+	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/mediaproxy"
+	downloader "github.com/FlanChanXwO/pixiv-cli/internal/media/downloader"
 	"math"
+	"sync"
 	"sync/atomic"
 	"time"
 
+	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/accounts"
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/internal/filters"
-	downloader "github.com/FlanChanXwO/pixiv-cli/internal/media/downloader"
 	"github.com/FlanChanXwO/pixiv-cli/internal/services/reversesearch"
 	"github.com/FlanChanXwO/pixiv-cli/internal/shared/diagnostics"
 	"github.com/FlanChanXwO/pixiv-cli/internal/shared/lifecycle"
@@ -22,12 +26,6 @@ import (
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
-// DownloadManager 是下载器在 MCP 侧的窄能力接口。
-type DownloadManager interface {
-	SetDownloadPath(string) error
-	Download(context.Context, downloader.DownloadRequest) (downloader.DownloadBatchResult, error)
-}
-
 // Account 是 MCP 请求的本地值；只携带传输覆写与账号选择，不持有
 // client 或凭据。
 type Account struct {
@@ -35,15 +33,31 @@ type Account struct {
 	HTTPSProxyOverride *string
 }
 
+// LocalDownloads is injected only for local filesystem delivery.
+type LocalDownloads struct {
+	Service                                   downloader.DownloadService
+	Path, FilenameTemplate, DirectoryTemplate string
+}
+
 // SDKPorts 是 MCP 对 Pixiv services Facade 的窄端口：打开独立认证快照、在账号
 // 池重放边界内执行用例。composition root 注入实现；MCP 不持有 service locator。
 type SDKPorts struct {
+	Downloads *LocalDownloads
+	Media     *mediaproxy.Service
+	// Accounts shares the owner-local manager used by production ResolveAccount.
+	Accounts accounts.Manager
+	// Login is shared with the HTTP relay and owned by the server lifecycle.
+	Login *accounts.LoginManager
+	// ResolveAccount 固定一次业务调用的本地账号选择；不读取或刷新上游凭据。
+	ResolveAccount func(context.Context, Account) (Account, error)
 	// Open is the raw-client compatibility adapter for existing embeddings. New
 	// composition roots should inject OpenLease so the services Facade owns the
 	// complete client lifecycle.
 	Open      func(Account) (*pixiv.Client, error)
 	OpenLease func(context.Context, Account) (*lifecycle.Lease[*pixiv.Client], error)
 	Execute   func(context.Context, Account, func(context.Context, *pixiv.Client) (bool, error)) error
+	// Read excludes mutations; Execute retains write commit/replay semantics.
+	Read func(context.Context, Account, func(context.Context, *pixiv.Client) (bool, error)) error
 	// ReverseSearch 是启动时注入的反向搜图能力与配置快照。Searcher 的
 	// HTTP client、代理和凭据均由 composition root 构造，不从 MCP input 传入。
 	ReverseSearch ReverseSearchPorts
@@ -60,28 +74,21 @@ type ReverseSearchPorts struct {
 
 // App 是 Pixiv MCP 应用。
 type App struct {
-	downloads DownloadManager
-	// newDownloads 在每个 SDK client 的稳定认证 snapshot 上创建下载器。
-	// 固定 downloads 仅保留给未注入 SDK 的嵌入测试兼容路径。
-	newDownloads   func(*pixiv.Client) DownloadManager
 	sdk            SDKPorts
 	sdkAccount     Account
 	requestCounter atomic.Uint64
 }
 
-// NewApp 构造带下载器、下载器工厂、SDK ports 与账号的 Pixiv MCP 应用。
-func NewApp(downloads DownloadManager, newDownloads func(*pixiv.Client) DownloadManager, ports SDKPorts, account Account) *App {
-	return &App{downloads: downloads, newDownloads: newDownloads, sdk: ports, sdkAccount: account}
+// NewApp 构造独立的 Pixiv SDK 与账号运行时。
+func NewApp(ports SDKPorts, account Account) *App {
+	return &App{sdk: ports, sdkAccount: account}
 }
-
-// Downloads 返回固定下载器（仅嵌入测试兼容路径使用）。
-func (a *App) Downloads() DownloadManager { return a.downloads }
-
-// NewDownloads 返回 snapshot-scoped 下载器工厂。
-func (a *App) NewDownloads() func(*pixiv.Client) DownloadManager { return a.newDownloads }
 
 // SDKPorts 返回注入的 SDK 端口。
 func (a *App) SDKPorts() SDKPorts { return a.sdk }
+
+// AccountManager returns the local account manager; it never opens an SDK client.
+func (a *App) AccountManager() accounts.Manager { return a.sdk.Accounts }
 
 // ReverseSearchPorts 返回启动时注入的反向搜图端口与配置。
 func (a *App) ReverseSearchPorts() ReverseSearchPorts {
@@ -94,13 +101,39 @@ func (a *App) ReverseSearchPorts() ReverseSearchPorts {
 // Account 返回注入的账号请求值。
 func (a *App) Account() Account { return a.sdkAccount }
 
+type accountSnapshotKey struct{}
+
+type accountSnapshot struct {
+	app     *App
+	once    sync.Once
+	account Account
+	err     error
+}
+
+// resolveAccount 在首次 SDK 访问时取本地选择，避免无账号工具被选择错误阻断。
+// 同一 tool 的后续 SDK 操作与并行子操作复用结果（包括错误），切换只影响后续调用。
+func (a *App) resolveAccount(ctx context.Context) (Account, error) {
+	if a.sdk.ResolveAccount == nil {
+		return a.sdkAccount, nil
+	}
+	if snapshot, ok := ctx.Value(accountSnapshotKey{}).(*accountSnapshot); ok && snapshot.app == a {
+		snapshot.once.Do(func() { snapshot.account, snapshot.err = a.sdk.ResolveAccount(ctx, a.sdkAccount) })
+		return snapshot.account, snapshot.err
+	}
+	return a.sdk.ResolveAccount(ctx, a.sdkAccount)
+}
+
 // AddTool 统一保留注册入口；失败结果直接由各 handler 的 CallToolResult 表达。
-// wrapper 只增加 stderr diagnostics scope，不改变 handler 的输入、structured
-// result、isError 或错误返回。
+// wrapper 增加 diagnostics scope 和惰性账号快照，不改变 handler 的输入、
+// structured result、isError 或错误返回。
 func AddTool[In, Out any](app *App, server *mcp.Server, tool *mcp.Tool, handler mcp.ToolHandlerFor[In, Out]) {
+	if app.sdk.Media != nil {
+		gallery.Attach(tool, app.sdk.Media)
+	}
 	mcp.AddTool(server, tool, func(ctx context.Context, request *mcp.CallToolRequest, input In) (*mcp.CallToolResult, Out, error) {
 		requestID := app.requestCounter.Add(1)
 		scoped := diagnostics.WithChildScope(ctx, diagnostics.ModulePixivMCPServer, requestID)
+		scoped = context.WithValue(scoped, accountSnapshotKey{}, &accountSnapshot{app: app})
 		startedAt := time.Now()
 		diagnostics.Emit(scoped, diagnostics.Event{Kind: diagnostics.EventStarted, Operation: "tool " + tool.Name})
 		result, output, err := handler(scoped, request, input)
@@ -139,11 +172,12 @@ type ListPlan struct {
 
 // PaginationOut 是列表 tool 的稳定分页输出。
 type PaginationOut struct {
-	Page     int  `json:"page"`
-	Limit    *int `json:"limit"`
-	Returned int  `json:"returned"`
-	HasMore  bool `json:"has_more"`
-	NextPage *int `json:"next_page"`
+	NextCursor string `json:"next_cursor,omitempty"`
+	Page       int    `json:"page"`
+	Limit      *int   `json:"limit"`
+	Returned   int    `json:"returned"`
+	HasMore    bool   `json:"has_more"`
+	NextPage   *int   `json:"next_page"`
 }
 
 // ParseListPlan 解析分页输入；nil limit 表示单上游批次。
@@ -179,26 +213,41 @@ func ListPagination(plan ListPlan, limit *int, returned int, hasMore bool) Pagin
 	return out
 }
 
-// Execute 将 MCP 当前请求接入 services Facade 提供的重放边界；逻辑分页和
+// Execute 将 MCP 读取接入独立只读会话，兼容未注入 Read 的原重放端口；逻辑分页和
 // cursor 处理由 internal/shared/traversal 与 pagination 统一拥有。
 func (a *App) Execute() traversal.Execute[*pixiv.Client] {
-	if a == nil || a.sdk.Execute == nil {
+	if a == nil || (a.sdk.Execute == nil && a.sdk.Read == nil) {
 		return nil
 	}
 	return func(ctx context.Context, attempt func(context.Context, *pixiv.Client) (bool, error)) error {
-		return a.sdk.Execute(ctx, a.sdkAccount, attempt)
+		account, err := a.resolveAccount(ctx)
+		if err != nil {
+			return err
+		}
+		if a.sdk.Read != nil {
+			return a.sdk.Read(ctx, account, attempt)
+		}
+		return a.sdk.Execute(ctx, account, attempt)
 	}
 }
 
-// Read 在账号池重放边界内执行一次只读用例；MCP 只在成功后拿到结果。
+// Read 使用独立只读会话；未注入该端口的 embedding 保留原 Execute 行为。
 func Read[T any](a *App, ctx context.Context, invoke func(context.Context, *pixiv.Client) (T, error)) (T, error) {
 	var zero T
-	if a == nil || a.sdk.Execute == nil {
+	if a == nil || (a.sdk.Execute == nil && a.sdk.Read == nil) {
 		return zero, sdk.NewError("pixiv", "PagedRead", sdk.LocalStateError,
 			sdk.WithDetail("sdk pooled operation is not configured"))
 	}
 	var result T
-	err := a.sdk.Execute(ctx, a.sdkAccount, func(ctx context.Context, client *pixiv.Client) (bool, error) {
+	account, err := a.resolveAccount(ctx)
+	if err != nil {
+		return zero, err
+	}
+	execute := a.sdk.Execute
+	if a.sdk.Read != nil {
+		execute = a.sdk.Read
+	}
+	err = execute(ctx, account, func(ctx context.Context, client *pixiv.Client) (bool, error) {
 		var err error
 		result, err = invoke(ctx, client)
 		return false, err
@@ -215,7 +264,11 @@ func Write(a *App, ctx context.Context, invoke func(context.Context, *pixiv.Clie
 		return sdk.NewError("pixiv", "Write", sdk.LocalStateError,
 			sdk.WithDetail("sdk pooled operation is not configured"))
 	}
-	return a.sdk.Execute(ctx, a.sdkAccount, func(ctx context.Context, client *pixiv.Client) (bool, error) {
+	account, err := a.resolveAccount(ctx)
+	if err != nil {
+		return err
+	}
+	return a.sdk.Execute(ctx, account, func(ctx context.Context, client *pixiv.Client) (bool, error) {
 		return true, invoke(ctx, client)
 	})
 }
@@ -226,9 +279,26 @@ func CollectWith[T any](ctx context.Context, app *App, plan ListPlan, fetch func
 	return collectWithFrom(ctx, app, plan, sdk.Cursor{}, fetch)
 }
 
-// collectWithFrom 是 MCP 内部的非 wire continuation seam；公开 tool 仍由
-// CollectWith 从零 cursor 开始，测试与后续 owner 可验证已有 opaque cursor 的
-// execution-attempt 生命周期。
+// CollectBatchWith 从已有 cursor 读取完整过滤批次；不应用逻辑 limit，
+// 因而返回的 SDK cursor 之前不会遗留尚未交付的批次内条目。
+func CollectBatchWith[T any](ctx context.Context, app *App, initial sdk.Cursor, fetch func(context.Context, *pixiv.Client, sdk.Cursor) ([]T, sdk.Cursor, error)) ([]T, sdk.Cursor, error) {
+	var next sdk.Cursor
+	items, _, err := collectWithFrom(ctx, app, ListPlan{Page: 1, OneBatch: true}, initial, func(ctx context.Context, client *pixiv.Client, cursor sdk.Cursor) ([]T, sdk.Cursor, error) {
+		batch, continuation, err := fetch(ctx, client, cursor)
+		if err == nil && !continuation.IsZero() && continuation == cursor {
+			return nil, sdk.Cursor{}, errors.New("batch continuation cursor repeated")
+		}
+		next = continuation
+		return batch, continuation, err
+	})
+	if err != nil {
+		return nil, sdk.Cursor{}, err
+	}
+	return items, next, nil
+}
+
+// collectWithFrom 统一逻辑分页与批次续读的 execution-attempt 生命周期；
+// SDK cursor 的解析与公开 wire envelope 由具体 tool owner 负责。
 func collectWithFrom[T any](ctx context.Context, app *App, plan ListPlan, initial sdk.Cursor, fetch func(context.Context, *pixiv.Client, sdk.Cursor) ([]T, sdk.Cursor, error)) ([]T, bool, error) {
 	seen := make(map[string]struct{})
 	baseExecute := app.Execute()
@@ -276,23 +346,37 @@ func CollectStreamsWith[T any, C pagination.Cursor](ctx context.Context, app *Ap
 // CollectPages 仅把 MCP 的兼容 sentinel 映射到共享分页语义；成功空结果
 // 仍保持 non-nil slice，失败时共享 collector 会丢弃部分结果。
 func CollectPages[T any](ctx context.Context, plan ListPlan, fetch func(context.Context, sdk.Cursor) ([]T, sdk.Cursor, error)) ([]T, bool, error) {
+	items, more, _, err := CollectPagesFrom(ctx, plan, sdk.Cursor{}, fetch)
+	return items, more, err
+}
+
+// CollectPagesFrom 保持流内过滤语义，默认完整批次才返回可安全续读的 cursor。
+func CollectPagesFrom[T any](ctx context.Context, plan ListPlan, initial sdk.Cursor, fetch func(context.Context, sdk.Cursor) ([]T, sdk.Cursor, error)) ([]T, bool, sdk.Cursor, error) {
+	var continuation sdk.Cursor
 	limit := max(0, plan.Limit)
 	seen := make(map[string]struct{})
-	items, result, err := pagination.CollectPages(ctx, pagination.PagePlan{
+	items, result, err := pagination.CollectPagesFrom(ctx, pagination.PagePlan{
 		Skip:     plan.Skip,
 		Limit:    limit,
 		OneBatch: plan.OneBatch,
-	}, func(ctx context.Context, cursor sdk.Cursor) ([]T, sdk.Cursor, error) {
+	}, initial, func(ctx context.Context, cursor sdk.Cursor) ([]T, sdk.Cursor, error) {
 		items, next, err := fetch(ctx, cursor)
 		if err != nil {
 			return nil, sdk.Cursor{}, err
 		}
+		if plan.OneBatch && !next.IsZero() && next == cursor {
+			return nil, sdk.Cursor{}, errors.New("batch continuation cursor repeated")
+		}
+		continuation = next
 		return filters.FilterPage(ctx, items, seen), next, nil
 	})
 	if err != nil {
-		return nil, false, err
+		return nil, false, sdk.Cursor{}, err
 	}
-	return items, result.HasMore, nil
+	if !plan.OneBatch {
+		continuation = sdk.Cursor{}
+	}
+	return items, result.HasMore, continuation, nil
 }
 
 // OpenClient 打开一次由 services Facade 管理的独立 SDK snapshot，并返回
@@ -320,7 +404,11 @@ func (a *App) OpenClient(ctx context.Context) (*lifecycle.Lease[*pixiv.Client], 
 	if openLease == nil {
 		return nil, errors.New("pixiv sdk is not configured")
 	}
-	lease, err := openLease(ctx, a.sdkAccount)
+	account, err := a.resolveAccount(ctx)
+	if err != nil {
+		return nil, err
+	}
+	lease, err := openLease(ctx, account)
 	if err != nil {
 		return nil, err
 	}
@@ -329,6 +417,9 @@ func (a *App) OpenClient(ctx context.Context) (*lifecycle.Lease[*pixiv.Client], 
 	}
 	return lease, nil
 }
+
+// ResolveAccount returns the fixed account for this tool invocation.
+func (a *App) ResolveAccount(ctx context.Context) (Account, error) { return a.resolveAccount(ctx) }
 
 // CurrentUserID 返回当前 client snapshot 的身份 UID；未携带账号时报错，
 // 不静默回退到默认账号语义。
@@ -351,4 +442,18 @@ func ResolveUserID(app *App, ctx context.Context, requested int64) (int64, error
 		return 0, errors.New("user_id must be positive when provided")
 	}
 	return app.CurrentUserID(ctx)
+}
+
+// Artwork uses grant-scoped Gallery metadata when production read sessions are available.
+func (a *App) Artwork(ctx context.Context, id int64) (pixiv.Artwork, error) {
+	if a.sdk.Media.HasReadSessions() {
+		account, err := a.resolveAccount(ctx)
+		if err != nil {
+			return pixiv.Artwork{}, err
+		}
+		return a.sdk.Media.Artwork(ctx, account.UserID, id)
+	}
+	return Read(a, ctx, func(ctx context.Context, c *pixiv.Client) (pixiv.Artwork, error) {
+		return c.Artwork(ctx, pixiv.ArtworkRequest{ArtworkID: id})
+	})
 }

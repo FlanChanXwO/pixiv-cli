@@ -1,4 +1,4 @@
-// Package search_user 实现 search_user tool。
+// Package search_user 实现 pixiv_search_user tool。
 package search_user
 
 import (
@@ -15,9 +15,9 @@ import (
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
-// Register 注册 search_user。
+// Register 注册 pixiv_search_user。
 func Register(app *runtime.App, server *mcp.Server) {
-	runtime.AddTool(app, server, &mcp.Tool{Name: "search_user", Description: "Search for users/artists on Pixiv.", InputSchema: schemas.List(map[string]any{
+	runtime.AddTool(app, server, &mcp.Tool{Name: "pixiv_search_user", Annotations: &mcp.ToolAnnotations{ReadOnlyHint: true, DestructiveHint: new(false), IdempotentHint: true, OpenWorldHint: new(true)}, Description: "Search for users/artists on Pixiv.", InputSchema: schemas.List(map[string]any{
 		"word":        map[string]any{"type": "string", "minLength": 1, "description": "User search keyword."},
 		"user_filter": filters.UserFilterSchema(),
 	}, "word"), OutputSchema: records.RecordsOutputSchema()}, func(ctx context.Context, request *mcp.CallToolRequest, input searchUserIn) (*mcp.CallToolResult, outputs.Records, error) {

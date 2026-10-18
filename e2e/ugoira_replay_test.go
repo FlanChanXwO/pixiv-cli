@@ -48,7 +48,7 @@ func replayUgoiraAPNG(body []byte, visit func(int, *image.NRGBA, float64) error)
 		if w <= 0 || h <= 0 || !r.In(canvas.Rect) || (index == 0 && r != canvas.Rect) {
 			return fmt.Errorf("invalid APNG frame rectangle")
 		}
-		if control[24] != 0 || control[25] != 0 {
+		if control[24] != 0 || control[25] > 1 {
 			return fmt.Errorf("APNG disposal/blend changed")
 		}
 		header := bytes.Clone(ihdr)
@@ -63,7 +63,11 @@ func replayUgoiraAPNG(body []byte, visit func(int, *image.NRGBA, float64) error)
 		if err != nil {
 			return err
 		}
-		draw.Draw(canvas, r, img, image.Point{}, draw.Src)
+		op := draw.Src
+		if control[25] == 1 {
+			op = draw.Over
+		}
+		draw.Draw(canvas, r, img, image.Point{}, op)
 		numerator, denominator := binary.BigEndian.Uint16(control[20:22]), binary.BigEndian.Uint16(control[22:24])
 		if denominator == 0 {
 			denominator = 100

@@ -47,3 +47,5 @@
 !/scripts/build-platform.sh
 !/scripts/build-staticlibs*
 !/scripts/cmd/releaseassets/**
+
+!/frontend/**

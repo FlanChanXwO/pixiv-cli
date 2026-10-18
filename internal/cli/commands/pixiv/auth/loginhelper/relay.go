@@ -13,12 +13,6 @@ import (
 	"sync"
 )
 
-const (
-	// RelayResultURLHeader 只承载一次性、无敏感最终页 URL。server 直到 OAuth
-	// exchange 完成才结束 callback response；client 在此期间打开结果页。
-	RelayResultURLHeader = "X-Pixiv-Relay-Result-URL"
-)
-
 type relayCallbackCompletion struct {
 	Success bool `json:"success"`
 }

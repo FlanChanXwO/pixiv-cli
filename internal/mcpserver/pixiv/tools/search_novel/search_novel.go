@@ -1,4 +1,4 @@
-// Package search_novel 实现 search_novel tool。
+// Package search_novel 实现 pixiv_search_novel tool。
 package search_novel
 
 import (
@@ -13,9 +13,9 @@ import (
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
-// Register 注册 search_novel。
+// Register 注册 pixiv_search_novel。
 func Register(app *runtime.App, server *mcp.Server) {
-	runtime.AddTool(app, server, &mcp.Tool{Name: "search_novel", Description: "Search for novels using keywords with supported filters.", InputSchema: searchNovelInputSchema(), OutputSchema: records.RecordsOutputSchema()}, func(ctx context.Context, request *mcp.CallToolRequest, input searchNovelIn) (*mcp.CallToolResult, outputs.Records, error) {
+	runtime.AddTool(app, server, &mcp.Tool{Name: "pixiv_search_novel", Annotations: &mcp.ToolAnnotations{ReadOnlyHint: true, DestructiveHint: new(false), IdempotentHint: true, OpenWorldHint: new(true)}, Description: "Search for novels using keywords with supported filters.", InputSchema: searchNovelInputSchema(), OutputSchema: records.RecordsOutputSchema()}, func(ctx context.Context, request *mcp.CallToolRequest, input searchNovelIn) (*mcp.CallToolResult, outputs.Records, error) {
 		return handleSearchNovel(ctx, app, input)
 	})
 }
