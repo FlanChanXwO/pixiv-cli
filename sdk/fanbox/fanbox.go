@@ -75,13 +75,13 @@ type Client struct {
 	supporting   *supporting.Client
 	resource     *fanboxresource.Client
 
-	// resourceMu guards resourceURLs, the in-session locator cache keyed by the
-	// opaque ResourceRef string. The cache holds the currently-usable URL only;
+	// resourceMu guards resourceLocators, the in-session locator cache keyed by the
+	// opaque ResourceRef string. The cache holds the currently-usable URL and attachment filename;
 	// the ref envelope encodes stable identity, never the locator. OpenResource
 	// re-resolves from trusted metadata when a ref arrives without a cached
 	// locator (for example across process restarts).
-	resourceMu   sync.RWMutex
-	resourceURLs map[string]string
+	resourceMu       sync.RWMutex
+	resourceLocators map[string]resourceLocator
 
 	// identityMu guards userID, the lazily-verified FANBOX account identity.
 	// The user id is non-secret and is bound into identity-scoped cursors
@@ -121,15 +121,15 @@ func OpenWith(credentials SessionCredentials, options Options) (*Client, error) 
 		return nil, newError("Open", reason, err)
 	}
 	return &Client{
-		session:      session,
-		creators:     creators.New(session),
-		creatorTags:  creatorTags.New(session),
-		creatorPosts: postposts.New(session),
-		postInfo:     postinfo.New(session),
-		home:         home.New(session),
-		supporting:   supporting.New(session),
-		resource:     fanboxresource.New(session),
-		resourceURLs: make(map[string]string),
+		session:          session,
+		creators:         creators.New(session),
+		creatorTags:      creatorTags.New(session),
+		creatorPosts:     postposts.New(session),
+		postInfo:         postinfo.New(session),
+		home:             home.New(session),
+		supporting:       supporting.New(session),
+		resource:         fanboxresource.New(session),
+		resourceLocators: make(map[string]resourceLocator),
 	}, nil
 }
 

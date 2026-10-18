@@ -1,4 +1,4 @@
-// Package novel_content 实现 novel_content tool。
+// Package novel_content 实现 pixiv_novel_content tool。
 package novel_content
 
 import (
@@ -12,9 +12,9 @@ import (
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
-// Register 注册 novel_content。
+// Register 注册 pixiv_novel_content。
 func Register(app *runtime.App, server *mcp.Server) {
-	runtime.AddTool(app, server, &mcp.Tool{Name: "novel_content", Description: "Read the complete structured content of one Pixiv novel.", OutputSchema: records.NovelContentOutputSchema()}, func(ctx context.Context, request *mcp.CallToolRequest, input In) (*mcp.CallToolResult, outputs.NovelContent, error) {
+	runtime.AddTool(app, server, &mcp.Tool{Name: "pixiv_novel_content", Annotations: &mcp.ToolAnnotations{ReadOnlyHint: true, DestructiveHint: new(false), IdempotentHint: true, OpenWorldHint: new(true)}, Description: "Read the complete structured content of one Pixiv novel.", OutputSchema: records.NovelContentOutputSchema()}, func(ctx context.Context, request *mcp.CallToolRequest, input In) (*mcp.CallToolResult, outputs.NovelContent, error) {
 		return handleNovelContent(ctx, app, input)
 	})
 }

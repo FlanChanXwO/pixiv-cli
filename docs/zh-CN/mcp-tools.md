@@ -2,19 +2,78 @@
 
 [English](../en/mcp-tools.md) | 简体中文 | [文档索引](../index-zh-CN.md)
 
-通过 `pixiv mcp` 启动 Pixiv stdio MCP server。MCP 使用自身 runtime 的凭据选择，
-不接受 CLI 数据命令的账号覆盖；stdout 始终保留给 JSON-RPC。
+`pixiv mcp` 默认通过本地 stdio 提供 Pixiv/FANBOX；显式 `--port PORT` 在 canonical `/mcp` endpoint 启用经认证的 Streamable HTTP。stdio 使用本地产品凭据，不依赖 HTTP owner 或其只读会话文件监听器；HTTP 保留 owner 持久账号选择。详见[启动与代理配置](cli-reference.md#mcp-http-server)。`pixiv fanbox mcp` 迁移到同一个 `pixiv mcp` 连接。
 
-`novel_content` 为保持 wire 兼容仍然注册，但其 App API 正文 endpoint 已不可用。
+`pixiv_novel_content` 保留正文不可用的错误合同；其 App API 正文 endpoint 已不可用。
 传入正数 `novel_id` 时返回 structured `content_unavailable`、`isError=true` 和空
 正文 block 列表；不会请求 `/v1/novel/content`，也不会 fallback 到 WebView。小说
-metadata 请使用 `novel_detail`。
+metadata 请使用 `pixiv_novel_detail`。
+
+独立本地命令 `pixiv mcp auth init [--reset]` 准备 owner state 并只输出一次 secret；它不是 tool，也不启动此 server。见 [owner 初始化](cli-reference.md#mcp-owner-初始化)。
+
+工具发现 schema 保持可选参数的可选语义：没有必填字段的对象应省略 `required` 或使用 `required: []`，不能使用 `required: null`。严格客户端可能因任一工具的 schema 无效而拒绝整个工具发现响应。
+
+## 传输能力
+
+| 能力 | stdio | HTTP |
+| --- | --- | --- |
+| Pixiv/FANBOX 查询与写入、FANBOX opaque resource | 支持 | 支持 |
+| `pixiv_artwork_media` 完整图片、GIF/APNG 与 PNG 预览 | 内联内容 | 内联或受保护 App 交付 |
+| `pixiv_download`、`pixiv_download_random_from_recommendation` | 本地文件 | 不注册 |
+| `pixiv_show_gallery`、`pixiv_gallery_animation`、Gallery resources | 不注册 | 有媒体服务时提供 |
+| `pixiv_account_*` owner 管理及 helper 登录 | 使用本地 CLI 认证 | owner 状态与 relay |
+
+## HTTP 授权
+
+内置单 owner OAuth server 发布 protected-resource 与 authorization-server metadata，接受 DCR public client（`token_endpoint_auth_method=none`），使用 Authorization Code + PKCE S256，scope 为 `mcp`。owner 只在实例同意页输入本地初始化 secret，不放入聊天或 tool 参数；每次授权都须明确同意。云端部署使用 HTTPS 反向代理，本地支持 HTTP。该协议合同不代表 ChatGPT 或 Gemini 的真实连接验收已通过。
+
+每次 `/mcp` 请求都须携带有效 bearer token。缺失、过期或撤销返回 HTTP 401 和 canonical `WWW-Authenticate` metadata，不伪装为 tool result；私有鉴权状态不可读时失败关闭。MCP 响应（含 SSE）使用 `Cache-Control: no-store`。access token 有效一小时；refresh 旋转 token pair，旧 refresh token 重放会撤销对应 grant。reset 撤销 grant 并使 owner session、未兑换 code 失效，但保留已注册 client；重启只丢弃内存授权 session/code，不丢失持久 client/grant。过期/reset 影响新请求，不中断已授权工作。服务取消时停止接收请求，取消并等待在途 handler；新版 revision 请求取消经官方 SDK 传播。
+
+OAuth 控制请求体及 query string 上限为 64 KiB；请求体超限返回 HTTP 413，不截断输入。OAuth 控制请求体须在 10 秒内读完；未完成的慢速请求体返回 HTTP 408 并关闭连接。完整读取后、解析及授权／状态操作前清除读取截止时间；提前拒绝时保留截止时间，避免 HTTP 清理阶段无限排空未完成的请求体。DCR 最多持久化 1024 个客户端。满额时，新注册替换任意一个既未经 owner 批准、也没有 grant 的客户端，避免匿名注册永久占满容量；注册压力下，待授权客户端可能需要重新注册。owner 明确同意后，先持久化保护标记再签发授权码；DCR metadata 不能设置该私有标记。旧状态中已有 grant（包括已撤销 grant）的客户端也受保护；reset 会先保留这一批准证据再清空 grants。全部 1024 个客户端都受保护时，注册返回 `temporarily_unavailable`（503），管理员须停机审查过期的已批准注册及其关联 grant。拒绝未知私有状态字段的旧版二进制无法读取含新批准标记的状态。
+
+owner session、待确认表单、授权码各最多 1024 项，满额返回 `temporarily_unavailable`（503），不淘汰现有项。owner session/表单 10 分钟过期，与授权码时限一致，在下次认证状态读取时回收。HTTP 请求头接收限时 10 秒；工具执行、媒体传输及退出清理不新增完成时限。这些边界用于限制未认证资源增长，不限制上游媒体大小。
+
+## Pixiv 账号选择
+
+本节及账号/登录工具适用于 HTTP；stdio 使用本地 CLI 账号选择与认证。
+
+MCP owner 的 Pixiv 选择持久化保存，所有 connector 共享。首次使用优先采用 CLI 显式 default；没有显式 default 时，仅在本地恰有一个账号时自动采用。多个账号且无 default 返回 `selection_required`，没有本地账号返回 `no_local_account`。已有选择不会被隐式替换：账号已删除返回 `account_not_found`，缺少本地凭据返回 `credentials_missing`。本地凭据存在不代表上游实时有效。
+
+一次 tool 调用在首次 SDK 访问时固定账号快照，后续读取和写入继续使用它。显式选择覆盖账号池调度，不修改 CLI default。通过 `pixiv_account_list`、`pixiv_account_status`、`pixiv_account_use` 查看或切换这个共享选择。
+
+### 账号工具
+
+| Tool | 输入与语义 |
+| --- | --- |
+| `pixiv_account_list` | 空 object；返回全部本地账号摘要及共享选择。 |
+| `pixiv_account_status` | 空 object 查看本地选择/凭据；可选字符串 `login_id` 查询登录进度，不读取账号存储。 |
+| `pixiv_account_use` | 必填正整数 `user_id`；先检查本地存在，再持久化供所有 connector 共享。 |
+| `pixiv_account_login_start` | 可选布尔 `restart`（默认 `false`）；启动或复用服务端 helper 登录流程。 |
+
+输入均为封闭 object。三个本地账号操作（status 不传 `login_id`）返回 `selected_user_id`、`selection_state`、`credential_state`、`accounts`（每项含 `user_id`、`username`、`has_credentials`）。状态查询可能持久化首次 default/唯一账号选择，因此三者均标注 `readOnlyHint=false`、`destructiveHint=false`、`idempotentHint=true`、`openWorldHint=false`。查询成功可以报告账号不可用，不代表上游认证成功。
+
+失败保留 structured envelope、`error` 类别及 `isError=true`。类别为 `invalid_request`（schema）、`invalid_user_id`、`account_not_found`、`owner_not_initialized`、`canceled`、`deadline_exceeded` 或 `local_state_error`。状态不可用时 selection/credential state 为 `unknown`，不伪装为成功的空账号。错误结果不回显原始参数、凭据值、文件路径或内部存储原因。
+
+### 新账号登录
+
+`pixiv_account_login_start` 返回 `login_id`、`authorization_url`（本服务的 relay 入口，不是 SDK OAuth URL）、`status`、`requires_local_helper` 和 `instructions`；启动成功时 `requires_local_helper=true`。在已安装 pixiv-cli 并注册 `pixiv://` helper 的电脑上打开 URL；未唤起 helper 时通过官方安装器安装/重装，再打开 URL。不用定时器猜测 helper 是否可用，也不向聊天粘贴 callback URL、授权码或 refresh token。
+
+重复启动复用 waiting/exchanging 流程；`restart=true` 取消并等待旧流程后再替换。已结束流程在下一次启动时被替换，不积累历史。该工具标注 `readOnlyHint=false`、`destructiveHint=true`、`idempotentHint=false`、`openWorldHint=true`：restart 会丢弃待完成登录，后续流程可兑换凭据、保存账号并更新 MCP 共享选择，但不修改 CLI default。
+
+`pixiv_account_status({"login_id":"..."})` 在 `login` object 中返回 `waiting_for_user`、`exchanging`、`completed`、`failed` 或 `not_found`。该查询不读取本地账号存储，因此原 selection/credential 字段为 `unknown`，账号ID/列表为零值/空占位；查看实际选择时不传 `login_id`。保存成功包含 `login.account`、`account_saved=true`。
+
+已有选择的账号具备本地凭据时保持该选择（不额外探测上游有效性）；仅未选择、已选账号不存在或无本地凭据时采用登录账号。`selection_updated=true` 表示本次登录提交了选择变更；保留原选择时为 `selection_updated=false`，仍返回 `status=completed`。可用性检查与选择写入共用 state 锁，不用旧快照覆盖并发显式选择。保存后 selection 写入失败时 `isError=true`，保留 `account_saved=true`、`selection_updated=false`；修复本地写入问题后执行 `pixiv_account_use`，不要求重新登录。
+
+`login.error_code` 仅为 `login_failed` 或 `login_cancelled`，不含底层存储原因；未知/已替换ID返回 `not_found`，不作为错误。
+
+启动失败保留登录 envelope，返回 `status=failed`、`error=login_start_failed` 和 `isError=true`；输入无效使用同一 envelope 的 `error=invalid_request`。登录生命周期归服务器，不归启动请求或 helper 连接；显式 restart、shutdown 负责取消与等待，不增加固定登录超时或 raw callback 完成工具。本地 fixture 验证不等于真实 helper 安装或目标产品浏览器验收。
 
 ## 错误、分页与输出
 
-不符合 schema 的输入会在打开 SDK operation 前作为 JSON-RPC/tool input error
-拒绝。handler 执行后的失败会保留该 tool 的 structured result 并设置
-`isError=true`：实体读取返回空 `records`，下载保留下载报告形状。正常空页是成功，
+不符合 schema 的输入会在打开 SDK operation 前拒绝：MCP SDK 返回
+`isError=true` 和文本诊断，不含 handler 的 structured output；这不是 JSON-RPC 协议错误。账号工具与反搜会为 schema 失败返回脱敏后的 structured 错误 envelope。
+handler 执行后的失败会保留该 tool 的 structured result 并设置
+`isError=true`：实体读取返回空 `records`。正常空页是成功，
 不会被转换为错误。
 
 列表 tool 接收 `page` 和 `limit`：
@@ -25,7 +84,7 @@ metadata 请使用 `novel_detail`。
 - `page` 从 1 开始，必须配合正数 `limit`。
 - 实体 filter 在逻辑分页前执行，并按稳定实体身份去重。
 
-`illust_comments` 与 `novel_comments` 发布封闭的 `{id, page, limit}` 输入 object。
+`pixiv_comments` 发布封闭的 `{kind, id, page, limit}` 输入 object，必填 `kind=artwork|novel`。
 `id` 必须为正数；输出 envelope 为 `{comments, pagination}`，并在上游明确提供时
 附带 `total` 与 `access_control`，否则省略这些字段。作品评论与小说评论分别使用
 当前的 comments operation。当当前 App API 提供 opaque numeric
@@ -34,41 +93,66 @@ metadata 请使用 `novel_detail`。
 `can_comment` 或 `is_locked`。两个 read tool 都不接受只用于 mutation 的
 `stamp_id`，legacy MCP 注册表也不新增独立的 `stamps` tool。
 
-SDK opaque cursor 不离开 server。列表结果提供 `pagination.page`、`limit`、
-`returned`、`has_more`，适用时提供 `next_page`。`recommended(kind="all")`
+多数工具的 SDK cursor 仍只在 server 内部流转。列表结果提供 `pagination.page`、`limit`、
+`returned`、`has_more`，适用时提供 `next_page`。`pixiv_recommended(kind="all")`
 对 artwork、manga、novel、user 分别提供独立的分页对象。
+
+`pixiv_search_illust`、`pixiv_illust_related`、`pixiv_illust_ranking`、`pixiv_illust_recommended` 的默认批次仍有后续内容时，额外返回 `pagination.next_cursor`。重复原始参数（包括适用的搜索查询/策略、作品 ID、排行 mode/date 及筛选），把 opaque 值原样作为 `cursor` 传回，同时省略 `page`/`limit`。MCP envelope 绑定原始参数并封装 SDK continuation state，不含凭据；这是编码，不是加密或授权凭证。每次续读仍由 SDK 验证 operation/query/账号绑定。参数改变、账号不兼容、畸形或原地重复 cursor 均明确失败。批次交付全部条目后才前进，过滤后为空的上游批次继续遍历；已有正数 limit 的逻辑分页不变。结束或失败时省略该字段。
+
+`pixiv_recommended` 的默认批次在对应流仍可续读时，分别在 `pagination.illust`、`manga`、`novel`、`user` 附带 `next_cursor`。续读要求匹配的单个 `kind`、同一适用筛选，并省略 `page`/`limit`；拒绝 `kind=all` 携带 cursor，其他种类筛选应移除。首次插画/漫画投影共用一个上游窗口，继续其中一流不消耗另一流。过滤后为空的视觉窗口仍可能可续读；筛选明确排除的视觉 kind 不生成 cursor。失败或执行重放不会混入上一尝试的记录/分页状态。
 
 Record 保留公开实体字段以及必要的 opaque resource reference，但不会输出已解析/签名资源 URL、
 请求头、Cookie、过期 metadata、access token 或其他资源传输凭据。可用的小说正文 block、评论和
 profile image 引用同样遵循此规则。
-Structured result 使用显式 DTO 与 typed envelope，不直接编码 runtime SDK model。独立的
-FANBOX MCP server 也遵循相同资源形状：第一方 resource 只包含 opaque `ref` 与可选的
+Structured result 使用显式 DTO 与 typed envelope，不直接编码 runtime SDK model。同一 server 的
+FANBOX tools 也遵循相同资源形状：第一方 resource 只包含 opaque `ref` 与可选的
 `requires_credentials`，不会包含 `url`、`request_headers` 或 `expires_at`。
 
 ## 反向搜图
 
-`reverse_search` 是 Pixiv MCP tool，输入是封闭 object：
+`pixiv_reverse_search` 是 Pixiv MCP tool，输入是封闭 object：
 
 ```json
 {"source":"/private/path/image.png","provider":"ascii2d-color"}
 ```
 
-`source` 必填，`provider` 可选。provider enum 为 `saucenao`、`ascii2d-color`、`ascii2d-bovw` 或 `all`；省略时
+必须恰好提供 `source` 或 `image`；两者都不提供或同时提供均为错误。
+`source` 可以是 server 本机常规文件路径、本机 `file://` URI 或 HTTP(S) URL。
+为支持 host 附件，tool 发布 `_meta["openai/fileParams"] = ["image"]`：
+
+```json
+{"image":{"download_url":"https://host.example/image?signature=temporary","file_id":"host-file-id","mime_type":"image/png","file_name":"image.png"}}
+```
+
+`image` 是封闭 object，精确声明四个 string 字段：必填 `download_url`、`file_id`，可选
+`mime_type`、`file_name`。下载 URL 只接受有 host、无 userinfo 的 HTTP(S)，不接受本地路径或 file URI。
+`file_id` 不能为空，只是描述信息，不能当成下载地址。只有下载 URL 进入现有 snapshot loader；
+文件 ID、MIME type 和文件名不会转发给 provider。host URL 过期或无法读取时，错误会提示用户重新附加图片；
+server 不猜测其他 URL，也不重试。
+
+本机 file URI 必须使用绝对路径，authority 只能为空或 `localhost`；其他 authority、userinfo、query、
+fragment、NUL 和 UNC 路径会被拒绝，不能静默丢弃或重新解释。路径中的空格、`#`、`%` 等字面字符需要
+percent-encode。这些 URI 规则仅适用于该 MCP 输入，不改变 CLI 的关键词/图片模式选择。
+
+`provider` 可选。provider enum 为 `saucenao`、`ascii2d-color`、`ascii2d-bovw` 或 `all`；省略时
 使用 MCP 进程启动时的配置，默认是 `saucenao`。`reverse_search_pixiv_only` 也在启动时固定，并控制
 `results` 是否保留非 Pixiv 命中。单次 tool call 不能改变代理、API key 或其他传输配置。
 
 启动时的 transport 有三个不同网络面：standard source/SauceNAO client、专用 ascii2d browser client，以及
 FlareSolverr JSON control client。存在 `[reverse_search.network].proxy_url` 时（显式空值表示 direct access），
 它只选择 ascii2d proxy；standard client 继续使用全局 proxy route。`[reverse_search.network].user_agent` 只作用于
-ascii2d。Chromium User-Agent 会得到匹配的 `Sec-CH-UA`、`Sec-CH-UA-Mobile` 和 `Sec-CH-UA-Platform` hint，非
+ascii2d。
+
+Chromium User-Agent 会得到匹配的 `Sec-CH-UA`、`Sec-CH-UA-Mobile` 和 `Sec-CH-UA-Platform` hint，非
 Chromium User-Agent 则省略这些 Chromium hint。`[reverse_search.flaresolverr].proxy_url` 只作为
 `sessions.create` 中发送的 browser upstream proxy；solver control traffic 不继承任一 native route。
 
-source 可以是任意可读常规本地文件或 HTTP(S) URL。按明确的可信本机 client 信任模型，允许私网、loopback、
-link-local URL 目标，server 也可以读取私有文件。server 只抓取或打开一次私有快照，再上传给所选第三方
-provider；不会返回原始 source、临时路径、请求头、cookie、API key、CSRF 值、redirect `Location` 或上游
-response body。只有在信任 MCP client 会请求这些本地资源时才运行 `pixiv mcp`。SauceNAO/ascii2d 的处理与
-保存遵循各自政策，URL 查询也可能被缓存；ascii2d 接受 JPEG、PNG、WEBP，并执行 provider 自身的 10 MB 限制。
+source 可以是 MCP server 上任意可读常规文件（路径或本机 file URI），或通过 server 网络抓取的 HTTP(S) URL，而非 connector
+所在设备的文件或网络。允许私网、loopback、link-local URL 目标，server 也可以读取私有文件。单 owner OAuth
+grant 允许 connector 请求这些 server 侧资源，因此只应授权可信 connector。server 只抓取或打开一次私有
+快照，再上传给所选第三方 provider；不会在结果或日志中回显原始 source、附件下载 URL、文件 ID、文件名、临时路径、请求头、cookie、API key、CSRF 值、
+redirect `Location` 或上游 response body。SauceNAO/ascii2d 的处理与保存遵循各自政策，URL 查询也可能被缓存；
+ascii2d 接受 JPEG、PNG、WEBP，并执行 provider 自身的 10 MB 限制。
 
 structured output 始终是封闭 envelope：`{input, providers, results, records, provider_errors, partial}`。
 `input` 只包含 `kind` 和 `sha256`；`providers` 是固定 provider 状态列表；`results` 保留 provider evidence
@@ -77,7 +161,7 @@ canonical `artwork` 或 `user` record。因为 provider 无法确定 Pixiv 作�
 类型，tool 不会调用作品详情来猜测。纯外部结果不会进入 `records`。
 
 至少一个 provider 成功且另一个失败时，`partial=true`，tool 成功（`isError=false`）。单 provider 失败或全部
-provider 失败时保留 envelope 并设置 `isError=true`；schema 错误在 provider 执行前拒绝。取消仍是完整请求取消，
+provider 失败时保留 envelope 并设置 `isError=true`；schema 错误在 provider 执行前返回安全的 `invalid_request` envelope，不回显无效值。快照在完成、失败或取消后删除。取消仍是完整请求取消，
 不会伪装为 partial 成功。
 
 图片由 native ascii2d `/search/file` multipart endpoint 上传；FlareSolverr 只接收 JSON challenge-recovery request，
@@ -114,21 +198,79 @@ application outcome 的 `filter` 会报告 `min`、`max`、`membership`、`strat
 
 未知 membership 不等于 non-Premium。Premium 不是本地硬门槛，收藏数也不得称为点赞数。
 
-## 下载工具
+## 作品媒体
 
-| Tool | 输入 | Structured output |
-| --- | --- | --- |
-| `download` | `src` 与非空 `srcs` 必须二选一；每项是作品 PID、受支持的 Pixiv 作品/用户/公开收藏 URL 或允许的 CDN URL。可选 `pages` 只使用 1-based 单页或 `1,3-5` 这类闭区间，`quality` 为 `original`、`regular`、`small`、`thumb`、`mini`，`ugoira_mode` 为 `gif` 或 `apng`，`delivery` 为 `local_path`。 | `{delivery, items, failures, warnings, files, text}`；每个 file 包含安全的本地 path/URI、MIME、大小和页码；`warnings` 保留非阻断的 Ugoira 文件名回退，单独的 warning 不会设置 `isError`。任何失败都会保留 failure 并设置 `isError=true`。 |
-| `download_random_from_recommendation` | 可选 `count`（默认 `5`，显式值 `1..20`）、`pages`、`quality`、`ugoira_mode` 和 `delivery: "local_path"`。 | 同样的本地文件报告结构，包含 `warnings` 并保留 `failures`。 |
+`pixiv_artwork_media` 通过选中账号的 SDK resource client 交付作品 bytes，不是下载到服务器文件系统。搜索、详情和列表仍只返回 metadata，不隐式下载全部图片。
 
-当前 MCP handler 没有把并发、filter、archive、directory-template、metadata sidecar、重试次数或重试延迟
-映射到 `DownloadRequest`，因此 download schema 不发布这些字段。下载使用已配置的 application 路径/模板，
-选项错误会显露，不会静默忽略输入。Ugoira 文件名模板非法或渲染为空时回退到默认文件名，并写入
-`warnings`，不会把成功项变成失败。部分报告在其他作品或 operation 失败时仍保留已完成的 items/files；保留的 failure 或 operation error
-会设置 `isError=true`，单独的 warning 不会。
+| 输入 | 合同 |
+| --- | --- |
+| `illust_id` | 必填正整数。 |
+| `pages` | 可选的 1-based 页码数组，省略代表全部页；空数组、非正数和越界页码报错；重复页码按请求顺序去重。 |
+| `quality` | 静态图片默认 `regular`；`thumbnail` 使用 SDK thumb 变体；`original` 必须显式请求。不在本地缩放。 |
+| `animation_format` | Ugoira 可选 `gif`（默认）或 `apng`；静态作品不接受该参数。 |
 
-用户和公开收藏 URL 按来源顺序展开认证态视觉作品，不包含小说；插画系列 URL 不是下载来源。URL 在本地解析，不抓 HTML
-或跟随重定向；CDN source 没有作品 metadata，不会被当作作品详情请求。
+输入为封闭 object；可本地检查的参数在打开账号快照前校验，页码上界在读取作品 metadata 后、任何媒体读取前校验。一个 SDK lease 将详情与所有图片固定在同一账号，保留 Pixiv Referer 和资源 host 校验；成功、失败、取消均关闭 body 和 lease。静态读取不创建临时文件；不设隐式页数/字节截断，也不跨账号重放部分交付。
+
+structured result 包含 `illust_id`、`title`、`total_pages`、`requested_pages`、`delivered_pages`、`pages`、`failures`、`complete`。每个已交付页记录 1-based `page`、实际 `mime_type`、字节数 `size` 和指向 MCP content 数组的 0-based `content_index`；静态作品对应项是携带真实 bytes 的标准 `ImageContent`，不是 URL 或本地路径。MIME 从 bytes 检测，不信任文件名或 header。非预期 HTTP 状态、body 读取/关闭错误或非图片响应不计为已交付。
+
+部分成功保留按请求顺序排列的成功图片，在 `failures` 记录各失败页的 `error` 类别及可选 `http_status`，并设置 `complete=false`、`isError=true`；可显式指定失败页重试。输入错误包括 `invalid_request`（schema）、`invalid_illust_id`、`invalid_pages`、`invalid_quality`、`invalid_animation_format`、`animation_format_not_applicable`。页 metadata 无效、页资源缺失、SDK 失败、取消或本地读取/清理失败均明确报错，不回显上游 body、URL 或凭据。整次调用错误在顶层 `error`，逐页错误在 `failures`。
+
+`complete=true` 仅描述服务器构造的响应，不证明 host 已接受或展示。host 拒绝整个 payload 时不得声称交付，应改用显式页码调用；不虚构统一 payload 限制。工具注解为 read-only、non-destructive、idempotent、open-world。合成 SDK/MCP 测试不证明 ChatGPT/Gemini 展示能力；真实 host 验收继续后置。
+
+HTTP 媒体工具也会附带既有 MCP App 视图，用于播放完整媒体和切换独立静态预览。宿主声明文件下载能力时使用其确认流程，否则通过可用的受保护 HTTP 附件在浏览器下载，仍受浏览器限制。服务端复用已编码的动画和预览，受既有动图临时容量、grant、账号版本及 TTL 约束，不重新下载或编码。短期地址仅通过私有 UI 元数据交付，不暴露文件路径。可选暂存失败不会改变完整内嵌结果，但浏览器下载不可用；重启、到期或授权变化都会使地址失效。
+
+HTTP 客户端通过 `io.modelcontextprotocol/ui` 扩展声明支持 `text/html;profile=mcp-app` 时，`_meta["pixiv/mediaContents"]` 提供 App 专用的索引数组，模型可见的 `content` 仅包含独立 PNG 预览。既有私有动图 owner 已暂存完整原文件时，该数组包含动画的受保护 `resource_link` 和内嵌 PNG 预览；点击播放才读取原质量二进制，下载使用同一原文件，保留 grant、账号版本和到期检查。
+
+存在该私有数组时，`content_index` 和 `preview_content_index` 均指向它。没有已发布 HTTP 文件时（包括 stdio），保留原始完整内联 content，不通过 App 元数据隐藏动画。未声明 UI 能力或声明了其他 MIME 的客户端继续收到原有完整 `content`；静态媒体和公开输入保持不变。对链接交付的动图，Refresh animation 会按原格式通过 `pixiv_gallery_animation` 显式重新授权，替换过期的播放／下载地址，并复用现有状态查询和订阅释放流程。图片失败不会自动重新准备；宿主不允许调用服务端工具时无法续签过期链接。
+
+### Ugoira 动画
+
+Ugoira 调用必须省略静态 `pages` 和 `quality` 参数；显式提供任意一个会在读取 archive 前返回 `static_parameters_not_applicable`。`animation_format` 默认 `gif`，可选 `apng`。复用 CLI 既有 archive 选择策略：优先 original，否则使用可用 archive；输出 `archive_quality` 记录实际选择，medium 绝不标成 original。静态 regular 默认值不是动画缩放配置。
+
+GIF 在不透明动图中减少未变化区域的重复写入，不改变现有调色像素、帧数或时序；包含透明像素的动图保留完整帧与背景清除。
+
+APNG 在能够精确保留透明合成结果时采用无损帧差分；全部帧、尺寸和时序保持完整。该优化减少重复编码，不保证所有宿主都接受大体积内嵌结果。
+
+动画作为一个逻辑页（`total_pages=1`，成功时请求/交付第1页）。`pages` 项包含 `filename`（`<illust_id>.gif` 或 `.apng`）、实际 MIME 与字节数、`archive_quality`，以及指向包含完整动画字节的标准 `ImageContent` 的 `content_index`。APNG 内容采用 PNG 家族的 `image/png` 媒体类型，全部动画 chunk 保持完整；结构化 `mime_type` 仍为 `image/apng`，文件名仍为 `.apng`。接收方应根据内容索引与文件名区分完整动画和独立预览，不能把每个 `image/png` 内容都视为预览。另一个 `preview_content_index` 指向从生成动画首帧解码的 PNG `ImageContent`；它仅为预览，不能代替完整动画。没有引入 ffmpeg 或新编码器。
+
+原生 encoder 使用私有临时工作目录；SDK archive 保存、编码、预览解码与清理均在同一账号 lease 内完成，成功响应前移除目录。失败/取消不公开本地路径，也不把仅有预览的结果标成完成。host 的播放/下载支持仍需后置真实验收；本地 GIF/APNG 解码与清理测试不替代该验收。
+
+## Tool annotations 与下载
+
+Pixiv tools 统一使用 `pixiv_` 前缀，FANBOX 使用 `fanbox_`；不注册旧 Pixiv 名称 alias。两产品注册到同一 server，SDK runtime 和凭据选择保持独立。
+
+所有 tools 显式发布标准 annotations。账号工具的首次初始化副作用见上文；其他读取为只读、非破坏、幂等；新增收藏/关注为非破坏、幂等写入；取消收藏/关注及删除评论为破坏、幂等写入；创建/回复/盖章评论为非破坏、非幂等写入。这些 hints 供 host 审批使用，不是 server 强制鉴权。
+
+外部操作的 `openWorldHint` 为 true，包括上传至第三方的反向搜图及可能触发认证的 Pixiv 读取。`pixiv_account_list`、`pixiv_account_status`、`pixiv_account_use` 是 closed-world 本地操作。`fanbox_resolve_url` 也为 closed-world：打开本地账号快照并解析 URL 不产生网络访问。
+
+stdio 注册 `pixiv_download`（`src` 或 `srcs`，可选 `pages`、`quality`、`ugoira_mode`、`delivery=local_path`）与 `pixiv_download_random_from_recommendation`（可选 `count`，默认 5，沿用 1–20 范围，及相同下载选项）。复用共享 downloader 和 CLI 的下载目录、文件名与目录模板；返回 `items`、`files`（路径、file URI、MIME、大小、页码）、warning 与 partial failure，失败设 `isError=true`。下载工具声明 write/destructive，因为共享保存器可能替换已有目标文件。不暴露任意目标目录参数；HTTP 不注册文件系统下载工具。旧 `download`、`download_random_from_recommendation` 迁移到带前缀的新名，不注册永久别名。
+
+`pixiv_novel_bookmark_tags` 迁移到 `pixiv_bookmark_tags(kind="novel")`，`kind="artwork"` 为原有默认行为。保留分页、可见性及标签输出 envelope；不注册旧名称；其它合并入口见下方迁移表。
+
+## 工具迁移
+
+统一工具要求显式选择类型，不默认目标类型。下列旧名称不再注册，也不保留永久别名。输出 Schema、mutation `action` 值与输出 ID 字段不变；仅表中指定的目标输入统一为 `id`。错误实体的 filter 在访问账号前拒绝。
+
+| 原入口 | 当前调用与参数迁移 |
+| --- | --- |
+| `pixiv_illust_comments`、`pixiv_novel_comments` | `pixiv_comments`；分别增加 `kind=artwork`、`novel`，保留 `id` |
+| `pixiv_create_artwork_comment`、`pixiv_create_novel_comment` | `pixiv_comment_create`；分别增加 `kind=artwork`、`novel`，`illust_id`、`novel_id` 改为 `id` |
+| `pixiv_reply_artwork_comment`、`pixiv_reply_novel_comment` | `pixiv_comment_reply`；同上目标映射，保留 `parent_comment_id` |
+| `pixiv_stamp_artwork_comment`、`pixiv_stamp_novel_comment` | `pixiv_comment_stamp`；同上目标映射，保留 `stamp_id` 和可选 `comment` |
+| `pixiv_delete_artwork_comment`、`pixiv_delete_novel_comment` | `pixiv_comment_delete`；分别增加 `kind=artwork`、`novel`，保留 `comment_id` |
+| `pixiv_add_bookmark`、`pixiv_add_novel_bookmark` | `pixiv_bookmark_add`；分别增加 `kind=artwork`、`novel`，目标改为 `id`，保留 `restrict` 和 `tags` |
+| `pixiv_remove_bookmark`、`pixiv_remove_novel_bookmark` | `pixiv_bookmark_remove`；分别增加 `kind=artwork`、`novel`，目标改为 `id` |
+| `fanbox_creator_posts`、`fanbox_tagged_posts` | `fanbox_creator_posts`；前者省略 `tag`，后者保留必填非空 tag |
+| `fanbox_home`、`fanbox_supporting` | `fanbox_feed(source=home)`、`fanbox_feed(source=supporting)` |
+| `pixiv_user_bookmarks`、`pixiv_user_novel_bookmarks` | `pixiv_user_bookmarks`；分别增加 `kind=artwork`、`novel` |
+| `pixiv_user_followers`、`pixiv_user_following`、`pixiv_related_users` | `pixiv_user_relations`；分别增加 `relation=followers`、`following`、`related` |
+| `pixiv_timeline_illust_following`、`pixiv_timeline_novel_following` | `pixiv_timeline_following`；分别增加 `kind=artwork`、`novel` |
+| `pixiv_timeline_illust_latest`、`pixiv_timeline_novel_latest` | `pixiv_timeline_latest`；前者保留 `content_type=illust\|manga`，后者增加 `content_type=novel` |
+| `pixiv_mypixiv_illusts`、`pixiv_mypixiv_novels`、`pixiv_mypixiv_users` | `pixiv_mypixiv`；分别增加 `kind=artwork`、`novel`、`user` |
+
+`kind=artwork` 保留原 artwork 操作中的漫画与 Ugoira。仅允许对应的 `illust_filter`、`novel_filter` 或 `user_filter`；小说用户收藏不新增 filter。`restrict` 仅影响 followers/following，related 保留原先忽略该字段的行为。
+
+`pixiv_bookmark_list_all` 保持独立：它对 artwork 后 novel 的流使用一个逻辑预算。`pixiv_illust_recommended` 与 `pixiv_recommended` 也保持独立：前者在收集时筛选并返回 records 分页，后者从已读取窗口投影 typed streams，cursor 绑定与输出分页不同。读写、添加/删除、账号登录/状态、Gallery/媒体、本地下载/HTTP 保护媒体，以及 Pixiv/FANBOX 凭据仍保持各自边界。
 
 ## 读取工具
 
@@ -136,39 +278,33 @@ application outcome 的 `filter` 会报告 `min`、`max`、`membership`、`strat
 
 | Tool | 输入与语义 |
 | --- | --- |
-| `search_illust` | 必填 `word`；可选 `search_target`、`sort`、`duration`、`start_date`、`end_date`、`content_type`、`ai_mode`、`aspect_ratio`、`resolution`、精确 `tool`、收藏范围/策略、`illust_filter`、`page`、`limit`。稳定 enum/date 会在打开 SDK 前校验。 |
-| `search_novel` | 必填 `word`；可选 `search_target`、`sort`、`duration`、`novel_filter`、`page`、`limit`。rating、正文长度和 original 字段明确不发布。 |
-| `reverse_search` | 必填 `source`（常规本地文件或 HTTP(S) URL）；可选 `provider` enum。使用启动时固定的代理/key/pixiv-only 配置，返回上文的反向搜图 envelope。 |
-| `illust_detail` | 正数 `illust_id` 与受支持作品 `url` 必须二选一；返回一条安全 record。 |
-| `novel_detail` / `novel_content` | 正数 `novel_id`；前者返回 metadata，后者是保留的兼容 tool，返回 `content_unavailable` 与空 block，不请求已 rejected 的正文 endpoint。 |
-| `illust_related` | 正数 `illust_id`，可选 `illust_filter`、`page`、`limit`。 |
-| `illust_series` / `novel_series` | 正数 `series_id`、`page`、`limit`；小说系列额外返回安全 series metadata。 |
-| `illust_comments` / `novel_comments` | 封闭输入 `{id, page, limit}`，其中 `id` 为正数；输出 `{comments, pagination}`，并可选返回 `total`/`access_control` metadata。opaque numeric `comment_access_control` 会保留在 `access_control` 内，不推断布尔权限。read tool 不接受只用于 mutation 的 `stamp_id`，legacy 注册表不暴露独立 `stamps` tool。 |
-| `illust_ranking` | 可选 `mode`、`date`、`illust_filter`、`page`、`limit`；`mode` 是封闭的 ranking enum，日期必须是有效 `YYYY-MM-DD`，省略 mode 为 `day`。 |
-| `search_user` | 必填非空白 `word`，可选 `user_filter`、`page`、`limit`；空白输入会在 SDK 执行前拒绝，合法输入调用 App user-search operation。 |
-| `illust_recommended` | 作品推荐，可选 `illust_filter`、`page`、`limit`。 |
-| `recommended` | 必填 `kind`：`all`、`illust`、`manga`、`novel` 或 `user`；可选匹配的 typed filter、`page`、`limit`。`illust`/`manga` 选择对应 artwork subtype，冲突 filter 会在 SDK 执行前拒绝；`all` 保持四路独立流，并采用原子失败语义。 |
-| `trending_tags_illust` | 无输入；返回完整当前作品趋势标签列表。上游返回空列表时仍是成功的空结果。 |
-| `timeline_illust_following` / `timeline_novel_following` | `restrict`（`public`/`private`）、匹配实体 filter、`page`、`limit`。 |
-| `timeline_illust_latest` | 必填 `content_type`（`illust` 或 `manga`），可选 `illust_filter`、`page`、`limit`。 |
-| `timeline_novel_latest` | 可选 `novel_filter`、`page`、`limit`。 |
-| `mypixiv_users` | 可选 `user_filter`、`page`、`limit`。 |
-| `mypixiv_illusts` / `mypixiv_novels` | 对应 typed filter、`page`、`limit`。 |
-| `user_detail` | 必填正数 `user_id`；返回一条安全公开 profile record。 |
-| `user_artworks` | 可选 `user_id`、`type`（`illust`、`manga`、`ugoira`）、`illust_filter`、`page`、`limit`；省略 ID 使用认证账号。 |
-| `user_novels` | 可选 `user_id`、`novel_filter`、`page`、`limit`；省略 ID 使用认证账号。 |
-| `user_bookmarks` | 可选 `user_id`、`restrict`、`tag`、`illust_filter`、`page`、`limit`；读取作品收藏。 |
-| `user_novel_bookmarks` | 可选 `user_id`、`restrict`、`tag`、`page`、`limit`；读取小说收藏。 |
-| `bookmark_list_all` | 可选 `user_id`、`restrict`、`tag`、`page`、`limit`；新增的聚合 tool，先读取作品收藏再读取小说收藏。`page`/`limit` 作用于拼接后的统一逻辑流；任一 required 流失败时返回错误，不返回部分 records。 |
-| `bookmark_tags_all` | 可选 `user_id`、`restrict`、`page`、`limit`；新增的聚合 tool，先读取作品标签再读取小说标签。每个标签保留 `content_type` 与原始 `count`；同名标签不合并，任一 required 流失败时不返回部分标签。 |
-| `novel_bookmark_tags` | 可选 `user_id`、`restrict`、`page`、`limit`；返回小说收藏的 `{bookmark_tags, pagination}`。当前 candidate App API 没有续页 contract；超出该 contract 的 continuation 会返回 typed error。 |
-| `novel_bookmark_detail` | 必填正数 `novel_id`；返回单篇小说的 `{bookmarked, restrict, tags}`，保留缺失/未收藏状态；使用 candidate novel-bookmark detail App API。 |
-| `user_following` | 可选 `user_id`、`restrict`、`user_filter`、`page`、`limit`；省略 ID 使用认证账号。 |
-| `user_followers` | 可选 `user_id`、`restrict`、`page`、`limit`；省略 ID 使用认证账号。 |
-| `related_users` | 可选正数 `user_id`（省略时使用认证账号），兼容字段 `restrict`，可选 `user_filter`、`page`、`limit`。 |
-| `blocked_users` | 可选 `user_id`、兼容字段 `restrict`、`page`、`limit`；省略 ID 使用认证账号。App API 失败会显露，不切换 Web fallback。 |
-| `bookmark_tags` | 可选 `user_id`、`restrict`、`page`、`limit`；返回 `{bookmark_tags, pagination}`。 |
-| `bookmark_detail` | 必填正数 `illust_id`；返回 `{bookmarked, restrict, tags}`，保留未收藏状态。 |
+| `pixiv_search_illust` | 必填 `word`；可选 `search_target`、`sort`、`duration`、`start_date`、`end_date`、`content_type`、`ai_mode`、`aspect_ratio`、`resolution`、精确 `tool`、收藏范围/策略、`illust_filter`、`page`、`limit`。稳定 enum/date 会在打开 SDK 前校验。 默认批次 `cursor` 同样保留 bookmark 策略 checkpoint；省略 `page`/`limit`，重复相同查询、筛选与策略。 |
+| `pixiv_search_novel` | 必填 `word`；可选 `search_target`、`sort`、`duration`、`novel_filter`、`page`、`limit`。rating、正文长度和 original 字段明确不发布。 |
+| `pixiv_reverse_search` | `source`（server 本机常规文件、本机 `file://` URI、HTTP(S) URL）与 host `image` object 恰好提供一个；可选 `provider` enum。使用启动时固定的代理/key/pixiv-only 配置，返回上文的反向搜图 envelope。 |
+| `pixiv_illust_detail` | 正数 `illust_id` 与受支持作品 `url` 必须二选一；返回一条安全 record。 |
+| `pixiv_novel_detail` / `pixiv_novel_content` | 正数 `novel_id`；前者返回 metadata，后者是保留的兼容 tool，返回 `content_unavailable` 与空 block，不请求已 rejected 的正文 endpoint。 |
+| `pixiv_illust_related` | 正数 `illust_id`，可选 `illust_filter`、`page`、`limit`；默认批次 `cursor` 要求省略 `page`/`limit`。 |
+| `pixiv_illust_series` / `pixiv_novel_series` | 正数 `series_id`、`page`、`limit`；小说系列额外返回安全 series metadata。 |
+| `pixiv_comments` | 必填 `kind=artwork\|novel` 和正数 `id`，可选 `page`、`limit`；返回 `{comments, pagination}` 及可选 `total`/`access_control`，保留不透明数值权限 metadata；不接受 mutation 专用 `stamp_id`。 |
+| `pixiv_illust_ranking` | 可选 `mode`、`date`、`illust_filter`、`page`、`limit`；`mode` 是封闭的 ranking enum，日期必须是有效 `YYYY-MM-DD`，省略 mode 为 `day`。 默认批次 `cursor` 要求省略 `page`/`limit`。 |
+| `pixiv_search_user` | 必填非空白 `word`，可选 `user_filter`、`page`、`limit`；空白输入会在 SDK 执行前拒绝，合法输入调用 App user-search operation。 |
+| `pixiv_illust_recommended` | 作品推荐，可选 `illust_filter`、`page`、`limit`。 默认批次 `cursor` 要求省略 `page`/`limit`。 |
+| `pixiv_recommended` | 必填 `kind`：`all`、`illust`、`manga`、`novel` 或 `user`；可选匹配的 typed filter、`page`、`limit`。`illust`/`manga` 选择对应 artwork subtype，冲突 filter 会在 SDK 执行前拒绝；`all` 保持四路独立流，并采用原子失败语义。 默认批次 `cursor` 要求匹配的单一 kind 并省略 page/limit。 |
+| `pixiv_trending_tags_illust` | 无输入；返回完整当前作品趋势标签列表。上游返回空列表时仍是成功的空结果。 |
+| `pixiv_timeline_following` | 必填 `kind=artwork\|novel`；可选 `restrict`（默认 `public`，或 `private`）、匹配实体 filter、`page`、`limit`。`artwork` 包含插画、漫画与 Ugoira。 |
+| `pixiv_timeline_latest` | 必填 `content_type=illust\|manga\|novel`；可选匹配实体 filter、`page`、`limit`。 |
+| `pixiv_mypixiv` | 必填 `kind=artwork\|novel\|user`；可选匹配实体 filter、`page`、`limit`。仅读取认证账号的 MyPixiv，不接受任意用户 ID。 |
+| `pixiv_user_detail` | 必填正数 `user_id`；返回一条安全公开 profile record。 |
+| `pixiv_user_artworks` | 可选 `user_id`、`type`（`illust`、`manga`、`ugoira`）、`illust_filter`、`page`、`limit`；省略 ID 使用认证账号。 |
+| `pixiv_user_novels` | 可选 `user_id`、`novel_filter`、`page`、`limit`；省略 ID 使用认证账号。 |
+| `pixiv_user_bookmarks` | 必填 `kind=artwork\|novel`；可选 `user_id`、`restrict`、`tag`、`page`、`limit`。`illust_filter` 仅用于 artwork；省略或零用户 ID 使用认证账号，保留分页与筛选的既有 null 语义。 |
+| `pixiv_bookmark_list_all` | 可选 `user_id`、`restrict`、`tag`、`page`、`limit`；新增的聚合 tool，先读取作品收藏再读取小说收藏。`page`/`limit` 作用于拼接后的统一逻辑流；任一 required 流失败时返回错误，不返回部分 records。 |
+| `pixiv_bookmark_tags_all` | 可选 `user_id`、`restrict`、`page`、`limit`；新增的聚合 tool，先读取作品标签再读取小说标签。每个标签保留 `content_type` 与原始 `count`；同名标签不合并，任一 required 流失败时不返回部分标签。 |
+| `pixiv_novel_bookmark_detail` | 必填正数 `novel_id`；返回单篇小说的 `{bookmarked, restrict, tags}`，保留缺失/未收藏状态；使用 candidate novel-bookmark detail App API。 |
+| `pixiv_user_relations` | 必填 `relation=followers\|following\|related`；可选 `user_id`、`restrict`、`page`、`limit`。`user_filter` 仅支持 following/related；省略 ID 使用认证账号。related 继续接受但不使用 `restrict`。 |
+| `pixiv_blocked_users` | 可选 `user_id`、兼容字段 `restrict`、`page`、`limit`；省略 ID 使用认证账号。App API 失败会显露，不切换 Web fallback。 |
+| `pixiv_bookmark_tags` | 可选 `kind`（默认 `artwork`，或 `novel`）、`user_id`、`restrict`、`page`、`limit`；返回 `{bookmark_tags, pagination}`。 |
+| `pixiv_bookmark_detail` | 必填正数 `illust_id`；返回 `{bookmarked, restrict, tags}`，保留未收藏状态。无标签时 `tags` 返回空数组，未收藏作品也遵循此规则。 |
 
 所有读取 tool 共用 application/public SDK 路径，保留认证、授权、not found、上游、取消和 malformed response
 等 typed error。可选 port 缺失或 App 请求失败不会伪造空成功结果。
@@ -177,20 +313,14 @@ application outcome 的 `filter` 会报告 `min`、`max`、`membership`、`strat
 
 | Tool | 输入 | Structured output |
 | --- | --- | --- |
-| `add_bookmark` | `illust_id`，可选 `restrict`、可重复 `tags` | `{success, action, illust_id}` |
-| `add_novel_bookmark` | `novel_id`，可选 `restrict`、可重复 `tags` | `{success, action, novel_id}` |
-| `remove_bookmark` | `illust_id` | `{success, action, illust_id}` |
-| `remove_novel_bookmark` | `novel_id` | `{success, action, novel_id}` |
-| `create_artwork_comment` | 正数 `illust_id`、非空 `comment` | `{success, action, illust_id, comment_id}` |
-| `reply_artwork_comment` | 正数 `illust_id`、非空 `comment`、正数 `parent_comment_id` | `{success, action, illust_id, comment_id}` |
-| `stamp_artwork_comment` | 正数 `illust_id`、可选 `comment`（sticker-only 时为空）、正数 `stamp_id` | `{success, action, illust_id, comment_id}` |
-| `delete_artwork_comment` | 正数 `comment_id` | `{success, action, comment_id}` |
-| `create_novel_comment` | 正数 `novel_id`、非空 `comment` | `{success, action, novel_id, comment_id}` |
-| `reply_novel_comment` | 正数 `novel_id`、非空 `comment`、正数 `parent_comment_id` | `{success, action, novel_id, comment_id}` |
-| `stamp_novel_comment` | 正数 `novel_id`、可选 `comment`（sticker-only 时为空）、正数 `stamp_id` | `{success, action, novel_id, comment_id}` |
-| `delete_novel_comment` | 正数 `comment_id` | `{success, action, comment_id}` |
-| `follow_user` | `user_id`，可选 `restrict` | `{success, action, user_id}` |
-| `unfollow_user` | `user_id` | `{success, action, user_id}` |
+| `pixiv_bookmark_add` | 必填 `kind=artwork\|novel`、正数 `id`；可选 `restrict`、`tags` | `{success, action, illust_id}` 或 `{success, action, novel_id}` |
+| `pixiv_bookmark_remove` | 必填 `kind=artwork\|novel`、正数 `id` | `{success, action, illust_id}` 或 `{success, action, novel_id}` |
+| `pixiv_comment_create` | 必填 `kind=artwork\|novel`、正数 `id`、非空 `comment` | `{success, action, illust_id/novel_id, comment_id}` |
+| `pixiv_comment_reply` | 同上目标与正文，并需正数 `parent_comment_id` | `{success, action, illust_id/novel_id, comment_id}` |
+| `pixiv_comment_stamp` | 必填 `kind=artwork\|novel`、正数 `id` 和 `stamp_id`；可选 `comment`（空值表示仅贴图） | `{success, action, illust_id/novel_id, comment_id}` |
+| `pixiv_comment_delete` | 必填 `kind=artwork\|novel`、正数 `comment_id`；不需内容 ID | `{success, action, comment_id}` |
+| `pixiv_follow_user` | `user_id`，可选 `restrict` | `{success, action, user_id}` |
+| `pixiv_unfollow_user` | `user_id` | `{success, action, user_id}` |
 
 写操作包含作品/小说收藏、作品/小说评论/印章评论和用户关注 mutation。add 省略 `restrict` 时默认为
 `public`，只接受 `public` 或 `private`。作品与小说评论 create/reply/stamp 会直接返回上游给出的
@@ -198,9 +328,108 @@ application outcome 的 `filter` 会报告 `min`、`max`、`membership`、`strat
 v3 comments contract，提交后状态未知时不会换账号重放；失败写操作返回 `success=false`、
 `isError=true` 和安全诊断。
 
+## FANBOX tools
+
+同一 server 注册以下 FANBOX tools。完整输入 schema 由 `tools/list` 提供，凭据仍归 FANBOX 独立管理。
+
+| Tools | 语义 |
+| --- | --- |
+| `fanbox_current_user` | 当前已认证 FANBOX 用户。 |
+| `fanbox_creator`、`fanbox_creators` | 单个创作者 profile，或支持中/关注中的创作者。 |
+| `fanbox_creator_tags` | 创作者使用的标签。 |
+| `fanbox_creator_posts` | 必填 `creator_id`；可选非空 `tag`、`page`、`limit`。省略 tag 使用原作者投稿 API，指定时使用原标签投稿 API，显式空 tag 报错。 |
+| `fanbox_post` | 单个帖子及安全 resource refs。 |
+| `fanbox_feed` | 必填 `source=home\|supporting`；可选 `page`、`limit`，保留对应 feed API、帖子结构及 FANBOX 认证。 |
+| `fanbox_resolve_url` | 在本地将 URL 解析成 typed reference。 |
+| `fanbox_open_resource` | 打开 opaque `ref`；GET 交付真实 image/blob 内容及安全 metadata，HEAD 仅返回 metadata。 |
+
+### FANBOX 资源内容
+
+`fanbox_open_resource` 仅使用独立 FANBOX SDK lease。GET 返回实际 bytes：静态图片用 `ImageContent`，GIF/APNG 和其它附件用标准 embedded-resource blob。PNG/APNG 根据实际 animation-control chunk 区分，不只依赖 Content-Type 声明。有效的非图片专用 MIME 保留；header 缺失或不可解析时从 bytes 检测。不写服务器文件、不新增无依据字节截断。
+
+保留原 `ref`、`status_code`、`content_type` 与声明长度 `content_length`；`size` 为实际字节数，`content_index` 指向返回的 content 项，`delivered` 表示本响应含 bytes，`complete` 表示请求及清理成功。HEAD 仅返回 metadata（`delivered=false`，无 content index）。embedded resource URI 是内容 hash URN，不是服务器路径，也不承诺额外 resources/read endpoint。文件 metadata 提供名称时，GET 和 HEAD 还返回 `filename`，包含上游扩展名但不重复已有后缀。名字和 URL 均由 SDK 解析，MCP 不解码 ref、不从 URL 猜测名称。MCP 复用现有 CLI 文件名字符规范化，将分隔符与保留标点替换为下划线；它是建议名称，不是可信目标路径，接收端仍须选择并校验自己的目标位置。上游缺少名称时保持缺省。
+
+非成功状态、body 读取/关闭失败、取消及 lease 关闭失败均保留 structured error；保留 SDK 错误类别，不回显上游 body、位置或非法输入。`status_code=0` 表示 SDK 未公开状态码，不给 classified forbidden 错误虚构数值状态。schema 错误为 `invalid_request`，本地 ref/method 错误为 `invalid_ref`/`invalid_method`。整条响应传输失败不证明 host 已收到 bytes。这些仅为本地合成测试，不是真实 FANBOX 账号或 host 验收证据。
+
 ## 认证与 fallback
 
 Pixiv 读写要求配置好的 App API access path。不存在匿名或 Web fallback，App API 错误即为最终错误。若配置仍含已移除的
 `web_fallback_enabled`，会返回 `removed_setting`。
 
-FANBOX 使用独立 MCP server，不共享 Pixiv 凭据、代理设置、tool 或 route。
+FANBOX tools 共享协议 server，不共享 Pixiv 凭据或账号池。两产品保留各自 SDK 与 service 配置；命令级 proxy override 对两者的原生连接生效。
+
+## MCP Apps 作品预览
+
+`pixiv_show_gallery` 和 `pixiv_artwork_media` 将结果关联到 Gallery UI（`text/html;profile=mcp-app`、`_meta.ui.resourceUri`）。稳定入口 `ui://pixiv-cli/gallery` 继续可读取；工具引用按最终前端内容（包含注入的 canonical 媒体 origin）生成的额外 `ui://pixiv-cli/gallery/sha256-<digest>` 别名，使宿主 UI 缓存能够识别更新。历史版本别名在重新读取时交付当前页面；摘要用于缓存身份，不承诺历史内容完整性。普通搜索、排行、推荐和详情工具只返回数据，不绑定 UI。仅在用户明确要求看图或画廊时调用展示工具；最终渲染仍由 host 决定。
+
+输入：必填非空正整数数组 `illust_ids`；可选正整数 `page`（默认 1）和 `quality`（默认 `thumbnail`，另支持 `regular`、`original`）。重复 ID 保留首次位置。工具读取 metadata，不重复搜索；返回 `records`、`images`（作品 ID、页码、URL）、`failures`，以及配置反代时的 `media_origin`。逐项失败保留其他结果并设置 `isError`。画廊仅展示传入集合；需要更多作品时，先用原数据工具续页，再明确展示新画廊。
+
+静态预览默认使用同域图片反代 URL，不传 base64 工具图片或 CDN 直链。canonical base 下的 `/media/` GET/HEAD 路由校验签名凭证，绑定 OAuth grant、选定账号、作品、页码及画质。有效期不超过签发时 access token；grant 撤销、owner reset 或重启使旧地址失效。切换共享账号不会把旧地址指向新账号。服务端通过公开 SDK 和已有出站代理取图，拒绝任意 URL 与非光栅图片，响应使用 `Cache-Control: private, no-store`。HEAD 同样验证图片但不发送正文。不新增磁盘或共享缓存。完整图片地址属于短期访问凭证，不应分享或写入日志。
+
+### 卡片与详情
+
+列表卡片仅显示完整、不裁切的缩略图，包括 Ugoira 静态封面，不显示文字信息或角标。详情显示完整标题、标签、简介，以及数据中存在的作者、发布时间、浏览数、收藏数、作品 ID 和尺寸，移除重复的 Pages 字段；分级角标保留在详情中。有效作者 ID 可通过宿主打开对应 Pixiv 作者页面。宽容器中媒体与信息并排，窄容器中上下排列；metadata 作为文本展示；Pixiv 简介中的 `<br>` 转为换行，有效的十进制／十六进制数字实体显示为字符；其他标记与非法数字实体仍作为不可执行文本显示。图标控件具有可访问名称、键盘焦点和宿主主题配色。
+
+#### 图片加载与翻页
+
+图片进入可见区域才加载；宿主支持工具调用时，列表在读取图片前通过一次经认证批量请求获取新地址，避免使用因到期或服务重启失效的历史地址。不支持工具调用时仍尝试已有地址。失败保留显式重试，不自动重试。点击缩略图打开详情。单页不显示翻页控件，多页提供首尾禁用的左右箭头、横向滑动和原生进度滑块，位置为只读显示。拖动预览目标，提交后加载并忽略过期响应；纵向手势继续交给聊天页面。尺寸优先使用当前页提供的数据，原图下载对应当前选定页。
+
+#### 原图查看与下载
+
+详情默认 regular 图片；点击／双击静态详情图片，或聚焦图片后按 Enter／Space，可在弹层查看完整质量原图，切换适应窗口／实际尺寸，并通过 Escape／关闭按钮退出或使用 host 确认下载。查看和 host 确认下载复用已成功读取的原图字节。宿主未声明文件下载能力时，已加载的静态原图为当前选定页请求新的 original 质量凭证，提供用户点击的 HTTPS 附件链接；只接受精确的 `?download=1` 参数，文件名由作品 ID、从 1 开始的页码与已校验的图片 MIME 类型生成。附件与普通 HTTP 原图共用授权服务端缓存，每次仍检查 grant、有效期和账号版本。浏览器下载策略仍生效，不提前宣告保存成功。
+
+#### 浏览器会话缓存
+
+独立的 256MiB 估算会话 LRU 缓存保存已加载静态图片、成功加载的动图／PNG 预览元素、详情信息与原图字节；翻页、重进详情复用内容并保留选定页。切换到尚未缓存的页面时，保留当前图片至下一张加载完成；快速切换会丢弃过期的待显示图片。新查询／结果、取消和关闭画廊清理缓存。未伴随新输入的相同结果重复投递保留当前详情与会话缓存。不缓存失败或收藏状态；超大图片完整显示但不保留。预算计入解码像素与编码数据估算，并非浏览器／GPU 总内存上限。明确下载原始页时使用完整字节媒体工具和 host 下载能力。Ugoira 保留完整 GIF/APNG 及独立 PNG 预览。
+
+#### 收藏操作
+
+收藏工具栏提供主要保存操作、公开／私密选择、已收藏作品的取消入口和显式状态刷新。收藏状态未知或写入未确认时禁止写入；写入仍需明确点击、host approval 和成功后刷新状态。播放与下载确认仍取决于 host。
+
+### 宿主集成
+
+标准 Apps bridge 处理初始化、工具结果和调用。CSP 只允许 canonical 反代域名及 Blob 图片，不允许直接 fetch 或外部脚本/样式；图片使用 `no-referrer`。iframe 不接收 OAuth bearer、Pixiv 凭据或 FANBOX session。切换视图取消待完成工具请求，释放动图订阅。参见 [MCP Apps 规范](https://github.com/modelcontextprotocol/ext-apps/blob/main/specification/2026-01-26/apps.mdx)。
+
+本地 bridge/浏览器 fixture 不证明云端 host 互操作通过。无 Apps 支持时仍可使用结构化数据及 `pixiv_artwork_media`。
+
+### 只读会话与服务端缓存
+
+Gallery 去重后在配置并发上限内查询作品，保持输入顺序和逐项失败。MCP 只读会话按账号、凭据版本和网络配置复用 access token 与 HTTP 连接，直到到期。只有刷新和凭据持久化持有轮换锁；持久化成功后才开始内容请求，传输期间不持锁。上游认证失败使会话失效，不自动重试。SDK 从可信作品信息登记质量变体，打开变体时避免再次查询作品。 单次凭据检查取消会保留共享会话及其他传输；真实凭据或授权失效仍会取消它们。
+
+进程缓存按 grant 隔离，使用 [CLI reference](cli-reference.md#mcp-http-server) 中的启动配置，默认 256 MiB、15 分钟、并发 4。合并同键 metadata 查询，仅缓存成功 metadata 和完整光栅图片；命中仍检查 grant 授权及当前账号／会话版本。收藏状态和写操作不缓存。图片通过上游状态和文件头校验后开始流式发送；有可信 Content-Length 时保留，否则不声明长度。传输中断会关闭上游资源并丢弃填充缓冲，不向图片字节追加错误文本。固定阶段观测区分会话等待／刷新、作品查询、图片首包、传输及缓存命中，不包含 token、grant 或签名地址。
+
+ZIP 正文读取失败且任务上下文仍有效时，提前 EOF 或 Content-Length 不符额外记录固定标记 `animation_zip_incomplete`，连接重置记录 `animation_zip_reset`，底层读取器报告超时时记录 `animation_zip_timeout`。标记仅携带已读取字节数，不包含原始错误或签名地址，不改变重试、时限、输出质量或工具错误。
+
+### `pixiv_gallery_animation`
+
+Gallery 动图控制支持 `action: prepare`，输入正整数 `illust_id` 和可选 `format`（默认 `gif`，也可选 `apng`）。`status` 与 `release` 只接收不透明 `handle`。每次准备获得独立订阅，控制响应不嵌入动图字节。状态为 `queued`、`downloading`、`encoding`、`ready`、`failed`、`cancelled`、`expired`，不伪造进度百分比。每两秒查询状态；终态停止查询，重试必须由用户明确触发。
+
+就绪输出包括 `animation_url`、独立 PNG 的 `preview_url`、`media_origin`、`filename`、`mime_type`、`size` 和 `expires`。Gallery 在所选图片加载完成前显示加载提示，完成后才确认静态预览或动画播放状态。切换已加载的动画与预览会复用图片元素，不重复发起 HTTP 读取；成功加载的动图及预览也使用现有 256MiB 估算会话 LRU 跨详情复用。重进时先通过新的 prepare 请求验证当前授权，仅在就绪响应的媒体地址一致时复用旧元素；动画仅在首次点击播放时加载，失败仍需显式重试。
+
+准备就绪后隐藏多余的加载动画入口；媒体读取失败、宿主下载未确认或切换格式时恢复该入口，不自动重新准备。离开详情时释放订阅并移除该视图的图片事件回调；失败、未完成及超预算图片清除来源，成功保留的元素在 LRU 淘汰、新查询／结果或关闭时释放。切换格式与显式重试仍取得新订阅。动图估算计入编码文件大小与全部帧的解码像素，帧数来自 UI 内部提示 `_meta["pixiv/animationFrameCount"]`；缺失或非法帧数不新增动图缓存。该提示不改变工具输入或公开结构化输出字段。PNG 按解码像素估算，并非实际压缩字节数；浏览器额外解码开销及浏览器／GPU 总内存不属于该估算。
+
+Gallery 初始显示静态预览，播放时选择完整 GIF/APNG HTTP 资源。宿主支持下载时，通过 `ui/download-file` 的 `resource_link` 请求确认。否则 Gallery 提供用户点击的浏览器链接，对同一受保护动图使用精确的 `?download=1` 参数。GET／HEAD 仍校验授权、有效期和账号版本，附件文件名由作品 ID 与格式生成；其他查询参数及预览下载被拒绝。浏览器下载策略仍生效，Gallery 不宣告文件已保存。既有 `pixiv_artwork_media` 完整内容合同保持不变。
+
+同一 grant／账号／会话版本／作品／格式的重复准备复用任务与完整成功产物。最后一个订阅释放时取消未完成任务；就绪产物可保留至缓存 TTL 与签发授权到期时间的较早值。`/media/animation/` 的 GET/HEAD 每次检查授权及当前账号版本，响应为 `private, no-store`。地址属于短期访问凭证，不应记录或分享。
+
+私有目录／文件权限为 0700／0600。ZIP、原生输出预留、预览和待交付产物共用独立的启动磁盘预算（`mcp_gallery_animation_temp_capacity_mib`，默认 1024 MiB）。写入前检查容量；原生写入通过内部同步回调按实际字节申请空间，容量足够时生成另一格式仍保留未使用的就绪产物。只有空间确实不足时才淘汰可回收产物；不足时明确失败，不截断交付或降低编码质量。过期／未使用的就绪产物可淘汰，读取中的文件等待句柄关闭再删除。服务关闭时等待任务及读取退出，再删除自身工作目录；启动时仅清理带本服务标记且系统生命周期锁已释放的目录；活跃实例及归属不明的目录保留。临时文件生成与原生输出预留共用队列，避免并发准备误报容量不足；就绪文件仍可并发读取。首次准备仍需要下载和编码，不承诺固定公网耗时。
+
+#### 诊断
+
+开启 debug 诊断时，`pixiv_artwork_media` 与 `pixiv_gallery_animation` 的 MCP 响应会记录 `mcp_response_serialization`，包含实际结果 JSON 编码耗时和字节数，不包含 JSON-RPC 外层及网络传输时间。debug 下 HTTP POST 响应还逐次记录底层 `mcp_http_write`（接受字节数与调用耗时）和 `mcp_http_flush`（调用耗时），区分写入／Flush 失败、请求取消和服务关闭。观测保留 SDK framing，不证明对端收齐，不记录请求／响应正文或 header。普通日志级别保留原编码路径；HTTP 与协议诊断 scope 重叠时，不重复编码或记录。动图交付中断记录为失败，使用固定的请求取消／传输中断原因；不写入原始错误、凭据或 capability 地址。
+
+现有 `pixiv_artwork_media` 动图路径还记录作品查询、动图元数据、ZIP 下载、实际观测到的原生编码排队／编码及产物读取阶段。`animation_generation` 在临时文件清理后记录最终生成结果，包含失败和请求取消；失败字节数为零，成功为动画大小。这些生成阶段不包含响应序列化和网络交付。进入原生队列前失败的编码尝试不伪造排队耗时。
+
+#### 取消与失效
+
+后台动图取消在 worker 清理后记录首个取消来源：最后一个订阅释放、服务关闭或媒体到期。CLI 使用固定原因说明，不输出任务句柄或原始取消文本。订阅或媒体检查发现授权／账号会话失效时使用独立的固定原因。已撤销 grant 的订阅检查在拒绝请求的同时取消其既有任务；其他账号不能借句柄取消该任务。控制请求取消（包括取得账号会话期间取消）会返回取消错误，仍有订阅的后台工作继续运行。单次动图 HTTP 请求取消也保留共享产物和独立订阅；真实授权或凭据失效仍会使其过期。在途二进制传输绑定任务生命周期：关闭或撤销后取消传输、关闭文件，并立即设置 HTTP 写入截止以解除阻塞。
+
+这是取消触发的中断，不是固定传输超时。取消回调在 handler 返回前结束；传输解除文件占用后再删除私有产物。动图 owner 监听授权目录，识别状态文件的原子替换，无需再次调用状态或媒体接口即可主动停止已撤销／重置 grant 的工作。监听失效时停止动图工作并拒绝新动图请求，关闭时报告固定监听错误。账号会话失效现在发布按版本隔离的取消信号：上游认证失败会停止使用同一版本的其他传输与动图任务，不重试失败请求；旧版本的错误不能取消替代会话。MCP 账号 owner 监听数据库父目录的 DB、WAL 和 journal 变化，只读取本地凭据版本；外部替换／删除会取消旧会话，不额外刷新 token。
+
+轮换持久化后、发布新会话前再次校验凭据版本；提前消费了变更通知也不能发布已过期的客户端。元数据变更不取消会话。监听目录或数据库路径丢失时停止旧会话，关闭时报告固定监听错误。监听器等待数据库锁时，关闭先取消账号生命周期，再等待监听退出；正常关闭的取消不标成监听故障。kqueue 对刚删除的 SQLite journal 报 ENOENT lstat 时，仅在父目录监听和常规主数据库仍存在的情况下将其视为提交通知，重新校验当前凭据版本；其他监听错误、目录／数据库丢失及校验失败仍终止监听。
+
+后台动图元数据、ZIP 传输和原生编码观测携带实际失败结果。ZIP 在关闭资源及校验 Content-Length 后才记录成功，编码在编码器返回后才记录成功。最终生成事件成功时包含完整动画大小，失败或取消时为零。部分 ZIP 字节数代表已传输数据，不代表动画已成功交付。
+
+共享作品查询和会话获取观测同样区分失败结果。OAuth 刷新结果包含轮换凭据持久化，持久化失败不会记录为刷新成功。获取轮换锁时取消会记录固定的请求取消原因，不继续刷新或读取内容；现有错误返回及重试行为保持。
+
+动图订阅发布前会在取得账号会话后再次验证授权；授权通知在任务发布 mutex 内读取快照。授权撤销、凭据版本失效和到期会主动回收空闲静态元数据与图片，在途内容释放引用前继续计入预算。迟到缓存填充在缓存 mutex 内验证当前授权和版本。产物删除失败保留占用预算，并在关闭时报告，即使最终清理后来成功；HTTP 运行错误与关闭清理错误合并返回。

@@ -1,18 +1,57 @@
-// Package mcpserver 拥有 MCP stdio transport 与 runtime lifecycle。
-//
-// stdout 只用于 JSON-RPC；MCP 命令不经过通用 input resolver，也不写非协议
-// 输出。RunStdio 只负责把构造好的 MCP server 绑定到标准输入输出，reverse
-// close 语义由调用方在命令退出路径统一处理。
 package mcpserver
 
 import (
 	"context"
+	"errors"
+	"io"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
-// Run 在一个 stdio transport 上运行 server 直到 ctx 取消或连接结束。失败
-// 保留调用方错误的 cause 与稳定 reason，不向 stdout 写非 JSON-RPC 内容。
-func RunStdio(ctx context.Context, server *mcp.Server) error {
-	return server.Run(ctx, &mcp.StdioTransport{})
+// RunStdio serves JSON-RPC, cancels active tools on input loss or process shutdown,
+// and waits for their cleanup before the caller releases SDK resources.
+func RunStdio(ctx context.Context, server *mcp.Server, in io.Reader, out io.Writer) error {
+	ctx, cancel := context.WithCancelCause(ctx)
+	defer cancel(nil)
+	server.AddReceivingMiddleware(func(next mcp.MethodHandler) mcp.MethodHandler {
+		return func(requestCtx context.Context, method string, request mcp.Request) (mcp.Result, error) {
+			requestCtx, stopRequest := context.WithCancel(requestCtx)
+			stop := context.AfterFunc(ctx, stopRequest)
+			defer stop()
+			defer stopRequest()
+			if err := ctx.Err(); err != nil {
+				return nil, err
+			}
+			return next(requestCtx, method, request)
+		}
+	})
+	reader, ok := in.(io.ReadCloser)
+	if !ok {
+		reader = io.NopCloser(in)
+	}
+	err := server.Run(ctx, &mcp.IOTransport{Reader: stdioReader{reader, cancel}, Writer: stdioWriter{out}})
+	if errors.Is(context.Cause(ctx), io.EOF) {
+		return nil
+	}
+	if cause := context.Cause(ctx); cause != nil {
+		return cause
+	}
+	return err
 }
+
+type stdioReader struct {
+	io.ReadCloser
+	cancel context.CancelCauseFunc
+}
+
+func (r stdioReader) Read(p []byte) (int, error) {
+	n, err := r.ReadCloser.Read(p)
+	if err != nil {
+		r.cancel(err)
+	}
+	return n, err
+}
+
+type stdioWriter struct{ io.Writer }
+
+func (stdioWriter) Close() error { return nil }

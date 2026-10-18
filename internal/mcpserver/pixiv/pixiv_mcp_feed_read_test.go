@@ -3,6 +3,7 @@ package pixiv_test
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"sort"
 	"testing"
 
@@ -24,14 +25,12 @@ func TestFeedRecommendationSchemasMatchLegacyContracts(t *testing.T) {
 		name   string
 		fields []string
 	}{
-		{name: "illust_ranking", fields: []string{"date", "illust_filter", "limit", "mode", "page"}},
-		{name: "illust_recommended", fields: []string{"illust_filter", "limit", "page"}},
-		{name: "recommended", fields: []string{"illust_filter", "kind", "limit", "novel_filter", "page", "user_filter"}},
-		{name: "timeline_illust_following", fields: []string{"illust_filter", "limit", "page", "restrict"}},
-		{name: "timeline_novel_following", fields: []string{"limit", "novel_filter", "page", "restrict"}},
-		{name: "timeline_illust_latest", fields: []string{"content_type", "illust_filter", "limit", "page"}},
-		{name: "timeline_novel_latest", fields: []string{"limit", "novel_filter", "page"}},
-		{name: "trending_tags_illust", fields: []string{}},
+		{name: "pixiv_illust_ranking", fields: []string{"cursor", "date", "illust_filter", "limit", "mode", "page"}},
+		{name: "pixiv_illust_recommended", fields: []string{"cursor", "illust_filter", "limit", "page"}},
+		{name: "pixiv_recommended", fields: []string{"cursor", "illust_filter", "kind", "limit", "novel_filter", "page", "user_filter"}},
+		{name: "pixiv_timeline_following", fields: []string{"kind", "illust_filter", "novel_filter", "limit", "page", "restrict"}},
+		{name: "pixiv_timeline_latest", fields: []string{"content_type", "illust_filter", "novel_filter", "limit", "page"}},
+		{name: "pixiv_trending_tags_illust", fields: []string{}},
 	} {
 		t.Run("input/"+test.name, func(t *testing.T) {
 			tool, ok := byName[test.name]
@@ -43,23 +42,23 @@ func TestFeedRecommendationSchemasMatchLegacyContracts(t *testing.T) {
 		})
 	}
 
-	assertSchemaEnum(t, feedSchemaProperty(t, byName["illust_ranking"].InputSchema, "mode"), []string{
+	assertSchemaEnum(t, feedSchemaProperty(t, byName["pixiv_illust_ranking"].InputSchema, "mode"), []string{
 		"day", "day_male", "day_female", "week", "week_original", "week_rookie", "month",
 		"day_manga", "week_manga", "month_manga", "week_rookie_manga", "day_r18", "day_male_r18",
 		"day_female_r18", "week_r18", "week_r18g",
 	})
-	assertSchemaEnum(t, feedSchemaProperty(t, byName["recommended"].InputSchema, "kind"), []string{"all", "illust", "manga", "novel", "user"})
-	assertSchemaEnum(t, feedSchemaProperty(t, byName["timeline_illust_following"].InputSchema, "restrict"), []string{"public", "private"})
-	assertSchemaEnum(t, feedSchemaProperty(t, byName["timeline_novel_following"].InputSchema, "restrict"), []string{"public", "private"})
-	assertSchemaEnum(t, feedSchemaProperty(t, byName["timeline_illust_latest"].InputSchema, "content_type"), []string{"illust", "manga"})
+	assertSchemaEnum(t, feedSchemaProperty(t, byName["pixiv_recommended"].InputSchema, "kind"), []string{"all", "illust", "manga", "novel", "user"})
+	assertSchemaEnum(t, feedSchemaProperty(t, byName["pixiv_timeline_following"].InputSchema, "restrict"), []string{"public", "private"})
+	assertSchemaEnum(t, feedSchemaProperty(t, byName["pixiv_timeline_following"].InputSchema, "restrict"), []string{"public", "private"})
+	assertSchemaEnum(t, feedSchemaProperty(t, byName["pixiv_timeline_latest"].InputSchema, "content_type"), []string{"illust", "manga", "novel"})
 
-	recommendedOutput := feedSchemaObject(t, "recommended output", byName["recommended"].OutputSchema)
+	recommendedOutput := feedSchemaObject(t, "recommended output", byName["pixiv_recommended"].OutputSchema)
 	assertSchemaFields(t, recommendedOutput, []string{"pagination", "records"})
 	assertSchemaRequired(t, recommendedOutput, []string{"pagination", "records"})
 	pagination := feedSchemaProperty(t, recommendedOutput, "pagination")
 	assertSchemaFields(t, pagination, []string{"illust", "manga", "novel", "user"})
 
-	trendingOutput := feedSchemaObject(t, "trending_tags_illust output", byName["trending_tags_illust"].OutputSchema)
+	trendingOutput := feedSchemaObject(t, "trending_tags_illust output", byName["pixiv_trending_tags_illust"].OutputSchema)
 	assertSchemaFields(t, trendingOutput, []string{"tags", "text"})
 	assertSchemaRequired(t, trendingOutput, []string{"tags", "text"})
 }
@@ -83,7 +82,7 @@ func TestRecommendedKindSelectsArtworkSubtype(t *testing.T) {
 			session, closeSession := newSDKTestSession(t, client)
 			defer closeSession()
 
-			result := callTool(t, session, "recommended", map[string]any{"kind": test.kind})
+			result := callTool(t, session, "pixiv_recommended", map[string]any{"kind": test.kind})
 			if result.IsError {
 				t.Fatalf("recommended %s returned error: %+v", test.kind, result)
 			}
@@ -127,10 +126,10 @@ func TestRecommendedRejectsKindConflictingFiltersBeforeSDKExecution(t *testing.T
 				executions++
 				return baseExecute(ctx, account, attempt)
 			}
-			session, closeSession := newSDKTestSessionWithPorts(t, &fakeAPI{}, ports, pixivmcpserver.Account{})
+			session, closeSession := newSDKTestSessionWithPorts(t, ports, pixivmcpserver.Account{})
 			defer closeSession()
 
-			result := callTool(t, session, "recommended", test.args)
+			result := callTool(t, session, "pixiv_recommended", test.args)
 			if !result.IsError || executions != 0 {
 				t.Fatalf("conflicting filter result=%+v executions=%d", result, executions)
 			}
@@ -159,10 +158,10 @@ func TestIllustRankingRejectsInvalidInputBeforeSDKExecution(t *testing.T) {
 				executions++
 				return baseExecute(ctx, account, attempt)
 			}
-			session, closeSession := newSDKTestSessionWithPorts(t, &fakeAPI{}, ports, pixivmcpserver.Account{})
+			session, closeSession := newSDKTestSessionWithPorts(t, ports, pixivmcpserver.Account{})
 			defer closeSession()
 
-			result, callErr := session.CallTool(context.Background(), &mcp.CallToolParams{Name: "illust_ranking", Arguments: test.args})
+			result, callErr := session.CallTool(context.Background(), &mcp.CallToolParams{Name: "pixiv_illust_ranking", Arguments: test.args})
 			if callErr == nil && (result == nil || !result.IsError) {
 				t.Fatalf("invalid input unexpectedly succeeded: result=%+v err=%v", result, callErr)
 			}
@@ -183,7 +182,7 @@ func TestFeedRecommendationLegacyJSONReplayPreservesStructuredContracts(t *testi
 	}{
 		{
 			name: "ranking defaults mode",
-			tool: "illust_ranking",
+			tool: "pixiv_illust_ranking",
 			args: map[string]any{},
 			client: &fakeSDKClient{illustRanking: func(context.Context, pixiv.ArtworkRankingRequest) (sdk.Page[pixiv.Artwork], error) {
 				return sdk.Page[pixiv.Artwork]{Items: []pixiv.Artwork{testSDKIllust(11, "ranking", 1)}}, nil
@@ -192,7 +191,7 @@ func TestFeedRecommendationLegacyJSONReplayPreservesStructuredContracts(t *testi
 		},
 		{
 			name: "recommended all",
-			tool: "recommended",
+			tool: "pixiv_recommended",
 			args: map[string]any{"kind": "all"},
 			client: func() *fakeSDKClient {
 				client := &fakeSDKClient{}
@@ -228,8 +227,8 @@ func TestFeedRecommendationLegacyJSONReplayPreservesStructuredContracts(t *testi
 		},
 		{
 			name: "illust following defaults public",
-			tool: "timeline_illust_following",
-			args: map[string]any{},
+			tool: "pixiv_timeline_following",
+			args: map[string]any{"kind": "artwork"},
 			client: &fakeSDKClient{followingIllusts: func(context.Context, pixiv.FollowingArtworksRequest) (sdk.Page[pixiv.Artwork], error) {
 				return sdk.Page[pixiv.Artwork]{Items: []pixiv.Artwork{testSDKIllust(31, "following", 3)}}, nil
 			}},
@@ -237,8 +236,8 @@ func TestFeedRecommendationLegacyJSONReplayPreservesStructuredContracts(t *testi
 		},
 		{
 			name: "novel following defaults public",
-			tool: "timeline_novel_following",
-			args: map[string]any{},
+			tool: "pixiv_timeline_following",
+			args: map[string]any{"kind": "novel"},
 			client: &fakeSDKClient{followingNovels: func(context.Context, pixiv.FollowingNovelsRequest) (sdk.Page[pixiv.Novel], error) {
 				return sdk.Page[pixiv.Novel]{Items: []pixiv.Novel{{ID: 32, User: pixiv.User{ID: 3}, Tags: []pixiv.Tag{}}}}, nil
 			}},
@@ -246,7 +245,7 @@ func TestFeedRecommendationLegacyJSONReplayPreservesStructuredContracts(t *testi
 		},
 		{
 			name: "latest illust preserves content type",
-			tool: "timeline_illust_latest",
+			tool: "pixiv_timeline_latest",
 			args: map[string]any{"content_type": "manga"},
 			client: &fakeSDKClient{latestIllusts: func(context.Context, pixiv.LatestArtworksRequest) (sdk.Page[pixiv.Artwork], error) {
 				return sdk.Page[pixiv.Artwork]{Items: []pixiv.Artwork{testSDKIllust(33, "latest", 3)}}, nil
@@ -255,8 +254,8 @@ func TestFeedRecommendationLegacyJSONReplayPreservesStructuredContracts(t *testi
 		},
 		{
 			name: "latest novel",
-			tool: "timeline_novel_latest",
-			args: map[string]any{},
+			tool: "pixiv_timeline_latest",
+			args: map[string]any{"content_type": "novel"},
 			client: &fakeSDKClient{latestNovels: func(context.Context, pixiv.LatestNovelsRequest) (sdk.Page[pixiv.Novel], error) {
 				return sdk.Page[pixiv.Novel]{Items: []pixiv.Novel{{ID: 34, User: pixiv.User{ID: 3}, Tags: []pixiv.Tag{}}}}, nil
 			}},
@@ -264,7 +263,7 @@ func TestFeedRecommendationLegacyJSONReplayPreservesStructuredContracts(t *testi
 		},
 		{
 			name:   "trending tags",
-			tool:   "trending_tags_illust",
+			tool:   "pixiv_trending_tags_illust",
 			args:   map[string]any{},
 			client: &fakeSDKClient{trendingTags: []pixiv.TrendingTag{{Tag: "miku", TranslatedName: "Hatsune Miku", Artwork: testSDKIllust(35, "miku", 3)}}},
 			check: func(t *testing.T, result *mcp.CallToolResult) {
@@ -280,7 +279,7 @@ func TestFeedRecommendationLegacyJSONReplayPreservesStructuredContracts(t *testi
 		},
 		{
 			name:   "trending tags empty",
-			tool:   "trending_tags_illust",
+			tool:   "pixiv_trending_tags_illust",
 			args:   map[string]any{},
 			client: &fakeSDKClient{trendingTags: []pixiv.TrendingTag{}},
 			check: func(t *testing.T, result *mcp.CallToolResult) {
@@ -319,7 +318,7 @@ func TestTimelineIllustFilterFillsLogicalPageAcrossBatches(t *testing.T) {
 	session, closeSession := newSDKTestSession(t, client)
 	defer closeSession()
 
-	result := callTool(t, session, "timeline_illust_latest", map[string]any{
+	result := callTool(t, session, "pixiv_timeline_latest", map[string]any{
 		"content_type":  "illust",
 		"illust_filter": map[string]any{"type": "illust"},
 		"limit":         1,
@@ -458,4 +457,137 @@ func feedResultText(result *mcp.CallToolResult) string {
 		}
 	}
 	return "<no text content>"
+}
+
+func TestMixedRecommendedDefaultCursors(t *testing.T) {
+	calls := map[string]int{}
+	client := &fakeSDKClient{userID: 7,
+		recommendedArtworks: func(_ context.Context, r pixiv.RecommendedArtworksRequest, _ int) (sdk.Page[pixiv.Artwork], error) {
+			calls["art"]++
+			a := testSDKIllust(1, "art", 7)
+			m := testSDKIllust(2, "manga", 7)
+			m.Kind = pixiv.ArtworkKindManga
+			var next sdk.Cursor
+			if r.Cursor.IsZero() {
+				next = testPageCursor(1)
+			} else {
+				a.ID = 11
+				m.ID = 12
+			}
+			return sdk.Page[pixiv.Artwork]{Items: []pixiv.Artwork{a, m}, Next: next}, nil
+		},
+		novelRecommended: func(_ context.Context, r pixiv.RecommendedNovelsRequest) (sdk.Page[pixiv.Novel], error) {
+			calls["novel"]++
+			id := int64(3)
+			var next sdk.Cursor
+			if r.Cursor.IsZero() {
+				next = testPageCursor(2)
+			} else {
+				id = 13
+			}
+			return sdk.Page[pixiv.Novel]{Items: []pixiv.Novel{{ID: id, Title: "novel", User: pixiv.User{ID: 7}}}, Next: next}, nil
+		},
+		userRecommended: func(_ context.Context, r pixiv.RecommendedUsersRequest) (sdk.Page[pixiv.UserPreview], error) {
+			calls["user"]++
+			id := int64(4)
+			var next sdk.Cursor
+			if r.Cursor.IsZero() {
+				next = testPageCursor(3)
+			} else {
+				id = 14
+			}
+			return sdk.Page[pixiv.UserPreview]{Items: []pixiv.UserPreview{{User: pixiv.User{ID: id, Name: "user"}}}, Next: next}, nil
+		},
+	}
+	session, closeSession := newSDKTestSession(t, client)
+	defer closeSession()
+	first := callTool(t, session, "pixiv_recommended", map[string]any{"kind": "all"})
+	var out outputs.Recommended
+	decodeStructured(t, first, &out)
+	if first.IsError || len(out.Records) != 4 {
+		t.Fatalf("first error=%v records=%d", first.IsError, len(out.Records))
+	}
+	cursors := map[string]string{"illust": out.Pagination.Illust.NextCursor, "manga": out.Pagination.Manga.NextCursor, "novel": out.Pagination.Novel.NextCursor, "user": out.Pagination.User.NextCursor}
+	for kind, cursor := range cursors {
+		if cursor == "" {
+			t.Fatalf("missing %s continuation", kind)
+		}
+		result := callTool(t, session, "pixiv_recommended", map[string]any{"kind": kind, "cursor": cursor})
+		var continued outputs.Recommended
+		decodeStructured(t, result, &continued)
+		if result.IsError || len(continued.Records) != 1 {
+			t.Fatalf("kind=%s error=%v records=%d", kind, result.IsError, len(continued.Records))
+		}
+		want := map[string]string{"illust": "11", "manga": "12", "novel": "13", "user": "14"}[kind]
+		if continued.Records[0].ID() != want {
+			t.Fatalf("kind=%s id=%s", kind, continued.Records[0].ID())
+		}
+	}
+	if calls["art"] != 3 || calls["novel"] != 2 || calls["user"] != 2 {
+		t.Fatalf("other streams refetched: %v", calls)
+	}
+	for _, args := range []map[string]any{{"kind": "all", "cursor": cursors["illust"]}, {"kind": "manga", "cursor": cursors["illust"]}, {"kind": "novel", "cursor": cursors["novel"], "limit": 1}} {
+		if r := callTool(t, session, "pixiv_recommended", args); !r.IsError {
+			t.Fatal("invalid cursor accepted")
+		}
+	}
+}
+
+func TestMixedRecommendedReplayDiscardsPreviousAttempt(t *testing.T) {
+	novels := 0
+	client := &fakeSDKClient{userID: 7, recommendedArtworks: func(context.Context, pixiv.RecommendedArtworksRequest, int) (sdk.Page[pixiv.Artwork], error) {
+		return sdk.Page[pixiv.Artwork]{Items: []pixiv.Artwork{testSDKIllust(1, "art", 7)}}, nil
+	}, novelRecommended: func(context.Context, pixiv.RecommendedNovelsRequest) (sdk.Page[pixiv.Novel], error) {
+		novels++
+		if novels == 1 {
+			return sdk.Page[pixiv.Novel]{}, errors.New("fixture failure")
+		}
+		return sdk.Page[pixiv.Novel]{Items: []pixiv.Novel{{ID: 2, Title: "novel", User: pixiv.User{ID: 7}}}}, nil
+	}}
+	ports, account := newTestSDKPorts(t, client)
+	execute := ports.Execute
+	ports.Execute = func(ctx context.Context, a pixivmcpserver.Account, attempt func(context.Context, *pixiv.Client) (bool, error)) error {
+		if err := execute(ctx, a, attempt); err != nil {
+			return execute(ctx, a, attempt)
+		}
+		return nil
+	}
+	session, closeSession := newSDKTestSessionWithPorts(t, ports, account)
+	defer closeSession()
+	result := callTool(t, session, "pixiv_recommended", map[string]any{"kind": "all"})
+	var out outputs.Recommended
+	decodeStructured(t, result, &out)
+	if result.IsError || novels != 2 || len(out.Records) != 2 {
+		t.Fatalf("replay leaked prior records: error=%v novels=%d records=%d", result.IsError, novels, len(out.Records))
+	}
+}
+
+func TestMixedRecommendedEmptyVisualBatchKeepsCursor(t *testing.T) {
+	calls := 0
+	client := &fakeSDKClient{userID: 7, recommendedArtworks: func(_ context.Context, r pixiv.RecommendedArtworksRequest, _ int) (sdk.Page[pixiv.Artwork], error) {
+		calls++
+		item := testSDKIllust(1, "filtered", 7)
+		var next sdk.Cursor
+		if r.Cursor.IsZero() {
+			next = testPageCursor(1)
+		} else {
+			item.PageCount = 2
+		}
+		return sdk.Page[pixiv.Artwork]{Items: []pixiv.Artwork{item}, Next: next}, nil
+	}}
+	session, closeSession := newSDKTestSession(t, client)
+	defer closeSession()
+	filter := map[string]any{"min_pages": 2}
+	first := callTool(t, session, "pixiv_recommended", map[string]any{"kind": "all", "illust_filter": filter})
+	var out outputs.Recommended
+	decodeStructured(t, first, &out)
+	if first.IsError || len(out.Records) != 0 || out.Pagination.Illust.NextCursor == "" || calls != 1 {
+		t.Fatalf("empty visual batch lost continuation: error=%v calls=%d", first.IsError, calls)
+	}
+	second := callTool(t, session, "pixiv_recommended", map[string]any{"kind": "illust", "illust_filter": filter, "cursor": out.Pagination.Illust.NextCursor})
+	out = outputs.Recommended{}
+	decodeStructured(t, second, &out)
+	if second.IsError || len(out.Records) != 1 || out.Pagination.Illust.HasMore || out.Pagination.Illust.NextCursor != "" || calls != 2 {
+		t.Fatalf("filtered continuation error=%v calls=%d", second.IsError, calls)
+	}
 }

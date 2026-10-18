@@ -121,6 +121,10 @@ var resourceHeaderAllowlist = []string{
 // headers. For HEAD, 204, and 304 responses the Body is a non-nil empty stream
 // that remains safe to close.
 type ResourceResponse struct {
+	// Filename is an upstream-suggested attachment name, including its extension
+	// when provided. Empty means unavailable. It is metadata, not a trusted path;
+	// callers must normalize it before choosing a filesystem destination.
+	Filename   string
 	StatusCode int
 	Body       io.ReadCloser
 	header     http.Header

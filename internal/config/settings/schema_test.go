@@ -426,17 +426,22 @@ func TestPrivateUIDDeclarationsCompileWithoutRuntimeBinding(t *testing.T) {
 	}
 }
 
-func TestUIDDeclarationsRejectPublicAliasAndDefault(t *testing.T) {
-	for _, declaration := range []any{
-		struct {
-			UserID int64 `config:"auth.uid" alias:"uid"`
-		}{},
-		struct {
-			UserID int64 `config:"auth.uid" default:"1"`
-		}{},
-	} {
-		if _, err := deriveSchemaFromTags(reflect.TypeOf(declaration)); err == nil {
-			t.Fatal("UID declaration must remain private and domain-parsed")
+func TestSchemaIntegerDefaults(t *testing.T) {
+	declaration := struct {
+		Capacity    int64 `config:"mcp.capacity" alias:"capacity" default:"256" cli:"true"`
+		Concurrency int   `config:"mcp.concurrency" alias:"concurrency" default:"4" cli:"true"`
+	}{}
+	entries, err := deriveSchemaFromTags(reflect.TypeOf(declaration))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if entries[0].spec.Default != int64(256) || entries[1].spec.Default != int64(4) {
+		t.Fatalf("integer defaults: %v", entries[:2])
+	}
+	for _, raw := range []string{"1.5", "9223372036854775808"} {
+		field := reflect.TypeOf(declaration).Field(0)
+		if _, err := parseDefaultForField(field, settingInteger, raw); err == nil {
+			t.Fatalf("accepted invalid integer default %q", raw)
 		}
 	}
 }

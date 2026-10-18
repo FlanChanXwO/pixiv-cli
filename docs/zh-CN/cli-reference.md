@@ -75,16 +75,17 @@ sh scripts/build.sh
 `manifest.json`；`scripts/build.sh` 会先校验 source digest、target/path 与每个库的 SHA-256，再构建
 本机 binary。完整要求、证据回填流程和失败含义见[开发流程](maintainers/development.md#rust-ugoira-staticlib)。
 
-### Go 安装
+### Go 源码安装
 
-正式 tag 发布后，使用精确 tag 安装：
+安装精确的已发布 Release tag（替换 `vX.Y.Z`）：
 
 ```bash
 go install github.com/FlanChanXwO/pixiv-cli/cmd/pixiv@vX.Y.Z
 ```
 
-它仍使用本机 Go、cgo、C linker 和该 target 的 committed staticlib。六目标库与 manifest 已完整，
-例如已发布的 v0.4.4 可使用 `@v0.4.4`；始终使用已发布的精确 tag，而不是分支名。
+使用该 tag 的 `go.mod` 声明的 Go 版本、`CGO_ENABLED=1`、目标 C linker 及仓库提交的目标 Rust staticlib。前端源码直接嵌入，无需生成器或 npm。安装目标为 `GOBIN` 或 `GOPATH/bin`。已有 Go 安装继续自更新到选中 Release 的精确 tag；Go 安装失败时保留旧可执行文件。历史 tag 保留各自构建要求。
+
+检出源码后也可运行 `sh scripts/build.sh`，它会校验提交的原生库并输出 `build/pixiv` 或 `build/pixiv.exe`。
 
 ### Homebrew
 
@@ -202,7 +203,9 @@ pixiv auth import < account.pxauth
 pixiv auth export --all | ssh trusted-host pixiv auth import
 ```
 
-无位置 token 时，`auth import` 检查 stdin 首个非空白字节：`{` 选择严格 versioned bundle decode，其他输入作为一个 opaque refresh token。bundle 模式完全离线、失败不回退 OAuth，并拒绝 `--proxy`/`--no-proxy`；bundle JSON 损坏直接报错。显式位置值始终按 token 处理，即使以 `{` 开头。restore 按 UID 原子 merge 全部账号：已有账号更新，新账号添加；本地已有 default 保持不变，仅本地无 default 时采用 bundle default。默认文本输出按输入 bundle 顺序逐项列出安全的 added/updated UID 和最终 default。`--json` 返回 `{"accounts":[{"user_id":12345678,"username":"display name","status":"added"}],"default_user_id":12345678}`；account item 只暴露 `user_id`、`username` 与 `status`。
+无位置 token 时，`auth import` 检查 stdin 首个非空白字节：`{` 选择严格 versioned bundle decode，其他输入作为一个 opaque refresh token。bundle 模式完全离线、失败不回退 OAuth，并拒绝 `--proxy`/`--no-proxy`；bundle JSON 损坏直接报错。显式位置值始终按 token 处理，即使以 `{` 开头。restore 按 UID 原子 merge 全部账号：已有账号更新，新账号添加；本地已有 default 保持不变，仅本地无 default 时采用 bundle default。
+
+默认文本输出按输入 bundle 顺序逐项列出安全的 added/updated UID 和最终 default。`--json` 返回 `{"accounts":[{"user_id":12345678,"username":"display name","status":"added"}],"default_user_id":12345678}`；account item 只暴露 `user_id`、`username` 与 `status`。
 
 ### 导出与备份认证
 
@@ -282,7 +285,9 @@ pixiv recommended --type all --limit 5
 pixiv download 123456 789012 --output ./downloads
 ```
 
-所有持久的应用管理数据直接保存到当前用户主目录：macOS/Linux 为 `~/.pixiv-cli`，Windows 为 `%USERPROFILE%\.pixiv-cli`。其中包括 `pixiv-cli.db`、`config.toml`、回调桥接状态、Release 检查缓存和 macOS 回调 helper；账号认证以 Pixiv UID 为 key。Unix-like 主动使用 `0700` 父目录与 `0600` 文件；Windows 首次创建继承父目录 ACL，替换既有目标保留其 ACL，不主动收紧或放宽 DACL。输出默认给人读；只有 help 中提供 `--json` 的命令可输出机器可解析 JSON，`auth export` 明确不提供该 flag。
+所有持久的应用管理数据直接保存到当前用户主目录：macOS/Linux 为 `~/.pixiv-cli`，Windows 为 `%USERPROFILE%\.pixiv-cli`。其中包括 `pixiv-cli.db`、`config.toml`、回调桥接状态、Release 检查缓存和 macOS 回调 helper；账号认证以 Pixiv UID 为 key。Unix-like 主动使用 `0700` 父目录与 `0600` 文件；Windows 首次创建继承父目录 ACL，替换既有目标保留其 ACL，不主动收紧或放宽 DACL。
+
+输出默认给人读；只有 help 中提供 `--json` 的命令可输出机器可解析 JSON，`auth export` 明确不提供该 flag。
 首次执行普通命令时，若不存在 `config.toml`，CLI 会生成只含下载、输出、登录与更新常用设置的基础文件，且绝不覆盖已有文件。代理、登录超时和 Premium 状态缓存等高级设置会保持省略，直到用户显式配置；help、根 `--version` flag、secret export 和内部 OAuth callback 不会创建该文件。
 CLI 使用 Cobra/pflag，选项可以写在位置参数前后，例如 `pixiv auth check 12345678 --json` 和 `pixiv search "初音ミク" --json` 都是正式支持的写法。
 
@@ -290,7 +295,11 @@ CLI 使用 Cobra/pflag，选项可以写在位置参数前后，例如 `pixiv au
 
 账号池关闭时，所有非写入的数据读取、推荐、时间线与下载使用 `pixiv auth use` 选定的本地账号。只有 `[account_pool]` 显式设置 `enabled = true` 时才启用数据库账号池；账号行的 `schedulable` 控制是否参加调度，`strategy` 默认 `round_robin`，也支持 `random`。使用 `pixiv auth pool status|enable|disable` 查看或修改调度状态。写操作、认证和配置不使用账号池。数据命令拒绝 `--uid`、`--refresh-token`。
 
-视觉列表接入管道时会自动输出 NDJSON；也可显式使用 `--ndjson`。每行都是带稳定字符串 `id`、`type`、`url` 的规范 Record，其余适用 SDK 字段会保留。`download`、`bookmark add/remove`、`follow add/remove` 可不带位置 ID 直接消费它们；bookmark add/remove 只消费与所选 `--type` 匹配 namespace 的 Record（默认 artwork 类型，`--type novel` 时为 `novel`）；follow 显式目标必须是正数用户 ID，用户 URL 会在本地拒绝。`pixiv user follow add/remove` 与根级 `pixiv follow add/remove` 共享同一 owner，`add --restrict` 只接受 `public|private`，默认 `public`。comment 的 `create/reply/stamp/delete` 只接受一个正数 ID，不消费 Record。comment 的 create/reply/stamp 直接返回 upstream 正数 `comment_id`，delete 只返回成功状态；`comment stamps` 是无分页的只读列表。既有动作成功时 stdout 保持为空，安全诊断写入 stderr。`--on-error=skip|fail-fast` 控制 stdin 中格式错误或不兼容 Record 的处理；`--json` 与 `--ndjson` 不能同时使用。
+视觉列表接入管道时会自动输出 NDJSON；也可显式使用 `--ndjson`。每行都是带稳定字符串 `id`、`type`、`url` 的规范 Record，其余适用 SDK 字段会保留。`download`、`bookmark add/remove`、`follow add/remove` 可不带位置 ID 直接消费它们；bookmark add/remove 只消费与所选 `--type` 匹配 namespace 的 Record（默认 artwork 类型，`--type novel` 时为 `novel`）；follow 显式目标必须是正数用户 ID，用户 URL 会在本地拒绝。
+
+`pixiv user follow add/remove` 与根级 `pixiv follow add/remove` 共享同一 owner，`add --restrict` 只接受 `public|private`，默认 `public`。comment 的 `create/reply/stamp/delete` 只接受一个正数 ID，不消费 Record。comment 的 create/reply/stamp 直接返回 upstream 正数 `comment_id`，delete 只返回成功状态；`comment stamps` 是无分页的只读列表。
+
+既有动作成功时 stdout 保持为空，安全诊断写入 stderr。`--on-error=skip|fail-fast` 控制 stdin 中格式错误或不兼容 Record 的处理；`--json` 与 `--ndjson` 不能同时使用。
 
 支持的 search → detail 管道推荐让管道自动选择规范 NDJSON：
 
@@ -362,7 +371,9 @@ provider 失败或全部 provider 失败时非零退出，但在有响应数据�
 `source_not_regular_file`、`source_read_failed`、`source_http_status`、`snapshot_failed`、
 `source_loader_not_configured`、`provider_not_configured`、`missing_credential`、`malformed_upstream_response`、
 `upstream_http_status`、`provider_failed`、`all_providers_failed`、`challenge_required`、`solver_unavailable`、
-`solver_failed` 和 `malformed_solver_response`。provider failure cause 会在输出边界脱敏：只发布经过审查的
+`solver_failed` 和 `malformed_solver_response`。
+
+provider failure cause 会在输出边界脱敏：只发布经过审查的
 稳定 code 与安全 message，不发布 wrapped cause 或上游诊断。
 
 所有公开位置参数命令都支持一次隐式非 TTY stdin 补值：缺少一个必填值或省略可选值时，完整 stdin 作为一个值，只移除一个末尾 LF/CRLF，不按 shell 空白拆分；显式位置参数存在时不读 stdin。例如 `printf '%s\n' 13214141 | pixiv search` 等价于 `pixiv search 13214141`。`download`、`bookmark add/remove`、`follow add/remove` 和 `detail` 对隐式输入按首个非空白字节选择严格 canonical NDJSON 或一个裸 ID/URL，选定模式后不回退；`detail` 会按 Record 的 `type` 推断作品、小说或用户详情；`-` 只是普通文本。
@@ -404,7 +415,8 @@ canonical 数据 action 是 `search`、`detail`、`ranking`、`series`、`commen
 | `novel search` | `pixiv novel search WORD [options]` | 小说搜索兼容路径；优先使用 `pixiv search WORD --type novel`，只暴露基础小说搜索字段。 |
 | `user search` | `pixiv user search WORD [options]` | 用户搜索兼容路径；优先使用 `pixiv search WORD --type user`。 |
 | `follow` | `pixiv follow add\|remove USER_ID ...` | 用户关注兼容路径；与 `pixiv user follow add\|remove` 共享同一 owner 和输入契约。 |
-| `mcp` | `pixiv mcp [--proxy URL\|--no-proxy]` | 启动 MCP stdio server；代理覆盖只在本次启动时生效。 |
+| `mcp` | `pixiv mcp [--port PORT [--host HOST] [--base-url URL]] [--proxy URL\|--no-proxy]` | 默认启动统一本地 stdio；显式 `--port` 启用经认证的 HTTP。 |
+| `mcp auth init` | `pixiv mcp auth init [--reset]` | 初始化本地 MCP owner 并只输出一次 secret；reset 撤销 grants，保留 clients 与选中账号。 |
 | `fanbox auth` | `pixiv fanbox auth import|list|use|remove|status` | 导入并管理本地 FANBOX session；session 值永不输出。native `--proxy`/`--no-proxy` 只影响本次 FANBOX 命令。 |
 | `fanbox creators` | `pixiv fanbox creators [--kind supporting\|following] [--page N --limit N]` | 列出 supporting 或 following FANBOX creator。 |
 | `fanbox posts` | `pixiv fanbox posts SOURCE [--page N --limit N]` | 按 creator、tag、post ID 或支持的 FANBOX URL 列出帖子。 |
@@ -412,7 +424,6 @@ canonical 数据 action 是 `search`、`detail`、`ranking`、`series`、`commen
 | `fanbox home` / `supporting` | `pixiv fanbox home|supporting [--page N --limit N]` | 读取认证 FANBOX home 或 supporting feed。 |
 | `fanbox post` | `pixiv fanbox post POST_ID` | 读取一个帖子及其安全 asset 摘要。 |
 | `fanbox download` | `pixiv fanbox download SOURCE...` | 将 FANBOX 帖子 asset 保存到配置的下载目录下。 |
-| `fanbox mcp` | `pixiv fanbox mcp [--proxy URL\|--no-proxy]` | 启动只读 FANBOX MCP stdio server；native 代理不会修改 FlareSolverr 配置。 |
 
 下载文件名会规范化文件名模板以及 URL 推导扩展名中的跨平台非法字符。Pixiv 缩略图若资源响应的
 Content-Type 与 URL 后缀不一致（例如 URL 为 `.png`、实体为 JPEG），会按实际媒体类型修正发布后的扩展名；
@@ -502,7 +513,9 @@ AI-only 和收藏数筛选仍在本地筛选后执行逻辑 skip，可能需要�
 作品 `search --json/--ndjson` 和 `detail --json` 保留上游 `is_bookmarked`、`is_muted`、`visible`、
 `sanity_level`、`restriction_attributes` 与可选 `series`（`id`、`title`）。详情还保留上游提供的
 `total_comments`；搜索不虚构此值。viewer 状态属于本次读取使用的账号，不一定是后续写入使用的账号。
-缺失的 viewer/safety 字段与 series 会省略；上游明确提供空 `restriction_attributes` 时仍序列化为 `[]`。字段缺失表示未知，不等于 `false` 或 `0`。不会对每条结果发额外的补全请求。
+缺失的 viewer/safety 字段与 series 会省略；上游明确提供空 `restriction_attributes` 时仍序列化为 `[]`。
+
+字段缺失表示未知，不等于 `false` 或 `0`。不会对每条结果发额外的补全请求。
 作品 JSON/NDJSON 保留必要的 opaque resource reference，不输出已解析/签名资源 URL、请求头、
 Cookie、过期 metadata、token 或其他 transport 凭据。`download` 是动作：成功 stdout 为空；Ugoira 文件名回退 warning 只写 stderr，失败保留明确诊断并以非零退出。
 
@@ -542,7 +555,9 @@ STRATA · Sculptris · modo · AnimationMaster · VistaPro · Sunny3D · 3D-Coat
 `detail --type artwork` 接受正整数作品 ID，或规范 HTTPS `pixiv.net`/`www.pixiv.net` 作品 URL：`/artworks/{id}`；
 可带 locale、query 和 fragment。`detail --type novel` 与 `detail --type user` 要求正整数 ID；不支持的 URL 形状会在本地失败，
 不会把用户/小说 URL 静默当作作品 URL。`detail` 也接受 stdin 中的规范 NDJSON Record：`illust`、`manga`、`ugoira` 和通用
-`artwork` 进入作品详情，`novel` 与 `user` 进入对应详情。artwork、novel、user 搜索记录因此不需要显式
+`artwork` 进入作品详情，`novel` 与 `user` 进入对应详情。
+
+artwork、novel、user 搜索记录因此不需要显式
 `--type`；record mode 中显式 `--type` 只是 compatibility constraint，不能覆盖 Record 的 `type`。反向搜图输出的
 `artwork`、`user` identity record 也可直接作为 `detail` 输入。record mode 下，`--ndjson` 输出规范 Record，显式
 `--json` 输出一个完整 JSON 数组；省略输出 flag 时，非 TTY stdout 自动使用 NDJSON。`search --json` 是聚合 JSON 文档，
@@ -627,13 +642,21 @@ proxy_url = "socks5://solver-upstream.example:1080"
 `[pixiv.network].proxy_url`、`[fanbox.network].proxy_url` 与 `[reverse_search.network].proxy_url` 都区分缺失和显式空值。
 Pixiv、FANBOX 与 reverse search 保持各自 service boundary。对 reverse search，命令级覆盖（`--proxy`/`--no-proxy`）
 同时作用于 standard 与 ascii2d；否则 reverse-search service value 只作用于 ascii2d，standard source/SauceNAO client
-继续使用全局 route。reverse-search `user_agent` 只影响 ascii2d，并必须与 browser client hint 配对，不改变 SauceNAO
+继续使用全局 route。
+
+reverse-search `user_agent` 只影响 ascii2d，并必须与 browser client hint 配对，不改变 SauceNAO
 或 standard source client。`FlareSolverr` 可选且仅 challenge-only：control URL 与 browser upstream proxy 独立于两个
 native reverse-search route，协议是 JSON 而不是 image multipart。默认 config generator 会省略可选的 service proxy
 与 FlareSolverr table，但仍可能生成 baseline
 `[reverse_search]` provider/filter 值。
 
-`[account_pool]` 只保存 `enabled` 与 `strategy`；每个账号的 `schedulable`、冻结和 marker 状态位于 `pixiv-cli.db`。已移除的 `account_pool.accounts` 不会自动迁移；若仍存在，runtime 配置会返回 `removed_setting`，必须显式执行 `pixiv config unset account_pool_accounts` 清理。不要把 refresh token 写入 `config.toml`。历史 `data/account-pool.json` scheduler 不会被自动读取、迁移或删除。`[logging].level` 只接受 `info`、`debug`，`[logging].format` 只接受 `text`、`json`；`PIXIV_LOG_LEVEL` 与 `PIXIV_LOG_FORMAT` 覆盖文件值。debug 诊断只写 stderr，不输出 query、header、Cookie、token、响应体或 proxy userinfo，也不创建日志文件；config 管理与 secret export 继续静默，MCP stdout 仍只保留 JSON-RPC。
+`[account_pool]` 只保存 `enabled` 与 `strategy`；每个账号的 `schedulable`、冻结和 marker 状态位于 `pixiv-cli.db`。
+
+已移除的 `account_pool.accounts` 不会自动迁移；若仍存在，runtime 配置会返回 `removed_setting`，必须显式执行 `pixiv config unset account_pool_accounts` 清理。不要把 refresh token 写入 `config.toml`。
+
+历史 `data/account-pool.json` scheduler 不会被自动读取、迁移或删除。`[logging].level` 只接受 `info`、`debug`，`[logging].format` 只接受 `text`、`json`；`PIXIV_LOG_LEVEL` 与 `PIXIV_LOG_FORMAT` 覆盖文件值。
+
+debug 诊断只写 stderr，不输出 query、header、Cookie、token、响应体或 proxy userinfo，也不创建日志文件。config 管理与 secret export 继续静默。MCP JSON-RPC 在 stdio 模式使用 stdout，指定 `--port` 后使用 HTTP。
 
 v1 CLI 不会读取或迁移旧的 `~/.pixiv-cli/auth.json`。从旧版本切换前，请在旧 CLI 执行
 `pixiv auth export --all --output <private bundle>`，再通过 shell 重定向或管道在 v1 执行
@@ -650,7 +673,7 @@ v1 CLI 不会读取或迁移旧的 `~/.pixiv-cli/auth.json`。从旧版本切换
 | `PIXIV_LOG_LEVEL` | `info` | 诊断级别：`info` 或 `debug`，覆盖 `[logging].level`。 |
 | `PIXIV_LOG_FORMAT` | `text` | 诊断 stderr 格式：`text` 或 `json`，覆盖 `[logging].format`。 |
 | `SAUCENAO_API_KEY` | 空 | SauceNAO credential；覆盖私有配置值且永不打印。 |
-| `https_proxy` / `HTTPS_PROXY` | 空 | `http`、`https`、`socks5` 或 `socks5h` 代理 URI；优先使用小写 `https_proxy`。 |
+| `https_proxy` / `HTTPS_PROXY` | 空 | `http`、`https`、`socks5` 或 `socks5h` 代理 URI；在区分大小写的系统上优先使用小写 `https_proxy`；Windows 将这两种拼写视为同一个环境变量。 |
 
 CLI 数据命令在账号池关闭时使用 `pixiv auth use` 的显式/默认账号，启用时从数据库选择 eligible 账号；不接受身份选择参数。
 
@@ -664,6 +687,58 @@ v1 已删除匿名 Web API fallback。内容命令要求先通过 `pixiv auth us
 可用 `pixiv config unset web_fallback_enabled` 清除。
 
 无效 token 与 App API 网络或服务器错误会返回安全的、已分类的失败。
+
+## MCP HTTP server
+
+`pixiv mcp` 默认使用 stdio，一个本地连接同时提供 Pixiv/FANBOX：
+
+```json
+{"mcpServers":{"pixiv":{"command":"pixiv","args":["mcp"]}}}
+```
+
+本地调用使用 CLI 默认账号或账号池及独立 FANBOX session，不读取或初始化 HTTP owner。本地登录沿用 `pixiv auth login` / `pixiv fanbox auth`。stdio stdout 只承载 JSON-RPC，诊断写 stderr。
+
+只有显式 `--port` 才启用 HTTP，端口须为 1–65535 的整数：
+
+```bash
+pixiv mcp auth init
+pixiv mcp --port 1270
+pixiv mcp --port 9000
+pixiv mcp --port 1270 --host 0.0.0.0 --base-url https://mcp.example.com/prefix
+# 容器：使用既有 HTTPS 代理和持久私有 app-data volume：
+docker run --rm -p 1270:1270 -v pixiv-data:/home/pixiv/.pixiv-cli IMAGE mcp --port 1270 --host 0.0.0.0 --base-url https://mcp.example.com
+```
+
+`--host` 默认 `127.0.0.1`；loopback 自动推导公开 URL，支持 IPv6（`--host ::1` 对应 `http://[::1]:PORT`）。其他地址（包括 `0.0.0.0`、`::`）须显式提供 `--base-url`。公开 URL 可与监听地址不同，非 loopback 公开地址须为 HTTPS。URL 拒绝用户信息、非法端口、query、fragment 和 dot path segment，保留验证后的路径前缀；不根据 Host/Forwarded headers 推导。单独传 `--host` 或 `--base-url` 报错。不根据 TTY、stdin、凭据、环境变量或配置猜测传输模式。参数、owner 状态或监听失败时明确退出，不另选端口。
+
+未发布 PR 的 `mcp.listen_addr` / `mcp.base_url`（别名 `mcp_listen_addr` / `mcp_base_url`）已从公开配置移除，不影响启动；请从 `config.toml` 清理开发版旧项并使用 flags。旧 `--listen-addr HOST:PORT` 对应 `--port PORT --host HOST`，不需要额外配置文件或传输配置项。
+
+Gallery 读取继续使用以下启动配置（`config get/set/unset`）：
+
+| 别名 | `[mcp]` 下的 TOML 键 | 默认值 | 校验 |
+| --- | --- | --- | --- |
+| `mcp_gallery_animation_temp_capacity_mib` | `gallery_animation_temp_capacity_mib` | `1024` | 正整数，校验 MiB 换算溢出；独立的私有动图暂存预算 |
+| `mcp_gallery_cache_capacity_mib` | `gallery_cache_capacity_mib` | `256` | 非负整数，校验 MiB 换算溢出；`0` 关闭缓存 |
+| `mcp_gallery_cache_ttl` | `gallery_cache_ttl` | `"15m"` | 正时长字符串 |
+| `mcp_gallery_concurrency` | `gallery_concurrency` | `4` | 正整数；metadata 与图片各自使用独立并发上限 |
+
+缺失配置和 `config unset` 均恢复默认值，不新增 flag 或环境变量。修改后重启 MCP 生效。进程内 LRU 预算包含 metadata 载荷和图片填充缓冲；超预算图片仍完整流式返回，不缓存、不截断。缓存期限取配置 TTL、签发授权期限与上游只读会话期限中的最早值；作品信息可能在该窗口内延迟反映更新，收藏状态与写操作仍实时执行。命中仍检查授权与账号／凭据／网络版本；撤销后拒绝后续读取，重启清空缓存。HTTP 保持 `private, no-store`，不使用磁盘或公共 CDN 缓存。
+
+endpoint 为 base URL 加 `/mcp`，与 owner 已初始化状态一起写 stderr，不打印 owner secret。HTTP 模式的 server stdout 不传输 JSON-RPC。两产品共享 endpoint，但保留独立凭据与 runtime。`pixiv fanbox mcp` 迁移到统一 `pixiv mcp`。`--proxy` / `--no-proxy` 仍只覆盖本次上游网络请求，不配置入站 TLS，也不改写 FlareSolverr 设置。
+
+本地支持 HTTP；云端 connector 使用公网 HTTPS base，由既有反向代理终止 TLS，pixiv-cli 不申请证书。代理须保留公网 Host 和原始转义路径。入站 Host 及存在的 Origin 必须匹配 canonical 部署 origin（接受 host 大小写、默认端口的等价表示），转发头不能建立信任。base 为 `https://mcp.example.com/pixiv` 时，转发 `/pixiv/mcp`、`/pixiv/oauth/authorize`、`/pixiv/oauth/register`、`/pixiv/oauth/token`、`/.well-known/oauth-protected-resource`、`/.well-known/oauth-protected-resource/pixiv/mcp` 和 `/.well-known/oauth-authorization-server/pixiv`；不要去掉 prefix 或归一化转义/双斜线路径。详见 [MCP HTTP 授权](mcp-tools.md#http-授权)；本地 fixture 不代表云端 host 互操作验收。
+
+Unix 下，`SIGINT`（Ctrl+C）与 `SIGTERM` 会取消服务并等待在途 HTTP handler 完成清理。取消信息写入 stderr，退出码为 `1`；不设置固定清理超时。
+
+## MCP owner 初始化
+
+`pixiv mcp auth init` 是本地管理命令，不是 MCP tool，也不启动 server。状态保存在 `<app-data>/mcp-state.json`，复用私有侧车锁与原子替换。Unix 目录权限为 `0700`，state/lock 文件为 `0600`。不修改 Pixiv/FANBOX 凭据、CLI default、数据库 schema 或配置，不执行自动更新或桌面 helper 初始化。
+
+成功时 stdout 只有新生成的 256 位随机 owner secret 和换行。请保存到密码管理器，不放进聊天、MCP 参数、日志或源码；文件只保存 SHA-256 verifier。普通重复 init 失败，不替换状态或再次显示旧 secret。显式 `--reset` 生成新的 verifier/generation 并清除全部 OAuth grants/token hashes，保留 client metadata 和 `selected_pixiv_user_id`。
+
+损坏/缺字段的 JSON、不支持的版本、非常规文件/符号链接及私有文件权限错误都明确失败，不能靠 reset 静默抹去。磁盘写入失败不输出 secret；若提交后 stdout 输出失败，owner 已保存，错误提示使用 `pixiv mcp auth init --reset` 恢复（同时撤销 grants）。
+
+此命令不启动 listener；请按 [HTTP 启动说明](#mcp-http-server) 单独运行 `pixiv mcp --port PORT`。
 
 ## 版本与更新
 
@@ -704,7 +779,7 @@ SemVer tag，检查会报告该 tag 并 fail-closed。
 普通 CLI 命令成功后会尽力检查 stable 更新。它跳过 MCP、help 与根 `--version`、`update`、全部 `auth export`、bundle 形式的 `auth import` 与开发构建，
 对同一用户 cache 最多每 24 小时查询一次，并为自动检查设定最多 3 秒的等待时间。发现新版本或
 检查失败只写 stderr（失败为 warning），不改变业务命令退出码，也不会污染 JSON stdout 或 MCP
-JSON-RPC stdout。可关闭自动检查：
+HTTP JSON-RPC 响应。可关闭自动检查：
 
 ```bash
 # ~/.pixiv-cli/config.toml
@@ -717,7 +792,7 @@ check_enabled = false
 本参考手册只定义 CLI 边界；其他接口与维护流程以对应权威文档为准：
 
 - [Go SDK](sdk.md)：public client、模型、分页、资源和 typed error。
-- [MCP tools](mcp-tools.md)：tool 名称、输入 schema、输出和 stdio 行为。
+- [MCP tools](mcp-tools.md)：tool 名称、输入 schema、输出和 HTTP 授权。
 - [架构](maintainers/architecture.md)：包职责和运行流程。
 - [开发流程](maintainers/development.md)：环境、测试、构建和发布门禁。
 - [Agent skill](../../skills/pixiv-cli/SKILL.md)：供 Agent 安全驱动已安装 CLI 的说明。

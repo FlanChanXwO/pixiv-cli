@@ -6,7 +6,8 @@ use std::os::raw::c_char;
 use std::panic::{catch_unwind, AssertUnwindSafe};
 use std::path::{Path, PathBuf};
 use std::ptr::null_mut;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+use std::sync::Mutex;
 
 use crc32fast::Hasher as Crc32;
 use gif::{DisposalMethod, Encoder, Frame, Repeat};
@@ -27,9 +28,27 @@ const RESERVOIR_SEED: u64 = 0x9e37_79b9_7f4a_7c15;
 const FLOYD_STEINBERG_ERROR_DIFFUSION: f32 = 0.1;
 const PNG_SIGNATURE: &[u8; 8] = b"\x89PNG\r\n\x1a\n";
 
-#[derive(Debug, Default)]
+#[derive(Clone, Copy, Debug)]
+struct OutputBudget {
+    reserve: extern "C" fn(u64, u64) -> i32,
+    handle: u64,
+}
+
+#[derive(Debug)]
 pub struct CancellationToken {
     canceled: AtomicBool,
+    output_limit: AtomicU64,
+    output_budget: Mutex<Option<OutputBudget>>,
+}
+
+impl Default for CancellationToken {
+    fn default() -> Self {
+        Self {
+            canceled: AtomicBool::new(false),
+            output_limit: AtomicU64::new(u64::MAX),
+            output_budget: Mutex::new(None),
+        }
+    }
 }
 
 impl CancellationToken {
@@ -42,6 +61,43 @@ impl CancellationToken {
             return Err(EncodeError::Canceled);
         }
         Ok(())
+    }
+}
+
+// Each encoder owns this writer; quota is checked before the underlying file write.
+struct BudgetWriter {
+    file: File,
+    remaining: u64,
+    budget: Option<OutputBudget>,
+}
+impl BudgetWriter {
+    fn create(path: &Path, cancellation: &CancellationToken) -> io::Result<Self> {
+        Ok(Self {
+            file: File::create(path)?,
+            remaining: cancellation.output_limit.load(Ordering::Acquire),
+            budget: *cancellation
+                .output_budget
+                .lock()
+                .map_err(|_| io::Error::other("animation output budget unavailable"))?,
+        })
+    }
+}
+impl Write for BudgetWriter {
+    fn write(&mut self, data: &[u8]) -> io::Result<usize> {
+        if data.len() as u64 > self.remaining {
+            return Err(io::Error::other("animation temporary capacity exhausted"));
+        }
+        if let Some(budget) = self.budget {
+            if (budget.reserve)(budget.handle, data.len() as u64) == 0 {
+                return Err(io::Error::other("animation temporary capacity exhausted"));
+            }
+        }
+        let written = self.file.write(data)?;
+        self.remaining -= written as u64;
+        Ok(written)
+    }
+    fn flush(&mut self) -> io::Result<()> {
+        self.file.flush()
     }
 }
 
@@ -269,7 +325,7 @@ pub fn encode_apng(
     let first = resize_frame(first, output_size);
 
     cancellation.check()?;
-    let mut output = File::create(output_path)?;
+    let mut output = BudgetWriter::create(output_path, cancellation)?;
     write_apng_header(&mut output, output_size, frame_count)?;
     let mut sequence = 0u64;
     write_apng_frame(
@@ -282,7 +338,7 @@ pub fn encode_apng(
             height: output_size.1,
         },
         first_delay,
-        true,
+        None,
         &mut sequence,
         cancellation,
     )?;
@@ -304,7 +360,7 @@ pub fn encode_apng(
             &current,
             region,
             delay,
-            false,
+            Some(&previous),
             &mut sequence,
             cancellation,
         )?;
@@ -414,7 +470,7 @@ fn write_global_palette_gif(
     let mut archive = open_archive(zip_path)?;
     let global_palette = gif_palette_bytes(opaque_palette, first_pass.histogram.has_transparency);
     let mut encoder = Encoder::new(
-        File::create(output_path)?,
+        BudgetWriter::create(output_path, cancellation)?,
         first_pass.output_size.0 as u16,
         first_pass.output_size.1 as u16,
         &global_palette,
@@ -429,6 +485,7 @@ fn write_global_palette_gif(
         Some(QuantizeMethod::from(palette))
     };
 
+    let mut previous: Option<Vec<u8>> = None;
     for frame_meta in frames {
         cancellation.check()?;
         let decoded = decode_frame(&mut archive, frame_meta, cancellation)?;
@@ -444,18 +501,77 @@ fn write_global_palette_gif(
             first_pass.histogram.has_transparency,
         )?;
         cancellation.check()?;
+        let (width, height) = first_pass.output_size;
+        let mut region = FrameRegion {
+            x: 0,
+            y: 0,
+            width,
+            height,
+        };
+        // 不透明帧复用已显示的调色结果；透明帧仍清空背景，避免残影。
+        if let Some(previous) = &previous {
+            let mut bounds: Option<(u32, u32, u32, u32)> = None;
+            for (index, (current, prior)) in indices.iter().zip(previous).enumerate() {
+                if current != prior {
+                    let (x, y) = (index as u32 % width, index as u32 / width);
+                    bounds = Some(match bounds {
+                        None => (x, y, x, y),
+                        Some((left, top, right, bottom)) => {
+                            (left.min(x), top.min(y), right.max(x), bottom.max(y))
+                        }
+                    });
+                }
+            }
+            region = match bounds {
+                Some((left, top, right, bottom)) => FrameRegion {
+                    x: left,
+                    y: top,
+                    width: right - left + 1,
+                    height: bottom - top + 1,
+                },
+                None => FrameRegion {
+                    x: 0,
+                    y: 0,
+                    width: 1,
+                    height: 1,
+                },
+            };
+        }
+        let buffer = if region.width == width && region.height == height {
+            Cow::Borrowed(indices.as_slice())
+        } else {
+            Cow::Owned(
+                (region.y..region.y + region.height)
+                    .flat_map(|y| {
+                        let start = (y * width + region.x) as usize;
+                        indices[start..start + region.width as usize]
+                            .iter()
+                            .copied()
+                    })
+                    .collect(),
+            )
+        };
         let frame = Frame {
-            width: first_pass.output_size.0 as u16,
-            height: first_pass.output_size.1 as u16,
+            left: region.x as u16,
+            top: region.y as u16,
+            width: region.width as u16,
+            height: region.height as u16,
             delay: gif_delay_ticks(frame_meta.delay, &frame_meta.file)?,
-            dispose: DisposalMethod::Background,
+            dispose: if first_pass.histogram.has_transparency {
+                DisposalMethod::Background
+            } else {
+                DisposalMethod::Keep
+            },
             transparent: first_pass.histogram.has_transparency.then_some(0),
-            buffer: Cow::Owned(indices),
+            buffer,
             ..Frame::default()
         };
         cancellation.check()?;
         encoder.write_frame(&frame)?;
         cancellation.check()?;
+        if !first_pass.histogram.has_transparency {
+            previous = Some(indices);
+        }
     }
     Ok(())
 }
@@ -745,11 +861,26 @@ fn write_apng_frame<W: Write>(
     image: &RgbaImage,
     region: FrameRegion,
     delay: (u16, u16),
-    first_frame: bool,
+    previous: Option<&RgbaImage>,
     sequence: &mut u64,
     cancellation: &CancellationToken,
 ) -> Result<(), EncodeError> {
     cancellation.check()?;
+    let mut unchanged = false;
+    let use_over = previous.is_some_and(|previous| {
+        let opaque_changes = frame_region_rows(image, region)
+            .zip(frame_region_rows(previous, region))
+            .all(|(current, previous)| {
+                current
+                    .chunks_exact(4)
+                    .zip(previous.chunks_exact(4))
+                    .all(|(current, previous)| {
+                        unchanged |= current == previous;
+                        current == previous || current[3] == 255
+                    })
+            });
+        opaque_changes && unchanged
+    });
     let mut control = [0u8; 26];
     control[0..4].copy_from_slice(&next_apng_sequence(sequence)?.to_be_bytes());
     control[4..8].copy_from_slice(&region.width.to_be_bytes());
@@ -759,14 +890,18 @@ fn write_apng_frame<W: Write>(
     control[20..22].copy_from_slice(&delay.0.to_be_bytes());
     control[22..24].copy_from_slice(&delay.1.to_be_bytes());
     control[24] = 0; // DisposeOp::None
-    control[25] = 0; // BlendOp::Source
+    control[25] = u8::from(use_over); // 不透明变化可用 Over；透明变化仍需 Source 覆盖。
     write_png_chunk(output, *b"fcTL", &control)?;
 
     // png 0.18.1 的单个 APNG StreamWriter 在动态 set_frame_dimension 后不会按 bbox
     // 重建 prev/curr/filtered 行缓冲。这里为每个 bbox 创建普通 PNG stream writer，令其
     // 行缓冲从一开始就是 bbox width；relay 只转发 IDAT 压缩字节，不保存 payload。
-    let mut relay =
-        PngFrameDataRelay::new(output, sequence, first_frame, (region.width, region.height));
+    let mut relay = PngFrameDataRelay::new(
+        output,
+        sequence,
+        previous.is_none(),
+        (region.width, region.height),
+    );
     {
         let mut encoder = PngEncoder::new(&mut relay, region.width, region.height);
         encoder.set_color(ColorType::Rgba);
@@ -776,9 +911,30 @@ fn write_apng_frame<W: Write>(
         let mut writer = encoder.write_header()?;
         {
             let mut stream = writer.stream_writer()?;
-            for row in frame_region_rows(image, region) {
-                cancellation.check()?;
-                stream.write_all(row)?;
+            if let Some(previous) = previous.filter(|_| use_over) {
+                let mut delta = vec![0; region.width as usize * 4];
+                for (current, previous) in
+                    frame_region_rows(image, region).zip(frame_region_rows(previous, region))
+                {
+                    cancellation.check()?;
+                    for ((target, current), previous) in delta
+                        .chunks_exact_mut(4)
+                        .zip(current.chunks_exact(4))
+                        .zip(previous.chunks_exact(4))
+                    {
+                        if current == previous {
+                            target.fill(0);
+                        } else {
+                            target.copy_from_slice(current);
+                        }
+                    }
+                    stream.write_all(&delta)?;
+                }
+            } else {
+                for row in frame_region_rows(image, region) {
+                    cancellation.check()?;
+                    stream.write_all(row)?;
+                }
             }
             cancellation.check()?;
             stream.finish()?;
@@ -1326,7 +1482,107 @@ pub unsafe extern "C" fn ugoira_encode(
     max_edge: u32,
 ) -> *mut c_char {
     ffi_result("ugoira_encode", || {
+        if !cancellation.is_null() {
+            // Safety: the legacy entry point owns this token for the synchronous encode.
+            unsafe { &*cancellation }
+                .output_limit
+                .store(u64::MAX, Ordering::Release);
+        }
         // Safety: 本 extern 函数的 Safety contract 覆盖所有传入 raw pointer。
+        unsafe {
+            encode_ffi(
+                zip_path,
+                frames_json,
+                output_path,
+                cancellation,
+                format,
+                max_edge,
+            )
+        }
+    })
+}
+
+#[no_mangle]
+/// Encode with an explicit output byte budget; the legacy entry point remains unbounded.
+///
+/// # Safety
+/// Same pointer contracts as `ugoira_encode`; the token must belong exclusively to
+/// this encode call (concurrent cancellation is permitted).
+pub unsafe extern "C" fn ugoira_encode_bounded(
+    zip_path: *const c_char,
+    frames_json: *const c_char,
+    output_path: *const c_char,
+    cancellation: *const CancellationToken,
+    format: u32,
+    max_edge: u32,
+    max_output_bytes: u64,
+) -> *mut c_char {
+    ffi_result("ugoira_encode_bounded", || {
+        if cancellation.is_null() {
+            return Err(EncodeError::NullPointer("cancellation_token"));
+        }
+        // Safety: the caller owns this token until this synchronous call completes.
+        unsafe { &*cancellation }
+            .output_limit
+            .store(max_output_bytes, Ordering::Release);
+        // Safety: this entry point has the same validated caller contract as the legacy one.
+        unsafe {
+            encode_ffi(
+                zip_path,
+                frames_json,
+                output_path,
+                cancellation,
+                format,
+                max_edge,
+            )
+        }
+    })
+}
+
+struct OutputBudgetGuard<'a>(&'a CancellationToken);
+impl Drop for OutputBudgetGuard<'_> {
+    fn drop(&mut self) {
+        if let Ok(mut budget) = self.0.output_budget.lock() {
+            *budget = None;
+        }
+    }
+}
+
+#[no_mangle]
+/// Apply a shared budget immediately before each native file write.
+///
+/// # Safety
+/// Same exclusive token/pointer contract as `ugoira_encode_bounded`. The callback
+/// and opaque handle must remain valid until this synchronous call returns; the
+/// callback must not unwind. They are never retained after this call.
+pub unsafe extern "C" fn ugoira_encode_budgeted(
+    zip_path: *const c_char,
+    frames_json: *const c_char,
+    output_path: *const c_char,
+    cancellation: *const CancellationToken,
+    format: u32,
+    max_edge: u32,
+    max_output_bytes: u64,
+    reserve: Option<extern "C" fn(u64, u64) -> i32>,
+    handle: u64,
+) -> *mut c_char {
+    ffi_result("ugoira_encode_budgeted", || {
+        if cancellation.is_null() {
+            return Err(EncodeError::NullPointer("cancellation_token"));
+        }
+        let reserve = reserve.ok_or(EncodeError::NullPointer("output_budget_callback"))?;
+        // Safety: the caller keeps its exclusively owned token alive until return.
+        let token = unsafe { &*cancellation };
+        token
+            .output_limit
+            .store(max_output_bytes, Ordering::Release);
+        *token
+            .output_budget
+            .lock()
+            .map_err(|_| io::Error::other("animation output budget unavailable"))? =
+            Some(OutputBudget { reserve, handle });
+        let _guard = OutputBudgetGuard(token);
+        // Safety: validated caller contract is identical to the bounded entry point.
         unsafe {
             encode_ffi(
                 zip_path,
@@ -1421,6 +1677,105 @@ mod tests {
     use zip::write::SimpleFileOptions;
 
     type TestRgbaImage = ImageBuffer<Rgba<u8>, Vec<u8>>;
+
+    #[test]
+    fn bounded_encoding_never_writes_beyond_budget() {
+        for apng in [false, true] {
+            let dir = tempdir().unwrap();
+            let zip_path = dir.path().join("input.zip");
+            let output = dir.path().join("output");
+            write_rgba_zip(&zip_path, "0.png", 8, 4, Rgba([255, 0, 0, 255]));
+            let frames = vec![UgoiraFrame {
+                file: "0.png".to_string(),
+                delay: 80,
+            }];
+            let token = CancellationToken::default();
+            token.output_limit.store(16, Ordering::Release);
+            let result = if apng {
+                encode_apng(&zip_path, &frames, &output, 0, &token)
+            } else {
+                encode_gif(&zip_path, &frames, &output, 0, &token)
+            };
+            assert!(result.is_err(), "quota exhaustion must fail encoding");
+            assert!(std::fs::metadata(output).unwrap().len() <= 16);
+        }
+    }
+
+    #[test]
+    fn legacy_entry_does_not_inherit_a_bounded_call_budget() {
+        let dir = tempdir().unwrap();
+        let zip_file = dir.path().join("input.zip");
+        write_rgba_zip(&zip_file, "0.png", 2, 2, Rgba([255, 0, 0, 255]));
+        let zip = CString::new(zip_file.to_string_lossy().as_bytes()).unwrap();
+        let frames = CString::new(r#"[{"file":"0.png","delay":80}]"#).unwrap();
+        let output = CString::new(dir.path().join("out.gif").to_string_lossy().as_bytes()).unwrap();
+        let token = ugoira_cancel_token_new();
+        let error = unsafe {
+            ugoira_encode_bounded(
+                zip.as_ptr(),
+                frames.as_ptr(),
+                output.as_ptr(),
+                token,
+                0,
+                0,
+                16,
+            )
+        };
+        assert!(!error.is_null());
+        unsafe { ugoira_free_error(error) };
+        let error =
+            unsafe { ugoira_encode(zip.as_ptr(), frames.as_ptr(), output.as_ptr(), token, 0, 0) };
+        if !error.is_null() {
+            unsafe { ugoira_free_error(error) };
+        }
+        assert!(unsafe { ugoira_cancel_token_free(token) }.is_null());
+        assert!(
+            error.is_null(),
+            "legacy entry must remain unbounded for a reused token"
+        );
+    }
+
+    #[test]
+    fn shared_budget_is_cleared_before_reusing_token() {
+        extern "C" fn deny(_: u64, _: u64) -> i32 {
+            0
+        }
+        let dir = tempdir().unwrap();
+        let zip_file = dir.path().join("input.zip");
+        write_rgba_zip(&zip_file, "0.png", 2, 2, Rgba([255, 0, 0, 255]));
+        let zip = CString::new(zip_file.to_string_lossy().as_bytes()).unwrap();
+        let frames = CString::new(r#"[{"file":"0.png","delay":80}]"#).unwrap();
+        let output = CString::new(dir.path().join("out.gif").to_string_lossy().as_bytes()).unwrap();
+        let token = ugoira_cancel_token_new();
+        // Safety: all strings/token and callback stay alive throughout the synchronous calls.
+        let error = unsafe {
+            ugoira_encode_budgeted(
+                zip.as_ptr(),
+                frames.as_ptr(),
+                output.as_ptr(),
+                token,
+                0,
+                0,
+                u64::MAX,
+                Some(deny),
+                0,
+            )
+        };
+        assert!(!error.is_null());
+        unsafe { ugoira_free_error(error) };
+        // Safety: the token has not yet been freed or shared with another encoder.
+        assert!(unsafe { &*token }.output_budget.lock().unwrap().is_none());
+        let error =
+            unsafe { ugoira_encode(zip.as_ptr(), frames.as_ptr(), output.as_ptr(), token, 0, 0) };
+        if !error.is_null() {
+            unsafe { ugoira_free_error(error) };
+        }
+        assert!(unsafe { ugoira_cancel_token_free(token) }.is_null());
+        assert!(
+            error.is_null(),
+            "legacy encoding must not call an expired budget callback"
+        );
+    }
 
     #[test]
     fn parses_frames_json() {
@@ -2200,6 +2555,62 @@ mod tests {
     }
 
     #[test]
+    fn apng_sparse_changes_preserve_pixels_with_smaller_frame_payloads() {
+        let dir = tempdir().unwrap();
+        let zip_path = dir.path().join("ugoira.zip");
+        let out_path = dir.path().join("out.apng");
+        let first = ImageBuffer::from_fn(128, 96, |x, y| {
+            let n = (y * 128 + x).wrapping_mul(2_654_435_761);
+            Rgba([n as u8, (n >> 8) as u8, (n >> 16) as u8, 255])
+        });
+        let mut second = first.clone();
+        second.put_pixel(0, 0, Rgba([255, 255, 255, 255]));
+        second.put_pixel(127, 95, Rgba([0, 0, 0, 255]));
+        write_images_zip(
+            &zip_path,
+            &[
+                ("000000.png", first.clone()),
+                ("000001.png", second.clone()),
+            ],
+        );
+        let frames = vec![
+            UgoiraFrame {
+                file: "000000.png".into(),
+                delay: 80,
+            },
+            UgoiraFrame {
+                file: "000001.png".into(),
+                delay: 125,
+            },
+        ];
+        encode_apng(
+            &zip_path,
+            &frames,
+            &out_path,
+            0,
+            &CancellationToken::default(),
+        )
+        .unwrap();
+        let body = std::fs::read(&out_path).unwrap();
+        let first_bytes: usize = png_chunks_data(&body, b"IDAT")
+            .iter()
+            .map(|data| data.len())
+            .sum();
+        let second_bytes: usize = png_chunks_data(&body, b"fdAT")
+            .iter()
+            .map(|data| data.len() - 4)
+            .sum();
+        assert!(
+            second_bytes < first_bytes / 4,
+            "unchanged texture was repeated: {second_bytes}/{first_bytes}"
+        );
+        assert_eq!(
+            decode_apng_rgba_frames(&out_path),
+            vec![first.into_raw(), second.into_raw()]
+        );
+    }
+
+    #[test]
     fn apng_delta_frames_replay_to_original_rgba_images() {
         let dir = tempdir().unwrap();
         let zip_path = dir.path().join("ugoira.zip");
@@ -2208,13 +2619,16 @@ mod tests {
             Rgba([(x * 40) as u8, (y * 80) as u8, 120, (x * 70 + 40) as u8])
         });
         let mut second = first.clone();
-        second.put_pixel(1, 0, Rgba([200, 10, 20, 0]));
+        second.put_pixel(1, 0, Rgba([200, 10, 20, 128]));
         second.put_pixel(2, 1, Rgba([5, 220, 30, 255]));
+        let mut third = second.clone();
+        third.put_pixel(0, 1, Rgba([80, 20, 10, 0]));
         write_images_zip(
             &zip_path,
             &[
                 ("000000.png", first.clone()),
                 ("000001.png", second.clone()),
+                ("000002.png", third.clone()),
             ],
         );
         let frames = vec![
@@ -2225,6 +2639,10 @@ mod tests {
             UgoiraFrame {
                 file: "000001.png".to_string(),
                 delay: 60,
+            },
+            UgoiraFrame {
+                file: "000002.png".to_string(),
+                delay: 100,
             },
         ];
 
@@ -2238,7 +2656,10 @@ mod tests {
         .unwrap();
 
         let decoded = decode_apng_rgba_frames(&out_path);
-        assert_eq!(decoded, vec![first.into_raw(), second.into_raw()]);
+        assert_eq!(
+            decoded,
+            vec![first.into_raw(), second.into_raw(), third.into_raw()]
+        );
     }
 
     #[test]
@@ -2529,6 +2950,141 @@ mod tests {
     }
 
     #[test]
+    fn gif_changed_regions_preserve_complete_opaque_frames_and_delays() {
+        let dir = tempdir().unwrap();
+        let zip_path = dir.path().join("ugoira.zip");
+        let out_path = dir.path().join("out.gif");
+        let first = ImageBuffer::from_fn(16, 12, |x, y| {
+            if (x + y) % 2 == 0 {
+                Rgba([255, 0, 0, 255])
+            } else {
+                Rgba([0, 255, 0, 255])
+            }
+        });
+        let mut second = first.clone();
+        second.put_pixel(9, 7, Rgba([0, 255, 0, 255]));
+        let mut fourth = second.clone();
+        fourth.put_pixel(2, 3, Rgba([255, 0, 0, 255]));
+        let originals = [first, second.clone(), second, fourth];
+        let names = ["000000.png", "000001.png", "000002.png", "000003.png"];
+        write_images_zip(
+            &zip_path,
+            &names
+                .iter()
+                .zip(&originals)
+                .map(|(name, image)| (*name, image.clone()))
+                .collect::<Vec<_>>(),
+        );
+        let frames = names
+            .iter()
+            .enumerate()
+            .map(|(index, name)| UgoiraFrame {
+                file: name.to_string(),
+                delay: 40 + index as i64 * 10,
+            })
+            .collect::<Vec<_>>();
+        encode_gif(
+            &zip_path,
+            &frames,
+            &out_path,
+            0,
+            &CancellationToken::default(),
+        )
+        .unwrap();
+        let mut options = gif::DecodeOptions::new();
+        options.set_color_output(gif::ColorOutput::RGBA);
+        let mut decoder = options.read_info(File::open(out_path).unwrap()).unwrap();
+        assert_eq!((decoder.width(), decoder.height()), (16, 12));
+        assert_eq!(decoder.repeat(), Repeat::Infinite);
+        let mut canvas = RgbaImage::new(16, 12);
+        for (index, expected) in originals.iter().enumerate() {
+            let frame = decoder.read_next_frame().unwrap().unwrap();
+            assert_eq!(frame.delay, 4 + index as u16);
+            assert_eq!(frame.transparent, None);
+            for y in 0..frame.height as u32 {
+                for x in 0..frame.width as u32 {
+                    let offset = ((y * frame.width as u32 + x) * 4) as usize;
+                    canvas.put_pixel(
+                        frame.left as u32 + x,
+                        frame.top as u32 + y,
+                        Rgba(frame.buffer[offset..offset + 4].try_into().unwrap()),
+                    );
+                }
+            }
+            assert_eq!(&canvas, expected, "decoded canvas differs at frame {index}");
+            if index > 0 {
+                assert_eq!(
+                    (frame.width, frame.height),
+                    (1, 1),
+                    "unchanged pixels must not repeat a full canvas"
+                );
+            }
+            assert_eq!(frame.dispose, DisposalMethod::Keep);
+        }
+        assert!(decoder.read_next_frame().unwrap().is_none());
+    }
+
+    #[test]
+    fn gif_transparent_frames_keep_background_clear_without_opaque_residue() {
+        let dir = tempdir().unwrap();
+        let zip_path = dir.path().join("ugoira.zip");
+        let out_path = dir.path().join("out.gif");
+        let first = ImageBuffer::from_fn(2, 1, |x, _| {
+            if x == 0 {
+                Rgba([255, 0, 0, 255])
+            } else {
+                Rgba([0, 0, 0, 0])
+            }
+        });
+        let second = ImageBuffer::from_fn(2, 1, |x, _| {
+            if x == 1 {
+                Rgba([0, 255, 0, 255])
+            } else {
+                Rgba([0, 0, 0, 0])
+            }
+        });
+        write_images_zip(
+            &zip_path,
+            &[
+                ("000000.png", first.clone()),
+                ("000001.png", second.clone()),
+            ],
+        );
+        let frames = [
+            UgoiraFrame {
+                file: "000000.png".into(),
+                delay: 40,
+            },
+            UgoiraFrame {
+                file: "000001.png".into(),
+                delay: 60,
+            },
+        ];
+        encode_gif(
+            &zip_path,
+            &frames,
+            &out_path,
+            0,
+            &CancellationToken::default(),
+        )
+        .unwrap();
+        let mut options = gif::DecodeOptions::new();
+        options.set_color_output(gif::ColorOutput::RGBA);
+        let mut decoder = options.read_info(File::open(out_path).unwrap()).unwrap();
+        for expected in [first, second] {
+            let frame = decoder.read_next_frame().unwrap().unwrap();
+            assert_eq!(
+                (frame.left, frame.top, frame.width, frame.height),
+                (0, 0, 2, 1)
+            );
+            assert_eq!(frame.dispose, DisposalMethod::Background);
+            assert!(frame.transparent.is_some());
+            assert_eq!(frame.buffer.as_ref(), expected.as_raw());
+        }
+        assert!(decoder.read_next_frame().unwrap().is_none());
+    }
+
+    #[test]
     fn reserves_transparency_only_for_fully_transparent_pixels() {
         let dir = tempdir().unwrap();
         let zip_path = dir.path().join("ugoira.zip");
@@ -2809,18 +3365,26 @@ mod tests {
                 (ColorType::Rgba, BitDepth::Eight)
             );
             let control = reader.info().frame_control.unwrap();
-            assert_eq!(
-                (control.blend_op, control.dispose_op),
-                (BlendOp::Source, DisposeOp::None)
-            );
+            assert_eq!(control.dispose_op, DisposeOp::None);
             let row_bytes = output.width as usize * 4;
             for row in 0..output.height as usize {
                 let source_start = row * row_bytes;
                 let target_start = ((control.y_offset as usize + row) * canvas_width as usize
                     + control.x_offset as usize)
                     * 4;
-                canvas[target_start..target_start + row_bytes]
-                    .copy_from_slice(&buffer[source_start..source_start + row_bytes]);
+                let target = &mut canvas[target_start..target_start + row_bytes];
+                let source = &buffer[source_start..source_start + row_bytes];
+                if control.blend_op == BlendOp::Source {
+                    target.copy_from_slice(source);
+                } else {
+                    for (target, source) in target.chunks_exact_mut(4).zip(source.chunks_exact(4)) {
+                        match source[3] {
+                            0 => {}
+                            255 => target.copy_from_slice(source),
+                            _ => panic!("delta blend must preserve exact pixels"),
+                        }
+                    }
+                }
             }
             frames.push(canvas.clone());
         }

@@ -133,14 +133,15 @@ if [ "$goos" = windows ]; then
 	binary="$output_dir/pixiv.exe"
 fi
 
+# Native archive contents are external to the Go cache, including unversioned builds.
 if [ -n "$version" ]; then
 	GOOS="$goos" GOARCH="$goarch" CGO_ENABLED=1 CC="$cc" \
-		go build -trimpath -buildvcs=false \
+		go build -a -trimpath -buildvcs=false \
 		-ldflags "-X github.com/FlanChanXwO/pixiv-cli/internal/shared/buildinfo.Version=v${version}" \
 		-o "$binary" ./cmd/pixiv >&2
 else
 	GOOS="$goos" GOARCH="$goarch" CGO_ENABLED=1 CC="$cc" \
-		go build -trimpath -buildvcs=false -o "$binary" ./cmd/pixiv >&2
+		go build -a -trimpath -buildvcs=false -o "$binary" ./cmd/pixiv >&2
 fi
 
 if [ "$goos" = linux ]; then

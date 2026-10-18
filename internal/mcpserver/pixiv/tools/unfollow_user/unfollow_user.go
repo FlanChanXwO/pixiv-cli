@@ -1,4 +1,4 @@
-// Package unfollow_user 实现 unfollow_user tool。
+// Package unfollow_user 实现 pixiv_unfollow_user tool。
 package unfollow_user
 
 import (
@@ -11,9 +11,9 @@ import (
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
-// Register 注册 unfollow_user。
+// Register 注册 pixiv_unfollow_user。
 func Register(app *runtime.App, server *mcp.Server) {
-	runtime.AddTool(app, server, &mcp.Tool{Name: "unfollow_user", Description: "Unfollow a Pixiv user."}, func(ctx context.Context, request *mcp.CallToolRequest, input In) (*mcp.CallToolResult, outputs.Mutation, error) {
+	runtime.AddTool(app, server, &mcp.Tool{Name: "pixiv_unfollow_user", Annotations: &mcp.ToolAnnotations{ReadOnlyHint: false, DestructiveHint: new(true), IdempotentHint: true, OpenWorldHint: new(true)}, Description: "Unfollow a Pixiv user."}, func(ctx context.Context, request *mcp.CallToolRequest, input In) (*mcp.CallToolResult, outputs.Mutation, error) {
 		return handleUnfollowUser(ctx, app, input)
 	})
 }

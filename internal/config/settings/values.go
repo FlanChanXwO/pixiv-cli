@@ -12,6 +12,29 @@ import (
 
 func coerceSettingValue(spec SettingSpec, raw any, source string) (SettingValue, error) {
 	switch spec.Kind {
+	case settingInteger:
+		var value int64
+		switch v := raw.(type) {
+		case int64:
+			value = v
+		case int:
+			value = int64(v)
+		case string:
+			if source == "file" {
+				return SettingValue{}, fmt.Errorf("%s expects integer", spec.Alias)
+			}
+			n, err := strconv.ParseInt(strings.TrimSpace(v), 10, 64)
+			if err != nil {
+				return SettingValue{}, fmt.Errorf("%s expects integer", spec.Alias)
+			}
+			value = n
+		default:
+			return SettingValue{}, fmt.Errorf("%s expects integer", spec.Alias)
+		}
+		if value < 0 || (spec.Alias == "mcp_gallery_concurrency" && (value == 0 || uint64(value) > uint64(^uint(0)>>1))) || ((spec.Alias == "mcp_gallery_cache_capacity_mib" || spec.Alias == "mcp_gallery_animation_temp_capacity_mib") && value > (1<<63-1)/(1<<20)) || (spec.Alias == "mcp_gallery_animation_temp_capacity_mib" && value == 0) {
+			return SettingValue{}, fmt.Errorf("%s is out of range", spec.Alias)
+		}
+		return SettingValue{Value: value, Text: strconv.FormatInt(value, 10), Source: source, HasValue: true}, nil
 	case settingString:
 		text, ok := normalizeStringValue(raw)
 		if !ok {
@@ -35,6 +58,9 @@ func coerceSettingValue(spec SettingSpec, raw any, source string) (SettingValue,
 		value, err := normalizeDurationValue(raw)
 		if err != nil {
 			return SettingValue{}, fmt.Errorf("%s: %w", spec.Alias, err)
+		}
+		if spec.Alias == "mcp_gallery_cache_ttl" && value <= 0 {
+			return SettingValue{}, errors.New("mcp_gallery_cache_ttl must be positive")
 		}
 		if spec.Alias == "request_interval" && value < 0 {
 			return SettingValue{}, errors.New("request_interval must not be negative")
@@ -90,6 +116,13 @@ func ParseSettingInput(alias, raw string) (SettingValue, parser.Value, error) {
 	}
 	raw = strings.TrimSpace(raw)
 	switch spec.Kind {
+	case settingInteger:
+		parsed, err := coerceSettingValue(spec, raw, "cli")
+		if err != nil {
+			return SettingValue{}, parser.Value{}, err
+		}
+		value, err := parser.ParseValue(parsed.Text)
+		return parsed, value, err
 	case settingString:
 		normalized, err := normalizeSpecialString(alias, raw)
 		if err != nil {
@@ -115,6 +148,9 @@ func ParseSettingInput(alias, raw string) (SettingValue, parser.Value, error) {
 		parsed, err := time.ParseDuration(raw)
 		if err != nil {
 			return SettingValue{}, parser.Value{}, fmt.Errorf("expects duration value: %w", err)
+		}
+		if spec.Alias == "mcp_gallery_cache_ttl" && parsed <= 0 {
+			return SettingValue{}, parser.Value{}, errors.New("mcp_gallery_cache_ttl must be positive")
 		}
 		if spec.Alias == "request_interval" && parsed < 0 {
 			return SettingValue{}, parser.Value{}, errors.New("request_interval must not be negative")

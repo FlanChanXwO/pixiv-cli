@@ -21,10 +21,10 @@ var errInputValidation = errors.New("tool input validation failed")
 
 // Register 注册 download 与 download_random_from_recommendation。
 func Register(app *runtime.App, server *mcp.Server) {
-	runtime.AddTool(app, server, &mcp.Tool{Name: "download", Description: "Download artwork IDs or supported Pixiv artwork/user URLs with intelligent storage rules."}, func(ctx context.Context, request *mcp.CallToolRequest, input downloadIn) (*mcp.CallToolResult, downloadOut, error) {
+	runtime.AddTool(app, server, &mcp.Tool{Name: "pixiv_download", Annotations: &mcp.ToolAnnotations{ReadOnlyHint: false, DestructiveHint: new(true), IdempotentHint: true, OpenWorldHint: new(true)}, Description: "Download artwork IDs or supported Pixiv artwork/user URLs with intelligent storage rules."}, func(ctx context.Context, request *mcp.CallToolRequest, input downloadIn) (*mcp.CallToolResult, downloadOut, error) {
 		return handleDownload(ctx, app, input)
 	})
-	runtime.AddTool(app, server, &mcp.Tool{Name: "download_random_from_recommendation", Description: "Download random artworks from recommendations."}, func(ctx context.Context, request *mcp.CallToolRequest, input downloadRandomIn) (*mcp.CallToolResult, downloadOut, error) {
+	runtime.AddTool(app, server, &mcp.Tool{Name: "pixiv_download_random_from_recommendation", Annotations: &mcp.ToolAnnotations{ReadOnlyHint: false, DestructiveHint: new(true), IdempotentHint: false, OpenWorldHint: new(true)}, Description: "Download random artworks from recommendations."}, func(ctx context.Context, request *mcp.CallToolRequest, input downloadRandomIn) (*mcp.CallToolResult, downloadOut, error) {
 		return handleDownloadRandom(ctx, app, input)
 	})
 }
@@ -94,7 +94,7 @@ func handleDownload(ctx context.Context, app *runtime.App, in downloadIn) (*mcp.
 	if errText != "" {
 		return emptyDownloadError(ctx, errInputValidation, deliveryLocalPath, errText)
 	}
-	pages, quality, ugoiraFormat, err := ParseDownloadOptions(in.Pages, in.Quality, in.UgoiraMode)
+	pages, quality, ugoiraFormat, err := ParseDownloadSelection(in.Pages, in.Quality, in.UgoiraMode)
 	if err != nil {
 		return emptyDownloadError(ctx, err, delivery, "Error: "+err.Error())
 	}
@@ -136,12 +136,7 @@ func downloadSources(ctx context.Context, app *runtime.App, sources []string, pa
 	}
 	defer lease.Close()
 	client := lease.Value()
-	service := downloader.DownloadService{NewManager: func(_ downloader.DownloadClient, _, _ string) (downloader.DownloadManager, error) {
-		if newDownloads := app.NewDownloads(); newDownloads != nil {
-			return newDownloads(client), nil
-		}
-		return app.Downloads(), nil
-	}}
+	service := app.SDKPorts().Downloads.Service
 	path, template, directory := downloadDefaults(app)
 	request := downloader.DownloadRequest{
 		Pages:             pages,
@@ -155,44 +150,8 @@ func downloadSources(ctx context.Context, app *runtime.App, sources []string, pa
 }
 
 func downloadDefaults(app *runtime.App) (string, string, string) {
-	downloads := app.Downloads()
-	path, template, directory := "", "", ""
-	if configured, ok := downloads.(interface{ DownloadPath() string }); ok && strings.TrimSpace(configured.DownloadPath()) != "" {
-		path = configured.DownloadPath()
-	}
-	if configured, ok := downloads.(interface{ FilenameTemplate() string }); ok && strings.TrimSpace(configured.FilenameTemplate()) != "" {
-		template = configured.FilenameTemplate()
-	}
-	if configured, ok := downloads.(interface{ DirectoryTemplate() string }); ok && strings.TrimSpace(configured.DirectoryTemplate()) != "" {
-		directory = configured.DirectoryTemplate()
-	}
-	return path, template, directory
-}
-
-func downloadArtworks(ctx context.Context, app *runtime.App, ids []int64, client *pixiv.Client, pages []int, quality downloader.DownloadQuality, ugoiraFormat downloader.UgoiraFormat) (downloader.DownloadBatchResult, error) {
-	path, template, directory := downloadDefaults(app)
-	req := downloader.DownloadRequest{
-		IllustIDs:         ids,
-		Pages:             pages,
-		Quality:           quality,
-		UgoiraFormat:      ugoiraFormat,
-		DownloadPath:      path,
-		FilenameTemplate:  template,
-		DirectoryTemplate: directory,
-	}
-	newDownloads := app.NewDownloads()
-	if newDownloads == nil {
-		return app.Downloads().Download(ctx, req)
-	}
-	if client == nil {
-		lease, err := app.OpenClient(ctx)
-		if err != nil {
-			return downloader.DownloadBatchResult{}, err
-		}
-		defer lease.Close()
-		client = lease.Value()
-	}
-	return newDownloads(client).Download(ctx, req)
+	config := app.SDKPorts().Downloads
+	return config.Path, config.FilenameTemplate, config.DirectoryTemplate
 }
 
 func ParseDownloadSelection(pagesSpec, qualitySpec, ugoiraFormatSpec string) ([]int, downloader.DownloadQuality, downloader.UgoiraFormat, error) {
@@ -208,30 +167,6 @@ func ParseDownloadSelection(pagesSpec, qualitySpec, ugoiraFormatSpec string) ([]
 		return nil, "", "", err
 	}
 	ugoiraFormat := downloader.UgoiraFormat(strings.TrimSpace(ugoiraFormatSpec))
-	if ugoiraFormat == "" {
-		ugoiraFormat = downloader.UgoiraFormatGIF
-	}
-	if err := downloader.ValidateUgoiraFormat(ugoiraFormat); err != nil {
-		return nil, "", "", err
-	}
-	return pages, quality, ugoiraFormat, nil
-}
-
-// ParseDownloadOptions 解析主 MCP download tool 的当前契约：页码选择、静态质量与
-// ugoira 容器格式统一由 application 解析与校验。
-func ParseDownloadOptions(pagesSpec, qualitySpec, ugoiraModeSpec string) ([]int, downloader.DownloadQuality, downloader.UgoiraFormat, error) {
-	pages, err := downloader.ParsePageSpec(pagesSpec)
-	if err != nil {
-		return nil, "", "", err
-	}
-	quality := downloader.DownloadQuality(strings.TrimSpace(qualitySpec))
-	if quality == "" {
-		quality = downloader.DownloadQualityOriginal
-	}
-	if err := downloader.ValidateDownloadQuality(quality); err != nil {
-		return nil, "", "", err
-	}
-	ugoiraFormat := downloader.UgoiraFormat(strings.TrimSpace(ugoiraModeSpec))
 	if ugoiraFormat == "" {
 		ugoiraFormat = downloader.UgoiraFormatGIF
 	}
@@ -417,13 +352,15 @@ func handleDownloadRandom(ctx context.Context, app *runtime.App, in downloadRand
 	for _, illust := range result.Items[:count] {
 		ids = append(ids, illust.ID)
 	}
-	batch, err := downloadArtworks(ctx, app, ids, client, pages, quality, ugoiraFormat)
-	report := downloader.DownloadReport{
-		Items:     batch.Items,
-		Failures:  batch.Failures,
-		Warnings:  batch.Warnings,
-		Committed: len(batch.Items) > 0,
+	sources := make([]string, 0, len(ids))
+	for _, id := range ids {
+		sources = append(sources, strconv.FormatInt(id, 10))
 	}
+	path, template, directory := downloadDefaults(app)
+	report, err := app.SDKPorts().Downloads.Service.DownloadSources(ctx, client, sources, downloader.DownloadRequest{
+		Pages: pages, Quality: quality, UgoiraFormat: ugoiraFormat,
+		DownloadPath: path, FilenameTemplate: template, DirectoryTemplate: directory,
+	})
 	if err != nil {
 		return downloadOperationError(ctx, delivery, report, err)
 	}

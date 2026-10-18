@@ -79,7 +79,7 @@ func (tr *testSDKTransport) RoundTrip(request *http.Request) (*http.Response, er
 		}
 		status, body, err = wireArtwork(artwork)
 	case "/v2/illust/related":
-		req := pixivsdk.RelatedArtworksRequest{ArtworkID: queryInt64(request.URL.Query(), "illust_id")}
+		req := pixivsdk.RelatedArtworksRequest{ArtworkID: queryInt64(request.URL.Query(), "illust_id"), Cursor: cursorFromOffset(queryInt(request.URL.Query(), "offset"))}
 		tr.fake.relatedArtworksRequest = req
 		page, callErr := callIllustPageFunc(tr.fake.relatedArtworks, req)
 		if callErr != nil {
@@ -913,6 +913,9 @@ func (tr *testSDKTransport) nextPageURL(cursor sdk.Cursor) *string {
 		key = "max_bookmark_id"
 	}
 	value := "https://app-api.pixiv.net" + tr.path + "?" + key + "=" + strconv.Itoa(1+sum)
+	if tr.path == "/v2/illust/related" {
+		value += "&illust_id=" + strconv.FormatInt(tr.fake.relatedArtworksRequest.ArtworkID, 10)
+	}
 	return &value
 }
 
