@@ -40,3 +40,13 @@ If the user wants no PATH change, pass `--no-path`. A custom
 `--install-dir DIR` is allowed, but on Unix the automatic `--add-to-path`
 operation intentionally supports only the default `$HOME/.local/bin`; explain
 the manual PATH step for another directory.
+
+## Go source installation
+
+When the user explicitly chooses a source install, use an exact published tag:
+
+```bash
+go install github.com/FlanChanXwO/pixiv-cli/cmd/pixiv@vX.Y.Z
+```
+
+Require the tag's declared Go toolchain, cgo, a target C linker and committed native library. Frontend sources are embedded directly; no generation or npm step is needed. State the `GOBIN`/`GOPATH/bin` destination before installing. Go-installed binaries self-update to the selected exact Release tag; failure preserves the prior executable. Do not change installation channels to work around a build failure.

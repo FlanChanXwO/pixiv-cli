@@ -942,7 +942,7 @@ func (m *Manager) downloadUgoira(ctx context.Context, artwork pixiv.Artwork, bas
 	if err != nil {
 		return "", warning, err
 	}
-	archive := selectUgoiraArchive(meta)
+	archive := SelectUgoiraArchive(meta)
 	if archive == nil || archive.Resource.URL == "" {
 		return "", warning, fmt.Errorf("ugoira %d has no downloadable archive", artwork.ID)
 	}
@@ -965,8 +965,8 @@ func (m *Manager) downloadUgoira(ctx context.Context, artwork pixiv.Artwork, bas
 	return outPath, warning, nil
 }
 
-// selectUgoiraArchive 优先 original，缺失时退回 medium。
-func selectUgoiraArchive(meta pixiv.UgoiraMetadata) *pixiv.UgoiraArchive {
+// SelectUgoiraArchive 优先 original，缺失时退回 medium。
+func SelectUgoiraArchive(meta pixiv.UgoiraMetadata) *pixiv.UgoiraArchive {
 	var fallback *pixiv.UgoiraArchive
 	for index := range meta.Archives {
 		archive := &meta.Archives[index]

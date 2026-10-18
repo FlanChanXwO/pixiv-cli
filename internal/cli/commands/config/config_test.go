@@ -51,6 +51,10 @@ func TestCLIManagedAliasesComeFromSchema(t *testing.T) {
 		"https_proxy",
 		"log_format",
 		"log_level",
+		"mcp_gallery_animation_temp_capacity_mib",
+		"mcp_gallery_cache_capacity_mib",
+		"mcp_gallery_cache_ttl",
+		"mcp_gallery_concurrency",
 		"request_interval",
 		"reverse_search_pixiv_only",
 		"reverse_search_provider",
@@ -72,7 +76,7 @@ func TestCLIManagedAliasesComeFromSchema(t *testing.T) {
 	}
 }
 
-func TestCLIManagesLoggingAndRuntimeDownloadAliases(t *testing.T) {
+func TestCLIManagesRuntimeAliases(t *testing.T) {
 	path := t.TempDir() + "/config.toml"
 	host := testHost{
 		in:    bytes.NewReader(nil),
@@ -89,6 +93,7 @@ func TestCLIManagesLoggingAndRuntimeDownloadAliases(t *testing.T) {
 		{alias: "request_interval", value: "2s"},
 		{alias: "log_level", value: "debug"},
 		{alias: "log_format", value: "json"},
+		{alias: "mcp_gallery_animation_temp_capacity_mib", value: "512"}, {alias: "mcp_gallery_cache_capacity_mib", value: "64"}, {alias: "mcp_gallery_cache_ttl", value: "20m0s"}, {alias: "mcp_gallery_concurrency", value: "2"},
 	} {
 		require.NoError(t, set(host, test.alias, test.value))
 		host.out.Reset()

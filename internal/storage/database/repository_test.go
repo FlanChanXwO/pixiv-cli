@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"sync"
 	"testing"
+	"time"
 
 	config "github.com/FlanChanXwO/pixiv-cli/internal/config/settings"
 	accountfanbox "github.com/FlanChanXwO/pixiv-cli/internal/services/fanbox/account"
@@ -186,6 +187,61 @@ func TestPixivPoolErrorsAndRandomChooser(t *testing.T) {
 	}
 	if _, err := db.SelectPixiv(ctx, 100, []int64{1, 2, 3}, choose(config.AccountPoolStrategyRoundRobin, nil)); err == nil {
 		t.Fatal("exhausted candidate set unexpectedly succeeded")
+	}
+}
+
+func TestIndependentConnectionReadWaitsForAccountTransaction(t *testing.T) {
+	dir := t.TempDir()
+	writer, err := database.Open(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer writer.Close()
+	reader, err := database.Open(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer reader.Close()
+	ctx := t.Context()
+	if err := writer.SavePixivCredential(ctx, pixivAccount(42, "artist", "fixture")); err != nil {
+		t.Fatal(err)
+	}
+	entered, release := make(chan struct{}), make(chan struct{})
+	defer func() {
+		select {
+		case <-release:
+		default:
+			close(release)
+		}
+	}()
+	written := make(chan error, 1)
+	go func() {
+		_, err := writer.SelectPixiv(ctx, 100, nil, func(accountpixiv.PoolSnapshot) (int64, error) {
+			close(entered)
+			<-release
+			return 42, nil
+		})
+		written <- err
+	}()
+	<-entered
+	type result struct {
+		account accountpixiv.Account
+		err     error
+	}
+	read := make(chan result, 1)
+	go func() { a, err := reader.GetPixiv(ctx, 42); read <- result{a, err} }()
+	select {
+	case got := <-read:
+		t.Fatalf("read escaped unfinished account transaction: marker=%v error=%v", got.account.PoolLastSelected, got.err)
+	case <-time.After(100 * time.Millisecond):
+	}
+	close(release)
+	if err := <-written; err != nil {
+		t.Fatal(err)
+	}
+	got := <-read
+	if got.err != nil || !got.account.PoolLastSelected {
+		t.Fatalf("read did not observe committed account state: marker=%v error=%v", got.account.PoolLastSelected, got.err)
 	}
 }
 

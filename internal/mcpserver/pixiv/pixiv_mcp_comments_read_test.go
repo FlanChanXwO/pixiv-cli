@@ -19,15 +19,15 @@ func TestCommentReadSchemasMatchLegacyContracts(t *testing.T) {
 		byName[tool.Name] = tool
 	}
 
-	for _, name := range []string{"illust_comments", "novel_comments"} {
+	for _, name := range []string{"pixiv_comments", "pixiv_comments"} {
 		t.Run("input/"+name, func(t *testing.T) {
 			tool, ok := byName[name]
 			if !ok {
 				t.Fatalf("tool %q is not registered", name)
 			}
 			schema := feedSchemaObject(t, name+" input", tool.InputSchema)
-			assertSchemaFields(t, schema, []string{"id", "limit", "page"})
-			assertSchemaRequired(t, schema, []string{"id"})
+			assertSchemaFields(t, schema, []string{"kind", "id", "limit", "page"})
+			assertSchemaRequired(t, schema, []string{"kind", "id"})
 			assertSchemaMinimum(t, feedSchemaProperty(t, schema, "id"), 1)
 			assertSchemaMinimum(t, feedSchemaProperty(t, schema, "page"), 1)
 			assertSchemaMinimum(t, feedSchemaProperty(t, schema, "limit"), 0)
@@ -57,8 +57,8 @@ func TestCommentReadLegacyJSONReplayPreservesStructuredContracts(t *testing.T) {
 		wantNovelID   int64
 	}{
 		{
-			name:          "illust_comments",
-			fixture:       `{"id":101}`,
+			name:          "pixiv_comments",
+			fixture:       `{"kind":"artwork","id":101}`,
 			wantCommentID: 11,
 			wantTotal:     total,
 			wantArtworkID: 101,
@@ -69,8 +69,8 @@ func TestCommentReadLegacyJSONReplayPreservesStructuredContracts(t *testing.T) {
 			}},
 		},
 		{
-			name:          "novel_comments",
-			fixture:       `{"id":201}`,
+			name:          "pixiv_comments",
+			fixture:       `{"kind":"novel","id":201}`,
 			wantCommentID: 21,
 			wantTotal:     total,
 			wantNovelID:   201,
@@ -122,7 +122,7 @@ func TestCommentReadKeepsStampBoundary(t *testing.T) {
 	if _, ok := byName["stamps"]; ok {
 		t.Fatal("comments task must not add an unfrozen stamps tool")
 	}
-	for _, name := range []string{"illust_comments", "novel_comments"} {
+	for _, name := range []string{"pixiv_comments", "pixiv_comments"} {
 		schema := feedSchemaObject(t, name+" input", byName[name].InputSchema)
 		properties := schema["properties"].(map[string]any)
 		if _, ok := properties["stamp_id"]; ok {
@@ -132,7 +132,7 @@ func TestCommentReadKeepsStampBoundary(t *testing.T) {
 }
 
 func TestCommentReadRejectsNonPositiveIDBeforeSDKExecution(t *testing.T) {
-	for _, name := range []string{"illust_comments", "novel_comments"} {
+	for _, name := range []string{"pixiv_comments", "pixiv_comments"} {
 		t.Run(name, func(t *testing.T) {
 			client := &fakeSDKClient{}
 			ports := testSDKPorts(t, client)
@@ -142,10 +142,10 @@ func TestCommentReadRejectsNonPositiveIDBeforeSDKExecution(t *testing.T) {
 				executions++
 				return baseExecute(ctx, account, attempt)
 			}
-			session, closeSession := newSDKTestSessionWithPorts(t, &fakeAPI{}, ports, pixivmcpserver.Account{})
+			session, closeSession := newSDKTestSessionWithPorts(t, ports, pixivmcpserver.Account{})
 			defer closeSession()
 
-			result, err := session.CallTool(context.Background(), &mcp.CallToolParams{Name: name, Arguments: map[string]any{"id": 0}})
+			result, err := session.CallTool(context.Background(), &mcp.CallToolParams{Name: name, Arguments: map[string]any{"kind": "artwork", "id": 0}})
 			if err == nil && (result == nil || !result.IsError) {
 				t.Fatalf("invalid comment id result=%+v err=%v executions=%d", result, err, executions)
 			}

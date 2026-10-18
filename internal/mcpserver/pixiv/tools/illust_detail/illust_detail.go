@@ -1,4 +1,4 @@
-// Package illust_detail 实现 illust_detail tool。
+// Package illust_detail 实现 pixiv_illust_detail tool。
 package illust_detail
 
 import (
@@ -14,9 +14,9 @@ import (
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
-// Register 注册 illust_detail。
+// Register 注册 pixiv_illust_detail。
 func Register(app *runtime.App, server *mcp.Server) {
-	runtime.AddTool(app, server, &mcp.Tool{Name: "illust_detail", Description: "Get detailed information from exactly one artwork ID or supported Pixiv URL.", OutputSchema: records.UserDetailOutputSchema()}, func(ctx context.Context, request *mcp.CallToolRequest, input illustReferenceIn) (*mcp.CallToolResult, outputs.UserDetail, error) {
+	runtime.AddTool(app, server, &mcp.Tool{Name: "pixiv_illust_detail", Annotations: &mcp.ToolAnnotations{ReadOnlyHint: true, DestructiveHint: new(false), IdempotentHint: true, OpenWorldHint: new(true)}, Description: "Get detailed information from exactly one artwork ID or supported Pixiv URL.", OutputSchema: records.UserDetailOutputSchema()}, func(ctx context.Context, request *mcp.CallToolRequest, input illustReferenceIn) (*mcp.CallToolResult, outputs.UserDetail, error) {
 		return handleIllustDetail(ctx, app, input)
 	})
 }
@@ -31,9 +31,7 @@ func handleIllustDetail(ctx context.Context, app *runtime.App, in illustReferenc
 	if err != nil {
 		return outputs.UserDetailError(err)
 	}
-	result, err := runtime.Read(app, ctx, func(ctx context.Context, client *pixiv.Client) (pixiv.Artwork, error) {
-		return client.Artwork(ctx, pixiv.ArtworkRequest{ArtworkID: id})
-	})
+	result, err := app.Artwork(ctx, id)
 	if err != nil {
 		return outputs.UserDetailError(err)
 	}

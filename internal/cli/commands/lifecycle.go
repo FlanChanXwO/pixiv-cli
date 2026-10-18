@@ -81,10 +81,6 @@ func PixivMCP() Execution {
 	return Execution{StartupHooks: true, EnsureConfig: true, MCP: true}
 }
 
-func FanboxMCP() Execution {
-	return Execution{StartupHooks: true, EnsureConfig: true, MCP: true}
-}
-
 func encodeExecution(execution Execution) string {
 	encoded := []byte("0000")
 	values := [...]bool{

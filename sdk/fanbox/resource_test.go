@@ -159,3 +159,68 @@ func TestFanboxOpenResourceRejectsRefWithForeignProduct(t *testing.T) {
 		t.Fatalf("expected InvalidArgument for foreign product ref, got %v", err)
 	}
 }
+
+func TestFanboxResourceKindsSurviveReopen(t *testing.T) {
+	for _, tc := range []struct{ name, want string }{{"报告", "报告.pdf"}, {"report.PDF", "report.PDF"}, {"folder/report", "folder/report.pdf"}, {"", ""}} {
+		t.Run(tc.name, func(t *testing.T) {
+			postBody := `{"body":{"post":{"id":"p-shared","title":"resource","publishedDatetime":"2024-01-01T00:00:00Z","isRestricted":false,"isPinned":false,"body":{"blocks":[{"type":"image","imageId":"shared"},{"type":"file","fileId":"shared"}],"imageMap":{"shared":{"id":"shared","originalUrl":"https://i.pximg.net/image.png"}},"fileMap":{"shared":{"id":"shared","name":"报告","extension":"pdf","url":"https://downloads.fanbox.cc/file.pdf"}}}}}}`
+			encodedName, err := json.Marshal(tc.name)
+			if err != nil {
+				t.Fatal(err)
+			}
+			postBody = strings.Replace(postBody, `"name":"报告"`, `"name":`+string(encodedName), 1)
+			posts := 0
+			rt := roundTripFunc(func(req *http.Request) (*http.Response, error) {
+				if req.URL.Host == "api.fanbox.cc" {
+					posts++
+					return jsonResponse(postBody), nil
+				}
+				body := "image"
+				if req.URL.Host == "downloads.fanbox.cc" {
+					body = "file"
+				}
+				return &http.Response{StatusCode: 200, Header: http.Header{"Content-Type": {"application/octet-stream"}}, Body: io.NopCloser(strings.NewReader(body))}, nil
+			})
+			first := testClient(t, rt)
+			post, err := first.Post(t.Context(), fanbox.PostRequest{PostID: "p-shared"})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if len(post.Body.Assets) != 2 {
+				t.Fatalf("assets=%+v", post.Body.Assets)
+			}
+			for _, asset := range post.Body.Assets {
+				want := "image"
+				if asset.Kind == fanbox.AssetKindFile {
+					want = "file"
+				}
+				for _, client := range []*fanbox.Client{first, testClient(t, rt)} {
+					for range 2 {
+						resp, err := client.OpenResource(t.Context(), sdk.OpenResourceRequest{Ref: asset.Resource.Ref})
+						if err != nil {
+							t.Fatal(err)
+						}
+						wantName := ""
+						if asset.Kind == fanbox.AssetKindFile {
+							wantName = tc.want
+						}
+						if resp.Filename != wantName {
+							t.Fatalf("filename=%q want %q", resp.Filename, wantName)
+						}
+						data, err := io.ReadAll(resp.Body)
+						closeErr := resp.Body.Close()
+						if err != nil || closeErr != nil {
+							t.Fatalf("read/close: %v %v", err, closeErr)
+						}
+						if string(data) != want {
+							t.Fatalf("resource kind=%s returned %q, want %q", asset.Kind, data, want)
+						}
+					}
+				}
+			}
+			if posts != 3 {
+				t.Fatalf("metadata reads=%d want 3 (one warm + one per reopened ref)", posts)
+			}
+		})
+	}
+}

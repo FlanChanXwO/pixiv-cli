@@ -473,3 +473,71 @@ func TestRuntimeSilentlyIgnoresLegacySharedSecretRelayConfiguration(t *testing.T
 	require.False(t, hasSecret)
 	require.False(t, hasTarget)
 }
+
+func TestMCPEndpointSettingsAreNotPublicConfiguration(t *testing.T) {
+	for _, alias := range []string{"mcp_listen_addr", "mcp_base_url"} {
+		_, ok := config.SettingSpecByAlias(alias)
+		require.False(t, ok)
+	}
+	path := filepath.Join(t.TempDir(), "config.toml")
+	require.NoError(t, os.WriteFile(path, []byte("[mcp]\nlisten_addr='0.0.0.0:8123'\nbase_url='http://old.example'\n"), 0600))
+	snapshot, err := config.LoadSnapshotAt(path)
+	require.NoError(t, err)
+	_, err = snapshot.Runtime()
+	require.NoError(t, err)
+}
+
+func TestGalleryCacheSettings(t *testing.T) {
+	for alias, want := range map[string]string{"mcp_gallery_animation_temp_capacity_mib": "1024", "mcp_gallery_cache_capacity_mib": "256", "mcp_gallery_cache_ttl": "15m0s", "mcp_gallery_concurrency": "4"} {
+		s, err := config.LoadSnapshotAt(filepath.Join(t.TempDir(), "config.toml"))
+		require.NoError(t, err)
+		v, err := s.Effective(alias)
+		require.NoError(t, err)
+		require.Equal(t, want, v.Text)
+		_, _, err = config.ParseSettingInput(alias, want)
+		require.NoError(t, err)
+	}
+	for _, tc := range []struct{ alias, raw string }{
+		{"mcp_gallery_animation_temp_capacity_mib", "0"}, {"mcp_gallery_animation_temp_capacity_mib", "-1"}, {"mcp_gallery_animation_temp_capacity_mib", "8796093022208"}, {"mcp_gallery_animation_temp_capacity_mib", "1.5"}, {"mcp_gallery_cache_capacity_mib", "-1"}, {"mcp_gallery_cache_capacity_mib", "8796093022208"},
+		{"mcp_gallery_cache_capacity_mib", "1.5"}, {"mcp_gallery_concurrency", "0"}, {"mcp_gallery_concurrency", "-1"},
+		{"mcp_gallery_cache_ttl", "0s"}, {"mcp_gallery_cache_ttl", "-1s"},
+	} {
+		_, _, err := config.ParseSettingInput(tc.alias, tc.raw)
+		require.Error(t, err, tc)
+	}
+	for _, raw := range []string{"true", "1.5", "'256'"} {
+		p := filepath.Join(t.TempDir(), "config.toml")
+		require.NoError(t, os.WriteFile(p, []byte("[mcp]\ngallery_cache_capacity_mib = "+raw+"\n"), 0600))
+		s, err := config.LoadSnapshotAt(p)
+		require.NoError(t, err)
+		_, err = s.Runtime()
+		require.Error(t, err, raw)
+	}
+	_, _, err := config.ParseSettingInput("mcp_gallery_cache_capacity_mib", "0")
+	require.NoError(t, err)
+}
+
+func TestRuntimeGallerySettingsBindDeclaredValues(t *testing.T) {
+	for _, tc := range []struct {
+		name, toml     string
+		capacity, temp int64
+		concurrency    int
+		ttl            time.Duration
+	}{
+		{"defaults", "", 256, 1024, 4, 15 * time.Minute},
+		{"configured", "[mcp]\ngallery_cache_capacity_mib=0\ngallery_animation_temp_capacity_mib=512\ngallery_concurrency=2\ngallery_cache_ttl='3m'\n", 0, 512, 2, 3 * time.Minute},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			path := filepath.Join(t.TempDir(), "config.toml")
+			require.NoError(t, os.WriteFile(path, []byte(tc.toml), 0600))
+			snapshot, err := config.LoadSnapshotAt(path)
+			require.NoError(t, err)
+			cfg, err := snapshot.Runtime()
+			require.NoError(t, err)
+			require.Equal(t, tc.capacity, cfg.MCPGalleryCacheCapacityMiB)
+			require.Equal(t, tc.temp, cfg.MCPGalleryAnimationTempCapacityMiB)
+			require.Equal(t, tc.concurrency, cfg.MCPGalleryConcurrency)
+			require.Equal(t, tc.ttl, cfg.MCPGalleryCacheTTL)
+		})
+	}
+}

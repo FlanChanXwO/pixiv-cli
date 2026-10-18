@@ -87,7 +87,7 @@ func TestPixivBinaryPackagedSmoke(t *testing.T) {
 	}
 
 	assertPixivVersionContract(t, "..", binaryPath, expectedVersion)
-	for _, args := range [][]string{{"config", "path"}, {"mcp", "--help"}, {"fanbox", "mcp", "--help"}} {
+	for _, args := range [][]string{{"config", "path"}, {"mcp", "--help"}, {"fanbox", "--help"}} {
 		t.Run(fmt.Sprintf("%s %s", args[0], strings.Join(args[1:], " ")), func(t *testing.T) {
 			stdout := runPixivVersionCommand(t, "..", binaryPath, args...)
 			if strings.TrimSpace(stdout) == "" {
@@ -95,6 +95,12 @@ func TestPixivBinaryPackagedSmoke(t *testing.T) {
 			}
 		})
 	}
+	t.Run("removed FANBOX MCP command", func(t *testing.T) {
+		stdout, stderr, err := runPixivVersionProcess(t, "..", binaryPath, "fanbox", "mcp")
+		if err == nil || stdout != "" || !strings.Contains(stderr, "usage: pixiv fanbox <command>") {
+			t.Fatalf("removed FANBOX MCP command: err=%v stdout=%q stderr=%q", err, stdout, stderr)
+		}
+	})
 }
 
 func assertPixivVersionContract(t *testing.T, repoRoot, binaryPath, version string) {

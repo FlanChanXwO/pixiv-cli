@@ -80,3 +80,24 @@ func TestPresenterRetainsFirstWriterError(t *testing.T) {
 type errorWriter struct{ err error }
 
 func (w *errorWriter) Write([]byte) (int, error) { return 0, w.err }
+
+func TestPresenterExplainsMediaInterruption(t *testing.T) {
+	for _, tc := range []struct {
+		reason core.Reason
+		text   string
+	}{
+		{core.Reason("request cancelled"), "the request was cancelled"},
+		{core.Reason("transport interrupted"), "the transport was interrupted"},
+		{core.Reason("subscription released"), "the last subscription was released"},
+		{core.Reason("service closed"), "the service was closed"},
+		{core.Reason("authorization expired"), "the media authorization expired"},
+		{core.Reason("authorization invalidated"), "the media authorization was invalidated"},
+	} {
+		var output bytes.Buffer
+		presenter := diagnostics.NewPresenterWithClock(&output, fixedClock)
+		presenter.Emit(core.Event{Module: core.ModulePixivMCP, Kind: core.EventFailed, Operation: "animation_delivery", Reason: tc.reason})
+		if !strings.Contains(output.String(), tc.text) {
+			t.Fatalf("missing cancellation reason: %q", output.String())
+		}
+	}
+}

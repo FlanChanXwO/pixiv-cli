@@ -26,7 +26,7 @@ func TestNativeEvidenceWorkflowKeepsSecurityAndOwnershipBoundaries(t *testing.T)
 		"./tools/platformmatrix --capability native-evidence",
 		"scripts/build-platform.sh",
 		"--cc '${{ matrix.cc }}'",
-		"CC='${{ matrix.cc }}' go test ./internal/media/ugoira",
+		"CC='${{ matrix.cc }}' go test -a -p 4 ./internal/media/ugoira",
 		"scripts/cmd/nativeevidence record",
 		"refs/heads/main",
 	} {
