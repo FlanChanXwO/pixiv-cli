@@ -48,9 +48,9 @@ flowchart LR
 
 ## 前端源码与页面嵌入
 
-`frontend/mcp-apps/gallery/` 维护 Gallery HTML/CSS/JS 及 fixture；`frontend/pages/login/` 维护登录、callback、结果页模板和样式；`frontend/pages/oauth/` 维护授权同意页 HTML/CSS。仅负责资源的 Go 包 `frontend` 精确嵌入源码路径、排除 fixture，并在启动时仅用标准库组装一次。Gallery CSS/JS 和授权页 CSS 内联，登录模板和样式保持独立且字节不变。`scripts/cmd/frontendassets` 及 `--check` 校验相同嵌入源码，不写产物。
+`frontend/mcp-apps/gallery/` 维护 Gallery HTML/CSS/JS 及 fixture；`frontend/pages/login/` 维护登录、callback、结果页模板和样式；`frontend/pages/oauth/` 维护授权同意页 HTML/CSS。仅负责资源的 Go 包 `frontend` 精确嵌入源码路径、排除 fixture，并在启动时仅用标准库组装一次。Gallery CSS/JS 和授权页 CSS 内联，登录模板和样式保持独立且字节不变。现有 `frontend` 包测试校验嵌入源码及占位符。
 
-现有 Go owner 继续负责 MCP 注册、模板渲染/数据/转义、CSP/media origin、canonical action、CSRF 和授权。当前和历史资源 URI 继续可用。干净构建及带版本的 `go install` 无需生成；运行时仅使用嵌入字节，不读磁盘或联网。旧忽略目录 `generated/` 不再使用。Homebrew 模板保留原 owner。
+现有 Go owner 继续负责 MCP 注册、模板渲染/数据/转义、CSP/media origin、canonical action、CSRF 和授权。当前和历史资源 URI 继续可用。干净构建及带版本的 `go install` 无需生成；运行时仅使用嵌入字节，不读磁盘或联网。Homebrew 模板保留原 owner。
 
 ## 包职责
 

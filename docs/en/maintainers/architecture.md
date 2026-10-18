@@ -48,9 +48,9 @@ flowchart LR
 
 ## Frontend source and embedded pages
 
-`frontend/mcp-apps/gallery/` owns Gallery HTML/CSS/JS and its fixture; `frontend/pages/login/` owns login/callback/result templates and styles; `frontend/pages/oauth/` owns consent HTML/CSS. The resource-only `frontend` Go package embeds exact source paths, excluding fixtures, and assembles pages once at process startup using the standard library. Gallery CSS/JS and consent CSS are inlined; login templates/styles remain separate and byte-preserved. `scripts/cmd/frontendassets` and `--check` validate the same embedded sources without writing outputs.
+`frontend/mcp-apps/gallery/` owns Gallery HTML/CSS/JS and its fixture; `frontend/pages/login/` owns login/callback/result templates and styles; `frontend/pages/oauth/` owns consent HTML/CSS. The resource-only `frontend` Go package embeds exact source paths, excluding fixtures, and assembles pages once at process startup using the standard library. Gallery CSS/JS and consent CSS are inlined; login templates/styles remain separate and byte-preserved. The existing `frontend` package tests validate embedded sources and placeholders.
 
-The existing Go owners retain MCP registration, template rendering/data/escaping, CSP/media origin, canonical actions, CSRF and authorization. Current and historical resource URIs remain supported. Clean builds and versioned `go install` require no generation; runtime uses only embedded bytes, with no disk or network reads. Legacy ignored `generated/` outputs are unused. Homebrew templates retain their existing owner.
+The existing Go owners retain MCP registration, template rendering/data/escaping, CSP/media origin, canonical actions, CSRF and authorization. Current and historical resource URIs remain supported. Clean builds and versioned `go install` require no generation; runtime uses only embedded bytes, with no disk or network reads. Homebrew templates retain their existing owner.
 
 ## Package responsibilities
 

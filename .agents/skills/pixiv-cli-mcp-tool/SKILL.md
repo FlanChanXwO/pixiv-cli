@@ -21,6 +21,6 @@ Define the tool name, input validation, output schema, optional fields, cursor/r
 2. Validate schema and local inputs before opening an SDK snapshot or issuing requests. Reuse typed enums and shared record/pagination contracts where they are the owner.
 3. Keep `context.Context`, cancellation, account selection, resource lifetime, and operation-specific permissions intact. FANBOX sessions and Pixiv pool selection remain separate.
 4. Emit the declared structured result; failures set `isError=true` without exposing credentials. HTTP authentication failures remain HTTP errors, not tool results. Legitimate empty results remain successful; partial outcomes must not be mislabeled complete.
-5. Run handler/schema tests, registration tests, and relevant SDK/HTTP integration tests. A built MCP server is long-lived: use an existing fixture client for smoke verification instead of starting it and waiting for output indefinitely.
+5. Run handler/schema tests, registration tests, and relevant SDK/stdio/HTTP integration tests. A built MCP server is long-lived: use an existing fixture client for smoke verification instead of starting it and waiting for output indefinitely.
 
 Update both locale MCP references and any affected CLI/SDK/product-skill documentation. Run the existing documentation tests and review the actual diff. Record live/network behavior as unverified unless an authorized real test ran; do not create a new release note or publish a tool as part of ordinary implementation.

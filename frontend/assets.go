@@ -24,9 +24,6 @@ type Pages struct {
 
 var pages, loadErr = load(sources)
 
-// Load returns pages assembled once from embedded sources, without filesystem or network access.
-func Load() (Pages, error) { return pages, loadErr }
-
 // MustLoad exposes broken embedded sources during owner initialization, like template.Must.
 func MustLoad() Pages {
 	if loadErr != nil {

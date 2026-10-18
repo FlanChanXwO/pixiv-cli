@@ -33,13 +33,12 @@ Page sources live in `frontend/mcp-apps/gallery/`, `frontend/pages/login/`, and 
 Clean source builds and versioned `go install` need no generation step. Validate and build with:
 
 ```bash
-go run ./scripts/cmd/frontendassets --check
 go test ./...
 go vet ./...
 sh scripts/build.sh
 ```
 
-Both `frontendassets` and `frontendassets --check` are read-only compatibility commands that validate embedded inputs and placeholders. Legacy `generated/` directories are ignored and unused. Local/platform/race scripts compile directly; Quality/Release/Platform workflows also validate the source assets. Frontend source and validator changes require Quality, Platform and Container checks. Cross compilation needs no host-side generator. Docker still uses prebuilt binaries; Homebrew templates remain under `templates/homebrew/`.
+The existing `frontend` package tests validate embedded inputs and placeholders. Local/platform/race builds compile the sources directly; no generator or separate validation command is needed. Frontend changes require Quality, Platform and Container checks. Docker uses prebuilt binaries; Homebrew templates remain under `templates/homebrew/`.
 
 Source installation and self-update use an exact Release tag through `go install github.com/FlanChanXwO/pixiv-cli/cmd/pixiv@vX.Y.Z`, with the Go/cgo/linker/native requirements below.
 

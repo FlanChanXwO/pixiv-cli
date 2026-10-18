@@ -257,24 +257,33 @@ func TestBrokenPipeSignalsAreScopedByOutputProtocol(t *testing.T) {
 		args         []string
 		wantExit     int
 		wantPipeline int
+		wantMCP      int
 	}{
 		{name: "ndjson", args: []string{"pixiv", "search", "miku", "--ndjson"}, wantExit: 1, wantPipeline: 1},
-		{name: "mcp", args: []string{"pixiv", "mcp"}, wantExit: 0},
+		{name: "mcp", args: []string{"pixiv", "mcp"}, wantExit: 0, wantMCP: 1},
+		{name: "http", args: []string{"pixiv", "mcp", "--port", "1270"}, wantExit: 0},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			pipelineEnabled, pipelineStopped := 0, 0
+			mcpEnabled, mcpStopped := 0, 0
 			enablePipeline := func() func() {
 				pipelineEnabled++
 				return func() { pipelineStopped++ }
 			}
+			enableMCP := func() func() {
+				mcpEnabled++
+				return func() { mcpStopped++ }
+			}
 
 			var stdout, stderr bytes.Buffer
-			code := RunContextWithPipelineSignal(context.Background(), test.args, strings.NewReader(""), &stdout, &stderr, enablePipeline)
+			code := RunContextWithBrokenPipeSignals(context.Background(), test.args, strings.NewReader(""), &stdout, &stderr, enablePipeline, enableMCP)
 
 			assert.Equal(t, test.wantExit, code, stderr.String())
 			assert.Equal(t, test.wantPipeline, pipelineEnabled)
 			assert.Equal(t, test.wantPipeline, pipelineStopped)
+			assert.Equal(t, test.wantMCP, mcpEnabled)
+			assert.Equal(t, test.wantMCP, mcpStopped)
 		})
 	}
 }

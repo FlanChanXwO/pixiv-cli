@@ -143,7 +143,6 @@ func TestTrustedSmokeOwnerScopesRemainCorrect(t *testing.T) {
 		{"frontend/mcp-apps/gallery/gallery.js", "true", "true", "true"},
 		{"frontend/pages/login/manual.html", "true", "true", "true"},
 		{"frontend/pages/oauth/consent.css", "true", "true", "true"},
-		{"scripts/cmd/frontendassets/main.go", "true", "true", "true"},
 		{"frontend/assets.go", "true", "true", "true"},
 		// platform worker 只拥有 platform smoke，不涉及容器。
 		{".github/workflows/platform-smoke.yml", "true", "true", "false"},

@@ -67,10 +67,6 @@ jobs:
         with:
           go-version-file: go.mod
           cache: false
-      - name: Validate embedded frontend sources
-        shell: bash
-        run: |
-          GOOS="$(go env GOHOSTOS)" GOARCH="$(go env GOHOSTARCH)" CGO_ENABLED=0 go run ./scripts/cmd/frontendassets --check
       - name: Require the requested source
         if: ${{ inputs.head_sha != '' }}
         shell: bash

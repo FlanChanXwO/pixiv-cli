@@ -713,7 +713,7 @@ func reverseSearchProxies(runtime configapp.RuntimeConfig, override *string) (st
 	return standardProxy, standardProxy
 }
 
-// newMCPReverseSearchPorts 在 MCP HTTP 启动时创建一次反向搜图 Facade，并
+// newMCPReverseSearchPorts 在 MCP 启动时创建一次反向搜图 Facade，并
 // 固定 standard/ascii2d 两个代理网络面、凭据和配置默认值。后续 tool input
 // 只允许覆盖 provider，不能改变传输或 credential 依赖，避免同一 MCP session
 // 的运行时语义漂移。

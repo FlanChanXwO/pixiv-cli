@@ -26,7 +26,6 @@ func TestBuiltinPrintfAndSanitize(t *testing.T) {
 	}
 }
 
-// 功能用例不限制冷启动耗时；截止行为由显式超时用例单独验证。
 func TestRunPipelineUsesRepositoryBinaryAndPipefail(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("test helper uses a POSIX executable")
@@ -41,7 +40,7 @@ func TestRunPipelineUsesRepositoryBinaryAndPipefail(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	result := runPipeline(command, binary, root, 0)
+	result := runPipeline(command, binary, root, time.Second)
 	if result.Status != "passed" || result.ExitCode != 0 || strings.TrimSpace(result.Stdout) != "ok" {
 		t.Fatalf("unexpected result: %#v", result)
 	}
@@ -61,7 +60,7 @@ func TestRunPipelineUsesRepositoryBinaryAndPipefail(t *testing.T) {
 	if err := os.Rename(failing, filepath.Join(root, "grep")); err != nil {
 		t.Fatal(err)
 	}
-	result = runPipeline(command, binary, root, 0)
+	result = runPipeline(command, binary, root, time.Second)
 	if result.Status != "failed" || result.ExitCode != 7 {
 		t.Fatalf("pipefail result = %#v", result)
 	}
@@ -151,7 +150,7 @@ func TestRunPipelineAllowsDownstreamEarlyExit(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	result := runPipeline(command, binary, root, 0)
+	result := runPipeline(command, binary, root, time.Second)
 	if result.Status != "passed" || result.ExitCode != 0 || strings.TrimSpace(result.Stdout) != "first" {
 		t.Fatalf("early-exit pipeline result = %#v", result)
 	}
@@ -160,7 +159,7 @@ func TestRunPipelineAllowsDownstreamEarlyExit(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	result = runPipeline(command, binary, root, 0)
+	result = runPipeline(command, binary, root, time.Second)
 	if result.Status != "passed" || result.ExitCode != 0 || strings.TrimSpace(result.Stdout) != "first" {
 		t.Fatalf("builtin early-exit pipeline result = %#v", result)
 	}
@@ -188,7 +187,7 @@ func TestRunPipelineDoesNotNormalizeForgedPipeCloseFailures(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		result := runPipeline(command, binary, root, 0)
+		result := runPipeline(command, binary, root, time.Second)
 		if result.Status != "failed" || result.ExitCode != tc.exit {
 			t.Fatalf("%q result = %#v, want failed/%d", tc.line, result, tc.exit)
 		}

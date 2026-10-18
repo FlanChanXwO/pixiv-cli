@@ -33,13 +33,12 @@ go test ./...
 干净源码构建及带版本的 `go install` 无需生成步骤。校验和构建命令如下：
 
 ```bash
-go run ./scripts/cmd/frontendassets --check
 go test ./...
 go vet ./...
 sh scripts/build.sh
 ```
 
-`frontendassets` 与 `frontendassets --check` 都是只读兼容命令，校验嵌入的输入和占位符。旧 `generated/` 目录仍忽略，但不再使用。本地、平台及 race 脚本直接编译，Quality/Release/Platform 工作流额外校验资源源码。前端源码和校验工具改动仍要求 Quality、Platform、Container 门禁。交叉编译不需要宿主生成器。Docker 继续使用预构建二进制，Homebrew 模板仍在 `templates/homebrew/`。
+现有 `frontend` 包测试校验嵌入输入和占位符。本地、平台及 race 构建直接编译源码，不需要生成器或独立校验命令。前端变更仍要求 Quality、Platform、Container 门禁。Docker 使用预构建二进制，Homebrew 模板仍在 `templates/homebrew/`。
 
 源码安装和自更新均可通过 `go install github.com/FlanChanXwO/pixiv-cli/cmd/pixiv@vX.Y.Z` 使用精确 Release tag；仍需满足下方 Go/cgo/linker/native 要求。
 

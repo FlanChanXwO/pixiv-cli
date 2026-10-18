@@ -81,7 +81,7 @@ func TestLoadRejectsInvalidSource(t *testing.T) {
 }
 
 func TestEmbeddedPagesContainOnlyPageSources(t *testing.T) {
-	pages, err := Load()
+	pages, err := load(sources)
 	if err != nil {
 		t.Fatal(err)
 	}
