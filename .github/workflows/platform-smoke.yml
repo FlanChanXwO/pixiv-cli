@@ -79,10 +79,24 @@ jobs:
           set -euo pipefail
           test "$(go env GOOS)" = '${{ matrix.goos }}'
           test "$(go env GOARCH)" = '${{ matrix.goarch }}'
+      # Base-ref workers must accept both source contracts during the Go migration.
+      - name: Select the checked-out encoder build
+        id: encoder
+        shell: bash
+        run: |
+          if [ -f internal/media/ugoira/rust/Cargo.toml ]; then
+            echo 'rust=true' >> "$GITHUB_OUTPUT"
+            echo 'CGO_ENABLED=1' >> "$GITHUB_ENV"
+          else
+            echo 'rust=false' >> "$GITHUB_OUTPUT"
+            echo 'CGO_ENABLED=0' >> "$GITHUB_ENV"
+          fi
       - name: Install the pinned native Rust toolchain
+        if: ${{ steps.encoder.outputs.rust == 'true' }}
         shell: bash
         run: rustup toolchain install '${{ matrix.rust_toolchain }}' --profile minimal --target '${{ matrix.rust_target }}' --no-self-update
       - name: Check vendored Rust sources
+        if: ${{ steps.encoder.outputs.rust == 'true' }}
         shell: bash
         run: sh scripts/test-rust-vendor.sh
       - name: Test the platform installer
@@ -100,10 +114,11 @@ jobs:
         run: |
           set -euo pipefail
           version="0.2.0-ci.${GITHUB_RUN_ID}"
-          archive=$(sh scripts/build-platform.sh \
-            --target '${{ matrix.goos }}/${{ matrix.goarch }}' \
-            --rust-target '${{ matrix.rust_target }}' \
-            --cc '${{ matrix.cc }}' \
+          args=(--target '${{ matrix.goos }}/${{ matrix.goarch }}')
+          if [ '${{ steps.encoder.outputs.rust }}' = true ]; then
+            args+=(--rust-target '${{ matrix.rust_target }}' --cc '${{ matrix.cc }}')
+          fi
+          archive=$(sh scripts/build-platform.sh "${args[@]}" \
             --version "$version" \
             --output-dir dist \
             --package)
@@ -113,7 +128,11 @@ jobs:
         run: |
           set +e
           native_smoke_log="$RUNNER_TEMP/native-ugoira-smoke.log"
-          go test ./internal/media/ugoira -run '^TestRustUgoiraEncoderNativeGIFAndAPNG$' -count=1 >"$native_smoke_log" 2>&1
+          if [ '${{ steps.encoder.outputs.rust }}' = true ]; then
+            go test ./internal/media/ugoira -run '^TestRustUgoiraEncoderNativeGIFAndAPNG$' -count=1 >"$native_smoke_log" 2>&1
+          else
+            go test ./internal/media/ugoira/... -count=1 >"$native_smoke_log" 2>&1
+          fi
           status=$?
           cat "$native_smoke_log"
           if [ "$status" -ne 0 ]; then
