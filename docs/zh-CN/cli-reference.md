@@ -21,8 +21,7 @@ SDK 与 MCP 细节不在此重复，入口见[相关文档](#相关文档)。
 
 > **发布状态**：受支持 binary 的 Ed25519 公钥、key ID 与 fingerprint 已提交到
 > [`internal/update/installer/release_installer.go`](../../internal/update/installer/release_installer.go)；公开 source/tap repositories、
-> 受保护 `release` Environment 与隔离 credentials 已配置。v0.4.4 已作为公开 GitHub Release 发布，包含六个
-> 平台 archive、checksum 与签名清单。GitHub Release 与 tap 是相互独立的发布物；当前状态请以官方
+> 受保护 `release` Environment 与隔离 credentials 已配置。GitHub Release 与 tap 是相互独立的发布物；当前状态请以官方
 > [GitHub Releases 页面]和 `brew info FlanChanXwO/tap/pixiv-cli` 为准。后续版本仍必须通过同一套 tag、签名、
 > 资产与 Homebrew 门禁后才可作为可信下载来源。
 
@@ -67,13 +66,7 @@ binary 预检会在替换现有安装前显露 loader 失败。
 sh scripts/build.sh
 ```
 
-受支持的源码构建需要 `go.mod` 声明的 Go 版本、`CGO_ENABLED=1`、目标平台可用的 C linker，以及与
-目标匹配的 Rust ugoira staticlib。它会输出 `build/pixiv` 或 `build/pixiv.exe`。Windows
-可通过 Git Bash、MSYS2 或 WSL 运行构建命令。
-
-当前工作树已保存 darwin/linux/windows × amd64/arm64 的六个 runner-verified staticlib 与同源
-`manifest.json`；`scripts/build.sh` 会先校验 source digest、target/path 与每个库的 SHA-256，再构建
-本机 binary。完整要求、证据回填流程和失败含义见[开发流程](maintainers/development.md#rust-ugoira-staticlib)。
+当前源码构建使用 `go.mod` 声明的 Go 版本。`scripts/build.sh` 设置 `CGO_ENABLED=0`，输出 `build/pixiv`（Windows 为 `build/pixiv.exe`），不需要 Rust 工具链、native library 或 C linker。Windows 可通过 Git Bash、MSYS2 或 WSL 运行。编码、许可证与平台证据见[开发流程](maintainers/development.md#ugoira-go-encoder)。
 
 ### Go 源码安装
 
@@ -83,9 +76,9 @@ sh scripts/build.sh
 go install github.com/FlanChanXwO/pixiv-cli/cmd/pixiv@vX.Y.Z
 ```
 
-使用该 tag 的 `go.mod` 声明的 Go 版本、`CGO_ENABLED=1`、目标 C linker 及仓库提交的目标 Rust staticlib。前端源码直接嵌入，无需生成器或 npm。安装目标为 `GOBIN` 或 `GOPATH/bin`。已有 Go 安装继续自更新到选中 Release 的精确 tag；Go 安装失败时保留旧可执行文件。历史 tag 保留各自构建要求。
+使用已发布的精确 tag，并遵循该 tag 的要求，不使用分支名。包含 Go encoder 的源码版本可用 `CGO_ENABLED=0` 构建。
 
-检出源码后也可运行 `sh scripts/build.sh`，它会校验提交的原生库并输出 `build/pixiv` 或 `build/pixiv.exe`。
+前端源码直接嵌入，无需生成器或 npm。安装目标为 `GOBIN` 或 `GOPATH/bin`；自更新安装选中的精确 Release tag，失败时保留旧可执行文件。
 
 ### Homebrew
 
@@ -110,8 +103,7 @@ brew install FlanChanXwO/tap/pixiv-cli-beta
 
 发布流程会为 darwin、linux、windows 的 amd64/arm64 生成六个固定名称的 archive：
 `pixiv-cli_<version>_<os>_<arch>.tar.gz`（Windows 为 `.zip`），以及 `checksums.txt` 与
-Ed25519 签名的 `checksums.json`。已发布的 v0.4.4 提供完整资产；后续版本只有在同一发布门禁完成后才应作为
-可供信任的直接下载来源。
+Ed25519 签名的 `checksums.json`。只有通过对应发布门禁的 Release 才可作为可信的直接下载来源。
 
 当前 Release 不包含 Apple notarization 或 Windows Authenticode。即使从已验证 Release
 下载，macOS Gatekeeper 或 Windows SmartScreen 仍可能显示系统信誉提示；请只从项目的
@@ -741,6 +733,8 @@ Unix 下，`SIGINT`（Ctrl+C）与 `SIGTERM` 会取消服务并等待在途 HTTP
 此命令不启动 listener；请按 [HTTP 启动说明](#mcp-http-server) 单独运行 `pixiv mcp --port PORT`。
 
 ## 版本与更新
+
+`pixiv --licenses` 输出程序内嵌的第三方声明，不需要认证、联网或创建本地状态。发布压缩包只包含 CLI 可执行文件，不会解压出独立许可证文件。
 
 `pixiv --version` 是唯一公开版本接口，stdout 精确输出一行 `pixiv <version>`，stderr 为空，且不会执行启动期更新检查。原 `version`
 子命令、其 `--json` 形式以及公开 `commit`/`build_date` 字段均作为 breaking change 删除；现在调用会返回

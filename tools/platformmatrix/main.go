@@ -16,13 +16,10 @@ type registry struct {
 }
 
 type platform struct {
-	GOOS          string
-	GOARCH        string
-	Runner        string
-	RustTarget    string
-	RustToolchain string
-	CC            string
-	Capabilities  []string
+	GOOS         string
+	GOARCH       string
+	Runner       string
+	Capabilities []string
 }
 
 func (p *platform) UnmarshalJSON(data []byte) error {
@@ -32,8 +29,7 @@ func (p *platform) UnmarshalJSON(data []byte) error {
 	}
 	fields := map[string]any{
 		"goos": &p.GOOS, "goarch": &p.GOARCH, "runner": &p.Runner,
-		"rust_target": &p.RustTarget, "rust_toolchain": &p.RustToolchain,
-		"cc": &p.CC, "capabilities": &p.Capabilities,
+		"capabilities": &p.Capabilities,
 	}
 	for name, target := range fields {
 		value, ok := raw[name]
@@ -120,9 +116,8 @@ func resolve(path, capability string) (matrix, error) {
 		if hasCapability(item.Capabilities, capability) {
 			include = append(include, map[string]any{
 				"goos": item.GOOS, "goarch": item.GOARCH, "runner": item.Runner,
-				"rust_target": item.RustTarget, "rust_toolchain": item.RustToolchain,
-				"cc": item.CC, "capabilities": item.Capabilities,
-				"artifact": item.GOOS + "-" + item.GOARCH,
+				"capabilities": item.Capabilities,
+				"artifact":     item.GOOS + "-" + item.GOARCH,
 			})
 		}
 	}
@@ -139,8 +134,8 @@ func validatePlatform(item platform) error {
 	if item.GOARCH == "" || strings.ContainsAny(item.GOARCH, "/\\") {
 		return errors.New("goarch must be a simple non-empty name")
 	}
-	if item.Runner == "" || item.RustTarget == "" || item.RustToolchain == "" || item.CC == "" {
-		return errors.New("runner, Rust target/toolchain, and cc are required")
+	if item.Runner == "" {
+		return errors.New("runner is required")
 	}
 	seen := map[string]struct{}{}
 	for _, capability := range item.Capabilities {

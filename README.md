@@ -163,7 +163,7 @@ brew upgrade pixiv-cli
 
 ### Go source installation
 
-With the declared Go toolchain, cgo, a target C linker and the committed native library, install an exact Release tag:
+Use an exact published tag and follow that tag's build requirements; see [Go install](docs/en/cli-reference.md#go-install).
 
 ```bash
 go install github.com/FlanChanXwO/pixiv-cli/cmd/pixiv@vX.Y.Z
@@ -173,7 +173,7 @@ Frontend sources are embedded directly; no generation step is needed. See [sourc
 
 ### Release archive or source build
 
-Download a supported archive from [GitHub Releases](https://github.com/FlanChanXwO/pixiv-cli/releases), or build the checkout:
+Download a supported archive from [GitHub Releases](https://github.com/FlanChanXwO/pixiv-cli/releases), or build the current checkout with the Go version declared in `go.mod`. The build script sets `CGO_ENABLED=0`; no Rust toolchain or C linker is needed:
 
 ```bash
 sh scripts/build.sh
@@ -343,3 +343,5 @@ Bug reports, documentation fixes, tests, and focused features are welcome. Read 
 ## License
 
 [MIT](LICENSE) © FlanChanXwO
+
+Third-party notices are embedded in the CLI; run `pixiv --licenses` to read them. Release archives contain only the executable.

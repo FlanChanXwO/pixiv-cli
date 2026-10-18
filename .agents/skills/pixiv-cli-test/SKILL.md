@@ -7,7 +7,7 @@ description: Select and run pixiv-cli regression, TDD, document, SDK, CLI/MCP, a
 
 ## Determine the evidence
 
-Read the diff and the affected owner/tests before choosing commands. Work from the repository root unless a command explicitly needs another directory. Check `go version` against `go.mod`; source builds need cgo and a compatible C linker plus the committed native libraries. Do not install missing tools or fetch dependencies without authorization. Report environment failures separately from regressions.
+Read the diff and the affected owner/tests before choosing commands. Work from the repository root unless a command explicitly needs another directory. Check `go version` against `go.mod`; source builds use `CGO_ENABLED=0`; race-detector checks separately enable cgo and need a compatible C toolchain. Do not install missing tools or fetch dependencies without authorization. Report environment failures separately from regressions.
 
 For source behavior, select the smallest existing test that exposes the missing behavior, or extend it only where coverage is missing, and observe its expected failure before implementation. A test that fails to compile or cannot reach its assertion is not a behavioral Red. Implement one slice, run Green, then refactor and rerun. For structural-only work, reuse before/after characterization evidence; obtain an explicit exception if an applicable Red requirement cannot be met. Never modify expected output solely to make an unexplained failure disappear.
 
@@ -38,7 +38,7 @@ Start with the affected package and named test, for example `go test ./path/to/o
 | Concurrency, account lifecycle, persistence, shared runtime | Add `go test -race ./... -count=1`; use native platform checks where platform code is involved |
 | PR metadata and verification tooling | `go test ./tools/prmeta ./tools/verification -count=1`; inspect the changed workflow's existing tests |
 | Platform/release contracts | `go test ./tools/release ./tools/platformmatrix -count=1`, affected `scripts/...` tests, and the relevant build/package/Homebrew fixture scripts |
-| Rust/cgo/staticlib or ABI | Follow [pixiv-cli-native](../pixiv-cli-native/SKILL.md), not an unrelated Go-only substitute |
+| Encoding, platform builds, ABI or native evidence | Follow [pixiv-cli-native](../pixiv-cli-native/SKILL.md) for the affected execution/artifact boundary |
 
 Use `gofmt -l` on affected Go files and the existing `.pre-commit-config.yaml`. Run installed pre-commit when applicable; do not introduce a new linter or download hook environments silently. `sh -n` checks shell syntax, not shell behavior. Cross-compilation checks compilation, not execution on another operating system.
 

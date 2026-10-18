@@ -365,6 +365,8 @@ jobs:
     runs-on: ${{ matrix.runner }}
     permissions:
       contents: read
+    env:
+      CGO_ENABLED: '0'
     strategy:
       fail-fast: false
       max-parallel: 2
@@ -401,24 +403,14 @@ jobs:
           go-version-file: pr/go.mod
           cache: true
 
-      - name: Install the pinned native Rust toolchain
-        shell: bash
-        working-directory: pr
-        run: rustup toolchain install '${{ matrix.rust_toolchain }}' --profile minimal --target '${{ matrix.rust_target }}' --no-self-update
-
       - name: Build the exact PR binary
         shell: bash
         working-directory: pr
-        env:
-          CC: ${{ matrix.cc }}
-          RUSTUP_TOOLCHAIN: ${{ matrix.rust_toolchain }}
         run: |
           set -euo pipefail
           test "$(git rev-parse HEAD)" = '${{ needs.dispatch.outputs.head_sha }}'
           binary=$(sh scripts/build-platform.sh \
             --target '${{ matrix.goos }}/${{ matrix.goarch }}' \
-            --rust-target '${{ matrix.rust_target }}' \
-            --cc '${{ matrix.cc }}' \
             --output-dir "$RUNNER_TEMP/verification-build")
           printf 'VERIFICATION_BINARY=%s\n' "$binary" >> "$GITHUB_ENV"
           mkdir -p "$RUNNER_TEMP/verification-home"

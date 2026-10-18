@@ -92,6 +92,8 @@ jobs:
     runs-on: ubuntu-24.04
     permissions:
       contents: read
+    env:
+      CGO_ENABLED: '0'
     steps:
       - name: Require successful scope classification
         if: ${{ needs.scope.result != 'success' }}
@@ -108,11 +110,21 @@ jobs:
         if: ${{ needs.scope.result == 'success' }}
         with:
           go-version-file: go.mod
+      - name: Download locked Go module sources
+        if: ${{ needs.scope.result == 'success' }}
+        shell: bash
+        run: go mod download
+      - name: Verify Go license bundle
+        if: ${{ needs.scope.result == 'success' }}
+        shell: bash
+        run: go run ./scripts/cmd/licensebundle --check
       - name: Test Go sources
         if: ${{ needs.scope.result == 'success' }}
         shell: bash
         run: go test ./... -count=1
       - name: Test Go sources with the race detector
+        env:
+          CGO_ENABLED: '1'
         if: ${{ needs.scope.result == 'success' }}
         shell: bash
         run: go test -race ./... -count=1

@@ -8,22 +8,20 @@ var semanticVersionPattern = regexp.MustCompile(`^(0|[1-9][0-9]*)\.(0|[1-9][0-9]
 
 var gitCommitPattern = regexp.MustCompile(`^[0-9a-f]{40}$`)
 
-const evidenceSchemaVersion = 2
+const evidenceSchemaVersion = 3
 
 type nativeTarget struct {
-	goos       string
-	goarch     string
-	rustTarget string
-	staticlib  string
+	goos   string
+	goarch string
 }
 
 var nativeTargets = map[string]nativeTarget{
-	"darwin/amd64":  {goos: "darwin", goarch: "amd64", rustTarget: "x86_64-apple-darwin", staticlib: "libugoira_rs.a"},
-	"darwin/arm64":  {goos: "darwin", goarch: "arm64", rustTarget: "aarch64-apple-darwin", staticlib: "libugoira_rs.a"},
-	"linux/amd64":   {goos: "linux", goarch: "amd64", rustTarget: "x86_64-unknown-linux-gnu", staticlib: "libugoira_rs.a"},
-	"linux/arm64":   {goos: "linux", goarch: "arm64", rustTarget: "aarch64-unknown-linux-gnu", staticlib: "libugoira_rs.a"},
-	"windows/amd64": {goos: "windows", goarch: "amd64", rustTarget: "x86_64-pc-windows-msvc", staticlib: "ugoira_rs.lib"},
-	"windows/arm64": {goos: "windows", goarch: "arm64", rustTarget: "aarch64-pc-windows-msvc", staticlib: "ugoira_rs.lib"},
+	"darwin/amd64":  {goos: "darwin", goarch: "amd64"},
+	"darwin/arm64":  {goos: "darwin", goarch: "arm64"},
+	"linux/amd64":   {goos: "linux", goarch: "amd64"},
+	"linux/arm64":   {goos: "linux", goarch: "arm64"},
+	"windows/amd64": {goos: "windows", goarch: "amd64"},
+	"windows/arm64": {goos: "windows", goarch: "arm64"},
 }
 
 type recordOptions struct {
@@ -31,30 +29,24 @@ type recordOptions struct {
 	version      string
 	sourceCommit string
 	target       string
-	rustTarget   string
-	staticlib    string
 	binary       string
 	archive      string
 	output       string
 }
 
-// evidenceRecord 是单个真实 runner 输出的可迁移审计记录。测试可构造 fixture 验证格式，
-// 但只有 workflow 产生、绑定 main SHA 的记录才是可用于审计和回填的 native evidence。
+// evidenceRecord 保存单个 runner 的 binary/archive 声明；源码身份由受审计 workflow 提供。
 type evidenceRecord struct {
 	Schema int            `json:"schema"`
 	Target evidenceTarget `json:"target"`
 	// SourceCommit 由 workflow 上下文提供，不再从 binary runtime 元数据推断。
 	SourceCommit string          `json:"source_commit"`
-	SourceDigest string          `json:"source_digest"`
-	Staticlib    evidenceFile    `json:"staticlib"`
 	Binary       evidenceBinary  `json:"binary"`
 	Archive      evidenceArchive `json:"archive"`
 }
 
 type evidenceTarget struct {
-	GOOS       string `json:"goos"`
-	GOARCH     string `json:"goarch"`
-	RustTarget string `json:"rust_target"`
+	GOOS   string `json:"goos"`
+	GOARCH string `json:"goarch"`
 }
 
 type evidenceFile struct {
@@ -83,4 +75,12 @@ type consolidateOptions struct {
 type evidenceLocation struct {
 	record evidenceRecord
 	dir    string
+}
+
+// evidenceSummary 的每条记录对应同名 GOOS-GOARCH 子目录中的完整 artifact。
+type evidenceSummary struct {
+	Schema       int              `json:"schema"`
+	SourceCommit string           `json:"source_commit"`
+	Version      string           `json:"version"`
+	Records      []evidenceRecord `json:"records"`
 }

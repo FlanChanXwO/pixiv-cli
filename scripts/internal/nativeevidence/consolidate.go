@@ -10,14 +10,13 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
-
-	"github.com/FlanChanXwO/pixiv-cli/internal/media/ugoira/staticlib"
 )
 
 // consolidateEvidence 只接受六个完整且同源的 runner artifact 目录；它先在全新 sibling
 // 目录验证和组装，再一次 rename 发布。已有输出、缺目标、hash 变化或 symlink 一律失败，
-// 因而不会把部分或混代库伪装成可提交的完整 staticlib 集合。
+// 只发布同一版本、同一源码 commit 的完整 Go binary/archive 证据集合。
 func consolidateEvidence(options consolidateOptions) error {
 	if !strings.HasPrefix(options.expectedVersion, "v") || !semanticVersionPattern.MatchString(strings.TrimPrefix(options.expectedVersion, "v")) {
 		return fmt.Errorf("expected version is not a v-prefixed semantic version: %q", options.expectedVersion)
@@ -25,7 +24,7 @@ func consolidateEvidence(options consolidateOptions) error {
 	if !gitCommitPattern.MatchString(options.expectedCommit) {
 		return fmt.Errorf("expected commit must be a 40-character lowercase Git SHA: %q", options.expectedCommit)
 	}
-	repoRoot, err := requireSecureDirectory(options.repoRoot, "repository root")
+	_, err := requireSecureDirectory(options.repoRoot, "repository root")
 	if err != nil {
 		return err
 	}
@@ -43,49 +42,41 @@ func consolidateEvidence(options consolidateOptions) error {
 	if len(locations) != len(nativeTargets) {
 		return fmt.Errorf("native evidence must contain exactly six target records, got %d", len(locations))
 	}
-	sourceDigest, err := calculateSourceDigest(repoRoot)
-	if err != nil {
-		return err
-	}
-	if err := verifyEvidenceLocations(locations, repoRoot, sourceDigest, options.expectedVersion, options.expectedCommit); err != nil {
+	if err := verifyEvidenceLocations(locations, options.expectedVersion, options.expectedCommit); err != nil {
 		return err
 	}
 	stage, err := os.MkdirTemp(filepath.Dir(options.outputDir), ".native-evidence-consolidate-")
 	if err != nil {
-		return fmt.Errorf("create staticlib staging directory: %w", err)
+		return fmt.Errorf("create evidence staging directory: %w", err)
 	}
 	defer os.RemoveAll(stage)
-	manifest := staticlib.Manifest{Schema: 1, SourceDigest: sourceDigest, Artifacts: make(map[string]staticlib.ManifestAsset, len(locations))}
+	sort.Slice(locations, func(i, j int) bool {
+		left, right := locations[i].record.Target, locations[j].record.Target
+		return left.GOOS+"/"+left.GOARCH < right.GOOS+"/"+right.GOARCH
+	})
+	summary := evidenceSummary{Schema: evidenceSchemaVersion, SourceCommit: options.expectedCommit, Version: options.expectedVersion}
 	for _, location := range locations {
-		platform := location.record.Target.GOOS + "/" + location.record.Target.GOARCH
-		target := nativeTargets[platform]
-		source := filepath.Join(location.dir, location.record.Staticlib.Name)
-		destinationDir := filepath.Join(stage, target.rustTarget)
-		if err := os.MkdirAll(destinationDir, 0o755); err != nil {
-			return fmt.Errorf("create staticlib destination for %s: %w", platform, err)
+		record := location.record
+		platform := record.Target.GOOS + "-" + record.Target.GOARCH
+		destination := filepath.Join(stage, platform)
+		if err := os.Mkdir(destination, 0o755); err != nil {
+			return fmt.Errorf("create evidence destination for %s: %w", platform, err)
 		}
-		destination := filepath.Join(destinationDir, target.staticlib)
-		if err := copyVerifiedFile(source, destination, location.record.Staticlib.SHA256); err != nil {
-			return fmt.Errorf("copy staticlib for %s: %w", platform, err)
+		for _, artifact := range []evidenceFile{record.Binary.evidenceFile, record.Archive.evidenceFile} {
+			if err := copyVerifiedFile(filepath.Join(location.dir, artifact.Name), filepath.Join(destination, artifact.Name), artifact.SHA256); err != nil {
+				return fmt.Errorf("copy verified artifact for %s: %w", platform, err)
+			}
 		}
-		manifest.Artifacts[platform] = staticlib.ManifestAsset{
-			Target: target.rustTarget,
-			Path:   filepath.ToSlash(filepath.Join(target.rustTarget, target.staticlib)),
-			SHA256: location.record.Staticlib.SHA256,
+		if err := writeNewJSON(filepath.Join(destination, "native-evidence.json"), record); err != nil {
+			return err
 		}
+		summary.Records = append(summary.Records, record)
 	}
-	body, err := json.Marshal(manifest)
-	if err != nil {
-		return fmt.Errorf("encode staticlib manifest: %w", err)
-	}
-	if err := staticlib.ValidateManifestFiles(stage, body, sourceDigest); err != nil {
-		return fmt.Errorf("validate staged staticlib manifest: %w", err)
-	}
-	if err := writeFreshFile(filepath.Join(stage, "manifest.json"), append(body, '\n')); err != nil {
-		return fmt.Errorf("write staticlib manifest: %w", err)
+	if err := writeNewJSON(filepath.Join(stage, "summary.json"), summary); err != nil {
+		return err
 	}
 	if err := os.Rename(stage, options.outputDir); err != nil {
-		return fmt.Errorf("publish complete staticlib evidence: %w", err)
+		return fmt.Errorf("publish complete Go evidence: %w", err)
 	}
 	return nil
 }
@@ -128,15 +119,12 @@ func readEvidenceLocations(inputDir string) ([]evidenceLocation, error) {
 	return locations, nil
 }
 
-func verifyEvidenceLocations(locations []evidenceLocation, repoRoot, sourceDigest, expectedVersion, expectedCommit string) error {
+func verifyEvidenceLocations(locations []evidenceLocation, expectedVersion, expectedCommit string) error {
 	seen := make(map[string]struct{}, len(locations))
 	for _, location := range locations {
 		record := location.record
 		if record.Schema != evidenceSchemaVersion {
 			return fmt.Errorf("evidence record for %s/%s uses unsupported schema %d", record.Target.GOOS, record.Target.GOARCH, record.Schema)
-		}
-		if record.SourceDigest != sourceDigest {
-			return errors.New("evidence record source digest does not match the audited repository")
 		}
 		if !gitCommitPattern.MatchString(record.SourceCommit) {
 			return fmt.Errorf("source metadata for %s is incomplete", record.Target.GOOS+"/"+record.Target.GOARCH)
@@ -146,16 +134,13 @@ func verifyEvidenceLocations(locations []evidenceLocation, repoRoot, sourceDiges
 		}
 		platform := record.Target.GOOS + "/" + record.Target.GOARCH
 		target, ok := nativeTargets[platform]
-		if !ok || target.rustTarget != record.Target.RustTarget {
+		if !ok {
 			return fmt.Errorf("evidence record has an unsupported target binding %q", platform)
 		}
 		if _, duplicate := seen[platform]; duplicate {
 			return fmt.Errorf("native evidence contains duplicate target %q", platform)
 		}
 		seen[platform] = struct{}{}
-		if err := verifyRecordedArtifact(location.dir, record.Staticlib, target.staticlib); err != nil {
-			return fmt.Errorf("validate staticlib for %s: %w", platform, err)
-		}
 		binaryName := "pixiv"
 		if target.goos == "windows" {
 			binaryName = "pixiv.exe"
@@ -178,10 +163,7 @@ func verifyEvidenceLocations(locations []evidenceLocation, repoRoot, sourceDiges
 		if err := verifyRecordedArchiveMembers(filepath.Join(location.dir, record.Archive.Name), record.Archive.Members); err != nil {
 			return fmt.Errorf("verify archive members for %s: %w", platform, err)
 		}
-		expected, err := expectedArchiveMembers(repoRoot, record.Binary.Name, record.Binary.SHA256)
-		if err != nil {
-			return fmt.Errorf("calculate expected archive members for %s: %w", platform, err)
-		}
+		expected := map[string]string{record.Binary.Name: record.Binary.SHA256}
 		if err := requireExactEvidenceMembers(record.Archive.Members, expected); err != nil {
 			return fmt.Errorf("archive members for %s do not match the audited tree: %w", platform, err)
 		}
@@ -274,7 +256,11 @@ func copyVerifiedFile(source, destination, expectedDigest string) error {
 		return err
 	}
 	defer input.Close()
-	output, err := os.OpenFile(destination, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o644)
+	info, err := input.Stat()
+	if err != nil {
+		return err
+	}
+	output, err := os.OpenFile(destination, os.O_WRONLY|os.O_CREATE|os.O_EXCL, info.Mode().Perm())
 	if err != nil {
 		return err
 	}

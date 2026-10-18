@@ -20,7 +20,7 @@ import (
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
-// readAnimation reuses the CLI archive policy and native encoder, but never
+// readAnimation reuses the CLI archive policy and Go encoder, but never
 // publishes their temporary filesystem paths as the MCP delivery contract.
 func readAnimation(ctx context.Context, client *pixiv.Client, id int64, format string) (content []mcp.Content, page outputs.MediaPage, err error) {
 	generationStarted := time.Now()
@@ -65,7 +65,7 @@ func readAnimation(ctx context.Context, client *pixiv.Client, id int64, format s
 	animationPath := filepath.Join(dir, filename)
 	var waitDuration, encodeDuration time.Duration
 	var waitObserved, encodeObserved bool
-	err = ugoira.NewRustEncoder().Encode(ctx, ugoira.Input{ZipPath: zipPath, Frames: frames, WorkDir: dir, OutputPath: animationPath, Format: ugoira.Format(format), Observe: func(stage string, duration time.Duration) {
+	err = ugoira.NewEncoder().Encode(ctx, ugoira.Input{ZipPath: zipPath, Frames: frames, WorkDir: dir, OutputPath: animationPath, Format: ugoira.Format(format), Observe: func(stage string, duration time.Duration) {
 		switch stage {
 		case "animation_encode_wait":
 			waitDuration, waitObserved = duration, true

@@ -12,10 +12,7 @@ printf '#!/bin/sh\nprintf fixture\n' > "$binary"
 chmod 0755 "$binary"
 
 expected="$temporary/expected.txt"
-{
-	printf '%s\n' pixiv LICENSE THIRD_PARTY_LICENSES.md
-	find "$repo_root/third_party/licenses" -type f -print | sed "s#^$repo_root/##"
-} | LC_ALL=C sort > "$expected"
+printf '%s\n' pixiv > "$expected"
 
 assert_members() {
 	archive=$1

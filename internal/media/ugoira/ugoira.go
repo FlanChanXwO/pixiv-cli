@@ -12,7 +12,7 @@ import (
 	filereplace "github.com/FlanChanXwO/pixiv-cli/internal/storage/file/replace"
 )
 
-// ErrOutputCapacity means native output could not fit its reserved temporary budget.
+// ErrOutputCapacity means encoded output could not fit its reserved temporary budget.
 var ErrOutputCapacity = errors.New("animation temporary capacity exhausted")
 
 type Format string
@@ -46,9 +46,9 @@ type Input struct {
 	OutputPath string
 	Format     Format
 	MaxEdge    uint32
-	// MaxOutputBytes, when non-nil, limits native file writes before publication.
+	// MaxOutputBytes, when non-nil, limits file writes before publication.
 	MaxOutputBytes *uint64
-	// ReserveOutput requests shared capacity before each synchronous native write.
+	// ReserveOutput requests shared capacity before each synchronous file write.
 	// It is not retained after Encode returns; partial reservations are reconciled by the owner.
 	ReserveOutput func(uint64) error
 	// Observe receives gate-wait and encoding durations without file paths.

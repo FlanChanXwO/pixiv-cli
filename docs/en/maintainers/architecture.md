@@ -254,7 +254,7 @@ provider subpackages, so the root `New` can dispatch to every browser; the root 
 The platform secret boundary is kept in the `secret` subpackage: macOS uses Keychain, Windows uses the current-user DPAPI, and Linux queries the Secret Service via `secret-tool` with fixed attributes. The Chromium provider reads Local State/Cookies from the platform profile root directory,
 supporting v10/v11 GCM and legacy CBC; missing system tools, permission, lock, schema drift, and decryption format errors are all mapped to stable errors,
 and no cookie, key, absolute path, or command output is written to logs, errors, JSON, or MCP. Cross-platform native provider evidence
-must still be collected on the corresponding host per the v1.0.0 release-prep runbook; offline fixtures and cross-compilation only prove code/format contracts.
+must still be collected on the corresponding host per the release-prep runbook; offline fixtures and cross-compilation only prove code/format contracts.
 
 ### `internal/update`
 
@@ -277,7 +277,7 @@ and re-exported by the root package to the CLI composition root:
 
 This package must not disguise signature, checksum, HTTP, archive, replacement, or permission errors as "no update". The production trusted key,
 signing private key and Keychain recovery copy, the protected `release` Environment, and the public remote have been configured for the production release path; the complete six-target
-native evidence and staticlib manifest have been backfilled. v0.3.0 has completed the official tag, signed Release, and stable tap formula;
+native evidence and staticlib manifest were backfilled for the legacy Rust release. v0.3.0 has completed the official tag, signed Release, and stable tap formula;
 the failure semantics of Release installation remain a protective boundary, not a temporary degradation.
 
 ### `scripts/cmd`, `scripts/tests`, and `scripts/internal`
@@ -286,7 +286,7 @@ Each script entry still in use lives at `scripts/cmd/<name>/main.go`, which only
 package. Pure test carriers live in `scripts/tests/`: they only verify workflow, documentation, or installer behavior and carry no production implementation.
 Implementation logic and same-package tests live in `scripts/internal/<name>`. Shared release contracts live in
 `scripts/internal/releasecontract` (release target/archive identity) and `scripts/internal/releasenotesrender`
-(GitHub Release body rendering, shared by `releaseassets` and history sync). Platform runner/Rust/CC metadata is owned
+(GitHub Release body rendering, shared by `releaseassets` and history sync). Platform runner/capability metadata is owned
 by `ci/platforms.json` and exposed to workflows through `tools/platformmatrix`; workflow tests validate behavior/security
 boundaries instead of maintaining a second exact YAML policy model.
 
@@ -367,7 +367,7 @@ The HTTP transport observes underlying POST writes/flushes only when a diagnosti
 
 `pixiv/mediaproxy` owns the grant/session-scoped metadata and image LRU, independent query/image semaphores, same-key metadata flights and streaming response lifecycle. Serialized metadata, in-progress image buffers and pinned cache payloads share the configured budget. Large/unreservable images stream without caching. Every lookup validates current authorization; old account/session generations cannot reuse content. Only complete successful transfers enter the cache, which never stores bookmark state or writes. Grant notifications, credential-generation signals and per-entry expiry reclaim idle entries; pinned bytes remain charged until release. Publication validates grant and generation under the cache mutex so a completed old fill cannot repopulate invalidated content. The SDK registers policy-validated artwork quality variants when mapping trusted metadata. Diagnostics use fixed stages without secret identifiers.
 
-`pixiv/tools/artwork_media` owns static MCP image delivery. One existing SDK lease binds artwork metadata and all page resources to the selected account; resource responses are closed after each read and the lease is closed on every exit. It returns image bytes and explicit per-page content indexes/failures, without exposing server paths or replaying partial delivery. `pixiv/internal/outputs` owns the structured media envelope and schema-error redaction. Ugoira uses the shared downloader archive selector, SDK SaveResource, and existing Rust encoder in a private per-call temporary workspace. It returns all GIF/APNG bytes as standard ImageContent plus a separately indexed PNG preview (APNG content uses the PNG-family MIME while its metadata retains the animation subtype), then removes temporary files before delivery. The actual archive quality and output basename are explicit; static-only parameters are rejected rather than ignored.
+`pixiv/tools/artwork_media` owns static MCP image delivery. One existing SDK lease binds artwork metadata and all page resources to the selected account; resource responses are closed after each read and the lease is closed on every exit. It returns image bytes and explicit per-page content indexes/failures, without exposing server paths or replaying partial delivery. `pixiv/internal/outputs` owns the structured media envelope and schema-error redaction. Ugoira uses the shared downloader archive selector, SDK SaveResource, and the Go encoder in a private per-call temporary workspace. It returns all GIF/APNG bytes as standard ImageContent plus a separately indexed PNG preview (APNG content uses the PNG-family MIME while its metadata retains the animation subtype), then removes temporary files before delivery. The actual archive quality and output basename are explicit; static-only parameters are rejected rather than ignored.
 
 Clients advertising the `io.modelcontextprotocol/ui` extension with `text/html;profile=mcp-app` receive an indexed App-only array in `_meta["pixiv/mediaContents"]`; model-facing `content` contains only the independent PNG preview. When the existing private animation publisher has retained the complete original, that array contains a protected `resource_link` for the animation and its inline PNG preview. Play reads the original binary only on demand; downloads use the same original file, grant/account-version checks and expiry. `content_index` and `preview_content_index` address this private array when present.
 
@@ -417,53 +417,18 @@ Owns download and local file persistence:
 - Single-page works are saved to the download directory.
 - Multi-page works and ugoira create a per-work subdirectory.
 - Single-page and multi-page works derive their extension from the upstream URL path and normalize cross-platform illegal characters the same way as the template-generated filename; Pixiv thumbnails use an explicit resource Content-Type to correct an ambiguous URL suffix when available, while unknown media types retain the URL extension.
-- ugoira first downloads the SDK-verified `download_url` zip, then the Rust FFI encoder synthesizes GIF/APNG, or the public SDK publishes the ZIP/extracted frames as-is; an authenticated session may legitimately select App medium, but it must never be labeled as original.
-- GIF retains its existing quantization and global palette. Opaque animations encode only changed palette-index rectangles with retained display state; fully identical frames still carry their own delay. Animations containing transparency preserve full frames and background disposal.
-- APNG preserves every frame and exact delay; within a changed rectangle, unchanged pixels become transparent only when all changed pixels are opaque. Otherwise the rectangle uses source replacement to preserve alpha exactly.
+- ugoira first downloads the SDK-verified `download_url` zip, then the Go encoder produces GIF/APNG, or the public SDK publishes the ZIP/extracted frames as-is; an authenticated session may legitimately select App medium, but it must never be labeled as original.
 
-The Rust crate is wired into cgo as a target-specific staticlib: darwin/linux/windows each have an amd64/arm64 selector; the Linux
-selector also explicitly links the system `libm`, taking over the `sinf`/`expf` symbols of the Rust/image staticlib; the Windows selector passes
-`-L${SRCDIR}/… -lugoira_rs` together with the Windows import libraries of the Rust std to pass `*-pc-windows-msvc` libraries,
-so that cgo does not reject bare `.lib` paths with drive letters; native-evidence on Windows explicitly uses the runner-provided
-`clang -fuse-ld=lld` for the link step, avoiding Go's GCC-only debug linker script being handed to the MSVC linker.
-
-Supported
-release/source builds must select and link the real library from the six-target `manifest.json` of the same Rust source digest;
-missing cgo, missing target library, or missing C linker must fail explicitly at compile/build time, and cannot fall back to `ffmpeg` or a runtime
-stub. Source identity is folded into the first-party crate's Cargo/build/source inputs, the vendor closure, and the local
-`quantette`; these paths disable Git text conversion in `.gitattributes`, so that Windows and Unix checkouts keep the same
-Git blob bytes, rather than masking the difference in the digest algorithm.
-
-The digest algorithm first converts Windows backslashes from `filepath.Rel` to a
-logical slash path, then filters `src/`, `.cargo/`, and `vendor/`; run `29189725013` proves that if the order is reversed, even
-when all six runner jobs succeed, a Unix/Windows digest split occurs and is caught by consolidation fail-closed.
-This run cannot be backfilled or concatenated with a later run. Rust `target/` is a machine artifact; the staticlib/manifest is a release input that
-can only be committed after native verification.
-The release archive's `LICENSE` and the generated license bundle are also pinned to LF checkout; run `29191200569` had six
-source digests that matched, but the Windows archive's `LICENSE` bytes still diverged from the Unix/Git blob, so
-consolidation failed closed again.
-
-This run also cannot be backfilled or concatenated across runs; a full re-run from the fixed SHA is required.
-`internal/media/ugoira/staticlib` only carries the integrity contract of the source digest and manifest, and does not import the cgo encoder;
-therefore the native-evidence **policy** gate can run before the target library is generated. `record` and `consolidate` also do not
-trigger cgo linking, but respectively still require the already-generated staticlib/binary/archive and the full six evidence inputs; the download runtime
-is still only linked to `internal/media/ugoira/rust` through the single FFI entry by `internal/media/ugoira`.
-
-Run `29192425899` completed native build, real cgo GIF/APNG smoke, and binary/archive record on all six platforms,
-and backfilled the six target libraries and the unified manifest via local fail-closed consolidation (this run was the first evidence
-collection, and its responsibility has since been superseded by the pinned-toolchain rebuild of run `29567721284` as the sole source of the currently
-committed six libraries; see the provenance note in `development.md`); source build validates
-this manifest and the library hashes before linking. `ffmpeg` is only retained for explicitly enabled dev-quality comparison and is not in the production download path.
+The default download path constructs `ugoira.NewEncoder()`; it has no backend selector or external-encoder fallback. Source and release builds use `CGO_ENABLED=0`. Rust sources, native libraries and the FFI/staticlib adapter are removed; legacy provenance remains in Git history.
 
 ### `internal/media/ugoira`
 
-Owns the ugoira `Format`, frame input, `Encoder`, the single cgo FFI entry, the Rust crate, and the staticlib/source-digest integrity contract. The downloader only depends on this package's `Encoder` interface and constructs the Rust encoder; it must not duplicate the FFI adapter or publication behavior. `internal/media/ugoira/staticlib` only validates the manifest, source digest, and committed target library files, and does not reverse-import the cgo encoder.
+Owns `Format`, ordered frame input, `Encoder`, ZIP validation/decoding, resizing, GIF quantization/dithering, APNG streaming and atomic publication. The downloader consumes its `Encoder` contract and constructs `NewEncoder()`; it must not duplicate encoding or publication. PNG decoding uses the standard library; owner-local `jpeg` retains legacy IDCT/color rounding. Six-target source/version/binary/archive/member evidence is owned by `scripts/internal/nativeevidence`, separate from the runtime encoder.
 
 ## Release assets and trust boundary
 
 `scripts/cmd/releaseassets` packages the archives for a fixed set of six targets: darwin/linux use `.tar.gz`, Windows uses `.zip`;
-each archive contains one `pixiv`/`pixiv.exe`, `LICENSE`, `THIRD_PARTY_LICENSES.md`, and the full
-`third_party/licenses`; they are pinned to LF in Git, so that licensebundle can be verified byte-for-byte on Windows too.
+each archive contains only `pixiv`/`pixiv.exe`. Third-party notices are embedded in the executable and available through `pixiv --licenses`. The project `LICENSE` remains separate in the source repository.
 When Windows Git Bash lacks `zip`, the packaging script explicitly uses the runner-preinstalled `7z`; other platforms use `zip`. Both branches
 produce the same member set, and a missing archiver fails directly rather than producing an incomplete asset.
 The finalize stage collects the SHA-256 of these six archives into `checksums.txt`, and generates an Ed25519 `checksums.json` with a key ID for the raw
@@ -478,13 +443,7 @@ the public tap, and the trust required by Homebrew 6 is only written to the temp
 
 Only the final protected
 job can read the independent tap deploy key and push only the corresponding formula.
-The official tag of v0.3.0 has gone through this release path and pushed the stable formula; subsequent tags must still independently satisfy the same installation gate. The complete
-six-target native success evidence has backfilled the staticlib/manifest. The production signing private key, Environment, and public remote
-have been configured for the production release path, and the public trust root for supported binaries has been configured in `internal/update/installer/release_installer.go`.
-
-The Rust crates.io dependency has been pinned by
-in-crate source replacement to a complete vendor closure, and verified with an empty Cargo cache for offline metadata/build/test and the six
-target license checks.
+The official tag of v0.3.0 has gone through this release path and pushed the stable formula; subsequent tags must still independently satisfy the same installation gate. The public signing trust root for supported binaries is defined in `internal/update/installer/release_installer.go`.
 
 The Homebrew formula template is generated from the verified six-target `checksums.txt`, using only macOS/Linux assets; the stable
 `pixiv-cli` and the beta `pixiv-cli-beta` conflict with each other and both install `pixiv`. The tap credential and the release key are different

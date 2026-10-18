@@ -13,7 +13,6 @@ Looking for commands, the SDK, or MCP tools? Start with the user docs. Preparing
 | Go SDK | [SDK](en/sdk.md) | [SDK](zh-CN/sdk.md) |
 | MCP tools | [MCP tools](en/mcp-tools.md) | [MCP tools](zh-CN/mcp-tools.md) |
 | Filing an Issue or PR | [Contributing](../CONTRIBUTING.md) | [贡献指南](../CONTRIBUTING.zh-CN.md) |
-| Upgrading from v0 | [Migration guide](en/v1.0.0-migration.md) | [迁移指南](zh-CN/v1.0.0-migration.md) |
 
 English docs define the canonical public interface. Simplified Chinese may rephrase for natural flow, but commands, parameters, schemas, output, and security rules stay consistent.
 

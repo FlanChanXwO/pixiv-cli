@@ -13,7 +13,6 @@
 | 调用 Go SDK | [SDK](zh-CN/sdk.md) |
 | 配置 MCP tools | [MCP tools](zh-CN/mcp-tools.md) |
 | 提交 Issue 或 PR | [贡献指南](../CONTRIBUTING.zh-CN.md) |
-| 从旧版本升级到 v1 | [迁移指南](zh-CN/v1.0.0-migration.md) |
 
 英文文档记录公开接口的准确定义。中文可以换一种更自然的说法，但命令、参数、schema、输出和安全规则要一致。
 

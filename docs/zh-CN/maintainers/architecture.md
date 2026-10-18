@@ -269,7 +269,7 @@ provider 子包，使根包 `New` 可分发所有浏览器；根包不导入任�
 Secret Service `secret-tool` 查询。Chromium provider 按平台 profile 根目录读取 Local State/Cookies，
 支持 v10/v11 GCM 与 legacy CBC；系统工具缺失、权限、锁、schema drift 和解密格式错误都映射为稳定错误，
 不把 cookie、密钥、绝对路径或命令输出写入日志、错误、JSON 或 MCP。跨平台 native provider evidence
-仍须按 v1.0.0 release-prep runbook 在对应 host 执行，离线 fixture 和交叉编译只证明代码/格式契约。
+仍须按 release-prep runbook 在对应 host 执行，离线 fixture 和交叉编译只证明代码/格式契约。
 
 ### `internal/update`
 
@@ -292,7 +292,7 @@ cache、显式更新策略与 Release binary 安装协议分别由 `internal/upd
 
 该包不得把签名、checksum、HTTP、archive、替换或权限错误伪装成“无更新”。production trusted key、
 签名私钥与 Keychain 恢复副本、受保护 `release` Environment 和公开 remote 已按正式发布链路配置；完整六目标
-native evidence 与 staticlib manifest 已回填。v0.3.0 已完成正式 tag、受签名 Release 与 stable tap formula；
+native evidence 与 staticlib manifest 曾为历史 Rust 版本回填。v0.3.0 已完成正式 tag、受签名 Release 与 stable tap formula；
 Release 安装的失败语义仍是保护边界，而不是临时降级。
 
 ### `scripts/cmd`、`scripts/tests` 与 `scripts/internal`
@@ -302,7 +302,7 @@ package。纯测试载体位于 `scripts/tests/`：它们只验证 workflow、�
 实现逻辑与同包测试位于 `scripts/internal/<name>`。共享发布契约位于
 `scripts/internal/releasecontract`（release target/archive identity）与
 `scripts/internal/releasenotesrender`（GitHub Release 正文渲染，被 `releaseassets` 与历史同步共用）。
-平台 runner/Rust/CC metadata 由 `ci/platforms.json` 单独拥有，并通过 `tools/platformmatrix` 提供给 workflow；
+平台 runner/capability metadata 由 `ci/platforms.json` 单独拥有，并通过 `tools/platformmatrix` 提供给 workflow；
 workflow 测试只验证行为/安全边界，不再维护第二份精确 YAML policy model。
 
 ### `sdk`、`sdk/pixiv`、`sdk/fanbox`
@@ -382,7 +382,7 @@ HTTP transport 仅在存在诊断 scope 时观察 POST 底层写入／Flush。�
 
 `pixiv/mediaproxy` 拥有按 grant／会话隔离的 metadata 与图片 LRU、独立查询／图片信号量、同键 metadata 合并和流式响应生命周期。序列化 metadata、正在填充的图片缓冲及传输中的缓存载荷共用配置预算；超大或无法预留空间的图片流式返回而不缓存。每次读取校验当前授权，旧账号／会话版本不能复用内容。仅完整成功传输进入缓存，收藏状态与写入不缓存。授权通知、凭据版本信号和条目到期主动回收空闲内容；在途引用释放前继续计入预算。缓存发布在同一 mutex 内校验授权与版本，迟到填充不能重新写入已失效内容。SDK 在映射可信 metadata 时登记经 policy 校验的质量变体。诊断使用固定阶段名，不包含秘密标识。
 
-`pixiv/tools/artwork_media` 拥有静态 MCP 图片交付。一个既有 SDK lease 将作品 metadata 与所有页资源绑定到选中账号；每次读取后关闭 resource response，所有退出路径均关闭 lease。返回实际图片 bytes、逐页 content 索引与失败项，不暴露服务器文件路径、不重放部分交付。`pixiv/internal/outputs` 拥有媒体 structured envelope 与 schema 错误脱敏。Ugoira 在每次调用的私有临时目录内复用 downloader archive 选择器、SDK SaveResource 与既有 Rust encoder，以标准 ImageContent 返回完整 GIF/APNG 字节和独立索引的 PNG preview（APNG 内容使用 PNG 家族媒体类型，元数据保留动画子类型），交付前清理临时文件。实际 archive 质量与产物文件名显式返回；静态专用参数拒绝而非忽略。
+`pixiv/tools/artwork_media` 拥有静态 MCP 图片交付。一个既有 SDK lease 将作品 metadata 与所有页资源绑定到选中账号；每次读取后关闭 resource response，所有退出路径均关闭 lease。返回实际图片 bytes、逐页 content 索引与失败项，不暴露服务器文件路径、不重放部分交付。`pixiv/internal/outputs` 拥有媒体 structured envelope 与 schema 错误脱敏。Ugoira 在每次调用的私有临时目录内复用 downloader archive 选择器、SDK SaveResource 与 Go encoder，以标准 ImageContent 返回完整 GIF/APNG 字节和独立索引的 PNG preview（APNG 内容使用 PNG 家族媒体类型，元数据保留动画子类型），交付前清理临时文件。实际 archive 质量与产物文件名显式返回；静态专用参数拒绝而非忽略。
 
 客户端通过 `io.modelcontextprotocol/ui` 扩展声明支持 `text/html;profile=mcp-app` 时，`_meta["pixiv/mediaContents"]` 提供 App 专用的索引数组，模型可见的 `content` 仅包含独立 PNG 预览。既有私有动图 owner 已暂存完整原文件时，该数组包含动画的受保护 `resource_link` 和内嵌 PNG 预览；点击播放才读取原质量二进制，下载使用同一原文件，保留 grant、账号版本和到期检查。
 
@@ -432,54 +432,18 @@ HTTP owner 精确匹配转义路径，不使用 ServeMux 路径归一化。入�
 - 单页作品保存到下载目录。
 - 多页作品和 ugoira 会建立作品子目录。
 - 单页与多页作品从上游 URL path 推导扩展名，并与模板生成的文件名一样规范化跨平台非法字符；Pixiv 缩略图会在资源响应提供明确 Content-Type 时按实际图片格式修正 URL 后缀，未知媒体类型保留 URL 扩展名。
-- ugoira 先下载 SDK 验证的 `download_url` zip，再由 Rust FFI encoder 合成为 GIF/APNG，或由 public SDK 原样发布 ZIP/提取 frames；认证态可合法选择 App medium，绝不把它标记成 original。
-- GIF 保留现有调色结果与全局调色板。不透明动图仅写入变化的颜色索引矩形并保留显示画面；完全相同的帧仍保留各自时长。包含透明像素的动图继续写入完整帧并清空背景。
-- APNG 保留全部帧与精确时序；变化矩形内仅在所有变化像素均不透明时，将未变化像素编码为透明差分。否则使用原像素覆盖，精确保留透明度。
+- ugoira 先下载 SDK 验证的 `download_url` zip，再由 Go encoder 合成为 GIF/APNG，或由 public SDK 原样发布 ZIP/提取 frames；认证态可合法选择 App medium，绝不把它标记成 original。
 
-Rust crate 以 target 专用 staticlib 接入 cgo：darwin/linux/windows 各有 amd64/arm64 selector；Linux
-selector 还显式链接系统 `libm`，承接 Rust/image staticlib 的 `sinf`/`expf` 符号；Windows selector 以
-`-L${SRCDIR}/… -lugoira_rs` 与 Rust std 的 Windows import libraries 传递 `*-pc-windows-msvc` library，
-避免 cgo 拒绝带驱动器号的裸 `.lib` 路径；native-evidence 在 Windows 的链接步骤明确使用 runner 提供的
-`clang -fuse-ld=lld`，避免 Go 的 GCC-only debug linker script 交给 MSVC linker。
-
-受支持
-的 release/source build 必须从同一 Rust source digest 的六目标 `manifest.json` 选择并链接真实库；
-无 cgo、无 target library 或无 C linker 时应在编译/构建期明确失败，不能回退到 `ffmpeg` 或 runtime
-stub。Source identity 纳入 first-party crate 的 Cargo/build/source 输入、vendor 闭包与本地
-`quantette`；这些路径在 `.gitattributes` 中禁用 Git 文本转换，使 Windows 与 Unix checkout 保持同一
-Git blob bytes，而不是在摘要算法中掩盖差异。
-
-摘要算法先把 `filepath.Rel` 的 Windows 反斜杠转换为
-logical slash path，再筛选 `src/`、`.cargo/` 与 `vendor/`；run `29189725013` 证明若顺序相反，即使
-六个 runner job 均 success，也会产生 Unix/Windows digest split 并被 consolidation fail-closed。
-该 run 不可回填或与后续 run 拼接。Rust `target/` 是机器产物，staticlib/manifest 是经过 native
-验证后才可提交的发布输入。
-
-release archive 的 `LICENSE` 与生成的许可证 bundle 同样固定 LF checkout；run `29191200569` 的六份
-source digest 已一致，但 Windows archive 的 `LICENSE` bytes 仍与 Unix/Git blob 分裂，因此
-consolidation 再次 fail-closed。该 run 也不可回填或跨 run 拼接，必须从修复后的新 SHA 完整重跑。
-`internal/media/ugoira/staticlib` 只承载 source digest 与 manifest 的完整性契约，不导入 cgo encoder；
-因此 native-evidence 的 **policy** gate 可以在目标库生成前执行。
-
-`record` 与 `consolidate` 同样不
-触发 cgo 链接，但分别仍需要已生成的 staticlib/binary/archive 与完整六份 evidence 输入；下载运行时
-仍只由 `internal/media/ugoira` 通过唯一 FFI 入口链接 `internal/media/ugoira/rust`。
-
-run `29192425899` 已在六个平台完成 native build、真实 cgo GIF/APNG smoke、binary/archive record，
-并经本地 fail-closed consolidation 回填六个 target library 与统一 manifest（该 run 是首次 evidence
-收集，职责已被后续 run `29567721284` 的 pinned-toolchain 重建取代为当前 committed 六库的唯一来源，
-见 `development.md` 的 provenance 说明）；source build 会在链接前
-校验该 manifest 和库哈希。`ffmpeg` 仅保留给显式启用的开发质量对照，不在生产下载路径中。
+默认下载路径构造 `ugoira.NewEncoder()`，没有后端选择或外部 encoder fallback。源码与 release 构建使用 `CGO_ENABLED=0`。Rust 源码、native library 与 FFI/staticlib adapter 已删除；历史来源保留在 Git 中。
 
 ### `internal/media/ugoira`
 
-拥有 ugoira 的 `Format`、帧输入、`Encoder`、唯一 cgo FFI 入口、Rust crate 和 staticlib/source-digest 完整性契约。下载器只依赖该包的 `Encoder` 接口并构造 Rust encoder，不得复制 FFI adapter 或 publication 行为。`internal/media/ugoira/staticlib` 只验证 manifest、source digest 与提交的目标库文件，不反向导入 cgo encoder。
+拥有 `Format`、有序帧输入、`Encoder`、ZIP 校验/解码、缩放、GIF 量化/抖动、APNG 流式输出和原子发布。下载器消费 `Encoder` 契约并构造 `NewEncoder()`，不复制编码或 publication。PNG 使用标准库，owner-local `jpeg` 保留旧 IDCT/颜色舍入。六目标 source/version/binary/archive/member 证据归 `scripts/internal/nativeevidence`，与 runtime encoder 分离。
 
 ## Release assets 与信任边界
 
 `scripts/cmd/releaseassets` 以固定六目标封装 archive：darwin/linux 为 `.tar.gz`，Windows 为 `.zip`；
-每个 archive 包含一个 `pixiv`/`pixiv.exe`、`LICENSE`、`THIRD_PARTY_LICENSES.md` 与完整
-`third_party/licenses`；它们在 Git 中固定 LF，以便 licensebundle 在 Windows 也可按字节校验。
+每个 archive 只包含 `pixiv`/`pixiv.exe`。第三方声明内嵌到程序，使用 `pixiv --licenses` 查看。项目自身的 `LICENSE` 在源码仓库中独立保留。
 Windows Git Bash 缺少 `zip` 时，打包脚本明确使用 runner 预装的 `7z`；其他平台使用 `zip`。两条分支
 生成相同的 member 集合，缺少对应归档器会直接失败而不会产出不完整 asset。
 finalize 阶段收集这六个 archive 的 SHA-256 到 `checksums.txt`，并为原始
@@ -494,13 +458,7 @@ full-SHA Actions，并在草稿 Release 上传后核对 asset 集合才发布。
 
 最终受保护
 job 才能读取独立 tap deploy key 并只 push 对应 formula。
-v0.3.0 的正式 tag 已走完此发布路径并推送 stable formula；后续 tag 仍必须独立满足同一安装 gate。完整
-六目标 native 成功证据已回填 staticlib/manifest。production signing 私钥、Environment 与公开 remote
-已按正式发布链路配置，受支持 binary 的公开 trust root 已在 `internal/update/installer/release_installer.go` 配置。
-
-Rust crates.io 依赖已由
-crate 内 source replacement 固定到完整 vendor 闭包，并以空 Cargo cache 离线 metadata/build/test 与六
-target 许可证检查验证。
+v0.3.0 的正式 tag 已走完此发布路径并推送 stable formula；后续 tag 仍必须独立满足同一安装 gate。受支持 binary 的公开签名 trust root 定义在 `internal/update/installer/release_installer.go`。
 
 Homebrew formula 模板由已验证的六目标 `checksums.txt` 生成，仅使用 macOS/Linux asset；stable
 `pixiv-cli` 与 beta `pixiv-cli-beta` 相互冲突且同装 `pixiv`。tap credential 与发布 key 是不同的

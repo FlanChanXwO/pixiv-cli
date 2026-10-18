@@ -28,8 +28,7 @@ User-visible changes are recorded in the [versioned changelog](../../changelog/R
 
 > **Release status**: the Ed25519 public key, key ID, and fingerprint for supported binaries are committed in
 > [`internal/update/installer/release_installer.go`](../../internal/update/installer/release_installer.go); the public source/tap repositories,
-> the protected `release` Environment, and isolated credentials are configured. v0.4.4 is a published public GitHub
-> Release with six platform archives, checksums, and a signed manifest. Use the official [GitHub Releases page]
+> the protected `release` Environment, and isolated credentials are configured. Use the official [GitHub Releases page]
 > and `brew info FlanChanXwO/tap/pixiv-cli` for the current Release and tap state: they are independently published
 > artifacts. Every future version must pass the same tag, signing, asset, and Homebrew gates before it is treated as
 > a trusted download source.
@@ -84,14 +83,7 @@ relay server without registering a desktop handler.
 sh scripts/build.sh
 ```
 
-A supported source build requires the Go version declared in `go.mod`, `CGO_ENABLED=1`, a working C linker for the target platform, and a
-Rust ugoira staticlib matching the target. It outputs `build/pixiv` or `build/pixiv.exe`. On Windows, run the build
-command via Git Bash, MSYS2, or WSL.
-
-The working tree ships six runner-verified staticlibs for darwin/linux/windows × amd64/arm64 plus a same-origin
-`manifest.json`; `scripts/build.sh` verifies the source digest, target/path, and each library's SHA-256 before
-building the native binary. See [the development guide](maintainers/development.md#rust-ugoira-staticlib) for the full
-requirements, evidence backfill process, and failure semantics.
+Current source builds use the Go version declared in `go.mod`. `scripts/build.sh` sets `CGO_ENABLED=0` and writes `build/pixiv` (`build/pixiv.exe` on Windows), without a Rust toolchain, native library or C linker. On Windows, use Git Bash, MSYS2, or WSL. See [the development guide](maintainers/development.md#ugoira-go-encoder) for encoding, licenses and platform evidence.
 
 ### Go source installation
 
@@ -101,9 +93,9 @@ Install an exact published Release tag (replace `vX.Y.Z`):
 go install github.com/FlanChanXwO/pixiv-cli/cmd/pixiv@vX.Y.Z
 ```
 
-Use the Go version declared in that tag's `go.mod`, `CGO_ENABLED=1`, a target C linker and the committed target Rust staticlib. Frontend sources are embedded directly; no generator or npm step is needed. The destination is `GOBIN` or `GOPATH/bin`. Existing Go installations continue to self-update to the selected exact Release tag; a failed Go installation leaves the previous executable in place. Historical tags retain their own build requirements.
+Use an exact published tag, not a branch name, and follow that tag's requirements. Versions containing the Go encoder can build with `CGO_ENABLED=0`.
 
-For a checkout build, use `sh scripts/build.sh`; it validates committed native libraries and outputs `build/pixiv` or `build/pixiv.exe`.
+Frontend sources are embedded directly, without a generator or npm step. Installation uses `GOBIN` or `GOPATH/bin`; self-update installs the selected exact Release tag and preserves the previous executable on failure.
 
 ### Homebrew
 
@@ -128,8 +120,7 @@ version hard-coded in this reference. The beta formula only ships with pre-relea
 
 The release process produces six fixed-name archives for darwin, linux, and windows on amd64/arm64:
 `pixiv-cli_<version>_<os>_<arch>.tar.gz` (`.zip` on Windows), plus `checksums.txt` and an Ed25519-signed
-`checksums.json`. Published v0.4.4 ships the complete asset set; later versions should only be trusted as direct
-download sources after passing the same release gates.
+`checksums.json`. Trust direct downloads only after the corresponding release has passed the release gates.
 
 Current Releases do not include Apple notarization or Windows Authenticode. Even when downloading from a verified
 Release, macOS Gatekeeper or Windows SmartScreen may still show a system reputation prompt; only obtain assets from
@@ -872,6 +863,8 @@ Corrupt/incomplete JSON, unsupported versions, non-regular/symlink state files a
 This command does not start a listener. Start `pixiv mcp --port PORT` separately using the [HTTP startup contract](#mcp-http-server).
 
 ## Version and updates
+
+`pixiv --licenses` prints the embedded third-party notices without authentication, network access or creating local state. Release archives contain only the CLI executable; no separate license files are extracted.
 
 `pixiv --version` is the only public version surface. It writes exactly one line, `pixiv <version>`, to stdout,
 writes no stderr, and does not run startup update checks.

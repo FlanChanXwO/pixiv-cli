@@ -163,7 +163,7 @@ brew upgrade pixiv-cli
 
 ### Go 源码安装
 
-准备声明的 Go 工具链、cgo、目标 C linker 及已提交的原生库后，安装精确 Release tag：
+请使用精确的已发布 tag，并遵循该 tag 的构建要求，详见 [Go 安装](docs/zh-CN/cli-reference.md#go-安装)。
 
 ```bash
 go install github.com/FlanChanXwO/pixiv-cli/cmd/pixiv@vX.Y.Z
@@ -173,7 +173,7 @@ go install github.com/FlanChanXwO/pixiv-cli/cmd/pixiv@vX.Y.Z
 
 ### Release 压缩包或源码构建
 
-从 [GitHub Releases](https://github.com/FlanChanXwO/pixiv-cli/releases) 下载受支持的压缩包，或构建当前 checkout：
+从 [GitHub Releases](https://github.com/FlanChanXwO/pixiv-cli/releases) 下载受支持的压缩包，或使用 `go.mod` 声明的 Go 版本构建当前 checkout。构建脚本设置 `CGO_ENABLED=0`，不需要 Rust 工具链或 C linker：
 
 ```bash
 sh scripts/build.sh
@@ -340,3 +340,5 @@ pixiv auth check
 ## 许可证
 
 [MIT](LICENSE) © FlanChanXwO
+
+第三方声明内嵌到 CLI，使用 `pixiv --licenses` 查看。发布压缩包只包含可执行文件。

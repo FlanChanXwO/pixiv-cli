@@ -214,7 +214,7 @@ func (s *Service) generateAnimation(ctx context.Context, j *animationJob) error 
 	output := filepath.Join(j.dir, "animation."+j.format)
 	var waitDuration, encodeDuration time.Duration
 	var waitObserved, encodeObserved bool
-	err = ugoira.NewRustEncoder().Encode(ctx, ugoira.Input{ZipPath: zipPath, Frames: frames, WorkDir: j.dir, OutputPath: output, Format: ugoira.Format(j.format), MaxOutputBytes: &limit, ReserveOutput: reserveOutput, Observe: func(stage string, duration time.Duration) {
+	err = ugoira.NewEncoder().Encode(ctx, ugoira.Input{ZipPath: zipPath, Frames: frames, WorkDir: j.dir, OutputPath: output, Format: ugoira.Format(j.format), MaxOutputBytes: &limit, ReserveOutput: reserveOutput, Observe: func(stage string, duration time.Duration) {
 		switch stage {
 		case "animation_encode_wait":
 			waitDuration, waitObserved = duration, true

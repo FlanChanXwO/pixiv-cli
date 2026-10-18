@@ -6,6 +6,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"gopkg.in/yaml.v3"
 )
 
 func repositoryRoot(t *testing.T) string {
@@ -339,5 +341,57 @@ func TestHomebrewRecoveryRunsOnlyFromTheDefaultBranch(t *testing.T) {
 	// guard 必须只约束 workflow_dispatch；workflow_run 的 ref 不是分支。
 	if !strings.Contains(body, `if [ "$EVENT_NAME" = workflow_dispatch ]; then`) {
 		t.Error("the default-branch guard must be scoped to workflow_dispatch")
+	}
+}
+
+// TestProductionWorkflowsUsePureGo 将 cgo 限于 race step，保留现有 runner 与权限边界。
+func TestProductionWorkflowsUsePureGo(t *testing.T) {
+	root := repositoryRoot(t)
+	for filename, names := range map[string][]string{
+		"ci.yml":              {"quality_gate"},
+		"platform-smoke.yml":  {"worker"},
+		"container-smoke.yml": {"worker"},
+		"native-evidence.yml": {"native_evidence"},
+		"release.yml":         {"build", "build_production", "build_container"},
+		"pr-verification.yml": {"verify"},
+	} {
+		t.Run(filename, func(t *testing.T) {
+			body := readWorkflow(t, root, filename)
+			transitionalEncoderWorkflow := filename == "platform-smoke.yml" || filename == "container-smoke.yml"
+			if !transitionalEncoderWorkflow {
+				for _, legacy := range []string{"rustup ", "cargo ", "--rust-target", "matrix.cc"} {
+					if strings.Contains(body, legacy) {
+						t.Errorf("production workflow still invokes %q", legacy)
+					}
+				}
+			}
+			var document struct {
+				Jobs map[string]struct {
+					Env   map[string]string
+					Steps []struct {
+						Run string
+						Env map[string]string
+					}
+				}
+			}
+			if err := yaml.Unmarshal([]byte(body), &document); err != nil {
+				t.Fatal(err)
+			}
+			for _, name := range names {
+				job, ok := document.Jobs[name]
+				if !ok || job.Env["CGO_ENABLED"] != "0" {
+					t.Errorf("%s must use CGO_ENABLED=0", name)
+				}
+				for _, step := range job.Steps {
+					if strings.Contains(step.Run, "go test -race") || strings.Contains(step.Run, "sh scripts/test-race-gate.sh") {
+						if step.Env["CGO_ENABLED"] != "1" {
+							t.Errorf("%s race must independently enable cgo", name)
+						}
+					} else if cgo, ok := step.Env["CGO_ENABLED"]; ok && cgo != "0" {
+						t.Errorf("%s non-race step overrides CGO_ENABLED=%s", name, cgo)
+					}
+				}
+			}
+		})
 	}
 }

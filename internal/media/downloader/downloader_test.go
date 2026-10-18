@@ -5,6 +5,9 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"image"
+	"image/gif"
+	"image/png"
 	"regexp"
 	"sync"
 	"time"
@@ -450,39 +453,118 @@ func TestDownloadUgoiraZipFailureCleansTemporaryZip(t *testing.T) {
 	}
 }
 
-func TestDownloadUgoiraReturnsFinalGIFOnly(t *testing.T) {
-	dir := t.TempDir()
-	zipURL := "https://i.example/ugoira.zip"
-	client := &fakePixivClient{
-		details: map[int64]pixiv.Artwork{
-			9: {
-				ID: 9, Title: "ugo", PageCount: 1, Kind: pixiv.ArtworkKindUgoira,
-				User: pixiv.User{Name: "author"},
-			},
-		},
-		ugoira: map[int64]pixiv.UgoiraMetadata{
-			9: ugoiraMetadata(zipURL),
-		},
-		downloads: map[string][]byte{zipURL: makeZip(t, "000000.jpg", []byte("frame"))},
-	}
-	encoder := &recordingUgoiraEncoder{output: []byte("gif")}
-	m := downloader.NewManager(client, dir, "{id}")
-	m.SetUgoiraEncoder(encoder)
+func TestDownloadUgoiraDefaultEncoderPublishesAnimation(t *testing.T) {
+	for _, test := range []struct {
+		name   string
+		format downloader.UgoiraFormat
+		ext    string
+	}{
+		{name: "default GIF", ext: ".gif"},
+		{name: "explicit APNG", format: downloader.UgoiraFormatAPNG, ext: ".apng"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			dir := t.TempDir()
+			zipURL := "https://i.example/ugoira.zip"
+			var frame bytes.Buffer
+			require.NoError(t, png.Encode(&frame, image.NewNRGBA(image.Rect(0, 0, 3, 2))))
+			meta := ugoiraMetadata(zipURL)
+			meta.Frames[0].Filename = "000000.png"
+			client := &fakePixivClient{
+				details: map[int64]pixiv.Artwork{
+					9: {ID: 9, Title: "ugo", PageCount: 1, Kind: pixiv.ArtworkKindUgoira, User: pixiv.User{Name: "author"}},
+				},
+				ugoira:    map[int64]pixiv.UgoiraMetadata{9: meta},
+				downloads: map[string][]byte{zipURL: makeZip(t, "000000.png", frame.Bytes())},
+			}
+			m := downloader.NewManager(client, dir, "{id}")
+			output := filepath.Join(dir, "9 - ugo", "9"+test.ext)
+			require.NoError(t, os.MkdirAll(filepath.Dir(output), 0o755))
+			require.NoError(t, os.WriteFile(output, []byte("old-animation"), 0o600))
 
-	got, err := m.Download(context.Background(), downloader.DownloadRequest{IllustIDs: []int64{9}})
-	if err != nil {
-		t.Fatalf("Download returned error: %v", err)
+			batch, err := m.Download(t.Context(), downloader.DownloadRequest{IllustIDs: []int64{9}, UgoiraFormat: test.format})
+			require.NoError(t, err)
+			require.Empty(t, batch.Failures)
+			require.Empty(t, batch.Warnings)
+			require.Len(t, batch.Items, 1)
+			require.Equal(t, int64(9), batch.Items[0].IllustID)
+			require.Equal(t, "ugoira", batch.Items[0].Type)
+			require.Equal(t, []downloader.DownloadedFile{{Path: output, Page: 1}}, batch.Items[0].Files)
+			require.Equal(t, []string{zipURL}, client.savedURLs)
+			body, err := os.ReadFile(output)
+			require.NoError(t, err)
+			if test.ext == ".gif" {
+				animation, err := gif.DecodeAll(bytes.NewReader(body))
+				require.NoError(t, err)
+				require.Len(t, animation.Image, 1)
+				require.Equal(t, 3, animation.Config.Width)
+				require.Equal(t, 2, animation.Config.Height)
+				require.Equal(t, []int{8}, animation.Delay)
+			} else {
+				config, err := png.DecodeConfig(bytes.NewReader(body))
+				require.NoError(t, err)
+				require.Equal(t, 3, config.Width)
+				require.Equal(t, 2, config.Height)
+				require.Contains(t, string(body), "acTL")
+			}
+			entries, err := os.ReadDir(filepath.Dir(output))
+			require.NoError(t, err)
+			require.Len(t, entries, 1)
+			require.Equal(t, filepath.Base(output), entries[0].Name())
+		})
 	}
-	if len(got.Items) != 1 || len(got.Items[0].Files) != 1 {
-		t.Fatalf("Download returned unexpected files: %+v", got)
+}
+
+func TestDownloadUgoiraDefaultEncoderFailurePreservesExistingAnimation(t *testing.T) {
+	for _, format := range []downloader.UgoiraFormat{downloader.UgoiraFormatGIF, downloader.UgoiraFormatAPNG} {
+		for _, cancelAfterSave := range []bool{false, true} {
+			name := string(format) + "/invalid frame"
+			if cancelAfterSave {
+				name = string(format) + "/canceled after save"
+			}
+			t.Run(name, func(t *testing.T) {
+				dir := t.TempDir()
+				zipURL := "https://i.example/ugoira.zip"
+				client := &fakePixivClient{
+					details: map[int64]pixiv.Artwork{
+						9: {ID: 9, Title: "ugo", PageCount: 1, Kind: pixiv.ArtworkKindUgoira},
+					},
+					ugoira: map[int64]pixiv.UgoiraMetadata{9: ugoiraMetadata(zipURL)},
+				}
+				ctx, cancel := context.WithCancel(t.Context())
+				defer cancel()
+				client.saveResourceOverride = func(_ context.Context, _ sdk.ResourceRef, options sdk.SaveOptions) (sdk.SavedResource, error) {
+					body := makeZip(t, "000000.jpg", []byte("invalid image"))
+					err := os.WriteFile(options.Path, body, 0o600)
+					if cancelAfterSave {
+						cancel()
+					}
+					return sdk.SavedResource{Path: options.Path, Size: int64(len(body))}, err
+				}
+				m := downloader.NewManager(client, dir, "{id}")
+				output := filepath.Join(dir, "9 - ugo", "9."+string(format))
+				require.NoError(t, os.MkdirAll(filepath.Dir(output), 0o755))
+				require.NoError(t, os.WriteFile(output, []byte("old-animation"), 0o600))
+
+				batch, err := m.Download(ctx, downloader.DownloadRequest{IllustIDs: []int64{9}, UgoiraFormat: format})
+				require.Empty(t, batch.Items)
+				if cancelAfterSave {
+					require.ErrorIs(t, err, context.Canceled)
+					require.Empty(t, batch.Failures)
+				} else {
+					require.NoError(t, err)
+					require.Len(t, batch.Failures, 1)
+					require.Equal(t, int64(9), batch.Failures[0].IllustID)
+					require.Error(t, batch.Failures[0].Cause)
+					require.Equal(t, batch.Failures[0].Cause.Error(), batch.Failures[0].Message)
+				}
+				assertFileBody(t, output, "old-animation")
+				entries, err := os.ReadDir(filepath.Dir(output))
+				require.NoError(t, err)
+				require.Len(t, entries, 1)
+				require.Equal(t, filepath.Base(output), entries[0].Name())
+			})
+		}
 	}
-	if filepath.Ext(got.Items[0].Files[0].Path) != ".gif" {
-		t.Fatalf("ugoira output path = %q", got.Items[0].Files[0].Path)
-	}
-	if strings.HasSuffix(got.Items[0].Files[0].Path, ".zip") {
-		t.Fatalf("ugoira returned temporary zip path: %q", got.Items[0].Files[0].Path)
-	}
-	assertFileBody(t, got.Items[0].Files[0].Path, "gif")
 }
 
 func TestDownloadUgoiraFallsBackToDefaultFilenameWithWarning(t *testing.T) {
@@ -554,7 +636,7 @@ func TestDownloadUgoiraUsesOriginalArchive(t *testing.T) {
 	}
 }
 
-func TestDownloadUgoiraExplicitAPNGUsesRustEncoder(t *testing.T) {
+func TestDownloadUgoiraExplicitAPNGUsesInjectedEncoder(t *testing.T) {
 	dir := t.TempDir()
 	zipURL := "https://i.example/ugoira.zip"
 	m := downloader.NewManager(&fakePixivClient{

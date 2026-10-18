@@ -621,7 +621,7 @@ type Manager struct {
 func NewManager(client DownloadClient, downloadPath, filenameTemplate string) *Manager {
 	return &Manager{
 		client:           client,
-		ugoiraEncoder:    sharedugoira.NewRustEncoder(),
+		ugoiraEncoder:    sharedugoira.NewEncoder(),
 		downloadPath:     downloadPath,
 		filenameTemplate: filenameTemplate,
 	}

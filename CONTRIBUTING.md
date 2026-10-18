@@ -13,23 +13,17 @@ We welcome focused bug reports, documentation fixes, tests, and well-scoped feat
 
 ## Development environment
 
-The supported source build uses:
-
-- the Go version declared in `go.mod`;
-- `CGO_ENABLED=1` and a working C linker for the target;
-- the committed, manifest-verified Rust ugoira static library for the target.
-
-Rust is only required when changing the ugoira encoder or rebuilding a static library. Do not install or regenerate native artifacts as part of an unrelated contribution. Windows builds run through Git Bash, MSYS2, or WSL.
+Source builds use the Go version declared in `go.mod` and `CGO_ENABLED=0`; no Rust toolchain, native library or C linker is needed. Race-detector tests use `CGO_ENABLED=1` and require a working C toolchain. Windows builds run through Git Bash, MSYS2, or WSL.
 
 Build and test from the repository root:
 
 ```bash
-go test ./...
+CGO_ENABLED=0 go test ./...
 sh scripts/build.sh
 ./build/pixiv --help
 ```
 
-See the [development guide](docs/en/maintainers/development.md) for native-library verification, opt-in real API tests, release gates, and platform details.
+See the [development guide](docs/en/maintainers/development.md) for encoder verification, opt-in real API tests, release gates, and platform details.
 
 ## Architecture guardrails
 

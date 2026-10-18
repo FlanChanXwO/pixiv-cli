@@ -9,7 +9,7 @@ import (
 	"testing"
 )
 
-func TestRecordEvidenceBindsStaticlibBinaryAndCompleteArchive(t *testing.T) {
+func TestRecordEvidenceBindsGoBinaryAndCompleteArchive(t *testing.T) {
 	repoRoot := findRepositoryRoot(t)
 	workDir, err := os.MkdirTemp(repoRoot, ".native-evidence-test.")
 	if err != nil {
@@ -20,27 +20,23 @@ func TestRecordEvidenceBindsStaticlibBinaryAndCompleteArchive(t *testing.T) {
 			t.Errorf("remove work directory: %v", err)
 		}
 	})
-	staticlib := filepath.Join(workDir, "libugoira_rs.a")
-	if err := os.WriteFile(staticlib, []byte("fixture native staticlib"), 0o644); err != nil {
-		t.Fatalf("write staticlib: %v", err)
-	}
 	binaryName := "pixiv"
 	if runtime.GOOS == "windows" {
 		binaryName = "pixiv.exe"
 	}
 	binary := filepath.Join(workDir, binaryName)
 	copyTestExecutable(t, binary)
-	archive := filepath.Join(workDir, "pixiv-cli_0.1.0-native-evidence.test_linux_amd64.tar.gz")
-	packageReleaseArchive(t, repoRoot, binary, workDir)
+	platform := runtime.GOOS + "/" + runtime.GOARCH
+	target := nativeTargets[platform]
+	archive := filepath.Join(workDir, expectedArchiveName("0.1.0-native-evidence.test", target))
+	packageReleaseArchive(t, repoRoot, binary, workDir, platform)
 	output := filepath.Join(workDir, "native-evidence.json")
 
 	record, err := recordEvidence(recordOptions{
 		repoRoot:     repoRoot,
 		version:      "0.1.0-native-evidence.test",
 		sourceCommit: testEvidenceCommit,
-		target:       "linux/amd64",
-		rustTarget:   "x86_64-unknown-linux-gnu",
-		staticlib:    staticlib,
+		target:       platform,
 		binary:       binary,
 		archive:      archive,
 		output:       output,
@@ -48,14 +44,17 @@ func TestRecordEvidenceBindsStaticlibBinaryAndCompleteArchive(t *testing.T) {
 	if err != nil {
 		t.Fatalf("record native evidence: %v", err)
 	}
+	if record.Schema != 3 {
+		t.Fatalf("Go native evidence schema = %d, want 3", record.Schema)
+	}
 	if record.Binary.Version != "v0.1.0-native-evidence.test" {
 		t.Fatalf("binary version = %q", record.Binary.Version)
 	}
 	if record.SourceCommit != testEvidenceCommit {
 		t.Fatalf("source commit = %q", record.SourceCommit)
 	}
-	if len(record.Archive.Members) < 4 {
-		t.Fatalf("archive member count = %d, want binary and complete licenses", len(record.Archive.Members))
+	if len(record.Archive.Members) != 1 {
+		t.Fatalf("archive member count = %d, want only the CLI executable", len(record.Archive.Members))
 	}
 	body, err := os.ReadFile(output)
 	if err != nil {
@@ -65,12 +64,20 @@ func TestRecordEvidenceBindsStaticlibBinaryAndCompleteArchive(t *testing.T) {
 	if err := json.Unmarshal(body, &decoded); err != nil {
 		t.Fatalf("decode written evidence: %v", err)
 	}
-	if decoded.Staticlib.SHA256 != record.Staticlib.SHA256 || decoded.SourceDigest != record.SourceDigest {
+	if decoded.Binary.SHA256 != record.Binary.SHA256 || decoded.Archive.SHA256 != record.Archive.SHA256 {
 		t.Fatalf("written evidence did not preserve verified hashes")
 	}
 	var encoded map[string]json.RawMessage
 	if err := json.Unmarshal(body, &encoded); err != nil {
 		t.Fatalf("decode evidence fields: %v", err)
+	}
+	for _, field := range []string{"source_digest", "staticlib"} {
+		if encoded[field] != nil {
+			t.Fatalf("Go evidence retained %s", field)
+		}
+	}
+	if strings.Contains(string(encoded["target"]), "rust_target") {
+		t.Fatal("Go evidence retained Rust target")
 	}
 	var binaryFields map[string]json.RawMessage
 	if err := json.Unmarshal(encoded["binary"], &binaryFields); err != nil {

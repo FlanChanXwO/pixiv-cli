@@ -1,6 +1,6 @@
 // Package releasecontract 只拥有 release 与 native evidence 共用的发布 identity：
-// Version/Channel、六个 archive 目标、确定性的 Go↔Rust target 映射与 archive name。
-// runner、Rust toolchain 与 CC 等可变平台 metadata 只由 ci/platforms.json 持有。
+// Version/Channel、六个 archive 目标、archive name。
+// runner 与 capability 等可变平台 metadata 只由 ci/platforms.json 持有。
 package releasecontract
 
 import (
@@ -16,27 +16,6 @@ type Target struct {
 // String 返回稳定 identity，例如 "linux/amd64"。
 func (t Target) String() string {
 	return t.GOOS + "/" + t.GOARCH
-}
-
-// RustTarget 返回 target 对应的 Rust target triple。
-func (t Target) RustTarget() string {
-	arch := t.GOARCH
-	switch arch {
-	case "amd64":
-		arch = "x86_64"
-	case "arm64":
-		arch = "aarch64"
-	}
-	switch t.GOOS {
-	case "darwin":
-		return arch + "-apple-darwin"
-	case "linux":
-		return arch + "-unknown-linux-gnu"
-	case "windows":
-		return arch + "-pc-windows-msvc"
-	default:
-		return ""
-	}
 }
 
 // FixedTargets 返回六个固定发布平台。

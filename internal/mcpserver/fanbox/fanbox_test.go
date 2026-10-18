@@ -823,7 +823,7 @@ func TestFanboxMCPOpenResourceDeliversImagesAndFiles(t *testing.T) {
 		t.Fatal(err)
 	}
 	animationPath := filepath.Join(dir, "animation.apng")
-	if err := ugoira.NewRustEncoder().Encode(t.Context(), ugoira.Input{ZipPath: archivePath, Frames: []ugoira.Frame{{File: "frame.png", Delay: 80}}, OutputPath: animationPath, Format: ugoira.FormatAPNG}); err != nil {
+	if err := ugoira.NewEncoder().Encode(t.Context(), ugoira.Input{ZipPath: archivePath, Frames: []ugoira.Frame{{File: "frame.png", Delay: 80}}, OutputPath: animationPath, Format: ugoira.FormatAPNG}); err != nil {
 		t.Fatal(err)
 	}
 	apngData, err := os.ReadFile(animationPath)

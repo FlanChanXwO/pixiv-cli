@@ -6,7 +6,7 @@
 | --- | --- |
 | 检查本地工具链 | [环境检查](#环境检查) |
 | 修改或校验页面 | [前端资源](#前端资源) |
-| 构建或核验 ugoira native library | [Rust ugoira staticlib](#rust-ugoira-staticlib) |
+| 构建或测试 ugoira 编码 | [Ugoira Go encoder](#ugoira-go-encoder) |
 | 运行 CLI 与 MCP | [运行](#运行) |
 | 处理登录和凭据 | [获取 refresh token](#获取-refresh-token) |
 | 选择测试范围 | [测试](#测试) |
@@ -17,13 +17,12 @@
 
 项目是 Go module，所需 Go toolchain 版本只以 `go.mod` 为事实来源。
 
-开工前建议检查 Go/cgo、Rust 与常规测试环境：
+开工前建议检查 Go 与常规测试环境：
 
 ```bash
 go version
-go env GOVERSION CGO_ENABLED CC GOOS GOARCH
-cargo --version
-go test ./...
+go env GOVERSION CGO_ENABLED GOOS GOARCH
+CGO_ENABLED=0 go test ./...
 ```
 
 ## 前端资源
@@ -40,43 +39,31 @@ sh scripts/build.sh
 
 现有 `frontend` 包测试校验嵌入输入和占位符。本地、平台及 race 构建直接编译源码，不需要生成器或独立校验命令。前端变更仍要求 Quality、Platform、Container 门禁。Docker 使用预构建二进制，Homebrew 模板仍在 `templates/homebrew/`。
 
-源码安装和自更新均可通过 `go install github.com/FlanChanXwO/pixiv-cli/cmd/pixiv@vX.Y.Z` 使用精确 Release tag；仍需满足下方 Go/cgo/linker/native 要求。
+源码安装和自更新均可通过 `go install github.com/FlanChanXwO/pixiv-cli/cmd/pixiv@vX.Y.Z` 使用精确 Release tag；构建要求以该 tag 为准。
 
 直接验证 Gallery bridge 可运行 `node frontend/mcp-apps/gallery/gallery_test.mjs`；Node 可用时 Go 回归也运行全部 host capability 模式。
 
-## Rust ugoira staticlib
+## Ugoira Go encoder
 
-生产 ugoira GIF/APNG 由内置 Rust encoder 完成，运行时不依赖 `ffmpeg`。`ffmpeg` 只可作为
-开发质量对照：显式设置 `PIXIV_UGOIRA_QUALITY_FFMPEG=1` 后，Rust quality gate 才会调用它；
-它不是本地构建或用户运行的前置条件。
+默认下载器构造 `ugoira.NewEncoder()`，在 Go 中生成 GIF/APNG，不调用 `ffmpeg`。PNG 帧使用 Go 标准库解码器，
+JPEG 帧使用 owner-local `internal/media/ugoira/jpeg` 解码器。
 
-帧源读取与 image decoder 使用同一条内存边界：边界值直接取 pinned `image` crate
-`Limits::default().max_alloc`，而不是另设经验常量。ZIP member 声明大小超过该值时在读取前失败；
-实际展开字节超过该值、内存预留失败或取消时也会在分块读取中显式失败，不截断输入或回退到
-其他 encoder。取消 token 会在每个读取块前后以及 image decode 前后检查；但 `image` crate 的单帧
-decoder 没有取消回调，所以已经进入其内部的 decode 不能中途打断，只能在返回后立即观察取消。
-聚焦回归覆盖声明大小超限、实际累计字节超限、读取中取消、正常边界输入、正常 GIF/APNG 和腐坏
-ZIP；这一限制的目的仅是防止帧源在 decoder 自身限制生效前无界占用内存，影响是超限作品明确报错。
+每帧的 ZIP member 源字节与解码前内存估算分别采用 512 MiB 边界，继承 pinned Rust `image` crate 的
+`Limits::default().max_alloc`。声明大小超限时在读取前失败，实际展开字节超限时在分块读取中失败；
+无效或溢出的尺寸、超限的解码估算也会返回错误，不截断输入或回退到其他后端。每个读取块前后以及
+image decode 前后均检查取消。PNG/JPEG 解码循环没有取消回调，所以单帧解码期间发生的取消要等
+该次解码返回后才能观察到。
 
-受支持的 Go 源码构建需要下列条件：
+源码构建使用 `go.mod` 声明的 Go 版本。`scripts/build.sh` 显式设置 `CGO_ENABLED=0`，输出 `build/pixiv`（Windows 为 `build/pixiv.exe`），不需要 Rust 工具链、native library 或 C linker：
 
-- `go.mod` 声明的 Go 版本；
-- `CGO_ENABLED=1`；
-- 当前 `GOOS/GOARCH` 对应的 C linker；
-- Rust crate 对应 target 的 committed `staticlib`；
-- 同一份 Rust source 生成的六目标 `staticlib/manifest.json`。
+```bash
+sh scripts/build.sh
+CGO_ENABLED=0 go test ./internal/media/ugoira/... -count=1
+```
 
-固定 target 是 darwin/linux/windows 的 amd64/arm64。`scripts/build-staticlibs.sh` 使用 locked
-Cargo 输入生成 target library；只有同一次成功得到全部六个真实库并逐个核验 SHA-256 后，才会
-写入带 Rust source digest 的 `manifest.json`。单 target 调用会使已有 manifest 失效，避免用
-局部重建证明全平台一致性。
+只有 race-detector 测试需要 `CGO_ENABLED=1` 和可用的 C 工具链。编码器没有后端选择选项或运行期 fallback。
 
-CI 与 release 在需要构建单个精确平台 binary 时统一调用 `scripts/build-platform.sh`。调用方传入由
-platform registry matrix 派生的 `GOOS/GOARCH`、Rust target 与 C compiler；primitive 负责重建该
-target 的 Rust staticlib、恢复调用前的跨平台 manifest、生成正确后缀/版本的 binary、在 Linux 上
-执行 ABI gate，并可选生成 canonical release archive，最后输出 binary 或 archive 路径。workflow
-自己的测试、immutable-source 断言、credential、审批与发布职责仍显式留在 workflow 中，不变成该
-脚本的 mode。
+`scripts/build-platform.sh` 负责精确 target 的 CGO0 构建和可选规范归档。参数为 `--target GOOS/GOARCH`、`--output-dir DIR`、可选 `--version VERSION`（不带 `v`）与 `--package`（要求 version）。它保留 Windows executable 后缀和 Linux ABI gate。runner/capability metadata 仍在 `ci/platforms.json`；测试、source identity、权限、审批和发布仍由 workflow 拥有。
 
 Linux Release 的公开 ABI 基线是 glibc 2.35。release test/production、native evidence、packaged
 binary smoke 与 Homebrew install matrix 的 Linux runner 必须固定为 `ubuntu-22.04` 和
@@ -91,98 +78,35 @@ go run ./scripts/cmd/linuxabi --binary <linux-elf>
 `GLIBC_2.35` 的依赖都会在打包前失败。不能只依赖“binary 在构建 runner 上能运行”的 smoke，因为这会
 让 runner 自身的新 glibc 隐藏向后兼容回归。
 
-六个 committed library 与 `manifest.json` 是已验证输入：manifest 绑定 Rust source digest、六 target、
-path 与逐目标 SHA-256，由 `internal/media/ugoira/staticlib` 的完整性测试锁定。当前 manifest 的 source
-digest 与六库 SHA-256 与受审计 source 逐字节一致；升级 Rust 时必须从同一受审计 source 完整重建、链接并
-smoke 验证六目标，同时更新六库、manifest、native evidence 与 `ci/platforms.json`——不得只更新单个平台的 pin。
+### 许可证 bundle
 
-合规 committed library 的编译器 provenance 必须按 target 固定，而不是使用可移动的 runner 默认
-toolchain：`x86_64-apple-darwin` 与 `x86_64-pc-windows-msvc` 使用 Rust `1.96.0`；
-`aarch64-apple-darwin`、`aarch64-pc-windows-msvc`、`x86_64-unknown-linux-gnu` 与
-`aarch64-unknown-linux-gnu` 来自 Rust `1.96.1`。
+`go run ./scripts/cmd/licensebundle` 对固定六个 release target，以 `CGO_ENABLED=0` 运行
+`go list -mod=readonly -deps -json ./cmd/pixiv`，取实际生产 Go module 的并集。解析离线执行
+（`GOPROXY=off`、`GOSUMDB=off`），不受本机 workspace/flag 覆盖影响；所需模块源码必须已缓存。
+它不使用 Cargo，也不纳入未进入生产图的 test/tool-only module。`--check` 对比索引和完整生成正文树，不发布改动。
 
-release test 与 production matrix 都必须携带这份
-精确映射只由 `ci/platforms.json` 维护；release、smoke 与 native-evidence matrix 通过 `tools/platformmatrix`
-消费它，并通过 `RUSTUP_TOOLCHAIN` 和带 `--no-self-update` 的 `rustup toolchain install` 使用；
-不能让 runner image 的 `stable` 更新改变重建 bytes。该映射记录来源，不是允许永久混用工具链的惯例；
-升级 Rust 时必须重建并同步固定全部六目标。
-
-可在具备目标工具链的受控环境运行：
-
-```bash
-sh scripts/build-staticlibs.sh --target <rust-target>
-go test ./internal/media/ugoira/staticlib -run '^TestCommittedManifestWhenPresent$' -count=1
-```
-
-Go 构建缓存不会检测 cgo 链接静态库的替换。Rust 库重建／回填后，Go 验证须使用 `go test -a` 或仅限当前命令的全新 `GOCACHE`。本地／平台构建脚本使用 `go build -a`，避免重新部署仍包含旧编码器的缓存二进制。
-
-不要提交 `internal/media/ugoira/rust/target/`；它是机器产物。完成验证的
-`internal/media/ugoira/rust/staticlib/` 及其 `manifest.json` 是可追溯输入，不能以 ignore 规则隐藏。
-
-Rust crate 的 `.cargo/config.toml` 将 crates.io 替换为其相邻 `vendor/` 中完整的 locked
-依赖闭包。`vendor/` 的每个 package 都带 Cargo 生成的 `.cargo-checksum.json`；它、Cargo config、
-`Cargo.toml`/`Cargo.lock`、`build.rs`、`.cargo/**`、Rust source 和本地 `quantette` 都计入
-staticlib source digest。
-
-不要手工编辑 vendor 内容；升级依赖时必须重新以
-`cargo vendor --locked --offline` 生成完整闭包并更新 digest
-fixture 与许可证 bundle。根 `.gitattributes` 对上述 first-party crate 输入、整个 `vendor/**` 与固定本地
-`quantette` source 设置 `-text`；这只保留 Git blob 原始 bytes，不会重写正常内容，并防止 Windows
-checkout 把 LF 改为 CRLF 后破坏 Cargo checksum、source digest 或 licensebundle。
-
-对
-release archive 的 `LICENSE`、licensebundle 的 `THIRD_PARTY_LICENSES.md` 与
-`third_party/licenses/**` 则固定 `text eol=lf`，使 archive member audit 与 byte-for-byte `--check` 在
-Windows 保持稳定。
-摘要器还必须在判断 `src/`、`.cargo/` 与 `vendor/` 之前，把 `filepath.Rel` 的平台分隔符规范化为
-slash；否则 Windows 的反斜杠路径会静默漏掉这些输入。`target/` 仍是机器产物，不计入 digest，也不得提交。
-
-直接运行 Cargo 时必须在 crate 目录启动，确保 Cargo 发现 source replacement：
-
-```bash
-(
-  cd internal/media/ugoira/rust
-  cargo test --locked --offline
-  cargo clippy --locked --offline --all-targets -- -D warnings
-)
-go run ./scripts/cmd/licensebundle --check
-sh scripts/test-rust-vendor.sh
-```
-
-`scripts/test-rust-vendor.sh` 为 release workflow 的聚焦供应链回归：它建立临时空 `CARGO_HOME` 与
-`CARGO_TARGET_DIR`，随后依次执行 `cargo metadata/build/test --locked --offline`，再以相同环境运行
-六个 release target 的 `go run ./scripts/cmd/licensebundle --check`。因此 registry cache、网络 fallback、
-缺失 vendor 内容或无效 checksum 都会明确失败，不能把 runner 的预热缓存当作离线可复现性证据。
+`third_party/attributions.json` 固定额外的移植来源声明，维护用正文放在 `third_party/attributions/`，
+与生成的 `third_party/licenses/` 分开。选用的 MIT 正文、Go BSD/patent grant 与 SunPro 声明在删除
+Rust 源码后仍保留。`fhttp v0.6.8` 的模块归档缺少独立 license 文件，因此以精确版本的声明条目提供其
+源码头部引用的 Go BSD 正文。缺失或空正文会在发布前失败。嵌套组件的声明同样收录；上游 CRLF 统一为
+LF，保留完整文字。`third_party/notices.go` 将正文内嵌到程序，使用 `pixiv --licenses` 查看；压缩包只包含 `pixiv`/`pixiv.exe`。索引与正文树继续沿用可回滚发布。仅测试使用的 image-compare 声明保留在 `third_party/attributions/image-compare-0.5.0/`，不内嵌到程序。
 
 ### Native runner evidence
 
-`.github/workflows/native-evidence.yml` 是独立的、非发布维护入口，只通过默认分支上的显式
-`workflow_dispatch` 运行。普通 `main` push 不会在 PR 验证之后再重复启动六平台 evidence 矩阵。
-全局 `permissions: {}`、job 仅 `contents: read`。它没有 `environment`、
-secret、tag/Release/tap/signing 命令。平台矩阵来自 `ci/platforms.json` 的 `native-evidence` capability；
-workflow 安装 registry 指定的 Rust toolchain、检查 vendored Rust 输入、通过 `scripts/build-platform.sh`
-完成目标 staticlib/binary/archive 链路，再运行真实 cgo GIF/APNG smoke、记录并上传 evidence。
+`.github/workflows/native-evidence.yml` 仍是要求 `refs/heads/main` 的显式维护入口，不在普通 main push 后重复执行。全局权限为空，job 仅 `contents: read`，action 固定 full SHA，checkout 不持久化 credential，不使用发布或签名 Environment。runner 来自 registry 的 `native-evidence` capability；每个目标验证 Go license bundle，经 `scripts/build-platform.sh` 构建，再执行 Go GIF/APNG 回归并上传版本化 binary/archive record。
 
-full-SHA
-action、无凭据 checkout、无 secret/发布副作用以及 build ownership 由聚焦的 test-only workflow contract
-覆盖，不再由 runtime YAML self-policy 固定整份 workflow 结构。
+schema 3 绑定 workflow 的精确 `source_commit`、target、binary version 与 binary/archive/member SHA-256；执行 `--version`，校验归档只包含所记录的 binary。旧 schema 与 Rust source-digest/staticlib 字段会被拒绝。`consolidate` 复验完整六目标、同 source、同 version 的 bundle，拒绝 symlink 与不安全 file/directory path，再原子发布含各 target bundle 和 `summary.json` 的全新目录，不向源码回填库。
 
-Windows 两个 target 的 Rust library 使用 `*-pc-windows-msvc`；相应 cgo selector 必须以
-`-L${SRCDIR}/… -lugoira_rs` 声明库，不能把带盘符的绝对 `.lib` 路径直接传给 cgo；还必须显式携带
-Rust `std` 所需的 `advapi32`、`ntdll`、`userenv`、`ws2_32` 与 `dbghelp` import libraries。native evidence
-把 registry 选择的 `CC='clang -fuse-ld=lld'` 同时传给 `scripts/build-platform.sh` 与 native smoke：LLD 既能处理 MSVC
-`.lib`，也让 Go 跳过 GCC 专属的 debug linker script；这不是运行时 fallback，也不改变 darwin/linux
-的 C linker 选择。
+从同一审计 native-evidence run 设置 `RUN_ID` 与 `SOURCE_COMMIT`，下载其六份 artifact，再使用新的绝对路径：
 
 ```bash
-go test ./scripts/internal/nativeevidence -count=1
+go run ./scripts/cmd/nativeevidence consolidate \
+  --repo-root . --expected-version "v0.1.0-native-evidence.${RUN_ID}" \
+  --expected-commit "$SOURCE_COMMIT" --input-dir /absolute/evidence \
+  --output-dir /absolute/new-complete-evidence
 ```
 
-每个 runner artifact 只有 `evidence/`：实际链接的 staticlib、版本化 binary、archive 及
-`native-evidence.json`。schema 2 record 会独立记录 workflow 提供的 `source_commit`，重算 Rust source digest
-和三份 SHA-256，执行 binary 的 `--version` 并要求精确单行输出，再逐一检查 archive 的 binary、`LICENSE`、`THIRD_PARTY_LICENSES.md` 与完整
-`third_party/licenses` 常规文件树。它不持有 release/tap/signing credential，也不会创建 tag 或
-Release。
+PR Platform worker 在 native 与解包 binary smoke 后也上传 schema 3 `native-evidence-<goos>-<goarch>` bundle，版本为 `v0.2.0-ci.<run-id>`。producer 仍是受信任的 base-ref workflow；修改 PR head workflow 不会更新该 producer。必须核对实际 run 与精确 head，不拼接不同 run，也不把 fixture、cross-build 或 workflow 定义当作六平台原生执行。
 
 `.github/workflows/browser-evidence.yml` 是另一条显式手动触发、credential-free 的原生 provider contract matrix，
 在 macOS、Linux、Windows 的 amd64/arm64 runner 上执行 `internal/browsercookies/...` 的平台代码与合成 fixture 回归，
@@ -201,13 +125,6 @@ fixture、固定 SQLite provisioning 与 cleanup 等安全边界，
 真实
 profile/session evidence 仍只能在受保护的 release-prep host 取得，不能把该 workflow 的成功当作真实
 用户浏览器导入成功。
-
-> [!WARNING]
-> Native evidence 不可回填或跨 run 拼接。任一 workflow run 的 runner record 出现不同 source digest 时，即使六个 job 都完成，也不得混合回填；必须从修复后的新 SHA 完整重跑六目标。本地 unit fixture、policy 成功或 workflow 文件存在都不是六目标 native evidence。
-
-需要受控回填 committed 六目标库时，workflow run 的 main SHA 与其产出的 `v0.1.0-native-evidence.<run-id>` 版本必须完全匹配；下载恰好六个 `native-evidence-{darwin,linux,windows}-{amd64,arm64}` artifact，再在干净、非 symlink 的输出目录上运行 `scripts/cmd/nativeevidence consolidate`。consolidator 只接受完整六目标、同一 source digest 与同一 expected version/commit 的记录；重新核验 staticlib/binary/archive SHA 与 archive member hash，生成精确六条 `manifest.json`，对任何缺 target、重复/错配 target、metadata、archive member、哈希或 symlink 都在写入前阻断。
-
-人工复核后，把六库与 `manifest.json` 回填到 `internal/media/ugoira/rust/staticlib/`，再运行 `TestCommittedManifestWhenPresent`、`TestRustUgoiraEncoderNativeGIFAndAPNG` 与 `git diff --check`，把六个 blobs 与 manifest 作为独立审查提交。任一验证失败都阻断 release，不能以部分 artifact 继续。
 
 ## 运行
 
@@ -348,9 +265,7 @@ restore 原子写失败时检查 public `LocalWriteCommitOutcome`：pre-commit �
 
 ## 测试
 
-当前测试覆盖 CLI 命令与 build metadata、显式/自动更新、`internal/services/{pixiv,fanbox}/account` 账号服务、`internal/services/pixiv/pool` 账号池、`internal/services/reversesearch` source/provider fixture 与聚合、`internal/storage/database` 认证存储与 `internal/config/settings` 配置、`internal/shared/lifecycle` 生命周期、`internal/shared/pagination` 逻辑分页、`internal/shared/traversal` 泛型可重入遍历、Pixiv App API 认证重试、公开 SDK（`sdk`/`sdk/pixiv`/`sdk/fanbox`）、HTTP client wiring、下载管理、Rust encoder/staticlib 合约和 `internal/mcpserver/{pixiv,fanbox}/tools` tool 注册。
-
-`internal/account` 与 `internal/session` 已删除，不保留兼容测试入口。测试文件布局与 same-package 例外见[测试文件布局](#测试文件布局)：
+当前测试覆盖 CLI 命令与 build metadata、显式/自动更新、`internal/services/{pixiv,fanbox}/account` 账号服务、`internal/services/pixiv/pool` 账号池、`internal/services/reversesearch` source/provider fixture 与聚合、`internal/storage/database` 认证存储与 `internal/config/settings` 配置、`internal/shared/lifecycle` 生命周期、`internal/shared/pagination` 逻辑分页、`internal/shared/traversal` 泛型可重入遍历、Pixiv App API 认证重试、公开 SDK（`sdk`/`sdk/pixiv`/`sdk/fanbox`）、HTTP client wiring、下载管理、Go encoder/native evidence 合约和 `internal/mcpserver/{pixiv,fanbox}/tools` tool 注册。`internal/account` 与 `internal/session` 已删除，不保留兼容测试入口。测试文件布局与 same-package 例外见[测试文件布局](#测试文件布局)：
 
 ```bash
 go test ./...
@@ -427,7 +342,6 @@ file attachment 完成 HEAD、完整保存和字节数核对。
 发布相关的本地 fixture/策略门禁还包括：
 
 ```bash
-sh scripts/test-build-staticlibs.sh
 sh scripts/test-build-platform.sh
 sh scripts/test-package-release.sh
 go test ./tools/release ./tools/platformmatrix -count=1
@@ -458,7 +372,7 @@ Platform worker 从受信 workflow ref 解析六平台 matrix，只有 matrix jo
 
 `pr-verification.yml` 的 `dispatch` job 在分配 runner 前先用 `contains(github.event.comment.body, '/test')` 做廉价预过滤：它是 `tools/prmeta --check-trigger` 的宽松超集，只产生少量 false positive，不会漏掉合法触发，最终授权仍由 `tools/prmeta` 判定。browser/native evidence 保留为显式维护入口。真实 Pixiv/FANBOX SDK E2E 不进入普通 PR CI；仅发布 tag 的 `release.yml` 在 validate 后运行无凭据 SDK E2E contract gate，真实 SDK E2E 仍按 release-prep 在授权环境独立验收。
 
-纯 Go 迁移期间，两类 smoke worker 按检出的源码选择构建契约：存在 `internal/media/ugoira/rust/Cargo.toml` 时保留固定 Rust 工具链、Rust 构建参数和 cgo；否则使用 `CGO_ENABLED=0`，不执行 Rust 安装或传入 Rust 参数。Platform smoke 对纯 Go head 运行完整 Go 编码器包测试，对旧 head 保留原生 Rust GIF/APNG 测试。源码选择保留受信 workflow ref、精确 head 校验及独立结果发布边界。
+两类 smoke worker 均以 `CGO_ENABLED=0` 构建；Platform smoke 运行 Go 编码器包测试。受信 workflow ref、精确 head 校验及独立结果发布边界保持不变。
 
 `scripts/tests/installers` 使用本地伪 Release、伪 `curl` 与 checksum fixture 验证安装器，不访问 GitHub。Unix
 job 实际运行 `install.sh`，覆盖 SHA-256、带空格目录、版本预检和校验失败不覆盖旧 binary；Windows
@@ -473,12 +387,108 @@ amd64/arm64 platform-smoke 还会用真实 `cmd.exe`、`certutil.exe` 与 `tar.e
 
 Quality 同时处理 `pull_request.edited`，确保 PR 改为指向 `main` 后会发布必需的 Quality 结果。标题和描述编辑也会触发分类及必要的 Quality 验证。job 保持固定必需名称，包括纯文档 skip；GitHub 不会求值 skipped job 的动态名称。纯文档改动仍使用真实 job-level skip。
 
+### 离线 ugoira 对照
+
+动图编码器对比使用独立的显式入口 `TestRealPixivUgoiraCapture`。它与 `TestRealPixivSDKRead` 共用本地
+账号选择和 rotation 持久化，再通过公开 SDK `UgoiraMetadata`、`SaveResource` 采集。作品 ID 为逗号分隔的
+正整数，quality 必须明确为 `original` 或 `medium`；该质量不可用时直接失败，不替换。只有获得素材下载授权后才运行：
+
+```bash
+PIXIV_UGOIRA_CAPTURE=1 PIXIV_UGOIRA_IDS=150808387,150247639,150356234 \
+PIXIV_UGOIRA_QUALITY=medium PIXIV_UGOIRA_DIR="$PWD/build/ugoira-parity/samples" \
+go test ./e2e -run '^TestRealPixivUgoiraCapture$' -count=1 -v
+```
+
+这条命令采集 medium。下方样本表中的 1080p original 来自该处说明的 `originalSrc`，已另行采集并保存在独立目录。
+
+每个新建 ID 目录包含完整 `frames.zip` 和 `sample.json`；后者记录有序文件名/延迟、实际质量、尺寸、
+总时长、字节数、ZIP SHA-256 和帧元数据 SHA-256，日志另记录 manifest SHA-256。URL、resource ref、
+headers 和凭证不会序列化。既有样本拒绝覆盖；采集失败只清理本次新建目录。这些私有产物放在已忽略的
+`build/` 下，禁止提交。`PIXIV_E2E_PROXY` 沿用 SDK E2E 的非 secret 代理含义；普通测试默认跳过采集。
+
+旧基线须从迁移前源码单独编译一次，记录源码 commit、Go/构建设置和 binary SHA-256，并保持 binary 不变。
+当前测试 driver 与默认下载器同用 `ugoira.NewEncoder()`，无需凭证或网络。另建当前 driver，不得覆盖 `baseline.test`：
+
+```bash
+mkdir -p build/ugoira-parity
+CGO_ENABLED=0 go test -c -trimpath -o build/ugoira-parity/current.test ./e2e
+GOMAXPROCS=1 RAYON_NUM_THREADS=1 \
+UGOIRA_PARITY_SAMPLE="$PWD/build/ugoira-parity/samples/150808387" \
+UGOIRA_PARITY_OUTPUT="$PWD/build/ugoira-parity/current-150808387.gif" \
+UGOIRA_PARITY_FORMAT=gif UGOIRA_PARITY_MAX_EDGE=0 \
+build/ugoira-parity/current.test -test.run '^TestUgoiraParityEncode$' -test.v
+```
+
+driver 要求绝对路径、与 `gif` 或 `apng` 匹配且尚不存在的输出，以及 uint32 最大边长（`0` 表示不缩放）。
+编码前校验 ZIP 与帧元数据哈希，输出 `UGOIRA_PARITY_RESULT`，包含输入哈希、格式、最大边长、`Encode`
+耗时、输出字节数、Go 版本和 `GOMAXPROCS`。每轮使用新输出，新旧实现保持相同输入和运行参数；峰值进程 RSS
+另用同一主机工具测量。日志耗时不含编译、采集、输入哈希或进程启动。fixture/driver 本身不能证明真实画质、
+性能或六平台等价。
+
+工具链变化时保留冻结 baseline，必要时从同一已审计旧 producer 构建独立命名的 legacy comparator；先核对它与冻结输出的身份，再记录双方 build mode，以相同工具链比较。迁移资源验收按每个真实样本/格式各预热一次、交替五次，时间、峰值进程 RSS 与输出字节数比值分别不得超过 1.10；RSS 不是 Go heap。
+
+每次冻结旧版/Go 对照均设置 `GOMAXPROCS=1` 和 `RAYON_NUM_THREADS=1`。旧 Rust 量化器的 worker 数会改变输出像素，而不只影响耗时；选择已保存输出评分时，也须匹配固定基线的 worker 设置。
+
+`TestUgoiraSyntheticCorpus` 生成旧版三个质量场景，并补充透明/重复帧、单像素和奇数尺寸场景。
+未设置 `UGOIRA_PARITY_CORPUS` 时使用临时目录；显式指定绝对目录后保留 schema 1 样本，供两版 binary
+共同使用，已有样本目录拒绝覆盖。`TestUgoiraParityInspect` 按 Keep/Background 处置规则重建 GIF 画布，并重放 APNG 的
+Source/Over 差分矩形及 None 处置，检查帧数、尺寸、循环、延迟和 GIF 透明语义。输入必须是不缩放的输出（`MaxEdge=0`）。
+PNG 源帧要求逐像素还原；JPEG 像素差异单列，因为参考使用 Go JPEG 解码器。质量检查不计入性能测量，
+通过 `UGOIRA_QUALITY_RESULT` 输出每帧指标及输入/输出哈希。
+
+```bash
+UGOIRA_PARITY_CORPUS="$PWD/build/ugoira-parity/synthetic" \
+go test ./e2e -run '^TestUgoiraSyntheticCorpus$' -count=1
+UGOIRA_PARITY_SAMPLE="$PWD/build/ugoira-parity/samples/150808387" \
+UGOIRA_PARITY_OUTPUT="$PWD/build/ugoira-parity/baseline-150808387.gif" \
+go test ./e2e -run '^TestUgoiraParityInspect$' -count=1 -v
+```
+
+RGB SSIM 取三通道均值。MSSIMSimple 使用不重叠的 8×8 窗口，边缘窗口按实际面积加权；协方差是偏差乘积
+之和，不是总体方差。旧 `image` 0.25 的 `DynamicImage::into_luma8` 实际走 CICP：BT.709/D65 矩阵、
+float32 乘加和四舍五入。指标保留已实测的 arm64/FMA 基准；较旧的整数 `Pixel::to_luma` helper 不是这条路径。
+设置 `UGOIRA_PARITY_RUST_QUALITY` 可运行 `TestUgoiraSSIMRustCalibration`，读取旧质量 gate 保存的
+`<scene>-rust.gif` 和 `<scene>-ssim.csv`，按 CSV 九位小数采用 1e-9 校准容差。
+
+Go 生产编码器使用 owner-local `internal/media/ugoira/jpeg`：复用 Go 1.26.3 的 JPEG 解析，迁移旧
+zune-jpeg 0.5.15 的整数 IDCT 与 14-bit BT.601 转换。标准库 IDCT 的舍入差异会改变调色板选择，导致
+固定画质门槛失败；只对齐色彩系数不能修复全部样本。该解码器不注册全局图像格式，不新增模块依赖。
+解析器的 BSD 许可证保存在该包内，最终许可证 bundle 仍须保留 zune-jpeg 的 MIT 归属。17×9 合成
+`jpeg-{444,progressive,gray,restart}` fixture 与旧版解码的 RGBA 参考覆盖这些路径，普通测试不依赖
+Rust 或 jpegtran。Go 缩放核使用限定区间内的正弦/余弦多项式，以 `math.FMA` 固定求值次序，
+与旧基准运行时 `sinf` 的结果对齐。`testdata/lanczos-kernel.json` 中的 1,031 组数值参考保护
+Lanczos3 舍入行为，Go 路径不调用平台数学库。
+Go APNG writer 使用固定 Sub 预测与逐帧独立的 level-7 zlib 流，保留 RGBA8 和无损像素。
+仅当所有变化像素均不透明，且透明差分减少行内 RGBA 连续段数时使用 Over，将未变化像素写为透明；
+其他情况使用 Source，避免打碎平坦色块而增大压缩体积。两者均使用 None 处置。
+Go 1.27 的快速压缩档在高纹理语料上超过原10%体积回退门槛；
+确定性 opaque-texture 回归以封存的 Rust fixture 为参考，保留相同门槛。工具链可能改变压缩字节；
+只有完整重放画布、时长和循环行为经验证一致后才能复用既有画质证据，不能只看文件大小。
+
+迁移样本的六个公开作品 ID 如下。尺寸来自所有 ZIP 帧的完整解码，不能只用作品展示尺寸。
+第一个 original ZIP 由 Pixiv 公开 `ugoira_meta` 的 `originalSrc` 明确给出，完整帧列表与已认证 SDK 元数据
+逐项一致；该作品的 SDK 元数据仅提供 medium。这只是测试素材采集，不是产品 fallback。
+
+| 作品 ID | ZIP 质量 | 实际尺寸 | 帧数 | 覆盖 |
+| --- | --- | --- | --- | --- |
+| 150808387 | original | 1920×1080 | 63 | 高分辨率、局部运动、细线 |
+| 150247639 | medium | 423×600 | 8 | 复杂插画、大面积变化 |
+| 150356234 | medium | 219×320 | 121 | 小尺寸、长序列、渐变 |
+| 150863948 | medium | 600×420 | 12 | 局部运动、平涂 |
+| 150863611 | medium | 600×338 | 37 | 渐变、纹理、局部运动 |
+| 150863218 | medium | 480×270 | 128 | 全画面变化、密集纹理 |
+
+original 和 medium 必须保存在不同目录，本地保留完整元数据和哈希；不要推导 original URL 或把 medium
+重标为 original。上述来源记录不能替代后续逐样本画质及五次新旧交替性能验证。
+
+
 ### 测试文件布局
 
 生产文件 `x.go` 对应同目录最多一个 `x_test.go`；平台专用测试用 `x_<platform>_test.go`，必须有真实 base owner。新 owner 的测试一律用 external test package（`X_test`）；只有下列目录允许 same-package，因为它们观察未导出的内部状态。新增 same-package 例外必须在此登记 permanent 理由，否则视为违规。
 
 | 目录 | same-package 理由 |
 | --- | --- |
+| `internal/media/ugoira` | 测试直接调用 `readFrameSource`、`frameSource`、`validateDecodedSize`、`frameNRGBA`、`decodeInto`、`resizeFrame`、`apngWriter`，无需巨量分配即可验证分配边界和取消、保留透明像素的 RGB 和缓冲复用时前帧的独立所有权，与固定上游参考向量对比 Lanczos3 像素，检查 APNG 序列溢出和写入失败，以及 reservoir 状态、去重权重/索引、Oklab/Wu 精确参考值、固定种子 K-means 中心与逐像素抖动索引；`colorGrid` 测试验证单元边界的精确候选上下界，`frameQuantizer` 测试验证复用误差行时完整清零、普通量化结果仍独立持有索引、显式缓冲复用只发生在上一帧消费完成后，LZW 测试覆盖跨帧字典/码宽重置和写失败后的恢复；GIF 测试观察 `gifWriter`/`gifBlocks`，验证全局表、流式 LZW 子块和写入失败，生命周期测试观察 `encodeGate`，不靠 sleep 即可同步排队取消；导出这些 codec 内部机制会仅为测试扩大 `Encoder` 契约。 |
 | `internal/config/settings` | `schema_test.go` 将合成类型交给私有 `deriveSchemaFromTags` 编译函数，验证非法声明的生产拒绝路径，避免导出反射元数据或重置生产缓存。 |
 | `internal/cli` | composition root 测试观察未导出的 root wiring、invocation lifecycle 与 close ordering；这些 seam 不构成公开 API。 |
 | `internal/cli/commands/pixiv/search` | 通过真实 SDK 与 HTTP fixture 观察私有 searchArtworks 逻辑页续读。私有逻辑页策略仍是实现细节；MCP 另行暴露绑定参数的默认批次 continuation。为测试导出应用内部接口会扩大公开契约。 |
@@ -493,9 +503,9 @@ Quality 同时处理 `pull_request.edited`，确保 PR 改为指向 `main` 后�
 | `sdk/pixiv` | `cursor_test.go` 观察未导出的 cursor 构造与 client-instance binding，以验证精确的 query-bound 无效 continuation，而不扩大 public SDK surface。 |
 | `scripts/internal/browsernativeevidence` | 测试观察未导出的环境探测并注入合成 Firefox cookie 种子。 |
 | `scripts/internal/homebrewformula` | 测试直接调用未导出的 formula 渲染与版本校验（`renderFormula`、`validateFormulaVersion`、`checkDynamicVersionNeeds`）。 |
-| `scripts/internal/licensebundle` | 测试观察未导出的 `defaultBundleFileOps`、`generateFromTargetMetadata` 与 license 文本归一化，注入假 cargo metadata。 |
+| `scripts/internal/licensebundle` | 测试观察未导出的 `defaultBundleFileOps`、`modulesFromMetadata`、`packageLicenseFiles` 与 license 文本归一化；用可执行 Go fixture 验证六目标离线命令契约。 |
 | `scripts/internal/linuxabi` | 测试直接调用未导出的 glibc 版本解析与 ABI 比对（`parseGLIBCVersion`、`checkImportedSymbols`）。 |
-| `scripts/internal/nativeevidence` | 测试直接调用未导出的 record/consolidate seam；同包内的聚焦 workflow contract 锁定 workflow ownership 与安全边界。两者共同覆盖 schema 2、独立 `source_commit`、精确 binary `--version` 输出、六目标 hash/archive 校验与 mutation 回滚。 |
+| `scripts/internal/nativeevidence` | 测试直接调用未导出的 record/consolidate seam，覆盖 schema 3、独立 `source_commit`、精确 binary `--version` 输出、六目标 hash/archive 校验与 mutation 回滚。 |
 | `scripts/internal/publicapi` | 测试观察未导出的 `unexported`/`hidden` 符号解析与 golden 比对逻辑，用 `writeFixture` 生成 fixture。 |
 | `scripts/internal/releaseassets` | 测试注入未导出的 `injectReleaseSources`/`injectWindowsReleaseSources`，观察 asset archive 命名（`archiveName`）与 checksums 生成。 |
 | `scripts/internal/releasenotes` | 测试观察未导出的 GitHub client 调用映射，注入 fake client 断言来源审计。 |
@@ -550,7 +560,7 @@ for ip,n in sorted(same): print(ip,n)'
 
 `.github/workflows/release.yml` 默认由 `v[0-9]*` tag 触发：先验证 SemVer，再在 immutable tag 上运行无凭据的
 SDK E2E contract gate，确认测试入口和默认 skip/离线边界没有被破坏；随后才构建
-darwin/linux/windows × amd64/arm64 的 Rust staticlib、测试 Go/Rust、检查许可证并封装固定名称的 archive。
+darwin/linux/windows × amd64/arm64 的 CGO0 Go binary，运行 Go 测试（race step 单独启用 cgo）、检查许可证并封装固定名称的 archive。
 该 workflow 不读取或注入 Pixiv/FANBOX credential。真实 SDK E2E、native browser 和一次性 solver acceptance
 必须在授权环境按本页对应流程完成，不能把 contract gate 当作真实 release evidence。
 
@@ -562,8 +572,7 @@ policy 锁定 finalize 参数及完整八资产上传集合；Homebrew renderer 
 release.yml 只接受 `v[0-9]*` tag push，不再提供 `workflow_dispatch`、`release_tag` 输入或 test-only
 overlay。tag run 失败时应修复默认分支上的原因，并按正常的不可变 tag 发布流程重新处理；不会从默认分支
 把新 verifier、测试或生产源码注入旧 tag，也不会为已有 Release 提供手工 recovery 入口。validate、test
-build、production build 与 publish 都绑定同一个 tag；生产构建在独立 runner 上从 clean tag tree 重建
-staticlib，并继续以 `git diff --exit-code` 做 byte-for-byte 校验。
+build、production build 与 publish 都绑定同一个 tag；生产构建在独立 runner 上从 clean tag tree 以 CGO0 构建，并继续以 `git diff --exit-code` 做 byte-for-byte 校验。
 
 GitHub Release 与 registry 是独立系统，无法原子提交。因此 `.github/workflows/publish-dockerhub.yml` 作为独立的
 Release 后容器 publisher，同时负责 GHCR 与 Docker Hub。它从完成的 Release run 接收 immutable handoff 和两份
@@ -579,7 +588,7 @@ verified container artifact，校验 release tag 与 source identity，再把同
 
 `build_container` 在共享 `build` 门禁后运行，并与 `build_production` 并行；它不会等待生产资产重建。两个原生
 target 分别是 `ubuntu-22.04` 对应 `linux/amd64`、`ubuntu-22.04-arm` 对应 `linux/arm64`。每个 target 都从
-immutable tag checkout，在 clean tree 重建对应 Rust staticlib，通过 Linux ABI gate 构建版本化 Linux binary，
+immutable tag checkout，在 clean tree 以 CGO0 构建版本化 Linux binary 并通过 Linux ABI gate，
 运行容器打包测试，构建 pinned glibc runtime 镜像，并验证非 root 执行、精确版本、`/home/pixiv/.pixiv-cli/`
 下的 `pixiv config path`、`/work` 以及 OCI provenance（`org.opencontainers.image.source`、revision、version
 和 licenses），最后导出 `verified-container-linux-amd64` 与 `verified-container-linux-arm64`。
@@ -597,7 +606,7 @@ go test ./tools/release ./tools/platformmatrix -count=1
 无凭据容器 smoke workflow 会在相关变更时构建两个原生架构，并执行 version、非 root、state-path 和工作目录
 断言；正式 tagged release 不能用这些本地检查替代该 CI evidence。
 
-共享平台 runner/Rust/CC metadata 只位于 `ci/platforms.json`，由 `tools/platformmatrix` 校验并输出；
+共享平台 runner/capability metadata 只位于 `ci/platforms.json`，由 `tools/platformmatrix` 校验并输出；
 release archive identity 仍由 `scripts/internal/releasecontract` 持有。workflow 测试只保留行为与安全边界，
 不再镜像 job 数量、step 位置或 multiline shell 全文。历史 recovery 计划和验收报告保留原始文字与路径，
 不作为当前流程说明。
@@ -683,7 +692,7 @@ macOS Intel/arm64 与 Linux amd64/arm64 四个生产同款 runner 上执行真�
 安装验收。质量门只保留 formula 与 artifact 的行为级校验，不再复制一套 workflow policy 实现。
 
 正式发布目前仍必须被正式 tag、签名 GitHub Release、tap formula 与后续安装验收阻断。完整
-six-target staticlib/manifest 与真实 native artifact 证据必须已受控收集并回填（见「Rust ugoira staticlib」一节）；
+同 source/version 的完整六目标 Go binary/archive 证据必须已收集并核验（见 [Native runner evidence](#native-runner-evidence)）；
 受保护 `release` Environment、生产 signing 私钥与公开仓库也必须已配置，但这些前置条件本身
 不等于 Release/tap 已创建或安装路径已验收。
 
@@ -740,7 +749,6 @@ ClawHub 另有 `verify_only`，只核验已经提交的版本，不重发。其 
 - 本地下载目录 `downloads/`
 - 本地数据库 `*.db`
 - 常见缓存和临时文件
-- Rust `internal/media/ugoira/rust/target/`
 
 不要提交 Pixiv token、下载内容、本地数据库、机器相关配置、Ed25519 私钥或 tap deploy key。
 

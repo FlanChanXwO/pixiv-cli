@@ -1,4 +1,4 @@
-// Command licensebundle 从六个 release Rust target 的锁定离线依赖图生成许可证 bundle。
+// Command licensebundle 从六个平台的 Go 生产依赖及移植来源生成许可证 bundle。
 package main
 
 import (

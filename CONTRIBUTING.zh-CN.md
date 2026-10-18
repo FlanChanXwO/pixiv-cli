@@ -13,23 +13,17 @@
 
 ## 开发环境
 
-受支持的源码构建使用：
-
-- `go.mod` 声明的 Go 版本；
-- `CGO_ENABLED=1` 和目标平台可用的 C linker；
-- 仓库中经 manifest 校验、与目标平台匹配的 Rust ugoira static library。
-
-只有修改 ugoira encoder 或重新构建 static library 时才需要 Rust。不要在无关贡献中安装或重新生成 native artifact。Windows 构建通过 Git Bash、MSYS2 或 WSL 运行。
+源码构建使用 `go.mod` 声明的 Go 版本与 `CGO_ENABLED=0`，不需要 Rust 工具链、native library 或 C linker。race-detector 测试使用 `CGO_ENABLED=1`，需要可用的 C 工具链。Windows 构建通过 Git Bash、MSYS2 或 WSL 运行。
 
 在仓库根目录构建和测试：
 
 ```bash
-go test ./...
+CGO_ENABLED=0 go test ./...
 sh scripts/build.sh
 ./build/pixiv --help
 ```
 
-Native library 校验、opt-in 真实 API 测试、发布门禁和平台细节见[开发流程](docs/zh-CN/maintainers/development.md)。
+编码器验证、opt-in 真实 API 测试、发布门禁和平台细节见[开发流程](docs/zh-CN/maintainers/development.md)。
 
 ## 架构边界
 

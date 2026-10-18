@@ -30,7 +30,7 @@ Inspect the exact PR SHA: `Quality gate`, `Platform smoke`, and `Container smoke
 
 `pr-verification.yml` handles explicit `/test` requests using trusted parser/runner code and an exact PR head. Keep write-capable control jobs separate from untrusted PR execution. Never execute a PR body or title as shell code, expose privileged credentials to it, or treat a returned artifact as trusted without the existing identity checks.
 
-`native-evidence.yml` and `browser-evidence.yml` are explicit manual, credential-free evidence providers, not automatic main-push gates; synthetic browser data does not prove real user-profile access. `homebrew-prepublish-verify.yml` is a read-only rehearsal, not a deployment workflow. Native linking and real API tests remain different evidence classes.
+`native-evidence.yml` and `browser-evidence.yml` are explicit manual, credential-free evidence providers, not automatic main-push gates; synthetic browser data does not prove real user-profile access. `homebrew-prepublish-verify.yml` is a read-only rehearsal, not a deployment workflow. Native execution and real API tests remain different evidence classes.
 
 ## Operate only the authorized action
 
