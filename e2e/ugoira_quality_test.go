@@ -207,12 +207,17 @@ func TestUgoiraParityInspect(t *testing.T) {
 		if animation.LoopCount != 0 || animation.Config.Width != sample.Width || animation.Config.Height != sample.Height {
 			t.Fatal("GIF loop or canvas changed")
 		}
+		canvas := image.NewNRGBA(image.Rect(0, 0, sample.Width, sample.Height))
 		for i, img := range animation.Image {
 			if animation.Disposal[i] != gif.DisposalBackground && animation.Disposal[i] != gif.DisposalNone {
 				t.Fatalf("frame %d disposal changed", i)
 			}
-			if err := visit(i, ugoiraNRGBA(img), float64(animation.Delay[i]*10)); err != nil {
+			draw.Draw(canvas, img.Rect, img, img.Rect.Min, draw.Over)
+			if err := visit(i, canvas, float64(animation.Delay[i]*10)); err != nil {
 				t.Fatal(err)
+			}
+			if animation.Disposal[i] == gif.DisposalBackground {
+				draw.Draw(canvas, img.Rect, image.Transparent, image.Point{}, draw.Src)
 			}
 		}
 	} else if filepath.Ext(output) == ".apng" {

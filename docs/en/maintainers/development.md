@@ -385,7 +385,8 @@ Set `GOMAXPROCS=1` and `RAYON_NUM_THREADS=1` for every frozen-legacy/Go comparis
 `TestUgoiraSyntheticCorpus` writes the three original quality scenes plus transparency/repeated-frame, single-pixel
 and odd-dimension cases. Without `UGOIRA_PARITY_CORPUS` it uses temporary directories; an explicit absolute directory
 preserves schema-1 samples for both binaries. Existing sample directories are refused. `TestUgoiraParityInspect`
-independently decodes full-canvas GIF frames and replays APNG Source/None rectangles, checking frame count, size,
+reconstructs GIF canvases from Keep/Background rectangles and replays APNG Source/Over rectangles with None disposal,
+checking frame count, size,
 loop, delays and GIF transparency. It requires unscaled output (`MaxEdge=0`). PNG inputs must reconstruct exactly;
 JPEG pixel differences are reported separately because the reference uses Go's JPEG decoder. Inspection is outside
 performance measurements and emits per-frame `UGOIRA_QUALITY_RESULT` with input/output hashes.
@@ -415,10 +416,11 @@ without requiring Rust or jpegtran at test time. The Go resize kernel uses bound
 polynomials with explicit `math.FMA`, fixed against the legacy runtime `sinf` results. Its 1,031 numeric
 references in `testdata/lanczos-kernel.json` preserve Lanczos3 rounding without calling a platform math library.
 The Go APNG writer uses fixed Sub prediction and an independent level-7 zlib stream per frame, retaining
-RGBA8, lossless pixels and Source/None rectangle playback. Go 1.27's fast compression levels exceeded the original
+RGBA8 and lossless pixels. APNG uses Over with transparent unchanged pixels only when all changed pixels are opaque;
+other changes use Source. Both use None disposal. Go 1.27's fast compression levels exceeded the original
 10% output-size allowance on the high-texture corpus; the deterministic opaque-texture regression preserves the
 same allowance against its frozen Rust reference. Compressed bytes may change with the toolchain; reuse prior
-quality evidence only after proving identical frame controls and uncompressed pixels, not file size alone.
+quality evidence only after verifying the complete rendered canvases, timing and loop behavior, not file size alone.
 
 The migration corpus's six public artwork IDs are listed below. Archive dimensions were verified by decoding every
 frame; artwork display dimensions alone are insufficient. The first original ZIP was explicitly provided by Pixiv's

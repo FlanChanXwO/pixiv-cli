@@ -431,8 +431,8 @@ driver 要求绝对路径、与 `gif` 或 `apng` 匹配且尚不存在的输出�
 
 `TestUgoiraSyntheticCorpus` 生成旧版三个质量场景，并补充透明/重复帧、单像素和奇数尺寸场景。
 未设置 `UGOIRA_PARITY_CORPUS` 时使用临时目录；显式指定绝对目录后保留 schema 1 样本，供两版 binary
-共同使用，已有样本目录拒绝覆盖。`TestUgoiraParityInspect` 独立解码完整画布 GIF 帧，并重放 APNG 的
-Source/None 差分矩形，检查帧数、尺寸、循环、延迟和 GIF 透明语义。输入必须是不缩放的输出（`MaxEdge=0`）。
+共同使用，已有样本目录拒绝覆盖。`TestUgoiraParityInspect` 按 Keep/Background 处置规则重建 GIF 画布，并重放 APNG 的
+Source/Over 差分矩形及 None 处置，检查帧数、尺寸、循环、延迟和 GIF 透明语义。输入必须是不缩放的输出（`MaxEdge=0`）。
 PNG 源帧要求逐像素还原；JPEG 像素差异单列，因为参考使用 Go JPEG 解码器。质量检查不计入性能测量，
 通过 `UGOIRA_QUALITY_RESULT` 输出每帧指标及输入/输出哈希。
 
@@ -458,10 +458,11 @@ zune-jpeg 0.5.15 的整数 IDCT 与 14-bit BT.601 转换。标准库 IDCT 的舍
 Rust 或 jpegtran。Go 缩放核使用限定区间内的正弦/余弦多项式，以 `math.FMA` 固定求值次序，
 与旧基准运行时 `sinf` 的结果对齐。`testdata/lanczos-kernel.json` 中的 1,031 组数值参考保护
 Lanczos3 舍入行为，Go 路径不调用平台数学库。
-Go APNG writer 使用固定 Sub 预测与逐帧独立的 level-7 zlib 流，保留 RGBA8、无损像素及
-Source/None 差分矩形播放语义。Go 1.27 的快速压缩档在高纹理语料上超过原10%体积回退门槛；
+Go APNG writer 使用固定 Sub 预测与逐帧独立的 level-7 zlib 流，保留 RGBA8 和无损像素。
+仅当所有变化像素均不透明时使用 Over，并将未变化像素写为透明；其他变化使用 Source。两者均使用 None 处置。
+Go 1.27 的快速压缩档在高纹理语料上超过原10%体积回退门槛；
 确定性 opaque-texture 回归以封存的 Rust fixture 为参考，保留相同门槛。工具链可能改变压缩字节；
-只有完整帧控制与解压像素相同才能复用既有画质证据，不能只看文件大小。
+只有完整重放画布、时长和循环行为经验证一致后才能复用既有画质证据，不能只看文件大小。
 
 迁移样本的六个公开作品 ID 如下。尺寸来自所有 ZIP 帧的完整解码，不能只用作品展示尺寸。
 第一个 original ZIP 由 Pixiv 公开 `ugoira_meta` 的 `originalSrc` 明确给出，完整帧列表与已认证 SDK 元数据

@@ -25,7 +25,7 @@ func ugoiraPNGChunk(w *bytes.Buffer, kind string, data []byte) {
 	_ = binary.Write(w, binary.BigEndian, sum.Sum32())
 }
 
-// 独立重建各帧PNG再按Source/None重放；不复用生产writer的滤波/压缩代码。
+// 独立重建各帧PNG再按Source/Over及None处置重放；不复用生产writer的滤波/压缩代码。
 func replayUgoiraAPNG(body []byte, visit func(int, *image.NRGBA, float64) error) error {
 	const signature = "\x89PNG\r\n\x1a\n"
 	if !bytes.HasPrefix(body, []byte(signature)) {
@@ -170,7 +170,7 @@ func TestUgoiraAPNGReplayRejectsCorruption(t *testing.T) {
 }
 
 func TestUgoiraReplayFixture(t *testing.T) {
-	for _, name := range []string{"alpha-repeat", "one-pixel", "odd-edge"} {
+	for _, name := range []string{"gradient-motion", "alpha-repeat", "one-pixel", "odd-edge"} {
 		t.Run(name, func(t *testing.T) {
 			dir := filepath.Join(t.TempDir(), "sample")
 			captureSyntheticUgoira(t, dir, ugoiraSyntheticScenes()[name], []int{1, 9, 10, 655350})
