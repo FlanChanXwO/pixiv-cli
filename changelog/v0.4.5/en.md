@@ -8,4 +8,4 @@
 
 - Added pre-publication Release verification and prepared the v0.4.5 metadata. ([#24](https://github.com/FlanChanXwO/pixiv-cli/pull/24), [#28](https://github.com/FlanChanXwO/pixiv-cli/pull/28))
 
-**Full Changelog**: [v0.4.3...v0.4.5](https://github.com/FlanChanXwO/pixiv-cli/compare/v0.4.3...v0.4.5)
+**Full Changelog**: [v0.4.4...v0.4.5](https://github.com/FlanChanXwO/pixiv-cli/compare/v0.4.4...v0.4.5)

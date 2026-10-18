@@ -27,4 +27,4 @@
 
 - 补充 ascii2d transport 与 challenge classification、solver lifecycle 与复用、live result parsing、all-provider aggregation 和 MCP cleanup 的聚焦测试。([#75](https://github.com/FlanChanXwO/pixiv-cli/pull/75))
 
-**完整变更**：[v0.10.0...v1.0.1](https://github.com/FlanChanXwO/pixiv-cli/compare/v0.10.0...v1.0.1)
+**完整变更**：[v1.0.0...v1.0.1](https://github.com/FlanChanXwO/pixiv-cli/compare/v1.0.0...v1.0.1)

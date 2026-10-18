@@ -27,4 +27,4 @@
 
 - Add focused coverage for ascii2d transport and challenge classification, solver lifecycle and reuse, live result parsing, all-provider aggregation, and MCP cleanup. ([#75](https://github.com/FlanChanXwO/pixiv-cli/pull/75))
 
-**Full Changelog**: [v0.10.0...v1.0.1](https://github.com/FlanChanXwO/pixiv-cli/compare/v0.10.0...v1.0.1)
+**Full Changelog**: [v1.0.0...v1.0.1](https://github.com/FlanChanXwO/pixiv-cli/compare/v1.0.0...v1.0.1)
