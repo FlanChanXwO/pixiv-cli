@@ -378,6 +378,8 @@ Platform worker 从受信 workflow ref 解析六平台 matrix，只有 matrix jo
 
 `pr-verification.yml` 的 `dispatch` job 在分配 runner 前先用 `contains(github.event.comment.body, '/test')` 做廉价预过滤：它是 `tools/prmeta --check-trigger` 的宽松超集，只产生少量 false positive，不会漏掉合法触发，最终授权仍由 `tools/prmeta` 判定。browser/native evidence 保留为显式维护入口。真实 Pixiv/FANBOX SDK E2E 不进入普通 PR CI；仅发布 tag 的 `release.yml` 在 validate 后运行无凭据 SDK E2E contract gate，真实 SDK E2E 仍按 release-prep 在授权环境独立验收。
 
+纯 Go 迁移期间，两类 smoke worker 按检出的源码选择构建契约：存在 `internal/media/ugoira/rust/Cargo.toml` 时保留固定 Rust 工具链、Rust 构建参数和 cgo；否则使用 `CGO_ENABLED=0`，不执行 Rust 安装或传入 Rust 参数。Platform smoke 对纯 Go head 运行完整 Go 编码器包测试，对旧 head 保留原生 Rust GIF/APNG 测试。源码选择保留受信 workflow ref、精确 head 校验及独立结果发布边界。
+
 `scripts/tests/installers` 使用本地伪 Release、伪 `curl` 与 checksum fixture 验证安装器，不访问 GitHub。Unix
 job 实际运行 `install.sh`，覆盖 SHA-256、带空格目录、版本预检和校验失败不覆盖旧 binary；Windows
 amd64/arm64 platform-smoke 还会用真实 `cmd.exe`、`certutil.exe` 与 `tar.exe` 运行 `install.cmd`，并始终

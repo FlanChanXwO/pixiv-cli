@@ -357,9 +357,12 @@ func TestProductionWorkflowsUsePureGo(t *testing.T) {
 	} {
 		t.Run(filename, func(t *testing.T) {
 			body := readWorkflow(t, root, filename)
-			for _, legacy := range []string{"rustup ", "cargo ", "--rust-target", "matrix.cc"} {
-				if strings.Contains(body, legacy) {
-					t.Errorf("production workflow still invokes %q", legacy)
+			transitionalEncoderWorkflow := filename == "platform-smoke.yml" || filename == "container-smoke.yml"
+			if !transitionalEncoderWorkflow {
+				for _, legacy := range []string{"rustup ", "cargo ", "--rust-target", "matrix.cc"} {
+					if strings.Contains(body, legacy) {
+						t.Errorf("production workflow still invokes %q", legacy)
+					}
 				}
 			}
 			var document struct {
