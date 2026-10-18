@@ -416,8 +416,9 @@ without requiring Rust or jpegtran at test time. The Go resize kernel uses bound
 polynomials with explicit `math.FMA`, fixed against the legacy runtime `sinf` results. Its 1,031 numeric
 references in `testdata/lanczos-kernel.json` preserve Lanczos3 rounding without calling a platform math library.
 The Go APNG writer uses fixed Sub prediction and an independent level-7 zlib stream per frame, retaining
-RGBA8 and lossless pixels. APNG uses Over with transparent unchanged pixels only when all changed pixels are opaque;
-other changes use Source. Both use None disposal. Go 1.27's fast compression levels exceeded the original
+RGBA8 and lossless pixels. APNG uses Over with transparent unchanged pixels only when all changed pixels are opaque
+and the delta reduces horizontal RGBA runs. Otherwise it uses Source to avoid fragmenting flat colors and increasing
+compressed size. Both use None disposal. Go 1.27's fast compression levels exceeded the original
 10% output-size allowance on the high-texture corpus; the deterministic opaque-texture regression preserves the
 same allowance against its frozen Rust reference. Compressed bytes may change with the toolchain; reuse prior
 quality evidence only after verifying the complete rendered canvases, timing and loop behavior, not file size alone.

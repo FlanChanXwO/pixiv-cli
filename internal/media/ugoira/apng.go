@@ -284,20 +284,31 @@ func apngOverRegion(ctx context.Context, previous, current *image.NRGBA, region 
 	if previous == nil {
 		return false, nil
 	}
-	unchanged := false
+	// Sub 的非零残差位置越少越易压缩；避免透明差分打碎原本连续的色块。
+	var sourceRuns, deltaRuns uint64
 	for y := region.Min.Y; y < region.Max.Y; y++ {
 		if err := ctx.Err(); err != nil {
 			return false, err
 		}
 		old := previous.Pix[previous.PixOffset(region.Min.X, y):][:region.Dx()*4]
 		row := current.Pix[current.PixOffset(region.Min.X, y):][:region.Dx()*4]
+		var sourceLeft, deltaLeft uint32
 		for i := 0; i < len(row); i += 4 {
-			if bytes.Equal(row[i:i+4], old[i:i+4]) {
-				unchanged = true
+			pixel := binary.LittleEndian.Uint32(row[i:])
+			delta := pixel
+			if pixel == binary.LittleEndian.Uint32(old[i:]) {
+				delta = 0
 			} else if row[i+3] != 255 {
 				return false, nil
 			}
+			if pixel != sourceLeft {
+				sourceRuns++
+			}
+			if delta != deltaLeft {
+				deltaRuns++
+			}
+			sourceLeft, deltaLeft = pixel, delta
 		}
 	}
-	return unchanged, nil
+	return deltaRuns < sourceRuns, nil
 }
