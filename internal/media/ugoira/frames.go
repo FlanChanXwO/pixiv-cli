@@ -2,6 +2,7 @@ package ugoira
 
 import (
 	"archive/zip"
+	"bufio"
 	"bytes"
 	"context"
 	"encoding/binary"
@@ -28,6 +29,7 @@ type frameArchive struct {
 	size   image.Point
 	jpeg   framejpeg.Decoder
 	source frameSource
+	header bufio.Reader
 }
 
 func openFrameArchive(ctx context.Context, input Input) (*frameArchive, error) {
@@ -78,7 +80,7 @@ func (a *frameArchive) decodeInto(ctx context.Context, frame Frame, reuse *image
 	if err := errors.Join(readErr, r.Close()); err != nil {
 		return nil, err
 	}
-	decoded, err := decodeFrameSourceInto(ctx, source, reuse, &a.jpeg)
+	decoded, err := decodeFrameSourceInto(ctx, source, reuse, &a.jpeg, &a.header)
 	if err != nil {
 		return nil, fmt.Errorf("decode frame %q: %w", frame.File, err)
 	}
@@ -158,14 +160,17 @@ func (s *frameSource) read(ctx context.Context, r io.Reader, file string, declar
 
 func decodeFrameSource(ctx context.Context, source []byte) (*image.NRGBA, error) {
 	var decoder framejpeg.Decoder
-	return decodeFrameSourceInto(ctx, source, nil, &decoder)
+	var header bufio.Reader
+	return decodeFrameSourceInto(ctx, source, nil, &decoder, &header)
 }
 
-func decodeFrameSourceInto(ctx context.Context, source []byte, reuse *image.NRGBA, decoder *framejpeg.Decoder) (*image.NRGBA, error) {
+func decodeFrameSourceInto(ctx context.Context, source []byte, reuse *image.NRGBA, decoder *framejpeg.Decoder, header *bufio.Reader) (*image.NRGBA, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
-	config, format, err := image.DecodeConfig(bytes.NewReader(source))
+	// 复用格式探测的4KiB缓冲，Reset 丢弃上一帧头部或失败读取的残留。
+	header.Reset(bytes.NewReader(source))
+	config, format, err := image.DecodeConfig(header)
 	if err := errors.Join(err, ctx.Err()); err != nil {
 		return nil, err
 	}

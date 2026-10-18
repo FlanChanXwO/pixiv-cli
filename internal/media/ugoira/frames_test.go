@@ -449,7 +449,7 @@ func TestFrameArchiveReusesOnlyReleasedFrame(t *testing.T) {
 		}
 		entries = append(entries, frameZipEntry{fmt.Sprintf("%d.jpg", i), b.Bytes()})
 	}
-	entries = append(entries, frameZipEntry{"alpha.png", framePNG(t, image.NewNRGBA(red.Rect))})
+	entries = append(entries, frameZipEntry{"alpha.png", framePNG(t, image.NewNRGBA(red.Rect))}, frameZipEntry{"broken.jpg", entries[0].body[:12]})
 	frames := []Frame{{File: "0.jpg"}, {File: "1.jpg"}, {File: "alpha.png"}, {File: "0.jpg"}, {File: "1.jpg"}, {File: "0.jpg"}}
 	a, err := openFrameArchive(t.Context(), Input{ZipPath: writeFrameArchive(t, entries), Frames: frames})
 	if err != nil {
@@ -461,6 +461,9 @@ func TestFrameArchiveReusesOnlyReleasedFrame(t *testing.T) {
 		t.Fatal(err)
 	}
 	snapshot := bytes.Clone(first.Pix)
+	if _, err := a.decode(t.Context(), Frame{File: "broken.jpg"}); err == nil {
+		t.Fatal("truncated header accepted")
+	}
 	if _, err := a.decode(t.Context(), frames[1]); err != nil {
 		t.Fatal(err)
 	}
