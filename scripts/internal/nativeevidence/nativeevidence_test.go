@@ -84,10 +84,7 @@ func packageConsolidationArchive(t *testing.T, repoRoot, binary, archive string,
 	if body, err := command.CombinedOutput(); err != nil {
 		t.Fatalf("package consolidation archive: %v\n%s", err, body)
 	}
-	expected, err := expectedArchiveMembers(repoRoot, binaryName, binaryDigest)
-	if err != nil {
-		t.Fatalf("calculate expected archive members: %v", err)
-	}
+	expected := map[string]string{binaryName: binaryDigest}
 	members := make([]evidenceFile, 0, len(expected))
 	for name, digest := range expected {
 		members = append(members, evidenceFile{Name: name, SHA256: digest})

@@ -200,7 +200,7 @@ func TestConsolidateEvidenceRejectsMalformedExpectedCommitBeforeInput(t *testing
 }
 
 func TestConsolidateEvidenceRejectsArchiveMissingRequiredMember(t *testing.T) {
-	for _, missing := range []string{"pixiv", "LICENSE"} {
+	for _, missing := range []string{"pixiv"} {
 		t.Run(missing, func(t *testing.T) {
 			workDir := newRepositoryWorkDir(t)
 			inputDir := filepath.Join(workDir, "evidence")
@@ -310,7 +310,7 @@ func TestConsolidateRejectsLegacyFieldsAndSymlinkArtifacts(t *testing.T) {
 	}
 }
 
-func TestConsolidateRejectsRehashedArchiveWithTamperedLicense(t *testing.T) {
+func TestConsolidateRejectsRehashedArchiveWithTamperedBinary(t *testing.T) {
 	work := newRepositoryWorkDir(t)
 	input := filepath.Join(work, "input")
 	if err := os.Mkdir(input, 0o755); err != nil {
@@ -335,7 +335,7 @@ func TestConsolidateRejectsRehashedArchiveWithTamperedLicense(t *testing.T) {
 	}
 	var modified bytes.Buffer
 	writer := zip.NewWriter(&modified)
-	tampered := []byte("changed license, with self-consistent new hashes")
+	tampered := []byte("changed binary, with self-consistent archive hashes")
 	for _, entry := range reader.File {
 		destination, err := writer.Create(entry.Name)
 		if err != nil {
@@ -345,7 +345,7 @@ func TestConsolidateRejectsRehashedArchiveWithTamperedLicense(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if entry.Name == "LICENSE" {
+		if entry.Name == "pixiv.exe" {
 			_, err = destination.Write(tampered)
 		} else {
 			_, err = io.Copy(destination, source)
@@ -369,7 +369,7 @@ func TestConsolidateRejectsRehashedArchiveWithTamperedLicense(t *testing.T) {
 		t.Fatal(err)
 	}
 	for i := range record.Archive.Members {
-		if record.Archive.Members[i].Name == "LICENSE" {
+		if record.Archive.Members[i].Name == "pixiv.exe" {
 			record.Archive.Members[i].SHA256 = fmt.Sprintf("%x", sha256.Sum256(tampered))
 		}
 	}

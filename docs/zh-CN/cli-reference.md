@@ -734,6 +734,8 @@ Unix 下，`SIGINT`（Ctrl+C）与 `SIGTERM` 会取消服务并等待在途 HTTP
 
 ## 版本与更新
 
+`pixiv --licenses` 输出程序内嵌的第三方声明，不需要认证、联网或创建本地状态。发布压缩包只包含 CLI 可执行文件，不会解压出独立许可证文件。
+
 `pixiv --version` 是唯一公开版本接口，stdout 精确输出一行 `pixiv <version>`，stderr 为空，且不会执行启动期更新检查。原 `version`
 子命令、其 `--json` 形式以及公开 `commit`/`build_date` 字段均作为 breaking change 删除；现在调用会返回
 非零退出的 unknown-command，stdout 为空。脚本必须迁移到根 flag。

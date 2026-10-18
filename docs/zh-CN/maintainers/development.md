@@ -78,12 +78,6 @@ go run ./scripts/cmd/linuxabi --binary <linux-elf>
 `GLIBC_2.35` 的依赖都会在打包前失败。不能只依赖“binary 在构建 runner 上能运行”的 smoke，因为这会
 让 runner 自身的新 glibc 隐藏向后兼容回归。
 
-release archive 的 `LICENSE`、`THIRD_PARTY_LICENSES.md` 与 `third_party/licenses/**` 在 `.gitattributes` 中继续固定 `text eol=lf`，使归档审计和逐字节许可证检查在 Windows 保持稳定。
-
-### 历史 Rust 来源
-
-已删除的库来自 native run `29567721284`，它取代了 run `29192425899` 的首次收集。历史 compiler 为：`x86_64-apple-darwin` 与 `x86_64-pc-windows-msvc` 使用 Rust `1.96.0`；`aarch64-apple-darwin`、`aarch64-pc-windows-msvc`、`x86_64-unknown-linux-gnu` 与 `aarch64-unknown-linux-gnu` 使用 Rust `1.96.1`。源码、vendor、库与 manifest 保留在 Git 历史中，不再是当前构建输入；独立移植归属仍按下节保留。
-
 ### 许可证 bundle
 
 `go run ./scripts/cmd/licensebundle` 对固定六个 release target，以 `CGO_ENABLED=0` 运行
@@ -95,13 +89,13 @@ release archive 的 `LICENSE`、`THIRD_PARTY_LICENSES.md` 与 `third_party/licen
 与生成的 `third_party/licenses/` 分开。选用的 MIT 正文、Go BSD/patent grant 与 SunPro 声明在删除
 Rust 源码后仍保留。`fhttp v0.6.8` 的模块归档缺少独立 license 文件，因此以精确版本的声明条目提供其
 源码头部引用的 Go BSD 正文。缺失或空正文会在发布前失败。嵌套组件的声明同样收录；上游 CRLF 统一为
-LF，适配现有归档 checkout 契约，保留完整文字。索引与正文树继续沿用可回滚发布及现有 release archive 成员契约。
+LF，保留完整文字。`third_party/notices.go` 将正文内嵌到程序，使用 `pixiv --licenses` 查看；压缩包只包含 `pixiv`/`pixiv.exe`。索引与正文树继续沿用可回滚发布。仅测试使用的 image-compare 声明保留在 `third_party/attributions/image-compare-0.5.0/`，不内嵌到程序。
 
 ### Native runner evidence
 
 `.github/workflows/native-evidence.yml` 仍是要求 `refs/heads/main` 的显式维护入口，不在普通 main push 后重复执行。全局权限为空，job 仅 `contents: read`，action 固定 full SHA，checkout 不持久化 credential，不使用发布或签名 Environment。runner 来自 registry 的 `native-evidence` capability；每个目标验证 Go license bundle，经 `scripts/build-platform.sh` 构建，再执行 Go GIF/APNG 回归并上传版本化 binary/archive record。
 
-schema 3 绑定 workflow 的精确 `source_commit`、target、binary version 与 binary/archive/member SHA-256；执行 `--version`，逐项校验归档中的 binary、根 notices 和完整 license tree。旧 schema 与 Rust source-digest/staticlib 字段会被拒绝。`consolidate` 复验完整六目标、同 source、同 version 的 bundle，拒绝 symlink 与不安全 file/directory path，再原子发布含各 target bundle 和 `summary.json` 的全新目录，不向源码回填库。
+schema 3 绑定 workflow 的精确 `source_commit`、target、binary version 与 binary/archive/member SHA-256；执行 `--version`，校验归档只包含所记录的 binary。旧 schema 与 Rust source-digest/staticlib 字段会被拒绝。`consolidate` 复验完整六目标、同 source、同 version 的 bundle，拒绝 symlink 与不安全 file/directory path，再原子发布含各 target bundle 和 `summary.json` 的全新目录，不向源码回填库。
 
 从同一审计 native-evidence run 设置 `RUN_ID` 与 `SOURCE_COMMIT`，下载其六份 artifact，再使用新的绝对路径：
 
@@ -378,7 +372,7 @@ Platform worker 从受信 workflow ref 解析六平台 matrix，只有 matrix jo
 
 `pr-verification.yml` 的 `dispatch` job 在分配 runner 前先用 `contains(github.event.comment.body, '/test')` 做廉价预过滤：它是 `tools/prmeta --check-trigger` 的宽松超集，只产生少量 false positive，不会漏掉合法触发，最终授权仍由 `tools/prmeta` 判定。browser/native evidence 保留为显式维护入口。真实 Pixiv/FANBOX SDK E2E 不进入普通 PR CI；仅发布 tag 的 `release.yml` 在 validate 后运行无凭据 SDK E2E contract gate，真实 SDK E2E 仍按 release-prep 在授权环境独立验收。
 
-纯 Go 迁移期间，两类 smoke worker 按检出的源码选择构建契约：存在 `internal/media/ugoira/rust/Cargo.toml` 时保留固定 Rust 工具链、Rust 构建参数和 cgo；否则使用 `CGO_ENABLED=0`，不执行 Rust 安装或传入 Rust 参数。Platform smoke 对纯 Go head 运行完整 Go 编码器包测试，对旧 head 保留原生 Rust GIF/APNG 测试。源码选择保留受信 workflow ref、精确 head 校验及独立结果发布边界。
+两类 smoke worker 均以 `CGO_ENABLED=0` 构建；Platform smoke 运行 Go 编码器包测试。受信 workflow ref、精确 head 校验及独立结果发布边界保持不变。
 
 `scripts/tests/installers` 使用本地伪 Release、伪 `curl` 与 checksum fixture 验证安装器，不访问 GitHub。Unix
 job 实际运行 `install.sh`，覆盖 SHA-256、带空格目录、版本预检和校验失败不覆盖旧 binary；Windows

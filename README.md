@@ -343,3 +343,5 @@ Bug reports, documentation fixes, tests, and focused features are welcome. Read 
 ## License
 
 [MIT](LICENSE) © FlanChanXwO
+
+Third-party notices are embedded in the CLI; run `pixiv --licenses` to read them. Release archives contain only the executable.

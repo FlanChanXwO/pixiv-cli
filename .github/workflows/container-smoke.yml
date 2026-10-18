@@ -72,22 +72,6 @@ jobs:
         env:
           HEAD_SHA: ${{ inputs.head_sha }}
         run: test "$(git rev-parse HEAD)" = "$HEAD_SHA"
-      # Base-ref workers must accept both source contracts during the Go migration.
-      - name: Select the checked-out encoder build
-        id: encoder
-        shell: bash
-        run: |
-          if [ -f internal/media/ugoira/rust/Cargo.toml ]; then
-            echo 'rust=true' >> "$GITHUB_OUTPUT"
-            echo 'CGO_ENABLED=1' >> "$GITHUB_ENV"
-          else
-            echo 'rust=false' >> "$GITHUB_OUTPUT"
-            echo 'CGO_ENABLED=0' >> "$GITHUB_ENV"
-          fi
-      - name: Install the native Rust toolchain
-        if: ${{ steps.encoder.outputs.rust == 'true' }}
-        shell: bash
-        run: rustup toolchain install '${{ matrix.rust_toolchain }}' --profile minimal --target '${{ matrix.rust_target }}' --no-self-update
       - name: Download locked Go module sources
         shell: bash
         run: go mod download
@@ -98,11 +82,8 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          args=(--target '${{ matrix.goos }}/${{ matrix.goarch }}')
-          if [ '${{ steps.encoder.outputs.rust }}' = true ]; then
-            args+=(--rust-target '${{ matrix.rust_target }}' --cc '${{ matrix.cc }}')
-          fi
-          binary=$(sh scripts/build-platform.sh "${args[@]}" \
+          binary=$(sh scripts/build-platform.sh \
+            --target '${{ matrix.goos }}/${{ matrix.goarch }}' \
             --version 0.0.0-smoke \
             --output-dir dist)
           test "$binary" = dist/pixiv

@@ -443,8 +443,7 @@ HTTP owner 精确匹配转义路径，不使用 ServeMux 路径归一化。入�
 ## Release assets 与信任边界
 
 `scripts/cmd/releaseassets` 以固定六目标封装 archive：darwin/linux 为 `.tar.gz`，Windows 为 `.zip`；
-每个 archive 包含一个 `pixiv`/`pixiv.exe`、`LICENSE`、`THIRD_PARTY_LICENSES.md` 与完整
-`third_party/licenses`；它们在 Git 中固定 LF，以便 licensebundle 在 Windows 也可按字节校验。
+每个 archive 只包含 `pixiv`/`pixiv.exe`。第三方声明内嵌到程序，使用 `pixiv --licenses` 查看。项目自身的 `LICENSE` 在源码仓库中独立保留。
 Windows Git Bash 缺少 `zip` 时，打包脚本明确使用 runner 预装的 `7z`；其他平台使用 `zip`。两条分支
 生成相同的 member 集合，缺少对应归档器会直接失败而不会产出不完整 asset。
 finalize 阶段收集这六个 archive 的 SHA-256 到 `checksums.txt`，并为原始
@@ -459,11 +458,7 @@ full-SHA Actions，并在草稿 Release 上传后核对 asset 集合才发布。
 
 最终受保护
 job 才能读取独立 tap deploy key 并只 push 对应 formula。
-v0.3.0 的正式 tag 已走完此发布路径并推送 stable formula；后续 tag 仍必须独立满足同一安装 gate。历史 Rust 版本的完整
-六目标 native 证据已回填其 staticlib/manifest。production signing 私钥、Environment 与公开 remote
-已按正式发布链路配置，受支持 binary 的公开 trust root 已在 `internal/update/installer/release_installer.go` 配置。历史 Rust crates.io 依赖曾由
-crate 内 source replacement 固定到完整 vendor 闭包，并以空 Cargo cache 离线 metadata/build/test 与六
-target 许可证检查验证。
+v0.3.0 的正式 tag 已走完此发布路径并推送 stable formula；后续 tag 仍必须独立满足同一安装 gate。受支持 binary 的公开签名 trust root 定义在 `internal/update/installer/release_installer.go`。
 
 Homebrew formula 模板由已验证的六目标 `checksums.txt` 生成，仅使用 macOS/Linux asset；stable
 `pixiv-cli` 与 beta `pixiv-cli-beta` 相互冲突且同装 `pixiv`。tap credential 与发布 key 是不同的

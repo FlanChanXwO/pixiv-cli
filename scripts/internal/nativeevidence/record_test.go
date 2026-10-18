@@ -53,8 +53,8 @@ func TestRecordEvidenceBindsGoBinaryAndCompleteArchive(t *testing.T) {
 	if record.SourceCommit != testEvidenceCommit {
 		t.Fatalf("source commit = %q", record.SourceCommit)
 	}
-	if len(record.Archive.Members) < 4 {
-		t.Fatalf("archive member count = %d, want binary and complete licenses", len(record.Archive.Members))
+	if len(record.Archive.Members) != 1 {
+		t.Fatalf("archive member count = %d, want only the CLI executable", len(record.Archive.Members))
 	}
 	body, err := os.ReadFile(output)
 	if err != nil {

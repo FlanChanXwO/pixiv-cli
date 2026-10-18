@@ -864,6 +864,8 @@ This command does not start a listener. Start `pixiv mcp --port PORT` separately
 
 ## Version and updates
 
+`pixiv --licenses` prints the embedded third-party notices without authentication, network access or creating local state. Release archives contain only the CLI executable; no separate license files are extracted.
+
 `pixiv --version` is the only public version surface. It writes exactly one line, `pixiv <version>`, to stdout,
 writes no stderr, and does not run startup update checks.
 The former `version` subcommand, its `--json` form, and the public `commit`/`build_date` fields were removed as a

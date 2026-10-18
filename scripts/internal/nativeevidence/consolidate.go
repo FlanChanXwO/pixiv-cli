@@ -24,7 +24,7 @@ func consolidateEvidence(options consolidateOptions) error {
 	if !gitCommitPattern.MatchString(options.expectedCommit) {
 		return fmt.Errorf("expected commit must be a 40-character lowercase Git SHA: %q", options.expectedCommit)
 	}
-	repoRoot, err := requireSecureDirectory(options.repoRoot, "repository root")
+	_, err := requireSecureDirectory(options.repoRoot, "repository root")
 	if err != nil {
 		return err
 	}
@@ -42,7 +42,7 @@ func consolidateEvidence(options consolidateOptions) error {
 	if len(locations) != len(nativeTargets) {
 		return fmt.Errorf("native evidence must contain exactly six target records, got %d", len(locations))
 	}
-	if err := verifyEvidenceLocations(locations, repoRoot, options.expectedVersion, options.expectedCommit); err != nil {
+	if err := verifyEvidenceLocations(locations, options.expectedVersion, options.expectedCommit); err != nil {
 		return err
 	}
 	stage, err := os.MkdirTemp(filepath.Dir(options.outputDir), ".native-evidence-consolidate-")
@@ -119,7 +119,7 @@ func readEvidenceLocations(inputDir string) ([]evidenceLocation, error) {
 	return locations, nil
 }
 
-func verifyEvidenceLocations(locations []evidenceLocation, repoRoot, expectedVersion, expectedCommit string) error {
+func verifyEvidenceLocations(locations []evidenceLocation, expectedVersion, expectedCommit string) error {
 	seen := make(map[string]struct{}, len(locations))
 	for _, location := range locations {
 		record := location.record
@@ -163,10 +163,7 @@ func verifyEvidenceLocations(locations []evidenceLocation, repoRoot, expectedVer
 		if err := verifyRecordedArchiveMembers(filepath.Join(location.dir, record.Archive.Name), record.Archive.Members); err != nil {
 			return fmt.Errorf("verify archive members for %s: %w", platform, err)
 		}
-		expected, err := expectedArchiveMembers(repoRoot, record.Binary.Name, record.Binary.SHA256)
-		if err != nil {
-			return fmt.Errorf("calculate expected archive members for %s: %w", platform, err)
-		}
+		expected := map[string]string{record.Binary.Name: record.Binary.SHA256}
 		if err := requireExactEvidenceMembers(record.Archive.Members, expected); err != nil {
 			return fmt.Errorf("archive members for %s do not match the audited tree: %w", platform, err)
 		}

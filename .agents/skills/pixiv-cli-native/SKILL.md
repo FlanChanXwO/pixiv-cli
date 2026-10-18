@@ -24,9 +24,9 @@ sh scripts/test-build-platform.sh
 go test ./tools/platformmatrix ./scripts/internal/nativeevidence -count=1
 ```
 
-The license check consumes cached module sources. Report missing inputs instead of downloading or installing tools without approval. For quality/resource comparisons, use the documented offline corpus and fixed legacy/Go settings. Keep frozen baselines and complete inputs; compare each required sample/format rather than hiding failures in an overall average. FFmpeg is an explicit test reference, not a runtime backend.
+The license check consumes cached module sources. Report missing inputs instead of downloading or installing tools without approval. For quality/resource comparisons, use the documented offline corpus and fixed legacy/Go settings. Keep frozen baselines and complete inputs; compare each required sample/format rather than hiding failures in an overall average.
 
-Linux artifacts pass `scripts/cmd/linuxabi` against the actual ELF, including static binaries. Cross-compilation proves compilation, not native execution. Check the built and unpacked binary's version and complete archive/license contents.
+Linux artifacts pass `scripts/cmd/linuxabi` against the actual ELF, including static binaries. Cross-compilation proves compilation, not native execution. Check the built and unpacked binary's version and archive's sole executable member.
 
 ## Consume matching evidence
 

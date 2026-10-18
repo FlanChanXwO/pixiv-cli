@@ -301,6 +301,21 @@ func TestCommandAutoWritesNDJSONFallsBackWithInputAnnotation(t *testing.T) {
 	assert.True(t, commandAutoWritesNDJSON(cmd, pipeWriter))
 }
 
+func TestRootLicensesPrintsEmbeddedNoticesWithoutCreatingState(t *testing.T) {
+	databasePath, configPath := useTempPaths(t)
+	var stdout, stderr bytes.Buffer
+	code := Run([]string{"pixiv", "--licenses"}, strings.NewReader(""), &stdout, &stderr)
+	require.Zero(t, code, stderr.String())
+	require.Empty(t, stderr.String())
+	for _, text := range []string{"quantette", "Permission is hereby granted", "The Go Authors", "Sun Microsystems"} {
+		assert.Contains(t, stdout.String(), text)
+	}
+	for _, path := range []string{databasePath, configPath} {
+		_, err := os.Stat(path)
+		require.True(t, os.IsNotExist(err), "license output created %s", path)
+	}
+}
+
 func TestRunNoArgsPrintsCoreHelpOnly(t *testing.T) {
 	_, configPath := useTempPaths(t)
 

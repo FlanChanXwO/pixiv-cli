@@ -68,23 +68,17 @@ go run ./scripts/cmd/linuxabi --binary <linux-elf>
 
 This gate reads the real loader contract from the ELF `SHT_GNU_verneed` and also checks imported symbol versions; any dependency above `GLIBC_2.35` fails before packaging. Relying solely on "the binary runs on the build runner" is not acceptable, because that lets the runner's own newer glibc hide backward-compatibility regressions.
 
-The release archive's `LICENSE`, `THIRD_PARTY_LICENSES.md` and `third_party/licenses/**` retain `text eol=lf` in `.gitattributes`, keeping archive audits and byte-for-byte license checks stable on Windows.
-
-### Historical Rust provenance
-
-The removed libraries came from native run `29567721284`, superseding the initial collection in run `29192425899`. The historical compiler versions were Rust `1.96.0` for `x86_64-apple-darwin` and `x86_64-pc-windows-msvc`, and Rust `1.96.1` for `aarch64-apple-darwin`, `aarch64-pc-windows-msvc`, `x86_64-unknown-linux-gnu` and `aarch64-unknown-linux-gnu`. Their sources, vendor tree, libraries and manifest remain in Git history; they are not inputs to current builds. Independent ported-source notices remain below.
-
 ### License bundle
 
 `go run ./scripts/cmd/licensebundle` unions the production modules selected by `go list -mod=readonly -deps -json ./cmd/pixiv` on the fixed six release targets with `CGO_ENABLED=0`. Resolution is offline (`GOPROXY=off`, `GOSUMDB=off`) and ignores local workspace/flag overrides; the required module sources must already be cached. It does not use Cargo or include test/tool-only modules that are absent from the production graph. `--check` compares both the index and the complete generated text tree without publishing changes.
 
-`third_party/attributions.json` pins the additional ported-source notices. Their maintained texts live in `third_party/attributions/`, separately from generated `third_party/licenses/`; selected MIT texts, the Go BSD/patent grant, and the SunPro notice remain after Rust source removal. The version-specific `fhttp v0.6.8` entry supplies the Go BSD text referenced by its source headers because that module archive omits a standalone license file. Missing or empty texts fail generation before publication. Nested component notices are included; CRLF is normalized to LF for the archive's existing checkout contract, with the full text retained. The index and text tree retain their existing rollback-safe publication and release archive member contract.
+`third_party/attributions.json` pins the additional ported-source notices. Their maintained texts live in `third_party/attributions/`, separately from generated `third_party/licenses/`; selected MIT texts, the Go BSD/patent grant, and the SunPro notice remain after Rust source removal. The version-specific `fhttp v0.6.8` entry supplies the Go BSD text referenced by its source headers because that module archive omits a standalone license file. Missing or empty texts fail generation before publication. Nested component notices are included; CRLF is normalized to LF with the full text retained. The generated texts are embedded by `third_party/notices.go` and printed by `pixiv --licenses`; archives contain only `pixiv`/`pixiv.exe`. The index and text tree retain rollback-safe publication. The test-only image-compare attribution stays in `third_party/attributions/image-compare-0.5.0/` and is not embedded.
 
 ### Native runner evidence
 
 `.github/workflows/native-evidence.yml` remains an explicit maintenance entry point requiring `refs/heads/main`, not an ordinary main-push gate. It retains empty global permissions, job-only `contents: read`, full-SHA actions, credential-free checkout and no publishing/signing environment. The registry's `native-evidence` capability selects runners. Each runs the Go license check, `scripts/build-platform.sh`, and Go GIF/APNG regressions, then uploads a versioned binary/archive record.
 
-Schema 3 binds the workflow's exact `source_commit`, target, binary version and binary/archive/member SHA-256 values. It executes `--version` and checks the archive's binary, root notices and complete license tree. It rejects old schemas and Rust source-digest/staticlib fields. `consolidate` rechecks exactly six complete, same-source, same-version bundles, rejects symlinks and unsafe file/directory paths, and atomically publishes a new directory with per-target bundles and `summary.json`. It does not backfill libraries into source.
+Schema 3 binds the workflow's exact `source_commit`, target, binary version and binary/archive/member SHA-256 values. It executes `--version` and checks that the archive contains exactly the recorded binary. It rejects old schemas and Rust source-digest/staticlib fields. `consolidate` rechecks exactly six complete, same-source, same-version bundles, rejects symlinks and unsafe file/directory paths, and atomically publishes a new directory with per-target bundles and `summary.json`. It does not backfill libraries into source.
 
 Set `RUN_ID` and `SOURCE_COMMIT` from one audited native-evidence run, download its six artifacts, and use new absolute paths:
 
@@ -333,7 +327,7 @@ Ordinary branch and `main` pushes run no CI. Stable `vX.Y.Z` tag pushes run only
 
 Browser/native evidence remain explicit maintenance workflows. Real Pixiv/FANBOX SDK E2E does not enter regular PR CI; only the tag-publishing `release.yml` runs the credential-free SDK E2E contract gate after validate, and real SDK E2E is still accepted independently on release-prep in an authorized environment.
 
-During the pure-Go migration, both smoke workers select the build contract from the checked-out source: the presence of `internal/media/ugoira/rust/Cargo.toml` retains the pinned Rust toolchain, Rust build arguments and cgo; otherwise they use `CGO_ENABLED=0` without Rust setup or arguments. Platform smoke runs the full Go encoder package tests on pure-Go heads, while retaining the native Rust GIF/APNG test on legacy heads. This source selection keeps the trusted workflow ref, exact-head verification and separate result publisher intact.
+Both smoke workers build with `CGO_ENABLED=0`; Platform smoke runs the Go encoder package tests. They retain the trusted workflow ref, exact-head validation and independent result publisher.
 
 `scripts/tests/installers` verifies the installers using a local fake Release, fake `curl` and checksum fixtures, without accessing GitHub. The Unix job actually runs `install.sh`, covering SHA-256, directories with spaces, version preflight and not overwriting the old binary on verification failure; the Windows amd64/arm64 platform-smoke also runs `install.cmd` with real `cmd.exe`, `certutil.exe` and `tar.exe`, always passing `--no-path`, so the test does not modify the runner user's registry. The platform-smoke workflow runs this installer contract directly as part of the platform job; there is no separate runtime workflow-policy implementation.
 

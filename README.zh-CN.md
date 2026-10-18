@@ -340,3 +340,5 @@ pixiv auth check
 ## 许可证
 
 [MIT](LICENSE) © FlanChanXwO
+
+第三方声明内嵌到 CLI，使用 `pixiv --licenses` 查看。发布压缩包只包含可执行文件。

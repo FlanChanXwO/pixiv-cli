@@ -19,6 +19,7 @@ import (
 )
 
 // 保留 image-compare 0.5 的 MSSIMSimple：非重叠8×8窗口，协方差不除以N。
+// 测试侧来源声明见 third_party/attributions/image-compare-0.5.0/LICENSE。
 func ugoiraSSIM(a, b *image.NRGBA, channel int) float64 {
 	value := func(img *image.NRGBA, x, y int) float64 {
 		i := img.PixOffset(x, y)

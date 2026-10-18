@@ -23,13 +23,10 @@ case "$1" in
 	build)
 		printf '%s|%s|%s\n' "${GOOS:-}" "${GOARCH:-}" "${CGO_ENABLED:-}" > "$PIXIV_TEST_BUILD_LOG"
 		output=
-		require_rebuild=false
 		while [ "$#" -gt 0 ]; do
-			[ "$1" != -a ] || require_rebuild=true
 			if [ "$1" = -o ]; then output=$2; shift 2; continue; fi
 			shift
 		done
-		[ "$require_rebuild" = true ] || { printf "native archive cache was reused\n" >&2; exit 91; }
 		test -n "$output"
 		cat > "$output" <<SCRIPT
 #!/bin/sh

@@ -10,18 +10,15 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"io/fs"
 	"os"
 	"path/filepath"
 	"sort"
 	"strings"
 )
 
-func verifyArchive(repoRoot, archive, binaryName, binaryDigest string) ([]evidenceFile, error) {
-	expected, err := expectedArchiveMembers(repoRoot, binaryName, binaryDigest)
-	if err != nil {
-		return nil, err
-	}
+func verifyArchive(archive, binaryName, binaryDigest string) ([]evidenceFile, error) {
+	expected := map[string]string{binaryName: binaryDigest}
+	var err error
 	var actual map[string]string
 	if strings.HasSuffix(archive, ".tar.gz") {
 		actual, err = readTarGzMembers(archive)
@@ -46,49 +43,6 @@ func verifyArchive(repoRoot, archive, binaryName, binaryDigest string) ([]eviden
 	}
 	sort.Slice(members, func(left, right int) bool { return members[left].Name < members[right].Name })
 	return members, nil
-}
-
-func expectedArchiveMembers(repoRoot, binaryName, binaryDigest string) (map[string]string, error) {
-	expected := map[string]string{binaryName: binaryDigest}
-	for _, relative := range []string{"LICENSE", "THIRD_PARTY_LICENSES.md"} {
-		digest, err := fileSHA256(filepath.Join(repoRoot, relative))
-		if err != nil {
-			return nil, fmt.Errorf("hash %s: %w", relative, err)
-		}
-		expected[relative] = digest
-	}
-	licenses := filepath.Join(repoRoot, "third_party", "licenses")
-	err := filepath.WalkDir(licenses, func(path string, entry fs.DirEntry, walkErr error) error {
-		if walkErr != nil {
-			return walkErr
-		}
-		if entry.Type()&os.ModeSymlink != 0 {
-			return fmt.Errorf("license tree contains a symlink: %s", path)
-		}
-		if entry.IsDir() {
-			return nil
-		}
-		if !entry.Type().IsRegular() {
-			return fmt.Errorf("license tree contains a non-regular file: %s", path)
-		}
-		relative, err := filepath.Rel(licenses, path)
-		if err != nil {
-			return err
-		}
-		digest, err := fileSHA256(path)
-		if err != nil {
-			return err
-		}
-		expected[filepath.ToSlash(filepath.Join("third_party", "licenses", relative))] = digest
-		return nil
-	})
-	if err != nil {
-		return nil, fmt.Errorf("read complete license tree: %w", err)
-	}
-	if len(expected) == 3 {
-		return nil, errors.New("license tree contains no regular files")
-	}
-	return expected, nil
 }
 
 func readTarGzMembers(path string) (map[string]string, error) {

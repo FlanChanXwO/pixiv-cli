@@ -57,14 +57,6 @@
       "note": "Legacy integer IDCT and YCbCr conversion in the Go ugoira decoder"
     },
     {
-      "name": "image-compare",
-      "version": "0.5.0",
-      "license": "MIT",
-      "repository": "https://github.com/ChrisRega/image-compare",
-      "directory": "third_party/attributions/image-compare-0.5.0",
-      "note": "MSSIMSimple reference metric in e2e/ugoira_quality_test.go (tests only)"
-    },
-    {
       "name": "Go",
       "version": "1.26.3",
       "license": "BSD-3-Clause",

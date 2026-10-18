@@ -37,7 +37,7 @@ func recordEvidence(options recordOptions) (evidenceRecord, error) {
 	if filepath.Base(options.archive) != expectedArchiveName(options.version, target) {
 		return evidenceRecord{}, fmt.Errorf("archive name %q does not match target %s", filepath.Base(options.archive), options.target)
 	}
-	root, err := requireDirectory(options.repoRoot, "repository root")
+	_, err := requireDirectory(options.repoRoot, "repository root")
 	if err != nil {
 		return evidenceRecord{}, err
 	}
@@ -49,7 +49,7 @@ func recordEvidence(options recordOptions) (evidenceRecord, error) {
 	if err != nil {
 		return evidenceRecord{}, err
 	}
-	members, err := verifyArchive(root, options.archive, filepath.Base(options.binary), binaryDigest)
+	members, err := verifyArchive(options.archive, filepath.Base(options.binary), binaryDigest)
 	if err != nil {
 		return evidenceRecord{}, err
 	}

@@ -428,8 +428,7 @@ Owns `Format`, ordered frame input, `Encoder`, ZIP validation/decoding, resizing
 ## Release assets and trust boundary
 
 `scripts/cmd/releaseassets` packages the archives for a fixed set of six targets: darwin/linux use `.tar.gz`, Windows uses `.zip`;
-each archive contains one `pixiv`/`pixiv.exe`, `LICENSE`, `THIRD_PARTY_LICENSES.md`, and the full
-`third_party/licenses`; they are pinned to LF in Git, so that licensebundle can be verified byte-for-byte on Windows too.
+each archive contains only `pixiv`/`pixiv.exe`. Third-party notices are embedded in the executable and available through `pixiv --licenses`. The project `LICENSE` remains separate in the source repository.
 When Windows Git Bash lacks `zip`, the packaging script explicitly uses the runner-preinstalled `7z`; other platforms use `zip`. Both branches
 produce the same member set, and a missing archiver fails directly rather than producing an incomplete asset.
 The finalize stage collects the SHA-256 of these six archives into `checksums.txt`, and generates an Ed25519 `checksums.json` with a key ID for the raw
@@ -444,11 +443,7 @@ the public tap, and the trust required by Homebrew 6 is only written to the temp
 
 Only the final protected
 job can read the independent tap deploy key and push only the corresponding formula.
-The official tag of v0.3.0 has gone through this release path and pushed the stable formula; subsequent tags must still independently satisfy the same installation gate. The complete
-six-target legacy Rust evidence backfilled its staticlib/manifest. The production signing private key, Environment, and public remote
-have been configured for the production release path, and the public trust root for supported binaries has been configured in `internal/update/installer/release_installer.go`. The legacy Rust crates.io dependency was pinned by
-in-crate source replacement to a complete vendor closure, and verified with an empty Cargo cache for offline metadata/build/test and the six
-target license checks.
+The official tag of v0.3.0 has gone through this release path and pushed the stable formula; subsequent tags must still independently satisfy the same installation gate. The public signing trust root for supported binaries is defined in `internal/update/installer/release_installer.go`.
 
 The Homebrew formula template is generated from the verified six-target `checksums.txt`, using only macOS/Linux assets; the stable
 `pixiv-cli` and the beta `pixiv-cli-beta` conflict with each other and both install `pixiv`. The tap credential and the release key are different
