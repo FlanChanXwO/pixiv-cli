@@ -163,7 +163,7 @@ brew upgrade pixiv-cli
 
 ### Go source installation
 
-Use an exact published tag and follow that tag's build requirements. Legacy v0.4.4 requires cgo, a C linker, and its committed Rust static library; see [Go install](docs/en/cli-reference.md#go-install).
+Use an exact published tag and follow that tag's build requirements; see [Go install](docs/en/cli-reference.md#go-install).
 
 ```bash
 go install github.com/FlanChanXwO/pixiv-cli/cmd/pixiv@vX.Y.Z

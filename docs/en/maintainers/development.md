@@ -417,7 +417,7 @@ palette selection enough to fail the fixed quality gate; matching only the color
 samples. This decoder does not register a global image format or add a module dependency. The parser's BSD license
 is kept in that package; the zune-jpeg MIT attribution must remain in the final license bundle. The synthetic
 17×9 `jpeg-{444,progressive,gray,restart}` fixtures and their legacy-decoded RGBA references cover these paths
-without requiring Rust, FFmpeg or jpegtran at test time. The Go resize kernel uses bounded sine/cosine
+without requiring Rust or jpegtran at test time. The Go resize kernel uses bounded sine/cosine
 polynomials with explicit `math.FMA`, fixed against the legacy runtime `sinf` results. Its 1,031 numeric
 references in `testdata/lanczos-kernel.json` preserve Lanczos3 rounding without calling a platform math library.
 The Go APNG writer uses fixed Sub prediction and an independent level-7 zlib stream per frame, retaining
@@ -444,29 +444,6 @@ Keep the original and medium archives in separate directories. Preserve full met
 never infer an original ZIP URL or relabel a medium sample. These sources do not replace later per-sample quality
 and five-trial alternating old/new performance checks.
 
-
-### Optional FFmpeg quality reference
-
-Set `PIXIV_UGOIRA_QUALITY_FFMPEG=1` to compare the Go GIF encoder with a local FFmpeg executable. Without that exact opt-in, both tests skip before looking for FFmpeg or reading input files. The default command is `ffmpeg`; `PIXIV_UGOIRA_QUALITY_FFMPEG_BIN` selects another executable. An enabled comparison fails visibly if the executable is missing or fails; it never installs a tool or switches the production encoder.
-
-```bash
-PIXIV_UGOIRA_QUALITY_FFMPEG=1 \
-PIXIV_UGOIRA_QUALITY_OUTPUT_DIR="$PWD/build/ugoira-parity/ffmpeg-synthetic" \
-go test ./e2e -run '^TestUgoiraFFmpegSynthetic$' -count=1 -v
-
-PIXIV_UGOIRA_QUALITY_FFMPEG=1 \
-PIXIV_UGOIRA_QUALITY_ZIP=/absolute/path/to/frames.zip \
-PIXIV_UGOIRA_QUALITY_FRAMES=/absolute/path/to/frames.json \
-PIXIV_UGOIRA_QUALITY_CASE=public-sample \
-PIXIV_UGOIRA_QUALITY_OUTPUT_DIR="$PWD/build/ugoira-parity/ffmpeg-public" \
-go test ./e2e -run '^TestUgoiraFFmpegPublic$' -count=1 -v
-```
-
-The public test reads local files only. `frames.json` must contain the complete ordered `[{"file":"000000.jpg","delay":80}]` array, not a `sample.json` wrapper; extract its full `frames` array when using a captured sample. Quality input filenames must be flat, as in the old gate. The reference uses the original concat durations and `palettegen=stats_mode=full`/`paletteuse` filter, with generated extraction names so metadata cannot inject concat directives.
-
-The three original synthetic scenes require each frame and the averages to meet the FFmpeg RGB/luma MSSIMSimple scores. Public inputs require the averages; both use the original `1e-12` comparison tolerance. GIF delta/transparent frames and disposal are replayed, both loops and frame counts are checked, and Go delays must match the metadata rounded up to centiseconds. This comparator's JPEG reference uses the legacy IDCT/14-bit color conversion, and 16-bit source channels retain the old rounding; alpha is dropped for the original RGB metric. The separate parity inspector's standard-library JPEG reference stays unchanged.
-
-`QUALITY_RESULT` logs the case, frame count and four means. An output directory preserves `<case>-go.gif`, `<case>-go-ffmpeg.gif` and `<case>-go-ssim.csv` (columns `go_luma_ssim`, `ffmpeg_luma_ssim`, `go_rgb_ssim`, `ffmpeg_rgb_ssim`), including when a quality comparison fails. Choose a new directory for each trial; saved case names must be flat artifact names. The Go-run filenames are separate from historical `*-rust.gif`, `*-ffmpeg.gif` and `*-ssim.csv` calibration records, so those remain untouched. A public sample can fail this optional FFmpeg comparison even when its legacy encoder also did; retain the negative result and compare the same frozen legacy output before attributing it to migration.
 
 ### Test file layout
 

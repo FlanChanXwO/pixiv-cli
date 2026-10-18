@@ -28,8 +28,7 @@ User-visible changes are recorded in the [versioned changelog](../../changelog/R
 
 > **Release status**: the Ed25519 public key, key ID, and fingerprint for supported binaries are committed in
 > [`internal/update/installer/release_installer.go`](../../internal/update/installer/release_installer.go); the public source/tap repositories,
-> the protected `release` Environment, and isolated credentials are configured. v0.4.4 is a published public GitHub
-> Release with six platform archives, checksums, and a signed manifest. Use the official [GitHub Releases page]
+> the protected `release` Environment, and isolated credentials are configured. Use the official [GitHub Releases page]
 > and `brew info FlanChanXwO/tap/pixiv-cli` for the current Release and tap state: they are independently published
 > artifacts. Every future version must pass the same tag, signing, asset, and Homebrew gates before it is treated as
 > a trusted download source.
@@ -94,7 +93,7 @@ Install an exact published Release tag (replace `vX.Y.Z`):
 go install github.com/FlanChanXwO/pixiv-cli/cmd/pixiv@vX.Y.Z
 ```
 
-Use an exact published tag, not a branch name, and follow that tag's requirements. Versions containing the Go encoder can build with `CGO_ENABLED=0`. Legacy v0.4.4 still requires its declared Go toolchain, cgo, a C linker and its committed Rust static library; installing an old tag does not adopt the current checkout's build requirements.
+Use an exact published tag, not a branch name, and follow that tag's requirements. Versions containing the Go encoder can build with `CGO_ENABLED=0`.
 
 Frontend sources are embedded directly, without a generator or npm step. Installation uses `GOBIN` or `GOPATH/bin`; self-update installs the selected exact Release tag and preserves the previous executable on failure.
 
@@ -121,8 +120,7 @@ version hard-coded in this reference. The beta formula only ships with pre-relea
 
 The release process produces six fixed-name archives for darwin, linux, and windows on amd64/arm64:
 `pixiv-cli_<version>_<os>_<arch>.tar.gz` (`.zip` on Windows), plus `checksums.txt` and an Ed25519-signed
-`checksums.json`. Published v0.4.4 ships the complete asset set; later versions should only be trusted as direct
-download sources after passing the same release gates.
+`checksums.json`. Trust direct downloads only after the corresponding release has passed the release gates.
 
 Current Releases do not include Apple notarization or Windows Authenticode. Even when downloading from a verified
 Release, macOS Gatekeeper or Windows SmartScreen may still show a system reputation prompt; only obtain assets from

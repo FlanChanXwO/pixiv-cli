@@ -254,7 +254,7 @@ provider subpackages, so the root `New` can dispatch to every browser; the root 
 The platform secret boundary is kept in the `secret` subpackage: macOS uses Keychain, Windows uses the current-user DPAPI, and Linux queries the Secret Service via `secret-tool` with fixed attributes. The Chromium provider reads Local State/Cookies from the platform profile root directory,
 supporting v10/v11 GCM and legacy CBC; missing system tools, permission, lock, schema drift, and decryption format errors are all mapped to stable errors,
 and no cookie, key, absolute path, or command output is written to logs, errors, JSON, or MCP. Cross-platform native provider evidence
-must still be collected on the corresponding host per the v1.0.0 release-prep runbook; offline fixtures and cross-compilation only prove code/format contracts.
+must still be collected on the corresponding host per the release-prep runbook; offline fixtures and cross-compilation only prove code/format contracts.
 
 ### `internal/update`
 

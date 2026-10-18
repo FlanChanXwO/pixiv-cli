@@ -163,7 +163,7 @@ brew upgrade pixiv-cli
 
 ### Go 源码安装
 
-请使用精确的已发布 tag，并遵循该 tag 的构建要求。历史版本 v0.4.4 需要 cgo、C linker 和当时提交的 Rust static library，详见 [Go 安装](docs/zh-CN/cli-reference.md#go-安装)。
+请使用精确的已发布 tag，并遵循该 tag 的构建要求，详见 [Go 安装](docs/zh-CN/cli-reference.md#go-安装)。
 
 ```bash
 go install github.com/FlanChanXwO/pixiv-cli/cmd/pixiv@vX.Y.Z

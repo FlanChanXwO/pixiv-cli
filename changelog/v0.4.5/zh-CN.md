@@ -8,4 +8,4 @@
 
 - 新增发布前 Release 验证并准备 v0.4.5 元数据。 ([#24](https://github.com/FlanChanXwO/pixiv-cli/pull/24), [#28](https://github.com/FlanChanXwO/pixiv-cli/pull/28))
 
-**完整变更**：[v0.4.4...v0.4.5](https://github.com/FlanChanXwO/pixiv-cli/compare/v0.4.4...v0.4.5)
+**完整变更**：[v0.4.3...v0.4.5](https://github.com/FlanChanXwO/pixiv-cli/compare/v0.4.3...v0.4.5)

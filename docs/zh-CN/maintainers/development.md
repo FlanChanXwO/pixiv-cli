@@ -461,7 +461,7 @@ zune-jpeg 0.5.15 的整数 IDCT 与 14-bit BT.601 转换。标准库 IDCT 的舍
 固定画质门槛失败；只对齐色彩系数不能修复全部样本。该解码器不注册全局图像格式，不新增模块依赖。
 解析器的 BSD 许可证保存在该包内，最终许可证 bundle 仍须保留 zune-jpeg 的 MIT 归属。17×9 合成
 `jpeg-{444,progressive,gray,restart}` fixture 与旧版解码的 RGBA 参考覆盖这些路径，普通测试不依赖
-Rust、FFmpeg 或 jpegtran。Go 缩放核使用限定区间内的正弦/余弦多项式，以 `math.FMA` 固定求值次序，
+Rust 或 jpegtran。Go 缩放核使用限定区间内的正弦/余弦多项式，以 `math.FMA` 固定求值次序，
 与旧基准运行时 `sinf` 的结果对齐。`testdata/lanczos-kernel.json` 中的 1,031 组数值参考保护
 Lanczos3 舍入行为，Go 路径不调用平台数学库。
 Go APNG writer 使用固定 Sub 预测与逐帧独立的 level-7 zlib 流，保留 RGBA8、无损像素及
@@ -485,29 +485,6 @@ Source/None 差分矩形播放语义。Go 1.27 的快速压缩档在高纹理语
 original 和 medium 必须保存在不同目录，本地保留完整元数据和哈希；不要推导 original URL 或把 medium
 重标为 original。上述来源记录不能替代后续逐样本画质及五次新旧交替性能验证。
 
-
-### 可选 FFmpeg 质量对照
-
-设置 `PIXIV_UGOIRA_QUALITY_FFMPEG=1`，用本地 FFmpeg executable 对照 Go GIF encoder。未精确设置为 `1` 时，两项测试在查找 FFmpeg 或读取输入前跳过。默认命令为 `ffmpeg`，可用 `PIXIV_UGOIRA_QUALITY_FFMPEG_BIN` 指定其他 executable。显式开启后，工具缺失或执行失败会明确失败，不安装工具或切换生产编码器。
-
-```bash
-PIXIV_UGOIRA_QUALITY_FFMPEG=1 \
-PIXIV_UGOIRA_QUALITY_OUTPUT_DIR="$PWD/build/ugoira-parity/ffmpeg-synthetic" \
-go test ./e2e -run '^TestUgoiraFFmpegSynthetic$' -count=1 -v
-
-PIXIV_UGOIRA_QUALITY_FFMPEG=1 \
-PIXIV_UGOIRA_QUALITY_ZIP=/absolute/path/to/frames.zip \
-PIXIV_UGOIRA_QUALITY_FRAMES=/absolute/path/to/frames.json \
-PIXIV_UGOIRA_QUALITY_CASE=public-sample \
-PIXIV_UGOIRA_QUALITY_OUTPUT_DIR="$PWD/build/ugoira-parity/ffmpeg-public" \
-go test ./e2e -run '^TestUgoiraFFmpegPublic$' -count=1 -v
-```
-
-public test 只读取本地文件。`frames.json` 是完整有序的 `[{"file":"000000.jpg","delay":80}]` 数组，不是 `sample.json` wrapper；使用已采集样本时，须提取其完整 `frames` 数组。质量对照帧名和旧 gate 一样必须为 flat filename。参考编码沿用 concat duration 与 `palettegen=stats_mode=full`/`paletteuse` filter；提取文件使用生成名称，防止元数据注入 concat 指令。
-
-三个原合成场景要求每帧及平均 RGB/luma MSSIMSimple 均不低于 FFmpeg；public 输入要求平均值，两者沿用原 `1e-12` 比较容差。测试重放 GIF delta/透明帧和 disposal，检查两种输出的循环与帧数，并要求 Go 延迟符合元数据向上取整至百分之一秒的规则。此比较器的 JPEG reference 使用旧 IDCT/14-bit 色彩转换，16-bit 源通道保留旧舍入，原 RGB 指标丢弃 alpha；独立 parity inspector 的标准库 JPEG reference 不变。
-
-`QUALITY_RESULT` 输出场景、帧数和四项平均值。设置 output directory 时保留 `<case>-go.gif`、`<case>-go-ffmpeg.gif` 和 `<case>-go-ssim.csv`（列为 `go_luma_ssim`、`ffmpeg_luma_ssim`、`go_rgb_ssim`、`ffmpeg_rgb_ssim`），质量比较失败时也保存。每次使用新目录保留各轮结果；用于保存的 case 必须是 flat artifact name。Go-run 文件名与历史 `*-rust.gif`、`*-ffmpeg.gif`、`*-ssim.csv` 校准记录分开，保留后者不变。public 样本可能在旧编码器也不及 FFmpeg 时使该可选比较失败；保留负结果，并与同一冻结旧输出对照后再判断是否属于迁移回退。
 
 ### 测试文件布局
 

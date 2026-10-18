@@ -21,8 +21,7 @@ SDK 与 MCP 细节不在此重复，入口见[相关文档](#相关文档)。
 
 > **发布状态**：受支持 binary 的 Ed25519 公钥、key ID 与 fingerprint 已提交到
 > [`internal/update/installer/release_installer.go`](../../internal/update/installer/release_installer.go)；公开 source/tap repositories、
-> 受保护 `release` Environment 与隔离 credentials 已配置。v0.4.4 已作为公开 GitHub Release 发布，包含六个
-> 平台 archive、checksum 与签名清单。GitHub Release 与 tap 是相互独立的发布物；当前状态请以官方
+> 受保护 `release` Environment 与隔离 credentials 已配置。GitHub Release 与 tap 是相互独立的发布物；当前状态请以官方
 > [GitHub Releases 页面]和 `brew info FlanChanXwO/tap/pixiv-cli` 为准。后续版本仍必须通过同一套 tag、签名、
 > 资产与 Homebrew 门禁后才可作为可信下载来源。
 
@@ -77,7 +76,7 @@ sh scripts/build.sh
 go install github.com/FlanChanXwO/pixiv-cli/cmd/pixiv@vX.Y.Z
 ```
 
-使用已发布的精确 tag，并遵循该 tag 的要求，不使用分支名。包含 Go encoder 的源码版本可用 `CGO_ENABLED=0` 构建。历史 v0.4.4 仍需要其声明的 Go toolchain、cgo、C linker 与当时提交的 Rust static library；安装旧 tag 不会采用当前 checkout 的构建要求。
+使用已发布的精确 tag，并遵循该 tag 的要求，不使用分支名。包含 Go encoder 的源码版本可用 `CGO_ENABLED=0` 构建。
 
 前端源码直接嵌入，无需生成器或 npm。安装目标为 `GOBIN` 或 `GOPATH/bin`；自更新安装选中的精确 Release tag，失败时保留旧可执行文件。
 
@@ -104,8 +103,7 @@ brew install FlanChanXwO/tap/pixiv-cli-beta
 
 发布流程会为 darwin、linux、windows 的 amd64/arm64 生成六个固定名称的 archive：
 `pixiv-cli_<version>_<os>_<arch>.tar.gz`（Windows 为 `.zip`），以及 `checksums.txt` 与
-Ed25519 签名的 `checksums.json`。已发布的 v0.4.4 提供完整资产；后续版本只有在同一发布门禁完成后才应作为
-可供信任的直接下载来源。
+Ed25519 签名的 `checksums.json`。只有通过对应发布门禁的 Release 才可作为可信的直接下载来源。
 
 当前 Release 不包含 Apple notarization 或 Windows Authenticode。即使从已验证 Release
 下载，macOS Gatekeeper 或 Windows SmartScreen 仍可能显示系统信誉提示；请只从项目的

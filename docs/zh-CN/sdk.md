@@ -385,7 +385,3 @@ canonical := ref.CanonicalURL()
 `sdk/fanbox` 提供 creator 资料、帖子、标签、home 与 supporting 流、URL 解析与共享资源契约。已验证的 native route 使用 `api.fanbox.cc` root 下的 `post.info`、`post.listHome`、`post.listSupporting`、`post.listTagged` 与 `tag.getFeatured`；creator 分页跟随服务端返回的 `pageUrls`。帖子正文是结构化 block；图片和文件 block 会与资源索引关联，即使上游只通过 `imageMap` 或 `fileMap` 提供附件也会暴露可用资源。第三方 embed 只保留 canonical link。受限帖只带摘要、Body 为 nil。
 
 Home、Supporting 与 Creators 流属于 identity-scoped 操作：其续页 cursor 会绑定到已验证的 FANBOX 账号 ID（每个 client 经 session identity 解析一次的非敏感值），因此在一个账号下生成的 cursor 不能被重放到另一个账号的流上，会返回 `InvalidCursor`。CreatorPosts 与 TaggedPosts 是公开作用域，不携带账号绑定。与 Pixiv 一致，cursor 同样绑定 product、operation、binding version 与查询摘要。
-
-## 从 v0 迁移
-
-见[迁移指南](../en/v1.0.0-migration.md)了解 v0 `pixiv` 到 v1 `sdk/pixiv` 的切换。

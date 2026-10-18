@@ -269,7 +269,7 @@ provider 子包，使根包 `New` 可分发所有浏览器；根包不导入任�
 Secret Service `secret-tool` 查询。Chromium provider 按平台 profile 根目录读取 Local State/Cookies，
 支持 v10/v11 GCM 与 legacy CBC；系统工具缺失、权限、锁、schema drift 和解密格式错误都映射为稳定错误，
 不把 cookie、密钥、绝对路径或命令输出写入日志、错误、JSON 或 MCP。跨平台 native provider evidence
-仍须按 v1.0.0 release-prep runbook 在对应 host 执行，离线 fixture 和交叉编译只证明代码/格式契约。
+仍须按 release-prep runbook 在对应 host 执行，离线 fixture 和交叉编译只证明代码/格式契约。
 
 ### `internal/update`
 

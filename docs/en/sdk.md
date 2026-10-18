@@ -506,8 +506,3 @@ cannot be replayed against another account's feed and returns `InvalidCursor`.
 CreatorPosts and TaggedPosts are public-scoped and carry no account binding.
 As with Pixiv, cursors are also bound to the product, operation, binding
 version, and query digest.
-
-## Migrating from v0
-
-See the [migration guide](v1.0.0-migration.md) for the v0 `pixiv` to v1
-`sdk/pixiv` transition.
