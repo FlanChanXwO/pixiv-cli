@@ -9,6 +9,10 @@ description: Prepare, update, or verify a pixiv-cli pull request using its curre
 
 Read `AGENTS.md`, the request/issue, branch status, and the diff against the intended base. Preserve unrelated changes and verify the remote repository before pushing. Use [the review workflow](../pixiv-cli-review/SKILL.md) and [test workflow](../pixiv-cli-test/SKILL.md); record actual outcomes and blockers.
 
+Before staging and again before publishing, inspect `git diff --name-status BASE...HEAD`, `git diff --cached --name-status`, and any unstaged/untracked files, substituting the verified base. Every included path must implement the requested result or maintain a directly affected contract. Stage explicit paths rather than the whole workspace. Leave working notes, generated evidence, exploratory scripts, draft proposals, and unrelated cleanup out of the commit; keep required durable documentation in its established owner. A planning document belongs only when the requested deliverable is that document, not merely because it helped implementation.
+
+Apply [test admission](../pixiv-cli-test/SKILL.md#decide-whether-test-code-must-change) to every test/fixture change. Temporary `tmp/test/` evidence stays local; describe actual verification in the PR instead of committing the probe. Review the final diff for accidental files even when ignore rules hide them from ordinary status.
+
 ## Write the body
 
 Read `.github/PULL_REQUEST_TEMPLATE.md` from the current target branch. Copy its literal headings and required checklist; the metadata parser currently recognizes their bilingual spelling, so do not translate or invent headings. Write concise English content under them, or the language explicitly requested for the PR.

@@ -38,12 +38,12 @@ Read [the architecture guide](docs/en/maintainers/architecture.md) and the repos
 
 Use a red-green-refactor loop for features and behavior fixes:
 
-1. Inspect existing assertions; reuse a failing test or extend the smallest relevant case to expose the intended behavioral failure. Add a new test only for a coverage gap, not for each function or file.
+1. Inspect existing assertions; prefer existing checks. Retain new test code only for an uncovered, durable core contract under the linked admission rules; keep one-off verification local under `tmp/test/`.
 2. Implement the smallest coherent change that makes it pass.
 3. Refactor without changing the verified public behavior.
 4. Run the focused tests, then the relevant regression suite.
 
-Pure restructuring reuses characterization before and after; ordinary comment-only edits use document/tool checks. See [test selection](.agents/skills/pixiv-cli-test/SKILL.md#decide-whether-test-code-must-change) for coverage gaps, duplication, and applicable Red exceptions. A required regression or security check is not optional merely because its implementation is short.
+Pure restructuring reuses characterization before and after; ordinary comment-only edits use document/tool checks. See [test selection](.agents/skills/pixiv-cli-test/SKILL.md#decide-whether-test-code-must-change) for mainline admission, temporary evidence, duplication, and applicable Red exceptions. A passing temporary probe need not become a committed test. A required regression or security check is not optional merely because its implementation is short.
 
 Test public behavior through the public boundary whenever practical. Do not hide real authentication, network, Pixiv API, filesystem, or encoding failures behind empty success results or silent fallback. Do not add arbitrary timeouts, truncation, pagination caps, retry limits, or hidden downgrade paths.
 

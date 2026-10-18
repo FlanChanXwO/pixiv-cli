@@ -1,6 +1,6 @@
 ---
 name: pixiv-cli-test
-description: Select and run pixiv-cli regression, TDD, document, SDK, CLI/MCP, and build checks. Use when changing behavior, reproducing a bug, choosing test scope, or reporting readiness. Separates offline fixtures, native evidence, and explicitly authorized live API tests.
+description: Select and run pixiv-cli regression, TDD, document, SDK, CLI/MCP, and build checks. Use when changing behavior, reproducing a bug, deciding which tests may enter main, or reporting readiness. Separates offline fixtures, native evidence, and explicitly authorized live API tests.
 ---
 
 # Test pixiv-cli
@@ -15,16 +15,28 @@ Use existing Go testing and HTTP/FS fixtures. Test public behavior through real 
 
 ## Decide whether test code must change
 
-Before adding a test, name the observable contract or credible failure that existing tests do not protect. Inspect their assertions, not just their names or coverage percentage. Prefer running an existing test, then extending a relevant case/table, then adding a new test only for an uncovered scenario. Record the choice briefly in the existing handoff, not a new test-plan file.
+Apply Ponytail **full**: verify the whole change with the least maintained test code. The default is **no new permanent test code**. Run existing checks first; a missing assertion is a reason to investigate, not automatic permission to grow the suite. This admission rule applies to new tests, extra table rows/assertions, fixtures, and test helpers alike.
 
-- Test behavior, not the existence of each function or file. A getter, forwarding wrapper, simple field projection, or newly extracted helper needs no separate test when its behavior is already protected at the calling boundary. Short security, parsing, or persistence code can still carry independent risk and require coverage.
-- For pure moves, renames, or extraction, run existing characterization before and after. Do not invent a behavior change, alter an assertion to manufacture Red, or duplicate a test solely because a helper appeared.
-- Test at the narrowest stable boundary that catches the defect. Extra CLI/MCP/SDK layers earn tests for distinct serialization, validation, permissions, or failure semantics, not repeated assertions of the same mapping. Mock real external boundaries rather than recreating the implementation in a test.
-- Keep fixtures and assertions direct. Use table-driven cases only when they share setup and semantics; avoid a generic fixture builder, mock hierarchy, assertion DSL, or new framework for a small case. Do not test standard-library behavior instead of the project's own contract.
-- Ordinary prose comments, headings, and internal code layout do not need exact-text or AST/regex tests. Machine-consumed directives, generated contracts, parsers, and security boundaries may need targeted existing checks; distinguish those from style preferences.
-- Remove or consolidate tests only within the authorized scope and after identifying the same contract protected by retained checks. Preserve regression inputs and run the retained checks; fewer lines alone do not justify deleting evidence.
+### Admit only durable core regressions
 
-Finish adding tests when changed contracts and credible failure paths are protected. There is no per-function, per-file, test-count, or invented coverage-percentage target. TDD governs the order of evidence, not the quantity of new test code; mandatory repository gates still apply.
+A test change may enter main only when **all** of these hold:
+
+- It protects a long-lived core contract: credential/security boundaries, data integrity and persistence, public CLI/MCP/SDK compatibility, or a critical execution path whose failure loses results, breaks cancellation, or reports false success. Name the concrete failure and user impact; merely touching a core package does not qualify.
+- Existing assertions do not catch that failure. Prefer the smallest extension at the stable owning boundary; add a new test only when reuse cannot express it. Do not repeat the same assertion across CLI/MCP/SDK layers unless their distinct contracts require it.
+- The evidence will remain useful after the current task, refactor, or upstream investigation ends. Use deterministic offline inputs for ordinary regressions; retain explicitly authorized live/native gates only for contracts that need that environment.
+- The check is the smallest maintainable proof, with direct assertions and minimal fixtures. Reuse Go testing and existing fixtures; avoid new frameworks, mock hierarchies, fixture builders, or production exports introduced only for tests.
+
+Before retaining test code, record the core contract, the uncovered failure, and why existing checks are insufficient in the current PR/handoff. If that justification is missing, keep the experiment temporary instead. Do not add tests for getters, forwarding wrappers, field projections, pure moves, prose, or internal file shape merely to satisfy TDD, a checklist, or a coverage target. Machine-consumed formats and security checks qualify only when they meet the same core-contract criteria.
+
+### Keep temporary verification out of main
+
+Put one-off reproductions, exploratory probes, benchmarks, migration characterization, and task-specific fixtures **only under a `tmp/test/` directory**, such as repository-root `tmp/test/` or an owner's `tmp/test/`. They are ignored local evidence, not deliverables. Keep their generated output there too; never force-add them or move them into tracked sources merely to satisfy a gate.
+
+For Go probes, use `tmp/test/_probe/` and run that package explicitly, for example `go test ./tmp/test/_probe -run '^TestProbe$' -count=1`. The underscore directory keeps it out of ordinary `go test ./...` discovery. Exercise existing public/owner-accessible boundaries; do not export private symbols to make a temporary probe compile.
+
+Temporary Red/Green evidence can verify a change without becoming a permanent regression. Promote only the minimal case that independently meets every admission criterion above, then follow the canonical test-file layout. Record commands and results in the existing PR/handoff, not a new test-plan/report artifact. Keep secrets out of temporary files as well.
+
+Keep established security and release gates. Remove or consolidate existing tests only within the authorized scope after identifying equivalent retained protection and running it. Fewer lines alone do not justify deleting evidence. Finish when changed behavior and credible failures are verified; mandatory gates still apply, without a per-function, per-file, test-count, or coverage-percentage quota.
 
 ## Select checks
 
