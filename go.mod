@@ -5,7 +5,7 @@ go 1.27.1
 require (
 	github.com/bogdanfinn/fhttp v0.6.8
 	github.com/bogdanfinn/tls-client v1.15.1
-	github.com/fsnotify/fsnotify v1.9.0
+	github.com/fsnotify/fsnotify v1.10.1
 	github.com/modelcontextprotocol/go-sdk v1.8.0
 	golang.org/x/net v0.48.0
 	gopkg.in/yaml.v3 v3.0.1
