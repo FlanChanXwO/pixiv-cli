@@ -28,7 +28,7 @@
 - Derive configuration paths, aliases, environment overrides and defaults from struct field tags, keeping existing keys, environment names, defaults and initial-file bytes compatible. ([#133](https://github.com/FlanChanXwO/pixiv-cli/pull/133))
 - Recover downstream release publishers, verify Homebrew on Linux, and harden trusted change classification and monotonic Homebrew recovery. ([#122](https://github.com/FlanChanXwO/pixiv-cli/pull/122), [#123](https://github.com/FlanChanXwO/pixiv-cli/pull/123), [#124](https://github.com/FlanChanXwO/pixiv-cli/pull/124))
 - Restore PR triage automation, scope PR metadata permissions, find smoke workers across check suites, run Quality after base edits, and support pure-Go heads in trusted smoke workers. ([#125](https://github.com/FlanChanXwO/pixiv-cli/pull/125), [#137](https://github.com/FlanChanXwO/pixiv-cli/pull/137), [#138](https://github.com/FlanChanXwO/pixiv-cli/pull/138), [#144](https://github.com/FlanChanXwO/pixiv-cli/pull/144), [#148](https://github.com/FlanChanXwO/pixiv-cli/pull/148))
-- Restrict permanent test additions, keep PR scope focused, and prepare the matching v1.2.0 release metadata. ([#149](https://github.com/FlanChanXwO/pixiv-cli/pull/149))
+- Restrict permanent test additions, keep PR scope focused, and prepare the matching v1.2.0 release metadata. ([#149](https://github.com/FlanChanXwO/pixiv-cli/pull/149), [#152](https://github.com/FlanChanXwO/pixiv-cli/pull/152))
 
 ## New Contributors
 

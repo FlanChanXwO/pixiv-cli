@@ -28,7 +28,7 @@
 - 以结构体字段标签作为配置路径、别名、环境变量覆盖与默认值的唯一来源，现有键名、环境变量、默认值与初始配置文件内容保持兼容。([#133](https://github.com/FlanChanXwO/pixiv-cli/pull/133))
 - 修复下游发布器恢复、在 Linux 上验证 Homebrew，并加固可信变更分类与单调的 Homebrew 恢复。([#122](https://github.com/FlanChanXwO/pixiv-cli/pull/122)、[#123](https://github.com/FlanChanXwO/pixiv-cli/pull/123)、[#124](https://github.com/FlanChanXwO/pixiv-cli/pull/124))
 - 恢复 PR 分拣自动化，收窄 PR metadata 权限，跨 check suite 查找 smoke worker，在修改 base 后运行 Quality，并让可信 smoke worker 支持纯 Go head。([#125](https://github.com/FlanChanXwO/pixiv-cli/pull/125)、[#137](https://github.com/FlanChanXwO/pixiv-cli/pull/137)、[#138](https://github.com/FlanChanXwO/pixiv-cli/pull/138)、[#144](https://github.com/FlanChanXwO/pixiv-cli/pull/144)、[#148](https://github.com/FlanChanXwO/pixiv-cli/pull/148))
-- 限制新增永久测试、保持 PR 范围聚焦，并准备对应的 v1.2.0 发布元数据。([#149](https://github.com/FlanChanXwO/pixiv-cli/pull/149))
+- 限制新增永久测试、保持 PR 范围聚焦，并准备对应的 v1.2.0 发布元数据。([#149](https://github.com/FlanChanXwO/pixiv-cli/pull/149)、[#152](https://github.com/FlanChanXwO/pixiv-cli/pull/152))
 
 ## 新贡献者
 
