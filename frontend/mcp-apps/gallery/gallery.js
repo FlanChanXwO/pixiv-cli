@@ -7,6 +7,8 @@
   const urls = new Set();
   const proxyImages = new Set();
   const tagRows = new Set();
+  const tagButtons = new Set();
+  let tagSearchLocked = false;
   const animationCleanups = new Set();
   const sessionCache = new Map();
   const cacheCapacity = 256 * 1024 * 1024;
@@ -30,7 +32,7 @@
   function clearCache() { for (const key of sessionCache.keys()) forget(key); }
   let serial = 0, view = 0, ready = false, disposed = false, lastToolResult;
   let hostContext = {};
-  let hostOrigin = "*", serverTools = false, downloadFiles = false, observer, resize;
+  let hostOrigin = "*", serverTools = false, downloadFiles = false, chatMessages = false, observer, resize;
   const send = message => window.parent.postMessage({jsonrpc: "2.0", ...message}, hostOrigin);
   function request(method, params, epoch) {
     return new Promise((resolve, reject) => {
@@ -43,7 +45,10 @@
   const dimension = value => typeof value === "number" && Number.isFinite(value) && value >= 0 ? value : undefined;
   function applyContext(update) {
     if (!update || typeof update !== "object") return;
+    const wasFullscreen = hostContext.displayMode === "fullscreen";
     hostContext = {...hostContext, ...update};
+    // 宿主已退出全屏，只清理灯箱，不再请求恢复显示模式。
+    if (wasFullscreen && hostContext.displayMode !== "fullscreen") closeOriginal?.(false);
     const style = document.documentElement.style;
     style.colorScheme = ["light", "dark"].includes(hostContext.theme) ? hostContext.theme : "light dark";
     const dims = hostContext.containerDimensions ?? {};
@@ -57,8 +62,10 @@
     if (disposed) return;
     for (const row of tagRows) row.update();
     const dims = hostContext.containerDimensions ?? {};
-    const width = dimension(dims.width) ?? Math.min(document.documentElement.scrollWidth, dimension(dims.maxWidth) ?? Infinity);
-    const height = dimension(dims.height) ?? Math.min(document.body.scrollHeight, dimension(dims.maxHeight) ?? Infinity);
+    const availableWidth = dimension(dims.width) ?? Math.min(document.documentElement.scrollWidth, dimension(dims.maxWidth) ?? Infinity);
+    const width = cards.className === "single-artwork" ? Math.min(dimension(document.body.scrollWidth) ?? availableWidth, availableWidth) : availableWidth;
+    const height = Math.min(document.body.scrollHeight, dimension(dims.height) ?? Infinity, dimension(dims.maxHeight) ?? Infinity);
+    if (dimension(dims.height) !== undefined) document.documentElement.style.height = height + "px";
     send({method: "ui/notifications/size-changed", params: {width, height}});
   }
   function clearView() {
@@ -79,7 +86,10 @@
     urls.clear();
     for (const row of tagRows) resize?.unobserve(row.list);
     tagRows.clear();
+    tagButtons.clear();
     cards.replaceChildren();
+    cards.className = ""; cards.removeAttribute("tabindex");
+    status.className = "";
   }
   function text(tag, value, parent, className) {
     const node = document.createElement(tag);
@@ -89,20 +99,21 @@
     return node;
   }
   const iconPaths = {
+    close: "m6 6 12 12M6 18 18 6",
     previous: "m15 18-6-6 6-6",
     next: "m9 6 6 6-6 6",
     back: "m15 18-6-6 6-6M9 12h12",
     download: "M12 3v12m-5-5 5 5 5-5M5 16v4h14v-4",
     refresh: "M20 7v5h-5M4 17v-5h5M6 7a7 7 0 0 1 12-2l2 2M4 17l2 2a7 7 0 0 0 12-2",
-    bookmark: "M6 4h12v17l-6-4-6 4V4Z",
+    heart: "M20.8 4.6a5.5 5.5 0 0 0-7.8 0L12 5.7l-1.1-1.1a5.5 5.5 0 0 0-7.8 7.8L12 21l8.8-8.6a5.5 5.5 0 0 0 0-7.8Z",
     remove: "M4 7h16M9 7V4h6v3M6 7l1 14h10l1-14M10 11v6m4-6v6",
     play: "m9 5 11 7-11 7V5Z",
     image: "M3 3h18v18H3V3Zm0 14 6-6 5 5 3-3 4 4M8 7h.01",
-    loader: "M20 12a8 8 0 1 1-8-8",
     pages: "M8 3h13v13M3 8h13v13H3V8Z",
-    user: "M16 7a4 4 0 1 1-8 0 4 4 0 0 1 8 0ZM4 21v-2a8 8 0 0 1 16 0v2",
     eye: "M2 12s4-7 10-7 10 7 10 7-4 7-10 7S2 12 2 12Zm13 0a3 3 0 1 1-6 0 3 3 0 0 1 6 0Z",
     size: "M3 9V3h6m6 0h6v6M3 15v6h6m6 0h6v-6",
+    minus: "M5 12h14",
+    plus: "M12 5v14M5 12h14",
     calendar: "M4 5h16v16H4V5Zm0 5h16M8 3v4m8-4v4",
     id: "M9 3 7 21m10-18-2 18M3 9h18M3 15h18"
   };
@@ -142,8 +153,9 @@
         catch (_) { if (epoch === view && !disposed) status.textContent = "Author page could not be opened."; }
         finally { author.disabled = false; }
       }) : text("p", record.user.name, parent);
-      author.className = "artwork-author"; author.append(icon("user"));
+      author.className = "artwork-author";
       if (validID) { author.title = "Open author page"; author.setAttribute("aria-label", "Open author page — " + record.user.name); }
+      return author;
     }
   }
   function pageDimensions(record, page) {
@@ -153,34 +165,114 @@
     return source ? source.width + " × " + source.height : "";
   }
   function artworkMetadata(record, parent) {
-    const list = document.createElement("dl"); list.className = "artwork-metadata"; parent.append(list);
+    const stats = text("dl", "", parent, "artwork-stats");
     const row = (label, value, name) => {
-      const group = document.createElement("div"); list.append(group);
-      const term = text("dt", label, group); term.append(icon(name));
+      const group = document.createElement("div");
+      group.className = "metadata-stat"; stats.append(group);
+      text("dt", label, group, "sr-only"); group.append(icon(name));
       return text("dd", value, group, "metadata-value");
     };
-    for (const [key, label, name] of [["total_views", "Views", "eye"], ["total_bookmarks", "Bookmarks", "bookmark"]]) {
-      if (Number.isSafeInteger(record[key]) && record[key] >= 0) row(label, String(record[key]), name);
+    const statistics = new Map();
+    for (const [key, label, name] of [["total_views", "Views", "eye"], ["total_bookmarks", "Bookmarks", "heart"]]) {
+      if (Number.isSafeInteger(record[key]) && record[key] >= 0) statistics.set(key, row(label, String(record[key]), name));
     }
-    if (typeof record.id === "string" && /^[1-9][0-9]*$/.test(record.id)) row("Artwork ID", record.id, "id");
+    if (typeof record.id === "string" && /^[1-9][0-9]*$/.test(record.id)) {
+      const value = row("Artwork ID", "", "id");
+      const copy = action(record.id, value, async () => {
+        copy.disabled = true;
+        let copied = false;
+        try {
+          await navigator.clipboard.writeText(record.id);
+          copied = true;
+        } catch (_) {
+          // Some embedded hosts omit clipboard-write permission; use their native selection copy.
+          try {
+            const range = document.createRange(), selection = document.getSelection();
+            range.selectNodeContents(copy); selection.removeAllRanges(); selection.addRange(range);
+            copied = document.execCommand("copy");
+            if (copied) selection.removeAllRanges();
+          } catch (_) {}
+        }
+        copy.setAttribute("data-copy-state", copied ? "copied" : "failed");
+        copy.setAttribute("aria-label", copied ? "Artwork ID copied" : "Copy failed. Artwork ID selected for manual copy.");
+        copy.disabled = false;
+      });
+      copy.className = "pid-copy"; copy.setAttribute("aria-label", "Copy artwork ID");
+    }
     const dimensions = pageDimensions(record, 1);
     let size = dimensions ? row("Dimensions", dimensions, "size") : undefined;
     if (typeof record.published_at === "string" && record.published_at !== "0001-01-01T00:00:00Z") {
       const date = new Date(record.published_at);
       if (Number.isFinite(date.getTime())) {
         const value = row("Published", "", "calendar");
-        const time = text("time", new Intl.DateTimeFormat(undefined, {year:"numeric", month:"short", day:"numeric"}).format(date), value);
+        const time = text("time", new Intl.DateTimeFormat("sv-SE", {year:"numeric", month:"2-digit", day:"2-digit"}).format(date), value);
         time.dateTime = record.published_at; time.title = record.published_at;
       }
     }
-    return page => { const value = pageDimensions(record, page); if (!size && value) size = row("Dimensions", value, "size"); if (size) size.textContent = value; };
+    return {
+      updateDimensions(page) { const value = pageDimensions(record, page); if (!size && value) size = row("Dimensions", value, "size"); if (size) size.textContent = value; },
+      updateStats(value) { for (const [key, node] of statistics) node.textContent = Number.isSafeInteger(value?.[key]) && value[key] >= 0 ? String(value[key]) : "—"; }
+    };
+  }
+  function artworkCaption(value, parent, epoch) {
+    const decode = value => value.replace(/&(#x[0-9a-f]+|#[0-9]+|amp|lt|gt|quot|apos|nbsp);/gi, (entity, name) => {
+      if (!name.startsWith("#")) return {amp:"&", lt:"<", gt:">", quot:'"', apos:"'", nbsp:"\u00a0"}[name.toLowerCase()];
+      const code = /^#x/i.test(name) ? Number.parseInt(name.slice(2), 16) : Number(name.slice(1));
+      return code > 0 && code <= 0x10ffff && !(code >= 0xd800 && code <= 0xdfff) ? String.fromCodePoint(code) : entity;
+    });
+    const source = String(value).replace(/<br\s*\/?>/gi, "\n");
+    if (!/<a\b/i.test(source)) { text("p", decode(source), parent, "caption"); return; }
+    const caption = text("p", "", parent, "caption");
+    let end = 0;
+    // Rebuild supported links from text; never insert upstream HTML or attributes into the document.
+    for (const match of source.matchAll(/<a\b([^>]*)>([\s\S]*?)<\/a\s*>/gi)) {
+      text("span", decode(source.slice(end, match.index)), caption);
+      const label = decode(match[2]);
+      const attribute = match[1].match(/(?:^|\s)href\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'=<>`]+))/i);
+      let url;
+      try { url = new URL(decode(attribute?.[1] ?? attribute?.[2] ?? attribute?.[3] ?? "")); } catch (_) {}
+      if (url && ["https:", "http:"].includes(url.protocol) && !url.username && !url.password) {
+        const link = text("a", label, caption, "caption-link");
+        link.href = url.href; link.target = "_blank"; link.rel = "noopener noreferrer";
+        link.addEventListener("click", event => {
+          event.preventDefault();
+          request("ui/open-link", {url:url.href}, epoch).catch(() => { if (epoch === view && !disposed) status.textContent = "Link could not be opened."; });
+        });
+      } else text("span", label, caption);
+      end = match.index + match[0].length;
+    }
+    text("span", decode(source.slice(end)), caption);
+  }
+  function lockTagSearch(locked) {
+    tagSearchLocked = locked;
+    for (const chip of tagButtons) {
+      chip.disabled = locked;
+      chip.title = locked ? "Tag search submitted — continue in chat" : "Search this tag in chat";
+    }
   }
   function tagChips(tags, parent, collapsible = false) {
     if (!Array.isArray(tags) || !tags.length) return;
     const group = document.createElement("div"); group.className = "tags"; parent.append(group);
     const list = document.createElement("div"); list.className = "tag-list"; group.append(list);
     for (const tag of tags) {
-      if (typeof tag?.name === "string" && tag.name) text("span", tag.name, list, "tag");
+      if (typeof tag?.name !== "string" || !tag.name) continue;
+      if (!chatMessages) { text("span", tag.name, list, "tag"); continue; }
+      const epoch = view;
+      const chip = action(tag.name, list, async () => {
+        if (tagSearchLocked || epoch !== view || disposed) return;
+        lockTagSearch(true);
+        try {
+          // The message outlives local navigation: cancelling a view does not cancel the agent's turn.
+          const result = await request("ui/message", {role:"user", content:[{type:"text", text:"Search Pixiv for the exact tag " + JSON.stringify(tag.name) + " and show the matching artworks in a gallery."}]});
+          if (result?.isError) throw new Error("Message rejected");
+          // shortcut: no host turn-completion signal; keep this instance locked until remount.
+        } catch (_) { if (!disposed) { lockTagSearch(false); status.className = ""; status.textContent = "Tag search could not be sent. Try again."; } }
+      });
+      chip.className = "tag";
+      chip.disabled = tagSearchLocked;
+      chip.title = tagSearchLocked ? "Tag search submitted — continue in chat" : "Search this tag in chat";
+      tagButtons.add(chip);
+      chip.setAttribute("aria-label", "Search tag — " + tag.name);
     }
     if (!collapsible || !list.children.length) return;
     group.className = "tags collapsed";
@@ -205,16 +297,18 @@
     const retained = cached(key);
     const image = retained?.value ?? document.createElement("img"); image.alt = String(record.title || "Artwork") + " — page " + page; image.hidden = !retained; image.draggable = false; image.referrerPolicy = "no-referrer"; proxyImages.add(image);
     if (open) { const link = action("", frame, open); link.className = "media-open"; link.title = "Open artwork"; link.setAttribute?.("aria-label", "Open " + String(record.title || "artwork")); link.append(image); } else frame.append(image);
+    const fitThumbnail = () => { if (quality === "thumbnail" && image.naturalWidth > 0 && image.naturalHeight > 0) frame.style.aspectRatio = image.naturalWidth + " / " + image.naturalHeight; };
+    fitThumbnail();
     const overlay = document.createElement("div"); overlay.className = "media-state"; frame.append(overlay);
-    const message = text("span", "", overlay); message.setAttribute?.("role", "status");
-    const spinner = icon("loader"); spinner.setAttribute("class", "spinner"); overlay.append(spinner);
-    const retry = iconAction("Retry image", "refresh", overlay, () => load(true)); retry.hidden = true; retry.disabled = !serverTools;
+    const message = text("span", "", overlay, "sr-only"); message.setAttribute?.("role", "status");
+    const placeholder = text("div", "", overlay, "media-skeleton"); placeholder.setAttribute("aria-hidden", "true");
+    const retry = iconAction("Retry image", "refresh", overlay, () => load(true), true); retry.hidden = true; retry.disabled = !serverTools;
     let busy = false, started = Boolean(retained), active = true;
     overlay.hidden = Boolean(retained);
-    const failed = () => { if (!active || epoch !== view || disposed) return; busy = false; forget(key); image.hidden = true; overlay.hidden = false; spinner.style.display = "none"; message.className = ""; message.textContent = "Image unavailable"; retry.hidden = false; retry.disabled = !serverTools; };
+    const failed = () => { if (!active || epoch !== view || disposed) return; busy = false; forget(key); image.hidden = true; overlay.hidden = false; placeholder.style.display = "none"; message.className = "sr-only"; message.textContent = "Image unavailable"; retry.hidden = false; retry.disabled = !serverTools; };
     const loaded = () => {
       if (!active || epoch !== view || disposed) return;
-      busy = false; image.hidden = false; overlay.hidden = true; retry.hidden = true;
+      busy = false; image.hidden = false; overlay.hidden = true; retry.hidden = true; fitThumbnail();
       // Include decoded pixels and an encoded-image allowance; browser/GPU overhead is outside this estimate.
       const bytes = image.naturalWidth * image.naturalHeight * 8;
       remember(key, image, bytes, () => { if (!proxyImages.has(image)) image.removeAttribute("src"); });
@@ -237,7 +331,7 @@
     const load = async renew => {
       if (retained && !renew && active) { onReady?.(); return; }
       if (!active || busy || epoch !== view || disposed || (started && !renew)) return;
-      started = true; busy = true; retry.hidden = true; overlay.hidden = false; spinner.style.display = ""; message.className = "sr-only"; message.textContent = "Loading image…";
+      started = true; busy = true; retry.hidden = true; overlay.hidden = false; placeholder.style.display = ""; message.className = "sr-only"; message.textContent = "Loading image…";
       try {
         if (!renew && typeof initial === "function") { const response = await initial(); if (!active || epoch !== view || disposed) return; assign(response); }
         else if (!renew && initial?.structuredContent?.images?.some(p => Number(p.illust_id) === Number(record.id) && p.page === page)) assign(initial);
@@ -263,7 +357,9 @@
   }
   function imageURL(content, page) {
     if (!content || content.type !== "image" || typeof content.data !== "string" || !["image/png","image/jpeg","image/webp","image/gif","image/bmp"].includes(content.mimeType)) throw new Error("Invalid image content");
-    const bytes = Uint8Array.from(atob(content.data), char => char.charCodeAt(0));
+    const decoded = atob(content.data);
+    const bytes = new Uint8Array(decoded.length);
+    for (let i = 0; i < decoded.length; i++) bytes[i] = decoded.charCodeAt(i);
     if (page && (bytes.byteLength !== page.size || content.mimeType !== page.mime_type)) throw new Error("Invalid image metadata");
     const url = URL.createObjectURL(new Blob([bytes], {type: content.mimeType}));
     urls.add(url);
@@ -425,73 +521,240 @@
     remember(key, content, content.data.length * 2 + size + (Number(dimensions.width) * Number(dimensions.height) * 4 || 0));
     return content;
   }
-  async function downloadOriginal(id, page, epoch, artwork, loaded) {
-    const content = loaded ?? await originalContent(id, page, epoch, artwork);
+  async function downloadOriginal(id, page, epoch, artwork) {
+    const content = await originalContent(id, page, epoch, artwork);
     if (epoch !== view || disposed) return;
     const saved = await request("ui/download-file", {contents:[{type:"resource",resource:{uri:"urn:pixiv:artwork:" + id + ":page:" + page,mimeType:content.mimeType,blob:content.data}}]}, epoch);
     if (!saved || saved.isError) throw new Error("Download rejected");
   }
-  let originalOpen = false;
+  let closeOriginal;
   function originalViewer(id, page, artwork, epoch) {
-    if (originalOpen || epoch !== view || disposed) return;
-    originalOpen = true;
-    const dialog = document.createElement("dialog"); dialog.className = "original-viewer"; dialog.setAttribute("aria-label", "Original artwork — page " + page); cards.append(dialog);
-    const toolbar = document.createElement("div"); toolbar.className = "original-toolbar"; dialog.append(toolbar);
-    let url, original, closed = false;
-    const cleanup = () => {
-      if (closed) return; closed = true; originalOpen = false;
-      image.removeAttribute("src"); dialog.close(); dialog.remove();
-      if (url) { URL.revokeObjectURL(url); urls.delete(url); }
-      animationCleanups.delete(cleanup);
-    };
-    iconAction("Close original", "back", toolbar, cleanup, true);
-    const zoom = iconAction("Actual size", "size", toolbar, () => {
-      const actual = image.className !== "original-image actual-size";
-      image.className = actual ? "original-image actual-size" : "original-image";
-      zoom.setAttribute("aria-pressed", String(actual));
-    }); zoom.setAttribute("aria-pressed", "false"); zoom.disabled = true;
-    const message = text("p", "Loading original…", dialog); message.setAttribute("role", "status");
+    if (closeOriginal || epoch !== view || disposed) return;
+    closeOriginal = cleanup;
+    id = Number(id);
+    const total = Number.isSafeInteger(artwork.page_count) && artwork.page_count > 0 ? artwork.page_count : 1;
+    let closed = false, selectedPage = Math.max(1, Math.min(total, page)), requestedPage = selectedPage, token = 0, frontURL = "", pendingURL = "", pendingPage = 0;
+    let fitWidth = 800, fitHeight = 600, zoom = "fit", shown = false, refit, placeholder;
+    const dialog = document.createElement("dialog"); dialog.className = "original-viewer";
+    dialog.setAttribute("aria-label", String(artwork.title || "Artwork")); cards.append(dialog);
+    const top = text("div", "", dialog, "original-top");
+    iconAction("Close original", "close", top, cleanup, true);
+    const counter = text("span", "", top, "original-count"); counter.hidden = total === 1;
+    if (total > 1) counter.append(icon("pages"));
+    const pageLabel = text("span", "", counter);
+    const stage = text("div", "", dialog, "original-stage");
+    let front = document.createElement("img"); front.className = "original-image"; front.alt = ""; front.hidden = true; front.referrerPolicy = "no-referrer"; stage.append(front);
+    let back = document.createElement("img"); back.className = "original-image original-incoming"; back.alt = ""; back.hidden = true; back.referrerPolicy = "no-referrer"; stage.append(back);
+    const spinner = text("div", "", stage, "original-loading"); spinner.setAttribute("aria-hidden", "true");
+    const status = text("p", "", dialog, "sr-only"); status.setAttribute("role", "status");
+    const error = text("div", "", dialog, "original-error"); error.hidden = true;
+    const errorLabel = text("span", "Image unavailable", error, "sr-only"); error.append(icon("image"));
+    const retry = iconAction("Retry image", "refresh", error, () => load(requestedPage), true); retry.className = "icon-button original-retry";
+    const previous = iconAction("Previous image", "previous", dialog, () => show(selectedPage - 1), true); previous.className = "icon-button original-side original-prev";
+    const next = iconAction("Next image", "next", dialog, () => show(selectedPage + 1), true); next.className = "icon-button original-side original-next";
+    if (total === 1) previous.hidden = next.hidden = true;
+    const dock = text("div", "", dialog, "original-dock");
+    const out = iconAction("Zoom out", "minus", dock, () => scale(-0.25), true);
+    const readout = text("span", "Fit", dock, "original-zoom");
+    const plus = iconAction("Zoom in", "plus", dock, () => scale(0.25), true);
+    text("span", "", dock, "original-divider");
+    const fit = iconAction("Actual size", "size", dock, toggle, true); fit.setAttribute("aria-pressed", "false");
+    let downloadButton;
     if (downloadFiles) {
-      const download = iconAction("Download viewed original", "download", toolbar, async () => {
-        download.disabled = true;
-        try { await downloadOriginal(id, page, epoch, artwork, original); if (!closed) message.textContent = "Download requested."; }
-        catch (_) { if (!closed) message.textContent = "Download failed. Retry explicitly."; }
-        finally { download.disabled = false; }
-      }, true); download.disabled = true;
-      dialog.enableDownload = () => { download.disabled = false; };
+      downloadButton = iconAction("Download viewed original", "download", dock, download, true);
+      downloadButton.disabled = true;
     } else {
-      // 宿主外链校验拒绝 Blob；以同一页原图凭证交给浏览器保存。
-      const download = text("a", "", toolbar, "icon-button browser-download");
-      download.setAttribute("aria-label", "Download viewed original"); download.title = "Download viewed original";
-      download.append(icon("download")); download.hidden = true;
-      dialog.enableDownload = async () => {
-        message.textContent = "Preparing original download…";
-        try {
-          const result = await request("tools/call", {name:"pixiv_show_gallery",arguments:{illust_ids:[Number(id)],page,quality:"original"}}, epoch);
-          if (closed || epoch !== view || disposed) return;
-          const output = result.structuredContent;
-          const item = output?.images?.find(item => Number(item.illust_id) === Number(id) && item.page === page);
-          if (result.isError || !item || typeof output.media_origin !== "string" || !/^https?:\/\/[^/?#@]+$/.test(output.media_origin) || typeof item.url !== "string" || !item.url.startsWith(output.media_origin + "/") || !item.url.includes("/media/") || /[?#]/.test(item.url)) throw new Error("Invalid original delivery");
-          download.href = item.url + "?download=1"; download.target = "_blank"; download.rel = "noreferrer"; download.hidden = false;
-          message.textContent = "Save using your browser. Browser download restrictions still apply.";
-        } catch (_) { if (!closed && epoch === view && !disposed) message.textContent = "Original download unavailable. Close and reopen to retry."; }
-      };
+      // 复用当前页经验证的原图地址，避免为浏览器下载再请求一次。
+      downloadButton = text("a", "", dock, "icon-button original-download");
+      downloadButton.setAttribute("aria-label", "Download viewed original"); downloadButton.title = "Download viewed original";
+      downloadButton.append(icon("download")); downloadButton.hidden = true;
     }
-    const surface = document.createElement("div"); surface.className = "original-surface"; dialog.append(surface);
-    const image = document.createElement("img"); image.className = "original-image"; image.alt = String(artwork.title || "Artwork") + " — original page " + page; image.hidden = true; surface.append(image);
-    image.addEventListener("load", () => {
+    const toggleControls = enabled => { out.disabled = plus.disabled = fit.disabled = !enabled; };
+    toggleControls(false);
+    function setLoading(loading) { spinner.hidden = !loading; dialog.setAttribute("aria-busy", String(loading)); }
+    function fitFrom(image) {
+      const box = stage.getBoundingClientRect?.() ?? {width: stage.clientWidth || 800, height: stage.clientHeight || 600};
+      const computed = globalThis.getComputedStyle?.(stage);
+      const padX = (parseFloat(computed?.paddingLeft) || 16) + (parseFloat(computed?.paddingRight) || 16);
+      const padY = (parseFloat(computed?.paddingTop) || 16) + (parseFloat(computed?.paddingBottom) || 16);
+      const width = Math.max(1, (Number(box.width) || 0) - padX), height = Math.max(1, (Number(box.height) || 0) - padY);
+      const ratio = (Number(image.naturalWidth) || 1) / (Number(image.naturalHeight) || 1) || 1;
+      if (width / height > ratio) { fitHeight = height; fitWidth = Math.max(1, Math.round(height * ratio)); }
+      else { fitWidth = width; fitHeight = Math.max(1, Math.round(width / ratio)); }
+    }
+    function applyZoom(next) {
+      if (!shown) return;
+      zoom = next;
+      const actual = zoom === "actual", percent = actual || zoom === "fit" ? 1 : Math.max(0.5, Math.min(4, zoom));
+      front.className = "original-image" + (actual ? " original-actual" : "");
+      front.style.width = (actual ? front.naturalWidth : Math.round(fitWidth * percent)) + "px";
+      front.style.height = (actual ? front.naturalHeight : Math.round(fitHeight * percent)) + "px";
+      readout.textContent = actual ? "1:1" : percent === 1 ? "Fit" : Math.round(percent * 100) + "%";
+      fit.setAttribute("aria-pressed", String(actual)); fit.setAttribute("aria-label", actual ? "Fit to window" : "Actual size");
+      stage.className = "original-stage" + (actual || percent > 1 ? " original-zoomed" : "");
+    }
+    function scale(delta) {
+      if (!shown) return;
+      const percent = zoom === "actual" || zoom === "fit" ? 1 : zoom;
+      applyZoom(Math.max(0.5, Math.min(4, Math.round((percent + delta) * 100) / 100)));
+    }
+    function toggle() { if (shown) applyZoom(zoom === "actual" ? 1 : "actual"); }
+    function show(number) {
+      if (!Number.isSafeInteger(number) || number < 1 || number > total) return;
+      if (number === selectedPage && shown) return;
+      load(number);
+    }
+    function dropPlaceholder() { placeholder?.remove(); placeholder = undefined; }
+    function failed() {
       if (closed) return;
-      remember("original:" + id + ":" + page, original, original.data.length * 2 + atob(original.data).length + image.naturalWidth * image.naturalHeight * 4);
-      image.hidden = false; zoom.disabled = false; message.textContent = ""; dialog.enableDownload?.();
+      // 渐进加载失败时撤下半张原图，恢复此前已显示的页面。
+      dropPlaceholder(); back.hidden = true; if (shown) front.hidden = false;
+      setLoading(false); error.hidden = false; retry.hidden = false; status.textContent = "Image unavailable";
+      pageLabel.textContent = total > 1 ? selectedPage + " / " + total : "";
+      toggleControls(false); if (downloadFiles) downloadButton.disabled = true; else downloadButton.hidden = true;
+    }
+    function releaseImage(image) {
+      image.remove(); proxyImages.delete(image);
+      if (sessionCache.get("original-image:" + id + ":" + image.getAttribute("data-original-page"))?.value !== image) image.removeAttribute("src");
+    }
+    async function download() {
+      if (!downloadFiles || !shown || downloadButton.disabled) return;
+      downloadButton.disabled = true;
+      try { await downloadOriginal(id, selectedPage, epoch, artwork); if (!closed) status.textContent = "Download requested."; }
+      catch (_) { if (!closed) { retry.hidden = true; errorLabel.textContent = "Download failed"; error.hidden = false; status.textContent = "Download failed."; } }
+      finally { if (!closed) downloadButton.disabled = false; }
+    }
+    function commit(progressive) {
+      if (closed || !pendingURL) return;
+      if (!back.naturalWidth) return;
+      dropPlaceholder();
+      const old = front; front = back; back = old;
+      back.hidden = true; back.className = "original-image original-incoming";
+      front.className = "original-image"; front.hidden = false; front.style.visibility = ""; frontURL = pendingURL; pendingURL = ""; selectedPage = pendingPage;
+      requestedPage = selectedPage;
+      fitFrom(front); shown = true; applyZoom("fit");
+      if (!progressive && !window.matchMedia?.("(prefers-reduced-motion: reduce)").matches) front.animate?.([{opacity:0},{opacity:1}], {duration:180, easing:"ease-out"});
+      back.style.visibility = "";
+      setLoading(false); error.hidden = true; retry.hidden = true; toggleControls(true);
+      previous.disabled = selectedPage === 1; next.disabled = selectedPage === total;
+      pageLabel.textContent = total > 1 ? selectedPage + " / " + total : "";
+      if (downloadFiles) downloadButton.disabled = false;
+      else { downloadButton.href = frontURL + "?download=1"; downloadButton.target = "_blank"; downloadButton.rel = "noreferrer"; downloadButton.hidden = false; }
+      status.textContent = "Image ready.";
+    }
+    async function load(number) {
+      if (closed || epoch !== view || disposed || !Number.isSafeInteger(number) || number < 1 || number > total) return;
+      const mine = ++token; requestedPage = number;
+      setLoading(true); error.hidden = true; retry.hidden = true; previous.disabled = !shown;
+      // 页码跟随目标页，加载期间就能看出要切到哪一张。
+      pageLabel.textContent = total > 1 ? number + " / " + total : "";
+      toggleControls(shown); if (downloadFiles) downloadButton.disabled = true; else downloadButton.hidden = true;
+      status.textContent = "Loading image…";
+      try {
+        const key = "original-image:" + id + ":" + number;
+        const retained = cached(key)?.value;
+        let nextURL = retained?.src;
+        if (!retained) {
+          const result = await request("tools/call", {name:"pixiv_show_gallery",arguments:{illust_ids:[id],page:number,quality:"original"}}, epoch);
+          if (closed || mine !== token || epoch !== view || disposed) return;
+          const output = result.structuredContent;
+          const item = output?.images?.find(item => Number(item.illust_id) === id && item.page === number);
+          if (result.isError || !item || typeof output.media_origin !== "string" || !/^https?:\/\/[^/?#@]+$/.test(output.media_origin) || typeof item.url !== "string" || !item.url.startsWith(output.media_origin + "/") || !item.url.includes("/media/") || /[?#]/.test(item.url)) throw new Error("Invalid original delivery");
+          nextURL = item.url;
+        }
+        if (closed || mine !== token || epoch !== view || disposed) return;
+        releaseImage(back); dropPlaceholder();
+        // 详情页已加载的同页 regular 图垫底，原图边下载边绘制覆盖上去。
+        const regular = !retained && cached("image:" + id + ":" + number + ":regular")?.value?.src;
+        const progressive = !retained && (Boolean(regular) || front.hidden);
+        if (regular) {
+          placeholder = document.createElement("img"); placeholder.className = "original-image original-placeholder"; placeholder.alt = ""; placeholder.referrerPolicy = "no-referrer";
+          stage.append(placeholder); placeholder.src = regular;
+        }
+        const incoming = retained ?? document.createElement("img"); back = incoming; stage.append(incoming); proxyImages.add(incoming);
+        incoming.alt = ""; incoming.referrerPolicy = "no-referrer"; incoming.setAttribute("data-original-page", number);
+        pendingURL = nextURL; pendingPage = number;
+        dialog.setAttribute("data-progressive", String(progressive));
+        incoming.hidden = false;
+        if (progressive) { front.hidden = true; incoming.className = "original-image original-streaming"; incoming.style.visibility = ""; }
+        // Without a placeholder, keep the decoded page visible until the original HTTP stream has decoded.
+        else { incoming.className = "original-image original-incoming"; incoming.style.visibility = "hidden"; }
+        if (!retained) incoming.src = nextURL;
+        try { await incoming.decode(); } catch (_) { if (mine === token && !closed) { forget(key); failed(); } return; }
+        if (closed || mine !== token || epoch !== view || disposed) return;
+        commit(progressive);
+        remember(key, front, front.naturalWidth * front.naturalHeight * 8, () => { if (!proxyImages.has(incoming)) incoming.removeAttribute("src"); });
+      } catch (_) { if (mine === token && !closed && epoch === view && !disposed) failed(); }
+    }
+    stage.addEventListener("click", event => {
+      if (event.target !== front) return;
+      if (moved) { moved = false; return; }
+      toggle();
     });
-    image.addEventListener("error", () => { if (!closed) { forget("original:" + id + ":" + page); message.textContent = "Original unavailable. Close and reopen to retry."; } });
-    image.addEventListener("dblclick", () => zoom.click());
+    stage.addEventListener("wheel", event => { if (shown) { event.preventDefault(); scale(event.deltaY < 0 ? 0.25 : -0.25); } }, {passive:false});
+    let drag, moved = false;
+    stage.addEventListener("pointerdown", event => {
+      if (!shown || event.button !== 0 || event.target !== front) return;
+      drag = {id:event.pointerId, x:event.clientX, y:event.clientY, left:stage.scrollLeft || 0, top:stage.scrollTop || 0}; moved = false;
+      stage.setPointerCapture?.(event.pointerId);
+    });
+    stage.addEventListener("pointermove", event => {
+      if (!drag || drag.id !== event.pointerId) return;
+      const dx = event.clientX - drag.x, dy = event.clientY - drag.y;
+      if (Math.abs(dx) + Math.abs(dy) > 8) moved = true;
+      if (zoom === "actual" || zoom > 1) { stage.scrollLeft = drag.left - dx; stage.scrollTop = drag.top - dy; }
+    });
+    const endDrag = () => { drag = undefined; };
+    stage.addEventListener("pointerup", endDrag);
+    stage.addEventListener("pointercancel", endDrag);
+    let pinch, swipe;
+    stage.addEventListener("touchstart", event => {
+      if (event.touches?.length === 2) {
+        const [a,b] = event.touches; pinch = {distance:Math.hypot(a.clientX-b.clientX,a.clientY-b.clientY), zoom:zoom === "actual" ? 1 : zoom};
+      } else if (event.touches?.length === 1 && (zoom === "fit" || zoom === 1)) swipe = {x:event.touches[0].clientX, y:event.touches[0].clientY};
+    }, {passive:true});
+    stage.addEventListener("touchmove", event => {
+      if (!pinch || event.touches?.length !== 2) return;
+      const [a,b] = event.touches, distance = Math.hypot(a.clientX-b.clientX,a.clientY-b.clientY);
+      if (pinch.distance > 0) applyZoom(Math.max(0.5, Math.min(4, Math.round(pinch.zoom * distance / pinch.distance * 100) / 100)));
+      event.preventDefault();
+    }, {passive:false});
+    stage.addEventListener("touchend", event => {
+      if (pinch) { pinch = undefined; return; }
+      if (!swipe || (event.changedTouches?.length ?? 0) !== 1) return;
+      const touch = event.changedTouches[0], dx = touch.clientX - swipe.x, dy = touch.clientY - swipe.y; swipe = undefined;
+      if (Math.abs(dx) >= 44 && Math.abs(dx) > Math.abs(dy) * 1.5) show(selectedPage + (dx < 0 ? 1 : -1));
+    }, {passive:true});
+    dialog.addEventListener("keydown", event => {
+      if (event.key === "ArrowLeft") { event.preventDefault(); show(selectedPage - 1); }
+      else if (event.key === "ArrowRight") { event.preventDefault(); show(selectedPage + 1); }
+      else if (event.key === "+" || event.key === "=") { event.preventDefault(); scale(0.25); }
+      else if (event.key === "-" || event.key === "_") { event.preventDefault(); scale(-0.25); }
+      else if (event.key === "0") { event.preventDefault(); applyZoom("fit"); }
+    });
     dialog.addEventListener("cancel", event => { event.preventDefault(); cleanup(); });
-    animationCleanups.add(cleanup); dialog.showModal();
-    originalContent(id, page, epoch, artwork).then(content => {
-      if (closed || epoch !== view || disposed) return;
-      original = content; url = imageURL(content); image.src = url;
-    }).catch(() => { if (!closed) message.textContent = "Original unavailable. Close and reopen to retry."; });
+    animationCleanups.add(cleanup); dialog.showModal(); load(selectedPage);
+    // 宿主若仍按详情页高度渲染 iframe，fixed 灯箱会被滚出可视区；进入 fullscreen 才能贴住真实窗口。
+    let restoreDisplay;
+    if ((hostContext.availableDisplayModes ?? []).includes("fullscreen") && hostContext.displayMode !== "fullscreen") {
+      const previousDisplay = hostContext.displayMode ?? "inline";
+      request("ui/request-display-mode", {mode: "fullscreen"}).then(result => {
+        if (result?.mode !== "fullscreen") return;
+        if (closed) { request("ui/request-display-mode", {mode: previousDisplay}).catch(() => {}); return; }
+        restoreDisplay = () => request("ui/request-display-mode", {mode: previousDisplay}).catch(() => {});
+      }).catch(() => {});
+    }
+    // 容器尺寸变化（例如切换 fullscreen）后重新按 Fit 计算，避免图片停在旧尺寸。
+    if (typeof ResizeObserver === "function") {
+      refit = new ResizeObserver(() => { if (shown) { fitFrom(front); applyZoom(zoom); } });
+      refit.observe(stage);
+    }
+    function cleanup(restore = true) {
+      if (closed) return; closed = true; closeOriginal = undefined;
+      refit?.disconnect(); if (restore) restoreDisplay?.();
+      for (const image of [front, back]) releaseImage(image);
+      dialog.close(); dialog.remove(); animationCleanups.delete(cleanup);
+    }
   }
   async function openDetail(record, previous) {
     clearView();
@@ -499,31 +762,82 @@
     const id = Number(record.id);
     iconAction("Back to results", "back", cards, () => render(previous), true);
     if (!serverTools || !Number.isSafeInteger(id) || id <= 0) { status.textContent = "Artwork detail unavailable."; return; }
-    status.textContent = "Loading artwork…";
+    status.textContent = "Loading artwork…"; status.className = "sr-only";
+    const skeleton = text("div", "", cards, "detail-skeleton"); skeleton.setAttribute("aria-hidden", "true");
+    text("div", "", skeleton, "skeleton-image"); text("div", "", skeleton, "skeleton-copy");
     try {
       const metadataKey = "detail:" + id;
       const result = cached(metadataKey)?.value ?? await request("tools/call", {name: "pixiv_illust_detail", arguments: {illust_id: id}}, epoch);
       if (epoch !== view || disposed) return;
+      skeleton.remove();
       const artwork = result.structuredContent?.records?.find(item => item && Number(item.id) === id);
       if (result.isError || !artwork) throw new Error("Artwork unavailable");
       remember(metadataKey, result, JSON.stringify(result).length * 2);
-      status.textContent = "";
+      status.textContent = ""; status.className = "";
       const section = document.createElement("article"); section.className = "artwork-detail"; cards.append(section);
       const mediaColumn = document.createElement("div"); mediaColumn.className = "detail-media"; section.append(mediaColumn);
-      const info = document.createElement("div"); info.className = "detail-info"; section.append(info);
+      const sheet = text("div", "", section, "detail-info");
+      const toggle = action("", sheet, () => { if (dragged) { dragged = false; return; } setCollapsed(!info.hidden); });
+      toggle.className = "detail-toggle";
+      const grip = text("span", "", toggle, "detail-grip"); grip.setAttribute("aria-hidden", "true");
+      const info = text("div", "", sheet, "detail-content"); info.id = "artwork-detail-content";
+      toggle.setAttribute("aria-controls", info.id);
+      let start, dragged = false;
+      const setCollapsed = collapsed => {
+        info.style.height = ""; info.style.overflow = "";
+        info.hidden = collapsed; toggle.setAttribute("aria-expanded", String(!collapsed));
+        toggle.setAttribute("aria-label", collapsed ? "Show details" : "Hide details");
+        notifySize();
+      };
+      setCollapsed(false);
+      toggle.addEventListener("pointerdown", event => {
+        if (event.button !== 0 || event.isPrimary === false) return;
+        start = {id:event.pointerId, y:event.clientY, collapsed:info.hidden};
+        info.hidden = false; start.height = info.scrollHeight;
+        info.style.height = (start.collapsed ? 0 : start.height) + "px"; info.style.overflow = "hidden";
+        dragged = false; toggle.setPointerCapture?.(event.pointerId);
+      });
+      toggle.addEventListener("pointermove", event => {
+        if (!start || start.id !== event.pointerId) return;
+        const dy = event.clientY - start.y;
+        if (Math.abs(dy) > 8) dragged = true;
+        info.style.height = Math.max(0, Math.min(start.height, (start.collapsed ? 0 : start.height) - dy)) + "px";
+      });
+      toggle.addEventListener("pointerup", event => {
+        if (!start || start.id !== event.pointerId) return;
+        const dy = event.clientY - start.y, collapsed = start.collapsed; start = undefined;
+        if (Math.abs(dy) >= 32) { dragged = true; setCollapsed(dy > 0); }
+        else setCollapsed(collapsed);
+      });
+      toggle.addEventListener("pointercancel", () => { if (start) setCollapsed(start.collapsed); start = undefined; dragged = false; });
+      toggle.addEventListener("keydown", event => { if (event.key === "Enter" || event.key === " ") dragged = false; });
       text("h2", artwork.title, info);
-      artworkAuthor(artwork, info);
+      const authorRow = text("div", "", info, "detail-author-row");
+      const authorCard = text("div", "", authorRow, "author-card");
+      const author = artworkAuthor(artwork, authorCard);
+      let initialPreview;
+      const detailPreview = () => initialPreview ??= request("tools/call", {name:"pixiv_show_gallery", arguments:{illust_ids:[id], page:1, quality:"regular"}}, epoch);
+      if (author && artwork.user?.profile_image?.resource) {
+        const avatarKey = "avatar:" + id;
+        const avatarURL = cached(avatarKey)?.value;
+        const avatar = document.createElement("img"); avatar.className = "author-avatar"; avatar.alt = ""; avatar.hidden = true; avatar.referrerPolicy = "no-referrer"; author.append(avatar); proxyImages.add(avatar); author.setAttribute("data-avatar-loading", "true");
+        const message = text("span", "", authorCard, "avatar-message"); message.setAttribute("role", "status");
+        const failed = () => { if (epoch === view && !disposed) { forget(avatarKey); author.removeAttribute("data-avatar-loading"); avatar.hidden = true; message.textContent = "Avatar unavailable"; } };
+        avatar.addEventListener("load", () => { if (epoch === view && !disposed) { author.removeAttribute("data-avatar-loading"); avatar.hidden = false; message.textContent = ""; remember(avatarKey, avatar.src, avatar.src.length * 2); } });
+        avatar.addEventListener("error", failed);
+        if (avatarURL) avatar.src = avatarURL;
+        else detailPreview().then(result => {
+          if (epoch !== view || disposed) return;
+          const output = result.structuredContent;
+          const url = output?.images?.find(item => Number(item.illust_id) === id)?.avatar_url;
+          if (typeof output?.media_origin !== "string" || !/^https?:\/\/[^/?#@]+$/.test(output.media_origin) || typeof url !== "string" || !url.startsWith(output.media_origin + "/media/") || /[?#]/.test(url)) { failed(); return; }
+          avatar.src = url;
+        }).catch(failed);
+      }
       if (artwork.type === "ugoira") ratingBadge(artwork, info);
       tagChips(artwork.tags, info);
-      // Decode Pixiv numeric entities into text; never interpret caption markup.
-      if (artwork.caption) {
-        const caption = String(artwork.caption).replace(/<br\s*\/?>/gi, "\n").replace(/&#(x[0-9a-f]+|[0-9]+);/gi, (entity, digits) => {
-          const code = /^x/i.test(digits) ? Number.parseInt(digits.slice(1), 16) : Number(digits);
-          return code > 0 && code <= 0x10ffff && !(code >= 0xd800 && code <= 0xdfff) ? String.fromCodePoint(code) : entity;
-        });
-        text("p", caption, info, "caption");
-      }
-      const updateDimensions = artworkMetadata(artwork, info);
+      if (artwork.caption) artworkCaption(artwork.caption, info, epoch);
+      const {updateDimensions, updateStats} = artworkMetadata(artwork, info);
       const detailControls = document.createElement("div"); detailControls.className = "detail-controls";
       if (artwork.type === "ugoira") {
         animationControls(id, artwork, mediaColumn, epoch);
@@ -532,7 +846,7 @@
         if (!Number.isSafeInteger(total) || total < 1) throw new Error("Invalid page count");
         const viewer = document.createElement("div"); viewer.className = "page-viewer"; mediaColumn.append(viewer);
         const media = document.createElement("div"); media.className = "page-media"; viewer.append(media);
-        let selectedPage = 1, preview, displayed, previousPage, nextPage, progress, position;
+        let selectedPage = 1, preview, displayed, previousPage, nextPage, progress, position, firstPreview = true;
         let swiped = false;
         // Pointer capture retargets taps to the media container; swipes must not open the original.
         media.addEventListener("click", event => { if (!swiped && !event.target?.closest("button")) originalViewer(id, selectedPage, artwork, epoch); });
@@ -546,7 +860,9 @@
           if (preview && preview !== displayed) { preview.dispose(); preview.frame.remove(); }
           if (displayed?.page === page) preview = displayed;
           else {
-            const replacement = proxyImage(artwork, media, null, epoch, page, "regular", undefined, () => originalViewer(id, page, artwork, epoch), () => {
+            const initial = page === 1 && firstPreview ? detailPreview : null;
+            firstPreview = false;
+            const replacement = proxyImage(artwork, media, initial, epoch, page, "regular", undefined, () => originalViewer(id, page, artwork, epoch), () => {
               if (selectedPage !== page || epoch !== view || disposed) return;
               if (displayed) { displayed.dispose(); displayed.frame.remove(); }
               displayed = replacement; replacement.frame.className = "media-frame";
@@ -588,17 +904,45 @@
         }
       }
       info.append(detailControls);
-      bookmarkControls(id, info, epoch);
-    } catch (_) { if (epoch === view && !disposed) status.textContent = "Artwork detail failed. Return to results and retry."; }
+      bookmarkControls(id, authorRow, epoch, async () => {
+        forget(metadataKey); updateStats(undefined);
+        const refreshed = await request("tools/call", {name:"pixiv_illust_detail", arguments:{illust_id:id}}, epoch);
+        if (epoch !== view || disposed) return;
+        const value = refreshed.structuredContent?.records?.find(item => Number(item?.id) === id);
+        if (refreshed.isError || !value) throw new Error("Statistics unavailable");
+        remember(metadataKey, refreshed, JSON.stringify(refreshed).length * 2); updateStats(value);
+      });
+    } catch (_) {
+      if (epoch === view && !disposed) {
+        skeleton.remove(); status.className = "sr-only"; status.textContent = "Artwork detail failed. Retry or return to results.";
+        const failure = text("div", "", cards, "detail-failure");
+        iconAction("Retry artwork detail", "refresh", failure, () => openDetail(record, previous), true);
+      }
+    }
   }
-  function bookmarkControls(id, section, epoch) {
+  function bookmarkControls(id, section, epoch, refreshStatistics) {
     const group = document.createElement("div"); group.className = "bookmark-controls"; section.append(group);
-    const message = text("p", "Loading bookmark state…", group, "bookmark-status"); message.setAttribute("role", "status");
+    const message = text("p", "Loading bookmark state…", group, "bookmark-status sr-only"); message.setAttribute("role", "status");
     const toolbar = document.createElement("div"); toolbar.className = "bookmark-toolbar"; group.append(toolbar);
-    let state, busy = false;
+    const options = text("div", "", group, "bookmark-options"); options.hidden = true;
+    options.setAttribute("role", "dialog"); options.setAttribute("aria-label", "Bookmark settings");
+    const heading = text("div", "", options, "bookmark-options-heading");
+    text("strong", "Bookmark settings", heading);
+    let state, busy = false, hold, gesture, held = false;
+    const cancelHold = () => { clearTimeout(hold); hold = undefined; gesture = undefined; };
+    const openOptions = () => {
+      if (busy || !state || epoch !== view || disposed) return;
+      options.hidden = false; save.setAttribute("aria-expanded", "true"); visibility.focus?.();
+    };
+    const closeOptions = () => { options.hidden = true; save.setAttribute("aria-expanded", "false"); };
+    const outsidePress = event => { if (!options.hidden && !group.contains(event.target)) closeOptions(); };
+    window.addEventListener("pointerdown", outsidePress);
+    animationCleanups.add(() => window.removeEventListener?.("pointerdown", outsidePress));
+    iconAction("Close settings", "close", heading, () => { closeOptions(); save.focus?.(); }, true);
     const enable = () => {
-      save.disabled = remove.disabled = visibility.disabled = busy || !state;
+      save.disabled = apply.disabled = remove.disabled = visibility.disabled = busy || !state;
       refresh.disabled = busy;
+      retry.disabled = busy; retry.hidden = Boolean(state) || busy;
       remove.hidden = !state?.bookmarked;
     };
     const query = async () => {
@@ -611,11 +955,12 @@
         if (result.isError || typeof value?.bookmarked !== "boolean" || (value.tags !== null && (!Array.isArray(value.tags) || !value.tags.every(tag => typeof tag === "string")))) throw new Error("Unknown bookmark state");
         state = {...value, tags: value.tags ?? []};
         if (["public", "private"].includes(value.restrict)) visibility.value = value.restrict;
-        const label = value.bookmarked ? "Save bookmark" : "Bookmark";
-        save.textContent = label; save.append(icon("bookmark")); save.setAttribute("aria-label", label); save.title = label;
-        message.textContent = value.bookmarked ? "Bookmarked (" + value.restrict + ")" : "Not bookmarked";
+        const label = value.bookmarked ? "Unbookmark" : "Bookmark";
+        save.textContent = value.bookmarked ? "Bookmarked" : "Bookmark"; save.append(icon("heart")); save.setAttribute("aria-label", label); save.title = label + " · hold for settings";
+        save.setAttribute("aria-pressed", String(value.bookmarked));
+        message.textContent = "";
       } catch (_) { if (epoch === view) { state = undefined; message.textContent = "Bookmark state unavailable. Refresh before writing."; } }
-      finally { busy = false; enable(); }
+      finally { busy = false; message.className = "bookmark-status"; enable(); }
     };
     const mutate = async restrict => {
       if (busy || !state || epoch !== view || (restrict && !["public", "private"].includes(restrict))) return;
@@ -630,14 +975,48 @@
         success = true;
       } catch (_) { if (epoch === view) { state = undefined; message.textContent = "Bookmark change not confirmed. Refresh state before retrying."; } }
       finally { busy = false; enable(); }
-      if (success) await query();
+      if (success) {
+        closeOptions(); await query(); busy = true; enable();
+        try { await refreshStatistics(); }
+        catch (_) { if (epoch === view && !disposed) message.textContent = "Bookmark updated. Statistics unavailable; reopen details to refresh."; }
+        finally { busy = false; enable(); }
+      }
     };
-    const save = iconAction("Bookmark", "bookmark", toolbar, () => mutate(visibility.value)); save.className = "primary-action";
-    const visibility = document.createElement("select"); visibility.setAttribute("aria-label", "Bookmark visibility"); toolbar.append(visibility);
+    const save = iconAction("Bookmark", "heart", toolbar, () => {
+      if (held) { held = false; return; }
+      mutate(state?.bookmarked ? "" : state?.restrict === "private" ? "private" : "public");
+    }); save.className = "primary-action";
+    save.title = "Bookmark · hold for settings";
+    save.setAttribute("aria-description", "Hold for bookmark settings, or press Shift+F10.");
+    save.setAttribute("aria-expanded", "false");
+    save.setAttribute("aria-haspopup", "dialog");
+    save.addEventListener("pointerdown", event => {
+      cancelHold(); held = false;
+      if (event.button !== 0 || event.isPrimary === false || save.disabled) return;
+      gesture = {x:event.clientX, y:event.clientY};
+      hold = setTimeout(() => { hold = undefined; held = true; openOptions(); }, 500);
+    });
+    save.addEventListener("pointermove", event => {
+      if (gesture && Math.hypot(event.clientX - gesture.x, event.clientY - gesture.y) > 10) { cancelHold(); held = true; }
+    });
+    save.addEventListener("pointerup", cancelHold);
+    for (const name of ["pointercancel", "pointerleave"]) save.addEventListener(name, () => { cancelHold(); held = true; });
+    save.addEventListener("contextmenu", event => { event.preventDefault(); cancelHold(); held = true; openOptions(); });
+    save.addEventListener("keydown", event => {
+      if (event.key === "Enter" || event.key === " ") held = false;
+      if ((event.key === "F10" && event.shiftKey) || event.key === "ContextMenu") { event.preventDefault(); cancelHold(); openOptions(); }
+    });
+    options.addEventListener("keydown", event => { if (event.key === "Escape") { closeOptions(); save.focus?.(); } });
+    animationCleanups.add(cancelHold);
+    const field = text("label", "Visibility", options, "bookmark-visibility");
+    const visibility = document.createElement("select"); visibility.setAttribute("aria-label", "Bookmark visibility"); field.append(visibility);
     for (const value of ["public", "private"]) { const option = text("option", value === "public" ? "Public" : "Private", visibility); option.value = value; }
     visibility.value = "public";
-    const remove = iconAction("Remove bookmark", "remove", toolbar, () => mutate(""), true);
-    const refresh = iconAction("Refresh bookmark", "refresh", toolbar, query, true);
+    const apply = action("Save changes", options, () => mutate(visibility.value)); apply.setAttribute("aria-label", "Apply bookmark settings"); apply.className = "primary-action";
+    const secondary = text("div", "", options, "bookmark-options-secondary");
+    const remove = iconAction("Remove bookmark", "remove", secondary, () => mutate(""));
+    const refresh = iconAction("Refresh bookmark", "refresh", secondary, query); refresh.textContent = "Refresh"; refresh.append(icon("refresh"));
+    const retry = action("Retry bookmark state", toolbar, query);
     enable(); query();
   }
   function renderMedia(result, epoch) {
@@ -737,6 +1116,9 @@
     const records = result.structuredContent?.records;
     if (!Array.isArray(records)) { status.textContent = "No structured records; use the tool result in chat."; return; }
     status.textContent = result.isError ? "Tool failed or returned partial results." : records.length ? "" : "No results.";
+    if (records.length === 1 && ["illust", "manga", "ugoira"].includes(records[0]?.type)) cards.className = "single-artwork";
+    if (records.length > 1) { cards.className = "gallery-results"; cards.setAttribute("tabindex", "0"); }
+    if (result.isError) status.className = "sr-only";
     if (typeof IntersectionObserver === "function") {
       observer = new IntersectionObserver(entries => {
         for (const entry of entries) if (entry.isIntersecting) {
@@ -787,7 +1169,7 @@
       case "ui/notifications/host-context-changed": applyContext(message.params); break;
       case "ui/notifications/tool-input":
         lastToolResult = undefined;
-        clearView(); clearCache(); status.textContent = "Loading results…"; break;
+        clearView(); clearCache(); status.textContent = "Loading results…"; status.className = "sr-only"; break;
       case "ui/notifications/tool-result": {
         const result = message.params ?? {};
         const signature = JSON.stringify(result);
@@ -802,12 +1184,13 @@
     }
   });
   window.addEventListener("pagehide", dispose);
-  request("ui/initialize", {appInfo: {name: "pixiv-gallery", version: "1"}, appCapabilities: {availableDisplayModes: ["inline"]}, protocolVersion: "2026-01-26"})
+  request("ui/initialize", {appInfo: {name: "pixiv-gallery", version: "1"}, appCapabilities: {availableDisplayModes: ["inline", "fullscreen"]}, protocolVersion: "2026-01-26"})
     .then(result => {
       if (disposed) return;
       if (result.protocolVersion !== "2026-01-26") throw new Error("Unsupported bridge protocol");
       serverTools = Boolean(result.hostCapabilities?.serverTools);
       downloadFiles = Boolean(result.hostCapabilities?.downloadFile);
+      chatMessages = Boolean(result.hostCapabilities?.message?.text);
       applyContext(result.hostContext);
       ready = true;
       send({method: "ui/notifications/initialized", params: {}});
@@ -817,5 +1200,5 @@
         resize.observe(document.body);
         window.addEventListener("pagehide", () => resize.disconnect(), {once: true});
       }
-    }).catch(() => { if (!disposed) status.textContent = "Gallery bridge unavailable. Use structured results and pixiv_artwork_media in chat."; });
+    }).catch(() => { if (!disposed) { status.className = ""; status.textContent = "Gallery bridge unavailable. Use structured results and pixiv_artwork_media in chat."; } });
 })();

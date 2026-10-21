@@ -20,9 +20,10 @@ type input struct {
 	Quality   string  `json:"quality,omitempty"`
 }
 type image struct {
-	IllustID int64  `json:"illust_id"`
-	Page     int    `json:"page"`
-	URL      string `json:"url"`
+	IllustID  int64  `json:"illust_id"`
+	Page      int    `json:"page"`
+	URL       string `json:"url"`
+	AvatarURL string `json:"avatar_url,omitempty"`
 }
 type failure struct {
 	IllustID int64  `json:"illust_id"`
@@ -111,7 +112,14 @@ func handle(ctx context.Context, app *runtime.App, in input) (*mcp.CallToolResul
 			out.Failures = append(out.Failures, failure{id, "image_authorization_unavailable"})
 			return out
 		}
-		out.Images = append(out.Images, image{id, in.Page, u})
+		item := image{IllustID: id, Page: in.Page, URL: u}
+		if !artwork.User.ProfileImage.Resource.Ref.IsZero() {
+			item.AvatarURL, err = media.Issue(ctx, account.UserID, id, 1, "avatar")
+			if err != nil {
+				out.Failures = append(out.Failures, failure{id, "avatar_authorization_unavailable"})
+			}
+		}
+		out.Images = append(out.Images, item)
 		return out
 	}
 	workers := 4
