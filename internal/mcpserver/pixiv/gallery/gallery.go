@@ -40,7 +40,7 @@ func Register(server *mcp.Server, media ...*mediaproxy.Service) {
 		}
 		page, domains := pageAssets(media...)
 		content := &mcp.ResourceContents{URI: uri, MIMEType: MIME, Text: page, Meta: mcp.Meta{
-			"ui": map[string]any{"csp": map[string]any{"connectDomains": []string{}, "resourceDomains": domains}, "prefersBorder": true},
+			"ui": map[string]any{"csp": map[string]any{"connectDomains": []string{}, "resourceDomains": domains}, "permissions": map[string]any{"clipboardWrite": map[string]any{}}, "prefersBorder": false},
 		}}
 		return &mcp.ReadResourceResult{Contents: []*mcp.ResourceContents{content}}, nil
 	}

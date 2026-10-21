@@ -56,12 +56,14 @@ func TestCapabilityLifetimeAndBinding(t *testing.T) {
 	require.NoError(t, err)
 	h, err := auth.NewHandler("https://example.test", store)
 	require.NoError(t, err)
-	var capability string
+	var capability, avatarCapability string
 	issue := h.RequireBearer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		info := sdkauth.TokenInfoFromContext(r.Context())
 		require.NotNil(t, info)
 		var e error
 		capability, e = service.Issue(r.Context(), 72, 42, 1, "thumbnail")
+		require.NoError(t, e)
+		avatarCapability, e = service.Issue(r.Context(), 72, 42, 1, "avatar")
 		require.NoError(t, e)
 	}))
 	req := httptest.NewRequest("POST", "https://example.test/mcp", nil)
@@ -81,6 +83,8 @@ func TestCapabilityLifetimeAndBinding(t *testing.T) {
 	_, err = restarted.verify(t.Context(), strings.TrimPrefix(capability, "https://example.test/media/"))
 	require.Error(t, err)
 
+	avatarURL := "https://i.pximg.net/user-profile/img/2026/01/01/00/00/00/7.png"
+	var requestedPath string
 	var pngBytes bytes.Buffer
 	require.NoError(t, png.Encode(&pngBytes, image.NewRGBA(image.Rect(0, 0, 1, 1))))
 	var closes, reads int
@@ -102,13 +106,14 @@ func TestCapabilityLifetimeAndBinding(t *testing.T) {
 				if ugoira {
 					kind = "ugoira"
 				}
-				b, _ := json.Marshal(map[string]any{"illust": map[string]any{"id": 42, "title": "fixture", "type": kind, "image_urls": map[string]any{"medium": imageURL, "square_medium": imageURL}, "page_count": 1, "create_date": "2026-01-01T00:00:00Z", "user": map[string]any{"id": 7}, "meta_single_page": map[string]any{"original_image_url": imageURL}}})
+				b, _ := json.Marshal(map[string]any{"illust": map[string]any{"id": 42, "title": "fixture", "type": kind, "image_urls": map[string]any{"medium": imageURL, "square_medium": imageURL}, "page_count": 1, "create_date": "2026-01-01T00:00:00Z", "user": map[string]any{"id": 7, "profile_image_urls": map[string]any{"medium": avatarURL}}, "meta_single_page": map[string]any{"original_image_url": imageURL}}})
 				return &http.Response{StatusCode: 200, Header: http.Header{}, Body: io.NopCloser(bytes.NewReader(b))}, nil
 			}
 			require.Equal(t, "i.pximg.net", r.URL.Host)
 			require.Empty(t, r.Header.Get("Authorization"))
 			require.Empty(t, r.Header.Get("Cookie"))
 			require.NotEmpty(t, r.Header.Get("Referer"))
+			requestedPath = r.URL.Path
 			reads++
 			data := pngBytes.Bytes()
 			if badImage {
@@ -153,6 +158,22 @@ func TestCapabilityLifetimeAndBinding(t *testing.T) {
 	require.Equal(t, 502, w.Code)
 	require.Equal(t, 4, reads, "unsafe resource must never reach the image transport")
 	badHost = false
+	t.Run("author avatar remains capability scoped and raster only", func(t *testing.T) {
+		target := avatarCapability
+		w := httptest.NewRecorder()
+		service.ServeHTTP(w, httptest.NewRequest("GET", target, nil))
+		require.Equal(t, 200, w.Code)
+		require.Equal(t, "/user-profile/img/2026/01/01/00/00/00/7.png", requestedPath)
+		require.Equal(t, pngBytes.Bytes(), w.Body.Bytes())
+		badImage = true
+		w = httptest.NewRecorder()
+		service.ServeHTTP(w, httptest.NewRequest("GET", target, nil))
+		require.Equal(t, 502, w.Code, "avatar SVG must not be served")
+		badImage = false
+		w = httptest.NewRecorder()
+		service.ServeHTTP(w, httptest.NewRequest("GET", target+"?download=1", nil))
+		require.Equal(t, 400, w.Code, "avatar cannot acquire original download semantics")
+	})
 	for _, method := range []string{"POST", "DELETE"} {
 		w := httptest.NewRecorder()
 		service.ServeHTTP(w, httptest.NewRequest(method, capability, nil))
@@ -182,6 +203,8 @@ func TestCapabilityLifetimeAndBinding(t *testing.T) {
 	state.Grants["g"] = g
 	save()
 	_, err = service.verify(t.Context(), strings.TrimPrefix(capability, "https://example.test/media/"))
+	require.Error(t, err)
+	_, err = service.verify(t.Context(), strings.TrimPrefix(avatarCapability, "https://example.test/media/"))
 	require.Error(t, err)
 }
 

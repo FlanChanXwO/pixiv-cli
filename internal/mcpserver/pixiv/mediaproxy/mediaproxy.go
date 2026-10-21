@@ -56,10 +56,11 @@ func New(base string, store auth.Store, open func(context.Context, int64) (*life
 func (s *Service) Origin() string { u, _ := url.Parse(s.base); return u.Scheme + "://" + u.Host }
 func (s *Service) Path() string   { u, _ := url.Parse(s.base); return u.EscapedPath() + "/media/" }
 func valid(c claims) bool {
-	return c.Account > 0 && c.Artwork > 0 && c.Page > 0 && (c.Quality == "thumbnail" || c.Quality == "regular" || c.Quality == "original")
+	return c.Account > 0 && c.Artwork > 0 && c.Page > 0 && (c.Quality == "thumbnail" || c.Quality == "regular" || c.Quality == "original" || (c.Quality == "avatar" && c.Page == 1))
 }
 
 // Issue scopes access to one account/artwork/page/quality and the issuing OAuth grant.
+// The internal avatar quality selects only the artwork author's profile image on page 1.
 func (s *Service) Issue(ctx context.Context, account, artwork int64, page int, quality string) (string, error) {
 	if s == nil {
 		return "", errCapability
@@ -200,7 +201,9 @@ func (s *Service) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if variant == "thumbnail" {
 		variant = "thumb"
 	}
-	if artwork.Kind == pixiv.ArtworkKindUgoira {
+	if c.Quality == "avatar" {
+		ref = artwork.User.ProfileImage.Resource.Ref
+	} else if artwork.Kind == pixiv.ArtworkKindUgoira {
 		if c.Page == 1 && c.Quality != "original" {
 			ref = artwork.Cover.Resource.Ref
 			if c.Quality == "thumbnail" {

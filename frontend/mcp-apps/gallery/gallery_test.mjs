@@ -19,6 +19,7 @@ class Element {
   showModal() { this.open=true; }
   close() { this.open=false; }
   click() { this.events.click?.(); }
+  decode() { if (this.naturalWidth) return Promise.resolve(); return new Promise(resolve => { this.resolveDecode = resolve; }); }
   removeAttribute(name) { this[name] = ''; }
   setAttribute(name, value) { this[name] = String(value); }
   getAttribute(name) { return this[name]; }
@@ -38,7 +39,7 @@ class Observer {
 }
 vm.runInNewContext(script, {window, document: {body, documentElement: rootElement, getElementById: id => id === 'status' ? status : cards, createElement: tag => new Element(tag), createElementNS: (_, tag) => new Element(tag)},
   setTimeout(fn,ms) {const id=++timerID;timers.set(id,{fn,ms});return id;}, clearTimeout(id) {timers.delete(id);},
-  URL: {createObjectURL(blob) { const url = 'blob:fixture-' + created.length; created.push({url, blob}); return url; }, revokeObjectURL: url => revoked.push(url)}, Blob, atob,
+  URL: class extends URL { static createObjectURL(blob) { const url = 'blob:fixture-' + created.length; created.push({url, blob}); return url; } static revokeObjectURL(url) { revoked.push(url); } }, Blob, atob,
   IntersectionObserver: class extends Observer { constructor(callback) { super(callback, intersections); } },
   ResizeObserver: class extends Observer { constructor(callback) { super(callback, resizes); } }
 });
@@ -51,7 +52,7 @@ assert.equal(initialize.params.protocolVersion, '2026-01-26');
 receive({id: initialize.id, result: {}}, {});
 await flush();
 assert.equal(sent.length, 1, 'foreign window cannot initialize');
-receive({id: initialize.id, result: {protocolVersion:badProtocol?'unsupported':'2026-01-26', hostCapabilities: {...(tools ? {serverTools:{}} : {}), ...(downloads ? {downloadFile:{}} : {})}, hostContext:{}}});
+receive({id: initialize.id, result: {protocolVersion:badProtocol?'unsupported':'2026-01-26', hostCapabilities: {...(tools ? {serverTools:{},message:{text:{}}} : {}), ...(downloads ? {downloadFile:{}} : {})}, hostContext:{}}});
 await flush();
 if (badProtocol) {
   assert.ok(status.textContent.includes('Gallery bridge unavailable'));
@@ -89,6 +90,7 @@ body.scrollHeight=400;
 
 const record = {id:'42',type:'illust',title:'<img src=x onerror=alert(1)>',caption:'First&#44;<br />Second<BR>Third<br/>Fourth\n<b>Description</b> &#x1F600; &#60;img src=x&#62; &#1114112;',page_count:1,x_restrict:1,user:{id:'7',name:'Artist <b>Name</b>'},published_at:'2026-10-01T12:00:00Z',total_views:420,total_bookmarks:0,width:640,height:800,tags:[{name:'tag'}]};
 const elements = node => [node, ...node.children.flatMap(elements)];
+const settleOriginal = async (dialog, width = 1200, height = 900) => { const pending = elements(dialog).filter(n => n.tag === 'img').find(n => n.resolveDecode); if (pending) { pending.naturalWidth = width; pending.naturalHeight = height; pending.resolveDecode(); pending.resolveDecode = undefined; } await flush(); };
 const button = label => elements(cards).find(node => node.tag === 'button' && ((node.getAttribute('aria-label') || node.textContent) === label || node.getAttribute('aria-label') === 'Open ' + label));
 const freshResult = value => { receive({method:'ui/notifications/tool-input',params:{arguments:{}}}); receive({method:'ui/notifications/tool-result',params:value}); };
 const fullGIF = 'R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7';
@@ -187,7 +189,7 @@ assert.equal(status.textContent,'','successful gallery has no result-count headi
 const card=cards.children[0]; assert.equal(card.children[0].className,'media-frame','image comes first');
 assert.ok(!elements(card).some(n=>n.tag==='h2'||n.className==='artwork-author'||n.className==='tags collapsed'),'list displays thumbnails without text metadata');
 assert.ok(!button('Open artwork'));assert.ok(!button('Load / retry preview'));
-const retry=elements(card).find(n=>n.tag==='button' && n.textContent==='Retry image');assert.equal(retry.hidden,true);
+const retry=elements(card).find(n=>n.tag==='button' && n.getAttribute('aria-label')==='Retry image');assert.equal(retry.hidden,true);
 assert.ok(!elements(card).some(n=>n.textContent===record.caption),'list keeps description in detail');
 assert.ok(!elements(card).some(n=>['artwork-author','rating-badge','page-badge','tag-list'].includes(n.className)),'thumbnail-only list has no metadata overlays');
 assert.equal(sent.filter(x=>x.message.method==='tools/call'&&x.message.params.name==='pixiv_show_gallery').length,tools?1:0);
@@ -211,21 +213,37 @@ assert.ok(elements(detailSection).some(n=>n.className==='artwork-author'&&n.text
 const authorButton=elements(detailSection).find(n=>n.tag==='button'&&n.className==='artwork-author');assert.ok(authorButton,'known author is clickable');authorButton.events.click();assert.deepEqual(latest('ui/open-link').params,{url:'https://www.pixiv.net/users/7'});receive({id:latest('ui/open-link').id,result:{}});await flush();
 const metadata=elements(detailSection).filter(n=>n.className==='metadata-value').map(n=>n.textContent);
 assert.ok(!elements(detailSection).some(n=>n.tag==='dt'&&n.textContent==='Pages'),'detail omits the redundant Pages metadata field');
-for(const value of ['420','0','42','640 × 800'])assert.ok(metadata.includes(value),'metadata includes '+value);
+for(const value of ['420','0','640 × 800'])assert.ok(metadata.includes(value),'metadata includes '+value);
+assert.equal(button('Copy artwork ID').textContent,'42');
 assert.ok(elements(detailSection).some(n=>n.tag==='time'&&n.dateTime===record.published_at));
 assert.ok(elements(detailSection).some(n=>n.className==='rating-badge'&&n.textContent==='R-18'));
+const tagButton=elements(detailSection).find(n=>n.tag==='button'&&n.className==='tag');
+assert.ok(tagButton,'message-capable host exposes real tag actions');tagButton.click();
+const tagMessage=latest('ui/message');assert.equal(tagMessage.params.role,'user');
+assert.ok(tagMessage.params.content[0].text.includes(JSON.stringify('tag')));
+receive({id:tagMessage.id,result:{isError:true}});await flush();
+assert.ok(status.textContent.includes('Tag search could not be sent'));assert.equal(tagButton.disabled,false);
 const back=button('Back to results');assert.ok(back.getAttribute('aria-label'));assert.equal(back.title,'Back to results');assert.ok(elements(back).some(n=>n.tag==='svg'&&n.getAttribute('aria-hidden')==='true'));
 const bookmark=button('Bookmark'),remove=button('Remove bookmark'),refresh=button('Refresh bookmark');
 const visibility=elements(cards).find(n=>n.tag==='select'&&n.getAttribute('aria-label')==='Bookmark visibility');
 assert.ok(visibility);assert.equal(bookmark.disabled,true,'unknown state prohibits bookmark writes');assert.equal(remove.hidden,true);
 const query=latest('tools/call');assert.equal(query.params.name,'pixiv_bookmark_detail');
 receive({id:query.id,result:{structuredContent:{bookmarked:false,restrict:'public',tags:['keep']}}});await flush();
-assert.equal(bookmark.disabled,false);assert.equal(remove.hidden,true);visibility.value='private';bookmark.events.click();
+assert.equal(bookmark.disabled,false);assert.equal(remove.hidden,true);
+const options=elements(cards).find(n=>n.className==='bookmark-options');
+assert.ok(options?.hidden,'advanced bookmark options are hidden until long press');
+const beforeHold=sent.filter(x=>x.message.method==='tools/call').length;
+bookmark.events.pointerdown({button:0,isPrimary:true,pointerId:1,clientX:0,clientY:0});
+const hold=[...timers.entries()].find(([,timer])=>timer.ms===500);assert.ok(hold);timers.delete(hold[0]);hold[1].fn();
+assert.equal(options.hidden,false);bookmark.events.pointerup();bookmark.events.click();
+assert.equal(sent.filter(x=>x.message.method==='tools/call').length,beforeHold,'long press and its following click must not write');
+visibility.value='private';button('Apply bookmark settings').click();
 const add=latest('tools/call');assert.deepEqual(add.params,{name:'pixiv_bookmark_add',arguments:{kind:'artwork',id:42,restrict:'private',tags:['keep']}});
 assert.equal(bookmark.disabled,true);receive({id:add.id,result:{}});await flush();
 const confirm=latest('tools/call');assert.equal(confirm.params.name,'pixiv_bookmark_detail');
 receive({id:confirm.id,result:{structuredContent:{bookmarked:true,restrict:'private',tags:['keep']}}});await flush();
-assert.ok(button('Save bookmark'));assert.equal(remove.hidden,false);assert.equal(visibility.value,'private');
+receive({id:latest('tools/call').id,result:{structuredContent:{records:[record]}}});await flush();
+assert.ok(button('Unbookmark'));assert.equal(remove.hidden,false);assert.equal(visibility.value,'private');
 remove.events.click();const removal=latest('tools/call');assert.deepEqual(removal.params,{name:'pixiv_bookmark_remove',arguments:{kind:'artwork',id:42}});
 receive({id:removal.id,result:{isError:true}});await flush();assert.equal(bookmark.disabled,true,'unconfirmed write requires state refresh');
 assert.ok(elements(cards).some(n=>n.textContent.includes('Bookmark change not confirmed')));
@@ -285,44 +303,62 @@ const reenteredImage=elements(cards).find(n=>n.tag==='img'&&n.src==='https://med
 assert.equal(typeof reenteredImage.events.dblclick,'function','double click opens original viewer');
 const reenteredSurface=elements(cards).find(n=>n.className==='page-media');
 reenteredSurface.events.dblclick({target:{closest:()=>undefined}});await flush();
-const originalCall=latest('tools/call');assert.deepEqual(originalCall.params,{name:'pixiv_artwork_media',arguments:{illust_id:42,pages:[3],quality:'original'}});
-receive({id:originalCall.id,result:{content:[{type:'image',mimeType:'image/png',data:'iVBORw0KGgo='}],structuredContent:{pages:[{page:3,content_index:0,size:8,mime_type:'image/png'}]}}});await flush();
+const originalCall=latest('tools/call');assert.deepEqual(originalCall.params,{name:'pixiv_show_gallery',arguments:{illust_ids:[42],page:3,quality:'original'}},'original preview must stream over HTTP instead of waiting for Base64 tool content');
+const originalResult=page=>({structuredContent:{media_origin:'https://media.test',images:[{illust_id:42,page,url:'https://media.test/pixiv/media/original-'+page}]}});
+receive({id:originalCall.id,result:originalResult(3)});await flush();
 const originalDialog=elements(cards).find(n=>n.tag==='dialog');assert.ok(originalDialog?.open,'original opens in accessible dialog');
-const originalImage=elements(originalDialog).find(n=>n.tag==='img');assert.ok(originalImage.src.startsWith('blob:'));
-originalImage.naturalWidth=1200;originalImage.naturalHeight=900;originalImage.events.load();
+await settleOriginal(originalDialog);
+const originalImage=elements(originalDialog).find(n=>n.tag==='img'&&!n.hidden);
+assert.equal(originalImage.src,'https://media.test/pixiv/media/original-3');
+assert.equal(elements(originalDialog).find(n=>n.className==='original-loading').hidden,true);
+assert.equal(elements(originalDialog).find(n=>n.className==='original-count').children.at(-1).textContent,'3 / 3');
+const lightboxButton=label=>elements(originalDialog).find(n=>n.tag==='button'&&n.getAttribute('aria-label')===label);
+assert.equal(lightboxButton('Previous image').disabled,false);assert.equal(lightboxButton('Next image').disabled,true);
 if(!downloads){
-  await flush();
-  const capability=latest('tools/call');
-  assert.deepEqual(capability.params,{name:'pixiv_show_gallery',arguments:{illust_ids:[42],page:3,quality:'original'}},'browser saving requests a capability for the viewed original page');
-  receive({id:capability.id,result:{structuredContent:{media_origin:'https://media.test',images:[{illust_id:42,page:3,url:'https://media.test/pixiv/media/original-three'}]}}});await flush();
   const browserSave=elements(originalDialog).find(n=>n.tag==='a'&&n.getAttribute('aria-label')==='Download viewed original');
-  assert.ok(browserSave&&!browserSave.hidden,'hosts without downloadFile expose an authorized browser attachment');
-  assert.equal(browserSave.href,'https://media.test/pixiv/media/original-three?download=1','host link validation accepts canonical base prefixes and HTTPS rather than a rejected Blob URL');
+  assert.ok(browserSave&&!browserSave.hidden);
+  assert.equal(browserSave.href,originalImage.src+'?download=1','browser saving reuses the validated original capability');
   assert.equal(browserSave.target,'_blank');assert.equal(browserSave.rel,'noreferrer');
 }
-button('Actual size').events.click();assert.equal(originalImage.className,'original-image actual-size');
-if(downloads){const originalReads=sent.filter(x=>x.message.params?.name==='pixiv_artwork_media').length;button('Download viewed original').events.click();await flush();assert.equal(sent.filter(x=>x.message.params?.name==='pixiv_artwork_media').length,originalReads,'viewed original download reuses bytes');receive({id:latest('ui/download-file').id,result:{}});await flush();}
-button('Close original').events.click();assert.equal(originalDialog.open,false);
-if(!downloads){
-  elements(cards).find(n=>n.tag==='img'&&n.getAttribute('role')==='button').events.click();await flush();
-  const invalidDialog=elements(cards).find(n=>n.tag==='dialog');const invalidImage=elements(invalidDialog).find(n=>n.tag==='img');invalidImage.naturalWidth=1200;invalidImage.naturalHeight=900;invalidImage.events.load();
-  receive({id:latest('tools/call').id,result:{structuredContent:{media_origin:'https://media.test',images:[{illust_id:42,page:3,url:'https://untrusted.test/media/original'}]}}});await flush();
-  assert.ok(elements(invalidDialog).find(n=>n.tag==='a').hidden,'cross-origin original attachments stay inaccessible');
-  assert.ok(elements(invalidDialog).some(n=>n.textContent==='Original download unavailable. Close and reopen to retry.'),'failed attachment preparation retains explicit recovery');
-  button('Close original').events.click();
-  elements(cards).find(n=>n.tag==='img'&&n.getAttribute('role')==='button').events.click();await flush();
-  const closingDialog=elements(cards).find(n=>n.tag==='dialog');const closingImage=elements(closingDialog).find(n=>n.tag==='img');closingImage.naturalWidth=1200;closingImage.naturalHeight=900;closingImage.events.load();const lateCapability=latest('tools/call');
-  button('Close original').events.click();
-  receive({id:lateCapability.id,result:{structuredContent:{media_origin:'https://media.test',images:[{illust_id:42,page:3,url:'https://media.test/media/original-three'}]}}});await flush();
-  assert.ok(!cards.contains(closingDialog),'late original attachment responses cannot reopen the closed viewer');
+lightboxButton('Actual size').events.click();assert.equal(originalImage.className,'original-image original-actual');
+assert.equal(elements(originalDialog).find(n=>n.className==='original-zoom').textContent,'1:1');
+lightboxButton('Fit to window').events.click();assert.equal(originalImage.className,'original-image');
+lightboxButton('Zoom in').events.click();assert.equal(elements(originalDialog).find(n=>n.className==='original-zoom').textContent,'125%');
+for(let i=0;i<20;i++)originalDialog.events.keydown({key:'+',preventDefault(){}});
+assert.equal(elements(originalDialog).find(n=>n.className==='original-zoom').textContent,'400%','manual zoom is capped at 400%');
+originalDialog.events.keydown({key:'0',preventDefault(){}});assert.equal(elements(originalDialog).find(n=>n.className==='original-zoom').textContent,'Fit');
+if(downloads){
+  lightboxButton('Download viewed original').events.click();await flush();
+  const read=latest('tools/call');assert.deepEqual(read.params,{name:'pixiv_artwork_media',arguments:{illust_id:42,pages:[3],quality:'original'}},'host download retrieves bytes only on explicit request');
+  receive({id:read.id,result:{content:[{type:'image',mimeType:'image/png',data:'iVBORw0KGgo='}],structuredContent:{pages:[{page:3,content_index:0,size:8,mime_type:'image/png'}]}}});await flush();
+  assert.equal(latest('ui/download-file').params.contents[0].resource.blob,'iVBORw0KGgo=');
+  receive({id:latest('ui/download-file').id,result:{}});await flush();
 }
-elements(cards).find(n=>n.tag==='img'&&n.getAttribute('role')==='button').events.click();await flush();const hugeOriginal=elements(cards).find(n=>n.tag==='dialog');const hugeImage=elements(hugeOriginal).find(n=>n.tag==='img');hugeImage.naturalWidth=10000;hugeImage.naturalHeight=10000;hugeImage.events.load();
-if(downloads){const beforeHugeDownload=sent.filter(x=>x.message.params?.name==='pixiv_artwork_media').length;button('Download viewed original').events.click();await flush();assert.equal(sent.filter(x=>x.message.params?.name==='pixiv_artwork_media').length,beforeHugeDownload,'active oversized original downloads without a second read');receive({id:latest('ui/download-file').id,result:{}});await flush();}
+lightboxButton('Previous image').events.click();const previousCall=latest('tools/call');assert.deepEqual(previousCall.params,{name:'pixiv_show_gallery',arguments:{illust_ids:[42],page:2,quality:'original'}});
+assert.equal(originalImage.src,'https://media.test/pixiv/media/original-3','old page stays visible while loading');
+assert.equal(elements(originalDialog).find(n=>n.className==='original-loading').hidden,false);
+assert.equal(originalDialog['aria-busy'],'true');
+receive({id:previousCall.id,result:originalResult(2)});await flush();await settleOriginal(originalDialog,800,600);
+assert.equal(originalDialog['aria-busy'],'false');
+const forwardBefore=sent.length;
+originalDialog.events.keydown({key:'ArrowRight',preventDefault(){}});await flush();
+assert.equal(sent.length,forwardBefore,'return to a decoded original reuses its image without another tool call');
+assert.ok(elements(originalDialog).includes(originalImage),'decoded image element is retained');
+lightboxButton('Close original').events.click();assert.equal(originalDialog.open,false);
+// A new result clears retained capabilities; reject untrusted and late original responses.
+freshResult(result);button(record.title).events.click();receive({id:latest('tools/call').id,result:{structuredContent:{records:[{...record,page_count:3}]}}});await flush();
+elements(cards).find(n=>n.tag==='img'&&n.getAttribute('role')==='button').events.click();await flush();
+const invalidDialog=elements(cards).find(n=>n.tag==='dialog');
+receive({id:latest('tools/call').id,result:{structuredContent:{media_origin:'https://media.test',images:[{illust_id:42,page:1,url:'https://untrusted.test/media/original'}]}}});await flush();
+assert.ok(elements(invalidDialog).filter(n=>n.tag==='img').every(n=>!n.src),'untrusted original URLs never reach an image');
+button('Retry image').events.click();const lateCapability=latest('tools/call');button('Close original').events.click();
+receive({id:lateCapability.id,result:originalResult(1)});await flush();assert.ok(!cards.contains(invalidDialog),'late responses cannot reopen a closed viewer');
+elements(cards).find(n=>n.tag==='img'&&n.getAttribute('role')==='button').events.click();await flush();
+receive({id:latest('tools/call').id,result:originalResult(1)});await flush();
+const hugeOriginal=elements(cards).find(n=>n.tag==='dialog');await settleOriginal(hugeOriginal,10000,10000);button('Close original').events.click();
+const beforeHugeOriginal=sent.filter(x=>x.message.params?.name==='pixiv_show_gallery').length;
+elements(cards).find(n=>n.tag==='img'&&n.getAttribute('role')==='button').events.click();await flush();assert.equal(sent.filter(x=>x.message.params?.name==='pixiv_show_gallery').length,beforeHugeOriginal+1,'oversized decoded originals display fully but are not retained');
 button('Close original').events.click();
-const beforeHugeOriginal=sent.filter(x=>x.message.params?.name==='pixiv_artwork_media').length;
-elements(cards).find(n=>n.tag==='img'&&n.getAttribute('role')==='button').events.click();await flush();assert.equal(sent.filter(x=>x.message.params?.name==='pixiv_artwork_media').length,beforeHugeOriginal+1,'actual decoded dimensions exceeding budget invalidate retained original bytes');
-button('Close original').events.click();
-
 // The approved browser budget evicts least-used images, while an oversized image still displays fully.
 freshResult(result);button(record.title).events.click();
 receive({id:latest('tools/call').id,result:{structuredContent:{records:[{...record,page_count:3}]}}});await flush();
@@ -430,5 +466,24 @@ for(const [size,frames] of [[100,1000],[257*1024*1024,1],[100,undefined]]){
   button('Back to results').events.click();assert.equal(unretained.src,'','over-budget or unknown-frame animation is not retained');assert.equal(smallPreview.src,ready.preview_url,'small preview remains eligible');
 }
 
-
+// Caption navigation must not inherit executable URLs or upstream attributes.
+freshResult(result);button(record.title).events.click();
+const captionRequest=latest('tools/call');
+receive({id:captionRequest.id,result:{structuredContent:{records:[{...record,caption:'<a href="https://example.test/artist?a=1&amp;b=2" onclick="evil()">Artist &amp; work</a><br><a href="javascript:alert(1)">unsafe</a><a href="https://user:password@example.test/">credentials</a>'}]}}});await flush();
+const captionLinks=elements(cards).filter(n=>n.tag==='a'&&n.className==='caption-link');
+assert.equal(captionLinks.length,1,'caption cannot turn script URLs or credential-bearing URLs into navigation');
+assert.equal(captionLinks[0].textContent,'Artist & work');assert.equal(captionLinks[0].getAttribute('onclick'),undefined,'upstream event attributes are discarded');
+captionLinks[0].events.click({preventDefault(){}});assert.deepEqual(latest('ui/open-link').params,{url:'https://example.test/artist?a=1&b=2'});receive({id:latest('ui/open-link').id,result:{}});await flush();
+// A follow-up is one user action for the entire app, not one action per tag.
+freshResult(result);button(record.title).click();
+receive({id:latest('tools/call').id,result:{structuredContent:{records:[{...record,tags:[{name:'tag'},{name:'other'}]}]}}});await flush();
+const searchTags=elements(cards).filter(n=>n.tag==='button'&&n.className==='tag');
+const messagesBefore=sent.filter(x=>x.message.method==='ui/message').length;
+searchTags[0].click();assert.ok(searchTags.every(n=>n.disabled),'all tags lock synchronously');
+searchTags[1].click();assert.equal(sent.filter(x=>x.message.method==='ui/message').length,messagesBefore+1,'another tag cannot start a concurrent follow-up');
+receive({id:latest('ui/message').id,result:{isError:true}});await flush();assert.ok(searchTags.every(n=>!n.disabled),'rejection restores all tags');
+searchTags[1].click();receive({id:latest('ui/message').id,result:{}});await flush();
+assert.ok(searchTags.every(n=>n.disabled),'message acceptance is not agent completion');
+button('Back to results').click();button(record.title).click();await flush();
+assert.ok(elements(cards).filter(n=>n.tag==='button'&&n.className==='tag').every(n=>n.disabled),'navigation cannot bypass the accepted follow-up lock');
 for(const f of listeners.pagehide)f();assert.ok(revoked.every(u=>u.startsWith('blob:')));console.log('Gallery mock: on-demand proxy images, layout, retry, stale responses, animation');
