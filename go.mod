@@ -1,6 +1,6 @@
 module github.com/FlanChanXwO/pixiv-cli
 
-go 1.27.1
+go 1.27.3
 
 require (
 	github.com/bogdanfinn/fhttp v0.6.8
