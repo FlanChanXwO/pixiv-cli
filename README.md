@@ -110,38 +110,32 @@ pixiv user detail 12345678
 
 ```mermaid
 flowchart LR
-    subgraph stdio["pixiv mcp (default)"]
-        L1["local CLI accounts"] --- L2["local downloads"]
-    end
-    subgraph http["pixiv mcp --port 1270"]
-        H1["OAuth owner<br/>pixiv mcp auth init"] --- H2["account tools · Gallery UI<br/>protected media links"]
-    end
-    Host["MCP host"] -->|"JSON-RPC on stdout"| stdio
-    Host -->|"Bearer token /mcp"| http
+    Host["MCP host / agent"] -->|"stdio (default)"| L["pixiv mcp<br/>local CLI accounts"]
+    Host -->|"HTTP + OAuth bearer"| H["pixiv mcp --port 1270<br/>remote / cloud connectors"]
 ```
+
+Local (stdio) — add to your MCP client config:
 
 ```json
-{"mcpServers":{"pixiv":{"command":"pixiv","args":["mcp"]}}}
+{
+  "mcpServers": {
+    "pixiv": {
+      "command": "pixiv",
+      "args": ["mcp"]
+    }
+  }
+}
 ```
+
+Remote (authenticated HTTP):
 
 ```bash
-pixiv mcp auth init                                   # once; prints owner secret once
-pixiv mcp --port 1270                                 # http://127.0.0.1:1270/mcp
-pixiv mcp --port 1270 --base-url https://mcp.example.com   # behind an HTTPS proxy
+pixiv mcp auth init                                        # once; prints the owner secret once
+pixiv mcp --port 1270                                      # http://127.0.0.1:1270/mcp
+pixiv mcp --port 1270 --base-url https://mcp.example.com   # behind an HTTPS reverse proxy
 ```
 
-| | stdio | HTTP |
-| --- | --- | --- |
-| Pixiv/FANBOX query and write tools | Yes | Yes |
-| `pixiv_artwork_media` (images, GIF/APNG + PNG preview) | inline | inline or protected App link |
-| `pixiv_download*` to local files | Yes | — |
-| `pixiv_show_gallery`, `pixiv_gallery_animation` | — | Yes |
-| `pixiv_account_*` (list, status, use, login) | use CLI auth | Yes |
-
-- One connector serves Pixiv and FANBOX; migrate `pixiv fanbox mcp` to `pixiv mcp`.
-- Fixed status/error text is English; Pixiv metadata and user text are verbatim.
-- **Warning:** `pixiv_reverse_search` may read **server-side** files and private URLs and upload them to third-party providers. Authorize only trusted connectors.
-- Contracts: [MCP tools](docs/en/mcp-tools.md) · [tool migration](docs/en/mcp-tools.md#tool-migration) · [HTTP startup](docs/en/cli-reference.md#mcp-http-server) · [owner init](docs/en/cli-reference.md#mcp-owner-initialization).
+An authorized HTTP connector acts on the **server's** files and network (e.g. reverse search can read server-side paths), so grant access only to clients you trust. Tools, transports and setup details: [MCP tools](docs/en/mcp-tools.md) · [HTTP startup](docs/en/cli-reference.md#mcp-http-server).
 
 ## Accounts and token safety
 

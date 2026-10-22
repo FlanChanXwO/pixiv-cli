@@ -110,38 +110,32 @@ pixiv user detail 12345678
 
 ```mermaid
 flowchart LR
-    subgraph stdio["pixiv mcp（默认）"]
-        L1["本地 CLI 账号"] --- L2["本地下载"]
-    end
-    subgraph http["pixiv mcp --port 1270"]
-        H1["OAuth owner<br/>pixiv mcp auth init"] --- H2["账号工具 · Gallery UI<br/>受保护媒体链接"]
-    end
-    Host["MCP 宿主"] -->|"stdout 上的 JSON-RPC"| stdio
-    Host -->|"Bearer token /mcp"| http
+    Host["MCP 宿主 / Agent"] -->|"stdio（默认）"| L["pixiv mcp<br/>本地 CLI 账号"]
+    Host -->|"HTTP + OAuth bearer"| H["pixiv mcp --port 1270<br/>远程 / 云端 connector"]
 ```
+
+本地（stdio）——加入 MCP 客户端配置：
 
 ```json
-{"mcpServers":{"pixiv":{"command":"pixiv","args":["mcp"]}}}
+{
+  "mcpServers": {
+    "pixiv": {
+      "command": "pixiv",
+      "args": ["mcp"]
+    }
+  }
+}
 ```
 
+远程（认证 HTTP）：
+
 ```bash
-pixiv mcp auth init                                   # 只需一次；owner secret 只打印一次
-pixiv mcp --port 1270                                 # http://127.0.0.1:1270/mcp
+pixiv mcp auth init                                        # 只需一次；owner secret 只打印一次
+pixiv mcp --port 1270                                      # http://127.0.0.1:1270/mcp
 pixiv mcp --port 1270 --base-url https://mcp.example.com   # 位于 HTTPS 反向代理之后
 ```
 
-| | stdio | HTTP |
-| --- | --- | --- |
-| Pixiv/FANBOX 查询与写入工具 | 是 | 是 |
-| `pixiv_artwork_media`（图片、GIF/APNG + PNG 预览） | inline | inline 或受保护的 App 链接 |
-| `pixiv_download*` 写入本地文件 | 是 | — |
-| `pixiv_show_gallery`、`pixiv_gallery_animation` | — | 是 |
-| `pixiv_account_*`（list、status、use、login） | 使用 CLI 认证 | 是 |
-
-- 一个 connector 同时服务 Pixiv 与 FANBOX；请把 `pixiv fanbox mcp` 迁移到 `pixiv mcp`。
-- 固定的状态/错误文本为英文；Pixiv 元数据和用户文本原样保留。
-- **注意：** `pixiv_reverse_search` 可读取**服务端**文件与私有 URL，并上传给第三方 provider。只授权可信的 connector。
-- 契约：[MCP 工具](docs/zh-CN/mcp-tools.md) · [工具迁移](docs/zh-CN/mcp-tools.md#工具迁移) · [HTTP 启动](docs/zh-CN/cli-reference.md#mcp-http-server) · [owner 初始化](docs/zh-CN/cli-reference.md#mcp-owner-初始化)。
+已授权的 HTTP connector 操作的是**服务器**的文件与网络（例如反向搜图可读取服务端路径），只授权可信的客户端。工具、传输方式与部署细节见 [MCP 工具](docs/zh-CN/mcp-tools.md) · [HTTP 启动](docs/zh-CN/cli-reference.md#mcp-http-server)。
 
 ## 账号与 token 安全
 
