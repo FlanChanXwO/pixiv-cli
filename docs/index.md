@@ -8,8 +8,8 @@ flowchart LR
     Q -->|"log in"| AU["Authentication"]
     Q -->|"run commands"| C["CLI reference"]
     Q -->|"connect an agent"| M["MCP tools → Gallery"]
-    Q -->|"write Go code"| S["SDK"]
     Q -->|"change the code"| A["Architecture"] --> D["Development"] --> CI["CI → Release"]
+    Q -.->|"embed in Go"| S["SDK"]
     Q -->|"automate maintenance"| AG["AGENTS.md + skills"]
 ```
 
@@ -21,9 +21,9 @@ flowchart LR
 | Installation and updates | [Installation](en/install.md) | [安装](zh-CN/install.md) |
 | Login and tokens | [Authentication](en/authentication.md) | [认证](zh-CN/authentication.md) |
 | CLI commands | [CLI reference](en/cli-reference.md) | [CLI 参考](zh-CN/cli-reference.md) |
-| Go SDK | [SDK](en/sdk.md) | [SDK](zh-CN/sdk.md) |
 | MCP tools | [MCP tools](en/mcp-tools.md) | [MCP 工具](zh-CN/mcp-tools.md) |
 | MCP Apps gallery | [MCP Apps gallery](en/mcp-gallery.md) | [MCP Apps 画廊](zh-CN/mcp-gallery.md) |
+| Go SDK (embedding) | [SDK](en/sdk.md) | [SDK](zh-CN/sdk.md) |
 | Issues and PRs | [Contributing](../CONTRIBUTING.md) | [贡献指南](../CONTRIBUTING.zh-CN.md) |
 
 English defines the canonical public interface. Chinese may rephrase, but commands, parameters, schemas, output and security rules stay identical.

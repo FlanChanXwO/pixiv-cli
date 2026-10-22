@@ -8,8 +8,8 @@ flowchart LR
     Q -->|"登录"| AU["认证"]
     Q -->|"使用命令"| C["CLI 参考"]
     Q -->|"接入 Agent"| M["MCP 工具 → 画廊"]
-    Q -->|"写 Go 代码"| S["SDK"]
     Q -->|"修改代码"| A["架构"] --> D["开发"] --> CI["CI → 发布"]
+    Q -.->|"嵌入 Go 程序"| S["SDK"]
     Q -->|"自动化维护"| AG["AGENTS.md + skills"]
 ```
 
@@ -21,9 +21,9 @@ flowchart LR
 | 安装与更新 | [Installation](en/install.md) | [安装](zh-CN/install.md) |
 | 登录与 token | [Authentication](en/authentication.md) | [认证](zh-CN/authentication.md) |
 | CLI 命令 | [CLI reference](en/cli-reference.md) | [CLI 参考](zh-CN/cli-reference.md) |
-| Go SDK | [SDK](en/sdk.md) | [SDK](zh-CN/sdk.md) |
 | MCP 工具 | [MCP tools](en/mcp-tools.md) | [MCP 工具](zh-CN/mcp-tools.md) |
 | MCP Apps 画廊 | [MCP Apps gallery](en/mcp-gallery.md) | [MCP Apps 画廊](zh-CN/mcp-gallery.md) |
+| Go SDK（嵌入） | [SDK](en/sdk.md) | [SDK](zh-CN/sdk.md) |
 | Issue 与 PR | [Contributing](../CONTRIBUTING.md) | [贡献指南](../CONTRIBUTING.zh-CN.md) |
 
 英文文档定义 canonical 公开接口。中文可调整表达，但命令、参数、schema、输出与安全规则必须一致。

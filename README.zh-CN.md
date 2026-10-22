@@ -2,7 +2,7 @@
 
 # pixiv-cli
 
-**Pixiv CLI · MCP server (stdio / HTTP) · Go SDK**
+**Pixiv CLI · MCP server (stdio / HTTP)**
 
 [English](README.md) · [简体中文](README.zh-CN.md)
 
@@ -12,7 +12,7 @@
 
 </div>
 
-Pixiv 的非官方 CLI、MCP server 与 Go SDK，三个入口共用同一套实现；另附带只读的 FANBOX 支持。
+Pixiv 的非官方 CLI 与 MCP server：在终端或 AI Agent 中搜索、浏览、收藏、关注与下载。另附带只读的 FANBOX 支持。
 
 > 本项目与 Pixiv Inc. 无隶属或背书关系。使用时请遵守 Pixiv 条款与适用法律。
 
@@ -20,8 +20,7 @@ Pixiv 的非官方 CLI、MCP server 与 Go SDK，三个入口共用同一套实�
 flowchart LR
     U["你 / 脚本"] --> CLI["pixiv CLI"]
     A["AI Agent"] --> MCP["pixiv mcp<br/>stdio · HTTP+OAuth"]
-    G["Go 程序"] --> SDK
-    CLI --> SDK["公开 SDK<br/>sdk/pixiv · sdk/fanbox"]
+    CLI --> SDK["共享核心<br/>（也作为公开 Go SDK）"]
     MCP --> SDK
     SDK --> PX["Pixiv App API<br/>（仅限已认证）"]
     SDK -.-> FB["FANBOX 附加支持<br/>（只读，FANBOXSESSID）"]
@@ -144,28 +143,6 @@ pixiv mcp --port 1270 --base-url https://mcp.example.com   # 位于 HTTPS 反向
 - **注意：** `pixiv_reverse_search` 可读取**服务端**文件与私有 URL，并上传给第三方 provider。只授权可信的 connector。
 - 契约：[MCP 工具](docs/zh-CN/mcp-tools.md) · [工具迁移](docs/zh-CN/mcp-tools.md#工具迁移) · [HTTP 启动](docs/zh-CN/cli-reference.md#mcp-http-server) · [owner 初始化](docs/zh-CN/cli-reference.md#mcp-owner-初始化)。
 
-### Go SDK
-
-凭据必须显式传入——SDK 不读取 CLI 的本地账号库或环境变量。请持久化 `Open` 返回的轮换后凭据。
-
-```go
-client, creds, err := pixiv.Open(ctx, refreshToken) // github.com/FlanChanXwO/pixiv-cli/sdk/pixiv
-if err != nil {
-	log.Fatal(err)
-}
-_ = creds // 持久化 creds.RefreshToken()
-
-result, err := client.SearchArtworks(ctx, pixiv.SearchArtworksRequest{Word: "初音ミク"})
-if err != nil {
-	log.Fatal(err)
-}
-for _, artwork := range result.Items {
-	fmt.Printf("%d %s\n", artwork.ID, artwork.URL)
-}
-```
-
-`sdk/fanbox` 显式接收 `FANBOXSESSID`。模型、cursor、资源与错误见 [SDK 指南](docs/zh-CN/sdk.md)。
-
 ## 账号与 token 安全
 
 ```bash
@@ -186,8 +163,8 @@ pixiv auth pool status     # 可选的读取账号池
 | [安装](docs/zh-CN/install.md) | 安装渠道、Docker、信任、`pixiv update` |
 | [认证](docs/zh-CN/authentication.md) | 登录、跨机器 hand-off、token 导入导出 |
 | [CLI 参考](docs/zh-CN/cli-reference.md) | 命令、参数、配置、下载、MCP 启动 |
-| [Go SDK](docs/zh-CN/sdk.md) | 客户端、模型、分页、资源、错误 |
 | [MCP 工具](docs/zh-CN/mcp-tools.md) · [MCP Apps 画廊](docs/zh-CN/mcp-gallery.md) | 工具 schema、输出、HTTP 授权、Gallery UI |
+| [Go SDK](docs/zh-CN/sdk.md) | 在 Go 程序中嵌入同一核心 |
 | [架构](docs/zh-CN/maintainers/architecture.md) · [MCP server](docs/zh-CN/maintainers/architecture-mcp.md) | 包边界与运行时流程 |
 | [开发](docs/zh-CN/maintainers/development.md) · [CI](docs/zh-CN/maintainers/ci.md) · [发布](docs/zh-CN/maintainers/release.md) | 工具链、测试、PR 门禁、发布 |
 | [更新日志](changelog/README.zh-CN.md) | 用户可见变更 |

@@ -2,7 +2,7 @@
 
 # pixiv-cli
 
-**Pixiv CLI · MCP server (stdio / HTTP) · Go SDK**
+**Pixiv CLI · MCP server (stdio / HTTP)**
 
 [English](README.md) · [简体中文](README.zh-CN.md)
 
@@ -12,7 +12,7 @@
 
 </div>
 
-Unofficial CLI, MCP server and Go SDK for Pixiv — three entry points over one shared implementation. Read-only FANBOX access is included as an add-on.
+Unofficial CLI and MCP server for Pixiv: search, browse, bookmark, follow and download from a terminal or an AI agent. Read-only FANBOX access is included as an add-on.
 
 > Not affiliated with or endorsed by Pixiv Inc. Follow Pixiv's terms and applicable law.
 
@@ -20,8 +20,7 @@ Unofficial CLI, MCP server and Go SDK for Pixiv — three entry points over one 
 flowchart LR
     U["You / scripts"] --> CLI["pixiv CLI"]
     A["AI agents"] --> MCP["pixiv mcp<br/>stdio · HTTP+OAuth"]
-    G["Go programs"] --> SDK
-    CLI --> SDK["public SDK<br/>sdk/pixiv · sdk/fanbox"]
+    CLI --> SDK["shared core<br/>(also a public Go SDK)"]
     MCP --> SDK
     SDK --> PX["Pixiv App API<br/>(authenticated only)"]
     SDK -.-> FB["FANBOX add-on<br/>(read-only, FANBOXSESSID)"]
@@ -144,28 +143,6 @@ pixiv mcp --port 1270 --base-url https://mcp.example.com   # behind an HTTPS pro
 - **Warning:** `pixiv_reverse_search` may read **server-side** files and private URLs and upload them to third-party providers. Authorize only trusted connectors.
 - Contracts: [MCP tools](docs/en/mcp-tools.md) · [tool migration](docs/en/mcp-tools.md#tool-migration) · [HTTP startup](docs/en/cli-reference.md#mcp-http-server) · [owner init](docs/en/cli-reference.md#mcp-owner-initialization).
 
-### Go SDK
-
-Credentials are passed explicitly — the SDK never reads the CLI store or environment. Persist the rotated credentials returned by `Open`.
-
-```go
-client, creds, err := pixiv.Open(ctx, refreshToken) // github.com/FlanChanXwO/pixiv-cli/sdk/pixiv
-if err != nil {
-	log.Fatal(err)
-}
-_ = creds // persist creds.RefreshToken()
-
-result, err := client.SearchArtworks(ctx, pixiv.SearchArtworksRequest{Word: "初音ミク"})
-if err != nil {
-	log.Fatal(err)
-}
-for _, artwork := range result.Items {
-	fmt.Printf("%d %s\n", artwork.ID, artwork.URL)
-}
-```
-
-`sdk/fanbox` takes an explicit `FANBOXSESSID`. Models, cursors, resources and errors: [SDK guide](docs/en/sdk.md).
-
 ## Accounts and token safety
 
 ```bash
@@ -186,8 +163,8 @@ pixiv auth pool status     # opt-in read pool
 | [Installation](docs/en/install.md) | Channels, Docker, trust, `pixiv update` |
 | [Authentication](docs/en/authentication.md) | Login, remote hand-off, token import/export |
 | [CLI reference](docs/en/cli-reference.md) | Commands, flags, config, downloads, MCP startup |
-| [Go SDK](docs/en/sdk.md) | Client, models, pagination, resources, errors |
 | [MCP tools](docs/en/mcp-tools.md) · [MCP Apps gallery](docs/en/mcp-gallery.md) | Tool schemas, output, HTTP authorization, Gallery UI |
+| [Go SDK](docs/en/sdk.md) | Embedding the same core in Go programs |
 | [Architecture](docs/en/maintainers/architecture.md) · [MCP server](docs/en/maintainers/architecture-mcp.md) | Package boundaries and runtime flow |
 | [Development](docs/en/maintainers/development.md) · [CI](docs/en/maintainers/ci.md) · [Release](docs/en/maintainers/release.md) | Toolchain, tests, PR gates, releases |
 | [Changelog](changelog/README.md) | User-visible changes |
