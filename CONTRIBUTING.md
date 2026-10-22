@@ -16,7 +16,7 @@ flowchart LR
 
 ## Ground rules
 
-- ❌ Never include Pixiv tokens, cookies, downloaded works, local databases, caches, machine-specific config or private API responses in an issue, fixture, commit or CI log.
+- Never include Pixiv tokens, cookies, downloaded works, local databases, caches, machine-specific config or private API responses in an issue, fixture, commit or CI log.
 - Keep changes focused; unrelated cleanup goes in a separate PR.
 - Don't hide real authentication, network, Pixiv API, filesystem or encoding failures behind empty success or silent fallback. No arbitrary timeouts, truncation, pagination caps, retry limits or hidden downgrades.
 - Real Pixiv/FANBOX SDK and reverse-search checks are opt-in: never use a user's account or upload an image without explicit authorization, and never put a real token on a command line stored in shell history.

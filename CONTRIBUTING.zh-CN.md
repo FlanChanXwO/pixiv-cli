@@ -16,7 +16,7 @@ flowchart LR
 
 ## 基本规则
 
-- ❌ 不要在 issue、fixture、commit 或 CI 日志中包含 Pixiv token、Cookie、下载作品、本地数据库、缓存、机器配置或私有 API 响应。
+- 不要在 issue、fixture、commit 或 CI 日志中包含 Pixiv token、Cookie、下载作品、本地数据库、缓存、机器配置或私有 API 响应。
 - 改动保持聚焦；无关清理单独提 PR。
 - 不得把真实的认证、网络、Pixiv API、文件系统或编码失败隐藏为空成功或静默 fallback；不得增加无依据的 timeout、截断、分页上限、重试限制或隐藏降级。
 - 真实 Pixiv/FANBOX SDK 与反向搜图检查均为 opt-in：未经明确授权不得使用用户账号或上传图片，也不要把真实 token 放进会写入 shell history 的命令行。

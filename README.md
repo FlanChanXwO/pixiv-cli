@@ -12,7 +12,7 @@
 
 </div>
 
-Unofficial CLI, MCP server and Go SDK for Pixiv and FANBOX — one implementation behind three entry points.
+Unofficial CLI, MCP server and Go SDK for Pixiv — three entry points over one shared implementation. Read-only FANBOX access is included as an add-on.
 
 > Not affiliated with or endorsed by Pixiv Inc. Follow Pixiv's terms and applicable law.
 
@@ -24,7 +24,7 @@ flowchart LR
     CLI --> SDK["public SDK<br/>sdk/pixiv · sdk/fanbox"]
     MCP --> SDK
     SDK --> PX["Pixiv App API<br/>(authenticated only)"]
-    SDK --> FB["FANBOX<br/>(FANBOXSESSID)"]
+    SDK -.-> FB["FANBOX add-on<br/>(read-only, FANBOXSESSID)"]
     CLI -.->|"search IMAGE"| RS["SauceNAO · ascii2d"]
     MCP -.->|"reverse search"| RS
 ```
@@ -33,14 +33,14 @@ flowchart LR
 
 | Area | Highlights |
 | --- | --- |
-| 🔍 Discover | Search artworks/novels/users; filter by rating, subtype, AI mode, aspect ratio, resolution, drawing tool, bookmark count; all 16 ranking modes; recommendations, timelines, series, comments |
-| 🖼️ Reverse search | Local image or URL → SauceNAO / ascii2d → canonical Pixiv records |
-| ⬇️ Download | Artwork IDs/URLs, creator and public-bookmark URLs, allowed CDN URLs; page ranges, quality, GIF/APNG Ugoira; full success/warning/failure report |
-| ❤️ Account actions | Bookmarks, follows, comments and stamps |
-| 👤 Accounts | Browser OAuth login, multi-account, token rotation, optional cross-machine relay, opt-in account pool honoring `Retry-After` |
-| 📦 FANBOX | Read-only creators, posts, feeds, tags and first-party files with a separate `FANBOXSESSID` |
-| 🤖 MCP | Same features as tools; image and Ugoira bytes; MCP Apps gallery over HTTP |
-| 🧩 Pipelines | Piped lists emit canonical NDJSON that `detail`, `download`, `bookmark` and `follow` consume |
+| Discover | Search artworks/novels/users; filter by rating, subtype, AI mode, aspect ratio, resolution, drawing tool, bookmark count; all 16 ranking modes; recommendations, timelines, series, comments |
+| Reverse search | Local image or URL → SauceNAO / ascii2d → canonical Pixiv records |
+| Download | Artwork IDs/URLs, creator and public-bookmark URLs, allowed CDN URLs; page ranges, quality, GIF/APNG Ugoira; full success/warning/failure report |
+| Account actions | Bookmarks, follows, comments and stamps |
+| Accounts | Browser OAuth login, multi-account, token rotation, optional cross-machine relay, opt-in account pool honoring `Retry-After` |
+| MCP | Same features as tools; image and Ugoira bytes; MCP Apps gallery over HTTP |
+| Pipelines | Piped lists emit canonical NDJSON that `detail`, `download`, `bookmark` and `follow` consume |
+| FANBOX (add-on) | Read-only creators, posts, feeds, tags and first-party files with a separate `FANBOXSESSID` |
 
 ```mermaid
 flowchart LR
@@ -64,7 +64,7 @@ flowchart LR
 - Direct downloads ship checksums and an Ed25519-signed manifest. Details: [installation](docs/en/install.md), [Docker](docs/en/install.md#docker), [Go source](docs/en/install.md#go-source-installation).
 
 <details>
-<summary>🤖 Install with an AI agent (copy this prompt)</summary>
+<summary>Install with an AI agent (copy this prompt)</summary>
 
 ```text
 Install the latest stable pixiv-cli from https://github.com/FlanChanXwO/pixiv-cli for this machine: inspect the repository's scripts/install.sh or scripts/install.cmd first, choose the script matching the detected OS and architecture (the Windows path must use cmd.exe and must not invoke PowerShell), download only official GitHub Release assets, require the published SHA-256 check to pass before replacing anything, install per-user without administrator or root privileges, add only the chosen install directory to the user PATH, ask before installing any missing prerequisite, never read or output Pixiv credentials, verify with pixiv --version, and report the installed version plus every file and PATH change.
@@ -133,15 +133,15 @@ pixiv mcp --port 1270 --base-url https://mcp.example.com   # behind an HTTPS pro
 
 | | stdio | HTTP |
 | --- | --- | --- |
-| Pixiv/FANBOX query and write tools | ✅ | ✅ |
+| Pixiv/FANBOX query and write tools | Yes | Yes |
 | `pixiv_artwork_media` (images, GIF/APNG + PNG preview) | inline | inline or protected App link |
-| `pixiv_download*` to local files | ✅ | — |
-| `pixiv_show_gallery`, `pixiv_gallery_animation` | — | ✅ |
-| `pixiv_account_*` (list, status, use, login) | use CLI auth | ✅ |
+| `pixiv_download*` to local files | Yes | — |
+| `pixiv_show_gallery`, `pixiv_gallery_animation` | — | Yes |
+| `pixiv_account_*` (list, status, use, login) | use CLI auth | Yes |
 
 - One connector serves Pixiv and FANBOX; migrate `pixiv fanbox mcp` to `pixiv mcp`.
 - Fixed status/error text is English; Pixiv metadata and user text are verbatim.
-- ⚠️ `pixiv_reverse_search` may read **server-side** files and private URLs and upload them to third-party providers. Authorize only trusted connectors.
+- **Warning:** `pixiv_reverse_search` may read **server-side** files and private URLs and upload them to third-party providers. Authorize only trusted connectors.
 - Contracts: [MCP tools](docs/en/mcp-tools.md) · [tool migration](docs/en/mcp-tools.md#tool-migration) · [HTTP startup](docs/en/cli-reference.md#mcp-http-server) · [owner init](docs/en/cli-reference.md#mcp-owner-initialization).
 
 ### Go SDK

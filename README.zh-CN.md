@@ -12,7 +12,7 @@
 
 </div>
 
-Pixiv 与 FANBOX 的非官方 CLI、MCP server 和 Go SDK——同一套实现，三个入口。
+Pixiv 的非官方 CLI、MCP server 与 Go SDK，三个入口共用同一套实现；另附带只读的 FANBOX 支持。
 
 > 本项目与 Pixiv Inc. 无隶属或背书关系。使用时请遵守 Pixiv 条款与适用法律。
 
@@ -24,7 +24,7 @@ flowchart LR
     CLI --> SDK["公开 SDK<br/>sdk/pixiv · sdk/fanbox"]
     MCP --> SDK
     SDK --> PX["Pixiv App API<br/>（仅限已认证）"]
-    SDK --> FB["FANBOX<br/>（FANBOXSESSID）"]
+    SDK -.-> FB["FANBOX 附加支持<br/>（只读，FANBOXSESSID）"]
     CLI -.->|"search 图片"| RS["SauceNAO · ascii2d"]
     MCP -.->|"反向搜图"| RS
 ```
@@ -33,14 +33,14 @@ flowchart LR
 
 | 领域 | 要点 |
 | --- | --- |
-| 🔍 发现 | 搜索作品/小说/用户；按分级、子类型、AI 模式、横纵比、分辨率、绘图工具、收藏数筛选；全部 16 种排行榜；推荐、时间线、系列、评论 |
-| 🖼️ 反向搜图 | 本地图片或 URL → SauceNAO / ascii2d → canonical Pixiv record |
-| ⬇️ 下载 | 作品 ID/URL、作者与公开收藏页 URL、允许的 CDN 直链；页码区间、质量、Ugoira GIF/APNG；完整的成功/warning/失败报告 |
-| ❤️ 账号操作 | 收藏、关注、评论与贴图 |
-| 👤 账号 | 浏览器 OAuth 登录、多账号、token 轮换、可选跨机器 relay、遵循 `Retry-After` 的可选账号池 |
-| 📦 FANBOX | 用独立的 `FANBOXSESSID` 只读访问创作者、帖子、feed、标签与第一方文件 |
-| 🤖 MCP | 上述能力均以工具提供；交付图片与 Ugoira 字节；HTTP 下提供 MCP Apps 画廊 |
-| 🧩 管道 | 列表接入管道时自动输出 canonical NDJSON，可交给 `detail`、`download`、`bookmark`、`follow` 消费 |
+| 发现 | 搜索作品/小说/用户；按分级、子类型、AI 模式、横纵比、分辨率、绘图工具、收藏数筛选；全部 16 种排行榜；推荐、时间线、系列、评论 |
+| 反向搜图 | 本地图片或 URL → SauceNAO / ascii2d → canonical Pixiv record |
+| 下载 | 作品 ID/URL、作者与公开收藏页 URL、允许的 CDN 直链；页码区间、质量、Ugoira GIF/APNG；完整的成功/warning/失败报告 |
+| 账号操作 | 收藏、关注、评论与贴图 |
+| 账号 | 浏览器 OAuth 登录、多账号、token 轮换、可选跨机器 relay、遵循 `Retry-After` 的可选账号池 |
+| MCP | 上述能力均以工具提供；交付图片与 Ugoira 字节；HTTP 下提供 MCP Apps 画廊 |
+| 管道 | 列表接入管道时自动输出 canonical NDJSON，可交给 `detail`、`download`、`bookmark`、`follow` 消费 |
+| FANBOX（附加） | 用独立的 `FANBOXSESSID` 只读访问创作者、帖子、feed、标签与第一方文件 |
 
 ```mermaid
 flowchart LR
@@ -64,7 +64,7 @@ flowchart LR
 - 直接下载附带校验和与 Ed25519 签名清单。详见 [安装](docs/zh-CN/install.md)、[Docker](docs/zh-CN/install.md#docker)、[Go 源码安装](docs/zh-CN/install.md#go-源码安装)。
 
 <details>
-<summary>🤖 让 AI Agent 安装（复制这段 prompt）</summary>
+<summary>让 AI Agent 安装（复制这段 prompt）</summary>
 
 ```text
 请为这台机器安装 https://github.com/FlanChanXwO/pixiv-cli 的最新 stable 版本：先审阅仓库中的 scripts/install.sh 或 scripts/install.cmd，再根据检测到的操作系统与架构选择对应脚本（Windows 必须使用 cmd.exe，禁止调用 PowerShell），只下载官方 GitHub Release 资产，只有发布的 SHA-256 校验通过后才能替换文件，使用无需管理员或 root 权限的用户级目录，只把选定安装目录加入用户 PATH，缺少任何前置工具时先征求同意，绝不读取或输出 Pixiv 凭据，最后运行 pixiv --version 验证，并报告安装版本及全部文件和 PATH 变更。
@@ -133,15 +133,15 @@ pixiv mcp --port 1270 --base-url https://mcp.example.com   # 位于 HTTPS 反向
 
 | | stdio | HTTP |
 | --- | --- | --- |
-| Pixiv/FANBOX 查询与写入工具 | ✅ | ✅ |
+| Pixiv/FANBOX 查询与写入工具 | 是 | 是 |
 | `pixiv_artwork_media`（图片、GIF/APNG + PNG 预览） | inline | inline 或受保护的 App 链接 |
-| `pixiv_download*` 写入本地文件 | ✅ | — |
-| `pixiv_show_gallery`、`pixiv_gallery_animation` | — | ✅ |
-| `pixiv_account_*`（list、status、use、login） | 使用 CLI 认证 | ✅ |
+| `pixiv_download*` 写入本地文件 | 是 | — |
+| `pixiv_show_gallery`、`pixiv_gallery_animation` | — | 是 |
+| `pixiv_account_*`（list、status、use、login） | 使用 CLI 认证 | 是 |
 
 - 一个 connector 同时服务 Pixiv 与 FANBOX；请把 `pixiv fanbox mcp` 迁移到 `pixiv mcp`。
 - 固定的状态/错误文本为英文；Pixiv 元数据和用户文本原样保留。
-- ⚠️ `pixiv_reverse_search` 可读取**服务端**文件与私有 URL，并上传给第三方 provider。只授权可信的 connector。
+- **注意：** `pixiv_reverse_search` 可读取**服务端**文件与私有 URL，并上传给第三方 provider。只授权可信的 connector。
 - 契约：[MCP 工具](docs/zh-CN/mcp-tools.md) · [工具迁移](docs/zh-CN/mcp-tools.md#工具迁移) · [HTTP 启动](docs/zh-CN/cli-reference.md#mcp-http-server) · [owner 初始化](docs/zh-CN/cli-reference.md#mcp-owner-初始化)。
 
 ### Go SDK
