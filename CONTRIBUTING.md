@@ -2,20 +2,28 @@
 
 English | [简体中文](CONTRIBUTING.zh-CN.md)
 
-We welcome focused bug reports, documentation fixes, tests, and well-scoped features.
+Focused bug reports, docs fixes, tests and well-scoped features are welcome.
 
-## Before you start
+```mermaid
+flowchart LR
+    I["Search issues/PRs"] --> Big{"Large feature, public API,<br/>new dependency or auth change?"}
+    Big -->|yes| Disc["Discuss first"] --> Red
+    Big -->|no| Red["Red: failing test<br/>(or existing check)"]
+    Red --> Green["Green: smallest change"] --> Ref["Refactor"]
+    Ref --> Chk["Focused tests → regression<br/>git diff --check"]
+    Chk --> Docs["Update EN + ZH docs"] --> PR["Open PR<br/>(template + verification)"]
+```
 
-- Search existing issues and pull requests before opening a duplicate.
-- Discuss large features, public API changes, new dependencies, or authentication changes before implementation.
-- Never include Pixiv tokens, cookies, downloaded works, local databases, cache files, machine-specific configuration, or private API responses in an issue, fixture, commit, or CI log.
-- Keep changes focused. Unrelated cleanup is easier to review as a separate pull request.
+## Ground rules
 
-## Development environment
+- Never include Pixiv tokens, cookies, downloaded works, local databases, caches, machine-specific config or private API responses in an issue, fixture, commit or CI log.
+- Keep changes focused; unrelated cleanup goes in a separate PR.
+- Don't hide real authentication, network, Pixiv API, filesystem or encoding failures behind empty success or silent fallback. No arbitrary timeouts, truncation, pagination caps, retry limits or hidden downgrades.
+- Real Pixiv/FANBOX SDK and reverse-search checks are opt-in: never use a user's account or upload an image without explicit authorization, and never put a real token on a command line stored in shell history.
 
-Source builds use the Go version declared in `go.mod` and `CGO_ENABLED=0`; no Rust toolchain, native library or C linker is needed. Race-detector tests use `CGO_ENABLED=1` and require a working C toolchain. Windows builds run through Git Bash, MSYS2, or WSL.
+## Build and test
 
-Build and test from the repository root:
+Go version from `go.mod`, `CGO_ENABLED=0`, no Rust/native library/C linker. Race tests need `CGO_ENABLED=1` and a C toolchain. On Windows use Git Bash, MSYS2 or WSL.
 
 ```bash
 CGO_ENABLED=0 go test ./...
@@ -23,53 +31,43 @@ sh scripts/build.sh
 ./build/pixiv --help
 ```
 
-See the [development guide](docs/en/maintainers/development.md) for encoder verification, opt-in real API tests, release gates, and platform details.
+Encoder verification, opt-in real API tests, release gates and platforms: [development guide](docs/en/maintainers/development.md).
 
 ## Architecture guardrails
 
-- `cmd/pixiv` delegates to `internal/cli`; `internal/cli/root.go` owns command registration, global lifecycle, and production wiring, while concrete commands live under `internal/cli/commands`.
-- CLI and MCP Pixiv/FANBOX capabilities call the public `sdk/pixiv` and `sdk/fanbox` APIs through owner-local narrow ports; they do not call `internal/services/{pixiv,fanbox}` protocol adapters directly.
-- MCP product aggregators live in `internal/mcpserver/{pixiv,fanbox}`, tools in each product's `tools/<tool>` directory, and stdio is started by the CLI MCP command; stdout remains reserved for JSON-RPC.
-- Keep cross-subsystem mechanisms under `internal/shared/*`, protocol-independent leaf helpers under `internal/utils/*`, config/path ownership under `internal/config/{settings,paths}`, and files focused on one responsibility.
+| Rule | Detail |
+| --- | --- |
+| Thin entry | `cmd/pixiv` → `internal/cli`; `internal/cli/root.go` owns registration, lifecycle and production wiring; commands live in `internal/cli/commands` |
+| SDK only | CLI/MCP call `sdk/pixiv` / `sdk/fanbox` through owner-local narrow ports, never `internal/services/{pixiv,fanbox}` protocol adapters |
+| MCP layout | Aggregators in `internal/mcpserver/{pixiv,fanbox}`, tools in `tools/<tool>`; stdio stdout is JSON-RPC only |
+| Shared code | Cross-subsystem mechanisms in `internal/shared/*`, protocol-free helpers in `internal/utils/*`, config/paths in `internal/config/{settings,paths}`; one responsibility per file |
 
-Read [the architecture guide](docs/en/maintainers/architecture.md) and the repository [AGENTS.md](AGENTS.md) before changing these boundaries.
+Read the [architecture guide](docs/en/maintainers/architecture.md) and [AGENTS.md](AGENTS.md) before moving these boundaries.
 
-## Develop with tests
+## Tests
 
-Use a red-green-refactor loop for features and behavior fixes:
+1. Inspect existing assertions; prefer existing checks. Keep new test code only for an uncovered, durable core contract; one-off probes stay in `tmp/test/`.
+2. Implement the smallest coherent change that passes.
+3. Refactor without changing verified public behavior.
+4. Run focused tests, then the relevant regression suite.
 
-1. Inspect existing assertions; prefer existing checks. Retain new test code only for an uncovered, durable core contract under the linked admission rules; keep one-off verification local under `tmp/test/`.
-2. Implement the smallest coherent change that makes it pass.
-3. Refactor without changing the verified public behavior.
-4. Run the focused tests, then the relevant regression suite.
+Pure restructuring uses before/after characterization; comment-only edits use document/tool checks. Rules for admission, temporary evidence and Red exceptions: [test selection](.agents/skills/pixiv-cli-test/SKILL.md#decide-whether-test-code-must-change). A required regression or security check is never optional because it is short. Test through the public boundary when practical.
 
-Pure restructuring reuses characterization before and after; ordinary comment-only edits use document/tool checks. See [test selection](.agents/skills/pixiv-cli-test/SKILL.md#decide-whether-test-code-must-change) for mainline admission, temporary evidence, duplication, and applicable Red exceptions. A passing temporary probe need not become a committed test. A required regression or security check is not optional merely because its implementation is short.
+## Agents
 
-Test public behavior through the public boundary whenever practical. Do not hide real authentication, network, Pixiv API, filesystem, or encoding failures behind empty success results or silent fallback. Do not add arbitrary timeouts, truncation, pagination caps, retry limits, or hidden downgrade paths.
-
-Real Pixiv/FANBOX SDK and reverse-search checks are opt-in. Do not run them with a user's local account or upload an image unless the user has explicitly authorized that action; never put a real token on a command line that may be stored in shell history.
-
-## Agent-assisted development
-
-Start with [AGENTS.md](AGENTS.md). The checked-in `pixiv-cli-*` maintenance skills define Go design, focused testing, MCP/native work, review, PR, and release workflows without requiring any personal global instructions or CCS installation. Clients without skill discovery can read their `SKILL.md` files directly. Keep agent contracts, skill content, references, and UI metadata English; public locale documentation remains bilingual.
+Start at [AGENTS.md](AGENTS.md). The checked-in `pixiv-cli-*` skills cover design, testing, MCP/native, review, PR and release without personal global instructions or CCS; clients without skill discovery read each `SKILL.md`. Agent contracts and skills stay English; public docs stay bilingual.
 
 ## Documentation
 
-Source comments may be English or Chinese. Follow [code commenting](.agents/skills/pixiv-cli-code-commenting/SKILL.md) for accurate API contracts, intent, and optional numbered phases; the English instruction-file requirement does not impose English comments or per-function comment quotas.
+Update docs in the same PR when a command, flag, SDK API, MCP tool, config key, environment variable, output contract, auth flow, proxy, download behavior or known limitation changes.
 
-Update documentation in the same pull request when changing a command, flag, SDK API, MCP tool, configuration key, environment variable, output contract, authentication flow, proxy behavior, download behavior, or known limitation.
-
-- Keep `README.md` and `README.zh-CN.md` behaviorally aligned.
-- Keep all existing locale versions under `docs/<locale>/` behaviorally aligned; never use untranslated placeholder content.
-- Update localized SDK/MCP contracts or `docs/en/maintainers/` according to their documented responsibility.
-- Keep the pull-request body useful for review: explain what changed, record the verification you actually ran, and complete the checklist. During release preparation, maintainers audit every merged PR and direct commit, then write matching English and Simplified Chinese notes with inline sources. Internal-only work belongs under `Maintenance`. See [release notes and publication](docs/en/maintainers/development.md#release-notes-and-publication).
-- Check `skills/pixiv-cli/` when CLI commands, flags, or safety semantics change.
-
-Keep stable rules in one authoritative document and link to them elsewhere instead of copying large sections.
+- Keep `README.md` / `README.zh-CN.md` and every `docs/<locale>/` page behaviorally aligned; no untranslated placeholders.
+- Update SDK/MCP contracts or `docs/en/maintainers/` per their responsibility; check `skills/pixiv-cli/` when CLI commands, flags or safety semantics change.
+- Source comments may be English or Chinese; follow [code commenting](.agents/skills/pixiv-cli-code-commenting/SKILL.md) (no per-function quotas).
+- PR body: what changed, the verification you actually ran, the checklist. Maintainers write bilingual release notes from merged PRs at release time — see [release notes and publication](docs/en/maintainers/development.md#release-notes-and-publication).
+- Keep each stable rule in one authoritative document and link to it.
 
 ## Pull request checklist
-
-Before requesting review:
 
 - [ ] The change is focused and its user-visible behavior is explained.
 - [ ] Behavior changes have observed Red/Green and relevant regression evidence, or an explicitly accepted blocker; document-only work has document/link/metadata checks.
@@ -80,8 +78,8 @@ Before requesting review:
 - [ ] English and Simplified Chinese documentation are synchronized where required.
 - [ ] No credential, downloaded content, local state, or machine-specific artifact is included.
 
-Conventional Commits are recommended for commit messages, for example `fix(cli): preserve record identity` or `docs: clarify account selection`. The project does not require a CLA, DCO sign-off, or signed commits unless a future policy explicitly says otherwise.
+Conventional Commits are recommended (`fix(cli): preserve record identity`, `docs: clarify account selection`). No CLA, DCO sign-off or signed commits are required unless a future policy says so.
 
 ## License
 
-By contributing, you agree that your contribution may be distributed under the repository's [MIT License](LICENSE).
+By contributing, you agree your contribution may be distributed under the repository's [MIT License](LICENSE).

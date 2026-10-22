@@ -5,504 +5,346 @@
 ```mermaid
 flowchart LR
     ENTRY["cmd/pixiv<br/>唯一二进制入口"] --> CLI["internal/cli<br/>命令与生命周期"]
-    CLI -->|"stdio / HTTP"| MCP["internal/mcpserver<br/>Pixiv / FANBOX tools"]
-    CLI --> SDK["public SDK<br/>sdk/pixiv · sdk/fanbox"]
+    CLI -->|"stdio / HTTP"| MCP["internal/mcpserver<br/>Pixiv / FANBOX 工具"]
+    CLI --> SDK["公开 SDK<br/>sdk/pixiv · sdk/fanbox"]
     MCP --> SDK
     SDK --> FACADE["internal/services<br/>业务 Facade"]
-    FACADE --> ADAPTER["endpoint / oauth / resource<br/>协议适配"]
+    FACADE --> ADAPTER["endpoint / oauth / resource<br/>协议适配器"]
     CLI --> SHARED["internal/shared<br/>跨子系统机制"]
     MCP --> SHARED
     CLI --> STATE["config / storage<br/>配置与本地状态"]
+    CLI -.->|"仅组合根"| RSA["reversesearch/assembly"]
 
     subgraph boundary["不可跨越的边界"]
-        RULE["CLI / MCP 不直连协议适配包<br/>utils 不承载产品协议语义"]
+        RULE["CLI / MCP 从不直连协议适配器<br/>utils 不承载产品协议语义"]
     end
 ```
 
 > [!IMPORTANT]
-> CLI 与 MCP 只经 public SDK 和 owner-local 窄端口进入业务能力。生产组装可以依赖具体实现，但不能把 locator、runtime graph 或协议 adapter 暴露给命令层。
+> CLI 与 MCP 只能通过公开 SDK 与 owner-local 窄端口获得业务能力。生产组装可以依赖具体实现，但不得向命令层暴露 locator、runtime graph 或协议适配器。
 
-## 按读者查节
-
-| 读者 / 关注点 | 去哪节 |
+| 读者 / 关注点 | 跳转 |
 | --- | --- |
 | 从入口到 SDK 的调用链 | [总体流程](#总体流程) |
-| 页面源码与嵌入边界 | [前端源码与页面嵌入](#前端源码与页面嵌入) |
-| 某个包能做什么、不能做什么 | [包职责](#包职责) |
-| 发布信任根与签名 | [Release assets 与信任边界](#release-assets-与信任边界) |
+| 页面源码与嵌入 | [前端源码与页面嵌入](#前端源码与页面嵌入) |
+| 某个包能做/不能做什么 | [包职责](#包职责) |
+| MCP server、OAuth、媒体代理、Gallery 任务 | [MCP server 架构](architecture-mcp.md) |
+| Release 信任根与签名 | [Release assets 与信任边界](#release-assets-与信任边界) |
 | 本地状态、配置、路径权限 | [internal/config/paths](#internalconfigpaths)、[internal/storage/file](#internalstoragefileatomiclockreplacesecret) |
 | 硬约束清单 | [已知约束](#已知约束) |
 
 ## 总体流程
 
-`cmd/pixiv/main.go` 是唯一官方二进制入口，它只负责调用 `internal/cli`：
+```mermaid
+flowchart TD
+    M["cmd/pixiv/main.go"] --> R["internal/cli.Run"]
+    R --> H{"参数"}
+    H -->|无| HELP["CLI help"]
+    H -->|"auth · config · update · search · timeline · detail<br/>ranking · recommended · user · bookmark · follow · download"| CMD["CLI 模式"]
+    H -->|"--version"| V["独立的只读 flag"]
+    H -->|fanbox| FB["FANBOX 模式"]
+    H -->|mcp| MCP["统一 stdio（默认）/<br/>Streamable HTTP（--port）"]
+    CMD & FB & MCP --> RES["按 owner 构造生产资源"]
+    RES --> DB["~/.pixiv-cli/pixiv-cli.db<br/>（SQLite 账号）"]
+    RES --> CFG["~/.pixiv-cli/config.toml<br/>+ 公开环境变量覆盖"]
+```
 
-1. `pixiv` 无参数显示 CLI 帮助。
-2. `pixiv auth/config/update/search/timeline/detail/ranking/recommended/user/bookmark/follow/download` 进入 CLI 模式；root `--version` 是独立的只读 flag；`pixiv fanbox` 进入 FANBOX 模式；`auth import` 负责 direct token import 或 bundle restore，`auth export` 负责本地 secret snapshot。
-3. `pixiv mcp` 默认组装统一 Pixiv/FANBOX stdio server，显式 `--port` 启动 HTTP；`pixiv fanbox mcp` 已删除。
-4. CLI 与 MCP 按命令 owner 显式构造生产资源：
-   - 账号凭据来自 `~/.pixiv-cli/pixiv-cli.db`（SQLite，`internal/storage/database`；Windows：`%USERPROFILE%\.pixiv-cli\pixiv-cli.db`）；旧 `auth.json` 不自动读取，用户须显式导出/导入 bundle
-   - 全局配置来自 `~/.pixiv-cli/config.toml`（Windows：`%USERPROFILE%\.pixiv-cli\config.toml`）
-   - 公开环境变量作为覆盖层参与合并
-5. 没有匿名 Web fallback：所有内容命令都要求认证态本地账号或显式凭据；已删除的 `web_fallback_enabled` 若仍显式存在则返回 `removed_setting`。
+- `auth import` 处理直接导入 token 或恢复 bundle；`auth export` 处理本地 secret 快照。`pixiv fanbox mcp` 已移除。
+- Windows 路径为 `%USERPROFILE%\.pixiv-cli\`。旧 `auth.json` 从不自动读取——用户需显式导出/导入 bundle。
+- 没有匿名 Web fallback：内容需要已认证的本地账号或显式凭据；残留的 `web_fallback_enabled` 返回 `removed_setting`。
 
 ## 前端源码与页面嵌入
 
-`frontend/mcp-apps/gallery/` 维护 Gallery HTML/CSS/JS 及 fixture；`frontend/pages/login/` 维护登录、callback、结果页模板和样式；`frontend/pages/oauth/` 维护授权同意页 HTML/CSS。仅负责资源的 Go 包 `frontend` 精确嵌入源码路径、排除 fixture，并在启动时仅用标准库组装一次。Gallery CSS/JS 和授权页 CSS 内联，登录模板和样式保持独立且字节不变。现有 `frontend` 包测试校验嵌入源码及占位符。
+| 源码目录 | 负责 | 嵌入方式 |
+| --- | --- | --- |
+| `frontend/mcp-apps/gallery/` | Gallery HTML/CSS/JS + fixture | CSS/JS 内联 |
+| `frontend/pages/login/` | 登录/回调/结果模板与样式 | 保持分离，逐字节保留 |
+| `frontend/pages/oauth/` | 同意页 HTML/CSS | CSS 内联 |
 
-现有 Go owner 继续负责 MCP 注册、模板渲染/数据/转义、CSP/media origin、canonical action、CSRF 和授权。当前和历史资源 URI 继续可用。干净构建及带版本的 `go install` 无需生成；运行时仅使用嵌入字节，不读磁盘或联网。Homebrew 模板保留原 owner。
+纯资源包 `frontend` 嵌入精确路径（不含 fixture），启动时用标准库组装一次页面；其测试校验源码与占位符。Go owner 保留 MCP 注册、模板渲染/数据/转义、CSP/媒体 origin、canonical action、CSRF 与授权。当前与历史资源 URI 均受支持。干净构建与带版本的 `go install` 无需生成步骤；运行时只读嵌入字节。Homebrew 模板保持原 owner。
 
 ## 包职责
 
 ### `cmd/pixiv`
 
-负责生成 `pixiv` binary 的 `main` package。它不承载业务逻辑，只委托 `internal/cli.Run` 并返回进程退出码。
+生成 `pixiv` 二进制的 `main` 包；没有业务逻辑，只调用 `internal/cli.Run` 并返回退出码。
 
 ### `internal/cli`
 
-负责 CLI 用户态的命令分发与输出：
+CLI 组合根，分为三个同包文件：
 
-- Cobra 命令树、help 和 flag 解析。
-- 文本/JSON 输出。
-- `auth import [REFRESH_TOKEN]` 的输入 adapter：位置参数直接作为 opaque token；无参 TTY 隐藏输入，非 TTY 按首个非空白字节区分 opaque token 与严格 bundle；bundle 通过 stdin 管道或重定向离线恢复，不再有 `--file`。
-- `auth export` 的 secret-output adapter：不带 `--output` 时，默认/UID 选择只输出 raw token 与换行，`--all` 只输出 versioned bundle；`--output` 改为私有文件并只输出无 secret 摘要。
-- CLI 协议的 `--page`/`--limit` 解析与错误文案；解析后的逻辑分页计划交给 `internal/shared/pagination` 共享遍历算法。
-- `auth login` 的 loopback OAuth、浏览器打开和 TTY 交互。
-- `pixiv mcp` 分发。
-- root `--version` 与 `pixiv update` 的输入/输出适配；已删除的 `version` 子命令在 Cobra 解析阶段返回 unknown-command。
-- 普通 CLI 成功命令后的只读自动更新提示；提示和失败 warning 仅写 stderr。
+| 文件 | 负责 |
+| --- | --- |
+| `root.go` | 命令树、全局 flag、共享装配、按需启动生命周期 |
+| `execution.go` | 执行入口、退出码、资源关闭（私有 `closeState`，按注册逆序幂等关闭）、启动/收尾 |
+| `composition.go` | Pixiv/FANBOX/MCP 的生产依赖组装 |
 
-`internal/cli` 是 CLI 组合根，按职责拆为同包三个文件（不新增目录层级）：`root.go` 持有命令树、全局 flag 与命令 owner 共享的接线；
-`execution.go` 负责执行入口、退出码、资源关闭（一次执行的 close resource list 由其中的私有 `closeState` 持有，按登记逆序幂等关闭）与启动/结束处理；
-`composition.go` 负责 Pixiv/FANBOX/MCP 的生产依赖装配。
+职责：Cobra 命令树/help/flag；文本/JSON 输出；`auth import` 输入适配（位置参数 = opaque token；无参数时 TTY 隐藏输入，非 TTY 按首个非空白字节区分 token 与严格 bundle；通过管道/重定向恢复，没有 `--file`）；`auth export` secret 输出适配（无 `--output`：原始 token + 换行，或 `--all` 的 bundle；有 `--output`：私有文件 + 不含 secret 的摘要）；`--page`/`--limit` 解析（逻辑计划在 `internal/shared/pagination`）；`auth login` 的 loopback OAuth、浏览器与 TTY；`pixiv mcp` 分发；根 `--version` 与 `pixiv update`（已移除的 `version` 子命令在解析时返回 unknown command）；只写 stderr 的只读自动更新提示。
 
-关闭前，调用方必须停止资源生产者并完成登记。`closeState` 的 mutex 只保护登记表，不保证晚到资源会被关闭；closer 不得向同一 scope 再登记或递归关闭。命令返回后才执行关闭，MCP stdio 等待在途 handler 结束；关闭错误聚合返回。
-
-`internal/cli/invocation` 只负责 `Streams`。命令 owner 通过显式 factory 与窄端口构造
-config snapshot、DB、业务 Facade、lifecycle、media/download 与 update 依赖，并按逆序关闭资源。
-CLI 不导出跨命令 locator，也没有独立 bootstrap constructor 或 `internal/cli/runtime`。
-
-命令树由 `root.go` 统一处理全局 flag 与需求驱动的启动生命周期，退出码由 `execution.go` 的执行入口决定，命令注册再交给 owner 命令包：
-根级 `internal/cli/commands/{config,mcp,update}`，Pixiv `internal/cli/commands/pixiv/{auth,bookmark,comment,detail,download,follow,mypixiv,ranking,recommended,search,series,timeline,user}`，
-FANBOX `internal/cli/commands/fanbox/{auth,download,post}`。
-
-数据命令经 owner-local 窄
-`Data` 端口（`Open`/`Pooled`/`JSONOut` 等）使用 public SDK `*pixiv.Client`/`*fanbox.Client`，不直连内部协议适配包；
-共享 stdin codec 位于 `internal/cli/pipeline`，CLI/MCP 共用的稳定 Pixiv record 投影位于 `internal/shared/record`；命令级 Pixiv target resolver 位于 `internal/shared/resolver`，只消费 command contract、record 与纯本地 `sdk/pixiv.ParseURL`，受控 bare-ID probe 必须由 owner 显式注入，resolver 不持有 client、凭据或协议适配。
-
-`record` 包只承接记录协议、JSON 归一化与 public SDK DTO 映射，不能依赖 CLI、MCP 或内部协议适配包，也不能扩展为通用杂物包。这些子包不反向导入 `internal/cli` 根包。
-
-root `--version` stdout 精确为一行 `pixiv <version>`，stderr 为空且不运行 startup update check。已删除的
-`version` 子命令在解析阶段返回 unknown-command、stdout 为空。自动更新只在普通业务命令成功后运行，跳过 MCP、help、root
-`--version`、`update`、全部 `auth export`、bundle-form `auth import` 和开发构建；它选择 stable Release、使用用户
-cache 的 24 小时节流，并最多等待 3 秒。
-
-配置、网络、来源识别失败只作为 stderr warning，不能
-改变已成功业务命令的退出码，也不能混入 JSON stdout 或 MCP JSON-RPC。
-进程启动时的 Windows pending-update cleanup 也属于潜在 mutation；全部 `auth export` invocation 在 Cobra
-解析前即识别并跳过该 cleanup，其他命令仍沿用正常 startup cleanup。root bool flag 的重复覆盖语义由
-聚焦测试保护，不能让 `--help=false` 等写法误绕开 secret export 边界。
+- **关闭：** 调用方在关闭前停止资源生产者并完成注册；互斥锁保护列表，不保护迟到的注册；closer 不得向同一 scope 注册或递归关闭它。关闭在命令完成后进行；MCP stdio 等待进行中的 handler；关闭错误被合并。
+- **Owner：** `internal/cli/invocation` 只负责 `Streams`。命令 owner 通过显式工厂与窄端口构造配置快照、DB、Facade、生命周期、媒体/下载与更新依赖，并逆序关闭。没有跨命令 locator、bootstrap 构造器或 `internal/cli/runtime`。
+- **命令包：** 根级 `internal/cli/commands/{config,mcp,update}`；Pixiv `internal/cli/commands/pixiv/{auth,bookmark,comment,detail,download,follow,mypixiv,ranking,recommended,search,series,timeline,user}`；FANBOX `internal/cli/commands/fanbox/{auth,download,post}`。数据命令经 owner-local 的 `Data` 端口（`Open`/`Pooled`/`JSONOut` 等）使用 `*pixiv.Client` / `*fanbox.Client`，从不直连协议适配器。
+- **共享 helper：** stdin codec 在 `internal/cli/pipeline`；record 投影在 `internal/shared/record`；目标解析器在 `internal/shared/resolver`（只消费命令契约、record 与离线的 `sdk/pixiv.ParseURL`；owner 显式注入裸 ID 探测；不持有 client、凭据或适配器）。这些子包不反向导入 `internal/cli` 根包。
+- **`--version` / 自动更新：** stdout 恰为 `pixiv <version>`，stderr 为空，不检查更新。自动更新只在普通业务命令成功后运行，MCP、help、`--version`、`update`、所有 `auth export`、bundle 形式 `auth import` 与 dev 构建跳过；选择 stable Release，用户缓存 24 小时节流，最多等 3 秒；失败只作为 stderr warning——不改变退出码，不泄漏到 JSON stdout 或 MCP JSON-RPC。
+- **Windows 启动清理** 待更新文件属于潜在写操作：所有 `auth export` 调用在 Cobra 解析前识别并跳过它。根 bool flag 的重复覆盖语义由聚焦测试保护，避免 `--help=false` 之类形式绕过 secret 导出边界。
 
 ### `internal/cli/commands/pixiv/auth/loginhelper`
 
-负责 `auth login` 的系统 URL scheme helper、持久 handler manifest、一次性 remote handoff 私有状态与 remote callback client。
-`internal/cli` 只经该包安装按需 handler，保留 OAuth、loopback HTTP、系统浏览器、TTY 和 relay server 编排。handler
-只允许精确的 `pixiv://account/login` 与 `pixiv://account/remote-login` 进入本轮操作；活跃 loopback 优先，远程 callback
-只投递给活跃的一次性 handoff，其他 `pixiv://` URL 定向给 manifest 保存的旧 handler。
+负责 URL scheme helper、持久化 handler 清单、一次性远程 hand-off 私有状态与远程回调 client。`internal/cli` 只通过它安装按需 handler，并保留 OAuth、loopback HTTP、浏览器、TTY 与 relay server 编排。
 
-desktop private state 只保存当前
-handoff 的 relay origin、会话 ID 与 capability；server 不保存 desktop 设备记录，public SDK 不暴露这些状态。remote callback
-只接受同一 relay base 的一次性 result URL，`internal/cli` 打开无敏感的最终页后等待 OAuth exchange。
-Darwin 独立持有嵌入 Swift、`Info.plist`、LaunchServices；Windows 使用当前用户 registry/class 启动；desktop Linux 使用
-XDG desktop entry 与 `gio`。headless Linux 不注册 handler，但可运行 relay server。
+| 平台 | 机制 |
+| --- | --- |
+| Darwin | 内嵌 Swift、`Info.plist`、LaunchServices |
+| Windows | 当前用户注册表/class 启动 |
+| 桌面 Linux | XDG desktop entry + `gio` |
+| 无头 Linux | 不注册 handler；relay server 仍可用 |
 
-### `internal/shared/buildinfo`
+只有精确的 `pixiv://account/login` 与 `pixiv://account/remote-login` 进入本轮；活动 loopback 优先；远程回调只交给活动的一次性 hand-off；其他 URL 交给清单中持久化的 handler。桌面状态只保存当前 hand-off 的 relay origin、会话 ID 与 capability；server 不保存设备记录；SDK 不暴露这些状态。远程回调只接受同一 relay base 上的一次性结果 URL；`internal/cli` 打开不敏感的最终页面并等待交换。
 
-保存由 Go linker 注入的 `Version`。本地默认是 `dev`；
-只有 version 为 `dev` 的构建被视为开发构建，并必须拒绝自更新。
+### 共享机制
 
-### `internal/shared/record`
+| 包 | 负责 | 不得 |
+| --- | --- | --- |
+| `internal/shared/buildinfo` | linker 注入的 `Version`（默认 `dev`；只有 `dev` 构建拒绝自更新） | — |
+| `internal/shared/record` | CLI/MCP 共享的稳定 Pixiv record 投影：保留 SDK DTO 未知字段，固定 `id`/`type`/`url`，JSON 规范化、版本元数据清理、基于 record 字段的本地筛选 | 依赖 CLI、MCP 或适配器；变成杂物箱（MCP schema/DTO 包装留在 `internal/mcpserver/pixiv/internal/records`） |
+| `internal/shared/searchfilter` | 作品本地分级/内容类型规范化，客户端侧 `x_restrict` 与类型匹配，隐藏原始值的 cursor 上下文 | 把分级映射为未确认的上游 `x_restrict` 参数；持有 client、凭据或适配器（字段可用性与已确认的 wire 参数由各命令负责） |
+| `internal/shared/lifecycle` | 与协议无关的生命周期、Lease、Attempt | 负责账号选择、凭据或重放策略 |
+| `internal/shared/pagination` | 单流与有序聚合流的逻辑分页：筛选先于全局 skip/limit 预算，`OneBatch` 在首个匹配批次停止，批次截断通过来源位置 checkpoint 续读；`StreamState` = 当前流 + 各流 cursor（owner 与查询/账号/子类型绑定一起编码） | 产品语义 |
+| `internal/shared/traversal` | 单流/聚合读取的可重入执行生命周期，安全重放前清除未提交结果 | 负责命令筛选装配 |
+| `internal/shared/diagnostics` | 显式的内存类型化 scope；Pixiv/FANBOX MCP、传输、账号池、下载与 FlareSolverr 只输出允许的 module、operation、route、status、proxy、UA、request ID、reason、count；默认 sink 为 Nop；MCP scope 只影响诊断 | 创建日志文件，或保存响应体、Cookie、token、签名 query、任意错误转储（没有 scope 时 SDK 静默） |
 
-负责 CLI/MCP 共用的稳定 Pixiv record 投影：保留 public `sdk/pixiv` DTO 的未知字段，
-固定 `id`、`type`、`url`，提供 JSON 归一化、版本元数据清理和基于记录字段的本地筛选。
-该包不依赖 CLI、MCP 或 `internal/services` 协议适配包；MCP 自身的输出 schema 与 DTO 包装仍由
-`internal/mcpserver/pixiv/internal/records` 负责。
+**账号池读取：** 普通 CLI 读取在具体函数类型上使用 `Pooled[R].Read[T]`——失败返回 T 零值且回调不提交；owner 保留自己的 Request 类型。`Write` 会把已调用的 SDK 请求标记为已提交（即使出错），防止跨账号重放结果未知的写入；缺少 pooled 端口是错误。流式 NDJSON、分页与部分交付仍由 owner 与 traversal/lifecycle 负责。
 
-### `internal/shared/searchfilter`
+### 业务 Facade、账号与账号池
 
-负责 CLI/MCP 共用的 artwork 本地筛选语义：将 rating 与 content-type 输入归一化为
-canonical 值，按 DTO 的 `x_restrict` 和 artwork kind 做 client-side matching，并为本地筛选
-生成不暴露原始值的 cursor context。rating 不映射为未经确认的 upstream `x_restrict` 请求参数；
-具体命令是否允许某个字段、以及 endpoint 已确认的 content-type wire 参数，仍由各 owner contract
-决定。该包不持有 client、凭据或协议 adapter。
+- `internal/services/pixiv` 聚合 `account`（本地账号、登录完成、默认账号、凭据身份/轮换、管理）与 `pool`（选择、冻结、Gate、安全重放、相关错误语义）。`internal/services/fanbox` 聚合其 `account` 叶模块与 client 生命周期；FANBOX 会话与 Pixiv refresh token 不共享类型或生命周期，也没有账号池策略。
+- Facade 只依赖叶模块 Port、配置快照、与协议无关的共享模块与公开 SDK——不依赖 `internal/storage/database` 的具体实现；SDK 从不导入它们。services 中没有 CLI/MCP 的 DTO、筛选、record、schema 或输出适配。
+- 显式非零 `Request.UserID` 把读写固定到该账号，即使账号池开启；打开/业务错误从不切换账号；无 UID 的请求保留账号池调度；CLI 默认账号不变。
+- 配置 schema、`config.toml` 的 path/get/set/unset、基线与单次执行的不可变 `Snapshot` 位于 `internal/config/settings`；按月截断位于 `internal/utils/date`。CLI/MCP 经 owner-local Seam 与 MCP runtime `SDKPorts` 使用 Facade。`internal/account` 与 `internal/session` 已删除，不保留别名。
 
-### 业务 Facade、账号与通用遍历
+**登录 relay** —— 纯渲染器 `internal/services/pixiv/account/loginrelay/loginpage` 消费 `frontend` 模板/CSS（不依赖 CLI、账号库、浏览器或 listener）。父包 `loginrelay` 负责可复用的 HTTP handler/session：接收 OAuth 会话校验器并交付一次回调；从不监听、交换或持久化。CLI 保留 listener/TLS/终端编排。宿主 mux 可剥离前缀后挂载；生产 MCP 将其挂在 canonical base + `/pixiv-login/`，位于相同的 Host/Origin 检查之后，但以 hand-off 证明而非 MCP bearer 认证。转义前缀在 URL 与分发中保留。已取消的 relay 会话返回 HTTP 410，并在接受已校验回调前再次检查取消。回调 allowlist、启动响应 wire 类型与结果 URL header 位于 `loginrelay`，由 CLI relay 与桌面 helper 复用。
 
-- `internal/services/pixiv` 是 Pixiv 业务 Facade，聚合 `account` 与 `pool` 等业务叶 Module。`account` 负责本地账号、登录完成、默认账号、凭据 identity/rotation 与账号管理；`pool` 负责选择、冻结、Gate、safe replay 与相关错误语义。
-- `internal/services/fanbox` 是 FANBOX 业务 Facade，聚合 FANBOX `account` 叶 Module 与 client lifecycle；FANBOX session 不与 Pixiv refresh token 共享类型或生命周期。
-- `internal/shared/lifecycle` 只承载协议无关的生命周期、Lease 与 Attempt；它不拥有 Pixiv/FANBOX 账号选择、凭据或重放策略。
-- `internal/shared/pagination` 负责协议无关的单流与有序聚合流逻辑分页：先对候选执行筛选，再统一应用 skip/limit；`OneBatch` 在当前流找到首个匹配源批次后停止；批内截断通过源序列位置 checkpoint 续读。其 `StreamState` 只包含当前流和各流 cursor，不编码产品语义；产品 owner 负责把它与 query/account/subtype binding 一起编码进 opaque cursor。
-- `internal/shared/traversal` 负责单流与聚合读的可重入 execute lifecycle，在安全 replay 前清空未提交结果。命令级筛选接入仍留在各 CLI/MCP owner，规范化的 artwork rating/content-type 语义由 `internal/shared/searchfilter` 提供。
-
-普通 CLI 读取使用具体函数类型的 `Pooled[R].Read[T]`：失败返回 T 零值，回调不提交结果；各 owner 保留自己的 Request。`Write` 调用 SDK 后即使失败也标记 committed=true，禁止未知提交状态下换号重放；缺少 pooled 端口时返回错误。流式 NDJSON、分页及部分交付仍由 owner 和 traversal/lifecycle 管理，不套用普通 Read。
-
-配置 schema、`config.toml` path/get/set/unset、自动生成的默认文件与一次执行所需的 immutable `Snapshot` 位于 `internal/config/settings`；协议无关的日期按月截断纯函数位于 `internal/utils/date`。CLI/MCP 经 owner-local 窄 Seam 与 MCP runtime `SDKPorts` 使用业务 Facade，不直接依赖上游 Adapter。`internal/account` 与 `internal/session` 已删除，不保留兼容 alias。
-
-### `internal/shared/diagnostics`
-
-提供显式、内存内的 typed diagnostics scope。Pixiv MCP、FANBOX MCP、Pixiv/FANBOX
-network transport、账号池、下载与 FlareSolverr 只通过 scope 发出允许的模块、operation、route、status、
-proxy、UA、request ID、reason 和计数等字段；默认使用 Nop sink。MCP request scope 只影响诊断，不改变
-HTTP JSON-RPC 响应。该包不创建日志文件、不保存 response body、
-Cookie、token、signed query 或 arbitrary error dump；公共 SDK 在没有显式 scope 时保持静默。
-
-### Release trust root（`internal/update/installer`）
-
-`internal/bootstrap` 已随 v1 迁移删除，不再是 CLI/MCP composition root。production Ed25519 public trust root 的
-key ID 与 public key 常量位于 `internal/update/installer/release_installer.go`；`internal/cli/commands/update/production.go`
-组装 key ID→public key map 并交给 Release installer，避免调用方污染 trust root。`internal/cli/root.go` 只持有 update 命令的 seam，注册与执行分别委托 `internal/cli/commands/update`，
-不构造 trust root。公开 key 的 fingerprint 与已知签名 fixture 由 installer 同包测试验证；私钥不在源码或运行时配置中。
-只读更新检查不需要该 key；该 wiring 本身也不能代替每个版本独立的发布验收。
-
-### `internal/storage/database`
-
-CLI/MCP 数据库 owner 的初始化、账号与账号池短事务、完整快照读取共用 `pixiv-cli.db.lock` 私有侧车锁，避免监听读取与跨连接提交冲突；锁不覆盖 OAuth 或内容网络请求。协调文件不保存凭据，不改变账号数据；外部直接 SQL 写入和旧版进程不参与此协调。不可取消的 context 沿用原生锁等待；可取消的 context 使用同一非阻塞锁接口，争用时每 10ms 检查一次，取消直接唤醒并关闭等待者文件句柄。不设置总等待期限，不重放事务。账号 owner 关闭时先取消生命周期，再取得会话互斥锁，避免监听校验的数据库锁等待阻塞退出。
-
-负责本地账号状态的 SQLite authority：
-
-- `pixiv-cli.db` 的 schema、migration ledger 与 repository；账号 identity/credential 以 `user_id`
-  为 key，Pixiv rotation 与 FANBOX session replacement 使用 `credential_revision` compare-and-swap。
-- SQLite 使用截至 schema v3 的向前迁移：会把旧 v1 数据库推进到 v2/v3；对于本树初始 schema 已经包含的最终字段，会记录兼容迁移而不重复执行冲突 DDL。旧 `auth.json` 与旧 `account_pool.accounts` 都不属于启动迁移路径。
-- 平台对应的私有 DB/journal 文件权限（Unix-like `0700`/`0600`）。
-- auth export 只读取默认、精确 UID 或全部本地账号；不读取环境 token、不刷新、不联网、不修改状态。
-
-旧 `auth.json` 不再作为 store 或 fixture API。用户须在旧版本显式执行
-`pixiv auth export --all --output <private bundle>`，再在新版本执行
-`pixiv auth import < bundle.json`；失败原因直接返回，不自动删除旧文件。
-
-### `internal/config/settings`
-
-负责 `config.toml` 及运行时配置：
-
-- `config.toml` schema、默认值和配置键定义。
-- 运行时配置合并：`config.toml` 与公开环境变量。
-- `pixiv config path/get/set/unset` 需要的强类型解析与稀疏写回。
-
-配置拆分如下：
-
-- `pixiv-cli.db`：保存账号 identity 与 credential（`pixiv_account`/`fanbox_account`），DB 文件权限为 `0600`；旧 `auth.json` 不自动读取。
-- `config.toml`：保存全局配置键，包括 `[pixiv.auth].default_user_id` 与 `[fanbox.auth].default_user_id`；Unix-like 文件权限为 `0600`。首次生成的精简基线由**字段标签**驱动的元数据生成，只写入标记 `example:"true"` 的项；带默认值但未开 `example` 的键与高级配置在显式写入前继续省略。未设置默认账号时按 `sort_order` 选首个账号。
-
-运行时设置使用 `koanf` 合并 `config.toml` 与公开环境变量；`config set/unset` 使用 `tomledit` 写回，尽量保留注释、顺序和布局。
-
-#### 配置声明：结构体字段标签是唯一事实来源
-
-`RuntimeConfig`（包括嵌套的账号池、网络和 FlareSolverr 组）的公开字段用标签声明全部静态事实，运行时绑定、CLI 元数据与初始配置生成都复用同一份声明：
-
-| 标签 | 含义 |
-|---|---|
-| `config` | 相对所在配置组的 TOML 路径；`"-"` 排除字段及其整个子树 |
-| `alias` | `config get/set/unset` 使用的公开名称；组与私有高级叶子不声明别名 |
-| `env` | 允许读取的环境变量，按声明顺序决定优先级（存在即命中，空值不回退） |
-| `default` | 缺失时使用的默认值，按字段类型解释（用标签**是否存在**区分，而非字符串是否为空） |
-| `example` | 是否进入首次生成的精简配置；仅 `"true"` 进入，且必须以 `default` 为前提 |
-| `cli` | 是否由 `config get/set/unset` 管理 |
-| `secret` | 是否必须在公开输出中隐藏且禁止进入初始示例（与 `example:"true"` 冲突时 schema 报错） |
-
-组只声明 `config` 前缀，叶子声明相对路径；同一组类型可以在不同前缀下复用。`OptionalString` 是叶子，不展开为组。可选指针组仅解析类型，不分配运行实例。展开后的路径重复、非空别名重复、空路径段、循环组、不支持的叶子类型及组上的叶子属性都属于声明错误。私有叶子没有公开别名时，不得启用 CLI 管理、初始示例或环境绑定。
-
-私有 schema 缓存字段索引链和 Go 类型，不缓存目标实例。标量绑定与 `Effective` 共用来源选择；普通绑定不分配指针组。高级读取按 Go 字段归属定位已编译路径，不增加公开别名，也不会在领域启用检查前分配 solver 组。普通运行时字段不再维护独立接线清单；账号池默认值也来自声明，文件严格类型与策略校验仍由领域规则负责。
-
-默认账号选择使用独立私有声明范围；`int64` UID 叶子不声明 alias 或 default，正整数解析保留在按需认证读写入口。它们不进入普通 Runtime 绑定，也不在 Snapshot 加载时提前校验。
-
-因此**新增一项普通配置只需**：加字段与标签、补行为测试、更新对应文档。新声明无需额外维护注册表、环境变量 `switch`、逐字段运行时赋值、初始文件清单或 CLI 别名清单。
-
-开发者声明的 `cli`、`secret`、`example` 属性在存在时只接受 `"true"` 或 `"false"`，其他拼写属于 schema 错误；此检查不改变用户配置值的解析规则。
-
-`SettingSpec` 保留为这份声明的**公开派生视图**（CLI 仍消费它），不再是手写事实表。
-
-`internal/config/settings` 的文件职责：
-
-- `config.go`：类型、字段标签与字段契约。
-- `schema.go`：标签派生元数据、声明校验、查找、退役墓碑与公开 `SettingSpec` 视图。
-- `snapshot.go`：文件与环境快照、来源选择与运行时绑定（含服务级网络、FlareSolverr、账号池的领域规则）。
-- `values.go`：类型解析、规范化与领域校验。
-- `document.go`：TOML 定位与稀疏修改。
-- `defaults.go`：初始配置文档生成。
-- `store.go`：`Store` 操作入口（路径、读取、稀疏写回）。
-- `auth.go`：默认账号选择的读取与修改（**不并入**普通 runtime 绑定）。
-- `paths.go`：`FileStore` port 与默认文件 adapter。
-
-`internal/config/settings` 定义 `FileStore` port，由 CLI private composition graph 注入 `internal/storage/file/{atomic,lock,replace,secret}` 的协议无关文件机制：于目标同目录使用不含
-凭据内容的随机文件名创建临时文件，完成全部写入并执行 file `Sync`，关闭文件后才替换目标。Unix-like 平台
-主动把父目录与文件分别收紧为 `0700`、`0600`，原子替换后继续同步目标目录；
-若本次调用新建了一层或多层目录，则在替换提交后按 leaf→root 顺序同步目标目录及每个新目录
-的外层 parent，使文件 entry 与新目录 entry 均进入 durability 边界；既有目录仍只同步目标目录。
-
-任一目录同步失败时仍会尝试其余目录并合并错误，替换已经提交，调用方不能假定旧文件仍在。替换前的写入、file `Sync` 或关闭
-失败会保持旧目标；普通替换失败以及可恢复的部分完成失败也会保持或恢复旧目标，并清理临时
-文件。若部分完成后的恢复本身失败，调用方会收到组合错误，目标路径可能暂时缺失，但旧内容的
-同目录 recovery backup 与新内容的 source temp 都会保留供人工恢复；此时“No temp residual”不适用。
-其他临时文件清理失败不会被吞掉，而会与主错误一并返回。
-
-Windows 在替换前同样执行 file `Sync` 与关闭：目标存在时，使用带同目录唯一 recovery backup 的
-`ReplaceFileW`；首次创建使用不覆盖目标的 `MoveFileEx`。`ERROR_UNABLE_TO_MOVE_REPLACEMENT`
-保持 target/source 原名；`ERROR_UNABLE_TO_MOVE_REPLACEMENT_2` 会尝试把已移动到 backup 的旧目标
-恢复，恢复失败则保留 backup/source。成功替换后的 backup 清理失败属于已提交错误，仍按已提交
-路径处理。Windows 首次创建的文件继承父目录 ACL，替换既有目标时保留该目标 ACL；本协议不会
-主动添加或放宽 ACL，但也不声称 `Mkdir`/`Chmod` 会收紧 DACL，亦不提供 POSIX mode 或 directory
-fsync 的等价保证。
-
-`update_check_enabled` 对应 `[update] check_enabled`，默认 `true`；它只控制普通 CLI 成功后的
-自动检查，不禁用用户显式执行的 `pixiv update`。
-
-### `internal/browsercookies`
-
-负责只读的浏览器 cookie provider，不属于公开 SDK，也不依赖 FANBOX、Pixiv、CLI、MCP 或账号 store。
-根包（core）是 protocol-neutral：只接受固定的 `CookieQuery`，按安全 profile identifier 发现浏览器目录，
-并以脱敏 `Secret` 返回目标值；`chromium` 支持显式的 Chrome/Edge provider，`firefox` 解析 `profiles.ini`，
-`safari` 只在 macOS 解析 `Cookies.binarycookies`。未知的 Chromium derivative 不做模糊识别，多个 profile
-未指定时明确失败。系统/browser integration 位于 `internal/browsercookies/system`：它 import 并注册全部
-provider 子包，使根包 `New` 可分发所有浏览器；根包不导入任何 provider 子包，单独导入根包不会注册浏览器。
-
-平台秘密边界保持在 `secret` 子包：macOS 走 Keychain，Windows 走当前用户 DPAPI，Linux 通过固定属性的
-Secret Service `secret-tool` 查询。Chromium provider 按平台 profile 根目录读取 Local State/Cookies，
-支持 v10/v11 GCM 与 legacy CBC；系统工具缺失、权限、锁、schema drift 和解密格式错误都映射为稳定错误，
-不把 cookie、密钥、绝对路径或命令输出写入日志、错误、JSON 或 MCP。跨平台 native provider evidence
-仍须按 release-prep runbook 在对应 host 执行，离线 fixture 和交叉编译只证明代码/格式契约。
-
-### `internal/update`
-
-根包只保留 coordinator 与 automatic-check API（thin root）；安装来源识别、GitHub Releases 查询、SemVer 选择、
-cache、显式更新策略与 Release binary 安装协议分别由 `internal/update/{source,release,installer,process}` 实现，
-并由根包 re-export 给 CLI composition root：
-
-- Homebrew 通过 executable symlink 与 keg `INSTALL_RECEIPT.json` 区分 stable/beta；两个
-  formula 的转换会先卸载冲突 formula，失败时显式尝试恢复原 formula。
-- `go install` 需同时匹配 Go build info 与实际 `GOBIN`/`GOPATH/bin` executable；更新总是使用
-  选中 Release 的精确 tag。
-- 其他正式二进制视为 Release 安装。安装前需选中本平台 archive、验证 Ed25519 签名的
-  `checksums.json`、验证 archive SHA-256、解包后运行 `pixiv --version` 精确预检，再以同目录
-  原子替换。
-- GitHub Releases API 是唯一查询后端；draft 被排除，stable 检查不纳入 prerelease。ETag/cache
-  用于节流与原子保存。
-- 更新选择器对当前检查通道的 published Release 强制 canonical SemVer；任一 tag 不合法时
-  fail-closed 并报告该 tag，不会跳过它而选择较旧版本。stable 选择会在校验前先排除
-  GitHub 已标记的 prerelease。签名、checksum、不可变 tag 和安装前预检共同构成 Release 信任边界。
-
-该包不得把签名、checksum、HTTP、archive、替换或权限错误伪装成“无更新”。production trusted key、
-签名私钥与 Keychain 恢复副本、受保护 `release` Environment 和公开 remote 已按正式发布链路配置；完整六目标
-native evidence 与 staticlib manifest 曾为历史 Rust 版本回填。v0.3.0 已完成正式 tag、受签名 Release 与 stable tap formula；
-Release 安装的失败语义仍是保护边界，而不是临时降级。
-
-### `scripts/cmd`、`scripts/tests` 与 `scripts/internal`
-
-每个仍在使用的脚本入口位于 `scripts/cmd/<name>/main.go`，只负责参数解析和调用对应的 owner
-package。纯测试载体位于 `scripts/tests/`：它们只验证 workflow、文档或 installer 行为，不承载生产实现。
-实现逻辑与同包测试位于 `scripts/internal/<name>`。共享发布契约位于
-`scripts/internal/releasecontract`（release target/archive identity）与
-`scripts/internal/releasenotesrender`（GitHub Release 正文渲染，被 `releaseassets` 与历史同步共用）。
-平台 runner/capability metadata 由 `ci/platforms.json` 单独拥有，并通过 `tools/platformmatrix` 提供给 workflow；
-workflow 测试只验证行为/安全边界，不再维护第二份精确 YAML policy model。
-
-### `sdk`、`sdk/pixiv`、`sdk/fanbox`
-
-公开 SDK 是唯一对外契约面，只从这三个 package 导出：
-
-- `sdk`：共享的 `Page[T]`、`Cursor`（Text/JSON codec）、`Error`（sentinel、context chain、脱敏）、`ResourceRef`/`Resource` 与资源 request/response/save 类型。
-- `sdk/pixiv`：Pixiv App-only SDK。`Open/OpenWith/New/NewWith` 构造器、OAuth `LoginSession`、credentials rotation、artwork/novel/user/comment/stamp 规范化模型、opaque cursor、`ParseURL`、comment mutation、stamp read 与资源读取。没有匿名 Web 路径。
-- `sdk/fanbox`：FANBOX SDK。`Client.ValidateSession`、creator/tag/post/home/supporting、两类 pagination 与资源读取；不读取浏览器、DB 或 Pixiv credentials，也不 import `sdk/pixiv`。
-
-FANBOX native transport 使用 Chrome 146 TLS profile 与内置 Firefox 148 HTTP User-Agent baseline，并只在构造时接收显式的 HTTP client、proxy、UA 与可选
-FlareSolverr options。`FANBOXSESSID` 只允许在 `api.fanbox.cc` 与 `downloads.fanbox.cc` 的受校验请求中
-传播；第三方 CDN、Pixiv host 与 solver control request 均不携带该 Cookie。solver control transport
-直连 FlareSolverr，solver upstream proxy 只作为 solver 配置传入，不继承 native 或宿主环境 proxy；
-challenge 之外的 API/资源错误不自动进入 solver。
-
-旧顶层 `pixiv/` facade 已在 v1 删除；`pixiv` 作为 import alias 保留给 `sdk/pixiv`。认证备份（`AuthExportSelection`/bundle codec）仍经 `sdk/pixiv` 的同一 local snapshot 边界。bundle 含 opaque refresh-token secret，是未加密的 point-in-time backup，不是 live sync；token rotation 后旧 bundle 或其他机器上的副本可能 stale。
-
-调用方在自身 adapter 中定义 source mode、budget、filter、cursor 持久化和 HTTP presentation。本仓库不提供 HTTP Provider、Discover、Probe、Capabilities、RSS 或 crawler。
+**MCP 登录管理器** —— 单一当前登录：重复启动复用待处理工作，restart 取消并等待旧尝试，关闭时等待交换/持久化。完成时保留不含 secret 的 account-saved/selection-updated 标记（含部分失败）。组合根把它绑定到同一 SDK 登录会话，保存凭据但不改 CLI 默认，再单独写 MCP 选择。账号服务在多次 restart 间复用；每次完成的 SDK 登录释放其空闲 HTTP 连接（显式代理/直连时，组合根在每个退出路径关闭其 client 的空闲连接）。
 
 ### `internal/services/pixiv/protocol`、`appapi`、`oauth`、`resource`
 
-这些现有路径在迁移后仍保留为上游 Adapter，只由公开 SDK 组合；它们不承载账号/会话业务 Facade：
+仅由公开 SDK 组合的上游适配器；不承载账号/会话 Facade。
 
-- `protocol`：上游 base、profile header、endpoint catalog 与脱敏 adapter failure 的唯一来源；不读配置、不发请求，也不保存响应 body、URL、header 或凭据。
-- `appapi`：有凭据的 App API transport/auth/retry adapter。它只向 endpoint family 暴露窄的 `GetJSON`/`GetRaw`/`PostForm` 能力；幂等 JSON/原始响应读取只会在首次 429 的有效 `Retry-After` 后按 context 重试一次，不再承载 novel/user/artwork business method、route facade 或 raw DTO/mapper。
-- `oauth`：PKCE、code exchange、refresh 与 token state。
-- `resource`：受 policy 约束的 resource transport、redirect/header/body 边界。
+| 包 | 负责 |
+| --- | --- |
+| `protocol` | 上游 base、profile header、端点目录、脱敏的适配器失败——不读配置、不发请求、不保存 body/URL/header/凭据 |
+| `appapi` | 携带凭据的 App 传输/认证/重试；只向端点族暴露 `GetJSON`/`GetRaw`/`PostForm`；幂等读取仅在首个带有效 `Retry-After` 的 429 时按 context 重试一次；没有业务方法、路由 facade 或原始 DTO/mapper |
+| `oauth` | PKCE、code 交换、刷新、token 状态 |
+| `resource` | 受策略约束的资源传输；重定向/header/body 边界 |
 
-v1 已删除 `internal/services/pixiv/webapi` 与匿名 Web/AJAX 路径：App API 出错直接返回规范化错误，不自动切换协议。Pixiv endpoint family 位于 `internal/services/pixiv/endpoint/{artwork,novel,user}/<leaf>`，各 family 自有 route、request、raw DTO、mapper 与 continuation/error 校验，父包只拥有 normalized entity/value。
-
-FANBOX 的 `internal/services/fanbox/protocol` 只拥有产品专属 session、cookie、challenge、URL policy 与窄 transport；`internal/services/fanbox/endpoint/{creator,post}/<leaf>` 与 `resource` 各自拥有 endpoint route/fixture/转换。`sdk/fanbox` 直接组合这些 Adapter capability，不依赖业务 Facade。
-
-`RequiredList` / `RequiredObject` 只共享字段存在性解码，endpoint 继续负责完整性校验与映射。`null` 表示 Present=true、Valid=false；空对象成功解码不代表业务完整。字段缺失不会调用 decoder，复用外层 DTO 必须先清零或新建；被调用的 decoder 会重置旧状态，但失败仍可能留下本次部分数据，调用方须先处理错误并检查 Valid。历史对象实现的差分只覆盖已验证的生产 DTO 与输入，不能外推到任意泛型或自定义 decoder。
-
-### `internal/services/pixiv`、`internal/services/fanbox`（业务 Facade）
-
-迁移后，两个产品根包分别聚合账号与会话业务，不把 CLI/MCP DTO、filter、record、schema 或输出适配带入 services。Facade 只依赖业务叶 Module 的 Port、配置快照、协议无关的共享 Module 与 public SDK；不得依赖 `internal/storage/database` 的具体实现，也不得由 public SDK 反向 import。
-
-`internal/services/pixiv` 的业务 Facade 统一账号打开、登录完成、凭据 rotation、账号池选择/冻结/safe replay 与 Lease 生命周期；`internal/services/fanbox` 统一账号选择、session 校验与独立 client 生命周期，但不引入 Pixiv 账号池策略。
-
-显式非零 `Request.UserID` 将读取与写入固定到该本地账号，即使启用账号池也不换号。打开账号及业务调用失败直接返回，不切换到其他账号；未指定 UID 的请求继续使用原有池调度。这不修改 CLI default。
-
-纯登录渲染器位于 `internal/services/pixiv/account/loginrelay/loginpage`，从仅负责资源的 `frontend` 包读取模板/CSS。CLI 页面响应包装复用它；该模块不依赖 CLI、账号库、浏览器或 listener。可复用 HTTP handler/session 位于父级 `loginrelay` 包，接收 OAuth 会话校验器并向 owner 交付一次 callback，不开启 listener、不兑换或持久化凭据。CLI 保留 listener/TLS/终端编排；主 mux 可剥离公开路径前缀后挂载 handler，生产 MCP 将 handler 挂在规范化 base 后的 `/pixiv-login/`，仍受相同 Host/Origin 校验保护，但以 handoff proof 而非 MCP bearer 认证。
-
-生成的 relay URL 与路由分发均保留转义路径前缀。会话取消后新请求返回 HTTP 410，并在接收已校验 callback 前再次检查取消，拒绝在校验期间被 restart/shutdown 取消的 callback。 共享 callback URL 白名单、start 响应协议类型与结果页 URL header 位于 `internal/services/pixiv/account/loginrelay`；CLI relay 与 desktop helper 共用它们，共享模块不反向依赖 CLI。
-
-MCP account owner 另提供单当前登录 manager：重复 start 复用 pending 流程，显式 restart 取消并等待前次流程，shutdown 等待兑换/持久化退出。完成状态保留非敏感的 account-saved/selection-updated 标记，包括部分失败；组合根将校验与兑换绑定同一 SDK 登录会话，保存账号时不修改 CLI default，再独立写 MCP selection。重启登录复用同一账号服务，每次 SDK 登录完成后释放其自有 HTTP 空闲连接；显式代理/直连选项由组合根创建的 client，则由组合根在完成路径的所有出口释放空闲连接。登录启动工具与 login_id 状态查询复用此 manager。
+- `internal/services/pixiv/webapi` 与匿名 Web/AJAX 路径已删除；App 错误直接返回规范化错误，不切换协议。
+- 端点族 `internal/services/pixiv/endpoint/{artwork,novel,user}/<leaf>` 负责路由、请求、原始 DTO、mapper、续读/错误校验；三个父包只负责共享的规范化实体/值（不再有共享 model 包，避免 `appapi` 或跨域 mapper 重新成为业务 owner）。MCP 交付常量留在 `internal/mcpserver`。
+- FANBOX：`internal/services/fanbox/protocol` 负责会话、Cookie、challenge、URL 策略与窄传输；`endpoint/{creator,post}/<leaf>` 与 `resource` 负责路由/fixture/转换；`sdk/fanbox` 直接组合它们，不依赖 Facade。
+- `RequiredList` / `RequiredObject` 只共享字段存在性解码；端点保留完整性检查与映射。`null` = Present true、Valid false；解码出的空对象不必完整。缺失字段不调用解码器（复用外层 DTO 时调用方须清空或重建）。被调用的解码器会重置旧状态，但失败时可能留下本次输入的部分数据——先处理错误并检查 Valid。历史对象解码一致性只覆盖已验证的生产 DTO 与输入。
 
 ### reverse-search Facade 例外
 
-反向搜图是唯一跨越常规 public SDK 边界的产品能力。顶层契约与 Facade 位于 `internal/services/reversesearch`，provider 协议适配只位于 `internal/services/reversesearch/saucenao` 与 `internal/services/reversesearch/ascii2d`。生产组装 `internal/cli/composition.go` 可以依赖 `internal/services/reversesearch/assembly`，在每个命令/session 启动时绑定 HTTP client、代理和 SauceNAO key；`internal/cli/commands` 下的 CLI owner 与全部 `internal/mcpserver` 只能 import 顶层 `internal/services/reversesearch` 契约，不得 import provider 子包或 assembly。Facade 返回领域结果，CLI/MCP 只在输出边界投影 canonical Record。
+唯一跨越常规 SDK 边界的产品能力。
 
-Facade 会把常规文件或 HTTP(S) source 载入一个私有快照、计算 hash，并在 provider 工作结束后清理。已确认的 source policy 有意允许任意可读常规文件以及私网、loopback、link-local URL。在单 owner OAuth 模型下，只应授权可信 connector：本地路径指向 MCP server 的文件系统，URL 请求使用 server 的网络，而非 connector 所在设备。source 与 provider transport 都不能跨过输出边界；可发布的只有 source kind/hash、安全的 provider 摘要/错误、领域 evidence 和 canonical `artwork`/`user` Record。
+```mermaid
+flowchart LR
+    COMP["internal/cli/composition.go"] --> ASM["reversesearch/assembly<br/>（HTTP client、代理、SauceNAO key<br/>每个命令/会话绑定一次）"]
+    ASM --> SN["reversesearch/saucenao"]
+    ASM --> A2["reversesearch/ascii2d"]
+    CMDS["internal/cli/commands/*"] --> TOP["internal/services/reversesearch<br/>（契约 + Facade）"]
+    MCPS["internal/mcpserver/*"] --> TOP
+    CMDS -.->|禁止| SN
+    MCPS -.->|禁止| ASM
+```
 
-reverse-search assembly 负责三个独立网络面：standard source/SauceNAO client、专用 ascii2d browser client，以及
-FlareSolverr JSON control client。reverse-search service proxy 只可以覆盖 ascii2d；命令级 proxy override 同时
-作用于两个 native client；没有覆盖时 standard client 继续遵循全局 route。ascii2d User-Agent 必须与
-`Chrome_146` TLS profile 以及匹配的 Chromium client hint 配对；非 Chromium User-Agent 则省略这些 hint。
+- Facade 返回领域结果；CLI/MCP 适配器在输出边界投影 canonical record。
+- 它把普通文件或 HTTP(S) 来源加载为一个私有快照、计算哈希，并在完成后删除。来源策略有意允许任意可读普通文件与私有、loopback、link-local URL；单 owner OAuth 下只授权可信 connector——路径指 MCP server 文件系统，URL 使用 server 网络。只有来源类型/哈希、安全的 provider 摘要/错误、领域证据与 canonical `artwork`/`user` record 可以发布。
+- 三个网络面：标准来源/SauceNAO client、专用 ascii2d 浏览器 client、FlareSolverr JSON 控制 client。服务代理只能覆盖 ascii2d；命令级覆盖同时作用于两个原生 client；否则标准 client 走全局路由。ascii2d UA 与 `Chrome_146` TLS profile 及匹配的 Chromium hints 配对（非 Chromium UA 省略 hints）。FlareSolverr 上游代理只用于浏览器 `sessions.create`；控制流量保持独立；图片始终使用原生 ascii2d multipart。solver 状态限于进程/client，不持久化。
 
-FlareSolverr 的 upstream proxy 只用于 browser `sessions.create`；solver control traffic 保持独立，图片始终
-走 native ascii2d multipart upload，不经过 solver。solver state 只属于进程/client，不持久化。
+### `internal/storage/database`
 
-### `internal/services/pixiv/endpoint/{artwork,novel,user}`
+- 本地账号状态的 SQLite 权威：`pixiv-cli.db` 的 schema、迁移账本与 repository；身份/凭据按 `user_id`；Pixiv 轮换与 FANBOX 会话替换使用 `credential_revision` compare-and-swap。
+- 只前进的迁移到 schema v3；旧 v1 数据库通过 v2/v3 变更升级；本树初始 schema 中已有的最终列会被识别，不重放 DDL。旧 `auth.json` 与 `account_pool.accounts` 不在启动迁移路径中。
+- 私有 DB/journal 权限（Unix `0700`/`0600`）。auth export 只读取默认、指定 UID 或全部账号——不读环境 token、不刷新、不联网、不修改。
+- **锁：** owner 通过私有 `pixiv-cli.db.lock` sidecar 协调初始化、短账号/账号池事务与完整快照读取（不含凭据、不改账号数据；从不覆盖 OAuth 或内容请求；外部 SQL 写入者与旧进程不参与）。不可取消的 context 保持原生等待；可取消的 context 每 10 ms 轮询同一非阻塞锁接口，取消时立即唤醒并关闭等待中的文件句柄。没有整体截止时间或事务重放。账号 owner 在获取会话互斥锁前先取消生命周期，因此 watcher 校验期间的 DB 锁等待不会阻塞关闭。
+- 从旧 CLI 迁移：旧版本执行 `pixiv auth export --all --output <private bundle>`，新版本执行 `pixiv auth import < bundle.json`；失败直接返回原因；不自动删除旧文件。
 
-三个 parent 包只拥有各自 endpoint family 共享的 normalized entity/value；route、wire DTO、响应校验、分页与 mutation form 留在对应的子 family。novel 与 user 不再通过共享 model 包传递，避免 appapi 或跨域 mapper 重新成为业务 owner。MCP delivery 等传输层常量仍留在 `internal/mcpserver`。
+### `internal/config/settings`
+
+| 存储 | 保存 |
+| --- | --- |
+| `pixiv-cli.db` | 账号身份与凭据（`pixiv_account` / `fanbox_account`），文件 `0600` |
+| `config.toml` | 全局键，含 `[pixiv.auth].default_user_id`、`[fanbox.auth].default_user_id`；Unix `0600`。无默认账号时按 `sort_order` 选第一个 |
+
+运行时设置用 `koanf` 合并 `config.toml` 与公开环境变量；`config set/unset` 用 `tomledit` 稀疏回写，尽量保留注释、顺序与排版。首次运行的紧凑基线只写入 `example:"true"` 条目。
+
+#### 配置声明：结构体字段标签是唯一事实来源
+
+`RuntimeConfig` 的导出字段（含嵌套的账号池、网络与 FlareSolverr 组）声明全部静态事实；运行时绑定、CLI 元数据与基线生成复用同一份声明。
+
+| 标签 | 含义 |
+|---|---|
+| `config` | 相对于所属组的 TOML 路径；`"-"` 排除该字段及其整个子树 |
+| `alias` | `config get/set/unset` 使用的公开名称；组与私有高级叶子省略 |
+| `env` | 可读取的环境变量，按声明顺序（即优先级；存在即命中，空值不会继续向下） |
+| `default` | 缺失时使用的值，按字段类型解释（以标签**是否存在**区分，而非字符串是否为空） |
+| `example` | 是否进入首次运行的紧凑配置；只有 `"true"` 进入，且要求有 `default` |
+| `cli` | 是否由 `config get/set/unset` 管理 |
+| `secret` | 是否必须在公开输出中隐藏并排除出示例配置（`secret:"true"` + `example:"true"` 是 schema 错误） |
+
+- 组只声明 `config` 前缀；叶子声明相对路径；同一组类型可在不同前缀下复用。`OptionalString` 是叶子。可选指针组按类型检查，不分配实例。
+- 声明错误：展开后路径重复、非空别名重复、空路径段、循环组、不支持的叶子类型、组上出现仅限叶子的属性。私有叶子没有公开别名就不能启用 CLI 管理、示例或环境变量绑定。`cli`、`secret`、`example` 只接受 `"true"`/`"false"`（不影响用户配置值的解析）。
+- 私有 schema 缓存字段索引链与 Go 类型，从不缓存实例。标量绑定与 `Effective` 使用相同的来源选择；普通绑定不分配指针组。高级读取器按字段归属定位已编译路径，不新增别名，也不会在领域启用检查前分配 solver 组。账号池默认值来自声明；严格文件类型与策略校验仍是领域规则。
+- 默认账号选择有单独的私有声明范围：`int64` UID 叶子无别名、无默认值；正整数解析留在按需的 auth 读写方法中；从不进入普通绑定或 Snapshot 早期校验。
+- `SettingSpec` 是 CLI 消费的**公开派生视图**，不是手写事实表。
+- **新增普通设置** = 字段 + 标签、一个行为测试、对应文档。没有注册表、环境变量 `switch`、逐字段赋值、基线列表或别名列表需要同步。
+
+| 文件 | 职责 |
+| --- | --- |
+| `config.go` | 类型、字段标签、字段契约 |
+| `schema.go` | 标签派生元数据、声明校验、查找、退役墓碑、公开 `SettingSpec` 视图 |
+| `snapshot.go` | 文件/环境快照、来源选择、运行时绑定（服务网络、FlareSolverr、账号池领域规则） |
+| `values.go` | 类型解析、规范化、领域校验 |
+| `document.go` | TOML 定位与稀疏修改 |
+| `defaults.go` | 基线配置文档生成 |
+| `store.go` | `Store` 操作（路径、读取、稀疏回写） |
+| `auth.go` | 默认账号读写（有意**不属于**普通绑定） |
+| `paths.go` | `FileStore` 端口与默认文件适配器 |
+
+**原子写入**（`FileStore`，由 `internal/storage/file/{atomic,lock,replace,secret}` 注入）：
+
+```mermaid
+flowchart LR
+    T["目标目录中随机名临时文件<br/>（不含凭据）"] --> W["写入全部内容"] --> S["文件 Sync"] --> C["关闭"] --> R["替换目标"] --> D["同步目标目录<br/>+ 新建目录 叶→根"]
+```
+
+- Unix 主动把父目录/文件收紧为 `0700`/`0600`。若本次调用新建了目录，提交后按叶→根顺序同步目标目录与每个新目录的外层父目录，使文件条目与新目录条目都落入持久化边界；已有目录只同步目标目录。
+- 失败：替换前（写入/Sync/关闭）失败时保留旧目标；普通替换失败与可恢复的部分完成失败会保留/恢复旧目标并清理临时文件。目录同步失败仍会尝试其余目录并合并错误——替换已提交，旧文件可能已不存在。部分完成后的恢复本身失败时，调用方收到合并错误，目标可能暂时缺失，同目录的旧内容恢复备份与新内容临时文件都保留以便人工恢复（此时"无临时残留"不适用）。其他临时文件清理失败与主错误一起返回。
+- Windows：替换前同样 Sync 并关闭；目标存在 → 使用带同目录唯一恢复备份的 `ReplaceFileW`；首次创建 → 不覆盖的 `MoveFileEx`。`ERROR_UNABLE_TO_MOVE_REPLACEMENT` 保持目标/源的原名；`ERROR_UNABLE_TO_MOVE_REPLACEMENT_2` 尝试恢复已移到备份的旧目标，失败则保留备份/源。成功替换后备份清理失败属于已提交错误。新文件继承父目录 ACL，替换保留目标 ACL；不声称收紧 ACL，也不提供与 POSIX mode 或目录 fsync 等价的保证。
+
+`update_check_enabled` = `[update] check_enabled`（默认 `true`），只控制自动检查，不影响用户主动执行的 `pixiv update`。`log_level` / `log_format` = `[logging].level` / `.format`；默认 `info`/`text`，`debug`/`json` 启用 CLI stderr presenter；环境变量按次覆盖。
+
+### `internal/browsercookies`
+
+只读浏览器 Cookie provider；不属于公开 SDK；不依赖 FANBOX、Pixiv、CLI、MCP 或账号库。
+
+| 部分 | 作用 |
+| --- | --- |
+| 根包（core） | 与协议无关；固定的 `CookieQuery`；按安全 profile 标识发现浏览器目录；返回脱敏的 `Secret`；不导入任何 provider（只导入根包不会注册浏览器） |
+| `chromium` | 显式的 Chrome/Edge provider；从平台 profile 根目录读取 Local State/Cookies；支持 v10/v11 GCM 与旧 CBC |
+| `firefox` | 解析 `profiles.ini` |
+| `safari` | `Cookies.binarycookies`，仅 macOS |
+| `system` | 导入并注册全部 provider，使根包 `New` 能分发到每个浏览器 |
+| `secret` | macOS Keychain、Windows 当前用户 DPAPI、Linux 通过固定属性的 `secret-tool` 访问 Secret Service |
+
+未知 Chromium 衍生浏览器不做模糊识别；多个 profile 且未选择时明确失败。缺少工具、权限、锁、schema 漂移与解密错误映射为稳定错误；Cookie、密钥、绝对路径与命令输出从不进入日志、错误、JSON 或 MCP。各平台 native 证据须按 release-prep 手册在对应主机采集；离线 fixture 与交叉编译只证明代码/格式契约。
+
+### `internal/update`
+
+薄根包（协调器 + 自动检查 API），向 CLI 组合根重新导出 `internal/update/{source,release,installer,process}`。
+
+| 安装来源 | 更新行为 |
+| --- | --- |
+| Homebrew | 通过可执行文件符号链接与 keg `INSTALL_RECEIPT.json` 区分 stable/beta；切换时先卸载冲突 formula，失败时显式尝试恢复原 formula |
+| `go install` | 必须同时匹配 Go build info **与**实际 `GOBIN`/`GOPATH/bin` 可执行文件；安装所选的精确 tag |
+| Release 二进制 | 选择平台压缩包 → 校验 Ed25519 `checksums.json` → 校验 SHA-256 → 精确 `pixiv --version` 预检 → 同目录原子替换 |
+
+- GitHub Releases API 是唯一查询后端；排除草稿；stable 在校验前排除预发布；ETag/缓存用于节流并原子持久化。对通道内已发布 Release 强制 canonical SemVer——任一非法 tag 都 fail closed 并报告（绝不跳过而选旧版本）。
+- 签名、checksum、HTTP、压缩包、替换与权限错误从不伪装成"没有更新"。Release 安装的失败语义是保护边界，不是临时降级。
+- **信任根**（`internal/update/installer`）：key ID 与公钥常量位于 `release_installer.go`；`internal/cli/commands/update/production.go` 为安装器构造 key ID → 公钥映射，调用方无法污染；`root.go` 只持有更新 seam。指纹与签名 fixture 由同包测试验证；私钥不在源码或配置中；只读检查不需要它；这层装配不能替代每个版本的发布验收。`internal/bootstrap` 已在 v1 删除。
+
+### `scripts/cmd`、`scripts/tests` 与 `scripts/internal`
+
+| 位置 | 内容 |
+| --- | --- |
+| `scripts/cmd/<name>/main.go` | 只做参数解析与调用 owner |
+| `scripts/tests/` | 只验证 workflow、文档或安装器行为的纯测试载体 |
+| `scripts/internal/<name>` | 实现与同包测试；共享的 `releasecontract`（目标/压缩包身份）与 `releasenotesrender`（Release 正文渲染，由 `releaseassets` 与历史同步共用） |
+| `ci/platforms.json` → `tools/platformmatrix` | 供 workflow 使用的 runner/能力元数据；workflow 测试验证行为/安全边界，而不是第二份 YAML 策略模型 |
+
+### `sdk`、`sdk/pixiv`、`sdk/fanbox`
+
+唯一的对外契约面。
+
+| 包 | 导出 |
+| --- | --- |
+| `sdk` | `Page[T]`、`Cursor`（Text/JSON codec）、`Error`（sentinel、context 链、脱敏）、`ResourceRef`/`Resource`、资源请求/响应/保存类型 |
+| `sdk/pixiv` | 仅 App：`Open/OpenWith/New/NewWith`、OAuth `LoginSession`、轮换、作品/小说/用户/评论/贴图模型、opaque cursor、`ParseURL`、评论写操作、贴图读取、资源读取；没有 Web 路径 |
+| `sdk/fanbox` | `Client.ValidateSession`、creator/tag/post/home/supporting、两种分页、资源读取；不读浏览器、DB 或 Pixiv 凭据；从不导入 `sdk/pixiv` |
+
+- FANBOX 传输：Chrome 146 TLS profile + Firefox 148 UA 基线；构造时只接受显式 HTTP client、代理、UA 与可选 FlareSolverr。`FANBOXSESSID` 只出现在发往 `api.fanbox.cc` 与 `downloads.fanbox.cc` 的已校验请求中——从不发往第三方 CDN、Pixiv host 或 solver 控制请求。solver 控制直连；其上游代理只是 solver 配置（不继承原生/环境代理）；非 challenge 的 API/资源错误从不进入 solver。
+- 旧的顶层 `pixiv/` facade 已在 v1 删除（`pixiv` 仍是 `sdk/pixiv` 的导入别名）。auth 备份（`AuthExportSelection` / bundle codec）使用同一本地快照边界；bundle 是未加密的时间点 secret 备份，轮换后可能失效。
+- 来源模式、预算、筛选、cursor 持久化与 HTTP 呈现由调用方负责。不提供 HTTP Provider、Discover、Probe、Capabilities、RSS 或爬虫。
 
 ### `internal/mcpserver`
 
-`pixiv/gallery` 持有显式 MCP Apps 视图，绑定 `pixiv_show_gallery` 和 `pixiv_artwork_media`。稳定资源 URI 保留，工具 UI 使用按嵌入内容生成的版本别名作为宿主缓存键；有效历史版本别名在重新读取时交付当前页面。`pixiv/mediaproxy` 持有进程内图片凭证签名和公开 SDK 光栅图片交付；HTTP runtime 在 canonical origin 校验后路由 `/media/`。凭证绑定 OAuth grant、账号及图片选择；浏览器与反代路由均不接收上游凭据或任意 URL。
-
-composition root 注入与其他 Pixiv 操作相同的出站代理和显式账号 lease 工厂。Gallery 负责懒加载占位、明确重试、视图取消、Blob 清理和 host 能力控制的下载。独立的 256MiB 估算会话 LRU 在内部导航间复用成功加载的静态图片、详情和原图字节；新 tool input／result 与关闭清理缓存。缓存图片脱离旧 DOM 并移除视图监听；淘汰释放其图片来源，正在显示的超大图片继续完整显示。原图弹层沿用完整字节媒体工具，与 host 确认下载共享字节；未声明 host 下载能力时，通过既有 Gallery tool 准备选定页 original 凭证并展示受保护 HTTPS 附件链接，只允许 original 质量的精确下载参数，与普通 HTTP 原图共用服务端缓存；收藏状态不缓存。搜索续页仍由原数据工具负责。
-
-HTTP transport 仅在存在诊断 scope 时观察 POST 底层写入／Flush。字节数表示 writer 接受，不代表对端收齐；ResponseController 的 unwrapping 保留 SDK 流式与 deadline 行为。不保留正文／header，不增加缓冲、等待或重试。
-
-`internal/services/pixiv/account/reads.go` 拥有受生命周期管理的 MCP 只读会话；获取时校验本地账号凭据版本，仅 OAuth 刷新及成功轮换持久化共享原有 gate。凭据替换／账号删除、网络变化、到期及上游 401 使会话 generation 失效并释放空闲连接。写入 lease 与账号池提交／重放仍由原 Facade 负责。root 注入独立 read 端口和 opaque 会话版本，MCP adapter 不读取凭据。 账号查询取消时只返回当前请求错误，不使共享 generation 失效，也不触发额外轮换。 Windows 上的凭据与动图授权监听还覆盖父目录，以检测被监听目录本身的移动。
-
-`pixiv/mediaproxy` 拥有按 grant／会话隔离的 metadata 与图片 LRU、独立查询／图片信号量、同键 metadata 合并和流式响应生命周期。序列化 metadata、正在填充的图片缓冲及传输中的缓存载荷共用配置预算；超大或无法预留空间的图片流式返回而不缓存。每次读取校验当前授权，旧账号／会话版本不能复用内容。仅完整成功传输进入缓存，收藏状态与写入不缓存。授权通知、凭据版本信号和条目到期主动回收空闲内容；在途引用释放前继续计入预算。缓存发布在同一 mutex 内校验授权与版本，迟到填充不能重新写入已失效内容。SDK 在映射可信 metadata 时登记经 policy 校验的质量变体。诊断使用固定阶段名，不包含秘密标识。
-
-`pixiv/tools/artwork_media` 拥有静态 MCP 图片交付。一个既有 SDK lease 将作品 metadata 与所有页资源绑定到选中账号；每次读取后关闭 resource response，所有退出路径均关闭 lease。返回实际图片 bytes、逐页 content 索引与失败项，不暴露服务器文件路径、不重放部分交付。`pixiv/internal/outputs` 拥有媒体 structured envelope 与 schema 错误脱敏。Ugoira 在每次调用的私有临时目录内复用 downloader archive 选择器、SDK SaveResource 与 Go encoder，以标准 ImageContent 返回完整 GIF/APNG 字节和独立索引的 PNG preview（APNG 内容使用 PNG 家族媒体类型，元数据保留动画子类型），交付前清理临时文件。实际 archive 质量与产物文件名显式返回；静态专用参数拒绝而非忽略。
-
-客户端通过 `io.modelcontextprotocol/ui` 扩展声明支持 `text/html;profile=mcp-app` 时，`_meta["pixiv/mediaContents"]` 提供 App 专用的索引数组，模型可见的 `content` 仅包含独立 PNG 预览。既有私有动图 owner 已暂存完整原文件时，该数组包含动画的受保护 `resource_link` 和内嵌 PNG 预览；点击播放才读取原质量二进制，下载使用同一原文件，保留 grant、账号版本和到期检查。
-
-存在该私有数组时，`content_index` 和 `preview_content_index` 均指向它。可选暂存不可用时仍在数组中保留完整内嵌图片内容；宿主仍可能拒绝大响应，不能把服务端准备成功当作已接收。未声明 UI 能力或声明了其他 MIME 的客户端继续收到原有完整 `content`；静态媒体和公开输入保持不变。对链接交付的动图，Refresh animation 会按原格式通过 `pixiv_gallery_animation` 显式重新授权，替换过期的播放／下载地址，并复用现有状态查询和订阅释放流程。图片失败不会自动重新准备；宿主不允许调用服务端工具时无法续签过期链接。
-
-ZIP 正文读取失败且任务上下文仍有效时，提前 EOF 额外记录固定标记 `animation_zip_incomplete`，底层读取器报告超时时记录 `animation_zip_timeout`。标记仅携带已读取字节数，不包含原始错误或签名地址，不改变重试、时限、输出质量或工具错误。
-
-媒体工具也会附带既有 MCP App 视图，用于播放完整媒体和切换独立静态预览。宿主声明文件下载能力时使用其确认流程，否则通过可用的受保护 HTTP 附件在浏览器下载，仍受浏览器限制。服务端复用已编码的动画和预览，受既有动图临时容量、grant、账号版本及 TTL 约束，不重新下载或编码。短期地址仅通过私有 UI 元数据交付，不暴露文件路径。可选暂存失败不会改变完整内嵌结果，但浏览器下载不可用；重启、到期或授权变化都会使地址失效。
-
-`New` 构造唯一 protocol server，分别调用两产品的 `Register`。Pixiv tools 使用 `pixiv_`，FANBOX 保留 `fanbox_`；不保留无前缀旧名 alias。stdio 经 `internal/media/downloader` 注入本地下载，HTTP 不接收该端口。Gallery 与 owner 工具要求对应 media/account/login 端口。父包的 `NewHTTPHandler` 组装 stateless Streamable HTTP 与 OAuth 路由，`RunHTTP` 拥有 listener 和服务生命周期。`RunStdio` 管理本地 JSON-RPC session 并等待清理，HTTP 生命周期独立。
-
-各产品保留独立 SDK ports、账号选择与 runtime。注册/discovery 不打开 FANBOX 账号；root 在 FANBOX tool 调用时才懒加载其独立 service。各 tool package 拥有名称、annotations、schema 和 handler。Pixiv adapter 解析 nullable `page`/`limit`，遍历仍由 `internal/shared/traversal` 执行。handler 失败保留 structured output 并设置 `isError=true`，正常空结果保持成功。完整合同见 [MCP 工具](../mcp-tools.md)。
-
-`internal/mcpserver/auth` 拥有单一版本化 JSON state 与 owner 初始化/reset。root 注入 app-data 路径，只有 CLI 输出一次性 secret。每次修改在侧车锁内读取最新状态并原子替换，读取不缓存状态。owner verifier 同时是后续内存授权状态的 generation 边界。不新增数据库。
-
-Grant 记录必须显式包含布尔字段 `revoked` 和历史字段 `used_refresh_hashes`。缺失字段或错误类型失败关闭；空 refresh 历史允许空数组或现有序列化器对 nil slice 输出的 `null`。损坏状态阻止读取、owner init/reset 与注册，且不覆盖原文件。
-
-`auth.NewHandler` 提供 discovery、DCR、authorize、token 路由和 `Handler.RequireBearer`。`NewHTTPHandler` 将其与 `/mcp` 一起挂载，监听前验证 owner state，在 OAuth/SDK handler 前执行 canonical Host/Origin 校验。canonical base URL 由构造参数指定，允许本地 HTTP；拒绝凭据、query、fragment 与会被客户端归一化的 dot-segment 路径，绝不读取请求 Host 或转发头构造 issuer。
-
-- root protected-resource metadata 与 resource-specific 路径共用 SDK handler。例如 base 为 `https://example.test/pixiv` 时，resource 是 `https://example.test/pixiv/mcp`，metadata 位于 `/.well-known/oauth-protected-resource` 与 `/.well-known/oauth-protected-resource/pixiv/mcp`，AS metadata 位于 `/.well-known/oauth-authorization-server/pixiv`，注册位于 `/pixiv/oauth/register`。反向代理需同时转发这些 well-known 路径；不能仅转发 `/pixiv/`。
-- DCR 仅接受 JSON public-client 注册；省略 auth method 时采用 `none`，不签发或保存 client secret。响应明确返回固定 profile：code、authorization_code/refresh_token、mcp；请求中未知扩展 metadata 被忽略，不访问 logo/client/JWKS URL。非支持的 auth method、grant、response type 或 scope 返回 OAuth JSON 错误。
-- redirect 原样保存，不作 URL 归一化；接受 HTTPS、loopback HTTP（含 localhost）与带点的 reverse-domain native scheme，拒绝 fragment、相对 URI、普通远程 HTTP、执行性 scheme 与无效 URI。authorize 必须精确匹配已注册 redirect。callback query 不可解析或预置 OAuth 响应参数（`code`、`error`、`error_description`、`error_uri`、`state`、`iss`）时在本地拒绝，避免覆盖注册 query 或返回歧义结果；其它 query 参数保留。
-- 注册与 owner reset 使用同一侧车锁，每次锁内读取最新文件。成功原子写入后才返回 201/client_id；持久化失败返回不含路径、原始 metadata 或凭据的 `server_error`。reset 保留注册及 selected account。
-- authorize 要求 code、canonical resource、`mcp` scope（省略时也取此值）与有效 S256 challenge。未知 client 或无效 redirect 在本地失败；其它已确认 redirect 的授权错误回跳并携带原 state 和 canonical `iss`，AS metadata 同步声明 issuer response 支持。
-- 经转义的同意页标注 client name 未验证并展示 redirect origin 与 URI。独立、一次性 CSRF 将表单绑定 browser/request/owner generation；owner 验证后旋转 HttpOnly/SameSite=Lax cookie，HTTPS canonical base 使用 Secure。每次授权仍必须明确 Allow/Deny；POST 拒绝跨源请求与参数覆盖，同源比较处理 host 大小写与默认端口。
-- 表单 action 使用完整 canonical 授权 URL，而非仅路径引用，避免合法双斜线 prefix 被浏览器解释为跨源提交目标。请求 Host/转发头与 client redirect 均不能改变 action；cookie path 保留转义后的 prefix。
-- CSP 禁止 script、嵌入与 base 覆盖；form-action 只允许 self 和已验证 callback origin，兼容 Chromium 对表单重定向的检查。`strict-origin` 不泄漏授权 query，同时保留同源表单 POST 校验所需 Origin。会话、待确认表单与 hash code 仅存内存，reset/restart 后失效。code 绑定 client/redirect/resource/scope/PKCE/generation 并记录十分钟截止时间；token 兑换在同一文件事务中核验这些绑定及当前 generation，十分钟截止时拒绝兑换；成功持久化后才消费 code。
-
-- token 仅接收标准 form POST；拒绝 query 凭证、重复参数、缺失必需参数及不支持的 grant type，错误只输出 OAuth JSON 类别。PKCE verifier 按 RFC 7636 的 43–128 个 unreserved ASCII 字符校验，再核验 S256。access/refresh 为独立 256-bit 随机 opaque 值，持久化仅存 SHA-256 hash；access 有效一小时（`expires_in=3600`），refresh 无闲置期限。
-- refresh 在与 reset 共用的侧车锁内重新读取 state，绑定当前 canonical resource、client 和 scope；每次成功旋转，保留已用 hash。旧值重放先持久撤销对应 grant，再返回 `invalid_grant`；随机错误值不撤销其它 grant。写盘失败不发布 token、不消费 code 或旧 refresh，撤销失败也不虚报成功；可重试。重启保留 clients/grants/refresh，不保留待交换 code。
-- `Handler.RequireBearer` 复用 SDK middleware，按每次请求读取最新 state、检查 resource/撤销/一小时期限，拒绝多重 Authorization header。未授权返回 HTTP 401 与 canonical `resource_metadata` challenge，不转为 MCP result；损坏状态安全失败且不暴露路径。响应 `no-store`，过期/reset 只影响后续鉴权，不取消已授权的长请求。
-- HTTP 与真实临时文件测试覆盖期限边界、并发兑换/refresh/reset、重启与实际写盘失败；期限测试用标准库 `testing/synctest`，不添加生产 clock 配置。
-
-HTTP owner 精确匹配转义路径，不使用 ServeMux 路径归一化。入站 Host 与存在的 Origin 必须匹配 canonical origin，转发头不建立信任；反向代理须保留公网 Host 和路径 prefix。MCP 响应在提交时强制 `no-store`，包括 SDK SSE 响应。服务取消或 listener 失败时，服务取消其专属 context 并等待在途 handler 退出，不添加固定清理超时；保留原始 listener 错误，不反向取消调用方 context。receiving middleware 将旧版 SDK session 绑定服务 context；新版 HTTP 请求取消由 SDK 传播。不新增协议 session store 或 transport fallback。
-
-标准客户端 fixture 覆盖 401 discovery、DCR、PKCE、两产品 SDK 读取以及同地址重启后的持久 grant。锁定的 Go MCP SDK v1.8.0 默认 refresh token source 不发送 `resource`，会得到 `invalid_request`；服务器不为此放宽校验。测试另外通过 SDK 可配置 HTTP client 补入[规范要求的 resource 参数](https://modelcontextprotocol.io/specification/2026-07-28/basic/authorization#resource-parameter-implementation)到 form，验证刷新旋转与重连读取。该对照不是原样 SDK 刷新兼容性或 ChatGPT/Gemini 产品验收。
-
-路径和注册规则依据 RFC 8414 §3、RFC 9728 §3、RFC 7591 §2/§3.2 与 RFC 8252 §7/§8.4。临时文件和 HTTP fixture 测试不代表真实 connector OAuth 已通过。
+见 [MCP server 架构](architecture-mcp.md)。
 
 ### `internal/media/downloader`
 
-负责下载和本地文件落盘：
+CLI 下载 owner。通过 `DownloadTargetClient` / `DownloadClient` 获取 SDK 执行快照，集中负责来源展开、ID 去重、页码/质量校验、获取与发布、进度事件与 Ugoira 格式选择（适配器不得重复实现）。`ResourceRef` 只由产品 client 解析；SDK 只保留原子的解析/保存能力，没有批量下载流程。
 
-`internal/media/downloader` 是 CLI 的下载 owner。它以 `DownloadTargetClient`/`DownloadClient` 接收 public SDK client execution snapshot，统一负责来源展开、ID 去重、页码和质量校验、文件获取与 publication、进度事件和 ugoira 格式选择；这些语义不能在 adapter 中复制。`ResourceRef` 仅由产品 Client 解析，下载器只消费已验证的 opaque ref。公开 SDK 只保留原子资源解析/保存能力，不暴露批量下载工作流。
+| 情况 | 结果 |
+| --- | --- |
+| `Download` | 同步执行；返回每个作品的实际产物路径 |
+| 单页 | 保存到下载目录 |
+| 多页、Ugoira | 每个作品一个子目录 |
+| 扩展名 | 来自上游 URL 路径，与模板文件名同样规范化；Pixiv 缩略图在有显式 Content-Type 时修正含糊后缀；未知类型保留 URL 扩展名 |
+| Ugoira | SDK 校验的 `download_url` ZIP → Go 编码器生成 GIF/APNG，或由 SDK 原样发布 ZIP/帧；可以选择 App medium，但绝不标记为 original |
 
-- `Download` 会同步下载 ID 列表，并返回每个作品的实际产物路径。
-- 单页作品保存到下载目录。
-- 多页作品和 ugoira 会建立作品子目录。
-- 单页与多页作品从上游 URL path 推导扩展名，并与模板生成的文件名一样规范化跨平台非法字符；Pixiv 缩略图会在资源响应提供明确 Content-Type 时按实际图片格式修正 URL 后缀，未知媒体类型保留 URL 扩展名。
-- ugoira 先下载 SDK 验证的 `download_url` zip，再由 Go encoder 合成为 GIF/APNG，或由 public SDK 原样发布 ZIP/提取 frames；认证态可合法选择 App medium，绝不把它标记成 original。
-
-默认下载路径构造 `ugoira.NewEncoder()`，没有后端选择或外部 encoder fallback。源码与 release 构建使用 `CGO_ENABLED=0`。Rust 源码、native library 与 FFI/staticlib adapter 已删除；历史来源保留在 Git 中。
+默认路径构造 `ugoira.NewEncoder()`——没有后端选择器或外部编码器 fallback；`CGO_ENABLED=0`。Rust 源码、native library 与 FFI/staticlib 适配器已删除（历史见 Git）。
 
 ### `internal/media/ugoira`
 
-拥有 `Format`、有序帧输入、`Encoder`、ZIP 校验/解码、缩放、GIF 量化/抖动、APNG 流式输出和原子发布。下载器消费 `Encoder` 契约并构造 `NewEncoder()`，不复制编码或 publication。PNG 使用标准库，owner-local `jpeg` 保留旧 IDCT/颜色舍入。六目标 source/version/binary/archive/member 证据归 `scripts/internal/nativeevidence`，与 runtime encoder 分离。
+负责 `Format`、有序帧输入、`Encoder`、ZIP 校验/解码、缩放、GIF 量化/抖动、APNG 流式写入与原子发布。下载器消费 `Encoder` 契约，不得重复编码或发布。PNG 使用标准库；owner-local `jpeg` 保留旧的 IDCT/颜色舍入。六目标证据位于 `scripts/internal/nativeevidence`，与运行时编码器分离。
 
 ## Release assets 与信任边界
 
-`scripts/cmd/releaseassets` 以固定六目标封装 archive：darwin/linux 为 `.tar.gz`，Windows 为 `.zip`；
-每个 archive 只包含 `pixiv`/`pixiv.exe`。第三方声明内嵌到程序，使用 `pixiv --licenses` 查看。项目自身的 `LICENSE` 在源码仓库中独立保留。
-Windows Git Bash 缺少 `zip` 时，打包脚本明确使用 runner 预装的 `7z`；其他平台使用 `zip`。两条分支
-生成相同的 member 集合，缺少对应归档器会直接失败而不会产出不完整 asset。
-finalize 阶段收集这六个 archive 的 SHA-256 到 `checksums.txt`，并为原始
-checksum bytes 生成带 key ID 的 Ed25519 `checksums.json`。
+```mermaid
+flowchart LR
+    B["六目标 CGO0 构建"] --> A["releaseassets：压缩包<br/>（.tar.gz / Windows .zip，<br/>只含 pixiv / pixiv.exe）"]
+    A --> F["finalize：checksums.txt<br/>+ Ed25519 checksums.json（key ID）"]
+    F --> D["草稿 Release，校验资产集"]
+    D --> P["发布（受保护的 release env）"]
+    P --> HB["4 个原生 staging tap 安装<br/>pixiv --version"]
+    HB --> TAP["最终受保护任务：<br/>用 tap deploy key 推送 formula"]
+```
 
-`.github/workflows/release.yml` 将签名/发布放在受保护的 `release` Environment 中；它使用最小权限和
-full-SHA Actions，并在草稿 Release 上传后核对 asset 集合才发布。发布 job 将同一份已验证
-`release/checksums.txt` 交给下游 renderer；stable/prerelease 分别生成唯一的 `pixiv-cli`/
-`pixiv-cli-beta` formula。四个原生 macOS/Linux runner 将该 formula 安放在各自隔离的 local staging
- tap 后，以 tap-qualified formula name 真实安装并核对 `pixiv --version`；此路径不使用或写入
-公开 tap，Homebrew 6 所需的 trust 仅精确写入 runner 本地 staging tap 的临时 trust store。
+- 第三方声明内嵌在可执行文件中（`pixiv --licenses`）；项目 `LICENSE` 留在源码仓库。Windows Git Bash 缺少 `zip` 时使用预装的 `7z`；两条分支产生相同成员；缺少归档工具直接失败。
+- `release.yml` 在受保护的 `release` Environment 中签名/发布，最小权限，Action 固定完整 SHA。发布任务把已校验的 `release/checksums.txt` 交给渲染器；stable/预发布分别生成唯一的 `pixiv-cli` / `pixiv-cli-beta` formula。四个原生 macOS/Linux runner 从隔离的本地 staging tap 安装（tap 限定名，验证 `pixiv --version`），从不使用或写入公开 tap；Homebrew 6 所需的信任只写入 runner 本地 staging tap 的临时信任库。
+- 只有最终受保护任务能读取独立的 tap deploy key，并只推送对应 formula。tap 凭据与 release 密钥是不同的信任域；tap key 只进入最后的推送步骤，不能替代 Ed25519 信任根（`internal/update/installer/release_installer.go`）。formula 模板只使用已校验六目标 checksum 中的 macOS/Linux 资产；stable 与 beta 互相冲突，都安装 `pixiv`。
+- 草稿 URL 无法安装，因此先公开 Release 再跑四架构门禁；失败时保留已公开的 Release 待处理，不写入 formula。v0.3.0 是首个走此路径的 tag；之后每个 tag 都必须通过同样的门禁。
+- 没有 Apple notarization 或 Windows Authenticode：Gatekeeper/SmartScreen 提示须对照已验证的 Release、checksum 与签名记录处理，绝不静默绕过。
 
-最终受保护
-job 才能读取独立 tap deploy key 并只 push 对应 formula。
-v0.3.0 的正式 tag 已走完此发布路径并推送 stable formula；后续 tag 仍必须独立满足同一安装 gate。受支持 binary 的公开签名 trust root 定义在 `internal/update/installer/release_installer.go`。
-
-Homebrew formula 模板由已验证的六目标 `checksums.txt` 生成，仅使用 macOS/Linux asset；stable
-`pixiv-cli` 与 beta `pixiv-cli-beta` 相互冲突且同装 `pixiv`。tap credential 与发布 key 是不同的
-信任域：tap 私钥只允许进入最终受保护 deploy job 的最后 push step，不能代替 Release Ed25519 trust
-root。公开 tap 的 stable formula 已对应 v0.3.0；beta formula 仍只由 pre-release 通道写入。由于 draft
-Release 的匿名 URL 不可安装，Release 会先公开再执行四架构 gate；失败会保留已公开 Release 供处置，
-但不会写对应 formula。
-
-当前 Release archive 不计划包含 Apple notarization 或 Windows Authenticode。用户收到 Gatekeeper 或
-SmartScreen 提示时，必须回到已验证的项目 GitHub Release、checksum 和签名记录，不能把系统提示视为
-可由 CLI 静默绕过的错误。
+详细门禁见[发布](release.md)。
 
 ### `internal/config/paths`
 
-不保留通用 constants 包。`config/paths` 唯一拥有 app-managed 路径、`AppDataDirName` 与
-Unix-like 私有目录/文件权限常量；它不读取业务配置，也不实现文件写入。Pixiv 协议值、MCP delivery
-值与 config key/default 仍留在所属领域包。`internal/shared/diagnostics` 拥有 typed、协议无关的事件契约，
-`internal/cli/diagnostics` 拥有由 `[logging]` 控制的 text/JSON stderr presenter；这不是持久 operation 日志，
-也不是历史通用 `slog` 链路。MCP JSON-RPC 经干净的 stdio 或经认证的 HTTP 传输，错误继续经 CLI、MCP 或 public SDK 的既有接口传递。
+应用管理路径、`AppDataDirName` 与 Unix 私有目录/文件权限常量的唯一 owner；不读业务配置，不写文件。没有通用常量包：Pixiv 协议值、MCP 交付值与配置键/默认值留在各自领域。`internal/shared/diagnostics` 负责类型化事件契约；`internal/cli/diagnostics` 负责由 `[logging]` 配置的可选 text/JSON stderr presenter——不是持久化日志，也不是历史上的 `slog` 链。MCP JSON-RPC 使用干净的 stdio 或认证 HTTP；错误仍通过 CLI、MCP 或 SDK 接口返回。
 
 ### `internal/storage/file/{atomic,lock,replace,secret}`
 
-四个 leaf package 分别拥有原子写入、文件锁、替换/recovery 与私密文件 writer；它们只依赖
-`config/paths` 的路径/权限约定，不拥有配置 schema、账号状态或 Pixiv 协议语义。
+四个叶子包：原子写入、文件锁、替换/恢复、secret 文件写入。只依赖 `config/paths` 约定；不负责配置 schema、账号状态或 Pixiv 语义。
 
 ### `internal/utils`
 
-只保留无协议语义的纯 helper：`parse` 负责正整数解析，`text` 负责字符串默认值，`uri`
-负责 URL path 提取与 file URI 生成，`date` 负责按月移动并在目标月份按月末截断。
+只保留与协议无关的纯 helper：`parse`（正整数）、`text`（字符串默认值）、`uri`（URL 路径提取、file URI 生成）、`date`（按月移动、月末截断）。
 
-文件名清理、模板展开归 `internal/media/downloader/filename`，ID 去重与媒体 MIME 类型归 `internal/media/downloader`；
-refresh-token 校验归 `internal/services/pixiv/oauth`；路径/权限归
-`internal/config/paths`，原子写入、锁、替换和 secret export writer 归
-`internal/storage/file/{atomic,lock,replace,secret}`。这样 `internal/utils` 不再承担具体设施或产品领域职责。
+| 迁出的职责 | Owner |
+| --- | --- |
+| 文件名清理、模板展开 | `internal/media/downloader/filename` |
+| ID 去重、媒体 MIME 类型 | `internal/media/downloader` |
+| refresh token 校验 | `internal/services/pixiv/oauth` |
+| 路径、权限 | `internal/config/paths` |
+| 原子写入、锁、替换、secret 导出写入 | `internal/storage/file/{atomic,lock,replace,secret}` |
 
 ## 已知约束
 
 > [!WARNING]
-> 以下约束是不可违反的硬边界。任何新增 timeout、截断、条数限制、重试上限、静默 fallback 或隐藏降级都必须有证据、注释、测试或文档说明，否则视为违规。
+> 不可协商。任何新增的超时、截断、数量上限、重试上限、静默 fallback 或隐藏降级都必须有证据、注释、测试或文档，否则视为违规。
 
-- `appapi`、`oauth` 与 resource transport 使用 caller/SDK 注入的 HTTP client；默认 client 专用于当前 SDK client、无整请求固定 timeout，取消与 deadline 由 context 传播。显式 client 保持调用方策略。
-- `pixiv mcp` 默认使用本地 stdio；显式 `--port` 启用 HTTP，此时才要求初始化 owner。直接运行 `pixiv` 显示帮助。HTTP 使用 `--port`、`--host`、`--base-url`，不再读取旧地址设置，见[启动说明](../cli-reference.md#mcp-http-server)。
-- 不新增持久账号 import/export MCP tool；既有 session-scoped MCP 认证 tool 与 wire contract 不变。
-- 账号 credential 保存在 SQLite `pixiv-cli.db`（BLOB，非加密）；Unix-like DB/journal 文件权限为 `0600`。获得当前用户文件访问权的攻击者仍能读取 credential，自动 backup 被禁止。
-- `config.toml` 采用稀疏写入，不会把默认值整份落盘。
-
-Gallery 动图任务位于 `pixiv/mediaproxy`，控制适配位于 `tools/gallery_animation`。组合根配置服务自有的私有临时目录，并在账号读取会话关闭前清理。任务按 grant／账号／generation／作品／格式隔离；独立不透明订阅句柄不暴露路径。动画和 PNG 预览路由复用 canonical origin 与授权校验。ZIP／预览写入前预留磁盘字节；原生 writer 经内部同步预算回调逐次申请实际写入空间，仅在确实不足时淘汰未使用的就绪产物，并保留输出硬上限；旧 Rust 入口保持不限额，继续共享全局串行 gate。临时文件生成与原生预算预留共用队列；启动清理要求服务标记及已释放的系统生命周期锁。原子发布后归还未使用预算，仅完整成功产物进入就绪状态。GET/HEAD 固定文件生命周期，清理等待活动任务退出。Gallery 经 Apps bridge 查询状态，CSP 仍禁止直接 fetch 连接。
+- `appapi`、`oauth` 与资源传输使用调用方/SDK 注入的 HTTP client；默认 client 专属于当前 SDK client，没有固定的整请求超时；取消/截止时间经 context 传播；显式 client 保留调用方策略。
+- `pixiv mcp` 默认 stdio；显式 `--port` 启用 HTTP 并要求 owner 状态已初始化；单独运行 `pixiv` 显示 help。用 `--port`、`--host`、`--base-url` 配置 HTTP，而不是已移除的地址设置（[启动](../cli-reference.md#mcp-http-server)）。
+- 没有持久化账号导入/导出的 MCP 工具；会话范围的 MCP auth 工具与 wire 契约不变。
+- 凭据以未加密 BLOB 存于 SQLite `pixiv-cli.db`；Unix DB/journal `0600`。拥有当前用户文件访问权限的人仍可读取；禁止自动备份。
+- `config.toml` 稀疏写入；从不整体持久化默认值。
