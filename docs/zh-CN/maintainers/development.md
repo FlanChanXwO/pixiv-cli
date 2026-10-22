@@ -2,22 +2,29 @@
 
 [English](../../en/maintainers/development.md) | 简体中文 | [文档索引](../../index-zh-CN.md)
 
-| 要做的事 | 从这里开始 |
+```mermaid
+flowchart LR
+    E["环境检查"] --> B["构建<br/>sh scripts/build.sh"] --> T["测试<br/>go test ./..."] --> PR["PR CI 门禁<br/>（ci.md）"] --> REL["发布门禁<br/>（release.md）"]
+    T -. "opt-in，需授权" .-> E2E["真实 SDK / 反向搜图 e2e"]
+    T -. "编码器改动" .-> UP["ugoira 对照<br/>（ugoira-parity.md）"]
+```
+
+| 你想做什么 | 从这里开始 |
 | --- | --- |
 | 检查本地工具链 | [环境检查](#环境检查) |
-| 修改或校验页面 | [前端资源](#前端资源) |
-| 构建或测试 ugoira 编码 | [Ugoira Go encoder](#ugoira-go-encoder) |
+| 编辑或验证页面 | [前端资源](#前端资源) |
+| 构建或验证 ugoira 编码 | [Ugoira Go encoder](#ugoira-go-encoder) |
+| 对照编码器输出与性能 | [离线 ugoira 对照](ugoira-parity.md) |
 | 运行 CLI 与 MCP | [运行](#运行) |
-| 处理登录和凭据 | [获取 refresh token](#获取-refresh-token) |
+| 处理登录与凭据 | [开发中的凭据](#开发中的凭据) |
 | 选择测试范围 | [测试](#测试) |
-| 检查 release workflow | [发布门禁、签名与 Homebrew 边界](#发布门禁签名与-homebrew-边界) |
-| 准备版本说明 | [Release notes and publication](#release-notes-and-publication) |
+| 理解 PR 检查 | [CI 门禁](ci.md) |
+| 查看发布流程 | [发布](release.md) |
+| 准备 release notes | [Release notes and publication](#release-notes-and-publication) |
 
 ## 环境检查
 
-项目是 Go module，所需 Go toolchain 版本只以 `go.mod` 为事实来源。
-
-开工前建议检查 Go 与常规测试环境：
+`go.mod` 是 Go 工具链版本的唯一事实来源。
 
 ```bash
 go version
@@ -27,77 +34,63 @@ CGO_ENABLED=0 go test ./...
 
 ## 前端资源
 
-页面源码位于 `frontend/mcp-apps/gallery/`、`frontend/pages/login/` 与 `frontend/pages/oauth/`。仅负责资源的 Go 包 `frontend` 精确嵌入 HTML/CSS/JS，启动时组装一次：内联 Gallery CSS/JS 与授权页 CSS，登录页保留原模板、样式及 `html/template` 组合。不会嵌入 fixture；不需要 npm、框架、运行时磁盘读取或网络请求。
-
-干净源码构建及带版本的 `go install` 无需生成步骤。校验和构建命令如下：
+`frontend/mcp-apps/gallery/`、`frontend/pages/login/`、`frontend/pages/oauth/` 中的源码由纯资源包 `frontend` 嵌入，并在启动时组装一次（Gallery CSS/JS 与同意页 CSS 内联；登录页保留原模板/样式与 `html/template` 组合；fixture 不嵌入）。运行时无需 npm、框架、磁盘读取或网络；干净构建与带版本的 `go install` 无需生成步骤。
 
 ```bash
 go test ./...
 go vet ./...
 sh scripts/build.sh
+node frontend/mcp-apps/gallery/gallery_test.mjs   # 直接测试 Gallery bridge
 ```
 
-现有 `frontend` 包测试校验嵌入输入和占位符。本地、平台及 race 构建直接编译源码，不需要生成器或独立校验命令。前端变更仍要求 Quality、Platform、Container 门禁。Docker 使用预构建二进制，Homebrew 模板仍在 `templates/homebrew/`。
-
-源码安装和自更新均可通过 `go install github.com/FlanChanXwO/pixiv-cli/cmd/pixiv@vX.Y.Z` 使用精确 Release tag；构建要求以该 tag 为准。
-
-直接验证 Gallery bridge 可运行 `node frontend/mcp-apps/gallery/gallery_test.mjs`；Node 可用时 Go 回归也运行全部 host capability 模式。
+- `frontend` 包测试校验嵌入输入与占位符；本地/平台/race 构建直接编译源码。有 Node 时 Go 回归测试也会跑遍所有宿主能力模式。
+- 前端改动需要 Quality、Platform 与 Container 检查。Docker 使用预构建二进制；Homebrew 模板仍在 `templates/homebrew/`。
+- 源码安装与自更新使用精确 tag：`go install github.com/FlanChanXwO/pixiv-cli/cmd/pixiv@vX.Y.Z`。
 
 ## Ugoira Go encoder
 
-默认下载器构造 `ugoira.NewEncoder()`，在 Go 中生成 GIF/APNG，不调用 `ffmpeg`。PNG 帧使用 Go 标准库解码器，
-JPEG 帧使用 owner-local `internal/media/ugoira/jpeg` 解码器。
-
-每帧的 ZIP member 源字节与解码前内存估算分别采用 512 MiB 边界，继承 pinned Rust `image` crate 的
-`Limits::default().max_alloc`。声明大小超限时在读取前失败，实际展开字节超限时在分块读取中失败；
-无效或溢出的尺寸、超限的解码估算也会返回错误，不截断输入或回退到其他后端。每个读取块前后以及
-image decode 前后均检查取消。PNG/JPEG 解码循环没有取消回调，所以单帧解码期间发生的取消要等
-该次解码返回后才能观察到。
-
-源码构建使用 `go.mod` 声明的 Go 版本。`scripts/build.sh` 显式设置 `CGO_ENABLED=0`，输出 `build/pixiv`（Windows 为 `build/pixiv.exe`），不需要 Rust 工具链、native library 或 C linker：
+默认下载器构造 `ugoira.NewEncoder()`，用 Go 生成 GIF/APNG——不需要 `ffmpeg`，没有后端选择器，也没有运行时 fallback。PNG 帧用 Go 标准解码器；JPEG 帧用 owner-local 的 `internal/media/ugoira/jpeg` 解码器。
 
 ```bash
-sh scripts/build.sh
+sh scripts/build.sh                                   # CGO_ENABLED=0 → build/pixiv(.exe)
 CGO_ENABLED=0 go test ./internal/media/ugoira/... -count=1
 ```
 
-只有 race-detector 测试需要 `CGO_ENABLED=1` 和可用的 C 工具链。编码器没有后端选择选项或运行期 fallback。
+| 规则 | 说明 |
+| --- | --- |
+| 单帧上限 | 512 MiB，分别作用于 ZIP 成员源字节与解码前分配估算（继承固定版本 Rust `image` crate 的 `Limits::default().max_alloc`） |
+| 超出上限 | 声明大小超出 → 读取前失败；实际展开超出 → 分块读取时失败；非法/溢出尺寸或估算 → 错误。不截断，不 fallback |
+| 取消 | 每个读取分块与图片解码的前后都会检查；PNG/JPEG 解码循环没有回调，因此单帧解码中途的取消在该次解码返回时才被观察到 |
+| 工具链 | 不需要 Rust、native library 或 C linker；只有 race 测试需要 `CGO_ENABLED=1` + C 工具链 |
 
-`scripts/build-platform.sh` 负责精确 target 的 CGO0 构建和可选规范归档。参数为 `--target GOOS/GOARCH`、`--output-dir DIR`、可选 `--version VERSION`（不带 `v`）与 `--package`（要求 version）。它保留 Windows executable 后缀和 Linux ABI gate。runner/capability metadata 仍在 `ci/platforms.json`；测试、source identity、权限、审批和发布仍由 workflow 拥有。
+**平台构建** —— `scripts/build-platform.sh` 以 CGO0 构建精确目标，并可选生成 canonical 压缩包：`--target GOOS/GOARCH`、`--output-dir DIR`、可选 `--version VERSION`（不带 `v`）与 `--package`（需要版本）。保留 Windows 后缀与 Linux ABI 门禁。runner 元数据在 `ci/platforms.json`；测试、源码身份、权限、审批与发布留在 workflow 中。
 
-Linux Release 的公开 ABI 基线是 glibc 2.35。release test/production、native evidence、packaged
-binary smoke 与 Homebrew install matrix 的 Linux runner 必须固定为 `ubuntu-22.04` 和
-`ubuntu-22.04-arm`；quality、validate、publish 等不产出 Linux binary 的 job 可继续使用更新 runner。
-每次生成 Linux executable 后必须运行：
+**Linux ABI 门禁** —— 公开基线为 glibc 2.35。release test/production、native evidence、packaged smoke 与 Homebrew 安装矩阵的 Linux runner 固定为 `ubuntu-22.04` / `ubuntu-22.04-arm`（其他任务可用较新 runner）。每个 Linux 可执行文件生成后：
 
 ```bash
 go run ./scripts/cmd/linuxabi --binary <linux-elf>
 ```
 
-该门禁读取 ELF `SHT_GNU_verneed` 的真实 loader contract，并兼查 imported symbol version；任何高于
-`GLIBC_2.35` 的依赖都会在打包前失败。不能只依赖“binary 在构建 runner 上能运行”的 smoke，因为这会
-让 runner 自身的新 glibc 隐藏向后兼容回归。
+它从 ELF `SHT_GNU_verneed` 读取 loader 契约并检查导入符号版本；任何高于 `GLIBC_2.35` 的依赖在打包前失败。"在构建 runner 上能跑"不是可接受的证据——runner 自带的新 glibc 会掩盖向后兼容回退。
 
 ### 许可证 bundle
 
-`go run ./scripts/cmd/licensebundle` 对固定六个 release target，以 `CGO_ENABLED=0` 运行
-`go list -mod=readonly -deps -json ./cmd/pixiv`，取实际生产 Go module 的并集。解析离线执行
-（`GOPROXY=off`、`GOSUMDB=off`），不受本机 workspace/flag 覆盖影响；所需模块源码必须已缓存。
-它不使用 Cargo，也不纳入未进入生产图的 test/tool-only module。`--check` 对比索引和完整生成正文树，不发布改动。
-
-`third_party/attributions.json` 固定额外的移植来源声明，维护用正文放在 `third_party/attributions/`，
-与生成的 `third_party/licenses/` 分开。选用的 MIT 正文、Go BSD/patent grant 与 SunPro 声明在删除
-Rust 源码后仍保留。`fhttp v0.6.8` 的模块归档缺少独立 license 文件，因此以精确版本的声明条目提供其
-源码头部引用的 Go BSD 正文。缺失或空正文会在发布前失败。嵌套组件的声明同样收录；上游 CRLF 统一为
-LF，保留完整文字。`third_party/notices.go` 将正文内嵌到程序，使用 `pixiv --licenses` 查看；压缩包只包含 `pixiv`/`pixiv.exe`。索引与正文树继续沿用可回滚发布。仅测试使用的 image-compare 声明保留在 `third_party/attributions/image-compare-0.5.0/`，不内嵌到程序。
+- `go run ./scripts/cmd/licensebundle` 在六个发布目标上以 `CGO_ENABLED=0` 合并 `go list -mod=readonly -deps -json ./cmd/pixiv` 选出的生产模块。离线（`GOPROXY=off`、`GOSUMDB=off`），忽略 workspace/flag 覆盖，需要已缓存的模块源码，不用 Cargo，不含仅测试/工具模块。`--check` 比较索引与完整文本树但不发布。
+- `third_party/attributions.json` 固定额外的移植源码声明；文本在 `third_party/attributions/`（与生成的 `third_party/licenses/` 分开）。移除 Rust 源码后仍保留选定的 MIT 文本、Go BSD/专利授权与 SunPro 声明；`fhttp v0.6.8` 提供其源码头引用的 Go BSD 文本（该模块归档缺少独立许可证文件）。文本缺失/为空会在发布前失败；包含嵌套声明；CRLF → LF 并保留全文。
+- 生成的文本由 `third_party/notices.go` 内嵌，`pixiv --licenses` 打印；压缩包只含 `pixiv`/`pixiv.exe`。索引与文本树保持可回滚的发布方式。`third_party/attributions/image-compare-0.5.0/` 中仅测试使用的署名不内嵌。
 
 ### Native runner evidence
 
-`.github/workflows/native-evidence.yml` 仍是要求 `refs/heads/main` 的显式维护入口，不在普通 main push 后重复执行。全局权限为空，job 仅 `contents: read`，action 固定 full SHA，checkout 不持久化 credential，不使用发布或签名 Environment。runner 来自 registry 的 `native-evidence` capability；每个目标验证 Go license bundle，经 `scripts/build-platform.sh` 构建，再执行 Go GIF/APNG 回归并上传版本化 binary/archive record。
+```mermaid
+flowchart LR
+    W["native-evidence.yml<br/>（显式触发，refs/heads/main）"] --> R1["6 个 runner：许可证检查、<br/>build-platform.sh、GIF/APNG 回归"]
+    R1 --> A["每个目标一个 schema 3 bundle<br/>source_commit · 版本 · SHA-256"]
+    A --> C["nativeevidence consolidate<br/>恰好 6 个，同源同版本"]
+    C --> O["新目录：各目标 bundle<br/>+ summary.json"]
+```
 
-schema 3 绑定 workflow 的精确 `source_commit`、target、binary version 与 binary/archive/member SHA-256；执行 `--version`，校验归档只包含所记录的 binary。旧 schema 与 Rust source-digest/staticlib 字段会被拒绝。`consolidate` 复验完整六目标、同 source、同 version 的 bundle，拒绝 symlink 与不安全 file/directory path，再原子发布含各 target bundle 和 `summary.json` 的全新目录，不向源码回填库。
-
-从同一审计 native-evidence run 设置 `RUN_ID` 与 `SOURCE_COMMIT`，下载其六份 artifact，再使用新的绝对路径：
+- `.github/workflows/native-evidence.yml` 是显式的维护入口，不是 main push 门禁：全局权限为空、仅任务级 `contents: read`、Action 固定完整 SHA、无凭据 checkout、没有发布/签名环境；runner 由注册表的 `native-evidence` 能力选择。
+- schema 3 绑定精确的 `source_commit`、目标、二进制版本与二进制/压缩包/成员 SHA-256；执行 `--version` 并检查压缩包恰好包含记录的二进制；拒绝旧 schema 与 Rust 源码摘要/staticlib 字段。`consolidate` 拒绝符号链接与不安全路径并原子发布；从不把库回填到源码。
 
 ```bash
 go run ./scripts/cmd/nativeevidence consolidate \
@@ -106,415 +99,137 @@ go run ./scripts/cmd/nativeevidence consolidate \
   --output-dir /absolute/new-complete-evidence
 ```
 
-PR Platform worker 在 native 与解包 binary smoke 后也上传 schema 3 `native-evidence-<goos>-<goarch>` bundle，版本为 `v0.2.0-ci.<run-id>`。producer 仍是受信任的 base-ref workflow；修改 PR head workflow 不会更新该 producer。必须核对实际 run 与精确 head，不拼接不同 run，也不把 fixture、cross-build 或 workflow 定义当作六平台原生执行。
+`RUN_ID` 与 `SOURCE_COMMIT` 取自同一次已审计的运行，并使用新的绝对路径。PR Platform worker 也会从可信 base-ref workflow 上传 schema 3 `native-evidence-<goos>-<goarch>` bundle（`v0.2.0-ci.<run-id>`）——修改 PR head 的 workflow 不会改变该生产者。请检查实际运行与精确 head；不要拼接多次运行，也不要把 fixture、交叉构建或 workflow 定义当作六平台执行。
 
-`.github/workflows/browser-evidence.yml` 是另一条显式手动触发、credential-free 的原生 provider contract matrix，
-在 macOS、Linux、Windows 的 amd64/arm64 runner 上执行 `internal/browsercookies/...` 的平台代码与合成 fixture 回归，
-普通 `main` push 不再附带重复运行该矩阵。
-GitHub Windows runner 不提供该 contract 需要的 `sqlite3` CLI，因此两个 Windows job 都通过
-`scripts/install-browser-sqlite.ps1` 安装与架构匹配的 SQLite 3.53.4 官方 tools 包，并在原有 SQLite preflight
-之前用固定 URL 与 SHA-256 校验下载内容。
-
-聚焦的 test-only workflow contract 只锁 credential、full-SHA action、
-fixture、固定 SQLite provisioning 与 cleanup 等安全边界，
-不再由生产代码重新实现整份 workflow；`scripts/cmd/browsernativeevidence firefox-contract` 仅保留为
-隔离 Firefox profile/schema 的真实运行时 helper。`firefox_native` job 只在 runner 临时目录解包官方包，
-让 Firefox 生成隔离 profile/schema，再注入明确的 synthetic cookie 运行 provider contract；它不读取
-用户浏览器 profile、Keychain、DPAPI 或 Secret Service，也不上传 package/profile/database。
-
-真实
-profile/session evidence 仍只能在受保护的 release-prep host 取得，不能把该 workflow 的成功当作真实
-用户浏览器导入成功。
+**浏览器证据** —— `.github/workflows/browser-evidence.yml` 是另一个显式触发、无凭据的矩阵，在 macOS、Linux、Windows amd64/arm64 上运行 `internal/browsercookies/...` 的平台代码与合成 fixture（不挂到普通 main push）。Windows runner 没有 `sqlite3`，因此两个 Windows 任务都通过 `scripts/install-browser-sqlite.ps1`（固定 URL + SHA-256）准备对应架构的官方 SQLite 3.53.4 工具，然后再跑 SQLite 预检。一个聚焦的仅测试 workflow 契约覆盖凭据、固定 Action、fixture、SQLite 准备与清理边界；`scripts/cmd/browsernativeevidence firefox-contract` 运行隔离的 Firefox profile。`firefox_native` 任务只在 runner 临时目录解包官方安装包，让 Firefox 生成隔离 profile，再注入合成 Cookie——不读取用户 profile、Keychain、DPAPI 或 Secret Service，也不上传任何内容。真实 profile/会话证据只能在受保护的 release-prep 主机获取；该 workflow 成功不等于真实浏览器导入成功。
 
 ## 运行
 
-构建：
-
 ```bash
-sh scripts/build.sh
-```
-
-默认输出到当前平台的 `build/pixiv` 或 `build/pixiv.exe`。Windows 通过 Git Bash、MSYS2 或 WSL 运行；需要交叉构建时继续直接使用 `go build`。
-
-CLI 运行：
-
-```bash
+sh scripts/build.sh                     # build/pixiv(.exe)；Windows 用 Git Bash/MSYS2/WSL；交叉构建用 go build
 pixiv auth login
 pixiv search "初音ミク" --json
 pixiv download 123456
-```
 
-运行经认证的统一 MCP HTTP server：
-
-```bash
-pixiv auth use 12345678
+pixiv auth use 12345678                 # 认证的统一 MCP HTTP
 ./build/pixiv mcp auth init
-./build/pixiv mcp --port 1270
-```
+./build/pixiv mcp --port 1270           # http://127.0.0.1:1270/mcp
 
-MCP 保留自身产品 runtime 凭据规则；owner OAuth grant 与 Pixiv/FANBOX 凭据相互独立。一次性 owner secret 必须私下保存，不写测试输出或聊天。本地 endpoint 是 `http://127.0.0.1:1270/mcp`；云端 connector 须配置公网 HTTPS 反向代理，详见 [HTTP 启动](../cli-reference.md#mcp-http-server)。CLI 下载保留自身设置；stdio 本地下载工具复用 CLI 设置，HTTP 不暴露文件系统写入。
-
-如网络环境需要代理，可额外设置：
-
-```bash
 https_proxy=http://127.0.0.1:7890 ./build/pixiv mcp --port 1270
-```
-
-或只给本次启动覆盖代理：
-
-```bash
 ./build/pixiv mcp --proxy http://127.0.0.1:7890
 ./build/pixiv mcp --no-proxy
 ```
 
-CLI 的认证、配置、回调桥接、Release 检查缓存与 callback helper 都位于当前用户主目录下的 `.pixiv-cli`。
-
-### 本地路径与权限
-
-- macOS/Linux：`~/.pixiv-cli`；Windows：`%USERPROFILE%\.pixiv-cli`。
-- 账号凭据保存在 `pixiv-cli.db`（SQLite，账号 key 是 Pixiv UID / FANBOX UID）。
-- 内置 migration 将数据库推进到 schema v3。旧 v1 数据库会原地升级；若初始 schema 已包含后续字段，则只记录对应迁移而不重复执行冲突 DDL；未知的更新 schema 仍会 fail closed。
-- 全局配置保存在 `config.toml`。
-- Unix-like 主动使用 `0700` 父目录与 `0600` 文件；Windows 首次创建继承父目录 ACL，替换既有目标保留其 ACL，不主动收紧或放宽 DACL。
+- owner OAuth 授权与 Pixiv/FANBOX 凭据相互独立；一次性 owner secret 请私下保存（不要出现在测试输出或聊天中）。云 connector 需要公开 HTTPS 反向代理（[HTTP 启动](../cli-reference.md#mcp-http-server)）。
+- CLI 下载保留自己的设置；stdio 下载工具复用 CLI 设置；HTTP 从不暴露文件系统写入。
+- 状态位于 `~/.pixiv-cli`（`%USERPROFILE%\.pixiv-cli`）：`pixiv-cli.db`（Pixiv UID / FANBOX UID 为键；内嵌迁移到 schema v3，旧 v1 原地升级，已存在的后续列只记录不重放 DDL，未知的更新 schema fail closed）、`config.toml`、callback bridge、Release 检查缓存、callback helper。Unix `0700`/`0600`；Windows 首次创建继承父目录 ACL、替换时保留目标 ACL，不修改 DACL。
 
 > [!WARNING]
-> 新版本不自动读取或删除旧 `auth.json`。跨版本迁移须在旧版本执行 `pixiv auth export --all --output <private bundle>`，再通过 shell 重定向或管道在新版本执行 `pixiv auth import < bundle.json`。
+> 新版本从不读取或删除旧的 `auth.json`。迁移方式：旧版本执行 `pixiv auth export --all --output <private bundle>`，新版本执行 `pixiv auth import < bundle.json`。
 
-### 登录方式
-
-推荐使用 `pixiv auth login` 通过本地 loopback server 和浏览器 OAuth 登录。服务器同时配置 `login_relay_public_url` 与 `login_relay_listen_addr` 时，会输出一次性远程 handoff URL，并直接转交已安装 pixiv-cli 的 desktop handler 完成登录，不渲染项目中间页或手动 callback 表单。
-
-其他登录入口：
-
-- 已有 raw token 可用 `pixiv auth import` 输入。
-- 账号备份使用 `auth export` 与 `auth import < bundle.json`。
-
-### 配置管理
-
-`pixiv config path/get/set/unset` 管理 `account_pool_enabled`、`account_pool_strategy`、`download_path`、
-`filename_template`、`directory_template`、`request_interval`、`https_proxy`、`log_level`、`log_format`、
-`reverse_search_provider`、`reverse_search_pixiv_only` 与 `saucenao_api_key`。
-
-其余高级 TOML 由用户手工维护。尤其是 reverse-search transport 与 challenge recovery 位于
-`[reverse_search.network]` 和 `[reverse_search.flaresolverr]`；这些 table 不会由 baseline config 生成，并在启动时
-读取为 snapshot。首次配置 bootstrap 由 `internal/config/settings` 的**字段标签**驱动，用 `tomledit` 自动生成精简文件，
-只落盘标记 `example:"true"` 的默认项，且绝不覆盖已有文件。
-
-新增一项**普通配置**（可由 `config get/set/unset` 管理、或仅从 `config.toml`/环境变量读取）只需三步：
-
-1. 按下方链接的标签约定，在 `internal/config/settings/config.go` 的 `RuntimeConfig`（或嵌套配置组）添加字段与声明。
-2. 补一个聚焦的行为测试（默认值/来源/可见性或 schema 错误）。
-3. 更新对应文档。
-
-不需要再同步注册表、环境变量 `switch`、`Runtime()` 的逐字段赋值、初始文件清单或 CLI 别名清单。
-标签约定与各文件职责的完整说明见[架构说明的配置声明一节](architecture.md#配置声明结构体字段标签是唯一事实来源)。
+**配置** —— `pixiv config path/get/set/unset` 管理 `account_pool_enabled`、`account_pool_strategy`、`download_path`、`filename_template`、`directory_template`、`request_interval`、`https_proxy`、`log_level`、`log_format`、`reverse_search_provider`、`reverse_search_pixiv_only`、`saucenao_api_key`。其他 TOML（如 `[reverse_search.network]`、`[reverse_search.flaresolverr]`）手工维护，不在基线中，作为启动快照读取。基线由 `internal/config/settings` 中的**结构体字段标签**驱动，用 `tomledit` 生成，紧凑（只含 `example:"true"`），从不覆盖。新增普通设置：(1) 在 `internal/config/settings/config.go` 添加字段与声明，(2) 一个聚焦的行为测试，(3) 文档——见[标签契约](architecture.md#配置声明结构体字段标签是唯一事实来源)。
 
 > [!NOTE]
-> 已删除的 `[web] fallback_enabled` 若仍存在会返回 `removed_setting`，用 `pixiv config unset web_fallback_enabled` 清理。`[logging].level`（`info|debug`）与 `[logging].format`（`text|json`）是启动时生效的配置；`PIXIV_LOG_LEVEL` 与 `PIXIV_LOG_FORMAT` 覆盖文件值。
+> 残留的 `[web] fallback_enabled` 返回 `removed_setting`；用 `pixiv config unset web_fallback_enabled` 清除。`[logging].level`（`info|debug`）与 `[logging].format`（`text|json`）生效；`PIXIV_LOG_LEVEL` / `PIXIV_LOG_FORMAT` 可覆盖。
 
-### Flag 解析
+**Flag 与代理** —— Cobra/pflag 允许 flag 出现在位置参数前后。Pixiv 命令代理、`[pixiv.network]`、环境变量与 `[network]`，FANBOX 的 `[fanbox.network]` / `[fanbox.flaresolverr]`，以及反向搜图的 `[reverse_search.network]` / `[reverse_search.flaresolverr]` 都按各自服务边界解析；反向搜图有独立的标准/SauceNAO、ascii2d 浏览器与 FlareSolverr JSON 控制网络面（FlareSolverr 只用于 challenge 恢复）。
 
-CLI 使用 Cobra/pflag，flag 可以写在位置参数前后；例如 `pixiv auth check 12345678 --json` 和 `pixiv search "初音ミク" --json` 都受支持。
+## 开发中的凭据
 
-Pixiv command proxy、`[pixiv.network]`、环境变量与 `[network]`，FANBOX 独立的
-`[fanbox.network]`/`[fanbox.flaresolverr]` 配置，以及 reverse-search 的
-`[reverse_search.network]`/`[reverse_search.flaresolverr]` 配置，均按各自服务边界解析。reverse search 有
-standard source/SauceNAO、ascii2d browser 与 FlareSolverr JSON-control 三个独立网络面；FlareSolverr 仅用于
-challenge recovery。
+完整流程见[认证](../authentication.md)。开发相关的补充事实：
 
-## 获取 refresh token
-
-浏览器 Cookie（包括 `refresh_token=...`、`PHPSESSID`、`device_token`）不是可接受的 Pixiv App API OAuth refresh token，CLI、MCP、环境变量、SDK 与已存账号都会拒绝这类输入。推荐直接登录并保存账号：
-
-```bash
-pixiv auth login
-```
-
-| 项 | 说明 |
-| --- | --- |
-| 本地服务 | CLI 生成 PKCE/state，并启动本地 loopback HTTP server。 |
-| 浏览器 | macOS 与 Windows 的普通 CLI 启动会准备当前用户的 persistent `pixiv://` callback helper；本地登录打开默认浏览器，因此可复用已有 Pixiv 登录态；`--no-open` 可改为只打印登录 URL。 |
-| 回调接收 | CLI 接收本轮 loopback callback、一次性 desktop handoff 和本地页面表单。远程 handoff 不提供手动 callback 回填。 |
-| state 校验 | 本地 loopback 回调必须匹配本次 state；Pixiv 官方 callback URL 与 `pixiv://account/login` 可在 Pixiv 未返回 state 时作为显式 fallback。 |
-| token 保存 | refresh/access token 不打印；refresh token 按 Pixiv UID 写入 `pixiv-cli.db`。legacy `auth.json` 不属于新 CLI 的读取、迁移或删除路径；跨版本迁移必须由旧 CLI 显式导出 bundle，再由新 CLI 显式导入。Unix-like 主动使用 `0700` 父目录与 `0600` 文件；Windows 首次创建继承父目录 ACL，替换既有目标保留其 ACL，不主动收紧或放宽 DACL。 |
-
-本地登录的 active loopback bridge 优先接收 Pixiv 返回的 `pixiv://account/login?...`，并把 callback 交给本轮 CLI listener；OAuth exchange 完成后，浏览器显示固定的结果页。跨机器登录时，server 启动后只显示一次性 handoff URL；浏览器打开后直接转交 `pixiv://account/remote-login`，本机领取本次 OAuth URL，并把 callback 回传同一会话；本地只保存本次 handoff state，新的 handoff 会替换旧状态。
-
-远程 flow 需要已安装 CLI 的 desktop handler，不提供移动端手动回填。server 会核验提交内容属于本次会话且为官方 callback；Pixiv 带有 state 时必须匹配，再由本次 PKCE verifier 完成 exchange。`pixiv auth devices` 已移除；已有 `remote-devices.json` 会被忽略。HTTP 与 HTTPS 都可用于 relay；direct TLS 和同机 TLS reverse proxy 都受支持。旧 `login_relay_secret` 与 `login_relay_target_url` 配置会被静默忽略。
-
-浏览器使用的系统代理不会自动传给 Go CLI。`https_proxy`、`--proxy` 与更新路径都接受 `http`、`https`、`socks5`、`socks5h` URI。若 Pixiv token exchange 需要代理，请配置 `pixiv config set https_proxy socks5h://127.0.0.1:7890`，在单次命令前设置 `https_proxy=...`，或对网络命令使用运行期覆盖 `--proxy socks5h://127.0.0.1:7890`。
-
-`--no-proxy` 会清空本次命令的代理，即使环境变量或 `config.toml` 设置了 `https_proxy`；`--proxy` 和 `--no-proxy` 不能同用，也不会写入 `config.toml`。请求节奏通过 `PIXIV_REQUEST_INTERVAL` 或 `[network].request_interval` 配置。debug 诊断通过 `pixiv config set log_level debug`，可选 `pixiv config set log_format json`，只写 stderr 且只在启动时读取。
-
-当前支持代理覆盖的网络入口是 direct-token `auth import`、`auth login`、`auth check`、`search`、`timeline`、`detail`、`ranking`、`recommended`、`download` 和 `mcp` 启动。bundle-form `auth import` 明确拒绝代理 flag；`auth export/list/use/remove` 与 `config path/get/set/unset` 不接受这些 flag。
-
-### 认证 import/export
+- 浏览器 Cookie（`refresh_token=...`、`PHPSESSID`、`device_token`）**不是** Pixiv App OAuth refresh token；CLI、MCP、环境变量、SDK 与已存账号都会拒绝。
+- 远程 hand-off 不提供手动回填回调或移动端路径；`pixiv auth devices` 已移除，现有的 `remote-devices.json` 被静默忽略；旧的 `login_relay_secret` / `login_relay_target_url` 被忽略。relay 支持 HTTP/HTTPS、直接 TLS 或同机 TLS 代理。
+- 代理覆盖（`--proxy socks5h://127.0.0.1:7890`、`--no-proxy`）适用于直接 token 的 `auth import`、`auth login`、`auth check`、`search`、`timeline`、`detail`、`ranking`、`recommended`、`download` 与 `mcp` 启动。bundle 形式的 `auth import` 拒绝；`auth export/list/use/remove` 与 `config path/get/set/unset` 不接受。请求节流：`PIXIV_REQUEST_INTERVAL` / `[network].request_interval`。调试：`pixiv config set log_level debug`（+ `log_format json`），只写 stderr，在启动时生效。
 
 > [!WARNING]
-> 以下 secret 边界是硬约束：token 只允许在显式、不带 `--output` 的 `pixiv auth export` 写 stdout，其他路径不得暴露 secret；bundle 是未加密、含 secret 的 point-in-time backup，不是 live sync。
+> 只有不带 `--output` 的显式 `pixiv auth export` 可以把 token 写到 stdout。bundle 是未加密、含 secret 的时间点备份，不是实时同步。恢复结果 `committed` / `unknown` 绝不算成功回滚。
 
-`pixiv auth import [REFRESH_TOKEN]` 会经 App OAuth 校验输入并保存 rotation 后的 token。位置参数会进入 argv/shell history；无参 TTY 使用隐藏输入，无参非 TTY 读取完整 stdin，并按首个非空白字节自动区分 raw token 与 versioned bundle。bundle 严格 decode、完全离线地 merge 并原子写回；失败不得回退 OAuth，且与位置 token、`--proxy`、`--no-proxy` 冲突。restore 保留已有 default，仅当本地尚无 default 时采用 bundle default。
-
-`pixiv auth export [UID]` 省略 UID 时选择默认账号；不带 `--output` 时只向 stdout 写 raw token 与换行。`pixiv auth export --all` 不带 `--output` 时只向 stdout 写 versioned secret bundle。两者是唯一 secret stdout 例外，且都只读本地 store，不刷新、不联网、不修改状态，并跳过 startup pending-update cleanup 与 automatic update。`--output PATH` 总是写 bundle，默认拒绝覆盖，只有 `--force` 可 replacement；stdout 仅为 path/account count 摘要。其他 stdout、stderr、JSON、MCP result 与错误仍不得暴露 secret。
-
-bundle 是未加密、含 secret 的 point-in-time backup，不是 live sync；token rotation 后旧 bundle及其他机器副本可能 stale。任意目标 export writer 在 Unix-like 使用 `0600` 文件且不改变既有 parent；Windows 明确设置 owner 与 protected DACL，只授权当前用户、LocalSystem、builtin Administrators。Windows 行为有 CI tests，后续验收可本地交叉编译；这里不声称已在真实 Windows 主机执行。
-
-restore 原子写失败时检查 public `LocalWriteCommitOutcome`：pre-commit 是 `not_committed`；replacement 后 durability/cleanup 失败是 `committed`，须重新加载确认；recovery 状态无法确定是 `unknown`，须人工核验。不得把 `committed` 或 `unknown` 描述为成功 rollback。
-
-真实登录依赖 Pixiv OAuth 网页流程可用。自动化测试使用 fake OAuth server 覆盖 callback 和 token exchange，不访问真实 Pixiv。
+真实登录依赖 Pixiv 的 OAuth 网页流程；自动化测试使用 fake OAuth server，从不访问 Pixiv。
 
 ## 测试
 
-默认复用已有检查，不新增永久测试。[测试准入规则](../../../.agents/skills/pixiv-cli-test/SKILL.md#decide-whether-test-code-must-change)规定可进入主线的长期核心回归范围，以及 `tmp/test/` 下临时验证的运行方式；验证证据不自动成为长期维护的测试。
+默认复用已有检查，不新增永久测试。[测试准入规则](../../../.agents/skills/pixiv-cli-test/SKILL.md#decide-whether-test-code-must-change)决定哪些长期核心回归可以进入主线，以及如何在 `tmp/test/` 下运行本地探测。
 
-当前测试覆盖 CLI 命令与 build metadata、显式/自动更新、`internal/services/{pixiv,fanbox}/account` 账号服务、`internal/services/pixiv/pool` 账号池、`internal/services/reversesearch` source/provider fixture 与聚合、`internal/storage/database` 认证存储与 `internal/config/settings` 配置、`internal/shared/lifecycle` 生命周期、`internal/shared/pagination` 逻辑分页、`internal/shared/traversal` 泛型可重入遍历、Pixiv App API 认证重试、公开 SDK（`sdk`/`sdk/pixiv`/`sdk/fanbox`）、HTTP client wiring、下载管理、Go encoder/native evidence 合约和 `internal/mcpserver/{pixiv,fanbox}/tools` tool 注册。`internal/account` 与 `internal/session` 已删除，不保留兼容测试入口。测试文件布局与 same-package 例外见[测试文件布局](#测试文件布局)：
+覆盖范围包括 CLI 命令与构建元数据、显式/自动更新、`internal/services/{pixiv,fanbox}/account`、`internal/services/pixiv/pool`、`internal/services/reversesearch` fixture 与聚合、`internal/storage/database`、`internal/config/settings`、`internal/shared/{lifecycle,pagination,traversal}`、App API 认证重试、公开 SDK、HTTP client 装配、下载、Go 编码器/native-evidence 契约，以及 `internal/mcpserver/{pixiv,fanbox}/tools` 的工具注册。
 
 ```bash
 go test ./...
 sh scripts/build.sh
-# 浏览器 provider 的离线 fixture/crypto/权限分类回归；真实跨平台 host evidence 另按 release-prep 执行。
-go test ./internal/browsercookies/... -count=1
-# 真实 SDK e2e 需要本机凭据（Pixiv 读本地 pixiv-cli.db 选中账号，FANBOX 读 Keychain）：
+go test ./internal/browsercookies/... -count=1   # 离线 fixture/加密/权限分类回归
+```
+
+```mermaid
+flowchart TD
+    T["go test ./e2e ..."] --> F{"设置了 opt-in 变量？"}
+    F -->|否| SK["跳过（默认离线稳定）<br/>绝不能作为发布证据"]
+    F -->|是| P{"本地凭据 /<br/>目标齐全？"}
+    P -->|否| FAIL["失败并暴露缺口"]
+    P -->|是| RUN["真实网络观测"]
+```
+
+| 测试 | 开启 | 需要 | 验证 |
+| --- | --- | --- | --- |
+| `TestRealPixivSDKRead` | `PIXIV_SDK_E2E=1` | 本地 `pixiv-cli.db` 中的选中账号；可选 `PIXIV_E2E_READ_USER_ID`（必须指向已存账号，联网前 fail closed，不回退默认；发布证据应选副账号） | 身份、稳定的详情/列表与 `Resource` 读取；轮换凭据先经普通 repository 事务持久化 |
+| `TestRealFanboxSDKRead` | `FANBOX_SDK_E2E=1` | 约定 macOS Keychain 项中的 `FANBOXSESSID`；`FANBOX_E2E_CREATOR_ID`、`_TAG`、`_POST_ID`、`_POST_URL` | `Creator`、`Creators`、`CreatorTags`、`CreatorPosts`、`TaggedPosts`、`Post`、`Home`、`Supporting`、`ResolveURL`、`OpenResource`、`SaveResource`；每个列表 cursor 续读一次；在临时目录完整读取文件附件（HEAD、保存、字节数）；会话过期 → `credentials_expired` |
+| `TestRealFanboxSDKPostInfo` | `FANBOX_SDK_E2E=1 FANBOX_E2E_POST_ONLY=1` | 帖子 ID + 页面 URL | `Post`、非空正文、`ResolveURL`、资源清单；允许 `file_assets=0`（不能替代严格测试） |
+| `TestRealReverseSearch` | `PIXIV_REVERSE_SEARCH_E2E=1` | `PIXIV_REVERSE_SEARCH_SOURCE`、`_PROVIDER`；SauceNAO/`all` 需要 `SAUCENAO_API_KEY`（从私有环境 export，不要内联） | 第三方兼容性；不接受来源/key 参数，也不回显；仅用已授权测试图；不是发布门禁 |
+| `TestRealReverseSearchMCPReusesSolverSession` | 同上 | `PIXIV_REVERSE_SEARCH_SOLVER_URL`；可选 `_SOLVER_PROXY`（仅浏览器上游） | solver 会话复用；不持久化会话状态或来源 |
+| `TestRealPixivUgoiraCapture` | `PIXIV_UGOIRA_CAPTURE=1` | 见 [ugoira 对照](ugoira-parity.md) | 样本采集 |
+
+```bash
 PIXIV_E2E_READ_USER_ID=<secondary-uid> \
 PIXIV_SDK_E2E=1 go test ./e2e -run TestRealPixivSDKRead -count=1 -v
 FANBOX_E2E_CREATOR_ID=<non-secret-creator-id> FANBOX_E2E_TAG=<non-secret-tag> \
 FANBOX_E2E_POST_ID=<non-secret-post-id> FANBOX_E2E_POST_URL=<non-secret-post-url> \
 FANBOX_SDK_E2E=1 go test ./e2e -run TestRealFanboxSDKRead -count=1 -v
-# 若 native 请求触发真实 challenge，可额外显式开启 recovery；默认不配置。
-FANBOX_E2E_SOLVER_URL=http://127.0.0.1:8191 \
-FANBOX_E2E_SOLVER_PROXY=http://host.docker.internal:7890 \
-FANBOX_E2E_CREATOR_ID=<non-secret-creator-id> FANBOX_E2E_TAG=<non-secret-tag> \
-FANBOX_E2E_POST_ID=<non-secret-post-id> FANBOX_E2E_POST_URL=<non-secret-post-url> \
+# 可选的 challenge 恢复（默认不配置）
+FANBOX_E2E_SOLVER_URL=http://127.0.0.1:8191 FANBOX_E2E_SOLVER_PROXY=http://host.docker.internal:7890 \
+FANBOX_E2E_CREATOR_ID=... FANBOX_E2E_TAG=... FANBOX_E2E_POST_ID=... FANBOX_E2E_POST_URL=... \
 FANBOX_SDK_E2E=1 go test ./e2e -run TestRealFanboxSDKRead -count=1 -v
-# 单帖 post.info 验收；只需要 post id/page URL，允许合法的零文件资源详情。
 FANBOX_E2E_POST_ID=<non-secret-post-id> FANBOX_E2E_POST_URL=<non-secret-post-url> \
 FANBOX_SDK_E2E=1 FANBOX_E2E_POST_ONLY=1 go test ./e2e -run TestRealFanboxSDKPostInfo -count=1 -v
-# 显式观察反向搜图上游兼容性；默认不会运行。
-# 请预先从私有环境 export SAUCENAO_API_KEY，不要内联在命令行中。
-export SAUCENAO_API_KEY
-PIXIV_REVERSE_SEARCH_E2E=1 \
-PIXIV_REVERSE_SEARCH_SOURCE=<private-test-image-path-or-url> \
-PIXIV_REVERSE_SEARCH_PROVIDER=all \
-go test ./e2e -run TestRealReverseSearch -count=1 -v
+export SAUCENAO_API_KEY      # 预先从私有环境导出
+PIXIV_REVERSE_SEARCH_E2E=1 PIXIV_REVERSE_SEARCH_SOURCE=<private-test-image-path-or-url> \
+PIXIV_REVERSE_SEARCH_PROVIDER=all go test ./e2e -run TestRealReverseSearch -count=1 -v
 ```
 
-没有独立的 E2E wrapper 脚本：真实联网观测直接运行上方的 `go test` 命令，使离线套件与带凭据观测共用同一条 orchestration。
-
-`go test ./...` 保持默认离线稳定；真实 SDK e2e 在未显式设置 `PIXIV_SDK_E2E=1` 或 `FANBOX_SDK_E2E=1` 时跳过。
-显式启用后，缺少本机授权凭据或 FANBOX 非 secret target 会直接失败并暴露缺口，不会以 skip 伪装 release evidence。
-
-反向搜图 provider fixture 以及 CLI/MCP/config 回归属于离线套件。真实反向搜图网络观察只有显式设置
-`PIXIV_REVERSE_SEARCH_E2E=1` 才运行，必须提供 source；provider 为 SauceNAO 或 `all` 时还必须提供
-`SAUCENAO_API_KEY`，仅 ascii2d 时不要求 key。脚本不接受 source/key 参数，也不会回显它们，只应配合获授权的
-测试图片运行。它用于观察第三方兼容性，不是默认 release 门禁；skip 或上游不可用不能被报告成真实网络成功。
-
-独立的 `TestRealReverseSearchMCPReusesSolverSession` 检查在显式启用时还要求
-`PIXIV_REVERSE_SEARCH_SOLVER_URL`；可选的 `PIXIV_REVERSE_SEARCH_SOLVER_PROXY` 只表示 FlareSolverr browser
-upstream proxy，不代理 solver control request 或 native ascii2d image upload，solver session state 和 source 也不会
-作为 test evidence 持久化。
-
-上方的 `PIXIV_SDK_E2E=1` / `FANBOX_SDK_E2E=1` 命令只选择当前的 public SDK E2E 测试：Pixiv 测试从本地 `pixiv-cli.db` 读取选中账号；`PIXIV_E2E_READ_USER_ID` 是可选的非 secret 本地账号 selector，显式提供时必须命中已保存 Pixiv 账号，格式错误或账号不存在都会在联网前 fail closed，且不会 fallback 到 configured default；release evidence 应显式选择获授权的 secondary account，省略时才保留 configured-default 兼容行为。
-
-FANBOX 测试从约定的 macOS Keychain item 读取 `FANBOXSESSID`。FANBOX 的
-`FANBOX_E2E_CREATOR_ID`、`FANBOX_E2E_TAG`、`FANBOX_E2E_POST_ID` 与 `FANBOX_E2E_POST_URL` 只接受
-显式、非 secret 的测试目标；不接受 refresh token、session 或完整 Cookie 作为参数/环境变量。可选的
-`PIXIV_E2E_PROXY` 只表示非 secret 的代理 URI；`FANBOX_E2E_SOLVER_URL` 与
-`FANBOX_E2E_SOLVER_PROXY` 是可选的非 secret recovery 拓扑配置，默认不启用 solver。
-
-未显式启用真实 E2E 时测试默认 skip；显式启用但缺少本机
-凭据或 FANBOX 目标时会失败，不能把默认 skip 或自动发现记为 release evidence。
-
-v1 的真实 SDK E2E 是 `TestRealPixivSDKRead` 与 `TestRealFanboxSDKRead`（见 [测试](#测试) 的 `PIXIV_SDK_E2E=1` / `FANBOX_SDK_E2E=1` 命令）。Pixiv 侧测试进程只从本地 `pixiv-cli.db` 的选中账号读取 refresh token；release-prep 应设置 `PIXIV_E2E_READ_USER_ID` 显式选择获授权的 secondary account，避免隐式使用 configured main/default account。
-
-随后打开 `sdk/pixiv` 验证 identity 并完成一个稳定 detail/list 与 `Resource` 读取，rotation 后的 credentials 先按正常 repository transaction 持久化再继续内容请求。FANBOX 侧直接通过 macOS Keychain 读取授权 `FANBOXSESSID` item，并使用显式 creator/tag/post/page URL 目标逐项验证 `Creator`、`Creators`、`CreatorTags`、`CreatorPosts`、`TaggedPosts`、`Post`、`Home`、`Supporting`、`ResolveURL`、`OpenResource` 与 `SaveResource`；列表目标在服务端返回 cursor 时各跟进一次 continuation，帖子详情必须发现 file attachment 并在临时目录完整读取。
-
-session 失效时明确报 `credentials_expired` 并要求重新导入，不 fallback。release-prep 运行后由操作者扫描 stdout、stderr、test log 与 evidence；token、Cookie、signed URL 与原始 response body 不得进入 argv、环境 dump、日志、test name、artifact 或失败 diff。以上说明描述测试覆盖，不表示真实 e2e 已经运行；请勿把 token 写入 shell history、日志或仓库文件。
-
-对于合法但没有 file attachment 的文章详情，补充使用 `TestRealFanboxSDKPostInfo`：它只要求显式
-post ID/page URL，验证公共 SDK 的 `Post`、非空 body、`ResolveURL` 与资源清单，并允许
-`file_assets=0`；它不能替代严格资源路径的 `TestRealFanboxSDKRead`，严格路径会对详情中的每个
-file attachment 完成 HEAD、完整保存和字节数核对。
-
-显式代理下，资源传输固定协商 HTTP/1.1，而 App API、OAuth 保持原有协议协商。该 e2e 的资源读取用于回归这一资源传输边界；它不为慢速正常下载增加固定超时。若 Pixiv 返回不带有效 `Retry-After` 的 429，真实 e2e 保留诊断并明确失败，不会猜测等待或无限重试。
-
-`PIXIV_E2E_BINARY` 与 `PIXIV_E2E_EXPECTED_VERSION` 供 CI 对已构建、已解压的 release binary 执行离线 e2e；它们不注入 token，也不启用真实 Pixiv API。`platform-smoke.yml` 在六个受支持 runner 上构建、封装、解压并运行这组 CLI/config 与 MCP 命令入口验证。
-
-代码改动完成前，应按变更范围补充或更新测试。若不能运行测试，需要在交付说明中写明原因和风险。
-
-发布相关的本地 fixture/策略门禁还包括：
-
-```bash
-sh scripts/test-build-platform.sh
-sh scripts/test-package-release.sh
-go test ./tools/release ./tools/platformmatrix -count=1
-go test ./scripts/internal/nativeevidence -count=1
-go test ./scripts/internal/browsernativeevidence -count=1
-sh scripts/test-homebrew-formula.sh
-git diff --check
-```
-
-fixture 只证明格式、失败语义和本地策略，不替代六个 native runner 的真实静态链接、GIF/APNG
-smoke、版本化 archive 内容和 Homebrew 安装验收。
-
-`.github/workflows/ci.yml` 只承载只读的 `Quality gate`，只响应 `pull_request` 与 `workflow_dispatch`，不再响应 tag push。它的 change-scope classification 与 `pr-metadata.yml` 使用同一信任模型：先解析受保护 base branch 的当前 tip，从该 tip checkout 出 `scripts/classify-change-scope.sh` 与 `.github/ci-change-scope.gitignore`，再 fetch 精确 PR HEAD 只用于 diff 范围，因此 PR 无法修改自己的 skip 判定；分类器失败 fail closed，不会退化为 skip。
-
-`.github/workflows/pr-metadata.yml` 是受信的 `pull_request_target` coordinator：从当前 base tip 验证 PR 模板与 verification declaration，使用 `.github/ci-change-scope.gitignore` 对精确 PR-head diff 做可信分类，发布 `PR template gate` / `PR commands gate` commit status，dispatch 所需 smoke worker，并把 `Platform smoke` / `Container smoke` 作为真实 job-level required check 暴露出来；coordinator job 本身不执行 PR 代码。
-
-独立的 `Platform smoke worker` / `Container smoke worker` Check Run 只作为由 base-ref worker workflow 完成的可信结果桥接，required smoke job 等待这些结果。普通 pattern 表示纯文档，`?pattern` 表示只需 Quality，`!pattern` 表示需要 Quality + Platform + Container；`pr-metadata.yml` 是 smoke controller（它决定分类、dispatch 两个 worker 并持有 required gate），因此必须使用 `!pattern`。
-
-不需要的 Quality 与 smoke job 都由 GitHub Actions 原生显示为 `Skipped`，不再伪装成 success。仅修改 PR body 时也会重新对未变化的 head 做可信分类：需要 smoke 的 job 复用同一 head 已有的 worker 结果，真正不需要 smoke 的 job 才继续显示 `Skipped`，因此编辑 PR body 不能把失败 smoke 替换成可绕过的 skip。
-
-`pr-metadata.yml` 的状态维护只操作 PR，使用 `pull-requests: write`，不申请普通 issue 写权限。读取当前 PR、读取状态评论和创建/更新/删除评论失败时，日志保留 GitHub API 原始错误并标明失败请求；元数据失败仍阻断 required smoke gate。实际 workflow shell 的 API fixture 只在 Linux 运行，匹配 Ubuntu runner 的工具环境；权限契约测试仍跨平台执行。
-
-Smoke gate 按精确 PR head 与 worker 名称使用 `filter=all` 查询并遍历分页，按 `started_at` 选择最新 check，同一时间以 ID 决定先后，不依赖响应顺序。PR 更新后，`filter=latest` 可能隐藏其他 check suite 的 worker；worker 缺失或失败时仍阻断 gate。
-
-Platform worker 从受信 workflow ref 解析六平台 matrix，只有 matrix job checkout 精确 PR head，并且 token 仅为 `contents: read`；独立 publish job 不 checkout PR，只持有完成内部 worker Check Run 所需的最小 `checks: write`。Container worker 对 Linux amd64/arm64 使用同样的隔离模型。六个原生 job 继续并行运行，其中 Windows worker 仍承担 root callback wiring 与原生 `loginhelper` 契约；两个容器 job 也继续并行。
-
-内部 matrix 不作为 required PR check，最终由对应的 PR gate job 镜像 aggregate worker 结果，失败时保留 worker details URL。普通分支与 `main` push 不运行 CI；稳定 `vX.Y.Z` tag push 只运行 `release.yml`（Quality gate 不再响应 tag，tag 上的正式门禁由 Release 独占），Release 自己执行正式六平台测试/构建与两平台容器验证，因此 tag 不重复 PR smoke matrix。
-
-`pr-verification.yml` 的 `dispatch` job 在分配 runner 前先用 `contains(github.event.comment.body, '/test')` 做廉价预过滤：它是 `tools/prmeta --check-trigger` 的宽松超集，只产生少量 false positive，不会漏掉合法触发，最终授权仍由 `tools/prmeta` 判定。browser/native evidence 保留为显式维护入口。真实 Pixiv/FANBOX SDK E2E 不进入普通 PR CI；仅发布 tag 的 `release.yml` 在 validate 后运行无凭据 SDK E2E contract gate，真实 SDK E2E 仍按 release-prep 在授权环境独立验收。
-
-两类 smoke worker 均以 `CGO_ENABLED=0` 构建；Platform smoke 运行 Go 编码器包测试。受信 workflow ref、精确 head 校验及独立结果发布边界保持不变。
-
-`scripts/tests/installers` 使用本地伪 Release、伪 `curl` 与 checksum fixture 验证安装器，不访问 GitHub。Unix
-job 实际运行 `install.sh`，覆盖 SHA-256、带空格目录、版本预检和校验失败不覆盖旧 binary；Windows
-amd64/arm64 platform-smoke 还会用真实 `cmd.exe`、`certutil.exe` 与 `tar.exe` 运行 `install.cmd`，并始终
-传入 `--no-path`，因此测试不修改 runner 用户注册表。platform-smoke workflow 会直接运行这项 installer contract，作为平台 job 的一部分；这里不存在另一套 runtime workflow policy 实现。
-
-其中 Windows 的 `.zip` 由 GitHub runner 镜像预装的 `7z` 生成；其他平台继续使用 `zip`。
-`scripts/test-package-release.sh` 会在 Windows runner 把伪造的调用委托给真实 `7z`，在其他开发机使用
-`zip` fixture，并核对 archive member；因此 Git Bash 缺少 `zip` 会在 release test gate 直接暴露。
-它用 MSYS 的 `winsymlinks:nativestrict` 创建受检链接：若 runner 不能创建原生 Windows link，测试会显式
-失败，避免 Git Bash 的普通文件伪链接让 output ancestor 安全门形同虚设。
-
-Quality 同时处理 `pull_request.edited`，确保 PR 改为指向 `main` 后会发布必需的 Quality 结果。标题和描述编辑也会触发分类及必要的 Quality 验证。job 保持固定必需名称，包括纯文档 skip；GitHub 不会求值 skipped job 的动态名称。纯文档改动仍使用真实 job-level skip。
-
-### 离线 ugoira 对照
-
-动图编码器对比使用独立的显式入口 `TestRealPixivUgoiraCapture`。它与 `TestRealPixivSDKRead` 共用本地
-账号选择和 rotation 持久化，再通过公开 SDK `UgoiraMetadata`、`SaveResource` 采集。作品 ID 为逗号分隔的
-正整数，quality 必须明确为 `original` 或 `medium`；该质量不可用时直接失败，不替换。只有获得素材下载授权后才运行：
-
-```bash
-PIXIV_UGOIRA_CAPTURE=1 PIXIV_UGOIRA_IDS=150808387,150247639,150356234 \
-PIXIV_UGOIRA_QUALITY=medium PIXIV_UGOIRA_DIR="$PWD/build/ugoira-parity/samples" \
-go test ./e2e -run '^TestRealPixivUgoiraCapture$' -count=1 -v
-```
-
-这条命令采集 medium。下方样本表中的 1080p original 来自该处说明的 `originalSrc`，已另行采集并保存在独立目录。
-
-每个新建 ID 目录包含完整 `frames.zip` 和 `sample.json`；后者记录有序文件名/延迟、实际质量、尺寸、
-总时长、字节数、ZIP SHA-256 和帧元数据 SHA-256，日志另记录 manifest SHA-256。URL、resource ref、
-headers 和凭证不会序列化。既有样本拒绝覆盖；采集失败只清理本次新建目录。这些私有产物放在已忽略的
-`build/` 下，禁止提交。`PIXIV_E2E_PROXY` 沿用 SDK E2E 的非 secret 代理含义；普通测试默认跳过采集。
-
-旧基线须从迁移前源码单独编译一次，记录源码 commit、Go/构建设置和 binary SHA-256，并保持 binary 不变。
-当前测试 driver 与默认下载器同用 `ugoira.NewEncoder()`，无需凭证或网络。另建当前 driver，不得覆盖 `baseline.test`：
-
-```bash
-mkdir -p build/ugoira-parity
-CGO_ENABLED=0 go test -c -trimpath -o build/ugoira-parity/current.test ./e2e
-GOMAXPROCS=1 RAYON_NUM_THREADS=1 \
-UGOIRA_PARITY_SAMPLE="$PWD/build/ugoira-parity/samples/150808387" \
-UGOIRA_PARITY_OUTPUT="$PWD/build/ugoira-parity/current-150808387.gif" \
-UGOIRA_PARITY_FORMAT=gif UGOIRA_PARITY_MAX_EDGE=0 \
-build/ugoira-parity/current.test -test.run '^TestUgoiraParityEncode$' -test.v
-```
-
-driver 要求绝对路径、与 `gif` 或 `apng` 匹配且尚不存在的输出，以及 uint32 最大边长（`0` 表示不缩放）。
-编码前校验 ZIP 与帧元数据哈希，输出 `UGOIRA_PARITY_RESULT`，包含输入哈希、格式、最大边长、`Encode`
-耗时、输出字节数、Go 版本和 `GOMAXPROCS`。每轮使用新输出，新旧实现保持相同输入和运行参数；峰值进程 RSS
-另用同一主机工具测量。日志耗时不含编译、采集、输入哈希或进程启动。fixture/driver 本身不能证明真实画质、
-性能或六平台等价。
-
-工具链变化时保留冻结 baseline，必要时从同一已审计旧 producer 构建独立命名的 legacy comparator；先核对它与冻结输出的身份，再记录双方 build mode，以相同工具链比较。迁移资源验收按每个真实样本/格式各预热一次、交替五次，时间、峰值进程 RSS 与输出字节数比值分别不得超过 1.10；RSS 不是 Go heap。
-
-每次冻结旧版/Go 对照均设置 `GOMAXPROCS=1` 和 `RAYON_NUM_THREADS=1`。旧 Rust 量化器的 worker 数会改变输出像素，而不只影响耗时；选择已保存输出评分时，也须匹配固定基线的 worker 设置。
-
-`TestUgoiraSyntheticCorpus` 生成旧版三个质量场景，并补充透明/重复帧、单像素和奇数尺寸场景。
-未设置 `UGOIRA_PARITY_CORPUS` 时使用临时目录；显式指定绝对目录后保留 schema 1 样本，供两版 binary
-共同使用，已有样本目录拒绝覆盖。`TestUgoiraParityInspect` 按 Keep/Background 处置规则重建 GIF 画布，并重放 APNG 的
-Source/Over 差分矩形及 None 处置，检查帧数、尺寸、循环、延迟和 GIF 透明语义。输入必须是不缩放的输出（`MaxEdge=0`）。
-PNG 源帧要求逐像素还原；JPEG 像素差异单列，因为参考使用 Go JPEG 解码器。质量检查不计入性能测量，
-通过 `UGOIRA_QUALITY_RESULT` 输出每帧指标及输入/输出哈希。
-
-```bash
-UGOIRA_PARITY_CORPUS="$PWD/build/ugoira-parity/synthetic" \
-go test ./e2e -run '^TestUgoiraSyntheticCorpus$' -count=1
-UGOIRA_PARITY_SAMPLE="$PWD/build/ugoira-parity/samples/150808387" \
-UGOIRA_PARITY_OUTPUT="$PWD/build/ugoira-parity/baseline-150808387.gif" \
-go test ./e2e -run '^TestUgoiraParityInspect$' -count=1 -v
-```
-
-RGB SSIM 取三通道均值。MSSIMSimple 使用不重叠的 8×8 窗口，边缘窗口按实际面积加权；协方差是偏差乘积
-之和，不是总体方差。旧 `image` 0.25 的 `DynamicImage::into_luma8` 实际走 CICP：BT.709/D65 矩阵、
-float32 乘加和四舍五入。指标保留已实测的 arm64/FMA 基准；较旧的整数 `Pixel::to_luma` helper 不是这条路径。
-设置 `UGOIRA_PARITY_RUST_QUALITY` 可运行 `TestUgoiraSSIMRustCalibration`，读取旧质量 gate 保存的
-`<scene>-rust.gif` 和 `<scene>-ssim.csv`，按 CSV 九位小数采用 1e-9 校准容差。
-
-Go 生产编码器使用 owner-local `internal/media/ugoira/jpeg`：复用 Go 1.26.3 的 JPEG 解析，迁移旧
-zune-jpeg 0.5.15 的整数 IDCT 与 14-bit BT.601 转换。标准库 IDCT 的舍入差异会改变调色板选择，导致
-固定画质门槛失败；只对齐色彩系数不能修复全部样本。该解码器不注册全局图像格式，不新增模块依赖。
-解析器的 BSD 许可证保存在该包内，最终许可证 bundle 仍须保留 zune-jpeg 的 MIT 归属。17×9 合成
-`jpeg-{444,progressive,gray,restart}` fixture 与旧版解码的 RGBA 参考覆盖这些路径，普通测试不依赖
-Rust 或 jpegtran。Go 缩放核使用限定区间内的正弦/余弦多项式，以 `math.FMA` 固定求值次序，
-与旧基准运行时 `sinf` 的结果对齐。`testdata/lanczos-kernel.json` 中的 1,031 组数值参考保护
-Lanczos3 舍入行为，Go 路径不调用平台数学库。
-Go APNG writer 使用固定 Sub 预测与逐帧独立的 level-7 zlib 流，保留 RGBA8 和无损像素。
-仅当所有变化像素均不透明，且透明差分减少行内 RGBA 连续段数时使用 Over，将未变化像素写为透明；
-其他情况使用 Source，避免打碎平坦色块而增大压缩体积。两者均使用 None 处置。
-Go 1.27 的快速压缩档在高纹理语料上超过原10%体积回退门槛；
-确定性 opaque-texture 回归以封存的 Rust fixture 为参考，保留相同门槛。工具链可能改变压缩字节；
-只有完整重放画布、时长和循环行为经验证一致后才能复用既有画质证据，不能只看文件大小。
-
-迁移样本的六个公开作品 ID 如下。尺寸来自所有 ZIP 帧的完整解码，不能只用作品展示尺寸。
-第一个 original ZIP 由 Pixiv 公开 `ugoira_meta` 的 `originalSrc` 明确给出，完整帧列表与已认证 SDK 元数据
-逐项一致；该作品的 SDK 元数据仅提供 medium。这只是测试素材采集，不是产品 fallback。
-
-| 作品 ID | ZIP 质量 | 实际尺寸 | 帧数 | 覆盖 |
-| --- | --- | --- | --- | --- |
-| 150808387 | original | 1920×1080 | 63 | 高分辨率、局部运动、细线 |
-| 150247639 | medium | 423×600 | 8 | 复杂插画、大面积变化 |
-| 150356234 | medium | 219×320 | 121 | 小尺寸、长序列、渐变 |
-| 150863948 | medium | 600×420 | 12 | 局部运动、平涂 |
-| 150863611 | medium | 600×338 | 37 | 渐变、纹理、局部运动 |
-| 150863218 | medium | 480×270 | 128 | 全画面变化、密集纹理 |
-
-original 和 medium 必须保存在不同目录，本地保留完整元数据和哈希；不要推导 original URL 或把 medium
-重标为 original。上述来源记录不能替代后续逐样本画质及五次新旧交替性能验证。
-
+- 没有单独的 E2E 包装脚本；离线套件与需要凭据的观测共用一条路径。目标只接受显式的非 secret 值——从不接受 token、会话或 Cookie 作为参数或环境变量。`PIXIV_E2E_PROXY` 是非 secret 的代理 URI；solver 变量是可选的非 secret 拓扑配置。
+- release-prep 运行后，检查 stdout、stderr、日志与证据：token、Cookie、签名 URL 与原始响应体绝不能出现在 argv、环境转储、日志、测试名、产物或 diff 中。本节描述的是覆盖范围，并不表示真实 e2e 已运行。
+- 显式代理下，资源传输协商 HTTP/1.1，App API 与 OAuth 保持原协商；e2e 资源读取回归这一边界，不为慢速下载加超时。收到没有有效 `Retry-After` 的 429 时保留诊断并失败——不猜测等待，不无限重试。
+- `PIXIV_E2E_BINARY` / `PIXIV_E2E_EXPECTED_VERSION` 让离线 e2e 针对已构建并解包的 release 二进制运行（不注入 token、不启用真实 API）；`platform-smoke.yml` 在六个 runner 上运行这组 CLI/config/MCP 命令面检查。
+- 按改动范围新增或更新测试；无法运行测试时，在交付说明中写明原因与风险。发布 fixture 门禁见[发布](release.md#本地发布-fixture-门禁)。
 
 ### 测试文件布局
 
-生产文件 `x.go` 对应同目录最多一个 `x_test.go`；平台专用测试用 `x_<platform>_test.go`，必须有真实 base owner。新 owner 的测试一律用 external test package（`X_test`）；只有下列目录允许 same-package，因为它们观察未导出的内部状态。新增 same-package 例外必须在此登记 permanent 理由，否则视为违规。
+生产文件 `x.go` 在同目录最多对应一个 `x_test.go`；平台测试使用 `x_<platform>_test.go`，且必须有真实的基础 owner。新 owner 一律使用外部测试包（`X_test`）；只有下列目录因观察未导出状态而允许同包测试。新增同包例外必须在此登记并给出永久理由。
 
-| 目录 | same-package 理由 |
+| 目录 | 同包理由 |
 | --- | --- |
-| `internal/media/ugoira` | 测试直接调用 `readFrameSource`、`frameSource`、`validateDecodedSize`、`frameNRGBA`、`decodeInto`、`resizeFrame`、`apngWriter`，无需巨量分配即可验证分配边界和取消、保留透明像素的 RGB 和缓冲复用时前帧的独立所有权，与固定上游参考向量对比 Lanczos3 像素，检查 APNG 序列溢出和写入失败，以及 reservoir 状态、去重权重/索引、Oklab/Wu 精确参考值、固定种子 K-means 中心与逐像素抖动索引；`colorGrid` 测试验证单元边界的精确候选上下界，`frameQuantizer` 测试验证复用误差行时完整清零、普通量化结果仍独立持有索引、显式缓冲复用只发生在上一帧消费完成后，LZW 测试覆盖跨帧字典/码宽重置和写失败后的恢复；GIF 测试观察 `gifWriter`/`gifBlocks`，验证全局表、流式 LZW 子块和写入失败，生命周期测试观察 `encodeGate`，不靠 sleep 即可同步排队取消；导出这些 codec 内部机制会仅为测试扩大 `Encoder` 契约。 |
-| `internal/config/settings` | `schema_test.go` 将合成类型交给私有 `deriveSchemaFromTags` 编译函数，验证非法声明的生产拒绝路径，避免导出反射元数据或重置生产缓存。 |
-| `internal/cli` | composition root 测试观察未导出的 root wiring、invocation lifecycle 与 close ordering；这些 seam 不构成公开 API。 |
-| `internal/cli/commands/pixiv/search` | 通过真实 SDK 与 HTTP fixture 观察私有 searchArtworks 逻辑页续读。私有逻辑页策略仍是实现细节；MCP 另行暴露绑定参数的默认批次 continuation。为测试导出应用内部接口会扩大公开契约。 |
-| `internal/mcpserver/pixiv/tools/search_illust` | 通过真实 SDK 与 HTTP fixture 观察私有 searchArtworks 逻辑页续读。私有逻辑页策略仍是实现细节；MCP 另行暴露绑定参数的默认批次 continuation。为测试导出应用内部接口会扩大公开契约。 |
-| `internal/browsercookies/chromium` | 测试直接构造 provider 并注入 encryption key override，观察未导出的 cookie 记录解密路径与 profile 发现逻辑。 |
-| `internal/browsercookies/firefox` | 测试观察未导出的 profile 发现（`profiles.ini` 解析）、cookie 数据库路径解析与记录布局。 |
+| `internal/media/ugoira` | 测试直接调用 `readFrameSource`、`frameSource`、`validateDecodedSize`、`frameNRGBA`、`decodeInto`、`resizeFrame` 与 `apngWriter`，在不做巨量分配的前提下验证分配边界与取消，保持透明 RGB 与缓冲复用时上一帧的所有权，用固定的上游参考向量比较 Lanczos3 像素，覆盖 APNG 序号溢出与写入失败，并检查 reservoir 状态、去重权重/索引、Oklab/Wu 参考值、固定种子 K-means 中心与逐像素抖动索引。`colorGrid` 测试验证格子边缘的精确候选范围；`frameQuantizer` 测试验证复用的误差行被清空、普通量化返回独立索引、显式缓冲复用只在上一帧被消费后开始。LZW 测试覆盖跨帧的字典/码宽重置与写入失败后的恢复。GIF 测试观察 `gifWriter`/`gifBlocks`，验证全局色表、流式 LZW 子块与写入失败；生命周期测试观察 `encodeGate`，无 sleep 地协调排队中的取消。为测试暴露这些 codec 内部细节会扩大 `Encoder` 契约。 |
+| `internal/config/settings` | `schema_test.go` 把合成类型传给私有的 `deriveSchemaFromTags` 编译器，在不导出反射元数据、不重置生产缓存的前提下测试声明拒绝。 |
+| `internal/cli` | 组合根测试观察未导出的根装配、invocation 生命周期与关闭顺序；这些 seam 不是公开 API。 |
+| `internal/cli/commands/pixiv/search` | 测试通过带 HTTP fixture 的真实 SDK 观察私有 searchArtworks 逻辑页续读。私有逻辑页策略仍是实现细节；MCP 另外暴露绑定的默认批次续读。仅为测试导出应用内部会扩大公开面。 |
+| `internal/mcpserver/pixiv/tools/search_illust` | 测试通过带 HTTP fixture 的真实 SDK 观察私有 searchArtworks 逻辑页续读。私有逻辑页策略仍是实现细节；MCP 另外暴露绑定的默认批次续读。仅为测试导出应用内部会扩大公开面。 |
+| `internal/browsercookies/chromium` | 测试直接构造 provider 并注入加密密钥覆盖，观察未导出的 Cookie 记录解密路径与 profile 发现逻辑。 |
+| `internal/browsercookies/firefox` | 测试观察未导出的 profile 发现（`profiles.ini` 解析）、Cookie 数据库路径解析与记录布局。 |
 | `internal/browsercookies/safari` | 测试直接调用未导出的 `parseBinaryCookies`，断言 binarycookies 记录布局。 |
-| `internal/browsercookies/secret` | 测试构造 `SecretService{command: ...}` 注入未导出字段并断言未导出的 sentinel error 与命令输出脱敏行为。 |
-| `internal/update/installer` | 测试注入未导出的 `assetURLValidator` seam 与 checksum 校验函数，用真实 fixture 二进制验证 root `--version` 预检与失败时不替换旧可执行。 |
-| `internal/update/release` | `source_route_test.go` 观察未导出的 source route 选择与 canonical API URL cache 状态；该目录其余测试已用 external package。 |
-| `internal/storage/database` | 测试观察未导出的 `tableInfoQuery` 白名单与迁移兼容 seam，确保 SQL 标识符始终来自固定字面量，旧 schema 不能静默绕过契约。 |
-| `sdk/pixiv` | `cursor_test.go` 观察未导出的 cursor 构造与 client-instance binding，以验证精确的 query-bound 无效 continuation，而不扩大 public SDK surface。 |
-| `scripts/internal/browsernativeevidence` | 测试观察未导出的环境探测并注入合成 Firefox cookie 种子。 |
+| `internal/browsercookies/secret` | 测试构造 `SecretService{command: ...}` 注入未导出字段，并断言未导出的 sentinel 错误与命令输出脱敏行为。 |
+| `internal/update/installer` | 测试注入未导出的 `assetURLValidator` seam 与 checksum 校验函数，并用真实 fixture 二进制验证根 `--version` 预检，以及失败时不替换旧可执行文件。 |
+| `internal/update/release` | `source_route_test.go` 观察未导出的来源路由选择与 canonical API URL 缓存状态；目录中其他测试已使用外部包。 |
+| `internal/storage/database` | 测试观察未导出的 `tableInfoQuery` allowlist 与迁移兼容 seam，确保 SQL 标识符保持固定字面量，旧 schema 无法静默绕过契约。 |
+| `sdk/pixiv` | `cursor_test.go` 观察未导出的 cursor 构造与 client 实例绑定，在不扩大公开 SDK 面的前提下验证与查询精确绑定的非法续读。 |
+| `scripts/internal/browsernativeevidence` | 测试观察未导出的环境探测，并注入合成的 Firefox Cookie 种子。 |
 | `scripts/internal/homebrewformula` | 测试直接调用未导出的 formula 渲染与版本校验（`renderFormula`、`validateFormulaVersion`、`checkDynamicVersionNeeds`）。 |
-| `scripts/internal/licensebundle` | 测试观察未导出的 `defaultBundleFileOps`、`modulesFromMetadata`、`packageLicenseFiles` 与 license 文本归一化；用可执行 Go fixture 验证六目标离线命令契约。 |
-| `scripts/internal/linuxabi` | 测试直接调用未导出的 glibc 版本解析与 ABI 比对（`parseGLIBCVersion`、`checkImportedSymbols`）。 |
-| `scripts/internal/nativeevidence` | 测试直接调用未导出的 record/consolidate seam，覆盖 schema 3、独立 `source_commit`、精确 binary `--version` 输出、六目标 hash/archive 校验与 mutation 回滚。 |
-| `scripts/internal/publicapi` | 测试观察未导出的 `unexported`/`hidden` 符号解析与 golden 比对逻辑，用 `writeFixture` 生成 fixture。 |
-| `scripts/internal/releaseassets` | 测试注入未导出的 `injectReleaseSources`/`injectWindowsReleaseSources`，观察 asset archive 命名（`archiveName`）与 checksums 生成。 |
+| `scripts/internal/licensebundle` | 测试观察未导出的 `defaultBundleFileOps`、`modulesFromMetadata`、`packageLicenseFiles` 与许可证文本规范化；可执行的 Go fixture 验证六目标离线命令契约。 |
+| `scripts/internal/linuxabi` | 测试直接调用未导出的 glibc 版本解析与 ABI 比较（`parseGLIBCVersion`、`checkImportedSymbols`）。 |
+| `scripts/internal/nativeevidence` | 测试观察未导出的 record/consolidate 状态与 workflow 安全/归属契约，覆盖 schema 3、独立的 `source_commit`、精确的二进制 `--version` 输出、六目标哈希/压缩包校验与写操作回滚。 |
+| `scripts/internal/publicapi` | 测试观察未导出的解析器对 `unexported`/`hidden` 符号的处理与 golden 比较逻辑，用 `writeFixture` 生成 fixture。 |
+| `scripts/internal/releaseassets` | 测试注入未导出的 `injectReleaseSources`/`injectWindowsReleaseSources`，观察资产压缩包命名（`archiveName`）与 checksums 生成。 |
 | `scripts/internal/releasenotes` | 测试观察未导出的 GitHub client 调用映射，注入 fake client 断言来源审计。 |
 
-当前没有 temporary 项。本清单不接受「迁移期」「未来」类无期限表述。新增目录须说明观察的**具体未导出符号**并确认导出最小接口不可行；删除目录须提供删除任务与测试迁移证据（external package 可编译 + 覆盖率不变）。
-
-`e2e/` 也是 `package X`，但它没有生产代码（纯测试载体），「观察未导出生产状态」问题不适用，不在本清单范围。跨平台差异：带 build tag 的测试文件（如 `scripts/internal/*`）在不同 `GOOS`/`GOARCH` 下可见文件数不同；验证时分别用 `GOOS=darwin`、`GOOS=windows`、`GOOS=linux` 运行 `go list` 确认目录集合一致。
+- 当前没有临时条目，也不接受"迁移期间""将来"之类开放式表述。新增目录必须说明具体观察的未导出符号，并确认导出最小接口不可行；移除目录需要删除任务与测试迁移证据（外部包可编译 + 覆盖不变）。
+- `e2e/` 也是 `package X`，但没有生产代码，因此不在此列。带 build tag 的测试文件在不同 `GOOS`/`GOARCH` 下可见数量不同；校验时分别用 `GOOS=darwin`、`windows` 与 `linux` 运行 `go list`。
 
 ```bash
 # 列出测试留在生产包内的目录（package X 而非 X_test）
@@ -532,250 +247,49 @@ for ip,n in sorted(same): print(ip,n)'
 
 ### 能力边界
 
-这是 v1 中**不得有可发布入口**的能力的维护者侧权威清单，是负面契约：为下列能力新增已发布的 CLI/MCP/SDK 入口即为缺陷。Evidence-gated 表中记录的 SDK-only migration seam 不属于可发布入口，也不得据此记为 capability 已完成。禁止以 schema 占位或 mock 空结果「预留」。
+v1 的负面契约：下列任一项出现可发布的 CLI/MCP/SDK 入口即为缺陷。证据门禁表中的仅 SDK 迁移 seam 不是 release-ready。禁止仅 schema 的占位与 mock 空结果。新增或恢复入口属于功能变更：更新对应行与用户文档；审查者需手动重跑各项的负面 grep / 目录检查。
 
-**Unsupported（v1 明确不支持；新增入口即缺陷）：**
+**不支持**
 
-| ID | 唯一 owner | 当前证据 | close-out 条件 |
+| ID | 唯一 owner | 当前证据 | 关闭条件 |
 | --- | --- | --- | --- |
-| `ART-SEARCH-RATING` | `internal/cli/commands/pixiv/search` + `internal/shared/searchfilter` + `sdk/pixiv` | CLI artwork search 对规范化的 `x_restrict` 做本地过滤，并将过滤条件绑定到 cursor；不发送上游 rating 字段。MCP `pixiv_search_illust` 没有独立 rating 参数 | 保留 CLI 本地过滤契约并测试 cursor 与过滤条件的一致性；新增 MCP 参数或上游字段需要独立的行为依据，并同步 schema 与文档 |
-| `NOVEL-SEARCH-ADVANCED` | 无 owner（不得新增） | SDK/MCP schema 无 advanced 字段 | 上游 contract 出现后可评估；禁止 schema 占位 |
+| `ART-SEARCH-RATING` | `internal/cli/commands/pixiv/search` + `internal/shared/searchfilter` + `sdk/pixiv` | CLI 作品搜索在本地筛选规范化的 `x_restrict` 并将筛选绑定到 cursor；不发送上游分级字段。MCP `pixiv_search_illust` 没有独立的分级参数 | 保留本地 CLI 契约并测试 cursor/筛选一致性；暴露新的 MCP 参数或上游字段需要其自身的受支持行为与同步的 schema/文档 |
+| `NOVEL-SEARCH-ADVANCED` | 无 owner（不得新增） | SDK/MCP schema 没有高级字段 | 上游契约出现后可评估；禁止仅 schema 的占位 |
 
-**Evidence-gated（可存在 SDK-only migration seam；可发布入口仍须先满足 close-out 条件）：**
+**证据门禁**
 
-| ID | 唯一 owner | 当前证据 | close-out 条件 |
+| ID | 唯一 owner | 当前证据 | 关闭条件 |
 | --- | --- | --- | --- |
-| `NOVEL-RANKING` | `sdk/pixiv` + `internal/cli/commands/pixiv/ranking`（T18/T30；MCP 后续） | SDK 与 CLI 已在 internal `/v1/novel/ranking` adapter 之上暴露 additive `NovelRanking` seam；CLI 通过 `--type novel` 显式选择；MCP 无 `novel_ranking` tool，live/public 发布 evidence 仍未闭合 | 完成 live 第二页、shared cursor、MCP 与发布兼容门禁；此前仍是 evidence-gated，不得记为 `public_ready` |
-| `NOVEL-BOOKMARK-MUTATION` | `sdk/pixiv` + `internal/mcpserver/pixiv`（G1-T13；CLI 后续） | SDK 已暴露 additive typed `AddNovelBookmark`/`RemoveNovelBookmark`；MCP 已暴露 `add_novel_bookmark`/`remove_novel_bookmark`；offline outcome、校验与 no-replay evidence 已存在，strict/live、read-back 与发布 evidence 仍未闭合 | 完成 strict/live mutation evidence、同账号 read-back、清理及兼容/发布门禁；此前仍是 evidence-gated，不得记为 `public_ready` |
-| `COMMENT-WRITE` | `sdk/pixiv`（T16；CLI/MCP 后续） | SDK 已暴露按 namespace 区分的 `PostArtworkComment`/`ReplyArtworkComment`/`DeleteArtworkComment` 及 novel 对应方法；MCP `comment_post`/`comment_add` 目录仍 = 0；响应 ID、read-back、清理和 strict live evidence 尚未闭合 | 完成 strict/live 写入 evidence、同账号 read-back、清理及 T33/T38 兼容门禁后；此前仍是 evidence-gated，不得记为 `public_ready` |
+| `NOVEL-RANKING` | `sdk/pixiv` + `internal/cli/commands/pixiv/ranking`（T18/T30；MCP 之后） | SDK 与 CLI 在内部 `/v1/novel/ranking` 适配器上暴露增量的 `NovelRanking` seam；CLI 通过 `--type novel` 显式选择；MCP 没有 `novel_ranking` 工具，实时/公开发布证据仍不完整 | 完成实时第二页、共享 cursor、MCP 与发布兼容门禁；在此之前保持证据门禁，不是 `public_ready` |
+| `NOVEL-BOOKMARK-MUTATION` | `sdk/pixiv` + `internal/mcpserver/pixiv`（G1-T13；CLI 之后） | SDK 暴露增量的类型化 `AddNovelBookmark`/`RemoveNovelBookmark`；MCP 暴露 `add_novel_bookmark`/`remove_novel_bookmark`；已有离线结果、校验与不重放证据，严格/实时、回读与发布证据仍不完整 | 完成严格/实时写入证据、同账号回读、清理与兼容/发布门禁；在此之前保持证据门禁，不是 `public_ready` |
+| `COMMENT-WRITE` | `sdk/pixiv`（T16；CLI/MCP 之后） | SDK 暴露命名空间专属的 `PostArtworkComment`/`ReplyArtworkComment`/`DeleteArtworkComment` 及小说对应方法；MCP `comment_post`/`comment_add` 目录仍 = 0；响应 ID、回读、清理与严格实时证据不完整 | 完成严格/实时写入证据、同账号回读、清理与 T33/T38 兼容门禁；在此之前保持证据门禁，不是 `public_ready` |
 | `NOTIFICATION` | 无 owner | MCP `notification` 目录 = 0；SDK `Notification*` 导出 = 0 | 同上 |
 | `AUTOCOMPLETE` | 无 owner | MCP `autocomplete` 目录 = 0；SDK `Autocomplete*` 导出 = 0；未并入 `search` | 同上 |
-| `WEB-RESTRICTED-READ` | 无 owner | 无 `webapi` 包；`web_fallback_enabled` 是 tombstone key（`config get/set` → `removed_setting`） | 不得重开匿名 Web 路径；任何恢复 Web/AJAX 的提议须先修订 AGENTS 冻结契约并经 ADR |
-| `USER-BLOCK-MUTE-REPORT` | 无 owner | MCP `mute`/`report` 目录 = 0；SDK `BlockUser`/`MuteUser`/`ReportUser` 导出 = 0 | 上游提供可验证的 mutation contract 后 |
-| `WATCHLIST-MARKER` | 无 owner | MCP `watchlist` 目录 = 0；SDK `Watchlist*` 导出 = 0 | 上游提供后 |
-| `BOOKMARK-USERS` | 无 owner | 无对应 tool/SDK 导出；`bookmark_detail` 只覆盖当前用户详情 | 上游提供后可评估 |
-| `SPOTLIGHT-PIXIVISION` | 无 owner（范围外） | MCP `spotlight`/`pixivision` 目录 = 0；SDK `Spotlight*`/`Pixivision*` 导出 = 0 | 明确范围外；仅当产品范围变化时重新评估 |
-
-为上述任一能力新增或恢复入口是功能变更：须更新对应行并同步相关用户文档。审查者手动重跑每项下的 negative grep / 目录存在性检查。
-
-## 发布门禁、签名与 Homebrew 边界
-
-`.github/workflows/release.yml` 默认由 `v[0-9]*` tag 触发：先验证 SemVer，再在 immutable tag 上运行无凭据的
-SDK E2E contract gate，确认测试入口和默认 skip/离线边界没有被破坏；随后才构建
-darwin/linux/windows × amd64/arm64 的 CGO0 Go binary，运行 Go 测试（race step 单独启用 cgo）、检查许可证并封装固定名称的 archive。
-该 workflow 不读取或注入 Pixiv/FANBOX credential。真实 SDK E2E、native browser 和一次性 solver acceptance
-必须在授权环境按本页对应流程完成，不能把 contract gate 当作真实 release evidence。
-
-`releaseassets finalize` 还从 immutable tag 读取 `scripts/install.sh` 与 `scripts/install.cmd`，把它们以固定
-名称复制到 Release，并与六个平台 archive 一同写入 `checksums.txt` 和 Ed25519 签名 manifest。publish
-policy 锁定 finalize 参数及完整八资产上传集合；Homebrew renderer 也要求 checksum 集合包含两个 installer，
-但 formula 仍只下载对应平台 archive。
-
-release.yml 只接受 `v[0-9]*` tag push，不再提供 `workflow_dispatch`、`release_tag` 输入或 test-only
-overlay。tag run 失败时应修复默认分支上的原因，并按正常的不可变 tag 发布流程重新处理；不会从默认分支
-把新 verifier、测试或生产源码注入旧 tag，也不会为已有 Release 提供手工 recovery 入口。validate、test
-build、production build 与 publish 都绑定同一个 tag；生产构建在独立 runner 上从 clean tag tree 以 CGO0 构建，并继续以 `git diff --exit-code` 做 byte-for-byte 校验。
-
-GitHub Release 与 registry 是独立系统，无法原子提交。因此 `.github/workflows/publish-dockerhub.yml` 作为独立的
-Release 后容器 publisher，同时负责 GHCR 与 Docker Hub。它从完成的 Release run 接收 immutable handoff 和两份
-verified container artifact，校验 release tag 与 source identity，再把同一批已加载镜像 bytes 发布到
-`ghcr.io/flanchanxwo/pixiv-cli` 与 `docker.io/flanchanxwo/pixiv-cli`；只有 Docker Hub 登录使用受保护
-`release` Environment 的 secret `DOCKER_HUB_TOKEN`，并通过 stdin 传入。
-
-它不会重建镜像。若 registry 发布失败，
-应从默认分支只使用原始 `release_run_id` dispatch，以复用同一批 verified artifact。exact-version tag 总是发布，
-恢复旧 stable 时即使不更新 `latest` 也会成功，只有最新 stable release 才推进 `latest`。不使用 retry loop 隐藏 push 失败。
-
-### 容器发布验证
-
-`build_container` 在共享 `build` 门禁后运行，并与 `build_production` 并行；它不会等待生产资产重建。两个原生
-target 分别是 `ubuntu-22.04` 对应 `linux/amd64`、`ubuntu-22.04-arm` 对应 `linux/arm64`。每个 target 都从
-immutable tag checkout，在 clean tree 以 CGO0 构建版本化 Linux binary 并通过 Linux ABI gate，
-运行容器打包测试，构建 pinned glibc runtime 镜像，并验证非 root 执行、精确版本、`/home/pixiv/.pixiv-cli/`
-下的 `pixiv config path`、`/work` 以及 OCI provenance（`org.opencontainers.image.source`、revision、version
-和 licenses），最后导出 `verified-container-linux-amd64` 与 `verified-container-linux-arm64`。
-
-build job 只持有
-`contents: read`；只有独立容器 publisher 在 GitHub Release 后消费这些 artifact，并为 GHCR 推送申请 `packages: write`。
-
-维护者聚焦检查：
-
-```bash
-go test ./scripts/tests/containerrelease -count=1
-go test ./tools/release ./tools/platformmatrix -count=1
-```
-
-无凭据容器 smoke workflow 会在相关变更时构建两个原生架构，并执行 version、非 root、state-path 和工作目录
-断言；正式 tagged release 不能用这些本地检查替代该 CI evidence。
-
-共享平台 runner/capability metadata 只位于 `ci/platforms.json`，由 `tools/platformmatrix` 校验并输出；
-release archive identity 仍由 `scripts/internal/releasecontract` 持有。workflow 测试只保留行为与安全边界，
-不再镜像 job 数量、step 位置或 multiline shell 全文。历史 recovery 计划和验收报告保留原始文字与路径，
-不作为当前流程说明。
-
-### Verifier 源码导航
-
-Release 验证现在优先检查真实行为，不再维护第二套 workflow policy 实现。`tools/platformmatrix`
-负责校验共享平台注册表；`tools/release` 统一负责可复用的发布信任与 artifact 校验，包括 immutable
-tag/default-branch ancestry、published Release 状态、Release-run handoff identity、精确的
-archive/container 集合与 checksums。各 publisher workflow 只保留自身渠道的 credential、权限、变更
-检测和发布命令；recovery run 可以只验证成功的 `Release` handoff，而原有契约明确要求 run 与 tag
-同一提交的 publisher（例如 Docker Hub）则继续额外绑定 handoff run 与 immutable tag commit。
-
-`scripts/cmd/nativeevidence/` 只保留 CLI 入口与参数分发；具体 evidence 生命周期实现在
-`scripts/internal/nativeevidence/`：`models.go` 保存 target 和 evidence schema；`record.go` 记录单 runner
-evidence；`consolidate.go` 校验并合并六目标结果；`archive.go` 负责 release archive member 与 JSON；
-`filesystem.go` 负责路径、hash 和安全文件操作。
-`scripts/cmd/nativeevidence/` 只分发 `record` 与 `consolidate`；workflow 测试只覆盖 credential、action
-固定与 build ownership 等安全/行为边界，不再重新实现 workflow 的精确 YAML 形状。
-
-release workflow 本身就是顺序与权限的事实来源。生产 archive、container、prepared checksums 以及针对
-真实 production archive 的 Homebrew 安装验证都必须在 `release-approval` 前完成；审批后由
-保存发布 secrets 的 `release` environment 消费已经批准的同一批 artifact，不重新构建。
-
-`go.mod` 当前声明的 Go toolchain 不支持 Windows ARM64 的 race detector，但 release matrix 仍会在六个原生目标上实际执行 race gate：
-其中五个平台运行 `go test -race ./...`，Windows ARM64 则必须执行同一命令并精确匹配 Go 官方
-`-race is not supported on windows/arm64` 诊断；其他任何失败仍视为 gate 失败，因此不会再出现 matrix step skip。
-test matrix 还固定 `GIT_CONFIG_*` 为 `core.autocrlf=false`，使 Git for Windows checkout 保留 immutable
-tag 的 LF blob bytes；否则 pre-commit 的 `gofmt` 会把 runner 的 CRLF 转换误报为源码未格式化。该配置
-仅用于 test gate，独立 production build 仍从 tag 的干净默认 checkout 构建资产。
-
-发布准备阶段把 release run、tag、commit 和每个 production/container 产物的 size、SHA256 写入不可变的 `release/release-handoff.json`。发布时以已批准的 `release/checksums.txt` 复验；policy 拒绝中间 step、路径替换和发布后改写。
-
-Homebrew 由独立的 `publish-homebrew.yml` 发布，不属于 Release workflow。它读取 handoff，校验 production section，并将 releaseassets 的 stable/prerelease 结果映射为 `pixiv-cli`/`pixiv-cli-beta`。
-
-1. 在 macOS Intel/arm64、Linux amd64/arm64 四个目标验证安装。各 runner 用 `brew tap-new pixiv-cli-release/staging --no-git` 创建隔离 local tap，将唯一 staging formula 放入 `Formula/`，再以 `pixiv-cli-release/staging/<formula>` 执行真实 `brew install --formula`。macOS 使用原生 runner，并以 `brew trust --tap pixiv-cli-release/staging` 信任临时命名空间；Linux 使用短生命周期、固定 digest 的 `homebrew/brew` 容器，只读挂载 staging formula 目录。该 Homebrew 4.6 镜像没有 `brew trust`，原因见下文。安装后执行 `test "$(pixiv --version)" = "pixiv $RELEASE_TAG"` 与 tag 比较。验证不使用 workspace formula path、developer/环境变量 bypass，也不克隆、写入或信任公开 tap。
-2. 四个目标全部成功后，受保护的 `deploy_homebrew_tap` 才以 HTTPS 克隆公开 tap。受信默认分支 tip 上的 `scripts/cmd/homebrewrecovery` 复用 `internal/releaseversion`，按 SemVer 而非字符串比较版本。`pixiv-cli` 和 `pixiv-cli-beta` 各自判定：
-   - 同版本、bytes 完全一致：报告已发布，成功退出，不产生 commit 或 push。
-   - 请求版本更旧，或同版本内容不同：读取 deploy key 前失败关闭。
-   - 请求版本更新：核对唯一 staged formula，在最后一个 step 读取 deploy key。SSH push 固定官方 GitHub ED25519 known_hosts，启用 strict checking，目标精确为 `HEAD:main`。
-
-同一 `release_run_id` 可重复恢复，旧恢复请求不能回退已发布 Formula。任何前置 job 失败都不写 tap。
-
-这套本地检查只证明 workflow 声明的依赖和语义，**不**验证 GitHub `release` Environment、
-secret 和 tag protection 的远端实际状态；它不替代远端配置审计，也不替代正式 tag
-产生的四架构 Homebrew 外部安装证据。由于 draft asset 的匿名 URL 不可被 Homebrew 下载，workflow
-会先公开 Release 再安装；若安装失败，Release 已公开但 tap 不变，需要维护者显式处置，不能绕过 gate
-手工 push。
-
-GitHub hosted Linux runner 上 Linuxbrew 的 `Resource` staging cleanup 有直接 backtrace 证据会触发
-`FileUtils.chmod` 的 `EINVAL`，且该错误早于 `--keep-tmp` 等候选项可介入的阶段。为保证门禁仍是真实的
-formula 安装，Linux 分支使用 `docker run --rm` 启动固定 digest 的 `homebrew/brew` 镜像，向容器传入只读的
-绝对 staging-formula bind mount；容器只创建本地 staging tap、复制该 formula、执行普通 tap-qualified
-`brew install --formula` 并把 `pixiv --version` 与 `RELEASE_TAG` 精确比较。
-
-`HOMEBREW_NO_AUTO_UPDATE=1`
-与 `HOMEBREW_NO_ENV_HINTS=1` 仅消除自动更新及提示造成的漂移，不改变 formula 或安装语义。容器不读取
-secret、不写 host mount、不使用公开 tap，也不使用 `HOMEBREW_TEMP`、source/debug/keep-tmp flags。固定的
-Homebrew 4.6 容器镜像不提供 `brew trust`；这不是安全绕过：该 tap 仅在 `--rm` 容器内由 `brew tap-new`
-创建，唯一 formula 从只读 mount 复制，且不会触及公开 tap。
-
-macOS 原生 Homebrew 保留显式
-`brew trust --tap`；Linux 与 macOS 都使用同一 root `--version` gate，不依赖 Python/Ruby JSON parser。
-版本比较发生在 `brew install` 之后，不能改变安装验收路径。本地 Docker 已在 arm64 和 amd64 QEMU
-做过同一 formula 安装实验；
-GitHub runner 的预发布演练仍是正式发布前必须取得的外部证据。
-
-### 发布前只读 Homebrew 演练
-
-<details>
-<summary>展开操作边界与平台证据</summary>
-
-在创建任何新 tag 或 Release 前，维护者可从默认分支手动运行
-`.github/workflows/homebrew-prepublish-verify.yml`，并传入一个**已公开、非 draft、非 prerelease** 的
-stable Release tag。它先验证输入为带 `v` 前缀的 SemVer、执行分支为默认分支，并确认 GitHub Release 的
-tag 与输入一致；随后只下载该 Release 已发布的 `checksums.txt`，渲染 `pixiv-cli` staging formula，最后在
-macOS Intel/arm64 与 Linux amd64/arm64 四个生产同款 runner 上执行真实的本地 staging-tap 安装。
-
-这是一项只读 rehearsal：它没有 `release` Environment、secret、tag checkout、Release/asset 编辑或创建，
-也不会 clone、提交或推送 Homebrew tap。Linux 分支在固定 digest、短生命周期 Homebrew 容器中安装只读挂载的
-本地 staging formula；macOS 保持原生普通安装命令。
-它用于在正式发布之前复现 Homebrew 安装链路，**不替代**正式 tag 发布、签名 Release、tap 部署或发布后的
-安装验收。质量门只保留 formula 与 artifact 的行为级校验，不再复制一套 workflow policy 实现。
-
-正式发布目前仍必须被正式 tag、签名 GitHub Release、tap formula 与后续安装验收阻断。完整
-同 source/version 的完整六目标 Go binary/archive 证据必须已收集并核验（见 [Native runner evidence](#native-runner-evidence)）；
-受保护 `release` Environment、生产 signing 私钥与公开仓库也必须已配置，但这些前置条件本身
-不等于 Release/tap 已创建或安装路径已验收。
-
-production Ed25519 public trust root 已在
-[`internal/update/installer/release_installer.go`](../../../internal/update/installer/release_installer.go) 随源码提交：key ID 为
-`ed25519-2c27e77742d3c33a`，其 SPKI DER SHA-256 fingerprint 为
-`2c27e77742d3c33ad14be867d4e0519229a220898c9a7c868447eaef0951b4cf`。同包测试以已知真实签名验证
-此映射；它只证明公开信任根进入 production wiring，并不证明实际签名、Release asset 或安装验收已经
-完成。
-
-生产 Ed25519 信任根的其余规则如下：
-
-- 公钥、key ID 与 fingerprint 已以可审计源码变更进入受支持二进制；私钥绝不进入源码、
-  release asset、日志或 formula。
-- 私钥只能作为受保护 `release` Environment 的 secret 使用；恢复副本只可保存在受控的 macOS
-  Keychain。它不得进入源码、日志、Release asset 或 formula。
-- 轮换时先发布能够信任新 key ID 的版本，保留旧公钥直至旧版本退出支持，再通过新的受签名
-  Release 停止使用旧 key。不得让既有二进制突然依赖一个未提交、不可验证的新信任根。
-
-Homebrew tap 是独立发布面：stable 使用 `pixiv-cli`，pre-release 使用 `pixiv-cli-beta`，二者
-都安装 `pixiv` 并相互冲突。`publish-homebrew.yml` 先验证原始 Release handoff 与归档 checksum，
-再渲染并推送 formula；原生安装检查使用平台注册表。专用 `HOMEBREW_TAP_DEPLOY_KEY` 只通过
-`release` Environment 提供给授权的 tap 写入步骤，不得进入源码、日志或 artifact。
-这个下游 publisher 不增加人工审批边界；唯一的最终审批由 `release-approval` 承担。
-
-当前 Release 不会进行 Apple notarization 或 Windows Authenticode。直接下载仍可能被 Gatekeeper
-或 SmartScreen 拦截/提示；这是需要在用户文档中保留的系统信誉边界，不能通过文档或脚本绕过。
-
-成功结束的 `Release` workflow 通过 `workflow_run` 触发独立的 Homebrew、Docker Hub、SkillHub
-与 ClawHub publisher。Release handoff 绑定原始 run、tag、commit 与已准备产物的身份，不是仅含 tag
-的文件，也不依赖 Homebrew 部署先完成。各 publisher 在发布前重新验证身份与自身需要的产物。
-不得从 `workflow_run.head_branch` 推断版本，也不得用后续 main 内容替代。
-
-SkillHub 检查不可变 tag、默认分支祖先关系、公开 Release、SemVer，以及产品 skill 相对前一个已合并
-语义版本 tag 的变更。未变化时跳过发布；变化时执行 dry-run 和提交。产品 `SKILL.md` 的版本必须与
-CLI Release tag 相同。`SKILLHUB_TOKEN` 仅进入最终提交步骤；返回 `skillId` 和审核状态证明已接收，
-不代表立即公开或审核通过。
-
-经授权的人工恢复向对应 publisher 提供原始 `release_run_id`，不接受替代 tag 或当前 main。
-ClawHub 另有 `verify_only`，只核验已经提交的版本，不重发。其 dry-run 不含凭据，最终 publish/inspect
-核对精确产物指纹。static scan 已 clean 但 aggregate security 仍 pending，或 `skill-card.md` 延迟生成，
-会明确 warning，不把已接收误报成失败；这些 warning 也不证明最终通过，`verify_only` 仍要求聚合安全
-结论为 clean。平台未暴露服务端解析的 GitHub provenance 时，明确该限制，以受信 tag checkout 和指纹
-作为现有证据，不宣称已经独立验证 provenance。
-
-</details>
+| `WEB-RESTRICTED-READ` | 无 owner | 没有 `webapi` 包；`web_fallback_enabled` 是墓碑键（`config get/set` → `removed_setting`） | 不重新开放匿名 Web 路径；任何恢复 Web/AJAX 的提议须先修订 AGENTS 冻结契约并通过 ADR |
+| `USER-BLOCK-MUTE-REPORT` | 无 owner | MCP `mute`/`report` 目录 = 0；SDK `BlockUser`/`MuteUser`/`ReportUser` 导出 = 0 | 上游提供可验证的写入契约之后 |
+| `WATCHLIST-MARKER` | 无 owner | MCP `watchlist` 目录 = 0；SDK `Watchlist*` 导出 = 0 | 上游提供之后 |
+| `BOOKMARK-USERS` | 无 owner | 没有对应工具/SDK 导出；`bookmark_detail` 只覆盖当前用户详情 | 上游提供后可评估 |
+| `SPOTLIGHT-PIXIVISION` | 无 owner（不在范围内） | MCP `spotlight`/`pixivision` 目录 = 0；SDK `Spotlight*`/`Pixivision*` 导出 = 0 | 明确不在范围内；只在产品范围变化时重新评估 |
 
 ## Git 与本地产物
 
-`.gitignore` 已排除：
-
-- `.DS_Store`
-- 构建产物 `build/`、`pixiv`、`pixiv-cli`
-- 本地下载目录 `downloads/`
-- 本地数据库 `*.db`
-- 常见缓存和临时文件
-
-不要提交 Pixiv token、下载内容、本地数据库、机器相关配置、Ed25519 私钥或 tap deploy key。
+`.gitignore` 已排除 `.DS_Store`、`build/`、`pixiv`、`pixiv-cli`、`downloads/`、`*.db` 以及常见缓存/临时文件。不要提交 Pixiv token、下载内容、本地数据库、机器相关配置、Ed25519 私钥或 tap deploy key。
 
 ## Release notes and publication
 
-`changelog/` 按版本目录维护英文与简体中文发布说明。每个非空章节依次使用 `Breaking changes`、`Added`、`Changed`、`Fixed`、`Security`、`Documentation`、`Maintenance`；双语文件使用对应译名，并在末尾提供相同范围的 `Full Changelog` compare 链接。首个版本使用该 tag 的 commits 链接。
+```mermaid
+flowchart LR
+    PR["普通 PR<br/>（变更 · 验证 · 自查）"] --> M["合并"] --> AU["releasenotes audit<br/>（本地临时目录 / $RUNNER_TEMP）"]
+    AU --> W["编写 changelog/vX.Y.Z/en.md + zh-CN.md"] --> V["validate --audit"] --> RP["release-prep PR"] --> TAG["tag + GitHub Release"] --> HUB["SkillHub / ClawHub 校验"]
+```
 
-每条面向结果的说明内联列出来源 PR；没有关联 PR 的变更使用真实短 SHA commit 链接。一个条目可以归并多个相关来源。没有用户可见影响的改动归入 `Maintenance`，不能跳过。每个版本还会列出首次合并且不属于仓库所有者或 bot 的外部贡献者。`changelog/unreleased/` 只保留 release-prep 提示，不是普通 PR 的编辑目标。
-
-PR 正文只保留“变更”“验证”“自查”。分类、breaking 判断和版本摘要由 release-prep 维护者结合最终 Markdown 章节与兼容性评估决定，不从 PR body 读取，也不要求 PR 作者提前判断版本号。
-
-完成合并、测试和审查后，使用 `scripts/cmd/releasenotes audit` 收集 tag 范围内的 PR、direct commit、作者和首次贡献者。审计报告只放在本地临时目录或 CI 的 `$RUNNER_TEMP`，不提交仓库。维护者逐项核对后直接编写 `changelog/vX.Y.Z/en.md` 与 `zh-CN.md`，再用 `validate --audit` 检查章节顺序、双语来源集合、compare footer、遗漏来源和范围外来源。正式 tag 上的 `release_notes_audit` job 会以只读 `contents` 与 `pull-requests` 权限重新执行同一套审计和校验。
-
-版本选择不等于发布授权。创建 release-prep PR、合并、创建或推送 tag、触发发布、同步历史 GitHub Release 前，维护者须在当前会话明确确认具体版本、commit/tag 范围和预期影响。完整操作路径见 `.agents/skills/pixiv-cli-release-notes/SKILL.md`：普通 PR → 合并后审计 → 直接编写双语 Markdown → 校验 → release-prep PR → tag 与 GitHub Release → SkillHub / ClawHub 验证。
-
-`sync-history` 默认 dry-run。明确传入 `--apply` 后，既有 GitHub Release 只更新正文；缺失的历史 Release 以现有 tag 创建且不含资产。两种情况都会读取远端正文并与本地双语渲染结果核对。
+- 非空章节依次为 `Breaking changes`、`Added`、`Changed`、`Fixed`、`Security`、`Documentation`、`Maintenance`（中文使用对应译名），末尾附同范围的 `Full Changelog` compare 链接（首个版本链接到该 tag 的提交）。
+- 每条面向结果的说明内联来源 PR（无 PR 时用真实短 SHA commit 链接）；一条可合并多个相关来源。纯内部改动归入 `Maintenance`，不得省略。每个版本列出首次合并贡献的外部贡献者（非仓库所有者、非 bot）。`changelog/unreleased/` 只保留 release-prep 提示，不是普通 PR 的编辑目标。
+- 分类、breaking change 判断与版本摘要由 release-prep 维护者依据最终 Markdown 章节与兼容性评估决定，不读取 PR 正文；PR 作者无需事先决定版本号。
+- `validate --audit` 检查章节顺序、双语来源集合、compare 页脚、缺失来源与范围外来源。正式 tag 上的 `release_notes_audit` 任务以只读的 `contents` 与 `pull-requests` 权限重跑审计与校验。
+- 选定版本不等于发布授权：创建 release-prep PR、合并、创建或推送 tag、触发发布或同步历史 GitHub Release 之前，维护者必须在当前会话中明确确认具体版本、范围与影响。完整流程见 `.agents/skills/pixiv-cli-release-notes/SKILL.md`。
+- `sync-history` 默认 dry-run；只有显式 `--apply` 才更新已有 Release 正文，或基于已有 tag 创建缺失的历史 Release（不带资产）；两种情况都会比较远端正文与本地双语渲染结果。
 
 ## 文档同步
 
-当以下内容变化时，同步更新双语 README、双语 CLI reference 或对应 `docs/`：
-
-- MCP tools、参数或返回语义。
-- CLI 命令、参数、账号配置或输出语义。
-- 环境变量或默认值。
-- 下载、认证、代理、ugoira 等流程。
-- 安装渠道、更新通道、签名信任根、Release/tap 发布门禁或系统信誉提示。
-- 新增限制、重试、超时、截断、降级或错误处理策略。
-- 测试或构建命令。
+以下内容变化时，同步更新双语 README、CLI 参考或对应 `docs/` 页面：MCP 工具/参数/返回语义；CLI 命令/参数/账号配置/输出；环境变量或默认值；下载、认证、代理、Ugoira 流程；安装/更新渠道、签名信任根、Release/tap 门禁或系统信誉提示；新增限制、重试、超时、截断、降级或错误处理；测试或构建命令。

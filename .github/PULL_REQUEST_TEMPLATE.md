@@ -31,7 +31,7 @@ Only trusted-whitelist commands and controlled pipelines are accepted; no shell 
 ## 检查清单 / Checklist
 
 - [ ] 我没有引入恶意代码 / No malicious code
-- [ ] 我没有新增依赖，或已在 `go.mod`（或 Rust `Cargo.toml`）的补充新的依赖 / No new dependencies, or added name, source, and purpose to `go.mod` (or Rust `Cargo.toml`) in Changes
+- [ ] 我没有新增依赖，或已在 `go.mod` 中声明，并在「变更点」说明名称、来源和用途 / No new dependencies, or declared them in `go.mod` and documented their names, sources, and purposes in Changes
 - [ ] 这不是一次破坏性更新，或已在「变更点」标注迁移影响 / Not a breaking change, or migration impact noted in Changes
 - [ ] 受影响的文档已在 `docs/en/` 与 `docs/zh-CN/` 同步 / Affected docs synced under `docs/en/` and `docs/zh-CN/`
 - [ ] 改动方向和范围已在实现前与维护者确认 / The direction and scope of this change were confirmed with a maintainer before implementation
