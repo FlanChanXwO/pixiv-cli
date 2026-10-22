@@ -12,7 +12,7 @@
 
 </div>
 
-Pixiv 的非官方 CLI 与 MCP server：在终端或 AI Agent 中搜索、浏览、收藏、关注与下载。另附带只读的 FANBOX 支持。
+Pixiv 的非官方 CLI 与 MCP server：在终端或 AI Agent 中搜索、浏览、收藏、关注与下载。也支持只读访问 Pixiv Fanbox。
 
 > 本项目与 Pixiv Inc. 无隶属或背书关系。使用时请遵守 Pixiv 条款与适用法律。
 
@@ -23,7 +23,7 @@ flowchart LR
     CLI --> SDK["共享核心<br/>（也作为公开 Go SDK）"]
     MCP --> SDK
     SDK --> PX["Pixiv App API<br/>（仅限已认证）"]
-    SDK -.-> FB["FANBOX 附加支持<br/>（只读，FANBOXSESSID）"]
+    SDK -.-> FB["Pixiv Fanbox<br/>（只读，FANBOXSESSID）"]
     CLI -.->|"search 图片"| RS["SauceNAO · ascii2d"]
     MCP -.->|"反向搜图"| RS
 ```
@@ -39,7 +39,7 @@ flowchart LR
 | 账号 | 浏览器 OAuth 登录、多账号、token 轮换、可选跨机器 relay、遵循 `Retry-After` 的可选账号池 |
 | MCP | 上述能力均以工具提供；交付图片与 Ugoira 字节；HTTP 下提供 MCP Apps 画廊 |
 | 管道 | 列表接入管道时自动输出 canonical NDJSON，可交给 `detail`、`download`、`bookmark`、`follow` 消费 |
-| FANBOX（附加） | 用独立的 `FANBOXSESSID` 只读访问创作者、帖子、feed、标签与第一方文件 |
+| Pixiv Fanbox | 用独立的 `FANBOXSESSID` 只读访问创作者、帖子、feed、标签与第一方文件 |
 
 ```mermaid
 flowchart LR
@@ -136,19 +136,6 @@ pixiv mcp --port 1270 --base-url https://mcp.example.com   # 位于 HTTPS 反向
 ```
 
 已授权的 HTTP connector 操作的是**服务器**的文件与网络（例如反向搜图可读取服务端路径），只授权可信的客户端。工具、传输方式与部署细节见 [MCP 工具](docs/zh-CN/mcp-tools.md) · [HTTP 启动](docs/zh-CN/cli-reference.md#mcp-http-server)。
-
-## 账号与 token 安全
-
-```bash
-pixiv auth list            # * 默认账号，✓/- 本地是否存有 token
-pixiv auth use 12345678
-pixiv auth check
-pixiv auth pool status     # 可选的读取账号池
-```
-
-- refresh token 按 UID 存于本地账号库；除显式 `auth export` 外从不打印。
-- 跨机器登录：在服务器配置 `login_relay_public_url` 与 `login_relay_listen_addr`，在已安装 pixiv-cli 的桌面打开一次性 URL。见 [获取 refresh token](docs/zh-CN/authentication.md#获取-refresh-token)。
-- 账号名、UID、会员状态与当前选择仅为便利信息，不构成账号归属、权限或当前 Pixiv 状态的证明。只管理已获授权的账号。
 
 ## 文档
 

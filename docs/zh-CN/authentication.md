@@ -4,6 +4,9 @@
 
 登录、跨机器 hand-off、token 导入与备份。各命令参数见 [CLI 命令表](cli-reference.md#cli-命令表) 与 [`auth login` 参数](cli-reference.md#auth-login-参数)。
 
+> [!NOTE]
+> 账号名、UID、会员状态与当前选择来自本地存储与 Pixiv 响应，仅为便利信息，不构成账号归属、权限或当前 Pixiv 状态的证明。重要信息请在 Pixiv 核对，并且只管理已获授权的账号。
+
 ## 获取 refresh token
 
 refresh token 是存储在本地账号库中的原始 Pixiv App API OAuth 凭据。推荐方式：

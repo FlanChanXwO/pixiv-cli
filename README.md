@@ -12,7 +12,7 @@
 
 </div>
 
-Unofficial CLI and MCP server for Pixiv: search, browse, bookmark, follow and download from a terminal or an AI agent. Read-only FANBOX access is included as an add-on.
+Unofficial CLI and MCP server for Pixiv: search, browse, bookmark, follow and download from a terminal or an AI agent. It also reads Pixiv Fanbox content (read-only).
 
 > Not affiliated with or endorsed by Pixiv Inc. Follow Pixiv's terms and applicable law.
 
@@ -23,7 +23,7 @@ flowchart LR
     CLI --> SDK["shared core<br/>(also a public Go SDK)"]
     MCP --> SDK
     SDK --> PX["Pixiv App API<br/>(authenticated only)"]
-    SDK -.-> FB["FANBOX add-on<br/>(read-only, FANBOXSESSID)"]
+    SDK -.-> FB["Pixiv Fanbox<br/>(read-only, FANBOXSESSID)"]
     CLI -.->|"search IMAGE"| RS["SauceNAO · ascii2d"]
     MCP -.->|"reverse search"| RS
 ```
@@ -39,7 +39,7 @@ flowchart LR
 | Accounts | Browser OAuth login, multi-account, token rotation, optional cross-machine relay, opt-in account pool honoring `Retry-After` |
 | MCP | Same features as tools; image and Ugoira bytes; MCP Apps gallery over HTTP |
 | Pipelines | Piped lists emit canonical NDJSON that `detail`, `download`, `bookmark` and `follow` consume |
-| FANBOX (add-on) | Read-only creators, posts, feeds, tags and first-party files with a separate `FANBOXSESSID` |
+| Pixiv Fanbox | Read-only creators, posts, feeds, tags and first-party files with a separate `FANBOXSESSID` |
 
 ```mermaid
 flowchart LR
@@ -136,19 +136,6 @@ pixiv mcp --port 1270 --base-url https://mcp.example.com   # behind an HTTPS rev
 ```
 
 An authorized HTTP connector acts on the **server's** files and network (e.g. reverse search can read server-side paths), so grant access only to clients you trust. Tools, transports and setup details: [MCP tools](docs/en/mcp-tools.md) · [HTTP startup](docs/en/cli-reference.md#mcp-http-server).
-
-## Accounts and token safety
-
-```bash
-pixiv auth list            # * default, ✓/- token stored locally
-pixiv auth use 12345678
-pixiv auth check
-pixiv auth pool status     # opt-in read pool
-```
-
-- Refresh tokens are stored by UID in the local account store and never printed except by an explicit `auth export`.
-- Remote login: configure `login_relay_public_url` + `login_relay_listen_addr` on the server; open the one-time URL on a desktop with pixiv-cli installed. See [getting a refresh token](docs/en/authentication.md#getting-a-refresh-token).
-- Account names, IDs, membership and the active selection are convenience data, not proof of ownership, entitlement or current Pixiv status. Use only accounts you are authorized to manage.
 
 ## Documentation
 

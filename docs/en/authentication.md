@@ -4,6 +4,9 @@ English | [简体中文](../zh-CN/authentication.md) | [CLI reference](cli-refer
 
 Login, remote hand-off, token import and backup. Flags for each command: [CLI command table](cli-reference.md#cli-command-table) and [`auth login` flags](cli-reference.md#auth-login-flags).
 
+> [!NOTE]
+> Account names, IDs, membership signals and the active selection are convenience data from the local store and Pixiv responses, not proof of ownership, entitlement or current Pixiv status. Verify important details in Pixiv and manage only accounts you are authorized to use.
+
 ## Getting a refresh token
 
 Refresh tokens are raw Pixiv App API OAuth credentials stored in the local account store. Recommended:
