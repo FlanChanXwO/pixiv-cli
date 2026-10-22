@@ -2,310 +2,29 @@
 
 English | [简体中文](../zh-CN/cli-reference.md) | [Project home](../../README.md)
 
-This is the complete contract for the `pixiv` command: installation, authentication, commands, flags,
-configuration, environment variables, authentication, and updates. It does not duplicate SDK or MCP details;
-those interfaces are linked under [Related documentation](#related-documentation).
+The contract for `pixiv` commands, flags, configuration and MCP startup. Install/update and authentication live in [Installation](install.md) and [Authentication](authentication.md); SDK and MCP tools in their own guides ([related documentation](#related-documentation)); user-visible changes in the [changelog](../../changelog/README.md).
 
-Visual lists automatically emit canonical NDJSON when piped. Downloads accept artwork IDs/URLs,
-user/public-bookmark URLs, and resource-policy-allowed CDN URLs; they expose page selection, static quality,
-GIF/APNG mode, output directory, filename templates, and `--on-error`. Unsupported options fail as unknown flags.
-Successful downloads keep stdout empty; non-blocking ugoira filename fallback warnings go to stderr, while item
-failures remain diagnostics and make the command non-zero. Proxy URIs accept `http`, `https`, `socks5`, and `socks5h`.
-
-`pixiv search SOURCE` also performs reverse-image search when `SOURCE` is an explicit HTTP(S) URL or an existing
-regular local file. Reverse search is independent of the authenticated Pixiv account; it uses the configured
-third-party provider and may upload the source outside the machine.
-
-Review the [SauceNAO privacy and terms](https://saucenao.com/legal.html) before
-using it: uploaded images may be retained for a short period, and URL queries
-may be cached for longer than the request itself.
-
-User-visible changes are recorded in the [versioned changelog](../../changelog/README.md).
-
-[GitHub Releases page]: https://github.com/FlanChanXwO/pixiv-cli/releases
-
-## Installation
-
-> **Release status**: the Ed25519 public key, key ID, and fingerprint for supported binaries are committed in
-> [`internal/update/installer/release_installer.go`](../../internal/update/installer/release_installer.go); the public source/tap repositories,
-> the protected `release` Environment, and isolated credentials are configured. Use the official [GitHub Releases page]
-> and `brew info FlanChanXwO/tap/pixiv-cli` for the current Release and tap state: they are independently published
-> artifacts. Every future version must pass the same tag, signing, asset, and Homebrew gates before it is treated as
-> a trusted download source.
-
-### Official installer scripts
-
-The repository provides two per-user bootstrap scripts for the latest stable Release:
-
-```bash
-# Linux/macOS
-curl -fsSLo /tmp/pixiv-install.sh https://github.com/FlanChanXwO/pixiv-cli/releases/latest/download/install.sh
-sh /tmp/pixiv-install.sh --add-to-path
+```mermaid
+flowchart LR
+    P(("pixiv")) --> AUTH["auth<br/>login · import · export · list<br/>use · remove · check · refresh · pool"]
+    P --> DATA["data<br/>search · detail · ranking · series · comment<br/>bookmark · user · timeline · mypixiv · recommended"]
+    P --> ACT["actions<br/>download · bookmark add/remove · follow"]
+    P --> FB["fanbox<br/>auth · creators · posts · tags<br/>home · supporting · post · download"]
+    P --> SYS["config · update · mcp"]
 ```
 
-```bat
-rem Windows Command Prompt; no PowerShell dependency
-curl.exe -fsSLo "%TEMP%\pixiv-install.cmd" https://raw.githubusercontent.com/FlanChanXwO/pixiv-cli/main/scripts/install.cmd
-call "%TEMP%\pixiv-install.cmd" --add-to-path
-```
-
-`install.sh` supports Linux/macOS AMD64 and ARM64 and defaults to `$HOME/.local/bin`. `install.cmd` supports Windows
-AMD64 and ARM64 and defaults to `%LOCALAPPDATA%\Programs\pixiv`. Both download `checksums.txt` and exactly one matching
-archive from the official latest stable Release, verify SHA-256 before extraction, preflight the staged binary, and
-only then replace `pixiv`. `--install-dir DIR` selects a different destination; `--no-path` suppresses profile/registry
-changes. `--add-to-path` is restricted to `$HOME/.local/bin` on Unix and updates only the current user's `Path` value
-on Windows. Neither script requests administrator/root privileges, installs prerequisites, reads Pixiv credentials,
-or bypasses system reputation warnings.
-
-Linux Release assets require glibc 2.35 or newer. The release, native-evidence, and packaged-smoke jobs build both
-Linux architectures on Ubuntu 22.04 and reject any ELF whose GNU version requirements exceed `GLIBC_2.35`. The
-installer binary preflight exposes a loader failure before it replaces an existing installation.
-
-This is an initial-bootstrap boundary: before `pixiv` exists, the scripts have no embedded Ed25519 verifier. The
-SHA-256 check detects corruption or a mismatched archive, while authenticity still depends on HTTPS and the official
-GitHub repository/Release account. Inspect the installer before execution. Once installed, `pixiv update` uses the
-binary's embedded Ed25519 trust root for subsequent Release updates.
-
-The versioned installers embed a static Release-source list. They always download the authoritative `checksums.txt`
-directly from GitHub HTTPS, then probe free candidates only for the matching platform archive; a candidate is usable
-only when its checksum response is byte-for-byte identical to the direct file. The archive still requires the direct
-SHA-256 match before installation. The list is never fetched remotely and changes only with a signed Release.
-
-After a verified install, the official scripts initialize the per-user, on-demand `pixiv://` handler. Homebrew does
-the same in `post_install`. A warning means the binary was installed successfully but desktop integration was not.
-On macOS and Windows, the next normal `pixiv` command retries initialization; a manually extracted archive therefore
-repairs its integration on first use. Desktop Linux needs both `xdg-mime` and `gio`; headless Linux supports the
-relay server without registering a desktop handler.
-
-### Build from source
-
-```bash
-sh scripts/build.sh
-```
-
-Current source builds use the Go version declared in `go.mod`. `scripts/build.sh` sets `CGO_ENABLED=0` and writes `build/pixiv` (`build/pixiv.exe` on Windows), without a Rust toolchain, native library or C linker. On Windows, use Git Bash, MSYS2, or WSL. See [the development guide](maintainers/development.md#ugoira-go-encoder) for encoding, licenses and platform evidence.
-
-### Go source installation
-
-Install an exact published Release tag (replace `vX.Y.Z`):
-
-```bash
-go install github.com/FlanChanXwO/pixiv-cli/cmd/pixiv@vX.Y.Z
-```
-
-Use an exact published tag, not a branch name, and follow that tag's requirements. Versions containing the Go encoder can build with `CGO_ENABLED=0`.
-
-Frontend sources are embedded directly, without a generator or npm step. Installation uses `GOBIN` or `GOPATH/bin`; self-update installs the selected exact Release tag and preserves the previous executable on failure.
-
-### Homebrew
-
-macOS/Linux users install the stable formula with:
-
-```bash
-brew install FlanChanXwO/tap/pixiv-cli
-```
-
-A future beta/pre-release channel uses:
-
-```bash
-brew install FlanChanXwO/tap/pixiv-cli-beta
-```
-
-Both formulas install the same `pixiv` binary and therefore conflict with each other; they only download verified
-macOS/Linux Release assets and introduce no `ffmpeg` dependency. The GitHub Release and public tap are separate
-publication channels, so use `brew info FlanChanXwO/tap/pixiv-cli` and the [GitHub Releases page] rather than a
-version hard-coded in this reference. The beta formula only ships with pre-releases.
-
-### Direct download
-
-The release process produces six fixed-name archives for darwin, linux, and windows on amd64/arm64:
-`pixiv-cli_<version>_<os>_<arch>.tar.gz` (`.zip` on Windows), plus `checksums.txt` and an Ed25519-signed
-`checksums.json`. Trust direct downloads only after the corresponding release has passed the release gates.
-
-Current Releases do not include Apple notarization or Windows Authenticode. Even when downloading from a verified
-Release, macOS Gatekeeper or Windows SmartScreen may still show a system reputation prompt; only obtain assets from
-the project's GitHub Release page, verify the version, checksum, and signature notes, and never bypass warnings for
-assets of unknown origin.
-
-## Getting a refresh token
-
-Refresh tokens are raw Pixiv App API OAuth credentials saved in the local account store.
-
-The recommended flow is the CLI browser OAuth login, which saves directly to a local account:
-
-```bash
-pixiv auth login
-```
-
-The `auth login` flow:
-
-| Stage | Behavior |
+| At a glance | Rule |
 | --- | --- |
-| Init | The CLI generates a PKCE verifier/challenge and OAuth state, and starts a local loopback HTTP server. |
-| Browser | On macOS and Windows, normal CLI startup prepares the current-user `pixiv://` handler; desktop Linux initializes its XDG handler for interactive login. The CLI opens the default browser so an existing Pixiv login session can be reused. With `--no-open`, it prints the login URL and local page address. |
-| Callback | The CLI accepts this round's loopback callback, a one-time desktop hand-off, a terminal paste, or the local page form. After a helper hand-off, the default browser opens the final local success or failure page once OAuth exchange completes. |
-| Validation | The local loopback callback must match this round's state; Pixiv's official callback URL and `pixiv://account/login` can be used as an explicit fallback when Pixiv doesn't return a state. |
-| Save | Refresh/access tokens are never printed; the refresh token is saved to the local SQLite database keyed by Pixiv UID. Unix-like systems actively use `0700` parent directories and `0600` files. On Windows, first creation inherits the parent ACL and replacement preserves the existing target ACL; the CLI does not claim to tighten or loosen the DACL. |
-
-The handler is persistent but runs only when the OS opens `pixiv://`: macOS uses `PixivCLIURLHandler.app`, Windows a
-current-user protocol association, and desktop Linux an XDG desktop entry. It records the prior handler privately.
-An active local loopback bridge always wins. Without one, `pixiv://account/login` is accepted only for an active
-one-time desktop hand-off, and `pixiv://account/remote-login` starts that hand-off. Other `pixiv://` URLs are launched
-in the prior handler. Use the operating system's normal association UI to choose a different handler when needed.
-
-On a headless SSH server, keep the listener on loopback and choose an unused fixed port so the local machine can
-forward it. Run on the server:
-
-```bash
-pixiv auth login --no-open --addr 127.0.0.1:41871
-```
-
-Then run on the local machine in another terminal:
-
-```bash
-ssh -N -L 41871:127.0.0.1:41871 USER@SERVER
-```
-
-Open `http://127.0.0.1:41871/` in the local browser. The tunnel reaches only the server's loopback listener and does
-not expose the callback port publicly. It makes the manual page reachable, but it cannot receive Pixiv's final
-`pixiv://` callback on behalf of a browser-only machine. Use the one-time desktop hand-off below when the browser
-machine has pixiv-cli installed. A complete final callback URL can also be pasted into the original `auth login` prompt.
-Never bind the login listener to a public interface; `--addr` intentionally accepts loopback addresses only.
-
-### Cross-machine one-time hand-off
-
-To save the account on a server while authorizing in another browser, configure the server with
-`login_relay_public_url` and `login_relay_listen_addr`. Starting `pixiv auth login` then prints one remote hand-off URL.
-Opening it redirects directly to `pixiv://account/remote-login`; no pixiv-cli session, confirmation, or callback-copy
-page is rendered.
-
-On a desktop with pixiv-cli installed, the local CLI claims that one session, starts its OAuth URL, and returns the
-resulting callback to the server. The hand-off exists only for that session and a new hand-off replaces the prior local
-one. A client without the desktop handler cannot complete this relay flow; use a desktop that has pixiv-cli installed.
-
-The relay can use HTTP or HTTPS. Supply a certificate/key pair for direct TLS, or use a same-host reverse proxy with
-the relay listener on loopback. Legacy `login_relay_secret` and `login_relay_target_url` settings are silently ignored.
-`pixiv auth devices` has been removed. `pixiv config` manages download path, filename and directory templates, request interval, and proxy settings;
-advanced relay settings stay in private `config.toml`.
-
-The system proxy used by the browser is not automatically passed to the Go CLI. If the Pixiv token endpoint needs a
-proxy on your network, configure it first:
-
-```bash
-pixiv config set https_proxy http://127.0.0.1:7890
-```
-
-You can also override the proxy for a single network command:
-
-```bash
-pixiv auth login --proxy http://127.0.0.1:7890
-```
-
-`--proxy URL` and `--no-proxy` only affect the current command and are never written to `config.toml`; they cannot
-be used together. `--no-proxy` clears the proxy for this command even if `https_proxy` exists in the environment or
-config.
-
-When an HTTP or HTTPS proxy is configured, media-resource transfers such as `download` (including Ugoira) deliberately use
-HTTP/1.1. App API, OAuth, and Web metadata requests retain their normal protocol negotiation. This avoids
-proxy-specific HTTP/2 stream resets and does not change authentication or the selected download quality.
-
-Real login depends on the Pixiv OAuth web flow being available; automated tests use a fake OAuth server and never
-touch real Pixiv.
-
-### Importing authentication
-
-Direct import accepts a raw Pixiv App OAuth refresh token:
-
-```bash
-pixiv auth import                         # hidden prompt on a TTY
-printf '%s\n' 'YOUR_REFRESH_TOKEN' | pixiv auth import
-pixiv auth import 'YOUR_REFRESH_TOKEN'    # visible in argv/shell history
-```
-
-`pixiv auth import [REFRESH_TOKEN]` validates a raw token through App OAuth, uses Pixiv's returned UID as
-authoritative, and stores the rotated refresh token. With no argument, a TTY uses a hidden prompt; non-TTY stdin is
-read as one opaque line, removing only one final LF or CRLF. A positional token is convenient but can be exposed by
-process listings, shell history, wrappers, and audit tooling. `--json` changes only the safe account summary.
-`--proxy` and `--no-proxy` apply only to this direct validation and cannot be combined.
-
-Successful direct import reports `added uid:UID` or `updated uid:UID`; text adds `username:NAME` when available.
-JSON is exactly one secret-free account item such as
-`{"user_id":12345678,"username":"display name","status":"added"}`. `status` is `added` or `updated`; neither
-form exposes default state, token presence, the input token, or the rotated token.
-
-To restore an export bundle without contacting Pixiv, redirect or pipe the
-bundle into the same command:
-
-```bash
-pixiv auth import < account.pxauth
-pixiv auth export --all | ssh trusted-host pixiv auth import
-```
-
-With no positional token, `auth import` classifies the first non-whitespace byte: `{` selects strict versioned bundle
-decode and every other value is one opaque refresh token. Bundle mode is offline, never falls back to OAuth, rejects
-`--proxy`/`--no-proxy`, and atomically merges every account by UID. A malformed bundle is an error rather than a token
-attempt. An explicit positional value is always a token, including one beginning with `{`. Existing accounts are
-replaced, new accounts are added, the current default is preserved, and the bundle default is adopted only when the
-local store has no default. Default text output lists each safe added/updated UID in input-bundle order and the
-resulting default. `--json` returns
-`{"accounts":[{"user_id":12345678,"username":"display name","status":"added"}],"default_user_id":12345678}`;
-account items expose only `user_id`, `username`, and `status`.
-
-### Exporting and backing up authentication
-
-```bash
-pixiv auth export                         # raw token for the default account
-pixiv auth export 12345678                # raw token for one exact local account
-pixiv auth export --all                   # versioned all-account bundle on stdout
-pixiv auth export 12345678 --output account.pxauth
-pixiv auth export --all --output accounts.pxauth
-pixiv auth export --all --output accounts.pxauth --force
-```
-
-Without `--output`, exactly two forms may write secrets to stdout: default/UID export writes the raw stored token
-plus one newline; `--all` writes only the versioned JSON bundle. They write no stderr on success. Export is strictly
-local-only: it reads the local SQLite database, never refreshes or contacts Pixiv, never
-mutates auth/config, and skips startup pending-update cleanup and automatic update checks.
-`--all` cannot be combined with a UID, `--force` requires `--output`, and export accepts no JSON/proxy flags.
-
-With `--output PATH`, both a single-account selection and `--all` write a bundle instead of a raw token. The command
-refuses an existing destination unless `--force` is explicit; successful stdout contains only the output path and
-account count, never a token or bundle. On Unix-like systems the destination file is `0600`; existing parent
-permissions and ownership are unchanged. On Windows the file owner and protected DACL explicitly grant full control
-only to the current user, LocalSystem, and builtin Administrators. CI tests cover this Windows policy; this document
-does not claim the current release validation was run on a real Windows filesystem.
-
-The bundle is an unencrypted point-in-time secret backup, not live sync. Store and transport it like the original
-tokens. Token rotation can make an older bundle or a copy on another machine stale. The strict versioned codec
-rejects unsupported schema/version, unknown or duplicate fields, trailing JSON, duplicate/non-positive UIDs, empty
-tokens, and a default UID that does not name an included account. Top-level and account-object keys must use the
-documented canonical spelling and case exactly; aliases such as `Schema`, `Default_User_ID`, `User_ID`, or
-`Refresh_Token` are rejected even when a canonical key is also present.
-
-If export selection or I/O fails, stdout never receives a secret diagnostic. If restore's atomic write fails,
-`LocalWriteCommitOutcome=not_committed` means replacement did not occur; `committed` means replacement occurred but
-a later durability/cleanup step failed and the store must be reloaded; `unknown` means recovery could not establish
-the target state and requires inspection. Neither `committed` nor `unknown` may be treated as a successful rollback.
-All other stdout/stderr, JSON, MCP results, logs, and errors remain forbidden from exposing refresh tokens. No
-persistent auth import/export MCP tools are added; existing session-scoped MCP authentication behavior is unchanged.
+| Output | Text by default; `--json` = one document; `--ndjson` (or a visual list piped to a non-TTY with no explicit format) = canonical record stream |
+| Downloads | Success keeps stdout empty; Ugoira filename fallback warnings → stderr; item failures → diagnostics + non-zero exit |
+| Unknown options | Fail as unknown flags |
+| Proxy URIs | `http`, `https`, `socks5`, `socks5h` |
+| Reverse search | `pixiv search SOURCE` with an HTTP(S) URL or existing regular file; independent of the Pixiv account; may upload the source to a third party — review the [SauceNAO privacy and terms](https://saucenao.com/legal.html) (uploads may be retained briefly; URL queries may be cached longer) |
 
 ## CLI usage
 
-Log in and save an account first:
-
 ```bash
-pixiv auth login
-```
-
-Advanced/scripted setups can also import an existing token without placing it in argv:
-
-```bash
-printf '%s\n' 'YOUR_REFRESH_TOKEN' | pixiv auth import
-```
-
-Common commands:
-
-```bash
+pixiv auth login                                        # or: printf '%s\n' TOKEN | pixiv auth import
 pixiv auth list
 pixiv auth use 12345678
 pixiv auth check
@@ -314,10 +33,8 @@ pixiv config path
 pixiv config get download_path
 pixiv config set download_path ~/Downloads/pixiv
 pixiv config unset https_proxy
-
 pixiv --version
-pixiv update --check
-pixiv update --check --json
+pixiv update --check [--json]
 
 pixiv search "初音ミク" --type artwork --limit 10
 pixiv search "初音ミク" --type novel --json
@@ -336,7 +53,6 @@ pixiv comment delete 789 --type artwork --json
 pixiv comment stamps --json
 pixiv bookmark list --type artwork --limit 20
 pixiv bookmark list --type all --limit 20 --json
-pixiv bookmark tags --limit 20
 pixiv bookmark tags --type all --limit 20 --json
 pixiv bookmark detail NOVEL_ID --type novel --json
 pixiv bookmark add NOVEL_ID --type novel
@@ -348,276 +64,215 @@ pixiv recommended --type all --limit 5
 pixiv download 123456 789012 --output ./downloads
 ```
 
-All persistent application-managed data is stored directly under the current user's home directory: `~/.pixiv-cli` on
-macOS/Linux and `%USERPROFILE%\.pixiv-cli` on Windows. It contains `pixiv-cli.db`, `config.toml`, callback-bridge state,
-the Release-check cache, and the macOS callback helper. Account credentials are keyed by Pixiv UID.
-Unix-like systems actively use `0700` parent directories and `0600` files. On Windows, first creation inherits the
-parent ACL and replacement preserves the existing target ACL; the CLI does not claim to tighten or loosen the DACL.
-On the first ordinary command, a missing `config.toml` is created with the common download, output, login, and
-update settings.
+| Local state | |
+| --- | --- |
+| Location | `~/.pixiv-cli` (macOS/Linux), `%USERPROFILE%\.pixiv-cli` (Windows) |
+| Contents | `pixiv-cli.db` (accounts keyed by UID), `config.toml`, callback-bridge state, Release-check cache, macOS callback helper |
+| Permissions | Unix `0700` dirs / `0600` files; Windows inherits parent ACL on creation, keeps target ACL on replacement, no DACL claims |
+| `config.toml` creation | Created with common download/output/login/update settings on the first ordinary command; never overwritten. Advanced settings (proxy, login timeout, Premium-status cache) omitted until set. Help, root `--version`, secret export and the internal OAuth callback do not create it |
 
-It never overwrites an existing file. Advanced settings such as proxy, login
-timeout, and the Premium-status cache are intentionally omitted until explicitly configured; help, the root
-`--version` flag, secret export, and the internal OAuth callback do not create it.
-Output defaults to text; commands that expose `--json` can produce machine-parseable JSON. `auth export`
-deliberately does not expose that flag.
-The CLI uses Cobra/pflag, so options may appear before or after positional arguments — both
-`pixiv auth check 12345678 --json` and `pixiv search "初音ミク" --json` are officially supported forms.
+Options may appear before or after positional arguments (Cobra/pflag): `pixiv auth check 12345678 --json` and `pixiv search "初音ミク" --json` are both supported. `auth export` deliberately has no `--json`.
 
 ### Data-operation contract
 
-All non-mutating data reads, recommendations, timelines, and downloads use the local account selected by `pixiv auth use` when the account pool is disabled. Account pooling is active only when `[account_pool]` explicitly sets `enabled = true`; the database `schedulable` flag controls membership and `strategy` defaults to `round_robin` with `random` also supported. Use `pixiv auth pool status|enable|disable` to inspect or change membership. Writes, authentication, and configuration do not use the pool. Data commands reject `--uid` and `--refresh-token`.
-
-Visual lists write canonical Record NDJSON automatically when stdout is a non-terminal and no explicit output format was selected. Each line has stable string `id`, `type`, and `url`; `download`, `bookmark add/remove`, and `follow add/remove` consume compatible records without positional IDs; bookmark add/remove only consume records whose namespace matches the selected `--type` (artwork types by default, `novel` with `--type novel`). Explicit follow targets must otherwise be positive numeric user IDs; user URLs are rejected locally. `pixiv user follow add/remove` and the root `pixiv follow add/remove` route share the same owner, with `add --restrict public|private` defaulting to `public`.
-
-`comment create/reply/stamp/delete` use one positive numeric ID and do not consume Record input. Comment reads preserve optional `total`/`access_control` metadata; when upstream supplies opaque numeric `comment_access_control`, JSON keeps it under `access_control.comment_access_control` without inferring boolean permission fields. Comment create/reply/stamp return the upstream positive `comment_id` directly; delete returns a success status only. `comment stamps` is a read-only, non-paginated list. `--json` and explicit `--ndjson` retain precedence.
-
-For the supported search-to-detail pipeline, prefer letting the pipe select canonical NDJSON:
-
-```bash
-pixiv search "miku" --type artwork --limit 20 | pixiv detail
+```mermaid
+flowchart LR
+    C["data read / download"] --> Pool{"[account_pool] enabled = true?"}
+    Pool -->|no| Def["account from pixiv auth use"]
+    Pool -->|yes| Sch["eligible schedulable DB account<br/>round_robin (default) | random"]
+    W["writes · auth · config"] --> Def
 ```
 
-Because `search` stdout is a pipe, it emits canonical NDJSON automatically;
-`detail` consumes each record and infers its endpoint. The explicit producer
-equivalent is:
+- Pool membership is the database `schedulable` flag; manage it with `pixiv auth pool status|enable|disable`. Writes, authentication and configuration never use the pool.
+- Data commands reject `--uid` and `--refresh-token`.
+- **Records:** visual lists write canonical NDJSON when stdout is non-terminal and no format was chosen. Each line has stable string `id`, `type`, `url`. `download`, `bookmark add/remove` and `follow add/remove` consume compatible records without positional IDs; bookmark records must match the selected `--type` namespace (artwork by default, `novel` with `--type novel`).
+- **Follow:** explicit targets must be positive numeric user IDs (user URLs rejected locally). `pixiv user follow add/remove` and root `pixiv follow add/remove` share one owner; `add --restrict public|private` defaults to `public`.
+- **Comments:** `create/reply/stamp/delete` take one positive numeric ID and no Record input. Reads keep optional `total`/`access_control`; opaque numeric `comment_access_control` stays under `access_control.comment_access_control` with no inferred booleans. Create/reply/stamp return the upstream positive `comment_id`; delete returns a status. `comment stamps` is read-only and non-paginated. `--json` and explicit `--ndjson` take precedence.
 
 ```bash
-pixiv search "miku" --type artwork --limit 20 --ndjson | pixiv detail
+pixiv search "miku" --type artwork --limit 20 | pixiv detail            # pipe auto-selects NDJSON
+pixiv search "miku" --type artwork --limit 20 --ndjson | pixiv detail   # explicit equivalent
 ```
 
-Artwork, novel, and user search records infer their respective detail endpoints
-from `type`; no `--type` is needed. In record mode, an explicit `--type` is
-only a compatibility constraint: it must match the inferred record type and
-never overrides it. Reverse-search `artwork` and `user` identity records follow
-the same detail path. `search --json` is a complete aggregate document, not a
-canonical record stream, so `pixiv search ... --json | pixiv detail` is
-unsupported.
+`detail` infers its endpoint from each record's `type`; an explicit `--type` in record mode is only a compatibility constraint and never overrides it. Reverse-search `artwork`/`user` identity records follow the same path. `search --json` is an aggregate document, not a record stream — `pixiv search ... --json | pixiv detail` is unsupported.
 
 ### Reverse image search
 
-`pixiv search SOURCE` enters image mode before any Pixiv SDK or account-pool setup:
+```mermaid
+flowchart TD
+    S["pixiv search SOURCE"] --> U{"explicit http: / https: scheme?<br/>(case-insensitive)"}
+    U -->|yes| IMG["image mode<br/>(invalid URL → source error, never keyword)"]
+    U -->|no| F{"existing regular file<br/>after following symlinks?"}
+    F -->|yes| IMG
+    F -->|"no (dir, FIFO, device, socket, text)"| KW["keyword search"]
+```
 
-- An input with an explicit, case-insensitive `http:` or `https:` scheme always enters image mode. Invalid URLs fail as
-  reverse-search source errors and never fall back to a keyword search.
-- Any other input enters image mode only when it is an existing regular file after following symlinks. Directories,
-  FIFOs, devices, sockets, and other non-regular paths are not image sources; all other text remains a keyword.
-- Image mode accepts `--provider`, `--json`, `--ndjson`, `--proxy`, and `--no-proxy`. Search filters, `--type`,
-  pagination, and `--trending-tags` are rejected rather than ignored.
+- Image mode is entered before any Pixiv SDK or account-pool setup and accepts only `--provider`, `--json`, `--ndjson`, `--proxy`, `--no-proxy`; search filters, `--type`, pagination and `--trending-tags` are rejected, not ignored.
+- Binary bytes on stdin never select image mode (`cat image.png | pixiv search` is unsupported).
 
-Reverse-search source must be a local regular-file path or an HTTP(S) URL.
-Binary image bytes on stdin do not select image mode; `cat image.png | pixiv
-search` is unsupported.
+| Provider | Notes |
+| --- | --- |
+| `saucenao` | configured default; `--provider` overrides per invocation |
+| `ascii2d-color`, `ascii2d-bovw` | JPEG, PNG, WEBP; ascii2d-specific 10 MB upload limit |
+| `all` | fixed order SauceNAO → ascii2d color → ascii2d bovw; may be partial |
 
-The provider values are `saucenao`, `ascii2d-color`, `ascii2d-bovw`, and `all`. The configured default is
-`saucenao`; `--provider` overrides it for one invocation. `all` runs the providers in the fixed order SauceNAO,
-ascii2d color, ascii2d bovw and may return a partial success. `reverse_search_pixiv_only` controls whether
-non-Pixiv matches remain in `results`; it defaults to `true` and is not a per-command flag.
+`reverse_search_pixiv_only` (default `true`, config only) controls whether non-Pixiv matches stay in `results`. There is no reverse-search-wide 1 MiB compressed-upload rule; `gzip, deflate, br` is response negotiation.
 
-Reverse-search transport has separate network surfaces. On an image-mode command, `--proxy` or `--no-proxy`
-overrides both the standard source/SauceNAO client and the dedicated ascii2d browser client for that invocation.
-Without a command override, `[reverse_search.network].proxy_url` (including an explicit empty value) overrides only
-ascii2d; the standard source/SauceNAO client keeps the global `https_proxy`/`[network].https_proxy` route. When the
-service value is absent, ascii2d follows that standard proxy. Supported proxy URI schemes are `http`, `https`,
-`socks5`, and `socks5h`.
+| Network surface | Proxy | User-Agent |
+| --- | --- | --- |
+| Standard source / SauceNAO client | `--proxy`/`--no-proxy`, else global `https_proxy`/`[network].https_proxy` | — |
+| ascii2d browser client | `--proxy`/`--no-proxy`, else `[reverse_search.network].proxy_url` (explicit empty = direct), else the standard route | `[reverse_search.network].user_agent`; default Chrome 146 macOS UA paired with the `Chrome_146` TLS profile. Chromium UAs derive `Sec-CH-UA`, `Sec-CH-UA-Mobile`, `Sec-CH-UA-Platform`; others omit them. Control characters rejected |
+| FlareSolverr (optional) | its `url` is a JSON control endpoint, never inherits native/standard proxies; `proxy_url` is sent only as the browser upstream in `sessions.create` | returns browser UA + clearance for the native ascii2d client |
 
-`[reverse_search.network].user_agent` applies only to ascii2d browser requests. The default is a Chrome 146 macOS
-User-Agent paired with the `Chrome_146` TLS profile. A Chromium User-Agent derives matching
-`Sec-CH-UA`, `Sec-CH-UA-Mobile`, and `Sec-CH-UA-Platform` client hints; a non-Chromium User-Agent omits those
-Chromium hints. Header control characters are rejected.
+FlareSolverr runs only after an ascii2d challenge is detected; the image is always a native `/search/file` multipart upload, never sent through FlareSolverr. Solver state is process/client-scoped and never written to disk.
 
-`[reverse_search.flaresolverr]` is optional and used only after an ascii2d challenge is detected. Its `url` is a JSON
-control endpoint; `proxy_url` is sent only as the browser upstream proxy in `sessions.create`. Solver control traffic
-does not inherit the native/standard proxy. The solver returns the browser User-Agent and clearance state for the
-native ascii2d client; the image remains a native `/search/file` multipart upload and is never uploaded through
-FlareSolverr. Solver state is process/client-scoped and is never written to disk.
+- The source is fetched/opened once into a private temporary snapshot; output shows only `input.kind` (`file`/`url`) and `input.sha256`. Third parties may upload, retain or cache — never submit images or URLs you are not authorized to share.
+- **JSON** envelope: `{input, providers, results, records, provider_errors, partial}`. `records` holds only canonical Pixiv identities: artwork matches use generic `type:"artwork"` (no subtype lookup via detail), user matches `type:"user"`. External-only matches may stay in `results` when Pixiv-only filtering is off but never become records. Human output is a safe summary; piped/explicit NDJSON emits only records, which `detail` accepts (generic `artwork` resolves to the concrete detail).
+- **Exit:** with `all`, one success + one failure → `partial=true`, safe stderr warning, exit 0. A single-provider or all-provider failure exits non-zero, keeping any available JSON envelope.
+- **Errors** use stable `code` + `message`; sources, API keys, cookies, CSRF/redirect values, temporary paths and upstream bodies never appear. Causes are sanitized at the output boundary. Vocabulary: `unknown`, `invalid_request`, `invalid_source`, `source_not_regular_file`, `source_read_failed`, `source_http_status`, `snapshot_failed`, `source_loader_not_configured`, `provider_not_configured`, `missing_credential`, `malformed_upstream_response`, `upstream_http_status`, `provider_failed`, `all_providers_failed`, `challenge_required`, `solver_unavailable`, `solver_failed`, `malformed_solver_response`.
 
-The source is fetched or opened once into a private temporary snapshot and represented in output only by
-`input.kind` (`file` or `url`) and `input.sha256`. SauceNAO and ascii2d are third-party services: the image may be
-uploaded or retained according to their policies, and URL requests may be cached. ascii2d accepts JPEG, PNG, and
-WEBP and applies its provider-specific 10 MB upload limit; this does not impose a common limit on SauceNAO-only
-search. There is no reverse-search-wide 1 MiB compressed-upload rule; `gzip, deflate, br` is response-content
-negotiation, not an upload limit. Do not submit images or URLs that the user is not authorized to share.
+### Positional input from stdin
 
-JSON output is the complete envelope `{input, providers, results, records, provider_errors, partial}`. `records`
-contains only canonical Pixiv identities: artwork matches use the generic `type:"artwork"` because reverse search
-does not know the artwork subtype, while user matches use `type:"user"`. The CLI does not call Pixiv detail merely
-to infer a subtype. External-only matches can remain in `results` when Pixiv-only filtering is disabled but do not
-become records. Human output is a safe summary; piped or explicit NDJSON emits only those canonical records. The
-canonical `artwork` and `user` identity records emitted by reverse search can be piped directly to `detail`; generic
-`artwork` records resolve to the concrete artwork detail returned by Pixiv.
+- A missing required or omitted optional positional value consumes the whole non-TTY stdin as **one** value, removing only one trailing LF/CRLF (no whitespace splitting): `printf '%s\n' 13214141 | pixiv search` ≡ `pixiv search 13214141`.
+- Explicit positional arguments win and do not read stdin.
+- Download and mutation commands classify the stream by its first non-whitespace byte: `{` → strict streaming canonical NDJSON; otherwise the whole stream is one raw ID/URL.
+- `-` has no stdin meaning; it is ordinary text.
 
-For `all`, a successful provider plus a failed provider sets `partial=true`, writes a safe warning to stderr, and
-exits successfully. A single-provider failure or an all-provider failure exits non-zero while preserving any
-available JSON envelope. Provider errors use stable `code` and `message` values; source strings, API keys, cookies,
-CSRF/redirect values, temporary paths, and upstream response bodies never appear in output or diagnostics.
-
-The stable reverse-search error-code vocabulary is `unknown`, `invalid_request`, `invalid_source`,
-`source_not_regular_file`, `source_read_failed`, `source_http_status`, `snapshot_failed`,
-`source_loader_not_configured`, `provider_not_configured`, `missing_credential`, `malformed_upstream_response`,
-`upstream_http_status`, `provider_failed`, `all_providers_failed`, `challenge_required`, `solver_unavailable`,
-`solver_failed`, and `malformed_solver_response`. Provider failure causes are sanitized at the output boundary:
-only the reviewed stable code and safe message are published, never the wrapped cause or upstream diagnostic.
-
-Public positional inputs also accept one implicit non-TTY stdin value. A missing required value or an omitted optional
-value consumes the complete stream as one value and removes only one trailing LF/CRLF; it never splits shell whitespace.
-For example, `printf '%s\n' 13214141 | pixiv search` is equivalent to `pixiv search 13214141`. Explicit positional
-arguments take precedence and do not read stdin. Download and mutation commands classify an implicit stream by its
-first non-whitespace byte: `{` selects strict streaming canonical NDJSON, otherwise the complete stream is one raw
-ID/URL. `-` has no stdin sentinel meaning and is passed as ordinary text.
-
-The canonical data actions are `search`, `detail`, `ranking`, `series`, `comment`, `bookmark`, `download`, `user`, `timeline`, `mypixiv`, and `recommended`. The common short options are `-t/--type`, `-p/--page`, `-l/--limit`, `-o/--output` (download directory), and `-j/--json` where the command supports that semantic. They are option spellings, not command aliases. For example, `pixiv timeline latest --type artwork` is the canonical latest artwork feed. `novel search`, `user search`, and the root `follow` command remain compatibility routes and must map to the same application use cases.
-
-Only the structured entity filters documented by each command are accepted. The CLI does not publish an ignored top-level expression filter. Ugoira downloads currently accept `--ugoira-mode gif|apng` (`gif` by default); page selection and non-original quality remain unsupported for Ugoira.
+Canonical data actions: `search`, `detail`, `ranking`, `series`, `comment`, `bookmark`, `download`, `user`, `timeline`, `mypixiv`, `recommended`. Common short options `-t/--type`, `-p/--page`, `-l/--limit`, `-o/--output` (download directory), `-j/--json` are option spellings, not command aliases (e.g. `pixiv timeline latest --type artwork`). `novel search`, `user search` and root `follow` are compatibility routes mapped to the same use cases. Only documented structured entity filters exist — no ignored top-level expression filter. Ugoira downloads accept `--ugoira-mode gif|apng` (default `gif`); page selection and non-original quality are unsupported for Ugoira.
 
 ### CLI command table
 
 | Command | Usage | Description |
 | --- | --- | --- |
 | `auth import` | `pixiv auth import [REFRESH_TOKEN] [--json] [--proxy URL\|--no-proxy]` | Direct input validates and stores the rotated token; no-argument TTY input is hidden and non-TTY input auto-detects an opaque token or strict offline bundle. Explicit values are always tokens; bundle mode conflicts with proxy flags. |
-| `auth login` | `pixiv auth login [--json] [--no-open] [--addr 127.0.0.1:0] [--use] [--timeout DURATION] [--relay-public-url URL --relay-listen-addr ADDR] [--relay-tls-cert-file PATH --relay-tls-key-file PATH] [--proxy URL\|--no-proxy]` | Uses ordinary loopback OAuth. With a complete relay server configuration, it prints a one-time hand-off URL that directly starts an installed desktop CLI handler. It saves by Pixiv UID and never prints the refresh token. |
-| `auth list` | `pixiv auth list [--json]` | Lists local accounts; never prints refresh tokens. Text output uses `*` for the default and `✓`/`-` for whether a local refresh token is stored/missing. These are local-state markers, not an online validity claim. |
-| `auth pool` | `pixiv auth pool status [--json]`; `pixiv auth pool enable UID... [--all]`; `pixiv auth pool disable UID... [--all]` | Shows or changes non-secret database scheduling state. `status` reports `enabled`, `strategy`, `schedulable`, `frozen_until`, and current `eligible`; enable/disable validates every UID before committing the batch. |
-| `auth export` | `pixiv auth export [UID] [--all] [--output PATH] [--force]` | Exports a default/exact account or all accounts locally. Without `--output`, one account is raw token stdout and `--all` is bundle stdout; with `--output`, both write a private bundle and only a safe summary goes to stdout. `--force` requires `--output`. |
+| `auth login` | `pixiv auth login [--json] [--no-open] [--addr 127.0.0.1:0] [--use] [--timeout DURATION] [--relay-public-url URL --relay-listen-addr ADDR] [--relay-tls-cert-file PATH --relay-tls-key-file PATH] [--proxy URL\|--no-proxy]` | Ordinary loopback OAuth. With a complete relay server configuration, prints a one-time hand-off URL that directly starts an installed desktop CLI handler. Saves by Pixiv UID; never prints the refresh token. |
+| `auth list` | `pixiv auth list [--json]` | Lists local accounts; never prints tokens. Text uses `*` for the default and `✓`/`-` for stored/missing local token — local-state markers, not an online validity claim. |
+| `auth pool` | `pixiv auth pool status [--json]`; `pixiv auth pool enable UID... [--all]`; `pixiv auth pool disable UID... [--all]` | Shows/changes non-secret scheduling state. `status` reports `enabled`, `strategy`, `schedulable`, `frozen_until` and current `eligible`; enable/disable validates every UID before committing the batch. |
+| `auth export` | `pixiv auth export [UID] [--all] [--output PATH] [--force]` | Local export of default/exact/all accounts. Without `--output`: one account = raw token stdout, `--all` = bundle stdout. With `--output`: private bundle + safe summary. `--force` requires `--output`. |
 | `auth use` | `pixiv auth use [UID] [--json]` | Sets the default account; interactive selection on a TTY. |
-| `auth remove` | `pixiv auth remove [UID] [--yes] [--json]` | Removes an account; confirms by default on a TTY. After removing the default account, the first remaining account is selected automatically. |
-| `auth check` | `pixiv auth check [UID] [--json] [--proxy URL\|--no-proxy]` | Refreshes the token and validates the account; on success records `user_id` and the username when available. |
-| `auth refresh` | `pixiv auth refresh [UID] [--all] [--json] [--proxy URL\|--no-proxy]` | Refreshes the selected/default saved account's OAuth access token and rotated refresh token, then forces a profile read to update its cached Pixiv Premium status. `--all` refreshes every stored account. JSON always returns `accounts`. |
-| `config path` | `pixiv config path` | Prints the `config.toml` path, creating the baseline file if it is missing. |
-| `config get` | `pixiv config get KEY` | Prints one effective config value. |
-| `config set` | `pixiv config set KEY [VALUE]` | Writes one known config key, including `account_pool_enabled`, `account_pool_strategy`, `download_path`, `filename_template`, `directory_template`, `request_interval`, `https_proxy`, `log_level`, `log_format`, `reverse_search_provider`, `reverse_search_pixiv_only`, and the stdin-only `saucenao_api_key`. |
-| `config unset` | `pixiv config unset KEY` | Deletes one known config key from `config.toml`. |
-| `update` | `pixiv update [--check] [--prerelease] [--proxy URL]` | Checks for or performs an update matching the current install source; `--json` is only valid together with `--check`. |
-| `search` | `pixiv search [WORD\|IMAGE_PATH_OR_URL] [-t artwork\|novel\|user] [options]` | Canonical entity search or automatic reverse-image search. A regular file or explicit HTTP(S) source selects image mode; `--trending-tags` is the no-word artwork tag-list mode and does not accept search filters or pagination. |
-| `detail` | `pixiv detail [ID_OR_URL] [-t artwork\|novel\|user] [--content] [--json\|--ndjson]` | Reads one artwork, novel, or user, or consumes canonical NDJSON records. `--content` is a retained novel-only compatibility flag; the v1 App content endpoint is unavailable, so it returns `content_unavailable` before opening the account pool or requesting the rejected endpoint. |
-| `ranking` | `pixiv ranking [-t artwork\|novel] [--mode MODE --date YYYY-MM-DD --page N --limit N]` | Reads artwork or novel rankings. `artwork` is the default; `--date` is supported only for artwork ranking. |
-| `series` | `pixiv series SERIES_ID_OR_URL -t artwork\|novel [--page N --limit N --json\|--ndjson]` | Lists the artworks or novels in one series. The input may be a positive series ID or a supported artwork/novel series URL; the entity type is required and must match the URL namespace. |
-| `comment` | `pixiv comment ID -t artwork\|novel [--page N --limit N --json\|--ndjson]`; `pixiv comment create ID -t artwork\|novel --comment TEXT [--json]`; `pixiv comment reply ID -t artwork\|novel --parent-comment-id COMMENT_ID --comment TEXT [--json]`; `pixiv comment stamp ID -t artwork\|novel --stamp-id STAMP_ID [--comment TEXT] [--json]`; `pixiv comment delete COMMENT_ID -t artwork\|novel [--json]`; `pixiv comment stamps [--json\|--ndjson]` | Preserves the artwork/novel comment read route and adds explicit create, reply, stamp, delete, and stamp-list actions. Comment reads preserve optional `total`/`access_control`; opaque numeric `comment_access_control` remains nested under `access_control` without boolean inference. Comment mutations accept positive numeric IDs only; create/reply require a non-empty body, stamp accepts an optional body and forwards empty text for sticker-only wire, create/reply/stamp return `comment_id`, delete returns a status, and `stamps` returns output-safe stamp DTOs without pagination or runtime URLs. |
-| `bookmark` | `pixiv bookmark list\|tags\|detail\|add\|remove ...` | Lists artwork/novel bookmarks, reads artwork/novel bookmark tags/detail, or mutates artwork bookmarks. `list` and `tags` accept a user ID or user URL and support `--type artwork\|novel\|all`; `all` keeps artwork before novel and preserves typed records/tags. `detail`, `add`, and `remove` accept artwork/novel but not `all`; add/remove default to `artwork` and select the namespace with `--type`. |
-| `user` | `pixiv user search\|detail\|artworks\|novels\|bookmarks\|following\|followers\|related\|blocked\|follow ...` | Reads user/profile/relationship data and manages user follows. Follow mutations accept a positive numeric user ID or a compatible user Record; omitted user IDs use the current account only where that subcommand says so. |
-| `download` | `pixiv download [options] SRC...` | Downloads artwork IDs/URLs, allowed CDN URLs, or visual works expanded from supported user and public-bookmark URLs. Artwork-series URLs are not download sources. `--output/-o` aliases `--download-path`. |
-| `timeline` | `pixiv timeline following\|latest -t artwork\|novel [--content-type TYPE ...]` | Reads followed-user or latest artwork/novel streams. `--type` selects the entity; artwork subtype is a separate `--content-type` option. Following artwork filters locally because its upstream endpoint has no subtype query; latest artwork supports only `illust|manga`. |
-| `mypixiv` | `pixiv mypixiv users\|works [-t artwork\|novel ...]` | Reads MyPixiv users and artwork/novel feeds. `users` is current-account-only and requires verified runtime identity; `works USER_ID` accepts positive numeric IDs only and never treats a URL as an ID. |
-| `recommended` | `pixiv recommended [-t artwork\|novel\|user\|all] [--content-type all\|illust\|manga] [--page N --limit N --json]` | Reads personalized recommendations. For artwork, `--page/--limit` first selects the raw recommendation window and `--content-type` then filters DTO subtypes inside that window; it is not sent upstream and never scans forward without bound to fill one subtype. `all` traverses the artwork stream once and partitions that same window into illust/manga. Positional `KIND` remains accepted for compatibility. |
-| `novel search` | `pixiv novel search WORD [options]` | Compatibility route for novel search; prefer `pixiv search WORD --type novel`. It exposes only the documented basic novel search fields. |
-| `user search` | `pixiv user search WORD [options]` | Compatibility route for user search; prefer `pixiv search WORD --type user`. |
-| `follow` | `pixiv follow add\|remove USER_ID ...` | Compatibility route for user follow mutation; it shares the same owner and input contract as `pixiv user follow add\|remove`. |
-| `mcp` | `pixiv mcp [--port PORT [--host HOST] [--base-url URL]] [--proxy URL\|--no-proxy]` | Unified local stdio by default; explicit `--port` enables authenticated HTTP. |
-| `mcp auth init` | `pixiv mcp auth init [--reset]` | Initialize the local MCP owner and print its secret once; reset revokes grants, preserving clients and selected account. |
-| `fanbox auth` | `pixiv fanbox auth import|list|use|remove|status` | Imports and manages local FANBOX sessions. Session values are never printed. Native `--proxy`/`--no-proxy` applies only to the FANBOX command. |
-| `fanbox creators` | `pixiv fanbox creators [--kind supporting\|following] [--page N --limit N]` | Lists supporting or following FANBOX creators. |
-| `fanbox posts` | `pixiv fanbox posts SOURCE [--page N --limit N]` | Lists posts from a creator, tag, post ID, or supported FANBOX URL. |
-| `fanbox tags` | `pixiv fanbox tags CREATOR` | Lists featured tags used by a creator. |
-| `fanbox home` / `supporting` | `pixiv fanbox home|supporting [--page N --limit N]` | Reads the authenticated FANBOX home or supporting feed. |
-| `fanbox post` | `pixiv fanbox post POST_ID` | Reads one post and its safe asset summary. |
-| `fanbox download` | `pixiv fanbox download SOURCE...` | Saves FANBOX post assets below the configured download path. |
+| `auth remove` | `pixiv auth remove [UID] [--yes] [--json]` | Removes an account; confirms on a TTY by default. Removing the default selects the first remaining account. |
+| `auth check` | `pixiv auth check [UID] [--json] [--proxy URL\|--no-proxy]` | Refreshes the token and validates the account; records `user_id` and username when available. |
+| `auth refresh` | `pixiv auth refresh [UID] [--all] [--json] [--proxy URL\|--no-proxy]` | Refreshes access + rotated refresh token for the selected/default account, then forces a profile read to update cached Premium status. `--all` refreshes every account. JSON always returns `accounts`. |
+| `config path` | `pixiv config path` | Prints the `config.toml` path, creating the baseline if missing. |
+| `config get` | `pixiv config get KEY` | Prints one effective value. |
+| `config set` | `pixiv config set KEY [VALUE]` | Writes one known key (see [config aliases](#cli-managed-config-aliases)); `saucenao_api_key` is stdin-only. |
+| `config unset` | `pixiv config unset KEY` | Deletes one known key from `config.toml`. |
+| `update` | `pixiv update [--check] [--prerelease] [--proxy URL]` | Checks for or performs an update matching the install source; `--json` only with `--check`. |
+| `search` | `pixiv search [WORD\|IMAGE_PATH_OR_URL] [-t artwork\|novel\|user] [options]` | Entity search or automatic reverse-image search. `--trending-tags` is the no-word artwork tag-list mode; no filters or pagination. |
+| `detail` | `pixiv detail [ID_OR_URL] [-t artwork\|novel\|user] [--content] [--json\|--ndjson]` | One artwork, novel or user, or canonical NDJSON records. `--content` is a retained novel-only compatibility flag returning `content_unavailable` before opening the pool or calling the rejected endpoint. |
+| `ranking` | `pixiv ranking [-t artwork\|novel] [--mode MODE --date YYYY-MM-DD --page N --limit N]` | Artwork (default) or novel rankings; `--date` artwork only. |
+| `series` | `pixiv series SERIES_ID_OR_URL -t artwork\|novel [--page N --limit N --json\|--ndjson]` | Works in one series; positive ID or supported series URL whose namespace must match the required type. |
+| `comment` | `pixiv comment ID -t artwork\|novel [--page N --limit N --json\|--ndjson]`; `pixiv comment create ID -t artwork\|novel --comment TEXT [--json]`; `pixiv comment reply ID -t artwork\|novel --parent-comment-id COMMENT_ID --comment TEXT [--json]`; `pixiv comment stamp ID -t artwork\|novel --stamp-id STAMP_ID [--comment TEXT] [--json]`; `pixiv comment delete COMMENT_ID -t artwork\|novel [--json]`; `pixiv comment stamps [--json\|--ndjson]` | Read plus create/reply/stamp/delete/stamp-list. Mutations take positive numeric IDs only; create/reply need a non-empty body; stamp body optional (empty = sticker-only wire); create/reply/stamp return `comment_id`, delete a status; `stamps` returns output-safe DTOs without pagination or runtime URLs. |
+| `bookmark` | `pixiv bookmark list\|tags\|detail\|add\|remove ...` | `list`/`tags` accept a user ID or URL and `--type artwork\|novel\|all` (`all` = artwork before novel, typed records/tags). `detail`, `add`, `remove` accept artwork/novel, not `all`; add/remove default to `artwork`. |
+| `user` | `pixiv user search\|detail\|artworks\|novels\|bookmarks\|following\|followers\|related\|blocked\|follow ...` | Profile/relationship reads and follow management. Follow takes a positive numeric ID or user Record; omitted IDs use the current account only where the subcommand says so. |
+| `download` | `pixiv download [options] SRC...` | Artwork IDs/URLs, allowed CDN URLs, or works expanded from user and public-bookmark URLs. Artwork-series URLs are not sources. `--output/-o` aliases `--download-path`. |
+| `timeline` | `pixiv timeline following\|latest -t artwork\|novel [--content-type TYPE ...]` | Followed-user or latest streams. Following artwork filters subtype locally (upstream has no subtype query); latest artwork supports only `illust\|manga`. |
+| `mypixiv` | `pixiv mypixiv users\|works [-t artwork\|novel ...]` | `users` is current-account-only with verified identity; `works USER_ID` takes positive numeric IDs only, never URLs. |
+| `recommended` | `pixiv recommended [-t artwork\|novel\|user\|all] [--content-type all\|illust\|manga] [--page N --limit N --json]` | For artwork, `--page/--limit` selects the raw window, then `--content-type` filters inside it (not sent upstream; no unbounded forward scan). `all` traverses the artwork stream once and partitions that window into illust/manga. Positional `KIND` still accepted. |
+| `novel search` | `pixiv novel search WORD [options]` | Compatibility route; prefer `pixiv search WORD --type novel`. Basic novel fields only. |
+| `user search` | `pixiv user search WORD [options]` | Compatibility route; prefer `pixiv search WORD --type user`. |
+| `follow` | `pixiv follow add\|remove USER_ID ...` | Compatibility route sharing the owner and input contract of `pixiv user follow add\|remove`. |
+| `mcp` | `pixiv mcp [--port PORT [--host HOST] [--base-url URL]] [--proxy URL\|--no-proxy]` | Local stdio by default; explicit `--port` enables authenticated HTTP. |
+| `mcp auth init` | `pixiv mcp auth init [--reset]` | Initializes the MCP owner and prints its secret once; reset revokes grants, keeping clients and the selected account. |
+| `fanbox auth` | `pixiv fanbox auth import\|list\|use\|remove\|status` | Local FANBOX sessions; values never printed. Native `--proxy`/`--no-proxy` applies only to the FANBOX command. |
+| `fanbox creators` | `pixiv fanbox creators [--kind supporting\|following] [--page N --limit N]` | Supporting or following creators. |
+| `fanbox posts` | `pixiv fanbox posts SOURCE [--page N --limit N]` | Posts from a creator, tag, post ID or supported FANBOX URL. |
+| `fanbox tags` | `pixiv fanbox tags CREATOR` | Featured tags of a creator. |
+| `fanbox home` / `supporting` | `pixiv fanbox home\|supporting [--page N --limit N]` | Authenticated home or supporting feed. |
+| `fanbox post` | `pixiv fanbox post POST_ID` | One post and its safe asset summary. |
+| `fanbox download` | `pixiv fanbox download SOURCE...` | Saves post assets below the configured download path. |
 
-Downloaded filenames normalize cross-platform-invalid characters in both the filename template and URL-derived
-extension. For Pixiv thumbnail artwork, a successful resource Content-Type may replace an ambiguous URL extension
-such as `.png` so the published filename matches the actual image bytes. Unknown media types retain the URL
-extension. Extensions also replace ASCII control characters and remove trailing dots or spaces rejected by Windows.
+**Filenames:** cross-platform-invalid characters are normalized in both the template output and the URL-derived extension; ASCII control characters are replaced and trailing dots/spaces (rejected by Windows) removed. For Pixiv thumbnails, a successful resource Content-Type may replace an ambiguous URL extension (e.g. `.png`) to match the bytes; unknown media types keep the URL extension.
 
 ### `auth login` flags
 
 | Flag | Default | Description |
 | --- | --- | --- |
-| `--json` | `false` | Prints the save result as JSON; never prints refresh/access tokens. |
-| `--no-open` | `false` | Prints the login URL and local loopback page address for manual opening. |
-| `--addr` | `127.0.0.1:0` | Local loopback listen address; port `0` means auto-assign. |
-| `--use` | `false` | Sets the account as default after a successful login; also becomes default automatically when no default exists. |
-| `--timeout` | `0` | Maximum time to wait for login completion; `0` means the CLI imposes no deadline. |
-| `--relay-public-url` | config | Public HTTP(S) base URL of this server relay for one login. |
-| `--relay-listen-addr` | config | Listen host:port of this server relay for one login. |
-| `--relay-tls-cert-file` / `--relay-tls-key-file` | config | PEM pair for direct TLS; both must be provided. Without them, an HTTPS public URL requires a loopback listener for a same-host reverse proxy. |
-| `--proxy URL` / `--no-proxy` | empty | Proxy override for this token exchange only; never saved to `config.toml`. |
+| `--json` | `false` | Save result as JSON; never prints tokens. |
+| `--no-open` | `false` | Print the login URL and local page address instead of opening a browser. |
+| `--addr` | `127.0.0.1:0` | Loopback listen address; port `0` auto-assigns. |
+| `--use` | `false` | Make the account default after login (automatic when no default exists). |
+| `--timeout` | `0` | Max wait for completion; `0` = no CLI deadline. |
+| `--relay-public-url` | config | Public HTTP(S) base URL of this server's relay for one login. |
+| `--relay-listen-addr` | config | Relay listen host:port for one login. |
+| `--relay-tls-cert-file` / `--relay-tls-key-file` | config | PEM pair for direct TLS; both required. Without them an HTTPS public URL requires a loopback listener behind a same-host reverse proxy. |
+| `--proxy URL` / `--no-proxy` | empty | Proxy override for this token exchange only; never saved. |
 
 ### Data command flags
 
 | Command | Flag | Default | Description |
 | --- | --- | --- | --- |
-| `search` | `--type` / `-t` | `artwork` | Entity route: `artwork`, `novel`, or `user`. Artwork subtype is a separate `--content-type`; `illust` is not an entity value. |
-| `search` | `--provider` | `reverse_search_provider` (`saucenao`) | Reverse-image provider: `saucenao`, `ascii2d-color`, `ascii2d-bovw`, or `all`; valid only for image sources and overrides the config for this invocation. |
-| `search` | `--content-type` | `all` | Artwork subtype: `all`, `illust-and-ugoira`, `illust`/`illustration`, `manga`, or `ugoira`; `illustration` is a compatibility alias for `illust`, and the flag is artwork-search only. |
-| `search`, `novel search` | `--search-by` | `tag-partial` | Artwork search accepts `tag-partial`, `tag-exact`, `title-caption`, and `tag-title-caption`; novel search accepts the first three only. |
-| `search`, `novel search` | `--sort` | `date_desc` | Sort order: `date_desc` or `date_asc`. |
-| `search` | `--period` | empty | Artwork range: `day`, `week`, `month`, `half-year`, or `year`; mutually exclusive with `--start-date`/`--end-date`. |
-| `novel search` | `--period` | empty | Novel range: `day`, `week`, or `month`. |
-| `search` | `--start-date` / `--end-date` | empty | Inclusive `YYYY-MM-DD` date bounds; when both are present, start cannot be later than end. Artwork search only. |
-| `search` | `--rating` | empty | Local artwork filter: `sfw`, `r18`, `r18g`, `mature`, or `all`. It matches normalized DTO `x_restrict` values, binds the semantic filter to the opaque cursor, and is never sent as an upstream request field. |
-| `search` | `--ai-mode` | `all` | Artwork AI filter: `all`, `exclude`, or `only`; Pixiv `AIType==2` is AI-generated. |
-| `search` | `--aspect-ratio` | `all` | Artwork aspect ratio: `all`, `landscape`, `portrait`, or `square`. |
-| `search` | `--resolution` | `all` | Artwork resolution tier: `all`, `high`, `medium`, or `low`. |
-| `search` | `--draw-tool` | empty | Exact drawing-tool name from the versioned catalog below; ambiguous values are rejected. |
-| `search` | `--bookmark-min` / `--bookmark-max` | empty | Inclusive non-negative public bookmark-count bounds. Application filtering uses `TotalBookmarks`; `min` cannot exceed `max`. The result metadata identifies the strategy and completeness. |
-| `search` | `--bookmark-strategy` | `auto` | `auto` currently resolves to `local`; `local` performs exact filtering on fetched candidates; `best_effort` retains App candidate bounds and reports partial completeness; `server` fails explicitly until reliable server-side evidence exists. |
-| `novel search` | advanced rating/text/original flags | unsupported | `--rating`, `--min-text-length`, `--max-text-length`, and `--original-only` are not part of the v1 compatibility command. Do not send them or treat them as local filters. |
-| list commands | `--limit` / `-l` | one upstream batch | Omit for one upstream batch; a positive value fills the logical page across upstream batches; `0` traverses until the upstream cursor ends. |
-| list commands | `--page` / `-p` | empty | 1-based logical page; must be used with a positive `--limit`. |
-| `ranking` | `--mode` | `day` | One of `day`, `day_male`, `day_female`, `week`, `week_original`, `week_rookie`, `month`, `day_manga`, `week_manga`, `month_manga`, `week_rookie_manga`, `day_r18`, `day_male_r18`, `day_female_r18`, `week_r18`, `week_r18g`. The final nine require authentication. |
-| `ranking` | `--date` | empty | Ranking date, typically `YYYY-MM-DD`. |
-| `detail` | `--type` / `-t` | `artwork` | Entity type: `artwork` (also accepts `illust`, `manga`, `ugoira`), `novel`, or `user`; omitted type in record mode is inferred from the record. `--content` is a retained novel-only compatibility flag and returns `content_unavailable` before account-pool execution while the v1 content endpoint is unavailable. |
-| `series`, `comment` | `--type` / `-t` | required | Entity type: `artwork` or `novel`; series accepts a positive ID or a supported series URL, and its URL namespace must match the selected type. Comment read/create/reply/stamp use a positive artwork/novel ID; comment delete uses the type to select the artwork or novel comment endpoint. The input is interpreted only after the type is selected. |
-| `comment create`, `comment reply` | `--comment` | required | Non-empty comment body. The CLI rejects an empty value and never truncates the supplied text. |
-| `comment stamp` | `--comment` | optional | Optional comment text; omit it or pass an empty value for the current sticker-only wire form. The CLI never truncates supplied text. |
-| `comment reply` | `--parent-comment-id` | required positive integer | Parent comment ID for a reply; it is not used as the artwork or novel ID. |
-| `comment stamp` | `--stamp-id` | required positive integer | Stamp ID sent independently from the comment body. |
-| `bookmark list` | `--type` / `-t` | `artwork` | Entity type: `artwork`, `novel`, or `all`; `all` uses one logical page in artwork-then-novel order and keeps each record typed. `--restrict` and `--tag` are passed to the matching bookmark list. |
-| `bookmark tags` | `--type` / `-t` | `artwork` | Entity type: `artwork`, `novel`, or `all`; `all` keeps same-name artwork and novel tags as separate typed entries. `--restrict` selects public/private tags. |
-| `user artworks` | `--type` | `illustration` | Artwork subtype: `illust`, `manga`, or `ugoira`. |
-| `user bookmarks` | `--restrict`, `--tag` | `public`, empty | Bookmark visibility and exact bookmark-tag filter. |
-| `user following`, `user followers` | `--restrict` | `public` | Follow visibility: `public` or `private`. |
-| `timeline following` | `--type` / `-t`, `--content-type` | required, `all` | Entity type is `artwork` or `novel`; artwork accepts local `all|illust-and-ugoira|illust|manga|ugoira` filtering and `--restrict` is `public` or `private`. Explicit `--content-type` with `novel` is rejected. |
-| `timeline latest` | `--type` / `-t`, `--content-type` | required, `illust` | Entity type is `artwork` or `novel`; latest artwork supports only `illust` or `manga`, and omitted `--content-type` selects `illust`. Explicit `--content-type` with `novel` is rejected. |
-| `mypixiv users` | `--page`, `--limit` | optional | Uses only the verified authenticated account identity; it accepts no positional user target and has no anonymous fallback. |
-| `mypixiv works` | `--type` / `-t` | required | Without `USER_ID`, use entity type `artwork` or `novel`; with a positive numeric `USER_ID`, `manga` is also supported. Legacy `illust` remains an alias for `artwork`; invalid types and IDs return `invalid_argument` before account-pool execution. |
-| `recommended` | `--type` / `-t` | empty | `artwork`, `novel`, `user`, or `all`; with `artwork`, `--content-type` selects the local subtype filter; positional `KIND` is compatibility syntax. |
-| `recommended` | `--content-type` | `all` | Artwork-only local subtype filter: `all`, `illust`, or `manga`. Filtering happens after `--page/--limit` selects the raw recommendation window; the value is not sent as the upstream `content_type` parameter. |
-| record actions | `--on-error` | `skip` | Skip malformed/incompatible records with a stderr diagnostic, or use `fail-fast`. |
-| `download` | `--pages` | empty | 1-based individual pages and closed ranges such as `1,3-5`; open-ended ranges are invalid. Default downloads every page, and missing pages fail explicitly. |
-| `download` | `--quality` | `original` | Static image quality: `original`, `regular` (longest side 1200), `small` (longest side 540), `thumb` (250×250 center crop), or `mini` (48×48 center crop). Ugoira rejects non-original quality or page selection as unsupported.
-| `download` | `--ugoira-mode` | `gif` | Ugoira output: `gif` or `apng`. |
-| `download` | `--download-path` / `--output` / `-o` | `DOWNLOAD_PATH`, `config.toml`, or `./downloads` | Download directory. `--output` is an alias for this option and conflicts if both specify different directories. |
-| `download` | `--filename-template` | `FILENAME_TEMPLATE`, `config.toml`, or `{author} - {title}_{id}` | Supports `{id}`, `{title}`, `{author}`, `{author_id}`, `{date}`, `{tags}`, and `{num}`. Unknown placeholders and unmatched braces are errors; an invalid or empty-rendered ugoira template falls back to the default filename and emits a warning on stderr. |
-| `bookmark add` | `--type` / `-t` | `artwork` | Entity type: `artwork` or `novel`; selects the bookmark namespace for the positional ID or Record. `all` and other namespaces are rejected before any network call. |
-| `bookmark add` | `--restrict` | `public` | Visibility of the new bookmark: `public` or `private`. |
-| `bookmark add` | `--tag` | empty | Bookmark tag; may be repeated. |
-| `bookmark remove` | `--type` / `-t` | `artwork` | Entity type: `artwork` or `novel`; selects the bookmark namespace for the positional ID or Record. |
-| `follow add` | `--restrict` | `public` | Visibility of the new follow: `public` or `private`. |
-| `download` | `SRC...` | required | Artwork PID, artwork URL, allowed CDN resource URL, user profile/artworks URL, or public bookmarks URL. Artwork-series URLs are not download sources. CDN files use a safe URL basename with a deterministic URL-identity suffix; metadata-dependent options do not apply. |
+| `search` | `--type` / `-t` | `artwork` | Entity: `artwork`, `novel`, `user`. Subtype is `--content-type`; `illust` is not an entity value. |
+| `search` | `--provider` | `reverse_search_provider` (`saucenao`) | `saucenao`, `ascii2d-color`, `ascii2d-bovw`, `all`; image sources only. |
+| `search` | `--content-type` | `all` | `all`, `illust-and-ugoira`, `illust`/`illustration` (alias), `manga`, `ugoira`; artwork search only. |
+| `search`, `novel search` | `--search-by` | `tag-partial` | Artwork: `tag-partial`, `tag-exact`, `title-caption`, `tag-title-caption`; novel: first three. |
+| `search`, `novel search` | `--sort` | `date_desc` | `date_desc` or `date_asc`. |
+| `search` | `--period` | empty | Artwork: `day`, `week`, `month`, `half-year`, `year`; exclusive with `--start-date`/`--end-date`. |
+| `novel search` | `--period` | empty | `day`, `week`, `month`. |
+| `search` | `--start-date` / `--end-date` | empty | Inclusive `YYYY-MM-DD`; start ≤ end. Artwork only. |
+| `search` | `--rating` | empty | Local artwork filter `sfw`, `r18`, `r18g`, `mature`, `all` over DTO `x_restrict`; bound to the cursor, never sent upstream. |
+| `search` | `--ai-mode` | `all` | `all`, `exclude`, `only`; Pixiv `AIType==2` = AI-generated. |
+| `search` | `--aspect-ratio` | `all` | `all`, `landscape`, `portrait`, `square`. |
+| `search` | `--resolution` | `all` | `all`, `high`, `medium`, `low`. |
+| `search` | `--draw-tool` | empty | Exact name from the [catalog](#drawing-tool-catalog); ambiguous values rejected. |
+| `search` | `--bookmark-min` / `--bookmark-max` | empty | Inclusive non-negative bounds on `TotalBookmarks`; min ≤ max. Metadata reports strategy and completeness. |
+| `search` | `--bookmark-strategy` | `auto` | `auto` (= `local` today), `local` (exact filter on fetched candidates), `best_effort` (App candidate bounds, partial completeness), `server` (fails until reliable server-side evidence exists). |
+| `novel search` | `--rating`, `--min-text-length`, `--max-text-length`, `--original-only` | unsupported | Not in the v1 command; not sent, not local filters. |
+| list commands | `--limit` / `-l` | one upstream batch | Positive = fill the logical page across batches; `0` = traverse until the cursor ends. |
+| list commands | `--page` / `-p` | empty | 1-based logical page; requires a positive `--limit`. |
+| `ranking` | `--mode` | `day` | `day`, `day_male`, `day_female`, `week`, `week_original`, `week_rookie`, `month`, `day_manga`, `week_manga`, `month_manga`, `week_rookie_manga`, `day_r18`, `day_male_r18`, `day_female_r18`, `week_r18`, `week_r18g`. The final nine require authentication. |
+| `ranking` | `--date` | empty | Typically `YYYY-MM-DD`. |
+| `detail` | `--type` / `-t` | `artwork` | `artwork` (also `illust`, `manga`, `ugoira`), `novel`, `user`; inferred from records in record mode. `--content` → `content_unavailable` before pool execution. |
+| `series`, `comment` | `--type` / `-t` | required | `artwork` or `novel`. Series: positive ID or supported URL matching the type. Comment read/create/reply/stamp: positive artwork/novel ID; delete: type selects the endpoint. Input is interpreted after the type. |
+| `comment create`, `comment reply` | `--comment` | required | Non-empty; never truncated. |
+| `comment stamp` | `--comment` | optional | Omit or empty = sticker-only wire; never truncated. |
+| `comment reply` | `--parent-comment-id` | required positive integer | Parent comment, not the artwork/novel ID. |
+| `comment stamp` | `--stamp-id` | required positive integer | Sent independently from the body. |
+| `bookmark list` | `--type` / `-t` | `artwork` | `artwork`, `novel`, `all` (one logical page, artwork then novel, typed). `--restrict`, `--tag` passed to the matching list. |
+| `bookmark tags` | `--type` / `-t` | `artwork` | `artwork`, `novel`, `all` (same-name tags kept separate and typed). `--restrict` selects public/private. |
+| `user artworks` | `--type` | `illustration` | `illust`, `manga`, `ugoira`. |
+| `user bookmarks` | `--restrict`, `--tag` | `public`, empty | Visibility and exact bookmark-tag filter. |
+| `user following`, `user followers` | `--restrict` | `public` | `public` or `private`. |
+| `timeline following` | `--type` / `-t`, `--content-type` | required, `all` | `artwork` or `novel`; artwork filters locally `all\|illust-and-ugoira\|illust\|manga\|ugoira`; `--restrict public\|private`. `--content-type` with `novel` rejected. |
+| `timeline latest` | `--type` / `-t`, `--content-type` | required, `illust` | Latest artwork supports only `illust` or `manga`. `--content-type` with `novel` rejected. |
+| `mypixiv users` | `--page`, `--limit` | optional | Verified authenticated identity only; no positional target, no anonymous fallback. |
+| `mypixiv works` | `--type` / `-t` | required | Without `USER_ID`: `artwork` or `novel`; with a positive `USER_ID`: also `manga`. Legacy `illust` aliases `artwork`. Invalid types/IDs → `invalid_argument` before pool execution. |
+| `recommended` | `--type` / `-t` | empty | `artwork`, `novel`, `user`, `all`; positional `KIND` is compatibility syntax. |
+| `recommended` | `--content-type` | `all` | Artwork-only local filter `all`, `illust`, `manga`, applied after `--page/--limit`; not sent as upstream `content_type`. |
+| record actions | `--on-error` | `skip` | `skip` (stderr diagnostic) or `fail-fast` for malformed/incompatible records. |
+| `download` | `--pages` | empty | 1-based pages and closed ranges (`1,3-5`); open ranges invalid. Default = all pages; missing pages fail explicitly. |
+| `download` | `--quality` | `original` | `original`, `regular` (long side 1200), `small` (540), `thumb` (250×250 center crop), `mini` (48×48 center crop). Ugoira rejects non-original quality and page selection. |
+| `download` | `--ugoira-mode` | `gif` | `gif` or `apng`. |
+| `download` | `--download-path` / `--output` / `-o` | `DOWNLOAD_PATH`, `config.toml`, or `./downloads` | `--output` is an alias; conflicting values are an error. |
+| `download` | `--filename-template` | `FILENAME_TEMPLATE`, `config.toml`, or `{author} - {title}_{id}` | `{id}`, `{title}`, `{author}`, `{author_id}`, `{date}`, `{tags}`, `{num}`. Unknown placeholders/unmatched braces are errors; an invalid or empty-rendered Ugoira template falls back to the default with a stderr warning. |
+| `download` | `SRC...` | required | Artwork PID/URL, allowed CDN URL, user profile/artworks URL, public bookmarks URL; not artwork-series URLs. CDN files use a safe URL basename + deterministic URL-identity suffix; metadata options do not apply. |
+| `bookmark add` | `--type` / `-t` | `artwork` | `artwork` or `novel`; `all`/others rejected before any network call. |
+| `bookmark add` | `--restrict` | `public` | `public` or `private`. |
+| `bookmark add` | `--tag` | empty | Repeatable. |
+| `bookmark remove` | `--type` / `-t` | `artwork` | `artwork` or `novel`. |
+| `follow add` | `--restrict` | `public` | `public` or `private`. |
 
-All Pixiv content reads use the authenticated local account selected by `pixiv auth use` (or the eligible account
-pool) and the App API. App failures are final; the CLI does not fall back to an anonymous Web/API path. Search
-filters are bound to the opaque SDK cursor, and logical `--page`/`--limit` traversal continues across upstream
-batches until the requested logical results are filled or the upstream cursor ends. Omitting `--limit` reads one
-upstream batch; `--limit 0` traverses the current upstream result until exhaustion. A positive `--page` requires a
-positive `--limit`. Ordinary artwork search without client-side filtering starts a deep page at its raw App offset
-(`--page 10 --limit 30` starts at offset 270), without requesting earlier batches. AI-only and bookmark-count
-filtering still apply logical skip after local filtering, so they may need the preceding raw batches. Other list
-commands retain their existing pagination behavior.
+**Pagination and filtering**
 
-`--rating` is a client-side artwork filter over normalized DTO `x_restrict`: `sfw` matches `0`, `r18` matches `1`,
-`r18g` matches `2`, `mature` matches `1` or `2`, and `all` disables the filter. Its canonical semantic digest is
-bound to the opaque SDK cursor, while no `rating` or `x_restrict` request field is sent upstream. Artwork
-`--bookmark-min`/`--bookmark-max` are inclusive non-negative
-conditions on public `TotalBookmarks`. The application reports the selected strategy and completeness: `auto`
-currently uses exact local filtering over fetched candidates, `local` has the same behavior, `best_effort` keeps
-App candidate bounds but reports partial completeness, and `server` fails explicitly because reliable server-side
-evidence is not yet available. Premium is not a local hard gate, and bookmark counts are not like counts.
+- All content reads use the authenticated account (or eligible pool) via the App API. App failures are final — no anonymous Web/API fallback.
+- Filters are bound to the opaque SDK cursor; logical `--page`/`--limit` continue across batches until filled or exhausted. No `--limit` = one batch; `--limit 0` = until exhaustion; positive `--page` needs positive `--limit`.
+- Unfiltered artwork search starts a deep page at its raw App offset (`--page 10 --limit 30` → offset 270) without earlier batches. AI-only and bookmark-count filtering apply the logical skip after local filtering, so they may need preceding batches. Other list commands keep their existing behavior.
 
-Artwork `search --json/--ndjson` and `detail --json` preserve upstream `is_bookmarked`, `is_muted`, `visible`,
-`sanity_level`, `restriction_attributes`, and optional `series` (`id`, `title`). Detail also preserves
-`total_comments` when provided upstream; search does not invent it. The viewer flags belong to the account used
-for that read, not necessarily the account for a later write. Absent viewer/safety fields and series are omitted;
-an explicitly supplied empty `restriction_attributes` remains `[]`. Missing means unknown, not `false` or `0`.
-No per-result enrichment request is made. Artwork JSON/NDJSON retains
-opaque resource references where needed; it does not emit resolved/signed resource URLs, request headers, Cookies,
-expiry metadata, tokens, or other transport credentials.
-Download is an action: success keeps stdout empty; ugoira filename fallback warnings are stderr-only, while failures are explicit diagnostics and a non-zero exit.
+| `--rating` | matches `x_restrict` |
+| --- | --- |
+| `sfw` | `0` |
+| `r18` | `1` |
+| `r18g` | `2` |
+| `mature` | `1` or `2` |
+| `all` | filter off |
+
+Its canonical semantic digest binds to the cursor; no `rating`/`x_restrict` field is sent. Bookmark bounds are inclusive and non-negative on public `TotalBookmarks`; Premium is not a local hard gate, and bookmark counts are not like counts.
+
+**Artwork output fields** — `search --json/--ndjson` and `detail --json` keep upstream `is_bookmarked`, `is_muted`, `visible`, `sanity_level`, `restriction_attributes` and optional `series` (`id`, `title`); detail also keeps `total_comments` when provided (search never invents it). Viewer flags belong to the reading account. Absent fields are omitted — missing means unknown, not `false`/`0`; an explicitly empty `restriction_attributes` stays `[]`. No per-result enrichment request. Output keeps opaque resource references but never resolved/signed URLs, request headers, Cookies, expiry metadata, tokens or other transport credentials.
 
 ### Drawing-tool catalog
 
-`--draw-tool` and MCP `tool` require one exact catalog value. The catalog is part of this version's public contract;
-it is not expanded by command help or error output.
+`--draw-tool` and MCP `tool` require one exact value. The catalog is part of this version's public contract and is not expanded by help or error output.
 
 ```text
 SAI · Photoshop · CLIP STUDIO PAINT · IllustStudio · ComicStudio · Pixia · AzPainter4 · Painter · Illustrator · GIMP
@@ -634,86 +289,60 @@ STRATA · Sculptris · modo · AnimationMaster · VistaPro · Sunny3D · 3D-Coat
 
 ### Illustration tag-query syntax
 
-The authenticated App API has been verified for illustration `search` when `--search-by` selects a tag mode. Use
-`tag-exact` for boolean tag filtering: `tagA tagB` means both complete tags are required (AND), and
-`tagA OR tagB` means either complete tag is accepted (OR). `OR` must be uppercase. The literal word `AND` is not a
-verified operator; write the two tags with a space instead.
+Verified on the authenticated App API for illustration `search` with a tag `--search-by` mode:
 
-`tag-partial` (the default) also accepts the tested uppercase `OR` syntax, but each term is a fuzzy tag condition.
-Its results must not be described as a strict exact-tag AND: a result may match a partial, alias, or translated tag
-without visibly listing the supplied complete label. `title-caption` and App-only `tag-title-caption` have no documented boolean-tag contract. No
-escape syntax for a literal uppercase `OR` tag/keyword is verified, so use exact tags without that token when a
-strict query is required.
+| `--search-by` | `tagA tagB` | `tagA OR tagB` |
+| --- | --- | --- |
+| `tag-exact` | both complete tags (AND) | either complete tag (OR) |
+| `tag-partial` (default) | fuzzy per term — **not** strict exact AND; results may match partial, alias or translated tags | tested, fuzzy terms |
+| `title-caption`, App-only `tag-title-caption` | no documented boolean contract | — |
 
-`novel search` is App-only and exposes keyword target, sort, duration, pagination, and the documented search target
-values. Rating, text-length, and original-only flags are not part of this v1 contract. Novel detail and content
-are separate routes: `detail --type novel` returns metadata, while the retained
-`detail --type novel --content` compatibility flag returns `content_unavailable` without
-calling the rejected content endpoint. It does not fall back to WebView.
+`OR` must be uppercase; the literal `AND` is not a verified operator (use a space). No escape for a literal uppercase `OR` tag/keyword is verified — avoid that token when a strict query is needed.
 
-`detail --type artwork` accepts a positive artwork ID or a canonical HTTPS `pixiv.net`/`www.pixiv.net` artwork URL
-in the form `/artworks/{id}` (an optional locale segment, query, and fragment are allowed). `detail --type novel`
-and `detail --type user` require positive numeric IDs. User and novel URLs are not silently interpreted as artwork
-URLs; unsupported URL shapes fail locally. `detail` also consumes canonical NDJSON records from stdin: `illust`,
-`manga`, `ugoira`, and generic `artwork` records resolve to artwork detail, while `novel` and `user` records resolve
-to their matching detail endpoints.
+### Input rules per command
 
-Artwork, novel, and user search records therefore need no explicit `--type`; when
-`--type` is supplied in record mode, it is only a compatibility constraint and never overrides the record type. The
-`artwork` and `user` identity records emitted by reverse search are valid `detail` inputs as well. In record mode,
-`--ndjson` emits canonical records and `--json` emits one JSON array; an omitted output flag auto-selects NDJSON for
-non-TTY stdout. Aggregate `search --json` output is not an NDJSON record stream and is not accepted by `detail`.
+| Command | Accepts | Notes |
+| --- | --- | --- |
+| `novel search` | keyword target, sort, duration, pagination, documented targets | App-only; rating, text-length, original-only are not in v1 |
+| `detail --type novel` | positive ID | metadata; `--content` → `content_unavailable` without calling the rejected endpoint, no WebView fallback |
+| `detail --type artwork` | positive ID, or HTTPS `pixiv.net`/`www.pixiv.net` `/artworks/{id}` (optional locale segment, query, fragment) | |
+| `detail --type novel\|user` | positive numeric IDs | user/novel URLs are never reinterpreted as artwork URLs; unsupported shapes fail locally |
+| `detail` (stdin records) | `illust`, `manga`, `ugoira`, generic `artwork` → artwork detail; `novel`, `user` → matching detail | `--ndjson` = records, `--json` = one array, omitted + non-TTY = NDJSON; aggregate `search --json` not accepted |
+| `user follow add/remove`, `follow add/remove` | positive numeric user ID or canonical user Record | profile URLs rejected locally; `--restrict` `public` (default) or `private`; success output stays empty |
+| `download` | artwork refs, allowed CDN URLs, `/users/{id}`, `/users/{id}/artworks`, `/users/{id}/bookmarks/artworks` | user/bookmark sources paginate `illust`, `manga`, `ugoira` and dedupe by first appearance; series URLs rejected; App OAuth required, no Web fallback; URL parsing is local (no HTML fetch, no redirects) |
 
-`user follow add/remove` and the root `follow add/remove` compatibility route accept a positive numeric user ID or a canonical user
-Record. User profile URLs are rejected locally rather than converted to an ID. `follow add --restrict` accepts `public` or `private`
-and defaults to `public`; successful follow mutations keep the existing empty-success-output contract.
-
-`download` accepts the same artwork references, allowed CDN URLs, plus `/users/{id}`, `/users/{id}/artworks`,
-and `/users/{id}/bookmarks/artworks` URLs. User and public-bookmarks sources follow pagination for `illust`,
-`manga`, and `ugoira`, deduplicating artwork IDs by first appearance. Artwork-series URLs are rejected as unsupported
-download sources. All need App OAuth and have no anonymous Web fallback. URL
-parsing is local only: it does not fetch HTML or follow redirects. The current CLI download contract exposes page
-selection, static quality, GIF/APNG mode, output directory, filename template, and `--on-error`; unsupported options fail as unknown flags.
-
-`--pages` accepts only individual 1-based pages and
-closed ranges. An invalid or empty-rendered ugoira filename template falls back to the default filename and emits
-a warning on stderr without failing that item. Record-level input errors follow `--on-error`; reported artwork
-failures remain visible and make the command non-zero. Cancellation stops immediately.
+`--pages` accepts only 1-based pages and closed ranges. Record-level input errors follow `--on-error`; reported artwork failures stay visible and make the command non-zero. Cancellation stops immediately.
 
 ### Common flags
 
 | Flag | Applies to | Default | Description |
 | --- | --- | --- | --- |
-| `--ndjson` | data list/read commands | `false` | Emits one canonical Record per line for streaming filters and actions; cannot be combined with `--json`. |
-| `--json` | safe data reads, auth summaries, `update --check`, comment mutations, `comment stamps` | `false` | Emits one complete result document where the command exposes it. Existing download/bookmark/follow mutation actions do not emit a success report; comment create/reply/stamp emit `comment_id`, and comment delete emits `deleted: true`. |
-| `--proxy URL` | network commands and `mcp` | `https_proxy`/`HTTPS_PROXY`, `config.toml`, or empty | Uses an `http`, `https`, `socks5`, or `socks5h` proxy URI for this command only; forbidden with bundle-form `auth import`. |
-| `--no-proxy` | same as `--proxy` | empty | Clears the proxy for this command; cannot be combined with `--proxy` or bundle restore. |
+| `--ndjson` | data list/read commands | `false` | One canonical Record per line; cannot combine with `--json`. |
+| `--json` | safe data reads, auth summaries, `update --check`, comment mutations, `comment stamps` | `false` | One complete document where exposed. Download/bookmark/follow actions emit no success report; comment create/reply/stamp emit `comment_id`, delete emits `deleted: true`. |
+| `--proxy URL` | network commands and `mcp` | `https_proxy`/`HTTPS_PROXY`, `config.toml`, or empty | `http`/`https`/`socks5`/`socks5h` for this command only; forbidden with bundle-form `auth import`. |
+| `--no-proxy` | same as `--proxy` | empty | Clears the proxy for this command; not with `--proxy` or bundle restore. |
 
 ### CLI-managed `config` aliases
 
-`pixiv config get/set/unset` accepts only the aliases in this table. All other runtime settings are hand-maintained in the private `config.toml`; the CLI does not expose a generic setting editor.
+`pixiv config get/set/unset` accepts only these aliases; all other settings are hand-maintained in private `config.toml` (no generic editor).
 
 | KEY | Type | Default | Description |
 | --- | --- | --- | --- |
-| `account_pool_enabled` | boolean | `false` | Enables database-backed account-pool selection for safe read/download operations. |
-| `account_pool_strategy` | string | `round_robin` | Account-pool strategy: `round_robin` or `random`. |
+| `account_pool_enabled` | boolean | `false` | Database-backed pool selection for safe reads/downloads. |
+| `account_pool_strategy` | string | `round_robin` | `round_robin` or `random`. |
 | `download_path` | string | `./downloads` | Download directory. |
 | `filename_template` | string | `{author} - {title}_{id}` | Filename template. |
 | `directory_template` | string | empty | Relative download directory template. |
-| `request_interval` | duration | `0` | Minimum interval between network request starts; configure it with `PIXIV_REQUEST_INTERVAL` or `[network].request_interval`. |
-| `https_proxy` | string | empty | Global proxy URI (`http`, `https`, `socks5`, or `socks5h`); the lowercase `https_proxy` environment variable takes precedence. |
-| `log_level` | string | `info` | Diagnostic level: `info` is silent; `debug` enables typed stderr diagnostics. The value is written as `[logging].level`. |
-| `log_format` | string | `text` | Diagnostic stderr format: `text` or one JSON event per line. The value is written as `[logging].format`. |
-| `reverse_search_provider` | string | `saucenao` | Default reverse-image provider: `saucenao`, `ascii2d-color`, `ascii2d-bovw`, or `all`. |
-| `reverse_search_pixiv_only` | boolean | `true` | Keeps only explicitly identified Pixiv artwork/user matches in the canonical result set; external evidence can still remain in `results` when disabled. |
-| `saucenao_api_key` | sensitive string | unset | SauceNAO credential. `config get` always prints `<redacted>`; `config set` accepts the value only from non-TTY stdin, never as an argument. |
+| `request_interval` | duration | `0` | Minimum interval between request starts; also `PIXIV_REQUEST_INTERVAL` or `[network].request_interval`. |
+| `https_proxy` | string | empty | Global proxy URI; the lowercase `https_proxy` env var takes precedence. |
+| `log_level` | string | `info` | `info` is silent; `debug` enables typed stderr diagnostics. Written as `[logging].level`. |
+| `log_format` | string | `text` | `text` or one JSON event per line. Written as `[logging].format`. |
+| `reverse_search_provider` | string | `saucenao` | `saucenao`, `ascii2d-color`, `ascii2d-bovw`, `all`. |
+| `reverse_search_pixiv_only` | boolean | `true` | Keep only identified Pixiv artwork/user matches in the canonical set; external evidence can remain in `results` when disabled. |
+| `saucenao_api_key` | sensitive string | unset | `config get` always prints `<redacted>`; `config set` reads only non-TTY stdin, never an argument. |
+| `mcp_gallery_*` | — | — | Gallery settings, see [MCP HTTP server](#mcp-http-server). |
 
-The first command that needs configuration creates a compact baseline `config.toml` from the current schema.
-It includes the core download, output, login, update, and logging defaults; advanced settings such as
-`directory_template` and `request_interval` remain omitted until explicitly configured. Existing files are never
-overwritten. Configuration is read when the command starts, so a change applies on the next invocation.
-
-Set the SauceNAO key through hidden input or an authorized secret-manager pipeline, not an argument or chat:
+- The first command needing config creates a compact baseline from the current schema (core download, output, login, update, logging defaults); advanced keys such as `directory_template` and `request_interval` stay omitted until set. Existing files are never overwritten. Config is read at command start — changes apply on the next invocation.
 
 ```bash
 read -rs SAUCENAO_KEY && printf '%s\n' "$SAUCENAO_KEY" | pixiv config set saucenao_api_key
@@ -721,12 +350,9 @@ unset SAUCENAO_KEY
 pixiv config get saucenao_api_key    # always prints <redacted>
 ```
 
-The environment variable `SAUCENAO_API_KEY` overrides the file value without displaying its contents. Do not put the
-key in shell history, diagnostics, JSON, MCP input, or a checked-in TOML file.
+`SAUCENAO_API_KEY` overrides the file value without displaying it. Never put the key in shell history, diagnostics, JSON, MCP input or a checked-in TOML file.
 
-Manual TOML may contain advanced runtime sections such as `[account_pool]`, `[network]`, `[pixiv.network]`,
-`[fanbox.network]`, `[fanbox.flaresolverr]`, `[reverse_search]`, `[reverse_search.network]`,
-`[reverse_search.flaresolverr]`, `[mcp]`, `[login]`, and `[update]`:
+**Advanced TOML sections:** `[account_pool]`, `[network]`, `[pixiv.network]`, `[fanbox.network]`, `[fanbox.flaresolverr]`, `[reverse_search]`, `[reverse_search.network]`, `[reverse_search.flaresolverr]`, `[mcp]`, `[login]`, `[update]`.
 
 ```toml
 [network]
@@ -756,27 +382,17 @@ url = "http://127.0.0.1:8191"
 proxy_url = "socks5://solver-upstream.example:1080"
 ```
 
-`[pixiv.network].proxy_url`, `[fanbox.network].proxy_url`, and `[reverse_search.network].proxy_url` preserve absent
-versus explicit empty values. Pixiv and FANBOX keep their own service boundaries. For reverse search, the command
-override (`--proxy`/`--no-proxy`) wins for both standard and ascii2d traffic; otherwise the reverse-search service
-value affects only ascii2d, while the standard source/SauceNAO client keeps the global route. The reverse-search
-`user_agent` affects only ascii2d and must stay paired with the browser client hints; it does not change SauceNAO or
-the standard source client. `FlareSolverr` is optional and challenge-only: its control URL and browser upstream proxy
-are independent from both native reverse-search routes, and its protocol is JSON rather than image multipart. The
-default config generator omits the optional service proxy and FlareSolverr tables, while the baseline `[reverse_search]`
-provider/filter values may still be generated.
+```mermaid
+flowchart LR
+    A["--proxy / --no-proxy"] --> B["service proxy_url<br/>(explicit empty counts)"] --> C["https_proxy / HTTPS_PROXY"] --> D["[network].https_proxy"] --> E["direct"]
+```
 
-`[account_pool]` stores only `enabled` and `strategy`; per-account `schedulable`, freeze, and marker state lives
-in `pixiv-cli.db`. The removed `account_pool.accounts` key is not migrated; if present, runtime configuration
-returns `removed_setting` and it must be cleared explicitly with `pixiv config unset account_pool_accounts`.
-Never put a refresh token in `config.toml`. The historical
-`data/account-pool.json` scheduler is not read, migrated, or deleted automatically.
-
-Legacy `[logging]` tables are no longer ignored: `[logging].level` accepts `info` or `debug`, and `[logging].format` accepts `text` or `json`. `PIXIV_LOG_LEVEL` and `PIXIV_LOG_FORMAT` override the file values. Debug diagnostics are emitted only to stderr, omit query strings, headers, cookies, tokens, response bodies, and proxy userinfo, and never create log files. `config` management and secret export remain quiet. MCP JSON-RPC uses stdout in stdio mode and HTTP when `--port` is set.
-
-The v1 CLI does not read or migrate a legacy `~/.pixiv-cli/auth.json`. Before switching from an older CLI, run
-`pixiv auth export --all --output <private bundle>` with the old version, then run `pixiv auth import < bundle.json`
-with v1. The transfer is explicit so a stale or unexpected local file cannot become an implicit credential source.
+- Service proxy keys preserve absent vs explicit empty. Pixiv and FANBOX keep their own boundaries. CLI overrides are never persisted.
+- Reverse search: the command override wins for standard and ascii2d traffic; otherwise the service value affects only ascii2d, while SauceNAO/standard keep the global route. The `user_agent` affects only ascii2d (paired with client hints). FlareSolverr is optional, challenge-only, JSON (not image multipart), and independent from both native routes. The default generator omits service proxies and FlareSolverr tables but may emit baseline `[reverse_search]` values.
+- Update checks use only the general network fallback; they never consume FANBOX service or solver settings.
+- `[account_pool]` stores only `enabled` and `strategy`; per-account `schedulable`, freeze and marker state live in `pixiv-cli.db`. A leftover `account_pool.accounts` returns `removed_setting` — clear it with `pixiv config unset account_pool_accounts`. The historical `data/account-pool.json` is not read, migrated or deleted. Never put a refresh token in `config.toml`.
+- `[logging].level` (`info|debug`) and `[logging].format` (`text|json`) are live; `PIXIV_LOG_LEVEL` / `PIXIV_LOG_FORMAT` override them. Debug output is stderr-only, omits query strings, headers, cookies, tokens, response bodies and proxy userinfo, and never creates log files. `config` management and secret export stay quiet. MCP JSON-RPC uses stdout in stdio mode and HTTP with `--port`.
+- v1 does not read or migrate a legacy `~/.pixiv-cli/auth.json`. Migrate explicitly: old version `pixiv auth export --all --output <private bundle>`, then v1 `pixiv auth import < bundle.json`.
 
 ### Environment variables
 
@@ -785,42 +401,27 @@ with v1. The transfer is explicit so a stale or unexpected local file cannot bec
 | `DOWNLOAD_PATH` | `./downloads` | Download directory. |
 | `FILENAME_TEMPLATE` | `{author} - {title}_{id}` | Filename template. |
 | `DIRECTORY_TEMPLATE` | empty | Relative download directory template. |
-| `PIXIV_REQUEST_INTERVAL` | empty | Minimum interval between network request starts. |
-| `PIXIV_LOG_LEVEL` | `info` | Diagnostic level: `info` or `debug`; overrides `[logging].level`. |
-| `PIXIV_LOG_FORMAT` | `text` | Diagnostic stderr format: `text` or `json`; overrides `[logging].format`. |
-| `SAUCENAO_API_KEY` | empty | SauceNAO credential; overrides the private config value and is never printed. |
-| `https_proxy` / `HTTPS_PROXY` | empty | Proxy URI (`http`, `https`, `socks5`, or `socks5h`); the lowercase `https_proxy` takes precedence on case-sensitive systems. Windows treats both spellings as the same environment variable. |
+| `PIXIV_REQUEST_INTERVAL` | empty | Minimum interval between request starts. |
+| `PIXIV_LOG_LEVEL` | `info` | `info` or `debug`; overrides `[logging].level`. |
+| `PIXIV_LOG_FORMAT` | `text` | `text` or `json`; overrides `[logging].format`. |
+| `SAUCENAO_API_KEY` | empty | Overrides the private config value; never printed. |
+| `https_proxy` / `HTTPS_PROXY` | empty | Proxy URI; lowercase wins on case-sensitive systems; Windows treats both as one variable. |
 
-CLI data commands select the explicit/default account through `pixiv auth use` when pooling is disabled, or an eligible database account when pooling is enabled; they do not accept credential-selection flags.
-
-Settings precedence is service-scoped: command `--proxy URL` / `--no-proxy` > the corresponding service
-proxy key (including an explicit empty value) > `https_proxy`/`HTTPS_PROXY` > `[network].https_proxy` > direct.
-CLI proxy overrides are never persisted. Update checks use only their general network fallback and never consume
-FANBOX service or solver settings.
+Data commands select the explicit/default account (pool off) or an eligible DB account (pool on); they accept no credential-selection flags.
 
 ### Removed anonymous web fallback
 
-v1 removed the anonymous Web API fallback. Content commands require an
-authenticated local account selected through `pixiv auth use` or a manual
-`[account_pool]` or `pixiv auth use`; without one they return an authentication requirement. The
-removed `web_fallback_enabled` setting returns `removed_setting` if still
-present in `config.toml`, and `pixiv config unset web_fallback_enabled` clears
-it.
-
-Invalid tokens and App API network or server errors return a safe, classified
-failure.
+v1 removed the anonymous Web API fallback: content commands need an authenticated account (`pixiv auth use` or `[account_pool]`), otherwise they return an authentication requirement. A leftover `web_fallback_enabled` returns `removed_setting`; clear it with `pixiv config unset web_fallback_enabled`. Invalid tokens and App API network/server errors return a safe, classified failure.
 
 ## MCP HTTP server
 
-`pixiv mcp` defaults to stdio. Configure one local connector for both products:
+`pixiv mcp` defaults to stdio — one local connector for both products:
 
 ```json
 {"mcpServers":{"pixiv":{"command":"pixiv","args":["mcp"]}}}
 ```
 
-Local calls use CLI account/default or pool selection and the independent FANBOX session. They never initialize or read HTTP owner state. Local login uses `pixiv auth login` / `pixiv fanbox auth`. Stdio stdout contains JSON-RPC only; diagnostics use stderr.
-
-Explicit `--port` is the sole HTTP selector; it must be an integer from 1 to 65535:
+Stdio uses the CLI account/default or pool and the independent FANBOX session; it never initializes or reads HTTP owner state. Log in locally with `pixiv auth login` / `pixiv fanbox auth`. Stdout carries JSON-RPC only; diagnostics use stderr.
 
 ```bash
 pixiv mcp auth init
@@ -831,11 +432,23 @@ pixiv mcp --port 1270 --host 0.0.0.0 --base-url https://mcp.example.com/prefix
 docker run --rm -p 1270:1270 -v pixiv-data:/home/pixiv/.pixiv-cli IMAGE mcp --port 1270 --host 0.0.0.0 --base-url https://mcp.example.com
 ```
 
-`--host` defaults to `127.0.0.1`; loopback hosts derive their public URL, including IPv6 (`--host ::1` gives `http://[::1]:PORT`). Other hosts, including `0.0.0.0` and `::`, require `--base-url`. The public URL can differ from the listener; non-loopback public URLs require HTTPS. Canonical URLs reject user information, invalid ports, queries, fragments and dot path segments; a validated path prefix is preserved. Host/Forwarded headers never select the public URL. `--host` or `--base-url` without `--port` is an error. No transport is inferred from TTY, stdin, credentials, environment or configuration. Invalid arguments/owner state and bind errors fail explicitly without selecting another port.
+```mermaid
+flowchart TD
+    M["pixiv mcp"] --> P{"--port 1–65535?"}
+    P -->|no| ST["stdio<br/>(--host / --base-url → error)"]
+    P -->|yes| H{"--host loopback?<br/>(default 127.0.0.1, ::1 …)"}
+    H -->|yes| L["public URL derived<br/>e.g. http://[::1]:PORT"]
+    H -->|"no (0.0.0.0, :: …)"| B["--base-url required<br/>HTTPS for non-loopback"]
+    L --> E["endpoint = base + /mcp<br/>printed to stderr"]
+    B --> E
+```
 
-The unpublished PR settings `mcp.listen_addr` / `mcp.base_url` (aliases `mcp_listen_addr` / `mcp_base_url`) are no longer public settings and do not affect startup; remove old development entries from `config.toml` and use these flags. The former `--listen-addr HOST:PORT` maps to `--port PORT --host HOST`. No additional configuration file or transport setting is needed.
+- `--port` is the sole HTTP selector. No transport is inferred from TTY, stdin, credentials, environment or configuration. Invalid arguments/owner state and bind errors fail explicitly; no other port is tried.
+- Canonical URLs reject user information, invalid ports, queries, fragments and dot segments; a validated path prefix is preserved. Host/Forwarded headers never select the public URL.
+- Unpublished PR settings `mcp.listen_addr` / `mcp.base_url` (aliases `mcp_listen_addr` / `mcp_base_url`) are no longer public and have no effect — remove them. Former `--listen-addr HOST:PORT` maps to `--port PORT --host HOST`.
+- The endpoint is printed to stderr with the owner-initialized status, never the secret. In HTTP mode stdout is not JSON-RPC. Both products share the endpoint with separate credential/runtime owners; `pixiv fanbox mcp` migrates to `pixiv mcp`. `--proxy` / `--no-proxy` are per-launch upstream overrides — not inbound TLS — and do not rewrite FlareSolverr settings.
 
-Gallery reads use these startup settings, managed with `pixiv config get/set/unset`:
+**Gallery settings** (via `pixiv config get/set/unset`; restart MCP after changes):
 
 | Alias | TOML key under `[mcp]` | Default | Validation |
 | --- | --- | --- | --- |
@@ -844,90 +457,45 @@ Gallery reads use these startup settings, managed with `pixiv config get/set/uns
 | `mcp_gallery_cache_ttl` | `gallery_cache_ttl` | `"15m"` | Positive duration string |
 | `mcp_gallery_concurrency` | `gallery_concurrency` | `4` | Positive integer; independent metadata and image limits |
 
-Missing keys and `config unset` restore defaults. No additional flags or environment variables are introduced. Restart MCP after changing these settings. The process-local LRU budget includes metadata payloads and image filling buffers; oversized images still stream in full without being cached. Cache expiry is the earliest of the configured TTL, issuing authorization expiry, and upstream read-session expiry. Artwork information may lag updates within that window; bookmark state and writes remain live. Every hit rechecks authorization and account/credential/network generation. Revocation denies further reads; restart clears the cache. HTTP responses stay `private, no-store`, without disk or public CDN caching.
+Missing keys and `config unset` restore defaults; no extra flags or environment variables. The process-local LRU budget covers metadata payloads and image filling buffers; oversized images stream in full uncached. Expiry = earliest of TTL, issuing authorization expiry and upstream read-session expiry, so artwork info may lag within that window while bookmark state and writes stay live. Every hit rechecks authorization and account/credential/network generation; revocation denies further reads; restart clears the cache. HTTP responses are `private, no-store` with no disk or public CDN cache.
 
-The endpoint is the base URL plus `/mcp` and is printed to stderr with the owner-initialized status, never the owner secret. In HTTP mode, stdout is not a JSON-RPC channel. Both products share the endpoint but retain separate credential/runtime owners. `pixiv fanbox mcp` migrates to the unified `pixiv mcp`. `--proxy` / `--no-proxy` remain per-launch upstream network overrides, not inbound TLS configuration; they do not rewrite FlareSolverr settings.
+**Cloud deployment** — local HTTP is supported; for cloud connectors set the public HTTPS base and terminate TLS in an existing reverse proxy (pixiv-cli provisions no certificates). Preserve the public Host header and original escaped paths. Incoming Host and any Origin must match the canonical origin (host case and default-port equivalents accepted); forwarding headers cannot establish trust. For base `https://mcp.example.com/pixiv`, forward:
 
-Local HTTP is supported. For cloud connectors, configure the public HTTPS base and terminate TLS in an existing reverse proxy; pixiv-cli does not provision certificates. Preserve the public Host header and original escaped paths. Incoming Host and any Origin must match the canonical deployment origin (host case and default-port equivalents are accepted); forwarding headers cannot establish trust. For base `https://mcp.example.com/pixiv`, forward `/pixiv/mcp`, `/pixiv/oauth/authorize`, `/pixiv/oauth/register`, `/pixiv/oauth/token`, `/.well-known/oauth-protected-resource`, `/.well-known/oauth-protected-resource/pixiv/mcp` and `/.well-known/oauth-authorization-server/pixiv`. Do not strip the prefix or normalize encoded/double-slash paths. See [MCP HTTP authorization](mcp-tools.md#http-authorization); local fixture checks do not establish cloud-host interoperability.
+```text
+/pixiv/mcp
+/pixiv/oauth/authorize
+/pixiv/oauth/register
+/pixiv/oauth/token
+/.well-known/oauth-protected-resource
+/.well-known/oauth-protected-resource/pixiv/mcp
+/.well-known/oauth-authorization-server/pixiv
+```
 
-On Unix, `SIGINT` (Ctrl+C) and `SIGTERM` cancel the server and wait for in-flight HTTP handlers to finish cleanup. Cancellation is reported on stderr with exit code `1`; there is no fixed cleanup timeout.
+Do not strip the prefix or normalize encoded/double-slash paths. See [MCP HTTP authorization](mcp-tools.md#http-authorization); local fixture checks do not establish cloud-host interoperability.
+
+On Unix, `SIGINT` (Ctrl+C) and `SIGTERM` cancel the server and wait for in-flight handlers to clean up; cancellation is reported on stderr with exit code `1`; no fixed cleanup timeout.
 
 ## MCP owner initialization
 
-`pixiv mcp auth init` is local administration, not an MCP tool or a server launch. It writes `<app-data>/mcp-state.json` using a private sidecar lock and atomic replacement. On Unix the directory is `0700` and state/lock files are `0600`. It changes no Pixiv/FANBOX credentials, CLI default, database schema or configuration, and does not run updates or desktop-helper setup.
+`pixiv mcp auth init` is local administration — not a tool, not a server launch, no listener (start `pixiv mcp --port PORT` separately per [HTTP startup](#mcp-http-server)).
 
-Successful stdout contains only the new 256-bit random owner secret plus a newline. Keep it in a password manager; never put it in chat, MCP arguments, logs or source control. Only its SHA-256 verifier is persisted. Ordinary re-init fails without replacing state or showing the old secret. Explicit `--reset` rotates the verifier/generation and clears all OAuth grants/token hashes, preserving client metadata and `selected_pixiv_user_id`.
-
-Corrupt/incomplete JSON, unsupported versions, non-regular/symlink state files and private-file permission errors fail rather than silently resetting state. A disk write error does not publish a secret. If stdout fails after commit, the owner remains saved; recover with `pixiv mcp auth init --reset`, which also revokes grants.
-
-This command does not start a listener. Start `pixiv mcp --port PORT` separately using the [HTTP startup contract](#mcp-http-server).
-
-## Version and updates
-
-`pixiv --licenses` prints the embedded third-party notices without authentication, network access or creating local state. Release archives contain only the CLI executable; no separate license files are extracted.
-
-`pixiv --version` is the only public version surface. It writes exactly one line, `pixiv <version>`, to stdout,
-writes no stderr, and does not run startup update checks.
-The former `version` subcommand, its `--json` form, and the public `commit`/`build_date` fields were removed as a
-breaking change; they now produce a non-zero unknown-command error with empty stdout. Scripts must migrate to the root flag.
-
-```bash
-pixiv --version
-```
-
-Explicit updates check first, then install; the check supports JSON while the actual install does not accept
-`--json`:
-
-```bash
-pixiv update --check
-pixiv update --check --json
-pixiv update --check --prerelease
-pixiv update --proxy http://127.0.0.1:7890
-```
-
-Development builds show `dev` and refuse to self-update. For official installs, the updater detects Homebrew
-stable/beta, `go install`, or a Release binary: stable/beta switch between the two conflicting formulas according
-to `--prerelease`; if the switch install fails, it explicitly attempts to restore the original formula and reports
-both the original error and the recovery result. `go install` uses the exact Release tag; Release binaries verify
-the Ed25519-signed checksum manifest and the archive SHA-256 before downloading, then require an exact
-`pixiv --version` match and atomically replace the executable.
-
-Unless an explicit `--proxy`, configured `https_proxy`, or `HTTPS_PROXY` is in effect, Release-binary updates probe
-the embedded source list concurrently. API-capable candidates are used for the GitHub Releases API; archive-capable
-candidates are used for the signed manifest, checksum, and platform archive. The first valid response becomes the
-preferred route, and an asset download may silently try each remaining declared route once; if all fail, the reported
-error names every failed route. Candidates never alter canonical Release URLs, SemVer selection, Ed25519 verification,
-or SHA-256 verification. The automatic notification uses only API-capable candidates and retains its existing shared
-three-second limit and 24-hour cache.
-
-Update checks only select canonical SemVer tags. Stable checks first exclude GitHub Releases marked as prerelease;
-`--prerelease` includes them in the current channel. If any non-draft published Release in that channel uses a
-non-SemVer tag, the check reports that tag and fails closed.
-
-Supported binaries embed the production Ed25519 public key/key ID/fingerprint; the private key exists only in the
-protected `release` Environment and a controlled macOS Keychain recovery copy. Select the currently published signed
-Release from the [GitHub Releases page]; `pixiv update --check` remains a read-only check and is not a substitute for
-verifying the selected version's assets, checksums, and signatures at install time.
-
-Successful regular CLI commands make a best-effort stable-update check. It skips MCP, help and root `--version`, `update`, every `auth export`, and bundle-form `auth import`,
-and development builds, queries at most once per 24 hours per user cache, and caps the automatic check at 3
-seconds. A discovered new version or a failed check only writes to stderr (failures as warnings), never changes
-the business command's exit code, and never pollutes JSON stdout or MCP HTTP JSON-RPC responses. To disable the automatic
-check:
-
-```bash
-# ~/.pixiv-cli/config.toml
-[update]
-check_enabled = false
-```
+| Aspect | Behavior |
+| --- | --- |
+| Writes | `<app-data>/mcp-state.json` with a private sidecar lock and atomic replacement; Unix dir `0700`, state/lock `0600` |
+| Leaves alone | Pixiv/FANBOX credentials, CLI default, database schema, configuration; no updates or desktop-helper setup |
+| stdout | only the new 256-bit random owner secret + newline — store it in a password manager; never in chat, MCP arguments, logs or source control |
+| Persisted | only its SHA-256 verifier |
+| Re-run | fails without replacing state or showing the old secret |
+| `--reset` | rotates verifier/generation, clears all OAuth grants/token hashes; keeps client metadata and `selected_pixiv_user_id` |
+| Bad state | corrupt/incomplete JSON, unsupported versions, non-regular/symlink files and permission errors fail — never silently reset |
+| Failures | a disk write error publishes no secret; if stdout fails after commit the owner stays saved — recover with `--reset` (also revokes grants) |
 
 ## Related documentation
 
-This reference intentionally stops at the CLI boundary. Use the authoritative guides for other interfaces and
-maintainer workflows:
-
-- [Go SDK](sdk.md): public client, models, pagination, resources, and typed errors.
-- [MCP tools](mcp-tools.md): tool names, input schemas, output, and HTTP authorization.
+- [Installation and updates](install.md): channels, Docker, trust, `pixiv update`.
+- [Authentication](authentication.md): login, relay hand-off, import/export.
+- [Go SDK](sdk.md): public client, models, pagination, resources, typed errors.
+- [MCP tools](mcp-tools.md) and [MCP Apps gallery](mcp-gallery.md): tools, schemas, output, HTTP authorization, Gallery UI.
 - [Architecture](maintainers/architecture.md): package responsibilities and runtime flow.
-- [Development](maintainers/development.md): environment, tests, builds, and release gates.
+- [Development](maintainers/development.md): environment, tests, builds, release gates.
 - [Agent skill](../../skills/pixiv-cli/SKILL.md): safe instructions for an agent driving the installed CLI.

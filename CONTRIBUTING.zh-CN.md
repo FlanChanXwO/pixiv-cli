@@ -2,20 +2,28 @@
 
 [English](CONTRIBUTING.md) | 简体中文
 
-欢迎提交问题报告、文档修复、测试和边界清晰的功能。
+欢迎聚焦的问题报告、文档修复、测试和边界清晰的功能。
 
-## 开始之前
+```mermaid
+flowchart LR
+    I["检索已有 issue/PR"] --> Big{"大功能、public API、<br/>新依赖或认证变更？"}
+    Big -->|是| Disc["先讨论"] --> Red
+    Big -->|否| Red["Red：失败的测试<br/>（或已有检查）"]
+    Red --> Green["Green：最小改动"] --> Ref["重构"]
+    Ref --> Chk["聚焦测试 → 回归<br/>git diff --check"]
+    Chk --> Docs["同步中英文档"] --> PR["提交 PR<br/>（模板 + 验证）"]
+```
 
-- 先检索已有 issue 和 pull request，避免重复提交。
-- 大功能、public API 变更、新依赖或认证变更应在实施前讨论。
-- 不要在 issue、fixture、commit 或 CI 日志中包含 Pixiv token、Cookie、下载作品、本地数据库、缓存、机器配置或私有 API 响应。
-- 保持改动聚焦；无关清理更适合单独提交 pull request。
+## 基本规则
 
-## 开发环境
+- ❌ 不要在 issue、fixture、commit 或 CI 日志中包含 Pixiv token、Cookie、下载作品、本地数据库、缓存、机器配置或私有 API 响应。
+- 改动保持聚焦；无关清理单独提 PR。
+- 不得把真实的认证、网络、Pixiv API、文件系统或编码失败隐藏为空成功或静默 fallback；不得增加无依据的 timeout、截断、分页上限、重试限制或隐藏降级。
+- 真实 Pixiv/FANBOX SDK 与反向搜图检查均为 opt-in：未经明确授权不得使用用户账号或上传图片，也不要把真实 token 放进会写入 shell history 的命令行。
 
-源码构建使用 `go.mod` 声明的 Go 版本与 `CGO_ENABLED=0`，不需要 Rust 工具链、native library 或 C linker。race-detector 测试使用 `CGO_ENABLED=1`，需要可用的 C 工具链。Windows 构建通过 Git Bash、MSYS2 或 WSL 运行。
+## 构建与测试
 
-在仓库根目录构建和测试：
+Go 版本以 `go.mod` 为准，`CGO_ENABLED=0`，无需 Rust、native library 或 C linker。race 测试需要 `CGO_ENABLED=1` 与 C 工具链。Windows 使用 Git Bash、MSYS2 或 WSL。
 
 ```bash
 CGO_ENABLED=0 go test ./...
@@ -23,53 +31,43 @@ sh scripts/build.sh
 ./build/pixiv --help
 ```
 
-编码器验证、opt-in 真实 API 测试、发布门禁和平台细节见[开发流程](docs/zh-CN/maintainers/development.md)。
+编码器验证、opt-in 真实 API 测试、发布门禁与平台细节见[开发流程](docs/zh-CN/maintainers/development.md)。
 
 ## 架构边界
 
-- `cmd/pixiv` 委托 `internal/cli`；`internal/cli/root.go` 负责命令注册、全局生命周期与生产组装，具体命令位于 `internal/cli/commands`。
-- CLI/MCP 的 Pixiv/FANBOX 能力经 owner-local 窄端口调用公开 `sdk/pixiv`、`sdk/fanbox`，不得直连 `internal/services/{pixiv,fanbox}` 协议适配包。
-- MCP 产品聚合在 `internal/mcpserver/{pixiv,fanbox}`，具体 tool 位于各产品 `tools/<tool>`；stdio 由 CLI MCP 命令启动，stdout 只用于 JSON-RPC。
-- `internal/shared/*` 负责跨子系统机制，`internal/utils/*` 保持协议无关，配置/路径归 `internal/config/{settings,paths}`；文件应聚焦于一个职责或少数紧密相关职责。
+| 规则 | 说明 |
+| --- | --- |
+| 入口保持薄 | `cmd/pixiv` → `internal/cli`；`internal/cli/root.go` 负责命令注册、生命周期与生产组装；具体命令在 `internal/cli/commands` |
+| 只走 SDK | CLI/MCP 经 owner-local 窄端口调用 `sdk/pixiv` / `sdk/fanbox`，不直连 `internal/services/{pixiv,fanbox}` 协议适配包 |
+| MCP 布局 | 产品聚合在 `internal/mcpserver/{pixiv,fanbox}`，tool 位于 `tools/<tool>`；stdio 的 stdout 只承载 JSON-RPC |
+| 共享代码 | 跨子系统机制在 `internal/shared/*`，协议无关 helper 在 `internal/utils/*`，配置/路径在 `internal/config/{settings,paths}`；一个文件一个职责 |
 
-修改这些边界前，请阅读[架构说明](docs/zh-CN/maintainers/architecture.md)与仓库 [AGENTS.md](AGENTS.md)。
+调整这些边界前请阅读[架构说明](docs/zh-CN/maintainers/architecture.md)与 [AGENTS.md](AGENTS.md)。
 
-## 使用测试驱动开发
+## 测试
 
-功能和行为修复采用 red-green-refactor：
-
-1. 先检查已有断言，优先复用现有检查；只有未被覆盖的长期核心契约才按下方准入规则保留新增测试代码，一次性验证只放在本地 `tmp/test/`。
-2. 实现让它通过的最小完整变更。
+1. 先看已有断言，优先复用现有检查；只有未覆盖的长期核心契约才保留新测试代码，一次性验证放在 `tmp/test/`。
+2. 实现能通过的最小完整改动。
 3. 在不改变已验证公开行为的前提下重构。
-4. 先运行聚焦测试，再运行相关回归。
+4. 先跑聚焦测试，再跑相关回归。
 
-纯结构调整复用改动前后的特征测试；普通注释修改执行文档与相关工具检查。主线准入、临时验证、重复测试与适用的 Red 例外见[测试选择](.agents/skills/pixiv-cli-test/SKILL.md#decide-whether-test-code-must-change)。临时验证通过后不必转为提交的测试；不能因为实现短就省略必要的回归或安全检查。
+纯结构调整用前后特征测试；只改注释时做文档与工具检查。准入、临时证据与 Red 例外见[测试选择](.agents/skills/pixiv-cli-test/SKILL.md#decide-whether-test-code-must-change)。不能因为实现短就省略必要的回归或安全检查。可行时通过 public boundary 测试。
 
-可行时通过 public boundary 测试公开行为。不得把真实的认证、网络、Pixiv API、文件系统或编码失败隐藏为空成功或静默 fallback；不得增加无依据的 timeout、截断、分页上限、重试限制或隐藏降级。
+## Agent
 
-真实 Pixiv/FANBOX SDK 与反向搜图检查均为 opt-in。未经用户明确授权，不得使用其本地账号运行或上传图片；也不要把真实 token 放入可能写入 shell history 的命令行。
-
-## Agent 辅助开发
-
-从 [AGENTS.md](AGENTS.md) 开始。仓库内的 `pixiv-cli-*` 维护技能定义 Go 设计、聚焦测试、MCP/native、审查、PR 与发布流程，不依赖个人全局指令或 CCS 安装。不支持技能发现的客户端可直接读取对应 `SKILL.md`。Agent 指令、技能正文、引用文件与 UI 元数据使用英文；公开文档保留双语。
+从 [AGENTS.md](AGENTS.md) 开始。仓库内 `pixiv-cli-*` 技能覆盖设计、测试、MCP/native、审查、PR 与发布，不依赖个人全局指令或 CCS；不支持技能发现的客户端直接读 `SKILL.md`。Agent 契约与技能用英文；公开文档保持双语。
 
 ## 文档
 
-代码注释可使用中文或英文。按[代码注释规范](.agents/skills/pixiv-cli-code-commenting/SKILL.md)维护准确的 API 契约、意图和按需编号的流程阶段；指令文件要求英文，不等于强制英文注释或每个函数都要加注释。
+修改命令、flag、SDK API、MCP tool、配置键、环境变量、输出契约、认证流程、代理、下载行为或已知限制时，在同一 PR 同步文档。
 
-修改命令、flag、SDK API、MCP tool、配置键、环境变量、输出契约、认证流程、代理行为、下载行为或已知限制时，在同一 pull request 同步文档。
-
-- 保持 `README.md` 与 `README.zh-CN.md` 的行为语义对应。
-- 保持 `docs/<locale>/` 下已有语言版本的行为语义对应；不得用未翻译占位内容冒充对应语言。
-- 按文件职责更新 localized SDK/MCP contract 或 `docs/zh-CN/maintainers/`。
-- PR 正文只留审查需要的内容：变更说明、实际验证和简短自查。发布准备阶段由维护者审计所有已合并 PR 和 direct commit，再直接编写带来源的英文与简体中文版本说明；纯内部改动归入 `Maintenance`。具体流程见[发布说明与发布](docs/zh-CN/maintainers/development.md#release-notes-and-publication)。
-- CLI 命令、flag 或安全语义变化时检查 `skills/pixiv-cli/`。
-
-稳定规则只在一个权威文档中定义，其他位置应链接过去，避免复制大段内容。
+- `README.md` / `README.zh-CN.md` 与 `docs/<locale>/` 各页保持行为对应；不得留未翻译占位。
+- 按职责更新 SDK/MCP 契约或 `docs/zh-CN/maintainers/`；CLI 命令、flag 或安全语义变化时检查 `skills/pixiv-cli/`。
+- 源码注释可用中文或英文，遵循[代码注释规范](.agents/skills/pixiv-cli-code-commenting/SKILL.md)（不设每函数注释配额）。
+- PR 正文：改了什么、实际跑过的验证、checklist。发布时由维护者基于已合并 PR 编写双语 release notes，见[发布说明与发布](docs/zh-CN/maintainers/development.md#release-notes-and-publication)。
+- 稳定规则只放在一个权威文档里，其他位置链接过去。
 
 ## Pull request checklist
-
-请求 review 前确认：
 
 - [ ] 改动保持聚焦，并说明了用户可感知行为。
 - [ ] 行为变更有实际 Red/Green 和相关回归证据，或明确接受的阻塞；纯文档变更已检查内容、链接与元数据。
@@ -80,8 +78,8 @@ sh scripts/build.sh
 - [ ] 需要同步的英文与简体中文文档已对应。
 - [ ] 未包含凭据、下载内容、本地状态或机器相关产物。
 
-Commit message 推荐使用 Conventional Commits，例如 `fix(cli): preserve record identity` 或 `docs: clarify account selection`。除非未来规范明确要求，项目不要求 CLA、DCO sign-off 或 signed commit。
+Commit message 推荐 Conventional Commits（`fix(cli): preserve record identity`、`docs: clarify account selection`）。除非未来规范明确要求，不需要 CLA、DCO sign-off 或 signed commit。
 
 ## 许可证
 
-提交贡献即表示你同意该贡献可按仓库的 [MIT License](LICENSE) 分发。
+提交贡献即表示你同意该贡献按仓库的 [MIT License](LICENSE) 分发。
