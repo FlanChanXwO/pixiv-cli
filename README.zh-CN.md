@@ -154,6 +154,14 @@ pixiv mcp --port 1270 --base-url https://mcp.example.com   # 位于 HTTPS 反向
 
 欢迎 bug 报告、文档修正、测试和聚焦的功能——请先阅读 [CONTRIBUTING.zh-CN.md](CONTRIBUTING.zh-CN.md)，大改动或公开接口变更请先讨论。
 
+感谢每一位帮助 pixiv-cli 变得更好的贡献者。
+
+<a href="https://github.com/FlanChanXwO/pixiv-cli/graphs/contributors">
+  <img src="https://contrib.rocks/image?repo=FlanChanXwO/pixiv-cli" alt="pixiv-cli 贡献者">
+</a>
+
+[查看全部贡献者](https://github.com/FlanChanXwO/pixiv-cli/graphs/contributors)
+
 ## 许可证
 
 [MIT](LICENSE) © FlanChanXwO · 第三方声明已内嵌：运行 `pixiv --licenses`。Release 压缩包只包含可执行文件。

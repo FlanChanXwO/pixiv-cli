@@ -154,6 +154,14 @@ An authorized HTTP connector acts on the **server's** files and network (e.g. re
 
 Bug reports, docs fixes, tests and focused features are welcome — read [CONTRIBUTING.md](CONTRIBUTING.md) first and discuss large or public-interface changes before coding.
 
+Thank you to everyone who helps improve pixiv-cli.
+
+<a href="https://github.com/FlanChanXwO/pixiv-cli/graphs/contributors">
+  <img src="https://contrib.rocks/image?repo=FlanChanXwO/pixiv-cli" alt="Contributors to pixiv-cli">
+</a>
+
+[View all contributors](https://github.com/FlanChanXwO/pixiv-cli/graphs/contributors)
+
 ## License
 
 [MIT](LICENSE) © FlanChanXwO · Third-party notices are embedded: run `pixiv --licenses`. Release archives contain only the executable.
