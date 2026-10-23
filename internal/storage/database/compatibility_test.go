@@ -46,6 +46,9 @@ func TestSelectPixivChooserFailureRollsBackMarker(t *testing.T) {
 	if err := db.SavePixivCredential(ctx, pixivAccount(1, "u", "token")); err != nil {
 		t.Fatal(err)
 	}
+	if err := db.Freeze(ctx, 1, 100); err != nil {
+		t.Fatal(err)
+	}
 	before, err := db.GetPixiv(ctx, 1)
 	if err != nil {
 		t.Fatal(err)
@@ -59,8 +62,9 @@ func TestSelectPixivChooserFailureRollsBackMarker(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if after.PoolLastSelected || after.UpdatedAt != before.UpdatedAt {
-		t.Fatalf("rollback left marker/updated_at changed: before=%+v after=%+v", before, after)
+	if after.PoolLastSelected || after.UpdatedAt != before.UpdatedAt ||
+		after.PoolFrozenUntil == nil || *after.PoolFrozenUntil != 100 {
+		t.Fatalf("rollback left transaction changes: before=%+v after=%+v", before, after)
 	}
 }
 

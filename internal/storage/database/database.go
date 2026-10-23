@@ -40,6 +40,7 @@ func Open(appDataDir string) (*DB, error) {
 	sqlDB.SetMaxOpenConns(1)
 	orm, err := gorm.Open(gormlite.OpenDB(sqlDB), &gorm.Config{
 		Logger:                 logger.Discard,
+		DisableAutomaticPing:   true,
 		SkipDefaultTransaction: true,
 		NamingStrategy:         schema.NamingStrategy{SingularTable: true},
 	})
