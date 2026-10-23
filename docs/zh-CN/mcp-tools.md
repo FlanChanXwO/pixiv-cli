@@ -28,7 +28,7 @@ flowchart LR
 | Pixiv/FANBOX 查询与写入工具、opaque FANBOX 资源 | 是 | 是 |
 | `pixiv_artwork_media` 完整图片 / GIF / APNG 与 PNG 预览 | inline 内容 | inline 或受保护的 App 交付 |
 | `pixiv_download`、`pixiv_download_random_from_recommendation` | 本地文件 | 不注册 |
-| `pixiv_show_gallery`、`pixiv_gallery_animation`、Gallery 资源 | 不注册 | 有媒体服务时可用 |
+| `pixiv_show_gallery`、`pixiv_show_artwork`、`pixiv_gallery_animation`、Gallery 资源 | 不注册 | 有媒体服务时可用 |
 | `pixiv_account_*` owner 管理 / helper 登录 | 使用本地 CLI 认证 | owner 状态与 relay |
 
 ## HTTP 授权

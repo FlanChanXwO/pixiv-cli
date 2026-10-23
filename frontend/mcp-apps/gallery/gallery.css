@@ -57,6 +57,8 @@
   box-sizing: border-box;
   margin: 0;
   padding: 0;
+  /* 移动端默认点击高亮是直角色块，按压反馈由各控件自己绘制。 */
+  -webkit-tap-highlight-color: transparent;
 }
 
 body {
@@ -178,13 +180,18 @@ button {
   white-space: nowrap;
 }
 
-button:hover:not(:disabled) {
-  background: var(--bg-tertiary);
-  box-shadow: var(--shadow-sm);
+/* 悬停只给能悬停的指针，避免触屏点按后残留高亮。 */
+@media (hover: hover) {
+  button:hover:not(:disabled) {
+    background: var(--bg-tertiary);
+    box-shadow: var(--shadow-sm);
+  }
 }
 
-button:active:not(:disabled) {
-  transform: translateY(0);
+/* 独立的 scale 属性不覆盖靠 transform 定位的控件。 */
+button:active:not(:disabled),
+a.icon-button:active {
+  scale: 0.94;
 }
 
 button:disabled,
@@ -224,8 +231,10 @@ svg {
   border-radius: 50%;
 }
 
-.icon-button:hover:not(:disabled) {
-  background: var(--bg-secondary);
+@media (hover: hover) {
+  .icon-button:hover:not(:disabled) {
+    background: var(--bg-secondary);
+  }
 }
 
 .browser-download {
@@ -241,9 +250,11 @@ svg {
   transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
-.browser-download:hover {
-  background: var(--bg-tertiary);
-  box-shadow: var(--shadow-sm);
+@media (hover: hover) {
+  .browser-download:hover {
+    background: var(--bg-tertiary);
+    box-shadow: var(--shadow-sm);
+  }
 }
 
 #cards > button {
@@ -294,13 +305,17 @@ img {
   outline-offset: -4px;
 }
 
-.media-open:hover:not(:disabled) {
-  background: transparent;
+@media (hover: hover) {
+  .media-open:hover:not(:disabled) {
+    background: transparent;
+  }
 }
 
-.media-open:hover:not(:disabled) + .media-frame,
-.artwork-card:hover .media-frame {
-  box-shadow: var(--shadow-hover);
+@media (hover: hover) {
+  .media-open:hover:not(:disabled) + .media-frame,
+  .artwork-card:hover .media-frame {
+    box-shadow: var(--shadow-hover);
+  }
 }
 
 .media-state {
@@ -370,9 +385,11 @@ img {
   font-weight: 500;
 }
 
-button.tag:hover {
-  background: var(--bg-tertiary);
-  color: var(--text-primary);
+@media (hover: hover) {
+  button.tag:hover {
+    background: var(--bg-tertiary);
+    color: var(--text-primary);
+  }
 }
 
 .tags.collapsed .tag {
@@ -390,9 +407,11 @@ button.tag:hover {
   border-radius: 50%;
 }
 
-.tag-toggle:hover:not(:disabled) {
-  color: var(--text-primary);
-  background: var(--bg-secondary);
+@media (hover: hover) {
+  .tag-toggle:hover:not(:disabled) {
+    color: var(--text-primary);
+    background: var(--bg-secondary);
+  }
 }
 
 .tags.expanded {
@@ -411,8 +430,10 @@ button.tag:hover {
   box-shadow: var(--shadow-sm);
 }
 
-.artwork-card:hover {
-  box-shadow: var(--shadow-md);
+@media (hover: hover) {
+  .artwork-card:hover {
+    box-shadow: var(--shadow-md);
+  }
 }
 
 /* 作品详情页 */
@@ -435,24 +456,42 @@ button.tag:hover {
   min-width: 0;
 }
 
-.detail-media:has(.page-navigation) {
-  padding-bottom: 32px;
-}
 
 .detail-media .media-frame,
 .detail-media img {
   background: var(--bg-secondary);
 }
 
+/* vh would grow with the host-resized iframe; vw follows the stable host width. */
+/* 留边处垫同图的模糊放大版，而不是纯色条。 */
+.detail-media .media-frame img {
+  background: transparent;
+}
+
+.detail-media .media-frame::before {
+  content: "";
+  position: absolute;
+  inset: -32px;
+  background: var(--frame-image, none) center / cover no-repeat;
+  filter: blur(28px) saturate(1.15);
+  opacity: 0.6;
+  pointer-events: none;
+}
+
 .detail-media .media-frame {
-  aspect-ratio: auto;
-  height: clamp(320px, 60vh, 600px);
+  aspect-ratio: 4 / 3;
+  width: 100%;
+  max-height: min(90vw, 360px);
   border-radius: 24px 24px 0 0;
 }
 
 .detail-media > img,
 .detail-media img:not(.media-frame img) {
-  max-height: 600px;
+  width: auto;
+  max-width: 100%;
+  max-height: min(90vw, 360px);
+  margin-inline: auto;
+  background: transparent;
 }
 
 .detail-info {
@@ -475,14 +514,16 @@ button.tag:hover {
   margin: -24px 0 12px; background: transparent; color: var(--text-secondary);
   font-size: 11px; font-weight: 500; touch-action: none; user-select: none; cursor: ns-resize;
 }
-.detail-toggle:hover:not(:disabled) { background: transparent; box-shadow: none; color: var(--pixiv-blue); }
+@media (hover: hover) {
+  .detail-toggle:hover:not(:disabled) { background: transparent; box-shadow: none; color: var(--pixiv-blue); }
+}
 .detail-grip { width: 40px; height: 4px; border-radius: 3px; background: var(--border-light); }
 .detail-info:has(.detail-content[hidden]) { padding-bottom: 0; }
 
 
 .detail-info h2 {
   order: 0;
-  font-size: 24px;
+  font-size: 20px;
   font-weight: 700;
   line-height: 1.4;
   margin: 8px 0 20px;
@@ -504,30 +545,32 @@ button.tag:hover {
 .author-card .artwork-author {
   width: 100%; min-height: 48px; padding: 0; gap: 12px; margin: 0;
   font-size: 16px; font-weight: 600; color: inherit;
-  overflow-wrap: anywhere; white-space: normal; justify-content: flex-start;
+  overflow-wrap: break-word; white-space: normal; justify-content: flex-start;
 }
 .author-card .author-avatar {
   order: -1; flex: 0 0 40px; width: 40px; height: 40px;
   border-radius: 50%; object-fit: cover; background: var(--bg-secondary);
 }
-.avatar-message { display: block; font-size: 12px; color: var(--text-secondary); }
-.avatar-message:empty { display: none; }
 .author-card button.artwork-author::after {
   content: "↗"; font-size: 18px; font-weight: 400; color: var(--text-tertiary);
 }
-.author-card button.artwork-author:hover:not(:disabled) { background: transparent; box-shadow: none; }
+@media (hover: hover) {
+  .author-card button.artwork-author:hover:not(:disabled) { background: transparent; box-shadow: none; }
+}
 
-/* 一行图标与数值；窄屏横向滚动，不挤压或换行。 */
+/* 图标与数值；窄屏整项换行，不截断。 */
 .detail-info .artwork-stats {
-  order: 3; display: flex; align-items: center; gap: 20px;
-  overflow-x: auto; padding: 0 0 16px; margin: 0 0 16px;
+  order: 3; display: flex; flex-wrap: wrap; align-items: center; gap: 8px 20px;
+  padding: 0 0 16px; margin: 0 0 16px;
   border-bottom: 1px solid var(--border-light);
 }
 .metadata-stat { display: flex; flex: 0 0 auto; align-items: center; gap: 6px; white-space: nowrap; }
 .metadata-stat > svg { width: 16px; height: 16px; color: var(--text-tertiary); }
 .metadata-stat dd { margin: 0; font-size: 13px; line-height: 1.5; font-weight: 500; font-variant-numeric: tabular-nums; color: var(--text-secondary); }
 .pid-copy { min-height: 32px; padding: 4px 0; border-radius: 4px; background: transparent; color: inherit; font: inherit; user-select: text; }
-.pid-copy:hover:not(:disabled) { background: transparent; box-shadow: none; color: var(--pixiv-blue); }
+@media (hover: hover) {
+  .pid-copy:hover:not(:disabled) { background: transparent; box-shadow: none; color: var(--pixiv-blue); }
+}
 .pid-copy[data-copy-state="copied"]::after { content: "✓"; color: var(--pixiv-blue); }
 
 .detail-info .tags {
@@ -550,9 +593,11 @@ button.tag:hover {
   font-weight: 500;
 }
 
-.detail-info button.tag:hover {
-  background: rgba(0, 150, 250, 0.15);
-  color: var(--pixiv-blue-hover);
+@media (hover: hover) {
+  .detail-info button.tag:hover {
+    background: rgba(0, 150, 250, 0.15);
+    color: var(--pixiv-blue-hover);
+  }
 }
 
 .detail-info .caption {
@@ -602,13 +647,11 @@ button.tag:hover {
 .bookmark-visibility select { width: 100%; color: var(--text-primary); }
 .bookmark-options-secondary { display: flex; flex-wrap: wrap; gap: 4px; }
 .bookmark-options-secondary button { flex: 1; padding: 8px; font-size: 12px; background: transparent; }
-.detail-author-row .bookmark-status { position: absolute; right: 0; top: 100%; width: min(288px, calc(100vw - 48px)); z-index: 31; background: var(--bg-primary); }
 @media (max-width: 480px) {
   .bookmark-toolbar .primary-action { width: 44px; padding: 12px; gap: 0; font-size: 0; }
-  .detail-info .artwork-stats { gap: 16px; }
+  .detail-info .artwork-stats { gap: 8px 16px; }
 }
 
-.bookmark-status:empty { display: none; }
 button.tag { min-height: 44px; white-space: normal; text-align: left; }
 
 /* 文本内容 */
@@ -626,8 +669,10 @@ button.tag { min-height: 44px; white-space: normal; text-align: left; }
   transition: all 0.2s ease;
 }
 
-.caption-link:hover {
-  text-decoration-color: var(--pixiv-blue);
+@media (hover: hover) {
+  .caption-link:hover {
+    text-decoration-color: var(--pixiv-blue);
+  }
 }
 
 .caption-link:focus-visible {
@@ -690,8 +735,10 @@ select {
   transition: all 0.2s ease;
 }
 
-select:hover {
-  background: var(--bg-tertiary);
+@media (hover: hover) {
+  select:hover {
+    background: var(--bg-tertiary);
+  }
 }
 
 select:focus {
@@ -703,11 +750,6 @@ select:focus {
   margin-top: 24px;
 }
 
-.bookmark-status {
-  color: var(--text-secondary);
-  font-size: 13px;
-  margin: 0 0 10px;
-}
 
 .bookmark-toolbar {
   display: flex;
@@ -722,9 +764,11 @@ select:focus {
   font-weight: 600;
 }
 
-.primary-action:hover:not(:disabled) {
-  background: var(--pixiv-blue-hover);
-  box-shadow: var(--shadow-md);
+@media (hover: hover) {
+  .primary-action:hover:not(:disabled) {
+    background: var(--pixiv-blue-hover);
+    box-shadow: var(--shadow-md);
+  }
 }
 
 .detail-media > p {
@@ -758,7 +802,7 @@ select:focus {
 }
 
 .skeleton-image {
-  height: clamp(320px, 60vh, 600px);
+  height: min(68vw, 300px);
   border-radius: 24px;
 }
 
@@ -827,13 +871,39 @@ select:focus {
     border-radius: 24px;
   }
 
-  .detail-media .media-frame,
-  .skeleton-image {
-    height: clamp(380px, 50vh, 600px);
+  .detail-info h2 {
+    font-size: 24px;
+  }
+}
+
+/* Phones route vertical swipes to the chat, so an inner vertical scroller is unreachable; scroll results sideways. */
+@media (max-width: 599px) {
+  #cards {
+    padding: 16px;
   }
 
-  .detail-info h2 {
-    font-size: 28px;
+  #cards.gallery-results {
+    grid-template-columns: none;
+    grid-auto-flow: column;
+    grid-auto-columns: 44%;
+    gap: 12px;
+    max-height: none;
+    overflow: auto hidden;
+    overscroll-behavior-x: contain;
+    scroll-snap-type: x mandatory;
+    scroll-padding-inline: 16px;
+  }
+
+  #cards.gallery-results .artwork-card {
+    scroll-snap-align: start;
+  }
+
+  #cards.gallery-results .media-frame {
+    aspect-ratio: 3 / 4 !important;
+  }
+
+  #cards.gallery-results .media-frame img {
+    object-fit: cover;
   }
 }
 
@@ -869,8 +939,10 @@ button.artwork-author {
   transition: color 0.2s ease;
 }
 
-button.artwork-author:hover:not(:disabled) {
-  color: var(--text-primary);
+@media (hover: hover) {
+  button.artwork-author:hover:not(:disabled) {
+    color: var(--text-primary);
+  }
 }
 
 /* 媒体徽章 */
@@ -941,7 +1013,8 @@ img[role="button"]:focus-visible {
   background: transparent;
 }
 
-.page-viewer > button {
+.page-viewer > .page-previous,
+.page-viewer > .page-next {
   position: absolute;
   top: calc(50% - 22px);
   z-index: 3;
@@ -954,9 +1027,12 @@ img[role="button"]:focus-visible {
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
 }
 
-.page-viewer > button:hover:not(:disabled) {
-  background: rgba(0, 0, 0, 0.85);
-  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.4);
+@media (hover: hover) {
+  .page-viewer > .page-previous:hover:not(:disabled),
+  .page-viewer > .page-next:hover:not(:disabled) {
+    background: rgba(0, 0, 0, 0.85);
+    box-shadow: 0 6px 16px rgba(0, 0, 0, 0.4);
+  }
 }
 
 .page-previous {
@@ -967,17 +1043,83 @@ img[role="button"]:focus-visible {
   right: 12px;
 }
 
+/* 多页时只常驻一个计数胶囊；点开后进度条浮在图片底部，不占布局。 */
+.page-counter {
+  position: absolute;
+  /* 详情面板向上压住图片底部 20px；44px 触控区内胶囊上下各留 6px。 */
+  bottom: 26px;
+  left: 50%;
+  z-index: 3;
+  min-height: 44px;
+  margin: 0;
+  padding: 0;
+  background: transparent;
+  color: #fff;
+  font-size: 12px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  transform: translateX(-50%);
+}
+
+.page-counter-label {
+  display: inline-flex;
+  align-items: center;
+  min-height: 32px;
+  padding: 4px 12px;
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.55);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  transition: background-color 120ms ease;
+}
+
+@media (hover: hover) {
+  .page-counter:hover:not(:disabled) {
+    background: transparent;
+    box-shadow: none;
+  }
+
+  .page-counter:hover:not(:disabled) .page-counter-label {
+    background: rgba(0, 0, 0, 0.72);
+  }
+}
+
+.page-viewer .page-badge {
+  display: none;
+}
+
 .page-navigation {
+  position: absolute;
+  right: 12px;
+  bottom: 72px;
+  left: 12px;
+  z-index: 3;
   display: flex;
   align-items: center;
-  gap: 14px;
-  margin-top: 12px;
-  padding: 0 12px;
+  gap: 12px;
+  padding: 6px 14px;
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.55);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+}
+
+.page-navigation[hidden],
+.page-viewer > [hidden] {
+  display: none;
+}
+
+@media (pointer: coarse) {
+  .page-viewer > .page-previous,
+  .page-viewer > .page-next {
+    display: none;
+  }
 }
 
 .page-navigation input {
   flex: 1;
   min-width: 0;
+  min-height: 32px;
   max-width: none;
   padding: 0;
   background: transparent;
@@ -985,16 +1127,25 @@ img[role="button"]:focus-visible {
   accent-color: var(--pixiv-blue);
 }
 
+/* 计数胶囊已显示同一数值。 */
+.page-navigation .page-position {
+  display: none;
+}
+
 .page-position {
   flex: 0 0 auto;
-  font-size: 13px;
-  color: var(--text-secondary);
+  font-size: 12px;
+  color: #fff;
   font-variant-numeric: tabular-nums;
   font-weight: 600;
 }
 
 /* 原图灯箱：只覆盖查看器，不改列表与详情页布局。 */
 .original-viewer {
+  --safe-top: max(env(safe-area-inset-top, 0px), var(--host-safe-top, 0px));
+  --safe-right: max(env(safe-area-inset-right, 0px), var(--host-safe-right, 0px));
+  --safe-bottom: max(env(safe-area-inset-bottom, 0px), var(--host-safe-bottom, 0px));
+  --dock-bottom: calc(20px + var(--safe-bottom));
   position: fixed;
   inset: 0;
   width: auto;
@@ -1014,6 +1165,11 @@ img[role="button"]:focus-visible {
   display: block;
 }
 
+/* 宿主全屏时底部可能浮着宿主输入栏（手机、桌面最大化），工具条放在它上方。 */
+.original-viewer[data-fullscreen] {
+  --dock-bottom: calc(max(80px, var(--safe-bottom)) + 8px);
+}
+
 .original-viewer::backdrop {
   background: #000;
 }
@@ -1024,9 +1180,11 @@ img[role="button"]:focus-visible {
   z-index: 3;
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  height: 64px;
-  padding: env(safe-area-inset-top) 14px 0;
+  /* 页码紧跟关闭键：宿主全屏时会在右上角叠加自己的关闭按钮。 */
+  justify-content: flex-start;
+  gap: 8px;
+  height: calc(64px + var(--safe-top));
+  padding: var(--safe-top) 14px 0;
   background: linear-gradient(to bottom, rgba(0, 0, 0, 0.55), transparent);
   pointer-events: none;
 }
@@ -1035,14 +1193,21 @@ img[role="button"]:focus-visible {
   pointer-events: auto;
 }
 
+/* 宿主全屏时关闭键由宿主提供，顶栏无内容也就不需要暗角。 */
+.original-top:not(:has(> :not([hidden]))) {
+  background: none;
+}
+
 .original-viewer .icon-button {
   color: #fff;
   background: transparent;
 }
 
-.original-viewer .icon-button:hover:not(:disabled) {
-  background: rgba(255, 255, 255, 0.14);
-  box-shadow: none;
+@media (hover: hover) {
+  .original-viewer .icon-button:hover:not(:disabled) {
+    background: rgba(255, 255, 255, 0.14);
+    box-shadow: none;
+  }
 }
 
 .original-count {
@@ -1060,6 +1225,15 @@ img[role="button"]:focus-visible {
   -webkit-backdrop-filter: blur(12px);
 }
 
+/* 页码在底部工具条内，与按钮共用一层底色。 */
+.original-dock .original-count {
+  height: 36px;
+  padding: 0 8px;
+  background: transparent;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+
 .original-count svg {
   width: 14px;
   height: 14px;
@@ -1069,9 +1243,11 @@ img[role="button"]:focus-visible {
   position: absolute;
   inset: 0;
   display: grid;
+  grid-template: minmax(0, 1fr) / minmax(0, 1fr);
   place-items: center;
   overflow: auto;
-  padding: 64px 64px 92px;
+  /* 底部为工具条留位，图片不被遮挡。 */
+  padding: 64px 64px calc(var(--dock-bottom) + 64px);
   overscroll-behavior: contain;
   scrollbar-width: thin;
 }
@@ -1092,6 +1268,18 @@ img[role="button"]:focus-visible {
   cursor: zoom-in;
   user-select: none;
   -webkit-user-drag: none;
+}
+
+.original-stage > .original-image.original-fit {
+  width: 100%;
+  height: 100%;
+  max-width: none;
+  max-height: none;
+  object-fit: contain;
+}
+
+.original-viewer[data-fullscreen] .original-stage {
+  padding-top: calc(24px + var(--safe-top));
 }
 
 .original-stage > .original-image.original-actual,
@@ -1198,8 +1386,10 @@ img[role="button"]:focus-visible {
   -webkit-backdrop-filter: blur(10px);
 }
 
-.original-side:hover:not(:disabled) {
-  background: rgba(50, 50, 50, 0.85) !important;
+@media (hover: hover) {
+  .original-side:hover:not(:disabled) {
+    background: rgba(50, 50, 50, 0.85) !important;
+  }
 }
 
 .original-side:disabled {
@@ -1230,16 +1420,17 @@ img[role="button"]:focus-visible {
   left: 50%;
   width: max-content;
   transform: translateX(-50%);
-  bottom: calc(20px + env(safe-area-inset-bottom));
+  bottom: var(--dock-bottom);
   z-index: 3;
   display: flex;
   align-items: center;
   gap: 4px;
   padding: 6px 8px;
-  border: 1px solid rgba(255, 255, 255, 0.12);
+  /* 描边与内高光让胶囊在纯黑背景和亮色图片上都有清晰轮廓。 */
+  border: 1px solid rgba(255, 255, 255, 0.22);
   border-radius: 999px;
   background: rgba(22, 22, 22, 0.82);
-  box-shadow: 0 14px 40px rgba(0, 0, 0, 0.5);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08), 0 14px 40px rgba(0, 0, 0, 0.5);
   backdrop-filter: blur(20px);
   -webkit-backdrop-filter: blur(20px);
 }
@@ -1248,16 +1439,24 @@ img[role="button"]:focus-visible {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  min-height: 44px;
-  width: 36px;
-  height: 36px;
+  min-height: 40px;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
   color: rgba(255, 255, 255, 0.75);
-  transition: background-color 120ms ease, color 120ms ease;
+  transition: background-color 120ms ease, color 120ms ease, scale 120ms ease;
 }
 
-.original-dock .icon-button:hover:not(:disabled) {
+.original-dock .icon-button:active:not(:disabled) {
   color: #fff;
-  background: rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.18);
+}
+
+@media (hover: hover) {
+  .original-dock .icon-button:hover:not(:disabled) {
+    color: #fff;
+    background: rgba(255, 255, 255, 0.1);
+  }
 }
 
 .original-dock .icon-button:disabled {
@@ -1283,7 +1482,7 @@ img[role="button"]:focus-visible {
 
 .original-error {
   position: absolute;
-  bottom: calc(84px + env(safe-area-inset-bottom));
+  bottom: calc(84px + var(--safe-bottom));
   left: 50%;
   z-index: 3;
   display: flex;
@@ -1308,19 +1507,24 @@ img[role="button"]:focus-visible {
 .original-download[hidden],
 .original-error[hidden],
 .original-loading[hidden],
+.original-viewer [hidden],
+.original-dock[hidden],
 .original-side[hidden] {
   display: none;
 }
 
 @media (max-width: 600px) {
   .original-top {
-    height: 56px;
+    height: calc(56px + var(--safe-top));
     padding-right: 10px;
     padding-left: 10px;
   }
 
-  .original-stage {
-    padding: calc(128px + env(safe-area-inset-top)) 10px 128px;
+  .original-stage,
+  .original-viewer[data-fullscreen] .original-stage {
+    padding-top: calc(56px + var(--safe-top));
+    padding-right: 0;
+    padding-left: 0;
   }
 
   .original-side {
@@ -1338,26 +1542,28 @@ img[role="button"]:focus-visible {
     right: 8px;
   }
 
-  .original-dock {
-    /* 宿主输入栏会覆盖 iframe 底部；窄屏控件放在顶部关闭栏下方。 */
-    top: calc(64px + env(safe-area-inset-top));
-    bottom: auto;
-    gap: 2px;
-    padding: 5px 6px;
-  }
-
-  .original-dock .icon-button {
-    width: 34px;
-    height: 34px;
-  }
-
-  .original-zoom {
-    min-width: 46px;
-  }
 
   .original-error {
-    top: calc(128px + env(safe-area-inset-top));
+    top: calc(64px + var(--safe-top));
     bottom: auto;
+  }
+}
+
+/* 手机上屏幕高度宝贵：只为宿主输入栏让位，工具条可叠在图片底边。 */
+@media (max-width: 600px) and (pointer: coarse) {
+  .original-stage,
+  .original-viewer[data-fullscreen] .original-stage {
+    padding-bottom: max(72px, var(--safe-bottom));
+  }
+}
+
+/* 触屏用双指缩放和左右滑动翻页，分步缩放与侧边箭头只会遮挡图片。 */
+@media (pointer: coarse) {
+  .original-viewer .original-step,
+  .original-viewer .original-zoom,
+  .original-viewer .original-divider,
+  .original-viewer .original-side {
+    display: none;
   }
 }
 

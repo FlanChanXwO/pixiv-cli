@@ -1,4 +1,4 @@
-// Package show_gallery owns explicit visual presentation, not search.
+// Package show_gallery owns explicit visual presentation (gallery and single-artwork detail), not search.
 package show_gallery
 
 import (
@@ -39,6 +39,11 @@ type output struct {
 func Register(app *toolhost.App, server *mcp.Server) {
 	toolhost.AddTool(app, server, &mcp.Tool{Name: "pixiv_show_gallery", Description: "Show a visual gallery ONLY when the user explicitly asks to see images or a gallery. Pass artwork IDs from existing results; does not repeat a search. Optional page and quality renew a selected image for the app; defaults to page 1 thumbnail. Do not call automatically after searches.", Annotations: &mcp.ToolAnnotations{ReadOnlyHint: true, DestructiveHint: new(false), IdempotentHint: true, OpenWorldHint: new(true)}, OutputSchema: outputSchema(), InputSchema: schemas.ClosedObject(map[string]any{"illust_ids": map[string]any{"type": "array", "minItems": 1, "items": schemas.PositiveInteger("Artwork ID")}, "page": schemas.PositiveInteger("One-based page; defaults to 1"), "quality": schemas.EnumString("Defaults to thumbnail", "thumbnail", "regular", "original")}, []string{"illust_ids"})}, func(ctx context.Context, _ *mcp.CallToolRequest, in input) (*mcp.CallToolResult, output, error) {
 		return handle(ctx, app, in)
+	})
+	toolhost.AddTool(app, server, &mcp.Tool{Name: "pixiv_show_artwork", Description: "Show one artwork's visual detail page ONLY when the user explicitly asks to see that artwork. Pass an artwork ID from existing results; returns the same result as pixiv_show_gallery with that single ID, which the app opens as a detail page. Do not call automatically after searches.", Annotations: &mcp.ToolAnnotations{ReadOnlyHint: true, DestructiveHint: new(false), IdempotentHint: true, OpenWorldHint: new(true)}, OutputSchema: outputSchema(), InputSchema: schemas.ClosedObject(map[string]any{"illust_id": schemas.PositiveInteger("Artwork ID")}, []string{"illust_id"})}, func(ctx context.Context, _ *mcp.CallToolRequest, in struct {
+		IllustID int64 `json:"illust_id"`
+	}) (*mcp.CallToolResult, output, error) {
+		return handle(ctx, app, input{IllustIDs: []int64{in.IllustID}})
 	})
 }
 func handle(ctx context.Context, app *toolhost.App, in input) (*mcp.CallToolResult, output, error) {

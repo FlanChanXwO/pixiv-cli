@@ -28,7 +28,7 @@ flowchart LR
 | Pixiv/FANBOX query and mutation tools, opaque FANBOX resources | Yes | Yes |
 | `pixiv_artwork_media` complete images / GIF / APNG and PNG preview | Inline content | Inline or protected App delivery |
 | `pixiv_download`, `pixiv_download_random_from_recommendation` | Local files | Unregistered |
-| `pixiv_show_gallery`, `pixiv_gallery_animation`, Gallery resources | Unregistered | Available with media service |
+| `pixiv_show_gallery`, `pixiv_show_artwork`, `pixiv_gallery_animation`, Gallery resources | Unregistered | Available with media service |
 | `pixiv_account_*` owner management / helper login | Use local CLI authentication | Owner state and relay |
 
 ## HTTP authorization

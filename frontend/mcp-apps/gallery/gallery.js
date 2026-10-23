@@ -57,13 +57,19 @@
       style[key] = value === undefined ? "" : value + "px";
     }
     style.overflow = "auto";
+    // 宿主声明的安全区（刘海、输入栏）优先于浏览器 env()，供全屏灯箱避让。
+    const insets = hostContext.safeAreaInsets ?? {};
+    for (const side of ["top", "right", "bottom", "left"]) {
+      const value = dimension(insets[side]);
+      if (value === undefined) style.removeProperty?.("--host-safe-" + side); else style.setProperty?.("--host-safe-" + side, value + "px");
+    }
   }
   function notifySize() {
     if (disposed) return;
     for (const row of tagRows) row.update();
     const dims = hostContext.containerDimensions ?? {};
     const availableWidth = dimension(dims.width) ?? Math.min(document.documentElement.scrollWidth, dimension(dims.maxWidth) ?? Infinity);
-    const width = cards.className === "single-artwork" ? Math.min(dimension(document.body.scrollWidth) ?? availableWidth, availableWidth) : availableWidth;
+    const width = lightboxWidth ?? (cards.className === "single-artwork" ? Math.min(dimension(document.body.scrollWidth) ?? availableWidth, availableWidth) : availableWidth);
     const height = Math.min(document.body.scrollHeight, dimension(dims.height) ?? Infinity, dimension(dims.maxHeight) ?? Infinity);
     if (dimension(dims.height) !== undefined) document.documentElement.style.height = height + "px";
     send({method: "ui/notifications/size-changed", params: {width, height}});
@@ -104,7 +110,7 @@
     next: "m9 6 6 6-6 6",
     back: "m15 18-6-6 6-6M9 12h12",
     download: "M12 3v12m-5-5 5 5 5-5M5 16v4h14v-4",
-    refresh: "M20 7v5h-5M4 17v-5h5M6 7a7 7 0 0 1 12-2l2 2M4 17l2 2a7 7 0 0 0 12-2",
+    refresh: "M20 12a8 8 0 1 1-2.34-5.66L20 9M20 4v5h-5",
     heart: "M20.8 4.6a5.5 5.5 0 0 0-7.8 0L12 5.7l-1.1-1.1a5.5 5.5 0 0 0-7.8 7.8L12 21l8.8-8.6a5.5 5.5 0 0 0 0-7.8Z",
     remove: "M4 7h16M9 7V4h6v3M6 7l1 14h10l1-14M10 11v6m4-6v6",
     play: "m9 5 11 7-11 7V5Z",
@@ -112,6 +118,7 @@
     pages: "M8 3h13v13M3 8h13v13H3V8Z",
     eye: "M2 12s4-7 10-7 10 7 10 7-4 7-10 7S2 12 2 12Zm13 0a3 3 0 1 1-6 0 3 3 0 0 1 6 0Z",
     size: "M3 9V3h6m6 0h6v6M3 15v6h6m6 0h6v-6",
+    shrink: "M9 3v6H3m12-6v6h6M9 21v-6H3m12 6v-6h6",
     minus: "M5 12h14",
     plus: "M12 5v14M5 12h14",
     calendar: "M4 5h16v16H4V5Zm0 5h16M8 3v4m8-4v4",
@@ -158,11 +165,14 @@
       return author;
     }
   }
-  function pageDimensions(record, page) {
+  function pageSize(record, page) {
     const item = Array.isArray(record.pages) ? record.pages.find(item => item?.page_index === page - 1) : undefined;
     const valid = item => Number.isSafeInteger(item?.width) && item.width > 0 && Number.isSafeInteger(item?.height) && item.height > 0;
-    const source = valid(item) ? item : valid(record) ? record : undefined;
-    return source ? source.width + " × " + source.height : "";
+    return valid(item) ? item : valid(record) ? record : undefined;
+  }
+  function pageDimensions(record, page) {
+    const size = pageSize(record, page);
+    return size ? size.width + " × " + size.height : "";
   }
   function artworkMetadata(record, parent) {
     const stats = text("dl", "", parent, "artwork-stats");
@@ -290,7 +300,7 @@
     const row = {list, update: () => { toggle.hidden = !expanded && list.scrollWidth <= group.clientWidth; }};
     tagRows.add(row); resize?.observe(list); row.update();
   }
-  function proxyImage(record, parent, initial, epoch, page = 1, quality = "thumbnail", open, openOriginal, onReady) {
+  function proxyImage(record, parent, initial, epoch, page = 1, quality = "thumbnail", open, openOriginal, onReady, retryAll) {
     const frame = document.createElement("div"); frame.className = "media-frame"; parent.append(frame);
     if (quality !== "thumbnail") mediaBadges(record, frame);
     const key = "image:" + record.id + ":" + page + ":" + quality;
@@ -302,13 +312,15 @@
     const overlay = document.createElement("div"); overlay.className = "media-state"; frame.append(overlay);
     const message = text("span", "", overlay, "sr-only"); message.setAttribute?.("role", "status");
     const placeholder = text("div", "", overlay, "media-skeleton"); placeholder.setAttribute("aria-hidden", "true");
-    const retry = iconAction("Retry image", "refresh", overlay, () => load(true), true); retry.hidden = true; retry.disabled = !serverTools;
-    let busy = false, started = Boolean(retained), active = true;
+    const retry = iconAction("Retry image", "refresh", overlay, () => retryAll ? retryAll() : load(true), true); retry.hidden = true; retry.disabled = !serverTools;
+    let busy = false, started = Boolean(retained), active = true, broken = false;
     overlay.hidden = Boolean(retained);
-    const failed = () => { if (!active || epoch !== view || disposed) return; busy = false; forget(key); image.hidden = true; overlay.hidden = false; placeholder.style.display = "none"; message.className = "sr-only"; message.textContent = "Image unavailable"; retry.hidden = false; retry.disabled = !serverTools; };
+    const failed = () => { if (!active || epoch !== view || disposed) return; busy = false; broken = true; forget(key); image.hidden = true; overlay.hidden = false; placeholder.style.display = "none"; message.className = "sr-only"; message.textContent = "Image unavailable"; retry.hidden = false; retry.disabled = !serverTools; };
     const loaded = () => {
       if (!active || epoch !== view || disposed) return;
-      busy = false; image.hidden = false; overlay.hidden = true; retry.hidden = true; fitThumbnail();
+      busy = false; broken = false; image.hidden = false; overlay.hidden = true; retry.hidden = true; fitThumbnail();
+      // Letterboxing shows a blurred copy of the same image rather than flat bars.
+      if (quality !== "thumbnail") frame.style.setProperty?.("--frame-image", "url(" + JSON.stringify(image.src) + ")");
       // Include decoded pixels and an encoded-image allowance; browser/GPU overhead is outside this estimate.
       const bytes = image.naturalWidth * image.naturalHeight * 8;
       remember(key, image, bytes, () => { if (!proxyImages.has(image)) image.removeAttribute("src"); });
@@ -328,13 +340,14 @@
       if (!item || typeof output.media_origin !== "string" || !/^https?:\/\/[^/?#@]+$/.test(output.media_origin) || typeof item.url !== "string" || !item.url.startsWith(output.media_origin + "/") || !item.url.includes("/media/") || /[?#]/.test(item.url)) throw new Error("Invalid image URL");
       image.src = item.url;
     };
-    const load = async renew => {
+    const load = async (renew, source) => {
       if (retained && !renew && active) { onReady?.(); return; }
       if (!active || busy || epoch !== view || disposed || (started && !renew)) return;
-      started = true; busy = true; retry.hidden = true; overlay.hidden = false; placeholder.style.display = ""; message.className = "sr-only"; message.textContent = "Loading image…";
+      started = true; busy = true; broken = false; retry.hidden = true; overlay.hidden = false; placeholder.style.display = ""; message.className = "sr-only"; message.textContent = "Loading image…";
       try {
         if (!renew && typeof initial === "function") { const response = await initial(); if (!active || epoch !== view || disposed) return; assign(response); }
         else if (!renew && initial?.structuredContent?.images?.some(p => Number(p.illust_id) === Number(record.id) && p.page === page)) assign(initial);
+        else if (source) { const response = await source(); if (!active || epoch !== view || disposed) return; assign(response); }
         else { if (!serverTools) throw new Error("Host does not allow tool calls"); const response = await request("tools/call", {name:"pixiv_show_gallery", arguments:{illust_ids:[Number(record.id)],page,quality}}, epoch); if (!active || epoch !== view || disposed) return; assign(response); }
       } catch (_) { failed(); }
     };
@@ -347,7 +360,7 @@
       animationCleanups.delete(dispose);
     };
     animationCleanups.add(dispose);
-    return {load: () => load(false), frame, image, dispose, page};
+    return {load: () => load(false), renew: source => load(true, source), failed: () => broken, frame, image, dispose, page};
   }
   function action(label, parent, handler) {
     const button = text("button", label, parent);
@@ -371,10 +384,9 @@
       link.setAttribute("aria-label", "Download " + filename); link.title = "Download " + filename;
       link.append(icon("download")); link.href = content.uri + "?download=1";
       link.target = "_blank"; link.rel = "noreferrer";
-      text("p", "Save using your browser. Browser download restrictions still apply.", parent);
       return;
     }
-    const message = text("p", "Download uses the host confirmation flow.", parent);
+    const message = text("p", "", parent); message.setAttribute("role", "status");
     let busy = false;
     const button = iconAction("Download " + filename, "download", parent, async () => {
       if (!downloadFiles || busy || epoch !== view || !parent.contains(button)) return;
@@ -383,8 +395,8 @@
         const result = await request("ui/download-file", {contents: [content]}, epoch);
         if (epoch !== view || disposed) return;
         if (!result || result.isError) throw new Error("Download not confirmed");
-        message.textContent = "Host confirmed download. File location and naming are controlled by the host.";
-      } catch (_) { if (epoch === view && parent.contains(button)) { message.textContent = "Download not confirmed (denied, cancelled or failed)."; failed(); } }
+        message.textContent = "Host confirmed download.";
+      } catch (_) { if (epoch === view && parent.contains(button)) { message.textContent = "Download not confirmed."; failed(); } }
       finally { busy = false; button.disabled = !downloadFiles; }
     });
     button.disabled = !downloadFiles;
@@ -527,7 +539,7 @@
     const saved = await request("ui/download-file", {contents:[{type:"resource",resource:{uri:"urn:pixiv:artwork:" + id + ":page:" + page,mimeType:content.mimeType,blob:content.data}}]}, epoch);
     if (!saved || saved.isError) throw new Error("Download rejected");
   }
-  let closeOriginal;
+  let closeOriginal, lightboxWidth;
   function originalViewer(id, page, artwork, epoch) {
     if (closeOriginal || epoch !== view || disposed) return;
     closeOriginal = cleanup;
@@ -538,10 +550,10 @@
     const dialog = document.createElement("dialog"); dialog.className = "original-viewer";
     dialog.setAttribute("aria-label", String(artwork.title || "Artwork")); cards.append(dialog);
     const top = text("div", "", dialog, "original-top");
-    iconAction("Close original", "close", top, cleanup, true);
-    const counter = text("span", "", top, "original-count"); counter.hidden = total === 1;
-    if (total > 1) counter.append(icon("pages"));
-    const pageLabel = text("span", "", counter);
+    // A fullscreen host draws its own close control; ours stays for inline hosts, with Escape as well.
+    const close = iconAction("Close original", "close", top, cleanup, true); close.hidden = hostContext.displayMode === "fullscreen";
+    // Fullscreen hosts may float their own input over the bottom; CSS keeps the dock above it.
+    if (close.hidden) dialog.setAttribute("data-fullscreen", "");
     const stage = text("div", "", dialog, "original-stage");
     let front = document.createElement("img"); front.className = "original-image"; front.alt = ""; front.hidden = true; front.referrerPolicy = "no-referrer"; stage.append(front);
     let back = document.createElement("img"); back.className = "original-image original-incoming"; back.alt = ""; back.hidden = true; back.referrerPolicy = "no-referrer"; stage.append(back);
@@ -554,9 +566,13 @@
     const next = iconAction("Next image", "next", dialog, () => show(selectedPage + 1), true); next.className = "icon-button original-side original-next";
     if (total === 1) previous.hidden = next.hidden = true;
     const dock = text("div", "", dialog, "original-dock");
-    const out = iconAction("Zoom out", "minus", dock, () => scale(-0.25), true);
+    const counter = text("span", "", dock, "original-count"); counter.hidden = total === 1;
+    if (total > 1) counter.append(icon("pages"));
+    const pageLabel = text("span", "", counter);
+    // Stepped zoom is for mouse users; touch screens pinch instead (hidden for coarse pointers).
+    const out = iconAction("Zoom out", "minus", dock, () => scale(-0.25), true); out.className = "icon-button original-step";
     const readout = text("span", "Fit", dock, "original-zoom");
-    const plus = iconAction("Zoom in", "plus", dock, () => scale(0.25), true);
+    const plus = iconAction("Zoom in", "plus", dock, () => scale(0.25), true); plus.className = "icon-button original-step";
     text("span", "", dock, "original-divider");
     const fit = iconAction("Actual size", "size", dock, toggle, true); fit.setAttribute("aria-pressed", "false");
     let downloadButton;
@@ -569,14 +585,25 @@
       downloadButton.setAttribute("aria-label", "Download viewed original"); downloadButton.title = "Download viewed original";
       downloadButton.append(icon("download")); downloadButton.hidden = true;
     }
-    const toggleControls = enabled => { out.disabled = plus.disabled = fit.disabled = !enabled; };
+    // Controls only appear once an image can be acted on.
+    const toggleControls = enabled => { out.disabled = plus.disabled = fit.disabled = !enabled; dock.hidden = !enabled; };
     toggleControls(false);
     function setLoading(loading) { spinner.hidden = !loading; dialog.setAttribute("aria-busy", String(loading)); }
+    // A fullscreen host may size its panel to the image instead of a fixed wide pane.
+    function preferImageWidth() {
+      if (!shown || hostContext.displayMode !== "fullscreen" || !(front.naturalWidth > 0 && front.naturalHeight > 0)) return;
+      const {x, y} = stagePadding(), height = (Number(stage.clientHeight) || 0) - y;
+      if (height > 0) { lightboxWidth = Math.round(Math.min(front.naturalWidth, height * front.naturalWidth / front.naturalHeight) + x); notifySize(); }
+    }
+    function stagePadding() {
+      const computed = globalThis.getComputedStyle?.(stage);
+      // A real 0px padding must stay 0; only an unavailable style falls back to 16px.
+      const pad = name => { const value = parseFloat(computed?.[name]); return Number.isFinite(value) ? value : 16; };
+      return {x: pad("paddingLeft") + pad("paddingRight"), y: pad("paddingTop") + pad("paddingBottom")};
+    }
     function fitFrom(image) {
       const box = stage.getBoundingClientRect?.() ?? {width: stage.clientWidth || 800, height: stage.clientHeight || 600};
-      const computed = globalThis.getComputedStyle?.(stage);
-      const padX = (parseFloat(computed?.paddingLeft) || 16) + (parseFloat(computed?.paddingRight) || 16);
-      const padY = (parseFloat(computed?.paddingTop) || 16) + (parseFloat(computed?.paddingBottom) || 16);
+      const {x: padX, y: padY} = stagePadding();
       const width = Math.max(1, (Number(box.width) || 0) - padX), height = Math.max(1, (Number(box.height) || 0) - padY);
       const ratio = (Number(image.naturalWidth) || 1) / (Number(image.naturalHeight) || 1) || 1;
       if (width / height > ratio) { fitHeight = height; fitWidth = Math.max(1, Math.round(height * ratio)); }
@@ -585,12 +612,19 @@
     function applyZoom(next) {
       if (!shown) return;
       zoom = next;
-      const actual = zoom === "actual", percent = actual || zoom === "fit" ? 1 : Math.max(0.5, Math.min(4, zoom));
-      front.className = "original-image" + (actual ? " original-actual" : "");
-      front.style.width = (actual ? front.naturalWidth : Math.round(fitWidth * percent)) + "px";
-      front.style.height = (actual ? front.naturalHeight : Math.round(fitHeight * percent)) + "px";
+      const actual = zoom === "actual", fitted = zoom === "fit", percent = actual || fitted ? 1 : Math.max(0.5, Math.min(4, zoom));
+      // Fit is pure CSS so any host resize (panel, maximize, rotation) re-fits without measuring.
+      front.className = "original-image" + (actual ? " original-actual" : fitted ? " original-fit" : "");
+      if (fitted) front.style.width = front.style.height = "";
+      else {
+        if (!actual) fitFrom(front);
+        front.style.width = (actual ? front.naturalWidth : Math.round(fitWidth * percent)) + "px";
+        front.style.height = (actual ? front.naturalHeight : Math.round(fitHeight * percent)) + "px";
+      }
       readout.textContent = actual ? "1:1" : percent === 1 ? "Fit" : Math.round(percent * 100) + "%";
       fit.setAttribute("aria-pressed", String(actual)); fit.setAttribute("aria-label", actual ? "Fit to window" : "Actual size");
+      // The icon shows what a tap will do, since the pressed state has no background on touch.
+      fit.replaceChildren(icon(actual ? "shrink" : "size"));
       stage.className = "original-stage" + (actual || percent > 1 ? " original-zoomed" : "");
     }
     function scale(delta) {
@@ -632,11 +666,11 @@
       back.hidden = true; back.className = "original-image original-incoming";
       front.className = "original-image"; front.hidden = false; front.style.visibility = ""; frontURL = pendingURL; pendingURL = ""; selectedPage = pendingPage;
       requestedPage = selectedPage;
-      fitFrom(front); shown = true; applyZoom("fit");
+      shown = true; applyZoom("fit"); preferImageWidth();
       if (!progressive && !window.matchMedia?.("(prefers-reduced-motion: reduce)").matches) front.animate?.([{opacity:0},{opacity:1}], {duration:180, easing:"ease-out"});
       back.style.visibility = "";
       setLoading(false); error.hidden = true; retry.hidden = true; toggleControls(true);
-      previous.disabled = selectedPage === 1; next.disabled = selectedPage === total;
+      previous.disabled = previous.hidden = total === 1 || selectedPage === 1; next.disabled = next.hidden = total === 1 || selectedPage === total;
       pageLabel.textContent = total > 1 ? selectedPage + " / " + total : "";
       if (downloadFiles) downloadButton.disabled = false;
       else { downloadButton.href = frontURL + "?download=1"; downloadButton.target = "_blank"; downloadButton.rel = "noreferrer"; downloadButton.hidden = false; }
@@ -741,16 +775,18 @@
       request("ui/request-display-mode", {mode: "fullscreen"}).then(result => {
         if (result?.mode !== "fullscreen") return;
         if (closed) { request("ui/request-display-mode", {mode: previousDisplay}).catch(() => {}); return; }
+        close.hidden = true; dialog.setAttribute("data-fullscreen", ""); preferImageWidth();
         restoreDisplay = () => request("ui/request-display-mode", {mode: previousDisplay}).catch(() => {});
       }).catch(() => {});
     }
     // 容器尺寸变化（例如切换 fullscreen）后重新按 Fit 计算，避免图片停在旧尺寸。
     if (typeof ResizeObserver === "function") {
-      refit = new ResizeObserver(() => { if (shown) { fitFrom(front); applyZoom(zoom); } });
+      refit = new ResizeObserver(() => { if (shown && zoom !== "fit") applyZoom(zoom); });
       refit.observe(stage);
     }
     function cleanup(restore = true) {
       if (closed) return; closed = true; closeOriginal = undefined;
+      if (lightboxWidth !== undefined) { lightboxWidth = undefined; notifySize(); }
       refit?.disconnect(); if (restore) restoreDisplay?.();
       for (const image of [front, back]) releaseImage(image);
       dialog.close(); dialog.remove(); animationCleanups.delete(cleanup);
@@ -760,7 +796,7 @@
     clearView();
     const epoch = view;
     const id = Number(record.id);
-    iconAction("Back to results", "back", cards, () => render(previous), true);
+    if (previous) iconAction("Back to results", "back", cards, () => render(previous), true);
     if (!serverTools || !Number.isSafeInteger(id) || id <= 0) { status.textContent = "Artwork detail unavailable."; return; }
     status.textContent = "Loading artwork…"; status.className = "sr-only";
     const skeleton = text("div", "", cards, "detail-skeleton"); skeleton.setAttribute("aria-hidden", "true");
@@ -821,7 +857,7 @@
         const avatarKey = "avatar:" + id;
         const avatarURL = cached(avatarKey)?.value;
         const avatar = document.createElement("img"); avatar.className = "author-avatar"; avatar.alt = ""; avatar.hidden = true; avatar.referrerPolicy = "no-referrer"; author.append(avatar); proxyImages.add(avatar); author.setAttribute("data-avatar-loading", "true");
-        const message = text("span", "", authorCard, "avatar-message"); message.setAttribute("role", "status");
+        const message = text("span", "", authorCard, "sr-only"); message.setAttribute("role", "status");
         const failed = () => { if (epoch === view && !disposed) { forget(avatarKey); author.removeAttribute("data-avatar-loading"); avatar.hidden = true; message.textContent = "Avatar unavailable"; } };
         avatar.addEventListener("load", () => { if (epoch === view && !disposed) { author.removeAttribute("data-avatar-loading"); avatar.hidden = false; message.textContent = ""; remember(avatarKey, avatar.src, avatar.src.length * 2); } });
         avatar.addEventListener("error", failed);
@@ -835,7 +871,7 @@
         }).catch(failed);
       }
       if (artwork.type === "ugoira") ratingBadge(artwork, info);
-      tagChips(artwork.tags, info);
+      tagChips(artwork.tags, info, true);
       if (artwork.caption) artworkCaption(artwork.caption, info, epoch);
       const {updateDimensions, updateStats} = artworkMetadata(artwork, info);
       const detailControls = document.createElement("div"); detailControls.className = "detail-controls";
@@ -846,7 +882,7 @@
         if (!Number.isSafeInteger(total) || total < 1) throw new Error("Invalid page count");
         const viewer = document.createElement("div"); viewer.className = "page-viewer"; mediaColumn.append(viewer);
         const media = document.createElement("div"); media.className = "page-media"; viewer.append(media);
-        let selectedPage = 1, preview, displayed, previousPage, nextPage, progress, position, firstPreview = true;
+        let selectedPage = 1, preview, displayed, previousPage, nextPage, progress, position, counter, counterLabel, firstPreview = true;
         let swiped = false;
         // Pointer capture retargets taps to the media container; swipes must not open the original.
         media.addEventListener("click", event => { if (!swiped && !event.target?.closest("button")) originalViewer(id, selectedPage, artwork, epoch); });
@@ -868,18 +904,34 @@
               displayed = replacement; replacement.frame.className = "media-frame";
             });
             preview = replacement;
+            // Size the frame from the artwork, not vh: the host resizes this iframe to its content height.
+            const size = pageSize(artwork, page);
+            if (size) replacement.frame.style.aspectRatio = size.width + " / " + size.height;
             if (displayed) replacement.frame.className = "media-frame page-pending";
             replacement.load();
           }
-          if (progress) { progress.value = String(page); position.textContent = page + " / " + total; previousPage.disabled = page === 1; nextPage.disabled = page === total; }
+          if (progress) {
+            progress.value = String(page); position.textContent = counterLabel.textContent = page + " / " + total;
+            // Unavailable directions disappear instead of showing a dead control.
+            previousPage.disabled = previousPage.hidden = page === 1; nextPage.disabled = nextPage.hidden = page === total;
+          }
         };
         if (total > 1) {
           previousPage = iconAction("Previous image", "previous", viewer, () => { if (selectedPage > 1) loadPage(selectedPage - 1); }, true); previousPage.className = "icon-button page-previous";
           nextPage = iconAction("Next image", "next", viewer, () => { if (selectedPage < total) loadPage(selectedPage + 1); }, true); nextPage.className = "icon-button page-next";
-          const navigation = document.createElement("div"); navigation.className = "page-navigation"; mediaColumn.append(navigation);
+          // The slider is on demand: the counter pill opens it as an overlay instead of reserving a row.
+          const navigation = document.createElement("div"); navigation.className = "page-navigation"; navigation.hidden = true; viewer.append(navigation);
+          counter = action("", viewer, () => {
+            navigation.hidden = !navigation.hidden;
+            counter.setAttribute("aria-expanded", String(!navigation.hidden));
+            counter.setAttribute("aria-label", navigation.hidden ? "Show page slider" : "Hide page slider");
+          });
+          counter.className = "page-counter"; counter.setAttribute("aria-expanded", "false"); counter.setAttribute("aria-label", "Show page slider");
+          // The button keeps a full touch target; only its label is drawn as the small pill.
+          counterLabel = text("span", "", counter, "page-counter-label");
           progress = document.createElement("input"); progress.type = "range"; progress.min = "1"; progress.max = String(total); progress.step = "1"; progress.setAttribute("aria-label", "Image progress"); navigation.append(progress);
           position = text("output", "", navigation, "page-position");
-          progress.addEventListener("input", () => { const page = Number(progress.value); if (validPage(page)) position.textContent = page + " / " + total; });
+          progress.addEventListener("input", () => { const page = Number(progress.value); if (validPage(page)) position.textContent = counterLabel.textContent = page + " / " + total; });
           progress.addEventListener("change", () => { const page = Number(progress.value); if (validPage(page) && page !== selectedPage) loadPage(page); });
           let gesture;
           media.addEventListener("pointerdown", event => { if (event.target?.closest("button")) return; if (event.isPrimary !== false && event.button === 0) { swiped = false; gesture = {id:event.pointerId, x:event.clientX, y:event.clientY}; media.setPointerCapture?.(event.pointerId); } });
@@ -922,7 +974,7 @@
   }
   function bookmarkControls(id, section, epoch, refreshStatistics) {
     const group = document.createElement("div"); group.className = "bookmark-controls"; section.append(group);
-    const message = text("p", "Loading bookmark state…", group, "bookmark-status sr-only"); message.setAttribute("role", "status");
+    const message = text("p", "Loading bookmark state…", group, "sr-only"); message.setAttribute("role", "status");
     const toolbar = document.createElement("div"); toolbar.className = "bookmark-toolbar"; group.append(toolbar);
     const options = text("div", "", group, "bookmark-options"); options.hidden = true;
     options.setAttribute("role", "dialog"); options.setAttribute("aria-label", "Bookmark settings");
@@ -942,6 +994,8 @@
     const enable = () => {
       save.disabled = apply.disabled = remove.disabled = visibility.disabled = busy || !state;
       refresh.disabled = busy;
+      // Unknown state swaps the heart for an icon-only retry; the reason stays in the assistive status.
+      save.hidden = !state && !busy;
       retry.disabled = busy; retry.hidden = Boolean(state) || busy;
       remove.hidden = !state?.bookmarked;
     };
@@ -960,7 +1014,7 @@
         save.setAttribute("aria-pressed", String(value.bookmarked));
         message.textContent = "";
       } catch (_) { if (epoch === view) { state = undefined; message.textContent = "Bookmark state unavailable. Refresh before writing."; } }
-      finally { busy = false; message.className = "bookmark-status"; enable(); }
+      finally { busy = false; enable(); }
     };
     const mutate = async restrict => {
       if (busy || !state || epoch !== view || (restrict && !["public", "private"].includes(restrict))) return;
@@ -1016,7 +1070,7 @@
     const secondary = text("div", "", options, "bookmark-options-secondary");
     const remove = iconAction("Remove bookmark", "remove", secondary, () => mutate(""));
     const refresh = iconAction("Refresh bookmark", "refresh", secondary, query); refresh.textContent = "Refresh"; refresh.append(icon("refresh"));
-    const retry = action("Retry bookmark state", toolbar, query);
+    const retry = iconAction("Retry bookmark state", "refresh", toolbar, query, true);
     enable(); query();
   }
   function renderMedia(result, epoch) {
@@ -1030,7 +1084,8 @@
       const media = text("div", "", section, "detail-media");
       const info = text("div", "", section, "detail-info");
       text("h2", output.title || "Artwork " + output.illust_id, info);
-      const message = text("p", "Loading image…", info);
+      const message = text("p", "Loading image…", info, "sr-only"); message.setAttribute("role", "status");
+      const actions = text("div", "", info, "detail-controls");
       try {
         if (!Array.isArray(content)) throw new Error("Invalid media content");
         const original = content?.[page.content_index];
@@ -1058,7 +1113,7 @@
           retry.hidden = !linked && selected.state !== "failed";
           message.textContent = selected.state === "failed" ? "Image unavailable." : selected.state === "loading" ? "Loading image…" : animated ? selected.index === page.content_index ? "Animation playing." : "Static preview." : "Image ready.";
         };
-        const retry = iconAction(linked ? "Refresh animation" : "Retry image", "refresh", info, () => {
+        const retry = iconAction(linked ? "Refresh animation" : "Retry image", "refresh", actions, () => {
           if (!selected || epoch !== view) return;
           if (linked) {
             if (!serverTools) return;
@@ -1070,7 +1125,7 @@
             return;
           }
           selected.state = "loading"; selected.image.removeAttribute("src"); selected.image.src = selected.url; update();
-        });
+        }, true);
         retry.hidden = !linked;
         retry.disabled = linked && !serverTools;
         const show = index => {
@@ -1093,28 +1148,35 @@
             selected = entry;
             for (const item of images.values()) item.image.hidden = item !== selected;
             update();
-          } catch (_) { message.textContent = "Media content is unavailable or invalid."; }
+          } catch (_) { message.className = "error"; message.textContent = "Media content is unavailable or invalid."; }
         };
         if (animated) {
-          iconAction("Play animation", "play", info, () => show(page.content_index));
-          iconAction("Show preview", "image", info, () => show(page.preview_content_index));
+          iconAction("Play animation", "play", actions, () => show(page.content_index), true);
+          iconAction("Show preview", "image", actions, () => show(page.preview_content_index), true);
         }
         show(animated ? page.preview_content_index : page.content_index);
-        if (downloadFiles) downloadControl(linked ? original : {type:"resource",resource:{uri:"urn:pixiv:media:" + output.illust_id + "/" + filename,mimeType:page.mime_type,blob:original.data}}, filename, info, epoch, notifySize);
-        else {
-          if (downloadURL) {
-            downloadControl({type:"resource_link",uri:downloadURL,name:filename,mimeType:page.mime_type,size:page.size}, filename, info, epoch, notifySize);
-          } else text("p", "File download is unavailable in this host.", info);
-        }
-      } catch (_) { message.textContent = "Media content is unavailable or invalid."; }
+        if (downloadFiles) downloadControl(linked ? original : {type:"resource",resource:{uri:"urn:pixiv:media:" + output.illust_id + "/" + filename,mimeType:page.mime_type,blob:original.data}}, filename, actions, epoch, notifySize);
+        else if (downloadURL) downloadControl({type:"resource_link",uri:downloadURL,name:filename,mimeType:page.mime_type,size:page.size}, filename, actions, epoch, notifySize);
+      } catch (_) { message.className = "error"; message.textContent = "Media content is unavailable or invalid."; }
     }
   }
   function render(result) {
     clearView();
     const epoch = view;
-    if (Number.isSafeInteger(result.structuredContent?.illust_id) && result.structuredContent.illust_id > 0 && Array.isArray(result.structuredContent.pages)) { renderMedia(result, epoch); return; }
+    if (Number.isSafeInteger(result.structuredContent?.illust_id) && result.structuredContent.illust_id > 0 && Array.isArray(result.structuredContent.pages)) {
+      const {illust_id: id, title, pages} = result.structuredContent;
+      // Static media reuses the full detail page; animations keep their embedded playback view.
+      if (serverTools && pages.length && !pages.some(page => Number.isSafeInteger(page?.preview_content_index))) {
+        if (Number.isSafeInteger(pages[0]?.page) && pages[0].page > 0) remember("page:" + id, pages[0].page, 8);
+        openDetail({id: String(id), type: "illust", title});
+      } else renderMedia(result, epoch);
+      return;
+    }
     const records = result.structuredContent?.records;
     if (!Array.isArray(records)) { status.textContent = "No structured records; use the tool result in chat."; return; }
+    // A single artwork goes straight to detail; without tool calls or a valid ID detail cannot load, so keep the card.
+    const only = records.length === 1 ? records[0] : undefined;
+    if (serverTools && ["illust", "manga", "ugoira"].includes(only?.type) && Number.isSafeInteger(Number(only.id)) && Number(only.id) > 0) { openDetail(only); return; }
     status.textContent = result.isError ? "Tool failed or returned partial results." : records.length ? "" : "No results.";
     if (records.length === 1 && ["illust", "manga", "ugoira"].includes(records[0]?.type)) cards.className = "single-artwork";
     if (records.length > 1) { cards.className = "gallery-results"; cards.setAttribute("tabindex", "0"); }
@@ -1130,12 +1192,22 @@
     let thumbnails;
     // Historical URLs expire or lose their signing key on restart; acquire current capabilities once per view.
     const currentThumbnails = serverTools ? () => thumbnails ??= request("tools/call", {name:"pixiv_show_gallery", arguments:{illust_ids:records.filter(record => record && ["illust", "manga", "ugoira"].includes(record.type) && Number.isSafeInteger(Number(record.id)) && Number(record.id) > 0).map(record => Number(record.id)),page:1,quality:"thumbnail"}}, epoch) : result;
+    // Failures usually share a cause (expired capabilities); one retry renews every failed card in one batch.
+    const thumbs = [];
+    const retryFailed = () => {
+      const failed = thumbs.filter(thumb => thumb.media.failed());
+      if (!serverTools || !failed.length) return;
+      let batch;
+      const source = () => batch ??= request("tools/call", {name:"pixiv_show_gallery", arguments:{illust_ids:failed.map(thumb => thumb.id), page:1, quality:"thumbnail"}}, epoch);
+      for (const thumb of failed) thumb.media.renew(source);
+    };
     for (const record of records) {
       const card = document.createElement("article"); card.className = "artwork-card";
       cards.append(card);
       if (!record || typeof record !== "object" || Array.isArray(record)) { text("p", "Invalid record — inspect the tool result in chat.", card, "error"); continue; }
       if (["illust", "manga", "ugoira"].includes(record.type)) {
-        const media = proxyImage(record, card, currentThumbnails, epoch, 1, "thumbnail", () => openDetail(record, result));
+        const media = proxyImage(record, card, currentThumbnails, epoch, 1, "thumbnail", () => openDetail(record, result), undefined, undefined, retryFailed);
+        thumbs.push({id: Number(record.id), media});
         card.loadPreview = media.load;
         if (observer) observer.observe(card); else media.load();
       }

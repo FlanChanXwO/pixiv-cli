@@ -38,7 +38,7 @@ flowchart TB
 
 | 包 | 负责 |
 | --- | --- |
-| `pixiv/gallery` | 挂到 `pixiv_show_gallery` 与 `pixiv_artwork_media` 的 MCP Apps 视图；稳定资源 URI + 内容版本别名作为 UI 缓存 key；合法的历史别名把新读取转到当前内嵌视图 |
+| `pixiv/gallery` | 挂到 `pixiv_show_gallery`、`pixiv_show_artwork` 与 `pixiv_artwork_media` 的 MCP Apps 视图；稳定资源 URI + 内容版本别名作为 UI 缓存 key；合法的历史别名把新读取转到当前内嵌视图 |
 | `pixiv/mediaproxy` | 进程内图片 capability 签名与经公开 SDK 的栅格交付（canonical origin 校验后路由到 `/media/`）；按授权/会话划分的元数据与图片 LRU；查询/图片信号量；同 key 元数据合并请求；流式响应生命周期；动画任务 |
 | `pixiv/tools/artwork_media` | 静态 MCP 图片交付与每次调用的 Ugoira 编码 |
 | `pixiv/tools/gallery_animation` | 动画任务的控制适配 |

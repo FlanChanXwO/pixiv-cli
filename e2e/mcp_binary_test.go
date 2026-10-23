@@ -248,7 +248,7 @@ func TestPixivBinaryHTTPOAuthDiscovery(t *testing.T) {
 	for _, tool := range tools.Tools {
 		names = append(names, tool.Name)
 	}
-	require.Len(t, names, 53)
+	require.Len(t, names, 54)
 	require.Contains(t, names, "pixiv_comments")
 	require.Contains(t, names, "fanbox_feed")
 	require.NotContains(t, names, "fanbox_home")

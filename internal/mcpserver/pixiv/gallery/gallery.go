@@ -53,7 +53,7 @@ func Register(server *mcp.Server, media ...*mediaproxy.Service) {
 // Attach associates discovery and complete media with the view without replacing structured results.
 func Attach(tool *mcp.Tool, media ...*mediaproxy.Service) {
 	switch tool.Name {
-	case "pixiv_show_gallery", "pixiv_artwork_media":
+	case "pixiv_show_gallery", "pixiv_show_artwork", "pixiv_artwork_media":
 		if tool.Meta == nil {
 			tool.Meta = mcp.Meta{}
 		}
