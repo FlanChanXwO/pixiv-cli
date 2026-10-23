@@ -587,9 +587,13 @@ func TestSearchIllustCombinesBookmarkAndStructuredFiltersBeforePagination(t *tes
 }
 
 func TestSearchIllustBookmarkCompletenessAtExhaustion(t *testing.T) {
-	for _, strategy := range []string{"auto", "local", "best_effort"} {
+	for _, tc := range []struct {
+		strategy  string
+		withRange bool
+	}{{"auto", true}, {"local", true}, {"best_effort", true}, {"best_effort", false}} {
+		strategy := tc.strategy
 		for _, empty := range []bool{false, true} {
-			t.Run(fmt.Sprintf("%s/empty=%t", strategy, empty), func(t *testing.T) {
+			t.Run(fmt.Sprintf("%s/range=%t/empty=%t", strategy, tc.withRange, empty), func(t *testing.T) {
 				client := &fakeSDKClient{searchIllust: func(context.Context, pixiv.SearchArtworksRequest) (sdk.Page[pixiv.Artwork], error) {
 					items := []pixiv.Artwork{}
 					if !empty {
@@ -599,7 +603,11 @@ func TestSearchIllustBookmarkCompletenessAtExhaustion(t *testing.T) {
 				}}
 				session, closeSession := newSDKTestSession(t, client)
 				defer closeSession()
-				result := callTool(t, session, "pixiv_search_illust", map[string]any{"word": "cat", "bookmark_min": 0, "bookmark_strategy": strategy})
+				args := map[string]any{"word": "cat", "bookmark_strategy": strategy}
+				if tc.withRange {
+					args["bookmark_min"] = 0
+				}
+				result := callTool(t, session, "pixiv_search_illust", args)
 				if result.IsError {
 					t.Fatalf("search failed: %+v", result)
 				}

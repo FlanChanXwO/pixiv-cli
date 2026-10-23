@@ -91,6 +91,11 @@ func searchArtworks[C artworkSearchClient](ctx context.Context, execute paginati
 				return false, err
 			}
 			outcome = artworkSearchOutcome{Page: page}
+			if strategy == bookmarkFilterStrategyBestEffort {
+				outcome.Filter = &bookmarkFilterOutcome{
+					Membership: membership, Strategy: strategy, Completeness: bookmarkFilterCompletenessPartial,
+				}
+			}
 			return false, nil
 		}
 
