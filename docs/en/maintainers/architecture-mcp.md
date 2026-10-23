@@ -38,7 +38,7 @@ flowchart TB
 
 | Package | Owns |
 | --- | --- |
-| `pixiv/gallery` | MCP Apps view attached to `pixiv_show_gallery` and `pixiv_artwork_media`; stable resource URI + content-version alias for UI cache keys; valid historical aliases forward fresh reads to the current embedded view |
+| `pixiv/gallery` | MCP Apps view attached to `pixiv_show_gallery`, `pixiv_show_artwork` and `pixiv_artwork_media`; stable resource URI + content-version alias for UI cache keys; valid historical aliases forward fresh reads to the current embedded view |
 | `pixiv/mediaproxy` | process-local image capability signing and raster delivery via the public SDK (routed under `/media/` after canonical-origin validation); grant/session-scoped metadata and image LRU; query/image semaphores; same-key metadata flights; streaming lifecycle; animation jobs |
 | `pixiv/tools/artwork_media` | static MCP image delivery and Ugoira encoding per call |
 | `pixiv/tools/gallery_animation` | control adaptation for animation jobs |
