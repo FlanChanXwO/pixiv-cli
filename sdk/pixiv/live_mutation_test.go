@@ -878,6 +878,7 @@ type commentTargetOps struct {
 	stamp            func(context.Context, int64, int64) (int64, error)
 	remove           func(context.Context, int64) error
 	rawCommentsPath  string
+	rawStampPath     string
 	rawRepliesPath   string
 	rawIDParameter   string
 	repliesParameter string
@@ -923,6 +924,7 @@ func artworkCommentOps(session *pixivLiveSession) commentTargetOps {
 			return client.DeleteArtworkComment(ctx, pixivsdk.DeleteArtworkCommentRequest{CommentID: commentID})
 		},
 		rawCommentsPath: protocol.AppIllustComments,
+		rawStampPath:    protocol.AppIllustComments,
 		rawRepliesPath:  "/v2/illust/comment/replies",
 		rawIDParameter:  "illust_id",
 	}
@@ -968,8 +970,10 @@ func novelCommentOps(session *pixivLiveSession) commentTargetOps {
 			return client.DeleteNovelComment(ctx, pixivsdk.DeleteNovelCommentRequest{CommentID: commentID})
 		},
 		rawCommentsPath: protocol.AppNovelComments,
-		rawRepliesPath:  "/v2/novel/comment/replies",
-		rawIDParameter:  "novel_id",
+		// stamp-only comments are exposed by the v3 list, not the v2 detail list.
+		rawStampPath:   "/v3/novel/comments",
+		rawRepliesPath: "/v2/novel/comment/replies",
+		rawIDParameter: "novel_id",
 	}
 }
 
@@ -1089,7 +1093,7 @@ func runCommentMutations(t *testing.T, ctx context.Context, session *pixivLiveSe
 	))
 
 	stampRead := func(commentID int64) (bool, error) {
-		ids, err := readRawCommentIDs(ctx, session.raw, ops.rawCommentsPath, ops.rawIDParameter, target.contentID, session.userID)
+		ids, err := readRawCommentIDs(ctx, session.raw, ops.rawStampPath, ops.rawIDParameter, target.contentID, session.userID)
 		if err != nil {
 			return false, err
 		}
