@@ -227,8 +227,8 @@ func (c *Client) mapArtworkUser(value artwork.UserSummary) User {
 }
 
 func mapArtworkTags(values []artwork.Tag) []Tag {
-	if values == nil {
-		return nil
+	if len(values) == 0 {
+		return []Tag{}
 	}
 	result := make([]Tag, len(values))
 	for index, value := range values {

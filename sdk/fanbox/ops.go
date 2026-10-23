@@ -240,7 +240,7 @@ func (c *Client) mapPost(source postservice.Post) (Post, error) {
 	if source.Body == nil {
 		return out, nil
 	}
-	body := &PostBody{Text: source.Body.Text}
+	body := &PostBody{Text: source.Body.Text, Blocks: []PostBlock{}, Assets: []Asset{}}
 	imageByID := map[string]postservice.Image{}
 	fileByID := map[string]postservice.File{}
 	for _, image := range mergePostImages(*source.Body) {
@@ -284,9 +284,9 @@ func (c *Client) mapPost(source postservice.Post) (Post, error) {
 		case "article":
 			body.Blocks = append(body.Blocks, PostBlock{Kind: PostBlockArticle, Article: &PostArticleBlock{}})
 		case "video":
-			body.Blocks = append(body.Blocks, PostBlock{Kind: PostBlockVideo, Video: &PostVideoEmbed{}})
+			body.Blocks = append(body.Blocks, PostBlock{Kind: PostBlockVideo, Video: &PostVideoEmbed{EmbeddedData: map[string]string{}}})
 		default:
-			body.Blocks = append(body.Blocks, PostBlock{Kind: PostBlockUnknown, Unknown: &PostUnknownBlock{RawType: block.Type}})
+			body.Blocks = append(body.Blocks, PostBlock{Kind: PostBlockUnknown, Unknown: &PostUnknownBlock{RawType: block.Type, Payload: map[string]string{}}})
 		}
 	}
 	out.Body = body

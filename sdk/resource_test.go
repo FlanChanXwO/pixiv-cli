@@ -104,32 +104,34 @@ func TestResourceResponseContentLengthInvalid(t *testing.T) {
 	}
 }
 
-func TestResourceJSONRoundTrip(t *testing.T) {
+func TestResourceJSONIsOpaque(t *testing.T) {
 	ref, err := sdk.NewResourceRef("pixiv", []byte("ugoira:9:archive:original"))
 	if err != nil {
 		t.Fatalf("NewResourceRef: %v", err)
 	}
+	expires := time.Now().Add(time.Hour)
 	res := sdk.Resource{
 		Ref:                 ref,
-		URL:                 "https://i.pximg.net/zip/example",
-		RequestHeaders:      map[string]string{"Referer": "https://www.pixiv.net/"},
-		RequiresCredentials: false,
+		URL:                 "https://i.pximg.net/zip/example?token=do-not-leak",
+		RequestHeaders:      map[string]string{"Referer": "https://www.pixiv.net/", "Cookie": "secret-cookie"},
+		ExpiresAt:           &expires,
+		RequiresCredentials: true,
 	}
 	data, err := json.Marshal(res)
 	if err != nil {
 		t.Fatalf("MarshalJSON: %v", err)
 	}
-	var decoded sdk.Resource
-	if err := json.Unmarshal(data, &decoded); err != nil {
-		t.Fatalf("UnmarshalJSON: %v", err)
+	encoded := string(data)
+	for _, forbidden := range []string{"pximg.net", "do-not-leak", "secret-cookie", "Referer", "expires_at", "request_headers"} {
+		if strings.Contains(encoded, forbidden) {
+			t.Fatalf("resource JSON leaked %q: %s", forbidden, encoded)
+		}
 	}
-	if decoded.Ref.String() != res.Ref.String() {
-		t.Fatalf("ref mismatch in JSON round-trip")
+	want := `{"ref":"` + ref.String() + `","requires_credentials":true}`
+	if encoded != want {
+		t.Fatalf("resource JSON = %s, want %s", encoded, want)
 	}
-	if decoded.URL != res.URL {
-		t.Fatalf("url mismatch in JSON round-trip")
-	}
-	if decoded.RequestHeaders["Referer"] != "https://www.pixiv.net/" {
-		t.Fatalf("request_headers mismatch in JSON round-trip")
+	if zero, err := json.Marshal(sdk.Resource{}); err != nil || string(zero) != "null" {
+		t.Fatalf("zero resource JSON = %s, err=%v", zero, err)
 	}
 }

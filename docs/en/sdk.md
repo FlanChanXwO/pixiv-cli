@@ -344,17 +344,17 @@ fmt.Println(saved.Path, saved.Size, saved.ContentType)
 > [!IMPORTANT]
 > A `Resource` never stores cookies or tokens; `RequiresCredentials` reports when a resource still needs product credentials invisible to the caller.
 
-### Runtime models and output DTOs
+### Models and output safety
 
-Runtime models are separate from values crossing a CLI/MCP JSON boundary. `sdk.Resource` may hold a usable `URL`, forwarding `RequestHeaders` and `ExpiresAt` for in-process streaming — never in a DTO.
+Each entity has one public model type. Models carry JSON tags and marshal directly; `sdk.Resource` may hold a usable `URL`, forwarding `RequestHeaders` and `ExpiresAt` for in-process streaming, but its JSON form exposes only the opaque `ref` and optional `requires_credentials`.
 
-- Converters: `pixiv.ToArtworkDTO`, `ToNovelDTO`, `ToUserDTO`, `ToUserDetailDTO`, `ToUserPreviewDTO`, `ToCommentDTO`, `ToStampDTO`, `ToNovelContentDTO`, `ToUgoiraMetadataDTO` and related Pixiv converters; `fanbox.To*DTO` for creators, posts, blocks, assets, users, tags. `sdk.ToResourceDTO` emits only opaque `ref` and optional `requires_credentials`.
-- CLI and MCP encode only these DTOs, pipeline `Record` values and typed envelopes — never reflect over or JSON-marshal runtime models.
+- There are no `*DTO` types or `To*DTO` converters: encode `pixiv.Artwork`, `pixiv.Novel`, `pixiv.NovelContent`, `pixiv.UgoiraMetadata`, `fanbox.Post` and the other public models directly. `sdk.Page[T]` marshals its cursor as text and a last page as an empty string.
+- CLI and MCP encode these models, pipeline `Record` values and typed envelopes.
 - `Artwork` keeps upstream `IsBookmarked`, `IsMuted`, `Visible`, `SanityLevel`, `RestrictionAttributes` on search/detail as pointers, plus optional `Series` (`ID`, `Title`). Non-nil keeps explicit `false`, `0` or empty array; nil = not provided. Detail may supply `TotalComments` (search never synthesizes it). Viewer state belongs to the reading account; no per-result enrichment.
 
-### Optional DTO fields
+### Optional model fields
 
-DTOs omit fields upstream did not provide instead of emitting `null` or empty values — e.g. `ArtworkDTO` omits `updated_at`, `tools` and `pages` (pages only on detail). Absent viewer/safety fields, `series` and `total_comments` are omitted; an explicitly empty `restriction_attributes` stays `[]`. Treat a missing key as unknown, not `false`/`0`; MCP schemas mark these optional.
+Models omit fields upstream did not provide instead of emitting `null` or empty values — e.g. `Artwork` omits `updated_at`, `tools` and `pages` (pages only on detail). Absent viewer/safety fields, `series` and `total_comments` are omitted; an explicitly empty `restriction_attributes` stays `[]`. Treat a missing key as unknown, not `false`/`0`; MCP schemas mark these optional.
 
 ## URL references
 

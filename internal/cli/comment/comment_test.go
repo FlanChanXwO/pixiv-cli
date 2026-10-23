@@ -248,13 +248,13 @@ func TestCommentStampsJSONOutputIsSafeAndNonPaginated(t *testing.T) {
 		t.Fatalf("execute comment stamps: %v", err)
 	}
 	var result struct {
-		Stamps []pixiv.StampDTO `json:"stamps"`
+		Stamps []pixiv.Stamp `json:"stamps"`
 	}
 	if err := json.Unmarshal(output.Bytes(), &result); err != nil {
 		t.Fatalf("decode JSON output: %v; output=%q", err, output.String())
 	}
-	if len(result.Stamps) != 1 || result.Stamps[0].ID != 1 || result.Stamps[0].Image.Resource == nil {
-		t.Fatalf("stamps = %#v, want one safe stamp DTO", result.Stamps)
+	if len(result.Stamps) != 1 || result.Stamps[0].ID != 1 || result.Stamps[0].Image.Resource.Ref.IsZero() {
+		t.Fatalf("stamps = %#v, want one safe stamp with an opaque ref", result.Stamps)
 	}
 	if strings.Contains(output.String(), stampURL) || strings.Contains(output.String(), "stamp_url") {
 		t.Fatalf("stamp output leaked runtime locator: %s", output.String())
@@ -306,8 +306,8 @@ func TestCommentReadRouteRemainsArtworkAndNovelComments(t *testing.T) {
 				t.Fatalf("execute comment read: %v", err)
 			}
 			var result struct {
-				Comments      []pixiv.CommentDTO `json:"comments"`
-				AccessControl map[string]any     `json:"access_control"`
+				Comments      []pixiv.Comment `json:"comments"`
+				AccessControl map[string]any  `json:"access_control"`
 			}
 			if err := json.Unmarshal(output.Bytes(), &result); err != nil {
 				t.Fatalf("decode JSON output: %v; output=%q", err, output.String())

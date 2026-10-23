@@ -304,7 +304,7 @@ func (a command) runAllNDJSON(ctx context.Context, client *pixiv.Client, plan li
 	committed := false
 	writeArtworks := func(items []pixiv.Artwork) error {
 		for _, item := range items {
-			record, err := record.RecordFromArtworkDTO(pixiv.ToArtworkDTO(item))
+			record, err := record.RecordFromArtwork(item)
 			if err != nil {
 				return err
 			}
@@ -335,7 +335,7 @@ func (a command) runAllNDJSON(ctx context.Context, client *pixiv.Client, plan li
 		return result.Items, result.Next, nil
 	}, func(items []pixiv.Novel) error {
 		for _, item := range items {
-			record, err := record.RecordFromNovelDTO(pixiv.ToNovelDTO(item))
+			record, err := record.RecordFromNovel(item)
 			if err != nil {
 				return err
 			}
@@ -356,7 +356,7 @@ func (a command) runAllNDJSON(ctx context.Context, client *pixiv.Client, plan li
 		return result.Items, result.Next, nil
 	}, func(items []pixiv.UserPreview) error {
 		for _, item := range items {
-			record, err := record.RecordFromUserPreviewDTO(pixiv.ToUserPreviewDTO(item))
+			record, err := record.RecordFromUserPreview(item)
 			if err != nil {
 				return err
 			}

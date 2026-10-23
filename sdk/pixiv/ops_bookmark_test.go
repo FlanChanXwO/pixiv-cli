@@ -11,7 +11,7 @@ import (
 	pixiv "github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
 )
 
-func TestExplicitArtworkBookmarkMutationsKeepLegacyWrappers(t *testing.T) {
+func TestArtworkBookmarkMutationsWireRequests(t *testing.T) {
 	var requests []*http.Request
 	rt := roundTripFunc(func(req *http.Request) (*http.Response, error) {
 		if err := req.ParseForm(); err != nil {
@@ -36,30 +36,24 @@ func TestExplicitArtworkBookmarkMutationsKeepLegacyWrappers(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("AddArtworkBookmark: %v", err)
 	}
-	if err := client.AddBookmark(context.Background(), pixiv.AddBookmarkRequest{ArtworkID: 13, Tags: []string{"legacy"}}); err != nil {
-		t.Fatalf("AddBookmark: %v", err)
+	if err := client.AddArtworkBookmark(context.Background(), pixiv.AddArtworkBookmarkRequest{ArtworkID: 13, Tags: []string{"tag"}}); err != nil {
+		t.Fatalf("AddArtworkBookmark without restrict: %v", err)
 	}
 	if err := client.RemoveArtworkBookmark(context.Background(), pixiv.RemoveArtworkBookmarkRequest{ArtworkID: 12}); err != nil {
 		t.Fatalf("RemoveArtworkBookmark: %v", err)
 	}
-	if err := client.RemoveBookmark(context.Background(), pixiv.RemoveBookmarkRequest{ArtworkID: 13}); err != nil {
-		t.Fatalf("RemoveBookmark: %v", err)
-	}
 
-	if len(requests) != 4 {
-		t.Fatalf("request count = %d, want 4", len(requests))
+	if len(requests) != 3 {
+		t.Fatalf("request count = %d, want 3", len(requests))
 	}
 	if requests[0].URL.Path != "/v2/illust/bookmark/add" || requests[0].PostForm.Get("illust_id") != "12" || requests[0].PostForm.Get("restrict") != "private" || len(requests[0].PostForm["tags[]"]) != 2 {
-		t.Fatalf("explicit add request = %s form=%v", requests[0].URL.Path, requests[0].PostForm)
+		t.Fatalf("add request = %s form=%v", requests[0].URL.Path, requests[0].PostForm)
 	}
-	if requests[1].URL.Path != "/v2/illust/bookmark/add" || requests[1].PostForm.Get("illust_id") != "13" || requests[1].PostForm.Get("restrict") != "public" || requests[1].PostForm.Get("tags[]") != "legacy" {
-		t.Fatalf("legacy add request = %s form=%v", requests[1].URL.Path, requests[1].PostForm)
+	if requests[1].URL.Path != "/v2/illust/bookmark/add" || requests[1].PostForm.Get("illust_id") != "13" || requests[1].PostForm.Get("restrict") != "public" || requests[1].PostForm.Get("tags[]") != "tag" {
+		t.Fatalf("default-restrict add request = %s form=%v", requests[1].URL.Path, requests[1].PostForm)
 	}
 	if requests[2].URL.Path != "/v1/illust/bookmark/delete" || requests[2].PostForm.Get("illust_id") != "12" {
-		t.Fatalf("explicit remove request = %s form=%v", requests[2].URL.Path, requests[2].PostForm)
-	}
-	if requests[3].URL.Path != "/v1/illust/bookmark/delete" || requests[3].PostForm.Get("illust_id") != "13" {
-		t.Fatalf("legacy remove request = %s form=%v", requests[3].URL.Path, requests[3].PostForm)
+		t.Fatalf("remove request = %s form=%v", requests[2].URL.Path, requests[2].PostForm)
 	}
 }
 

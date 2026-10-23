@@ -28,12 +28,12 @@ func TestRecordFromArtworkPreservesSDKFieldsAndNormalizesID(t *testing.T) {
 		Tags:                  []pixiv.Tag{{Name: "tag-a", TranslatedName: "标签 A"}},
 	}
 
-	record, err := recordpkg.RecordFromArtworkDTO(pixiv.ToArtworkDTO(artwork))
+	record, err := recordpkg.RecordFromArtwork(artwork)
 	require.NoError(t, err)
 
 	got, err := json.Marshal(record)
 	require.NoError(t, err)
-	want, err := json.Marshal(pixiv.ToArtworkDTO(artwork))
+	want, err := json.Marshal(artwork)
 	require.NoError(t, err)
 
 	var wantObject map[string]json.RawMessage
@@ -58,7 +58,7 @@ func TestRecordFromArtworkPreservesSDKFieldsAndNormalizesID(t *testing.T) {
 func TestRecordFromArtworkNormalizesIllustrationType(t *testing.T) {
 	artwork := pixiv.Artwork{ID: 101, Kind: pixiv.ArtworkKindIllustration}
 
-	record, err := recordpkg.RecordFromArtworkDTO(pixiv.ToArtworkDTO(artwork))
+	record, err := recordpkg.RecordFromArtwork(artwork)
 	require.NoError(t, err)
 
 	assert.Equal(t, "illust", record.Type())
@@ -85,11 +85,11 @@ func TestRecordFromNovelAndUserPreview(t *testing.T) {
 		IsFollowed: true,
 	}}
 
-	novelRecord, err := recordpkg.RecordFromNovelDTO(pixiv.ToNovelDTO(novel))
+	novelRecord, err := recordpkg.RecordFromNovel(novel)
 	require.NoError(t, err)
 	assertRecordMatchesSource(t, novel, novelRecord, "88", "novel", "https://www.pixiv.net/novel/show.php?id=88")
 
-	userRecord, err := recordpkg.RecordFromUserPreviewDTO(pixiv.ToUserPreviewDTO(userPreview))
+	userRecord, err := recordpkg.RecordFromUserPreview(userPreview)
 	require.NoError(t, err)
 	assertRecordMatchesSource(t, userPreview, userRecord, "9007199254740993", "user", "https://www.pixiv.net/users/9007199254740993")
 }
@@ -105,7 +105,7 @@ func TestRecordFromUserPreviewPreservesCompleteEnvelope(t *testing.T) {
 		}},
 	}
 
-	record, err := recordpkg.RecordFromUserPreviewDTO(pixiv.ToUserPreviewDTO(preview))
+	record, err := recordpkg.RecordFromUserPreview(preview)
 	require.NoError(t, err)
 	assertRecordMatchesSource(t, preview, record, "9007199254740993", "user", "https://www.pixiv.net/users/9007199254740993")
 
@@ -138,7 +138,7 @@ func TestRecordFromUserDetailPreservesCompleteEnvelope(t *testing.T) {
 		Workspace:        pixiv.UserWorkspace{PC: "desktop", Tool: "pen", WorkspaceImageURL: "https://example.test/workspace.png"},
 	}
 
-	record, err := recordpkg.RecordFromUserDetailDTO(pixiv.ToUserDetailDTO(detail))
+	record, err := recordpkg.RecordFromUserDetail(detail)
 	require.NoError(t, err)
 	assertRecordMatchesSource(t, detail, record, "321", "user", "https://www.pixiv.net/users/321")
 }
@@ -165,7 +165,7 @@ func TestRecordFromNovelContentPreservesCanonicalIdentityAndStructuredFields(t *
 		},
 	}
 
-	gotRecord, err := recordpkg.RecordFromNovelContentDTO(pixiv.ToNovelContentDTO(content))
+	gotRecord, err := recordpkg.RecordFromNovelContent(content)
 	require.NoError(t, err)
 	body, err := json.Marshal(gotRecord)
 	require.NoError(t, err)
@@ -210,19 +210,19 @@ func TestRecordMappersRejectNonPositiveSDKID(t *testing.T) {
 		make func() (recordpkg.Record, error)
 	}{
 		{name: "artwork", make: func() (recordpkg.Record, error) {
-			return recordpkg.RecordFromArtworkDTO(pixiv.ToArtworkDTO(pixiv.Artwork{ID: 0, Kind: pixiv.ArtworkKindIllustration}))
+			return recordpkg.RecordFromArtwork(pixiv.Artwork{ID: 0, Kind: pixiv.ArtworkKindIllustration})
 		}},
 		{name: "novel", make: func() (recordpkg.Record, error) {
-			return recordpkg.RecordFromNovelDTO(pixiv.ToNovelDTO(pixiv.Novel{ID: -1}))
+			return recordpkg.RecordFromNovel(pixiv.Novel{ID: -1})
 		}},
 		{name: "novel content", make: func() (recordpkg.Record, error) {
-			return recordpkg.RecordFromNovelContentDTO(pixiv.ToNovelContentDTO(pixiv.NovelContent{NovelID: -1}))
+			return recordpkg.RecordFromNovelContent(pixiv.NovelContent{NovelID: -1})
 		}},
 		{name: "user", make: func() (recordpkg.Record, error) {
-			return recordpkg.RecordFromUserPreviewDTO(pixiv.ToUserPreviewDTO(pixiv.UserPreview{User: pixiv.User{ID: 0}}))
+			return recordpkg.RecordFromUserPreview(pixiv.UserPreview{User: pixiv.User{ID: 0}})
 		}},
 		{name: "user detail", make: func() (recordpkg.Record, error) {
-			return recordpkg.RecordFromUserDetailDTO(pixiv.ToUserDetailDTO(pixiv.UserDetail{User: pixiv.User{ID: 0}}))
+			return recordpkg.RecordFromUserDetail(pixiv.UserDetail{User: pixiv.User{ID: 0}})
 		}},
 	} {
 		t.Run(test.name, func(t *testing.T) {
@@ -256,13 +256,13 @@ func assertRecordMatchesSource(t *testing.T, source any, record recordpkg.Record
 func recordSourceDTO(source any) any {
 	switch value := source.(type) {
 	case pixiv.Artwork:
-		return pixiv.ToArtworkDTO(value)
+		return value
 	case pixiv.Novel:
-		return pixiv.ToNovelDTO(value)
+		return value
 	case pixiv.UserPreview:
-		return pixiv.ToUserPreviewDTO(value)
+		return value
 	case pixiv.UserDetail:
-		return pixiv.ToUserDetailDTO(value)
+		return value
 	default:
 		return source
 	}

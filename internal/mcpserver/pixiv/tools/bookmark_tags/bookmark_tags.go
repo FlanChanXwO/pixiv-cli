@@ -57,9 +57,9 @@ func handleBookmarkTags(ctx context.Context, app *toolhost.App, in In) (*mcp.Cal
 	if err != nil {
 		return outputs.BookmarkTagsError(err)
 	}
-	tags := make([]pixiv.BookmarkTagDTO, 0, len(items))
+	tags := make([]pixiv.BookmarkTag, 0, len(items))
 	for _, item := range items {
-		tags = append(tags, pixiv.ToBookmarkTagDTO(item))
+		tags = append(tags, item)
 	}
 	out := outputs.BookmarkTags{Tags: tags, Pagination: toolhost.ListPagination(plan, in.Limit, len(items), more)}
 	return outputs.BookmarkTagsResult(out, len(items)), out, nil

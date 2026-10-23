@@ -134,21 +134,15 @@ func (c *Client) mapUserDetail(d user.Detail) (UserDetail, error) {
 }
 
 func (c *Client) mapUserPreview(p user.Preview) UserPreview {
-	out := UserPreview{User: c.mapUser(p.User)}
-	if len(p.Illusts) > 0 {
-		out.Illusts = make([]Artwork, 0, len(p.Illusts))
-		for _, m := range p.Illusts {
-			if a, err := c.mapArtworkEntity(m); err == nil {
-				out.Illusts = append(out.Illusts, a)
-			}
+	out := UserPreview{User: c.mapUser(p.User), Illusts: make([]Artwork, 0, len(p.Illusts)), Novels: make([]Novel, 0, len(p.Novels))}
+	for _, m := range p.Illusts {
+		if a, err := c.mapArtworkEntity(m); err == nil {
+			out.Illusts = append(out.Illusts, a)
 		}
 	}
-	if len(p.Novels) > 0 {
-		out.Novels = make([]Novel, 0, len(p.Novels))
-		for _, m := range p.Novels {
-			if n, err := c.mapNovel(m); err == nil {
-				out.Novels = append(out.Novels, n)
-			}
+	for _, m := range p.Novels {
+		if n, err := c.mapNovel(m); err == nil {
+			out.Novels = append(out.Novels, n)
 		}
 	}
 	return out

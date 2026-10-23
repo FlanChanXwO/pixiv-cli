@@ -213,8 +213,8 @@ type fakeSDKClient struct {
 	artworkBookmarkRequest      pixiv.ArtworkBookmarkRequest
 	novelBookmarkRequest        pixiv.NovelBookmarkRequest
 	illustCommentsRequest       pixiv.ArtworkCommentsRequest
-	addBookmarkRequest          pixiv.AddBookmarkRequest
-	removeBookmarkRequest       pixiv.RemoveBookmarkRequest
+	addBookmarkRequest          pixiv.AddArtworkBookmarkRequest
+	removeBookmarkRequest       pixiv.RemoveArtworkBookmarkRequest
 	addNovelBookmarkRequest     pixiv.AddNovelBookmarkRequest
 	removeNovelBookmarkRequest  pixiv.RemoveNovelBookmarkRequest
 	followUserRequest           pixiv.FollowUserRequest

@@ -18,8 +18,8 @@ const (
 // UgoiraArchive is one downloadable ugoira archive at a specific quality. The
 // Resource allows direct streaming or a safe OpenResource/SaveResource read.
 type UgoiraArchive struct {
-	Quality  UgoiraQuality
-	Resource sdk.Resource
+	Quality  UgoiraQuality `json:"quality"`
+	Resource sdk.Resource  `json:"resource"`
 }
 
 // UgoiraFrame is one frame of a ugoira animation. Filename is a relative,
@@ -27,8 +27,8 @@ type UgoiraArchive struct {
 // result. DelayMilliseconds preserves the upstream millisecond integer without
 // conversion to a frame rate.
 type UgoiraFrame struct {
-	Filename          string
-	DelayMilliseconds int
+	Filename          string `json:"filename"`
+	DelayMilliseconds int    `json:"delay_milliseconds"`
 }
 
 // UgoiraMetadata describes the playable animation of a ugoira artwork. Frame
@@ -36,7 +36,7 @@ type UgoiraFrame struct {
 // are preserved as-is in UgoiraArchive.Quality so additive upstream capability
 // remains representable.
 type UgoiraMetadata struct {
-	ArtworkID int64
-	Archives  []UgoiraArchive
-	Frames    []UgoiraFrame
+	ArtworkID int64           `json:"artwork_id"`
+	Archives  []UgoiraArchive `json:"archives"`
+	Frames    []UgoiraFrame   `json:"frames"`
 }

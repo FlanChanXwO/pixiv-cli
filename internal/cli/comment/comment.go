@@ -336,19 +336,19 @@ func (a command) runStamps(cmd *cobra.Command, opts stampsOptions) error {
 	}
 	if ndjson {
 		for _, item := range stamps {
-			if err := writeJSONLine(a.data.Output, pixiv.ToStampDTO(item)); err != nil {
+			if err := writeJSONLine(a.data.Output, item); err != nil {
 				return err
 			}
 		}
 		return nil
 	}
 	if jsonOut {
-		items := make([]pixiv.StampDTO, 0, len(stamps))
+		items := make([]pixiv.Stamp, 0, len(stamps))
 		for _, item := range stamps {
-			items = append(items, pixiv.ToStampDTO(item))
+			items = append(items, item)
 		}
 		return a.data.WriteJSON(struct {
-			Stamps []pixiv.StampDTO `json:"stamps"`
+			Stamps []pixiv.Stamp `json:"stamps"`
 		}{Stamps: items})
 	}
 	for _, item := range stamps {
@@ -413,9 +413,9 @@ func (a command) writeDeleteResult(jsonOut bool) error {
 }
 
 type commentOut struct {
-	Comments      []pixiv.CommentDTO             `json:"comments"`
-	Total         *int64                         `json:"total,omitempty"`
-	AccessControl *pixiv.CommentAccessControlDTO `json:"access_control,omitempty"`
+	Comments      []pixiv.Comment             `json:"comments"`
+	Total         *int64                      `json:"total,omitempty"`
+	AccessControl *pixiv.CommentAccessControl `json:"access_control,omitempty"`
 }
 
 type commentMutationOut struct {
@@ -480,23 +480,19 @@ func (a command) run(cmd *cobra.Command, arg string, opts options) error {
 		}
 		if ndjson {
 			for _, item := range comments {
-				if err := writeJSONLine(a.data.Output, pixiv.ToCommentDTO(item)); err != nil {
+				if err := writeJSONLine(a.data.Output, item); err != nil {
 					return true, err
 				}
 			}
 			return len(comments) > 0, nil
 		}
 		if jsonOut {
-			commentDTOs := make([]pixiv.CommentDTO, 0, len(comments))
-			for _, item := range comments {
-				commentDTOs = append(commentDTOs, pixiv.ToCommentDTO(item))
-			}
-			var accessControl *pixiv.CommentAccessControlDTO
+			var accessControl *pixiv.CommentAccessControl
 			if metadata.access != nil {
-				dto := pixiv.ToCommentAccessControlDTO(*metadata.access)
+				dto := *metadata.access
 				accessControl = &dto
 			}
-			if err := a.data.WriteJSON(commentOut{Comments: commentDTOs, Total: metadata.total, AccessControl: accessControl}); err != nil {
+			if err := a.data.WriteJSON(commentOut{Comments: comments, Total: metadata.total, AccessControl: accessControl}); err != nil {
 				return true, err
 			}
 			return true, nil

@@ -190,9 +190,9 @@ func (a command) newDetail() *cobra.Command {
 			}
 			if jsonOut {
 				if result.kind == "novel" {
-					return a.data.WriteJSON(pixiv.ToNovelBookmarkDetailDTO(result.novel))
+					return a.data.WriteJSON(result.novel)
 				}
-				return a.data.WriteJSON(pixiv.ToArtworkBookmarkDetailDTO(result.artwork))
+				return a.data.WriteJSON(result.artwork)
 			}
 			restrict, tags := result.restrictAndTags()
 			if restrict == "" {
@@ -293,7 +293,7 @@ func (a command) newAdd() *cobra.Command {
 					if typ == "novel" {
 						return client.AddNovelBookmark(ctx, pixiv.AddNovelBookmarkRequest{NovelID: id, Restrict: pixiv.Restrict(opts.restrict), Tags: opts.tags})
 					}
-					return client.AddBookmark(ctx, pixiv.AddBookmarkRequest{ArtworkID: id, Restrict: pixiv.Restrict(opts.restrict), Tags: opts.tags})
+					return client.AddArtworkBookmark(ctx, pixiv.AddArtworkBookmarkRequest{ArtworkID: id, Restrict: pixiv.Restrict(opts.restrict), Tags: opts.tags})
 				})
 			})
 			if len(args) == 0 {
@@ -339,7 +339,7 @@ func (a command) newRemove() *cobra.Command {
 					if typ == "novel" {
 						return client.RemoveNovelBookmark(ctx, pixiv.RemoveNovelBookmarkRequest{NovelID: id})
 					}
-					return client.RemoveBookmark(ctx, pixiv.RemoveBookmarkRequest{ArtworkID: id})
+					return client.RemoveArtworkBookmark(ctx, pixiv.RemoveArtworkBookmarkRequest{ArtworkID: id})
 				})
 			})
 			if len(args) == 0 {
@@ -527,9 +527,9 @@ func bookmarkCheckpoint(cursor bookmarkStreamCursor, position int) (bookmarkStre
 func (item bookmarkListItem) record() (record.Record, error) {
 	switch item.kind {
 	case "artwork":
-		return record.RecordFromArtworkDTO(pixiv.ToArtworkDTO(item.artwork))
+		return record.RecordFromArtwork(item.artwork)
 	case "novel":
-		return record.RecordFromNovelDTO(pixiv.ToNovelDTO(item.novel))
+		return record.RecordFromNovel(item.novel)
 	default:
 		return record.Record{}, fmt.Errorf("unsupported bookmark item kind %q", item.kind)
 	}
@@ -749,20 +749,16 @@ func (a command) runTags(cmd *cobra.Command, args []string, opts listOptions) er
 		}
 		if ndjson {
 			for _, item := range items {
-				if err := writeJSONLine(a.data.Output, pixiv.ToBookmarkTagDTO(item)); err != nil {
+				if err := writeJSONLine(a.data.Output, item); err != nil {
 					return true, err
 				}
 			}
 			return len(items) > 0, nil
 		}
 		if jsonOut {
-			dtos := make([]pixiv.BookmarkTagDTO, 0, len(items))
-			for _, item := range items {
-				dtos = append(dtos, pixiv.ToBookmarkTagDTO(item))
-			}
 			if err := a.data.WriteJSON(struct {
-				Tags []pixiv.BookmarkTagDTO `json:"bookmark_tags"`
-			}{Tags: dtos}); err != nil {
+				Tags []pixiv.BookmarkTag `json:"bookmark_tags"`
+			}{Tags: items}); err != nil {
 				return true, err
 			}
 			return true, nil
