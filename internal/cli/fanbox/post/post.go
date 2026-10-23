@@ -10,23 +10,24 @@ import (
 	"strings"
 	"time"
 
-	deps "github.com/FlanChanXwO/pixiv-cli/internal/cli/fanbox"
-	requirements "github.com/FlanChanXwO/pixiv-cli/internal/cli/internal/command"
+	commands "github.com/FlanChanXwO/pixiv-cli/internal/cli/internal/command"
+	"github.com/FlanChanXwO/pixiv-cli/internal/cli/internal/fanboxcmd"
 	"github.com/FlanChanXwO/pixiv-cli/internal/cli/internal/fanboxcmd/listing"
+	"github.com/FlanChanXwO/pixiv-cli/internal/session"
 	"github.com/FlanChanXwO/pixiv-cli/sdk"
 	"github.com/FlanChanXwO/pixiv-cli/sdk/fanbox"
 	"github.com/spf13/cobra"
 )
 
 type command struct {
-	data deps.Data
-	out  io.Writer
+	env  commands.Env
+	open func() (*session.Fanbox, error)
 }
 
 // Commands returns FANBOX content leaf commands for the root FANBOX group.
-func Commands(data deps.Data) []*cobra.Command {
-	a := command{data: data, out: data.Writer}
-	commands := []*cobra.Command{
+func Commands(env commands.Env, open func() (*session.Fanbox, error)) []*cobra.Command {
+	a := command{env: env, open: open}
+	leaves := []*cobra.Command{
 		a.newCreatorsCommand(),
 		a.newPostsCommand(),
 		a.newTagsCommand(),
@@ -34,10 +35,10 @@ func Commands(data deps.Data) []*cobra.Command {
 		a.newSupportingCommand(),
 		a.newPostCommand(),
 	}
-	for _, cmd := range commands {
-		requirements.Bind(cmd, requirements.FanboxData())
+	for _, cmd := range leaves {
+		commands.Bind(cmd, commands.FanboxData())
 	}
-	return commands
+	return leaves
 }
 
 func (a command) newCreatorsCommand() *cobra.Command {
@@ -46,14 +47,14 @@ func (a command) newCreatorsCommand() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "creators",
 		Short: "List supporting or following FANBOX creators",
-		Args:  a.data.RequireExactArgs(0, "pixiv fanbox creators --kind supporting|following"),
+		Args:  a.env.ExactArgs(0, "pixiv fanbox creators --kind supporting|following"),
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			return a.runCreators(cmd, opts, kind)
 		},
 	}
 	listing.BindListFlags(cmd, &opts)
 	cmd.Flags().StringVar(&kind, "kind", kind, "creator list kind: supporting or following")
-	a.data.BindNoInput(cmd)
+	a.env.BindNoInput(cmd)
 	return cmd
 }
 
@@ -66,16 +67,16 @@ func (a command) runCreators(cmd *cobra.Command, opts listing.Options, rawKind s
 	if err != nil {
 		return err
 	}
-	jsonOut, err := listing.JSONOut(cmd, opts, a.data.UsageError)
+	jsonOut, err := listing.JSONOut(cmd, opts, a.env.UsageError)
 	if err != nil {
 		return err
 	}
-	return a.data.UseClient(cmd, func(client *fanbox.Client) error {
+	return fanboxcmd.UseClient(cmd, a.open, func(client *fanbox.Client) error {
 		fetch := func(ctx context.Context, cursor sdk.Cursor) (sdk.Page[fanbox.CreatorSummary], error) {
 			return client.Creators(ctx, fanbox.CreatorsRequest{Kind: kind, Cursor: cursor})
 		}
-		return listing.Run(cmd.Context(), a.out, plan, "creators", jsonOut, opts.NDJSON, func(items []fanbox.CreatorSummary) error {
-			return printCreators(a.out, items)
+		return listing.Run(cmd.Context(), a.env.Out, plan, "creators", jsonOut, opts.NDJSON, func(items []fanbox.CreatorSummary) error {
+			return printCreators(a.env.Out, items)
 		}, func(item fanbox.CreatorSummary) any { return item }, fetch)
 	})
 }
@@ -85,13 +86,13 @@ func (a command) newPostsCommand() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "posts SOURCE",
 		Short: "List posts from a creator, tag, post, or FANBOX URL",
-		Args:  a.data.RequireExactArgs(1, "pixiv fanbox posts SOURCE"),
+		Args:  a.env.ExactArgs(1, "pixiv fanbox posts SOURCE"),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return a.runPosts(cmd, args, opts)
 		},
 	}
 	listing.BindListFlags(cmd, &opts)
-	a.data.BindTextValue(cmd, 1, 1, 0)
+	a.env.BindTextValue(cmd, 1, 1, 0)
 	return cmd
 }
 
@@ -100,17 +101,17 @@ func (a command) runPosts(cmd *cobra.Command, args []string, opts listing.Option
 	if err != nil {
 		return err
 	}
-	jsonOut, err := listing.JSONOut(cmd, opts, a.data.UsageError)
+	jsonOut, err := listing.JSONOut(cmd, opts, a.env.UsageError)
 	if err != nil {
 		return err
 	}
-	return a.data.UseClient(cmd, func(client *fanbox.Client) error {
+	return fanboxcmd.UseClient(cmd, a.open, func(client *fanbox.Client) error {
 		fetch, err := PostsFetch(cmd.Context(), client, args[0])
 		if err != nil {
 			return err
 		}
-		return listing.Run(cmd.Context(), a.out, plan, "posts", jsonOut, opts.NDJSON, func(items []fanbox.Post) error {
-			return printPosts(a.out, items)
+		return listing.Run(cmd.Context(), a.env.Out, plan, "posts", jsonOut, opts.NDJSON, func(items []fanbox.Post) error {
+			return printPosts(a.env.Out, items)
 		}, func(item fanbox.Post) any { return item }, fetch)
 	})
 }
@@ -184,22 +185,22 @@ func (a command) newTagsCommand() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "tags CREATOR",
 		Short: "List tags used by a FANBOX creator",
-		Args:  a.data.RequireExactArgs(1, "pixiv fanbox tags CREATOR"),
+		Args:  a.env.ExactArgs(1, "pixiv fanbox tags CREATOR"),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return a.runTags(cmd, args, opts)
 		},
 	}
 	listing.BindSingleFlags(cmd, &opts)
-	a.data.BindTextValue(cmd, 1, 1, 0)
+	a.env.BindTextValue(cmd, 1, 1, 0)
 	return cmd
 }
 
 func (a command) runTags(cmd *cobra.Command, args []string, opts listing.Options) error {
-	jsonOut, err := listing.JSONOut(cmd, opts, a.data.UsageError)
+	jsonOut, err := listing.JSONOut(cmd, opts, a.env.UsageError)
 	if err != nil {
 		return err
 	}
-	return a.data.UseClient(cmd, func(client *fanbox.Client) error {
+	return fanboxcmd.UseClient(cmd, a.open, func(client *fanbox.Client) error {
 		tags, err := client.CreatorTags(cmd.Context(), fanbox.CreatorTagsRequest{CreatorID: args[0]})
 		if err != nil {
 			return err
@@ -209,12 +210,12 @@ func (a command) runTags(cmd *cobra.Command, args []string, opts listing.Options
 			out = append(out, tagOut{Name: tag.Name, URL: tag.URL})
 		}
 		if jsonOut {
-			return a.data.PrintJSON(struct {
+			return a.env.PrintJSON(struct {
 				Tags []tagOut `json:"tags"`
 			}{Tags: out})
 		}
 		if opts.NDJSON {
-			encoder := json.NewEncoder(a.out)
+			encoder := json.NewEncoder(a.env.Out)
 			for _, item := range out {
 				if err := encoder.Encode(item); err != nil {
 					return err
@@ -223,7 +224,7 @@ func (a command) runTags(cmd *cobra.Command, args []string, opts listing.Options
 			return nil
 		}
 		for _, tag := range out {
-			fmt.Fprintf(a.out, "tag:%s\n", tag.Name)
+			fmt.Fprintf(a.env.Out, "tag:%s\n", tag.Name)
 		}
 		return nil
 	})
@@ -234,7 +235,7 @@ func (a command) newHomeCommand() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "home",
 		Short: "Browse the FANBOX home feed",
-		Args:  a.data.RequireExactArgs(0, "pixiv fanbox home"),
+		Args:  a.env.ExactArgs(0, "pixiv fanbox home"),
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			return a.runFeed(cmd, opts, func(client *fanbox.Client) func(context.Context, sdk.Cursor) (sdk.Page[fanbox.Post], error) {
 				return func(ctx context.Context, cursor sdk.Cursor) (sdk.Page[fanbox.Post], error) {
@@ -244,7 +245,7 @@ func (a command) newHomeCommand() *cobra.Command {
 		},
 	}
 	listing.BindListFlags(cmd, &opts)
-	a.data.BindNoInput(cmd)
+	a.env.BindNoInput(cmd)
 	return cmd
 }
 
@@ -253,7 +254,7 @@ func (a command) newSupportingCommand() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "supporting",
 		Short: "Browse posts from supporting creators",
-		Args:  a.data.RequireExactArgs(0, "pixiv fanbox supporting"),
+		Args:  a.env.ExactArgs(0, "pixiv fanbox supporting"),
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			return a.runFeed(cmd, opts, func(client *fanbox.Client) func(context.Context, sdk.Cursor) (sdk.Page[fanbox.Post], error) {
 				return func(ctx context.Context, cursor sdk.Cursor) (sdk.Page[fanbox.Post], error) {
@@ -263,7 +264,7 @@ func (a command) newSupportingCommand() *cobra.Command {
 		},
 	}
 	listing.BindListFlags(cmd, &opts)
-	a.data.BindNoInput(cmd)
+	a.env.BindNoInput(cmd)
 	return cmd
 }
 
@@ -272,13 +273,13 @@ func (a command) runFeed(cmd *cobra.Command, opts listing.Options, bind func(*fa
 	if err != nil {
 		return err
 	}
-	jsonOut, err := listing.JSONOut(cmd, opts, a.data.UsageError)
+	jsonOut, err := listing.JSONOut(cmd, opts, a.env.UsageError)
 	if err != nil {
 		return err
 	}
-	return a.data.UseClient(cmd, func(client *fanbox.Client) error {
-		return listing.Run(cmd.Context(), a.out, plan, "posts", jsonOut, opts.NDJSON, func(items []fanbox.Post) error {
-			return printPosts(a.out, items)
+	return fanboxcmd.UseClient(cmd, a.open, func(client *fanbox.Client) error {
+		return listing.Run(cmd.Context(), a.env.Out, plan, "posts", jsonOut, opts.NDJSON, func(items []fanbox.Post) error {
+			return printPosts(a.env.Out, items)
 		}, func(item fanbox.Post) any { return item }, bind(client))
 	})
 }
@@ -288,34 +289,34 @@ func (a command) newPostCommand() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "post POST_ID",
 		Short: "Show one FANBOX post",
-		Args:  a.data.RequireExactArgs(1, "pixiv fanbox post POST_ID"),
+		Args:  a.env.ExactArgs(1, "pixiv fanbox post POST_ID"),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return a.runPost(cmd, args, opts)
 		},
 	}
 	listing.BindSingleFlags(cmd, &opts)
-	a.data.BindTextValue(cmd, 1, 1, 0)
+	a.env.BindTextValue(cmd, 1, 1, 0)
 	return cmd
 }
 
 func (a command) runPost(cmd *cobra.Command, args []string, opts listing.Options) error {
-	jsonOut, err := listing.JSONOut(cmd, opts, a.data.UsageError)
+	jsonOut, err := listing.JSONOut(cmd, opts, a.env.UsageError)
 	if err != nil {
 		return err
 	}
-	return a.data.UseClient(cmd, func(client *fanbox.Client) error {
+	return fanboxcmd.UseClient(cmd, a.open, func(client *fanbox.Client) error {
 		post, err := client.Post(cmd.Context(), fanbox.PostRequest{PostID: args[0]})
 		if err != nil {
 			return err
 		}
 		out := postOutFrom(post)
 		if jsonOut {
-			return a.data.PrintJSON(out)
+			return a.env.PrintJSON(out)
 		}
 		if opts.NDJSON {
-			return json.NewEncoder(a.out).Encode(out)
+			return json.NewEncoder(a.env.Out).Encode(out)
 		}
-		return printPosts(a.out, []fanbox.Post{post})
+		return printPosts(a.env.Out, []fanbox.Post{post})
 	})
 }
 
@@ -361,14 +362,7 @@ func printCreators(out io.Writer, creators []fanbox.CreatorSummary) error {
 func printPosts(out io.Writer, posts []fanbox.Post) error {
 	for _, post := range posts {
 		fmt.Fprintf(out, "id:%s title:%s published:%s restricted:%s\n",
-			post.ID, post.Title, postOutFrom(post).PublishedAt, textBool(post.IsRestricted))
+			post.ID, post.Title, postOutFrom(post).PublishedAt, commands.TextBool(post.IsRestricted))
 	}
 	return nil
-}
-
-func textBool(value bool) string {
-	if value {
-		return "yes"
-	}
-	return "no"
 }

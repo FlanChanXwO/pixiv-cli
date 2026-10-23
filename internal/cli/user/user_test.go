@@ -10,18 +10,19 @@ import (
 	"strings"
 	"testing"
 
+	pixivcmd "github.com/FlanChanXwO/pixiv-cli/internal/cli/internal/pixivcmd"
 	"github.com/FlanChanXwO/pixiv-cli/sdk"
 	pixiv "github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
 )
 
 func TestUserDetailRejectsInvalidIDBeforeOpeningClient(t *testing.T) {
 	opened := false
-	cmd := New(Dependencies{
+	cmd := newTestUserCommand(testData{
 		Input:      strings.NewReader(""),
 		Output:     &bytes.Buffer{},
 		UsageError: func(err error) error { return err },
 		JSONOut:    func(*bool) (bool, error) { return false, nil },
-		Pooled: func(context.Context, Request, func(context.Context, *pixiv.Client) (bool, error)) error {
+		Pooled: func(context.Context, pixivcmd.Request, func(context.Context, *pixiv.Client) (bool, error)) error {
 			opened = true
 			return nil
 		},
@@ -39,12 +40,12 @@ func TestUserDetailRejectsInvalidIDBeforeOpeningClient(t *testing.T) {
 
 func TestUserArtworksRejectsUnsupportedTypeBeforeOpeningClient(t *testing.T) {
 	opened := false
-	cmd := New(Dependencies{
+	cmd := newTestUserCommand(testData{
 		Input:      strings.NewReader(""),
 		Output:     &bytes.Buffer{},
 		UsageError: func(err error) error { return err },
 		JSONOut:    func(*bool) (bool, error) { return false, nil },
-		Pooled: func(context.Context, Request, func(context.Context, *pixiv.Client) (bool, error)) error {
+		Pooled: func(context.Context, pixivcmd.Request, func(context.Context, *pixiv.Client) (bool, error)) error {
 			opened = true
 			return nil
 		},
@@ -62,12 +63,12 @@ func TestUserArtworksRejectsUnsupportedTypeBeforeOpeningClient(t *testing.T) {
 
 func TestUserDetailClassifiesURLInputAsInvalidArgument(t *testing.T) {
 	opened := false
-	cmd := New(Dependencies{
+	cmd := newTestUserCommand(testData{
 		Input:      strings.NewReader(""),
 		Output:     &bytes.Buffer{},
 		UsageError: func(err error) error { return err },
 		JSONOut:    func(*bool) (bool, error) { return false, nil },
-		Pooled: func(context.Context, Request, func(context.Context, *pixiv.Client) (bool, error)) error {
+		Pooled: func(context.Context, pixivcmd.Request, func(context.Context, *pixiv.Client) (bool, error)) error {
 			opened = true
 			return nil
 		},
@@ -85,12 +86,12 @@ func TestUserDetailClassifiesURLInputAsInvalidArgument(t *testing.T) {
 
 func TestUserFollowingRejectsUnsupportedRestrictBeforeOpeningClient(t *testing.T) {
 	opened := false
-	cmd := New(Dependencies{
+	cmd := newTestUserCommand(testData{
 		Input:      strings.NewReader(""),
 		Output:     &bytes.Buffer{},
 		UsageError: func(err error) error { return err },
 		JSONOut:    func(*bool) (bool, error) { return false, nil },
-		Pooled: func(context.Context, Request, func(context.Context, *pixiv.Client) (bool, error)) error {
+		Pooled: func(context.Context, pixivcmd.Request, func(context.Context, *pixiv.Client) (bool, error)) error {
 			opened = true
 			return nil
 		},
@@ -108,12 +109,12 @@ func TestUserFollowingRejectsUnsupportedRestrictBeforeOpeningClient(t *testing.T
 
 func TestUserArtworksClassifiesURLInputAsInvalidArgument(t *testing.T) {
 	opened := false
-	cmd := New(Dependencies{
+	cmd := newTestUserCommand(testData{
 		Input:      strings.NewReader(""),
 		Output:     &bytes.Buffer{},
 		UsageError: func(err error) error { return err },
 		JSONOut:    func(*bool) (bool, error) { return false, nil },
-		Pooled: func(context.Context, Request, func(context.Context, *pixiv.Client) (bool, error)) error {
+		Pooled: func(context.Context, pixivcmd.Request, func(context.Context, *pixiv.Client) (bool, error)) error {
 			opened = true
 			return nil
 		},
@@ -130,12 +131,12 @@ func TestUserArtworksClassifiesURLInputAsInvalidArgument(t *testing.T) {
 }
 
 func TestUserArtworksRequiresKnownCurrentUserForOmittedID(t *testing.T) {
-	cmd := New(Dependencies{
+	cmd := newTestUserCommand(testData{
 		Input:      strings.NewReader(""),
 		Output:     &bytes.Buffer{},
 		UsageError: func(err error) error { return err },
 		JSONOut:    func(*bool) (bool, error) { return false, nil },
-		Pooled: func(ctx context.Context, _ Request, attempt func(context.Context, *pixiv.Client) (bool, error)) error {
+		Pooled: func(ctx context.Context, _ pixivcmd.Request, attempt func(context.Context, *pixiv.Client) (bool, error)) error {
 			client, err := pixiv.NewWith("token", pixiv.Options{})
 			if err != nil {
 				return err
@@ -243,7 +244,7 @@ func TestUserReadCommandsUseTypedSDKRoutes(t *testing.T) {
 				}
 				return jsonHTTPResponse(request, test.body), nil
 			})
-			cmd := New(Dependencies{
+			cmd := newTestUserCommand(testData{
 				Input:  strings.NewReader(""),
 				Output: output,
 				UsageError: func(err error) error {
@@ -255,7 +256,7 @@ func TestUserReadCommandsUseTypedSDKRoutes(t *testing.T) {
 					}
 					return false, nil
 				},
-				Pooled: func(ctx context.Context, _ Request, attempt func(context.Context, *pixiv.Client) (bool, error)) error {
+				Pooled: func(ctx context.Context, _ pixivcmd.Request, attempt func(context.Context, *pixiv.Client) (bool, error)) error {
 					client, err := pixiv.NewWith("token", pixiv.Options{HTTPClient: &http.Client{Transport: transport}})
 					if err != nil {
 						return err
@@ -318,12 +319,12 @@ func TestUserRelationshipTextOutputEscapesControlBytes(t *testing.T) {
 		}
 		return jsonHTTPResponse(request, `{"user_previews":[{"user":{"id":7701,"name":"line\ninjected"}}],"next_url":null}`), nil
 	})
-	cmd := New(Dependencies{
+	cmd := newTestUserCommand(testData{
 		Input:      strings.NewReader(""),
 		Output:     output,
 		UsageError: func(err error) error { return err },
 		JSONOut:    func(*bool) (bool, error) { return false, nil },
-		Pooled: func(ctx context.Context, _ Request, attempt func(context.Context, *pixiv.Client) (bool, error)) error {
+		Pooled: func(ctx context.Context, _ pixivcmd.Request, attempt func(context.Context, *pixiv.Client) (bool, error)) error {
 			client, err := pixiv.NewWith("token", pixiv.Options{HTTPClient: &http.Client{Transport: transport}})
 			if err != nil {
 				return err
@@ -447,7 +448,7 @@ func TestUserListCommandsContinueAcrossUpstreamPages(t *testing.T) {
 				}
 				return jsonHTTPResponse(request, body), nil
 			})
-			cmd := New(Dependencies{
+			cmd := newTestUserCommand(testData{
 				Input:  strings.NewReader(""),
 				Output: output,
 				UsageError: func(err error) error {
@@ -459,7 +460,7 @@ func TestUserListCommandsContinueAcrossUpstreamPages(t *testing.T) {
 					}
 					return false, nil
 				},
-				Pooled: func(ctx context.Context, _ Request, attempt func(context.Context, *pixiv.Client) (bool, error)) error {
+				Pooled: func(ctx context.Context, _ pixivcmd.Request, attempt func(context.Context, *pixiv.Client) (bool, error)) error {
 					client, err := pixiv.NewWith("token", pixiv.Options{HTTPClient: &http.Client{Transport: transport}})
 					if err != nil {
 						return err
@@ -523,12 +524,12 @@ func TestLegacyUserSearchReadsWordFromStdinAndEmitsNDJSONAcrossBatches(t *testin
 		}
 		return jsonHTTPResponse(request, body), nil
 	})
-	cmd := New(Dependencies{
+	cmd := newTestUserCommand(testData{
 		Input:      strings.NewReader("artist\n"),
 		Output:     output,
 		UsageError: func(err error) error { return err },
 		JSONOut:    func(*bool) (bool, error) { return false, nil },
-		Pooled: func(ctx context.Context, _ Request, attempt func(context.Context, *pixiv.Client) (bool, error)) error {
+		Pooled: func(ctx context.Context, _ pixivcmd.Request, attempt func(context.Context, *pixiv.Client) (bool, error)) error {
 			client, err := pixiv.NewWith("token", pixiv.Options{HTTPClient: &http.Client{Transport: transport}})
 			if err != nil {
 				return err

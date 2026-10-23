@@ -4,49 +4,51 @@ package download
 import (
 	"context"
 	"fmt"
-	"io"
 	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
 
-	deps "github.com/FlanChanXwO/pixiv-cli/internal/cli/fanbox"
 	fanboxpost "github.com/FlanChanXwO/pixiv-cli/internal/cli/fanbox/post"
-	requirements "github.com/FlanChanXwO/pixiv-cli/internal/cli/internal/command"
+	commands "github.com/FlanChanXwO/pixiv-cli/internal/cli/internal/command"
+	"github.com/FlanChanXwO/pixiv-cli/internal/cli/internal/fanboxcmd"
 	"github.com/FlanChanXwO/pixiv-cli/internal/cli/internal/fanboxcmd/listing"
+	"github.com/FlanChanXwO/pixiv-cli/internal/session"
 	"github.com/FlanChanXwO/pixiv-cli/sdk"
 	"github.com/FlanChanXwO/pixiv-cli/sdk/fanbox"
 	"github.com/spf13/cobra"
 )
 
 type command struct {
-	data deps.Data
-	out  io.Writer
+	env          commands.Env
+	open         func() (*session.Fanbox, error)
+	downloadPath func() (string, error)
 }
 
-// New builds the actual `pixiv fanbox download` command.
-func New(data deps.Data) *cobra.Command {
-	a := command{data: data, out: data.Writer}
+// New builds the actual `pixiv fanbox download` command. downloadPath is read
+// only when the command runs, so building the command tree opens no config.
+func New(env commands.Env, open func() (*session.Fanbox, error), downloadPath func() (string, error)) *cobra.Command {
+	a := command{env: env, open: open, downloadPath: downloadPath}
 	cmd := &cobra.Command{
 		Use:   "download SOURCE...",
 		Short: "Download posts and their assets from FANBOX",
-		Args:  data.RequireMinArgs(1, "pixiv fanbox download SOURCE..."),
+		Args:  env.MinArgs(1, "pixiv fanbox download SOURCE..."),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return a.run(cmd, args)
 		},
 	}
-	data.BindTextValue(cmd, 1, -1, 0)
-	requirements.Bind(cmd, requirements.FanboxData())
+	env.BindTextValue(cmd, 1, -1, 0)
+	commands.Bind(cmd, commands.FanboxData())
 	return cmd
 }
 
 func (a command) run(cmd *cobra.Command, args []string) error {
-	runtime, err := a.data.FanboxRuntimeConfig()
+	downloadPath, err := a.downloadPath()
 	if err != nil {
 		return err
 	}
-	baseDir := filepath.Join(runtime.DownloadPath, "fanbox")
-	return a.data.UseClient(cmd, func(client *fanbox.Client) error {
+	baseDir := filepath.Join(downloadPath, "fanbox")
+	return fanboxcmd.UseClient(cmd, a.open, func(client *fanbox.Client) error {
 		seen := make(map[string]struct{})
 		for _, source := range args {
 			fetch, err := fanboxpost.PostsFetch(cmd.Context(), client, source)
@@ -105,7 +107,7 @@ func (a command) savePostAssets(ctx context.Context, client *fanbox.Client, base
 		if _, err := client.SaveResource(ctx, asset.Resource.Ref, sdk.SaveOptions{Path: path}); err != nil {
 			return err
 		}
-		fmt.Fprintf(a.out, "saved: %s\n", path)
+		fmt.Fprintf(a.env.Out, "saved: %s\n", path)
 	}
 	return nil
 }

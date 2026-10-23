@@ -5,13 +5,10 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"io"
-	"strings"
 
-	requirements "github.com/FlanChanXwO/pixiv-cli/internal/cli/internal/command"
+	commands "github.com/FlanChanXwO/pixiv-cli/internal/cli/internal/command"
 	"github.com/FlanChanXwO/pixiv-cli/internal/cli/internal/input"
-	deps "github.com/FlanChanXwO/pixiv-cli/internal/cli/internal/pixivcmd"
-	"github.com/FlanChanXwO/pixiv-cli/internal/cli/internal/pixivcmd/listing"
+	pixivcmd "github.com/FlanChanXwO/pixiv-cli/internal/cli/internal/pixivcmd"
 	"github.com/FlanChanXwO/pixiv-cli/sdk"
 	pixiv "github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
 	"github.com/spf13/cobra"
@@ -20,7 +17,7 @@ import (
 // options 是只读 MyPixiv 命令的共同选项。MyPixiv 的好友关系写操作不在此命令组
 // 中，避免把读取工作流与关系变更混在一起。
 type options struct {
-	deps.CommandOptions
+	commands.Options
 	ndjson      bool
 	limit       int
 	page        int
@@ -28,16 +25,17 @@ type options struct {
 }
 
 type command struct {
-	data deps.Data
+	env commands.Env
+	run pixivcmd.Runner
 }
 
 // New builds the actual `pixiv mypixiv` command group.
-func New(data deps.Data) *cobra.Command {
-	a := command{data: data}
+func New(env commands.Env, exec pixivcmd.Executor) *cobra.Command {
+	a := command{env: env, run: pixivcmd.New(env.Out, exec)}
 	cmd := &cobra.Command{Use: "mypixiv", Short: "Browse authenticated MyPixiv data"}
 	cmd.AddCommand(a.newUsersCommand(), a.newWorksCommand())
-	data.BindNoInput(cmd)
-	requirements.Bind(cmd, requirements.PixivData())
+	env.BindNoInput(cmd)
+	commands.Bind(cmd, commands.PixivData())
 	return cmd
 }
 
@@ -46,16 +44,16 @@ func (a command) newUsersCommand() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "users",
 		Short: "List MyPixiv users for the authenticated account",
-		Args:  a.data.ExactArgs(0, "pixiv mypixiv users"),
+		Args:  a.env.ExactArgs(0, "pixiv mypixiv users"),
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			return a.runUsers(cmd, opts)
 		},
 	}
-	a.data.BindCommonFlags(cmd, &opts.CommandOptions)
-	listing.BindNDJSONFlag(cmd, &opts.ndjson)
-	listing.BindListFlags(cmd, &opts.limit, &opts.page)
-	a.data.BindNoInput(cmd)
-	requirements.Bind(cmd, requirements.PixivData())
+	a.env.BindCommonFlags(cmd, &opts.Options)
+	pixivcmd.BindNDJSONFlag(cmd, &opts.ndjson)
+	pixivcmd.BindListFlags(cmd, &opts.limit, &opts.page)
+	a.env.BindNoInput(cmd)
+	commands.Bind(cmd, commands.PixivData())
 	return cmd
 }
 
@@ -64,36 +62,36 @@ func (a command) newWorksCommand() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "works [USER_ID]",
 		Short: "Browse MyPixiv works or one user's works",
-		Args:  a.data.MaxArgs(1, "pixiv mypixiv works [USER_ID] --type artwork|manga|novel"),
+		Args:  a.env.MaxArgs(1, "pixiv mypixiv works [USER_ID] --type artwork|manga|novel"),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return a.runWorks(cmd, args, opts)
 		},
 	}
-	a.data.BindCommonFlags(cmd, &opts.CommandOptions)
-	listing.BindNDJSONFlag(cmd, &opts.ndjson)
-	listing.BindListFlags(cmd, &opts.limit, &opts.page)
+	a.env.BindCommonFlags(cmd, &opts.Options)
+	pixivcmd.BindNDJSONFlag(cmd, &opts.ndjson)
+	pixivcmd.BindListFlags(cmd, &opts.limit, &opts.page)
 	cmd.Flags().StringVarP(&opts.contentType, "type", "t", "", "required entity type: artwork or novel")
-	a.data.BindTextValue(cmd, 0, 1, 0)
-	requirements.Bind(cmd, requirements.PixivData())
+	a.env.BindTextValue(cmd, 0, 1, 0)
+	commands.Bind(cmd, commands.PixivData())
 	return cmd
 }
 
 func (a command) runUsers(cmd *cobra.Command, opts options) error {
-	plan, err := listing.ParsePlan(cmd, opts.limit, opts.page)
+	plan, err := pixivcmd.ParsePlan(cmd, opts.limit, opts.page)
 	if err != nil {
 		return err
 	}
-	request, err := a.data.Request(cmd, opts.CommandOptions)
+	request, err := pixivcmd.BuildRequest(cmd, opts.Options)
 	if err != nil {
 		return err
 	}
-	jsonOverride := a.data.JSONOverride(cmd, opts.CommandOptions)
+	jsonOverride := a.env.JSONOverride(cmd, opts.Options)
 	if opts.ndjson && cmd.Flags().Changed("json") {
-		return a.data.Usage(errors.New("--ndjson cannot be used with --json"))
+		return a.env.UsageError(errors.New("--ndjson cannot be used with --json"))
 	}
 	jsonOut := false
 	if !opts.ndjson {
-		jsonOut, err = a.data.JSONOut(jsonOverride)
+		jsonOut, err = a.env.JSONOut(jsonOverride)
 		if err != nil {
 			return err
 		}
@@ -113,9 +111,9 @@ func (a command) runUsers(cmd *cobra.Command, opts options) error {
 		}
 		return result.Items, result.Next, nil
 	}
-	return a.runner().RunPooledUserList(cmd.Context(), listing.Request(request), plan, jsonOut, opts.ndjson, func() string {
+	return a.run.RunUsers(cmd.Context(), pixivcmd.Request(request), plan, pixivcmd.FormatOf(jsonOut, opts.ndjson), pixivcmd.UserList{Heading: func() string {
 		return fmt.Sprintf("MyPixiv users for %d", userID)
-	}, fetch, func(items []pixiv.UserPreview) error { return printUserPreviews(a.data.Output, items) })
+	}, Fetch: fetch, Print: func(items []pixiv.UserPreview) error { return pixivcmd.PrintUserPreviews(a.env.Out, items) }})
 }
 
 func currentUserID(client *pixiv.Client) (int64, error) {
@@ -150,26 +148,26 @@ func (a command) runWorks(cmd *cobra.Command, args []string, opts options) error
 				sdk.WithDetail("user_id must be a positive integer"))
 		}
 	}
-	plan, err := listing.ParsePlan(cmd, opts.limit, opts.page)
+	plan, err := pixivcmd.ParsePlan(cmd, opts.limit, opts.page)
 	if err != nil {
 		return err
 	}
-	request, err := a.data.Request(cmd, opts.CommandOptions)
+	request, err := pixivcmd.BuildRequest(cmd, opts.Options)
 	if err != nil {
 		return err
 	}
-	jsonOverride := a.data.JSONOverride(cmd, opts.CommandOptions)
+	jsonOverride := a.env.JSONOverride(cmd, opts.Options)
 	if opts.ndjson && cmd.Flags().Changed("json") {
-		return a.data.Usage(errors.New("--ndjson cannot be used with --json"))
+		return a.env.UsageError(errors.New("--ndjson cannot be used with --json"))
 	}
 	jsonOut := false
 	if !opts.ndjson {
-		jsonOut, err = a.data.JSONOut(jsonOverride)
+		jsonOut, err = a.env.JSONOut(jsonOverride)
 		if err != nil {
 			return err
 		}
 	}
-	ndjson := a.data.ShouldAutoNDJSON(cmd, opts.ndjson, jsonOut)
+	ndjson := a.env.AutoNDJSON(cmd, opts.ndjson, jsonOut)
 	if len(args) == 0 {
 		if opts.contentType == "illust" {
 			fetch := func(client *pixiv.Client, ctx context.Context, cursor sdk.Cursor) ([]pixiv.Artwork, sdk.Cursor, error) {
@@ -179,8 +177,7 @@ func (a command) runWorks(cmd *cobra.Command, args []string, opts options) error
 				}
 				return result.Items, result.Next, nil
 			}
-			return a.runner().RunPooledIllustList(cmd.Context(), listing.Request(request), plan, jsonOut, ndjson, "MyPixiv artworks", fetch,
-				func(items []pixiv.Artwork, start int) error { return printArtworks(a.data.Output, items) })
+			return a.run.RunArtworks(cmd.Context(), pixivcmd.Request(request), plan, pixivcmd.FormatOf(jsonOut, ndjson), pixivcmd.ArtworkList{Heading: pixivcmd.Static("MyPixiv artworks"), Fetch: fetch, Print: func(items []pixiv.Artwork, start int) error { return pixivcmd.PrintArtworks(a.env.Out, items) }})
 		}
 		fetch := func(client *pixiv.Client, ctx context.Context, cursor sdk.Cursor) ([]pixiv.Novel, sdk.Cursor, error) {
 			result, err := client.MyPixivNovels(ctx, pixiv.MyPixivNovelsRequest{Cursor: cursor})
@@ -189,8 +186,7 @@ func (a command) runWorks(cmd *cobra.Command, args []string, opts options) error
 			}
 			return result.Items, result.Next, nil
 		}
-		return a.runner().RunPooledNovelList(cmd.Context(), listing.Request(request), plan, jsonOut, ndjson, "MyPixiv novels", fetch,
-			func(items []pixiv.Novel) error { return printNovels(a.data.Output, items) })
+		return a.run.RunNovels(cmd.Context(), pixivcmd.Request(request), plan, pixivcmd.FormatOf(jsonOut, ndjson), pixivcmd.NovelList{Heading: "MyPixiv novels", Fetch: fetch, Print: func(items []pixiv.Novel) error { return pixivcmd.PrintNovels(a.env.Out, items) }})
 	}
 	if opts.contentType == "novel" {
 		fetch := func(client *pixiv.Client, ctx context.Context, cursor sdk.Cursor) ([]pixiv.Novel, sdk.Cursor, error) {
@@ -200,8 +196,7 @@ func (a command) runWorks(cmd *cobra.Command, args []string, opts options) error
 			}
 			return result.Items, result.Next, nil
 		}
-		return a.runner().RunPooledNovelList(cmd.Context(), listing.Request(request), plan, jsonOut, ndjson, fmt.Sprintf("novels by %d", userID), fetch,
-			func(items []pixiv.Novel) error { return printNovels(a.data.Output, items) })
+		return a.run.RunNovels(cmd.Context(), pixivcmd.Request(request), plan, pixivcmd.FormatOf(jsonOut, ndjson), pixivcmd.NovelList{Heading: fmt.Sprintf("novels by %d", userID), Fetch: fetch, Print: func(items []pixiv.Novel) error { return pixivcmd.PrintNovels(a.env.Out, items) }})
 	}
 	fetch := func(client *pixiv.Client, ctx context.Context, cursor sdk.Cursor) ([]pixiv.Artwork, sdk.Cursor, error) {
 		result, err := client.UserArtworks(ctx, pixiv.UserArtworksRequest{UserID: userID, Kind: pixiv.ArtworkKind(opts.contentType), Cursor: cursor})
@@ -210,48 +205,5 @@ func (a command) runWorks(cmd *cobra.Command, args []string, opts options) error
 		}
 		return result.Items, result.Next, nil
 	}
-	return a.runner().RunPooledIllustList(cmd.Context(), listing.Request(request), plan, jsonOut, ndjson, fmt.Sprintf("artworks by %d", userID), fetch,
-		func(items []pixiv.Artwork, start int) error { return printArtworks(a.data.Output, items) })
-}
-
-// runner is resolved only after Cobra has accepted the command input and the
-// root has prepared the command's declared resources.
-func (a command) runner() listing.Runner {
-	return listing.New(a.data.Output, func(ctx context.Context, request listing.Request, attempt func(context.Context, *pixiv.Client) (bool, error)) error {
-		return a.data.Pooled(ctx, deps.Request(request), attempt)
-	})
-}
-
-func printArtworks(out io.Writer, items []pixiv.Artwork) error {
-	for _, item := range items {
-		if _, err := fmt.Fprintf(out, "https://www.pixiv.net/artworks/%d\n", item.ID); err != nil {
-			return err
-		}
-		tags := make([]string, 0, len(item.Tags))
-		for _, tag := range item.Tags {
-			tags = append(tags, tag.Name)
-		}
-		if _, err := fmt.Fprintf(out, "%d %q by %s bookmarks:%d views:%d tags:%s\n", item.ID, item.Title, item.User.Name, item.TotalBookmarks, item.TotalViews, strings.Join(tags, ",")); err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
-func printNovels(out io.Writer, items []pixiv.Novel) error {
-	for _, item := range items {
-		if _, err := fmt.Fprintf(out, "%d %s — %s\n", item.ID, item.Title, item.User.Name); err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
-func printUserPreviews(out io.Writer, users []pixiv.UserPreview) error {
-	for _, item := range users {
-		if _, err := fmt.Fprintf(out, "%d %s\n", item.User.ID, item.User.Name); err != nil {
-			return err
-		}
-	}
-	return nil
+	return a.run.RunArtworks(cmd.Context(), pixivcmd.Request(request), plan, pixivcmd.FormatOf(jsonOut, ndjson), pixivcmd.ArtworkList{Heading: pixivcmd.Static(fmt.Sprintf("artworks by %d", userID)), Fetch: fetch, Print: func(items []pixiv.Artwork, start int) error { return pixivcmd.PrintArtworks(a.env.Out, items) }})
 }

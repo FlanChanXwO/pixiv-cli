@@ -3,14 +3,11 @@ package comment
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 
-	requirements "github.com/FlanChanXwO/pixiv-cli/internal/cli/internal/command"
-	deps "github.com/FlanChanXwO/pixiv-cli/internal/cli/internal/pixivcmd"
-	"github.com/FlanChanXwO/pixiv-cli/internal/cli/internal/pixivcmd/listing"
+	commands "github.com/FlanChanXwO/pixiv-cli/internal/cli/internal/command"
+	pixivcmd "github.com/FlanChanXwO/pixiv-cli/internal/cli/internal/pixivcmd"
 	"github.com/FlanChanXwO/pixiv-cli/internal/cli/internal/resolver"
 	"github.com/FlanChanXwO/pixiv-cli/sdk"
 	pixiv "github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
@@ -18,7 +15,7 @@ import (
 )
 
 type options struct {
-	deps.CommandOptions
+	commands.Options
 	ndjson bool
 	limit  int
 	page   int
@@ -26,7 +23,7 @@ type options struct {
 }
 
 type mutationOptions struct {
-	deps.CommandOptions
+	commands.Options
 	comment         string
 	parentCommentID int64
 	stampID         int64
@@ -34,32 +31,34 @@ type mutationOptions struct {
 }
 
 type stampsOptions struct {
-	deps.CommandOptions
+	commands.Options
 	ndjson bool
 }
 
 type command struct {
-	data deps.Data
+	env    commands.Env
+	runner pixivcmd.Runner
+	exec   pixivcmd.Executor
 }
 
 // New builds the actual `pixiv comment` command.
-func New(data deps.Data) *cobra.Command {
-	a := command{data: data}
+func New(env commands.Env, exec pixivcmd.Executor) *cobra.Command {
+	a := command{env: env, runner: pixivcmd.New(env.Out, exec), exec: exec}
 	options := options{}
 	cmd := &cobra.Command{
 		Use:   "comment ID",
 		Short: "List artwork or novel comments",
-		Args:  data.ExactArgs(1, "pixiv comment [options] ID"),
+		Args:  env.ExactArgs(1, "pixiv comment [options] ID"),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return a.run(cmd, args[0], options)
 		},
 	}
-	data.BindCommonFlags(cmd, &options.CommandOptions)
-	listing.BindNDJSONFlag(cmd, &options.ndjson)
-	listing.BindListFlags(cmd, &options.limit, &options.page)
+	env.BindCommonFlags(cmd, &options.Options)
+	pixivcmd.BindNDJSONFlag(cmd, &options.ndjson)
+	pixivcmd.BindListFlags(cmd, &options.limit, &options.page)
 	cmd.Flags().StringVarP(&options.typ, "type", "t", "", "entity type: artwork or novel (required)")
-	data.BindTextValue(cmd, 1, 1, 0)
-	requirements.Bind(cmd, requirements.PixivData())
+	env.BindTextValue(cmd, 1, 1, 0)
+	commands.Bind(cmd, commands.PixivData())
 	cmd.AddCommand(a.newCreate(), a.newDelete(), a.newReply(), a.newStamp(), a.newStamps())
 	return cmd
 }
@@ -69,7 +68,7 @@ func (a command) newCreate() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "create ID",
 		Short: "Create an artwork or novel comment",
-		Args:  a.data.ExactArgs(1, "pixiv comment create [options] ID"),
+		Args:  a.env.ExactArgs(1, "pixiv comment create [options] ID"),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return a.runCreate(cmd, args[0], opts)
 		},
@@ -83,7 +82,7 @@ func (a command) newDelete() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "delete COMMENT_ID",
 		Short: "Delete an artwork or novel comment",
-		Args:  a.data.ExactArgs(1, "pixiv comment delete [options] COMMENT_ID"),
+		Args:  a.env.ExactArgs(1, "pixiv comment delete [options] COMMENT_ID"),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return a.runDelete(cmd, args[0], opts)
 		},
@@ -97,7 +96,7 @@ func (a command) newReply() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "reply ID",
 		Short: "Reply to an artwork or novel comment",
-		Args:  a.data.ExactArgs(1, "pixiv comment reply [options] ID"),
+		Args:  a.env.ExactArgs(1, "pixiv comment reply [options] ID"),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return a.runReply(cmd, args[0], opts)
 		},
@@ -112,7 +111,7 @@ func (a command) newStamp() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "stamp ID",
 		Short: "Create a stamp comment on an artwork or novel",
-		Args:  a.data.ExactArgs(1, "pixiv comment stamp [options] ID"),
+		Args:  a.env.ExactArgs(1, "pixiv comment stamp [options] ID"),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return a.runStamp(cmd, args[0], opts)
 		},
@@ -127,26 +126,26 @@ func (a command) newStamps() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "stamps",
 		Short: "List available comment stamps",
-		Args:  a.data.ExactArgs(0, "pixiv comment stamps [options]"),
+		Args:  a.env.ExactArgs(0, "pixiv comment stamps [options]"),
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			return a.runStamps(cmd, opts)
 		},
 	}
-	a.data.BindCommonFlags(cmd, &opts.CommandOptions)
-	listing.BindNDJSONFlag(cmd, &opts.ndjson)
-	a.data.BindNoInput(cmd)
-	requirements.Bind(cmd, requirements.PixivData())
+	a.env.BindCommonFlags(cmd, &opts.Options)
+	pixivcmd.BindNDJSONFlag(cmd, &opts.ndjson)
+	a.env.BindNoInput(cmd)
+	commands.Bind(cmd, commands.PixivData())
 	return cmd
 }
 
 func (a command) bindMutationFlags(cmd *cobra.Command, opts *mutationOptions, commentUsage string) {
-	a.data.BindCommonFlags(cmd, &opts.CommandOptions)
+	a.env.BindCommonFlags(cmd, &opts.Options)
 	cmd.Flags().StringVarP(&opts.typ, "type", "t", "", "entity type: artwork or novel (required)")
 	if commentUsage != "" {
 		cmd.Flags().StringVar(&opts.comment, "comment", "", commentUsage)
 	}
-	a.data.BindTextValue(cmd, 1, 1, 0)
-	requirements.Bind(cmd, requirements.PixivData())
+	a.env.BindTextValue(cmd, 1, 1, 0)
+	commands.Bind(cmd, commands.PixivData())
 }
 
 func (a command) runCreate(cmd *cobra.Command, arg string, opts mutationOptions) error {
@@ -160,16 +159,16 @@ func (a command) runCreate(cmd *cobra.Command, arg string, opts mutationOptions)
 	if err != nil {
 		return err
 	}
-	request, err := a.data.Request(cmd, opts.CommandOptions)
+	request, err := pixivcmd.BuildRequest(cmd, opts.Options)
 	if err != nil {
 		return err
 	}
-	jsonOut, err := a.data.JSONOut(a.data.JSONOverride(cmd, opts.CommandOptions))
+	jsonOut, err := a.env.JSONOut(a.env.JSONOverride(cmd, opts.Options))
 	if err != nil {
 		return err
 	}
 	var result pixiv.CommentMutationResult
-	err = deps.Write(a.data, cmd.Context(), request, func(ctx context.Context, client *pixiv.Client) error {
+	err = a.runner.Write(cmd.Context(), request, func(ctx context.Context, client *pixiv.Client) error {
 		switch target.TargetKind {
 		case resolver.TargetKindArtwork:
 			result, err = client.PostArtworkComment(ctx, pixiv.PostArtworkCommentRequest{ArtworkID: target.ID, Comment: opts.comment})
@@ -194,15 +193,15 @@ func (a command) runDelete(cmd *cobra.Command, arg string, opts mutationOptions)
 	if err != nil {
 		return err
 	}
-	request, err := a.data.Request(cmd, opts.CommandOptions)
+	request, err := pixivcmd.BuildRequest(cmd, opts.Options)
 	if err != nil {
 		return err
 	}
-	jsonOut, err := a.data.JSONOut(a.data.JSONOverride(cmd, opts.CommandOptions))
+	jsonOut, err := a.env.JSONOut(a.env.JSONOverride(cmd, opts.Options))
 	if err != nil {
 		return err
 	}
-	err = deps.Write(a.data, cmd.Context(), request, func(ctx context.Context, client *pixiv.Client) error {
+	err = a.runner.Write(cmd.Context(), request, func(ctx context.Context, client *pixiv.Client) error {
 		switch opts.typ {
 		case "artwork":
 			return client.DeleteArtworkComment(ctx, pixiv.DeleteArtworkCommentRequest{CommentID: target.ID})
@@ -232,16 +231,16 @@ func (a command) runReply(cmd *cobra.Command, arg string, opts mutationOptions) 
 	if err != nil {
 		return err
 	}
-	request, err := a.data.Request(cmd, opts.CommandOptions)
+	request, err := pixivcmd.BuildRequest(cmd, opts.Options)
 	if err != nil {
 		return err
 	}
-	jsonOut, err := a.data.JSONOut(a.data.JSONOverride(cmd, opts.CommandOptions))
+	jsonOut, err := a.env.JSONOut(a.env.JSONOverride(cmd, opts.Options))
 	if err != nil {
 		return err
 	}
 	var result pixiv.CommentMutationResult
-	err = deps.Write(a.data, cmd.Context(), request, func(ctx context.Context, client *pixiv.Client) error {
+	err = a.runner.Write(cmd.Context(), request, func(ctx context.Context, client *pixiv.Client) error {
 		switch target.TargetKind {
 		case resolver.TargetKindArtwork:
 			result, err = client.ReplyArtworkComment(ctx, pixiv.ReplyArtworkCommentRequest{
@@ -278,16 +277,16 @@ func (a command) runStamp(cmd *cobra.Command, arg string, opts mutationOptions) 
 	if err != nil {
 		return err
 	}
-	request, err := a.data.Request(cmd, opts.CommandOptions)
+	request, err := pixivcmd.BuildRequest(cmd, opts.Options)
 	if err != nil {
 		return err
 	}
-	jsonOut, err := a.data.JSONOut(a.data.JSONOverride(cmd, opts.CommandOptions))
+	jsonOut, err := a.env.JSONOut(a.env.JSONOverride(cmd, opts.Options))
 	if err != nil {
 		return err
 	}
 	var result pixiv.CommentMutationResult
-	err = deps.Write(a.data, cmd.Context(), request, func(ctx context.Context, client *pixiv.Client) error {
+	err = a.runner.Write(cmd.Context(), request, func(ctx context.Context, client *pixiv.Client) error {
 		switch target.TargetKind {
 		case resolver.TargetKindArtwork:
 			result, err = client.StampArtworkComment(ctx, pixiv.StampArtworkCommentRequest{
@@ -313,22 +312,22 @@ func (a command) runStamp(cmd *cobra.Command, arg string, opts mutationOptions) 
 }
 
 func (a command) runStamps(cmd *cobra.Command, opts stampsOptions) error {
-	request, err := a.data.Request(cmd, opts.CommandOptions)
+	request, err := pixivcmd.BuildRequest(cmd, opts.Options)
 	if err != nil {
 		return err
 	}
 	if opts.ndjson && cmd.Flags().Changed("json") {
-		return a.data.Usage(errors.New("--ndjson cannot be used with --json"))
+		return a.env.UsageError(errors.New("--ndjson cannot be used with --json"))
 	}
 	jsonOut := false
 	if !opts.ndjson {
-		jsonOut, err = a.data.JSONOut(a.data.JSONOverride(cmd, opts.CommandOptions))
+		jsonOut, err = a.env.JSONOut(a.env.JSONOverride(cmd, opts.Options))
 		if err != nil {
 			return err
 		}
 	}
-	ndjson := a.data.ShouldAutoNDJSON(cmd, opts.ndjson, jsonOut)
-	stamps, err := a.data.Pooled.Read(cmd.Context(), request, func(ctx context.Context, client *pixiv.Client) ([]pixiv.Stamp, error) {
+	ndjson := a.env.AutoNDJSON(cmd, opts.ndjson, jsonOut)
+	stamps, err := pixivcmd.Read(a.runner, cmd.Context(), request, func(ctx context.Context, client *pixiv.Client) ([]pixiv.Stamp, error) {
 		return client.Stamps(ctx, pixiv.StampsRequest{})
 	})
 	if err != nil {
@@ -336,19 +335,19 @@ func (a command) runStamps(cmd *cobra.Command, opts stampsOptions) error {
 	}
 	if ndjson {
 		for _, item := range stamps {
-			if err := writeJSONLine(a.data.Output, item); err != nil {
+			if err := pixivcmd.WriteJSONLine(a.env.Out, item); err != nil {
 				return err
 			}
 		}
 		return nil
 	}
 	if jsonOut {
-		return a.data.WriteJSON(struct {
+		return a.env.PrintJSON(struct {
 			Stamps []pixiv.Stamp `json:"stamps"`
 		}{Stamps: stamps})
 	}
 	for _, item := range stamps {
-		if _, err := fmt.Fprintf(a.data.Output, "%d %s\n", item.ID, item.Image.Resource.Ref.String()); err != nil {
+		if _, err := fmt.Fprintf(a.env.Out, "%d %s\n", item.ID, item.Image.Resource.Ref.String()); err != nil {
 			return err
 		}
 	}
@@ -394,17 +393,17 @@ func commentDeleteContract() resolver.Contract {
 
 func (a command) writeMutationResult(jsonOut bool, result pixiv.CommentMutationResult) error {
 	if jsonOut {
-		return a.data.WriteJSON(commentMutationOut{CommentID: result.CommentID})
+		return a.env.PrintJSON(commentMutationOut{CommentID: result.CommentID})
 	}
-	_, err := fmt.Fprintf(a.data.Output, "comment id: %d\n", result.CommentID)
+	_, err := fmt.Fprintf(a.env.Out, "comment id: %d\n", result.CommentID)
 	return err
 }
 
 func (a command) writeDeleteResult(jsonOut bool) error {
 	if jsonOut {
-		return a.data.WriteJSON(commentDeleteOut{Deleted: true})
+		return a.env.PrintJSON(commentDeleteOut{Deleted: true})
 	}
-	_, err := io.WriteString(a.data.Output, "comment deleted\n")
+	_, err := fmt.Fprint(a.env.Out, "comment deleted\n")
 	return err
 }
 
@@ -427,28 +426,28 @@ func (a command) run(cmd *cobra.Command, arg string, opts options) error {
 	if err != nil {
 		return err
 	}
-	plan, err := listing.ParsePlan(cmd, opts.limit, opts.page)
+	plan, err := pixivcmd.ParsePlan(cmd, opts.limit, opts.page)
 	if err != nil {
 		return err
 	}
-	request, err := a.data.Request(cmd, opts.CommandOptions)
+	request, err := pixivcmd.BuildRequest(cmd, opts.Options)
 	if err != nil {
 		return err
 	}
-	jsonOverride := a.data.JSONOverride(cmd, opts.CommandOptions)
+	jsonOverride := a.env.JSONOverride(cmd, opts.Options)
 	if opts.ndjson && cmd.Flags().Changed("json") {
-		return a.data.Usage(errors.New("--ndjson cannot be used with --json"))
+		return a.env.UsageError(errors.New("--ndjson cannot be used with --json"))
 	}
 	jsonOut := false
 	if !opts.ndjson {
-		jsonOut, err = a.data.JSONOut(jsonOverride)
+		jsonOut, err = a.env.JSONOut(jsonOverride)
 		if err != nil {
 			return err
 		}
 	}
-	ndjson := a.data.ShouldAutoNDJSON(cmd, opts.ndjson, jsonOut)
+	ndjson := a.env.AutoNDJSON(cmd, opts.ndjson, jsonOut)
 
-	return a.data.Pooled(cmd.Context(), request, func(ctx context.Context, client *pixiv.Client) (bool, error) {
+	return a.exec(cmd.Context(), request, func(ctx context.Context, client *pixiv.Client) (bool, error) {
 		var metadata commentPageMetadata
 		var comments []pixiv.Comment
 		fetch := func(ctx context.Context, cursor sdk.Cursor) ([]pixiv.Comment, sdk.Cursor, error) {
@@ -468,7 +467,7 @@ func (a command) run(cmd *cobra.Command, arg string, opts options) error {
 			metadata.set(page)
 			return page.Page.Items, page.Page.Next, nil
 		}
-		if err := listing.PageItems(ctx, plan, fetch, func(items []pixiv.Comment) error {
+		if err := pixivcmd.PageItems(ctx, plan, fetch, func(items []pixiv.Comment) error {
 			comments = append(comments, items...)
 			return nil
 		}); err != nil {
@@ -476,7 +475,7 @@ func (a command) run(cmd *cobra.Command, arg string, opts options) error {
 		}
 		if ndjson {
 			for _, item := range comments {
-				if err := writeJSONLine(a.data.Output, item); err != nil {
+				if err := pixivcmd.WriteJSONLine(a.env.Out, item); err != nil {
 					return true, err
 				}
 			}
@@ -488,16 +487,16 @@ func (a command) run(cmd *cobra.Command, arg string, opts options) error {
 				dto := *metadata.access
 				accessControl = &dto
 			}
-			if err := a.data.WriteJSON(commentOut{Comments: comments, Total: metadata.total, AccessControl: accessControl}); err != nil {
+			if err := a.env.PrintJSON(commentOut{Comments: comments, Total: metadata.total, AccessControl: accessControl}); err != nil {
 				return true, err
 			}
 			return true, nil
 		}
-		if _, err := fmt.Fprintf(a.data.Output, "%s comments for %d\n", opts.typ, target.ID); err != nil {
+		if _, err := fmt.Fprintf(a.env.Out, "%s comments for %d\n", opts.typ, target.ID); err != nil {
 			return true, err
 		}
 		for _, item := range comments {
-			if _, err := fmt.Fprintf(a.data.Output, "%d %s: %s\n", item.ID, item.User.Name, item.Comment); err != nil {
+			if _, err := fmt.Fprintf(a.env.Out, "%d %s: %s\n", item.ID, item.User.Name, item.Comment); err != nil {
 				return true, err
 			}
 		}
@@ -519,16 +518,4 @@ func (m *commentPageMetadata) set(page pixiv.CommentPage) {
 		value := *page.AccessControl
 		m.access = &value
 	}
-}
-
-func writeJSONLine(out io.Writer, value any) error {
-	body, err := json.Marshal(value)
-	if err != nil {
-		return err
-	}
-	if _, err := out.Write(body); err != nil {
-		return err
-	}
-	_, err = io.WriteString(out, "\n")
-	return err
 }

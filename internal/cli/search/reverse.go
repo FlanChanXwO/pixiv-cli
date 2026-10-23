@@ -9,6 +9,7 @@ import (
 	"os"
 	"strings"
 
+	pixivcmd "github.com/FlanChanXwO/pixiv-cli/internal/cli/internal/pixivcmd"
 	textutil "github.com/FlanChanXwO/pixiv-cli/internal/plaintext"
 	record "github.com/FlanChanXwO/pixiv-cli/internal/record"
 	"github.com/FlanChanXwO/pixiv-cli/internal/reversesearch"
@@ -28,31 +29,31 @@ type ReverseSearchFunc func(context.Context, ReverseSearchRequest) (reversesearc
 
 func (a command) runReverseSearch(cmd *cobra.Command, source string, opts options) error {
 	if err := validateReverseSearchFlags(cmd); err != nil {
-		return a.data.usage(err)
+		return a.env.UsageError(err)
 	}
-	request, err := a.data.request(cmd, opts.CommandOptions)
+	request, err := pixivcmd.BuildRequest(cmd, opts.Options)
 	if err != nil {
 		return err
 	}
 	provider, err := resolveReverseSearchProvider(opts.provider)
 	if err != nil {
-		return a.data.usage(err)
+		return a.env.UsageError(err)
 	}
 	jsonOut := false
 	if opts.ndjson && cmd.Flags().Changed("json") {
-		return a.data.usage(errors.New("--ndjson cannot be used with --json"))
+		return a.env.UsageError(errors.New("--ndjson cannot be used with --json"))
 	}
-	if a.data.ReverseSearch == nil {
+	if a.reverseSearch == nil {
 		return errors.New("pixiv reverse search is not configured")
 	}
 	if !opts.ndjson {
-		jsonOut, err = a.data.jsonOut(a.data.jsonOverride(cmd, opts.CommandOptions))
+		jsonOut, err = a.env.JSONOut(a.env.JSONOverride(cmd, opts.Options))
 		if err != nil {
 			return err
 		}
 	}
-	ndjson := a.data.shouldAutoNDJSON(cmd, opts.ndjson, jsonOut)
-	response, searchErr := a.data.ReverseSearch(cmd.Context(), ReverseSearchRequest{
+	ndjson := a.env.AutoNDJSON(cmd, opts.ndjson, jsonOut)
+	response, searchErr := a.reverseSearch(cmd.Context(), ReverseSearchRequest{
 		Source:             source,
 		Provider:           provider,
 		HTTPSProxyOverride: request.HTTPSProxyOverride,
@@ -129,7 +130,7 @@ func (a command) writeReverseSearchResponse(response reversesearch.Response, jso
 		return err
 	}
 	if ndjson {
-		encoder := json.NewEncoder(a.data.Output)
+		encoder := json.NewEncoder(a.env.Out)
 		for _, item := range records {
 			if err := encoder.Encode(item); err != nil {
 				return err
@@ -138,12 +139,12 @@ func (a command) writeReverseSearchResponse(response reversesearch.Response, jso
 		return nil
 	}
 	if jsonOut {
-		return a.data.writeJSON(reverseSearchOutput{
+		return a.env.PrintJSON(reverseSearchOutput{
 			Input: response.Input, Providers: nonNilProviderSummaries(response.Providers), Results: nonNilReverseResults(response.Results),
 			Records: records, ProviderErrors: nonNilProviderErrors(response.ProviderErrors), Partial: response.Partial,
 		})
 	}
-	return printReverseSearchHuman(a.data.Output, response.Results)
+	return printReverseSearchHuman(a.env.Out, response.Results)
 }
 
 func reverseSearchRecords(results []reversesearch.Result) ([]record.Record, error) {
@@ -207,7 +208,7 @@ func printReverseSearchHuman(out io.Writer, results []reversesearch.Result) erro
 }
 
 func (a command) writeReverseSearchWarning(response reversesearch.Response) error {
-	if a.data.ErrorOutput == nil {
+	if a.env.Err == nil {
 		return errors.New("reverse search partial warning output is not configured")
 	}
 	failed := make([]string, 0, len(response.ProviderErrors))
@@ -217,7 +218,7 @@ func (a command) writeReverseSearchWarning(response reversesearch.Response) erro
 	if len(failed) == 0 {
 		failed = append(failed, "unknown provider")
 	}
-	_, err := fmt.Fprintf(a.data.ErrorOutput, "warning: reverse search completed partially; failed providers: %s\n", strings.Join(failed, ", "))
+	_, err := fmt.Fprintf(a.env.Err, "warning: reverse search completed partially; failed providers: %s\n", strings.Join(failed, ", "))
 	return err
 }
 

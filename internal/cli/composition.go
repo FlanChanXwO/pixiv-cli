@@ -20,16 +20,15 @@ import (
 
 	authcommands "github.com/FlanChanXwO/pixiv-cli/internal/cli/auth"
 	"github.com/FlanChanXwO/pixiv-cli/internal/cli/auth/loginhelper"
-	pixivdetail "github.com/FlanChanXwO/pixiv-cli/internal/cli/detail"
 	downloadcommands "github.com/FlanChanXwO/pixiv-cli/internal/cli/download"
-	fanboxcommands "github.com/FlanChanXwO/pixiv-cli/internal/cli/fanbox"
 	fanboxauth "github.com/FlanChanXwO/pixiv-cli/internal/cli/fanbox/auth"
-	pixivfollow "github.com/FlanChanXwO/pixiv-cli/internal/cli/follow"
-	pixivdeps "github.com/FlanChanXwO/pixiv-cli/internal/cli/internal/pixivcmd"
+	fanboxdownload "github.com/FlanChanXwO/pixiv-cli/internal/cli/fanbox/download"
+	fanboxpost "github.com/FlanChanXwO/pixiv-cli/internal/cli/fanbox/post"
+	"github.com/FlanChanXwO/pixiv-cli/internal/cli/internal/command"
+	"github.com/FlanChanXwO/pixiv-cli/internal/cli/internal/fanboxcmd"
+	"github.com/FlanChanXwO/pixiv-cli/internal/cli/internal/pixivcmd"
 	mcpcommands "github.com/FlanChanXwO/pixiv-cli/internal/cli/mcp"
-	pixivrecommended "github.com/FlanChanXwO/pixiv-cli/internal/cli/recommended"
 	pixivsearch "github.com/FlanChanXwO/pixiv-cli/internal/cli/search"
-	pixivuser "github.com/FlanChanXwO/pixiv-cli/internal/cli/user"
 	"github.com/FlanChanXwO/pixiv-cli/internal/config/paths"
 	configapp "github.com/FlanChanXwO/pixiv-cli/internal/config/settings"
 	fanboxaccount "github.com/FlanChanXwO/pixiv-cli/internal/fanboxaccount"
@@ -118,7 +117,7 @@ func (a app) newPixivSDKPorts() (pixivSDKPorts, error) {
 	if facade == nil {
 		return pixivSDKPorts{}, errors.New("pixiv service facade is not configured")
 	}
-	open := func(request pixivdeps.Request) (*pixiv.Client, error) {
+	open := func(request pixivcmd.Request) (*pixiv.Client, error) {
 		options, err := pixivOptionsFromRequest(request, a.runtimeConfig)
 		if err != nil {
 			return nil, err
@@ -130,21 +129,21 @@ func (a app) newPixivSDKPorts() (pixivSDKPorts, error) {
 		a.closeState.add(lease.Close)
 		return lease.Value(), nil
 	}
-	openLease := func(ctx context.Context, request pixivdeps.Request) (*lifecycle.Lease[*pixiv.Client], error) {
+	openLease := func(ctx context.Context, request pixivcmd.Request) (*lifecycle.Lease[*pixiv.Client], error) {
 		options, err := pixivOptionsFromRequest(request, a.runtimeConfig)
 		if err != nil {
 			return nil, err
 		}
 		return facade.Open(ctx, session.Request{UserID: request.UserID, Options: options})
 	}
-	execute := func(ctx context.Context, request pixivdeps.Request, callback func(context.Context, *pixiv.Client) (bool, error)) error {
+	execute := func(ctx context.Context, request pixivcmd.Request, callback func(context.Context, *pixiv.Client) (bool, error)) error {
 		options, err := pixivOptionsFromRequest(request, a.runtimeConfig)
 		if err != nil {
 			return err
 		}
 		return facade.Use(ctx, session.Request{UserID: request.UserID, Options: options}, callback)
 	}
-	readSession := func(ctx context.Context, request pixivdeps.Request) (mediaproxy.Session, error) {
+	readSession := func(ctx context.Context, request pixivcmd.Request) (mediaproxy.Session, error) {
 		cfg, err := a.runtimeConfig()
 		if err != nil {
 			return mediaproxy.Session{}, err
@@ -170,7 +169,7 @@ func (a app) newPixivSDKPorts() (pixivSDKPorts, error) {
 	return pixivSDKPorts{
 		watchReadSessions: func(ctx context.Context) error { return readSessions.Watch(ctx, db.Path()) },
 		readSession:       readSession,
-		read: func(ctx context.Context, request pixivdeps.Request, callback func(context.Context, *pixiv.Client) (bool, error)) error {
+		read: func(ctx context.Context, request pixivcmd.Request, callback func(context.Context, *pixiv.Client) (bool, error)) error {
 			snapshot, err := readSession(ctx, request)
 			if err != nil {
 				return err
@@ -240,9 +239,37 @@ func defaultDownloadService() downloader.DownloadService {
 	}}
 }
 
-// 以下 host methods 是根控制器对命令子包暴露的窄输出/依赖端口。子包不导入
-// internal/cli，也不接触 app 的内部状态字段。
-func (a app) authDeps() authcommands.Deps {
+// commandEnv is the one execution environment every command owner receives.
+func (a app) commandEnv() command.Env {
+	return command.Env{In: a.in, Out: a.out, Err: a.errOut, WrapUsage: newUsageError, ResolveJSON: func(override *bool) (bool, error) {
+		if override != nil {
+			return *override, nil
+		}
+		runtime, err := a.runtimeConfig()
+		if err != nil {
+			return false, err
+		}
+		return runtime.OutputJSON, nil
+	}}
+}
+
+// commandExecutor loads the pool once per command tree and runs requests
+// through the public SDK replay boundary.
+func (a app) commandExecutor() pixivcmd.Executor {
+	var once sync.Once
+	var ports pixivSDKPorts
+	var portsErr error
+	return func(ctx context.Context, request pixivcmd.Request, attempt func(context.Context, *pixiv.Client) (bool, error)) error {
+		once.Do(func() { ports, portsErr = newCLIPixivSDKPorts(a) })
+		if portsErr != nil {
+			return portsErr
+		}
+		return ports.run(ctx, request, attempt)
+	}
+}
+
+// newAuthCommand constructs the Pixiv auth group with its account leaf.
+func (a app) newAuthCommand() *cobra.Command {
 	var once sync.Once
 	var account authcommands.AccountService
 	var login pixivaccount.LoginService
@@ -252,11 +279,7 @@ func (a app) authDeps() authcommands.Deps {
 			account, login, loadErr = newCLIAccountServices(a)
 		})
 	}
-	return authcommands.Deps{
-		Input:       a.in,
-		Output:      a.out,
-		ErrorOutput: a.errOut,
-		UsageError:  newUsageError,
+	return authcommands.New(a.commandEnv(), authcommands.Support{
 		Account: func() (authcommands.AccountService, error) {
 			load()
 			return account, loadErr
@@ -265,218 +288,26 @@ func (a app) authDeps() authcommands.Deps {
 			load()
 			return login, loadErr
 		},
-		LoadRuntime:  a.runtimeConfig,
-		WriteBundle:  writeAuthExportBundle,
-		CanPrompt:    func() bool { return canPrompt(a) },
-		PromptInput:  func(message, defaultValue string) (string, error) { return promptInput(a, message, defaultValue) },
-		PromptSecret: func(message string) (string, error) { return promptSecret(a, message) },
-		PromptSelect: func(message string, options []string) (string, error) { return promptSelect(a, message, options) },
-		PromptConfirm: func(message string, defaultValue bool) (bool, error) {
-			return promptConfirm(a, message, defaultValue)
-		},
-	}
+		LoadRuntime: a.runtimeConfig,
+		WriteBundle: writeAuthExportBundle,
+	})
 }
 
-func (a app) downloadDeps() downloadcommands.Deps {
-	var once sync.Once
-	var ports pixivSDKPorts
-	var portsErr error
-	load := func() (pixivSDKPorts, error) {
-		once.Do(func() { ports, portsErr = newCLIPixivSDKPorts(a) })
-		return ports, portsErr
-	}
-	return downloadcommands.Deps{
-		Input:       a.in,
-		Output:      a.out,
-		ErrorOutput: a.errOut,
-		UsageError:  newUsageError,
-		Open: func(request downloadcommands.CommandRequest) (*pixiv.Client, error) {
-			sdk, err := load()
-			if err != nil {
-				return nil, err
-			}
-			return sdk.open(downloadcommands.ToPixivRequest(request))
-		},
-		Pooled: func(ctx context.Context, request downloadcommands.CommandRequest, attempt func(context.Context, *pixiv.Client) (bool, error)) error {
-			sdk, err := load()
-			if err != nil {
-				return err
-			}
-			return sdk.run(ctx, downloadcommands.ToPixivRequest(request), attempt)
-		},
-		Runtime: func() (downloadcommands.Runtime, error) {
-			runtime, err := a.runtimeConfig()
-			if err != nil {
-				return downloadcommands.Runtime{}, err
-			}
-			return downloadcommands.Runtime{
-				DownloadPath:      runtime.DownloadPath,
-				FilenameTemplate:  runtime.FilenameTemplate,
-				DirectoryTemplate: runtime.DirectoryTemplate,
-			}, nil
-		},
-		Download: newCLIDownloadService,
-	}
+func (a app) newDownloadCommand() *cobra.Command {
+	return downloadcommands.New(a.commandEnv(), a.commandExecutor(), func() (downloadcommands.Runtime, error) {
+		runtime, err := a.runtimeConfig()
+		if err != nil {
+			return downloadcommands.Runtime{}, err
+		}
+		return downloadcommands.Runtime{
+			DownloadPath:      runtime.DownloadPath,
+			FilenameTemplate:  runtime.FilenameTemplate,
+			DirectoryTemplate: runtime.DirectoryTemplate,
+		}, nil
+	}, newCLIDownloadService)
 }
 
-func (a app) pixivDataDeps() pixivdeps.Data {
-	var once sync.Once
-	var ports pixivSDKPorts
-	var portsErr error
-	load := func() (pixivSDKPorts, error) {
-		once.Do(func() { ports, portsErr = newCLIPixivSDKPorts(a) })
-		return ports, portsErr
-	}
-	return pixivdeps.Data{
-		Input:       a.in,
-		Output:      a.out,
-		ErrorOutput: a.errOut,
-		UsageError:  newUsageError,
-		Open: func(request pixivdeps.Request) (*pixiv.Client, error) {
-			sdk, err := load()
-			if err != nil {
-				return nil, err
-			}
-			return sdk.open(request)
-		},
-		Pooled: func(ctx context.Context, request pixivdeps.Request, attempt func(context.Context, *pixiv.Client) (bool, error)) error {
-			sdk, err := load()
-			if err != nil {
-				return err
-			}
-			return sdk.run(ctx, request, attempt)
-		},
-		JSONOut: func(override *bool) (bool, error) {
-			sdk, err := load()
-			if err != nil {
-				return false, err
-			}
-			return sdk.jsonOut(override)
-		},
-	}
-}
-
-// searchDeps 只把输入、输出、JSON 配置、公开 SDK pooled read 和反向搜图 Facade
-// 端口交给 search owner；该 owner 不导入账号资源图或 provider 协议适配器。
-func (a app) searchDeps() pixivsearch.Dependencies {
-	data := a.pixivDataDeps()
-	return pixivsearch.Dependencies{
-		Input:       data.Input,
-		Output:      data.Output,
-		ErrorOutput: data.ErrorOutput,
-		UsageError:  data.UsageError,
-		JSONOut: func(override *bool) (bool, error) {
-			if override != nil {
-				return *override, nil
-			}
-			runtime, err := a.runtimeConfig()
-			if err != nil {
-				return false, err
-			}
-			return runtime.OutputJSON, nil
-		},
-		Pooled: func(ctx context.Context, request pixivsearch.Request, attempt func(context.Context, *pixiv.Client) (bool, error)) error {
-			return data.Pooled(ctx, pixivdeps.Request(request), attempt)
-		},
-		ReverseSearch: func(ctx context.Context, request pixivsearch.ReverseSearchRequest) (reversesearch.Response, error) {
-			runtime, err := a.runtimeConfig()
-			if err != nil {
-				return reversesearch.Response{}, err
-			}
-			provider := reversesearch.Provider(runtime.ReverseSearchProvider)
-			if request.Provider != "" {
-				provider = request.Provider
-			}
-			standardProxy, ascii2dProxy := reverseSearchProxies(runtime, request.HTTPSProxyOverride)
-			searcher, err := newCLIReverseSearch(reverseassembly.Options{
-				Proxy:        standardProxy,
-				ASCII2DProxy: &ascii2dProxy,
-				UserAgent:    runtime.ReverseSearchNetwork.UserAgent.Value,
-				SauceNAOKey:  runtime.SauceNAOAPIKey,
-				FlareSolverr: reverseSearchFlareSolverr(runtime),
-			})
-			if err != nil {
-				return reversesearch.Response{}, err
-			}
-			registerReverseSearchCloser(a.closeState, searcher)
-			return searcher.Search(ctx, reversesearch.Request{
-				Source: request.Source, Provider: provider, PixivOnly: runtime.ReverseSearchPixivOnly,
-			})
-		},
-	}
-}
-
-// recommendedDeps 为推荐 owner 提供同一条公开 SDK pooled-read 端口，保留账号池
-// safe replay 与 config JSON 语义，不向 command 泄漏 root 内部状态。
-func (a app) recommendedDeps() pixivrecommended.Dependencies {
-	data := a.pixivDataDeps()
-	return pixivrecommended.Dependencies{
-		Input:      data.Input,
-		Output:     data.Output,
-		UsageError: data.UsageError,
-		JSONOut:    data.JSONOut,
-		Pooled: func(ctx context.Context, request pixivrecommended.Request, attempt func(context.Context, *pixiv.Client) (bool, error)) error {
-			return data.Pooled(ctx, pixivdeps.Request(request), attempt)
-		},
-	}
-}
-
-// userDeps 保留 user group 的公开 SDK read 端口；嵌套 follow 子命令继续由它自己
-// 的 owner 构造，避免 user package 反向依赖其他 command owner。
-func (a app) userDeps() pixivuser.Dependencies {
-	data := a.pixivDataDeps()
-	return pixivuser.Dependencies{
-		Input:      data.Input,
-		Output:     data.Output,
-		UsageError: data.UsageError,
-		JSONOut:    data.JSONOut,
-		Pooled: func(ctx context.Context, request pixivuser.Request, attempt func(context.Context, *pixiv.Client) (bool, error)) error {
-			return data.Pooled(ctx, pixivdeps.Request(request), attempt)
-		},
-		Follow: func() *cobra.Command { return pixivfollow.New(data) },
-	}
-}
-
-// detailDeps 是 vertical slice 的专属窄端口。detail owner 不依赖通用 Data，
-// root 只负责把共享 SDK 端口适配为该 owner 的请求类型。
-func (a app) detailDeps() pixivdetail.Dependencies {
-	data := a.pixivDataDeps()
-	return pixivdetail.Dependencies{
-		Input:      a.in,
-		Output:     a.out,
-		UsageError: newUsageError,
-		BuildRequest: func(cmd *cobra.Command, options pixivdetail.Options) (pixivdetail.Request, error) {
-			proxyOverride, err := proxyOverrideFromFlags(cmd, proxyOptions{proxy: options.Proxy, noProxy: options.NoProxy})
-			if err != nil {
-				return pixivdetail.Request{}, err
-			}
-			return pixivdetail.Request{HTTPSProxyOverride: proxyOverride}, nil
-		},
-		JSONOut:     data.JSONOut,
-		ErrorOutput: a.errOut,
-		OutputIsTTY: func() bool { return outputIsTTY(a.out) },
-		Pooled: func(ctx context.Context, request pixivdetail.Request, attempt func(context.Context, *pixiv.Client) (bool, error)) error {
-			return data.Pooled(ctx, pixivdeps.Request{
-				UserID:             request.UserID,
-				HTTPSProxyOverride: request.HTTPSProxyOverride,
-			}, attempt)
-		},
-		FetchArtwork: func(ctx context.Context, client *pixiv.Client, id int64) (pixiv.Artwork, error) {
-			return client.Artwork(ctx, pixiv.ArtworkRequest{ArtworkID: id})
-		},
-		FetchNovel: func(ctx context.Context, client *pixiv.Client, id int64) (pixiv.Novel, error) {
-			return client.Novel(ctx, pixiv.NovelRequest{NovelID: id})
-		},
-		FetchNovelContent: func(ctx context.Context, client *pixiv.Client, id int64) (pixiv.NovelContent, error) {
-			return client.NovelContent(ctx, pixiv.NovelContentRequest{NovelID: id})
-		},
-		FetchUser: func(ctx context.Context, client *pixiv.Client, id int64) (pixiv.UserDetail, error) {
-			return client.User(ctx, pixiv.UserRequest{UserID: id})
-		},
-	}
-}
-
-func (a app) fanboxDataDeps() fanboxcommands.Data {
+func (a app) newFanboxCommandGroup(env command.Env) *cobra.Command {
 	var once sync.Once
 	var service *session.Fanbox
 	var serviceErr error
@@ -484,24 +315,16 @@ func (a app) fanboxDataDeps() fanboxcommands.Data {
 		once.Do(func() { service, serviceErr = newCLIFanboxService(a) })
 		return service, serviceErr
 	}
-	return fanboxcommands.Data{
-		Reader:                a.in,
-		Writer:                a.out,
-		WrapUsage:             newUsageError,
-		ServiceFactory:        load,
-		AccountServiceFactory: func() (*fanboxaccount.Service, error) { return newCLIFanboxAccountService(a) },
-		Browser:               fanboxBrowserSessionReader,
-		Runtime:               a.runtimeConfig,
-		CanPromptFn: func() bool {
-			return canPrompt(a)
-		},
-		PromptSecretFn: func(message string) (string, error) {
-			return promptSecret(a, message)
-		},
-		PromptConfirmFn: func(message string, defaultValue bool) (bool, error) {
-			return promptConfirm(a, message, defaultValue)
-		},
+	accounts := func() (*fanboxaccount.Service, error) { return newCLIFanboxAccountService(a) }
+	children := []*cobra.Command{
+		fanboxauth.New(env, accounts, fanboxBrowserSessionReader),
+		fanboxdownload.New(env, load, func() (string, error) {
+			runtime, err := a.runtimeConfig()
+			return runtime.DownloadPath, err
+		}),
 	}
+	children = append(children, fanboxpost.Commands(env, load)...)
+	return newFanboxCommand(env, children)
 }
 
 func (a app) ConfigService() configapp.Store { return configapp.DefaultStore() }
@@ -530,7 +353,7 @@ func (app) WriteAuthExportBundle(path string, body []byte, force bool) error {
 	return writeAuthExportBundle(path, body, force)
 }
 
-func (app) FanboxBrowserProvider() fanboxcommands.BrowserProvider {
+func (app) FanboxBrowserProvider() fanboxcmd.BrowserProvider {
 	return fanboxBrowserSessionReader
 }
 
@@ -581,27 +404,27 @@ func (a app) runPixivMCP(ctx context.Context, request mcpcommands.Request) (resu
 	account := mcpserver.Account{
 		HTTPSProxyOverride: request.HTTPSProxyOverride,
 	}
-	fanboxService := a.fanboxDataDeps().ServiceFactory
+	fanboxService := func() (*session.Fanbox, error) { return newCLIFanboxService(a) }
 	var readPort func(context.Context, mcpserver.Account, func(context.Context, *pixiv.Client) (bool, error)) error
 	if ports.read != nil {
 		readPort = func(ctx context.Context, account mcpserver.Account, callback func(context.Context, *pixiv.Client) (bool, error)) error {
-			return ports.read(ctx, pixivdeps.Request{UserID: account.UserID, HTTPSProxyOverride: account.HTTPSProxyOverride}, callback)
+			return ports.read(ctx, pixivcmd.Request{UserID: account.UserID, HTTPSProxyOverride: account.HTTPSProxyOverride}, callback)
 		}
 	}
 	sdkPorts := mcpserver.SDKPorts{
 		Read: readPort,
 		Open: func(account mcpserver.Account) (*pixiv.Client, error) {
-			return ports.open(pixivdeps.Request{UserID: account.UserID, HTTPSProxyOverride: account.HTTPSProxyOverride})
+			return ports.open(pixivcmd.Request{UserID: account.UserID, HTTPSProxyOverride: account.HTTPSProxyOverride})
 		},
 		OpenLease: func(ctx context.Context, account mcpserver.Account) (*lifecycle.Lease[*pixiv.Client], error) {
 			if ports.readSession != nil {
-				snapshot, err := ports.readSession(ctx, pixivdeps.Request{UserID: account.UserID, HTTPSProxyOverride: account.HTTPSProxyOverride})
+				snapshot, err := ports.readSession(ctx, pixivcmd.Request{UserID: account.UserID, HTTPSProxyOverride: account.HTTPSProxyOverride})
 				return snapshot.Lease, err
 			}
-			return ports.openLease(ctx, pixivdeps.Request{UserID: account.UserID, HTTPSProxyOverride: account.HTTPSProxyOverride})
+			return ports.openLease(ctx, pixivcmd.Request{UserID: account.UserID, HTTPSProxyOverride: account.HTTPSProxyOverride})
 		},
 		Execute: func(ctx context.Context, account mcpserver.Account, attempt func(context.Context, *pixiv.Client) (bool, error)) error {
-			return ports.run(ctx, pixivdeps.Request{UserID: account.UserID, HTTPSProxyOverride: account.HTTPSProxyOverride}, attempt)
+			return ports.run(ctx, pixivcmd.Request{UserID: account.UserID, HTTPSProxyOverride: account.HTTPSProxyOverride}, attempt)
 		},
 		ReverseSearch: reverseSearchPorts,
 	}
@@ -618,7 +441,7 @@ func (a app) runPixivMCP(ctx context.Context, request mcpcommands.Request) (resu
 		sdkPorts.Downloads = &mcpserver.LocalDownloads{Service: a.DownloadService(), Path: runtime.DownloadPath, FilenameTemplate: runtime.FilenameTemplate, DirectoryTemplate: runtime.DirectoryTemplate}
 		// Resolve once through the local Facade, then pin all phases to that identity.
 		sdkPorts.ResolveAccount = func(ctx context.Context, account mcpserver.Account) (mcpserver.Account, error) {
-			err := ports.run(ctx, pixivdeps.Request{HTTPSProxyOverride: account.HTTPSProxyOverride}, func(_ context.Context, client *pixiv.Client) (bool, error) {
+			err := ports.run(ctx, pixivcmd.Request{HTTPSProxyOverride: account.HTTPSProxyOverride}, func(_ context.Context, client *pixiv.Client) (bool, error) {
 				account.UserID = client.UserID()
 				return false, nil
 			})
@@ -626,7 +449,7 @@ func (a app) runPixivMCP(ctx context.Context, request mcpcommands.Request) (resu
 		}
 		sdkPorts.Read = nil
 		sdkPorts.OpenLease = func(ctx context.Context, account mcpserver.Account) (*lifecycle.Lease[*pixiv.Client], error) {
-			return ports.openLease(ctx, pixivdeps.Request{UserID: account.UserID, HTTPSProxyOverride: account.HTTPSProxyOverride})
+			return ports.openLease(ctx, pixivcmd.Request{UserID: account.UserID, HTTPSProxyOverride: account.HTTPSProxyOverride})
 		}
 		return runMCPStdio(ctx, unifiedmcp.New(sdkPorts, account, fanboxPorts, request.HTTPSProxyOverride), a.in, a.out)
 	}
@@ -655,7 +478,7 @@ func (a app) runPixivMCP(ctx context.Context, request mcpcommands.Request) (resu
 	}
 	defer login.Close()
 	media, err := mediaproxy.New(baseURL, store, func(ctx context.Context, userID int64) (*lifecycle.Lease[*pixiv.Client], error) {
-		return ports.openLease(ctx, pixivdeps.Request{UserID: userID, HTTPSProxyOverride: request.HTTPSProxyOverride})
+		return ports.openLease(ctx, pixivcmd.Request{UserID: userID, HTTPSProxyOverride: request.HTTPSProxyOverride})
 	})
 	if err != nil {
 		return err
@@ -666,7 +489,7 @@ func (a app) runPixivMCP(ctx context.Context, request mcpcommands.Request) (resu
 		}, Observe: func(requestCtx context.Context, stage string, duration time.Duration) {
 			emitMCPMediaEvent(ctx, requestCtx, coreDiagnostics.Event{Module: coreDiagnostics.ModulePixivMCP, Kind: coreDiagnostics.EventCompleted, Operation: stage, Duration: duration})
 		}}, func(ctx context.Context, userID int64) (mediaproxy.Session, error) {
-			return ports.readSession(ctx, pixivdeps.Request{UserID: userID, HTTPSProxyOverride: request.HTTPSProxyOverride})
+			return ports.readSession(ctx, pixivcmd.Request{UserID: userID, HTTPSProxyOverride: request.HTTPSProxyOverride})
 		}); err != nil {
 			return err
 		}
@@ -752,16 +575,16 @@ var loadCLIRuntimeConfig = defaultCLIRuntimeConfig
 
 type pixivSDKPorts struct {
 	watchReadSessions func(context.Context) error
-	readSession       func(context.Context, pixivdeps.Request) (mediaproxy.Session, error)
-	read              func(context.Context, pixivdeps.Request, func(context.Context, *pixiv.Client) (bool, error)) error
+	readSession       func(context.Context, pixivcmd.Request) (mediaproxy.Session, error)
+	read              func(context.Context, pixivcmd.Request, func(context.Context, *pixiv.Client) (bool, error)) error
 	localAccounts     func(context.Context) (mcpaccounts.LocalSnapshot, error)
-	open              func(pixivdeps.Request) (*pixiv.Client, error)
-	openLease         func(context.Context, pixivdeps.Request) (*lifecycle.Lease[*pixiv.Client], error)
-	execute           func(context.Context, pixivdeps.Request, func(context.Context, *pixiv.Client) (bool, error)) error
+	open              func(pixivcmd.Request) (*pixiv.Client, error)
+	openLease         func(context.Context, pixivcmd.Request) (*lifecycle.Lease[*pixiv.Client], error)
+	execute           func(context.Context, pixivcmd.Request, func(context.Context, *pixiv.Client) (bool, error)) error
 	jsonOut           func(*bool) (bool, error)
 }
 
-func (p pixivSDKPorts) run(ctx context.Context, request pixivdeps.Request, attempt func(context.Context, *pixiv.Client) (bool, error)) error {
+func (p pixivSDKPorts) run(ctx context.Context, request pixivcmd.Request, attempt func(context.Context, *pixiv.Client) (bool, error)) error {
 	if p.execute != nil {
 		return p.execute(ctx, request, attempt)
 	}
@@ -780,7 +603,7 @@ func openCLIAuthDatabase() (*database.DB, error) {
 	return db, nil
 }
 
-func pixivOptionsFromRequest(request pixivdeps.Request, loadRuntime func() (configapp.RuntimeConfig, error)) (pixiv.Options, error) {
+func pixivOptionsFromRequest(request pixivcmd.Request, loadRuntime func() (configapp.RuntimeConfig, error)) (pixiv.Options, error) {
 	if loadRuntime == nil {
 		return pixiv.Options{}, errors.New("pixiv runtime loader is not configured")
 	}
@@ -926,4 +749,33 @@ func emitMCPAnimationEvent(lifecycleCtx, requestCtx context.Context, observation
 		}
 	}
 	emitMCPMediaEvent(lifecycleCtx, requestCtx, event)
+}
+
+// reverseSearchPort builds the reverse-search executor once per command tree.
+func (a app) reverseSearchPort() pixivsearch.ReverseSearchPort {
+	return func(ctx context.Context, request pixivsearch.ReverseSearchRequest) (reversesearch.Response, error) {
+		runtime, err := a.runtimeConfig()
+		if err != nil {
+			return reversesearch.Response{}, err
+		}
+		provider := reversesearch.Provider(runtime.ReverseSearchProvider)
+		if request.Provider != "" {
+			provider = request.Provider
+		}
+		standardProxy, ascii2dProxy := reverseSearchProxies(runtime, request.HTTPSProxyOverride)
+		searcher, err := newCLIReverseSearch(reverseassembly.Options{
+			Proxy:        standardProxy,
+			ASCII2DProxy: &ascii2dProxy,
+			UserAgent:    runtime.ReverseSearchNetwork.UserAgent.Value,
+			SauceNAOKey:  runtime.SauceNAOAPIKey,
+			FlareSolverr: reverseSearchFlareSolverr(runtime),
+		})
+		if err != nil {
+			return reversesearch.Response{}, err
+		}
+		registerReverseSearchCloser(a.closeState, searcher)
+		return searcher.Search(ctx, reversesearch.Request{
+			Source: request.Source, Provider: provider, PixivOnly: runtime.ReverseSearchPixivOnly,
+		})
+	}
 }

@@ -10,9 +10,7 @@
 package cli
 
 import (
-	"bytes"
 	"context"
-	"encoding/json"
 	"fmt"
 	"io"
 
@@ -22,13 +20,11 @@ import (
 	pixivcomment "github.com/FlanChanXwO/pixiv-cli/internal/cli/comment"
 	configcommands "github.com/FlanChanXwO/pixiv-cli/internal/cli/config"
 	pixivdetail "github.com/FlanChanXwO/pixiv-cli/internal/cli/detail"
-	downloadcommands "github.com/FlanChanXwO/pixiv-cli/internal/cli/download"
-	fanboxcommands "github.com/FlanChanXwO/pixiv-cli/internal/cli/fanbox"
 	fanboxauth "github.com/FlanChanXwO/pixiv-cli/internal/cli/fanbox/auth"
-	fanboxdownload "github.com/FlanChanXwO/pixiv-cli/internal/cli/fanbox/download"
-	fanboxpost "github.com/FlanChanXwO/pixiv-cli/internal/cli/fanbox/post"
 	pixivfollow "github.com/FlanChanXwO/pixiv-cli/internal/cli/follow"
-	requirements "github.com/FlanChanXwO/pixiv-cli/internal/cli/internal/command"
+	command "github.com/FlanChanXwO/pixiv-cli/internal/cli/internal/command"
+	"github.com/FlanChanXwO/pixiv-cli/internal/cli/internal/fanboxcmd"
+	"github.com/FlanChanXwO/pixiv-cli/internal/cli/internal/pixivcmd"
 	mcpcommands "github.com/FlanChanXwO/pixiv-cli/internal/cli/mcp"
 	pixivmypixiv "github.com/FlanChanXwO/pixiv-cli/internal/cli/mypixiv"
 	pixivranking "github.com/FlanChanXwO/pixiv-cli/internal/cli/ranking"
@@ -50,7 +46,6 @@ import (
 	"github.com/FlanChanXwO/pixiv-cli/internal/version"
 	thirdparty "github.com/FlanChanXwO/pixiv-cli/third_party"
 	"github.com/spf13/cobra"
-	"golang.org/x/term"
 )
 
 type app struct {
@@ -63,19 +58,9 @@ type app struct {
 	diagnostics         *diagnosticState
 }
 
-type commandOptions struct {
-	proxyOptions
-	jsonOut bool
-}
-
 // configMissingPlaceholder 保留根测试与文案契约的稳定名称；实际 config handler
 // 位于 commands/config。
 const configMissingPlaceholder = "<unset>"
-
-type proxyOptions struct {
-	proxy   string
-	noProxy bool
-}
 
 var (
 	runMCPServer = func(a app, ctx context.Context, request mcpcommands.Request) error {
@@ -84,28 +69,15 @@ var (
 	runMCPStdio          = unifiedmcp.RunStdio
 	runMCPHTTP           = unifiedmcp.RunHTTP
 	ensureURLSchemeRelay = loginhelper.EnsurePersistentIfNeeded
-	canPrompt            = func(a app) bool { return authcommands.CanPrompt(a.in, a.out) }
-	promptInput          = func(a app, message, defaultValue string) (string, error) {
-		return authcommands.PromptInput(a.in, a.out, a.errOut, message, defaultValue)
-	}
-	promptSecret = func(a app, message string) (string, error) {
-		return authcommands.PromptSecret(a.in, a.out, a.errOut, message)
-	}
-	promptSelect = func(a app, message string, options []string) (string, error) {
-		return authcommands.PromptSelect(a.in, a.out, a.errOut, message, options)
-	}
-	promptConfirm = func(a app, message string, defaultValue bool) (bool, error) {
-		return authcommands.PromptConfirm(a.in, a.out, a.errOut, message, defaultValue)
-	}
 	// FANBOX 浏览器读取是 auth command 的注入端口；根包只保留一次 Run
 	// 级别的测试 seam，生产默认实现位于 commands/fanbox/auth。
-	fanboxBrowserSessionReader          fanboxcommands.BrowserProvider = fanboxauth.SystemBrowserProvider{}
-	cleanupPendingWindowsUpdate                                        = selfupdate.CleanupPendingWindowsUpdate
-	automaticPersistentHandlerSupported                                = loginhelper.AutomaticPersistentHandlerSupported
-	newUpdateCommandCoordinator                                        = updatecommands.NewCoordinator
-	newCLIAutomaticUpdateChecker                                       = updatecommands.NewAutomaticChecker
-	newCLIPixivSDKPorts                                                = func(a app) (pixivSDKPorts, error) { return a.newPixivSDKPorts() }
-	newCLIAccountServices                                              = func(a app) (authcommands.AccountService, pixivaccount.LoginService, error) {
+	fanboxBrowserSessionReader          fanboxcmd.BrowserProvider = fanboxauth.SystemBrowserProvider{}
+	cleanupPendingWindowsUpdate                                   = selfupdate.CleanupPendingWindowsUpdate
+	automaticPersistentHandlerSupported                           = loginhelper.AutomaticPersistentHandlerSupported
+	newUpdateCommandCoordinator                                   = updatecommands.NewCoordinator
+	newCLIAutomaticUpdateChecker                                  = updatecommands.NewAutomaticChecker
+	newCLIPixivSDKPorts                                           = func(a app) (pixivSDKPorts, error) { return a.newPixivSDKPorts() }
+	newCLIAccountServices                                         = func(a app) (authcommands.AccountService, pixivaccount.LoginService, error) {
 		return a.newPixivAccountServices()
 	}
 	newCLIFanboxService        = func(a app) (*session.Fanbox, error) { return a.newFanboxService() }
@@ -136,7 +108,7 @@ func (a app) newRootCommand() *cobra.Command {
 			return cmd.Help()
 		},
 		PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
-			requirement := requirements.For(cmd)
+			requirement := command.For(cmd)
 			a.enablePipelineSignal(cmd)
 			if !cmd.Flags().Changed("port") {
 				a.enableMCPBrokenPipeSignal(requirement)
@@ -163,12 +135,12 @@ func (a app) newRootCommand() *cobra.Command {
 			return nil
 		},
 		PersistentPostRun: func(cmd *cobra.Command, args []string) {
-			if requirements.For(cmd).AutomaticUpdate {
+			if command.For(cmd).AutomaticUpdate {
 				updatecommands.RunAutomaticCheck(cmd, a)
 			}
 		},
 	}
-	requirements.Bind(cmd, requirements.Execution{})
+	command.Bind(cmd, command.Execution{})
 	cmd.SetFlagErrorFunc(func(_ *cobra.Command, err error) error { return normalizeFlagError(err) })
 	cmd.Flags().BoolVar(&licenses, "licenses", false, "Print embedded third-party license notices")
 	cmd.SetVersionTemplate("pixiv {{.Version}}\n")
@@ -176,41 +148,33 @@ func (a app) newRootCommand() *cobra.Command {
 	// --help 与 --version 提供内置帮助/版本入口。
 	cmd.SetHelpCommand(&cobra.Command{Use: "_help [command]", Hidden: true})
 	cmd.CompletionOptions.DisableDefaultCmd = true
-	cmd.AddCommand(authcommands.New(a.authDeps()))
+	env, exec := a.commandEnv(), a.commandExecutor()
+	cmd.AddCommand(a.newAuthCommand())
 	configcommands.Register(cmd, a)
-	cmd.AddCommand(a.pixivCommands()...)
-	cmd.AddCommand(downloadcommands.New(a.downloadDeps()))
-	fanboxData := a.fanboxDataDeps()
-	cmd.AddCommand(fanboxcommands.New(fanboxData, fanboxcommands.CommandSet{
-		Auth:     fanboxauth.New(fanboxData),
-		Posts:    fanboxpost.Commands(fanboxData),
-		Download: fanboxdownload.New(fanboxData),
-	}))
+	cmd.AddCommand(a.pixivCommands(env, exec)...)
+	cmd.AddCommand(a.newDownloadCommand())
+	cmd.AddCommand(a.newFanboxCommandGroup(env))
 	mcpcommands.Register(cmd, a)
 	updatecommands.Register(cmd, a)
 	return cmd
 }
 
-func (a app) pixivCommands() []*cobra.Command {
+func (a app) pixivCommands(env command.Env, exec pixivcmd.Executor) []*cobra.Command {
+	reverseSearch := a.reverseSearchPort()
 	return []*cobra.Command{
-		pixivsearch.New(a.searchDeps()),
-		pixivsearch.NewNovel(a.searchDeps()),
-		pixivdetail.New(a.detailDeps()),
-		pixivranking.New(a.pixivDataDeps()),
-		pixivseries.New(a.pixivDataDeps()),
-		pixivcomment.New(a.pixivDataDeps()),
-		pixivrecommended.New(a.recommendedDeps()),
-		pixivtimeline.New(a.pixivDataDeps()),
-		pixivmypixiv.New(a.pixivDataDeps()),
-		pixivuser.New(a.userDeps()),
-		pixivbookmark.New(a.pixivDataDeps()),
-		pixivfollow.New(a.pixivDataDeps()),
+		pixivsearch.New(env, exec, reverseSearch),
+		pixivsearch.NewNovel(env, exec, reverseSearch),
+		pixivdetail.New(env, exec),
+		pixivranking.New(env, exec),
+		pixivseries.New(env, exec),
+		pixivcomment.New(env, exec),
+		pixivrecommended.New(env, exec),
+		pixivtimeline.New(env, exec),
+		pixivmypixiv.New(env, exec),
+		pixivuser.New(env, pixivcmd.New(env.Out, exec), func() *cobra.Command { return pixivfollow.New(env, exec) }),
+		pixivbookmark.New(env, exec),
+		pixivfollow.New(env, exec),
 	}
-}
-
-func outputIsTTY(writer io.Writer) bool {
-	file, ok := writer.(interface{ Fd() uintptr })
-	return ok && term.IsTerminal(int(file.Fd()))
 }
 
 // 以下 host methods 是根控制器对命令子包暴露的窄输出/依赖端口。子包不导入
@@ -221,7 +185,7 @@ func (a app) Input() io.Reader { return a.in }
 
 func (a app) ErrorOutput() io.Writer { return a.errOut }
 
-func (a app) PrintJSON(value any) error { return a.printJSON(value) }
+func (a app) PrintJSON(value any) error { return command.Env{Out: a.out}.PrintJSON(value) }
 
 func (app) UsageError(err error) error { return newUsageError(err) }
 
@@ -237,24 +201,6 @@ func (a app) RequireMaxArgs(count int, usage string) cobra.PositionalArgs {
 	return requireMaxArgs(count, usage)
 }
 
-func (a app) CanPrompt() bool { return canPrompt(a) }
-
-func (a app) PromptInput(message, defaultValue string) (string, error) {
-	return promptInput(a, message, defaultValue)
-}
-
-func (a app) PromptSecret(message string) (string, error) {
-	return promptSecret(a, message)
-}
-
-func (a app) PromptSelect(message string, options []string) (string, error) {
-	return promptSelect(a, message, options)
-}
-
-func (a app) PromptConfirm(message string, defaultValue bool) (bool, error) {
-	return promptConfirm(a, message, defaultValue)
-}
-
 func (a app) BindProxyFlags(cmd *cobra.Command, options *mcpcommands.ProxyOptions) {
 	flags := cmd.Flags()
 	flags.StringVar(&options.Proxy, "proxy", "", "proxy URL (http, https, socks5, or socks5h) for this command")
@@ -262,7 +208,7 @@ func (a app) BindProxyFlags(cmd *cobra.Command, options *mcpcommands.ProxyOption
 }
 
 func (a app) ClientRequest(cmd *cobra.Command, options mcpcommands.ProxyOptions) (mcpcommands.Request, error) {
-	proxyOverride, err := proxyOverrideFromFlags(cmd, proxyOptions{proxy: options.Proxy, noProxy: options.NoProxy})
+	proxyOverride, err := command.Env{}.ProxyOverride(cmd, command.ProxyOptions{Proxy: options.Proxy, NoProxy: options.NoProxy})
 	if err != nil {
 		return mcpcommands.Request{}, err
 	}
@@ -272,49 +218,6 @@ func (a app) ClientRequest(cmd *cobra.Command, options mcpcommands.ProxyOptions)
 
 func (a app) runtimeConfig() (configapp.RuntimeConfig, error) {
 	return loadCLIRuntimeConfig()
-}
-
-func (a app) bindCommonFlags(cmd *cobra.Command, opts *commandOptions) {
-	flags := cmd.Flags()
-	flags.BoolVar(&opts.jsonOut, "json", false, "print JSON")
-	a.bindProxyFlags(cmd, &opts.proxyOptions)
-}
-
-func (a app) bindProxyFlags(cmd *cobra.Command, opts *proxyOptions) {
-	flags := cmd.Flags()
-	flags.StringVar(&opts.proxy, "proxy", "", "proxy URL (http, https, socks5, or socks5h) for this command")
-	flags.BoolVar(&opts.noProxy, "no-proxy", false, "clear the configured proxy for this command")
-}
-
-func proxyOverrideFromFlags(cmd *cobra.Command, opts proxyOptions) (*string, error) {
-	proxyChanged := cmd.Flags().Changed("proxy")
-	noProxyChanged := cmd.Flags().Changed("no-proxy")
-	if proxyChanged && noProxyChanged {
-		return nil, fmt.Errorf("use either --proxy or --no-proxy, not both")
-	}
-	if noProxyChanged && opts.noProxy {
-		empty := ""
-		return &empty, nil
-	}
-	if proxyChanged {
-		return &opts.proxy, nil
-	}
-	return nil, nil
-}
-
-func (a app) printJSON(v any) error {
-	body, err := json.Marshal(v)
-	if err != nil {
-		return err
-	}
-	var out bytes.Buffer
-	if err := json.Indent(&out, body, "", "  "); err != nil {
-		return err
-	}
-	if _, err := io.WriteString(a.out, out.String()+"\n"); err != nil {
-		return err
-	}
-	return nil
 }
 
 func requireExactArgs(count int, usage string) cobra.PositionalArgs {

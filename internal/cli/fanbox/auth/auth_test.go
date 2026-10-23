@@ -5,7 +5,6 @@ import (
 	"errors"
 	"testing"
 
-	deps "github.com/FlanChanXwO/pixiv-cli/internal/cli/fanbox"
 	"github.com/FlanChanXwO/pixiv-cli/internal/fanboxaccount"
 	"github.com/spf13/cobra"
 	"github.com/stretchr/testify/assert"
@@ -13,7 +12,7 @@ import (
 )
 
 func TestNewPreservesAuthCommandSurface(t *testing.T) {
-	cmd := New(deps.Data{
+	cmd := newTestCommand(testData{
 		Reader:    bytes.NewReader(nil),
 		Writer:    &bytes.Buffer{},
 		WrapUsage: func(err error) error { return err },
@@ -27,16 +26,19 @@ func TestAuthReadCommandsRejectProxyConflictBeforeOpeningStore(t *testing.T) {
 	for _, name := range []string{"list", "status"} {
 		t.Run(name, func(t *testing.T) {
 			opened := false
-			data := deps.Data{
+			data := testData{
 				Reader:    bytes.NewReader(nil),
 				Writer:    &bytes.Buffer{},
 				WrapUsage: func(err error) error { return err },
-				AccountServiceFactory: func() (*fanboxaccount.Service, error) {
+				Accounts: func() (*fanboxaccount.Service, error) {
 					opened = true
 					return nil, errors.New("account store must not be opened")
 				},
 			}
-			root := deps.New(data, deps.CommandSet{Auth: New(data)})
+			root := &cobra.Command{Use: "fanbox"}
+			root.PersistentFlags().String("proxy", "", "")
+			root.PersistentFlags().Bool("no-proxy", false, "")
+			root.AddCommand(newTestCommand(data))
 			root.SetArgs([]string{"auth", name, "--proxy", "http://proxy.invalid", "--no-proxy"})
 
 			err := root.Execute()

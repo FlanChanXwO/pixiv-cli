@@ -2,17 +2,27 @@
 package auth
 
 import (
-	"io"
+	"context"
 
-	deps "github.com/FlanChanXwO/pixiv-cli/internal/cli/fanbox"
-	requirements "github.com/FlanChanXwO/pixiv-cli/internal/cli/internal/command"
+	commands "github.com/FlanChanXwO/pixiv-cli/internal/cli/internal/command"
+	"github.com/FlanChanXwO/pixiv-cli/internal/cli/internal/fanboxcmd"
+	"github.com/FlanChanXwO/pixiv-cli/internal/fanboxaccount"
 	"github.com/spf13/cobra"
 )
 
+type accountStore interface {
+	ImportSessionWithProxy(context.Context, string, bool, *string) (fanboxaccount.AccountSummary, error)
+	ListAccounts(context.Context) ([]fanboxaccount.AccountSummary, error)
+	Status(context.Context) (*fanboxaccount.AccountSummary, error)
+	UseAccount(context.Context, int64) error
+	UseAuto() error
+	RemoveAccount(context.Context, int64) error
+}
+
 type command struct {
-	data deps.Data
-	in   io.Reader
-	out  io.Writer
+	env      commands.Env
+	accounts func() (*fanboxaccount.Service, error)
+	browser  fanboxcmd.BrowserProvider
 }
 
 type importOptions struct {
@@ -33,12 +43,12 @@ type removeOptions struct {
 }
 
 // New builds the actual `pixiv fanbox auth` command group.
-func New(data deps.Data) *cobra.Command {
-	a := command{data: data, in: data.Reader, out: data.Writer}
+func New(env commands.Env, accounts func() (*fanboxaccount.Service, error), browser fanboxcmd.BrowserProvider) *cobra.Command {
+	a := command{env: env, accounts: accounts, browser: browser}
 	cmd := &cobra.Command{
 		Use:   "auth",
 		Short: "Manage local FANBOX authentication",
-		Args:  data.RequireExactArgs(0, "pixiv fanbox auth <command>"),
+		Args:  env.ExactArgs(0, "pixiv fanbox auth <command>"),
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			return cmd.Help()
 		},
@@ -50,10 +60,10 @@ func New(data deps.Data) *cobra.Command {
 		a.newRemoveCommand(),
 		a.newStatusCommand(),
 	)
-	data.BindNoInput(cmd)
-	requirements.Bind(cmd, requirements.Execution{})
+	env.BindNoInput(cmd)
+	commands.Bind(cmd, commands.Execution{})
 	for _, child := range cmd.Commands() {
-		requirements.Bind(child, requirements.FanboxAuth())
+		commands.Bind(child, commands.FanboxAuth())
 	}
 	return cmd
 }

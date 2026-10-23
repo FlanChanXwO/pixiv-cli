@@ -7,22 +7,19 @@ import (
 	"io"
 	"strconv"
 
-	requirements "github.com/FlanChanXwO/pixiv-cli/internal/cli/internal/command"
+	commands "github.com/FlanChanXwO/pixiv-cli/internal/cli/internal/command"
 	"github.com/FlanChanXwO/pixiv-cli/internal/cli/internal/input"
+	"github.com/FlanChanXwO/pixiv-cli/internal/cli/internal/pixivcmd"
 	downloader "github.com/FlanChanXwO/pixiv-cli/internal/media/downloader"
 	pixiv "github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
 	"github.com/spf13/cobra"
 )
 
 type controller struct {
-	deps   Deps
-	in     io.Reader
-	out    io.Writer
-	errOut io.Writer
-}
-
-type runtimeServices struct {
-	download downloader.DownloadService
+	env      commands.Env
+	runner   pixivcmd.Runner
+	runtime  func() (Runtime, error)
+	download func() downloader.DownloadService
 }
 
 type commandOptions struct {
@@ -53,27 +50,7 @@ var visualRecordTypes = map[string]struct{}{
 	"ugoira":  {},
 }
 
-func newController(deps Deps) controller {
-	return controller{deps: deps, in: deps.Input, out: deps.Output, errOut: deps.ErrorOutput}
-}
-
-func (a controller) services() runtimeServices {
-	services := runtimeServices{}
-	if a.deps.Download != nil {
-		services.download = a.deps.Download()
-	}
-	return services
-}
-
-func (a controller) usageError(err error) error {
-	if err == nil {
-		return nil
-	}
-	if a.deps.UsageError == nil {
-		return err
-	}
-	return a.deps.UsageError(err)
-}
+func (a controller) usageError(err error) error { return a.env.UsageError(err) }
 
 func (a controller) bindActionFlags(cmd *cobra.Command, opts *commandOptions) {
 	flags := cmd.Flags()
@@ -81,18 +58,13 @@ func (a controller) bindActionFlags(cmd *cobra.Command, opts *commandOptions) {
 	flags.BoolVar(&opts.noProxy, "no-proxy", false, "clear the configured proxy for this command")
 }
 
-// CommandRequest 是 download 命令解析 flags 后的本地请求值。
-type CommandRequest struct {
-	HTTPSProxyOverride *string
-}
-
-func (a controller) clientRequest(cmd *cobra.Command, opts commandOptions) (CommandRequest, error) {
+func (a controller) clientRequest(cmd *cobra.Command, opts commandOptions) (pixivcmd.Request, error) {
 	proxyChanged := cmd.Flags().Changed("proxy")
 	noProxyChanged := cmd.Flags().Changed("no-proxy")
 	if proxyChanged && noProxyChanged {
-		return CommandRequest{}, errors.New("use either --proxy or --no-proxy, not both")
+		return pixivcmd.Request{}, errors.New("use either --proxy or --no-proxy, not both")
 	}
-	req := CommandRequest{}
+	req := pixivcmd.Request{}
 	if noProxyChanged && opts.noProxy {
 		empty := ""
 		req.HTTPSProxyOverride = &empty
@@ -107,7 +79,7 @@ func (a controller) newDownloadCommand() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "download [SRC...]",
 		Short: "Download illustrations",
-		Args:  input.ActionOrTargetsArgs(a.in, "pixiv download [options] SRC...", a.usageError),
+		Args:  input.ActionOrTargetsArgs(a.env.In, "pixiv download [options] SRC...", a.usageError),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return a.runDownload(cmd, args, opts)
 		},
@@ -117,7 +89,7 @@ func (a controller) newDownloadCommand() *cobra.Command {
 		MinArgs:      1,
 		MaxArgs:      -1,
 		FillPosition: 0,
-		Reader:       a.in,
+		Reader:       a.env.In,
 		UsageError:   a.usageError,
 	})
 	a.bindActionFlags(cmd, &opts.commandOptions)
@@ -127,7 +99,7 @@ func (a controller) newDownloadCommand() *cobra.Command {
 	flags.StringVar(&opts.quality, "quality", opts.quality, "static image quality: original, regular, small, thumb, mini")
 	flags.StringVar(&opts.ugoiraMode, "ugoira-mode", opts.ugoiraMode, "ugoira output mode: gif, apng")
 	flags.StringVar(&opts.onError, "on-error", "skip", "record failure strategy: skip or fail-fast")
-	requirements.Bind(cmd, requirements.DownloadCommand())
+	commands.Bind(cmd, commands.DownloadCommand())
 	return cmd
 }
 
@@ -165,7 +137,7 @@ func (a controller) runDownload(cmd *cobra.Command, args []string, opts download
 	if err != nil {
 		return err
 	}
-	runtime, err := a.deps.Runtime()
+	runtime, err := a.runtime()
 	if err != nil {
 		return err
 	}
@@ -190,21 +162,21 @@ func (a controller) runDownload(cmd *cobra.Command, args []string, opts download
 	}
 	// 先完成所有纯输入和运行参数校验，再解析下载服务。这样 owner 的依赖端口
 	// 不会在互斥 flag 等用户输入错误上提前触发资源或文件系统准备。
-	services := a.services()
+	downloadService := a.download()
 	downloadOne := func(ctx context.Context, id int64) error {
-		return a.deps.Pooled(ctx, clientReq, func(ctx context.Context, client *pixiv.Client) (bool, error) {
-			report, err := services.download.DownloadSources(ctx, client, []string{strconv.FormatInt(id, 10)}, request)
-			return downloadAttemptWithWarnings(a.errOut, report, err)
+		return a.runner.Execute(clientReq)(ctx, func(ctx context.Context, client *pixiv.Client) (bool, error) {
+			report, err := downloadService.DownloadSources(ctx, client, []string{strconv.FormatInt(id, 10)}, request)
+			return downloadAttemptWithWarnings(a.env.Err, report, err)
 		})
 	}
 	if len(args) == 0 {
-		return input.ConsumeActionRecords(cmd.Context(), input.Reader(cmd, a.in), a.errOut, "download", opts.onError, visualRecordTypes, downloadOne, a.usageError)
+		return input.ConsumeActionRecords(cmd.Context(), input.Reader(cmd, a.env.In), a.env.Err, "download", opts.onError, visualRecordTypes, downloadOne, a.usageError)
 	}
 	// 用户页与受资源策略允许的直链可能在一次调用里展开多个文件。只在结果中
 	// 尚无已发布文件时，账号池才可因有效 Retry-After 安全重放这次调用。
-	return a.deps.Pooled(cmd.Context(), clientReq, func(ctx context.Context, client *pixiv.Client) (bool, error) {
-		report, err := services.download.DownloadSources(ctx, client, args, request)
-		return downloadAttemptWithWarnings(a.errOut, report, err)
+	return a.runner.Execute(clientReq)(cmd.Context(), func(ctx context.Context, client *pixiv.Client) (bool, error) {
+		report, err := downloadService.DownloadSources(ctx, client, args, request)
+		return downloadAttemptWithWarnings(a.env.Err, report, err)
 	})
 }
 

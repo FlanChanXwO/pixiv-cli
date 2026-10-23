@@ -5,19 +5,16 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"io"
-	"strings"
 
-	requirements "github.com/FlanChanXwO/pixiv-cli/internal/cli/internal/command"
-	deps "github.com/FlanChanXwO/pixiv-cli/internal/cli/internal/pixivcmd"
-	"github.com/FlanChanXwO/pixiv-cli/internal/cli/internal/pixivcmd/listing"
+	commands "github.com/FlanChanXwO/pixiv-cli/internal/cli/internal/command"
+	"github.com/FlanChanXwO/pixiv-cli/internal/cli/internal/pixivcmd"
 	"github.com/FlanChanXwO/pixiv-cli/sdk"
 	pixiv "github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
 	"github.com/spf13/cobra"
 )
 
 type options struct {
-	deps.CommandOptions
+	commands.Options
 	ndjson bool
 	typ    string
 	mode   string
@@ -27,30 +24,31 @@ type options struct {
 }
 
 type command struct {
-	data deps.Data
+	env    commands.Env
+	runner pixivcmd.Runner
 }
 
 // New builds the actual `pixiv ranking` command.
-func New(data deps.Data) *cobra.Command {
-	a := command{data: data}
+func New(env commands.Env, exec pixivcmd.Executor) *cobra.Command {
+	a := command{env: env, runner: pixivcmd.New(env.Out, exec)}
 	options := options{typ: "artwork", mode: string(pixiv.RankingModeDay)}
 	cmd := &cobra.Command{
 		Use:   "ranking",
 		Short: "Show artwork or novel ranking",
-		Args:  data.ExactArgs(0, "pixiv ranking [options]"),
+		Args:  env.ExactArgs(0, "pixiv ranking [options]"),
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			return a.run(cmd, options)
 		},
 	}
-	data.BindCommonFlags(cmd, &options.CommandOptions)
-	listing.BindNDJSONFlag(cmd, &options.ndjson)
+	env.BindCommonFlags(cmd, &options.Options)
+	pixivcmd.BindNDJSONFlag(cmd, &options.ndjson)
 	flags := cmd.Flags()
 	flags.StringVarP(&options.typ, "type", "t", options.typ, "entity type: artwork or novel")
 	flags.StringVar(&options.mode, "mode", options.mode, "ranking mode: day, day_male, day_female, week, week_original, week_rookie, month, day_manga, week_manga, month_manga, week_rookie_manga, day_r18, day_male_r18, day_female_r18, week_r18, week_r18g; the last nine require authentication")
 	flags.StringVar(&options.date, "date", "", "YYYY-MM-DD (artwork ranking only)")
-	listing.BindListFlags(cmd, &options.limit, &options.page)
-	data.BindNoInput(cmd)
-	requirements.Bind(cmd, requirements.PixivData())
+	pixivcmd.BindListFlags(cmd, &options.limit, &options.page)
+	env.BindNoInput(cmd)
+	commands.Bind(cmd, commands.PixivData())
 	return cmd
 }
 
@@ -61,26 +59,26 @@ func (a command) run(cmd *cobra.Command, opts options) error {
 	if opts.typ == "novel" && cmd.Flags().Changed("date") {
 		return errors.New("--date is only supported when --type artwork")
 	}
-	plan, err := listing.ParsePlan(cmd, opts.limit, opts.page)
+	plan, err := pixivcmd.ParsePlan(cmd, opts.limit, opts.page)
 	if err != nil {
 		return err
 	}
-	request, err := a.data.Request(cmd, opts.CommandOptions)
+	request, err := pixivcmd.BuildRequest(cmd, opts.Options)
 	if err != nil {
 		return err
 	}
-	jsonOverride := a.data.JSONOverride(cmd, opts.CommandOptions)
 	if opts.ndjson && cmd.Flags().Changed("json") {
-		return a.data.Usage(errors.New("--ndjson cannot be used with --json"))
+		return a.env.UsageError(errors.New("--ndjson cannot be used with --json"))
 	}
 	jsonOut := false
 	if !opts.ndjson {
-		jsonOut, err = a.data.JSONOut(jsonOverride)
+		jsonOut, err = a.env.JSONOut(a.env.JSONOverride(cmd, opts.Options))
 		if err != nil {
 			return err
 		}
 	}
-	ndjson := a.data.ShouldAutoNDJSON(cmd, opts.ndjson, jsonOut)
+	ndjson := a.env.AutoNDJSON(cmd, opts.ndjson, jsonOut)
+	format := pixivcmd.FormatOf(jsonOut, ndjson)
 	if opts.typ == "novel" {
 		fetch := func(client *pixiv.Client, ctx context.Context, cursor sdk.Cursor) ([]pixiv.Novel, sdk.Cursor, error) {
 			result, err := client.NovelRanking(ctx, pixiv.NovelRankingRequest{Mode: pixiv.RankingMode(opts.mode), Cursor: cursor})
@@ -89,8 +87,11 @@ func (a command) run(cmd *cobra.Command, opts options) error {
 			}
 			return result.Items, result.Next, nil
 		}
-		return a.runner().RunPooledNovelList(cmd.Context(), listing.Request(request), plan, jsonOut, ndjson, fmt.Sprintf("%s novel ranking", opts.mode), fetch,
-			func(items []pixiv.Novel) error { return printNovels(a.data.Output, items) })
+		return a.runner.RunNovels(cmd.Context(), request, plan, format, pixivcmd.NovelList{
+			Heading: fmt.Sprintf("%s novel ranking", opts.mode),
+			Fetch:   fetch,
+			Print:   func(items []pixiv.Novel) error { return pixivcmd.PrintNovels(a.env.Out, items) },
+		})
 	}
 	fetch := func(client *pixiv.Client, ctx context.Context, cursor sdk.Cursor) ([]pixiv.Artwork, sdk.Cursor, error) {
 		result, err := client.ArtworkRanking(ctx, pixiv.ArtworkRankingRequest{Mode: pixiv.RankingMode(opts.mode), Date: opts.date, Cursor: cursor})
@@ -99,38 +100,11 @@ func (a command) run(cmd *cobra.Command, opts options) error {
 		}
 		return result.Items, result.Next, nil
 	}
-	return a.runner().RunPooledIllustList(cmd.Context(), listing.Request(request), plan, jsonOut, ndjson, fmt.Sprintf("%s ranking", opts.mode), fetch, func(items []pixiv.Artwork, start int) error {
-		return printArtworks(a.data.Output, items, start)
+	return a.runner.RunArtworks(cmd.Context(), request, plan, format, pixivcmd.ArtworkList{
+		Heading: pixivcmd.Static(fmt.Sprintf("%s ranking", opts.mode)),
+		Fetch:   fetch,
+		Print: func(items []pixiv.Artwork, start int) error {
+			return pixivcmd.PrintArtworksRanked(a.env.Out, items, start)
+		},
 	})
-}
-
-func (a command) runner() listing.Runner {
-	return listing.New(a.data.Output, func(ctx context.Context, request listing.Request, attempt func(context.Context, *pixiv.Client) (bool, error)) error {
-		return a.data.Pooled(ctx, deps.Request(request), attempt)
-	})
-}
-
-func printArtworks(out io.Writer, items []pixiv.Artwork, offset int) error {
-	for index, item := range items {
-		if _, err := fmt.Fprintf(out, "#%d https://www.pixiv.net/artworks/%d\n", offset+index+1, item.ID); err != nil {
-			return err
-		}
-		tags := make([]string, 0, len(item.Tags))
-		for _, tag := range item.Tags {
-			tags = append(tags, tag.Name)
-		}
-		if _, err := fmt.Fprintf(out, "%d %q by %s bookmarks:%d views:%d tags:%s\n", item.ID, item.Title, item.User.Name, item.TotalBookmarks, item.TotalViews, strings.Join(tags, ",")); err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
-func printNovels(out io.Writer, items []pixiv.Novel) error {
-	for _, item := range items {
-		if _, err := fmt.Fprintf(out, "%d %s — %s\n", item.ID, item.Title, item.User.Name); err != nil {
-			return err
-		}
-	}
-	return nil
 }

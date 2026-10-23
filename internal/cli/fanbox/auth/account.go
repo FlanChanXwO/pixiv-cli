@@ -8,7 +8,8 @@ import (
 	"strconv"
 	"strings"
 
-	deps "github.com/FlanChanXwO/pixiv-cli/internal/cli/fanbox"
+	commands "github.com/FlanChanXwO/pixiv-cli/internal/cli/internal/command"
+	"github.com/FlanChanXwO/pixiv-cli/internal/cli/internal/fanboxcmd"
 	"github.com/FlanChanXwO/pixiv-cli/internal/fanboxaccount"
 	"github.com/spf13/cobra"
 )
@@ -36,7 +37,7 @@ func (a command) newImportCommand() *cobra.Command {
 		Use:     "import",
 		Short:   "Import a FANBOX session",
 		Example: "pixiv fanbox auth import",
-		Args:    a.data.RequireExactArgs(0, "pixiv fanbox auth import [--from-browser BROWSER] [--profile ID] [--default]"),
+		Args:    a.env.ExactArgs(0, "pixiv fanbox auth import [--from-browser BROWSER] [--profile ID] [--default]"),
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			return a.runImport(cmd, opts)
 		},
@@ -46,13 +47,13 @@ func (a command) newImportCommand() *cobra.Command {
 	flags.StringVar(&opts.profile, "profile", "", "browser profile identifier when the browser has multiple profiles")
 	flags.BoolVar(&opts.setDefault, "default", false, "set the imported account as the default FANBOX account")
 	flags.BoolVar(&opts.jsonOut, "json", false, "print JSON")
-	a.data.BindNoInput(cmd)
+	a.env.BindNoInput(cmd)
 	return cmd
 }
 
 func (a command) runImport(cmd *cobra.Command, opts importOptions) error {
 	if opts.fromBrowser != "" {
-		value, err := a.data.FanboxBrowserProvider().ReadSession(cmd.Context(), opts.fromBrowser, opts.profile)
+		value, err := a.browser.ReadSession(cmd.Context(), opts.fromBrowser, opts.profile)
 		if err != nil {
 			return err
 		}
@@ -60,10 +61,10 @@ func (a command) runImport(cmd *cobra.Command, opts importOptions) error {
 	}
 	var value string
 	var err error
-	if a.data.CanPrompt() {
-		value, err = a.data.PromptSecret("FANBOXSESSID")
+	if a.env.CanPrompt() {
+		value, err = a.env.PromptSecret("FANBOXSESSID")
 	} else {
-		value, err = readSessionInput(a.in)
+		value, err = readSessionInput(a.env.In)
 	}
 	if err != nil {
 		return err
@@ -94,11 +95,11 @@ func readSessionInput(r io.Reader) (string, error) {
 }
 
 func (a command) importSession(cmd *cobra.Command, value string, setDefault, jsonOut bool) error {
-	service, err := a.data.AccountService()
+	service, err := a.accounts()
 	if err != nil {
 		return err
 	}
-	proxyOverride, err := deps.ProxyOverride(cmd)
+	proxyOverride, err := fanboxcmd.ProxyOverride(cmd)
 	if err != nil {
 		return err
 	}
@@ -107,14 +108,14 @@ func (a command) importSession(cmd *cobra.Command, value string, setDefault, jso
 		return err
 	}
 	if jsonOut {
-		return a.data.PrintJSON(accountOutFrom(account.UserID, account.DisplayName, account.CreatorID, account.Default))
+		return a.env.PrintJSON(accountOutFrom(account.UserID, account.DisplayName, account.CreatorID, account.Default))
 	}
-	fmt.Fprintf(a.out, "imported uid:%d\n", account.UserID)
+	fmt.Fprintf(a.env.Out, "imported uid:%d\n", account.UserID)
 	if account.DisplayName != "" {
-		fmt.Fprintf(a.out, "display:%s\n", account.DisplayName)
+		fmt.Fprintf(a.env.Out, "display:%s\n", account.DisplayName)
 	}
 	if account.CreatorID != "" {
-		fmt.Fprintf(a.out, "creator:%s\n", account.CreatorID)
+		fmt.Fprintf(a.env.Out, "creator:%s\n", account.CreatorID)
 	}
 	return nil
 }
@@ -124,21 +125,21 @@ func (a command) newListCommand() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "list",
 		Short: "List FANBOX accounts",
-		Args:  a.data.RequireExactArgs(0, "pixiv fanbox auth list [--json]"),
+		Args:  a.env.ExactArgs(0, "pixiv fanbox auth list [--json]"),
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			return a.runList(cmd, jsonOut)
 		},
 	}
 	cmd.Flags().BoolVar(&jsonOut, "json", false, "print JSON")
-	a.data.BindNoInput(cmd)
+	a.env.BindNoInput(cmd)
 	return cmd
 }
 
 func (a command) runList(cmd *cobra.Command, jsonOut bool) error {
-	if _, err := deps.ProxyOverride(cmd); err != nil {
+	if _, err := fanboxcmd.ProxyOverride(cmd); err != nil {
 		return err
 	}
-	service, err := a.data.AccountService()
+	service, err := a.accounts()
 	if err != nil {
 		return err
 	}
@@ -154,10 +155,10 @@ func (a command) runList(cmd *cobra.Command, jsonOut bool) error {
 		}
 	}
 	if jsonOut {
-		return a.data.PrintJSON(out)
+		return a.env.PrintJSON(out)
 	}
 	if len(out.Accounts) == 0 {
-		fmt.Fprintln(a.out, "no accounts")
+		fmt.Fprintln(a.env.Out, "no accounts")
 		return nil
 	}
 	for _, account := range out.Accounts {
@@ -165,14 +166,14 @@ func (a command) runList(cmd *cobra.Command, jsonOut bool) error {
 		if account.Default {
 			marker = "*"
 		}
-		fmt.Fprintf(a.out, "%s uid:%d", marker, account.UserID)
+		fmt.Fprintf(a.env.Out, "%s uid:%d", marker, account.UserID)
 		if account.DisplayName != "" {
-			fmt.Fprintf(a.out, " display:%s", account.DisplayName)
+			fmt.Fprintf(a.env.Out, " display:%s", account.DisplayName)
 		}
 		if account.CreatorID != "" {
-			fmt.Fprintf(a.out, " creator:%s", account.CreatorID)
+			fmt.Fprintf(a.env.Out, " creator:%s", account.CreatorID)
 		}
-		fmt.Fprintln(a.out)
+		fmt.Fprintln(a.env.Out)
 	}
 	return nil
 }
@@ -182,14 +183,14 @@ func (a command) newUseCommand() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "use [UID]",
 		Short: "Set the default FANBOX account",
-		Args:  a.data.RequireMaxArgs(1, "pixiv fanbox auth use [UID] | --auto"),
+		Args:  a.env.MaxArgs(1, "pixiv fanbox auth use [UID] | --auto"),
 		RunE: func(_ *cobra.Command, args []string) error {
 			return a.runUse(args, opts)
 		},
 	}
 	cmd.Flags().BoolVar(&opts.auto, "auto", false, "clear the explicit default and use the first stored account")
 	cmd.Flags().BoolVar(&opts.jsonOut, "json", false, "print JSON")
-	a.data.BindTextValue(cmd, 0, 1, 0)
+	a.env.BindTextValue(cmd, 0, 1, 0)
 	return cmd
 }
 
@@ -197,7 +198,7 @@ func (a command) runUse(args []string, opts useOptions) error {
 	if opts.auto && len(args) != 0 {
 		return errors.New("--auto cannot be combined with a UID")
 	}
-	service, err := a.data.AccountService()
+	service, err := a.accounts()
 	if err != nil {
 		return err
 	}
@@ -206,9 +207,9 @@ func (a command) runUse(args []string, opts useOptions) error {
 			return err
 		}
 		if opts.jsonOut {
-			return a.data.PrintJSON(map[string]any{"default_user_id": 0, "auto": true})
+			return a.env.PrintJSON(map[string]any{"default_user_id": 0, "auto": true})
 		}
-		fmt.Fprintln(a.out, "default uid: auto")
+		fmt.Fprintln(a.env.Out, "default uid: auto")
 		return nil
 	}
 	if len(args) != 1 {
@@ -222,9 +223,9 @@ func (a command) runUse(args []string, opts useOptions) error {
 		return err
 	}
 	if opts.jsonOut {
-		return a.data.PrintJSON(map[string]any{"default_user_id": userID, "auto": false})
+		return a.env.PrintJSON(map[string]any{"default_user_id": userID, "auto": false})
 	}
-	fmt.Fprintf(a.out, "default uid: %d\n", userID)
+	fmt.Fprintf(a.env.Out, "default uid: %d\n", userID)
 	return nil
 }
 
@@ -233,14 +234,14 @@ func (a command) newRemoveCommand() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "remove UID",
 		Short: "Remove a FANBOX account",
-		Args:  a.data.RequireExactArgs(1, "pixiv fanbox auth remove UID"),
+		Args:  a.env.ExactArgs(1, "pixiv fanbox auth remove UID"),
 		RunE: func(_ *cobra.Command, args []string) error {
 			return a.runRemove(args, opts)
 		},
 	}
 	cmd.Flags().BoolVar(&opts.jsonOut, "json", false, "print JSON")
 	cmd.Flags().BoolVar(&opts.yes, "yes", false, "skip confirmation in interactive terminals")
-	a.data.BindTextValue(cmd, 1, 1, 0)
+	a.env.BindTextValue(cmd, 1, 1, 0)
 	return cmd
 }
 
@@ -249,12 +250,12 @@ func (a command) runRemove(args []string, opts removeOptions) error {
 	if err != nil {
 		return err
 	}
-	service, err := a.data.AccountService()
+	service, err := a.accounts()
 	if err != nil {
 		return err
 	}
-	if a.data.CanPrompt() && !opts.yes {
-		ok, err := a.data.PromptConfirm(fmt.Sprintf("Remove fanbox uid %d?", userID), false)
+	if a.env.CanPrompt() && !opts.yes {
+		ok, err := a.env.PromptConfirm(fmt.Sprintf("Remove fanbox uid %d?", userID), false)
 		if err != nil {
 			return err
 		}
@@ -266,9 +267,9 @@ func (a command) runRemove(args []string, opts removeOptions) error {
 		return err
 	}
 	if opts.jsonOut {
-		return a.data.PrintJSON(map[string]int64{"removed_user_id": userID})
+		return a.env.PrintJSON(map[string]int64{"removed_user_id": userID})
 	}
-	fmt.Fprintf(a.out, "account uid:%d removed\n", userID)
+	fmt.Fprintf(a.env.Out, "account uid:%d removed\n", userID)
 	return nil
 }
 
@@ -277,21 +278,21 @@ func (a command) newStatusCommand() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "status [UID]",
 		Short: "Show the default FANBOX account",
-		Args:  a.data.RequireMaxArgs(1, "pixiv fanbox auth status [UID]"),
+		Args:  a.env.MaxArgs(1, "pixiv fanbox auth status [UID]"),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return a.runStatus(cmd, args, jsonOut)
 		},
 	}
 	cmd.Flags().BoolVar(&jsonOut, "json", false, "print JSON")
-	a.data.BindTextValue(cmd, 0, 1, 0)
+	a.env.BindTextValue(cmd, 0, 1, 0)
 	return cmd
 }
 
 func (a command) runStatus(cmd *cobra.Command, args []string, jsonOut bool) error {
-	if _, err := deps.ProxyOverride(cmd); err != nil {
+	if _, err := fanboxcmd.ProxyOverride(cmd); err != nil {
 		return err
 	}
-	service, err := a.data.AccountService()
+	service, err := a.accounts()
 	if err != nil {
 		return err
 	}
@@ -321,16 +322,16 @@ func (a command) runStatus(cmd *cobra.Command, args []string, jsonOut bool) erro
 
 func (a command) printSummary(summary fanboxaccount.AccountSummary, jsonOut bool) error {
 	if jsonOut {
-		return a.data.PrintJSON(accountOutFrom(summary.UserID, summary.DisplayName, summary.CreatorID, summary.Default))
+		return a.env.PrintJSON(accountOutFrom(summary.UserID, summary.DisplayName, summary.CreatorID, summary.Default))
 	}
-	fmt.Fprintf(a.out, "uid:%d\n", summary.UserID)
+	fmt.Fprintf(a.env.Out, "uid:%d\n", summary.UserID)
 	if summary.DisplayName != "" {
-		fmt.Fprintf(a.out, "display:%s\n", summary.DisplayName)
+		fmt.Fprintf(a.env.Out, "display:%s\n", summary.DisplayName)
 	}
 	if summary.CreatorID != "" {
-		fmt.Fprintf(a.out, "creator:%s\n", summary.CreatorID)
+		fmt.Fprintf(a.env.Out, "creator:%s\n", summary.CreatorID)
 	}
-	fmt.Fprintf(a.out, "default:%s\n", textBool(summary.Default))
+	fmt.Fprintf(a.env.Out, "default:%s\n", commands.TextBool(summary.Default))
 	return nil
 }
 
@@ -340,11 +341,4 @@ func parseUID(raw string) (int64, error) {
 		return 0, errors.New("fanbox uid must be a positive integer")
 	}
 	return userID, nil
-}
-
-func textBool(value bool) string {
-	if value {
-		return "yes"
-	}
-	return "no"
 }

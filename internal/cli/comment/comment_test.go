@@ -9,12 +9,13 @@ import (
 	"strings"
 	"testing"
 
-	deps "github.com/FlanChanXwO/pixiv-cli/internal/cli/internal/pixivcmd"
+	pixivcmd "github.com/FlanChanXwO/pixiv-cli/internal/cli/internal/pixivcmd"
 	pixiv "github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
+	"github.com/spf13/cobra"
 )
 
 func TestNewDeclaresCommentInputAndTypeFlags(t *testing.T) {
-	cmd := New(deps.Data{Input: strings.NewReader(""), Output: &bytes.Buffer{}, ErrorOutput: &bytes.Buffer{}, UsageError: func(err error) error { return err }})
+	cmd := newTestCommand(testData{Input: strings.NewReader(""), Output: &bytes.Buffer{}, ErrorOutput: &bytes.Buffer{}, UsageError: func(err error) error { return err }})
 	if cmd.Use != "comment ID" {
 		t.Fatalf("unexpected comment use: %q", cmd.Use)
 	}
@@ -24,7 +25,7 @@ func TestNewDeclaresCommentInputAndTypeFlags(t *testing.T) {
 }
 
 func TestNewRegistersCommentActionsWithoutChangingReadRoute(t *testing.T) {
-	cmd := New(deps.Data{Input: strings.NewReader(""), Output: &bytes.Buffer{}, ErrorOutput: &bytes.Buffer{}, UsageError: func(err error) error { return err }})
+	cmd := newTestCommand(testData{Input: strings.NewReader(""), Output: &bytes.Buffer{}, ErrorOutput: &bytes.Buffer{}, UsageError: func(err error) error { return err }})
 
 	got := make(map[string]bool)
 	for _, child := range cmd.Commands() {
@@ -60,7 +61,7 @@ func TestCommentCreateReturnsResponseCommentID(t *testing.T) {
 		t.Fatalf("NewWith: %v", err)
 	}
 	output := &bytes.Buffer{}
-	cmd := New(commentTestData(client, output))
+	cmd := commentTestData(client, output)
 	cmd.SetArgs([]string{"create", "101", "--type", "artwork", "--comment", "hello", "--json"})
 
 	if err := cmd.Execute(); err != nil {
@@ -197,7 +198,7 @@ func TestCommentMutationsDispatchArtworkAndNovelNamespaces(t *testing.T) {
 				t.Fatalf("NewWith: %v", err)
 			}
 			output := &bytes.Buffer{}
-			cmd := New(commentTestData(client, output))
+			cmd := commentTestData(client, output)
 			cmd.SetArgs(test.args)
 
 			if err := cmd.Execute(); err != nil {
@@ -241,7 +242,7 @@ func TestCommentStampsJSONOutputIsSafeAndNonPaginated(t *testing.T) {
 		t.Fatalf("NewWith: %v", err)
 	}
 	output := &bytes.Buffer{}
-	cmd := New(commentTestData(client, output))
+	cmd := commentTestData(client, output)
 	cmd.SetArgs([]string{"stamps", "--json"})
 
 	if err := cmd.Execute(); err != nil {
@@ -299,7 +300,7 @@ func TestCommentReadRouteRemainsArtworkAndNovelComments(t *testing.T) {
 				t.Fatalf("NewWith: %v", err)
 			}
 			output := &bytes.Buffer{}
-			cmd := New(commentTestData(client, output))
+			cmd := commentTestData(client, output)
 			cmd.SetArgs(test.args)
 
 			if err := cmd.Execute(); err != nil {
@@ -338,13 +339,13 @@ func TestCommentMutationsRejectInvalidTypeInputBeforeOpeningClient(t *testing.T)
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			opened := false
-			cmd := New(deps.Data{
+			cmd := newTestCommand(testData{
 				Input:       strings.NewReader(""),
 				Output:      &bytes.Buffer{},
 				ErrorOutput: &bytes.Buffer{},
 				UsageError:  func(err error) error { return err },
 				JSONOut:     func(*bool) (bool, error) { return false, nil },
-				Pooled: func(context.Context, deps.Request, func(context.Context, *pixiv.Client) (bool, error)) error {
+				Pooled: func(context.Context, pixivcmd.Request, func(context.Context, *pixiv.Client) (bool, error)) error {
 					opened = true
 					return nil
 				},
@@ -377,8 +378,8 @@ func commentJSONResponse(req *http.Request, body string) *http.Response {
 	}
 }
 
-func commentTestData(client *pixiv.Client, output io.Writer) deps.Data {
-	return deps.Data{
+func commentTestData(client *pixiv.Client, output io.Writer) *cobra.Command {
+	return newTestCommand(testData{
 		Input:       strings.NewReader(""),
 		Output:      output,
 		ErrorOutput: &bytes.Buffer{},
@@ -389,9 +390,9 @@ func commentTestData(client *pixiv.Client, output io.Writer) deps.Data {
 			}
 			return *override, nil
 		},
-		Pooled: func(ctx context.Context, _ deps.Request, attempt func(context.Context, *pixiv.Client) (bool, error)) error {
+		Pooled: func(ctx context.Context, _ pixivcmd.Request, attempt func(context.Context, *pixiv.Client) (bool, error)) error {
 			_, err := attempt(ctx, client)
 			return err
 		},
-	}
+	})
 }
