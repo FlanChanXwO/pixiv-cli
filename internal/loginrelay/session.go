@@ -13,8 +13,6 @@ import (
 	"path"
 	"strings"
 	"sync"
-
-	"github.com/FlanChanXwO/pixiv-cli/internal/loginrelay/loginpage"
 )
 
 // Session 提供单次登录的 HTTP handler，不创建 listener 或操作账号库。
@@ -324,7 +322,7 @@ func WriteFinalPage(w http.ResponseWriter, ok bool) {
 	if !ok {
 		w.WriteHeader(http.StatusBadRequest)
 	}
-	if err := loginpage.WriteResult(w, ok); err != nil {
+	if err := writeResult(w, ok); err != nil {
 		http.Error(w, "could not render login page", http.StatusInternalServerError)
 	}
 }

@@ -14,7 +14,6 @@ import (
 	"github.com/FlanChanXwO/pixiv-cli/internal/cli/auth/loginhelper"
 	commands "github.com/FlanChanXwO/pixiv-cli/internal/cli/internal/command"
 	"github.com/FlanChanXwO/pixiv-cli/internal/loginrelay"
-	"github.com/FlanChanXwO/pixiv-cli/internal/loginrelay/loginpage"
 	pixivaccount "github.com/FlanChanXwO/pixiv-cli/internal/pixivaccount"
 	pixiv "github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
 	"github.com/pkg/browser"
@@ -415,7 +414,7 @@ func LoginSSHTunnelCommand(addr string) (string, error) {
 // WriteLoginForm 渲染包含 Pixiv 登录链接和手动回填表单的页面。
 func WriteLoginForm(w http.ResponseWriter, loginURL string) {
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	if err := loginpage.WriteManual(w, loginURL); err != nil {
+	if err := loginrelay.WriteManual(w, loginURL); err != nil {
 		http.Error(w, "could not render login page", http.StatusInternalServerError)
 	}
 }
@@ -424,7 +423,7 @@ func WriteLoginForm(w http.ResponseWriter, loginURL string) {
 // fragment 不会随 GET 发送给 loopback，脚本会在提交前将其从浏览器地址和历史记录中清除。
 func WriteLoginCallbackRelayPage(w http.ResponseWriter) {
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	if err := loginpage.WriteCallbackRelay(w); err != nil {
+	if err := loginrelay.WriteCallbackRelay(w); err != nil {
 		http.Error(w, "could not render login page", http.StatusInternalServerError)
 	}
 }

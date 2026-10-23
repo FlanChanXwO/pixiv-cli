@@ -1,8 +1,8 @@
-// Package loginpage 渲染 CLI 与远程登录 relay 共用的纯页面。
-//
-// 页面与路由、OAuth 会话分离：本包不读取账号数据，也不处理表单提交，只渲染经
-// html/template 转义后的展示内容。模板嵌入 binary，使手工安装的 CLI 不依赖外部文件。
-package loginpage
+// Login page rendering for the CLI and the remote relay. Pages are pure views:
+// they read no account state, handle no form submission, and load templates from
+// the embedded frontend sources.
+
+package loginrelay
 
 import (
 	"bytes"
@@ -60,7 +60,7 @@ func mustParse(name string) *template.Template {
 func mustRender(tmpl *template.Template, data pageData) []byte {
 	var out bytes.Buffer
 	if err := tmpl.Execute(&out, data); err != nil {
-		panic("loginpage: render " + tmpl.Name() + ": " + err.Error())
+		panic("loginrelay: render " + tmpl.Name() + ": " + err.Error())
 	}
 	return out.Bytes()
 }
@@ -104,8 +104,8 @@ func WriteCallbackRelay(w io.Writer) error {
 	return err
 }
 
-// WriteResult 渲染固定的登录完成页面。失败文案不包含 OAuth 或本地存储错误细节。
-func WriteResult(w io.Writer, success bool) error {
+// writeResult 渲染固定的登录完成页面。失败文案不包含 OAuth 或本地存储错误细节。
+func writeResult(w io.Writer, success bool) error {
 	if success {
 		_, err := w.Write(successResultPage)
 		return err
