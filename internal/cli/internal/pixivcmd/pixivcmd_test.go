@@ -5,11 +5,11 @@ import (
 	"errors"
 	"testing"
 
-	deps "github.com/FlanChanXwO/pixiv-cli/internal/cli/internal/pixivcmd"
+	pixivcmd "github.com/FlanChanXwO/pixiv-cli/internal/cli/internal/pixivcmd"
 	"github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
 )
 
-func TestPooledReadReturnsOnlySuccessfulResult(t *testing.T) {
+func TestReadReturnsOnlySuccessfulResult(t *testing.T) {
 	failure := errors.New("read failed")
 	for _, tc := range []struct {
 		name     string
@@ -20,7 +20,7 @@ func TestPooledReadReturnsOnlySuccessfulResult(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			calls := 0
-			pool := deps.Pooled[deps.Request](func(ctx context.Context, _ deps.Request, attempt func(context.Context, *pixiv.Client) (bool, error)) error {
+			runner := pixivcmd.New(nil, func(ctx context.Context, _ pixivcmd.Request, attempt func(context.Context, *pixiv.Client) (bool, error)) error {
 				for i := 0; i < tc.failures; i++ {
 					committed, err := attempt(ctx, nil)
 					if committed || !errors.Is(err, failure) {
@@ -36,7 +36,7 @@ func TestPooledReadReturnsOnlySuccessfulResult(t *testing.T) {
 				}
 				return err
 			})
-			result, err := pool.Read(context.Background(), deps.Request{}, func(context.Context, *pixiv.Client) ([]int, error) {
+			result, err := pixivcmd.Read(runner, context.Background(), pixivcmd.Request{}, func(context.Context, *pixiv.Client) ([]int, error) {
 				calls++
 				if calls <= tc.failures {
 					return []int{-calls}, failure
@@ -61,15 +61,15 @@ func TestPooledReadReturnsOnlySuccessfulResult(t *testing.T) {
 	}
 }
 
-func TestPooledReadPreservesRequestAndAttemptContext(t *testing.T) {
+func TestReadPreservesRequestAndAttemptContext(t *testing.T) {
 	type key struct{}
 	parent := context.WithValue(context.Background(), key{}, "parent")
 	attemptCtx, cancel := context.WithCancel(context.WithValue(parent, key{}, "attempt"))
 	defer cancel()
 	proxy := "http://proxy.example"
-	request := deps.Request{UserID: 123, HTTPSProxyOverride: &proxy}
+	request := pixivcmd.Request{UserID: 123, HTTPSProxyOverride: &proxy}
 	client := &pixiv.Client{}
-	pool := deps.Pooled[deps.Request](func(ctx context.Context, got deps.Request, attempt func(context.Context, *pixiv.Client) (bool, error)) error {
+	runner := pixivcmd.New(nil, func(ctx context.Context, got pixivcmd.Request, attempt func(context.Context, *pixiv.Client) (bool, error)) error {
 		if ctx != parent || got != request {
 			t.Fatal("pool input was replaced")
 		}
@@ -80,7 +80,7 @@ func TestPooledReadPreservesRequestAndAttemptContext(t *testing.T) {
 		}
 		return err
 	})
-	result, err := pool.Read(parent, request, func(ctx context.Context, got *pixiv.Client) (int, error) {
+	result, err := pixivcmd.Read(runner, parent, request, func(ctx context.Context, got *pixiv.Client) (int, error) {
 		if ctx != attemptCtx || got != client {
 			t.Fatal("attempt context or client was replaced")
 		}
@@ -91,9 +91,9 @@ func TestPooledReadPreservesRequestAndAttemptContext(t *testing.T) {
 	}
 }
 
-func TestPooledReadMissingPortAndPreAttemptCancellation(t *testing.T) {
-	var missing deps.Pooled[deps.Request]
-	result, err := missing.Read(context.Background(), deps.Request{}, func(context.Context, *pixiv.Client) (string, error) {
+func TestReadMissingPortAndPreAttemptCancellation(t *testing.T) {
+	var missing pixivcmd.Runner
+	result, err := pixivcmd.Read(missing, context.Background(), pixivcmd.Request{}, func(context.Context, *pixiv.Client) (string, error) {
 		t.Fatal("nil port invoked callback")
 		return "", nil
 	})
@@ -102,10 +102,10 @@ func TestPooledReadMissingPortAndPreAttemptCancellation(t *testing.T) {
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
-	pool := deps.Pooled[deps.Request](func(ctx context.Context, _ deps.Request, _ func(context.Context, *pixiv.Client) (bool, error)) error {
+	runner := pixivcmd.New(nil, func(ctx context.Context, _ pixivcmd.Request, _ func(context.Context, *pixiv.Client) (bool, error)) error {
 		return ctx.Err()
 	})
-	result, err = pool.Read(ctx, deps.Request{}, func(context.Context, *pixiv.Client) (string, error) {
+	result, err = pixivcmd.Read(runner, ctx, pixivcmd.Request{}, func(context.Context, *pixiv.Client) (string, error) {
 		t.Fatal("cancelled pool invoked callback")
 		return "", nil
 	})
@@ -115,7 +115,7 @@ func TestPooledReadMissingPortAndPreAttemptCancellation(t *testing.T) {
 }
 
 func TestWriteMissingPooledPort(t *testing.T) {
-	err := deps.Write(deps.Data{}, context.Background(), deps.Request{}, func(context.Context, *pixiv.Client) error {
+	err := (pixivcmd.Runner{}).Write(context.Background(), pixivcmd.Request{}, func(context.Context, *pixiv.Client) error {
 		t.Fatal("nil port invoked write callback")
 		return nil
 	})
@@ -138,10 +138,10 @@ func TestWriteCommitsEveryInvokedAttempt(t *testing.T) {
 				cancel()
 			}
 			proxy := "http://proxy.example"
-			request := deps.Request{UserID: 123, HTTPSProxyOverride: &proxy}
+			request := pixivcmd.Request{UserID: 123, HTTPSProxyOverride: &proxy}
 			client := &pixiv.Client{}
 			calls := 0
-			data := deps.Data{Pooled: func(ctx context.Context, got deps.Request, attempt func(context.Context, *pixiv.Client) (bool, error)) error {
+			runner := pixivcmd.New(nil, func(ctx context.Context, got pixivcmd.Request, attempt func(context.Context, *pixiv.Client) (bool, error)) error {
 				if ctx != parent || got != request {
 					t.Fatal("pool input was replaced")
 				}
@@ -150,8 +150,8 @@ func TestWriteCommitsEveryInvokedAttempt(t *testing.T) {
 					t.Fatalf("write committed=%v error=%v", committed, err)
 				}
 				return err
-			}}
-			err := deps.Write(data, parent, request, func(ctx context.Context, got *pixiv.Client) error {
+			})
+			err := runner.Write(parent, request, func(ctx context.Context, got *pixiv.Client) error {
 				calls++
 				if ctx != attemptCtx || got != client {
 					t.Fatal("attempt context or client was replaced")
