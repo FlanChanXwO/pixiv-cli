@@ -421,9 +421,9 @@ func TestReverseSearchInputsSharePrivateSnapshot(t *testing.T) {
 			temp := t.TempDir()
 			before := fetched.Load()
 			var snapshot *reversesearch.Snapshot
-			facade := reversesearch.NewFacade(reversesearch.Dependencies{
-				Sources: reversesearch.NewSourceLoader(reversesearch.SourceLoaderOptions{TempDir: temp, HTTPClient: upstream.Client()}),
-				Payloads: reversePayloadFunc(func(_ context.Context, request reversesearch.PayloadRequest) (reversesearch.Response, error) {
+			service := reversesearch.NewService(
+				reversesearch.NewSourceLoader(reversesearch.SourceLoaderOptions{TempDir: temp, HTTPClient: upstream.Client()}),
+				reversePayloadFunc(func(_ context.Context, request reversesearch.PayloadRequest) (reversesearch.Response, error) {
 					snapshot = request.Snapshot
 					require.Equal(t, reversesearch.ProviderASCII2DBOVW, request.Provider)
 					require.True(t, request.PixivOnly)
@@ -443,8 +443,8 @@ func TestReverseSearchInputsSharePrivateSnapshot(t *testing.T) {
 					}
 					return reversesearch.Response{}, nil
 				}),
-			})
-			session, closeSession := newSDKTestSessionWithPorts(t, pixivmcpserver.SDKPorts{ReverseSearch: pixivmcpserver.ReverseSearchPorts{Searcher: facade, Provider: reversesearch.ProviderASCII2DBOVW, PixivOnly: true}}, pixivmcpserver.Account{})
+			)
+			session, closeSession := newSDKTestSessionWithPorts(t, pixivmcpserver.SDKPorts{ReverseSearch: pixivmcpserver.ReverseSearchPorts{Searcher: service, Provider: reversesearch.ProviderASCII2DBOVW, PixivOnly: true}}, pixivmcpserver.Account{})
 			defer closeSession()
 			result := callTool(t, session, "pixiv_reverse_search", tc.args)
 			require.False(t, result.IsError, "%s", mustJSON(t, result))
@@ -478,14 +478,14 @@ func TestReverseSearchExpiredHostImageIsSafeAndNotRetried(t *testing.T) {
 			defer upstream.Close()
 			temp := t.TempDir()
 			var searched atomic.Bool
-			facade := reversesearch.NewFacade(reversesearch.Dependencies{
-				Sources: reversesearch.NewSourceLoader(reversesearch.SourceLoaderOptions{TempDir: temp, HTTPClient: upstream.Client()}),
-				Payloads: reversePayloadFunc(func(context.Context, reversesearch.PayloadRequest) (reversesearch.Response, error) {
+			service := reversesearch.NewService(
+				reversesearch.NewSourceLoader(reversesearch.SourceLoaderOptions{TempDir: temp, HTTPClient: upstream.Client()}),
+				reversePayloadFunc(func(context.Context, reversesearch.PayloadRequest) (reversesearch.Response, error) {
 					searched.Store(true)
 					return reversesearch.Response{}, nil
 				}),
-			})
-			session, closeSession := newSDKTestSessionWithPorts(t, pixivmcpserver.SDKPorts{ReverseSearch: pixivmcpserver.ReverseSearchPorts{Searcher: facade}}, pixivmcpserver.Account{})
+			)
+			session, closeSession := newSDKTestSessionWithPorts(t, pixivmcpserver.SDKPorts{ReverseSearch: pixivmcpserver.ReverseSearchPorts{Searcher: service}}, pixivmcpserver.Account{})
 			defer closeSession()
 			result := callTool(t, session, "pixiv_reverse_search", map[string]any{"image": map[string]any{"download_url": upstream.URL + "/private-download?signature=private-signature", "file_id": "private-file-id", "file_name": "private-name.png"}})
 			require.True(t, result.IsError)
@@ -508,14 +508,14 @@ func TestReverseSearchHostImageProviderFailureCleansSnapshotAndKeepsResults(t *t
 	defer upstream.Close()
 	temp := t.TempDir()
 	var snapshot *reversesearch.Snapshot
-	facade := reversesearch.NewFacade(reversesearch.Dependencies{
-		Sources: reversesearch.NewSourceLoader(reversesearch.SourceLoaderOptions{TempDir: temp, HTTPClient: upstream.Client()}),
-		Payloads: reversePayloadFunc(func(_ context.Context, request reversesearch.PayloadRequest) (reversesearch.Response, error) {
+	service := reversesearch.NewService(
+		reversesearch.NewSourceLoader(reversesearch.SourceLoaderOptions{TempDir: temp, HTTPClient: upstream.Client()}),
+		reversePayloadFunc(func(_ context.Context, request reversesearch.PayloadRequest) (reversesearch.Response, error) {
 			snapshot = request.Snapshot
 			return reversesearch.Response{Partial: true, Results: []reversesearch.Result{{Pixiv: &reversesearch.PixivRef{Type: reversesearch.PixivRefArtwork, ID: 42}}}, ProviderErrors: []reversesearch.ProviderError{{Provider: reversesearch.ProviderSauceNAO, Code: reversesearch.CodeProviderFailed, Message: "provider failed"}}}, reversesearch.NewError(reversesearch.CodeProviderFailed, "provider failed", errors.New("private-download private-file-id private-name.png"))
 		}),
-	})
-	session, closeSession := newSDKTestSessionWithPorts(t, pixivmcpserver.SDKPorts{ReverseSearch: pixivmcpserver.ReverseSearchPorts{Searcher: facade}}, pixivmcpserver.Account{})
+	)
+	session, closeSession := newSDKTestSessionWithPorts(t, pixivmcpserver.SDKPorts{ReverseSearch: pixivmcpserver.ReverseSearchPorts{Searcher: service}}, pixivmcpserver.Account{})
 	defer closeSession()
 	result := callTool(t, session, "pixiv_reverse_search", map[string]any{"image": map[string]any{"download_url": upstream.URL + "/private-download", "file_id": "private-file-id", "file_name": "private-name.png"}})
 	require.True(t, result.IsError)
@@ -565,14 +565,14 @@ func TestReverseSearchHostImageCancellationCleansPartialSnapshot(t *testing.T) {
 		client := &http.Client{Transport: reverseImageTransport(func(r *http.Request) (*http.Response, error) {
 			return &http.Response{StatusCode: http.StatusOK, Request: r, Body: body, Header: make(http.Header)}, nil
 		})}
-		facade := reversesearch.NewFacade(reversesearch.Dependencies{
-			Sources: reversesearch.NewSourceLoader(reversesearch.SourceLoaderOptions{TempDir: temp, HTTPClient: client}),
-			Payloads: reversePayloadFunc(func(context.Context, reversesearch.PayloadRequest) (reversesearch.Response, error) {
+		service := reversesearch.NewService(
+			reversesearch.NewSourceLoader(reversesearch.SourceLoaderOptions{TempDir: temp, HTTPClient: client}),
+			reversePayloadFunc(func(context.Context, reversesearch.PayloadRequest) (reversesearch.Response, error) {
 				searched = true
 				return reversesearch.Response{}, nil
 			}),
-		})
-		return facade.Search(ctx, request)
+		)
+		return service.Search(ctx, request)
 	})
 	session, closeSession := newSDKTestSessionWithPorts(t, pixivmcpserver.SDKPorts{ReverseSearch: pixivmcpserver.ReverseSearchPorts{Searcher: searcher}}, pixivmcpserver.Account{})
 	defer closeSession()

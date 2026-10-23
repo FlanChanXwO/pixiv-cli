@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 )
@@ -64,7 +65,7 @@ func TestAggregatorSingleSauceNAOSuccessProducesCanonicalEnvelope(t *testing.T) 
 			}},
 		}, nil
 	}}
-	searcher := newAggregateFacade(t, reversesearch.AggregatorDependencies{SauceNAO: sauce})
+	searcher := newAggregatorService(t, sauce, nil)
 
 	response, err := searcher.Search(context.Background(), reversesearch.Request{
 		Source: fixtureImagePath(t), Provider: reversesearch.ProviderSauceNAO, PixivOnly: true,
@@ -98,7 +99,7 @@ func TestAggregatorSingleProviderFailureReturnsSafeEnvelopeAndError(t *testing.T
 	sauce := providerClientStub{search: func(context.Context, *reversesearch.Snapshot) (reversesearch.ProviderResponse, error) {
 		return reversesearch.ProviderResponse{}, joinedErr
 	}}
-	searcher := newAggregateFacade(t, reversesearch.AggregatorDependencies{SauceNAO: sauce})
+	searcher := newAggregatorService(t, sauce, nil)
 
 	response, err := searcher.Search(context.Background(), reversesearch.Request{
 		Source: fixtureImagePath(t), Provider: reversesearch.ProviderSauceNAO,
@@ -147,7 +148,7 @@ func TestAggregatorAllRunsProviderBranchesAndASCII2DModesConcurrently(t *testing
 			return reversesearch.ProviderResponse{Provider: provider, Matches: []reversesearch.Match{}}, nil
 		}), nil
 	}}
-	searcher := newAggregateFacade(t, reversesearch.AggregatorDependencies{SauceNAO: sauce, ASCII2D: ascii})
+	searcher := newAggregatorService(t, sauce, ascii)
 	// 仅作为测试死锁看门狗：两个边界均为纯内存调用，生产路径没有对应超时。
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
@@ -169,7 +170,7 @@ func TestAggregatorAllFailureReturnsOrderedSafeErrorsAndAggregateError(t *testin
 	ascii := ascii2DClientStub{upload: func(context.Context, *reversesearch.Snapshot) (reversesearch.ASCII2DSession, error) {
 		return nil, errors.New(privateDetail)
 	}}
-	searcher := newAggregateFacade(t, reversesearch.AggregatorDependencies{SauceNAO: sauce, ASCII2D: ascii})
+	searcher := newAggregatorService(t, sauce, ascii)
 
 	response, err := searcher.Search(context.Background(), reversesearch.Request{
 		Source: fixtureImagePath(t), Provider: reversesearch.ProviderAll,
@@ -201,7 +202,7 @@ func TestAggregatorCancellationAbortsWholeAllRequestWithoutPartial(t *testing.T)
 		cancel()
 		return nil, context.Canceled
 	}}
-	searcher := newAggregateFacade(t, reversesearch.AggregatorDependencies{SauceNAO: sauce, ASCII2D: ascii})
+	searcher := newAggregatorService(t, sauce, ascii)
 
 	response, err := searcher.Search(ctx, reversesearch.Request{
 		Source: fixtureImagePath(t), Provider: reversesearch.ProviderAll,
@@ -224,7 +225,7 @@ func TestAggregatorSinglePreflightRejectsBeforeReadingSource(t *testing.T) {
 			return reversesearch.ProviderResponse{}, nil
 		},
 	}
-	searcher := newAggregateFacade(t, reversesearch.AggregatorDependencies{SauceNAO: sauce})
+	searcher := newAggregatorService(t, sauce, nil)
 
 	_, err := searcher.Search(context.Background(), reversesearch.Request{
 		Source: "/private/source-that-must-not-be-read", Provider: reversesearch.ProviderSauceNAO,
@@ -252,7 +253,7 @@ func TestAggregatorAllOneModeFailureIsPartialAndKeepsOtherResults(t *testing.T) 
 			return reversesearch.ProviderResponse{Provider: provider, Matches: []reversesearch.Match{{Rank: 1, ArtworkID: 2}}}, nil
 		}), nil
 	}}
-	searcher := newAggregateFacade(t, reversesearch.AggregatorDependencies{SauceNAO: sauce, ASCII2D: ascii})
+	searcher := newAggregatorService(t, sauce, ascii)
 
 	response, err := searcher.Search(context.Background(), reversesearch.Request{
 		Source: fixtureImagePath(t), Provider: reversesearch.ProviderAll, PixivOnly: true,
@@ -298,12 +299,12 @@ func (barrier *overlapBarrier) Wait(ctx context.Context) error {
 
 func (barrier *overlapBarrier) Arrivals() int { return len(barrier.arrivals) }
 
-func newAggregateFacade(t *testing.T, dependencies reversesearch.AggregatorDependencies) *reversesearch.Facade {
+func newAggregatorService(t *testing.T, sauce reversesearch.ProviderClient, ascii reversesearch.ASCII2DClient) *reversesearch.Service {
 	t.Helper()
-	return reversesearch.NewFacade(reversesearch.Dependencies{
-		Sources:  reversesearch.NewSourceLoader(reversesearch.SourceLoaderOptions{TempDir: t.TempDir()}),
-		Payloads: reversesearch.NewAggregator(dependencies),
-	})
+	return reversesearch.NewService(
+		reversesearch.NewSourceLoader(reversesearch.SourceLoaderOptions{TempDir: t.TempDir()}),
+		reversesearch.NewAggregator(sauce, ascii),
+	)
 }
 
 func fixtureImagePath(t *testing.T) string {
@@ -311,4 +312,47 @@ func fixtureImagePath(t *testing.T) string {
 	path := filepath.Join(t.TempDir(), "fixture-image")
 	require.NoError(t, os.WriteFile(path, []byte("fixture-image"), 0o600))
 	return path
+}
+
+type closeableProviderClient struct {
+	closeCalls atomic.Int32
+}
+
+func (s *closeableProviderClient) Preflight(context.Context) error { return nil }
+
+func (s *closeableProviderClient) Search(context.Context, *reversesearch.Snapshot) (reversesearch.ProviderResponse, error) {
+	return reversesearch.ProviderResponse{}, nil
+}
+
+func (s *closeableProviderClient) Close() error {
+	s.closeCalls.Add(1)
+	return nil
+}
+
+type closeableASCII2DClient struct {
+	closeCalls atomic.Int32
+}
+
+func (s *closeableASCII2DClient) Preflight(context.Context) error { return nil }
+
+func (s *closeableASCII2DClient) Upload(context.Context, *reversesearch.Snapshot) (reversesearch.ASCII2DSession, error) {
+	return nil, nil
+}
+
+func (s *closeableASCII2DClient) Close() error {
+	s.closeCalls.Add(1)
+	return nil
+}
+
+func TestAggregatorCloseClosesProviderClientsOnce(t *testing.T) {
+	sauce := &closeableProviderClient{}
+	ascii := &closeableASCII2DClient{}
+	aggregator := reversesearch.NewAggregator(sauce, ascii)
+
+	closer, ok := any(aggregator).(reversesearch.Closer)
+	require.True(t, ok, "aggregator should expose the internal lifecycle contract")
+	require.NoError(t, closer.Close())
+	require.NoError(t, closer.Close())
+	require.Equal(t, int32(1), sauce.closeCalls.Load())
+	require.Equal(t, int32(1), ascii.closeCalls.Load())
 }
