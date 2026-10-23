@@ -20,10 +20,10 @@ import (
 	"testing"
 	"time"
 
-	pixivdeps "github.com/FlanChanXwO/pixiv-cli/internal/cli/commands/pixiv"
-	authcommands "github.com/FlanChanXwO/pixiv-cli/internal/cli/commands/pixiv/auth"
-	mcpcommands "github.com/FlanChanXwO/pixiv-cli/internal/cli/commands/pixiv/mcp"
-	"github.com/FlanChanXwO/pixiv-cli/internal/cli/pipeline"
+	authcommands "github.com/FlanChanXwO/pixiv-cli/internal/cli/auth"
+	"github.com/FlanChanXwO/pixiv-cli/internal/cli/internal/input"
+	pixivdeps "github.com/FlanChanXwO/pixiv-cli/internal/cli/internal/pixivcmd"
+	mcpcommands "github.com/FlanChanXwO/pixiv-cli/internal/cli/mcp"
 	"github.com/FlanChanXwO/pixiv-cli/internal/config/paths"
 	configapp "github.com/FlanChanXwO/pixiv-cli/internal/config/settings"
 	coreDiagnostics "github.com/FlanChanXwO/pixiv-cli/internal/logging"
@@ -295,7 +295,7 @@ func TestCommandAutoWritesNDJSONFallsBackWithInputAnnotation(t *testing.T) {
 	defer pipeWriter.Close()
 
 	root := &cobra.Command{Use: "pixiv"}
-	cmd := &cobra.Command{Use: "search", Annotations: map[string]string{pipeline.AnnotationKey: "text"}}
+	cmd := &cobra.Command{Use: "search", Annotations: map[string]string{input.AnnotationKey: "text"}}
 	root.AddCommand(cmd)
 
 	assert.True(t, commandAutoWritesNDJSON(cmd, pipeWriter))
@@ -621,7 +621,7 @@ func newTestRootCommand(t *testing.T) *cobra.Command {
 	}
 	root := a.newRootCommand()
 	t.Cleanup(func() {
-		pipeline.Clear(root)
+		input.Clear(root)
 		authcommands.ClearInputState(root)
 	})
 	return root
