@@ -118,6 +118,7 @@ func TestSauceNAOAPIKeyEnvironmentOverridesFileInSnapshot(t *testing.T) {
 }
 
 func TestDownloadSettingsExposeDirectoryTemplateAndRequestInterval(t *testing.T) {
+	clearSettingEnvironment(t)
 	path := filepath.Join(t.TempDir(), "config.toml")
 	require.NoError(t, os.WriteFile(path, []byte("[download]\ndirectory_template = \"{author}/{date}\"\n[network]\nrequest_interval = \"2s\"\n"), 0o600))
 	state, err := config.LoadSnapshotAt(path)
@@ -130,6 +131,7 @@ func TestDownloadSettingsExposeDirectoryTemplateAndRequestInterval(t *testing.T)
 }
 
 func TestRuntimeReadsLoggingConfigFromFile(t *testing.T) {
+	clearSettingEnvironment(t)
 	path := t.TempDir() + "/config.toml"
 	require.NoError(t, os.WriteFile(path, []byte("[logging]\nlevel = \"debug\"\nformat = \"json\"\n"), 0o600))
 
