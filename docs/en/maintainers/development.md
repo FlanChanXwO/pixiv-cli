@@ -5,8 +5,7 @@ English | [简体中文](../../zh-CN/maintainers/development.md) | [Documentatio
 ```mermaid
 flowchart LR
     E["Environment check"] --> B["Build<br/>sh scripts/build.sh"] --> T["Tests<br/>go test ./..."] --> PR["PR CI gates<br/>(ci.md)"] --> REL["Release gates<br/>(release.md)"]
-    T -. "opt-in, authorized" .-> E2E["real SDK / reverse-search e2e"]
-    T -. "encoder changes" .-> UP["ugoira parity<br/>(ugoira-parity.md)"]
+    T -. "opt-in, authorized" .-> E2E["real SDK / reverse-search live tests"]
 ```
 
 | What you want to do | Start here |
@@ -14,7 +13,6 @@ flowchart LR
 | Check the local toolchain | [Environment check](#environment-check) |
 | Edit or validate pages | [Frontend assets](#frontend-assets) |
 | Build or verify ugoira encoding | [Ugoira Go encoder](#ugoira-go-encoder) |
-| Compare encoder output and performance | [Offline ugoira parity](ugoira-parity.md) |
 | Run the CLI and MCP | [Run](#run) |
 | Handle login and credentials | [Credentials in development](#credentials-in-development) |
 | Choose test scope | [Tests](#tests) |
@@ -62,6 +60,8 @@ CGO_ENABLED=0 go test ./internal/media/ugoira/... -count=1
 | Over the bound | declared size → fail before reading; actual expansion → fail during chunked reading; invalid/overflowing dimensions or estimates → error. No truncation or fallback |
 | Cancellation | checked before/after each read chunk and image decode; PNG/JPEG decode loops have no callback, so mid-frame cancellation is seen when that decode returns |
 | Toolchain | no Rust, native library or C linker; only race tests need `CGO_ENABLED=1` + C toolchain |
+
+**Encoder fidelity notes** — `internal/media/ugoira`: the JPEG decoder is Go 1.26.3 parsing plus the legacy zune-jpeg 0.5.15 integer IDCT and 14-bit BT.601 (standard-library IDCT rounding changed palette selection enough to fail the fixed gate; the parser BSD license stays in the package and the zune-jpeg MIT attribution in the license bundle). Resize uses bounded sine/cosine polynomials with explicit `math.FMA` against legacy `sinf`, with 1,031 references in `testdata/lanczos-kernel.json`. APNG uses fixed Sub prediction, an independent level-7 zlib stream per frame and RGBA8 lossless: Over with transparent unchanged pixels only when every changed pixel is opaque and the delta reduces horizontal RGBA runs, else Source, with None disposal. Compressed bytes may change with the toolchain; reuse quality evidence only after verifying complete canvases, timing and loop behavior — not file size alone.
 
 **Platform builds** — `scripts/build-platform.sh` builds an exact target with CGO0 and optionally a canonical archive: `--target GOOS/GOARCH`, `--output-dir DIR`, optional `--version VERSION` (no `v`) and `--package` (needs a version). It keeps Windows suffixes and the Linux ABI gate. Runner metadata stays in `ci/platforms.json`; tests, source identity, permissions, approvals and publication stay in workflows.
 
@@ -161,7 +161,7 @@ go test ./internal/browsercookies/... -count=1   # offline fixture/crypto/permis
 
 ```mermaid
 flowchart TD
-    T["go test ./e2e ..."] --> F{"opt-in variable set?"}
+    T["live_test.go packages<br/>(go test ./... skips by default)"] --> F{"opt-in variable set?"}
     F -->|no| SK["skip (offline-stable default)<br/>never release evidence"]
     F -->|yes| P{"local credentials /<br/>targets present?"}
     P -->|no| FAIL["fail and expose the gap"]
@@ -175,29 +175,28 @@ flowchart TD
 | `TestRealFanboxSDKPostInfo` | `FANBOX_SDK_E2E=1 FANBOX_E2E_POST_ONLY=1` | post ID + page URL | `Post`, non-empty body, `ResolveURL`, resource manifest; allows `file_assets=0` (does not replace the strict test) |
 | `TestRealReverseSearch` | `PIXIV_REVERSE_SEARCH_E2E=1` | `PIXIV_REVERSE_SEARCH_SOURCE`, `_PROVIDER`; `SAUCENAO_API_KEY` for SauceNAO/`all` (exported from a private env, never inline) | third-party compatibility; takes no source/key args, never echoes them; authorized test image only; not a release gate |
 | `TestRealReverseSearchMCPReusesSolverSession` | same | `PIXIV_REVERSE_SEARCH_SOLVER_URL`; optional `_SOLVER_PROXY` (browser upstream only) | solver session reuse; no session state or source persisted |
-| `TestRealPixivUgoiraCapture` | `PIXIV_UGOIRA_CAPTURE=1` | see [ugoira parity](ugoira-parity.md) | sample capture |
 
 ```bash
 PIXIV_E2E_READ_USER_ID=<secondary-uid> \
-PIXIV_SDK_E2E=1 go test ./e2e -run TestRealPixivSDKRead -count=1 -v
+PIXIV_SDK_E2E=1 go test ./sdk/pixiv -run TestRealPixivSDKRead -count=1 -v
 FANBOX_E2E_CREATOR_ID=<non-secret-creator-id> FANBOX_E2E_TAG=<non-secret-tag> \
 FANBOX_E2E_POST_ID=<non-secret-post-id> FANBOX_E2E_POST_URL=<non-secret-post-url> \
-FANBOX_SDK_E2E=1 go test ./e2e -run TestRealFanboxSDKRead -count=1 -v
+FANBOX_SDK_E2E=1 go test ./sdk/fanbox -run TestRealFanboxSDKRead -count=1 -v
 # optional challenge recovery (not configured by default)
 FANBOX_E2E_SOLVER_URL=http://127.0.0.1:8191 FANBOX_E2E_SOLVER_PROXY=http://host.docker.internal:7890 \
 FANBOX_E2E_CREATOR_ID=... FANBOX_E2E_TAG=... FANBOX_E2E_POST_ID=... FANBOX_E2E_POST_URL=... \
-FANBOX_SDK_E2E=1 go test ./e2e -run TestRealFanboxSDKRead -count=1 -v
+FANBOX_SDK_E2E=1 go test ./sdk/fanbox -run TestRealFanboxSDKRead -count=1 -v
 FANBOX_E2E_POST_ID=<non-secret-post-id> FANBOX_E2E_POST_URL=<non-secret-post-url> \
-FANBOX_SDK_E2E=1 FANBOX_E2E_POST_ONLY=1 go test ./e2e -run TestRealFanboxSDKPostInfo -count=1 -v
+FANBOX_SDK_E2E=1 FANBOX_E2E_POST_ONLY=1 go test ./sdk/fanbox -run TestRealFanboxSDKPostInfo -count=1 -v
 export SAUCENAO_API_KEY      # pre-exported from a private environment
 PIXIV_REVERSE_SEARCH_E2E=1 PIXIV_REVERSE_SEARCH_SOURCE=<private-test-image-path-or-url> \
-PIXIV_REVERSE_SEARCH_PROVIDER=all go test ./e2e -run TestRealReverseSearch -count=1 -v
+PIXIV_REVERSE_SEARCH_PROVIDER=all go test ./internal/reversesearch -run TestRealReverseSearch -count=1 -v
 ```
 
 - No separate E2E wrapper; offline suite and credentialed observation share one path. Targets accept only explicit non-secret values — never tokens, sessions or cookies as args or env. `PIXIV_E2E_PROXY` is a non-secret proxy URI; solver variables are optional non-secret topology.
-- After release-prep runs, scan stdout, stderr, logs and evidence: tokens, cookies, signed URLs and raw bodies must never reach argv, env dumps, logs, test names, artifacts or diffs. This section describes coverage, not that real e2e has run.
-- Under an explicit proxy, resource transport negotiates HTTP/1.1 while App API and OAuth keep theirs; the e2e resource read regresses this boundary without a slow-download timeout. A 429 without a valid `Retry-After` keeps the diagnostic and fails — no guessed wait or endless retry.
-- `PIXIV_E2E_BINARY` / `PIXIV_E2E_EXPECTED_VERSION` run offline e2e against a built, unpacked release binary (no tokens, no real API); `platform-smoke.yml` runs that CLI/config/MCP surface check on six runners.
+- After release-prep runs, scan stdout, stderr, logs and evidence: tokens, cookies, signed URLs and raw bodies must never reach argv, env dumps, logs, test names, artifacts or diffs. This section describes coverage, not that the real tests have run.
+- Under an explicit proxy, resource transport negotiates HTTP/1.1 while App API and OAuth keep theirs; the live resource read regresses this boundary without a slow-download timeout. A 429 without a valid `Retry-After` keeps the diagnostic and fails — no guessed wait or endless retry.
+- `PIXIV_E2E_BINARY` / `PIXIV_E2E_EXPECTED_VERSION` run the offline `cmd/pixiv` smoke against a built, unpacked release binary (no tokens, no real API); `platform-smoke.yml` runs that CLI/config/MCP surface check on six runners.
 - Add or update tests per change scope; if tests can't run, state the reason and risk in the delivery notes. Release fixture gates: [release](release.md#local-release-fixture-gates).
 
 ### Test file layout
@@ -229,7 +228,7 @@ A production `x.go` has at most one `x_test.go` in its directory; platform tests
 | `scripts/internal/releasenotes` | Tests observe unexported GitHub client call mappings, injecting a fake client to assert source auditing. |
 
 - No temporary items; no open-ended phrases like "migration period". Adding a directory needs the specific unexported symbol and proof that a minimal exported interface won't do; removing one needs a deletion task and migration evidence (external package compiles, coverage unchanged).
-- `e2e/` is also `package X` but has no production code, so it is out of scope. Build-tagged test files differ per `GOOS`/`GOARCH`; verify with `go list` under `GOOS=darwin`, `windows` and `linux`.
+- `live_test.go`, `live_mutation_test.go` and `live_solver_test.go` are environment-gated real tests without a single production file owner; they stay in their target package (`sdk/pixiv`, `sdk/fanbox`, `internal/reversesearch`, `internal/browsercookies`) and skip unless their documented opt-in variable is set. Build-tagged test files differ per `GOOS`/`GOARCH`; verify with `go list` under `GOOS=darwin`, `windows` and `linux`.
 
 ```bash
 # List all directories whose tests stay inside the production package (package X rather than X_test)

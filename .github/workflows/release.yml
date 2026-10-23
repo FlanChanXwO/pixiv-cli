@@ -51,32 +51,6 @@ jobs:
         shell: bash
         run: go test ./tools/release ./tools/platformmatrix -count=1
 
-  e2e:
-    name: SDK E2E contract gate
-    needs:
-      - validate
-    runs-on: ubuntu-24.04
-    permissions:
-      contents: read
-    env:
-      CGO_ENABLED: '0'
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
-        with:
-          fetch-depth: 0
-          persist-credentials: false
-          ref: ${{ env.RELEASE_TAG }}
-      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e
-        with:
-          go-version-file: go.mod
-      - name: Run offline SDK E2E contract tests
-        shell: bash
-        run: |
-          set -euo pipefail
-          test -z "${PIXIV_SDK_E2E:-}"
-          test -z "${FANBOX_SDK_E2E:-}"
-          go test ./e2e -count=1 -v
-
   resolve_platforms:
     name: Resolve release platform matrices
     needs:
@@ -113,7 +87,6 @@ jobs:
     name: Build ${{ matrix.goos }}/${{ matrix.goarch }}
     needs:
       - validate
-      - e2e
       - resolve_platforms
     runs-on: ${{ matrix.runner }}
     permissions:

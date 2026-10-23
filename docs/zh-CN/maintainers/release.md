@@ -7,8 +7,7 @@
 ```mermaid
 flowchart TD
     TAG["推送 v[0-9]* tag"] --> VAL["校验 SemVer"]
-    VAL --> E2E["无凭据 SDK E2E 契约门禁<br/>（不可变 tag）"]
-    E2E --> BT["测试构建：6 目标 CGO0、go test、<br/>race 门禁、许可证、压缩包"]
+    VAL --> BT["测试构建：6 目标 CGO0、go test、<br/>race 门禁、许可证、压缩包"]
     BT --> BP["build_production<br/>（干净 tag 树、独立 runner、<br/>git diff --exit-code）"]
     BT --> BC["build_container<br/>amd64 + arm64"]
     BP & BC --> HBV["针对精确生产压缩包的 Homebrew 安装"]

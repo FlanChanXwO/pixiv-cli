@@ -31,7 +31,7 @@ flowchart TD
 | stable `vX.Y.Z` tag | 只运行 `release.yml`（负责全部 tag 门禁、六平台测试/构建与双平台容器验证；不重复 PR smoke 矩阵） |
 | 手动 | 浏览器/native 证据 workflow |
 
-真实 Pixiv/FANBOX SDK E2E 从不进入 PR CI；只有 `release.yml` 在 validate 之后运行无凭据的 SDK E2E 契约门禁，真实 E2E 在 release-prep 中单独验收。
+真实 Pixiv/FANBOX SDK E2E 从不进入 PR CI；离线 `go test ./...` 由 validate 覆盖相同包，真实 E2E 在 release-prep 中单独验收。
 
 ## 变更范围分类
 

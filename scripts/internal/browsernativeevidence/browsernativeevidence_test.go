@@ -52,7 +52,6 @@ func TestBrowserEvidenceWorkflowKeepsSecurityAndFixtureBoundaries(t *testing.T) 
 		"security find-generic-password",
 		"--from-browser",
 		"actions/upload-artifact@",
-		"go test ./e2e",
 	} {
 		if strings.Contains(workflow, forbidden) {
 			t.Fatalf("browser evidence workflow contains forbidden boundary %q", forbidden)

@@ -7,8 +7,7 @@ Release gates, signing, container and Homebrew publication. Release-note writing
 ```mermaid
 flowchart TD
     TAG["push v[0-9]* tag"] --> VAL["validate SemVer"]
-    VAL --> E2E["credential-free SDK E2E contract gate<br/>(immutable tag)"]
-    E2E --> BT["test build: 6 targets CGO0, go test,<br/>race gate, licenses, archives"]
+    VAL --> BT["test build: 6 targets CGO0, go test,<br/>race gate, licenses, archives"]
     BT --> BP["build_production<br/>(clean tag tree, separate runner,<br/>git diff --exit-code)"]
     BT --> BC["build_container<br/>amd64 + arm64"]
     BP & BC --> HBV["Homebrew install vs exact production archives"]

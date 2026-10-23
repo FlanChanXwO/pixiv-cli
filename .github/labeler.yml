@@ -29,7 +29,6 @@
   - changed-files:
       - any-glob-to-any-file:
           - "**/*_test.go"
-          - "e2e/**"
 
 "area: github-actions":
   - changed-files:
