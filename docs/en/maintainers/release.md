@@ -59,7 +59,7 @@ Recovery runs may verify a successful `Release` handoff without binding the work
 `publish-homebrew.yml` consumes the handoff, verifies the production section, and maps stable/prerelease to `pixiv-cli` / `pixiv-cli-beta` (both install `pixiv`, mutually conflicting). Homebrew is not part of the Release workflow and adds no approval boundary (`release-approval` is the only one). `HOMEBREW_TAP_DEPLOY_KEY` reaches only the authorized tap-write step via the `release` Environment.
 
 1. **Install check** on macOS Intel/arm64 and Linux amd64/arm64: `brew tap-new pixiv-cli-release/staging --no-git`, single staging formula in `Formula/`, `brew install --formula pixiv-cli-release/staging/<formula>`, then `test "$(pixiv --version)" = "pixiv $RELEASE_TAG"`. macOS trusts the temp namespace with `brew trust --tap pixiv-cli-release/staging`; Linux uses a short-lived fixed-digest `homebrew/brew` container with a read-only bind mount. No workspace formula path, bypass variables or public tap clone/write/trust.
-2. **Deploy** only after every target passes: the protected `deploy_homebrew_tap` job HTTPS-clones the public tap; `scripts/cmd/homebrewrecovery` (trusted default-branch tip) compares versions with `internal/releaseversion` SemVer for each formula independently:
+2. **Deploy** only after every target passes: the protected `deploy_homebrew_tap` job HTTPS-clones the public tap; `scripts/cmd/homebrewrecovery` (trusted default-branch tip) compares versions with `internal/version` SemVer for each formula independently:
 
 | Published vs requested | Action |
 | --- | --- |
@@ -87,7 +87,7 @@ This local check proves only declared workflow dependencies and semantics — **
 
 ## Signing trust root
 
-The production Ed25519 trust root is committed at [`internal/update/installer/release_installer.go`](../../../internal/update/installer/release_installer.go):
+The production Ed25519 trust root is committed at [`internal/selfupdate/installer/release_installer.go`](../../../internal/selfupdate/installer/release_installer.go):
 
 | Field | Value |
 | --- | --- |

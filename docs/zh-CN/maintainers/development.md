@@ -151,7 +151,7 @@ https_proxy=http://127.0.0.1:7890 ./build/pixiv mcp --port 1270
 
 默认复用已有检查，不新增永久测试。[测试准入规则](../../../.agents/skills/pixiv-cli-test/SKILL.md#decide-whether-test-code-must-change)决定哪些长期核心回归可以进入主线，以及如何在 `tmp/test/` 下运行本地探测。
 
-覆盖范围包括 CLI 命令与构建元数据、显式/自动更新、`internal/services/{pixiv,fanbox}/account`、`internal/services/pixiv/pool`、`internal/services/reversesearch` fixture 与聚合、`internal/storage/database`、`internal/config/settings`、`internal/shared/{lifecycle,pagination,traversal}`、App API 认证重试、公开 SDK、HTTP client 装配、下载、Go 编码器/native-evidence 契约，以及 `internal/mcpserver/{pixiv,fanbox}/tools` 的工具注册。
+覆盖范围包括 CLI 命令与构建元数据、显式/自动更新、`internal/{pixivaccount,fanboxaccount}`、`internal/pixivaccount/pool`、`internal/reversesearch` fixture 与聚合、`internal/storage/database`、`internal/config/settings`、`internal/{lifecycle,pagination}`、App API 认证重试、公开 SDK、HTTP client 装配、下载、Go 编码器/native-evidence 契约，以及 `internal/mcpserver/{pixiv,fanbox}/tools` 的工具注册。
 
 ```bash
 go test ./...
@@ -209,14 +209,14 @@ PIXIV_REVERSE_SEARCH_PROVIDER=all go test ./e2e -run TestRealReverseSearch -coun
 | `internal/media/ugoira` | 测试直接调用 `readFrameSource`、`frameSource`、`validateDecodedSize`、`frameNRGBA`、`decodeInto`、`resizeFrame` 与 `apngWriter`，在不做巨量分配的前提下验证分配边界与取消，保持透明 RGB 与缓冲复用时上一帧的所有权，用固定的上游参考向量比较 Lanczos3 像素，覆盖 APNG 序号溢出与写入失败，并检查 reservoir 状态、去重权重/索引、Oklab/Wu 参考值、固定种子 K-means 中心与逐像素抖动索引。`colorGrid` 测试验证格子边缘的精确候选范围；`frameQuantizer` 测试验证复用的误差行被清空、普通量化返回独立索引、显式缓冲复用只在上一帧被消费后开始。LZW 测试覆盖跨帧的字典/码宽重置与写入失败后的恢复。GIF 测试观察 `gifWriter`/`gifBlocks`，验证全局色表、流式 LZW 子块与写入失败；生命周期测试观察 `encodeGate`，无 sleep 地协调排队中的取消。为测试暴露这些 codec 内部细节会扩大 `Encoder` 契约。 |
 | `internal/config/settings` | `schema_test.go` 把合成类型传给私有的 `deriveSchemaFromTags` 编译器，在不导出反射元数据、不重置生产缓存的前提下测试声明拒绝。 |
 | `internal/cli` | 组合根测试观察未导出的根装配、invocation 生命周期与关闭顺序；这些 seam 不是公开 API。 |
-| `internal/cli/commands/pixiv/search` | 测试通过带 HTTP fixture 的真实 SDK 观察私有 searchArtworks 逻辑页续读。私有逻辑页策略仍是实现细节；MCP 另外暴露绑定的默认批次续读。仅为测试导出应用内部会扩大公开面。 |
+| `internal/cli/search` | 测试通过带 HTTP fixture 的真实 SDK 观察私有 searchArtworks 逻辑页续读。私有逻辑页策略仍是实现细节；MCP 另外暴露绑定的默认批次续读。仅为测试导出应用内部会扩大公开面。 |
 | `internal/mcpserver/pixiv/tools/search_illust` | 测试通过带 HTTP fixture 的真实 SDK 观察私有 searchArtworks 逻辑页续读。私有逻辑页策略仍是实现细节；MCP 另外暴露绑定的默认批次续读。仅为测试导出应用内部会扩大公开面。 |
 | `internal/browsercookies/chromium` | 测试直接构造 provider 并注入加密密钥覆盖，观察未导出的 Cookie 记录解密路径与 profile 发现逻辑。 |
 | `internal/browsercookies/firefox` | 测试观察未导出的 profile 发现（`profiles.ini` 解析）、Cookie 数据库路径解析与记录布局。 |
 | `internal/browsercookies/safari` | 测试直接调用未导出的 `parseBinaryCookies`，断言 binarycookies 记录布局。 |
 | `internal/browsercookies/secret` | 测试构造 `SecretService{command: ...}` 注入未导出字段，并断言未导出的 sentinel 错误与命令输出脱敏行为。 |
-| `internal/update/installer` | 测试注入未导出的 `assetURLValidator` seam 与 checksum 校验函数，并用真实 fixture 二进制验证根 `--version` 预检，以及失败时不替换旧可执行文件。 |
-| `internal/update/release` | `source_route_test.go` 观察未导出的来源路由选择与 canonical API URL 缓存状态；目录中其他测试已使用外部包。 |
+| `internal/selfupdate/installer` | 测试注入未导出的 `assetURLValidator` seam 与 checksum 校验函数，并用真实 fixture 二进制验证根 `--version` 预检，以及失败时不替换旧可执行文件。 |
+| `internal/selfupdate/release` | `source_route_test.go` 观察未导出的来源路由选择与 canonical API URL 缓存状态；目录中其他测试已使用外部包。 |
 | `internal/storage/database` | 测试观察未导出的 `tableInfoQuery` allowlist 与迁移兼容 seam，确保 SQL 标识符保持固定字面量，旧 schema 无法静默绕过契约。 |
 | `sdk/pixiv` | `cursor_test.go` 观察未导出的 cursor 构造与 client 实例绑定，在不扩大公开 SDK 面的前提下验证与查询精确绑定的非法续读。 |
 | `scripts/internal/browsernativeevidence` | 测试观察未导出的环境探测，并注入合成的 Firefox Cookie 种子。 |
@@ -253,14 +253,14 @@ v1 的负面契约：下列任一项出现可发布的 CLI/MCP/SDK 入口即为�
 
 | ID | 唯一 owner | 当前证据 | 关闭条件 |
 | --- | --- | --- | --- |
-| `ART-SEARCH-RATING` | `internal/cli/commands/pixiv/search` + `internal/shared/searchfilter` + `sdk/pixiv` | CLI 作品搜索在本地筛选规范化的 `x_restrict` 并将筛选绑定到 cursor；不发送上游分级字段。MCP `pixiv_search_illust` 没有独立的分级参数 | 保留本地 CLI 契约并测试 cursor/筛选一致性；暴露新的 MCP 参数或上游字段需要其自身的受支持行为与同步的 schema/文档 |
+| `ART-SEARCH-RATING` | `internal/cli/search` + `internal/searchfilter` + `sdk/pixiv` | CLI 作品搜索在本地筛选规范化的 `x_restrict` 并将筛选绑定到 cursor；不发送上游分级字段。MCP `pixiv_search_illust` 没有独立的分级参数 | 保留本地 CLI 契约并测试 cursor/筛选一致性；暴露新的 MCP 参数或上游字段需要其自身的受支持行为与同步的 schema/文档 |
 | `NOVEL-SEARCH-ADVANCED` | 无 owner（不得新增） | SDK/MCP schema 没有高级字段 | 上游契约出现后可评估；禁止仅 schema 的占位 |
 
 **证据门禁**
 
 | ID | 唯一 owner | 当前证据 | 关闭条件 |
 | --- | --- | --- | --- |
-| `NOVEL-RANKING` | `sdk/pixiv` + `internal/cli/commands/pixiv/ranking`（T18/T30；MCP 之后） | SDK 与 CLI 在内部 `/v1/novel/ranking` 适配器上暴露增量的 `NovelRanking` seam；CLI 通过 `--type novel` 显式选择；MCP 没有 `novel_ranking` 工具，实时/公开发布证据仍不完整 | 完成实时第二页、共享 cursor、MCP 与发布兼容门禁；在此之前保持证据门禁，不是 `public_ready` |
+| `NOVEL-RANKING` | `sdk/pixiv` + `internal/cli/ranking`（T18/T30；MCP 之后） | SDK 与 CLI 在内部 `/v1/novel/ranking` 适配器上暴露增量的 `NovelRanking` seam；CLI 通过 `--type novel` 显式选择；MCP 没有 `novel_ranking` 工具，实时/公开发布证据仍不完整 | 完成实时第二页、共享 cursor、MCP 与发布兼容门禁；在此之前保持证据门禁，不是 `public_ready` |
 | `NOVEL-BOOKMARK-MUTATION` | `sdk/pixiv` + `internal/mcpserver/pixiv`（G1-T13；CLI 之后） | SDK 暴露增量的类型化 `AddNovelBookmark`/`RemoveNovelBookmark`；MCP 暴露 `add_novel_bookmark`/`remove_novel_bookmark`；已有离线结果、校验与不重放证据，严格/实时、回读与发布证据仍不完整 | 完成严格/实时写入证据、同账号回读、清理与兼容/发布门禁；在此之前保持证据门禁，不是 `public_ready` |
 | `COMMENT-WRITE` | `sdk/pixiv`（T16；CLI/MCP 之后） | SDK 暴露命名空间专属的 `PostArtworkComment`/`ReplyArtworkComment`/`DeleteArtworkComment` 及小说对应方法；MCP `comment_post`/`comment_add` 目录仍 = 0；响应 ID、回读、清理与严格实时证据不完整 | 完成严格/实时写入证据、同账号回读、清理与 T33/T38 兼容门禁；在此之前保持证据门禁，不是 `public_ready` |
 | `NOTIFICATION` | 无 owner | MCP `notification` 目录 = 0；SDK `Notification*` 导出 = 0 | 同上 |

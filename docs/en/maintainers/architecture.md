@@ -8,9 +8,9 @@ flowchart LR
     CLI -->|"stdio / HTTP"| MCP["internal/mcpserver<br/>Pixiv / FANBOX tools"]
     CLI --> SDK["public SDK<br/>sdk/pixiv · sdk/fanbox"]
     MCP --> SDK
-    SDK --> FACADE["internal/services<br/>business Facade"]
+    SDK --> FACADE["internal/pixivapi · internal/fanboxapi<br/>protocol adapters"]
     FACADE --> ADAPTER["endpoint / oauth / resource<br/>protocol adapters"]
-    CLI --> SHARED["internal/shared<br/>cross-subsystem mechanisms"]
+    CLI --> SHARED["internal<br/>cross-subsystem mechanisms"]
     MCP --> SHARED
     CLI --> STATE["config / storage<br/>config and local state"]
     CLI -.->|"composition root only"| RSA["reversesearch/assembly"]
@@ -30,7 +30,7 @@ flowchart LR
 | What a package may or may not do | [Package responsibilities](#package-responsibilities) |
 | MCP server, OAuth, media proxy, Gallery jobs | [MCP server architecture](architecture-mcp.md) |
 | Release trust root and signing | [Release assets and trust boundary](#release-assets-and-trust-boundary) |
-| Local state, config, path permissions | [internal/config/paths](#internalconfigpaths), [internal/storage/file](#internalstoragefileatomiclockreplacesecret) |
+| Local state, config, path permissions | [internal/config/paths](#internalconfigpaths), [internal/storage](#internalstorageatomicfilefilelocksecretfile) |
 | Hard constraint list | [Known constraints](#known-constraints) |
 
 ## Overall flow
@@ -79,18 +79,18 @@ CLI composition root, three same-package files:
 | `execution.go` | entry points, exit codes, resource closing (private `closeState`, idempotent reverse-order close), startup/finish |
 | `composition.go` | production assembly for Pixiv/FANBOX/MCP |
 
-Responsibilities: Cobra tree/help/flags; text/JSON output; `auth import` input adapter (positional = opaque token; no arg: TTY hidden input, non-TTY first non-whitespace byte picks token vs strict bundle; restore via pipe/redirect, no `--file`); `auth export` secret-output adapter (no `--output`: raw token + newline, or `--all` bundle; `--output`: private file + secret-free summary); `--page`/`--limit` parsing (logical plan in `internal/shared/pagination`); loopback OAuth, browser, TTY for `auth login`; `pixiv mcp` dispatch; root `--version` and `pixiv update` (removed `version` subcommand → unknown-command during parsing); read-only automatic update notice on stderr.
+Responsibilities: Cobra tree/help/flags; text/JSON output; `auth import` input adapter (positional = opaque token; no arg: TTY hidden input, non-TTY first non-whitespace byte picks token vs strict bundle; restore via pipe/redirect, no `--file`); `auth export` secret-output adapter (no `--output`: raw token + newline, or `--all` bundle; `--output`: private file + secret-free summary); `--page`/`--limit` parsing (logical plan in `internal/pagination`); loopback OAuth, browser, TTY for `auth login`; `pixiv mcp` dispatch; root `--version` and `pixiv update` (removed `version` subcommand → unknown-command during parsing); read-only automatic update notice on stderr.
 
 - **Closing:** callers stop producers and finish registration before close; the mutex protects the list, not late registrations; closers must not register into or recursively close the same scope. Close follows command completion; MCP stdio waits for in-flight handlers; close errors are joined.
-- **Owners:** `internal/cli/invocation` owns only `Streams`. Command owners build config snapshot, DB, Facade, lifecycle, media/download and update dependencies via explicit factories and narrow ports, closing in reverse. No cross-command locator, bootstrap constructor or `internal/cli/runtime`.
-- **Command packages:** root `internal/cli/commands/{config,mcp,update}`; Pixiv `internal/cli/commands/pixiv/{auth,bookmark,comment,detail,download,follow,mypixiv,ranking,recommended,search,series,timeline,user}`; FANBOX `internal/cli/commands/fanbox/{auth,download,post}`. Data commands use `*pixiv.Client` / `*fanbox.Client` via the owner-local `Data` port (`Open`/`Pooled`/`JSONOut`, …), never protocol adapters.
-- **Shared helpers:** stdin codec `internal/cli/pipeline`; record projection `internal/shared/record`; target resolver `internal/shared/resolver` (consumes only the command contract, records and offline `sdk/pixiv.ParseURL`; owners inject any bare-ID probe; owns no clients, credentials or adapters). These never import the `internal/cli` root.
+- **Owners:** `internal/cli/streams.go` owns only `Streams`; shared support lives in `internal/cli/internal/{command,input,pixivcmd,fanboxcmd,resolver}`. Command owners build config snapshot, DB, Facade, lifecycle, media/download and update dependencies via explicit factories and narrow ports, closing in reverse. No cross-command locator, bootstrap constructor or `internal/cli/runtime`.
+- **Command packages:** root `internal/cli/{config,mcp,update}`; Pixiv `internal/cli/{auth,bookmark,comment,detail,download,follow,mypixiv,ranking,recommended,search,series,timeline,user}`; FANBOX `internal/cli/fanbox/{auth,download,post}`. Shared command support lives in `internal/cli/internal/{command,input,pixivcmd,fanboxcmd,resolver}`. Data commands use `*pixiv.Client` / `*fanbox.Client` via the owner-local `Data` port (`Open`/`Pooled`/`JSONOut`, …), never protocol adapters.
+- **Shared helpers:** stdin codec `internal/cli/internal/input`; record projection `internal/record`; target resolver `internal/cli/internal/resolver` (consumes only the command contract, records and offline `sdk/pixiv.ParseURL`; owners inject any bare-ID probe; owns no clients, credentials or adapters). These never import the `internal/cli` root.
 - **`--version` / auto-update:** stdout exactly `pixiv <version>`, empty stderr, no update check. Auto-update runs only after a successful normal command, skipped for MCP, help, `--version`, `update`, all `auth export`, bundle `auth import` and dev builds; stable Release, 24 h throttle on the user cache, ≤ 3 s; failures only as stderr warnings — never change the exit code or leak into JSON stdout or MCP JSON-RPC.
 - **Windows startup cleanup** of pending updates is a potential mutation: all `auth export` invocations are detected before Cobra parsing and skip it. Repeated-override semantics of root bool flags are covered by focused tests so forms like `--help=false` cannot bypass the secret-export boundary.
 
-### `internal/cli/commands/pixiv/auth/loginhelper`
+### `internal/cli/auth/loginhelper`
 
-Owns the URL scheme helper, persistent handler manifest, one-shot remote hand-off private state and remote callback client. `internal/cli` installs the on-demand handler through it and keeps OAuth, loopback HTTP, browser, TTY and relay server orchestration.
+Owns the URL scheme helper, persistent handler manifest, one-shot remote hand-off private state and remote callback client. `internal/cli/auth` installs the on-demand handler through it and keeps OAuth, loopback HTTP, browser, TTY and relay server orchestration.
 
 | Platform | Mechanism |
 | --- | --- |
@@ -105,28 +105,28 @@ Only exact `pixiv://account/login` and `pixiv://account/remote-login` enter the 
 
 | Package | Owns | Must not |
 | --- | --- | --- |
-| `internal/shared/buildinfo` | linker-injected `Version` (default `dev`; only `dev` builds reject self-update) | — |
-| `internal/shared/record` | stable Pixiv record projection for CLI/MCP: keeps unknown SDK DTO fields, fixes `id`/`type`/`url`, JSON normalization, version-metadata cleanup, record-field local filtering | depend on CLI, MCP or adapters; become a dumping ground (MCP schemas/DTO wrapping stay in `internal/mcpserver/pixiv/internal/records`) |
-| `internal/shared/searchfilter` | artwork-local rating/content-type normalization, client-side `x_restrict` and kind matching, cursor context hiding raw values | map rating to an unconfirmed upstream `x_restrict` param; hold clients, credentials or adapters (field availability and confirmed wire params stay with each command) |
-| `internal/shared/lifecycle` | protocol-agnostic lifecycle, Lease, Attempt | own account selection, credentials or replay strategy |
-| `internal/shared/pagination` | logical pagination for one stream and ordered aggregates: filters before the global skip/limit budget, `OneBatch` stops at the first matching batch, truncation resumed via source-position checkpoint; `StreamState` = current stream + per-stream cursors (owners encode it with query/account/subtype bindings) | product semantics |
-| `internal/shared/traversal` | reentrant execute lifecycle for single/aggregate reads, clearing uncommitted results before safe replay | own command filter wiring |
-| `internal/shared/diagnostics` | explicit in-memory typed scope; Pixiv/FANBOX MCP, transports, pool, download and FlareSolverr emit only allowed module, operation, route, status, proxy, UA, request ID, reason, count; default sink Nop; MCP scope affects diagnostics only | create log files or store bodies, Cookies, tokens, signed queries, arbitrary error dumps (SDK silent without a scope) |
+| `internal/version` | linker-injected `Version` (default `dev`; only `dev` builds reject self-update) | — |
+| `internal/record` | stable Pixiv record projection for CLI/MCP: keeps unknown SDK DTO fields, fixes `id`/`type`/`url`, JSON normalization, version-metadata cleanup, record-field local filtering | depend on CLI, MCP or adapters; become a dumping ground (MCP schemas/DTO wrapping stay in `internal/mcpserver/pixiv/internal/records`) |
+| `internal/searchfilter` | artwork-local rating/content-type normalization, client-side `x_restrict` and kind matching, cursor context hiding raw values | map rating to an unconfirmed upstream `x_restrict` param; hold clients, credentials or adapters (field availability and confirmed wire params stay with each command) |
+| `internal/lifecycle` | protocol-agnostic lifecycle, Lease, Attempt | own account selection, credentials or replay strategy |
+| `internal/pagination` | logical pagination for one stream and ordered aggregates: filters before the global skip/limit budget, `OneBatch` stops at the first matching batch, truncation resumed via source-position checkpoint; `StreamState` = current stream + per-stream cursors (owners encode it with query/account/subtype bindings) | product semantics |
+| `internal/pagination` | reentrant execute lifecycle for single/aggregate reads, clearing uncommitted results before safe replay | own command filter wiring |
+| `internal/logging` | explicit in-memory typed scope; Pixiv/FANBOX MCP, transports, pool, download and FlareSolverr emit only allowed module, operation, route, status, proxy, UA, request ID, reason, count; default sink Nop; MCP scope affects diagnostics only | create log files or store bodies, Cookies, tokens, signed queries, arbitrary error dumps (SDK silent without a scope) |
 
 **Pooled reads:** ordinary CLI reads use `Pooled[R].Read[T]` on a concrete function type — failure returns zero T and callbacks don't commit; owners keep their Request types. `Write` marks an invoked SDK call committed even on error (no cross-account replay of an unknown write); a missing pooled port is an error. Streaming NDJSON, pagination and partial delivery stay with owners and traversal/lifecycle.
 
 ### Business Facade, accounts and pool
 
-- `internal/services/pixiv` aggregates `account` (local accounts, login completion, default, credential identity/rotation, management) and `pool` (selection, freezing, Gate, safe replay, error semantics). `internal/services/fanbox` aggregates its `account` leaf and client lifecycle; FANBOX sessions share no type or lifecycle with Pixiv refresh tokens and no pool strategy.
+- `internal/session/pixiv` aggregates `pixivaccount` (local accounts, login completion, default, credential identity/rotation, management) and `pixivaccount/pool` (selection, freezing, Gate, safe replay, error semantics). `internal/session/fanbox` aggregates `fanboxaccount` and client lifecycle; FANBOX sessions share no type or lifecycle with Pixiv refresh tokens and no pool strategy.
 - Facades depend only on leaf-module Ports, the config snapshot, protocol-agnostic shared modules and the public SDK — not on `internal/storage/database` concretely; the SDK never imports them. No CLI/MCP DTOs, filters, records, schemas or output adaptation inside services.
 - An explicit nonzero `Request.UserID` pins reads and writes to that account even with the pool on; open/business errors never switch accounts; requests without a UID keep pool scheduling; the CLI default is unchanged.
-- Config schema, `config.toml` path/get/set/unset, baseline and the immutable per-execution `Snapshot` live in `internal/config/settings`; month truncation in `internal/utils/date`. CLI/MCP use Facades via owner-local Seams and MCP runtime `SDKPorts`. `internal/account` and `internal/session` are deleted with no aliases.
+- Config schema, `config.toml` path/get/set/unset, baseline and the immutable per-execution `Snapshot` live in `internal/config/settings`; month truncation in `internal/searchfilter`. CLI/MCP use Facades via owner-local Seams and MCP runtime `SDKPorts`. `internal/account` and `internal/session` are deleted with no aliases.
 
-**Login relay** — the pure renderer `internal/services/pixiv/account/loginrelay/loginpage` consumes `frontend` templates/CSS (no CLI, store, browser or listener dependency). The parent `loginrelay` owns the reusable HTTP handler/session: accepts the OAuth session validator and delivers one callback; never listens, exchanges or persists. CLI keeps listener/TLS/terminal. A host mux may mount it with its prefix stripped; production MCP mounts it at canonical base + `/pixiv-login/`, behind the same Host/Origin checks but authenticated by hand-off proof, not MCP bearer. Escaped prefixes are preserved in URLs and dispatch. A cancelled relay session returns HTTP 410 and rechecks cancellation before accepting a validated callback. The callback allowlist, start-response wire type and result URL header live in `loginrelay` and are reused by the CLI relay and desktop helper.
+**Login relay** — the pure renderer `internal/loginrelay/loginpage` consumes `frontend` templates/CSS (no CLI, store, browser or listener dependency). The parent `loginrelay` owns the reusable HTTP handler/session: accepts the OAuth session validator and delivers one callback; never listens, exchanges or persists. CLI keeps listener/TLS/terminal. A host mux may mount it with its prefix stripped; production MCP mounts it at canonical base + `/pixiv-login/`, behind the same Host/Origin checks but authenticated by hand-off proof, not MCP bearer. Escaped prefixes are preserved in URLs and dispatch. A cancelled relay session returns HTTP 410 and rechecks cancellation before accepting a validated callback. The callback allowlist, start-response wire type and result URL header live in `loginrelay` and are reused by the CLI relay and desktop helper.
 
 **MCP login manager** — single current login: repeated starts reuse pending work, restart cancels and joins, shutdown joins exchange/persistence. Completion keeps non-secret account-saved/selection-updated flags (incl. partial failure). The composition root binds it to the same SDK login session, saves credentials without touching the CLI default, then writes MCP selection. The account service is reused across restarts; each completed SDK login releases its idle HTTP connections (explicit proxy/direct: the root closes its client's idle connections on every exit).
 
-### `internal/services/pixiv/protocol`, `appapi`, `oauth`, `resource`
+### `internal/pixivapi`, `appapi`, `oauth`, `resource`
 
 Upstream adapters composed only by the public SDK; no account/session Facade.
 
@@ -137,9 +137,9 @@ Upstream adapters composed only by the public SDK; no account/session Facade.
 | `oauth` | PKCE, code exchange, refresh, token state |
 | `resource` | policy-constrained resource transport; redirect/header/body boundaries |
 
-- `internal/services/pixiv/webapi` and the anonymous Web/AJAX path are deleted; App errors return normalized errors with no protocol switching.
-- Endpoint families `internal/services/pixiv/endpoint/{artwork,novel,user}/<leaf>` own route, request, raw DTO, mapper, continuation/error validation; the three parent packages own only shared normalized entities/values (no shared model package, so `appapi` or cross-domain mappers can't become business owners). MCP delivery constants stay in `internal/mcpserver`.
-- FANBOX: `internal/services/fanbox/protocol` owns session, cookie, challenge, URL policy and narrow transport; `endpoint/{creator,post}/<leaf>` and `resource` own route/fixture/conversion; `sdk/fanbox` composes them directly without the Facade.
+- The anonymous Web/AJAX path is deleted; App errors return normalized errors with no protocol switching.
+- Endpoint families `internal/services/pixiv/endpoint/{artwork,novel,user}/<leaf>` (moved into `sdk/pixiv` in stage 3) own route, request, raw DTO, mapper, continuation/error validation; the three parent packages own only shared normalized entities/values (no shared model package, so `appapi` or cross-domain mappers can't become business owners). MCP delivery constants stay in `internal/mcpserver`.
+- FANBOX: `internal/fanboxapi` owns session, cookie, challenge, URL policy and narrow transport; `endpoint/{creator,post}/<leaf>` and `resource` own route/fixture/conversion; `sdk/fanbox` composes them directly without the Facade.
 - `RequiredList` / `RequiredObject` share field-presence decoding only; endpoints keep completeness checks and mapping. `null` = Present true, Valid false; a decoded empty object need not be complete. Missing fields skip the decoder (callers must clear or recreate reused outer DTOs). An invoked decoder resets old state but may leave partial data on failure — handle the error and check Valid first. Historical parity covers only verified production DTOs and inputs.
 
 ### Reverse-search Facade exception
@@ -151,7 +151,7 @@ flowchart LR
     COMP["internal/cli/composition.go"] --> ASM["reversesearch/assembly<br/>(HTTP client, proxy, SauceNAO key<br/>once per command/session)"]
     ASM --> SN["reversesearch/saucenao"]
     ASM --> A2["reversesearch/ascii2d"]
-    CMDS["internal/cli/commands/*"] --> TOP["internal/services/reversesearch<br/>(contract + Facade)"]
+    CMDS["internal/cli/*"] --> TOP["internal/reversesearch<br/>(contract + Facade)"]
     MCPS["internal/mcpserver/*"] --> TOP
     CMDS -.->|forbidden| SN
     MCPS -.->|forbidden| ASM
@@ -211,7 +211,7 @@ Exported fields of `RuntimeConfig` (incl. nested account-pool, network and Flare
 | `auth.go` | default-account read/write (deliberately **not** ordinary binding) |
 | `paths.go` | `FileStore` port and default file adapter |
 
-**Atomic writes** (`FileStore`, injected from `internal/storage/file/{atomic,lock,replace,secret}`):
+**Atomic writes** (`FileStore`, injected from `internal/storage/{atomicfile,filelock,secretfile}`):
 
 ```mermaid
 flowchart LR
@@ -239,9 +239,9 @@ Read-only browser cookie provider; not public SDK; no FANBOX, Pixiv, CLI, MCP or
 
 Unknown Chromium derivatives are not fuzzily matched; multiple profiles without a selection fail explicitly. Missing tools, permissions, locks, schema drift and decryption errors map to stable errors; no cookie, key, absolute path or command output reaches logs, errors, JSON or MCP. Native evidence per platform must be collected on the host per the release-prep runbook; offline fixtures and cross-compilation prove only code/format contracts.
 
-### `internal/update`
+### `internal/selfupdate`
 
-Thin root (coordinator + auto-check API), re-exporting `internal/update/{source,release,installer,process}` to the CLI composition root.
+Thin root (coordinator + auto-check API), re-exporting `internal/selfupdate/{source,release,installer,process}` to the CLI composition root.
 
 | Install source | Update behavior |
 | --- | --- |
@@ -251,7 +251,7 @@ Thin root (coordinator + auto-check API), re-exporting `internal/update/{source,
 
 - GitHub Releases API is the only query backend; drafts excluded; stable excludes prereleases before verification; ETag/cache for throttling with atomic persistence. Canonical SemVer is enforced on the channel's published Releases — one invalid tag fails closed and is reported (never skipped for an older version).
 - Signature, checksum, HTTP, archive, replacement and permission errors are never disguised as "no update". Release-install failure semantics are a protective boundary, not a temporary degradation.
-- **Trust root** (`internal/update/installer`): key ID and public key constants live in `release_installer.go`; `internal/cli/commands/update/production.go` builds the key ID → key map for the installer so callers can't pollute it; `root.go` holds only update seams. Fingerprint and signing fixtures are verified by same-package tests; the private key is not in source or config; read-only checks don't need it; this wiring does not replace per-version release acceptance. `internal/bootstrap` was deleted in v1.
+- **Trust root** (`internal/selfupdate/installer`): key ID and public key constants live in `release_installer.go`; `internal/cli/update/production.go` builds the key ID → key map for the installer so callers can't pollute it; `root.go` holds only update seams. Fingerprint and signing fixtures are verified by same-package tests; the private key is not in source or config; read-only checks don't need it; this wiring does not replace per-version release acceptance. `internal/bootstrap` was deleted in v1.
 
 ### `scripts/cmd`, `scripts/tests`, `scripts/internal`
 
@@ -312,7 +312,7 @@ flowchart LR
 
 - Third-party notices are embedded (`pixiv --licenses`); the project `LICENSE` stays in the repo. Windows Git Bash without `zip` uses the preinstalled `7z`; both produce the same members; a missing archiver fails.
 - `release.yml` runs signing/publishing in the protected `release` Environment, least privilege, full-SHA Actions. The publish job hands the verified `release/checksums.txt` to the renderer; stable/prerelease generate unique `pixiv-cli` / `pixiv-cli-beta` formulas. Four native macOS/Linux runners install from an isolated local staging tap (tap-qualified name, verify `pixiv --version`), never using or writing the public tap; Homebrew 6 trust goes only into the runner's temporary staging trust store.
-- Only the final protected job reads the independent tap deploy key and pushes only its formula. Tap credential and release key are different trust domains; the tap key enters only that final push step and cannot replace the Ed25519 trust root (`internal/update/installer/release_installer.go`). The formula template uses only macOS/Linux assets from the verified six-target checksums; stable and beta conflict, both install `pixiv`.
+- Only the final protected job reads the independent tap deploy key and pushes only its formula. Tap credential and release key are different trust domains; the tap key enters only that final push step and cannot replace the Ed25519 trust root (`internal/selfupdate/installer/release_installer.go`). The formula template uses only macOS/Linux assets from the verified six-target checksums; stable and beta conflict, both install `pixiv`.
 - Draft URLs aren't installable, so the Release is made public before the four-architecture gate; on failure the public Release is kept for handling and no formula is written. v0.3.0 was the first tag through this path; every tag must pass the same gate.
 - No Apple notarization or Windows Authenticode: Gatekeeper/SmartScreen prompts must be resolved against the verified Release, checksum and signing record, never silently bypassed.
 
@@ -320,23 +320,25 @@ Detailed gates: [Release](release.md).
 
 ### `internal/config/paths`
 
-Sole owner of app-managed paths, `AppDataDirName` and Unix private dir/file permission constants; reads no business config, writes no files. No generic constants package: Pixiv protocol values, MCP delivery values and config keys/defaults stay in their domains. `internal/shared/diagnostics` owns the typed event contract; `internal/cli/diagnostics` owns the optional text/JSON stderr presenter configured by `[logging]` — not a persistent log or the old `slog` chain. MCP JSON-RPC uses clean stdio or authenticated HTTP; errors still flow through CLI, MCP or SDK interfaces.
+Sole owner of app-managed paths, `AppDataDirName` and Unix private dir/file permission constants; reads no business config, writes no files. No generic constants package: Pixiv protocol values, MCP delivery values and config keys/defaults stay in their domains. `internal/logging` owns the typed event contract; `internal/logging` owns the optional text/JSON stderr presenter configured by `[logging]` — not a persistent log or the old `slog` chain. MCP JSON-RPC uses clean stdio or authenticated HTTP; errors still flow through CLI, MCP or SDK interfaces.
 
-### `internal/storage/file/{atomic,lock,replace,secret}`
+### `internal/storage/{atomicfile,filelock,secretfile}`
 
-Four leaves: atomic write, file lock, replace/recovery, secret file writer. Depend only on `config/paths` conventions; no config schema, account state or Pixiv semantics.
+Three leaves: atomic write/replace, file lock, secret file writer. Depend only on `config/paths` conventions; no config schema, account state or Pixiv semantics.
 
-### `internal/utils`
+### Test and helper owners
 
-Protocol-free pure helpers only: `parse` (positive integers), `text` (string defaults), `uri` (URL path extraction, file URI generation), `date` (month moves, end-of-month truncation).
+Protocol-free helpers live with their callers: positive-integer parsing in `internal/cli/internal/input`, string safety in `internal/plaintext`, URL path/file-URI helpers in `internal/media/downloader`, and month truncation in `internal/searchfilter`.
 
 | Moved responsibility | Owner |
 | --- | --- |
 | filename cleaning, template expansion | `internal/media/downloader/filename` |
 | ID dedup, media MIME types | `internal/media/downloader` |
-| refresh-token validation | `internal/services/pixiv/oauth` |
+| refresh-token validation | `internal/pixivapi/oauth` |
 | paths, permissions | `internal/config/paths` |
-| atomic write, lock, replace, secret export writer | `internal/storage/file/{atomic,lock,replace,secret}` |
+| atomic write and replace | `internal/storage/atomicfile` |
+| file lock | `internal/storage/filelock` |
+| secret export writer | `internal/storage/secretfile` |
 
 ## Known constraints
 

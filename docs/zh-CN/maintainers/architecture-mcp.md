@@ -32,7 +32,7 @@ flowchart TB
 - `New` 构造唯一的协议 server 并调用各产品的 `Register`。Pixiv 工具用 `pixiv_`，FANBOX 用 `fanbox_`；没有无前缀别名。每个工具包负责自己的名称、annotations、schema 与 handler。
 - stdio 通过 `internal/media/downloader` 注入本地下载；HTTP 从不获得该端口。Gallery 与 owner 工具需要各自的媒体/账号/登录端口。
 - `NewHTTPHandler`（父包）组装无状态 Streamable HTTP 与 OAuth 路由；`RunHTTP` 负责 listener 与生命周期；`RunStdio` 负责本地会话并等待清理。
-- 各产品保留自己的 SDK 端口、账号选择与 runtime。发现阶段不打开 FANBOX 账号；FANBOX 工具运行时根包才惰性打开其独立服务。Pixiv 可空的 `page`/`limit` 由其适配器解析；遍历留在 `internal/shared/traversal`。handler 失败保留结构化输出并设置 `isError=true`；合法的空结果保持成功。
+- 各产品保留自己的 SDK 端口、账号选择与 runtime。发现阶段不打开 FANBOX 账号；FANBOX 工具运行时根包才惰性打开其独立服务。Pixiv 可空的 `page`/`limit` 由其适配器解析；遍历留在 `internal/pagination`。handler 失败保留结构化输出并设置 `isError=true`；合法的空结果保持成功。
 
 ## Gallery 与媒体
 
@@ -64,7 +64,7 @@ flowchart LR
 - ZIP/预览写入器在写入前预留磁盘字节；内部同步原生回调在触碰文件前，把每次输出写入预留到同一个池。只有实际请求的字节放不下时才回收 ready 产物（不预先预留其空间）。原生输出上限保持强制，全局串行编码门保持共享。
 - 临时生产者与原生预留一起排队；启动清理需要服务标记与已释放的生命周期 OS 锁。GET/HEAD 期间文件保持固定；清理会等待活动工作。Gallery 通过 Apps bridge 轮询；CSP 仍禁止直接 fetch 连接。
 
-## 读取会话（`internal/services/pixiv/account/reads.go`）
+## 读取会话（`internal/pixivaccount/reads.go`）
 
 - 受生命周期管理的 MCP 读取会话：获取时校验本地账号修订号；只在 OAuth 刷新与成功的轮换持久化时共享轮换门。
 - 凭据替换/删除、网络变化、过期与上游 401 使代际失效并释放空闲连接。写操作 lease 与账号池提交/重放保留在 Facade 中。

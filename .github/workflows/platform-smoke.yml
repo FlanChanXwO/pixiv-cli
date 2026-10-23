@@ -89,7 +89,7 @@ jobs:
         run: go test ./scripts/tests/installers -count=1
       - name: Test platform OAuth callback integration
         shell: bash
-        run: go test ./internal/cli/commands/pixiv/auth/loginhelper -count=1
+        run: go test ./internal/cli/auth/loginhelper -count=1
       - name: Test Windows login handler wiring
         if: ${{ matrix.goos == 'windows' }}
         shell: bash
