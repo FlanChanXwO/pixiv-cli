@@ -2,8 +2,9 @@ package pixiv
 
 import (
 	"context"
+	"net/url"
 
-	"github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/endpoint/artwork/bookmark"
+	"github.com/FlanChanXwO/pixiv-cli/internal/pixivapi"
 	"github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/endpoint/user/follow"
 	usernovelbookmarks "github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/endpoint/user/novelbookmarks"
 	"github.com/FlanChanXwO/pixiv-cli/sdk"
@@ -26,7 +27,14 @@ func (c *Client) addArtworkBookmark(ctx context.Context, request AddArtworkBookm
 	if err := validateRestrict(operation, request.Restrict); err != nil {
 		return err
 	}
-	if err := c.artworkBookmark.Add(ctx, bookmark.AddRequest{ArtworkID: request.ArtworkID, Restrict: string(request.Restrict), Tags: request.Tags}); err != nil {
+	form := url.Values{
+		pixivapi.ParamIllustID: {itoa(request.ArtworkID)},
+		pixivapi.ParamRestrict: {string(request.Restrict)},
+	}
+	for _, tag := range request.Tags {
+		form.Add(pixivapi.ParamTags, tag)
+	}
+	if err := c.app.PostForm(ctx, pixivapi.PathBookmarkAdd, form); err != nil {
 		return classifyAppError(err, operation)
 	}
 	return nil
@@ -42,7 +50,9 @@ func (c *Client) removeArtworkBookmark(ctx context.Context, artworkID int64) err
 	if artworkID <= 0 {
 		return newError(operation, sdk.InvalidArgument, "artwork ID must be positive")
 	}
-	if err := c.artworkBookmark.Remove(ctx, artworkID); err != nil {
+	if err := c.app.PostForm(ctx, pixivapi.PathBookmarkDelete, url.Values{
+		pixivapi.ParamIllustID: {itoa(artworkID)},
+	}); err != nil {
 		return classifyAppError(err, operation)
 	}
 	return nil

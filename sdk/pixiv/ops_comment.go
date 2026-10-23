@@ -2,8 +2,9 @@ package pixiv
 
 import (
 	"context"
+	"net/url"
 
-	artworkcomments "github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/endpoint/artwork/comments"
+	"github.com/FlanChanXwO/pixiv-cli/internal/pixivapi"
 	novelcomments "github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/endpoint/novel/comments"
 	"github.com/FlanChanXwO/pixiv-cli/sdk"
 )
@@ -20,14 +21,10 @@ func (c *Client) PostArtworkComment(ctx context.Context, request PostArtworkComm
 	if request.Comment == "" {
 		return CommentMutationResult{}, newError("PostArtworkComment", sdk.InvalidArgument, "comment body must not be empty")
 	}
-	result, err := c.artworkComments.Create(ctx, artworkcomments.CreateRequest{
-		ArtworkID: request.ArtworkID,
-		Comment:   request.Comment,
+	return c.postArtworkComment(ctx, "PostArtworkComment", url.Values{
+		pixivapi.ParamIllustID: {itoa(request.ArtworkID)},
+		pixivapi.ParamComment:  {request.Comment},
 	})
-	if err != nil {
-		return CommentMutationResult{}, classifyAppError(err, "PostArtworkComment")
-	}
-	return CommentMutationResult{CommentID: result.CommentID}, nil
 }
 
 // ReplyArtworkComment replies to one artwork comment.
@@ -45,15 +42,11 @@ func (c *Client) ReplyArtworkComment(ctx context.Context, request ReplyArtworkCo
 	if request.ParentCommentID <= 0 {
 		return CommentMutationResult{}, newError("ReplyArtworkComment", sdk.InvalidArgument, "parent comment ID must be positive")
 	}
-	result, err := c.artworkComments.Reply(ctx, artworkcomments.ReplyRequest{
-		ArtworkID:       request.ArtworkID,
-		Comment:         request.Comment,
-		ParentCommentID: request.ParentCommentID,
+	return c.postArtworkComment(ctx, "ReplyArtworkComment", url.Values{
+		pixivapi.ParamIllustID:        {itoa(request.ArtworkID)},
+		pixivapi.ParamComment:         {request.Comment},
+		pixivapi.ParamParentCommentID: {itoa(request.ParentCommentID)},
 	})
-	if err != nil {
-		return CommentMutationResult{}, classifyAppError(err, "ReplyArtworkComment")
-	}
-	return CommentMutationResult{CommentID: result.CommentID}, nil
 }
 
 // DeleteArtworkComment deletes one artwork comment by its comment ID.
@@ -61,10 +54,25 @@ func (c *Client) DeleteArtworkComment(ctx context.Context, request DeleteArtwork
 	if request.CommentID <= 0 {
 		return newError("DeleteArtworkComment", sdk.InvalidArgument, "comment ID must be positive")
 	}
-	if err := c.artworkComments.Delete(ctx, request.CommentID); err != nil {
+	if err := c.app.PostForm(ctx, pixivapi.PathIllustCommentDelete, url.Values{
+		pixivapi.ParamCommentID: {itoa(request.CommentID)},
+	}); err != nil {
 		return classifyAppError(err, "DeleteArtworkComment")
 	}
 	return nil
+}
+
+// postArtworkComment 发送 create/reply/stamp 共用的 form，并要求响应给出 comment ID。
+func (c *Client) postArtworkComment(ctx context.Context, operation string, form url.Values) (CommentMutationResult, error) {
+	var raw commentMutationWire
+	if err := c.app.PostFormJSON(ctx, pixivapi.PathIllustCommentAdd, form, &raw); err != nil {
+		return CommentMutationResult{}, classifyAppError(err, operation)
+	}
+	commentID := raw.commentID()
+	if commentID == nil || *commentID <= 0 {
+		return CommentMutationResult{}, newError(operation, sdk.MalformedUpstreamResponse, "")
+	}
+	return CommentMutationResult{CommentID: *commentID}, nil
 }
 
 // PostNovelComment posts a top-level comment on one novel.

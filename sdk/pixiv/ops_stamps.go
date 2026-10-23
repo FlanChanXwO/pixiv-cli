@@ -2,8 +2,9 @@ package pixiv
 
 import (
 	"context"
+	"net/url"
 
-	artworkcomments "github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/endpoint/artwork/comments"
+	"github.com/FlanChanXwO/pixiv-cli/internal/pixivapi"
 	novelcomments "github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/endpoint/novel/comments"
 	"github.com/FlanChanXwO/pixiv-cli/sdk"
 )
@@ -37,15 +38,11 @@ func (c *Client) StampArtworkComment(ctx context.Context, request StampArtworkCo
 	if request.StampID <= 0 {
 		return CommentMutationResult{}, newError("StampArtworkComment", sdk.InvalidArgument, "stamp ID must be positive")
 	}
-	result, err := c.artworkComments.Stamp(ctx, artworkcomments.StampRequest{
-		ArtworkID: request.ArtworkID,
-		Comment:   request.Comment,
-		StampID:   request.StampID,
+	return c.postArtworkComment(ctx, "StampArtworkComment", url.Values{
+		pixivapi.ParamIllustID: {itoa(request.ArtworkID)},
+		pixivapi.ParamComment:  {request.Comment},
+		pixivapi.ParamStampID:  {itoa(request.StampID)},
 	})
-	if err != nil {
-		return CommentMutationResult{}, classifyAppError(err, "StampArtworkComment")
-	}
-	return CommentMutationResult{CommentID: result.CommentID}, nil
 }
 
 // StampNovelComment posts a stamp comment on one novel. StampID is sent

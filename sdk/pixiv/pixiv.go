@@ -11,16 +11,6 @@ import (
 	"github.com/FlanChanXwO/pixiv-cli/internal/logging"
 	"github.com/FlanChanXwO/pixiv-cli/internal/pixivapi"
 	"github.com/FlanChanXwO/pixiv-cli/internal/pixivapi/oauth"
-	artworkbookmark "github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/endpoint/artwork/bookmark"
-	artworkcomments "github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/endpoint/artwork/comments"
-	artworkdetail "github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/endpoint/artwork/detail"
-	artworkranking "github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/endpoint/artwork/ranking"
-	artworkrecommended "github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/endpoint/artwork/recommended"
-	artworkrelated "github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/endpoint/artwork/related"
-	artworksearch "github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/endpoint/artwork/search"
-	artworkseries "github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/endpoint/artwork/series"
-	artworktimeline "github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/endpoint/artwork/timeline"
-	artworktrending "github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/endpoint/artwork/trending"
 	novelcomments "github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/endpoint/novel/comments"
 	noveldetail "github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/endpoint/novel/detail"
 	novelranking "github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/endpoint/novel/ranking"
@@ -81,16 +71,6 @@ type Options struct {
 // or Web path.
 type Client struct {
 	app                *pixivapi.Client
-	artworkBookmark    *artworkbookmark.Client
-	artworkDetail      *artworkdetail.Client
-	artworkComments    *artworkcomments.Client
-	artworkRelated     *artworkrelated.Client
-	artworkRanking     *artworkranking.Client
-	artworkRecommended *artworkrecommended.Client
-	artworkSearch      *artworksearch.Client
-	artworkSeries      *artworkseries.Client
-	artworkTimeline    *artworktimeline.Client
-	artworkTrending    *artworktrending.Client
 	novelComments      *novelcomments.Client
 	novelDetail        *noveldetail.Client
 	novelRecommended   *novelrecommended.Client
@@ -212,16 +192,6 @@ func newClient(httpClient *http.Client, selfHTTP bool, accessToken string, optio
 	app := pixivapi.New(appOptions...)
 	return &Client{
 		app:                app,
-		artworkBookmark:    artworkbookmark.New(app),
-		artworkDetail:      artworkdetail.New(app),
-		artworkComments:    artworkcomments.New(app),
-		artworkRelated:     artworkrelated.New(app),
-		artworkRanking:     artworkranking.New(app),
-		artworkRecommended: artworkrecommended.New(app),
-		artworkSearch:      artworksearch.New(app),
-		artworkSeries:      artworkseries.New(app),
-		artworkTimeline:    artworktimeline.New(app),
-		artworkTrending:    artworktrending.New(app),
 		novelComments:      novelcomments.New(app),
 		novelDetail:        noveldetail.New(app),
 		novelRecommended:   novelrecommended.New(app),

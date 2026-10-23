@@ -160,7 +160,7 @@ func (c *Client) NovelComments(ctx context.Context, request NovelCommentsRequest
 	if err != nil {
 		return CommentPage{}, classifyAppError(err, "NovelComments")
 	}
-	return c.commentPage("NovelComments", query, list.Items, list.NextOffset, list.HasNext, list.Total, list.AccessControl)
+	return c.novelCommentPage("NovelComments", query, list.Items, list.NextOffset, list.HasNext, list.Total, list.AccessControl)
 }
 
 // RecommendedNovels lists recommended novels.

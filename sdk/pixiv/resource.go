@@ -10,7 +10,6 @@ import (
 	"strings"
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/pixivapi"
-	"github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/endpoint/artwork"
 	"github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/endpoint/novel"
 	"github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/endpoint/stamps"
 	"github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/endpoint/user"
@@ -291,11 +290,11 @@ func (c *Client) resolveResourceURL(ctx context.Context, ref sdk.ResourceRef, op
 
 	switch rp.Kind {
 	case "artwork":
-		detail, appErr := c.artworkDetail.Artwork(ctx, rp.ID)
+		detail, appErr := c.fetchArtworkDetail(ctx, operation, rp.ID)
 		if appErr != nil {
-			return "", classifyAppError(appErr, operation)
+			return "", appErr
 		}
-		rawURL, err = artworkResourceURL(detail.Artwork, rp.Page, rp.Variant)
+		rawURL, err = artworkResourceURL(*detail.Illust, rp.Page, rp.Variant)
 	case "novel_cover":
 		detail, appErr := c.novelDetail.Detail(ctx, rp.ID)
 		if appErr != nil {
@@ -309,11 +308,16 @@ func (c *Client) resolveResourceURL(ctx context.Context, ref sdk.ResourceRef, op
 		}
 		rawURL, err = profileImageResourceURL(detail.User.ProfileImageURLs)
 	case "ugoira_archive":
-		result, appErr := c.artworkDetail.UgoiraMetadata(ctx, rp.ID)
-		if appErr != nil {
+		var wire ugoiraResponseWire
+		if appErr := c.app.GetJSON(ctx, pixivapi.PathUgoiraMetadata, url.Values{
+			pixivapi.ParamIllustID: {itoa(rp.ID)},
+		}, &wire); appErr != nil {
 			return "", classifyAppError(appErr, operation)
 		}
-		rawURL, err = ugoiraResourceURL(result.Metadata, rp.Variant)
+		if !wire.Metadata.Present || !wire.Metadata.Valid {
+			return "", newError(operation, sdk.MalformedUpstreamResponse, "ugoira metadata is missing")
+		}
+		rawURL, err = ugoiraResourceURL(wire.Metadata.Value, rp.Variant)
 	case "novel_image", "novel_file":
 		raw, appErr := c.novelDetail.Content(ctx, rp.ID)
 		if appErr != nil {
@@ -353,10 +357,10 @@ func stampResourceURL(items []stamps.Stamp, id int64) (string, error) {
 	return "", errors.New("stamp is unavailable")
 }
 
-func artworkResourceURL(illust artwork.Artwork, page int, variant string) (string, error) {
+func artworkResourceURL(illust artworkWire, page int, variant string) (string, error) {
 	if page >= 0 {
-		for _, candidate := range illust.MetaPages {
-			if candidate.PageIndex == page {
+		for index, candidate := range illust.MetaPages {
+			if index == page {
 				if variant == "original" || variant == "" {
 					if value := firstArtworkImageURL(candidate.ImageURLs); value != "" {
 						return value, nil
@@ -399,7 +403,7 @@ func imageURLsResourceURL(urls novel.ImageURLs, variant string) (string, error) 
 	return "", errors.New("image URL is unavailable")
 }
 
-func artworkImageURLsResourceURL(urls artwork.ImageURLs, variant string) (string, error) {
+func artworkImageURLsResourceURL(urls imageURLsWire, variant string) (string, error) {
 	values := map[string]string{
 		"original":      urls.Original,
 		"large":         urls.Large,
@@ -482,10 +486,10 @@ func profileImageResourceURL(urls user.ProfileImageURLs) (string, error) {
 	return *urls.Medium, nil
 }
 
-func ugoiraResourceURL(meta artwork.UgoiraMetadata, variant string) (string, error) {
+func ugoiraResourceURL(meta ugoiraMetadataWire, variant string) (string, error) {
 	values := map[string]string{
-		"medium":   meta.ZipURLs.Medium,
-		"original": meta.ZipURLs.Original,
+		"medium":   meta.ZipURLs.Value.Medium,
+		"original": meta.ZipURLs.Value.Original,
 	}
 	if variant != "" {
 		if value := values[variant]; value != "" {

@@ -21,7 +21,7 @@ func (c *Client) mapNovel(m novel.Novel) (Novel, error) {
 		Title:          m.Title,
 		Caption:        m.Caption,
 		User:           c.mapNovelUser(m.User),
-		Tags:           mapTags(m.Tags),
+		Tags:           mapNovelTags(m.Tags),
 		PublishedAt:    published,
 		XRestrict:      m.XRestrict,
 		TextLength:     m.TextLength,
@@ -66,7 +66,9 @@ func (c *Client) mapNovelUser(m novel.UserSummary) User {
 	return out
 }
 
-func (c *Client) mapUser(m user.User) User {
+// mapUserEntity 映射 user 端点实体；user 端点并入 SDK 后由 wire.go 的 mapUser
+// 取代（G08）。
+func (c *Client) mapUserEntity(m user.User) User {
 	out := User{
 		ID:         m.ID,
 		Name:       m.Name,
@@ -83,7 +85,7 @@ func (c *Client) mapUser(m user.User) User {
 }
 
 func (c *Client) mapUserDetail(d user.Detail) (UserDetail, error) {
-	out := UserDetail{User: c.mapUser(d.User)}
+	out := UserDetail{User: c.mapUserEntity(d.User)}
 	out.Profile = UserProfile{
 		Webpage:                   strValue(d.Profile.Webpage),
 		Gender:                    d.Profile.Gender,
@@ -134,7 +136,7 @@ func (c *Client) mapUserDetail(d user.Detail) (UserDetail, error) {
 }
 
 func (c *Client) mapUserPreview(p user.Preview) UserPreview {
-	out := UserPreview{User: c.mapUser(p.User), Illusts: make([]Artwork, 0, len(p.Illusts)), Novels: make([]Novel, 0, len(p.Novels))}
+	out := UserPreview{User: c.mapUserEntity(p.User), Illusts: make([]Artwork, 0, len(p.Illusts)), Novels: make([]Novel, 0, len(p.Novels))}
 	for _, m := range p.Illusts {
 		if a, err := c.mapArtworkEntity(m); err == nil {
 			out.Illusts = append(out.Illusts, a)
@@ -148,7 +150,9 @@ func (c *Client) mapUserPreview(p user.Preview) UserPreview {
 	return out
 }
 
-func mapTags(tags []novel.Tag) []Tag {
+// mapNovelTags 映射 novel 标签；novel 端点并入 SDK 后由 wire.go 的 mapTags
+// 取代（G07）。
+func mapNovelTags(tags []novel.Tag) []Tag {
 	if len(tags) == 0 {
 		return []Tag{}
 	}
