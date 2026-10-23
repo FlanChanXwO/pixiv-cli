@@ -3,8 +3,9 @@ package pixiv
 import (
 	"context"
 	"net/url"
+	"strconv"
 
-	artworksearch "github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/endpoint/artwork/search"
+	"github.com/FlanChanXwO/pixiv-cli/internal/pixivapi"
 	"github.com/FlanChanXwO/pixiv-cli/sdk"
 )
 
@@ -19,38 +20,28 @@ func (c *Client) SearchArtworks(ctx context.Context, request SearchArtworksReque
 	if err != nil {
 		return sdk.Page[Artwork]{}, err
 	}
-	filters := artworksearch.Filters{
-		AIMode:      string(request.AIMode),
-		ContentType: string(request.ContentType),
-		AspectRatio: string(request.AspectRatio),
-		Resolution:  string(request.Resolution),
-		Tool:        request.Tool,
-		BookmarkMin: request.BookmarkMin,
-		BookmarkMax: request.BookmarkMax,
+	searchQuery := searchArtworksWireQuery(request, int(state.Value))
+	var raw artworkListWire
+	if err := c.app.GetJSON(ctx, pixivapi.PathSearchIllust, searchQuery, &raw); err != nil {
+		return sdk.Page[Artwork]{}, classifyAppError(err, "SearchArtworks")
 	}
-	result, err := c.artworkSearch.Search(ctx, artworksearch.Request{
-		Word:      request.Word,
-		Target:    string(request.Target),
-		Sort:      string(request.Sort),
-		Duration:  string(request.Duration),
-		StartDate: request.StartDate,
-		EndDate:   request.EndDate,
-		Offset:    int(state.Value),
-		Filters:   filters,
-	})
+	items, err := artworkItems("SearchArtworks", raw.Illusts, false)
+	if err != nil {
+		return sdk.Page[Artwork]{}, err
+	}
+	nextOffset, hasNext, err := searchContinuation.offset(raw.NextURL)
 	if err != nil {
 		return sdk.Page[Artwork]{}, classifyAppError(err, "SearchArtworks")
 	}
-	items := make([]Artwork, len(result.Items))
-	for index, item := range result.Items {
-		items[index], err = c.mapArtworkEntity(item)
+	page := sdk.Page[Artwork]{Items: make([]Artwork, len(items))}
+	for index, item := range items {
+		page.Items[index], err = c.mapArtwork(item)
 		if err != nil {
 			return sdk.Page[Artwork]{}, err
 		}
 	}
-	page := sdk.Page[Artwork]{Items: items}
-	if result.HasNext {
-		page.Next, err = c.buildCursor("SearchArtworks", query, "offset", int64(result.NextOffset), true)
+	if hasNext {
+		page.Next, err = c.buildCursor("SearchArtworks", query, pixivapi.ParamOffset, int64(nextOffset), true)
 		if err != nil {
 			return sdk.Page[Artwork]{}, err
 		}
@@ -179,4 +170,49 @@ func (c *Client) searchArtworksContinuation(query url.Values, cursor sdk.Cursor,
 		return continuationEnvelope{}, newError("SearchArtworks", sdk.InvalidCursor, "cursor continuation kind or position mismatch")
 	}
 	return state, nil
+}
+
+// searchArtworksWireQuery 把公开搜索请求翻译成 App search 参数。AIMode=only
+// 由 SDK 在本地过滤，wire 仍发送 all；其余 enum 的候选值在此汇总。
+func searchArtworksWireQuery(request SearchArtworksRequest, offset int) url.Values {
+	query := url.Values{
+		pixivapi.ParamWord:         {request.Word},
+		pixivapi.ParamSearchTarget: {string(request.Target)},
+		pixivapi.ParamSort:         {string(request.Sort)},
+	}
+	setOptionalParam(query, pixivapi.ParamDuration, string(request.Duration))
+	setOptionalParam(query, pixivapi.ParamStartDate, request.StartDate)
+	setOptionalParam(query, pixivapi.ParamEndDate, request.EndDate)
+	query.Set(pixivapi.ParamSearchAIType, "0")
+	if request.AIMode == SearchAIModeExclude {
+		query.Set(pixivapi.ParamSearchAIType, "1")
+	}
+	switch request.AspectRatio {
+	case SearchAspectRatioLandscape, SearchAspectRatioPortrait, SearchAspectRatioSquare:
+		query.Set(pixivapi.ParamRatioPattern, string(request.AspectRatio))
+	}
+	switch request.ContentType {
+	case SearchContentTypeIllustAndUgoira:
+		query.Set(pixivapi.ParamContentType, "illust_and_ugoira")
+	case SearchContentTypeIllust, SearchContentTypeManga, SearchContentTypeUgoira:
+		query.Set(pixivapi.ParamContentType, string(request.ContentType))
+	}
+	setOptionalParam(query, pixivapi.ParamTool, request.Tool)
+	if request.BookmarkMin != nil {
+		query.Set(pixivapi.ParamBookmarkNumMin, strconv.Itoa(*request.BookmarkMin))
+	}
+	if request.BookmarkMax != nil {
+		query.Set(pixivapi.ParamBookmarkNumMax, strconv.Itoa(*request.BookmarkMax))
+	}
+	applyResolutionFilter(query, request.Resolution)
+	if offset > 0 {
+		query.Set(pixivapi.ParamOffset, strconv.Itoa(offset))
+	}
+	return query
+}
+
+func setOptionalParam(query url.Values, key, value string) {
+	if value != "" {
+		query.Set(key, value)
+	}
 }

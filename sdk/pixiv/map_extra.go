@@ -9,10 +9,12 @@ import (
 
 // commentPage maps an adapter comment list into a public CommentPage, encoding
 // the offset continuation into an opaque cursor.
-func (c *Client) commentPage(op string, query url.Values, values []novel.Comment, nextOffset int, hasNext bool, total *int64, access *novel.CommentAccessControl) (CommentPage, error) {
+// novelCommentPage 映射 novel 评论列表；novel 端点并入 SDK 后由 wire.go 的
+// commentPage 取代（G07）。
+func (c *Client) novelCommentPage(op string, query url.Values, values []novel.Comment, nextOffset int, hasNext bool, total *int64, access *novel.CommentAccessControl) (CommentPage, error) {
 	items := make([]Comment, 0, len(values))
 	for _, m := range values {
-		comment, err := c.mapComment(m)
+		comment, err := c.mapNovelComment(m)
 		if err != nil {
 			return CommentPage{}, err
 		}
@@ -45,14 +47,16 @@ func cloneInt64(value *int64) *int64 {
 	return &copy
 }
 
-func (c *Client) mapComment(m novel.Comment) (Comment, error) {
+// mapNovelComment 映射 novel 评论；novel 端点并入 SDK 后由 wire.go 的 mapComment
+// 取代（G07）。
+func (c *Client) mapNovelComment(m novel.Comment) (Comment, error) {
 	created, err := parseUTCTime(m.CreateDate)
 	if err != nil {
 		return Comment{}, newError("Comment", sdk.MalformedUpstreamResponse, "invalid comment time")
 	}
 	out := Comment{ID: m.ID, User: c.mapNovelUser(m.User), Comment: m.Comment, CreatedAt: created}
 	if m.ParentComment != nil {
-		parent, err := c.mapComment(*m.ParentComment)
+		parent, err := c.mapNovelComment(*m.ParentComment)
 		if err != nil {
 			return Comment{}, err
 		}

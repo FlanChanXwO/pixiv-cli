@@ -178,7 +178,7 @@ func (c *Client) CurrentUser(ctx context.Context, request CurrentUserRequest) (U
 func (c *Client) userPreviewPage(op string, query url.Values, list []userentity.Preview, nextOffset int, hasNext bool) (sdk.Page[UserPreview], error) {
 	items := make([]UserPreview, 0, len(list))
 	for _, p := range list {
-		items = append(items, UserPreview{User: c.mapUser(p.User)})
+		items = append(items, UserPreview{User: c.mapUserEntity(p.User)})
 	}
 	next, err := c.buildCursor(op, query, "offset", int64(nextOffset), hasNext)
 	if err != nil {

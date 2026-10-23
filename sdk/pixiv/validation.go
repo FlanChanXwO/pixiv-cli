@@ -1,9 +1,11 @@
 package pixiv
 
 import (
+	"net/url"
 	"strings"
 	"time"
 
+	"github.com/FlanChanXwO/pixiv-cli/internal/pixivapi"
 	"github.com/FlanChanXwO/pixiv-cli/sdk"
 )
 
@@ -63,6 +65,23 @@ func normalizeUserArtworkKind(operation string, value ArtworkKind) (string, erro
 		return string(value), nil
 	default:
 		return "", newError(operation, sdk.InvalidArgument, "artwork kind is unsupported")
+	}
+}
+
+// applyResolutionFilter 把公开分辨率档位翻译成 App 的宽高上下限。
+func applyResolutionFilter(query url.Values, resolution SearchResolution) {
+	switch resolution {
+	case SearchResolutionHigh:
+		query.Set(pixivapi.ParamWidthMin, "3000")
+		query.Set(pixivapi.ParamHeightMin, "3000")
+	case SearchResolutionMedium:
+		query.Set(pixivapi.ParamWidthMin, "1000")
+		query.Set(pixivapi.ParamWidthMax, "2999")
+		query.Set(pixivapi.ParamHeightMin, "1000")
+		query.Set(pixivapi.ParamHeightMax, "2999")
+	case SearchResolutionLow:
+		query.Set(pixivapi.ParamWidthMax, "999")
+		query.Set(pixivapi.ParamHeightMax, "999")
 	}
 }
 

@@ -1,0 +1,73 @@
+// App API route and query/form parameter names used by sdk/pixiv.
+//
+// 本文件只声明标识符本身；请求发送与重试仍由 appapi.go 负责。protocol.go 中的
+// App* 常量继续服务尚未迁移的 endpoint 包，后续 goal 完成迁移后由它们移入此处。
+package pixivapi
+
+// App API 路径。
+const (
+	PathSearchIllust         = "/v1/search/illust"
+	PathIllustDetail         = "/v1/illust/detail"
+	PathIllustRelated        = "/v2/illust/related"
+	PathIllustSeries         = "/v1/illust/series"
+	PathIllustRanking        = "/v1/illust/ranking"
+	PathIllustRecommended    = "/v1/illust/recommended"
+	PathIllustNew            = "/v1/illust/new"
+	PathIllustFollow         = "/v2/illust/follow"
+	PathIllustMyPixiv        = "/v2/illust/mypixiv"
+	PathIllustComments       = "/v3/illust/comments"
+	PathIllustCommentAdd     = "/v1/illust/comment/add"
+	PathIllustCommentDelete  = "/v1/illust/comment/delete"
+	PathIllustBookmarkDetail = "/v2/illust/bookmark/detail"
+	PathBookmarkAdd          = "/v2/illust/bookmark/add"
+	PathBookmarkDelete       = "/v1/illust/bookmark/delete"
+	PathUserIllusts          = "/v1/user/illusts"
+	PathUserBookmarksIllust  = "/v1/user/bookmarks/illust"
+	PathUserBookmarkTags     = "/v1/user/bookmark-tags/illust"
+	PathTrendingTagsIllust   = "/v1/trending-tags/illust"
+	PathUgoiraMetadata       = "/v1/ugoira/metadata"
+)
+
+// query/form 参数名。
+const (
+	ParamIllustID         = "illust_id"
+	ParamIllustSeriesID   = "illust_series_id"
+	ParamUserID           = "user_id"
+	ParamRestrict         = "restrict"
+	ParamTag              = "tag"
+	ParamTags             = "tags[]"
+	ParamOffset           = "offset"
+	ParamMaxBookmarkID    = "max_bookmark_id"
+	ParamMaxIllustID      = "max_illust_id"
+	ParamLastOrder        = "last_order"
+	ParamMode             = "mode"
+	ParamDate             = "date"
+	ParamWord             = "word"
+	ParamSearchTarget     = "search_target"
+	ParamSort             = "sort"
+	ParamDuration         = "duration"
+	ParamStartDate        = "start_date"
+	ParamEndDate          = "end_date"
+	ParamSearchAIType     = "search_ai_type"
+	ParamRatioPattern     = "ratio_pattern"
+	ParamContentType      = "content_type"
+	ParamType             = "type"
+	ParamFilter           = "filter"
+	ParamTool             = "tool"
+	ParamBookmarkNumMin   = "bookmark_num_min"
+	ParamBookmarkNumMax   = "bookmark_num_max"
+	ParamWidthMin         = "width_min"
+	ParamWidthMax         = "width_max"
+	ParamHeightMin        = "height_min"
+	ParamHeightMax        = "height_max"
+	ParamComment          = "comment"
+	ParamCommentID        = "comment_id"
+	ParamParentCommentID  = "parent_comment_id"
+	ParamStampID          = "stamp_id"
+	ParamSeedIllustIDs    = "seed_illust_ids[]"
+	ParamViewed           = "viewed[]"
+	ParamMinRecentIllusts = "min_bookmark_id_for_recent_illust"
+	ParamMaxRecommend     = "max_bookmark_id_for_recommend"
+	ParamIncludeRanking   = "include_ranking_illusts"
+	ParamIncludePrivacy   = "include_privacy_policy"
+)
