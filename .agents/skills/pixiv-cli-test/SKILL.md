@@ -79,7 +79,9 @@ CI scope is determined by `.github/ci-change-scope.gitignore` through `scripts/c
 
 ## Live and native boundaries
 
-The ordinary suite must remain offline-stable. Real SDK E2E is opt-in and can rotate/persist credentials. Read the live-test section of `docs/en/maintainers/development.md` and obtain account/target authorization first. Select an authorized secondary Pixiv account with `PIXIV_E2E_READ_USER_ID`; never read a real credential store into the transcript. FANBOX sessions come from the agreed Keychain environment, not command arguments or logs.
+The ordinary suite must remain offline-stable. Real SDK tests are opt-in and can rotate/persist credentials. Read the live-test section of `docs/en/maintainers/development.md` and obtain account/target authorization first. Select an authorized secondary Pixiv account with `PIXIV_E2E_READ_USER_ID`; never read a real credential store into the transcript. FANBOX sessions come from the agreed Keychain environment, not command arguments or logs.
+
+Live tests live beside their target: `TestRealPixivSDKRead`, the manifest reads and `TestRealPixivSDKLiveManifestMutation` in `sdk/pixiv/live_test.go` and `live_mutation_test.go`; FANBOX reads and solver acceptance in `sdk/fanbox/live_test.go` and `live_solver_test.go`; reverse search in `internal/reversesearch/live_test.go`; browser providers in `internal/browsercookies/live_test.go`; packaged-binary and MCP process checks in `cmd/pixiv/main_test.go`. Run them with the package path, e.g. `PIXIV_SDK_E2E=1 go test ./sdk/pixiv -run TestRealPixivSDKRead -count=1 -v`. There is no `e2e/` package.
 
 `TestRealPixivSDKRead` and `TestRealFanboxSDKRead` prove their specific live paths only when actually run. The FANBOX full read requires a first-party attachment; `TestRealFanboxSDKPostInfo` is supplemental partial evidence, not a replacement. Default skips are not live evidence. Reverse-search E2E additionally needs explicit image-upload authorization. An upstream 429 is not permission to invent retries or rotate accounts.
 

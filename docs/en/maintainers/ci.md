@@ -31,7 +31,7 @@ flowchart TD
 | stable `vX.Y.Z` tag | only `release.yml` (owns all tag gates, six-platform tests/builds and two-platform container verification; PR smoke matrices are not duplicated) |
 | manual | browser/native evidence workflows |
 
-Real Pixiv/FANBOX SDK E2E never enters PR CI; only `release.yml` runs the credential-free SDK E2E contract gate after validate, and real E2E is accepted separately on release-prep.
+Real Pixiv/FANBOX SDK E2E never enters PR CI; the offline `go test ./...` in the release test build covers the same packages, and real E2E is accepted separately on release-prep.
 
 ## Change-scope classification
 

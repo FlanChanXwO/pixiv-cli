@@ -37,7 +37,6 @@ flowchart LR
 | 环境、构建、测试 | [开发](zh-CN/maintainers/development.md) |
 | PR 检查 | [CI 门禁](zh-CN/maintainers/ci.md) |
 | 发布、签名、Homebrew、容器 | [发布](zh-CN/maintainers/release.md) |
-| 编码器质量/性能对照 | [Ugoira 对照](zh-CN/maintainers/ugoira-parity.md) |
 | 已发布变更 | [更新日志](../changelog/README.zh-CN.md) |
 
 ## 自动化

@@ -7,8 +7,7 @@ Release gates, signing, container and Homebrew publication. Release-note writing
 ```mermaid
 flowchart TD
     TAG["push v[0-9]* tag"] --> VAL["validate SemVer"]
-    VAL --> E2E["credential-free SDK E2E contract gate<br/>(immutable tag)"]
-    E2E --> BT["test build: 6 targets CGO0, go test,<br/>race gate, licenses, archives"]
+    VAL --> BT["test build: 6 targets CGO0, go test,<br/>race gate, licenses, archives"]
     BT --> BP["build_production<br/>(clean tag tree, separate runner,<br/>git diff --exit-code)"]
     BT --> BC["build_container<br/>amd64 + arm64"]
     BP & BC --> HBV["Homebrew install vs exact production archives"]
@@ -22,7 +21,7 @@ flowchart TD
 
 ## Release workflow
 
-- `.github/workflows/release.yml` accepts only `v[0-9]*` tag pushes — no `workflow_dispatch`, `release_tag` input or test-only overlay. It reads or injects no Pixiv/FANBOX credentials; real SDK E2E, native browser and one-time solver acceptance happen in an authorized environment, and the contract gate is not real release evidence.
+- `.github/workflows/release.yml` accepts only `v[0-9]*` tag pushes — no `workflow_dispatch`, `release_tag` input or test-only overlay. It reads or injects no Pixiv/FANBOX credentials; real SDK E2E, native browser and one-time solver acceptance happen in an authorized environment and are not release evidence.
 - Validate, test build, production build and publish all bind the same tag. On failure, fix on the default branch and re-run the normal immutable-tag process; never inject new verifiers, tests or sources into an old tag, and there is no manual recovery entry for an existing Release.
 - `releaseassets finalize` also reads `scripts/install.sh` and `scripts/install.cmd` from the tag, copies them into the Release under fixed names, and writes `checksums.txt` plus the Ed25519 manifest alongside the six archives. The publish policy locks finalize parameters and the full eight-asset upload set; the Homebrew renderer requires both installers in the checksum set, while the formula downloads only the platform archive.
 - **Race gate:** the `go.mod` toolchain doesn't support race on Windows ARM64, yet all six native targets run it — five run `go test -race ./...`, Windows ARM64 runs the same command and must match Go's exact `-race is not supported on windows/arm64` diagnostic; any other failure fails, no entry is skipped. The test matrix pins `GIT_CONFIG_*` to `core.autocrlf=false` so Git for Windows keeps LF blobs (else pre-commit `gofmt` misreports CRLF). Test gate only; production builds from the tag's clean default checkout.

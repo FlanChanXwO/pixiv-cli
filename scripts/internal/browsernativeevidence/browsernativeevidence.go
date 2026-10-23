@@ -79,7 +79,7 @@ func runFirefoxContract(firefoxPath string) (runErr error) {
 }
 
 // verifySyntheticFirefoxProviderContract 直接通过正式 provider 读取隔离 profile，
-// 避免 browser evidence 为一个 provider contract 编译整个 e2e package 及无关媒体/cgo 链。
+// 避免 browser evidence 为一个 provider contract 编译整个 SDK/live 测试集及无关媒体/cgo 链。
 func verifySyntheticFirefoxProviderContract(home, profileID string) (runErr error) {
 	isolated := map[string]string{
 		"HOME":            home,

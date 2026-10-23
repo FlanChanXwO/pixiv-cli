@@ -5,8 +5,7 @@
 ```mermaid
 flowchart LR
     E["环境检查"] --> B["构建<br/>sh scripts/build.sh"] --> T["测试<br/>go test ./..."] --> PR["PR CI 门禁<br/>（ci.md）"] --> REL["发布门禁<br/>（release.md）"]
-    T -. "opt-in，需授权" .-> E2E["真实 SDK / 反向搜图 e2e"]
-    T -. "编码器改动" .-> UP["ugoira 对照<br/>（ugoira-parity.md）"]
+    T -. "opt-in，需授权" .-> E2E["真实 SDK / 反向搜图 live 测试"]
 ```
 
 | 你想做什么 | 从这里开始 |
@@ -14,7 +13,6 @@ flowchart LR
 | 检查本地工具链 | [环境检查](#环境检查) |
 | 编辑或验证页面 | [前端资源](#前端资源) |
 | 构建或验证 ugoira 编码 | [Ugoira Go encoder](#ugoira-go-encoder) |
-| 对照编码器输出与性能 | [离线 ugoira 对照](ugoira-parity.md) |
 | 运行 CLI 与 MCP | [运行](#运行) |
 | 处理登录与凭据 | [开发中的凭据](#开发中的凭据) |
 | 选择测试范围 | [测试](#测试) |
@@ -62,6 +60,8 @@ CGO_ENABLED=0 go test ./internal/media/ugoira/... -count=1
 | 超出上限 | 声明大小超出 → 读取前失败；实际展开超出 → 分块读取时失败；非法/溢出尺寸或估算 → 错误。不截断，不 fallback |
 | 取消 | 每个读取分块与图片解码的前后都会检查；PNG/JPEG 解码循环没有回调，因此单帧解码中途的取消在该次解码返回时才被观察到 |
 | 工具链 | 不需要 Rust、native library 或 C linker；只有 race 测试需要 `CGO_ENABLED=1` + C 工具链 |
+
+**编码器保真说明** —— `internal/media/ugoira`：JPEG 解码器是 Go 1.26.3 解析加旧 zune-jpeg 0.5.15 整数 IDCT 与 14 位 BT.601（标准库 IDCT 舍入对调色板选择的改变足以让固定门禁失败；解析器 BSD 许可证留在该包，zune-jpeg 的 MIT 署名留在许可证 bundle）。缩放使用带显式 `math.FMA` 的有界正弦/余弦多项式对齐旧 `sinf`，参考值在 `testdata/lanczos-kernel.json`（1,031 条）。APNG 使用固定 Sub 预测、每帧独立的 level-7 zlib 流与 RGBA8 无损：只有全部变化像素不透明且差分能减少横向 RGBA 游程时，才对未变像素使用透明的 Over，否则使用 Source，均用 None disposal。压缩字节可能随工具链变化；只有在验证完整渲染画布、时序与循环行为后才能复用旧质量证据——不能只看文件大小。
 
 **平台构建** —— `scripts/build-platform.sh` 以 CGO0 构建精确目标，并可选生成 canonical 压缩包：`--target GOOS/GOARCH`、`--output-dir DIR`、可选 `--version VERSION`（不带 `v`）与 `--package`（需要版本）。保留 Windows 后缀与 Linux ABI 门禁。runner 元数据在 `ci/platforms.json`；测试、源码身份、权限、审批与发布留在 workflow 中。
 
@@ -161,7 +161,7 @@ go test ./internal/browsercookies/... -count=1   # 离线 fixture/加密/权限�
 
 ```mermaid
 flowchart TD
-    T["go test ./e2e ..."] --> F{"设置了 opt-in 变量？"}
+    T["live_test.go 各包<br/>（go test ./... 默认跳过）"] --> F{"设置了 opt-in 变量？"}
     F -->|否| SK["跳过（默认离线稳定）<br/>绝不能作为发布证据"]
     F -->|是| P{"本地凭据 /<br/>目标齐全？"}
     P -->|否| FAIL["失败并暴露缺口"]
@@ -175,29 +175,28 @@ flowchart TD
 | `TestRealFanboxSDKPostInfo` | `FANBOX_SDK_E2E=1 FANBOX_E2E_POST_ONLY=1` | 帖子 ID + 页面 URL | `Post`、非空正文、`ResolveURL`、资源清单；允许 `file_assets=0`（不能替代严格测试） |
 | `TestRealReverseSearch` | `PIXIV_REVERSE_SEARCH_E2E=1` | `PIXIV_REVERSE_SEARCH_SOURCE`、`_PROVIDER`；SauceNAO/`all` 需要 `SAUCENAO_API_KEY`（从私有环境 export，不要内联） | 第三方兼容性；不接受来源/key 参数，也不回显；仅用已授权测试图；不是发布门禁 |
 | `TestRealReverseSearchMCPReusesSolverSession` | 同上 | `PIXIV_REVERSE_SEARCH_SOLVER_URL`；可选 `_SOLVER_PROXY`（仅浏览器上游） | solver 会话复用；不持久化会话状态或来源 |
-| `TestRealPixivUgoiraCapture` | `PIXIV_UGOIRA_CAPTURE=1` | 见 [ugoira 对照](ugoira-parity.md) | 样本采集 |
 
 ```bash
 PIXIV_E2E_READ_USER_ID=<secondary-uid> \
-PIXIV_SDK_E2E=1 go test ./e2e -run TestRealPixivSDKRead -count=1 -v
+PIXIV_SDK_E2E=1 go test ./sdk/pixiv -run TestRealPixivSDKRead -count=1 -v
 FANBOX_E2E_CREATOR_ID=<non-secret-creator-id> FANBOX_E2E_TAG=<non-secret-tag> \
 FANBOX_E2E_POST_ID=<non-secret-post-id> FANBOX_E2E_POST_URL=<non-secret-post-url> \
-FANBOX_SDK_E2E=1 go test ./e2e -run TestRealFanboxSDKRead -count=1 -v
+FANBOX_SDK_E2E=1 go test ./sdk/fanbox -run TestRealFanboxSDKRead -count=1 -v
 # 可选的 challenge 恢复（默认不配置）
 FANBOX_E2E_SOLVER_URL=http://127.0.0.1:8191 FANBOX_E2E_SOLVER_PROXY=http://host.docker.internal:7890 \
 FANBOX_E2E_CREATOR_ID=... FANBOX_E2E_TAG=... FANBOX_E2E_POST_ID=... FANBOX_E2E_POST_URL=... \
-FANBOX_SDK_E2E=1 go test ./e2e -run TestRealFanboxSDKRead -count=1 -v
+FANBOX_SDK_E2E=1 go test ./sdk/fanbox -run TestRealFanboxSDKRead -count=1 -v
 FANBOX_E2E_POST_ID=<non-secret-post-id> FANBOX_E2E_POST_URL=<non-secret-post-url> \
-FANBOX_SDK_E2E=1 FANBOX_E2E_POST_ONLY=1 go test ./e2e -run TestRealFanboxSDKPostInfo -count=1 -v
+FANBOX_SDK_E2E=1 FANBOX_E2E_POST_ONLY=1 go test ./sdk/fanbox -run TestRealFanboxSDKPostInfo -count=1 -v
 export SAUCENAO_API_KEY      # 预先从私有环境导出
 PIXIV_REVERSE_SEARCH_E2E=1 PIXIV_REVERSE_SEARCH_SOURCE=<private-test-image-path-or-url> \
-PIXIV_REVERSE_SEARCH_PROVIDER=all go test ./e2e -run TestRealReverseSearch -count=1 -v
+PIXIV_REVERSE_SEARCH_PROVIDER=all go test ./internal/reversesearch -run TestRealReverseSearch -count=1 -v
 ```
 
 - 没有单独的 E2E 包装脚本；离线套件与需要凭据的观测共用一条路径。目标只接受显式的非 secret 值——从不接受 token、会话或 Cookie 作为参数或环境变量。`PIXIV_E2E_PROXY` 是非 secret 的代理 URI；solver 变量是可选的非 secret 拓扑配置。
-- release-prep 运行后，检查 stdout、stderr、日志与证据：token、Cookie、签名 URL 与原始响应体绝不能出现在 argv、环境转储、日志、测试名、产物或 diff 中。本节描述的是覆盖范围，并不表示真实 e2e 已运行。
-- 显式代理下，资源传输协商 HTTP/1.1，App API 与 OAuth 保持原协商；e2e 资源读取回归这一边界，不为慢速下载加超时。收到没有有效 `Retry-After` 的 429 时保留诊断并失败——不猜测等待，不无限重试。
-- `PIXIV_E2E_BINARY` / `PIXIV_E2E_EXPECTED_VERSION` 让离线 e2e 针对已构建并解包的 release 二进制运行（不注入 token、不启用真实 API）；`platform-smoke.yml` 在六个 runner 上运行这组 CLI/config/MCP 命令面检查。
+- release-prep 运行后，检查 stdout、stderr、日志与证据：token、Cookie、签名 URL 与原始响应体绝不能出现在 argv、环境转储、日志、测试名、产物或 diff 中。本节描述的是覆盖范围，并不表示真实测试已运行。
+- 显式代理下，资源传输协商 HTTP/1.1，App API 与 OAuth 保持原协商；live 资源读取回归这一边界，不为慢速下载加超时。收到没有有效 `Retry-After` 的 429 时保留诊断并失败——不猜测等待，不无限重试。
+- `PIXIV_E2E_BINARY` / `PIXIV_E2E_EXPECTED_VERSION` 让离线 `cmd/pixiv` smoke 针对已构建并解包的 release 二进制运行（不注入 token、不启用真实 API）；`platform-smoke.yml` 在六个 runner 上运行这组 CLI/config/MCP 命令面检查。
 - 按改动范围新增或更新测试；无法运行测试时，在交付说明中写明原因与风险。发布 fixture 门禁见[发布](release.md#本地发布-fixture-门禁)。
 
 ### 测试文件布局
@@ -229,7 +228,7 @@ PIXIV_REVERSE_SEARCH_PROVIDER=all go test ./e2e -run TestRealReverseSearch -coun
 | `scripts/internal/releasenotes` | 测试观察未导出的 GitHub client 调用映射，注入 fake client 断言来源审计。 |
 
 - 当前没有临时条目，也不接受"迁移期间""将来"之类开放式表述。新增目录必须说明具体观察的未导出符号，并确认导出最小接口不可行；移除目录需要删除任务与测试迁移证据（外部包可编译 + 覆盖不变）。
-- `e2e/` 也是 `package X`，但没有生产代码，因此不在此列。带 build tag 的测试文件在不同 `GOOS`/`GOARCH` 下可见数量不同；校验时分别用 `GOOS=darwin`、`windows` 与 `linux` 运行 `go list`。
+- `live_test.go`、`live_mutation_test.go`、`live_solver_test.go` 是按开关变量启用的真实测试，没有单一生产文件归属；它们留在被测包（`sdk/pixiv`、`sdk/fanbox`、`internal/reversesearch`、`internal/browsercookies`），未设置文档中的开关变量时跳过。带 build tag 的测试文件在不同 `GOOS`/`GOARCH` 下可见数量不同；校验时分别用 `GOOS=darwin`、`windows` 与 `linux` 运行 `go list`。
 
 ```bash
 # 列出测试留在生产包内的目录（package X 而非 X_test）

@@ -1,4 +1,4 @@
-package e2e
+package fanbox_test
 
 import (
 	"io"

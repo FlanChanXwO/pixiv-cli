@@ -37,7 +37,6 @@ English defines the canonical public interface. Chinese may rephrase, but comman
 | Environment, build, tests | [Development](en/maintainers/development.md) |
 | PR checks | [CI gates](en/maintainers/ci.md) |
 | Release, signing, Homebrew, containers | [Release](en/maintainers/release.md) |
-| Encoder quality/performance comparison | [Ugoira parity](en/maintainers/ugoira-parity.md) |
 | Released changes | [Changelog](../changelog/README.md) |
 
 ## For automation

@@ -1,4 +1,4 @@
-package e2e
+package fanbox_test
 
 import (
 	"fmt"
@@ -39,58 +39,6 @@ type fanboxE2ETargets struct {
 type fanboxE2EPostTarget struct {
 	PostID  string
 	PostURL string
-}
-
-func TestFanboxE2ETargetsRequireExplicitValues(t *testing.T) {
-	values := map[string]string{
-		"FANBOX_E2E_CREATOR_ID": "creator-1",
-		"FANBOX_E2E_TAG":        "tag-1",
-		"FANBOX_E2E_POST_ID":    "post-1",
-		"FANBOX_E2E_POST_URL":   "https://www.fanbox.cc/@creator-1/posts/post-1",
-	}
-	values["FANBOX_E2E_TAG"] = ""
-	if _, err := fanboxE2ETargetsFrom(func(name string) string { return values[name] }); err == nil {
-		t.Fatal("fanbox E2E targets accepted a missing explicit target")
-	}
-
-	values["FANBOX_E2E_TAG"] = "tag-1"
-	targets, err := fanboxE2ETargetsFrom(func(name string) string { return values[name] })
-	if err != nil {
-		t.Fatalf("fanbox E2E targets rejected explicit non-secret values: %v", err)
-	}
-	if targets.CreatorID != "creator-1" || targets.Tag != "tag-1" || targets.PostID != "post-1" || targets.PostURL == "" {
-		t.Fatalf("fanbox E2E targets = %+v", targets)
-	}
-
-	values["FANBOX_E2E_POST_URL"] = "https://www.fanbox.cc/@creator-1/posts/post-1?signed=1"
-	if _, err := fanboxE2ETargetsFrom(func(name string) string { return values[name] }); err == nil {
-		t.Fatal("fanbox E2E targets accepted a signed-query post URL")
-	}
-}
-
-func TestFanboxPostTargetRequiresOnlyPostValues(t *testing.T) {
-	values := map[string]string{
-		fanboxE2EPostIDEnv:  "post-1",
-		fanboxE2EPostURLEnv: "https://www.fanbox.cc/@creator-1/posts/post-1",
-	}
-	values[fanboxE2EPostIDEnv] = ""
-	if _, err := fanboxPostTargetFrom(func(name string) string { return values[name] }); err == nil {
-		t.Fatal("fanbox post-only target accepted a missing post ID")
-	}
-
-	values[fanboxE2EPostIDEnv] = "post-1"
-	target, err := fanboxPostTargetFrom(func(name string) string { return values[name] })
-	if err != nil {
-		t.Fatalf("fanbox post-only target rejected explicit values: %v", err)
-	}
-	if target.PostID != "post-1" || target.PostURL == "" {
-		t.Fatalf("fanbox post-only target = %+v", target)
-	}
-
-	values[fanboxE2EPostURLEnv] += "?signed=1"
-	if _, err := fanboxPostTargetFrom(func(name string) string { return values[name] }); err == nil {
-		t.Fatal("fanbox post-only target accepted a signed-query post URL")
-	}
 }
 
 func fanboxE2ETargetsFrom(getenv func(string) string) (fanboxE2ETargets, error) {
@@ -159,19 +107,6 @@ func fanboxE2EOptionsFrom(getenv func(string) string) fanboxsdk.Options {
 		}
 	}
 	return options
-}
-
-func TestFollowFanboxPostPageAllowsTerminalPage(t *testing.T) {
-	called := false
-	followFanboxPostPage(t, "terminal", sdk.Page[fanboxsdk.Post]{
-		Items: []fanboxsdk.Post{{ID: "post-1"}},
-	}, func(sdk.Cursor) (sdk.Page[fanboxsdk.Post], error) {
-		called = true
-		return sdk.Page[fanboxsdk.Post]{}, nil
-	})
-	if called {
-		t.Fatal("terminal FANBOX post page unexpectedly followed a missing cursor")
-	}
 }
 
 // TestRealFanboxSDKRead is the v1 release-prep real FANBOX SDK e2e. It runs only

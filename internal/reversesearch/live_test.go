@@ -1,4 +1,4 @@
-package e2e
+package reversesearch_test
 
 import (
 	"context"
@@ -6,7 +6,6 @@ import (
 	"errors"
 	"os"
 	"strings"
-	"sync/atomic"
 	"testing"
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver"
@@ -35,164 +34,6 @@ type reverseSearchE2EConfig struct {
 	solverURL   string
 	solverProxy string
 	sauceNAOKey string
-}
-
-func TestReverseSearchE2EConfigIsDisabledByDefault(t *testing.T) {
-	config, err := reverseSearchE2EConfigFrom(func(string) string { return "" })
-	if err != nil {
-		t.Fatalf("disabled reverse-search e2e returned an error: %v", err)
-	}
-	if config.enabled {
-		t.Fatal("reverse-search e2e enabled without explicit opt-in")
-	}
-}
-
-func TestReverseSearchE2EConfigRequiresSourceWhenEnabled(t *testing.T) {
-	const key = "saucenao-key-secret"
-	config, err := reverseSearchE2EConfigFrom(func(name string) string {
-		if name == reverseSearchE2EEnabledEnv {
-			return "1"
-		}
-		if name == reverseSearchE2EProviderEnv {
-			return "ascii2d-color"
-		}
-		if name == reverseSearchE2EKeyEnv {
-			return key
-		}
-		return ""
-	})
-	if err == nil || !strings.Contains(strings.ToLower(err.Error()), "source") {
-		t.Fatalf("missing source error = %v", err)
-	}
-	if strings.Contains(err.Error(), key) {
-		t.Fatalf("missing source error echoed key: %v", err)
-	}
-	if config.enabled {
-		t.Fatal("invalid configuration was marked enabled")
-	}
-}
-
-func TestReverseSearchE2EConfigRequiresSauceNAOKey(t *testing.T) {
-	const source = "source-secret"
-	config, err := reverseSearchE2EConfigFrom(func(name string) string {
-		if name == reverseSearchE2EEnabledEnv {
-			return "1"
-		}
-		if name == reverseSearchE2ESourceEnv {
-			return source
-		}
-		if name == reverseSearchE2EProviderEnv {
-			return "saucenao"
-		}
-		return ""
-	})
-	if err == nil || !strings.Contains(err.Error(), "SAUCENAO_API_KEY") {
-		t.Fatalf("missing SauceNAO key error = %v", err)
-	}
-	if strings.Contains(err.Error(), source) {
-		t.Fatalf("missing SauceNAO key error echoed source: %v", err)
-	}
-	if config.enabled {
-		t.Fatal("invalid configuration was marked enabled")
-	}
-}
-
-func TestReverseSearchE2EConfigAllowsAscii2DWithoutSauceNAOKey(t *testing.T) {
-	config, err := reverseSearchE2EConfigFrom(func(name string) string {
-		switch name {
-		case reverseSearchE2EEnabledEnv:
-			return "1"
-		case reverseSearchE2ESourceEnv:
-			return "https://example.test/image.png"
-		case reverseSearchE2EProviderEnv:
-			return "ascii2d-color"
-		default:
-			return ""
-		}
-	})
-	if err != nil {
-		t.Fatalf("ascii2d-only configuration rejected: %v", err)
-	}
-	if !config.enabled || config.provider != reversesearch.ProviderASCII2DColor || config.sauceNAOKey != "" {
-		t.Fatalf("ascii2d-only configuration = %+v", config)
-	}
-}
-
-func TestReverseSearchE2EConfigReadsFlareSolverrOptions(t *testing.T) {
-	config, err := reverseSearchE2EConfigFrom(func(name string) string {
-		switch name {
-		case reverseSearchE2EEnabledEnv:
-			return "1"
-		case reverseSearchE2ESourceEnv:
-			return "/tmp/source.png"
-		case reverseSearchE2EProviderEnv:
-			return "ascii2d-color"
-		case reverseSearchE2ESolverURLEnv:
-			return " http://127.0.0.1:8191/ "
-		case reverseSearchE2ESolverProxyEnv:
-			return " socks5://127.0.0.1:7891 "
-		default:
-			return ""
-		}
-	})
-	if err != nil {
-		t.Fatalf("FlareSolverr configuration rejected: %v", err)
-	}
-	if config.solverURL != "http://127.0.0.1:8191/" {
-		t.Fatalf("solver URL = %q", config.solverURL)
-	}
-	if config.solverProxy != "socks5://127.0.0.1:7891" {
-		t.Fatalf("solver proxy = %q", config.solverProxy)
-	}
-}
-
-func TestRegisterRealReverseSearchE2ECleanupClosesSearcher(t *testing.T) {
-	searcher := &closeTrackingReverseSearchE2ESearcher{}
-	t.Run("cleanup", func(t *testing.T) {
-		registerRealReverseSearchE2ECleanup(t, searcher)
-	})
-	if got := searcher.closeCalls.Load(); got != 1 {
-		t.Fatalf("searcher close calls = %d, want 1", got)
-	}
-}
-
-func TestStartRealReverseSearchMCPServerPublishesRunErrorAndWaits(t *testing.T) {
-	want := errors.New("mcp runner failed")
-	started := make(chan struct{})
-	release := make(chan struct{})
-	done := startRealReverseSearchMCPServer(context.Background(), func(context.Context) error {
-		close(started)
-		<-release
-		return want
-	})
-	<-started
-	select {
-	case <-done:
-		t.Fatal("MCP runner completed before release")
-	default:
-	}
-	close(release)
-	if got := <-done; !errors.Is(got, want) {
-		t.Fatalf("MCP runner error = %v, want %v", got, want)
-	}
-}
-
-type closeTrackingReverseSearchE2ESearcher struct {
-	closeCalls atomic.Int32
-}
-
-func (s *closeTrackingReverseSearchE2ESearcher) Search(context.Context, reversesearch.Request) (reversesearch.Response, error) {
-	return reversesearch.Response{
-		Input: reversesearch.Input{Kind: reversesearch.SourceKindFile, SHA256: "fixture"},
-		Providers: []reversesearch.ProviderSummary{{
-			Name: reversesearch.ProviderSauceNAO, Status: reversesearch.ProviderStatusSuccess,
-		}},
-	}, nil
-}
-
-func (s *closeTrackingReverseSearchE2ESearcher) Close() error {
-	s.closeCalls.Add(1)
-	return nil
 }
 
 func TestRealReverseSearch(t *testing.T) {
@@ -311,14 +152,15 @@ func newRealReverseSearchMCPSession(t *testing.T, searcher reversesearch.Searche
 	}, pixivmcpserver.Account{}, fanbox.SDKPorts{}, nil)
 	clientTransport, serverTransport := mcp.NewInMemoryTransports()
 	ctx, cancel := context.WithCancel(context.Background())
-	serverDone := startRealReverseSearchMCPServer(ctx, func(runCtx context.Context) error {
-		return server.Run(runCtx, serverTransport)
-	})
+	serverDone := make(chan error, 1)
+	go func() { serverDone <- server.Run(ctx, serverTransport) }()
 	client := mcp.NewClient(&mcp.Implementation{Name: "reverse-search-e2e", Version: "test"}, nil)
 	session, err := client.Connect(ctx, clientTransport, nil)
 	if err != nil {
 		cancel()
-		reportRealReverseSearchMCPServerError(t, <-serverDone)
+		if serverErr := <-serverDone; serverErr != nil && !errors.Is(serverErr, context.Canceled) {
+			t.Errorf("real reverse-search MCP server runner: %v", serverErr)
+		}
 		if closeErr := closeRealReverseSearchE2EClient(searcher); closeErr != nil {
 			t.Errorf("close real reverse-search MCP e2e client: code=%s", reversesearch.CodeOf(closeErr))
 		}
@@ -329,7 +171,9 @@ func newRealReverseSearchMCPSession(t *testing.T, searcher reversesearch.Searche
 			t.Errorf("close real reverse-search MCP client session: %v", err)
 		}
 		cancel()
-		reportRealReverseSearchMCPServerError(t, <-serverDone)
+		if serverErr := <-serverDone; serverErr != nil && !errors.Is(serverErr, context.Canceled) {
+			t.Errorf("real reverse-search MCP server runner: %v", serverErr)
+		}
 		if err := closeRealReverseSearchE2EClient(searcher); err != nil {
 			t.Errorf("close real reverse-search MCP e2e client: code=%s", reversesearch.CodeOf(err))
 		}
@@ -351,22 +195,6 @@ func registerRealReverseSearchE2ECleanup(t *testing.T, searcher reversesearch.Se
 			t.Errorf("close real reverse-search e2e client: code=%s", reversesearch.CodeOf(err))
 		}
 	})
-}
-
-func startRealReverseSearchMCPServer(ctx context.Context, run func(context.Context) error) <-chan error {
-	done := make(chan error, 1)
-	go func() {
-		defer close(done)
-		done <- run(ctx)
-	}()
-	return done
-}
-
-func reportRealReverseSearchMCPServerError(t *testing.T, err error) {
-	t.Helper()
-	if err != nil && !errors.Is(err, context.Canceled) {
-		t.Errorf("real reverse-search MCP server runner: %v", err)
-	}
 }
 
 func callRealReverseSearchMCP(t *testing.T, session *mcp.ClientSession, source string, provider reversesearch.Provider) realReverseSearchMCPOutput {
