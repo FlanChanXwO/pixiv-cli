@@ -137,6 +137,12 @@ func (s Snapshot) effectiveSpec(spec SettingSpec) (SettingValue, error) {
 func (s Snapshot) Runtime() (RuntimeConfig, error) {
 	var cfg RuntimeConfig
 	target := reflect.ValueOf(&cfg).Elem()
+	// 退役的 Gallery 调优键原本最先绑定；残留时同样最先报告迁移墓碑。
+	for _, alias := range []string{"mcp_gallery_cache_ttl", "mcp_gallery_concurrency"} {
+		if _, err := s.Effective(alias); err != nil {
+			return RuntimeConfig{}, err
+		}
+	}
 	// 字段声明顺序保留历史普通配置错误优先级；账号池由领域读取处理严格类型。
 	entries := make([]settingSpecFromTags, 0, len(mustSettingSpecs()))
 	for _, entry := range mustSettingSpecs() {

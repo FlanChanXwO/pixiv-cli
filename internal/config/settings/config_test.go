@@ -488,7 +488,7 @@ func TestMCPEndpointSettingsAreNotPublicConfiguration(t *testing.T) {
 }
 
 func TestGalleryCacheSettings(t *testing.T) {
-	for alias, want := range map[string]string{"mcp_gallery_animation_temp_capacity_mib": "1024", "mcp_gallery_cache_capacity_mib": "256", "mcp_gallery_cache_ttl": "15m0s", "mcp_gallery_concurrency": "4"} {
+	for alias, want := range map[string]string{"mcp_gallery_animation_temp_capacity_mib": "1024", "mcp_gallery_cache_capacity_mib": "256"} {
 		s, err := config.LoadSnapshotAt(filepath.Join(t.TempDir(), "config.toml"))
 		require.NoError(t, err)
 		v, err := s.Effective(alias)
@@ -499,8 +499,7 @@ func TestGalleryCacheSettings(t *testing.T) {
 	}
 	for _, tc := range []struct{ alias, raw string }{
 		{"mcp_gallery_animation_temp_capacity_mib", "0"}, {"mcp_gallery_animation_temp_capacity_mib", "-1"}, {"mcp_gallery_animation_temp_capacity_mib", "8796093022208"}, {"mcp_gallery_animation_temp_capacity_mib", "1.5"}, {"mcp_gallery_cache_capacity_mib", "-1"}, {"mcp_gallery_cache_capacity_mib", "8796093022208"},
-		{"mcp_gallery_cache_capacity_mib", "1.5"}, {"mcp_gallery_concurrency", "0"}, {"mcp_gallery_concurrency", "-1"},
-		{"mcp_gallery_cache_ttl", "0s"}, {"mcp_gallery_cache_ttl", "-1s"},
+		{"mcp_gallery_cache_capacity_mib", "1.5"},
 	} {
 		_, _, err := config.ParseSettingInput(tc.alias, tc.raw)
 		require.Error(t, err, tc)
@@ -521,11 +520,9 @@ func TestRuntimeGallerySettingsBindDeclaredValues(t *testing.T) {
 	for _, tc := range []struct {
 		name, toml     string
 		capacity, temp int64
-		concurrency    int
-		ttl            time.Duration
 	}{
-		{"defaults", "", 256, 1024, 4, 15 * time.Minute},
-		{"configured", "[mcp]\ngallery_cache_capacity_mib=0\ngallery_animation_temp_capacity_mib=512\ngallery_concurrency=2\ngallery_cache_ttl='3m'\n", 0, 512, 2, 3 * time.Minute},
+		{"defaults", "", 256, 1024},
+		{"configured", "[mcp]\ngallery_cache_capacity_mib=0\ngallery_animation_temp_capacity_mib=512\n", 0, 512},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			path := filepath.Join(t.TempDir(), "config.toml")
@@ -536,8 +533,6 @@ func TestRuntimeGallerySettingsBindDeclaredValues(t *testing.T) {
 			require.NoError(t, err)
 			require.Equal(t, tc.capacity, cfg.MCPGalleryCacheCapacityMiB)
 			require.Equal(t, tc.temp, cfg.MCPGalleryAnimationTempCapacityMiB)
-			require.Equal(t, tc.concurrency, cfg.MCPGalleryConcurrency)
-			require.Equal(t, tc.ttl, cfg.MCPGalleryCacheTTL)
 		})
 	}
 }

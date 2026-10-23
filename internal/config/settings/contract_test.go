@@ -118,8 +118,6 @@ var expectedAliases = []string{
 	"login_use_after_login",
 	"mcp_gallery_animation_temp_capacity_mib",
 	"mcp_gallery_cache_capacity_mib",
-	"mcp_gallery_cache_ttl",
-	"mcp_gallery_concurrency",
 	"output_json",
 	"request_interval",
 	"reverse_search_pixiv_only",
@@ -170,8 +168,6 @@ var expectedCLIManagedAliases = []string{
 	"log_level",
 	"mcp_gallery_animation_temp_capacity_mib",
 	"mcp_gallery_cache_capacity_mib",
-	"mcp_gallery_cache_ttl",
-	"mcp_gallery_concurrency",
 	"request_interval",
 	"reverse_search_pixiv_only",
 	"reverse_search_provider",
@@ -180,7 +176,7 @@ var expectedCLIManagedAliases = []string{
 
 // expectedRemovedAliases 是保留的迁移墓碑：仍可被 SettingSpecByAlias 查到（供 config unset
 // 清理），但不在 Valid/CLI 别名集合中，显式出现在配置里时返回 removed_setting。
-var expectedRemovedAliases = []string{"account_pool_accounts", "web_fallback_enabled"}
+var expectedRemovedAliases = []string{"account_pool_accounts", "mcp_gallery_cache_ttl", "mcp_gallery_concurrency", "web_fallback_enabled"}
 
 func TestSettingAliasSurfaceIsStable(t *testing.T) {
 	aliases := config.ValidSettingAliases()
@@ -288,8 +284,10 @@ func TestRemovedAliasTombstonesKeepTheirBehaviour(t *testing.T) {
 
 func TestRemovedAliasPresentInFileReportsRemovedSetting(t *testing.T) {
 	for alias, table := range map[string]string{
-		"web_fallback_enabled":  "[web]\nfallback_enabled = true\n",
-		"account_pool_accounts": "[account_pool]\naccounts = \"1,2\"\n",
+		"web_fallback_enabled":    "[web]\nfallback_enabled = true\n",
+		"account_pool_accounts":   "[account_pool]\naccounts = \"1,2\"\n",
+		"mcp_gallery_cache_ttl":   "[mcp]\ngallery_cache_ttl = \"3m\"\n",
+		"mcp_gallery_concurrency": "[mcp]\ngallery_concurrency = 2\n",
 	} {
 		t.Run(alias, func(t *testing.T) {
 			path := filepath.Join(t.TempDir(), "config.toml")
