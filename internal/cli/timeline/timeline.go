@@ -5,12 +5,9 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"io"
-	"strings"
 
-	requirements "github.com/FlanChanXwO/pixiv-cli/internal/cli/internal/command"
-	deps "github.com/FlanChanXwO/pixiv-cli/internal/cli/internal/pixivcmd"
-	"github.com/FlanChanXwO/pixiv-cli/internal/cli/internal/pixivcmd/listing"
+	commands "github.com/FlanChanXwO/pixiv-cli/internal/cli/internal/command"
+	pixivcmd "github.com/FlanChanXwO/pixiv-cli/internal/cli/internal/pixivcmd"
 	"github.com/FlanChanXwO/pixiv-cli/internal/searchfilter"
 	"github.com/FlanChanXwO/pixiv-cli/sdk"
 	pixiv "github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
@@ -20,7 +17,7 @@ import (
 // options 是关注新作与全站最新命令的共同选项。内容类型由边缘层显式选择，
 // 这样不会把插画、漫画和小说的独立 App 分页流错误合并。
 type options struct {
-	deps.CommandOptions
+	commands.Options
 	ndjson      bool
 	limit       int
 	page        int
@@ -30,16 +27,17 @@ type options struct {
 }
 
 type command struct {
-	data deps.Data
+	env commands.Env
+	run pixivcmd.Runner
 }
 
 // New builds the actual `pixiv timeline` command group.
-func New(data deps.Data) *cobra.Command {
-	a := command{data: data}
+func New(env commands.Env, exec pixivcmd.Executor) *cobra.Command {
+	a := command{env: env, run: pixivcmd.New(env.Out, exec)}
 	cmd := &cobra.Command{Use: "timeline", Short: "Browse authenticated Pixiv timelines"}
 	cmd.AddCommand(a.newFollowingCommand(), a.newLatestCommand())
-	data.BindNoInput(cmd)
-	requirements.Bind(cmd, requirements.PixivData())
+	env.BindNoInput(cmd)
+	commands.Bind(cmd, commands.PixivData())
 	return cmd
 }
 
@@ -48,19 +46,19 @@ func (a command) newFollowingCommand() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "following",
 		Short: "Browse new works from followed users",
-		Args:  a.data.ExactArgs(0, "pixiv timeline following --type artwork|novel"),
+		Args:  a.env.ExactArgs(0, "pixiv timeline following --type artwork|novel"),
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			return a.runFollowing(cmd, opts)
 		},
 	}
-	a.data.BindCommonFlags(cmd, &opts.CommandOptions)
-	listing.BindNDJSONFlag(cmd, &opts.ndjson)
-	listing.BindListFlags(cmd, &opts.limit, &opts.page)
+	a.env.BindCommonFlags(cmd, &opts.Options)
+	pixivcmd.BindNDJSONFlag(cmd, &opts.ndjson)
+	pixivcmd.BindListFlags(cmd, &opts.limit, &opts.page)
 	cmd.Flags().StringVarP(&opts.contentType, "type", "t", "", "required entity type: artwork or novel")
 	cmd.Flags().StringVar(&opts.artworkType, "content-type", string(pixiv.SearchContentTypeAll), "artwork subtype: all, illust-and-ugoira, illust, manga, ugoira")
 	cmd.Flags().StringVar(&opts.restrict, "restrict", opts.restrict, "follow visibility: public or private")
-	a.data.BindNoInput(cmd)
-	requirements.Bind(cmd, requirements.PixivData())
+	a.env.BindNoInput(cmd)
+	commands.Bind(cmd, commands.PixivData())
 	return cmd
 }
 
@@ -69,18 +67,18 @@ func (a command) newLatestCommand() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "latest",
 		Short: "Browse Pixiv's latest works",
-		Args:  a.data.ExactArgs(0, "pixiv timeline latest --type artwork|novel [--content-type illust|manga]"),
+		Args:  a.env.ExactArgs(0, "pixiv timeline latest --type artwork|novel [--content-type illust|manga]"),
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			return a.runLatest(cmd, opts)
 		},
 	}
-	a.data.BindCommonFlags(cmd, &opts.CommandOptions)
-	listing.BindNDJSONFlag(cmd, &opts.ndjson)
-	listing.BindListFlags(cmd, &opts.limit, &opts.page)
+	a.env.BindCommonFlags(cmd, &opts.Options)
+	pixivcmd.BindNDJSONFlag(cmd, &opts.ndjson)
+	pixivcmd.BindListFlags(cmd, &opts.limit, &opts.page)
 	cmd.Flags().StringVarP(&opts.contentType, "type", "t", "", "required entity type: artwork or novel; use --content-type for subtype")
 	cmd.Flags().StringVar(&opts.artworkType, "content-type", opts.artworkType, "artwork subtype: illust or manga")
-	a.data.BindNoInput(cmd)
-	requirements.Bind(cmd, requirements.PixivData())
+	a.env.BindNoInput(cmd)
+	commands.Bind(cmd, commands.PixivData())
 	return cmd
 }
 
@@ -116,8 +114,7 @@ func (a command) runFollowing(cmd *cobra.Command, opts options) error {
 			// upstream cursor 的同时本地筛选，才能让 logical limit 跨批次补足。
 			return filterFollowingArtworks(result.Items, artworkFilter), result.Next, nil
 		}
-		return a.runner().RunPooledIllustList(cmd.Context(), listing.Request(request), plan, jsonOut, ndjson, "new artworks from followed users", fetch,
-			func(items []pixiv.Artwork, start int) error { return printArtworks(a.data.Output, items) })
+		return a.run.RunArtworks(cmd.Context(), pixivcmd.Request(request), plan, pixivcmd.FormatOf(jsonOut, ndjson), pixivcmd.ArtworkList{Heading: pixivcmd.Static("new artworks from followed users"), Fetch: fetch, Print: func(items []pixiv.Artwork, _ int) error { return pixivcmd.PrintArtworks(a.env.Out, items) }})
 	}
 	fetch := func(client *pixiv.Client, ctx context.Context, cursor sdk.Cursor) ([]pixiv.Novel, sdk.Cursor, error) {
 		result, err := client.FollowingNovels(ctx, pixiv.FollowingNovelsRequest{Restrict: pixiv.Restrict(opts.restrict), Cursor: cursor})
@@ -126,8 +123,7 @@ func (a command) runFollowing(cmd *cobra.Command, opts options) error {
 		}
 		return result.Items, result.Next, nil
 	}
-	return a.runner().RunPooledNovelList(cmd.Context(), listing.Request(request), plan, jsonOut, ndjson, "new novels from followed users", fetch,
-		func(items []pixiv.Novel) error { return printNovels(a.data.Output, items) })
+	return a.run.RunNovels(cmd.Context(), pixivcmd.Request(request), plan, pixivcmd.FormatOf(jsonOut, ndjson), pixivcmd.NovelList{Heading: "new novels from followed users", Fetch: fetch, Print: func(items []pixiv.Novel) error { return pixivcmd.PrintNovels(a.env.Out, items) }})
 }
 
 func (a command) runLatest(cmd *cobra.Command, opts options) error {
@@ -160,8 +156,7 @@ func (a command) runLatest(cmd *cobra.Command, opts options) error {
 			}
 			return result.Items, result.Next, nil
 		}
-		return a.runner().RunPooledNovelList(cmd.Context(), listing.Request(request), plan, jsonOut, ndjson, "latest novels", fetch,
-			func(items []pixiv.Novel) error { return printNovels(a.data.Output, items) })
+		return a.run.RunNovels(cmd.Context(), pixivcmd.Request(request), plan, pixivcmd.FormatOf(jsonOut, ndjson), pixivcmd.NovelList{Heading: "latest novels", Fetch: fetch, Print: func(items []pixiv.Novel) error { return pixivcmd.PrintNovels(a.env.Out, items) }})
 	}
 	fetch := func(client *pixiv.Client, ctx context.Context, cursor sdk.Cursor) ([]pixiv.Artwork, sdk.Cursor, error) {
 		result, err := client.LatestArtworks(ctx, pixiv.LatestArtworksRequest{ContentType: pixiv.SearchContentType(opts.artworkType), Cursor: cursor})
@@ -170,65 +165,31 @@ func (a command) runLatest(cmd *cobra.Command, opts options) error {
 		}
 		return result.Items, result.Next, nil
 	}
-	return a.runner().RunPooledIllustList(cmd.Context(), listing.Request(request), plan, jsonOut, ndjson, fmt.Sprintf("latest %s", opts.artworkType), fetch,
-		func(items []pixiv.Artwork, start int) error { return printArtworks(a.data.Output, items) })
+	return a.run.RunArtworks(cmd.Context(), pixivcmd.Request(request), plan, pixivcmd.FormatOf(jsonOut, ndjson), pixivcmd.ArtworkList{Heading: pixivcmd.Static(fmt.Sprintf("latest %s", opts.artworkType)), Fetch: fetch, Print: func(items []pixiv.Artwork, _ int) error { return pixivcmd.PrintArtworks(a.env.Out, items) }})
 }
 
 // resolve 统一两个 timeline 命令的分页、传输覆盖与输出模式判定，使 --ndjson 与
 // --json 的互斥、自动 NDJSON 判定和 JSON 解析顺序保持一致。
-func (a command) resolve(cmd *cobra.Command, opts options) (listing.Plan, deps.Request, bool, bool, error) {
-	plan, err := listing.ParsePlan(cmd, opts.limit, opts.page)
+func (a command) resolve(cmd *cobra.Command, opts options) (pixivcmd.Plan, pixivcmd.Request, bool, bool, error) {
+	plan, err := pixivcmd.ParsePlan(cmd, opts.limit, opts.page)
 	if err != nil {
-		return listing.Plan{}, deps.Request{}, false, false, err
+		return pixivcmd.Plan{}, pixivcmd.Request{}, false, false, err
 	}
-	request, err := a.data.Request(cmd, opts.CommandOptions)
+	request, err := pixivcmd.BuildRequest(cmd, opts.Options)
 	if err != nil {
-		return listing.Plan{}, deps.Request{}, false, false, err
+		return pixivcmd.Plan{}, pixivcmd.Request{}, false, false, err
 	}
 	if opts.ndjson && cmd.Flags().Changed("json") {
-		return listing.Plan{}, deps.Request{}, false, false, a.data.Usage(errors.New("--ndjson cannot be used with --json"))
+		return pixivcmd.Plan{}, pixivcmd.Request{}, false, false, a.env.UsageError(errors.New("--ndjson cannot be used with --json"))
 	}
 	jsonOut := false
 	if !opts.ndjson {
-		jsonOut, err = a.data.JSONOut(a.data.JSONOverride(cmd, opts.CommandOptions))
+		jsonOut, err = a.env.JSONOut(a.env.JSONOverride(cmd, opts.Options))
 		if err != nil {
-			return listing.Plan{}, deps.Request{}, false, false, err
+			return pixivcmd.Plan{}, pixivcmd.Request{}, false, false, err
 		}
 	}
-	return plan, request, jsonOut, a.data.ShouldAutoNDJSON(cmd, opts.ndjson, jsonOut), nil
-}
-
-// runner is resolved only after Cobra has accepted the command input and the
-// root has prepared the command's declared resources.
-func (a command) runner() listing.Runner {
-	return listing.New(a.data.Output, func(ctx context.Context, request listing.Request, attempt func(context.Context, *pixiv.Client) (bool, error)) error {
-		return a.data.Pooled(ctx, deps.Request(request), attempt)
-	})
-}
-
-func printArtworks(out io.Writer, items []pixiv.Artwork) error {
-	for _, item := range items {
-		if _, err := fmt.Fprintf(out, "https://www.pixiv.net/artworks/%d\n", item.ID); err != nil {
-			return err
-		}
-		tags := make([]string, 0, len(item.Tags))
-		for _, tag := range item.Tags {
-			tags = append(tags, tag.Name)
-		}
-		if _, err := fmt.Fprintf(out, "%d %q by %s bookmarks:%d views:%d tags:%s\n", item.ID, item.Title, item.User.Name, item.TotalBookmarks, item.TotalViews, strings.Join(tags, ",")); err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
-func printNovels(out io.Writer, items []pixiv.Novel) error {
-	for _, item := range items {
-		if _, err := fmt.Fprintf(out, "%d %s — %s\n", item.ID, item.Title, item.User.Name); err != nil {
-			return err
-		}
-	}
-	return nil
+	return plan, request, jsonOut, a.env.AutoNDJSON(cmd, opts.ndjson, jsonOut), nil
 }
 
 func filterFollowingArtworks(items []pixiv.Artwork, filter searchfilter.Filter) []pixiv.Artwork {

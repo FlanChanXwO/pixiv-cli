@@ -4,16 +4,14 @@ package bookmark
 import (
 	"bytes"
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
 	"strings"
 
-	requirements "github.com/FlanChanXwO/pixiv-cli/internal/cli/internal/command"
+	commands "github.com/FlanChanXwO/pixiv-cli/internal/cli/internal/command"
 	inputcmd "github.com/FlanChanXwO/pixiv-cli/internal/cli/internal/input"
-	deps "github.com/FlanChanXwO/pixiv-cli/internal/cli/internal/pixivcmd"
-	"github.com/FlanChanXwO/pixiv-cli/internal/cli/internal/pixivcmd/listing"
+	pixivcmd "github.com/FlanChanXwO/pixiv-cli/internal/cli/internal/pixivcmd"
 	"github.com/FlanChanXwO/pixiv-cli/internal/cli/internal/resolver"
 	"github.com/FlanChanXwO/pixiv-cli/internal/pagination"
 	record "github.com/FlanChanXwO/pixiv-cli/internal/record"
@@ -37,7 +35,7 @@ var novelRecordTypes = map[string]struct{}{
 }
 
 type listOptions struct {
-	deps.CommandOptions
+	commands.Options
 	ndjson   bool
 	limit    int
 	page     int
@@ -47,7 +45,7 @@ type listOptions struct {
 }
 
 type mutationOptions struct {
-	deps.CommandOptions
+	commands.Options
 	typ      string
 	restrict string
 	tags     []string
@@ -55,7 +53,9 @@ type mutationOptions struct {
 }
 
 type command struct {
-	data deps.Data
+	env    commands.Env
+	runner pixivcmd.Runner
+	exec   pixivcmd.Executor
 }
 
 type bookmarkListItem struct {
@@ -95,11 +95,11 @@ func (c bookmarkStreamCursor) String() string {
 }
 
 // New builds the actual `pixiv bookmark` group command.
-func New(data deps.Data) *cobra.Command {
-	a := command{data: data}
+func New(env commands.Env, exec pixivcmd.Executor) *cobra.Command {
+	a := command{env: env, runner: pixivcmd.New(env.Out, exec), exec: exec}
 	cmd := &cobra.Command{Use: "bookmark", Short: "Manage artwork and novel bookmarks"}
 	cmd.AddCommand(a.newList(), a.newTags(), a.newDetail(), a.newAdd(), a.newRemove())
-	data.BindNoInput(cmd)
+	env.BindNoInput(cmd)
 	return cmd
 }
 
@@ -108,7 +108,7 @@ func (a command) newList() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "list [USER_ID_OR_URL]",
 		Short: "List artwork or novel bookmarks",
-		Args:  a.data.MaxArgs(1, "pixiv bookmark list [options] [USER_ID_OR_URL]"),
+		Args:  a.env.MaxArgs(1, "pixiv bookmark list [options] [USER_ID_OR_URL]"),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return a.runList(cmd, args, opts)
 		},
@@ -117,8 +117,8 @@ func (a command) newList() *cobra.Command {
 	cmd.Flags().StringVarP(&opts.typ, "type", "t", opts.typ, "entity type: artwork, novel, or all")
 	cmd.Flags().StringVar(&opts.restrict, "restrict", opts.restrict, "bookmark visibility (public or private)")
 	cmd.Flags().StringVar(&opts.tag, "tag", "", "filter by bookmark tag")
-	a.data.BindTextOrRecord(cmd, 0, 1, 0)
-	requirements.Bind(cmd, requirements.PixivData())
+	a.env.BindTextOrRecord(cmd, 0, 1, 0)
+	commands.Bind(cmd, commands.PixivData())
 	return cmd
 }
 
@@ -127,7 +127,7 @@ func (a command) newTags() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "tags [USER_ID_OR_URL]",
 		Short: "List artwork or novel bookmark tags",
-		Args:  a.data.MaxArgs(1, "pixiv bookmark tags [options] [USER_ID_OR_URL]"),
+		Args:  a.env.MaxArgs(1, "pixiv bookmark tags [options] [USER_ID_OR_URL]"),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return a.runTags(cmd, args, opts)
 		},
@@ -135,13 +135,13 @@ func (a command) newTags() *cobra.Command {
 	a.bindListFlags(cmd, &opts)
 	cmd.Flags().StringVarP(&opts.typ, "type", "t", opts.typ, "entity type: artwork, novel, or all")
 	cmd.Flags().StringVar(&opts.restrict, "restrict", opts.restrict, "bookmark visibility (public or private)")
-	a.data.BindTextOrRecord(cmd, 0, 1, 0)
-	requirements.Bind(cmd, requirements.PixivData())
+	a.env.BindTextOrRecord(cmd, 0, 1, 0)
+	commands.Bind(cmd, commands.PixivData())
 	return cmd
 }
 
 func (a command) newDetail() *cobra.Command {
-	options := deps.CommandOptions{}
+	options := commands.Options{}
 	typ := "artwork"
 	cmd := &cobra.Command{
 		Use:   "detail ARTWORK_ID_OR_NOVEL_ID_OR_URL",
@@ -154,7 +154,7 @@ func (a command) newDetail() *cobra.Command {
 				}
 				return nil
 			}
-			return a.data.ExactArgs(1, usage)(cmd, args)
+			return a.env.ExactArgs(1, usage)(cmd, args)
 		},
 		RunE: func(cmd *cobra.Command, args []string) error {
 			input, err := a.bookmarkDetailInput(cmd, args, typ)
@@ -165,15 +165,15 @@ func (a command) newDetail() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			request, err := a.data.Request(cmd, options)
+			request, err := pixivcmd.BuildRequest(cmd, options)
 			if err != nil {
 				return err
 			}
-			jsonOut, err := a.data.JSONOut(a.data.JSONOverride(cmd, options))
+			jsonOut, err := a.env.JSONOut(a.env.JSONOverride(cmd, options))
 			if err != nil {
 				return err
 			}
-			result, err := a.data.Pooled.Read(cmd.Context(), request, func(ctx context.Context, client *pixiv.Client) (bookmarkDetailResult, error) {
+			result, err := pixivcmd.Read(a.runner, cmd.Context(), request, func(ctx context.Context, client *pixiv.Client) (bookmarkDetailResult, error) {
 				switch target.ResultKind {
 				case resolver.ResultKindArtwork:
 					value, err := client.ArtworkBookmark(ctx, pixiv.ArtworkBookmarkRequest{ArtworkID: target.ID})
@@ -190,33 +190,33 @@ func (a command) newDetail() *cobra.Command {
 			}
 			if jsonOut {
 				if result.kind == "novel" {
-					return a.data.WriteJSON(result.novel)
+					return a.env.PrintJSON(result.novel)
 				}
-				return a.data.WriteJSON(result.artwork)
+				return a.env.PrintJSON(result.artwork)
 			}
 			restrict, tags := result.restrictAndTags()
 			if restrict == "" {
-				_, err = fmt.Fprintln(a.data.Output, "bookmarked: no")
+				_, err = fmt.Fprintln(a.env.Out, "bookmarked: no")
 				return err
 			}
-			if _, err := fmt.Fprintf(a.data.Output, "bookmarked: yes\nrestrict: %s\n", restrict); err != nil {
+			if _, err := fmt.Fprintf(a.env.Out, "bookmarked: yes\nrestrict: %s\n", restrict); err != nil {
 				return err
 			}
-			_, err = fmt.Fprintf(a.data.Output, "tags: %s\n", strings.Join(tags, ","))
+			_, err = fmt.Fprintf(a.env.Out, "tags: %s\n", strings.Join(tags, ","))
 			return err
 		},
 	}
-	a.data.BindCommonFlags(cmd, &options)
+	a.env.BindCommonFlags(cmd, &options)
 	cmd.Flags().StringVarP(&typ, "type", "t", typ, "entity type: artwork or novel")
-	a.data.BindTextOrRecord(cmd, 0, 1, 0)
-	requirements.Bind(cmd, requirements.PixivData())
+	a.env.BindTextOrRecord(cmd, 0, 1, 0)
+	commands.Bind(cmd, commands.PixivData())
 	return cmd
 }
 
 func (a command) bookmarkDetailInput(cmd *cobra.Command, args []string, typ string) (resolver.Input, error) {
 	input := resolver.Input{Type: typ}
 	if inputcmd.ModeOf(cmd) == inputcmd.RecordMode {
-		body, err := io.ReadAll(inputcmd.Reader(cmd, a.data.Input))
+		body, err := io.ReadAll(inputcmd.Reader(cmd, a.env.In))
 		if err != nil {
 			return resolver.Input{}, fmt.Errorf("read bookmark detail record: %w", err)
 		}
@@ -279,17 +279,17 @@ func (a command) newAdd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "add [ARTWORK_ID_OR_NOVEL_ID]",
 		Short: "Bookmark an artwork or novel",
-		Args:  a.data.ActionInputArgs("pixiv bookmark add [options] [ARTWORK_ID_OR_NOVEL_ID]"),
+		Args:  a.env.ActionInputArgs("pixiv bookmark add [options] [ARTWORK_ID_OR_NOVEL_ID]"),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			typ, err := bookmarkMutationType(opts.typ)
 			if err != nil {
-				return a.data.Usage(err)
+				return a.env.UsageError(err)
 			}
 			if _, err := inputcmd.RecordFailureStrategy(opts.onError); err != nil {
-				return a.data.Usage(err)
+				return a.env.UsageError(err)
 			}
-			invoke := a.actionInvoker(cmd, opts.CommandOptions, func(ctx context.Context, request deps.Request, id int64) error {
-				return deps.Write(a.data, ctx, request, func(ctx context.Context, client *pixiv.Client) error {
+			invoke := a.actionInvoker(cmd, opts.Options, func(ctx context.Context, request pixivcmd.Request, id int64) error {
+				return a.runner.Write(ctx, request, func(ctx context.Context, client *pixiv.Client) error {
 					if typ == "novel" {
 						return client.AddNovelBookmark(ctx, pixiv.AddNovelBookmarkRequest{NovelID: id, Restrict: pixiv.Restrict(opts.restrict), Tags: opts.tags})
 					}
@@ -301,22 +301,22 @@ func (a command) newAdd() *cobra.Command {
 				if typ == "novel" {
 					recordTypes = novelRecordTypes
 				}
-				return a.data.ConsumeActionRecords(cmd, "bookmark_add", opts.onError, recordTypes, invoke)
+				return a.env.ConsumeActionRecords(cmd, "bookmark_add", opts.onError, recordTypes, invoke)
 			}
 			id, err := inputcmd.PositiveInt64(args[0], "bookmark target ID")
 			if err != nil {
-				return a.data.Usage(err)
+				return a.env.UsageError(err)
 			}
 			return invoke(cmd.Context(), id)
 		},
 	}
-	a.data.BindActionFlags(cmd, &opts.ProxyOptions)
+	a.env.BindActionFlags(cmd, &opts.ProxyOptions)
 	cmd.Flags().StringVarP(&opts.typ, "type", "t", opts.typ, "entity type: artwork or novel")
 	cmd.Flags().StringVar(&opts.restrict, "restrict", opts.restrict, "bookmark visibility (public or private)")
 	cmd.Flags().StringArrayVar(&opts.tags, "tag", nil, "bookmark tag; may be repeated")
 	cmd.Flags().StringVar(&opts.onError, "on-error", "skip", "record failure strategy: skip or fail-fast")
-	a.data.BindTextOrRecord(cmd, 0, 1, 0)
-	requirements.Bind(cmd, requirements.PixivData())
+	a.env.BindTextOrRecord(cmd, 0, 1, 0)
+	commands.Bind(cmd, commands.PixivData())
 	return cmd
 }
 
@@ -325,17 +325,17 @@ func (a command) newRemove() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "remove [ARTWORK_ID_OR_NOVEL_ID]",
 		Short: "Remove an artwork or novel bookmark",
-		Args:  a.data.ActionInputArgs("pixiv bookmark remove [options] [ARTWORK_ID_OR_NOVEL_ID]"),
+		Args:  a.env.ActionInputArgs("pixiv bookmark remove [options] [ARTWORK_ID_OR_NOVEL_ID]"),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			typ, err := bookmarkMutationType(opts.typ)
 			if err != nil {
-				return a.data.Usage(err)
+				return a.env.UsageError(err)
 			}
 			if _, err := inputcmd.RecordFailureStrategy(opts.onError); err != nil {
-				return a.data.Usage(err)
+				return a.env.UsageError(err)
 			}
-			invoke := a.actionInvoker(cmd, opts.CommandOptions, func(ctx context.Context, request deps.Request, id int64) error {
-				return deps.Write(a.data, ctx, request, func(ctx context.Context, client *pixiv.Client) error {
+			invoke := a.actionInvoker(cmd, opts.Options, func(ctx context.Context, request pixivcmd.Request, id int64) error {
+				return a.runner.Write(ctx, request, func(ctx context.Context, client *pixiv.Client) error {
 					if typ == "novel" {
 						return client.RemoveNovelBookmark(ctx, pixiv.RemoveNovelBookmarkRequest{NovelID: id})
 					}
@@ -347,27 +347,27 @@ func (a command) newRemove() *cobra.Command {
 				if typ == "novel" {
 					recordTypes = novelRecordTypes
 				}
-				return a.data.ConsumeActionRecords(cmd, "bookmark_remove", opts.onError, recordTypes, invoke)
+				return a.env.ConsumeActionRecords(cmd, "bookmark_remove", opts.onError, recordTypes, invoke)
 			}
 			id, err := inputcmd.PositiveInt64(args[0], "bookmark target ID")
 			if err != nil {
-				return a.data.Usage(err)
+				return a.env.UsageError(err)
 			}
 			return invoke(cmd.Context(), id)
 		},
 	}
-	a.data.BindActionFlags(cmd, &opts.ProxyOptions)
+	a.env.BindActionFlags(cmd, &opts.ProxyOptions)
 	cmd.Flags().StringVarP(&opts.typ, "type", "t", opts.typ, "entity type: artwork or novel")
 	cmd.Flags().StringVar(&opts.onError, "on-error", "skip", "record failure strategy: skip or fail-fast")
-	a.data.BindTextOrRecord(cmd, 0, 1, 0)
-	requirements.Bind(cmd, requirements.PixivData())
+	a.env.BindTextOrRecord(cmd, 0, 1, 0)
+	commands.Bind(cmd, commands.PixivData())
 	return cmd
 }
 
 func (a command) bindListFlags(cmd *cobra.Command, opts *listOptions) {
-	a.data.BindCommonFlags(cmd, &opts.CommandOptions)
-	listing.BindNDJSONFlag(cmd, &opts.ndjson)
-	listing.BindListFlags(cmd, &opts.limit, &opts.page)
+	a.env.BindCommonFlags(cmd, &opts.Options)
+	pixivcmd.BindNDJSONFlag(cmd, &opts.ndjson)
+	pixivcmd.BindListFlags(cmd, &opts.limit, &opts.page)
 }
 
 func (a command) runList(cmd *cobra.Command, args []string, opts listOptions) error {
@@ -384,7 +384,7 @@ func (a command) runList(cmd *cobra.Command, args []string, opts listOptions) er
 }
 
 func (a command) runAllList(cmd *cobra.Command, args []string, opts listOptions) error {
-	plan, err := listing.ParsePlan(cmd, opts.limit, opts.page)
+	plan, err := pixivcmd.ParsePlan(cmd, opts.limit, opts.page)
 	if err != nil {
 		return err
 	}
@@ -395,26 +395,26 @@ func (a command) runAllList(cmd *cobra.Command, args []string, opts listOptions)
 			return err
 		}
 	}
-	request, err := a.data.Request(cmd, opts.CommandOptions)
+	request, err := pixivcmd.BuildRequest(cmd, opts.Options)
 	if err != nil {
 		return err
 	}
 	if opts.ndjson && cmd.Flags().Changed("json") {
-		return a.data.Usage(errors.New("--ndjson cannot be used with --json"))
+		return a.env.UsageError(errors.New("--ndjson cannot be used with --json"))
 	}
 	jsonOut := false
 	if !opts.ndjson {
-		jsonOut, err = a.data.JSONOut(a.data.JSONOverride(cmd, opts.CommandOptions))
+		jsonOut, err = a.env.JSONOut(a.env.JSONOverride(cmd, opts.Options))
 		if err != nil {
 			return err
 		}
 	}
-	ndjson := a.data.ShouldAutoNDJSON(cmd, opts.ndjson, jsonOut)
+	ndjson := a.env.AutoNDJSON(cmd, opts.ndjson, jsonOut)
 
-	return a.data.Pooled(cmd.Context(), request, func(ctx context.Context, client *pixiv.Client) (bool, error) {
+	return a.exec(cmd.Context(), request, func(ctx context.Context, client *pixiv.Client) (bool, error) {
 		attemptUserID := userID
 		if attemptUserID == 0 {
-			resolvedUserID, err := deps.CurrentUserID(client)
+			resolvedUserID, err := pixivcmd.CurrentUserID(client)
 			if err != nil {
 				return false, err
 			}
@@ -436,7 +436,7 @@ func (a command) runAllList(cmd *cobra.Command, args []string, opts listOptions)
 				if err != nil {
 					return false, err
 				}
-				if err := writeJSONLine(&staged, value); err != nil {
+				if err := pixivcmd.WriteJSONLine(&staged, value); err != nil {
 					return false, err
 				}
 			}
@@ -449,7 +449,7 @@ func (a command) runAllList(cmd *cobra.Command, args []string, opts listOptions)
 				}
 				records = append(records, value)
 			}
-			if err := writeJSONValue(&staged, struct {
+			if err := pixivcmd.WriteJSONValue(&staged, struct {
 				Records []record.Record `json:"records"`
 			}{Records: records}); err != nil {
 				return false, err
@@ -459,16 +459,16 @@ func (a command) runAllList(cmd *cobra.Command, args []string, opts listOptions)
 				var err error
 				switch item.kind {
 				case "artwork":
-					err = printArtworks(&staged, []pixiv.Artwork{item.artwork}, 0)
+					err = pixivcmd.PrintArtworks(&staged, []pixiv.Artwork{item.artwork})
 				case "novel":
-					err = printNovels(&staged, []pixiv.Novel{item.novel})
+					err = pixivcmd.PrintNovels(&staged, []pixiv.Novel{item.novel})
 				}
 				if err != nil {
 					return false, err
 				}
 			}
 		}
-		_, err = io.Copy(a.data.Output, &staged)
+		_, err = io.Copy(a.env.Out, &staged)
 		return true, err
 	})
 }
@@ -536,7 +536,7 @@ func (item bookmarkListItem) record() (record.Record, error) {
 }
 
 func (a command) runArtworkList(cmd *cobra.Command, args []string, opts listOptions) error {
-	plan, err := listing.ParsePlan(cmd, opts.limit, opts.page)
+	plan, err := pixivcmd.ParsePlan(cmd, opts.limit, opts.page)
 	if err != nil {
 		return err
 	}
@@ -547,25 +547,25 @@ func (a command) runArtworkList(cmd *cobra.Command, args []string, opts listOpti
 			return err
 		}
 	}
-	request, err := a.data.Request(cmd, opts.CommandOptions)
+	request, err := pixivcmd.BuildRequest(cmd, opts.Options)
 	if err != nil {
 		return err
 	}
 	if opts.ndjson && cmd.Flags().Changed("json") {
-		return a.data.Usage(errors.New("--ndjson cannot be used with --json"))
+		return a.env.UsageError(errors.New("--ndjson cannot be used with --json"))
 	}
 	jsonOut := false
 	if !opts.ndjson {
-		jsonOut, err = a.data.JSONOut(a.data.JSONOverride(cmd, opts.CommandOptions))
+		jsonOut, err = a.env.JSONOut(a.env.JSONOverride(cmd, opts.Options))
 		if err != nil {
 			return err
 		}
 	}
-	ndjson := a.data.ShouldAutoNDJSON(cmd, opts.ndjson, jsonOut)
+	ndjson := a.env.AutoNDJSON(cmd, opts.ndjson, jsonOut)
 	userID := requestedUserID
 	fetch := func(client *pixiv.Client, ctx context.Context, cursor sdk.Cursor) ([]pixiv.Artwork, sdk.Cursor, error) {
 		if userID == 0 {
-			userID, err = deps.CurrentUserID(client)
+			userID, err = pixivcmd.CurrentUserID(client)
 			if err != nil {
 				return nil, sdk.Cursor{}, err
 			}
@@ -576,15 +576,15 @@ func (a command) runArtworkList(cmd *cobra.Command, args []string, opts listOpti
 		}
 		return result.Items, result.Next, nil
 	}
-	return a.runner().RunPooledIllustListWithHeading(cmd.Context(), listing.Request(request), plan, jsonOut, ndjson, func() string {
+	return a.runner.RunArtworks(cmd.Context(), pixivcmd.Request(request), plan, pixivcmd.FormatOf(jsonOut, ndjson), pixivcmd.ArtworkList{Heading: func() string {
 		return fmt.Sprintf("bookmarks by %d", userID)
-	}, fetch, func(items []pixiv.Artwork, start int) error {
-		return printArtworks(a.data.Output, items, start)
-	})
+	}, Fetch: fetch, Print: func(items []pixiv.Artwork, _ int) error {
+		return pixivcmd.PrintArtworks(a.env.Out, items)
+	}})
 }
 
 func (a command) runNovelList(cmd *cobra.Command, args []string, opts listOptions) error {
-	plan, err := listing.ParsePlan(cmd, opts.limit, opts.page)
+	plan, err := pixivcmd.ParsePlan(cmd, opts.limit, opts.page)
 	if err != nil {
 		return err
 	}
@@ -595,25 +595,25 @@ func (a command) runNovelList(cmd *cobra.Command, args []string, opts listOption
 			return err
 		}
 	}
-	request, err := a.data.Request(cmd, opts.CommandOptions)
+	request, err := pixivcmd.BuildRequest(cmd, opts.Options)
 	if err != nil {
 		return err
 	}
 	if opts.ndjson && cmd.Flags().Changed("json") {
-		return a.data.Usage(errors.New("--ndjson cannot be used with --json"))
+		return a.env.UsageError(errors.New("--ndjson cannot be used with --json"))
 	}
 	jsonOut := false
 	if !opts.ndjson {
-		jsonOut, err = a.data.JSONOut(a.data.JSONOverride(cmd, opts.CommandOptions))
+		jsonOut, err = a.env.JSONOut(a.env.JSONOverride(cmd, opts.Options))
 		if err != nil {
 			return err
 		}
 	}
-	ndjson := a.data.ShouldAutoNDJSON(cmd, opts.ndjson, jsonOut)
+	ndjson := a.env.AutoNDJSON(cmd, opts.ndjson, jsonOut)
 	userID := requestedUserID
 	fetch := func(client *pixiv.Client, ctx context.Context, cursor sdk.Cursor) ([]pixiv.Novel, sdk.Cursor, error) {
 		if userID == 0 {
-			userID, err = deps.CurrentUserID(client)
+			userID, err = pixivcmd.CurrentUserID(client)
 			if err != nil {
 				return nil, sdk.Cursor{}, err
 			}
@@ -624,15 +624,9 @@ func (a command) runNovelList(cmd *cobra.Command, args []string, opts listOption
 		}
 		return result.Items, result.Next, nil
 	}
-	return a.runner().RunPooledNovelList(cmd.Context(), listing.Request(request), plan, jsonOut, ndjson, fmt.Sprintf("novel bookmarks by %d", userID), fetch, func(items []pixiv.Novel) error {
-		return printNovels(a.data.Output, items)
-	})
-}
-
-func (a command) runner() listing.Runner {
-	return listing.New(a.data.Output, func(ctx context.Context, request listing.Request, attempt func(context.Context, *pixiv.Client) (bool, error)) error {
-		return a.data.Pooled(ctx, deps.Request(request), attempt)
-	})
+	return a.runner.RunNovels(cmd.Context(), pixivcmd.Request(request), plan, pixivcmd.FormatOf(jsonOut, ndjson), pixivcmd.NovelList{Heading: fmt.Sprintf("novel bookmarks by %d", userID), Fetch: fetch, Print: func(items []pixiv.Novel) error {
+		return pixivcmd.PrintNovels(a.env.Out, items)
+	}})
 }
 
 func bookmarkContract(operation string) resolver.Contract {
@@ -662,7 +656,7 @@ func bookmarkTagsContract() resolver.Contract {
 func (a command) resolveBookmarkUserID(cmd *cobra.Command, args []string, typ string, contract resolver.Contract) (int64, error) {
 	input := resolver.Input{Type: typ}
 	if inputcmd.ModeOf(cmd) == inputcmd.RecordMode {
-		body, err := io.ReadAll(inputcmd.Reader(cmd, a.data.Input))
+		body, err := io.ReadAll(inputcmd.Reader(cmd, a.env.In))
 		if err != nil {
 			return 0, fmt.Errorf("read bookmark target record: %w", err)
 		}
@@ -694,7 +688,7 @@ func (a command) runTags(cmd *cobra.Command, args []string, opts listOptions) er
 	if opts.typ != "artwork" && opts.typ != "novel" {
 		return errors.New("bookmark tags type must be one of artwork, novel, all")
 	}
-	plan, err := listing.ParsePlan(cmd, opts.limit, opts.page)
+	plan, err := pixivcmd.ParsePlan(cmd, opts.limit, opts.page)
 	if err != nil {
 		return err
 	}
@@ -705,26 +699,26 @@ func (a command) runTags(cmd *cobra.Command, args []string, opts listOptions) er
 			return err
 		}
 	}
-	request, err := a.data.Request(cmd, opts.CommandOptions)
+	request, err := pixivcmd.BuildRequest(cmd, opts.Options)
 	if err != nil {
 		return err
 	}
 	if opts.ndjson && cmd.Flags().Changed("json") {
-		return a.data.Usage(errors.New("--ndjson cannot be used with --json"))
+		return a.env.UsageError(errors.New("--ndjson cannot be used with --json"))
 	}
 	jsonOut := false
 	if !opts.ndjson {
-		jsonOut, err = a.data.JSONOut(a.data.JSONOverride(cmd, opts.CommandOptions))
+		jsonOut, err = a.env.JSONOut(a.env.JSONOverride(cmd, opts.Options))
 		if err != nil {
 			return err
 		}
 	}
-	ndjson := a.data.ShouldAutoNDJSON(cmd, opts.ndjson, jsonOut)
+	ndjson := a.env.AutoNDJSON(cmd, opts.ndjson, jsonOut)
 	userID := requestedUserID
-	return a.data.Pooled(cmd.Context(), request, func(ctx context.Context, client *pixiv.Client) (bool, error) {
+	return a.exec(cmd.Context(), request, func(ctx context.Context, client *pixiv.Client) (bool, error) {
 		fetch := func(ctx context.Context, cursor sdk.Cursor) ([]pixiv.BookmarkTag, sdk.Cursor, error) {
 			if userID == 0 {
-				userID, err = deps.CurrentUserID(client)
+				userID, err = pixivcmd.CurrentUserID(client)
 				if err != nil {
 					return nil, sdk.Cursor{}, err
 				}
@@ -741,7 +735,7 @@ func (a command) runTags(cmd *cobra.Command, args []string, opts listOptions) er
 			return result.Items, result.Next, nil
 		}
 		var items []pixiv.BookmarkTag
-		if err := listing.PageItems(ctx, plan, fetch, func(page []pixiv.BookmarkTag) error {
+		if err := pixivcmd.PageItems(ctx, plan, fetch, func(page []pixiv.BookmarkTag) error {
 			items = append(items, page...)
 			return nil
 		}); err != nil {
@@ -749,14 +743,14 @@ func (a command) runTags(cmd *cobra.Command, args []string, opts listOptions) er
 		}
 		if ndjson {
 			for _, item := range items {
-				if err := writeJSONLine(a.data.Output, item); err != nil {
+				if err := pixivcmd.WriteJSONLine(a.env.Out, item); err != nil {
 					return true, err
 				}
 			}
 			return len(items) > 0, nil
 		}
 		if jsonOut {
-			if err := a.data.WriteJSON(struct {
+			if err := a.env.PrintJSON(struct {
 				Tags []pixiv.BookmarkTag `json:"bookmark_tags"`
 			}{Tags: items}); err != nil {
 				return true, err
@@ -764,7 +758,7 @@ func (a command) runTags(cmd *cobra.Command, args []string, opts listOptions) er
 			return true, nil
 		}
 		for _, item := range items {
-			if _, err := fmt.Fprintf(a.data.Output, "%s (%d)\n", item.Name, item.Count); err != nil {
+			if _, err := fmt.Fprintf(a.env.Out, "%s (%d)\n", item.Name, item.Count); err != nil {
 				return true, err
 			}
 		}
@@ -773,7 +767,7 @@ func (a command) runTags(cmd *cobra.Command, args []string, opts listOptions) er
 }
 
 func (a command) runAllTags(cmd *cobra.Command, args []string, opts listOptions) error {
-	plan, err := listing.ParsePlan(cmd, opts.limit, opts.page)
+	plan, err := pixivcmd.ParsePlan(cmd, opts.limit, opts.page)
 	if err != nil {
 		return err
 	}
@@ -784,26 +778,26 @@ func (a command) runAllTags(cmd *cobra.Command, args []string, opts listOptions)
 			return err
 		}
 	}
-	request, err := a.data.Request(cmd, opts.CommandOptions)
+	request, err := pixivcmd.BuildRequest(cmd, opts.Options)
 	if err != nil {
 		return err
 	}
 	if opts.ndjson && cmd.Flags().Changed("json") {
-		return a.data.Usage(errors.New("--ndjson cannot be used with --json"))
+		return a.env.UsageError(errors.New("--ndjson cannot be used with --json"))
 	}
 	jsonOut := false
 	if !opts.ndjson {
-		jsonOut, err = a.data.JSONOut(a.data.JSONOverride(cmd, opts.CommandOptions))
+		jsonOut, err = a.env.JSONOut(a.env.JSONOverride(cmd, opts.Options))
 		if err != nil {
 			return err
 		}
 	}
-	ndjson := a.data.ShouldAutoNDJSON(cmd, opts.ndjson, jsonOut)
+	ndjson := a.env.AutoNDJSON(cmd, opts.ndjson, jsonOut)
 
-	return a.data.Pooled(cmd.Context(), request, func(ctx context.Context, client *pixiv.Client) (bool, error) {
+	return a.exec(cmd.Context(), request, func(ctx context.Context, client *pixiv.Client) (bool, error) {
 		attemptUserID := userID
 		if attemptUserID == 0 {
-			resolvedUserID, err := deps.CurrentUserID(client)
+			resolvedUserID, err := pixivcmd.CurrentUserID(client)
 			if err != nil {
 				return false, err
 			}
@@ -821,7 +815,7 @@ func (a command) runAllTags(cmd *cobra.Command, args []string, opts listOptions)
 		var staged bytes.Buffer
 		if ndjson {
 			for _, item := range items {
-				if err := writeJSONLine(&staged, item.dto()); err != nil {
+				if err := pixivcmd.WriteJSONLine(&staged, item.dto()); err != nil {
 					return false, err
 				}
 			}
@@ -830,7 +824,7 @@ func (a command) runAllTags(cmd *cobra.Command, args []string, opts listOptions)
 			for _, item := range items {
 				dtos = append(dtos, item.dto())
 			}
-			if err := writeJSONValue(&staged, struct {
+			if err := pixivcmd.WriteJSONValue(&staged, struct {
 				Tags []typedBookmarkTagDTO `json:"bookmark_tags"`
 			}{Tags: dtos}); err != nil {
 				return false, err
@@ -842,7 +836,7 @@ func (a command) runAllTags(cmd *cobra.Command, args []string, opts listOptions)
 				}
 			}
 		}
-		_, err = io.Copy(a.data.Output, &staged)
+		_, err = io.Copy(a.env.Out, &staged)
 		return true, err
 	})
 }
@@ -895,12 +889,12 @@ func (item bookmarkTagItem) dto() typedBookmarkTagDTO {
 	return typedBookmarkTagDTO{Name: item.tag.Name, Count: item.tag.Count, Type: item.kind}
 }
 
-func (a command) actionInvoker(cmd *cobra.Command, options deps.CommandOptions, invoke func(context.Context, deps.Request, int64) error) func(context.Context, int64) error {
-	var request deps.Request
+func (a command) actionInvoker(cmd *cobra.Command, options commands.Options, invoke func(context.Context, pixivcmd.Request, int64) error) func(context.Context, int64) error {
+	var request pixivcmd.Request
 	initialized := false
 	return func(ctx context.Context, id int64) error {
 		if !initialized {
-			resolved, err := a.data.Request(cmd, options)
+			resolved, err := pixivcmd.BuildRequest(cmd, options)
 			if err != nil {
 				return err
 			}
@@ -909,52 +903,4 @@ func (a command) actionInvoker(cmd *cobra.Command, options deps.CommandOptions, 
 		}
 		return invoke(ctx, request, id)
 	}
-}
-
-func printArtworks(out io.Writer, items []pixiv.Artwork, offset int) error {
-	_ = offset
-	for _, item := range items {
-		if _, err := fmt.Fprintf(out, "https://www.pixiv.net/artworks/%d\n", item.ID); err != nil {
-			return err
-		}
-		tags := make([]string, 0, len(item.Tags))
-		for _, tag := range item.Tags {
-			tags = append(tags, tag.Name)
-		}
-		if _, err := fmt.Fprintf(out, "%d %q by %s bookmarks:%d views:%d tags:%s\n", item.ID, item.Title, item.User.Name, item.TotalBookmarks, item.TotalViews, strings.Join(tags, ",")); err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
-func printNovels(out io.Writer, items []pixiv.Novel) error {
-	for _, item := range items {
-		if _, err := fmt.Fprintf(out, "%d %s — %s\n", item.ID, item.Title, item.User.Name); err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
-func writeJSONLine(out io.Writer, value any) error {
-	body, err := json.Marshal(value)
-	if err != nil {
-		return err
-	}
-	if _, err := out.Write(body); err != nil {
-		return err
-	}
-	_, err = io.WriteString(out, "\n")
-	return err
-}
-
-func writeJSONValue(out io.Writer, value any) error {
-	body, err := json.MarshalIndent(value, "", "  ")
-	if err != nil {
-		return err
-	}
-	body = append(body, '\n')
-	_, err = out.Write(body)
-	return err
 }

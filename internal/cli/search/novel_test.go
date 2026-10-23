@@ -17,21 +17,17 @@ import (
 func TestNovelSearchRejectsTagTitleCaptionForCanonicalAndLegacyRoutes(t *testing.T) {
 	tests := []struct {
 		name string
-		new  func(Dependencies) *cobra.Command
+		new  func(testDependencies) *cobra.Command
 		args []string
 	}{
 		{
 			name: "canonical",
-			new: func(data Dependencies) *cobra.Command {
-				return New(data)
-			},
+			new:  newTestCommand,
 			args: []string{"cat", "--type", "novel", "--search-by", searchTargetTagTitleCaption},
 		},
 		{
 			name: "legacy",
-			new: func(data Dependencies) *cobra.Command {
-				return NewNovel(data)
-			},
+			new:  newTestNovelCommand,
 			args: []string{"search", "cat", "--search-by", searchTargetTagTitleCaption},
 		},
 	}
@@ -39,7 +35,7 @@ func TestNovelSearchRejectsTagTitleCaptionForCanonicalAndLegacyRoutes(t *testing
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			opened := false
-			cmd := tt.new(Dependencies{
+			cmd := tt.new(testDependencies{
 				Input:      strings.NewReader(""),
 				Output:     &bytes.Buffer{},
 				UsageError: func(err error) error { return err },
@@ -96,7 +92,7 @@ func TestCanonicalNovelSearchUsesRoutePeriodAndLogicalPaginationJSON(t *testing.
 		}
 		return novelSearchResponse(2000+requests, fmt.Sprintf("novel %d", requests), nextURL)
 	})
-	cmd := New(Dependencies{
+	cmd := newTestCommand(testDependencies{
 		Input:       strings.NewReader(""),
 		Output:      output,
 		ErrorOutput: &bytes.Buffer{},
@@ -139,7 +135,7 @@ func TestLegacyNovelSearchReadsStdinAndEmitsNDJSON(t *testing.T) {
 		}
 		return novelSearchResponse(2003, "stdin novel", "")
 	})
-	cmd := NewNovel(Dependencies{
+	cmd := newTestNovelCommand(testDependencies{
 		Input:       strings.NewReader("stdin novel\n"),
 		Output:      output,
 		ErrorOutput: &bytes.Buffer{},
@@ -179,21 +175,17 @@ func TestLegacyNovelSearchReadsStdinAndEmitsNDJSON(t *testing.T) {
 func TestNovelSearchRejectsUnsupportedPeriodsBeforeOpeningClient(t *testing.T) {
 	tests := []struct {
 		name string
-		new  func(Dependencies) *cobra.Command
+		new  func(testDependencies) *cobra.Command
 		args []string
 	}{
 		{
 			name: "canonical half-year",
-			new: func(data Dependencies) *cobra.Command {
-				return New(data)
-			},
+			new:  newTestCommand,
 			args: []string{"cat", "--type", "novel", "--period", "half-year"},
 		},
 		{
 			name: "legacy year",
-			new: func(data Dependencies) *cobra.Command {
-				return NewNovel(data)
-			},
+			new:  newTestNovelCommand,
 			args: []string{"search", "cat", "--period", "year"},
 		},
 	}
@@ -201,7 +193,7 @@ func TestNovelSearchRejectsUnsupportedPeriodsBeforeOpeningClient(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			opened := false
-			cmd := tt.new(Dependencies{
+			cmd := tt.new(testDependencies{
 				Input:      strings.NewReader(""),
 				Output:     &bytes.Buffer{},
 				UsageError: func(err error) error { return err },
@@ -227,7 +219,7 @@ func TestCanonicalNovelSearchRejectsDateFlagsBeforeOpeningClient(t *testing.T) {
 	for _, flag := range []string{"--start-date", "--end-date"} {
 		t.Run(flag, func(t *testing.T) {
 			opened := false
-			cmd := New(Dependencies{
+			cmd := newTestCommand(testDependencies{
 				Input:      strings.NewReader(""),
 				Output:     &bytes.Buffer{},
 				UsageError: func(err error) error { return err },

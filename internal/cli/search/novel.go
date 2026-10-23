@@ -6,15 +6,15 @@ import (
 	"fmt"
 	"strings"
 
-	requirements "github.com/FlanChanXwO/pixiv-cli/internal/cli/internal/command"
-	"github.com/FlanChanXwO/pixiv-cli/internal/cli/internal/pixivcmd/listing"
+	commands "github.com/FlanChanXwO/pixiv-cli/internal/cli/internal/command"
+	pixivcmd "github.com/FlanChanXwO/pixiv-cli/internal/cli/internal/pixivcmd"
 	"github.com/FlanChanXwO/pixiv-cli/sdk"
 	pixiv "github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
 	"github.com/spf13/cobra"
 )
 
 type novelOptions struct {
-	CommandOptions
+	commands.Options
 	ndjson   bool
 	limit    int
 	page     int
@@ -25,12 +25,12 @@ type novelOptions struct {
 
 // NewNovel builds the canonical `pixiv novel` compatibility group. Its search
 // leaf shares this package's execution with `pixiv search --type novel`.
-func NewNovel(data Dependencies) *cobra.Command {
-	a := command{data: data}
+func NewNovel(env commands.Env, exec pixivcmd.Executor, reverseSearch ReverseSearchPort) *cobra.Command {
+	a := command{env: env, runner: pixivcmd.New(env.Out, exec), exec: exec, reverseSearch: reverseSearch}
 	cmd := &cobra.Command{Use: "novel", Short: "Query Pixiv novels"}
 	cmd.AddCommand(a.newNovelSearchCommand())
-	data.bindNoInput(cmd)
-	requirements.Bind(cmd, requirements.PixivData())
+	a.env.BindNoInput(cmd)
+	commands.Bind(cmd, commands.PixivData())
 	return cmd
 }
 
@@ -43,20 +43,20 @@ func (a command) newNovelSearchCommand() *cobra.Command {
 		Use:     "search WORD",
 		Short:   "Search novels",
 		Example: "pixiv novel search \"miku\" --json",
-		Args:    a.data.minArgs(1, "pixiv novel search [options] WORD"),
+		Args:    a.env.MinArgs(1, "pixiv novel search [options] WORD"),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return a.runNovelSearch(cmd, args, opts)
 		},
 	}
-	a.data.bindCommonFlags(cmd, &opts.CommandOptions)
-	listing.BindNDJSONFlag(cmd, &opts.ndjson)
+	a.env.BindCommonFlags(cmd, &opts.Options)
+	pixivcmd.BindNDJSONFlag(cmd, &opts.ndjson)
 	flags := cmd.Flags()
 	flags.StringVar(&opts.searchBy, "search-by", opts.searchBy, "search field: tag-partial, tag-exact, title-caption")
 	flags.StringVar(&opts.sortMode, "sort", opts.sortMode, "sort mode: date_desc, date_asc")
 	flags.StringVar(&opts.period, "period", "", "time range: day, week, month")
-	listing.BindListFlags(cmd, &opts.limit, &opts.page)
-	a.data.bindTextValue(cmd, 1, -1, 0)
-	requirements.Bind(cmd, requirements.PixivData())
+	pixivcmd.BindListFlags(cmd, &opts.limit, &opts.page)
+	a.env.BindTextValue(cmd, 1, -1, 0)
+	commands.Bind(cmd, commands.PixivData())
 	return cmd
 }
 
@@ -72,21 +72,21 @@ func (a command) runNovelSearch(cmd *cobra.Command, args []string, opts novelOpt
 	if opts.period == "half-year" || opts.period == "year" {
 		return errors.New("novel period must be one of day, week, month")
 	}
-	plan, err := listing.ParsePlan(cmd, opts.limit, opts.page)
+	plan, err := pixivcmd.ParsePlan(cmd, opts.limit, opts.page)
 	if err != nil {
 		return err
 	}
-	request, err := a.data.request(cmd, opts.CommandOptions)
+	request, err := pixivcmd.BuildRequest(cmd, opts.Options)
 	if err != nil {
 		return err
 	}
-	jsonOverride := a.data.jsonOverride(cmd, opts.CommandOptions)
+	jsonOverride := a.env.JSONOverride(cmd, opts.Options)
 	if opts.ndjson && cmd.Flags().Changed("json") {
-		return a.data.usage(errors.New("--ndjson cannot be used with --json"))
+		return a.env.UsageError(errors.New("--ndjson cannot be used with --json"))
 	}
 	jsonOut := false
 	if !opts.ndjson {
-		jsonOut, err = a.data.jsonOut(jsonOverride)
+		jsonOut, err = a.env.JSONOut(jsonOverride)
 		if err != nil {
 			return err
 		}
@@ -101,8 +101,7 @@ func (a command) runNovelSearch(cmd *cobra.Command, args []string, opts novelOpt
 		}
 		return result.Items, result.Next, nil
 	}
-	return a.runner().RunPooledNovelList(cmd.Context(), listing.Request(request), plan, jsonOut, opts.ndjson, fmt.Sprintf("novels for %q", word), fetch,
-		func(items []pixiv.Novel) error { return printNovels(a.data.Output, items) })
+	return a.runner.RunNovels(cmd.Context(), request, plan, pixivcmd.FormatOf(jsonOut, opts.ndjson), pixivcmd.NovelList{Heading: fmt.Sprintf("novels for %q", word), Fetch: fetch, Print: func(items []pixiv.Novel) error { return pixivcmd.PrintNovels(a.env.Out, items) }})
 }
 
 // resolveNovelSearchBy 将小说搜索 target 限定为 v1 合同支持的三种值，避免复用

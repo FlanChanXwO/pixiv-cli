@@ -4,45 +4,10 @@ import (
 	"fmt"
 	"io"
 	"net/url"
-	"strings"
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/plaintext"
 	pixiv "github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
 )
-
-func printArtworks(out io.Writer, items []pixiv.Artwork) error {
-	for _, item := range items {
-		if _, err := fmt.Fprintf(out, "https://www.pixiv.net/artworks/%d\n", item.ID); err != nil {
-			return err
-		}
-		tags := make([]string, 0, len(item.Tags))
-		for _, tag := range item.Tags {
-			tags = append(tags, plaintext.SafeLine(tag.Name))
-		}
-		if _, err := fmt.Fprintf(out, "%d %q by %s bookmarks:%d views:%d tags:%s\n", item.ID, item.Title, plaintext.SafeLine(item.User.Name), item.TotalBookmarks, item.TotalViews, strings.Join(tags, ",")); err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
-func printNovels(out io.Writer, items []pixiv.Novel) error {
-	for _, item := range items {
-		if _, err := fmt.Fprintf(out, "%d %s — %s\n", item.ID, plaintext.SafeLine(item.Title), plaintext.SafeLine(item.User.Name)); err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
-func printUserPreviews(out io.Writer, users []pixiv.UserPreview) error {
-	for _, item := range users {
-		if _, err := fmt.Fprintf(out, "%d %s\n", item.User.ID, plaintext.SafeLine(item.User.Name)); err != nil {
-			return err
-		}
-	}
-	return nil
-}
 
 // printUserSearchPreviews 展示搜索结果里的账号与简介，逐行转义上游文本，避免控制
 // 字节破坏终端的逐行协议。

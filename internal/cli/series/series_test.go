@@ -9,13 +9,13 @@ import (
 	"strings"
 	"testing"
 
-	deps "github.com/FlanChanXwO/pixiv-cli/internal/cli/internal/pixivcmd"
+	pixivcmd "github.com/FlanChanXwO/pixiv-cli/internal/cli/internal/pixivcmd"
 	"github.com/FlanChanXwO/pixiv-cli/sdk"
 	pixiv "github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
 )
 
 func TestNewDeclaresSeriesInputAndTypeFlags(t *testing.T) {
-	cmd := New(deps.Data{Input: strings.NewReader(""), Output: &bytes.Buffer{}, ErrorOutput: &bytes.Buffer{}, UsageError: func(err error) error { return err }})
+	cmd := newTestCommand(testData{Input: strings.NewReader(""), Output: &bytes.Buffer{}, ErrorOutput: &bytes.Buffer{}, UsageError: func(err error) error { return err }})
 	if cmd.Use != "series SERIES_ID_OR_URL" {
 		t.Fatalf("unexpected series use: %q", cmd.Use)
 	}
@@ -41,12 +41,12 @@ func TestSeriesArtworkURLUsesPublicSDK(t *testing.T) {
 		t.Fatalf("NewWith: %v", err)
 	}
 
-	cmd := New(deps.Data{
+	cmd := newTestCommand(testData{
 		Input:       strings.NewReader(""),
 		Output:      output,
 		ErrorOutput: &bytes.Buffer{},
 		UsageError:  func(err error) error { return err },
-		Pooled: func(ctx context.Context, _ deps.Request, attempt func(context.Context, *pixiv.Client) (bool, error)) error {
+		Pooled: func(ctx context.Context, _ pixivcmd.Request, attempt func(context.Context, *pixiv.Client) (bool, error)) error {
 			_, err := attempt(ctx, client)
 			return err
 		},
@@ -95,13 +95,13 @@ func TestSeriesNovelURLContinuesAcrossPages(t *testing.T) {
 		t.Fatalf("NewWith: %v", err)
 	}
 
-	cmd := New(deps.Data{
+	cmd := newTestCommand(testData{
 		Input:       strings.NewReader(""),
 		Output:      output,
 		ErrorOutput: &bytes.Buffer{},
 		UsageError:  func(err error) error { return err },
 		JSONOut:     func(*bool) (bool, error) { return true, nil },
-		Pooled: func(ctx context.Context, _ deps.Request, attempt func(context.Context, *pixiv.Client) (bool, error)) error {
+		Pooled: func(ctx context.Context, _ pixivcmd.Request, attempt func(context.Context, *pixiv.Client) (bool, error)) error {
 			_, err := attempt(ctx, client)
 			return err
 		},
@@ -160,12 +160,12 @@ func TestSeriesArtworkURLContinuesAcrossPages(t *testing.T) {
 		t.Fatalf("NewWith: %v", err)
 	}
 
-	cmd := New(deps.Data{
+	cmd := newTestCommand(testData{
 		Input:       strings.NewReader(""),
 		Output:      output,
 		ErrorOutput: &bytes.Buffer{},
 		UsageError:  func(err error) error { return err },
-		Pooled: func(ctx context.Context, _ deps.Request, attempt func(context.Context, *pixiv.Client) (bool, error)) error {
+		Pooled: func(ctx context.Context, _ pixivcmd.Request, attempt func(context.Context, *pixiv.Client) (bool, error)) error {
 			_, err := attempt(ctx, client)
 			return err
 		},
@@ -197,12 +197,12 @@ func TestSeriesRejectsUnsupportedTypeBeforeParsingInput(t *testing.T) {
 	for _, typ := range []string{"all", "bogus"} {
 		t.Run(typ, func(t *testing.T) {
 			opened := false
-			cmd := New(deps.Data{
+			cmd := newTestCommand(testData{
 				Input:       strings.NewReader(""),
 				Output:      &bytes.Buffer{},
 				ErrorOutput: &bytes.Buffer{},
 				UsageError:  func(err error) error { return err },
-				Pooled: func(context.Context, deps.Request, func(context.Context, *pixiv.Client) (bool, error)) error {
+				Pooled: func(context.Context, pixivcmd.Request, func(context.Context, *pixiv.Client) (bool, error)) error {
 					opened = true
 					return nil
 				},
@@ -222,12 +222,12 @@ func TestSeriesRejectsUnsupportedTypeBeforeParsingInput(t *testing.T) {
 
 func TestSeriesRejectsURLTypeMismatchBeforeOpeningClient(t *testing.T) {
 	opened := false
-	cmd := New(deps.Data{
+	cmd := newTestCommand(testData{
 		Input:       strings.NewReader(""),
 		Output:      &bytes.Buffer{},
 		ErrorOutput: &bytes.Buffer{},
 		UsageError:  func(err error) error { return err },
-		Pooled: func(context.Context, deps.Request, func(context.Context, *pixiv.Client) (bool, error)) error {
+		Pooled: func(context.Context, pixivcmd.Request, func(context.Context, *pixiv.Client) (bool, error)) error {
 			opened = true
 			return nil
 		},

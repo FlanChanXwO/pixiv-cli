@@ -15,7 +15,7 @@ import (
 
 func TestCommandRejectsKindTypeConflictBeforeOpeningClient(t *testing.T) {
 	opened := false
-	cmd := New(Dependencies{
+	cmd := newTestCommand(testDependencies{
 		Input:      strings.NewReader(""),
 		Output:     &bytes.Buffer{},
 		UsageError: func(err error) error { return err },
@@ -38,7 +38,7 @@ func TestCommandRejectsKindTypeConflictBeforeOpeningClient(t *testing.T) {
 
 func TestCommandRejectsInvalidContentTypeForPositionalKind(t *testing.T) {
 	opened := false
-	cmd := New(Dependencies{
+	cmd := newTestCommand(testDependencies{
 		Input:      strings.NewReader(""),
 		Output:     &bytes.Buffer{},
 		UsageError: func(err error) error { return err },
@@ -348,7 +348,7 @@ func recommendedTestClient(t *testing.T, transport recommendedRoundTripFunc) *pi
 }
 
 func recommendedTestCommand(output io.Writer, client *pixiv.Client) *cobra.Command {
-	return New(Dependencies{
+	return newTestCommand(testDependencies{
 		Input:      strings.NewReader(""),
 		Output:     output,
 		UsageError: func(err error) error { return err },

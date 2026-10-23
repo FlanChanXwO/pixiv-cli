@@ -3,8 +3,6 @@ package auth
 import (
 	"errors"
 	"fmt"
-	"io"
-
 	"github.com/FlanChanXwO/pixiv-cli/internal/cli/auth/loginhelper"
 	requirements "github.com/FlanChanXwO/pixiv-cli/internal/cli/internal/command"
 	"github.com/spf13/cobra"
@@ -20,7 +18,7 @@ var clearRemoteLoginHandoffForHandler = loginhelper.ClearRemoteLoginHandoff
 // NewAccountURLCallbackCommand 构造桌面系统协议 handler 调用的隐藏命令。它不属于
 // 公开 CLI 契约，仅供系统关联与聚焦协议测试使用。
 func NewAccountURLCallbackCommand() *cobra.Command {
-	return controller{errOut: io.Discard}.newAccountURLCallbackCommand()
+	return controller{}.newAccountURLCallbackCommand()
 }
 
 // SetClearRemoteLoginHandoffForHandler 是覆盖 remote handoff 本地清理失败的窄

@@ -7,7 +7,7 @@ import (
 	"io"
 	"os"
 
-	"github.com/FlanChanXwO/pixiv-cli/internal/cli/internal/pixivcmd/listing"
+	"github.com/FlanChanXwO/pixiv-cli/internal/cli/internal/pixivcmd"
 	"github.com/FlanChanXwO/pixiv-cli/internal/searchfilter"
 	"github.com/FlanChanXwO/pixiv-cli/sdk"
 	pixiv "github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
@@ -15,7 +15,7 @@ import (
 
 // runAll 按既有类别顺序把四个推荐分区写入一份私有临时文档，只有全部读取成功后才
 // 把完整文档交给 stdout。因此中途失败不会让用户看到半份结果。
-func (a command) runAll(ctx context.Context, client *pixiv.Client, plan listing.Plan, jsonOut bool) (bool, error) {
+func (a command) runAll(ctx context.Context, client *pixiv.Client, plan pixivcmd.Plan, jsonOut bool) (bool, error) {
 	spool, err := newSpool(jsonOut)
 	if err != nil {
 		return false, err
@@ -23,7 +23,7 @@ func (a command) runAll(ctx context.Context, client *pixiv.Client, plan listing.
 	defer spool.Close()
 
 	var visualItems []pixiv.Artwork
-	if err := listing.PageItems(ctx, plan, fetchRecommendedArtworks(client, searchfilter.Filter{}), func(items []pixiv.Artwork) error {
+	if err := pixivcmd.PageItems(ctx, plan, fetchRecommendedArtworks(client, searchfilter.Filter{}), func(items []pixiv.Artwork) error {
 		visualItems = append(visualItems, items...)
 		return nil
 	}); err != nil {
@@ -51,7 +51,7 @@ func (a command) runAll(ctx context.Context, client *pixiv.Client, plan listing.
 	if err := spool.heading(jsonOut, "recommended novels"); err != nil {
 		return false, err
 	}
-	if err := listing.PageItems(ctx, plan, func(ctx context.Context, cursor sdk.Cursor) ([]pixiv.Novel, sdk.Cursor, error) {
+	if err := pixivcmd.PageItems(ctx, plan, func(ctx context.Context, cursor sdk.Cursor) ([]pixiv.Novel, sdk.Cursor, error) {
 		result, err := client.RecommendedNovels(ctx, pixiv.RecommendedNovelsRequest{Cursor: cursor})
 		if err != nil {
 			return nil, sdk.Cursor{}, err
@@ -66,7 +66,7 @@ func (a command) runAll(ctx context.Context, client *pixiv.Client, plan listing.
 	if err := spool.heading(jsonOut, "recommended users"); err != nil {
 		return false, err
 	}
-	if err := listing.PageItems(ctx, plan, func(ctx context.Context, cursor sdk.Cursor) ([]pixiv.UserPreview, sdk.Cursor, error) {
+	if err := pixivcmd.PageItems(ctx, plan, func(ctx context.Context, cursor sdk.Cursor) ([]pixiv.UserPreview, sdk.Cursor, error) {
 		result, err := client.RecommendedUsers(ctx, pixiv.RecommendedUsersRequest{Cursor: cursor})
 		if err != nil {
 			return nil, sdk.Cursor{}, err
@@ -76,7 +76,7 @@ func (a command) runAll(ctx context.Context, client *pixiv.Client, plan listing.
 		return false, err
 	}
 	// 最终 io.Copy 可能已交付部分 stdout；在尝试前关闭账号池重放窗口。
-	return true, spool.Commit(a.data.Output)
+	return true, spool.Commit(a.env.Out)
 }
 
 // spool 是 `recommended all` 独有的多分区临时文档。单一实体列表使用共享 listing
@@ -134,11 +134,11 @@ func (s *spool) write(value any) error {
 	if !s.jsonOut {
 		switch typed := value.(type) {
 		case pixiv.Artwork:
-			return printArtworks(s.file, []pixiv.Artwork{typed})
+			return pixivcmd.PrintArtworks(s.file, []pixiv.Artwork{typed})
 		case pixiv.Novel:
-			return printNovels(s.file, []pixiv.Novel{typed})
+			return pixivcmd.PrintNovels(s.file, []pixiv.Novel{typed})
 		case pixiv.UserPreview:
-			return printUserPreviews(s.file, []pixiv.UserPreview{typed})
+			return pixivcmd.PrintUserPreviews(s.file, []pixiv.UserPreview{typed})
 		}
 		return nil
 	}

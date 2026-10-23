@@ -9,12 +9,12 @@ import (
 	"strings"
 	"testing"
 
-	deps "github.com/FlanChanXwO/pixiv-cli/internal/cli/internal/pixivcmd"
+	pixivcmd "github.com/FlanChanXwO/pixiv-cli/internal/cli/internal/pixivcmd"
 	pixiv "github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
 )
 
 func TestNewDeclaresRankingInputAndOutputFlags(t *testing.T) {
-	cmd := New(deps.Data{Input: strings.NewReader(""), Output: &bytes.Buffer{}, ErrorOutput: &bytes.Buffer{}, UsageError: func(err error) error { return err }})
+	cmd := newTestCommand(testData{Input: strings.NewReader(""), Output: &bytes.Buffer{}, ErrorOutput: &bytes.Buffer{}, UsageError: func(err error) error { return err }})
 	if cmd.Use != "ranking" {
 		t.Fatalf("unexpected ranking use: %q", cmd.Use)
 	}
@@ -50,13 +50,13 @@ func TestNovelRankingUsesTypedRouteAndContinuesAcrossPages(t *testing.T) {
 		t.Fatalf("NewWith: %v", err)
 	}
 
-	cmd := New(deps.Data{
+	cmd := newTestCommand(testData{
 		Input:       strings.NewReader(""),
 		Output:      output,
 		ErrorOutput: &bytes.Buffer{},
 		UsageError:  func(err error) error { return err },
 		JSONOut:     func(*bool) (bool, error) { return false, nil },
-		Pooled: func(ctx context.Context, _ deps.Request, attempt func(context.Context, *pixiv.Client) (bool, error)) error {
+		Pooled: func(ctx context.Context, _ pixivcmd.Request, attempt func(context.Context, *pixiv.Client) (bool, error)) error {
 			_, err := attempt(ctx, client)
 			return err
 		},
@@ -101,13 +101,13 @@ func TestArtworkRankingDefaultPreservesLegacyRoute(t *testing.T) {
 		t.Fatalf("NewWith: %v", err)
 	}
 
-	cmd := New(deps.Data{
+	cmd := newTestCommand(testData{
 		Input:       strings.NewReader(""),
 		Output:      output,
 		ErrorOutput: &bytes.Buffer{},
 		UsageError:  func(err error) error { return err },
 		JSONOut:     func(*bool) (bool, error) { return false, nil },
-		Pooled: func(ctx context.Context, _ deps.Request, attempt func(context.Context, *pixiv.Client) (bool, error)) error {
+		Pooled: func(ctx context.Context, _ pixivcmd.Request, attempt func(context.Context, *pixiv.Client) (bool, error)) error {
 			_, err := attempt(ctx, client)
 			return err
 		},
@@ -128,13 +128,13 @@ func TestArtworkRankingDefaultPreservesLegacyRoute(t *testing.T) {
 
 func TestNovelRankingRejectsDateBeforeOpeningClient(t *testing.T) {
 	opened := false
-	cmd := New(deps.Data{
+	cmd := newTestCommand(testData{
 		Input:       strings.NewReader(""),
 		Output:      &bytes.Buffer{},
 		ErrorOutput: &bytes.Buffer{},
 		UsageError:  func(err error) error { return err },
 		JSONOut:     func(*bool) (bool, error) { return false, nil },
-		Pooled: func(context.Context, deps.Request, func(context.Context, *pixiv.Client) (bool, error)) error {
+		Pooled: func(context.Context, pixivcmd.Request, func(context.Context, *pixiv.Client) (bool, error)) error {
 			opened = true
 			return nil
 		},

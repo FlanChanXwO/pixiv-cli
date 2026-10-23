@@ -8,13 +8,14 @@ import (
 	"testing"
 
 	download "github.com/FlanChanXwO/pixiv-cli/internal/cli/download"
+	pixivcmd "github.com/FlanChanXwO/pixiv-cli/internal/cli/internal/pixivcmd"
 	downloader "github.com/FlanChanXwO/pixiv-cli/internal/media/downloader"
 	pixiv "github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
 )
 
 func TestCommandRejectsProxyConflictBeforeResolvingDownloadServices(t *testing.T) {
 	resolved := false
-	cmd := download.New(download.Deps{
+	cmd := newTestDownloadCommand(testDownloadData{
 		Input:       strings.NewReader(""),
 		Output:      &bytes.Buffer{},
 		ErrorOutput: &bytes.Buffer{},
@@ -26,7 +27,7 @@ func TestCommandRejectsProxyConflictBeforeResolvingDownloadServices(t *testing.T
 			resolved = true
 			return downloader.DownloadService{}
 		},
-		Pooled: func(context.Context, download.CommandRequest, func(context.Context, *pixiv.Client) (bool, error)) error {
+		Pooled: func(context.Context, pixivcmd.Request, func(context.Context, *pixiv.Client) (bool, error)) error {
 			return errors.New("pooled client must not be opened")
 		},
 	})
@@ -76,7 +77,7 @@ func TestCommandConsumesBatchReportWithWarningsAndFailures(t *testing.T) {
 
 	var output, errorOutput bytes.Buffer
 	var committed bool
-	cmd := download.New(download.Deps{
+	cmd := newTestDownloadCommand(testDownloadData{
 		Input:       strings.NewReader(""),
 		Output:      &output,
 		ErrorOutput: &errorOutput,
@@ -91,7 +92,7 @@ func TestCommandConsumesBatchReportWithWarningsAndFailures(t *testing.T) {
 				},
 			}
 		},
-		Pooled: func(ctx context.Context, _ download.CommandRequest, invoke func(context.Context, *pixiv.Client) (bool, error)) error {
+		Pooled: func(ctx context.Context, _ pixivcmd.Request, invoke func(context.Context, *pixiv.Client) (bool, error)) error {
 			committed, err = invoke(ctx, client)
 			return err
 		},

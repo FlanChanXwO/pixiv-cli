@@ -2,28 +2,24 @@
 package search
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"strings"
 	"time"
 
-	requirements "github.com/FlanChanXwO/pixiv-cli/internal/cli/internal/command"
-	"github.com/FlanChanXwO/pixiv-cli/internal/cli/internal/input"
-	deps "github.com/FlanChanXwO/pixiv-cli/internal/cli/internal/pixivcmd"
-	"github.com/FlanChanXwO/pixiv-cli/internal/cli/internal/pixivcmd/listing"
+	commands "github.com/FlanChanXwO/pixiv-cli/internal/cli/internal/command"
+	pixivcmd "github.com/FlanChanXwO/pixiv-cli/internal/cli/internal/pixivcmd"
 	"github.com/FlanChanXwO/pixiv-cli/internal/cli/user"
 	textutil "github.com/FlanChanXwO/pixiv-cli/internal/plaintext"
 	record "github.com/FlanChanXwO/pixiv-cli/internal/record"
+	"github.com/FlanChanXwO/pixiv-cli/internal/reversesearch"
 	"github.com/FlanChanXwO/pixiv-cli/internal/searchfilter"
 	dateutil "github.com/FlanChanXwO/pixiv-cli/internal/searchfilter"
 	"github.com/FlanChanXwO/pixiv-cli/sdk"
 	pixiv "github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
 	"github.com/spf13/cobra"
-	"golang.org/x/term"
 )
 
 const (
@@ -34,7 +30,7 @@ const (
 )
 
 type options struct {
-	CommandOptions
+	commands.Options
 	ndjson           bool
 	limit            int
 	page             int
@@ -57,130 +53,19 @@ type options struct {
 	provider         string
 }
 
-// Request 是 search 一次执行解析出的传输覆写值；它不持有 client 或资源。
-type Request struct {
-	UserID             int64
-	HTTPSProxyOverride *string
-}
-
-// CommandOptions 是 search 自己声明的通用 flag 值。
-type CommandOptions struct {
-	Proxy   string
-	NoProxy bool
-	JSON    bool
-}
-
-// Dependencies 是 search、novel search 与 user-search 兼容路由的窄执行端口。
-type Dependencies struct {
-	Input         io.Reader
-	Output        io.Writer
-	ErrorOutput   io.Writer
-	UsageError    func(error) error
-	JSONOut       func(*bool) (bool, error)
-	Pooled        deps.Pooled[Request]
-	ReverseSearch ReverseSearchFunc
-}
+// ReverseSearchPort performs one reverse image search without opening Pixiv.
+type ReverseSearchPort func(context.Context, ReverseSearchRequest) (reversesearch.Response, error)
 
 type command struct {
-	data Dependencies
-}
-
-func (d Dependencies) usage(err error) error {
-	if err == nil || d.UsageError == nil {
-		return err
-	}
-	return d.UsageError(err)
-}
-
-func (d Dependencies) exactArgs(count int, usage string) cobra.PositionalArgs {
-	return func(_ *cobra.Command, args []string) error {
-		if len(args) != count {
-			return fmt.Errorf("usage: %s", usage)
-		}
-		return nil
-	}
-}
-
-func (d Dependencies) minArgs(count int, usage string) cobra.PositionalArgs {
-	return func(_ *cobra.Command, args []string) error {
-		if len(args) < count {
-			return fmt.Errorf("usage: %s", usage)
-		}
-		return nil
-	}
-}
-
-func (d Dependencies) bindCommonFlags(cmd *cobra.Command, opts *CommandOptions) {
-	cmd.Flags().BoolVarP(&opts.JSON, "json", "j", false, "print JSON")
-	cmd.Flags().StringVar(&opts.Proxy, "proxy", "", "proxy URL (http, https, socks5, or socks5h) for this command")
-	cmd.Flags().BoolVar(&opts.NoProxy, "no-proxy", false, "clear the configured proxy for this command")
-}
-
-func (d Dependencies) bindTextValue(cmd *cobra.Command, minArgs, maxArgs, fillPosition int) {
-	input.Bind(cmd, input.InputSpec{Codec: input.TextValue, MinArgs: minArgs, MaxArgs: maxArgs, FillPosition: fillPosition, Reader: d.Input, UsageError: d.usage})
-}
-
-func (d Dependencies) bindTextValueWhen(cmd *cobra.Command, minArgs, maxArgs, fillPosition int, enabled func(*cobra.Command, []string) bool) {
-	input.Bind(cmd, input.InputSpec{Codec: input.TextValue, MinArgs: minArgs, MaxArgs: maxArgs, FillPosition: fillPosition, Reader: d.Input, UsageError: d.usage, Enabled: enabled})
-}
-
-func (d Dependencies) bindNoInput(cmd *cobra.Command) {
-	input.Bind(cmd, input.InputSpec{Codec: input.NoInput, MinArgs: 0, MaxArgs: 0, Reader: d.Input, UsageError: d.usage})
-}
-
-func (d Dependencies) request(cmd *cobra.Command, opts CommandOptions) (Request, error) {
-	if cmd.Flags().Changed("proxy") && cmd.Flags().Changed("no-proxy") {
-		return Request{}, errors.New("use either --proxy or --no-proxy, not both")
-	}
-	request := Request{}
-	if cmd.Flags().Changed("no-proxy") && opts.NoProxy {
-		empty := ""
-		request.HTTPSProxyOverride = &empty
-	} else if cmd.Flags().Changed("proxy") {
-		request.HTTPSProxyOverride = &opts.Proxy
-	}
-	return request, nil
-}
-
-func (d Dependencies) jsonOverride(cmd *cobra.Command, opts CommandOptions) *bool {
-	if !cmd.Flags().Changed("json") {
-		return nil
-	}
-	value := opts.JSON
-	return &value
-}
-
-func (d Dependencies) jsonOut(override *bool) (bool, error) {
-	if d.JSONOut == nil {
-		return false, errors.New("pixiv search JSON output resolver is not configured")
-	}
-	return d.JSONOut(override)
-}
-
-func (d Dependencies) shouldAutoNDJSON(cmd *cobra.Command, ndjson, jsonOut bool) bool {
-	if ndjson || jsonOut || cmd.Flags().Changed("json") {
-		return ndjson
-	}
-	file, ok := d.Output.(interface{ Fd() uintptr })
-	return ok && !term.IsTerminal(int(file.Fd()))
-}
-
-func (d Dependencies) writeJSON(value any) error {
-	body, err := json.Marshal(value)
-	if err != nil {
-		return err
-	}
-	var out bytes.Buffer
-	if err := json.Indent(&out, body, "", "  "); err != nil {
-		return err
-	}
-	_, err = io.WriteString(d.Output, out.String()+"\n")
-	return err
+	env           commands.Env
+	runner        pixivcmd.Runner
+	exec          pixivcmd.Executor
+	reverseSearch ReverseSearchPort
 }
 
 // New builds the actual root `pixiv search` command.
-func New(data Dependencies) *cobra.Command {
-	a := command{data: data}
+func New(env commands.Env, exec pixivcmd.Executor, reverseSearch ReverseSearchPort) *cobra.Command {
+	a := command{env: env, runner: pixivcmd.New(env.Out, exec), exec: exec, reverseSearch: reverseSearch}
 	opts := options{
 		searchBy:    searchTargetTagPartial,
 		sortMode:    string(pixiv.SortModeDateDesc),
@@ -196,16 +81,16 @@ func New(data Dependencies) *cobra.Command {
 		Example: "pixiv search \"miku\" --json",
 		Args: func(cmd *cobra.Command, args []string) error {
 			if opts.trendingTags {
-				return data.exactArgs(0, "pixiv search --trending-tags [options]")(cmd, args)
+				return env.ExactArgs(0, "pixiv search --trending-tags [options]")(cmd, args)
 			}
-			return data.minArgs(1, "pixiv search [options] WORD")(cmd, args)
+			return env.MinArgs(1, "pixiv search [options] WORD")(cmd, args)
 		},
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return a.run(cmd, args, opts)
 		},
 	}
-	data.bindCommonFlags(cmd, &opts.CommandOptions)
-	listing.BindNDJSONFlag(cmd, &opts.ndjson)
+	env.BindCommonFlags(cmd, &opts.Options)
+	pixivcmd.BindNDJSONFlag(cmd, &opts.ndjson)
 	flags := cmd.Flags()
 	flags.StringVar(&opts.searchBy, "search-by", opts.searchBy, "search field: tag-partial, tag-exact, title-caption, tag-title-caption")
 	flags.StringVar(&opts.sortMode, "sort", opts.sortMode, "sort mode: date_desc, date_asc")
@@ -224,9 +109,9 @@ func New(data Dependencies) *cobra.Command {
 	flags.IntVar(&opts.bookmarkMax, "bookmark-max", 0, "maximum public bookmark count; strategy controls filtering completeness")
 	flags.StringVar(&opts.bookmarkStrategy, "bookmark-strategy", string(bookmarkFilterStrategyAuto), "bookmark count strategy: auto, local, best_effort, server")
 	flags.StringVar(&opts.provider, "provider", "", "reverse search provider: saucenao, ascii2d-color, ascii2d-bovw, all")
-	listing.BindListFlags(cmd, &opts.limit, &opts.page)
-	data.bindTextValueWhen(cmd, 1, 1, 0, func(_ *cobra.Command, _ []string) bool { return !opts.trendingTags })
-	requirements.Bind(cmd, requirements.PixivData())
+	pixivcmd.BindListFlags(cmd, &opts.limit, &opts.page)
+	env.BindTextValueWhen(cmd, 1, 1, 0, func(_ *cobra.Command, _ []string) bool { return !opts.trendingTags })
+	commands.Bind(cmd, commands.PixivData())
 	return cmd
 }
 
@@ -235,13 +120,13 @@ func (a command) run(cmd *cobra.Command, args []string, opts options) error {
 		return a.runReverseSearch(cmd, source, opts)
 	}
 	if cmd.Flags().Changed("provider") {
-		return a.data.usage(errors.New("--provider is only supported for image sources"))
+		return a.env.UsageError(errors.New("--provider is only supported for image sources"))
 	}
 	if opts.trendingTags {
 		if err := validateTrendingTagsFlags(cmd); err != nil {
 			return err
 		}
-		return a.runTrendingTags(cmd, opts.CommandOptions)
+		return a.runTrendingTags(cmd, opts.Options)
 	}
 	entity, err := resolveEntityType(opts.typ)
 	if err != nil {
@@ -252,21 +137,21 @@ func (a command) run(cmd *cobra.Command, args []string, opts options) error {
 	}
 	if entity == "novel" {
 		return a.runNovelSearch(cmd, args, novelOptions{
-			CommandOptions: opts.CommandOptions,
-			ndjson:         opts.ndjson,
-			limit:          opts.limit,
-			page:           opts.page,
-			searchBy:       opts.searchBy,
-			sortMode:       opts.sortMode,
-			period:         opts.period,
+			Options:  opts.Options,
+			ndjson:   opts.ndjson,
+			limit:    opts.limit,
+			page:     opts.page,
+			searchBy: opts.searchBy,
+			sortMode: opts.sortMode,
+			period:   opts.period,
 		})
 	}
 	if entity == "user" {
-		return user.RunSearch(cmd, a.userDependencies(), args, user.SearchOptions{
-			CommandOptions: user.CommandOptions{Proxy: opts.Proxy, NoProxy: opts.NoProxy, JSON: opts.JSON},
-			NDJSON:         opts.ndjson,
-			Limit:          opts.limit,
-			Page:           opts.page,
+		return user.RunSearch(cmd, a.env, a.runner, args, user.SearchOptions{
+			Options: opts.Options,
+			NDJSON:  opts.ndjson,
+			Limit:   opts.limit,
+			Page:    opts.page,
 		})
 	}
 	target, err := resolveSearchBy(opts.searchBy)
@@ -303,26 +188,26 @@ func (a command) run(cmd *cobra.Command, args []string, opts options) error {
 		return err
 	}
 	word := strings.Join(args, " ")
-	plan, err := listing.ParsePlan(cmd, opts.limit, opts.page)
+	plan, err := pixivcmd.ParsePlan(cmd, opts.limit, opts.page)
 	if err != nil {
 		return err
 	}
-	clientReq, err := a.data.request(cmd, opts.CommandOptions)
+	clientReq, err := pixivcmd.BuildRequest(cmd, opts.Options)
 	if err != nil {
 		return err
 	}
-	jsonOverride := a.data.jsonOverride(cmd, opts.CommandOptions)
+	jsonOverride := a.env.JSONOverride(cmd, opts.Options)
 	if opts.ndjson && cmd.Flags().Changed("json") {
-		return a.data.usage(errors.New("--ndjson cannot be used with --json"))
+		return a.env.UsageError(errors.New("--ndjson cannot be used with --json"))
 	}
 	jsonOut := false
 	if !opts.ndjson {
-		jsonOut, err = a.data.jsonOut(jsonOverride)
+		jsonOut, err = a.env.JSONOut(jsonOverride)
 		if err != nil {
 			return err
 		}
 	}
-	ndjson := a.data.shouldAutoNDJSON(cmd, opts.ndjson, jsonOut)
+	ndjson := a.env.AutoNDJSON(cmd, opts.ndjson, jsonOut)
 	query := pixiv.SearchArtworksRequest{
 		Word: word, Target: target, Sort: pixiv.SortMode(opts.sortMode),
 		Duration: period, StartDate: startDate, EndDate: endDate,
@@ -346,10 +231,10 @@ func (a command) run(cmd *cobra.Command, args []string, opts options) error {
 		if err != nil {
 			return err
 		}
-		return a.runBookmarkFiltered(cmd, listing.Request(clientReq), plan, jsonOut, ndjson, word, query, strategy, include)
+		return a.runBookmarkFiltered(cmd, clientReq, plan, jsonOut, ndjson, word, query, strategy, include)
 	}
 	if include != nil {
-		return a.runLocallyFiltered(cmd, listing.Request(clientReq), plan, jsonOut, ndjson, word, query, include)
+		return a.runLocallyFiltered(cmd, clientReq, plan, jsonOut, ndjson, word, query, include)
 	}
 	if aiMode != pixiv.SearchAIModeOnly && plan.PagePlan().Skip > 0 {
 		// AI-only 在 SDK 内本地过滤，不能把过滤后的逻辑位置当作原始 offset。
@@ -364,20 +249,7 @@ func (a command) run(cmd *cobra.Command, args []string, opts options) error {
 		}
 		return result.Items, result.Next, nil
 	}
-	return a.runner().RunPooledIllustList(cmd.Context(), listing.Request(clientReq), plan, jsonOut, ndjson, fmt.Sprintf("illustrations for %q", word), fetch,
-		func(items []pixiv.Artwork, start int) error { return printArtworks(a.data.Output, items) })
-}
-
-func (a command) userDependencies() user.Dependencies {
-	return user.Dependencies{
-		Input:      a.data.Input,
-		Output:     a.data.Output,
-		UsageError: a.data.UsageError,
-		JSONOut:    a.data.JSONOut,
-		Pooled: func(ctx context.Context, request user.Request, attempt func(context.Context, *pixiv.Client) (bool, error)) error {
-			return a.data.Pooled(ctx, Request(request), attempt)
-		},
-	}
+	return a.runner.RunArtworks(cmd.Context(), clientReq, plan, pixivcmd.FormatOf(jsonOut, ndjson), pixivcmd.ArtworkList{Heading: pixivcmd.Static(fmt.Sprintf("illustrations for %q", word)), Fetch: fetch, Print: func(items []pixiv.Artwork, start int) error { return pixivcmd.PrintArtworksSearch(a.env.Out, items) }})
 }
 
 type artworkSearchOut struct {
@@ -395,8 +267,8 @@ type bookmarkFilterJSON struct {
 
 // runBookmarkFiltered 在 CLI adapter 内完成 bookmark 区间过滤；输出形态与
 // 过滤元数据仍由 CLI 保持。
-func (a command) runBookmarkFiltered(cmd *cobra.Command, account listing.Request, plan listing.Plan, jsonOut, ndjson bool, word string, query pixiv.SearchArtworksRequest, strategy bookmarkFilterStrategy, include func(pixiv.Artwork) (bool, error)) error {
-	outcome, err := searchArtworks(cmd.Context(), a.runner().Executor(account), artworkSearchRequest{
+func (a command) runBookmarkFiltered(cmd *cobra.Command, account pixivcmd.Request, plan pixivcmd.Plan, jsonOut, ndjson bool, word string, query pixiv.SearchArtworksRequest, strategy bookmarkFilterStrategy, include func(pixiv.Artwork) (bool, error)) error {
+	outcome, err := searchArtworks(cmd.Context(), a.runner.Execute(account), artworkSearchRequest{
 		Query:      query,
 		Plan:       plan.PagePlan(),
 		Membership: bookmarkMembershipUnknown,
@@ -409,8 +281,8 @@ func (a command) runBookmarkFiltered(cmd *cobra.Command, account listing.Request
 	return a.writeArtworkResults(jsonOut, ndjson, word, outcome.Page.Items, outcome.Filter)
 }
 
-func (a command) runLocallyFiltered(cmd *cobra.Command, account listing.Request, plan listing.Plan, jsonOut, ndjson bool, word string, query pixiv.SearchArtworksRequest, include func(pixiv.Artwork) (bool, error)) error {
-	outcome, err := searchArtworks(cmd.Context(), a.runner().Executor(account), artworkSearchRequest{
+func (a command) runLocallyFiltered(cmd *cobra.Command, account pixivcmd.Request, plan pixivcmd.Plan, jsonOut, ndjson bool, word string, query pixiv.SearchArtworksRequest, include func(pixiv.Artwork) (bool, error)) error {
+	outcome, err := searchArtworks(cmd.Context(), a.runner.Execute(account), artworkSearchRequest{
 		Query:   query,
 		Plan:    plan.PagePlan(),
 		Include: include,
@@ -423,7 +295,7 @@ func (a command) runLocallyFiltered(cmd *cobra.Command, account listing.Request,
 
 func (a command) writeArtworkResults(jsonOut, ndjson bool, word string, items []pixiv.Artwork, bookmark *bookmarkFilterOutcome) error {
 	if ndjson {
-		encoder := json.NewEncoder(a.data.Output)
+		encoder := json.NewEncoder(a.env.Out)
 		for _, item := range items {
 			record, err := record.RecordFromArtwork(item)
 			if err != nil {
@@ -444,25 +316,25 @@ func (a command) writeArtworkResults(jsonOut, ndjson bool, word string, items []
 				Completeness: bookmark.Completeness,
 			}
 		}
-		return a.data.writeJSON(artworkSearchOut{Illusts: artworkDTOs(items), Filter: filter})
+		return a.env.PrintJSON(artworkSearchOut{Illusts: artworkDTOs(items), Filter: filter})
 	}
-	if _, err := fmt.Fprintf(a.data.Output, "illustrations for %q\n", word); err != nil {
+	if _, err := fmt.Fprintf(a.env.Out, "illustrations for %q\n", word); err != nil {
 		return err
 	}
-	return printArtworks(a.data.Output, items)
+	return pixivcmd.PrintArtworksSearch(a.env.Out, items)
 }
 
-func (a command) runTrendingTags(cmd *cobra.Command, options CommandOptions) error {
-	request, err := a.data.request(cmd, options)
+func (a command) runTrendingTags(cmd *cobra.Command, options commands.Options) error {
+	request, err := pixivcmd.BuildRequest(cmd, options)
 	if err != nil {
 		return err
 	}
-	jsonOverride := a.data.jsonOverride(cmd, options)
-	jsonOut, err := a.data.jsonOut(jsonOverride)
+	jsonOverride := a.env.JSONOverride(cmd, options)
+	jsonOut, err := a.env.JSONOut(jsonOverride)
 	if err != nil {
 		return err
 	}
-	tags, err := a.data.Pooled.Read(cmd.Context(), request, func(ctx context.Context, client *pixiv.Client) ([]pixiv.TrendingTag, error) {
+	tags, err := pixivcmd.Read(a.runner, cmd.Context(), request, func(ctx context.Context, client *pixiv.Client) ([]pixiv.TrendingTag, error) {
 		return client.TrendingArtworkTags(ctx, pixiv.TrendingArtworkTagsRequest{})
 	})
 	if err != nil {
@@ -473,7 +345,7 @@ func (a command) runTrendingTags(cmd *cobra.Command, options CommandOptions) err
 		for _, tag := range tags {
 			dtos = append(dtos, tag)
 		}
-		return a.data.writeJSON(struct {
+		return a.env.PrintJSON(struct {
 			Tags []pixiv.TrendingTag `json:"tags"`
 		}{Tags: dtos})
 	}
@@ -482,19 +354,11 @@ func (a command) runTrendingTags(cmd *cobra.Command, options CommandOptions) err
 		if translated == "" {
 			translated = "none"
 		}
-		if _, err := fmt.Fprintf(a.data.Output, "%s (translation: %s)\n", textutil.SafeLine(tag.Tag), textutil.SafeLine(translated)); err != nil {
+		if _, err := fmt.Fprintf(a.env.Out, "%s (translation: %s)\n", textutil.SafeLine(tag.Tag), textutil.SafeLine(translated)); err != nil {
 			return err
 		}
 	}
 	return nil
-}
-
-// runner is resolved only after Cobra has accepted the command input and the
-// root has prepared the command's declared resources.
-func (a command) runner() listing.Runner {
-	return listing.New(a.data.Output, func(ctx context.Context, request listing.Request, attempt func(context.Context, *pixiv.Client) (bool, error)) error {
-		return a.data.Pooled(ctx, Request(request), attempt)
-	})
 }
 
 func artworkDTOs(items []pixiv.Artwork) []pixiv.Artwork {

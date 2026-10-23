@@ -10,6 +10,7 @@ import (
 	"strings"
 	"testing"
 
+	commands "github.com/FlanChanXwO/pixiv-cli/internal/cli/internal/command"
 	"github.com/FlanChanXwO/pixiv-cli/sdk"
 	"github.com/FlanChanXwO/pixiv-cli/sdk/fanbox"
 	"github.com/stretchr/testify/require"
@@ -79,7 +80,7 @@ func TestSavePostAssetsKeepsAssetPathInsideDownloadDir(t *testing.T) {
 			baseDir := t.TempDir()
 			client := stubSavingClient(t)
 			resource := stubImageResource(t, client)
-			cmd := command{out: io.Discard}
+			cmd := command{env: commands.Env{Out: io.Discard}}
 			post := fanbox.Post{
 				CreatorID: tc.creatorID,
 				ID:        tc.postID,
@@ -105,7 +106,7 @@ func TestSavePostAssetsRejectsEmptyPathIdentity(t *testing.T) {
 	baseDir := t.TempDir()
 	client := stubSavingClient(t)
 	resource := stubImageResource(t, client)
-	cmd := command{out: io.Discard}
+	cmd := command{env: commands.Env{Out: io.Discard}}
 	post := fanbox.Post{CreatorID: "", ID: "p1", Body: &fanbox.PostBody{
 		Assets: []fanbox.Asset{{ID: "a1", Kind: fanbox.AssetKindImage, Resource: resource}},
 	}}

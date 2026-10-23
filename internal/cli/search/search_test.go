@@ -34,7 +34,7 @@ func TestCommandDeepArtworkPageStartsAtRawOffset(t *testing.T) {
 		t.Fatal(err)
 	}
 	var output bytes.Buffer
-	cmd := New(Dependencies{
+	cmd := newTestCommand(testDependencies{
 		Input: strings.NewReader(""), Output: &output,
 		JSONOut: func(*bool) (bool, error) { return true, nil },
 		Pooled: func(ctx context.Context, _ Request, attempt func(context.Context, *pixiv.Client) (bool, error)) error {
@@ -96,7 +96,7 @@ func TestCommandFilteredArtworkPagesKeepLogicalSkip(t *testing.T) {
 				t.Fatal(err)
 			}
 			var output bytes.Buffer
-			cmd := New(Dependencies{
+			cmd := newTestCommand(testDependencies{
 				Input: strings.NewReader(""), Output: &output,
 				JSONOut: func(*bool) (bool, error) { return true, nil },
 				Pooled: func(ctx context.Context, _ Request, attempt func(context.Context, *pixiv.Client) (bool, error)) error {
@@ -125,7 +125,7 @@ func TestCommandFilteredArtworkPagesKeepLogicalSkip(t *testing.T) {
 
 func TestCommandRejectsInvalidFilterBeforeOpeningClient(t *testing.T) {
 	opened := false
-	cmd := New(Dependencies{
+	cmd := newTestCommand(testDependencies{
 		Input:      strings.NewReader(""),
 		Output:     &bytes.Buffer{},
 		UsageError: func(err error) error { return err },
@@ -150,7 +150,7 @@ func TestCommandUsesReverseSearchForHTTPSourceWithoutOpeningPixivSDK(t *testing.
 	opened := false
 	reverseCalls := 0
 	const source = "https://example.test/image.jpg"
-	cmd := New(Dependencies{
+	cmd := newTestCommand(testDependencies{
 		Input:  strings.NewReader(""),
 		Output: &bytes.Buffer{},
 		JSONOut: func(*bool) (bool, error) {
@@ -184,7 +184,7 @@ func TestCommandUsesReverseSearchForHTTPSourceWithoutOpeningPixivSDK(t *testing.
 
 func TestCommandPassesReverseSearchProviderAndProxyOverride(t *testing.T) {
 	var captured ReverseSearchRequest
-	cmd := New(Dependencies{
+	cmd := newTestCommand(testDependencies{
 		Input:  strings.NewReader(""),
 		Output: &bytes.Buffer{},
 		Pooled: func(context.Context, Request, func(context.Context, *pixiv.Client) (bool, error)) error {
@@ -220,7 +220,7 @@ func TestCommandUsesReverseSearchForRegularFile(t *testing.T) {
 		t.Fatal(err)
 	}
 	called := false
-	cmd := New(Dependencies{
+	cmd := newTestCommand(testDependencies{
 		Input:  strings.NewReader(""),
 		Output: &bytes.Buffer{},
 		Pooled: func(context.Context, Request, func(context.Context, *pixiv.Client) (bool, error)) error {
@@ -248,7 +248,7 @@ func TestCommandUsesReverseSearchForRegularFile(t *testing.T) {
 func TestCommandDoesNotFallbackInvalidHTTPSourceToKeywordSearch(t *testing.T) {
 	called := false
 	opened := false
-	cmd := New(Dependencies{
+	cmd := newTestCommand(testDependencies{
 		Input:  strings.NewReader(""),
 		Output: &bytes.Buffer{},
 		Pooled: func(context.Context, Request, func(context.Context, *pixiv.Client) (bool, error)) error {
@@ -290,7 +290,7 @@ func TestCommandJSONOutputPreservesStableSolverErrorAndSafeCause(t *testing.T) {
 			Message:  "ascii2d challenge solver is unavailable",
 		}},
 	}
-	cmd := New(Dependencies{
+	cmd := newTestCommand(testDependencies{
 		Input:       strings.NewReader(""),
 		Output:      output,
 		ErrorOutput: &bytes.Buffer{},
@@ -340,7 +340,7 @@ func TestCommandJSONOutputContainsReverseSearchEnvelopeAndRecords(t *testing.T) 
 		}},
 		Partial: true,
 	}
-	cmd := New(Dependencies{
+	cmd := newTestCommand(testDependencies{
 		Input:       strings.NewReader(""),
 		Output:      output,
 		ErrorOutput: &bytes.Buffer{},
@@ -391,7 +391,7 @@ func TestCommandNDJSONOutputsOnlyRecordsAndWarnsOnPartial(t *testing.T) {
 		ProviderErrors: []reversesearch.ProviderError{{Provider: reversesearch.ProviderASCII2DColor, Code: reversesearch.CodeProviderFailed, Message: "provider failed"}},
 		Partial:        true,
 	}
-	cmd := New(Dependencies{
+	cmd := newTestCommand(testDependencies{
 		Input:         strings.NewReader(""),
 		Output:        output,
 		ErrorOutput:   errorOutput,
@@ -423,7 +423,7 @@ func TestCommandHumanOutputUsesFilteredSafeSummary(t *testing.T) {
 			{Title: "external\tresult", Author: "other"},
 		},
 	}
-	cmd := New(Dependencies{
+	cmd := newTestCommand(testDependencies{
 		Input:  strings.NewReader(""),
 		Output: output,
 		JSONOut: func(*bool) (bool, error) {
@@ -454,7 +454,7 @@ func TestCommandRejectsSearchFlagsForImageSourceBeforeCallingService(t *testing.
 		args := args
 		t.Run(strings.Join(args[1:], "_"), func(t *testing.T) {
 			called := false
-			cmd := New(Dependencies{
+			cmd := newTestCommand(testDependencies{
 				Input:  strings.NewReader(""),
 				Output: &bytes.Buffer{},
 				ReverseSearch: func(context.Context, ReverseSearchRequest) (reversesearch.Response, error) {
@@ -480,7 +480,7 @@ func TestCommandRejectsSearchFlagsForImageSourceBeforeCallingService(t *testing.
 
 func TestCommandRejectsJSONAndNDJSONConflictBeforeCallingService(t *testing.T) {
 	called := false
-	cmd := New(Dependencies{
+	cmd := newTestCommand(testDependencies{
 		Input:  strings.NewReader(""),
 		Output: &bytes.Buffer{},
 		ReverseSearch: func(context.Context, ReverseSearchRequest) (reversesearch.Response, error) {
@@ -501,7 +501,7 @@ func TestCommandRejectsJSONAndNDJSONConflictBeforeCallingService(t *testing.T) {
 
 func TestCommandRejectsInvalidReverseSearchProviderBeforeCallingService(t *testing.T) {
 	called := false
-	cmd := New(Dependencies{
+	cmd := newTestCommand(testDependencies{
 		Input:  strings.NewReader(""),
 		Output: &bytes.Buffer{},
 		ReverseSearch: func(context.Context, ReverseSearchRequest) (reversesearch.Response, error) {
@@ -522,7 +522,7 @@ func TestCommandRejectsInvalidReverseSearchProviderBeforeCallingService(t *testi
 
 func TestCommandKeepsNonFileInputOnKeywordSearchPath(t *testing.T) {
 	pooled := false
-	cmd := New(Dependencies{
+	cmd := newTestCommand(testDependencies{
 		Input:  strings.NewReader(""),
 		Output: &bytes.Buffer{},
 		Pooled: func(context.Context, Request, func(context.Context, *pixiv.Client) (bool, error)) error {
@@ -548,7 +548,7 @@ func TestCommandLocallyFiltersArtworkRatingAndCanonicalizesSubtype(t *testing.T)
 	output := &bytes.Buffer{}
 	var requests []*http.Request
 	pooled := false
-	cmd := New(Dependencies{
+	cmd := newTestCommand(testDependencies{
 		Input:   strings.NewReader(""),
 		Output:  output,
 		JSONOut: func(*bool) (bool, error) { return true, nil },
@@ -603,7 +603,7 @@ func TestCommandLocallyFiltersArtworkRatingAndCanonicalizesSubtype(t *testing.T)
 func TestCommandSearchReadsWordFromStdinAndEmitsFilteredNDJSONAcrossBatches(t *testing.T) {
 	output := &bytes.Buffer{}
 	var requests []*http.Request
-	cmd := New(Dependencies{
+	cmd := newTestCommand(testDependencies{
 		Input:  strings.NewReader("cat\n"),
 		Output: output,
 		Pooled: func(ctx context.Context, _ Request, attempt func(context.Context, *pixiv.Client) (bool, error)) error {
@@ -672,7 +672,7 @@ func TestCommandOutputsEnvelopeBeforeSingleProviderFailure(t *testing.T) {
 			Provider: reversesearch.ProviderSauceNAO, Code: reversesearch.CodeMissingCredential, Message: "SauceNAO API key is required",
 		}},
 	}
-	cmd := New(Dependencies{
+	cmd := newTestCommand(testDependencies{
 		Input:       strings.NewReader(""),
 		Output:      output,
 		ErrorOutput: errorOutput,
@@ -714,7 +714,7 @@ func TestCommandAutoUsesNDJSONForNonTerminalOutput(t *testing.T) {
 	defer pipeReader.Close()
 	defer pipeWriter.Close()
 	output := &fdBuffer{fd: pipeReader.Fd()}
-	cmd := New(Dependencies{
+	cmd := newTestCommand(testDependencies{
 		Input:  strings.NewReader(""),
 		Output: output,
 		JSONOut: func(*bool) (bool, error) {
@@ -742,7 +742,7 @@ func TestCommandAutoUsesNDJSONForNonTerminalOutput(t *testing.T) {
 
 func TestTrendingTagsHumanOutputEscapesControlBytes(t *testing.T) {
 	output := &bytes.Buffer{}
-	cmd := New(Dependencies{
+	cmd := newTestCommand(testDependencies{
 		Input:  strings.NewReader(""),
 		Output: output,
 		JSONOut: func(*bool) (bool, error) {
@@ -806,7 +806,7 @@ func TestCanonicalUserSearchUsesRouteAndLogicalPaginationJSON(t *testing.T) {
 			Request:    request,
 		}, nil
 	})
-	cmd := New(Dependencies{
+	cmd := newTestCommand(testDependencies{
 		Input:      strings.NewReader(""),
 		Output:     output,
 		UsageError: func(err error) error { return err },
@@ -857,7 +857,7 @@ func TestCanonicalUserSearchRejectsArtworkFlagsBeforeOpeningClient(t *testing.T)
 		name := strings.Join(flagArgs, "_")
 		t.Run(name, func(t *testing.T) {
 			opened := false
-			cmd := New(Dependencies{
+			cmd := newTestCommand(testDependencies{
 				Input:      strings.NewReader(""),
 				Output:     &bytes.Buffer{},
 				UsageError: func(err error) error { return err },
@@ -882,7 +882,7 @@ func TestCanonicalUserSearchRejectsArtworkFlagsBeforeOpeningClient(t *testing.T)
 
 func TestTrendingTagsJSONOutputUsesCompleteEnvelope(t *testing.T) {
 	output := &bytes.Buffer{}
-	cmd := New(Dependencies{
+	cmd := newTestCommand(testDependencies{
 		Input:  strings.NewReader(""),
 		Output: output,
 		JSONOut: func(*bool) (bool, error) {
@@ -940,7 +940,7 @@ func TestTrendingTagsRejectsWordAndUnsupportedFlagsBeforeOpeningClient(t *testin
 		name := strings.Join(args, "_")
 		t.Run(name, func(t *testing.T) {
 			opened := false
-			cmd := New(Dependencies{
+			cmd := newTestCommand(testDependencies{
 				Input:      strings.NewReader(""),
 				Output:     &bytes.Buffer{},
 				UsageError: func(err error) error { return err },

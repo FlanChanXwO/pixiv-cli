@@ -8,8 +8,9 @@ import (
 	"strings"
 	"testing"
 
+	commands "github.com/FlanChanXwO/pixiv-cli/internal/cli/internal/command"
 	"github.com/FlanChanXwO/pixiv-cli/internal/cli/internal/input"
-	deps "github.com/FlanChanXwO/pixiv-cli/internal/cli/internal/pixivcmd"
+	pixivcmd "github.com/FlanChanXwO/pixiv-cli/internal/cli/internal/pixivcmd"
 	pixivuser "github.com/FlanChanXwO/pixiv-cli/internal/cli/user"
 	"github.com/FlanChanXwO/pixiv-cli/sdk"
 	pixiv "github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
@@ -19,7 +20,7 @@ import (
 )
 
 func TestNewRegistersFollowMutations(t *testing.T) {
-	cmd := New(deps.Data{Input: strings.NewReader(""), Output: &bytes.Buffer{}, ErrorOutput: &bytes.Buffer{}, UsageError: func(err error) error { return err }})
+	cmd := newTestCommand(testData{Input: strings.NewReader(""), Output: &bytes.Buffer{}, ErrorOutput: &bytes.Buffer{}, UsageError: func(err error) error { return err }})
 	if len(cmd.Commands()) != 2 || cmd.Commands()[0].Name() != "add" || cmd.Commands()[1].Name() != "remove" {
 		t.Fatalf("unexpected follow leaves: %v", cmd.Commands())
 	}
@@ -44,7 +45,7 @@ func TestFollowRecordTypesRemainUserOnly(t *testing.T) {
 
 func TestFollowAddRejectsUnsupportedRestrictBeforeOpeningClient(t *testing.T) {
 	pooledCalls := 0
-	data := deps.Data{
+	data := testData{
 		Input:       strings.NewReader(""),
 		Output:      &bytes.Buffer{},
 		ErrorOutput: &bytes.Buffer{},
@@ -53,7 +54,7 @@ func TestFollowAddRejectsUnsupportedRestrictBeforeOpeningClient(t *testing.T) {
 		},
 		Pooled: func(
 			context.Context,
-			deps.Request,
+			pixivcmd.Request,
 			func(context.Context, *pixiv.Client) (bool, error),
 		) error {
 			pooledCalls++
@@ -61,7 +62,7 @@ func TestFollowAddRejectsUnsupportedRestrictBeforeOpeningClient(t *testing.T) {
 		},
 	}
 
-	cmd := New(data)
+	cmd := newTestCommand(data)
 	cmd.SetArgs([]string{"add", "123", "--restrict", "all"})
 
 	err := cmd.Execute()
@@ -75,7 +76,7 @@ func TestFollowRejectsPixivURLBeforeOpeningClient(t *testing.T) {
 	for _, action := range []string{"add", "remove"} {
 		t.Run(action, func(t *testing.T) {
 			pooledCalls := 0
-			data := deps.Data{
+			data := testData{
 				Input:       strings.NewReader(""),
 				Output:      &bytes.Buffer{},
 				ErrorOutput: &bytes.Buffer{},
@@ -84,7 +85,7 @@ func TestFollowRejectsPixivURLBeforeOpeningClient(t *testing.T) {
 				},
 				Pooled: func(
 					context.Context,
-					deps.Request,
+					pixivcmd.Request,
 					func(context.Context, *pixiv.Client) (bool, error),
 				) error {
 					pooledCalls++
@@ -92,7 +93,7 @@ func TestFollowRejectsPixivURLBeforeOpeningClient(t *testing.T) {
 				},
 			}
 
-			cmd := New(data)
+			cmd := newTestCommand(data)
 			cmd.SetArgs([]string{action, "https://www.pixiv.net/users/123"})
 
 			err := cmd.Execute()
@@ -107,7 +108,7 @@ func TestFollowRejectsPixivURLBeforeOpeningClient(t *testing.T) {
 func TestFollowMutationRoutesShareOwnerAndWireContract(t *testing.T) {
 	tests := []struct {
 		name     string
-		command  func(deps.Data) *cobra.Command
+		command  func(commands.Env, pixivcmd.Executor) *cobra.Command
 		args     []string
 		path     string
 		restrict string
@@ -121,8 +122,8 @@ func TestFollowMutationRoutesShareOwnerAndWireContract(t *testing.T) {
 		},
 		{
 			name: "user add",
-			command: func(data deps.Data) *cobra.Command {
-				return newUserAliasCommand(data)
+			command: func(env commands.Env, exec pixivcmd.Executor) *cobra.Command {
+				return newUserAliasCommand(env, exec)
 			},
 			args:     []string{"follow", "add", "401", "--restrict", "private"},
 			path:     "/v1/user/follow/add",
@@ -136,8 +137,8 @@ func TestFollowMutationRoutesShareOwnerAndWireContract(t *testing.T) {
 		},
 		{
 			name: "user remove",
-			command: func(data deps.Data) *cobra.Command {
-				return newUserAliasCommand(data)
+			command: func(env commands.Env, exec pixivcmd.Executor) *cobra.Command {
+				return newUserAliasCommand(env, exec)
 			},
 			args: []string{"follow", "remove", "401"},
 			path: "/v1/user/follow/delete",
@@ -146,8 +147,8 @@ func TestFollowMutationRoutesShareOwnerAndWireContract(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			data, requests := newFollowHTTPTestData(t)
-			cmd := tt.command(data)
+			env, exec, requests := newFollowHTTPTestData(t)
+			cmd := tt.command(env, exec)
 			cmd.SetArgs(tt.args)
 
 			require.NoError(t, cmd.Execute())
@@ -159,7 +160,7 @@ func TestFollowMutationRoutesShareOwnerAndWireContract(t *testing.T) {
 			} else {
 				assert.Equal(t, tt.restrict, (*requests)[0].values["restrict"])
 			}
-			assert.Empty(t, data.Output.(*bytes.Buffer).String())
+			assert.Empty(t, env.Out.(*bytes.Buffer).String())
 		})
 	}
 }
@@ -175,7 +176,7 @@ func (f followRoundTripFunc) RoundTrip(req *http.Request) (*http.Response, error
 	return f(req)
 }
 
-func newFollowHTTPTestData(t *testing.T) (deps.Data, *[]capturedFollowRequest) {
+func newFollowHTTPTestData(t *testing.T) (commands.Env, pixivcmd.Executor, *[]capturedFollowRequest) {
 	t.Helper()
 	requests := make([]capturedFollowRequest, 0, 1)
 	transport := followRoundTripFunc(func(req *http.Request) (*http.Response, error) {
@@ -197,31 +198,16 @@ func newFollowHTTPTestData(t *testing.T) (deps.Data, *[]capturedFollowRequest) {
 	require.NoError(t, err)
 
 	output := &bytes.Buffer{}
-	return deps.Data{
-		Input:       strings.NewReader(""),
-		Output:      output,
-		ErrorOutput: &bytes.Buffer{},
-		UsageError: func(err error) error {
-			return err
-		},
-		Pooled: func(ctx context.Context, _ deps.Request, attempt func(context.Context, *pixiv.Client) (bool, error)) error {
-			_, err := attempt(ctx, client)
-			return err
-		},
-	}, &requests
+	env := commands.Env{In: strings.NewReader(""), Out: output, Err: &bytes.Buffer{}, WrapUsage: func(err error) error {
+		return err
+	}}
+	exec := pixivcmd.Executor(func(ctx context.Context, _ pixivcmd.Request, attempt func(context.Context, *pixiv.Client) (bool, error)) error {
+		_, err := attempt(ctx, client)
+		return err
+	})
+	return env, exec, &requests
 }
 
-func newUserAliasCommand(data deps.Data) *cobra.Command {
-	return pixivuser.New(pixivuser.Dependencies{
-		Input:      data.Input,
-		Output:     data.Output,
-		UsageError: data.UsageError,
-		JSONOut:    data.JSONOut,
-		Pooled: func(ctx context.Context, request pixivuser.Request, attempt func(context.Context, *pixiv.Client) (bool, error)) error {
-			return data.Pooled(ctx, deps.Request{HTTPSProxyOverride: request.HTTPSProxyOverride}, attempt)
-		},
-		Follow: func() *cobra.Command {
-			return New(data)
-		},
-	})
+func newUserAliasCommand(env commands.Env, exec pixivcmd.Executor) *cobra.Command {
+	return pixivuser.New(env, pixivcmd.New(env.Out, exec), func() *cobra.Command { return New(env, exec) })
 }

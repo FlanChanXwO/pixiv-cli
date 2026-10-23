@@ -10,13 +10,13 @@ import (
 	"strings"
 	"testing"
 
-	deps "github.com/FlanChanXwO/pixiv-cli/internal/cli/internal/pixivcmd"
+	pixivcmd "github.com/FlanChanXwO/pixiv-cli/internal/cli/internal/pixivcmd"
 	pixiv "github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
 	"github.com/spf13/cobra"
 )
 
 func TestNewRegistersBookmarkLeaves(t *testing.T) {
-	cmd := New(deps.Data{Input: strings.NewReader(""), Output: &bytes.Buffer{}, ErrorOutput: &bytes.Buffer{}, UsageError: func(err error) error { return err }})
+	cmd := newTestCommand(testData{Input: strings.NewReader(""), Output: &bytes.Buffer{}, ErrorOutput: &bytes.Buffer{}, UsageError: func(err error) error { return err }})
 	seen := map[string]bool{}
 	for _, child := range cmd.Commands() {
 		seen[child.Name()] = true
@@ -29,7 +29,7 @@ func TestNewRegistersBookmarkLeaves(t *testing.T) {
 }
 
 func TestBookmarkHelpUsesTypedTargetNames(t *testing.T) {
-	cmd := New(deps.Data{Input: strings.NewReader(""), Output: &bytes.Buffer{}, ErrorOutput: &bytes.Buffer{}, UsageError: func(err error) error { return err }})
+	cmd := newTestCommand(testData{Input: strings.NewReader(""), Output: &bytes.Buffer{}, ErrorOutput: &bytes.Buffer{}, UsageError: func(err error) error { return err }})
 	children := map[string]*cobra.Command{}
 	for _, child := range cmd.Commands() {
 		children[child.Name()] = child
@@ -79,13 +79,13 @@ func TestBookmarkListAllUsesOneLogicalLimitAndTypedNDJSON(t *testing.T) {
 		t.Fatalf("NewWith: %v", err)
 	}
 
-	cmd := New(deps.Data{
+	cmd := newTestCommand(testData{
 		Input:       strings.NewReader(""),
 		Output:      output,
 		ErrorOutput: &bytes.Buffer{},
 		UsageError:  func(err error) error { return err },
 		JSONOut:     func(*bool) (bool, error) { return false, nil },
-		Pooled: func(ctx context.Context, _ deps.Request, attempt func(context.Context, *pixiv.Client) (bool, error)) error {
+		Pooled: func(ctx context.Context, _ pixivcmd.Request, attempt func(context.Context, *pixiv.Client) (bool, error)) error {
 			_, err := attempt(ctx, client)
 			return err
 		},
@@ -143,13 +143,13 @@ func TestBookmarkTagsAllPreservesSameNameCountsAndType(t *testing.T) {
 		t.Fatalf("NewWith: %v", err)
 	}
 
-	cmd := New(deps.Data{
+	cmd := newTestCommand(testData{
 		Input:       strings.NewReader(""),
 		Output:      output,
 		ErrorOutput: &bytes.Buffer{},
 		UsageError:  func(err error) error { return err },
 		JSONOut:     func(*bool) (bool, error) { return true, nil },
-		Pooled: func(ctx context.Context, _ deps.Request, attempt func(context.Context, *pixiv.Client) (bool, error)) error {
+		Pooled: func(ctx context.Context, _ pixivcmd.Request, attempt func(context.Context, *pixiv.Client) (bool, error)) error {
 			_, err := attempt(ctx, client)
 			return err
 		},
@@ -206,13 +206,13 @@ func TestBookmarkListAcceptsUserURLForNovel(t *testing.T) {
 		t.Fatalf("NewWith: %v", err)
 	}
 
-	cmd := New(deps.Data{
+	cmd := newTestCommand(testData{
 		Input:       strings.NewReader(""),
 		Output:      output,
 		ErrorOutput: &bytes.Buffer{},
 		UsageError:  func(err error) error { return err },
 		JSONOut:     func(*bool) (bool, error) { return true, nil },
-		Pooled: func(ctx context.Context, _ deps.Request, attempt func(context.Context, *pixiv.Client) (bool, error)) error {
+		Pooled: func(ctx context.Context, _ pixivcmd.Request, attempt func(context.Context, *pixiv.Client) (bool, error)) error {
 			_, err := attempt(ctx, client)
 			return err
 		},
@@ -240,12 +240,12 @@ func TestBookmarkOwnerCommandsRejectArtworkBookmarksURLForOtherTypesBeforeNetwor
 		for _, typ := range []string{"novel", "all"} {
 			t.Run(commandName+"-"+typ, func(t *testing.T) {
 				calls := 0
-				cmd := New(deps.Data{
+				cmd := newTestCommand(testData{
 					Input:       strings.NewReader(""),
 					Output:      &bytes.Buffer{},
 					ErrorOutput: &bytes.Buffer{},
 					UsageError:  func(err error) error { return err },
-					Pooled: func(context.Context, deps.Request, func(context.Context, *pixiv.Client) (bool, error)) error {
+					Pooled: func(context.Context, pixivcmd.Request, func(context.Context, *pixiv.Client) (bool, error)) error {
 						calls++
 						return nil
 					},
@@ -272,12 +272,12 @@ func TestBookmarkOwnerCommandsRejectArtworkBookmarksURLForOtherTypesBeforeNetwor
 
 func TestBookmarkDetailRejectsAllBeforeNetwork(t *testing.T) {
 	calls := 0
-	cmd := New(deps.Data{
+	cmd := newTestCommand(testData{
 		Input:       strings.NewReader(""),
 		Output:      &bytes.Buffer{},
 		ErrorOutput: &bytes.Buffer{},
 		UsageError:  func(err error) error { return err },
-		Pooled: func(context.Context, deps.Request, func(context.Context, *pixiv.Client) (bool, error)) error {
+		Pooled: func(context.Context, pixivcmd.Request, func(context.Context, *pixiv.Client) (bool, error)) error {
 			calls++
 			return nil
 		},
@@ -309,13 +309,13 @@ func TestBookmarkDetailSupportsNovelType(t *testing.T) {
 		t.Fatalf("NewWith: %v", err)
 	}
 
-	cmd := New(deps.Data{
+	cmd := newTestCommand(testData{
 		Input:       strings.NewReader(""),
 		Output:      output,
 		ErrorOutput: &bytes.Buffer{},
 		UsageError:  func(err error) error { return err },
 		JSONOut:     func(*bool) (bool, error) { return true, nil },
-		Pooled: func(ctx context.Context, _ deps.Request, attempt func(context.Context, *pixiv.Client) (bool, error)) error {
+		Pooled: func(ctx context.Context, _ pixivcmd.Request, attempt func(context.Context, *pixiv.Client) (bool, error)) error {
 			_, err := attempt(ctx, client)
 			return err
 		},
@@ -350,13 +350,13 @@ func TestBookmarkTagsSupportsNovelType(t *testing.T) {
 		t.Fatalf("NewWith: %v", err)
 	}
 
-	cmd := New(deps.Data{
+	cmd := newTestCommand(testData{
 		Input:       strings.NewReader(""),
 		Output:      output,
 		ErrorOutput: &bytes.Buffer{},
 		UsageError:  func(err error) error { return err },
 		JSONOut:     func(*bool) (bool, error) { return true, nil },
-		Pooled: func(ctx context.Context, _ deps.Request, attempt func(context.Context, *pixiv.Client) (bool, error)) error {
+		Pooled: func(ctx context.Context, _ pixivcmd.Request, attempt func(context.Context, *pixiv.Client) (bool, error)) error {
 			_, err := attempt(ctx, client)
 			return err
 		},
@@ -393,13 +393,13 @@ func TestBookmarkListAcceptsCanonicalUserRecordForNovel(t *testing.T) {
 		t.Fatalf("NewWith: %v", err)
 	}
 
-	cmd := New(deps.Data{
+	cmd := newTestCommand(testData{
 		Input:       strings.NewReader(`{"id":"401","type":"user","url":"https://www.pixiv.net/users/401"}` + "\n"),
 		Output:      output,
 		ErrorOutput: &bytes.Buffer{},
 		UsageError:  func(err error) error { return err },
 		JSONOut:     func(*bool) (bool, error) { return true, nil },
-		Pooled: func(ctx context.Context, _ deps.Request, attempt func(context.Context, *pixiv.Client) (bool, error)) error {
+		Pooled: func(ctx context.Context, _ pixivcmd.Request, attempt func(context.Context, *pixiv.Client) (bool, error)) error {
 			_, err := attempt(ctx, client)
 			return err
 		},
@@ -443,13 +443,13 @@ func TestBookmarkListAllFailureDoesNotCommitJSONOrNDJSON(t *testing.T) {
 				t.Fatalf("NewWith: %v", err)
 			}
 
-			cmd := New(deps.Data{
+			cmd := newTestCommand(testData{
 				Input:       strings.NewReader(""),
 				Output:      output,
 				ErrorOutput: &bytes.Buffer{},
 				UsageError:  func(err error) error { return err },
 				JSONOut:     func(*bool) (bool, error) { return outputMode == "json", nil },
-				Pooled: func(ctx context.Context, _ deps.Request, attempt func(context.Context, *pixiv.Client) (bool, error)) error {
+				Pooled: func(ctx context.Context, _ pixivcmd.Request, attempt func(context.Context, *pixiv.Client) (bool, error)) error {
 					_, err := attempt(ctx, client)
 					return err
 				},
@@ -496,13 +496,13 @@ func TestBookmarkTagsAllFailureDoesNotCommitJSONOrNDJSON(t *testing.T) {
 				t.Fatalf("NewWith: %v", err)
 			}
 
-			cmd := New(deps.Data{
+			cmd := newTestCommand(testData{
 				Input:       strings.NewReader(""),
 				Output:      output,
 				ErrorOutput: &bytes.Buffer{},
 				UsageError:  func(err error) error { return err },
 				JSONOut:     func(*bool) (bool, error) { return outputMode == "json", nil },
-				Pooled: func(ctx context.Context, _ deps.Request, attempt func(context.Context, *pixiv.Client) (bool, error)) error {
+				Pooled: func(ctx context.Context, _ pixivcmd.Request, attempt func(context.Context, *pixiv.Client) (bool, error)) error {
 					_, err := attempt(ctx, client)
 					return err
 				},
@@ -544,13 +544,13 @@ func TestBookmarkAllResolvesCurrentUserPerPoolAttempt(t *testing.T) {
 				return bookmarkPoolReplayResponse(request, commandName, false), nil
 			})
 			output := &bytes.Buffer{}
-			cmd := New(deps.Data{
+			cmd := newTestCommand(testData{
 				Input:       strings.NewReader(""),
 				Output:      output,
 				ErrorOutput: &bytes.Buffer{},
 				UsageError:  func(err error) error { return err },
 				JSONOut:     func(*bool) (bool, error) { return true, nil },
-				Pooled: func(ctx context.Context, _ deps.Request, attempt func(context.Context, *pixiv.Client) (bool, error)) error {
+				Pooled: func(ctx context.Context, _ pixivcmd.Request, attempt func(context.Context, *pixiv.Client) (bool, error)) error {
 					committed, err := attempt(ctx, first)
 					if err == nil || committed {
 						return err
@@ -654,12 +654,12 @@ func TestBookmarkAddSupportsNovelType(t *testing.T) {
 		t.Fatalf("NewWith: %v", err)
 	}
 
-	cmd := New(deps.Data{
+	cmd := newTestCommand(testData{
 		Input:       strings.NewReader(""),
 		Output:      &bytes.Buffer{},
 		ErrorOutput: &bytes.Buffer{},
 		UsageError:  func(err error) error { return err },
-		Pooled: func(ctx context.Context, _ deps.Request, attempt func(context.Context, *pixiv.Client) (bool, error)) error {
+		Pooled: func(ctx context.Context, _ pixivcmd.Request, attempt func(context.Context, *pixiv.Client) (bool, error)) error {
 			_, err := attempt(ctx, client)
 			return err
 		},
@@ -689,12 +689,12 @@ func TestBookmarkRemoveSupportsNovelType(t *testing.T) {
 		t.Fatalf("NewWith: %v", err)
 	}
 
-	cmd := New(deps.Data{
+	cmd := newTestCommand(testData{
 		Input:       strings.NewReader(""),
 		Output:      &bytes.Buffer{},
 		ErrorOutput: &bytes.Buffer{},
 		UsageError:  func(err error) error { return err },
-		Pooled: func(ctx context.Context, _ deps.Request, attempt func(context.Context, *pixiv.Client) (bool, error)) error {
+		Pooled: func(ctx context.Context, _ pixivcmd.Request, attempt func(context.Context, *pixiv.Client) (bool, error)) error {
 			_, err := attempt(ctx, client)
 			return err
 		},
@@ -717,12 +717,12 @@ func TestBookmarkMutationRejectsUnsupportedTypeBeforeNetwork(t *testing.T) {
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			pooledCalls := 0
-			cmd := New(deps.Data{
+			cmd := newTestCommand(testData{
 				Input:       strings.NewReader(""),
 				Output:      &bytes.Buffer{},
 				ErrorOutput: &bytes.Buffer{},
 				UsageError:  func(err error) error { return err },
-				Pooled: func(context.Context, deps.Request, func(context.Context, *pixiv.Client) (bool, error)) error {
+				Pooled: func(context.Context, pixivcmd.Request, func(context.Context, *pixiv.Client) (bool, error)) error {
 					pooledCalls++
 					return nil
 				},
@@ -758,12 +758,12 @@ func TestBookmarkAddConsumesNovelRecordsOnlyWithNovelType(t *testing.T) {
 		t.Fatalf("NewWith: %v", err)
 	}
 
-	cmd := New(deps.Data{
+	cmd := newTestCommand(testData{
 		Input:       strings.NewReader(`{"id":"42","type":"novel","url":"https://www.pixiv.net/novel/42"}` + "\n"),
 		Output:      &bytes.Buffer{},
 		ErrorOutput: &bytes.Buffer{},
 		UsageError:  func(err error) error { return err },
-		Pooled: func(ctx context.Context, _ deps.Request, attempt func(context.Context, *pixiv.Client) (bool, error)) error {
+		Pooled: func(ctx context.Context, _ pixivcmd.Request, attempt func(context.Context, *pixiv.Client) (bool, error)) error {
 			_, err := attempt(ctx, client)
 			return err
 		},
@@ -777,12 +777,12 @@ func TestBookmarkAddConsumesNovelRecordsOnlyWithNovelType(t *testing.T) {
 
 func TestBookmarkAddRejectsArtworkRecordWithNovelType(t *testing.T) {
 	var diagnostics bytes.Buffer
-	cmd := New(deps.Data{
+	cmd := newTestCommand(testData{
 		Input:       strings.NewReader(`{"id":"42","type":"artwork","url":"https://www.pixiv.net/artworks/42"}` + "\n"),
 		Output:      &bytes.Buffer{},
 		ErrorOutput: &diagnostics,
 		UsageError:  func(err error) error { return err },
-		Pooled: func(context.Context, deps.Request, func(context.Context, *pixiv.Client) (bool, error)) error {
+		Pooled: func(context.Context, pixivcmd.Request, func(context.Context, *pixiv.Client) (bool, error)) error {
 			t.Fatal("Pooled must not be called for a namespace-mismatched record")
 			return nil
 		},

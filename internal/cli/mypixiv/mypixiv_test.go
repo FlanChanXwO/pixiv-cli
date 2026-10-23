@@ -8,7 +8,7 @@ import (
 	"strings"
 	"testing"
 
-	deps "github.com/FlanChanXwO/pixiv-cli/internal/cli/internal/pixivcmd"
+	pixivcmd "github.com/FlanChanXwO/pixiv-cli/internal/cli/internal/pixivcmd"
 	"github.com/FlanChanXwO/pixiv-cli/sdk"
 	pixiv "github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
 )
@@ -20,7 +20,7 @@ func (f roundTripFunc) RoundTrip(request *http.Request) (*http.Response, error) 
 }
 
 func TestNewRegistersMyPixivLeaves(t *testing.T) {
-	cmd := New(deps.Data{Input: strings.NewReader(""), Output: &bytes.Buffer{}, ErrorOutput: &bytes.Buffer{}, UsageError: func(err error) error { return err }})
+	cmd := newTestCommand(testData{Input: strings.NewReader(""), Output: &bytes.Buffer{}, ErrorOutput: &bytes.Buffer{}, UsageError: func(err error) error { return err }})
 	seen := map[string]bool{}
 	for _, child := range cmd.Commands() {
 		seen[child.Name()] = true
@@ -46,12 +46,12 @@ func TestWorksAcceptsDocumentedArtworkEntityForCurrentUser(t *testing.T) {
 		t.Fatalf("NewWith: %v", err)
 	}
 
-	cmd := New(deps.Data{
+	cmd := newTestCommand(testData{
 		Input:      strings.NewReader(""),
 		Output:     &bytes.Buffer{},
 		UsageError: func(err error) error { return err },
 		JSONOut:    func(*bool) (bool, error) { return false, nil },
-		Pooled: func(ctx context.Context, _ deps.Request, attempt func(context.Context, *pixiv.Client) (bool, error)) error {
+		Pooled: func(ctx context.Context, _ pixivcmd.Request, attempt func(context.Context, *pixiv.Client) (bool, error)) error {
 			_, err := attempt(ctx, client)
 			return err
 		},
@@ -130,12 +130,12 @@ func TestWorksUsesTypedSDKRoutes(t *testing.T) {
 				t.Fatalf("NewWith: %v", err)
 			}
 
-			cmd := New(deps.Data{
+			cmd := newTestCommand(testData{
 				Input:      strings.NewReader(""),
 				Output:     &bytes.Buffer{},
 				UsageError: func(err error) error { return err },
 				JSONOut:    func(*bool) (bool, error) { return false, nil },
-				Pooled: func(ctx context.Context, _ deps.Request, attempt func(context.Context, *pixiv.Client) (bool, error)) error {
+				Pooled: func(ctx context.Context, _ pixivcmd.Request, attempt func(context.Context, *pixiv.Client) (bool, error)) error {
 					_, err := attempt(ctx, client)
 					return err
 				},
@@ -187,12 +187,12 @@ func TestUsersUsesVerifiedIdentityAndFixedFilter(t *testing.T) {
 		t.Fatalf("OpenWith: %v", err)
 	}
 
-	cmd := New(deps.Data{
+	cmd := newTestCommand(testData{
 		Input:      strings.NewReader(""),
 		Output:     &bytes.Buffer{},
 		UsageError: func(err error) error { return err },
 		JSONOut:    func(*bool) (bool, error) { return false, nil },
-		Pooled: func(ctx context.Context, _ deps.Request, attempt func(context.Context, *pixiv.Client) (bool, error)) error {
+		Pooled: func(ctx context.Context, _ pixivcmd.Request, attempt func(context.Context, *pixiv.Client) (bool, error)) error {
 			_, err := attempt(ctx, client)
 			return err
 		},
@@ -209,11 +209,11 @@ func TestUsersUsesVerifiedIdentityAndFixedFilter(t *testing.T) {
 
 func TestWorksRejectsUnsupportedTypeBeforeOpeningClient(t *testing.T) {
 	pooledCalls := 0
-	cmd := New(deps.Data{
+	cmd := newTestCommand(testData{
 		Input:      strings.NewReader(""),
 		Output:     &bytes.Buffer{},
 		UsageError: func(err error) error { return err },
-		Pooled: func(context.Context, deps.Request, func(context.Context, *pixiv.Client) (bool, error)) error {
+		Pooled: func(context.Context, pixivcmd.Request, func(context.Context, *pixiv.Client) (bool, error)) error {
 			pooledCalls++
 			return nil
 		},
@@ -231,11 +231,11 @@ func TestWorksRejectsUnsupportedTypeBeforeOpeningClient(t *testing.T) {
 
 func TestWorksRejectsInvalidUserIDBeforeOpeningClient(t *testing.T) {
 	pooledCalls := 0
-	cmd := New(deps.Data{
+	cmd := newTestCommand(testData{
 		Input:      strings.NewReader(""),
 		Output:     &bytes.Buffer{},
 		UsageError: func(err error) error { return err },
-		Pooled: func(context.Context, deps.Request, func(context.Context, *pixiv.Client) (bool, error)) error {
+		Pooled: func(context.Context, pixivcmd.Request, func(context.Context, *pixiv.Client) (bool, error)) error {
 			pooledCalls++
 			return nil
 		},
@@ -255,12 +255,12 @@ func TestWorksRejectsInvalidUserIDBeforeOpeningClient(t *testing.T) {
 }
 
 func TestUsersRequiresKnownCurrentUserIdentity(t *testing.T) {
-	cmd := New(deps.Data{
+	cmd := newTestCommand(testData{
 		Input:      strings.NewReader(""),
 		Output:     &bytes.Buffer{},
 		UsageError: func(err error) error { return err },
 		JSONOut:    func(*bool) (bool, error) { return false, nil },
-		Pooled: func(ctx context.Context, _ deps.Request, attempt func(context.Context, *pixiv.Client) (bool, error)) error {
+		Pooled: func(ctx context.Context, _ pixivcmd.Request, attempt func(context.Context, *pixiv.Client) (bool, error)) error {
 			client, err := pixiv.NewWith("test-access-token", pixiv.Options{})
 			if err != nil {
 				return err

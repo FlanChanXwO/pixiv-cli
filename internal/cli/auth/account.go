@@ -11,7 +11,7 @@ import (
 	"sync"
 	"time"
 
-	requirements "github.com/FlanChanXwO/pixiv-cli/internal/cli/internal/command"
+	commands "github.com/FlanChanXwO/pixiv-cli/internal/cli/internal/command"
 	inputcmd "github.com/FlanChanXwO/pixiv-cli/internal/cli/internal/input"
 	"github.com/spf13/cobra"
 )
@@ -61,7 +61,7 @@ func accountBundleImportOutFromResult(result accountBundleImportResult) AccountB
 }
 
 type accountImportOptions struct {
-	proxyOptions
+	commands.ProxyOptions
 	jsonOut bool
 }
 
@@ -88,12 +88,12 @@ type accountRemoveOptions struct {
 }
 
 type accountCheckOptions struct {
-	proxyOptions
+	commands.ProxyOptions
 	jsonOut bool
 }
 
 type accountRefreshOptions struct {
-	proxyOptions
+	commands.ProxyOptions
 	all     bool
 	jsonOut bool
 }
@@ -133,7 +133,7 @@ func (a controller) newAccountCommand() *cobra.Command {
 		a.newAccountPoolCommand(),
 	)
 	a.bindNoInput(cmd)
-	requirements.Bind(cmd, requirements.Execution{})
+	commands.Bind(cmd, commands.Execution{})
 	return cmd
 }
 
@@ -170,10 +170,10 @@ func (a controller) newAccountExportCommand() *cobra.Command {
 				if strings.TrimSpace(opts.output) == "" {
 					return errors.New("--output requires a path")
 				}
-				if a.deps.WriteBundle == nil {
+				if a.support.WriteBundle == nil {
 					return errors.New("auth export bundle writer is not configured")
 				}
-				if err := a.deps.WriteBundle(opts.output, result.Bundle, opts.force); err != nil {
+				if err := a.support.WriteBundle(opts.output, result.Bundle, opts.force); err != nil {
 					return err
 				}
 				return WriteAuthExportStdout(a.out, []byte(fmt.Sprintf("output: %s\naccounts: %d\n", opts.output, result.AccountCount)))
@@ -188,7 +188,7 @@ func (a controller) newAccountExportCommand() *cobra.Command {
 	cmd.Flags().StringVar(&opts.output, "output", "", "write a versioned authentication bundle to PATH")
 	cmd.Flags().BoolVar(&opts.force, "force", false, "replace an existing output file; requires --output")
 	a.bindTextValue(cmd, 0, 1, 0, func(_ *cobra.Command, _ []string) bool { return !opts.all })
-	requirements.Bind(cmd, requirements.AuthExport())
+	commands.Bind(cmd, commands.AuthExport())
 	return cmd
 }
 
@@ -232,10 +232,10 @@ func (a controller) newAccountImportCommand() *cobra.Command {
 	}
 	flags := cmd.Flags()
 	flags.BoolVar(&opts.jsonOut, "json", false, "print JSON")
-	a.bindProxyFlags(cmd, &opts.proxyOptions)
+	a.bindProxyFlags(cmd, &opts.ProxyOptions)
 	a.bindAuthImportInput(cmd)
 	a.bindNoInput(cmd)
-	requirements.Bind(cmd, requirements.AuthAccount())
+	commands.Bind(cmd, commands.AuthAccount())
 	return cmd
 }
 
@@ -258,7 +258,7 @@ func (a controller) accountImport(cmd *cobra.Command, args []string, opts accoun
 		fmt.Fprintf(a.out, "default uid: %d\n", result.DefaultUserID)
 		return nil
 	}
-	proxyOverride, err := proxyOverrideFromFlags(cmd, opts.proxyOptions)
+	proxyOverride, err := proxyOverrideFromFlags(cmd, opts.ProxyOptions)
 	if err != nil {
 		return err
 	}
@@ -294,7 +294,7 @@ func (a controller) bindAuthImportInput(cmd *cobra.Command) {
 	}
 	cmd.Args = func(command *cobra.Command, args []string) error {
 		if len(args) == 0 && !a.canPrompt() {
-			if _, err := proxyOverrideFromFlags(command, accountImportOptions{}.proxyOptions); err != nil {
+			if _, err := proxyOverrideFromFlags(command, accountImportOptions{}.ProxyOptions); err != nil {
 				return err
 			}
 			body, err := io.ReadAll(a.in)
@@ -311,7 +311,7 @@ func (a controller) bindAuthImportInput(cmd *cobra.Command) {
 				}
 				setAuthImportInput(command, authImportInput{bundle: body})
 				inputcmd.MarkSkipAutomaticUpdate(command)
-				requirements.Override(command, requirements.AuthBundleImport())
+				commands.Override(command, commands.AuthBundleImport())
 			} else {
 				token, err := ReadRefreshTokenInput(bytes.NewReader(body))
 				if err != nil {
@@ -363,7 +363,7 @@ func (a controller) newAccountListCommand() *cobra.Command {
 	}
 	cmd.Flags().BoolVar(&jsonOut, "json", false, "print JSON")
 	a.bindNoInput(cmd)
-	requirements.Bind(cmd, requirements.AuthAccount())
+	commands.Bind(cmd, commands.AuthAccount())
 	return cmd
 }
 
@@ -423,7 +423,7 @@ func (a controller) newAccountPoolCommand() *cobra.Command {
 		a.newAccountPoolChangeCommand("disable", false),
 	)
 	a.bindNoInput(cmd)
-	requirements.Bind(cmd, requirements.Execution{})
+	commands.Bind(cmd, commands.Execution{})
 	return cmd
 }
 
@@ -462,7 +462,7 @@ func (a controller) newAccountPoolStatusCommand() *cobra.Command {
 	}
 	cmd.Flags().BoolVar(&jsonOut, "json", false, "print JSON")
 	a.bindNoInput(cmd)
-	requirements.Bind(cmd, requirements.AuthAccount())
+	commands.Bind(cmd, commands.AuthAccount())
 	return cmd
 }
 
@@ -514,7 +514,7 @@ func (a controller) newAccountPoolChangeCommand(name string, schedulable bool) *
 	cmd.Flags().BoolVar(&opts.all, "all", false, "apply to every stored account")
 	cmd.Flags().BoolVar(&opts.jsonOut, "json", false, "print JSON")
 	a.bindTextValue(cmd, 0, -1, 0, func(_ *cobra.Command, _ []string) bool { return !opts.all })
-	requirements.Bind(cmd, requirements.AuthAccount())
+	commands.Bind(cmd, commands.AuthAccount())
 	return cmd
 }
 
@@ -544,7 +544,7 @@ func (a controller) newAccountRemoveCommand() *cobra.Command {
 	flags.BoolVar(&opts.jsonOut, "json", false, "print JSON")
 	flags.BoolVar(&opts.yes, "yes", false, "skip confirmation in interactive terminals")
 	a.bindTextValue(cmd, 0, 1, 0, nil)
-	requirements.Bind(cmd, requirements.AuthAccount())
+	commands.Bind(cmd, commands.AuthAccount())
 	return cmd
 }
 
@@ -596,7 +596,7 @@ func (a controller) newAccountUseCommand() *cobra.Command {
 	}
 	cmd.Flags().BoolVar(&jsonOut, "json", false, "print JSON")
 	a.bindTextValue(cmd, 0, 1, 0, nil)
-	requirements.Bind(cmd, requirements.AuthAccount())
+	commands.Bind(cmd, commands.AuthAccount())
 	return cmd
 }
 
@@ -644,13 +644,13 @@ func (a controller) newAccountCheckCommand() *cobra.Command {
 	}
 	cmd.Flags().BoolVar(&opts.jsonOut, "json", false, "print JSON")
 	a.bindTextValue(cmd, 0, 1, 0, nil)
-	a.bindProxyFlags(cmd, &opts.proxyOptions)
-	requirements.Bind(cmd, requirements.AuthAccount())
+	a.bindProxyFlags(cmd, &opts.ProxyOptions)
+	commands.Bind(cmd, commands.AuthAccount())
 	return cmd
 }
 
 func (a controller) accountCheck(cmd *cobra.Command, userID int64, opts accountCheckOptions) error {
-	proxyOverride, err := proxyOverrideFromFlags(cmd, opts.proxyOptions)
+	proxyOverride, err := proxyOverrideFromFlags(cmd, opts.ProxyOptions)
 	if err != nil {
 		return err
 	}
@@ -708,13 +708,13 @@ func (a controller) newAccountRefreshCommand() *cobra.Command {
 	flags.BoolVar(&opts.all, "all", false, "refresh every stored account")
 	flags.BoolVar(&opts.jsonOut, "json", false, "print JSON")
 	a.bindTextValue(cmd, 0, 1, 0, func(_ *cobra.Command, _ []string) bool { return !opts.all })
-	a.bindProxyFlags(cmd, &opts.proxyOptions)
-	requirements.Bind(cmd, requirements.AuthAccount())
+	a.bindProxyFlags(cmd, &opts.ProxyOptions)
+	commands.Bind(cmd, commands.AuthAccount())
 	return cmd
 }
 
 func (a controller) accountRefresh(cmd *cobra.Command, userID int64, opts accountRefreshOptions) error {
-	proxyOverride, err := proxyOverrideFromFlags(cmd, opts.proxyOptions)
+	proxyOverride, err := proxyOverrideFromFlags(cmd, opts.ProxyOptions)
 	if err != nil {
 		return err
 	}
@@ -755,7 +755,7 @@ func (a controller) accountRefresh(cmd *cobra.Command, userID int64, opts accoun
 	for _, account := range results {
 		premium := "unknown"
 		if account.PremiumStatus != nil {
-			premium = textBool(*account.PremiumStatus)
+			premium = commands.TextBool(*account.PremiumStatus)
 		}
 		fmt.Fprintf(a.out, "✓ refreshed uid:%d premium:%s\n", account.UserID, premium)
 	}
@@ -801,7 +801,9 @@ func (a controller) resolveRefreshTokenInput(cmd *cobra.Command, args []string) 
 	if a.canPrompt() {
 		return a.promptSecret("Refresh token")
 	}
-	writePrompt(a.errOut, "refresh token: ")
+	if _, err := fmt.Fprint(a.errOut, "refresh token: "); err != nil {
+		return "", err
+	}
 	return ReadRefreshTokenInput(a.in)
 }
 

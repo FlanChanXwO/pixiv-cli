@@ -11,6 +11,8 @@ import (
 	"testing"
 
 	downloadcmd "github.com/FlanChanXwO/pixiv-cli/internal/cli/download"
+	commands "github.com/FlanChanXwO/pixiv-cli/internal/cli/internal/command"
+	pixivcmd "github.com/FlanChanXwO/pixiv-cli/internal/cli/internal/pixivcmd"
 	searchcmd "github.com/FlanChanXwO/pixiv-cli/internal/cli/search"
 	downloader "github.com/FlanChanXwO/pixiv-cli/internal/media/downloader"
 	recordpkg "github.com/FlanChanXwO/pixiv-cli/internal/record"
@@ -21,7 +23,7 @@ import (
 )
 
 func TestCommandUsageShowsOptionalIDForRecordInput(t *testing.T) {
-	cmd := New(Dependencies{})
+	cmd := newTestCommand(testDependencies{})
 	if usage := cmd.UseLine(); usage != "detail [ID_OR_URL] [flags]" {
 		t.Fatalf("usage = %q, want detail [ID_OR_URL] [flags]", usage)
 	}
@@ -44,7 +46,7 @@ func TestCommandConsumesReverseSearchIdentityRecordsInOrder(t *testing.T) {
 
 	var output bytes.Buffer
 	data := testMachineDependencies(&output, strings.NewReader(input))
-	cmd := New(data)
+	cmd := newTestCommand(data)
 	cmd.SetArgs([]string{"--ndjson"})
 	requireNoError(t, cmd.Execute())
 
@@ -73,7 +75,7 @@ func TestCommandDoesNotSplitReverseSearchAggregateJSONIntoRecords(t *testing.T) 
 		fetched = true
 		return nil
 	}
-	cmd := New(data)
+	cmd := newTestCommand(data)
 	cmd.SetArgs([]string{"--ndjson"})
 	err := cmd.Execute()
 	if err == nil {
@@ -94,7 +96,7 @@ func TestDetailNDJSONFeedsExistingVisualDownloadConsumer(t *testing.T) {
 	requireNoError(t, err)
 
 	var detailOutput bytes.Buffer
-	detailCommand := New(testMachineDependencies(
+	detailCommand := newTestCommand(testMachineDependencies(
 		&detailOutput,
 		strings.NewReader(normalSearchRecordInput(t, []recordpkg.Record{artwork})),
 	))
@@ -107,26 +109,21 @@ func TestDetailNDJSONFeedsExistingVisualDownloadConsumer(t *testing.T) {
 	}
 
 	var downloadedIDs []int64
-	downloadCommand := downloadcmd.New(downloadcmd.Deps{
-		Input:       strings.NewReader(detailOutput.String()),
-		Output:      &bytes.Buffer{},
-		ErrorOutput: &bytes.Buffer{},
-		UsageError:  func(err error) error { return err },
-		Runtime: func() (downloadcmd.Runtime, error) {
-			return downloadcmd.Runtime{}, nil
-		},
-		Pooled: func(ctx context.Context, _ downloadcmd.CommandRequest, attempt func(context.Context, *pixiv.Client) (bool, error)) error {
+	downloadCommand := downloadcmd.New(
+		commands.Env{In: strings.NewReader(detailOutput.String()), Out: &bytes.Buffer{}, Err: &bytes.Buffer{}, WrapUsage: func(err error) error { return err }},
+		func(ctx context.Context, _ pixivcmd.Request, attempt func(context.Context, *pixiv.Client) (bool, error)) error {
 			_, err := attempt(ctx, &pixiv.Client{})
 			return err
 		},
-		Download: func() downloader.DownloadService {
+		func() (downloadcmd.Runtime, error) { return downloadcmd.Runtime{}, nil },
+		func() downloader.DownloadService {
 			return downloader.DownloadService{
 				NewManager: func(_ downloader.DownloadClient, _, _ string) (downloader.DownloadManager, error) {
 					return captureDownloadManager{ids: &downloadedIDs}, nil
 				},
 			}
 		},
-	})
+	)
 	downloadCommand.SetArgs([]string{"--on-error", "fail-fast"})
 	requireNoError(t, downloadCommand.Execute())
 	if len(downloadedIDs) != 1 || downloadedIDs[0] != 501 {
@@ -146,21 +143,18 @@ func (m captureDownloadManager) Download(_ context.Context, request downloader.D
 func reverseSearchOutput(t *testing.T, results []reversesearch.Result, jsonOutput bool) string {
 	t.Helper()
 	var output bytes.Buffer
-	cmd := searchcmd.New(searchcmd.Dependencies{
-		Input:       strings.NewReader(""),
-		Output:      &output,
-		ErrorOutput: &bytes.Buffer{},
-		UsageError:  func(err error) error { return err },
-		JSONOut: func(*bool) (bool, error) {
+	cmd := searchcmd.New(
+		commands.Env{In: strings.NewReader(""), Out: &output, Err: &bytes.Buffer{}, WrapUsage: func(err error) error { return err }, ResolveJSON: func(*bool) (bool, error) {
 			return jsonOutput, nil
-		},
-		ReverseSearch: func(_ context.Context, request searchcmd.ReverseSearchRequest) (reversesearch.Response, error) {
+		}},
+		nil,
+		func(_ context.Context, request searchcmd.ReverseSearchRequest) (reversesearch.Response, error) {
 			if request.Provider != reversesearch.ProviderAll {
 				t.Fatalf("reverse provider = %q, want %q", request.Provider, reversesearch.ProviderAll)
 			}
 			return reversesearch.Response{Results: results}, nil
 		},
-	})
+	)
 	args := []string{"https://example.test/image.jpg", "--provider", "all"}
 	if jsonOutput {
 		args = append(args, "--json")
@@ -174,7 +168,7 @@ func reverseSearchOutput(t *testing.T, results []reversesearch.Result, jsonOutpu
 
 func TestCommandRejectsUnsupportedURLBeforeOpeningClient(t *testing.T) {
 	opened := false
-	data := Dependencies{
+	data := testDependencies{
 		Input:        strings.NewReader(""),
 		Output:       &bytes.Buffer{},
 		UsageError:   func(err error) error { return err },
@@ -186,7 +180,7 @@ func TestCommandRejectsUnsupportedURLBeforeOpeningClient(t *testing.T) {
 		JSONOut: func(override *bool) (bool, error) { return override != nil && *override, nil },
 	}
 
-	cmd := New(data)
+	cmd := newTestCommand(data)
 	cmd.SetArgs([]string{"https://www.pixiv.net/users/7?secret=must-not-echo"})
 	err := cmd.Execute()
 
@@ -204,7 +198,7 @@ func TestCommandRejectsUnsupportedURLBeforeOpeningClient(t *testing.T) {
 func TestCommandNovelContentReturnsUnavailableBeforeOpeningClient(t *testing.T) {
 	built := false
 	opened := false
-	data := Dependencies{
+	data := testDependencies{
 		Input:      strings.NewReader(""),
 		Output:     &bytes.Buffer{},
 		UsageError: func(err error) error { return err },
@@ -219,7 +213,7 @@ func TestCommandNovelContentReturnsUnavailableBeforeOpeningClient(t *testing.T) 
 		JSONOut: func(*bool) (bool, error) { return false, nil },
 	}
 
-	cmd := New(data)
+	cmd := newTestCommand(data)
 	cmd.SetArgs([]string{"--type", "novel", "--content", "42"})
 	err := cmd.Execute()
 
@@ -273,7 +267,7 @@ func TestCommandRoutesTypedIDsThroughPublicSDK(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			var gotPath string
 			var gotID string
-			cmd := New(Dependencies{
+			cmd := newTestCommand(testDependencies{
 				Input:      strings.NewReader(""),
 				Output:     &bytes.Buffer{},
 				UsageError: func(err error) error { return err },
@@ -329,7 +323,7 @@ func (f detailRoundTripFunc) RoundTrip(req *http.Request) (*http.Response, error
 func TestCommandRejectsURLTypeConflictBeforeBuildingRequest(t *testing.T) {
 	built := false
 	opened := false
-	cmd := New(Dependencies{
+	cmd := newTestCommand(testDependencies{
 		Input:      strings.NewReader(""),
 		Output:     &bytes.Buffer{},
 		UsageError: func(err error) error { return err },
@@ -359,7 +353,7 @@ func TestCommandRejectsURLTypeConflictBeforeBuildingRequest(t *testing.T) {
 
 func TestCommandRejectsContentForNonNovelBeforeOpeningClient(t *testing.T) {
 	opened := false
-	data := Dependencies{
+	data := testDependencies{
 		Input:        strings.NewReader(""),
 		Output:       &bytes.Buffer{},
 		UsageError:   func(err error) error { return err },
@@ -371,7 +365,7 @@ func TestCommandRejectsContentForNonNovelBeforeOpeningClient(t *testing.T) {
 		JSONOut: func(override *bool) (bool, error) { return override != nil && *override, nil },
 	}
 
-	cmd := New(data)
+	cmd := newTestCommand(data)
 	cmd.SetArgs([]string{"42", "--content"})
 	err := cmd.Execute()
 
@@ -414,7 +408,7 @@ func TestCommandRejectsContentForNonNovelRecordBeforeFetching(t *testing.T) {
 				return pixiv.UserDetail{User: pixiv.User{ID: id}}, nil
 			}
 
-			cmd := New(data)
+			cmd := newTestCommand(data)
 			cmd.SetArgs([]string{"--content", "--ndjson"})
 			err := cmd.Execute()
 			if err == nil {
@@ -443,7 +437,7 @@ func TestCommandConsumesNormalSearchArtworkRecordsInOrder(t *testing.T) {
 
 	var output bytes.Buffer
 	data := testMachineDependencies(&output, strings.NewReader(normalSearchRecordInput(t, records)))
-	cmd := New(data)
+	cmd := newTestCommand(data)
 	cmd.SetArgs([]string{"--ndjson"})
 	requireNoError(t, cmd.Execute())
 
@@ -492,7 +486,7 @@ func requireNoError(t *testing.T, err error) {
 func TestCommandRejectsJSONAndNDJSONTogether(t *testing.T) {
 	data := testRecordDependencies(&bytes.Buffer{}, strings.NewReader(`{"id":"42","type":"illust","url":"https://www.pixiv.net/artworks/42"}
 `))
-	cmd := New(data)
+	cmd := newTestCommand(data)
 	cmd.SetArgs([]string{"--json", "--ndjson"})
 	if err := cmd.Execute(); err == nil || !strings.Contains(err.Error(), "cannot be used together") {
 		t.Fatalf("expected output mode conflict, got %v", err)
@@ -504,7 +498,7 @@ func TestCommandRejectsRecordTypeMismatch(t *testing.T) {
 	data := testRecordDependencies(&bytes.Buffer{}, strings.NewReader(`{"id":"42","type":"illust","url":"https://www.pixiv.net/artworks/42"}
 `))
 	data.ErrorOutput = &diagnostics
-	cmd := New(data)
+	cmd := newTestCommand(data)
 	cmd.SetArgs([]string{"--ndjson", "--type", "novel"})
 	if err := cmd.Execute(); err == nil || !strings.Contains(diagnostics.String(), "incompatible") {
 		t.Fatalf("expected type mismatch, got err=%v diagnostics=%s", err, diagnostics.String())
@@ -516,7 +510,7 @@ func TestCommandTextValueKeepsHumanOutputWhenStdoutIsNotTTY(t *testing.T) {
 	data := testMachineDependencies(&output, strings.NewReader(""))
 	data.OutputIsTTY = func() bool { return false }
 
-	cmd := New(data)
+	cmd := newTestCommand(data)
 	cmd.SetArgs([]string{"42"})
 	requireNoError(t, cmd.Execute())
 
@@ -549,7 +543,7 @@ func TestCommandTextValueAcceptsRawURLAndStdin(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			var output bytes.Buffer
-			cmd := New(testMachineDependencies(&output, strings.NewReader(tc.input)))
+			cmd := newTestCommand(testMachineDependencies(&output, strings.NewReader(tc.input)))
 			cmd.SetArgs(tc.args)
 			requireNoError(t, cmd.Execute())
 			if !strings.Contains(output.String(), "title: artwork") {
@@ -562,7 +556,7 @@ func TestCommandTextValueAcceptsRawURLAndStdin(t *testing.T) {
 func TestCommandTextValueJSONRemainsSingleDocument(t *testing.T) {
 	var output bytes.Buffer
 	data := testMachineDependencies(&output, strings.NewReader(""))
-	cmd := New(data)
+	cmd := newTestCommand(data)
 	cmd.SetArgs([]string{"42", "--json"})
 	requireNoError(t, cmd.Execute())
 
@@ -582,7 +576,7 @@ func TestCommandTextValueNDJSONOutputsCanonicalRecord(t *testing.T) {
 	var output bytes.Buffer
 	data := testMachineDependencies(&output, strings.NewReader(""))
 	data.OutputIsTTY = func() bool { return true }
-	cmd := New(data)
+	cmd := newTestCommand(data)
 	cmd.SetArgs([]string{"42", "--ndjson"})
 	requireNoError(t, cmd.Execute())
 
@@ -598,7 +592,7 @@ func TestCommandRecordTTYSeparatesHumanDetails(t *testing.T) {
 {"id":"43","type":"manga","url":"https://www.pixiv.net/artworks/43"}
 `))
 	data.OutputIsTTY = func() bool { return true }
-	cmd := New(data)
+	cmd := newTestCommand(data)
 	cmd.SetArgs([]string{})
 	requireNoError(t, cmd.Execute())
 
@@ -617,7 +611,7 @@ func TestCommandRecordNonTTYAutoNDJSONPreservesOrder(t *testing.T) {
 {"id":"43","type":"manga","url":"https://www.pixiv.net/artworks/43"}
 `))
 	data.OutputIsTTY = func() bool { return false }
-	cmd := New(data)
+	cmd := newTestCommand(data)
 	cmd.SetArgs([]string{})
 	requireNoError(t, cmd.Execute())
 
@@ -630,7 +624,7 @@ func TestCommandRecordExplicitNDJSONOverridesTTY(t *testing.T) {
 {"id":"43","type":"manga","url":"https://www.pixiv.net/artworks/43"}
 `))
 	data.OutputIsTTY = func() bool { return true }
-	cmd := New(data)
+	cmd := newTestCommand(data)
 	cmd.SetArgs([]string{"--ndjson"})
 	requireNoError(t, cmd.Execute())
 
@@ -643,7 +637,7 @@ func TestCommandRecordJSONOutputsOrderedArray(t *testing.T) {
 {"id":"43","type":"manga","url":"https://www.pixiv.net/artworks/43"}
 `))
 	data.OutputIsTTY = func() bool { return true }
-	cmd := New(data)
+	cmd := newTestCommand(data)
 	cmd.SetArgs([]string{"--json"})
 	requireNoError(t, cmd.Execute())
 
@@ -703,7 +697,7 @@ func TestCommandRecordMachineOutputUsesDetailTypes(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			var output bytes.Buffer
 			data := testMachineDependencies(&output, strings.NewReader(test.input))
-			cmd := New(data)
+			cmd := newTestCommand(data)
 			cmd.SetArgs([]string{"--ndjson"})
 			requireNoError(t, cmd.Execute())
 
@@ -740,7 +734,7 @@ func TestCommandRejectsUnsupportedRecordTypeBeforeFetching(t *testing.T) {
 		return pixiv.UserDetail{User: pixiv.User{ID: id}}, nil
 	}
 
-	cmd := New(data)
+	cmd := newTestCommand(data)
 	cmd.SetArgs([]string{"--ndjson"})
 	if err := cmd.Execute(); err == nil {
 		t.Fatal("expected unsupported record type to fail")
@@ -762,7 +756,7 @@ func TestCommandNovelContentRecordModeReturnsUnavailableBeforeFetching(t *testin
 		return pixiv.NovelContent{}, nil
 	}
 
-	cmd := New(data)
+	cmd := newTestCommand(data)
 	cmd.SetArgs([]string{"--content", "--ndjson"})
 	err := cmd.Execute()
 	if sdk.ReasonOf(err) != sdk.ContentUnavailable {
@@ -780,7 +774,7 @@ func TestCommandRecordDiagnosticsStayOffStdout(t *testing.T) {
 not-json
 `))
 	data.ErrorOutput = &diagnostics
-	cmd := New(data)
+	cmd := newTestCommand(data)
 	cmd.SetArgs([]string{"--ndjson"})
 	if err := cmd.Execute(); err == nil {
 		t.Fatal("expected malformed record to fail")
@@ -805,7 +799,7 @@ func TestCommandPreservesRemoteDetailError(t *testing.T) {
 		return pixiv.Artwork{}, errors.New(failureMessage)
 	}
 
-	cmd := New(data)
+	cmd := newTestCommand(data)
 	cmd.SetArgs([]string{"--ndjson"})
 	if err := cmd.Execute(); err == nil {
 		t.Fatal("expected remote detail failure")
@@ -821,7 +815,7 @@ func TestCommandPreservesRemoteDetailError(t *testing.T) {
 func TestCommandRecordOutputWriteErrorRemainsOriginal(t *testing.T) {
 	data := testMachineDependencies(failingWriter{err: outputWriteError{}}, strings.NewReader(`{"id":"42","type":"illust","url":"https://www.pixiv.net/artworks/42"}
 `))
-	cmd := New(data)
+	cmd := newTestCommand(data)
 	cmd.SetArgs([]string{"--ndjson"})
 	if err := cmd.Execute(); err == nil || !strings.Contains(err.Error(), "output write failed") {
 		t.Fatalf("expected original output write error, got %v", err)
@@ -838,8 +832,8 @@ type failingWriter struct {
 
 func (w failingWriter) Write([]byte) (int, error) { return 0, w.err }
 
-func testMachineDependencies(output io.Writer, input io.Reader) Dependencies {
-	return Dependencies{
+func testMachineDependencies(output io.Writer, input io.Reader) testDependencies {
+	return testDependencies{
 		Input:       input,
 		Output:      output,
 		ErrorOutput: &bytes.Buffer{},
@@ -900,8 +894,8 @@ func assertMachineRecordIDs(t *testing.T, records []map[string]any, want []strin
 	}
 }
 
-func testRecordDependencies(output io.Writer, input io.Reader) Dependencies {
-	return Dependencies{
+func testRecordDependencies(output io.Writer, input io.Reader) testDependencies {
+	return testDependencies{
 		Input: input, Output: output, ErrorOutput: &bytes.Buffer{},
 		UsageError:   func(err error) error { return err },
 		BuildRequest: func(*cobra.Command, Options) (Request, error) { return Request{}, nil },
