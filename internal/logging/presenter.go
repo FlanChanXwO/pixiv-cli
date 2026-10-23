@@ -1,5 +1,5 @@
 // Package diagnostics renders safe typed events for the CLI-owned stderr
-// presenter. Event definitions and emission remain in shared/diagnostics.
+// presenter. Event definitions and emission remain in internal/logging.
 package logging
 
 import (
