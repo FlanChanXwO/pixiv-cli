@@ -15,7 +15,7 @@ import (
 	"strings"
 )
 
-// registerReverseSearch 注册 pixiv_reverse_search。source 只在当前请求中传给 Facade，输出永远只
+// registerReverseSearch 注册 pixiv_reverse_search。source 只在当前请求中传给 reversesearch.Service，输出永远只
 // 暴露 source kind/hash 摘要；provider、pixiv-only、代理和凭据来自启动快照。
 func (t pixivTools) registerReverseSearch(server *mcp.Server) {
 	// SDK 的 schema/type 错误会包含输入值；仅拦截本 tool 尚未进入 typed handler 的失败。

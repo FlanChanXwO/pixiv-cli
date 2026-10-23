@@ -61,17 +61,17 @@ func (d *decoder) makeImg(mxx, myy int) {
 // Specified in section B.2.3.
 func (d *decoder) processSOS(n int) error {
 	if d.nComp == 0 {
-		return FormatError("missing SOF marker")
+		return formatError("missing SOF marker")
 	}
 	if n < 6 || 4+2*d.nComp < n || n%2 != 0 {
-		return FormatError("SOS has wrong length")
+		return formatError("SOS has wrong length")
 	}
 	if err := d.readFull(d.tmp[:n]); err != nil {
 		return err
 	}
 	nComp := int(d.tmp[0])
 	if n != 4+2*nComp {
-		return FormatError("SOS length inconsistent with number of components")
+		return formatError("SOS length inconsistent with number of components")
 	}
 	var scan [maxComponents]struct {
 		compIndex uint8
@@ -88,7 +88,7 @@ func (d *decoder) processSOS(n int) error {
 			}
 		}
 		if compIndex < 0 {
-			return FormatError("unknown component selector")
+			return formatError("unknown component selector")
 		}
 		scan[i].compIndex = uint8(compIndex)
 		// Section B.2.3 states that "the value of Cs_j shall be different from
@@ -98,7 +98,7 @@ func (d *decoder) processSOS(n int) error {
 		// into d.comp are unique.
 		for j := 0; j < i; j++ {
 			if scan[i].compIndex == scan[j].compIndex {
-				return FormatError("repeated component selector")
+				return formatError("repeated component selector")
 			}
 		}
 		totalHV += d.comp[compIndex].h * d.comp[compIndex].v
@@ -106,17 +106,17 @@ func (d *decoder) processSOS(n int) error {
 		// The baseline t <= 1 restriction is specified in table B.3.
 		scan[i].td = d.tmp[2+2*i] >> 4
 		if t := scan[i].td; t > maxTh || (d.baseline && t > 1) {
-			return FormatError("bad Td value")
+			return formatError("bad Td value")
 		}
 		scan[i].ta = d.tmp[2+2*i] & 0x0f
 		if t := scan[i].ta; t > maxTh || (d.baseline && t > 1) {
-			return FormatError("bad Ta value")
+			return formatError("bad Ta value")
 		}
 	}
 	// Section B.2.3 states that if there is more than one component then the
 	// total H*V values in a scan must be <= 10.
 	if d.nComp > 1 && totalHV > 10 {
-		return FormatError("total sampling factors too large")
+		return formatError("total sampling factors too large")
 	}
 
 	// zigStart and zigEnd are the spectral selection bounds.
@@ -143,13 +143,13 @@ func (d *decoder) processSOS(n int) error {
 		ah = uint32(d.tmp[3+2*nComp] >> 4)
 		al = uint32(d.tmp[3+2*nComp] & 0x0f)
 		if (zigStart == 0 && zigEnd != 0) || zigStart > zigEnd || blockSize <= zigEnd {
-			return FormatError("bad spectral selection bounds")
+			return formatError("bad spectral selection bounds")
 		}
 		if zigStart != 0 && nComp != 1 {
-			return FormatError("progressive AC coefficients for more than one component")
+			return formatError("progressive AC coefficients for more than one component")
 		}
 		if ah != 0 && ah != al+1 {
-			return FormatError("bad successive approximation values")
+			return formatError("bad successive approximation values")
 		}
 	}
 
@@ -247,7 +247,7 @@ func (d *decoder) processSOS(n int) error {
 								return err
 							}
 							if value > 16 {
-								return UnsupportedError("excessive DC component")
+								return unsupportedError("excessive DC component")
 							}
 							dcDelta, err := d.receiveExtend(value)
 							if err != nil {
@@ -420,7 +420,7 @@ func (d *decoder) refine(b *block, h *huffman, zigStart, zigEnd, delta int32) er
 					z = -z
 				}
 			default:
-				return FormatError("unexpected Huffman code")
+				return formatError("unexpected Huffman code")
 			}
 
 			zig, err = d.refineNonZeroes(b, zig, zigEnd, int32(val0), delta)
@@ -428,7 +428,7 @@ func (d *decoder) refine(b *block, h *huffman, zigStart, zigEnd, delta int32) er
 				return err
 			}
 			if zig > zigEnd {
-				return FormatError("too many coefficients")
+				return formatError("too many coefficients")
 			}
 			if z != 0 {
 				b[unzig[zig]] = z
@@ -512,7 +512,7 @@ func (d *decoder) reconstructBlock(b *block, bx, by, compIndex int, dcOnly bool)
 		case 3:
 			dst, stride = d.blackPix[8*(by*d.blackStride+bx):], d.blackStride
 		default:
-			return UnsupportedError("too many components")
+			return unsupportedError("too many components")
 		}
 	}
 	qt := &d.quant[d.comp[compIndex].tq]
@@ -570,7 +570,7 @@ func (d *decoder) findRST(expectedRST uint8) error {
 				// cases is frequent enough to be worth the complexity, we take
 				// a simpler approach for now. Any marker that's not 0x00, 0xff
 				// or expectedRST is a fatal FormatError.
-				return FormatError("bad RST marker")
+				return formatError("bad RST marker")
 			}
 
 		} else if d.tmp[1] == 0xff {

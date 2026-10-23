@@ -8,12 +8,6 @@ import (
 
 var aggregateProviderOrder = [...]Provider{ProviderSauceNAO, ProviderASCII2DColor, ProviderASCII2DBOVW}
 
-// AggregatorDependencies 是 provider 编排器的构造端口。
-type AggregatorDependencies struct {
-	SauceNAO ProviderClient
-	ASCII2D  ASCII2DClient
-}
-
 // Aggregator 在同一快照上执行 provider 并构造稳定领域 envelope。
 type Aggregator struct {
 	sauceNAO  ProviderClient
@@ -22,8 +16,8 @@ type Aggregator struct {
 	closeErr  error
 }
 
-func NewAggregator(dependencies AggregatorDependencies) *Aggregator {
-	return &Aggregator{sauceNAO: dependencies.SauceNAO, ascii2d: dependencies.ASCII2D}
+func NewAggregator(sauceNAO ProviderClient, ascii2d ASCII2DClient) *Aggregator {
+	return &Aggregator{sauceNAO: sauceNAO, ascii2d: ascii2d}
 }
 
 // Close 以与 provider 构造相反的顺序释放长期存活的 provider 资源；每个

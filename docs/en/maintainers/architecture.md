@@ -122,7 +122,7 @@ Only exact `pixiv://account/login` and `pixiv://account/remote-login` enter the 
 - An explicit nonzero `Request.UserID` pins reads and writes to that account even with the pool on; open/business errors never switch accounts; requests without a UID keep pool scheduling; the CLI default is unchanged.
 - Config schema, `config.toml` path/get/set/unset, baseline and the immutable per-execution `Snapshot` live in `internal/config/settings`; month truncation in `internal/searchfilter`. CLI/MCP use the sessions via owner-local Seams and MCP runtime `SDKPorts`. `internal/account` is deleted with no aliases.
 
-**Login relay** — the pure renderer `internal/loginrelay/loginpage` consumes `frontend` templates/CSS (no CLI, store, browser or listener dependency). The parent `loginrelay` owns the reusable HTTP handler/session: accepts the OAuth session validator and delivers one callback; never listens, exchanges or persists. CLI keeps listener/TLS/terminal. A host mux may mount it with its prefix stripped; production MCP mounts it at canonical base + `/pixiv-login/`, behind the same Host/Origin checks but authenticated by hand-off proof, not MCP bearer. Escaped prefixes are preserved in URLs and dispatch. A cancelled relay session returns HTTP 410 and rechecks cancellation before accepting a validated callback. The callback allowlist, start-response wire type and result URL header live in `loginrelay` and are reused by the CLI relay and desktop helper.
+**Login relay** — `internal/loginrelay` owns both the pure renderer, which consumes `frontend` templates/CSS without a CLI, store, browser or listener dependency, and the reusable HTTP handler/session: accepts the OAuth session validator and delivers one callback; never listens, exchanges or persists. CLI keeps listener/TLS/terminal. A host mux may mount it with its prefix stripped; production MCP mounts it at canonical base + `/pixiv-login/`, behind the same Host/Origin checks but authenticated by hand-off proof, not MCP bearer. Escaped prefixes are preserved in URLs and dispatch. A cancelled relay session returns HTTP 410 and rechecks cancellation before accepting a validated callback. The callback allowlist, start-response wire type and result URL header live in `loginrelay` and are reused by the CLI relay and desktop helper.
 
 **MCP login manager** — single current login: repeated starts reuse pending work, restart cancels and joins, shutdown joins exchange/persistence. Completion keeps non-secret account-saved/selection-updated flags (incl. partial failure). The composition root binds it to the same SDK login session, saves credentials without touching the CLI default, then writes MCP selection. The account service is reused across restarts; each completed SDK login releases its idle HTTP connections (explicit proxy/direct: the root closes its client's idle connections on every exit).
 
@@ -142,7 +142,7 @@ Upstream adapters composed only by the public SDK; no account/session Facade.
 - FANBOX: `internal/fanboxapi` owns session, cookie, challenge, URL policy and narrow transport; `endpoint/{creator,post}/<leaf>` and `resource` own route/fixture/conversion; `sdk/fanbox` composes them directly without the Facade.
 - `RequiredList` / `RequiredObject` share field-presence decoding only; endpoints keep completeness checks and mapping. `null` = Present true, Valid false; a decoded empty object need not be complete. Missing fields skip the decoder (callers must clear or recreate reused outer DTOs). An invoked decoder resets old state but may leave partial data on failure — handle the error and check Valid first. Historical parity covers only verified production DTOs and inputs.
 
-### Reverse-search Facade exception
+### Reverse-search service exception
 
 The only product capability crossing the normal SDK boundary.
 
@@ -151,13 +151,13 @@ flowchart LR
     COMP["internal/cli/composition.go"] --> ASM["reversesearch/assembly<br/>(HTTP client, proxy, SauceNAO key<br/>once per command/session)"]
     ASM --> SN["reversesearch/saucenao"]
     ASM --> A2["reversesearch/ascii2d"]
-    CMDS["internal/cli/*"] --> TOP["internal/reversesearch<br/>(contract + Facade)"]
+    CMDS["internal/cli/*"] --> TOP["internal/reversesearch<br/>(contract + Service)"]
     MCPS["internal/mcpserver/*"] --> TOP
     CMDS -.->|forbidden| SN
     MCPS -.->|forbidden| ASM
 ```
 
-- The Facade returns domain results; CLI/MCP adapters project canonical records at their output boundary.
+- The Service returns domain results; CLI/MCP adapters project canonical records at their output boundary.
 - It loads a regular file or HTTP(S) source into one private snapshot, hashes it and removes it afterwards. Deliberate source policy permits any readable regular file and private, loopback or link-local URLs; under single-owner OAuth authorize only trusted connectors — paths are the MCP server's filesystem and URLs use the server network. Only source kind/hash, safe provider summaries/errors, domain evidence and canonical `artwork`/`user` records are publishable.
 - Three network surfaces: standard source/SauceNAO client, dedicated ascii2d browser client, FlareSolverr JSON control client. The service proxy may override only ascii2d; a command-level override applies to both native clients; the standard client otherwise follows the global route. The ascii2d UA pairs with the `Chrome_146` TLS profile and matching Chromium hints (omitted for non-Chromium UAs). FlareSolverr's upstream proxy is used only by browser `sessions.create`; control traffic stays independent; the image always uses native ascii2d multipart. Solver state is process/client-scoped, not persisted.
 

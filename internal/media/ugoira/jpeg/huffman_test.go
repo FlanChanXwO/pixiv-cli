@@ -5,8 +5,6 @@ import (
 	"encoding/binary"
 	"image"
 	"testing"
-
-	framejpeg "github.com/FlanChanXwO/pixiv-cli/internal/media/ugoira/jpeg"
 )
 
 func TestShortACCoefficients(t *testing.T) {
@@ -57,9 +55,9 @@ func TestShortACCoefficients(t *testing.T) {
 				var decoded image.Image
 				var err error
 				if shortReads {
-					decoded, err = framejpeg.Decode(oneByteReader{bytes.NewReader(data)})
+					decoded, err = decodeForTest(oneByteReader{bytes.NewReader(data)})
 				} else {
-					decoded, err = framejpeg.Decode(bytes.NewReader(data))
+					decoded, err = decodeForTest(bytes.NewReader(data))
 				}
 				if err != nil {
 					t.Fatal(err)
@@ -86,9 +84,9 @@ func TestShortACRedefinedTable(t *testing.T) {
 		var decoded image.Image
 		var err error
 		if shortReads {
-			decoded, err = framejpeg.Decode(oneByteReader{bytes.NewReader(data)})
+			decoded, err = decodeForTest(oneByteReader{bytes.NewReader(data)})
 		} else {
-			decoded, err = framejpeg.Decode(bytes.NewReader(data))
+			decoded, err = decodeForTest(bytes.NewReader(data))
 		}
 		if err != nil {
 			t.Fatal(err)

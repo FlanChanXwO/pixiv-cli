@@ -54,6 +54,16 @@ const cookiesSchema = `CREATE TABLE cookies (
 	encrypted_value BLOB NOT NULL DEFAULT ''
 );`
 
+func writeCookieFixture(t *testing.T, path string, data []byte) {
+	t.Helper()
+	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, data, 0o600); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func mustWriteFile(t *testing.T, path string) {
 	t.Helper()
 	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
@@ -115,13 +125,10 @@ func TestDiscoverProfilesNotInstalled(t *testing.T) {
 func TestReadPlaintextCookie(t *testing.T) {
 	skipIfNoSQLite3(t)
 	root := t.TempDir()
-	mustWriteFile(t, filepath.Join(root, "Default", cookiesFile))
-
 	fixture := buildFixtureDB(t, cookiesSchema,
 		`INSERT INTO cookies (host_key, name, value, encrypted_value) VALUES ('.fanbox.cc', 'FANBOXSESSID', 'plain-session', X'');`,
 	)
-	restore := browsercookies.SetProviderFixtureForTest("chrome", func(string) ([]byte, error) { return fixture, nil })
-	defer restore()
+	writeCookieFixture(t, filepath.Join(root, "Default", cookiesFile), fixture)
 
 	p, err := newProvider("chrome", root)
 	if err != nil {
@@ -143,13 +150,10 @@ func TestReadPlaintextCookie(t *testing.T) {
 func TestReadPlaintextHostVariant(t *testing.T) {
 	skipIfNoSQLite3(t)
 	root := t.TempDir()
-	mustWriteFile(t, filepath.Join(root, "Default", cookiesFile))
-
 	fixture := buildFixtureDB(t, cookiesSchema,
 		`INSERT INTO cookies (host_key, name, value, encrypted_value) VALUES ('fanbox.cc', 'FANBOXSESSID', 'no-dot-session', X'');`,
 	)
-	restore := browsercookies.SetProviderFixtureForTest("chrome", func(string) ([]byte, error) { return fixture, nil })
-	defer restore()
+	writeCookieFixture(t, filepath.Join(root, "Default", cookiesFile), fixture)
 
 	p, _ := newProvider("chrome", root)
 	secrets, err := p.Read(context.Background(), browsercookies.DefaultQuery, "Default")
@@ -164,15 +168,13 @@ func TestReadPlaintextHostVariant(t *testing.T) {
 func TestReadModernEncryptedCookieHostDigest(t *testing.T) {
 	skipIfNoSQLite3(t)
 	root := t.TempDir()
-	mustWriteFile(t, filepath.Join(root, "Default", cookiesFile))
 	key := []byte("0123456789abcdef")
 	host := ".fanbox.cc"
 	blob := buildModernV10CBCBlob(t, key, host, []byte("modern-session"))
 	fixture := buildFixtureDB(t, cookiesSchema,
 		`INSERT INTO cookies (host_key, name, value, encrypted_value) VALUES ('`+host+`', 'FANBOXSESSID', '', X'`+hex.EncodeToString(blob)+`');`,
 	)
-	restore := browsercookies.SetProviderFixtureForTest("chrome", func(string) ([]byte, error) { return fixture, nil })
-	defer restore()
+	writeCookieFixture(t, filepath.Join(root, "Default", cookiesFile), fixture)
 
 	p, _ := newProvider("chrome", root)
 	p.encryptionKeyOverride = func(context.Context) ([][]byte, error) { return [][]byte{key}, nil }
@@ -191,13 +193,10 @@ func TestReadModernEncryptedCookieHostDigest(t *testing.T) {
 func TestReadEncryptedClassification(t *testing.T) {
 	skipIfNoSQLite3(t)
 	root := t.TempDir()
-	mustWriteFile(t, filepath.Join(root, "Default", cookiesFile))
-
 	fixture := buildFixtureDB(t, cookiesSchema,
 		`INSERT INTO cookies (host_key, name, value, encrypted_value) VALUES ('.fanbox.cc', 'FANBOXSESSID', '', X'DEADBEEF');`,
 	)
-	restore := browsercookies.SetProviderFixtureForTest("chrome", func(string) ([]byte, error) { return fixture, nil })
-	defer restore()
+	writeCookieFixture(t, filepath.Join(root, "Default", cookiesFile), fixture)
 
 	p, _ := newProvider("chrome", root)
 	_, err := p.Read(context.Background(), browsercookies.DefaultQuery, "Default")
@@ -264,10 +263,9 @@ func TestReadInvalidQueryOrProfile(t *testing.T) {
 
 func TestReadDatabaseNotFound(t *testing.T) {
 	root := t.TempDir()
-	mustWriteFile(t, filepath.Join(root, "Default", cookiesFile))
 	p, _ := newProvider("chrome", root)
 
-	if _, err := p.Read(context.Background(), browsercookies.DefaultQuery, "Nope"); !errors.Is(err, browsercookies.ErrDatabaseNotFound) {
+	if _, err := p.Read(context.Background(), browsercookies.DefaultQuery, "Default"); !errors.Is(err, browsercookies.ErrDatabaseNotFound) {
 		t.Fatalf("err = %v, want ErrDatabaseNotFound", err)
 	}
 }

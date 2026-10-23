@@ -658,9 +658,8 @@ func verifiedFixtureInstallerForPlatform(t *testing.T, goos, goarch string, arch
 		ExecutablePath: func() (string, error) {
 			return target, nil
 		},
-		GOOS:   goos,
-		GOARCH: goarch,
 	}).(*releaseInstaller)
+	installer.goos, installer.goarch = goos, goarch
 	installer.assetURLValidator = allowFixtureReleaseAssetURL
 	return installer, Release{
 		TagName: tag,

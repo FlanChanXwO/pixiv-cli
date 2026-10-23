@@ -1,4 +1,4 @@
-// Package assembly owns production construction of the reverse-search Facade.
+// Package assembly owns production construction of the reverse-search Service.
 // It is deliberately outside CLI/MCP owners so those adapters only depend on
 // the top-level reversesearch contract and never import provider protocol code.
 package assembly
@@ -32,7 +32,7 @@ type Options struct {
 	FlareSolverr *FlareSolverrOptions
 }
 
-// New constructs a Facade with a standard HTTP client for the source loader and
+// New constructs a Service with a standard HTTP client for the source loader and
 // SauceNAO. ascii2d receives only its proxy and user-agent so it can construct
 // its dedicated browser transport without changing the other providers.
 func New(options Options) (reversesearch.Searcher, error) {
@@ -79,12 +79,12 @@ func newWithClientWithASCII2DFactory(
 	if err != nil {
 		return nil, err
 	}
-	aggregator := reversesearch.NewAggregator(reversesearch.AggregatorDependencies{
-		SauceNAO: saucenao.New(saucenao.Options{APIKey: options.SauceNAOKey, HTTPClient: client}),
-		ASCII2D:  asciiClient,
-	})
-	return reversesearch.NewFacade(reversesearch.Dependencies{
-		Sources:  reversesearch.NewSourceLoader(reversesearch.SourceLoaderOptions{HTTPClient: client}),
-		Payloads: aggregator,
-	}), nil
+	aggregator := reversesearch.NewAggregator(
+		saucenao.New(saucenao.Options{APIKey: options.SauceNAOKey, HTTPClient: client}),
+		asciiClient,
+	)
+	return reversesearch.NewService(
+		reversesearch.NewSourceLoader(reversesearch.SourceLoaderOptions{HTTPClient: client}),
+		aggregator,
+	), nil
 }

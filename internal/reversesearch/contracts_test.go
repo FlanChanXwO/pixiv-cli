@@ -39,12 +39,12 @@ func (s preflightPayloadSearcher) SearchPayload(ctx context.Context, request rev
 	return s.search(ctx, request)
 }
 
-func TestFacadePreflightFailureDoesNotReadSource(t *testing.T) {
+func TestServicePreflightFailureDoesNotReadSource(t *testing.T) {
 	wantErr := reversesearch.NewError(reversesearch.CodeMissingCredential, "SauceNAO API key is required", nil)
 	searchCalls := 0
-	facade := reversesearch.NewFacade(reversesearch.Dependencies{
-		Sources: reversesearch.NewSourceLoader(reversesearch.SourceLoaderOptions{TempDir: t.TempDir()}),
-		Payloads: preflightPayloadSearcher{
+	service := reversesearch.NewService(
+		reversesearch.NewSourceLoader(reversesearch.SourceLoaderOptions{TempDir: t.TempDir()}),
+		preflightPayloadSearcher{
 			preflight: func(_ context.Context, query reversesearch.PayloadQuery) error {
 				require.Equal(t, reversesearch.ProviderSauceNAO, query.Provider)
 				require.True(t, query.PixivOnly)
@@ -55,23 +55,23 @@ func TestFacadePreflightFailureDoesNotReadSource(t *testing.T) {
 				return reversesearch.Response{}, nil
 			},
 		},
-	})
+	)
 
-	_, err := facade.Search(context.Background(), reversesearch.Request{
+	_, err := service.Search(context.Background(), reversesearch.Request{
 		Source: "/sensitive/source-that-must-not-be-opened", Provider: reversesearch.ProviderSauceNAO, PixivOnly: true,
 	})
 	require.ErrorIs(t, err, wantErr)
 	require.Zero(t, searchCalls)
 }
 
-func TestFacadeLoadsOnePayloadSnapshotDelegatesAndCleansIt(t *testing.T) {
+func TestServiceLoadsOnePayloadSnapshotDelegatesAndCleansIt(t *testing.T) {
 	sourcePath := filepath.Join(t.TempDir(), "source.bin")
 	require.NoError(t, os.WriteFile(sourcePath, []byte("image"), 0o600))
 	snapshotDir := t.TempDir()
 	delegations := 0
-	facade := reversesearch.NewFacade(reversesearch.Dependencies{
-		Sources: reversesearch.NewSourceLoader(reversesearch.SourceLoaderOptions{TempDir: snapshotDir}),
-		Payloads: payloadSearcherFunc(func(_ context.Context, request reversesearch.PayloadRequest) (reversesearch.Response, error) {
+	service := reversesearch.NewService(
+		reversesearch.NewSourceLoader(reversesearch.SourceLoaderOptions{TempDir: snapshotDir}),
+		payloadSearcherFunc(func(_ context.Context, request reversesearch.PayloadRequest) (reversesearch.Response, error) {
 			delegations++
 			require.Equal(t, reversesearch.ProviderASCII2DColor, request.Provider)
 			require.False(t, request.PixivOnly)
@@ -85,8 +85,8 @@ func TestFacadeLoadsOnePayloadSnapshotDelegatesAndCleansIt(t *testing.T) {
 			}
 			return reversesearch.Response{}, nil
 		}),
-	})
-	var searcher reversesearch.Searcher = facade
+	)
+	var searcher reversesearch.Searcher = service
 
 	response, err := searcher.Search(context.Background(), reversesearch.Request{
 		Source: sourcePath, Provider: reversesearch.ProviderASCII2DColor, PixivOnly: false,
@@ -100,19 +100,19 @@ func TestFacadeLoadsOnePayloadSnapshotDelegatesAndCleansIt(t *testing.T) {
 	require.Empty(t, files)
 }
 
-func TestFacadePreservesSafeInputAndCleansSnapshotWhenPayloadSearchFails(t *testing.T) {
+func TestServicePreservesSafeInputAndCleansSnapshotWhenPayloadSearchFails(t *testing.T) {
 	sourcePath := filepath.Join(t.TempDir(), "source.bin")
 	require.NoError(t, os.WriteFile(sourcePath, []byte("image"), 0o600))
 	snapshotDir := t.TempDir()
 	wantErr := reversesearch.NewError(reversesearch.CodeProviderFailed, "provider query failed", errors.New("private cause"))
-	facade := reversesearch.NewFacade(reversesearch.Dependencies{
-		Sources: reversesearch.NewSourceLoader(reversesearch.SourceLoaderOptions{TempDir: snapshotDir}),
-		Payloads: payloadSearcherFunc(func(_ context.Context, _ reversesearch.PayloadRequest) (reversesearch.Response, error) {
+	service := reversesearch.NewService(
+		reversesearch.NewSourceLoader(reversesearch.SourceLoaderOptions{TempDir: snapshotDir}),
+		payloadSearcherFunc(func(_ context.Context, _ reversesearch.PayloadRequest) (reversesearch.Response, error) {
 			return reversesearch.Response{}, wantErr
 		}),
-	})
+	)
 
-	response, err := facade.Search(context.Background(), reversesearch.Request{Source: sourcePath, Provider: reversesearch.ProviderSauceNAO})
+	response, err := service.Search(context.Background(), reversesearch.Request{Source: sourcePath, Provider: reversesearch.ProviderSauceNAO})
 	require.ErrorIs(t, err, wantErr)
 	require.Equal(t, reversesearch.SourceKindFile, response.Input.Kind)
 	require.NotEmpty(t, response.Input.SHA256)

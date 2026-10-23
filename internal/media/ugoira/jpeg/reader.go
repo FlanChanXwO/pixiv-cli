@@ -14,17 +14,15 @@ import (
 	"io"
 )
 
-// A FormatError reports that the input is not a valid JPEG.
-type FormatError string
+type formatError string
 
-func (e FormatError) Error() string { return "invalid JPEG format: " + string(e) }
+func (e formatError) Error() string { return "invalid JPEG format: " + string(e) }
 
-// An UnsupportedError reports that the input uses a valid but unimplemented JPEG feature.
-type UnsupportedError string
+type unsupportedError string
 
-func (e UnsupportedError) Error() string { return "unsupported JPEG feature: " + string(e) }
+func (e unsupportedError) Error() string { return "unsupported JPEG feature: " + string(e) }
 
-var errUnsupportedSubsamplingRatio = UnsupportedError("luma/chroma subsampling ratio")
+var errUnsupportedSubsamplingRatio = unsupportedError("luma/chroma subsampling ratio")
 
 // Component specification, specified in section B.2.2.
 type component struct {
@@ -195,7 +193,7 @@ func (d *decoder) readByte() (x byte, err error) {
 
 // errMissingFF00 means that readByteStuffedByte encountered an 0xff byte (a
 // marker byte) that wasn't the expected byte-stuffed sequence 0xff, 0x00.
-var errMissingFF00 = FormatError("missing 0xff00 sequence")
+var errMissingFF00 = formatError("missing 0xff00 sequence")
 
 // readByteStuffedByte is like readByte but is for byte-stuffed Huffman data.
 func (d *decoder) readByteStuffedByte() (x byte, err error) {
@@ -292,7 +290,7 @@ func (d *decoder) ignore(n int) error {
 // Specified in section B.2.2.
 func (d *decoder) processSOF(n int) error {
 	if d.nComp != 0 {
-		return FormatError("multiple SOF markers")
+		return formatError("multiple SOF markers")
 	}
 	switch n {
 	case 6 + 3*1: // Grayscale image.
@@ -302,19 +300,19 @@ func (d *decoder) processSOF(n int) error {
 	case 6 + 3*4: // YCbCrK or CMYK image.
 		d.nComp = 4
 	default:
-		return UnsupportedError("number of components")
+		return unsupportedError("number of components")
 	}
 	if err := d.readFull(d.tmp[:n]); err != nil {
 		return err
 	}
 	// We only support 8-bit precision.
 	if d.tmp[0] != 8 {
-		return UnsupportedError("precision")
+		return unsupportedError("precision")
 	}
 	d.height = int(d.tmp[1])<<8 + int(d.tmp[2])
 	d.width = int(d.tmp[3])<<8 + int(d.tmp[4])
 	if int(d.tmp[5]) != d.nComp {
-		return FormatError("SOF has wrong length")
+		return formatError("SOF has wrong length")
 	}
 
 	for i := 0; i < d.nComp; i++ {
@@ -323,19 +321,19 @@ func (d *decoder) processSOF(n int) error {
 		// the values of C_1 through C_(i-1)".
 		for j := 0; j < i; j++ {
 			if d.comp[i].c == d.comp[j].c {
-				return FormatError("repeated component identifier")
+				return formatError("repeated component identifier")
 			}
 		}
 
 		d.comp[i].tq = d.tmp[8+3*i]
 		if d.comp[i].tq > maxTq {
-			return FormatError("bad Tq value")
+			return formatError("bad Tq value")
 		}
 
 		hv := d.tmp[7+3*i]
 		h, v := int(hv>>4), int(hv&0x0f)
 		if h < 1 || 4 < h || v < 1 || 4 < v {
-			return FormatError("luma/chroma subsampling ratio")
+			return formatError("luma/chroma subsampling ratio")
 		}
 		if h == 3 || v == 3 {
 			return errUnsupportedSubsamplingRatio
@@ -424,11 +422,11 @@ loop:
 		}
 		tq := x & 0x0f
 		if tq > maxTq {
-			return FormatError("bad Tq value")
+			return formatError("bad Tq value")
 		}
 		switch x >> 4 {
 		default:
-			return FormatError("bad Pq value")
+			return formatError("bad Pq value")
 		case 0:
 			if n < blockSize {
 				break loop
@@ -454,7 +452,7 @@ loop:
 		}
 	}
 	if n != 0 {
-		return FormatError("DQT has wrong length")
+		return formatError("DQT has wrong length")
 	}
 	return nil
 }
@@ -462,7 +460,7 @@ loop:
 // Specified in section B.2.4.4.
 func (d *decoder) processDRI(n int) error {
 	if n != 2 {
-		return FormatError("DRI has wrong length")
+		return formatError("DRI has wrong length")
 	}
 	if err := d.readFull(d.tmp[:2]); err != nil {
 		return err
@@ -517,7 +515,7 @@ func (d *decoder) decode(r io.Reader) (image.Image, error) {
 		return nil, err
 	}
 	if d.tmp[0] != 0xff || d.tmp[1] != soiMarker {
-		return nil, FormatError("missing SOI marker")
+		return nil, formatError("missing SOI marker")
 	}
 
 	// Process the remaining segments until the End Of Image marker.
@@ -586,7 +584,7 @@ func (d *decoder) decode(r io.Reader) (image.Image, error) {
 		}
 		n := int(d.tmp[0])<<8 + int(d.tmp[1]) - 2
 		if n < 0 {
-			return nil, FormatError("short segment length")
+			return nil, formatError("short segment length")
 		}
 
 		switch marker {
@@ -610,9 +608,9 @@ func (d *decoder) decode(r io.Reader) (image.Image, error) {
 			if app0Marker <= marker && marker <= app15Marker || marker == comMarker {
 				err = d.ignore(n)
 			} else if marker < 0xc0 { // See Table B.1 "Marker code assignments".
-				err = FormatError("unknown marker")
+				err = formatError("unknown marker")
 			} else {
-				err = UnsupportedError("unknown marker")
+				err = unsupportedError("unknown marker")
 			}
 		}
 		if err != nil {
@@ -636,7 +634,7 @@ func (d *decoder) decode(r io.Reader) (image.Image, error) {
 		}
 		return d.img3, nil
 	}
-	return nil, FormatError("missing SOS marker")
+	return nil, formatError("missing SOS marker")
 }
 
 // applyBlack combines d.img3 and d.blackPix into a CMYK image. The formula
@@ -648,7 +646,7 @@ func (d *decoder) decode(r io.Reader) (image.Image, error) {
 // inversion is a no-op, so inversions might be implicit in the code below.
 func (d *decoder) applyBlack() (image.Image, error) {
 	if !d.adobeTransformValid {
-		return nil, UnsupportedError("unknown color model: 4-component JPEG doesn't have Adobe APP14 metadata")
+		return nil, unsupportedError("unknown color model: 4-component JPEG doesn't have Adobe APP14 metadata")
 	}
 
 	// If the 4-component JPEG image isn't explicitly marked as "Unknown (RGB
@@ -739,12 +737,6 @@ func (d *decoder) convertToRGB() (image.Image, error) {
 		}
 	}
 	return img, nil
-}
-
-// Decode reads a JPEG image from r and returns it as an [image.Image].
-func Decode(r io.Reader) (image.Image, error) {
-	var d decoder
-	return d.decode(r)
 }
 
 // Decoder reuses parsing workspace and YCbCr storage between frames. Its zero value is ready to use.

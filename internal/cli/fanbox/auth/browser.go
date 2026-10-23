@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 
+	"github.com/FlanChanXwO/pixiv-cli/internal/browsercookies"
 	"github.com/FlanChanXwO/pixiv-cli/internal/browsercookies/system"
 )
 
@@ -27,11 +28,11 @@ func (SystemBrowserProvider) ReadSession(ctx context.Context, browser, profileID
 	if err != nil {
 		return "", err
 	}
-	profile, err := system.SelectProfile(profiles, profileID)
+	profile, err := browsercookies.SelectProfile(profiles, profileID)
 	if err != nil {
 		return "", err
 	}
-	secrets, err := provider.Read(ctx, system.DefaultQuery, profile.ID)
+	secrets, err := provider.Read(ctx, browsercookies.DefaultQuery, profile.ID)
 	if err != nil {
 		return "", err
 	}

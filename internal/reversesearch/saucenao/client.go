@@ -47,7 +47,7 @@ func New(options Options) *Client {
 	return &Client{apiKey: options.APIKey, httpClient: client, endpoint: endpoint}
 }
 
-// Close 释放 SauceNAO client 的空闲连接；整个 reverse-search Facade 结束时
+// Close 释放 SauceNAO client 的空闲连接；整个 reverse-search Service 结束时
 // 调用一次即可，重复调用保持幂等。
 func (c *Client) Close() error {
 	if c == nil {

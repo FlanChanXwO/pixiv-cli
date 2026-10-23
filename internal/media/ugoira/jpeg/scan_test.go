@@ -2,7 +2,6 @@ package jpeg_test
 
 import (
 	"bytes"
-	framejpeg "github.com/FlanChanXwO/pixiv-cli/internal/media/ugoira/jpeg"
 	"io"
 	"os"
 	"path/filepath"
@@ -25,12 +24,12 @@ func TestDecodeBufferedMarkerBoundaries(t *testing.T) {
 				t.Fatal("fixture lacks restart marker")
 			}
 			// 单字节 reader 不能进入已缓冲普通字节的补位快路径，作为同像素参考。
-			want, err := framejpeg.Decode(oneByteReader{bytes.NewReader(body)})
+			want, err := decodeForTest(oneByteReader{bytes.NewReader(body)})
 			if err != nil {
 				t.Fatal(err)
 			}
 			for split := 1; split < len(body); split++ {
-				got, err := framejpeg.Decode(io.MultiReader(bytes.NewReader(body[:split]), bytes.NewReader(body[split:])))
+				got, err := decodeForTest(io.MultiReader(bytes.NewReader(body[:split]), bytes.NewReader(body[split:])))
 				if err != nil {
 					t.Fatalf("split %d: %v", split, err)
 				}
@@ -76,7 +75,7 @@ func TestDecodeDCBlockClipping(t *testing.T) {
 						if short {
 							reader = oneByteReader{reader}
 						}
-						got, err := framejpeg.Decode(reader)
+						got, err := decodeForTest(reader)
 						if err != nil {
 							t.Fatalf("quant=%d size=%d negative=%t zrl=%q short=%t: %v", quant, size, negative, zrl, short, err)
 						}

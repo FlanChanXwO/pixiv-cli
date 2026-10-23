@@ -5,9 +5,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"os"
-	"path/filepath"
-	"runtime"
 	"strings"
 	"testing"
 
@@ -170,60 +167,5 @@ func TestSelectProfile(t *testing.T) {
 	// 空列表。
 	if _, err := browsercookies.SelectProfile(nil, ""); !errors.Is(err, browsercookies.ErrProfileNotFound) {
 		t.Fatalf("empty list err = %v", err)
-	}
-}
-
-func TestProviderFixtureHook(t *testing.T) {
-	restore := browsercookies.SetProviderFixtureForTest("testbrowser", func(path string) ([]byte, error) {
-		return []byte("fixture:" + path), nil
-	})
-	defer restore()
-	data, hooked, err := browsercookies.HookBytes("testbrowser", "/some/path")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !hooked {
-		t.Fatal("expected hooked=true")
-	}
-	if string(data) != "fixture:/some/path" {
-		t.Fatalf("hook data = %q", data)
-	}
-	// 其他 provider 不命中。
-	data, hooked, err = browsercookies.HookBytes("other", "/some/path")
-	if err != nil || hooked || data != nil {
-		t.Fatalf("other provider: hooked=%v data=%v err=%v", hooked, data, err)
-	}
-	// 恢复后不再命中。
-	restore()
-	if _, hooked, _ := browsercookies.HookBytes("testbrowser", "/some/path"); hooked {
-		t.Fatal("expected no hook after restore")
-	}
-}
-
-func TestWriteTempSnapshotPermissions(t *testing.T) {
-	path, cleanup, err := browsercookies.WriteTempSnapshot([]byte("db-bytes"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer cleanup()
-	info, err := os.Stat(path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	dirInfo, err := os.Stat(filepath.Dir(path))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if runtime.GOOS != "windows" {
-		if got := info.Mode().Perm(); got != 0o600 {
-			t.Fatalf("file mode = %o, want 600", got)
-		}
-		if got := dirInfo.Mode().Perm(); got != 0o700 {
-			t.Fatalf("dir mode = %o, want 700", got)
-		}
-	}
-	cleanup()
-	if _, err := os.Stat(path); !os.IsNotExist(err) {
-		t.Fatalf("cleanup did not remove snapshot (err=%v)", err)
 	}
 }
