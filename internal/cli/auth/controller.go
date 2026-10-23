@@ -18,11 +18,6 @@ type controller struct {
 	errOut  io.Writer
 }
 
-type proxyOptions struct {
-	proxy   string
-	noProxy bool
-}
-
 type runtimeServices struct {
 	Account     AccountService
 	Login       pixivaccount.LoginService

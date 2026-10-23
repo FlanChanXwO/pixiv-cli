@@ -77,10 +77,10 @@ func (s runtimeServices) require() error {
 
 func (a controller) printJSON(value any) error { return a.env.PrintJSON(value) }
 
-func (a controller) bindProxyFlags(cmd *cobra.Command, options *proxyOptions) {
-	a.env.BindProxyFlags(cmd, &commands.ProxyOptions{Proxy: options.proxy, NoProxy: options.noProxy})
+func (a controller) bindProxyFlags(cmd *cobra.Command, options *commands.ProxyOptions) {
+	a.env.BindProxyFlags(cmd, options)
 }
 
-func proxyOverrideFromFlags(cmd *cobra.Command, options proxyOptions) (*string, error) {
-	return commands.Env{}.ProxyOverride(cmd, commands.ProxyOptions{Proxy: options.proxy, NoProxy: options.noProxy})
+func proxyOverrideFromFlags(cmd *cobra.Command, options commands.ProxyOptions) (*string, error) {
+	return commands.Env{}.ProxyOverride(cmd, options)
 }

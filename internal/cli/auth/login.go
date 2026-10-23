@@ -12,7 +12,7 @@ import (
 	"time"
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/cli/auth/loginhelper"
-	requirements "github.com/FlanChanXwO/pixiv-cli/internal/cli/internal/command"
+	commands "github.com/FlanChanXwO/pixiv-cli/internal/cli/internal/command"
 	"github.com/FlanChanXwO/pixiv-cli/internal/loginrelay"
 	"github.com/FlanChanXwO/pixiv-cli/internal/loginrelay/loginpage"
 	pixivaccount "github.com/FlanChanXwO/pixiv-cli/internal/pixivaccount"
@@ -54,7 +54,7 @@ type urlSchemeRelayInstaller func(context.Context, string) (func(), error)
 type urlSchemeRelayEnsurer func(context.Context) error
 
 type AccountLoginOptions struct {
-	proxyOptions
+	commands.ProxyOptions
 	jsonOut          bool
 	noOpen           bool
 	useAfterLogin    bool
@@ -87,14 +87,14 @@ func (a controller) newAccountLoginCommand() *cobra.Command {
 	flags.StringVar(&opts.relayListenAddr, "relay-listen-addr", "", "listen address for this remote login relay")
 	flags.StringVar(&opts.relayTLSCertFile, "relay-tls-cert-file", "", "PEM certificate file for this remote login relay")
 	flags.StringVar(&opts.relayTLSKeyFile, "relay-tls-key-file", "", "PEM private key file for this remote login relay")
-	a.bindProxyFlags(cmd, &opts.proxyOptions)
+	a.bindProxyFlags(cmd, &opts.ProxyOptions)
 	a.bindNoInput(cmd)
-	requirements.Bind(cmd, requirements.AuthLogin())
+	commands.Bind(cmd, commands.AuthLogin())
 	return cmd
 }
 
 func (a controller) accountLogin(cmd *cobra.Command, opts AccountLoginOptions) error {
-	proxyOverride, err := proxyOverrideFromFlags(cmd, opts.proxyOptions)
+	proxyOverride, err := proxyOverrideFromFlags(cmd, opts.ProxyOptions)
 	if err != nil {
 		return err
 	}
