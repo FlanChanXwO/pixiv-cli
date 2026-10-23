@@ -89,48 +89,6 @@ func (*Session) String() string { return "FANBOX Session" }
 // GoString 保护 %#v 格式化路径，避免它展开 Session 私有字段。
 func (*Session) GoString() string { return "fanbox.Session{}" }
 
-// Option 调整 Session 构造的非敏感选项。
-type Option func(*Session)
-
-// WithHTTPClient 注入标准 *http.Client；client 必须携带显式 transport，绝不静默
-// 降级到标准 net/http TLS 指纹。
-func WithHTTPClient(client *http.Client) Option {
-	return func(s *Session) { s.httpClient = client }
-}
-
-// WithProxyURL 使用 HTTP(S) CONNECT 代理构造 tls-client Chrome_146 指纹 transport。
-// 校验失败不回显原始 URL，避免 userinfo 出现在错误或日志中。
-func WithProxyURL(raw string) Option {
-	return func(s *Session) { s.proxyURL = raw }
-}
-
-// WithUserAgent overrides only the native FANBOX HTTP User-Agent header.
-func WithUserAgent(value string) Option {
-	return func(s *Session) { s.userAgent = value }
-}
-
-// WithFlareSolverr enables the explicit challenge recovery service.
-func WithFlareSolverr(options FlareSolverrOptions) Option {
-	return func(s *Session) { s.flareSolverr = &options }
-}
-
-// NewSession 创建 FANBOX 只读会话。默认使用 tls-client Chrome_146 指纹的生产
-// transport；注入 WithHTTPClient 时使用调用方提供的标准 transport。
-func NewSession(cookieValue string, opts ...Option) (*Session, error) {
-	configured := &Session{}
-	for _, opt := range opts {
-		if opt != nil {
-			opt(configured)
-		}
-	}
-	return NewSessionWithOptions(cookieValue, SessionOptions{
-		HTTPClient:   configured.httpClient,
-		ProxyURL:     configured.proxyURL,
-		UserAgent:    configured.userAgent,
-		FlareSolverr: configured.flareSolverr,
-	})
-}
-
 // NewSessionWithOptions creates a session with explicit native and solver
 // options. It performs no network I/O.
 func NewSessionWithOptions(cookieHeader string, options SessionOptions) (*Session, error) {
@@ -157,11 +115,6 @@ func NewSessionWithOptions(cookieHeader string, options SessionOptions) (*Sessio
 		return nil, fmt.Errorf("create FANBOX TLS transport: %w", err)
 	}
 	return newSession(cookieHeader, &http.Client{Transport: transport}, options.SolverHTTPClient, proxyURL, validatedAgent, flareSolverr)
-}
-
-// NewSessionWithHTTPClient 仅供受控测试或上层显式注入 transport；client 必须有 transport。
-func NewSessionWithHTTPClient(cookieHeader string, client *http.Client) (*Session, error) {
-	return NewSessionWithOptions(cookieHeader, SessionOptions{HTTPClient: client})
 }
 
 func newSession(cookieHeader string, client, solverClient *http.Client, proxyURL, agent string, flareSolverr *FlareSolverrOptions) (*Session, error) {

@@ -5,11 +5,11 @@ description: Add, change, or review a pixiv-cli Pixiv or FANBOX MCP tool, includ
 
 # Maintain pixiv-cli MCP Tools
 
-Read root `AGENTS.md`, [pixiv-cli-develop](../pixiv-cli-develop/SKILL.md), and the relevant locale MCP reference. Find a current neighboring tool and its registration/tests; do not copy an obsolete bootstrap or application-service pattern.
+Read root `AGENTS.md`, [pixiv-cli-develop](../pixiv-cli-develop/SKILL.md), and the relevant locale MCP reference. Find a current neighboring tool and its registration/tests; do not copy an obsolete bootstrap or application-service pattern. `register.go` is the only registration entry; domain files (`accounts.go`, `media.go`, `bookmarks.go`, …) hold the tool definitions and `<tool>Handler` methods on the product tool set.
 
 ## Identify ownership and contract
 
-Pixiv tools live in `internal/mcpserver/pixiv/tools/<tool>`; FANBOX tools in the parallel FANBOX owner. Their product roots register into one server constructed by `internal/mcpserver.New`; product runtimes remain independent. Pixiv tool names use `pixiv_`, FANBOX uses `fanbox_`, and old unprefixed aliases are not registered. `pixiv mcp` defaults to stdio, with local filesystem downloads injected only for that transport; explicit `--port` enables HTTP with OAuth/bearer checks. Register Gallery and owner operations only when their media/account/login ports exist. Use existing owner-local runtime, record, output, and filter helpers, and the public SDK for product operations.
+Pixiv tools live in the single package `internal/mcpserver/pixiv/tools`; FANBOX tools in the parallel `internal/mcpserver/fanbox/tools`. Their product roots register into one server constructed by `internal/mcpserver.New`; product runtimes remain independent. Pixiv tool names use `pixiv_`, FANBOX uses `fanbox_`, and old unprefixed aliases are not registered. `pixiv mcp` defaults to stdio, with local filesystem downloads injected only for that transport; explicit `--port` enables HTTP with OAuth/bearer checks. Register Gallery and owner operations only when their media/account/login ports exist. Use existing owner-local runtime, record, output, and filter helpers, and the public SDK for product operations.
 
 For reverse search, tool code may depend on the top-level reverse-search service contract, never provider/assembly internals. Keep provider transport and credential wiring in production assembly. Do not introduce a general service locator, shared mutable global client, or anonymous Web fallback.
 

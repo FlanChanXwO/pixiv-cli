@@ -1,10 +1,5 @@
 package pixivapi
 
-import (
-	"net/url"
-	"strconv"
-)
-
 const (
 	AppSearchIllust          = "/v1/search/illust"
 	AppSearchNovel           = "/v1/search/novel"
@@ -55,14 +50,7 @@ const (
 	AppUserRelated           = "/v1/user/related"
 	AppUserFollower          = "/v1/user/follower"
 	AppUserList              = "/v2/user/list"
-	AppEditAIShowSettings    = "/v1/user/edit-ai-show-settings"
 	OAuthToken               = "/auth/token"
 	AppLogin                 = "/web/v1/login"
 	AppOAuthStart            = "/web/v1/users/auth/pixiv/start"
-	WebRanking               = "/ranking.php"
 )
-
-func WebSearchArtworks(word string) string { return "/ajax/search/artworks/" + url.PathEscape(word) }
-func WebIllustDetail(id int64) string      { return "/ajax/illust/" + strconv.FormatInt(id, 10) }
-func WebIllustPages(id int64) string       { return WebIllustDetail(id) + "/pages" }
-func WebUgoiraMetadata(id int64) string    { return WebIllustDetail(id) + "/ugoira_meta" }

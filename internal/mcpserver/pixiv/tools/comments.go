@@ -1,0 +1,283 @@
+// pixiv comments tools.
+
+package tools
+
+import (
+	"context"
+	"fmt"
+	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/internal/outputs"
+	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/internal/records"
+	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/internal/schemas"
+	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/internal/toolhost"
+	pixiv "github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
+	"github.com/modelcontextprotocol/go-sdk/mcp"
+)
+
+// registerCommentCreate 注册 pixiv_comment_create。
+func (t pixivTools) registerCommentCreate(server *mcp.Server) {
+	toolhost.AddTool(t.app, server, &mcp.Tool{Name: "pixiv_comment_create", Description: "Create a top-level comment on an artwork or novel.", Annotations: &mcp.ToolAnnotations{ReadOnlyHint: false, DestructiveHint: new(false), IdempotentHint: false, OpenWorldHint: new(true)},
+		InputSchema: schemas.ClosedObject(commentCreateCommentProperties(), []string{"kind", "id", "comment"})}, func(ctx context.Context, request *mcp.CallToolRequest, input commentCreateIn) (*mcp.CallToolResult, outputs.Mutation, error) {
+		return t.commentCreateHandler(ctx, input)
+	})
+}
+
+// commentCreateIn 要求显式选择目标类型；输出仍保留原操作的字段与语义。
+type commentCreateIn struct {
+	Kind    string `json:"kind"`
+	ID      int64  `json:"id" jsonschema:"positive artwork or novel ID"`
+	Comment string `json:"comment" jsonschema:"comment body"`
+}
+
+func commentCreateCommentProperties() map[string]any {
+	return map[string]any{
+		"kind":    schemas.EnumString("Target content type.", "artwork", "novel"),
+		"id":      schemas.PositiveInteger("Positive Pixiv artwork or novel ID."),
+		"comment": map[string]any{"type": "string", "minLength": 1, "description": "Non-empty comment body."},
+	}
+}
+
+func (t pixivTools) commentCreateHandler(ctx context.Context, in commentCreateIn) (*mcp.CallToolResult, outputs.Mutation, error) {
+	if in.Kind == "novel" {
+		out := outputs.Mutation{
+			Action:  "create_novel_comment",
+			NovelID: in.ID,
+			Text:    fmt.Sprintf("Created comment on novel %d.", in.ID),
+		}
+		return outputs.RunMutationInPlace(&out, func() error {
+			return toolhost.Write(t.app, ctx, func(ctx context.Context, client *pixiv.Client) error {
+				result, err := client.PostNovelComment(ctx, pixiv.PostNovelCommentRequest{
+					NovelID: in.ID,
+					Comment: in.Comment,
+				})
+				if err != nil {
+					return err
+				}
+				out.CommentID = result.CommentID
+				return nil
+			})
+		})
+	}
+
+	out := outputs.Mutation{
+		Action:   "create_artwork_comment",
+		IllustID: in.ID,
+		Text:     fmt.Sprintf("Created comment on artwork %d.", in.ID),
+	}
+	return outputs.RunMutationInPlace(&out, func() error {
+		return toolhost.Write(t.app, ctx, func(ctx context.Context, client *pixiv.Client) error {
+			result, err := client.PostArtworkComment(ctx, pixiv.PostArtworkCommentRequest{
+				ArtworkID: in.ID,
+				Comment:   in.Comment,
+			})
+			if err != nil {
+				return err
+			}
+			out.CommentID = result.CommentID
+			return nil
+		})
+	})
+}
+
+// registerCommentDelete 注册 pixiv_comment_delete。
+func (t pixivTools) registerCommentDelete(server *mcp.Server) {
+	toolhost.AddTool(t.app, server, &mcp.Tool{Name: "pixiv_comment_delete", Description: "Delete an artwork or novel comment by comment ID.", Annotations: &mcp.ToolAnnotations{ReadOnlyHint: false, DestructiveHint: new(true), IdempotentHint: true, OpenWorldHint: new(true)},
+		InputSchema: schemas.ClosedObject(map[string]any{"kind": schemas.EnumString("Target content type.", "artwork", "novel"), "comment_id": schemas.PositiveInteger("Positive Pixiv comment ID.")}, []string{"kind", "comment_id"})}, func(ctx context.Context, request *mcp.CallToolRequest, input commentDeleteIn) (*mcp.CallToolResult, outputs.Mutation, error) {
+		return t.commentDeleteHandler(ctx, input)
+	})
+}
+
+// commentDeleteIn 要求显式选择目标类型；输出仍保留原操作的字段与语义。
+type commentDeleteIn struct {
+	Kind      string `json:"kind"`
+	CommentID int64  `json:"comment_id" jsonschema:"positive comment ID"`
+}
+
+func (t pixivTools) commentDeleteHandler(ctx context.Context, in commentDeleteIn) (*mcp.CallToolResult, outputs.Mutation, error) {
+	if in.Kind == "novel" {
+		out := outputs.Mutation{
+			Action:    "delete_novel_comment",
+			CommentID: in.CommentID,
+			Text:      fmt.Sprintf("Deleted comment %d.", in.CommentID),
+		}
+		return outputs.RunMutation(out, func() error {
+			return toolhost.Write(t.app, ctx, func(ctx context.Context, client *pixiv.Client) error {
+				return client.DeleteNovelComment(ctx, pixiv.DeleteNovelCommentRequest{CommentID: in.CommentID})
+			})
+		})
+	}
+
+	out := outputs.Mutation{
+		Action:    "delete_artwork_comment",
+		CommentID: in.CommentID,
+		Text:      fmt.Sprintf("Deleted comment %d.", in.CommentID),
+	}
+	return outputs.RunMutation(out, func() error {
+		return toolhost.Write(t.app, ctx, func(ctx context.Context, client *pixiv.Client) error {
+			return client.DeleteArtworkComment(ctx, pixiv.DeleteArtworkCommentRequest{CommentID: in.CommentID})
+		})
+	})
+}
+
+// registerCommentReply 注册 pixiv_comment_reply。
+func (t pixivTools) registerCommentReply(server *mcp.Server) {
+	toolhost.AddTool(t.app, server, &mcp.Tool{Name: "pixiv_comment_reply", Description: "Reply to an artwork or novel comment.", Annotations: &mcp.ToolAnnotations{ReadOnlyHint: false, DestructiveHint: new(false), IdempotentHint: false, OpenWorldHint: new(true)},
+		InputSchema: schemas.ClosedObject(commentReplyCommentProperties(), []string{"kind", "id", "comment", "parent_comment_id"})}, func(ctx context.Context, request *mcp.CallToolRequest, input commentReplyIn) (*mcp.CallToolResult, outputs.Mutation, error) {
+		return t.commentReplyHandler(ctx, input)
+	})
+}
+
+// commentReplyIn 要求显式选择目标类型；输出仍保留原操作的字段与语义。
+type commentReplyIn struct {
+	Kind            string `json:"kind"`
+	ID              int64  `json:"id" jsonschema:"positive artwork or novel ID"`
+	Comment         string `json:"comment" jsonschema:"comment body"`
+	ParentCommentID int64  `json:"parent_comment_id" jsonschema:"positive parent comment ID"`
+}
+
+func commentReplyCommentProperties() map[string]any {
+	return map[string]any{
+		"kind":              schemas.EnumString("Target content type.", "artwork", "novel"),
+		"id":                schemas.PositiveInteger("Positive Pixiv artwork or novel ID."),
+		"comment":           map[string]any{"type": "string", "minLength": 1, "description": "Non-empty comment body."},
+		"parent_comment_id": schemas.PositiveInteger("Positive parent comment ID."),
+	}
+}
+
+func (t pixivTools) commentReplyHandler(ctx context.Context, in commentReplyIn) (*mcp.CallToolResult, outputs.Mutation, error) {
+	if in.Kind == "novel" {
+		out := outputs.Mutation{
+			Action:  "reply_novel_comment",
+			NovelID: in.ID,
+			Text:    fmt.Sprintf("Replied to comment %d on novel %d.", in.ParentCommentID, in.ID),
+		}
+		return outputs.RunMutationInPlace(&out, func() error {
+			return toolhost.Write(t.app, ctx, func(ctx context.Context, client *pixiv.Client) error {
+				result, err := client.ReplyNovelComment(ctx, pixiv.ReplyNovelCommentRequest{
+					NovelID:         in.ID,
+					Comment:         in.Comment,
+					ParentCommentID: in.ParentCommentID,
+				})
+				if err != nil {
+					return err
+				}
+				out.CommentID = result.CommentID
+				return nil
+			})
+		})
+	}
+
+	out := outputs.Mutation{
+		Action:   "reply_artwork_comment",
+		IllustID: in.ID,
+		Text:     fmt.Sprintf("Replied to comment %d on artwork %d.", in.ParentCommentID, in.ID),
+	}
+	return outputs.RunMutationInPlace(&out, func() error {
+		return toolhost.Write(t.app, ctx, func(ctx context.Context, client *pixiv.Client) error {
+			result, err := client.ReplyArtworkComment(ctx, pixiv.ReplyArtworkCommentRequest{
+				ArtworkID:       in.ID,
+				Comment:         in.Comment,
+				ParentCommentID: in.ParentCommentID,
+			})
+			if err != nil {
+				return err
+			}
+			out.CommentID = result.CommentID
+			return nil
+		})
+	})
+}
+
+// registerCommentStamp 注册 pixiv_comment_stamp。
+func (t pixivTools) registerCommentStamp(server *mcp.Server) {
+	toolhost.AddTool(t.app, server, &mcp.Tool{Name: "pixiv_comment_stamp", Description: "Add a stamp comment to an artwork or novel.", Annotations: &mcp.ToolAnnotations{ReadOnlyHint: false, DestructiveHint: new(false), IdempotentHint: false, OpenWorldHint: new(true)},
+		InputSchema: schemas.ClosedObject(commentStampCommentProperties(), []string{"kind", "id", "stamp_id"})}, func(ctx context.Context, request *mcp.CallToolRequest, input commentStampIn) (*mcp.CallToolResult, outputs.Mutation, error) {
+		return t.commentStampHandler(ctx, input)
+	})
+}
+
+// commentStampIn 要求显式选择目标类型；输出仍保留原操作的字段与语义。
+type commentStampIn struct {
+	Kind    string `json:"kind"`
+	ID      int64  `json:"id" jsonschema:"positive artwork or novel ID"`
+	Comment string `json:"comment" jsonschema:"comment body"`
+	StampID int64  `json:"stamp_id" jsonschema:"positive stamp ID"`
+}
+
+func commentStampCommentProperties() map[string]any {
+	return map[string]any{
+		"kind":     schemas.EnumString("Target content type.", "artwork", "novel"),
+		"id":       schemas.PositiveInteger("Positive Pixiv artwork or novel ID."),
+		"comment":  map[string]any{"type": "string", "description": "Optional comment body; empty is the sticker-only wire form."},
+		"stamp_id": schemas.PositiveInteger("Positive Pixiv stamp ID."),
+	}
+}
+
+func (t pixivTools) commentStampHandler(ctx context.Context, in commentStampIn) (*mcp.CallToolResult, outputs.Mutation, error) {
+	if in.Kind == "novel" {
+		out := outputs.Mutation{
+			Action:  "stamp_novel_comment",
+			NovelID: in.ID,
+			Text:    fmt.Sprintf("Added stamp comment to novel %d.", in.ID),
+		}
+		return outputs.RunMutationInPlace(&out, func() error {
+			return toolhost.Write(t.app, ctx, func(ctx context.Context, client *pixiv.Client) error {
+				result, err := client.StampNovelComment(ctx, pixiv.StampNovelCommentRequest{
+					NovelID: in.ID,
+					Comment: in.Comment,
+					StampID: in.StampID,
+				})
+				if err != nil {
+					return err
+				}
+				out.CommentID = result.CommentID
+				return nil
+			})
+		})
+	}
+
+	out := outputs.Mutation{
+		Action:   "stamp_artwork_comment",
+		IllustID: in.ID,
+		Text:     fmt.Sprintf("Added stamp comment to artwork %d.", in.ID),
+	}
+	return outputs.RunMutationInPlace(&out, func() error {
+		return toolhost.Write(t.app, ctx, func(ctx context.Context, client *pixiv.Client) error {
+			result, err := client.StampArtworkComment(ctx, pixiv.StampArtworkCommentRequest{
+				ArtworkID: in.ID,
+				Comment:   in.Comment,
+				StampID:   in.StampID,
+			})
+			if err != nil {
+				return err
+			}
+			out.CommentID = result.CommentID
+			return nil
+		})
+	})
+}
+
+// registerComments 注册 pixiv_comments。
+func (t pixivTools) registerComments(server *mcp.Server) {
+	toolhost.AddTool(t.app, server, &mcp.Tool{Name: "pixiv_comments", Annotations: &mcp.ToolAnnotations{ReadOnlyHint: true, DestructiveHint: new(false), IdempotentHint: true, OpenWorldHint: new(true)}, Description: "Read comments for a Pixiv artwork or novel.", InputSchema: commentsInputSchema(),
+		OutputSchema: records.CommentOutputSchema()}, func(ctx context.Context, request *mcp.CallToolRequest, input commentsIn) (*mcp.CallToolResult, outputs.Comments, error) {
+		return t.commentsHandler(ctx, input)
+	})
+}
+
+// commentsIn 要求显式选择目标类型；输出仍保留原操作的字段与语义。
+type commentsIn struct {
+	Kind string `json:"kind"`
+	ID   int64  `json:"id" jsonschema:"positive artwork or novel ID"`
+	toolhost.PageLimitIn
+}
+
+func (t pixivTools) commentsHandler(ctx context.Context, in commentsIn) (*mcp.CallToolResult, outputs.Comments, error) {
+	return outputs.ListComments(ctx, t.app, in.ID, in.Kind == "novel", in.PageLimitIn, in.Limit)
+}
+
+func commentsInputSchema() map[string]any {
+	schema := records.CommentInputSchema()
+	schema["properties"].(map[string]any)["kind"] = schemas.EnumString("Target content type.", "artwork", "novel")
+	schema["required"] = []string{"kind", "id"}
+	return schema
+}

@@ -319,11 +319,11 @@ func TestArtworkCommentReplyWithCreatedParentUsesWritableTargetAndCleansBothWrit
 	}
 	session := &realPixivMutationSession{
 		client: client,
-		raw: protocol.New(
-			protocol.WithHTTPClient(httpClient),
-			protocol.WithAccessToken("token"),
-			protocol.WithUserID(userID),
-		),
+		raw: protocol.New(protocol.Config{
+			HTTPClient:  httpClient,
+			AccessToken: "token",
+			UserID:      userID,
+		}),
 		userID: userID,
 	}
 
@@ -696,11 +696,11 @@ func openRealPixivMutationSession(t *testing.T, ctx context.Context, targetID in
 		inner:    transport.Clone(),
 		interval: liveManifestPace,
 	}}
-	app := protocol.New(
-		protocol.WithHTTPClient(rawHTTPClient),
-		protocol.WithAccessToken(credentials.AccessToken()),
-		protocol.WithUserID(credentials.UserID),
-	)
+	app := protocol.New(protocol.Config{
+		HTTPClient:  rawHTTPClient,
+		AccessToken: credentials.AccessToken(),
+		UserID:      credentials.UserID,
+	})
 	t.Cleanup(rawHTTPClient.CloseIdleConnections)
 	return &realPixivMutationSession{client: client, raw: app, userID: credentials.UserID}
 }

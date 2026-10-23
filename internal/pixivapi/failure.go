@@ -59,12 +59,6 @@ func HTTPStatusWithRetryAfter(status int, retryAfter time.Duration, present bool
 func MalformedResponse() Failure {
 	return Failure{Kind: FailureMalformed}
 }
-func UpstreamRejected() Failure {
-	return Failure{Kind: FailureRejected}
-}
-func Forbidden() Failure {
-	return Failure{Kind: FailureForbidden}
-}
 func Transport(err error) Failure {
 	var failure Failure
 	if errors.As(err, &failure) {

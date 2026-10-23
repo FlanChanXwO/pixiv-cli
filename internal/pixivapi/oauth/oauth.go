@@ -9,14 +9,15 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"errors"
+	"io"
 	"net/http"
+	"net/url"
 	"strconv"
 	"strings"
 	"sync"
 	"time"
 
 	protocol "github.com/FlanChanXwO/pixiv-cli/internal/pixivapi"
-	"github.com/go-resty/resty/v2"
 )
 
 const (
@@ -24,7 +25,6 @@ const (
 	DefaultClientID     = protocol.OAuthClientID
 	DefaultClientSecret = protocol.OAuthClientSecret
 	DefaultRedirectURI  = protocol.OAuthRedirectURI
-	defaultUserAgent    = protocol.AppUserAgent
 )
 
 // ErrMalformedResponse 标识 OAuth 成功状态码却未提供可用 token payload。
@@ -32,7 +32,7 @@ const (
 var ErrMalformedResponse = protocol.ErrMalformedResponse
 
 type Client struct {
-	restyClient  *resty.Client
+	httpClient   *http.Client
 	baseURL      string
 	refreshToken string
 	// refreshTokenErr 只保存本地输入校验错误；Refresh 会直接返回它，确保 Cookie
@@ -45,42 +45,29 @@ type Client struct {
 	mu              sync.RWMutex
 }
 
-// APIError 是 OAuth 上游状态错误。它故意不保留响应体，避免调用方把
-// OAuth 诊断内容（其中可能含 token 或 code）写入日志。
-type APIError = protocol.Failure
-
-type Option func(*Client)
-
-func WithHTTPClient(httpClient *http.Client) Option {
-	return func(c *Client) {
-		if httpClient != nil {
-			c.restyClient = resty.NewWithClient(httpClient)
-		}
-	}
+// Config 是 OAuth 客户端的连接配置；零值使用默认基址和默认 HTTP client。
+type Config struct {
+	HTTPClient *http.Client
+	BaseURL    string
 }
 
-func WithBaseURL(baseURL string) Option {
-	return func(c *Client) {
-		if baseURL != "" {
-			c.baseURL = strings.TrimRight(baseURL, "/")
-		}
-	}
-}
-
-func WithAccessToken(token string) Option {
-	return func(c *Client) { c.accessToken = strings.TrimSpace(token) }
-}
-
-func New(refreshToken string, opts ...Option) *Client {
+// New builds an OAuth client; refreshToken is validated without network I/O.
+func New(refreshToken string, cfg Config) *Client {
 	refreshToken, refreshTokenErr := ValidateRefreshTokenInput(refreshToken)
-	c := &Client{restyClient: resty.New(), baseURL: DefaultBase, refreshToken: refreshToken, refreshTokenErr: refreshTokenErr}
-	for _, opt := range opts {
-		opt(c)
+	baseURL := cfg.BaseURL
+	if baseURL == "" {
+		baseURL = DefaultBase
 	}
-	if c.restyClient == nil {
-		c.restyClient = resty.New()
+	httpClient := cfg.HTTPClient
+	if httpClient == nil {
+		httpClient = &http.Client{}
 	}
-	return c
+	return &Client{
+		httpClient:      httpClient,
+		baseURL:         strings.TrimRight(baseURL, "/"),
+		refreshToken:    refreshToken,
+		refreshTokenErr: refreshTokenErr,
+	}
 }
 
 func (c *Client) SetRefreshToken(token string) {
@@ -182,18 +169,34 @@ func (c *Client) ExchangeAuthorizationCode(ctx context.Context, code, verifier s
 }
 
 func (c *Client) exchange(ctx context.Context, form map[string]string) (authResponse, error) {
-	resp, err := c.restyClient.R().SetContext(ctx).SetHeaders(oauthHeaders()).SetFormData(form).Post(c.baseURL + protocol.OAuthToken)
+	values := make(url.Values, len(form))
+	for key, value := range form {
+		values.Set(key, value)
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.baseURL+protocol.OAuthToken, strings.NewReader(values.Encode()))
 	if err != nil {
 		return authResponse{}, protocol.Transport(err)
 	}
-	if resp.StatusCode() < 200 || resp.StatusCode() >= 300 {
-		return authResponse{}, protocol.HTTPStatus(resp.StatusCode())
+	for name, value := range oauthHeaders() {
+		req.Header.Set(name, value)
 	}
-	if len(bytes.TrimSpace(resp.Body())) == 0 {
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return authResponse{}, protocol.Transport(err)
+	}
+	defer resp.Body.Close()
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return authResponse{}, protocol.Transport(err)
+	}
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return authResponse{}, protocol.HTTPStatus(resp.StatusCode)
+	}
+	if len(bytes.TrimSpace(body)) == 0 {
 		return authResponse{}, protocol.MalformedResponse()
 	}
 	var result authResponse
-	if err := json.Unmarshal(resp.Body(), &result); err != nil {
+	if err := json.Unmarshal(body, &result); err != nil {
 		return authResponse{}, protocol.MalformedResponse()
 	}
 	return result, nil

@@ -14,8 +14,6 @@ import (
 	"github.com/FlanChanXwO/pixiv-cli/internal/logging"
 	fanboxmcpserver "github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/fanbox"
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/fanbox/internal/toolhost"
-	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/fanbox/tools/currentuser"
-	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/fanbox/tools/openresource"
 	ugoira "github.com/FlanChanXwO/pixiv-cli/internal/media/ugoira"
 	"github.com/FlanChanXwO/pixiv-cli/internal/storage/database"
 	fanboxsdk "github.com/FlanChanXwO/pixiv-cli/sdk/fanbox"
@@ -762,7 +760,10 @@ func TestFanboxMCPCurrentUserHappyPath(t *testing.T) {
 	if result.IsError {
 		t.Fatalf("current_user failed: %+v", result)
 	}
-	var out currentuser.Out
+	var out struct {
+		UserID      int64  `json:"user_id"`
+		DisplayName string `json:"display_name"`
+	}
 	decodeStructured(t, result, &out)
 	if out.UserID != 42 || out.DisplayName != "tester" {
 		t.Fatalf("current_user output=%+v", out)
@@ -793,7 +794,10 @@ func TestFanboxMCPFailureReturnsStructuredError(t *testing.T) {
 	if result.StructuredContent == nil {
 		t.Fatalf("structured content must be preserved on error")
 	}
-	var out currentuser.Out
+	var out struct {
+		UserID      int64  `json:"user_id"`
+		DisplayName string `json:"display_name"`
+	}
 	decodeStructured(t, result, &out)
 	if out.UserID != 0 {
 		t.Fatalf("structured error output=%+v", out)
@@ -892,7 +896,18 @@ func TestFanboxMCPOpenResourceDeliversImagesAndFiles(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			var out openresource.Out
+			var out struct {
+				Filename      string `json:"filename,omitempty"`
+				Ref           string `json:"ref"`
+				StatusCode    int    `json:"status_code"`
+				ContentType   string `json:"content_type,omitempty"`
+				ContentLength int64  `json:"content_length,omitempty"`
+				Size          int    `json:"size"`
+				ContentIndex  *int   `json:"content_index,omitempty"`
+				Delivered     bool   `json:"delivered"`
+				Complete      bool   `json:"complete"`
+				Error         string `json:"error,omitempty"`
+			}
 			decodeStructured(t, result, &out)
 			if tc.status == 200 && out.StatusCode != tc.status {
 				t.Fatalf("status=%d", out.StatusCode)

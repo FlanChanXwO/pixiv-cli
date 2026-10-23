@@ -125,7 +125,7 @@ func OpenWith(ctx context.Context, refreshToken string, options Options) (*Clien
 		return nil, Credentials{}, newError("Open", sdk.CredentialsExpired, "refresh token is required")
 	}
 	httpClient, selfHTTP := buildHTTPClient(options)
-	oauthClient := oauth.New(refreshToken, oauth.WithHTTPClient(httpClient))
+	oauthClient := oauth.New(refreshToken, oauth.Config{HTTPClient: httpClient})
 	if err := oauthClient.Refresh(ctx); err != nil {
 		return nil, Credentials{}, classifyOAuthError(err, "Open")
 	}
@@ -181,15 +181,12 @@ func newClient(httpClient *http.Client, selfHTTP bool, accessToken string, optio
 			return nil, err
 		}
 	}
-	appOptions := []pixivapi.Option{
-		pixivapi.WithHTTPClient(httpClient),
-		pixivapi.WithAccessToken(accessToken),
-		pixivapi.WithAcceptLanguage(options.AcceptLanguage),
-	}
-	if userID > 0 {
-		appOptions = append(appOptions, pixivapi.WithUserID(userID))
-	}
-	app := pixivapi.New(appOptions...)
+	app := pixivapi.New(pixivapi.Config{
+		HTTPClient:     httpClient,
+		AccessToken:    accessToken,
+		AcceptLanguage: options.AcceptLanguage,
+		UserID:         userID,
+	})
 	return &Client{
 		app:                app,
 		novelComments:      novelcomments.New(app),
