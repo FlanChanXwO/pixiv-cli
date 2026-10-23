@@ -835,7 +835,7 @@
     let pinch, swipe;
     stage.addEventListener("touchstart", event => {
       if (event.touches?.length === 2) {
-        const [a,b] = event.touches; pinch = {distance:Math.hypot(a.clientX-b.clientX,a.clientY-b.clientY), zoom:zoom === "actual" ? 1 : zoom};
+        const [a,b] = event.touches; pinch = {distance:Math.hypot(a.clientX-b.clientX,a.clientY-b.clientY), zoom:typeof zoom === "number" ? zoom : 1}; // fit and actual both start from the fitted scale
       } else if (event.touches?.length === 1 && (zoom === "fit" || zoom === 1)) swipe = {x:event.touches[0].clientX, y:event.touches[0].clientY};
     }, {passive:true});
     stage.addEventListener("touchmove", event => {
