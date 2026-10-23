@@ -47,17 +47,23 @@ func TestPostFormJSONDecodesResponseAndSendsForm(t *testing.T) {
 		if r.Header.Get("Authorization") != "Bearer direct-access" {
 			t.Fatalf("Authorization = %q", r.Header.Get("Authorization"))
 		}
+		if contentType := r.Header.Get("Content-Type"); contentType != "application/x-www-form-urlencoded" {
+			t.Fatalf("Content-Type = %q", contentType)
+		}
+		if r.Header.Get("User-Agent") != pixivapi.AppUserAgent {
+			t.Fatalf("User-Agent = %q", r.Header.Get("User-Agent"))
+		}
 		w.Header().Set("Content-Type", "application/json")
 		_, _ = w.Write([]byte(`{"comment_id":73}`))
 	}))
 	defer api.Close()
 
 	var result testMutationResponse
-	err := pixivapi.New(
-		pixivapi.WithBaseURL(api.URL),
-		pixivapi.WithHTTPClient(api.Client()),
-		pixivapi.WithAccessToken("direct-access"),
-	).PostFormJSON(
+	err := pixivapi.New(pixivapi.Config{
+		BaseURL:     api.URL,
+		HTTPClient:  api.Client(),
+		AccessToken: "direct-access",
+	}).PostFormJSON(
 		context.Background(),
 		"/v1/illust/comment/add",
 		url.Values{"illust_id": {"42"}, "comment": {"hello"}, "extra[]": {"a", "b"}},
@@ -86,7 +92,7 @@ func TestPostFormJSONRejectsMalformedSuccessResponse(t *testing.T) {
 			defer api.Close()
 
 			var result testMutationResponse
-			err := pixivapi.New(pixivapi.WithBaseURL(api.URL), pixivapi.WithHTTPClient(api.Client()), pixivapi.WithAccessToken("access")).PostFormJSON(
+			err := pixivapi.New(pixivapi.Config{BaseURL: api.URL, HTTPClient: api.Client(), AccessToken: "access"}).PostFormJSON(
 				context.Background(),
 				"/v1/illust/comment/add",
 				url.Values{"illust_id": {"42"}},
@@ -130,7 +136,7 @@ func TestPostFormJSONRefreshesAuthAndDecodesRetry(t *testing.T) {
 			defer api.Close()
 
 			var result testMutationResponse
-			err := pixivapi.New(pixivapi.WithBaseURL(api.URL), pixivapi.WithHTTPClient(api.Client()), pixivapi.WithSession(session)).PostFormJSON(
+			err := pixivapi.New(pixivapi.Config{BaseURL: api.URL, HTTPClient: api.Client(), Session: session}).PostFormJSON(
 				context.Background(),
 				"/v1/illust/comment/add",
 				url.Values{"illust_id": {"42"}},
@@ -166,7 +172,7 @@ func TestPostFormJSONDoesNotReplayUncertainFailure(t *testing.T) {
 			defer api.Close()
 
 			var result testMutationResponse
-			err := pixivapi.New(pixivapi.WithBaseURL(api.URL), pixivapi.WithHTTPClient(api.Client()), pixivapi.WithSession(session)).PostFormJSON(
+			err := pixivapi.New(pixivapi.Config{BaseURL: api.URL, HTTPClient: api.Client(), Session: session}).PostFormJSON(
 				context.Background(),
 				"/v1/illust/comment/add",
 				url.Values{"illust_id": {"42"}},
@@ -188,7 +194,7 @@ func TestPostFormJSONDoesNotReplayUncertainFailure(t *testing.T) {
 			return nil, errors.New("connection reset")
 		})}
 		var result testMutationResponse
-		err := pixivapi.New(pixivapi.WithBaseURL("https://example.invalid"), pixivapi.WithHTTPClient(httpClient), pixivapi.WithAccessToken("access")).PostFormJSON(
+		err := pixivapi.New(pixivapi.Config{BaseURL: "https://example.invalid", HTTPClient: httpClient, AccessToken: "access"}).PostFormJSON(
 			context.Background(),
 			"/v1/illust/comment/add",
 			url.Values{"illust_id": {"42"}},
@@ -215,7 +221,7 @@ func TestGetRawPreservesBodyAndHeadersForEndpointFamily(t *testing.T) {
 	}))
 	defer api.Close()
 
-	body, err := pixivapi.New(pixivapi.WithBaseURL(api.URL), pixivapi.WithHTTPClient(api.Client()), pixivapi.WithAccessToken("access"), pixivapi.WithUserID(42)).GetRaw(context.Background(), "/v1/novel/content", url.Values{"novel_id": {"9"}})
+	body, err := pixivapi.New(pixivapi.Config{BaseURL: api.URL, HTTPClient: api.Client(), AccessToken: "access", UserID: 42}).GetRaw(context.Background(), "/v1/novel/content", url.Values{"novel_id": {"9"}})
 	if err != nil {
 		t.Fatalf("GetRaw returned error: %v", err)
 	}
@@ -236,7 +242,7 @@ func TestNewPropagatesContextCancellation(t *testing.T) {
 	result := make(chan error, 1)
 	go func() {
 		var response testDetailResponse
-		result <- pixivapi.New(pixivapi.WithBaseURL(api.URL), pixivapi.WithAccessToken("access")).GetJSON(ctx, "/v1/illust/detail", nil, &response)
+		result <- pixivapi.New(pixivapi.Config{BaseURL: api.URL, AccessToken: "access"}).GetJSON(ctx, "/v1/illust/detail", nil, &response)
 	}()
 	<-started
 	cancel()
@@ -256,7 +262,7 @@ func TestNewPreservesExplicitHTTPClient(t *testing.T) {
 			Request:    request,
 		}, nil
 	})}
-	result, err := getTestDetail(context.Background(), pixivapi.New(pixivapi.WithBaseURL("https://example.invalid"), pixivapi.WithHTTPClient(httpClient), pixivapi.WithAccessToken("access")))
+	result, err := getTestDetail(context.Background(), pixivapi.New(pixivapi.Config{BaseURL: "https://example.invalid", HTTPClient: httpClient, AccessToken: "access"}))
 	if err != nil || result.Illust.ID != 42 || calls != 1 {
 		t.Fatalf("result=%+v err=%v calls=%d", result, err, calls)
 	}
@@ -280,7 +286,7 @@ func TestRefreshAndRetryOnceOnTypedAuthStatus(t *testing.T) {
 			}))
 			defer api.Close()
 
-			client := pixivapi.New(pixivapi.WithBaseURL(api.URL), pixivapi.WithSession(session))
+			client := pixivapi.New(pixivapi.Config{BaseURL: api.URL, Session: session})
 			result, err := getTestDetail(context.Background(), client)
 			if err != nil {
 				t.Fatalf("GetJSON returned error: %v", err)
@@ -305,7 +311,7 @@ func TestGETNonAuthStatusDoesNotRefreshOrReplayForAuthWordsInBody(t *testing.T) 
 	}))
 	defer api.Close()
 
-	client := pixivapi.New(pixivapi.WithBaseURL(api.URL), pixivapi.WithSession(session))
+	client := pixivapi.New(pixivapi.Config{BaseURL: api.URL, Session: session})
 	if _, err := getTestDetail(context.Background(), client); err == nil {
 		t.Fatal("IllustDetail unexpectedly succeeded")
 	}
@@ -330,7 +336,7 @@ func TestGETRetriesOnceAfterValidRateLimitResponse(t *testing.T) {
 	}))
 	defer api.Close()
 
-	result, err := getTestDetail(context.Background(), pixivapi.New(pixivapi.WithBaseURL(api.URL), pixivapi.WithHTTPClient(api.Client()), pixivapi.WithAccessToken("access")))
+	result, err := getTestDetail(context.Background(), pixivapi.New(pixivapi.Config{BaseURL: api.URL, HTTPClient: api.Client(), AccessToken: "access"}))
 	if err != nil || result.Illust.ID != 42 || requests != 2 {
 		t.Fatalf("result=%#v err=%v requests=%d", result, err, requests)
 	}
@@ -349,7 +355,7 @@ func TestGETDoesNotRetryRateLimitWithoutValidRetryAfter(t *testing.T) {
 			}))
 			defer api.Close()
 
-			_, err := getTestDetail(context.Background(), pixivapi.New(pixivapi.WithBaseURL(api.URL), pixivapi.WithHTTPClient(api.Client()), pixivapi.WithAccessToken("access")))
+			_, err := getTestDetail(context.Background(), pixivapi.New(pixivapi.Config{BaseURL: api.URL, HTTPClient: api.Client(), AccessToken: "access"}))
 			if err == nil || requests != 1 {
 				t.Fatalf("error=%v requests=%d", err, requests)
 			}
@@ -366,7 +372,7 @@ func TestGETStopsAfterSecondRateLimitResponse(t *testing.T) {
 	}))
 	defer api.Close()
 
-	_, err := getTestDetail(context.Background(), pixivapi.New(pixivapi.WithBaseURL(api.URL), pixivapi.WithHTTPClient(api.Client()), pixivapi.WithAccessToken("access")))
+	_, err := getTestDetail(context.Background(), pixivapi.New(pixivapi.Config{BaseURL: api.URL, HTTPClient: api.Client(), AccessToken: "access"}))
 	if err == nil || requests != 2 {
 		t.Fatalf("error=%v requests=%d", err, requests)
 	}
@@ -384,7 +390,7 @@ func TestGETRateLimitWaitHonorsContextCancellation(t *testing.T) {
 	}))
 	defer api.Close()
 
-	_, err := getTestDetail(ctx, pixivapi.New(pixivapi.WithBaseURL(api.URL), pixivapi.WithHTTPClient(api.Client()), pixivapi.WithAccessToken("access")))
+	_, err := getTestDetail(ctx, pixivapi.New(pixivapi.Config{BaseURL: api.URL, HTTPClient: api.Client(), AccessToken: "access"}))
 	if !errors.Is(err, context.Canceled) || requests != 1 {
 		t.Fatalf("error=%v requests=%d", err, requests)
 	}
@@ -402,7 +408,7 @@ func TestMutationRateLimitIsNotReplayed(t *testing.T) {
 	}))
 	defer api.Close()
 
-	err := pixivapi.New(pixivapi.WithBaseURL(api.URL), pixivapi.WithHTTPClient(api.Client()), pixivapi.WithAccessToken("access")).PostForm(context.Background(), "/v2/illust/bookmark/add", url.Values{"illust_id": {"42"}, "restrict": {"public"}})
+	err := pixivapi.New(pixivapi.Config{BaseURL: api.URL, HTTPClient: api.Client(), AccessToken: "access"}).PostForm(context.Background(), "/v2/illust/bookmark/add", url.Values{"illust_id": {"42"}, "restrict": {"public"}})
 	if err == nil || requests != 1 {
 		t.Fatalf("error=%v requests=%d", err, requests)
 	}
@@ -429,7 +435,7 @@ func TestWithAccessTokenSendsBearerAuthorization(t *testing.T) {
 	}))
 	defer api.Close()
 
-	client := pixivapi.New(pixivapi.WithBaseURL(api.URL), pixivapi.WithAccessToken("direct-access"))
+	client := pixivapi.New(pixivapi.Config{BaseURL: api.URL, AccessToken: "direct-access"})
 	if _, err := getTestDetail(context.Background(), client); err != nil {
 		t.Fatalf("GetJSON returned error: %v", err)
 	}
@@ -455,7 +461,7 @@ func TestBookmarkMutationRefreshesAuthAndAcceptsEmptySuccess(t *testing.T) {
 	}))
 	defer api.Close()
 
-	client := pixivapi.New(pixivapi.WithBaseURL(api.URL), pixivapi.WithSession(session))
+	client := pixivapi.New(pixivapi.Config{BaseURL: api.URL, Session: session})
 	if err := client.PostForm(context.Background(), "/v2/illust/bookmark/add", url.Values{"illust_id": {"42"}, "restrict": {"public"}, "tags[]": {"a", "b"}}); err != nil {
 		t.Fatalf("PostForm returned error: %v", err)
 	}
@@ -477,7 +483,7 @@ func TestMutationServerErrorDoesNotRefreshOrReplay(t *testing.T) {
 	}))
 	defer api.Close()
 
-	client := pixivapi.New(pixivapi.WithBaseURL(api.URL), pixivapi.WithSession(session))
+	client := pixivapi.New(pixivapi.Config{BaseURL: api.URL, Session: session})
 	if err := client.PostForm(context.Background(), "/v1/user/follow/delete", url.Values{"user_id": {"42"}}); err == nil {
 		t.Fatal("follow delete unexpectedly succeeded")
 	}

@@ -110,7 +110,7 @@ func (s *LoginSession) Complete(ctx context.Context, callbackURL string) (Creden
 	if !s.state.used.CompareAndSwap(false, true) {
 		return Credentials{}, newError("Complete", sdk.InvalidArgument, "login session was already used")
 	}
-	oauthClient := oauth.New("", oauth.WithHTTPClient(s.state.httpClient))
+	oauthClient := oauth.New("", oauth.Config{HTTPClient: s.state.httpClient})
 	token, err := oauthClient.ExchangeAuthorizationCode(ctx, code, s.state.verifier)
 	if err != nil {
 		return Credentials{}, classifyOAuthError(err, "Complete")
