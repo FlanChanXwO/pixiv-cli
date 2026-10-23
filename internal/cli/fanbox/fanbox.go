@@ -13,7 +13,7 @@ import (
 	configapp "github.com/FlanChanXwO/pixiv-cli/internal/config/settings"
 	fanboxaccount "github.com/FlanChanXwO/pixiv-cli/internal/fanboxaccount"
 	"github.com/FlanChanXwO/pixiv-cli/internal/lifecycle"
-	fanboxapp "github.com/FlanChanXwO/pixiv-cli/internal/session/fanbox"
+	"github.com/FlanChanXwO/pixiv-cli/internal/session"
 	"github.com/FlanChanXwO/pixiv-cli/sdk/fanbox"
 	"github.com/spf13/cobra"
 )
@@ -38,7 +38,7 @@ type Data struct {
 	Writer io.Writer
 
 	WrapUsage      func(error) error
-	ServiceFactory func() (*fanboxapp.Facade, error)
+	ServiceFactory func() (*session.Fanbox, error)
 	// AccountServiceFactory supplies auth-only account management. The product
 	// Facade owns client lifecycle; auth commands do not need to open a client
 	// through that Facade.
@@ -84,7 +84,7 @@ func requireArgs(usage string, valid func(int) bool) cobra.PositionalArgs {
 	}
 }
 
-func (d Data) FanboxService() (*fanboxapp.Facade, error) {
+func (d Data) FanboxService() (*session.Fanbox, error) {
 	if d.ServiceFactory == nil {
 		panic("fanbox service factory is not configured")
 	}
@@ -118,7 +118,7 @@ func (d Data) Client(cmd *cobra.Command) (*lifecycle.Lease[*fanbox.Client], erro
 	if err != nil {
 		return nil, err
 	}
-	return service.Open(cmd.Context(), fanboxapp.OpenRequest{ProxyOverride: proxyOverride})
+	return service.Open(cmd.Context(), session.OpenRequest{ProxyOverride: proxyOverride})
 }
 
 // UseClient keeps the explicit lease boundary local to one command callback

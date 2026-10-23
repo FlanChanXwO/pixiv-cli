@@ -115,12 +115,12 @@ CLI 组合根，分为三个同包文件：
 
 **账号池读取：** 普通 CLI 读取在具体函数类型上使用 `Pooled[R].Read[T]`——失败返回 T 零值且回调不提交；owner 保留自己的 Request 类型。`Write` 会把已调用的 SDK 请求标记为已提交（即使出错），防止跨账号重放结果未知的写入；缺少 pooled 端口是错误。流式 NDJSON、分页与部分交付仍由 owner 与 traversal/lifecycle 负责。
 
-### 业务 Facade、账号与账号池
+### 业务会话、账号与账号池
 
-- `internal/session/pixiv` 聚合 `pixivaccount`（本地账号、登录完成、默认账号、凭据身份/轮换、管理）与 `pixivaccount/pool`（选择、冻结、Gate、安全重放、相关错误语义）。`internal/session/fanbox` 聚合 `fanboxaccount` 与 client 生命周期；FANBOX 会话与 Pixiv refresh token 不共享类型或生命周期，也没有账号池策略。
-- Facade 只依赖叶模块 Port、配置快照、与协议无关的共享模块与公开 SDK——不依赖 `internal/storage/database` 的具体实现；SDK 从不导入它们。services 中没有 CLI/MCP 的 DTO、筛选、record、schema 或输出适配。
+- `internal/session` 同时拥有两个按账号打开 SDK 会话的对象：`session.Pixiv` 聚合 `pixivaccount`（本地账号、登录完成、默认账号、凭据身份/轮换、管理）与 `pixivaccount/pool`（选择、冻结、Gate、安全重放、相关错误语义）；`session.Fanbox` 聚合 `fanboxaccount` 与 client 生命周期。两者位于同一个包的 `pixiv.go` 与 `fanbox.go`；FANBOX 会话与 Pixiv refresh token 不共享类型或生命周期，也没有账号池策略。
+- 会话对象只依赖叶模块 Port、配置快照、与协议无关的共享模块与公开 SDK——不依赖 `internal/storage/database` 的具体实现；SDK 从不导入它们。会话中没有 CLI/MCP 的 DTO、筛选、record、schema 或输出适配。
 - 显式非零 `Request.UserID` 把读写固定到该账号，即使账号池开启；打开/业务错误从不切换账号；无 UID 的请求保留账号池调度；CLI 默认账号不变。
-- 配置 schema、`config.toml` 的 path/get/set/unset、基线与单次执行的不可变 `Snapshot` 位于 `internal/config/settings`；按月截断位于 `internal/searchfilter`。CLI/MCP 经 owner-local Seam 与 MCP runtime `SDKPorts` 使用 Facade。`internal/account` 与 `internal/session` 已删除，不保留别名。
+- 配置 schema、`config.toml` 的 path/get/set/unset、基线与单次执行的不可变 `Snapshot` 位于 `internal/config/settings`；按月截断位于 `internal/searchfilter`。CLI/MCP 经 owner-local Seam 与 MCP runtime `SDKPorts` 使用会话对象。`internal/account` 已删除，不保留别名。
 
 **登录 relay** —— 纯渲染器 `internal/loginrelay/loginpage` 消费 `frontend` 模板/CSS（不依赖 CLI、账号库、浏览器或 listener）。父包 `loginrelay` 负责可复用的 HTTP handler/session：接收 OAuth 会话校验器并交付一次回调；从不监听、交换或持久化。CLI 保留 listener/TLS/终端编排。宿主 mux 可剥离前缀后挂载；生产 MCP 将其挂在 canonical base + `/pixiv-login/`，位于相同的 Host/Origin 检查之后，但以 hand-off 证明而非 MCP bearer 认证。转义前缀在 URL 与分发中保留。已取消的 relay 会话返回 HTTP 410，并在接受已校验回调前再次检查取消。回调 allowlist、启动响应 wire 类型与结果 URL header 位于 `loginrelay`，由 CLI relay 与桌面 helper 复用。
 

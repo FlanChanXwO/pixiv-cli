@@ -1,8 +1,8 @@
-// Package pixiv 编排 Pixiv 账号、账号池与 public SDK client 生命周期。
+// Package session 编排 Pixiv 与 FANBOX 账号的 public SDK client 生命周期。
 //
-// 本包是业务 Facade：账号凭据与 pool 策略由叶模块实现，具体的 CLI/MCP
-// 请求模型和配置映射由组合根负责。本包只接收协议无关的请求值与行为端口。
-package pixiv
+// 账号凭据与 pool 策略由叶模块实现，具体的 CLI/MCP 请求模型和配置映射由
+// 组合根负责。本包只接收协议无关的请求值与行为端口。
+package session
 
 import (
 	"context"
@@ -15,8 +15,8 @@ import (
 )
 
 var (
-	// ErrAccountServiceNotConfigured 表示未注入 Pixiv account 叶服务。
-	ErrAccountServiceNotConfigured = errors.New("pixiv account service is not configured")
+	// ErrPixivAccountServiceNotConfigured 表示未注入 Pixiv account 叶服务。
+	ErrPixivAccountServiceNotConfigured = errors.New("pixiv account service is not configured")
 	// ErrRotationGateNotConfigured 表示未注入用于串行 OAuth rotation 的 gate。
 	ErrRotationGateNotConfigured = errors.New("pixiv rotation gate is not configured")
 	// ErrPoolRuntimeLoaderNotConfigured 表示未注入账号池启用状态读取器。
@@ -38,7 +38,7 @@ type Request struct {
 	Options sdkpixiv.Options
 }
 
-// PoolConfig 是 Facade 需要的最小账号池配置，不携带 settings 包类型。
+// PoolConfig 是 Pixiv 会话需要的最小账号池配置，不携带 settings 包类型。
 // Strategy 使用稳定的字符串值，由组合根负责把配置层的枚举映射到该值。
 type PoolConfig struct {
 	Enabled  bool
@@ -50,20 +50,20 @@ type PoolConfig struct {
 type ConfigLoader func() (PoolConfig, error)
 
 // AccountService 是 account 叶服务为 client 生命周期提供的最小端口。
-// *account.Service 直接满足该接口；接口也让 Facade 测试可以使用无网络 fake。
+// *account.Service 直接满足该接口；接口也让 Pixiv 会话测试可以使用无网络 fake。
 type AccountService interface {
 	OpenClientWith(context.Context, sdkpixiv.Options) (*sdkpixiv.Client, error)
 	OpenAccountClientWith(context.Context, int64, sdkpixiv.Options) (*sdkpixiv.Client, error)
 }
 
 // PoolExecutor 是 pool 叶服务的重放端口。执行器负责选择账号、判断 SDK
-// retry advice 和维护 attempt exclusion；Facade 只负责每次 attempt 的资源边界。
+// retry advice 和维护 attempt exclusion；Pixiv 只负责每次 attempt 的资源边界。
 type PoolExecutor interface {
 	Run(context.Context, func(context.Context, int64, *lifecycle.Attempt) error) error
 }
 
 // PoolFactory 按当前账号池配置创建一次执行器。每次 Use 都重新调用它，
-// 使 strategy 的运行时变化不会被 Facade 中的长期对象缓存。
+// 使 strategy 的运行时变化不会被 Pixiv 中的长期对象缓存。
 type PoolFactory func(PoolConfig) (PoolExecutor, error)
 
 // RotationGate 串行化会消耗同一 refresh token 的 SDK client 生命周期。
@@ -73,7 +73,7 @@ type RotationGate interface {
 	Release()
 }
 
-// Dependencies 是 Pixiv Facade 的组合端口。
+// Dependencies 是 Pixiv 的组合端口。
 type Dependencies struct {
 	Accounts       AccountService
 	Pool           PoolFactory
@@ -85,8 +85,8 @@ type Dependencies struct {
 	CloseClient func(*sdkpixiv.Client) error
 }
 
-// Facade 是 Pixiv 的业务编排层。
-type Facade struct {
+// Pixiv 是 Pixiv 的业务编排层。
+type Pixiv struct {
 	accounts       AccountService
 	poolFactory    PoolFactory
 	gate           RotationGate
@@ -100,10 +100,10 @@ var (
 	_ RotationGate   = (*poolpixiv.Gate)(nil)
 )
 
-// NewFacade 创建 Pixiv 根 Facade。依赖缺失不会在构造时 panic，而是在对应的
+// NewPixiv 创建 Pixiv 根编排对象。依赖缺失不会在构造时 panic，而是在对应的
 // Open/Use 路径返回稳定配置错误，便于 CLI/MCP 组合根保留自己的启动语义。
-func NewFacade(deps Dependencies) *Facade {
-	return &Facade{
+func NewPixiv(deps Dependencies) *Pixiv {
+	return &Pixiv{
 		accounts:       deps.Accounts,
 		poolFactory:    deps.Pool,
 		gate:           deps.Gate,
@@ -112,18 +112,15 @@ func NewFacade(deps Dependencies) *Facade {
 	}
 }
 
-// New 是 NewFacade 的简洁别名。
-func New(deps Dependencies) *Facade { return NewFacade(deps) }
-
 // Open 打开一个显式的 SDK client snapshot，并返回负责释放 client 与 rotation
 // gate 的 Lease。调用方必须关闭 Lease；重复关闭是安全的，gate 和 client 只会
 // 各释放一次。
-func (f *Facade) Open(ctx context.Context, request Request) (*lifecycle.Lease[*sdkpixiv.Client], error) {
+func (f *Pixiv) Open(ctx context.Context, request Request) (*lifecycle.Lease[*sdkpixiv.Client], error) {
 	if ctx == nil {
 		return nil, lifecycle.ErrNilContext
 	}
 	if f == nil || f.accounts == nil {
-		return nil, ErrAccountServiceNotConfigured
+		return nil, ErrPixivAccountServiceNotConfigured
 	}
 	if f.gate == nil {
 		return nil, ErrRotationGateNotConfigured
@@ -179,9 +176,9 @@ func (f *Facade) Open(ctx context.Context, request Request) (*lifecycle.Lease[*s
 }
 
 // Use 在一次账号池安全重放边界内使用 client。callback 返回 committed=true
-// 时，Facade 将该边界提交给 pool 执行器；之后执行器不得再切换账号。每个
+// 时，Pixiv 将该边界提交给 pool 执行器；之后执行器不得再切换账号。每个
 // attempt 都独立获得并关闭一个 Lease。
-func (f *Facade) Use(ctx context.Context, request Request, callback func(context.Context, *sdkpixiv.Client) (committed bool, err error)) error {
+func (f *Pixiv) Use(ctx context.Context, request Request, callback func(context.Context, *sdkpixiv.Client) (committed bool, err error)) error {
 	if ctx == nil {
 		return lifecycle.ErrNilContext
 	}
