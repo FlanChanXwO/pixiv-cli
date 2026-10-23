@@ -270,8 +270,10 @@
 工作项：A2，以及 T6 中 SDK 公开 API 的全部删除与改名（规格 6.2、3.1.2、3.4.2 的 P-l）。
 - 删除 dto.go、resource_dto.go、page_dto.go；为 sdk.Resource、sdk.Page 实现 MarshalJSON；mediaproxy 缓存改为显式字段；映射层保证切片不为 nil；record.RecordFrom* 改名。
 - 删除 AddBookmark、RemoveBookmark 等旧入口，按 3.1.2 完成 SDK 公开名的改名。此后 SDK 公开 API 在阶段 1 内不再变动。
+- 补做 G03 推迟的 session 改名（PR #162 只移动了路径）：internal/session/pixiv（包 pixiv）与 internal/session/fanbox（包 fanbox）与 SDK 包同名，调用方只能用 sdkpixiv、fanboxsdk 这类别名 import，违反规格 5.3 的命名约束。合并为一个包 internal/session，分为 pixiv.go、fanbox.go 两个文件；Facade/NewFacade 改名为 Pixiv/NewPixiv、Fanbox/NewFanbox（规格 3.1.2），删除因同名而写的 import 别名，并修改全部调用方。只做合包和改名；Dependencies、NewFacadeWithCloseClient 这类注入点的清理仍由 G26 按 3.3 处理。改名单独提交，不与 A2 混在一个 commit 里。G10、G11 会大量调用 session，所以这项必须在阶段 1 开始前合并。
 
 【验收】
+- internal/session 是一个包 session，不再有 session/pixiv、session/fanbox 子包；仓库中 import session 和 SDK 的地方都不需要别名。
 - CLI 的 JSON/NDJSON 输出和 MCP 结构化输出改动前后逐字节一致（用 fixture 或 httptest 夹具比对）。
 - 6.2 要求的安全测试与缓存往返测试都已加上。
 - go doc -all 与改动前比对，PR 中把全部公开 API 变化列为 changelog 条目。
@@ -934,8 +936,10 @@
 【本 goal】
 工作项：A8（规格 A 组中“A8 的要求”）。
 - 按去向表搬迁并按 3.4.1 精简测试；修改 release.yml 中只离线运行 e2e 的 job、platform-smoke.yml 的测试路径、中英文 development.md、pixiv-cli-test skill。
+- platform-smoke.yml 中的 go test ./e2e -run '^TestPixivBinaryPackagedSmoke$' 改为 ./cmd/pixiv，按规格 7.0 第 10 条分两步：先单独提交并合并一个过渡 PR，让该步骤在检出的代码树中存在 cmd/pixiv/main_test.go 时运行新路径，否则运行 ./e2e（做法同 PR #163）；再开主 PR；主 PR 合并后，用一个小 PR 删除回退分支（同 PR #164）。
 
 【验收】
+- 过渡 PR 和回退清理 PR 都已合并，main 上的 platform-smoke.yml 只引用 ./cmd/pixiv。
 - 未设置开关变量时，真实环境测试全部 SKIP，go test ./... 仍然离线。
 - 搬迁后的 TestRealPixivSDKRead、TestRealPixivSDKLiveManifestRead 用真实账号运行通过；写入测试运行通过并确认清理完成。
 - PR 中逐项列出删除的测试及依据。
@@ -1042,8 +1046,10 @@
 工作项：S1（规格 5.4、S 组、第 10 节中 S1 的风险）。
 - 按 5.4 合并 tools/、ci/，每个工具一个 package main；删除 publicapi、browser-evidence 及其工具和 fixture、homebrew-prepublish-verify。
 - 更新所有 workflow、pixiv-cli-pr（prmeta 与命令白名单的路径）、pixiv-cli-ci、pixiv-cli-native、pixiv-cli-test、AGENTS.md 以及中英文维护文档。
+- platform-smoke.yml 与 container-smoke.yml 由 main 上的定义运行，却检出 PR head 的代码（规格 7.0 第 10 条）。其中引用的 ./tools/platformmatrix、./scripts/cmd/licensebundle、./scripts/cmd/nativeevidence、./scripts/tests/installers、./scripts/tests/containerrelease 会被本 goal 移动，因此分两步：先单独提交并合并一个过渡 PR，让这些步骤在检出的代码树中存在新路径时运行新路径，否则运行旧路径（做法同 PR #163）；再开主 PR；主 PR 合并后，用一个小 PR 删除全部回退分支（同 PR #164）。以合并时的 main 为准重新 grep 一遍这两个 workflow，不只依赖这份清单。
 
 【验收】
+- 过渡 PR 和回退清理 PR 都已合并，main 上的两个 smoke workflow 只引用新路径。
 - 每个 workflow 引用的路径都存在；go test ./scripts/... 通过。
 - 本 PR 自身的 Classify、Validate PR metadata 检查通过。
 
