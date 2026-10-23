@@ -57,7 +57,7 @@ Keep established security and release gates. Remove or consolidate existing test
 
 Tests are one form of evidence; compilation, output comparison, and reading the diff are often more direct. While editing, run only what the change affects and never the whole suite after each edit:
 
-- `go build ./...` for any Go change; a pure move, rename, or import rewrite needs only compilation.
+- `CGO_ENABLED=0 go build ./...` for any Go change; a pure move, rename, or import rewrite needs only compilation.
 - The touched package and its direct callers, narrowed with `-run` where possible, for example `go test ./path/to/owner -run '^TestName$' -count=1`, replacing both placeholders with inspected values.
 - Only the affected command output or MCP `tools/list` when an external output may change.
 
@@ -68,7 +68,7 @@ After a check passes, do not rerun or widen it unless something changed or faile
 | Documentation, instructions, product skills | Inspect links, skill metadata, examples, and `git diff --check`; run affected existing script/tool contracts |
 | Local Go implementation | Focused test, affected integration packages, and scoped `go vet`; run `sh scripts/build.sh` when the change affects the build or executable |
 | Shared contract, public SDK, core behavior, or release candidate | Once before handoff: `go test ./... -count=1`, `go vet ./...`, and `sh scripts/build.sh` |
-| Concurrency, account lifecycle, persistence, shared runtime | Add `go test -race ./... -count=1` once before handoff; use native platform checks where platform code is involved |
+| Concurrency, account lifecycle, persistence, shared runtime | Add `CGO_ENABLED=1 go test -race ./... -count=1` once before handoff; use native platform checks where platform code is involved |
 | PR metadata and verification tooling | `go test ./tools/prmeta ./tools/verification -count=1`; inspect the changed workflow's existing tests |
 | Platform/release contracts | `go test ./tools/release ./tools/platformmatrix -count=1`, affected `scripts/...` tests, and the relevant build/package/Homebrew fixture scripts |
 | Encoding, platform builds, ABI or native evidence | Follow [pixiv-cli-native](../pixiv-cli-native/SKILL.md) for the affected execution/artifact boundary |

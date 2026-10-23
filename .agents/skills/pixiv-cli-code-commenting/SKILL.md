@@ -30,7 +30,7 @@ Read root `AGENTS.md` and the affected owner before editing. This checked-in ski
 
 Start each new production code file, and each file whose responsibility changes, with a one- to three-line comment stating what the file is responsible for and, when useful, where related code lives. Do not list functions, history, or authors.
 
-- Go: separate the header from the `package` clause with a blank line so `go doc` does not treat it as package documentation; a `//go:build` constraint stays first. A package comment in the entry file or `doc.go` already serves as that file's header.
+- Go: separate the header from the `package` clause with a blank line so `go doc` does not treat it as package documentation. A `//go:build` constraint group stays first and is followed by a blank line before the header. A package comment in the entry file or `doc.go` already serves as that file's header.
 - Shell, PowerShell, and `.cmd` scripts: after the shebang. Workflow YAML: before `name:`. Frontend HTML, JavaScript, and CSS: in their native comment syntax.
 - `_test.go` files, generated files, formats without comments, `testdata/`, and `third_party/` need no header; a registered test-layout exception without an owner file does.
 
