@@ -2,385 +2,185 @@ package settings_test
 
 import (
 	"encoding/json"
-	"github.com/FlanChanXwO/pixiv-cli/internal/config/paths"
-	config "github.com/FlanChanXwO/pixiv-cli/internal/config/settings"
-	"github.com/creachadair/tomledit/parser"
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
 	"os"
 	"path/filepath"
-	"runtime"
+	"reflect"
 	"strings"
 	"testing"
-	"time"
+
+	config "github.com/FlanChanXwO/pixiv-cli/internal/config/settings"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
-func TestRuntimeAccountPoolUsesOnlyCurrentSettings(t *testing.T) {
-	tests := []struct {
-		name    string
-		body    string
-		wantErr string
-		want    config.AccountPoolConfig
-	}{
-		{
-			name: "disabled by default",
-			want: config.AccountPoolConfig{Strategy: config.AccountPoolStrategyRoundRobin},
-		},
-		{name: "enabled round robin", body: "[account_pool]\nenabled = true\nstrategy = 'round_robin'\n", want: config.AccountPoolConfig{Enabled: true, Strategy: config.AccountPoolStrategyRoundRobin}},
-		{name: "random", body: "[account_pool]\nenabled = true\nstrategy = 'random'\n", want: config.AccountPoolConfig{Enabled: true, Strategy: config.AccountPoolStrategyRandom}},
-		{name: "enabled without accounts uses all local accounts", body: "[account_pool]\nenabled = true\n", want: config.AccountPoolConfig{Enabled: true, Strategy: config.AccountPoolStrategyRoundRobin}},
-		{name: "unknown strategy", body: "[account_pool]\nstrategy = 'weighted'\n", wantErr: "account_pool.strategy must be one of: round_robin, random"},
+// expectedAliases is the complete ValidSettingAliases set without tombstones.
+var expectedAliases = []string{
+	"account_pool_enabled",
+	"account_pool_strategy",
+	"directory_template",
+	"download_path",
+	"filename_template",
+	"https_proxy",
+	"log_format",
+	"log_level",
+	"login_open_browser",
+	"login_relay_listen_addr",
+	"login_relay_public_url",
+	"login_relay_tls_cert_file",
+	"login_relay_tls_key_file",
+	"login_use_after_login",
+	"mcp_gallery_animation_temp_capacity_mib",
+	"mcp_gallery_cache_capacity_mib",
+	"output_json",
+	"request_interval",
+	"reverse_search_pixiv_only",
+	"reverse_search_provider",
+	"saucenao_api_key",
+	"update_check_enabled",
+}
+
+// expectedCLIManagedAliases is the set exposed by pixiv config get/set/unset.
+var expectedCLIManagedAliases = []string{
+	"account_pool_enabled",
+	"account_pool_strategy",
+	"directory_template",
+	"download_path",
+	"filename_template",
+	"https_proxy",
+	"log_format",
+	"log_level",
+	"mcp_gallery_animation_temp_capacity_mib",
+	"mcp_gallery_cache_capacity_mib",
+	"request_interval",
+	"reverse_search_pixiv_only",
+	"reverse_search_provider",
+	"saucenao_api_key",
+}
+
+// expectedRemovedAliases stay resolvable for config unset but are not valid keys.
+var expectedRemovedAliases = []string{"account_pool_accounts", "mcp_gallery_cache_ttl", "mcp_gallery_concurrency", "web_fallback_enabled"}
+
+// allResolvableAliases includes tombstones for SettingSpecByAlias lookups.
+var allResolvableAliases = []string{
+	"account_pool_accounts",
+	"account_pool_enabled",
+	"account_pool_strategy",
+	"directory_template",
+	"download_path",
+	"filename_template",
+	"https_proxy",
+	"log_format",
+	"log_level",
+	"login_open_browser",
+	"login_relay_listen_addr",
+	"login_relay_public_url",
+	"login_relay_tls_cert_file",
+	"login_relay_tls_key_file",
+	"login_use_after_login",
+	"mcp_gallery_animation_temp_capacity_mib",
+	"mcp_gallery_cache_capacity_mib",
+	"mcp_gallery_cache_ttl",
+	"mcp_gallery_concurrency",
+	"output_json",
+	"request_interval",
+	"reverse_search_pixiv_only",
+	"reverse_search_provider",
+	"saucenao_api_key",
+	"update_check_enabled",
+	"web_fallback_enabled",
+}
+
+func TestSettingAliasSurfaceIsStable(t *testing.T) {
+	aliases := config.ValidSettingAliases()
+	assert.Equal(t, expectedAliases, aliases, "ValidSettingAliases changed")
+
+	for _, removed := range expectedRemovedAliases {
+		assert.NotContains(t, aliases, removed, "removed alias must not be offered as a valid key")
 	}
 
-	for _, test := range tests {
-		t.Run(test.name, func(t *testing.T) {
-			path := filepath.Join(t.TempDir(), "config.toml")
-			if test.body != "" {
-				require.NoError(t, os.WriteFile(path, []byte(test.body), 0o600))
-			}
-			state, err := config.LoadSnapshotAt(path)
-			require.NoError(t, err)
-			runtime, err := state.Runtime()
-			if test.wantErr != "" {
-				require.EqualError(t, err, test.wantErr)
-				return
-			}
-			require.NoError(t, err)
-			require.Equal(t, test.want, runtime.AccountPool)
+	for _, alias := range allResolvableAliases {
+		spec, ok := config.SettingSpecByAlias(alias)
+		require.Truef(t, ok, "alias %q must stay resolvable", alias)
+		assert.Equal(t, alias, spec.Alias)
+	}
+
+	managed := config.CLISettingAliases()
+	assert.Equal(t, expectedCLIManagedAliases, managed, "CLISettingAliases changed")
+
+	for _, removed := range expectedRemovedAliases {
+		assert.NotContains(t, managed, removed, "removed alias must not be CLI managed")
+	}
+	for _, alias := range managed {
+		spec, ok := config.SettingSpecByAlias(alias)
+		require.True(t, ok, "CLI managed alias %q must be resolvable", alias)
+		assert.True(t, spec.CLIManaged, "CLI managed alias %q must declare CLIManaged", alias)
+		assert.False(t, spec.Removed, "CLI managed alias %q must not be removed", alias)
+	}
+}
+
+func TestSettingSpecCarriesTheDocumentedContract(t *testing.T) {
+	type contract struct {
+		key        string
+		table      []string
+		tomlKey    string
+		hasDefault bool
+		defaultIn  bool
+		cliManaged bool
+		sensitive  bool
+	}
+	want := map[string]contract{
+		"download_path":             {key: "download.path", table: []string{"download"}, tomlKey: "path", hasDefault: true, defaultIn: true, cliManaged: true},
+		"filename_template":         {key: "download.filename_template", table: []string{"download"}, tomlKey: "filename_template", hasDefault: true, defaultIn: true, cliManaged: true},
+		"directory_template":        {key: "download.directory_template", table: []string{"download"}, tomlKey: "directory_template", cliManaged: true},
+		"output_json":               {key: "output.json", table: []string{"output"}, tomlKey: "json", hasDefault: true, defaultIn: true},
+		"login_open_browser":        {key: "login.open_browser", table: []string{"login"}, tomlKey: "open_browser", hasDefault: true, defaultIn: true},
+		"login_use_after_login":     {key: "login.use_after_login", table: []string{"login"}, tomlKey: "use_after_login", hasDefault: true, defaultIn: true},
+		"update_check_enabled":      {key: "update.check_enabled", table: []string{"update"}, tomlKey: "check_enabled", hasDefault: true, defaultIn: true},
+		"log_level":                 {key: "logging.level", table: []string{"logging"}, tomlKey: "level", hasDefault: true, defaultIn: true, cliManaged: true},
+		"log_format":                {key: "logging.format", table: []string{"logging"}, tomlKey: "format", hasDefault: true, defaultIn: true, cliManaged: true},
+		"https_proxy":               {key: "network.https_proxy", table: []string{"network"}, tomlKey: "https_proxy", cliManaged: true},
+		"request_interval":          {key: "network.request_interval", table: []string{"network"}, tomlKey: "request_interval", hasDefault: true, cliManaged: true},
+		"reverse_search_provider":   {key: "reverse_search.provider", table: []string{"reverse_search"}, tomlKey: "provider", hasDefault: true, defaultIn: true, cliManaged: true},
+		"reverse_search_pixiv_only": {key: "reverse_search.pixiv_only", table: []string{"reverse_search"}, tomlKey: "pixiv_only", hasDefault: true, defaultIn: true, cliManaged: true},
+		"saucenao_api_key":          {key: "reverse_search.saucenao_api_key", table: []string{"reverse_search"}, tomlKey: "saucenao_api_key", cliManaged: true, sensitive: true},
+		"web_fallback_enabled":      {key: "web.fallback_enabled", table: []string{"web"}, tomlKey: "fallback_enabled"},
+		"login_relay_public_url":    {key: "login.relay_public_url", table: []string{"login"}, tomlKey: "relay_public_url"},
+		"login_relay_listen_addr":   {key: "login.relay_listen_addr", table: []string{"login"}, tomlKey: "relay_listen_addr"},
+		"login_relay_tls_cert_file": {key: "login.relay_tls_cert_file", table: []string{"login"}, tomlKey: "relay_tls_cert_file"},
+		"login_relay_tls_key_file":  {key: "login.relay_tls_key_file", table: []string{"login"}, tomlKey: "relay_tls_key_file"},
+		"account_pool_enabled":      {key: "account_pool.enabled", table: []string{"account_pool"}, tomlKey: "enabled", hasDefault: true, cliManaged: true},
+		"account_pool_strategy":     {key: "account_pool.strategy", table: []string{"account_pool"}, tomlKey: "strategy", hasDefault: true, cliManaged: true},
+		"account_pool_accounts":     {key: "account_pool.accounts", table: []string{"account_pool"}, tomlKey: "accounts"},
+	}
+
+	for alias, expected := range want {
+		t.Run(alias, func(t *testing.T) {
+			spec, ok := config.SettingSpecByAlias(alias)
+			require.True(t, ok, "alias %q must resolve", alias)
+			assert.Equal(t, alias, spec.Alias)
+			assert.Equal(t, expected.key, spec.KoanfKey, "koanf/TOML path changed")
+			assert.Equal(t, expected.table, spec.Table, "TOML table changed")
+			assert.Equal(t, expected.tomlKey, spec.Key, "TOML key changed")
+			assert.Equal(t, expected.hasDefault, spec.HasDefault, "default presence changed")
+			assert.Equal(t, expected.defaultIn, spec.DefaultInFile, "DefaultInFile changed")
+			assert.Equal(t, expected.cliManaged, spec.CLIManaged, "CLIManaged changed")
+			assert.Equal(t, expected.sensitive, spec.Sensitive, "Sensitive changed")
 		})
 	}
 }
 
-func TestRuntimeDefaultsReverseSearchSettings(t *testing.T) {
-	// 隔离环境变量：若测试进程已导出 SAUCENAO_API_KEY，LoadSnapshotAt 会将其写入快照，
-	// 导致下方 SauceNAOAPIKey 空值断言失败。
-	t.Setenv("SAUCENAO_API_KEY", "")
-	state, err := config.LoadSnapshotAt(filepath.Join(t.TempDir(), "config.toml"))
-	require.NoError(t, err)
-
-	runtimeConfig, err := state.Runtime()
-	require.NoError(t, err)
-	require.Equal(t, "saucenao", runtimeConfig.ReverseSearchProvider)
-	require.True(t, runtimeConfig.ReverseSearchPixivOnly)
-	require.Empty(t, runtimeConfig.SauceNAOAPIKey)
-}
-
-func TestReverseSearchProviderAcceptsOnlySupportedValues(t *testing.T) {
-	for _, provider := range []string{"saucenao", "ascii2d-color", "ascii2d-bovw", "all"} {
-		t.Run(provider, func(t *testing.T) {
-			value, _, err := config.ParseSettingInput("reverse_search_provider", provider)
-			require.NoError(t, err)
-			require.Equal(t, provider, value.Value)
-		})
+// TestOnlySauceNAOKeyIsSensitiveAndStaysOutOfPublicOutput covers sensitivity
+// itself; the baseline exclusion is in defaults_test.go and mutation results in
+// store_test.go.
+func TestOnlySauceNAOKeyIsSensitiveAndStaysOutOfPublicOutput(t *testing.T) {
+	for _, alias := range config.ValidSettingAliases() {
+		wantSensitive := alias == "saucenao_api_key"
+		assert.Equalf(t, wantSensitive, config.IsSensitiveSetting(alias), "sensitivity of %q changed", alias)
 	}
 
-	_, _, err := config.ParseSettingInput("reverse_search_provider", "unknown")
-	require.EqualError(t, err, "reverse_search_provider must be one of: saucenao, ascii2d-color, ascii2d-bovw, all")
-}
-
-func TestSauceNAOAPIKeyEnvironmentOverridesFileInSnapshot(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "config.toml")
-	require.NoError(t, os.WriteFile(path, []byte("[reverse_search]\nsaucenao_api_key = 'file-key'\n"), 0o600))
-	t.Setenv("SAUCENAO_API_KEY", "environment-key")
-
-	state, err := config.LoadSnapshotAt(path)
-	require.NoError(t, err)
-	t.Setenv("SAUCENAO_API_KEY", "changed-after-snapshot")
-
-	runtimeConfig, err := state.Runtime()
-	require.NoError(t, err)
-	require.Equal(t, "environment-key", runtimeConfig.SauceNAOAPIKey)
-}
-
-func TestAccountPoolAliasesExposeOnlyRuntimeSettings(t *testing.T) {
-	for _, alias := range []string{"account_pool_enabled", "account_pool_strategy"} {
-		_, exists := config.SettingSpecByAlias(alias)
-		require.Truef(t, exists, "%s must be a supported config alias", alias)
-	}
-	spec, exists := config.SettingSpecByAlias("account_pool_accounts")
-	require.True(t, exists, "legacy UID allowlist must remain discoverable for cleanup")
-	require.True(t, spec.Removed, "legacy UID allowlist must be a removed setting")
-}
-
-func TestRemovedLegacyAccountPoolKeyFailsAndCanBeUnset(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "config.toml")
-	require.NoError(t, os.WriteFile(path, []byte("[account_pool]\nenabled=true\naccounts=[11,22]\nstrategy='random'\n"), 0o600))
-	state, err := config.LoadSnapshotAt(path)
-	require.NoError(t, err)
-	_, err = state.Runtime()
-	require.ErrorIs(t, err, config.ErrRemovedSetting)
-	require.Contains(t, err.Error(), "account_pool_accounts")
-
-	removed, err := config.UnsetConfigValue(path, "account_pool_accounts")
-	require.NoError(t, err)
-	require.True(t, removed)
-	body, err := os.ReadFile(path)
-	require.NoError(t, err)
-	require.NotContains(t, string(body), "accounts")
-	require.Contains(t, string(body), "enabled")
-	require.Contains(t, string(body), "strategy")
-	state, err = config.LoadSnapshotAt(path)
-	require.NoError(t, err)
-	_, err = state.Runtime()
-	require.NoError(t, err)
-}
-
-func TestPremiumStatusCacheTTLIsNoLongerAConfigSetting(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "config.toml")
-	state, err := config.LoadSnapshotAt(path)
-	require.NoError(t, err)
-	_, err = state.Effective("premium_status_cache_ttl")
-	require.EqualError(t, err, `unknown config key "premium_status_cache_ttl"`)
-
-	require.NoError(t, os.WriteFile(path, []byte("[premium]\nstatus_cache_ttl = \"3h\"\n"), 0o600))
-	state, err = config.LoadSnapshotAt(path)
-	require.NoError(t, err)
-	_, err = state.Runtime()
-	require.NoError(t, err)
-}
-
-func TestDownloadSettingsExposeDirectoryTemplateAndRequestInterval(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "config.toml")
-	require.NoError(t, os.WriteFile(path, []byte("[download]\ndirectory_template = \"{author}/{date}\"\n[network]\nrequest_interval = \"2s\"\n"), 0o600))
-	state, err := config.LoadSnapshotAt(path)
-	require.NoError(t, err)
-	runtime, err := state.Runtime()
-	require.NoError(t, err)
-	require.Equal(t, "{author}/{date}", runtime.DirectoryTemplate)
-	require.Equal(t, 2*time.Second, runtime.RequestInterval)
-
-	t.Setenv("PIXIV_REQUEST_INTERVAL", "3s")
-	runtime, err = state.Runtime()
-	require.NoError(t, err)
-	require.Equal(t, 2*time.Second, runtime.RequestInterval)
-	state, err = config.LoadSnapshotAt(path)
-	require.NoError(t, err)
-	runtime, err = state.Runtime()
-	require.NoError(t, err)
-	require.Equal(t, 3*time.Second, runtime.RequestInterval)
-}
-
-func TestRequestIntervalRejectsNegativeDuration(t *testing.T) {
-	_, _, err := config.ParseSettingInput("request_interval", "-1s")
-	require.EqualError(t, err, "request_interval must not be negative")
-
-	path := filepath.Join(t.TempDir(), "config.toml")
-	require.NoError(t, os.WriteFile(path, []byte("[network]\nrequest_interval = \"-1s\"\n"), 0o600))
-	state, err := config.LoadSnapshotAt(path)
-	require.NoError(t, err)
-	_, err = state.Runtime()
-	require.EqualError(t, err, "request_interval must not be negative")
-}
-
-func TestRuntimePreservesReverseSearchNetworkAndFlareSolverrSeparately(t *testing.T) {
-	withoutProxyEnvironment(t)
-	path := filepath.Join(t.TempDir(), "config.toml")
-	require.NoError(t, os.WriteFile(path, []byte(`[network]
-https_proxy = "http://global-proxy"
-
-[reverse_search.network]
-proxy_url = ""
-user_agent = "custom-reverse-search-agent"
-
-[reverse_search.flaresolverr]
-url = "http://reverse-solver.example"
-proxy_url = "socks5://reverse-solver-proxy.example"
-
-[fanbox.network]
-proxy_url = "http://fanbox-proxy.example"
-user_agent = "custom-fanbox-agent"
-
-[fanbox.flaresolverr]
-url = "http://fanbox-solver.example"
-proxy_url = "socks5://fanbox-solver-proxy.example"
-`), 0o600))
-
-	state, err := config.LoadSnapshotAt(path)
-	require.NoError(t, err)
-	runtime, err := state.Runtime()
-	require.NoError(t, err)
-
-	require.Equal(t, "http://global-proxy", runtime.HTTPSProxy)
-	require.True(t, runtime.ReverseSearchNetwork.ProxyURL.Present)
-	require.Empty(t, runtime.ReverseSearchNetwork.ProxyURL.Value)
-	require.True(t, runtime.ReverseSearchNetwork.UserAgent.Present)
-	require.Equal(t, "custom-reverse-search-agent", runtime.ReverseSearchNetwork.UserAgent.Value)
-	require.NotNil(t, runtime.ReverseSearchFlareSolverr)
-	require.Equal(t, "http://reverse-solver.example", runtime.ReverseSearchFlareSolverr.URL)
-	require.Equal(t, "socks5://reverse-solver-proxy.example", runtime.ReverseSearchFlareSolverr.ProxyURL)
-
-	require.Equal(t, "http://fanbox-proxy.example", runtime.FanboxNetwork.ProxyURL.Value)
-	require.Equal(t, "custom-fanbox-agent", runtime.FanboxNetwork.UserAgent.Value)
-	require.NotNil(t, runtime.FanboxFlareSolverr)
-	require.Equal(t, "http://fanbox-solver.example", runtime.FanboxFlareSolverr.URL)
-	require.Equal(t, "socks5://fanbox-solver-proxy.example", runtime.FanboxFlareSolverr.ProxyURL)
-}
-
-func TestRuntimeRejectsMalformedReverseSearchAdvancedValues(t *testing.T) {
-	tests := []struct {
-		name    string
-		body    string
-		wantErr string
-	}{
-		{
-			name:    "network proxy must be a string",
-			body:    "[reverse_search.network]\nproxy_url = 42\n",
-			wantErr: "reverse_search.network.proxy_url must be a string",
-		},
-		{
-			name:    "network user agent must be a string",
-			body:    "[reverse_search.network]\nuser_agent = 42\n",
-			wantErr: "reverse_search.network.user_agent must be a string",
-		},
-		{
-			name:    "solver proxy must be a string",
-			body:    "[reverse_search.flaresolverr]\nurl = 'http://solver.example'\nproxy_url = 42\n",
-			wantErr: "reverse_search.flaresolverr.proxy_url must be a string",
-		},
-		{
-			name:    "solver URL is required",
-			body:    "[reverse_search.flaresolverr]\nproxy_url = 'socks5://solver-proxy.example'\n",
-			wantErr: "reverse_search.flaresolverr.url must be set when reverse_search.flaresolverr is configured",
-		},
-		{
-			name:    "solver URL cannot be blank",
-			body:    "[reverse_search.flaresolverr]\nurl = '   '\n",
-			wantErr: "reverse_search.flaresolverr.url must be set when reverse_search.flaresolverr is configured",
-		},
-	}
-	for _, test := range tests {
-		t.Run(test.name, func(t *testing.T) {
-			path := filepath.Join(t.TempDir(), "config.toml")
-			require.NoError(t, os.WriteFile(path, []byte(test.body), 0o600))
-			state, err := config.LoadSnapshotAt(path)
-			require.NoError(t, err)
-			_, err = state.Runtime()
-			require.EqualError(t, err, test.wantErr)
-		})
-	}
-}
-
-func TestRuntimePreservesServiceNetworkPresenceAndValues(t *testing.T) {
-	withoutProxyEnvironment(t)
-	path := filepath.Join(t.TempDir(), "config.toml")
-	require.NoError(t, os.WriteFile(path, []byte(`[network]
-https_proxy = "http://global-proxy"
-
-[fanbox.network]
-proxy_url = ""
-user_agent = "custom-fanbox-agent"
-
-[fanbox.flaresolverr]
-url = "http://solver.example"
-proxy_url = "socks5://solver-proxy.example"
-`), 0o600))
-
-	state, err := config.LoadSnapshotAt(path)
-	require.NoError(t, err)
-	runtime, err := state.Runtime()
-	require.NoError(t, err)
-
-	require.Equal(t, "http://global-proxy", runtime.HTTPSProxy)
-	require.False(t, runtime.PixivNetwork.ProxyURL.Present)
-	require.True(t, runtime.FanboxNetwork.ProxyURL.Present)
-	require.Empty(t, runtime.FanboxNetwork.ProxyURL.Value)
-	require.True(t, runtime.FanboxNetwork.UserAgent.Present)
-	require.Equal(t, "custom-fanbox-agent", runtime.FanboxNetwork.UserAgent.Value)
-	require.NotNil(t, runtime.FanboxFlareSolverr)
-	require.Equal(t, "http://solver.example", runtime.FanboxFlareSolverr.URL)
-	require.Equal(t, "socks5://solver-proxy.example", runtime.FanboxFlareSolverr.ProxyURL)
-}
-
-func TestRuntimeLeavesOptionalServiceNetworkTablesAbsent(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "config.toml")
-	require.NoError(t, os.WriteFile(path, []byte("[network]\nhttps_proxy = \"http://global-proxy\"\n"), 0o600))
-
-	state, err := config.LoadSnapshotAt(path)
-	require.NoError(t, err)
-	runtime, err := state.Runtime()
-	require.NoError(t, err)
-
-	require.False(t, runtime.PixivNetwork.ProxyURL.Present)
-	require.False(t, runtime.FanboxNetwork.ProxyURL.Present)
-	require.False(t, runtime.FanboxNetwork.UserAgent.Present)
-	require.False(t, runtime.ReverseSearchNetwork.ProxyURL.Present)
-	require.False(t, runtime.ReverseSearchNetwork.UserAgent.Present)
-	require.Nil(t, runtime.FanboxFlareSolverr)
-	require.Nil(t, runtime.ReverseSearchFlareSolverr)
-}
-
-func TestRuntimeRejectsMalformedAdvancedNetworkValues(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "config.toml")
-	require.NoError(t, os.WriteFile(path, []byte("[fanbox.network]\nproxy_url = 42\n"), 0o600))
-
-	state, err := config.LoadSnapshotAt(path)
-	require.NoError(t, err)
-	_, err = state.Runtime()
-	require.EqualError(t, err, "fanbox.network.proxy_url must be a string")
-}
-
-// withoutProxyEnvironment removes any proxy variables exported by the host
-// shell so the assertions reflect the configuration file alone. The existing
-// environment-over-file precedence contract is unchanged; this only isolates
-// the test from the machine running it.
-func withoutProxyEnvironment(t *testing.T) {
-	t.Helper()
-	for _, name := range []string{"https_proxy", "HTTPS_PROXY"} {
-		value, ok := os.LookupEnv(name)
-		if !ok {
-			continue
-		}
-		t.Setenv(name, value)
-		require.NoError(t, os.Unsetenv(name))
-	}
-}
-
-func TestSetAndUnsetConfigValuePreserveDocumentAndApplyPlatformPermissions(t *testing.T) {
-	dir := filepath.Join(t.TempDir(), "pixiv")
-	path := filepath.Join(dir, "config.toml")
-	require.NoError(t, os.MkdirAll(dir, 0o755))
-	original := "# keep this comment\n[download]\npath = './old'\n\n[custom]\nkey = 'keep'\n"
-	require.NoError(t, os.WriteFile(path, []byte(original), 0o644))
-	value, err := parser.ParseValue("'./new'")
-	require.NoError(t, err)
-
-	require.NoError(t, config.SetConfigValue(path, "download_path", value))
-	state, err := config.LoadSnapshotAt(path)
-	require.NoError(t, err)
-	effective, err := state.Effective("download_path")
-	require.NoError(t, err)
-	assert.Equal(t, "./new", effective.Value)
-	assertConfigPersistence(t, path)
-	body, err := os.ReadFile(path)
-	require.NoError(t, err)
-	assert.Contains(t, string(body), "# keep this comment")
-	assert.Contains(t, string(body), "[custom]\nkey = 'keep'")
-
-	removed, err := config.UnsetConfigValue(path, "download_path")
-	require.NoError(t, err)
-	assert.True(t, removed)
-	body, err = os.ReadFile(path)
-	require.NoError(t, err)
-	assert.NotContains(t, string(body), "[download]")
-	assert.Contains(t, string(body), "[custom]\nkey = 'keep'")
-	assertConfigPersistence(t, path)
-}
-
-func assertConfigPersistence(t *testing.T, path string) {
-	t.Helper()
-	info, err := os.Stat(path)
-	require.NoError(t, err)
-	parent, err := os.Stat(filepath.Dir(path))
-	require.NoError(t, err)
-	if runtime.GOOS == "windows" {
-		// Windows mode bits 不代表 DACL；首次创建继承父目录 ACL，替换保留既有 target ACL。
-	} else {
-		assert.Equal(t, os.FileMode(paths.PrivateFileMode), info.Mode().Perm())
-		assert.Equal(t, os.FileMode(paths.PrivateDirMode), parent.Mode().Perm())
-	}
-	matches, err := filepath.Glob(filepath.Join(filepath.Dir(path), ".pixiv-private-*"))
-	require.NoError(t, err)
-	assert.Empty(t, matches)
+	assert.Equal(t, "<redacted>", config.PublicSettingText("saucenao_api_key", "must-not-leak"))
+	assert.Equal(t, "", config.PublicSettingText("saucenao_api_key", ""))
+	assert.Equal(t, "info", config.PublicSettingText("log_level", "info"))
 }
 
 func TestRuntimeConfigSurfaceExcludesRefreshToken(t *testing.T) {
@@ -411,128 +211,31 @@ func normalizedSensitiveKey(key string) string {
 	return strings.NewReplacer("_", "", "-", "").Replace(strings.ToLower(key))
 }
 
-func TestRuntimeReadsLoggingConfigAndEnvironmentOverrides(t *testing.T) {
-	path := t.TempDir() + "/config.toml"
-	require.NoError(t, os.WriteFile(path, []byte("[logging]\nlevel = \"debug\"\nformat = \"json\"\n"), 0o600))
-
-	state, err := config.LoadSnapshotAt(path)
-	require.NoError(t, err)
-	runtimeConfig, err := state.Runtime()
-	require.NoError(t, err)
-	require.Equal(t, "debug", runtimeConfig.LogLevel)
-	require.Equal(t, "json", runtimeConfig.LogFormat)
-
-	t.Setenv("PIXIV_LOG_LEVEL", "info")
-	t.Setenv("PIXIV_LOG_FORMAT", "text")
-	state, err = config.LoadSnapshotAt(path)
-	require.NoError(t, err)
-	runtimeConfig, err = state.Runtime()
-	require.NoError(t, err)
-	require.Equal(t, "info", runtimeConfig.LogLevel)
-	require.Equal(t, "text", runtimeConfig.LogFormat)
-}
-
-func TestLoggingSettingsRejectUnsupportedValues(t *testing.T) {
-	for _, test := range []struct {
-		alias string
-		key   string
-		raw   string
-		want  string
-	}{
-		{alias: "log_level", key: "level", raw: "trace", want: "log_level must be one of: info, debug"},
-		{alias: "log_format", key: "format", raw: "yaml", want: "log_format must be one of: text, json"},
-	} {
-		t.Run(test.alias, func(t *testing.T) {
-			_, _, err := config.ParseSettingInput(test.alias, test.raw)
-			require.EqualError(t, err, test.want)
-
-			path := t.TempDir() + "/config.toml"
-			require.NoError(t, os.WriteFile(path, []byte("[logging]\n"+test.key+" = \""+test.raw+"\"\n"), 0o600))
-			state, err := config.LoadSnapshotAt(path)
-			require.NoError(t, err)
-			_, err = state.Runtime()
-			require.EqualError(t, err, test.want)
-		})
+func TestSettingSpecByAliasTableIsDetached(t *testing.T) {
+	spec, ok := config.SettingSpecByAlias("download_path")
+	if !ok || len(spec.Table) == 0 {
+		t.Fatal("download_path must have a declared table")
 	}
-}
+	spec.Table[0] = "mutated_table"
 
-// 历史 relay 的 shared-secret 字段曾属于私有配置。升级后保留文件内容不报错，
-// 但运行时不得读取它们或恢复任何旧转发行为。
-func TestRuntimeSilentlyIgnoresLegacySharedSecretRelayConfiguration(t *testing.T) {
-	path := t.TempDir() + "/config.toml"
-	require.NoError(t, os.WriteFile(path, []byte("[login]\nrelay_public_url = \"http://relay.example\"\nrelay_listen_addr = \"127.0.0.1:8080\"\nrelay_secret = \"obsolete-secret\"\nrelay_target_url = \"http://old-client.example\"\n"), 0o600))
+	again, ok := config.SettingSpecByAlias("download_path")
+	if !ok || !reflect.DeepEqual(again.Table, []string{"download"}) {
+		t.Errorf("returned Table mutation changed a later lookup: %v", again.Table)
+	}
 
-	state, err := config.LoadSnapshotAt(path)
-	require.NoError(t, err)
-	runtimeConfig, err := state.Runtime()
-	require.NoError(t, err)
-	require.Equal(t, "http://relay.example", runtimeConfig.LoginRelayPublicURL)
-	require.Equal(t, "127.0.0.1:8080", runtimeConfig.LoginRelayListenAddr)
-	_, hasSecret := config.SettingSpecByAlias("login_relay_secret")
-	_, hasTarget := config.SettingSpecByAlias("login_relay_target_url")
-	require.False(t, hasSecret)
-	require.False(t, hasTarget)
-}
-
-func TestMCPEndpointSettingsAreNotPublicConfiguration(t *testing.T) {
-	for _, alias := range []string{"mcp_listen_addr", "mcp_base_url"} {
-		_, ok := config.SettingSpecByAlias(alias)
-		require.False(t, ok)
+	_, value, err := config.ParseSettingInput("download_path", "./isolated")
+	if err != nil {
+		t.Fatal(err)
 	}
 	path := filepath.Join(t.TempDir(), "config.toml")
-	require.NoError(t, os.WriteFile(path, []byte("[mcp]\nlisten_addr='0.0.0.0:8123'\nbase_url='http://old.example'\n"), 0600))
-	snapshot, err := config.LoadSnapshotAt(path)
-	require.NoError(t, err)
-	_, err = snapshot.Runtime()
-	require.NoError(t, err)
-}
-
-func TestGalleryCacheSettings(t *testing.T) {
-	for alias, want := range map[string]string{"mcp_gallery_animation_temp_capacity_mib": "1024", "mcp_gallery_cache_capacity_mib": "256"} {
-		s, err := config.LoadSnapshotAt(filepath.Join(t.TempDir(), "config.toml"))
-		require.NoError(t, err)
-		v, err := s.Effective(alias)
-		require.NoError(t, err)
-		require.Equal(t, want, v.Text)
-		_, _, err = config.ParseSettingInput(alias, want)
-		require.NoError(t, err)
+	if err := config.SetConfigValue(path, "download_path", value); err != nil {
+		t.Fatal(err)
 	}
-	for _, tc := range []struct{ alias, raw string }{
-		{"mcp_gallery_animation_temp_capacity_mib", "0"}, {"mcp_gallery_animation_temp_capacity_mib", "-1"}, {"mcp_gallery_animation_temp_capacity_mib", "8796093022208"}, {"mcp_gallery_animation_temp_capacity_mib", "1.5"}, {"mcp_gallery_cache_capacity_mib", "-1"}, {"mcp_gallery_cache_capacity_mib", "8796093022208"},
-		{"mcp_gallery_cache_capacity_mib", "1.5"},
-	} {
-		_, _, err := config.ParseSettingInput(tc.alias, tc.raw)
-		require.Error(t, err, tc)
+	body, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
 	}
-	for _, raw := range []string{"true", "1.5", "'256'"} {
-		p := filepath.Join(t.TempDir(), "config.toml")
-		require.NoError(t, os.WriteFile(p, []byte("[mcp]\ngallery_cache_capacity_mib = "+raw+"\n"), 0600))
-		s, err := config.LoadSnapshotAt(p)
-		require.NoError(t, err)
-		_, err = s.Runtime()
-		require.Error(t, err, raw)
-	}
-	_, _, err := config.ParseSettingInput("mcp_gallery_cache_capacity_mib", "0")
-	require.NoError(t, err)
-}
-
-func TestRuntimeGallerySettingsBindDeclaredValues(t *testing.T) {
-	for _, tc := range []struct {
-		name, toml     string
-		capacity, temp int64
-	}{
-		{"defaults", "", 256, 1024},
-		{"configured", "[mcp]\ngallery_cache_capacity_mib=0\ngallery_animation_temp_capacity_mib=512\n", 0, 512},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			path := filepath.Join(t.TempDir(), "config.toml")
-			require.NoError(t, os.WriteFile(path, []byte(tc.toml), 0600))
-			snapshot, err := config.LoadSnapshotAt(path)
-			require.NoError(t, err)
-			cfg, err := snapshot.Runtime()
-			require.NoError(t, err)
-			require.Equal(t, tc.capacity, cfg.MCPGalleryCacheCapacityMiB)
-			require.Equal(t, tc.temp, cfg.MCPGalleryAnimationTempCapacityMiB)
-		})
+	if got, want := strings.TrimSpace(string(body)), "[download]\npath = \"./isolated\""; got != want {
+		t.Errorf("returned Table mutation changed a later config write: got %q, want %q", got, want)
 	}
 }
