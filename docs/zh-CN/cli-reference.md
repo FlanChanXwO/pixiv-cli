@@ -216,7 +216,7 @@ canonical 数据动作：`search`、`detail`、`ranking`、`series`、`comment`�
 | `search` | `--resolution` | `all` | `all`、`high`、`medium`、`low`。 |
 | `search` | `--draw-tool` | 空 | [目录](#绘图工具目录)中的精确名称；含糊值被拒绝。 |
 | `search` | `--bookmark-min` / `--bookmark-max` | 空 | 基于 `TotalBookmarks` 的含端点非负区间；min ≤ max。元数据报告策略与完整性。 |
-| `search` | `--bookmark-strategy` | `auto` | `auto`（目前等于 `local`）、`local`（对已获取候选精确筛选）、`best_effort`（App 候选区间，部分完整）、`server`（在有可靠服务端证据前直接失败）。 |
+| `search` | `--bookmark-strategy` | `auto` | `auto`（目前等于 `local`）、`local`（对已获取候选精确筛选）、`best_effort`（App 候选区间，始终为 `partial`，包括空结果和候选流耗尽）、`server`（在有可靠服务端证据前直接失败）。 |
 | `novel search` | `--rating`、`--min-text-length`、`--max-text-length`、`--original-only` | 不支持 | 不在 v1 命令中；不发送，也不作为本地筛选。 |
 | 列表命令 | `--limit` / `-l` | 一个上游批次 | 正数 = 跨批次填满逻辑页；`0` = 遍历到 cursor 结束。 |
 | 列表命令 | `--page` / `-p` | 空 | 从 1 开始的逻辑页；需要正数 `--limit`。 |

@@ -75,9 +75,9 @@ func searchIllustInputSchema() map[string]any {
 			"aspect_ratio":      enumProperty("Artwork aspect ratio filter.", "all", "landscape", "portrait", "square"),
 			"resolution":        enumProperty("Artwork resolution tier filter.", "all", "high", "medium", "low"),
 			"tool":              stringProperty("Exact drawing tool name from the versioned pixiv-cli drawing-tool catalog."),
-			"bookmark_min":      map[string]any{"type": "integer", "minimum": 0, "description": "Inclusive minimum public bookmark count; requires App OAuth."},
-			"bookmark_max":      map[string]any{"type": "integer", "minimum": 0, "description": "Inclusive maximum public bookmark count; requires App OAuth."},
-			"bookmark_strategy": enumProperty("Bookmark count strategy; server requires verified evidence and otherwise fails explicitly.", "auto", "local", "best_effort", "server"),
+			"bookmark_min":      map[string]any{"type": "integer", "minimum": 0, "description": "Inclusive minimum public bookmark count; ANDed with illust_filter before pagination; requires App OAuth."},
+			"bookmark_max":      map[string]any{"type": "integer", "minimum": 0, "description": "Inclusive maximum public bookmark count; ANDed with illust_filter before pagination; requires App OAuth."},
+			"bookmark_strategy": enumProperty("Bookmark count strategy; combines with illust_filter before pagination. best_effort always reports partial; server requires verified evidence and otherwise fails explicitly.", "auto", "local", "best_effort", "server"),
 			"illust_filter":     filters.IllustFilterSchema(),
 		},
 	}
@@ -123,9 +123,6 @@ func handleSearchIllust(ctx context.Context, app *toolhost.App, in searchIllustI
 		BookmarkMin: in.BookmarkMin, BookmarkMax: in.BookmarkMax,
 	}
 	if in.BookmarkMin != nil || in.BookmarkMax != nil || in.BookmarkStrategy != "" {
-		if (in.BookmarkMin != nil || in.BookmarkMax != nil) && in.IllustFilter != nil {
-			return outputs.Error(errors.New("bookmark range cannot be combined with illust_filter"))
-		}
 		binding, err := toolhost.BindCursor("search_illust", bindingInput)
 		if err != nil {
 			return outputs.Error(err)
@@ -140,6 +137,9 @@ func handleSearchIllust(ctx context.Context, app *toolhost.App, in searchIllustI
 			Plan:       pagination.PagePlan{Skip: plan.Skip, Limit: max(0, plan.Limit), OneBatch: plan.OneBatch},
 			Membership: bookmarkMembershipUnknown,
 			Strategy:   bookmarkFilterStrategy(in.BookmarkStrategy),
+			Include: func(item pixiv.Artwork) (bool, error) {
+				return filters.MatchesIllust(item, in.IllustFilter), nil
+			},
 		})
 		if err != nil {
 			return outputs.Error(err)

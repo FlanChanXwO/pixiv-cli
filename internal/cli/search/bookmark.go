@@ -133,7 +133,7 @@ func searchArtworks[C artworkSearchClient](ctx context.Context, execute paginati
 			return false, err
 		}
 		completeness := bookmarkFilterCompletenessCompleteForSource
-		if pageResult.HasMore || !next.IsZero() {
+		if strategy == bookmarkFilterStrategyBestEffort || pageResult.HasMore || !next.IsZero() {
 			completeness = bookmarkFilterCompletenessPartial
 		}
 		outcome = artworkSearchOutcome{

@@ -224,6 +224,10 @@ Artwork search also accepts inclusive non-negative `bookmark_min`, `bookmark_max
 | `best_effort` | App candidate bounds, partial completeness |
 | `server` | fails explicitly until reliable server behavior is evidenced; no silent fallback |
 
+For `pixiv_search_illust`, bookmark bounds and `illust_filter` are combined with AND before logical page/limit selection. Explicit `auto`, `local`, or `best_effort` without bounds still applies `illust_filter`. Repeat both filters and the strategy when continuing with a cursor.
+
+`best_effort` always reports `partial`, including empty or exhausted candidate streams. `auto`/`local` report `complete_for_source` only when the candidate stream is exhausted with no undelivered results; this does not claim completeness beyond that source.
+
 Unknown membership is not non-Premium; Premium is not a local hard gate; a bookmark count is not a like count.
 
 ## Artwork media

@@ -6,6 +6,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"os"
@@ -539,4 +540,79 @@ func TestSDKToolsWithoutSDKReturnStructuredConfigurationError(t *testing.T) {
 	}
 }
 
-// testSDKTransport 是 fakeSDKClient 驱动的 App API wire responder。
+func TestSearchIllustCombinesBookmarkAndStructuredFiltersBeforePagination(t *testing.T) {
+	for _, strategy := range []string{"auto", "local", "best_effort"} {
+		for _, withRange := range []bool{false, true} {
+			t.Run(fmt.Sprintf("%s/range=%t", strategy, withRange), func(t *testing.T) {
+				calls := 0
+				client := &fakeSDKClient{searchIllust: func(_ context.Context, request pixiv.SearchArtworksRequest) (sdk.Page[pixiv.Artwork], error) {
+					calls++
+					if request.Cursor.IsZero() {
+						item := testSDKIllust(1, "wrong type", 7)
+						item.TotalBookmarks = 20
+						return sdk.Page[pixiv.Artwork]{Items: []pixiv.Artwork{item}, Next: testPageCursor(1)}, nil
+					}
+					items := []pixiv.Artwork{}
+					for _, id := range []int64{2, 3, 4, 5} {
+						item := testSDKIllust(id, "manga", 7)
+						item.Kind = pixiv.ArtworkKindManga
+						item.TotalBookmarks = 20
+						if id == 2 {
+							item.TotalBookmarks = 1
+						}
+						items = append(items, item)
+					}
+					return sdk.Page[pixiv.Artwork]{Items: items}, nil
+				}}
+				session, closeSession := newSDKTestSession(t, client)
+				defer closeSession()
+				args := map[string]any{"word": "cat", "bookmark_strategy": strategy, "illust_filter": map[string]any{"type": "manga"}, "page": 2, "limit": 1}
+				want := "3"
+				if withRange {
+					args["bookmark_min"] = 10
+					want = "4"
+				}
+				result := callTool(t, session, "pixiv_search_illust", args)
+				if result.IsError {
+					t.Fatalf("combined search failed: %+v", result)
+				}
+				var out outputs.Records
+				decodeStructured(t, result, &out)
+				if len(out.Records) != 1 || out.Records[0].ID() != want || calls != 2 {
+					t.Fatalf("records=%v calls=%d, want ID %s after filtering and skip", out.Records, calls, want)
+				}
+			})
+		}
+	}
+}
+
+func TestSearchIllustBookmarkCompletenessAtExhaustion(t *testing.T) {
+	for _, strategy := range []string{"auto", "local", "best_effort"} {
+		for _, empty := range []bool{false, true} {
+			t.Run(fmt.Sprintf("%s/empty=%t", strategy, empty), func(t *testing.T) {
+				client := &fakeSDKClient{searchIllust: func(context.Context, pixiv.SearchArtworksRequest) (sdk.Page[pixiv.Artwork], error) {
+					items := []pixiv.Artwork{}
+					if !empty {
+						items = append(items, testSDKIllust(1, "match", 7))
+					}
+					return sdk.Page[pixiv.Artwork]{Items: items}, nil
+				}}
+				session, closeSession := newSDKTestSession(t, client)
+				defer closeSession()
+				result := callTool(t, session, "pixiv_search_illust", map[string]any{"word": "cat", "bookmark_min": 0, "bookmark_strategy": strategy})
+				if result.IsError {
+					t.Fatalf("search failed: %+v", result)
+				}
+				var out outputs.Records
+				decodeStructured(t, result, &out)
+				want := "complete_for_source"
+				if strategy == "best_effort" {
+					want = "partial"
+				}
+				if out.Filter == nil || out.Filter.Completeness != want {
+					t.Fatalf("filter=%+v, want %s", out.Filter, want)
+				}
+			})
+		}
+	}
+}

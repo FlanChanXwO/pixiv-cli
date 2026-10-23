@@ -224,6 +224,10 @@ flowchart LR
 | `best_effort` | App 候选区间，部分完整 |
 | `server` | 在有可靠服务端行为证据前明确失败；不静默回退 |
 
+`pixiv_search_illust` 将收藏数区间与 `illust_filter` 按 AND 组合，先筛选再计算逻辑 page/limit。即使没有收藏数区间，显式指定 `auto`、`local` 或 `best_effort` 也会执行 `illust_filter`。使用 cursor 续读时须重复两类筛选条件和策略。
+
+`best_effort` 始终报告 `partial`，包括候选流为空或已耗尽的情况。`auto`／`local` 仅在候选流耗尽且没有未交付结果时报告 `complete_for_source`，不表示该来源之外也完整。
+
 未知会员状态不等于非 Premium；Premium 不是本地硬门槛；收藏数不是点赞数。
 
 ## 作品媒体

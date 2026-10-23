@@ -216,7 +216,7 @@ Canonical data actions: `search`, `detail`, `ranking`, `series`, `comment`, `boo
 | `search` | `--resolution` | `all` | `all`, `high`, `medium`, `low`. |
 | `search` | `--draw-tool` | empty | Exact name from the [catalog](#drawing-tool-catalog); ambiguous values rejected. |
 | `search` | `--bookmark-min` / `--bookmark-max` | empty | Inclusive non-negative bounds on `TotalBookmarks`; min ≤ max. Metadata reports strategy and completeness. |
-| `search` | `--bookmark-strategy` | `auto` | `auto` (= `local` today), `local` (exact filter on fetched candidates), `best_effort` (App candidate bounds, partial completeness), `server` (fails until reliable server-side evidence exists). |
+| `search` | `--bookmark-strategy` | `auto` | `auto` (= `local` today), `local` (exact filter on fetched candidates), `best_effort` (App candidate bounds; always `partial`, even when empty or exhausted), `server` (fails until reliable server-side evidence exists). |
 | `novel search` | `--rating`, `--min-text-length`, `--max-text-length`, `--original-only` | unsupported | Not in the v1 command; not sent, not local filters. |
 | list commands | `--limit` / `-l` | one upstream batch | Positive = fill the logical page across batches; `0` = traverse until the cursor ends. |
 | list commands | `--page` / `-p` | empty | 1-based logical page; requires a positive `--limit`. |

@@ -190,7 +190,7 @@ func FilterPage[T any](ctx context.Context, items []T, seen map[string]struct{})
 func match(item any, filters value) (string, bool) {
 	switch value := item.(type) {
 	case pixiv.Artwork:
-		if !matchesIllust(value, filters.illust) {
+		if !MatchesIllust(value, filters.illust) {
 			return "", false
 		}
 		kind := string(value.Kind)
@@ -213,7 +213,8 @@ func match(item any, filters value) (string, bool) {
 	}
 }
 
-func matchesIllust(item pixiv.Artwork, filter *IllustFilter) bool {
+// MatchesIllust 按已校验的结构化条件匹配一条作品；nil filter 匹配所有作品。
+func MatchesIllust(item pixiv.Artwork, filter *IllustFilter) bool {
 	if filter == nil {
 		return true
 	}
