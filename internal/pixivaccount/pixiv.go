@@ -1,4 +1,4 @@
-// Package pixiv 定义 Pixiv 本地账号领域和持久化端口。
+// Package pixivaccount 定义 Pixiv 本地账号领域和持久化端口。
 //
 // 账号凭据由本包保持 opaque：调用方只能取得 defensive copy，默认格式化也
 // 不会把 refresh token 写入日志、错误或测试输出。

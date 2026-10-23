@@ -1,4 +1,4 @@
-// Package fanbox 拥有 FANBOX 账号 domain 与 CLI/MCP 共用的账号/session 服务。
+// Package fanboxaccount 拥有 FANBOX 账号 domain 与 CLI/MCP 共用的账号/session 服务。
 package fanboxaccount
 
 import (
