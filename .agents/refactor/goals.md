@@ -2,42 +2,44 @@
 
 规格见同目录的 `spec.md` 第 7 节 7.0。每条语句可以独立粘贴。开始一个 goal 前，它依赖的 goal 必须已合并进 main；同一阶段内没有依赖关系的 goal 可以同时运行，每个都在自己的 worktree 中进行。
 
-| Goal | worktree | 依赖 |
-|---|---|---|
-| G01 | `refactor-g01-tidy` | 无 |
-| G02 | `refactor-g02-move-shared` | G01 |
-| G03 | `refactor-g03-move-services` | G02 |
-| G04 | `refactor-g04-move-cli` | G03 |
-| G05 | `refactor-g05-sdk-types` | G04 |
-| G06 | `refactor-g06-sdk-artwork` | G05 |
-| G07 | `refactor-g07-sdk-novel` | G06 |
-| G08 | `refactor-g08-sdk-user` | G07 |
-| G09 | `refactor-g09-sdk-fanbox` | G08 |
-| G10 | `refactor-g10-mcp-tools` | G05 |
-| G11 | `refactor-g11-cli-commands` | G05 |
-| G12 | `refactor-g12-cli-prompt` | G11 |
-| G13 | `refactor-g13-config-tests` | G05 |
-| G14 | `refactor-g14-config-toml` | G13 |
-| G15 | `refactor-g15-transport` | G05 |
-| G16 | `refactor-g16-storage` | G05 |
-| G17 | `refactor-g17-live-tests` | G05 |
-| G18 | `refactor-g18-leaf-packages` | G05 |
-| G19 | `refactor-g19-scripts-move` | 用 gh 确认最近一次 release tag 对应的全部发布 workflow 已成功（不依赖其他 goal） |
-| G20 | `refactor-g20-scripts-slim` | G19 |
-| G21 | `refactor-g21-workflow-refs` | G20 |
-| G22 | `refactor-g22-logging` | G09、G10、G11、G14、G15 |
-| G23 | `refactor-g23-shared-mechanisms` | G22，以及 G01–G21 全部 |
-| G24 | `refactor-g24-media` | G22，以及 G01–G21 全部 |
-| G25 | `refactor-g25-mcp-runtime` | G22，以及 G01–G21 全部 |
-| G26 | `refactor-g26-accounts` | G22，以及 G01–G21 全部 |
-| G27 | `refactor-g27-cli-auth` | G22，以及 G01–G21 全部 |
-| G28 | `refactor-g28-sweep` | G23、G24、G25、G26、G27 |
-| G29 | `refactor-g29-headers-sdk` | G28 |
-| G30 | `refactor-g30-headers-cli` | G28 |
-| G31 | `refactor-g31-headers-mcp` | G28 |
-| G32 | `refactor-g32-headers-internal` | G28 |
-| G33 | `refactor-g33-headers-scripts` | G28、G21 |
-| G34 | `refactor-g34-finish` | G29、G30、G31、G32、G33 |
+标题带“（可并行）”的 goal 可以与其他 goal 同时运行：阶段 1 的各条线路之间、G23–G27 之间、G29–G33 之间互相并行，G19–G21 还可以与阶段 0 同时进行。同一线路内仍按依赖顺序执行，例如 G07 要等 G06 合并。
+
+| Goal | worktree | 依赖 | 可并行 |
+|---|---|---|---|
+| G01 | `refactor-g01-tidy` | 无 | 否 |
+| G02 | `refactor-g02-move-shared` | G01 | 否 |
+| G03 | `refactor-g03-move-services` | G02 | 否 |
+| G04 | `refactor-g04-move-cli` | G03 | 否 |
+| G05 | `refactor-g05-sdk-types` | G04 | 否 |
+| G06 | `refactor-g06-sdk-artwork` | G05 | 是 |
+| G07 | `refactor-g07-sdk-novel` | G06 | 是 |
+| G08 | `refactor-g08-sdk-user` | G07 | 是 |
+| G09 | `refactor-g09-sdk-fanbox` | G08 | 是 |
+| G10 | `refactor-g10-mcp-tools` | G05 | 是 |
+| G11 | `refactor-g11-cli-commands` | G05 | 是 |
+| G12 | `refactor-g12-cli-prompt` | G11 | 是 |
+| G13 | `refactor-g13-config-tests` | G05 | 是 |
+| G14 | `refactor-g14-config-toml` | G13 | 是 |
+| G15 | `refactor-g15-transport` | G05 | 是 |
+| G16 | `refactor-g16-storage` | G05 | 是 |
+| G17 | `refactor-g17-live-tests` | G05 | 是 |
+| G18 | `refactor-g18-leaf-packages` | G05 | 是 |
+| G19 | `refactor-g19-scripts-move` | 用 gh 确认最近一次 release tag 对应的全部发布 workflow 已成功（不依赖其他 goal） | 是 |
+| G20 | `refactor-g20-scripts-slim` | G19 | 是 |
+| G21 | `refactor-g21-workflow-refs` | G20 | 是 |
+| G22 | `refactor-g22-logging` | G09、G10、G11、G14、G15 | 否 |
+| G23 | `refactor-g23-shared-mechanisms` | G22，以及 G01–G21 全部 | 是 |
+| G24 | `refactor-g24-media` | G22，以及 G01–G21 全部 | 是 |
+| G25 | `refactor-g25-mcp-runtime` | G22，以及 G01–G21 全部 | 是 |
+| G26 | `refactor-g26-accounts` | G22，以及 G01–G21 全部 | 是 |
+| G27 | `refactor-g27-cli-auth` | G22，以及 G01–G21 全部 | 是 |
+| G28 | `refactor-g28-sweep` | G23、G24、G25、G26、G27 | 否 |
+| G29 | `refactor-g29-headers-sdk` | G28 | 是 |
+| G30 | `refactor-g30-headers-cli` | G28 | 是 |
+| G31 | `refactor-g31-headers-mcp` | G28 | 是 |
+| G32 | `refactor-g32-headers-internal` | G28 | 是 |
+| G33 | `refactor-g33-headers-scripts` | G28、G21 | 是 |
+| G34 | `refactor-g34-finish` | G29、G30、G31、G32、G33 | 否 |
 
 ## G01：go mod tidy
 
@@ -315,7 +317,7 @@
 - 最终汇报包括：PR 链接、合并提交、实际运行的检查及结果、假设与阻塞项、依赖本 goal 的后续 goal 需要知道的事。
 ```
 
-## G06：Pixiv artwork 端点并入 SDK
+## G06：Pixiv artwork 端点并入 SDK（可并行）
 
 ```text
 /goal 执行 pixiv-cli 重构规格的 G06：Pixiv artwork 端点并入 SDK。
@@ -372,7 +374,7 @@
 - 最终汇报包括：PR 链接、合并提交、实际运行的检查及结果、假设与阻塞项、依赖本 goal 的后续 goal 需要知道的事。
 ```
 
-## G07：Pixiv novel 端点并入 SDK
+## G07：Pixiv novel 端点并入 SDK（可并行）
 
 ```text
 /goal 执行 pixiv-cli 重构规格的 G07：Pixiv novel 端点并入 SDK。
@@ -429,7 +431,7 @@
 - 最终汇报包括：PR 链接、合并提交、实际运行的检查及结果、假设与阻塞项、依赖本 goal 的后续 goal 需要知道的事。
 ```
 
-## G08：Pixiv user 及其余 Pixiv 端点并入 SDK
+## G08：Pixiv user 及其余 Pixiv 端点并入 SDK（可并行）
 
 ```text
 /goal 执行 pixiv-cli 重构规格的 G08：Pixiv user 及其余 Pixiv 端点并入 SDK。
@@ -486,7 +488,7 @@
 - 最终汇报包括：PR 链接、合并提交、实际运行的检查及结果、假设与阻塞项、依赖本 goal 的后续 goal 需要知道的事。
 ```
 
-## G09：FANBOX 端点并入 SDK
+## G09：FANBOX 端点并入 SDK（可并行）
 
 ```text
 /goal 执行 pixiv-cli 重构规格的 G09：FANBOX 端点并入 SDK。
@@ -540,7 +542,7 @@
 - 最终汇报包括：PR 链接、合并提交、实际运行的检查及结果、假设与阻塞项、依赖本 goal 的后续 goal 需要知道的事。
 ```
 
-## G10：MCP tools 每个产品一个包
+## G10：MCP tools 每个产品一个包（可并行）
 
 ```text
 /goal 执行 pixiv-cli 重构规格的 G10：MCP tools 每个产品一个包。
@@ -594,7 +596,7 @@
 - 最终汇报包括：PR 链接、合并提交、实际运行的检查及结果、假设与阻塞项、依赖本 goal 的后续 goal 需要知道的事。
 ```
 
-## G11：CLI 命令支撑与列表入口收敛
+## G11：CLI 命令支撑与列表入口收敛（可并行）
 
 ```text
 /goal 执行 pixiv-cli 重构规格的 G11：CLI 命令支撑与列表入口收敛。
@@ -649,7 +651,7 @@
 - 最终汇报包括：PR 链接、合并提交、实际运行的检查及结果、假设与阻塞项、依赖本 goal 的后续 goal 需要知道的事。
 ```
 
-## G12：survey 换成 x/term
+## G12：survey 换成 x/term（可并行）
 
 ```text
 /goal 执行 pixiv-cli 重构规格的 G12：survey 换成 x/term。
@@ -703,7 +705,7 @@
 - 最终汇报包括：PR 链接、合并提交、实际运行的检查及结果、假设与阻塞项、依赖本 goal 的后续 goal 需要知道的事。
 ```
 
-## G13：配置测试去重
+## G13：配置测试去重（可并行）
 
 ```text
 /goal 执行 pixiv-cli 重构规格的 G13：配置测试去重。
@@ -756,7 +758,7 @@
 - 最终汇报包括：PR 链接、合并提交、实际运行的检查及结果、假设与阻塞项、依赖本 goal 的后续 goal 需要知道的事。
 ```
 
-## G14：Koanf 换成 go-toml，配置键常量
+## G14：Koanf 换成 go-toml，配置键常量（可并行）
 
 ```text
 /goal 执行 pixiv-cli 重构规格的 G14：Koanf 换成 go-toml，配置键常量。
@@ -812,7 +814,7 @@
 - 最终汇报包括：PR 链接、合并提交、实际运行的检查及结果、假设与阻塞项、依赖本 goal 的后续 goal 需要知道的事。
 ```
 
-## G15：resty 换成 net/http
+## G15：resty 换成 net/http（可并行）
 
 ```text
 /goal 执行 pixiv-cli 重构规格的 G15：resty 换成 net/http。
@@ -867,7 +869,7 @@
 - 最终汇报包括：PR 链接、合并提交、实际运行的检查及结果、假设与阻塞项、依赖本 goal 的后续 goal 需要知道的事。
 ```
 
-## G16：存储换成 GORM + gormlite
+## G16：存储换成 GORM + gormlite（可并行）
 
 ```text
 /goal 执行 pixiv-cli 重构规格的 G16：存储换成 GORM + gormlite。
@@ -924,7 +926,7 @@
 - 最终汇报包括：PR 链接、合并提交、实际运行的检查及结果、假设与阻塞项、依赖本 goal 的后续 goal 需要知道的事。
 ```
 
-## G17：拆分 e2e 目录
+## G17：拆分 e2e 目录（可并行）
 
 ```text
 /goal 执行 pixiv-cli 重构规格的 G17：拆分 e2e 目录。
@@ -978,7 +980,7 @@
 - 最终汇报包括：PR 链接、合并提交、实际运行的检查及结果、假设与阻塞项、依赖本 goal 的后续 goal 需要知道的事。
 ```
 
-## G18：叶子包清理
+## G18：叶子包清理（可并行）
 
 ```text
 /goal 执行 pixiv-cli 重构规格的 G18：叶子包清理。
@@ -1031,7 +1033,7 @@
 - 最终汇报包括：PR 链接、合并提交、实际运行的检查及结果、假设与阻塞项、依赖本 goal 的后续 goal 需要知道的事。
 ```
 
-## G19：合并 tools、ci 进 scripts
+## G19：合并 tools、ci 进 scripts（可并行）
 
 ```text
 /goal 执行 pixiv-cli 重构规格的 G19：合并 tools、ci 进 scripts。
@@ -1085,7 +1087,7 @@
 - 最终汇报包括：PR 链接、合并提交、实际运行的检查及结果、假设与阻塞项、依赖本 goal 的后续 goal 需要知道的事。
 ```
 
-## G20：scripts 精简
+## G20：scripts 精简（可并行）
 
 ```text
 /goal 执行 pixiv-cli 重构规格的 G20：scripts 精简。
@@ -1138,7 +1140,7 @@
 - 最终汇报包括：PR 链接、合并提交、实际运行的检查及结果、假设与阻塞项、依赖本 goal 的后续 goal 需要知道的事。
 ```
 
-## G21：workflow 与脚本中的编号引用
+## G21：workflow 与脚本中的编号引用（可并行）
 
 ```text
 /goal 执行 pixiv-cli 重构规格的 G21：workflow 与脚本中的编号引用。
@@ -1246,7 +1248,7 @@
 - 最终汇报包括：PR 链接、合并提交、实际运行的检查及结果、假设与阻塞项、依赖本 goal 的后续 goal 需要知道的事。
 ```
 
-## G23：共享机制包清理
+## G23：共享机制包清理（可并行）
 
 ```text
 /goal 执行 pixiv-cli 重构规格的 G23：共享机制包清理。
@@ -1300,7 +1302,7 @@
 - 最终汇报包括：PR 链接、合并提交、实际运行的检查及结果、假设与阻塞项、依赖本 goal 的后续 goal 需要知道的事。
 ```
 
-## G24：下载与文件名包清理
+## G24：下载与文件名包清理（可并行）
 
 ```text
 /goal 执行 pixiv-cli 重构规格的 G24：下载与文件名包清理。
@@ -1354,7 +1356,7 @@
 - 最终汇报包括：PR 链接、合并提交、实际运行的检查及结果、假设与阻塞项、依赖本 goal 的后续 goal 需要知道的事。
 ```
 
-## G25：MCP 运行时包清理
+## G25：MCP 运行时包清理（可并行）
 
 ```text
 /goal 执行 pixiv-cli 重构规格的 G25：MCP 运行时包清理。
@@ -1408,7 +1410,7 @@
 - 最终汇报包括：PR 链接、合并提交、实际运行的检查及结果、假设与阻塞项、依赖本 goal 的后续 goal 需要知道的事。
 ```
 
-## G26：账号与会话包清理
+## G26：账号与会话包清理（可并行）
 
 ```text
 /goal 执行 pixiv-cli 重构规格的 G26：账号与会话包清理。
@@ -1462,7 +1464,7 @@
 - 最终汇报包括：PR 链接、合并提交、实际运行的检查及结果、假设与阻塞项、依赖本 goal 的后续 goal 需要知道的事。
 ```
 
-## G27：登录命令清理
+## G27：登录命令清理（可并行）
 
 ```text
 /goal 执行 pixiv-cli 重构规格的 G27：登录命令清理。
@@ -1568,7 +1570,7 @@
 - 最终汇报包括：PR 链接、合并提交、实际运行的检查及结果、假设与阻塞项、依赖本 goal 的后续 goal 需要知道的事。
 ```
 
-## G29：文件头注释：sdk/、cmd/
+## G29：文件头注释：sdk/、cmd/（可并行）
 
 ```text
 /goal 执行 pixiv-cli 重构规格的 G29：文件头注释：sdk/、cmd/。
@@ -1621,7 +1623,7 @@
 - 最终汇报包括：PR 链接、合并提交、实际运行的检查及结果、假设与阻塞项、依赖本 goal 的后续 goal 需要知道的事。
 ```
 
-## G30：文件头注释：internal/cli/
+## G30：文件头注释：internal/cli/（可并行）
 
 ```text
 /goal 执行 pixiv-cli 重构规格的 G30：文件头注释：internal/cli/。
@@ -1674,7 +1676,7 @@
 - 最终汇报包括：PR 链接、合并提交、实际运行的检查及结果、假设与阻塞项、依赖本 goal 的后续 goal 需要知道的事。
 ```
 
-## G31：文件头注释：internal/mcpserver/
+## G31：文件头注释：internal/mcpserver/（可并行）
 
 ```text
 /goal 执行 pixiv-cli 重构规格的 G31：文件头注释：internal/mcpserver/。
@@ -1727,7 +1729,7 @@
 - 最终汇报包括：PR 链接、合并提交、实际运行的检查及结果、假设与阻塞项、依赖本 goal 的后续 goal 需要知道的事。
 ```
 
-## G32：文件头注释：internal/ 中除 cli、mcpserver 以外的目录
+## G32：文件头注释：internal/ 中除 cli、mcpserver 以外的目录（可并行）
 
 ```text
 /goal 执行 pixiv-cli 重构规格的 G32：文件头注释：internal/ 中除 cli、mcpserver 以外的目录。
@@ -1780,7 +1782,7 @@
 - 最终汇报包括：PR 链接、合并提交、实际运行的检查及结果、假设与阻塞项、依赖本 goal 的后续 goal 需要知道的事。
 ```
 
-## G33：文件头注释：scripts/、.github/、frontend/
+## G33：文件头注释：scripts/、.github/、frontend/（可并行）
 
 ```text
 /goal 执行 pixiv-cli 重构规格的 G33：文件头注释：scripts/、.github/、frontend/。
