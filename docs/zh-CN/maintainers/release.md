@@ -21,7 +21,7 @@ flowchart TD
 
 ## 发布 workflow
 
-- `.github/workflows/release.yml` 只接受 `v[0-9]*` tag push——没有 `workflow_dispatch`、`release_tag` 输入或仅测试 overlay。它不读取或注入 Pixiv/FANBOX 凭据；真实 SDK E2E、原生浏览器与一次性 solver 验收需在授权环境中完成，契约门禁不是真实发布证据。
+- `.github/workflows/release.yml` 只接受 `v[0-9]*` tag push——没有 `workflow_dispatch`、`release_tag` 输入或仅测试 overlay。它不读取或注入 Pixiv/FANBOX 凭据；真实 SDK E2E、原生浏览器与一次性 solver 验收需在授权环境中完成，不构成发布证据。
 - validate、测试构建、生产构建与发布都绑定同一 tag。失败时在默认分支修复并重跑正常的不可变 tag 流程；绝不把新的校验器、测试或源码注入旧 tag，也没有针对已有 Release 的手动恢复入口。
 - `releaseassets finalize` 还会从 tag 读取 `scripts/install.sh` 与 `scripts/install.cmd`，以固定名称复制进 Release，并与六个压缩包一起写入 `checksums.txt` 与 Ed25519 清单。发布策略锁定 finalize 参数与完整的八个资产上传集合；Homebrew 渲染器要求 checksum 集合包含两个安装器，而 formula 只下载平台压缩包。
 - **Race 门禁：** `go.mod` 工具链在 Windows ARM64 上不支持 race，但六个原生目标都会执行——五个运行 `go test -race ./...`，Windows ARM64 运行同一命令且必须匹配 Go 精确的 `-race is not supported on windows/arm64` 诊断；任何其他失败都算失败，不跳过任何条目。测试矩阵把 `GIT_CONFIG_*` 固定为 `core.autocrlf=false`，让 Git for Windows 保留 LF blob（否则 pre-commit 的 `gofmt` 会误报 CRLF）。仅用于测试门禁；生产构建使用 tag 的干净默认 checkout。

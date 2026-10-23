@@ -869,19 +869,18 @@ type liveCommentTarget struct {
 }
 
 type commentTargetOps struct {
-	family           string
-	search           func(context.Context) ([]int64, error)
-	comments         func(context.Context, int64) (pixivsdk.CommentPage, error)
-	readBack         func(context.Context, int64, int64) (bool, error)
-	post             func(context.Context, int64) (int64, error)
-	reply            func(context.Context, int64, int64) (int64, error)
-	stamp            func(context.Context, int64, int64) (int64, error)
-	remove           func(context.Context, int64) error
-	rawCommentsPath  string
-	rawStampPath     string
-	rawRepliesPath   string
-	rawIDParameter   string
-	repliesParameter string
+	family          string
+	search          func(context.Context) ([]int64, error)
+	comments        func(context.Context, int64) (pixivsdk.CommentPage, error)
+	readBack        func(context.Context, int64, int64) (bool, error)
+	post            func(context.Context, int64) (int64, error)
+	reply           func(context.Context, int64, int64) (int64, error)
+	stamp           func(context.Context, int64, int64) (int64, error)
+	remove          func(context.Context, int64) error
+	rawCommentsPath string
+	rawStampPath    string
+	rawRepliesPath  string
+	rawIDParameter  string
 }
 
 func artworkCommentOps(session *pixivLiveSession) commentTargetOps {

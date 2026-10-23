@@ -611,11 +611,11 @@ func TestRealPixivSDKLiveManifestBookmarkUserRead(t *testing.T) {
 			continue
 		}
 		t.Logf("artwork_bookmarks/%s: %d items, continuation=%v", restrict, len(page.Items), !page.Next.IsZero())
-		if len(page.Items) > 0 {
+		if bookmarkedArtwork == 0 && len(page.Items) > 0 {
 			bookmarkedArtwork = page.Items[0].ID
 		}
+		time.Sleep(liveManifestPace)
 	}
-	time.Sleep(liveManifestPace)
 
 	if bookmarkedArtwork > 0 {
 		bookmark, err := client.ArtworkBookmark(ctx, pixivsdk.ArtworkBookmarkRequest{ArtworkID: bookmarkedArtwork})
@@ -627,6 +627,21 @@ func TestRealPixivSDKLiveManifestBookmarkUserRead(t *testing.T) {
 		time.Sleep(liveManifestPace)
 	}
 
+	// 未收藏样本：搜索结果中的公共作品；无法预知是否恰好已收藏，只记录读取到的状态。
+	searchArtworks, err := client.SearchArtworks(ctx, pixivsdk.SearchArtworksRequest{Word: "風景", ContentType: pixivsdk.SearchContentTypeIllust})
+	if err != nil {
+		t.Errorf("bookmark detail absent source search: %v", err)
+	} else if len(searchArtworks.Items) > 0 {
+		absentID := searchArtworks.Items[len(searchArtworks.Items)-1].ID
+		absent, err := client.ArtworkBookmark(ctx, pixivsdk.ArtworkBookmarkRequest{ArtworkID: absentID})
+		if err != nil {
+			t.Errorf("artwork bookmark detail absent %d: %v", absentID, err)
+		} else {
+			t.Logf("artwork_bookmark_detail absent %d: bookmarked=%v tags=%d", absentID, absent.Restrict != "", len(absent.Tags))
+		}
+	}
+	time.Sleep(liveManifestPace)
+
 	// #15 artwork bookmark tags。
 	tags, err := client.UserArtworkBookmarkTags(ctx, pixivsdk.UserArtworkBookmarkTagsRequest{UserID: userID, Restrict: pixivsdk.RestrictPublic})
 	if err != nil {
@@ -636,18 +651,20 @@ func TestRealPixivSDKLiveManifestBookmarkUserRead(t *testing.T) {
 	}
 	time.Sleep(liveManifestPace)
 
-	// #17 novel bookmark list/detail/tags。
+	// #18 novel bookmark list：public/private。
 	var bookmarkedNovel int64
-	novelBookmarks, err := client.UserNovelBookmarks(ctx, pixivsdk.UserNovelBookmarksRequest{UserID: userID, Restrict: pixivsdk.RestrictPublic})
-	if err != nil {
-		t.Errorf("novel bookmarks: %v", err)
-	} else {
-		t.Logf("novel_bookmarks/public: %d items, continuation=%v", len(novelBookmarks.Items), !novelBookmarks.Next.IsZero())
-		if len(novelBookmarks.Items) > 0 {
-			bookmarkedNovel = novelBookmarks.Items[0].ID
+	for _, restrict := range []pixivsdk.Restrict{pixivsdk.RestrictPublic, pixivsdk.RestrictPrivate} {
+		page, err := client.UserNovelBookmarks(ctx, pixivsdk.UserNovelBookmarksRequest{UserID: userID, Restrict: restrict})
+		if err != nil {
+			t.Errorf("novel bookmarks %s: %v", restrict, err)
+			continue
 		}
+		t.Logf("bookmarks/novel/%s: %d items, continuation=%v", restrict, len(page.Items), !page.Next.IsZero())
+		if bookmarkedNovel == 0 && len(page.Items) > 0 {
+			bookmarkedNovel = page.Items[0].ID
+		}
+		time.Sleep(liveManifestPace)
 	}
-	time.Sleep(liveManifestPace)
 	if bookmarkedNovel > 0 {
 		bookmark, err := client.NovelBookmark(ctx, pixivsdk.NovelBookmarkRequest{NovelID: bookmarkedNovel})
 		if err != nil {
@@ -665,41 +682,7 @@ func TestRealPixivSDKLiveManifestBookmarkUserRead(t *testing.T) {
 	}
 	time.Sleep(liveManifestPace)
 
-	// #19 artwork comments：取当前搜索页首个有评论的作品，记录分页与 access control。
-	artworks, err := client.SearchArtworks(ctx, pixivsdk.SearchArtworksRequest{Word: "初音ミク"})
-	if err != nil {
-		t.Errorf("artwork comments source search: %v", err)
-	} else {
-		found := false
-		for _, item := range artworks.Items {
-			comments, err := client.ArtworkComments(ctx, pixivsdk.ArtworkCommentsRequest{ArtworkID: item.ID})
-			if err != nil {
-				t.Errorf("artwork comments %d: %v", item.ID, err)
-				continue
-			}
-			if len(comments.Page.Items) == 0 {
-				continue
-			}
-			found = true
-			t.Logf("artwork_comments %d: %d comments, continuation=%v, total=%v, access_control=%v",
-				item.ID, len(comments.Page.Items), !comments.Page.Next.IsZero(), comments.Total != nil, comments.AccessControl != nil)
-			if !comments.Page.Next.IsZero() {
-				second, err := client.ArtworkComments(ctx, pixivsdk.ArtworkCommentsRequest{ArtworkID: item.ID, Cursor: comments.Page.Next})
-				if err != nil {
-					t.Errorf("artwork comments second page: %v", err)
-				} else {
-					t.Logf("artwork_comments %d second page: %d comments", item.ID, len(second.Page.Items))
-				}
-			}
-			break
-		}
-		if !found {
-			t.Logf("artwork_comments: blocked_external (data): current search page has no non-empty comments target")
-		}
-	}
-	time.Sleep(liveManifestPace)
-
-	// #20 novel comments。
+	// #27 novel-comments read：非空则读；有 continuation 才第二页。
 	novels, err := client.SearchNovels(ctx, pixivsdk.SearchNovelsRequest{Word: "初音ミク"})
 	if err != nil {
 		t.Errorf("novel comments source search: %v", err)
