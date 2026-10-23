@@ -170,10 +170,10 @@ func (a controller) newAccountExportCommand() *cobra.Command {
 				if strings.TrimSpace(opts.output) == "" {
 					return errors.New("--output requires a path")
 				}
-				if a.deps.WriteBundle == nil {
+				if a.support.WriteBundle == nil {
 					return errors.New("auth export bundle writer is not configured")
 				}
-				if err := a.deps.WriteBundle(opts.output, result.Bundle, opts.force); err != nil {
+				if err := a.support.WriteBundle(opts.output, result.Bundle, opts.force); err != nil {
 					return err
 				}
 				return WriteAuthExportStdout(a.out, []byte(fmt.Sprintf("output: %s\naccounts: %d\n", opts.output, result.AccountCount)))
@@ -755,7 +755,7 @@ func (a controller) accountRefresh(cmd *cobra.Command, userID int64, opts accoun
 	for _, account := range results {
 		premium := "unknown"
 		if account.PremiumStatus != nil {
-			premium = textBool(*account.PremiumStatus)
+			premium = requirements.TextBool(*account.PremiumStatus)
 		}
 		fmt.Fprintf(a.out, "✓ refreshed uid:%d premium:%s\n", account.UserID, premium)
 	}
@@ -801,7 +801,9 @@ func (a controller) resolveRefreshTokenInput(cmd *cobra.Command, args []string) 
 	if a.canPrompt() {
 		return a.promptSecret("Refresh token")
 	}
-	writePrompt(a.errOut, "refresh token: ")
+	if _, err := fmt.Fprint(a.errOut, "refresh token: "); err != nil {
+		return "", err
+	}
 	return ReadRefreshTokenInput(a.in)
 }
 

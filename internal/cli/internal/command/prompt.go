@@ -1,4 +1,6 @@
-package auth
+// Terminal prompts shared by every command owner.
+
+package command
 
 import (
 	"errors"
@@ -10,9 +12,6 @@ import (
 	surveyterminal "github.com/AlecAivazis/survey/v2/terminal"
 	"golang.org/x/term"
 )
-
-// 以下终端提示实现只依赖调用方给出的流。命令自身通过注入的 Deps 使用提示能力，
-// 因此整个 CLI 只有 composition root 一处替换点，不需要包级可变 seam。
 
 func terminalCanPrompt(in io.Reader, out io.Writer) bool {
 	reader, okIn := in.(surveyterminal.FileReader)
@@ -32,8 +31,13 @@ func surveyAskOptions(in io.Reader, out, errOut io.Writer) ([]survey.AskOpt, err
 	return []survey.AskOpt{survey.WithStdio(reader, writer, errOut)}, nil
 }
 
-func terminalPromptInput(in io.Reader, out, errOut io.Writer, message, defaultValue string) (string, error) {
-	opts, err := surveyAskOptions(in, out, errOut)
+// CanPrompt reports whether both input and output are terminals.
+func (e Env) CanPrompt() bool {
+	return terminalCanPrompt(e.In, e.Out)
+}
+
+func (e Env) PromptInput(message, defaultValue string) (string, error) {
+	opts, err := surveyAskOptions(e.In, e.Out, e.Err)
 	if err != nil {
 		return "", err
 	}
@@ -45,8 +49,8 @@ func terminalPromptInput(in io.Reader, out, errOut io.Writer, message, defaultVa
 	return strings.TrimSpace(value), nil
 }
 
-func terminalPromptSecret(in io.Reader, out, errOut io.Writer, message string) (string, error) {
-	opts, err := surveyAskOptions(in, out, errOut)
+func (e Env) PromptSecret(message string) (string, error) {
+	opts, err := surveyAskOptions(e.In, e.Out, e.Err)
 	if err != nil {
 		return "", err
 	}
@@ -58,11 +62,11 @@ func terminalPromptSecret(in io.Reader, out, errOut io.Writer, message string) (
 	return strings.TrimSpace(value), nil
 }
 
-func terminalPromptSelect(in io.Reader, out, errOut io.Writer, message string, options []string) (string, error) {
+func (e Env) PromptSelect(message string, options []string) (string, error) {
 	if len(options) == 0 {
 		return "", errors.New("no available options")
 	}
-	opts, err := surveyAskOptions(in, out, errOut)
+	opts, err := surveyAskOptions(e.In, e.Out, e.Err)
 	if err != nil {
 		return "", err
 	}
@@ -74,8 +78,8 @@ func terminalPromptSelect(in io.Reader, out, errOut io.Writer, message string, o
 	return strings.TrimSpace(value), nil
 }
 
-func terminalPromptConfirm(in io.Reader, out, errOut io.Writer, message string, defaultValue bool) (bool, error) {
-	opts, err := surveyAskOptions(in, out, errOut)
+func (e Env) PromptConfirm(message string, defaultValue bool) (bool, error) {
+	opts, err := surveyAskOptions(e.In, e.Out, e.Err)
 	if err != nil {
 		return false, err
 	}
@@ -96,8 +100,4 @@ func nonEmptyAnswer(value any) error {
 		return errors.New("value cannot be empty")
 	}
 	return nil
-}
-
-func writePrompt(w io.Writer, format string, args ...any) {
-	_, _ = fmt.Fprintf(w, format, args...)
 }
