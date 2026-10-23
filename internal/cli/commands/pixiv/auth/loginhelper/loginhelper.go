@@ -14,8 +14,8 @@ import (
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/config/paths"
 	"github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/account/loginrelay"
-	filelock "github.com/FlanChanXwO/pixiv-cli/internal/storage/file/lock"
-	filesecret "github.com/FlanChanXwO/pixiv-cli/internal/storage/file/secret"
+	filelock "github.com/FlanChanXwO/pixiv-cli/internal/storage/filelock"
+	filesecret "github.com/FlanChanXwO/pixiv-cli/internal/storage/secretfile"
 )
 
 const (

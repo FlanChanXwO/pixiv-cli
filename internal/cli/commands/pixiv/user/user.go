@@ -13,9 +13,9 @@ import (
 	requirements "github.com/FlanChanXwO/pixiv-cli/internal/cli/commands"
 	"github.com/FlanChanXwO/pixiv-cli/internal/cli/commands/pixiv"
 	"github.com/FlanChanXwO/pixiv-cli/internal/cli/commands/pixiv/internal/listing"
+	"github.com/FlanChanXwO/pixiv-cli/internal/cli/internal/input"
+	"github.com/FlanChanXwO/pixiv-cli/internal/cli/internal/resolver"
 	"github.com/FlanChanXwO/pixiv-cli/internal/cli/pipeline"
-	"github.com/FlanChanXwO/pixiv-cli/internal/shared/resolver"
-	"github.com/FlanChanXwO/pixiv-cli/internal/utils/parse"
 	"github.com/FlanChanXwO/pixiv-cli/sdk"
 	pixiv "github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
 	"github.com/spf13/cobra"
@@ -404,7 +404,7 @@ func requestedUserID(args []string) (int64, error) {
 	if len(args) != 1 {
 		return 0, nil
 	}
-	return parse.PositiveInt64(args[0], "user_id")
+	return input.PositiveInt64(args[0], "user_id")
 }
 
 func resolveUserID(ctx context.Context, value, operation string) (int64, error) {

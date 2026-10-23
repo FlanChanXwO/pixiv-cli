@@ -8,13 +8,13 @@ import (
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/internal/outputs"
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/internal/records"
-	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/internal/runtime"
+	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/internal/toolhost"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
 // Register 注册 pixiv_comments。
-func Register(app *runtime.App, server *mcp.Server) {
-	runtime.AddTool(app, server, &mcp.Tool{Name: "pixiv_comments", Annotations: &mcp.ToolAnnotations{ReadOnlyHint: true, DestructiveHint: new(false), IdempotentHint: true, OpenWorldHint: new(true)}, Description: "Read comments for a Pixiv artwork or novel.", InputSchema: inputSchema(),
+func Register(app *toolhost.App, server *mcp.Server) {
+	toolhost.AddTool(app, server, &mcp.Tool{Name: "pixiv_comments", Annotations: &mcp.ToolAnnotations{ReadOnlyHint: true, DestructiveHint: new(false), IdempotentHint: true, OpenWorldHint: new(true)}, Description: "Read comments for a Pixiv artwork or novel.", InputSchema: inputSchema(),
 		OutputSchema: records.CommentOutputSchema()}, func(ctx context.Context, request *mcp.CallToolRequest, input In) (*mcp.CallToolResult, outputs.Comments, error) {
 		return handleIllustComments(ctx, app, input)
 	})
@@ -24,10 +24,10 @@ func Register(app *runtime.App, server *mcp.Server) {
 type In struct {
 	Kind string `json:"kind"`
 	ID   int64  `json:"id" jsonschema:"positive artwork or novel ID"`
-	runtime.PageLimitIn
+	toolhost.PageLimitIn
 }
 
-func handleIllustComments(ctx context.Context, app *runtime.App, in In) (*mcp.CallToolResult, outputs.Comments, error) {
+func handleIllustComments(ctx context.Context, app *toolhost.App, in In) (*mcp.CallToolResult, outputs.Comments, error) {
 	return outputs.ListComments(ctx, app, in.ID, in.Kind == "novel", in.PageLimitIn, in.Limit)
 }
 

@@ -8,8 +8,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/FlanChanXwO/pixiv-cli/internal/lifecycle"
 	pixivservice "github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv"
-	"github.com/FlanChanXwO/pixiv-cli/internal/shared/lifecycle"
 	"github.com/FlanChanXwO/pixiv-cli/sdk"
 	sdkpixiv "github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
 	"github.com/stretchr/testify/require"

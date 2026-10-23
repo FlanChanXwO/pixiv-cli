@@ -5,8 +5,8 @@ import (
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/cli/pipeline"
 	configapp "github.com/FlanChanXwO/pixiv-cli/internal/config/settings"
-	"github.com/FlanChanXwO/pixiv-cli/internal/shared/buildinfo"
-	updateapp "github.com/FlanChanXwO/pixiv-cli/internal/update"
+	"github.com/FlanChanXwO/pixiv-cli/internal/selfupdate"
+	"github.com/FlanChanXwO/pixiv-cli/internal/version"
 	"github.com/spf13/cobra"
 )
 
@@ -34,7 +34,7 @@ func RunAutomaticCheck(cmd *cobra.Command, host AutomaticCheckHost) {
 		warning(host, "create automatic update checker", err)
 		return
 	}
-	notice, err := checker.Check(cmd.Context(), updateapp.AutomaticUpdateRequest{BuildInfo: buildinfo.Current()})
+	notice, err := checker.Check(cmd.Context(), selfupdate.AutomaticUpdateRequest{BuildInfo: version.Current()})
 	if err != nil {
 		warning(host, "check for updates", err)
 		return
@@ -50,7 +50,7 @@ func warning(host AutomaticCheckHost, action string, err error) {
 }
 
 func shouldCheck(cmd *cobra.Command) bool {
-	if buildinfo.Current().IsDevelopment() || cmd == nil || cmd.Root() == cmd {
+	if version.Current().IsDevelopment() || cmd == nil || cmd.Root() == cmd {
 		return false
 	}
 	if cmd.CommandPath() == "pixiv auth export" {

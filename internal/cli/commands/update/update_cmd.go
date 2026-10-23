@@ -6,8 +6,8 @@ import (
 
 	requirements "github.com/FlanChanXwO/pixiv-cli/internal/cli/commands"
 	"github.com/FlanChanXwO/pixiv-cli/internal/cli/pipeline"
-	"github.com/FlanChanXwO/pixiv-cli/internal/shared/buildinfo"
-	updateapp "github.com/FlanChanXwO/pixiv-cli/internal/update"
+	"github.com/FlanChanXwO/pixiv-cli/internal/selfupdate"
+	"github.com/FlanChanXwO/pixiv-cli/internal/version"
 	"github.com/spf13/cobra"
 )
 
@@ -46,8 +46,8 @@ func newUpdateCommand(host Host) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			result, err := coordinator.Execute(cmd.Context(), updateapp.UpdateRequest{
-				BuildInfo:         buildinfo.Current(),
+			result, err := coordinator.Execute(cmd.Context(), selfupdate.UpdateRequest{
+				BuildInfo:         version.Current(),
 				Check:             opts.check,
 				IncludePrerelease: opts.includePrerelease,
 			})
@@ -70,7 +70,7 @@ func newUpdateCommand(host Host) *cobra.Command {
 	return cmd
 }
 
-func printResult(out io.Writer, result updateapp.UpdateResult) error {
+func printResult(out io.Writer, result selfupdate.UpdateResult) error {
 	latestVersion := "none"
 	if result.LatestVersion != nil {
 		latestVersion = *result.LatestVersion

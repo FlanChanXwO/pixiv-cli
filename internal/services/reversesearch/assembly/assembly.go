@@ -6,10 +6,10 @@ package assembly
 import (
 	"net/http"
 
+	"github.com/FlanChanXwO/pixiv-cli/internal/httpclient"
 	"github.com/FlanChanXwO/pixiv-cli/internal/services/reversesearch"
 	"github.com/FlanChanXwO/pixiv-cli/internal/services/reversesearch/ascii2d"
 	"github.com/FlanChanXwO/pixiv-cli/internal/services/reversesearch/saucenao"
-	"github.com/FlanChanXwO/pixiv-cli/internal/shared/network"
 )
 
 // FlareSolverrOptions describes the optional challenge-recovery service for
@@ -36,7 +36,7 @@ type Options struct {
 // SauceNAO. ascii2d receives only its proxy and user-agent so it can construct
 // its dedicated browser transport without changing the other providers.
 func New(options Options) (reversesearch.Searcher, error) {
-	client, err := network.HTTPClient(options.Proxy)
+	client, err := httpclient.HTTPClient(options.Proxy)
 	if err != nil {
 		return nil, err
 	}

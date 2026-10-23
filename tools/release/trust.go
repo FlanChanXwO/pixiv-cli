@@ -14,7 +14,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/FlanChanXwO/pixiv-cli/internal/releaseversion"
+	versionpkg "github.com/FlanChanXwO/pixiv-cli/internal/version"
 )
 
 type sourceTrust struct {
@@ -139,7 +139,7 @@ func verifyPublishedRelease(client githubReleaseClient, repository, tag string, 
 	if err != nil {
 		return err
 	}
-	if stable && releaseversion.Channel(version) != "stable" {
+	if stable && versionpkg.Channel(version) != "stable" {
 		return fmt.Errorf("Release %q uses a prerelease semantic version, stable Release required", tag)
 	}
 	path, err := githubRepositoryPath(repository)
@@ -203,7 +203,7 @@ func releaseTagVersion(tag string) (string, error) {
 		return "", fmt.Errorf("release tag must be v-prefixed semantic version: %q", tag)
 	}
 	version := strings.TrimPrefix(tag, "v")
-	if err := releaseversion.Validate(version); err != nil {
+	if err := versionpkg.Validate(version); err != nil {
 		return "", err
 	}
 	return version, nil

@@ -13,7 +13,7 @@ import (
 	"strings"
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/config/paths"
-	filesecret "github.com/FlanChanXwO/pixiv-cli/internal/storage/file/secret"
+	filesecret "github.com/FlanChanXwO/pixiv-cli/internal/storage/secretfile"
 )
 
 // PixivURLHandlerBundleID 是 pixiv:// helper 在 macOS 上注册的 bundle identifier。

@@ -1,11 +1,11 @@
-// Package update 注册 update 命令；更新实现仍归 internal/update。
+// Package update 注册 update 命令；更新实现仍归 internal/selfupdate。
 package update
 
 import (
 	"io"
 
 	configapp "github.com/FlanChanXwO/pixiv-cli/internal/config/settings"
-	updateapp "github.com/FlanChanXwO/pixiv-cli/internal/update"
+	"github.com/FlanChanXwO/pixiv-cli/internal/selfupdate"
 	"github.com/spf13/cobra"
 )
 
@@ -15,14 +15,14 @@ type Host interface {
 	PrintJSON(any) error
 	RequireExactArgs(int, string) cobra.PositionalArgs
 	LoadUpdateRuntimeConfig() (configapp.RuntimeConfig, error)
-	NewUpdateCoordinator(string, io.Writer, io.Writer) (*updateapp.UpdateCoordinator, error)
+	NewUpdateCoordinator(string, io.Writer, io.Writer) (*selfupdate.UpdateCoordinator, error)
 }
 
 // AutomaticCheckHost 是成功命令后的只读更新检查所需的最小依赖端口。
 type AutomaticCheckHost interface {
 	ErrorOutput() io.Writer
 	LoadAutomaticUpdateRuntimeConfig() (configapp.RuntimeConfig, error)
-	NewAutomaticUpdateChecker(string) (*updateapp.AutomaticUpdateChecker, error)
+	NewAutomaticUpdateChecker(string) (*selfupdate.AutomaticUpdateChecker, error)
 }
 
 func Register(root *cobra.Command, host Host) {

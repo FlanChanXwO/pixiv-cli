@@ -11,10 +11,10 @@ import (
 	"path/filepath"
 	"time"
 
+	"github.com/FlanChanXwO/pixiv-cli/internal/logging"
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/internal/outputs"
 	"github.com/FlanChanXwO/pixiv-cli/internal/media/downloader"
 	"github.com/FlanChanXwO/pixiv-cli/internal/media/ugoira"
-	"github.com/FlanChanXwO/pixiv-cli/internal/shared/diagnostics"
 	"github.com/FlanChanXwO/pixiv-cli/sdk"
 	pixiv "github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
@@ -116,13 +116,13 @@ func readAnimation(ctx context.Context, client *pixiv.Client, id int64, format s
 
 // 阶段失败仅输出固定原因，保留业务错误通过原返回路径交付。
 func observeMediaPhase(ctx context.Context, stage string, duration time.Duration, count int, err error) {
-	event := diagnostics.Event{Module: diagnostics.ModulePixivMCP, Kind: diagnostics.EventCompleted, Operation: stage, Duration: duration, Count: count}
+	event := logging.Event{Module: logging.ModulePixivMCP, Kind: logging.EventCompleted, Operation: stage, Duration: duration, Count: count}
 	if err != nil {
-		event.Kind = diagnostics.EventFailed
-		event.Reason = diagnostics.ReasonToolFailed
+		event.Kind = logging.EventFailed
+		event.Reason = logging.ReasonToolFailed
 		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
-			event.Reason = diagnostics.ReasonRequestCancelled
+			event.Reason = logging.ReasonRequestCancelled
 		}
 	}
-	diagnostics.Emit(ctx, event)
+	logging.Emit(ctx, event)
 }

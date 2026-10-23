@@ -8,9 +8,9 @@ import (
 	"context"
 	"errors"
 
+	"github.com/FlanChanXwO/pixiv-cli/internal/lifecycle"
 	accountpixiv "github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/account"
 	poolpixiv "github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/pool"
-	"github.com/FlanChanXwO/pixiv-cli/internal/shared/lifecycle"
 	sdkpixiv "github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
 )
 

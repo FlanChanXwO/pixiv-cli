@@ -10,7 +10,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/FlanChanXwO/pixiv-cli/internal/shared/diagnostics"
+	"github.com/FlanChanXwO/pixiv-cli/internal/logging"
 )
 
 var (
@@ -151,15 +151,15 @@ func (s *Session) unregisterSolverWaiter(call *solverCall) {
 func (s *Session) runSolver(call *solverCall) {
 	state, err := s.solveFlareSolverr(call.ctx)
 	if err == nil {
-		diagnostics.Emit(call.ctx, diagnostics.Event{
-			Module:    diagnostics.ModuleFanboxSolver,
-			Kind:      diagnostics.EventSolverCompleted,
+		logging.Emit(call.ctx, logging.Event{
+			Module:    logging.ModuleFanboxSolver,
+			Kind:      logging.EventSolverCompleted,
 			Operation: "clearance",
 		})
 	} else if call.ctx.Err() == nil {
-		diagnostics.Emit(call.ctx, diagnostics.Event{
-			Module:    diagnostics.ModuleFanboxSolver,
-			Kind:      diagnostics.EventFailed,
+		logging.Emit(call.ctx, logging.Event{
+			Module:    logging.ModuleFanboxSolver,
+			Kind:      logging.EventFailed,
 			Operation: "challenge recovery",
 			Reason:    solverDiagnosticReason(err),
 		})
@@ -182,9 +182,9 @@ func (s *Session) solveFlareSolverr(ctx context.Context) (solverState, error) {
 	if s.flareSolverr == nil {
 		return solverState{}, ErrChallenge
 	}
-	diagnostics.Emit(ctx, diagnostics.Event{
-		Module:    diagnostics.ModuleFanboxSolver,
-		Kind:      diagnostics.EventSolverStarted,
+	logging.Emit(ctx, logging.Event{
+		Module:    logging.ModuleFanboxSolver,
+		Kind:      logging.EventSolverStarted,
 		Operation: "challenge recovery",
 	})
 	payload := []byte(`{"cmd":"request.get","url":"https://www.fanbox.cc/"}`)
@@ -234,16 +234,16 @@ func (s *Session) solveFlareSolverr(ctx context.Context) (solverState, error) {
 	return validateSolverSolution(decoded.Solution)
 }
 
-func solverDiagnosticReason(err error) diagnostics.Reason {
+func solverDiagnosticReason(err error) logging.Reason {
 	switch {
 	case errors.Is(err, ErrSolverUnavailable):
-		return diagnostics.ReasonSolverUnavailable
+		return logging.ReasonSolverUnavailable
 	case errors.Is(err, ErrSolverFailed):
-		return diagnostics.ReasonSolverFailed
+		return logging.ReasonSolverFailed
 	case errors.Is(err, ErrMalformedSolverResponse):
-		return diagnostics.ReasonMalformedSolver
+		return logging.ReasonMalformedSolver
 	default:
-		return diagnostics.ReasonCommandFailed
+		return logging.ReasonCommandFailed
 	}
 }
 

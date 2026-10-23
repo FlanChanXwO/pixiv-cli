@@ -15,8 +15,8 @@ import (
 	requirements "github.com/FlanChanXwO/pixiv-cli/internal/cli/commands"
 	"github.com/FlanChanXwO/pixiv-cli/internal/cli/commands/pixiv"
 	"github.com/FlanChanXwO/pixiv-cli/internal/cli/pipeline"
-	"github.com/FlanChanXwO/pixiv-cli/internal/shared/record"
-	"github.com/FlanChanXwO/pixiv-cli/internal/utils/text"
+	"github.com/FlanChanXwO/pixiv-cli/internal/plaintext"
+	"github.com/FlanChanXwO/pixiv-cli/internal/record"
 	"github.com/FlanChanXwO/pixiv-cli/sdk"
 	pixiv "github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
 	"github.com/spf13/cobra"
@@ -429,7 +429,7 @@ func printArtwork(out io.Writer, item pixiv.Artwork) error {
 			return err
 		}
 	}
-	if caption := text.HTMLPlainText(item.Caption); caption != "" {
+	if caption := plaintext.HTMLPlainText(item.Caption); caption != "" {
 		if _, err := fmt.Fprintf(out, "caption:\n%s\n", caption); err != nil {
 			return err
 		}

@@ -11,7 +11,7 @@ import (
 	requirements "github.com/FlanChanXwO/pixiv-cli/internal/cli/commands"
 	deps "github.com/FlanChanXwO/pixiv-cli/internal/cli/commands/pixiv"
 	"github.com/FlanChanXwO/pixiv-cli/internal/cli/commands/pixiv/internal/listing"
-	"github.com/FlanChanXwO/pixiv-cli/internal/utils/parse"
+	"github.com/FlanChanXwO/pixiv-cli/internal/cli/internal/input"
 	"github.com/FlanChanXwO/pixiv-cli/sdk"
 	pixiv "github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
 	"github.com/spf13/cobra"
@@ -144,7 +144,7 @@ func (a command) runWorks(cmd *cobra.Command, args []string, opts options) error
 				sdk.WithDetail("type with USER_ID must be one of: artwork, manga, novel"))
 		}
 		var err error
-		userID, err = parse.PositiveInt64(args[0], "user_id")
+		userID, err = input.PositiveInt64(args[0], "user_id")
 		if err != nil {
 			return sdk.NewError("pixiv", "mypixiv works", sdk.InvalidArgument,
 				sdk.WithDetail("user_id must be a positive integer"))

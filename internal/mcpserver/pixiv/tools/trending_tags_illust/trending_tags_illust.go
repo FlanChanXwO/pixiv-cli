@@ -8,14 +8,14 @@ import (
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/internal/outputs"
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/internal/records"
-	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/internal/runtime"
+	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/internal/toolhost"
 	pixiv "github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
 // Register 注册 pixiv_trending_tags_illust。
-func Register(app *runtime.App, server *mcp.Server) {
-	runtime.AddTool(app, server, &mcp.Tool{Name: "pixiv_trending_tags_illust", Annotations: &mcp.ToolAnnotations{ReadOnlyHint: true, DestructiveHint: new(false), IdempotentHint: true, OpenWorldHint: new(true)}, Description: "Get currently trending illustration tags.", InputSchema: trendingInputSchema(), OutputSchema: records.TrendingTagsOutputSchema()}, func(ctx context.Context, request *mcp.CallToolRequest, input In) (*mcp.CallToolResult, outputs.TrendingTags, error) {
+func Register(app *toolhost.App, server *mcp.Server) {
+	toolhost.AddTool(app, server, &mcp.Tool{Name: "pixiv_trending_tags_illust", Annotations: &mcp.ToolAnnotations{ReadOnlyHint: true, DestructiveHint: new(false), IdempotentHint: true, OpenWorldHint: new(true)}, Description: "Get currently trending illustration tags.", InputSchema: trendingInputSchema(), OutputSchema: records.TrendingTagsOutputSchema()}, func(ctx context.Context, request *mcp.CallToolRequest, input In) (*mcp.CallToolResult, outputs.TrendingTags, error) {
 		return handleTrendingTags(ctx, app, input)
 	})
 }
@@ -30,8 +30,8 @@ func trendingInputSchema() map[string]any {
 	}
 }
 
-func handleTrendingTags(ctx context.Context, app *runtime.App, _ In) (*mcp.CallToolResult, outputs.TrendingTags, error) {
-	result, err := runtime.Read(app, ctx, func(ctx context.Context, client *pixiv.Client) ([]pixiv.TrendingTag, error) {
+func handleTrendingTags(ctx context.Context, app *toolhost.App, _ In) (*mcp.CallToolResult, outputs.TrendingTags, error) {
+	result, err := toolhost.Read(app, ctx, func(ctx context.Context, client *pixiv.Client) ([]pixiv.TrendingTag, error) {
 		return client.TrendingArtworkTags(ctx, pixiv.TrendingArtworkTagsRequest{})
 	})
 	if err != nil {

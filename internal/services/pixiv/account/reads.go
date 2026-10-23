@@ -9,7 +9,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/FlanChanXwO/pixiv-cli/internal/shared/diagnostics"
+	"github.com/FlanChanXwO/pixiv-cli/internal/logging"
 	"github.com/FlanChanXwO/pixiv-cli/sdk"
 	"github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
 )
@@ -150,15 +150,15 @@ func (m *ReadSessions) Open(ctx context.Context, uid int64, network string, opti
 }
 
 func observeReadSession(ctx context.Context, stage string, started time.Time, err error) {
-	event := diagnostics.Event{Module: diagnostics.ModulePixivMCP, Kind: diagnostics.EventCompleted, Operation: stage, Duration: time.Since(started)}
+	event := logging.Event{Module: logging.ModulePixivMCP, Kind: logging.EventCompleted, Operation: stage, Duration: time.Since(started)}
 	if err != nil {
-		event.Kind = diagnostics.EventFailed
-		event.Reason = diagnostics.ReasonToolFailed
+		event.Kind = logging.EventFailed
+		event.Reason = logging.ReasonToolFailed
 		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
-			event.Reason = diagnostics.ReasonRequestCancelled
+			event.Reason = logging.ReasonRequestCancelled
 		}
 	}
-	diagnostics.Emit(ctx, event)
+	logging.Emit(ctx, event)
 }
 
 // Revalidate checks local credential generations without opening an upstream session.

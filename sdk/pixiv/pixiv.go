@@ -8,6 +8,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/FlanChanXwO/pixiv-cli/internal/logging"
 	"github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/appapi"
 	artworkbookmark "github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/endpoint/artwork/bookmark"
 	artworkcomments "github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/endpoint/artwork/comments"
@@ -40,7 +41,6 @@ import (
 	usersearch "github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/endpoint/user/search"
 	"github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/oauth"
 	"github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/resource"
-	"github.com/FlanChanXwO/pixiv-cli/internal/shared/diagnostics"
 	"github.com/FlanChanXwO/pixiv-cli/sdk"
 )
 
@@ -346,9 +346,9 @@ func (r *diagnosticRoundTripper) RoundTrip(request *http.Request) (*http.Respons
 	}
 	response, err := r.inner.RoundTrip(request)
 	if err != nil {
-		diagnostics.Emit(request.Context(), diagnostics.Event{
-			Module:    diagnostics.ModulePixivNetwork,
-			Kind:      diagnostics.EventFailed,
+		logging.Emit(request.Context(), logging.Event{
+			Module:    logging.ModulePixivNetwork,
+			Kind:      logging.EventFailed,
 			Operation: "network request",
 			Route:     route,
 		})
@@ -358,9 +358,9 @@ func (r *diagnosticRoundTripper) RoundTrip(request *http.Request) (*http.Respons
 	if response != nil {
 		status = response.StatusCode
 	}
-	diagnostics.Emit(request.Context(), diagnostics.Event{
-		Module:    diagnostics.ModulePixivNetwork,
-		Kind:      diagnostics.EventNetworkRequest,
+	logging.Emit(request.Context(), logging.Event{
+		Module:    logging.ModulePixivNetwork,
+		Kind:      logging.EventNetworkRequest,
 		Operation: operation,
 		Resource:  resourcePath,
 		Route:     route,

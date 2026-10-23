@@ -3,8 +3,8 @@ package gallery_animation
 
 import (
 	"context"
-	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/internal/runtime"
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/internal/schemas"
+	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/internal/toolhost"
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/mediaproxy"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
@@ -16,8 +16,8 @@ type input struct {
 	Handle   string `json:"handle,omitempty"`
 }
 
-func Register(app *runtime.App, server *mcp.Server) {
-	runtime.AddTool(app, server, &mcp.Tool{Name: "pixiv_gallery_animation", Description: "Prepare, inspect or release a Gallery animation subscription. Short control responses contain protected animation and PNG preview URLs when ready. Poll status every 2 seconds; failures require explicit retry. Existing pixiv_artwork_media delivers full embedded media.", Annotations: &mcp.ToolAnnotations{ReadOnlyHint: true, DestructiveHint: new(false), OpenWorldHint: new(true)}, InputSchema: schemas.ClosedObject(map[string]any{"action": schemas.EnumString("Operation", "prepare", "status", "release"), "illust_id": schemas.PositiveInteger("Artwork ID for prepare"), "format": schemas.EnumString("Prepare format, default gif", "gif", "apng"), "handle": map[string]any{"type": "string", "minLength": 1}}, []string{"action"})}, func(ctx context.Context, _ *mcp.CallToolRequest, in input) (*mcp.CallToolResult, mediaproxy.AnimationStatus, error) {
+func Register(app *toolhost.App, server *mcp.Server) {
+	toolhost.AddTool(app, server, &mcp.Tool{Name: "pixiv_gallery_animation", Description: "Prepare, inspect or release a Gallery animation subscription. Short control responses contain protected animation and PNG preview URLs when ready. Poll status every 2 seconds; failures require explicit retry. Existing pixiv_artwork_media delivers full embedded media.", Annotations: &mcp.ToolAnnotations{ReadOnlyHint: true, DestructiveHint: new(false), OpenWorldHint: new(true)}, InputSchema: schemas.ClosedObject(map[string]any{"action": schemas.EnumString("Operation", "prepare", "status", "release"), "illust_id": schemas.PositiveInteger("Artwork ID for prepare"), "format": schemas.EnumString("Prepare format, default gif", "gif", "apng"), "handle": map[string]any{"type": "string", "minLength": 1}}, []string{"action"})}, func(ctx context.Context, _ *mcp.CallToolRequest, in input) (*mcp.CallToolResult, mediaproxy.AnimationStatus, error) {
 		out := mediaproxy.AnimationStatus{State: "failed"}
 		fail := func(code string) (*mcp.CallToolResult, mediaproxy.AnimationStatus, error) {
 			out.State = "failed"

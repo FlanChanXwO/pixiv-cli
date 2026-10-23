@@ -9,8 +9,8 @@ import (
 	"fmt"
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/internal/records"
-	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/internal/runtime"
-	record "github.com/FlanChanXwO/pixiv-cli/internal/shared/record"
+	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/internal/toolhost"
+	record "github.com/FlanChanXwO/pixiv-cli/internal/record"
 	"github.com/FlanChanXwO/pixiv-cli/sdk"
 	pixiv "github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
@@ -18,9 +18,9 @@ import (
 
 // Records 是实体记录列表的输出 envelope。
 type Records struct {
-	Records    []record.Record       `json:"records"`
-	Pagination runtime.PaginationOut `json:"pagination"`
-	Filter     *BookmarkFilter       `json:"filter,omitempty"`
+	Records    []record.Record        `json:"records"`
+	Pagination toolhost.PaginationOut `json:"pagination"`
+	Filter     *BookmarkFilter        `json:"filter,omitempty"`
 }
 
 // BookmarkFilter 描述一次 bookmark 区间筛选的执行结果元数据。
@@ -39,7 +39,7 @@ func Result(out Records, isError bool) *mcp.CallToolResult {
 
 // Error 构造实体列表的 MCP error 摘要。
 func Error(err error) (*mcp.CallToolResult, Records, error) {
-	out := Records{Records: []record.Record{}, Pagination: runtime.PaginationOut{Page: 1}}
+	out := Records{Records: []record.Record{}, Pagination: toolhost.PaginationOut{Page: 1}}
 	return records.Result(out.Records, true, records.ErrorMessage(err)), out, nil
 }
 
@@ -62,10 +62,10 @@ func UserDetailError(err error) (*mcp.CallToolResult, UserDetail, error) {
 // RecommendedPagination 分别表达每条推荐流的逻辑页与默认批次续读；
 // next_cursor 是绑定单个 kind/filter 的 MCP envelope。
 type RecommendedPagination struct {
-	Illust *runtime.PaginationOut `json:"illust,omitempty"`
-	Manga  *runtime.PaginationOut `json:"manga,omitempty"`
-	Novel  *runtime.PaginationOut `json:"novel,omitempty"`
-	User   *runtime.PaginationOut `json:"user,omitempty"`
+	Illust *toolhost.PaginationOut `json:"illust,omitempty"`
+	Manga  *toolhost.PaginationOut `json:"manga,omitempty"`
+	Novel  *toolhost.PaginationOut `json:"novel,omitempty"`
+	User   *toolhost.PaginationOut `json:"user,omitempty"`
 }
 
 // Recommended 是 recommended tool 的输出 envelope。
@@ -86,8 +86,8 @@ func RecommendedError(err error) (*mcp.CallToolResult, Recommended, error) {
 }
 
 // RecommendedPage 把单条推荐流的分页转为指针输出。
-func RecommendedPage(plan runtime.ListPlan, limit *int, returned int, more bool) *runtime.PaginationOut {
-	value := runtime.ListPagination(plan, limit, returned, more)
+func RecommendedPage(plan toolhost.ListPlan, limit *int, returned int, more bool) *toolhost.PaginationOut {
+	value := toolhost.ListPagination(plan, limit, returned, more)
 	return &value
 }
 
@@ -129,7 +129,7 @@ func (m *CommentToolMetadata) Set(page pixiv.CommentPage) {
 // Comments 是评论 tool 的输出 envelope。
 type Comments struct {
 	Comments      []pixiv.CommentDTO             `json:"comments"`
-	Pagination    runtime.PaginationOut          `json:"pagination"`
+	Pagination    toolhost.PaginationOut         `json:"pagination"`
 	Total         *int64                         `json:"total,omitempty"`
 	AccessControl *pixiv.CommentAccessControlDTO `json:"access_control,omitempty"`
 }
@@ -144,7 +144,7 @@ func CommentsResult(out Comments, isError bool, message string) *mcp.CallToolRes
 
 // CommentsError 构造评论的 MCP error 摘要。
 func CommentsError(err error) (*mcp.CallToolResult, Comments, error) {
-	out := Comments{Comments: []pixiv.CommentDTO{}, Pagination: runtime.PaginationOut{Page: 1}}
+	out := Comments{Comments: []pixiv.CommentDTO{}, Pagination: toolhost.PaginationOut{Page: 1}}
 	return CommentsResult(out, true, records.ErrorMessage(err)), out, nil
 }
 
@@ -182,9 +182,9 @@ func NovelContentError(err error) (*mcp.CallToolResult, NovelContent, error) {
 
 // NovelSeries 是 novel_series tool 的输出 envelope。
 type NovelSeries struct {
-	Series     pixiv.NovelSeriesDTO  `json:"series"`
-	Records    []record.Record       `json:"records"`
-	Pagination runtime.PaginationOut `json:"pagination"`
+	Series     pixiv.NovelSeriesDTO   `json:"series"`
+	Records    []record.Record        `json:"records"`
+	Pagination toolhost.PaginationOut `json:"pagination"`
 }
 
 // NovelSeriesResult 构造 novel series 的 MCP 摘要。
@@ -201,7 +201,7 @@ func NovelSeriesError(err error) (*mcp.CallToolResult, NovelSeries, error) {
 // BookmarkTags 是 bookmark_tags tool 的输出 envelope。
 type BookmarkTags struct {
 	Tags       []pixiv.BookmarkTagDTO `json:"bookmark_tags"`
-	Pagination runtime.PaginationOut  `json:"pagination"`
+	Pagination toolhost.PaginationOut `json:"pagination"`
 }
 
 // BookmarkTagsResult 构造 bookmark tags 的 MCP 摘要。
@@ -211,7 +211,7 @@ func BookmarkTagsResult(out BookmarkTags, count int) *mcp.CallToolResult {
 
 // BookmarkTagsError 构造 bookmark tags 的 MCP error 摘要。
 func BookmarkTagsError(err error) (*mcp.CallToolResult, BookmarkTags, error) {
-	out := BookmarkTags{Tags: []pixiv.BookmarkTagDTO{}, Pagination: runtime.PaginationOut{Page: 1}}
+	out := BookmarkTags{Tags: []pixiv.BookmarkTagDTO{}, Pagination: toolhost.PaginationOut{Page: 1}}
 	return &mcp.CallToolResult{IsError: true, Content: []mcp.Content{&mcp.TextContent{Text: records.ErrorMessage(err)}}}, out, nil
 }
 
@@ -225,8 +225,8 @@ type TypedBookmarkTag struct {
 
 // BookmarkTagsAll 是 bookmark_tags_all tool 的 additive output envelope。
 type BookmarkTagsAll struct {
-	Tags       []TypedBookmarkTag    `json:"bookmark_tags"`
-	Pagination runtime.PaginationOut `json:"pagination"`
+	Tags       []TypedBookmarkTag     `json:"bookmark_tags"`
+	Pagination toolhost.PaginationOut `json:"pagination"`
 }
 
 // BookmarkTagsAllResult 构造 bookmark_tags_all 的 MCP 摘要。
@@ -236,7 +236,7 @@ func BookmarkTagsAllResult(out BookmarkTagsAll, count int) *mcp.CallToolResult {
 
 // BookmarkTagsAllError 构造 bookmark_tags_all 的 MCP error 摘要。
 func BookmarkTagsAllError(err error) (*mcp.CallToolResult, BookmarkTagsAll, error) {
-	out := BookmarkTagsAll{Tags: []TypedBookmarkTag{}, Pagination: runtime.PaginationOut{Page: 1}}
+	out := BookmarkTagsAll{Tags: []TypedBookmarkTag{}, Pagination: toolhost.PaginationOut{Page: 1}}
 	return &mcp.CallToolResult{IsError: true, Content: []mcp.Content{&mcp.TextContent{Text: records.ErrorMessage(err)}}}, out, nil
 }
 
@@ -304,18 +304,18 @@ func RunMutationInPlace(out *Mutation, run func() error) (*mcp.CallToolResult, M
 
 // ListComments 在账号池重放边界内收集 artwork 或 novel 的评论分页并输出统一
 // envelope；novel 为 true 时读取小说评论。元数据只缓存上游明确提供的值。
-func ListComments(ctx context.Context, app *runtime.App, id int64, novel bool, input runtime.PageLimitIn, limit *int) (*mcp.CallToolResult, Comments, error) {
+func ListComments(ctx context.Context, app *toolhost.App, id int64, novel bool, input toolhost.PageLimitIn, limit *int) (*mcp.CallToolResult, Comments, error) {
 	if id <= 0 {
 		result, out, _ := CommentsError(errors.New("id must be a positive integer"))
 		return result, out, nil
 	}
-	plan, err := runtime.ParseListPlan(input)
+	plan, err := toolhost.ParseListPlan(input)
 	if err != nil {
 		result, out, _ := CommentsError(err)
 		return result, out, nil
 	}
 	metadata := CommentToolMetadata{}
-	items, more, err := runtime.CollectWith(ctx, app, plan, func(ctx context.Context, client *pixiv.Client, cursor sdk.Cursor) ([]pixiv.Comment, sdk.Cursor, error) {
+	items, more, err := toolhost.CollectWith(ctx, app, plan, func(ctx context.Context, client *pixiv.Client, cursor sdk.Cursor) ([]pixiv.Comment, sdk.Cursor, error) {
 		var page pixiv.CommentPage
 		var err error
 		if novel {
@@ -345,22 +345,22 @@ func ListComments(ctx context.Context, app *runtime.App, id int64, novel bool, i
 		dto := pixiv.ToCommentAccessControlDTO(*metadata.Access)
 		accessControl = &dto
 	}
-	out := Comments{Comments: comments, Pagination: runtime.ListPagination(plan, limit, len(comments), more), Total: metadata.Total, AccessControl: accessControl}
+	out := Comments{Comments: comments, Pagination: toolhost.ListPagination(plan, limit, len(comments), more), Total: metadata.Total, AccessControl: accessControl}
 	return CommentsResult(out, false, ""), out, nil
 }
 
 // ListUserRelations 在账号池重放边界内收集 followers/following/related/blocked 用户列表并
 // 输出统一 records envelope。
-func ListUserRelations(ctx context.Context, app *runtime.App, kind string, userID int64, restrict string, input runtime.PageLimitIn, limit *int) (*mcp.CallToolResult, Records, error) {
-	userID, err := runtime.ResolveUserID(app, ctx, userID)
+func ListUserRelations(ctx context.Context, app *toolhost.App, kind string, userID int64, restrict string, input toolhost.PageLimitIn, limit *int) (*mcp.CallToolResult, Records, error) {
+	userID, err := toolhost.ResolveUserID(app, ctx, userID)
 	if err != nil {
 		return Error(err)
 	}
-	plan, err := runtime.ParseListPlan(input)
+	plan, err := toolhost.ParseListPlan(input)
 	if err != nil {
 		return Error(err)
 	}
-	items, more, err := runtime.CollectWith(ctx, app, plan, func(ctx context.Context, client *pixiv.Client, cursor sdk.Cursor) ([]pixiv.UserPreview, sdk.Cursor, error) {
+	items, more, err := toolhost.CollectWith(ctx, app, plan, func(ctx context.Context, client *pixiv.Client, cursor sdk.Cursor) ([]pixiv.UserPreview, sdk.Cursor, error) {
 		var result sdk.Page[pixiv.UserPreview]
 		var err error
 		switch kind {
@@ -387,6 +387,6 @@ func ListUserRelations(ctx context.Context, app *runtime.App, kind string, userI
 	if err != nil {
 		return Error(err)
 	}
-	out := Records{Records: recordItems, Pagination: runtime.ListPagination(plan, limit, len(items), more)}
+	out := Records{Records: recordItems, Pagination: toolhost.ListPagination(plan, limit, len(items), more)}
 	return Result(out, false), out, nil
 }

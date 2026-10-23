@@ -41,13 +41,13 @@ import (
 	configapp "github.com/FlanChanXwO/pixiv-cli/internal/config/settings"
 	unifiedmcp "github.com/FlanChanXwO/pixiv-cli/internal/mcpserver"
 	downloader "github.com/FlanChanXwO/pixiv-cli/internal/media/downloader"
+	selfupdate "github.com/FlanChanXwO/pixiv-cli/internal/selfupdate"
 	fanboxapp "github.com/FlanChanXwO/pixiv-cli/internal/services/fanbox"
 	fanboxaccount "github.com/FlanChanXwO/pixiv-cli/internal/services/fanbox/account"
 	pixivaccount "github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/account"
 	"github.com/FlanChanXwO/pixiv-cli/internal/services/reversesearch"
 	reverseassembly "github.com/FlanChanXwO/pixiv-cli/internal/services/reversesearch/assembly"
-	"github.com/FlanChanXwO/pixiv-cli/internal/shared/buildinfo"
-	"github.com/FlanChanXwO/pixiv-cli/internal/update"
+	"github.com/FlanChanXwO/pixiv-cli/internal/version"
 	thirdparty "github.com/FlanChanXwO/pixiv-cli/third_party"
 	"github.com/spf13/cobra"
 	"golang.org/x/term"
@@ -100,7 +100,7 @@ var (
 	// FANBOX 浏览器读取是 auth command 的注入端口；根包只保留一次 Run
 	// 级别的测试 seam，生产默认实现位于 commands/fanbox/auth。
 	fanboxBrowserSessionReader          fanboxcommands.BrowserProvider = fanboxauth.SystemBrowserProvider{}
-	cleanupPendingWindowsUpdate                                        = update.CleanupPendingWindowsUpdate
+	cleanupPendingWindowsUpdate                                        = selfupdate.CleanupPendingWindowsUpdate
 	automaticPersistentHandlerSupported                                = loginhelper.AutomaticPersistentHandlerSupported
 	newUpdateCommandCoordinator                                        = updatecommands.NewCoordinator
 	newCLIAutomaticUpdateChecker                                       = updatecommands.NewAutomaticChecker
@@ -126,7 +126,7 @@ func (a app) newRootCommand() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:           "pixiv",
 		Short:         "Pixiv CLI and MCP server",
-		Version:       buildinfo.Current().Version,
+		Version:       version.Current().Version,
 		SilenceUsage:  true,
 		SilenceErrors: true,
 		RunE: func(cmd *cobra.Command, args []string) error {

@@ -9,9 +9,9 @@ import (
 	"os"
 	"strings"
 
+	textutil "github.com/FlanChanXwO/pixiv-cli/internal/plaintext"
+	record "github.com/FlanChanXwO/pixiv-cli/internal/record"
 	"github.com/FlanChanXwO/pixiv-cli/internal/services/reversesearch"
-	record "github.com/FlanChanXwO/pixiv-cli/internal/shared/record"
-	textutil "github.com/FlanChanXwO/pixiv-cli/internal/utils/text"
 	"github.com/spf13/cobra"
 )
 

@@ -22,7 +22,7 @@ import (
 	"github.com/FlanChanXwO/pixiv-cli/internal/cli/commands/pixiv/auth/loginhelper"
 	"github.com/FlanChanXwO/pixiv-cli/internal/config/paths"
 	config "github.com/FlanChanXwO/pixiv-cli/internal/config/settings"
-	filesecret "github.com/FlanChanXwO/pixiv-cli/internal/storage/file/secret"
+	filesecret "github.com/FlanChanXwO/pixiv-cli/internal/storage/secretfile"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )

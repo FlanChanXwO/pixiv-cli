@@ -20,9 +20,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/FlanChanXwO/pixiv-cli/internal/logging"
 	pixivmcpserver "github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv"
-	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/internal/runtime"
-	"github.com/FlanChanXwO/pixiv-cli/internal/shared/diagnostics"
+	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/internal/toolhost"
 	"github.com/FlanChanXwO/pixiv-cli/sdk"
 	pixiv "github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
@@ -315,18 +315,18 @@ func TestStatelessHTTPProtocolNegotiation(t *testing.T) {
 func TestPixivMCPDiagnosticsUseStableLocalRequestIDs(t *testing.T) {
 	var (
 		mu     sync.Mutex
-		events []diagnostics.Event
+		events []logging.Event
 	)
-	sink := diagnostics.SinkFunc(func(event diagnostics.Event) {
+	sink := logging.SinkFunc(func(event logging.Event) {
 		mu.Lock()
 		defer mu.Unlock()
 		events = append(events, event)
 	})
-	rootCtx, cancel := context.WithCancel(diagnostics.WithScope(context.Background(), sink, diagnostics.ModulePixivCLI, 0))
+	rootCtx, cancel := context.WithCancel(logging.WithScope(context.Background(), sink, logging.ModulePixivCLI, 0))
 	defer cancel()
 
 	server := mcp.NewServer(&mcp.Implementation{Name: "debug-test", Version: "1"}, nil)
-	runtime.AddTool(runtime.NewApp(runtime.SDKPorts{}, runtime.Account{}), server, &mcp.Tool{Name: "diagnostic_test"}, func(context.Context, *mcp.CallToolRequest, struct{}) (*mcp.CallToolResult, struct{}, error) {
+	toolhost.AddTool(toolhost.NewApp(toolhost.SDKPorts{}, toolhost.Account{}), server, &mcp.Tool{Name: "diagnostic_test"}, func(context.Context, *mcp.CallToolRequest, struct{}) (*mcp.CallToolResult, struct{}, error) {
 		return &mcp.CallToolResult{}, struct{}{}, nil
 	})
 	clientTransport, serverTransport := mcp.NewInMemoryTransports()
@@ -348,7 +348,7 @@ func TestPixivMCPDiagnosticsUseStableLocalRequestIDs(t *testing.T) {
 	}
 	for index, event := range events {
 		wantID := uint64(index/2 + 1)
-		if event.Module != diagnostics.ModulePixivMCPServer || event.RequestID != wantID {
+		if event.Module != logging.ModulePixivMCPServer || event.RequestID != wantID {
 			t.Fatalf("event[%d]=%+v", index, event)
 		}
 	}

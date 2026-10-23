@@ -6,7 +6,7 @@ package records
 import (
 	"fmt"
 
-	record "github.com/FlanChanXwO/pixiv-cli/internal/shared/record"
+	record "github.com/FlanChanXwO/pixiv-cli/internal/record"
 	"github.com/FlanChanXwO/pixiv-cli/sdk"
 	pixiv "github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
 	"github.com/google/jsonschema-go/jsonschema"

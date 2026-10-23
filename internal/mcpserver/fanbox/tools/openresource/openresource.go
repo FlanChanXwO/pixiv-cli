@@ -12,16 +12,16 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/fanbox/internal/runtime"
+	"github.com/FlanChanXwO/pixiv-cli/internal/lifecycle"
+	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/fanbox/internal/toolhost"
 	"github.com/FlanChanXwO/pixiv-cli/internal/media/downloader/filename"
-	"github.com/FlanChanXwO/pixiv-cli/internal/shared/lifecycle"
 	"github.com/FlanChanXwO/pixiv-cli/sdk"
 	fanbox "github.com/FlanChanXwO/pixiv-cli/sdk/fanbox"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
 // Register 注册 fanbox_open_resource。
-func Register(app *runtime.App, server *mcp.Server) {
+func Register(app *toolhost.App, server *mcp.Server) {
 	server.AddReceivingMiddleware(func(next mcp.MethodHandler) mcp.MethodHandler {
 		return func(ctx context.Context, method string, request mcp.Request) (mcp.Result, error) {
 			result, err := next(ctx, method, request)
@@ -34,12 +34,12 @@ func Register(app *runtime.App, server *mcp.Server) {
 				return result, err
 			}
 			out := Out{Error: "invalid_request"}
-			safe := runtime.Result(out, true, out.Error)
+			safe := toolhost.Result(out, true, out.Error)
 			safe.StructuredContent = out
 			return safe, nil
 		}
 	})
-	runtime.AddTool(app, server, &mcp.Tool{Name: "fanbox_open_resource", Annotations: &mcp.ToolAnnotations{ReadOnlyHint: true, DestructiveHint: new(false), IdempotentHint: true, OpenWorldHint: new(true)}, Description: "Read a FANBOX resource by opaque ref. GET returns real image or embedded binary content and safe metadata; HEAD returns metadata only. Does not save files on the server."}, func(ctx context.Context, request *mcp.CallToolRequest, input In) (*mcp.CallToolResult, Out, error) {
+	toolhost.AddTool(app, server, &mcp.Tool{Name: "fanbox_open_resource", Annotations: &mcp.ToolAnnotations{ReadOnlyHint: true, DestructiveHint: new(false), IdempotentHint: true, OpenWorldHint: new(true)}, Description: "Read a FANBOX resource by opaque ref. GET returns real image or embedded binary content and safe metadata; HEAD returns metadata only. Does not save files on the server."}, func(ctx context.Context, request *mcp.CallToolRequest, input In) (*mcp.CallToolResult, Out, error) {
 		return handle(ctx, app, input)
 	})
 }
@@ -62,17 +62,17 @@ type Out struct {
 	Error         string `json:"error,omitempty"`
 }
 
-func handle(ctx context.Context, app *runtime.App, input In) (*mcp.CallToolResult, Out, error) {
+func handle(ctx context.Context, app *toolhost.App, input In) (*mcp.CallToolResult, Out, error) {
 	out := Out{}
 	ref, err := sdk.ParseResourceRef(input.Ref)
 	if err != nil {
 		out.Error = "invalid_ref"
-		return runtime.Result(out, true, out.Error), out, nil
+		return toolhost.Result(out, true, out.Error), out, nil
 	}
 	product, err := sdk.ResourceRefProduct(ref)
 	if err != nil || product != "fanbox" {
 		out.Error = "invalid_ref"
-		return runtime.Result(out, true, out.Error), out, nil
+		return toolhost.Result(out, true, out.Error), out, nil
 	}
 	method := sdk.ResourceMethod(strings.ToUpper(input.Method))
 	if method == "" {
@@ -80,7 +80,7 @@ func handle(ctx context.Context, app *runtime.App, input In) (*mcp.CallToolResul
 	}
 	if method != sdk.ResourceMethodGet && method != sdk.ResourceMethodHead {
 		out.Error = "invalid_method"
-		return runtime.Result(out, true, out.Error), out, nil
+		return toolhost.Result(out, true, out.Error), out, nil
 	}
 	var content []mcp.Content
 	err = lifecycle.Run(ctx, app.OpenClient, func(ctx context.Context, client *fanbox.Client, _ *lifecycle.Attempt) error {
@@ -146,7 +146,7 @@ func handle(ctx context.Context, app *runtime.App, input In) (*mcp.CallToolResul
 		}
 	}
 	out.Complete = err == nil
-	result := runtime.Result(out, !out.Complete, out.Error)
+	result := toolhost.Result(out, !out.Complete, out.Error)
 	if len(content) > 0 {
 		result.Content = content
 	}

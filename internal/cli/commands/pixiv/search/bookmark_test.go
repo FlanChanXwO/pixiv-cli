@@ -9,9 +9,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/FlanChanXwO/pixiv-cli/internal/shared/pagination"
-	"github.com/FlanChanXwO/pixiv-cli/internal/shared/searchfilter"
-	"github.com/FlanChanXwO/pixiv-cli/internal/shared/traversal"
+	"github.com/FlanChanXwO/pixiv-cli/internal/pagination"
+	"github.com/FlanChanXwO/pixiv-cli/internal/searchfilter"
 	"github.com/FlanChanXwO/pixiv-cli/sdk"
 	product "github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
 	"github.com/stretchr/testify/require"
@@ -33,7 +32,7 @@ func (c artworkClient) CheckpointSearchArtworks(request product.SearchArtworksRe
 	return sdk.NewCursor("test", "checkpoint", 1, "hash", []byte("batch remainder"))
 }
 
-func oneClientOperation[C any](client C) traversal.Execute[C] {
+func oneClientOperation[C any](client C) pagination.Execute[C] {
 	return func(ctx context.Context, attempt func(context.Context, C) (bool, error)) error {
 		_, err := attempt(ctx, client)
 		return err

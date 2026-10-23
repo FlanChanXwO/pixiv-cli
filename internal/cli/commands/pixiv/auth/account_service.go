@@ -12,8 +12,8 @@ import (
 	"time"
 
 	config "github.com/FlanChanXwO/pixiv-cli/internal/config/settings"
+	"github.com/FlanChanXwO/pixiv-cli/internal/httpclient"
 	pixivaccount "github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/account"
-	"github.com/FlanChanXwO/pixiv-cli/internal/shared/network"
 	pixiv "github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
 )
 
@@ -151,7 +151,7 @@ func (s AccountService) sdkOptions(proxyOverride *string) (pixiv.Options, error)
 	if proxy == nil {
 		return pixiv.Options{}, nil
 	}
-	client, err := network.HTTPClient(*proxy)
+	client, err := httpclient.HTTPClient(*proxy)
 	if err != nil {
 		return pixiv.Options{}, err
 	}
@@ -162,7 +162,7 @@ func pixivOptionsForProxy(proxyOverride *string) (pixiv.LoginOptions, error) {
 	if proxyOverride == nil {
 		return pixiv.LoginOptions{}, nil
 	}
-	client, err := network.HTTPClient(*proxyOverride)
+	client, err := httpclient.HTTPClient(*proxyOverride)
 	if err != nil {
 		return pixiv.LoginOptions{}, err
 	}

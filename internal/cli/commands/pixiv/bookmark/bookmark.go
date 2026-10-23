@@ -13,11 +13,11 @@ import (
 	requirements "github.com/FlanChanXwO/pixiv-cli/internal/cli/commands"
 	"github.com/FlanChanXwO/pixiv-cli/internal/cli/commands/pixiv"
 	"github.com/FlanChanXwO/pixiv-cli/internal/cli/commands/pixiv/internal/listing"
+	"github.com/FlanChanXwO/pixiv-cli/internal/cli/internal/input"
+	"github.com/FlanChanXwO/pixiv-cli/internal/cli/internal/resolver"
 	"github.com/FlanChanXwO/pixiv-cli/internal/cli/pipeline"
-	"github.com/FlanChanXwO/pixiv-cli/internal/shared/pagination"
-	record "github.com/FlanChanXwO/pixiv-cli/internal/shared/record"
-	"github.com/FlanChanXwO/pixiv-cli/internal/shared/resolver"
-	"github.com/FlanChanXwO/pixiv-cli/internal/utils/parse"
+	"github.com/FlanChanXwO/pixiv-cli/internal/pagination"
+	record "github.com/FlanChanXwO/pixiv-cli/internal/record"
 	"github.com/FlanChanXwO/pixiv-cli/sdk"
 	pixiv "github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
 	"github.com/spf13/cobra"
@@ -304,7 +304,7 @@ func (a command) newAdd() *cobra.Command {
 				}
 				return a.data.ConsumeActionRecords(cmd, "bookmark_add", opts.onError, recordTypes, invoke)
 			}
-			id, err := parse.PositiveInt64(args[0], "bookmark target ID")
+			id, err := input.PositiveInt64(args[0], "bookmark target ID")
 			if err != nil {
 				return a.data.Usage(err)
 			}
@@ -350,7 +350,7 @@ func (a command) newRemove() *cobra.Command {
 				}
 				return a.data.ConsumeActionRecords(cmd, "bookmark_remove", opts.onError, recordTypes, invoke)
 			}
-			id, err := parse.PositiveInt64(args[0], "bookmark target ID")
+			id, err := input.PositiveInt64(args[0], "bookmark target ID")
 			if err != nil {
 				return a.data.Usage(err)
 			}

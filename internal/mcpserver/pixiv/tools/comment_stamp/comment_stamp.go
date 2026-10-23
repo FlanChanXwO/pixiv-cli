@@ -6,15 +6,15 @@ import (
 	"fmt"
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/internal/outputs"
-	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/internal/runtime"
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/internal/schemas"
+	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/internal/toolhost"
 	pixiv "github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
 // Register 注册 pixiv_comment_stamp。
-func Register(app *runtime.App, server *mcp.Server) {
-	runtime.AddTool(app, server, &mcp.Tool{Name: "pixiv_comment_stamp", Description: "Add a stamp comment to an artwork or novel.", Annotations: &mcp.ToolAnnotations{ReadOnlyHint: false, DestructiveHint: new(false), IdempotentHint: false, OpenWorldHint: new(true)},
+func Register(app *toolhost.App, server *mcp.Server) {
+	toolhost.AddTool(app, server, &mcp.Tool{Name: "pixiv_comment_stamp", Description: "Add a stamp comment to an artwork or novel.", Annotations: &mcp.ToolAnnotations{ReadOnlyHint: false, DestructiveHint: new(false), IdempotentHint: false, OpenWorldHint: new(true)},
 		InputSchema: schemas.ClosedObject(commentProperties(), []string{"kind", "id", "stamp_id"})}, func(ctx context.Context, request *mcp.CallToolRequest, input In) (*mcp.CallToolResult, outputs.Mutation, error) {
 		return handle(ctx, app, input)
 	})
@@ -37,7 +37,7 @@ func commentProperties() map[string]any {
 	}
 }
 
-func handle(ctx context.Context, app *runtime.App, in In) (*mcp.CallToolResult, outputs.Mutation, error) {
+func handle(ctx context.Context, app *toolhost.App, in In) (*mcp.CallToolResult, outputs.Mutation, error) {
 	if in.Kind == "novel" {
 		out := outputs.Mutation{
 			Action:  "stamp_novel_comment",
@@ -45,7 +45,7 @@ func handle(ctx context.Context, app *runtime.App, in In) (*mcp.CallToolResult, 
 			Text:    fmt.Sprintf("Added stamp comment to novel %d.", in.ID),
 		}
 		return outputs.RunMutationInPlace(&out, func() error {
-			return runtime.Write(app, ctx, func(ctx context.Context, client *pixiv.Client) error {
+			return toolhost.Write(app, ctx, func(ctx context.Context, client *pixiv.Client) error {
 				result, err := client.StampNovelComment(ctx, pixiv.StampNovelCommentRequest{
 					NovelID: in.ID,
 					Comment: in.Comment,
@@ -66,7 +66,7 @@ func handle(ctx context.Context, app *runtime.App, in In) (*mcp.CallToolResult, 
 		Text:     fmt.Sprintf("Added stamp comment to artwork %d.", in.ID),
 	}
 	return outputs.RunMutationInPlace(&out, func() error {
-		return runtime.Write(app, ctx, func(ctx context.Context, client *pixiv.Client) error {
+		return toolhost.Write(app, ctx, func(ctx context.Context, client *pixiv.Client) error {
 			result, err := client.StampArtworkComment(ctx, pixiv.StampArtworkCommentRequest{
 				ArtworkID: in.ID,
 				Comment:   in.Comment,

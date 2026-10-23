@@ -10,7 +10,7 @@ import (
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/config/paths"
 	"github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/account/loginrelay"
-	filesecret "github.com/FlanChanXwO/pixiv-cli/internal/storage/file/secret"
+	filesecret "github.com/FlanChanXwO/pixiv-cli/internal/storage/secretfile"
 )
 
 const callbackEndpointFilename = "url-handler-endpoint"

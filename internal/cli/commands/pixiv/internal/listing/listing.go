@@ -11,9 +11,8 @@ import (
 	"math"
 	"os"
 
-	"github.com/FlanChanXwO/pixiv-cli/internal/shared/pagination"
-	record "github.com/FlanChanXwO/pixiv-cli/internal/shared/record"
-	"github.com/FlanChanXwO/pixiv-cli/internal/shared/traversal"
+	"github.com/FlanChanXwO/pixiv-cli/internal/pagination"
+	record "github.com/FlanChanXwO/pixiv-cli/internal/record"
 	"github.com/FlanChanXwO/pixiv-cli/sdk"
 	pixiv "github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
 	"github.com/spf13/cobra"
@@ -96,7 +95,7 @@ func New(out io.Writer, executor Executor) Runner {
 
 // Executor 把一次 request 绑定为共享 traversal 的可重入执行函数；逻辑分页、
 // bookmark 策略和 cursor 处理仍由各 adapter 拥有。
-func (a Runner) Executor(request Request) traversal.Execute[*pixiv.Client] {
+func (a Runner) Executor(request Request) pagination.Execute[*pixiv.Client] {
 	if a.executor == nil {
 		return nil
 	}
@@ -105,12 +104,12 @@ func (a Runner) Executor(request Request) traversal.Execute[*pixiv.Client] {
 	}
 }
 
-func runPages[C any, T any](ctx context.Context, execute traversal.Execute[C], plan pagination.PagePlan, begin func() error, fetch func(context.Context, C, sdk.Cursor) ([]T, sdk.Cursor, error), consume func([]T) (bool, error)) error {
+func runPages[C any, T any](ctx context.Context, execute pagination.Execute[C], plan pagination.PagePlan, begin func() error, fetch func(context.Context, C, sdk.Cursor) ([]T, sdk.Cursor, error), consume func([]T) (bool, error)) error {
 	if execute == nil {
 		return sdk.NewError("pixiv", "PagedRead", sdk.LocalStateError,
 			sdk.WithDetail("sdk pooled operation is not configured"))
 	}
-	_, err := traversal.TraverseWith(ctx, execute, plan, begin, fetch, consume)
+	_, err := pagination.TraverseWith(ctx, execute, plan, begin, fetch, consume)
 	return err
 }
 

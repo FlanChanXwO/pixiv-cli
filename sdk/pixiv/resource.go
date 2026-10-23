@@ -15,7 +15,7 @@ import (
 	"github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/endpoint/user"
 	"github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/protocol"
 	"github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/resource"
-	atomicfile "github.com/FlanChanXwO/pixiv-cli/internal/storage/file/atomic"
+	atomicfile "github.com/FlanChanXwO/pixiv-cli/internal/storage/atomicfile"
 	"github.com/FlanChanXwO/pixiv-cli/sdk"
 )
 

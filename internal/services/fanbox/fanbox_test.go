@@ -5,7 +5,7 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/FlanChanXwO/pixiv-cli/internal/shared/lifecycle"
+	"github.com/FlanChanXwO/pixiv-cli/internal/lifecycle"
 	fanboxsdk "github.com/FlanChanXwO/pixiv-cli/sdk/fanbox"
 	"github.com/stretchr/testify/require"
 )

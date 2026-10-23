@@ -9,7 +9,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/FlanChanXwO/pixiv-cli/internal/storage/file/lock"
+	"github.com/FlanChanXwO/pixiv-cli/internal/storage/filelock"
 	_ "modernc.org/sqlite"
 )
 
@@ -71,7 +71,7 @@ type DB struct {
 
 // 同一路径的CLI/MCP短事务和完整快照读取共用侧车锁；不持锁执行上游请求。
 func (d *DB) withLock(ctx context.Context, action func() error) error {
-	return lock.WithPrivateLock(ctx, d.path, action)
+	return filelock.WithPrivateLock(ctx, d.path, action)
 }
 
 func withDatabaseValue[T any](ctx context.Context, d *DB, action func() (T, error)) (T, error) {

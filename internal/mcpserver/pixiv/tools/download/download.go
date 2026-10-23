@@ -10,9 +10,9 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/internal/runtime"
+	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/internal/toolhost"
 	downloader "github.com/FlanChanXwO/pixiv-cli/internal/media/downloader"
-	uriutil "github.com/FlanChanXwO/pixiv-cli/internal/utils/uri"
+	uriutil "github.com/FlanChanXwO/pixiv-cli/internal/media/downloader"
 	pixiv "github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
@@ -20,11 +20,11 @@ import (
 var errInputValidation = errors.New("tool input validation failed")
 
 // Register 注册 download 与 download_random_from_recommendation。
-func Register(app *runtime.App, server *mcp.Server) {
-	runtime.AddTool(app, server, &mcp.Tool{Name: "pixiv_download", Annotations: &mcp.ToolAnnotations{ReadOnlyHint: false, DestructiveHint: new(true), IdempotentHint: true, OpenWorldHint: new(true)}, Description: "Download artwork IDs or supported Pixiv artwork/user URLs with intelligent storage rules."}, func(ctx context.Context, request *mcp.CallToolRequest, input downloadIn) (*mcp.CallToolResult, downloadOut, error) {
+func Register(app *toolhost.App, server *mcp.Server) {
+	toolhost.AddTool(app, server, &mcp.Tool{Name: "pixiv_download", Annotations: &mcp.ToolAnnotations{ReadOnlyHint: false, DestructiveHint: new(true), IdempotentHint: true, OpenWorldHint: new(true)}, Description: "Download artwork IDs or supported Pixiv artwork/user URLs with intelligent storage rules."}, func(ctx context.Context, request *mcp.CallToolRequest, input downloadIn) (*mcp.CallToolResult, downloadOut, error) {
 		return handleDownload(ctx, app, input)
 	})
-	runtime.AddTool(app, server, &mcp.Tool{Name: "pixiv_download_random_from_recommendation", Annotations: &mcp.ToolAnnotations{ReadOnlyHint: false, DestructiveHint: new(true), IdempotentHint: false, OpenWorldHint: new(true)}, Description: "Download random artworks from recommendations."}, func(ctx context.Context, request *mcp.CallToolRequest, input downloadRandomIn) (*mcp.CallToolResult, downloadOut, error) {
+	toolhost.AddTool(app, server, &mcp.Tool{Name: "pixiv_download_random_from_recommendation", Annotations: &mcp.ToolAnnotations{ReadOnlyHint: false, DestructiveHint: new(true), IdempotentHint: false, OpenWorldHint: new(true)}, Description: "Download random artworks from recommendations."}, func(ctx context.Context, request *mcp.CallToolRequest, input downloadRandomIn) (*mcp.CallToolResult, downloadOut, error) {
 		return handleDownloadRandom(ctx, app, input)
 	})
 }
@@ -85,7 +85,7 @@ const (
 	deliveryLocalPath = "local_path"
 )
 
-func handleDownload(ctx context.Context, app *runtime.App, in downloadIn) (*mcp.CallToolResult, downloadOut, error) {
+func handleDownload(ctx context.Context, app *toolhost.App, in downloadIn) (*mcp.CallToolResult, downloadOut, error) {
 	sources, err := parseDownloadSources(in)
 	if err != nil {
 		return emptyDownloadError(ctx, errInputValidation, deliveryLocalPath, "Error: "+err.Error())
@@ -129,7 +129,7 @@ func parseDownloadSources(in downloadIn) ([]string, error) {
 
 // downloadSources 把 MCP 下载请求交给 downloader.DownloadService：PID、作品/用户
 // URL 与受资源策略允许的直链都经 public SDK 解析，统一走 DownloadSources 编排。
-func downloadSources(ctx context.Context, app *runtime.App, sources []string, pages []int, quality downloader.DownloadQuality, ugoiraFormat downloader.UgoiraFormat) (downloader.DownloadReport, error) {
+func downloadSources(ctx context.Context, app *toolhost.App, sources []string, pages []int, quality downloader.DownloadQuality, ugoiraFormat downloader.UgoiraFormat) (downloader.DownloadReport, error) {
 	lease, err := app.OpenClient(ctx)
 	if err != nil {
 		return downloader.DownloadReport{}, err
@@ -149,7 +149,7 @@ func downloadSources(ctx context.Context, app *runtime.App, sources []string, pa
 	return service.DownloadSources(ctx, client, sources, request)
 }
 
-func downloadDefaults(app *runtime.App) (string, string, string) {
+func downloadDefaults(app *toolhost.App) (string, string, string) {
 	config := app.SDKPorts().Downloads
 	return config.Path, config.FilenameTemplate, config.DirectoryTemplate
 }
@@ -318,7 +318,7 @@ func parseDownloadRandomCount(value *int) (int, error) {
 	return *value, nil
 }
 
-func handleDownloadRandom(ctx context.Context, app *runtime.App, in downloadRandomIn) (*mcp.CallToolResult, downloadOut, error) {
+func handleDownloadRandom(ctx context.Context, app *toolhost.App, in downloadRandomIn) (*mcp.CallToolResult, downloadOut, error) {
 	delivery, errText := normalizeDelivery(in.Delivery)
 	if errText != "" {
 		return emptyDownloadError(ctx, errInputValidation, deliveryLocalPath, errText)

@@ -15,10 +15,10 @@ import (
 	"sync/atomic"
 	"testing"
 
+	"github.com/FlanChanXwO/pixiv-cli/internal/lifecycle"
 	pixivmcpserver "github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv"
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/internal/outputs"
-	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/internal/runtime"
-	"github.com/FlanChanXwO/pixiv-cli/internal/shared/lifecycle"
+	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/internal/toolhost"
 	"github.com/FlanChanXwO/pixiv-cli/sdk"
 	pixiv "github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
@@ -457,9 +457,9 @@ func TestMCPStdioHelper(t *testing.T) {
 }
 
 func TestToolErrorResultPreservesStructuredContent(t *testing.T) {
-	app := runtime.NewApp(pixivmcpserver.SDKPorts{}, pixivmcpserver.Account{})
+	app := toolhost.NewApp(pixivmcpserver.SDKPorts{}, pixivmcpserver.Account{})
 	server := mcp.NewServer(&mcp.Implementation{Name: "test", Version: "1"}, nil)
-	runtime.AddTool(app, server, &mcp.Tool{Name: "structured_error"}, func(context.Context, *mcp.CallToolRequest, struct{}) (*mcp.CallToolResult, map[string]string, error) {
+	toolhost.AddTool(app, server, &mcp.Tool{Name: "structured_error"}, func(context.Context, *mcp.CallToolRequest, struct{}) (*mcp.CallToolResult, map[string]string, error) {
 		return &mcp.CallToolResult{
 			IsError:           true,
 			Content:           []mcp.Content{&mcp.TextContent{Text: "structured failure"}},
@@ -490,7 +490,7 @@ func TestOpenClientPassesCanceledContextAndClosesLease(t *testing.T) {
 	var calls atomic.Int32
 	var closeCalls atomic.Int32
 	client := openWireClient(t, &fakeSDKClient{userID: 42})
-	app := runtime.NewApp(pixivmcpserver.SDKPorts{
+	app := toolhost.NewApp(pixivmcpserver.SDKPorts{
 		OpenLease: func(ctx context.Context, _ pixivmcpserver.Account) (*lifecycle.Lease[*pixiv.Client], error) {
 			calls.Add(1)
 			if err := ctx.Err(); err != nil {

@@ -10,15 +10,15 @@ import (
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/internal/filters"
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/internal/outputs"
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/internal/records"
-	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/internal/runtime"
+	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/internal/toolhost"
 	"github.com/FlanChanXwO/pixiv-cli/sdk"
 	pixiv "github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
 // Register 注册 pixiv_illust_ranking。
-func Register(app *runtime.App, server *mcp.Server) {
-	runtime.AddTool(app, server, &mcp.Tool{Name: "pixiv_illust_ranking", Annotations: &mcp.ToolAnnotations{ReadOnlyHint: true, DestructiveHint: new(false), IdempotentHint: true, OpenWorldHint: new(true)}, Description: "Browse Pixiv rankings.", InputSchema: rankingInputSchema(), OutputSchema: records.RecordsOutputSchema()}, func(ctx context.Context, request *mcp.CallToolRequest, input rankingIn) (*mcp.CallToolResult, outputs.Records, error) {
+func Register(app *toolhost.App, server *mcp.Server) {
+	toolhost.AddTool(app, server, &mcp.Tool{Name: "pixiv_illust_ranking", Annotations: &mcp.ToolAnnotations{ReadOnlyHint: true, DestructiveHint: new(false), IdempotentHint: true, OpenWorldHint: new(true)}, Description: "Browse Pixiv rankings.", InputSchema: rankingInputSchema(), OutputSchema: records.RecordsOutputSchema()}, func(ctx context.Context, request *mcp.CallToolRequest, input rankingIn) (*mcp.CallToolResult, outputs.Records, error) {
 		return handleIllustRanking(ctx, app, input)
 	})
 }
@@ -28,7 +28,7 @@ type rankingIn struct {
 	Mode         string                `json:"mode,omitempty"`
 	Date         string                `json:"date,omitempty"`
 	IllustFilter *filters.IllustFilter `json:"illust_filter,omitempty"`
-	runtime.PageLimitIn
+	toolhost.PageLimitIn
 }
 
 var rankingModes = []string{
@@ -56,7 +56,7 @@ func isRankingMode(value string) bool {
 	return slices.Contains(rankingModes, value)
 }
 
-func handleIllustRanking(ctx context.Context, app *runtime.App, in rankingIn) (*mcp.CallToolResult, outputs.Records, error) {
+func handleIllustRanking(ctx context.Context, app *toolhost.App, in rankingIn) (*mcp.CallToolResult, outputs.Records, error) {
 	if in.Mode == "" {
 		in.Mode = string(pixiv.RankingModeDay)
 	}
@@ -74,7 +74,7 @@ func handleIllustRanking(ctx context.Context, app *runtime.App, in rankingIn) (*
 	}
 	bindingInput := in
 	bindingInput.Cursor = nil
-	items, page, err := runtime.CollectCursorWith(ctx, app, "illust_ranking", bindingInput, in.Cursor, in.PageLimitIn, func(ctx context.Context, client *pixiv.Client, cursor sdk.Cursor) ([]pixiv.Artwork, sdk.Cursor, error) {
+	items, page, err := toolhost.CollectCursorWith(ctx, app, "illust_ranking", bindingInput, in.Cursor, in.PageLimitIn, func(ctx context.Context, client *pixiv.Client, cursor sdk.Cursor) ([]pixiv.Artwork, sdk.Cursor, error) {
 		result, err := client.ArtworkRanking(ctx, pixiv.ArtworkRankingRequest{Mode: pixiv.RankingMode(in.Mode), Date: in.Date, Cursor: cursor})
 		if err != nil {
 			return nil, sdk.Cursor{}, err

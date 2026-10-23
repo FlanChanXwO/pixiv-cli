@@ -9,15 +9,15 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/internal/runtime"
+	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/internal/toolhost"
+	record "github.com/FlanChanXwO/pixiv-cli/internal/record"
 	"github.com/FlanChanXwO/pixiv-cli/internal/services/reversesearch"
-	record "github.com/FlanChanXwO/pixiv-cli/internal/shared/record"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
 // Register 注册 pixiv_reverse_search。source 只在当前请求中传给 Facade，输出永远只
 // 暴露 source kind/hash 摘要；provider、pixiv-only、代理和凭据来自启动快照。
-func Register(app *runtime.App, server *mcp.Server) {
+func Register(app *toolhost.App, server *mcp.Server) {
 	// SDK 的 schema/type 错误会包含输入值；仅拦截本 tool 尚未进入 typed handler 的失败。
 	// handler 总是返回完整 envelope，不能覆盖其 provider partial/error 结果。
 	server.AddReceivingMiddleware(func(next mcp.MethodHandler) mcp.MethodHandler {
@@ -37,7 +37,7 @@ func Register(app *runtime.App, server *mcp.Server) {
 			return result, err
 		}
 	})
-	runtime.AddTool(app, server, &mcp.Tool{
+	toolhost.AddTool(app, server, &mcp.Tool{
 		Meta: mcp.Meta{"openai/fileParams": []string{"image"}},
 		Name: "pixiv_reverse_search", Annotations: &mcp.ToolAnnotations{ReadOnlyHint: true, DestructiveHint: new(false), IdempotentHint: true, OpenWorldHint: new(true)},
 		Description:  "Upload a server-side image source or a host-provided image to SauceNAO or ascii2d and return Pixiv matches. Provide exactly one of source or image.",
@@ -192,7 +192,7 @@ func reverseSearchOutputSchema() map[string]any {
 	}
 }
 
-func handleReverseSearch(ctx context.Context, app *runtime.App, input reverseSearchInput) (*mcp.CallToolResult, reverseSearchOutput, error) {
+func handleReverseSearch(ctx context.Context, app *toolhost.App, input reverseSearchInput) (*mcp.CallToolResult, reverseSearchOutput, error) {
 	out := emptyReverseSearchOutput()
 	if (input.Source == nil) == (input.Image == nil) {
 		return reverseSearchError(out, reversesearch.CodeInvalidRequest), out, nil

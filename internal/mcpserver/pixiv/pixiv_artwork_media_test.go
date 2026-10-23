@@ -19,9 +19,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/FlanChanXwO/pixiv-cli/internal/lifecycle"
+	"github.com/FlanChanXwO/pixiv-cli/internal/logging"
 	pixivserver "github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv"
-	"github.com/FlanChanXwO/pixiv-cli/internal/shared/diagnostics"
-	"github.com/FlanChanXwO/pixiv-cli/internal/shared/lifecycle"
 	pixiv "github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/stretchr/testify/require"
@@ -286,13 +286,13 @@ func TestArtworkMediaUgoiraDeliversAnimationAndPreview(t *testing.T) {
 				return &http.Response{StatusCode: 200, Header: http.Header{"Content-Type": {"application/json"}}, Body: io.NopCloser(strings.NewReader(body))}, nil
 			})}})
 			require.NoError(t, err)
-			var events []diagnostics.Event
+			var events []logging.Event
 			var eventsMu sync.Mutex
-			ctx, cancel := context.WithCancel(diagnostics.WithScope(t.Context(), diagnostics.SinkFunc(func(event diagnostics.Event) {
+			ctx, cancel := context.WithCancel(logging.WithScope(t.Context(), logging.SinkFunc(func(event logging.Event) {
 				eventsMu.Lock()
 				defer eventsMu.Unlock()
 				events = append(events, event)
-			}), diagnostics.ModulePixivMCP, 0))
+			}), logging.ModulePixivMCP, 0))
 			defer cancel()
 			protocol := newTestServer(pixivserver.SDKPorts{OpenLease: func(context.Context, pixivserver.Account) (*lifecycle.Lease[*pixiv.Client], error) {
 				return lifecycle.NewLease(client, func() error { closed.Add(1); return nil }), nil
@@ -347,16 +347,16 @@ func TestArtworkMediaUgoiraDeliversAnimationAndPreview(t *testing.T) {
 			animationBytes := animation.Data
 			require.Equal(t, p.Size, len(animationBytes))
 			eventsMu.Lock()
-			observed := append([]diagnostics.Event(nil), events...)
+			observed := append([]logging.Event(nil), events...)
 			eventsMu.Unlock()
-			stages := map[string]diagnostics.Event{}
+			stages := map[string]logging.Event{}
 			for _, event := range observed {
 				stages[event.Operation] = event
 			}
 			for _, stage := range []string{"artwork_query", "animation_metadata", "animation_zip_download", "animation_encode_wait", "animation_encode", "animation_result_read", "animation_generation"} {
 				event, ok := stages[stage]
 				require.True(t, ok, "missing actual stage %s", stage)
-				require.Equal(t, diagnostics.EventCompleted, event.Kind)
+				require.Equal(t, logging.EventCompleted, event.Kind)
 				require.GreaterOrEqual(t, event.Duration, time.Duration(0))
 			}
 			require.Equal(t, len(archive.Bytes()), stages["animation_zip_download"].Count)
@@ -429,13 +429,13 @@ func TestArtworkMediaUgoiraFailureAndCancellationCleanTemporaryFiles(t *testing.
 				return &http.Response{StatusCode: 200, Header: http.Header{"Content-Type": {"application/zip"}}, Body: body}, nil
 			})}})
 			require.NoError(t, err)
-			var events []diagnostics.Event
+			var events []logging.Event
 			var eventsMu sync.Mutex
-			lifetime, stop := context.WithCancel(diagnostics.WithScope(t.Context(), diagnostics.SinkFunc(func(event diagnostics.Event) {
+			lifetime, stop := context.WithCancel(logging.WithScope(t.Context(), logging.SinkFunc(func(event logging.Event) {
 				eventsMu.Lock()
 				defer eventsMu.Unlock()
 				events = append(events, event)
-			}), diagnostics.ModulePixivMCP, 0))
+			}), logging.ModulePixivMCP, 0))
 			defer stop()
 			protocol := newTestServer(pixivserver.SDKPorts{OpenLease: func(context.Context, pixivserver.Account) (*lifecycle.Lease[*pixiv.Client], error) {
 				return lifecycle.NewLease(client, func() error { leaseClosed.Store(true); return nil }), nil
@@ -481,7 +481,7 @@ func TestArtworkMediaUgoiraFailureAndCancellationCleanTemporaryFiles(t *testing.
 			entries, err := os.ReadDir(temp)
 			require.NoError(t, err)
 			require.Empty(t, entries, "failed/canceled encode left temporary files")
-			var terminal diagnostics.Event
+			var terminal logging.Event
 			require.Eventually(t, func() bool {
 				eventsMu.Lock()
 				defer eventsMu.Unlock()
@@ -493,10 +493,10 @@ func TestArtworkMediaUgoiraFailureAndCancellationCleanTemporaryFiles(t *testing.
 				}
 				return false
 			}, 5*time.Second, time.Millisecond)
-			require.Equal(t, diagnostics.EventFailed, terminal.Kind)
-			reason := diagnostics.ReasonToolFailed
+			require.Equal(t, logging.EventFailed, terminal.Kind)
+			reason := logging.ReasonToolFailed
 			if mode == "cancel" {
-				reason = diagnostics.ReasonRequestCancelled
+				reason = logging.ReasonRequestCancelled
 			}
 			require.Equal(t, reason, terminal.Reason)
 			require.Zero(t, terminal.Count, "failed work must not report a delivered animation")

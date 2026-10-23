@@ -8,7 +8,7 @@ import (
 	"os"
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/cli/commands/pixiv/internal/listing"
-	"github.com/FlanChanXwO/pixiv-cli/internal/shared/searchfilter"
+	"github.com/FlanChanXwO/pixiv-cli/internal/searchfilter"
 	"github.com/FlanChanXwO/pixiv-cli/sdk"
 	pixiv "github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
 )

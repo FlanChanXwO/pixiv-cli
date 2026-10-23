@@ -14,9 +14,9 @@ import (
 	"testing/synctest"
 	"time"
 
+	"github.com/FlanChanXwO/pixiv-cli/internal/logging"
 	accountpixiv "github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/account"
 	poolpixiv "github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/pool"
-	"github.com/FlanChanXwO/pixiv-cli/internal/shared/diagnostics"
 	"github.com/FlanChanXwO/pixiv-cli/sdk"
 	sdkpixiv "github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
 	"github.com/stretchr/testify/require"
@@ -578,8 +578,8 @@ func (cancelledReadGate) Release()                            { panic("cancelled
 
 func TestReadSessionCancelledGateObservation(t *testing.T) {
 	repo := newPixivTestRepository(pixivAccountFixture(42, "artist", "refresh", 1, true))
-	var events []diagnostics.Event
-	ctx, cancel := context.WithCancel(diagnostics.WithScope(t.Context(), diagnostics.SinkFunc(func(event diagnostics.Event) { events = append(events, event) }), diagnostics.ModulePixivMCP, 0))
+	var events []logging.Event
+	ctx, cancel := context.WithCancel(logging.WithScope(t.Context(), logging.SinkFunc(func(event logging.Event) { events = append(events, event) }), logging.ModulePixivMCP, 0))
 	defer cancel()
 	sessions := accountpixiv.NewReadSessions(newPixivTestService(repo), cancelledReadGate{cancel})
 	defer sessions.Close()
@@ -587,8 +587,8 @@ func TestReadSessionCancelledGateObservation(t *testing.T) {
 	require.ErrorIs(t, err, context.Canceled)
 	require.Len(t, events, 1)
 	require.Equal(t, "session_wait", events[0].Operation)
-	require.Equal(t, diagnostics.EventFailed, events[0].Kind)
-	require.Equal(t, diagnostics.ReasonRequestCancelled, events[0].Reason)
+	require.Equal(t, logging.EventFailed, events[0].Kind)
+	require.Equal(t, logging.ReasonRequestCancelled, events[0].Reason)
 	require.GreaterOrEqual(t, events[0].Duration, time.Duration(0))
 }
 
@@ -666,20 +666,20 @@ func TestReadSessionsReuseAndCredentialInvalidation(t *testing.T) {
 	a = repo.accounts[42]
 	a.CredentialRevision++
 	repo.accounts[42] = a
-	var observed []diagnostics.Event
-	ctx := diagnostics.WithScope(t.Context(), diagnostics.SinkFunc(func(event diagnostics.Event) { observed = append(observed, event) }), diagnostics.ModulePixivMCP, 0)
+	var observed []logging.Event
+	ctx := logging.WithScope(t.Context(), logging.SinkFunc(func(event logging.Event) { observed = append(observed, event) }), logging.ModulePixivMCP, 0)
 	failed, err := sessions.Open(ctx, 42, "changed-network", options)
 	require.Error(t, err)
 	require.Nil(t, failed.Client)
-	var refresh []diagnostics.Event
+	var refresh []logging.Event
 	for _, event := range observed {
 		if event.Operation == "session_refresh" {
 			refresh = append(refresh, event)
 		}
 	}
 	require.Len(t, refresh, 1)
-	require.Equal(t, diagnostics.EventFailed, refresh[0].Kind)
-	require.Equal(t, diagnostics.ReasonToolFailed, refresh[0].Reason)
+	require.Equal(t, logging.EventFailed, refresh[0].Kind)
+	require.Equal(t, logging.ReasonToolFailed, refresh[0].Reason)
 	require.GreaterOrEqual(t, refresh[0].Duration, time.Duration(0))
 	require.NotContains(t, fmt.Sprint(observed), "persist failure")
 	require.NotContains(t, fmt.Sprint(observed), "rotated")

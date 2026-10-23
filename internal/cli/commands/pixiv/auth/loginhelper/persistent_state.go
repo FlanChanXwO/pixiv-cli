@@ -10,7 +10,7 @@ import (
 	"strings"
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/config/paths"
-	filesecret "github.com/FlanChanXwO/pixiv-cli/internal/storage/file/secret"
+	filesecret "github.com/FlanChanXwO/pixiv-cli/internal/storage/secretfile"
 )
 
 // HandlerManifestFilename 是持久协议 handler 的私有 manifest 文件名。

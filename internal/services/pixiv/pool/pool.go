@@ -12,9 +12,9 @@ import (
 	"time"
 
 	config "github.com/FlanChanXwO/pixiv-cli/internal/config/settings"
+	"github.com/FlanChanXwO/pixiv-cli/internal/lifecycle"
+	"github.com/FlanChanXwO/pixiv-cli/internal/logging"
 	accountpixiv "github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/account"
-	"github.com/FlanChanXwO/pixiv-cli/internal/shared/diagnostics"
-	"github.com/FlanChanXwO/pixiv-cli/internal/shared/lifecycle"
 )
 
 // ErrAccountPoolExhausted 表示自然候选集合已耗尽。
@@ -72,9 +72,9 @@ func (s Scheduler) Run(ctx context.Context, attempt func(context.Context, int64,
 		if userID <= 0 {
 			return errors.New("account pool state store selected an invalid user id")
 		}
-		diagnostics.Emit(ctx, diagnostics.Event{
-			Module:    diagnostics.ModulePixivAccount,
-			Kind:      diagnostics.EventAccount,
+		logging.Emit(ctx, logging.Event{
+			Module:    logging.ModulePixivAccount,
+			Kind:      logging.EventAccount,
 			Operation: "selected",
 			Resource:  "uid " + strconv.FormatInt(userID, 10),
 		})
@@ -103,12 +103,12 @@ func (s Scheduler) Run(ctx context.Context, attempt func(context.Context, int64,
 		if err := s.State.Freeze(ctx, userID, freezeNow.Add(retryAfter).UTC().Unix()); err != nil {
 			return err
 		}
-		diagnostics.Emit(ctx, diagnostics.Event{
-			Module:    diagnostics.ModulePixivAccount,
-			Kind:      diagnostics.EventAccount,
+		logging.Emit(ctx, logging.Event{
+			Module:    logging.ModulePixivAccount,
+			Kind:      logging.EventAccount,
 			Operation: "froze",
 			Resource:  "uid " + strconv.FormatInt(userID, 10),
-			Reason:    diagnostics.ReasonAccountFrozen,
+			Reason:    logging.ReasonAccountFrozen,
 		})
 	}
 }

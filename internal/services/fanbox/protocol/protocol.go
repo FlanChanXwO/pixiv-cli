@@ -15,7 +15,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/FlanChanXwO/pixiv-cli/internal/shared/diagnostics"
+	"github.com/FlanChanXwO/pixiv-cli/internal/logging"
 	fhttp "github.com/bogdanfinn/fhttp"
 	tlsclient "github.com/bogdanfinn/tls-client"
 	"github.com/bogdanfinn/tls-client/profiles"
@@ -271,9 +271,9 @@ func (s *Session) doWithRequest(ctx context.Context, rawURL string, kind request
 	if _, solveErr := s.waitForSolver(ctx); solveErr != nil {
 		return nil, solveErr
 	}
-	diagnostics.Emit(ctx, diagnostics.Event{
-		Module:    diagnostics.ModuleFanboxNetwork,
-		Kind:      diagnostics.EventReplay,
+	logging.Emit(ctx, logging.Event{
+		Module:    logging.ModuleFanboxNetwork,
+		Kind:      logging.EventReplay,
 		Operation: "request",
 		Route:     "native transport",
 	})
@@ -381,9 +381,9 @@ func (s *Session) doNativeWithRequest(ctx context.Context, rawURL string, kind r
 		client.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
 		response, err := client.Do(request)
 		if err != nil {
-			diagnostics.Emit(ctx, diagnostics.Event{
-				Module:    diagnostics.ModuleFanboxNetwork,
-				Kind:      diagnostics.EventFailed,
+			logging.Emit(ctx, logging.Event{
+				Module:    logging.ModuleFanboxNetwork,
+				Kind:      logging.EventFailed,
 				Operation: "network request",
 				Route:     fanboxDiagnosticRoute(kind),
 			})
@@ -392,9 +392,9 @@ func (s *Session) doNativeWithRequest(ctx context.Context, rawURL string, kind r
 		if response == nil {
 			return nil, errors.New("FANBOX request returned no response")
 		}
-		diagnostics.Emit(ctx, diagnostics.Event{
-			Module:    diagnostics.ModuleFanboxNetwork,
-			Kind:      diagnostics.EventNetworkRequest,
+		logging.Emit(ctx, logging.Event{
+			Module:    logging.ModuleFanboxNetwork,
+			Kind:      logging.EventNetworkRequest,
 			Operation: fanboxDiagnosticOperation(kind),
 			Resource:  target.EscapedPath(),
 			Route:     fanboxDiagnosticRoute(kind),
@@ -461,9 +461,9 @@ func (s *Session) classifyError(ctx context.Context, response *http.Response) er
 		return ErrNotAuthenticated
 	case http.StatusForbidden:
 		if challengeMarkers || challengeHeaderDetected(response.Header) || challengeHTMLResponse(response.Header) {
-			diagnostics.Emit(ctx, diagnostics.Event{
-				Module:    diagnostics.ModuleFanboxNetwork,
-				Kind:      diagnostics.EventChallenge,
+			logging.Emit(ctx, logging.Event{
+				Module:    logging.ModuleFanboxNetwork,
+				Kind:      logging.EventChallenge,
 				Operation: "request",
 				Status:    status,
 			})

@@ -8,15 +8,15 @@ import (
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/internal/filters"
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/internal/outputs"
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/internal/records"
-	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/internal/runtime"
+	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/internal/toolhost"
 	"github.com/FlanChanXwO/pixiv-cli/sdk"
 	pixiv "github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
 // Register 注册 pixiv_illust_related。
-func Register(app *runtime.App, server *mcp.Server) {
-	runtime.AddTool(app, server, &mcp.Tool{Name: "pixiv_illust_related", Annotations: &mcp.ToolAnnotations{ReadOnlyHint: true, DestructiveHint: new(false), IdempotentHint: true, OpenWorldHint: new(true)}, Description: "Find artworks related to a specific illustration.", OutputSchema: records.RecordsOutputSchema()}, func(ctx context.Context, request *mcp.CallToolRequest, input relatedIn) (*mcp.CallToolResult, outputs.Records, error) {
+func Register(app *toolhost.App, server *mcp.Server) {
+	toolhost.AddTool(app, server, &mcp.Tool{Name: "pixiv_illust_related", Annotations: &mcp.ToolAnnotations{ReadOnlyHint: true, DestructiveHint: new(false), IdempotentHint: true, OpenWorldHint: new(true)}, Description: "Find artworks related to a specific illustration.", OutputSchema: records.RecordsOutputSchema()}, func(ctx context.Context, request *mcp.CallToolRequest, input relatedIn) (*mcp.CallToolResult, outputs.Records, error) {
 		return handleIllustRelated(ctx, app, input)
 	})
 }
@@ -25,10 +25,10 @@ type relatedIn struct {
 	Cursor       *string               `json:"cursor,omitempty" jsonschema:"opaque default-batch continuation; repeat original arguments and omit page and limit"`
 	IllustID     int64                 `json:"illust_id"`
 	IllustFilter *filters.IllustFilter `json:"illust_filter,omitempty"`
-	runtime.PageLimitIn
+	toolhost.PageLimitIn
 }
 
-func handleIllustRelated(ctx context.Context, app *runtime.App, in relatedIn) (*mcp.CallToolResult, outputs.Records, error) {
+func handleIllustRelated(ctx context.Context, app *toolhost.App, in relatedIn) (*mcp.CallToolResult, outputs.Records, error) {
 	if in.IllustID <= 0 {
 		return outputs.Error(errors.New("illust_id must be a positive integer"))
 	}
@@ -45,7 +45,7 @@ func handleIllustRelated(ctx context.Context, app *runtime.App, in relatedIn) (*
 	}
 	bindingInput := in
 	bindingInput.Cursor = nil
-	items, page, err := runtime.CollectCursorWith(ctx, app, "illust_related", bindingInput, in.Cursor, in.PageLimitIn, fetch)
+	items, page, err := toolhost.CollectCursorWith(ctx, app, "illust_related", bindingInput, in.Cursor, in.PageLimitIn, fetch)
 	if err != nil {
 		return outputs.Error(err)
 	}

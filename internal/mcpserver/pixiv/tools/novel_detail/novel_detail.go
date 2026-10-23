@@ -7,15 +7,15 @@ import (
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/internal/outputs"
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/internal/records"
-	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/internal/runtime"
-	record "github.com/FlanChanXwO/pixiv-cli/internal/shared/record"
+	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/internal/toolhost"
+	record "github.com/FlanChanXwO/pixiv-cli/internal/record"
 	pixiv "github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
 // Register 注册 pixiv_novel_detail。
-func Register(app *runtime.App, server *mcp.Server) {
-	runtime.AddTool(app, server, &mcp.Tool{Name: "pixiv_novel_detail", Annotations: &mcp.ToolAnnotations{ReadOnlyHint: true, DestructiveHint: new(false), IdempotentHint: true, OpenWorldHint: new(true)}, Description: "Get detailed information for one Pixiv novel.", OutputSchema: records.NovelDetailOutputSchema()}, func(ctx context.Context, request *mcp.CallToolRequest, input In) (*mcp.CallToolResult, outputs.NovelDetail, error) {
+func Register(app *toolhost.App, server *mcp.Server) {
+	toolhost.AddTool(app, server, &mcp.Tool{Name: "pixiv_novel_detail", Annotations: &mcp.ToolAnnotations{ReadOnlyHint: true, DestructiveHint: new(false), IdempotentHint: true, OpenWorldHint: new(true)}, Description: "Get detailed information for one Pixiv novel.", OutputSchema: records.NovelDetailOutputSchema()}, func(ctx context.Context, request *mcp.CallToolRequest, input In) (*mcp.CallToolResult, outputs.NovelDetail, error) {
 		return handleNovelDetail(ctx, app, input)
 	})
 }
@@ -24,11 +24,11 @@ type In struct {
 	NovelID int64 `json:"novel_id" jsonschema:"positive Pixiv novel ID"`
 }
 
-func handleNovelDetail(ctx context.Context, app *runtime.App, in In) (*mcp.CallToolResult, outputs.NovelDetail, error) {
+func handleNovelDetail(ctx context.Context, app *toolhost.App, in In) (*mcp.CallToolResult, outputs.NovelDetail, error) {
 	if in.NovelID <= 0 {
 		return outputs.NovelDetailError(errors.New("novel_id must be a positive integer"))
 	}
-	result, err := runtime.Read(app, ctx, func(ctx context.Context, client *pixiv.Client) (pixiv.Novel, error) {
+	result, err := toolhost.Read(app, ctx, func(ctx context.Context, client *pixiv.Client) (pixiv.Novel, error) {
 		return client.Novel(ctx, pixiv.NovelRequest{NovelID: in.NovelID})
 	})
 	if err != nil {

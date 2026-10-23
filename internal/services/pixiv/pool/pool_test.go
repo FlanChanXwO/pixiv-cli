@@ -7,9 +7,9 @@ import (
 	"time"
 
 	config "github.com/FlanChanXwO/pixiv-cli/internal/config/settings"
+	"github.com/FlanChanXwO/pixiv-cli/internal/lifecycle"
 	accountpixiv "github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/account"
 	poolpixiv "github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/pool"
-	"github.com/FlanChanXwO/pixiv-cli/internal/shared/lifecycle"
 	"github.com/FlanChanXwO/pixiv-cli/sdk"
 	"github.com/stretchr/testify/require"
 )

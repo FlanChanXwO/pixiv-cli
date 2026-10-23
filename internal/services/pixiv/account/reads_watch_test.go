@@ -15,7 +15,7 @@ import (
 	accountpixiv "github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/account"
 	poolpixiv "github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/pool"
 	"github.com/FlanChanXwO/pixiv-cli/internal/storage/database"
-	"github.com/FlanChanXwO/pixiv-cli/internal/storage/file/lock"
+	"github.com/FlanChanXwO/pixiv-cli/internal/storage/filelock"
 	sdkpixiv "github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
 	"github.com/stretchr/testify/require"
 )
@@ -54,7 +54,7 @@ func TestReadSessionsCloseCancelsWatcherWaitingForDatabaseLock(t *testing.T) {
 	held, release := make(chan struct{}), make(chan struct{})
 	holder := make(chan error, 1)
 	go func() {
-		holder <- lock.WithPrivateLock(t.Context(), db.Path(), func() error { close(held); <-release; return nil })
+		holder <- filelock.WithPrivateLock(t.Context(), db.Path(), func() error { close(held); <-release; return nil })
 	}()
 	defer func() { close(release); require.NoError(t, <-holder) }()
 	<-held

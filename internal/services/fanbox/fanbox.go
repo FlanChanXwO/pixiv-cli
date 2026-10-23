@@ -8,7 +8,7 @@ import (
 	"context"
 	"errors"
 
-	"github.com/FlanChanXwO/pixiv-cli/internal/shared/lifecycle"
+	"github.com/FlanChanXwO/pixiv-cli/internal/lifecycle"
 	fanboxsdk "github.com/FlanChanXwO/pixiv-cli/sdk/fanbox"
 )
 

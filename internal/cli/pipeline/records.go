@@ -9,8 +9,8 @@ import (
 	"fmt"
 	"io"
 
-	record "github.com/FlanChanXwO/pixiv-cli/internal/shared/record"
-	"github.com/FlanChanXwO/pixiv-cli/internal/utils/parse"
+	"github.com/FlanChanXwO/pixiv-cli/internal/cli/internal/input"
+	record "github.com/FlanChanXwO/pixiv-cli/internal/record"
 )
 
 // PipelineDiagnosticError 表示错误已经按管道契约写入 stderr。它让根命令保留
@@ -156,7 +156,7 @@ func diagnosticRecordIdentity(line []byte) (string, string) {
 }
 
 func RequiredRecordID(value record.Record) (int64, error) {
-	id, err := parse.PositiveInt64(value.ID(), "record id")
+	id, err := input.PositiveInt64(value.ID(), "record id")
 	if err != nil {
 		return 0, fmt.Errorf("record id must be a positive integer: %w", err)
 	}

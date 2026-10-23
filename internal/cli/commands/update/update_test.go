@@ -6,7 +6,7 @@ import (
 	"testing"
 
 	configapp "github.com/FlanChanXwO/pixiv-cli/internal/config/settings"
-	updateapp "github.com/FlanChanXwO/pixiv-cli/internal/update"
+	"github.com/FlanChanXwO/pixiv-cli/internal/selfupdate"
 	"github.com/spf13/cobra"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -26,7 +26,7 @@ func (h testHost) RequireExactArgs(count int, usage string) cobra.PositionalArgs
 func (h testHost) LoadUpdateRuntimeConfig() (configapp.RuntimeConfig, error) {
 	return configapp.RuntimeConfig{}, nil
 }
-func (h testHost) NewUpdateCoordinator(string, io.Writer, io.Writer) (*updateapp.UpdateCoordinator, error) {
+func (h testHost) NewUpdateCoordinator(string, io.Writer, io.Writer) (*selfupdate.UpdateCoordinator, error) {
 	return nil, nil
 }
 

@@ -10,7 +10,7 @@ import (
 	creatorlist "github.com/FlanChanXwO/pixiv-cli/internal/services/fanbox/endpoint/creator/creators"
 	postinfo "github.com/FlanChanXwO/pixiv-cli/internal/services/fanbox/endpoint/post/info"
 	fanboxresource "github.com/FlanChanXwO/pixiv-cli/internal/services/fanbox/resource"
-	atomicfile "github.com/FlanChanXwO/pixiv-cli/internal/storage/file/atomic"
+	atomicfile "github.com/FlanChanXwO/pixiv-cli/internal/storage/atomicfile"
 	"github.com/FlanChanXwO/pixiv-cli/sdk"
 )
 

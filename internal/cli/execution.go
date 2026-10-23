@@ -17,11 +17,11 @@ import (
 
 	requirements "github.com/FlanChanXwO/pixiv-cli/internal/cli/commands"
 	authcommands "github.com/FlanChanXwO/pixiv-cli/internal/cli/commands/pixiv/auth"
-	clidiagnostics "github.com/FlanChanXwO/pixiv-cli/internal/cli/diagnostics"
 	"github.com/FlanChanXwO/pixiv-cli/internal/cli/invocation"
 	"github.com/FlanChanXwO/pixiv-cli/internal/cli/pipeline"
+	clidiagnostics "github.com/FlanChanXwO/pixiv-cli/internal/logging"
+	coreDiagnostics "github.com/FlanChanXwO/pixiv-cli/internal/logging"
 	"github.com/FlanChanXwO/pixiv-cli/internal/services/reversesearch"
-	coreDiagnostics "github.com/FlanChanXwO/pixiv-cli/internal/shared/diagnostics"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 	"golang.org/x/term"

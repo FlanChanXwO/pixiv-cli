@@ -5,9 +5,8 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 
-	"github.com/FlanChanXwO/pixiv-cli/internal/shared/pagination"
-	"github.com/FlanChanXwO/pixiv-cli/internal/shared/searchfilter"
-	"github.com/FlanChanXwO/pixiv-cli/internal/shared/traversal"
+	"github.com/FlanChanXwO/pixiv-cli/internal/pagination"
+	"github.com/FlanChanXwO/pixiv-cli/internal/searchfilter"
 	"github.com/FlanChanXwO/pixiv-cli/sdk"
 	product "github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
 )
@@ -65,7 +64,7 @@ type artworkSearchRequest struct {
 
 // searchArtworks 在 CLI 的 execution scope 内执行 bookmark 候选筛选。
 // auto 只在当前已验证策略下解析为 local；server 不做未经证实的降级。
-func searchArtworks[C artworkSearchClient](ctx context.Context, execute traversal.Execute[C], request artworkSearchRequest) (artworkSearchOutcome, error) {
+func searchArtworks[C artworkSearchClient](ctx context.Context, execute pagination.Execute[C], request artworkSearchRequest) (artworkSearchOutcome, error) {
 	var outcome artworkSearchOutcome
 	min, max, hasRange, err := validateArtworkBookmarkSearch(request)
 	if err != nil {
