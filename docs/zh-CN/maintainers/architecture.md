@@ -106,7 +106,7 @@ CLI 组合根，分为三个同包文件：
 | 包 | 负责 | 不得 |
 | --- | --- | --- |
 | `internal/version` | linker 注入的 `Version`（默认 `dev`；只有 `dev` 构建拒绝自更新） | — |
-| `internal/record` | CLI/MCP 共享的稳定 Pixiv record 投影：保留 SDK DTO 未知字段，固定 `id`/`type`/`url`，JSON 规范化、版本元数据清理、基于 record 字段的本地筛选 | 依赖 CLI、MCP 或适配器；变成杂物箱（MCP schema/DTO 包装留在 `internal/mcpserver/pixiv/internal/records`） |
+| `internal/record` | CLI/MCP 共享的稳定 Pixiv record 投影：保留 SDK 模型未知字段，固定 `id`/`type`/`url`，JSON 规范化、版本元数据清理、基于 record 字段的本地筛选 | 依赖 CLI、MCP 或适配器；变成杂物箱（MCP schema 与输出信封留在 `internal/mcpserver/pixiv/internal/{records,outputs}`） |
 | `internal/searchfilter` | 作品本地分级/内容类型规范化，客户端侧 `x_restrict` 与类型匹配，隐藏原始值的 cursor 上下文 | 把分级映射为未确认的上游 `x_restrict` 参数；持有 client、凭据或适配器（字段可用性与已确认的 wire 参数由各命令负责） |
 | `internal/lifecycle` | 与协议无关的生命周期、Lease、Attempt | 负责账号选择、凭据或重放策略 |
 | `internal/pagination` | 单流与有序聚合流的逻辑分页：筛选先于全局 skip/limit 预算，`OneBatch` 在首个匹配批次停止，批次截断通过来源位置 checkpoint 续读；`StreamState` = 当前流 + 各流 cursor（owner 与查询/账号/子类型绑定一起编码） | 产品语义 |
@@ -118,7 +118,7 @@ CLI 组合根，分为三个同包文件：
 ### 业务会话、账号与账号池
 
 - `internal/session` 同时拥有两个按账号打开 SDK 会话的对象：`session.Pixiv` 聚合 `pixivaccount`（本地账号、登录完成、默认账号、凭据身份/轮换、管理）与 `pixivaccount/pool`（选择、冻结、Gate、安全重放、相关错误语义）；`session.Fanbox` 聚合 `fanboxaccount` 与 client 生命周期。两者位于同一个包的 `pixiv.go` 与 `fanbox.go`；FANBOX 会话与 Pixiv refresh token 不共享类型或生命周期，也没有账号池策略。
-- 会话对象只依赖叶模块 Port、配置快照、与协议无关的共享模块与公开 SDK——不依赖 `internal/storage/database` 的具体实现；SDK 从不导入它们。会话中没有 CLI/MCP 的 DTO、筛选、record、schema 或输出适配。
+- 会话对象只依赖叶模块 Port、配置快照、与协议无关的共享模块与公开 SDK——不依赖 `internal/storage/database` 的具体实现；SDK 从不导入它们。会话中没有 CLI/MCP 的筛选、record、schema 或输出适配。
 - 显式非零 `Request.UserID` 把读写固定到该账号，即使账号池开启；打开/业务错误从不切换账号；无 UID 的请求保留账号池调度；CLI 默认账号不变。
 - 配置 schema、`config.toml` 的 path/get/set/unset、基线与单次执行的不可变 `Snapshot` 位于 `internal/config/settings`；按月截断位于 `internal/searchfilter`。CLI/MCP 经 owner-local Seam 与 MCP runtime `SDKPorts` 使用会话对象。`internal/account` 已删除，不保留别名。
 

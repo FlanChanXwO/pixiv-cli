@@ -106,7 +106,7 @@ Only exact `pixiv://account/login` and `pixiv://account/remote-login` enter the 
 | Package | Owns | Must not |
 | --- | --- | --- |
 | `internal/version` | linker-injected `Version` (default `dev`; only `dev` builds reject self-update) | — |
-| `internal/record` | stable Pixiv record projection for CLI/MCP: keeps unknown SDK DTO fields, fixes `id`/`type`/`url`, JSON normalization, version-metadata cleanup, record-field local filtering | depend on CLI, MCP or adapters; become a dumping ground (MCP schemas/DTO wrapping stay in `internal/mcpserver/pixiv/internal/records`) |
+| `internal/record` | stable Pixiv record projection for CLI/MCP: keeps unknown SDK model fields, fixes `id`/`type`/`url`, JSON normalization, version-metadata cleanup, record-field local filtering | depend on CLI, MCP or adapters; become a dumping ground (MCP schemas and output envelopes stay in `internal/mcpserver/pixiv/internal/{records,outputs}`) |
 | `internal/searchfilter` | artwork-local rating/content-type normalization, client-side `x_restrict` and kind matching, cursor context hiding raw values | map rating to an unconfirmed upstream `x_restrict` param; hold clients, credentials or adapters (field availability and confirmed wire params stay with each command) |
 | `internal/lifecycle` | protocol-agnostic lifecycle, Lease, Attempt | own account selection, credentials or replay strategy |
 | `internal/pagination` | logical pagination for one stream and ordered aggregates: filters before the global skip/limit budget, `OneBatch` stops at the first matching batch, truncation resumed via source-position checkpoint; `StreamState` = current stream + per-stream cursors (owners encode it with query/account/subtype bindings) | product semantics |
@@ -118,7 +118,7 @@ Only exact `pixiv://account/login` and `pixiv://account/remote-login` enter the 
 ### Business sessions, accounts and pool
 
 - `internal/session` owns both account-bound SDK sessions: `session.Pixiv` aggregates `pixivaccount` (local accounts, login completion, default, credential identity/rotation, management) and `pixivaccount/pool` (selection, freezing, Gate, safe replay, error semantics); `session.Fanbox` aggregates `fanboxaccount` and client lifecycle. The two live in `pixiv.go` and `fanbox.go` of one package; FANBOX sessions share no type or lifecycle with Pixiv refresh tokens and have no pool strategy.
-- Sessions depend only on leaf-module Ports, the config snapshot, protocol-agnostic shared modules and the public SDK — not on `internal/storage/database` concretely; the SDK never imports them. No CLI/MCP DTOs, filters, records, schemas or output adaptation inside sessions.
+- Sessions depend only on leaf-module Ports, the config snapshot, protocol-agnostic shared modules and the public SDK — not on `internal/storage/database` concretely; the SDK never imports them. No CLI/MCP filters, records, schemas or output adaptation inside sessions.
 - An explicit nonzero `Request.UserID` pins reads and writes to that account even with the pool on; open/business errors never switch accounts; requests without a UID keep pool scheduling; the CLI default is unchanged.
 - Config schema, `config.toml` path/get/set/unset, baseline and the immutable per-execution `Snapshot` live in `internal/config/settings`; month truncation in `internal/searchfilter`. CLI/MCP use the sessions via owner-local Seams and MCP runtime `SDKPorts`. `internal/account` is deleted with no aliases.
 
