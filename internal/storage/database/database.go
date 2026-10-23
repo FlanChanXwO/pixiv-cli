@@ -10,7 +10,11 @@ import (
 	"strings"
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/storage/filelock"
-	_ "modernc.org/sqlite"
+	_ "github.com/ncruces/go-sqlite3/driver"
+	"github.com/ncruces/go-sqlite3/gormlite"
+	"gorm.io/gorm"
+	"gorm.io/gorm/logger"
+	"gorm.io/gorm/schema"
 )
 
 // DatabasePath 返回鉴权数据库在本机私有目录下的固定路径。
@@ -29,12 +33,21 @@ func Open(appDataDir string) (*DB, error) {
 	}
 	path := DatabasePath(appDataDir)
 	dsn := dsnWithPragmas(path)
-	sqlDB, err := sql.Open("sqlite", dsn)
+	sqlDB, err := sql.Open("sqlite3", dsn)
 	if err != nil {
 		return nil, fmt.Errorf("database: open database: %w", err)
 	}
 	sqlDB.SetMaxOpenConns(1)
-	db := &DB{db: sqlDB, path: path}
+	orm, err := gorm.Open(gormlite.OpenDB(sqlDB), &gorm.Config{
+		Logger:                 logger.Discard,
+		SkipDefaultTransaction: true,
+		NamingStrategy:         schema.NamingStrategy{SingularTable: true},
+	})
+	if err != nil {
+		_ = sqlDB.Close()
+		return nil, fmt.Errorf("database: open orm: %w", err)
+	}
+	db := &DB{sql: sqlDB, orm: orm, path: path}
 	// 首次连接和迁移也参与协调，避免另一进程的监听读取撞上schema写入。
 	if err := db.withLock(context.Background(), func() error {
 		if err := sqlDB.Ping(); err != nil {
@@ -54,18 +67,16 @@ func dsnWithPragmas(path string) string {
 	query.Add("_pragma", "synchronous(FULL)")
 	query.Add("_pragma", "secure_delete(ON)")
 	query.Add("_pragma", "trusted_schema(off)")
-	// SQLite file URI 的 path 必须使用 slash；Windows 反斜杠会被 URI
-	// 解析为转义路径，导致 modernc.org/sqlite 打开数据库时报错误。
-	filePath := filepath.ToSlash(path)
-	if filepath.VolumeName(path) != "" && !strings.HasPrefix(filePath, "/") {
-		// URL 中的 Windows 盘符需要位于根路径下，才能得到 file:///C:/...。
-		filePath = "/" + filePath
-	}
-	return (&url.URL{Scheme: "file", Path: filePath, RawQuery: query.Encode()}).String()
+	query.Add("_pragma", "busy_timeout(0)")
+	// ncruces 把 URI 直接交给 SQLite；Windows 应写成 file:C:/...，不能再加 "///"。
+	// 路径仍需按 URI 转义，含空格、?#% 的目录才能被正确解析。
+	escaped := (&url.URL{Path: filepath.ToSlash(path)}).EscapedPath()
+	return "file:" + escaped + "?" + query.Encode()
 }
 
 type DB struct {
-	db   *sql.DB
+	sql  *sql.DB
+	orm  *gorm.DB
 	path string
 }
 
@@ -94,7 +105,7 @@ func (d *DB) initialize() error {
 	if err := d.verifyOrSetApplicationID(); err != nil {
 		return err
 	}
-	if err := migrate(d.db); err != nil {
+	if err := migrate(d.sql); err != nil {
 		return err
 	}
 	return nil
@@ -117,12 +128,12 @@ func (d *DB) enforcePermissions() error {
 
 func (d *DB) verifyOrSetApplicationID() error {
 	var id int
-	if err := d.db.QueryRow(`PRAGMA application_id`).Scan(&id); err != nil {
+	if err := d.sql.QueryRow(`PRAGMA application_id`).Scan(&id); err != nil {
 		return fmt.Errorf("database: read application_id: %w", err)
 	}
 	if id == 0 {
 		// 全新数据库或尚无归属标记的数据库：设置固定 application_id。
-		if _, err := d.db.Exec(fmt.Sprintf(`PRAGMA application_id = %d`, applicationID)); err != nil {
+		if _, err := d.sql.Exec(fmt.Sprintf(`PRAGMA application_id = %d`, applicationID)); err != nil {
 			return fmt.Errorf("database: set application_id: %w", err)
 		}
 		return nil
@@ -135,14 +146,14 @@ func (d *DB) verifyOrSetApplicationID() error {
 
 // Close 关闭底层数据库。
 func (d *DB) Close() error {
-	if d == nil || d.db == nil {
+	if d == nil || d.sql == nil {
 		return nil
 	}
-	return d.db.Close()
+	return d.sql.Close()
 }
 
 // Path 返回数据库文件路径。
 func (d *DB) Path() string { return d.path }
 
 // DB 返回底层 *sql.DB，供 repository 与测试使用。
-func (d *DB) DB() *sql.DB { return d.db }
+func (d *DB) DB() *sql.DB { return d.sql }
