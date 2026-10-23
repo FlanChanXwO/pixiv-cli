@@ -132,9 +132,15 @@ jobs:
             tar -xzf "$PLATFORM_ARCHIVE" -C smoke
           fi
           test -f "$binary"
+          # The worker workflow comes from the trusted base ref while the checkout
+          # is the PR head, so bridge the e2e/ move until the main PR merges.
+          smoke_package=./cmd/pixiv
+          if [ ! -f cmd/pixiv/main_test.go ]; then
+            smoke_package=./e2e
+          fi
           PIXIV_E2E_BINARY="$(pwd)/$binary" \
           PIXIV_E2E_EXPECTED_VERSION="v${version}" \
-          go test ./e2e -run '^TestPixivBinaryPackagedSmoke$' -count=1
+          go test "$smoke_package" -run '^TestPixivBinaryPackagedSmoke$' -count=1
 
       - name: Record Go binary and archive evidence
         shell: bash
