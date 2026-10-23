@@ -12,6 +12,7 @@ import (
 	"runtime"
 	"strings"
 
+	"github.com/FlanChanXwO/pixiv-cli/internal/browsercookies"
 	"github.com/FlanChanXwO/pixiv-cli/internal/browsercookies/system"
 )
 
@@ -131,11 +132,11 @@ func verifySyntheticFirefoxProviderContract(home, profileID string) (runErr erro
 	if err != nil {
 		return errors.New("discover firefox profile failed")
 	}
-	profile, err := system.SelectProfile(profiles, profileID)
+	profile, err := browsercookies.SelectProfile(profiles, profileID)
 	if err != nil {
 		return errors.New("select firefox profile failed")
 	}
-	secrets, err := provider.Read(ctx, system.DefaultQuery, profile.ID)
+	secrets, err := provider.Read(ctx, browsercookies.DefaultQuery, profile.ID)
 	if err != nil {
 		return errors.New("read synthetic firefox cookie failed")
 	}

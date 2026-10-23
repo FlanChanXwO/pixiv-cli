@@ -129,19 +129,7 @@ func (p *provider) Read(ctx context.Context, query browsercookies.CookieQuery, p
 		return nil, browsercookies.ErrInvalidProfileID
 	}
 	cookiesPath := filepath.Join(p.root, profileID, cookiesFile)
-	data, hooked, err := browsercookies.HookBytes(p.name, cookiesPath)
-	if err != nil {
-		return nil, err
-	}
-	path := cookiesPath
-	if hooked {
-		var cleanup func()
-		path, cleanup, err = browsercookies.WriteTempSnapshot(data)
-		if err != nil {
-			return nil, err
-		}
-		defer cleanup()
-	} else if _, err := os.Stat(cookiesPath); err != nil {
+	if _, err := os.Stat(cookiesPath); err != nil {
 		if errors.Is(err, fs.ErrPermission) {
 			return nil, browsercookies.ErrPermissionDenied
 		}
@@ -152,7 +140,7 @@ func (p *provider) Read(ctx context.Context, query browsercookies.CookieQuery, p
 		"@h2": strings.TrimPrefix(query.Host, "."),
 		"@n":  query.Name,
 	}
-	rows, err := sqliteio.Query(ctx, path, selectCookiesSQL, params)
+	rows, err := sqliteio.Query(ctx, cookiesPath, selectCookiesSQL, params)
 	if err != nil {
 		return nil, err
 	}

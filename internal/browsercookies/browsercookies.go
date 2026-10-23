@@ -15,10 +15,8 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"os"
 	"strings"
 	"sync"
-	"sync/atomic"
 )
 
 // 错误分类。所有错误消息都是静态字符串，绝不包含 cookie 值、加密密钥、
@@ -39,7 +37,6 @@ var (
 	ErrSQLiteUnavailable          = errors.New("browsercookies: the sqlite3 command-line tool is required but was not found")
 	ErrQueryFailed                = errors.New("browsercookies: cookie database query failed")
 	ErrInvalidFormat              = errors.New("browsercookies: cookie storage file has an invalid format")
-	ErrTempSnapshot               = errors.New("browsercookies: could not create a private temporary snapshot")
 	ErrKeychainAccess             = errors.New("browsercookies: keychain access failed")
 	ErrKeychainItemNotFound       = errors.New("browsercookies: keychain item not found")
 	ErrPermissionDenied           = errors.New("browsercookies: browser storage permission denied")
@@ -211,70 +208,4 @@ func New(browser string) (Provider, error) {
 		return nil, ErrUnknownBrowser
 	}
 	return factory()
-}
-
-// dbReadHook 是测试 fixture 的全局读拦截状态，串行化方式与
-// 测试调用方可用同样的路径级 seam 验证本地 cookie 读取错误。
-type dbReadHook struct {
-	providerName string
-	read         func(string) ([]byte, error)
-}
-
-var (
-	dbReadHookMu    sync.Mutex
-	dbReadHookState atomic.Pointer[dbReadHook]
-)
-
-// SetProviderFixtureForTest 仅为测试拦截指定 provider 的数据库读取，使测试
-// 注入 fixture SQLite 而不触碰真实浏览器。同一时间只允许一个 hook，互斥锁
-// 串行化；调用方必须用 t.Cleanup 执行返回的恢复函数，且不得并行使用同一
-// provider。
-func SetProviderFixtureForTest(providerName string, read func(string) ([]byte, error)) func() {
-	if strings.TrimSpace(providerName) == "" || read == nil {
-		panic("browsercookies: provider fixture hook requires a provider name and reader")
-	}
-	dbReadHookMu.Lock()
-	dbReadHookState.Store(&dbReadHook{providerName: providerName, read: read})
-	var once sync.Once
-	return func() {
-		once.Do(func() {
-			dbReadHookState.Store(nil)
-			dbReadHookMu.Unlock()
-		})
-	}
-}
-
-// HookBytes 返回 provider 的数据库读取结果。命中测试 hook 时返回 hook 数据与
-// hooked=true；否则返回 hooked=false，调用方应使用真实路径。
-func HookBytes(providerName, path string) (data []byte, hooked bool, err error) {
-	if hook := dbReadHookState.Load(); hook != nil && hook.providerName == providerName {
-		b, err := hook.read(path)
-		return b, true, err
-	}
-	return nil, false, nil
-}
-
-// WriteTempSnapshot 把字节写入进程私有临时目录（0700）下的私有文件（0600）。
-// 返回文件路径与清理函数；调用方必须执行清理。任何错误都不包含路径或内容。
-func WriteTempSnapshot(data []byte) (path string, cleanup func(), err error) {
-	dir, err := os.MkdirTemp("", "pixiv-browsercookies-*")
-	if err != nil {
-		return "", nil, fmt.Errorf("%w: create private dir", ErrTempSnapshot)
-	}
-	file, err := os.CreateTemp(dir, "snapshot-*.db")
-	if err != nil {
-		_ = os.RemoveAll(dir)
-		return "", nil, fmt.Errorf("%w: create private file", ErrTempSnapshot)
-	}
-	path = file.Name()
-	if _, err := file.Write(data); err != nil {
-		_ = file.Close()
-		_ = os.RemoveAll(dir)
-		return "", nil, fmt.Errorf("%w: write snapshot", ErrTempSnapshot)
-	}
-	if err := file.Close(); err != nil {
-		_ = os.RemoveAll(dir)
-		return "", nil, fmt.Errorf("%w: close snapshot", ErrTempSnapshot)
-	}
-	return path, func() { _ = os.RemoveAll(dir) }, nil
 }

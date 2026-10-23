@@ -197,25 +197,12 @@ func (p *provider) Read(ctx context.Context, query browsercookies.CookieQuery, p
 		return nil, err
 	}
 	dbPath := filepath.Join(profile.Path, cookiesDB)
-	data, hooked, err := browsercookies.HookBytes("firefox", dbPath)
-	if err != nil {
-		return nil, err
-	}
-	path := dbPath
-	if hooked {
-		var cleanup func()
-		path, cleanup, err = browsercookies.WriteTempSnapshot(data)
-		if err != nil {
-			return nil, err
-		}
-		defer cleanup()
-	}
 	params := map[string]string{
 		"@h1": query.Host,
 		"@h2": strings.TrimPrefix(query.Host, "."),
 		"@n":  query.Name,
 	}
-	rows, err := sqliteio.Query(ctx, path, selectCookiesSQL, params)
+	rows, err := sqliteio.Query(ctx, dbPath, selectCookiesSQL, params)
 	if err != nil {
 		return nil, err
 	}

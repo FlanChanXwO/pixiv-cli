@@ -17,8 +17,6 @@ import (
 func TestReadEncryptedCookieWithInjectedKey(t *testing.T) {
 	skipIfNoSQLite3(t)
 	root := t.TempDir()
-	mustWriteFile(t, filepath.Join(root, "Default", cookiesFile))
-
 	key := deriveChromeKey([]byte("test-password"))
 	value := []byte("fanbox-session12")
 	blob := buildV10Blob(t, key, value)
@@ -26,8 +24,7 @@ func TestReadEncryptedCookieWithInjectedKey(t *testing.T) {
 	fixture := buildFixtureDB(t, cookiesSchema,
 		`INSERT INTO cookies (host_key, name, value, encrypted_value) VALUES ('.fanbox.cc', 'FANBOXSESSID', '', X'`+hex.EncodeToString(blob)+`');`,
 	)
-	restore := browsercookies.SetProviderFixtureForTest("chrome", func(string) ([]byte, error) { return fixture, nil })
-	defer restore()
+	writeCookieFixture(t, filepath.Join(root, "Default", cookiesFile), fixture)
 
 	p, err := newProvider("chrome", root)
 	if err != nil {
@@ -48,14 +45,11 @@ func TestReadEncryptedCookieWithInjectedKey(t *testing.T) {
 func TestReadEncryptedKeychainItemNotFound(t *testing.T) {
 	skipIfNoSQLite3(t)
 	root := t.TempDir()
-	mustWriteFile(t, filepath.Join(root, "Default", cookiesFile))
-
 	blob := buildV10Blob(t, deriveChromeKey([]byte("x")), []byte("fanbox-session12"))
 	fixture := buildFixtureDB(t, cookiesSchema,
 		`INSERT INTO cookies (host_key, name, value, encrypted_value) VALUES ('.fanbox.cc', 'FANBOXSESSID', '', X'`+hex.EncodeToString(blob)+`');`,
 	)
-	restore := browsercookies.SetProviderFixtureForTest("chrome", func(string) ([]byte, error) { return fixture, nil })
-	defer restore()
+	writeCookieFixture(t, filepath.Join(root, "Default", cookiesFile), fixture)
 
 	p, _ := newProvider("chrome", root)
 	// 注入失败：模拟 Keychain item 不存在，验证分类错误且不泄露任何内容。

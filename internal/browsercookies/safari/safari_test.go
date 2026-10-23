@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/browsercookies"
+	"github.com/stretchr/testify/require"
 )
 
 // buildRecord 按 binarycookies cookie record 布局构造一条记录。
@@ -137,10 +138,10 @@ func TestReadPlaintextBinaryCookies(t *testing.T) {
 		domain: ".fanbox.cc", name: "FANBOXSESSID", path: "/",
 		value: []byte("sf-session"), secure: true, httpOnly: true,
 	})
-	restore := browsercookies.SetProviderFixtureForTest("safari", func(string) ([]byte, error) { return file, nil })
-	defer restore()
 
-	p, _ := newProvider([]string{filepath.Join(t.TempDir(), "Cookies.binarycookies")})
+	cookiePath := filepath.Join(t.TempDir(), "Cookies.binarycookies")
+	require.NoError(t, os.WriteFile(cookiePath, file, 0o600))
+	p, _ := newProvider([]string{cookiePath})
 	secrets, err := p.Read(context.Background(), browsercookies.DefaultQuery, "Default")
 	if err != nil {
 		t.Fatal(err)
@@ -155,10 +156,10 @@ func TestReadHostVariantAndNonMatching(t *testing.T) {
 		safariCookie{domain: "fanbox.cc", name: "FANBOXSESSID", path: "/", value: []byte("no-dot")},
 		safariCookie{domain: ".example.com", name: "OTHER", path: "/", value: []byte("x")},
 	)
-	restore := browsercookies.SetProviderFixtureForTest("safari", func(string) ([]byte, error) { return file, nil })
-	defer restore()
 
-	p, _ := newProvider([]string{filepath.Join(t.TempDir(), "Cookies.binarycookies")})
+	cookiePath := filepath.Join(t.TempDir(), "Cookies.binarycookies")
+	require.NoError(t, os.WriteFile(cookiePath, file, 0o600))
+	p, _ := newProvider([]string{cookiePath})
 	secrets, err := p.Read(context.Background(), browsercookies.DefaultQuery, "Default")
 	if err != nil {
 		t.Fatal(err)
@@ -173,21 +174,19 @@ func TestReadEncryptedClassified(t *testing.T) {
 		domain: ".fanbox.cc", name: "FANBOXSESSID", path: "/",
 		value: []byte{0x8F, 0x8F, 0x8F, 0x8F},
 	})
-	restore := browsercookies.SetProviderFixtureForTest("safari", func(string) ([]byte, error) { return file, nil })
-	defer restore()
 
-	p, _ := newProvider([]string{filepath.Join(t.TempDir(), "Cookies.binarycookies")})
+	cookiePath := filepath.Join(t.TempDir(), "Cookies.binarycookies")
+	require.NoError(t, os.WriteFile(cookiePath, file, 0o600))
+	p, _ := newProvider([]string{cookiePath})
 	if _, err := p.Read(context.Background(), browsercookies.DefaultQuery, "Default"); !errors.Is(err, browsercookies.ErrEncryptedCookieUnsupported) {
 		t.Fatalf("err = %v, want ErrEncryptedCookieUnsupported", err)
 	}
 }
 
 func TestReadInvalidFormat(t *testing.T) {
-	restore := browsercookies.SetProviderFixtureForTest("safari", func(string) ([]byte, error) {
-		return []byte("not-a-binarycookies-file"), nil
-	})
-	defer restore()
-	p, _ := newProvider([]string{filepath.Join(t.TempDir(), "Cookies.binarycookies")})
+	path := filepath.Join(t.TempDir(), "Cookies.binarycookies")
+	require.NoError(t, os.WriteFile(path, []byte("not-a-binarycookies-file"), 0o600))
+	p, _ := newProvider([]string{path})
 	if _, err := p.Read(context.Background(), browsercookies.DefaultQuery, "Default"); !errors.Is(err, browsercookies.ErrInvalidFormat) {
 		t.Fatalf("err = %v, want ErrInvalidFormat", err)
 	}

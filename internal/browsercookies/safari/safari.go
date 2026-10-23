@@ -108,18 +108,12 @@ func (p *provider) Read(ctx context.Context, query browsercookies.CookieQuery, p
 			return nil, browsercookies.ErrDatabaseNotFound
 		}
 	}
-	data, hooked, err := browsercookies.HookBytes("safari", path)
+	data, err := os.ReadFile(path)
 	if err != nil {
-		return nil, err
-	}
-	if !hooked {
-		data, err = os.ReadFile(path)
-		if err != nil {
-			if errors.Is(err, fs.ErrPermission) {
-				return nil, browsercookies.ErrPermissionDenied
-			}
-			return nil, browsercookies.ErrDatabaseNotFound
+		if errors.Is(err, fs.ErrPermission) {
+			return nil, browsercookies.ErrPermissionDenied
 		}
+		return nil, browsercookies.ErrDatabaseNotFound
 	}
 	cookies, err := parseBinaryCookies(data)
 	if err != nil {

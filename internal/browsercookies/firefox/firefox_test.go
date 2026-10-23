@@ -6,6 +6,7 @@ import (
 	"errors"
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/browsercookies"
+	"github.com/stretchr/testify/require"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -115,13 +116,11 @@ func TestDiscoverNotInstalled(t *testing.T) {
 func TestReadPlaintextCookie(t *testing.T) {
 	skipIfNoSQLite3(t)
 	root := t.TempDir()
-	writeProfiles(t, root, "[Profile0]\nName=default\nPath=default-release\n", "default-release")
-
 	fixture := buildMozFixture(t,
 		`INSERT INTO moz_cookies (name, value, host, path) VALUES ('FANBOXSESSID', 'ff-session', '.fanbox.cc', '/');`,
 	)
-	restore := browsercookies.SetProviderFixtureForTest("firefox", func(string) ([]byte, error) { return fixture, nil })
-	defer restore()
+	writeProfiles(t, root, "[Profile0]\nName=default\nPath=default-release\n", "default-release")
+	require.NoError(t, os.WriteFile(filepath.Join(root, "default-release", cookiesDB), fixture, 0o600))
 
 	p, _ := newProvider(root)
 	secrets, err := p.Read(context.Background(), browsercookies.DefaultQuery, "default-release")
@@ -136,13 +135,11 @@ func TestReadPlaintextCookie(t *testing.T) {
 func TestReadEncryptedClassified(t *testing.T) {
 	skipIfNoSQLite3(t)
 	root := t.TempDir()
-	writeProfiles(t, root, "[Profile0]\nName=default\nPath=default-release\n", "default-release")
-
 	fixture := buildMozFixture(t,
 		`INSERT INTO moz_cookies (name, value, host, path) VALUES ('FANBOXSESSID', X'8F8F8F8F8F', '.fanbox.cc', '/');`,
 	)
-	restore := browsercookies.SetProviderFixtureForTest("firefox", func(string) ([]byte, error) { return fixture, nil })
-	defer restore()
+	writeProfiles(t, root, "[Profile0]\nName=default\nPath=default-release\n", "default-release")
+	require.NoError(t, os.WriteFile(filepath.Join(root, "default-release", cookiesDB), fixture, 0o600))
 
 	p, _ := newProvider(root)
 	if _, err := p.Read(context.Background(), browsercookies.DefaultQuery, "default-release"); !errors.Is(err, browsercookies.ErrEncryptedCookieUnsupported) {
