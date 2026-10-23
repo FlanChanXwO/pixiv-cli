@@ -13,6 +13,11 @@ import (
 	framejpeg "github.com/FlanChanXwO/pixiv-cli/internal/media/ugoira/jpeg"
 )
 
+func decodeForTest(r io.Reader) (image.Image, error) {
+	var decoder framejpeg.Decoder
+	return decoder.Decode(r)
+}
+
 func TestDecode(t *testing.T) {
 	for _, kind := range []string{"444", "progressive", "gray", "restart"} {
 		t.Run(kind, func(t *testing.T) {
@@ -20,11 +25,11 @@ func TestDecode(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			whole, err := framejpeg.Decode(bytes.NewReader(body))
+			whole, err := decodeForTest(bytes.NewReader(body))
 			if err != nil || whole.Bounds() != image.Rect(0, 0, 17, 9) {
 				t.Fatalf("decode: %v", err)
 			}
-			chunked, err := framejpeg.Decode(oneByteReader{bytes.NewReader(body)})
+			chunked, err := decodeForTest(oneByteReader{bytes.NewReader(body)})
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -36,7 +41,7 @@ func TestDecode(t *testing.T) {
 				}
 			}
 			for n := 0; n < len(body); n++ {
-				if _, err := framejpeg.Decode(bytes.NewReader(body[:n])); err == nil {
+				if _, err := decodeForTest(bytes.NewReader(body[:n])); err == nil {
 					t.Fatalf("truncated input at %d accepted", n)
 				}
 			}
@@ -46,11 +51,11 @@ func TestDecode(t *testing.T) {
 
 func TestDecodeErrors(t *testing.T) {
 	sentinel := errors.New("reader failed")
-	if _, err := framejpeg.Decode(failingReader{sentinel}); !errors.Is(err, sentinel) {
+	if _, err := decodeForTest(failingReader{sentinel}); !errors.Is(err, sentinel) {
 		t.Fatalf("reader cause lost: %v", err)
 	}
 	for _, body := range [][]byte{[]byte("not JPEG"), {0xff, 0xd8, 0xff, 0xdb, 0, 1}, {0xff, 0xd8, 0xff, 0xd9}} {
-		if _, err := framejpeg.Decode(bytes.NewReader(body)); err == nil {
+		if _, err := decodeForTest(bytes.NewReader(body)); err == nil {
 			t.Fatalf("invalid JPEG accepted: %x", body)
 		}
 	}
@@ -108,7 +113,7 @@ func TestDecoderReusesPlanesAndResetsState(t *testing.T) {
 		inputs = append(inputs, body.Bytes())
 	}
 	for i, body := range inputs {
-		want, err := framejpeg.Decode(bytes.NewReader(body))
+		want, err := decodeForTest(bytes.NewReader(body))
 		if err != nil {
 			t.Fatal(err)
 		}

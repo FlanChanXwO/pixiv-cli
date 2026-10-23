@@ -20,11 +20,6 @@ type SourceLoaderOptions struct {
 	HTTPClient *http.Client
 }
 
-// SourceLoader 将一个 source 固化为可重复打开的私有快照。
-type SourceLoader interface {
-	Load(context.Context, string) (*Snapshot, error)
-}
-
 // Loader 实现文件与 HTTP(S) source 的单次流式载入。
 type Loader struct {
 	tempDir    string

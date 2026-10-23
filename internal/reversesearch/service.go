@@ -28,13 +28,13 @@ type PayloadSearcher interface {
 
 // Service 将不透明 source 固化一次，并确保 provider 查询结束后清理快照。
 type Service struct {
-	sources   SourceLoader
+	sources   *Loader
 	payloads  PayloadSearcher
 	closeOnce sync.Once
 	closeErr  error
 }
 
-func NewService(sources SourceLoader, payloads PayloadSearcher) *Service {
+func NewService(sources *Loader, payloads PayloadSearcher) *Service {
 	return &Service{sources: sources, payloads: payloads}
 }
 

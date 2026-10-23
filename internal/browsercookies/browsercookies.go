@@ -124,21 +124,6 @@ type Profile struct {
 	Path string
 }
 
-// Cookie 是一条脱敏的 cookie 行。
-type Cookie struct {
-	Name     string
-	Value    Secret
-	Path     string
-	Secure   bool
-	HTTPOnly bool
-}
-
-// Snapshot 是进程私有的、内存中的解密 cookie 行副本；绝不持久化。
-type Snapshot struct {
-	ProfileID string
-	Cookies   []Cookie
-}
-
 // Provider 是浏览器 cookie provider 接口。DiscoverProfiles 与 Read 接收
 // context 用于取消与锁等待控制；Read 只接受受约束的 CookieQuery。
 type Provider interface {

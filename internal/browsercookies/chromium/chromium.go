@@ -144,22 +144,14 @@ func (p *provider) Read(ctx context.Context, query browsercookies.CookieQuery, p
 	if err != nil {
 		return nil, err
 	}
-	snapshot, err := p.rowsToSnapshot(ctx, query, profileID, rows)
-	if err != nil {
-		return nil, err
-	}
-	secrets := make([]browsercookies.Secret, 0, len(snapshot.Cookies))
-	for _, c := range snapshot.Cookies {
-		secrets = append(secrets, c.Value)
-	}
-	return secrets, nil
+	return p.rowsToSecrets(ctx, rows)
 }
 
-func (p *provider) rowsToSnapshot(ctx context.Context, query browsercookies.CookieQuery, profileID string, rows [][]string) (browsercookies.Snapshot, error) {
-	snap := browsercookies.Snapshot{ProfileID: profileID, Cookies: []browsercookies.Cookie{}}
+func (p *provider) rowsToSecrets(ctx context.Context, rows [][]string) ([]browsercookies.Secret, error) {
+	secrets := make([]browsercookies.Secret, 0, len(rows))
 	for _, row := range rows {
 		if len(row) < 3 {
-			return snap, browsercookies.ErrQueryFailed
+			return nil, browsercookies.ErrQueryFailed
 		}
 		host := row[0]
 		plain := row[1]
@@ -167,23 +159,16 @@ func (p *provider) rowsToSnapshot(ctx context.Context, query browsercookies.Cook
 		if encHex != "" {
 			enc, err := hex.DecodeString(encHex)
 			if err != nil {
-				return snap, browsercookies.ErrEncryptedFormatUnknown
+				return nil, browsercookies.ErrEncryptedFormatUnknown
 			}
 			value, err := p.decryptEncrypted(ctx, enc)
 			if err != nil {
-				return snap, err
+				return nil, err
 			}
-			value = stripChromiumHostDigest(value, host)
-			snap.Cookies = append(snap.Cookies, browsercookies.Cookie{
-				Name:  query.Name,
-				Value: browsercookies.NewSecret(string(value)),
-			})
+			secrets = append(secrets, browsercookies.NewSecret(string(stripChromiumHostDigest(value, host))))
 			continue
 		}
-		snap.Cookies = append(snap.Cookies, browsercookies.Cookie{
-			Name:  query.Name,
-			Value: browsercookies.NewSecret(plain),
-		})
+		secrets = append(secrets, browsercookies.NewSecret(plain))
 	}
-	return snap, nil
+	return secrets, nil
 }

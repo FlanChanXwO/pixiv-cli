@@ -739,12 +739,6 @@ func (d *decoder) convertToRGB() (image.Image, error) {
 	return img, nil
 }
 
-// Decode reads a JPEG image from r and returns it as an [image.Image].
-func Decode(r io.Reader) (image.Image, error) {
-	var d decoder
-	return d.decode(r)
-}
-
 // Decoder reuses parsing workspace and YCbCr storage between frames. Its zero value is ready to use.
 // Images returned by Decode are valid only until the next call on this Decoder.
 // A Decoder must not be used concurrently.
