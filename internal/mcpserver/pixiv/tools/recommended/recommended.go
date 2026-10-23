@@ -9,6 +9,7 @@ import (
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/internal/outputs"
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/internal/records"
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/internal/toolhost"
+	record "github.com/FlanChanXwO/pixiv-cli/internal/record"
 	"github.com/FlanChanXwO/pixiv-cli/sdk"
 	pixiv "github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
@@ -156,7 +157,7 @@ func handleRecommended(ctx context.Context, app *toolhost.App, in In) (*mcp.Call
 				return false, filterErr
 			}
 			items := filters.FilterPage(artworkCtx, visualItems, make(map[string]struct{}))
-			recordItems, mapErr := records.FromArtworks(items)
+			recordItems, mapErr := record.FromArtworks(items)
 			if mapErr != nil {
 				return false, mapErr
 			}
@@ -173,7 +174,7 @@ func handleRecommended(ctx context.Context, app *toolhost.App, in In) (*mcp.Call
 				return false, filterErr
 			}
 			items := filters.FilterPage(artworkCtx, visualItems, make(map[string]struct{}))
-			recordItems, mapErr := records.FromArtworks(items)
+			recordItems, mapErr := record.FromArtworks(items)
 			if mapErr != nil {
 				return false, mapErr
 			}
@@ -199,7 +200,7 @@ func handleRecommended(ctx context.Context, app *toolhost.App, in In) (*mcp.Call
 			if fetchErr != nil {
 				return false, fetchErr
 			}
-			recordItems, mapErr := records.FromNovels(items)
+			recordItems, mapErr := record.FromNovels(items)
 			if mapErr != nil {
 				return false, mapErr
 			}
@@ -225,7 +226,7 @@ func handleRecommended(ctx context.Context, app *toolhost.App, in In) (*mcp.Call
 			if fetchErr != nil {
 				return false, fetchErr
 			}
-			recordItems, mapErr := records.FromUserPreviews(items)
+			recordItems, mapErr := record.FromUserPreviews(items)
 			if mapErr != nil {
 				return false, mapErr
 			}

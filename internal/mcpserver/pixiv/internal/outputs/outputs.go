@@ -93,8 +93,8 @@ func RecommendedPage(plan toolhost.ListPlan, limit *int, returned int, more bool
 
 // TrendingTags 是 trending_tags_illust tool 的输出 envelope。
 type TrendingTags struct {
-	Tags []pixiv.TrendingTagDTO `json:"tags"`
-	Text string                 `json:"text"`
+	Tags []pixiv.TrendingTag `json:"tags"`
+	Text string              `json:"text"`
 }
 
 // TrendingTagsResult 构造 trending tags 的 MCP 摘要。
@@ -104,7 +104,7 @@ func TrendingTagsResult(out TrendingTags, isError bool) *mcp.CallToolResult {
 
 // TrendingTagsError 构造 trending tags 的 MCP error 摘要。
 func TrendingTagsError(err error) (*mcp.CallToolResult, TrendingTags, error) {
-	out := TrendingTags{Tags: []pixiv.TrendingTagDTO{}, Text: "Error: " + err.Error()}
+	out := TrendingTags{Tags: []pixiv.TrendingTag{}, Text: "Error: " + err.Error()}
 	return TrendingTagsResult(out, true), out, nil
 }
 
@@ -128,10 +128,10 @@ func (m *CommentToolMetadata) Set(page pixiv.CommentPage) {
 
 // Comments 是评论 tool 的输出 envelope。
 type Comments struct {
-	Comments      []pixiv.CommentDTO             `json:"comments"`
-	Pagination    toolhost.PaginationOut         `json:"pagination"`
-	Total         *int64                         `json:"total,omitempty"`
-	AccessControl *pixiv.CommentAccessControlDTO `json:"access_control,omitempty"`
+	Comments      []pixiv.Comment             `json:"comments"`
+	Pagination    toolhost.PaginationOut      `json:"pagination"`
+	Total         *int64                      `json:"total,omitempty"`
+	AccessControl *pixiv.CommentAccessControl `json:"access_control,omitempty"`
 }
 
 // CommentsResult 构造评论的 MCP 摘要。
@@ -144,7 +144,7 @@ func CommentsResult(out Comments, isError bool, message string) *mcp.CallToolRes
 
 // CommentsError 构造评论的 MCP error 摘要。
 func CommentsError(err error) (*mcp.CallToolResult, Comments, error) {
-	out := Comments{Comments: []pixiv.CommentDTO{}, Pagination: toolhost.PaginationOut{Page: 1}}
+	out := Comments{Comments: []pixiv.Comment{}, Pagination: toolhost.PaginationOut{Page: 1}}
 	return CommentsResult(out, true, records.ErrorMessage(err)), out, nil
 }
 
@@ -166,7 +166,7 @@ func NovelDetailError(err error) (*mcp.CallToolResult, NovelDetail, error) {
 
 // NovelContent 是 novel_content tool 的输出 envelope。
 type NovelContent struct {
-	Content pixiv.NovelContentDTO `json:"content"`
+	Content pixiv.NovelContent `json:"content"`
 }
 
 // NovelContentResult 构造 novel content 的 MCP 摘要。
@@ -176,13 +176,13 @@ func NovelContentResult(novelID int64) *mcp.CallToolResult {
 
 // NovelContentError 构造 novel content 的 MCP error 摘要。
 func NovelContentError(err error) (*mcp.CallToolResult, NovelContent, error) {
-	out := NovelContent{Content: pixiv.NovelContentDTO{Blocks: []pixiv.NovelBlockDTO{}}}
+	out := NovelContent{Content: pixiv.NovelContent{Blocks: []pixiv.NovelBlock{}}}
 	return &mcp.CallToolResult{IsError: true, Content: []mcp.Content{&mcp.TextContent{Text: records.ErrorMessage(err)}}}, out, nil
 }
 
 // NovelSeries 是 novel_series tool 的输出 envelope。
 type NovelSeries struct {
-	Series     pixiv.NovelSeriesDTO   `json:"series"`
+	Series     pixiv.NovelSeries      `json:"series"`
 	Records    []record.Record        `json:"records"`
 	Pagination toolhost.PaginationOut `json:"pagination"`
 }
@@ -200,7 +200,7 @@ func NovelSeriesError(err error) (*mcp.CallToolResult, NovelSeries, error) {
 
 // BookmarkTags 是 bookmark_tags tool 的输出 envelope。
 type BookmarkTags struct {
-	Tags       []pixiv.BookmarkTagDTO `json:"bookmark_tags"`
+	Tags       []pixiv.BookmarkTag    `json:"bookmark_tags"`
 	Pagination toolhost.PaginationOut `json:"pagination"`
 }
 
@@ -211,7 +211,7 @@ func BookmarkTagsResult(out BookmarkTags, count int) *mcp.CallToolResult {
 
 // BookmarkTagsError 构造 bookmark tags 的 MCP error 摘要。
 func BookmarkTagsError(err error) (*mcp.CallToolResult, BookmarkTags, error) {
-	out := BookmarkTags{Tags: []pixiv.BookmarkTagDTO{}, Pagination: toolhost.PaginationOut{Page: 1}}
+	out := BookmarkTags{Tags: []pixiv.BookmarkTag{}, Pagination: toolhost.PaginationOut{Page: 1}}
 	return &mcp.CallToolResult{IsError: true, Content: []mcp.Content{&mcp.TextContent{Text: records.ErrorMessage(err)}}}, out, nil
 }
 
@@ -336,13 +336,13 @@ func ListComments(ctx context.Context, app *toolhost.App, id int64, novel bool, 
 		result, out, _ := CommentsError(err)
 		return result, out, nil
 	}
-	comments := make([]pixiv.CommentDTO, 0, len(items))
+	comments := make([]pixiv.Comment, 0, len(items))
 	for _, item := range items {
-		comments = append(comments, pixiv.ToCommentDTO(item))
+		comments = append(comments, item)
 	}
-	var accessControl *pixiv.CommentAccessControlDTO
+	var accessControl *pixiv.CommentAccessControl
 	if metadata.Access != nil {
-		dto := pixiv.ToCommentAccessControlDTO(*metadata.Access)
+		dto := *metadata.Access
 		accessControl = &dto
 	}
 	out := Comments{Comments: comments, Pagination: toolhost.ListPagination(plan, limit, len(comments), more), Total: metadata.Total, AccessControl: accessControl}
@@ -383,7 +383,7 @@ func ListUserRelations(ctx context.Context, app *toolhost.App, kind string, user
 	if err != nil {
 		return Error(err)
 	}
-	recordItems, err := records.FromUserPreviews(items)
+	recordItems, err := record.FromUserPreviews(items)
 	if err != nil {
 		return Error(err)
 	}

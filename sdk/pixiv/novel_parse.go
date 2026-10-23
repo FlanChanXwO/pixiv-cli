@@ -22,6 +22,9 @@ func (c *Client) parseNovelContent(novelID int64, raw []byte) (NovelContent, err
 	if len(blocks) == 0 {
 		return NovelContent{}, newError("NovelContent", sdk.MalformedUpstreamResponse, "novel webview contains no body blocks")
 	}
+	if blocks == nil {
+		blocks = []NovelBlock{}
+	}
 	return NovelContent{NovelID: novelID, Title: title, Caption: caption, Blocks: blocks}, nil
 }
 
@@ -109,7 +112,7 @@ func (c *Client) imageBlock(n *html.Node, novelID int64, imageIndex int) (NovelB
 	if err != nil {
 		return NovelBlock{}, err
 	}
-	return NovelBlock{Kind: NovelBlockImage, Image: &NovelImageBlock{Resource: res, Caption: textContent(n)}}, nil
+	return NovelBlock{Kind: NovelBlockImage, Marks: []NovelMark{}, Image: &NovelImageBlock{Resource: res, Caption: textContent(n)}}, nil
 }
 
 func (c *Client) fileBlock(n *html.Node, novelID int64, fileIndex int) (NovelBlock, error) {
@@ -131,15 +134,15 @@ func (c *Client) fileBlock(n *html.Node, novelID int64, fileIndex int) (NovelBlo
 	if err != nil {
 		return NovelBlock{}, err
 	}
-	return NovelBlock{Kind: NovelBlockFile, File: &NovelFileBlock{Resource: res, Filename: filename, Caption: textContent(n)}}, nil
+	return NovelBlock{Kind: NovelBlockFile, Marks: []NovelMark{}, File: &NovelFileBlock{Resource: res, Filename: filename, Caption: textContent(n)}}, nil
 }
 
 func (c *Client) unknownBlock(n *html.Node) (NovelBlock, error) {
-	block := NovelBlock{Kind: NovelBlockUnknown}
+	block := NovelBlock{Kind: NovelBlockUnknown, Marks: []NovelMark{}}
 	unknown := &NovelUnknownBlock{RawType: n.Data + ":" + blockClass(n)}
-	text := textContent(n)
-	if text != "" {
-		unknown.Payload = map[string]string{"text": text}
+	unknown.Payload = map[string]string{}
+	if text := textContent(n); text != "" {
+		unknown.Payload["text"] = text
 	}
 	block.Unknown = unknown
 	return block, nil
@@ -147,7 +150,7 @@ func (c *Client) unknownBlock(n *html.Node) (NovelBlock, error) {
 
 func inlineContent(n *html.Node) (string, []NovelMark, error) {
 	var builder strings.Builder
-	var marks []NovelMark
+	marks := make([]NovelMark, 0)
 	var walk func(*html.Node) error
 	walk = func(node *html.Node) error {
 		switch node.Type {

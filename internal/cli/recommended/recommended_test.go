@@ -273,10 +273,10 @@ func TestCommandRecommendedAllSeparatesArtworkSubtypesAndKeepsIndependentPages(t
 		t.Fatalf("recommended all paths = %v, want %v", got, want)
 	}
 	var envelope struct {
-		Illusts []pixiv.ArtworkDTO     `json:"illusts"`
-		Manga   []pixiv.ArtworkDTO     `json:"manga"`
-		Novels  []pixiv.NovelDTO       `json:"novels"`
-		Users   []pixiv.UserPreviewDTO `json:"user_previews"`
+		Illusts []pixiv.Artwork     `json:"illusts"`
+		Manga   []pixiv.Artwork     `json:"manga"`
+		Novels  []pixiv.Novel       `json:"novels"`
+		Users   []pixiv.UserPreview `json:"user_previews"`
 	}
 	if err := json.Unmarshal(output.Bytes(), &envelope); err != nil {
 		t.Fatalf("decode aggregate JSON: %v; output=%q", err, output.String())
@@ -360,7 +360,7 @@ func recommendedTestCommand(output io.Writer, client *pixiv.Client) *cobra.Comma
 	})
 }
 
-func artworkIDs(items []pixiv.ArtworkDTO) []int64 {
+func artworkIDs(items []pixiv.Artwork) []int64 {
 	ids := make([]int64, 0, len(items))
 	for _, item := range items {
 		ids = append(ids, item.ID)

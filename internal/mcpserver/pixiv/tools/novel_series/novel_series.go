@@ -8,6 +8,7 @@ import (
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/internal/outputs"
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/internal/records"
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/internal/toolhost"
+	record "github.com/FlanChanXwO/pixiv-cli/internal/record"
 	"github.com/FlanChanXwO/pixiv-cli/sdk"
 	pixiv "github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
@@ -54,10 +55,10 @@ func handleNovelSeries(ctx context.Context, app *toolhost.App, in In) (*mcp.Call
 	if err != nil {
 		return outputs.NovelSeriesError(err)
 	}
-	recordItems, err := records.FromNovels(items)
+	recordItems, err := record.FromNovels(items)
 	if err != nil {
 		return outputs.NovelSeriesError(err)
 	}
-	out := outputs.NovelSeries{Series: pixiv.ToNovelSeriesDTO(series), Records: recordItems, Pagination: toolhost.ListPagination(plan, in.Limit, len(items), more)}
+	out := outputs.NovelSeries{Series: series, Records: recordItems, Pagination: toolhost.ListPagination(plan, in.Limit, len(items), more)}
 	return outputs.NovelSeriesResult(out), out, nil
 }

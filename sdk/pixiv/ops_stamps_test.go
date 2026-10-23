@@ -236,30 +236,27 @@ func TestStampResourceReferenceCanBeReopenedWithoutEmbeddedURL(t *testing.T) {
 	}
 }
 
-func TestStampDTOIsOutputSafe(t *testing.T) {
+func TestStampJSONIsOutputSafe(t *testing.T) {
 	ref, err := sdk.NewResourceRef("pixiv", []byte(`{"k":"stamp","id":1}`))
 	if err != nil {
 		t.Fatalf("NewResourceRef: %v", err)
 	}
-	dto := ToStampDTO(Stamp{
+	stamp := Stamp{
 		ID: 1,
 		Image: ImageResource{Resource: sdk.Resource{
 			Ref:            ref,
 			URL:            "https://s.pximg.net/stamp.png?token=do-not-leak",
 			RequestHeaders: map[string]string{"Cookie": "secret-cookie"},
 		}},
-	})
-	if dto.ID != 1 || dto.Image.Resource == nil || dto.Image.Resource.Ref != ref.String() {
-		t.Fatalf("stamp DTO lost fields: %+v", dto)
 	}
-	data, err := json.Marshal(dto)
+	data, err := json.Marshal(stamp)
 	if err != nil {
 		t.Fatalf("json.Marshal: %v", err)
 	}
 	encoded := string(data)
 	for _, forbidden := range []string{"s.pximg.net", "do-not-leak", "Cookie", "secret-cookie", "request_headers"} {
 		if strings.Contains(encoded, forbidden) {
-			t.Fatalf("stamp DTO leaked %q: %s", forbidden, encoded)
+			t.Fatalf("stamp JSON leaked %q: %s", forbidden, encoded)
 		}
 	}
 }

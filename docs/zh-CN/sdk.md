@@ -344,17 +344,17 @@ fmt.Println(saved.Path, saved.Size, saved.ContentType)
 > [!IMPORTANT]
 > `Resource` 从不保存 Cookie 或 token；`RequiresCredentials` 报告资源是否仍需要调用方不可见的产品凭据。
 
-### Runtime model 与输出 DTO
+### 模型与输出安全
 
-runtime 模型与跨越 CLI/MCP JSON 边界的值相互分离。`sdk.Resource` 可能持有可用的 `URL`、转发用的 `RequestHeaders` 与 `ExpiresAt`，供进程内流式使用——从不进入 DTO。
+每个实体只有一个公开模型类型；模型自带 JSON tag，直接序列化。`sdk.Resource` 可能持有可用的 `URL`、转发用的 `RequestHeaders` 与 `ExpiresAt`，供进程内流式使用，但它的 JSON 形态只包含 opaque `ref` 与可选的 `requires_credentials`。
 
-- 转换函数：`pixiv.ToArtworkDTO`、`ToNovelDTO`、`ToUserDTO`、`ToUserDetailDTO`、`ToUserPreviewDTO`、`ToCommentDTO`、`ToStampDTO`、`ToNovelContentDTO`、`ToUgoiraMetadataDTO` 及相关 Pixiv 转换函数；`fanbox.To*DTO` 用于创作者、帖子、块、资源、用户、标签。`sdk.ToResourceDTO` 只输出 opaque `ref` 与可选 `requires_credentials`。
-- CLI 与 MCP 只编码这些 DTO、管道 `Record` 值与类型化信封——从不反射或直接 JSON 序列化 runtime 模型。
+- 不再有 `*DTO` 类型或 `To*DTO` 转换函数：直接编码 `pixiv.Artwork`、`pixiv.Novel`、`pixiv.NovelContent`、`pixiv.UgoiraMetadata`、`fanbox.Post` 等公开模型。`sdk.Page[T]` 把 cursor 输出为文本，最后一页输出空串。
+- CLI 与 MCP 编码这些模型、管道 `Record` 值与类型化信封。
 - `Artwork` 在搜索/详情中以指针保留上游 `IsBookmarked`、`IsMuted`、`Visible`、`SanityLevel`、`RestrictionAttributes`，另有可选 `Series`（`ID`、`Title`）。非 nil 保留显式的 `false`、`0` 或空数组；nil = 当前端点未提供。详情可提供 `TotalComments`（搜索从不合成）。viewer 状态属于执行读取的账号；不会逐条补充请求。
 
-### 可选 DTO 字段
+### 可选模型字段
 
-DTO 省略上游未提供的字段，而不是输出 `null` 或空值——例如 `ArtworkDTO` 省略 `updated_at`、`tools` 与 `pages`（pages 仅在详情中）。缺失的 viewer/安全字段、`series` 与 `total_comments` 被省略；显式为空的 `restriction_attributes` 保持 `[]`。缺失的 key 视为未知，不是 `false`/`0`；MCP schema 将这些字段标为可选。
+模型省略上游未提供的字段，而不是输出 `null` 或空值——例如 `Artwork` 省略 `updated_at`、`tools` 与 `pages`（pages 仅在详情中）。缺失的 viewer/安全字段、`series` 与 `total_comments` 被省略；显式为空的 `restriction_attributes` 保持 `[]`。缺失的 key 视为未知，不是 `false`/`0`；MCP schema 将这些字段标为可选。
 
 ## URL 引用
 

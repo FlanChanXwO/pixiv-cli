@@ -88,9 +88,9 @@ func TestCommandDoesNotSplitReverseSearchAggregateJSONIntoRecords(t *testing.T) 
 }
 
 func TestDetailNDJSONFeedsExistingVisualDownloadConsumer(t *testing.T) {
-	artwork, err := recordpkg.RecordFromArtworkDTO(pixiv.ToArtworkDTO(pixiv.Artwork{
+	artwork, err := recordpkg.RecordFromArtwork(pixiv.Artwork{
 		ID: 501, Kind: pixiv.ArtworkKindIllustration, Title: "视觉作品",
-	}))
+	})
 	requireNoError(t, err)
 
 	var detailOutput bytes.Buffer
@@ -432,7 +432,7 @@ func TestCommandRejectsContentForNonNovelRecordBeforeFetching(t *testing.T) {
 
 func TestCommandConsumesNormalSearchArtworkRecordsInOrder(t *testing.T) {
 	artworkRecord := func(value pixiv.Artwork) recordpkg.Record {
-		recordValue, err := recordpkg.RecordFromArtworkDTO(pixiv.ToArtworkDTO(value))
+		recordValue, err := recordpkg.RecordFromArtwork(value)
 		requireNoError(t, err)
 		return recordValue
 	}

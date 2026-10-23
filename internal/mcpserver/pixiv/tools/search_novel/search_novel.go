@@ -8,6 +8,7 @@ import (
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/internal/outputs"
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/internal/records"
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/internal/toolhost"
+	record "github.com/FlanChanXwO/pixiv-cli/internal/record"
 	"github.com/FlanChanXwO/pixiv-cli/sdk"
 	pixiv "github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
@@ -78,7 +79,7 @@ func handleSearchNovel(ctx context.Context, app *toolhost.App, in searchNovelIn)
 	if err != nil {
 		return outputs.Error(err)
 	}
-	recordItems, err := records.FromNovels(items)
+	recordItems, err := record.FromNovels(items)
 	if err != nil {
 		return outputs.Error(err)
 	}

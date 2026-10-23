@@ -340,5 +340,9 @@ func (c *Client) ArtworkBookmark(ctx context.Context, request ArtworkBookmarkReq
 	if err != nil {
 		return ArtworkBookmarkDetail{}, classifyAppError(err, "ArtworkBookmark")
 	}
+	if detail.Tags == nil {
+		// 未收藏的空状态在内存中也保持非 nil，输出仍由 MarshalJSON 归一为 null。
+		detail.Tags = []string{}
+	}
 	return ArtworkBookmarkDetail{Restrict: Restrict(detail.Restrict), Tags: detail.Tags}, nil
 }

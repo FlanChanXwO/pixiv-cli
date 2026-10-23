@@ -487,7 +487,7 @@ func (a command) runDetail(cmd *cobra.Command, arg string, opts CommandOptions) 
 		return err
 	}
 	if jsonOut {
-		return a.data.writeJSON(pixiv.ToUserDetailDTO(result))
+		return a.data.writeJSON(result)
 	}
 	return printUserDetail(a.data.Output, result)
 }

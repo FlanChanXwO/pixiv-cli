@@ -33,6 +33,6 @@ func handleNovelContent(ctx context.Context, app *toolhost.App, in In) (*mcp.Cal
 	if err != nil {
 		return outputs.NovelContentError(err)
 	}
-	out := outputs.NovelContent{Content: pixiv.ToNovelContentDTO(result)}
+	out := outputs.NovelContent{Content: result}
 	return outputs.NovelContentResult(result.NovelID), out, nil
 }

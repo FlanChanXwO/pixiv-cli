@@ -26,6 +26,7 @@ import (
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/lifecycle"
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/auth"
+	"github.com/FlanChanXwO/pixiv-cli/sdk"
 	"github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
 	sdkauth "github.com/modelcontextprotocol/go-sdk/auth"
 	"github.com/stretchr/testify/require"
@@ -751,4 +752,38 @@ func TestFailedResourceCloseDoesNotPopulateImageCache(t *testing.T) {
 		require.Equal(t, prefix, w.Body.Bytes())
 	}
 	require.EqualValues(t, 2, calls.Load())
+}
+
+// 私有缓存必须保留 URL、请求头与过期时间；公开 MarshalJSON 会刻意丢弃它们。
+func TestMetadataCacheRoundTripKeepsRuntimeLocator(t *testing.T) {
+	ref, err := sdk.NewResourceRef("pixiv", []byte("artwork:42:0"))
+	require.NoError(t, err)
+	expires := time.Date(2026, time.January, 2, 3, 4, 5, 0, time.UTC)
+	original := pixiv.Artwork{
+		ID: 42, Kind: pixiv.ArtworkKindIllustration, Title: "cached",
+		Cover: pixiv.ImageResource{
+			Resource: sdk.Resource{Ref: ref, URL: "https://i.pximg.net/cover.png?token=secret", RequestHeaders: map[string]string{"Referer": "https://www.pixiv.net/"}, ExpiresAt: &expires, RequiresCredentials: true},
+			Variant:  "original",
+			Width:    100,
+		},
+		User: pixiv.User{ID: 7, ProfileImage: pixiv.ImageResource{Resource: sdk.Resource{Ref: ref, URL: "https://i.pximg.net/avatar.png"}}},
+		Pages: []pixiv.ArtworkPage{{
+			PageIndex: 0,
+			Image:     pixiv.ImageResource{Resource: sdk.Resource{URL: "https://i.pximg.net/page.png"}},
+		}},
+	}
+	raw, err := marshalArtwork(original)
+	require.NoError(t, err)
+	require.Contains(t, string(raw), "https://i.pximg.net/cover.png?token=secret")
+
+	var decoded cachedArtwork
+	require.NoError(t, json.Unmarshal(raw, &decoded))
+	got := decoded.artwork()
+	require.Equal(t, "https://i.pximg.net/cover.png?token=secret", got.Cover.Resource.URL)
+	require.Equal(t, original.Cover.Resource.RequestHeaders, got.Cover.Resource.RequestHeaders)
+	require.Equal(t, expires, *got.Cover.Resource.ExpiresAt)
+	require.True(t, got.Cover.Resource.RequiresCredentials)
+	require.Equal(t, ref, got.Cover.Resource.Ref)
+	require.Equal(t, "https://i.pximg.net/avatar.png", got.User.ProfileImage.Resource.URL)
+	require.Equal(t, "https://i.pximg.net/page.png", got.Pages[0].Image.Resource.URL)
 }

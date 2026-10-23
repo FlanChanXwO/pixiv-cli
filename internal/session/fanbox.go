@@ -1,8 +1,6 @@
-// Package fanbox 提供 FANBOX 的业务 Facade。
-//
-// 账号选择与连接选项由 account leaf 负责；本包负责把默认账号 client
-// 组合成明确的资源生命周期，避免调用方直接管理 SDK client 的释放。
-package fanbox
+// 账号选择与连接选项由 account leaf 负责；session.Fanbox 负责把默认账号
+// client 组合成明确的资源生命周期，避免调用方直接管理 SDK client 的释放。
+package session
 
 import (
 	"context"
@@ -13,13 +11,13 @@ import (
 )
 
 var (
-	// ErrAccountServiceNotConfigured 表示没有注入 FANBOX 账号叶服务。
-	ErrAccountServiceNotConfigured = errors.New("fanbox account service is not configured")
+	// ErrFanboxAccountServiceNotConfigured 表示没有注入 FANBOX 账号叶服务。
+	ErrFanboxAccountServiceNotConfigured = errors.New("fanbox account service is not configured")
 	// ErrNilClient 表示账号叶服务成功返回了 nil client。
 	ErrNilClient = errors.New("fanbox account service returned a nil client")
 )
 
-// AccountOpener 是 account leaf 为根 Facade 提供的最窄打开端口。
+// AccountOpener 是 account leaf 为 Fanbox 提供的最窄打开端口。
 //
 // account.Service 实现此接口，并负责默认账号选择以及通过其
 // LoadOptionsFunc 加载 public sdk/fanbox.Options。ProxyOverride 只作用于
@@ -35,23 +33,23 @@ type OpenRequest struct {
 	ProxyOverride *string
 }
 
-// Facade 是 FANBOX 业务编排层。
+// Fanbox 是 FANBOX 业务编排层。
 //
-// Facade 不持有全局 client；每次 Open 都创建一个独立 Lease，调用方可以
+// Fanbox 不持有全局 client；每次 Open 都创建一个独立 Lease，调用方可以
 // 明确决定生命周期。Use 用于无法把 Lease 继续向上传递的 callback 场景。
-type Facade struct {
+type Fanbox struct {
 	accounts    AccountOpener
 	closeClient func(*fanboxsdk.Client) error
 }
 
-// NewFacade 构造 FANBOX 根业务 Facade。
-func NewFacade(accounts AccountOpener) *Facade {
-	return NewFacadeWithCloseClient(accounts, nil)
+// NewFanbox 构造 FANBOX 根业务编排对象。
+func NewFanbox(accounts AccountOpener) *Fanbox {
+	return NewFanboxWithCloseClient(accounts, nil)
 }
 
-// NewFacadeWithCloseClient 构造可注入 client 释放策略的 FANBOX Facade。
+// NewFanboxWithCloseClient 构造可注入 client 释放策略的 FANBOX 编排对象。
 // closeClient 为 nil 时使用 public SDK 的 CloseIdleConnections。
-func NewFacadeWithCloseClient(accounts AccountOpener, closeClient func(*fanboxsdk.Client) error) *Facade {
+func NewFanboxWithCloseClient(accounts AccountOpener, closeClient func(*fanboxsdk.Client) error) *Fanbox {
 	if closeClient == nil {
 		closeClient = func(client *fanboxsdk.Client) error {
 			if client != nil {
@@ -60,19 +58,19 @@ func NewFacadeWithCloseClient(accounts AccountOpener, closeClient func(*fanboxsd
 			return nil
 		}
 	}
-	return &Facade{
+	return &Fanbox{
 		accounts:    accounts,
 		closeClient: closeClient,
 	}
 }
 
 // Open 打开当前默认账号并返回显式 Lease。
-func (f *Facade) Open(ctx context.Context, request OpenRequest) (*lifecycle.Lease[*fanboxsdk.Client], error) {
+func (f *Fanbox) Open(ctx context.Context, request OpenRequest) (*lifecycle.Lease[*fanboxsdk.Client], error) {
 	if ctx == nil {
 		return nil, lifecycle.ErrNilContext
 	}
 	if f == nil || f.accounts == nil {
-		return nil, ErrAccountServiceNotConfigured
+		return nil, ErrFanboxAccountServiceNotConfigured
 	}
 	closeClient := f.closeClient
 	if closeClient == nil {
@@ -99,7 +97,7 @@ func (f *Facade) Open(ctx context.Context, request OpenRequest) (*lifecycle.Leas
 // Use 在一个 callback 内使用默认账号 client，并在 callback 返回后关闭它。
 // Attempt 参数保留 internal/lifecycle 的统一提交边界；FANBOX 当前没有
 // Pixiv 账号池 replay 策略，但调用方仍可用它标记外部副作用已发生。
-func (f *Facade) Use(
+func (f *Fanbox) Use(
 	ctx context.Context,
 	request OpenRequest,
 	use func(context.Context, *fanboxsdk.Client, *lifecycle.Attempt) error,

@@ -1,10 +1,11 @@
 // Package records 持有 Pixiv MCP 各 tool 共享的 record 构造、输出 schema 与
-// 本地筛选。它从 public DTO 构造 record.Record，保持未知字段与精确数字；
+// 本地筛选。它从 public 模型构造 record.Record，保持未知字段与精确数字；
 // CLI 与 MCP 共用同一 Record 机制。
 package records
 
 import (
 	"fmt"
+	"reflect"
 
 	record "github.com/FlanChanXwO/pixiv-cli/internal/record"
 	"github.com/FlanChanXwO/pixiv-cli/sdk"
@@ -28,65 +29,6 @@ func Result(records []record.Record, isError bool, message string) *mcp.CallTool
 // ErrorMessage 返回统一错误摘要。
 func ErrorMessage(err error) string {
 	return "Error: " + err.Error()
-}
-
-// FromArtworks 构造 artwork records。
-func FromArtworks(items []pixiv.Artwork) ([]record.Record, error) {
-	records := make([]record.Record, 0, len(items))
-	for _, item := range items {
-		record, err := FromArtwork(item)
-		if err != nil {
-			return nil, err
-		}
-		records = append(records, record)
-	}
-	return records, nil
-}
-
-// FromNovels 构造 novel records。
-func FromNovels(items []pixiv.Novel) ([]record.Record, error) {
-	records := make([]record.Record, 0, len(items))
-	for _, item := range items {
-		record, err := FromNovel(item)
-		if err != nil {
-			return nil, err
-		}
-		records = append(records, record)
-	}
-	return records, nil
-}
-
-// FromUserPreviews 构造 user records。
-func FromUserPreviews(items []pixiv.UserPreview) ([]record.Record, error) {
-	records := make([]record.Record, 0, len(items))
-	for _, item := range items {
-		record, err := FromUserPreview(item)
-		if err != nil {
-			return nil, err
-		}
-		records = append(records, record)
-	}
-	return records, nil
-}
-
-// FromArtwork 把单个 artwork DTO 转为 record。
-func FromArtwork(artwork pixiv.Artwork) (record.Record, error) {
-	return record.RecordFromArtworkDTO(pixiv.ToArtworkDTO(artwork))
-}
-
-// FromNovel 把单个 novel DTO 转为 record。
-func FromNovel(novel pixiv.Novel) (record.Record, error) {
-	return record.RecordFromNovelDTO(pixiv.ToNovelDTO(novel))
-}
-
-// FromUserPreview 把单个 user preview DTO 转为 record。
-func FromUserPreview(preview pixiv.UserPreview) (record.Record, error) {
-	return record.RecordFromUserPreviewDTO(pixiv.ToUserPreviewDTO(preview))
-}
-
-// FromUserDetail 把 user detail DTO 转为 record。
-func FromUserDetail(detail pixiv.UserDetail) (record.Record, error) {
-	return record.RecordFromUserDetailDTO(pixiv.ToUserDetailDTO(detail))
 }
 
 // OpenObjectSchema 返回允许任意附加属性的开放对象 schema。
@@ -320,14 +262,26 @@ func RecommendedOutputSchema() *jsonschema.Schema {
 }
 
 // TrendingTagsOutputSchema 描述 trending_tags_illust 的稳定顶层 envelope；
-// tags.items 直接由 public DTO 推导，确保嵌套 artwork 的可选字段与实际 JSON
+// tags.items 直接由 public 模型推导，确保嵌套 artwork 的可选字段与实际 JSON
 // 序列化契约同步，同时不把 SDK continuation 或原始响应字段提升为顶层协议。
 func TrendingTagsOutputSchema() *jsonschema.Schema {
-	tagSchema, err := jsonschema.For[pixiv.TrendingTagDTO](nil)
+	// Resource 的 JSON 形态由它的 MarshalJSON 决定：只有 opaque ref 与
+	// requires_credentials，序列化零值时是 null。schema 推导看不到方法实现，
+	// 因此显式给出这一类型，保持与输出契约一致。
+	tagSchema, err := jsonschema.For[pixiv.TrendingTag](&jsonschema.ForOptions{
+		TypeSchemas: map[reflect.Type]*jsonschema.Schema{
+			reflect.TypeFor[sdk.Resource](): {
+				Types:                []string{"null", "object"},
+				Properties:           map[string]*jsonschema.Schema{"ref": {Type: "string"}, "requires_credentials": {Type: "boolean"}},
+				Required:             []string{"ref"},
+				AdditionalProperties: &jsonschema.Schema{Not: &jsonschema.Schema{}},
+			},
+		},
+	})
 	if err != nil {
-		// TrendingTagDTO 只包含 JSON Schema 支持的 public DTO 字段；如果这里
-		// 失败，说明 DTO 契约本身已超出 schema 支持范围，继续注册错误 schema
-		// 会比在 composition root 直接暴露问题更危险。
+		// TrendingTag 只包含 JSON Schema 支持的公开模型字段；如果这里失败，
+		// 说明契约本身已超出 schema 支持范围，继续注册错误 schema 会比在
+		// composition root 直接暴露问题更危险。
 		panic(err)
 	}
 	return &jsonschema.Schema{
@@ -381,9 +335,8 @@ type ResourceOut struct {
 
 // ResourceOutFrom 把 opaque Resource 转为安全输出。
 func ResourceOutFrom(res sdk.Resource) *ResourceOut {
-	dto := sdk.ToResourceDTO(res)
-	if dto == nil {
+	if res.Ref.IsZero() {
 		return nil
 	}
-	return &ResourceOut{Ref: dto.Ref, RequiresCredentials: dto.RequiresCredentials}
+	return &ResourceOut{Ref: res.Ref.String(), RequiresCredentials: res.RequiresCredentials}
 }

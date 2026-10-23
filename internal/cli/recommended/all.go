@@ -160,7 +160,7 @@ func (s *spool) artworks(items []pixiv.Artwork) error {
 	for _, item := range items {
 		value := any(item)
 		if s.jsonOut {
-			value = pixiv.ToArtworkDTO(item)
+			value = item
 		}
 		if err := s.write(value); err != nil {
 			return err
@@ -173,7 +173,7 @@ func (s *spool) novels(items []pixiv.Novel) error {
 	for _, item := range items {
 		value := any(item)
 		if s.jsonOut {
-			value = pixiv.ToNovelDTO(item)
+			value = item
 		}
 		if err := s.write(value); err != nil {
 			return err
@@ -186,7 +186,7 @@ func (s *spool) users(items []pixiv.UserPreview) error {
 	for _, item := range items {
 		value := any(item)
 		if s.jsonOut {
-			value = pixiv.ToUserPreviewDTO(item)
+			value = item
 		}
 		if err := s.write(value); err != nil {
 			return err
