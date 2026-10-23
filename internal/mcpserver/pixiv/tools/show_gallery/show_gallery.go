@@ -105,7 +105,7 @@ func handle(ctx context.Context, app *toolhost.App, in input) (*mcp.CallToolResu
 			out.Failures = append(out.Failures, failure{id, "artwork_unavailable"})
 			return out
 		}
-		rec, err := records.FromArtwork(artwork)
+		rec, err := record.RecordFromArtwork(artwork)
 		if err != nil {
 			out.Failures = append(out.Failures, failure{id, "invalid_metadata"})
 			return out

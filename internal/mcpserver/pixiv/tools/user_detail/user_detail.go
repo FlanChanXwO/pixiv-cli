@@ -40,7 +40,7 @@ func handleUserDetail(ctx context.Context, app *toolhost.App, in In) (*mcp.CallT
 	if err != nil {
 		return outputs.UserDetailError(err)
 	}
-	userRecord, err := records.FromUserDetail(result)
+	userRecord, err := record.RecordFromUserDetail(result)
 	if err != nil {
 		return outputs.UserDetailError(err)
 	}

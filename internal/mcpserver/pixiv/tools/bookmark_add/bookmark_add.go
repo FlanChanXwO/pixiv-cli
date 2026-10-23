@@ -41,7 +41,7 @@ func handle(ctx context.Context, app *toolhost.App, in In) (*mcp.CallToolResult,
 	out := outputs.Mutation{Action: "add_bookmark", IllustID: in.ID, Text: fmt.Sprintf("Bookmarked artwork %d.", in.ID)}
 	return outputs.RunMutation(out, func() error {
 		return toolhost.Write(app, ctx, func(ctx context.Context, client *pixiv.Client) error {
-			return client.AddBookmark(ctx, pixiv.AddBookmarkRequest{ArtworkID: in.ID, Restrict: pixiv.Restrict(in.Restrict), Tags: in.Tags})
+			return client.AddArtworkBookmark(ctx, pixiv.AddArtworkBookmarkRequest{ArtworkID: in.ID, Restrict: pixiv.Restrict(in.Restrict), Tags: in.Tags})
 		})
 	})
 }

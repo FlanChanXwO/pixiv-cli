@@ -6,7 +6,7 @@ import (
 	"testing"
 
 	deps "github.com/FlanChanXwO/pixiv-cli/internal/cli/fanbox"
-	fanboxapp "github.com/FlanChanXwO/pixiv-cli/internal/fanboxaccount"
+	"github.com/FlanChanXwO/pixiv-cli/internal/fanboxaccount"
 	"github.com/spf13/cobra"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -31,7 +31,7 @@ func TestAuthReadCommandsRejectProxyConflictBeforeOpeningStore(t *testing.T) {
 				Reader:    bytes.NewReader(nil),
 				Writer:    &bytes.Buffer{},
 				WrapUsage: func(err error) error { return err },
-				AccountServiceFactory: func() (*fanboxapp.Service, error) {
+				AccountServiceFactory: func() (*fanboxaccount.Service, error) {
 					opened = true
 					return nil, errors.New("account store must not be opened")
 				},

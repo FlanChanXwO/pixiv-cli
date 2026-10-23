@@ -34,7 +34,7 @@ func handleNovelDetail(ctx context.Context, app *toolhost.App, in In) (*mcp.Call
 	if err != nil {
 		return outputs.NovelDetailError(err)
 	}
-	novelRecord, err := records.FromNovel(result)
+	novelRecord, err := record.RecordFromNovel(result)
 	if err != nil {
 		return outputs.NovelDetailError(err)
 	}

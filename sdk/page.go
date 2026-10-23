@@ -1,5 +1,7 @@
 package sdk
 
+import "encoding/json"
+
 // Page holds one page of results from a list operation and the cursor needed
 // to fetch the next page.
 //
@@ -12,4 +14,13 @@ package sdk
 type Page[T any] struct {
 	Items []T
 	Next  Cursor
+}
+
+// MarshalJSON emits the cursor as its stable text; the last page has an empty
+// next cursor.
+func (p Page[T]) MarshalJSON() ([]byte, error) {
+	return json.Marshal(struct {
+		Items []T    `json:"items"`
+		Next  string `json:"next"`
+	}{p.Items, p.Next.String()})
 }

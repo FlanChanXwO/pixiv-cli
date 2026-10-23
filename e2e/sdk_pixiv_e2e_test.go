@@ -169,7 +169,7 @@ func TestRealPixivSDKRead(t *testing.T) {
 
 	t.Run("viewer field output", func(t *testing.T) {
 		for _, value := range []pixivsdk.Artwork{searchPage.Items[0], artwork} {
-			raw, err := json.Marshal(pixivsdk.ToArtworkDTO(value))
+			raw, err := json.Marshal(value)
 			if err != nil {
 				t.Fatal("encode artwork DTO")
 			}

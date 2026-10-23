@@ -37,14 +37,14 @@ func handleTrendingTags(ctx context.Context, app *toolhost.App, _ In) (*mcp.Call
 	if err != nil {
 		return outputs.TrendingTagsError(err)
 	}
-	out := outputs.TrendingTags{Tags: []pixiv.TrendingTagDTO{}}
+	out := outputs.TrendingTags{Tags: []pixiv.TrendingTag{}}
 	if len(result) == 0 {
 		out.Text = "No trending tags found."
 		return outputs.TrendingTagsResult(out, false), out, nil
 	}
 	lines := make([]string, 0, len(result))
 	for _, tag := range result {
-		out.Tags = append(out.Tags, pixiv.ToTrendingTagDTO(tag))
+		out.Tags = append(out.Tags, tag)
 		translated := tag.TranslatedName
 		if translated == "" {
 			translated = "none"

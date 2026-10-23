@@ -27,7 +27,7 @@ func TestSafeRecordSerializationKeepsResourceRefAndOmitsTransportFields(t *testi
 		}},
 	}
 
-	record, err := recordpkg.RecordFromArtworkDTO(pixiv.ToArtworkDTO(artwork))
+	record, err := recordpkg.RecordFromArtwork(artwork)
 	require.NoError(t, err)
 	body, err := json.Marshal(record)
 	require.NoError(t, err)

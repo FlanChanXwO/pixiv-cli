@@ -12,13 +12,11 @@ import (
 // AddArtworkBookmark bookmarks one artwork. Tags, when non-empty, are applied
 // as bookmark tags.
 func (c *Client) AddArtworkBookmark(ctx context.Context, request AddArtworkBookmarkRequest) error {
-	return c.addArtworkBookmark(ctx, request, "AddArtworkBookmark")
+	return c.addArtworkBookmark(ctx, request)
 }
 
-// addArtworkBookmark contains the shared implementation for the explicit
-// artwork operation and its legacy wrapper so their validation and wire
-// semantics cannot drift apart.
-func (c *Client) addArtworkBookmark(ctx context.Context, request AddArtworkBookmarkRequest, operation string) error {
+func (c *Client) addArtworkBookmark(ctx context.Context, request AddArtworkBookmarkRequest) error {
+	const operation = "AddArtworkBookmark"
 	if request.ArtworkID <= 0 {
 		return newError(operation, sdk.InvalidArgument, "artwork ID must be positive")
 	}
@@ -34,24 +32,13 @@ func (c *Client) addArtworkBookmark(ctx context.Context, request AddArtworkBookm
 	return nil
 }
 
-// AddBookmark bookmarks one artwork. It is retained as a source-compatible
-// wrapper around AddArtworkBookmark's implementation.
-func (c *Client) AddBookmark(ctx context.Context, request AddBookmarkRequest) error {
-	return c.addArtworkBookmark(ctx, AddArtworkBookmarkRequest{
-		ArtworkID: request.ArtworkID,
-		Restrict:  request.Restrict,
-		Tags:      request.Tags,
-	}, "AddBookmark")
-}
-
 // RemoveArtworkBookmark removes the current user's bookmark from one artwork.
 func (c *Client) RemoveArtworkBookmark(ctx context.Context, request RemoveArtworkBookmarkRequest) error {
-	return c.removeArtworkBookmark(ctx, request.ArtworkID, "RemoveArtworkBookmark")
+	return c.removeArtworkBookmark(ctx, request.ArtworkID)
 }
 
-// removeArtworkBookmark contains the shared implementation for the explicit
-// artwork operation and its legacy wrapper.
-func (c *Client) removeArtworkBookmark(ctx context.Context, artworkID int64, operation string) error {
+func (c *Client) removeArtworkBookmark(ctx context.Context, artworkID int64) error {
+	const operation = "RemoveArtworkBookmark"
 	if artworkID <= 0 {
 		return newError(operation, sdk.InvalidArgument, "artwork ID must be positive")
 	}
@@ -59,13 +46,6 @@ func (c *Client) removeArtworkBookmark(ctx context.Context, artworkID int64, ope
 		return classifyAppError(err, operation)
 	}
 	return nil
-}
-
-// RemoveBookmark removes the current user's bookmark from one artwork. It is
-// retained as a source-compatible wrapper around RemoveArtworkBookmark's
-// implementation.
-func (c *Client) RemoveBookmark(ctx context.Context, request RemoveBookmarkRequest) error {
-	return c.removeArtworkBookmark(ctx, request.ArtworkID, "RemoveBookmark")
 }
 
 // AddNovelBookmark bookmarks one novel. Tags, when non-empty, are applied as
@@ -123,12 +103,4 @@ func (c *Client) UnfollowUser(ctx context.Context, request UnfollowUserRequest) 
 		return classifyAppError(err, "UnfollowUser")
 	}
 	return nil
-}
-
-// SetAIArtworkVisibility is retained for source compatibility.
-//
-// Deprecated: the App API AI-visibility endpoint is no longer available.
-// This method returns ContentUnavailable without making a network request.
-func (c *Client) SetAIArtworkVisibility(ctx context.Context, request SetAIArtworkVisibilityRequest) error {
-	return newError("SetAIArtworkVisibility", sdk.ContentUnavailable, "AI artwork visibility is unsupported by the current App API")
 }

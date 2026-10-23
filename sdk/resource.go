@@ -1,6 +1,7 @@
 package sdk
 
 import (
+	"encoding/json"
 	"io"
 	"net/http"
 	"strconv"
@@ -21,7 +22,8 @@ const (
 // currently-usable upstream locator that a caller may stream directly or proxy
 // without buffering to disk; Ref is the stable opaque identity to hand back to
 // OpenResource or SaveResource. The two are not interchangeable and neither can
-// be derived from the other.
+// be derived from the other. The JSON form exposes only Ref and
+// RequiresCredentials; runtime locators never cross an output boundary.
 //
 // URL must be validated (scheme, host, userinfo, allowed resource path) before
 // it enters a public model. RequestHeaders contains only non-secret headers a
@@ -32,11 +34,24 @@ const (
 // ExpiresAt is set only when the upstream or protocol can reliably determine
 // it; callers must not treat URL as a permanent identity.
 type Resource struct {
-	Ref                 ResourceRef       `json:"ref"`
-	URL                 string            `json:"url"`
-	RequestHeaders      map[string]string `json:"request_headers,omitempty"`
-	ExpiresAt           *time.Time        `json:"expires_at,omitempty"`
-	RequiresCredentials bool              `json:"requires_credentials,omitempty"`
+	Ref                 ResourceRef
+	URL                 string
+	RequestHeaders      map[string]string
+	ExpiresAt           *time.Time
+	RequiresCredentials bool
+}
+
+// MarshalJSON emits only the opaque reference and the credential requirement,
+// never URL, request headers, or expiry metadata. A resource without a
+// reference marshals as null.
+func (r Resource) MarshalJSON() ([]byte, error) {
+	if r.Ref.IsZero() {
+		return []byte("null"), nil
+	}
+	return json.Marshal(struct {
+		Ref                 ResourceRef `json:"ref"`
+		RequiresCredentials bool        `json:"requires_credentials,omitempty"`
+	}{r.Ref, r.RequiresCredentials})
 }
 
 // Copy returns a deep copy of the resource. RequestHeaders is returned to

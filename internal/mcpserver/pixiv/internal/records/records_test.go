@@ -6,7 +6,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/internal/records"
 	record "github.com/FlanChanXwO/pixiv-cli/internal/record"
 	"github.com/FlanChanXwO/pixiv-cli/sdk"
 	pixiv "github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
@@ -39,7 +38,7 @@ func TestRecordSerializationOmitsResourceTransport(t *testing.T) {
 		}}},
 	}
 
-	artworkRecords, err := records.FromArtworks([]pixiv.Artwork{artwork})
+	artworkRecords, err := record.FromArtworks([]pixiv.Artwork{artwork})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -54,25 +53,25 @@ func TestRecordSerializationOmitsResourceTransport(t *testing.T) {
 		}
 	}
 
-	novels, err := records.FromNovels([]pixiv.Novel{{ID: 2, Cover: pixiv.ImageResource{Resource: artwork.Cover.Resource}}})
+	novels, err := record.FromNovels([]pixiv.Novel{{ID: 2, Cover: pixiv.ImageResource{Resource: artwork.Cover.Resource}}})
 	if err != nil {
 		t.Fatal(err)
 	}
 	assertMCPResourceTransportAbsent(t, novels, ref.String())
 
-	previews, err := records.FromUserPreviews([]pixiv.UserPreview{{User: artwork.User, Illusts: []pixiv.Artwork{artwork}, Novels: []pixiv.Novel{{ID: 2, Cover: artwork.Cover}}}})
+	previews, err := record.FromUserPreviews([]pixiv.UserPreview{{User: artwork.User, Illusts: []pixiv.Artwork{artwork}, Novels: []pixiv.Novel{{ID: 2, Cover: artwork.Cover}}}})
 	if err != nil {
 		t.Fatal(err)
 	}
 	assertMCPResourceTransportAbsent(t, previews, ref.String())
 
-	detailRecord, err := records.FromUserDetail(pixiv.UserDetail{User: artwork.User})
+	detailRecord, err := record.RecordFromUserDetail(pixiv.UserDetail{User: artwork.User})
 	if err != nil {
 		t.Fatal(err)
 	}
 	assertMCPResourceTransportAbsent(t, []record.Record{detailRecord}, ref.String())
 
-	trending := pixiv.ToTrendingTagDTO(pixiv.TrendingTag{Tag: "safe-tag", TranslatedName: "safe", Artwork: artwork})
+	trending := pixiv.TrendingTag{Tag: "safe-tag", TranslatedName: "safe", Artwork: artwork}
 	rawTrending, err := json.Marshal(trending)
 	if err != nil {
 		t.Fatal(err)

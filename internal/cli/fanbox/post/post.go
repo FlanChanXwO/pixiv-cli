@@ -76,7 +76,7 @@ func (a command) runCreators(cmd *cobra.Command, opts listing.Options, rawKind s
 		}
 		return listing.Run(cmd.Context(), a.out, plan, "creators", jsonOut, opts.NDJSON, func(items []fanbox.CreatorSummary) error {
 			return printCreators(a.out, items)
-		}, func(item fanbox.CreatorSummary) any { return fanbox.ToCreatorSummaryDTO(item) }, fetch)
+		}, func(item fanbox.CreatorSummary) any { return item }, fetch)
 	})
 }
 
@@ -111,7 +111,7 @@ func (a command) runPosts(cmd *cobra.Command, args []string, opts listing.Option
 		}
 		return listing.Run(cmd.Context(), a.out, plan, "posts", jsonOut, opts.NDJSON, func(items []fanbox.Post) error {
 			return printPosts(a.out, items)
-		}, func(item fanbox.Post) any { return fanbox.ToPostDTO(item) }, fetch)
+		}, func(item fanbox.Post) any { return item }, fetch)
 	})
 }
 
@@ -279,7 +279,7 @@ func (a command) runFeed(cmd *cobra.Command, opts listing.Options, bind func(*fa
 	return a.data.UseClient(cmd, func(client *fanbox.Client) error {
 		return listing.Run(cmd.Context(), a.out, plan, "posts", jsonOut, opts.NDJSON, func(items []fanbox.Post) error {
 			return printPosts(a.out, items)
-		}, func(item fanbox.Post) any { return fanbox.ToPostDTO(item) }, bind(client))
+		}, func(item fanbox.Post) any { return item }, bind(client))
 	})
 }
 

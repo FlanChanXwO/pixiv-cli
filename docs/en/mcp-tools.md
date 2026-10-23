@@ -158,7 +158,7 @@ flowchart LR
 
 **`pixiv_comments`** — closed input `{kind, id, page, limit}`, required `kind=artwork|novel`, positive `id`. Output `{comments, pagination}` plus optional `total` / `access_control` (omitted when upstream lacks them). Artwork and novel use their current comment operations. Opaque numeric `comment_access_control` is kept as `access_control.comment_access_control` — no inferred `can_comment`/`is_locked`. No mutation-only `stamp_id`; no standalone `stamps` tool.
 
-**Output safety** — records keep public fields and an opaque resource reference when needed; never resolved/signed URLs, request headers, Cookies, expiry metadata, access tokens or other transport credentials (same for novel content blocks and comment/profile images). Structured results use explicit DTOs and typed envelopes, not runtime SDK models. FANBOX first-party resources carry opaque `ref` and optional `requires_credentials`, never `url`, `request_headers` or `expires_at`.
+**Output safety** — records keep public fields and an opaque resource reference when needed; never resolved/signed URLs, request headers, Cookies, expiry metadata, access tokens or other transport credentials (same for novel content blocks and comment/profile images). Structured results use the public SDK models and typed envelopes. FANBOX first-party resources carry opaque `ref` and optional `requires_credentials`, never `url`, `request_headers` or `expires_at`.
 
 ## Reverse image search
 

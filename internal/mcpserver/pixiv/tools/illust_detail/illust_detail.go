@@ -35,7 +35,7 @@ func handleIllustDetail(ctx context.Context, app *toolhost.App, in illustReferen
 	if err != nil {
 		return outputs.UserDetailError(err)
 	}
-	artworkRecord, err := records.FromArtwork(result)
+	artworkRecord, err := record.RecordFromArtwork(result)
 	if err != nil {
 		return outputs.UserDetailError(err)
 	}

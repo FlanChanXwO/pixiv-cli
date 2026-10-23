@@ -691,7 +691,7 @@ func TestArtworkCommentsPreserveNumericAccessControl(t *testing.T) {
 		t.Fatalf("numeric access control was assigned object semantics: %#v", page.AccessControl)
 	}
 
-	encoded, err := json.Marshal(ToCommentAccessControlDTO(*page.AccessControl))
+	encoded, err := json.Marshal(*page.AccessControl)
 	if err != nil {
 		t.Fatalf("marshal access control DTO: %v", err)
 	}
@@ -887,7 +887,7 @@ func TestArtworkViewerFieldPresence(t *testing.T) {
 				if calls != 1 {
 					t.Fatalf("requests=%d, want no enrichment", calls)
 				}
-				raw, err := json.Marshal(ToArtworkDTO(got))
+				raw, err := json.Marshal(got)
 				if err != nil {
 					t.Fatal(err)
 				}
@@ -1177,7 +1177,7 @@ func TestPixivFamiliesNoWebFallbackTokenMatrix(t *testing.T) {
 			return err
 		}},
 		{name: "mutation", call: func(ctx context.Context, client *Client) error {
-			return client.AddBookmark(ctx, AddBookmarkRequest{ArtworkID: 1})
+			return client.AddArtworkBookmark(ctx, AddArtworkBookmarkRequest{ArtworkID: 1})
 		}},
 	}
 	for _, family := range families {
@@ -1204,7 +1204,7 @@ func TestPixivFamiliesNoWebFallbackTokenMatrix(t *testing.T) {
 	}
 }
 
-func TestAddBookmarkWiresMutation(t *testing.T) {
+func TestAddArtworkBookmarkWiresMutation(t *testing.T) {
 	rt := roundTripFunc(func(req *http.Request) (*http.Response, error) {
 		if req.URL.Host != "app-api.pixiv.net" || req.URL.Path != "/v2/illust/bookmark/add" {
 			t.Fatalf("unexpected request %s %s", req.Method, req.URL.String())
@@ -1215,8 +1215,8 @@ func TestAddBookmarkWiresMutation(t *testing.T) {
 		return &http.Response{StatusCode: http.StatusOK, Header: http.Header{}, Body: io.NopCloser(strings.NewReader(""))}, nil
 	})
 	client, _ := NewWith("token", Options{HTTPClient: &http.Client{Transport: rt}})
-	if err := client.AddBookmark(context.Background(), AddBookmarkRequest{ArtworkID: 12, Tags: []string{"tag"}}); err != nil {
-		t.Fatalf("AddBookmark: %v", err)
+	if err := client.AddArtworkBookmark(context.Background(), AddArtworkBookmarkRequest{ArtworkID: 12, Tags: []string{"tag"}}); err != nil {
+		t.Fatalf("AddArtworkBookmark: %v", err)
 	}
 }
 
@@ -1502,28 +1502,6 @@ func TestNovelContentDeprecatedEntryPointDoesNotCallRejectedEndpoint(t *testing.
 	}
 }
 
-func TestSetAIArtworkVisibilityDeprecatedEntryPointDoesNotCallRejectedEndpoint(t *testing.T) {
-	calls := 0
-	rt := roundTripFunc(func(*http.Request) (*http.Response, error) {
-		calls++
-		return nil, io.ErrUnexpectedEOF
-	})
-	client, err := NewWith("token", Options{HTTPClient: &http.Client{Transport: rt}})
-	if err != nil {
-		t.Fatalf("NewWith: %v", err)
-	}
-	err = client.SetAIArtworkVisibility(context.Background(), SetAIArtworkVisibilityRequest{Visible: true})
-	if sdk.ReasonOf(err) != sdk.ContentUnavailable {
-		t.Fatalf("reason = %q, want %q", sdk.ReasonOf(err), sdk.ContentUnavailable)
-	}
-	if err == nil || !strings.Contains(err.Error(), "unsupported") {
-		t.Fatalf("error = %v, want an explicit unsupported detail", err)
-	}
-	if calls != 0 {
-		t.Fatalf("rejected AI visibility endpoint was called %d time(s)", calls)
-	}
-}
-
 func jsonResponse(body string) *http.Response {
 	return &http.Response{
 		StatusCode: http.StatusOK,
@@ -1559,7 +1537,7 @@ func TestBookmarkOperationsRejectUnknownRestrictBeforeNetwork(t *testing.T) {
 			return err
 		}},
 		{name: "add bookmark", call: func() error {
-			return client.AddBookmark(context.Background(), AddBookmarkRequest{ArtworkID: 7, Restrict: Restrict("unknown")})
+			return client.AddArtworkBookmark(context.Background(), AddArtworkBookmarkRequest{ArtworkID: 7, Restrict: Restrict("unknown")})
 		}},
 	}
 	for _, test := range tests {
@@ -1933,10 +1911,10 @@ func resourceTestClient(t *testing.T, server *httptest.Server) (*Client, *http.C
 	return client, httpClient
 }
 
-// legacyPixivClient models the established Client surface consumed by callers.
+// pixivClientSurface models the Client surface consumed by callers.
 // Keeping this interface compile-checked prevents a future migration from
-// silently removing an old method signature.
-type legacyPixivClient interface {
+// silently changing or removing a method signature.
+type pixivClientSurface interface {
 	SearchArtworks(context.Context, SearchArtworksRequest) (sdk.Page[Artwork], error)
 	Artwork(context.Context, ArtworkRequest) (Artwork, error)
 	ArtworkPages(context.Context, ArtworkPagesRequest) ([]ArtworkPage, error)
@@ -1974,11 +1952,10 @@ type legacyPixivClient interface {
 	UserBlockedUsers(context.Context, UserBlockedUsersRequest) (sdk.Page[UserPreview], error)
 	MyPixivUsers(context.Context, MyPixivUsersRequest) (sdk.Page[UserPreview], error)
 	CurrentUser(context.Context, CurrentUserRequest) (UserDetail, error)
-	AddBookmark(context.Context, AddBookmarkRequest) error
-	RemoveBookmark(context.Context, RemoveBookmarkRequest) error
+	AddArtworkBookmark(context.Context, AddArtworkBookmarkRequest) error
+	RemoveArtworkBookmark(context.Context, RemoveArtworkBookmarkRequest) error
 	FollowUser(context.Context, FollowUserRequest) error
 	UnfollowUser(context.Context, UnfollowUserRequest) error
-	SetAIArtworkVisibility(context.Context, SetAIArtworkVisibilityRequest) error
 	OpenResource(context.Context, sdk.OpenResourceRequest) (*sdk.ResourceResponse, error)
 	SaveResource(context.Context, sdk.ResourceRef, sdk.SaveOptions) (sdk.SavedResource, error)
 	CloseIdleConnections()
@@ -1986,14 +1963,14 @@ type legacyPixivClient interface {
 	Username() string
 }
 
-var _ legacyPixivClient = (*Client)(nil)
+var _ pixivClientSurface = (*Client)(nil)
 
-func TestLegacySDKConsumerCompiles(t *testing.T) {
-	var client legacyPixivClient = (*Client)(nil)
+func TestSDKClientSurfaceCompiles(t *testing.T) {
+	var client pixivClientSurface = (*Client)(nil)
 	_ = client
 
-	// These literals intentionally use the pre-existing request fields and
-	// named types that a source-compatible consumer can compile against.
+	// These literals exercise every public request and model type a consumer
+	// needs to call the surface.
 	_ = SearchArtworksRequest{
 		Word: "word", Target: SearchTargetKeyword, Sort: SortModePopularDesc,
 		Duration: DurationLastWeek, StartDate: "2026-01-01", EndDate: "2026-01-02",
@@ -2037,11 +2014,10 @@ func TestLegacySDKConsumerCompiles(t *testing.T) {
 	_ = UserBlockedUsersRequest{UserID: 1, Cursor: sdk.Cursor{}}
 	_ = MyPixivUsersRequest{Cursor: sdk.Cursor{}}
 	_ = CurrentUserRequest{}
-	_ = AddBookmarkRequest{ArtworkID: 1, Restrict: RestrictPublic, Tags: []string{"tag"}}
-	_ = RemoveBookmarkRequest{ArtworkID: 1}
+	_ = AddArtworkBookmarkRequest{ArtworkID: 1, Restrict: RestrictPublic, Tags: []string{"tag"}}
+	_ = RemoveArtworkBookmarkRequest{ArtworkID: 1}
 	_ = FollowUserRequest{UserID: 1, Restrict: RestrictPublic}
 	_ = UnfollowUserRequest{UserID: 1}
-	_ = SetAIArtworkVisibilityRequest{Visible: true}
 
 	_ = Artwork{}
 	_ = ArtworkPage{}
