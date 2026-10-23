@@ -19,12 +19,8 @@ type Page[T any] struct {
 // MarshalJSON emits the cursor as its stable text; the last page has an empty
 // next cursor.
 func (p Page[T]) MarshalJSON() ([]byte, error) {
-	items := p.Items
-	if items == nil {
-		items = []T{}
-	}
 	return json.Marshal(struct {
 		Items []T    `json:"items"`
 		Next  string `json:"next"`
-	}{items, p.Next.String()})
+	}{p.Items, p.Next.String()})
 }

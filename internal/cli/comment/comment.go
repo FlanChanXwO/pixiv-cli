@@ -343,13 +343,9 @@ func (a command) runStamps(cmd *cobra.Command, opts stampsOptions) error {
 		return nil
 	}
 	if jsonOut {
-		items := make([]pixiv.Stamp, 0, len(stamps))
-		for _, item := range stamps {
-			items = append(items, item)
-		}
 		return a.data.WriteJSON(struct {
 			Stamps []pixiv.Stamp `json:"stamps"`
-		}{Stamps: items})
+		}{Stamps: stamps})
 	}
 	for _, item := range stamps {
 		if _, err := fmt.Fprintf(a.data.Output, "%d %s\n", item.ID, item.Image.Resource.Ref.String()); err != nil {

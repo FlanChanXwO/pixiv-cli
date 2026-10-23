@@ -1,0 +1,36 @@
+- main [ref=f1e2]:
+  - generic [ref=f1e3]:
+    - generic [ref=f1e4]: pixiv-cli
+    - navigation "Preview variants" [ref=f1e8]:
+      - link "Soft portal" [ref=f1e9] [cursor=pointer]:
+        - /url: portal.html
+      - link "Geometry" [ref=f1e10] [cursor=pointer]:
+        - /url: geometry.html
+      - link "Illustration" [ref=f1e11] [cursor=pointer]:
+        - /url: illustration.html
+  - generic [ref=f1e12]:
+    - paragraph [ref=f1e13]: Variant 01 · soft portal
+    - heading "A calm bridge into your Pixiv session." [level=1] [ref=f1e14]
+    - paragraph [ref=f1e15]: Blue-violet depth and a quiet animated portal make the local OAuth hand-off feel intentional without competing with the official authorization page.
+  - region "All local login page states" [ref=f1e16]:
+    - article [ref=f1e17]:
+      - generic [ref=f1e18]: Manual fallback
+      - heading "Continue in your browser" [level=2] [ref=f1e22]
+      - paragraph [ref=f1e23]: Open Pixiv, then paste the callback URL or code below.
+      - generic [ref=f1e24]:
+        - textbox "Callback URL or code" [ref=f1e25]:
+          - /placeholder: Paste callback URL or code
+        - button "Submit" [ref=f1e26] [cursor=pointer]
+    - article [ref=f1e27]:
+      - generic [ref=f1e28]: Callback relay
+      - heading "Completing login…" [level=2] [ref=f1e35]
+      - paragraph [ref=f1e36]: Please keep this page open while Pixiv confirms the callback.
+    - article [ref=f1e37]:
+      - generic [ref=f1e38]: Completed
+      - heading "Login successful" [level=2] [ref=f1e42]
+      - paragraph [ref=f1e43]: You can close this page and return to the terminal.
+    - article [ref=f1e44]:
+      - generic [ref=f1e45]: Needs attention
+      - heading "Login failed" [level=2] [ref=f1e49]
+      - paragraph [ref=f1e50]: Return to the terminal to view details or try again.
+  - paragraph [ref=f1e51]: Preview only · all graphics are inline SVG · no external resources · animation stops when reduced motion is requested.
