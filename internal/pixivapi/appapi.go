@@ -168,7 +168,12 @@ func (c *Client) do(ctx context.Context, req request) (*http.Response, error) {
 		if isAuth && !authRetried && c.session != nil {
 			authRetried = true
 			if err := c.session.Refresh(ctx); err != nil {
-				// 保留首个响应的状态，让调用方得到与未刷新时相同的失败。
+				// 取消和 deadline 必须保留 context 语义，不能被首个 401/403 掩盖。
+				if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+					resp.Body.Close()
+					return nil, Transport(err)
+				}
+				// 其他刷新失败保留首个响应的状态，与未刷新时相同。
 				return resp, nil
 			}
 			discardBody(resp)

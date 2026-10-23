@@ -298,6 +298,22 @@ func TestRefreshAndRetryOnceOnTypedAuthStatus(t *testing.T) {
 	}
 }
 
+func TestRefreshCancellationIsNotReportedAsHTTPStatus(t *testing.T) {
+	api := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusUnauthorized)
+	}))
+	defer api.Close()
+
+	session := &fakeSession{token: "old-access", refreshErr: context.Canceled}
+	_, err := getTestDetail(context.Background(), pixivapi.New(pixivapi.Config{BaseURL: api.URL, HTTPClient: api.Client(), Session: session}))
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("error = %v, want context.Canceled", err)
+	}
+	if session.refreshCalls != 1 {
+		t.Fatalf("refresh calls = %d, want 1", session.refreshCalls)
+	}
+}
+
 func TestGETNonAuthStatusDoesNotRefreshOrReplayForAuthWordsInBody(t *testing.T) {
 	session := &fakeSession{token: "old-access"}
 	requests := 0
@@ -417,11 +433,15 @@ func TestMutationRateLimitIsNotReplayed(t *testing.T) {
 type fakeSession struct {
 	token        string
 	refreshCalls int
+	refreshErr   error
 }
 
 func (s *fakeSession) AccessToken() string { return s.token }
 func (s *fakeSession) Refresh(context.Context) error {
 	s.refreshCalls++
+	if s.refreshErr != nil {
+		return s.refreshErr
+	}
 	s.token = "new-access"
 	return nil
 }
