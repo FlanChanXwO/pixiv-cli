@@ -97,7 +97,7 @@ func (f *Facade) Open(ctx context.Context, request OpenRequest) (*lifecycle.Leas
 }
 
 // Use 在一个 callback 内使用默认账号 client，并在 callback 返回后关闭它。
-// Attempt 参数保留 shared/lifecycle 的统一提交边界；FANBOX 当前没有
+// Attempt 参数保留 internal/lifecycle 的统一提交边界；FANBOX 当前没有
 // Pixiv 账号池 replay 策略，但调用方仍可用它标记外部副作用已发生。
 func (f *Facade) Use(
 	ctx context.Context,

@@ -28,7 +28,7 @@ type PagedReadResult[T any] struct {
 // TraverseWith 在 execute 提供的重放边界内执行一次逻辑分页遍历。
 //
 // begin 会在每次 execute 尝试开始时调用。consume 返回 committed=true 时，
-// execute owner 可以据此禁止后续重放。分页引擎仍由 shared/pagination 负责
+// execute owner 可以据此禁止后续重放。分页引擎仍由 internal/pagination 负责
 // Skip、Limit、OneBatch、cursor 循环检测和 HasMore 语义。返回的 PageResult
 // 携带引擎权威的 Returned 与 HasMore，包括上游批次内被 Limit 截断但上游
 // cursor 已为空的情形——此时仍有未返回的条目，HasMore 必须为 true。
