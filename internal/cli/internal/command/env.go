@@ -214,9 +214,6 @@ func (e Env) AutoNDJSON(cmd *cobra.Command, ndjson, jsonOut bool) bool {
 	return ok && !term.IsTerminal(int(file.Fd()))
 }
 
-// PositiveInt64 parses a required positive identifier.
-func PositiveInt64(value, name string) (int64, error) { return input.PositiveInt64(value, name) }
-
 // OutputIsTTY reports whether stdout is a terminal.
 func (e Env) OutputIsTTY() bool {
 	file, ok := e.Out.(interface{ Fd() uintptr })

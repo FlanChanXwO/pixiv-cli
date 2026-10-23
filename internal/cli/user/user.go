@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	commands "github.com/FlanChanXwO/pixiv-cli/internal/cli/internal/command"
+	"github.com/FlanChanXwO/pixiv-cli/internal/cli/internal/input"
 	pixivcmd "github.com/FlanChanXwO/pixiv-cli/internal/cli/internal/pixivcmd"
 	"github.com/FlanChanXwO/pixiv-cli/internal/cli/internal/resolver"
 	"github.com/FlanChanXwO/pixiv-cli/sdk"
@@ -279,7 +280,7 @@ func requestedUserID(args []string) (int64, error) {
 	if len(args) != 1 {
 		return 0, nil
 	}
-	return commands.PositiveInt64(args[0], "user_id")
+	return input.PositiveInt64(args[0], "user_id")
 }
 
 func resolveUserID(ctx context.Context, value, operation string) (int64, error) {
