@@ -300,6 +300,85 @@
     const row = {list, update: () => { toggle.hidden = !expanded && list.scrollWidth <= group.clientWidth; }};
     tagRows.add(row); resize?.observe(list); row.update();
   }
+  // The tool's entry for one page, if the result covers it at all.
+  function capabilityEntry(result, id, page) {
+    return result?.structuredContent?.images?.find(item => Number(item?.illust_id) === Number(id) && item.page === page);
+  }
+  // Only the canonical origin returned by our media tool is allowed; CSP also pins it.
+  function capabilityURL(result, id, page) {
+    const origin = result?.structuredContent?.media_origin, item = capabilityEntry(result, id, page);
+    if (!item || typeof origin !== "string" || !/^https?:\/\/[^/?#@]+$/.test(origin) || typeof item.url !== "string" || !item.url.startsWith(origin + "/") || !item.url.includes("/media/") || /[?#]/.test(item.url)) return undefined;
+    return item.url;
+  }
+  const pageRange = total => Array.from({length: Number.isSafeInteger(total) && total > 0 ? total : 1}, (_, index) => index + 1);
+  // Decodes a neighbouring page off-screen so a later turn shows it from the session cache at once.
+  function warm(key, url) {
+    if (!url || cached(key) || disposed) return;
+    const image = document.createElement("img"); image.alt = ""; image.referrerPolicy = "no-referrer";
+    image.addEventListener("load", () => { if (!disposed) remember(key, image, image.naturalWidth * image.naturalHeight * 8, () => { if (!proxyImages.has(image)) image.removeAttribute("src"); }); });
+    image.src = url;
+  }
+  // A page turn drawn as a rotating cube over `surface`. The content swaps through `go` once the turn
+  // lands, so the existing load, cache and failure paths still decide what is actually shown.
+  function cubePager(surface, {current, currentSource, source, valid, go}) {
+    let cube, rotor, side = 0, busy = false;
+    const motion = () => typeof window.matchMedia === "function" && !window.matchMedia("(prefers-reduced-motion: reduce)").matches && typeof surface.animate === "function" && Boolean(currentSource());
+    const half = () => (surface.clientWidth || 0) / 2;
+    const place = degrees => { rotor.style.transform = "translateZ(" + -half() + "px) rotateY(" + degrees + "deg)"; };
+    function face(src, rotation) {
+      const element = document.createElement("div"); element.className = src ? "cube-face" : "cube-face cube-face-pending";
+      element.style.transform = "rotateY(" + rotation + "deg) translateZ(" + half() + "px)";
+      if (src) { const image = document.createElement("img"); image.alt = ""; image.referrerPolicy = "no-referrer"; image.src = src; element.append(image); }
+      rotor.append(element);
+    }
+    function clear() { cube?.remove(); cube = rotor = undefined; side = 0; surface.classList?.remove("cube-turning"); }
+    function build(direction, target) {
+      clear();
+      cube = document.createElement("div"); cube.className = "cube"; cube.setAttribute("aria-hidden", "true");
+      rotor = document.createElement("div"); rotor.className = "cube-rotor"; cube.append(rotor);
+      face(currentSource(), 0);
+      if (target !== undefined) face(source(target), direction * 90);
+      side = direction; surface.append(cube); surface.classList?.add("cube-turning");
+    }
+    function land(target) {
+      const from = rotor.style.transform;
+      place(target === undefined ? 0 : -side * 90);
+      busy = true;
+      const animation = rotor.animate([{transform: from}, {transform: rotor.style.transform}], {duration: 280, easing: "cubic-bezier(.2,.7,.3,1)"});
+      animation.onfinish = animation.oncancel = () => {
+        busy = false;
+        if (target === undefined) { clear(); return; }
+        // A decoded target swaps in under the cube; otherwise the normal loading state takes over at once.
+        const ready = Boolean(source(target)), pending = go(target);
+        if (ready) Promise.resolve(pending).finally(clear); else clear();
+      };
+    }
+    return {
+      // Follows a horizontal drag; false means no turn is drawn (reduced motion, busy, nothing shown).
+      drag(dx) {
+        if (busy || !motion()) return false;
+        const direction = dx < 0 ? 1 : -1, target = current() + direction, open = valid(target);
+        if (!cube || side !== direction) build(direction, open ? target : undefined);
+        // Past the first or last page the cube only gives a little before springing back.
+        const limit = open ? 90 : 18;
+        place(Math.max(-limit, Math.min(limit, dx / (half() * 2 || 1) * 90)));
+        return true;
+      },
+      release(commit) {
+        if (!cube || busy) return false;
+        const target = current() + side;
+        land(commit && valid(target) ? target : undefined);
+        return true;
+      },
+      // Buttons, keys and the slider turn one face towards the target, even when it is several pages away.
+      turn(target) {
+        if (!valid(target) || target === current() || busy) return;
+        if (!motion()) { go(target); return; }
+        const direction = target > current() ? 1 : -1;
+        build(direction, target); place(0); land(target);
+      }
+    };
+  }
   function proxyImage(record, parent, initial, epoch, page = 1, quality = "thumbnail", open, openOriginal, onReady, retryAll) {
     const frame = document.createElement("div"); frame.className = "media-frame"; parent.append(frame);
     if (quality !== "thumbnail") mediaBadges(record, frame);
@@ -309,6 +388,9 @@
     if (open) { const link = action("", frame, open); link.className = "media-open"; link.title = "Open artwork"; link.setAttribute?.("aria-label", "Open " + String(record.title || "artwork")); link.append(image); } else frame.append(image);
     const fitThumbnail = () => { if (quality === "thumbnail" && image.naturalWidth > 0 && image.naturalHeight > 0) frame.style.aspectRatio = image.naturalWidth + " / " + image.naturalHeight; };
     fitThumbnail();
+    // Letterboxing shows a blurred copy of the same image rather than flat bars; retained images never fire load.
+    const backdrop = () => { if (quality !== "thumbnail" && image.src) frame.style.setProperty?.("--frame-image", "url(" + JSON.stringify(image.src) + ")"); };
+    if (retained) backdrop();
     const overlay = document.createElement("div"); overlay.className = "media-state"; frame.append(overlay);
     const message = text("span", "", overlay, "sr-only"); message.setAttribute?.("role", "status");
     const placeholder = text("div", "", overlay, "media-skeleton"); placeholder.setAttribute("aria-hidden", "true");
@@ -319,8 +401,7 @@
     const loaded = () => {
       if (!active || epoch !== view || disposed) return;
       busy = false; broken = false; image.hidden = false; overlay.hidden = true; retry.hidden = true; fitThumbnail();
-      // Letterboxing shows a blurred copy of the same image rather than flat bars.
-      if (quality !== "thumbnail") frame.style.setProperty?.("--frame-image", "url(" + JSON.stringify(image.src) + ")");
+      backdrop();
       // Include decoded pixels and an encoded-image allowance; browser/GPU overhead is outside this estimate.
       const bytes = image.naturalWidth * image.naturalHeight * 8;
       remember(key, image, bytes, () => { if (!proxyImages.has(image)) image.removeAttribute("src"); });
@@ -334,11 +415,9 @@
       image.addEventListener("click", openOriginal); image.addEventListener("dblclick", openOriginal); image.addEventListener("keydown", originalKey);
     }
     const assign = result => {
-      const output = result?.structuredContent;
-      const item = output?.images?.find(p => Number(p.illust_id) === Number(record.id) && p.page === page);
-      // Only the canonical origin returned by our media tool is allowed; CSP also pins it.
-      if (!item || typeof output.media_origin !== "string" || !/^https?:\/\/[^/?#@]+$/.test(output.media_origin) || typeof item.url !== "string" || !item.url.startsWith(output.media_origin + "/") || !item.url.includes("/media/") || /[?#]/.test(item.url)) throw new Error("Invalid image URL");
-      image.src = item.url;
+      const url = capabilityURL(result, record.id, page);
+      if (!url) throw new Error("Invalid image URL");
+      image.src = url;
     };
     const load = async (renew, source) => {
       if (retained && !renew && active) { onReady?.(); return; }
@@ -546,7 +625,7 @@
     id = Number(id);
     const total = Number.isSafeInteger(artwork.page_count) && artwork.page_count > 0 ? artwork.page_count : 1;
     let closed = false, selectedPage = Math.max(1, Math.min(total, page)), requestedPage = selectedPage, token = 0, frontURL = "", pendingURL = "", pendingPage = 0;
-    let fitWidth = 800, fitHeight = 600, zoom = "fit", shown = false, refit, placeholder;
+    let fitWidth = 800, fitHeight = 600, zoom = "fit", shown = false, refit, placeholder, originalBatch;
     const dialog = document.createElement("dialog"); dialog.className = "original-viewer";
     dialog.setAttribute("aria-label", String(artwork.title || "Artwork")); cards.append(dialog);
     const top = text("div", "", dialog, "original-top");
@@ -633,14 +712,18 @@
       applyZoom(Math.max(0.5, Math.min(4, Math.round((percent + delta) * 100) / 100)));
     }
     function toggle() { if (shown) applyZoom(zoom === "actual" ? 1 : "actual"); }
-    function show(number) {
+    function goTo(number) {
       if (!Number.isSafeInteger(number) || number < 1 || number > total) return;
       if (number === selectedPage && shown) return;
-      load(number);
+      return load(number);
     }
+    const pager = cubePager(stage, {current: () => selectedPage, currentSource: () => shown && !front.hidden ? frontURL : "", source: number => cached("original-image:" + id + ":" + number)?.value?.src || cached("image:" + id + ":" + number + ":regular")?.value?.src || "", valid: number => Number.isSafeInteger(number) && number >= 1 && number <= total, go: goTo});
+    const show = number => pager.turn(number);
     function dropPlaceholder() { placeholder?.remove(); placeholder = undefined; }
     function failed() {
       if (closed) return;
+      // Expired or rejected capabilities must not be reused by the explicit retry.
+      originalBatch = undefined;
       // 渐进加载失败时撤下半张原图，恢复此前已显示的页面。
       dropPlaceholder(); back.hidden = true; if (shown) front.hidden = false;
       setLoading(false); error.hidden = false; retry.hidden = false; status.textContent = "Image unavailable";
@@ -689,12 +772,16 @@
         const retained = cached(key)?.value;
         let nextURL = retained?.src;
         if (!retained) {
-          const result = await request("tools/call", {name:"pixiv_show_gallery",arguments:{illust_ids:[id],page:number,quality:"original"}}, epoch);
+          // One call signs every original page; a page the batch does not cover falls back to its own call.
+          originalBatch ??= request("tools/call", {name:"pixiv_show_gallery",arguments:{illust_ids:[id],pages:pageRange(total),quality:"original"}}, epoch);
+          let result = await originalBatch;
           if (closed || mine !== token || epoch !== view || disposed) return;
-          const output = result.structuredContent;
-          const item = output?.images?.find(item => Number(item.illust_id) === id && item.page === number);
-          if (result.isError || !item || typeof output.media_origin !== "string" || !/^https?:\/\/[^/?#@]+$/.test(output.media_origin) || typeof item.url !== "string" || !item.url.startsWith(output.media_origin + "/") || !item.url.includes("/media/") || /[?#]/.test(item.url)) throw new Error("Invalid original delivery");
-          nextURL = item.url;
+          if (!capabilityEntry(result, id, number)) {
+            result = await request("tools/call", {name:"pixiv_show_gallery",arguments:{illust_ids:[id],page:number,quality:"original"}}, epoch);
+            if (closed || mine !== token || epoch !== view || disposed) return;
+          }
+          nextURL = capabilityURL(result, id, number);
+          if (!nextURL) throw new Error("Invalid original delivery");
         }
         if (closed || mine !== token || epoch !== view || disposed) return;
         releaseImage(back); dropPlaceholder();
@@ -718,6 +805,10 @@
         if (closed || mine !== token || epoch !== view || disposed) return;
         commit(progressive);
         remember(key, front, front.naturalWidth * front.naturalHeight * 8, () => { if (!proxyImages.has(incoming)) incoming.removeAttribute("src"); });
+        // Neighbouring originals decode in the background from the same batch, so the next turn is instant.
+        for (const near of [number + 1, number - 1]) {
+          if (near >= 1 && near <= total) originalBatch?.then(batch => { if (!closed) warm("original-image:" + id + ":" + near, capabilityURL(batch, id, near)); }, () => {});
+        }
       } catch (_) { if (mine === token && !closed && epoch === view && !disposed) failed(); }
     }
     stage.addEventListener("click", event => {
@@ -748,6 +839,12 @@
       } else if (event.touches?.length === 1 && (zoom === "fit" || zoom === 1)) swipe = {x:event.touches[0].clientX, y:event.touches[0].clientY};
     }, {passive:true});
     stage.addEventListener("touchmove", event => {
+      if (swipe && event.touches?.length === 1) {
+        const dx = event.touches[0].clientX - swipe.x, dy = event.touches[0].clientY - swipe.y;
+        if (!swipe.horizontal && Math.abs(dx) > 8 && Math.abs(dx) > Math.abs(dy) * 1.5) swipe.horizontal = true;
+        if (swipe.horizontal && pager.drag(dx)) event.preventDefault();
+        return;
+      }
       if (!pinch || event.touches?.length !== 2) return;
       const [a,b] = event.touches, distance = Math.hypot(a.clientX-b.clientX,a.clientY-b.clientY);
       if (pinch.distance > 0) applyZoom(Math.max(0.5, Math.min(4, Math.round(pinch.zoom * distance / pinch.distance * 100) / 100)));
@@ -757,7 +854,8 @@
       if (pinch) { pinch = undefined; return; }
       if (!swipe || (event.changedTouches?.length ?? 0) !== 1) return;
       const touch = event.changedTouches[0], dx = touch.clientX - swipe.x, dy = touch.clientY - swipe.y; swipe = undefined;
-      if (Math.abs(dx) >= 44 && Math.abs(dx) > Math.abs(dy) * 1.5) show(selectedPage + (dx < 0 ? 1 : -1));
+      const commit = Math.abs(dx) >= 44 && Math.abs(dx) > Math.abs(dy) * 1.5;
+      if (!pager.release(commit) && commit) goTo(selectedPage + (dx < 0 ? 1 : -1));
     }, {passive:true});
     dialog.addEventListener("keydown", event => {
       if (event.key === "ArrowLeft") { event.preventDefault(); show(selectedPage - 1); }
@@ -852,7 +950,13 @@
       const authorCard = text("div", "", authorRow, "author-card");
       const author = artworkAuthor(artwork, authorCard);
       let initialPreview;
-      const detailPreview = () => initialPreview ??= request("tools/call", {name:"pixiv_show_gallery", arguments:{illust_ids:[id], page:1, quality:"regular"}}, epoch);
+      // One call signs every page; a rejected batch is dropped so a later retry asks again.
+      const detailPreview = () => initialPreview ??= request("tools/call", {name:"pixiv_show_gallery", arguments:{illust_ids:[id], pages:pageRange(artwork.page_count), quality:"regular"}}, epoch).catch(error => { initialPreview = undefined; throw error; });
+      // A page the batch does not cover falls back to its own call; a covered but invalid entry still fails.
+      const pageSource = page => async () => {
+        const batch = await detailPreview();
+        return capabilityEntry(batch, id, page) ? batch : request("tools/call", {name:"pixiv_show_gallery", arguments:{illust_ids:[id], page, quality:"regular"}}, epoch);
+      };
       if (author && artwork.user?.profile_image?.resource) {
         const avatarKey = "avatar:" + id;
         const avatarURL = cached(avatarKey)?.value;
@@ -882,7 +986,7 @@
         if (!Number.isSafeInteger(total) || total < 1) throw new Error("Invalid page count");
         const viewer = document.createElement("div"); viewer.className = "page-viewer"; mediaColumn.append(viewer);
         const media = document.createElement("div"); media.className = "page-media"; viewer.append(media);
-        let selectedPage = 1, preview, displayed, previousPage, nextPage, progress, position, counter, counterLabel, firstPreview = true;
+        let selectedPage = 1, preview, displayed, previousPage, nextPage, progress, position, counter, counterLabel;
         let swiped = false;
         // Pointer capture retargets taps to the media container; swipes must not open the original.
         media.addEventListener("click", event => { if (!swiped && !event.target?.closest("button")) originalViewer(id, selectedPage, artwork, epoch); });
@@ -896,12 +1000,14 @@
           if (preview && preview !== displayed) { preview.dispose(); preview.frame.remove(); }
           if (displayed?.page === page) preview = displayed;
           else {
-            const initial = page === 1 && firstPreview ? detailPreview : null;
-            firstPreview = false;
-            const replacement = proxyImage(artwork, media, initial, epoch, page, "regular", undefined, () => originalViewer(id, page, artwork, epoch), () => {
+            const replacement = proxyImage(artwork, media, pageSource(page), epoch, page, "regular", undefined, () => originalViewer(id, page, artwork, epoch), () => {
               if (selectedPage !== page || epoch !== view || disposed) return;
               if (displayed) { displayed.dispose(); displayed.frame.remove(); }
               displayed = replacement; replacement.frame.className = "media-frame";
+              // Warm neighbours only from a batch already requested; speculation never costs a host round trip.
+              for (const near of [page + 1, page - 1]) {
+                if (validPage(near)) initialPreview?.then(batch => { if (epoch === view) warm("image:" + id + ":" + near + ":regular", capabilityURL(batch, id, near)); }, () => {});
+              }
             });
             preview = replacement;
             // Size the frame from the artwork, not vh: the host resizes this iframe to its content height.
@@ -917,8 +1023,9 @@
           }
         };
         if (total > 1) {
-          previousPage = iconAction("Previous image", "previous", viewer, () => { if (selectedPage > 1) loadPage(selectedPage - 1); }, true); previousPage.className = "icon-button page-previous";
-          nextPage = iconAction("Next image", "next", viewer, () => { if (selectedPage < total) loadPage(selectedPage + 1); }, true); nextPage.className = "icon-button page-next";
+          const pager = cubePager(media, {current: () => selectedPage, currentSource: () => displayed?.image.src || "", source: page => cached("image:" + id + ":" + page + ":regular")?.value?.src || "", valid: validPage, go: loadPage});
+          previousPage = iconAction("Previous image", "previous", viewer, () => pager.turn(selectedPage - 1), true); previousPage.className = "icon-button page-previous";
+          nextPage = iconAction("Next image", "next", viewer, () => pager.turn(selectedPage + 1), true); nextPage.className = "icon-button page-next";
           // The slider is on demand: the counter pill opens it as an overlay instead of reserving a row.
           const navigation = document.createElement("div"); navigation.className = "page-navigation"; navigation.hidden = true; viewer.append(navigation);
           counter = action("", viewer, () => {
@@ -932,16 +1039,26 @@
           progress = document.createElement("input"); progress.type = "range"; progress.min = "1"; progress.max = String(total); progress.step = "1"; progress.setAttribute("aria-label", "Image progress"); navigation.append(progress);
           position = text("output", "", navigation, "page-position");
           progress.addEventListener("input", () => { const page = Number(progress.value); if (validPage(page)) position.textContent = counterLabel.textContent = page + " / " + total; });
-          progress.addEventListener("change", () => { const page = Number(progress.value); if (validPage(page) && page !== selectedPage) loadPage(page); });
+          progress.addEventListener("change", () => { const page = Number(progress.value); if (validPage(page) && page !== selectedPage) pager.turn(page); });
           let gesture;
-          media.addEventListener("pointerdown", event => { if (event.target?.closest("button")) return; if (event.isPrimary !== false && event.button === 0) { swiped = false; gesture = {id:event.pointerId, x:event.clientX, y:event.clientY}; media.setPointerCapture?.(event.pointerId); } });
-          media.addEventListener("pointercancel", () => { gesture = undefined; });
+          media.addEventListener("pointerdown", event => { if (event.target?.closest("button")) return; if (event.isPrimary !== false && event.button === 0) { swiped = false; gesture = {id:event.pointerId, x:event.clientX, y:event.clientY, horizontal:false}; media.setPointerCapture?.(event.pointerId); } });
+          // Once a drag is clearly horizontal the cube follows the finger; pan-y keeps vertical scrolling with the chat.
+          media.addEventListener("pointermove", event => {
+            if (!gesture || gesture.id !== event.pointerId) return;
+            const dx = event.clientX - gesture.x, dy = event.clientY - gesture.y;
+            if (!gesture.horizontal && Math.abs(dx) > 8 && Math.abs(dx) > Math.abs(dy) * 1.5) gesture.horizontal = true;
+            if (gesture.horizontal) { swiped = true; pager.drag(dx); }
+          });
+          media.addEventListener("pointercancel", () => { gesture = undefined; pager.release(false); });
           media.addEventListener("pointerup", event => {
             const start = gesture; gesture = undefined;
             if (!start || start.id !== event.pointerId) return;
             const dx = event.clientX - start.x, dy = event.clientY - start.y;
-            // A full touch target of horizontal travel distinguishes swipes from taps; pan-y preserves chat scrolling.
-            if (Math.abs(dx) >= 44 && Math.abs(dx) > Math.abs(dy) * 1.5) { swiped = true; event.preventDefault(); const page = selectedPage + (dx < 0 ? 1 : -1); if (validPage(page)) loadPage(page); }
+            // A full touch target of horizontal travel distinguishes swipes from taps.
+            const commit = Math.abs(dx) >= 44 && Math.abs(dx) > Math.abs(dy) * 1.5;
+            if (!start.horizontal && !commit) return;
+            swiped = true; event.preventDefault();
+            if (!pager.release(commit) && commit) { const page = selectedPage + (dx < 0 ? 1 : -1); if (validPage(page)) loadPage(page); }
           });
         }
         const retainedPage = cached("page:" + id)?.value;

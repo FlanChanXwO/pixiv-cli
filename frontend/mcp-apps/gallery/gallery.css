@@ -988,6 +988,61 @@ button.artwork-author {
   height: 16px;
 }
 
+/* 立体翻页：拖动时立方体跟手旋转，落定后再交给原有加载流程换内容。 */
+.cube {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  box-sizing: border-box;
+  padding: inherit;
+  perspective: 1200px;
+  pointer-events: none;
+}
+
+.cube-rotor {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  transform-style: preserve-3d;
+}
+
+.cube-face {
+  position: absolute;
+  inset: 0;
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
+  background: var(--bg-secondary);
+}
+
+.original-stage .cube-face {
+  background: #000;
+}
+
+.cube-face-pending {
+  background: var(--bg-tertiary);
+}
+
+.original-stage .cube-face-pending {
+  background: #111;
+}
+
+.cube .cube-face img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  border-radius: 0;
+  background: transparent;
+}
+
+/* 翻页期间只显示立方体，避免下方的旧内容透出来。 */
+.cube-turning > :not(.cube) {
+  visibility: hidden;
+}
+
+.original-stage.cube-turning {
+  overflow: hidden;
+}
+
 /* 页面查看器 */
 .page-viewer {
   position: relative;

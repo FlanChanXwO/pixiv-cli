@@ -22,7 +22,7 @@ flowchart LR
 
 | `pixiv_show_gallery` | Contract |
 | --- | --- |
-| Input | Required non-empty positive-integer array `illust_ids` (duplicates keep first position); optional positive `page` (default 1), `quality` (`thumbnail` default, `regular`, `original`) |
+| Input | Required non-empty positive-integer array `illust_ids` (duplicates keep first position); optional positive `page` (default 1) or non-empty positive-integer array `pages` (not both; repeated pages keep first position), `quality` (`thumbnail` default, `regular`, `original`). `pages` signs several pages of each artwork in one call; a page beyond the artwork's count fails alone as `page_unavailable` |
 | Behavior | Fetches metadata (no new search); displays only the supplied IDs — use data tools for further pages, then explicitly open another gallery |
 | Output | `records`, `images` (artwork ID, page, URL, optional `avatar_url`), `failures`, `media_origin` when configured. Per-item failures keep successful records and set `isError` |
 
@@ -56,6 +56,8 @@ flowchart LR
 
 - Detail, image and avatar loading use skeletons with reduced-motion support; loading/failure descriptions remain for assistive technology. Failures show icon-only retry (no banners); no automatic retry. Retrying any failed gallery thumbnail renews every failed thumbnail of that gallery in one authenticated batch.
 - Images load when visible. With tool-call support the view fetches fresh thumbnail capabilities in one authenticated batch first, so URLs invalidated by expiry/restart are not reused; without it, supplied URLs are best effort.
+- Detail asks for every page's regular capability in one `pages` call and the lightbox does the same for originals; a page the batch does not cover falls back to its own call, and a failed or expired batch is dropped so the explicit retry asks again. Once a page displays, its neighbours (±1) decode in the background from an already-requested batch only — prefetching never adds a host round trip.
+- Page turns are drawn as a 3D cube: a clearly horizontal drag rotates it with the finger and releasing past one touch target lands on the neighbour, otherwise it springs back (a short give at the first and last page); buttons, keys and the slider play the same turn. The turn only animates while the current page is shown and the browser supports Web Animations; reduced motion changes pages immediately. The content swaps through the normal load path once the turn lands.
 - Click a thumbnail for detail. Single-page works have no navigation; multipage works show an `n / total` counter over the image and support horizontal swipes; prev/next arrows are hidden at either end and on touch screens. Tapping the counter toggles a native progress slider overlaid on the image, so it reserves no layout space. Dragging previews; committing loads; superseded responses are ignored. Vertical gestures stay with the chat. Dimensions follow the selected page; original downloads use it.
 
 ### Originals and downloads
