@@ -1,3 +1,5 @@
+// 作品搜索在逻辑分页前组合收藏区间与本地条件，并保留批内续读位置和完整性元数据。
+
 package search_illust
 
 import (
@@ -58,6 +60,7 @@ type artworkSearchRequest struct {
 	Plan       pagination.PagePlan
 	Membership bookmarkMembership
 	Strategy   bookmarkFilterStrategy
+	Include    func(product.Artwork) (bool, error)
 }
 
 // searchArtworks 在 MCP adapter 内执行 bookmark 候选筛选。
@@ -83,11 +86,16 @@ func searchArtworks[C artworkSearchClient](ctx context.Context, execute paginati
 
 	err = execute(ctx, func(ctx context.Context, client C) (bool, error) {
 		if !hasRange {
-			page, err := searchArtworkPages(ctx, client, request.Query, request.Plan)
+			page, err := searchArtworkPages(ctx, client, request.Query, request.Plan, request.Include)
 			if err != nil {
 				return false, err
 			}
 			outcome = artworkSearchOutcome{Page: page}
+			if strategy == bookmarkFilterStrategyBestEffort {
+				outcome.Filter = &bookmarkFilterOutcome{
+					Membership: membership, Strategy: strategy, Completeness: bookmarkFilterCompletenessPartial,
+				}
+			}
 			return false, nil
 		}
 
@@ -115,7 +123,11 @@ func searchArtworks[C artworkSearchClient](ctx context.Context, execute paginati
 					return false, sdk.NewError("pixiv", "SearchArtworks", sdk.MalformedUpstreamResponse,
 						sdk.WithDetail("artwork bookmark count is negative"))
 				}
-				return (min == nil || item.TotalBookmarks >= *min) && (max == nil || item.TotalBookmarks <= *max), nil
+				keep := (min == nil || item.TotalBookmarks >= *min) && (max == nil || item.TotalBookmarks <= *max)
+				if !keep || request.Include == nil {
+					return keep, nil
+				}
+				return request.Include(item)
 			},
 			func(cursor sdk.Cursor, consumed int) (sdk.Cursor, error) {
 				checkpointQuery := candidateQuery
@@ -127,7 +139,7 @@ func searchArtworks[C artworkSearchClient](ctx context.Context, execute paginati
 			return false, err
 		}
 		completeness := bookmarkFilterCompletenessCompleteForSource
-		if pageResult.HasMore || !next.IsZero() {
+		if strategy == bookmarkFilterStrategyBestEffort || pageResult.HasMore || !next.IsZero() {
 			completeness = bookmarkFilterCompletenessPartial
 		}
 		outcome = artworkSearchOutcome{
@@ -218,13 +230,16 @@ func resolveBookmarkStrategy(requested bookmarkFilterStrategy, membership bookma
 	}
 }
 
-func searchArtworkPages[C artworkSearchClient](ctx context.Context, client C, query product.SearchArtworksRequest, plan pagination.PagePlan) (sdk.Page[product.Artwork], error) {
+func searchArtworkPages[C artworkSearchClient](ctx context.Context, client C, query product.SearchArtworksRequest, plan pagination.PagePlan, include func(product.Artwork) (bool, error)) (sdk.Page[product.Artwork], error) {
+	if include == nil {
+		include = func(product.Artwork) (bool, error) { return true, nil }
+	}
 	items, next, _, err := pagination.CollectFilteredPagesFrom(ctx, plan, query.Cursor, func(ctx context.Context, cursor sdk.Cursor) ([]product.Artwork, sdk.Cursor, error) {
 		fetchQuery := query
 		fetchQuery.Cursor = cursor
 		page, err := client.SearchArtworks(ctx, fetchQuery)
 		return page.Items, page.Next, err
-	}, func(product.Artwork) (bool, error) { return true, nil }, func(cursor sdk.Cursor, consumed int) (sdk.Cursor, error) {
+	}, include, func(cursor sdk.Cursor, consumed int) (sdk.Cursor, error) {
 		checkpointQuery := query
 		checkpointQuery.Cursor = cursor
 		return client.CheckpointSearchArtworks(checkpointQuery, consumed)

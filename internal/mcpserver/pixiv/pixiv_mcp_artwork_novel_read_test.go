@@ -562,6 +562,7 @@ func TestSearchDefaultBatchContinuation(t *testing.T) {
 				calls++
 				item := testSDKIllust(301, "first", 7)
 				item.TotalBookmarks = 25
+				item.PageCount = 2
 				if r.Cursor.IsZero() {
 					return sdk.Page[pixiv.Artwork]{Items: []pixiv.Artwork{item}, Next: testPageCursor(1)}, nil
 				}
@@ -570,7 +571,7 @@ func TestSearchDefaultBatchContinuation(t *testing.T) {
 			}}
 			session, closeSession := newSDKTestSession(t, client)
 			defer closeSession()
-			args := map[string]any{"word": "cats"}
+			args := map[string]any{"word": "cats", "illust_filter": map[string]any{"min_pages": 2}}
 			if strategy != "" {
 				args["bookmark_min"] = 20
 				args["bookmark_strategy"] = strategy
@@ -589,8 +590,26 @@ func TestSearchDefaultBatchContinuation(t *testing.T) {
 			if second.IsError || calls != 2 || len(out.Records) != 1 || out.Records[0].ID() != "302" || out.Pagination.HasMore || out.Pagination.NextCursor != "" {
 				t.Fatalf("search second batch error=%v output=%+v calls=%d", second.IsError, out, calls)
 			}
-			if strategy != "" && (out.Filter == nil || out.Filter.Completeness != "complete_for_source") {
+			wantCompleteness := "complete_for_source"
+			if strategy == "best_effort" {
+				wantCompleteness = "partial"
+			}
+			if strategy != "" && (out.Filter == nil || out.Filter.Completeness != wantCompleteness) {
 				t.Fatalf("filter metadata lost: %+v", out.Filter)
+			}
+			args["illust_filter"] = map[string]any{"min_pages": 3}
+			if r := callTool(t, session, "pixiv_search_illust", args); !r.IsError {
+				t.Fatal("changed structured filter accepted")
+			}
+			args["illust_filter"] = map[string]any{"min_pages": 2}
+			args["bookmark_strategy"] = "server"
+			if r := callTool(t, session, "pixiv_search_illust", args); !r.IsError {
+				t.Fatal("changed bookmark strategy accepted")
+			}
+			if strategy == "" {
+				delete(args, "bookmark_strategy")
+			} else {
+				args["bookmark_strategy"] = strategy
 			}
 			args["word"] = "dogs"
 			if r := callTool(t, session, "pixiv_search_illust", args); !r.IsError {

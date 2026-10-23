@@ -19,8 +19,8 @@ type continuationHTTP func(*http.Request) (*http.Response, error)
 func (f continuationHTTP) RoundTrip(r *http.Request) (*http.Response, error) { return f(r) }
 
 func TestSearchContinuationDoesNotLoseRemainder(t *testing.T) {
-	for _, filtered := range []bool{false, true} {
-		t.Run(fmt.Sprint(filtered), func(t *testing.T) {
+	for _, mode := range []string{"plain", "bookmark", "combined"} {
+		t.Run(mode, func(t *testing.T) {
 			client, err := product.NewWith("token", product.Options{HTTPClient: &http.Client{Transport: continuationHTTP(func(r *http.Request) (*http.Response, error) {
 				return &http.Response{StatusCode: 200, Header: http.Header{"Content-Type": {"application/json"}}, Body: io.NopCloser(strings.NewReader(`{"illusts":[{"id":1,"total_bookmarks":12,"type":"illust","create_date":"2024-05-01T10:00:00+09:00","user":{"id":7}},{"id":2,"total_bookmarks":12,"type":"illust","create_date":"2024-05-01T10:00:00+09:00","user":{"id":7}},{"id":3,"total_bookmarks":12,"type":"illust","create_date":"2024-05-01T10:00:00+09:00","user":{"id":7}}]}`))}, nil
 			})}})
@@ -30,15 +30,21 @@ func TestSearchContinuationDoesNotLoseRemainder(t *testing.T) {
 				return err
 			}
 			request := artworkSearchRequest{Query: product.SearchArtworksRequest{Word: "test"}, Plan: pagination.PagePlan{Limit: 2}}
-			if filtered {
+			if mode != "plain" {
 				min := 10
 				request.Query.BookmarkMin = &min
+			}
+			want := []int64{1, 2, 3}
+			if mode == "combined" {
+				request.Plan.Limit = 1
+				request.Include = func(item product.Artwork) (bool, error) { return item.ID != 2, nil }
+				want = []int64{1, 3}
 			}
 			first, err := searchArtworks(context.Background(), execute, request)
 			require.NoError(t, err)
 			require.False(t, first.Page.Next.IsZero(), "last batch remainder needs a continuation")
 			request.Query.Cursor = first.Page.Next
-			if filtered {
+			if mode != "plain" {
 				changed := request
 				min := 11
 				changed.Query.BookmarkMin = &min
@@ -51,7 +57,7 @@ func TestSearchContinuationDoesNotLoseRemainder(t *testing.T) {
 			for _, item := range append(first.Page.Items, second.Page.Items...) {
 				ids = append(ids, item.ID)
 			}
-			require.Equal(t, []int64{1, 2, 3}, ids)
+			require.Equal(t, want, ids)
 			require.True(t, second.Page.Next.IsZero())
 		})
 	}

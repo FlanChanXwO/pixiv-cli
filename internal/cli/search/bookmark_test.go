@@ -319,3 +319,24 @@ func TestSearchContinuationReplayDiscardsFailedAttempt(t *testing.T) {
 	require.EqualValues(t, 3, result.Page.Items[1].ID)
 	require.True(t, result.Page.Next.IsZero())
 }
+
+func TestSearchArtworksBestEffortReportsPartialAtExhaustion(t *testing.T) {
+	for _, empty := range []bool{false, true} {
+		t.Run(fmt.Sprint(empty), func(t *testing.T) {
+			client := artworkClient{search: func(context.Context, product.SearchArtworksRequest) (sdk.Page[product.Artwork], error) {
+				items := []product.Artwork{}
+				if !empty {
+					items = append(items, product.Artwork{ID: 1, TotalBookmarks: 10})
+				}
+				return sdk.Page[product.Artwork]{Items: items}, nil
+			}}
+			result, err := searchArtworks(context.Background(), oneClientOperation(client), artworkSearchRequest{
+				Query: product.SearchArtworksRequest{BookmarkMin: intSearchPointer(0)},
+				Plan:  pagination.PagePlan{OneBatch: true}, Strategy: bookmarkFilterStrategyBestEffort,
+			})
+			require.NoError(t, err)
+			require.True(t, result.Page.Next.IsZero())
+			require.Equal(t, bookmarkFilterCompletenessPartial, result.Filter.Completeness)
+		})
+	}
+}
