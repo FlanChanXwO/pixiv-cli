@@ -7,8 +7,8 @@ import (
 	"fmt"
 	"time"
 
-	accountfanbox "github.com/FlanChanXwO/pixiv-cli/internal/services/fanbox/account"
-	accountpixiv "github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/account"
+	accountfanbox "github.com/FlanChanXwO/pixiv-cli/internal/fanboxaccount"
+	accountpixiv "github.com/FlanChanXwO/pixiv-cli/internal/pixivaccount"
 )
 
 const pixivAccountColumns = `user_id, sort_order, username, refresh_token, credential_revision,

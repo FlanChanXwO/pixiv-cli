@@ -7,9 +7,9 @@ import (
 	"net/url"
 	"strconv"
 
+	protocol "github.com/FlanChanXwO/pixiv-cli/internal/pixivapi"
 	endpointcontinuation "github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/endpoint/continuation"
 	"github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/endpoint/novel"
-	"github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/protocol"
 )
 
 // Transport 是小说收藏 family 所需的最小 App API 读写传输能力。

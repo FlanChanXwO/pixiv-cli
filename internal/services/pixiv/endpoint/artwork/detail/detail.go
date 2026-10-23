@@ -9,8 +9,8 @@ import (
 	"strconv"
 	"strings"
 
+	protocol "github.com/FlanChanXwO/pixiv-cli/internal/pixivapi"
 	"github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/endpoint/artwork"
-	"github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/protocol"
 )
 
 // Transport 是 detail family 所需的最小 App API transport。

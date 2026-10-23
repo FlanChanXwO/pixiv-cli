@@ -13,9 +13,9 @@ import (
 
 	requirements "github.com/FlanChanXwO/pixiv-cli/internal/cli/commands"
 	"github.com/FlanChanXwO/pixiv-cli/internal/cli/commands/pixiv/auth/loginhelper"
-	pixivaccount "github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/account"
-	"github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/account/loginrelay"
-	"github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/account/loginrelay/loginpage"
+	"github.com/FlanChanXwO/pixiv-cli/internal/loginrelay"
+	"github.com/FlanChanXwO/pixiv-cli/internal/loginrelay/loginpage"
+	pixivaccount "github.com/FlanChanXwO/pixiv-cli/internal/pixivaccount"
 	pixiv "github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
 	"github.com/pkg/browser"
 	"github.com/spf13/cobra"

@@ -9,7 +9,7 @@ import (
 	"net/http"
 	"sync"
 
-	"github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/account/loginrelay"
+	"github.com/FlanChanXwO/pixiv-cli/internal/loginrelay"
 )
 
 // WaitForHandoffRelayLoginCode 在独立 server 上运行一次性 remote Pixiv login

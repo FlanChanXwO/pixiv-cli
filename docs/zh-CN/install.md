@@ -16,7 +16,7 @@ flowchart TD
 ```
 
 > [!NOTE]
-> Ed25519 公钥、key ID 与指纹已提交在 [`internal/update/installer/release_installer.go`](../../internal/update/installer/release_installer.go)；公开源码/tap 仓库、受保护的 `release` Environment 与隔离凭据均已配置。Release 与 tap 分别发布——当前状态以 [GitHub Releases 页面] 与 `brew info FlanChanXwO/tap/pixiv-cli` 为准。每个版本都必须通过同样的 tag、签名、资产与 Homebrew 门禁后，才可作为可信来源。
+> Ed25519 公钥、key ID 与指纹已提交在 [`internal/selfupdate/installer/release_installer.go`](../../internal/selfupdate/installer/release_installer.go)；公开源码/tap 仓库、受保护的 `release` Environment 与隔离凭据均已配置。Release 与 tap 分别发布——当前状态以 [GitHub Releases 页面] 与 `brew info FlanChanXwO/tap/pixiv-cli` 为准。每个版本都必须通过同样的 tag、签名、资产与 Homebrew 门禁后，才可作为可信来源。
 
 ## 官方安装脚本
 

@@ -6,7 +6,7 @@ import (
 	"net/url"
 	"strings"
 
-	"github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/account/loginrelay"
+	"github.com/FlanChanXwO/pixiv-cli/internal/loginrelay"
 )
 
 // CallbackHandlingResult 只携带不含授权码或 token 的本地 bridge URL，或 remote

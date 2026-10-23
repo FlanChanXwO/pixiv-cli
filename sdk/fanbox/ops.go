@@ -6,6 +6,7 @@ import (
 	"net/url"
 	"time"
 
+	protocol "github.com/FlanChanXwO/pixiv-cli/internal/fanboxapi"
 	creatorservice "github.com/FlanChanXwO/pixiv-cli/internal/services/fanbox/endpoint/creator"
 	creatorlist "github.com/FlanChanXwO/pixiv-cli/internal/services/fanbox/endpoint/creator/creators"
 	creatortags "github.com/FlanChanXwO/pixiv-cli/internal/services/fanbox/endpoint/creator/tags"
@@ -14,7 +15,6 @@ import (
 	postinfo "github.com/FlanChanXwO/pixiv-cli/internal/services/fanbox/endpoint/post/info"
 	postposts "github.com/FlanChanXwO/pixiv-cli/internal/services/fanbox/endpoint/post/posts"
 	"github.com/FlanChanXwO/pixiv-cli/internal/services/fanbox/endpoint/post/supporting"
-	"github.com/FlanChanXwO/pixiv-cli/internal/services/fanbox/protocol"
 	"github.com/FlanChanXwO/pixiv-cli/sdk"
 )
 

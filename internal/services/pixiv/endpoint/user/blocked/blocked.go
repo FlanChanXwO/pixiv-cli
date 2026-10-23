@@ -7,9 +7,9 @@ import (
 	"net/url"
 	"strconv"
 
+	protocol "github.com/FlanChanXwO/pixiv-cli/internal/pixivapi"
 	endpointcontinuation "github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/endpoint/continuation"
 	"github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/endpoint/user"
-	"github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/protocol"
 )
 
 type Transport interface {

@@ -4,7 +4,7 @@ import (
 	"net/url"
 	"testing"
 
-	"github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/protocol"
+	protocol "github.com/FlanChanXwO/pixiv-cli/internal/pixivapi"
 	. "github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
 	"github.com/stretchr/testify/require"
 )

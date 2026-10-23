@@ -19,7 +19,7 @@ import (
 
 	pixivmcpserver "github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv"
 	record "github.com/FlanChanXwO/pixiv-cli/internal/record"
-	"github.com/FlanChanXwO/pixiv-cli/internal/services/reversesearch"
+	"github.com/FlanChanXwO/pixiv-cli/internal/reversesearch"
 )
 
 type reverseSearchOutputFixture struct {

@@ -13,10 +13,10 @@ import (
 	"time"
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/logging"
+	"github.com/FlanChanXwO/pixiv-cli/internal/loginrelay"
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/auth"
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/accounts"
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/mediaproxy"
-	"github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/account/loginrelay"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 

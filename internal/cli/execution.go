@@ -21,7 +21,7 @@ import (
 	"github.com/FlanChanXwO/pixiv-cli/internal/cli/pipeline"
 	clidiagnostics "github.com/FlanChanXwO/pixiv-cli/internal/logging"
 	coreDiagnostics "github.com/FlanChanXwO/pixiv-cli/internal/logging"
-	"github.com/FlanChanXwO/pixiv-cli/internal/services/reversesearch"
+	"github.com/FlanChanXwO/pixiv-cli/internal/reversesearch"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 	"golang.org/x/term"

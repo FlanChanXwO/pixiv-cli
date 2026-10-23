@@ -4,7 +4,7 @@ import (
 	"net/url"
 	"strings"
 
-	"github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/protocol"
+	protocol "github.com/FlanChanXwO/pixiv-cli/internal/pixivapi"
 )
 
 // IsOfficialOAuthCallbackURL reports whether rawURL has the exact official

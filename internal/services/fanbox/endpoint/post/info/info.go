@@ -8,9 +8,9 @@ import (
 	"net/url"
 	"strings"
 
+	protocol "github.com/FlanChanXwO/pixiv-cli/internal/fanboxapi"
 	"github.com/FlanChanXwO/pixiv-cli/internal/services/fanbox/endpoint/post"
 	"github.com/FlanChanXwO/pixiv-cli/internal/services/fanbox/endpoint/post/wire"
-	"github.com/FlanChanXwO/pixiv-cli/internal/services/fanbox/protocol"
 )
 
 // Transport is the narrow JSON capability required by post.info.

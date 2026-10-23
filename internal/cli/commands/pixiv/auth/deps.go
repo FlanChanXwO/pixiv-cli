@@ -4,7 +4,7 @@ import (
 	"io"
 
 	config "github.com/FlanChanXwO/pixiv-cli/internal/config/settings"
-	pixivaccount "github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/account"
+	pixivaccount "github.com/FlanChanXwO/pixiv-cli/internal/pixivaccount"
 )
 
 // Deps 是 Pixiv auth owner 的精确运行依赖。它不暴露根 CLI 或宽泛服务定位器；

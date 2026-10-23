@@ -6,7 +6,7 @@ import (
 	"testing"
 
 	deps "github.com/FlanChanXwO/pixiv-cli/internal/cli/commands/fanbox"
-	fanboxapp "github.com/FlanChanXwO/pixiv-cli/internal/services/fanbox"
+	fanboxapp "github.com/FlanChanXwO/pixiv-cli/internal/session/fanbox"
 	"github.com/spf13/cobra"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"

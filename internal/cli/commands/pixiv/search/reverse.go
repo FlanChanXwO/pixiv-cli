@@ -11,7 +11,7 @@ import (
 
 	textutil "github.com/FlanChanXwO/pixiv-cli/internal/plaintext"
 	record "github.com/FlanChanXwO/pixiv-cli/internal/record"
-	"github.com/FlanChanXwO/pixiv-cli/internal/services/reversesearch"
+	"github.com/FlanChanXwO/pixiv-cli/internal/reversesearch"
 	"github.com/spf13/cobra"
 )
 

@@ -9,7 +9,8 @@ import (
 	"time"
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/logging"
-	"github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/appapi"
+	"github.com/FlanChanXwO/pixiv-cli/internal/pixivapi"
+	"github.com/FlanChanXwO/pixiv-cli/internal/pixivapi/oauth"
 	artworkbookmark "github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/endpoint/artwork/bookmark"
 	artworkcomments "github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/endpoint/artwork/comments"
 	artworkdetail "github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/endpoint/artwork/detail"
@@ -39,8 +40,6 @@ import (
 	userrecommended "github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/endpoint/user/recommended"
 	userrelated "github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/endpoint/user/related"
 	usersearch "github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/endpoint/user/search"
-	"github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/oauth"
-	"github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/resource"
 	"github.com/FlanChanXwO/pixiv-cli/sdk"
 )
 
@@ -81,7 +80,7 @@ type Options struct {
 // Unauthorized when no token is present and never fall back to an anonymous
 // or Web path.
 type Client struct {
-	app                *appapi.Client
+	app                *pixivapi.Client
 	artworkBookmark    *artworkbookmark.Client
 	artworkDetail      *artworkdetail.Client
 	artworkComments    *artworkcomments.Client
@@ -111,7 +110,7 @@ type Client struct {
 	userRelated        *userrelated.Client
 	userSearch         *usersearch.Client
 	stamps             *stamps.Client
-	resClient          *resource.Client
+	resClient          *pixivapi.ResourceClient
 	opts               Options
 
 	httpClient *http.Client
@@ -202,15 +201,15 @@ func newClient(httpClient *http.Client, selfHTTP bool, accessToken string, optio
 			return nil, err
 		}
 	}
-	appOptions := []appapi.Option{
-		appapi.WithHTTPClient(httpClient),
-		appapi.WithAccessToken(accessToken),
-		appapi.WithAcceptLanguage(options.AcceptLanguage),
+	appOptions := []pixivapi.Option{
+		pixivapi.WithHTTPClient(httpClient),
+		pixivapi.WithAccessToken(accessToken),
+		pixivapi.WithAcceptLanguage(options.AcceptLanguage),
 	}
 	if userID > 0 {
-		appOptions = append(appOptions, appapi.WithUserID(userID))
+		appOptions = append(appOptions, pixivapi.WithUserID(userID))
 	}
-	app := appapi.New(appOptions...)
+	app := pixivapi.New(appOptions...)
 	return &Client{
 		app:                app,
 		artworkBookmark:    artworkbookmark.New(app),
@@ -242,7 +241,7 @@ func newClient(httpClient *http.Client, selfHTTP bool, accessToken string, optio
 		userRelated:        userrelated.New(app),
 		userSearch:         usersearch.New(app),
 		stamps:             stamps.New(app),
-		resClient:          resource.NewApp(httpClient),
+		resClient:          pixivapi.NewApp(httpClient),
 		opts:               options,
 		httpClient:         httpClient,
 		selfHTTP:           selfHTTP,

@@ -7,9 +7,9 @@ import (
 	"net/url"
 	"strconv"
 
+	protocol "github.com/FlanChanXwO/pixiv-cli/internal/pixivapi"
 	"github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/endpoint/artwork"
 	"github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/endpoint/continuation"
-	"github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/protocol"
 )
 
 // Transport 是 artwork search 所需的最窄 App API 请求能力。

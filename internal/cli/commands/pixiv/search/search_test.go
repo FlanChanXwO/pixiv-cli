@@ -11,7 +11,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/FlanChanXwO/pixiv-cli/internal/services/reversesearch"
+	"github.com/FlanChanXwO/pixiv-cli/internal/reversesearch"
 	pixiv "github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
 )
 

@@ -9,7 +9,7 @@ import (
 	"strings"
 
 	deps "github.com/FlanChanXwO/pixiv-cli/internal/cli/commands/fanbox"
-	fanboxapp "github.com/FlanChanXwO/pixiv-cli/internal/services/fanbox/account"
+	fanboxapp "github.com/FlanChanXwO/pixiv-cli/internal/fanboxaccount"
 	"github.com/spf13/cobra"
 )
 

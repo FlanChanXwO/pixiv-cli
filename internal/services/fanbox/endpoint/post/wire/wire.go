@@ -8,8 +8,8 @@ import (
 	"errors"
 	"strings"
 
+	protocol "github.com/FlanChanXwO/pixiv-cli/internal/fanboxapi"
 	"github.com/FlanChanXwO/pixiv-cli/internal/services/fanbox/endpoint/post"
-	"github.com/FlanChanXwO/pixiv-cli/internal/services/fanbox/protocol"
 )
 
 // DecodePostInfo decodes the post.info body.post envelope.

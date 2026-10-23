@@ -6,7 +6,7 @@ import (
 	"errors"
 	"testing"
 
-	pixivaccount "github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/account"
+	pixivaccount "github.com/FlanChanXwO/pixiv-cli/internal/pixivaccount"
 	pixiv "github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
 	"github.com/stretchr/testify/require"
 )

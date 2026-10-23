@@ -7,14 +7,14 @@ import (
 	"net/http"
 	"sync"
 
+	fanboxresource "github.com/FlanChanXwO/pixiv-cli/internal/fanboxapi"
+	protocol "github.com/FlanChanXwO/pixiv-cli/internal/fanboxapi"
 	"github.com/FlanChanXwO/pixiv-cli/internal/services/fanbox/endpoint/creator/creators"
 	creatorTags "github.com/FlanChanXwO/pixiv-cli/internal/services/fanbox/endpoint/creator/tags"
 	"github.com/FlanChanXwO/pixiv-cli/internal/services/fanbox/endpoint/post/home"
 	postinfo "github.com/FlanChanXwO/pixiv-cli/internal/services/fanbox/endpoint/post/info"
 	postposts "github.com/FlanChanXwO/pixiv-cli/internal/services/fanbox/endpoint/post/posts"
 	"github.com/FlanChanXwO/pixiv-cli/internal/services/fanbox/endpoint/post/supporting"
-	"github.com/FlanChanXwO/pixiv-cli/internal/services/fanbox/protocol"
-	fanboxresource "github.com/FlanChanXwO/pixiv-cli/internal/services/fanbox/resource"
 	"github.com/FlanChanXwO/pixiv-cli/sdk"
 )
 

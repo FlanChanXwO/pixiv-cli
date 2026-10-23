@@ -9,7 +9,7 @@ import (
 	"strings"
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/config/paths"
-	"github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/account/loginrelay"
+	"github.com/FlanChanXwO/pixiv-cli/internal/loginrelay"
 	filesecret "github.com/FlanChanXwO/pixiv-cli/internal/storage/secretfile"
 )
 

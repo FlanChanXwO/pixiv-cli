@@ -13,7 +13,7 @@ import (
 
 	config "github.com/FlanChanXwO/pixiv-cli/internal/config/settings"
 	"github.com/FlanChanXwO/pixiv-cli/internal/httpclient"
-	pixivaccount "github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/account"
+	pixivaccount "github.com/FlanChanXwO/pixiv-cli/internal/pixivaccount"
 	pixiv "github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
 )
 

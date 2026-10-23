@@ -10,7 +10,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/protocol"
+	protocol "github.com/FlanChanXwO/pixiv-cli/internal/pixivapi"
 )
 
 const appAPIHost = "app-api.pixiv.net"

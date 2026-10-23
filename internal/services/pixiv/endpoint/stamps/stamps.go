@@ -7,7 +7,7 @@ import (
 	"net/url"
 	"strings"
 
-	"github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/protocol"
+	protocol "github.com/FlanChanXwO/pixiv-cli/internal/pixivapi"
 )
 
 // Transport 是 stamps read leaf 所需的最小 App API 传输能力。

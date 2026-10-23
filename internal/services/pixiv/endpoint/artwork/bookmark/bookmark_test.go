@@ -8,8 +8,8 @@ import (
 	"net/url"
 	"testing"
 
+	protocol "github.com/FlanChanXwO/pixiv-cli/internal/pixivapi"
 	"github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/endpoint/artwork/bookmark"
-	"github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/protocol"
 )
 
 type fakeTransport struct {

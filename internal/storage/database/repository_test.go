@@ -9,9 +9,9 @@ import (
 	"time"
 
 	config "github.com/FlanChanXwO/pixiv-cli/internal/config/settings"
-	accountfanbox "github.com/FlanChanXwO/pixiv-cli/internal/services/fanbox/account"
-	accountpixiv "github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/account"
-	pixivpool "github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/pool"
+	accountfanbox "github.com/FlanChanXwO/pixiv-cli/internal/fanboxaccount"
+	accountpixiv "github.com/FlanChanXwO/pixiv-cli/internal/pixivaccount"
+	pixivpool "github.com/FlanChanXwO/pixiv-cli/internal/pixivaccount/pool"
 	database "github.com/FlanChanXwO/pixiv-cli/internal/storage/database"
 )
 

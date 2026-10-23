@@ -12,7 +12,7 @@ import (
 	"testing"
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/cli/commands/pixiv/auth/loginhelper"
-	"github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/account/loginrelay"
+	"github.com/FlanChanXwO/pixiv-cli/internal/loginrelay"
 	pixiv "github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
 	"github.com/stretchr/testify/require"
 )

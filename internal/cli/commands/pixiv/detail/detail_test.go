@@ -14,7 +14,7 @@ import (
 	searchcmd "github.com/FlanChanXwO/pixiv-cli/internal/cli/commands/pixiv/search"
 	downloader "github.com/FlanChanXwO/pixiv-cli/internal/media/downloader"
 	recordpkg "github.com/FlanChanXwO/pixiv-cli/internal/record"
-	"github.com/FlanChanXwO/pixiv-cli/internal/services/reversesearch"
+	"github.com/FlanChanXwO/pixiv-cli/internal/reversesearch"
 	"github.com/FlanChanXwO/pixiv-cli/sdk"
 	pixiv "github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
 	"github.com/spf13/cobra"

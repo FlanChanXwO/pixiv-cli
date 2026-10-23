@@ -18,9 +18,8 @@ import (
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/config/paths"
 	config "github.com/FlanChanXwO/pixiv-cli/internal/config/settings"
-	accountpixiv "github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/account"
-	"github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/appapi"
-	"github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/protocol"
+	accountpixiv "github.com/FlanChanXwO/pixiv-cli/internal/pixivaccount"
+	protocol "github.com/FlanChanXwO/pixiv-cli/internal/pixivapi"
 	"github.com/FlanChanXwO/pixiv-cli/internal/storage/database"
 	"github.com/FlanChanXwO/pixiv-cli/sdk"
 	pixivsdk "github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"

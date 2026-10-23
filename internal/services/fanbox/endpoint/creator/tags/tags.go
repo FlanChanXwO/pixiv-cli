@@ -8,7 +8,7 @@ import (
 	"net/url"
 	"strings"
 
-	"github.com/FlanChanXwO/pixiv-cli/internal/services/fanbox/protocol"
+	protocol "github.com/FlanChanXwO/pixiv-cli/internal/fanboxapi"
 )
 
 // Transport is the narrow JSON capability required by the tags endpoint.

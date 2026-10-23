@@ -11,9 +11,9 @@ import (
 	requirements "github.com/FlanChanXwO/pixiv-cli/internal/cli/commands"
 	"github.com/FlanChanXwO/pixiv-cli/internal/cli/pipeline"
 	configapp "github.com/FlanChanXwO/pixiv-cli/internal/config/settings"
+	fanboxaccount "github.com/FlanChanXwO/pixiv-cli/internal/fanboxaccount"
 	"github.com/FlanChanXwO/pixiv-cli/internal/lifecycle"
-	fanboxapp "github.com/FlanChanXwO/pixiv-cli/internal/services/fanbox"
-	fanboxaccount "github.com/FlanChanXwO/pixiv-cli/internal/services/fanbox/account"
+	fanboxapp "github.com/FlanChanXwO/pixiv-cli/internal/session/fanbox"
 	"github.com/FlanChanXwO/pixiv-cli/sdk/fanbox"
 	"github.com/spf13/cobra"
 )

@@ -9,7 +9,7 @@ import (
 	"strings"
 	"testing"
 
-	accountpixiv "github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/account"
+	accountpixiv "github.com/FlanChanXwO/pixiv-cli/internal/pixivaccount"
 )
 
 func TestOpenAppliesMigrationsAndApplicationID(t *testing.T) {
