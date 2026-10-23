@@ -835,6 +835,8 @@
     let pinch, swipe;
     stage.addEventListener("touchstart", event => {
       if (event.touches?.length === 2) {
+        // A second finger turns a started swipe into a pinch, so any half-drawn turn springs back.
+        swipe = undefined; pager.release(false);
         const [a,b] = event.touches; pinch = {distance:Math.hypot(a.clientX-b.clientX,a.clientY-b.clientY), zoom:typeof zoom === "number" ? zoom : 1}; // fit and actual both start from the fitted scale
       } else if (event.touches?.length === 1 && (zoom === "fit" || zoom === 1)) swipe = {x:event.touches[0].clientX, y:event.touches[0].clientY};
     }, {passive:true});
@@ -857,6 +859,8 @@
       const commit = Math.abs(dx) >= 44 && Math.abs(dx) > Math.abs(dy) * 1.5;
       if (!pager.release(commit) && commit) goTo(selectedPage + (dx < 0 ? 1 : -1));
     }, {passive:true});
+    // The system can interrupt a touch without touchend; never leave a half-drawn turn on screen.
+    stage.addEventListener("touchcancel", () => { pinch = swipe = undefined; pager.release(false); }, {passive:true});
     dialog.addEventListener("keydown", event => {
       if (event.key === "ArrowLeft") { event.preventDefault(); show(selectedPage - 1); }
       else if (event.key === "ArrowRight") { event.preventDefault(); show(selectedPage + 1); }

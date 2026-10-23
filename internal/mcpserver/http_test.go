@@ -814,7 +814,10 @@ func TestHTTPExplicitGalleryProxyDiscovery(t *testing.T) {
 			Page int
 			URL  string
 		}
-		Failures []struct{ Error string }
+		Failures []struct {
+			Error string
+			Page  int
+		}
 	}
 	data, err = json.Marshal(paged.StructuredContent)
 	require.NoError(t, err)
@@ -822,7 +825,9 @@ func TestHTTPExplicitGalleryProxyDiscovery(t *testing.T) {
 	require.Len(t, pages.Images, 2, string(data))
 	require.Equal(t, []int{1, 3}, []int{pages.Images[0].Page, pages.Images[1].Page})
 	require.NotEqual(t, pages.Images[0].URL, pages.Images[1].URL)
-	require.Equal(t, []struct{ Error string }{{"page_unavailable"}}, pages.Failures)
+	require.Len(t, pages.Failures, 1, string(data))
+	require.Equal(t, "page_unavailable", pages.Failures[0].Error)
+	require.Equal(t, 4, pages.Failures[0].Page, "page-level failures name their page")
 	require.True(t, paged.IsError, "a partial page failure stays visible")
 	both, err := session.CallTool(ctx, &mcp.CallToolParams{Name: "pixiv_show_gallery", Arguments: map[string]any{"illust_ids": []int{44}, "page": 1, "pages": []int{2}}})
 	require.NoError(t, err)

@@ -24,7 +24,7 @@ flowchart LR
 | --- | --- |
 | 输入 | 必填非空正整数数组 `illust_ids`（重复项保留首次位置）；可选正数 `page`（默认 1）或非空正整数数组 `pages`（二者不能同时提供；重复页保留首次位置）、`quality`（默认 `thumbnail`、`regular`、`original`）。`pages` 在一次调用中为每个作品签发多页；超出作品页数的页单独记为 `page_unavailable` |
 | 行为 | 获取元数据（不发起新搜索）；只展示传入的 ID——更多页请用数据工具，再显式打开另一个画廊 |
-| 输出 | `records`、`images`（作品 ID、页码、URL、可选 `avatar_url`）、`failures`，配置时还有 `media_origin`。单项失败保留成功 record 并设置 `isError` |
+| 输出 | `records`、`images`（作品 ID、页码、URL、可选 `avatar_url`）、`failures`（作品 ID、错误，单页失败时还有 `page`），配置时还有 `media_origin`。单项失败保留成功 record 并设置 `isError` |
 
 `pixiv_show_artwork` 只接受必填正整数 `illust_id`，返回结果与只传该 ID 的 `pixiv_show_gallery` 相同。仅在用户明确要求查看某个作品时调用。宿主支持工具调用时，两个工具中只含一个作品的结果都会直接打开该作品详情页，不显示返回结果按钮；静态（非动图）`pixiv_artwork_media` 结果也会打开同一详情页，并定位到返回的第一页；不支持工具调用时保留单张缩略图卡片。
 

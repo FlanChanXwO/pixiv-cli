@@ -24,7 +24,7 @@ flowchart LR
 | --- | --- |
 | Input | Required non-empty positive-integer array `illust_ids` (duplicates keep first position); optional positive `page` (default 1) or non-empty positive-integer array `pages` (not both; repeated pages keep first position), `quality` (`thumbnail` default, `regular`, `original`). `pages` signs several pages of each artwork in one call; a page beyond the artwork's count fails alone as `page_unavailable` |
 | Behavior | Fetches metadata (no new search); displays only the supplied IDs — use data tools for further pages, then explicitly open another gallery |
-| Output | `records`, `images` (artwork ID, page, URL, optional `avatar_url`), `failures`, `media_origin` when configured. Per-item failures keep successful records and set `isError` |
+| Output | `records`, `images` (artwork ID, page, URL, optional `avatar_url`), `failures` (artwork ID, error, and `page` for page-level failures), `media_origin` when configured. Per-item failures keep successful records and set `isError` |
 
 `pixiv_show_artwork` takes one required positive `illust_id` and returns the same result as `pixiv_show_gallery` with that single ID. Call it only when the user explicitly asks to see one artwork. With tool-call support, any result holding exactly one artwork (from either tool) opens its detail page directly, without a back-to-results control, and a static (non-animated) `pixiv_artwork_media` result opens the same detail page at its first returned page; without tool calls the single thumbnail card remains.
 

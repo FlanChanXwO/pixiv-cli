@@ -29,6 +29,8 @@ type image struct {
 type failure struct {
 	IllustID int64  `json:"illust_id"`
 	Error    string `json:"error"`
+	// Page names the failed page of a multi-page request; artwork-level failures omit it.
+	Page int `json:"page,omitempty"`
 }
 type output struct {
 	Records     []record.Record `json:"records"`
@@ -102,12 +104,12 @@ func handle(ctx context.Context, app *toolhost.App, in input) (*mcp.CallToolResu
 		out := output{}
 		artwork, err := app.Artwork(ctx, id)
 		if err != nil {
-			out.Failures = append(out.Failures, failure{id, "artwork_unavailable"})
+			out.Failures = append(out.Failures, failure{IllustID: id, Error: "artwork_unavailable"})
 			return out
 		}
 		rec, err := record.RecordFromArtwork(artwork)
 		if err != nil {
-			out.Failures = append(out.Failures, failure{id, "invalid_metadata"})
+			out.Failures = append(out.Failures, failure{IllustID: id, Error: "invalid_metadata"})
 			return out
 		}
 		out.Records = append(out.Records, rec)
@@ -116,24 +118,24 @@ func handle(ctx context.Context, app *toolhost.App, in input) (*mcp.CallToolResu
 		}
 		media := app.SDKPorts().Media
 		if media == nil {
-			out.Failures = append(out.Failures, failure{id, "image_proxy_unavailable"})
+			out.Failures = append(out.Failures, failure{IllustID: id, Error: "image_proxy_unavailable"})
 			return out
 		}
 		out.MediaOrigin = media.Origin()
 		account, err := app.ResolveAccount(ctx)
 		if err != nil {
-			out.Failures = append(out.Failures, failure{id, "account_unavailable"})
+			out.Failures = append(out.Failures, failure{IllustID: id, Error: "account_unavailable"})
 			return out
 		}
 		avatar := !artwork.User.ProfileImage.Resource.Ref.IsZero()
 		for _, page := range pages {
 			if page > artwork.PageCount {
-				out.Failures = append(out.Failures, failure{id, "page_unavailable"})
+				out.Failures = append(out.Failures, failure{IllustID: id, Error: "page_unavailable", Page: page})
 				continue
 			}
 			u, err := media.Issue(ctx, account.UserID, id, page, in.Quality)
 			if err != nil {
-				out.Failures = append(out.Failures, failure{id, "image_authorization_unavailable"})
+				out.Failures = append(out.Failures, failure{IllustID: id, Error: "image_authorization_unavailable", Page: page})
 				continue
 			}
 			item := image{IllustID: id, Page: page, URL: u}
@@ -142,7 +144,7 @@ func handle(ctx context.Context, app *toolhost.App, in input) (*mcp.CallToolResu
 				avatar = false
 				item.AvatarURL, err = media.Issue(ctx, account.UserID, id, 1, "avatar")
 				if err != nil {
-					out.Failures = append(out.Failures, failure{id, "avatar_authorization_unavailable"})
+					out.Failures = append(out.Failures, failure{IllustID: id, Error: "avatar_authorization_unavailable"})
 				}
 			}
 			out.Images = append(out.Images, item)
@@ -171,7 +173,7 @@ func handle(ctx context.Context, app *toolhost.App, in input) (*mcp.CallToolResu
 		select {
 		case jobs <- index:
 		case <-ctx.Done():
-			results[index].Failures = []failure{{ids[index], "artwork_unavailable"}}
+			results[index].Failures = []failure{{IllustID: ids[index], Error: "artwork_unavailable"}}
 		}
 	}
 	close(jobs)
