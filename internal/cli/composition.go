@@ -662,7 +662,7 @@ func (a app) runPixivMCP(ctx context.Context, request mcpcommands.Request) (resu
 		return err
 	}
 	if ports.readSession != nil {
-		if err := media.Configure(mediaproxy.Config{Capacity: runtime.MCPGalleryCacheCapacityMiB * (1 << 20), TTL: runtime.MCPGalleryCacheTTL, Concurrency: runtime.MCPGalleryConcurrency, ObserveAnimation: func(requestCtx context.Context, event mediaproxy.AnimationObservation) {
+		if err := media.Configure(mediaproxy.Config{Capacity: runtime.MCPGalleryCacheCapacityMiB * (1 << 20), TTL: mediaproxy.DefaultCacheTTL, Concurrency: mediaproxy.DefaultConcurrency, ObserveAnimation: func(requestCtx context.Context, event mediaproxy.AnimationObservation) {
 			emitMCPAnimationEvent(ctx, requestCtx, event)
 		}, Observe: func(requestCtx context.Context, stage string, duration time.Duration) {
 			emitMCPMediaEvent(ctx, requestCtx, coreDiagnostics.Event{Module: coreDiagnostics.ModulePixivMCP, Kind: coreDiagnostics.EventCompleted, Operation: stage, Duration: duration})

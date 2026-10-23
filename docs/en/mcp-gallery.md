@@ -2,7 +2,7 @@
 
 English | [简体中文](../zh-CN/mcp-gallery.md) | [MCP tools](mcp-tools.md)
 
-The HTTP-only image UI behind `pixiv_show_gallery`, `pixiv_artwork_media` App delivery and `pixiv_gallery_animation`. Startup settings (cache size, TTL, concurrency, animation disk budget) are in the [CLI reference](cli-reference.md#mcp-http-server).
+The HTTP-only image UI behind `pixiv_show_gallery`, `pixiv_artwork_media` App delivery and `pixiv_gallery_animation`. Startup settings (cache size, animation disk budget) are in the [CLI reference](cli-reference.md#mcp-http-server).
 
 ```mermaid
 flowchart LR
@@ -160,7 +160,7 @@ stateDiagram-v2
 | --- | --- |
 | Gallery queries | Dedupe IDs, query concurrently within the configured limit, keep input order and per-item failures |
 | Read sessions | Reuse access token and HTTP connections until expiry, keyed by account, credential revision and network config. Only refresh + credential persistence hold the rotation gate; content requests start after persistence and never hold it during transfer. Upstream auth failure invalidates the session without automatic retry. Trusted SDK metadata registers quality variants (no extra artwork query). Cancelling one credential check keeps the shared session and unrelated transfers; real credential/authorization invalidation cancels them |
-| Server cache | Grant-scoped, default 256 MiB / 15 min / concurrency 4. Merges concurrent metadata lookups; stores only successful metadata and complete raster images; each hit reauthorizes the grant and resolves the current account/session generation; bookmark state and writes never cached |
+| Server cache | Grant-scoped, default 256 MiB (configurable); fixed 15 min TTL and concurrency 4. Merges concurrent metadata lookups; stores only successful metadata and complete raster images; each hit reauthorizes the grant and resolves the current account/session generation; bookmark state and writes never cached |
 | Streaming | Images stream after upstream status and file-header validation; trusted Content-Length kept, else streamed without a declared length. Interrupted transfers close upstream, discard filling buffers and never append error text to image bytes |
 | Stage observations | Fixed stages: session wait/refresh, artwork lookup, first image bytes, transfer, cache hits — no token, grant or capability URL |
 | ZIP markers | While the job context is active: `animation_zip_incomplete` (unexpected EOF or Content-Length mismatch), `animation_zip_reset` (connection reset), `animation_zip_timeout` (reader timeout). Only the partial byte count; no raw errors or signed URLs; no change to retries, deadlines, quality or tool errors |

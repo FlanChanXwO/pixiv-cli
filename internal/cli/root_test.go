@@ -762,7 +762,7 @@ func TestMCPShutdownPreservesAnimationCleanupError(t *testing.T) {
 		loadCLIRuntimeConfig, newCLIPixivSDKPorts, runMCPHTTP, newCLIMCPReverseSearch = oldConfig, oldSDK, oldHTTP, oldReverse
 	})
 	loadCLIRuntimeConfig = func() (configapp.RuntimeConfig, error) {
-		return configapp.RuntimeConfig{MCPGalleryCacheTTL: time.Minute, MCPGalleryConcurrency: 1, MCPGalleryAnimationTempCapacityMiB: 1}, nil
+		return configapp.RuntimeConfig{MCPGalleryAnimationTempCapacityMiB: 1}, nil
 	}
 	newCLIMCPReverseSearch = func(reverseassembly.Options) (reversesearch.Searcher, error) {
 		return &closeTrackingReverseSearcher{}, nil

@@ -454,10 +454,8 @@ flowchart TD
 | --- | --- | --- | --- |
 | `mcp_gallery_animation_temp_capacity_mib` | `gallery_animation_temp_capacity_mib` | `1024` | 正整数；带检查的 MiB 换算；私有动画临时存储 |
 | `mcp_gallery_cache_capacity_mib` | `gallery_cache_capacity_mib` | `256` | 整数 ≥ 0；带检查的 MiB 换算；`0` 关闭缓存 |
-| `mcp_gallery_cache_ttl` | `gallery_cache_ttl` | `"15m"` | 正 duration 字符串 |
-| `mcp_gallery_concurrency` | `gallery_concurrency` | `4` | 正整数；元数据与图片各自限制 |
 
-缺失键与 `config unset` 恢复默认；没有额外参数或环境变量。进程内 LRU 预算覆盖元数据载荷与图片填充缓冲；超大图片完整流式传输但不缓存。过期时间 = TTL、签发授权过期、上游读取会话过期三者中最早者，因此作品信息在窗口内可能滞后，收藏状态与写操作保持实时。每次命中都重新检查授权与账号/凭据/网络代际；撤销后拒绝后续读取；重启清空缓存。HTTP 响应为 `private, no-store`，无磁盘或公共 CDN 缓存。
+缺失键与 `config unset` 恢复默认；没有额外参数或环境变量。缓存有效期（15 分钟）以及元数据与图片各自的读取并发上限（各 4）为固定值；原 `mcp_gallery_cache_ttl` 与 `mcp_gallery_concurrency` 设置已删除——配置中残留时返回 `removed_setting`，请用 `pixiv config unset mcp_gallery_cache_ttl` / `pixiv config unset mcp_gallery_concurrency` 清理。进程内 LRU 预算覆盖元数据载荷与图片填充缓冲；超大图片完整流式传输但不缓存。过期时间 = 15 分钟 TTL、签发授权过期、上游读取会话过期三者中最早者，因此作品信息在窗口内可能滞后，收藏状态与写操作保持实时。每次命中都重新检查授权与账号/凭据/网络代际；撤销后拒绝后续读取；重启清空缓存。HTTP 响应为 `private, no-store`，无磁盘或公共 CDN 缓存。
 
 **云端部署** —— 支持本地 HTTP；云 connector 需配置公开 HTTPS base，并在已有反向代理处终止 TLS（pixiv-cli 不签发证书）。保留公开 Host header 与原始转义路径。入站 Host 与任何 Origin 必须匹配 canonical origin（接受 host 大小写与默认端口等价）；转发 header 不能建立信任。base 为 `https://mcp.example.com/pixiv` 时需转发：
 

@@ -34,6 +34,13 @@ type AnimationObservation struct {
 	CancellationSource string
 }
 
+// DefaultCacheTTL and DefaultConcurrency are the fixed production cache lifetime and
+// per-kind upstream read limit; only Capacity remains user-configurable.
+const (
+	DefaultCacheTTL    = 15 * time.Minute
+	DefaultConcurrency = 4
+)
+
 type Config struct {
 	Capacity         int64
 	TTL              time.Duration

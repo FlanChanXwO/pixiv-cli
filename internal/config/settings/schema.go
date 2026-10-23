@@ -229,6 +229,22 @@ var settingTombstones = []SettingSpec{
 		Kind:     settingString,
 		Removed:  true,
 	},
+	{
+		Alias:    "mcp_gallery_cache_ttl",
+		KoanfKey: "mcp.gallery_cache_ttl",
+		Table:    []string{"mcp"},
+		Key:      "gallery_cache_ttl",
+		Kind:     settingDuration,
+		Removed:  true,
+	},
+	{
+		Alias:    "mcp_gallery_concurrency",
+		KoanfKey: "mcp.gallery_concurrency",
+		Table:    []string{"mcp"},
+		Key:      "gallery_concurrency",
+		Kind:     settingInteger,
+		Removed:  true,
+	},
 }
 
 // parseEnvTag 拆分 env 标签：逗号分隔，去空白，保持声明顺序。
