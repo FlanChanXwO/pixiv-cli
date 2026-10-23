@@ -13,7 +13,7 @@ import (
 	"runtime"
 	"testing"
 
-	_ "modernc.org/sqlite"
+	_ "github.com/ncruces/go-sqlite3/driver"
 )
 
 func skipIfNoSQLite3(t *testing.T) {
@@ -34,7 +34,7 @@ const mozSchema = `CREATE TABLE moz_cookies (
 func buildMozFixture(t *testing.T, statements ...string) []byte {
 	t.Helper()
 	path := filepath.Join(t.TempDir(), "cookies.sqlite")
-	db, err := sql.Open("sqlite", "file:"+path)
+	db, err := sql.Open("sqlite3", "file:"+path)
 	if err != nil {
 		t.Fatal(err)
 	}

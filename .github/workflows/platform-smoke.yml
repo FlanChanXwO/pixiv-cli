@@ -94,6 +94,10 @@ jobs:
         if: ${{ matrix.goos == 'windows' }}
         shell: bash
         run: go test ./internal/cli -run '^(TestAuthURLCallback|TestAuthURLHandlerInstall|TestNormalCLIInvocationEnsuresPersistentHandlerWithoutBlockingCommand)$' -count=1
+      - name: Test the Windows database path
+        if: ${{ matrix.goos == 'windows' }}
+        shell: bash
+        run: go test ./internal/storage/database -run '^TestOpenOnWindowsAcceptsForwardSlashFileURI$' -count=1
       - name: Build and package the platform binary
         shell: bash
         run: |

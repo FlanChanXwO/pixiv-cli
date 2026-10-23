@@ -90,7 +90,7 @@ func TestReadSessionsWatchExternalDatabaseCredentials(t *testing.T) {
 			require.NoError(t, err)
 			defer reader.Close()
 			if mode == "wal" {
-				control, err := sql.Open("sqlite", reader.Path())
+				control, err := sql.Open("sqlite3", reader.Path())
 				require.NoError(t, err)
 				defer control.Close()
 				var journal string

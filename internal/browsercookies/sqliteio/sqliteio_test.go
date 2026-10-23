@@ -13,7 +13,7 @@ import (
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/browsercookies"
 	"github.com/FlanChanXwO/pixiv-cli/internal/browsercookies/sqliteio"
-	_ "modernc.org/sqlite"
+	_ "github.com/ncruces/go-sqlite3/driver"
 )
 
 func TestQueryReturnsPlaintextAndTrailingEmptyBlobColumn(t *testing.T) {
@@ -21,7 +21,7 @@ func TestQueryReturnsPlaintextAndTrailingEmptyBlobColumn(t *testing.T) {
 		t.Skip("sqlite3 command-line tool not available")
 	}
 	path := filepath.Join(t.TempDir(), "cookies.sqlite")
-	db, err := sql.Open("sqlite", "file:"+path)
+	db, err := sql.Open("sqlite3", "file:"+path)
 	if err != nil {
 		t.Fatal(err)
 	}
