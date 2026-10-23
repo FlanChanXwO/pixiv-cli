@@ -17,7 +17,7 @@ import (
 )
 
 // ReverseSearchRequest 是 search owner 传给反向搜图构造端口的单次请求。
-// 具体 provider client、凭据和快照生命周期仍由上层组合与 Facade 管理。
+// 具体 provider client、凭据和快照生命周期仍由上层组合与 reversesearch.Service 管理。
 type ReverseSearchRequest struct {
 	Source             string
 	Provider           reversesearch.Provider
