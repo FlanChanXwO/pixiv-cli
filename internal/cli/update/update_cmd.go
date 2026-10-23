@@ -75,13 +75,6 @@ func printResult(out io.Writer, result selfupdate.UpdateResult) error {
 	if result.LatestVersion != nil {
 		latestVersion = *result.LatestVersion
 	}
-	_, err := fmt.Fprintf(out, "source: %s\ncurrent version: %s\nlatest version: %s\nupdate available: %s\n", result.Source, result.CurrentVersion, latestVersion, textBool(result.UpdateAvailable))
+	_, err := fmt.Fprintf(out, "source: %s\ncurrent version: %s\nlatest version: %s\nupdate available: %s\n", result.Source, result.CurrentVersion, latestVersion, requirements.TextBool(result.UpdateAvailable))
 	return err
-}
-
-func textBool(value bool) string {
-	if value {
-		return "yes"
-	}
-	return "no"
 }
