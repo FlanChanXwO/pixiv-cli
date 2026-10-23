@@ -269,14 +269,14 @@ assert.ok(!elements(cards).some(n=>n.tag==='input'&&n.type==='number'));
 const previous=button('Previous image'),next=button('Next image');assert.ok(previous&&next);assert.equal(previous.disabled,true);assert.equal(next.disabled,false);
 assert.ok(elements(cards).some(n=>n.className==='page-badge'&&n.textContent==='3'));
 const firstPreview=sent.filter(x=>x.message.params?.name==='pixiv_show_gallery').at(-1).message;
+assert.deepEqual(firstPreview.params.arguments,{illust_ids:[42],pages:[1,2,3],quality:'regular'},'one call signs every page');
 const firstPreviewImage=elements(cards).find(n=>n.tag==='img');
 const beforeInvalid=sent.length;pageInput.value='4';pageInput.events.change();assert.equal(sent.length,beforeInvalid,'out-of-range pages must not call tools');
 pageInput.value='3';pageInput.events.input();assert.equal(sent.length,beforeInvalid,'drag previews target without loading');
 assert.equal(elements(cards).find(n=>n.className==='page-position').textContent,'3 / 3');
-pageInput.events.change();const pagePreview=latest('tools/call');assert.equal(previous.disabled,false);assert.equal(next.disabled,true);
-receive({id:firstPreview.id,result});await flush();assert.equal(firstPreviewImage.src,'','superseded image response must not assign a URL');
-assert.deepEqual(pagePreview.params,{name:'pixiv_show_gallery',arguments:{illust_ids:[42],page:3,quality:'regular'}});
-receive({id:pagePreview.id,result:{structuredContent:{media_origin:'https://media.test',images:[{illust_id:42,page:3,url:'https://media.test/media/page-three'}]}}});await flush();
+pageInput.events.change();assert.equal(sent.length,beforeInvalid,'a page covered by the pending batch makes no call of its own');assert.equal(previous.disabled,false);assert.equal(next.disabled,true);
+const pagesResult={structuredContent:{media_origin:'https://media.test',images:['one','two','three'].map((name,index)=>({illust_id:42,page:index+1,url:'https://media.test/media/page-'+name}))}};
+receive({id:firstPreview.id,result:pagesResult});await flush();assert.equal(firstPreviewImage.src,'','superseded image response must not assign a URL');
 assert.ok(elements(cards).some(n=>n.tag==='img'&&n.src==='https://media.test/media/page-three'));
 const thirdImage=elements(cards).find(n=>n.tag==='img'&&n.src==='https://media.test/media/page-three');thirdImage.naturalWidth=1200;thirdImage.naturalHeight=900;thirdImage.events.load();
 assert.ok(elements(cards).some(n=>n.className==='metadata-value'&&n.textContent==='1200 × 900'));
@@ -288,9 +288,10 @@ let captures=0;surface.setPointerCapture=()=>captures++;
 surface.events.pointerdown({pointerId:1,isPrimary:true,button:0,clientX:100,clientY:100,target:{closest:()=>({tag:'button'})}});
 assert.equal(captures,0,'swipe capture must not intercept retry button clicks');
 swipe(-5,100);assert.equal(sent.length,beforeBoundary);assert.equal(prevented,false,'vertical gestures remain available to chat');
-swipe(100,5);assert.equal(latest('tools/call').params.arguments.page,2);assert.equal(prevented,true);
+swipe(100,5);assert.equal(sent.length,beforeBoundary,'turning to a signed page makes no call');assert.equal(prevented,true);await flush();
+assert.ok(elements(cards).some(n=>n.tag==='img'&&n.src==='https://media.test/media/page-two'),'the swipe target uses its batch capability');
 assert.ok(cards.contains(thirdImage) && !thirdImage.hidden && thirdImage.src==='https://media.test/media/page-three','keep the displayed page until its replacement has loaded');
-previous.events.click();assert.equal(latest('tools/call').params.arguments.page,1);assert.equal(previous.disabled,true);
+previous.events.click();assert.equal(sent.length,beforeBoundary);assert.equal(previous.disabled,true);
 const beforeFirst=sent.length;previous.events.click();assert.equal(sent.length,beforeFirst,'first image must not wrap');
 const beforeReturn=sent.filter(x=>x.message.params?.name==='pixiv_show_gallery').length;
 pageInput.value='3';pageInput.events.change();
@@ -309,7 +310,7 @@ const reenteredImage=elements(cards).find(n=>n.tag==='img'&&n.src==='https://med
 assert.equal(typeof reenteredImage.events.dblclick,'function','double click opens original viewer');
 const reenteredSurface=elements(cards).find(n=>n.className==='page-media');
 reenteredSurface.events.dblclick({target:{closest:()=>undefined}});await flush();
-const originalCall=latest('tools/call');assert.deepEqual(originalCall.params,{name:'pixiv_show_gallery',arguments:{illust_ids:[42],page:3,quality:'original'}},'original preview must stream over HTTP instead of waiting for Base64 tool content');
+const originalCall=latest('tools/call');assert.deepEqual(originalCall.params,{name:'pixiv_show_gallery',arguments:{illust_ids:[42],pages:[1,2,3],quality:'original'}},'one call signs every original, streamed over HTTP instead of Base64 tool content');
 const originalResult=page=>({structuredContent:{media_origin:'https://media.test',images:[{illust_id:42,page,url:'https://media.test/pixiv/media/original-'+page}]}});
 receive({id:originalCall.id,result:originalResult(3)});await flush();
 const originalDialog=elements(cards).find(n=>n.tag==='dialog');assert.ok(originalDialog?.open,'original opens in accessible dialog');
@@ -340,7 +341,7 @@ if(downloads){
   assert.equal(latest('ui/download-file').params.contents[0].resource.blob,'iVBORw0KGgo=');
   receive({id:latest('ui/download-file').id,result:{}});await flush();
 }
-lightboxButton('Previous image').events.click();const previousCall=latest('tools/call');assert.deepEqual(previousCall.params,{name:'pixiv_show_gallery',arguments:{illust_ids:[42],page:2,quality:'original'}});
+lightboxButton('Previous image').events.click();await flush();const previousCall=latest('tools/call');assert.deepEqual(previousCall.params,{name:'pixiv_show_gallery',arguments:{illust_ids:[42],page:2,quality:'original'}});
 assert.equal(originalImage.src,'https://media.test/pixiv/media/original-3','old page stays visible while loading');
 assert.equal(elements(originalDialog).find(n=>n.className==='original-loading').hidden,false);
 assert.equal(originalDialog['aria-busy'],'true');
@@ -368,13 +369,14 @@ button('Close original').events.click();
 // The approved browser budget evicts least-used images, while an oversized image still displays fully.
 freshResult(result);button(record.title).events.click();
 receive({id:latest('tools/call').id,result:{structuredContent:{records:[{...record,page_count:3}]}}});await flush();
-async function finishPage(page,width,height){const call=sent.filter(x=>x.message.params?.name==='pixiv_show_gallery').at(-1).message;receive({id:call.id,result:{structuredContent:{media_origin:'https://media.test',images:[{illust_id:42,page,url:'https://media.test/media/budget-'+page}]}}});await flush();const image=elements(cards).find(n=>n.tag==='img'&&n.src==='https://media.test/media/budget-'+page);image.naturalWidth=width;image.naturalHeight=height;image.events.load();return image;}
+async function finishPage(page,width,height){await flush();const call=sent.filter(x=>x.message.params?.name==='pixiv_show_gallery').at(-1).message;receive({id:call.id,result:{structuredContent:{media_origin:'https://media.test',images:[{illust_id:42,page,url:'https://media.test/media/budget-'+page}]}}});await flush();const image=elements(cards).find(n=>n.tag==='img'&&n.src==='https://media.test/media/budget-'+page);image.naturalWidth=width;image.naturalHeight=height;image.events.load();return image;}
 const evicted=await finishPage(1,6000,4000);button('Next image').events.click();await finishPage(2,6000,4000);
 assert.equal(evicted.src,'','LRU eviction releases detached image');
-button('Previous image').events.click();assert.equal(latest('tools/call').params.arguments.page,1,'evicted image is loaded again');
-const oversized=await finishPage(1,10000,10000);assert.equal(oversized.hidden,false,'oversized images render without truncation');
-button('Next image').events.click();const callsBeforeOversize=sent.filter(x=>x.message.params?.name==='pixiv_show_gallery').length;
-button('Previous image').events.click();assert.equal(sent.filter(x=>x.message.params?.name==='pixiv_show_gallery').length,callsBeforeOversize+1,'oversized image is not retained');
+const budgetImage=()=>elements(cards).find(n=>n.tag==='img'&&n.src==='https://media.test/media/budget-1');
+button('Previous image').events.click();await flush();const oversized=budgetImage();assert.ok(oversized&&oversized!==evicted,'evicted image is loaded again from its batch capability');
+oversized.naturalWidth=10000;oversized.naturalHeight=10000;oversized.events.load();assert.equal(oversized.hidden,false,'oversized images render without truncation');
+button('Next image').events.click();await flush();button('Previous image').events.click();await flush();
+assert.ok(budgetImage()&&budgetImage()!==oversized,'oversized image is not retained');
 for (const [x,label] of [[0,undefined],[2,'R-18G'],[undefined,undefined]]) {
   receive({method:'ui/notifications/tool-result',params:{structuredContent:{records:[{id:'42',type:'illust',title:'Test',page_count:2,x_restrict:x,tags:[{name:'R-18'}]},{id:'43',type:'illust',title:'Other'}]}}});
   assert.ok(!elements(cards).some(n=>n.className==='rating-badge'),'list has only thumbnails');

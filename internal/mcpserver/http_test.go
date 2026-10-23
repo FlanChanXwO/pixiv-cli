@@ -711,6 +711,9 @@ func TestHTTPExplicitGalleryProxyDiscovery(t *testing.T) {
 					return nil, errors.New("fixture unavailable")
 				}
 				body := fmt.Sprintf(`{"illust":{"id":%s,"title":"fixture","caption":"<b>description</b>","type":"illust","page_count":1,"create_date":"2026-01-01T00:00:00Z","user":{"id":7},"meta_single_page":{"original_image_url":"https://i.pximg.net/img-original/img/2026/01/01/00/00/00/%s_p0.png"}}}`, id, id)
+				if id == "44" {
+					body = `{"illust":{"id":44,"title":"pages","type":"manga","page_count":3,"create_date":"2026-01-01T00:00:00Z","user":{"id":7},"meta_pages":[{"image_urls":{"original":"https://i.pximg.net/img-original/img/2026/01/01/00/00/00/44_p0.png"}},{"image_urls":{"original":"https://i.pximg.net/img-original/img/2026/01/01/00/00/00/44_p1.png"}},{"image_urls":{"original":"https://i.pximg.net/img-original/img/2026/01/01/00/00/00/44_p2.png"}}]}}`
+				}
 				return &http.Response{StatusCode: 200, Header: http.Header{}, Body: io.NopCloser(strings.NewReader(body))}, nil
 			}
 			require.Equal(t, "i.pximg.net", r.URL.Host)
@@ -803,6 +806,27 @@ func TestHTTPExplicitGalleryProxyDiscovery(t *testing.T) {
 		require.Equal(t, 200, response.StatusCode)
 		require.Equal(t, imageBytes.Bytes(), body)
 	}
+	// One call signs several pages of one artwork; out-of-range pages fail alone.
+	paged, err := session.CallTool(ctx, &mcp.CallToolParams{Name: "pixiv_show_gallery", Arguments: map[string]any{"illust_ids": []int{44}, "pages": []int{1, 3, 4}, "quality": "regular"}})
+	require.NoError(t, err)
+	var pages struct {
+		Images []struct {
+			Page int
+			URL  string
+		}
+		Failures []struct{ Error string }
+	}
+	data, err = json.Marshal(paged.StructuredContent)
+	require.NoError(t, err)
+	require.NoError(t, json.Unmarshal(data, &pages))
+	require.Len(t, pages.Images, 2, string(data))
+	require.Equal(t, []int{1, 3}, []int{pages.Images[0].Page, pages.Images[1].Page})
+	require.NotEqual(t, pages.Images[0].URL, pages.Images[1].URL)
+	require.Equal(t, []struct{ Error string }{{"page_unavailable"}}, pages.Failures)
+	require.True(t, paged.IsError, "a partial page failure stays visible")
+	both, err := session.CallTool(ctx, &mcp.CallToolParams{Name: "pixiv_show_gallery", Arguments: map[string]any{"illust_ids": []int{44}, "page": 1, "pages": []int{2}}})
+	require.NoError(t, err)
+	require.True(t, both.IsError, "page and pages are mutually exclusive")
 }
 
 // 计数发生在实际 JSON 编码中，避免把预先重复编码当作传输观测。
