@@ -8,7 +8,6 @@ require (
 	github.com/bogdanfinn/tls-client v1.15.1
 	github.com/creachadair/tomledit v0.0.29
 	github.com/fsnotify/fsnotify v1.10.1
-	github.com/go-resty/resty/v2 v2.17.2
 	github.com/google/jsonschema-go v0.4.3
 	github.com/knadh/koanf/parsers/toml/v2 v2.2.1
 	github.com/knadh/koanf/v2 v2.3.5
