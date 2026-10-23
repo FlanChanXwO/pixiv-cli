@@ -135,8 +135,8 @@ func (a command) runner() listing.Runner {
 }
 
 type novelSeriesOut struct {
-	Series pixiv.NovelSeriesDTO `json:"series"`
-	Novels []pixiv.NovelDTO     `json:"novels"`
+	Series pixiv.NovelSeries `json:"series"`
+	Novels []pixiv.Novel     `json:"novels"`
 }
 
 func (a command) runNovel(cmd *cobra.Command, request deps.Request, id int64, plan listing.Plan, jsonOut, ndjson bool) error {
@@ -162,7 +162,7 @@ func (a command) runNovel(cmd *cobra.Command, request deps.Request, id int64, pl
 		if ndjson {
 			encoder := json.NewEncoder(a.data.Output)
 			for _, novel := range novels {
-				record, err := record.RecordFromNovelDTO(pixiv.ToNovelDTO(novel))
+				record, err := record.RecordFromNovel(novel)
 				if err != nil {
 					return false, err
 				}
@@ -173,11 +173,7 @@ func (a command) runNovel(cmd *cobra.Command, request deps.Request, id int64, pl
 			return len(novels) > 0, nil
 		}
 		if jsonOut {
-			novelDTOs := make([]pixiv.NovelDTO, 0, len(novels))
-			for _, novel := range novels {
-				novelDTOs = append(novelDTOs, pixiv.ToNovelDTO(novel))
-			}
-			if err := a.data.WriteJSON(novelSeriesOut{Series: pixiv.ToNovelSeriesDTO(metadata), Novels: novelDTOs}); err != nil {
+			if err := a.data.WriteJSON(novelSeriesOut{Series: metadata, Novels: novels}); err != nil {
 				return true, err
 			}
 			return true, nil

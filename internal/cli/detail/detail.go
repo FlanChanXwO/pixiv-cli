@@ -255,14 +255,14 @@ func (a command) runOneWithOutput(ctx context.Context, cmd *cobra.Command, entit
 			return err
 		}
 		if ndjson || (jsonOut && inputcmd.ModeOf(cmd) == inputcmd.RecordMode) {
-			value, err := record.RecordFromArtworkDTO(pixiv.ToArtworkDTO(result))
+			value, err := record.RecordFromArtwork(result)
 			if err != nil {
 				return err
 			}
 			return a.writeRecord(value)
 		}
 		if jsonOut {
-			return a.data.writeJSON(pixiv.ToArtworkDTO(result))
+			return a.data.writeJSON(result)
 		}
 		return printArtwork(a.data.Output, result)
 	case "novel":
@@ -277,14 +277,14 @@ func (a command) runOneWithOutput(ctx context.Context, cmd *cobra.Command, entit
 				return err
 			}
 			if ndjson || (jsonOut && inputcmd.ModeOf(cmd) == inputcmd.RecordMode) {
-				value, err := record.RecordFromNovelContentDTO(pixiv.ToNovelContentDTO(result))
+				value, err := record.RecordFromNovelContent(result)
 				if err != nil {
 					return err
 				}
 				return a.writeRecord(value)
 			}
 			if jsonOut {
-				return a.data.writeJSON(pixiv.ToNovelContentDTO(result))
+				return a.data.writeJSON(result)
 			}
 			return printNovelContent(a.data.Output, result)
 		}
@@ -298,14 +298,14 @@ func (a command) runOneWithOutput(ctx context.Context, cmd *cobra.Command, entit
 			return err
 		}
 		if ndjson || (jsonOut && inputcmd.ModeOf(cmd) == inputcmd.RecordMode) {
-			value, err := record.RecordFromNovelDTO(pixiv.ToNovelDTO(result))
+			value, err := record.RecordFromNovel(result)
 			if err != nil {
 				return err
 			}
 			return a.writeRecord(value)
 		}
 		if jsonOut {
-			return a.data.writeJSON(pixiv.ToNovelDTO(result))
+			return a.data.writeJSON(result)
 		}
 		return printNovel(a.data.Output, result)
 	case "user":
@@ -319,14 +319,14 @@ func (a command) runOneWithOutput(ctx context.Context, cmd *cobra.Command, entit
 			return err
 		}
 		if ndjson || (jsonOut && inputcmd.ModeOf(cmd) == inputcmd.RecordMode) {
-			value, err := record.RecordFromUserDetailDTO(pixiv.ToUserDetailDTO(result))
+			value, err := record.RecordFromUserDetail(result)
 			if err != nil {
 				return err
 			}
 			return a.writeRecord(value)
 		}
 		if jsonOut {
-			return a.data.writeJSON(pixiv.ToUserDetailDTO(result))
+			return a.data.writeJSON(result)
 		}
 		return printUser(a.data.Output, result)
 	default:

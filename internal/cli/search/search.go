@@ -381,7 +381,7 @@ func (a command) userDependencies() user.Dependencies {
 }
 
 type artworkSearchOut struct {
-	Illusts []pixiv.ArtworkDTO  `json:"illusts"`
+	Illusts []pixiv.Artwork     `json:"illusts"`
 	Filter  *bookmarkFilterJSON `json:"filter,omitempty"`
 }
 
@@ -425,7 +425,7 @@ func (a command) writeArtworkResults(jsonOut, ndjson bool, word string, items []
 	if ndjson {
 		encoder := json.NewEncoder(a.data.Output)
 		for _, item := range items {
-			record, err := record.RecordFromArtworkDTO(pixiv.ToArtworkDTO(item))
+			record, err := record.RecordFromArtwork(item)
 			if err != nil {
 				return err
 			}
@@ -469,12 +469,12 @@ func (a command) runTrendingTags(cmd *cobra.Command, options CommandOptions) err
 		return err
 	}
 	if jsonOut {
-		dtos := make([]pixiv.TrendingTagDTO, 0, len(tags))
+		dtos := make([]pixiv.TrendingTag, 0, len(tags))
 		for _, tag := range tags {
-			dtos = append(dtos, pixiv.ToTrendingTagDTO(tag))
+			dtos = append(dtos, tag)
 		}
 		return a.data.writeJSON(struct {
-			Tags []pixiv.TrendingTagDTO `json:"tags"`
+			Tags []pixiv.TrendingTag `json:"tags"`
 		}{Tags: dtos})
 	}
 	for _, tag := range tags {
@@ -497,10 +497,10 @@ func (a command) runner() listing.Runner {
 	})
 }
 
-func artworkDTOs(items []pixiv.Artwork) []pixiv.ArtworkDTO {
-	out := make([]pixiv.ArtworkDTO, 0, len(items))
+func artworkDTOs(items []pixiv.Artwork) []pixiv.Artwork {
+	out := make([]pixiv.Artwork, 0, len(items))
 	for _, item := range items {
-		out = append(out, pixiv.ToArtworkDTO(item))
+		out = append(out, item)
 	}
 	return out
 }

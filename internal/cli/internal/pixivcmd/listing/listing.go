@@ -178,7 +178,7 @@ func (a Runner) runPooledIllustListWithKey(ctx context.Context, request Request,
 			if ndjson {
 				committed := false
 				for _, item := range items {
-					record, err := record.RecordFromArtworkDTO(pixiv.ToArtworkDTO(item))
+					record, err := record.RecordFromArtwork(item)
 					if err != nil {
 						return committed, err
 					}
@@ -190,7 +190,7 @@ func (a Runner) runPooledIllustListWithKey(ctx context.Context, request Request,
 				return committed, nil
 			}
 			if jsonOut {
-				return false, appendJSONArray(spool, artworkDTOs(items))
+				return false, appendJSONArray(spool, items)
 			}
 			committed := false
 			if !headingWritten && heading != nil {
@@ -244,7 +244,7 @@ func (a Runner) RunPooledNovelList(ctx context.Context, request Request, plan Pl
 			if ndjson {
 				committed := false
 				for _, item := range items {
-					record, err := record.RecordFromNovelDTO(pixiv.ToNovelDTO(item))
+					record, err := record.RecordFromNovel(item)
 					if err != nil {
 						return committed, err
 					}
@@ -256,7 +256,7 @@ func (a Runner) RunPooledNovelList(ctx context.Context, request Request, plan Pl
 				return committed, nil
 			}
 			if jsonOut {
-				return false, appendJSONArray(spool, novelDTOs(items))
+				return false, appendJSONArray(spool, items)
 			}
 			committed := false
 			if !headingWritten && heading != "" {
@@ -308,7 +308,7 @@ func (a Runner) RunPooledUserList(ctx context.Context, request Request, plan Pla
 			if ndjson {
 				committed := false
 				for _, item := range items {
-					record, err := record.RecordFromUserPreviewDTO(pixiv.ToUserPreviewDTO(item))
+					record, err := record.RecordFromUserPreview(item)
 					if err != nil {
 						return committed, err
 					}
@@ -320,7 +320,7 @@ func (a Runner) RunPooledUserList(ctx context.Context, request Request, plan Pla
 				return committed, nil
 			}
 			if jsonOut {
-				return false, appendJSONArray(spool, userPreviewDTOs(items))
+				return false, appendJSONArray(spool, items)
 			}
 			committed := false
 			if !headingWritten && heading != nil {
@@ -353,30 +353,6 @@ func printUserPreviews(w io.Writer, users []pixiv.UserPreview) error {
 	return nil
 }
 
-func artworkDTOs(items []pixiv.Artwork) []pixiv.ArtworkDTO {
-	out := make([]pixiv.ArtworkDTO, 0, len(items))
-	for _, item := range items {
-		out = append(out, pixiv.ToArtworkDTO(item))
-	}
-	return out
-}
-
-func novelDTOs(items []pixiv.Novel) []pixiv.NovelDTO {
-	out := make([]pixiv.NovelDTO, 0, len(items))
-	for _, item := range items {
-		out = append(out, pixiv.ToNovelDTO(item))
-	}
-	return out
-}
-
-func userPreviewDTOs(items []pixiv.UserPreview) []pixiv.UserPreviewDTO {
-	out := make([]pixiv.UserPreviewDTO, 0, len(items))
-	for _, item := range items {
-		out = append(out, pixiv.ToUserPreviewDTO(item))
-	}
-	return out
-}
-
 // jsonArraySpool 将已确认成功的每个元素逐个写入私有临时文件。网络或编码失败时
 // stdout 完全不写；成功后才把一个完整 JSON document 原子性地转交给调用方 writer。
 type jsonArraySpool struct {
@@ -400,7 +376,7 @@ func newJSONArraySpool(key string) (*jsonArraySpool, error) {
 }
 
 // marshalJSONValue 统一分页 JSON spool 与普通 Pixiv JSON 输出入口；调用方在
-// 到达这里前必须把运行时 SDK 模型转换为 DTO。
+// 到达这里前调用方负责传入可直接序列化的公开模型或输出类型。
 func marshalJSONValue(value any, indent bool) ([]byte, error) {
 	if indent {
 		return json.MarshalIndent(value, "    ", "  ")
@@ -408,8 +384,8 @@ func marshalJSONValue(value any, indent bool) ([]byte, error) {
 	return json.Marshal(value)
 }
 
-// writeJSONLine 统一实体之外的 NDJSON 输出入口。结构化调用方负责传入 DTO、
-// Record、envelope 或 scalar，而不是运行时 SDK 模型。
+// writeJSONLine 统一实体之外的 NDJSON 输出入口。结构化调用方负责传入可直接
+// 序列化的模型、Record、envelope 或 scalar。
 func writeJSONLine(out io.Writer, value any) error {
 	body, err := json.Marshal(value)
 	if err != nil {

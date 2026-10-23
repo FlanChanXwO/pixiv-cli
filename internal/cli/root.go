@@ -46,7 +46,7 @@ import (
 	"github.com/FlanChanXwO/pixiv-cli/internal/reversesearch"
 	reverseassembly "github.com/FlanChanXwO/pixiv-cli/internal/reversesearch/assembly"
 	selfupdate "github.com/FlanChanXwO/pixiv-cli/internal/selfupdate"
-	fanboxapp "github.com/FlanChanXwO/pixiv-cli/internal/session/fanbox"
+	"github.com/FlanChanXwO/pixiv-cli/internal/session"
 	"github.com/FlanChanXwO/pixiv-cli/internal/version"
 	thirdparty "github.com/FlanChanXwO/pixiv-cli/third_party"
 	"github.com/spf13/cobra"
@@ -108,7 +108,7 @@ var (
 	newCLIAccountServices                                              = func(a app) (authcommands.AccountService, pixivaccount.LoginService, error) {
 		return a.newPixivAccountServices()
 	}
-	newCLIFanboxService        = func(a app) (*fanboxapp.Facade, error) { return a.newFanboxService() }
+	newCLIFanboxService        = func(a app) (*session.Fanbox, error) { return a.newFanboxService() }
 	newCLIFanboxAccountService = func(a app) (*fanboxaccount.Service, error) {
 		return a.newFanboxAccountService()
 	}

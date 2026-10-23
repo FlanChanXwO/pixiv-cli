@@ -334,7 +334,7 @@ func TestGalleryResourceAndToolMetadata(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	visual := map[string]bool{"pixiv_show_gallery": true, "pixiv_artwork_media": true}
+	visual := map[string]bool{"pixiv_show_gallery": true, "pixiv_show_artwork": true, "pixiv_artwork_media": true}
 	for _, tool := range tools.Tools {
 		raw, err := json.Marshal(tool.Meta)
 		if err != nil {
@@ -401,7 +401,7 @@ func TestConsolidatedToolRegistry(t *testing.T) {
 			t.Errorf("retired tool remains registered: %s", name)
 		}
 	}
-	if len(result.Tools) != 53 {
-		t.Errorf("HTTP tools=%d, want 53", len(result.Tools))
+	if len(result.Tools) != 54 {
+		t.Errorf("HTTP tools=%d, want 54", len(result.Tools))
 	}
 }

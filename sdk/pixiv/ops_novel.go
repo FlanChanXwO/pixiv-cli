@@ -137,11 +137,8 @@ func (c *Client) NovelRanking(ctx context.Context, request NovelRankingRequest) 
 	return c.novelPage("NovelRanking", query, "offset", list.Items, int64(list.NextOffset), list.HasNext)
 }
 
-// NovelContent is retained for source compatibility with the v1 SDK surface.
-//
-// Deprecated: the App API novel-content endpoint is rejected and WebView
-// content is outside the v1 SDK contract. This method returns
-// ContentUnavailable without making a network request.
+// NovelContent reports that structured novel content is unavailable through
+// the App API. WebView content is outside the v1 SDK contract.
 func (c *Client) NovelContent(ctx context.Context, request NovelContentRequest) (NovelContent, error) {
 	if request.NovelID <= 0 {
 		return NovelContent{}, newError("NovelContent", sdk.InvalidArgument, "novel ID must be positive")

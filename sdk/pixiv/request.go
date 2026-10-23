@@ -416,14 +416,6 @@ type MyPixivUsersRequest struct {
 // CurrentUserRequest reads the current authenticated user's detail.
 type CurrentUserRequest struct{}
 
-// AddBookmarkRequest bookmarks one artwork. Tags are applied as bookmark tags
-// when non-empty.
-type AddBookmarkRequest struct {
-	ArtworkID int64
-	Restrict  Restrict
-	Tags      []string
-}
-
 // AddArtworkBookmarkRequest bookmarks one artwork. Tags are applied as
 // bookmark tags when non-empty.
 type AddArtworkBookmarkRequest struct {
@@ -435,11 +427,6 @@ type AddArtworkBookmarkRequest struct {
 // RemoveArtworkBookmarkRequest removes the current user's bookmark from one
 // artwork.
 type RemoveArtworkBookmarkRequest struct {
-	ArtworkID int64
-}
-
-// RemoveBookmarkRequest removes the current user's bookmark from one artwork.
-type RemoveBookmarkRequest struct {
 	ArtworkID int64
 }
 
@@ -466,10 +453,4 @@ type FollowUserRequest struct {
 // UnfollowUserRequest unfollows one user.
 type UnfollowUserRequest struct {
 	UserID int64
-}
-
-// SetAIArtworkVisibilityRequest is retained for source compatibility with the
-// deprecated SetAIArtworkVisibility entry point.
-type SetAIArtworkVisibilityRequest struct {
-	Visible bool
 }

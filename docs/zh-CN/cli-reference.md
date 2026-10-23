@@ -162,7 +162,7 @@ canonical 数据动作：`search`、`detail`、`ranking`、`series`、`comment`�
 | `detail` | `pixiv detail [ID_OR_URL] [-t artwork\|novel\|user] [--content] [--json\|--ndjson]` | 一个作品、小说或用户，或 canonical NDJSON record。`--content` 是保留的小说专用兼容参数，在打开账号池或调用已拒绝端点之前返回 `content_unavailable`。 |
 | `ranking` | `pixiv ranking [-t artwork\|novel] [--mode MODE --date YYYY-MM-DD --page N --limit N]` | 作品（默认）或小说排行；`--date` 仅作品。 |
 | `series` | `pixiv series SERIES_ID_OR_URL -t artwork\|novel [--page N --limit N --json\|--ndjson]` | 一个系列中的作品；正整数 ID 或受支持的系列 URL，其命名空间必须匹配必填的类型。 |
-| `comment` | `pixiv comment ID -t artwork\|novel [--page N --limit N --json\|--ndjson]`；`pixiv comment create ID -t artwork\|novel --comment TEXT [--json]`；`pixiv comment reply ID -t artwork\|novel --parent-comment-id COMMENT_ID --comment TEXT [--json]`；`pixiv comment stamp ID -t artwork\|novel --stamp-id STAMP_ID [--comment TEXT] [--json]`；`pixiv comment delete COMMENT_ID -t artwork\|novel [--json]`；`pixiv comment stamps [--json\|--ndjson]` | 读取以及 create/reply/stamp/delete/贴图列表。写操作只接受正整数 ID；create/reply 需要非空正文；stamp 正文可选（空 = 纯贴图 wire）；create/reply/stamp 返回 `comment_id`，delete 返回状态；`stamps` 返回输出安全的 DTO，无分页、无运行时 URL。 |
+| `comment` | `pixiv comment ID -t artwork\|novel [--page N --limit N --json\|--ndjson]`；`pixiv comment create ID -t artwork\|novel --comment TEXT [--json]`；`pixiv comment reply ID -t artwork\|novel --parent-comment-id COMMENT_ID --comment TEXT [--json]`；`pixiv comment stamp ID -t artwork\|novel --stamp-id STAMP_ID [--comment TEXT] [--json]`；`pixiv comment delete COMMENT_ID -t artwork\|novel [--json]`；`pixiv comment stamps [--json\|--ndjson]` | 读取以及 create/reply/stamp/delete/贴图列表。写操作只接受正整数 ID；create/reply 需要非空正文；stamp 正文可选（空 = 纯贴图 wire）；create/reply/stamp 返回 `comment_id`，delete 返回状态；`stamps` 返回输出安全的 stamp，无分页、无运行时 URL。 |
 | `bookmark` | `pixiv bookmark list\|tags\|detail\|add\|remove ...` | `list`/`tags` 接受用户 ID 或 URL，以及 `--type artwork\|novel\|all`（`all` = 作品在前、小说在后，record/标签保留类型）。`detail`、`add`、`remove` 接受 artwork/novel，不接受 `all`；add/remove 默认 `artwork`。 |
 | `user` | `pixiv user search\|detail\|artworks\|novels\|bookmarks\|following\|followers\|related\|blocked\|follow ...` | 资料/关系读取与关注管理。关注接受正整数 ID 或用户 Record；只有子命令注明时，省略 ID 才使用当前账号。 |
 | `download` | `pixiv download [options] SRC...` | 作品 ID/URL、允许的 CDN URL，或由用户页与公开收藏页 URL 展开的作品。作品系列 URL 不是下载来源。`--output/-o` 是 `--download-path` 的别名。 |
@@ -210,7 +210,7 @@ canonical 数据动作：`search`、`detail`、`ranking`、`series`、`comment`�
 | `search` | `--period` | 空 | 作品：`day`、`week`、`month`、`half-year`、`year`；与 `--start-date`/`--end-date` 互斥。 |
 | `novel search` | `--period` | 空 | `day`、`week`、`month`。 |
 | `search` | `--start-date` / `--end-date` | 空 | 含端点的 `YYYY-MM-DD`；start ≤ end。仅作品。 |
-| `search` | `--rating` | 空 | 本地作品筛选 `sfw`、`r18`、`r18g`、`mature`、`all`，基于 DTO `x_restrict`；绑定到 cursor，从不发给上游。 |
+| `search` | `--rating` | 空 | 本地作品筛选 `sfw`、`r18`、`r18g`、`mature`、`all`，基于模型 `x_restrict`；绑定到 cursor，从不发给上游。 |
 | `search` | `--ai-mode` | `all` | `all`、`exclude`、`only`；Pixiv `AIType==2` = AI 生成。 |
 | `search` | `--aspect-ratio` | `all` | `all`、`landscape`、`portrait`、`square`。 |
 | `search` | `--resolution` | `all` | `all`、`high`、`medium`、`low`。 |

@@ -239,11 +239,10 @@ type ResourceOut struct {
 
 // ResourceOutFrom 把 opaque Resource 转为安全输出。
 func ResourceOutFrom(res sdk.Resource) *ResourceOut {
-	dto := sdk.ToResourceDTO(res)
-	if dto == nil {
+	if res.Ref.IsZero() {
 		return nil
 	}
-	return &ResourceOut{Ref: dto.Ref, RequiresCredentials: dto.RequiresCredentials}
+	return &ResourceOut{Ref: res.Ref.String(), RequiresCredentials: res.RequiresCredentials}
 }
 
 // PostAssetOut 是帖子资产的安全输出形态。

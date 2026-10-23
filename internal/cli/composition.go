@@ -48,8 +48,7 @@ import (
 	"github.com/FlanChanXwO/pixiv-cli/internal/reversesearch"
 	reverseassembly "github.com/FlanChanXwO/pixiv-cli/internal/reversesearch/assembly"
 	selfupdate "github.com/FlanChanXwO/pixiv-cli/internal/selfupdate"
-	fanboxapp "github.com/FlanChanXwO/pixiv-cli/internal/session/fanbox"
-	pixivapp "github.com/FlanChanXwO/pixiv-cli/internal/session/pixiv"
+	"github.com/FlanChanXwO/pixiv-cli/internal/session"
 	database "github.com/FlanChanXwO/pixiv-cli/internal/storage/database"
 	filesecret "github.com/FlanChanXwO/pixiv-cli/internal/storage/secretfile"
 	fanbox "github.com/FlanChanXwO/pixiv-cli/sdk/fanbox"
@@ -98,17 +97,17 @@ func (a app) newPixivSDKPorts() (pixivSDKPorts, error) {
 	gate := pixivpool.NewGate()
 	readSessions := pixivaccount.NewReadSessions(service, gate)
 	a.closeState.add(readSessions.Close)
-	facade := pixivapp.New(pixivapp.Dependencies{
+	facade := session.NewPixiv(session.Dependencies{
 		Accounts: service,
 		Gate:     gate,
-		LoadPoolConfig: func() (pixivapp.PoolConfig, error) {
+		LoadPoolConfig: func() (session.PoolConfig, error) {
 			runtime, err := a.runtimeConfig()
 			if err != nil {
-				return pixivapp.PoolConfig{}, err
+				return session.PoolConfig{}, err
 			}
-			return pixivapp.PoolConfig{Enabled: runtime.AccountPool.Enabled, Strategy: string(runtime.AccountPool.Strategy)}, nil
+			return session.PoolConfig{Enabled: runtime.AccountPool.Enabled, Strategy: string(runtime.AccountPool.Strategy)}, nil
 		},
-		Pool: func(config pixivapp.PoolConfig) (pixivapp.PoolExecutor, error) {
+		Pool: func(config session.PoolConfig) (session.PoolExecutor, error) {
 			return pixivpool.Scheduler{
 				Config: configapp.AccountPoolConfig{Enabled: config.Enabled, Strategy: configapp.AccountPoolStrategy(config.Strategy)},
 				State:  db,
@@ -124,7 +123,7 @@ func (a app) newPixivSDKPorts() (pixivSDKPorts, error) {
 		if err != nil {
 			return nil, err
 		}
-		lease, err := facade.Open(context.Background(), pixivapp.Request{UserID: request.UserID, Options: options})
+		lease, err := facade.Open(context.Background(), session.Request{UserID: request.UserID, Options: options})
 		if err != nil {
 			return nil, err
 		}
@@ -136,14 +135,14 @@ func (a app) newPixivSDKPorts() (pixivSDKPorts, error) {
 		if err != nil {
 			return nil, err
 		}
-		return facade.Open(ctx, pixivapp.Request{UserID: request.UserID, Options: options})
+		return facade.Open(ctx, session.Request{UserID: request.UserID, Options: options})
 	}
 	execute := func(ctx context.Context, request pixivdeps.Request, callback func(context.Context, *pixiv.Client) (bool, error)) error {
 		options, err := pixivOptionsFromRequest(request, a.runtimeConfig)
 		if err != nil {
 			return err
 		}
-		return facade.Use(ctx, pixivapp.Request{UserID: request.UserID, Options: options}, callback)
+		return facade.Use(ctx, session.Request{UserID: request.UserID, Options: options}, callback)
 	}
 	readSession := func(ctx context.Context, request pixivdeps.Request) (mediaproxy.Session, error) {
 		cfg, err := a.runtimeConfig()
@@ -172,13 +171,13 @@ func (a app) newPixivSDKPorts() (pixivSDKPorts, error) {
 		watchReadSessions: func(ctx context.Context) error { return readSessions.Watch(ctx, db.Path()) },
 		readSession:       readSession,
 		read: func(ctx context.Context, request pixivdeps.Request, callback func(context.Context, *pixiv.Client) (bool, error)) error {
-			session, err := readSession(ctx, request)
+			snapshot, err := readSession(ctx, request)
 			if err != nil {
 				return err
 			}
-			defer session.Lease.Close()
-			_, err = callback(ctx, session.Lease.Value())
-			session.Invalidate(err)
+			defer snapshot.Lease.Close()
+			_, err = callback(ctx, snapshot.Lease.Value())
+			snapshot.Invalidate(err)
 			return err
 		},
 		localAccounts: func(ctx context.Context) (mcpaccounts.LocalSnapshot, error) {
@@ -227,12 +226,12 @@ func (a app) newFanboxAccountService() (*fanboxaccount.Service, error) {
 	return service, nil
 }
 
-func (a app) newFanboxService() (*fanboxapp.Facade, error) {
+func (a app) newFanboxService() (*session.Fanbox, error) {
 	accounts, err := a.newFanboxAccountService()
 	if err != nil {
 		return nil, err
 	}
-	return fanboxapp.NewFacade(accounts), nil
+	return session.NewFanbox(accounts), nil
 }
 
 func defaultDownloadService() downloader.DownloadService {
@@ -479,9 +478,9 @@ func (a app) detailDeps() pixivdetail.Dependencies {
 
 func (a app) fanboxDataDeps() fanboxcommands.Data {
 	var once sync.Once
-	var service *fanboxapp.Facade
+	var service *session.Fanbox
 	var serviceErr error
-	load := func() (*fanboxapp.Facade, error) {
+	load := func() (*session.Fanbox, error) {
 		once.Do(func() { service, serviceErr = newCLIFanboxService(a) })
 		return service, serviceErr
 	}
@@ -509,7 +508,7 @@ func (a app) ConfigService() configapp.Store { return configapp.DefaultStore() }
 
 func (a app) ConfigPath() (string, error) { return a.ConfigService().Path() }
 
-func (a app) FanboxService() (*fanboxapp.Facade, error) {
+func (a app) FanboxService() (*session.Fanbox, error) {
 	return newCLIFanboxService(a)
 }
 
@@ -596,8 +595,8 @@ func (a app) runPixivMCP(ctx context.Context, request mcpcommands.Request) (resu
 		},
 		OpenLease: func(ctx context.Context, account mcpserver.Account) (*lifecycle.Lease[*pixiv.Client], error) {
 			if ports.readSession != nil {
-				session, err := ports.readSession(ctx, pixivdeps.Request{UserID: account.UserID, HTTPSProxyOverride: account.HTTPSProxyOverride})
-				return session.Lease, err
+				snapshot, err := ports.readSession(ctx, pixivdeps.Request{UserID: account.UserID, HTTPSProxyOverride: account.HTTPSProxyOverride})
+				return snapshot.Lease, err
 			}
 			return ports.openLease(ctx, pixivdeps.Request{UserID: account.UserID, HTTPSProxyOverride: account.HTTPSProxyOverride})
 		},
@@ -612,7 +611,7 @@ func (a app) runPixivMCP(ctx context.Context, request mcpcommands.Request) (resu
 			if err != nil {
 				return nil, err
 			}
-			return service.Open(ctx, fanboxapp.OpenRequest{ProxyOverride: account.HTTPSProxyOverride})
+			return service.Open(ctx, session.OpenRequest{ProxyOverride: account.HTTPSProxyOverride})
 		},
 	}
 	if request.ListenAddr == nil {

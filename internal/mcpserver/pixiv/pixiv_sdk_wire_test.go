@@ -408,7 +408,7 @@ func (tr *testSDKTransport) RoundTrip(request *http.Request) (*http.Response, er
 	case "/v1/trending-tags/illust":
 		status, body, err = wireTrendingTags(tr.fake.trendingTags)
 	case "/v2/illust/bookmark/add":
-		req := pixivsdk.AddBookmarkRequest{ArtworkID: formInt64(request, "illust_id"), Restrict: pixivsdk.Restrict(formValue(request, "restrict"))}
+		req := pixivsdk.AddArtworkBookmarkRequest{ArtworkID: formInt64(request, "illust_id"), Restrict: pixivsdk.Restrict(formValue(request, "restrict"))}
 		if tags := formValues(request, "tags[]"); len(tags) > 0 {
 			req.Tags = tags
 		}
@@ -418,7 +418,7 @@ func (tr *testSDKTransport) RoundTrip(request *http.Request) (*http.Response, er
 		}
 		status, body, err = http.StatusOK, []byte("{}"), nil
 	case "/v1/illust/bookmark/delete":
-		req := pixivsdk.RemoveBookmarkRequest{ArtworkID: formInt64(request, "illust_id")}
+		req := pixivsdk.RemoveArtworkBookmarkRequest{ArtworkID: formInt64(request, "illust_id")}
 		tr.fake.removeBookmarkRequest = req
 		if tr.fake.removeBookmarkErr != nil {
 			return wireErrorResponse(tr.fake.removeBookmarkErr)
@@ -1065,32 +1065,32 @@ func wireNovelBookmarkDetail(detail pixivsdk.NovelBookmarkDetail) (int, []byte, 
 }
 
 func wireCommentPageResult(page pixivsdk.CommentPage) (int, []byte, error) {
-	dtos := make([]pixivsdk.CommentDTO, 0, len(page.Page.Items))
+	dtos := make([]pixivsdk.Comment, 0, len(page.Page.Items))
 	for _, item := range page.Page.Items {
-		dtos = append(dtos, pixivsdk.ToCommentDTO(item))
+		dtos = append(dtos, item)
 	}
 	var total *int64
 	if page.Total != nil {
 		value := *page.Total
 		total = &value
 	}
-	var accessControl *pixivsdk.CommentAccessControlDTO
+	var accessControl *pixivsdk.CommentAccessControl
 	var numericAccessControl *int64
 	if page.AccessControl != nil {
 		if page.AccessControl.NumericValue != nil {
 			value := *page.AccessControl.NumericValue
 			numericAccessControl = &value
 		} else {
-			converted := pixivsdk.ToCommentAccessControlDTO(*page.AccessControl)
+			converted := *page.AccessControl
 			accessControl = &converted
 		}
 	}
 	body, err := json.Marshal(struct {
-		Comments             []pixivsdk.CommentDTO             `json:"comments"`
-		NextURL              *string                           `json:"next_url"`
-		TotalComments        *int64                            `json:"total_comments"`
-		AccessControl        *pixivsdk.CommentAccessControlDTO `json:"access_control"`
-		CommentAccessControl *int64                            `json:"comment_access_control"`
+		Comments             []pixivsdk.Comment             `json:"comments"`
+		NextURL              *string                        `json:"next_url"`
+		TotalComments        *int64                         `json:"total_comments"`
+		AccessControl        *pixivsdk.CommentAccessControl `json:"access_control"`
+		CommentAccessControl *int64                         `json:"comment_access_control"`
 	}{dtos, nil, total, accessControl, numericAccessControl})
 	return http.StatusOK, body, err
 }

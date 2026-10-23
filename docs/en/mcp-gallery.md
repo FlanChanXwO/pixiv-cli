@@ -2,11 +2,11 @@
 
 English | [简体中文](../zh-CN/mcp-gallery.md) | [MCP tools](mcp-tools.md)
 
-The HTTP-only image UI behind `pixiv_show_gallery`, `pixiv_artwork_media` App delivery and `pixiv_gallery_animation`. Startup settings (cache size, animation disk budget) are in the [CLI reference](cli-reference.md#mcp-http-server).
+The HTTP-only image UI behind `pixiv_show_gallery`, `pixiv_show_artwork`, `pixiv_artwork_media` App delivery and `pixiv_gallery_animation`. Startup settings (cache size, animation disk budget) are in the [CLI reference](cli-reference.md#mcp-http-server).
 
 ```mermaid
 flowchart LR
-    T["pixiv_show_gallery<br/>pixiv_artwork_media"] -->|"_meta.ui.resourceUri"| UI["Gallery iframe<br/>ui://pixiv-cli/gallery"]
+    T["pixiv_show_gallery<br/>pixiv_show_artwork<br/>pixiv_artwork_media"] -->|"_meta.ui.resourceUri"| UI["Gallery iframe<br/>ui://pixiv-cli/gallery"]
     UI -->|"Apps bridge tool calls"| T
     UI -->|"img src (capability URL)"| MP["/media/ proxy<br/>grant + account bound"]
     MP --> C["process LRU<br/>metadata + images"]
@@ -17,14 +17,16 @@ flowchart LR
 
 ## MCP Apps artwork previews
 
-- `pixiv_show_gallery` and `pixiv_artwork_media` associate results with the Gallery UI (`text/html;profile=mcp-app`, `_meta.ui.resourceUri`). Stable `ui://pixiv-cli/gallery` stays readable; tools reference a `ui://pixiv-cli/gallery/sha256-<digest>` alias derived from the rendered frontend (including the injected canonical media origin) so host UI caching cannot hide updates. Historical aliases deliver the current view on a fresh read — the digest is a cache identity, not an integrity guarantee.
+- `pixiv_show_gallery`, `pixiv_show_artwork` and `pixiv_artwork_media` associate results with the Gallery UI (`text/html;profile=mcp-app`, `_meta.ui.resourceUri`). Stable `ui://pixiv-cli/gallery` stays readable; tools reference a `ui://pixiv-cli/gallery/sha256-<digest>` alias derived from the rendered frontend (including the injected canonical media origin) so host UI caching cannot hide updates. Historical aliases deliver the current view on a fresh read — the digest is a cache identity, not an integrity guarantee.
 - Ordinary search, ranking, recommendation and detail tools have no UI association. Call the gallery only when the user explicitly asks for images or a gallery; the host decides whether to render.
 
 | `pixiv_show_gallery` | Contract |
 | --- | --- |
-| Input | Required non-empty positive-integer array `illust_ids` (duplicates keep first position); optional positive `page` (default 1), `quality` (`thumbnail` default, `regular`, `original`) |
+| Input | Required non-empty positive-integer array `illust_ids` (duplicates keep first position); optional positive `page` (default 1) or non-empty positive-integer array `pages` (not both; repeated pages keep first position), `quality` (`thumbnail` default, `regular`, `original`). `pages` signs several pages of each artwork in one call; a page beyond the artwork's count fails alone as `page_unavailable` |
 | Behavior | Fetches metadata (no new search); displays only the supplied IDs — use data tools for further pages, then explicitly open another gallery |
-| Output | `records`, `images` (artwork ID, page, URL, optional `avatar_url`), `failures`, `media_origin` when configured. Per-item failures keep successful records and set `isError` |
+| Output | `records`, `images` (artwork ID, page, URL, optional `avatar_url`), `failures` (artwork ID, error, and `page` for page-level failures), `media_origin` when configured. Per-item failures keep successful records and set `isError` |
+
+`pixiv_show_artwork` takes one required positive `illust_id` and returns the same result as `pixiv_show_gallery` with that single ID. Call it only when the user explicitly asks to see one artwork. With tool-call support, any result holding exactly one artwork (from either tool) opens its detail page directly, without a back-to-results control, and a static (non-animated) `pixiv_artwork_media` result opens the same detail page at its first returned page; without tool calls the single thumbnail card remains.
 
 **Image capabilities** — static previews are same-origin proxy URLs, not base64 tool content or raw CDN links. GET/HEAD under the canonical base's `/media/` validate a signed capability bound to the OAuth grant, selected account, artwork, page and quality.
 
@@ -39,12 +41,12 @@ flowchart LR
 
 | Element | Behavior |
 | --- | --- |
-| Frame | Borderless host surface requested; 16px padding (desktop multi-image: 32px top/bottom). Single thumbnail reports a content-sized width up to 384px incl. padding. Height follows content within host limits (can shrink). Host decides final size and whether to honor the border preference |
-| Grid | Multiple results in a responsive grid inside a keyboard-focusable scroll region up to 480px high (desktop and mobile); every result stays reachable. Hover never moves cards or images |
-| Cards | Complete, uncropped thumbnails (incl. static Ugoira covers) at natural aspect ratio, no gray letterboxing, no text or badges |
-| Detail layout | Full host width; rounded detail sheet below the uncropped image in a centered column ≤ 960px (no tall sidebar beside empty media); transparent letterboxing |
-| Detail content | Full title, tags, description, author, date, views, bookmarks, artwork ID, dimensions (no Pages row); R-18/R-18G badges. Author + bookmark button share a compact row; then one unlabeled icon-and-value strip (views, bookmarks, ID, dimensions, date) that scrolls horizontally on narrow screens; then pale-blue tags |
-| Author | Valid IDs open the Pixiv profile through the host. Real raster avatar from optional `images[].avatar_url` — a capability bound to the artwork author, grant and account; the proxy resolves the trusted SDK profile-image resource, rejects non-raster content, accepts no arbitrary URL or original semantics. Failure shows an explicit status, no generated icon |
+| Frame | Borderless host surface requested; 16px padding (desktop multi-image: 32px top/bottom). A single thumbnail (shown only without tool-call support) reports a content-sized width up to 384px incl. padding. Height follows content within host limits (can shrink). Host decides final size and whether to honor the border preference |
+| Grid | Below 600px of host width, multiple results form one keyboard-focusable, snap-aligned horizontal row, because phone hosts route vertical swipes to the chat instead of an inner scroller. Wider hosts keep a responsive grid inside a keyboard-focusable scroll region up to 480px high. Every result stays reachable. Hover never moves cards or images and applies only to hover-capable pointers, so touch taps leave no lingering highlight |
+| Cards | Thumbnails (incl. static Ugoira covers) with no text or badges: complete at natural aspect ratio in the grid, uniformly cropped to 3:4 in the narrow row |
+| Detail layout | Full host width; rounded detail sheet below the uncropped image in a centered column ≤ 960px (no tall sidebar beside empty media). The image frame follows the page aspect ratio up to the smaller of 360px and 90% of the host width (never `vh`, which grows with an auto-sized frame); letterboxing shows a blurred copy of the same image rather than flat bars |
+| Detail content | Full title, tags, description, author, date, views, bookmarks, artwork ID, dimensions (no Pages row); R-18/R-18G badges. Author + bookmark button share a compact row; then one unlabeled icon-and-value strip (views, bookmarks, ID, dimensions, date) that wraps whole items on narrow screens; then pale-blue tags in one row with a show-all toggle when they overflow |
+| Author | Valid IDs open the Pixiv profile through the host. Real raster avatar from optional `images[].avatar_url` — a capability bound to the artwork author, grant and account; the proxy resolves the trusted SDK profile-image resource, rejects non-raster content, accepts no arbitrary URL or original semantics. A failed avatar is left out, with no generated icon; the status is available to assistive technology |
 | Copy ID | Click copies; a check mark confirms. Requests clipboard-write; falls back to native selection copy; if both fail the ID stays selected, no error marker |
 | Handle | Unlabeled handle follows drag: down/click collapses, up/click expands; keyboard supported |
 | Captions | `<br>` → newline; numeric and common named entities decoded; absolute HTTP(S) `<a>` rebuilt through host link opening. Script URLs, credential-bearing URLs and event attributes dropped; other markup and invalid entities stay inert text |
@@ -52,9 +54,11 @@ flowchart LR
 
 ### Loading and page navigation
 
-- Detail, image and avatar loading use skeletons with reduced-motion support; loading/failure descriptions remain for assistive technology. Failures show icon-only retry (no banners); no automatic retry.
+- Detail, image and avatar loading use skeletons with reduced-motion support; loading/failure descriptions remain for assistive technology. Failures show icon-only retry (no banners); no automatic retry. Retrying any failed gallery thumbnail renews every failed thumbnail of that gallery in one authenticated batch.
 - Images load when visible. With tool-call support the view fetches fresh thumbnail capabilities in one authenticated batch first, so URLs invalidated by expiry/restart are not reused; without it, supplied URLs are best effort.
-- Click a thumbnail for detail. Single-page works have no navigation; multipage works get bounded prev/next arrows, horizontal swipes and a native progress slider with read-only position. Dragging previews; committing loads; superseded responses are ignored. Vertical gestures stay with the chat. Dimensions follow the selected page; original downloads use it.
+- Detail asks for every page's regular capability in one `pages` call and the lightbox does the same for originals; a page the batch does not cover falls back to its own call, and a failed or expired batch is dropped so the explicit retry asks again. Once a page displays, its neighbours (±1) decode in the background from an already-requested batch only — prefetching never adds a host round trip.
+- Page turns are drawn as a 3D cube: a clearly horizontal drag rotates it with the finger and releasing past one touch target lands on the neighbour, otherwise it springs back (a short give at the first and last page); buttons, keys and the slider play the same turn. The turn only animates while the current page is shown and the browser supports Web Animations; reduced motion changes pages immediately. The content swaps through the normal load path once the turn lands.
+- Click a thumbnail for detail. Single-page works have no navigation; multipage works show an `n / total` counter over the image and support horizontal swipes; prev/next arrows are hidden at either end and on touch screens. Tapping the counter toggles a native progress slider overlaid on the image, so it reserves no layout space. Dragging previews; committing loads; superseded responses are ignored. Vertical gestures stay with the chat. Dimensions follow the selected page; original downloads use it.
 
 ### Originals and downloads
 
@@ -70,7 +74,8 @@ flowchart TD
 
 | Control | Behavior |
 | --- | --- |
-| Bars | Top: close + current page (multipage). Bottom dock: zoom, fit/actual size, download |
+| Bars | One floating bottom dock holds the current page (multipage), zoom, fit/actual size (its icon shows the next action) and download; it appears once an image is shown. In host fullscreen the host provides the close control, so the lightbox shows none; inline hosts keep a top-left close |
+| Layout | Fit is pure CSS, so the image re-fits whenever the host resizes the frame (panel, maximize, rotation). The image area reserves room for the dock, which never covers it; in host fullscreen the dock also clears a host input floating over the bottom. Narrow (≤ 600px) touch screens span the full width and let the dock overlap the image edge to save height. Host `safeAreaInsets` take precedence over browser safe areas. Touch screens hide stepped zoom and side arrows in favor of pinch and swipe; side arrows are also hidden at either end. In host fullscreen the lightbox reports an image-shaped preferred width through `ui/notifications/size-changed`; the host decides whether to honor it |
 | Loading | Regular image shown immediately if loaded, original renders progressively over it (else on black). Undimmed white ring spinner until decode; zoom/download enable only then. Page change without a loaded target keeps the previous page dimmed with spinner, then fades in |
 | Fullscreen | Requested when the host advertises it; closing restores the previous mode |
 | Gestures | Wheel / pinch resize; click toggles fit/actual; in fit mode horizontal swipes change page, zoomed the image pans |
@@ -94,7 +99,7 @@ Originals stream through the proxy, avoiding full Base64 transfer through the ho
 | Click | Toggle; adds with current visibility (public for a new bookmark) |
 | Hold 500 ms / right-click / Shift+F10 | Compact anchored popup: public/private, explicit Save changes, removal, state refresh. Close, Escape or outside click dismisses without layout change. Moving/cancelling a press cancels the hold; opening settings never writes |
 | After a write | Confirmed button state refreshed, statistics reloaded, cached detail invalidated; unreadable stats show an unavailable value + explicit error |
-| Unknown / unconfirmed state | Writes disabled; retry action offered. Writes stay explicit with host approval and state refresh |
+| Unknown / unconfirmed state | Writes disabled; the bookmark button is replaced by an icon-only state retry, with the reason available to assistive technology rather than shown as text. Writes stay explicit with host approval and state refresh |
 
 **Tags** send a user-initiated exact-tag gallery search via `ui/message` only if the host advertises `message.text` (otherwise tags are inert, no hover). Clicking any tag disables all tags in that app instance; a rejected message restores them with a retryable error. Acceptance ≠ agent completion and the bridge has no turn-completion event, so an accepted request keeps the instance locked (across navigation and re-delivery) — continue in the newly returned gallery. No timer or acknowledgement unlocks it.
 
@@ -116,7 +121,7 @@ Applies to `pixiv_artwork_media` over HTTP.
 | Non-App or unsupported MIME | original full `content` | — |
 
 - Play reads the original binary on demand; downloads use the same file with grant/account-version checks and expiry. Static media and public inputs are unchanged.
-- The tool also attaches the App view for playback and the static preview: host file download → confirmation flow; otherwise a protected HTTP attachment opens in the browser (browser restrictions apply). The server keeps the encoded animation and preview under the animation temp capacity, grant, account version and TTL — no re-download or re-encode. Private UI metadata carries the short-lived addresses; no filesystem path. Optional publication failure keeps the complete inline result but disables browser download. Restart, expiry or authorization changes invalidate addresses.
+- The tool also attaches the App view for playback and the static preview. With tool-call support a static (non-animated) result opens the regular detail page instead; the animation view uses icon-only controls, with status text for assistive technology and no standing download explanation. Downloads: host file download → confirmation flow; otherwise a protected HTTP attachment opens in the browser (browser restrictions apply). The server keeps the encoded animation and preview under the animation temp capacity, grant, account version and TTL — no re-download or re-encode. Private UI metadata carries the short-lived addresses; no filesystem path. Optional publication failure keeps the complete inline result but disables browser download. Restart, expiry or authorization changes invalidate addresses.
 - **Refresh animation** explicitly reacquires authorization through `pixiv_gallery_animation` in the original format, replacing expired addresses with the usual polling and subscription cleanup. A failed image never prepares again automatically. Hosts without server tool calls cannot renew expired links.
 
 ## `pixiv_gallery_animation`

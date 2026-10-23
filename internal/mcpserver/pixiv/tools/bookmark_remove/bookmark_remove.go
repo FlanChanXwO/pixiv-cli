@@ -39,7 +39,7 @@ func handle(ctx context.Context, app *toolhost.App, in In) (*mcp.CallToolResult,
 	out := outputs.Mutation{Action: "remove_bookmark", IllustID: in.ID, Text: fmt.Sprintf("Removed bookmark from artwork %d.", in.ID)}
 	return outputs.RunMutation(out, func() error {
 		return toolhost.Write(app, ctx, func(ctx context.Context, client *pixiv.Client) error {
-			return client.RemoveBookmark(ctx, pixiv.RemoveBookmarkRequest{ArtworkID: in.ID})
+			return client.RemoveArtworkBookmark(ctx, pixiv.RemoveArtworkBookmarkRequest{ArtworkID: in.ID})
 		})
 	})
 }

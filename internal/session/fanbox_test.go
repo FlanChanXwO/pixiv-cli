@@ -1,4 +1,4 @@
-package fanbox_test
+package session_test
 
 import (
 	"context"
@@ -6,7 +6,7 @@ import (
 	"testing"
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/lifecycle"
-	fanboxsession "github.com/FlanChanXwO/pixiv-cli/internal/session/fanbox"
+	"github.com/FlanChanXwO/pixiv-cli/internal/session"
 	fanboxsdk "github.com/FlanChanXwO/pixiv-cli/sdk/fanbox"
 	"github.com/stretchr/testify/require"
 )
@@ -24,19 +24,19 @@ func (o *testAccountOpener) OpenClientWithProxy(_ context.Context, proxy *string
 	return o.client, o.err
 }
 
-func newTestFacade(opener fanboxsession.AccountOpener, closeCount *int) *fanboxsession.Facade {
-	return fanboxsession.NewFacadeWithCloseClient(opener, func(*fanboxsdk.Client) error {
+func newTestFanbox(opener session.AccountOpener, closeCount *int) *session.Fanbox {
+	return session.NewFanboxWithCloseClient(opener, func(*fanboxsdk.Client) error {
 		*closeCount++
 		return nil
 	})
 }
 
-func TestFacadeOpenReturnsCloseOnceLease(t *testing.T) {
+func TestFanboxOpenReturnsCloseOnceLease(t *testing.T) {
 	opener := &testAccountOpener{client: &fanboxsdk.Client{}}
 	closeCount := 0
-	facade := newTestFacade(opener, &closeCount)
+	facade := newTestFanbox(opener, &closeCount)
 
-	lease, err := facade.Open(context.Background(), fanboxsession.OpenRequest{})
+	lease, err := facade.Open(context.Background(), session.OpenRequest{})
 	require.NoError(t, err)
 	require.Same(t, opener.client, lease.Value())
 	require.NoError(t, lease.Close())
@@ -45,15 +45,15 @@ func TestFacadeOpenReturnsCloseOnceLease(t *testing.T) {
 	require.Equal(t, 1, opener.openCount)
 }
 
-func TestFacadeUseClosesClientAfterCallback(t *testing.T) {
+func TestFanboxUseClosesClientAfterCallback(t *testing.T) {
 	opener := &testAccountOpener{client: &fanboxsdk.Client{}}
 	closeCount := 0
-	facade := newTestFacade(opener, &closeCount)
+	facade := newTestFanbox(opener, &closeCount)
 	callbackErr := errors.New("callback failed")
 	var callbackClient *fanboxsdk.Client
 	var callbackAttempt *lifecycle.Attempt
 
-	err := facade.Use(context.Background(), fanboxsession.OpenRequest{}, func(_ context.Context, client *fanboxsdk.Client, attempt *lifecycle.Attempt) error {
+	err := facade.Use(context.Background(), session.OpenRequest{}, func(_ context.Context, client *fanboxsdk.Client, attempt *lifecycle.Attempt) error {
 		callbackClient = client
 		callbackAttempt = attempt
 		return callbackErr
@@ -65,62 +65,62 @@ func TestFacadeUseClosesClientAfterCallback(t *testing.T) {
 	require.Equal(t, 1, closeCount)
 }
 
-func TestFacadePassesProxyOverrideToAccountLeaf(t *testing.T) {
+func TestFanboxPassesProxyOverrideToAccountLeaf(t *testing.T) {
 	opener := &testAccountOpener{client: &fanboxsdk.Client{}}
-	facade := fanboxsession.NewFacade(opener)
+	facade := session.NewFanbox(opener)
 	proxy := "http://127.0.0.1:7890"
 
-	lease, err := facade.Open(context.Background(), fanboxsession.OpenRequest{ProxyOverride: &proxy})
+	lease, err := facade.Open(context.Background(), session.OpenRequest{ProxyOverride: &proxy})
 	require.NoError(t, err)
 	require.NoError(t, lease.Close())
 	require.Equal(t, proxy, *opener.proxy)
 }
 
-func TestFacadeReportsMissingConfiguration(t *testing.T) {
-	var facade *fanboxsession.Facade
-	_, err := facade.Open(context.Background(), fanboxsession.OpenRequest{})
-	require.ErrorIs(t, err, fanboxsession.ErrAccountServiceNotConfigured)
+func TestFanboxReportsMissingConfiguration(t *testing.T) {
+	var facade *session.Fanbox
+	_, err := facade.Open(context.Background(), session.OpenRequest{})
+	require.ErrorIs(t, err, session.ErrFanboxAccountServiceNotConfigured)
 
-	err = facade.Use(context.Background(), fanboxsession.OpenRequest{}, func(context.Context, *fanboxsdk.Client, *lifecycle.Attempt) error {
+	err = facade.Use(context.Background(), session.OpenRequest{}, func(context.Context, *fanboxsdk.Client, *lifecycle.Attempt) error {
 		return nil
 	})
-	require.ErrorIs(t, err, fanboxsession.ErrAccountServiceNotConfigured)
+	require.ErrorIs(t, err, session.ErrFanboxAccountServiceNotConfigured)
 }
 
-func TestFacadePropagatesOpenErrorWithoutClosing(t *testing.T) {
+func TestFanboxPropagatesOpenErrorWithoutClosing(t *testing.T) {
 	openErr := errors.New("open failed")
 	opener := &testAccountOpener{err: openErr}
 	closeCount := 0
-	facade := newTestFacade(opener, &closeCount)
+	facade := newTestFanbox(opener, &closeCount)
 
-	_, err := facade.Open(context.Background(), fanboxsession.OpenRequest{})
+	_, err := facade.Open(context.Background(), session.OpenRequest{})
 	require.ErrorIs(t, err, openErr)
 	require.Zero(t, closeCount)
 }
 
-func TestFacadeClosesPartialClientOnOpenError(t *testing.T) {
+func TestFanboxClosesPartialClientOnOpenError(t *testing.T) {
 	partial := &fanboxsdk.Client{}
 	openErr := errors.New("open failed")
 	closeErr := errors.New("close failed")
 	opener := &testAccountOpener{client: partial, err: openErr}
-	facade := fanboxsession.NewFacadeWithCloseClient(opener, func(*fanboxsdk.Client) error {
+	facade := session.NewFanboxWithCloseClient(opener, func(*fanboxsdk.Client) error {
 		return closeErr
 	})
 
-	_, err := facade.Open(context.Background(), fanboxsession.OpenRequest{})
+	_, err := facade.Open(context.Background(), session.OpenRequest{})
 	require.ErrorIs(t, err, openErr)
 	require.ErrorIs(t, err, closeErr)
 }
 
-func TestFacadeUseJoinsCallbackAndCloseErrors(t *testing.T) {
+func TestFanboxUseJoinsCallbackAndCloseErrors(t *testing.T) {
 	callbackErr := errors.New("callback failed")
 	closeErr := errors.New("close failed")
 	opener := &testAccountOpener{client: &fanboxsdk.Client{}}
-	facade := fanboxsession.NewFacadeWithCloseClient(opener, func(*fanboxsdk.Client) error {
+	facade := session.NewFanboxWithCloseClient(opener, func(*fanboxsdk.Client) error {
 		return closeErr
 	})
 
-	err := facade.Use(context.Background(), fanboxsession.OpenRequest{}, func(context.Context, *fanboxsdk.Client, *lifecycle.Attempt) error {
+	err := facade.Use(context.Background(), session.OpenRequest{}, func(context.Context, *fanboxsdk.Client, *lifecycle.Attempt) error {
 		return callbackErr
 	})
 

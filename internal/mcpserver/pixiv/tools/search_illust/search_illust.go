@@ -11,6 +11,7 @@ import (
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/internal/records"
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/internal/toolhost"
 	"github.com/FlanChanXwO/pixiv-cli/internal/pagination"
+	record "github.com/FlanChanXwO/pixiv-cli/internal/record"
 	dateutil "github.com/FlanChanXwO/pixiv-cli/internal/searchfilter"
 	"github.com/FlanChanXwO/pixiv-cli/sdk"
 	pixiv "github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
@@ -144,7 +145,7 @@ func handleSearchIllust(ctx context.Context, app *toolhost.App, in searchIllustI
 		if err != nil {
 			return outputs.Error(err)
 		}
-		recordItems, err := records.FromArtworks(outcome.Page.Items)
+		recordItems, err := record.FromArtworks(outcome.Page.Items)
 		if err != nil {
 			return outputs.Error(err)
 		}
@@ -175,7 +176,7 @@ func handleSearchIllust(ctx context.Context, app *toolhost.App, in searchIllustI
 	if err != nil {
 		return outputs.Error(err)
 	}
-	recordItems, err := records.FromArtworks(items)
+	recordItems, err := record.FromArtworks(items)
 	if err != nil {
 		return outputs.Error(err)
 	}

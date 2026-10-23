@@ -265,44 +265,112 @@ func (s *Service) ConcurrentReads() int {
 // HasReadSessions distinguishes production caching from legacy embedding fixtures.
 func (s *Service) HasReadSessions() bool { return s != nil && s.reads != nil }
 
-// Private cache serialization omits absent SDK references; zero refs cannot be
-// marshaled by the public SDK. All supplied resource identities remain intact.
+// cachedResource 是进程内缓存的私有资源格式。它显式保留定位信息；不能嵌入
+// sdk.Resource，否则会继承其安全 MarshalJSON 并丢掉 URL。
 type cachedResource struct {
-	sdk.Resource
-	Ref *sdk.ResourceRef `json:"ref,omitempty"`
+	Ref                 *sdk.ResourceRef  `json:"ref,omitempty"`
+	URL                 string            `json:"url,omitempty"`
+	RequestHeaders      map[string]string `json:"request_headers,omitempty"`
+	ExpiresAt           *time.Time        `json:"expires_at,omitempty"`
+	RequiresCredentials bool              `json:"requires_credentials,omitempty"`
 }
+
 type cachedImage struct {
-	pixiv.ImageResource
-	Resource cachedResource
+	Resource cachedResource `json:"resource"`
+	Variant  string         `json:"variant"`
+	Width    int            `json:"width"`
+	Height   int            `json:"height"`
 }
+
 type cachedUser struct {
 	pixiv.User
-	ProfileImage cachedImage
+	ProfileImage cachedImage `json:"profile_image"`
 }
+
 type cachedPage struct {
 	pixiv.ArtworkPage
-	Image cachedImage
+	Image cachedImage `json:"image"`
+}
+
+type cachedArtwork struct {
+	pixiv.Artwork
+	Cover cachedImage  `json:"cover"`
+	User  cachedUser   `json:"user"`
+	Pages []cachedPage `json:"pages"`
+}
+
+func cacheResource(value sdk.Resource) cachedResource {
+	out := cachedResource{
+		URL:                 value.URL,
+		RequestHeaders:      value.RequestHeaders,
+		RequiresCredentials: value.RequiresCredentials,
+	}
+	if !value.Ref.IsZero() {
+		ref := value.Ref
+		out.Ref = &ref
+	}
+	if value.ExpiresAt != nil {
+		expires := *value.ExpiresAt
+		out.ExpiresAt = &expires
+	}
+	return out
+}
+
+func (c cachedResource) resource() sdk.Resource {
+	out := sdk.Resource{
+		URL:                 c.URL,
+		RequestHeaders:      c.RequestHeaders,
+		ExpiresAt:           c.ExpiresAt,
+		RequiresCredentials: c.RequiresCredentials,
+	}
+	if c.Ref != nil {
+		out.Ref = *c.Ref
+	}
+	return out
 }
 
 func cacheImage(value pixiv.ImageResource) cachedImage {
-	resource := cachedResource{Resource: value.Resource}
-	if !value.Resource.Ref.IsZero() {
-		ref := value.Resource.Ref
-		resource.Ref = &ref
-	}
-	return cachedImage{value, resource}
+	return cachedImage{Resource: cacheResource(value.Resource), Variant: value.Variant, Width: value.Width, Height: value.Height}
 }
+
+func (c cachedImage) image() pixiv.ImageResource {
+	return pixiv.ImageResource{Resource: c.Resource.resource(), Variant: c.Variant, Width: c.Width, Height: c.Height}
+}
+
+func (c cachedUser) user() pixiv.User {
+	out := c.User
+	out.ProfileImage = c.ProfileImage.image()
+	return out
+}
+
+func (c cachedPage) page() pixiv.ArtworkPage {
+	out := c.ArtworkPage
+	out.Image = c.Image.image()
+	return out
+}
+
+func (c cachedArtwork) artwork() pixiv.Artwork {
+	out := c.Artwork
+	out.Cover = c.Cover.image()
+	out.User = c.User.user()
+	out.Pages = make([]pixiv.ArtworkPage, len(c.Pages))
+	for i, page := range c.Pages {
+		out.Pages[i] = page.page()
+	}
+	return out
+}
+
 func marshalArtwork(value pixiv.Artwork) ([]byte, error) {
 	pages := make([]cachedPage, len(value.Pages))
 	for i, page := range value.Pages {
-		pages[i] = cachedPage{page, cacheImage(page.Image)}
+		pages[i] = cachedPage{ArtworkPage: page, Image: cacheImage(page.Image)}
 	}
-	wire := struct {
-		pixiv.Artwork
-		Cover cachedImage
-		User  cachedUser
-		Pages []cachedPage
-	}{value, cacheImage(value.Cover), cachedUser{value.User, cacheImage(value.User.ProfileImage)}, pages}
+	wire := cachedArtwork{
+		Artwork: value,
+		Cover:   cacheImage(value.Cover),
+		User:    cachedUser{User: value.User, ProfileImage: cacheImage(value.User.ProfileImage)},
+		Pages:   pages,
+	}
 	return json.Marshal(wire)
 }
 
@@ -312,7 +380,9 @@ func (s *Service) cachedArtwork(key string) (pixiv.Artwork, bool) {
 	if !ok || len(chunks) != 1 {
 		return pixiv.Artwork{}, false
 	}
-	var value pixiv.Artwork
-	err := json.Unmarshal(chunks[0], &value)
-	return value, err == nil
+	var wire cachedArtwork
+	if err := json.Unmarshal(chunks[0], &wire); err != nil {
+		return pixiv.Artwork{}, false
+	}
+	return wire.artwork(), true
 }

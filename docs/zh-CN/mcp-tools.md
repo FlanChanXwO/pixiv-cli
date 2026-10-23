@@ -28,7 +28,7 @@ flowchart LR
 | Pixiv/FANBOX 查询与写入工具、opaque FANBOX 资源 | 是 | 是 |
 | `pixiv_artwork_media` 完整图片 / GIF / APNG 与 PNG 预览 | inline 内容 | inline 或受保护的 App 交付 |
 | `pixiv_download`、`pixiv_download_random_from_recommendation` | 本地文件 | 不注册 |
-| `pixiv_show_gallery`、`pixiv_gallery_animation`、Gallery 资源 | 不注册 | 有媒体服务时可用 |
+| `pixiv_show_gallery`、`pixiv_show_artwork`、`pixiv_gallery_animation`、Gallery 资源 | 不注册 | 有媒体服务时可用 |
 | `pixiv_account_*` owner 管理 / helper 登录 | 使用本地 CLI 认证 | owner 状态与 relay |
 
 ## HTTP 授权
@@ -158,7 +158,7 @@ flowchart LR
 
 **`pixiv_comments`** —— 封闭输入 `{kind, id, page, limit}`，必填 `kind=artwork|novel`、正整数 `id`。输出 `{comments, pagination}`，以及可选 `total` / `access_control`（上游未提供时省略）。作品与小说使用各自当前的评论操作。opaque 数值 `comment_access_control` 保留为 `access_control.comment_access_control`——不推断 `can_comment`/`is_locked`。没有写操作专用的 `stamp_id`；没有单独的 `stamps` 工具。
 
-**输出安全** —— record 保留公开字段，需要时附带 opaque 资源引用；从不含解析/签名 URL、请求头、Cookie、过期元数据、access token 或其他传输凭据（小说内容块与评论/头像图片同理）。结构化结果使用显式 DTO 与类型化信封，而不是 SDK runtime 模型。FANBOX 第一方资源携带 opaque `ref` 与可选 `requires_credentials`，绝不含 `url`、`request_headers` 或 `expires_at`。
+**输出安全** —— record 保留公开字段，需要时附带 opaque 资源引用；从不含解析/签名 URL、请求头、Cookie、过期元数据、access token 或其他传输凭据（小说内容块与评论/头像图片同理）。结构化结果使用公开 SDK 模型与类型化信封。FANBOX 第一方资源携带 opaque `ref` 与可选 `requires_credentials`，绝不含 `url`、`request_headers` 或 `expires_at`。
 
 ## 反向搜图
 

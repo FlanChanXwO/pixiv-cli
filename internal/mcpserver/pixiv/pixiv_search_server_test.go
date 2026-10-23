@@ -230,6 +230,7 @@ func TestServerListsExpectedTools(t *testing.T) {
 		"pixiv_artwork_media",
 		"pixiv_gallery_animation",
 		"pixiv_show_gallery",
+		"pixiv_show_artwork",
 		"pixiv_search_illust",
 		"pixiv_search_novel",
 		"pixiv_illust_detail",

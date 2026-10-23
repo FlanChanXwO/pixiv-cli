@@ -85,9 +85,9 @@ func handle(ctx context.Context, app *toolhost.App, in In) (*mcp.CallToolResult,
 	for _, item := range items {
 		var recordItem record.Record
 		if item.artwork != nil {
-			recordItem, err = records.FromArtwork(*item.artwork)
+			recordItem, err = record.RecordFromArtwork(*item.artwork)
 		} else if item.novel != nil {
-			recordItem, err = records.FromNovel(*item.novel)
+			recordItem, err = record.RecordFromNovel(*item.novel)
 		} else {
 			err = errors.New("bookmark aggregate returned an empty item")
 		}

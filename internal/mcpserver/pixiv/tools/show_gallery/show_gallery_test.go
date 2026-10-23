@@ -80,5 +80,5 @@ func TestAnimationThumbnailRequiresImageProxy(t *testing.T) {
 	}}, toolhost.Account{})
 	_, out, _ := handle(t.Context(), app, input{IllustIDs: []int64{42}})
 	require.Len(t, out.Records, 1)
-	require.Equal(t, []failure{{42, "image_proxy_unavailable"}}, out.Failures, "animation thumbnails follow the authorized image path")
+	require.Equal(t, []failure{{IllustID: 42, Error: "image_proxy_unavailable"}}, out.Failures, "animation thumbnails follow the authorized image path")
 }

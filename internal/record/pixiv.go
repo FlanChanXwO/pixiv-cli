@@ -8,15 +8,14 @@ import (
 	"github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
 )
 
-// RecordFromArtworkDTO 将显式 DTO 映射为管道记录。运行时 SDK 模型必须先在
-// 产品包内完成字段级转换，记录层不再通过反射猜测或脱敏运行时字段。
-func RecordFromArtworkDTO(artwork pixiv.ArtworkDTO) (Record, error) {
+// RecordFromArtwork 将 public artwork 映射为管道记录。
+func RecordFromArtwork(artwork pixiv.Artwork) (Record, error) {
 	url := "https://www.pixiv.net/artworks/" + strconv.FormatInt(artwork.ID, 10)
 	recordType, err := artworkRecordType(artwork.Kind)
 	if err != nil {
 		return Record{}, err
 	}
-	return recordFromDTO(artwork, artwork.ID, recordType, url)
+	return recordFromValue(artwork, artwork.ID, recordType, url)
 }
 
 func artworkRecordType(kind pixiv.ArtworkKind) (string, error) {
@@ -32,30 +31,70 @@ func artworkRecordType(kind pixiv.ArtworkKind) (string, error) {
 	}
 }
 
-// RecordFromNovelDTO 将小说 DTO 映射为管道记录。
-func RecordFromNovelDTO(novel pixiv.NovelDTO) (Record, error) {
+// RecordFromNovel 将 public novel 映射为管道记录。
+func RecordFromNovel(novel pixiv.Novel) (Record, error) {
 	url := "https://www.pixiv.net/novel/show.php?id=" + strconv.FormatInt(novel.ID, 10)
-	return recordFromDTO(novel, novel.ID, "novel", url)
+	return recordFromValue(novel, novel.ID, "novel", url)
 }
 
-// RecordFromUserPreviewDTO 将用户预览 DTO 映射为管道记录。
-// RecordFromNovelContentDTO 将结构化小说正文映射为可继续管道处理的小说记录。
-func RecordFromNovelContentDTO(content pixiv.NovelContentDTO) (Record, error) {
+// RecordFromNovelContent 将结构化小说正文映射为可继续管道处理的小说记录。
+func RecordFromNovelContent(content pixiv.NovelContent) (Record, error) {
 	url := "https://www.pixiv.net/novel/show.php?id=" + strconv.FormatInt(content.NovelID, 10)
-	return recordFromDTO(content, content.NovelID, "novel", url)
+	return recordFromValue(content, content.NovelID, "novel", url)
 }
 
-func RecordFromUserPreviewDTO(preview pixiv.UserPreviewDTO) (Record, error) {
+// RecordFromUserPreview 将用户预览映射为管道记录。
+func RecordFromUserPreview(preview pixiv.UserPreview) (Record, error) {
 	id := strconv.FormatInt(preview.User.ID, 10)
-	return recordFromDTO(preview, preview.User.ID, "user", "https://www.pixiv.net/users/"+id)
+	return recordFromValue(preview, preview.User.ID, "user", "https://www.pixiv.net/users/"+id)
 }
 
-// RecordFromUserDetailDTO 将用户详情 DTO 映射为管道记录。
-func RecordFromUserDetailDTO(detail pixiv.UserDetailDTO) (Record, error) {
+// RecordFromUserDetail 将用户详情映射为管道记录。
+func RecordFromUserDetail(detail pixiv.UserDetail) (Record, error) {
 	id := strconv.FormatInt(detail.User.ID, 10)
-	return recordFromDTO(detail, detail.User.ID, "user", "https://www.pixiv.net/users/"+id)
+	return recordFromValue(detail, detail.User.ID, "user", "https://www.pixiv.net/users/"+id)
 }
-func recordFromDTO(value any, sourceID int64, recordType, url string) (Record, error) {
+
+// FromArtworks 批量构造 artwork records。
+func FromArtworks(items []pixiv.Artwork) ([]Record, error) {
+	records := make([]Record, 0, len(items))
+	for _, item := range items {
+		record, err := RecordFromArtwork(item)
+		if err != nil {
+			return nil, err
+		}
+		records = append(records, record)
+	}
+	return records, nil
+}
+
+// FromNovels 批量构造 novel records。
+func FromNovels(items []pixiv.Novel) ([]Record, error) {
+	records := make([]Record, 0, len(items))
+	for _, item := range items {
+		record, err := RecordFromNovel(item)
+		if err != nil {
+			return nil, err
+		}
+		records = append(records, record)
+	}
+	return records, nil
+}
+
+// FromUserPreviews 批量构造 user records。
+func FromUserPreviews(items []pixiv.UserPreview) ([]Record, error) {
+	records := make([]Record, 0, len(items))
+	for _, item := range items {
+		record, err := RecordFromUserPreview(item)
+		if err != nil {
+			return nil, err
+		}
+		records = append(records, record)
+	}
+	return records, nil
+}
+
+func recordFromValue(value any, sourceID int64, recordType, url string) (Record, error) {
 	if sourceID <= 0 {
 		return Record{}, errors.New("record id must be positive")
 	}

@@ -8,6 +8,7 @@ import (
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/internal/outputs"
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/internal/records"
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/internal/toolhost"
+	record "github.com/FlanChanXwO/pixiv-cli/internal/record"
 	"github.com/FlanChanXwO/pixiv-cli/sdk"
 	pixiv "github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
@@ -56,7 +57,7 @@ func handleIllustRecommended(ctx context.Context, app *toolhost.App, in recommen
 	if err != nil {
 		return outputs.Error(err)
 	}
-	recordItems, err := records.FromArtworks(items)
+	recordItems, err := record.FromArtworks(items)
 	if err != nil {
 		return outputs.Error(err)
 	}
