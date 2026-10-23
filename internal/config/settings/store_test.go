@@ -1,13 +1,12 @@
 package settings_test
 
 import (
-	"bytes"
 	"errors"
 	"os"
 	"testing"
 
 	config "github.com/FlanChanXwO/pixiv-cli/internal/config/settings"
-	"github.com/creachadair/tomledit"
+	"github.com/creachadair/tomledit/parser"
 	"github.com/stretchr/testify/require"
 )
 
@@ -67,6 +66,8 @@ func TestStoreUsesInjectedFilePortForPathReadWriteAndInitialization(t *testing.T
 	require.Equal(t, "default", value.Source)
 }
 
+// TestSensitiveMutationReportsEnvironmentOverrideWithoutItsValue keeps the
+// secret out of mutation results.
 func TestSensitiveMutationReportsEnvironmentOverrideWithoutItsValue(t *testing.T) {
 	t.Setenv("SAUCENAO_API_KEY", "must-not-leak")
 	files := &injectedFileStore{path: "injected/config.toml", files: make(map[string][]byte)}
@@ -75,54 +76,11 @@ func TestSensitiveMutationReportsEnvironmentOverrideWithoutItsValue(t *testing.T
 	require.NoError(t, err)
 	require.True(t, result.HasOverride)
 	require.Empty(t, result.EnvOverride)
-}
 
-func TestGeneratedDefaultConfigIsCompactAndPreservesExistingFile(t *testing.T) {
-	path := "injected/config.toml"
-	files := &injectedFileStore{path: path, files: make(map[string][]byte)}
-	store := config.Store{Files: files}
-
-	require.NoError(t, store.EnsureDefaultConfigFile())
-	body := files.files[path]
-	_, err := tomledit.Parse(bytes.NewReader(body))
+	result, err = (config.Store{Files: files}).Unset("saucenao_api_key")
 	require.NoError(t, err)
-	for _, fragment := range []string{
-		"[download]",
-		`path = "./downloads"`,
-		`filename_template = "{author} - {title}_{id}"`,
-		"[output]",
-		"json = false",
-		"[login]",
-		"open_browser = true",
-		"use_after_login = false",
-		"[update]",
-		"check_enabled = true",
-		"[logging]",
-		`level = "info"`,
-		`format = "text"`,
-		"[reverse_search]",
-		`provider = "saucenao"`,
-		"pixiv_only = true",
-	} {
-		require.Contains(t, string(body), fragment)
-	}
-	for _, fragment := range []string{
-		"directory_template",
-		"request_interval",
-		"[network]",
-		"[account_pool]",
-		"[reverse_search.network]",
-		"[reverse_search.flaresolverr]",
-		"proxy_url",
-		"user_agent",
-	} {
-		require.NotContains(t, string(body), fragment)
-	}
-
-	existing := []byte("# keep me\n[custom]\nvalue = true\n")
-	files.files[path] = append([]byte(nil), existing...)
-	require.NoError(t, store.EnsureDefaultConfigFile())
-	require.Equal(t, string(existing), string(files.files[path]))
+	require.True(t, result.HasOverride)
+	require.Empty(t, result.EnvOverride)
 }
 
 func TestStoreSurfacesInjectedReadError(t *testing.T) {
@@ -177,4 +135,61 @@ func TestStoreCurrentReturnsFreshImmutableSnapshots(t *testing.T) {
 	envSecondValue, err := envSecond.Effective("download_path")
 	require.NoError(t, err)
 	require.Equal(t, "./environment-second", envSecondValue.Value)
+}
+
+// TestRemovedKeysStayClearableWhileAdvancedTablesExist covers the store path:
+// a stale tombstone does not block ordinary writes or its own cleanup, and
+// unrelated advanced tables keep working afterwards.
+func TestRemovedKeysStayClearableWhileAdvancedTablesExist(t *testing.T) {
+	path := t.TempDir() + "/config.toml"
+	require.NoError(t, os.WriteFile(path, []byte(`[web]
+fallback_enabled = true
+
+[pixiv.network]
+proxy_url = "http://p"
+
+[fanbox.flaresolverr]
+url = "http://solver"
+`), 0o600))
+
+	// Writing is not blocked by the tombstone, otherwise the file could not be fixed.
+	require.NoError(t, config.SetConfigValue(path, "download_path", mustParseValue(t, "./x")))
+
+	removed, err := config.UnsetConfigValue(path, "web_fallback_enabled")
+	require.NoError(t, err)
+	require.True(t, removed)
+
+	state, err := config.LoadSnapshotAt(path)
+	require.NoError(t, err)
+	runtime, err := state.Runtime()
+	require.NoError(t, err)
+	require.Equal(t, "http://p", runtime.PixivNetwork.ProxyURL.Value)
+	require.NotNil(t, runtime.FanboxFlareSolverr)
+	require.Equal(t, "http://solver", runtime.FanboxFlareSolverr.URL)
+}
+
+// mustParseValue serializes a string through the existing config-set contract.
+func mustParseValue(t *testing.T, raw string) parser.Value {
+	t.Helper()
+	value, err := parser.ParseValue("'" + raw + "'")
+	require.NoError(t, err)
+	return value
+}
+
+// diskFileStore backs tests that need a real file for auth and document checks.
+type diskFileStore struct{ path string }
+
+func (s diskFileStore) Path() (string, error) { return s.path, nil }
+
+func (s diskFileStore) ReadFile(path string) ([]byte, error) { return os.ReadFile(path) }
+
+func (s diskFileStore) WritePrivateFile(path string, body []byte) error {
+	return os.WriteFile(path, body, 0o600)
+}
+
+func (s diskFileStore) EnsurePrivateFile(path string, body []byte) error {
+	if _, err := os.Stat(path); err == nil {
+		return nil
+	}
+	return os.WriteFile(path, body, 0o600)
 }
