@@ -12,11 +12,11 @@ flowchart TB
         HTTP["NewHTTPHandler / RunHTTP：<br/>Streamable HTTP + OAuth 路由"]
     end
     AUTH["internal/mcpserver/auth<br/>owner 状态、OAuth、RequireBearer"]
-    PX["pixiv/tools/*"]
-    FB["fanbox/tools/*"]
+    PX["pixiv/tools<br/>单包"]
+    FB["fanbox/tools<br/>单包"]
     GAL["pixiv/gallery<br/>MCP Apps 视图"]
     MP["pixiv/mediaproxy<br/>capability、LRU、动画任务"]
-    AM["pixiv/tools/artwork_media"]
+    AM["pixiv/tools<br/>artwork_media"]
     RS["services/pixiv/account/reads.go<br/>MCP 读取会话"]
     DL["internal/media/downloader<br/>（仅 stdio）"]
     NEW --> PX & FB
@@ -40,8 +40,7 @@ flowchart TB
 | --- | --- |
 | `pixiv/gallery` | 挂到 `pixiv_show_gallery`、`pixiv_show_artwork` 与 `pixiv_artwork_media` 的 MCP Apps 视图；稳定资源 URI + 内容版本别名作为 UI 缓存 key；合法的历史别名把新读取转到当前内嵌视图 |
 | `pixiv/mediaproxy` | 进程内图片 capability 签名与经公开 SDK 的栅格交付（canonical origin 校验后路由到 `/media/`）；按授权/会话划分的元数据与图片 LRU；查询/图片信号量；同 key 元数据合并请求；流式响应生命周期；动画任务 |
-| `pixiv/tools/artwork_media` | 静态 MCP 图片交付与每次调用的 Ugoira 编码 |
-| `pixiv/tools/gallery_animation` | 动画任务的控制适配 |
+| `pixiv/tools/media.go` | `pixiv_artwork_media` 静态图片交付与每次调用的 Ugoira 编码；`pixiv_gallery_animation` 动画任务控制适配；`pixiv_show_gallery` / `pixiv_show_artwork` 视图 |
 | `pixiv/internal/outputs` | 结构化媒体信封与 schema 错误脱敏 |
 
 - capability 绑定 OAuth 授权、账号与图片选择；浏览器与路由都不接受上游凭据或任意 URL。组合根提供与其他 Pixiv 操作相同的出站代理与显式账号 lease 工厂。

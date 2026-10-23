@@ -9,15 +9,7 @@ import (
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/lifecycle"
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/fanbox/internal/toolhost"
-	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/fanbox/tools/creator"
-	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/fanbox/tools/creatorposts"
-	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/fanbox/tools/creators"
-	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/fanbox/tools/creatortags"
-	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/fanbox/tools/currentuser"
-	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/fanbox/tools/feed"
-	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/fanbox/tools/openresource"
-	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/fanbox/tools/post"
-	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/fanbox/tools/resolveurl"
+	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/fanbox/tools"
 	fanboxsdk "github.com/FlanChanXwO/pixiv-cli/sdk/fanbox"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
@@ -53,17 +45,5 @@ func Register(server *mcp.Server, ports SDKPorts, proxyOverride *string) {
 		runtimePorts.Open = nil
 	}
 	app := toolhost.NewApp(runtimePorts, toolhost.Account{HTTPSProxyOverride: proxyOverride})
-	register(app, server)
-}
-
-func register(app *toolhost.App, server *mcp.Server) {
-	currentuser.Register(app, server)
-	creator.Register(app, server)
-	creators.Register(app, server)
-	creatortags.Register(app, server)
-	creatorposts.Register(app, server)
-	post.Register(app, server)
-	feed.Register(app, server)
-	resolveurl.Register(app, server)
-	openresource.Register(app, server)
+	tools.Register(app, server)
 }
