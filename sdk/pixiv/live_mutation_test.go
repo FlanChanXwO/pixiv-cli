@@ -370,7 +370,7 @@ func TestRealPixivSDKLiveManifestMutation(t *testing.T) {
 	// 标签索引的可见性延迟误判为收藏状态失败，但仍验证 detail/list/tags 三个
 	// read-back 入口均可安全读取。
 	for _, ops := range []bookmarkTargetOps{artworkBookmarkOps(client), novelBookmarkOps(client)} {
-		recordLiveMutation(t, ops.family+"_bookmark", runBookmarkMutation(ctx, client, session.userID, "", ops))
+		recordLiveMutation(t, ops.family+"_bookmark", runBookmarkMutation(ctx, session.userID, "", ops))
 	}
 
 	stamps, err := client.Stamps(ctx, pixivsdk.StampsRequest{})
@@ -775,7 +775,7 @@ func bookmarkTagNames(page sdk.Page[pixivsdk.BookmarkTag]) []string {
 	})
 }
 
-func runBookmarkMutation(ctx context.Context, client *pixivsdk.Client, userID int64, tag string, ops bookmarkTargetOps) liveMutationResult {
+func runBookmarkMutation(ctx context.Context, userID int64, tag string, ops bookmarkTargetOps) liveMutationResult {
 	targetID, err := ops.find(ctx)
 	if err != nil {
 		return blockedMutationResult(0, err)
@@ -800,7 +800,7 @@ func runBookmarkMutation(ctx context.Context, client *pixivsdk.Client, userID in
 	result.readBack = detailErr == nil && detail == pixivsdk.RestrictPublic && detailTagsOK &&
 		listErr == nil && tagsErr == nil && contains && (tag == "" || slices.Contains(tags, tag))
 
-	cleanup, cleanupReason := cleanupBookmark(ctx, client, userID, targetID, tag, ops)
+	cleanup, cleanupReason := cleanupBookmark(ctx, userID, targetID, tag, ops)
 	result.cleanup = cleanup
 	if cleanupReason != "" {
 		result.reason = cleanupReason
@@ -830,7 +830,7 @@ func runBookmarkMutation(ctx context.Context, client *pixivsdk.Client, userID in
 	return result
 }
 
-func cleanupBookmark(ctx context.Context, client *pixivsdk.Client, userID, targetID int64, tag string, ops bookmarkTargetOps) (bool, sdk.Reason) {
+func cleanupBookmark(ctx context.Context, userID, targetID int64, tag string, ops bookmarkTargetOps) (bool, sdk.Reason) {
 	if err := ops.remove(ctx, targetID); err != nil {
 		return false, liveMutationReason(err)
 	}
