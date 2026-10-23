@@ -79,6 +79,13 @@
       "repository": "https://github.com/bogdanfinn/fhttp/tree/v0.6.8",
       "directory": "third_party/attributions/go-1.26.3",
       "note": "The fixed module archive has no standalone license file. Its Go-derived source headers reference the Go BSD license, reproduced here with the Go patent grant; see transport.go at v0.6.8."
+    },
+    {
+      "name": "github.com/ncruces/go-sqlite3-wasm/v6",
+      "version": "v6.3.35304",
+      "repository": "https://github.com/ncruces/go-sqlite3-wasm/tree/v6.3.35304",
+      "directory": "third_party/attributions/go-sqlite3-wasm-v6.3.35304",
+      "note": "Go translation of SQLite generated with wasm2go; its README records that the original SQLite authors retain copyright and the original SQLite licenses remain in effect alongside the module MIT-0 and parser MIT notices"
     }
   ]
 }

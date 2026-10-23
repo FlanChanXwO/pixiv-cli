@@ -13,7 +13,7 @@ import (
 	"runtime"
 	"testing"
 
-	_ "modernc.org/sqlite"
+	_ "github.com/ncruces/go-sqlite3/driver"
 )
 
 // skipIfNoSQLite3 在系统缺少 sqlite3 CLI 时跳过依赖它的测试。
@@ -24,11 +24,11 @@ func skipIfNoSQLite3(t *testing.T) {
 	}
 }
 
-// buildFixtureDB 用 modernc.org/sqlite 构造 fixture SQLite 文件的字节。
+// buildFixtureDB 用数据库驱动构造 fixture SQLite 文件的字节。
 func buildFixtureDB(t *testing.T, schema string, statements ...string) []byte {
 	t.Helper()
 	path := filepath.Join(t.TempDir(), "fixture.db")
-	db, err := sql.Open("sqlite", "file:"+path)
+	db, err := sql.Open("sqlite3", "file:"+path)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -221,7 +221,7 @@ func TestReadLockedDatabaseClassified(t *testing.T) {
 	if err := os.MkdirAll(filepath.Dir(dbPath), 0o700); err != nil {
 		t.Fatal(err)
 	}
-	db, err := sql.Open("sqlite", "file:"+dbPath)
+	db, err := sql.Open("sqlite3", "file:"+dbPath)
 	if err != nil {
 		t.Fatal(err)
 	}
