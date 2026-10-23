@@ -1118,3 +1118,17 @@ func TestArtworkMappingErrorsKeepTheirReason(t *testing.T) {
 		t.Fatalf("ReasonOf = %q, want %q (err=%v)", sdk.ReasonOf(err), sdk.ResourceForbidden, err)
 	}
 }
+
+// TestSearchArtworksWireContentTypeAlias 固定 illust-and-ugoira 的 wire 值：
+// 公开值保持连字符形式，App API 收到下划线形式（旧 endpoint 的同一转换）。
+func TestSearchArtworksWireContentTypeAlias(t *testing.T) {
+	client, recorder := newWireClient(t, `{"illusts":[],"next_url":null}`)
+	if _, err := client.SearchArtworks(context.Background(), SearchArtworksRequest{
+		Word: "landscape", ContentType: SearchContentTypeIllustAndUgoira,
+	}); err != nil {
+		t.Fatalf("SearchArtworks: %v", err)
+	}
+	if got := recorder.request(t, 0).URL.Query().Get("content_type"); got != "illust_and_ugoira" {
+		t.Fatalf("content_type = %q, want %q", got, "illust_and_ugoira")
+	}
+}
