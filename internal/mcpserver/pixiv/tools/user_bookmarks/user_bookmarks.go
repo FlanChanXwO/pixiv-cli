@@ -8,7 +8,7 @@ import (
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/internal/filters"
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/internal/outputs"
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/internal/records"
-	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/internal/runtime"
+	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/internal/toolhost"
 	"github.com/FlanChanXwO/pixiv-cli/sdk"
 	pixiv "github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
 	"github.com/google/jsonschema-go/jsonschema"
@@ -16,8 +16,8 @@ import (
 )
 
 // Register 注册 pixiv_user_bookmarks。
-func Register(app *runtime.App, server *mcp.Server) {
-	runtime.AddTool(app, server, &mcp.Tool{Name: "pixiv_user_bookmarks", InputSchema: inputSchema(), Description: "Browse a user's bookmarked artworks or novels.", Annotations: &mcp.ToolAnnotations{ReadOnlyHint: true, DestructiveHint: new(false), IdempotentHint: true, OpenWorldHint: new(true)},
+func Register(app *toolhost.App, server *mcp.Server) {
+	toolhost.AddTool(app, server, &mcp.Tool{Name: "pixiv_user_bookmarks", InputSchema: inputSchema(), Description: "Browse a user's bookmarked artworks or novels.", Annotations: &mcp.ToolAnnotations{ReadOnlyHint: true, DestructiveHint: new(false), IdempotentHint: true, OpenWorldHint: new(true)},
 		OutputSchema: records.RecordsOutputSchema()}, func(ctx context.Context, request *mcp.CallToolRequest, input In) (*mcp.CallToolResult, outputs.Records, error) {
 		return handle(ctx, app, input)
 	})
@@ -30,11 +30,11 @@ type In struct {
 	Restrict     string                `json:"restrict,omitempty" jsonschema:"public or private"`
 	Tag          string                `json:"tag,omitempty"`
 	IllustFilter *filters.IllustFilter `json:"illust_filter,omitempty"`
-	runtime.PageLimitIn
+	toolhost.PageLimitIn
 }
 
-func handle(ctx context.Context, app *runtime.App, in In) (*mcp.CallToolResult, outputs.Records, error) {
-	plan, err := runtime.ParseListPlan(in.PageLimitIn)
+func handle(ctx context.Context, app *toolhost.App, in In) (*mcp.CallToolResult, outputs.Records, error) {
+	plan, err := toolhost.ParseListPlan(in.PageLimitIn)
 	if err != nil {
 		return outputs.Error(err)
 	}
@@ -42,11 +42,11 @@ func handle(ctx context.Context, app *runtime.App, in In) (*mcp.CallToolResult, 
 		return outputs.Error(errors.New("illust_filter requires kind=artwork"))
 	}
 	if in.Kind == "novel" {
-		userID, err := runtime.ResolveUserID(app, ctx, in.UserID)
+		userID, err := toolhost.ResolveUserID(app, ctx, in.UserID)
 		if err != nil {
 			return outputs.Error(err)
 		}
-		items, more, err := runtime.CollectWith(ctx, app, plan, func(ctx context.Context, client *pixiv.Client, cursor sdk.Cursor) ([]pixiv.Novel, sdk.Cursor, error) {
+		items, more, err := toolhost.CollectWith(ctx, app, plan, func(ctx context.Context, client *pixiv.Client, cursor sdk.Cursor) ([]pixiv.Novel, sdk.Cursor, error) {
 			result, err := client.UserNovelBookmarks(ctx, pixiv.UserNovelBookmarksRequest{UserID: userID, Restrict: pixiv.Restrict(in.Restrict), Tag: in.Tag, Cursor: cursor})
 			if err != nil {
 				return nil, sdk.Cursor{}, err
@@ -60,7 +60,7 @@ func handle(ctx context.Context, app *runtime.App, in In) (*mcp.CallToolResult, 
 		if err != nil {
 			return outputs.Error(err)
 		}
-		out := outputs.Records{Records: recordItems, Pagination: runtime.ListPagination(plan, in.Limit, len(items), more)}
+		out := outputs.Records{Records: recordItems, Pagination: toolhost.ListPagination(plan, in.Limit, len(items), more)}
 		return outputs.Result(out, false), out, nil
 	}
 
@@ -69,11 +69,11 @@ func handle(ctx context.Context, app *runtime.App, in In) (*mcp.CallToolResult, 
 	if err != nil {
 		return outputs.Error(err)
 	}
-	userID, err = runtime.ResolveUserID(app, ctx, userID)
+	userID, err = toolhost.ResolveUserID(app, ctx, userID)
 	if err != nil {
 		return outputs.Error(err)
 	}
-	items, more, err := runtime.CollectWith(ctx, app, plan, func(ctx context.Context, client *pixiv.Client, cursor sdk.Cursor) ([]pixiv.Artwork, sdk.Cursor, error) {
+	items, more, err := toolhost.CollectWith(ctx, app, plan, func(ctx context.Context, client *pixiv.Client, cursor sdk.Cursor) ([]pixiv.Artwork, sdk.Cursor, error) {
 		result, err := client.UserArtworkBookmarks(ctx, pixiv.UserArtworkBookmarksRequest{UserID: userID, Restrict: pixiv.Restrict(in.Restrict), Tag: in.Tag, Cursor: cursor})
 		if err != nil {
 			return nil, sdk.Cursor{}, err
@@ -87,7 +87,7 @@ func handle(ctx context.Context, app *runtime.App, in In) (*mcp.CallToolResult, 
 	if err != nil {
 		return outputs.Error(err)
 	}
-	out := outputs.Records{Records: recordItems, Pagination: runtime.ListPagination(plan, in.Limit, len(items), more)}
+	out := outputs.Records{Records: recordItems, Pagination: toolhost.ListPagination(plan, in.Limit, len(items), more)}
 	return outputs.Result(out, false), out, nil
 }
 

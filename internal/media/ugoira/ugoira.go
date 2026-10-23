@@ -9,7 +9,7 @@ import (
 	"path/filepath"
 	"time"
 
-	filereplace "github.com/FlanChanXwO/pixiv-cli/internal/storage/file/replace"
+	filereplace "github.com/FlanChanXwO/pixiv-cli/internal/storage/atomicfile"
 )
 
 // ErrOutputCapacity means encoded output could not fit its reserved temporary budget.

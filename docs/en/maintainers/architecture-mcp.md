@@ -17,7 +17,7 @@ flowchart TB
     GAL["pixiv/gallery<br/>MCP Apps view"]
     MP["pixiv/mediaproxy<br/>capabilities, LRU, animation jobs"]
     AM["pixiv/tools/artwork_media"]
-    RS["services/pixiv/account/reads.go<br/>MCP read sessions"]
+    RS["internal/pixivaccount/reads.go<br/>MCP read sessions"]
     DL["internal/media/downloader<br/>(stdio only)"]
     NEW --> PX & FB
     HTTP --> AUTH
@@ -32,7 +32,7 @@ flowchart TB
 - `New` builds the single protocol server and calls each product's `Register`. Pixiv tools use `pixiv_`, FANBOX `fanbox_`; no unprefixed aliases. Each tool package owns its name, annotations, schema and handler.
 - Stdio injects local downloads through `internal/media/downloader`; HTTP never receives that port. Gallery and owner tools require their media/account/login ports.
 - `NewHTTPHandler` (parent package) assembles stateless Streamable HTTP and OAuth routing; `RunHTTP` owns listener and lifecycle; `RunStdio` owns the local session and waits for cleanup.
-- Products keep their own SDK ports, account selection and runtime. Discovery opens no FANBOX account; the root opens its service lazily when a FANBOX tool runs. Pixiv nullable `page`/`limit` are parsed by its adapter; traversal stays in `internal/shared/traversal`. Handler failures keep structured output with `isError=true`; legitimate empty results stay successful.
+- Products keep their own SDK ports, account selection and runtime. Discovery opens no FANBOX account; the root opens its service lazily when a FANBOX tool runs. Pixiv nullable `page`/`limit` are parsed by its adapter; traversal stays in `internal/pagination`. Handler failures keep structured output with `isError=true`; legitimate empty results stay successful.
 
 ## Gallery and media
 
@@ -64,7 +64,7 @@ flowchart LR
 - ZIP/preview writers reserve disk bytes before writing; a synchronous internal native callback reserves each output write against the same pool before touching the file. Ready artifacts are reclaimed only when actually requested bytes don't fit (no preemptive reservation). The native output upper limit stays enforced and the global serial encode gate stays shared.
 - Temporary producers queue with the native reservation; startup cleanup needs the service marker and a released lifetime OS lock. Files stay pinned during GET/HEAD; cleanup joins active work. Gallery polls through the Apps bridge; CSP still forbids direct fetch connections.
 
-## Read sessions (`internal/services/pixiv/account/reads.go`)
+## Read sessions (`internal/pixivaccount/reads.go`)
 
 - Lifecycle-managed MCP read sessions: validate the local account revision on acquisition; share the rotation gate only for OAuth refresh and successful rotation persistence.
 - Credential replacement/removal, network changes, expiry and upstream 401 invalidate the generation and release idle connections. Mutation leases and pool commit/replay stay in the Facade.

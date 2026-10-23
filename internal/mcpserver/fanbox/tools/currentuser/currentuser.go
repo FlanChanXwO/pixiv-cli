@@ -5,14 +5,14 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/fanbox/internal/runtime"
+	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/fanbox/internal/toolhost"
 	fanbox "github.com/FlanChanXwO/pixiv-cli/sdk/fanbox"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
 // Register 注册 fanbox_current_user。
-func Register(app *runtime.App, server *mcp.Server) {
-	runtime.AddTool(app, server, &mcp.Tool{Name: "fanbox_current_user", Annotations: &mcp.ToolAnnotations{ReadOnlyHint: true, DestructiveHint: new(false), IdempotentHint: true, OpenWorldHint: new(true)}, Description: "Show the current authenticated FANBOX user."}, func(ctx context.Context, request *mcp.CallToolRequest, input In) (*mcp.CallToolResult, Out, error) {
+func Register(app *toolhost.App, server *mcp.Server) {
+	toolhost.AddTool(app, server, &mcp.Tool{Name: "fanbox_current_user", Annotations: &mcp.ToolAnnotations{ReadOnlyHint: true, DestructiveHint: new(false), IdempotentHint: true, OpenWorldHint: new(true)}, Description: "Show the current authenticated FANBOX user."}, func(ctx context.Context, request *mcp.CallToolRequest, input In) (*mcp.CallToolResult, Out, error) {
 		return handle(ctx, app, input)
 	})
 }
@@ -27,17 +27,17 @@ type Out struct {
 	IsCreator     bool   `json:"is_creator"`
 }
 
-func handle(ctx context.Context, app *runtime.App, _ In) (*mcp.CallToolResult, Out, error) {
+func handle(ctx context.Context, app *toolhost.App, _ In) (*mcp.CallToolResult, Out, error) {
 	empty := Out{}
 	lease, err := app.OpenClient(ctx)
 	if err != nil {
-		return runtime.Result(empty, true, "Error: "+err.Error()), empty, nil
+		return toolhost.Result(empty, true, "Error: "+err.Error()), empty, nil
 	}
 	defer lease.Close()
 	client := lease.Value()
 	user, err := client.CurrentUser(ctx, fanbox.CurrentUserRequest{})
 	if err != nil {
-		return runtime.Result(empty, true, "Error: "+err.Error()), empty, nil
+		return toolhost.Result(empty, true, "Error: "+err.Error()), empty, nil
 	}
 	out := Out{
 		UserID:        user.UserID,
@@ -46,5 +46,5 @@ func handle(ctx context.Context, app *runtime.App, _ In) (*mcp.CallToolResult, O
 		CreatorStatus: user.CreatorStatus,
 		IsCreator:     user.IsCreator,
 	}
-	return runtime.Result(out, false, fmt.Sprintf("Current FANBOX user %d.", out.UserID)), out, nil
+	return toolhost.Result(out, false, fmt.Sprintf("Current FANBOX user %d.", out.UserID)), out, nil
 }

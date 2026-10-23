@@ -9,8 +9,8 @@ import (
 	"net/url"
 	"strings"
 
+	protocol "github.com/FlanChanXwO/pixiv-cli/internal/fanboxapi"
 	"github.com/FlanChanXwO/pixiv-cli/internal/services/fanbox/endpoint/creator"
-	"github.com/FlanChanXwO/pixiv-cli/internal/services/fanbox/protocol"
 )
 
 // Transport is the narrow JSON capability required by creator endpoints.

@@ -9,13 +9,12 @@ import (
 	"net/url"
 	"strings"
 
+	"github.com/FlanChanXwO/pixiv-cli/internal/pixivapi"
 	"github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/endpoint/artwork"
 	"github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/endpoint/novel"
 	"github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/endpoint/stamps"
 	"github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/endpoint/user"
-	"github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/protocol"
-	"github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/resource"
-	atomicfile "github.com/FlanChanXwO/pixiv-cli/internal/storage/file/atomic"
+	atomicfile "github.com/FlanChanXwO/pixiv-cli/internal/storage/atomicfile"
 	"github.com/FlanChanXwO/pixiv-cli/sdk"
 )
 
@@ -61,7 +60,7 @@ func (c *Client) newResourceWithVariant(kind string, id int64, page int, variant
 	return sdk.Resource{
 		Ref:            ref,
 		URL:            rawURL,
-		RequestHeaders: map[string]string{"Referer": protocol.AppReferer},
+		RequestHeaders: map[string]string{"Referer": pixivapi.AppReferer},
 	}, nil
 }
 
@@ -144,7 +143,7 @@ func (c *Client) OpenResource(ctx context.Context, request sdk.OpenResourceReque
 		return nil, newError("OpenResource", sdk.ResourceForbidden, "resource URL is not allowed")
 	}
 	header := http.Header{}
-	header.Set("Referer", protocol.AppReferer)
+	header.Set("Referer", pixivapi.AppReferer)
 	for _, field := range []struct{ name, value string }{
 		{"Range", request.Range},
 		{"If-None-Match", request.IfNoneMatch},
@@ -159,7 +158,7 @@ func (c *Client) OpenResource(ctx context.Context, request sdk.OpenResourceReque
 	if method == "" {
 		method = http.MethodGet
 	}
-	response, err := c.resClient.Open(ctx, resource.OpenRequest{
+	response, err := c.resClient.Open(ctx, pixivapi.OpenRequest{
 		URL:            rawURL,
 		Method:         method,
 		Header:         header,
@@ -214,10 +213,10 @@ func (c *Client) SaveResourceURL(ctx context.Context, rawURL string, options sdk
 		return sdk.SavedResource{}, newError(operation, sdk.ResourceForbidden, "resource URL is not allowed")
 	}
 
-	stream, err := c.resClient.Open(ctx, resource.OpenRequest{
+	stream, err := c.resClient.Open(ctx, pixivapi.OpenRequest{
 		URL:            rawURL,
 		Method:         http.MethodGet,
-		Header:         http.Header{"Referer": {protocol.AppReferer}},
+		Header:         http.Header{"Referer": {pixivapi.AppReferer}},
 		Validate:       c.validateResourceURL,
 		DisableCookies: true,
 	})

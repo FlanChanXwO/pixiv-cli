@@ -5,7 +5,7 @@ import (
 	"os"
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/config/paths"
-	filesecret "github.com/FlanChanXwO/pixiv-cli/internal/storage/file/secret"
+	filesecret "github.com/FlanChanXwO/pixiv-cli/internal/storage/secretfile"
 )
 
 // FileStore 是 config/settings 所需的最小文件端口。生产实现由 composition

@@ -8,10 +8,10 @@ import (
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/internal/outputs"
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/internal/records"
-	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/internal/runtime"
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/internal/schemas"
-	"github.com/FlanChanXwO/pixiv-cli/internal/shared/pagination"
-	record "github.com/FlanChanXwO/pixiv-cli/internal/shared/record"
+	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/internal/toolhost"
+	"github.com/FlanChanXwO/pixiv-cli/internal/pagination"
+	record "github.com/FlanChanXwO/pixiv-cli/internal/record"
 	"github.com/FlanChanXwO/pixiv-cli/sdk"
 	pixiv "github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
@@ -19,8 +19,8 @@ import (
 
 // Register 注册 additive bookmark_list_all operation，不改变
 // user_bookmarks 或 user_novel_bookmarks 的 wire contract。
-func Register(app *runtime.App, server *mcp.Server) {
-	runtime.AddTool(app, server, &mcp.Tool{
+func Register(app *toolhost.App, server *mcp.Server) {
+	toolhost.AddTool(app, server, &mcp.Tool{
 		Name: "pixiv_bookmark_list_all", Annotations: &mcp.ToolAnnotations{ReadOnlyHint: true, DestructiveHint: new(false), IdempotentHint: true, OpenWorldHint: new(true)},
 		Description: "Browse artwork bookmarks followed by novel bookmarks with one logical budget.",
 		InputSchema: schemas.List(map[string]any{
@@ -39,7 +39,7 @@ type In struct {
 	UserID   int64  `json:"user_id,omitempty"`
 	Restrict string `json:"restrict,omitempty"`
 	Tag      string `json:"tag,omitempty"`
-	runtime.PageLimitIn
+	toolhost.PageLimitIn
 }
 
 type bookmarkCursor struct {
@@ -61,17 +61,17 @@ type bookmarkItem struct {
 	novel   *pixiv.Novel
 }
 
-func handle(ctx context.Context, app *runtime.App, in In) (*mcp.CallToolResult, outputs.Records, error) {
-	plan, err := runtime.ParseListPlan(in.PageLimitIn)
+func handle(ctx context.Context, app *toolhost.App, in In) (*mcp.CallToolResult, outputs.Records, error) {
+	plan, err := toolhost.ParseListPlan(in.PageLimitIn)
 	if err != nil {
 		return outputs.Error(err)
 	}
-	userID, err := runtime.ResolveUserID(app, ctx, in.UserID)
+	userID, err := toolhost.ResolveUserID(app, ctx, in.UserID)
 	if err != nil {
 		return outputs.Error(err)
 	}
 
-	items, more, err := runtime.CollectStreamsWith(ctx, app, plan, func(client *pixiv.Client) []pagination.Stream[bookmarkItem, bookmarkCursor] {
+	items, more, err := toolhost.CollectStreamsWith(ctx, app, plan, func(client *pixiv.Client) []pagination.Stream[bookmarkItem, bookmarkCursor] {
 		return []pagination.Stream[bookmarkItem, bookmarkCursor]{
 			artworkStream(client, userID, in.Restrict, in.Tag),
 			novelStream(client, userID, in.Restrict, in.Tag),
@@ -99,7 +99,7 @@ func handle(ctx context.Context, app *runtime.App, in In) (*mcp.CallToolResult, 
 
 	out := outputs.Records{
 		Records:    recordItems,
-		Pagination: runtime.ListPagination(plan, in.Limit, len(recordItems), more),
+		Pagination: toolhost.ListPagination(plan, in.Limit, len(recordItems), more),
 	}
 	return outputs.Result(out, false), out, nil
 }

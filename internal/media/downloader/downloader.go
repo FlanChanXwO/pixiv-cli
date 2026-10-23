@@ -17,13 +17,12 @@ import (
 	"sync"
 	"time"
 
+	"github.com/FlanChanXwO/pixiv-cli/internal/logging"
 	"github.com/FlanChanXwO/pixiv-cli/internal/media/downloader/filename"
 	"github.com/FlanChanXwO/pixiv-cli/internal/media/downloader/parallel"
 	sharedugoira "github.com/FlanChanXwO/pixiv-cli/internal/media/ugoira"
-	"github.com/FlanChanXwO/pixiv-cli/internal/shared/diagnostics"
-	"github.com/FlanChanXwO/pixiv-cli/internal/shared/pagination"
-	"github.com/FlanChanXwO/pixiv-cli/internal/utils/text"
-	uriutil "github.com/FlanChanXwO/pixiv-cli/internal/utils/uri"
+	"github.com/FlanChanXwO/pixiv-cli/internal/pagination"
+	"github.com/FlanChanXwO/pixiv-cli/internal/plaintext"
 	"github.com/FlanChanXwO/pixiv-cli/sdk"
 	pixiv "github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
 )
@@ -228,20 +227,20 @@ type DownloadService struct {
 func (s DownloadService) DownloadSources(ctx context.Context, client DownloadTargetClient, sources []string, request DownloadRequest) (report DownloadReport, returnErr error) {
 	startedAt := time.Now()
 	report = DownloadReport{Items: []DownloadedArtwork{}, Failures: []DownloadFailure{}}
-	diagnostics.Emit(ctx, diagnostics.Event{
-		Module:    diagnostics.ModulePixivDownload,
-		Kind:      diagnostics.EventStarted,
+	logging.Emit(ctx, logging.Event{
+		Module:    logging.ModulePixivDownload,
+		Kind:      logging.EventStarted,
 		Operation: fmt.Sprintf("download %d sources", len(sources)),
 	})
 	defer func() {
-		kind := diagnostics.EventCompleted
-		reason := diagnostics.ReasonNone
+		kind := logging.EventCompleted
+		reason := logging.ReasonNone
 		if returnErr != nil {
-			kind = diagnostics.EventFailed
-			reason = diagnostics.ReasonCommandFailed
+			kind = logging.EventFailed
+			reason = logging.ReasonCommandFailed
 		}
-		diagnostics.Emit(ctx, diagnostics.Event{
-			Module:    diagnostics.ModulePixivDownload,
+		logging.Emit(ctx, logging.Event{
+			Module:    logging.ModulePixivDownload,
 			Kind:      kind,
 			Operation: "download sources",
 			Reason:    reason,
@@ -771,7 +770,7 @@ func (m *Manager) downloadArtwork(ctx context.Context, id int64, pages []int, qu
 	}
 	kind := string(artwork.Kind)
 	if directoryTemplate == "" && (artwork.PageCount > 1 || kind == string(pixiv.ArtworkKindUgoira)) {
-		base = filepath.Join(base, filename.Sanitize(fmt.Sprintf("%d - %s", artwork.ID, text.DefaultString(artwork.Title, "Untitled"))))
+		base = filepath.Join(base, filename.Sanitize(fmt.Sprintf("%d - %s", artwork.ID, plaintext.DefaultString(artwork.Title, "Untitled"))))
 	}
 	if err := os.MkdirAll(base, 0o755); err != nil {
 		return DownloadedArtwork{}, nil, err
@@ -1027,7 +1026,7 @@ func deduplicatePositive(values []int64) []int64 {
 // 绕过作品标题和模板已有的文件名规范化边界。ASCII C0/DEL 控制字符
 // 不适合作为文件名内容，Windows 还不接受尾随点或空格，因而在扩展名边界统一处理。
 func downloadExtension(rawURL string) string {
-	extension := filename.Sanitize(filepath.Ext(uriutil.PathFromURL(rawURL)))
+	extension := filename.Sanitize(filepath.Ext(PathFromURL(rawURL)))
 	extension = strings.Map(func(character rune) rune {
 		if character < 0x20 || character == 0x7f {
 			return '_'

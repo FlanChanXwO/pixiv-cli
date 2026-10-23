@@ -7,14 +7,14 @@ import (
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/internal/outputs"
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/internal/records"
-	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/internal/runtime"
+	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/internal/toolhost"
 	pixiv "github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
 // Register 注册 pixiv_novel_content。
-func Register(app *runtime.App, server *mcp.Server) {
-	runtime.AddTool(app, server, &mcp.Tool{Name: "pixiv_novel_content", Annotations: &mcp.ToolAnnotations{ReadOnlyHint: true, DestructiveHint: new(false), IdempotentHint: true, OpenWorldHint: new(true)}, Description: "Read the complete structured content of one Pixiv novel.", OutputSchema: records.NovelContentOutputSchema()}, func(ctx context.Context, request *mcp.CallToolRequest, input In) (*mcp.CallToolResult, outputs.NovelContent, error) {
+func Register(app *toolhost.App, server *mcp.Server) {
+	toolhost.AddTool(app, server, &mcp.Tool{Name: "pixiv_novel_content", Annotations: &mcp.ToolAnnotations{ReadOnlyHint: true, DestructiveHint: new(false), IdempotentHint: true, OpenWorldHint: new(true)}, Description: "Read the complete structured content of one Pixiv novel.", OutputSchema: records.NovelContentOutputSchema()}, func(ctx context.Context, request *mcp.CallToolRequest, input In) (*mcp.CallToolResult, outputs.NovelContent, error) {
 		return handleNovelContent(ctx, app, input)
 	})
 }
@@ -23,11 +23,11 @@ type In struct {
 	NovelID int64 `json:"novel_id" jsonschema:"positive Pixiv novel ID"`
 }
 
-func handleNovelContent(ctx context.Context, app *runtime.App, in In) (*mcp.CallToolResult, outputs.NovelContent, error) {
+func handleNovelContent(ctx context.Context, app *toolhost.App, in In) (*mcp.CallToolResult, outputs.NovelContent, error) {
 	if in.NovelID <= 0 {
 		return outputs.NovelContentError(errors.New("novel_id must be a positive integer"))
 	}
-	result, err := runtime.Read(app, ctx, func(ctx context.Context, client *pixiv.Client) (pixiv.NovelContent, error) {
+	result, err := toolhost.Read(app, ctx, func(ctx context.Context, client *pixiv.Client) (pixiv.NovelContent, error) {
 		return client.NovelContent(ctx, pixiv.NovelContentRequest{NovelID: in.NovelID})
 	})
 	if err != nil {

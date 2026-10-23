@@ -4,7 +4,7 @@
 package releasecontract
 
 import (
-	"github.com/FlanChanXwO/pixiv-cli/internal/releaseversion"
+	versionpkg "github.com/FlanChanXwO/pixiv-cli/internal/version"
 )
 
 // Target 是固定的 release 目标（GOOS/GOARCH 对）。
@@ -41,11 +41,11 @@ func ArchiveName(version string, target Target) string {
 
 // ValidateVersion 要求 version 是不带前导 v 的 semantic version。
 func ValidateVersion(version string) error {
-	return releaseversion.Validate(version)
+	return versionpkg.Validate(version)
 }
 
 // Channel 返回 release 的稳定渠道名称。调用方必须先 ValidateVersion；build metadata
 // 内合法的连字符不会被视为 prerelease 分隔符。
 func Channel(version string) string {
-	return releaseversion.Channel(version)
+	return versionpkg.Channel(version)
 }

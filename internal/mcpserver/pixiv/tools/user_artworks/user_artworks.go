@@ -7,16 +7,16 @@ import (
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/internal/filters"
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/internal/outputs"
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/internal/records"
-	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/internal/runtime"
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/internal/schemas"
+	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/internal/toolhost"
 	"github.com/FlanChanXwO/pixiv-cli/sdk"
 	pixiv "github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
 // Register 注册 pixiv_user_artworks。
-func Register(app *runtime.App, server *mcp.Server) {
-	runtime.AddTool(app, server, &mcp.Tool{Name: "pixiv_user_artworks", Annotations: &mcp.ToolAnnotations{ReadOnlyHint: true, DestructiveHint: new(false), IdempotentHint: true, OpenWorldHint: new(true)}, Description: "Browse a user's artworks.", InputSchema: schemas.List(map[string]any{
+func Register(app *toolhost.App, server *mcp.Server) {
+	toolhost.AddTool(app, server, &mcp.Tool{Name: "pixiv_user_artworks", Annotations: &mcp.ToolAnnotations{ReadOnlyHint: true, DestructiveHint: new(false), IdempotentHint: true, OpenWorldHint: new(true)}, Description: "Browse a user's artworks.", InputSchema: schemas.List(map[string]any{
 		"user_id":       schemas.PositiveInteger("Optional positive Pixiv user ID; defaults to the authenticated user."),
 		"type":          schemas.EnumString("Artwork type.", "illust", "manga", "ugoira"),
 		"illust_filter": filters.IllustFilterSchema(),
@@ -29,11 +29,11 @@ type In struct {
 	UserID       int64                 `json:"user_id,omitempty" jsonschema:"optional user ID; defaults to the authenticated user"`
 	Type         string                `json:"type,omitempty" jsonschema:"illust, manga, or ugoira"`
 	IllustFilter *filters.IllustFilter `json:"illust_filter,omitempty"`
-	runtime.PageLimitIn
+	toolhost.PageLimitIn
 }
 
-func handleUserArtworks(ctx context.Context, app *runtime.App, in In) (*mcp.CallToolResult, outputs.Records, error) {
-	plan, err := runtime.ParseListPlan(in.PageLimitIn)
+func handleUserArtworks(ctx context.Context, app *toolhost.App, in In) (*mcp.CallToolResult, outputs.Records, error) {
+	plan, err := toolhost.ParseListPlan(in.PageLimitIn)
 	if err != nil {
 		return outputs.Error(err)
 	}
@@ -41,11 +41,11 @@ func handleUserArtworks(ctx context.Context, app *runtime.App, in In) (*mcp.Call
 	if err != nil {
 		return outputs.Error(err)
 	}
-	userID, err := runtime.ResolveUserID(app, ctx, in.UserID)
+	userID, err := toolhost.ResolveUserID(app, ctx, in.UserID)
 	if err != nil {
 		return outputs.Error(err)
 	}
-	items, more, err := runtime.CollectWith(ctx, app, plan, func(ctx context.Context, client *pixiv.Client, cursor sdk.Cursor) ([]pixiv.Artwork, sdk.Cursor, error) {
+	items, more, err := toolhost.CollectWith(ctx, app, plan, func(ctx context.Context, client *pixiv.Client, cursor sdk.Cursor) ([]pixiv.Artwork, sdk.Cursor, error) {
 		result, err := client.UserArtworks(ctx, pixiv.UserArtworksRequest{UserID: userID, Kind: pixiv.ArtworkKind(in.Type), Cursor: cursor})
 		if err != nil {
 			return nil, sdk.Cursor{}, err
@@ -59,6 +59,6 @@ func handleUserArtworks(ctx context.Context, app *runtime.App, in In) (*mcp.Call
 	if err != nil {
 		return outputs.Error(err)
 	}
-	out := outputs.Records{Records: recordItems, Pagination: runtime.ListPagination(plan, in.Limit, len(items), more)}
+	out := outputs.Records{Records: recordItems, Pagination: toolhost.ListPagination(plan, in.Limit, len(items), more)}
 	return outputs.Result(out, false), out, nil
 }

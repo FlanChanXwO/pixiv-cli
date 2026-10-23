@@ -7,7 +7,7 @@ import (
 	"net/http"
 	"sync"
 
-	"github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/account/loginrelay"
+	"github.com/FlanChanXwO/pixiv-cli/internal/loginrelay"
 )
 
 // LoginAttempt binds validation and completion to the same opaque SDK login session.

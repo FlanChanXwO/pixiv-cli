@@ -9,14 +9,14 @@ import (
 	"fmt"
 	"github.com/FlanChanXwO/pixiv-cli/internal/config/paths"
 	config "github.com/FlanChanXwO/pixiv-cli/internal/config/settings"
+	accountfanbox "github.com/FlanChanXwO/pixiv-cli/internal/fanboxaccount"
+	fanboxapp "github.com/FlanChanXwO/pixiv-cli/internal/fanboxaccount"
+	"github.com/FlanChanXwO/pixiv-cli/internal/logging"
 	fanboxmcpserver "github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/fanbox"
-	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/fanbox/internal/runtime"
+	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/fanbox/internal/toolhost"
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/fanbox/tools/currentuser"
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/fanbox/tools/openresource"
 	ugoira "github.com/FlanChanXwO/pixiv-cli/internal/media/ugoira"
-	accountfanbox "github.com/FlanChanXwO/pixiv-cli/internal/services/fanbox/account"
-	fanboxapp "github.com/FlanChanXwO/pixiv-cli/internal/services/fanbox/account"
-	"github.com/FlanChanXwO/pixiv-cli/internal/shared/diagnostics"
 	"github.com/FlanChanXwO/pixiv-cli/internal/storage/database"
 	fanboxsdk "github.com/FlanChanXwO/pixiv-cli/sdk/fanbox"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
@@ -37,18 +37,18 @@ import (
 func TestFanboxMCPDiagnosticsUseFanboxModuleAndRequestID(t *testing.T) {
 	var (
 		mu     sync.Mutex
-		events []diagnostics.Event
+		events []logging.Event
 	)
-	sink := diagnostics.SinkFunc(func(event diagnostics.Event) {
+	sink := logging.SinkFunc(func(event logging.Event) {
 		mu.Lock()
 		defer mu.Unlock()
 		events = append(events, event)
 	})
-	rootCtx, cancel := context.WithCancel(diagnostics.WithScope(context.Background(), sink, diagnostics.ModuleFanboxCLI, 0))
+	rootCtx, cancel := context.WithCancel(logging.WithScope(context.Background(), sink, logging.ModuleFanboxCLI, 0))
 	defer cancel()
 
 	server := mcp.NewServer(&mcp.Implementation{Name: "debug-test", Version: "1"}, nil)
-	runtime.AddTool(runtime.NewApp(runtime.SDKPorts{}, runtime.Account{}), server, &mcp.Tool{Name: "diagnostic_test"}, func(context.Context, *mcp.CallToolRequest, struct{}) (*mcp.CallToolResult, struct{}, error) {
+	toolhost.AddTool(toolhost.NewApp(toolhost.SDKPorts{}, toolhost.Account{}), server, &mcp.Tool{Name: "diagnostic_test"}, func(context.Context, *mcp.CallToolRequest, struct{}) (*mcp.CallToolResult, struct{}, error) {
 		return &mcp.CallToolResult{}, struct{}{}, nil
 	})
 	clientTransport, serverTransport := mcp.NewInMemoryTransports()
@@ -74,7 +74,7 @@ func TestFanboxMCPDiagnosticsUseFanboxModuleAndRequestID(t *testing.T) {
 		t.Fatalf("events=%+v want start/complete pair", events)
 	}
 	for _, event := range events {
-		if event.Module != diagnostics.ModuleFanboxMCPServer || event.RequestID != 1 {
+		if event.Module != logging.ModuleFanboxMCPServer || event.RequestID != 1 {
 			t.Fatalf("event=%+v", event)
 		}
 	}

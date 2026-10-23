@@ -8,9 +8,9 @@ import (
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/internal/outputs"
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/internal/records"
-	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/internal/runtime"
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/internal/schemas"
-	"github.com/FlanChanXwO/pixiv-cli/internal/shared/pagination"
+	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/internal/toolhost"
+	"github.com/FlanChanXwO/pixiv-cli/internal/pagination"
 	"github.com/FlanChanXwO/pixiv-cli/sdk"
 	pixiv "github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
@@ -18,8 +18,8 @@ import (
 
 // Register 注册 additive bookmark_tags_all operation，不改变
 // bookmark_tags(kind=artwork/novel) 的 output contract。
-func Register(app *runtime.App, server *mcp.Server) {
-	runtime.AddTool(app, server, &mcp.Tool{
+func Register(app *toolhost.App, server *mcp.Server) {
+	toolhost.AddTool(app, server, &mcp.Tool{
 		Name: "pixiv_bookmark_tags_all", Annotations: &mcp.ToolAnnotations{ReadOnlyHint: true, DestructiveHint: new(false), IdempotentHint: true, OpenWorldHint: new(true)},
 		Description: "List artwork bookmark tags followed by novel bookmark tags without merging names.",
 		InputSchema: schemas.List(map[string]any{
@@ -36,7 +36,7 @@ func Register(app *runtime.App, server *mcp.Server) {
 type In struct {
 	UserID   int64  `json:"user_id,omitempty"`
 	Restrict string `json:"restrict,omitempty"`
-	runtime.PageLimitIn
+	toolhost.PageLimitIn
 }
 
 type bookmarkCursor struct {
@@ -58,17 +58,17 @@ type bookmarkTagItem struct {
 	contentType string
 }
 
-func handle(ctx context.Context, app *runtime.App, in In) (*mcp.CallToolResult, outputs.BookmarkTagsAll, error) {
-	plan, err := runtime.ParseListPlan(in.PageLimitIn)
+func handle(ctx context.Context, app *toolhost.App, in In) (*mcp.CallToolResult, outputs.BookmarkTagsAll, error) {
+	plan, err := toolhost.ParseListPlan(in.PageLimitIn)
 	if err != nil {
 		return outputs.BookmarkTagsAllError(err)
 	}
-	userID, err := runtime.ResolveUserID(app, ctx, in.UserID)
+	userID, err := toolhost.ResolveUserID(app, ctx, in.UserID)
 	if err != nil {
 		return outputs.BookmarkTagsAllError(err)
 	}
 
-	items, more, err := runtime.CollectStreamsWith(ctx, app, plan, func(client *pixiv.Client) []pagination.Stream[bookmarkTagItem, bookmarkCursor] {
+	items, more, err := toolhost.CollectStreamsWith(ctx, app, plan, func(client *pixiv.Client) []pagination.Stream[bookmarkTagItem, bookmarkCursor] {
 		return []pagination.Stream[bookmarkTagItem, bookmarkCursor]{
 			artworkStream(client, userID, in.Restrict),
 			novelStream(client, userID, in.Restrict),
@@ -89,7 +89,7 @@ func handle(ctx context.Context, app *runtime.App, in In) (*mcp.CallToolResult, 
 	}
 	out := outputs.BookmarkTagsAll{
 		Tags:       tags,
-		Pagination: runtime.ListPagination(plan, in.Limit, len(tags), more),
+		Pagination: toolhost.ListPagination(plan, in.Limit, len(tags), more),
 	}
 	return outputs.BookmarkTagsAllResult(out, len(tags)), out, nil
 }

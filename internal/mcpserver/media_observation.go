@@ -5,7 +5,7 @@ import (
 	"encoding/json"
 	"time"
 
-	"github.com/FlanChanXwO/pixiv-cli/internal/shared/diagnostics"
+	"github.com/FlanChanXwO/pixiv-cli/internal/logging"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
@@ -18,7 +18,7 @@ func observeMediaResult(ctx context.Context, request mcp.Request, result mcp.Res
 	if _, wrapped := result.(*observedMediaResult); wrapped {
 		return result
 	}
-	if _, scoped := diagnostics.ScopeFromContext(ctx); !scoped {
+	if _, scoped := logging.ScopeFromContext(ctx); !scoped {
 		return result
 	}
 	return &observedMediaResult{Result: result, ctx: ctx}
@@ -33,11 +33,11 @@ type observedMediaResult struct {
 func (r *observedMediaResult) MarshalJSON() ([]byte, error) {
 	started := time.Now()
 	data, err := json.Marshal(r.Result)
-	event := diagnostics.Event{Module: diagnostics.ModulePixivMCP, Kind: diagnostics.EventCompleted, Operation: "mcp_response_serialization", Duration: time.Since(started), Count: len(data)}
+	event := logging.Event{Module: logging.ModulePixivMCP, Kind: logging.EventCompleted, Operation: "mcp_response_serialization", Duration: time.Since(started), Count: len(data)}
 	if err != nil {
-		event.Kind = diagnostics.EventFailed
-		event.Reason = diagnostics.ReasonToolFailed
+		event.Kind = logging.EventFailed
+		event.Reason = logging.ReasonToolFailed
 	}
-	diagnostics.Emit(r.ctx, event)
+	logging.Emit(r.ctx, event)
 	return data, err
 }

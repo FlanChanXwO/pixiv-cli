@@ -11,7 +11,7 @@ import (
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/config/paths"
 	config "github.com/FlanChanXwO/pixiv-cli/internal/config/settings"
-	accountpixiv "github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/account"
+	accountpixiv "github.com/FlanChanXwO/pixiv-cli/internal/pixivaccount"
 	"github.com/FlanChanXwO/pixiv-cli/internal/storage/database"
 	"github.com/FlanChanXwO/pixiv-cli/sdk"
 	pixivsdk "github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"

@@ -12,11 +12,11 @@ import (
 	"strings"
 	"time"
 
+	"github.com/FlanChanXwO/pixiv-cli/internal/logging"
+	"github.com/FlanChanXwO/pixiv-cli/internal/loginrelay"
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/auth"
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/accounts"
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/mediaproxy"
-	"github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/account/loginrelay"
-	"github.com/FlanChanXwO/pixiv-cli/internal/shared/diagnostics"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
@@ -48,7 +48,7 @@ func NewHTTPHandler(ctx context.Context, server *mcp.Server, baseURL string, sto
 			result, err := next(requestCtx, method, request)
 			if err == nil {
 				observationCtx := requestCtx
-				if _, scoped := diagnostics.ScopeFromContext(observationCtx); !scoped {
+				if _, scoped := logging.ScopeFromContext(observationCtx); !scoped {
 					observationCtx = ctx
 				}
 				result = observeMediaResult(observationCtx, request, result)
@@ -139,9 +139,9 @@ func observeHTTPWriter(lifecycleCtx, requestCtx context.Context, writer http.Res
 		return writer
 	}
 	observationCtx := requestCtx
-	if _, ok := diagnostics.ScopeFromContext(observationCtx); !ok {
+	if _, ok := logging.ScopeFromContext(observationCtx); !ok {
 		observationCtx = lifecycleCtx
-		if _, ok := diagnostics.ScopeFromContext(observationCtx); !ok {
+		if _, ok := logging.ScopeFromContext(observationCtx); !ok {
 			return writer
 		}
 	}
@@ -167,17 +167,17 @@ func (w *observedHTTPWriter) FlushError() error {
 	return err
 }
 func (w *observedHTTPWriter) observe(operation string, accepted int, started time.Time, failed bool) {
-	event := diagnostics.Event{Module: diagnostics.ModulePixivMCP, Kind: diagnostics.EventCompleted, Operation: operation, Count: accepted, Duration: time.Since(started)}
+	event := logging.Event{Module: logging.ModulePixivMCP, Kind: logging.EventCompleted, Operation: operation, Count: accepted, Duration: time.Since(started)}
 	switch {
 	case w.lifecycleCtx.Err() != nil:
-		event.Reason = diagnostics.ReasonServiceClosed
+		event.Reason = logging.ReasonServiceClosed
 	case failed:
-		event.Reason = diagnostics.ReasonTransportInterrupted
+		event.Reason = logging.ReasonTransportInterrupted
 	case w.requestCtx.Err() != nil:
-		event.Reason = diagnostics.ReasonRequestCancelled
+		event.Reason = logging.ReasonRequestCancelled
 	}
 	if event.Reason != "" {
-		event.Kind = diagnostics.EventFailed
+		event.Kind = logging.EventFailed
 	}
-	diagnostics.Emit(w.observationCtx, event)
+	logging.Emit(w.observationCtx, event)
 }

@@ -8,7 +8,7 @@ import (
 	"strings"
 	"time"
 
-	accountpixiv "github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/account"
+	accountpixiv "github.com/FlanChanXwO/pixiv-cli/internal/pixivaccount"
 )
 
 func (d *DB) SetPixivSchedulable(ctx context.Context, userIDs []int64, schedulable bool) error {

@@ -12,8 +12,8 @@ import (
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver"
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/fanbox"
 	pixivmcpserver "github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv"
-	"github.com/FlanChanXwO/pixiv-cli/internal/services/reversesearch"
-	reverseassembly "github.com/FlanChanXwO/pixiv-cli/internal/services/reversesearch/assembly"
+	"github.com/FlanChanXwO/pixiv-cli/internal/reversesearch"
+	reverseassembly "github.com/FlanChanXwO/pixiv-cli/internal/reversesearch/assembly"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 

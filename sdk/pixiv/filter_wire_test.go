@@ -5,7 +5,7 @@ import (
 	"net/http"
 	"testing"
 
-	"github.com/FlanChanXwO/pixiv-cli/internal/shared/searchfilter"
+	"github.com/FlanChanXwO/pixiv-cli/internal/searchfilter"
 	. "github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
 	"github.com/stretchr/testify/require"
 )

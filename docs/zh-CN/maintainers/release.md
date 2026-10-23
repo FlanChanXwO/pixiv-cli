@@ -59,7 +59,7 @@ go test ./tools/release ./tools/platformmatrix -count=1
 `publish-homebrew.yml` 消费 handoff，校验其生产部分，把 stable/预发布映射到 `pixiv-cli` / `pixiv-cli-beta`（都安装 `pixiv`，互相冲突）。Homebrew 不属于 Release workflow，也不增加审批边界（只有 `release-approval`）。`HOMEBREW_TAP_DEPLOY_KEY` 只通过 `release` Environment 进入已授权的 tap 写入步骤。
 
 1. **安装检查**（macOS Intel/arm64 与 Linux amd64/arm64）：`brew tap-new pixiv-cli-release/staging --no-git`，把单个 staging formula 放入 `Formula/`，执行 `brew install --formula pixiv-cli-release/staging/<formula>`，再执行 `test "$(pixiv --version)" = "pixiv $RELEASE_TAG"`。macOS 用 `brew trust --tap pixiv-cli-release/staging` 信任临时命名空间；Linux 使用短期、固定 digest 的 `homebrew/brew` 容器与只读 bind mount。不使用工作区 formula 路径、绕过变量或公开 tap 的 clone/写入/信任。
-2. **部署** 只在全部目标通过后进行：受保护的 `deploy_homebrew_tap` 任务 HTTPS clone 公开 tap；`scripts/cmd/homebrewrecovery`（可信默认分支 tip）对每个 formula 独立地用 `internal/releaseversion` SemVer 比较版本：
+2. **部署** 只在全部目标通过后进行：受保护的 `deploy_homebrew_tap` 任务 HTTPS clone 公开 tap；`scripts/cmd/homebrewrecovery`（可信默认分支 tip）对每个 formula 独立地用 `internal/version` SemVer 比较版本：
 
 | 已发布 vs 请求 | 动作 |
 | --- | --- |
@@ -87,7 +87,7 @@ go test ./tools/release ./tools/platformmatrix -count=1
 
 ## 签名信任根
 
-生产 Ed25519 信任根提交在 [`internal/update/installer/release_installer.go`](../../../internal/update/installer/release_installer.go)：
+生产 Ed25519 信任根提交在 [`internal/selfupdate/installer/release_installer.go`](../../../internal/selfupdate/installer/release_installer.go)：
 
 | 字段 | 值 |
 | --- | --- |

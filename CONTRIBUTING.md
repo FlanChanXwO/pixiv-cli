@@ -37,10 +37,10 @@ Encoder verification, opt-in real API tests, release gates and platforms: [devel
 
 | Rule | Detail |
 | --- | --- |
-| Thin entry | `cmd/pixiv` → `internal/cli`; `internal/cli/root.go` owns registration, lifecycle and production wiring; commands live in `internal/cli/commands` |
-| SDK only | CLI/MCP call `sdk/pixiv` / `sdk/fanbox` through owner-local narrow ports, never `internal/services/{pixiv,fanbox}` protocol adapters |
+| Thin entry | `cmd/pixiv` → `internal/cli`; `internal/cli/root.go` owns registration, lifecycle and production wiring; commands live in `internal/cli/internal/command` |
+| SDK only | CLI/MCP call `sdk/pixiv` / `sdk/fanbox` through owner-local narrow ports, never `internal/{pixivapi,fanboxapi}` protocol adapters |
 | MCP layout | Aggregators in `internal/mcpserver/{pixiv,fanbox}`, tools in `tools/<tool>`; stdio stdout is JSON-RPC only |
-| Shared code | Cross-subsystem mechanisms in `internal/shared/*`, protocol-free helpers in `internal/utils/*`, config/paths in `internal/config/{settings,paths}`; one responsibility per file |
+| Shared code | Cross-subsystem mechanisms in `internal/*`, protocol-free helpers in `internal/*`, config/paths in `internal/config/{settings,paths}`; one responsibility per file |
 
 Read the [architecture guide](docs/en/maintainers/architecture.md) and [AGENTS.md](AGENTS.md) before moving these boundaries.
 

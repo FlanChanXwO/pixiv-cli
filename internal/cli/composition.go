@@ -18,20 +18,24 @@ import (
 	"sync"
 	"time"
 
-	fanboxcommands "github.com/FlanChanXwO/pixiv-cli/internal/cli/commands/fanbox"
-	fanboxauth "github.com/FlanChanXwO/pixiv-cli/internal/cli/commands/fanbox/auth"
-	pixivdeps "github.com/FlanChanXwO/pixiv-cli/internal/cli/commands/pixiv"
-	authcommands "github.com/FlanChanXwO/pixiv-cli/internal/cli/commands/pixiv/auth"
-	"github.com/FlanChanXwO/pixiv-cli/internal/cli/commands/pixiv/auth/loginhelper"
-	pixivdetail "github.com/FlanChanXwO/pixiv-cli/internal/cli/commands/pixiv/detail"
-	downloadcommands "github.com/FlanChanXwO/pixiv-cli/internal/cli/commands/pixiv/download"
-	pixivfollow "github.com/FlanChanXwO/pixiv-cli/internal/cli/commands/pixiv/follow"
-	mcpcommands "github.com/FlanChanXwO/pixiv-cli/internal/cli/commands/pixiv/mcp"
-	pixivrecommended "github.com/FlanChanXwO/pixiv-cli/internal/cli/commands/pixiv/recommended"
-	pixivsearch "github.com/FlanChanXwO/pixiv-cli/internal/cli/commands/pixiv/search"
-	pixivuser "github.com/FlanChanXwO/pixiv-cli/internal/cli/commands/pixiv/user"
+	authcommands "github.com/FlanChanXwO/pixiv-cli/internal/cli/auth"
+	"github.com/FlanChanXwO/pixiv-cli/internal/cli/auth/loginhelper"
+	pixivdetail "github.com/FlanChanXwO/pixiv-cli/internal/cli/detail"
+	downloadcommands "github.com/FlanChanXwO/pixiv-cli/internal/cli/download"
+	fanboxcommands "github.com/FlanChanXwO/pixiv-cli/internal/cli/fanbox"
+	fanboxauth "github.com/FlanChanXwO/pixiv-cli/internal/cli/fanbox/auth"
+	pixivfollow "github.com/FlanChanXwO/pixiv-cli/internal/cli/follow"
+	pixivdeps "github.com/FlanChanXwO/pixiv-cli/internal/cli/internal/pixivcmd"
+	mcpcommands "github.com/FlanChanXwO/pixiv-cli/internal/cli/mcp"
+	pixivrecommended "github.com/FlanChanXwO/pixiv-cli/internal/cli/recommended"
+	pixivsearch "github.com/FlanChanXwO/pixiv-cli/internal/cli/search"
+	pixivuser "github.com/FlanChanXwO/pixiv-cli/internal/cli/user"
 	"github.com/FlanChanXwO/pixiv-cli/internal/config/paths"
 	configapp "github.com/FlanChanXwO/pixiv-cli/internal/config/settings"
+	fanboxaccount "github.com/FlanChanXwO/pixiv-cli/internal/fanboxaccount"
+	"github.com/FlanChanXwO/pixiv-cli/internal/httpclient"
+	"github.com/FlanChanXwO/pixiv-cli/internal/lifecycle"
+	coreDiagnostics "github.com/FlanChanXwO/pixiv-cli/internal/logging"
 	unifiedmcp "github.com/FlanChanXwO/pixiv-cli/internal/mcpserver"
 	mcpauth "github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/auth"
 	fanboxmcpserver "github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/fanbox"
@@ -39,19 +43,15 @@ import (
 	mcpaccounts "github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/accounts"
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/mediaproxy"
 	downloader "github.com/FlanChanXwO/pixiv-cli/internal/media/downloader"
-	fanboxapp "github.com/FlanChanXwO/pixiv-cli/internal/services/fanbox"
-	fanboxaccount "github.com/FlanChanXwO/pixiv-cli/internal/services/fanbox/account"
-	pixivapp "github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv"
-	pixivaccount "github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/account"
-	pixivpool "github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/pool"
-	"github.com/FlanChanXwO/pixiv-cli/internal/services/reversesearch"
-	reverseassembly "github.com/FlanChanXwO/pixiv-cli/internal/services/reversesearch/assembly"
-	coreDiagnostics "github.com/FlanChanXwO/pixiv-cli/internal/shared/diagnostics"
-	"github.com/FlanChanXwO/pixiv-cli/internal/shared/lifecycle"
-	"github.com/FlanChanXwO/pixiv-cli/internal/shared/network"
+	pixivaccount "github.com/FlanChanXwO/pixiv-cli/internal/pixivaccount"
+	pixivpool "github.com/FlanChanXwO/pixiv-cli/internal/pixivaccount/pool"
+	"github.com/FlanChanXwO/pixiv-cli/internal/reversesearch"
+	reverseassembly "github.com/FlanChanXwO/pixiv-cli/internal/reversesearch/assembly"
+	selfupdate "github.com/FlanChanXwO/pixiv-cli/internal/selfupdate"
+	fanboxapp "github.com/FlanChanXwO/pixiv-cli/internal/session/fanbox"
+	pixivapp "github.com/FlanChanXwO/pixiv-cli/internal/session/pixiv"
 	database "github.com/FlanChanXwO/pixiv-cli/internal/storage/database"
-	filesecret "github.com/FlanChanXwO/pixiv-cli/internal/storage/file/secret"
-	"github.com/FlanChanXwO/pixiv-cli/internal/update"
+	filesecret "github.com/FlanChanXwO/pixiv-cli/internal/storage/secretfile"
 	fanbox "github.com/FlanChanXwO/pixiv-cli/sdk/fanbox"
 	pixiv "github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
 	"github.com/spf13/cobra"
@@ -543,7 +543,7 @@ func (a app) LoadUpdateRuntimeConfig() (configapp.RuntimeConfig, error) {
 	return a.runtimeConfig()
 }
 
-func (a app) NewUpdateCoordinator(proxy string, out, errOut io.Writer) (*update.UpdateCoordinator, error) {
+func (a app) NewUpdateCoordinator(proxy string, out, errOut io.Writer) (*selfupdate.UpdateCoordinator, error) {
 	return newUpdateCommandCoordinator(proxy, out, errOut)
 }
 
@@ -551,7 +551,7 @@ func (a app) LoadAutomaticUpdateRuntimeConfig() (configapp.RuntimeConfig, error)
 	return a.runtimeConfig()
 }
 
-func (a app) NewAutomaticUpdateChecker(proxy string) (*update.AutomaticUpdateChecker, error) {
+func (a app) NewAutomaticUpdateChecker(proxy string) (*selfupdate.AutomaticUpdateChecker, error) {
 	return newCLIAutomaticUpdateChecker(proxy)
 }
 
@@ -565,7 +565,7 @@ func (a app) runPixivMCP(ctx context.Context, request mcpcommands.Request) (resu
 		return err
 	}
 	if request.HTTPSProxyOverride != nil {
-		if _, err := network.HTTPClient(*request.HTTPSProxyOverride); err != nil {
+		if _, err := httpclient.HTTPClient(*request.HTTPSProxyOverride); err != nil {
 			return err
 		}
 	}
@@ -802,7 +802,7 @@ func pixivOptionsFromRequest(request pixivdeps.Request, loadRuntime func() (conf
 		}
 	}
 	if proxyValue != nil {
-		httpClient, err := network.HTTPClient(*proxyValue)
+		httpClient, err := httpclient.HTTPClient(*proxyValue)
 		if err != nil {
 			return pixiv.Options{}, err
 		}
@@ -864,7 +864,7 @@ func (a app) newMCPLoginManager(ctx context.Context, baseURL string, manager mcp
 		}
 		options := pixiv.LoginOptions{}
 		if proxy != nil {
-			client, err := network.HTTPClient(*proxy)
+			client, err := httpclient.HTTPClient(*proxy)
 			if err != nil {
 				return mcpaccounts.LoginAttempt{}, err
 			}

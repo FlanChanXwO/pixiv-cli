@@ -6,7 +6,7 @@ import (
 	"net/url"
 	"strconv"
 
-	"github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/protocol"
+	protocol "github.com/FlanChanXwO/pixiv-cli/internal/pixivapi"
 )
 
 // Transport 是 user follow mutation 所需的最小 form 传输能力。

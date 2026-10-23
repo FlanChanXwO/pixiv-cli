@@ -16,7 +16,7 @@ flowchart TD
 ```
 
 > [!NOTE]
-> The Ed25519 public key, key ID and fingerprint are committed in [`internal/update/installer/release_installer.go`](../../internal/update/installer/release_installer.go); the public source/tap repositories, protected `release` Environment and isolated credentials are configured. Release and tap are separately published — check the [GitHub Releases page] and `brew info FlanChanXwO/tap/pixiv-cli` for current state. Every version must pass the same tag, signing, asset and Homebrew gates before it is a trusted source.
+> The Ed25519 public key, key ID and fingerprint are committed in [`internal/selfupdate/installer/release_installer.go`](../../internal/selfupdate/installer/release_installer.go); the public source/tap repositories, protected `release` Environment and isolated credentials are configured. Release and tap are separately published — check the [GitHub Releases page] and `brew info FlanChanXwO/tap/pixiv-cli` for current state. Every version must pass the same tag, signing, asset and Homebrew gates before it is a trusted source.
 
 ## Official installer scripts
 

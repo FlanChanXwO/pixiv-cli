@@ -7,16 +7,16 @@ import (
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/internal/outputs"
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/internal/records"
-	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/internal/runtime"
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/internal/schemas"
-	record "github.com/FlanChanXwO/pixiv-cli/internal/shared/record"
+	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/internal/toolhost"
+	record "github.com/FlanChanXwO/pixiv-cli/internal/record"
 	pixiv "github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
 // Register 注册 pixiv_user_detail。
-func Register(app *runtime.App, server *mcp.Server) {
-	runtime.AddTool(app, server, &mcp.Tool{Name: "pixiv_user_detail", Annotations: &mcp.ToolAnnotations{ReadOnlyHint: true, DestructiveHint: new(false), IdempotentHint: true, OpenWorldHint: new(true)}, Description: "Get a user's complete profile through the authenticated Pixiv SDK.", InputSchema: schemas.ClosedObject(map[string]any{
+func Register(app *toolhost.App, server *mcp.Server) {
+	toolhost.AddTool(app, server, &mcp.Tool{Name: "pixiv_user_detail", Annotations: &mcp.ToolAnnotations{ReadOnlyHint: true, DestructiveHint: new(false), IdempotentHint: true, OpenWorldHint: new(true)}, Description: "Get a user's complete profile through the authenticated Pixiv SDK.", InputSchema: schemas.ClosedObject(map[string]any{
 		"user_id": schemas.PositiveInteger("Positive Pixiv user ID."),
 	}, []string{"user_id"}), OutputSchema: records.UserDetailOutputSchema()}, func(ctx context.Context, request *mcp.CallToolRequest, input In) (*mcp.CallToolResult, outputs.UserDetail, error) {
 		return handleUserDetail(ctx, app, input)
@@ -30,11 +30,11 @@ type In struct {
 
 // handleUserDetail 将完整公开 SDK envelope 封装为单条 user record，避免详情 tool
 // 成为 records 契约的例外。
-func handleUserDetail(ctx context.Context, app *runtime.App, in In) (*mcp.CallToolResult, outputs.UserDetail, error) {
+func handleUserDetail(ctx context.Context, app *toolhost.App, in In) (*mcp.CallToolResult, outputs.UserDetail, error) {
 	if in.UserID <= 0 {
 		return outputs.UserDetailError(fmt.Errorf("user_id must be a positive integer"))
 	}
-	result, err := runtime.Read(app, ctx, func(ctx context.Context, client *pixiv.Client) (pixiv.UserDetail, error) {
+	result, err := toolhost.Read(app, ctx, func(ctx context.Context, client *pixiv.Client) (pixiv.UserDetail, error) {
 		return client.User(ctx, pixiv.UserRequest{UserID: in.UserID})
 	})
 	if err != nil {

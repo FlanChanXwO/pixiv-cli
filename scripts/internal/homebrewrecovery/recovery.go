@@ -11,7 +11,7 @@ import (
 	"os"
 	"regexp"
 
-	"github.com/FlanChanXwO/pixiv-cli/internal/releaseversion"
+	versionpkg "github.com/FlanChanXwO/pixiv-cli/internal/version"
 )
 
 // Action 是 deploy 判定结果：写入 target 或识别为已发布而 no-op。
@@ -58,7 +58,7 @@ func Decide(current, requested []byte) (Decision, error) {
 	}
 	decision.CurrentVersion = currentVersion
 
-	order, err := releaseversion.Compare(requestedVersion, currentVersion)
+	order, err := versionpkg.Compare(requestedVersion, currentVersion)
 	if err != nil {
 		return Decision{}, fmt.Errorf("compare requested %q with current %q: %w", requestedVersion, currentVersion, err)
 	}
@@ -86,7 +86,7 @@ func parseDeclaredVersion(formula []byte, label string) (string, error) {
 		return "", fmt.Errorf("%s formula declares multiple versions", label)
 	}
 	version := string(matches[0][1])
-	if err := releaseversion.Validate(version); err != nil {
+	if err := versionpkg.Validate(version); err != nil {
 		return "", fmt.Errorf("%s formula version: %w", label, err)
 	}
 	return version, nil

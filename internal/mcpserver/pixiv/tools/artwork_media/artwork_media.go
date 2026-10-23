@@ -11,9 +11,9 @@ import (
 	"strings"
 	"time"
 
+	"github.com/FlanChanXwO/pixiv-cli/internal/lifecycle"
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/internal/outputs"
-	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/internal/runtime"
-	"github.com/FlanChanXwO/pixiv-cli/internal/shared/lifecycle"
+	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/internal/toolhost"
 	"github.com/FlanChanXwO/pixiv-cli/sdk"
 	pixiv "github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
@@ -26,9 +26,9 @@ type input struct {
 	AnimationFormat string `json:"animation_format,omitempty" jsonschema:"gif or apng; not applicable to static artwork"`
 }
 
-func Register(app *runtime.App, server *mcp.Server) {
+func Register(app *toolhost.App, server *mcp.Server) {
 	outputs.ProtectMediaInput(server, "pixiv_artwork_media")
-	runtime.AddTool(app, server, &mcp.Tool{Name: "pixiv_artwork_media", Description: "Read artwork bytes: static images default to regular quality and all pages; Ugoira defaults to GIF with a separate PNG preview. Omit static pages/quality for Ugoira; use animation_format=apng for APNG. Use static original only when requested. Results map each delivered page to a content index and explicitly report partial failures. Returns complete media bytes; the App view may offer protected temporary downloads.", Annotations: &mcp.ToolAnnotations{ReadOnlyHint: true, DestructiveHint: new(false), IdempotentHint: true, OpenWorldHint: new(true)}}, func(ctx context.Context, request *mcp.CallToolRequest, in input) (*mcp.CallToolResult, outputs.ArtworkMedia, error) {
+	toolhost.AddTool(app, server, &mcp.Tool{Name: "pixiv_artwork_media", Description: "Read artwork bytes: static images default to regular quality and all pages; Ugoira defaults to GIF with a separate PNG preview. Omit static pages/quality for Ugoira; use animation_format=apng for APNG. Use static original only when requested. Results map each delivered page to a content index and explicitly report partial failures. Returns complete media bytes; the App view may offer protected temporary downloads.", Annotations: &mcp.ToolAnnotations{ReadOnlyHint: true, DestructiveHint: new(false), IdempotentHint: true, OpenWorldHint: new(true)}}, func(ctx context.Context, request *mcp.CallToolRequest, in input) (*mcp.CallToolResult, outputs.ArtworkMedia, error) {
 		result, out, err := handle(ctx, app, in)
 		appAnimationContent(request, result, out)
 		return result, out, err
@@ -71,7 +71,7 @@ func appAnimationContent(request *mcp.CallToolRequest, result *mcp.CallToolResul
 	result.Content = []mcp.Content{result.Content[*out.Pages[0].PreviewContentIndex]}
 }
 
-func handle(ctx context.Context, app *runtime.App, in input) (*mcp.CallToolResult, outputs.ArtworkMedia, error) {
+func handle(ctx context.Context, app *toolhost.App, in input) (*mcp.CallToolResult, outputs.ArtworkMedia, error) {
 	out := outputs.NewArtworkMedia(in.IllustID)
 	requestedQuality := in.Quality
 	if in.Quality == "" {

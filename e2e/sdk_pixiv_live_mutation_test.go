@@ -18,9 +18,8 @@ import (
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/config/paths"
 	config "github.com/FlanChanXwO/pixiv-cli/internal/config/settings"
-	accountpixiv "github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/account"
-	"github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/appapi"
-	"github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/protocol"
+	accountpixiv "github.com/FlanChanXwO/pixiv-cli/internal/pixivaccount"
+	protocol "github.com/FlanChanXwO/pixiv-cli/internal/pixivapi"
 	"github.com/FlanChanXwO/pixiv-cli/internal/storage/database"
 	"github.com/FlanChanXwO/pixiv-cli/sdk"
 	pixivsdk "github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
@@ -320,10 +319,10 @@ func TestArtworkCommentReplyWithCreatedParentUsesWritableTargetAndCleansBothWrit
 	}
 	session := &realPixivMutationSession{
 		client: client,
-		raw: appapi.New(
-			appapi.WithHTTPClient(httpClient),
-			appapi.WithAccessToken("token"),
-			appapi.WithUserID(userID),
+		raw: protocol.New(
+			protocol.WithHTTPClient(httpClient),
+			protocol.WithAccessToken("token"),
+			protocol.WithUserID(userID),
 		),
 		userID: userID,
 	}
@@ -389,7 +388,7 @@ func TestRealPixivSDKLiveCommentMutationSlice(t *testing.T) {
 	}
 }
 
-func readRawCommentIDs(ctx context.Context, raw *appapi.Client, path, idKey string, contentID, userID int64) (map[int64]struct{}, error) {
+func readRawCommentIDs(ctx context.Context, raw *protocol.Client, path, idKey string, contentID, userID int64) (map[int64]struct{}, error) {
 	var envelope struct {
 		Comments []struct {
 			ID   int64 `json:"id"`
@@ -594,7 +593,7 @@ func reconcileNovelBookmark(t *testing.T, ctx context.Context, client *pixivsdk.
 
 type realPixivMutationSession struct {
 	client *pixivsdk.Client
-	raw    *appapi.Client
+	raw    *protocol.Client
 	userID int64
 }
 
@@ -697,10 +696,10 @@ func openRealPixivMutationSession(t *testing.T, ctx context.Context, targetID in
 		inner:    transport.Clone(),
 		interval: liveManifestPace,
 	}}
-	app := appapi.New(
-		appapi.WithHTTPClient(rawHTTPClient),
-		appapi.WithAccessToken(credentials.AccessToken()),
-		appapi.WithUserID(credentials.UserID),
+	app := protocol.New(
+		protocol.WithHTTPClient(rawHTTPClient),
+		protocol.WithAccessToken(credentials.AccessToken()),
+		protocol.WithUserID(credentials.UserID),
 	)
 	t.Cleanup(rawHTTPClient.CloseIdleConnections)
 	return &realPixivMutationSession{client: client, raw: app, userID: credentials.UserID}
@@ -1220,7 +1219,7 @@ func commentReplyReadback(writePath string) (string, string) {
 	return "/v2/illust/comment/replies", "comment_id"
 }
 
-func readCommentReplies(ctx context.Context, raw *appapi.Client, writePath string, parentID, userID, commentID int64) (bool, error) {
+func readCommentReplies(ctx context.Context, raw *protocol.Client, writePath string, parentID, userID, commentID int64) (bool, error) {
 	path, idKey := commentReplyReadback(writePath)
 	ids, err := readRawCommentIDs(ctx, raw, path, idKey, parentID, userID)
 	if err != nil {
@@ -1241,7 +1240,7 @@ func normalizeReplyCleanupRead(present bool, err error) (bool, error) {
 	return false, err
 }
 
-func readCommentRepliesAfterDelete(ctx context.Context, raw *appapi.Client, writePath string, parentID, userID, commentID int64) (bool, error) {
+func readCommentRepliesAfterDelete(ctx context.Context, raw *protocol.Client, writePath string, parentID, userID, commentID int64) (bool, error) {
 	present, err := readCommentReplies(ctx, raw, writePath, parentID, userID, commentID)
 	return normalizeReplyCleanupRead(present, err)
 }

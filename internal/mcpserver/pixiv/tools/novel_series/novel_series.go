@@ -7,22 +7,22 @@ import (
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/internal/outputs"
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/internal/records"
-	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/internal/runtime"
+	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/internal/toolhost"
 	"github.com/FlanChanXwO/pixiv-cli/sdk"
 	pixiv "github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
 // Register 注册 pixiv_novel_series。
-func Register(app *runtime.App, server *mcp.Server) {
-	runtime.AddTool(app, server, &mcp.Tool{Name: "pixiv_novel_series", Annotations: &mcp.ToolAnnotations{ReadOnlyHint: true, DestructiveHint: new(false), IdempotentHint: true, OpenWorldHint: new(true)}, Description: "Browse novels in a Pixiv series.", OutputSchema: records.NovelSeriesOutputSchema()}, func(ctx context.Context, request *mcp.CallToolRequest, input In) (*mcp.CallToolResult, outputs.NovelSeries, error) {
+func Register(app *toolhost.App, server *mcp.Server) {
+	toolhost.AddTool(app, server, &mcp.Tool{Name: "pixiv_novel_series", Annotations: &mcp.ToolAnnotations{ReadOnlyHint: true, DestructiveHint: new(false), IdempotentHint: true, OpenWorldHint: new(true)}, Description: "Browse novels in a Pixiv series.", OutputSchema: records.NovelSeriesOutputSchema()}, func(ctx context.Context, request *mcp.CallToolRequest, input In) (*mcp.CallToolResult, outputs.NovelSeries, error) {
 		return handleNovelSeries(ctx, app, input)
 	})
 }
 
 type In struct {
 	SeriesID int64 `json:"series_id" jsonschema:"positive Pixiv series ID"`
-	runtime.PageLimitIn
+	toolhost.PageLimitIn
 }
 
 func validateSeriesID(id int64) error {
@@ -32,16 +32,16 @@ func validateSeriesID(id int64) error {
 	return nil
 }
 
-func handleNovelSeries(ctx context.Context, app *runtime.App, in In) (*mcp.CallToolResult, outputs.NovelSeries, error) {
+func handleNovelSeries(ctx context.Context, app *toolhost.App, in In) (*mcp.CallToolResult, outputs.NovelSeries, error) {
 	if err := validateSeriesID(in.SeriesID); err != nil {
 		return outputs.NovelSeriesError(err)
 	}
-	plan, err := runtime.ParseListPlan(in.PageLimitIn)
+	plan, err := toolhost.ParseListPlan(in.PageLimitIn)
 	if err != nil {
 		return outputs.NovelSeriesError(err)
 	}
 	var series pixiv.NovelSeries
-	items, more, err := runtime.CollectWith(ctx, app, plan, func(ctx context.Context, client *pixiv.Client, cursor sdk.Cursor) ([]pixiv.Novel, sdk.Cursor, error) {
+	items, more, err := toolhost.CollectWith(ctx, app, plan, func(ctx context.Context, client *pixiv.Client, cursor sdk.Cursor) ([]pixiv.Novel, sdk.Cursor, error) {
 		result, err := client.NovelSeries(ctx, pixiv.NovelSeriesRequest{SeriesID: in.SeriesID, Cursor: cursor})
 		if err != nil {
 			return nil, sdk.Cursor{}, err
@@ -58,6 +58,6 @@ func handleNovelSeries(ctx context.Context, app *runtime.App, in In) (*mcp.CallT
 	if err != nil {
 		return outputs.NovelSeriesError(err)
 	}
-	out := outputs.NovelSeries{Series: pixiv.ToNovelSeriesDTO(series), Records: recordItems, Pagination: runtime.ListPagination(plan, in.Limit, len(items), more)}
+	out := outputs.NovelSeries{Series: pixiv.ToNovelSeriesDTO(series), Records: recordItems, Pagination: toolhost.ListPagination(plan, in.Limit, len(items), more)}
 	return outputs.NovelSeriesResult(out), out, nil
 }

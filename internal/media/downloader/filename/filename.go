@@ -8,7 +8,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/FlanChanXwO/pixiv-cli/internal/utils/text"
+	"github.com/FlanChanXwO/pixiv-cli/internal/plaintext"
 )
 
 type FilenameData struct {
@@ -92,8 +92,8 @@ func generateChecked(data FilenameData, page int, template string, appendPageSuf
 		date = parsed.Format("2006-01-02")
 	}
 	name := strings.NewReplacer(
-		"{author}", Sanitize(text.DefaultString(data.Author, "UnknownAuthor")),
-		"{title}", Sanitize(text.DefaultString(data.Title, "Untitled")),
+		"{author}", Sanitize(plaintext.DefaultString(data.Author, "UnknownAuthor")),
+		"{title}", Sanitize(plaintext.DefaultString(data.Title, "Untitled")),
 		"{id}", fmt.Sprint(data.ID),
 		"{author_id}", fmt.Sprint(data.AuthorID),
 		"{date}", Sanitize(date),

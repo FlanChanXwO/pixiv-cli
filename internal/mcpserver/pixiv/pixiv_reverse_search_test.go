@@ -18,8 +18,8 @@ import (
 	"github.com/stretchr/testify/require"
 
 	pixivmcpserver "github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv"
-	"github.com/FlanChanXwO/pixiv-cli/internal/services/reversesearch"
-	record "github.com/FlanChanXwO/pixiv-cli/internal/shared/record"
+	record "github.com/FlanChanXwO/pixiv-cli/internal/record"
+	"github.com/FlanChanXwO/pixiv-cli/internal/reversesearch"
 )
 
 type reverseSearchOutputFixture struct {

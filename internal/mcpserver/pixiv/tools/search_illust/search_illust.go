@@ -9,17 +9,17 @@ import (
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/internal/filters"
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/internal/outputs"
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/internal/records"
-	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/internal/runtime"
-	"github.com/FlanChanXwO/pixiv-cli/internal/shared/pagination"
-	dateutil "github.com/FlanChanXwO/pixiv-cli/internal/utils/date"
+	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/internal/toolhost"
+	"github.com/FlanChanXwO/pixiv-cli/internal/pagination"
+	dateutil "github.com/FlanChanXwO/pixiv-cli/internal/searchfilter"
 	"github.com/FlanChanXwO/pixiv-cli/sdk"
 	pixiv "github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
 // Register 注册 pixiv_search_illust。
-func Register(app *runtime.App, server *mcp.Server) {
-	runtime.AddTool(app, server, &mcp.Tool{Name: "pixiv_search_illust", Annotations: &mcp.ToolAnnotations{ReadOnlyHint: true, DestructiveHint: new(false), IdempotentHint: true, OpenWorldHint: new(true)}, Description: "Search for illustrations using keywords with filters.", InputSchema: searchIllustInputSchema(), OutputSchema: records.RecordsOutputSchema()}, func(ctx context.Context, request *mcp.CallToolRequest, input searchIllustIn) (*mcp.CallToolResult, outputs.Records, error) {
+func Register(app *toolhost.App, server *mcp.Server) {
+	toolhost.AddTool(app, server, &mcp.Tool{Name: "pixiv_search_illust", Annotations: &mcp.ToolAnnotations{ReadOnlyHint: true, DestructiveHint: new(false), IdempotentHint: true, OpenWorldHint: new(true)}, Description: "Search for illustrations using keywords with filters.", InputSchema: searchIllustInputSchema(), OutputSchema: records.RecordsOutputSchema()}, func(ctx context.Context, request *mcp.CallToolRequest, input searchIllustIn) (*mcp.CallToolResult, outputs.Records, error) {
 		return handleSearchIllust(ctx, app, input)
 	})
 }
@@ -83,7 +83,7 @@ func searchIllustInputSchema() map[string]any {
 	}
 }
 
-func handleSearchIllust(ctx context.Context, app *runtime.App, in searchIllustIn) (*mcp.CallToolResult, outputs.Records, error) {
+func handleSearchIllust(ctx context.Context, app *toolhost.App, in searchIllustIn) (*mcp.CallToolResult, outputs.Records, error) {
 	if in.SearchTarget == "" {
 		in.SearchTarget = string(pixiv.SearchTargetPartialMatchForTags)
 	}
@@ -126,7 +126,7 @@ func handleSearchIllust(ctx context.Context, app *runtime.App, in searchIllustIn
 		if (in.BookmarkMin != nil || in.BookmarkMax != nil) && in.IllustFilter != nil {
 			return outputs.Error(errors.New("bookmark range cannot be combined with illust_filter"))
 		}
-		binding, err := runtime.BindCursor("search_illust", bindingInput)
+		binding, err := toolhost.BindCursor("search_illust", bindingInput)
 		if err != nil {
 			return outputs.Error(err)
 		}
@@ -150,7 +150,7 @@ func handleSearchIllust(ctx context.Context, app *runtime.App, in searchIllustIn
 		}
 		out := outputs.Records{
 			Records:    recordItems,
-			Pagination: runtime.ListPagination(plan, in.Limit, len(outcome.Page.Items), !outcome.Page.Next.IsZero()),
+			Pagination: toolhost.ListPagination(plan, in.Limit, len(outcome.Page.Items), !outcome.Page.Next.IsZero()),
 			Filter:     bookmarkFilterFrom(outcome.Filter),
 		}
 		if plan.OneBatch {
@@ -164,7 +164,7 @@ func handleSearchIllust(ctx context.Context, app *runtime.App, in searchIllustIn
 		}
 		return outputs.Result(out, false), out, nil
 	}
-	items, page, err := runtime.CollectCursorWith(ctx, app, "search_illust", bindingInput, in.Cursor, runtime.PageLimitIn{Page: in.Page, Limit: in.Limit}, func(ctx context.Context, client *pixiv.Client, cursor sdk.Cursor) ([]pixiv.Artwork, sdk.Cursor, error) {
+	items, page, err := toolhost.CollectCursorWith(ctx, app, "search_illust", bindingInput, in.Cursor, toolhost.PageLimitIn{Page: in.Page, Limit: in.Limit}, func(ctx context.Context, client *pixiv.Client, cursor sdk.Cursor) ([]pixiv.Artwork, sdk.Cursor, error) {
 		query.Cursor = cursor
 		result, err := client.SearchArtworks(ctx, query)
 		if err != nil {
@@ -226,6 +226,6 @@ func quickDateRange(value string, now time.Time) (startDate, endDate string, ok 
 
 // searchIllustListPlan 将 search_illust 的 page/limit 归一为分页计划。
 // 省略 limit 时保持单逻辑批次（含空批补拉）。
-func searchIllustListPlan(in searchIllustIn) (runtime.ListPlan, error) {
-	return runtime.ParseListPlan(runtime.PageLimitIn{Page: in.Page, Limit: in.Limit})
+func searchIllustListPlan(in searchIllustIn) (toolhost.ListPlan, error) {
+	return toolhost.ParseListPlan(toolhost.PageLimitIn{Page: in.Page, Limit: in.Limit})
 }

@@ -5,14 +5,14 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/fanbox/internal/runtime"
+	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/fanbox/internal/toolhost"
 	fanbox "github.com/FlanChanXwO/pixiv-cli/sdk/fanbox"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
 // Register 注册 fanbox_creator。
-func Register(app *runtime.App, server *mcp.Server) {
-	runtime.AddTool(app, server, &mcp.Tool{Name: "fanbox_creator", Annotations: &mcp.ToolAnnotations{ReadOnlyHint: true, DestructiveHint: new(false), IdempotentHint: true, OpenWorldHint: new(true)}, Description: "Get one FANBOX creator profile."}, func(ctx context.Context, request *mcp.CallToolRequest, input in) (*mcp.CallToolResult, out, error) {
+func Register(app *toolhost.App, server *mcp.Server) {
+	toolhost.AddTool(app, server, &mcp.Tool{Name: "fanbox_creator", Annotations: &mcp.ToolAnnotations{ReadOnlyHint: true, DestructiveHint: new(false), IdempotentHint: true, OpenWorldHint: new(true)}, Description: "Get one FANBOX creator profile."}, func(ctx context.Context, request *mcp.CallToolRequest, input in) (*mcp.CallToolResult, out, error) {
 		return handle(ctx, app, input)
 	})
 }
@@ -22,30 +22,30 @@ type in struct {
 }
 
 type out struct {
-	ID                string               `json:"id"`
-	Name              string               `json:"name"`
-	HasAdultContent   bool                 `json:"has_adult_content,omitempty"`
-	IsFollowing       bool                 `json:"is_following,omitempty"`
-	PlanFee           int                  `json:"plan_fee,omitempty"`
-	HasSupportingPlan bool                 `json:"has_supporting_plan,omitempty"`
-	Icon              *runtime.ResourceOut `json:"icon,omitempty"`
-	Cover             *runtime.ResourceOut `json:"cover,omitempty"`
+	ID                string                `json:"id"`
+	Name              string                `json:"name"`
+	HasAdultContent   bool                  `json:"has_adult_content,omitempty"`
+	IsFollowing       bool                  `json:"is_following,omitempty"`
+	PlanFee           int                   `json:"plan_fee,omitempty"`
+	HasSupportingPlan bool                  `json:"has_supporting_plan,omitempty"`
+	Icon              *toolhost.ResourceOut `json:"icon,omitempty"`
+	Cover             *toolhost.ResourceOut `json:"cover,omitempty"`
 }
 
-func handle(ctx context.Context, app *runtime.App, input in) (*mcp.CallToolResult, out, error) {
+func handle(ctx context.Context, app *toolhost.App, input in) (*mcp.CallToolResult, out, error) {
 	empty := out{}
 	if input.CreatorID == "" {
-		return runtime.Result(empty, true, "Error: creator_id is required"), empty, nil
+		return toolhost.Result(empty, true, "Error: creator_id is required"), empty, nil
 	}
 	lease, err := app.OpenClient(ctx)
 	if err != nil {
-		return runtime.Result(empty, true, "Error: "+err.Error()), empty, nil
+		return toolhost.Result(empty, true, "Error: "+err.Error()), empty, nil
 	}
 	defer lease.Close()
 	client := lease.Value()
 	creator, err := client.Creator(ctx, fanbox.CreatorRequest{CreatorID: input.CreatorID})
 	if err != nil {
-		return runtime.Result(empty, true, "Error: "+err.Error()), empty, nil
+		return toolhost.Result(empty, true, "Error: "+err.Error()), empty, nil
 	}
 	out := out{
 		ID:                creator.ID,
@@ -54,8 +54,8 @@ func handle(ctx context.Context, app *runtime.App, input in) (*mcp.CallToolResul
 		IsFollowing:       creator.IsFollowing,
 		PlanFee:           creator.PlanFee,
 		HasSupportingPlan: creator.HasSupportingPlan,
-		Icon:              runtime.ResourceOutFrom(creator.Icon.Resource),
-		Cover:             runtime.ResourceOutFrom(creator.Cover.Resource),
+		Icon:              toolhost.ResourceOutFrom(creator.Icon.Resource),
+		Cover:             toolhost.ResourceOutFrom(creator.Cover.Resource),
 	}
-	return runtime.Result(out, false, fmt.Sprintf("Retrieved creator %s.", out.ID)), out, nil
+	return toolhost.Result(out, false, fmt.Sprintf("Retrieved creator %s.", out.ID)), out, nil
 }

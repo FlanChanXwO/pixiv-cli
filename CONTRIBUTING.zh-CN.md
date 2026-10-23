@@ -37,10 +37,10 @@ sh scripts/build.sh
 
 | 规则 | 说明 |
 | --- | --- |
-| 入口保持薄 | `cmd/pixiv` → `internal/cli`；`internal/cli/root.go` 负责命令注册、生命周期与生产组装；具体命令在 `internal/cli/commands` |
-| 只走 SDK | CLI/MCP 经 owner-local 窄端口调用 `sdk/pixiv` / `sdk/fanbox`，不直连 `internal/services/{pixiv,fanbox}` 协议适配包 |
+| 入口保持薄 | `cmd/pixiv` → `internal/cli`；`internal/cli/root.go` 负责命令注册、生命周期与生产组装；具体命令在 `internal/cli/internal/command` |
+| 只走 SDK | CLI/MCP 经 owner-local 窄端口调用 `sdk/pixiv` / `sdk/fanbox`，不直连 `internal/{pixivapi,fanboxapi}` 协议适配包 |
 | MCP 布局 | 产品聚合在 `internal/mcpserver/{pixiv,fanbox}`，tool 位于 `tools/<tool>`；stdio 的 stdout 只承载 JSON-RPC |
-| 共享代码 | 跨子系统机制在 `internal/shared/*`，协议无关 helper 在 `internal/utils/*`，配置/路径在 `internal/config/{settings,paths}`；一个文件一个职责 |
+| 共享代码 | 跨子系统机制在 `internal/*`，协议无关 helper 在 `internal/*`，配置/路径在 `internal/config/{settings,paths}`；一个文件一个职责 |
 
 调整这些边界前请阅读[架构说明](docs/zh-CN/maintainers/architecture.md)与 [AGENTS.md](AGENTS.md)。
 

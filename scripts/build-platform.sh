@@ -85,7 +85,7 @@ fi
 if [ -n "$version" ]; then
 	GOOS="$goos" GOARCH="$goarch" CGO_ENABLED=0 \
 		go build -trimpath -buildvcs=false \
-		-ldflags "-X github.com/FlanChanXwO/pixiv-cli/internal/shared/buildinfo.Version=v${version}" \
+		-ldflags "-X github.com/FlanChanXwO/pixiv-cli/internal/version.Version=v${version}" \
 		-o "$binary" ./cmd/pixiv >&2
 else
 	GOOS="$goos" GOARCH="$goarch" CGO_ENABLED=0 \

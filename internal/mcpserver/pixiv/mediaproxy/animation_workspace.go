@@ -6,7 +6,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/FlanChanXwO/pixiv-cli/internal/storage/file/lock"
+	"github.com/FlanChanXwO/pixiv-cli/internal/storage/filelock"
 )
 
 const animationWorkspaceMarker = "pixiv-mcp-animation-v1\n"
@@ -19,12 +19,12 @@ func newAnimationWorkspace(parent string) (string, func() error, error) {
 	if err != nil {
 		return "", nil, err
 	}
-	release, acquired, err := lock.TryPrivateLock(filepath.Join(root, "instance"))
+	release, acquired, err := filelock.TryPrivateLock(filepath.Join(root, "instance"))
 	if err != nil || !acquired {
 		_ = os.RemoveAll(root)
 		return "", nil, errors.Join(err, errors.New("animation instance lock unavailable"))
 	}
-	// Publish the ownership marker only after taking the lifetime lock.
+	// Publish the ownership marker only after taking the lifetime filelock.
 	if err = os.WriteFile(filepath.Join(root, "owner"), []byte(animationWorkspaceMarker), 0600); err != nil {
 		_ = release()
 		_ = os.RemoveAll(root)
@@ -53,7 +53,7 @@ func cleanupAnimationWorkspaces(parent string) error {
 			continue
 		}
 		// A released OS lock proves termination without trusting a reused PID.
-		release, acquired, err := lock.TryPrivateLock(filepath.Join(root, "instance"))
+		release, acquired, err := filelock.TryPrivateLock(filepath.Join(root, "instance"))
 		if err != nil {
 			return err
 		}

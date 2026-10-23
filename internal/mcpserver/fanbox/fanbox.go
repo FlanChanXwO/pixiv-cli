@@ -7,7 +7,8 @@ import (
 	"context"
 	"errors"
 
-	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/fanbox/internal/runtime"
+	"github.com/FlanChanXwO/pixiv-cli/internal/lifecycle"
+	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/fanbox/internal/toolhost"
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/fanbox/tools/creator"
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/fanbox/tools/creatorposts"
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/fanbox/tools/creators"
@@ -17,7 +18,6 @@ import (
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/fanbox/tools/openresource"
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/fanbox/tools/post"
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/fanbox/tools/resolveurl"
-	"github.com/FlanChanXwO/pixiv-cli/internal/shared/lifecycle"
 	fanboxsdk "github.com/FlanChanXwO/pixiv-cli/sdk/fanbox"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
@@ -38,25 +38,25 @@ type SDKPorts struct {
 
 // Register 将 FANBOX tools 注册到共享 server；proxyOverride 只作用于 FANBOX 原生连接。
 func Register(server *mcp.Server, ports SDKPorts, proxyOverride *string) {
-	runtimePorts := runtime.SDKPorts{Open: func(ctx context.Context, account runtime.Account) (*fanboxsdk.Client, error) {
+	runtimePorts := toolhost.SDKPorts{Open: func(ctx context.Context, account toolhost.Account) (*fanboxsdk.Client, error) {
 		if ports.Open == nil {
 			return nil, errors.New("fanbox SDK ports are not configured")
 		}
 		return ports.Open(ctx, Account{HTTPSProxyOverride: account.HTTPSProxyOverride})
 	}}
 	if ports.OpenLease != nil {
-		runtimePorts.OpenLease = func(ctx context.Context, account runtime.Account) (*lifecycle.Lease[*fanboxsdk.Client], error) {
+		runtimePorts.OpenLease = func(ctx context.Context, account toolhost.Account) (*lifecycle.Lease[*fanboxsdk.Client], error) {
 			return ports.OpenLease(ctx, Account{HTTPSProxyOverride: account.HTTPSProxyOverride})
 		}
 	}
 	if ports.Open == nil {
 		runtimePorts.Open = nil
 	}
-	app := runtime.NewApp(runtimePorts, runtime.Account{HTTPSProxyOverride: proxyOverride})
+	app := toolhost.NewApp(runtimePorts, toolhost.Account{HTTPSProxyOverride: proxyOverride})
 	register(app, server)
 }
 
-func register(app *runtime.App, server *mcp.Server) {
+func register(app *toolhost.App, server *mcp.Server) {
 	currentuser.Register(app, server)
 	creator.Register(app, server)
 	creators.Register(app, server)

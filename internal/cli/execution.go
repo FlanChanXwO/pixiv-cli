@@ -15,13 +15,11 @@ import (
 	"sync"
 	"syscall"
 
-	requirements "github.com/FlanChanXwO/pixiv-cli/internal/cli/commands"
-	authcommands "github.com/FlanChanXwO/pixiv-cli/internal/cli/commands/pixiv/auth"
-	clidiagnostics "github.com/FlanChanXwO/pixiv-cli/internal/cli/diagnostics"
-	"github.com/FlanChanXwO/pixiv-cli/internal/cli/invocation"
-	"github.com/FlanChanXwO/pixiv-cli/internal/cli/pipeline"
-	"github.com/FlanChanXwO/pixiv-cli/internal/services/reversesearch"
-	coreDiagnostics "github.com/FlanChanXwO/pixiv-cli/internal/shared/diagnostics"
+	authcommands "github.com/FlanChanXwO/pixiv-cli/internal/cli/auth"
+	requirements "github.com/FlanChanXwO/pixiv-cli/internal/cli/internal/command"
+	"github.com/FlanChanXwO/pixiv-cli/internal/cli/internal/input"
+	"github.com/FlanChanXwO/pixiv-cli/internal/logging"
+	"github.com/FlanChanXwO/pixiv-cli/internal/reversesearch"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 	"golang.org/x/term"
@@ -30,7 +28,7 @@ import (
 type diagnosticState struct {
 	ctx       context.Context
 	operation string
-	presenter *clidiagnostics.Presenter
+	presenter *logging.Presenter
 }
 
 // closeState 仅登记一次 CLI 执行的逆序关闭函数，不缓存服务或暴露依赖图。
@@ -132,7 +130,7 @@ func runContext(ctx context.Context, args []string, in io.Reader, out io.Writer,
 		args = []string{"pixiv"}
 	}
 	// 阶段 1：只用流与状态容器构造 app；closeState 在此登记，资源稍后按需打开。
-	streams := invocation.NewStreams(in, out, errOut)
+	streams := NewStreams(in, out, errOut)
 	a := app{
 		in:                  streams.In,
 		out:                 streams.Out,
@@ -158,7 +156,7 @@ func runContext(ctx context.Context, args []string, in io.Reader, out io.Writer,
 	}
 	// 阶段 2：装配命令树并绑定流/参数。
 	cmd := a.newRootCommand()
-	defer pipeline.Clear(cmd)
+	defer input.Clear(cmd)
 	defer authcommands.ClearInputState(cmd)
 	cmd.SetIn(in)
 	cmd.SetOut(out)
@@ -202,7 +200,7 @@ func (a app) exitWithNDJSONScope(err error, ndjsonOutput bool) int {
 		fmt.Fprintln(a.errOut, "error:", usageErr.err)
 		return 2
 	}
-	var pipelineErr *pipeline.PipelineDiagnosticError
+	var pipelineErr *input.PipelineDiagnosticError
 	if errors.As(err, &pipelineErr) {
 		return 1
 	}
@@ -303,17 +301,17 @@ func (a app) startDiagnostics(cmd *cobra.Command, requirement requirements.Execu
 	if runtime.LogLevel != "debug" {
 		return nil
 	}
-	module := coreDiagnostics.ModulePixivCLI
+	module := logging.ModulePixivCLI
 	if strings.HasPrefix(cmd.CommandPath(), "pixiv fanbox") {
-		module = coreDiagnostics.ModuleFanboxCLI
+		module = logging.ModuleFanboxCLI
 	}
-	presenter := clidiagnostics.NewPresenterWithFormat(a.errOut, runtime.LogFormat, nil)
-	scoped := coreDiagnostics.WithScope(cmd.Context(), presenter, module, 0)
+	presenter := logging.NewPresenterWithFormat(a.errOut, runtime.LogFormat, nil)
+	scoped := logging.WithScope(cmd.Context(), presenter, module, 0)
 	a.diagnostics.ctx = scoped
 	a.diagnostics.operation = cmd.CommandPath()
 	a.diagnostics.presenter = presenter
-	coreDiagnostics.Emit(scoped, coreDiagnostics.Event{
-		Kind:      coreDiagnostics.EventStarted,
+	logging.Emit(scoped, logging.Event{
+		Kind:      logging.EventStarted,
 		Operation: cmd.CommandPath(),
 	})
 	cmd.SetContext(scoped)
@@ -324,14 +322,14 @@ func (a app) finishDiagnostics(err error) error {
 	if a.diagnostics == nil || a.diagnostics.presenter == nil {
 		return err
 	}
-	event := coreDiagnostics.Event{Operation: a.diagnostics.operation}
+	event := logging.Event{Operation: a.diagnostics.operation}
 	if err == nil {
-		event.Kind = coreDiagnostics.EventCompleted
+		event.Kind = logging.EventCompleted
 	} else {
-		event.Kind = coreDiagnostics.EventFailed
-		event.Reason = coreDiagnostics.ReasonCommandFailed
+		event.Kind = logging.EventFailed
+		event.Reason = logging.ReasonCommandFailed
 	}
-	coreDiagnostics.Emit(a.diagnostics.ctx, event)
+	logging.Emit(a.diagnostics.ctx, event)
 	if diagnosticErr := a.diagnostics.presenter.Err(); diagnosticErr != nil {
 		if err == nil {
 			return fmt.Errorf("write diagnostics: %w", diagnosticErr)

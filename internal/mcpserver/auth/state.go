@@ -16,8 +16,8 @@ import (
 	"slices"
 	"time"
 
-	"github.com/FlanChanXwO/pixiv-cli/internal/storage/file/atomic"
-	"github.com/FlanChanXwO/pixiv-cli/internal/storage/file/lock"
+	"github.com/FlanChanXwO/pixiv-cli/internal/storage/atomicfile"
+	"github.com/FlanChanXwO/pixiv-cli/internal/storage/filelock"
 )
 
 var (
@@ -154,7 +154,7 @@ func (s Store) Init(ctx context.Context, reset bool) (string, error) {
 		return "", errors.New("MCP state path is required")
 	}
 	var secret string
-	err := lock.WithPrivateLock(ctx, s.Path, func() error {
+	err := filelock.WithPrivateLock(ctx, s.Path, func() error {
 		state, err := s.Read(ctx)
 		if errors.Is(err, ErrNotInitialized) {
 			state = State{Version: 1, Clients: map[string]Client{}, Grants: map[string]Grant{}}
@@ -197,7 +197,7 @@ func validHash(value string) bool {
 
 func (s Store) registerClient(ctx context.Context, client Client) (string, error) {
 	var id string
-	err := lock.WithPrivateLock(ctx, s.Path, func() error {
+	err := filelock.WithPrivateLock(ctx, s.Path, func() error {
 		state, err := s.Read(ctx)
 		if err != nil {
 			return err
@@ -240,7 +240,7 @@ func (s Store) registerClient(ctx context.Context, client Client) (string, error
 
 // approveClient 与注册/reset 共用文件锁，批准提交成功后才能签发授权码。
 func (s Store) approveClient(ctx context.Context, clientID, generation, redirectURI string) error {
-	return lock.WithPrivateLock(ctx, s.Path, func() error {
+	return filelock.WithPrivateLock(ctx, s.Path, func() error {
 		state, err := s.Read(ctx)
 		if err != nil {
 			return err
@@ -264,7 +264,7 @@ func (s Store) save(ctx context.Context, state State) error {
 	if err != nil {
 		return err
 	}
-	_, err = atomic.AtomicWrite(ctx, s.Path, bytes.NewReader(append(body, '\n')))
+	_, err = atomicfile.AtomicWrite(ctx, s.Path, bytes.NewReader(append(body, '\n')))
 	return err
 }
 
@@ -280,7 +280,7 @@ func (s Store) InitializePixivUser(ctx context.Context, userID int64) (int64, er
 	return selected, err
 }
 
-// SelectPixivUserIf checks local eligibility and commits under the same state lock.
+// SelectPixivUserIf checks local eligibility and commits under the same state filelock.
 // eligible must not write MCP state; it receives identity only, never credentials.
 func (s Store) SelectPixivUserIf(ctx context.Context, userID int64, eligible func(int64) (bool, error)) (bool, error) {
 	if eligible == nil {
@@ -299,7 +299,7 @@ func (s Store) selectPixivUser(ctx context.Context, userID int64, eligible func(
 	}
 	var selected int64
 	var changed bool
-	err := lock.WithPrivateLock(ctx, s.Path, func() error {
+	err := filelock.WithPrivateLock(ctx, s.Path, func() error {
 		state, err := s.Read(ctx)
 		if err != nil {
 			return err

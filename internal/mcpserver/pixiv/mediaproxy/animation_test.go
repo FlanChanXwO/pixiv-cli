@@ -28,7 +28,7 @@ import (
 	"time"
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/auth"
-	fileatomic "github.com/FlanChanXwO/pixiv-cli/internal/storage/file/atomic"
+	fileatomic "github.com/FlanChanXwO/pixiv-cli/internal/storage/atomicfile"
 	"github.com/stretchr/testify/require"
 )
 

@@ -7,15 +7,15 @@ import (
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/internal/filters"
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/internal/outputs"
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/internal/records"
-	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/internal/runtime"
+	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/internal/toolhost"
 	"github.com/FlanChanXwO/pixiv-cli/sdk"
 	pixiv "github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
 // Register 注册 pixiv_search_novel。
-func Register(app *runtime.App, server *mcp.Server) {
-	runtime.AddTool(app, server, &mcp.Tool{Name: "pixiv_search_novel", Annotations: &mcp.ToolAnnotations{ReadOnlyHint: true, DestructiveHint: new(false), IdempotentHint: true, OpenWorldHint: new(true)}, Description: "Search for novels using keywords with supported filters.", InputSchema: searchNovelInputSchema(), OutputSchema: records.RecordsOutputSchema()}, func(ctx context.Context, request *mcp.CallToolRequest, input searchNovelIn) (*mcp.CallToolResult, outputs.Records, error) {
+func Register(app *toolhost.App, server *mcp.Server) {
+	toolhost.AddTool(app, server, &mcp.Tool{Name: "pixiv_search_novel", Annotations: &mcp.ToolAnnotations{ReadOnlyHint: true, DestructiveHint: new(false), IdempotentHint: true, OpenWorldHint: new(true)}, Description: "Search for novels using keywords with supported filters.", InputSchema: searchNovelInputSchema(), OutputSchema: records.RecordsOutputSchema()}, func(ctx context.Context, request *mcp.CallToolRequest, input searchNovelIn) (*mcp.CallToolResult, outputs.Records, error) {
 		return handleSearchNovel(ctx, app, input)
 	})
 }
@@ -26,7 +26,7 @@ type searchNovelIn struct {
 	Sort         string               `json:"sort,omitempty"`
 	Duration     string               `json:"duration,omitempty"`
 	NovelFilter  *filters.NovelFilter `json:"novel_filter,omitempty"`
-	runtime.PageLimitIn
+	toolhost.PageLimitIn
 }
 
 // searchNovelInputSchema 只声明 App API 的稳定检索语义与已接通的本地筛选。
@@ -51,14 +51,14 @@ func searchNovelInputSchema() map[string]any {
 	}
 }
 
-func handleSearchNovel(ctx context.Context, app *runtime.App, in searchNovelIn) (*mcp.CallToolResult, outputs.Records, error) {
+func handleSearchNovel(ctx context.Context, app *toolhost.App, in searchNovelIn) (*mcp.CallToolResult, outputs.Records, error) {
 	if in.SearchTarget == "" {
 		in.SearchTarget = string(pixiv.SearchTargetPartialMatchForTags)
 	}
 	if in.Sort == "" {
 		in.Sort = string(pixiv.SortModeDateDesc)
 	}
-	plan, err := runtime.ParseListPlan(in.PageLimitIn)
+	plan, err := toolhost.ParseListPlan(in.PageLimitIn)
 	if err != nil {
 		return outputs.Error(err)
 	}
@@ -66,7 +66,7 @@ func handleSearchNovel(ctx context.Context, app *runtime.App, in searchNovelIn) 
 	if err != nil {
 		return outputs.Error(err)
 	}
-	items, more, err := runtime.CollectWith(ctx, app, plan, func(ctx context.Context, client *pixiv.Client, cursor sdk.Cursor) ([]pixiv.Novel, sdk.Cursor, error) {
+	items, more, err := toolhost.CollectWith(ctx, app, plan, func(ctx context.Context, client *pixiv.Client, cursor sdk.Cursor) ([]pixiv.Novel, sdk.Cursor, error) {
 		result, err := client.SearchNovels(ctx, pixiv.SearchNovelsRequest{
 			Word: in.Word, Target: pixiv.SearchTarget(in.SearchTarget), Sort: pixiv.SortMode(in.Sort), Duration: pixiv.DurationFilter(in.Duration), Cursor: cursor,
 		})
@@ -82,6 +82,6 @@ func handleSearchNovel(ctx context.Context, app *runtime.App, in searchNovelIn) 
 	if err != nil {
 		return outputs.Error(err)
 	}
-	out := outputs.Records{Records: recordItems, Pagination: runtime.ListPagination(plan, in.Limit, len(items), more)}
+	out := outputs.Records{Records: recordItems, Pagination: toolhost.ListPagination(plan, in.Limit, len(items), more)}
 	return outputs.Result(out, false), out, nil
 }

@@ -12,7 +12,7 @@ import (
 	"slices"
 	"time"
 
-	"github.com/FlanChanXwO/pixiv-cli/internal/storage/file/lock"
+	"github.com/FlanChanXwO/pixiv-cli/internal/storage/filelock"
 )
 
 var errInvalidGrant = errors.New("invalid_grant")
@@ -81,7 +81,7 @@ func (a *authorizer) exchange(r *http.Request, form url.Values) (map[string]any,
 	var pair map[string]any
 	codeHash := sha256.Sum256([]byte(form.Get("code")))
 	// 与 reset/注册共用文件锁；重新读取 generation，不能提交锁外旧快照。
-	err := lock.WithPrivateLock(r.Context(), a.store.Path, func() error {
+	err := filelock.WithPrivateLock(r.Context(), a.store.Path, func() error {
 		state, err := a.readState(r.Context())
 		if err != nil {
 			return err

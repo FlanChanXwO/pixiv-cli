@@ -8,15 +8,15 @@ import (
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/internal/filters"
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/internal/outputs"
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/internal/records"
-	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/internal/runtime"
+	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/internal/toolhost"
 	"github.com/FlanChanXwO/pixiv-cli/sdk"
 	pixiv "github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
 // Register 注册 pixiv_recommended。
-func Register(app *runtime.App, server *mcp.Server) {
-	runtime.AddTool(app, server, &mcp.Tool{Name: "pixiv_recommended", Annotations: &mcp.ToolAnnotations{ReadOnlyHint: true, DestructiveHint: new(false), IdempotentHint: true, OpenWorldHint: new(true)}, Description: "Get typed personalized recommendations through the Pixiv SDK.", InputSchema: recommendedInputSchema(), OutputSchema: records.RecommendedOutputSchema()}, func(ctx context.Context, request *mcp.CallToolRequest, input In) (*mcp.CallToolResult, outputs.Recommended, error) {
+func Register(app *toolhost.App, server *mcp.Server) {
+	toolhost.AddTool(app, server, &mcp.Tool{Name: "pixiv_recommended", Annotations: &mcp.ToolAnnotations{ReadOnlyHint: true, DestructiveHint: new(false), IdempotentHint: true, OpenWorldHint: new(true)}, Description: "Get typed personalized recommendations through the Pixiv SDK.", InputSchema: recommendedInputSchema(), OutputSchema: records.RecommendedOutputSchema()}, func(ctx context.Context, request *mcp.CallToolRequest, input In) (*mcp.CallToolResult, outputs.Recommended, error) {
 		return handleRecommended(ctx, app, input)
 	})
 }
@@ -27,7 +27,7 @@ type In struct {
 	IllustFilter *filters.IllustFilter `json:"illust_filter,omitempty"`
 	NovelFilter  *filters.NovelFilter  `json:"novel_filter,omitempty"`
 	UserFilter   *filters.UserFilter   `json:"user_filter,omitempty"`
-	runtime.PageLimitIn
+	toolhost.PageLimitIn
 }
 
 func recommendedInputSchema() map[string]any {
@@ -93,9 +93,9 @@ func artworkFilterForKind(kind string, filter *filters.IllustFilter) *filters.Il
 	return &copy
 }
 
-func handleRecommended(ctx context.Context, app *runtime.App, in In) (*mcp.CallToolResult, outputs.Recommended, error) {
+func handleRecommended(ctx context.Context, app *toolhost.App, in In) (*mcp.CallToolResult, outputs.Recommended, error) {
 	out := outputs.NewRecommended()
-	plan, err := runtime.ParseListPlan(in.PageLimitIn)
+	plan, err := toolhost.ParseListPlan(in.PageLimitIn)
 	if err == nil && in.Kind != "all" && in.Kind != "illust" && in.Kind != "manga" && in.Kind != "novel" && in.Kind != "user" {
 		err = errors.New("kind must be one of: all, illust, manga, novel, user")
 	}
@@ -114,7 +114,7 @@ func handleRecommended(ctx context.Context, app *runtime.App, in In) (*mcp.CallT
 		if !plan.OneBatch || in.Kind == "all" {
 			return outputs.RecommendedError(errors.New("cursor requires a single kind and omitted page and limit"))
 		}
-		binding, err := runtime.BindCursor("recommended", streamInput(in, in.Kind))
+		binding, err := toolhost.BindCursor("recommended", streamInput(in, in.Kind))
 		if err != nil {
 			return outputs.RecommendedError(err)
 		}
@@ -139,7 +139,7 @@ func handleRecommended(ctx context.Context, app *runtime.App, in In) (*mcp.CallT
 			if filterErr != nil {
 				return false, filterErr
 			}
-			visualItems, visualMore, visualNext, filterErr = runtime.CollectPagesFrom(rawArtworkCtx, plan, initial, func(ctx context.Context, c sdk.Cursor) ([]pixiv.Artwork, sdk.Cursor, error) {
+			visualItems, visualMore, visualNext, filterErr = toolhost.CollectPagesFrom(rawArtworkCtx, plan, initial, func(ctx context.Context, c sdk.Cursor) ([]pixiv.Artwork, sdk.Cursor, error) {
 				r, e := client.RecommendedArtworks(ctx, pixiv.RecommendedArtworksRequest{Cursor: c})
 				if e != nil {
 					return nil, sdk.Cursor{}, e
@@ -189,7 +189,7 @@ func handleRecommended(ctx context.Context, app *runtime.App, in In) (*mcp.CallT
 			if filterErr != nil {
 				return false, filterErr
 			}
-			items, more, next, fetchErr := runtime.CollectPagesFrom(novelCtx, plan, initial, func(ctx context.Context, c sdk.Cursor) ([]pixiv.Novel, sdk.Cursor, error) {
+			items, more, next, fetchErr := toolhost.CollectPagesFrom(novelCtx, plan, initial, func(ctx context.Context, c sdk.Cursor) ([]pixiv.Novel, sdk.Cursor, error) {
 				r, e := client.RecommendedNovels(ctx, pixiv.RecommendedNovelsRequest{Cursor: c})
 				if e != nil {
 					return nil, sdk.Cursor{}, e
@@ -215,7 +215,7 @@ func handleRecommended(ctx context.Context, app *runtime.App, in In) (*mcp.CallT
 			if filterErr != nil {
 				return false, filterErr
 			}
-			items, more, next, fetchErr := runtime.CollectPagesFrom(userCtx, plan, initial, func(ctx context.Context, c sdk.Cursor) ([]pixiv.UserPreview, sdk.Cursor, error) {
+			items, more, next, fetchErr := toolhost.CollectPagesFrom(userCtx, plan, initial, func(ctx context.Context, c sdk.Cursor) ([]pixiv.UserPreview, sdk.Cursor, error) {
 				r, e := client.RecommendedUsers(ctx, pixiv.RecommendedUsersRequest{Cursor: c})
 				if e != nil {
 					return nil, sdk.Cursor{}, e
@@ -267,7 +267,7 @@ func streamContinuation(in In, kind string, next sdk.Cursor) (string, error) {
 	if (kind == "illust" || kind == "manga") && in.IllustFilter != nil && in.IllustFilter.Type != "" && in.IllustFilter.Type != kind {
 		return "", nil
 	}
-	binding, err := runtime.BindCursor("recommended", streamInput(in, kind))
+	binding, err := toolhost.BindCursor("recommended", streamInput(in, kind))
 	if err != nil {
 		return "", err
 	}

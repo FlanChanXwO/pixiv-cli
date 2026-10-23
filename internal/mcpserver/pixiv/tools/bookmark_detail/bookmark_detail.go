@@ -7,14 +7,14 @@ import (
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/internal/outputs"
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/internal/records"
-	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/internal/runtime"
+	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/internal/toolhost"
 	pixiv "github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
 // Register 注册 pixiv_bookmark_detail。
-func Register(app *runtime.App, server *mcp.Server) {
-	runtime.AddTool(app, server, &mcp.Tool{Name: "pixiv_bookmark_detail", Annotations: &mcp.ToolAnnotations{ReadOnlyHint: true, DestructiveHint: new(false), IdempotentHint: true, OpenWorldHint: new(true)}, Description: "Get the current user's bookmark state for one artwork.", OutputSchema: records.BookmarkDetailOutputSchema()}, func(ctx context.Context, request *mcp.CallToolRequest, input In) (*mcp.CallToolResult, outputs.BookmarkDetail, error) {
+func Register(app *toolhost.App, server *mcp.Server) {
+	toolhost.AddTool(app, server, &mcp.Tool{Name: "pixiv_bookmark_detail", Annotations: &mcp.ToolAnnotations{ReadOnlyHint: true, DestructiveHint: new(false), IdempotentHint: true, OpenWorldHint: new(true)}, Description: "Get the current user's bookmark state for one artwork.", OutputSchema: records.BookmarkDetailOutputSchema()}, func(ctx context.Context, request *mcp.CallToolRequest, input In) (*mcp.CallToolResult, outputs.BookmarkDetail, error) {
 		return handleBookmarkDetail(ctx, app, input)
 	})
 }
@@ -23,11 +23,11 @@ type In struct {
 	IllustID int64 `json:"illust_id" jsonschema:"positive artwork ID"`
 }
 
-func handleBookmarkDetail(ctx context.Context, app *runtime.App, in In) (*mcp.CallToolResult, outputs.BookmarkDetail, error) {
+func handleBookmarkDetail(ctx context.Context, app *toolhost.App, in In) (*mcp.CallToolResult, outputs.BookmarkDetail, error) {
 	if in.IllustID <= 0 {
 		return outputs.BookmarkDetailError(errors.New("illust_id must be a positive integer"))
 	}
-	result, err := runtime.Read(app, ctx, func(ctx context.Context, client *pixiv.Client) (pixiv.ArtworkBookmarkDetail, error) {
+	result, err := toolhost.Read(app, ctx, func(ctx context.Context, client *pixiv.Client) (pixiv.ArtworkBookmarkDetail, error) {
 		return client.ArtworkBookmark(ctx, pixiv.ArtworkBookmarkRequest{ArtworkID: in.IllustID})
 	})
 	if err != nil {

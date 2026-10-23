@@ -22,7 +22,7 @@ func TestPixivBinaryReportsRootVersion(t *testing.T) {
 
 	t.Run("linker injected build uses release version", func(t *testing.T) {
 		binaryPath := buildPixivVersionBinary(t, repoRoot,
-			"-X github.com/FlanChanXwO/pixiv-cli/internal/shared/buildinfo.Version=v0.1.0",
+			"-X github.com/FlanChanXwO/pixiv-cli/internal/version.Version=v0.1.0",
 		)
 		assertPixivVersionContract(t, repoRoot, binaryPath, "v0.1.0")
 	})

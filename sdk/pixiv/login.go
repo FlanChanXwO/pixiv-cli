@@ -9,8 +9,8 @@ import (
 	"strings"
 	"sync/atomic"
 
-	"github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/oauth"
-	"github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/protocol"
+	protocol "github.com/FlanChanXwO/pixiv-cli/internal/pixivapi"
+	"github.com/FlanChanXwO/pixiv-cli/internal/pixivapi/oauth"
 	"github.com/FlanChanXwO/pixiv-cli/sdk"
 )
 

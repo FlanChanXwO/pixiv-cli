@@ -14,10 +14,10 @@ import (
 	"sync/atomic"
 	"testing"
 
+	"github.com/FlanChanXwO/pixiv-cli/internal/logging"
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver"
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/fanbox"
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv"
-	"github.com/FlanChanXwO/pixiv-cli/internal/shared/diagnostics"
 	fanboxsdk "github.com/FlanChanXwO/pixiv-cli/sdk/fanbox"
 	pixivsdk "github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
@@ -32,15 +32,15 @@ func TestUnifiedMediaSerializationOverIOTransport(t *testing.T) {
 		{"normal-2026", "2026-07-28", false}, {"debug-2026", "2026-07-28", true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			var events []diagnostics.Event
+			var events []logging.Event
 			var mu sync.Mutex
 			ctx := t.Context()
 			if tc.debug {
-				ctx = diagnostics.WithScope(ctx, diagnostics.SinkFunc(func(event diagnostics.Event) {
+				ctx = logging.WithScope(ctx, logging.SinkFunc(func(event logging.Event) {
 					mu.Lock()
 					defer mu.Unlock()
 					events = append(events, event)
-				}), diagnostics.ModulePixivMCP, 0)
+				}), logging.ModulePixivMCP, 0)
 			}
 			server := mcpserver.New(pixiv.SDKPorts{}, pixiv.Account{}, fanbox.SDKPorts{}, nil)
 			var calls atomic.Int32
@@ -105,7 +105,7 @@ func TestUnifiedMediaSerializationOverIOTransport(t *testing.T) {
 				t.Fatalf("result encoded %d times, want 3", calls.Load()-before)
 			}
 			mu.Lock()
-			observed := append([]diagnostics.Event(nil), events...)
+			observed := append([]logging.Event(nil), events...)
 			mu.Unlock()
 			want := 0
 			if tc.debug {
@@ -115,7 +115,7 @@ func TestUnifiedMediaSerializationOverIOTransport(t *testing.T) {
 				t.Fatalf("serialization events = %d, want %d", len(observed), want)
 			}
 			for _, event := range observed {
-				if event.Operation != "mcp_response_serialization" || event.Kind != diagnostics.EventCompleted || event.Count != resultLength || event.Duration < 0 {
+				if event.Operation != "mcp_response_serialization" || event.Kind != logging.EventCompleted || event.Count != resultLength || event.Duration < 0 {
 					t.Fatalf("invalid serialization observation: %+v", event)
 				}
 			}

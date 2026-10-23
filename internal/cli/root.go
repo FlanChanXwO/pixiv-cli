@@ -16,38 +16,38 @@ import (
 	"fmt"
 	"io"
 
-	requirements "github.com/FlanChanXwO/pixiv-cli/internal/cli/commands"
-	configcommands "github.com/FlanChanXwO/pixiv-cli/internal/cli/commands/config"
-	fanboxcommands "github.com/FlanChanXwO/pixiv-cli/internal/cli/commands/fanbox"
-	fanboxauth "github.com/FlanChanXwO/pixiv-cli/internal/cli/commands/fanbox/auth"
-	fanboxdownload "github.com/FlanChanXwO/pixiv-cli/internal/cli/commands/fanbox/download"
-	fanboxpost "github.com/FlanChanXwO/pixiv-cli/internal/cli/commands/fanbox/post"
-	authcommands "github.com/FlanChanXwO/pixiv-cli/internal/cli/commands/pixiv/auth"
-	"github.com/FlanChanXwO/pixiv-cli/internal/cli/commands/pixiv/auth/loginhelper"
-	pixivbookmark "github.com/FlanChanXwO/pixiv-cli/internal/cli/commands/pixiv/bookmark"
-	pixivcomment "github.com/FlanChanXwO/pixiv-cli/internal/cli/commands/pixiv/comment"
-	pixivdetail "github.com/FlanChanXwO/pixiv-cli/internal/cli/commands/pixiv/detail"
-	downloadcommands "github.com/FlanChanXwO/pixiv-cli/internal/cli/commands/pixiv/download"
-	pixivfollow "github.com/FlanChanXwO/pixiv-cli/internal/cli/commands/pixiv/follow"
-	mcpcommands "github.com/FlanChanXwO/pixiv-cli/internal/cli/commands/pixiv/mcp"
-	pixivmypixiv "github.com/FlanChanXwO/pixiv-cli/internal/cli/commands/pixiv/mypixiv"
-	pixivranking "github.com/FlanChanXwO/pixiv-cli/internal/cli/commands/pixiv/ranking"
-	pixivrecommended "github.com/FlanChanXwO/pixiv-cli/internal/cli/commands/pixiv/recommended"
-	pixivsearch "github.com/FlanChanXwO/pixiv-cli/internal/cli/commands/pixiv/search"
-	pixivseries "github.com/FlanChanXwO/pixiv-cli/internal/cli/commands/pixiv/series"
-	pixivtimeline "github.com/FlanChanXwO/pixiv-cli/internal/cli/commands/pixiv/timeline"
-	pixivuser "github.com/FlanChanXwO/pixiv-cli/internal/cli/commands/pixiv/user"
-	updatecommands "github.com/FlanChanXwO/pixiv-cli/internal/cli/commands/update"
+	authcommands "github.com/FlanChanXwO/pixiv-cli/internal/cli/auth"
+	"github.com/FlanChanXwO/pixiv-cli/internal/cli/auth/loginhelper"
+	pixivbookmark "github.com/FlanChanXwO/pixiv-cli/internal/cli/bookmark"
+	pixivcomment "github.com/FlanChanXwO/pixiv-cli/internal/cli/comment"
+	configcommands "github.com/FlanChanXwO/pixiv-cli/internal/cli/config"
+	pixivdetail "github.com/FlanChanXwO/pixiv-cli/internal/cli/detail"
+	downloadcommands "github.com/FlanChanXwO/pixiv-cli/internal/cli/download"
+	fanboxcommands "github.com/FlanChanXwO/pixiv-cli/internal/cli/fanbox"
+	fanboxauth "github.com/FlanChanXwO/pixiv-cli/internal/cli/fanbox/auth"
+	fanboxdownload "github.com/FlanChanXwO/pixiv-cli/internal/cli/fanbox/download"
+	fanboxpost "github.com/FlanChanXwO/pixiv-cli/internal/cli/fanbox/post"
+	pixivfollow "github.com/FlanChanXwO/pixiv-cli/internal/cli/follow"
+	requirements "github.com/FlanChanXwO/pixiv-cli/internal/cli/internal/command"
+	mcpcommands "github.com/FlanChanXwO/pixiv-cli/internal/cli/mcp"
+	pixivmypixiv "github.com/FlanChanXwO/pixiv-cli/internal/cli/mypixiv"
+	pixivranking "github.com/FlanChanXwO/pixiv-cli/internal/cli/ranking"
+	pixivrecommended "github.com/FlanChanXwO/pixiv-cli/internal/cli/recommended"
+	pixivsearch "github.com/FlanChanXwO/pixiv-cli/internal/cli/search"
+	pixivseries "github.com/FlanChanXwO/pixiv-cli/internal/cli/series"
+	pixivtimeline "github.com/FlanChanXwO/pixiv-cli/internal/cli/timeline"
+	updatecommands "github.com/FlanChanXwO/pixiv-cli/internal/cli/update"
+	pixivuser "github.com/FlanChanXwO/pixiv-cli/internal/cli/user"
 	configapp "github.com/FlanChanXwO/pixiv-cli/internal/config/settings"
+	fanboxaccount "github.com/FlanChanXwO/pixiv-cli/internal/fanboxaccount"
 	unifiedmcp "github.com/FlanChanXwO/pixiv-cli/internal/mcpserver"
 	downloader "github.com/FlanChanXwO/pixiv-cli/internal/media/downloader"
-	fanboxapp "github.com/FlanChanXwO/pixiv-cli/internal/services/fanbox"
-	fanboxaccount "github.com/FlanChanXwO/pixiv-cli/internal/services/fanbox/account"
-	pixivaccount "github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/account"
-	"github.com/FlanChanXwO/pixiv-cli/internal/services/reversesearch"
-	reverseassembly "github.com/FlanChanXwO/pixiv-cli/internal/services/reversesearch/assembly"
-	"github.com/FlanChanXwO/pixiv-cli/internal/shared/buildinfo"
-	"github.com/FlanChanXwO/pixiv-cli/internal/update"
+	pixivaccount "github.com/FlanChanXwO/pixiv-cli/internal/pixivaccount"
+	"github.com/FlanChanXwO/pixiv-cli/internal/reversesearch"
+	reverseassembly "github.com/FlanChanXwO/pixiv-cli/internal/reversesearch/assembly"
+	selfupdate "github.com/FlanChanXwO/pixiv-cli/internal/selfupdate"
+	fanboxapp "github.com/FlanChanXwO/pixiv-cli/internal/session/fanbox"
+	"github.com/FlanChanXwO/pixiv-cli/internal/version"
 	thirdparty "github.com/FlanChanXwO/pixiv-cli/third_party"
 	"github.com/spf13/cobra"
 	"golang.org/x/term"
@@ -100,7 +100,7 @@ var (
 	// FANBOX 浏览器读取是 auth command 的注入端口；根包只保留一次 Run
 	// 级别的测试 seam，生产默认实现位于 commands/fanbox/auth。
 	fanboxBrowserSessionReader          fanboxcommands.BrowserProvider = fanboxauth.SystemBrowserProvider{}
-	cleanupPendingWindowsUpdate                                        = update.CleanupPendingWindowsUpdate
+	cleanupPendingWindowsUpdate                                        = selfupdate.CleanupPendingWindowsUpdate
 	automaticPersistentHandlerSupported                                = loginhelper.AutomaticPersistentHandlerSupported
 	newUpdateCommandCoordinator                                        = updatecommands.NewCoordinator
 	newCLIAutomaticUpdateChecker                                       = updatecommands.NewAutomaticChecker
@@ -126,7 +126,7 @@ func (a app) newRootCommand() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:           "pixiv",
 		Short:         "Pixiv CLI and MCP server",
-		Version:       buildinfo.Current().Version,
+		Version:       version.Current().Version,
 		SilenceUsage:  true,
 		SilenceErrors: true,
 		RunE: func(cmd *cobra.Command, args []string) error {

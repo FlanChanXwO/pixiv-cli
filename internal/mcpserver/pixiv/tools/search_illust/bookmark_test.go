@@ -3,7 +3,7 @@ package search_illust
 import (
 	"context"
 	"fmt"
-	"github.com/FlanChanXwO/pixiv-cli/internal/shared/pagination"
+	"github.com/FlanChanXwO/pixiv-cli/internal/pagination"
 	"github.com/FlanChanXwO/pixiv-cli/sdk"
 	product "github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
 	"github.com/stretchr/testify/require"

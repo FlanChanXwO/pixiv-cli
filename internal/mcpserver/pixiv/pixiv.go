@@ -5,7 +5,7 @@ package pixiv
 
 import (
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/gallery"
-	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/internal/runtime"
+	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/internal/toolhost"
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/tools/account_list"
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/tools/account_login_start"
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/tools/account_status"
@@ -56,24 +56,24 @@ import (
 
 // Account 是 MCP 请求的本地值；只携带传输覆写与账号选择，不持有
 // client 或凭据。
-type Account = runtime.Account
+type Account = toolhost.Account
 
 // SDKPorts 是 MCP 对 Pixiv SDK 的窄端口：打开独立认证快照、在账号池重放边界内
 // 执行操作。composition root 注入实现；MCP 不持有 service locator。
-type SDKPorts = runtime.SDKPorts
+type SDKPorts = toolhost.SDKPorts
 
 // LocalDownloads configures stdio filesystem delivery through the shared downloader.
-type LocalDownloads = runtime.LocalDownloads
+type LocalDownloads = toolhost.LocalDownloads
 
 // ReverseSearchPorts 是 reverse_search 的启动时配置与能力注入。
-type ReverseSearchPorts = runtime.ReverseSearchPorts
+type ReverseSearchPorts = toolhost.ReverseSearchPorts
 
 // Register 将 Pixiv tools 注册到共享 server，账号和 SDK 生命周期仍由 Pixiv runtime 持有。
 func Register(server *mcp.Server, ports SDKPorts, account Account) {
 	if ports.Media != nil {
 		gallery.Register(server, ports.Media)
 	}
-	app := runtime.NewApp(ports, account)
+	app := toolhost.NewApp(ports, account)
 	if ports.Downloads != nil {
 		download.Register(app, server)
 	}

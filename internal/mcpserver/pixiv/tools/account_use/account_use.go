@@ -4,7 +4,7 @@ package account_use
 import (
 	"context"
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/internal/outputs"
-	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/internal/runtime"
+	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/internal/toolhost"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
@@ -13,9 +13,9 @@ type input struct {
 }
 
 // Register adds pixiv_account_use; first-use adoption and explicit selection are local writes.
-func Register(app *runtime.App, server *mcp.Server) {
+func Register(app *toolhost.App, server *mcp.Server) {
 	outputs.ProtectAccountInput(server, "pixiv_account_use")
-	runtime.AddTool(app, server, &mcp.Tool{Name: "pixiv_account_use", Description: "Select an existing local Pixiv account for all connectors without changing the CLI default.", Annotations: &mcp.ToolAnnotations{ReadOnlyHint: false, DestructiveHint: new(false), IdempotentHint: true, OpenWorldHint: new(false)}}, func(ctx context.Context, _ *mcp.CallToolRequest, in input) (*mcp.CallToolResult, outputs.AccountStatus, error) {
+	toolhost.AddTool(app, server, &mcp.Tool{Name: "pixiv_account_use", Description: "Select an existing local Pixiv account for all connectors without changing the CLI default.", Annotations: &mcp.ToolAnnotations{ReadOnlyHint: false, DestructiveHint: new(false), IdempotentHint: true, OpenWorldHint: new(false)}}, func(ctx context.Context, _ *mcp.CallToolRequest, in input) (*mcp.CallToolResult, outputs.AccountStatus, error) {
 		status, err := app.AccountManager().Use(ctx, in.UserID)
 		return outputs.AccountResult(status, err)
 	})
