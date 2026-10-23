@@ -32,9 +32,9 @@ func newTestSession(t *testing.T, handler http.Handler, cookie string) *fanboxap
 			return (&net.Dialer{}).DialContext(ctx, network, server.Listener.Addr().String())
 		},
 	}
-	session, err := fanboxapi.NewSessionWithHTTPClient(cookie, &http.Client{Transport: transport})
+	session, err := fanboxapi.NewSessionWithOptions(cookie, fanboxapi.SessionOptions{HTTPClient: &http.Client{Transport: transport}})
 	if err != nil {
-		t.Fatalf("fanboxapi.NewSessionWithHTTPClient() error = %v", err)
+		t.Fatalf("fanboxapi.NewSessionWithOptions() error = %v", err)
 	}
 	return session
 }
@@ -231,16 +231,13 @@ func TestStatusClassification(t *testing.T) {
 }
 
 func TestNewSessionUsesBrowserTransportAndRejectsImplicitTransport(t *testing.T) {
-	session, err := fanboxapi.NewSession("FANBOXSESSID=tls-canary")
+	session, err := fanboxapi.NewSessionWithOptions("FANBOXSESSID=tls-canary", fanboxapi.SessionOptions{})
 	if err != nil {
-		t.Fatalf("fanboxapi.NewSession() error = %v", err)
+		t.Fatalf("fanboxapi.NewSessionWithOptions() error = %v", err)
 	}
 	defer session.CloseIdleConnections()
-	if _, err := fanboxapi.NewSessionWithHTTPClient("FANBOXSESSID=tls-canary", &http.Client{}); err == nil {
-		t.Fatal("fanboxapi.NewSessionWithHTTPClient() accepted implicit standard transport")
-	}
-	if _, err := fanboxapi.NewSession("FANBOXSESSID=tls-canary", fanboxapi.WithHTTPClient(&http.Client{})); err == nil {
-		t.Fatal("fanboxapi.NewSession() with implicit client accepted implicit standard transport")
+	if _, err := fanboxapi.NewSessionWithOptions("FANBOXSESSID=tls-canary", fanboxapi.SessionOptions{HTTPClient: &http.Client{}}); err == nil {
+		t.Fatal("fanboxapi.NewSessionWithOptions() accepted implicit standard transport")
 	}
 }
 
@@ -265,10 +262,12 @@ func TestSessionUsesCustomUserAgent(t *testing.T) {
 
 func TestSessionRejectsUnsafeURLsBeforeTransport(t *testing.T) {
 	called := false
-	session, err := fanboxapi.NewSessionWithHTTPClient("FANBOXSESSID=url-canary", &http.Client{Transport: roundTripFunc(func(*http.Request) (*http.Response, error) {
-		called = true
-		return nil, nil
-	})})
+	session, err := fanboxapi.NewSessionWithOptions("FANBOXSESSID=url-canary", fanboxapi.SessionOptions{
+		HTTPClient: &http.Client{Transport: roundTripFunc(func(*http.Request) (*http.Response, error) {
+			called = true
+			return nil, nil
+		})},
+	})
 	if err != nil {
 		t.Fatal(err)
 	}
