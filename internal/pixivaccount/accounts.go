@@ -1,4 +1,4 @@
-// Package pixiv 编排 Pixiv 账号选择、refresh token 轮换持久化与公开 SDK 调用。
+// Package pixivaccount 编排 Pixiv 账号选择、refresh token 轮换持久化与公开 SDK 调用。
 package pixivaccount
 
 import (

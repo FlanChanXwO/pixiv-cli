@@ -1,4 +1,4 @@
-// Package releaseversion 统一拥有仓库级 release version identity。
+// Package version 统一拥有仓库级 release version identity。
 package version
 
 import (
