@@ -1,4 +1,4 @@
-// Package pixivsession 编排 Pixiv 账号、账号池与 public SDK client 生命周期。
+// Package pixiv 编排 Pixiv 账号、账号池与 public SDK client 生命周期。
 //
 // 本包是业务 Facade：账号凭据与 pool 策略由叶模块实现，具体的 CLI/MCP
 // 请求模型和配置映射由组合根负责。本包只接收协议无关的请求值与行为端口。
