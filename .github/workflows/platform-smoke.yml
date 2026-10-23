@@ -89,7 +89,15 @@ jobs:
         run: go test ./scripts/tests/installers -count=1
       - name: Test platform OAuth callback integration
         shell: bash
-        run: go test ./internal/cli/commands/pixiv/auth/loginhelper -count=1
+        run: |
+          set -euo pipefail
+          # The worker workflow comes from the trusted base ref while the checkout
+          # is the PR head, so one path must bridge layout moves until merge.
+          package=./internal/cli/auth/loginhelper
+          if [ ! -d "$package" ]; then
+            package=./internal/cli/commands/pixiv/auth/loginhelper
+          fi
+          go test "$package" -count=1
       - name: Test Windows login handler wiring
         if: ${{ matrix.goos == 'windows' }}
         shell: bash
