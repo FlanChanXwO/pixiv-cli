@@ -180,11 +180,11 @@ func openPixivLiveSession(t *testing.T, ctx context.Context, mutationAccountID i
 		interval: liveManifestPace,
 	}}
 	t.Cleanup(rawHTTPClient.CloseIdleConnections)
-	raw := protocol.New(
-		protocol.WithHTTPClient(rawHTTPClient),
-		protocol.WithAccessToken(credentials.AccessToken()),
-		protocol.WithUserID(credentials.UserID),
-	)
+	raw := protocol.New(protocol.Config{
+		HTTPClient:  rawHTTPClient,
+		AccessToken: credentials.AccessToken(),
+		UserID:      credentials.UserID,
+	})
 	return &pixivLiveSession{client: client, raw: raw, userID: credentials.UserID}
 }
 

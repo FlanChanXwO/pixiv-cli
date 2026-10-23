@@ -227,11 +227,11 @@ func TestArtworkCommentReplyWithCreatedParentUsesWritableTargetAndCleansBothWrit
 	}
 	session := &pixivLiveSession{
 		client: client,
-		raw: protocol.New(
-			protocol.WithHTTPClient(httpClient),
-			protocol.WithAccessToken("token"),
-			protocol.WithUserID(userID),
-		),
+		raw: protocol.New(protocol.Config{
+			HTTPClient:  httpClient,
+			AccessToken: "token",
+			UserID:      userID,
+		}),
 		userID: userID,
 	}
 
