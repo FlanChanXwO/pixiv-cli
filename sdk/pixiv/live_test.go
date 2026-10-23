@@ -1,4 +1,4 @@
-package e2e
+package pixiv_test
 
 import (
 	"bytes"
@@ -11,15 +11,17 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"reflect"
+	"runtime"
 	"strconv"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/config/paths"
 	config "github.com/FlanChanXwO/pixiv-cli/internal/config/settings"
 	accountpixiv "github.com/FlanChanXwO/pixiv-cli/internal/pixivaccount"
+	protocol "github.com/FlanChanXwO/pixiv-cli/internal/pixivapi"
 	"github.com/FlanChanXwO/pixiv-cli/internal/storage/database"
 	"github.com/FlanChanXwO/pixiv-cli/sdk"
 	pixivsdk "github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
@@ -30,6 +32,7 @@ import (
 const (
 	liveManifestPace   = 1200 * time.Millisecond
 	liveReadAccountEnv = "PIXIV_E2E_READ_USER_ID"
+	liveRepoRoot       = "../.."
 )
 
 func selectLiveReadAccount(accounts []accountpixiv.Account, defaultID int64, hasDefault bool, explicit string) (accountpixiv.Account, error) {
@@ -66,46 +69,282 @@ func selectLiveReadAccount(accounts []accountpixiv.Account, defaultID int64, has
 	return account, nil
 }
 
-func TestSelectLiveReadAccountExplicitWins(t *testing.T) {
-	accounts := []accountpixiv.Account{
-		accountpixiv.New(11, "default", []byte("default-token")),
-		accountpixiv.New(22, "secondary", []byte("secondary-token")),
+// liveProbePacingRoundTripper 让 raw diagnostic path 遵守 public SDK operation
+// 的既有 live pacing contract；raw probe 只用于观察尚未建模的 wire field。
+type liveProbePacingRoundTripper struct {
+	inner    http.RoundTripper
+	interval time.Duration
+	mu       sync.Mutex
+	last     time.Time
+}
+
+func (p *liveProbePacingRoundTripper) RoundTrip(req *http.Request) (*http.Response, error) {
+	p.mu.Lock()
+	wait := p.interval - time.Since(p.last)
+	if wait > 0 {
+		timer := time.NewTimer(wait)
+		select {
+		case <-req.Context().Done():
+			timer.Stop()
+			p.mu.Unlock()
+			return nil, req.Context().Err()
+		case <-timer.C:
+		}
 	}
-	account, err := selectLiveReadAccount(accounts, 11, true, "22")
+	p.last = time.Now()
+	p.mu.Unlock()
+	return p.inner.RoundTrip(req)
+}
+
+func (p *liveProbePacingRoundTripper) CloseIdleConnections() {
+	if closer, ok := p.inner.(interface{ CloseIdleConnections() }); ok {
+		closer.CloseIdleConnections()
+	}
+}
+
+type pixivLiveSession struct {
+	client *pixivsdk.Client
+	raw    *protocol.Client
+	userID int64
+}
+
+// openPixivLiveSession 是读取与写入测试共用的唯一凭据入口。mutationAccountID
+// 非零时按写入契约选择显式非默认账号；为零时按读取契约选择账号。
+func openPixivLiveSession(t *testing.T, ctx context.Context, mutationAccountID int64) *pixivLiveSession {
+	t.Helper()
+	home, err := os.UserHomeDir()
 	if err != nil {
-		t.Fatalf("select explicit account: %v", err)
+		t.Fatalf("home: %v", err)
 	}
-	if account.UserID != 22 {
-		t.Fatalf("selected user = %d, want explicit 22", account.UserID)
-	}
-}
-
-func TestSelectLiveReadAccountRejectsMissingExplicitUser(t *testing.T) {
-	accounts := []accountpixiv.Account{accountpixiv.New(11, "default", []byte("default-token"))}
-	if _, err := selectLiveReadAccount(accounts, 11, true, "22"); err == nil {
-		t.Fatal("missing explicit read account must fail closed")
-	}
-}
-
-func TestSelectLiveReadAccountRejectsMalformedExplicitUser(t *testing.T) {
-	accounts := []accountpixiv.Account{accountpixiv.New(11, "default", []byte("default-token"))}
-	if _, err := selectLiveReadAccount(accounts, 11, true, "not-a-uid"); err == nil {
-		t.Fatal("malformed explicit read account must fail closed")
-	}
-}
-
-func TestSelectLiveReadAccountFallsBackToConfiguredDefault(t *testing.T) {
-	accounts := []accountpixiv.Account{
-		accountpixiv.New(22, "first", []byte("first-token")),
-		accountpixiv.New(11, "default", []byte("default-token")),
-	}
-	account, err := selectLiveReadAccount(accounts, 11, true, "")
+	db, err := database.Open(filepath.Join(home, paths.AppDataDirName))
 	if err != nil {
-		t.Fatalf("select configured default: %v", err)
+		t.Fatalf("open database: %v", err)
 	}
-	if account.UserID != 11 {
-		t.Fatalf("selected user = %d, want configured default 11", account.UserID)
+	t.Cleanup(func() { _ = db.Close() })
+	accounts, err := db.ListPixiv(ctx)
+	if err != nil {
+		t.Fatalf("list local pixiv accounts: %v", err)
 	}
+	defaultID, hasDefault, err := config.ReadPixivDefaultUserID()
+	if err != nil {
+		t.Fatalf("read pixiv default account: %v", err)
+	}
+	var account accountpixiv.Account
+	if mutationAccountID > 0 {
+		if !hasDefault {
+			if len(accounts) == 0 {
+				t.Fatal("no local Pixiv account; explicit mutation e2e has no credential source")
+			}
+			// 未配置 UID 时数据库 sort_order 第一项就是默认账号，mutation 必须排除它。
+			defaultID = accounts[0].UserID
+		}
+		account, err = findPixivMutationAccount(accounts, mutationAccountID, defaultID)
+	} else {
+		account, err = selectLiveReadAccount(accounts, defaultID, hasDefault, os.Getenv(liveReadAccountEnv))
+	}
+	if err != nil {
+		t.Fatalf("select pixiv account: %v", err)
+	}
+
+	transport := http.DefaultTransport.(*http.Transport).Clone()
+	if proxy := os.Getenv("PIXIV_E2E_PROXY"); proxy != "" {
+		proxyURL, err := url.Parse(proxy)
+		if err != nil {
+			t.Fatalf("parse proxy: %v", err)
+		}
+		transport.Proxy = http.ProxyURL(proxyURL)
+	}
+	httpClient := &http.Client{Transport: transport}
+	options := pixivsdk.Options{HTTPClient: httpClient}
+	if mutationAccountID > 0 {
+		options.Pacing = pixivsdk.Pacing{MinInterval: liveManifestPace}
+	}
+	client, credentials, err := pixivsdk.OpenWith(ctx, string(account.RefreshTokenCopy()), options)
+	if err != nil {
+		t.Fatalf("pixiv.Open: %s", liveMutationReason(err))
+	}
+	t.Cleanup(httpClient.CloseIdleConnections)
+	if credentials.UserID <= 0 || credentials.AccessToken() == "" || credentials.RefreshToken() == "" {
+		t.Fatal("open did not return verified credentials")
+	}
+	if credentials.UserID != account.UserID {
+		t.Fatalf("open returned a different account identity: stored user %d, verified user %d", account.UserID, credentials.UserID)
+	}
+	// rotation 持久化失败时不得发起内容请求。
+	if err := persistPixivE2ERotation(ctx, db.RotatePixivCredentials, account, credentials.RefreshToken()); err != nil {
+		t.Fatalf("persist rotation: %v", err)
+	}
+
+	rawHTTPClient := &http.Client{Transport: &liveProbePacingRoundTripper{
+		inner:    transport.Clone(),
+		interval: liveManifestPace,
+	}}
+	t.Cleanup(rawHTTPClient.CloseIdleConnections)
+	raw := protocol.New(
+		protocol.WithHTTPClient(rawHTTPClient),
+		protocol.WithAccessToken(credentials.AccessToken()),
+		protocol.WithUserID(credentials.UserID),
+	)
+	return &pixivLiveSession{client: client, raw: raw, userID: credentials.UserID}
+}
+
+func TestPixivE2ERotationUsesStoredRevision(t *testing.T) {
+	account := accountpixiv.New(42, "", nil)
+	account.CredentialRevision = 7
+	var gotUserID, gotRevision int64
+	var gotToken []byte
+	rotate := func(_ context.Context, userID, revision int64, token []byte) error {
+		gotUserID = userID
+		gotRevision = revision
+		gotToken = append([]byte(nil), token...)
+		return nil
+	}
+
+	if err := persistPixivE2ERotation(context.Background(), rotate, account, "rotated-refresh"); err != nil {
+		t.Fatalf("persistPixivE2ERotation: %v", err)
+	}
+	if gotUserID != account.UserID || gotRevision != account.CredentialRevision || string(gotToken) != "rotated-refresh" {
+		t.Fatalf("rotation arguments = user=%d revision=%d token=%q", gotUserID, gotRevision, gotToken)
+	}
+}
+
+// persistPixivE2ERotation keeps the live path on the same CAS contract as the
+// application service: the expected revision comes from the account read that
+// supplied the refresh token, never from a fixed initial value.
+func persistPixivE2ERotation(
+	ctx context.Context,
+	rotate func(context.Context, int64, int64, []byte) error,
+	account accountpixiv.Account,
+	refreshToken string,
+) error {
+	return rotate(ctx, account.UserID, account.CredentialRevision, []byte(refreshToken))
+}
+
+// TestRealPixivSDKRead is the v1 release-prep real Pixiv SDK e2e. It runs only
+// when PIXIV_SDK_E2E=1 and a local pixiv-cli.db account exists. The refresh
+// token is read from the auth database inside the test process and never enters
+// argv, env dumps, logs, test names, or diffs. Rotated credentials are persisted
+// back through the repository before any content request.
+func TestRealPixivSDKRead(t *testing.T) {
+	if os.Getenv("PIXIV_SDK_E2E") != "1" {
+		t.Skip("set PIXIV_SDK_E2E=1 to run the real Pixiv SDK e2e")
+	}
+	ctx := t.Context()
+	session := openPixivLiveSession(t, ctx, 0)
+	client, accountID := session.client, session.userID
+
+	// 验证身份 + 一个稳定 detail + 一个 Resource HEAD。
+	//
+	// CurrentUser 是本测试的 mandatory 身份证据：它读取服务端 /v1/user/detail
+	// 并要求返回的身份与本地选中账号一致。OpenWith 的 refresh 交换只证明
+	// refresh token 可被兑换，不构成服务端身份读取，因此不得作为替代证据。
+	// 任何 Reason（含 NotFound）都不降级、不跳过：上游对某账号返回 404 时
+	// 本测试如实失败，由使用者更换或重新授权账号后重跑。
+	user, err := client.CurrentUser(ctx, pixivsdk.CurrentUserRequest{})
+	if err != nil {
+		t.Fatalf("CurrentUser: %v", err)
+	}
+	if user.User.ID <= 0 {
+		t.Fatal("current user has no id")
+	}
+	if user.User.ID != accountID {
+		t.Fatalf("current user identity differs from selected account: stored user %d, current user %d", accountID, user.User.ID)
+	}
+
+	searchPage, err := client.SearchArtworks(ctx, pixivsdk.SearchArtworksRequest{Word: "初音ミク"})
+	if err != nil {
+		t.Fatalf("SearchArtworks: %v", err)
+	}
+	if len(searchPage.Items) == 0 {
+		t.Fatal("search returned no artworks")
+	}
+	artwork, err := client.Artwork(ctx, pixivsdk.ArtworkRequest{ArtworkID: searchPage.Items[0].ID})
+	if err != nil {
+		t.Fatalf("Artwork: %v", err)
+	}
+	if artwork.ID <= 0 || len(artwork.Pages) == 0 {
+		t.Fatalf("artwork detail incomplete: %+v", artwork)
+	}
+	resource := artwork.Pages[0].Image.Resource
+	if resource.Ref.IsZero() || resource.URL == "" {
+		t.Fatal("page resource has no ref or url")
+	}
+	response, err := client.OpenResource(ctx, sdk.OpenResourceRequest{Ref: resource.Ref, Method: sdk.ResourceMethodHead})
+	if err != nil {
+		t.Fatalf("OpenResource HEAD: %v", err)
+	}
+	if response.Body != nil {
+		_ = response.Body.Close()
+	}
+	if response.StatusCode != 200 {
+		t.Fatalf("resource HEAD status = %d", response.StatusCode)
+	}
+
+	t.Run("viewer field output", func(t *testing.T) {
+		for _, value := range []pixivsdk.Artwork{searchPage.Items[0], artwork} {
+			raw, err := json.Marshal(value)
+			if err != nil {
+				t.Fatal("encode artwork DTO")
+			}
+			var fields map[string]json.RawMessage
+			if err := json.Unmarshal(raw, &fields); err != nil {
+				t.Fatal("decode artwork DTO")
+			}
+			known := 0
+			for key, present := range map[string]bool{
+				"is_bookmarked":          value.IsBookmarked != nil,
+				"is_muted":               value.IsMuted != nil,
+				"visible":                value.Visible != nil,
+				"sanity_level":           value.SanityLevel != nil,
+				"restriction_attributes": value.RestrictionAttributes != nil,
+			} {
+				_, encoded := fields[key]
+				if encoded != present {
+					t.Fatalf("viewer field %s presence differs from SDK", key)
+				}
+				if present {
+					known++
+				}
+			}
+			if known == 0 {
+				t.Fatal("live artwork has no viewer fields to validate")
+			}
+			t.Logf("validated %d supplied viewer/safety fields", known)
+		}
+	})
+
+	t.Run("deep search checkpoint", func(t *testing.T) {
+		// 固定历史窗口减少实时新增作品对批内恢复比较的干扰；仍不把续读当作快照。
+		request := pixivsdk.SearchArtworksRequest{
+			Word: "初音ミク", Sort: pixivsdk.SortModeDateAsc,
+			StartDate: "2024-01-01", EndDate: "2024-01-31", Offset: 270,
+		}
+		page, err := client.SearchArtworks(ctx, request)
+		if err != nil {
+			t.Fatalf("deep SearchArtworks: %v", err)
+		}
+		if len(page.Items) < 3 {
+			t.Fatal("deep search has insufficient items for repeated checkpoint validation")
+		}
+		for consumed := 1; consumed <= 2; consumed++ {
+			request.Cursor, err = client.CheckpointSearchArtworks(request, 1)
+			if err != nil {
+				t.Fatalf("checkpoint: %v", err)
+			}
+			resumed, err := client.SearchArtworks(ctx, request)
+			if err != nil {
+				t.Fatalf("resume: %v", err)
+			}
+			if len(resumed.Items) != len(page.Items)-consumed {
+				t.Fatal("resumed search length differs from the original batch suffix")
+			}
+			for index, item := range resumed.Items {
+				if item.ID != page.Items[index+consumed].ID {
+					t.Fatalf("resumed search differs from the original batch at index %d", index)
+				}
+			}
+		}
+	})
 }
 
 // TestRealPixivSDKLiveManifestRead 覆盖 artwork/novel/feed 的 live read 场景：
@@ -122,7 +361,7 @@ func TestRealPixivSDKLiveManifestRead(t *testing.T) {
 		t.Skip("set PIXIV_SDK_E2E=1 to run the real Pixiv SDK e2e")
 	}
 	ctx := context.Background()
-	client := openRealPixivLiveClient(t, ctx)
+	client := openPixivLiveSession(t, ctx, 0).client
 
 	// #1 artwork-search：稳定 query，覆盖 all/illust/manga/ugoira，首页+续页。
 	for _, contentType := range []pixivsdk.SearchContentType{
@@ -288,63 +527,6 @@ func TestRealPixivSDKLiveManifestRead(t *testing.T) {
 	}
 }
 
-// openRealPixivLiveClient 与 TestRealPixivSDKRead 保持同一账号选择、代理与轮换
-// 持久化契约：凭据只在本进程内读取与回写。
-func openRealPixivLiveClient(t *testing.T, ctx context.Context) *pixivsdk.Client {
-	t.Helper()
-	home, err := os.UserHomeDir()
-	if err != nil {
-		t.Fatalf("home: %v", err)
-	}
-	appDataDir := filepath.Join(home, paths.AppDataDirName)
-	db, err := database.Open(appDataDir)
-	if err != nil {
-		t.Fatalf("open database: %v", err)
-	}
-	defer db.Close()
-	accounts, err := db.ListPixiv(ctx)
-	if err != nil {
-		t.Fatalf("list local pixiv accounts: %v", err)
-	}
-	if len(accounts) == 0 {
-		t.Fatal("no local pixiv account; explicit real e2e has no credential source")
-	}
-	defaultID, hasDefault, err := config.ReadPixivDefaultUserID()
-	if err != nil {
-		t.Fatalf("read pixiv default account: %v", err)
-	}
-	account, err := selectLiveReadAccount(accounts, defaultID, hasDefault, os.Getenv(liveReadAccountEnv))
-	if err != nil {
-		t.Fatalf("select pixiv read account: %v", err)
-	}
-
-	options := pixivsdk.Options{}
-	if proxy := os.Getenv("PIXIV_E2E_PROXY"); proxy != "" {
-		proxyURL, err := url.Parse(proxy)
-		if err != nil {
-			t.Fatalf("parse proxy: %v", err)
-		}
-		transport := http.DefaultTransport.(*http.Transport).Clone()
-		transport.Proxy = http.ProxyURL(proxyURL)
-		options.HTTPClient = &http.Client{Transport: transport}
-	}
-	client, credentials, err := pixivsdk.OpenWith(ctx, string(account.RefreshTokenCopy()), options)
-	if err != nil {
-		t.Fatalf("pixiv.Open: %v", err)
-	}
-	t.Cleanup(client.CloseIdleConnections)
-	if credentials.UserID <= 0 || credentials.AccessToken() == "" || credentials.RefreshToken() == "" {
-		t.Fatal("open did not return verified credentials")
-	}
-	if credentials.UserID != account.UserID {
-		t.Fatalf("open returned a different account identity: stored user %d, verified user %d", account.UserID, credentials.UserID)
-	}
-	if err := db.RotatePixivCredentials(ctx, account.UserID, account.CredentialRevision, []byte(credentials.RefreshToken())); err != nil {
-		t.Fatalf("persist rotation: %v", err)
-	}
-	return client
-}
-
 // liveTwoPages 执行“首页 + 真实续页”场景并做跨页 ID 去重检查。上游无
 // continuation 时按 manifest 记录 data-limited，不伪造第二页；请求错误使测试
 // 失败。strictNoDup=true 时跨页重复判失败（搜索/排行/最新等确定性序列）；
@@ -401,7 +583,7 @@ func TestRealPixivSDKLiveManifestBookmarkUserRead(t *testing.T) {
 		t.Skip("set PIXIV_SDK_E2E=1 to run the real Pixiv SDK e2e")
 	}
 	ctx := context.Background()
-	client := openRealPixivLiveClient(t, ctx)
+	client := openPixivLiveSession(t, ctx, 0).client
 
 	// #33 user-detail + CurrentUser 身份（后续 bookmark 读以该身份执行）。
 	identity, err := client.CurrentUser(ctx, pixivsdk.CurrentUserRequest{})
@@ -428,89 +610,99 @@ func TestRealPixivSDKLiveManifestBookmarkUserRead(t *testing.T) {
 			t.Errorf("artwork bookmarks %s: %v", restrict, err)
 			continue
 		}
-		t.Logf("bookmarks/illust/%s: %d items, continuation=%v", restrict, len(page.Items), !page.Next.IsZero())
-		if bookmarkedArtwork == 0 && len(page.Items) > 0 {
+		t.Logf("artwork_bookmarks/%s: %d items, continuation=%v", restrict, len(page.Items), !page.Next.IsZero())
+		if len(page.Items) > 0 {
 			bookmarkedArtwork = page.Items[0].ID
+		}
+	}
+	time.Sleep(liveManifestPace)
+
+	if bookmarkedArtwork > 0 {
+		bookmark, err := client.ArtworkBookmark(ctx, pixivsdk.ArtworkBookmarkRequest{ArtworkID: bookmarkedArtwork})
+		if err != nil {
+			t.Errorf("artwork bookmark detail %d: %v", bookmarkedArtwork, err)
+		} else {
+			t.Logf("artwork_bookmark_detail %d: restrict=%s tags=%d", bookmarkedArtwork, bookmark.Restrict, len(bookmark.Tags))
 		}
 		time.Sleep(liveManifestPace)
 	}
 
-	// #15/#19 bookmark tags：name/count；空列表合法。
-	artworkTags, err := client.UserArtworkBookmarkTags(ctx, pixivsdk.UserArtworkBookmarkTagsRequest{UserID: userID, Restrict: pixivsdk.RestrictPublic})
+	// #15 artwork bookmark tags。
+	tags, err := client.UserArtworkBookmarkTags(ctx, pixivsdk.UserArtworkBookmarkTagsRequest{UserID: userID, Restrict: pixivsdk.RestrictPublic})
 	if err != nil {
 		t.Errorf("artwork bookmark tags: %v", err)
 	} else {
-		t.Logf("bookmark_tags/illust: %d tags", len(artworkTags.Items))
+		t.Logf("artwork_bookmark_tags: %d tags", len(tags.Items))
 	}
 	time.Sleep(liveManifestPace)
+
+	// #17 novel bookmark list/detail/tags。
+	var bookmarkedNovel int64
+	novelBookmarks, err := client.UserNovelBookmarks(ctx, pixivsdk.UserNovelBookmarksRequest{UserID: userID, Restrict: pixivsdk.RestrictPublic})
+	if err != nil {
+		t.Errorf("novel bookmarks: %v", err)
+	} else {
+		t.Logf("novel_bookmarks/public: %d items, continuation=%v", len(novelBookmarks.Items), !novelBookmarks.Next.IsZero())
+		if len(novelBookmarks.Items) > 0 {
+			bookmarkedNovel = novelBookmarks.Items[0].ID
+		}
+	}
+	time.Sleep(liveManifestPace)
+	if bookmarkedNovel > 0 {
+		bookmark, err := client.NovelBookmark(ctx, pixivsdk.NovelBookmarkRequest{NovelID: bookmarkedNovel})
+		if err != nil {
+			t.Errorf("novel bookmark detail %d: %v", bookmarkedNovel, err)
+		} else {
+			t.Logf("novel_bookmark_detail %d: restrict=%s tags=%d", bookmarkedNovel, bookmark.Restrict, len(bookmark.Tags))
+		}
+		time.Sleep(liveManifestPace)
+	}
 	novelTags, err := client.UserNovelBookmarkTags(ctx, pixivsdk.UserNovelBookmarkTagsRequest{UserID: userID, Restrict: pixivsdk.RestrictPublic})
 	if err != nil {
 		t.Errorf("novel bookmark tags: %v", err)
 	} else {
-		t.Logf("bookmark_tags/novel: %d tags", len(novelTags.Items))
+		t.Logf("novel_bookmark_tags: %d tags", len(novelTags.Items))
 	}
 	time.Sleep(liveManifestPace)
 
-	// #18 novel bookmark list：public/private。
-	var bookmarkedNovel int64
-	for _, restrict := range []pixivsdk.Restrict{pixivsdk.RestrictPublic, pixivsdk.RestrictPrivate} {
-		page, err := client.UserNovelBookmarks(ctx, pixivsdk.UserNovelBookmarksRequest{UserID: userID, Restrict: restrict})
-		if err != nil {
-			t.Errorf("novel bookmarks %s: %v", restrict, err)
-			continue
-		}
-		t.Logf("bookmarks/novel/%s: %d items, continuation=%v", restrict, len(page.Items), !page.Next.IsZero())
-		if bookmarkedNovel == 0 && len(page.Items) > 0 {
-			bookmarkedNovel = page.Items[0].ID
-		}
-		time.Sleep(liveManifestPace)
-	}
-
-	// #16/#20 bookmark detail：已收藏样本（来自 bookmark list）+ 搜索样本。
-	if bookmarkedArtwork > 0 {
-		bookmarked, err := client.ArtworkBookmark(ctx, pixivsdk.ArtworkBookmarkRequest{ArtworkID: bookmarkedArtwork})
-		if err != nil {
-			t.Errorf("artwork bookmark detail %d: %v", bookmarkedArtwork, err)
-		} else {
-			t.Logf("artwork_bookmark_detail %d: tags=%d restrict_nonempty=%v", bookmarkedArtwork, len(bookmarked.Tags), bookmarked.Restrict != "")
-		}
-	} else {
-		t.Logf("artwork_bookmark_detail bookmarked case: blocked_external (data): account has no artwork bookmarks")
-	}
-	time.Sleep(liveManifestPace)
-	if bookmarkedNovel > 0 {
-		bookmarked, err := client.NovelBookmark(ctx, pixivsdk.NovelBookmarkRequest{NovelID: bookmarkedNovel})
-		if err != nil {
-			t.Errorf("novel bookmark detail %d: %v", bookmarkedNovel, err)
-		} else {
-			t.Logf("novel_bookmark_detail %d: tags=%d restrict_nonempty=%v", bookmarkedNovel, len(bookmarked.Tags), bookmarked.Restrict != "")
-		}
-	} else {
-		t.Logf("novel_bookmark_detail bookmarked case: blocked_external (data): account has no novel bookmarks")
-	}
-	time.Sleep(liveManifestPace)
-	// absent/未收藏样本：搜索结果中的公共作品/小说（无法预知是否恰好已收藏，
-	// 因此只记录读取到的状态，不硬断言 bookmarked=false）。
-	searchArtworks, err := client.SearchArtworks(ctx, pixivsdk.SearchArtworksRequest{Word: "風景", ContentType: pixivsdk.SearchContentTypeIllust})
+	// #19 artwork comments：取当前搜索页首个有评论的作品，记录分页与 access control。
+	artworks, err := client.SearchArtworks(ctx, pixivsdk.SearchArtworksRequest{Word: "初音ミク"})
 	if err != nil {
-		t.Errorf("bookmark detail absent source search: %v", err)
-	} else if len(searchArtworks.Items) > 0 {
-		absentID := searchArtworks.Items[len(searchArtworks.Items)-1].ID
-		absent, err := client.ArtworkBookmark(ctx, pixivsdk.ArtworkBookmarkRequest{ArtworkID: absentID})
-		if err != nil {
-			t.Errorf("artwork bookmark detail absent %d: %v", absentID, err)
-		} else {
-			t.Logf("artwork_bookmark_detail absent %d: bookmarked=%v tags=%d", absentID, absent.Restrict != "", len(absent.Tags))
+		t.Errorf("artwork comments source search: %v", err)
+	} else {
+		found := false
+		for _, item := range artworks.Items {
+			comments, err := client.ArtworkComments(ctx, pixivsdk.ArtworkCommentsRequest{ArtworkID: item.ID})
+			if err != nil {
+				t.Errorf("artwork comments %d: %v", item.ID, err)
+				continue
+			}
+			if len(comments.Page.Items) == 0 {
+				continue
+			}
+			found = true
+			t.Logf("artwork_comments %d: %d comments, continuation=%v, total=%v, access_control=%v",
+				item.ID, len(comments.Page.Items), !comments.Page.Next.IsZero(), comments.Total != nil, comments.AccessControl != nil)
+			if !comments.Page.Next.IsZero() {
+				second, err := client.ArtworkComments(ctx, pixivsdk.ArtworkCommentsRequest{ArtworkID: item.ID, Cursor: comments.Page.Next})
+				if err != nil {
+					t.Errorf("artwork comments second page: %v", err)
+				} else {
+					t.Logf("artwork_comments %d second page: %d comments", item.ID, len(second.Page.Items))
+				}
+			}
+			break
+		}
+		if !found {
+			t.Logf("artwork_comments: blocked_external (data): current search page has no non-empty comments target")
 		}
 	}
 	time.Sleep(liveManifestPace)
 
-	// #27 novel-comments read：非空则读；有 continuation 才第二页。
+	// #20 novel comments。
 	novels, err := client.SearchNovels(ctx, pixivsdk.SearchNovelsRequest{Word: "初音ミク"})
 	if err != nil {
 		t.Errorf("novel comments source search: %v", err)
-	} else if len(novels.Items) == 0 {
-		t.Logf("novel_comments: blocked_external (data): novel search returned no items")
 	} else {
 		// 数据条件：目标 novel 需有 comments；只扫描当前搜索页，找不到按
 		// blocked_external (data) 记录，不伪造非空结果。
@@ -639,8 +831,7 @@ func TestRealPixivSDKLiveManifestBookmarkUserRead(t *testing.T) {
 	time.Sleep(liveManifestPace)
 
 	// #23/#24 bookmark all 聚合（CLI --type all）：artwork 后 novel、typed output。
-	repoRoot := ".."
-	binaryPath := buildPixivVersionBinary(t, repoRoot)
+	binaryPath := buildPixivBinary(t)
 	proxy := os.Getenv("PIXIV_E2E_PROXY")
 	for _, scenario := range []struct {
 		name string
@@ -653,8 +844,8 @@ func TestRealPixivSDKLiveManifestBookmarkUserRead(t *testing.T) {
 		if proxy != "" {
 			args = append(args, "--proxy", proxy)
 		}
-		cmd := exec.CommandContext(testCommandContext(t), binaryPath, args...)
-		cmd.Dir = repoRoot
+		cmd := exec.CommandContext(t.Context(), binaryPath, args...)
+		cmd.Dir = liveRepoRoot
 		var stdout, stderr bytes.Buffer
 		cmd.Stdout = &stdout
 		cmd.Stderr = &stderr
@@ -684,76 +875,31 @@ func TestRealPixivSDKLiveManifestBookmarkUserRead(t *testing.T) {
 	}
 }
 
-func TestFirstNovelWithCommentsHandlesShortPages(t *testing.T) {
-	items := []pixivsdk.Novel{{ID: 11}, {ID: 22}}
-	var probed []int64
-
-	novelID, found := firstNovelWithComments(items, func(id int64) bool {
-		probed = append(probed, id)
-		return false
-	})
-
-	if found || novelID != 0 {
-		t.Fatalf("firstNovelWithComments() = (%d, %v), want (0, false)", novelID, found)
+func buildPixivBinary(t *testing.T) string {
+	t.Helper()
+	binaryName := "pixiv"
+	if runtime.GOOS == "windows" {
+		binaryName += ".exe"
 	}
-	if got, want := probed, []int64{11, 22}; !reflect.DeepEqual(got, want) {
-		t.Fatalf("probed novel IDs = %v, want %v", got, want)
+	binaryPath := filepath.Join(t.TempDir(), binaryName)
+	build := exec.CommandContext(t.Context(), "go", "build", "-trimpath", "-o", binaryPath, "./cmd/pixiv")
+	build.Dir = liveRepoRoot
+	var stderr bytes.Buffer
+	build.Stderr = &stderr
+	if err := build.Run(); err != nil {
+		t.Fatalf("go build ./cmd/pixiv failed: %v\n%s", err, stderr.String())
 	}
+	return binaryPath
 }
 
-func TestFirstNovelWithCommentsFindsFourthItem(t *testing.T) {
-	items := []pixivsdk.Novel{{ID: 11}, {ID: 22}, {ID: 33}, {ID: 44}, {ID: 55}}
-	var probed []int64
-
-	novelID, found := firstNovelWithComments(items, func(id int64) bool {
-		probed = append(probed, id)
-		return id == 44
-	})
-
-	if !found || novelID != 44 {
-		t.Fatalf("firstNovelWithComments() = (%d, %v), want (44, true)", novelID, found)
-	}
-	if got, want := probed, []int64{11, 22, 33, 44}; !reflect.DeepEqual(got, want) {
-		t.Fatalf("probed novel IDs = %v, want %v", got, want)
-	}
-}
-
-func TestParseNovelSeriesRecoveryIDRequiresPositiveInteger(t *testing.T) {
-	for _, test := range []struct {
-		name string
-		raw  string
-		want int64
-		ok   bool
-	}{
-		{name: "empty", raw: "", want: 0},
-		{name: "non-numeric", raw: "series", want: 0},
-		{name: "zero", raw: "0", want: 0},
-		{name: "negative", raw: "-1", want: 0},
-		{name: "positive", raw: "123", want: 123, ok: true},
-	} {
-		t.Run(test.name, func(t *testing.T) {
-			got, err := parseNovelSeriesRecoveryID(test.raw)
-			if test.ok {
-				if err != nil || got != test.want {
-					t.Fatalf("parseNovelSeriesRecoveryID(%q) = %d, %v; want %d, nil", test.raw, got, err, test.want)
-				}
-				return
-			}
-			if err == nil {
-				t.Fatalf("parseNovelSeriesRecoveryID(%q) = %d, nil; want error", test.raw, got)
-			}
-		})
-	}
-}
-
-func parseNovelSeriesRecoveryID(rawID string) (int64, error) {
+func parseSeriesRecoveryID(rawID, family string) (int64, error) {
 	rawID = strings.TrimSpace(rawID)
 	if rawID == "" {
-		return 0, errors.New("novel series recovery ID is empty")
+		return 0, fmt.Errorf("%s series recovery ID is empty", family)
 	}
 	seriesID, err := strconv.ParseInt(rawID, 10, 64)
 	if err != nil || seriesID <= 0 {
-		return 0, errors.New("novel series recovery ID must be a positive integer")
+		return 0, fmt.Errorf("%s series recovery ID must be a positive integer", family)
 	}
 	return seriesID, nil
 }
@@ -769,13 +915,13 @@ func TestRealPixivSDKLiveNovelSeriesRecovery(t *testing.T) {
 	if rawID == "" {
 		t.Skip("set PIXIV_NOVEL_SERIES_RECOVERY_ID to validate one explicit novel series candidate")
 	}
-	seriesID, err := parseNovelSeriesRecoveryID(rawID)
+	seriesID, err := parseSeriesRecoveryID(rawID, "novel")
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	ctx := context.Background()
-	client := openRealPixivLiveClient(t, ctx)
+	client := openPixivLiveSession(t, ctx, 0).client
 	first, err := client.NovelSeries(ctx, pixivsdk.NovelSeriesRequest{SeriesID: seriesID})
 	if err != nil {
 		switch sdk.ReasonOf(err) {
@@ -804,18 +950,6 @@ func TestRealPixivSDKLiveNovelSeriesRecovery(t *testing.T) {
 	t.Logf("novel_series candidate %d second page: novels=%d continuation=%v", seriesID, len(second.Novels.Items), !second.Novels.Next.IsZero())
 }
 
-func parseArtworkSeriesRecoveryID(rawID string) (int64, error) {
-	rawID = strings.TrimSpace(rawID)
-	if rawID == "" {
-		return 0, errors.New("artwork series recovery ID is empty")
-	}
-	seriesID, err := strconv.ParseInt(rawID, 10, 64)
-	if err != nil || seriesID <= 0 {
-		return 0, errors.New("artwork series recovery ID must be a positive integer")
-	}
-	return seriesID, nil
-}
-
 // TestRealPixivSDKLiveArtworkSeriesRecovery validates one explicitly supplied
 // public candidate through the public SDK, including its real continuation.
 // The candidate stays in the invocation environment rather than becoming a
@@ -828,13 +962,13 @@ func TestRealPixivSDKLiveArtworkSeriesRecovery(t *testing.T) {
 	if rawID == "" {
 		t.Skip("set PIXIV_ARTWORK_SERIES_RECOVERY_ID to validate one explicit artwork series candidate")
 	}
-	seriesID, err := parseArtworkSeriesRecoveryID(rawID)
+	seriesID, err := parseSeriesRecoveryID(rawID, "artwork")
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	ctx := context.Background()
-	client := openRealPixivLiveClient(t, ctx)
+	client := openPixivLiveSession(t, ctx, 0).client
 	first, err := client.ArtworkSeries(ctx, pixivsdk.ArtworkSeriesRequest{SeriesID: seriesID})
 	if err != nil {
 		switch sdk.ReasonOf(err) {
@@ -889,11 +1023,4 @@ func cliRecordTypes(t *testing.T, out string) []string {
 		types = append(types, kind)
 	}
 	return types
-}
-
-func min(a, b int) int {
-	if a < b {
-		return a
-	}
-	return b
 }

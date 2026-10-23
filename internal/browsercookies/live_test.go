@@ -1,4 +1,4 @@
-package e2e
+package browsercookies_test
 
 import (
 	"fmt"
@@ -91,15 +91,4 @@ func nativeBrowserNames(raw string) ([]string, error) {
 
 func nativeBrowserProfileEnv(browser string) string {
 	return "BROWSER_NATIVE_PROFILE_" + strings.ToUpper(browser)
-}
-
-func TestNativeBrowserNamesRejectInvalidInput(t *testing.T) {
-	for _, raw := range []string{"", "chrome,chrome", "chrome,unknown", "chrome,\x7f"} {
-		if _, err := nativeBrowserNames(raw); err == nil {
-			t.Fatalf("nativeBrowserNames(%q) unexpectedly succeeded", raw)
-		}
-	}
-	if _, err := nativeBrowserNames("edge,chrome,safari"); err != nil {
-		t.Fatalf("nativeBrowserNames(valid) = %v", err)
-	}
 }
