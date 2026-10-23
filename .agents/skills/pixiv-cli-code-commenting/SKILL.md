@@ -1,6 +1,6 @@
 ---
 name: pixiv-cli-code-commenting
-description: In pixiv-cli, write and review intent-focused code comments, API documentation, docstrings, and numbered workflow stages. Use when an implementation changes a contract or non-obvious invariant, a multi-stage function needs navigation, or existing comments are noisy or stale. Keep natural-language choice neutral and preserve compiler/tool directives. Do not require comments for every function or statement.
+description: In pixiv-cli, write and review intent-focused code comments, file header comments, API documentation, docstrings, and numbered workflow stages. Use when an implementation changes a contract or non-obvious invariant, a file is created or its responsibility changes, a multi-stage function needs navigation, or existing comments are noisy or stale. Keep natural-language choice neutral and preserve compiler/tool directives. Do not require comments for every function or statement.
 ---
 
 # pixiv-cli Code Commenting
@@ -25,6 +25,21 @@ Read root `AGENTS.md` and the affected owner before editing. This checked-in ski
 - Preserve identifier spelling, protocol values, units, URLs, issue references, and required documentation tags. Natural-language freedom does not waive language-specific syntax.
 - Use the repository's existing formatter and documentation conventions. For Go, place a doc comment directly before its declaration, normally start with the declared identifier (or `Package name` for a package), and use complete sentences. Chinese prose can follow the unchanged identifier.
 - Document newly added or changed exported Go declarations and caller-visible field semantics. A concise, accurate contract is enough; avoid boilerplate headings and parameter lists that only repeat the signature. A private helper does not automatically need a doc comment.
+
+## File header comments
+
+Start each new production code file, and each file whose responsibility changes, with a one- to three-line comment stating what the file is responsible for and, when useful, where related code lives. Do not list functions, history, or authors.
+
+- Go: separate the header from the `package` clause with a blank line so `go doc` does not treat it as package documentation. A `//go:build` constraint group stays first and is followed by a blank line before the header. A package comment in the entry file or `doc.go` already serves as that file's header.
+- Shell, PowerShell, and `.cmd` scripts: after the shebang. Workflow YAML: before `name:`. Frontend HTML, JavaScript, and CSS: in their native comment syntax.
+- `_test.go` files, generated files, formats without comments, `testdata/`, and `third_party/` need no header; a registered test-layout exception without an owner file does.
+
+```go
+// User-related SDK methods: user detail, follower and following lists, and a user's works.
+// List endpoints of the same family share userPreviews; wire types live in wire.go.
+
+package pixiv
+```
 
 ## Documentation comments
 
@@ -76,7 +91,7 @@ The comment `Convert the ID to a string` adds no information to that statement.
 
 For a timeout, retry, limit, or fallback, identify its actual requirement, platform constraint, established protocol, or demonstrated failure. A comment does not justify an arbitrary restriction or a hidden fallback. Explain the relevant trigger and successful-path impact without inventing measurements or evidence.
 
-Make TODO/FIXME comments actionable with the specific issue or removal condition when known. Preserve real references; do not invent issue IDs, owners, deadlines, or speculative future work. Prefer `Remove this compatibility path when the upstream v1 API is retired` over `fix this later`.
+Make TODO/FIXME comments actionable with the specific issue or removal condition when known. Preserve real references; do not invent issue IDs, owners, deadlines, or speculative future work. Prefer `Remove this compatibility path when the upstream v1 API is retired` over `fix this later`. Do not cite design documents, section numbers such as `§28`, or requirement IDs that are not in the repository; state the reason itself.
 
 ## Protected comments and behavior
 

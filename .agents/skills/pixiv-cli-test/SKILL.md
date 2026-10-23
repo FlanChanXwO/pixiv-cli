@@ -21,12 +21,27 @@ Apply Ponytail **full**: verify the whole change with the least maintained test 
 
 A test change may enter main only when **all** of these hold:
 
-- It protects a long-lived core contract: credential/security boundaries, data integrity and persistence, public CLI/MCP/SDK compatibility, or a critical execution path whose failure loses results, breaks cancellation, or reports false success. Name the concrete failure and user impact; merely touching a core package does not qualify.
+- It protects a long-lived core contract: credential/security boundaries, data integrity and persistence, public CLI/MCP/SDK contracts, or a critical execution path whose failure loses results, breaks cancellation, or reports false success. Name the concrete failure and user impact; merely touching a core package does not qualify.
 - Existing assertions do not catch that failure. Prefer the smallest extension at the stable owning boundary; add a new test only when reuse cannot express it. Do not repeat the same assertion across CLI/MCP/SDK layers unless their distinct contracts require it.
 - The evidence will remain useful after the current task, refactor, or upstream investigation ends. Use deterministic offline inputs for ordinary regressions; retain explicitly authorized live/native gates only for contracts that need that environment.
 - The check is the smallest maintainable proof, with direct assertions and minimal fixtures. Reuse Go testing and existing fixtures; avoid new frameworks, mock hierarchies, fixture builders, or production exports introduced only for tests.
 
 Before retaining test code, record the core contract, the uncovered failure, and why existing checks are insufficient in the current PR/handoff. If that justification is missing, keep the experiment temporary instead. Do not add tests for getters, forwarding wrappers, field projections, pure moves, prose, or internal file shape merely to satisfy TDD, a checklist, or a coverage target. Machine-consumed formats and security checks qualify only when they meet the same core-contract criteria.
+
+A test double never justifies an exported setter, a package-level mutable variable swapped by tests, or an interface without a second production implementation. Use real boundaries such as `httptest` servers and temporary directories, or a same-package test that sets unexported fields; register a new same-package exception in the test layout as required.
+
+### Remove low-value tests
+
+When a change touches tests or a task asks to slim them, delete or merge a test that:
+
+- asserts file text (YAML, Dockerfile, Markdown, Go source) instead of executing behavior, unless the text itself is a security contract no execution can check, such as full-SHA action pins;
+- repeats a contract another test already asserts; keep the one at the most public boundary (CLI/MCP output, SDK method, configuration entry point);
+- tests test-harness code, such as live-test environment parsing, fixture builders, or target finders;
+- guards against reintroducing something already removed;
+- preserves characterization of a finished migration; file names containing `red`, `baseline`, or `parity` are a hint;
+- checks getters, forwarding, field projection, or a constant equal to itself.
+
+Keep tests that protect secret redaction, data integrity and persistence, public CLI/MCP/SDK output contracts, cancellation and error propagation, and release artifact correctness. Prefer a check that executes real code over a string assertion. When moving tests to their owner file, do not carry duplicated assertions along. In the PR, list each deleted or merged test, the criterion applied, and the retained test that still covers the contract; do not change a retained assertion to fit a refactor.
 
 ### Keep temporary verification out of main
 
@@ -40,14 +55,20 @@ Keep established security and release gates. Remove or consolidate existing test
 
 ## Select checks
 
-Start with the affected package and named test, for example `go test ./path/to/owner -run '^TestName$' -count=1`, replacing both placeholders with inspected values. Then expand according to actual impact:
+Tests are one form of evidence; compilation, output comparison, and reading the diff are often more direct. While editing, run only what the change affects and never the whole suite after each edit:
+
+- `CGO_ENABLED=0 go build ./...` for any Go change; a pure move, rename, or import rewrite needs only compilation.
+- The touched package and its direct callers, narrowed with `-run` where possible, for example `go test ./path/to/owner -run '^TestName$' -count=1`, replacing both placeholders with inspected values.
+- Only the affected command output or MCP `tools/list` when an external output may change.
+
+After a check passes, do not rerun or widen it unless something changed or failed. Run the repository-wide checks once, before handoff or opening/updating a PR, according to actual impact:
 
 | Change | Relevant checks |
 | --- | --- |
 | Documentation, instructions, product skills | Inspect links, skill metadata, examples, and `git diff --check`; run affected existing script/tool contracts |
 | Local Go implementation | Focused test, affected integration packages, and scoped `go vet`; run `sh scripts/build.sh` when the change affects the build or executable |
-| Shared contract, public SDK, core behavior, or release candidate | `go test ./... -count=1`, `go vet ./...`, and `sh scripts/build.sh`, in addition to focused regression |
-| Concurrency, account lifecycle, persistence, shared runtime | Add `go test -race ./... -count=1`; use native platform checks where platform code is involved |
+| Shared contract, public SDK, core behavior, or release candidate | Once before handoff: `go test ./... -count=1`, `go vet ./...`, and `sh scripts/build.sh` |
+| Concurrency, account lifecycle, persistence, shared runtime | Add `CGO_ENABLED=1 go test -race ./... -count=1` once before handoff; use native platform checks where platform code is involved |
 | PR metadata and verification tooling | `go test ./tools/prmeta ./tools/verification -count=1`; inspect the changed workflow's existing tests |
 | Platform/release contracts | `go test ./tools/release ./tools/platformmatrix -count=1`, affected `scripts/...` tests, and the relevant build/package/Homebrew fixture scripts |
 | Encoding, platform builds, ABI or native evidence | Follow [pixiv-cli-native](../pixiv-cli-native/SKILL.md) for the affected execution/artifact boundary |
