@@ -91,7 +91,7 @@
 | 现有名字 | 位置 | 处理 |
 |---|---|---|
 | `Dependencies` ×6、`Deps` ×2、`Data` ×2 | `cli/commands/pixiv/{recommended,user,search,detail,download,auth}`、`pixiv.go`（包 `deps`）、`fanbox/fanbox.go`、`services/pixiv` | 改为构造参数；留下的共用能力进入 `command.Env`、`pixivcmd.Runner`（A6） |
-| `Facade` ×3 | `services/pixiv`、`services/fanbox`、`services/reversesearch` | 前两个改为 `session.Pixiv`、`session.Fanbox`（A7）；第三个按职责改名（G18） |
+| `Facade` ×3 | `services/pixiv`、`services/fanbox`、`services/reversesearch` | 前两个改为 `session.Pixiv`、`session.Fanbox`（A7 只移动了路径，改名由 G05 完成）；第三个按职责改名（G18） |
 | `Manager`、`DownloadManager`、`LoginManager` | `media/downloader`、`mcpserver/pixiv/accounts` | 按实际职责改名（G24、G25） |
 | `AggregatorDependencies`、`FilenameData` | `services/reversesearch`、`media/downloader/filename` | 见上表 |
 
@@ -1748,7 +1748,7 @@ A1、B2 等是工作项的名称。执行单位是 **goal**：一个 goal 对应
 | G02 | `refactor-g02-move-shared` | A7①：撤销 `shared/`、`utils/`、`storage/file/`，`releaseversion` 并入 `version`，`update` 改名为 `selfupdate`，MCP `internal/runtime` 改名为 `toolhost` | G01 | 全仓库（纯移动） |
 | G03 | `refactor-g03-move-services` | A7②：撤销 `services/`（`endpoint/**` 暂留原处） | G02 | 全仓库（纯移动） |
 | G04 | `refactor-g04-move-cli` | A7③：CLI 目录按命令路径重排 | G03 | `internal/cli/`（纯移动） |
-| G05 | `refactor-g05-sdk-types` | A2，以及 SDK 公开 API 的全部删除与改名（T6 中 SDK 的部分） | G04 | `sdk/`、`record`、各调用方 |
+| G05 | `refactor-g05-sdk-types` | A2，以及 SDK 公开 API 的全部删除与改名（T6 中 SDK 的部分）；补做 G03 推迟的 `session` 合包与改名 | G04 | `sdk/`、`record`、`internal/session`、各调用方 |
 | G06 | `refactor-g06-sdk-artwork` | A3：artwork 端点并入 `sdk/pixiv` | G05 | `sdk/pixiv`、`services/pixiv/endpoint/artwork/**`、`pixivapi/api.go`（只新增常量） |
 | G07 | `refactor-g07-sdk-novel` | A3：novel 端点 | G06 | 同上，novel 部分 |
 | G08 | `refactor-g08-sdk-user` | A3：user 及其余 Pixiv 端点；删除 `services/pixiv/endpoint/` | G07 | 同上，其余部分 |
@@ -1792,6 +1792,7 @@ A1、B2 等是工作项的名称。执行单位是 **goal**：一个 goal 对应
 7. **changelog：** G01–G33 不修改 changelog，只在 PR 描述中写“changelog 条目”；G34 汇总进 PR 描述，作为 release notes 草稿。
 8. **spec 与事实不符：** 不修改设计决策。选择不改变对外行为的最保守做法继续，并把假设写进工作记录和 PR 描述；无法在假设下继续的部分标为阻塞。
 9. **工作文件：** `goal-N/`、临时探针、基线比对输出不提交，执行前加入 `.git/info/exclude`。除 G34 外不修改 `.agents/refactor/`。
+10. **smoke workflow 引用的路径：** PR 上的 Platform smoke 与 Container smoke worker 由 `pr-metadata.yml` 按 main 上的 workflow 定义派发，却检出 PR head 的代码。移动或删除 `platform-smoke.yml`、`container-smoke.yml` 引用的路径时，先合并一个过渡 PR，让对应步骤按检出的代码树中实际存在的路径选择新路径或旧路径（PR #163）；再合并主 PR；最后用一个小 PR 删除回退（PR #164）。已知涉及 G17、G19。
 
 **真实账号测试：** 允许使用本机 Homebrew 安装的 pixiv-cli（v1.2.1）中已登录的 Pixiv 账号运行真实环境测试，规则如下：
 
