@@ -149,6 +149,34 @@ func TestSchemaRejectsCyclicGroupsAndUnsupportedTypes(t *testing.T) {
 	}
 }
 
+// TestSchemaPreservesExplicitDefaultsAndAttributes covers the accepted side of
+// the compiler: an empty string, false, and 0s are distinct declared defaults,
+// and omitted attribute tags keep their default booleans.
+func TestSchemaPreservesExplicitDefaultsAndAttributes(t *testing.T) {
+	type declaration struct {
+		Empty   string        `config:"test.empty" alias:"empty" default:"" cli:"false" secret:"false" example:"true"`
+		False   bool          `config:"test.false" alias:"false" default:"false" cli:"true" example:"false"`
+		Zero    time.Duration `config:"test.zero" alias:"zero" default:"0s" secret:"true"`
+		Missing string        `config:"test.missing" alias:"missing"`
+	}
+	entries, err := deriveSchemaFromTags(reflect.TypeOf(declaration{}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i, want := range []any{"", false, time.Duration(0)} {
+		if !entries[i].spec.HasDefault || entries[i].spec.Default != want {
+			t.Errorf("field %d: want explicit default %#v, got %#v", i, want, entries[i].spec)
+		}
+	}
+	if entries[3].spec.HasDefault {
+		t.Fatal("missing default must remain absent")
+	}
+	if entries[0].spec.CLIManaged || entries[0].spec.Sensitive || !entries[0].spec.DefaultInFile ||
+		!entries[1].spec.CLIManaged || entries[1].spec.DefaultInFile || !entries[2].spec.Sensitive {
+		t.Fatal("explicit boolean attributes changed")
+	}
+}
+
 func TestSchemaExcludesEntireSubtree(t *testing.T) {
 	type hidden struct {
 		Value string `config:"hidden.value" alias:"hidden_value"`
