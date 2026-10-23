@@ -67,8 +67,6 @@ type ReleaseInstallerOptions struct {
 	ExecutablePath             func() (string, error)
 	GOOS                       string
 	GOARCH                     string
-	BinaryChecker              ReleaseBinaryChecker
-	Replacer                   ReleaseFileReplacer
 	EnablePublicReleaseSources bool
 }
 
@@ -91,14 +89,8 @@ func NewReleaseInstaller(options ReleaseInstallerOptions) ReleaseInstaller {
 	if goarch == "" {
 		goarch = runtime.GOARCH
 	}
-	checker := options.BinaryChecker
-	if checker == nil {
-		checker = processReleaseBinaryChecker{}
-	}
-	replacer := options.Replacer
-	if replacer == nil {
-		replacer = releaseFileReplacer{goos: goos}
-	}
+	checker := binaryChecker(processReleaseBinaryChecker{})
+	replacer := fileReplacer(releaseFileReplacer{goos: goos})
 	keys := make(map[string]ed25519.PublicKey, len(options.TrustedKeys))
 	for keyID, publicKey := range options.TrustedKeys {
 		keys[keyID] = append(ed25519.PublicKey(nil), publicKey...)
@@ -125,8 +117,8 @@ type releaseInstaller struct {
 	executablePath    func() (string, error)
 	goos              string
 	goarch            string
-	checker           ReleaseBinaryChecker
-	replacer          ReleaseFileReplacer
+	checker           binaryChecker
+	replacer          fileReplacer
 	assetURLValidator func(release.Release, release.ReleaseAsset) error
 	sourceSelector    *source.ReleaseSourceSelector
 	// 下列 hook 仅供同包测试精确触发并观测取消边界；生产构造始终为 nil。
@@ -656,6 +648,14 @@ func writeExtractedBinary(destination string, source io.Reader) (err error) {
 		return fmt.Errorf("set extracted release binary permissions %q: %w", destination, err)
 	}
 	return nil
+}
+
+type binaryChecker interface {
+	Check(context.Context, string, string) error
+}
+
+type fileReplacer interface {
+	Replace(string, string) error
 }
 
 type processReleaseBinaryChecker struct{}

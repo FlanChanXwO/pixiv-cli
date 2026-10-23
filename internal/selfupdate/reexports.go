@@ -14,13 +14,10 @@ import (
 // release cache port, and the GitHub release client.
 type (
 	Release              = release.Release
-	ReleaseAsset         = release.ReleaseAsset
 	ReleaseCheckOptions  = release.ReleaseCheckOptions
 	ReleaseCheckResult   = release.ReleaseCheckResult
 	ReleaseChecker       = release.ReleaseChecker
-	GitHubReleaseClient  = release.GitHubReleaseClient
 	ReleaseClientOptions = release.ReleaseClientOptions
-	ReleaseCache         = release.ReleaseCache
 )
 
 // re-exports from the installer package: install-source detection and the
@@ -29,10 +26,8 @@ type (
 	InstallSource           = installer.InstallSource
 	SourceDetector          = installer.SourceDetector
 	SourceDetectorFunc      = installer.SourceDetectorFunc
-	ReleaseInstaller        = installer.ReleaseInstaller
 	ReleaseInstallerOptions = installer.ReleaseInstallerOptions
-	ReleaseBinaryChecker    = installer.ReleaseBinaryChecker
-	ReleaseFileReplacer     = installer.ReleaseFileReplacer
+	ReleaseInstaller        = installer.ReleaseInstaller
 )
 
 const (
@@ -63,7 +58,7 @@ var ReleaseSigningPublicKey = installer.ReleaseSigningPublicKey
 
 // NewGitHubReleaseClient 建立 GitHub Releases 查询客户端。未显式注入 Cache 时，
 // 使用安装器提供的文件 cache 并落在应用数据目录。
-func NewGitHubReleaseClient(options ReleaseClientOptions) (*GitHubReleaseClient, error) {
+func NewGitHubReleaseClient(options ReleaseClientOptions) (*release.GitHubReleaseClient, error) {
 	if options.Cache == nil {
 		cacheDir := options.CacheDir
 		if cacheDir == "" {
