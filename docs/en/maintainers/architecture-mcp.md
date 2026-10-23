@@ -12,11 +12,11 @@ flowchart TB
         HTTP["NewHTTPHandler / RunHTTP:<br/>Streamable HTTP + OAuth routing"]
     end
     AUTH["internal/mcpserver/auth<br/>owner state, OAuth, RequireBearer"]
-    PX["pixiv/tools/*"]
-    FB["fanbox/tools/*"]
+    PX["pixiv/tools<br/>one package"]
+    FB["fanbox/tools<br/>one package"]
     GAL["pixiv/gallery<br/>MCP Apps view"]
     MP["pixiv/mediaproxy<br/>capabilities, LRU, animation jobs"]
-    AM["pixiv/tools/artwork_media"]
+    AM["pixiv/tools<br/>artwork_media"]
     RS["internal/pixivaccount/reads.go<br/>MCP read sessions"]
     DL["internal/media/downloader<br/>(stdio only)"]
     NEW --> PX & FB
@@ -29,7 +29,7 @@ flowchart TB
 
 ## Server and registration
 
-- `New` builds the single protocol server and calls each product's `Register`. Pixiv tools use `pixiv_`, FANBOX `fanbox_`; no unprefixed aliases. Each tool package owns its name, annotations, schema and handler.
+- `New` builds the single protocol server and calls each product's `Register`. Pixiv tools use `pixiv_`, FANBOX `fanbox_`; no unprefixed aliases. Each product has one `tools` package: `register.go` keeps the registration order and port gates, and one domain file owns the name, annotations, schema and handler of the tools in that domain.
 - Stdio injects local downloads through `internal/media/downloader`; HTTP never receives that port. Gallery and owner tools require their media/account/login ports.
 - `NewHTTPHandler` (parent package) assembles stateless Streamable HTTP and OAuth routing; `RunHTTP` owns listener and lifecycle; `RunStdio` owns the local session and waits for cleanup.
 - Products keep their own SDK ports, account selection and runtime. Discovery opens no FANBOX account; the root opens its service lazily when a FANBOX tool runs. Pixiv nullable `page`/`limit` are parsed by its adapter; traversal stays in `internal/pagination`. Handler failures keep structured output with `isError=true`; legitimate empty results stay successful.
@@ -40,8 +40,7 @@ flowchart TB
 | --- | --- |
 | `pixiv/gallery` | MCP Apps view attached to `pixiv_show_gallery`, `pixiv_show_artwork` and `pixiv_artwork_media`; stable resource URI + content-version alias for UI cache keys; valid historical aliases forward fresh reads to the current embedded view |
 | `pixiv/mediaproxy` | process-local image capability signing and raster delivery via the public SDK (routed under `/media/` after canonical-origin validation); grant/session-scoped metadata and image LRU; query/image semaphores; same-key metadata flights; streaming lifecycle; animation jobs |
-| `pixiv/tools/artwork_media` | static MCP image delivery and Ugoira encoding per call |
-| `pixiv/tools/gallery_animation` | control adaptation for animation jobs |
+| `pixiv/tools/media.go` | `pixiv_artwork_media` static image delivery and Ugoira encoding per call; `pixiv_gallery_animation` control adaptation; `pixiv_show_gallery` / `pixiv_show_artwork` views |
 | `pixiv/internal/outputs` | structured media envelope and schema-error redaction |
 
 - Capabilities bind the OAuth grant, account and image selection; neither browser nor route accepts upstream credentials or arbitrary URLs. The composition root supplies the same outbound proxy and explicit-account lease factory as other Pixiv operations.

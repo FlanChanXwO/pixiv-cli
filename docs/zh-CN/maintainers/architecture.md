@@ -278,7 +278,7 @@ flowchart LR
 
 ### `internal/mcpserver`
 
-见 [MCP server 架构](architecture-mcp.md)。
+见 [MCP server 架构](architecture-mcp.md)。每个产品的 tools 只有一个 `tools` 包：`register.go` 保存唯一的 `Register` 与原有的端口门控注册顺序，各领域文件（`accounts.go`、`media.go`、`bookmarks.go` 等）保存该领域工具的名称、annotations、schema 与 `<tool>Handler` 方法。共享端口仍放在产品的 `internal/toolhost`。
 
 ### `internal/media/downloader`
 

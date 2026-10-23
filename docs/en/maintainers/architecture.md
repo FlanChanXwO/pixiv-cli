@@ -278,7 +278,7 @@ The only external contract surface.
 
 ### `internal/mcpserver`
 
-See [MCP server architecture](architecture-mcp.md).
+See [MCP server architecture](architecture-mcp.md). Each product's tools live in one `tools` package: `register.go` holds the single `Register` and the original port-gated registration order, and each domain file (`accounts.go`, `media.go`, `bookmarks.go`, …) keeps its tools' schemas, annotations and `<tool>Handler` methods on the product tool set. Shared ports stay in the product's `internal/toolhost`.
 
 ### `internal/media/downloader`
 
