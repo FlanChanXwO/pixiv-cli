@@ -110,7 +110,7 @@ func runScopeClassifier(t *testing.T, targetPath string) map[string]string {
 	return scope
 }
 
-// TestSmokeControllerChangesRequireFullSmoke 覆盖 R9：pr-metadata.yml 是 smoke
+// TestSmokeControllerChangesRequireFullSmoke 断言 pr-metadata.yml 是 smoke
 // controller——它决定 smoke classification、dispatch 两个 worker、并持有
 // Platform/Container required gate。因此改动它必须真的跑 full smoke，否则
 // controller 自身的破坏性修改会被判成“只需 Quality”而跳过全部 smoke。
@@ -146,7 +146,7 @@ func TestTrustedSmokeOwnerScopesRemainCorrect(t *testing.T) {
 		{"frontend/assets.go", "true", "true", "true"},
 		// platform worker 只拥有 platform smoke，不涉及容器。
 		{".github/workflows/platform-smoke.yml", "true", "true", "false"},
-		// 分类策略文件只决定“是否运行”；R6 已让它从 trusted base 执行，
+		// 分类策略文件只决定“是否运行”；它从 trusted base 执行，
 		// 因此 PR 无法用它影响自己的判定，保持 Quality-only 即可。
 		{"scripts/ci/classify-change-scope.sh", "true", "false", "false"},
 		// 纯文档路径不触发任何 gate。
