@@ -5,7 +5,9 @@ package pixiv
 
 import (
 	"context"
+	"encoding/json"
 	"net/url"
+	"strings"
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/pixivapi"
 	"github.com/FlanChanXwO/pixiv-cli/sdk"
@@ -178,23 +180,70 @@ func (c *Client) NovelComments(ctx context.Context, request NovelCommentsRequest
 	return c.commentPage("NovelComments", base, raw.Comments.Items, next, hasNext, raw.TotalComments, access)
 }
 
+// stampsWire 是 /v1/stamps 的响应；上游当前不提供续页。
+type stampsWire struct {
+	Stamps  pixivapi.RequiredList[stampWire] `json:"stamps"`
+	NextURL *json.RawMessage                 `json:"next_url"`
+}
+
+type stampWire struct {
+	ID  int64  `json:"stamp_id"`
+	URL string `json:"stamp_url"`
+}
+
 // Stamps lists the comment stamps available to the authenticated user. Each
 // image is represented as a stable SDK resource; the upstream locator remains
 // runtime-only and is never embedded in the opaque reference.
 func (c *Client) Stamps(ctx context.Context, request StampsRequest) ([]Stamp, error) {
-	result, err := c.stamps.List(ctx)
+	items, err := c.fetchStamps(ctx, "Stamps")
 	if err != nil {
-		return nil, classifyAppError(err, "Stamps")
+		return nil, err
 	}
-	items := make([]Stamp, 0, len(result.Items))
-	for _, value := range result.Items {
+	stamps := make([]Stamp, 0, len(items))
+	for _, value := range items {
 		image, err := c.newResourceWithVariant("stamp", value.ID, -1, "", value.URL)
 		if err != nil {
 			return nil, classifyAppError(err, "Stamps")
 		}
-		items = append(items, Stamp{ID: value.ID, Image: ImageResource{Resource: image}})
+		stamps = append(stamps, Stamp{ID: value.ID, Image: ImageResource{Resource: image}})
 	}
-	return items, nil
+	return stamps, nil
+}
+
+// fetchStamps 读取并校验 stamp 列表；resource 解析也复用同一份校验。
+func (c *Client) fetchStamps(ctx context.Context, operation string) ([]stampWire, error) {
+	var raw stampsWire
+	if err := c.app.GetJSON(ctx, pixivapi.PathStamps, nil, &raw); err != nil {
+		return nil, classifyAppError(err, operation)
+	}
+	if !raw.Stamps.Present || !raw.Stamps.Valid || raw.NextURL != nil {
+		return nil, newError(operation, sdk.MalformedUpstreamResponse, "")
+	}
+	for _, value := range raw.Stamps.Items {
+		if value.ID <= 0 || !c.validStampURL(value.URL) {
+			return nil, newError(operation, sdk.MalformedUpstreamResponse, "")
+		}
+	}
+	return raw.Stamps.Items, nil
+}
+
+// validStampURL 要求 https、无 userinfo、落在 Pixiv media host allowlist，
+// 且有实际路径。
+func (c *Client) validStampURL(rawURL string) bool {
+	parsed, err := url.ParseRequestURI(rawURL)
+	if err != nil || parsed.Scheme != "https" || parsed.User != nil {
+		return false
+	}
+	if parsed.Path == "" || parsed.Path == "/" {
+		return false
+	}
+	host := strings.ToLower(parsed.Hostname())
+	for _, allowed := range defaultResourceHosts {
+		if host == allowed {
+			return true
+		}
+	}
+	return false
 }
 
 // ArtworkCommentsRequest lists comments on one artwork.

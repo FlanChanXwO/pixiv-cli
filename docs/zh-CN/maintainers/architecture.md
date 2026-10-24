@@ -138,7 +138,7 @@ CLI 组合根，分为三个同包文件：
 | `resource` | 受策略约束的资源传输；重定向/header/body 边界 |
 
 - 匿名 Web/AJAX 路径已删除；App 错误直接返回规范化错误，不切换协议。
-- 端点族 `internal/services/pixiv/endpoint/{artwork,novel,user}/<leaf>`（阶段 3 并入 `sdk/pixiv`） 负责路由、请求、原始 DTO、mapper、续读/错误校验；三个父包只负责共享的规范化实体/值（不再有共享 model 包，避免 `appapi` 或跨域 mapper 重新成为业务 owner）。MCP 交付常量留在 `internal/mcpserver`。
+- `sdk/pixiv` 按领域文件承载全部 App API 操作：`artwork.go`、`artwork_search.go`、`novel.go`、`user.go`、`bookmark.go`、`comment.go`、`mutation.go`，游标编解码在 `cursor.go`。每个文件同时持有该领域的请求类型、响应结构、mapper，以及每个端点一条 continuation Spec 与解析函数。`response.go` 只放多个领域共用的 user/tag/image_urls 结构与值转换，`models.go` 放公开实体与取值类型。Client 只持有一个 `*pixivapi.Client`，不再有各端点的子 client。MCP 交付常量留在 `internal/mcpserver`。
 - FANBOX：`internal/fanboxapi` 负责会话、Cookie、challenge、URL 策略与窄传输；`endpoint/{creator,post}/<leaf>` 与 `resource` 负责路由/fixture/转换；`sdk/fanbox` 直接组合它们，不依赖 Facade。
 - `RequiredList` / `RequiredObject` 只共享字段存在性解码；端点保留完整性检查与映射。`null` = Present true、Valid false；解码出的空对象不必完整。缺失字段不调用解码器（复用外层 DTO 时调用方须清空或重建）。被调用的解码器会重置旧状态，但失败时可能留下本次输入的部分数据——先处理错误并检查 Valid。历史对象解码一致性只覆盖已验证的生产 DTO 与输入。
 

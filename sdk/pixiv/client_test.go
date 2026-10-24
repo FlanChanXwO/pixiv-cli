@@ -7,13 +7,14 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/FlanChanXwO/pixiv-cli/sdk"
 	"io"
 	"net/http"
 	"net/http/cookiejar"
 	"net/http/httptest"
 	"net/url"
 	"reflect"
+
+	"github.com/FlanChanXwO/pixiv-cli/sdk"
 
 	"strings"
 	"testing"

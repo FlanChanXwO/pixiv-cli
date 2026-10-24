@@ -1,4 +1,4 @@
-// bookmark 领域：作品与小说的收藏读取、收藏列表和收藏标签。
+// bookmark 领域：作品与小说的收藏详情、收藏列表和收藏标签。
 // 收藏写操作在 mutation.go；请求类型与 continuation Spec 都在本文件。
 
 package pixiv
@@ -10,7 +10,6 @@ import (
 	"net/url"
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/pixivapi"
-	usernovelbookmarks "github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/endpoint/user/novelbookmarks"
 	"github.com/FlanChanXwO/pixiv-cli/sdk"
 )
 
@@ -158,21 +157,39 @@ func (c *Client) UserNovelBookmarks(ctx context.Context, request UserNovelBookma
 	if err := validateRestrict("UserNovelBookmarks", request.Restrict); err != nil {
 		return sdk.Page[Novel]{}, err
 	}
-	query := url.Values{"user_id": {itoa(request.UserID)}, "restrict": {string(request.Restrict)}}
-	if request.Tag != "" {
-		query.Set("tag", request.Tag)
+	base := url.Values{
+		pixivapi.ParamUserID:   {itoa(request.UserID)},
+		pixivapi.ParamRestrict: {string(request.Restrict)},
 	}
-	maxID, err := c.continuationPositiveValue("UserNovelBookmarks", query, request.Cursor, "max_bookmark_id")
+	if request.Tag != "" {
+		base.Set(pixivapi.ParamTag, request.Tag)
+	}
+	maxID, err := c.continuationPositiveValue("UserNovelBookmarks", base, request.Cursor, pixivapi.ParamMaxBookmarkID)
 	if err != nil {
 		return sdk.Page[Novel]{}, err
 	}
-	list, err := c.userNovelBookmarks.List(ctx, usernovelbookmarks.Request{
-		UserID: request.UserID, Restrict: string(request.Restrict), Tag: request.Tag, MaxBookmarkID: maxID,
-	})
+	query := cloneValues(base)
+	if maxID > 0 {
+		query.Set(pixivapi.ParamMaxBookmarkID, itoa(maxID))
+	}
+
+	var raw novelListWire
+	if err := c.app.GetJSON(ctx, pixivapi.PathUserNovelBookmarks, query, &raw); err != nil {
+		return sdk.Page[Novel]{}, classifyAppError(err, "UserNovelBookmarks")
+	}
+	items, err := c.novelItems("UserNovelBookmarks", raw.Novels, false)
+	if err != nil {
+		return sdk.Page[Novel]{}, err
+	}
+	next, hasNext, err := userNovelBookmarksContinuation.value(raw.NextURL)
 	if err != nil {
 		return sdk.Page[Novel]{}, classifyAppError(err, "UserNovelBookmarks")
 	}
-	return c.novelEntityPage("UserNovelBookmarks", query, "max_bookmark_id", list.Items, list.NextMaxBookmarkID, list.HasNext)
+	cursor, err := c.buildCursor("UserNovelBookmarks", base, pixivapi.ParamMaxBookmarkID, next, hasNext)
+	if err != nil {
+		return sdk.Page[Novel]{}, err
+	}
+	return sdk.Page[Novel]{Items: items, Next: cursor}, nil
 }
 
 // UserNovelBookmarkTags lists the bookmark tags of one user's bookmarked
@@ -188,15 +205,22 @@ func (c *Client) UserNovelBookmarkTags(ctx context.Context, request UserNovelBoo
 	if !request.Cursor.IsZero() {
 		return sdk.Page[BookmarkTag]{}, newError("UserNovelBookmarkTags", sdk.InvalidCursor, "novel bookmark tags continuation is not supported")
 	}
-	result, err := c.userNovelBookmarks.Tags(ctx, usernovelbookmarks.TagsRequest{
-		UserID: request.UserID, Restrict: string(request.Restrict),
-	})
-	if err != nil {
+	var raw bookmarkTagsWire
+	if err := c.app.GetJSON(ctx, pixivapi.PathUserNovelBookmarkTags, url.Values{
+		pixivapi.ParamUserID:   {itoa(request.UserID)},
+		pixivapi.ParamRestrict: {string(request.Restrict)},
+	}, &raw); err != nil {
 		return sdk.Page[BookmarkTag]{}, classifyAppError(err, "UserNovelBookmarkTags")
 	}
-	items := make([]BookmarkTag, 0, len(result.Items))
-	for _, tag := range result.Items {
-		items = append(items, BookmarkTag{Name: tag.Name, Count: tag.Count})
+	if !raw.Tags.Present || !raw.Tags.Valid || raw.NextURL != nil {
+		return sdk.Page[BookmarkTag]{}, newError("UserNovelBookmarkTags", sdk.MalformedUpstreamResponse, "")
+	}
+	items := make([]BookmarkTag, len(raw.Tags.Items))
+	for index, value := range raw.Tags.Items {
+		if value.Name == "" {
+			return sdk.Page[BookmarkTag]{}, newError("UserNovelBookmarkTags", sdk.MalformedUpstreamResponse, "")
+		}
+		items[index] = BookmarkTag{Name: value.Name, Count: value.Count}
 	}
 	return sdk.Page[BookmarkTag]{Items: items}, nil
 }
@@ -208,11 +232,27 @@ func (c *Client) NovelBookmark(ctx context.Context, request NovelBookmarkRequest
 	if request.NovelID <= 0 {
 		return NovelBookmarkDetail{}, newError("NovelBookmark", sdk.InvalidArgument, "novel ID must be positive")
 	}
-	detail, err := c.userNovelBookmarks.Detail(ctx, request.NovelID)
-	if err != nil {
-		return NovelBookmarkDetail{}, classifyAppError(err, "NovelBookmark")
+	var raw bookmarkDetailWire
+	if err := c.app.GetJSON(ctx, pixivapi.PathNovelBookmarkDetail, url.Values{
+		pixivapi.ParamNovelID: {itoa(request.NovelID)},
+	}, &raw); err != nil {
+		var failure pixivapi.Failure
+		if !errors.As(err, &failure) || failure.Kind != pixivapi.FailureHTTPStatus || failure.StatusCode != http.StatusNotFound {
+			return NovelBookmarkDetail{}, classifyAppError(err, "NovelBookmark")
+		}
+		return NovelBookmarkDetail{Tags: []string{}}, nil
 	}
-	return NovelBookmarkDetail{Restrict: Restrict(detail.Restrict), Tags: append([]string{}, detail.Tags...)}, nil
+	if raw.Detail == nil || raw.Detail.IsBookmarked != nil && !*raw.Detail.IsBookmarked {
+		// 未收藏响应中的 tags 可能是小说自身标签，不是收藏标签；统一归一为空状态。
+		return NovelBookmarkDetail{Tags: []string{}}, nil
+	}
+	tags := []string{}
+	for _, tag := range raw.Detail.Tags {
+		if tag.IsRegistered {
+			tags = append(tags, tag.Name)
+		}
+	}
+	return NovelBookmarkDetail{Restrict: Restrict(raw.Detail.Restrict), Tags: tags}, nil
 }
 
 // UserArtworkBookmarksRequest lists one user's bookmarked artworks.
@@ -271,4 +311,10 @@ var bookmarkTagsContinuation = continuationSpec{
 	path:  pixivapi.PathUserBookmarkTags,
 	keys:  []string{pixivapi.ParamOffset},
 	query: []string{pixivapi.ParamUserID, pixivapi.ParamRestrict},
+}
+
+var userNovelBookmarksContinuation = continuationSpec{
+	path:  pixivapi.PathUserNovelBookmarks,
+	keys:  []string{pixivapi.ParamMaxBookmarkID},
+	query: []string{pixivapi.ParamUserID, pixivapi.ParamRestrict, pixivapi.ParamTag},
 }

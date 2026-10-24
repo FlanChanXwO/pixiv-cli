@@ -9,9 +9,6 @@ import (
 	"net/url"
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/pixivapi"
-	"github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/endpoint/novel"
-	novelentity "github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/endpoint/novel"
-	usernovels "github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/endpoint/user/novels"
 	"github.com/FlanChanXwO/pixiv-cli/sdk"
 )
 
@@ -124,33 +121,6 @@ func (c *Client) novelItems(operation string, list pixivapi.RequiredList[novelWi
 	return items, nil
 }
 
-// novelWireFromEntity 是 internal novel 实体到 wire 的临时桥接：user 端点
-// 仍在读取 novel.UserSummary，G08 删除 internal novel 实体后一并删除。
-func novelWireFromEntity(value novel.Novel) novelWire {
-	tags := make([]tagWire, len(value.Tags))
-	for index, tag := range value.Tags {
-		tags[index] = tagWire{Name: tag.Name, TranslatedName: tag.TranslatedName}
-	}
-	xRestrict, textLength, isOriginal := value.XRestrict, value.TextLength, value.IsOriginal
-	return novelWire{
-		ID: value.ID, Title: value.Title, Caption: value.Caption,
-		XRestrict: &xRestrict, TextLength: &textLength, IsOriginal: &isOriginal,
-		User: userWire{
-			ID: value.User.ID, Name: value.User.Name, Account: value.User.Account,
-			Comment: value.User.Comment, IsFollowed: value.User.IsFollowed,
-			ProfileImageURLs: profileImageURLsWire{Medium: cloneValue(value.User.ProfileImageURLs.Medium)},
-		},
-		Tags: tags, ImageURLs: imageURLsWire(value.ImageURLs),
-		CreateDate: value.CreateDate, TotalBookmarks: value.TotalBookmarks, TotalView: value.TotalView,
-	}
-}
-
-// mapNovelEntity 把 internal novel 实体（user 小说端点仍在读取）转成公开模型；
-// wire 映射与资源注册由 wire.go 的 mapNovel 统一完成。
-func (c *Client) mapNovelEntity(m novel.Novel) (Novel, error) {
-	return c.mapNovel(novelWireFromEntity(m))
-}
-
 // SearchNovels searches novels. Repeat the original request fields when
 // continuing with a non-zero Cursor.
 func (c *Client) SearchNovels(ctx context.Context, request SearchNovelsRequest) (sdk.Page[Novel], error) {
@@ -184,7 +154,7 @@ func (c *Client) SearchNovels(ctx context.Context, request SearchNovelsRequest) 
 	if err != nil {
 		return sdk.Page[Novel]{}, err
 	}
-	return c.novelOffsetPage(ctx, "SearchNovels", pixivapi.PathSearchNovel, query, offset, novelSearchContinuation, true)
+	return c.novelOffsetPage(ctx, "SearchNovels", pixivapi.PathSearchNovel, query, query, offset, novelSearchContinuation, true)
 }
 
 // Novel returns one novel by its stable ID.
@@ -279,7 +249,7 @@ func (c *Client) NovelRanking(ctx context.Context, request NovelRankingRequest) 
 	if err != nil {
 		return sdk.Page[Novel]{}, err
 	}
-	return c.novelOffsetPage(ctx, "NovelRanking", pixivapi.PathNovelRanking, query, offset, novelRankingContinuation, false)
+	return c.novelOffsetPage(ctx, "NovelRanking", pixivapi.PathNovelRanking, query, query, offset, novelRankingContinuation, false)
 }
 
 // NovelContent reports that structured novel content is unavailable through
@@ -337,7 +307,7 @@ func (c *Client) FollowingNovels(ctx context.Context, request FollowingNovelsReq
 	if err != nil {
 		return sdk.Page[Novel]{}, err
 	}
-	return c.novelOffsetPage(ctx, "FollowingNovels", pixivapi.PathNovelFollow, query, offset, novelFollowingContinuation, false)
+	return c.novelOffsetPage(ctx, "FollowingNovels", pixivapi.PathNovelFollow, query, query, offset, novelFollowingContinuation, false)
 }
 
 // LatestNovels lists the newest novels.
@@ -376,16 +346,13 @@ func (c *Client) UserNovels(ctx context.Context, request UserNovelsRequest) (sdk
 	if request.UserID <= 0 {
 		return sdk.Page[Novel]{}, newError("UserNovels", sdk.InvalidArgument, "user ID must be positive")
 	}
-	query := url.Values{"user_id": {itoa(request.UserID)}}
-	offset, err := c.continuationPositiveOffset("UserNovels", query, request.Cursor)
+	base := url.Values{"user_id": {itoa(request.UserID)}}
+	offset, err := c.continuationPositiveOffset("UserNovels", base, request.Cursor)
 	if err != nil {
 		return sdk.Page[Novel]{}, err
 	}
-	list, err := c.userNovels.List(ctx, usernovels.Request{UserID: request.UserID, Offset: offset})
-	if err != nil {
-		return sdk.Page[Novel]{}, classifyAppError(err, "UserNovels")
-	}
-	return c.novelEntityPage("UserNovels", query, "offset", list.Items, int64(list.NextOffset), list.HasNext)
+	query := url.Values{"user_id": {itoa(request.UserID)}, "filter": {"for_android"}}
+	return c.novelOffsetPage(ctx, "UserNovels", pixivapi.PathUserNovels, base, query, offset, novelUserContinuation, false)
 }
 
 // MyPixivNovels lists novels from the current user's MyPixiv feed.
@@ -395,13 +362,13 @@ func (c *Client) MyPixivNovels(ctx context.Context, request MyPixivNovelsRequest
 	if err != nil {
 		return sdk.Page[Novel]{}, err
 	}
-	return c.novelOffsetPage(ctx, "MyPixivNovels", pixivapi.PathNovelMyPixiv, query, offset, novelMyPixivContinuation, false)
+	return c.novelOffsetPage(ctx, "MyPixivNovels", pixivapi.PathNovelMyPixiv, query, query, offset, novelMyPixivContinuation, false)
 }
 
 // novelOffsetPage 是所有 offset 续页 novel 列表的共同实现，端点之间只有
-// 路径、已校验的 base query 与 continuation allowlist 不同。
-func (c *Client) novelOffsetPage(ctx context.Context, operation, path string, base url.Values, offset int, spec continuationSpec, requireSearchFields bool) (sdk.Page[Novel], error) {
-	query := cloneValues(base)
+// 路径、query、游标绑定值、continuation allowlist 与搜索字段要求不同。
+func (c *Client) novelOffsetPage(ctx context.Context, operation, path string, base, query url.Values, offset int, spec continuationSpec, requireSearchFields bool) (sdk.Page[Novel], error) {
+	query = cloneValues(query)
 	if offset > 0 {
 		query.Set(pixivapi.ParamOffset, itoa(int64(offset)))
 	}
@@ -422,23 +389,6 @@ func (c *Client) novelOffsetPage(ctx context.Context, operation, path string, ba
 		return sdk.Page[Novel]{}, err
 	}
 	return sdk.Page[Novel]{Items: items, Next: cursor}, nil
-}
-
-// novelEntityPage 映射尚未并入 SDK 的 user 小说端点实体。
-func (c *Client) novelEntityPage(operation string, query url.Values, key string, values []novelentity.Novel, nextValue int64, hasNext bool) (sdk.Page[Novel], error) {
-	items := make([]Novel, len(values))
-	for index, value := range values {
-		mapped, err := c.mapNovelEntity(value)
-		if err != nil {
-			return sdk.Page[Novel]{}, err
-		}
-		items[index] = mapped
-	}
-	next, err := c.buildCursor(operation, query, key, nextValue, hasNext)
-	if err != nil {
-		return sdk.Page[Novel]{}, err
-	}
-	return sdk.Page[Novel]{Items: items, Next: next}, nil
 }
 
 func (c *Client) fetchNovelContent(ctx context.Context, operation string, novelID int64) ([]byte, error) {
@@ -555,4 +505,10 @@ var novelLatestContinuation = continuationSpec{
 var novelMyPixivContinuation = continuationSpec{
 	path: pixivapi.PathNovelMyPixiv,
 	keys: []string{pixivapi.ParamOffset},
+}
+
+var novelUserContinuation = continuationSpec{
+	path:  pixivapi.PathUserNovels,
+	keys:  []string{pixivapi.ParamOffset},
+	query: []string{pixivapi.ParamUserID, pixivapi.ParamFilter},
 }

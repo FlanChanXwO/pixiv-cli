@@ -13,7 +13,6 @@ import (
 	"strings"
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/pixivapi"
-	"github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/endpoint/artwork"
 	"github.com/FlanChanXwO/pixiv-cli/sdk"
 )
 
@@ -395,56 +394,6 @@ func safeArtworkArchiveFilename(name string) bool {
 		}
 	}
 	return true
-}
-
-// artworkWireFromEntity 是 internal endpoint 实体到 wire 的临时桥接：user
-// 端点尚未并入 SDK，仍需读取 artwork.Artwork。G08 删除 internal artwork
-// 实体后连同本函数一起删除。
-func artworkWireFromEntity(value artwork.Artwork) artworkWire {
-	tags := make([]tagWire, len(value.Tags))
-	for index, tag := range value.Tags {
-		tags[index] = tagWire{Name: tag.Name, TranslatedName: tag.TranslatedName}
-	}
-	pages := make([]metaPageWire, len(value.MetaPages))
-	for index, page := range value.MetaPages {
-		pages[index] = metaPageWire{
-			Width: page.Width, Height: page.Height, Extension: page.Extension,
-			ImageURLs: imageURLsWire(page.ImageURLs),
-		}
-	}
-	var series *struct {
-		ID    int64  `json:"id"`
-		Title string `json:"title"`
-	}
-	if value.Series != nil {
-		series = &struct {
-			ID    int64  `json:"id"`
-			Title string `json:"title"`
-		}{ID: value.Series.ID, Title: value.Series.Title}
-	}
-	return artworkWire{
-		ID: value.ID, Title: value.Title, Caption: value.Caption, Type: value.Type,
-		PageCount: value.PageCount, TotalBookmarks: value.TotalBookmarks, TotalView: value.TotalView,
-		XRestrict: value.XRestrict,
-		User: userWire{
-			ID: value.User.ID, Name: value.User.Name, Account: value.User.Account,
-			Comment: value.User.Comment, IsFollowed: value.User.IsFollowed,
-			ProfileImageURLs: profileImageURLsWire{Medium: cloneValue(value.User.ProfileImageURLs.Medium)},
-		},
-		Tags: tags, ImageURLs: imageURLsWire(value.ImageURLs),
-		MetaSinglePage: singlePageWire{OriginalImageURL: value.MetaSinglePage.OriginalImageURL},
-		MetaPages:      pages, AIType: value.AIType, CreateDate: value.CreateDate,
-		Width: value.Width, Height: value.Height, Tools: append([]string(nil), value.Tools...),
-		IsBookmarked: value.IsBookmarked, IsMuted: value.IsMuted, Visible: value.Visible,
-		SanityLevel: cloneValue(value.SanityLevel), RestrictionAttributes: value.RestrictionAttributes,
-		Series: series, TotalComments: value.TotalComments,
-	}
-}
-
-// mapArtworkEntity 把 internal artwork 端点（user 尚未并入）的规范化实体
-// 转成公开模型；wire 映射与资源注册由 mapArtwork 统一完成。
-func (c *Client) mapArtworkEntity(value artwork.Artwork) (Artwork, error) {
-	return c.mapArtwork(artworkWireFromEntity(value))
 }
 
 func (c *Client) artworkPage(op string, query url.Values, key string, values []artworkWire, nextValue int64, hasNext bool) (sdk.Page[Artwork], error) {

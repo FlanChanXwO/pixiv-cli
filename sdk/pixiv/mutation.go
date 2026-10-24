@@ -8,8 +8,6 @@ import (
 	"net/url"
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/pixivapi"
-	"github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/endpoint/user/follow"
-	usernovelbookmarks "github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/endpoint/user/novelbookmarks"
 	"github.com/FlanChanXwO/pixiv-cli/sdk"
 )
 
@@ -243,7 +241,14 @@ func (c *Client) AddNovelBookmark(ctx context.Context, request AddNovelBookmarkR
 	if err := validateRestrict("AddNovelBookmark", request.Restrict); err != nil {
 		return err
 	}
-	if err := c.userNovelBookmarks.Add(ctx, usernovelbookmarks.AddRequest{NovelID: request.NovelID, Restrict: string(request.Restrict), Tags: request.Tags}); err != nil {
+	form := url.Values{
+		pixivapi.ParamNovelID:  {itoa(request.NovelID)},
+		pixivapi.ParamRestrict: {string(request.Restrict)},
+	}
+	for _, tag := range request.Tags {
+		form.Add(pixivapi.ParamTags, tag)
+	}
+	if err := c.app.PostForm(ctx, pixivapi.PathNovelBookmarkAdd, form); err != nil {
 		return classifyAppError(err, "AddNovelBookmark")
 	}
 	return nil
@@ -254,7 +259,9 @@ func (c *Client) RemoveNovelBookmark(ctx context.Context, request RemoveNovelBoo
 	if request.NovelID <= 0 {
 		return newError("RemoveNovelBookmark", sdk.InvalidArgument, "novel ID must be positive")
 	}
-	if err := c.userNovelBookmarks.Remove(ctx, request.NovelID); err != nil {
+	if err := c.app.PostForm(ctx, pixivapi.PathNovelBookmarkDelete, url.Values{
+		pixivapi.ParamNovelID: {itoa(request.NovelID)},
+	}); err != nil {
 		return classifyAppError(err, "RemoveNovelBookmark")
 	}
 	return nil
@@ -271,7 +278,10 @@ func (c *Client) FollowUser(ctx context.Context, request FollowUserRequest) erro
 	if err := validateRestrict("FollowUser", request.Restrict); err != nil {
 		return err
 	}
-	if err := c.userFollow.Add(ctx, follow.Request{UserID: request.UserID, Restrict: string(request.Restrict)}); err != nil {
+	if err := c.app.PostForm(ctx, pixivapi.PathFollowAdd, url.Values{
+		pixivapi.ParamUserID:   {itoa(request.UserID)},
+		pixivapi.ParamRestrict: {string(request.Restrict)},
+	}); err != nil {
 		return classifyAppError(err, "FollowUser")
 	}
 	return nil
@@ -282,7 +292,9 @@ func (c *Client) UnfollowUser(ctx context.Context, request UnfollowUserRequest) 
 	if request.UserID <= 0 {
 		return newError("UnfollowUser", sdk.InvalidArgument, "user ID must be positive")
 	}
-	if err := c.userFollow.Remove(ctx, request.UserID); err != nil {
+	if err := c.app.PostForm(ctx, pixivapi.PathFollowDelete, url.Values{
+		pixivapi.ParamUserID: {itoa(request.UserID)},
+	}); err != nil {
 		return classifyAppError(err, "UnfollowUser")
 	}
 	return nil
