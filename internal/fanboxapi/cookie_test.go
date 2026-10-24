@@ -40,7 +40,4 @@ func TestNormalizeCookieHeaderErrorNeverEchoesValue(t *testing.T) {
 	if strings.Contains(err.Error(), "super-secret-canary") {
 		t.Fatalf("error disclosed cookie value: %v", err)
 	}
-	if got := fanboxapi.RedactCookieHeader("FANBOXSESSID=super-secret-canary"); strings.Contains(got, "super-secret-canary") {
-		t.Fatalf("RedactCookieHeader disclosed value: %q", got)
-	}
 }

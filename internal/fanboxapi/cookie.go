@@ -42,11 +42,6 @@ func NormalizeCookieHeader(header string) (string, error) {
 	return strings.Join(normalized, "; "), nil
 }
 
-// RedactCookieHeader 返回可安全展示的固定摘要，永远不包含原始 Cookie 内容。
-func RedactCookieHeader(_ string) string {
-	return "FANBOX cookie [REDACTED]"
-}
-
 func validCookieName(name string) bool {
 	for _, char := range name {
 		if !((char >= 'a' && char <= 'z') || (char >= 'A' && char <= 'Z') ||
