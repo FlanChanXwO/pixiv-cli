@@ -236,7 +236,7 @@ canonical 数据动作：`search`、`detail`、`ranking`、`series`、`comment`�
 | `timeline following` | `--type` / `-t`、`--content-type` | 必填、`all` | `artwork` 或 `novel`；作品本地筛选 `all\|illust-and-ugoira\|illust\|manga\|ugoira`；`--restrict public\|private`。`novel` 搭配 `--content-type` 被拒绝。 |
 | `timeline latest` | `--type` / `-t`、`--content-type` | 必填、`illust` | 最新作品只支持 `illust` 或 `manga`。`novel` 搭配 `--content-type` 被拒绝。 |
 | `mypixiv users` | `--page`、`--limit` | 可选 | 仅限已验证的认证身份；无位置目标，无匿名 fallback。 |
-| `mypixiv works` | `--type` / `-t` | 必填 | 无 `USER_ID`：`artwork` 或 `novel`；有正整数 `USER_ID`：另支持 `manga`。旧的 `illust` 是 `artwork` 别名。非法类型/ID → 账号池执行前返回 `invalid_argument`。 |
+| `mypixiv works` | `--type` / `-t` | 必填 | 无 `USER_ID`：`artwork` 或 `novel`；有正整数 `USER_ID`：另支持 `manga`。不再接受 `illust`，请使用 `artwork`。非法类型/ID → 账号池执行前返回 `invalid_argument`。 |
 | `recommended` | `--type` / `-t` | 空 | `artwork`、`novel`、`user`、`all`；位置参数 `KIND` 是兼容语法。 |
 | `recommended` | `--content-type` | `all` | 仅作品的本地筛选 `all`、`illust`、`manga`，在 `--page/--limit` 之后应用；不作为上游 `content_type` 发送。 |
 | record 动作 | `--on-error` | `skip` | 对格式错误/不兼容 record：`skip`（stderr 诊断）或 `fail-fast`。 |

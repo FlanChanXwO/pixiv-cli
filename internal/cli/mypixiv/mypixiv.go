@@ -126,7 +126,6 @@ func currentUserID(client *pixiv.Client) (int64, error) {
 
 func (a commandRunner) runWorks(cmd *cobra.Command, args []string, opts options) error {
 	// CLI 的 --type 选择实体，公开名称 artwork 对应 App API 的 illust 子类型。
-	// 保留 illust 输入兼容既有脚本，但帮助与文档统一使用 artwork。
 	if opts.contentType == "artwork" {
 		opts.contentType = "illust"
 	}

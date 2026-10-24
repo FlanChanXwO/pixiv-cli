@@ -9,6 +9,8 @@
 
 ## 变更
 
+- `pixiv mypixiv works` 不再接受 `--type illust`，请使用 `--type artwork`；`artwork`、`manga`、`novel` 的行为不变。
+
 - 移除 artwork 筛选的旧 `illustration` CLI/SDK 输入别名，统一使用 `illust`；既有作品记录和 MCP 筛选仍使用 `illust`，本地匹配继续接受模型中的上游 `illustration` kind。
 
 - 用标准库 `log/slog` 取代自制的诊断事件系统。CLI 与 MCP 的 stderr 改为统一的 text 或 JSON 记录格式并共用属性键；`log_level` 新增 `warn`、`error`；两个 SDK 都接受 `Options.Logger` 记录请求与重试。日志不含 query、header、Cookie、token、响应体和签名 URL；CLI 数据 stdout 与 MCP stdio stdout 不含日志。debug 文本显示来源位置，格式为 `时间 级别 --- file:line : message key=value`；命令失败时另写一条终止 `ERROR`。

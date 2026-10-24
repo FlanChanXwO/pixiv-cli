@@ -236,7 +236,7 @@ Canonical data actions: `search`, `detail`, `ranking`, `series`, `comment`, `boo
 | `timeline following` | `--type` / `-t`, `--content-type` | required, `all` | `artwork` or `novel`; artwork filters locally `all\|illust-and-ugoira\|illust\|manga\|ugoira`; `--restrict public\|private`. `--content-type` with `novel` rejected. |
 | `timeline latest` | `--type` / `-t`, `--content-type` | required, `illust` | Latest artwork supports only `illust` or `manga`. `--content-type` with `novel` rejected. |
 | `mypixiv users` | `--page`, `--limit` | optional | Verified authenticated identity only; no positional target, no anonymous fallback. |
-| `mypixiv works` | `--type` / `-t` | required | Without `USER_ID`: `artwork` or `novel`; with a positive `USER_ID`: also `manga`. Legacy `illust` aliases `artwork`. Invalid types/IDs → `invalid_argument` before pool execution. |
+| `mypixiv works` | `--type` / `-t` | required | Without `USER_ID`: `artwork` or `novel`; with a positive `USER_ID`: also `manga`. `illust` is not accepted; use `artwork`. Invalid types/IDs → `invalid_argument` before pool execution. |
 | `recommended` | `--type` / `-t` | empty | `artwork`, `novel`, `user`, `all`; positional `KIND` is compatibility syntax. |
 | `recommended` | `--content-type` | `all` | Artwork-only local filter `all`, `illust`, `manga`, applied after `--page/--limit`; not sent as upstream `content_type`. |
 | record actions | `--on-error` | `skip` | `skip` (stderr diagnostic) or `fail-fast` for malformed/incompatible records. |
