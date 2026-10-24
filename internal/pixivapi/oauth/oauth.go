@@ -20,19 +20,19 @@ import (
 	"time"
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/logging"
-	protocol "github.com/FlanChanXwO/pixiv-cli/internal/pixivapi"
+	"github.com/FlanChanXwO/pixiv-cli/internal/pixivapi"
 )
 
 const (
-	DefaultBase         = protocol.OAuthBase
-	DefaultClientID     = protocol.OAuthClientID
-	DefaultClientSecret = protocol.OAuthClientSecret
-	DefaultRedirectURI  = protocol.OAuthRedirectURI
+	DefaultBase         = pixivapi.OAuthBase
+	DefaultClientID     = pixivapi.OAuthClientID
+	DefaultClientSecret = pixivapi.OAuthClientSecret
+	DefaultRedirectURI  = pixivapi.OAuthRedirectURI
 )
 
 // ErrMalformedResponse 标识 OAuth 成功状态码却未提供可用 token payload。
 // 它不携带原始响应体。
-var ErrMalformedResponse = protocol.ErrMalformedResponse
+var ErrMalformedResponse = pixivapi.ErrMalformedResponse
 
 type Client struct {
 	httpClient   *http.Client
@@ -119,7 +119,7 @@ func (c *Client) Refresh(ctx context.Context) error {
 	}
 	token := tokenFromResponse(result)
 	if token.AccessToken == "" {
-		return protocol.MalformedResponse()
+		return pixivapi.MalformedResponse()
 	}
 	c.store(token)
 	// OpenWith 的入口操作名是 "Open"；传输日志同样带上它。
@@ -172,7 +172,7 @@ func (c *Client) ExchangeAuthorizationCode(ctx context.Context, code, verifier s
 	}
 	token := tokenFromResponse(result)
 	if token.RefreshToken == "" {
-		return AuthCodeToken{}, protocol.MalformedResponse()
+		return AuthCodeToken{}, pixivapi.MalformedResponse()
 	}
 	c.store(token)
 	return token, nil
@@ -183,31 +183,31 @@ func (c *Client) exchange(ctx context.Context, form map[string]string) (authResp
 	for key, value := range form {
 		values.Set(key, value)
 	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.baseURL+protocol.OAuthToken, strings.NewReader(values.Encode()))
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.baseURL+pixivapi.OAuthToken, strings.NewReader(values.Encode()))
 	if err != nil {
-		return authResponse{}, protocol.Transport(err)
+		return authResponse{}, pixivapi.Transport(err)
 	}
 	for name, value := range oauthHeaders() {
 		req.Header.Set(name, value)
 	}
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
-		return authResponse{}, protocol.Transport(err)
+		return authResponse{}, pixivapi.Transport(err)
 	}
 	defer resp.Body.Close()
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return authResponse{}, protocol.Transport(err)
+		return authResponse{}, pixivapi.Transport(err)
 	}
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return authResponse{}, protocol.HTTPStatus(resp.StatusCode)
+		return authResponse{}, pixivapi.HTTPStatus(resp.StatusCode)
 	}
 	if len(bytes.TrimSpace(body)) == 0 {
-		return authResponse{}, protocol.MalformedResponse()
+		return authResponse{}, pixivapi.MalformedResponse()
 	}
 	var result authResponse
 	if err := json.Unmarshal(body, &result); err != nil {
-		return authResponse{}, protocol.MalformedResponse()
+		return authResponse{}, pixivapi.MalformedResponse()
 	}
 	return result, nil
 }
@@ -224,7 +224,7 @@ func (c *Client) store(token AuthCodeToken) {
 }
 
 func oauthHeaders() map[string]string {
-	return protocol.OAuthHeaders()
+	return pixivapi.OAuthHeaders()
 }
 
 type authResponse struct {

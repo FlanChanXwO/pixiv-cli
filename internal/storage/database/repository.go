@@ -9,14 +9,14 @@ import (
 	"fmt"
 	"time"
 
-	accountfanbox "github.com/FlanChanXwO/pixiv-cli/internal/fanboxaccount"
-	accountpixiv "github.com/FlanChanXwO/pixiv-cli/internal/pixivaccount"
+	"github.com/FlanChanXwO/pixiv-cli/internal/fanboxaccount"
+	"github.com/FlanChanXwO/pixiv-cli/internal/pixivaccount"
 	"gorm.io/gorm"
 )
 
 // SavePixivCredential 保存一次已验证的 Pixiv credential。
 // 新账号固定从 revision 1 开始；已有账号在 SQL 内递增 revision，不能由调用方回退。
-func (d *DB) SavePixivCredential(ctx context.Context, account accountpixiv.Account) error {
+func (d *DB) SavePixivCredential(ctx context.Context, account pixivaccount.Account) error {
 	return d.withLock(ctx, func() error {
 		return d.orm.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 			return savePixivCredentialTx(ctx, tx, account)
@@ -26,7 +26,7 @@ func (d *DB) SavePixivCredential(ctx context.Context, account accountpixiv.Accou
 
 // SavePixivCredentials 在一个事务中保存一组首次导入的 Pixiv credentials。
 // 迁移调用它保证任一账号失败时不会留下部分提交。
-func (d *DB) SavePixivCredentials(ctx context.Context, accounts []accountpixiv.Account) error {
+func (d *DB) SavePixivCredentials(ctx context.Context, accounts []pixivaccount.Account) error {
 	return d.withLock(ctx, func() error {
 		seen := make(map[int64]struct{}, len(accounts))
 		for _, account := range accounts {
@@ -49,7 +49,7 @@ func (d *DB) SavePixivCredentials(ctx context.Context, accounts []accountpixiv.A
 	})
 }
 
-func savePixivCredentialTx(ctx context.Context, tx *gorm.DB, account accountpixiv.Account) error {
+func savePixivCredentialTx(ctx context.Context, tx *gorm.DB, account pixivaccount.Account) error {
 	if account.UserID <= 0 || !account.HasRefreshToken() {
 		return errors.New("database: invalid pixiv account")
 	}
@@ -109,7 +109,7 @@ func (d *DB) UpdatePixivMetadata(ctx context.Context, userID int64, username str
 			return result.Error
 		}
 		if result.RowsAffected == 0 {
-			return accountpixiv.ErrNotFound
+			return pixivaccount.ErrNotFound
 		}
 		return nil
 	})
@@ -140,20 +140,20 @@ func (d *DB) RotatePixivCredentials(ctx context.Context, userID, expectedRevisio
 			return err
 		}
 		if count == 0 {
-			return accountpixiv.ErrNotFound
+			return pixivaccount.ErrNotFound
 		}
-		return accountpixiv.ErrCredentialConflict
+		return pixivaccount.ErrCredentialConflict
 	})
 }
 
 // ListPixiv 返回全部 Pixiv 账号，按 sort_order 升序。
-func (d *DB) ListPixiv(ctx context.Context) ([]accountpixiv.Account, error) {
-	return withDatabaseValue(ctx, d, func() ([]accountpixiv.Account, error) {
+func (d *DB) ListPixiv(ctx context.Context) ([]pixivaccount.Account, error) {
+	return withDatabaseValue(ctx, d, func() ([]pixivaccount.Account, error) {
 		var rows []pixivAccountRow
 		if err := d.orm.WithContext(ctx).Order(colSortOrder).Find(&rows).Error; err != nil {
 			return nil, err
 		}
-		accounts := make([]accountpixiv.Account, len(rows))
+		accounts := make([]pixivaccount.Account, len(rows))
 		for i, row := range rows {
 			accounts[i] = row.account()
 		}
@@ -162,14 +162,14 @@ func (d *DB) ListPixiv(ctx context.Context) ([]accountpixiv.Account, error) {
 }
 
 // GetPixiv 返回指定 user_id 的 Pixiv 账号；不存在返回 ErrNotFound。
-func (d *DB) GetPixiv(ctx context.Context, userID int64) (accountpixiv.Account, error) {
-	return withDatabaseValue(ctx, d, func() (accountpixiv.Account, error) {
+func (d *DB) GetPixiv(ctx context.Context, userID int64) (pixivaccount.Account, error) {
+	return withDatabaseValue(ctx, d, func() (pixivaccount.Account, error) {
 		var row pixivAccountRow
 		if err := d.orm.WithContext(ctx).Where(colUserID+" = ?", userID).Take(&row).Error; err != nil {
 			if errors.Is(err, gorm.ErrRecordNotFound) {
-				return accountpixiv.Account{}, accountpixiv.ErrNotFound
+				return pixivaccount.Account{}, pixivaccount.ErrNotFound
 			}
-			return accountpixiv.Account{}, err
+			return pixivaccount.Account{}, err
 		}
 		return row.account(), nil
 	})
@@ -183,7 +183,7 @@ func (d *DB) RemovePixiv(ctx context.Context, userID int64) error {
 			return result.Error
 		}
 		if result.RowsAffected == 0 {
-			return accountpixiv.ErrNotFound
+			return pixivaccount.ErrNotFound
 		}
 		return nil
 	})
@@ -192,9 +192,9 @@ func (d *DB) RemovePixiv(ctx context.Context, userID int64) error {
 // SelectPixiv 在一个短事务内加载候选快照，并把纯 chooser 的结果验证后提交
 // 为 pool_last_selected marker。chooser 不接触 SQL；attemptedUserIDs 只属于当前
 // operation，不会写入数据库；过期冻结在选择时清理。
-func (d *DB) SelectPixiv(ctx context.Context, now int64, attemptedUserIDs []int64, chooser accountpixiv.Chooser) (accountpixiv.Account, error) {
-	return withDatabaseValue(ctx, d, func() (accountpixiv.Account, error) {
-		var selected accountpixiv.Account
+func (d *DB) SelectPixiv(ctx context.Context, now int64, attemptedUserIDs []int64, chooser pixivaccount.Chooser) (pixivaccount.Account, error) {
+	return withDatabaseValue(ctx, d, func() (pixivaccount.Account, error) {
+		var selected pixivaccount.Account
 		err := d.orm.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 			if err := tx.Model(&pixivAccountRow{}).
 				Where(colPoolFrozenUntil+" IS NOT NULL AND "+colPoolFrozenUntil+" <= ?", now).
@@ -206,13 +206,13 @@ func (d *DB) SelectPixiv(ctx context.Context, now int64, attemptedUserIDs []int6
 				return err
 			}
 			if total == 0 {
-				return &accountpixiv.PoolSelectionError{Kind: accountpixiv.PoolSelectionNoLocalAccount}
+				return &pixivaccount.PoolSelectionError{Kind: pixivaccount.PoolSelectionNoLocalAccount}
 			}
 			if err := tx.Model(&pixivAccountRow{}).Where(colSchedulable+" = ?", true).Count(&schedulable).Error; err != nil {
 				return err
 			}
 			if schedulable == 0 {
-				return &accountpixiv.PoolSelectionError{Kind: accountpixiv.PoolSelectionNoSchedulable}
+				return &pixivaccount.PoolSelectionError{Kind: pixivaccount.PoolSelectionNoSchedulable}
 			}
 			eligibleScope, eligibleArgs := poolScope(now)
 			if err := tx.Model(&pixivAccountRow{}).Where(eligibleScope, eligibleArgs...).Count(&eligible).Error; err != nil {
@@ -223,7 +223,7 @@ func (d *DB) SelectPixiv(ctx context.Context, now int64, attemptedUserIDs []int6
 				if err != nil {
 					return err
 				}
-				return &accountpixiv.PoolSelectionError{Kind: accountpixiv.PoolSelectionAllFrozen, EarliestFrozenUntil: earliest}
+				return &pixivaccount.PoolSelectionError{Kind: pixivaccount.PoolSelectionAllFrozen, EarliestFrozenUntil: earliest}
 			}
 			scope, args := poolScope(now)
 			query := tx.WithContext(ctx).Table(tablePixivAccount).Where(scope, args...)
@@ -235,7 +235,7 @@ func (d *DB) SelectPixiv(ctx context.Context, now int64, attemptedUserIDs []int6
 				Order(colSortOrder).Find(&rows).Error; err != nil {
 				return err
 			}
-			candidates := make([]accountpixiv.PoolCandidate, len(rows))
+			candidates := make([]pixivaccount.PoolCandidate, len(rows))
 			for i, row := range rows {
 				candidates[i] = row.candidate(now)
 			}
@@ -244,7 +244,7 @@ func (d *DB) SelectPixiv(ctx context.Context, now int64, attemptedUserIDs []int6
 				if err != nil {
 					return err
 				}
-				return &accountpixiv.PoolSelectionError{Kind: accountpixiv.PoolSelectionExhausted, EarliestFrozenUntil: earliest}
+				return &pixivaccount.PoolSelectionError{Kind: pixivaccount.PoolSelectionExhausted, EarliestFrozenUntil: earliest}
 			}
 			var marker poolCandidateRow
 			markerErr := tx.WithContext(ctx).Table(tablePixivAccount).Select(colUserID, colSortOrder).
@@ -260,7 +260,7 @@ func (d *DB) SelectPixiv(ctx context.Context, now int64, attemptedUserIDs []int6
 			if chooser == nil {
 				return errors.New("database: pixiv pool chooser is required")
 			}
-			chosenUserID, err := chooser(accountpixiv.PoolSnapshot{
+			chosenUserID, err := chooser(pixivaccount.PoolSnapshot{
 				Candidates:      candidates,
 				MarkerUserID:    markerUserID,
 				MarkerSortOrder: markerSortOrder,
@@ -310,7 +310,7 @@ func (d *DB) Freeze(ctx context.Context, userID, frozenUntil int64) error {
 			return result.Error
 		}
 		if result.RowsAffected == 0 {
-			return accountpixiv.ErrNotFound
+			return pixivaccount.ErrNotFound
 		}
 		return nil
 	})
@@ -318,7 +318,7 @@ func (d *DB) Freeze(ctx context.Context, userID, frozenUntil int64) error {
 
 // SaveFanboxCredential 保存一次已验证的 FANBOX credential。
 // 新账号固定从 revision 1 开始；已有账号在 SQL 内递增 revision。
-func (d *DB) SaveFanboxCredential(ctx context.Context, account accountfanbox.Account) error {
+func (d *DB) SaveFanboxCredential(ctx context.Context, account fanboxaccount.Account) error {
 	return d.withLock(ctx, func() error {
 		if account.UserID <= 0 || !account.HasSession() || account.ValidatedAt <= 0 {
 			return errors.New("database: invalid fanbox account")
@@ -389,20 +389,20 @@ func (d *DB) RotateFanboxSession(ctx context.Context, userID, expectedRevision i
 			return err
 		}
 		if count == 0 {
-			return accountfanbox.ErrNotFound
+			return fanboxaccount.ErrNotFound
 		}
-		return accountfanbox.ErrCredentialConflict
+		return fanboxaccount.ErrCredentialConflict
 	})
 }
 
 // ListFanbox 返回全部 FANBOX 账号，按 sort_order 升序。
-func (d *DB) ListFanbox(ctx context.Context) ([]accountfanbox.Account, error) {
-	return withDatabaseValue(ctx, d, func() ([]accountfanbox.Account, error) {
+func (d *DB) ListFanbox(ctx context.Context) ([]fanboxaccount.Account, error) {
+	return withDatabaseValue(ctx, d, func() ([]fanboxaccount.Account, error) {
 		var rows []fanboxAccountRow
 		if err := d.orm.WithContext(ctx).Order(colSortOrder).Find(&rows).Error; err != nil {
 			return nil, err
 		}
-		accounts := make([]accountfanbox.Account, len(rows))
+		accounts := make([]fanboxaccount.Account, len(rows))
 		for i, row := range rows {
 			accounts[i] = row.account()
 		}
@@ -411,14 +411,14 @@ func (d *DB) ListFanbox(ctx context.Context) ([]accountfanbox.Account, error) {
 }
 
 // GetFanbox 返回指定 user_id 的 FANBOX 账号；不存在返回 ErrNotFound。
-func (d *DB) GetFanbox(ctx context.Context, userID int64) (accountfanbox.Account, error) {
-	return withDatabaseValue(ctx, d, func() (accountfanbox.Account, error) {
+func (d *DB) GetFanbox(ctx context.Context, userID int64) (fanboxaccount.Account, error) {
+	return withDatabaseValue(ctx, d, func() (fanboxaccount.Account, error) {
 		var row fanboxAccountRow
 		if err := d.orm.WithContext(ctx).Where(colUserID+" = ?", userID).Take(&row).Error; err != nil {
 			if errors.Is(err, gorm.ErrRecordNotFound) {
-				return accountfanbox.Account{}, accountfanbox.ErrNotFound
+				return fanboxaccount.Account{}, fanboxaccount.ErrNotFound
 			}
-			return accountfanbox.Account{}, err
+			return fanboxaccount.Account{}, err
 		}
 		return row.account(), nil
 	})
@@ -432,7 +432,7 @@ func (d *DB) RemoveFanbox(ctx context.Context, userID int64) error {
 			return result.Error
 		}
 		if result.RowsAffected == 0 {
-			return accountfanbox.ErrNotFound
+			return fanboxaccount.ErrNotFound
 		}
 		return nil
 	})

@@ -4,13 +4,13 @@ import (
 	"net/url"
 	"strings"
 
-	protocol "github.com/FlanChanXwO/pixiv-cli/internal/pixivapi"
+	"github.com/FlanChanXwO/pixiv-cli/internal/pixivapi"
 )
 
 // IsOfficialOAuthCallbackURL reports whether rawURL has the exact official
 // Pixiv OAuth callback origin and callback path. It performs no network I/O.
 func IsOfficialOAuthCallbackURL(rawURL string) bool {
-	callback, err := url.Parse(protocol.OAuthRedirectURI)
+	callback, err := url.Parse(pixivapi.OAuthRedirectURI)
 	if err != nil {
 		return false
 	}
@@ -20,7 +20,7 @@ func IsOfficialOAuthCallbackURL(rawURL string) bool {
 // IsOfficialOAuthStartURL reports whether rawURL has the exact official Pixiv
 // App OAuth start origin and path. It performs no network I/O.
 func IsOfficialOAuthStartURL(rawURL string) bool {
-	return isOfficialOAuthURL(rawURL, protocol.AppOAuthStart)
+	return isOfficialOAuthURL(rawURL, pixivapi.AppOAuthStart)
 }
 
 func isOfficialOAuthURL(rawURL, expectedPath string) bool {
@@ -28,7 +28,7 @@ func isOfficialOAuthURL(rawURL, expectedPath string) bool {
 	if err != nil {
 		return false
 	}
-	callback, err := url.Parse(protocol.OAuthRedirectURI)
+	callback, err := url.Parse(pixivapi.OAuthRedirectURI)
 	if err != nil {
 		return false
 	}

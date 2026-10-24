@@ -12,7 +12,7 @@ import (
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/internal/toolhost"
 	"github.com/FlanChanXwO/pixiv-cli/internal/pagination"
 	record "github.com/FlanChanXwO/pixiv-cli/internal/record"
-	dateutil "github.com/FlanChanXwO/pixiv-cli/internal/searchfilter"
+	"github.com/FlanChanXwO/pixiv-cli/internal/searchfilter"
 	"github.com/FlanChanXwO/pixiv-cli/sdk"
 	"github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
@@ -108,7 +108,7 @@ func searchArtworks[C artworkSearchClient](ctx context.Context, execute paginati
 		}
 
 		candidateQuery := request.Query
-		candidateQuery.CursorContext = dateutil.BookmarkContext(min, max, string(strategy))
+		candidateQuery.CursorContext = searchfilter.BookmarkContext(min, max, string(strategy))
 		if strategy == bookmarkFilterStrategyLocal {
 			// App API bounds 只是 candidate 条件；local 必须枚举正常候选流再本地复核。
 			candidateQuery.BookmarkMin = nil
@@ -464,9 +464,9 @@ func quickDateRange(value string, now time.Time) (startDate, endDate string, ok 
 	var start time.Time
 	switch value {
 	case "within_half_year":
-		start = dateutil.AddMonthsClamped(today, -6)
+		start = searchfilter.AddMonthsClamped(today, -6)
 	case "within_year":
-		start = dateutil.AddMonthsClamped(today, -12)
+		start = searchfilter.AddMonthsClamped(today, -12)
 	default:
 		return "", "", false
 	}

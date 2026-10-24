@@ -15,7 +15,7 @@ import (
 
 // runAll 按既有类别顺序把四个推荐分区写入一份私有临时文档，只有全部读取成功后才
 // 把完整文档交给 stdout。因此中途失败不会让用户看到半份结果。
-func (a command) runAll(ctx context.Context, client *pixiv.Client, plan pixivcmd.Plan, jsonOut bool) (bool, error) {
+func (a commandRunner) runAll(ctx context.Context, client *pixiv.Client, plan pixivcmd.Plan, jsonOut bool) (bool, error) {
 	spool, err := newSpool(jsonOut)
 	if err != nil {
 		return false, err

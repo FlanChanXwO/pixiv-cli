@@ -80,7 +80,7 @@ func TestSavePostAssetsKeepsAssetPathInsideDownloadDir(t *testing.T) {
 			baseDir := t.TempDir()
 			client := stubSavingClient(t)
 			resource := stubImageResource(t, client)
-			cmd := command{env: commands.Env{Out: io.Discard}}
+			cmd := commandRunner{env: commands.Env{Out: io.Discard}}
 			post := fanbox.Post{
 				CreatorID: tc.creatorID,
 				ID:        tc.postID,
@@ -106,7 +106,7 @@ func TestSavePostAssetsRejectsEmptyPathIdentity(t *testing.T) {
 	baseDir := t.TempDir()
 	client := stubSavingClient(t)
 	resource := stubImageResource(t, client)
-	cmd := command{env: commands.Env{Out: io.Discard}}
+	cmd := commandRunner{env: commands.Env{Out: io.Discard}}
 	post := fanbox.Post{CreatorID: "", ID: "p1", Body: &fanbox.PostBody{
 		Assets: []fanbox.Asset{{ID: "a1", Kind: fanbox.AssetKindImage, Resource: resource}},
 	}}

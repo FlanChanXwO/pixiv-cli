@@ -1,4 +1,4 @@
-// Package download owns FANBOX post asset download commands.
+// Package download owns FANBOX post asset download command.
 package download
 
 import (
@@ -9,8 +9,8 @@ import (
 	"path/filepath"
 	"strings"
 
-	fanboxpost "github.com/FlanChanXwO/pixiv-cli/internal/cli/fanbox/post"
-	commands "github.com/FlanChanXwO/pixiv-cli/internal/cli/internal/command"
+	"github.com/FlanChanXwO/pixiv-cli/internal/cli/fanbox/post"
+	"github.com/FlanChanXwO/pixiv-cli/internal/cli/internal/command"
 	"github.com/FlanChanXwO/pixiv-cli/internal/cli/internal/fanboxcmd"
 	"github.com/FlanChanXwO/pixiv-cli/internal/cli/internal/fanboxcmd/listing"
 	"github.com/FlanChanXwO/pixiv-cli/internal/session"
@@ -19,16 +19,16 @@ import (
 	"github.com/spf13/cobra"
 )
 
-type command struct {
-	env          commands.Env
+type commandRunner struct {
+	env          command.Env
 	open         func() (*session.Fanbox, error)
 	downloadPath func() (string, error)
 }
 
 // New builds the actual `pixiv fanbox download` command. downloadPath is read
 // only when the command runs, so building the command tree opens no config.
-func New(env commands.Env, open func() (*session.Fanbox, error), downloadPath func() (string, error)) *cobra.Command {
-	a := command{env: env, open: open, downloadPath: downloadPath}
+func New(env command.Env, open func() (*session.Fanbox, error), downloadPath func() (string, error)) *cobra.Command {
+	a := commandRunner{env: env, open: open, downloadPath: downloadPath}
 	cmd := &cobra.Command{
 		Use:   "download SOURCE...",
 		Short: "Download posts and their assets from FANBOX",
@@ -38,11 +38,11 @@ func New(env commands.Env, open func() (*session.Fanbox, error), downloadPath fu
 		},
 	}
 	env.BindTextValue(cmd, 1, -1, 0)
-	commands.Bind(cmd, commands.FanboxData())
+	command.Bind(cmd, command.FanboxData())
 	return cmd
 }
 
-func (a command) run(cmd *cobra.Command, args []string) error {
+func (a commandRunner) run(cmd *cobra.Command, args []string) error {
 	downloadPath, err := a.downloadPath()
 	if err != nil {
 		return err
@@ -51,7 +51,7 @@ func (a command) run(cmd *cobra.Command, args []string) error {
 	return fanboxcmd.UseClient(cmd, a.open, func(client *fanbox.Client) error {
 		seen := make(map[string]struct{})
 		for _, source := range args {
-			fetch, err := fanboxpost.PostsFetch(cmd.Context(), client, source)
+			fetch, err := post.PostsFetch(cmd.Context(), client, source)
 			if err != nil {
 				return err
 			}
@@ -70,7 +70,7 @@ func (a command) run(cmd *cobra.Command, args []string) error {
 	})
 }
 
-func (a command) savePostAssets(ctx context.Context, client *fanbox.Client, baseDir string, post fanbox.Post, seen map[string]struct{}) error {
+func (a commandRunner) savePostAssets(ctx context.Context, client *fanbox.Client, baseDir string, post fanbox.Post, seen map[string]struct{}) error {
 	if post.Body == nil {
 		return nil
 	}

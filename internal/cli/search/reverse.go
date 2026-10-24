@@ -10,7 +10,7 @@ import (
 	"strings"
 
 	pixivcmd "github.com/FlanChanXwO/pixiv-cli/internal/cli/internal/pixivcmd"
-	textutil "github.com/FlanChanXwO/pixiv-cli/internal/plaintext"
+	"github.com/FlanChanXwO/pixiv-cli/internal/plaintext"
 	record "github.com/FlanChanXwO/pixiv-cli/internal/record"
 	"github.com/FlanChanXwO/pixiv-cli/internal/reversesearch"
 	"github.com/spf13/cobra"
@@ -27,7 +27,7 @@ type ReverseSearchRequest struct {
 // ReverseSearchFunc 是 CLI owner 使用的反向搜图窄执行端口。
 type ReverseSearchFunc func(context.Context, ReverseSearchRequest) (reversesearch.Response, error)
 
-func (a command) runReverseSearch(cmd *cobra.Command, source string, opts options) error {
+func (a commandRunner) runReverseSearch(cmd *cobra.Command, source string, opts options) error {
 	if err := validateReverseSearchFlags(cmd); err != nil {
 		return a.env.UsageError(err)
 	}
@@ -124,7 +124,7 @@ func reverseSearchResponseHasData(response reversesearch.Response) bool {
 		len(response.Results) > 0 || len(response.ProviderErrors) > 0 || response.Partial
 }
 
-func (a command) writeReverseSearchResponse(response reversesearch.Response, jsonOut, ndjson bool) error {
+func (a commandRunner) writeReverseSearchResponse(response reversesearch.Response, jsonOut, ndjson bool) error {
 	records, err := reverseSearchRecords(response.Results)
 	if err != nil {
 		return err
@@ -194,10 +194,10 @@ func printReverseSearchHuman(out io.Writer, results []reversesearch.Result) erro
 			}
 			line = identity.URL()
 		}
-		if title := textutil.SafeLine(result.Title); title != "" {
+		if title := plaintext.SafeLine(result.Title); title != "" {
 			line += " — " + title
 		}
-		if author := textutil.SafeLine(result.Author); author != "" {
+		if author := plaintext.SafeLine(result.Author); author != "" {
 			line += " by " + author
 		}
 		if _, err := fmt.Fprintln(out, line); err != nil {
@@ -207,7 +207,7 @@ func printReverseSearchHuman(out io.Writer, results []reversesearch.Result) erro
 	return nil
 }
 
-func (a command) writeReverseSearchWarning(response reversesearch.Response) error {
+func (a commandRunner) writeReverseSearchWarning(response reversesearch.Response) error {
 	if a.env.Err == nil {
 		return errors.New("reverse search partial warning output is not configured")
 	}

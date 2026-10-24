@@ -18,7 +18,7 @@ import (
 	"github.com/FlanChanXwO/pixiv-cli/internal/config/paths"
 	"github.com/FlanChanXwO/pixiv-cli/internal/loginrelay"
 	filelock "github.com/FlanChanXwO/pixiv-cli/internal/storage/filelock"
-	filesecret "github.com/FlanChanXwO/pixiv-cli/internal/storage/secretfile"
+	"github.com/FlanChanXwO/pixiv-cli/internal/storage/secretfile"
 )
 
 const (
@@ -281,7 +281,7 @@ func saveActiveRemoteLoginAt(statePath string, session activeRemoteLogin) error 
 	if err != nil {
 		return err
 	}
-	return filesecret.WritePrivateFile(statePath, body, paths.PrivateFileMode)
+	return secretfile.WritePrivateFile(statePath, body, paths.PrivateFileMode)
 }
 
 // loadActiveRemoteLogin 读取当前 remote handoff 状态；没有活动 handoff 时返回

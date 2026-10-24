@@ -24,7 +24,7 @@ import (
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/selfupdate/release"
 	"github.com/FlanChanXwO/pixiv-cli/internal/selfupdate/source"
-	filereplace "github.com/FlanChanXwO/pixiv-cli/internal/storage/atomicfile"
+	"github.com/FlanChanXwO/pixiv-cli/internal/storage/atomicfile"
 )
 
 const (
@@ -222,7 +222,7 @@ func (i *releaseInstaller) Install(ctx context.Context, rel release.Release) (er
 	}
 	stagedPath := staged.Name()
 	defer func() {
-		if err != nil && !filereplace.MustPreserveReplacementSource(err) {
+		if err != nil && !atomicfile.MustPreserveReplacementSource(err) {
 			if removeErr := os.Remove(stagedPath); removeErr != nil && !os.IsNotExist(removeErr) {
 				err = errors.Join(err, fmt.Errorf("remove staged update file %q: %w", stagedPath, removeErr))
 			}
@@ -679,7 +679,7 @@ type releaseFileReplacer struct {
 
 func (r releaseFileReplacer) Replace(sourcePath, targetPath string) error {
 	if r.goos == "windows" {
-		return filereplace.ReplaceFileWithBackup(sourcePath, targetPath, targetPath+".old")
+		return atomicfile.ReplaceFileWithBackup(sourcePath, targetPath, targetPath+".old")
 	}
-	return filereplace.ReplaceFile(sourcePath, targetPath)
+	return atomicfile.ReplaceFile(sourcePath, targetPath)
 }

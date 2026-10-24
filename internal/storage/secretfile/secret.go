@@ -7,13 +7,13 @@ import (
 	"path/filepath"
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/config/paths"
-	filereplace "github.com/FlanChanXwO/pixiv-cli/internal/storage/atomicfile"
+	"github.com/FlanChanXwO/pixiv-cli/internal/storage/atomicfile"
 )
 
 type privateFileOps struct {
 	write       func(*os.File, []byte) (int, error)
 	syncFile    func(*os.File) error
-	replaceFile func(string, string) (filereplace.Result, error)
+	replaceFile func(string, string) (atomicfile.Result, error)
 	syncParent  func(string) error
 }
 
@@ -27,8 +27,8 @@ func defaultPrivateFileOps() privateFileOps {
 		syncFile: func(file *os.File) error {
 			return file.Sync()
 		},
-		replaceFile: filereplace.ReplacePrivateFile,
-		syncParent:  filereplace.SyncParentDirectory,
+		replaceFile: atomicfile.ReplacePrivateFile,
+		syncParent:  atomicfile.SyncParentDirectory,
 	}
 }
 

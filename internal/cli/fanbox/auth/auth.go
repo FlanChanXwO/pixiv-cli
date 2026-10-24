@@ -4,7 +4,7 @@ package auth
 import (
 	"context"
 
-	commands "github.com/FlanChanXwO/pixiv-cli/internal/cli/internal/command"
+	"github.com/FlanChanXwO/pixiv-cli/internal/cli/internal/command"
 	"github.com/FlanChanXwO/pixiv-cli/internal/cli/internal/fanboxcmd"
 	"github.com/FlanChanXwO/pixiv-cli/internal/fanboxaccount"
 	"github.com/spf13/cobra"
@@ -19,8 +19,8 @@ type accountStore interface {
 	RemoveAccount(context.Context, int64) error
 }
 
-type command struct {
-	env      commands.Env
+type commandRunner struct {
+	env      command.Env
 	accounts func() (*fanboxaccount.Service, error)
 	browser  fanboxcmd.BrowserProvider
 }
@@ -43,8 +43,8 @@ type removeOptions struct {
 }
 
 // New builds the actual `pixiv fanbox auth` command group.
-func New(env commands.Env, accounts func() (*fanboxaccount.Service, error), browser fanboxcmd.BrowserProvider) *cobra.Command {
-	a := command{env: env, accounts: accounts, browser: browser}
+func New(env command.Env, accounts func() (*fanboxaccount.Service, error), browser fanboxcmd.BrowserProvider) *cobra.Command {
+	a := commandRunner{env: env, accounts: accounts, browser: browser}
 	cmd := &cobra.Command{
 		Use:   "auth",
 		Short: "Manage local FANBOX authentication",
@@ -61,9 +61,9 @@ func New(env commands.Env, accounts func() (*fanboxaccount.Service, error), brow
 		a.newStatusCommand(),
 	)
 	env.BindNoInput(cmd)
-	commands.Bind(cmd, commands.Execution{})
+	command.Bind(cmd, command.Execution{})
 	for _, child := range cmd.Commands() {
-		commands.Bind(child, commands.FanboxAuth())
+		command.Bind(child, command.FanboxAuth())
 	}
 	return cmd
 }

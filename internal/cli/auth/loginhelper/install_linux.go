@@ -15,7 +15,7 @@ import (
 	"strings"
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/config/paths"
-	filesecret "github.com/FlanChanXwO/pixiv-cli/internal/storage/secretfile"
+	"github.com/FlanChanXwO/pixiv-cli/internal/storage/secretfile"
 )
 
 const linuxURLHandlerDesktopFile = "pixiv-cli-url-handler.desktop"
@@ -72,7 +72,7 @@ func (i urlHandlerInstaller) ensurePersistent(ctx context.Context) error {
 	} else {
 		manifest.ExecutablePath = executablePath
 	}
-	if err := filesecret.WritePrivateFile(desktopPath, []byte(linuxDesktopEntry(executablePath)), paths.PrivateFileMode); err != nil {
+	if err := secretfile.WritePrivateFile(desktopPath, []byte(linuxDesktopEntry(executablePath)), paths.PrivateFileMode); err != nil {
 		return err
 	}
 	if err := i.runXDGMime(ctx, "default", linuxURLHandlerDesktopFile, linuxPixivURLScheme); err != nil {
@@ -149,7 +149,7 @@ func (i urlHandlerInstaller) install(ctx context.Context, callbackRelayURL strin
 	if err != nil {
 		return nil, err
 	}
-	if err := filesecret.WritePrivateFile(desktopPath, []byte(linuxDesktopEntry(executablePath)), paths.PrivateFileMode); err != nil {
+	if err := secretfile.WritePrivateFile(desktopPath, []byte(linuxDesktopEntry(executablePath)), paths.PrivateFileMode); err != nil {
 		return nil, err
 	}
 	if err := i.runXDGMime(ctx, "default", linuxURLHandlerDesktopFile, linuxPixivURLScheme); err != nil {

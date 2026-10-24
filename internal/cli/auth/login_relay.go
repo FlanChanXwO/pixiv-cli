@@ -8,7 +8,7 @@ import (
 	"net/url"
 	"strings"
 
-	config "github.com/FlanChanXwO/pixiv-cli/internal/config/settings"
+	"github.com/FlanChanXwO/pixiv-cli/internal/config/settings"
 	"github.com/spf13/pflag"
 )
 
@@ -26,7 +26,7 @@ type relayServerOptions struct {
 
 // configuredRelayServerOptions 按单次 flag > 私有 config 的优先级合成 server
 // relay；没有任一 server 值时保持普通本地登录。client target 本身不触发 server。
-func configuredRelayServerOptions(cmd *pflag.FlagSet, opts accountLoginOptions, cfg config.RuntimeConfig) (relayServerOptions, bool, error) {
+func configuredRelayServerOptions(cmd *pflag.FlagSet, opts accountLoginOptions, cfg settings.RuntimeConfig) (relayServerOptions, bool, error) {
 	result := relayServerOptions{
 		PublicURL:   cfg.LoginRelayPublicURL,
 		ListenAddr:  cfg.LoginRelayListenAddr,

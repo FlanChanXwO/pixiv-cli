@@ -10,7 +10,7 @@ import (
 	"strconv"
 	"strings"
 
-	recordpkg "github.com/FlanChanXwO/pixiv-cli/internal/record"
+	"github.com/FlanChanXwO/pixiv-cli/internal/record"
 	"github.com/FlanChanXwO/pixiv-cli/sdk"
 	pixiv "github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
 )
@@ -77,7 +77,7 @@ const (
 // an empty Type uses Contract.DefaultType or URL inference.
 type Input struct {
 	Value  string
-	Record *recordpkg.Record
+	Record *record.Record
 	Type   string
 }
 
@@ -198,7 +198,7 @@ func resolveValue(ctx context.Context, value, typeName string, contract Contract
 	return targetFromReference(ref, selection, SourceURL, contract)
 }
 
-func resolveRecord(source recordpkg.Record, typeName string, contract Contract) (Target, error) {
+func resolveRecord(source record.Record, typeName string, contract Contract) (Target, error) {
 	id, err := strconv.ParseInt(strings.TrimSpace(source.ID()), 10, 64)
 	if err != nil || id <= 0 {
 		return Target{}, invalid(contract, "record id must be a positive integer")

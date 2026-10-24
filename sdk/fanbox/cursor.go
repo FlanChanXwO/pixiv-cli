@@ -11,7 +11,7 @@ import (
 	"strconv"
 	"strings"
 
-	protocol "github.com/FlanChanXwO/pixiv-cli/internal/fanboxapi"
+	"github.com/FlanChanXwO/pixiv-cli/internal/fanboxapi"
 	"github.com/FlanChanXwO/pixiv-cli/sdk"
 )
 
@@ -118,7 +118,7 @@ func (c *Client) continuationURL(ctx context.Context, op string, baseQuery url.V
 func (c *Client) verifiedUserID(ctx context.Context) (int64, error) {
 	userID, err := c.app.VerifiedUserID(ctx)
 	if err != nil {
-		if errors.Is(err, protocol.ErrMissingIdentity) {
+		if errors.Is(err, fanboxapi.ErrMissingIdentity) {
 			return 0, newError("CurrentUser", sdk.MalformedUpstreamResponse, errors.New("FANBOX identity has no valid user id"))
 		}
 		return 0, classifyError("CurrentUser", err)

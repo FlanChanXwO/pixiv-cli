@@ -8,7 +8,7 @@ import (
 	"os"
 	"path/filepath"
 
-	filereplace "github.com/FlanChanXwO/pixiv-cli/internal/storage/atomicfile"
+	"github.com/FlanChanXwO/pixiv-cli/internal/storage/atomicfile"
 )
 
 // SecretFileWriteError 隐藏任意目标路径及底层可能携带的路径，同时保留 errors.Is/As。
@@ -24,7 +24,7 @@ type secretFileOps struct {
 	sync          func(*os.File) error
 	close         func(*os.File) error
 	remove        func(string) error
-	replace       func(string, string) (filereplace.Result, error)
+	replace       func(string, string) (atomicfile.Result, error)
 	protectPath   func(string) error
 	syncParent    func(string) error
 }
@@ -39,9 +39,9 @@ func defaultSecretFileOps() secretFileOps {
 		sync:        func(file *os.File) error { return file.Sync() },
 		close:       func(file *os.File) error { return file.Close() },
 		remove:      os.Remove,
-		replace:     filereplace.ReplacePrivateFile,
+		replace:     atomicfile.ReplacePrivateFile,
 		protectPath: applySecretPathProtection,
-		syncParent:  filereplace.SyncParentDirectory,
+		syncParent:  atomicfile.SyncParentDirectory,
 	}
 }
 

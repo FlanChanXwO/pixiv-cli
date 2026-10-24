@@ -9,14 +9,13 @@ import (
 	"strings"
 	"time"
 
-	commands "github.com/FlanChanXwO/pixiv-cli/internal/cli/internal/command"
+	"github.com/FlanChanXwO/pixiv-cli/internal/cli/internal/command"
 	pixivcmd "github.com/FlanChanXwO/pixiv-cli/internal/cli/internal/pixivcmd"
 	"github.com/FlanChanXwO/pixiv-cli/internal/cli/user"
-	textutil "github.com/FlanChanXwO/pixiv-cli/internal/plaintext"
+	"github.com/FlanChanXwO/pixiv-cli/internal/plaintext"
 	record "github.com/FlanChanXwO/pixiv-cli/internal/record"
 	"github.com/FlanChanXwO/pixiv-cli/internal/reversesearch"
 	"github.com/FlanChanXwO/pixiv-cli/internal/searchfilter"
-	dateutil "github.com/FlanChanXwO/pixiv-cli/internal/searchfilter"
 	"github.com/FlanChanXwO/pixiv-cli/sdk"
 	pixiv "github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
 	"github.com/spf13/cobra"
@@ -30,7 +29,7 @@ const (
 )
 
 type options struct {
-	commands.Options
+	command.Options
 	ndjson           bool
 	limit            int
 	page             int
@@ -56,16 +55,16 @@ type options struct {
 // ReverseSearchPort performs one reverse image search without opening Pixiv.
 type ReverseSearchPort func(context.Context, ReverseSearchRequest) (reversesearch.Response, error)
 
-type command struct {
-	env           commands.Env
+type commandRunner struct {
+	env           command.Env
 	runner        pixivcmd.Runner
 	exec          pixivcmd.Executor
 	reverseSearch ReverseSearchPort
 }
 
 // New builds the actual root `pixiv search` command.
-func New(env commands.Env, exec pixivcmd.Executor, reverseSearch ReverseSearchPort) *cobra.Command {
-	a := command{env: env, runner: pixivcmd.New(env.Out, exec), exec: exec, reverseSearch: reverseSearch}
+func New(env command.Env, exec pixivcmd.Executor, reverseSearch ReverseSearchPort) *cobra.Command {
+	a := commandRunner{env: env, runner: pixivcmd.New(env.Out, exec), exec: exec, reverseSearch: reverseSearch}
 	opts := options{
 		searchBy:    searchTargetTagPartial,
 		sortMode:    string(pixiv.SortModeDateDesc),
@@ -111,11 +110,11 @@ func New(env commands.Env, exec pixivcmd.Executor, reverseSearch ReverseSearchPo
 	flags.StringVar(&opts.provider, "provider", "", "reverse search provider: saucenao, ascii2d-color, ascii2d-bovw, all")
 	pixivcmd.BindListFlags(cmd, &opts.limit, &opts.page)
 	env.BindTextValueWhen(cmd, 1, 1, 0, func(_ *cobra.Command, _ []string) bool { return !opts.trendingTags })
-	commands.Bind(cmd, commands.PixivData())
+	command.Bind(cmd, command.PixivData())
 	return cmd
 }
 
-func (a command) run(cmd *cobra.Command, args []string, opts options) error {
+func (a commandRunner) run(cmd *cobra.Command, args []string, opts options) error {
 	if source := strings.Join(args, " "); isReverseSearchSource(source) {
 		return a.runReverseSearch(cmd, source, opts)
 	}
@@ -267,7 +266,7 @@ type bookmarkFilterJSON struct {
 
 // runBookmarkFiltered 在 CLI adapter 内完成 bookmark 区间过滤；输出形态与
 // 过滤元数据仍由 CLI 保持。
-func (a command) runBookmarkFiltered(cmd *cobra.Command, account pixivcmd.Request, plan pixivcmd.Plan, jsonOut, ndjson bool, word string, query pixiv.SearchArtworksRequest, strategy bookmarkFilterStrategy, include func(pixiv.Artwork) (bool, error)) error {
+func (a commandRunner) runBookmarkFiltered(cmd *cobra.Command, account pixivcmd.Request, plan pixivcmd.Plan, jsonOut, ndjson bool, word string, query pixiv.SearchArtworksRequest, strategy bookmarkFilterStrategy, include func(pixiv.Artwork) (bool, error)) error {
 	outcome, err := searchArtworks(cmd.Context(), a.runner.Execute(account), artworkSearchRequest{
 		Query:      query,
 		Plan:       plan.PagePlan(),
@@ -281,7 +280,7 @@ func (a command) runBookmarkFiltered(cmd *cobra.Command, account pixivcmd.Reques
 	return a.writeArtworkResults(jsonOut, ndjson, word, outcome.Page.Items, outcome.Filter)
 }
 
-func (a command) runLocallyFiltered(cmd *cobra.Command, account pixivcmd.Request, plan pixivcmd.Plan, jsonOut, ndjson bool, word string, query pixiv.SearchArtworksRequest, include func(pixiv.Artwork) (bool, error)) error {
+func (a commandRunner) runLocallyFiltered(cmd *cobra.Command, account pixivcmd.Request, plan pixivcmd.Plan, jsonOut, ndjson bool, word string, query pixiv.SearchArtworksRequest, include func(pixiv.Artwork) (bool, error)) error {
 	outcome, err := searchArtworks(cmd.Context(), a.runner.Execute(account), artworkSearchRequest{
 		Query:   query,
 		Plan:    plan.PagePlan(),
@@ -293,7 +292,7 @@ func (a command) runLocallyFiltered(cmd *cobra.Command, account pixivcmd.Request
 	return a.writeArtworkResults(jsonOut, ndjson, word, outcome.Page.Items, nil)
 }
 
-func (a command) writeArtworkResults(jsonOut, ndjson bool, word string, items []pixiv.Artwork, bookmark *bookmarkFilterOutcome) error {
+func (a commandRunner) writeArtworkResults(jsonOut, ndjson bool, word string, items []pixiv.Artwork, bookmark *bookmarkFilterOutcome) error {
 	if ndjson {
 		encoder := json.NewEncoder(a.env.Out)
 		for _, item := range items {
@@ -324,7 +323,7 @@ func (a command) writeArtworkResults(jsonOut, ndjson bool, word string, items []
 	return pixivcmd.PrintArtworksSearch(a.env.Out, items)
 }
 
-func (a command) runTrendingTags(cmd *cobra.Command, options commands.Options) error {
+func (a commandRunner) runTrendingTags(cmd *cobra.Command, options command.Options) error {
 	request, err := pixivcmd.BuildRequest(cmd, options)
 	if err != nil {
 		return err
@@ -354,7 +353,7 @@ func (a command) runTrendingTags(cmd *cobra.Command, options commands.Options) e
 		if translated == "" {
 			translated = "none"
 		}
-		if _, err := fmt.Fprintf(a.env.Out, "%s (translation: %s)\n", textutil.SafeLine(tag.Tag), textutil.SafeLine(translated)); err != nil {
+		if _, err := fmt.Fprintf(a.env.Out, "%s (translation: %s)\n", plaintext.SafeLine(tag.Tag), plaintext.SafeLine(translated)); err != nil {
 			return err
 		}
 	}
@@ -537,9 +536,9 @@ func quickDateRange(value string, now time.Time) (startDate, endDate string, ok 
 	var start time.Time
 	switch value {
 	case "within_half_year":
-		start = dateutil.AddMonthsClamped(today, -6)
+		start = searchfilter.AddMonthsClamped(today, -6)
 	case "within_year":
-		start = dateutil.AddMonthsClamped(today, -12)
+		start = searchfilter.AddMonthsClamped(today, -12)
 	default:
 		return "", "", false
 	}

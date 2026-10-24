@@ -4,13 +4,13 @@
 package cli
 
 import (
-	commands "github.com/FlanChanXwO/pixiv-cli/internal/cli/internal/command"
+	"github.com/FlanChanXwO/pixiv-cli/internal/cli/internal/command"
 	"github.com/FlanChanXwO/pixiv-cli/internal/cli/internal/input"
 	"github.com/spf13/cobra"
 )
 
 // newFanboxCommand assembles the FANBOX product group.
-func newFanboxCommand(env commands.Env, children []*cobra.Command) *cobra.Command {
+func newFanboxCommand(env command.Env, children []*cobra.Command) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "fanbox",
 		Short: "Browse and download Pixiv FANBOX content",
@@ -28,6 +28,6 @@ func newFanboxCommand(env commands.Env, children []*cobra.Command) *cobra.Comman
 		}
 	}
 	input.Bind(cmd, input.InputSpec{Codec: input.NoInput, MinArgs: 0, MaxArgs: 0, Reader: env.In, UsageError: env.UsageError})
-	commands.Bind(cmd, commands.Execution{})
+	command.Bind(cmd, command.Execution{})
 	return cmd
 }

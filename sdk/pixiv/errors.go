@@ -6,7 +6,7 @@ import (
 	"net/http"
 	"time"
 
-	protocol "github.com/FlanChanXwO/pixiv-cli/internal/pixivapi"
+	"github.com/FlanChanXwO/pixiv-cli/internal/pixivapi"
 	"github.com/FlanChanXwO/pixiv-cli/sdk"
 )
 
@@ -39,7 +39,7 @@ func classifyResourceWriteError(operation string, cause error) *sdk.Error {
 // classifyOAuthError maps an OAuth adapter failure to a classified error. It
 // never includes the refresh token, response body, or callback artifacts.
 func classifyOAuthError(err error, operation string) *sdk.Error {
-	var failure protocol.Failure
+	var failure pixivapi.Failure
 	if !errors.As(err, &failure) {
 		if errors.Is(err, context.Canceled) {
 			return sdk.NewError(product, operation, sdk.UpstreamError, sdk.WithCause(context.Canceled))
@@ -52,7 +52,7 @@ func classifyOAuthError(err error, operation string) *sdk.Error {
 		return sdk.NewError(product, operation, sdk.CredentialsExpired, sdk.WithCause(redactedCause(err)))
 	}
 	switch failure.Kind {
-	case protocol.FailureHTTPStatus:
+	case pixivapi.FailureHTTPStatus:
 		switch failure.StatusCode {
 		case http.StatusBadRequest:
 			return sdk.NewError(product, operation, sdk.CredentialsExpired, sdk.WithHTTPStatus(failure.StatusCode), sdk.WithRetry(retryAdvice(failure)))
@@ -67,11 +67,11 @@ func classifyOAuthError(err error, operation string) *sdk.Error {
 		default:
 			return sdk.NewError(product, operation, sdk.UpstreamError, sdk.WithHTTPStatus(failure.StatusCode))
 		}
-	case protocol.FailureMalformed:
+	case pixivapi.FailureMalformed:
 		return sdk.NewError(product, operation, sdk.MalformedUpstreamResponse)
-	case protocol.FailureRejected:
+	case pixivapi.FailureRejected:
 		return sdk.NewError(product, operation, sdk.UpstreamError)
-	case protocol.FailureForbidden:
+	case pixivapi.FailureForbidden:
 		return sdk.NewError(product, operation, sdk.Forbidden)
 	default:
 		return classifyTransport(failure, operation)
@@ -82,7 +82,7 @@ func classifyOAuthError(err error, operation string) *sdk.Error {
 // Content operations without a valid token map to CredentialsExpired;
 // transport failures preserve context cancellation semantics.
 func classifyAppError(err error, operation string) *sdk.Error {
-	var failure protocol.Failure
+	var failure pixivapi.Failure
 	if !errors.As(err, &failure) {
 		if errors.Is(err, context.Canceled) {
 			return sdk.NewError(product, operation, sdk.UpstreamError, sdk.WithCause(context.Canceled))
@@ -93,20 +93,20 @@ func classifyAppError(err error, operation string) *sdk.Error {
 		return sdk.NewError(product, operation, sdk.UpstreamError, sdk.WithCause(redactedCause(err)))
 	}
 	switch failure.Kind {
-	case protocol.FailureHTTPStatus:
+	case pixivapi.FailureHTTPStatus:
 		return classifyStatus(failure, operation)
-	case protocol.FailureMalformed:
+	case pixivapi.FailureMalformed:
 		return sdk.NewError(product, operation, sdk.MalformedUpstreamResponse)
-	case protocol.FailureRejected:
+	case pixivapi.FailureRejected:
 		return sdk.NewError(product, operation, sdk.UpstreamError)
-	case protocol.FailureForbidden:
+	case pixivapi.FailureForbidden:
 		return sdk.NewError(product, operation, sdk.Forbidden)
 	default:
 		return classifyTransport(failure, operation)
 	}
 }
 
-func classifyStatus(failure protocol.Failure, operation string) *sdk.Error {
+func classifyStatus(failure pixivapi.Failure, operation string) *sdk.Error {
 	switch failure.StatusCode {
 	case http.StatusBadRequest:
 		return sdk.NewError(product, operation, sdk.InvalidArgument, sdk.WithHTTPStatus(failure.StatusCode))
@@ -127,12 +127,12 @@ func classifyStatus(failure protocol.Failure, operation string) *sdk.Error {
 	}
 }
 
-func classifyTransport(failure protocol.Failure, operation string) *sdk.Error {
+func classifyTransport(failure pixivapi.Failure, operation string) *sdk.Error {
 	transport := sdk.TransportHTTP
 	switch failure.TransportKind {
-	case protocol.TransportDNS:
+	case pixivapi.TransportDNS:
 		transport = sdk.TransportDNS
-	case protocol.TransportTLS:
+	case pixivapi.TransportTLS:
 		transport = sdk.TransportTLS
 	}
 	opts := []sdk.ErrorOption{sdk.WithTransport(transport)}
@@ -145,7 +145,7 @@ func classifyTransport(failure protocol.Failure, operation string) *sdk.Error {
 	return sdk.NewError(product, operation, sdk.UpstreamUnavailable, opts...)
 }
 
-func retryAdvice(failure protocol.Failure) sdk.RetryAdvice {
+func retryAdvice(failure pixivapi.Failure) sdk.RetryAdvice {
 	if !failure.HasRetryAfter {
 		return sdk.RetryAdvice{}
 	}

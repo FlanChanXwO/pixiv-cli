@@ -7,7 +7,7 @@ import (
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/selfupdate/release"
 	"github.com/FlanChanXwO/pixiv-cli/internal/selfupdate/source"
-	filereplace "github.com/FlanChanXwO/pixiv-cli/internal/storage/atomicfile"
+	"github.com/FlanChanXwO/pixiv-cli/internal/storage/atomicfile"
 )
 
 // NewFileReleaseCache 建立 release 包的存储端口：以私密权限原子写入 cache 文件。
@@ -16,7 +16,7 @@ func NewFileReleaseCache(cacheDir, cachePath string) release.ReleaseCache {
 	return &fileReleaseCache{
 		cacheDir:    cacheDir,
 		cachePath:   cachePath,
-		replaceFile: filereplace.ReplaceFile,
+		replaceFile: atomicfile.ReplaceFile,
 	}
 }
 
@@ -25,7 +25,7 @@ func NewFileReleaseCache(cacheDir, cachePath string) release.ReleaseCache {
 type fileReleaseCache struct {
 	cacheDir  string
 	cachePath string
-	// replaceFile 是每个 cache 独立的替换 seam；生产构造固定使用 filereplace.ReplaceFile。
+	// replaceFile 是每个 cache 独立的替换 seam；生产构造固定使用 atomicfile.ReplaceFile。
 	replaceFile func(string, string) error
 }
 
@@ -57,7 +57,7 @@ func (c *fileReleaseCache) Write(ctx context.Context, body []byte) (err error) {
 	temporaryPath := cacheFile.Name()
 	defer func() {
 		_ = cacheFile.Close()
-		if !filereplace.MustPreserveReplacementSource(err) {
+		if !atomicfile.MustPreserveReplacementSource(err) {
 			if removeErr := os.Remove(temporaryPath); err == nil && removeErr != nil && !os.IsNotExist(removeErr) {
 				err = fmt.Errorf("remove temporary GitHub Releases cache %q: %w", temporaryPath, removeErr)
 			}

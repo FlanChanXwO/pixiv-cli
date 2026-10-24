@@ -9,7 +9,7 @@ import (
 	"path/filepath"
 	"time"
 
-	filereplace "github.com/FlanChanXwO/pixiv-cli/internal/storage/atomicfile"
+	"github.com/FlanChanXwO/pixiv-cli/internal/storage/atomicfile"
 )
 
 // ErrOutputCapacity means encoded output could not fit its reserved temporary budget.
@@ -85,8 +85,8 @@ func writeTempAnimation(ctx context.Context, outputPath string, encode func(stri
 	if err := ctx.Err(); err != nil {
 		return err
 	}
-	if err := filereplace.ReplaceFile(temporaryPath, outputPath); err != nil {
-		if filereplace.MustPreserveReplacementSource(err) {
+	if err := atomicfile.ReplaceFile(temporaryPath, outputPath); err != nil {
+		if atomicfile.MustPreserveReplacementSource(err) {
 			cleanup = false
 		}
 		return err

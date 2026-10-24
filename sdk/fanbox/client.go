@@ -11,7 +11,7 @@ import (
 	"log/slog"
 	"net/http"
 
-	protocol "github.com/FlanChanXwO/pixiv-cli/internal/fanboxapi"
+	"github.com/FlanChanXwO/pixiv-cli/internal/fanboxapi"
 	"github.com/FlanChanXwO/pixiv-cli/sdk"
 )
 
@@ -72,7 +72,7 @@ type FlareSolverrOptions struct {
 type Client struct {
 	// app owns the session, the transport, and the in-session caches for
 	// resource locators and the verified account identity.
-	app *protocol.Client
+	app *fanboxapi.Client
 }
 
 // Open constructs a Client for the given session credentials. It performs no
@@ -84,14 +84,14 @@ func Open(credentials SessionCredentials) (*Client, error) {
 // OpenWith is Open with explicit connection-level Options.
 func OpenWith(credentials SessionCredentials, options Options) (*Client, error) {
 	cookieHeader := "FANBOXSESSID=" + credentials.FANBOXSESSID
-	var solver *protocol.FlareSolverrOptions
+	var solver *fanboxapi.FlareSolverrOptions
 	if options.FlareSolverr != nil {
-		solver = &protocol.FlareSolverrOptions{
+		solver = &fanboxapi.FlareSolverrOptions{
 			URL:      options.FlareSolverr.URL,
 			ProxyURL: options.FlareSolverr.ProxyURL,
 		}
 	}
-	session, err := protocol.NewSessionWithOptions(cookieHeader, protocol.SessionOptions{
+	session, err := fanboxapi.NewSessionWithOptions(cookieHeader, fanboxapi.SessionOptions{
 		HTTPClient:   options.HTTPClient,
 		ProxyURL:     options.ProxyURL,
 		UserAgent:    options.UserAgent,
@@ -100,12 +100,12 @@ func OpenWith(credentials SessionCredentials, options Options) (*Client, error) 
 	})
 	if err != nil {
 		reason := sdk.CredentialsExpired
-		if errors.Is(err, protocol.ErrInvalidOption) {
+		if errors.Is(err, fanboxapi.ErrInvalidOption) {
 			reason = sdk.InvalidArgument
 		}
 		return nil, newError("Open", reason, err)
 	}
-	return &Client{app: protocol.NewClient(session)}, nil
+	return &Client{app: fanboxapi.NewClient(session)}, nil
 }
 
 // CloseIdleConnections releases idle connections of the SDK-created session.
@@ -119,7 +119,7 @@ func (c *Client) CloseIdleConnections() {
 // ValidateSession verifies the current session identity. An expired session
 // returns CredentialsExpired.
 func (c *Client) ValidateSession(ctx context.Context) error {
-	ctx = protocol.WithOperation(ctx, "ValidateSession")
+	ctx = fanboxapi.WithOperation(ctx, "ValidateSession")
 	if _, err := c.currentUser(ctx); err != nil {
 		return classifyError("ValidateSession", err)
 	}
@@ -128,7 +128,7 @@ func (c *Client) ValidateSession(ctx context.Context) error {
 
 // CurrentUser returns the current authenticated user's identity.
 func (c *Client) CurrentUser(ctx context.Context, request CurrentUserRequest) (User, error) {
-	ctx = protocol.WithOperation(ctx, "CurrentUser")
+	ctx = fanboxapi.WithOperation(ctx, "CurrentUser")
 	identity, err := c.currentUser(ctx)
 	if err != nil {
 		return User{}, classifyError("CurrentUser", err)
@@ -136,6 +136,6 @@ func (c *Client) CurrentUser(ctx context.Context, request CurrentUserRequest) (U
 	return mapUser(identity), nil
 }
 
-func (c *Client) currentUser(ctx context.Context) (protocol.Identity, error) {
+func (c *Client) currentUser(ctx context.Context) (fanboxapi.Identity, error) {
 	return c.app.CurrentUser(ctx)
 }

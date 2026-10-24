@@ -13,7 +13,7 @@ import (
 	"strings"
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/config/paths"
-	filesecret "github.com/FlanChanXwO/pixiv-cli/internal/storage/secretfile"
+	"github.com/FlanChanXwO/pixiv-cli/internal/storage/secretfile"
 )
 
 // handlerManifestFilename 是持久协议 handler 的私有 manifest 文件名。
@@ -67,7 +67,7 @@ func saveHandlerManifest(manifest handlerManifest) error {
 	if err != nil {
 		return err
 	}
-	return filesecret.WritePrivateFile(path, body, paths.PrivateFileMode)
+	return secretfile.WritePrivateFile(path, body, paths.PrivateFileMode)
 }
 
 func removeHandlerManifest() error {

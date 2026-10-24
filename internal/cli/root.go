@@ -17,31 +17,31 @@ import (
 
 	authcommands "github.com/FlanChanXwO/pixiv-cli/internal/cli/auth"
 	"github.com/FlanChanXwO/pixiv-cli/internal/cli/auth/loginhelper"
-	pixivbookmark "github.com/FlanChanXwO/pixiv-cli/internal/cli/bookmark"
-	pixivcomment "github.com/FlanChanXwO/pixiv-cli/internal/cli/comment"
-	configcommands "github.com/FlanChanXwO/pixiv-cli/internal/cli/config"
-	pixivdetail "github.com/FlanChanXwO/pixiv-cli/internal/cli/detail"
+	"github.com/FlanChanXwO/pixiv-cli/internal/cli/bookmark"
+	"github.com/FlanChanXwO/pixiv-cli/internal/cli/comment"
+	"github.com/FlanChanXwO/pixiv-cli/internal/cli/config"
+	"github.com/FlanChanXwO/pixiv-cli/internal/cli/detail"
 	fanboxauth "github.com/FlanChanXwO/pixiv-cli/internal/cli/fanbox/auth"
-	pixivfollow "github.com/FlanChanXwO/pixiv-cli/internal/cli/follow"
+	"github.com/FlanChanXwO/pixiv-cli/internal/cli/follow"
 	command "github.com/FlanChanXwO/pixiv-cli/internal/cli/internal/command"
 	"github.com/FlanChanXwO/pixiv-cli/internal/cli/internal/fanboxcmd"
 	"github.com/FlanChanXwO/pixiv-cli/internal/cli/internal/pixivcmd"
-	mcpcommands "github.com/FlanChanXwO/pixiv-cli/internal/cli/mcp"
-	pixivmypixiv "github.com/FlanChanXwO/pixiv-cli/internal/cli/mypixiv"
-	pixivranking "github.com/FlanChanXwO/pixiv-cli/internal/cli/ranking"
-	pixivrecommended "github.com/FlanChanXwO/pixiv-cli/internal/cli/recommended"
-	pixivsearch "github.com/FlanChanXwO/pixiv-cli/internal/cli/search"
-	pixivseries "github.com/FlanChanXwO/pixiv-cli/internal/cli/series"
-	pixivtimeline "github.com/FlanChanXwO/pixiv-cli/internal/cli/timeline"
-	updatecommands "github.com/FlanChanXwO/pixiv-cli/internal/cli/update"
-	pixivuser "github.com/FlanChanXwO/pixiv-cli/internal/cli/user"
-	configapp "github.com/FlanChanXwO/pixiv-cli/internal/config/settings"
+	"github.com/FlanChanXwO/pixiv-cli/internal/cli/mcp"
+	"github.com/FlanChanXwO/pixiv-cli/internal/cli/mypixiv"
+	"github.com/FlanChanXwO/pixiv-cli/internal/cli/ranking"
+	"github.com/FlanChanXwO/pixiv-cli/internal/cli/recommended"
+	"github.com/FlanChanXwO/pixiv-cli/internal/cli/search"
+	"github.com/FlanChanXwO/pixiv-cli/internal/cli/series"
+	"github.com/FlanChanXwO/pixiv-cli/internal/cli/timeline"
+	"github.com/FlanChanXwO/pixiv-cli/internal/cli/update"
+	"github.com/FlanChanXwO/pixiv-cli/internal/cli/user"
+	"github.com/FlanChanXwO/pixiv-cli/internal/config/settings"
 	fanboxaccount "github.com/FlanChanXwO/pixiv-cli/internal/fanboxaccount"
-	unifiedmcp "github.com/FlanChanXwO/pixiv-cli/internal/mcpserver"
+	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver"
 	downloader "github.com/FlanChanXwO/pixiv-cli/internal/media/downloader"
 	pixivaccount "github.com/FlanChanXwO/pixiv-cli/internal/pixivaccount"
 	"github.com/FlanChanXwO/pixiv-cli/internal/reversesearch"
-	reverseassembly "github.com/FlanChanXwO/pixiv-cli/internal/reversesearch/assembly"
+	"github.com/FlanChanXwO/pixiv-cli/internal/reversesearch/assembly"
 	selfupdate "github.com/FlanChanXwO/pixiv-cli/internal/selfupdate"
 	"github.com/FlanChanXwO/pixiv-cli/internal/session"
 	"github.com/FlanChanXwO/pixiv-cli/internal/version"
@@ -67,19 +67,19 @@ func (a app) logger() *slog.Logger { return a.logs.logger }
 const configMissingPlaceholder = "<unset>"
 
 var (
-	runMCPServer = func(a app, ctx context.Context, request mcpcommands.Request) error {
+	runMCPServer = func(a app, ctx context.Context, request mcp.Request) error {
 		return a.runPixivMCP(ctx, request)
 	}
-	runMCPStdio          = unifiedmcp.RunStdio
-	runMCPHTTP           = unifiedmcp.RunHTTP
+	runMCPStdio          = mcpserver.RunStdio
+	runMCPHTTP           = mcpserver.RunHTTP
 	ensureURLSchemeRelay = loginhelper.EnsurePersistentIfNeeded
 	// FANBOX 浏览器读取是 auth command 的注入端口；根包只保留一次 Run
 	// 级别的测试 seam，生产默认实现位于 commands/fanbox/auth。
 	fanboxBrowserSessionReader          fanboxcmd.BrowserProvider = fanboxauth.SystemBrowserProvider{}
 	cleanupPendingWindowsUpdate                                   = selfupdate.CleanupPendingWindowsUpdate
 	automaticPersistentHandlerSupported                           = loginhelper.AutomaticPersistentHandlerSupported
-	newUpdateCommandCoordinator                                   = updatecommands.NewCoordinator
-	newCLIAutomaticUpdateChecker                                  = updatecommands.NewAutomaticChecker
+	newUpdateCommandCoordinator                                   = update.NewCoordinator
+	newCLIAutomaticUpdateChecker                                  = update.NewAutomaticChecker
 	newCLIPixivSDKPorts                                           = func(a app) (pixivSDKPorts, error) { return a.newPixivSDKPorts() }
 	newCLIAccountServices                                         = func(a app) (authcommands.AccountService, pixivaccount.LoginService, error) {
 		return a.newPixivAccountServices()
@@ -89,11 +89,11 @@ var (
 		return a.newFanboxAccountService()
 	}
 	newCLIDownloadService = func() downloader.DownloadService { return defaultDownloadService() }
-	newCLIReverseSearch   = func(options reverseassembly.Options) (reversesearch.Searcher, error) {
-		return reverseassembly.New(options)
+	newCLIReverseSearch   = func(options assembly.Options) (reversesearch.Searcher, error) {
+		return assembly.New(options)
 	}
-	newCLIMCPReverseSearch = func(options reverseassembly.Options) (reversesearch.Searcher, error) {
-		return reverseassembly.New(options)
+	newCLIMCPReverseSearch = func(options assembly.Options) (reversesearch.Searcher, error) {
+		return assembly.New(options)
 	}
 )
 
@@ -129,7 +129,7 @@ func (a app) newRootCommand() *cobra.Command {
 				}
 			}
 			if requirement.EnsureConfig {
-				if err := configapp.DefaultStore().EnsureDefaultConfigFile(); err != nil {
+				if err := settings.DefaultStore().EnsureDefaultConfigFile(); err != nil {
 					return err
 				}
 				if err := a.startLogging(cmd, requirement); err != nil {
@@ -140,7 +140,7 @@ func (a app) newRootCommand() *cobra.Command {
 		},
 		PersistentPostRun: func(cmd *cobra.Command, args []string) {
 			if command.For(cmd).AutomaticUpdate {
-				updatecommands.RunAutomaticCheck(cmd, a)
+				update.RunAutomaticCheck(cmd, a)
 			}
 		},
 	}
@@ -154,30 +154,30 @@ func (a app) newRootCommand() *cobra.Command {
 	cmd.CompletionOptions.DisableDefaultCmd = true
 	env, exec := a.commandEnv(), a.commandExecutor()
 	cmd.AddCommand(a.newAuthCommand())
-	configcommands.Register(cmd, a)
+	config.Register(cmd, a)
 	cmd.AddCommand(a.pixivCommands(env, exec)...)
 	cmd.AddCommand(a.newDownloadCommand())
 	cmd.AddCommand(a.newFanboxCommandGroup(env))
-	mcpcommands.Register(cmd, a)
-	updatecommands.Register(cmd, a)
+	mcp.Register(cmd, a)
+	update.Register(cmd, a)
 	return cmd
 }
 
 func (a app) pixivCommands(env command.Env, exec pixivcmd.Executor) []*cobra.Command {
 	reverseSearch := a.reverseSearchPort()
 	return []*cobra.Command{
-		pixivsearch.New(env, exec, reverseSearch),
-		pixivsearch.NewNovel(env, exec, reverseSearch),
-		pixivdetail.New(env, exec),
-		pixivranking.New(env, exec),
-		pixivseries.New(env, exec),
-		pixivcomment.New(env, exec),
-		pixivrecommended.New(env, exec),
-		pixivtimeline.New(env, exec),
-		pixivmypixiv.New(env, exec),
-		pixivuser.New(env, pixivcmd.New(env.Out, exec), func() *cobra.Command { return pixivfollow.New(env, exec) }),
-		pixivbookmark.New(env, exec),
-		pixivfollow.New(env, exec),
+		search.New(env, exec, reverseSearch),
+		search.NewNovel(env, exec, reverseSearch),
+		detail.New(env, exec),
+		ranking.New(env, exec),
+		series.New(env, exec),
+		comment.New(env, exec),
+		recommended.New(env, exec),
+		timeline.New(env, exec),
+		mypixiv.New(env, exec),
+		user.New(env, pixivcmd.New(env.Out, exec), func() *cobra.Command { return follow.New(env, exec) }),
+		bookmark.New(env, exec),
+		follow.New(env, exec),
 	}
 }
 
@@ -205,22 +205,22 @@ func (a app) RequireMaxArgs(count int, usage string) cobra.PositionalArgs {
 	return requireMaxArgs(count, usage)
 }
 
-func (a app) BindProxyFlags(cmd *cobra.Command, options *mcpcommands.ProxyOptions) {
+func (a app) BindProxyFlags(cmd *cobra.Command, options *mcp.ProxyOptions) {
 	flags := cmd.Flags()
 	flags.StringVar(&options.Proxy, "proxy", "", "proxy URL (http, https, socks5, or socks5h) for this command")
 	flags.BoolVar(&options.NoProxy, "no-proxy", false, "clear the configured proxy for this command")
 }
 
-func (a app) ClientRequest(cmd *cobra.Command, options mcpcommands.ProxyOptions) (mcpcommands.Request, error) {
+func (a app) ClientRequest(cmd *cobra.Command, options mcp.ProxyOptions) (mcp.Request, error) {
 	proxyOverride, err := command.Env{}.ProxyOverride(cmd, command.ProxyOptions{Proxy: options.Proxy, NoProxy: options.NoProxy})
 	if err != nil {
-		return mcpcommands.Request{}, err
+		return mcp.Request{}, err
 	}
-	request := mcpcommands.Request{HTTPSProxyOverride: proxyOverride}
+	request := mcp.Request{HTTPSProxyOverride: proxyOverride}
 	return request, nil
 }
 
-func (a app) runtimeConfig() (configapp.RuntimeConfig, error) {
+func (a app) runtimeConfig() (settings.RuntimeConfig, error) {
 	return loadCLIRuntimeConfig()
 }
 

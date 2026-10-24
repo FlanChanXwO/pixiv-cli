@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"strings"
 
-	commands "github.com/FlanChanXwO/pixiv-cli/internal/cli/internal/command"
+	"github.com/FlanChanXwO/pixiv-cli/internal/cli/internal/command"
 	pixivcmd "github.com/FlanChanXwO/pixiv-cli/internal/cli/internal/pixivcmd"
 	"github.com/FlanChanXwO/pixiv-cli/sdk"
 	pixiv "github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
@@ -14,7 +14,7 @@ import (
 )
 
 type novelOptions struct {
-	commands.Options
+	command.Options
 	ndjson   bool
 	limit    int
 	page     int
@@ -25,16 +25,16 @@ type novelOptions struct {
 
 // NewNovel builds the canonical `pixiv novel` compatibility group. Its search
 // leaf shares this package's execution with `pixiv search --type novel`.
-func NewNovel(env commands.Env, exec pixivcmd.Executor, reverseSearch ReverseSearchPort) *cobra.Command {
-	a := command{env: env, runner: pixivcmd.New(env.Out, exec), exec: exec, reverseSearch: reverseSearch}
+func NewNovel(env command.Env, exec pixivcmd.Executor, reverseSearch ReverseSearchPort) *cobra.Command {
+	a := commandRunner{env: env, runner: pixivcmd.New(env.Out, exec), exec: exec, reverseSearch: reverseSearch}
 	cmd := &cobra.Command{Use: "novel", Short: "Query Pixiv novels"}
 	cmd.AddCommand(a.newNovelSearchCommand())
 	a.env.BindNoInput(cmd)
-	commands.Bind(cmd, commands.PixivData())
+	command.Bind(cmd, command.PixivData())
 	return cmd
 }
 
-func (a command) newNovelSearchCommand() *cobra.Command {
+func (a commandRunner) newNovelSearchCommand() *cobra.Command {
 	opts := novelOptions{
 		searchBy: searchTargetTagPartial,
 		sortMode: string(pixiv.SortModeDateDesc),
@@ -56,11 +56,11 @@ func (a command) newNovelSearchCommand() *cobra.Command {
 	flags.StringVar(&opts.period, "period", "", "time range: day, week, month")
 	pixivcmd.BindListFlags(cmd, &opts.limit, &opts.page)
 	a.env.BindTextValue(cmd, 1, -1, 0)
-	commands.Bind(cmd, commands.PixivData())
+	command.Bind(cmd, command.PixivData())
 	return cmd
 }
 
-func (a command) runNovelSearch(cmd *cobra.Command, args []string, opts novelOptions) error {
+func (a commandRunner) runNovelSearch(cmd *cobra.Command, args []string, opts novelOptions) error {
 	target, err := resolveNovelSearchBy(opts.searchBy)
 	if err != nil {
 		return err

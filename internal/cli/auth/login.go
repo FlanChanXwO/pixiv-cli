@@ -14,7 +14,7 @@ import (
 	"sync"
 	"time"
 
-	commands "github.com/FlanChanXwO/pixiv-cli/internal/cli/internal/command"
+	"github.com/FlanChanXwO/pixiv-cli/internal/cli/internal/command"
 	"github.com/FlanChanXwO/pixiv-cli/internal/loginrelay"
 	pixivaccount "github.com/FlanChanXwO/pixiv-cli/internal/pixivaccount"
 	pixiv "github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
@@ -45,7 +45,7 @@ type loginInputResult struct {
 type callbackURLAccepter = func(string) bool
 
 type accountLoginOptions struct {
-	commands.ProxyOptions
+	command.ProxyOptions
 	jsonOut          bool
 	noOpen           bool
 	useAfterLogin    bool
@@ -80,7 +80,7 @@ func (a controller) newAccountLoginCommand() *cobra.Command {
 	flags.StringVar(&opts.relayTLSKeyFile, "relay-tls-key-file", "", "PEM private key file for this remote login relay")
 	a.bindProxyFlags(cmd, &opts.ProxyOptions)
 	a.bindNoInput(cmd)
-	commands.Bind(cmd, commands.AuthLogin())
+	command.Bind(cmd, command.AuthLogin())
 	return cmd
 }
 

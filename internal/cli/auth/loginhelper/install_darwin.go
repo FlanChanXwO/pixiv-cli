@@ -16,7 +16,7 @@ import (
 	"strings"
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/config/paths"
-	filesecret "github.com/FlanChanXwO/pixiv-cli/internal/storage/secretfile"
+	"github.com/FlanChanXwO/pixiv-cli/internal/storage/secretfile"
 )
 
 // pixivURLHandlerBundleID 是 pixiv:// helper 在 macOS 上注册的 bundle identifier。
@@ -190,7 +190,7 @@ func saveHandlerBundleManifest(appPath string, manifest handlerManifest) error {
 	if err != nil {
 		return err
 	}
-	return filesecret.WritePrivateFile(handlerBundleManifestPath(appPath), body, paths.PrivateFileMode)
+	return secretfile.WritePrivateFile(handlerBundleManifestPath(appPath), body, paths.PrivateFileMode)
 }
 
 // ensureApp 编译并安装当前用户的 macOS pixiv:// helper app。
@@ -235,7 +235,7 @@ func (i urlHandlerInstaller) ensureApp(ctx context.Context, appPath string) erro
 	if err := os.WriteFile(infoPath, []byte(pixivURLHandlerInfoPlist), paths.PrivateFileMode); err != nil {
 		return err
 	}
-	if err := filesecret.WritePrivateFile(versionPath, []byte(pixivURLHandlerSourceVersion+"\n"), paths.PrivateFileMode); err != nil {
+	if err := secretfile.WritePrivateFile(versionPath, []byte(pixivURLHandlerSourceVersion+"\n"), paths.PrivateFileMode); err != nil {
 		return err
 	}
 	return nil

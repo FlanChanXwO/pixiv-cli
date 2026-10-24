@@ -1,7 +1,7 @@
 package auth
 
 import (
-	commands "github.com/FlanChanXwO/pixiv-cli/internal/cli/internal/command"
+	"github.com/FlanChanXwO/pixiv-cli/internal/cli/internal/command"
 	"github.com/FlanChanXwO/pixiv-cli/internal/cli/internal/input"
 	"github.com/spf13/cobra"
 )
@@ -77,10 +77,10 @@ func (s runtimeServices) require() error {
 
 func (a controller) printJSON(value any) error { return a.env.PrintJSON(value) }
 
-func (a controller) bindProxyFlags(cmd *cobra.Command, options *commands.ProxyOptions) {
+func (a controller) bindProxyFlags(cmd *cobra.Command, options *command.ProxyOptions) {
 	a.env.BindProxyFlags(cmd, options)
 }
 
-func proxyOverrideFromFlags(cmd *cobra.Command, options commands.ProxyOptions) (*string, error) {
-	return commands.Env{}.ProxyOverride(cmd, options)
+func proxyOverrideFromFlags(cmd *cobra.Command, options command.ProxyOptions) (*string, error) {
+	return command.Env{}.ProxyOverride(cmd, options)
 }

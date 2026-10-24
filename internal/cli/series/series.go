@@ -7,7 +7,7 @@ import (
 	"errors"
 	"fmt"
 
-	commands "github.com/FlanChanXwO/pixiv-cli/internal/cli/internal/command"
+	"github.com/FlanChanXwO/pixiv-cli/internal/cli/internal/command"
 	pixivcmd "github.com/FlanChanXwO/pixiv-cli/internal/cli/internal/pixivcmd"
 	"github.com/FlanChanXwO/pixiv-cli/internal/cli/internal/resolver"
 	record "github.com/FlanChanXwO/pixiv-cli/internal/record"
@@ -17,22 +17,22 @@ import (
 )
 
 type options struct {
-	commands.Options
+	command.Options
 	ndjson bool
 	limit  int
 	page   int
 	typ    string
 }
 
-type command struct {
-	env    commands.Env
+type commandRunner struct {
+	env    command.Env
 	runner pixivcmd.Runner
 	exec   pixivcmd.Executor
 }
 
 // New builds the actual `pixiv series` command.
-func New(env commands.Env, exec pixivcmd.Executor) *cobra.Command {
-	a := command{env: env, runner: pixivcmd.New(env.Out, exec), exec: exec}
+func New(env command.Env, exec pixivcmd.Executor) *cobra.Command {
+	a := commandRunner{env: env, runner: pixivcmd.New(env.Out, exec), exec: exec}
 	options := options{}
 	cmd := &cobra.Command{
 		Use:   "series SERIES_ID_OR_URL",
@@ -47,11 +47,11 @@ func New(env commands.Env, exec pixivcmd.Executor) *cobra.Command {
 	pixivcmd.BindListFlags(cmd, &options.limit, &options.page)
 	cmd.Flags().StringVarP(&options.typ, "type", "t", "", "entity type: artwork or novel (required)")
 	env.BindTextValue(cmd, 1, 1, 0)
-	commands.Bind(cmd, commands.PixivData())
+	command.Bind(cmd, command.PixivData())
 	return cmd
 }
 
-func (a command) run(cmd *cobra.Command, arg string, opts options) error {
+func (a commandRunner) run(cmd *cobra.Command, arg string, opts options) error {
 	if !cmd.Flags().Changed("type") {
 		return errors.New("--type is required for series")
 	}
@@ -130,7 +130,7 @@ type novelSeriesOut struct {
 	Novels []pixiv.Novel     `json:"novels"`
 }
 
-func (a command) runNovel(cmd *cobra.Command, request pixivcmd.Request, id int64, plan pixivcmd.Plan, jsonOut, ndjson bool) error {
+func (a commandRunner) runNovel(cmd *cobra.Command, request pixivcmd.Request, id int64, plan pixivcmd.Plan, jsonOut, ndjson bool) error {
 	return a.exec(cmd.Context(), request, func(ctx context.Context, client *pixiv.Client) (bool, error) {
 		var metadata pixiv.NovelSeries
 		var novels []pixiv.Novel

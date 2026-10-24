@@ -9,7 +9,7 @@ import (
 	"errors"
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/lifecycle"
-	fanboxsdk "github.com/FlanChanXwO/pixiv-cli/sdk/fanbox"
+	"github.com/FlanChanXwO/pixiv-cli/sdk/fanbox"
 )
 
 var (
@@ -25,7 +25,7 @@ var (
 // LoadOptionsFunc 加载 public sdk/fanbox.Options。ProxyOverride 只作用于
 // 当前调用，不改变持久化配置或其他连接策略。
 type AccountOpener interface {
-	OpenClient(context.Context, *string) (*fanboxsdk.Client, error)
+	OpenClient(context.Context, *string) (*fanbox.Client, error)
 }
 
 // OpenRequest 描述一次默认 FANBOX 账号 client 打开请求。
@@ -41,7 +41,7 @@ type OpenRequest struct {
 // 明确决定生命周期。Use 用于无法把 Lease 继续向上传递的 callback 场景。
 type Fanbox struct {
 	accounts    AccountOpener
-	closeClient func(*fanboxsdk.Client) error
+	closeClient func(*fanbox.Client) error
 }
 
 // NewFanbox 构造 FANBOX 根业务编排对象。
@@ -50,7 +50,7 @@ func NewFanbox(accounts AccountOpener) *Fanbox {
 }
 
 // Open 打开当前默认账号并返回显式 Lease。
-func (f *Fanbox) Open(ctx context.Context, request OpenRequest) (*lifecycle.Lease[*fanboxsdk.Client], error) {
+func (f *Fanbox) Open(ctx context.Context, request OpenRequest) (*lifecycle.Lease[*fanbox.Client], error) {
 	if ctx == nil {
 		return nil, lifecycle.ErrNilContext
 	}
@@ -59,7 +59,7 @@ func (f *Fanbox) Open(ctx context.Context, request OpenRequest) (*lifecycle.Leas
 	}
 	closeClient := f.closeClient
 	if closeClient == nil {
-		closeClient = func(client *fanboxsdk.Client) error {
+		closeClient = func(client *fanbox.Client) error {
 			if client != nil {
 				client.CloseIdleConnections()
 			}
@@ -85,10 +85,10 @@ func (f *Fanbox) Open(ctx context.Context, request OpenRequest) (*lifecycle.Leas
 func (f *Fanbox) Use(
 	ctx context.Context,
 	request OpenRequest,
-	use func(context.Context, *fanboxsdk.Client, *lifecycle.Attempt) error,
+	use func(context.Context, *fanbox.Client, *lifecycle.Attempt) error,
 ) error {
 	return lifecycle.Run(ctx,
-		func(ctx context.Context) (*lifecycle.Lease[*fanboxsdk.Client], error) {
+		func(ctx context.Context) (*lifecycle.Lease[*fanbox.Client], error) {
 			return f.Open(ctx, request)
 		},
 		use,

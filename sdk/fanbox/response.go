@@ -10,7 +10,7 @@ import (
 	"strings"
 	"time"
 
-	protocol "github.com/FlanChanXwO/pixiv-cli/internal/fanboxapi"
+	"github.com/FlanChanXwO/pixiv-cli/internal/fanboxapi"
 )
 
 // decodeCreatorSummaries accepts either a bare array or the plans/creators
@@ -83,7 +83,7 @@ func mapTags(items []tagWire) ([]CreatorTag, error) {
 	return result, nil
 }
 
-func mapUser(identity protocol.Identity) User {
+func mapUser(identity fanboxapi.Identity) User {
 	return User{
 		UserID:        identity.UserID,
 		DisplayName:   identity.DisplayName,

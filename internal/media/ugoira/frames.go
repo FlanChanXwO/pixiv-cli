@@ -17,7 +17,7 @@ import (
 	"io/fs"
 	"math"
 
-	framejpeg "github.com/FlanChanXwO/pixiv-cli/internal/media/ugoira/jpeg"
+	"github.com/FlanChanXwO/pixiv-cli/internal/media/ugoira/jpeg"
 )
 
 // 沿用旧 image 0.25 的默认 max_alloc：分别约束单帧源字节和原色型解码缓冲。
@@ -27,7 +27,7 @@ type frameArchive struct {
 	zip    *zip.ReadCloser
 	files  map[string]*zip.File
 	size   image.Point
-	jpeg   framejpeg.Decoder
+	jpeg   jpeg.Decoder
 	source frameSource
 	header bufio.Reader
 }
@@ -159,12 +159,12 @@ func (s *frameSource) read(ctx context.Context, r io.Reader, file string, declar
 }
 
 func decodeFrameSource(ctx context.Context, source []byte) (*image.NRGBA, error) {
-	var decoder framejpeg.Decoder
+	var decoder jpeg.Decoder
 	var header bufio.Reader
 	return decodeFrameSourceInto(ctx, source, nil, &decoder, &header)
 }
 
-func decodeFrameSourceInto(ctx context.Context, source []byte, reuse *image.NRGBA, decoder *framejpeg.Decoder, header *bufio.Reader) (*image.NRGBA, error) {
+func decodeFrameSourceInto(ctx context.Context, source []byte, reuse *image.NRGBA, decoder *jpeg.Decoder, header *bufio.Reader) (*image.NRGBA, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}

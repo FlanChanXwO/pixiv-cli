@@ -6,16 +6,16 @@ import (
 	"log/slog"
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/cli/internal/pixivcmd"
-	configapp "github.com/FlanChanXwO/pixiv-cli/internal/config/settings"
+	"github.com/FlanChanXwO/pixiv-cli/internal/config/settings"
 	"github.com/FlanChanXwO/pixiv-cli/internal/httpclient"
 	fanbox "github.com/FlanChanXwO/pixiv-cli/sdk/fanbox"
 	pixiv "github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
 )
 
-func defaultCLIRuntimeConfig() (configapp.RuntimeConfig, error) {
-	snapshot, err := configapp.DefaultStore().Current()
+func defaultCLIRuntimeConfig() (settings.RuntimeConfig, error) {
+	snapshot, err := settings.DefaultStore().Current()
 	if err != nil {
-		return configapp.RuntimeConfig{}, err
+		return settings.RuntimeConfig{}, err
 	}
 	return snapshot.Runtime()
 }
@@ -23,7 +23,7 @@ func defaultCLIRuntimeConfig() (configapp.RuntimeConfig, error) {
 // loadCLIRuntimeConfig 是 composition root 的窄测试 seam。
 var loadCLIRuntimeConfig = defaultCLIRuntimeConfig
 
-func pixivOptionsFromRequest(request pixivcmd.Request, loadRuntime func() (configapp.RuntimeConfig, error), logger *slog.Logger) (pixiv.Options, error) {
+func pixivOptionsFromRequest(request pixivcmd.Request, loadRuntime func() (settings.RuntimeConfig, error), logger *slog.Logger) (pixiv.Options, error) {
 	runtime, err := loadRuntime()
 	if err != nil {
 		return pixiv.Options{}, err
@@ -55,7 +55,7 @@ func pixivOptionsFromRequest(request pixivcmd.Request, loadRuntime func() (confi
 // 地方，命令 owner 不需要（也不应该）直接依赖 SDK 的 options 形状。
 type fanboxsdkOptions = fanbox.Options
 
-func fanboxOptionsFromRuntime(loadRuntime func() (configapp.RuntimeConfig, error), logger *slog.Logger) (fanboxsdkOptions, error) {
+func fanboxOptionsFromRuntime(loadRuntime func() (settings.RuntimeConfig, error), logger *slog.Logger) (fanboxsdkOptions, error) {
 	cfg, err := loadRuntime()
 	if err != nil {
 		return fanboxsdkOptions{}, err

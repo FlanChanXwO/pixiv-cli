@@ -9,7 +9,7 @@ import (
 	"io"
 	"strings"
 
-	commands "github.com/FlanChanXwO/pixiv-cli/internal/cli/internal/command"
+	"github.com/FlanChanXwO/pixiv-cli/internal/cli/internal/command"
 	inputcmd "github.com/FlanChanXwO/pixiv-cli/internal/cli/internal/input"
 	pixivcmd "github.com/FlanChanXwO/pixiv-cli/internal/cli/internal/pixivcmd"
 	"github.com/FlanChanXwO/pixiv-cli/internal/cli/internal/resolver"
@@ -35,7 +35,7 @@ var novelRecordTypes = map[string]struct{}{
 }
 
 type listOptions struct {
-	commands.Options
+	command.Options
 	ndjson   bool
 	limit    int
 	page     int
@@ -45,15 +45,15 @@ type listOptions struct {
 }
 
 type mutationOptions struct {
-	commands.Options
+	command.Options
 	typ      string
 	restrict string
 	tags     []string
 	onError  string
 }
 
-type command struct {
-	env    commands.Env
+type commandRunner struct {
+	env    command.Env
 	runner pixivcmd.Runner
 	exec   pixivcmd.Executor
 }
@@ -95,15 +95,15 @@ func (c bookmarkStreamCursor) String() string {
 }
 
 // New builds the actual `pixiv bookmark` group command.
-func New(env commands.Env, exec pixivcmd.Executor) *cobra.Command {
-	a := command{env: env, runner: pixivcmd.New(env.Out, exec), exec: exec}
+func New(env command.Env, exec pixivcmd.Executor) *cobra.Command {
+	a := commandRunner{env: env, runner: pixivcmd.New(env.Out, exec), exec: exec}
 	cmd := &cobra.Command{Use: "bookmark", Short: "Manage artwork and novel bookmarks"}
 	cmd.AddCommand(a.newList(), a.newTags(), a.newDetail(), a.newAdd(), a.newRemove())
 	env.BindNoInput(cmd)
 	return cmd
 }
 
-func (a command) newList() *cobra.Command {
+func (a commandRunner) newList() *cobra.Command {
 	opts := listOptions{typ: "artwork", restrict: string(pixiv.RestrictPublic)}
 	cmd := &cobra.Command{
 		Use:   "list [USER_ID_OR_URL]",
@@ -118,11 +118,11 @@ func (a command) newList() *cobra.Command {
 	cmd.Flags().StringVar(&opts.restrict, "restrict", opts.restrict, "bookmark visibility (public or private)")
 	cmd.Flags().StringVar(&opts.tag, "tag", "", "filter by bookmark tag")
 	a.env.BindTextOrRecord(cmd, 0, 1, 0)
-	commands.Bind(cmd, commands.PixivData())
+	command.Bind(cmd, command.PixivData())
 	return cmd
 }
 
-func (a command) newTags() *cobra.Command {
+func (a commandRunner) newTags() *cobra.Command {
 	opts := listOptions{typ: "artwork", restrict: string(pixiv.RestrictPublic)}
 	cmd := &cobra.Command{
 		Use:   "tags [USER_ID_OR_URL]",
@@ -136,12 +136,12 @@ func (a command) newTags() *cobra.Command {
 	cmd.Flags().StringVarP(&opts.typ, "type", "t", opts.typ, "entity type: artwork, novel, or all")
 	cmd.Flags().StringVar(&opts.restrict, "restrict", opts.restrict, "bookmark visibility (public or private)")
 	a.env.BindTextOrRecord(cmd, 0, 1, 0)
-	commands.Bind(cmd, commands.PixivData())
+	command.Bind(cmd, command.PixivData())
 	return cmd
 }
 
-func (a command) newDetail() *cobra.Command {
-	options := commands.Options{}
+func (a commandRunner) newDetail() *cobra.Command {
+	options := command.Options{}
 	typ := "artwork"
 	cmd := &cobra.Command{
 		Use:   "detail ARTWORK_ID_OR_NOVEL_ID_OR_URL",
@@ -209,11 +209,11 @@ func (a command) newDetail() *cobra.Command {
 	a.env.BindCommonFlags(cmd, &options)
 	cmd.Flags().StringVarP(&typ, "type", "t", typ, "entity type: artwork or novel")
 	a.env.BindTextOrRecord(cmd, 0, 1, 0)
-	commands.Bind(cmd, commands.PixivData())
+	command.Bind(cmd, command.PixivData())
 	return cmd
 }
 
-func (a command) bookmarkDetailInput(cmd *cobra.Command, args []string, typ string) (resolver.Input, error) {
+func (a commandRunner) bookmarkDetailInput(cmd *cobra.Command, args []string, typ string) (resolver.Input, error) {
 	input := resolver.Input{Type: typ}
 	if inputcmd.ModeOf(cmd) == inputcmd.RecordMode {
 		body, err := io.ReadAll(inputcmd.Reader(cmd, a.env.In))
@@ -274,7 +274,7 @@ func bookmarkMutationType(typ string) (string, error) {
 	}
 }
 
-func (a command) newAdd() *cobra.Command {
+func (a commandRunner) newAdd() *cobra.Command {
 	opts := mutationOptions{typ: "artwork", restrict: string(pixiv.RestrictPublic)}
 	cmd := &cobra.Command{
 		Use:   "add [ARTWORK_ID_OR_NOVEL_ID]",
@@ -316,11 +316,11 @@ func (a command) newAdd() *cobra.Command {
 	cmd.Flags().StringArrayVar(&opts.tags, "tag", nil, "bookmark tag; may be repeated")
 	cmd.Flags().StringVar(&opts.onError, "on-error", "skip", "record failure strategy: skip or fail-fast")
 	a.env.BindTextOrRecord(cmd, 0, 1, 0)
-	commands.Bind(cmd, commands.PixivData())
+	command.Bind(cmd, command.PixivData())
 	return cmd
 }
 
-func (a command) newRemove() *cobra.Command {
+func (a commandRunner) newRemove() *cobra.Command {
 	opts := mutationOptions{typ: "artwork"}
 	cmd := &cobra.Command{
 		Use:   "remove [ARTWORK_ID_OR_NOVEL_ID]",
@@ -360,17 +360,17 @@ func (a command) newRemove() *cobra.Command {
 	cmd.Flags().StringVarP(&opts.typ, "type", "t", opts.typ, "entity type: artwork or novel")
 	cmd.Flags().StringVar(&opts.onError, "on-error", "skip", "record failure strategy: skip or fail-fast")
 	a.env.BindTextOrRecord(cmd, 0, 1, 0)
-	commands.Bind(cmd, commands.PixivData())
+	command.Bind(cmd, command.PixivData())
 	return cmd
 }
 
-func (a command) bindListFlags(cmd *cobra.Command, opts *listOptions) {
+func (a commandRunner) bindListFlags(cmd *cobra.Command, opts *listOptions) {
 	a.env.BindCommonFlags(cmd, &opts.Options)
 	pixivcmd.BindNDJSONFlag(cmd, &opts.ndjson)
 	pixivcmd.BindListFlags(cmd, &opts.limit, &opts.page)
 }
 
-func (a command) runList(cmd *cobra.Command, args []string, opts listOptions) error {
+func (a commandRunner) runList(cmd *cobra.Command, args []string, opts listOptions) error {
 	switch opts.typ {
 	case "artwork":
 		return a.runArtworkList(cmd, args, opts)
@@ -383,7 +383,7 @@ func (a command) runList(cmd *cobra.Command, args []string, opts listOptions) er
 	}
 }
 
-func (a command) runAllList(cmd *cobra.Command, args []string, opts listOptions) error {
+func (a commandRunner) runAllList(cmd *cobra.Command, args []string, opts listOptions) error {
 	plan, err := pixivcmd.ParsePlan(cmd, opts.limit, opts.page)
 	if err != nil {
 		return err
@@ -535,7 +535,7 @@ func (item bookmarkListItem) record() (record.Record, error) {
 	}
 }
 
-func (a command) runArtworkList(cmd *cobra.Command, args []string, opts listOptions) error {
+func (a commandRunner) runArtworkList(cmd *cobra.Command, args []string, opts listOptions) error {
 	plan, err := pixivcmd.ParsePlan(cmd, opts.limit, opts.page)
 	if err != nil {
 		return err
@@ -583,7 +583,7 @@ func (a command) runArtworkList(cmd *cobra.Command, args []string, opts listOpti
 	}})
 }
 
-func (a command) runNovelList(cmd *cobra.Command, args []string, opts listOptions) error {
+func (a commandRunner) runNovelList(cmd *cobra.Command, args []string, opts listOptions) error {
 	plan, err := pixivcmd.ParsePlan(cmd, opts.limit, opts.page)
 	if err != nil {
 		return err
@@ -653,7 +653,7 @@ func bookmarkTagsContract() resolver.Contract {
 	return bookmarkContract("bookmark tags")
 }
 
-func (a command) resolveBookmarkUserID(cmd *cobra.Command, args []string, typ string, contract resolver.Contract) (int64, error) {
+func (a commandRunner) resolveBookmarkUserID(cmd *cobra.Command, args []string, typ string, contract resolver.Contract) (int64, error) {
 	input := resolver.Input{Type: typ}
 	if inputcmd.ModeOf(cmd) == inputcmd.RecordMode {
 		body, err := io.ReadAll(inputcmd.Reader(cmd, a.env.In))
@@ -681,7 +681,7 @@ func (a command) resolveBookmarkUserID(cmd *cobra.Command, args []string, typ st
 	return target.ID, nil
 }
 
-func (a command) runTags(cmd *cobra.Command, args []string, opts listOptions) error {
+func (a commandRunner) runTags(cmd *cobra.Command, args []string, opts listOptions) error {
 	if opts.typ == "all" {
 		return a.runAllTags(cmd, args, opts)
 	}
@@ -766,7 +766,7 @@ func (a command) runTags(cmd *cobra.Command, args []string, opts listOptions) er
 	})
 }
 
-func (a command) runAllTags(cmd *cobra.Command, args []string, opts listOptions) error {
+func (a commandRunner) runAllTags(cmd *cobra.Command, args []string, opts listOptions) error {
 	plan, err := pixivcmd.ParsePlan(cmd, opts.limit, opts.page)
 	if err != nil {
 		return err
@@ -889,7 +889,7 @@ func (item bookmarkTagItem) dto() typedBookmarkTagDTO {
 	return typedBookmarkTagDTO{Name: item.tag.Name, Count: item.tag.Count, Type: item.kind}
 }
 
-func (a command) actionInvoker(cmd *cobra.Command, options commands.Options, invoke func(context.Context, pixivcmd.Request, int64) error) func(context.Context, int64) error {
+func (a commandRunner) actionInvoker(cmd *cobra.Command, options command.Options, invoke func(context.Context, pixivcmd.Request, int64) error) func(context.Context, int64) error {
 	var request pixivcmd.Request
 	initialized := false
 	return func(ctx context.Context, id int64) error {

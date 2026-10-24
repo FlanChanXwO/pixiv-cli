@@ -7,7 +7,7 @@ import (
 	"io"
 	"strconv"
 
-	commands "github.com/FlanChanXwO/pixiv-cli/internal/cli/internal/command"
+	"github.com/FlanChanXwO/pixiv-cli/internal/cli/internal/command"
 	"github.com/FlanChanXwO/pixiv-cli/internal/cli/internal/input"
 	"github.com/FlanChanXwO/pixiv-cli/internal/cli/internal/pixivcmd"
 	downloader "github.com/FlanChanXwO/pixiv-cli/internal/media/downloader"
@@ -16,7 +16,7 @@ import (
 )
 
 type controller struct {
-	env      commands.Env
+	env      command.Env
 	runner   pixivcmd.Runner
 	runtime  func() (Runtime, error)
 	download func() downloader.DownloadService
@@ -99,7 +99,7 @@ func (a controller) newDownloadCommand() *cobra.Command {
 	flags.StringVar(&opts.quality, "quality", opts.quality, "static image quality: original, regular, small, thumb, mini")
 	flags.StringVar(&opts.ugoiraMode, "ugoira-mode", opts.ugoiraMode, "ugoira output mode: gif, apng")
 	flags.StringVar(&opts.onError, "on-error", "skip", "record failure strategy: skip or fail-fast")
-	commands.Bind(cmd, commands.DownloadCommand())
+	command.Bind(cmd, command.DownloadCommand())
 	return cmd
 }
 
