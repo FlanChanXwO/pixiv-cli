@@ -1,4 +1,4 @@
-package auth_test
+package auth
 
 import (
 	"bytes"
@@ -18,14 +18,31 @@ import (
 	"testing"
 	"time"
 
-	auth "github.com/FlanChanXwO/pixiv-cli/internal/cli/auth"
 	"github.com/FlanChanXwO/pixiv-cli/internal/cli/auth/loginhelper"
+	commands "github.com/FlanChanXwO/pixiv-cli/internal/cli/internal/command"
 	"github.com/FlanChanXwO/pixiv-cli/internal/config/paths"
 	config "github.com/FlanChanXwO/pixiv-cli/internal/config/settings"
 	filesecret "github.com/FlanChanXwO/pixiv-cli/internal/storage/secretfile"
+	"github.com/spf13/pflag"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
+
+func changedFlags(values map[string]bool) *pflag.FlagSet {
+	flags := pflag.NewFlagSet("relay", pflag.ContinueOnError)
+	for name, changed := range values {
+		flags.String(name, "", "")
+		if changed {
+			_ = flags.Set(name, "set")
+		}
+	}
+	for _, name := range []string{"relay-public-url", "relay-listen-addr", "relay-tls-cert-file", "relay-tls-key-file"} {
+		if flags.Lookup(name) == nil {
+			flags.String(name, "", "")
+		}
+	}
+	return flags
+}
 
 func TestConfiguredRelayServerOptionsIgnoreLegacyClientRelaySettings(t *testing.T) {
 	clearConfigEnv(t)
@@ -37,21 +54,17 @@ func TestConfiguredRelayServerOptionsIgnoreLegacyClientRelaySettings(t *testing.
 	runtime, err := settings.Runtime()
 	require.NoError(t, err)
 
-	opts, enabled, err := auth.ConfiguredRelayServerOptions(changedFlags{}, auth.AccountLoginOptions{}, runtime)
+	opts, enabled, err := configuredRelayServerOptions(changedFlags(nil), accountLoginOptions{}, runtime)
 	require.NoError(t, err)
 	assert.False(t, enabled)
 	assert.Empty(t, opts)
 }
 
 func TestConfiguredRelayServerOptionsRequirePublicURLAndListener(t *testing.T) {
-	_, enabled, err := auth.ConfiguredRelayServerOptions(changedFlags{}, auth.AccountLoginOptions{}, config.RuntimeConfig{LoginRelayPublicURL: "https://relay.example"})
+	_, enabled, err := configuredRelayServerOptions(changedFlags(nil), accountLoginOptions{}, config.RuntimeConfig{LoginRelayPublicURL: "https://relay.example"})
 	require.EqualError(t, err, "remote login relay requires login_relay_public_url and login_relay_listen_addr")
 	assert.False(t, enabled)
 }
-
-type changedFlags map[string]bool
-
-func (f changedFlags) Changed(name string) bool { return f[name] }
 
 // synchronizedOutput 让 relay goroutine 可以安全写出会话页 URL，测试同时等待它。
 type synchronizedOutput struct {
@@ -98,7 +111,7 @@ func (output *synchronizedOutput) waitForSessionURL(t *testing.T) string {
 }
 
 // relayLoginCallbackRequest 与 server 侧的一次性 callback 请求结构保持一致；
-// 本地复制是为了让外部测试可以独立构造同一份 JSON 载荷。
+// 本地复制是为了让同包测试可以独立构造同一份 JSON 载荷。
 type relayLoginCallbackRequest struct {
 	CallbackURL string `json:"callback_url"`
 	Proof       string `json:"proof"`
@@ -163,7 +176,7 @@ func TestRemoteLoginHandoffAcceptsPixivCallbackWithoutState(t *testing.T) {
 	}
 	resultCh := make(chan outcome, 1)
 	go func() {
-		code, notify, cleanup, err := auth.WaitForHandoffRelayLoginCode(ctx, output, auth.RelayServerOptions{
+		code, notify, cleanup, err := (controller{errOut: output}).waitForHandoffRelayLoginCode(ctx, relayServerOptions{
 			PublicURL:           "http://" + addr,
 			ListenAddr:          addr,
 			ContextWaiterExited: func() { close(contextWaiterExited) },
@@ -174,8 +187,7 @@ func TestRemoteLoginHandoffAcceptsPixivCallbackWithoutState(t *testing.T) {
 	waitForLoginServer(t, addr)
 	sessionURL := output.waitForSessionURL(t)
 	deepLink := remoteLoginDeepLinkFromSessionURL(t, sessionURL)
-	start, err := loginhelper.ParseRemoteLoginLink(deepLink)
-	require.NoError(t, err)
+	start := parseRemoteLoginStart(t, deepLink)
 	manualRequest, err := http.NewRequest(http.MethodPost, "http://"+addr+"/manual/"+start.SessionID, nil)
 	require.NoError(t, err)
 	manualResponse, err := http.DefaultClient.Do(manualRequest)
@@ -186,7 +198,10 @@ func TestRemoteLoginHandoffAcceptsPixivCallbackWithoutState(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, "https://app-api.pixiv.net/web/v1/login?client=pixiv-android&code_challenge_method=S256&code_challenge=handoff-challenge&state=handoff", loginURL)
 
-	remote, err := loginhelper.ForwardActiveRemoteLoginCallback(context.Background(), callback)
+	result, err := loginhelper.HandleCallback(context.Background(), callback)
+	require.NoError(t, err)
+	remote := result.RemoteCallback
+	require.NotNil(t, remote)
 	require.NoError(t, err)
 	t.Cleanup(remote.Abort)
 	require.NotEmpty(t, remote.ResultURL)
@@ -248,7 +263,7 @@ func TestRemoteLoginHandoffCanonicalizesPublicURLEverywhere(t *testing.T) {
 	}
 	resultCh := make(chan outcome, 1)
 	go func() {
-		_, _, cleanup, err := auth.WaitForHandoffRelayLoginCode(ctx, output, auth.RelayServerOptions{
+		_, _, cleanup, err := (controller{errOut: output}).waitForHandoffRelayLoginCode(ctx, relayServerOptions{
 			PublicURL:  "HTTP://LOCALHOST:" + port + "//remote//login///",
 			ListenAddr: addr,
 		}, func(string) bool { return false }, "https://app-api.pixiv.net/web/v1/login?client=pixiv-android&code_challenge_method=S256&code_challenge=handoff-challenge&state=handoff")
@@ -274,8 +289,7 @@ func TestRemoteLoginHandoffCanonicalizesPublicURLEverywhere(t *testing.T) {
 	// 测试直连 listener；生产环境的 /remote/login 前缀由 reverse proxy 转发。
 	directSessionURL := "http://" + addr + "/session/" + path.Base(parsedSessionURL.Path)
 	deepLink := remoteLoginDeepLinkFromSessionURL(t, directSessionURL)
-	start, err := loginhelper.ParseRemoteLoginLink(deepLink)
-	require.NoError(t, err)
+	start := parseRemoteLoginStart(t, deepLink)
 	require.Equal(t, "http://localhost:"+port+"/remote/login", start.Origin)
 }
 
@@ -293,7 +307,7 @@ func TestRemoteLoginHandoffRejectsMismatchedCapability(t *testing.T) {
 	}
 	resultCh := make(chan outcome, 1)
 	go func() {
-		_, _, cleanup, err := auth.WaitForHandoffRelayLoginCode(ctx, output, auth.RelayServerOptions{
+		_, _, cleanup, err := (controller{errOut: output}).waitForHandoffRelayLoginCode(ctx, relayServerOptions{
 			PublicURL:  "http://" + addr,
 			ListenAddr: addr,
 		}, func(string) bool { return true }, "https://app-api.pixiv.net/web/v1/login?client=pixiv-android&code_challenge_method=S256&code_challenge=handoff-challenge&state=handoff")
@@ -312,10 +326,9 @@ func TestRemoteLoginHandoffRejectsMismatchedCapability(t *testing.T) {
 	})
 
 	waitForLoginServer(t, addr)
-	start, err := loginhelper.ParseRemoteLoginLink(remoteLoginDeepLinkFromSessionURL(t, output.waitForSessionURL(t)))
-	require.NoError(t, err)
+	start := parseRemoteLoginStart(t, remoteLoginDeepLinkFromSessionURL(t, output.waitForSessionURL(t)))
 	start.Proof = "different-session-capability"
-	_, err = loginhelper.StartRemoteLogin(context.Background(), start)
+	_, err := loginhelper.StartRemoteLogin(context.Background(), start)
 	require.EqualError(t, err, "remote Pixiv login relay rejected login handoff")
 	_, err = os.Stat(filepath.Join(os.Getenv("HOME"), ".pixiv-cli", "remote-login-session.json"))
 	require.ErrorIs(t, err, os.ErrNotExist)
@@ -336,7 +349,7 @@ func TestRemoteLoginHandoffRejectsCallbackBeforeDesktopStartAndWithWrongState(t 
 	}
 	resultCh := make(chan outcome, 1)
 	go func() {
-		_, _, cleanup, err := auth.WaitForHandoffRelayLoginCode(ctx, output, auth.RelayServerOptions{
+		_, _, cleanup, err := (controller{errOut: output}).waitForHandoffRelayLoginCode(ctx, relayServerOptions{
 			PublicURL:  "http://" + addr,
 			ListenAddr: addr,
 		}, func(raw string) bool {
@@ -357,13 +370,12 @@ func TestRemoteLoginHandoffRejectsCallbackBeforeDesktopStartAndWithWrongState(t 
 	})
 
 	waitForLoginServer(t, addr)
-	start, err := loginhelper.ParseRemoteLoginLink(remoteLoginDeepLinkFromSessionURL(t, output.waitForSessionURL(t)))
-	require.NoError(t, err)
+	start := parseRemoteLoginStart(t, remoteLoginDeepLinkFromSessionURL(t, output.waitForSessionURL(t)))
 	response := postHandoffCallback(t, "http://"+addr+"/callback/"+start.SessionID, start.Proof, callback)
 	require.Equal(t, http.StatusConflict, response.StatusCode)
 	require.NoError(t, response.Body.Close())
 
-	_, err = loginhelper.StartRemoteLogin(context.Background(), start)
+	_, err := loginhelper.StartRemoteLogin(context.Background(), start)
 	require.NoError(t, err)
 	wrongState := postHandoffCallback(t, "http://"+addr+"/callback/"+start.SessionID, start.Proof, callback+"&state=other-session")
 	require.Equal(t, http.StatusBadRequest, wrongState.StatusCode)
@@ -372,7 +384,7 @@ func TestRemoteLoginHandoffRejectsCallbackBeforeDesktopStartAndWithWrongState(t 
 
 func TestHandoffRelayContextWaiterStopsWhenServerFails(t *testing.T) {
 	contextWaiterExited := make(chan struct{})
-	_, _, cleanup, err := auth.WaitForHandoffRelayLoginCode(context.Background(), io.Discard, auth.RelayServerOptions{
+	_, _, cleanup, err := (controller{errOut: io.Discard}).waitForHandoffRelayLoginCode(context.Background(), relayServerOptions{
 		PublicURL:           "http://relay.example",
 		ListenAddr:          "127.0.0.1:1",
 		ContextWaiterExited: func() { close(contextWaiterExited) },
@@ -400,7 +412,7 @@ func TestHandoffRelayContextWaiterStopsWhenCancelled(t *testing.T) {
 	}
 	resultCh := make(chan outcome, 1)
 	go func() {
-		_, _, cleanup, err := auth.WaitForHandoffRelayLoginCode(ctx, io.Discard, auth.RelayServerOptions{
+		_, _, cleanup, err := (controller{errOut: io.Discard}).waitForHandoffRelayLoginCode(ctx, relayServerOptions{
 			PublicURL:           "http://" + addr,
 			ListenAddr:          addr,
 			ContextWaiterExited: func() { close(contextWaiterExited) },
@@ -435,11 +447,6 @@ func TestRemoteLoginHandlerReportsCleanupFailureAfterBrowserOpenFailure(t *testi
 	}))
 	t.Cleanup(relay.Close)
 
-	t.Cleanup(auth.SetClearRemoteLoginHandoffForHandler(func(loginhelper.RemoteLoginStart) error {
-		return errors.New("forced local cleanup failure")
-	}))
-	t.Cleanup(auth.SetOpenBrowser(func(string) error { return errors.New("forced browser failure") }))
-
 	deepLink := (&url.URL{
 		Scheme: "pixiv",
 		Host:   "account",
@@ -450,7 +457,10 @@ func TestRemoteLoginHandlerReportsCleanupFailureAfterBrowserOpenFailure(t *testi
 			"access":  {"proof"},
 		}.Encode(),
 	}).String()
-	command := auth.NewAccountURLCallbackCommand()
+	a := newController(commands.Env{}, Support{})
+	a.openBrowser = func(string) error { return errors.New("forced browser failure") }
+	a.clearHandoff = func(loginhelper.RemoteLoginStart) error { return errors.New("forced local cleanup failure") }
+	command := a.newAccountURLCallbackCommand()
 	command.SetArgs([]string{deepLink})
 	err := command.ExecuteContext(context.Background())
 	require.EqualError(t, err, "could not clear remote Pixiv login handoff after browser launch failed")
@@ -464,4 +474,14 @@ func (failingHandoffListener) Accept() (net.Conn, error) {
 func (failingHandoffListener) Close() error { return nil }
 func (failingHandoffListener) Addr() net.Addr {
 	return &net.TCPAddr{IP: net.IPv4(127, 0, 0, 1), Port: 1}
+}
+
+// parseRemoteLoginStart uses the handler entry point that production uses for
+// the pixiv://account/remote-login deep link.
+func parseRemoteLoginStart(t *testing.T, deepLink string) loginhelper.RemoteLoginStart {
+	t.Helper()
+	result, err := loginhelper.HandleCallback(context.Background(), deepLink)
+	require.NoError(t, err)
+	require.NotNil(t, result.RemoteLoginStart)
+	return *result.RemoteLoginStart
 }

@@ -1,3 +1,6 @@
+// Persistent URL-handler manifest used to restore a user's previous pixiv://
+// association. Manifest contents are non-secret.
+
 package loginhelper
 
 import (
@@ -13,61 +16,50 @@ import (
 	filesecret "github.com/FlanChanXwO/pixiv-cli/internal/storage/secretfile"
 )
 
-// HandlerManifestFilename 是持久协议 handler 的私有 manifest 文件名。
-const HandlerManifestFilename = "handler-manifest.json"
+// handlerManifestFilename 是持久协议 handler 的私有 manifest 文件名。
+const handlerManifestFilename = "handler-manifest.json"
 
-// HandlerManifest 只记录恢复此前系统关联所需的非认证元数据。relay secret
+// handlerManifest 只记录恢复此前系统关联所需的非认证元数据。relay secret
 // 永远只在 config.toml 中，不能落入 handler 安装状态。
-type HandlerManifest struct {
-	Version            int                   `json:"version"`
-	ExecutablePath     string                `json:"executable_path"`
-	HomeDirectory      string                `json:"home_directory,omitempty"`
-	PreviousHandler    string                `json:"previous_handler,omitempty"`
-	LinuxMIMESnapshots []HandlerFileSnapshot `json:"linux_mime_snapshots,omitempty"`
+type handlerManifest struct {
+	Version         int    `json:"version"`
+	ExecutablePath  string `json:"executable_path"`
+	HomeDirectory   string `json:"home_directory,omitempty"`
+	PreviousHandler string `json:"previous_handler,omitempty"`
 }
 
-// HandlerFileSnapshot 是持久 Linux desktop handler 的恢复元数据。它只保存
-// mime association 与 desktop entry 文件，绝不承载 OAuth callback、token 或
-// relay secret；文件内容仍以私有权限保存在 manifest 内。
-type HandlerFileSnapshot struct {
-	Path    string      `json:"path"`
-	Exists  bool        `json:"exists"`
-	Mode    os.FileMode `json:"mode"`
-	Content []byte      `json:"content,omitempty"`
-}
-
-func HandlerManifestPath() (string, error) {
+func handlerManifestPath() (string, error) {
 	dir, err := paths.UserDataSubdir(paths.AppDataDirName)
 	if err != nil {
 		return "", err
 	}
-	return filepath.Join(dir, "url-handler", HandlerManifestFilename), nil
+	return filepath.Join(dir, "url-handler", handlerManifestFilename), nil
 }
 
-func LoadHandlerManifest() (HandlerManifest, bool, error) {
-	path, err := HandlerManifestPath()
+func loadHandlerManifest() (handlerManifest, bool, error) {
+	path, err := handlerManifestPath()
 	if err != nil {
-		return HandlerManifest{}, false, err
+		return handlerManifest{}, false, err
 	}
 	body, err := os.ReadFile(path)
 	if errors.Is(err, os.ErrNotExist) {
-		return HandlerManifest{}, false, nil
+		return handlerManifest{}, false, nil
 	}
 	if err != nil {
-		return HandlerManifest{}, false, err
+		return handlerManifest{}, false, err
 	}
-	var manifest HandlerManifest
+	var manifest handlerManifest
 	if err := json.Unmarshal(body, &manifest); err != nil || manifest.Version != 1 || manifest.ExecutablePath == "" {
-		return HandlerManifest{}, false, errors.New("Pixiv URL handler manifest is invalid")
+		return handlerManifest{}, false, errors.New("Pixiv URL handler manifest is invalid")
 	}
 	return manifest, true, nil
 }
 
-func SaveHandlerManifest(manifest HandlerManifest) error {
+func saveHandlerManifest(manifest handlerManifest) error {
 	if manifest.Version == 0 {
 		manifest.Version = 1
 	}
-	path, err := HandlerManifestPath()
+	path, err := handlerManifestPath()
 	if err != nil {
 		return err
 	}
@@ -78,8 +70,8 @@ func SaveHandlerManifest(manifest HandlerManifest) error {
 	return filesecret.WritePrivateFile(path, body, paths.PrivateFileMode)
 }
 
-func RemoveHandlerManifest() error {
-	path, err := HandlerManifestPath()
+func removeHandlerManifest() error {
+	path, err := handlerManifestPath()
 	if err != nil {
 		return err
 	}
@@ -113,12 +105,12 @@ func EnsurePersistentIfNeeded(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	manifest, exists, err := LoadHandlerManifest()
+	manifest, exists, err := loadHandlerManifest()
 	if err != nil {
 		return err
 	}
 	if exists && filepath.Clean(manifest.ExecutablePath) == filepath.Clean(executable) {
 		return nil
 	}
-	return EnsurePersistent(ctx)
+	return newURLHandlerInstaller().ensurePersistent(ctx)
 }

@@ -1,3 +1,5 @@
+// Remote callback result session and relay endpoint construction.
+
 package loginhelper
 
 import (
@@ -22,7 +24,6 @@ type relayCallbackCompletion struct {
 type RemoteCallbackSession struct {
 	ResultURL string
 	response  io.ReadCloser
-	onClose   func()
 	closeOnce sync.Once
 }
 
@@ -62,9 +63,6 @@ func (s *RemoteCallbackSession) close() {
 	s.closeOnce.Do(func() {
 		if s.response != nil {
 			_ = s.response.Close()
-		}
-		if s.onClose != nil {
-			s.onClose()
 		}
 	})
 }

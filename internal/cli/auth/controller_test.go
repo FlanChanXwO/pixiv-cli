@@ -9,7 +9,7 @@ import (
 // A --proxy value must reach the request; binding to a temporary struct used
 // to drop it silently and connect directly.
 func TestLoginProxyFlagReachesRequest(t *testing.T) {
-	opts := AccountLoginOptions{}
+	opts := accountLoginOptions{}
 	cmd := &cobra.Command{Use: "login"}
 	controller{}.bindProxyFlags(cmd, &opts.ProxyOptions)
 	if err := cmd.Flags().Parse([]string{"--proxy", "http://127.0.0.1:7890"}); err != nil {

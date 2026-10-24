@@ -1,6 +1,6 @@
 //go:build linux
 
-package loginhelper_test
+package loginhelper
 
 import (
 	"context"
@@ -10,7 +10,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/FlanChanXwO/pixiv-cli/internal/cli/auth/loginhelper"
 	"github.com/stretchr/testify/require"
 )
 
@@ -27,28 +26,29 @@ func TestLinuxInstallRegistersHandlerAndRestoresUserMimeState(t *testing.T) {
 	require.NoError(t, os.MkdirAll(filepath.Dir(configPath), 0o700))
 	require.NoError(t, os.WriteFile(configPath, original, 0o600))
 
-	t.Cleanup(loginhelper.SetLinuxExecutablePath(func() (string, error) { return "/tmp/pixiv cli", nil }))
+	installer := newURLHandlerInstaller()
+	installer.executable = func() (string, error) { return "/tmp/pixiv cli", nil }
 	var calls [][]string
-	t.Cleanup(loginhelper.SetRunLinuxXDGMIme(func(_ context.Context, args ...string) error {
+	installer.runXDGMime = func(_ context.Context, args ...string) error {
 		calls = append(calls, append([]string(nil), args...))
-		require.NoError(t, os.WriteFile(configPath, []byte("[Default Applications]\nx-scheme-handler/pixiv="+loginhelper.LinuxURLHandlerDesktopFile+";\n"), 0o600))
+		require.NoError(t, os.WriteFile(configPath, []byte("[Default Applications]\nx-scheme-handler/pixiv="+linuxURLHandlerDesktopFile+";\n"), 0o600))
 		return nil
-	}))
+	}
 
-	cleanup, err := loginhelper.Install(context.Background(), "http://127.0.0.1:41871/callback")
+	cleanup, err := installer.install(context.Background(), "http://127.0.0.1:41871/callback")
 	require.NoError(t, err)
 	require.Len(t, calls, 1)
-	require.Equal(t, []string{"default", loginhelper.LinuxURLHandlerDesktopFile, loginhelper.LinuxPixivURLScheme}, calls[0])
+	require.Equal(t, []string{"default", linuxURLHandlerDesktopFile, linuxPixivURLScheme}, calls[0])
 
-	applicationsDir, err := loginhelper.LinuxApplicationsDir()
+	applicationsDir, err := linuxApplicationsDir()
 	require.NoError(t, err)
-	desktopPath := filepath.Join(applicationsDir, loginhelper.LinuxURLHandlerDesktopFile)
+	desktopPath := filepath.Join(applicationsDir, linuxURLHandlerDesktopFile)
 	desktop, err := os.ReadFile(desktopPath)
 	require.NoError(t, err)
 	require.Contains(t, string(desktop), `Exec="/tmp/pixiv cli" auth _callback %u`)
 	require.Contains(t, string(desktop), "MimeType=x-scheme-handler/pixiv;")
 
-	endpoint, err := loginhelper.CallbackEndpointPath()
+	endpoint, err := callbackEndpointPath()
 	require.NoError(t, err)
 	endpointBody, err := os.ReadFile(endpoint)
 	require.NoError(t, err)
@@ -71,14 +71,15 @@ func TestLinuxInstallRemovesNewMimeStateWhenNoPreviousHandlerExists(t *testing.T
 	t.Setenv("XDG_CONFIG_HOME", configHome)
 	t.Setenv("XDG_DATA_HOME", filepath.Join(home, "data"))
 
-	t.Cleanup(loginhelper.SetLinuxExecutablePath(func() (string, error) { return "/tmp/pixiv", nil }))
+	installer := newURLHandlerInstaller()
+	installer.executable = func() (string, error) { return "/tmp/pixiv", nil }
 	configPath := filepath.Join(configHome, "mimeapps.list")
-	t.Cleanup(loginhelper.SetRunLinuxXDGMIme(func(_ context.Context, _ ...string) error {
+	installer.runXDGMime = func(_ context.Context, _ ...string) error {
 		require.NoError(t, os.MkdirAll(filepath.Dir(configPath), 0o700))
-		return os.WriteFile(configPath, []byte("[Default Applications]\nx-scheme-handler/pixiv="+loginhelper.LinuxURLHandlerDesktopFile+";\n"), 0o600)
-	}))
+		return os.WriteFile(configPath, []byte("[Default Applications]\nx-scheme-handler/pixiv="+linuxURLHandlerDesktopFile+";\n"), 0o600)
+	}
 
-	cleanup, err := loginhelper.Install(context.Background(), "http://127.0.0.1:41871/callback")
+	cleanup, err := installer.install(context.Background(), "http://127.0.0.1:41871/callback")
 	require.NoError(t, err)
 	cleanup()
 	_, err = os.Stat(configPath)
@@ -91,24 +92,25 @@ func TestLinuxInstallFailureRemovesEndpointAndDesktopEntry(t *testing.T) {
 	t.Setenv("XDG_CONFIG_HOME", filepath.Join(home, "config"))
 	t.Setenv("XDG_DATA_HOME", filepath.Join(home, "data"))
 
-	t.Cleanup(loginhelper.SetLinuxExecutablePath(func() (string, error) { return "/tmp/pixiv", nil }))
-	t.Cleanup(loginhelper.SetRunLinuxXDGMIme(func(context.Context, ...string) error { return errors.New("xdg-mime unavailable") }))
+	installer := newURLHandlerInstaller()
+	installer.executable = func() (string, error) { return "/tmp/pixiv", nil }
+	installer.runXDGMime = func(context.Context, ...string) error { return errors.New("xdg-mime unavailable") }
 
-	cleanup, err := loginhelper.Install(context.Background(), "http://127.0.0.1:41871/callback")
+	cleanup, err := installer.install(context.Background(), "http://127.0.0.1:41871/callback")
 	require.Nil(t, cleanup)
 	require.EqualError(t, err, "xdg-mime unavailable")
-	endpoint, err := loginhelper.CallbackEndpointPath()
+	endpoint, err := callbackEndpointPath()
 	require.NoError(t, err)
 	_, err = os.Stat(endpoint)
 	require.ErrorIs(t, err, os.ErrNotExist)
-	applicationsDir, err := loginhelper.LinuxApplicationsDir()
+	applicationsDir, err := linuxApplicationsDir()
 	require.NoError(t, err)
-	_, err = os.Stat(filepath.Join(applicationsDir, loginhelper.LinuxURLHandlerDesktopFile))
+	_, err = os.Stat(filepath.Join(applicationsDir, linuxURLHandlerDesktopFile))
 	require.ErrorIs(t, err, os.ErrNotExist)
 }
 
 func TestLinuxDesktopExecArgumentCannotCreateExtraArguments(t *testing.T) {
-	entry := loginhelper.LinuxDesktopEntry(`/tmp/pixiv "quoted" $value`)
+	entry := linuxDesktopEntry(`/tmp/pixiv "quoted" $value`)
 	require.True(t, strings.Contains(entry, `Exec="/tmp/pixiv \"quoted\" \$value" auth _callback %u`), entry)
 }
 
@@ -125,10 +127,10 @@ func TestLinuxDesktopFilePathResolvesDesktopIDWithoutTraversal(t *testing.T) {
 	require.NoError(t, os.MkdirAll(applicationsDir, 0o700))
 	require.NoError(t, os.WriteFile(want, []byte("[Desktop Entry]\nType=Application\n"), 0o600))
 
-	actual, err := loginhelper.LinuxDesktopFilePath(desktopID)
+	actual, err := linuxDesktopFilePath(desktopID)
 	require.NoError(t, err)
 	require.Equal(t, want, actual)
-	_, err = loginhelper.LinuxDesktopFilePath("../outside.desktop")
+	_, err = linuxDesktopFilePath("../outside.desktop")
 	require.Error(t, err)
 }
 
@@ -141,26 +143,27 @@ func TestLinuxDelegateToPreviousLaunchesResolvedDesktopFile(t *testing.T) {
 	desktopPath := filepath.Join(dataHome, "applications", desktopID)
 	require.NoError(t, os.MkdirAll(filepath.Dir(desktopPath), 0o700))
 	require.NoError(t, os.WriteFile(desktopPath, []byte("[Desktop Entry]\nType=Application\n"), 0o600))
-	require.NoError(t, loginhelper.SaveHandlerManifest(loginhelper.HandlerManifest{Version: 1, ExecutablePath: "/tmp/pixiv", PreviousHandler: desktopID}))
+	require.NoError(t, saveHandlerManifest(handlerManifest{Version: 1, ExecutablePath: "/tmp/pixiv", PreviousHandler: desktopID}))
 
 	var gotDesktop, gotURL string
-	t.Cleanup(loginhelper.SetRunLinuxGioLaunch(func(_ context.Context, path, rawURL string) error {
+	installer := newURLHandlerInstaller()
+	installer.runGioLaunch = func(_ context.Context, path, rawURL string) error {
 		gotDesktop = path
 		gotURL = rawURL
 		return nil
-	}))
-	t.Cleanup(loginhelper.SetFindLinuxCommand(func(name string) (string, error) {
+	}
+	installer.findCommand = func(name string) (string, error) {
 		require.Equal(t, "gio", name)
 		return "/usr/bin/gio", nil
-	}))
+	}
 
 	const rawURL = "pixiv://unrelated/path?code=one-time-code"
-	require.NoError(t, loginhelper.DelegateToPrevious(context.Background(), rawURL))
+	require.NoError(t, installer.delegateToPrevious(context.Background(), rawURL))
 	require.Equal(t, desktopPath, gotDesktop)
 	require.Equal(t, rawURL, gotURL)
 }
 
-func TestLinuxPersistentHandlerRestoresCompleteMimeStateWhenNoPreviousHandlerExists(t *testing.T) {
+func TestLinuxPersistentHandlerRecordsCompleteMimeStateWhenNoPreviousHandlerExists(t *testing.T) {
 	home := t.TempDir()
 	configHome := filepath.Join(home, "config")
 	dataHome := filepath.Join(home, "data")
@@ -173,39 +176,29 @@ func TestLinuxPersistentHandlerRestoresCompleteMimeStateWhenNoPreviousHandlerExi
 	require.NoError(t, os.MkdirAll(filepath.Dir(configPath), 0o700))
 	require.NoError(t, os.WriteFile(configPath, original, 0o600))
 
-	t.Cleanup(loginhelper.SetLinuxExecutablePath(func() (string, error) { return "/tmp/pixiv", nil }))
-	t.Cleanup(loginhelper.SetFindLinuxCommand(func(name string) (string, error) {
+	installer := newURLHandlerInstaller()
+	installer.executable = func() (string, error) { return "/tmp/pixiv", nil }
+	installer.findCommand = func(name string) (string, error) {
 		require.True(t, name == "xdg-mime" || name == "gio")
 		return "/usr/bin/" + name, nil
-	}))
+	}
 	current := ""
-	t.Cleanup(loginhelper.SetQueryLinuxDefaultHandler(func(context.Context) (string, error) { return current, nil }))
-	t.Cleanup(loginhelper.SetRunLinuxXDGMIme(func(_ context.Context, args ...string) error {
-		require.Equal(t, []string{"default", loginhelper.LinuxURLHandlerDesktopFile, loginhelper.LinuxPixivURLScheme}, args)
-		current = loginhelper.LinuxURLHandlerDesktopFile
-		return os.WriteFile(configPath, []byte("[Default Applications]\nx-scheme-handler/pixiv="+loginhelper.LinuxURLHandlerDesktopFile+";\n"), 0o600)
-	}))
+	installer.queryDefaultHandler = func(context.Context) (string, error) { return current, nil }
+	installer.runXDGMime = func(_ context.Context, args ...string) error {
+		require.Equal(t, []string{"default", linuxURLHandlerDesktopFile, linuxPixivURLScheme}, args)
+		current = linuxURLHandlerDesktopFile
+		return os.WriteFile(configPath, []byte("[Default Applications]\nx-scheme-handler/pixiv="+linuxURLHandlerDesktopFile+";\n"), 0o600)
+	}
 
-	require.NoError(t, loginhelper.EnsurePersistent(context.Background()))
-	manifest, exists, err := loginhelper.LoadHandlerManifest()
+	require.NoError(t, installer.ensurePersistent(context.Background()))
+	manifest, exists, err := loadHandlerManifest()
 	require.NoError(t, err)
 	require.True(t, exists)
 	require.Empty(t, manifest.PreviousHandler)
-	require.NotEmpty(t, manifest.LinuxMIMESnapshots)
 
-	applicationsDir, err := loginhelper.LinuxApplicationsDir()
+	applicationsDir, err := linuxApplicationsDir()
 	require.NoError(t, err)
-	desktopPath := filepath.Join(applicationsDir, loginhelper.LinuxURLHandlerDesktopFile)
+	desktopPath := filepath.Join(applicationsDir, linuxURLHandlerDesktopFile)
 	_, err = os.Stat(desktopPath)
 	require.NoError(t, err)
-
-	require.NoError(t, loginhelper.DisablePersistent(context.Background()))
-	restored, err := os.ReadFile(configPath)
-	require.NoError(t, err)
-	require.Equal(t, original, restored)
-	_, err = os.Stat(desktopPath)
-	require.ErrorIs(t, err, os.ErrNotExist)
-	_, exists, err = loginhelper.LoadHandlerManifest()
-	require.NoError(t, err)
-	require.False(t, exists)
 }

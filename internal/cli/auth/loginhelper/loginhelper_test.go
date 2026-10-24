@@ -1,4 +1,4 @@
-package loginhelper_test
+package loginhelper
 
 import (
 	"context"
@@ -11,7 +11,6 @@ import (
 	"sync/atomic"
 	"testing"
 
-	"github.com/FlanChanXwO/pixiv-cli/internal/cli/auth/loginhelper"
 	"github.com/FlanChanXwO/pixiv-cli/internal/loginrelay"
 	pixiv "github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
 	"github.com/stretchr/testify/require"
@@ -52,7 +51,7 @@ func TestRemoteLoginHandoffDoesNotFollowCrossOriginRedirects(t *testing.T) {
 			}))
 			t.Cleanup(relay.Close)
 
-			_, err := loginhelper.StartRemoteLogin(context.Background(), loginhelper.RemoteLoginStart{
+			_, err := newRemoteLoginHandoff().start(context.Background(), RemoteLoginStart{
 				Origin:    relay.URL,
 				SessionID: "redirect-start",
 				Proof:     "start-proof",
@@ -82,13 +81,13 @@ func TestRemoteLoginCallbackDoesNotFollowCrossOriginRedirects(t *testing.T) {
 			}))
 			t.Cleanup(relay.Close)
 
-			require.NoError(t, loginhelper.SaveActiveRemoteLogin(loginhelper.ActiveRemoteLogin{
+			require.NoError(t, saveActiveRemoteLogin(activeRemoteLogin{
 				Version:   1,
 				Origin:    relay.URL,
 				SessionID: "redirect-callback",
 				Proof:     "callback-proof",
 			}))
-			_, err := loginhelper.ForwardActiveRemoteLoginCallback(context.Background(), "pixiv://account/login?code=one-time-code")
+			_, err := newRemoteLoginHandoff().forward(context.Background(), "pixiv://account/login?code=one-time-code")
 			require.Error(t, err)
 			require.Zero(t, received.Load(), "Pixiv callback and proof must never be replayed to a redirect target")
 		})
@@ -98,7 +97,7 @@ func TestRemoteLoginCallbackDoesNotFollowCrossOriginRedirects(t *testing.T) {
 func TestValidateAuthorizationURLAcceptsOnlyOfficialAppOAuthStart(t *testing.T) {
 	session, err := pixiv.BeginLogin(pixiv.LoginOptions{})
 	require.NoError(t, err)
-	require.NoError(t, loginhelper.ValidateAuthorizationURL(session.AuthorizationURL()), "a URL produced by BeginLogin must remain valid")
+	require.NoError(t, validateAuthorizationURL(session.AuthorizationURL()), "a URL produced by BeginLogin must remain valid")
 
 	const valid = "https://app-api.pixiv.net/web/v1/login?client=pixiv-android&code_challenge_method=S256&code_challenge=challenge-value&state=state-value"
 	for _, raw := range []string{
@@ -114,20 +113,20 @@ func TestValidateAuthorizationURLAcceptsOnlyOfficialAppOAuthStart(t *testing.T) 
 		"https://app-api.pixiv.net/web/v1/login?client=pixiv-android&code_challenge_method=S256&code_challenge=challenge-value",
 		valid + "&state=another-state",
 	} {
-		require.EqualError(t, loginhelper.ValidateAuthorizationURL(raw), "remote Pixiv login relay returned an invalid sign-in address", raw)
+		require.EqualError(t, validateAuthorizationURL(raw), "remote Pixiv login relay returned an invalid sign-in address", raw)
 	}
 }
 
 func TestClearRemoteLoginHandoffPreservesNewerSession(t *testing.T) {
 	t.Setenv("HOME", t.TempDir())
 	t.Setenv("USERPROFILE", t.TempDir())
-	old := loginhelper.RemoteLoginStart{Origin: "https://relay.example", SessionID: "old-session", Proof: "old-proof"}
-	newer := loginhelper.ActiveRemoteLogin{Version: 1, Origin: "https://relay.example", SessionID: "new-session", Proof: "new-proof"}
-	require.NoError(t, loginhelper.SaveActiveRemoteLogin(loginhelper.ActiveRemoteLogin{Version: 1, Origin: old.Origin, SessionID: old.SessionID, Proof: old.Proof}))
-	require.NoError(t, loginhelper.SaveActiveRemoteLogin(newer))
+	old := RemoteLoginStart{Origin: "https://relay.example", SessionID: "old-session", Proof: "old-proof"}
+	newer := activeRemoteLogin{Version: 1, Origin: "https://relay.example", SessionID: "new-session", Proof: "new-proof"}
+	require.NoError(t, saveActiveRemoteLogin(activeRemoteLogin{Version: 1, Origin: old.Origin, SessionID: old.SessionID, Proof: old.Proof}))
+	require.NoError(t, saveActiveRemoteLogin(newer))
 
-	require.NoError(t, loginhelper.ClearRemoteLoginHandoff(old))
-	active, err := loginhelper.LoadActiveRemoteLogin()
+	require.NoError(t, ClearRemoteLoginHandoff(old))
+	active, err := loadActiveRemoteLogin()
 	require.NoError(t, err)
 	require.Equal(t, newer, active)
 }
@@ -135,33 +134,34 @@ func TestClearRemoteLoginHandoffPreservesNewerSession(t *testing.T) {
 func TestClearRemoteLoginHandoffReportsUnreadableState(t *testing.T) {
 	t.Setenv("HOME", t.TempDir())
 	t.Setenv("USERPROFILE", t.TempDir())
-	statePath, err := loginhelper.ActiveRemoteLoginPath()
+	statePath, err := activeRemoteLoginPath()
 	require.NoError(t, err)
 	require.NoError(t, os.MkdirAll(statePath, 0o700))
 
-	err = loginhelper.ClearRemoteLoginHandoff(loginhelper.RemoteLoginStart{Origin: "https://relay.example", SessionID: "session", Proof: "proof"})
+	err = ClearRemoteLoginHandoff(RemoteLoginStart{Origin: "https://relay.example", SessionID: "session", Proof: "proof"})
 	require.EqualError(t, err, "could not clear active remote login handoff")
 }
 
 func TestForwardRemoteLoginCallbackFailsWhenLocalHandoffCannotBeConsumed(t *testing.T) {
 	t.Setenv("HOME", t.TempDir())
 	t.Setenv("USERPROFILE", t.TempDir())
-	active := loginhelper.ActiveRemoteLogin{Version: 1, Origin: "https://relay.example", SessionID: "session", Proof: "proof"}
-	require.NoError(t, loginhelper.SaveActiveRemoteLogin(active))
+	active := activeRemoteLogin{Version: 1, Origin: "https://relay.example", SessionID: "session", Proof: "proof"}
+	require.NoError(t, saveActiveRemoteLogin(active))
 
 	body := &trackingReadCloser{Reader: strings.NewReader("{}")}
 	resultHeaders := make(http.Header)
 	resultHeaders.Set(loginrelay.RelayResultURLHeader, "https://relay.example/result/YWJj")
-	t.Cleanup(loginhelper.SetHandoffHTTPClient(&http.Client{Transport: handoffRoundTripper(func(request *http.Request) (*http.Response, error) {
+	handoff := newRemoteLoginHandoff()
+	handoff.httpClient = &http.Client{Transport: handoffRoundTripper(func(request *http.Request) (*http.Response, error) {
 		return &http.Response{
 			StatusCode: http.StatusOK,
 			Header:     resultHeaders,
 			Body:       body,
 		}, nil
-	})}))
-	t.Cleanup(loginhelper.SetClearActiveRemoteLoginForHandoff(func(loginhelper.ActiveRemoteLogin) error { return errors.New("local state is unavailable") }))
+	})}
+	handoff.clear = func(activeRemoteLogin) error { return errors.New("local state is unavailable") }
 
-	result, err := loginhelper.ForwardActiveRemoteLoginCallback(context.Background(), "pixiv://account/login?code=one-time-code")
+	result, err := handoff.forward(context.Background(), "pixiv://account/login?code=one-time-code")
 	require.Nil(t, result)
 	require.EqualError(t, err, "could not clear active remote login handoff")
 	require.True(t, body.closed.Load(), "a failed post-delivery cleanup must not leave the relay response open")

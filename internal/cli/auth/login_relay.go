@@ -1,3 +1,5 @@
+// Relay server configuration and validation for remote Pixiv login.
+
 package auth
 
 import (
@@ -7,12 +9,13 @@ import (
 	"strings"
 
 	config "github.com/FlanChanXwO/pixiv-cli/internal/config/settings"
+	"github.com/spf13/pflag"
 )
 
-// RelayServerOptions 是 remote Pixiv login relay 的一次性 server 配置。
+// relayServerOptions 是 remote Pixiv login relay 的一次性 server 配置。
 // ContextWaiterExited 与 Listen 仅供生命周期测试观察/注入内部 ctx watcher 与
 // listener；生产路径保持 nil，不能影响 relay 的网络或授权行为。
-type RelayServerOptions struct {
+type relayServerOptions struct {
 	PublicURL           string
 	ListenAddr          string
 	TLSCertFile         string
@@ -21,13 +24,10 @@ type RelayServerOptions struct {
 	Listen              func(network, address string) (net.Listener, error)
 }
 
-// FlagChangeReader 让 relay 配置选择不依赖 cobra，便于不启动实际 listener 的单测。
-type FlagChangeReader interface{ Changed(string) bool }
-
-// ConfiguredRelayServerOptions 按单次 flag > 私有 config 的优先级合成 server
+// configuredRelayServerOptions 按单次 flag > 私有 config 的优先级合成 server
 // relay；没有任一 server 值时保持普通本地登录。client target 本身不触发 server。
-func ConfiguredRelayServerOptions(cmd FlagChangeReader, opts AccountLoginOptions, cfg config.RuntimeConfig) (RelayServerOptions, bool, error) {
-	result := RelayServerOptions{
+func configuredRelayServerOptions(cmd *pflag.FlagSet, opts accountLoginOptions, cfg config.RuntimeConfig) (relayServerOptions, bool, error) {
+	result := relayServerOptions{
 		PublicURL:   cfg.LoginRelayPublicURL,
 		ListenAddr:  cfg.LoginRelayListenAddr,
 		TLSCertFile: cfg.LoginRelayTLSCertFile,
@@ -49,21 +49,21 @@ func ConfiguredRelayServerOptions(cmd FlagChangeReader, opts AccountLoginOptions
 	// 不参与模式选择，也不会触发任何网络请求。
 	configured := result.PublicURL != "" || result.ListenAddr != "" || result.TLSCertFile != "" || result.TLSKeyFile != ""
 	if !configured {
-		return RelayServerOptions{}, false, nil
+		return relayServerOptions{}, false, nil
 	}
 	if result.PublicURL == "" || result.ListenAddr == "" {
-		return RelayServerOptions{}, false, errors.New("remote login relay requires login_relay_public_url and login_relay_listen_addr")
+		return relayServerOptions{}, false, errors.New("remote login relay requires login_relay_public_url and login_relay_listen_addr")
 	}
 	if (result.TLSCertFile == "") != (result.TLSKeyFile == "") {
-		return RelayServerOptions{}, false, errors.New("remote login relay TLS requires both certificate and key files")
+		return relayServerOptions{}, false, errors.New("remote login relay TLS requires both certificate and key files")
 	}
 	if err := validateRelayServerOptions(result); err != nil {
-		return RelayServerOptions{}, false, err
+		return relayServerOptions{}, false, err
 	}
 	return result, true, nil
 }
 
-func validateRelayServerOptions(opts RelayServerOptions) error {
+func validateRelayServerOptions(opts relayServerOptions) error {
 	publicURL, err := url.Parse(strings.TrimSpace(opts.PublicURL))
 	if err != nil || publicURL == nil || (publicURL.Scheme != "http" && publicURL.Scheme != "https") || publicURL.Host == "" || publicURL.User != nil || publicURL.RawQuery != "" || publicURL.Fragment != "" {
 		return errors.New("invalid remote login relay public URL")
