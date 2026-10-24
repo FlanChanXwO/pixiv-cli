@@ -10,9 +10,11 @@ import (
 	"strings"
 	"testing"
 
+	commands "github.com/FlanChanXwO/pixiv-cli/internal/cli/internal/command"
 	pixivcmd "github.com/FlanChanXwO/pixiv-cli/internal/cli/internal/pixivcmd"
 	"github.com/FlanChanXwO/pixiv-cli/sdk"
 	pixiv "github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
+	"github.com/spf13/cobra"
 )
 
 func TestUserDetailRejectsInvalidIDBeforeOpeningClient(t *testing.T) {
@@ -574,4 +576,18 @@ func jsonHTTPResponse(request *http.Request, body string) *http.Response {
 		Body:       io.NopCloser(strings.NewReader(body)),
 		Request:    request,
 	}
+}
+
+type testData struct {
+	Input      io.Reader
+	Output     io.Writer
+	UsageError func(error) error
+	JSONOut    func(*bool) (bool, error)
+	Pooled     func(context.Context, pixivcmd.Request, func(context.Context, *pixiv.Client) (bool, error)) error
+	Follow     func() *cobra.Command
+}
+
+func newTestUserCommand(d testData) *cobra.Command {
+	env := commands.Env{In: d.Input, Out: d.Output, WrapUsage: d.UsageError, ResolveJSON: d.JSONOut}
+	return New(env, pixivcmd.New(d.Output, pixivcmd.Executor(d.Pooled)), d.Follow)
 }

@@ -3,8 +3,11 @@ package auth
 import (
 	"bytes"
 	"errors"
+	"io"
 	"testing"
 
+	commands "github.com/FlanChanXwO/pixiv-cli/internal/cli/internal/command"
+	"github.com/FlanChanXwO/pixiv-cli/internal/cli/internal/fanboxcmd"
 	"github.com/FlanChanXwO/pixiv-cli/internal/fanboxaccount"
 	"github.com/spf13/cobra"
 	"github.com/stretchr/testify/assert"
@@ -56,4 +59,17 @@ func commandNames(cmd interface{ Commands() []*cobra.Command }) []string {
 		names = append(names, child.Name())
 	}
 	return names
+}
+
+type testData struct {
+	Reader    io.Reader
+	Writer    io.Writer
+	WrapUsage func(error) error
+	Accounts  func() (*fanboxaccount.Service, error)
+	Browser   fanboxcmd.BrowserProvider
+}
+
+func newTestCommand(d testData) *cobra.Command {
+	env := commands.Env{In: d.Reader, Out: d.Writer, Err: io.Discard, WrapUsage: d.WrapUsage}
+	return New(env, d.Accounts, d.Browser)
 }
