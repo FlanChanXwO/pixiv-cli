@@ -82,10 +82,8 @@ jobs:
             printf '%s\n' 'quality_required=true' >> "$GITHUB_OUTPUT"
             exit 0
           fi
-          # 分类器与规则文件均来自上面的 trusted base checkout；G20 合并前后路径可能不同。
-          classifier=scripts/classify-change-scope.sh
-          [ ! -f scripts/ci/classify-change-scope.sh ] || classifier=scripts/ci/classify-change-scope.sh
-          bash "./$classifier" --base "$BASE_SHA" --head "$HEAD_SHA" --github-output "$GITHUB_OUTPUT"
+          # 分类器与规则文件均来自上面的 trusted base checkout。
+          bash ./scripts/ci/classify-change-scope.sh --base "$BASE_SHA" --head "$HEAD_SHA" --github-output "$GITHUB_OUTPUT"
 
   quality_gate:
     name: Quality gate
