@@ -284,6 +284,7 @@ func TestReleaseNoLongerPublishesHomebrewInline(t *testing.T) {
 | P-j | 碎片化：一个概念被拆进多个必须一起读才能看懂的小包或小文件，例如十几行的 `main` 加一个 `internal` 实现包 | 合并为一个包或文件 |
 | P-k | 为假想扩展预留的间接层：同一层内只是照抄某个具体类型方法集的接口、每个包各声明一份的相同接口、只注册一项的注册表、没有第二种取值的选项；测试替身不算第二个实现，测试改用 httptest、临时目录这类真实边界 | 去掉间接层，直接使用具体类型。例外：由使用方定义、只含其所需方法、用来切断对存储/网络/系统依赖的窄端口（例如 `session` 的 `AccountService`、MCP 的 `toolhost.SDKPorts`）是 AGENTS.md 规定的边界，保留 |
 | P-l | 兼容层：旧入口与新入口并存、旧名别名、source-compatible 包装、为旧版本自身组件（旧页面、旧流程、旧端口）保留的分支、已删除配置键的墓碑、以往改名遗留的输入别名 | 删除，只保留新入口。例外：上游（Pixiv/FANBOX API、浏览器 Cookie）格式本身的差异不是兼容层；让用户已有的数据库、配置文件仍能打开的读取逻辑保留 |
+| P-m | 过度防御：对内部调用方已经保证的前提重复校验（同一参数在公开方法、私有实现、映射函数中各校验一次）；对构造时一定会设置的字段或依赖判 nil；Go 本身已经安全的判断（读 nil map、对 nil 切片取 `len` 或遍历）；遇到不可能出现的状态时悄悄降级、返回零值或吞掉错误；没有共享修改风险的防御性拷贝；“以防万一”的 `recover` | 删除；校验只留在最外层的那一次。确需防住的内部不变量，让它立即失败（返回明确错误或 panic），不伪装成成功。例外：信任边界上的校验（用户输入、CLI/MCP 参数、上游响应、文件与数据库内容、环境变量）、公开 SDK 的参数校验、凭据的防御性拷贝（`RefreshTokenCopy` 这类所有权边界）、并发与取消相关的检查，保留 |
 
 边界：以上标准只调整结构，不删除用户可见的功能。功能取舍（例如 `pixiv auth` 登录链路的范围）不在本次范围内（第 8 节）。
 
@@ -392,6 +393,41 @@ P-l 的判定参照：
 | `searchfilter` 中 `illustration` 作为 `illust` 的别名 | 删除，写入 changelog |
 | `storage/database/migrate.go` 的 `legacyInitialMigrationChecksum` | 保留：旧版本创建的数据库仍需能打开 |
 | endpoint `timeline` 中读取上游 `ai_type` 字段的 `LegacyAIType`；`browsercookies/chromium` 中旧版加密格式 | 保留：上游格式差异，不是本项目的兼容层 |
+
+**典型例子（P-m）：**
+
+```go
+// internal/cli/internal/input/pipeline.go：调用方总是传入 cobra 命令，读 nil map 本身安全，两个判断都多余
+func CodecOf(command *cobra.Command) Codec {
+	if command == nil || command.Annotations == nil {
+		return NoInput
+	}
+	value := command.Annotations[AnnotationKey]
+	// ……
+}
+
+// internal/cli/internal/command/env.go：Env 由 root 构造，WrapUsage 一定被设置；
+// 判 nil 只会在装配写错时成立，而那时它悄悄丢掉用法错误的退出码，把装配 bug 伪装成正常
+func (e Env) UsageError(err error) error {
+	if err == nil || e.WrapUsage == nil {
+		return err
+	}
+	return e.WrapUsage(err)
+}
+
+// 重构后：前提由构造保证，函数只做自己的事
+func CodecOf(command *cobra.Command) Codec {
+	codec, _, ok := strings.Cut(command.Annotations[AnnotationKey], ":")
+	// ……
+}
+```
+
+| 现有代码 | 判定 |
+|---|---|
+| 上面两个函数中的判断 | 删除，P-m |
+| `pixivaccount.RefreshTokenCopy`、`fanboxaccount.SessionIDCopy` | 保留：凭据的所有权边界 |
+| `media/ugoira/jpeg` 中照搬标准库 `image/jpeg` 的 `panic("unreachable")` | 保留：内部不变量立即失败 |
+| SDK 公开方法入口的参数校验（例如 `UserID <= 0`） | 保留：公开契约；同一参数在私有实现中的再次校验删除 |
 
 **典型例子（P-a + P-b）：**
 

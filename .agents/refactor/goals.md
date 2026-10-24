@@ -1247,6 +1247,7 @@
 - 两个 SDK 增加 Options.Logger；pixivapi、fanboxapi 在 do/send 与各决策点记录日志；SDK 方法入口用 WithOperation 登记操作名。
 - 新建 internal/logging（Handler、ctx 调用信息、属性键常量），取代 shared/diagnostics 与 cli/diagnostics；CLI、MCP 执行边界接入；LogLevel 新增 warn、error。按 AGENTS.md 执行 Red/Green。
 - G24、G26 先于本 goal 合并：media/downloader、pixivaccount、session 中的诊断调用以它们合并后的代码为准替换。
+- 触及的代码（composition.go、execution.go、pixivapi、fanboxapi、toolhost）按规格 3.4.2 的 P-m 删除过度防御：重复校验、对构造时一定设置的依赖判 nil、悄悄降级的分支。新写的日志代码不为“以防万一”加判空。
 - 本 goal 触及的文件中，超过约 100 行的编排函数，按真实阶段拆出有名字的步骤函数（只拆能用一个名字说清职责的部分，不为缩短而拆）；超过约 600 行、包含多个主题的文件按主题拆分。现状：composition.go 781 行，其中 newPixivSDKPorts、runPixivMCP 各约 130 行。
 
 【验收】
@@ -1304,8 +1305,10 @@
 工作项：T5，以及 T2、T6 在 lifecycle、pagination、record、searchfilter、httpclient、plaintext、version 中的部分（规格 3.1.2、3.4）。
 - 按 3.4.2 的全部标准检查生产代码，按 3.4.1 检查测试。
 - 被其他包调用的导出 API 需要修改时，一并修改调用处。
+- 这些共享包按规格 3.4.2 的 P-m 删除过度防御：同一前提在多层重复校验、对调用方已保证的参数判 nil、悄悄返回零值的分支。
 
 【验收】
+- PR 中按 3.4.3 的表格列出删除的防御性判断及依据（P-m）。
 - PR 中按 3.4.3 的表格列出删除或合并的测试和符号。
 - 用户可见行为不变；触及生命周期、持久化或并发时 go test -race ./... 通过。
 
@@ -1579,8 +1582,10 @@
 - sdk/fanbox 按 G08 在 sdk/pixiv 中的做法组织文件：请求类型移到使用它的方法旁边，删除 request.go；只被一个领域使用的响应结构与映射放进 creator.go、post.go 等领域文件，共用部分放在 response.go，删除 wire.go；models.go 保留。改名与移动单独提交。
 - 编号引用：清理代码与文档中指向仓库外设计文档的编号，以及指向本次重构 goal、阶段的说明（例如“G08 删除”“阶段 3 并入”）。RFC 章节号（RFC 6749 §4.1.2 等）和函数内按阶段编号的步骤注释是有效引用，保留。
 - 删除生产代码中与真实包名不一致的 import 别名（例如 protocol→pixivapi/fanboxapi、commands/requirements→command、config/configapp→settings、accountpixiv→pixivaccount、filesecret→secretfile、filereplace→atomicfile、versionpkg→version），调用处改用真实包名；以合并时的 main 重新统计。
+- 全仓库生产代码按规格 3.4.2 的 P-m 扫描过度防御，覆盖此前各 goal 已合并的代码：从 if x == nil || x.y == nil 这类复合判空（2026-10-24 统计 64 处）、重复的参数校验、返回零值的降级分支入手。信任边界上的校验、公开 SDK 参数校验、凭据拷贝保留。
 
 【验收】
+- PR 中列出删除的防御性判断及依据；保留下来但看起来像防御的判断，说明它守护的是哪一类边界。
 - PR 中按 3.4.3 的表格列出每项删除及依据。
 - 以合并时的 main 重新 grep，scripts/ 与 .github/ 以外，除 RFC 章节号外不再有指向仓库外文档或重构 goal 的编号。
 - PR 中列出拆分的函数和文件（原行数、拆出的步骤），以及删除的 import 别名数量；仍超过约 100 行而未拆的函数逐个说明理由。
@@ -1899,6 +1904,7 @@
 【本 goal】
 工作项：C2（规格 C 组）。
 - 删除 .agents/refactor/ 整个目录。
+- 在 pixiv-cli-develop 与 pixiv-cli-review 中写入过度防御的判定（规格 3.4.2 的 P-m：删除什么、保留哪些边界），作为长期规则。
 - 中英文 docs/*/sdk.md 改为描述新的 API；更新 architecture.md、development.md 和各 skill 中与重构结果相关的路径和放置规则；把规格第 6 节的示例整理到 pixiv-cli-develop 的 references/go-examples.md（删除前先从本目录复制需要的内容），示例中的文件名按重构后的实际命名改写（例如 wire.go 已改为领域文件与 response.go）。
 - 汇总已合并各 goal 的 PR 描述中的 changelog 条目，写进本 PR 描述作为 release notes 草稿；不创建 changelog/vX.Y.Z/。
 
