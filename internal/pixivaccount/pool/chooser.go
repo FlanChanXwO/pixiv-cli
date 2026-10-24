@@ -1,3 +1,6 @@
+// 账号池的无 IO 选择器：按 strategy 从候选快照中选一个 UID。
+// 重放与冻结在 pool.go，错误映射在 replay.go。
+
 package pool
 
 import (
@@ -10,9 +13,9 @@ import (
 	accountpixiv "github.com/FlanChanXwO/pixiv-cli/internal/pixivaccount"
 )
 
-// Choose 是无 IO 的 round-robin/random chooser。Database 会在提交前再次验证
+// choose 是无 IO 的 round-robin/random chooser。Database 会在提交前再次验证
 // 返回 UID 属于候选快照。
-func Choose(snapshot accountpixiv.PoolSnapshot, strategy config.AccountPoolStrategy, random func(int) (int, error)) (int64, error) {
+func choose(snapshot accountpixiv.PoolSnapshot, strategy config.AccountPoolStrategy) (int64, error) {
 	if len(snapshot.Candidates) == 0 {
 		return 0, &accountpixiv.PoolSelectionError{
 			Kind:                accountpixiv.PoolSelectionExhausted,
@@ -30,15 +33,9 @@ func Choose(snapshot accountpixiv.PoolSnapshot, strategy config.AccountPoolStrat
 		}
 		return snapshot.Candidates[0].UserID, nil
 	case config.AccountPoolStrategyRandom:
-		if random == nil {
-			random = randomIndex
-		}
-		index, err := random(len(snapshot.Candidates))
+		index, err := randomIndex(len(snapshot.Candidates))
 		if err != nil {
 			return 0, err
-		}
-		if index < 0 || index >= len(snapshot.Candidates) {
-			return 0, errors.New("pixiv account pool random source returned an invalid index")
 		}
 		return snapshot.Candidates[index].UserID, nil
 	default:

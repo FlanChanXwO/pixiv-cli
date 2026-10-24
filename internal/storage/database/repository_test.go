@@ -11,7 +11,6 @@ import (
 	config "github.com/FlanChanXwO/pixiv-cli/internal/config/settings"
 	accountfanbox "github.com/FlanChanXwO/pixiv-cli/internal/fanboxaccount"
 	accountpixiv "github.com/FlanChanXwO/pixiv-cli/internal/pixivaccount"
-	pixivpool "github.com/FlanChanXwO/pixiv-cli/internal/pixivaccount/pool"
 	database "github.com/FlanChanXwO/pixiv-cli/internal/storage/database"
 )
 
@@ -35,9 +34,31 @@ func fanboxAccount(userID int64, displayName, creatorID, session string, validat
 	return account
 }
 
+// choose 是测试内的选择器替身；生产 chooser 在 pool 包内不可导出。
 func choose(strategy config.AccountPoolStrategy, random func(int) (int, error)) accountpixiv.Chooser {
 	return func(snapshot accountpixiv.PoolSnapshot) (int64, error) {
-		return pixivpool.Choose(snapshot, strategy, random)
+		if len(snapshot.Candidates) == 0 {
+			return 0, &accountpixiv.PoolSelectionError{Kind: accountpixiv.PoolSelectionExhausted, EarliestFrozenUntil: snapshot.EarliestFrozenUntil}
+		}
+		switch strategy {
+		case config.AccountPoolStrategyRoundRobin:
+			if snapshot.MarkerSortOrder != nil {
+				for _, candidate := range snapshot.Candidates {
+					if candidate.SortOrder > *snapshot.MarkerSortOrder {
+						return candidate.UserID, nil
+					}
+				}
+			}
+			return snapshot.Candidates[0].UserID, nil
+		case config.AccountPoolStrategyRandom:
+			index, err := random(len(snapshot.Candidates))
+			if err != nil {
+				return 0, err
+			}
+			return snapshot.Candidates[index].UserID, nil
+		default:
+			return 0, fmt.Errorf("unsupported strategy %q", strategy)
+		}
 	}
 }
 

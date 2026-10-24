@@ -1,3 +1,5 @@
+// 显式 auth export 使用的账号值：refresh token 私有，格式化与 JSON 只输出摘要。
+
 package pixivaccount
 
 import (
@@ -15,9 +17,9 @@ type AccountWithToken struct {
 	refreshToken string
 }
 
-// NewAccountWithToken 创建一个带有 opaque refresh token 的导出值。
+// newAccountWithToken 创建一个带有 opaque refresh token 的导出值。
 // 调用方只有在明确的导出流程中通过 RefreshToken 读取 token。
-func NewAccountWithToken(userID int64, username string, isDefault bool, refreshToken string) AccountWithToken {
+func newAccountWithToken(userID int64, username string, isDefault bool, refreshToken string) AccountWithToken {
 	return AccountWithToken{
 		UserID:       userID,
 		Username:     username,

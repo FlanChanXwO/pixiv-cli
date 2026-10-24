@@ -14,26 +14,15 @@ import (
 
 // Service 是 CLI/MCP 的 FANBOX 账号服务。
 type Service struct {
-	repo     Repository
-	defaults DefaultStore
-
-	// LoadOptionsFunc supplies explicit runtime network settings at the point a
-	// native SDK client is opened. Keeping it lazy lets config errors surface at
-	// the execution boundary without making the auth database constructor read
-	// network configuration.
-	LoadOptionsFunc func() (fanbox.Options, error)
-
-	// OpenClientFunc 覆盖 OpenClient 的客户端打开逻辑；nil 时按默认账号的已保存
-	// session 打开。测试用它注入不拨号的 httptest transport。
-	OpenClientFunc func(ctx context.Context) (*fanbox.Client, error)
-	// OpenSessionFunc 覆盖 ImportSession 的客户端打开逻辑；nil 时使用
-	// fanbox.Open（生产 transport）。测试用它注入验证用 httptest transport。
-	OpenSessionFunc func(sessionValue string) (*fanbox.Client, error)
+	repo        Repository
+	defaults    DefaultStore
+	loadOptions func() (fanbox.Options, error)
 }
 
-// NewService 构造 FANBOX 账号服务；repository/defaults 由 composition root 注入。
-func NewService(repo Repository, defaults DefaultStore) *Service {
-	return &Service{repo: repo, defaults: defaults}
+// NewService 构造 FANBOX 账号服务。loadOptions 每次打开客户端时读取当前网络
+// 配置，使配置错误留在执行边界，避免构造账号库时提前读取配置。
+func NewService(repo Repository, defaults DefaultStore, loadOptions func() (fanbox.Options, error)) *Service {
+	return &Service{repo: repo, defaults: defaults, loadOptions: loadOptions}
 }
 
 // AccountSummary 是 auth list 的输出行。
@@ -45,28 +34,17 @@ type AccountSummary struct {
 }
 
 // ImportSession 使用显式 FANBOXSESSID 在线验证并保存账号；验证失败不产生记录。
-func (s *Service) ImportSession(ctx context.Context, sessionValue string, setDefault bool) (AccountSummary, error) {
-	return s.ImportSessionWithProxy(ctx, sessionValue, setDefault, nil)
-}
-
-// ImportSessionWithProxy validates and stores a session using an optional
-// command-scoped native proxy override. The solver addresses remain unchanged.
-func (s *Service) ImportSessionWithProxy(ctx context.Context, sessionValue string, setDefault bool, proxyOverride *string) (AccountSummary, error) {
+// proxyOverride 只覆盖本次请求的原生 HTTP proxy，空值保留配置的优先级。
+func (s *Service) ImportSession(ctx context.Context, sessionValue string, setDefault bool, proxyOverride *string) (AccountSummary, error) {
 	sessionValue = strings.TrimSpace(sessionValue)
 	if sessionValue == "" {
 		return AccountSummary{}, errors.New("FANBOX session value is required")
 	}
-	open := s.OpenSessionFunc
-	if open == nil {
-		open = func(value string) (*fanbox.Client, error) {
-			options, err := s.connectionOptions(proxyOverride)
-			if err != nil {
-				return nil, err
-			}
-			return fanbox.OpenWith(fanbox.SessionCredentials{FANBOXSESSID: value}, options)
-		}
+	options, err := s.connectionOptions(proxyOverride)
+	if err != nil {
+		return AccountSummary{}, err
 	}
-	client, err := open(sessionValue)
+	client, err := fanbox.OpenWith(fanbox.SessionCredentials{FANBOXSESSID: sessionValue}, options)
 	if err != nil {
 		return AccountSummary{}, err
 	}
@@ -166,18 +144,10 @@ func (s *Service) Status(ctx context.Context) (*AccountSummary, error) {
 	}, nil
 }
 
-// OpenClient 打开默认账号对应的 sdk/fanbox Client。
-func (s *Service) OpenClient(ctx context.Context) (*fanbox.Client, error) {
-	return s.OpenClientWithProxy(ctx, nil)
-}
-
-// OpenClientWithProxy opens the selected account with a command-scoped native
-// proxy override. A nil override preserves the configured service/global
-// precedence; the FlareSolverr service and upstream proxy are never changed.
-func (s *Service) OpenClientWithProxy(ctx context.Context, proxyOverride *string) (*fanbox.Client, error) {
-	if s.OpenClientFunc != nil {
-		return s.OpenClientFunc(ctx)
-	}
+// OpenClient opens the selected account with a command-scoped native proxy
+// override. A nil override preserves the configured service/global precedence;
+// the FlareSolverr service and upstream proxy are never changed.
+func (s *Service) OpenClient(ctx context.Context, proxyOverride *string) (*fanbox.Client, error) {
 	userID, err := s.selectedUserID(ctx)
 	if err != nil {
 		return nil, err
@@ -195,8 +165,8 @@ func (s *Service) OpenClientWithProxy(ctx context.Context, proxyOverride *string
 
 func (s *Service) connectionOptions(proxyOverride *string) (fanbox.Options, error) {
 	var options fanbox.Options
-	if s.LoadOptionsFunc != nil {
-		loaded, err := s.LoadOptionsFunc()
+	if s.loadOptions != nil {
+		loaded, err := s.loadOptions()
 		if err != nil {
 			return fanbox.Options{}, err
 		}
