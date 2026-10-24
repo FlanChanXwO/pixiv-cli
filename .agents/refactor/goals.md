@@ -1062,6 +1062,7 @@
 - 两个 SDK 增加 Options.Logger；pixivapi、fanboxapi 在 do/send 与各决策点记录日志；SDK 方法入口用 WithOperation 登记操作名。
 - 新建 internal/logging（Handler、ctx 调用信息、属性键常量），取代 shared/diagnostics 与 cli/diagnostics；CLI、MCP 执行边界接入；LogLevel 新增 warn、error。按 AGENTS.md 执行 Red/Green。
 - G24、G26 先于本 goal 合并：media/downloader、pixivaccount、session 中的诊断调用以它们合并后的代码为准替换。
+- 本 goal 触及的文件中，超过约 100 行的编排函数，按真实阶段拆出有名字的步骤函数（只拆能用一个名字说清职责的部分，不为缩短而拆）；超过约 600 行、包含多个主题的文件按主题拆分。现状：composition.go 781 行，其中 newPixivSDKPorts、runPixivMCP 各约 130 行。
 
 【验收】
 - CLI 的数据 stdout 和 MCP stdio 的 stdout 中没有日志。
@@ -1389,9 +1390,12 @@
 
 【本 goal】
 工作项：重新扫描只被测试引用的导出函数（T2），处理剩余的无对应生产文件测试（T3）、Go 代码中的编号引用（T4），以及其余兼容层，包括 illustration 别名（T6，写成 changelog 条目）。
+- 全仓库生产代码中，超过约 100 行的编排函数，按真实阶段拆出有名字的步骤函数（只拆能用一个名字说清职责的部分，不为缩短而拆）；超过约 600 行、包含多个主题的文件按主题拆分。先处理此前 goal 未覆盖的部分，例如 mcpserver/pixiv/tools 中 recommendedHandler、artworkMediaHandler、showGalleryHandler（各约 140–150 行），cli/search 的 run（约 136 行），cli/bookmark/bookmark.go（906 行）。media/ugoira/jpeg 解码器照搬标准库 image/jpeg 的算法结构，保持原样。
+- 删除生产代码中与真实包名不一致的 import 别名（例如 protocol→pixivapi/fanboxapi、commands/requirements→command、config/configapp→settings、accountpixiv→pixivaccount、filesecret→secretfile、filereplace→atomicfile、versionpkg→version），调用处改用真实包名；以合并时的 main 重新统计。
 
 【验收】
 - PR 中按 3.4.3 的表格列出每项删除及依据。
+- PR 中列出拆分的函数和文件（原行数、拆出的步骤），以及删除的 import 别名数量；仍超过约 100 行而未拆的函数逐个说明理由。
 - 用户可见行为不变（changelog 条目除外）。
 
 【依据】
