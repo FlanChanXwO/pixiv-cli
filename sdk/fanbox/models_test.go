@@ -10,7 +10,7 @@ import (
 	"github.com/FlanChanXwO/pixiv-cli/sdk/fanbox"
 )
 
-func TestPostJSONIsExplicitAndOpaque(t *testing.T) {
+func TestPublicModelsJSONIsOpaque(t *testing.T) {
 	ref, err := sdk.NewResourceRef("fanbox", []byte("post:123:image:0"))
 	if err != nil {
 		t.Fatalf("NewResourceRef: %v", err)
@@ -24,16 +24,11 @@ func TestPostJSONIsExplicitAndOpaque(t *testing.T) {
 		RequiresCredentials: true,
 	}
 	post := fanbox.Post{
-		ID:          "123",
-		Title:       "post",
-		PublishedAt: expires,
-		Cover:       fanbox.ImageResource{Resource: secret},
+		ID: "123", Title: "post", PublishedAt: expires,
+		Cover: fanbox.ImageResource{Resource: secret},
 		Body: &fanbox.PostBody{
-			Text: "body",
-			Blocks: []fanbox.PostBlock{{
-				Kind:  fanbox.PostBlockImage,
-				Image: &fanbox.PostImageBlock{Resource: secret, Caption: "caption"},
-			}},
+			Text:   "body",
+			Blocks: []fanbox.PostBlock{{Kind: fanbox.PostBlockImage, Image: &fanbox.PostImageBlock{Resource: secret, Caption: "caption"}}},
 			Assets: []fanbox.Asset{{ID: "asset", Kind: fanbox.AssetKindImage, Resource: secret, Thumbnail: fanbox.ImageResource{Resource: secret}}},
 		},
 	}
@@ -52,15 +47,13 @@ func TestPostJSONIsExplicitAndOpaque(t *testing.T) {
 			t.Fatalf("post JSON omitted %q: %s", required, encoded)
 		}
 	}
-}
 
-func TestCreatorJSONFlattensSummary(t *testing.T) {
 	creator := fanbox.Creator{
 		CreatorSummary:  fanbox.CreatorSummary{ID: "creator", Name: "name"},
 		HasAdultContent: true,
 		PlanFee:         500,
 	}
-	raw, err := json.Marshal(creator)
+	raw, err = json.Marshal(creator)
 	if err != nil {
 		t.Fatalf("json.Marshal: %v", err)
 	}

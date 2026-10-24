@@ -13,102 +13,73 @@ import (
 	"github.com/FlanChanXwO/pixiv-cli/sdk/fanbox"
 )
 
-// TestFanboxResourceRefEncodesIdentityNotLocator 验证：FANBOX 资源 ref
-// 的 payload 只编码稳定身份（kind + creator/post + attachment），绝不嵌入已解析的 URL
-// 或其签名查询参数。locator 轮换不得改变 cache key。
-func TestFanboxResourceRefEncodesIdentityNotLocator(t *testing.T) {
+// TestFanboxResourceIdentityIsStable 验证资源 ref 只编码稳定身份，
+// 不嵌入已解析的签名 URL；locator 轮换不改变 ref。
+func TestFanboxResourceIdentityIsStable(t *testing.T) {
 	signedURL := "https://downloads.fanbox.cc/image-1.png?signature=expires-soon"
 	body := `{"body":{"post":{"id":"p-identity","title":"resource","publishedDatetime":"2024-01-01T00:00:00Z","isRestricted":false,"isPinned":false,"body":{"images":[{"id":"image-1","originalUrl":"` + signedURL + `"}]}}}}`
-	rt := roundTripFunc(func(req *http.Request) (*http.Response, error) {
+	client := testClient(t, roundTripFunc(func(req *http.Request) (*http.Response, error) {
 		if req.URL.Host == "api.fanbox.cc" && req.URL.Path == "/post.info" {
 			return jsonResponse(body), nil
 		}
 		return nil, errors.New("unexpected request: " + req.URL.String())
-	})
-	client := testClient(t, rt)
+	}))
 	post, err := client.Post(context.Background(), fanbox.PostRequest{PostID: "p-identity"})
 	if err != nil {
 		t.Fatalf("Post: %v", err)
 	}
-	if len(post.Body.Assets) != 1 {
-		t.Fatalf("post assets = %+v", post.Body.Assets)
-	}
 	ref := post.Body.Assets[0].Resource.Ref
-	if ref.IsZero() {
-		t.Fatal("resource ref is zero")
-	}
 	payload, err := sdk.ResourceRefPayload(ref)
 	if err != nil {
 		t.Fatalf("ResourceRefPayload: %v", err)
 	}
-	encoded := string(payload)
 	for _, forbidden := range []string{"signature", "expires-soon", "downloads.fanbox.cc", "https://"} {
-		if strings.Contains(encoded, forbidden) {
-			t.Fatalf("resource ref payload leaked locator %q: %s", forbidden, encoded)
+		if strings.Contains(string(payload), forbidden) {
+			t.Fatalf("resource ref payload leaked locator %q: %s", forbidden, payload)
 		}
 	}
-	// payload 必须携带稳定身份字段。
-	var rp struct {
+	var decoded struct {
 		Kind  string `json:"k"`
 		Post  string `json:"p"`
 		Asset string `json:"a"`
 	}
-	if err := json.Unmarshal(payload, &rp); err != nil {
+	if err := json.Unmarshal(payload, &decoded); err != nil {
 		t.Fatalf("Unmarshal: %v", err)
 	}
-	if rp.Kind != "post_image" || rp.Post != "p-identity" || rp.Asset != "image-1" {
-		t.Fatalf("resource ref payload = %+v, want post_image/p-identity/image-1", rp)
+	if decoded.Kind != "post_image" || decoded.Post != "p-identity" || decoded.Asset != "image-1" {
+		t.Fatalf("resource ref payload = %+v", decoded)
 	}
 }
 
-// TestFanboxResourceMarksDownloadsHostCredentialed 验证：落在
-// downloads.fanbox.cc 的附件标记 RequiresCredentials，使调用方走 OpenResource
-// 而非把 URL 当公开链接；Pixiv CDN 不标记。
-func TestFanboxResourceMarksDownloadsHostCredentialed(t *testing.T) {
-	cases := []struct {
-		name     string
-		postBody string
-		host     string
-		want     bool
+// TestFanboxResourceCredentialFlag 覆盖 downloads host 与 pixiv CDN 的凭据标记。
+func TestFanboxResourceCredentialFlag(t *testing.T) {
+	for name, test := range map[string]struct {
+		url  string
+		want bool
 	}{
-		{
-			name:     "downloads host",
-			postBody: `{"body":{"post":{"id":"p-dl","title":"dl","publishedDatetime":"2024-01-01T00:00:00Z","isRestricted":false,"isPinned":false,"body":{"images":[{"id":"img-dl","originalUrl":"https://downloads.fanbox.cc/img-dl.png"}]}}}}`,
-			want:     true,
-		},
-		{
-			name:     "pximg host",
-			postBody: `{"body":{"post":{"id":"p-px","title":"px","publishedDatetime":"2024-01-01T00:00:00Z","isRestricted":false,"isPinned":false,"body":{"images":[{"id":"img-px","originalUrl":"https://i.pximg.net/img-px.png"}]}}}}`,
-			want:     false,
-		},
-	}
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			rt := roundTripFunc(func(req *http.Request) (*http.Response, error) {
+		"downloads host": {"https://downloads.fanbox.cc/img-dl.png", true},
+		"pximg host":     {"https://i.pximg.net/img-px.png", false},
+	} {
+		t.Run(name, func(t *testing.T) {
+			client := testClient(t, roundTripFunc(func(req *http.Request) (*http.Response, error) {
 				if req.URL.Host == "api.fanbox.cc" && req.URL.Path == "/post.info" {
-					return jsonResponse(tc.postBody), nil
+					return jsonResponse(`{"body":{"post":{"id":"p","title":"x","publishedDatetime":"2024-01-01T00:00:00Z","isRestricted":false,"isPinned":false,"body":{"images":[{"id":"img","originalUrl":"` + test.url + `"}]}}}}`), nil
 				}
 				return nil, errors.New("unexpected request: " + req.URL.String())
-			})
-			client := testClient(t, rt)
+			}))
 			post, err := client.Post(context.Background(), fanbox.PostRequest{PostID: "p"})
 			if err != nil {
 				t.Fatalf("Post: %v", err)
 			}
-			if len(post.Body.Assets) != 1 {
-				t.Fatalf("post assets = %+v", post.Body.Assets)
-			}
-			if got := post.Body.Assets[0].Resource.RequiresCredentials; got != tc.want {
-				t.Fatalf("RequiresCredentials = %v, want %v", got, tc.want)
+			if got := post.Body.Assets[0].Resource.RequiresCredentials; got != test.want {
+				t.Fatalf("RequiresCredentials = %v, want %v", got, test.want)
 			}
 		})
 	}
 }
 
-// TestFanboxOpenResourceReResolvesFreshLocator 验证：一个没有
-// in-session locator 缓存的 ref（模拟跨进程或缓存淘汰）会被重新解析为最新
-// locator，而不是重开过时的内嵌 URL。ref 通过 Post 取得，再用一个新的
-// client 打开，强制走 re-resolution 路径。
+// TestFanboxOpenResourceReResolvesFreshLocator 验证无缓存 locator 的 ref 会
+// 重新解析最新 URL，而不是重开过时内嵌 URL。
 func TestFanboxOpenResourceReResolvesFreshLocator(t *testing.T) {
 	originalURL := "https://downloads.fanbox.cc/image-1.png"
 	postBody := `{"body":{"post":{"id":"p-reresolve","title":"resource","publishedDatetime":"2024-01-01T00:00:00Z","isRestricted":false,"isPinned":false,"body":{"images":[{"id":"image-1","originalUrl":"` + originalURL + `"}]}}}}`
@@ -129,12 +100,8 @@ func TestFanboxOpenResourceReResolvesFreshLocator(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Post: %v", err)
 	}
-	ref := post.Body.Assets[0].Resource.Ref
-
-	// 用一个全新的 client 打开 ref：它的 locator 缓存为空，必须通过重新拉取
-	// post.info 并按 attachment id 解析出最新 locator。
 	consumer := testClient(t, rt)
-	response, err := consumer.OpenResource(context.Background(), sdk.OpenResourceRequest{Ref: ref, Method: sdk.ResourceMethodGet})
+	response, err := consumer.OpenResource(context.Background(), sdk.OpenResourceRequest{Ref: post.Body.Assets[0].Resource.Ref, Method: sdk.ResourceMethodGet})
 	if err != nil {
 		t.Fatalf("OpenResource: %v", err)
 	}
@@ -144,9 +111,7 @@ func TestFanboxOpenResourceReResolvesFreshLocator(t *testing.T) {
 	}
 }
 
-// TestFanboxOpenResourceRejectsRefWithForeignProduct 验证 ref 必须属于 fanbox
-// product，跨 product 的 ref 被拒绝。
-func TestFanboxOpenResourceRejectsRefWithForeignProduct(t *testing.T) {
+func TestFanboxOpenResourceRejectsForeignProduct(t *testing.T) {
 	pixivRef, err := sdk.NewResourceRef("pixiv", []byte(`{"k":"artwork","id":42}`))
 	if err != nil {
 		t.Fatalf("NewResourceRef: %v", err)
@@ -154,17 +119,16 @@ func TestFanboxOpenResourceRejectsRefWithForeignProduct(t *testing.T) {
 	client := testClient(t, roundTripFunc(func(*http.Request) (*http.Response, error) {
 		return nil, errors.New("no network expected")
 	}))
-	_, err = client.OpenResource(context.Background(), sdk.OpenResourceRequest{Ref: pixivRef})
-	if sdk.ReasonOf(err) != sdk.InvalidArgument {
+	if _, err := client.OpenResource(context.Background(), sdk.OpenResourceRequest{Ref: pixivRef}); sdk.ReasonOf(err) != sdk.InvalidArgument {
 		t.Fatalf("expected InvalidArgument for foreign product ref, got %v", err)
 	}
 }
 
 func TestFanboxResourceKindsSurviveReopen(t *testing.T) {
-	for _, tc := range []struct{ name, want string }{{"报告", "报告.pdf"}, {"report.PDF", "report.PDF"}, {"folder/report", "folder/report.pdf"}, {"", ""}} {
-		t.Run(tc.name, func(t *testing.T) {
+	for _, test := range []struct{ name, want string }{{"报告", "报告.pdf"}, {"report.PDF", "report.PDF"}, {"folder/report", "folder/report.pdf"}, {"", ""}} {
+		t.Run(test.name, func(t *testing.T) {
 			postBody := `{"body":{"post":{"id":"p-shared","title":"resource","publishedDatetime":"2024-01-01T00:00:00Z","isRestricted":false,"isPinned":false,"body":{"blocks":[{"type":"image","imageId":"shared"},{"type":"file","fileId":"shared"}],"imageMap":{"shared":{"id":"shared","originalUrl":"https://i.pximg.net/image.png"}},"fileMap":{"shared":{"id":"shared","name":"报告","extension":"pdf","url":"https://downloads.fanbox.cc/file.pdf"}}}}}}`
-			encodedName, err := json.Marshal(tc.name)
+			encodedName, err := json.Marshal(test.name)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -202,7 +166,7 @@ func TestFanboxResourceKindsSurviveReopen(t *testing.T) {
 						}
 						wantName := ""
 						if asset.Kind == fanbox.AssetKindFile {
-							wantName = tc.want
+							wantName = test.want
 						}
 						if resp.Filename != wantName {
 							t.Fatalf("filename=%q want %q", resp.Filename, wantName)
