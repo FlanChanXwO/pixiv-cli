@@ -65,7 +65,7 @@ func TestOpenClientReturnsLeaseAndForwardsCancellation(t *testing.T) {
 	}
 }
 
-// TestCollectPagesPreservesHasMoreWhenTruncatingInsideBatch 验证 finding #17 在 FANBOX
+// TestCollectPagesPreservesHasMoreWhenTruncatingInsideBatch 验证 FANBOX
 // 侧的等价修复：逻辑 limit 小于上游最后一批、且该批上游 cursor 已为空时，
 // CollectPages 必须返回 has_more=true，而不是仅依据上游 cursor 推导出 false。
 func TestCollectPagesPreservesHasMoreWhenTruncatingInsideBatch(t *testing.T) {

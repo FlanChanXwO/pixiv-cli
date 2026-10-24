@@ -16,7 +16,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// TestSafePathSegmentSanitizesTraversal 验证 finding #15 的路径段清理：
+// TestSafePathSegmentSanitizesTraversal 验证路径段清理：
 // ../ 与路径分隔符在单段内被中和，空段与纯 dot/dotdot 被拒绝。
 func TestSafePathSegmentSanitizesTraversal(t *testing.T) {
 	cases := []struct {
@@ -60,7 +60,7 @@ func TestPathInsideBaseRejectsTraversal(t *testing.T) {
 	}
 }
 
-// TestSavePostAssetsKeepsAssetPathInsideDownloadDir 验证 finding #15 的端到端
+// TestSavePostAssetsKeepsAssetPathInsideDownloadDir 验证端到端
 // 行为：即使 creator id、post id 或 asset name 携带 ../ 或绝对路径段，最终落盘
 // 文件也位于 baseDir 之内，并且 SaveResource 成功写出该文件。
 func TestSavePostAssetsKeepsAssetPathInsideDownloadDir(t *testing.T) {

@@ -142,7 +142,7 @@ func TestFollowMutationsRejectInvalidInputBeforeNetwork(t *testing.T) {
 
 // Read-back 编排（写入后用同账号 read 确认真实状态、删除后确认恢复）由调用方
 // 基于既有 public read 操作组合；本测试只证明该编排可离线测试，2xx 本身不代表
-// 状态已改变，live read-back 仍属 live manifest 的 G1-T30。
+// 状态已改变；live read-back 仍由真实环境 manifest 覆盖。
 func TestBookmarkMutationReadBackOrchestrationOffline(t *testing.T) {
 	var sequence []string
 	rt := roundTripFunc(func(req *http.Request) (*http.Response, error) {

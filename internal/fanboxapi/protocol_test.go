@@ -149,7 +149,7 @@ func TestAPIRedirectDropsCookie(t *testing.T) {
 	}
 }
 
-// TestMediaOpenReturnsNotModifiedForConditionalGet 验证 finding #6：条件 GET 的
+// TestMediaOpenReturnsNotModifiedForConditionalGet 验证：条件 GET 的
 // 304 Not Modified 是正常结果，没有 Location，必须原样返回，不得被误当 redirect。
 func TestMediaOpenReturnsNotModifiedForConditionalGet(t *testing.T) {
 	calls := 0

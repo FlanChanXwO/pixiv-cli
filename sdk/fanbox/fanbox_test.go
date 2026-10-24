@@ -421,7 +421,7 @@ func TestParallelClientsKeepSessionCookiesAndTransportStateIsolated(t *testing.T
 	}
 }
 
-// TestIdentityScopedCursorRejectsCrossAccountReplay 验证 finding #13：Home/Supporting/
+// TestIdentityScopedCursorRejectsCrossAccountReplay 验证：Home/Supporting/
 // Creators 是账号作用域操作，其 cursor 绑定已验证的 FANBOX 用户 ID。一个在账号 A
 // 下生成的 cursor 在账号 B 的 client 上继续时必须被拒绝，避免把 A 的私密 feed 页
 // 用 B 的会话拉取。
@@ -461,7 +461,7 @@ func TestIdentityScopedCursorRejectsCrossAccountReplay(t *testing.T) {
 	}
 }
 
-// TestIdentityScopedCursorContinuesSameAccount 验证 finding #13：同一账号下的 cursor
+// TestIdentityScopedCursorContinuesSameAccount 验证：同一账号下的 cursor
 // 可以正常继续翻页，绑定不会误伤合法的同账号分页。
 func TestIdentityScopedCursorContinuesSameAccount(t *testing.T) {
 	const nextURL = "https://api.fanbox.cc/post.listHome?maxPublishedDatetime=2024-01-01T00:00:00Z"
