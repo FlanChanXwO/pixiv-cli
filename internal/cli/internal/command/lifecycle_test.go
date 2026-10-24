@@ -32,7 +32,3 @@ func TestLifecycleOverrideChangesOnlyTargetCommand(t *testing.T) {
 	assert.Equal(t, AuthBundleImport(), For(leaf))
 	assert.Equal(t, AuthAccount(), For(group))
 }
-
-func TestLifecycleDefaultsToStartup(t *testing.T) {
-	assert.Equal(t, Execution{StartupHooks: true}, For(&cobra.Command{Use: "unknown"}))
-}

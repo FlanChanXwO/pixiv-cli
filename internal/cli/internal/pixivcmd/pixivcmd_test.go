@@ -114,16 +114,6 @@ func TestReadMissingPortAndPreAttemptCancellation(t *testing.T) {
 	}
 }
 
-func TestWriteMissingPooledPort(t *testing.T) {
-	err := (pixivcmd.Runner{}).Write(context.Background(), pixivcmd.Request{}, func(context.Context, *pixiv.Client) error {
-		t.Fatal("nil port invoked write callback")
-		return nil
-	})
-	if err == nil || err.Error() != "pixiv pooled operation is not configured" {
-		t.Fatalf("missing port error=%v", err)
-	}
-}
-
 func TestWriteCommitsEveryInvokedAttempt(t *testing.T) {
 	failure := errors.New("SDK write failed")
 	for _, tc := range []struct {

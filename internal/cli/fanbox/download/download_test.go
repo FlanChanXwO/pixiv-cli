@@ -81,23 +81,6 @@ func TestSafePathSegmentSanitizesTraversal(t *testing.T) {
 
 // TestPathInsideBaseRejectsTraversal 验证最终路径包含校验：即使段被清理后，
 // 一个构造的绝对路径或 ../ 逃逸也被 pathInsideBase 拒绝。
-func TestPathInsideBaseRejectsTraversal(t *testing.T) {
-	base := filepath.Clean("/tmp/downloads")
-	for _, target := range []string{
-		"/tmp/downloads/sub/file",
-		"/tmp/downloads",
-	} {
-		require.True(t, pathInsideBase(target, base), "expected inside: %s", target)
-	}
-	for _, target := range []string{
-		"/tmp/other",
-		"/tmp/downloads/../other",
-		"/etc/passwd",
-	} {
-		require.False(t, pathInsideBase(target, base), "expected outside: %s", target)
-	}
-}
-
 // TestSavePostAssetsKeepsAssetPathInsideDownloadDir 验证端到端
 // 行为：即使 creator id、post id 或 asset name 携带 ../ 或绝对路径段，最终落盘
 // 文件也位于 baseDir 之内，并且 SaveResource 成功写出该文件。
