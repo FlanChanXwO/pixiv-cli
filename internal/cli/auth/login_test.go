@@ -156,7 +156,7 @@ func TestPixivPostRedirectReturnToAcceptsOnlyPixivStartURL(t *testing.T) {
 func TestPixivAuthStartMatchesChallenge(t *testing.T) {
 	assert.True(t, pixivAuthStartMatchesChallenge(pixivAuthStartURLForTest("current-challenge"), "current-challenge"))
 	assert.False(t, pixivAuthStartMatchesChallenge(pixivAuthStartURLForTest("stale-challenge"), "current-challenge"))
-	assert.True(t, pixivAuthStartMatchesChallenge(pixivAuthStartURLForTest("any-challenge"), ""))
+	assert.False(t, pixivAuthStartMatchesChallenge(pixivAuthStartURLForTest("any-challenge"), ""))
 }
 
 func pixivAuthStartURLForTest(challenge string) string {
