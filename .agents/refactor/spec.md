@@ -652,6 +652,8 @@ internal/
 
 ### 5.4 scripts/
 
+2026-10-23 取消，本次不执行；以下为原设计。
+
 `tools/` 与 `scripts/` 都是 CI 和发布流程使用的 Go 工具，统一放在 `scripts/`；顶层 `tools/`、`ci/` 撤销。每个工具一个目录、一个 `package main`，测试与之同目录。
 
 ```text
@@ -1737,10 +1739,11 @@ A1、B2 等是工作项的名称。执行单位是 **goal**：一个 goal 对应
                 L6 存储     G16
                 L7 真实测试 G17
                 L8 叶子包   G18
-                L9 脚本/CI  G19 → G20 → G21      ← 不依赖阶段 0，随时可以开始
-阶段 2          G22（日志）→ G23–G27 并行 → G28（扫尾）
-阶段 3          G29–G33 并行 → G34（收尾）
+阶段 2          G23–G27 与 G22（日志）按下表依赖并行 → G28（扫尾）
+阶段 3          G29–G32 并行 → G34（收尾）
 ```
+
+2026-10-23 调整：G19–G21（L9 脚本/CI）与 G33 取消，本次不整理 scripts、tools、workflow，5.4 与 S 组不执行，frontend/ 的文件头注释并入 G32。G09、G23–G27 只等待与其代码冲突的 goal；G24、G26 先于 G22 合并，G22 在它们的结果上改造日志。依赖以下表和 `goals.md` 为准。
 
 | Goal | worktree 名称 | 工作项 | 依赖（须已合并） | 负责的目录 |
 |---|---|---|---|---|
@@ -1752,7 +1755,7 @@ A1、B2 等是工作项的名称。执行单位是 **goal**：一个 goal 对应
 | G06 | `refactor-g06-sdk-artwork` | A3：artwork 端点并入 `sdk/pixiv` | G05 | `sdk/pixiv`、`services/pixiv/endpoint/artwork/**`、`pixivapi/api.go`（只新增常量） |
 | G07 | `refactor-g07-sdk-novel` | A3：novel 端点 | G06 | 同上，novel 部分 |
 | G08 | `refactor-g08-sdk-user` | A3：user 及其余 Pixiv 端点；删除 `services/pixiv/endpoint/` | G07 | 同上，其余部分 |
-| G09 | `refactor-g09-sdk-fanbox` | A4 | G08 | `sdk/fanbox`、`services/fanbox/endpoint/**`；完成后 `services/` 目录消失 |
+| G09 | `refactor-g09-sdk-fanbox` | A4 | G06 | `sdk/fanbox`、`services/fanbox/endpoint/**`；完成后 `services/fanbox/` 消失（`services/` 在 G08、G09 都合并后消失） |
 | G10 | `refactor-g10-mcp-tools` | A5 | G05 | `internal/mcpserver/` |
 | G11 | `refactor-g11-cli-commands` | A6 | G05 | `internal/cli/`；例外：`composition.go` 中构造命令依赖的部分 |
 | G12 | `refactor-g12-cli-prompt` | B3 | G11 | `internal/cli/auth` 的提示代码、`go.mod` |
@@ -1762,22 +1765,22 @@ A1、B2 等是工作项的名称。执行单位是 **goal**：一个 goal 对应
 | G16 | `refactor-g16-storage` | B4 | G05 | `internal/storage/`；`pixivaccount`、`browsercookies` 测试中的驱动名 |
 | G17 | `refactor-g17-live-tests` | A8 | G05 | `e2e/`（删除）与各处新建的 `live_test.go`、`cmd/pixiv/main_test.go`；例外：`release.yml` 的 e2e job、`platform-smoke.yml` 的测试路径 |
 | G18 | `refactor-g18-leaf-packages` | T5：`media/ugoira`、`browsercookies/*`、`selfupdate/*`、`reversesearch/*`、`loginrelay` | G05 | 这些包 |
-| G19 | `refactor-g19-scripts-move` | S1 | 最近一次 release 的全部发布 workflow 已成功 | `scripts/`、`tools/`、`ci/`、`.github/` |
-| G20 | `refactor-g20-scripts-slim` | S2 | G19 | 同上 |
-| G21 | `refactor-g21-workflow-refs` | T4：脚本与 workflow 中的编号引用 | G20 | 同上 |
-| G22 | `refactor-g22-logging` | C1 | G09、G10、G11、G14、G15 | `internal/logging`、`pixivapi`、`fanboxapi`、`toolhost`、`cli/execution.go`、`composition.go`、SDK `Options` |
-| G23 | `refactor-g23-shared-mechanisms` | T5：`lifecycle`、`pagination`、`record`、`searchfilter`、`httpclient`、`plaintext`、`version` | G22 及阶段 1 全部 | 这些包及其调用处 |
-| G24 | `refactor-g24-media` | T5：`media/downloader`、`media/filename` | G22 及阶段 1 全部 | 这些包 |
-| G25 | `refactor-g25-mcp-runtime` | T5：MCP 的 `auth`、`accounts`、`gallery`、`mediaproxy` | G22 及阶段 1 全部 | 这些包 |
-| G26 | `refactor-g26-accounts` | T5：`pixivaccount`、`pixivaccount/pool`、`fanboxaccount`、`session` | G22 及阶段 1 全部 | 这些包 |
-| G27 | `refactor-g27-cli-auth` | T5 与 T2：`cli/auth`、`loginhelper` 的注入点 | G22 及阶段 1 全部 | 这些包 |
-| G28 | `refactor-g28-sweep` | T2 重新扫描、T3、T4（Go 部分）、T6 其余（含 `illustration` 别名） | G23–G27 | 全仓库剩余部分 |
+| G19 | `refactor-g19-scripts-move` | S1 | 已取消 | `scripts/`、`tools/`、`ci/`、`.github/` |
+| G20 | `refactor-g20-scripts-slim` | S2 | 已取消 | 同上 |
+| G21 | `refactor-g21-workflow-refs` | T4：脚本与 workflow 中的编号引用 | 已取消 | 同上 |
+| G22 | `refactor-g22-logging` | C1 | G07、G08、G09、G10、G11、G14、G15、G24、G26 | `internal/logging`、`pixivapi`、`fanboxapi`、`toolhost`、`cli/execution.go`、`composition.go`、SDK `Options` |
+| G23 | `refactor-g23-shared-mechanisms` | T5：`lifecycle`、`pagination`、`record`、`searchfilter`、`httpclient`、`plaintext`、`version` | G08、G14 | 这些包及其调用处 |
+| G24 | `refactor-g24-media` | T5：`media/downloader`、`media/filename` | G05 | 这些包 |
+| G25 | `refactor-g25-mcp-runtime` | T5：MCP 的 `auth`、`accounts`、`gallery`、`mediaproxy` | G05 | 这些包 |
+| G26 | `refactor-g26-accounts` | T5：`pixivaccount`、`pixivaccount/pool`、`fanboxaccount`、`session` | G05 | 这些包 |
+| G27 | `refactor-g27-cli-auth` | T5 与 T2：`cli/auth`、`loginhelper` 的注入点 | G12 | 这些包 |
+| G28 | `refactor-g28-sweep` | T2 重新扫描、T3、T4（Go 部分）、T6 其余（含 `illustration` 别名） | G22–G27 | 全仓库剩余部分 |
 | G29 | `refactor-g29-headers-sdk` | C3：`sdk/`、`cmd/` | G28 | 只加文件头注释 |
 | G30 | `refactor-g30-headers-cli` | C3：`internal/cli/` | G28 | 同上 |
 | G31 | `refactor-g31-headers-mcp` | C3：`internal/mcpserver/` | G28 | 同上 |
-| G32 | `refactor-g32-headers-internal` | C3：`internal/` 其余目录 | G28 | 同上 |
-| G33 | `refactor-g33-headers-scripts` | C3：`scripts/`、`.github/`、`frontend/` | G28、G21 | 同上 |
-| G34 | `refactor-g34-finish` | C2；删除 `.agents/refactor/` | G29–G33 | 文档、skill |
+| G32 | `refactor-g32-headers-internal` | C3：`internal/` 其余目录与 `frontend/` | G28 | 同上 |
+| G33 | `refactor-g33-headers-scripts` | C3：`scripts/`、`.github/`、`frontend/` | 已取消（frontend/ 并入 G32） | 同上 |
+| G34 | `refactor-g34-finish` | C2；删除 `.agents/refactor/` | G29–G32 | 文档、skill |
 
 每个 goal 顺带对自己触及的目录做 T2、T3、T6，并对触及的测试套用 3.4。
 
@@ -1792,7 +1795,7 @@ A1、B2 等是工作项的名称。执行单位是 **goal**：一个 goal 对应
 7. **changelog：** G01–G33 不修改 changelog，只在 PR 描述中写“changelog 条目”；G34 汇总进 PR 描述，作为 release notes 草稿。
 8. **spec 与事实不符：** 不修改设计决策。选择不改变对外行为的最保守做法继续，并把假设写进工作记录和 PR 描述；无法在假设下继续的部分标为阻塞。
 9. **工作文件：** `goal-N/`、临时探针、基线比对输出不提交，执行前加入 `.git/info/exclude`。除 G34 外不修改 `.agents/refactor/`。
-10. **smoke workflow 引用的路径：** PR 上的 Platform smoke 与 Container smoke worker 由 `pr-metadata.yml` 按 main 上的 workflow 定义派发，却检出 PR head 的代码。移动或删除 `platform-smoke.yml`、`container-smoke.yml` 引用的路径时，先合并一个过渡 PR，让对应步骤按检出的代码树中实际存在的路径选择新路径或旧路径（PR #163）；再合并主 PR；最后用一个小 PR 删除回退（PR #164）。已知涉及 G17、G19。
+10. **smoke workflow 引用的路径：** PR 上的 Platform smoke 与 Container smoke worker 由 `pr-metadata.yml` 按 main 上的 workflow 定义派发，却检出 PR head 的代码。移动或删除 `platform-smoke.yml`、`container-smoke.yml` 引用的路径时，先合并一个过渡 PR，让对应步骤按检出的代码树中实际存在的路径选择新路径或旧路径（PR #163）；再合并主 PR；最后用一个小 PR 删除回退（PR #164）。已知涉及 G17（G19 已取消）。
 
 **真实账号测试：** 允许使用本机 Homebrew 安装的 pixiv-cli（v1.2.1）中已登录的 Pixiv 账号运行真实环境测试，规则如下：
 
@@ -1857,7 +1860,7 @@ A1、B2 等是工作项的名称。执行单位是 **goal**：一个 goal 对应
 
 ### S 组：scripts 与 tools
 
-由 G19、G20 执行。S2 精简后 `licensebundle` 的生成结果逐字节不变。
+2026-10-23 取消，本次不执行（原由 G19、G20 执行）。S2 精简后 `licensebundle` 的生成结果逐字节不变。
 
 | PR | 内容 | 验收要点 |
 |---|---|---|
@@ -1951,7 +1954,7 @@ A1、B2 等是工作项的名称。执行单位是 **goal**：一个 goal 对应
 go test ./... -count=1
 go vet ./...
 sh scripts/build.sh
-go run ./scripts/cmd/licensebundle --check   # S1 之后为 ./scripts/licensebundle；只在依赖变化的阶段运行
+go run ./scripts/cmd/licensebundle --check   # 只在依赖变化的阶段运行
 git diff --check
 ```
 
