@@ -508,6 +508,8 @@ func (t pixivTools) showGalleryHandler(ctx context.Context, in showGalleryIn) (*
 	results := make([]galleryOut, len(ids))
 	t.forEachGalleryItem(ctx, len(ids), func(index int) {
 		results[index] = t.readGalleryArtwork(ctx, ids[index], in)
+	}, func(index int) {
+		results[index].Failures = []galleryFailure{{IllustID: ids[index], Error: "artwork_unavailable"}}
 	})
 	for _, result := range results {
 		out.Records = append(out.Records, result.Records...)
@@ -572,7 +574,7 @@ func uniqueIllustIDs(values []int64) []int64 {
 	return ids
 }
 
-func (t pixivTools) forEachGalleryItem(ctx context.Context, count int, read func(int)) {
+func (t pixivTools) forEachGalleryItem(ctx context.Context, count int, read, canceled func(int)) {
 	workers := 4
 	if media := t.app.SDKPorts().Media; media != nil {
 		workers = media.ConcurrentReads()
@@ -596,6 +598,9 @@ func (t pixivTools) forEachGalleryItem(ctx context.Context, count int, read func
 		case jobs <- index:
 		case <-ctx.Done():
 			// Cancellation before dispatch must not bypass the per-artwork failure path.
+			for undispatched := index; undispatched < count; undispatched++ {
+				canceled(undispatched)
+			}
 			close(jobs)
 			wg.Wait()
 			return

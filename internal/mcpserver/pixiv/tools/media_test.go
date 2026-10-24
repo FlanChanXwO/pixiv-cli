@@ -95,6 +95,19 @@ func TestGalleryQueriesConcurrentlyAndPreservesOrder(t *testing.T) {
 	require.Len(t, entered, 1, "duplicate artwork queried only once")
 }
 
+func TestGalleryCancellationReportsUndispatchedArtworks(t *testing.T) {
+	ctx, cancel := context.WithCancel(t.Context())
+	cancel()
+	tools := pixivTools{app: toolhost.NewApp(toolhost.SDKPorts{}, toolhost.Account{})}
+	reported := map[int]bool{}
+	tools.forEachGalleryItem(ctx, 3, func(index int) {
+		t.Errorf("dispatch %d ran after cancellation", index)
+	}, func(index int) {
+		reported[index] = true
+	})
+	require.Equal(t, map[int]bool{0: true, 1: true, 2: true}, reported)
+}
+
 func TestAnimationThumbnailRequiresImageProxy(t *testing.T) {
 	client, err := pixiv.NewWith("fixture", pixiv.Options{HTTPClient: &http.Client{Transport: transport(func(r *http.Request) (*http.Response, error) {
 		return &http.Response{StatusCode: 200, Header: http.Header{}, Body: io.NopCloser(strings.NewReader(`{"illust":{"id":42,"title":"animation","type":"ugoira","page_count":1,"create_date":"2026-01-01T00:00:00Z","user":{"id":7}}}`))}, nil
