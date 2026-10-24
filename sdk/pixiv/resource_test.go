@@ -79,6 +79,14 @@ func TestArtworkVariantResource(t *testing.T) {
 	if _, err := pixiv.ArtworkVariantResource(sdk.Resource{Ref: novelRef}, "regular"); err == nil {
 		t.Fatal("ArtworkVariantResource should reject non-artwork kind")
 	}
+
+	foreign, err := sdk.NewResourceRef("other-product", []byte(`{"k":"artwork","id":42}`))
+	if err != nil {
+		t.Fatalf("NewResourceRef: %v", err)
+	}
+	if _, err := client.OpenResource(context.Background(), sdk.OpenResourceRequest{Ref: foreign}); sdk.ReasonOf(err) != sdk.InvalidArgument {
+		t.Fatalf("foreign product = %v, want InvalidArgument", err)
+	}
 }
 
 func TestSaveResourceURLWritesAtomically(t *testing.T) {

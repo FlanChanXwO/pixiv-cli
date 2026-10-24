@@ -642,6 +642,64 @@ func ugoiraBody(files ...string) string {
 	return `{"ugoira_metadata":{"zip_urls":{"medium":"https://i.pximg.net/img-zip-ugoira/img/123.zip"},"frames":[` + strings.Join(frames, ",") + `]}}`
 }
 
+// TestArtworkCursorBindings 覆盖各列表 cursor 必须保留的原始请求条件：
+// latest 的 content type、search 的 query、user artworks 的 canonical kind。
+func TestArtworkCursorBindings(t *testing.T) {
+	t.Run("latest binds content type", func(t *testing.T) {
+		client, recorder := newWireClient(t,
+			`{"illusts":[`+oneArtwork+`],"next_url":"https://app-api.pixiv.net/v1/illust/new?content_type=illust&filter=for_android&max_illust_id=987654"}`,
+			`{"illusts":[],"next_url":null}`,
+		)
+		page, err := client.LatestArtworks(context.Background(), LatestArtworksRequest{ContentType: SearchContentTypeIllust})
+		if err != nil || page.Next.IsZero() {
+			t.Fatalf("page = %#v err=%v", page, err)
+		}
+		if _, err := client.LatestArtworks(context.Background(), LatestArtworksRequest{ContentType: SearchContentTypeManga, Cursor: page.Next}); sdk.ReasonOf(err) != sdk.InvalidCursor {
+			t.Fatalf("changed content type = %v, want InvalidCursor", err)
+		}
+		if _, err := client.LatestArtworks(context.Background(), LatestArtworksRequest{ContentType: SearchContentTypeIllust, Cursor: page.Next}); err != nil {
+			t.Fatalf("same content type continuation: %v", err)
+		}
+		if got := recorder.request(t, 1).URL.Query().Get("max_illust_id"); got != "987654" {
+			t.Fatalf("max_illust_id = %q, want 987654", got)
+		}
+	})
+
+	t.Run("search binds query", func(t *testing.T) {
+		client, _ := newWireClient(t, `{"illusts":[],"next_url":"https://app-api.pixiv.net/v1/search/illust?word=test&offset=30"}`)
+		page, err := client.SearchArtworks(context.Background(), SearchArtworksRequest{Word: "test"})
+		if err != nil || page.Next.IsZero() {
+			t.Fatalf("page = %#v err=%v", page, err)
+		}
+		if _, err := client.SearchArtworks(context.Background(), SearchArtworksRequest{Word: "different", Cursor: page.Next}); sdk.ReasonOf(err) != sdk.InvalidCursor {
+			t.Fatalf("changed query = %v, want InvalidCursor", err)
+		}
+	})
+
+	t.Run("user artworks bind canonical kind", func(t *testing.T) {
+		client, recorder := newWireClient(t,
+			`{"illusts":[`+oneArtwork+`],"next_url":"https://app-api.pixiv.net/v1/user/illusts?user_id=77&type=illust&offset=30"}`,
+			`{"illusts":[],"next_url":null}`,
+		)
+		page, err := client.UserArtworks(context.Background(), UserArtworksRequest{UserID: 77, Kind: ArtworkKind("illust")})
+		if err != nil || page.Next.IsZero() {
+			t.Fatalf("page = %#v err=%v", page, err)
+		}
+		if _, err := client.UserArtworks(context.Background(), UserArtworksRequest{UserID: 77, Kind: ArtworkKind("illust"), Cursor: page.Next}); err != nil {
+			t.Fatalf("canonical continuation: %v", err)
+		}
+		if got := recorder.request(t, 1).URL.Query().Get("type"); got != "illust" {
+			t.Fatalf("type = %q, want illust", got)
+		}
+		if _, err := client.UserArtworks(context.Background(), UserArtworksRequest{UserID: 77, Kind: ArtworkKind("all")}); sdk.ReasonOf(err) != sdk.InvalidArgument {
+			t.Fatalf("unknown kind = %v, want InvalidArgument", err)
+		}
+		if recorder.calls() != 2 {
+			t.Fatalf("invalid kind reached transport: %d calls", recorder.calls())
+		}
+	})
+}
+
 func TestSearchArtworkCursorBinding(t *testing.T) {
 	t.Run("initial offset", func(t *testing.T) {
 		calls := 0
