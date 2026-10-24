@@ -1,6 +1,6 @@
 // Package verificationpolicy parses and validates PR-declared verification
 // commands without invoking a shell.
-package verificationpolicy
+package main
 
 import (
 	"bufio"

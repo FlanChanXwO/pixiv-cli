@@ -258,10 +258,9 @@ Thin root (coordinator + auto-check API), re-exporting `internal/selfupdate/{sou
 
 | Location | Holds |
 | --- | --- |
-| `scripts/<name>/` | one tool per directory, one `package main`; tests live beside it |
-| `scripts/citest/` | pure test carriers for workflow, documentation or installer behavior |
-| `scripts/internal/<name>` | implementation shared by several tools; `verificationpolicy` (PR-declared command policy) and `releasenotesrender` (release identity and Release body rendering) |
-| `scripts/ci/platforms.json` → `scripts/platformmatrix` | runner/capability metadata for workflows; workflow tests validate behavior/security, not a second YAML policy model |
+| `scripts/build/`, `scripts/ci/`, `scripts/release/`, `scripts/pr/` | build/package scripts and platform registry, required CI scripts, the release tool, and the trusted PR tool; each Go tool is one `package main` with tests beside it |
+| `scripts/citest/` | tests that execute real installers, change-scope classification, verification prefiltering, workflow action pins, and the container release contract |
+| `scripts/build/platforms.json` → `scripts/build/matrix.sh` | runner/capability metadata for workflows; workflow tests validate behavior/security, not a second YAML policy model |
 
 ### `sdk`, `sdk/pixiv`, `sdk/fanbox`
 
@@ -297,7 +296,7 @@ Default path constructs `ugoira.NewEncoder()` — no backend selector or externa
 
 ### `internal/media/ugoira`
 
-Owns `Format`, ordered frame input, `Encoder`, ZIP validation/decoding, resizing, GIF quantization/dithering, APNG streaming and atomic publication. The downloader consumes `Encoder` and must not duplicate encoding or publication. PNG uses the standard library; owner-local `jpeg` keeps legacy IDCT/color rounding. Six-target evidence lives in `scripts/nativeevidence`, separate from the runtime encoder.
+Owns `Format`, ordered frame input, `Encoder`, ZIP validation/decoding, resizing, GIF quantization/dithering, APNG streaming and atomic publication. The downloader consumes `Encoder` and must not duplicate encoding or publication. PNG uses the standard library; owner-local `jpeg` keeps legacy IDCT/color rounding. Six-target execution evidence comes from the platform smoke workers, separate from the runtime encoder.
 
 ## Release assets and trust boundary
 

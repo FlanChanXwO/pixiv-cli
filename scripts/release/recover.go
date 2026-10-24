@@ -1,4 +1,4 @@
-// Homebrew tap 的单调 deploy 判定：只允许前进，重复恢复幂等；入口在 main.go。
+// Homebrew tap 的单调 deploy 判定：只允许前进，重复恢复幂等；子命令分发在 runRecover。
 
 package main
 
@@ -94,7 +94,7 @@ func parseDeclaredVersion(formula []byte, label string) (string, error) {
 // Run 是 homebrewrecovery 命令 的入口 owner。调用方传入 tap 当前的 Formula
 // 路径（不存在时用空串）与 staging Formula 路径，工具输出 GITHUB_OUTPUT 供 workflow
 // 决定是否 commit/push。
-func run(args []string) error {
+func runRecover(args []string) error {
 	flags := flag.NewFlagSet("decide", flag.ContinueOnError)
 	flags.SetOutput(os.Stderr)
 	currentPath := flags.String("current", "", "path to the Formula currently published in the tap")

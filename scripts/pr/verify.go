@@ -1,5 +1,4 @@
-// Command verification executes trusted, pre-validated PR verification
-// pipelines and renders sanitized cross-platform results.
+// 执行已校验的 PR 验证命令并渲染跨平台结果；分发在 runVerify。
 package main
 
 import (
@@ -20,8 +19,6 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
-
-	"github.com/FlanChanXwO/pixiv-cli/scripts/internal/verificationpolicy"
 )
 
 type stageResult struct {
@@ -69,19 +66,19 @@ type expectedMatrix struct {
 	} `json:"include"`
 }
 
-func main() {
-	if len(os.Args) < 2 {
+func runVerify(args []string) {
+	if len(args) == 0 {
 		fatal(errors.New("expected init, execute, or render"))
 	}
-	switch os.Args[1] {
+	switch args[0] {
 	case "init":
-		initResult(os.Args[2:])
+		initResult(args[1:])
 	case "execute":
-		executeResult(os.Args[2:])
+		executeResult(args[1:])
 	case "render":
-		renderResults(os.Args[2:])
+		renderResults(args[1:])
 	default:
-		fatal(fmt.Errorf("unknown mode %q", os.Args[1]))
+		fatal(fmt.Errorf("unknown mode %q", args[0]))
 	}
 }
 
@@ -105,19 +102,19 @@ func executeResult(args []string) {
 	binary := set.String("binary", "", "PR-built repository CLI")
 	commandsJSON := set.String("commands-json", "", "validated commands JSON")
 	workspace := set.String("workspace", ".", "verification workspace")
-	whitelistPath := set.String("whitelist", "scripts/verification/command-whitelist.txt", "trusted whitelist")
+	whitelistPath := set.String("whitelist", "scripts/pr/command-whitelist.txt", "trusted whitelist")
 	output := set.String("output", "", "result file")
 	timeout := set.Duration("timeout", 0, "optional timeout for each declared command; positive values enable it")
 	_ = set.Parse(args)
 	if *platform == "" || *binary == "" || *commandsJSON == "" || *output == "" {
 		fatal(errors.New("platform, binary, commands-json, and output are required"))
 	}
-	var commands verificationpolicy.Commands
+	var commands Commands
 	if err := json.Unmarshal([]byte(*commandsJSON), &commands); err != nil {
 		writeResult(*output, platformResult{Platform: *platform, InfrastructureError: "Trusted command payload could not be decoded."})
 		return
 	}
-	w, err := verificationpolicy.LoadWhitelist(*whitelistPath)
+	w, err := LoadWhitelist(*whitelistPath)
 	if err != nil {
 		writeResult(*output, platformResult{Platform: *platform, InfrastructureError: "Trusted command whitelist could not be loaded."})
 		return
@@ -140,7 +137,7 @@ func executeResult(args []string) {
 	writeResult(*output, result)
 }
 
-func preflight(commands verificationpolicy.Commands, binary string) error {
+func preflight(commands Commands, binary string) error {
 	info, err := os.Stat(binary)
 	if err != nil || info.IsDir() {
 		return errors.New("PR-built repository CLI is unavailable")
@@ -164,7 +161,7 @@ func preflight(commands verificationpolicy.Commands, binary string) error {
 	return nil
 }
 
-func runPipeline(command verificationpolicy.Command, binary, workspace string, timeout time.Duration) commandResult {
+func runPipeline(command Command, binary, workspace string, timeout time.Duration) commandResult {
 	var ctx context.Context = context.Background()
 	var cancel context.CancelFunc = func() {}
 	if timeout > 0 {
@@ -235,7 +232,7 @@ func runPipeline(command verificationpolicy.Command, binary, workspace string, t
 	}
 }
 
-func runStage(ctx context.Context, stage verificationpolicy.Stage, binary, workspace string, stdin io.Reader, stdout io.Writer) stageResult {
+func runStage(ctx context.Context, stage Stage, binary, workspace string, stdin io.Reader, stdout io.Writer) stageResult {
 	started := time.Now()
 	result := stageResult{Command: strings.Join(stage.Argv, " "), Status: "passed"}
 	var stderr bytes.Buffer
@@ -592,11 +589,6 @@ func formatDuration(milliseconds int64) string {
 		return strconv.FormatInt(milliseconds, 10) + "ms"
 	}
 	return fmt.Sprintf("%.1fs", float64(milliseconds)/1000)
-}
-
-func fatal(err error) {
-	fmt.Fprintln(os.Stderr, err)
-	os.Exit(2)
 }
 
 func max(a, b int) int {

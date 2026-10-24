@@ -5,7 +5,7 @@ description: Diagnose pixiv-cli GitHub Actions failures and verify current-head 
 
 # Diagnose pixiv-cli CI
 
-Read `AGENTS.md`, the exact changed workflow, and its invoked script/tool. Workflow YAML owns ordering, inputs, permissions, and conditions; `scripts/ci/platforms.json` plus `scripts/platformmatrix` own platform selection. Do not infer executable policy from a historical plan or a skill's old command example.
+Read `AGENTS.md`, the exact changed workflow, and its invoked script/tool. Workflow YAML owns ordering, inputs, permissions, and conditions; `scripts/build/platforms.json` plus `scripts/build/matrix.sh` own platform selection. Do not infer executable policy from a historical plan or a skill's old command example.
 
 ## Identify the failure
 
@@ -24,13 +24,13 @@ Classify deterministic code/contract failure, missing environment, upstream/netw
 
 ## Select the owning checks
 
-Use [pixiv-cli-test](../pixiv-cli-test/SKILL.md) for local reproduction. `ci.yml` owns the read-only, untrusted `Quality gate`. Trusted `pr-metadata.yml` checks out current base-branch policy, validates template/command declarations, classifies the PR, dispatches base-ref Platform/Container workers, and owns the real job-level `Platform smoke` / `Container smoke` required checks. Its distinct `* smoke worker` Check Runs are only the trusted result bridge consumed by those gate jobs. Only worker matrix jobs execute the exact PR head with read-only permissions. Preserve the fork-safe boundary and classifier. Run relevant safely independent downstream phases if fail-fast hid their results.
+Use [pixiv-cli-test](../pixiv-cli-test/SKILL.md) for local reproduction. `ci.yml` owns the read-only, untrusted `Quality gate`. Trusted `pr-metadata.yml` checks out current base-branch policy, validates template/command declarations with `scripts/pr validate`, classifies the PR, dispatches base-ref Platform/Container workers, and owns the real job-level `Platform smoke` / `Container smoke` required checks. Its distinct `* smoke worker` Check Runs are only the trusted result bridge consumed by those gate jobs. Only worker matrix jobs execute the exact PR head with read-only permissions. Preserve the fork-safe boundary and classifier. Run relevant safely independent downstream phases if fail-fast hid their results.
 
 Inspect the exact PR SHA: `Quality gate`, `Platform smoke`, and `Container smoke` are GitHub Actions jobs; `PR template gate` / `PR commands gate` are commit statuses. Unneeded Quality or smoke jobs must display `Skipped`, not synthetic success. Required smoke jobs wait for the distinct trusted `Platform smoke worker` / `Container smoke worker` Check Runs that are completed by the base-ref worker workflows. Body-only PR edits reclassify the unchanged head and mirror its existing worker result rather than creating a bypassing skip. Filtering workflow runs only by PR head can miss the worker runs themselves. Ordinary branch/main pushes do not run CI; matching tag pushes use Quality and Release rather than duplicate PR smoke matrices.
 
-`pr-verification.yml` handles explicit `/test` requests using trusted parser/runner code and an exact PR head. Keep write-capable control jobs separate from untrusted PR execution. Never execute a PR body or title as shell code, expose privileged credentials to it, or treat a returned artifact as trusted without the existing identity checks.
+`pr-verification.yml` handles explicit `/test` requests using `scripts/pr trigger`/`resolve` and the trusted `init`/`execute`/`render` runner and an exact PR head. Keep write-capable control jobs separate from untrusted PR execution. Never execute a PR body or title as shell code, expose privileged credentials to it, or treat a returned artifact as trusted without the existing identity checks.
 
-`native-evidence.yml` is an explicit manual, credential-free evidence provider, not an automatic main-push gate. Native execution and real API tests remain different evidence classes.
+Platform workers are the native execution evidence; real API tests remain a different evidence class.
 
 ## Operate only the authorized action
 

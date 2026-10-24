@@ -1,4 +1,4 @@
-// changelog 与历史 Release 的审计、校验和同步；入口在 main.go。
+// changelog 与历史 Release 的审计、校验和同步；子命令分发在 runNotes。
 
 package main
 
@@ -17,8 +17,6 @@ import (
 	"regexp"
 	"sort"
 	"strings"
-
-	"github.com/FlanChanXwO/pixiv-cli/scripts/internal/releasenotesrender"
 )
 
 var (
@@ -116,17 +114,17 @@ type releaseSection struct {
 	entries []string
 }
 
-func run(arguments []string) error {
+func runNotes(arguments []string) error {
 	if len(arguments) == 0 {
 		return errors.New("a subcommand is required: validate, audit, or sync-history")
 	}
 	switch arguments[0] {
 	case "validate":
-		return runValidate(arguments[1:])
+		return runNotesValidate(arguments[1:])
 	case "audit":
-		return runAudit(arguments[1:])
+		return runNotesAudit(arguments[1:])
 	case "sync-history":
-		return runSyncHistory(arguments[1:])
+		return runNotesSyncHistory(arguments[1:])
 	case "-h", "--help", "help":
 		return errors.New("usage: releasenotes validate|audit|sync-history")
 	default:
@@ -134,7 +132,7 @@ func run(arguments []string) error {
 	}
 }
 
-func runAudit(arguments []string) error {
+func runNotesAudit(arguments []string) error {
 	flags := flag.NewFlagSet("audit", flag.ContinueOnError)
 	flags.SetOutput(os.Stderr)
 	repository := flags.String("repo", "", "GitHub repository in owner/name form")
@@ -373,7 +371,7 @@ func (client githubClient) requestJSON(ctx context.Context, method, path string,
 	return json.NewDecoder(response.Body).Decode(destination)
 }
 
-func runSyncHistory(arguments []string) error {
+func runNotesSyncHistory(arguments []string) error {
 	flags := flag.NewFlagSet("sync-history", flag.ContinueOnError)
 	flags.SetOutput(os.Stderr)
 	repository := flags.String("repo", "", "GitHub repository in owner/name form")
@@ -453,15 +451,15 @@ func syncHistoricalRelease(ctx context.Context, config syncHistoryConfig) error 
 }
 
 func renderGitHubReleaseBody(directory, version string) (string, error) {
-	english, err := releasenotesrender.NotesFromChangelog(filepath.Join(directory, "en.md"), version)
+	english, err := NotesFromChangelog(filepath.Join(directory, "en.md"), version)
 	if err != nil {
 		return "", fmt.Errorf("English changelog: %w", err)
 	}
-	chinese, err := releasenotesrender.NotesFromChangelog(filepath.Join(directory, "zh-CN.md"), version)
+	chinese, err := NotesFromChangelog(filepath.Join(directory, "zh-CN.md"), version)
 	if err != nil {
 		return "", fmt.Errorf("Simplified Chinese changelog: %w", err)
 	}
-	return string(releasenotesrender.BilingualBody(english, chinese)), nil
+	return string(BilingualBody(english, chinese)), nil
 }
 
 func isExternalContributor(pull githubPullRequest, owner string) bool {
@@ -524,7 +522,7 @@ func writeJSON(path string, value any) error {
 	return encoder.Encode(value)
 }
 
-func runValidate(arguments []string) error {
+func runNotesValidate(arguments []string) error {
 	flags := flag.NewFlagSet("validate", flag.ContinueOnError)
 	flags.SetOutput(os.Stderr)
 	version := flags.String("version", "", "semantic version without v")

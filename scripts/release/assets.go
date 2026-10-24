@@ -1,5 +1,5 @@
-// release asset 子命令：版本/渠道校验、打包、finalize 与 checksums 签名。
-// 入口在 main.go，目录/子命令分发在文件内 run。
+// release assets 子命令：版本/渠道校验、打包与 finalize。
+// 子命令分发在 runAssets；与 notes/formula/recover 共用同目录的 identity.go。
 
 package main
 
@@ -15,26 +15,24 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"gopkg.in/yaml.v3"
 	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"sort"
 	"strings"
-
-	"github.com/FlanChanXwO/pixiv-cli/scripts/internal/releasenotesrender"
-	"gopkg.in/yaml.v3"
 )
 
-var fixedTargets = releasenotesrender.FixedTargets()
+var fixedTargets = FixedTargets()
 
-func run(arguments []string) error {
+func runAssets(arguments []string) error {
 	if len(arguments) == 0 {
 		return errors.New("a subcommand is required: validate, validate-source, channel, package, or finalize")
 	}
 	switch arguments[0] {
 	case "validate":
-		return runValidate(arguments[1:])
+		return runAssetsValidate(arguments[1:])
 	case "validate-source":
 		return runValidateSource(arguments[1:])
 	case "channel":
@@ -50,7 +48,7 @@ func run(arguments []string) error {
 	}
 }
 
-// runChannel 输出 release 的稳定渠道名称。它在 releasenotesrender.ValidateVersion
+// runChannel 输出 release 的稳定渠道名称。它在 ValidateVersion
 // 成功后才检查预发布段，因而不会把 build metadata 内合法的连字符误判为 prerelease。
 func runChannel(arguments []string) error {
 	output, err := channelOutput(append([]string{"channel"}, arguments...))
@@ -74,17 +72,17 @@ func channelOutput(arguments []string) (string, error) {
 	if flags.NArg() != 0 {
 		return "", fmt.Errorf("channel accepts no positional arguments: %q", flags.Arg(0))
 	}
-	if err := releasenotesrender.ValidateVersion(*version); err != nil {
+	if err := ValidateVersion(*version); err != nil {
 		return "", err
 	}
-	// ValidateVersion 已验证整个 SemVer 语法；releasenotesrender.Channel 移除 build
+	// ValidateVersion 已验证整个 SemVer 语法；Channel 移除 build
 	// metadata 后出现的连字符只能是预发布分隔符，无需复制另一套 SemVer parser。
-	return releasenotesrender.Channel(*version) + "\n", nil
+	return Channel(*version) + "\n", nil
 }
 
 // runValidate 让 workflow 能在拉取 source 后、开始六个平台构建前复用唯一的
 // SemVer 规则拒绝无效 tag，避免错误标签耗费 runner 或触及发布凭据。
-func runValidate(arguments []string) error {
+func runAssetsValidate(arguments []string) error {
 	flags := flag.NewFlagSet("validate", flag.ContinueOnError)
 	flags.SetOutput(os.Stderr)
 	version := flags.String("version", "", "semantic version without v")
@@ -94,7 +92,7 @@ func runValidate(arguments []string) error {
 	if flags.NArg() != 0 {
 		return fmt.Errorf("validate accepts no positional arguments: %q", flags.Arg(0))
 	}
-	return releasenotesrender.ValidateVersion(*version)
+	return ValidateVersion(*version)
 }
 
 // runValidateSource 在 SemVer 之外校验待发布 source 的产品 Skill metadata。
@@ -113,7 +111,7 @@ func runValidateSource(arguments []string) error {
 	if flags.NArg() != 0 {
 		return fmt.Errorf("validate-source accepts no positional arguments: %q", flags.Arg(0))
 	}
-	if err := releasenotesrender.ValidateVersion(*version); err != nil {
+	if err := ValidateVersion(*version); err != nil {
 		return err
 	}
 	skillVersion, err := productSkillVersion(*productSkill)
@@ -159,7 +157,7 @@ func productSkillVersion(path string) (string, error) {
 	if metadata.Version == "" {
 		return "", fmt.Errorf("product skill %q has no version", path)
 	}
-	if err := releasenotesrender.ValidateVersion(metadata.Version); err != nil {
+	if err := ValidateVersion(metadata.Version); err != nil {
 		return "", fmt.Errorf("product skill %q has invalid version: %w", path, err)
 	}
 	return metadata.Version, nil
@@ -179,7 +177,7 @@ func runPackage(arguments []string) error {
 	if flags.NArg() != 0 {
 		return fmt.Errorf("package accepts no positional arguments: %q", flags.Arg(0))
 	}
-	if err := releasenotesrender.ValidateVersion(*version); err != nil {
+	if err := ValidateVersion(*version); err != nil {
 		return err
 	}
 	target, err := parseTarget(*targetText)
@@ -203,7 +201,7 @@ func runPackage(arguments []string) error {
 	} else if !os.IsNotExist(err) {
 		return fmt.Errorf("inspect release archive output %q: %w", archivePath, err)
 	}
-	packager := filepath.Join(root, "scripts", "package-release.sh")
+	packager := filepath.Join(root, "scripts", "build", "package.sh")
 	if err := requireRegularFile(packager, "release packager"); err != nil {
 		return err
 	}
@@ -242,7 +240,7 @@ func runFinalize(arguments []string) (err error) {
 	if flags.NArg() != 0 {
 		return fmt.Errorf("finalize accepts no positional arguments: %q", flags.Arg(0))
 	}
-	if err := releasenotesrender.ValidateVersion(*version); err != nil {
+	if err := ValidateVersion(*version); err != nil {
 		return err
 	}
 	if strings.TrimSpace(*keyID) == "" {
@@ -552,13 +550,13 @@ func readEd25519PrivateKey(path string) (ed25519.PrivateKey, error) {
 }
 
 func releaseNotesFromChangelog(path, version string) ([]byte, error) {
-	return releasenotesrender.NotesFromChangelog(path, version)
+	return NotesFromChangelog(path, version)
 }
 
 // bilingualReleaseNotes 为 GitHub Release body 增加稳定的语言标题。两个输入都已经
 // 由 releaseNotesFromChangelog 验证了对应版本标题，并且不会进入签名 checksum asset 集合。
 func bilingualReleaseNotes(english, chinese []byte) []byte {
-	return releasenotesrender.BilingualBody(english, chinese)
+	return BilingualBody(english, chinese)
 }
 
 func signedChecksumsManifest(keyID string, privateKey ed25519.PrivateKey, checksums []byte) ([]byte, error) {
@@ -601,7 +599,7 @@ func writeRegularFile(path string, contents []byte, permissions os.FileMode) err
 	return nil
 }
 
-func parseTarget(value string) (releasenotesrender.Target, error) {
+func parseTarget(value string) (Target, error) {
 	for _, target := range fixedTargets {
 		if value == target.GOOS+"/"+target.GOARCH {
 			return target, nil
@@ -612,11 +610,11 @@ func parseTarget(value string) (releasenotesrender.Target, error) {
 		available = append(available, target.GOOS+"/"+target.GOARCH)
 	}
 	sort.Strings(available)
-	return releasenotesrender.Target{}, fmt.Errorf("target must be one of %s, got %q", strings.Join(available, ", "), value)
+	return Target{}, fmt.Errorf("target must be one of %s, got %q", strings.Join(available, ", "), value)
 }
 
-func archiveName(version string, target releasenotesrender.Target) string {
-	return releasenotesrender.ArchiveName(version, target)
+func archiveName(version string, target Target) string {
+	return ArchiveName(version, target)
 }
 
 func requireRepositoryRoot(path string) (string, error) {

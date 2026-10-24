@@ -10,7 +10,7 @@ Read `AGENTS.md`, current `release.yml` and the relevant publisher YAML, and the
 ## Prepare an approved version
 
 1. Confirm the version, prior tag, target commit/range, and allowed actions. Inspect current tags/releases rather than guessing the next version.
-2. Use `scripts/releasenotes audit` to collect merged PRs, direct commits, authors, and first-time contributors for the exact range. Keep its non-secret audit output in a temporary location, not committed source. Read the tool's current help for arguments.
+2. Use `scripts/release notes audit` to collect merged PRs, direct commits, authors, and first-time contributors for the exact range. Keep its non-secret audit output in a temporary location, not committed source. Read the tool's current help for arguments.
 3. Write `changelog/vX.Y.Z/en.md` and `zh-CN.md` directly in the release-prep change. Use the documented non-empty section order, matching source sets, inline PR/commit links, contributors, and compare footer. Pixiv requires coverage of every in-range PR/direct commit; internal work belongs in `Maintenance`.
 4. Update the changelog navigation and release metadata that actually changes. Preserve `skills/pixiv-cli/SKILL.md` publisher fields and align its version with the release contract. Do not publish maintenance skills as the product skill, or change old release notes as unrelated cleanup.
 5. Run the release-note tool's validation with the same audit plus the relevant local release/test checks. After release-prep merge, re-audit and validate the exact final commit before creating the authorized tag. Missing attribution or an API failure blocks that step.

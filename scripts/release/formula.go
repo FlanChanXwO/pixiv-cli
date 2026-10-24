@@ -1,4 +1,4 @@
-// 根据已验证 checksums.txt 渲染 URL 与 digest 受约束的 Homebrew formula；入口在 main.go。
+// 根据已验证 checksums.txt 渲染 URL 与 digest 受约束的 Homebrew formula；子命令分发在 runFormula。
 
 package main
 
@@ -10,8 +10,6 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
-
-	"github.com/FlanChanXwO/pixiv-cli/scripts/internal/releasenotesrender"
 )
 
 const (
@@ -22,7 +20,7 @@ const (
 
 var sha256Pattern = regexp.MustCompile(`^[0-9a-f]{64}$`)
 
-func run(arguments []string) error {
+func runFormula(arguments []string) error {
 	if len(arguments) == 0 {
 		return errors.New("a subcommand is required: render")
 	}
@@ -48,7 +46,7 @@ func runRender(arguments []string) error {
 	if flags.NArg() != 0 {
 		return fmt.Errorf("render accepts no positional arguments: %q", flags.Arg(0))
 	}
-	if err := releasenotesrender.ValidateVersion(*version); err != nil {
+	if err := ValidateVersion(*version); err != nil {
 		return err
 	}
 	formulaName, templateName, err := validateFormulaVersion(*formula, *version)
@@ -95,10 +93,10 @@ func readChecksums(path, version string) (map[string]string, error) {
 	if err != nil {
 		return nil, err
 	}
-	targets := releasenotesrender.FixedTargets()
+	targets := FixedTargets()
 	expected := make(map[string]struct{}, len(targets)+2)
 	for _, target := range targets {
-		expected[releasenotesrender.ArchiveName(version, target)] = struct{}{}
+		expected[ArchiveName(version, target)] = struct{}{}
 	}
 	expected["install.cmd"] = struct{}{}
 	expected["install.sh"] = struct{}{}
@@ -137,11 +135,11 @@ func renderFormula(template, formula, version string, checksums map[string]strin
 		"{{FORMULA_CLASS}}": formulaClass,
 		"{{VERSION}}":       version,
 	}
-	for _, target := range releasenotesrender.FixedTargets() {
+	for _, target := range FixedTargets() {
 		if target.GOOS == "windows" {
 			continue
 		}
-		archive := releasenotesrender.ArchiveName(version, target)
+		archive := ArchiveName(version, target)
 		key := strings.ToUpper(target.GOOS + "_" + target.GOARCH)
 		values["{{"+key+"_URL}}"] = releaseURL(version, archive)
 		values["{{"+key+"_SHA256}}"] = checksums[archive]
@@ -212,27 +210,4 @@ func writeNewRegularFile(path string, body []byte) error {
 		return fmt.Errorf("close formula output %q: %w", path, err)
 	}
 	return nil
-}
-
-// rejectSymlinkAncestors 在创建 formula 前按词法路径检查每个既有祖先。filepath.Abs
-// 不会跟随 symlink；因此可在 OpenFile 之前拒绝 link/real-child 这类间接穿透。
-func rejectSymlinkAncestors(path string) error {
-	ancestor, err := filepath.Abs(path)
-	if err != nil {
-		return fmt.Errorf("resolve output directory %q: %w", path, err)
-	}
-	for {
-		info, err := os.Lstat(ancestor)
-		if err != nil {
-			return fmt.Errorf("inspect output directory ancestor %q: %w", ancestor, err)
-		}
-		if info.Mode()&os.ModeSymlink != 0 {
-			return fmt.Errorf("output directory contains a symlink ancestor: %q", ancestor)
-		}
-		parent := filepath.Dir(ancestor)
-		if parent == ancestor {
-			return nil
-		}
-		ancestor = parent
-	}
 }

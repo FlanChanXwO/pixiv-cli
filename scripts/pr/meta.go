@@ -1,5 +1,5 @@
-// Command prmeta validates the pull request template and optional verification
-// block using the trusted repository policy.
+// PR metadata gate：校验模板与 commands 声明，并解析 /test 的有效命令。
+// 命令白名单与验证执行在 policy.go、verify.go。
 package main
 
 import (
@@ -10,8 +10,6 @@ import (
 	"os"
 	"regexp"
 	"strings"
-
-	"github.com/FlanChanXwO/pixiv-cli/scripts/internal/verificationpolicy"
 )
 
 var (
@@ -27,7 +25,7 @@ type result struct {
 	TemplateDesc string
 	CommandsOK   bool
 	CommandsDesc string
-	Commands     verificationpolicy.Commands
+	Commands     Commands
 	Hash         string
 }
 
@@ -39,35 +37,14 @@ const commandFence = "commands"
 // language is rejected so callers cannot smuggle a declaration past detection.
 const htmlEscapedFence = "&#96;&#96;&#96;"
 
-func main() {
+func runMeta(args []string) {
 	bodyPath := flag.String("body-file", "", "pull request body file")
-	commentPath := flag.String("comment-file", "", "trigger comment body file")
-	checkTrigger := flag.Bool("check-trigger", false, "report whether the comment is a /test trigger")
-	resolve := flag.Bool("resolve", false, "resolve the effective verification commands")
-	whitelistPath := flag.String("whitelist", "scripts/verification/command-whitelist.txt", "trusted command whitelist")
+	whitelistPath := flag.String("whitelist", "scripts/pr/command-whitelist.txt", "trusted command whitelist")
 	cliName := flag.String("cli", "pixiv", "repository CLI command name")
 	workspace := flag.String("workspace", ".", "workspace used to validate declared file operands")
 	githubOutput := flag.String("github-output", "", "GitHub Actions output file")
 	commandsOutput := flag.String("commands-output", "", "optional commands JSON file")
-	flag.Parse()
-
-	// `--check-trigger` deliberately runs before any whitelist load: deciding
-	// whether a comment is a trigger must not depend on policy configuration.
-	if *checkTrigger {
-		if *commentPath == "" {
-			fatal(errors.New("comment-file is required with check-trigger"))
-		}
-		body, err := os.ReadFile(*commentPath)
-		if err != nil {
-			fatal(err)
-		}
-		trigger := testTrigger(string(body))
-		if err := writeTriggerOutput(*githubOutput, trigger); err != nil {
-			fatal(err)
-		}
-		fmt.Printf("trigger=%t\n", trigger)
-		return
-	}
+	flag.CommandLine.Parse(args)
 
 	if *bodyPath == "" {
 		fatal(errors.New("body-file is required"))
@@ -76,21 +53,9 @@ func main() {
 	if err != nil {
 		fatal(err)
 	}
-	w, err := verificationpolicy.LoadWhitelist(*whitelistPath)
+	w, err := LoadWhitelist(*whitelistPath)
 	if err != nil {
 		fatal(fmt.Errorf("load whitelist: %w", err))
-	}
-
-	if *resolve {
-		if *commentPath == "" {
-			fatal(errors.New("comment-file is required with resolve"))
-		}
-		comment, err := os.ReadFile(*commentPath)
-		if err != nil {
-			fatal(err)
-		}
-		resolveEffective(os.Stdout, *githubOutput, string(body), string(comment), w, *cliName, *commandsOutput)
-		return
 	}
 
 	validation := validate(string(body), w, *cliName, *workspace)
@@ -113,11 +78,61 @@ func main() {
 	}
 }
 
+// runTrigger 只判定 /test 触发，不加载白名单：触发判定不能依赖策略配置。
+func runTrigger(args []string) {
+	commentPath := flag.String("comment-file", "", "trigger comment body file")
+	githubOutput := flag.String("github-output", "", "GitHub Actions output file")
+	flag.CommandLine.Parse(args)
+	if *commentPath == "" {
+		fatal(errors.New("comment-file is required with check-trigger"))
+	}
+	body, err := os.ReadFile(*commentPath)
+	if err != nil {
+		fatal(err)
+	}
+	trigger := testTrigger(string(body))
+	if err := writeTriggerOutput(*githubOutput, trigger); err != nil {
+		fatal(err)
+	}
+	fmt.Printf("trigger=%t\n", trigger)
+}
+
+// runResolve 解析 /test 的有效命令；无效 override 返回 resolve_ok=false 而不是退出，
+// 让受信聚合器发布失败结果与 reaction，且绝不回落到 PR body。
+func runResolve(args []string) {
+	bodyPath := flag.String("body-file", "", "pull request body file")
+	commentPath := flag.String("comment-file", "", "trigger comment body file")
+	whitelistPath := flag.String("whitelist", "scripts/pr/command-whitelist.txt", "trusted command whitelist")
+	cliName := flag.String("cli", "pixiv", "repository CLI command name")
+	githubOutput := flag.String("github-output", "", "GitHub Actions output file")
+	commandsOutput := flag.String("commands-output", "", "optional commands JSON file")
+	flag.CommandLine.Parse(args)
+	if *bodyPath == "" {
+		fatal(errors.New("body-file is required"))
+	}
+	if *commentPath == "" {
+		fatal(errors.New("comment-file is required with resolve"))
+	}
+	body, err := os.ReadFile(*bodyPath)
+	if err != nil {
+		fatal(err)
+	}
+	comment, err := os.ReadFile(*commentPath)
+	if err != nil {
+		fatal(err)
+	}
+	w, err := LoadWhitelist(*whitelistPath)
+	if err != nil {
+		fatal(fmt.Errorf("load whitelist: %w", err))
+	}
+	resolveEffective(os.Stdout, *githubOutput, string(body), string(comment), w, *cliName, *commandsOutput)
+}
+
 // resolveEffective emits the effective verification commands for a /test run.
 // An invalid override reports resolve_ok=false rather than exiting, so the
 // trusted aggregator can post the failure result and reactions; it must never
 // quietly fall back to the PR body (§5.4).
-func resolveEffective(stdout *os.File, githubOutput, prBody, commentBody string, whitelist *verificationpolicy.Whitelist, cliName, commandsOutput string) {
+func resolveEffective(stdout *os.File, githubOutput, prBody, commentBody string, whitelist *Whitelist, cliName, commandsOutput string) {
 	effective, err := resolveEffectiveCommands(prBody, commentBody, whitelist, cliName)
 	overrideDeclared := commentDeclaresCommands(commentBody)
 	if err != nil {
@@ -155,7 +170,7 @@ func commentDeclaresCommands(commentBody string) bool {
 	return len(blocks) > 0
 }
 
-func validate(body string, whitelist *verificationpolicy.Whitelist, cliName, workspace string) result {
+func validate(body string, whitelist *Whitelist, cliName, workspace string) result {
 	clean := htmlComment.ReplaceAllString(body, "")
 	answer := result{TemplateOK: true, CommandsOK: true}
 	var missing []string

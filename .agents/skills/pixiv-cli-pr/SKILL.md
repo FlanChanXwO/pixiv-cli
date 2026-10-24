@@ -19,7 +19,7 @@ Read `.github/PULL_REQUEST_TEMPLATE.md` from the current target branch. Copy its
 
 State actual changes and why. List commands that ran and their outcomes; separate unrun/native/live checks. Check a required item only when true, and explain an unmet condition rather than checking it to satisfy automation. Do not invent release-note fields, version decisions, historical problems, or unchanged non-features.
 
-Use an ordinary code fence for evidence commands. A `commands` fence is a declaration for on-demand verification, not a transcript: include it only when useful and authorized. Inspect `scripts/verification/command-whitelist.txt`; commands and controlled pipelines are parsed as data, not executed by a shell. Never put secrets, private targets, or state-changing account commands in a public PR.
+Use an ordinary code fence for evidence commands. A `commands` fence is a declaration for on-demand verification, not a transcript: include it only when useful and authorized. Inspect `scripts/pr/command-whitelist.txt`; commands and controlled pipelines are parsed as data, not executed by a shell. Never put secrets, private targets, or state-changing account commands in a public PR.
 
 Validate a prepared non-secret body file from the repository root:
 

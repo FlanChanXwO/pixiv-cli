@@ -29,7 +29,7 @@ jobs:
       statuses: write
     steps:
       # PR .base.sha 是 PR 创建/同步时捕获的基线，可能远落后于当前受保护分支。
-      # 若按它 checkout，trusted 工具（scripts/prmeta 等）会是从旧提交里取，甚至
+      # 若按它 checkout，trusted 工具（scripts/pr 等）会是从旧提交里取，甚至
       # 根本不存在，导致元数据门无法运行或运行到陈旧策略。这里统一解析 base
       # 分支当前 tip，与 pr-verification 的受信执行源保持一致。
       - name: Resolve the protected base branch tip
@@ -69,7 +69,7 @@ jobs:
         run: |
           set -euo pipefail
           printf '%s' "$PR_BODY" > "$RUNNER_TEMP/pr-body.md"
-          go run ./scripts/prmeta --body-file "$RUNNER_TEMP/pr-body.md" --whitelist scripts/verification/command-whitelist.txt --cli pixiv --github-output "$GITHUB_OUTPUT"
+          go run ./scripts/pr validate --body-file "$RUNNER_TEMP/pr-body.md" --whitelist scripts/pr/command-whitelist.txt --cli pixiv --github-output "$GITHUB_OUTPUT"
       - name: Publish stable PR gate statuses
         shell: bash
         env:
@@ -124,7 +124,7 @@ jobs:
         env:
           BASE_SHA: ${{ steps.base.outputs.sha }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
-        run: bash ./scripts/classify-change-scope.sh --base "$BASE_SHA" --head "$HEAD_SHA" --github-output "$GITHUB_OUTPUT"
+        run: bash ./scripts/ci/classify-change-scope.sh --base "$BASE_SHA" --head "$HEAD_SHA" --github-output "$GITHUB_OUTPUT"
 
       - name: Publish smoke classification failure
         if: ${{ always() && (steps.smoke_head.outcome == 'failure' || steps.smoke_scope.outcome == 'failure') }}

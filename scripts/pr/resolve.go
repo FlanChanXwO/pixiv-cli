@@ -6,8 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"strings"
-
-	"github.com/FlanChanXwO/pixiv-cli/scripts/internal/verificationpolicy"
 )
 
 // commandSource identifies where the effective verification commands came from.
@@ -23,7 +21,7 @@ const (
 
 type effectiveCommands struct {
 	Source   commandSource
-	Commands verificationpolicy.Commands
+	Commands Commands
 	Hash     string
 }
 
@@ -51,7 +49,7 @@ func testTrigger(comment string) bool {
 // PR declaration rather than supplementing it, a declared override is resolved
 // before the PR body is consulted, so a stale or invalid PR declaration cannot
 // veto an otherwise valid override.
-func resolveEffectiveCommands(prBody, commentBody string, whitelist *verificationpolicy.Whitelist, cliName string) (effectiveCommands, error) {
+func resolveEffectiveCommands(prBody, commentBody string, whitelist *Whitelist, cliName string) (effectiveCommands, error) {
 	if testTrigger(commentBody) {
 		commentDeclared, commentCommands, commentErr := parseDeclaration(commentBody, whitelist, cliName)
 		if commentErr != nil {
@@ -84,19 +82,19 @@ func resolveEffectiveCommands(prBody, commentBody string, whitelist *verificatio
 // parseDeclaration reports whether a body declares a commands block and returns
 // the validated commands. Declared-but-empty and declared-but-invalid bodies
 // return an error so callers can fail closed rather than silently ignore them.
-func parseDeclaration(body string, whitelist *verificationpolicy.Whitelist, cliName string) (bool, verificationpolicy.Commands, error) {
+func parseDeclaration(body string, whitelist *Whitelist, cliName string) (bool, Commands, error) {
 	clean := htmlComment.ReplaceAllString(body, "")
 	blocks, err := commandBlocks(clean)
 	if err != nil {
-		return true, verificationpolicy.Commands{}, err
+		return true, Commands{}, err
 	}
 	if len(blocks) == 0 {
-		return false, verificationpolicy.Commands{}, nil
+		return false, Commands{}, nil
 	}
 	if len(blocks) > 1 {
-		return true, verificationpolicy.Commands{}, errors.New("Only one fenced commands block is allowed.")
+		return true, Commands{}, errors.New("Only one fenced commands block is allowed.")
 	}
-	var commands verificationpolicy.Commands
+	var commands Commands
 	index := 0
 	for _, raw := range strings.Split(blocks[0], "\n") {
 		line := strings.TrimSpace(raw)
@@ -104,24 +102,24 @@ func parseDeclaration(body string, whitelist *verificationpolicy.Whitelist, cliN
 			continue
 		}
 		index++
-		command, err := verificationpolicy.ParseLine(line)
+		command, err := ParseLine(line)
 		if err != nil {
-			return true, verificationpolicy.Commands{}, fmt.Errorf("Command %d is invalid: %v", index, err)
+			return true, Commands{}, fmt.Errorf("Command %d is invalid: %v", index, err)
 		}
 		if err := whitelist.ValidateStatic(command, cliName); err != nil {
-			return true, verificationpolicy.Commands{}, fmt.Errorf("Command %d is not allowed: %v", index, err)
+			return true, Commands{}, fmt.Errorf("Command %d is not allowed: %v", index, err)
 		}
 		commands.Commands = append(commands.Commands, command)
 	}
 	if len(commands.Commands) == 0 {
-		return true, verificationpolicy.Commands{}, errors.New("The commands block must contain at least one command.")
+		return true, Commands{}, errors.New("The commands block must contain at least one command.")
 	}
 	return true, commands, nil
 }
 
-func hashCommands(commands verificationpolicy.Commands) string {
+func hashCommands(commands Commands) string {
 	if len(commands.Commands) == 0 {
 		return ""
 	}
-	return verificationpolicy.NormalizeAndHash(commands)
+	return NormalizeAndHash(commands)
 }

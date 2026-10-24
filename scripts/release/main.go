@@ -1,4 +1,5 @@
-// Command release provides small release-material operations shared by CI.
+// Command release owns the release-material tools: source and handoff verification,
+// checksums, asset packaging, changelog notes, Homebrew formula rendering and recovery.
 package main
 
 import (
@@ -28,36 +29,57 @@ type platform struct {
 
 func main() {
 	if len(os.Args) < 2 {
-		fatal(errors.New("expected verify-source, verify-published-release, verify-handoff, verify-handoff-identity, write-handoff, verify-handoff-set, verify-artifact-set, verify-container-set, or checksums"))
+		fatal(errors.New("expected a release subcommand; run with --help"))
 	}
-	switch os.Args[1] {
+	subcommand, args := os.Args[1], os.Args[2:]
+	var err error
+	switch subcommand {
 	case "verify-source":
-		verifySourceCommand(os.Args[2:])
+		verifySourceCommand(args)
 	case "verify-published-release":
-		verifyPublishedReleaseCommand(os.Args[2:])
+		verifyPublishedReleaseCommand(args)
 	case "verify-handoff":
-		verifyHandoffCommand(os.Args[2:])
+		verifyHandoffCommand(args)
 	case "write-handoff":
-		writeHandoffCommand(os.Args[2:])
+		writeHandoffCommand(args)
 	case "verify-handoff-set":
-		verifyHandoffSetCommand(os.Args[2:])
+		verifyHandoffSetCommand(args)
 	case "verify-handoff-identity":
-		verifyHandoffIdentityCommand(os.Args[2:])
+		verifyHandoffIdentityCommand(args)
 	case "verify-artifact-set":
-		verifyArtifactSet(os.Args[2:])
+		verifyArtifactSet(args)
 	case "verify-container-set":
-		verifyContainerSet(os.Args[2:])
+		verifyContainerSet(args)
 	case "checksums":
-		writeChecksums(os.Args[2:])
+		writeChecksums(args)
+	case "assets":
+		err = prefixError("release assets", runAssets(args))
+	case "notes":
+		err = runNotes(args)
+	case "formula":
+		err = prefixError("homebrew formula", runFormula(args))
+	case "recover":
+		err = prefixError("homebrew recovery", runRecover(args))
 	default:
-		fatal(fmt.Errorf("unknown release operation %q", os.Args[1]))
+		err = fmt.Errorf("unknown release subcommand %q", subcommand)
 	}
+	if err != nil {
+		fatal(err)
+	}
+}
+
+// prefixError keeps the merged subcommands' historical stderr prefixes.
+func prefixError(label string, err error) error {
+	if err == nil {
+		return nil
+	}
+	return fmt.Errorf("%s: %w", label, err)
 }
 
 func verifyContainerSet(args []string) {
 	set := flag.NewFlagSet("verify-container-set", flag.ExitOnError)
 	dir := set.String("dir", "containers", "container artifact directory")
-	registryPath := set.String("registry", "scripts/ci/platforms.json", "platform registry")
+	registryPath := set.String("registry", "scripts/build/platforms.json", "platform registry")
 	_ = set.Parse(args)
 	expected, err := expectedContainerArtifacts(*registryPath)
 	if err != nil {
@@ -84,7 +106,7 @@ func verifyArtifactSet(args []string) {
 	set := flag.NewFlagSet("verify-artifact-set", flag.ExitOnError)
 	dir := set.String("dir", "dist", "release artifact directory")
 	version := set.String("version", "", "release version without v")
-	registryPath := set.String("registry", "scripts/ci/platforms.json", "platform registry")
+	registryPath := set.String("registry", "scripts/build/platforms.json", "platform registry")
 	_ = set.Parse(args)
 	expected, err := expectedArtifacts(*registryPath, *version)
 	if err != nil {
@@ -104,7 +126,7 @@ func writeChecksums(args []string) {
 	set := flag.NewFlagSet("checksums", flag.ExitOnError)
 	dir := set.String("dir", "dist", "release artifact directory")
 	version := set.String("version", "", "release version without v")
-	registryPath := set.String("registry", "scripts/ci/platforms.json", "platform registry")
+	registryPath := set.String("registry", "scripts/build/platforms.json", "platform registry")
 	output := set.String("output", "", "checksums output path")
 	_ = set.Parse(args)
 	if *output == "" {

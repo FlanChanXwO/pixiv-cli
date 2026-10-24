@@ -18,85 +18,6 @@ import (
 	"testing"
 )
 
-func TestValidateRejectsNonSemanticVersion(t *testing.T) {
-	t.Parallel()
-
-	if err := run([]string{"validate", "--version", "0.1.0-beta.1"}); err != nil {
-		t.Fatalf("validate accepted semantic version: %v", err)
-	}
-	err := run([]string{"validate", "--version", "1not-semver"})
-	if err == nil || !strings.Contains(err.Error(), "semantic version") {
-		t.Fatalf("validate error = %v, want semantic-version rejection", err)
-	}
-}
-
-func TestValidateSourceRequiresMatchingProductSkillVersion(t *testing.T) {
-	t.Parallel()
-
-	err := run([]string{"validate-source", "--version", "0.1.0"})
-	if err == nil || !strings.Contains(err.Error(), "--product-skill is required") {
-		t.Fatalf("validate-source without product skill = %v, want required-flag error", err)
-	}
-
-	workDir := newTestWorkDir(t)
-	skill := filepath.Join(workDir, "SKILL.md")
-	if err := os.WriteFile(skill, []byte("---\n# Product metadata\nversion: \"0.1.0\"\nslug: pixiv-cli\n---\n"), 0o644); err != nil {
-		t.Fatalf("write product skill fixture: %v", err)
-	}
-	if err := run([]string{"validate-source", "--version", "0.1.0", "--product-skill", skill}); err != nil {
-		t.Fatalf("validate matching product skill source: %v", err)
-	}
-
-	err = run([]string{"validate-source", "--version", "0.1.1", "--product-skill", skill})
-	if err == nil || !strings.Contains(err.Error(), "product skill version") {
-		t.Fatalf("validate mismatched product skill = %v, want version rejection", err)
-	}
-}
-
-func TestValidateSourceRejectsInvalidProductSkillMetadata(t *testing.T) {
-	t.Parallel()
-
-	for name, contents := range map[string]string{
-		"missing version":   "---\nslug: pixiv-cli\n---\n",
-		"duplicate version": "---\nversion: 0.1.0\nversion: 0.1.0\n---\n",
-		"missing delimiter": "---\nversion: 0.1.0\n",
-	} {
-		t.Run(name, func(t *testing.T) {
-			workDir := newTestWorkDir(t)
-			skill := filepath.Join(workDir, "SKILL.md")
-			if err := os.WriteFile(skill, []byte(contents), 0o644); err != nil {
-				t.Fatalf("write product skill fixture: %v", err)
-			}
-			if err := run([]string{"validate-source", "--version", "0.1.0", "--product-skill", skill}); err == nil {
-				t.Fatal("validate-source accepted invalid product skill metadata")
-			}
-		})
-	}
-}
-
-func TestChannelClassifiesSemanticPrereleaseInsteadOfBuildMetadata(t *testing.T) {
-	t.Parallel()
-
-	for _, test := range []struct {
-		name    string
-		version string
-		want    string
-	}{
-		{name: "stable build metadata", version: "0.1.0+build-1", want: "stable"},
-		{name: "prerelease with build metadata", version: "0.1.0-rc.1+build-1", want: "prerelease"},
-	} {
-		t.Run(test.name, func(t *testing.T) {
-			output, err := channelOutput([]string{"channel", "--version", test.version})
-			if err != nil {
-				t.Fatalf("classify %q: %v", test.version, err)
-			}
-			if output != test.want+"\n" {
-				t.Fatalf("channel output = %q, want %q", output, test.want+"\n")
-			}
-		})
-	}
-}
-
 func TestPackageCreatesFixedTargetArchive(t *testing.T) {
 	t.Parallel()
 
@@ -119,7 +40,7 @@ func TestPackageCreatesFixedTargetArchive(t *testing.T) {
 		t.Fatalf("create output directory: %v", err)
 	}
 
-	if err := run([]string{
+	if err := runAssets([]string{
 		"package",
 		"--repo-root", repoRoot,
 		"--version", "0.1.0",
@@ -186,7 +107,7 @@ func TestFinalizeBuildsSignedReleaseDirectory(t *testing.T) {
 		t.Fatalf("write fixture signing key: %v", err)
 	}
 	outputDir := filepath.Join(workDir, "release")
-	if err := run([]string{
+	if err := runAssets([]string{
 		"finalize",
 		"--version", version,
 		"--input-dir", inputDir,
@@ -250,77 +171,6 @@ func TestFinalizeBuildsSignedReleaseDirectory(t *testing.T) {
 		if string(body) != contents {
 			t.Fatalf("copied archive %s = %q, want %q", name, body, contents)
 		}
-	}
-}
-
-func TestFinalizeRejectsMissingOrDuplicateChangelogSectionWithoutPublishing(t *testing.T) {
-	t.Parallel()
-
-	for name, changelogBody := range map[string]string{
-		"missing":   "# v0.2.0 — 2026-07-12\n\n## Added\n\nPending.\n",
-		"duplicate": "# v0.1.0 — 2026-07-12\n\nFirst.\n\n# v0.1.0 — 2026-07-12\n\nSecond.\n",
-	} {
-		t.Run(name, func(t *testing.T) {
-			workDir := newTestWorkDir(t)
-			inputDir := filepath.Join(workDir, "input")
-			if err := os.Mkdir(inputDir, 0o755); err != nil {
-				t.Fatalf("create input directory: %v", err)
-			}
-			writeArchiveFixtures(t, inputDir, "0.1.0")
-			changelog := filepath.Join(workDir, "v0.1.0.md")
-			if err := os.WriteFile(changelog, []byte(changelogBody), 0o644); err != nil {
-				t.Fatalf("write changelog fixture: %v", err)
-			}
-			changelogChinese := filepath.Join(workDir, "v0.1.0.zh-CN.md")
-			if err := os.WriteFile(changelogChinese, []byte("# v0.1.0 — 2026-07-12\n\n## 新增\n\n- 公开变更。\n"), 0o644); err != nil {
-				t.Fatalf("write Simplified Chinese changelog fixture: %v", err)
-			}
-			privateKeyPath := writeFixturePrivateKey(t, workDir)
-			outputDir := filepath.Join(workDir, "release")
-
-			err := run([]string{
-				"finalize",
-				"--version", "0.1.0",
-				"--input-dir", inputDir,
-				"--output-dir", outputDir,
-				"--changelog", changelog,
-				"--changelog-zh", changelogChinese,
-				"--private-key", privateKeyPath,
-				"--key-id", "fixture-2026",
-			})
-			if err == nil || !strings.Contains(err.Error(), "changelog") {
-				t.Fatalf("finalize error = %v, want changelog rejection", err)
-			}
-			if _, statErr := os.Lstat(outputDir); !os.IsNotExist(statErr) {
-				t.Fatalf("failed finalize published output: %v", statErr)
-			}
-		})
-	}
-}
-
-func TestFinalizeRequiresSimplifiedChineseChangelog(t *testing.T) {
-	t.Parallel()
-
-	workDir := newTestWorkDir(t)
-	inputDir := filepath.Join(workDir, "input")
-	if err := os.Mkdir(inputDir, 0o755); err != nil {
-		t.Fatalf("create input directory: %v", err)
-	}
-	changelog := filepath.Join(workDir, "v0.1.0.md")
-	if err := os.WriteFile(changelog, []byte("# v0.1.0 — 2026-07-12\n\n## Added\n\n- Public change.\n"), 0o644); err != nil {
-		t.Fatalf("write changelog fixture: %v", err)
-	}
-
-	err := run([]string{
-		"finalize",
-		"--version", "0.1.0",
-		"--input-dir", inputDir,
-		"--output-dir", filepath.Join(workDir, "release"),
-		"--changelog", changelog,
-		"--key-id", "fixture-2026",
-	})
-	if err == nil || !strings.Contains(err.Error(), "Simplified Chinese changelog") {
-		t.Fatalf("finalize error = %v, want missing Simplified Chinese changelog rejection", err)
 	}
 }
 

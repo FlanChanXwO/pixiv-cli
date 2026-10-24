@@ -32,5 +32,5 @@ credential material。
    重新运行 `publish-homebrew.yml`，并传入原始受信 Release workflow 的 `release_run_id`。
    发现 secret 泄露或权限漂移时，立即撤销 tap deploy key。
 
-`sh scripts/test-homebrew-formula.sh` 与 `go test ./scripts/release ./scripts/platformmatrix` 只验证本地行为和
+`go test ./scripts/release` 只验证本地行为和
 artifact contract；它们不能替代正式 tag workflow 的四个平台外部安装证据。

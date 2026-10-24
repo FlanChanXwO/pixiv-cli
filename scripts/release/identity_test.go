@@ -1,15 +1,13 @@
-package releasenotesrender_test
+package main
 
 import (
 	"testing"
-
-	"github.com/FlanChanXwO/pixiv-cli/scripts/internal/releasenotesrender"
 )
 
 func TestFixedTargetsCoverSixReleasePlatforms(t *testing.T) {
 	t.Parallel()
 
-	got := releasenotesrender.FixedTargets()
+	got := FixedTargets()
 	if len(got) != 6 {
 		t.Fatalf("FixedTargets() = %d targets, want 6", len(got))
 	}
@@ -39,8 +37,8 @@ func TestArchiveNameMatchesFixedTargetIdentity(t *testing.T) {
 		"windows/amd64": "pixiv-cli_0.1.0_windows_amd64.zip",
 		"windows/arm64": "pixiv-cli_0.1.0_windows_arm64.zip",
 	}
-	for _, target := range releasenotesrender.FixedTargets() {
-		got := releasenotesrender.ArchiveName("0.1.0", target)
+	for _, target := range FixedTargets() {
+		got := ArchiveName("0.1.0", target)
 		if got != want[target.String()] {
 			t.Errorf("ArchiveName(0.1.0, %s) = %q, want %q", target.String(), got, want[target.String()])
 		}

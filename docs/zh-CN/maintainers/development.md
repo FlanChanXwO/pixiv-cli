@@ -63,44 +63,15 @@ CGO_ENABLED=0 go test ./internal/media/ugoira/... -count=1
 
 **编码器保真说明** —— `internal/media/ugoira`：JPEG 解码器是 Go 1.26.3 解析加旧 zune-jpeg 0.5.15 整数 IDCT 与 14 位 BT.601（标准库 IDCT 舍入对调色板选择的改变足以让固定门禁失败；解析器 BSD 许可证留在该包，zune-jpeg 的 MIT 署名留在许可证 bundle）。缩放使用带显式 `math.FMA` 的有界正弦/余弦多项式对齐旧 `sinf`，参考值在 `testdata/lanczos-kernel.json`（1,031 条）。APNG 使用固定 Sub 预测、每帧独立的 level-7 zlib 流与 RGBA8 无损：只有全部变化像素不透明且差分能减少横向 RGBA 游程时，才对未变像素使用透明的 Over，否则使用 Source，均用 None disposal。压缩字节可能随工具链变化；只有在验证完整渲染画布、时序与循环行为后才能复用旧质量证据——不能只看文件大小。
 
-**平台构建** —— `scripts/build-platform.sh` 以 CGO0 构建精确目标，并可选生成 canonical 压缩包：`--target GOOS/GOARCH`、`--output-dir DIR`、可选 `--version VERSION`（不带 `v`）与 `--package`（需要版本）。保留 Windows 后缀与 Linux ABI 门禁。runner 元数据在 `scripts/ci/platforms.json`；测试、源码身份、权限、审批与发布留在 workflow 中。
+**平台构建** —— `scripts/build/platform.sh` 以 CGO0 构建精确目标，并可选生成 canonical 压缩包：`--target GOOS/GOARCH`、`--output-dir DIR`、可选 `--version VERSION`（不带 `v`）与 `--package`（需要版本）。保留 Windows 后缀。runner 元数据在 `scripts/build/platforms.json`；测试、源码身份、权限、审批与发布留在 workflow 中。
 
-**Linux ABI 门禁** —— 公开基线为 glibc 2.35。release test/production、native evidence、packaged smoke 与 Homebrew 安装矩阵的 Linux runner 固定为 `ubuntu-22.04` / `ubuntu-22.04-arm`（其他任务可用较新 runner）。每个 Linux 可执行文件生成后：
-
-```bash
-go run ./scripts/linuxabi --binary <linux-elf>
-```
-
-它从 ELF `SHT_GNU_verneed` 读取 loader 契约并检查导入符号版本；任何高于 `GLIBC_2.35` 的依赖在打包前失败。"在构建 runner 上能跑"不是可接受的证据——runner 自带的新 glibc 会掩盖向后兼容回退。
+**Linux 兼容性** —— release 与打包 smoke 的二进制以 `CGO_ENABLED=0` 构建，产物是静态 ELF。release 测试/生产、打包 smoke 与 Homebrew 安装矩阵的 Linux runner 固定为 `ubuntu-22.04` / `ubuntu-22.04-arm`；构建配方变化时用 `file build/pixiv` 核实。
 
 ### 许可证 bundle
 
-- `go run ./scripts/licensebundle` 在六个发布目标上以 `CGO_ENABLED=0` 合并 `go list -mod=readonly -deps -json ./cmd/pixiv` 选出的生产模块。离线（`GOPROXY=off`、`GOSUMDB=off`），忽略 workspace/flag 覆盖，需要已缓存的模块源码，不用 Cargo，不含仅测试/工具模块。`--check` 比较索引与完整文本树但不发布。
+- `go run ./scripts/build/licensebundle` 在六个发布目标上以 `CGO_ENABLED=0` 合并 `go list -mod=readonly -deps -json ./cmd/pixiv` 选出的生产模块。离线（`GOPROXY=off`、`GOSUMDB=off`），忽略 workspace/flag 覆盖，需要已缓存的模块源码，不用 Cargo，不含仅测试/工具模块。`--check` 比较索引与完整文本树但不发布。
 - `third_party/attributions.json` 固定额外的移植源码声明；文本在 `third_party/attributions/`（与生成的 `third_party/licenses/` 分开）。移除 Rust 源码后仍保留选定的 MIT 文本、Go BSD/专利授权与 SunPro 声明；`fhttp v0.6.8` 提供其源码头引用的 Go BSD 文本（该模块归档缺少独立许可证文件）。文本缺失/为空会在发布前失败；包含嵌套声明；CRLF → LF 并保留全文。
 - 生成的文本由 `third_party/notices.go` 内嵌，`pixiv --licenses` 打印；压缩包只含 `pixiv`/`pixiv.exe`。索引与文本树保持可回滚的发布方式。`third_party/attributions/image-compare-0.5.0/` 中仅测试使用的署名不内嵌。
-
-### Native runner evidence
-
-```mermaid
-flowchart LR
-    W["native-evidence.yml<br/>（显式触发，refs/heads/main）"] --> R1["6 个 runner：许可证检查、<br/>build-platform.sh、GIF/APNG 回归"]
-    R1 --> A["每个目标一个 schema 3 bundle<br/>source_commit · 版本 · SHA-256"]
-    A --> C["nativeevidence consolidate<br/>恰好 6 个，同源同版本"]
-    C --> O["新目录：各目标 bundle<br/>+ summary.json"]
-```
-
-- `.github/workflows/native-evidence.yml` 是显式的维护入口，不是 main push 门禁：全局权限为空、仅任务级 `contents: read`、Action 固定完整 SHA、无凭据 checkout、没有发布/签名环境；runner 由注册表的 `native-evidence` 能力选择。
-- schema 3 绑定精确的 `source_commit`、目标、二进制版本与二进制/压缩包/成员 SHA-256；执行 `--version` 并检查压缩包恰好包含记录的二进制；拒绝旧 schema 与 Rust 源码摘要/staticlib 字段。`consolidate` 拒绝符号链接与不安全路径并原子发布；从不把库回填到源码。
-
-```bash
-go run ./scripts/nativeevidence consolidate \
-  --repo-root . --expected-version "v0.1.0-native-evidence.${RUN_ID}" \
-  --expected-commit "$SOURCE_COMMIT" --input-dir /absolute/evidence \
-  --output-dir /absolute/new-complete-evidence
-```
-
-`RUN_ID` 与 `SOURCE_COMMIT` 取自同一次已审计的运行，并使用新的绝对路径。PR Platform worker 也会从可信 base-ref workflow 上传 schema 3 `native-evidence-<goos>-<goarch>` bundle（`v0.2.0-ci.<run-id>`）——修改 PR head 的 workflow 不会改变该生产者。请检查实际运行与精确 head；不要拼接多次运行，也不要把 fixture、交叉构建或 workflow 定义当作六平台执行。
-
 
 ## 运行
 
@@ -150,7 +121,7 @@ https_proxy=http://127.0.0.1:7890 ./build/pixiv mcp --port 1270
 
 默认复用已有检查，不新增永久测试。[测试准入规则](../../../.agents/skills/pixiv-cli-test/SKILL.md#decide-whether-test-code-must-change)决定哪些长期核心回归可以进入主线，以及如何在 `tmp/test/` 下运行本地探测。
 
-覆盖范围包括 CLI 命令与构建元数据、显式/自动更新、`internal/{pixivaccount,fanboxaccount}`、`internal/pixivaccount/pool`、`internal/reversesearch` fixture 与聚合、`internal/storage/database`、`internal/config/settings`、`internal/{lifecycle,pagination}`、App API 认证重试、公开 SDK、HTTP client 装配、下载、Go 编码器/native-evidence 契约，以及 `internal/mcpserver/{pixiv,fanbox}/tools` 的工具注册。
+覆盖范围包括 CLI 命令与构建元数据、显式/自动更新、`internal/{pixivaccount,fanboxaccount}`、`internal/pixivaccount/pool`、`internal/reversesearch` fixture 与聚合、`internal/storage/database`、`internal/config/settings`、`internal/{lifecycle,pagination}`、App API 认证重试、公开 SDK、HTTP client 装配、下载、Go 编码器契约，以及 `internal/mcpserver/{pixiv,fanbox}/tools` 的工具注册。
 
 ```bash
 go test ./...

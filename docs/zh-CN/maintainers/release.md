@@ -23,7 +23,7 @@ flowchart TD
 
 - `.github/workflows/release.yml` 只接受 `v[0-9]*` tag push——没有 `workflow_dispatch`、`release_tag` 输入或仅测试 overlay。它不读取或注入 Pixiv/FANBOX 凭据；真实 SDK E2E、原生浏览器与一次性 solver 验收需在授权环境中完成，不构成发布证据。
 - validate、测试构建、生产构建与发布都绑定同一 tag。失败时在默认分支修复并重跑正常的不可变 tag 流程；绝不把新的校验器、测试或源码注入旧 tag，也没有针对已有 Release 的手动恢复入口。
-- `releaseassets finalize` 还会从 tag 读取 `scripts/install.sh` 与 `scripts/install.cmd`，以固定名称复制进 Release，并与六个压缩包一起写入 `checksums.txt` 与 Ed25519 清单。发布策略锁定 finalize 参数与完整的八个资产上传集合；Homebrew 渲染器要求 checksum 集合包含两个安装器，而 formula 只下载平台压缩包。
+- `scripts/release assets finalize` 还会从 tag 读取 `scripts/install.sh` 与 `scripts/install.cmd`，以固定名称复制进 Release，并与六个压缩包一起写入 `checksums.txt` 与 Ed25519 清单。发布策略锁定 finalize 参数与完整的八个资产上传集合；Homebrew 渲染器要求 checksum 集合包含两个安装器，而 formula 只下载平台压缩包。
 - **Race 门禁：** `go.mod` 工具链在 Windows ARM64 上不支持 race，但六个原生目标都会执行——五个运行 `go test -race ./...`，Windows ARM64 运行同一命令且必须匹配 Go 精确的 `-race is not supported on windows/arm64` 诊断；任何其他失败都算失败，不跳过任何条目。测试矩阵把 `GIT_CONFIG_*` 固定为 `core.autocrlf=false`，让 Git for Windows 保留 LF blob（否则 pre-commit 的 `gofmt` 会误报 CRLF）。仅用于测试门禁；生产构建使用 tag 的干净默认 checkout。
 - **Handoff：** release 准备会写入不可变的 `release/release-handoff.json`（release 运行、tag、commit、每个生产/容器产物的大小与 SHA256）；发布时对照已审批的 `release/checksums.txt` 校验；策略拒绝中间步骤、路径替换与发布后改写。生产压缩包、容器镜像、准备好的 checksum 以及针对精确压缩包的 Homebrew 安装都在 `release-approval` 之前完成；之后发布使用带 secret 的 `release` 环境，消费已审批的产物而不重新构建。
 - **下游发布者**（Homebrew、Docker Hub、SkillHub、ClawHub）由成功的 `Release` 的 `workflow_run` 触发。handoff 绑定原运行、tag、commit 与产物身份（不只是 tag 文件；不依赖 Homebrew 先完成）。每个发布者都会重新校验身份与所需产物。绝不从 `workflow_run.head_branch` 推断版本或改用之后的 `main` 内容。经授权的恢复派发向具体发布者传入原 `release_run_id`——绝不使用替代 tag 或当前 main。
@@ -31,12 +31,11 @@ flowchart TD
 ## 容器发布验证
 
 - `build_container` 在共享 `build` 门禁之后与 `build_production` 并行运行（不等待资产重建）。目标：`ubuntu-22.04` → `linux/amd64`，`ubuntu-22.04-arm` → `linux/arm64`。
-- 每个目标 checkout tag，通过 ABI 门禁构建带版本的 CGO0 Linux 二进制，运行容器打包测试，构建固定的 glibc 运行时镜像，验证非 root、精确版本、`/home/pixiv/.pixiv-cli/` 下的 `pixiv config path`、`/work` 与 OCI provenance（`org.opencontainers.image.source`、revision、version、licenses），然后导出 `verified-container-linux-amd64` / `-arm64`。构建任务只有 `contents: read`。
+- 每个目标 checkout tag，构建带版本的静态 CGO0 Linux 二进制，运行容器打包测试，构建固定的 glibc 运行时镜像，验证非 root、精确版本、`/home/pixiv/.pixiv-cli/` 下的 `pixiv config path`、`/work` 与 OCI provenance（`org.opencontainers.image.source`、revision、version、licenses），然后导出 `verified-container-linux-amd64` / `-arm64`。构建任务只有 `contents: read`。
 - `.github/workflows/publish-dockerhub.yml` 是 GHCR 与 Docker Hub 的独立发布后发布者（Release 与 registry 无法原子提交）。它接收不可变 handoff 与两个已验证产物，检查 tag 与源码身份，把同样已加载的镜像字节推送到 `ghcr.io/flanchanxwo/pixiv-cli` 与 `docker.io/flanchanxwo/pixiv-cli`——从不重新构建。只有 Docker Hub 认证使用受保护的 `DOCKER_HUB_TOKEN`（经 stdin 传入）；只有该发布者申请 `packages: write`。失败时从默认分支以原 `release_run_id` 重新派发。精确版本 tag 总会发布；较旧 stable 的恢复成功但不移动 `latest`；只有最新 stable 才推进 `latest`。没有掩盖推送失败的重试循环。
 
 ```bash
-go test ./scripts/citest -count=1
-go test ./scripts/release ./scripts/platformmatrix -count=1
+go test ./scripts/citest ./scripts/release -count=1
 ```
 
 无凭据的容器 smoke workflow 在相关改动时构建两个架构；这些本地检查不能替代 tag 的 CI 证据。
@@ -45,10 +44,8 @@ go test ./scripts/release ./scripts/platformmatrix -count=1
 
 | Owner | 职责 |
 | --- | --- |
-| `scripts/ci/platforms.json` + `scripts/platformmatrix` | 共享 runner/能力注册表，校验并输出 |
-| `scripts/internal/releasenotesrender` | 发布身份（版本/渠道、六个 archive 目标）与 Release 正文渲染 |
-| `scripts/release` | 可复用的信任/产物检查：不可变 tag + 默认分支祖先、已发布 Release 状态、运行 handoff 身份、精确的压缩包/容器集合、checksum |
-| `scripts/nativeevidence` | 分发 `record` / `consolidate`；schema、单 runner 记录、六目标合并、压缩包成员/哈希审计、文件系统安全（其 workflow 测试只覆盖凭据/Action/归属边界） |
+| `scripts/build/platforms.json` + `scripts/build/matrix.sh` | 共享 runner/能力注册表，校验并输出 |
+| `scripts/release` | 发布身份、资产打包/finalize、changelog notes、Homebrew formula/recovery，以及不可变 tag/默认分支祖先、已发布 Release 状态、handoff 身份、精确 archive/container 集合与 checksums 校验 |
 | 各发布 workflow | 只保留渠道凭据、权限、变更检测与发布命令 |
 
 恢复运行可以校验成功的 `Release` handoff，而不把 workflow head 绑定到 tag；契约要求该身份的发布者（如 Docker Hub）还会把 handoff 运行绑定到 tag commit。workflow 测试保留行为与安全边界，不复刻精确的任务数、步骤位置或 shell 文本。历史恢复方案与验收报告保留原文，不作为当前流程说明。
@@ -58,7 +55,7 @@ go test ./scripts/release ./scripts/platformmatrix -count=1
 `publish-homebrew.yml` 消费 handoff，校验其生产部分，把 stable/预发布映射到 `pixiv-cli` / `pixiv-cli-beta`（都安装 `pixiv`，互相冲突）。Homebrew 不属于 Release workflow，也不增加审批边界（只有 `release-approval`）。`HOMEBREW_TAP_DEPLOY_KEY` 只通过 `release` Environment 进入已授权的 tap 写入步骤。
 
 1. **安装检查**（macOS Intel/arm64 与 Linux amd64/arm64）：`brew tap-new pixiv-cli-release/staging --no-git`，把单个 staging formula 放入 `Formula/`，执行 `brew install --formula pixiv-cli-release/staging/<formula>`，再执行 `test "$(pixiv --version)" = "pixiv $RELEASE_TAG"`。macOS 用 `brew trust --tap pixiv-cli-release/staging` 信任临时命名空间；Linux 使用短期、固定 digest 的 `homebrew/brew` 容器与只读 bind mount。不使用工作区 formula 路径、绕过变量或公开 tap 的 clone/写入/信任。
-2. **部署** 只在全部目标通过后进行：受保护的 `deploy_homebrew_tap` 任务 HTTPS clone 公开 tap；`scripts/homebrewrecovery`（可信默认分支 tip）对每个 formula 独立地用 `internal/version` SemVer 比较版本：
+2. **部署** 只在全部目标通过后进行：受保护的 `deploy_homebrew_tap` 任务 HTTPS clone 公开 tap；`scripts/release recover`（可信默认分支 tip）对每个 formula 独立地用 `internal/version` SemVer 比较版本：
 
 | 已发布 vs 请求 | 动作 |
 | --- | --- |
@@ -107,11 +104,8 @@ go test ./scripts/release ./scripts/platformmatrix -count=1
 ## 本地发布 fixture 门禁
 
 ```bash
-sh scripts/test-build-platform.sh
-sh scripts/test-package-release.sh
-go test ./scripts/release ./scripts/platformmatrix -count=1
-go test ./scripts/nativeevidence -count=1
-sh scripts/test-homebrew-formula.sh
+sh scripts/ci/test-package-release.sh
+go test ./scripts/release ./scripts/citest -count=1
 git diff --check
 ```
 

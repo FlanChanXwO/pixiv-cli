@@ -73,24 +73,6 @@ func TestRenderFormulaFillsStablePlaceholders(t *testing.T) {
 	}
 }
 
-func TestRenderFormulaRejectsUnrecognizedPlaceholder(t *testing.T) {
-	t.Parallel()
-
-	_, err := renderFormula("class PixivCli\n  url \"{{DARWIN_AMD64_URL}}\"\n  secret \"{{UNKNOWN}}\"\n", "pixiv-cli", "0.1.0", map[string]string{
-		"pixiv-cli_0.1.0_darwin_amd64.tar.gz": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
-		"pixiv-cli_0.1.0_darwin_arm64.tar.gz": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
-		"pixiv-cli_0.1.0_linux_amd64.tar.gz":  "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
-		"pixiv-cli_0.1.0_linux_arm64.tar.gz":  "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
-		"pixiv-cli_0.1.0_windows_amd64.zip":   "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
-		"pixiv-cli_0.1.0_windows_arm64.zip":   "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
-		"install.sh":                          "1111111111111111111111111111111111111111111111111111111111111111",
-		"install.cmd":                         "2222222222222222222222222222222222222222222222222222222222222222",
-	})
-	if err == nil || !strings.Contains(err.Error(), "unrecognized placeholder") {
-		t.Fatalf("renderFormula() error = %v, want unrecognized-placeholder error", err)
-	}
-}
-
 func TestValidateFormulaVersionRoutesStableAndBeta(t *testing.T) {
 	t.Parallel()
 

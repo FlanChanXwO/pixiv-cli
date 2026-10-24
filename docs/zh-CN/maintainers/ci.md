@@ -2,7 +2,7 @@
 
 [English](../../en/maintainers/ci.md) | 简体中文 | [开发流程](development.md)
 
-PR 上会运行哪些 workflow、如何决定哪些是必需检查、结果如何被信任。workflow YAML、`scripts/ci/platforms.json` 与工具清单仍是可执行的事实来源。
+PR 上会运行哪些 workflow、如何决定哪些是必需检查、结果如何被信任。workflow YAML、`scripts/build/platforms.json` 与工具清单仍是可执行的事实来源。
 
 ```mermaid
 flowchart TD
@@ -26,7 +26,7 @@ flowchart TD
 | `pull_request`、`workflow_dispatch` | `ci.yml` Quality gate（不再响应 tag push） |
 | `pull_request.edited` | 同样运行 Quality，使 PR 改目标到 `main` 时发布必需结果；标题/正文编辑也会重新分类并运行必需的 Quality |
 | `pull_request_target` | `pr-metadata.yml` 协调器 |
-| `/test` 评论 | `pr-verification.yml` 的 `dispatch` 在分配 runner 前用 `contains(github.event.comment.body, '/test')` 预过滤——它是 `scripts/prmeta --check-trigger` 的宽松超集（少量误报，从不漏掉真实触发）；`scripts/prmeta` 仍是权威判断 |
+| `/test` 评论 | `pr-verification.yml` 的 `dispatch` 在分配 runner 前用 `contains(github.event.comment.body, '/test')` 预过滤——它是 `scripts/pr trigger` 的宽松超集（少量误报，从不漏掉真实触发）；`scripts/pr trigger` 仍是权威判断 |
 | 分支 / `main` push | 不运行 CI |
 | stable `vX.Y.Z` tag | 只运行 `release.yml`（负责全部 tag 门禁、六平台测试/构建与双平台容器验证；不重复 PR smoke 矩阵） |
 | 手动 | 浏览器/native 证据 workflow |
@@ -35,7 +35,7 @@ flowchart TD
 
 ## 变更范围分类
 
-- `ci.yml` 与 `pr-metadata.yml` 使用同一信任模型：解析受保护 base 分支的当前 tip，从该 tip checkout `scripts/classify-change-scope.sh` 与 `.github/ci-change-scope.gitignore`，再只为 diff 范围 fetch 精确的 PR HEAD——PR 无法改变自己的跳过判断。分类器失败时 fail closed。
+- `ci.yml` 与 `pr-metadata.yml` 使用同一信任模型：解析受保护 base 分支的当前 tip，从该 tip checkout `scripts/ci/classify-change-scope.sh` 与 `.github/ci-change-scope.gitignore`，再只为 diff 范围 fetch 精确的 PR HEAD——PR 无法改变自己的跳过判断。分类器失败时 fail closed。
 - 普通 pattern 表示仅文档；`?pattern` 只需要 Quality；`!pattern` 需要 Quality + Platform + Container。`pr-metadata.yml` 本身（smoke 控制器：分类、两个 dispatch 与必需门禁）必须是 `!pattern`。
 - 不需要的任务是原生任务级 `Skipped`，绝不伪造成功。Quality 任务即使仅文档跳过也保留字面的必需名称（GitHub 不评估被跳过的动态任务名）。
 - 只改 PR 正文的元数据编辑会重新分类未变化的 head：必需的 smoke 任务镜像已有 worker 结果，不需要的保持跳过——编辑正文无法把失败的 smoke 替换为绕过性的跳过。
@@ -58,4 +58,4 @@ flowchart TD
 ## 安装器与打包测试
 
 - `scripts/citest` 使用本地 fake Release、fake `curl` 与 checksum fixture（不访问 GitHub）。Unix 任务实际运行 `install.sh`，覆盖 SHA-256、带空格的目录、版本预检与校验失败时不覆盖旧二进制。Windows amd64/arm64 platform-smoke 用真实的 `cmd.exe`、`certutil.exe` 与 `tar.exe` 运行 `install.cmd`，始终传 `--no-path`（不修改 runner 注册表）。它是平台任务的一部分，没有单独的 workflow 策略实现。
-- Windows `.zip` 使用 runner 预装的 `7z`；其他平台使用 `zip`。`scripts/test-package-release.sh` 在 Windows 上把 fake 调用委托给真实 `7z`，其他机器使用 `zip` fixture，并检查压缩包成员——缺少 `zip` 的 Git Bash 会在发布测试门禁暴露。它用 MSYS 的 `winsymlinks:nativestrict` 创建受检链接；无法创建原生链接时测试失败，避免纯文件伪链接让输出祖先安全门禁失效。
+- Windows `.zip` 使用 runner 预装的 `7z`；其他平台使用 `zip`。`scripts/ci/test-package-release.sh` 在 Windows 上把 fake 调用委托给真实 `7z`，其他机器使用 `zip` fixture，并检查压缩包成员——缺少 `zip` 的 Git Bash 会在发布测试门禁暴露。它用 MSYS 的 `winsymlinks:nativestrict` 创建受检链接；无法创建原生链接时测试失败，避免纯文件伪链接让输出祖先安全门禁失效。
