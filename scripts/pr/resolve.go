@@ -10,7 +10,7 @@ import (
 
 // commandSource identifies where the effective verification commands came from.
 // The hash intentionally does not include this value: identity is defined by the
-// commands that actually run, not by the surface that declared them (§6).
+// commands that actually run, not by the surface that declared them.
 type commandSource string
 
 const (
@@ -27,7 +27,7 @@ type effectiveCommands struct {
 
 // testTrigger reports whether a comment asks for verification.
 //
-// §5.1 requires the trigger to be the first non-empty line, exactly "/test".
+// The trigger must be the first non-empty line, exactly "/test".
 // Scanning the whole comment is forbidden because it would let unrelated text
 // such as "please /test" or a later quotation start credentialed execution.
 func testTrigger(comment string) bool {
@@ -44,8 +44,8 @@ func testTrigger(comment string) bool {
 // resolveEffectiveCommands computes the commands a /test run must execute.
 //
 // A comment that declares a commands block fully replaces the PR declaration;
-// merging is forbidden (§5.3). Any declared-but-invalid override fails closed
-// and never falls back to the PR body (§5.4). Because the override replaces the
+// merging is forbidden. Any declared-but-invalid override fails closed
+// and never falls back to the PR body. Because the override replaces the
 // PR declaration rather than supplementing it, a declared override is resolved
 // before the PR body is consulted, so a stale or invalid PR declaration cannot
 // veto an otherwise valid override.
