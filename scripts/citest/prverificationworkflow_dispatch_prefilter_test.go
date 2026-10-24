@@ -8,7 +8,7 @@ import (
 	"testing"
 )
 
-// commentBodies 覆盖 §5.1 触发语义的边界：普通评论、合法触发、前置空行、
+// commentBodies 覆盖触发语义的边界：普通评论、合法触发、前置空行、
 // 以及“看起来像触发但 trusted parser 会拒绝”的输入。
 var commentBodies = []string{
 	"LGTM",
@@ -44,7 +44,7 @@ func trustedTrigger(t *testing.T, body string) bool {
 	return strings.Contains(string(output), "trigger=true")
 }
 
-// TestVerificationPrefilterNeverDropsATrustedTrigger 覆盖 R14 的安全性方向：
+// TestVerificationPrefilterNeverDropsATrustedTrigger 锁定安全性方向：
 // job-level prefilter 只是资源过滤器，允许少量 false positive，但绝不允许
 // false negative——任何 trusted parser 认可的 /test 都必须通过 prefilter。
 func TestVerificationPrefilterNeverDropsATrustedTrigger(t *testing.T) {

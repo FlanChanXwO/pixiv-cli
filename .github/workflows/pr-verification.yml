@@ -19,7 +19,7 @@ permissions: {}
 jobs:
   dispatch:
     name: Dispatch verification
-    # R14：廉价资源预过滤。普通 PR 评论（LGTM 等）不该占用 verification runner。
+    # 廉价资源预过滤。普通 PR 评论（LGTM 等）不该占用 verification runner。
     # `contains(comment.body, '/test')` 是 scripts/pr trigger 的宽松超集
     # （后者要求首个非空行精确等于 /test），因此只会产生少量 false positive，
     # 不可能把合法触发过滤掉。最终授权与触发判定仍归 scripts/pr。
@@ -87,7 +87,7 @@ jobs:
             commenter="$EVENT_COMMENTER"
           fi
           printf '%s' "$comment_body" > "$RUNNER_TEMP/comment-body.md"
-          # §5.1：触发必须是评论首个非空行且精确为 /test。判定归 trusted policy，
+          # 触发必须是评论首个非空行且精确为 /test。判定归 trusted policy，
           # workflow 不扫描整条评论，也不自建第二套 parser。
           trigger=$(go run ./scripts/pr trigger --comment-file "$RUNNER_TEMP/comment-body.md")
           if [ "$trigger" != "trigger=true" ]; then
@@ -173,7 +173,7 @@ jobs:
         run: |
           set -euo pipefail
           # 评论里的 commands block 完全覆盖 PR 声明；无效声明 fail closed，
-          # 绝不回落到 PR body（§5.3/§5.4）。
+          # 绝不回落到 PR body。
           go run ./scripts/pr resolve \
             --body-file "$RUNNER_TEMP/pr-body.md" \
             --comment-file "$RUNNER_TEMP/comment-body.md" \
@@ -266,7 +266,7 @@ jobs:
             } >> "$GITHUB_OUTPUT"
           }
 
-          # §6：identity 绑定 PR、HEAD 与实际执行的命令 hash，因此 override
+          # identity 绑定 PR、HEAD 与实际执行的命令 hash，因此 override
           # 是一次独立的执行身份。
           verification_identity() {
             printf '%s:%s:%s' "$PR" "$HEAD_SHA" "$VERIFICATION_HASH"
@@ -277,7 +277,7 @@ jobs:
             exit 0
           fi
           # resolver 已考虑 PR 声明，因此有效 override 不会被陈旧的 PR commands
-          # 否决（§5.3），而声明但无效的 override 仍然 fail closed（§5.4）。
+          # 否决，而声明但无效的 override 仍然 fail closed。
           if [ "$RESOLVE_OK" != true ]; then
             if [ "$OVERRIDE_DECLARED" = true ]; then
               fail_trigger "$RESOLVE_DESC"

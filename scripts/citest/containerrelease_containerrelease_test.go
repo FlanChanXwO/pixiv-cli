@@ -101,7 +101,7 @@ func TestDockerfileDoesNotEmbedSecretsOrState(t *testing.T) {
 
 // TestContainerPublishWorkflowUsesTrustedReleaseArtifacts 锁定两个 registry 共用的
 // release_run_id 恢复输入、immutable handoff 校验与 protected release
-// Environment 边界（§15/§17/§19/§23）。
+// Environment 边界。
 func TestContainerPublishWorkflowUsesTrustedReleaseArtifacts(t *testing.T) {
 	t.Parallel()
 	root := repositoryRoot(t)

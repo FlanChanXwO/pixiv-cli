@@ -12,7 +12,7 @@ on:
       - completed
   workflow_dispatch:
     inputs:
-      # §17：手动恢复只接受原始的 release_run_id。
+      # 手动恢复只接受原始的 release_run_id。
       release_run_id:
         description: Original trusted Release workflow run ID
         required: true
@@ -84,7 +84,7 @@ jobs:
           RUN_HEAD_SHA: ${{ steps.run.outputs.head_sha }}
         run: |
           set -euo pipefail
-          # §15：只发布 skill 的 publisher 不下载归档/镜像，用 identity-only 模式
+          # 只发布 skill 的 publisher 不下载归档/镜像，用 identity-only 模式
           # 证明这份 handoff 确实来自刚解析出的那个 run。
           go run ./scripts/release verify-handoff-identity \
             --handoff prepared/release/release-handoff.json \

@@ -58,7 +58,7 @@ func workflowFiles(t *testing.T) []string {
 	return paths
 }
 
-// TestWorkflowsUseNode24ActionPins 覆盖 R12：这四类 action 必须 pin 到已确认
+// TestWorkflowsUseNode24ActionPins 锁定这四类 action 必须 pin 到已确认
 // using: node24 的稳定版本，且不得残留任何 Node 20 pin。
 func TestWorkflowsUseNode24ActionPins(t *testing.T) {
 	t.Parallel()

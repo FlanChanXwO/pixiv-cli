@@ -131,7 +131,7 @@ func runResolve(args []string) {
 // resolveEffective emits the effective verification commands for a /test run.
 // An invalid override reports resolve_ok=false rather than exiting, so the
 // trusted aggregator can post the failure result and reactions; it must never
-// quietly fall back to the PR body (§5.4).
+// quietly fall back to the PR body.
 func resolveEffective(stdout *os.File, githubOutput, prBody, commentBody string, whitelist *Whitelist, cliName, commandsOutput string) {
 	effective, err := resolveEffectiveCommands(prBody, commentBody, whitelist, cliName)
 	overrideDeclared := commentDeclaresCommands(commentBody)
@@ -194,7 +194,7 @@ func validate(body string, whitelist *Whitelist, cliName, workspace string) resu
 	}
 
 	// A single trusted parser serves both the PR-body gate and comment overrides;
-	// §7 forbids a second parser or policy for override handling.
+	// a second parser or policy for override handling could disagree with it.
 	declared, commands, err := parseDeclaration(clean, whitelist, cliName)
 	if err != nil {
 		answer.CommandsOK = false
@@ -212,7 +212,7 @@ func validate(body string, whitelist *Whitelist, cliName, workspace string) resu
 	return answer
 }
 
-// commandCountDescription renders the §8.2 stable gate wording. Exactly one
+// commandCountDescription renders the stable gate wording. Exactly one
 // declared command reads in the singular; every other count is plural.
 func commandCountDescription(count int) string {
 	if count == 1 {
@@ -298,7 +298,7 @@ func writeTriggerOutput(path string, trigger bool) error {
 // writeResolveOutput publishes the effective-command outcome. override_declared
 // distinguishes "no comment declaration" from "declaration rejected", which the
 // workflow needs in order to fail closed only when the user actually asked for
-// an override (§8.3 keeps this separate from the PR commands gate).
+// an override; it is kept separate from the PR commands gate.
 func writeResolveOutput(path string, effective effectiveCommands, overrideDeclared, ok bool, description string) error {
 	if path == "" {
 		return nil

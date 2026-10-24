@@ -17,7 +17,7 @@ import (
 	"strings"
 )
 
-// releaseHandoff 是 Release workflow 产出的不可变交接清单（方案 §15）。
+// releaseHandoff 是 Release workflow 产出的不可变交接清单。
 //
 // 它是一次成功 Release run 的身份 + 产物事实快照：downstream publisher 只读取
 // 其中记录的 identity 与 checksum，不再自行构建、不再自行推断 tag 或版本。
@@ -117,7 +117,7 @@ func writeReleaseHandoff(input releaseHandoffInput) (releaseHandoff, error) {
 }
 
 // verifyHandoffIdentity 校验 handoff 的身份字段完整性。缺少任一项都意味着该
-// handoff 不能被 publisher 当作受信来源（§15）。
+// handoff 不能被 publisher 当作受信来源。
 func verifyHandoffIdentity(handoff releaseHandoff) error {
 	if strings.TrimSpace(handoff.Repository) == "" {
 		return errors.New("handoff repository is required")
@@ -152,7 +152,7 @@ func verifyHandoffArtifacts(handoff releaseHandoff, distDir, containerDir string
 }
 
 // verifyHandoffArtifactsAt 重新计算磁盘上的字节并与 handoff 记录比对。任何缺失、
-// 多出或内容不一致都会失败，从而保证 publisher 发布的是同一批 bytes（§19/§31）。
+// 多出或内容不一致都会失败，从而保证 publisher 发布的是同一批 bytes。
 //
 // checksumsPath 单独传入，因为 publish 阶段可能尚未在 dist 下生成 checksums.txt
 // （它由 preparation 阶段产出）；此时仍应对照那份已批准的校验和。
@@ -179,8 +179,8 @@ func verifyHandoffArtifactsAt(handoff releaseHandoff, distDir, containerDir, che
 // handoff 记录一致，但不要求本地已下载任何产物。
 //
 // 有些 publisher 只发布 handoff 里的一小部分内容（例如 ClawHub 只发布 skill），
-// 它们仍必须证明「读取的 handoff 来自被我信任的那个 run」，否则等于跳过了 §15
-// 的 trusted handoff 校验；同时又不该被迫下载与它无关的归档和镜像。
+// 它们仍必须证明「读取的 handoff 来自被我信任的那个 run」，否则等于跳过了
+// trusted handoff 校验；同时又不该被迫下载与它无关的归档和镜像。
 func verifyHandoffIdentityOnly(handoff releaseHandoff, expectedRunID int64, expectedRepository, expectedTag, expectedRunHeadSHA string) error {
 	if err := verifyHandoffIdentity(handoff); err != nil {
 		return err
@@ -416,7 +416,7 @@ func writeHandoffCommand(args []string) {
 
 // verifyHandoffSetCommand 供 downstream publisher 验正它拿到的产物确实属于
 // handoff 记录的那批 bytes。提供的身份参数会与 handoff 内记录的值比对，避免
-// 发布错 run 的产物（§15/§18）。
+// 发布错 run 的产物。
 func verifyHandoffSetCommand(args []string) {
 	set := flag.NewFlagSet("verify-handoff-set", flag.ExitOnError)
 	handoffPath := set.String("handoff", "", "release handoff JSON path")
@@ -453,7 +453,7 @@ func verifyHandoffSetCommand(args []string) {
 	if *tag != "" && handoff.Tag != *tag {
 		fatal(fmt.Errorf("handoff tag = %q, want %q", handoff.Tag, *tag))
 	}
-	// §15：publisher 必须确认自己读取的 handoff 确实由所解析出的那个 run 产生。
+	// publisher 必须确认自己读取的 handoff 确实由所解析出的那个 run 产生。
 	// 这里比对 handoff 记录的 run head SHA 与调用方从该 run 读到的 head SHA；
 	// 它是自校验的，不会把 tag commit 与 dispatch 分支头混为一谈。
 	if *headSHA != "" && handoff.RunHeadSHA != *headSHA {
@@ -481,7 +481,7 @@ func verifyHandoffSetCommand(args []string) {
 }
 
 // writeHandoffOutputs 把 publisher 需要的 handoff 身份字段发布为 GitHub Actions
-// output，使 workflow 不再从 tag 名或 run 元数据自行推断（§17）。
+// output，使 workflow 不再从 tag 名或 run 元数据自行推断。
 func writeHandoffOutputs(path string, handoff releaseHandoff) error {
 	file, err := os.OpenFile(path, os.O_WRONLY|os.O_APPEND|os.O_CREATE, 0o600)
 	if err != nil {
@@ -507,7 +507,7 @@ func writeHandoffOutputs(path string, handoff releaseHandoff) error {
 }
 
 // verifyHandoffIdentityCommand 供只发布 handoff 中部分内容的 publisher 使用：
-// 它证明 handoff 来自被解析的那个 run，而不要求本地已下载任何产物（§15）。
+// 它证明 handoff 来自被解析的那个 run，而不要求本地已下载任何产物。
 func verifyHandoffIdentityCommand(args []string) {
 	set := flag.NewFlagSet("verify-handoff-identity", flag.ExitOnError)
 	handoffPath := set.String("handoff", "", "release handoff JSON path")
