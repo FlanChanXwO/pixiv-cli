@@ -250,7 +250,9 @@ func (s AccountService) listWithContext(ctx context.Context) (accountListOut, er
 	if err != nil {
 		return accountListOut{}, err
 	}
-	result := accountListOut{Accounts: make([]accountOut, 0, len(accounts))}
+	// Preserve the published JSON contract: an empty store serializes as
+	// "accounts": null, matching the account list output before the DTO merge.
+	var result accountListOut
 	for _, account := range accounts {
 		result.Accounts = append(result.Accounts, accountFromPixiv(account))
 		if account.Default {
