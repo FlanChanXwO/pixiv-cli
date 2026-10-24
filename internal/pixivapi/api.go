@@ -1,7 +1,7 @@
 // App API route and query/form parameter names used by sdk/pixiv.
 //
 // 本文件只声明标识符本身；请求发送与重试仍由 appapi.go 负责。protocol.go 中的
-// App* 常量继续服务尚未迁移的 endpoint 包，后续 goal 完成迁移后由它们移入此处。
+// App* 常量是历史目录，新增的 SDK 端点只引用本文件。
 package pixivapi
 
 // App API 路径。
@@ -26,6 +26,24 @@ const (
 	PathUserBookmarkTags     = "/v1/user/bookmark-tags/illust"
 	PathTrendingTagsIllust   = "/v1/trending-tags/illust"
 	PathUgoiraMetadata       = "/v1/ugoira/metadata"
+
+	PathSearchUser            = "/v1/search/user"
+	PathUserDetail            = "/v1/user/detail"
+	PathUserRecommended       = "/v1/user/recommended"
+	PathUserRelated           = "/v1/user/related"
+	PathUserFollowing         = "/v1/user/following"
+	PathUserFollower          = "/v1/user/follower"
+	PathUserBlocked           = "/v2/user/list"
+	PathUserMyPixiv           = "/v1/user/mypixiv"
+	PathUserNovels            = "/v1/user/novels"
+	PathUserNovelBookmarks    = "/v1/user/bookmarks/novel"
+	PathUserNovelBookmarkTags = "/v1/user/bookmark-tags/novel"
+	PathNovelBookmarkDetail   = "/v2/novel/bookmark/detail"
+	PathNovelBookmarkAdd      = "/v2/novel/bookmark/add"
+	PathNovelBookmarkDelete   = "/v1/novel/bookmark/delete"
+	PathStamps                = "/v1/stamps"
+	PathFollowAdd             = "/v1/user/follow/add"
+	PathFollowDelete          = "/v1/user/follow/delete"
 
 	PathSearchNovel        = "/v1/search/novel"
 	PathNovelDetail        = "/v2/novel/detail"
@@ -78,6 +96,7 @@ const (
 	ParamParentCommentID  = "parent_comment_id"
 	ParamStampID          = "stamp_id"
 	ParamSeedIllustIDs    = "seed_illust_ids[]"
+	ParamSeedUserID       = "seed_user_id"
 	ParamViewed           = "viewed[]"
 	ParamMinRecentIllusts = "min_bookmark_id_for_recent_illust"
 	ParamMaxRecommend     = "max_bookmark_id_for_recommend"

@@ -17,7 +17,7 @@ flowchart TB
     GAL["pixiv/gallery<br/>MCP Apps 视图"]
     MP["pixiv/mediaproxy<br/>capability、LRU、动画任务"]
     AM["pixiv/tools<br/>artwork_media"]
-    RS["services/pixiv/account/reads.go<br/>MCP 读取会话"]
+    RS["internal/pixivaccount/reads.go<br/>MCP 读取会话"]
     DL["internal/media/downloader<br/>（仅 stdio）"]
     NEW --> PX & FB
     HTTP --> AUTH

@@ -1,3 +1,6 @@
+// 作品搜索：查询参数翻译、AIMode 批内过滤与 checkpoint 游标。
+// 搜索响应结构复用 response.go 与 artwork.go。
+
 package pixiv
 
 import (
@@ -215,4 +218,40 @@ func setOptionalParam(query url.Values, key, value string) {
 	if value != "" {
 		query.Set(key, value)
 	}
+}
+
+// SearchArtworksRequest searches artworks. Repeat the original fields when
+// continuing with Cursor.
+type SearchArtworksRequest struct {
+	Word        string
+	Target      SearchTarget
+	Sort        SortMode
+	Duration    DurationFilter
+	StartDate   string
+	EndDate     string
+	ContentType SearchContentType
+	AIMode      SearchAIMode
+	AspectRatio SearchAspectRatio
+	Resolution  SearchResolution
+	Tool        string
+	BookmarkMin *int
+	BookmarkMax *int
+	Cursor      sdk.Cursor
+	// CursorContext binds caller-side filtering semantics; it is hashed into
+	// the cursor binding and is never sent to Pixiv. Repeat it when resuming.
+	CursorContext string
+	// Offset 是原始搜索结果流的初始位置；使用 Cursor 续页时须重复此值。
+	Offset int
+}
+
+var searchContinuation = continuationSpec{
+	path: pixivapi.PathSearchIllust,
+	keys: []string{pixivapi.ParamOffset},
+	query: []string{
+		pixivapi.ParamWord, pixivapi.ParamSearchTarget, pixivapi.ParamSort,
+		pixivapi.ParamDuration, pixivapi.ParamStartDate, pixivapi.ParamEndDate,
+		pixivapi.ParamSearchAIType, pixivapi.ParamRatioPattern, pixivapi.ParamContentType,
+		pixivapi.ParamTool, pixivapi.ParamBookmarkNumMin, pixivapi.ParamBookmarkNumMax,
+		pixivapi.ParamWidthMin, pixivapi.ParamWidthMax, pixivapi.ParamHeightMin, pixivapi.ParamHeightMax,
+	},
 }

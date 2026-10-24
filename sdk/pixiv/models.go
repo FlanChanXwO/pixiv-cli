@@ -328,3 +328,101 @@ func (value NovelBookmarkDetail) MarshalJSON() ([]byte, error) {
 		Tags     []string `json:"tags"`
 	}{value.Restrict, tags})
 }
+
+// SearchTarget selects which novel or artwork fields a search query matches.
+type SearchTarget string
+
+// SearchTarget values select which fields a search query matches.
+const (
+	SearchTargetPartialMatchForTags SearchTarget = "partial_match_for_tags"
+	SearchTargetExactMatchForTags   SearchTarget = "exact_match_for_tags"
+	SearchTargetTitleAndCaption     SearchTarget = "title_and_caption"
+	SearchTargetKeyword             SearchTarget = "keyword"
+)
+
+// SortMode orders search results.
+type SortMode string
+
+// SortMode values define the supported SortMode filesystem.
+const (
+	SortModeDateDesc    SortMode = "date_desc"
+	SortModeDateAsc     SortMode = "date_asc"
+	SortModePopularDesc SortMode = "popular_desc"
+)
+
+// DurationFilter narrows search results to a recent publication window.
+type DurationFilter string
+
+// DurationFilter values define the supported DurationFilter filesystem.
+const (
+	DurationLastDay   DurationFilter = "within_last_day"
+	DurationLastWeek  DurationFilter = "within_last_week"
+	DurationLastMonth DurationFilter = "within_last_month"
+)
+
+// RankingMode selects an artwork or novel ranking category.
+type RankingMode string
+
+// RankingMode values define the supported RankingMode filesystem.
+const (
+	RankingModeDay             RankingMode = "day"
+	RankingModeDayMale         RankingMode = "day_male"
+	RankingModeDayFemale       RankingMode = "day_female"
+	RankingModeWeek            RankingMode = "week"
+	RankingModeWeekOriginal    RankingMode = "week_original"
+	RankingModeWeekRookie      RankingMode = "week_rookie"
+	RankingModeMonth           RankingMode = "month"
+	RankingModeDayManga        RankingMode = "day_manga"
+	RankingModeWeekManga       RankingMode = "week_manga"
+	RankingModeMonthManga      RankingMode = "month_manga"
+	RankingModeWeekRookieManga RankingMode = "week_rookie_manga"
+	RankingModeDayR18          RankingMode = "day_r18"
+	RankingModeDayMaleR18      RankingMode = "day_male_r18"
+	RankingModeDayFemaleR18    RankingMode = "day_female_r18"
+	RankingModeWeekR18         RankingMode = "week_r18"
+	RankingModeWeekR18G        RankingMode = "week_r18g"
+)
+
+// SearchContentType filters artwork search results by kind.
+type SearchContentType string
+
+// SearchContentType values define the supported SearchContentType filesystem.
+const (
+	SearchContentTypeAll             SearchContentType = "all"
+	SearchContentTypeIllustAndUgoira SearchContentType = "illust-and-ugoira"
+	SearchContentTypeIllust          SearchContentType = "illust"
+	SearchContentTypeManga           SearchContentType = "manga"
+	SearchContentTypeUgoira          SearchContentType = "ugoira"
+)
+
+// SearchAIMode filters artwork search results by AI-generated content.
+type SearchAIMode string
+
+// SearchAIMode values define the supported SearchAIMode filesystem.
+const (
+	SearchAIModeAll     SearchAIMode = "all"
+	SearchAIModeExclude SearchAIMode = "exclude"
+	SearchAIModeOnly    SearchAIMode = "only"
+)
+
+// SearchAspectRatio filters artwork search results by aspect ratio.
+type SearchAspectRatio string
+
+// SearchAspectRatio values define the supported SearchAspectRatio filesystem.
+const (
+	SearchAspectRatioAll       SearchAspectRatio = "all"
+	SearchAspectRatioLandscape SearchAspectRatio = "landscape"
+	SearchAspectRatioPortrait  SearchAspectRatio = "portrait"
+	SearchAspectRatioSquare    SearchAspectRatio = "square"
+)
+
+// SearchResolution filters artwork search results by resolution band.
+type SearchResolution string
+
+// SearchResolution values define the supported SearchResolution filesystem.
+const (
+	SearchResolutionAll    SearchResolution = "all"
+	SearchResolutionHigh   SearchResolution = "high"
+	SearchResolutionMedium SearchResolution = "medium"
+	SearchResolutionLow    SearchResolution = "low"
+)

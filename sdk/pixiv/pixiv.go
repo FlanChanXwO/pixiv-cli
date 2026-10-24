@@ -11,18 +11,6 @@ import (
 	"github.com/FlanChanXwO/pixiv-cli/internal/logging"
 	"github.com/FlanChanXwO/pixiv-cli/internal/pixivapi"
 	"github.com/FlanChanXwO/pixiv-cli/internal/pixivapi/oauth"
-	stamps "github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/endpoint/stamps"
-	userblocked "github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/endpoint/user/blocked"
-	userdetail "github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/endpoint/user/detail"
-	userfollow "github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/endpoint/user/follow"
-	userfollowers "github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/endpoint/user/followers"
-	userfollowing "github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/endpoint/user/following"
-	usermypixiv "github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/endpoint/user/mypixiv"
-	usernovelbookmarks "github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/endpoint/user/novelbookmarks"
-	usernovels "github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/endpoint/user/novels"
-	userrecommended "github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/endpoint/user/recommended"
-	userrelated "github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/endpoint/user/related"
-	usersearch "github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/endpoint/user/search"
 	"github.com/FlanChanXwO/pixiv-cli/sdk"
 )
 
@@ -63,21 +51,11 @@ type Options struct {
 // Unauthorized when no token is present and never fall back to an anonymous
 // or Web path.
 type Client struct {
-	app                *pixivapi.Client
-	userBlocked        *userblocked.Client
-	userDetail         *userdetail.Client
-	userFollowers      *userfollowers.Client
-	userFollowing      *userfollowing.Client
-	userFollow         *userfollow.Client
-	userMyPixiv        *usermypixiv.Client
-	userNovelBookmarks *usernovelbookmarks.Client
-	userNovels         *usernovels.Client
-	userRecommended    *userrecommended.Client
-	userRelated        *userrelated.Client
-	userSearch         *usersearch.Client
-	stamps             *stamps.Client
-	resClient          *pixivapi.ResourceClient
-	opts               Options
+	// app owns the App API transport and the access token; every operation goes
+	// through it directly.
+	app       *pixivapi.Client
+	resClient *pixivapi.ResourceClient
+	opts      Options
 
 	httpClient *http.Client
 	selfHTTP   bool
@@ -174,26 +152,14 @@ func newClient(httpClient *http.Client, selfHTTP bool, accessToken string, optio
 		UserID:         userID,
 	})
 	return &Client{
-		app:                app,
-		userBlocked:        userblocked.New(app),
-		userDetail:         userdetail.New(app),
-		userFollowers:      userfollowers.New(app),
-		userFollowing:      userfollowing.New(app),
-		userFollow:         userfollow.New(app),
-		userMyPixiv:        usermypixiv.New(app),
-		userNovelBookmarks: usernovelbookmarks.New(app),
-		userNovels:         usernovels.New(app),
-		userRecommended:    userrecommended.New(app),
-		userRelated:        userrelated.New(app),
-		userSearch:         usersearch.New(app),
-		stamps:             stamps.New(app),
-		resClient:          pixivapi.NewApp(httpClient),
-		opts:               options,
-		httpClient:         httpClient,
-		selfHTTP:           selfHTTP,
-		userID:             userID,
-		cursorInstance:     cursorInstance,
-		resourceURLs:       make(map[string]string),
+		app:            app,
+		resClient:      pixivapi.NewApp(httpClient),
+		opts:           options,
+		httpClient:     httpClient,
+		selfHTTP:       selfHTTP,
+		userID:         userID,
+		cursorInstance: cursorInstance,
+		resourceURLs:   make(map[string]string),
 	}, nil
 }
 

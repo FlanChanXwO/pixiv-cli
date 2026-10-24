@@ -10,8 +10,6 @@ import (
 	"strings"
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/pixivapi"
-	"github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/endpoint/stamps"
-	"github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/endpoint/user"
 	atomicfile "github.com/FlanChanXwO/pixiv-cli/internal/storage/atomicfile"
 	"github.com/FlanChanXwO/pixiv-cli/sdk"
 )
@@ -301,11 +299,11 @@ func (c *Client) resolveResourceURL(ctx context.Context, ref sdk.ResourceRef, op
 		}
 		rawURL, err = imageURLsResourceURL(detail.Novel.ImageURLs, rp.Variant)
 	case "user_profile":
-		detail, appErr := c.userDetail.Detail(ctx, rp.ID)
+		detail, appErr := c.fetchUserDetail(ctx, operation, rp.ID, false)
 		if appErr != nil {
-			return "", classifyAppError(appErr, operation)
+			return "", appErr
 		}
-		rawURL, err = profileImageResourceURL(detail.User.ProfileImageURLs)
+		rawURL, err = profileImageResourceURL(detail.User.Value.ProfileImageURLs)
 	case "ugoira_archive":
 		var wire ugoiraResponseWire
 		if appErr := c.app.GetJSON(ctx, pixivapi.PathUgoiraMetadata, url.Values{
@@ -324,11 +322,11 @@ func (c *Client) resolveResourceURL(ctx context.Context, ref sdk.ResourceRef, op
 		}
 		rawURL, err = c.novelContentResourceURL(rp, raw)
 	case "stamp":
-		result, appErr := c.stamps.List(ctx)
+		items, appErr := c.fetchStamps(ctx, operation)
 		if appErr != nil {
-			return "", classifyAppError(appErr, operation)
+			return "", appErr
 		}
-		rawURL, err = stampResourceURL(result.Items, rp.ID)
+		rawURL, err = stampResourceURL(items, rp.ID)
 	default:
 		return "", newError(operation, sdk.InvalidArgument, "resource kind is unsupported")
 	}
@@ -347,7 +345,7 @@ func (c *Client) resolveResourceURL(ctx context.Context, ref sdk.ResourceRef, op
 	return rawURL, nil
 }
 
-func stampResourceURL(items []stamps.Stamp, id int64) (string, error) {
+func stampResourceURL(items []stampWire, id int64) (string, error) {
 	for _, item := range items {
 		if item.ID == id {
 			return item.URL, nil
@@ -478,7 +476,7 @@ func variantPathComponents(variant string) (prefix, crop, suffix string, ok bool
 	}
 }
 
-func profileImageResourceURL(urls user.ProfileImageURLs) (string, error) {
+func profileImageResourceURL(urls profileImageURLsWire) (string, error) {
 	if urls.Medium == nil || *urls.Medium == "" {
 		return "", errors.New("profile image is unavailable")
 	}
