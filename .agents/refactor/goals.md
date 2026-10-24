@@ -6,6 +6,8 @@
 
 依赖于 2026-10-23 调整：G09、G23–G27 不再等待 G22 和整个阶段 1，只等待与其代码冲突的 goal；G24、G26 先于 G22 进行，G22 在它们的结果上改造日志。G19 照常执行，不再等待 ClawHub 等发布 workflow 的状态；G20 扩大为 scripts 与 CI 的全面精简，G21、G33 照常执行（2026-10-23 更正：此前误标为取消）；frontend/ 的文件头注释并入 G32。以下表为准。
 
+2026-10-24 起冻结各 goal 语句：执行中发现的新问题记录在 PR 描述和最终汇报中，由 G28（代码）或 G34（文档、skill）统一处理，不再修改尚在执行的 goal。
+
 | Goal | worktree | 依赖 | 可并行 |
 |---|---|---|---|
 | G01 | `refactor-g01-tidy` | 无 | 否 |
@@ -1119,9 +1121,16 @@
   - auto-assign.yml。
   - CI 与发布流程都不调用、只有文档提到的脚本（例如 test-build-platform.sh、test-homebrew-formula.sh）。
   - 其余没有 workflow、发布流程、README 或安装路径调用的脚本和工具：逐个 grep 调用方后判断。
-- 能用 sh 写清楚的改用 sh：逻辑能用 POSIX sh 加 runner 已有的工具（jq、gh、sha256sum、tar 等）在约 100 行内清楚表达的 Go 工具，改写为 sh 脚本，例如 platformmatrix、homebrewformula，以及 releaseassets、releasenotes 中的简单部分（以实际代码为准）。以下保留 Go：解析不可信输入（PR 正文、评论、/test 命令白名单的执行）、发布信任链（release 的 trust/handoff）、许可证收集（licensebundle）。在 Windows runner 上运行的步骤写 shell: bash。不引入新依赖或新工具。
-- 撤销 scripts/internal/：共享代码并入唯一的使用方；两个工具共用时，合并为一个带子命令的工具（例如 prmeta 与 verification），或把需要的部分并入各自并删除间接层。
-- 目录按用途重排，例如 scripts/build/、scripts/release/、scripts/pr/；每个 Go 工具一个 package main 目录；platforms.json 放到使用它的目录旁。install.sh、install.cmd 是 README 中公开的 raw URL，留在 scripts/ 根目录。
+- 改用 sh 只限很小的工具：能缩成约 20 行 jq 或 sh、并且只在 Linux runner 上运行的 Go 工具才改写，目前只有 platformmatrix（改为 build/matrix.sh）。发布链路、PR 治理、licensebundle 保持 Go，只做合并与删减。不引入新依赖或新工具。
+- 撤销 scripts/internal/：把共享包的使用方合并为一个带子命令的工具，共享包随之消失。
+- 预期目录结构（2026-10-24 与维护者确认；文件名以实际代码为准）：
+  - scripts/ 根目录：install.sh、install.cmd（README 中公开的 raw URL，不动）、build.sh（本机构建入口）。
+  - scripts/build/：platform.sh（← build-platform.sh）、package.sh（← package-release.sh）、platforms.json（← ci/platforms.json）、matrix.sh（← platformmatrix）、licensebundle/（Go）。
+  - scripts/release/：一个 Go 工具，子命令 handoff、assets、notes、formula、recover；由 release、releaseassets、releasenotes、homebrewformula、homebrewrecovery 与 internal/releasenotesrender 合并，按领域分文件。
+  - scripts/pr/：一个 Go 工具，子命令 meta、verify，以及 command-whitelist.txt；由 prmeta、verification 与 internal/verificationpolicy 合并。
+  - scripts/ci/：classify-change-scope.sh、race-gate.sh（← test-race-gate.sh）、test-package-release.sh。
+  - scripts/citest/：精简后保留的测试。
+  - .github/workflows/：删除 native-evidence.yml、auto-assign.yml 后剩 12 个；ci-change-scope.gitignore、labeler.yml 中的路径同步更新。
 - licensebundle：删除暂存、备份、回滚和 bundleFileOps，改为删除旧目录后直接写入，--check 生成到临时目录后比对；--check 从 7 处减为 2 处（ci.yml 的 Quality、release.yml 的 build）。
 - 测试：citest 中只断言 YAML、Dockerfile 文本的测试删除；保留真实执行代码的（installers、changescope、dispatch_prefilter）、workflowpins，以及 containerrelease 中固定 base digest、非 root 运行、不内嵌密钥或状态、只使用受信 release 产物这 4 个。各工具自身的测试只保留“出错会悄悄产出错误发布物”的部分：校验和、归档命名、formula 版本、release 正文渲染。改写为 sh 的工具，其 Go 单元测试随之删除。
 - PR 治理体系（/test 验证、无效 PR 关闭、prmeta）保留功能，只简化实现（规格第 8 节）。
@@ -1129,10 +1138,10 @@
 - 同步 AGENTS.md、pixiv-cli-ci、pixiv-cli-native、pixiv-cli-test、pixiv-cli-pr、pixiv-cli-release-notes skill，以及中英文 ci.md、release.md、development.md、architecture.md。
 
 【验收】
-- 每个改写为 sh 的工具，在相同输入上与原 Go 实现的输出逐字节一致（release notes、formula、校验和文件、归档名、平台矩阵 JSON），比对命令与结果写进 PR。
+- matrix.sh 在相同输入上与原 platformmatrix 的输出逐字节一致；合并后的 release、pr 工具对 release notes、formula、校验和文件、归档名、PR 元数据的输出与改动前逐字节一致；比对命令与结果写进 PR。
 - licensebundle 的生成结果与改动前逐字节一致。
 - test-package-release.sh 与 CI 中的发布前检查通过；过渡 PR 和回退清理 PR 都已合并，smoke workflow 只引用存在的路径。
-- scripts/internal/ 已删除。
+- scripts/internal/ 已删除；scripts/ 的 Go 包约为 4 个（licensebundle、release、pr、citest）。
 - PR 中列出删除的工具、workflow、脚本和测试及依据，以及 scripts/、.github/ 的行数和 Go 包数变化。
 
 【依据】
