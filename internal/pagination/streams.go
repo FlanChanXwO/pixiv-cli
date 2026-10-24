@@ -37,21 +37,9 @@ func CollectStreams[T any, C Cursor](ctx context.Context, plan PagePlan, streams
 // cursor。任一流失败都会丢弃整个逻辑页的部分结果。
 func collectStreamsFrom[T any, C Cursor](ctx context.Context, plan PagePlan, streams []Stream[T, C], initial StreamState[C]) ([]T, StreamState[C], PageResult, error) {
 	var zeroState StreamState[C]
-	if plan.Skip < 0 {
-		return nil, zeroState, PageResult{}, errors.New("page skip must be zero or positive")
+	if err := validateStreamPlan(plan, streams); err != nil {
+		return nil, zeroState, PageResult{}, err
 	}
-	if plan.Limit < 0 {
-		return nil, zeroState, PageResult{}, errors.New("page limit must be zero or positive")
-	}
-	for index, stream := range streams {
-		if stream.Fetch == nil {
-			return nil, zeroState, PageResult{}, fmt.Errorf("stream %d fetch is required", index)
-		}
-		if stream.Checkpoint == nil {
-			return nil, zeroState, PageResult{}, fmt.Errorf("stream %d checkpoint is required", index)
-		}
-	}
-
 	cursors := append([]C(nil), initial.Cursors...)
 	if len(cursors) == 0 {
 		cursors = make([]C, len(streams))
@@ -67,7 +55,6 @@ func collectStreamsFrom[T any, C Cursor](ctx context.Context, plan PagePlan, str
 		stream := streams[streamIndex]
 		cursor := state.Cursors[streamIndex]
 		seen := make(map[string]struct{})
-
 		for {
 			if err := ctx.Err(); err != nil {
 				return nil, zeroState, PageResult{}, err
@@ -76,41 +63,19 @@ func collectStreamsFrom[T any, C Cursor](ctx context.Context, plan PagePlan, str
 				return nil, zeroState, PageResult{}, fmt.Errorf("pagination stream %d cursor repeated: %s", streamIndex, cursor.String())
 			}
 			seen[cursor.String()] = struct{}{}
-
 			batch, next, err := stream.Fetch(ctx, cursor)
 			if err != nil {
 				return nil, zeroState, PageResult{}, err
 			}
-			matched := make([]T, 0, len(batch))
-			positions := make([]int, 0, len(batch))
-			for index, value := range batch {
-				keep := true
-				if stream.Include != nil {
-					keep, err = stream.Include(value)
-					if err != nil {
-						return nil, zeroState, PageResult{}, err
-					}
-				}
-				if keep {
-					matched = append(matched, value)
-					positions = append(positions, index+1)
-				}
+			matched, positions, err := selectStreamBatch(batch, stream.Include)
+			if err != nil {
+				return nil, zeroState, PageResult{}, err
 			}
-
-			if skip >= len(matched) {
-				skip -= len(matched)
-				matched = nil
-				positions = nil
-			} else if skip > 0 {
-				matched = matched[skip:]
-				positions = positions[skip:]
-				skip = 0
-			}
+			matched, positions, skip = applySkip(matched, positions, skip)
 			if seekingOffset && skip == 0 && len(matched) > 0 {
 				seekingOffset = false
 			}
 			batchReturned := len(matched) > 0
-
 			if plan.Limit > 0 {
 				remaining := plan.Limit - result.Returned
 				if len(matched) > remaining {
@@ -126,28 +91,13 @@ func collectStreamsFrom[T any, C Cursor](ctx context.Context, plan PagePlan, str
 					result.HasMore = true
 				}
 			}
-
 			if len(matched) > 0 {
 				items = append(items, matched...)
 				result.Returned += len(matched)
 			}
-
 			if plan.Limit > 0 && result.Returned >= plan.Limit {
-				if result.HasMore {
-					state.Current = streamIndex
-					return items, state, result, nil
-				}
-				state.Cursors[streamIndex] = next
-				if !next.IsZero() {
-					state.Current = streamIndex
-					result.HasMore = true
-					return items, state, result, nil
-				}
-				state.Current = streamIndex + 1
-				result.HasMore = state.Current < len(streams)
-				return items, state, result, nil
+				return finishLimitedStream(items, state, result, streamIndex, next, len(streams))
 			}
-
 			// OneBatch 只在当前流找到第一个有匹配内容的源批次后停止；
 			// 没有匹配内容的流会自然推进到下一个流，不为填充结果额外取批。
 			if plan.OneBatch && !seekingOffset && batchReturned {
@@ -161,7 +111,6 @@ func collectStreamsFrom[T any, C Cursor](ctx context.Context, plan PagePlan, str
 				}
 				return items, state, result, nil
 			}
-
 			if next.IsZero() {
 				state.Cursors[streamIndex] = next
 				state.Current = streamIndex + 1
@@ -171,6 +120,69 @@ func collectStreamsFrom[T any, C Cursor](ctx context.Context, plan PagePlan, str
 			cursor = next
 		}
 	}
+	return items, state, result, nil
+}
 
+func validateStreamPlan[T any, C Cursor](plan PagePlan, streams []Stream[T, C]) error {
+	if plan.Skip < 0 {
+		return errors.New("page skip must be zero or positive")
+	}
+	if plan.Limit < 0 {
+		return errors.New("page limit must be zero or positive")
+	}
+	for index, stream := range streams {
+		if stream.Fetch == nil {
+			return fmt.Errorf("stream %d fetch is required", index)
+		}
+		if stream.Checkpoint == nil {
+			return fmt.Errorf("stream %d checkpoint is required", index)
+		}
+	}
+	return nil
+}
+
+func selectStreamBatch[T any](batch []T, include func(T) (bool, error)) ([]T, []int, error) {
+	matched := make([]T, 0, len(batch))
+	positions := make([]int, 0, len(batch))
+	for index, value := range batch {
+		keep := true
+		if include != nil {
+			var err error
+			keep, err = include(value)
+			if err != nil {
+				return nil, nil, err
+			}
+		}
+		if keep {
+			matched = append(matched, value)
+			positions = append(positions, index+1)
+		}
+	}
+	return matched, positions, nil
+}
+
+func applySkip[T any](matched []T, positions []int, skip int) ([]T, []int, int) {
+	if skip >= len(matched) {
+		return nil, nil, skip - len(matched)
+	}
+	if skip > 0 {
+		return matched[skip:], positions[skip:], 0
+	}
+	return matched, positions, 0
+}
+
+func finishLimitedStream[T any, C Cursor](items []T, state StreamState[C], result PageResult, streamIndex int, next C, streamCount int) ([]T, StreamState[C], PageResult, error) {
+	if result.HasMore {
+		state.Current = streamIndex
+		return items, state, result, nil
+	}
+	state.Cursors[streamIndex] = next
+	if !next.IsZero() {
+		state.Current = streamIndex
+		result.HasMore = true
+		return items, state, result, nil
+	}
+	state.Current = streamIndex + 1
+	result.HasMore = state.Current < streamCount
 	return items, state, result, nil
 }

@@ -139,72 +139,17 @@ func (i *releaseInstaller) Install(ctx context.Context, rel release.Release) (er
 	if err := source.CheckContext(ctx, "prepare release update"); err != nil {
 		return err
 	}
-	version, err := release.ParseSemanticVersion(rel.TagName)
-	if err != nil {
-		return fmt.Errorf("parse release tag %q: %w", rel.TagName, err)
-	}
-	if rel.Version == "" || rel.Version != version.String() {
-		return fmt.Errorf("release version %q does not match tag %q", rel.Version, rel.TagName)
-	}
-	assets, err := selectReleaseAssets(rel.Assets, releaseArchiveName(rel.Version, i.goos, i.goarch))
+	assets, err := i.prepareRelease(ctx, rel)
 	if err != nil {
 		return err
 	}
-	if err := i.validateAssetURLs(rel, assets); err != nil {
-		return err
-	}
-	assetSources, err := i.assetSources(ctx, assets.checksums)
+	targetPath, workDir, err := i.stageRelease(ctx)
 	if err != nil {
 		return err
 	}
-	checksums, err := i.download(ctx, assets.checksums, assetSources)
-	if err != nil {
-		return fmt.Errorf("download %s: %w", checksumsAssetName, err)
-	}
-	manifestBytes, err := i.download(ctx, assets.manifest, assetSources)
-	if err != nil {
-		return fmt.Errorf("download %s: %w", manifestAssetName, err)
-	}
-	if err := verifyChecksumsManifest(manifestBytes, checksums, i.trustedKeys); err != nil {
-		return err
-	}
-	if err := verifyArchiveChecksum(checksums, assets.archive.Name, nil); err != nil {
-		return err
-	}
-	archive, err := i.download(ctx, assets.archive, assetSources)
-	if err != nil {
-		return fmt.Errorf("download release archive %q: %w", assets.archive.Name, err)
-	}
-	if err := source.CheckContext(ctx, "extract release archive"); err != nil {
-		return err
-	}
-	if err := verifyArchiveChecksum(checksums, assets.archive.Name, archive); err != nil {
-		return err
-	}
-	targetPath, err := i.executablePath()
-	if err != nil {
-		return fmt.Errorf("locate current executable: %w", err)
-	}
-	targetPath, err = resolveReleaseExecutablePath(targetPath)
-	if err != nil {
-		return err
-	}
-	workDir, err := os.MkdirTemp(filepath.Dir(targetPath), ".pixiv-update-")
-	if err != nil {
-		return fmt.Errorf("create update temporary directory beside %q: %w", targetPath, err)
-	}
-	defer func() {
-		if err != nil {
-			if removeErr := os.RemoveAll(workDir); removeErr != nil && !os.IsNotExist(removeErr) {
-				err = errors.Join(err, fmt.Errorf("remove update temporary directory %q: %w", workDir, removeErr))
-			}
-		}
-	}()
-	if err := source.CheckContext(ctx, "extract release archive"); err != nil {
-		return err
-	}
+	defer i.cleanupWorkDir(&err, workDir)
 	candidatePath := filepath.Join(workDir, releaseBinaryName(i.goos))
-	if err := extractReleaseBinary(archive, assets.archive.Name, candidatePath, releaseBinaryName(i.goos)); err != nil {
+	if err := extractReleaseBinary(assets.archivePayload, assets.archive.Name, candidatePath, releaseBinaryName(i.goos)); err != nil {
 		return err
 	}
 	if err := source.CheckContext(ctx, "preflight downloaded executable"); err != nil {
@@ -212,6 +157,87 @@ func (i *releaseInstaller) Install(ctx context.Context, rel release.Release) (er
 	}
 	if err := i.checker.Check(ctx, candidatePath, rel.TagName); err != nil {
 		return fmt.Errorf("preflight downloaded executable %q: %w", candidatePath, err)
+	}
+	return i.replaceExecutable(ctx, targetPath, candidatePath, workDir)
+}
+
+// prepareRelease validates the release identity and downloads/verifies its assets.
+func (i *releaseInstaller) prepareRelease(ctx context.Context, rel release.Release) (selectedReleaseAssets, error) {
+	version, err := release.ParseSemanticVersion(rel.TagName)
+	if err != nil {
+		return selectedReleaseAssets{}, fmt.Errorf("parse release tag %q: %w", rel.TagName, err)
+	}
+	if rel.Version == "" || rel.Version != version.String() {
+		return selectedReleaseAssets{}, fmt.Errorf("release version %q does not match tag %q", rel.Version, rel.TagName)
+	}
+	assets, err := selectReleaseAssets(rel.Assets, releaseArchiveName(rel.Version, i.goos, i.goarch))
+	if err != nil {
+		return selectedReleaseAssets{}, err
+	}
+	if err := i.validateAssetURLs(rel, assets); err != nil {
+		return selectedReleaseAssets{}, err
+	}
+	assetSources, err := i.assetSources(ctx, assets.checksums)
+	if err != nil {
+		return selectedReleaseAssets{}, err
+	}
+	checksums, err := i.download(ctx, assets.checksums, assetSources)
+	if err != nil {
+		return selectedReleaseAssets{}, fmt.Errorf("download %s: %w", checksumsAssetName, err)
+	}
+	manifestBytes, err := i.download(ctx, assets.manifest, assetSources)
+	if err != nil {
+		return selectedReleaseAssets{}, fmt.Errorf("download %s: %w", manifestAssetName, err)
+	}
+	if err := verifyChecksumsManifest(manifestBytes, checksums, i.trustedKeys); err != nil {
+		return selectedReleaseAssets{}, err
+	}
+	if err := verifyArchiveChecksum(checksums, assets.archive.Name, nil); err != nil {
+		return selectedReleaseAssets{}, err
+	}
+	assets.archivePayload, err = i.download(ctx, assets.archive, assetSources)
+	if err != nil {
+		return selectedReleaseAssets{}, fmt.Errorf("download release archive %q: %w", assets.archive.Name, err)
+	}
+	if err := source.CheckContext(ctx, "extract release archive"); err != nil {
+		return selectedReleaseAssets{}, err
+	}
+	if err := verifyArchiveChecksum(checksums, assets.archive.Name, assets.archivePayload); err != nil {
+		return selectedReleaseAssets{}, err
+	}
+	return assets, nil
+}
+
+// stageRelease locates the live binary and creates its sibling temporary workspace.
+func (i *releaseInstaller) stageRelease(ctx context.Context) (string, string, error) {
+	targetPath, err := i.executablePath()
+	if err != nil {
+		return "", "", fmt.Errorf("locate current executable: %w", err)
+	}
+	targetPath, err = resolveReleaseExecutablePath(targetPath)
+	if err != nil {
+		return "", "", err
+	}
+	workDir, err := os.MkdirTemp(filepath.Dir(targetPath), ".pixiv-update-")
+	if err != nil {
+		return "", "", fmt.Errorf("create update temporary directory beside %q: %w", targetPath, err)
+	}
+	return targetPath, workDir, nil
+}
+
+func (i *releaseInstaller) cleanupWorkDir(err *error, workDir string) {
+	if *err == nil {
+		return
+	}
+	if removeErr := os.RemoveAll(workDir); removeErr != nil && !os.IsNotExist(removeErr) {
+		*err = errors.Join(*err, fmt.Errorf("remove update temporary directory %q: %w", workDir, removeErr))
+	}
+}
+
+// replaceExecutable stages the verified binary next to the target and atomically replaces it.
+func (i *releaseInstaller) replaceExecutable(ctx context.Context, targetPath, candidatePath, workDir string) (err error) {
+	if err := source.CheckContext(ctx, "extract release archive"); err != nil {
+		return err
 	}
 	if err := source.CheckContext(ctx, "stage verified update"); err != nil {
 		return err
@@ -293,9 +319,10 @@ func resolveReleaseExecutablePath(executablePath string) (string, error) {
 }
 
 type selectedReleaseAssets struct {
-	archive   release.ReleaseAsset
-	checksums release.ReleaseAsset
-	manifest  release.ReleaseAsset
+	archive        release.ReleaseAsset
+	checksums      release.ReleaseAsset
+	manifest       release.ReleaseAsset
+	archivePayload []byte
 }
 
 // validateAssetURLs 必须在任何 sidecar 或 archive 请求前执行完全部验证，防止被篡改的
