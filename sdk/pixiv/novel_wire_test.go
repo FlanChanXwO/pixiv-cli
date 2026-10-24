@@ -931,7 +931,7 @@ func TestNovelSeriesRejectsMalformedEnvelopes(t *testing.T) {
 	for name, body := range map[string]string{
 		"missing detail":   `{"novels":[]}`,
 		"null detail":      `{"novel_series_detail":null,"novels":[]}`,
-		"zero detail user": `{"novel_series_detail":{"id":1,"user":{"id":1}},"novels":null}`,
+		"zero detail user": `{"novel_series_detail":{"id":1,"user":{"id":0}},"novels":[]}`,
 		"null novels":      `{"novel_series_detail":{"id":1,"user":{"id":1}},"novels":null}`,
 		"zero novel id":    `{"novel_series_detail":{"id":1,"user":{"id":1}},"novels":[{"id":0,"user":{"id":1}}]}`,
 	} {
