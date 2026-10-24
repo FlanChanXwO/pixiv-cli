@@ -114,51 +114,71 @@ func (s *Service) animationSessionValid(ctx context.Context, j *animationJob) er
 	return nil
 }
 func (s *Service) generateAnimation(ctx context.Context, j *animationJob) error {
-	session, err := s.session(ctx, j.claim.Account)
+	session, err := s.animationSourceSession(ctx, j)
 	if err != nil {
 		return err
 	}
 	defer session.Lease.Close()
-	if session.Version != j.version {
-		return errCapability
-	}
-	artwork, err := s.metadata(ctx, j.claim, session)
+	meta, archiveBytes, err := s.downloadAnimationArchive(ctx, j, session)
 	if err != nil {
 		return err
 	}
-	if artwork.Kind != pixiv.ArtworkKindUgoira {
-		return errors.New("artwork is not an animation")
+	return s.encodeAnimationPreview(ctx, j, session, meta, archiveBytes)
+}
+
+// animationSourceSession 确认账号版本未变并取得该作品的元数据快照。
+func (s *Service) animationSourceSession(ctx context.Context, j *animationJob) (Session, error) {
+	session, err := s.session(ctx, j.claim.Account)
+	if err != nil {
+		return Session{}, err
 	}
+	if session.Version != j.version {
+		session.Lease.Close()
+		return Session{}, errCapability
+	}
+	artwork, err := s.metadata(ctx, j.claim, session)
+	if err != nil {
+		session.Lease.Close()
+		return Session{}, err
+	}
+	if artwork.Kind != pixiv.ArtworkKindUgoira {
+		session.Lease.Close()
+		return Session{}, errors.New("artwork is not an animation")
+	}
+	return session, nil
+}
+
+// downloadAnimationArchive 读取 ugoira 元数据并把帧归档写入私有工作目录。
+func (s *Service) downloadAnimationArchive(ctx context.Context, j *animationJob, session Session) (pixiv.UgoiraMetadata, int64, error) {
 	started := time.Now()
 	meta, err := session.Lease.Value().UgoiraMetadata(ctx, pixiv.UgoiraMetadataRequest{ArtworkID: j.claim.Artwork})
 	s.observeAnimation(ctx, AnimationObservation{Stage: "animation_metadata", Duration: time.Since(started), Failed: err != nil})
 	if err != nil {
-		return err
+		return pixiv.UgoiraMetadata{}, 0, err
 	}
 	archive := downloader.SelectUgoiraArchive(meta)
 	if archive == nil {
-		return errors.New("animation archive unavailable")
+		return pixiv.UgoiraMetadata{}, 0, errors.New("animation archive unavailable")
 	}
 	if err = s.animationStage(j, "downloading"); err != nil {
-		return err
+		return pixiv.UgoiraMetadata{}, 0, err
 	}
-	zipPath := filepath.Join(j.dir, "frames.zip")
 	file, err := animationFile(j.dir, "frames.zip")
 	if err != nil {
-		return err
+		return pixiv.UgoiraMetadata{}, 0, err
 	}
 	started = time.Now()
 	resource, err := session.Lease.Value().OpenResource(ctx, sdk.OpenResourceRequest{Ref: archive.Resource.Ref})
 	if err != nil {
 		_ = file.Close()
 		s.observeAnimation(ctx, AnimationObservation{Stage: "animation_zip_download", Duration: time.Since(started), Failed: true})
-		return err
+		return pixiv.UgoiraMetadata{}, 0, err
 	}
 	if resource.StatusCode != 200 {
 		_ = resource.Body.Close()
 		_ = file.Close()
 		s.observeAnimation(ctx, AnimationObservation{Stage: "animation_zip_download", Duration: time.Since(started), Failed: true})
-		return errors.New("animation archive unavailable")
+		return pixiv.UgoiraMetadata{}, 0, errors.New("animation archive unavailable")
 	}
 	n, copyErr := io.Copy(animationWriter{ctx, s, j, file}, resource.Body)
 	closeErr := errors.Join(resource.Body.Close(), file.Close())
@@ -171,27 +191,78 @@ func (s *Service) generateAnimation(ctx context.Context, j *animationJob) error 
 	}
 	s.observeAnimation(ctx, AnimationObservation{Stage: "animation_zip_download", Duration: time.Since(started), Bytes: n, Failed: err != nil})
 	if err != nil {
-		// 只记录固定类别，避免底层读取错误携带签名地址。
-		var timeout net.Error
-		if ctx.Err() == nil && errors.Is(err, io.ErrUnexpectedEOF) {
-			s.observeAnimation(ctx, AnimationObservation{Stage: "animation_zip_incomplete", Bytes: n, Failed: true})
-		} else if ctx.Err() == nil && errors.Is(err, syscall.ECONNRESET) {
-			s.observeAnimation(ctx, AnimationObservation{Stage: "animation_zip_reset", Bytes: n, Failed: true})
-		} else if ctx.Err() == nil && errors.As(err, &timeout) && timeout.Timeout() {
-			s.observeAnimation(ctx, AnimationObservation{Stage: "animation_zip_timeout", Bytes: n, Failed: true})
-		}
-		return err
+		s.observeArchiveFailure(ctx, n, err)
+		return pixiv.UgoiraMetadata{}, 0, err
 	}
 	if err = s.animationSessionValid(ctx, j); err != nil {
-		return err
+		return pixiv.UgoiraMetadata{}, 0, err
 	}
+	return meta, n, nil
+}
+
+// observeArchiveFailure 只记录固定类别，避免底层读取错误携带签名地址。
+func (s *Service) observeArchiveFailure(ctx context.Context, n int64, err error) {
+	var timeout net.Error
+	switch {
+	case ctx.Err() != nil:
+	case errors.Is(err, io.ErrUnexpectedEOF):
+		s.observeAnimation(ctx, AnimationObservation{Stage: "animation_zip_incomplete", Bytes: n, Failed: true})
+	case errors.Is(err, syscall.ECONNRESET):
+		s.observeAnimation(ctx, AnimationObservation{Stage: "animation_zip_reset", Bytes: n, Failed: true})
+	case errors.As(err, &timeout) && timeout.Timeout():
+		s.observeAnimation(ctx, AnimationObservation{Stage: "animation_zip_timeout", Bytes: n, Failed: true})
+	}
+}
+
+// encodeAnimationPreview 编码请求的格式、生成 PNG 预览并校验会话仍然有效。
+func (s *Service) encodeAnimationPreview(ctx context.Context, j *animationJob, session Session, meta pixiv.UgoiraMetadata, archiveBytes int64) error {
 	frames := make([]ugoira.Frame, len(meta.Frames))
 	for i, frame := range meta.Frames {
 		frames[i] = ugoira.Frame{File: frame.Filename, Delay: frame.DelayMilliseconds}
 	}
-	if err = s.animationStage(j, "encoding"); err != nil {
+	if err := s.animationStage(j, "encoding"); err != nil {
 		return err
 	}
+	output := filepath.Join(j.dir, "animation."+j.format)
+	if err := s.encodeAnimation(ctx, j, frames, output); err != nil {
+		return err
+	}
+	if err := os.Remove(filepath.Join(j.dir, "frames.zip")); err != nil {
+		return err
+	}
+	a := s.animations
+	a.mu.Lock()
+	a.used -= archiveBytes
+	j.used -= archiveBytes
+	a.mu.Unlock()
+	encoded, err := os.Open(output)
+	if err != nil {
+		return err
+	}
+	var first image.Image
+	if j.format == "gif" {
+		first, err = gif.Decode(encoded)
+	} else {
+		first, err = png.Decode(encoded)
+	}
+	err = errors.Join(err, encoded.Close())
+	if err != nil {
+		return err
+	}
+	preview, err := animationFile(j.dir, "preview.png")
+	if err != nil {
+		return err
+	}
+	err = png.Encode(animationWriter{ctx, s, j, preview}, first)
+	err = errors.Join(err, preview.Close())
+	if err != nil {
+		return err
+	}
+	return s.animationSessionValid(ctx, j)
+}
+
+// encodeAnimation 在写入前按实际输出预留磁盘预算，并记录编码各阶段耗时。
+func (s *Service) encodeAnimation(ctx context.Context, j *animationJob, frames []ugoira.Frame, output string) error {
 	// Reserve actual writes rather than the maximum output: spare capacity must retain ready artifacts.
 	a := s.animations
 	limit := uint64(a.capacity)
@@ -211,10 +282,9 @@ func (s *Service) generateAnimation(ctx context.Context, j *animationJob) error 
 		reserved += int64(bytes)
 		return nil
 	}
-	output := filepath.Join(j.dir, "animation."+j.format)
 	var waitDuration, encodeDuration time.Duration
 	var waitObserved, encodeObserved bool
-	err = ugoira.NewEncoder().Encode(ctx, ugoira.Input{ZipPath: zipPath, Frames: frames, WorkDir: j.dir, OutputPath: output, Format: ugoira.Format(j.format), MaxOutputBytes: &limit, ReserveOutput: reserveOutput, Observe: func(stage string, duration time.Duration) {
+	err := ugoira.NewEncoder().Encode(ctx, ugoira.Input{ZipPath: filepath.Join(j.dir, "frames.zip"), Frames: frames, WorkDir: j.dir, OutputPath: output, Format: ugoira.Format(j.format), MaxOutputBytes: &limit, ReserveOutput: reserveOutput, Observe: func(stage string, duration time.Duration) {
 		switch stage {
 		case "animation_encode_wait":
 			waitDuration, waitObserved = duration, true
@@ -245,40 +315,7 @@ func (s *Service) generateAnimation(ctx context.Context, j *animationJob) error 
 	}
 	j.size = size
 	a.mu.Unlock()
-	if err != nil {
-		return err
-	}
-	if err = os.Remove(zipPath); err != nil {
-		return err
-	}
-	a.mu.Lock()
-	a.used -= n
-	j.used -= n
-	a.mu.Unlock()
-	encoded, err := os.Open(output)
-	if err != nil {
-		return err
-	}
-	var first image.Image
-	if j.format == "gif" {
-		first, err = gif.Decode(encoded)
-	} else {
-		first, err = png.Decode(encoded)
-	}
-	err = errors.Join(err, encoded.Close())
-	if err != nil {
-		return err
-	}
-	preview, err := animationFile(j.dir, "preview.png")
-	if err != nil {
-		return err
-	}
-	err = png.Encode(animationWriter{ctx, s, j, preview}, first)
-	err = errors.Join(err, preview.Close())
-	if err != nil {
-		return err
-	}
-	return s.animationSessionValid(ctx, j)
+	return err
 }
 
 func (s *Service) observeAnimation(ctx context.Context, event AnimationObservation) {

@@ -26,27 +26,40 @@ func (s *Service) serveAnimation(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Cache-Control", "private, no-store")
 	w.Header().Set("Referrer-Policy", "no-referrer")
 	w.Header().Set("X-Content-Type-Options", "nosniff")
+	kind, j, download, ok := s.animationRequest(w, r)
+	if !ok {
+		return
+	}
+	release, ok := s.pinAnimation(w, r, j)
+	if !ok {
+		return
+	}
+	defer release()
+	s.deliverAnimation(w, r, j, kind, download)
+}
+
+// animationRequest 校验方法、路径签名，并返回已签发的产物及其类别。
+func (s *Service) animationRequest(w http.ResponseWriter, r *http.Request) (kind string, j *animationJob, download, ok bool) {
 	if r.Method != "GET" && r.Method != "HEAD" {
 		w.Header().Set("Allow", "GET, HEAD")
 		http.Error(w, "Method not allowed", 405)
-		return
+		return "", nil, false, false
 	}
 	a := s.animations
 	parts := strings.Split(strings.TrimPrefix(r.URL.EscapedPath(), s.Path()+"animation/"), ".")
-	download := r.URL.RawQuery == "download=1"
+	download = r.URL.RawQuery == "download=1"
 	if a == nil || len(parts) != 3 || (r.URL.RawQuery != "" && !download) || r.URL.ForceQuery || (parts[1] != "animation" && parts[1] != "preview") || (download && parts[1] != "animation") {
 		http.Error(w, "Invalid animation request", 400)
-		return
+		return "", nil, false, false
 	}
 	sig, err := base64.RawURLEncoding.DecodeString(parts[2])
 	mac := hmac.New(sha256.New, s.key[:])
 	mac.Write([]byte(parts[0] + "." + parts[1]))
 	if err != nil || !hmac.Equal(sig, mac.Sum(nil)) {
 		http.Error(w, "Animation authorization unavailable", 401)
-		return
+		return "", nil, false, false
 	}
 	a.mu.Lock()
-	var j *animationJob
 	for _, candidate := range a.jobs {
 		if candidate.id == parts[0] {
 			j = candidate
@@ -56,9 +69,15 @@ func (s *Service) serveAnimation(w http.ResponseWriter, r *http.Request) {
 	a.mu.Unlock()
 	if j == nil {
 		http.Error(w, "Animation expired", 410)
-		return
+		return "", nil, false, false
 	}
-	if err = s.animationSessionValid(r.Context(), j); err != nil {
+	return parts[1], j, download, true
+}
+
+// pinAnimation 复核授权与有效期后固定产物，返回的释放函数在传输结束时调用。
+func (s *Service) pinAnimation(w http.ResponseWriter, r *http.Request, j *animationJob) (release func(), ok bool) {
+	a := s.animations
+	if err := s.animationSessionValid(r.Context(), j); err != nil {
 		a.mu.Lock()
 		// 单次传输取消不代表共享产物的授权或账号版本失效。
 		if r.Context().Err() == nil {
@@ -66,24 +85,34 @@ func (s *Service) serveAnimation(w http.ResponseWriter, r *http.Request) {
 		}
 		a.mu.Unlock()
 		http.Error(w, "Animation authorization unavailable", 401)
-		return
+		return nil, false
 	}
 	a.mu.Lock()
 	if a.closed || j.state != "ready" || !time.Now().Before(j.expiry) {
 		a.mu.Unlock()
 		http.Error(w, "Animation unavailable", 410)
-		return
+		return nil, false
 	}
 	j.pins++
 	j.last = time.Now()
 	a.wg.Add(1)
 	a.mu.Unlock()
-	defer func() { a.mu.Lock(); j.pins--; a.cleanLocked(j); a.mu.Unlock(); a.wg.Done() }()
+	return func() {
+		a.mu.Lock()
+		j.pins--
+		a.cleanLocked(j)
+		a.mu.Unlock()
+		a.wg.Done()
+	}, true
+}
+
+// deliverAnimation 提交头部并复制已固定的产物；取消或长度不符时中止连接。
+func (s *Service) deliverAnimation(w http.ResponseWriter, r *http.Request, j *animationJob, kind string, download bool) {
 	name := "animation." + j.format
-	mime := "image/" + j.format
-	if parts[1] == "preview" {
+	contentType := "image/" + j.format
+	if kind == "preview" {
 		name = "preview.png"
-		mime = "image/png"
+		contentType = "image/png"
 	}
 	file, err := os.Open(filepath.Join(j.dir, name))
 	if err != nil {
@@ -100,15 +129,20 @@ func (s *Service) serveAnimation(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Animation authorization unavailable", 401)
 		return
 	}
-	w.Header().Set("Content-Type", mime)
+	w.Header().Set("Content-Type", contentType)
 	w.Header().Set("Content-Length", strconv.FormatInt(info.Size(), 10))
 	if download {
-		w.Header().Set("Content-Disposition", `attachment; filename="`+strconv.FormatInt(j.claim.Artwork, 10)+`.`+j.format+`"`)
+		w.Header().Set("Content-Disposition", `attachment; filename="`+strconv.FormatInt(j.claim.Artwork, 10)+"."+j.format+`"`)
 	}
 	w.WriteHeader(200)
 	if r.Method == "HEAD" {
 		return
 	}
+	s.transferAnimation(w, r, j, file, info.Size())
+}
+
+// transferAnimation 在请求或产物失效时中断写入，并记录实际交付字节。
+func (s *Service) transferAnimation(w http.ResponseWriter, r *http.Request, j *animationJob, file *os.File, size int64) {
 	transferCtx, cancel := context.WithCancel(r.Context())
 	stopJob := context.AfterFunc(j.ctx, cancel)
 	defer stopJob()
@@ -132,21 +166,30 @@ func (s *Service) serveAnimation(w http.ResponseWriter, r *http.Request) {
 	finish()
 	err = errors.Join(err, abortErr, transferCtx.Err())
 	event := AnimationObservation{Stage: "animation_delivery", Duration: time.Since(started), Bytes: n}
-	if err != nil || n != info.Size() {
-		event.CancellationSource = "transport"
-		if r.Context().Err() != nil {
-			event.CancellationSource = "request"
-		} else if transferCtx.Err() != nil {
-			a.mu.Lock()
-			event.CancellationSource = j.deliveryCancellationSource
-			a.mu.Unlock()
-			if event.CancellationSource == "" {
-				event.CancellationSource = "service"
-			}
-		}
+	if err != nil || n != size {
+		s.animationCancellationSource(r.Context(), transferCtx, j, &event)
 	}
 	s.observeAnimation(r.Context(), event)
-	if err != nil || n != info.Size() {
+	if err != nil || n != size {
 		panic(http.ErrAbortHandler)
+	}
+}
+
+// animationCancellationSource 记录固定类别，便于区分请求、传输、产物与服务侧中断。
+func (s *Service) animationCancellationSource(requestCtx, transferCtx context.Context, j *animationJob, event *AnimationObservation) {
+	event.CancellationSource = "transport"
+	if requestCtx.Err() != nil {
+		event.CancellationSource = "request"
+		return
+	}
+	if transferCtx.Err() == nil {
+		return
+	}
+	a := s.animations
+	a.mu.Lock()
+	event.CancellationSource = j.deliveryCancellationSource
+	a.mu.Unlock()
+	if event.CancellationSource == "" {
+		event.CancellationSource = "service"
 	}
 }

@@ -32,44 +32,59 @@ func (s *Service) PublishAnimation(ctx context.Context, account, artwork int64, 
 		return out, errCapability
 	}
 	c.Quality = format
+	key := contentKey(c, lease, "animation-inline") + ":" + animationDigest(data, preview)
+	j, existing, err := s.reserveAnimation(ctx, lease, c, format, key, int64(len(data))+int64(len(preview)))
+	if err != nil {
+		return out, err
+	}
+	if existing != nil {
+		return s.animationOutputLocked(existing, ""), nil
+	}
+	return s.writeAnimation(ctx, j, data, preview)
+}
+
+func animationDigest(data, preview []byte) string {
 	digest := sha256.New()
 	digest.Write(data)
 	digest.Write(preview)
-	key := contentKey(c, lease, "animation-inline") + ":" + hex.EncodeToString(digest.Sum(nil))
+	return hex.EncodeToString(digest.Sum(nil))
+}
+
+// reserveAnimation 在锁内复核授权、复用已就绪的副本并预留完整下载字节。
+// existing 非 nil 时调用方只读取该产物，不启动新的写入。
+func (s *Service) reserveAnimation(ctx context.Context, lease Session, c claims, format, key string, size int64) (j, existing *animationJob, err error) {
 	a := s.animations
 	a.mu.Lock()
 	if a.closed || a.ctx.Err() != nil || s.authorized(ctx, c) != nil {
 		a.mu.Unlock()
-		return out, errCapability
+		return nil, nil, errCapability
 	}
-	if existing := a.jobs[key]; existing != nil {
+	if existing = a.jobs[key]; existing != nil {
+		defer a.mu.Unlock()
 		if existing.state == "ready" && time.Now().Before(existing.expiry) {
 			existing.last = time.Now()
-			out = s.animationOutputLocked(existing, "")
-			a.mu.Unlock()
-			return out, nil
+			return nil, existing, nil
 		}
 		// 正在发布的同键副本不能替换，避免使正在读取的文件失去 owner。
-		a.mu.Unlock()
-		return out, errors.New("animation download not ready")
+		return nil, nil, errors.New("animation download not ready")
 	}
 	id, err := animationHandle()
 	if err != nil {
 		a.mu.Unlock()
-		return out, err
+		return nil, nil, err
 	}
 	dir, err := os.MkdirTemp(a.root, "job-")
 	if err != nil {
 		a.mu.Unlock()
-		return out, err
+		return nil, nil, err
 	}
 	workerCtx, cancel := context.WithCancel(a.ctx)
-	j := &animationJob{key: key, id: id, version: lease.Version, format: format, dir: dir, claim: c, expiry: s.expiry(c, lease), state: "encoding", ctx: workerCtx, cancel: cancel, last: time.Now(), size: int64(len(data))}
+	j = &animationJob{key: key, id: id, version: lease.Version, format: format, dir: dir, claim: c, expiry: s.expiry(c, lease), state: "encoding", ctx: workerCtx, cancel: cancel, last: time.Now(), size: size}
 	// 已知完整长度，写入前一次预留，避免不同填充者互相耗尽剩余空间。
-	if int64(len(preview)) > a.capacity || int64(len(data)) > a.capacity-int64(len(preview)) {
+	if size > a.capacity {
 		err = errAnimationCapacity
 	} else {
-		err = a.reserveLocked(j, int64(len(data))+int64(len(preview)))
+		err = a.reserveLocked(j, size)
 	}
 	if err != nil {
 		j.done = true
@@ -77,7 +92,7 @@ func (s *Service) PublishAnimation(ctx context.Context, account, artwork int64, 
 		cancel()
 		a.cleanLocked(j)
 		a.mu.Unlock()
-		return out, err
+		return nil, nil, err
 	}
 	a.jobs[key] = j
 	a.wg.Add(1)
@@ -97,6 +112,12 @@ func (s *Service) PublishAnimation(ctx context.Context, account, artwork int64, 
 		}()
 	}
 	a.mu.Unlock()
+	return j, nil, nil
+}
+
+// writeAnimation 写入已验证的字节并发布下载 capability；失败时撤销并清理工作目录。
+func (s *Service) writeAnimation(ctx context.Context, j *animationJob, data, preview []byte) (out AnimationStatus, err error) {
+	a := s.animations
 	defer a.wg.Done()
 	defer func() {
 		a.mu.Lock()
@@ -117,14 +138,14 @@ func (s *Service) PublishAnimation(ctx context.Context, account, artwork int64, 
 	for _, item := range []struct {
 		name string
 		data []byte
-	}{{"animation." + format, data}, {"preview.png", preview}} {
+	}{{"animation." + j.format, data}, {"preview.png", preview}} {
 		if err = ctx.Err(); err != nil {
 			return out, err
 		}
-		if err = workerCtx.Err(); err != nil {
+		if err = j.ctx.Err(); err != nil {
 			return out, err
 		}
-		file, openErr := animationFile(dir, item.name)
+		file, openErr := animationFile(j.dir, item.name)
 		if openErr != nil {
 			return out, openErr
 		}
