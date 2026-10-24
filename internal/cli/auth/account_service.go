@@ -1,3 +1,6 @@
+// Auth command adapter over the pixiv account service, plus the output shapes
+// and versioned export-bundle codec shared with account.go.
+
 package auth
 
 import (
@@ -17,16 +20,55 @@ import (
 	pixiv "github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
 )
 
+// accountOut is the JSON shape shared by every auth account result.
+type accountOut struct {
+	UserID                 int64      `json:"user_id,omitempty"`
+	Username               string     `json:"username,omitempty"`
+	Default                bool       `json:"default"`
+	HasToken               bool       `json:"has_token"`
+	PremiumStatus          *bool      `json:"premium_status,omitempty"`
+	PremiumStatusCheckedAt *time.Time `json:"premium_status_checked_at,omitempty"`
+	Schedulable            *bool      `json:"schedulable,omitempty"`
+	Eligible               *bool      `json:"eligible,omitempty"`
+	PoolFrozenUntil        *time.Time `json:"pool_frozen_until,omitempty"`
+	Warning                string     `json:"warning,omitempty"`
+}
+
+type accountListOut struct {
+	DefaultUserID int64        `json:"default_user_id,omitempty"`
+	Accounts      []accountOut `json:"accounts"`
+}
+
+// accountImportOut carries only user_id/username/status; it never includes a
+// token or the default marker.
+type accountImportOut struct {
+	UserID   int64  `json:"user_id"`
+	Username string `json:"username"`
+	Status   string `json:"status"`
+}
+
+type accountBundleImportOut struct {
+	Accounts      []accountImportOut `json:"accounts"`
+	DefaultUserID int64              `json:"default_user_id"`
+}
+
+type accountPoolStatusOut struct {
+	Enabled             bool         `json:"enabled"`
+	Strategy            string       `json:"strategy"`
+	EarliestFrozenUntil *time.Time   `json:"earliest_frozen_until,omitempty"`
+	Accounts            []accountOut `json:"accounts"`
+}
+
 // AccountService 是 auth command 对本地账号领域服务的薄适配器。
 // 账号领域服务不读取 CLI 配置；代理和运行时开关只在这里转换为 SDK options。
 type AccountService struct {
-	Pixiv       AccountPort
+	Pixiv       accountPort
 	LoadRuntime func() (config.RuntimeConfig, error)
 }
 
-// AccountPort 是 auth adapter 需要的最小业务端口。它保持在 CLI adapter 中，
+// accountPort 是 auth adapter 需要的最小业务端口。它保持在 CLI adapter 中，
 // 使 auth 测试可以注入无网络替身，同时不把 CLI DTO 反向放进 services。
-type AccountPort interface {
+type accountPort interface {
 	ImportAccount(context.Context, string, bool, pixiv.Options) (pixivaccount.AccountSummary, error)
 	ListAccounts(context.Context) ([]pixivaccount.AccountSummary, error)
 	UseAccount(context.Context, int64) error
@@ -43,17 +85,6 @@ type AccountPort interface {
 type accountImportRequest struct {
 	TokenInput         string
 	HTTPSProxyOverride *string
-}
-
-type accountImportResult struct {
-	UserID   int64
-	Username string
-	Status   string
-}
-
-type accountBundleImportResult struct {
-	Accounts      []accountImportResult
-	DefaultUserID int64
 }
 
 type accountCheckRequest struct {
@@ -77,31 +108,6 @@ type accountExportResult struct {
 	AccountCount int
 }
 
-type accountPoolStatusResult struct {
-	Enabled             bool
-	Strategy            config.AccountPoolStrategy
-	EarliestFrozenUntil *time.Time
-	Accounts            []accountResult
-}
-
-type accountResult struct {
-	UserID                 int64
-	Username               string
-	Default                bool
-	HasToken               bool
-	PremiumStatus          *bool
-	PremiumStatusCheckedAt *time.Time
-	Schedulable            *bool
-	Eligible               *bool
-	PoolFrozenUntil        *time.Time
-	Warning                string
-}
-
-type accountListResult struct {
-	DefaultUserID int64
-	Accounts      []accountResult
-}
-
 type authExportBundle struct {
 	Schema        string                    `json:"schema"`
 	Version       int                       `json:"version"`
@@ -122,7 +128,7 @@ const (
 	authExportBundleVersion    = 1
 )
 
-func (s AccountService) pixivService() (AccountPort, error) {
+func (s AccountService) pixivService() (accountPort, error) {
 	if s.Pixiv == nil {
 		return nil, errors.New("pixiv account service is not configured")
 	}
@@ -168,26 +174,26 @@ func pixivOptionsForProxy(proxyOverride *string) (pixiv.LoginOptions, error) {
 	return pixiv.LoginOptions{HTTPClient: client}, nil
 }
 
-func (s AccountService) Import(ctx context.Context, request accountImportRequest) (accountImportResult, error) {
+func (s AccountService) importAccount(ctx context.Context, request accountImportRequest) (accountImportOut, error) {
 	service, err := s.pixivService()
 	if err != nil {
-		return accountImportResult{}, err
+		return accountImportOut{}, err
 	}
 	validatedToken := strings.TrimSpace(request.TokenInput)
 	if validatedToken == "" {
-		return accountImportResult{}, errors.New("refresh token cannot be empty")
+		return accountImportOut{}, errors.New("refresh token cannot be empty")
 	}
 	before, err := service.ListAccounts(ctx)
 	if err != nil {
-		return accountImportResult{}, err
+		return accountImportOut{}, err
 	}
 	options, err := s.sdkOptions(request.HTTPSProxyOverride)
 	if err != nil {
-		return accountImportResult{}, err
+		return accountImportOut{}, err
 	}
 	account, err := service.ImportAccount(ctx, validatedToken, false, options)
 	if err != nil {
-		return accountImportResult{}, err
+		return accountImportOut{}, err
 	}
 	status := accountImportStatusAdded
 	for _, existing := range before {
@@ -196,17 +202,17 @@ func (s AccountService) Import(ctx context.Context, request accountImportRequest
 			break
 		}
 	}
-	return accountImportResultFrom(account, status), nil
+	return accountImportOutFrom(account, status), nil
 }
 
-func (s AccountService) ImportBundle(body []byte) (accountBundleImportResult, error) {
+func (s AccountService) importBundle(ctx context.Context, body []byte) (accountBundleImportOut, error) {
 	service, err := s.pixivService()
 	if err != nil {
-		return accountBundleImportResult{}, err
+		return accountBundleImportOut{}, err
 	}
 	bundle, err := decodeAuthExportBundle(body)
 	if err != nil {
-		return accountBundleImportResult{}, err
+		return accountBundleImportOut{}, err
 	}
 	inputs := make([]pixivaccount.RestoreAccountInput, 0, len(bundle.Accounts))
 	for _, account := range bundle.Accounts {
@@ -217,12 +223,12 @@ func (s AccountService) ImportBundle(body []byte) (accountBundleImportResult, er
 			IsBundleDefault: account.UserID == bundle.DefaultUserID,
 		})
 	}
-	restore, err := service.RestoreAccounts(context.Background(), inputs)
+	restore, err := service.RestoreAccounts(ctx, inputs)
 	if err != nil {
-		return accountBundleImportResult{}, err
+		return accountBundleImportOut{}, err
 	}
-	result := accountBundleImportResult{
-		Accounts:      make([]accountImportResult, 0, len(restore.Accounts)),
+	result := accountBundleImportOut{
+		Accounts:      make([]accountImportOut, 0, len(restore.Accounts)),
 		DefaultUserID: restore.ResultingDefault,
 	}
 	for _, outcome := range restore.Accounts {
@@ -230,27 +236,23 @@ func (s AccountService) ImportBundle(body []byte) (accountBundleImportResult, er
 		if outcome.IsReplacement {
 			status = accountImportStatusUpdated
 		}
-		result.Accounts = append(result.Accounts, accountImportResultFrom(outcome.Account, status))
+		result.Accounts = append(result.Accounts, accountImportOutFrom(outcome.Account, status))
 	}
 	return result, nil
 }
 
-func (s AccountService) List() (accountListResult, error) {
-	return s.ListWithContext(context.Background())
-}
-
-func (s AccountService) ListWithContext(ctx context.Context) (accountListResult, error) {
+func (s AccountService) listWithContext(ctx context.Context) (accountListOut, error) {
 	service, err := s.pixivService()
 	if err != nil {
-		return accountListResult{}, err
+		return accountListOut{}, err
 	}
 	accounts, err := service.ListAccounts(ctx)
 	if err != nil {
-		return accountListResult{}, err
+		return accountListOut{}, err
 	}
-	result := accountListResult{Accounts: make([]accountResult, 0, len(accounts))}
+	result := accountListOut{Accounts: make([]accountOut, 0, len(accounts))}
 	for _, account := range accounts {
-		result.Accounts = append(result.Accounts, accountResultFromPixiv(account))
+		result.Accounts = append(result.Accounts, accountFromPixiv(account))
 		if account.Default {
 			result.DefaultUserID = account.UserID
 		}
@@ -258,25 +260,25 @@ func (s AccountService) ListWithContext(ctx context.Context) (accountListResult,
 	return result, nil
 }
 
-func (s AccountService) PoolStatus(ctx context.Context) (accountPoolStatusResult, error) {
+func (s AccountService) poolStatus(ctx context.Context) (accountPoolStatusOut, error) {
 	service, err := s.pixivService()
 	if err != nil {
-		return accountPoolStatusResult{}, err
+		return accountPoolStatusOut{}, err
 	}
 	if s.LoadRuntime == nil {
-		return accountPoolStatusResult{}, errors.New("account pool runtime loader is not configured")
+		return accountPoolStatusOut{}, errors.New("account pool runtime loader is not configured")
 	}
 	runtime, err := s.LoadRuntime()
 	if err != nil {
-		return accountPoolStatusResult{}, err
+		return accountPoolStatusOut{}, err
 	}
 	accounts, err := service.ListAccounts(ctx)
 	if err != nil {
-		return accountPoolStatusResult{}, err
+		return accountPoolStatusOut{}, err
 	}
-	result := accountPoolStatusResult{Enabled: runtime.AccountPool.Enabled, Strategy: runtime.AccountPool.Strategy, Accounts: make([]accountResult, 0, len(accounts))}
+	result := accountPoolStatusOut{Enabled: runtime.AccountPool.Enabled, Strategy: string(runtime.AccountPool.Strategy), Accounts: make([]accountOut, 0, len(accounts))}
 	for _, account := range accounts {
-		converted := accountResultFromPixiv(account)
+		converted := accountFromPixiv(account)
 		result.Accounts = append(result.Accounts, converted)
 		if converted.PoolFrozenUntil != nil && (result.EarliestFrozenUntil == nil || converted.PoolFrozenUntil.Before(*result.EarliestFrozenUntil)) {
 			value := *converted.PoolFrozenUntil
@@ -286,7 +288,7 @@ func (s AccountService) PoolStatus(ctx context.Context) (accountPoolStatusResult
 	return result, nil
 }
 
-func (s AccountService) SetPool(ctx context.Context, userIDs []int64, schedulable, all bool) error {
+func (s AccountService) setPool(ctx context.Context, userIDs []int64, schedulable, all bool) error {
 	service, err := s.pixivService()
 	if err != nil {
 		return err
@@ -303,7 +305,7 @@ func (s AccountService) SetPool(ctx context.Context, userIDs []int64, schedulabl
 	return service.SetPoolSchedulable(ctx, userIDs, schedulable)
 }
 
-func (s AccountService) Export(request accountExportRequest) (accountExportResult, error) {
+func (s AccountService) export(request accountExportRequest) (accountExportResult, error) {
 	service, err := s.pixivService()
 	if err != nil {
 		return accountExportResult{}, err
@@ -350,16 +352,16 @@ func (s AccountService) Export(request accountExportRequest) (accountExportResul
 	return result, nil
 }
 
-func (s AccountService) Remove(userID int64) (accountResult, int64, error) {
+func (s AccountService) remove(userID int64) (accountOut, int64, error) {
 	service, err := s.pixivService()
 	if err != nil {
-		return accountResult{}, 0, err
+		return accountOut{}, 0, err
 	}
-	list, err := s.List()
+	list, err := s.listWithContext(context.Background())
 	if err != nil {
-		return accountResult{}, 0, err
+		return accountOut{}, 0, err
 	}
-	var removed accountResult
+	var removed accountOut
 	found := false
 	for _, account := range list.Accounts {
 		if account.UserID == userID {
@@ -368,20 +370,20 @@ func (s AccountService) Remove(userID int64) (accountResult, int64, error) {
 		}
 	}
 	if !found {
-		return accountResult{}, 0, fmt.Errorf("account uid %d not found", userID)
+		return accountOut{}, 0, fmt.Errorf("account uid %d not found", userID)
 	}
 	if err := service.RemoveAccount(context.Background(), userID); err != nil {
-		return accountResult{}, 0, err
+		return accountOut{}, 0, err
 	}
-	updated, err := s.List()
+	updated, err := s.listWithContext(context.Background())
 	if err != nil {
-		return accountResult{}, 0, err
+		return accountOut{}, 0, err
 	}
 	removed.Default = false
 	return removed, updated.DefaultUserID, nil
 }
 
-func (s AccountService) Use(userID int64) (int64, error) {
+func (s AccountService) use(userID int64) (int64, error) {
 	service, err := s.pixivService()
 	if err != nil {
 		return 0, err
@@ -392,54 +394,54 @@ func (s AccountService) Use(userID int64) (int64, error) {
 	return userID, nil
 }
 
-func (s AccountService) CheckWithRequest(ctx context.Context, request accountCheckRequest) (accountResult, error) {
+func (s AccountService) checkWithRequest(ctx context.Context, request accountCheckRequest) (accountOut, error) {
 	service, err := s.pixivService()
 	if err != nil {
-		return accountResult{}, err
+		return accountOut{}, err
 	}
 	if request.UserID == 0 {
 		current, err := service.CurrentUser(ctx)
 		if err != nil {
-			return accountResult{}, err
+			return accountOut{}, err
 		}
 		request.UserID = current.UserID
 	}
 	options, err := s.sdkOptions(request.HTTPSProxyOverride)
 	if err != nil {
-		return accountResult{}, err
+		return accountOut{}, err
 	}
 	account, err := service.CheckAccount(ctx, request.UserID, options)
 	if err != nil {
-		return accountResult{}, err
+		return accountOut{}, err
 	}
-	return accountResultFromPixiv(account), nil
+	return accountFromPixiv(account), nil
 }
 
-func (s AccountService) RefreshWithRequest(ctx context.Context, request accountRefreshRequest) (accountResult, error) {
+func (s AccountService) refreshWithRequest(ctx context.Context, request accountRefreshRequest) (accountOut, error) {
 	service, err := s.pixivService()
 	if err != nil {
-		return accountResult{}, err
+		return accountOut{}, err
 	}
 	if request.UserID == 0 {
 		current, err := service.CurrentUser(ctx)
 		if err != nil {
-			return accountResult{}, err
+			return accountOut{}, err
 		}
 		request.UserID = current.UserID
 	}
 	options, err := s.sdkOptions(request.HTTPSProxyOverride)
 	if err != nil {
-		return accountResult{}, err
+		return accountOut{}, err
 	}
 	account, err := service.RefreshAccount(ctx, request.UserID, options)
 	if err != nil {
-		return accountResult{}, err
+		return accountOut{}, err
 	}
-	return accountResultFromPixiv(account), nil
+	return accountFromPixiv(account), nil
 }
 
-func accountResultFromPixiv(account pixivaccount.AccountSummary) accountResult {
-	result := accountResult{UserID: account.UserID, Username: account.Username, Default: account.Default, HasToken: true, PremiumStatus: account.Premium}
+func accountFromPixiv(account pixivaccount.AccountSummary) accountOut {
+	result := accountOut{UserID: account.UserID, Username: account.Username, Default: account.Default, HasToken: true, PremiumStatus: account.Premium}
 	if account.PoolStatusKnown {
 		schedulable, eligible := account.Schedulable, account.Eligible
 		result.Schedulable, result.Eligible = &schedulable, &eligible
@@ -451,8 +453,8 @@ func accountResultFromPixiv(account pixivaccount.AccountSummary) accountResult {
 	return result
 }
 
-func accountImportResultFrom(account pixivaccount.AccountSummary, status string) accountImportResult {
-	return accountImportResult{UserID: account.UserID, Username: account.Username, Status: status}
+func accountImportOutFrom(account pixivaccount.AccountSummary, status string) accountImportOut {
+	return accountImportOut{UserID: account.UserID, Username: account.Username, Status: status}
 }
 
 func parseAuthUID(raw string) (int64, error) {

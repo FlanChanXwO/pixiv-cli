@@ -1,16 +1,14 @@
 //go:build !darwin && !linux && !windows
 
-package loginhelper_test
+package loginhelper
 
 import (
 	"context"
 	"testing"
-
-	"github.com/FlanChanXwO/pixiv-cli/internal/cli/auth/loginhelper"
 )
 
 func TestInstallReportsUnsupportedPlatform(t *testing.T) {
-	cleanup, err := loginhelper.Install(context.Background(), "http://127.0.0.1/manual")
+	cleanup, err := Install(context.Background(), "http://127.0.0.1/manual")
 	if cleanup != nil {
 		t.Fatal("unsupported platform returned a cleanup function")
 	}

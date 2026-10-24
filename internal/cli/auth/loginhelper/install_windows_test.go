@@ -1,6 +1,6 @@
 //go:build windows
 
-package loginhelper_test
+package loginhelper
 
 import (
 	"context"
@@ -11,36 +11,34 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/FlanChanXwO/pixiv-cli/internal/cli/auth/loginhelper"
 	"github.com/stretchr/testify/require"
 	"golang.org/x/sys/windows/registry"
 )
 
 func TestWindowsURLHandlerCommandQuotesExecutableAndCallback(t *testing.T) {
-	command := loginhelper.WindowsURLHandlerCommand(`C:\Users\A Name\pixiv.exe`)
+	command := windowsURLHandlerCommand(`C:\Users\A Name\pixiv.exe`)
 	require.Equal(t, `"C:\Users\A Name\pixiv.exe" auth _callback "%1"`, command)
-}
 
-func TestWindowsURLHandlerCommandEscapesEmbeddedQuotes(t *testing.T) {
-	command := loginhelper.WindowsURLHandlerCommand(`C:\path\"quoted"\pixiv.exe`)
+	command = windowsURLHandlerCommand(`C:\path\"quoted"\pixiv.exe`)
 	require.Contains(t, command, `\"quoted\"`)
 	require.Contains(t, command, `auth _callback "%1"`)
 }
 
 func TestWindowsDelegateToPreviousUsesPrivateProgID(t *testing.T) {
 	useWindowsTemporaryConfig(t)
-	require.NoError(t, loginhelper.SaveHandlerManifest(loginhelper.HandlerManifest{Version: 1, ExecutablePath: `C:\pixiv.exe`, PreviousHandler: loginhelper.PreviousWindowsURLHandlerProgID}))
+	require.NoError(t, saveHandlerManifest(handlerManifest{Version: 1, ExecutablePath: `C:\pixiv.exe`, PreviousHandler: previousWindowsURLHandlerProgID}))
 
 	var className, callback string
-	t.Cleanup(loginhelper.SetOpenWindowsPreviousClass(func(_ context.Context, class, rawURL string) error {
+	installer := newURLHandlerInstaller()
+	installer.openPrevious = func(_ context.Context, class, rawURL string) error {
 		className = class
 		callback = rawURL
 		return nil
-	}))
+	}
 
 	const rawURL = "pixiv://unrelated/path?value=one-time-code"
-	require.NoError(t, loginhelper.DelegateToPrevious(context.Background(), rawURL))
-	require.Equal(t, loginhelper.PreviousWindowsURLHandlerProgID, className)
+	require.NoError(t, installer.delegateToPrevious(context.Background(), rawURL))
+	require.Equal(t, previousWindowsURLHandlerProgID, className)
 	require.Equal(t, rawURL, callback)
 }
 
@@ -49,11 +47,12 @@ func TestWindowsInstallRestoresExistingCurrentUserProtocolTree(t *testing.T) {
 	keyPath := windowsTestRegistryKey(t)
 	seedWindowsRegistryTree(t, keyPath)
 
-	t.Cleanup(loginhelper.SetWindowsURLHandlerRegistryKey(keyPath))
-	t.Cleanup(loginhelper.SetWindowsExecutablePath(func() (string, error) { return `C:\Program Files\pixiv\pixiv.exe`, nil }))
+	installer := newURLHandlerInstaller()
+	installer.urlHandlerKey = keyPath
+	installer.executable = func() (string, error) { return `C:\Program Files\pixiv\pixiv.exe`, nil }
 	t.Cleanup(func() { deleteWindowsRegistryTree(t, keyPath) })
 
-	cleanup, err := loginhelper.Install(context.Background(), "http://127.0.0.1:41871/callback")
+	cleanup, err := installer.install(context.Background(), "http://127.0.0.1:41871/callback")
 	require.NoError(t, err)
 	installed, err := registry.OpenKey(registry.CURRENT_USER, windowsRegistrySubpath(keyPath), registry.READ)
 	require.NoError(t, err)
@@ -85,11 +84,12 @@ func TestWindowsInstallRemovesNewProtocolTreeWhenNoneExisted(t *testing.T) {
 	keyPath := windowsTestRegistryKey(t)
 	deleteWindowsRegistryTree(t, keyPath)
 
-	t.Cleanup(loginhelper.SetWindowsURLHandlerRegistryKey(keyPath))
-	t.Cleanup(loginhelper.SetWindowsExecutablePath(func() (string, error) { return `C:\pixiv.exe`, nil }))
+	installer := newURLHandlerInstaller()
+	installer.urlHandlerKey = keyPath
+	installer.executable = func() (string, error) { return `C:\pixiv.exe`, nil }
 	t.Cleanup(func() { deleteWindowsRegistryTree(t, keyPath) })
 
-	cleanup, err := loginhelper.Install(context.Background(), "http://127.0.0.1:41871/callback")
+	cleanup, err := installer.install(context.Background(), "http://127.0.0.1:41871/callback")
 	require.NoError(t, err)
 	cleanup()
 	_, err = registry.OpenKey(registry.CURRENT_USER, windowsRegistrySubpath(keyPath), registry.READ)
@@ -98,14 +98,15 @@ func TestWindowsInstallRemovesNewProtocolTreeWhenNoneExisted(t *testing.T) {
 
 func TestWindowsInstallFailureRemovesPrivateCallbackEndpoint(t *testing.T) {
 	useWindowsTemporaryConfig(t)
-	t.Cleanup(loginhelper.SetWindowsURLHandlerRegistryKey(windowsTestRegistryKey(t)))
-	t.Cleanup(loginhelper.SetWindowsExecutablePath(func() (string, error) { return `C:\pixiv.exe`, nil }))
-	t.Cleanup(loginhelper.SetRunWindowsRegistry(func(context.Context, ...string) error { return errors.New("registry unavailable") }))
+	installer := newURLHandlerInstaller()
+	installer.urlHandlerKey = windowsTestRegistryKey(t)
+	installer.executable = func() (string, error) { return `C:\pixiv.exe`, nil }
+	installer.runRegistry = func(context.Context, ...string) error { return errors.New("registry unavailable") }
 
-	cleanup, err := loginhelper.Install(context.Background(), "http://127.0.0.1:41871/callback")
+	cleanup, err := installer.install(context.Background(), "http://127.0.0.1:41871/callback")
 	require.Nil(t, cleanup)
 	require.EqualError(t, err, "registry unavailable")
-	endpoint, err := loginhelper.CallbackEndpointPath()
+	endpoint, err := callbackEndpointPath()
 	require.NoError(t, err)
 	_, err = os.Stat(endpoint)
 	require.ErrorIs(t, err, os.ErrNotExist)

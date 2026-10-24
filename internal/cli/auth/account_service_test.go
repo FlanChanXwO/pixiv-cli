@@ -75,7 +75,7 @@ func TestImportBundleForwardsBundleDefaultFlag(t *testing.T) {
 		ResultingDefault: 42,
 	}
 
-	result, err := service.ImportBundle([]byte(validBundleJSON()))
+	result, err := service.importBundle(context.Background(), []byte(validBundleJSON()))
 	require.NoError(t, err)
 	require.Equal(t, int64(42), result.DefaultUserID)
 	require.Len(t, result.Accounts, 2)

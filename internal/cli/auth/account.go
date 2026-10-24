@@ -1,7 +1,11 @@
+// Pixiv auth account commands: list, import/export, selection, checks, refresh,
+// and pool state. Account domain access is adapted in account_service.go.
+
 package auth
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -15,50 +19,6 @@ import (
 	inputcmd "github.com/FlanChanXwO/pixiv-cli/internal/cli/internal/input"
 	"github.com/spf13/cobra"
 )
-
-type AccountOut struct {
-	UserID                 int64      `json:"user_id,omitempty"`
-	Username               string     `json:"username,omitempty"`
-	Default                bool       `json:"default"`
-	HasToken               bool       `json:"has_token"`
-	PremiumStatus          *bool      `json:"premium_status,omitempty"`
-	PremiumStatusCheckedAt *time.Time `json:"premium_status_checked_at,omitempty"`
-	Schedulable            *bool      `json:"schedulable,omitempty"`
-	Eligible               *bool      `json:"eligible,omitempty"`
-	PoolFrozenUntil        *time.Time `json:"pool_frozen_until,omitempty"`
-	Warning                string     `json:"warning,omitempty"`
-}
-
-type AccountListOut struct {
-	DefaultUserID int64        `json:"default_user_id,omitempty"`
-	Accounts      []AccountOut `json:"accounts"`
-}
-
-// AccountImportOut 是 auth import 单账号结果的输出 DTO。它刻意只携带
-// user_id/username/status，与账号列表契约分离，不包含 token 或 default。
-type AccountImportOut struct {
-	UserID   int64  `json:"user_id"`
-	Username string `json:"username"`
-	Status   string `json:"status"`
-}
-
-// AccountBundleImportOut 是 auth import bundle 恢复结果的输出 DTO。
-type AccountBundleImportOut struct {
-	Accounts      []AccountImportOut `json:"accounts"`
-	DefaultUserID int64              `json:"default_user_id"`
-}
-
-func accountImportOutFromResult(result accountImportResult) AccountImportOut {
-	return AccountImportOut{UserID: result.UserID, Username: result.Username, Status: result.Status}
-}
-
-func accountBundleImportOutFromResult(result accountBundleImportResult) AccountBundleImportOut {
-	out := AccountBundleImportOut{Accounts: make([]AccountImportOut, 0, len(result.Accounts)), DefaultUserID: result.DefaultUserID}
-	for _, account := range result.Accounts {
-		out.Accounts = append(out.Accounts, accountImportOutFromResult(account))
-	}
-	return out
-}
 
 type accountImportOptions struct {
 	commands.ProxyOptions
@@ -101,13 +61,6 @@ type accountRefreshOptions struct {
 type accountPoolChangeOptions struct {
 	all     bool
 	jsonOut bool
-}
-
-type AccountPoolStatusOut struct {
-	Enabled             bool         `json:"enabled"`
-	Strategy            string       `json:"strategy"`
-	EarliestFrozenUntil *time.Time   `json:"earliest_frozen_until,omitempty"`
-	Accounts            []AccountOut `json:"accounts"`
 }
 
 func (a controller) newAccountCommand() *cobra.Command {
@@ -162,7 +115,7 @@ func (a controller) newAccountExportCommand() *cobra.Command {
 			if err := services.require(); err != nil {
 				return err
 			}
-			result, err := services.Account.Export(accountExportRequest{UserID: userID, All: opts.all})
+			result, err := services.Account.export(accountExportRequest{UserID: userID, All: opts.all})
 			if err != nil {
 				return err
 			}
@@ -176,12 +129,12 @@ func (a controller) newAccountExportCommand() *cobra.Command {
 				if err := a.support.WriteBundle(opts.output, result.Bundle, opts.force); err != nil {
 					return err
 				}
-				return WriteAuthExportStdout(a.out, []byte(fmt.Sprintf("output: %s\naccounts: %d\n", opts.output, result.AccountCount)))
+				return writeAuthExportStdout(a.out, []byte(fmt.Sprintf("output: %s\naccounts: %d\n", opts.output, result.AccountCount)))
 			}
 			if opts.all {
-				return WriteAuthExportStdout(a.out, result.Bundle)
+				return writeAuthExportStdout(a.out, result.Bundle)
 			}
-			return WriteAuthExportStdout(a.out, []byte(result.RefreshToken+"\n"))
+			return writeAuthExportStdout(a.out, []byte(result.RefreshToken+"\n"))
 		},
 	}
 	cmd.Flags().BoolVar(&opts.all, "all", false, "export all stored accounts; cannot be combined with UID")
@@ -197,9 +150,9 @@ type authExportStdoutError struct{ cause error }
 func (e authExportStdoutError) Error() string { return "write stdout failed" }
 func (e authExportStdoutError) Unwrap() error { return e.cause }
 
-// WriteAuthExportStdout 把 auth export 输出写到指定 writer，且任何写入错误都
+// writeAuthExportStdout 把 auth export 输出写到指定 writer，且任何写入错误都
 // 以稳定类别返回，绝不把 token 或路径带进错误文本。
-func WriteAuthExportStdout(writer io.Writer, body []byte) error {
+func writeAuthExportStdout(writer io.Writer, body []byte) error {
 	written, err := writer.Write(body)
 	if err != nil {
 		return authExportStdoutError{cause: err}
@@ -245,12 +198,12 @@ func (a controller) accountImport(cmd *cobra.Command, args []string, opts accoun
 		if err := services.require(); err != nil {
 			return err
 		}
-		result, err := services.Account.ImportBundle(input.bundle)
+		result, err := services.Account.importBundle(cmd.Context(), input.bundle)
 		if err != nil {
 			return err
 		}
 		if opts.jsonOut {
-			return a.printJSON(accountBundleImportOutFromResult(result))
+			return a.printJSON(result)
 		}
 		for _, account := range result.Accounts {
 			fmt.Fprintf(a.out, "%s uid:%d\n", account.Status, account.UserID)
@@ -270,7 +223,7 @@ func (a controller) accountImport(cmd *cobra.Command, args []string, opts accoun
 	if err := services.require(); err != nil {
 		return err
 	}
-	result, err := services.Account.Import(cmd.Context(), accountImportRequest{
+	result, err := services.Account.importAccount(cmd.Context(), accountImportRequest{
 		TokenInput:         tokenInput,
 		HTTPSProxyOverride: proxyOverride,
 	})
@@ -278,7 +231,7 @@ func (a controller) accountImport(cmd *cobra.Command, args []string, opts accoun
 		return err
 	}
 	if opts.jsonOut {
-		return a.printJSON(accountImportOutFromResult(result))
+		return a.printJSON(result)
 	}
 	fmt.Fprintf(a.out, "%s uid:%d\n", result.Status, result.UserID)
 	if result.Username != "" {
@@ -313,7 +266,7 @@ func (a controller) bindAuthImportInput(cmd *cobra.Command) {
 				inputcmd.MarkSkipAutomaticUpdate(command)
 				commands.Override(command, commands.AuthBundleImport())
 			} else {
-				token, err := ReadRefreshTokenInput(bytes.NewReader(body))
+				token, err := readRefreshTokenInput(bytes.NewReader(body))
 				if err != nil {
 					return err
 				}
@@ -358,7 +311,7 @@ func (a controller) newAccountListCommand() *cobra.Command {
 		Short: "List accounts",
 		Args:  a.requireExactArgs(0, "pixiv auth list [--json]"),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return a.accountList(jsonOut)
+			return a.accountList(cmd.Context(), jsonOut)
 		},
 	}
 	cmd.Flags().BoolVar(&jsonOut, "json", false, "print JSON")
@@ -367,16 +320,16 @@ func (a controller) newAccountListCommand() *cobra.Command {
 	return cmd
 }
 
-func (a controller) accountList(jsonOut bool) error {
+func (a controller) accountList(ctx context.Context, jsonOut bool) error {
 	services := a.services()
 	if err := services.require(); err != nil {
 		return err
 	}
-	result, err := services.Account.List()
+	result, err := services.Account.listWithContext(ctx)
 	if err != nil {
 		return err
 	}
-	out := accountListOutFromResult(result)
+	out := result
 	if jsonOut {
 		return a.printJSON(out)
 	}
@@ -438,11 +391,11 @@ func (a controller) newAccountPoolStatusCommand() *cobra.Command {
 			if err := services.require(); err != nil {
 				return err
 			}
-			result, err := services.Account.PoolStatus(cmd.Context())
+			result, err := services.Account.poolStatus(cmd.Context())
 			if err != nil {
 				return err
 			}
-			out := accountPoolStatusOutFromResult(result)
+			out := result
 			if jsonOut {
 				return a.printJSON(out)
 			}
@@ -493,7 +446,7 @@ func (a controller) newAccountPoolChangeCommand(name string, schedulable bool) *
 				}
 				userIDs = append(userIDs, userID)
 			}
-			if err := services.Account.SetPool(cmd.Context(), userIDs, schedulable, opts.all); err != nil {
+			if err := services.Account.setPool(cmd.Context(), userIDs, schedulable, opts.all); err != nil {
 				return err
 			}
 			if opts.jsonOut {
@@ -537,7 +490,7 @@ func (a controller) newAccountRemoveCommand() *cobra.Command {
 		Short: "Remove an account",
 		Args:  a.requireMaxArgs(1, "pixiv auth remove [UID] [--yes]"),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return a.accountRemove(args, opts)
+			return a.accountRemove(cmd.Context(), args, opts)
 		},
 	}
 	flags := cmd.Flags()
@@ -548,12 +501,12 @@ func (a controller) newAccountRemoveCommand() *cobra.Command {
 	return cmd
 }
 
-func (a controller) accountRemove(args []string, opts accountRemoveOptions) error {
+func (a controller) accountRemove(ctx context.Context, args []string, opts accountRemoveOptions) error {
 	services := a.services()
 	if err := services.require(); err != nil {
 		return err
 	}
-	list, err := services.Account.List()
+	list, err := services.Account.listWithContext(ctx)
 	if err != nil {
 		return err
 	}
@@ -570,7 +523,7 @@ func (a controller) accountRemove(args []string, opts accountRemoveOptions) erro
 			return errors.New("account removal canceled")
 		}
 	}
-	_, defaultUserID, err := services.Account.Remove(userID)
+	_, defaultUserID, err := services.Account.remove(userID)
 	if err != nil {
 		return err
 	}
@@ -591,7 +544,7 @@ func (a controller) newAccountUseCommand() *cobra.Command {
 		Short: "Set the default account",
 		Args:  a.requireMaxArgs(1, "pixiv auth use [UID]"),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return a.accountUse(args, jsonOut)
+			return a.accountUse(cmd.Context(), args, jsonOut)
 		},
 	}
 	cmd.Flags().BoolVar(&jsonOut, "json", false, "print JSON")
@@ -600,12 +553,12 @@ func (a controller) newAccountUseCommand() *cobra.Command {
 	return cmd
 }
 
-func (a controller) accountUse(args []string, jsonOut bool) error {
+func (a controller) accountUse(ctx context.Context, args []string, jsonOut bool) error {
 	services := a.services()
 	if err := services.require(); err != nil {
 		return err
 	}
-	list, err := services.Account.List()
+	list, err := services.Account.listWithContext(ctx)
 	if err != nil {
 		return err
 	}
@@ -613,7 +566,7 @@ func (a controller) accountUse(args []string, jsonOut bool) error {
 	if err != nil {
 		return err
 	}
-	userID, err = services.Account.Use(userID)
+	userID, err = services.Account.use(userID)
 	if err != nil {
 		return err
 	}
@@ -658,14 +611,14 @@ func (a controller) accountCheck(cmd *cobra.Command, userID int64, opts accountC
 	if err := services.require(); err != nil {
 		return err
 	}
-	result, err := services.Account.CheckWithRequest(cmd.Context(), accountCheckRequest{
+	result, err := services.Account.checkWithRequest(cmd.Context(), accountCheckRequest{
 		UserID:             userID,
 		HTTPSProxyOverride: proxyOverride,
 	})
 	if err != nil {
 		return err
 	}
-	out := accountOutFromResult(result)
+	out := result
 	if opts.jsonOut {
 		return a.printJSON(out)
 	}
@@ -724,7 +677,7 @@ func (a controller) accountRefresh(cmd *cobra.Command, userID int64, opts accoun
 	}
 	userIDs := []int64{userID}
 	if opts.all {
-		list, err := services.Account.List()
+		list, err := services.Account.listWithContext(cmd.Context())
 		if err != nil {
 			return err
 		}
@@ -736,20 +689,20 @@ func (a controller) accountRefresh(cmd *cobra.Command, userID int64, opts accoun
 			return errors.New("no accounts")
 		}
 	}
-	results := make([]AccountOut, 0, len(userIDs))
+	results := make([]accountOut, 0, len(userIDs))
 	for _, selectedUserID := range userIDs {
-		result, err := services.Account.RefreshWithRequest(cmd.Context(), accountRefreshRequest{
+		result, err := services.Account.refreshWithRequest(cmd.Context(), accountRefreshRequest{
 			UserID:             selectedUserID,
 			HTTPSProxyOverride: proxyOverride,
 		})
 		if err != nil {
 			return err
 		}
-		results = append(results, accountOutFromResult(result))
+		results = append(results, result)
 	}
 	if opts.jsonOut {
 		return a.printJSON(struct {
-			Accounts []AccountOut `json:"accounts"`
+			Accounts []accountOut `json:"accounts"`
 		}{Accounts: results})
 	}
 	for _, account := range results {
@@ -762,7 +715,7 @@ func (a controller) accountRefresh(cmd *cobra.Command, userID int64, opts accoun
 	return nil
 }
 
-func (a controller) resolveExistingUID(list accountListResult, args []string, promptLabel string) (int64, error) {
+func (a controller) resolveExistingUID(list accountListOut, args []string, promptLabel string) (int64, error) {
 	if len(args) > 0 && strings.TrimSpace(args[0]) != "" {
 		return parseAuthUID(args[0])
 	}
@@ -804,12 +757,12 @@ func (a controller) resolveRefreshTokenInput(cmd *cobra.Command, args []string) 
 	if _, err := fmt.Fprint(a.errOut, "refresh token: "); err != nil {
 		return "", err
 	}
-	return ReadRefreshTokenInput(a.in)
+	return readRefreshTokenInput(a.in)
 }
 
-// ReadRefreshTokenInput 读取完整 stdin，只消费管道输出常见的一个末尾行结束符；
+// readRefreshTokenInput 读取完整 stdin，只消费管道输出常见的一个末尾行结束符；
 // token 的其他字节保持 opaque，不能用 TrimSpace 改写。
-func ReadRefreshTokenInput(r io.Reader) (string, error) {
+func readRefreshTokenInput(r io.Reader) (string, error) {
 	input, err := io.ReadAll(r)
 	if err != nil {
 		return "", err
@@ -827,40 +780,4 @@ func ReadRefreshTokenInput(r io.Reader) (string, error) {
 		return "", errors.New("refresh token cannot be empty")
 	}
 	return token, nil
-}
-
-func accountOutFromResult(result accountResult) AccountOut {
-	return AccountOut{
-		UserID:                 result.UserID,
-		Username:               result.Username,
-		Default:                result.Default,
-		HasToken:               result.HasToken,
-		PremiumStatus:          result.PremiumStatus,
-		PremiumStatusCheckedAt: result.PremiumStatusCheckedAt,
-		Schedulable:            result.Schedulable,
-		Eligible:               result.Eligible,
-		PoolFrozenUntil:        result.PoolFrozenUntil,
-		Warning:                result.Warning,
-	}
-}
-
-func accountPoolStatusOutFromResult(result accountPoolStatusResult) AccountPoolStatusOut {
-	out := AccountPoolStatusOut{
-		Enabled:             result.Enabled,
-		Strategy:            string(result.Strategy),
-		EarliestFrozenUntil: result.EarliestFrozenUntil,
-		Accounts:            make([]AccountOut, 0, len(result.Accounts)),
-	}
-	for _, account := range result.Accounts {
-		out.Accounts = append(out.Accounts, accountOutFromResult(account))
-	}
-	return out
-}
-
-func accountListOutFromResult(result accountListResult) AccountListOut {
-	out := AccountListOut{DefaultUserID: result.DefaultUserID}
-	for _, acct := range result.Accounts {
-		out.Accounts = append(out.Accounts, accountOutFromResult(acct))
-	}
-	return out
 }

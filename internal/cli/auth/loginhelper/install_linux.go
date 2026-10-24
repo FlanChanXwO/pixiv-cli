@@ -1,5 +1,8 @@
 //go:build linux
 
+// Desktop Linux pixiv:// handler installation through XDG desktop files and
+// mimeapps state, including exact user-level state restoration.
+
 package loginhelper
 
 import (
@@ -15,161 +18,90 @@ import (
 	filesecret "github.com/FlanChanXwO/pixiv-cli/internal/storage/secretfile"
 )
 
-// LinuxURLHandlerDesktopFile 是 pixiv:// scheme 的 desktop entry 文件名。
-const LinuxURLHandlerDesktopFile = "pixiv-cli-url-handler.desktop"
+const linuxURLHandlerDesktopFile = "pixiv-cli-url-handler.desktop"
+const linuxPixivURLScheme = "x-scheme-handler/pixiv"
 
-// LinuxPixivURLScheme 是本 CLI 在 Linux 上关联的 URL scheme。
-const LinuxPixivURLScheme = "x-scheme-handler/pixiv"
-
-var (
-	linuxExecutablePath      = os.Executable
-	runLinuxXDGMIme          = defaultRunLinuxXDGMIme
-	runLinuxGioLaunch        = defaultRunLinuxGioLaunch
-	findLinuxCommand         = exec.LookPath
-	queryLinuxDefaultHandler = linuxDefaultURLHandler
-)
-
-// SetLinuxExecutablePath 覆盖本机 executable 解析；返回恢复函数。
-func SetLinuxExecutablePath(resolve func() (string, error)) func() {
-	original := linuxExecutablePath
-	linuxExecutablePath = resolve
-	return func() { linuxExecutablePath = original }
+// urlHandlerInstaller holds the Linux system boundaries used by both the
+// per-login handler and the persistent association.
+type urlHandlerInstaller struct {
+	executable          func() (string, error)
+	runXDGMime          func(context.Context, ...string) error
+	runGioLaunch        func(context.Context, string, string) error
+	findCommand         func(string) (string, error)
+	queryDefaultHandler func(context.Context) (string, error)
 }
 
-// SetRunLinuxXDGMIme 覆盖 xdg-mime 命令执行；返回恢复函数。
-func SetRunLinuxXDGMIme(run func(context.Context, ...string) error) func() {
-	original := runLinuxXDGMIme
-	runLinuxXDGMIme = run
-	return func() { runLinuxXDGMIme = original }
+func newURLHandlerInstaller() urlHandlerInstaller {
+	return urlHandlerInstaller{
+		executable:          os.Executable,
+		runXDGMime:          defaultRunLinuxXDGMIme,
+		runGioLaunch:        defaultRunLinuxGioLaunch,
+		findCommand:         exec.LookPath,
+		queryDefaultHandler: linuxDefaultURLHandler,
+	}
 }
 
-// SetRunLinuxGioLaunch 覆盖 gio launch 执行；返回恢复函数。
-func SetRunLinuxGioLaunch(run func(context.Context, string, string) error) func() {
-	original := runLinuxGioLaunch
-	runLinuxGioLaunch = run
-	return func() { runLinuxGioLaunch = original }
-}
-
-// SetFindLinuxCommand 覆盖外部命令查找；返回恢复函数。
-func SetFindLinuxCommand(find func(string) (string, error)) func() {
-	original := findLinuxCommand
-	findLinuxCommand = find
-	return func() { findLinuxCommand = original }
-}
-
-// SetQueryLinuxDefaultHandler 覆盖当前 pixiv scheme 默认 handler 查询；返回恢复函数。
-func SetQueryLinuxDefaultHandler(query func(context.Context) (string, error)) func() {
-	original := queryLinuxDefaultHandler
-	queryLinuxDefaultHandler = query
-	return func() { queryLinuxDefaultHandler = original }
-}
-
-// EnsurePersistent 安装桌面 Linux 的按需 callback handler。headless Linux
+// ensurePersistent 安装桌面 Linux 的按需 callback handler。headless Linux
 // 不会调用它；server relay 本身不依赖任何桌面集成。
-func EnsurePersistent(ctx context.Context) error {
-	if _, err := findLinuxCommand("xdg-mime"); err != nil {
+func (i urlHandlerInstaller) ensurePersistent(ctx context.Context) error {
+	if _, err := i.findCommand("xdg-mime"); err != nil {
 		return errors.New("xdg-mime is required for the desktop Pixiv callback handler")
 	}
-	if _, err := findLinuxCommand("gio"); err != nil {
+	if _, err := i.findCommand("gio"); err != nil {
 		return errors.New("gio is required for the desktop Pixiv callback handler")
 	}
-	executablePath, err := linuxExecutablePath()
+	executablePath, err := i.executable()
 	if err != nil {
 		return err
 	}
-	applicationsDir, err := LinuxApplicationsDir()
+	applicationsDir, err := linuxApplicationsDir()
 	if err != nil {
 		return err
 	}
-	desktopPath := filepath.Join(applicationsDir, LinuxURLHandlerDesktopFile)
-	manifest, exists, err := LoadHandlerManifest()
+	desktopPath := filepath.Join(applicationsDir, linuxURLHandlerDesktopFile)
+	manifest, exists, err := loadHandlerManifest()
 	if err != nil {
 		return err
 	}
-	var snapshots []linuxFileSnapshot
 	if !exists {
-		previous, err := queryLinuxDefaultHandler(ctx)
+		previous, err := i.queryDefaultHandler(ctx)
 		if err != nil {
 			return err
 		}
-		snapshots, err = snapshotLinuxMimeState(applicationsDir, desktopPath)
-		if err != nil {
-			return err
-		}
-		manifest = HandlerManifest{Version: 1, ExecutablePath: executablePath, PreviousHandler: previous, LinuxMIMESnapshots: snapshots}
+		manifest = handlerManifest{Version: 1, ExecutablePath: executablePath, PreviousHandler: previous}
 	} else {
 		manifest.ExecutablePath = executablePath
-		snapshots = manifest.LinuxMIMESnapshots
 	}
-	if err := filesecret.WritePrivateFile(desktopPath, []byte(LinuxDesktopEntry(executablePath)), paths.PrivateFileMode); err != nil {
+	if err := filesecret.WritePrivateFile(desktopPath, []byte(linuxDesktopEntry(executablePath)), paths.PrivateFileMode); err != nil {
 		return err
 	}
-	if err := runLinuxXDGMIme(ctx, "default", LinuxURLHandlerDesktopFile, LinuxPixivURLScheme); err != nil {
-		if len(snapshots) > 0 {
-			_ = restoreLinuxMimeState(snapshots)
-		}
+	if err := i.runXDGMime(ctx, "default", linuxURLHandlerDesktopFile, linuxPixivURLScheme); err != nil {
 		return err
 	}
-	if err := SaveHandlerManifest(manifest); err != nil {
-		if len(snapshots) > 0 {
-			_ = restoreLinuxMimeState(snapshots)
-		}
+	if err := saveHandlerManifest(manifest); err != nil {
 		return err
 	}
 	return nil
 }
 
-func DisablePersistent(ctx context.Context) error {
-	manifest, exists, err := LoadHandlerManifest()
-	if err != nil || !exists {
-		return err
-	}
-	current, err := queryLinuxDefaultHandler(ctx)
+func (i urlHandlerInstaller) delegateToPrevious(ctx context.Context, rawURL string) error {
+	manifest, exists, err := loadHandlerManifest()
 	if err != nil {
 		return err
 	}
-	if current == LinuxURLHandlerDesktopFile {
-		if len(manifest.LinuxMIMESnapshots) > 0 {
-			if err := restoreLinuxMimeState(manifest.LinuxMIMESnapshots); err != nil {
-				return err
-			}
-		} else if manifest.PreviousHandler != "" && manifest.PreviousHandler != LinuxURLHandlerDesktopFile {
-			// 兼容没有 snapshot 的旧 manifest：至少恢复已记录的 handler。
-			if err := runLinuxXDGMIme(ctx, "default", manifest.PreviousHandler, LinuxPixivURLScheme); err != nil {
-				return err
-			}
-			applicationsDir, err := LinuxApplicationsDir()
-			if err != nil {
-				return err
-			}
-			if err := os.Remove(filepath.Join(applicationsDir, LinuxURLHandlerDesktopFile)); err != nil && !errors.Is(err, os.ErrNotExist) {
-				return err
-			}
-		} else if manifest.PreviousHandler == "" {
-			return errors.New("cannot safely restore a previous Linux Pixiv URL handler")
-		}
-	}
-	return RemoveHandlerManifest()
-}
-
-func DelegateToPrevious(ctx context.Context, rawURL string) error {
-	manifest, exists, err := LoadHandlerManifest()
-	if err != nil {
-		return err
-	}
-	if !exists || manifest.PreviousHandler == "" || manifest.PreviousHandler == LinuxURLHandlerDesktopFile {
+	if !exists || manifest.PreviousHandler == "" || manifest.PreviousHandler == linuxURLHandlerDesktopFile {
 		return errors.New("no previous Pixiv URL handler is available")
 	}
-	if _, err := findLinuxCommand("gio"); err != nil {
+	if _, err := i.findCommand("gio"); err != nil {
 		return errors.New("gio is required to open the previous Pixiv URL handler")
 	}
-	desktopPath, err := LinuxDesktopFilePath(manifest.PreviousHandler)
+	desktopPath, err := linuxDesktopFilePath(manifest.PreviousHandler)
 	if err != nil {
 		return errors.New("could not locate previous Pixiv URL handler")
 	}
 	// gio launch 要求实际 desktop-file 路径而不是 XDG desktop ID；仍以参数
 	// 数组启动，callback URL 不会经过 shell 解释。
-	if err := runLinuxGioLaunch(ctx, desktopPath, rawURL); err != nil {
+	if err := i.runGioLaunch(ctx, desktopPath, rawURL); err != nil {
 		return errors.New("could not open previous Pixiv URL handler")
 	}
 	return nil
@@ -180,7 +112,7 @@ func defaultRunLinuxGioLaunch(ctx context.Context, desktopPath, rawURL string) e
 }
 
 func linuxDefaultURLHandler(ctx context.Context) (string, error) {
-	command := exec.CommandContext(ctx, "xdg-mime", "query", "default", LinuxPixivURLScheme)
+	command := exec.CommandContext(ctx, "xdg-mime", "query", "default", linuxPixivURLScheme)
 	out, err := command.Output()
 	if err != nil {
 		return "", fmt.Errorf("query xdg-mime: %w", err)
@@ -188,11 +120,11 @@ func linuxDefaultURLHandler(ctx context.Context) (string, error) {
 	return strings.TrimSpace(string(out)), nil
 }
 
-// Install 在桌面 Linux 上只为当前 auth login 尝试注册 pixiv:// handler。
+// install 在桌面 Linux 上只为当前 auth login 尝试注册 pixiv:// handler。
 // xdg-mime 会写入用户 mimeapps 文件，因此在修改前保留所有可能的用户级位置并在
 // cleanup 时逐字节恢复，避免没有原默认 handler 的用户留下悬挂关联。
-func Install(ctx context.Context, callbackRelayURL string) (cleanup func(), err error) {
-	endpointPath, err := WriteCallbackEndpoint(callbackRelayURL)
+func (i urlHandlerInstaller) install(ctx context.Context, callbackRelayURL string) (cleanup func(), err error) {
+	endpointPath, err := writeCallbackEndpoint(callbackRelayURL)
 	if err != nil {
 		return nil, err
 	}
@@ -204,23 +136,23 @@ func Install(ctx context.Context, callbackRelayURL string) (cleanup func(), err 
 		}
 	}()
 
-	executablePath, err := linuxExecutablePath()
+	executablePath, err := i.executable()
 	if err != nil {
 		return nil, err
 	}
-	applicationsDir, err := LinuxApplicationsDir()
+	applicationsDir, err := linuxApplicationsDir()
 	if err != nil {
 		return nil, err
 	}
-	desktopPath := filepath.Join(applicationsDir, LinuxURLHandlerDesktopFile)
+	desktopPath := filepath.Join(applicationsDir, linuxURLHandlerDesktopFile)
 	snapshots, err := snapshotLinuxMimeState(applicationsDir, desktopPath)
 	if err != nil {
 		return nil, err
 	}
-	if err := filesecret.WritePrivateFile(desktopPath, []byte(LinuxDesktopEntry(executablePath)), paths.PrivateFileMode); err != nil {
+	if err := filesecret.WritePrivateFile(desktopPath, []byte(linuxDesktopEntry(executablePath)), paths.PrivateFileMode); err != nil {
 		return nil, err
 	}
-	if err := runLinuxXDGMIme(ctx, "default", LinuxURLHandlerDesktopFile, LinuxPixivURLScheme); err != nil {
+	if err := i.runXDGMime(ctx, "default", linuxURLHandlerDesktopFile, linuxPixivURLScheme); err != nil {
 		_ = restoreLinuxMimeState(snapshots)
 		return nil, err
 	}
@@ -241,8 +173,8 @@ func defaultRunLinuxXDGMIme(ctx context.Context, args ...string) error {
 	return nil
 }
 
-// LinuxApplicationsDir 返回当前用户的 desktop applications 目录。
-func LinuxApplicationsDir() (string, error) {
+// linuxApplicationsDir 返回当前用户的 desktop applications 目录。
+func linuxApplicationsDir() (string, error) {
 	dataHome := strings.TrimSpace(os.Getenv("XDG_DATA_HOME"))
 	if dataHome == "" {
 		home, err := os.UserHomeDir()
@@ -254,14 +186,14 @@ func LinuxApplicationsDir() (string, error) {
 	return filepath.Join(dataHome, "applications"), nil
 }
 
-// LinuxDesktopFilePath 从 xdg-mime 返回的 desktop ID 解析实际文件。gio launch
+// linuxDesktopFilePath 从 xdg-mime 返回的 desktop ID 解析实际文件。gio launch
 // 不能接受 ID；同时拒绝路径成分，避免损坏的 mimeapps 状态被当作任意本地文件启动。
-func LinuxDesktopFilePath(desktopID string) (string, error) {
+func linuxDesktopFilePath(desktopID string) (string, error) {
 	desktopID = strings.TrimSpace(desktopID)
 	if desktopID == "" || filepath.Base(desktopID) != desktopID || !strings.HasSuffix(strings.ToLower(desktopID), ".desktop") {
 		return "", errors.New("invalid desktop handler ID")
 	}
-	applicationsDir, err := LinuxApplicationsDir()
+	applicationsDir, err := linuxApplicationsDir()
 	if err != nil {
 		return "", err
 	}
@@ -295,15 +227,15 @@ func LinuxDesktopFilePath(desktopID string) (string, error) {
 	return "", os.ErrNotExist
 }
 
-// LinuxDesktopEntry 生成 pixiv:// callback 的 desktop entry。Exec 行只接受
+// linuxDesktopEntry 生成 pixiv:// callback 的 desktop entry。Exec 行只接受
 // 已转义的二进制路径，不拼接其他参数。
-func LinuxDesktopEntry(executablePath string) string {
+func linuxDesktopEntry(executablePath string) string {
 	return "[Desktop Entry]\n" +
 		"Type=Application\n" +
 		"Name=Pixiv CLI OAuth Callback\n" +
 		"NoDisplay=true\n" +
 		"Exec=" + linuxDesktopExecArgument(executablePath) + " auth " + CallbackCommand + " %u\n" +
-		"MimeType=" + LinuxPixivURLScheme + ";\n"
+		"MimeType=" + linuxPixivURLScheme + ";\n"
 }
 
 // linuxDesktopExecArgument 实现 Desktop Entry 的双引号转义子集。当前二进制路径
@@ -313,7 +245,14 @@ func linuxDesktopExecArgument(argument string) string {
 	return `"` + replacer.Replace(argument) + `"`
 }
 
-type linuxFileSnapshot = HandlerFileSnapshot
+// linuxFileSnapshot records one user-level file for exact restoration after the
+// transient login handler is removed.
+type linuxFileSnapshot struct {
+	Path    string      `json:"path"`
+	Exists  bool        `json:"exists"`
+	Mode    os.FileMode `json:"mode"`
+	Content []byte      `json:"content,omitempty"`
+}
 
 func snapshotLinuxMimeState(applicationsDir, desktopPath string) ([]linuxFileSnapshot, error) {
 	paths := append(linuxMimeAppsPaths(), desktopPath)
@@ -393,4 +332,9 @@ func restoreLinuxMimeState(snapshots []linuxFileSnapshot) error {
 		}
 	}
 	return errors.Join(errs...)
+}
+
+// Install 在桌面 Linux 上只为当前 auth login 注册 pixiv:// handler。
+func Install(ctx context.Context, callbackRelayURL string) (func(), error) {
+	return newURLHandlerInstaller().install(ctx, callbackRelayURL)
 }
