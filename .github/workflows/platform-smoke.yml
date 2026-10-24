@@ -83,7 +83,10 @@ jobs:
         run: go mod download
       - name: Verify Go license bundle
         shell: bash
-        run: go run ./scripts/licensebundle --check
+        run: |
+          tool=scripts/licensebundle
+          [ ! -f scripts/build/licensebundle/main.go ] || tool=scripts/build/licensebundle
+          go run "./$tool" --check
       - name: Test the platform installer
         shell: bash
         run: go test ./scripts/citest -count=1
