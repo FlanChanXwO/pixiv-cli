@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"regexp"
 	"strings"
 )
@@ -59,6 +60,10 @@ func decodeRecordObject(data []byte) (map[string]any, error) {
 	var value any
 	if err := decoder.Decode(&value); err != nil {
 		return nil, fmt.Errorf("invalid record JSON object: %w", err)
+	}
+	// A record is exactly one JSON value: reject a second value or trailing bytes.
+	if err := decoder.Decode(new(any)); !errors.Is(err, io.EOF) {
+		return nil, errors.New("invalid record JSON object: trailing content after object")
 	}
 	fields, ok := value.(map[string]any)
 	if !ok || fields == nil {
