@@ -613,8 +613,8 @@ func validCommentChain(value commentWire) bool {
 	}
 }
 
-// artworkWireFromEntity 是 internal endpoint 实体到 wire 的临时桥接：user 与
-// novel 端点尚未并入 SDK，仍需读取 artwork.Artwork。G08 删除 internal artwork
+// artworkWireFromEntity 是 internal endpoint 实体到 wire 的临时桥接：user
+// 端点尚未并入 SDK，仍需读取 artwork.Artwork。G08 删除 internal artwork
 // 实体后连同本函数一起删除。
 func artworkWireFromEntity(value artwork.Artwork) artworkWire {
 	tags := make([]tagWire, len(value.Tags))

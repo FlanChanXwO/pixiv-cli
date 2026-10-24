@@ -10,7 +10,7 @@ import (
 	"github.com/FlanChanXwO/pixiv-cli/sdk"
 )
 
-// mapArtworkEntity 把 internal artwork 端点（novel/user 尚未并入）的规范化实体
+// mapArtworkEntity 把 internal artwork 端点（user 尚未并入）的规范化实体
 // 转成公开模型；wire 映射与资源注册由 mapArtwork 统一完成。
 func (c *Client) mapArtworkEntity(value artwork.Artwork) (Artwork, error) {
 	return c.mapArtwork(artworkWireFromEntity(value))
