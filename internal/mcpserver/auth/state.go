@@ -54,6 +54,11 @@ type Grant struct {
 	Revoked           bool                 `json:"revoked"`
 }
 
+// Usable 判断 grant 是否仍授权该 canonical MCP 资源；凭据各自的到期时间由调用方检查。
+func (g Grant) Usable(resource string) bool {
+	return !g.Revoked && g.Resource == resource && g.Scope == "mcp"
+}
+
 // Store 只持有路径；每次操作从原子文件读取当前状态，不缓存 verifier。
 type Store struct{ Path string }
 

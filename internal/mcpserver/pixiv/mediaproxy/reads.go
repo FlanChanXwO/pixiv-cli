@@ -262,7 +262,7 @@ func (s *Service) ConcurrentReads() int {
 	return s.reads.config.Concurrency
 }
 
-// HasReadSessions distinguishes production caching from legacy embedding fixtures.
+// HasReadSessions reports whether Configure installed the cached read path.
 func (s *Service) HasReadSessions() bool { return s != nil && s.reads != nil }
 
 // cachedResource 是进程内缓存的私有资源格式。它显式保留定位信息；不能嵌入

@@ -53,7 +53,7 @@ func TestGalleryEmbeddedAssetsAndMediaCSP(t *testing.T) {
 				}
 				gallery.Register(server, media)
 			} else {
-				gallery.Register(server)
+				gallery.Register(server, nil)
 			}
 			c, s := mcp.NewInMemoryTransports()
 			ss, err := server.Connect(t.Context(), s, nil)
@@ -70,6 +70,7 @@ func TestGalleryEmbeddedAssetsAndMediaCSP(t *testing.T) {
 			tool := &mcp.Tool{Name: "pixiv_show_gallery"}
 			gallery.Attach(tool, media)
 			viewURI, _ := tool.Meta["ui"].(map[string]any)["resourceUri"].(string)
+			baseURI, _, _ := strings.Cut(viewURI, "/sha256-")
 			mediaTool := &mcp.Tool{Name: "pixiv_artwork_media"}
 			gallery.Attach(mediaTool, media)
 			if mediaTool.Meta == nil || mediaTool.Meta["ui"] == nil {
@@ -78,10 +79,10 @@ func TestGalleryEmbeddedAssetsAndMediaCSP(t *testing.T) {
 			if mediaTool.Meta["ui"].(map[string]any)["resourceUri"] != viewURI {
 				t.Fatal("complete media must reuse the current embedded view")
 			}
-			if viewURI == gallery.URI || !strings.HasPrefix(viewURI, gallery.URI+"/sha256-") {
+			if viewURI == baseURI || !strings.HasPrefix(viewURI, baseURI+"/sha256-") {
 				t.Fatalf("host UI must use a content-version cache key, got %q", viewURI)
 			}
-			result, err := session.ReadResource(t.Context(), &mcp.ReadResourceParams{URI: gallery.URI})
+			result, err := session.ReadResource(t.Context(), &mcp.ReadResourceParams{URI: baseURI})
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -90,10 +91,10 @@ func TestGalleryEmbeddedAssetsAndMediaCSP(t *testing.T) {
 			}
 			page := result.Contents[0].Text
 			digest := sha256.Sum256([]byte(page))
-			if viewURI != gallery.URI+"/sha256-"+hex.EncodeToString(digest[:]) {
+			if viewURI != baseURI+"/sha256-"+hex.EncodeToString(digest[:]) {
 				t.Fatal("frontend and injected canonical origin must determine the host cache key")
 			}
-			for _, uri := range []string{viewURI, gallery.URI + "/sha256-" + strings.Repeat("0", 64)} {
+			for _, uri := range []string{viewURI, baseURI + "/sha256-" + strings.Repeat("0", 64)} {
 				alias, err := session.ReadResource(t.Context(), &mcp.ReadResourceParams{URI: uri})
 				if err != nil {
 					t.Fatalf("current and historical view aliases remain readable: %v", err)
@@ -103,7 +104,7 @@ func TestGalleryEmbeddedAssetsAndMediaCSP(t *testing.T) {
 				}
 			}
 			for _, revision := range []string{"invalid", strings.Repeat("A", 64)} {
-				if _, err := session.ReadResource(t.Context(), &mcp.ReadResourceParams{URI: gallery.URI + "/sha256-" + revision}); err == nil {
+				if _, err := session.ReadResource(t.Context(), &mcp.ReadResourceParams{URI: baseURI + "/sha256-" + revision}); err == nil {
 					t.Fatal("malformed revision aliases must not be readable")
 				}
 			}

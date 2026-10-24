@@ -150,7 +150,7 @@ func (a *authorizer) refresh(r *http.Request, form url.Values, state State) (map
 		return nil, errInvalidGrant
 	}
 	hash := tokenHash(form.Get("refresh_token"))
-	// ponytail: 单 owner 的 grant/重放历史线性扫描；规模增大时再加 hash 索引。
+	// 单 owner 的 grant 与重放历史很小，线性扫描比维护 hash 索引更简单。
 	for id, grant := range state.Grants {
 		used := slices.Contains(grant.UsedRefreshHashes, hash)
 		if grant.RefreshHash != hash && !used {

@@ -22,7 +22,7 @@ import (
 
 // NewHTTPHandler 将专用 server 绑定到 ctx 的服务生命周期并组装 HTTP/OAuth 路由。
 // owner 必须已初始化；同一 server 不应再次绑定到另一生命周期。
-func NewHTTPHandler(ctx context.Context, server *mcp.Server, baseURL string, store auth.Store, login *accounts.LoginManager, media ...*mediaproxy.Service) (http.Handler, error) {
+func NewHTTPHandler(ctx context.Context, server *mcp.Server, baseURL string, store auth.Store, login *accounts.Login, media ...*mediaproxy.Service) (http.Handler, error) {
 	authorization, err := auth.NewHandler(baseURL, store)
 	if err != nil {
 		return nil, err
@@ -93,7 +93,7 @@ func NewHTTPHandler(ctx context.Context, server *mcp.Server, baseURL string, sto
 }
 
 // RunHTTP 监听显式地址；取消或 listener 失败时取消并等待在途 handler 退出，不切换端口。
-func RunHTTP(ctx context.Context, server *mcp.Server, listenAddr, baseURL string, store auth.Store, out io.Writer, login *accounts.LoginManager, media ...*mediaproxy.Service) error {
+func RunHTTP(ctx context.Context, server *mcp.Server, listenAddr, baseURL string, store auth.Store, out io.Writer, login *accounts.Login, media ...*mediaproxy.Service) error {
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 	if login != nil {

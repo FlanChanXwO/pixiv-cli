@@ -27,20 +27,29 @@ const controlBodyReadTimeout = 10 * time.Second
 
 var errOAuthCapacity = errors.New("OAuth capacity reached")
 
-// NewHandler 构造独立 discovery/DCR/authorize/token handler 及 bearer 包装器；canonicalBase 不从请求头推断。
-// 不启动 listener 或读取文件；注册、授权与 token 操作要求 store 已初始化，并在每次请求内读取最新状态。
-func NewHandler(canonicalBase string, store Store) (*Handler, error) {
+// ParseBaseURL 校验并返回规范化的公开 MCP base URL（去掉末尾斜杠），只接受显式配置。
+// 客户端会归一化 dot segments；拒绝可能使 issuer 与 discovery 路径不一致的配置。
+func ParseBaseURL(canonicalBase string) (*url.URL, error) {
 	base, err := url.Parse(strings.TrimRight(canonicalBase, "/"))
 	if err != nil || base.User != nil || base.Opaque != "" ||
 		(base.Scheme != "http" && base.Scheme != "https") || !validHTTPAuthority(base) ||
 		base.RawQuery != "" || base.ForceQuery || strings.ContainsAny(canonicalBase, `#\`) {
 		return nil, errors.New("canonical MCP base URL must be an absolute HTTP(S) URL without credentials, query or fragment")
 	}
-	// 客户端会归一化 dot segments；拒绝可能使 issuer 与 discovery 路径不一致的配置。
 	for _, segment := range strings.Split(base.Path, "/") {
 		if segment == "." || segment == ".." {
 			return nil, errors.New("canonical MCP base URL path must not contain dot segments")
 		}
+	}
+	return base, nil
+}
+
+// NewHandler 构造独立 discovery/DCR/authorize/token handler 及 bearer 包装器；canonicalBase 不从请求头推断。
+// 不启动 listener 或读取文件；注册、授权与 token 操作要求 store 已初始化，并在每次请求内读取最新状态。
+func NewHandler(canonicalBase string, store Store) (*Handler, error) {
+	base, err := ParseBaseURL(canonicalBase)
+	if err != nil {
+		return nil, err
 	}
 	if store.Path == "" {
 		return nil, errors.New("MCP state path is required")

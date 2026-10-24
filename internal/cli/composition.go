@@ -464,8 +464,8 @@ func (a app) runPixivMCP(ctx context.Context, request mcpcommands.Request) (resu
 		return err
 	}
 
-	manager := mcpaccounts.Manager{Store: store, Load: ports.localAccounts}
-	login, err := a.newMCPLoginManager(ctx, baseURL, manager, request.HTTPSProxyOverride)
+	selection := mcpaccounts.Selection{Store: store, Load: ports.localAccounts}
+	login, err := a.newMCPLogin(ctx, baseURL, selection, request.HTTPSProxyOverride)
 	if err != nil {
 		return err
 	}
@@ -493,9 +493,9 @@ func (a app) runPixivMCP(ctx context.Context, request mcpcommands.Request) (resu
 		}
 		defer func() { result = errors.Join(result, media.CloseAnimations()) }()
 	}
-	sdkPorts.Media, sdkPorts.Accounts, sdkPorts.Login = media, manager, login
+	sdkPorts.Media, sdkPorts.Accounts, sdkPorts.Login = media, selection, login
 	sdkPorts.ResolveAccount = func(ctx context.Context, account mcpserver.Account) (mcpserver.Account, error) {
-		userID, err := manager.Resolve(ctx)
+		userID, err := selection.Resolve(ctx)
 		if err != nil {
 			return mcpserver.Account{}, err
 		}
@@ -666,10 +666,10 @@ func (a app) InitMCPAuth(ctx context.Context, reset bool) (string, error) {
 	return (mcpauth.Store{Path: filename}).Init(ctx, reset)
 }
 
-func (a app) newMCPLoginManager(ctx context.Context, baseURL string, manager mcpaccounts.Manager, proxy *string) (*mcpaccounts.LoginManager, error) {
-	// LoginManager serializes starts; retain one successfully opened account service.
+func (a app) newMCPLogin(ctx context.Context, baseURL string, selection mcpaccounts.Selection, proxy *string) (*mcpaccounts.Login, error) {
+	// Login serializes starts; retain one successfully opened account service.
 	var service *pixivaccount.LoginService
-	return mcpaccounts.NewLoginManager(ctx, strings.TrimRight(baseURL, "/")+"/pixiv-login", func() (mcpaccounts.LoginAttempt, error) {
+	return mcpaccounts.NewLogin(ctx, strings.TrimRight(baseURL, "/")+"/pixiv-login", func() (mcpaccounts.LoginAttempt, error) {
 		if service == nil {
 			_, loaded, err := newCLIAccountServices(a)
 			if err != nil {
@@ -702,7 +702,7 @@ func (a app) newMCPLoginManager(ctx context.Context, baseURL string, manager mcp
 				if err != nil {
 					return result, err
 				}
-				result.SelectionUpdated, err = manager.SelectAfterLogin(ctx, account.UserID)
+				result.SelectionUpdated, err = selection.SelectAfterLogin(ctx, account.UserID)
 				return result, err
 			},
 		}, nil

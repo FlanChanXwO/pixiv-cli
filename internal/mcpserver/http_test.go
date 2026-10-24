@@ -145,7 +145,7 @@ func TestHTTPListenerServesAndStopsOnCancellation(t *testing.T) {
 				return nil, nil, ctx.Err()
 			})
 			// An independent owner context proves RunHTTP explicitly closes the relay.
-			login, err := accounts.NewLoginManager(t.Context(), "http://"+addr+"/pixiv-login", func() (accounts.LoginAttempt, error) {
+			login, err := accounts.NewLogin(t.Context(), "http://"+addr+"/pixiv-login", func() (accounts.LoginAttempt, error) {
 				return accounts.LoginAttempt{AuthorizationURL: "https://app-api.pixiv.net/web/v1/login", AcceptsCallback: func(string) bool { return true }, Complete: func(context.Context, string) (accounts.LoginResult, error) { return accounts.LoginResult{}, nil }}, nil
 			})
 			require.NoError(t, err)
@@ -648,7 +648,7 @@ func TestHTTPMountsLoginRelayUnderCanonicalHostWithoutBearer(t *testing.T) {
 			store := auth.Store{Path: filepath.Join(t.TempDir(), "state.json")}
 			_, err := store.Init(t.Context(), false)
 			require.NoError(t, err)
-			login, err := accounts.NewLoginManager(t.Context(), base+"/pixiv-login", func() (accounts.LoginAttempt, error) {
+			login, err := accounts.NewLogin(t.Context(), base+"/pixiv-login", func() (accounts.LoginAttempt, error) {
 				return accounts.LoginAttempt{AuthorizationURL: "https://app-api.pixiv.net/web/v1/login", AcceptsCallback: func(string) bool { return true }, Complete: func(context.Context, string) (accounts.LoginResult, error) { return accounts.LoginResult{}, nil }}, nil
 			})
 			require.NoError(t, err)
