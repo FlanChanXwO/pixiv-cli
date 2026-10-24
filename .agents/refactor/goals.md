@@ -1451,13 +1451,15 @@
 /goal 执行 pixiv-cli 重构规格的 G28：全仓库扫尾。
 
 【本 goal】
-工作项：重新扫描只被测试引用的导出函数（T2），处理剩余的无对应生产文件测试（T3）、Go 代码中的编号引用（T4），以及其余兼容层，包括 illustration 别名（T6，写成 changelog 条目）。
+工作项：重新扫描只被测试引用的导出函数（T2），处理剩余的无对应生产文件测试（T3）、全仓库的编号引用（T4，G21 取消后包括 scripts/ 与 .github/workflows/），以及其余兼容层，包括 illustration 别名（T6，写成 changelog 条目）。
 - 全仓库生产代码中，超过约 100 行的编排函数，按真实阶段拆出有名字的步骤函数（只拆能用一个名字说清职责的部分，不为缩短而拆）；超过约 600 行、包含多个主题的文件按主题拆分。先处理此前 goal 未覆盖的部分，例如 mcpserver/pixiv/tools 中 recommendedHandler、artworkMediaHandler、showGalleryHandler（各约 140–150 行），cli/search 的 run（约 136 行），cli/bookmark/bookmark.go（906 行）。media/ugoira/jpeg 解码器照搬标准库 image/jpeg 的算法结构，保持原样。
 - sdk/fanbox 按 G08 在 sdk/pixiv 中的做法组织文件：请求类型移到使用它的方法旁边，删除 request.go；只被一个领域使用的响应结构与映射放进 creator.go、post.go 等领域文件，共用部分放在 response.go，删除 wire.go；models.go 保留。改名与移动单独提交。
+- 编号引用：§14–§24、R10/R11、R14 一类指向仓库外设计文档的编号（现状约 60 处，集中在 scripts/release、scripts/prmeta、scripts/citest 与 publish-*.yml、pr-verification.yml、ci.yml、release.yml），改为直接写出原因或删除；同时清理代码与文档中指向本次重构 goal、阶段的说明（例如“G08 删除”“阶段 3 并入”）。RFC 章节号（RFC 6749 §4.1.2 等）和函数内按阶段编号的步骤注释是有效引用，保留。
 - 删除生产代码中与真实包名不一致的 import 别名（例如 protocol→pixivapi/fanboxapi、commands/requirements→command、config/configapp→settings、accountpixiv→pixivaccount、filesecret→secretfile、filereplace→atomicfile、versionpkg→version），调用处改用真实包名；以合并时的 main 重新统计。
 
 【验收】
 - PR 中按 3.4.3 的表格列出每项删除及依据。
+- 以合并时的 main 重新 grep，除 RFC 章节号外，代码、workflow 与文档中不再有指向仓库外文档或重构 goal 的编号。
 - PR 中列出拆分的函数和文件（原行数、拆出的步骤），以及删除的 import 别名数量；仍超过约 100 行而未拆的函数逐个说明理由。
 - 用户可见行为不变（changelog 条目除外）。
 

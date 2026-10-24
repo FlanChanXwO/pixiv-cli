@@ -1773,7 +1773,7 @@ A1、B2 等是工作项的名称。执行单位是 **goal**：一个 goal 对应
 | G25 | `refactor-g25-mcp-runtime` | T5：MCP 的 `auth`、`accounts`、`gallery`、`mediaproxy` | G05 | 这些包 |
 | G26 | `refactor-g26-accounts` | T5：`pixivaccount`、`pixivaccount/pool`、`fanboxaccount`、`session` | G05 | 这些包 |
 | G27 | `refactor-g27-cli-auth` | T5 与 T2：`cli/auth`、`loginhelper` 的注入点 | G12 | 这些包 |
-| G28 | `refactor-g28-sweep` | T2 重新扫描、T3、T4（Go 部分）、T6 其余（含 `illustration` 别名） | G22–G27 | 全仓库剩余部分 |
+| G28 | `refactor-g28-sweep` | T2 重新扫描、T3、T4（全仓库，含 scripts 与 workflow）、T6 其余（含 `illustration` 别名） | G22–G27 | 全仓库剩余部分 |
 | G29 | `refactor-g29-headers-sdk` | C3：`sdk/`、`cmd/` | G28 | 只加文件头注释 |
 | G30 | `refactor-g30-headers-cli` | C3：`internal/cli/` | G28 | 同上 |
 | G31 | `refactor-g31-headers-mcp` | C3：`internal/mcpserver/` | G28 | 同上 |
