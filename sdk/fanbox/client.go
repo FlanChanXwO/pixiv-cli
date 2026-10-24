@@ -1,20 +1,16 @@
+// FANBOX SDK 入口：客户端构造、连接选项，以及会话校验。
+// 业务操作分布在 creator.go、post.go，响应结构与映射在 wire.go。
+
 package fanbox
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"io"
 	"net/http"
-	"sync"
 
-	fanboxresource "github.com/FlanChanXwO/pixiv-cli/internal/fanboxapi"
 	protocol "github.com/FlanChanXwO/pixiv-cli/internal/fanboxapi"
-	"github.com/FlanChanXwO/pixiv-cli/internal/services/fanbox/endpoint/creator/creators"
-	creatorTags "github.com/FlanChanXwO/pixiv-cli/internal/services/fanbox/endpoint/creator/tags"
-	"github.com/FlanChanXwO/pixiv-cli/internal/services/fanbox/endpoint/post/home"
-	postinfo "github.com/FlanChanXwO/pixiv-cli/internal/services/fanbox/endpoint/post/info"
-	postposts "github.com/FlanChanXwO/pixiv-cli/internal/services/fanbox/endpoint/post/posts"
-	"github.com/FlanChanXwO/pixiv-cli/internal/services/fanbox/endpoint/post/supporting"
 	"github.com/FlanChanXwO/pixiv-cli/sdk"
 )
 
@@ -66,29 +62,9 @@ type FlareSolverrOptions struct {
 // read browsers, local account stores, or Pixiv credentials, and never falls
 // back between credentials or products.
 type Client struct {
-	session      *protocol.Session
-	creators     *creators.Client
-	creatorTags  *creatorTags.Client
-	creatorPosts *postposts.Client
-	postInfo     *postinfo.Client
-	home         *home.Client
-	supporting   *supporting.Client
-	resource     *fanboxresource.Client
-
-	// resourceMu guards resourceLocators, the in-session locator cache keyed by the
-	// opaque ResourceRef string. The cache holds the currently-usable URL and attachment filename;
-	// the ref envelope encodes stable identity, never the locator. OpenResource
-	// re-resolves from trusted metadata when a ref arrives without a cached
-	// locator (for example across process restarts).
-	resourceMu       sync.RWMutex
-	resourceLocators map[string]resourceLocator
-
-	// identityMu guards userID, the lazily-verified FANBOX account identity.
-	// The user id is non-secret and is bound into identity-scoped cursors
-	// (Home, Supporting, Creators) so a cursor minted under one account cannot
-	// be replayed against another. The session cookie never enters this value.
-	identityMu sync.Mutex
-	userID     int64
+	// app owns the session, the transport, and the in-session caches for
+	// resource locators and the verified account identity.
+	app *protocol.Client
 }
 
 // Open constructs a Client for the given session credentials. It performs no
@@ -120,23 +96,35 @@ func OpenWith(credentials SessionCredentials, options Options) (*Client, error) 
 		}
 		return nil, newError("Open", reason, err)
 	}
-	return &Client{
-		session:          session,
-		creators:         creators.New(session),
-		creatorTags:      creatorTags.New(session),
-		creatorPosts:     postposts.New(session),
-		postInfo:         postinfo.New(session),
-		home:             home.New(session),
-		supporting:       supporting.New(session),
-		resource:         fanboxresource.New(session),
-		resourceLocators: make(map[string]resourceLocator),
-	}, nil
+	return &Client{app: protocol.NewClient(session)}, nil
 }
 
 // CloseIdleConnections releases idle connections of the SDK-created session.
 func (c *Client) CloseIdleConnections() {
-	if c == nil || c.session == nil {
+	if c == nil || c.app == nil {
 		return
 	}
-	c.session.CloseIdleConnections()
+	c.app.CloseIdleConnections()
+}
+
+// ValidateSession verifies the current session identity. An expired session
+// returns CredentialsExpired.
+func (c *Client) ValidateSession(ctx context.Context) error {
+	if _, err := c.currentUser(ctx); err != nil {
+		return classifyError("ValidateSession", err)
+	}
+	return nil
+}
+
+// CurrentUser returns the current authenticated user's identity.
+func (c *Client) CurrentUser(ctx context.Context, request CurrentUserRequest) (User, error) {
+	identity, err := c.currentUser(ctx)
+	if err != nil {
+		return User{}, classifyError("CurrentUser", err)
+	}
+	return mapUser(identity), nil
+}
+
+func (c *Client) currentUser(ctx context.Context) (protocol.Identity, error) {
+	return c.app.CurrentUser(ctx)
 }

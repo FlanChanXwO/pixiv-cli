@@ -11,6 +11,7 @@ import (
 	"strconv"
 	"strings"
 
+	protocol "github.com/FlanChanXwO/pixiv-cli/internal/fanboxapi"
 	"github.com/FlanChanXwO/pixiv-cli/sdk"
 )
 
@@ -112,23 +113,15 @@ func (c *Client) continuationURL(ctx context.Context, op string, baseQuery url.V
 }
 
 // verifiedUserID returns the authenticated FANBOX user id, verifying it once
-// per client and caching the result. The user id is non-secret and may be bound
-// into a cursor; the session cookie never leaves the protocol layer. A verified
-// id is required for identity-scoped operations so their cursors cannot be
-// replayed across accounts.
+// per client. A verified id is required for identity-scoped operations so their
+// cursors cannot be replayed across accounts.
 func (c *Client) verifiedUserID(ctx context.Context) (int64, error) {
-	c.identityMu.Lock()
-	defer c.identityMu.Unlock()
-	if c.userID > 0 {
-		return c.userID, nil
-	}
-	identity, err := c.session.CurrentUser(ctx)
+	userID, err := c.app.VerifiedUserID(ctx)
 	if err != nil {
+		if errors.Is(err, protocol.ErrMissingIdentity) {
+			return 0, newError("CurrentUser", sdk.MalformedUpstreamResponse, errors.New("FANBOX identity has no valid user id"))
+		}
 		return 0, classifyError("CurrentUser", err)
 	}
-	if identity.UserID <= 0 {
-		return 0, newError("CurrentUser", sdk.MalformedUpstreamResponse, errors.New("FANBOX identity has no valid user id"))
-	}
-	c.userID = identity.UserID
-	return c.userID, nil
+	return userID, nil
 }

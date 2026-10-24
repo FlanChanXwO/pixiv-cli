@@ -17,6 +17,16 @@ func newError(operation string, code sdk.Reason, err error) *sdk.Error {
 	return sdk.NewError(product, operation, code, sdk.WithCause(err))
 }
 
+// classifyResponseError classifies a wire-decoding failure, preserving a reason
+// the mapping already assigned (for example a malformed publish time).
+func classifyResponseError(operation string, err error) error {
+	var classified *sdk.Error
+	if errors.As(err, &classified) {
+		return err
+	}
+	return classifyError(operation, err)
+}
+
 // classifyError maps an adapter failure to a classified error. It preserves
 // context cancellation and the distinct challenge/forbidden/expired outcomes.
 func classifyError(operation string, err error) *sdk.Error {
