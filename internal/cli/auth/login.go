@@ -363,9 +363,6 @@ func (a controller) waitForLoginCode(ctx context.Context, addr string, acceptsCa
 				if err != nil {
 					return
 				}
-				// survey 在接受输入后保留确认标记在当前行；在继续处理 callback
-				// 前结束该行，避免成功账号摘要与交互提示粘连。
-				fmt.Fprintln(a.out)
 				result := LoginInputFromText(input, acceptsCallback, loginChallenge, openTerminalRelay)
 				reportInvalidSubmission(result.Err)
 				if result.Relayed {
