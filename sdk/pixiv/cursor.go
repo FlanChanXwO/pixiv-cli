@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	endpointcontinuation "github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/endpoint/continuation"
 	"net/url"
 	"sort"
 	"strconv"
@@ -339,4 +340,122 @@ func newCursorInstanceID() (string, error) {
 		return "", err
 	}
 	return hex.EncodeToString(raw[:]), nil
+}
+
+// continuationSpec 描述单条 artwork endpoint 的 next_url 白名单。
+type continuationSpec struct {
+	path      string
+	keys      []string
+	allowZero bool
+	query     []string
+	prefixes  []string
+	ignored   []string
+}
+
+func (s continuationSpec) spec() endpointcontinuation.Spec {
+	return endpointcontinuation.Spec{
+		Path:               s.path,
+		Keys:               s.keys,
+		AllowZero:          s.allowZero,
+		AllowedQueryKeys:   s.query,
+		AllowedKeyPrefixes: s.prefixes,
+		IgnoredKeyPrefixes: s.ignored,
+	}
+}
+
+// offset 解析只允许单一 offset 的续页；offset 必须是正 int。
+func (s continuationSpec) offset(rawURL *string) (int, bool, error) {
+	value, hasNext, err := s.value(rawURL)
+	if err != nil || !hasNext {
+		return 0, hasNext, err
+	}
+	if value <= 0 || int64(int(value)) != value {
+		return 0, false, pixivapi.MalformedResponse()
+	}
+	return int(value), true, nil
+}
+
+// keyValue 返回单一 continuation 的 key 与值，供 series 与 latest 这类允许
+// 两种续页形式的端点构建 cursor。
+func (s continuationSpec) keyValue(rawURL *string) (string, int64, bool, error) {
+	if rawURL == nil {
+		return "", 0, false, nil
+	}
+	key, value, err := endpointcontinuation.Parse(*rawURL, s.spec())
+	if err != nil || value <= 0 {
+		return "", 0, false, pixivapi.MalformedResponse()
+	}
+	if key == pixivapi.ParamOffset && int64(int(value)) != value {
+		return "", 0, false, pixivapi.MalformedResponse()
+	}
+	return key, value, true, nil
+}
+
+// value 解析单一 typed continuation key，并拒绝缺失与重复。
+func (s continuationSpec) value(rawURL *string) (int64, bool, error) {
+	if rawURL == nil {
+		return 0, false, nil
+	}
+	_, value, err := endpointcontinuation.Parse(*rawURL, s.spec())
+	if err != nil || value <= 0 {
+		return 0, false, pixivapi.MalformedResponse()
+	}
+	if s.keys[0] == pixivapi.ParamOffset && int64(int(value)) != value {
+		return 0, false, pixivapi.MalformedResponse()
+	}
+	return value, true, nil
+}
+
+// params 整体回放多参数续页，返回上游 next_url 的完整查询集。
+func (s continuationSpec) params(rawURL *string) (url.Values, bool, error) {
+	if rawURL == nil {
+		return nil, false, nil
+	}
+	values, hasNext, err := endpointcontinuation.ParseParams(*rawURL, s.spec())
+	if err != nil || !hasNext {
+		return nil, false, pixivapi.MalformedResponse()
+	}
+	return values, true, nil
+}
+
+// continuationKeyValue 解码多 key 续页游标；零游标表示首页。
+func (c *Client) continuationKeyValue(operation string, base url.Values, cur sdk.Cursor, spec continuationSpec) (string, int64, error) {
+	if cur.IsZero() {
+		return spec.keys[0], 0, nil
+	}
+	key, value, err := c.continuationFromCursor(operation, base, cur)
+	if err != nil {
+		return "", 0, err
+	}
+	for _, allowed := range spec.keys {
+		if key == allowed {
+			if value <= 0 {
+				return "", 0, newError(operation, sdk.InvalidCursor, "cursor continuation value must be positive")
+			}
+			if key == pixivapi.ParamOffset && int64(int(value)) != value {
+				return "", 0, newError(operation, sdk.InvalidCursor, "cursor continuation offset is out of range")
+			}
+			return key, value, nil
+		}
+	}
+	return "", 0, newError(operation, sdk.InvalidCursor, "cursor continuation kind mismatch")
+}
+
+// continuationValue 读取单一 key 的续页游标；零游标表示首页。
+func (c *Client) continuationValue(operation string, base url.Values, cur sdk.Cursor, spec continuationSpec) (string, int64, error) {
+	if cur.IsZero() {
+		return spec.keys[0], 0, nil
+	}
+	return c.continuationKeyValue(operation, base, cur, spec)
+}
+
+func cloneValues(values url.Values) url.Values {
+	if values == nil {
+		return url.Values{}
+	}
+	cloned := make(url.Values, len(values))
+	for key, entries := range values {
+		cloned[key] = append([]string(nil), entries...)
+	}
+	return cloned
 }

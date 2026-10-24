@@ -1,5 +1,5 @@
-// novel 读取操作：详情、排行、推荐、系列、搜索、时间线与评论。
-// 请求参数校验在 validation.go，游标编解码在 cursor.go，响应结构与映射在 wire.go。
+// novel 领域：详情、排行、推荐、系列、搜索、时间线、用户小说与正文。
+// 请求类型、响应结构与映射、continuation Spec 都在本文件；共用映射在 response.go。
 
 package pixiv
 
@@ -9,11 +9,147 @@ import (
 	"net/url"
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/pixivapi"
+	"github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/endpoint/novel"
 	novelentity "github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/endpoint/novel"
-	usernovelbookmarks "github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/endpoint/user/novelbookmarks"
 	usernovels "github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/endpoint/user/novels"
 	"github.com/FlanChanXwO/pixiv-cli/sdk"
 )
+
+// novelWire 是 App API 所有 novel 响应的共同结构。search 要求
+// x_restrict/text_length/is_original 存在，其余端点把缺失值当作零值；因此这三
+// 个字段保持指针，由调用端点决定是否要求。
+type novelWire struct {
+	ID             int64         `json:"id"`
+	Title          string        `json:"title"`
+	Caption        string        `json:"caption"`
+	XRestrict      *int          `json:"x_restrict"`
+	TextLength     *int          `json:"text_length"`
+	IsOriginal     *bool         `json:"is_original"`
+	User           userWire      `json:"user"`
+	Tags           []tagWire     `json:"tags"`
+	ImageURLs      imageURLsWire `json:"image_urls"`
+	CreateDate     string        `json:"create_date"`
+	TotalBookmarks int           `json:"total_bookmarks"`
+	TotalView      int           `json:"total_view"`
+}
+
+type novelSeriesRefWire struct {
+	ID    int64  `json:"id"`
+	Title string `json:"title"`
+}
+
+type novelDetailWire struct {
+	Novel      *novelWire          `json:"novel"`
+	SeriesNext *novelSeriesRefWire `json:"series_next"`
+	SeriesPrev *novelSeriesRefWire `json:"series_prev"`
+}
+
+type novelListWire struct {
+	Novels  pixivapi.RequiredList[novelWire] `json:"novels"`
+	NextURL *string                          `json:"next_url"`
+}
+
+type novelSeriesDetailWire struct {
+	ID          int64    `json:"id"`
+	Title       string   `json:"title"`
+	Caption     string   `json:"caption"`
+	User        userWire `json:"user"`
+	IsConcluded bool     `json:"is_concluded"`
+}
+
+type novelSeriesWire struct {
+	Detail  *novelSeriesDetailWire           `json:"novel_series_detail"`
+	Novels  pixivapi.RequiredList[novelWire] `json:"novels"`
+	NextURL *string                          `json:"next_url"`
+}
+
+// mapNovel 把一份上游 novel 响应映射为公开模型。cover 与 user profile 都经
+// 受 policy 校验的资源边界创建。
+func (c *Client) mapNovel(value novelWire) (Novel, error) {
+	published, err := parseUTCTime(value.CreateDate)
+	if err != nil {
+		return Novel{}, newError("Novel", sdk.MalformedUpstreamResponse, "invalid publish time")
+	}
+	result := Novel{
+		ID:             value.ID,
+		Title:          value.Title,
+		Caption:        value.Caption,
+		User:           c.mapUser(value.User),
+		Tags:           mapTags(value.Tags),
+		PublishedAt:    published,
+		XRestrict:      intValue(value.XRestrict),
+		TextLength:     intValue(value.TextLength),
+		IsOriginal:     value.IsOriginal != nil && *value.IsOriginal,
+		TotalBookmarks: value.TotalBookmarks,
+		TotalViews:     value.TotalView,
+	}
+	for _, size := range []struct {
+		variant string
+		value   string
+	}{
+		{"original", value.ImageURLs.Original},
+		{"large", value.ImageURLs.Large},
+		{"medium", value.ImageURLs.Medium},
+		{"square_medium", value.ImageURLs.SquareMedium},
+	} {
+		if size.value == "" {
+			continue
+		}
+		resource, err := c.newResourceWithVariant("novel_cover", value.ID, -1, size.variant, size.value)
+		if err != nil {
+			return Novel{}, err
+		}
+		result.Cover = ImageResource{Resource: resource, Variant: size.variant}
+		break
+	}
+	return result, nil
+}
+
+func (c *Client) novelItems(operation string, list pixivapi.RequiredList[novelWire], requireSearchFields bool) ([]Novel, error) {
+	if !list.Present || !list.Valid {
+		return nil, newError(operation, sdk.MalformedUpstreamResponse, "")
+	}
+	items := make([]Novel, len(list.Items))
+	for index, value := range list.Items {
+		if value.ID <= 0 || value.User.ID <= 0 ||
+			requireSearchFields && (value.XRestrict == nil || value.TextLength == nil || value.IsOriginal == nil) {
+			return nil, newError(operation, sdk.MalformedUpstreamResponse, "")
+		}
+		mapped, err := c.mapNovel(value)
+		if err != nil {
+			return nil, err
+		}
+		items[index] = mapped
+	}
+	return items, nil
+}
+
+// novelWireFromEntity 是 internal novel 实体到 wire 的临时桥接：user 端点
+// 仍在读取 novel.UserSummary，G08 删除 internal novel 实体后一并删除。
+func novelWireFromEntity(value novel.Novel) novelWire {
+	tags := make([]tagWire, len(value.Tags))
+	for index, tag := range value.Tags {
+		tags[index] = tagWire{Name: tag.Name, TranslatedName: tag.TranslatedName}
+	}
+	xRestrict, textLength, isOriginal := value.XRestrict, value.TextLength, value.IsOriginal
+	return novelWire{
+		ID: value.ID, Title: value.Title, Caption: value.Caption,
+		XRestrict: &xRestrict, TextLength: &textLength, IsOriginal: &isOriginal,
+		User: userWire{
+			ID: value.User.ID, Name: value.User.Name, Account: value.User.Account,
+			Comment: value.User.Comment, IsFollowed: value.User.IsFollowed,
+			ProfileImageURLs: profileImageURLsWire{Medium: cloneValue(value.User.ProfileImageURLs.Medium)},
+		},
+		Tags: tags, ImageURLs: imageURLsWire(value.ImageURLs),
+		CreateDate: value.CreateDate, TotalBookmarks: value.TotalBookmarks, TotalView: value.TotalView,
+	}
+}
+
+// mapNovelEntity 把 internal novel 实体（user 小说端点仍在读取）转成公开模型；
+// wire 映射与资源注册由 wire.go 的 mapNovel 统一完成。
+func (c *Client) mapNovelEntity(m novel.Novel) (Novel, error) {
+	return c.mapNovel(novelWireFromEntity(m))
+}
 
 // SearchNovels searches novels. Repeat the original request fields when
 // continuing with a non-zero Cursor.
@@ -155,46 +291,6 @@ func (c *Client) NovelContent(ctx context.Context, request NovelContentRequest) 
 	return NovelContent{}, newError("NovelContent", sdk.ContentUnavailable, "novel content is unsupported by the v1 App API")
 }
 
-// NovelComments lists comments on one novel.
-func (c *Client) NovelComments(ctx context.Context, request NovelCommentsRequest) (CommentPage, error) {
-	if request.NovelID <= 0 {
-		return CommentPage{}, newError("NovelComments", sdk.InvalidArgument, "novel ID must be positive")
-	}
-	base := url.Values{pixivapi.ParamNovelID: {itoa(request.NovelID)}}
-	offset, err := c.continuationPositiveOffset("NovelComments", base, request.Cursor)
-	if err != nil {
-		return CommentPage{}, err
-	}
-	query := cloneValues(base)
-	if offset > 0 {
-		query.Set(pixivapi.ParamOffset, itoa(int64(offset)))
-	}
-
-	var raw commentsWire
-	if err := c.app.GetJSON(ctx, pixivapi.PathNovelComments, query, &raw); err != nil {
-		return CommentPage{}, classifyAppError(err, "NovelComments")
-	}
-	if !raw.Comments.Present || !raw.Comments.Valid {
-		return CommentPage{}, newError("NovelComments", sdk.MalformedUpstreamResponse, "")
-	}
-	for _, item := range raw.Comments.Items {
-		if !validCommentChain(item) {
-			return CommentPage{}, newError("NovelComments", sdk.MalformedUpstreamResponse, "")
-		}
-	}
-	var access *CommentAccessControl
-	if raw.CommentAccessControl != nil {
-		access = &CommentAccessControl{NumericValue: cloneValue(raw.CommentAccessControl)}
-	} else if raw.AccessControl != nil {
-		access = &CommentAccessControl{CanComment: raw.AccessControl.CanComment, IsLocked: raw.AccessControl.IsLocked}
-	}
-	next, hasNext, err := novelCommentsContinuation.offset(raw.NextURL)
-	if err != nil {
-		return CommentPage{}, classifyAppError(err, "NovelComments")
-	}
-	return c.commentPage("NovelComments", base, raw.Comments.Items, next, hasNext, raw.TotalComments, access)
-}
-
 // RecommendedNovels lists recommended novels. RecommendedNovels
 // lists recommended novels. 续页以上游 next_url 的多参数
 // 集整体回放（offset、already_recommended、bookmark 游标）。
@@ -292,71 +388,6 @@ func (c *Client) UserNovels(ctx context.Context, request UserNovelsRequest) (sdk
 	return c.novelEntityPage("UserNovels", query, "offset", list.Items, int64(list.NextOffset), list.HasNext)
 }
 
-// UserNovelBookmarks lists one user's bookmarked novels.
-func (c *Client) UserNovelBookmarks(ctx context.Context, request UserNovelBookmarksRequest) (sdk.Page[Novel], error) {
-	if request.UserID <= 0 {
-		return sdk.Page[Novel]{}, newError("UserNovelBookmarks", sdk.InvalidArgument, "user ID must be positive")
-	}
-	if err := validateRestrict("UserNovelBookmarks", request.Restrict); err != nil {
-		return sdk.Page[Novel]{}, err
-	}
-	query := url.Values{"user_id": {itoa(request.UserID)}, "restrict": {string(request.Restrict)}}
-	if request.Tag != "" {
-		query.Set("tag", request.Tag)
-	}
-	maxID, err := c.continuationPositiveValue("UserNovelBookmarks", query, request.Cursor, "max_bookmark_id")
-	if err != nil {
-		return sdk.Page[Novel]{}, err
-	}
-	list, err := c.userNovelBookmarks.List(ctx, usernovelbookmarks.Request{
-		UserID: request.UserID, Restrict: string(request.Restrict), Tag: request.Tag, MaxBookmarkID: maxID,
-	})
-	if err != nil {
-		return sdk.Page[Novel]{}, classifyAppError(err, "UserNovelBookmarks")
-	}
-	return c.novelEntityPage("UserNovelBookmarks", query, "max_bookmark_id", list.Items, list.NextMaxBookmarkID, list.HasNext)
-}
-
-// UserNovelBookmarkTags lists the bookmark tags of one user's bookmarked
-// novels. The candidate upstream endpoint currently has no continuation
-// contract, so a non-zero cursor is rejected instead of being guessed.
-func (c *Client) UserNovelBookmarkTags(ctx context.Context, request UserNovelBookmarkTagsRequest) (sdk.Page[BookmarkTag], error) {
-	if request.UserID <= 0 {
-		return sdk.Page[BookmarkTag]{}, newError("UserNovelBookmarkTags", sdk.InvalidArgument, "user ID must be positive")
-	}
-	if err := validateRestrict("UserNovelBookmarkTags", request.Restrict); err != nil {
-		return sdk.Page[BookmarkTag]{}, err
-	}
-	if !request.Cursor.IsZero() {
-		return sdk.Page[BookmarkTag]{}, newError("UserNovelBookmarkTags", sdk.InvalidCursor, "novel bookmark tags continuation is not supported")
-	}
-	result, err := c.userNovelBookmarks.Tags(ctx, usernovelbookmarks.TagsRequest{
-		UserID: request.UserID, Restrict: string(request.Restrict),
-	})
-	if err != nil {
-		return sdk.Page[BookmarkTag]{}, classifyAppError(err, "UserNovelBookmarkTags")
-	}
-	items := make([]BookmarkTag, 0, len(result.Items))
-	for _, tag := range result.Items {
-		items = append(items, BookmarkTag{Name: tag.Name, Count: tag.Count})
-	}
-	return sdk.Page[BookmarkTag]{Items: items}, nil
-}
-
-// NovelBookmark reads the current user's bookmark detail for one novel.
-// The upstream route is a candidate and is kept endpoint-oriented; it does
-// not expose novel metadata or mutation outcome through this method.
-func (c *Client) NovelBookmark(ctx context.Context, request NovelBookmarkRequest) (NovelBookmarkDetail, error) {
-	if request.NovelID <= 0 {
-		return NovelBookmarkDetail{}, newError("NovelBookmark", sdk.InvalidArgument, "novel ID must be positive")
-	}
-	detail, err := c.userNovelBookmarks.Detail(ctx, request.NovelID)
-	if err != nil {
-		return NovelBookmarkDetail{}, classifyAppError(err, "NovelBookmark")
-	}
-	return NovelBookmarkDetail{Restrict: Restrict(detail.Restrict), Tags: append([]string{}, detail.Tags...)}, nil
-}
-
 // MyPixivNovels lists novels from the current user's MyPixiv feed.
 func (c *Client) MyPixivNovels(ctx context.Context, request MyPixivNovelsRequest) (sdk.Page[Novel], error) {
 	query := url.Values{}
@@ -393,14 +424,6 @@ func (c *Client) novelOffsetPage(ctx context.Context, operation, path string, ba
 	return sdk.Page[Novel]{Items: items, Next: cursor}, nil
 }
 
-// continuationValue 读取单一 key 的续页游标；零游标表示首页。
-func (c *Client) continuationValue(operation string, base url.Values, cur sdk.Cursor, spec continuationSpec) (string, int64, error) {
-	if cur.IsZero() {
-		return spec.keys[0], 0, nil
-	}
-	return c.continuationKeyValue(operation, base, cur, spec)
-}
-
 // novelEntityPage 映射尚未并入 SDK 的 user 小说端点实体。
 func (c *Client) novelEntityPage(operation string, query url.Values, key string, values []novelentity.Novel, nextValue int64, hasNext bool) (sdk.Page[Novel], error) {
 	items := make([]Novel, len(values))
@@ -427,4 +450,109 @@ func (c *Client) fetchNovelContent(ctx context.Context, operation string, novelI
 		return nil, newError(operation, sdk.MalformedUpstreamResponse, "")
 	}
 	return append([]byte(nil), body...), nil
+}
+
+// SearchNovelsRequest searches novels. Repeat the original fields when
+// continuing with Cursor.
+type SearchNovelsRequest struct {
+	Word     string
+	Target   SearchTarget
+	Sort     SortMode
+	Duration DurationFilter
+	Cursor   sdk.Cursor
+}
+
+// NovelRequest selects one novel by its stable ID.
+type NovelRequest struct {
+	NovelID int64
+}
+
+// NovelSeriesRequest lists novels within one novel series.
+type NovelSeriesRequest struct {
+	SeriesID int64
+	Cursor   sdk.Cursor
+}
+
+// NovelContentRequest reads the structured content of one novel.
+type NovelContentRequest struct {
+	NovelID int64
+}
+
+// RecommendedNovelsRequest lists recommended novels.
+type RecommendedNovelsRequest struct {
+	Cursor sdk.Cursor
+}
+
+// NovelRankingRequest lists the current novel ranking.
+type NovelRankingRequest struct {
+	Mode   RankingMode
+	Cursor sdk.Cursor
+}
+
+// FollowingNovelsRequest lists novels by followed users.
+type FollowingNovelsRequest struct {
+	Restrict Restrict
+	Cursor   sdk.Cursor
+}
+
+// LatestNovelsRequest lists the newest novels.
+type LatestNovelsRequest struct {
+	Cursor sdk.Cursor
+}
+
+// UserNovelsRequest lists one user's novels.
+type UserNovelsRequest struct {
+	UserID int64
+	Cursor sdk.Cursor
+}
+
+// MyPixivNovelsRequest lists novels from the current user's MyPixiv feed.
+type MyPixivNovelsRequest struct {
+	Cursor sdk.Cursor
+}
+
+var novelSearchContinuation = continuationSpec{
+	path: pixivapi.PathSearchNovel,
+	keys: []string{pixivapi.ParamOffset},
+	query: []string{
+		pixivapi.ParamWord, pixivapi.ParamSearchTarget, pixivapi.ParamSort, pixivapi.ParamDuration,
+	},
+}
+
+var novelRankingContinuation = continuationSpec{
+	path:  pixivapi.PathNovelRanking,
+	keys:  []string{pixivapi.ParamOffset},
+	query: []string{pixivapi.ParamFilter, pixivapi.ParamMode},
+}
+
+var novelRecommendedContinuation = continuationSpec{
+	path: pixivapi.PathNovelRecommended,
+	keys: []string{
+		pixivapi.ParamOffset, pixivapi.ParamAlreadyRecommended,
+		pixivapi.ParamMaxRecommend, pixivapi.ParamIncludeRankingNovels, pixivapi.ParamIncludePrivacy,
+	},
+	allowZero: true,
+}
+
+var novelSeriesContinuation = continuationSpec{
+	path:  pixivapi.PathNovelSeries,
+	keys:  []string{pixivapi.ParamLastOrder},
+	query: []string{pixivapi.ParamSeriesID},
+}
+
+var novelFollowingContinuation = continuationSpec{
+	path:  pixivapi.PathNovelFollow,
+	keys:  []string{pixivapi.ParamOffset},
+	query: []string{pixivapi.ParamRestrict},
+}
+
+var novelLatestContinuation = continuationSpec{
+	path:  pixivapi.PathNovelNew,
+	keys:  []string{pixivapi.ParamMaxNovelID},
+	query: []string{pixivapi.ParamFilter},
+}
+
+var novelMyPixivContinuation = continuationSpec{
+	path: pixivapi.PathNovelMyPixiv,
+	keys: []string{pixivapi.ParamOffset},
 }

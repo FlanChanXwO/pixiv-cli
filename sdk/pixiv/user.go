@@ -1,9 +1,13 @@
+// user 领域：用户详情与各类用户列表。
+// 请求类型与映射在本文件；共用 user 映射在 response.go。
+
 package pixiv
 
 import (
 	"context"
 	"net/url"
 
+	"github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/endpoint/user"
 	userentity "github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/endpoint/user"
 	userblocked "github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/endpoint/user/blocked"
 	userfollowers "github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/endpoint/user/followers"
@@ -14,6 +18,90 @@ import (
 	usersearch "github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/endpoint/user/search"
 	"github.com/FlanChanXwO/pixiv-cli/sdk"
 )
+
+// mapUserEntity 映射 user 端点实体；user 端点并入 SDK 后由 wire.go 的 mapUser
+// 取代（G08）。
+func (c *Client) mapUserEntity(m user.User) User {
+	out := User{
+		ID:         m.ID,
+		Name:       m.Name,
+		Account:    m.Account,
+		Comment:    m.Comment,
+		IsFollowed: m.IsFollowed,
+	}
+	if m.ProfileImageURLs.Medium != nil && *m.ProfileImageURLs.Medium != "" {
+		if res, err := c.newResourceWithVariant("user_profile", m.ID, -1, "medium", *m.ProfileImageURLs.Medium); err == nil {
+			out.ProfileImage = ImageResource{Resource: res, Variant: "medium"}
+		}
+	}
+	return out
+}
+
+func (c *Client) mapUserDetail(d user.Detail) (UserDetail, error) {
+	out := UserDetail{User: c.mapUserEntity(d.User)}
+	out.Profile = UserProfile{
+		Webpage:                   strValue(d.Profile.Webpage),
+		Gender:                    d.Profile.Gender,
+		BirthDay:                  d.Profile.BirthDay,
+		BirthYear:                 d.Profile.BirthYear,
+		Region:                    d.Profile.Region,
+		CountryCode:               d.Profile.CountryCode,
+		Job:                       d.Profile.Job,
+		TotalFollowUsers:          d.Profile.TotalFollowUsers,
+		TotalMyPixivUsers:         d.Profile.TotalMyPixivUsers,
+		TotalIllusts:              d.Profile.TotalIllusts,
+		TotalManga:                d.Profile.TotalManga,
+		TotalNovels:               d.Profile.TotalNovels,
+		TotalIllustBookmarks:      d.Profile.TotalIllustBookmarksPublic,
+		TotalIllustSeries:         d.Profile.TotalIllustSeries,
+		TotalNovelSeries:          d.Profile.TotalNovelSeries,
+		BackgroundImageURL:        strValue(d.Profile.BackgroundImageURL),
+		TwitterAccount:            d.Profile.TwitterAccount,
+		TwitterURL:                strValue(d.Profile.TwitterURL),
+		PawooURL:                  strValue(d.Profile.PawooURL),
+		IsPremium:                 d.Profile.IsPremium,
+		IsUsingCustomProfileImage: d.Profile.IsUsingCustomProfileImage,
+	}
+	out.ProfilePublicity = UserProfilePublicity{
+		Gender:    d.ProfilePublicity.Gender,
+		Region:    d.ProfilePublicity.Region,
+		BirthDay:  d.ProfilePublicity.BirthDay,
+		BirthYear: d.ProfilePublicity.BirthYear,
+		Job:       d.ProfilePublicity.Job,
+		Pawoo:     d.ProfilePublicity.Pawoo,
+	}
+	out.Workspace = UserWorkspace{
+		PC:                d.Workspace.PC,
+		Monitor:           d.Workspace.Monitor,
+		Tool:              d.Workspace.Tool,
+		Scanner:           d.Workspace.Scanner,
+		Tablet:            d.Workspace.Tablet,
+		Mouse:             d.Workspace.Mouse,
+		Printer:           d.Workspace.Printer,
+		Desktop:           d.Workspace.Desktop,
+		Music:             d.Workspace.Music,
+		Desk:              d.Workspace.Desk,
+		Chair:             d.Workspace.Chair,
+		Comment:           d.Workspace.Comment,
+		WorkspaceImageURL: strValue(d.Workspace.WorkspaceImageURL),
+	}
+	return out, nil
+}
+
+func (c *Client) mapUserPreview(p user.Preview) UserPreview {
+	out := UserPreview{User: c.mapUserEntity(p.User), Illusts: make([]Artwork, 0, len(p.Illusts)), Novels: make([]Novel, 0, len(p.Novels))}
+	for _, m := range p.Illusts {
+		if a, err := c.mapArtworkEntity(m); err == nil {
+			out.Illusts = append(out.Illusts, a)
+		}
+	}
+	for _, m := range p.Novels {
+		if n, err := c.mapNovelEntity(m); err == nil {
+			out.Novels = append(out.Novels, n)
+		}
+	}
+	return out
+}
 
 // SearchUsers searches users.
 func (c *Client) SearchUsers(ctx context.Context, request SearchUsersRequest) (sdk.Page[UserPreview], error) {
@@ -186,3 +274,53 @@ func (c *Client) userPreviewPage(op string, query url.Values, list []userentity.
 	}
 	return sdk.Page[UserPreview]{Items: items, Next: next}, nil
 }
+
+// SearchUsersRequest searches users.
+type SearchUsersRequest struct {
+	Word   string
+	Cursor sdk.Cursor
+}
+
+// UserRequest selects one user by their stable ID.
+type UserRequest struct {
+	UserID int64
+}
+
+// RecommendedUsersRequest lists recommended users.
+type RecommendedUsersRequest struct {
+	Cursor sdk.Cursor
+}
+
+// RelatedUsersRequest lists users related to one user.
+type RelatedUsersRequest struct {
+	UserID int64
+	Cursor sdk.Cursor
+}
+
+// UserFollowingRequest lists the users one user follows.
+type UserFollowingRequest struct {
+	UserID   int64
+	Restrict Restrict
+	Cursor   sdk.Cursor
+}
+
+// UserFollowersRequest lists the users following one user.
+type UserFollowersRequest struct {
+	UserID   int64
+	Restrict Restrict
+	Cursor   sdk.Cursor
+}
+
+// UserBlockedUsersRequest lists the users one user has blocked.
+type UserBlockedUsersRequest struct {
+	UserID int64
+	Cursor sdk.Cursor
+}
+
+// MyPixivUsersRequest lists the current user's MyPixiv feed users.
+type MyPixivUsersRequest struct {
+	Cursor sdk.Cursor
+}
+
+// CurrentUserRequest reads the current authenticated user's detail.
+type CurrentUserRequest struct{}
