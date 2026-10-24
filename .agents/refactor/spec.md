@@ -1737,12 +1737,12 @@ A1、B2 等是工作项的名称。执行单位是 **goal**：一个 goal 对应
                 L6 存储     G16
                 L7 真实测试 G17
                 L8 叶子包   G18
-                L9 脚本/CI  G19                  ← 不依赖阶段 0
+                L9 脚本/CI  G19 → G20 → G21      ← 不依赖阶段 0
 阶段 2          G23–G27 与 G22（日志）按下表依赖并行 → G28（扫尾）
-阶段 3          G29–G32 并行 → G34（收尾）
+阶段 3          G29–G33 并行 → G34（收尾）
 ```
 
-2026-10-23 调整：G20、G21、G33 取消，S 组中只执行 S1（G19，按 5.4 移动），不执行 S2；frontend/ 的文件头注释并入 G32。G19 不再等待发布 workflow 的状态。G09、G23–G27 只等待与其代码冲突的 goal；G24、G26 先于 G22 合并，G22 在它们的结果上改造日志。依赖以下表和 `goals.md` 为准。
+2026-10-23 调整：G19 不再等待发布 workflow 的状态；G20 把 S2 扩大为 scripts 与 CI 的全面精简（删除不再需要的工具和 workflow、能用 sh 写清楚的工具改为 sh、撤销 scripts/internal、按用途重排目录，细则见 `goals.md`）；G21、G33 照常执行；frontend/ 的文件头注释并入 G32。G09、G23–G27 只等待与其代码冲突的 goal；G24、G26 先于 G22 合并，G22 在它们的结果上改造日志。依赖以下表和 `goals.md` 为准。
 
 | Goal | worktree 名称 | 工作项 | 依赖（须已合并） | 负责的目录 |
 |---|---|---|---|---|
@@ -1765,21 +1765,21 @@ A1、B2 等是工作项的名称。执行单位是 **goal**：一个 goal 对应
 | G17 | `refactor-g17-live-tests` | A8 | G05 | `e2e/`（删除）与各处新建的 `live_test.go`、`cmd/pixiv/main_test.go`；例外：`release.yml` 的 e2e job、`platform-smoke.yml` 的测试路径 |
 | G18 | `refactor-g18-leaf-packages` | T5：`media/ugoira`、`browsercookies/*`、`selfupdate/*`、`reversesearch/*`、`loginrelay` | G05 | 这些包 |
 | G19 | `refactor-g19-scripts-move` | S1 | — | `scripts/`、`tools/`、`ci/`、`.github/` |
-| G20 | `refactor-g20-scripts-slim` | S2 | 已取消 | 同上 |
-| G21 | `refactor-g21-workflow-refs` | T4：脚本与 workflow 中的编号引用 | 已取消 | 同上 |
+| G20 | `refactor-g20-scripts-slim` | S2（范围扩大） | G19 | 同上 |
+| G21 | `refactor-g21-workflow-refs` | T4：脚本与 workflow 中的编号引用 | G20 | 同上 |
 | G22 | `refactor-g22-logging` | C1 | G07、G08、G09、G10、G11、G14、G15、G24、G26 | `internal/logging`、`pixivapi`、`fanboxapi`、`toolhost`、`cli/execution.go`、`composition.go`、SDK `Options` |
 | G23 | `refactor-g23-shared-mechanisms` | T5：`lifecycle`、`pagination`、`record`、`searchfilter`、`httpclient`、`plaintext`、`version` | G08、G14、G19 | 这些包及其调用处 |
 | G24 | `refactor-g24-media` | T5：`media/downloader`、`media/filename` | G05 | 这些包 |
 | G25 | `refactor-g25-mcp-runtime` | T5：MCP 的 `auth`、`accounts`、`gallery`、`mediaproxy` | G05 | 这些包 |
 | G26 | `refactor-g26-accounts` | T5：`pixivaccount`、`pixivaccount/pool`、`fanboxaccount`、`session` | G05 | 这些包 |
 | G27 | `refactor-g27-cli-auth` | T5 与 T2：`cli/auth`、`loginhelper` 的注入点 | G12 | 这些包 |
-| G28 | `refactor-g28-sweep` | T2 重新扫描、T3、T4（全仓库，含 scripts 与 workflow）、T6 其余（含 `illustration` 别名） | G22–G27 | 全仓库剩余部分 |
+| G28 | `refactor-g28-sweep` | T2 重新扫描、T3、T4（scripts、.github 以外）、T6 其余（含 `illustration` 别名） | G22–G27 | 全仓库剩余部分 |
 | G29 | `refactor-g29-headers-sdk` | C3：`sdk/`、`cmd/` | G28 | 只加文件头注释 |
 | G30 | `refactor-g30-headers-cli` | C3：`internal/cli/` | G28 | 同上 |
 | G31 | `refactor-g31-headers-mcp` | C3：`internal/mcpserver/` | G28 | 同上 |
 | G32 | `refactor-g32-headers-internal` | C3：`internal/` 其余目录与 `frontend/` | G28 | 同上 |
-| G33 | `refactor-g33-headers-scripts` | C3：`scripts/`、`.github/`、`frontend/` | 已取消（frontend/ 并入 G32） | 同上 |
-| G34 | `refactor-g34-finish` | C2；删除 `.agents/refactor/` | G29–G32 | 文档、skill |
+| G33 | `refactor-g33-headers-scripts` | C3：`scripts/`、`.github/` | G28、G21 | 同上 |
+| G34 | `refactor-g34-finish` | C2；删除 `.agents/refactor/` | G29–G33 | 文档、skill |
 
 每个 goal 顺带对自己触及的目录做 T2、T3、T6，并对触及的测试套用 3.4。
 
@@ -1859,7 +1859,7 @@ A1、B2 等是工作项的名称。执行单位是 **goal**：一个 goal 对应
 
 ### S 组：scripts 与 tools
 
-S1 由 G19 执行；S2（G20）于 2026-10-23 取消。S2 精简后 `licensebundle` 的生成结果逐字节不变。
+S1 由 G19 执行；S2 由 G20 执行，2026-10-23 扩大为 scripts 与 CI 的全面精简，以 `goals.md` 中 G20 的语句为准。S2 精简后 `licensebundle` 的生成结果逐字节不变。
 
 | PR | 内容 | 验收要点 |
 |---|---|---|
