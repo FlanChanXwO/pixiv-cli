@@ -52,7 +52,7 @@ func TestTraverseWithPreservesCommitBoundaryAndPagePlan(t *testing.T) {
 
 func TestCollectWithKeepsLogicalMoreWithoutExposingCursor(t *testing.T) {
 	next := traversalTestCursor(t, "collect")
-	result, err := pagination.CollectWith(context.Background(), onceExecute(t, struct{}{}, false), pagination.PagePlan{OneBatch: true}, func(_ context.Context, _ struct{}, cursor sdk.Cursor) ([]int, sdk.Cursor, error) {
+	result, err := pagination.CollectWithFrom(context.Background(), onceExecute(t, struct{}{}, false), pagination.PagePlan{OneBatch: true}, sdk.Cursor{}, func(_ context.Context, _ struct{}, cursor sdk.Cursor) ([]int, sdk.Cursor, error) {
 		if cursor.IsZero() {
 			return []int{1}, next, nil
 		}
@@ -82,7 +82,7 @@ func TestCollectWithClearsUncommittedResultsBeforeReplay(t *testing.T) {
 		return err
 	})
 
-	result, err := pagination.CollectWith(context.Background(), execute, pagination.PagePlan{}, func(_ context.Context, _ struct{}, cursor sdk.Cursor) ([]int, sdk.Cursor, error) {
+	result, err := pagination.CollectWithFrom(context.Background(), execute, pagination.PagePlan{}, sdk.Cursor{}, func(_ context.Context, _ struct{}, cursor sdk.Cursor) ([]int, sdk.Cursor, error) {
 		fetchCalls++
 		if fetchCalls == 1 {
 			if cursor.IsZero() {
@@ -119,14 +119,13 @@ func TestTraverseWithReportsUnconfiguredExecute(t *testing.T) {
 	}
 }
 
-// TestCollectWithPreservesHasMoreWhenTruncatingInsideBatch 验证 finding #17：当
-// 逻辑 limit 小于上游最后一批、且该批上游 cursor 已为空时，分页引擎内部已标记
-// 仍有未返回条目，CollectWith 必须把 has_more=true 传给调用方，而不是仅依据
-// 上游 cursor 重新推导出 false。
+// TestCollectWithPreservesHasMoreWhenTruncatingInsideBatch 验证逻辑 limit 小于
+// 上游最后一批、且该批上游 cursor 已为空时，CollectWithFrom 必须把
+// has_more=true 传给调用方，而不是仅依据上游 cursor 重新推导出 false。
 func TestCollectWithPreservesHasMoreWhenTruncatingInsideBatch(t *testing.T) {
 	// Single upstream batch of 5 items, no continuation cursor, limit 2:
 	// 3 items remain unreturned, so has_more must be true.
-	result, err := pagination.CollectWith(context.Background(), onceExecute(t, struct{}{}, false), pagination.PagePlan{Limit: 2}, func(_ context.Context, _ struct{}, cursor sdk.Cursor) ([]int, sdk.Cursor, error) {
+	result, err := pagination.CollectWithFrom(context.Background(), onceExecute(t, struct{}{}, false), pagination.PagePlan{Limit: 2}, sdk.Cursor{}, func(_ context.Context, _ struct{}, cursor sdk.Cursor) ([]int, sdk.Cursor, error) {
 		if !cursor.IsZero() {
 			t.Fatalf("unexpected continuation fetch for zero-cursor batch")
 		}
@@ -144,9 +143,9 @@ func TestCollectWithPreservesHasMoreWhenTruncatingInsideBatch(t *testing.T) {
 }
 
 // TestCollectWithHasMoreFalseWhenBatchFullyReturned 验证非截断的正常路径
-// 不被 #17 修复误判为 has_more=true。
+// 不会被误判为 has_more=true。
 func TestCollectWithHasMoreFalseWhenBatchFullyReturned(t *testing.T) {
-	result, err := pagination.CollectWith(context.Background(), onceExecute(t, struct{}{}, false), pagination.PagePlan{Limit: 5}, func(_ context.Context, _ struct{}, cursor sdk.Cursor) ([]int, sdk.Cursor, error) {
+	result, err := pagination.CollectWithFrom(context.Background(), onceExecute(t, struct{}{}, false), pagination.PagePlan{Limit: 5}, sdk.Cursor{}, func(_ context.Context, _ struct{}, cursor sdk.Cursor) ([]int, sdk.Cursor, error) {
 		return []int{1, 2, 3}, sdk.Cursor{}, nil
 	})
 	if err != nil {

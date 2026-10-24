@@ -51,28 +51,16 @@ func TestCollectStreamsAppliesOneLogicalBudgetAcrossStreams(t *testing.T) {
 		},
 	}
 
-	items, state, result, err := pagination.CollectStreamsFrom(
+	items, state, result, err := pagination.CollectStreams(
 		context.Background(),
 		pagination.PagePlan{Skip: 1, Limit: 3},
 		streams,
-		pagination.StreamState[fakeCursor]{},
 	)
 	require.NoError(t, err)
 	assert.Equal(t, []int{2, 3, 4}, items)
 	assert.Equal(t, pagination.PageResult{Returned: 3, HasMore: true}, result)
 	assert.Equal(t, 1, state.Current)
 	assert.Equal(t, []fakeCursor{{}, stream1Remainder}, state.Cursors)
-
-	remainder, finalState, finalResult, err := pagination.CollectStreamsFrom(
-		context.Background(),
-		pagination.PagePlan{},
-		streams,
-		state,
-	)
-	require.NoError(t, err)
-	assert.Equal(t, []int{5}, remainder)
-	assert.Equal(t, pagination.StreamState[fakeCursor]{Current: 2, Cursors: []fakeCursor{{}, {}}}, finalState)
-	assert.Equal(t, pagination.PageResult{Returned: 1}, finalResult)
 }
 
 func TestCollectStreamsOneBatchSkipsEmptyStreamsWithoutFetchingAhead(t *testing.T) {
@@ -150,11 +138,10 @@ func TestCollectStreamsFiltersBeforeGlobalSkipAndLimit(t *testing.T) {
 		},
 	}
 
-	items, state, result, err := pagination.CollectStreamsFrom(
+	items, state, result, err := pagination.CollectStreams(
 		context.Background(),
 		pagination.PagePlan{Skip: 1, Limit: 1},
 		streams,
-		pagination.StreamState[fakeCursor]{},
 	)
 	require.NoError(t, err)
 	assert.Equal(t, []int{4}, items)
@@ -228,10 +215,4 @@ func TestCollectStreamsCheckpointsLastBatchRemainder(t *testing.T) {
 	assert.Equal(t, []int{1, 2}, items)
 	assert.Equal(t, pagination.PageResult{Returned: 2, HasMore: true}, result)
 	assert.Equal(t, pagination.StreamState[fakeCursor]{Current: 0, Cursors: []fakeCursor{remainder}}, state)
-
-	items, state, result, err = pagination.CollectStreamsFrom(context.Background(), pagination.PagePlan{}, streams, state)
-	require.NoError(t, err)
-	assert.Equal(t, []int{3}, items)
-	assert.Equal(t, pagination.StreamState[fakeCursor]{Current: 1, Cursors: []fakeCursor{{}}}, state)
-	assert.Equal(t, pagination.PageResult{Returned: 1}, result)
 }

@@ -60,15 +60,13 @@ func TraverseWithFrom[C any, T any](
 
 	var pageResult PageResult
 	err := execute(ctx, func(ctx context.Context, client C) (bool, error) {
-		if begin != nil {
-			if err := begin(); err != nil {
-				return false, err
-			}
+		if err := begin(); err != nil {
+			return false, err
 		}
 
 		committed := false
 		var err error
-		pageResult, err = TraversePagesFrom(ctx, plan, initial, func(ctx context.Context, cursor sdk.Cursor) ([]T, sdk.Cursor, error) {
+		pageResult, err = traversePagesFrom(ctx, plan, initial, func(ctx context.Context, cursor sdk.Cursor) ([]T, sdk.Cursor, error) {
 			return fetch(ctx, client, cursor)
 		}, func(items []T) error {
 			published, err := consume(items)
@@ -78,18 +76,6 @@ func TraverseWithFrom[C any, T any](
 		return committed, err
 	})
 	return pageResult, err
-}
-
-// CollectWith 在 execute 提供的重放边界内收集逻辑分页结果。
-// 每次新尝试开始时都会清空前一次未提交的结果，避免重放时混入不同资源
-// 的数据；失败时返回当前尝试的结果和原始错误。
-func CollectWith[C any, T any](
-	ctx context.Context,
-	execute Execute[C],
-	plan PagePlan,
-	fetch func(context.Context, C, sdk.Cursor) ([]T, sdk.Cursor, error),
-) (PagedReadResult[T], error) {
-	return CollectWithFrom(ctx, execute, plan, sdk.Cursor{}, fetch)
 }
 
 // CollectWithFrom 与 CollectWith 相同，但从调用方已有的 opaque cursor 开始。
