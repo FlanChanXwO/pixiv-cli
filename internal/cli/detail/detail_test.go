@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
-	"net/http"
 	"strings"
 	"testing"
 
@@ -21,13 +20,6 @@ import (
 	pixiv "github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
 	"github.com/spf13/cobra"
 )
-
-func TestCommandUsageShowsOptionalIDForRecordInput(t *testing.T) {
-	cmd := newTestCommand(testDependencies{})
-	if usage := cmd.UseLine(); usage != "detail [ID_OR_URL] [flags]" {
-		t.Fatalf("usage = %q, want detail [ID_OR_URL] [flags]", usage)
-	}
-}
 
 func TestCommandConsumesReverseSearchIdentityRecordsInOrder(t *testing.T) {
 	input := reverseSearchOutput(t, []reversesearch.Result{
@@ -228,96 +220,25 @@ func TestCommandNovelContentReturnsUnavailableBeforeOpeningClient(t *testing.T) 
 	}
 }
 
-func TestCommandRoutesTypedIDsThroughPublicSDK(t *testing.T) {
-	tests := []struct {
-		name      string
-		typ       string
-		id        string
-		path      string
-		queryName string
-		body      string
-	}{
-		{
-			name:      "artwork",
-			typ:       "artwork",
-			id:        "101",
-			path:      "/v1/illust/detail",
-			queryName: "illust_id",
-			body:      `{"illust":{"id":101,"title":"artwork","type":"illust","create_date":"2024-01-01T00:00:00Z","page_count":1,"image_urls":{"original":"https://i.pximg.net/img/101.png"},"user":{"id":9,"name":"artist"},"tags":[]}}`,
-		},
-		{
-			name:      "novel",
-			typ:       "novel",
-			id:        "201",
-			path:      "/v2/novel/detail",
-			queryName: "novel_id",
-			body:      `{"novel":{"id":201,"title":"novel","create_date":"2024-01-01T00:00:00Z","user":{"id":9,"name":"writer"}}}`,
-		},
-		{
-			name:      "user",
-			typ:       "user",
-			id:        "301",
-			path:      "/v1/user/detail",
-			queryName: "user_id",
-			body:      `{"user":{"id":301,"name":"user"},"profile":{},"profile_publicity":{"gender":false,"region":false,"birth_day":false,"birth_year":false,"job":false,"pawoo":false},"workspace":{}}`,
-		},
-	}
-
-	for _, test := range tests {
-		t.Run(test.name, func(t *testing.T) {
-			var gotPath string
-			var gotID string
-			cmd := newTestCommand(testDependencies{
-				Input:      strings.NewReader(""),
-				Output:     &bytes.Buffer{},
-				UsageError: func(err error) error { return err },
-				BuildRequest: func(*cobra.Command, Options) (Request, error) {
-					return Request{}, nil
-				},
-				Pooled: func(ctx context.Context, _ Request, attempt func(context.Context, *pixiv.Client) (bool, error)) error {
-					client, err := pixiv.NewWith("token", pixiv.Options{HTTPClient: &http.Client{Transport: detailRoundTripFunc(func(req *http.Request) (*http.Response, error) {
-						gotPath = req.URL.Path
-						gotID = req.URL.Query().Get(test.queryName)
-						return &http.Response{
-							StatusCode: http.StatusOK,
-							Header:     http.Header{"Content-Type": {"application/json"}},
-							Body:       io.NopCloser(strings.NewReader(test.body)),
-							Request:    req,
-						}, nil
-					})}})
-					if err != nil {
-						return err
-					}
-					_, err = attempt(ctx, client)
-					return err
-				},
-				FetchArtwork: func(ctx context.Context, client *pixiv.Client, id int64) (pixiv.Artwork, error) {
-					return client.Artwork(ctx, pixiv.ArtworkRequest{ArtworkID: id})
-				},
-				FetchNovel: func(ctx context.Context, client *pixiv.Client, id int64) (pixiv.Novel, error) {
-					return client.Novel(ctx, pixiv.NovelRequest{NovelID: id})
-				},
-				FetchUser: func(ctx context.Context, client *pixiv.Client, id int64) (pixiv.UserDetail, error) {
-					return client.User(ctx, pixiv.UserRequest{UserID: id})
-				},
-				JSONOut: func(*bool) (bool, error) { return false, nil },
-			})
-			cmd.SetArgs([]string{"--type", test.typ, test.id})
-
-			if err := cmd.Execute(); err != nil {
-				t.Fatalf("Execute: %v", err)
+// 三种实体都走公开 SDK，且各自输出一个对应 key 的 JSON 文档；具体路由与字段映射由 SDK 测试负责。
+func TestCommandTypedIDsOutputEntityEnvelopes(t *testing.T) {
+	for _, typ := range []string{"artwork", "novel", "user"} {
+		t.Run(typ, func(t *testing.T) {
+			var output bytes.Buffer
+			data := testMachineDependencies(&output, strings.NewReader(""))
+			data.OutputIsTTY = func() bool { return true }
+			cmd := newTestCommand(data)
+			cmd.SetArgs([]string{"--type", typ, "42", "--json"})
+			requireNoError(t, cmd.Execute())
+			var object map[string]json.RawMessage
+			if err := json.Unmarshal(output.Bytes(), &object); err != nil {
+				t.Fatalf("expected one JSON object, got %q: %v", output.String(), err)
 			}
-			if gotPath != test.path || gotID != test.id {
-				t.Fatalf("request = %s?%s, want %s?%s", gotPath, gotID, test.path, test.queryName+"="+test.id)
+			if len(object) == 0 {
+				t.Fatalf("empty %s detail object: %q", typ, output.String())
 			}
 		})
 	}
-}
-
-type detailRoundTripFunc func(*http.Request) (*http.Response, error)
-
-func (f detailRoundTripFunc) RoundTrip(req *http.Request) (*http.Response, error) {
-	return f(req)
 }
 
 func TestCommandRejectsURLTypeConflictBeforeBuildingRequest(t *testing.T) {
@@ -649,36 +570,13 @@ func TestCommandRecordJSONOutputsOrderedArray(t *testing.T) {
 }
 
 func TestCommandRecordMachineOutputUsesDetailTypes(t *testing.T) {
+	// artwork 的 illust/manga/ugoira 别名归 record 与 SDK；这里只验证 detail 自己拼的 novel/user 记录。
 	tests := []struct {
 		name     string
 		input    string
 		wantID   string
 		wantType string
 	}{
-		{
-			name:     "generic artwork becomes concrete artwork kind",
-			input:    `{"id":"42","type":"artwork","url":"https://www.pixiv.net/artworks/42"}` + "\n",
-			wantID:   "42",
-			wantType: "illust",
-		},
-		{
-			name:     "illust artwork alias",
-			input:    `{"id":"43","type":"illust","url":"https://www.pixiv.net/artworks/43"}` + "\n",
-			wantID:   "43",
-			wantType: "illust",
-		},
-		{
-			name:     "manga artwork alias",
-			input:    `{"id":"44","type":"manga","url":"https://www.pixiv.net/artworks/44"}` + "\n",
-			wantID:   "44",
-			wantType: "illust",
-		},
-		{
-			name:     "ugoira artwork alias",
-			input:    `{"id":"45","type":"ugoira","url":"https://www.pixiv.net/artworks/45"}` + "\n",
-			wantID:   "45",
-			wantType: "illust",
-		},
 		{
 			name:     "novel",
 			input:    `{"id":"88","type":"novel","url":"https://www.pixiv.net/novel/show.php?id=88"}` + "\n",

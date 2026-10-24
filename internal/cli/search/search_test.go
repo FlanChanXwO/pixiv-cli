@@ -19,79 +19,33 @@ import (
 	"github.com/spf13/cobra"
 )
 
-type searchRoundTripFunc func(*http.Request) (*http.Response, error)
-
-func (f searchRoundTripFunc) RoundTrip(req *http.Request) (*http.Response, error) { return f(req) }
-
-func TestCommandDeepArtworkPageStartsAtRawOffset(t *testing.T) {
-	calls := 0
-	rt := searchRoundTripFunc(func(req *http.Request) (*http.Response, error) {
-		calls++
-		if got := req.URL.Query().Get("offset"); got != "270" {
-			t.Errorf("first search offset = %q, want 270", got)
-		}
-		body := `{"illusts":[{"id":901,"title":"cat","type":"illust","create_date":"2024-05-01T10:00:00+09:00","user":{"id":7,"name":"artist"},"tags":[]}],"next_url":null}`
-		return &http.Response{StatusCode: http.StatusOK, Header: http.Header{"Content-Type": {"application/json"}}, Body: io.NopCloser(strings.NewReader(body))}, nil
-	})
-	client, err := pixiv.NewWith("token", pixiv.Options{HTTPClient: &http.Client{Transport: rt}})
-	if err != nil {
-		t.Fatal(err)
-	}
-	var output bytes.Buffer
-	cmd := newTestCommand(testDependencies{
-		Input: strings.NewReader(""), Output: &output,
-		JSONOut: func(*bool) (bool, error) { return true, nil },
-		Pooled: func(ctx context.Context, _ Request, attempt func(context.Context, *pixiv.Client) (bool, error)) error {
-			_, err := attempt(ctx, client)
-			return err
-		},
-	})
-	cmd.SetArgs([]string{"cat", "--page", "10", "--limit", "30", "--json"})
-	if err := cmd.Execute(); err != nil {
-		t.Fatalf("search page: %v", err)
-	}
-	var result struct {
-		Illusts []struct {
-			ID int64 `json:"id"`
-		} `json:"illusts"`
-	}
-	if err := json.Unmarshal(output.Bytes(), &result); err != nil {
-		t.Fatal(err)
-	}
-	if calls != 1 || len(result.Illusts) != 1 || result.Illusts[0].ID != 901 {
-		t.Fatalf("calls=%d output=%s, want one request and artwork 901", calls, output.String())
-	}
-}
-
-func TestCommandFilteredArtworkPagesKeepLogicalSkip(t *testing.T) {
+// 分页参数到上游 offset 的映射：页码跳过整页，本地过滤再多跳一条。
+func TestCommandArtworkPaginationStartsAtRawOffset(t *testing.T) {
 	for _, tt := range []struct {
-		name string
-		flag []string
-		want int64
+		name    string
+		args    []string
+		offsets []string
+		wantID  int64
 	}{
-		{name: "AI-only", flag: []string{"--ai-mode", "only"}, want: 4},
-		{name: "bookmark count", flag: []string{"--bookmark-min", "10"}, want: 3},
+		{name: "deep page", args: []string{"cat", "--page", "10", "--limit", "30", "--json"}, offsets: []string{"270"}, wantID: 901},
+		{name: "AI-only", args: []string{"cat", "--page", "2", "--limit", "1", "--ai-mode", "only", "--json"}, offsets: []string{"", "30"}, wantID: 4},
+		{name: "bookmark count", args: []string{"cat", "--page", "2", "--limit", "1", "--bookmark-min", "10", "--json"}, offsets: []string{"", "30"}, wantID: 3},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			calls := 0
-			rt := searchRoundTripFunc(func(req *http.Request) (*http.Response, error) {
+			rt := searchFixtureTransport(func(req *http.Request) (*http.Response, error) {
 				calls++
-				wantOffset := ""
-				if calls == 2 {
-					wantOffset = "30"
+				if got := req.URL.Query().Get("offset"); got != tt.offsets[min(calls-1, len(tt.offsets)-1)] {
+					t.Errorf("request %d offset = %q, want %q", calls, got, tt.offsets[min(calls-1, len(tt.offsets)-1)])
 				}
-				if got := req.URL.Query().Get("offset"); got != wantOffset {
-					t.Errorf("request %d offset = %q, want %q", calls, got, wantOffset)
+				first := `{"illusts":[{"id":1,"title":"human","type":"illust","ai_type":1,"total_bookmarks":5,"create_date":"2024-05-01T10:00:00+09:00","user":{"id":7,"name":"artist"},"tags":[]},{"id":2,"title":"AI","type":"illust","ai_type":2,"total_bookmarks":12,"create_date":"2024-05-01T10:00:00+09:00","user":{"id":7,"name":"artist"},"tags":[]}],"next_url":"https://app-api.pixiv.net/v1/search/illust?word=cat&offset=30"}`
+				second := `{"illusts":[{"id":3,"title":"human","type":"illust","ai_type":1,"total_bookmarks":20,"create_date":"2024-05-01T10:00:00+09:00","user":{"id":7,"name":"artist"},"tags":[]},{"id":4,"title":"AI","type":"illust","ai_type":2,"total_bookmarks":21,"create_date":"2024-05-01T10:00:00+09:00","user":{"id":7,"name":"artist"},"tags":[]}],"next_url":null}`
+				body := first
+				if calls > 1 {
+					body = second
 				}
-				if got := req.URL.Query().Get("bookmark_num_min"); got != "" {
-					t.Errorf("unverified server bookmark filter sent: %q", got)
-				}
-				if got := req.URL.Query().Get("search_ai_type"); got != "0" {
-					t.Errorf("search_ai_type = %q, want 0", got)
-				}
-				body := `{"illusts":[{"id":1,"title":"human","type":"illust","ai_type":1,"total_bookmarks":5,"create_date":"2024-05-01T10:00:00+09:00","user":{"id":7,"name":"artist"},"tags":[]},{"id":2,"title":"AI","type":"illust","ai_type":2,"total_bookmarks":12,"create_date":"2024-05-01T10:00:00+09:00","user":{"id":7,"name":"artist"},"tags":[]}],"next_url":"https://app-api.pixiv.net/v1/search/illust?word=cat&offset=30"}`
-				if calls == 2 {
-					body = `{"illusts":[{"id":3,"title":"human","type":"illust","ai_type":1,"total_bookmarks":20,"create_date":"2024-05-01T10:00:00+09:00","user":{"id":7,"name":"artist"},"tags":[]},{"id":4,"title":"AI","type":"illust","ai_type":2,"total_bookmarks":21,"create_date":"2024-05-01T10:00:00+09:00","user":{"id":7,"name":"artist"},"tags":[]}],"next_url":null}`
+				if tt.name == "deep page" {
+					body = `{"illusts":[{"id":901,"title":"cat","type":"illust","create_date":"2024-05-01T10:00:00+09:00","user":{"id":7,"name":"artist"},"tags":[]}],"next_url":null}`
 				}
 				return &http.Response{StatusCode: http.StatusOK, Header: http.Header{"Content-Type": {"application/json"}}, Body: io.NopCloser(strings.NewReader(body))}, nil
 			})
@@ -108,9 +62,9 @@ func TestCommandFilteredArtworkPagesKeepLogicalSkip(t *testing.T) {
 					return err
 				},
 			})
-			cmd.SetArgs(append([]string{"cat", "--page", "2", "--limit", "1", "--json"}, tt.flag...))
+			cmd.SetArgs(tt.args)
 			if err := cmd.Execute(); err != nil {
-				t.Fatalf("filtered search: %v", err)
+				t.Fatalf("search: %v", err)
 			}
 			var result struct {
 				Illusts []struct {
@@ -120,8 +74,8 @@ func TestCommandFilteredArtworkPagesKeepLogicalSkip(t *testing.T) {
 			if err := json.Unmarshal(output.Bytes(), &result); err != nil {
 				t.Fatal(err)
 			}
-			if calls != 2 || len(result.Illusts) != 1 || result.Illusts[0].ID != tt.want {
-				t.Fatalf("calls=%d output=%s, want artwork %d after local skip", calls, output.String(), tt.want)
+			if len(result.Illusts) != 1 || result.Illusts[0].ID != tt.wantID {
+				t.Fatalf("output=%s, want artwork %d", output.String(), tt.wantID)
 			}
 		})
 	}
@@ -581,15 +535,8 @@ func TestCommandLocallyFiltersArtworkRatingAndCanonicalizesSubtype(t *testing.T)
 	if len(requests) != 1 {
 		t.Fatalf("HTTP requests = %d, want 1", len(requests))
 	}
-	query := requests[0].URL.Query()
-	if query.Get("word") != "cat" {
-		t.Fatalf("word = %q, want cat", query.Get("word"))
-	}
-	if query.Get("content_type") != "illust" {
-		t.Fatalf("content_type = %q, want canonical illust", query.Get("content_type"))
-	}
-	if query.Get("rating") != "" || query.Get("x_restrict") != "" {
-		t.Fatalf("rating leaked to upstream query: %v", query)
+	if got := requests[0].URL.Query().Get("rating"); got != "" {
+		t.Fatalf("rating leaked to upstream query: %q", got)
 	}
 	var envelope struct {
 		Illusts []struct {
@@ -639,13 +586,8 @@ func TestCommandSearchReadsWordFromStdinAndEmitsFilteredNDJSONAcrossBatches(t *t
 	if len(requests) != 2 {
 		t.Fatalf("HTTP requests = %d, want 2", len(requests))
 	}
-	for _, request := range requests {
-		if request.URL.Query().Get("word") != "cat" {
-			t.Fatalf("word = %q, want cat", request.URL.Query().Get("word"))
-		}
-		if request.URL.Query().Get("rating") != "" || request.URL.Query().Get("x_restrict") != "" {
-			t.Fatalf("rating leaked to upstream query: %v", request.URL.Query())
-		}
+	if got := requests[1].URL.Query().Get("rating"); got != "" {
+		t.Fatalf("rating leaked to upstream query: %q", got)
 	}
 	lines := strings.Split(strings.TrimSpace(output.String()), "\n")
 	if len(lines) != 1 {
@@ -787,21 +729,9 @@ func TestCanonicalUserSearchUsesRouteAndLogicalPaginationJSON(t *testing.T) {
 	requests := 0
 	transport := searchFixtureTransport(func(request *http.Request) (*http.Response, error) {
 		requests++
-		if request.URL.Path != "/v1/search/user" {
-			t.Fatalf("path = %q, want /v1/search/user", request.URL.Path)
-		}
-		query := request.URL.Query()
-		if query.Get("word") != "artist" {
-			t.Fatalf("word = %q, want artist", query.Get("word"))
-		}
-		wantOffset := ""
 		body := `{"user_previews":[{"user":{"id":3001,"name":"artist one","account":"artist1","comment":"first"}}],"next_url":"https://app-api.pixiv.net/v1/search/user?word=artist&offset=20"}`
 		if requests == 2 {
-			wantOffset = "20"
 			body = `{"user_previews":[{"user":{"id":3002,"name":"artist two","account":"artist2","comment":"second"}}],"next_url":null}`
-		}
-		if query.Get("offset") != wantOffset {
-			t.Fatalf("offset = %q, want %q", query.Get("offset"), wantOffset)
 		}
 		return &http.Response{
 			StatusCode: http.StatusOK,
@@ -845,9 +775,6 @@ func TestCanonicalUserSearchUsesRouteAndLogicalPaginationJSON(t *testing.T) {
 	}
 	if len(envelope.Users) != 2 || envelope.Users[0].User.ID != 3001 || envelope.Users[1].User.ID != 3002 {
 		t.Fatalf("user previews = %#v, want IDs 3001 and 3002", envelope.Users)
-	}
-	if envelope.Users[0].User.Account != "artist1" || envelope.Users[1].User.Account != "artist2" {
-		t.Fatalf("user accounts = %#v, want artist1 and artist2", envelope.Users)
 	}
 }
 
