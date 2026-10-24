@@ -1,22 +1,17 @@
 package fanboxapi_test
 
 import (
-	"github.com/FlanChanXwO/pixiv-cli/internal/fanboxapi"
 	"strings"
 	"testing"
+
+	"github.com/FlanChanXwO/pixiv-cli/internal/fanboxapi"
 )
 
 func TestNormalizeCookieHeader(t *testing.T) {
 	normalized, err := fanboxapi.NormalizeCookieHeader("  FANBOXSESSID = abc123  ; other=def  ")
-	if err != nil {
-		t.Fatalf("NormalizeCookieHeader() error = %v", err)
+	if err != nil || normalized != "FANBOXSESSID=abc123; other=def" {
+		t.Fatalf("normalized = %q err=%v", normalized, err)
 	}
-	if got, want := normalized, "FANBOXSESSID=abc123; other=def"; got != want {
-		t.Fatalf("normalized = %q, want %q", got, want)
-	}
-}
-
-func TestNormalizeCookieHeaderRejectsMalformed(t *testing.T) {
 	for _, header := range []string{
 		"",
 		"other=value",
@@ -30,14 +25,8 @@ func TestNormalizeCookieHeaderRejectsMalformed(t *testing.T) {
 			t.Fatalf("NormalizeCookieHeader(%q) unexpectedly succeeded", header)
 		}
 	}
-}
-
-func TestNormalizeCookieHeaderErrorNeverEchoesValue(t *testing.T) {
-	_, err := fanboxapi.NormalizeCookieHeader("FANBOXSESSID=super-secret-canary; broken pair")
-	if err == nil {
-		t.Fatal("expected error")
-	}
-	if strings.Contains(err.Error(), "super-secret-canary") {
-		t.Fatalf("error disclosed cookie value: %v", err)
+	_, err = fanboxapi.NormalizeCookieHeader("FANBOXSESSID=super-secret-canary; broken pair")
+	if err == nil || strings.Contains(err.Error(), "super-secret-canary") {
+		t.Fatalf("malformed cookie error leaked value: %v", err)
 	}
 }

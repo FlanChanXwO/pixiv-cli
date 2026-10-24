@@ -11,12 +11,12 @@ import (
 	"github.com/FlanChanXwO/pixiv-cli/internal/fanboxapi"
 )
 
-func TestClientVerifiesIdentityOncePerSession(t *testing.T) {
+func TestClientVerifiedUserIDIsCached(t *testing.T) {
 	identityCalls := 0
 	session, err := fanboxapi.NewSessionWithOptions("FANBOXSESSID=client-canary", fanboxapi.SessionOptions{
 		HTTPClient: &http.Client{Transport: roundTripFunc(func(*http.Request) (*http.Response, error) {
 			identityCalls++
-			return &http.Response{StatusCode: http.StatusOK, Header: http.Header{"Content-Type": {"text/html"}}, Body: io.NopCloser(strings.NewReader(homeMetadata))}, nil
+			return &http.Response{StatusCode: http.StatusOK, Header: http.Header{"Content-Type": {"text/html"}}, Body: io.NopCloser(strings.NewReader(`<meta name="metadata" content='{"context":{"user":{"userId":"800","name":"verified"}}}'>`))}, nil
 		})},
 	})
 	if err != nil {
@@ -48,5 +48,3 @@ func TestClientRejectsContinuationOutsideFanboxHosts(t *testing.T) {
 		t.Fatal("GetJSONURL accepted a foreign host")
 	}
 }
-
-const homeMetadata = `<meta name="metadata" content='{"context":{"user":{"userId":"800","name":"verified"}}}'>`
