@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"github.com/FlanChanXwO/pixiv-cli/internal/fanboxapi"
-	postinfo "github.com/FlanChanXwO/pixiv-cli/internal/services/fanbox/endpoint/post/info"
 	"io"
 	"net/http"
 	"strings"
@@ -47,18 +46,17 @@ func TestChallengeRecoveryUsesIndependentSolverTransportAndReplaysRequest(t *tes
 	if err != nil {
 		t.Fatal(err)
 	}
-	endpoint := postinfo.New(session)
-	post, err := endpoint.Get(context.Background(), postinfo.Request{PostID: "post-1"})
+	post, err := fetchPost(session, context.Background(), "post-1")
 	if err != nil {
-		t.Fatalf("post endpoint error = %v", err)
+		t.Fatalf("post request error = %v", err)
 	}
-	if post.ID != "post-1" || post.Title != "replayed" {
+	if post.Body.Post.ID != "post-1" || post.Body.Post.Title != "replayed" {
 		t.Fatalf("post = %+v", post)
 	}
 	if got := solverCalls.Load(); got != 1 {
 		t.Fatalf("solver calls = %d, want 1", got)
 	}
-	if _, err := endpoint.Get(context.Background(), postinfo.Request{PostID: "post-1"}); err != nil {
+	if _, err := fetchPost(session, context.Background(), "post-1"); err != nil {
 		t.Fatalf("cached replay error = %v", err)
 	}
 	if got := solverCalls.Load(); got != 1 {
@@ -81,7 +79,7 @@ func TestOrdinaryForbiddenDoesNotCallSolver(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, err = postinfo.New(session).Get(context.Background(), postinfo.Request{PostID: "post-1"})
+	_, err = fetchPost(session, context.Background(), "post-1")
 	if !errors.Is(err, fanboxapi.ErrForbidden) {
 		t.Fatalf("error = %v, want forbidden", err)
 	}

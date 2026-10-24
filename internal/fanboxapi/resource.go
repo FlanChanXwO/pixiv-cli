@@ -1,11 +1,10 @@
-// Package fanboxapi owns FANBOX protocol, challenge handling, and media URL policy and the narrow resource
-// transport adapter. Opaque public ResourceRef decoding remains in sdk/fanbox.
+// FANBOX 媒体 URL 策略：允许的主机、是否需要会话 Cookie，以及资源 URL 校验。
+// 媒体请求发送与定位缓存在 client.go。
+
 package fanboxapi
 
 import (
-	"context"
 	"errors"
-	"net/http"
 	"net/url"
 	"strings"
 )
@@ -31,29 +30,6 @@ func RequiresCredentials(rawURL string) bool {
 	return strings.EqualFold(parsed.Hostname(), DownloadsHost)
 }
 
-// Transport is the narrow product-session capability required to open media.
-type Transport interface {
-	OpenMediaWithRequest(context.Context, string, MediaRequest) (*http.Response, error)
-}
-
-// Request is the controlled resource request surface used by the public SDK.
-type Request struct {
-	Method          string
-	Range           string
-	IfNoneMatch     string
-	IfModifiedSince string
-	IfRange         string
-}
-
-// Client owns resource host validation and delegates the request to the
-// product session transport.
-type Client struct {
-	transport Transport
-}
-
-// New constructs a resource endpoint client.
-func New(transport Transport) *Client { return &Client{transport: transport} }
-
 // ValidateURL validates a FANBOX asset locator without opening it.
 func ValidateURL(rawURL string) error {
 	if strings.TrimSpace(rawURL) == "" {
@@ -67,21 +43,4 @@ func ValidateURL(rawURL string) error {
 		return errors.New("FANBOX resource URL must contain a path")
 	}
 	return nil
-}
-
-// Open validates and opens one media resource.
-func (c *Client) Open(ctx context.Context, rawURL string, request Request) (*http.Response, error) {
-	if c == nil || c.transport == nil {
-		return nil, errors.New("FANBOX resource transport is not configured")
-	}
-	if err := ValidateURL(rawURL); err != nil {
-		return nil, err
-	}
-	return c.transport.OpenMediaWithRequest(ctx, rawURL, MediaRequest{
-		Method:          request.Method,
-		Range:           request.Range,
-		IfNoneMatch:     request.IfNoneMatch,
-		IfModifiedSince: request.IfModifiedSince,
-		IfRange:         request.IfRange,
-	})
 }

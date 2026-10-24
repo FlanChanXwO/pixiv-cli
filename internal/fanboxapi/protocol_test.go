@@ -2,15 +2,14 @@ package fanboxapi_test
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"github.com/FlanChanXwO/pixiv-cli/internal/fanboxapi"
-	"github.com/FlanChanXwO/pixiv-cli/internal/services/fanbox/endpoint/post"
-	"github.com/FlanChanXwO/pixiv-cli/internal/services/fanbox/endpoint/post/home"
-	postinfo "github.com/FlanChanXwO/pixiv-cli/internal/services/fanbox/endpoint/post/info"
 	"io"
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"strings"
 	"testing"
 )
@@ -137,7 +136,7 @@ func TestAPIRedirectDropsCookie(t *testing.T) {
 		}
 	}), "FANBOXSESSID=redirect-canary")
 
-	if _, err := testPost(session, context.Background(), "post-1"); err != nil {
+	if _, err := fetchPost(session, context.Background(), "post-1"); err != nil {
 		t.Fatalf("Post() error = %v", err)
 	}
 	want := "api.fanbox.cc/post.info:FANBOXSESSID=redirect-canary,www.fanbox.cc/post-info:"
@@ -213,7 +212,7 @@ func TestStatusClassification(t *testing.T) {
 	}
 	for _, test := range cases {
 		t.Run(test.path, func(t *testing.T) {
-			_, err := testHome(session, context.Background(), "https://api.fanbox.cc"+test.path)
+			err := fetchPage(session, context.Background(), "https://api.fanbox.cc"+test.path)
 			if test.want == nil {
 				if err == nil {
 					t.Fatal("endpoint unexpectedly succeeded")
@@ -254,9 +253,8 @@ func TestSessionUsesCustomUserAgent(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	response, err := testHome(session, context.Background(), "https://api.fanbox.cc/post.info?postId=1")
-	if err == nil || response.Posts != nil {
-		t.Fatalf("Home() = %+v, err=%v; expected decode failure after header assertion", response, err)
+	if err := fetchPage(session, context.Background(), "https://api.fanbox.cc/post.info?postId=1"); err == nil {
+		t.Fatalf("expected decode failure after header assertion, got nil")
 	}
 }
 
@@ -293,10 +291,31 @@ type roundTripFunc func(*http.Request) (*http.Response, error)
 
 func (fn roundTripFunc) RoundTrip(request *http.Request) (*http.Response, error) { return fn(request) }
 
-func testPost(session *fanboxapi.Session, ctx context.Context, postID string) (post.Post, error) {
-	return postinfo.New(session).Get(ctx, postinfo.Request{PostID: postID})
+type postResponse struct {
+	Body struct {
+		Post struct {
+			ID    string `json:"id"`
+			Title string `json:"title"`
+		} `json:"post"`
+	} `json:"body"`
 }
 
-func testHome(session *fanboxapi.Session, ctx context.Context, nextURL string) (post.Page, error) {
-	return home.New(session).List(ctx, home.Request{NextURL: nextURL})
+func fetchPost(session *fanboxapi.Session, ctx context.Context, postID string) (postResponse, error) {
+	var response postResponse
+	endpoint := fanboxapi.APIBaseURL + fanboxapi.PathPostInfo + "?" + url.Values{fanboxapi.ParamPostID: {postID}}.Encode()
+	err := session.GetJSON(ctx, endpoint, &response)
+	return response, err
+}
+
+// fetchPage performs one list request against a route under APIBaseURL when
+// nextURL is empty, or against the server continuation otherwise.
+func fetchPage(session *fanboxapi.Session, ctx context.Context, nextURL string) error {
+	endpoint := nextURL
+	if endpoint == "" {
+		endpoint = fanboxapi.APIBaseURL + fanboxapi.PathPostListHome
+	}
+	var body struct {
+		Body json.RawMessage `json:"body"`
+	}
+	return session.GetJSON(ctx, endpoint, &body)
 }

@@ -23,8 +23,8 @@ import (
 )
 
 const (
-	// WebBaseURL and APIBaseURL are fixed FANBOX protocol endpoints. Endpoint
-	// families use them only to construct their own routes.
+	// WebBaseURL and APIBaseURL are fixed FANBOX protocol endpoints. sdk/fanbox
+	// uses them with the route constants in api.go.
 	WebBaseURL = "https://www.fanbox.cc/"
 	APIBaseURL = "https://api.fanbox.cc/"
 	// PostListPageLimit is the explicit upstream parameter used by FANBOX post
@@ -153,8 +153,8 @@ type MediaRequest struct {
 	IfRange         string
 }
 
-// GetJSON performs one authenticated FANBOX JSON request for an endpoint
-// family. Route and wire decoding remain owned by the endpoint package.
+// GetJSON performs one authenticated FANBOX JSON request. sdk/fanbox owns the
+// routes and wire decoding.
 func (s *Session) GetJSON(ctx context.Context, endpoint string, target any) error {
 	response, err := s.do(ctx, endpoint, requestKindFanbox, true, "application/json, text/plain, */*")
 	if err != nil {
@@ -187,8 +187,7 @@ func ValidateAPIURL(rawURL string) error {
 }
 
 // ValidateMediaURL applies the media host policy without opening a request.
-// The resource endpoint uses it to keep locator validation beside the product
-// transport policy.
+// sdk/fanbox uses it to validate every locator it exposes.
 func ValidateMediaURL(rawURL string) error {
 	_, err := parseAllowedURL(rawURL, requestKindMedia)
 	return err
