@@ -36,11 +36,6 @@ type fanboxE2ETargets struct {
 	PostURL   string
 }
 
-type fanboxE2EPostTarget struct {
-	PostID  string
-	PostURL string
-}
-
 func fanboxE2ETargetsFrom(getenv func(string) string) (fanboxE2ETargets, error) {
 	targets := fanboxE2ETargets{}
 	var err error
@@ -57,18 +52,6 @@ func fanboxE2ETargetsFrom(getenv func(string) string) (fanboxE2ETargets, error) 
 		return fanboxE2ETargets{}, err
 	}
 	return targets, nil
-}
-
-func fanboxPostTargetFrom(getenv func(string) string) (fanboxE2EPostTarget, error) {
-	target := fanboxE2EPostTarget{}
-	var err error
-	if target.PostID, err = fanboxE2EValueFrom(getenv, fanboxE2EPostIDEnv); err != nil {
-		return fanboxE2EPostTarget{}, err
-	}
-	if target.PostURL, err = fanboxE2EPageURLFrom(getenv, fanboxE2EPostURLEnv); err != nil {
-		return fanboxE2EPostTarget{}, err
-	}
-	return target, nil
 }
 
 func fanboxE2EValueFrom(getenv func(string) string, name string) (string, error) {
@@ -283,7 +266,7 @@ func TestRealFanboxSDKPostInfo(t *testing.T) {
 	if os.Getenv(fanboxE2EPostOnlyEnv) != "1" {
 		t.Skip("set FANBOX_E2E_POST_ONLY=1 to run the post-only FANBOX SDK e2e")
 	}
-	target, err := fanboxPostTargetFrom(os.Getenv)
+	targets, err := fanboxE2ETargetsFrom(os.Getenv)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -298,12 +281,12 @@ func TestRealFanboxSDKPostInfo(t *testing.T) {
 	defer client.CloseIdleConnections()
 
 	ctx := t.Context()
-	post, err := client.Post(ctx, fanboxsdk.PostRequest{PostID: target.PostID})
+	post, err := client.Post(ctx, fanboxsdk.PostRequest{PostID: targets.PostID})
 	if err != nil {
 		t.Fatalf("Post: %v", err)
 	}
-	if post.ID != target.PostID {
-		t.Fatalf("Post returned id=%q, want %q", post.ID, target.PostID)
+	if post.ID != targets.PostID {
+		t.Fatalf("Post returned id=%q, want %q", post.ID, targets.PostID)
 	}
 	if post.Body == nil {
 		t.Fatal("Post returned no body for the explicit post.info target")
@@ -316,11 +299,11 @@ func TestRealFanboxSDKPostInfo(t *testing.T) {
 	}
 	t.Logf("post.info body verified; assets=%d file_assets=%d", len(post.Body.Assets), fileAssets)
 
-	reference, err := client.ResolveURL(ctx, fanboxsdk.ResolveURLRequest{RawURL: target.PostURL})
+	reference, err := client.ResolveURL(ctx, fanboxsdk.ResolveURLRequest{RawURL: targets.PostURL})
 	if err != nil {
 		t.Fatalf("ResolveURL: %v", err)
 	}
-	if reference.Kind != fanboxsdk.ReferenceKindPost || reference.PostID != target.PostID {
+	if reference.Kind != fanboxsdk.ReferenceKindPost || reference.PostID != targets.PostID {
 		t.Fatalf("ResolveURL returned kind=%q post=%q", reference.Kind, reference.PostID)
 	}
 }
