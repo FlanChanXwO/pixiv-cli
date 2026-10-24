@@ -44,9 +44,9 @@ type SDKPorts struct {
 	Downloads *LocalDownloads
 	Media     *mediaproxy.Service
 	// Accounts shares the owner-local manager used by production ResolveAccount.
-	Accounts accounts.Manager
+	Accounts accounts.Selection
 	// Login is shared with the HTTP relay and owned by the server lifecycle.
-	Login *accounts.LoginManager
+	Login *accounts.Login
 	// ResolveAccount 固定一次业务调用的本地账号选择；不读取或刷新上游凭据。
 	ResolveAccount func(context.Context, Account) (Account, error)
 	// Open is the raw-client compatibility adapter for existing embeddings. New
@@ -86,8 +86,8 @@ func NewApp(ports SDKPorts, account Account) *App {
 // SDKPorts 返回注入的 SDK 端口。
 func (a *App) SDKPorts() SDKPorts { return a.sdk }
 
-// AccountManager returns the local account manager; it never opens an SDK client.
-func (a *App) AccountManager() accounts.Manager { return a.sdk.Accounts }
+// AccountSelection 返回共享的账号选择；不打开 SDK client。
+func (a *App) AccountSelection() accounts.Selection { return a.sdk.Accounts }
 
 // ReverseSearchPorts 返回启动时注入的反向搜图端口与配置。
 func (a *App) ReverseSearchPorts() ReverseSearchPorts {
