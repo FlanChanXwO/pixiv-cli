@@ -441,11 +441,21 @@
 /goal 执行 pixiv-cli 重构规格的 G08：Pixiv user 及其余 Pixiv 端点并入 SDK。
 
 【本 goal】
-工作项：A3 的 user 及其余 Pixiv 端点；完成后删除 services/pixiv/endpoint/（规格 6.1、3.3、附录 A 的 F4/F5）。
+工作项：A3 的 user 及其余 Pixiv 端点；完成后删除整个 internal/services/（G09 已删除 services/fanbox；规格 6.1、3.3、附录 A 的 F4/F5）。
 - 端点实现并入 sdk/pixiv 对应的领域文件，路径和参数名写成 pixivapi/api.go 中的常量（只新增常量，不改 pixivapi 的其他代码，那部分归 G15）。
-- 重复的 mapUser、mapArtwork 等映射函数合并为一份，放在 wire.go；continuation 改为“每个端点一条 Spec + 一个解析函数”；删除对应的 Transport 接口和子 client 字段。
+- 重复的 mapUser、mapArtwork 等映射函数合并为一份；continuation 改为“每个端点一条 Spec + 一个解析函数”；删除对应的 Transport 接口和子 client 字段。
+- sdk/pixiv 改为按领域组织文件（取代规格 3.1、5.1、6.1、6.2 示例中的 wire.go 与 ops_*.go 命名）：
+  - ops_*.go 改为领域文件名（artwork.go、novel.go、user.go、bookmark.go、comment.go 等，规格 5.1）。
+  - 只被一个方法使用的请求类型移到该方法旁边，删除 request.go。
+  - 只被一个领域使用的响应结构与映射函数放进该领域文件；多个领域共用的响应结构与映射（user、tag、image_urls 等）放在 response.go；删除 wire.go 与 map_*.go。
+  - models.go 保留。改名与移动单独提交，不与端点合并混在一起。
+- 删除 G07 留下的临时桥接：mapUserEntity、mapNovelEntity、novelWireFromEntity、artworkWireFromEntity，以及注释中引用 goal 编号的说明。
+- 同步中英文 architecture.md 中描述 endpoint 族的段落（第 141 行附近），改为描述 sdk/pixiv 的领域文件；修正 docs/zh-CN/maintainers/architecture-mcp.md 中的 services/pixiv/account/reads.go（现为 internal/pixivaccount/reads.go），并核对英文版。
 
 【验收】
+- internal/services/ 已删除；以合并时的 main 重新 grep，全仓库（.agents/refactor/ 除外）不再引用 internal/services。
+- sdk/pixiv 中没有 wire.go、request.go、map_*.go、ops_*.go；sdk/ 与 internal/ 的代码注释中不出现 goal 编号。
+- 发往上游的 query/form 参数（名称、取值、增删）如有任何变化，在 PR 中逐条列为 changelog 条目并说明原因，不写 None。
 - 原有 endpoint 测试中的响应校验断言全部保留，改写成按端点族组织的表驱动测试。
 - 各种映射写法之间的差异逐项列在 PR 中，并给出取舍。
 - go doc -all 与改动前一致（公开 API 不变）。
@@ -1443,6 +1453,7 @@
 【本 goal】
 工作项：重新扫描只被测试引用的导出函数（T2），处理剩余的无对应生产文件测试（T3）、Go 代码中的编号引用（T4），以及其余兼容层，包括 illustration 别名（T6，写成 changelog 条目）。
 - 全仓库生产代码中，超过约 100 行的编排函数，按真实阶段拆出有名字的步骤函数（只拆能用一个名字说清职责的部分，不为缩短而拆）；超过约 600 行、包含多个主题的文件按主题拆分。先处理此前 goal 未覆盖的部分，例如 mcpserver/pixiv/tools 中 recommendedHandler、artworkMediaHandler、showGalleryHandler（各约 140–150 行），cli/search 的 run（约 136 行），cli/bookmark/bookmark.go（906 行）。media/ugoira/jpeg 解码器照搬标准库 image/jpeg 的算法结构，保持原样。
+- sdk/fanbox 按 G08 在 sdk/pixiv 中的做法组织文件：请求类型移到使用它的方法旁边，删除 request.go；只被一个领域使用的响应结构与映射放进 creator.go、post.go 等领域文件，共用部分放在 response.go，删除 wire.go；models.go 保留。改名与移动单独提交。
 - 删除生产代码中与真实包名不一致的 import 别名（例如 protocol→pixivapi/fanboxapi、commands/requirements→command、config/configapp→settings、accountpixiv→pixivaccount、filesecret→secretfile、filereplace→atomicfile、versionpkg→version），调用处改用真实包名；以合并时的 main 重新统计。
 
 【验收】
@@ -1714,7 +1725,7 @@
 【本 goal】
 工作项：C2（规格 C 组）。
 - 删除 .agents/refactor/ 整个目录。
-- 中英文 docs/*/sdk.md 改为描述新的 API；更新 architecture.md、development.md 和各 skill 中与重构结果相关的路径和放置规则；把规格第 6 节的示例整理到 pixiv-cli-develop 的 references/go-examples.md（删除前先从本目录复制需要的内容）。
+- 中英文 docs/*/sdk.md 改为描述新的 API；更新 architecture.md、development.md 和各 skill 中与重构结果相关的路径和放置规则；把规格第 6 节的示例整理到 pixiv-cli-develop 的 references/go-examples.md（删除前先从本目录复制需要的内容），示例中的文件名按重构后的实际命名改写（例如 wire.go 已改为领域文件与 response.go）。
 - 汇总已合并各 goal 的 PR 描述中的 changelog 条目，写进本 PR 描述作为 release notes 草稿；不创建 changelog/vX.Y.Z/。
 
 【验收】
