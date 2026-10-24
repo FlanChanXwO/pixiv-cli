@@ -36,6 +36,7 @@ func (e Env) CanPrompt() bool {
 	return err == nil
 }
 
+// PromptInput reads one non-empty answer; empty input uses defaultValue.
 func (e Env) PromptInput(message, defaultValue string) (string, error) {
 	if _, err := terminalFD(e.In, e.Out); err != nil {
 		return "", err
@@ -63,6 +64,7 @@ func (e Env) PromptInput(message, defaultValue string) (string, error) {
 	}
 }
 
+// PromptSecret reads an answer without echoing it.
 func (e Env) PromptSecret(message string) (string, error) {
 	fd, err := terminalFD(e.In, e.Out)
 	if err != nil {
@@ -88,6 +90,7 @@ func (e Env) PromptSecret(message string) (string, error) {
 	}
 }
 
+// PromptSelect prints options as a numbered list and returns the chosen one.
 func (e Env) PromptSelect(message string, options []string) (string, error) {
 	if len(options) == 0 {
 		return "", errors.New("no available options")
@@ -116,6 +119,7 @@ func (e Env) PromptSelect(message string, options []string) (string, error) {
 	}
 }
 
+// PromptConfirm reads y/yes, n/no, or the default for an empty answer.
 func (e Env) PromptConfirm(message string, defaultValue bool) (bool, error) {
 	if _, err := terminalFD(e.In, e.Out); err != nil {
 		return false, err
