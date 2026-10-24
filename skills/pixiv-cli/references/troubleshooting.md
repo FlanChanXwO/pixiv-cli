@@ -71,8 +71,8 @@ safe metadata output does not make raw token or bundle stdout safe to display.
   credentials; never fall back to an anonymous Web path.
 - Token present + App API error → error is final. The CLI never auto-falls
   back to a Web path. Report the real cause.
-- Removed `web_fallback_enabled` in `config.toml` → returns
-  `removed_setting`; clear it with `pixiv config unset web_fallback_enabled`.
+- Removed `web_fallback_enabled` in `config.toml` → ignored as an
+  undeclared key; no Web fallback is used.
 
 ## Empty or "missing" results
 

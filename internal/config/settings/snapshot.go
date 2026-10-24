@@ -6,31 +6,12 @@ import (
 	"os"
 	"reflect"
 	"strings"
+
+	"github.com/pelletier/go-toml/v2"
 )
 
-import (
-	"github.com/knadh/koanf/parsers/toml/v2"
-	"github.com/knadh/koanf/v2"
-)
-
-func LoadSnapshot() (Snapshot, error) {
-	store := defaultFileStore{}
-	path, err := store.Path()
-	if err != nil {
-		return Snapshot{}, err
-	}
-	return LoadSnapshotAtWithFileStore(path, store)
-}
-
-// LoadSnapshotAt 从明确给定的路径加载配置。SDK 需要它避免改动
-// 包级测试路径或依赖调用进程的隐式当前配置位置。
-func LoadSnapshotAt(path string) (Snapshot, error) {
-	return LoadSnapshotAtWithFileStore(path, defaultFileStore{})
-}
-
-// LoadSnapshotAtWithFileStore 从明确路径和注入的文件端口加载配置。它
-// 让 composition root 可以把 platform/file mechanism 适配传入 schema owner。
-// LoadSnapshotAtWithFileStore 从明确路径与注入的文件端口生成一次不可变快照。
+// loadSnapshotAt 从明确路径与文件端口生成一次不可变快照。只有 Store 方法
+// 对外提供读取入口；测试直接构造 Store{Files: ...}。
 //
 // 配置绑定整体分四个阶段，本函数只负责**阶段 1**：
 //
@@ -40,54 +21,68 @@ func LoadSnapshotAt(path string) (Snapshot, error) {
 //     Runtime 中的领域规则）；
 //  4. 返回类型化配置；读取过程**不回写**用户文件（写回只属 document.go）。
 //
-// 阶段 1 的具体含义：文件内容在此一次性装入 koanf，环境变量在此一次性捕获；
+// 阶段 1 的具体含义：文件内容在此一次性解析为嵌套表，环境变量在此一次性捕获；
 // 之后无论 Effective 被调用多少次，同一快照都看到同一份输入。
-func LoadSnapshotAtWithFileStore(path string, store FileStore) (Snapshot, error) {
+func loadSnapshotAt(path string, store FileStore) (Snapshot, error) {
 	store, err := requireFileStore(store)
 	if err != nil {
 		return Snapshot{}, err
 	}
-	// 阶段 1：装入文件视图。
-	fileState := koanf.New(".")
-	if err := loadConfigFileInto(fileState, path, store.ReadFile); err != nil {
+	// 阶段 1：解析文件视图。
+	file, err := loadConfigFile(path, store.ReadFile)
+	if err != nil {
 		return Snapshot{}, err
 	}
 	// 阶段 1：捕获环境视图。两者共同构成这个不可变快照的输入。
-	return Snapshot{file: fileState, env: captureEnvironment()}, nil
+	return Snapshot{file: file, env: captureEnvironment()}, nil
 }
 
 // captureEnvironment 固定一次 snapshot 的环境 precedence。若 Effective 每次重新
 // 读取 os.Environ，命令运行中修改环境会让同一个 snapshot 产生不同结果。
-func captureEnvironment() map[string]snapshotEnvValue {
-	values := make(map[string]snapshotEnvValue)
+func captureEnvironment() map[Key]snapshotEnvValue {
+	values := make(map[Key]snapshotEnvValue)
 	for _, entry := range mustSettingSpecs() {
-		if raw, present := EnvValue(entry.spec); present {
+		if raw, present := envValue(entry.spec); present {
 			values[entry.spec.Alias] = snapshotEnvValue{value: raw, present: true}
 		}
 	}
 	return values
 }
 
-type rawFileProvider struct{ body []byte }
-
-func (p rawFileProvider) ReadBytes() ([]byte, error) { return p.body, nil }
-
-func (rawFileProvider) Read() (map[string]any, error) {
-	return nil, errors.New("raw configuration provider does not support parsed reads")
-}
-
-func loadConfigFileInto(target *koanf.Koanf, path string, readFile func(string) ([]byte, error)) error {
+// loadConfigFile 返回 TOML 文件的嵌套表。缺失或空文件等价于空表。
+func loadConfigFile(path string, readFile func(string) ([]byte, error)) (map[string]any, error) {
 	body, err := readFile(path)
 	if errors.Is(err, os.ErrNotExist) {
-		return nil
+		return nil, nil
 	}
 	if err != nil {
-		return err
+		return nil, err
 	}
 	if len(strings.TrimSpace(string(body))) == 0 {
-		return nil
+		return nil, nil
 	}
-	return target.Load(rawFileProvider{body: body}, toml.Parser())
+	var file map[string]any
+	if err := toml.Unmarshal(body, &file); err != nil {
+		return nil, err
+	}
+	return file, nil
+}
+
+// lookup 按 TOML 路径读取嵌套表；第二个返回值区分键不存在与显式零值。
+func lookup(table map[string]any, path []string) (any, bool) {
+	for index, key := range path {
+		value, ok := table[key]
+		if !ok {
+			return nil, false
+		}
+		if index == len(path)-1 {
+			return value, true
+		}
+		if table, ok = value.(map[string]any); !ok {
+			return nil, false
+		}
+	}
+	return nil, false
 }
 
 // Effective 解析单个配置别名的最终值，返回该值及其来源。
@@ -98,34 +93,26 @@ func loadConfigFileInto(target *koanf.Koanf, path string, readFile func(string) 
 //     都与"缺失"区分开，并且一旦某层命中就不再回退到更低优先级。
 //   - 全部未命中时返回 Source="unset"、HasValue=false，调用方据此区分
 //     "没有配置"与"配置成了零值"。
-//   - 退役键（spec.Removed）仅在**显式出现**于文件时报 removed_setting；缺失时静默
-//     返回 unset，因此 config unset 仍能清理它。
 //
 // 这是绑定四阶段中的**阶段 2**（按存在性选择来源）；类型解析与领域校验由
 // coerceSettingValue（阶段 3）负责，本函数不回写任何文件（阶段 4）。
-func (s Snapshot) Effective(alias string) (SettingValue, error) {
-	spec, ok := SettingSpecByAlias(alias)
+func (s Snapshot) Effective(key Key) (SettingValue, error) {
+	spec, ok := SettingSpecByAlias(key)
 	if !ok {
-		return SettingValue{}, fmt.Errorf("unknown config key %q", alias)
+		return SettingValue{}, fmt.Errorf("unknown config key %q", key)
 	}
 	return s.effectiveSpec(spec)
 }
 
 // effectiveSpec 让绑定器与公开别名读取共享同一来源选择，不再查询另一份声明。
 func (s Snapshot) effectiveSpec(spec SettingSpec) (SettingValue, error) {
-	if spec.Removed {
-		if s.file.Exists(spec.KoanfKey) {
-			return SettingValue{}, RemovedSettingError(spec.Alias)
-		}
-		return SettingValue{Source: "unset"}, nil
-	}
 	// 阶段 2：env 优先。存在即为命中（即使值为空），不回退到 file。
 	if raw, ok := s.env[spec.Alias]; ok && raw.present {
 		return coerceSettingValue(spec, raw.value, "env")
 	}
 	// 阶段 2：其次文件。同样按存在性判断，保留显式空值与显式 false。
-	if s.file.Exists(spec.KoanfKey) {
-		return coerceSettingValue(spec, s.file.Get(spec.KoanfKey), "file")
+	if raw, present := s.fileValue(spec); present {
+		return coerceSettingValue(spec, raw, "file")
 	}
 	// 阶段 2：最后默认值（来自字段的 default 标签）。
 	if spec.HasDefault {
@@ -137,32 +124,16 @@ func (s Snapshot) effectiveSpec(spec SettingSpec) (SettingValue, error) {
 func (s Snapshot) Runtime() (RuntimeConfig, error) {
 	var cfg RuntimeConfig
 	target := reflect.ValueOf(&cfg).Elem()
-	// 退役的 Gallery 调优键原本最先绑定；残留时同样最先报告迁移墓碑。
-	for _, alias := range []string{"mcp_gallery_cache_ttl", "mcp_gallery_concurrency"} {
-		if _, err := s.Effective(alias); err != nil {
-			return RuntimeConfig{}, err
-		}
-	}
 	// 字段声明顺序保留历史普通配置错误优先级；账号池由领域读取处理严格类型。
 	entries := make([]settingSpecFromTags, 0, len(mustSettingSpecs()))
 	for _, entry := range mustSettingSpecs() {
-		if entry.spec.Removed || len(entry.fieldIndex) == 0 {
+		if len(entry.fieldIndex) == 0 {
 			continue
 		}
 		if target.Type().Field(entry.fieldIndex[0]).Type == reflect.TypeOf(AccountPoolConfig{}) {
 			continue
 		}
 		entries = append(entries, entry)
-		// 此迁移墓碑历史上位于 output_json 与后续配置校验之间，不能提前到 Snapshot 加载。
-		if entry.spec.Alias == "output_json" {
-			if err := s.bindDeclared(target, entries); err != nil {
-				return RuntimeConfig{}, err
-			}
-			if _, err := s.Effective("web_fallback_enabled"); err != nil {
-				return RuntimeConfig{}, err
-			}
-			entries = entries[:0]
-		}
 	}
 	if err := s.bindDeclared(target, entries); err != nil {
 		return RuntimeConfig{}, err
@@ -199,7 +170,7 @@ func (s Snapshot) Runtime() (RuntimeConfig, error) {
 // 私有高级叶子和可选指针组仍由领域读取决定存在性及启用条件。
 func (s Snapshot) bindDeclared(target reflect.Value, entries []settingSpecFromTags) error {
 	for _, entry := range entries {
-		if entry.spec.Removed || entry.spec.Alias == "" {
+		if entry.spec.Alias == "" {
 			continue
 		}
 		field, err := target.FieldByIndexErr(entry.fieldIndex)
@@ -227,7 +198,7 @@ func (s Snapshot) bindDeclared(target reflect.Value, entries []settingSpecFromTa
 // user_agent，因此即使配置文件里写了 `pixiv.network.user_agent` 也不得生效
 // （该差异由 PixivNetworkConfig 这个窄类型在类型层面保证）。
 func (s Snapshot) pixivNetwork() (PixivNetworkConfig, error) {
-	proxyURL, err := s.optionalString(runtimeFieldSpec("PixivNetwork", "ProxyURL").KoanfKey)
+	proxyURL, err := s.optionalString(runtimeFieldSpec("PixivNetwork", "ProxyURL"))
 	if err != nil {
 		return PixivNetworkConfig{}, err
 	}
@@ -237,25 +208,30 @@ func (s Snapshot) pixivNetwork() (PixivNetworkConfig, error) {
 // serviceNetwork 绑定 FANBOX / 反搜的服务级网络。它们同时支持 proxy_url 与
 // user_agent，两者都保持"缺失 vs 显式空串"的可区分语义。
 func (s Snapshot) serviceNetwork(group string) (ServiceNetworkConfig, error) {
-	proxyURL, err := s.optionalString(runtimeFieldSpec(group, "ProxyURL").KoanfKey)
+	proxyURL, err := s.optionalString(runtimeFieldSpec(group, "ProxyURL"))
 	if err != nil {
 		return ServiceNetworkConfig{}, err
 	}
-	userAgent, err := s.optionalString(runtimeFieldSpec(group, "UserAgent").KoanfKey)
+	userAgent, err := s.optionalString(runtimeFieldSpec(group, "UserAgent"))
 	if err != nil {
 		return ServiceNetworkConfig{}, err
 	}
 	return ServiceNetworkConfig{ProxyURL: proxyURL, UserAgent: userAgent}, nil
 }
 
-func (s Snapshot) optionalString(path string) (OptionalString, error) {
-	if s.file == nil || !s.file.Exists(path) {
+// fileValue 返回某个声明在文件中的原始值，并区分 "缺失" 与 "显式零值"。
+func (s Snapshot) fileValue(spec SettingSpec) (any, bool) {
+	return lookup(s.file, append(spec.Table, spec.Key))
+}
+
+func (s Snapshot) optionalString(spec SettingSpec) (OptionalString, error) {
+	raw, present := s.fileValue(spec)
+	if !present {
 		return OptionalString{}, nil
 	}
-	raw := s.file.Get(path)
 	value, ok := raw.(string)
 	if !ok {
-		return OptionalString{}, fmt.Errorf("%s must be a string", path)
+		return OptionalString{}, fmt.Errorf("%s must be a string", spec.TOMLPath)
 	}
 	return OptionalString{Present: true, Value: value}, nil
 }
@@ -266,11 +242,11 @@ func (s Snapshot) flareSolverr() (*FlareSolverrConfig, error) {
 
 func (s Snapshot) flareSolverrAt(group string) (*FlareSolverrConfig, error) {
 	urlSpec := runtimeFieldSpec(group, "URL")
-	urlValue, err := s.optionalString(urlSpec.KoanfKey)
+	urlValue, err := s.optionalString(urlSpec)
 	if err != nil {
 		return nil, err
 	}
-	proxyValue, err := s.optionalString(runtimeFieldSpec(group, "ProxyURL").KoanfKey)
+	proxyValue, err := s.optionalString(runtimeFieldSpec(group, "ProxyURL"))
 	if err != nil {
 		return nil, err
 	}
@@ -278,7 +254,7 @@ func (s Snapshot) flareSolverrAt(group string) (*FlareSolverrConfig, error) {
 		return nil, nil
 	}
 	if !urlValue.Present || strings.TrimSpace(urlValue.Value) == "" {
-		return nil, fmt.Errorf("%s must be set when %s is configured", urlSpec.KoanfKey, strings.Join(urlSpec.Table, "."))
+		return nil, fmt.Errorf("%s must be set when %s is configured", urlSpec.TOMLPath, strings.Join(urlSpec.Table, "."))
 	}
 	return &FlareSolverrConfig{URL: urlValue.Value, ProxyURL: proxyValue.Value}, nil
 }
@@ -288,29 +264,24 @@ func (s Snapshot) accountPool() (AccountPoolConfig, error) {
 	strategySpec := runtimeFieldSpec("AccountPool", "Strategy")
 	// 路径与默认值来自字段声明；文件值仍走严格 bool/string 与枚举校验。
 	pool := AccountPoolConfig{Enabled: enabledSpec.Default.(bool), Strategy: AccountPoolStrategy(strategySpec.Default.(string))}
-	if _, err := s.Effective("account_pool_accounts"); err != nil {
-		return AccountPoolConfig{}, err
+	if raw, present := s.fileValue(enabledSpec); present {
+		enabled, ok := raw.(bool)
+		if !ok {
+			return AccountPoolConfig{}, fmt.Errorf("%s must be a boolean", enabledSpec.TOMLPath)
+		}
+		pool.Enabled = enabled
 	}
-	if s.file != nil {
-		if raw := s.file.Get(enabledSpec.KoanfKey); raw != nil {
-			enabled, ok := raw.(bool)
-			if !ok {
-				return AccountPoolConfig{}, fmt.Errorf("%s must be a boolean", enabledSpec.KoanfKey)
-			}
-			pool.Enabled = enabled
+	if raw, present := s.fileValue(strategySpec); present {
+		value, ok := raw.(string)
+		if !ok {
+			return AccountPoolConfig{}, fmt.Errorf("%s must be one of: round_robin, random", strategySpec.TOMLPath)
 		}
-		if raw := s.file.Get(strategySpec.KoanfKey); raw != nil {
-			value, ok := raw.(string)
-			if !ok {
-				return AccountPoolConfig{}, fmt.Errorf("%s must be one of: round_robin, random", strategySpec.KoanfKey)
-			}
-			pool.Strategy = AccountPoolStrategy(strings.TrimSpace(value))
-		}
+		pool.Strategy = AccountPoolStrategy(strings.TrimSpace(value))
 	}
 	switch pool.Strategy {
 	case AccountPoolStrategyRoundRobin, AccountPoolStrategyRandom:
 	default:
-		return AccountPoolConfig{}, fmt.Errorf("%s must be one of: round_robin, random", strategySpec.KoanfKey)
+		return AccountPoolConfig{}, fmt.Errorf("%s must be one of: round_robin, random", strategySpec.TOMLPath)
 	}
 	return pool, nil
 }

@@ -37,7 +37,7 @@ var defaultSurface = map[string]any{
 
 func TestRuntimeDefaultSurfaceIsStable(t *testing.T) {
 	clearSettingEnvironment(t)
-	state, err := config.LoadSnapshotAt(filepath.Join(t.TempDir(), "config.toml"))
+	state, err := currentSnapshot(filepath.Join(t.TempDir(), "config.toml"))
 	require.NoError(t, err)
 
 	runtime, err := state.Runtime()
@@ -47,8 +47,8 @@ func TestRuntimeDefaultSurfaceIsStable(t *testing.T) {
 	assert.Equal(t, defaultSurface["filename_template"], runtime.FilenameTemplate)
 	assert.Equal(t, defaultSurface["directory_template"], runtime.DirectoryTemplate)
 	assert.Equal(t, defaultSurface["https_proxy"], runtime.HTTPSProxy)
-	assert.Equal(t, defaultSurface["log_level"], runtime.LogLevel)
-	assert.Equal(t, defaultSurface["log_format"], runtime.LogFormat)
+	assert.Equal(t, defaultSurface["log_level"], string(runtime.LogLevel))
+	assert.Equal(t, defaultSurface["log_format"], string(runtime.LogFormat))
 	assert.Equal(t, defaultSurface["output_json"], runtime.OutputJSON)
 	assert.Equal(t, defaultSurface["login_open_browser"], runtime.LoginOpenBrowser)
 	assert.Equal(t, defaultSurface["login_use_after_login"], runtime.LoginUseAfterLogin)
@@ -90,7 +90,7 @@ func TestRuntimeAccountPoolUsesOnlyCurrentSettings(t *testing.T) {
 			if test.body != "" {
 				require.NoError(t, os.WriteFile(path, []byte(test.body), 0o600))
 			}
-			state, err := config.LoadSnapshotAt(path)
+			state, err := currentSnapshot(path)
 			require.NoError(t, err)
 			runtime, err := state.Runtime()
 			if test.wantErr != "" {
@@ -108,7 +108,7 @@ func TestSauceNAOAPIKeyEnvironmentOverridesFileInSnapshot(t *testing.T) {
 	require.NoError(t, os.WriteFile(path, []byte("[reverse_search]\nsaucenao_api_key = 'file-key'\n"), 0o600))
 	t.Setenv("SAUCENAO_API_KEY", "environment-key")
 
-	state, err := config.LoadSnapshotAt(path)
+	state, err := currentSnapshot(path)
 	require.NoError(t, err)
 	t.Setenv("SAUCENAO_API_KEY", "changed-after-snapshot")
 
@@ -121,7 +121,7 @@ func TestDownloadSettingsExposeDirectoryTemplateAndRequestInterval(t *testing.T)
 	clearSettingEnvironment(t)
 	path := filepath.Join(t.TempDir(), "config.toml")
 	require.NoError(t, os.WriteFile(path, []byte("[download]\ndirectory_template = \"{author}/{date}\"\n[network]\nrequest_interval = \"2s\"\n"), 0o600))
-	state, err := config.LoadSnapshotAt(path)
+	state, err := currentSnapshot(path)
 	require.NoError(t, err)
 	runtime, err := state.Runtime()
 	require.NoError(t, err)
@@ -135,12 +135,12 @@ func TestRuntimeReadsLoggingConfigFromFile(t *testing.T) {
 	path := t.TempDir() + "/config.toml"
 	require.NoError(t, os.WriteFile(path, []byte("[logging]\nlevel = \"debug\"\nformat = \"json\"\n"), 0o600))
 
-	state, err := config.LoadSnapshotAt(path)
+	state, err := currentSnapshot(path)
 	require.NoError(t, err)
 	runtimeConfig, err := state.Runtime()
 	require.NoError(t, err)
-	require.Equal(t, "debug", runtimeConfig.LogLevel)
-	require.Equal(t, "json", runtimeConfig.LogFormat)
+	require.Equal(t, config.LogLevelDebug, runtimeConfig.LogLevel)
+	require.Equal(t, config.LogFormatJSON, runtimeConfig.LogFormat)
 
 }
 
@@ -162,7 +162,7 @@ proxy_url = "socks5://reverse-solver-proxy.example"
 
 `), 0o600))
 
-	state, err := config.LoadSnapshotAt(path)
+	state, err := currentSnapshot(path)
 	require.NoError(t, err)
 	runtime, err := state.Runtime()
 	require.NoError(t, err)
@@ -193,7 +193,7 @@ user_agent = "fanbox-agent"
 user_agent = "reverse-search-agent"
 `), 0o600))
 
-	state, err := config.LoadSnapshotAt(path)
+	state, err := currentSnapshot(path)
 	require.NoError(t, err)
 	runtime, err := state.Runtime()
 	require.NoError(t, err)
@@ -220,7 +220,7 @@ func TestPixivNetworkDistinguishesAbsentFromExplicitEmpty(t *testing.T) {
 	t.Run("absent means inherit", func(t *testing.T) {
 		path := filepath.Join(t.TempDir(), "config.toml")
 		require.NoError(t, os.WriteFile(path, []byte("[network]\nhttps_proxy = \"http://global\"\n"), 0o600))
-		state, err := config.LoadSnapshotAt(path)
+		state, err := currentSnapshot(path)
 		require.NoError(t, err)
 		runtime, err := state.Runtime()
 		require.NoError(t, err)
@@ -230,7 +230,7 @@ func TestPixivNetworkDistinguishesAbsentFromExplicitEmpty(t *testing.T) {
 	t.Run("explicit empty means direct", func(t *testing.T) {
 		path := filepath.Join(t.TempDir(), "config.toml")
 		require.NoError(t, os.WriteFile(path, []byte("[network]\nhttps_proxy = \"http://global\"\n\n[pixiv.network]\nproxy_url = \"\"\n"), 0o600))
-		state, err := config.LoadSnapshotAt(path)
+		state, err := currentSnapshot(path)
 		require.NoError(t, err)
 		runtime, err := state.Runtime()
 		require.NoError(t, err)
@@ -263,7 +263,7 @@ func TestRuntimeRejectsMalformedAdvancedValues(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			path := filepath.Join(t.TempDir(), "config.toml")
 			require.NoError(t, os.WriteFile(path, []byte(test.body), 0o600))
-			state, err := config.LoadSnapshotAt(path)
+			state, err := currentSnapshot(path)
 			require.NoError(t, err)
 			_, err = state.Runtime()
 			require.EqualError(t, err, test.wantErr)
@@ -286,7 +286,7 @@ url = "http://solver.example"
 proxy_url = "socks5://solver-proxy.example"
 `), 0o600))
 
-	state, err := config.LoadSnapshotAt(path)
+	state, err := currentSnapshot(path)
 	require.NoError(t, err)
 	runtime, err := state.Runtime()
 	require.NoError(t, err)
@@ -306,7 +306,7 @@ func TestRuntimeLeavesOptionalServiceNetworkTablesAbsent(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "config.toml")
 	require.NoError(t, os.WriteFile(path, []byte("[network]\nhttps_proxy = \"http://global-proxy\"\n"), 0o600))
 
-	state, err := config.LoadSnapshotAt(path)
+	state, err := currentSnapshot(path)
 	require.NoError(t, err)
 	runtime, err := state.Runtime()
 	require.NoError(t, err)
@@ -333,12 +333,12 @@ func TestLoggingSettingsRejectUnsupportedValues(t *testing.T) {
 		{alias: "log_format", key: "format", raw: "yaml", want: "log_format must be one of: text, json"},
 	} {
 		t.Run(test.alias, func(t *testing.T) {
-			_, _, err := config.ParseSettingInput(test.alias, test.raw)
+			_, _, err := config.ParseSettingInput(config.Key(test.alias), test.raw)
 			require.EqualError(t, err, test.want)
 
 			path := t.TempDir() + "/config.toml"
 			require.NoError(t, os.WriteFile(path, []byte("[logging]\n"+test.key+" = \""+test.raw+"\"\n"), 0o600))
-			state, err := config.LoadSnapshotAt(path)
+			state, err := currentSnapshot(path)
 			require.NoError(t, err)
 			_, err = state.Runtime()
 			require.EqualError(t, err, test.want)
@@ -350,7 +350,7 @@ func TestGalleryCacheSettings(t *testing.T) {
 	for _, raw := range []string{"true", "1.5", "'256'", "-1", "8796093022208"} {
 		p := filepath.Join(t.TempDir(), "config.toml")
 		require.NoError(t, os.WriteFile(p, []byte("[mcp]\ngallery_cache_capacity_mib = "+raw+"\n"), 0o600))
-		s, err := config.LoadSnapshotAt(p)
+		s, err := currentSnapshot(p)
 		require.NoError(t, err)
 		_, err = s.Runtime()
 		require.Error(t, err, raw)
@@ -358,13 +358,13 @@ func TestGalleryCacheSettings(t *testing.T) {
 	// Zero disables the cache and is accepted.
 	p := filepath.Join(t.TempDir(), "config.toml")
 	require.NoError(t, os.WriteFile(p, []byte("[mcp]\ngallery_cache_capacity_mib = 0\n"), 0o600))
-	s, err := config.LoadSnapshotAt(p)
+	s, err := currentSnapshot(p)
 	require.NoError(t, err)
 	_, err = s.Runtime()
 	require.NoError(t, err)
 
 	for alias, want := range map[string]string{"mcp_gallery_animation_temp_capacity_mib": "1024", "mcp_gallery_cache_capacity_mib": "256"} {
-		value, _, err := config.ParseSettingInput(alias, want)
+		value, _, err := config.ParseSettingInput(config.Key(alias), want)
 		require.NoError(t, err)
 		require.Equal(t, want, value.Text)
 	}
@@ -381,7 +381,7 @@ func TestRuntimeGallerySettingsBindDeclaredValues(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			path := filepath.Join(t.TempDir(), "config.toml")
 			require.NoError(t, os.WriteFile(path, []byte(tc.toml), 0o600))
-			snapshot, err := config.LoadSnapshotAt(path)
+			snapshot, err := currentSnapshot(path)
 			require.NoError(t, err)
 			cfg, err := snapshot.Runtime()
 			require.NoError(t, err)
@@ -397,14 +397,14 @@ func TestRuntimeSilentlyIgnoresLegacySharedSecretRelayConfiguration(t *testing.T
 	path := t.TempDir() + "/config.toml"
 	require.NoError(t, os.WriteFile(path, []byte("[login]\nrelay_public_url = \"http://relay.example\"\nrelay_listen_addr = \"127.0.0.1:8080\"\nrelay_secret = \"obsolete-secret\"\nrelay_target_url = \"http://old-client.example\"\n"), 0o600))
 
-	state, err := config.LoadSnapshotAt(path)
+	state, err := currentSnapshot(path)
 	require.NoError(t, err)
 	runtimeConfig, err := state.Runtime()
 	require.NoError(t, err)
 	require.Equal(t, "http://relay.example", runtimeConfig.LoginRelayPublicURL)
 	require.Equal(t, "127.0.0.1:8080", runtimeConfig.LoginRelayListenAddr)
-	_, hasSecret := config.SettingSpecByAlias("login_relay_secret")
-	_, hasTarget := config.SettingSpecByAlias("login_relay_target_url")
+	_, hasSecret := config.SettingSpecByAlias(config.Key("login_relay_secret"))
+	_, hasTarget := config.SettingSpecByAlias(config.Key("login_relay_target_url"))
 	require.False(t, hasSecret)
 	require.False(t, hasTarget)
 }
@@ -426,7 +426,7 @@ func withoutProxyEnvironment(t *testing.T) {
 // compatibility: keys this version does not declare are ignored rather than
 // rejected, including retired and MCP endpoint settings.
 func TestUnknownSectionsInExistingFilesDoNotBlockStartup(t *testing.T) {
-	for _, alias := range []string{"mcp_listen_addr", "mcp_base_url", "premium_status_cache_ttl"} {
+	for _, alias := range []config.Key{"mcp_listen_addr", "mcp_base_url", "premium_status_cache_ttl"} {
 		_, ok := config.SettingSpecByAlias(alias)
 		require.Falsef(t, ok, "%q must not be a setting", alias)
 	}
@@ -439,7 +439,7 @@ base_url = "http://old.example"
 [premium]
 status_cache_ttl = "3h"
 `), 0o600))
-	state, err := config.LoadSnapshotAt(path)
+	state, err := currentSnapshot(path)
 	require.NoError(t, err)
 	_, err = state.Runtime()
 	require.NoError(t, err)
@@ -450,7 +450,7 @@ status_cache_ttl = "3h"
 // default stay unset rather than borrowing zero.
 func TestDefaultDeclarationDistinguishesFalseZeroAndEmpty(t *testing.T) {
 	clearSettingEnvironment(t)
-	state, err := config.LoadSnapshotAt(filepath.Join(t.TempDir(), "config.toml"))
+	state, err := currentSnapshot(filepath.Join(t.TempDir(), "config.toml"))
 	require.NoError(t, err)
 
 	for _, test := range []struct {
@@ -464,7 +464,7 @@ func TestDefaultDeclarationDistinguishesFalseZeroAndEmpty(t *testing.T) {
 		{alias: "request_interval", want: time.Duration(0), text: "0s"},
 	} {
 		t.Run(test.alias, func(t *testing.T) {
-			value, err := state.Effective(test.alias)
+			value, err := state.Effective(config.Key(test.alias))
 			require.NoError(t, err)
 			assert.True(t, value.HasValue, "explicit false/0s default must be declared, not inferred from a non-zero check")
 			assert.Equal(t, "default", value.Source)
@@ -479,7 +479,7 @@ func TestDefaultDeclarationDistinguishesFalseZeroAndEmpty(t *testing.T) {
 		"login_relay_tls_cert_file", "login_relay_tls_key_file",
 	} {
 		t.Run(alias, func(t *testing.T) {
-			value, err := state.Effective(alias)
+			value, err := state.Effective(config.Key(alias))
 			require.NoError(t, err)
 			assert.False(t, value.HasValue, "an alias without a declared default must stay unset")
 			assert.Nil(t, value.Value, "an absent default must not expose a zero value as if it were configured")
@@ -544,11 +544,11 @@ func TestDeclaredEnvironmentBindingsAreExactlyTheDocumentedSet(t *testing.T) {
 		t.Setenv(name, sentinel)
 	}
 
-	state, err := config.LoadSnapshotAt(filepath.Join(t.TempDir(), "config.toml"))
+	state, err := currentSnapshot(filepath.Join(t.TempDir(), "config.toml"))
 	require.NoError(t, err)
 
 	for _, alias := range config.ValidSettingAliases() {
-		if _, declared := authoritativeEnvNames[alias]; declared {
+		if _, declared := authoritativeEnvNames[string(alias)]; declared {
 			continue
 		}
 		value, err := state.Effective(alias)
@@ -562,7 +562,7 @@ func TestDeclaredEnvironmentBindingsAreExactlyTheDocumentedSet(t *testing.T) {
 		"filename_template":  envProbeSentinels["FILENAME_TEMPLATE"],
 		"directory_template": envProbeSentinels["DIRECTORY_TEMPLATE"],
 	} {
-		value, err := state.Effective(alias)
+		value, err := state.Effective(config.Key(alias))
 		require.NoErrorf(t, err, "Effective(%q)", alias)
 		assert.Equalf(t, want, value.Value, "alias %q did not deliver its declared environment value", alias)
 		assert.Equal(t, "env", value.Source)
@@ -575,7 +575,7 @@ func TestDeclaredEnvironmentBindingsAreExactlyTheDocumentedSet(t *testing.T) {
 		"log_format":       "log_format must be one of: text, json",
 		"request_interval": `request_interval: time: invalid duration "__env__not-a-duration"`,
 	} {
-		_, err := state.Effective(alias)
+		_, err := state.Effective(config.Key(alias))
 		require.EqualErrorf(t, err, wantErr, "alias %q must take its value from the declared environment variable", alias)
 	}
 
@@ -594,9 +594,9 @@ func TestEnvironmentPrecedenceKeepsDeclaredOrder(t *testing.T) {
 		t.Setenv("HTTPS_PROXY", "http://upper-proxy")
 		t.Setenv("https_proxy", "http://lower-proxy")
 
-		state, err := config.LoadSnapshotAt(path)
+		state, err := currentSnapshot(path)
 		require.NoError(t, err)
-		value, err := state.Effective("https_proxy")
+		value, err := state.Effective(config.KeyHTTPSProxy)
 		require.NoError(t, err)
 		assert.Equal(t, "http://lower-proxy", value.Value)
 		assert.Equal(t, "env", value.Source)
@@ -611,9 +611,9 @@ func TestEnvironmentPrecedenceKeepsDeclaredOrder(t *testing.T) {
 		t.Setenv("HTTPS_PROXY", "http://upper-proxy")
 		t.Setenv("https_proxy", "")
 
-		state, err := config.LoadSnapshotAt(path)
+		state, err := currentSnapshot(path)
 		require.NoError(t, err)
-		value, err := state.Effective("https_proxy")
+		value, err := state.Effective(config.KeyHTTPSProxy)
 		require.NoError(t, err)
 		assert.Equal(t, "env", value.Source, "an explicitly present lowercase proxy must be selected, not skipped")
 		assert.False(t, value.HasValue, "an empty value is present but not configured")
@@ -631,9 +631,9 @@ func TestEnvironmentEmptyValueStillCountsAsConfigured(t *testing.T) {
 		require.NoError(t, os.WriteFile(path, []byte("[download]\npath = \"./from-file\"\n"), 0o600))
 		t.Setenv("DOWNLOAD_PATH", "")
 
-		state, err := config.LoadSnapshotAt(path)
+		state, err := currentSnapshot(path)
 		require.NoError(t, err)
-		value, err := state.Effective("download_path")
+		value, err := state.Effective(config.KeyDownloadPath)
 		require.NoError(t, err)
 		assert.Equal(t, "", value.Value)
 		assert.Equal(t, "env", value.Source, "an explicitly empty env value must win over the file")
@@ -643,9 +643,9 @@ func TestEnvironmentEmptyValueStillCountsAsConfigured(t *testing.T) {
 		path := filepath.Join(t.TempDir(), "config.toml")
 		require.NoError(t, os.WriteFile(path, []byte("[download]\ndirectory_template = \"\"\n"), 0o600))
 
-		state, err := config.LoadSnapshotAt(path)
+		state, err := currentSnapshot(path)
 		require.NoError(t, err)
-		value, err := state.Effective("directory_template")
+		value, err := state.Effective(config.KeyDirectoryTemplate)
 		require.NoError(t, err)
 		// directory_template has no default, so an empty file string is unset.
 		assert.False(t, value.HasValue)
@@ -658,13 +658,11 @@ func TestEnvironmentEmptyValueStillCountsAsConfigured(t *testing.T) {
 func TestRuntimePreservesValidationOrder(t *testing.T) {
 	for _, tc := range []struct{ name, body, want string }{
 		{"interval before logging", "[network]\nrequest_interval='bad'\n[logging]\nlevel='bad'", `request_interval: time: invalid duration "bad"`},
-		{"logging before tombstone", "[logging]\nlevel='bad'\n[web]\nfallback_enabled=true", "log_level must be one of: info, debug"},
-		{"tombstone before reverse provider", "[web]\nfallback_enabled=true\n[reverse_search]\nprovider='bad'", "removed_setting: config key \"web_fallback_enabled\" was removed; clear it with `pixiv config unset web_fallback_enabled`"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			path := filepath.Join(t.TempDir(), "config.toml")
 			require.NoError(t, os.WriteFile(path, []byte(tc.body), 0o600))
-			state, err := config.LoadSnapshotAt(path)
+			state, err := currentSnapshot(path)
 			require.NoError(t, err)
 			_, err = state.Runtime()
 			require.EqualError(t, err, tc.want)
@@ -672,39 +670,17 @@ func TestRuntimePreservesValidationOrder(t *testing.T) {
 	}
 }
 
-// TestRemovedAliasesStayInertWhenAbsent keeps stale files from blocking reads:
-// only an explicitly present tombstone reports removed_setting.
-func TestRemovedAliasesStayInertWhenAbsent(t *testing.T) {
-	state, err := config.LoadSnapshotAt(filepath.Join(t.TempDir(), "config.toml"))
+// TestRetiredKeysInExistingFilesAreIgnored keeps old config files loading:
+// quiet deleted keys are unknown to this version, not startup failures.
+func TestRetiredKeysInExistingFilesAreIgnored(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "config.toml")
+	body := "[web]\nfallback_enabled = true\n\n[account_pool]\naccounts = \"1,2\"\n\n[mcp]\ngallery_cache_ttl = \"3m\"\ngallery_concurrency = 2\n\n[download]\npath = \"./kept\"\n"
+	require.NoError(t, os.WriteFile(path, []byte(body), 0o600))
+
+	state, err := currentSnapshot(path)
 	require.NoError(t, err)
-	for _, removed := range expectedRemovedAliases {
-		value, err := state.Effective(removed)
-		require.NoErrorf(t, err, "absent removed key %q must not fail the read", removed)
-		assert.Equal(t, "unset", value.Source)
-	}
-}
-
-// TestRemovedAliasPresentInFileReportsRemovedSetting requires both Effective
-// and Runtime to surface the tombstone for each migrated key.
-func TestRemovedAliasPresentInFileReportsRemovedSetting(t *testing.T) {
-	for alias, table := range map[string]string{
-		"web_fallback_enabled":    "[web]\nfallback_enabled = true\n",
-		"account_pool_accounts":   "[account_pool]\naccounts = \"1,2\"\n",
-		"mcp_gallery_cache_ttl":   "[mcp]\ngallery_cache_ttl = \"3m\"\n",
-		"mcp_gallery_concurrency": "[mcp]\ngallery_concurrency = 2\n",
-	} {
-		t.Run(alias, func(t *testing.T) {
-			path := filepath.Join(t.TempDir(), "config.toml")
-			require.NoError(t, os.WriteFile(path, []byte(table), 0o600))
-			state, err := config.LoadSnapshotAt(path)
-			require.NoError(t, err)
-
-			_, err = state.Effective(alias)
-			require.ErrorIs(t, err, config.ErrRemovedSetting)
-			require.ErrorContains(t, err, "pixiv config unset "+alias)
-
-			_, err = state.Runtime()
-			require.ErrorIs(t, err, config.ErrRemovedSetting, "Runtime must surface the migration tombstone")
-		})
-	}
+	runtime, err := state.Runtime()
+	require.NoError(t, err)
+	assert.Equal(t, "./kept", runtime.DownloadPath)
+	assert.False(t, runtime.AccountPool.Enabled)
 }

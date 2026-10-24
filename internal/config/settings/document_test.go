@@ -8,7 +8,6 @@ import (
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/config/paths"
 	config "github.com/FlanChanXwO/pixiv-cli/internal/config/settings"
-	"github.com/creachadair/tomledit/parser"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -21,13 +20,14 @@ func TestSetAndUnsetConfigValuePreserveDocumentAndApplyPlatformPermissions(t *te
 	require.NoError(t, os.MkdirAll(dir, 0o755))
 	original := "# keep this comment\n[download]\npath = './old'\n\n[custom]\nkey = 'keep'\n"
 	require.NoError(t, os.WriteFile(path, []byte(original), 0o644))
-	value, err := parser.ParseValue("'./new'")
+	restore := paths.SetConfigFilePathForTest(path)
+	defer restore()
+	store := config.DefaultStore()
+	_, err := store.Set(config.KeyDownloadPath, "./new")
 	require.NoError(t, err)
-
-	require.NoError(t, config.SetConfigValue(path, "download_path", value))
-	state, err := config.LoadSnapshotAt(path)
+	state, err := currentSnapshot(path)
 	require.NoError(t, err)
-	effective, err := state.Effective("download_path")
+	effective, err := state.Effective(config.KeyDownloadPath)
 	require.NoError(t, err)
 	assert.Equal(t, "./new", effective.Value)
 	assertConfigPersistence(t, path)
@@ -36,9 +36,8 @@ func TestSetAndUnsetConfigValuePreserveDocumentAndApplyPlatformPermissions(t *te
 	assert.Contains(t, string(body), "# keep this comment")
 	assert.Contains(t, string(body), "[custom]\nkey = 'keep'")
 
-	removed, err := config.UnsetConfigValue(path, "download_path")
+	_, err = store.Unset(config.KeyDownloadPath)
 	require.NoError(t, err)
-	assert.True(t, removed)
 	body, err = os.ReadFile(path)
 	require.NoError(t, err)
 	assert.NotContains(t, string(body), "[download]")

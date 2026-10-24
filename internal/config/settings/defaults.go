@@ -52,7 +52,7 @@ func generatedDefaultConfig() ([]byte, error) {
 	// 按固定呈现顺序遍历 section，保持与历史精简文件一致的用户可见布局。
 	entries := make([]settingSpecFromTags, 0, len(mustSettingSpecs()))
 	for _, entry := range mustSettingSpecs() {
-		if entry.spec.Removed || !entry.spec.DefaultInFile {
+		if !entry.spec.DefaultInFile {
 			continue
 		}
 		entries = append(entries, entry)
@@ -65,7 +65,7 @@ func generatedDefaultConfig() ([]byte, error) {
 
 	for _, entry := range entries {
 		spec := entry.spec
-		if spec.Removed || !spec.DefaultInFile {
+		if !spec.DefaultInFile {
 			continue
 		}
 		if !spec.HasDefault {

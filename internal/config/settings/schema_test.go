@@ -60,12 +60,6 @@ func TestSchemaRejectsInvalidDeclarations(t *testing.T) {
 		{"fractional integer default", struct {
 			Value int64 `config:"test.value" alias:"test_value" default:"1.5"`
 		}{}, "is not an integer"},
-		{"tombstone alias", struct {
-			Value bool `config:"test.value" alias:"web_fallback_enabled"`
-		}{}, `alias "web_fallback_enabled" is declared by both`},
-		{"tombstone path", struct {
-			Value bool `config:"account_pool.accounts" alias:"test_value"`
-		}{}, `config path "account_pool.accounts" is declared by both`},
 	}
 	for _, test := range cases {
 		t.Run(test.name, func(t *testing.T) {
@@ -188,10 +182,8 @@ func TestSchemaExcludesEntireSubtree(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, entry := range entries {
-		if !entry.spec.Removed {
-			t.Errorf("excluded subtree produced configuration entry %q", entry.spec.KoanfKey)
-		}
+	if len(entries) != 0 {
+		t.Errorf("excluded subtree produced configuration entry %#v", entries)
 	}
 }
 
@@ -209,11 +201,9 @@ func TestSchemaResolvesReusableGroupsRelativeToEachPrefix(t *testing.T) {
 	}
 	var paths []string
 	for _, entry := range entries {
-		if !entry.spec.Removed {
-			paths = append(paths, entry.spec.KoanfKey)
-			if entry.spec.Alias != "" || entry.spec.CLIManaged || entry.spec.DefaultInFile {
-				t.Errorf("private leaf leaked public metadata: %#v", entry.spec)
-			}
+		paths = append(paths, entry.spec.TOMLPath)
+		if entry.spec.Alias != "" || entry.spec.CLIManaged || entry.spec.DefaultInFile {
+			t.Errorf("private leaf leaked public metadata: %#v", entry.spec)
 		}
 	}
 	want := []string{"fanbox.network.proxy_url", "reverse_search.network.proxy_url"}
@@ -233,7 +223,7 @@ func TestSchemaKeepsOptionalStringAsPrivateLeaf(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(entries) != 1+len(settingTombstones) || entries[0].spec.KoanfKey != "fanbox.network.proxy_url" || entries[0].spec.Kind != settingString {
+	if len(entries) != 1 || entries[0].spec.TOMLPath != "fanbox.network.proxy_url" || entries[0].spec.Kind != settingString {
 		t.Fatalf("optional string must remain one leaf: %#v", entries)
 	}
 }

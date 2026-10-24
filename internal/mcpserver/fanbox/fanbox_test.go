@@ -709,15 +709,15 @@ func (r fanboxMCPRepository) RemoveFanbox(ctx context.Context, userID int64) err
 type fanboxMCPDefaults struct{}
 
 func (fanboxMCPDefaults) ReadFanboxDefaultUserID() (int64, bool, error) {
-	return config.ReadFanboxDefaultUserID()
+	return config.DefaultStore().ReadFanboxDefaultUserID()
 }
 
 func (fanboxMCPDefaults) SetFanboxDefaultUserID(userID int64) error {
-	return config.SetFanboxDefaultUserID(userID)
+	return config.DefaultStore().SetFanboxDefaultUserID(userID)
 }
 
 func (fanboxMCPDefaults) ClearFanboxDefaultUserID() error {
-	return config.ClearFanboxDefaultUserID()
+	return config.DefaultStore().ClearFanboxDefaultUserID()
 }
 
 func newFanboxMCPSession(t *testing.T, service *fanboxapp.Service) (*mcp.ClientSession, func()) {

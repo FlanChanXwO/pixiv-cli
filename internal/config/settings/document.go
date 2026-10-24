@@ -44,22 +44,15 @@ func saveConfigDocumentWithFileStore(path string, doc *tomledit.Document, store 
 	return store.WritePrivateFile(path, buf.Bytes())
 }
 
-func SetConfigValue(path, alias string, value parser.Value) error {
-	return SetConfigValueWithFileStore(path, alias, value, defaultFileStore{})
-}
-
-// SetConfigValueWithFileStore 在注入的文件端口上执行稀疏配置写回。
-func SetConfigValueWithFileStore(path, alias string, value parser.Value, store FileStore) error {
+// setConfigValue 在注入的文件端口上执行稀疏配置写回。
+func setConfigValue(path string, key Key, value parser.Value, store FileStore) error {
 	store, err := requireFileStore(store)
 	if err != nil {
 		return err
 	}
-	spec, ok := SettingSpecByAlias(alias)
+	spec, ok := SettingSpecByAlias(key)
 	if !ok {
-		return fmt.Errorf("unknown config key %q", alias)
-	}
-	if spec.Removed {
-		return RemovedSettingError(alias)
+		return fmt.Errorf("unknown config key %q", key)
 	}
 	doc, err := loadConfigDocumentWithFileStore(path, store)
 	if err != nil {
@@ -71,24 +64,20 @@ func SetConfigValueWithFileStore(path, alias string, value parser.Value, store F
 		Value: value,
 	}, true)
 	if !inserted {
-		return fmt.Errorf("failed to update config key %q", alias)
+		return fmt.Errorf("failed to update config key %q", key)
 	}
 	return saveConfigDocumentWithFileStore(path, doc, store)
 }
 
-func UnsetConfigValue(path, alias string) (bool, error) {
-	return UnsetConfigValueWithFileStore(path, alias, defaultFileStore{})
-}
-
-// UnsetConfigValueWithFileStore 在注入的文件端口上删除一个配置键。
-func UnsetConfigValueWithFileStore(path, alias string, store FileStore) (bool, error) {
+// unsetConfigValue 在注入的文件端口上删除一个配置键。
+func unsetConfigValue(path string, key Key, store FileStore) (bool, error) {
 	store, err := requireFileStore(store)
 	if err != nil {
 		return false, err
 	}
-	spec, ok := SettingSpecByAlias(alias)
+	spec, ok := SettingSpecByAlias(key)
 	if !ok {
-		return false, fmt.Errorf("unknown config key %q", alias)
+		return false, fmt.Errorf("unknown config key %q", key)
 	}
 	doc, err := loadConfigDocumentWithFileStore(path, store)
 	if err != nil {

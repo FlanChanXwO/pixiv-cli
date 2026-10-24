@@ -31,7 +31,7 @@ func coerceSettingValue(spec SettingSpec, raw any, source string) (SettingValue,
 		default:
 			return SettingValue{}, fmt.Errorf("%s expects integer", spec.Alias)
 		}
-		if value < 0 || ((spec.Alias == "mcp_gallery_cache_capacity_mib" || spec.Alias == "mcp_gallery_animation_temp_capacity_mib") && value > (1<<63-1)/(1<<20)) || (spec.Alias == "mcp_gallery_animation_temp_capacity_mib" && value == 0) {
+		if value < 0 || ((spec.Alias == KeyMCPGalleryCacheCapacityMiB || spec.Alias == KeyMCPGalleryAnimationTempCapacityMiB) && value > (1<<63-1)/(1<<20)) || (spec.Alias == KeyMCPGalleryAnimationTempCapacityMiB && value == 0) {
 			return SettingValue{}, fmt.Errorf("%s is out of range", spec.Alias)
 		}
 		return SettingValue{Value: value, Text: strconv.FormatInt(value, 10), Source: source, HasValue: true}, nil
@@ -59,7 +59,7 @@ func coerceSettingValue(spec SettingSpec, raw any, source string) (SettingValue,
 		if err != nil {
 			return SettingValue{}, fmt.Errorf("%s: %w", spec.Alias, err)
 		}
-		if spec.Alias == "request_interval" && value < 0 {
+		if spec.Alias == KeyRequestInterval && value < 0 {
 			return SettingValue{}, errors.New("request_interval must not be negative")
 		}
 		return SettingValue{Value: value, Text: value.String(), Source: source, HasValue: true}, nil
@@ -103,13 +103,10 @@ func normalizeDurationValue(raw any) (time.Duration, error) {
 	}
 }
 
-func ParseSettingInput(alias, raw string) (SettingValue, parser.Value, error) {
-	spec, ok := SettingSpecByAlias(alias)
+func ParseSettingInput(key Key, raw string) (SettingValue, parser.Value, error) {
+	spec, ok := SettingSpecByAlias(key)
 	if !ok {
-		return SettingValue{}, parser.Value{}, fmt.Errorf("unknown config key %q", alias)
-	}
-	if spec.Removed {
-		return SettingValue{}, parser.Value{}, RemovedSettingError(alias)
+		return SettingValue{}, parser.Value{}, fmt.Errorf("unknown config key %q", key)
 	}
 	raw = strings.TrimSpace(raw)
 	switch spec.Kind {
@@ -121,7 +118,7 @@ func ParseSettingInput(alias, raw string) (SettingValue, parser.Value, error) {
 		value, err := parser.ParseValue(parsed.Text)
 		return parsed, value, err
 	case settingString:
-		normalized, err := normalizeSpecialString(alias, raw)
+		normalized, err := normalizeSpecialString(key, raw)
 		if err != nil {
 			return SettingValue{}, parser.Value{}, err
 		}
@@ -146,7 +143,7 @@ func ParseSettingInput(alias, raw string) (SettingValue, parser.Value, error) {
 		if err != nil {
 			return SettingValue{}, parser.Value{}, fmt.Errorf("expects duration value: %w", err)
 		}
-		if spec.Alias == "request_interval" && parsed < 0 {
+		if spec.Alias == KeyRequestInterval && parsed < 0 {
 			return SettingValue{}, parser.Value{}, errors.New("request_interval must not be negative")
 		}
 		normalized := parsed.String()
@@ -163,13 +160,15 @@ func ParseSettingInput(alias, raw string) (SettingValue, parser.Value, error) {
 // 以下规范化函数属于"类型解析/规范化/领域校验"职责：它们把用户输入收敛为
 // 领域允许的字面量，非法值返回明确错误而不是被静默接受。
 
-func normalizeSpecialString(alias, value string) (string, error) {
-	switch alias {
-	case "log_level":
-		return normalizeLogLevel(value)
-	case "log_format":
-		return normalizeLogFormat(value)
-	case "reverse_search_provider":
+func normalizeSpecialString(key Key, value string) (string, error) {
+	switch key {
+	case KeyLogLevel:
+		level, err := parseLogLevel(value)
+		return string(level), err
+	case KeyLogFormat:
+		format, err := parseLogFormat(value)
+		return string(format), err
+	case KeyReverseSearchProvider:
 		return normalizeReverseSearchProvider(value)
 	default:
 		return value, nil
@@ -186,18 +185,20 @@ func normalizeReverseSearchProvider(value string) (string, error) {
 	}
 }
 
-func normalizeLogLevel(value string) (string, error) {
-	value = strings.TrimSpace(value)
-	if value != "info" && value != "debug" {
+func parseLogLevel(value string) (LogLevel, error) {
+	switch level := LogLevel(strings.TrimSpace(value)); level {
+	case LogLevelInfo, LogLevelDebug:
+		return level, nil
+	default:
 		return "", fmt.Errorf("log_level must be one of: info, debug")
 	}
-	return value, nil
 }
 
-func normalizeLogFormat(value string) (string, error) {
-	value = strings.TrimSpace(value)
-	if value != "text" && value != "json" {
+func parseLogFormat(value string) (LogFormat, error) {
+	switch format := LogFormat(strings.TrimSpace(value)); format {
+	case LogFormatText, LogFormatJSON:
+		return format, nil
+	default:
 		return "", fmt.Errorf("log_format must be one of: text, json")
 	}
-	return value, nil
 }
