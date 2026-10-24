@@ -43,7 +43,11 @@
 | G31 | `refactor-g31-headers-mcp` | G28 | 是 |
 | G32 | `refactor-g32-headers-internal` | G28 | 是 |
 | G33 | `refactor-g33-headers-scripts` | G28、G21 | 是 |
-| G34 | `refactor-g34-finish` | G29、G30、G31、G32、G33 | 否 |
+| G35 | `refactor-g35-tests-sdk` | G28 | 是 |
+| G36 | `refactor-g36-tests-mcp` | G28 | 是 |
+| G37 | `refactor-g37-tests-cli` | G28 | 是 |
+| G38 | `refactor-g38-tests-internal` | G28 | 是 |
+| G34 | `refactor-g34-finish` | G29、G30、G31、G32、G33、G35、G36、G37、G38 | 否 |
 
 ## G01：go mod tidy
 
@@ -1896,6 +1900,243 @@
 - 最终汇报包括：PR 链接、合并提交、实际运行的检查及结果、假设与阻塞项、依赖本 goal 的后续 goal 需要知道的事。
 ```
 
+## G35：测试精简：sdk、pixivapi、fanboxapi（可并行）
+
+```text
+/goal 执行 pixiv-cli 重构规格的 G35：测试精简：sdk、pixivapi、fanboxapi。
+
+【本 goal】
+工作项：测试精简（规格 3.4.1，含 T-g、T-h 与契约分层表；3.4.3）。范围：sdk/、internal/pixivapi、internal/fanboxapi 的测试。
+- 对范围内每个测试文件套用 3.4.1 的全部标准：删除、去重合并，或移到对应生产文件的 x_test.go。
+- 重点是 T-g：sdk/pixiv、sdk/fanbox 中共用一个实现的端点族（user_previews、illusts、novels、comments 等），每族保留一个正常用例和一张失败模式表；不再保留 A3、A4 时期逐端点的同一组断言。现状：wire_test.go 2120 行、pixiv_test.go 2043 行。
+- 映射正确性只在 SDK 断言（T-h）；CLI、MCP 层的重复映射断言由 G36、G37 删除。
+- 真实环境测试（live_test.go、live_mutation_test.go）：保留保护真实账号的离线测试和写入后的清理确认，合并重复的流程与辅助函数。
+- 只删减和合并测试，不改生产代码；确需为测试改动生产代码的，在 PR 中说明理由。
+- 不新增测试，除非删除后某个长期契约失去覆盖。
+
+【验收】
+- go test ./... 与 go vet ./... 通过；真实环境测试在未开启时全部 SKIP。
+- PR 中按 3.4.3 的表格列出删除或合并的测试、依据，以及仍覆盖该契约的测试。
+- 凭据不泄露、数据完整性与持久化、取消与错误传播相关的保留测试，断言不变。
+- PR 中列出范围内测试与生产代码的行数变化。预期测试约降到生产代码的一半；明显高于这个比例时说明原因（参考，不是门槛）。
+
+【依据】
+- 规格：仓库内的 .agents/refactor/spec.md，以 origin/main 上的版本为准。先通读第 1–3 节、第 7 节的 7.0 和本 goal 涉及的工作项、第 9 节、第 10 节。第 6 节示例只固定职责划分和数据流向，签名以当时的代码为准。
+- 仓库：github.com/FlanChanXwO/pixiv-cli（本机路径 /Users/flanchan/Developer/Projects/GithubProjects/pixiv-cli）。先读 AGENTS.md，以及 .agents/skills/ 下的 pixiv-cli-develop、pixiv-cli-test、pixiv-cli-code-commenting、pixiv-cli-review、pixiv-cli-pr、pixiv-cli-commit-message。
+- 规格中的统计数字基于 ef4accb9；以当前 origin/main 的实际代码为准，有出入时写进工作记录和 PR 描述。
+
+【worktree 与分支】
+- 名称：refactor-g35-tests-sdk
+- 路径：/Users/flanchan/.codex/worktrees/refactor-g35-tests-sdk/pixiv-cli
+- 分支：refactor/g35-tests-sdk
+- 开始前用 gh 确认依赖已满足：G28。未满足就标为阻塞并结束。
+- 满足后执行 git fetch origin main，再用 git worktree add -b refactor/g35-tests-sdk /Users/flanchan/.codex/worktrees/refactor-g35-tests-sdk/pixiv-cli origin/main 创建。
+- 全部工作都在这个 worktree 中进行。goal-N/ 工作目录、临时探针和基线比对输出加入 .git/info/exclude，不提交。
+
+【提交与合并】
+按规格 7.0「每个 goal 的提交要求」执行：
+- 按逻辑单元分次提交。
+- 只修改本 goal 负责的目录。
+- 验收要点全部有证据后，跑一次第 9 节的完整检查，按 pixiv-cli-pr 写 PR 描述（包括 changelog 条目），并用 prmeta 校验，然后向 main 创建 PR。
+- 当前 head 的必需检查全部通过、机器人评审意见逐条处理之后，再 squash 合并。
+- 合并后删除远端分支和 worktree。
+- 无法合并时不强推、不绕过分支保护，写明原因后停止。
+
+【真实账号】
+本 goal 不运行真实环境测试。
+
+【授权】
+- 已授权：本 goal 的 commit、push、创建 PR，验收与检查通过后 squash 合并到 main，以及上面列出的真实账号测试。
+- 未授权：发布版本、打 tag、修改分支保护、force push、引入规格第 4 节以外的依赖、修改 .agents/refactor/（G34 除外）。
+
+【不确定时】
+- 不向用户提问，不修改规格中的设计决策。
+- 选择不改变对外行为的最保守做法继续推进，并把假设写进工作记录和 PR 描述。
+- 无法在假设下继续的部分标为阻塞，在最终汇报中列出。
+- 不做其他 goal 的工作项。本 goal 触及的目录顺带按规格 3.4 处理 T2、T3、T6。
+
+【完成标准】
+- PR 已合并进 main，上面的每条验收要点都有证据。
+- 最终汇报包括：PR 链接、合并提交、实际运行的检查及结果、假设与阻塞项、依赖本 goal 的后续 goal 需要知道的事。
+```
+
+## G36：测试精简：internal/mcpserver（可并行）
+
+```text
+/goal 执行 pixiv-cli 重构规格的 G36：测试精简：internal/mcpserver。
+
+【本 goal】
+工作项：测试精简（规格 3.4.1，含 T-g、T-h 与契约分层表；3.4.3）。范围：internal/mcpserver/ 的测试。
+- 对范围内每个测试文件套用 3.4.1 的全部标准：删除、去重合并，或移到对应生产文件的 x_test.go。
+- MCP 层只断言 tool schema、结构化输出外形、isError、注册与鉴权、stdio 纯净、凭据与签名 URL 不进入输出（例如 TestToolOutputValuesDoNotLeakResourceTransportCanary）。重复检查 SDK 映射字段的测试删除（T-h），例如 pixiv/pixiv_sdk_wire_test.go（1140 行）。
+- 没有对应生产文件的测试（T3）合并到其所有者的 x_test.go，合并时不搬运重复断言。现状：internal/mcpserver 测试 15.6k 行、生产代码 11.2k 行。
+- 只删减和合并测试，不改生产代码；确需为测试改动生产代码的，在 PR 中说明理由。
+- 不新增测试，除非删除后某个长期契约失去覆盖。
+
+【验收】
+- go test ./... 与 go vet ./... 通过；真实环境测试在未开启时全部 SKIP。
+- PR 中按 3.4.3 的表格列出删除或合并的测试、依据，以及仍覆盖该契约的测试。
+- 凭据不泄露、数据完整性与持久化、取消与错误传播相关的保留测试，断言不变。
+- PR 中列出范围内测试与生产代码的行数变化。预期测试约降到生产代码的一半；明显高于这个比例时说明原因（参考，不是门槛）。
+
+【依据】
+- 规格：仓库内的 .agents/refactor/spec.md，以 origin/main 上的版本为准。先通读第 1–3 节、第 7 节的 7.0 和本 goal 涉及的工作项、第 9 节、第 10 节。第 6 节示例只固定职责划分和数据流向，签名以当时的代码为准。
+- 仓库：github.com/FlanChanXwO/pixiv-cli（本机路径 /Users/flanchan/Developer/Projects/GithubProjects/pixiv-cli）。先读 AGENTS.md，以及 .agents/skills/ 下的 pixiv-cli-develop、pixiv-cli-test、pixiv-cli-code-commenting、pixiv-cli-review、pixiv-cli-pr、pixiv-cli-commit-message。
+- 规格中的统计数字基于 ef4accb9；以当前 origin/main 的实际代码为准，有出入时写进工作记录和 PR 描述。
+
+【worktree 与分支】
+- 名称：refactor-g36-tests-mcp
+- 路径：/Users/flanchan/.codex/worktrees/refactor-g36-tests-mcp/pixiv-cli
+- 分支：refactor/g36-tests-mcp
+- 开始前用 gh 确认依赖已满足：G28。未满足就标为阻塞并结束。
+- 满足后执行 git fetch origin main，再用 git worktree add -b refactor/g36-tests-mcp /Users/flanchan/.codex/worktrees/refactor-g36-tests-mcp/pixiv-cli origin/main 创建。
+- 全部工作都在这个 worktree 中进行。goal-N/ 工作目录、临时探针和基线比对输出加入 .git/info/exclude，不提交。
+
+【提交与合并】
+按规格 7.0「每个 goal 的提交要求」执行：
+- 按逻辑单元分次提交。
+- 只修改本 goal 负责的目录。
+- 验收要点全部有证据后，跑一次第 9 节的完整检查，按 pixiv-cli-pr 写 PR 描述（包括 changelog 条目），并用 prmeta 校验，然后向 main 创建 PR。
+- 当前 head 的必需检查全部通过、机器人评审意见逐条处理之后，再 squash 合并。
+- 合并后删除远端分支和 worktree。
+- 无法合并时不强推、不绕过分支保护，写明原因后停止。
+
+【真实账号】
+本 goal 不运行真实环境测试。
+
+【授权】
+- 已授权：本 goal 的 commit、push、创建 PR，验收与检查通过后 squash 合并到 main，以及上面列出的真实账号测试。
+- 未授权：发布版本、打 tag、修改分支保护、force push、引入规格第 4 节以外的依赖、修改 .agents/refactor/（G34 除外）。
+
+【不确定时】
+- 不向用户提问，不修改规格中的设计决策。
+- 选择不改变对外行为的最保守做法继续推进，并把假设写进工作记录和 PR 描述。
+- 无法在假设下继续的部分标为阻塞，在最终汇报中列出。
+- 不做其他 goal 的工作项。本 goal 触及的目录顺带按规格 3.4 处理 T2、T3、T6。
+
+【完成标准】
+- PR 已合并进 main，上面的每条验收要点都有证据。
+- 最终汇报包括：PR 链接、合并提交、实际运行的检查及结果、假设与阻塞项、依赖本 goal 的后续 goal 需要知道的事。
+```
+
+## G37：测试精简：internal/cli、cmd（可并行）
+
+```text
+/goal 执行 pixiv-cli 重构规格的 G37：测试精简：internal/cli、cmd。
+
+【本 goal】
+工作项：测试精简（规格 3.4.1，含 T-g、T-h 与契约分层表；3.4.3）。范围：internal/cli/、cmd/ 的测试。
+- 对范围内每个测试文件套用 3.4.1 的全部标准：删除、去重合并，或移到对应生产文件的 x_test.go。
+- CLI 层只断言 flag 解析、文本/JSON/NDJSON 输出外形、退出码、stdin 输入、非 TTY 行为；重复检查 SDK 映射字段的测试删除（T-h）。现状：root_test.go 1405 行，search、detail、bookmark 的测试各约 800–960 行。
+- cmd/pixiv 中编译二进制后执行的测试保留，只合并重复的环境隔离辅助函数。
+- 只删减和合并测试，不改生产代码；确需为测试改动生产代码的，在 PR 中说明理由。
+- 不新增测试，除非删除后某个长期契约失去覆盖。
+
+【验收】
+- go test ./... 与 go vet ./... 通过；真实环境测试在未开启时全部 SKIP。
+- PR 中按 3.4.3 的表格列出删除或合并的测试、依据，以及仍覆盖该契约的测试。
+- 凭据不泄露、数据完整性与持久化、取消与错误传播相关的保留测试，断言不变。
+- PR 中列出范围内测试与生产代码的行数变化。预期测试约降到生产代码的一半；明显高于这个比例时说明原因（参考，不是门槛）。
+
+【依据】
+- 规格：仓库内的 .agents/refactor/spec.md，以 origin/main 上的版本为准。先通读第 1–3 节、第 7 节的 7.0 和本 goal 涉及的工作项、第 9 节、第 10 节。第 6 节示例只固定职责划分和数据流向，签名以当时的代码为准。
+- 仓库：github.com/FlanChanXwO/pixiv-cli（本机路径 /Users/flanchan/Developer/Projects/GithubProjects/pixiv-cli）。先读 AGENTS.md，以及 .agents/skills/ 下的 pixiv-cli-develop、pixiv-cli-test、pixiv-cli-code-commenting、pixiv-cli-review、pixiv-cli-pr、pixiv-cli-commit-message。
+- 规格中的统计数字基于 ef4accb9；以当前 origin/main 的实际代码为准，有出入时写进工作记录和 PR 描述。
+
+【worktree 与分支】
+- 名称：refactor-g37-tests-cli
+- 路径：/Users/flanchan/.codex/worktrees/refactor-g37-tests-cli/pixiv-cli
+- 分支：refactor/g37-tests-cli
+- 开始前用 gh 确认依赖已满足：G28。未满足就标为阻塞并结束。
+- 满足后执行 git fetch origin main，再用 git worktree add -b refactor/g37-tests-cli /Users/flanchan/.codex/worktrees/refactor-g37-tests-cli/pixiv-cli origin/main 创建。
+- 全部工作都在这个 worktree 中进行。goal-N/ 工作目录、临时探针和基线比对输出加入 .git/info/exclude，不提交。
+
+【提交与合并】
+按规格 7.0「每个 goal 的提交要求」执行：
+- 按逻辑单元分次提交。
+- 只修改本 goal 负责的目录。
+- 验收要点全部有证据后，跑一次第 9 节的完整检查，按 pixiv-cli-pr 写 PR 描述（包括 changelog 条目），并用 prmeta 校验，然后向 main 创建 PR。
+- 当前 head 的必需检查全部通过、机器人评审意见逐条处理之后，再 squash 合并。
+- 合并后删除远端分支和 worktree。
+- 无法合并时不强推、不绕过分支保护，写明原因后停止。
+
+【真实账号】
+本 goal 不运行真实环境测试。
+
+【授权】
+- 已授权：本 goal 的 commit、push、创建 PR，验收与检查通过后 squash 合并到 main，以及上面列出的真实账号测试。
+- 未授权：发布版本、打 tag、修改分支保护、force push、引入规格第 4 节以外的依赖、修改 .agents/refactor/（G34 除外）。
+
+【不确定时】
+- 不向用户提问，不修改规格中的设计决策。
+- 选择不改变对外行为的最保守做法继续推进，并把假设写进工作记录和 PR 描述。
+- 无法在假设下继续的部分标为阻塞，在最终汇报中列出。
+- 不做其他 goal 的工作项。本 goal 触及的目录顺带按规格 3.4 处理 T2、T3、T6。
+
+【完成标准】
+- PR 已合并进 main，上面的每条验收要点都有证据。
+- 最终汇报包括：PR 链接、合并提交、实际运行的检查及结果、假设与阻塞项、依赖本 goal 的后续 goal 需要知道的事。
+```
+
+## G38：测试精简：internal 其余目录（可并行）
+
+```text
+/goal 执行 pixiv-cli 重构规格的 G38：测试精简：internal 其余目录。
+
+【本 goal】
+工作项：测试精简（规格 3.4.1，含 T-g、T-h 与契约分层表；3.4.3）。范围：internal/ 中除 cli、mcpserver、pixivapi、fanboxapi 以外的目录（media、selfupdate、reversesearch、config、pixivaccount、fanboxaccount、session、storage、browsercookies、loginrelay、pagination、record、searchfilter、logging 等） 的测试。
+- 对范围内每个测试文件套用 3.4.1 的全部标准：删除、去重合并，或移到对应生产文件的 x_test.go。
+- 保留持久化、revision 冲突、事务回滚、文件原子替换与权限、凭据不泄露、取消传播的测试，断言不变。
+- 其余按 3.4.1 处理；同一行为的多组输入合并为表驱动或只留代表性用例。现状比例偏高的目录：pagination（测试约为生产代码的 2.1 倍）、record（1.6 倍）、session（1.5 倍）、reversesearch（1.2 倍）。
+- 只删减和合并测试，不改生产代码；确需为测试改动生产代码的，在 PR 中说明理由。
+- 不新增测试，除非删除后某个长期契约失去覆盖。
+
+【验收】
+- go test ./... 与 go vet ./... 通过；真实环境测试在未开启时全部 SKIP。
+- PR 中按 3.4.3 的表格列出删除或合并的测试、依据，以及仍覆盖该契约的测试。
+- 凭据不泄露、数据完整性与持久化、取消与错误传播相关的保留测试，断言不变。
+- PR 中列出范围内测试与生产代码的行数变化。预期测试约降到生产代码的一半；明显高于这个比例时说明原因（参考，不是门槛）。
+
+【依据】
+- 规格：仓库内的 .agents/refactor/spec.md，以 origin/main 上的版本为准。先通读第 1–3 节、第 7 节的 7.0 和本 goal 涉及的工作项、第 9 节、第 10 节。第 6 节示例只固定职责划分和数据流向，签名以当时的代码为准。
+- 仓库：github.com/FlanChanXwO/pixiv-cli（本机路径 /Users/flanchan/Developer/Projects/GithubProjects/pixiv-cli）。先读 AGENTS.md，以及 .agents/skills/ 下的 pixiv-cli-develop、pixiv-cli-test、pixiv-cli-code-commenting、pixiv-cli-review、pixiv-cli-pr、pixiv-cli-commit-message。
+- 规格中的统计数字基于 ef4accb9；以当前 origin/main 的实际代码为准，有出入时写进工作记录和 PR 描述。
+
+【worktree 与分支】
+- 名称：refactor-g38-tests-internal
+- 路径：/Users/flanchan/.codex/worktrees/refactor-g38-tests-internal/pixiv-cli
+- 分支：refactor/g38-tests-internal
+- 开始前用 gh 确认依赖已满足：G28。未满足就标为阻塞并结束。
+- 满足后执行 git fetch origin main，再用 git worktree add -b refactor/g38-tests-internal /Users/flanchan/.codex/worktrees/refactor-g38-tests-internal/pixiv-cli origin/main 创建。
+- 全部工作都在这个 worktree 中进行。goal-N/ 工作目录、临时探针和基线比对输出加入 .git/info/exclude，不提交。
+
+【提交与合并】
+按规格 7.0「每个 goal 的提交要求」执行：
+- 按逻辑单元分次提交。
+- 只修改本 goal 负责的目录。
+- 验收要点全部有证据后，跑一次第 9 节的完整检查，按 pixiv-cli-pr 写 PR 描述（包括 changelog 条目），并用 prmeta 校验，然后向 main 创建 PR。
+- 当前 head 的必需检查全部通过、机器人评审意见逐条处理之后，再 squash 合并。
+- 合并后删除远端分支和 worktree。
+- 无法合并时不强推、不绕过分支保护，写明原因后停止。
+
+【真实账号】
+本 goal 不运行真实环境测试。
+
+【授权】
+- 已授权：本 goal 的 commit、push、创建 PR，验收与检查通过后 squash 合并到 main，以及上面列出的真实账号测试。
+- 未授权：发布版本、打 tag、修改分支保护、force push、引入规格第 4 节以外的依赖、修改 .agents/refactor/（G34 除外）。
+
+【不确定时】
+- 不向用户提问，不修改规格中的设计决策。
+- 选择不改变对外行为的最保守做法继续推进，并把假设写进工作记录和 PR 描述。
+- 无法在假设下继续的部分标为阻塞，在最终汇报中列出。
+- 不做其他 goal 的工作项。本 goal 触及的目录顺带按规格 3.4 处理 T2、T3、T6。
+
+【完成标准】
+- PR 已合并进 main，上面的每条验收要点都有证据。
+- 最终汇报包括：PR 链接、合并提交、实际运行的检查及结果、假设与阻塞项、依赖本 goal 的后续 goal 需要知道的事。
+```
+
 ## G34：文档、skill 收尾并删除 refactor 目录
 
 ```text
@@ -1905,6 +2146,7 @@
 工作项：C2（规格 C 组）。
 - 删除 .agents/refactor/ 整个目录。
 - 在 pixiv-cli-develop 与 pixiv-cli-review 中写入过度防御的判定（规格 3.4.2 的 P-m：删除什么、保留哪些边界），作为长期规则。
+- 在 pixiv-cli-test 中写入 T-g、T-h 与契约分层表（规格 3.4.1），作为长期规则。
 - 中英文 docs/*/sdk.md 改为描述新的 API；更新 architecture.md、development.md 和各 skill 中与重构结果相关的路径和放置规则；把规格第 6 节的示例整理到 pixiv-cli-develop 的 references/go-examples.md（删除前先从本目录复制需要的内容），示例中的文件名按重构后的实际命名改写（例如 wire.go 已改为领域文件与 response.go）。
 - 汇总已合并各 goal 的 PR 描述中的 changelog 条目，写进本 PR 描述作为 release notes 草稿；不创建 changelog/vX.Y.Z/。
 
@@ -1921,7 +2163,7 @@
 - 名称：refactor-g34-finish
 - 路径：/Users/flanchan/.codex/worktrees/refactor-g34-finish/pixiv-cli
 - 分支：refactor/g34-finish
-- 开始前用 gh 确认依赖已满足：G29、G30、G31、G32、G33（依赖已于 2026-10-23 调整，以本条为准）。未满足就标为阻塞并结束。
+- 开始前用 gh 确认依赖已满足：G29、G30、G31、G32、G33、G35、G36、G37、G38（依赖已于 2026-10-24 调整，以本条为准）。未满足就标为阻塞并结束。
 - 满足后执行 git fetch origin main，再用 git worktree add -b refactor/g34-finish /Users/flanchan/.codex/worktrees/refactor-g34-finish/pixiv-cli origin/main 创建。
 - 全部工作都在这个 worktree 中进行。goal-N/ 工作目录、临时探针和基线比对输出加入 .git/info/exclude，不提交。
 
