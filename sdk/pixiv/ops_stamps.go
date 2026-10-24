@@ -5,7 +5,6 @@ import (
 	"net/url"
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/pixivapi"
-	novelcomments "github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/endpoint/novel/comments"
 	"github.com/FlanChanXwO/pixiv-cli/sdk"
 )
 
@@ -38,7 +37,7 @@ func (c *Client) StampArtworkComment(ctx context.Context, request StampArtworkCo
 	if request.StampID <= 0 {
 		return CommentMutationResult{}, newError("StampArtworkComment", sdk.InvalidArgument, "stamp ID must be positive")
 	}
-	return c.postArtworkComment(ctx, "StampArtworkComment", url.Values{
+	return c.postComment(ctx, "StampArtworkComment", pixivapi.PathIllustCommentAdd, url.Values{
 		pixivapi.ParamIllustID: {itoa(request.ArtworkID)},
 		pixivapi.ParamComment:  {request.Comment},
 		pixivapi.ParamStampID:  {itoa(request.StampID)},
@@ -55,13 +54,9 @@ func (c *Client) StampNovelComment(ctx context.Context, request StampNovelCommen
 	if request.StampID <= 0 {
 		return CommentMutationResult{}, newError("StampNovelComment", sdk.InvalidArgument, "stamp ID must be positive")
 	}
-	result, err := c.novelComments.Stamp(ctx, novelcomments.StampRequest{
-		NovelID: request.NovelID,
-		Comment: request.Comment,
-		StampID: request.StampID,
+	return c.postComment(ctx, "StampNovelComment", pixivapi.PathNovelCommentAdd, url.Values{
+		pixivapi.ParamNovelID: {itoa(request.NovelID)},
+		pixivapi.ParamComment: {request.Comment},
+		pixivapi.ParamStampID: {itoa(request.StampID)},
 	})
-	if err != nil {
-		return CommentMutationResult{}, classifyAppError(err, "StampNovelComment")
-	}
-	return CommentMutationResult{CommentID: result.CommentID}, nil
 }

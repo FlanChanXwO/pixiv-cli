@@ -467,3 +467,57 @@ func (b *failingBody) Read(p []byte) (int, error) {
 }
 
 func (b *failingBody) Close() error { return nil }
+
+func TestNovelImageResourceRejectsEmptyOrMalformedContent(t *testing.T) {
+	tests := []struct {
+		name string
+		body string
+		url  string
+	}{
+		{name: "empty content", body: " \n\t"},
+		{name: "no image block", body: `<html><body><p class="noveltext">text</p></body></html>`},
+		{name: "image block", body: `<html><body><figure class="image"><img src="https://i.pximg.net/novel/image.png"></figure></body></html>`, url: "https://i.pximg.net/novel/image.png"},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			var requests []string
+			rt := roundTripFunc(func(req *http.Request) (*http.Response, error) {
+				requests = append(requests, req.URL.Path)
+				if req.URL.Host == "i.pximg.net" {
+					return &http.Response{
+						StatusCode: http.StatusOK,
+						Header:     http.Header{"Content-Type": {"image/png"}},
+						Body:       io.NopCloser(strings.NewReader("DATA")),
+					}, nil
+				}
+				return &http.Response{
+					StatusCode: http.StatusOK,
+					Header:     http.Header{"Content-Type": {"text/html"}},
+					Body:       io.NopCloser(strings.NewReader(test.body)),
+				}, nil
+			})
+			client, err := pixiv.NewWith("token", pixiv.Options{HTTPClient: &http.Client{Transport: rt}})
+			if err != nil {
+				t.Fatalf("NewWith: %v", err)
+			}
+			ref, err := sdk.NewResourceRef("pixiv", []byte(`{"k":"novel_image","id":42,"p":0}`))
+			if err != nil {
+				t.Fatalf("NewResourceRef: %v", err)
+			}
+			response, err := client.OpenResource(context.Background(), sdk.OpenResourceRequest{Ref: ref})
+			if test.url == "" {
+				if err == nil || sdk.ReasonOf(err) != sdk.MalformedUpstreamResponse {
+					t.Fatalf("error = %v, want malformed response", err)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("OpenResource: %v", err)
+			}
+			_ = response.Body.Close()
+			if len(requests) == 0 || requests[len(requests)-1] != "/novel/image.png" {
+				t.Fatalf("requests = %v, want the parsed novel image", requests)
+			}
+		})
+	}
+}

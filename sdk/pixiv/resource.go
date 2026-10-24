@@ -10,7 +10,6 @@ import (
 	"strings"
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/pixivapi"
-	"github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/endpoint/novel"
 	"github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/endpoint/stamps"
 	"github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/endpoint/user"
 	atomicfile "github.com/FlanChanXwO/pixiv-cli/internal/storage/atomicfile"
@@ -296,9 +295,9 @@ func (c *Client) resolveResourceURL(ctx context.Context, ref sdk.ResourceRef, op
 		}
 		rawURL, err = artworkResourceURL(*detail.Illust, rp.Page, rp.Variant)
 	case "novel_cover":
-		detail, appErr := c.novelDetail.Detail(ctx, rp.ID)
+		detail, appErr := c.fetchNovelDetail(ctx, operation, rp.ID)
 		if appErr != nil {
-			return "", classifyAppError(appErr, operation)
+			return "", appErr
 		}
 		rawURL, err = imageURLsResourceURL(detail.Novel.ImageURLs, rp.Variant)
 	case "user_profile":
@@ -319,9 +318,9 @@ func (c *Client) resolveResourceURL(ctx context.Context, ref sdk.ResourceRef, op
 		}
 		rawURL, err = ugoiraResourceURL(wire.Metadata.Value, rp.Variant)
 	case "novel_image", "novel_file":
-		raw, appErr := c.novelDetail.Content(ctx, rp.ID)
+		raw, appErr := c.fetchNovelContent(ctx, operation, rp.ID)
 		if appErr != nil {
-			return "", classifyAppError(appErr, operation)
+			return "", appErr
 		}
 		rawURL, err = c.novelContentResourceURL(rp, raw)
 	case "stamp":
@@ -384,7 +383,7 @@ func artworkResourceURL(illust artworkWire, page int, variant string) (string, e
 	return artworkImageURLsResourceURL(illust.ImageURLs, variant)
 }
 
-func imageURLsResourceURL(urls novel.ImageURLs, variant string) (string, error) {
+func imageURLsResourceURL(urls imageURLsWire, variant string) (string, error) {
 	values := map[string]string{
 		"original":      urls.Original,
 		"large":         urls.Large,
