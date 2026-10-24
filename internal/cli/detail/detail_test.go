@@ -119,7 +119,7 @@ func TestDetailNDJSONFeedsExistingVisualDownloadConsumer(t *testing.T) {
 		func() downloader.DownloadService {
 			return downloader.DownloadService{
 				NewBatchDownloader: func(_ downloader.DownloadClient, _, _ string) (downloader.BatchDownloader, error) {
-					return captureDownloadManager{ids: &downloadedIDs}, nil
+					return captureBatchDownloader{ids: &downloadedIDs}, nil
 				},
 			}
 		},
@@ -131,11 +131,11 @@ func TestDetailNDJSONFeedsExistingVisualDownloadConsumer(t *testing.T) {
 	}
 }
 
-type captureDownloadManager struct {
+type captureBatchDownloader struct {
 	ids *[]int64
 }
 
-func (m captureDownloadManager) Download(_ context.Context, request downloader.DownloadRequest) (downloader.DownloadReport, error) {
+func (m captureBatchDownloader) Download(_ context.Context, request downloader.DownloadRequest) (downloader.DownloadReport, error) {
 	*m.ids = append(*m.ids, request.IllustIDs...)
 	return downloader.DownloadReport{}, nil
 }

@@ -46,7 +46,7 @@ func TestCommandRejectsProxyConflictBeforeResolvingDownloadServices(t *testing.T
 
 func TestCommandConsumesBatchReportWithWarningsAndFailures(t *testing.T) {
 	failureCause := errors.New("page 3 failed")
-	manager := &cliDownloadManagerStub{result: downloader.DownloadReport{
+	manager := &cliDownloaderStub{result: downloader.DownloadReport{
 		Items: []downloader.DownloadedArtwork{{
 			IllustID: 42,
 			Title:    "multi-page",
@@ -126,13 +126,13 @@ func TestCommandConsumesBatchReportWithWarningsAndFailures(t *testing.T) {
 	}
 }
 
-type cliDownloadManagerStub struct {
+type cliDownloaderStub struct {
 	result  downloader.DownloadReport
 	calls   int
 	request downloader.DownloadRequest
 }
 
-func (m *cliDownloadManagerStub) Download(_ context.Context, request downloader.DownloadRequest) (downloader.DownloadReport, error) {
+func (m *cliDownloaderStub) Download(_ context.Context, request downloader.DownloadRequest) (downloader.DownloadReport, error) {
 	m.calls++
 	m.request = request
 	return m.result, nil

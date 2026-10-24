@@ -163,11 +163,11 @@ func (c *directResourceErrorContext) trigger() {
 	close(c.done)
 }
 
-type downloadManagerStub struct {
+type batchDownloaderStub struct {
 	download func(context.Context, downloader.DownloadRequest) (downloader.DownloadReport, error)
 }
 
-func (m *downloadManagerStub) Download(ctx context.Context, request downloader.DownloadRequest) (downloader.DownloadReport, error) {
+func (m *batchDownloaderStub) Download(ctx context.Context, request downloader.DownloadRequest) (downloader.DownloadReport, error) {
 	return m.download(ctx, request)
 }
 

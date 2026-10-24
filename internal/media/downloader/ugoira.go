@@ -98,27 +98,12 @@ func encodeUgoira(ctx context.Context, zipPath string, frames []pixiv.UgoiraFram
 // resourceForQuality 把公开 DownloadQuality 映射到 SDK 的 artwork variant。
 // original 复用页面既有的 Resource；其余质量请求对应变体的 ResourceRef，
 // SaveResource 会在 revalidate 路径上按 variant 重新解析 locator。
+// DownloadQuality 的取值本身就是上游 variant 名。
 func resourceForQuality(image pixiv.ImageResource, quality DownloadQuality) (sdk.ResourceRef, error) {
-	variant := qualityVariant(quality)
-	if variant == "" {
+	if quality == "" || quality == DownloadQualityOriginal {
 		return image.Resource.Ref, nil
 	}
-	return pixiv.ArtworkVariantResource(image.Resource, variant)
-}
-
-func qualityVariant(quality DownloadQuality) string {
-	switch quality {
-	case DownloadQualityRegular:
-		return "regular"
-	case DownloadQualitySmall:
-		return "small"
-	case DownloadQualityThumb:
-		return "thumb"
-	case DownloadQualityMini:
-		return "mini"
-	default:
-		return "original"
-	}
+	return pixiv.ArtworkVariantResource(image.Resource, string(quality))
 }
 
 type staticPage struct {

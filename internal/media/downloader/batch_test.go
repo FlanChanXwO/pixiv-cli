@@ -19,7 +19,7 @@ func TestDownloadServiceStopsImmediatelyWhenContextIsCanceled(t *testing.T) {
 	cancel()
 	calls := 0
 	service := downloader.DownloadService{NewBatchDownloader: func(downloader.DownloadClient, string, string) (downloader.BatchDownloader, error) {
-		return &downloadManagerStub{download: func(ctx context.Context, _ downloader.DownloadRequest) (downloader.DownloadReport, error) {
+		return &batchDownloaderStub{download: func(ctx context.Context, _ downloader.DownloadRequest) (downloader.DownloadReport, error) {
 			calls++
 			return downloader.DownloadReport{}, ctx.Err()
 		}}, nil

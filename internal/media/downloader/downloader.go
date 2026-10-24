@@ -246,7 +246,7 @@ func downloadDirectURLs(ctx context.Context, client DownloadTargetClient, rawURL
 
 func (s DownloadService) newBatchDownloader(client DownloadClient, request DownloadRequest) (BatchDownloader, DownloadRequest, error) {
 	if s.NewBatchDownloader == nil {
-		return nil, DownloadRequest{}, errors.New("download manager factory is not configured")
+		return nil, DownloadRequest{}, errors.New("batch downloader factory is not configured")
 	}
 	if isNilLike(client) {
 		return nil, DownloadRequest{}, errors.New("download operation client is not configured")
@@ -268,7 +268,7 @@ func (s DownloadService) newBatchDownloader(client DownloadClient, request Downl
 		return nil, DownloadRequest{}, err
 	}
 	if isNilLike(downloader) {
-		return nil, DownloadRequest{}, errors.New("download manager factory returned nil")
+		return nil, DownloadRequest{}, errors.New("batch downloader factory returned nil")
 	}
 	return downloader, request, nil
 }

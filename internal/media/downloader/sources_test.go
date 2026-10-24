@@ -18,7 +18,7 @@ func TestDownloadSourcesDeduplicatesCanonicalArtwork(t *testing.T) {
 	client := &downloadSourcesStub{}
 	var downloaded []int64
 	service := downloader.DownloadService{NewBatchDownloader: func(downloader.DownloadClient, string, string) (downloader.BatchDownloader, error) {
-		return &downloadManagerStub{download: func(_ context.Context, request downloader.DownloadRequest) (downloader.DownloadReport, error) {
+		return &batchDownloaderStub{download: func(_ context.Context, request downloader.DownloadRequest) (downloader.DownloadReport, error) {
 			downloaded = append(downloaded, request.IllustIDs...)
 			return downloader.DownloadReport{Items: []downloader.DownloadedArtwork{{IllustID: 1}}}, nil
 		}}, nil
@@ -40,7 +40,7 @@ func TestDownloadSourcesExpandsUserArtworksAndDeduplicates(t *testing.T) {
 	}
 	var downloaded []int64
 	service := downloader.DownloadService{NewBatchDownloader: func(downloader.DownloadClient, string, string) (downloader.BatchDownloader, error) {
-		return &downloadManagerStub{download: func(_ context.Context, request downloader.DownloadRequest) (downloader.DownloadReport, error) {
+		return &batchDownloaderStub{download: func(_ context.Context, request downloader.DownloadRequest) (downloader.DownloadReport, error) {
 			downloaded = append(downloaded, request.IllustIDs...)
 			return downloader.DownloadReport{Items: []downloader.DownloadedArtwork{{IllustID: 1}}}, nil
 		}}, nil
@@ -62,7 +62,7 @@ func TestDownloadSourcesPreservesBatchFailuresAndCommittedItems(t *testing.T) {
 		Cause:    cause,
 	}}
 	service := downloader.DownloadService{NewBatchDownloader: func(downloader.DownloadClient, string, string) (downloader.BatchDownloader, error) {
-		return &downloadManagerStub{download: func(_ context.Context, request downloader.DownloadRequest) (downloader.DownloadReport, error) {
+		return &batchDownloaderStub{download: func(_ context.Context, request downloader.DownloadRequest) (downloader.DownloadReport, error) {
 			require.Equal(t, []int64{42}, request.IllustIDs)
 			return downloader.DownloadReport{Items: wantItems, Failures: wantFailures}, nil
 		}}, nil
@@ -372,7 +372,7 @@ func TestDirectResourceUsesCollisionResistantNames(t *testing.T) {
 		},
 	}
 	service := downloader.DownloadService{NewBatchDownloader: func(downloader.DownloadClient, string, string) (downloader.BatchDownloader, error) {
-		return &downloadManagerStub{download: func(context.Context, downloader.DownloadRequest) (downloader.DownloadReport, error) {
+		return &batchDownloaderStub{download: func(context.Context, downloader.DownloadRequest) (downloader.DownloadReport, error) {
 			return downloader.DownloadReport{}, nil
 		}}, nil
 	}}
