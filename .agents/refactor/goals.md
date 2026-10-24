@@ -2277,7 +2277,7 @@
 - 最终汇报包括：PR 链接、合并提交、实际运行的检查及结果、假设与阻塞项、依赖本 goal 的后续 goal 需要知道的事。
 ```
 
-## G41：逐包审查与修正：internal/cli、cmd（可并行）
+## G41：逐包审查与修正：internal/cli、cmd
 
 ```text
 /goal 执行 pixiv-cli 重构规格的 G41：逐包审查与修正：internal/cli、cmd。
