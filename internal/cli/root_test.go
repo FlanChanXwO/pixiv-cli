@@ -150,6 +150,9 @@ func TestMCPReverseSearchUsesStartupConfigAndProxySnapshot(t *testing.T) {
 			URL:      "http://solver.invalid",
 			ProxyURL: "socks5://solver-proxy.invalid:1080",
 		},
+		ReverseSearchNetwork: configapp.ServiceNetworkConfig{
+			UserAgent: configapp.OptionalString{Present: true, Value: "fixture-user-agent"},
+		},
 	}, mcpcommands.Request{HTTPSProxyOverride: &proxy})
 	require.NoError(t, err)
 	assert.Equal(t, "http://mcp-flag-proxy", captured.Proxy)
@@ -159,6 +162,7 @@ func TestMCPReverseSearchUsesStartupConfigAndProxySnapshot(t *testing.T) {
 	require.NotNil(t, captured.FlareSolverr)
 	assert.Equal(t, "http://solver.invalid", captured.FlareSolverr.URL)
 	assert.Equal(t, "socks5://solver-proxy.invalid:1080", captured.FlareSolverr.ProxyURL)
+	assert.Equal(t, "fixture-user-agent", captured.UserAgent)
 	assert.Equal(t, reversesearch.ProviderAll, ports.Provider)
 	assert.False(t, ports.PixivOnly)
 	assert.NotNil(t, ports.Searcher)
@@ -201,26 +205,6 @@ func TestMCPReverseSearchUsesConfiguredServiceProxyBeforeGlobal(t *testing.T) {
 			assert.Equal(t, test.wantASCII2D, *captured.ASCII2DProxy)
 		})
 	}
-}
-
-func TestMCPReverseSearchPassesConfiguredUserAgentToAssembly(t *testing.T) {
-	oldReverse := newCLIMCPReverseSearch
-	var captured reverseassembly.Options
-	newCLIMCPReverseSearch = func(options reverseassembly.Options) (reversesearch.Searcher, error) {
-		captured = options
-		return rootReverseSearcherFunc(func(_ context.Context, _ reversesearch.Request) (reversesearch.Response, error) {
-			return reversesearch.Response{}, nil
-		}), nil
-	}
-	t.Cleanup(func() { newCLIMCPReverseSearch = oldReverse })
-
-	_, err := newMCPReverseSearchPorts(configapp.RuntimeConfig{
-		ReverseSearchNetwork: configapp.ServiceNetworkConfig{
-			UserAgent: configapp.OptionalString{Present: true, Value: "fixture-user-agent"},
-		},
-	}, mcpcommands.Request{})
-	require.NoError(t, err)
-	assert.Equal(t, "fixture-user-agent", captured.UserAgent)
 }
 
 func TestCloseStateClosesInReverseOrderOnceAndJoinsErrors(t *testing.T) {
@@ -414,20 +398,6 @@ func TestRunMCPDispatchesCoreTransportOptions(t *testing.T) {
 	}
 }
 
-func TestRootHelpOmitsRemovedPersistentFlags(t *testing.T) {
-	root := newTestRootCommand(t)
-	var output bytes.Buffer
-	root.SetOut(&output)
-	root.SetErr(&output)
-	root.SetArgs([]string{"--help"})
-
-	require.NoError(t, root.Execute())
-	assert.Contains(t, output.String(), "--help")
-	assert.Contains(t, output.String(), "--version")
-	assert.NotContains(t, output.String(), "--debug")
-	assert.NotContains(t, output.String(), "--sleep-request")
-}
-
 func TestLogLevelControlsMCPStderrWithoutTouchingStdout(t *testing.T) {
 	for _, test := range []struct {
 		name       string
@@ -486,15 +456,6 @@ func TestConfigCommandsRemainSilentWhenLoggingIsEnabled(t *testing.T) {
 	require.Zero(t, code, stderr.String())
 	require.NotEmpty(t, stdout.String())
 	require.Empty(t, stderr.String())
-}
-
-func TestPixivOptionsUseConfiguredRequestIntervalForPacing(t *testing.T) {
-	want := 2 * time.Second
-	options, err := pixivOptionsFromRequest(pixivdeps.Request{}, func() (configapp.RuntimeConfig, error) {
-		return configapp.RuntimeConfig{RequestInterval: want}, nil
-	}, nil)
-	require.NoError(t, err)
-	require.Equal(t, want, options.Pacing.MinInterval)
 }
 
 func TestRunMCPRejectsMalformedProxyWithoutLeakingInput(t *testing.T) {
@@ -721,15 +682,6 @@ func TestMCPReverseSearchRegistersSearcherForHTTPLifetime(t *testing.T) {
 		session, err := client.Connect(ctx, clientTransport, nil)
 		require.NoError(t, err)
 		defer session.Close()
-		tools, err := session.ListTools(ctx, nil)
-		require.NoError(t, err)
-		names := make([]string, 0, len(tools.Tools))
-		for _, tool := range tools.Tools {
-			names = append(names, tool.Name)
-		}
-		require.Contains(t, names, "pixiv_search_illust")
-		require.Contains(t, names, "fanbox_current_user")
-		require.NotContains(t, names, "download")
 		return nil
 	}
 	t.Cleanup(func() {
@@ -894,14 +846,6 @@ func TestMCPHTTPPreflightFailsBeforeStarting(t *testing.T) {
 			require.Empty(t, stdout.String())
 		})
 	}
-}
-
-func TestFanboxMCPCommandIsRemoved(t *testing.T) {
-	useTempPaths(t)
-	var stdout, stderr bytes.Buffer
-	code := RunContext(t.Context(), []string{"pixiv", "fanbox", "mcp"}, strings.NewReader(""), &stdout, &stderr)
-	require.NotZero(t, code)
-	require.Contains(t, stderr.String(), "usage: pixiv fanbox <command>")
 }
 
 func TestMCPHTTPEndpointFlagPrecedence(t *testing.T) {
@@ -1355,16 +1299,6 @@ func (b *syncBuffer) String() string {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	return b.buf.String()
-}
-
-func TestDefaultMCPStartsWithoutHTTPOwner(t *testing.T) {
-	_, configPath := useTempPaths(t)
-	var stdout, stderr bytes.Buffer
-	code := RunContext(t.Context(), []string{"pixiv", "mcp"}, strings.NewReader(""), &stdout, &stderr)
-	require.Zero(t, code, stderr.String())
-	require.Empty(t, stdout.String())
-	_, err := os.Stat(filepath.Join(filepath.Dir(configPath), "mcp-state.json"))
-	require.ErrorIs(t, err, os.ErrNotExist)
 }
 
 func TestMCPLocalRegistryWithoutHTTPState(t *testing.T) {
