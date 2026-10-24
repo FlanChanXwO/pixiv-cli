@@ -1,3 +1,6 @@
+// 监听账号数据库变化，把外部凭据提交绑定到读取会话生命周期。
+// 会话缓存与失效规则在 reads.go。
+
 package pixivaccount
 
 import (

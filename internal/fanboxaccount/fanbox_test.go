@@ -176,29 +176,25 @@ func cloneFanboxAccount(account fanbox.Account) fanbox.Account {
 }
 
 func newFanboxTestService(repo fanbox.Repository, defaults fanbox.DefaultStore) *fanbox.Service {
-	return fanbox.NewService(repo, defaults)
+	return fanbox.NewService(repo, defaults, nil)
 }
 
-func newSessionClient(t *testing.T, session string, transport http.RoundTripper) *sdkfanbox.Client {
-	t.Helper()
-	client, err := sdkfanbox.OpenWith(
-		sdkfanbox.SessionCredentials{FANBOXSESSID: session},
-		sdkfanbox.Options{HTTPClient: &http.Client{Transport: transport}},
-	)
-	require.NoError(t, err)
-	return client
+// newFanboxNetworkService 用真实 SDK transport 构造服务，验证不拨号。
+func newFanboxNetworkService(repo fanbox.Repository, defaults fanbox.DefaultStore, transport http.RoundTripper) *fanbox.Service {
+	return fanbox.NewService(repo, defaults, func() (sdkfanbox.Options, error) {
+		return sdkfanbox.Options{HTTPClient: &http.Client{Transport: transport}}, nil
+	})
 }
 
 func TestImportSessionRejectsEmptyBeforeValidation(t *testing.T) {
 	repo := newFanboxTestRepository()
-	service := newFanboxTestService(repo, &fanboxTestDefaults{})
 	called := false
-	service.OpenSessionFunc = func(string) (*sdkfanbox.Client, error) {
+	service := newFanboxNetworkService(repo, &fanboxTestDefaults{}, roundTripFunc(func(*http.Request) (*http.Response, error) {
 		called = true
 		return nil, errors.New("must not open an empty session")
-	}
+	}))
 
-	_, err := service.ImportSession(context.Background(), "  ", true)
+	_, err := service.ImportSession(context.Background(), "  ", true, nil)
 	require.EqualError(t, err, "FANBOX session value is required")
 	require.False(t, called)
 	require.Empty(t, repo.accounts)
@@ -206,12 +202,9 @@ func TestImportSessionRejectsEmptyBeforeValidation(t *testing.T) {
 
 func TestImportSessionValidationFailureCreatesNoRecord(t *testing.T) {
 	repo := newFanboxTestRepository()
-	service := newFanboxTestService(repo, &fanboxTestDefaults{})
-	service.OpenSessionFunc = func(value string) (*sdkfanbox.Client, error) {
-		return newSessionClient(t, value, sessionFailRoundTripper()), nil
-	}
+	service := newFanboxNetworkService(repo, &fanboxTestDefaults{}, sessionFailRoundTripper())
 
-	_, err := service.ImportSession(context.Background(), "session-canary", true)
+	_, err := service.ImportSession(context.Background(), "session-canary", true, nil)
 	require.Error(t, err)
 	require.Equal(t, sdk.CredentialsExpired, sdk.ReasonOf(err))
 	require.Empty(t, repo.accounts)
@@ -220,12 +213,9 @@ func TestImportSessionValidationFailureCreatesNoRecord(t *testing.T) {
 func TestImportSessionHappyPathStoresAndSelectsDefault(t *testing.T) {
 	repo := newFanboxTestRepository()
 	defaults := &fanboxTestDefaults{}
-	service := newFanboxTestService(repo, defaults)
-	service.OpenSessionFunc = func(value string) (*sdkfanbox.Client, error) {
-		return newSessionClient(t, value, sessionOKRoundTripper()), nil
-	}
+	service := newFanboxNetworkService(repo, defaults, sessionOKRoundTripper())
 
-	account, err := service.ImportSession(context.Background(), "session-canary", true)
+	account, err := service.ImportSession(context.Background(), "session-canary", true, nil)
 	require.NoError(t, err)
 	require.Equal(t, int64(42), account.UserID)
 	require.True(t, account.Default)
@@ -240,11 +230,8 @@ func TestImportSessionHappyPathStoresAndSelectsDefault(t *testing.T) {
 func TestUseAutoAndUseAccountToggleConfigDefault(t *testing.T) {
 	repo := newFanboxTestRepository()
 	defaults := &fanboxTestDefaults{}
-	service := newFanboxTestService(repo, defaults)
-	service.OpenSessionFunc = func(value string) (*sdkfanbox.Client, error) {
-		return newSessionClient(t, value, sessionOKRoundTripper()), nil
-	}
-	_, err := service.ImportSession(context.Background(), "session-abc", false)
+	service := newFanboxNetworkService(repo, defaults, sessionOKRoundTripper())
+	_, err := service.ImportSession(context.Background(), "session-abc", false, nil)
 	require.NoError(t, err)
 	require.True(t, defaults.ok, "first imported account becomes default")
 
@@ -255,17 +242,16 @@ func TestUseAutoAndUseAccountToggleConfigDefault(t *testing.T) {
 	require.Equal(t, int64(42), defaults.userID)
 }
 
-func TestOpenClientUsesInjectedFunc(t *testing.T) {
+func TestOpenClientUsesConfiguredTransport(t *testing.T) {
 	repo := newFanboxTestRepository()
-	service := newFanboxTestService(repo, &fanboxTestDefaults{})
-	injected := &sdkfanbox.Client{}
-	service.OpenClientFunc = func(context.Context) (*sdkfanbox.Client, error) {
-		return injected, nil
-	}
+	account := fanbox.New(42, "creator", "", []byte("session"))
+	account.SortOrder, account.ValidatedAt = 1, 1
+	repo.accounts[42] = account
+	service := newFanboxNetworkService(repo, &fanboxTestDefaults{}, sessionOKRoundTripper())
 
-	client, err := service.OpenClient(context.Background())
+	client, err := service.OpenClient(t.Context(), nil)
 	require.NoError(t, err)
-	require.Same(t, injected, client)
+	client.CloseIdleConnections()
 }
 
 func TestRemoveAccountRejectsExplicitDefaultBeforeMutation(t *testing.T) {

@@ -32,7 +32,6 @@ type Scheduler struct {
 	Config config.AccountPoolConfig
 	State  PoolState
 	Now    func() time.Time
-	Random func(int) (int, error)
 }
 
 // Run 只有在当前 Attempt 未 commit 且现有 SDK retry advice 明确允许 replay
@@ -63,7 +62,7 @@ func (s Scheduler) Run(ctx context.Context, attempt func(context.Context, int64,
 		}
 		current := now()
 		account, err := s.State.SelectPixiv(ctx, current.UTC().Unix(), attempted, func(snapshot accountpixiv.PoolSnapshot) (int64, error) {
-			return Choose(snapshot, s.Config.Strategy, s.Random)
+			return choose(snapshot, s.Config.Strategy)
 		})
 		if err != nil {
 			return mapSelectionError(err, lastRateLimit, current)

@@ -309,32 +309,6 @@ func TestRemoveAccountDefaultClearFailureAbortsRemoval(t *testing.T) {
 	require.True(t, defaults.ok, "default preserved on clear failure")
 }
 
-func TestVerifyPixivAccountIdentity(t *testing.T) {
-	tests := []struct {
-		name          string
-		selected      int64
-		authenticated int64
-		wantError     bool
-	}{
-		{name: "matching identities", selected: 42, authenticated: 42},
-		{name: "different identities", selected: 42, authenticated: 43, wantError: true},
-		{name: "missing selected identity", authenticated: 42, wantError: true},
-		{name: "missing authenticated identity", selected: 42, wantError: true},
-	}
-	for _, tc := range tests {
-		t.Run(tc.name, func(t *testing.T) {
-			err := pixiv.VerifyAccountIdentity(tc.selected, tc.authenticated)
-			if tc.wantError {
-				require.Error(t, err)
-				require.Equal(t, sdk.LocalStateError, sdk.ReasonOf(err))
-				require.NotContains(t, err.Error(), "42")
-				return
-			}
-			require.NoError(t, err)
-		})
-	}
-}
-
 func TestPixivAutoDefaultMarksSmallestSortOrder(t *testing.T) {
 	repo := newPixivTestRepository(
 		pixivAccountFixture(42, "second", "token-2", 2, true),
@@ -388,55 +362,18 @@ func TestPixivDefaultReadErrorIsReturnedBeforeRemoval(t *testing.T) {
 	require.NoError(t, getErr)
 }
 
-func TestRotateCredentialUsesRevisionCAS(t *testing.T) {
-	repo := newPixivTestRepository()
-	account := pixiv.New(42, "first", []byte("old-token"))
-	account.CredentialRevision = 2
-	repo.accounts[42] = account
-
-	err := pixiv.RotateCredential(context.Background(), repo, 42, 42, 1, []byte("new-token"))
-	require.ErrorIs(t, err, pixiv.ErrCredentialConflict)
-	require.Equal(t, int64(1), repo.rotateCall.expectedRevision)
-
-	err = pixiv.RotateCredential(context.Background(), repo, 42, 42, 2, []byte("new-token"))
-	require.NoError(t, err)
-	updated, err := repo.GetPixiv(context.Background(), 42)
-	require.NoError(t, err)
-	require.Equal(t, int64(3), updated.CredentialRevision)
-	require.Equal(t, "new-token", string(updated.RefreshTokenCopy()))
-}
-
-func TestRotateCredentialRejectsIdentityMismatchBeforeRepository(t *testing.T) {
-	repo := newPixivTestRepository()
-	err := pixiv.RotateCredential(context.Background(), repo, 42, 43, 1, []byte("new-token"))
-	require.Error(t, err)
-	require.Equal(t, sdk.LocalStateError, sdk.ReasonOf(err))
-	require.Nil(t, repo.rotateCall)
-}
-
 func TestImportAndRestoreValidateCredentialInputs(t *testing.T) {
 	repo := newPixivTestRepository()
 	service := newPixivTestService(repo)
 
-	_, err := service.ImportAccount(context.Background(), "  ", false)
+	_, err := service.ImportAccount(context.Background(), "  ", false, sdkpixiv.Options{})
 	require.EqualError(t, err, "pixiv refresh token is required")
 	require.Empty(t, repo.accounts)
 
-	err = service.RestoreAccount(context.Background(), pixiv.AccountSummary{UserID: 0}, "token", false)
+	_, err = service.RestoreAccounts(context.Background(), []pixiv.RestoreAccountInput{{Account: pixiv.AccountSummary{UserID: 0}, RefreshToken: "token"}})
 	require.EqualError(t, err, "pixiv refresh token is required")
-	err = service.RestoreAccount(context.Background(), pixiv.AccountSummary{UserID: 42}, "  ", false)
+	_, err = service.RestoreAccounts(context.Background(), []pixiv.RestoreAccountInput{{Account: pixiv.AccountSummary{UserID: 42}, RefreshToken: "  "}})
 	require.EqualError(t, err, "pixiv refresh token is required")
-}
-
-func TestRestoreAccountPreservesExistingDefault(t *testing.T) {
-	repo := newPixivTestRepository()
-	defaults := &pixivTestDefaults{userID: 7, ok: true}
-	service := newPixivTestService(repo, defaults)
-
-	err := service.RestoreAccount(context.Background(), pixiv.AccountSummary{UserID: 42, Username: "restored"}, "restored-token", true)
-	require.NoError(t, err)
-	require.Equal(t, int64(7), defaults.userID)
-	require.True(t, defaults.ok)
 }
 
 func TestRestoreAccountsRejectsInvalidInputs(t *testing.T) {
@@ -506,13 +443,10 @@ func TestRestoreAccountsAdoptsFirstAccountWhenBundleDefaultAbsent(t *testing.T) 
 	require.Equal(t, int64(42), result.ResultingDefault, "first account becomes default when bundle has none")
 }
 
-func TestExportReadsStoredCredentialThroughDefensiveCopy(t *testing.T) {
+func TestAccountsWithTokensReadsStoredCredentialThroughDefensiveCopy(t *testing.T) {
 	repo := newPixivTestRepository(pixivAccountFixture(42, "first", "token", 1, true))
 	service := newPixivTestService(repo, &pixivTestDefaults{userID: 42, ok: true})
 
-	token, err := service.ExportRefreshToken(context.Background(), 42)
-	require.NoError(t, err)
-	require.Equal(t, "token", token)
 	accounts, err := service.AccountsWithTokens(context.Background())
 	require.NoError(t, err)
 	require.Len(t, accounts, 1)
@@ -535,7 +469,7 @@ func TestImportAccountPassesSDKOptionsAndPreservesPoolState(t *testing.T) {
 		require.Equal(t, "POST", request.Method)
 		return pixivJSONResponse(`{"access_token":"access","refresh_token":"rotated","user":{"id":"42","name":"alice"}}`), nil
 	})}
-	summary, err := service.ImportAccountWith(context.Background(), "token", false, sdkpixiv.Options{HTTPClient: client})
+	summary, err := service.ImportAccount(context.Background(), "token", false, sdkpixiv.Options{HTTPClient: client})
 	require.NoError(t, err)
 	require.True(t, called, "the caller-provided SDK HTTP client was not used")
 	require.Equal(t, int64(42), summary.UserID)
@@ -554,21 +488,10 @@ func TestCheckAccountRejectsCredentialIdentityMismatchBeforeRotation(t *testing.
 		return pixivJSONResponse(`{"access_token":"access","refresh_token":"rotated","user":{"id":"43","name":"foreign"}}`), nil
 	})}
 
-	_, err := service.CheckAccountWith(context.Background(), 42, sdkpixiv.Options{HTTPClient: client})
+	_, err := service.CheckAccount(context.Background(), 42, sdkpixiv.Options{HTTPClient: client})
 	require.Error(t, err)
 	require.Equal(t, sdk.LocalStateError, sdk.ReasonOf(err))
 	require.Nil(t, repo.rotateCall)
-}
-
-func TestCheckRefreshTokenRejectsCredentialIdentityMismatch(t *testing.T) {
-	service := newPixivTestService(newPixivTestRepository())
-	client := &http.Client{Transport: pixivRoundTripper(func(*http.Request) (*http.Response, error) {
-		return pixivJSONResponse(`{"access_token":"access","refresh_token":"rotated","user":{"id":"43","name":"foreign"}}`), nil
-	})}
-
-	_, err := service.CheckRefreshTokenWith(context.Background(), 42, "token", sdkpixiv.Options{HTTPClient: client})
-	require.Error(t, err)
-	require.Equal(t, sdk.LocalStateError, sdk.ReasonOf(err))
 }
 
 type cancelledReadGate struct{ cancel context.CancelFunc }

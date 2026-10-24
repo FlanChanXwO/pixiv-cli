@@ -1,3 +1,5 @@
+// 串行化会消耗同一 refresh token 的操作。
+
 package pool
 
 import (
@@ -30,19 +32,4 @@ func (g *Gate) Release() {
 	if g != nil && g.slots != nil {
 		<-g.slots
 	}
-}
-
-// Run executes fn while holding the rotation serialization slot.
-func (g *Gate) Run(ctx context.Context, fn func(context.Context) error) error {
-	if g == nil || g.slots == nil {
-		return errors.New("pixiv rotation gate is not configured")
-	}
-	if fn == nil {
-		return errors.New("pixiv rotation gate function is nil")
-	}
-	if err := g.Acquire(ctx); err != nil {
-		return err
-	}
-	defer g.Release()
-	return fn(ctx)
 }

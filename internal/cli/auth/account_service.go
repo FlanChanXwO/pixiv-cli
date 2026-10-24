@@ -27,14 +27,13 @@ type AccountService struct {
 // AccountPort 是 auth adapter 需要的最小业务端口。它保持在 CLI adapter 中，
 // 使 auth 测试可以注入无网络替身，同时不把 CLI DTO 反向放进 services。
 type AccountPort interface {
-	ImportAccountWith(context.Context, string, bool, pixiv.Options) (pixivaccount.AccountSummary, error)
+	ImportAccount(context.Context, string, bool, pixiv.Options) (pixivaccount.AccountSummary, error)
 	ListAccounts(context.Context) ([]pixivaccount.AccountSummary, error)
 	UseAccount(context.Context, int64) error
 	RemoveAccount(context.Context, int64) error
-	CheckAccountWith(context.Context, int64, pixiv.Options) (pixivaccount.AccountSummary, error)
-	RefreshAccountWith(context.Context, int64, pixiv.Options) (pixivaccount.AccountSummary, error)
+	CheckAccount(context.Context, int64, pixiv.Options) (pixivaccount.AccountSummary, error)
+	RefreshAccount(context.Context, int64, pixiv.Options) (pixivaccount.AccountSummary, error)
 	CurrentUser(context.Context) (*pixivaccount.AccountSummary, error)
-	RestoreAccount(context.Context, pixivaccount.AccountSummary, string, bool) error
 	RestoreAccounts(context.Context, []pixivaccount.RestoreAccountInput) (pixivaccount.RestoreAccountsResult, error)
 	AccountsWithTokens(context.Context) ([]pixivaccount.AccountWithToken, error)
 	SetPoolSchedulable(context.Context, []int64, bool) error
@@ -186,7 +185,7 @@ func (s AccountService) Import(ctx context.Context, request accountImportRequest
 	if err != nil {
 		return accountImportResult{}, err
 	}
-	account, err := service.ImportAccountWith(ctx, validatedToken, false, options)
+	account, err := service.ImportAccount(ctx, validatedToken, false, options)
 	if err != nil {
 		return accountImportResult{}, err
 	}
@@ -409,7 +408,7 @@ func (s AccountService) CheckWithRequest(ctx context.Context, request accountChe
 	if err != nil {
 		return accountResult{}, err
 	}
-	account, err := service.CheckAccountWith(ctx, request.UserID, options)
+	account, err := service.CheckAccount(ctx, request.UserID, options)
 	if err != nil {
 		return accountResult{}, err
 	}
@@ -432,7 +431,7 @@ func (s AccountService) RefreshWithRequest(ctx context.Context, request accountR
 	if err != nil {
 		return accountResult{}, err
 	}
-	account, err := service.RefreshAccountWith(ctx, request.UserID, options)
+	account, err := service.RefreshAccount(ctx, request.UserID, options)
 	if err != nil {
 		return accountResult{}, err
 	}

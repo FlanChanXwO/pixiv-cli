@@ -1,3 +1,6 @@
+// 浏览器登录与公开 SDK 一次性 LoginSession 的连接：开始登录、校验回调、保存凭据。
+// 账号选择与默认账号规则在 accounts.go。
+
 package pixivaccount
 
 import (

@@ -103,7 +103,7 @@ func (a command) importSession(cmd *cobra.Command, value string, setDefault, jso
 	if err != nil {
 		return err
 	}
-	account, err := service.ImportSessionWithProxy(cmd.Context(), value, setDefault, proxyOverride)
+	account, err := service.ImportSession(cmd.Context(), value, setDefault, proxyOverride)
 	if err != nil {
 		return err
 	}

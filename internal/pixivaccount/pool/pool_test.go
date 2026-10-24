@@ -145,19 +145,4 @@ func TestSchedulerPreservesLastRateLimitOnExhaustion(t *testing.T) {
 	require.Equal(t, time.Unix(earliest, 0), typed.Retry.After)
 }
 
-func TestChooseIsPureAndValidatesRandomIndex(t *testing.T) {
-	snapshot := accountpixiv.PoolSnapshot{
-		Candidates:   []accountpixiv.PoolCandidate{{UserID: 1, SortOrder: 1}, {UserID: 2, SortOrder: 2}},
-		MarkerUserID: ptrInt64(1), MarkerSortOrder: ptrInt64(1),
-	}
-	selected, err := poolpixiv.Choose(snapshot, config.AccountPoolStrategyRoundRobin, nil)
-	require.NoError(t, err)
-	require.Equal(t, int64(2), selected)
-	selected, err = poolpixiv.Choose(snapshot, config.AccountPoolStrategyRandom, func(int) (int, error) { return 0, nil })
-	require.NoError(t, err)
-	require.Equal(t, int64(1), selected)
-	_, err = poolpixiv.Choose(snapshot, config.AccountPoolStrategyRandom, func(int) (int, error) { return 9, nil })
-	require.Error(t, err)
-}
-
 func ptrInt64(value int64) *int64 { return &value }

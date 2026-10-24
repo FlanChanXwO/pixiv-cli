@@ -677,10 +677,15 @@ func fanboxTestService(t *testing.T, rt http.RoundTripper) (*fanboxapp.Service, 
 		t.Fatalf("open auth db: %v", err)
 	}
 	t.Cleanup(func() { _ = db.Close() })
-	service := fanboxapp.NewService(fanboxMCPRepository{db: db}, fanboxMCPDefaults{})
-	service.OpenClientFunc = func(context.Context) (*fanboxsdk.Client, error) {
-		return fanboxsdk.OpenWith(fanboxsdk.SessionCredentials{FANBOXSESSID: "stored-session"}, fanboxsdk.Options{HTTPClient: &http.Client{Transport: rt}})
+	// 服务现在按已保存的默认账号打开 client；fixture 先落一个账号再注入 transport。
+	stored := accountfanbox.New(42, "fixture", "", []byte("stored-session"))
+	stored.ValidatedAt = 1
+	if err := db.SaveFanboxCredential(t.Context(), stored); err != nil {
+		t.Fatalf("save fanbox account: %v", err)
 	}
+	service := fanboxapp.NewService(fanboxMCPRepository{db: db}, fanboxMCPDefaults{}, func() (fanboxsdk.Options, error) {
+		return fanboxsdk.Options{HTTPClient: &http.Client{Transport: rt}}, nil
+	})
 	return service, db
 }
 
@@ -725,7 +730,7 @@ func newFanboxMCPSession(t *testing.T, service *fanboxapp.Service) (*mcp.ClientS
 	server := mcp.NewServer(&mcp.Implementation{Name: "test", Version: "1"}, nil)
 	fanboxmcpserver.Register(server, fanboxmcpserver.SDKPorts{
 		Open: func(ctx context.Context, account fanboxmcpserver.Account) (*fanboxsdk.Client, error) {
-			return service.OpenClientWithProxy(ctx, account.HTTPSProxyOverride)
+			return service.OpenClient(ctx, account.HTTPSProxyOverride)
 		},
 	}, nil)
 	clientTransport, serverTransport := mcp.NewInMemoryTransports()
@@ -882,7 +887,7 @@ func TestFanboxMCPOpenResourceDeliversImagesAndFiles(t *testing.T) {
 			}))
 			session, closeSession := newFanboxMCPSession(t, service)
 			defer closeSession()
-			client, err := service.OpenClient(t.Context())
+			client, err := service.OpenClient(t.Context(), nil)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -1035,7 +1040,7 @@ func TestFanboxMCPOpenResourceCancellationClosesBody(t *testing.T) {
 		}
 		return &http.Response{StatusCode: 200, Header: http.Header{"Content-Type": {"image/png"}}, Body: &fanboxWaitingBody{ctx: r.Context(), started: started, closed: closed}}, nil
 	}))
-	client, err := service.OpenClient(t.Context())
+	client, err := service.OpenClient(t.Context(), nil)
 	if err != nil {
 		t.Fatal(err)
 	}
