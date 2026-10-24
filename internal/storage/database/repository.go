@@ -196,106 +196,151 @@ func (d *DB) SelectPixiv(ctx context.Context, now int64, attemptedUserIDs []int6
 	return withDatabaseValue(ctx, d, func() (pixivaccount.Account, error) {
 		var selected pixivaccount.Account
 		err := d.orm.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-			if err := tx.Model(&pixivAccountRow{}).
-				Where(colPoolFrozenUntil+" IS NOT NULL AND "+colPoolFrozenUntil+" <= ?", now).
-				Update(colPoolFrozenUntil, nil).Error; err != nil {
+			candidates, marker, err := loadPoolSnapshot(ctx, tx, now, attemptedUserIDs)
+			if err != nil {
 				return err
-			}
-			var total, schedulable, eligible int64
-			if err := tx.Model(&pixivAccountRow{}).Count(&total).Error; err != nil {
-				return err
-			}
-			if total == 0 {
-				return &pixivaccount.PoolSelectionError{Kind: pixivaccount.PoolSelectionNoLocalAccount}
-			}
-			if err := tx.Model(&pixivAccountRow{}).Where(colSchedulable+" = ?", true).Count(&schedulable).Error; err != nil {
-				return err
-			}
-			if schedulable == 0 {
-				return &pixivaccount.PoolSelectionError{Kind: pixivaccount.PoolSelectionNoSchedulable}
-			}
-			eligibleScope, eligibleArgs := poolScope(now)
-			if err := tx.Model(&pixivAccountRow{}).Where(eligibleScope, eligibleArgs...).Count(&eligible).Error; err != nil {
-				return err
-			}
-			if eligible == 0 {
-				earliest, err := earliestFrozenInTx(ctx, tx, now)
-				if err != nil {
-					return err
-				}
-				return &pixivaccount.PoolSelectionError{Kind: pixivaccount.PoolSelectionAllFrozen, EarliestFrozenUntil: earliest}
-			}
-			scope, args := poolScope(now)
-			query := tx.WithContext(ctx).Table(tablePixivAccount).Where(scope, args...)
-			if len(attemptedUserIDs) > 0 {
-				query = query.Where(colUserID+" NOT IN ?", attemptedUserIDs)
-			}
-			var rows []poolCandidateRow
-			if err := query.Select(colUserID, colSortOrder, colSchedulable, colPoolFrozenUntil, colPoolLastSelected).
-				Order(colSortOrder).Find(&rows).Error; err != nil {
-				return err
-			}
-			candidates := make([]pixivaccount.PoolCandidate, len(rows))
-			for i, row := range rows {
-				candidates[i] = row.candidate(now)
-			}
-			if len(candidates) == 0 {
-				earliest, err := earliestFrozenInTx(ctx, tx, now)
-				if err != nil {
-					return err
-				}
-				return &pixivaccount.PoolSelectionError{Kind: pixivaccount.PoolSelectionExhausted, EarliestFrozenUntil: earliest}
-			}
-			var marker poolCandidateRow
-			markerErr := tx.WithContext(ctx).Table(tablePixivAccount).Select(colUserID, colSortOrder).
-				Where(colPoolLastSelected+" = ?", true).Take(&marker).Error
-			if markerErr != nil && !errors.Is(markerErr, gorm.ErrRecordNotFound) {
-				return markerErr
-			}
-			var markerUserID, markerSortOrder *int64
-			if markerErr == nil {
-				markerUserID = &marker.UserID
-				markerSortOrder = &marker.SortOrder
 			}
 			if chooser == nil {
 				return errors.New("database: pixiv pool chooser is required")
 			}
 			chosenUserID, err := chooser(pixivaccount.PoolSnapshot{
 				Candidates:      candidates,
-				MarkerUserID:    markerUserID,
-				MarkerSortOrder: markerSortOrder,
+				MarkerUserID:    marker.userID,
+				MarkerSortOrder: marker.sortOrder,
 			})
 			if err != nil {
 				return err
 			}
-			found := false
-			for _, candidate := range candidates {
-				if candidate.UserID == chosenUserID {
-					found = true
-					break
-				}
-			}
-			if !found {
+			if !containsPoolCandidate(candidates, chosenUserID) {
 				return fmt.Errorf("database: pixiv pool chooser selected uid %d outside transaction snapshot", chosenUserID)
 			}
-			var selectedRow pixivAccountRow
-			if err := tx.WithContext(ctx).Where(colUserID+" = ?", chosenUserID).Take(&selectedRow).Error; err != nil {
-				return err
-			}
-			if err := tx.Model(&pixivAccountRow{}).Where(colPoolLastSelected+" = ?", true).
-				Update(colPoolLastSelected, false).Error; err != nil {
-				return err
-			}
-			if err := tx.Model(&pixivAccountRow{}).Where(colUserID+" = ?", chosenUserID).
-				Updates(map[string]any{colPoolLastSelected: true, colUpdatedAt: now}).Error; err != nil {
-				return err
-			}
-			selected = selectedRow.account()
-			selected.PoolLastSelected = true
-			return nil
+			selected, err = commitPoolSelection(ctx, tx, chosenUserID, now)
+			return err
 		})
 		return selected, err
 	})
+}
+
+func loadPoolSnapshot(ctx context.Context, tx *gorm.DB, now int64, attemptedUserIDs []int64) ([]pixivaccount.PoolCandidate, poolMarker, error) {
+	if err := clearExpiredPoolFreezes(ctx, tx, now); err != nil {
+		return nil, poolMarker{}, err
+	}
+	if err := requireSchedulableAccounts(ctx, tx, now); err != nil {
+		return nil, poolMarker{}, err
+	}
+	rows, err := queryPoolCandidates(ctx, tx, now, attemptedUserIDs)
+	if err != nil {
+		return nil, poolMarker{}, err
+	}
+	candidates := make([]pixivaccount.PoolCandidate, len(rows))
+	for i, row := range rows {
+		candidates[i] = row.candidate(now)
+	}
+	if len(candidates) == 0 {
+		earliest, err := earliestFrozenInTx(ctx, tx, now)
+		if err != nil {
+			return nil, poolMarker{}, err
+		}
+		return nil, poolMarker{}, &pixivaccount.PoolSelectionError{Kind: pixivaccount.PoolSelectionExhausted, EarliestFrozenUntil: earliest}
+	}
+	marker, err := readPoolMarker(ctx, tx)
+	if err != nil {
+		return nil, poolMarker{}, err
+	}
+	return candidates, marker, nil
+}
+
+func clearExpiredPoolFreezes(ctx context.Context, tx *gorm.DB, now int64) error {
+	return tx.Model(&pixivAccountRow{}).
+		Where(colPoolFrozenUntil+" IS NOT NULL AND "+colPoolFrozenUntil+" <= ?", now).
+		Update(colPoolFrozenUntil, nil).Error
+}
+
+func requireSchedulableAccounts(ctx context.Context, tx *gorm.DB, now int64) error {
+	var total, schedulable, eligible int64
+	if err := tx.Model(&pixivAccountRow{}).Count(&total).Error; err != nil {
+		return err
+	}
+	if total == 0 {
+		return &pixivaccount.PoolSelectionError{Kind: pixivaccount.PoolSelectionNoLocalAccount}
+	}
+	if err := tx.Model(&pixivAccountRow{}).Where(colSchedulable+" = ?", true).Count(&schedulable).Error; err != nil {
+		return err
+	}
+	if schedulable == 0 {
+		return &pixivaccount.PoolSelectionError{Kind: pixivaccount.PoolSelectionNoSchedulable}
+	}
+	eligibleScope, eligibleArgs := poolScope(now)
+	if err := tx.Model(&pixivAccountRow{}).Where(eligibleScope, eligibleArgs...).Count(&eligible).Error; err != nil {
+		return err
+	}
+	if eligible == 0 {
+		earliest, err := earliestFrozenInTx(ctx, tx, now)
+		if err != nil {
+			return err
+		}
+		return &pixivaccount.PoolSelectionError{Kind: pixivaccount.PoolSelectionAllFrozen, EarliestFrozenUntil: earliest}
+	}
+	return nil
+}
+
+func queryPoolCandidates(ctx context.Context, tx *gorm.DB, now int64, attemptedUserIDs []int64) ([]poolCandidateRow, error) {
+	scope, args := poolScope(now)
+	query := tx.WithContext(ctx).Table(tablePixivAccount).Where(scope, args...)
+	if len(attemptedUserIDs) > 0 {
+		query = query.Where(colUserID+" NOT IN ?", attemptedUserIDs)
+	}
+	var rows []poolCandidateRow
+	if err := query.Select(colUserID, colSortOrder, colSchedulable, colPoolFrozenUntil, colPoolLastSelected).
+		Order(colSortOrder).Find(&rows).Error; err != nil {
+		return nil, err
+	}
+	return rows, nil
+}
+
+type poolMarker struct {
+	userID    *int64
+	sortOrder *int64
+}
+
+func readPoolMarker(ctx context.Context, tx *gorm.DB) (poolMarker, error) {
+	var row poolCandidateRow
+	err := tx.WithContext(ctx).Table(tablePixivAccount).Select(colUserID, colSortOrder).
+		Where(colPoolLastSelected+" = ?", true).Take(&row).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return poolMarker{}, nil
+	}
+	if err != nil {
+		return poolMarker{}, err
+	}
+	return poolMarker{userID: &row.UserID, sortOrder: &row.SortOrder}, nil
+}
+
+func containsPoolCandidate(candidates []pixivaccount.PoolCandidate, userID int64) bool {
+	for _, candidate := range candidates {
+		if candidate.UserID == userID {
+			return true
+		}
+	}
+	return false
+}
+
+func commitPoolSelection(ctx context.Context, tx *gorm.DB, chosenUserID, now int64) (pixivaccount.Account, error) {
+	var selectedRow pixivAccountRow
+	if err := tx.WithContext(ctx).Where(colUserID+" = ?", chosenUserID).Take(&selectedRow).Error; err != nil {
+		return pixivaccount.Account{}, err
+	}
+	if err := tx.Model(&pixivAccountRow{}).Where(colPoolLastSelected+" = ?", true).
+		Update(colPoolLastSelected, false).Error; err != nil {
+		return pixivaccount.Account{}, err
+	}
+	if err := tx.Model(&pixivAccountRow{}).Where(colUserID+" = ?", chosenUserID).
+		Updates(map[string]any{colPoolLastSelected: true, colUpdatedAt: now}).Error; err != nil {
+		return pixivaccount.Account{}, err
+	}
+	selected := selectedRow.account()
+	selected.PoolLastSelected = true
+	return selected, nil
 }
 
 // Freeze 记录一个账号的有效冻结时间。
