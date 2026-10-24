@@ -99,7 +99,7 @@ jobs:
           RUN_HEAD_SHA: ${{ steps.release.outputs.head_sha }}
         run: |
           set -euo pipefail
-          go run ./tools/release verify-handoff-set \
+          go run ./scripts/release verify-handoff-set \
             --handoff prepared/release/release-handoff.json \
             --section container \
             --dist-dir prepared/dist \
@@ -174,7 +174,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          channel=$(go run ./scripts/cmd/releaseassets channel --version "${RELEASE_TAG#v}")
+          channel=$(go run ./scripts/releaseassets channel --version "${RELEASE_TAG#v}")
           case "$channel" in
             stable)
               latest_stable_tag=$(

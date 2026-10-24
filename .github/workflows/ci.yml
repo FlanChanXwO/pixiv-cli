@@ -117,7 +117,7 @@ jobs:
       - name: Verify Go license bundle
         if: ${{ needs.scope.result == 'success' }}
         shell: bash
-        run: go run ./scripts/cmd/licensebundle --check
+        run: go run ./scripts/licensebundle --check
       - name: Test Go sources
         if: ${{ needs.scope.result == 'success' }}
         shell: bash

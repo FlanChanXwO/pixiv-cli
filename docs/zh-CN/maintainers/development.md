@@ -63,19 +63,19 @@ CGO_ENABLED=0 go test ./internal/media/ugoira/... -count=1
 
 **编码器保真说明** —— `internal/media/ugoira`：JPEG 解码器是 Go 1.26.3 解析加旧 zune-jpeg 0.5.15 整数 IDCT 与 14 位 BT.601（标准库 IDCT 舍入对调色板选择的改变足以让固定门禁失败；解析器 BSD 许可证留在该包，zune-jpeg 的 MIT 署名留在许可证 bundle）。缩放使用带显式 `math.FMA` 的有界正弦/余弦多项式对齐旧 `sinf`，参考值在 `testdata/lanczos-kernel.json`（1,031 条）。APNG 使用固定 Sub 预测、每帧独立的 level-7 zlib 流与 RGBA8 无损：只有全部变化像素不透明且差分能减少横向 RGBA 游程时，才对未变像素使用透明的 Over，否则使用 Source，均用 None disposal。压缩字节可能随工具链变化；只有在验证完整渲染画布、时序与循环行为后才能复用旧质量证据——不能只看文件大小。
 
-**平台构建** —— `scripts/build-platform.sh` 以 CGO0 构建精确目标，并可选生成 canonical 压缩包：`--target GOOS/GOARCH`、`--output-dir DIR`、可选 `--version VERSION`（不带 `v`）与 `--package`（需要版本）。保留 Windows 后缀与 Linux ABI 门禁。runner 元数据在 `ci/platforms.json`；测试、源码身份、权限、审批与发布留在 workflow 中。
+**平台构建** —— `scripts/build-platform.sh` 以 CGO0 构建精确目标，并可选生成 canonical 压缩包：`--target GOOS/GOARCH`、`--output-dir DIR`、可选 `--version VERSION`（不带 `v`）与 `--package`（需要版本）。保留 Windows 后缀与 Linux ABI 门禁。runner 元数据在 `scripts/ci/platforms.json`；测试、源码身份、权限、审批与发布留在 workflow 中。
 
 **Linux ABI 门禁** —— 公开基线为 glibc 2.35。release test/production、native evidence、packaged smoke 与 Homebrew 安装矩阵的 Linux runner 固定为 `ubuntu-22.04` / `ubuntu-22.04-arm`（其他任务可用较新 runner）。每个 Linux 可执行文件生成后：
 
 ```bash
-go run ./scripts/cmd/linuxabi --binary <linux-elf>
+go run ./scripts/linuxabi --binary <linux-elf>
 ```
 
 它从 ELF `SHT_GNU_verneed` 读取 loader 契约并检查导入符号版本；任何高于 `GLIBC_2.35` 的依赖在打包前失败。"在构建 runner 上能跑"不是可接受的证据——runner 自带的新 glibc 会掩盖向后兼容回退。
 
 ### 许可证 bundle
 
-- `go run ./scripts/cmd/licensebundle` 在六个发布目标上以 `CGO_ENABLED=0` 合并 `go list -mod=readonly -deps -json ./cmd/pixiv` 选出的生产模块。离线（`GOPROXY=off`、`GOSUMDB=off`），忽略 workspace/flag 覆盖，需要已缓存的模块源码，不用 Cargo，不含仅测试/工具模块。`--check` 比较索引与完整文本树但不发布。
+- `go run ./scripts/licensebundle` 在六个发布目标上以 `CGO_ENABLED=0` 合并 `go list -mod=readonly -deps -json ./cmd/pixiv` 选出的生产模块。离线（`GOPROXY=off`、`GOSUMDB=off`），忽略 workspace/flag 覆盖，需要已缓存的模块源码，不用 Cargo，不含仅测试/工具模块。`--check` 比较索引与完整文本树但不发布。
 - `third_party/attributions.json` 固定额外的移植源码声明；文本在 `third_party/attributions/`（与生成的 `third_party/licenses/` 分开）。移除 Rust 源码后仍保留选定的 MIT 文本、Go BSD/专利授权与 SunPro 声明；`fhttp v0.6.8` 提供其源码头引用的 Go BSD 文本（该模块归档缺少独立许可证文件）。文本缺失/为空会在发布前失败；包含嵌套声明；CRLF → LF 并保留全文。
 - 生成的文本由 `third_party/notices.go` 内嵌，`pixiv --licenses` 打印；压缩包只含 `pixiv`/`pixiv.exe`。索引与文本树保持可回滚的发布方式。`third_party/attributions/image-compare-0.5.0/` 中仅测试使用的署名不内嵌。
 
@@ -93,7 +93,7 @@ flowchart LR
 - schema 3 绑定精确的 `source_commit`、目标、二进制版本与二进制/压缩包/成员 SHA-256；执行 `--version` 并检查压缩包恰好包含记录的二进制；拒绝旧 schema 与 Rust 源码摘要/staticlib 字段。`consolidate` 拒绝符号链接与不安全路径并原子发布；从不把库回填到源码。
 
 ```bash
-go run ./scripts/cmd/nativeevidence consolidate \
+go run ./scripts/nativeevidence consolidate \
   --repo-root . --expected-version "v0.1.0-native-evidence.${RUN_ID}" \
   --expected-commit "$SOURCE_COMMIT" --input-dir /absolute/evidence \
   --output-dir /absolute/new-complete-evidence
@@ -101,7 +101,6 @@ go run ./scripts/cmd/nativeevidence consolidate \
 
 `RUN_ID` 与 `SOURCE_COMMIT` 取自同一次已审计的运行，并使用新的绝对路径。PR Platform worker 也会从可信 base-ref workflow 上传 schema 3 `native-evidence-<goos>-<goarch>` bundle（`v0.2.0-ci.<run-id>`）——修改 PR head 的 workflow 不会改变该生产者。请检查实际运行与精确 head；不要拼接多次运行，也不要把 fixture、交叉构建或 workflow 定义当作六平台执行。
 
-**浏览器证据** —— `.github/workflows/browser-evidence.yml` 是另一个显式触发、无凭据的矩阵，在 macOS、Linux、Windows amd64/arm64 上运行 `internal/browsercookies/...` 的平台代码与合成 fixture（不挂到普通 main push）。Windows runner 没有 `sqlite3`，因此两个 Windows 任务都通过 `scripts/install-browser-sqlite.ps1`（固定 URL + SHA-256）准备对应架构的官方 SQLite 3.53.4 工具，然后再跑 SQLite 预检。一个聚焦的仅测试 workflow 契约覆盖凭据、固定 Action、fixture、SQLite 准备与清理边界；`scripts/cmd/browsernativeevidence firefox-contract` 运行隔离的 Firefox profile。`firefox_native` 任务只在 runner 临时目录解包官方安装包，让 Firefox 生成隔离 profile，再注入合成 Cookie——不读取用户 profile、Keychain、DPAPI 或 Secret Service，也不上传任何内容。真实 profile/会话证据只能在受保护的 release-prep 主机获取；该 workflow 成功不等于真实浏览器导入成功。
 
 ## 运行
 
@@ -220,14 +219,6 @@ PIXIV_REVERSE_SEARCH_PROVIDER=all go test ./internal/reversesearch -run TestReal
 | `internal/selfupdate/release` | `source_route_test.go` 观察未导出的来源路由选择与 canonical API URL 缓存状态；目录中其他测试已使用外部包。 |
 | `internal/storage/database` | 测试观察未导出的 `tableInfoQuery` allowlist 与迁移兼容 seam，确保 SQL 标识符保持固定字面量，旧 schema 无法静默绕过契约。 |
 | `sdk/pixiv` | `cursor_test.go` 观察未导出的 cursor 构造与 client 实例绑定，在不扩大公开 SDK 面的前提下验证与查询精确绑定的非法续读。 |
-| `scripts/internal/browsernativeevidence` | 测试观察未导出的环境探测，并注入合成的 Firefox Cookie 种子。 |
-| `scripts/internal/homebrewformula` | 测试直接调用未导出的 formula 渲染与版本校验（`renderFormula`、`validateFormulaVersion`、`checkDynamicVersionNeeds`）。 |
-| `scripts/internal/licensebundle` | 测试观察未导出的 `defaultBundleFileOps`、`modulesFromMetadata`、`packageLicenseFiles` 与许可证文本规范化；可执行的 Go fixture 验证六目标离线命令契约。 |
-| `scripts/internal/linuxabi` | 测试直接调用未导出的 glibc 版本解析与 ABI 比较（`parseGLIBCVersion`、`checkImportedSymbols`）。 |
-| `scripts/internal/nativeevidence` | 测试观察未导出的 record/consolidate 状态与 workflow 安全/归属契约，覆盖 schema 3、独立的 `source_commit`、精确的二进制 `--version` 输出、六目标哈希/压缩包校验与写操作回滚。 |
-| `scripts/internal/publicapi` | 测试观察未导出的解析器对 `unexported`/`hidden` 符号的处理与 golden 比较逻辑，用 `writeFixture` 生成 fixture。 |
-| `scripts/internal/releaseassets` | 测试注入未导出的 `injectReleaseSources`/`injectWindowsReleaseSources`，观察资产压缩包命名（`archiveName`）与 checksums 生成。 |
-| `scripts/internal/releasenotes` | 测试观察未导出的 GitHub client 调用映射，注入 fake client 断言来源审计。 |
 
 - 当前没有临时条目，也不接受"迁移期间""将来"之类开放式表述。新增目录必须说明具体观察的未导出符号，并确认导出最小接口不可行；移除目录需要删除任务与测试迁移证据（外部包可编译 + 覆盖不变）。
 - `live_test.go`、`live_mutation_test.go`、`live_solver_test.go` 是按开关变量启用的真实测试，没有单一生产文件归属；它们留在被测包（`sdk/pixiv`、`sdk/fanbox`、`internal/reversesearch`、`internal/browsercookies`），未设置文档中的开关变量时跳过。带 build tag 的测试文件在不同 `GOOS`/`GOARCH` 下可见数量不同；校验时分别用 `GOOS=darwin`、`windows` 与 `linux` 运行 `go list`。

@@ -69,8 +69,8 @@ After a check passes, do not rerun or widen it unless something changed or faile
 | Local Go implementation | Focused test, affected integration packages, and scoped `go vet`; run `sh scripts/build.sh` when the change affects the build or executable |
 | Shared contract, public SDK, core behavior, or release candidate | Once before handoff: `go test ./... -count=1`, `go vet ./...`, and `sh scripts/build.sh` |
 | Concurrency, account lifecycle, persistence, shared runtime | Add `CGO_ENABLED=1 go test -race ./... -count=1` once before handoff; use native platform checks where platform code is involved |
-| PR metadata and verification tooling | `go test ./tools/prmeta ./tools/verification -count=1`; inspect the changed workflow's existing tests |
-| Platform/release contracts | `go test ./tools/release ./tools/platformmatrix -count=1`, affected `scripts/...` tests, and the relevant build/package/Homebrew fixture scripts |
+| PR metadata and verification tooling | `go test ./scripts/prmeta ./scripts/verification -count=1`; inspect the changed workflow's existing tests |
+| Platform/release contracts | `go test ./scripts/release ./scripts/platformmatrix -count=1`, affected `scripts/...` tests, and the relevant build/package/Homebrew fixture scripts |
 | Encoding, platform builds, ABI or native evidence | Follow [pixiv-cli-native](../pixiv-cli-native/SKILL.md) for the affected execution/artifact boundary |
 
 Use `gofmt -l` on affected Go files and the existing `.pre-commit-config.yaml`. Run installed pre-commit when applicable; do not introduce a new linter or download hook environments silently. `sh -n` checks shell syntax, not shell behavior. Cross-compilation checks compilation, not execution on another operating system.

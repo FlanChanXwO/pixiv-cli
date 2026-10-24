@@ -254,14 +254,14 @@ Thin root (coordinator + auto-check API), re-exporting `internal/selfupdate/{sou
 - Signature, checksum, HTTP, archive, replacement and permission errors are never disguised as "no update". Release-install failure semantics are a protective boundary, not a temporary degradation.
 - **Trust root** (`internal/selfupdate/installer`): key ID and public key constants live in `release_installer.go`; `internal/cli/update/production.go` builds the key ID → key map for the installer so callers can't pollute it; `root.go` holds only update seams. Fingerprint and signing fixtures are verified by same-package tests; the private key is not in source or config; read-only checks don't need it; this wiring does not replace per-version release acceptance. `internal/bootstrap` was deleted in v1.
 
-### `scripts/cmd`, `scripts/tests`, `scripts/internal`
+### `scripts/`
 
 | Location | Holds |
 | --- | --- |
-| `scripts/cmd/<name>/main.go` | argument parsing + owner call only |
-| `scripts/tests/` | pure test carriers for workflow, documentation or installer behavior |
-| `scripts/internal/<name>` | implementation + same-package tests; shared `releasecontract` (target/archive identity) and `releasenotesrender` (Release body, shared by `releaseassets` and history sync) |
-| `ci/platforms.json` → `tools/platformmatrix` | runner/capability metadata for workflows; workflow tests validate behavior/security, not a second YAML policy model |
+| `scripts/<name>/` | one tool per directory, one `package main`; tests live beside it |
+| `scripts/citest/` | pure test carriers for workflow, documentation or installer behavior |
+| `scripts/internal/<name>` | implementation shared by several tools; `verificationpolicy` (PR-declared command policy) and `releasenotesrender` (release identity and Release body rendering) |
+| `scripts/ci/platforms.json` → `scripts/platformmatrix` | runner/capability metadata for workflows; workflow tests validate behavior/security, not a second YAML policy model |
 
 ### `sdk`, `sdk/pixiv`, `sdk/fanbox`
 
@@ -297,7 +297,7 @@ Default path constructs `ugoira.NewEncoder()` — no backend selector or externa
 
 ### `internal/media/ugoira`
 
-Owns `Format`, ordered frame input, `Encoder`, ZIP validation/decoding, resizing, GIF quantization/dithering, APNG streaming and atomic publication. The downloader consumes `Encoder` and must not duplicate encoding or publication. PNG uses the standard library; owner-local `jpeg` keeps legacy IDCT/color rounding. Six-target evidence lives in `scripts/internal/nativeevidence`, separate from the runtime encoder.
+Owns `Format`, ordered frame input, `Encoder`, ZIP validation/decoding, resizing, GIF quantization/dithering, APNG streaming and atomic publication. The downloader consumes `Encoder` and must not duplicate encoding or publication. PNG uses the standard library; owner-local `jpeg` keeps legacy IDCT/color rounding. Six-target evidence lives in `scripts/nativeevidence`, separate from the runtime encoder.
 
 ## Release assets and trust boundary
 

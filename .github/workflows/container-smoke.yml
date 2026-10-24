@@ -44,7 +44,7 @@ jobs:
       - name: Resolve container matrix
         id: matrix
         shell: bash
-        run: go run ./tools/platformmatrix --capability container --github-output "$GITHUB_OUTPUT"
+        run: go run ./scripts/platformmatrix --capability container --github-output "$GITHUB_OUTPUT"
 
   worker:
     needs: setup

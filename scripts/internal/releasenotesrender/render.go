@@ -1,4 +1,4 @@
-// Package releasenotesrender provides the canonical GitHub Release body rendering shared by releaseassets and history synchronization.
+// Package releasenotesrender 提供发布身份与 GitHub Release 正文渲染，供 releaseassets 与历史同步共用。
 package releasenotesrender
 
 import (
