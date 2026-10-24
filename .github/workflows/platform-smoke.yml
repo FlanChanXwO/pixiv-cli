@@ -83,10 +83,24 @@ jobs:
         run: go mod download
       - name: Verify Go license bundle
         shell: bash
-        run: go run ./scripts/cmd/licensebundle --check
+        run: |
+          set -euo pipefail
+          # The worker workflow comes from the trusted base ref while the checkout
+          # is the PR head, so the path bridges the scripts layout move until merge.
+          tool=./scripts/licensebundle
+          if [ ! -d "$tool" ]; then
+            tool=./scripts/cmd/licensebundle
+          fi
+          go run "$tool" --check
       - name: Test the platform installer
         shell: bash
-        run: go test ./scripts/tests/installers -count=1
+        run: |
+          set -euo pipefail
+          package=./scripts/citest
+          if [ ! -d "$package" ]; then
+            package=./scripts/tests/installers
+          fi
+          go test "$package" -count=1
       - name: Test platform OAuth callback integration
         shell: bash
         run: go test ./internal/cli/auth/loginhelper -count=1
@@ -148,7 +162,11 @@ jobs:
           if [ '${{ matrix.goos }}' = windows ]; then
             binary='dist/pixiv.exe'
           fi
-          go run ./scripts/cmd/nativeevidence record \
+          tool=./scripts/nativeevidence
+          if [ ! -d "$tool" ]; then
+            tool=./scripts/cmd/nativeevidence
+          fi
+          go run "$tool" record \
             --repo-root . \
             --version "0.2.0-ci.${GITHUB_RUN_ID}" \
             --source-commit "$(git rev-parse HEAD)" \
