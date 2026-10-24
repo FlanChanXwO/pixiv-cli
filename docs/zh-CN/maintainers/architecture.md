@@ -51,7 +51,7 @@ flowchart TD
 
 - `auth import` 处理直接导入 token 或恢复 bundle；`auth export` 处理本地 secret 快照。`pixiv fanbox mcp` 已移除。
 - Windows 路径为 `%USERPROFILE%\.pixiv-cli\`。旧 `auth.json` 从不自动读取——用户需显式导出/导入 bundle。
-- 没有匿名 Web fallback：内容需要已认证的本地账号或显式凭据；残留的 `web_fallback_enabled` 返回 `removed_setting`。
+- 没有匿名 Web fallback：内容需要已认证的本地账号或显式凭据；残留的 `web_fallback_enabled` 属于未声明键，加载时忽略。
 
 ## 前端源码与页面嵌入
 
@@ -176,7 +176,7 @@ flowchart LR
 | `pixiv-cli.db` | 账号身份与凭据（`pixiv_account` / `fanbox_account`），文件 `0600` |
 | `config.toml` | 全局键，含 `[pixiv.auth].default_user_id`、`[fanbox.auth].default_user_id`；Unix `0600`。无默认账号时按 `sort_order` 选第一个 |
 
-运行时设置用 `koanf` 合并 `config.toml` 与公开环境变量；`config set/unset` 用 `tomledit` 稀疏回写，尽量保留注释、顺序与排版。首次运行的紧凑基线只写入 `example:"true"` 条目。
+运行时设置用 `go-toml/v2` 解析 `config.toml`，并在每个快照中一次性捕获公开环境变量；`config set/unset` 用 `tomledit` 稀疏回写，尽量保留注释、顺序与排版。首次运行的紧凑基线只写入 `example:"true"` 条目。
 
 #### 配置声明：结构体字段标签是唯一事实来源
 
@@ -196,13 +196,14 @@ flowchart LR
 - 声明错误：展开后路径重复、非空别名重复、空路径段、循环组、不支持的叶子类型、组上出现仅限叶子的属性。私有叶子没有公开别名就不能启用 CLI 管理、示例或环境变量绑定。`cli`、`secret`、`example` 只接受 `"true"`/`"false"`（不影响用户配置值的解析）。
 - 私有 schema 缓存字段索引链与 Go 类型，从不缓存实例。标量绑定与 `Effective` 使用相同的来源选择；普通绑定不分配指针组。高级读取器按字段归属定位已编译路径，不新增别名，也不会在领域启用检查前分配 solver 组。账号池默认值来自声明；严格文件类型与策略校验仍是领域规则。
 - 默认账号选择有单独的私有声明范围：`int64` UID 叶子无别名、无默认值；正整数解析留在按需的 auth 读写方法中；从不进入普通绑定或 Snapshot 早期校验。
-- `SettingSpec` 是 CLI 消费的**公开派生视图**，不是手写事实表。
-- **新增普通设置** = 字段 + 标签、一个行为测试、对应文档。没有注册表、环境变量 `switch`、逐字段赋值、基线列表或别名列表需要同步。
+- `SettingSpec` 是 CLI 消费的**公开派生视图**，不是手写事实表。`keys.go` 为每个别名声明具名 `Key` 常量；表驱动测试在常量与别名不一致、或某个已声明别名缺少常量时失败。`LogLevel` 与 `LogFormat` 是带常量的具名类型。
+- **新增普通设置** = 字段 + 标签 + `Key` 常量、一个行为测试、对应文档。没有注册表、环境变量 `switch`、逐字段赋值、基线列表或别名列表需要同步。
 
 | 文件 | 职责 |
 | --- | --- |
 | `config.go` | 类型、字段标签、字段契约 |
-| `schema.go` | 标签派生元数据、声明校验、查找、退役墓碑、公开 `SettingSpec` 视图 |
+| `keys.go` | 公开别名对应的具名 `Key` 常量 |
+| `schema.go` | 标签派生元数据、声明校验、查找、公开 `SettingSpec` 视图 |
 | `snapshot.go` | 文件/环境快照、来源选择、运行时绑定（服务网络、FlareSolverr、账号池领域规则） |
 | `values.go` | 类型解析、规范化、领域校验 |
 | `document.go` | TOML 定位与稀疏修改 |

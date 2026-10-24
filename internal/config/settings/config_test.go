@@ -57,12 +57,8 @@ var expectedCLIManagedAliases = []string{
 	"saucenao_api_key",
 }
 
-// expectedRemovedAliases stay resolvable for config unset but are not valid keys.
-var expectedRemovedAliases = []string{"account_pool_accounts", "mcp_gallery_cache_ttl", "mcp_gallery_concurrency", "web_fallback_enabled"}
-
-// allResolvableAliases includes tombstones for SettingSpecByAlias lookups.
+// allResolvableAliases is the complete SettingSpecByAlias lookup set.
 var allResolvableAliases = []string{
-	"account_pool_accounts",
 	"account_pool_enabled",
 	"account_pool_strategy",
 	"directory_template",
@@ -79,42 +75,31 @@ var allResolvableAliases = []string{
 	"login_use_after_login",
 	"mcp_gallery_animation_temp_capacity_mib",
 	"mcp_gallery_cache_capacity_mib",
-	"mcp_gallery_cache_ttl",
-	"mcp_gallery_concurrency",
 	"output_json",
 	"request_interval",
 	"reverse_search_pixiv_only",
 	"reverse_search_provider",
 	"saucenao_api_key",
 	"update_check_enabled",
-	"web_fallback_enabled",
 }
 
 func TestSettingAliasSurfaceIsStable(t *testing.T) {
-	aliases := config.ValidSettingAliases()
+	aliases := keyStrings(config.ValidSettingAliases())
 	assert.Equal(t, expectedAliases, aliases, "ValidSettingAliases changed")
 
-	for _, removed := range expectedRemovedAliases {
-		assert.NotContains(t, aliases, removed, "removed alias must not be offered as a valid key")
-	}
-
 	for _, alias := range allResolvableAliases {
-		spec, ok := config.SettingSpecByAlias(alias)
+		spec, ok := config.SettingSpecByAlias(config.Key(alias))
 		require.Truef(t, ok, "alias %q must stay resolvable", alias)
-		assert.Equal(t, alias, spec.Alias)
+		assert.Equal(t, alias, string(spec.Alias))
 	}
 
 	managed := config.CLISettingAliases()
-	assert.Equal(t, expectedCLIManagedAliases, managed, "CLISettingAliases changed")
+	assert.Equal(t, expectedCLIManagedAliases, keyStrings(managed), "CLISettingAliases changed")
 
-	for _, removed := range expectedRemovedAliases {
-		assert.NotContains(t, managed, removed, "removed alias must not be CLI managed")
-	}
 	for _, alias := range managed {
 		spec, ok := config.SettingSpecByAlias(alias)
 		require.True(t, ok, "CLI managed alias %q must be resolvable", alias)
 		assert.True(t, spec.CLIManaged, "CLI managed alias %q must declare CLIManaged", alias)
-		assert.False(t, spec.Removed, "CLI managed alias %q must not be removed", alias)
 	}
 }
 
@@ -143,22 +128,20 @@ func TestSettingSpecCarriesTheDocumentedContract(t *testing.T) {
 		"reverse_search_provider":   {key: "reverse_search.provider", table: []string{"reverse_search"}, tomlKey: "provider", hasDefault: true, defaultIn: true, cliManaged: true},
 		"reverse_search_pixiv_only": {key: "reverse_search.pixiv_only", table: []string{"reverse_search"}, tomlKey: "pixiv_only", hasDefault: true, defaultIn: true, cliManaged: true},
 		"saucenao_api_key":          {key: "reverse_search.saucenao_api_key", table: []string{"reverse_search"}, tomlKey: "saucenao_api_key", cliManaged: true, sensitive: true},
-		"web_fallback_enabled":      {key: "web.fallback_enabled", table: []string{"web"}, tomlKey: "fallback_enabled"},
 		"login_relay_public_url":    {key: "login.relay_public_url", table: []string{"login"}, tomlKey: "relay_public_url"},
 		"login_relay_listen_addr":   {key: "login.relay_listen_addr", table: []string{"login"}, tomlKey: "relay_listen_addr"},
 		"login_relay_tls_cert_file": {key: "login.relay_tls_cert_file", table: []string{"login"}, tomlKey: "relay_tls_cert_file"},
 		"login_relay_tls_key_file":  {key: "login.relay_tls_key_file", table: []string{"login"}, tomlKey: "relay_tls_key_file"},
 		"account_pool_enabled":      {key: "account_pool.enabled", table: []string{"account_pool"}, tomlKey: "enabled", hasDefault: true, cliManaged: true},
 		"account_pool_strategy":     {key: "account_pool.strategy", table: []string{"account_pool"}, tomlKey: "strategy", hasDefault: true, cliManaged: true},
-		"account_pool_accounts":     {key: "account_pool.accounts", table: []string{"account_pool"}, tomlKey: "accounts"},
 	}
 
 	for alias, expected := range want {
 		t.Run(alias, func(t *testing.T) {
-			spec, ok := config.SettingSpecByAlias(alias)
+			spec, ok := config.SettingSpecByAlias(config.Key(alias))
 			require.True(t, ok, "alias %q must resolve", alias)
-			assert.Equal(t, alias, spec.Alias)
-			assert.Equal(t, expected.key, spec.KoanfKey, "koanf/TOML path changed")
+			assert.Equal(t, alias, string(spec.Alias))
+			assert.Equal(t, expected.key, spec.TOMLPath, "TOML path changed")
 			assert.Equal(t, expected.table, spec.Table, "TOML table changed")
 			assert.Equal(t, expected.tomlKey, spec.Key, "TOML key changed")
 			assert.Equal(t, expected.hasDefault, spec.HasDefault, "default presence changed")
@@ -175,19 +158,19 @@ func TestSettingSpecCarriesTheDocumentedContract(t *testing.T) {
 func TestOnlySauceNAOKeyIsSensitiveAndStaysOutOfPublicOutput(t *testing.T) {
 	for _, alias := range config.ValidSettingAliases() {
 		wantSensitive := alias == "saucenao_api_key"
-		assert.Equalf(t, wantSensitive, config.IsSensitiveSetting(alias), "sensitivity of %q changed", alias)
+		assert.Equalf(t, wantSensitive, config.IsSensitiveSetting(config.Key(alias)), "sensitivity of %q changed", alias)
 	}
 
-	assert.Equal(t, "<redacted>", config.PublicSettingText("saucenao_api_key", "must-not-leak"))
-	assert.Equal(t, "", config.PublicSettingText("saucenao_api_key", ""))
-	assert.Equal(t, "info", config.PublicSettingText("log_level", "info"))
+	assert.Equal(t, "<redacted>", config.PublicSettingText(config.KeySauceNAOAPIKey, "must-not-leak"))
+	assert.Equal(t, "", config.PublicSettingText(config.KeySauceNAOAPIKey, ""))
+	assert.Equal(t, "info", config.PublicSettingText(config.KeyLogLevel, "info"))
 }
 
 func TestRuntimeConfigSurfaceExcludesRefreshToken(t *testing.T) {
 	path := t.TempDir() + "/config.toml"
 	require.NoError(t, os.WriteFile(path, []byte("[auth]\nrefresh_token = \"must-not-enter-runtime\"\n"), 0o600))
 
-	state, err := config.LoadSnapshotAt(path)
+	state, err := currentSnapshot(path)
 	require.NoError(t, err)
 	runtimeConfig, err := state.Runtime()
 	require.NoError(t, err)
@@ -201,9 +184,9 @@ func TestRuntimeConfigSurfaceExcludesRefreshToken(t *testing.T) {
 		require.NotEqual(t, "refreshtoken", normalizedSensitiveKey(key), "runtime DTO exposes a refresh token field")
 	}
 	for _, alias := range config.ValidSettingAliases() {
-		require.NotEqual(t, "refreshtoken", normalizedSensitiveKey(alias), "configuration aliases expose a refresh token setting")
+		require.NotEqual(t, "refreshtoken", normalizedSensitiveKey(string(alias)), "configuration aliases expose a refresh token setting")
 	}
-	_, ok := config.SettingSpecByAlias("refresh_token")
+	_, ok := config.SettingSpecByAlias(config.Key("refresh_token"))
 	require.False(t, ok, "refresh token must not be writable through the TOML setting surface")
 }
 
@@ -212,23 +195,19 @@ func normalizedSensitiveKey(key string) string {
 }
 
 func TestSettingSpecByAliasTableIsDetached(t *testing.T) {
-	spec, ok := config.SettingSpecByAlias("download_path")
+	spec, ok := config.SettingSpecByAlias(config.KeyDownloadPath)
 	if !ok || len(spec.Table) == 0 {
 		t.Fatal("download_path must have a declared table")
 	}
 	spec.Table[0] = "mutated_table"
 
-	again, ok := config.SettingSpecByAlias("download_path")
+	again, ok := config.SettingSpecByAlias(config.KeyDownloadPath)
 	if !ok || !reflect.DeepEqual(again.Table, []string{"download"}) {
 		t.Errorf("returned Table mutation changed a later lookup: %v", again.Table)
 	}
 
-	_, value, err := config.ParseSettingInput("download_path", "./isolated")
-	if err != nil {
-		t.Fatal(err)
-	}
 	path := filepath.Join(t.TempDir(), "config.toml")
-	if err := config.SetConfigValue(path, "download_path", value); err != nil {
+	if _, err := (config.Store{Files: diskFileStore{path: path}}).Set(config.KeyDownloadPath, "./isolated"); err != nil {
 		t.Fatal(err)
 	}
 	body, err := os.ReadFile(path)
@@ -238,4 +217,12 @@ func TestSettingSpecByAliasTableIsDetached(t *testing.T) {
 	if got, want := strings.TrimSpace(string(body)), "[download]\npath = \"./isolated\""; got != want {
 		t.Errorf("returned Table mutation changed a later config write: got %q, want %q", got, want)
 	}
+}
+
+func keyStrings(keys []config.Key) []string {
+	out := make([]string, len(keys))
+	for index, key := range keys {
+		out[index] = string(key)
+	}
+	return out
 }

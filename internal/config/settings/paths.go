@@ -41,9 +41,3 @@ func (defaultFileStore) WritePrivateFile(path string, body []byte) error {
 func (defaultFileStore) EnsurePrivateFile(path string, body []byte) error {
 	return filesecret.EnsurePrivateFile(path, body, paths.PrivateFileMode)
 }
-
-// EnsureDefaultConfigFile 在配置首次缺失时生成由 schema 元数据驱动的精简基线文件。
-// 高级设置仍需由用户显式写入，已有文件绝不覆盖。
-func EnsureDefaultConfigFile() error {
-	return DefaultStore().EnsureDefaultConfigFile()
-}

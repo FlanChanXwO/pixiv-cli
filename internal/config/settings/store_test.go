@@ -52,7 +52,7 @@ func TestStoreUsesInjectedFilePortForPathReadWriteAndInitialization(t *testing.T
 
 	mutation, err := store.Set("output_json", "true")
 	require.NoError(t, err)
-	require.Equal(t, "output_json", mutation.Alias)
+	require.Equal(t, config.KeyOutputJSON, mutation.Alias)
 	value, err := store.Get("output_json")
 	require.NoError(t, err)
 	require.Equal(t, true, value.Value)
@@ -108,18 +108,18 @@ func TestStoreCurrentReturnsFreshImmutableSnapshots(t *testing.T) {
 
 	first, err := store.Current()
 	require.NoError(t, err)
-	firstValue, err := first.Effective("download_path")
+	firstValue, err := first.Effective(config.KeyDownloadPath)
 	require.NoError(t, err)
 	require.Equal(t, "./first", firstValue.Value)
 
 	files.files[path] = []byte("[download]\npath = \"./second\"\n")
 	second, err := store.Current()
 	require.NoError(t, err)
-	secondValue, err := second.Effective("download_path")
+	secondValue, err := second.Effective(config.KeyDownloadPath)
 	require.NoError(t, err)
 	require.Equal(t, "./second", secondValue.Value)
 
-	firstValue, err = first.Effective("download_path")
+	firstValue, err = first.Effective(config.KeyDownloadPath)
 	require.NoError(t, err)
 	require.Equal(t, "./first", firstValue.Value)
 
@@ -127,12 +127,12 @@ func TestStoreCurrentReturnsFreshImmutableSnapshots(t *testing.T) {
 	envFirst, err := store.Current()
 	require.NoError(t, err)
 	t.Setenv("DOWNLOAD_PATH", "./environment-second")
-	envFirstValue, err := envFirst.Effective("download_path")
+	envFirstValue, err := envFirst.Effective(config.KeyDownloadPath)
 	require.NoError(t, err)
 	require.Equal(t, "./environment-first", envFirstValue.Value)
 	envSecond, err := store.Current()
 	require.NoError(t, err)
-	envSecondValue, err := envSecond.Effective("download_path")
+	envSecondValue, err := envSecond.Effective(config.KeyDownloadPath)
 	require.NoError(t, err)
 	require.Equal(t, "./environment-second", envSecondValue.Value)
 }
@@ -152,14 +152,13 @@ proxy_url = "http://p"
 url = "http://solver"
 `), 0o600))
 
-	// Writing is not blocked by the tombstone, otherwise the file could not be fixed.
-	require.NoError(t, config.SetConfigValue(path, "download_path", mustParseValue(t, "./x")))
-
-	removed, err := config.UnsetConfigValue(path, "web_fallback_enabled")
+	store := config.Store{Files: diskFileStore{path: path}}
+	_, err := store.Set(config.KeyDownloadPath, "./x")
 	require.NoError(t, err)
-	require.True(t, removed)
+	_, err = store.Unset(config.Key("web_fallback_enabled"))
+	require.Error(t, err, "a retired key is no longer a config alias")
 
-	state, err := config.LoadSnapshotAt(path)
+	state, err := currentSnapshot(path)
 	require.NoError(t, err)
 	runtime, err := state.Runtime()
 	require.NoError(t, err)
@@ -177,6 +176,11 @@ func mustParseValue(t *testing.T, raw string) parser.Value {
 }
 
 // diskFileStore backs tests that need a real file for auth and document checks.
+// currentSnapshot loads through the only public read entry point.
+func currentSnapshot(path string) (config.Snapshot, error) {
+	return (config.Store{Files: diskFileStore{path: path}}).Current()
+}
+
 type diskFileStore struct{ path string }
 
 func (s diskFileStore) Path() (string, error) { return s.path, nil }

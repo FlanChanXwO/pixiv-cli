@@ -10,22 +10,8 @@ import (
 	"github.com/pelletier/go-toml/v2"
 )
 
-func LoadSnapshot() (Snapshot, error) {
-	store := defaultFileStore{}
-	path, err := store.Path()
-	if err != nil {
-		return Snapshot{}, err
-	}
-	return LoadSnapshotAtWithFileStore(path, store)
-}
-
-// LoadSnapshotAt 从明确给定的路径加载配置。SDK 需要它避免改动
-// 包级测试路径或依赖调用进程的隐式当前配置位置。
-func LoadSnapshotAt(path string) (Snapshot, error) {
-	return LoadSnapshotAtWithFileStore(path, defaultFileStore{})
-}
-
-// LoadSnapshotAtWithFileStore 从明确路径与注入的文件端口生成一次不可变快照。
+// loadSnapshotAt 从明确路径与文件端口生成一次不可变快照。只有 Store 方法
+// 对外提供读取入口；测试直接构造 Store{Files: ...}。
 //
 // 配置绑定整体分四个阶段，本函数只负责**阶段 1**：
 //
@@ -37,7 +23,7 @@ func LoadSnapshotAt(path string) (Snapshot, error) {
 //
 // 阶段 1 的具体含义：文件内容在此一次性解析为嵌套表，环境变量在此一次性捕获；
 // 之后无论 Effective 被调用多少次，同一快照都看到同一份输入。
-func LoadSnapshotAtWithFileStore(path string, store FileStore) (Snapshot, error) {
+func loadSnapshotAt(path string, store FileStore) (Snapshot, error) {
 	store, err := requireFileStore(store)
 	if err != nil {
 		return Snapshot{}, err
@@ -53,10 +39,10 @@ func LoadSnapshotAtWithFileStore(path string, store FileStore) (Snapshot, error)
 
 // captureEnvironment 固定一次 snapshot 的环境 precedence。若 Effective 每次重新
 // 读取 os.Environ，命令运行中修改环境会让同一个 snapshot 产生不同结果。
-func captureEnvironment() map[string]snapshotEnvValue {
-	values := make(map[string]snapshotEnvValue)
+func captureEnvironment() map[Key]snapshotEnvValue {
+	values := make(map[Key]snapshotEnvValue)
 	for _, entry := range mustSettingSpecs() {
-		if raw, present := EnvValue(entry.spec); present {
+		if raw, present := envValue(entry.spec); present {
 			values[entry.spec.Alias] = snapshotEnvValue{value: raw, present: true}
 		}
 	}
@@ -107,27 +93,19 @@ func lookup(table map[string]any, path []string) (any, bool) {
 //     都与"缺失"区分开，并且一旦某层命中就不再回退到更低优先级。
 //   - 全部未命中时返回 Source="unset"、HasValue=false，调用方据此区分
 //     "没有配置"与"配置成了零值"。
-//   - 退役键（spec.Removed）仅在**显式出现**于文件时报 removed_setting；缺失时静默
-//     返回 unset，因此 config unset 仍能清理它。
 //
 // 这是绑定四阶段中的**阶段 2**（按存在性选择来源）；类型解析与领域校验由
 // coerceSettingValue（阶段 3）负责，本函数不回写任何文件（阶段 4）。
-func (s Snapshot) Effective(alias string) (SettingValue, error) {
-	spec, ok := SettingSpecByAlias(alias)
+func (s Snapshot) Effective(key Key) (SettingValue, error) {
+	spec, ok := SettingSpecByAlias(key)
 	if !ok {
-		return SettingValue{}, fmt.Errorf("unknown config key %q", alias)
+		return SettingValue{}, fmt.Errorf("unknown config key %q", key)
 	}
 	return s.effectiveSpec(spec)
 }
 
 // effectiveSpec 让绑定器与公开别名读取共享同一来源选择，不再查询另一份声明。
 func (s Snapshot) effectiveSpec(spec SettingSpec) (SettingValue, error) {
-	if spec.Removed {
-		if _, present := s.fileValue(spec); present {
-			return SettingValue{}, RemovedSettingError(spec.Alias)
-		}
-		return SettingValue{Source: "unset"}, nil
-	}
 	// 阶段 2：env 优先。存在即为命中（即使值为空），不回退到 file。
 	if raw, ok := s.env[spec.Alias]; ok && raw.present {
 		return coerceSettingValue(spec, raw.value, "env")
@@ -146,32 +124,16 @@ func (s Snapshot) effectiveSpec(spec SettingSpec) (SettingValue, error) {
 func (s Snapshot) Runtime() (RuntimeConfig, error) {
 	var cfg RuntimeConfig
 	target := reflect.ValueOf(&cfg).Elem()
-	// 退役的 Gallery 调优键原本最先绑定；残留时同样最先报告迁移墓碑。
-	for _, alias := range []string{"mcp_gallery_cache_ttl", "mcp_gallery_concurrency"} {
-		if _, err := s.Effective(alias); err != nil {
-			return RuntimeConfig{}, err
-		}
-	}
 	// 字段声明顺序保留历史普通配置错误优先级；账号池由领域读取处理严格类型。
 	entries := make([]settingSpecFromTags, 0, len(mustSettingSpecs()))
 	for _, entry := range mustSettingSpecs() {
-		if entry.spec.Removed || len(entry.fieldIndex) == 0 {
+		if len(entry.fieldIndex) == 0 {
 			continue
 		}
 		if target.Type().Field(entry.fieldIndex[0]).Type == reflect.TypeOf(AccountPoolConfig{}) {
 			continue
 		}
 		entries = append(entries, entry)
-		// 此迁移墓碑历史上位于 output_json 与后续配置校验之间，不能提前到 Snapshot 加载。
-		if entry.spec.Alias == "output_json" {
-			if err := s.bindDeclared(target, entries); err != nil {
-				return RuntimeConfig{}, err
-			}
-			if _, err := s.Effective("web_fallback_enabled"); err != nil {
-				return RuntimeConfig{}, err
-			}
-			entries = entries[:0]
-		}
 	}
 	if err := s.bindDeclared(target, entries); err != nil {
 		return RuntimeConfig{}, err
@@ -208,7 +170,7 @@ func (s Snapshot) Runtime() (RuntimeConfig, error) {
 // 私有高级叶子和可选指针组仍由领域读取决定存在性及启用条件。
 func (s Snapshot) bindDeclared(target reflect.Value, entries []settingSpecFromTags) error {
 	for _, entry := range entries {
-		if entry.spec.Removed || entry.spec.Alias == "" {
+		if entry.spec.Alias == "" {
 			continue
 		}
 		field, err := target.FieldByIndexErr(entry.fieldIndex)
@@ -269,7 +231,7 @@ func (s Snapshot) optionalString(spec SettingSpec) (OptionalString, error) {
 	}
 	value, ok := raw.(string)
 	if !ok {
-		return OptionalString{}, fmt.Errorf("%s must be a string", spec.KoanfKey)
+		return OptionalString{}, fmt.Errorf("%s must be a string", spec.TOMLPath)
 	}
 	return OptionalString{Present: true, Value: value}, nil
 }
@@ -292,7 +254,7 @@ func (s Snapshot) flareSolverrAt(group string) (*FlareSolverrConfig, error) {
 		return nil, nil
 	}
 	if !urlValue.Present || strings.TrimSpace(urlValue.Value) == "" {
-		return nil, fmt.Errorf("%s must be set when %s is configured", urlSpec.KoanfKey, strings.Join(urlSpec.Table, "."))
+		return nil, fmt.Errorf("%s must be set when %s is configured", urlSpec.TOMLPath, strings.Join(urlSpec.Table, "."))
 	}
 	return &FlareSolverrConfig{URL: urlValue.Value, ProxyURL: proxyValue.Value}, nil
 }
@@ -302,27 +264,24 @@ func (s Snapshot) accountPool() (AccountPoolConfig, error) {
 	strategySpec := runtimeFieldSpec("AccountPool", "Strategy")
 	// 路径与默认值来自字段声明；文件值仍走严格 bool/string 与枚举校验。
 	pool := AccountPoolConfig{Enabled: enabledSpec.Default.(bool), Strategy: AccountPoolStrategy(strategySpec.Default.(string))}
-	if _, err := s.Effective("account_pool_accounts"); err != nil {
-		return AccountPoolConfig{}, err
-	}
 	if raw, present := s.fileValue(enabledSpec); present {
 		enabled, ok := raw.(bool)
 		if !ok {
-			return AccountPoolConfig{}, fmt.Errorf("%s must be a boolean", enabledSpec.KoanfKey)
+			return AccountPoolConfig{}, fmt.Errorf("%s must be a boolean", enabledSpec.TOMLPath)
 		}
 		pool.Enabled = enabled
 	}
 	if raw, present := s.fileValue(strategySpec); present {
 		value, ok := raw.(string)
 		if !ok {
-			return AccountPoolConfig{}, fmt.Errorf("%s must be one of: round_robin, random", strategySpec.KoanfKey)
+			return AccountPoolConfig{}, fmt.Errorf("%s must be one of: round_robin, random", strategySpec.TOMLPath)
 		}
 		pool.Strategy = AccountPoolStrategy(strings.TrimSpace(value))
 	}
 	switch pool.Strategy {
 	case AccountPoolStrategyRoundRobin, AccountPoolStrategyRandom:
 	default:
-		return AccountPoolConfig{}, fmt.Errorf("%s must be one of: round_robin, random", strategySpec.KoanfKey)
+		return AccountPoolConfig{}, fmt.Errorf("%s must be one of: round_robin, random", strategySpec.TOMLPath)
 	}
 	return pool, nil
 }

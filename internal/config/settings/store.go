@@ -23,11 +23,11 @@ func (s Store) Current() (Snapshot, error) {
 	if err != nil {
 		return Snapshot{}, err
 	}
-	return LoadSnapshotAtWithFileStore(path, files)
+	return loadSnapshotAt(path, files)
 }
 
 type ConfigMutationResult struct {
-	Alias       string
+	Alias       Key
 	EnvOverride string
 	HasOverride bool
 }
@@ -67,7 +67,7 @@ func (s Store) EnsureDefaultConfigFile() error {
 	return files.EnsurePrivateFile(path, body)
 }
 
-func (s Store) Get(alias string) (SettingValue, error) {
+func (s Store) Get(key Key) (SettingValue, error) {
 	files, err := s.fileStore()
 	if err != nil {
 		return SettingValue{}, err
@@ -76,27 +76,27 @@ func (s Store) Get(alias string) (SettingValue, error) {
 	if err != nil {
 		return SettingValue{}, err
 	}
-	settings, err := LoadSnapshotAtWithFileStore(path, files)
+	settings, err := loadSnapshotAt(path, files)
 	if err != nil {
 		return SettingValue{}, err
 	}
-	value, err := settings.Effective(alias)
+	value, err := settings.Effective(key)
 	if err != nil {
-		return SettingValue{}, fmt.Errorf("%w. valid keys: %s", err, strings.Join(ValidSettingAliases(), ", "))
+		return SettingValue{}, fmt.Errorf("%w. valid keys: %s", err, strings.Join(aliasText(ValidSettingAliases()), ", "))
 	}
 	return value, nil
 }
 
-func (s Store) Set(alias, raw string) (ConfigMutationResult, error) {
+func (s Store) Set(key Key, raw string) (ConfigMutationResult, error) {
 	files, err := s.fileStore()
 	if err != nil {
 		return ConfigMutationResult{}, err
 	}
-	spec, ok := SettingSpecByAlias(alias)
+	spec, ok := SettingSpecByAlias(key)
 	if !ok {
-		return ConfigMutationResult{}, fmt.Errorf("unknown config key %q. valid keys: %s", alias, strings.Join(ValidSettingAliases(), ", "))
+		return ConfigMutationResult{}, fmt.Errorf("unknown config key %q. valid keys: %s", key, strings.Join(aliasText(ValidSettingAliases()), ", "))
 	}
-	_, value, err := ParseSettingInput(alias, raw)
+	_, value, err := ParseSettingInput(key, raw)
 	if err != nil {
 		return ConfigMutationResult{}, err
 	}
@@ -104,35 +104,44 @@ func (s Store) Set(alias, raw string) (ConfigMutationResult, error) {
 	if err != nil {
 		return ConfigMutationResult{}, err
 	}
-	if err := SetConfigValueWithFileStore(path, alias, value, files); err != nil {
+	if err := setConfigValue(path, key, value, files); err != nil {
 		return ConfigMutationResult{}, err
 	}
-	envRaw, hasOverride := EnvValue(spec)
+	envRaw, hasOverride := envValue(spec)
 	if spec.Sensitive {
 		envRaw = ""
 	}
-	return ConfigMutationResult{Alias: alias, EnvOverride: envRaw, HasOverride: hasOverride}, nil
+	return ConfigMutationResult{Alias: key, EnvOverride: envRaw, HasOverride: hasOverride}, nil
 }
 
-func (s Store) Unset(alias string) (ConfigMutationResult, error) {
+func (s Store) Unset(key Key) (ConfigMutationResult, error) {
 	files, err := s.fileStore()
 	if err != nil {
 		return ConfigMutationResult{}, err
 	}
-	spec, ok := SettingSpecByAlias(alias)
+	spec, ok := SettingSpecByAlias(key)
 	if !ok {
-		return ConfigMutationResult{}, fmt.Errorf("unknown config key %q. valid keys: %s", alias, strings.Join(ValidSettingAliases(), ", "))
+		return ConfigMutationResult{}, fmt.Errorf("unknown config key %q. valid keys: %s", key, strings.Join(aliasText(ValidSettingAliases()), ", "))
 	}
 	path, err := s.Path()
 	if err != nil {
 		return ConfigMutationResult{}, err
 	}
-	if _, err := UnsetConfigValueWithFileStore(path, alias, files); err != nil {
+	if _, err := unsetConfigValue(path, key, files); err != nil {
 		return ConfigMutationResult{}, err
 	}
-	envRaw, hasOverride := EnvValue(spec)
+	envRaw, hasOverride := envValue(spec)
 	if spec.Sensitive {
 		envRaw = ""
 	}
-	return ConfigMutationResult{Alias: alias, EnvOverride: envRaw, HasOverride: hasOverride}, nil
+	return ConfigMutationResult{Alias: key, EnvOverride: envRaw, HasOverride: hasOverride}, nil
+}
+
+// aliasText 把 Key 列表转为可拼接的用户可见文本。
+func aliasText(keys []Key) []string {
+	text := make([]string, len(keys))
+	for index, key := range keys {
+		text[index] = string(key)
+	}
+	return text
 }

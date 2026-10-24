@@ -125,7 +125,7 @@ func openPixivLiveSession(t *testing.T, ctx context.Context, mutationAccountID i
 	if err != nil {
 		t.Fatalf("list local pixiv accounts: %v", err)
 	}
-	defaultID, hasDefault, err := config.ReadPixivDefaultUserID()
+	defaultID, hasDefault, err := config.DefaultStore().ReadPixivDefaultUserID()
 	if err != nil {
 		t.Fatalf("read pixiv default account: %v", err)
 	}

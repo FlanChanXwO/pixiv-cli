@@ -12,8 +12,8 @@ const (
 )
 
 type SettingSpec struct {
-	Alias    string
-	KoanfKey string
+	Alias    Key
+	TOMLPath string
 	Table    []string
 	Key      string
 	Kind     settingKind
@@ -26,9 +26,6 @@ type SettingSpec struct {
 	DefaultInFile bool
 	// CLIManaged 表示该键是否由 pixiv config get/set/unset 暴露。
 	CLIManaged bool
-	// Removed 表示该键已随版本删除，只保留迁移墓碑。旧配置仍显式包含它时返回
-	// removed_setting；pixiv config unset 允许用户清理。墓碑不得驱动运行时分支。
-	Removed bool
 }
 
 type SettingValue struct {
@@ -40,7 +37,7 @@ type SettingValue struct {
 
 type Snapshot struct {
 	file map[string]any
-	env  map[string]snapshotEnvValue
+	env  map[Key]snapshotEnvValue
 }
 
 type snapshotEnvValue struct {
@@ -68,8 +65,8 @@ type RuntimeConfig struct {
 	RequestInterval time.Duration `config:"network.request_interval" alias:"request_interval" env:"PIXIV_REQUEST_INTERVAL" default:"0s" cli:"true"`
 
 	// LogLevel 与 LogFormat 具有默认值并进入精简配置。
-	LogLevel  string `config:"logging.level" alias:"log_level" env:"PIXIV_LOG_LEVEL" default:"info" cli:"true" example:"true"`
-	LogFormat string `config:"logging.format" alias:"log_format" env:"PIXIV_LOG_FORMAT" default:"text" cli:"true" example:"true"`
+	LogLevel  LogLevel  `config:"logging.level" alias:"log_level" env:"PIXIV_LOG_LEVEL" default:"info" cli:"true" example:"true"`
+	LogFormat LogFormat `config:"logging.format" alias:"log_format" env:"PIXIV_LOG_FORMAT" default:"text" cli:"true" example:"true"`
 
 	// PixivNetwork / FanboxNetwork / ReverseSearchNetwork 以及两个 FlareSolverr 组
 	// 是高级可选配置，只在用户显式写入 TOML 表时生效，且不经过扁平 config set。
@@ -136,6 +133,22 @@ type FlareSolverrConfig struct {
 	URL      string `config:"url" json:"url"`
 	ProxyURL string `config:"proxy_url" json:"proxy_url,omitempty"`
 }
+
+// LogLevel 是日志级别配置的取值。
+type LogLevel string
+
+const (
+	LogLevelInfo  LogLevel = "info"
+	LogLevelDebug LogLevel = "debug"
+)
+
+// LogFormat 是诊断输出格式配置的取值。
+type LogFormat string
+
+const (
+	LogFormatText LogFormat = "text"
+	LogFormatJSON LogFormat = "json"
+)
 
 type AccountPoolStrategy string
 

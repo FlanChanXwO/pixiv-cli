@@ -26,19 +26,9 @@ func defaultAccountSpec(product string) SettingSpec {
 	return declaredFieldSpec(reflect.TypeOf(defaultAccountSelection{}), defaultAccountSchema(), product, "UserID")
 }
 
-// ReadPixivDefaultUserID 返回 [pixiv.auth].default_user_id；未设置时 ok=false。
-func ReadPixivDefaultUserID() (userID int64, ok bool, err error) {
-	return (Store{Files: defaultFileStore{}}).ReadPixivDefaultUserID()
-}
-
 // ReadPixivDefaultUserID 从注入的配置文件端口读取默认账号 UID。
 func (s Store) ReadPixivDefaultUserID() (userID int64, ok bool, err error) {
 	return s.readDefaultUserID(defaultAccountSpec("Pixiv"))
-}
-
-// SetPixivDefaultUserID 写入 [pixiv.auth].default_user_id。
-func SetPixivDefaultUserID(userID int64) error {
-	return (Store{Files: defaultFileStore{}}).SetPixivDefaultUserID(userID)
 }
 
 // SetPixivDefaultUserID 写入注入的配置文件端口。
@@ -46,36 +36,16 @@ func (s Store) SetPixivDefaultUserID(userID int64) error {
 	return s.writeDefaultUserID(defaultAccountSpec("Pixiv"), userID)
 }
 
-// ClearPixivDefaultUserID 删除 [pixiv.auth].default_user_id，恢复首个入库账号。
-func ClearPixivDefaultUserID() error {
-	return (Store{Files: defaultFileStore{}}).ClearPixivDefaultUserID()
-}
-
 func (s Store) ClearPixivDefaultUserID() error {
 	return s.clearDefaultUserID(defaultAccountSpec("Pixiv"))
-}
-
-// ReadFanboxDefaultUserID 返回 [fanbox.auth].default_user_id；未设置时 ok=false。
-func ReadFanboxDefaultUserID() (userID int64, ok bool, err error) {
-	return (Store{Files: defaultFileStore{}}).ReadFanboxDefaultUserID()
 }
 
 func (s Store) ReadFanboxDefaultUserID() (userID int64, ok bool, err error) {
 	return s.readDefaultUserID(defaultAccountSpec("Fanbox"))
 }
 
-// SetFanboxDefaultUserID 写入 [fanbox.auth].default_user_id。
-func SetFanboxDefaultUserID(userID int64) error {
-	return (Store{Files: defaultFileStore{}}).SetFanboxDefaultUserID(userID)
-}
-
 func (s Store) SetFanboxDefaultUserID(userID int64) error {
 	return s.writeDefaultUserID(defaultAccountSpec("Fanbox"), userID)
-}
-
-// ClearFanboxDefaultUserID 删除 [fanbox.auth].default_user_id，恢复首个入库账号。
-func ClearFanboxDefaultUserID() error {
-	return (Store{Files: defaultFileStore{}}).ClearFanboxDefaultUserID()
 }
 
 func (s Store) ClearFanboxDefaultUserID() error {
@@ -91,7 +61,7 @@ func (s Store) readDefaultUserID(spec SettingSpec) (int64, bool, error) {
 	if err != nil {
 		return 0, false, err
 	}
-	state, err := LoadSnapshotAtWithFileStore(path, files)
+	state, err := loadSnapshotAt(path, files)
 	if err != nil {
 		return 0, false, err
 	}
@@ -101,7 +71,7 @@ func (s Store) readDefaultUserID(spec SettingSpec) (int64, bool, error) {
 	}
 	value, err := coercePositiveInt64(raw)
 	if err != nil {
-		return 0, false, fmt.Errorf("config: %s must be a positive integer", spec.KoanfKey)
+		return 0, false, fmt.Errorf("config: %s must be a positive integer", spec.TOMLPath)
 	}
 	return value, true, nil
 }
