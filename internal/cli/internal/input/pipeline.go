@@ -10,7 +10,6 @@ import (
 	"io"
 	"os"
 	"strconv"
-	"strings"
 	"sync"
 
 	"github.com/spf13/cobra"
@@ -256,24 +255,6 @@ func ModeOf(command *cobra.Command) Mode {
 		}
 	}
 	return TextMode
-}
-
-// CodecOf reports the explicit codec annotation attached by Bind.
-func CodecOf(command *cobra.Command) Codec {
-	if command == nil || command.Annotations == nil {
-		return NoInput
-	}
-	value := command.Annotations[AnnotationKey]
-	codec, _, ok := strings.Cut(value, ":")
-	if !ok {
-		codec = value
-	}
-	switch Codec(codec) {
-	case TextValue, TextOrRecord:
-		return Codec(codec)
-	default:
-		return NoInput
-	}
 }
 
 // IsTTY recognizes only an actual terminal file. In-memory and pipe readers
