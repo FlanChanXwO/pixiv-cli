@@ -64,6 +64,18 @@ func validBundleJSON() string {
 	return `{"schema":"pixiv-cli.auth-export","version":1,"default_user_id":42,"accounts":[{"user_id":42,"username":"alice","refresh_token":"t42"},{"user_id":7,"username":"bob","refresh_token":"t7"}]}`
 }
 
+// The published auth list JSON contract keeps an empty store as a null
+// account slice; the DTO merge previously preserved this by converting the
+// empty slice back to nil.
+func TestListEmptyAccountsKeepsNullJSONArray(t *testing.T) {
+	service := newStubService(&stubAccountPort{})
+	result, err := service.listWithContext(context.Background())
+	require.NoError(t, err)
+	body, err := json.Marshal(result)
+	require.NoError(t, err)
+	require.JSONEq(t, `{"accounts":null}`, string(body))
+}
+
 func TestImportBundleForwardsBundleDefaultFlag(t *testing.T) {
 	port := &stubAccountPort{}
 	service := newStubService(port)
