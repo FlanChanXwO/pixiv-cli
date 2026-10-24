@@ -1,3 +1,6 @@
+// Private loopback bridge endpoint shared by the CLI login process and the
+// desktop pixiv:// callback handler.
+
 package loginhelper
 
 import (
@@ -15,22 +18,18 @@ import (
 
 const callbackEndpointFilename = "url-handler-endpoint"
 
-var (
-	// ErrNoActiveLocalCallback 是持久协议 handler 在没有本轮 loopback 登录时的
-	// 正常状态；调用方可继续尝试已配置的远程 relay。
-	ErrNoActiveLocalCallback = errors.New("Pixiv login callback is no longer active")
-	ErrNoConfiguredRelay     = errors.New("Pixiv remote login relay is not configured")
-	ErrIncompleteRelayConfig = errors.New("remote login relay configuration is incomplete")
-)
+// errNoActiveLocalCallback 是持久协议 handler 在没有本轮 loopback 登录时的
+// 正常状态；调用方可继续尝试已配置的远程 relay。
+var errNoActiveLocalCallback = errors.New("Pixiv login callback is no longer active")
 
 // CallbackCommand 是 desktop protocol handler 调回当前 CLI binary 的隐藏入口名。
 // 它只由本包生成的系统关联使用，不是公开 CLI 命令。
 const CallbackCommand = "_callback"
 
-// CallbackEndpointPath 是系统协议 handler 与当前登录进程之间唯一共享的私有状态
+// callbackEndpointPath 是系统协议 handler 与当前登录进程之间唯一共享的私有状态
 // 路径。文件只保存 loopback bridge 地址，永远不保存 authorization code 或 refresh
 // token。
-func CallbackEndpointPath() (string, error) {
+func callbackEndpointPath() (string, error) {
 	dir, err := paths.UserDataSubdir(paths.AppDataDirName)
 	if err != nil {
 		return "", err
@@ -38,14 +37,14 @@ func CallbackEndpointPath() (string, error) {
 	return filepath.Join(dir, callbackEndpointFilename), nil
 }
 
-// WriteCallbackEndpoint 把本次登录的 loopback bridge 地址写入私有 endpoint 文件，
+// writeCallbackEndpoint 把本次登录的 loopback bridge 地址写入私有 endpoint 文件，
 // 并返回写入的路径。
-func WriteCallbackEndpoint(callbackRelayURL string) (string, error) {
+func writeCallbackEndpoint(callbackRelayURL string) (string, error) {
 	endpoint, err := validatedCallbackEndpoint(callbackRelayURL)
 	if err != nil {
 		return "", err
 	}
-	path, err := CallbackEndpointPath()
+	path, err := callbackEndpointPath()
 	if err != nil {
 		return "", err
 	}
@@ -55,20 +54,20 @@ func WriteCallbackEndpoint(callbackRelayURL string) (string, error) {
 	return path, nil
 }
 
-// CallbackRelayURL 将系统交给 handler 的 pixiv:// URL 放入 bridge fragment。
-// fragment 不会进入 loopback GET 或浏览器历史；bridge 页面会在 POST ��清除它。
-func CallbackRelayURL(callbackURL string) (string, error) {
+// callbackRelayURL 将系统交给 handler 的 pixiv:// URL 放入 bridge fragment。
+// fragment 不会进入 loopback GET 或浏览器历史；bridge 页面会在 POST 前清除它。
+func callbackRelayURL(callbackURL string) (string, error) {
 	if !loginrelay.IsAllowedPixivCallbackURL(callbackURL) {
 		return "", errors.New("invalid Pixiv callback URL")
 	}
-	path, err := CallbackEndpointPath()
+	path, err := callbackEndpointPath()
 	if err != nil {
 		return "", err
 	}
 	body, err := os.ReadFile(path)
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
-			return "", ErrNoActiveLocalCallback
+			return "", errNoActiveLocalCallback
 		}
 		return "", errors.New("could not read Pixiv login callback endpoint")
 	}

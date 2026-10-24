@@ -1,5 +1,8 @@
 //go:build darwin
 
+// macOS pixiv:// helper installation, LaunchServices registration, and
+// delegation to the previously registered bundle.
+
 package loginhelper
 
 import (
@@ -16,59 +19,69 @@ import (
 	filesecret "github.com/FlanChanXwO/pixiv-cli/internal/storage/secretfile"
 )
 
-// PixivURLHandlerBundleID 是 pixiv:// helper 在 macOS 上注册的 bundle identifier。
-const PixivURLHandlerBundleID = "com.flanchan.pixiv-cli.url-handler"
+// pixivURLHandlerBundleID 是 pixiv:// helper 在 macOS 上注册的 bundle identifier。
+const pixivURLHandlerBundleID = "com.flanchan.pixiv-cli.url-handler"
 
-// PixivURLHandlerSourceVersion 变更时强制重编译已安装的 helper，确保修复能覆盖旧 bundle。
-const PixivURLHandlerSourceVersion = "6"
+// pixivURLHandlerSourceVersion 变更时强制重编译已安装的 helper，确保修复能覆盖旧 bundle。
+const pixivURLHandlerSourceVersion = "7"
 
-var (
-	queryDarwinURLSchemeHandler = defaultURLSchemeHandler
-	setDarwinURLSchemeHandler   = setDefaultURLSchemeHandler
-)
-
-// SetQueryDarwinURLSchemeHandler 覆盖默认 macOS URL scheme 查询实现；返回恢复函数。
-func SetQueryDarwinURLSchemeHandler(query func(context.Context, string) (string, error)) func() {
-	original := queryDarwinURLSchemeHandler
-	queryDarwinURLSchemeHandler = query
-	return func() { queryDarwinURLSchemeHandler = original }
+// urlHandlerInstaller owns the macOS LaunchServices and helper-compilation
+// boundaries. Production code uses newURLHandlerInstaller; tests construct it with
+// recording implementations.
+type urlHandlerInstaller struct {
+	executable   func() (string, error)
+	homeDir      func() (string, error)
+	lookPath     func(string) (string, error)
+	queryScheme  func(context.Context, string) (string, error)
+	setScheme    func(context.Context, string, string) error
+	compile      func(context.Context, string, string) ([]byte, error)
+	registerApp  func(context.Context, string) error
+	openPrevious func(context.Context, string, string) error
 }
 
-// SetSetDarwinURLSchemeHandler 覆盖默认 macOS URL scheme 关联写入实现；返回恢复函数。
-func SetSetDarwinURLSchemeHandler(set func(context.Context, string, string) error) func() {
-	original := setDarwinURLSchemeHandler
-	setDarwinURLSchemeHandler = set
-	return func() { setDarwinURLSchemeHandler = original }
+func newURLHandlerInstaller() urlHandlerInstaller {
+	return urlHandlerInstaller{
+		executable:  os.Executable,
+		homeDir:     os.UserHomeDir,
+		lookPath:    exec.LookPath,
+		queryScheme: defaultURLSchemeHandler,
+		setScheme:   setDefaultURLSchemeHandler,
+		compile:     compilePixivURLHandler,
+		registerApp: registerURLHandlerApp,
+		openPrevious: func(ctx context.Context, bundleID, rawURL string) error {
+			return exec.CommandContext(ctx, "open", "-b", bundleID, rawURL).Run()
+		},
+	}
 }
 
-// EnsurePersistent 注册按需启动的 macOS pixiv:// helper。manifest 只保存旧
+// ensurePersistent 注册按需启动的 macOS pixiv:// helper。manifest 只保存旧
 // bundle identifier 与当前二进制路径，绝不保存 remote relay secret。
-func EnsurePersistent(ctx context.Context) error {
-	executablePath, err := os.Executable()
+func (i urlHandlerInstaller) ensurePersistent(ctx context.Context) error {
+	executablePath, err := i.executable()
 	if err != nil {
 		return err
 	}
-	homeDirectory, err := os.UserHomeDir()
+	homeDirectory, err := i.homeDir()
 	if err != nil {
 		return err
 	}
-	appPath, err := PixivURLHandlerAppPath()
+	appPath, err := pixivURLHandlerAppPath()
 	if err != nil {
 		return err
 	}
-	if err := EnsurePixivURLHandlerApp(ctx, appPath); err != nil {
+	if err := i.ensureApp(ctx, appPath); err != nil {
 		return err
 	}
-	manifest, exists, err := LoadHandlerManifest()
+	manifest, exists, err := loadHandlerManifest()
 	if err != nil {
 		return err
 	}
 	if !exists {
-		previous, err := queryDarwinURLSchemeHandler(ctx, "pixiv")
+		previous, err := i.queryScheme(ctx, "pixiv")
 		if err != nil {
 			return err
 		}
-		manifest = HandlerManifest{Version: 1, ExecutablePath: executablePath, PreviousHandler: previous}
+		manifest = handlerManifest{Version: 1, ExecutablePath: executablePath, PreviousHandler: previous}
 	} else {
 		// upgrade 或二进制路径变化时只刷新启动目标，保留初次接管时的旧 handler。
 		manifest.ExecutablePath = executablePath
@@ -76,83 +89,58 @@ func EnsurePersistent(ctx context.Context) error {
 	manifest.HomeDirectory = homeDirectory
 	// LaunchServices 启动的 app 不会继承调用 CLI 的 HOME。将非敏感启动
 	// manifest 写入已注册的 bundle，确保隔离 HOME 仍可把 callback 交给对应
-	// 的 CLI；用户目录中的副本仍保留作旧 helper 的兼容回退。
-	if err := SaveHandlerBundleManifest(appPath, manifest); err != nil {
+	// 的 CLI。
+	if err := saveHandlerBundleManifest(appPath, manifest); err != nil {
 		return err
 	}
-	if err := registerURLHandlerApp(ctx, appPath); err != nil {
+	if err := i.registerApp(ctx, appPath); err != nil {
 		return err
 	}
-	if err := setDarwinURLSchemeHandler(ctx, "pixiv", PixivURLHandlerBundleID); err != nil {
+	if err := i.setScheme(ctx, "pixiv", pixivURLHandlerBundleID); err != nil {
 		return err
 	}
-	if err := SaveHandlerManifest(manifest); err != nil {
+	if err := saveHandlerManifest(manifest); err != nil {
 		// manifest 写入失败时尽力恢复，避免留下无法由 pixiv-cli 清理的默认关联。
-		if manifest.PreviousHandler != "" && manifest.PreviousHandler != PixivURLHandlerBundleID {
-			_ = setDarwinURLSchemeHandler(context.Background(), "pixiv", manifest.PreviousHandler)
+		if manifest.PreviousHandler != "" && manifest.PreviousHandler != pixivURLHandlerBundleID {
+			_ = i.setScheme(context.Background(), "pixiv", manifest.PreviousHandler)
 		}
 		return err
 	}
 	return nil
 }
 
-// DisablePersistent 仅当 pixiv-cli 仍是默认 handler 时才恢复用户之前的选择。
-// 如果用户后来自行选择了其他应用，绝不能覆盖该新选择。
-func DisablePersistent(ctx context.Context) error {
-	manifest, exists, err := LoadHandlerManifest()
-	if err != nil || !exists {
-		return err
-	}
-	current, err := queryDarwinURLSchemeHandler(ctx, "pixiv")
-	if err != nil {
-		return err
-	}
-	if current == PixivURLHandlerBundleID {
-		if manifest.PreviousHandler == "" || manifest.PreviousHandler == PixivURLHandlerBundleID {
-			// LaunchServices 没有稳定、受支持的“清空 scheme 默认 handler”操作。
-			// 没有旧 handler 时宁可保留 manifest 让用户先在系统 UI 选择目标，也
-			// 不能删掉恢复信息后把 pixiv-cli 静默留为默认应用。
-			return errors.New("cannot safely restore a previous macOS Pixiv URL handler")
-		}
-		if err := setDarwinURLSchemeHandler(ctx, "pixiv", manifest.PreviousHandler); err != nil {
-			return err
-		}
-	}
-	return RemoveHandlerManifest()
-}
-
-// DelegateToPrevious 精确定向启动此前记录的 macOS bundle。它不通过 shell
+// delegateToPrevious 精确定向启动此前记录的 macOS bundle。它不通过 shell
 // 拼接 URL；无旧 handler 时向系统调用方返回真实错误。
-func DelegateToPrevious(ctx context.Context, rawURL string) error {
-	manifest, exists, err := LoadHandlerManifest()
+func (i urlHandlerInstaller) delegateToPrevious(ctx context.Context, rawURL string) error {
+	manifest, exists, err := loadHandlerManifest()
 	if err != nil {
 		return err
 	}
-	if !exists || manifest.PreviousHandler == "" || manifest.PreviousHandler == PixivURLHandlerBundleID {
+	if !exists || manifest.PreviousHandler == "" || manifest.PreviousHandler == pixivURLHandlerBundleID {
 		return errors.New("no previous Pixiv URL handler is available")
 	}
-	if err := exec.CommandContext(ctx, "open", "-b", manifest.PreviousHandler, rawURL).Run(); err != nil {
+	if err := i.openPrevious(ctx, manifest.PreviousHandler, rawURL); err != nil {
 		return errors.New("could not open previous Pixiv URL handler")
 	}
 	return nil
 }
 
-// Install 为本次登录安装 pixiv:// 回调 helper，并返回清理函数。
-func Install(ctx context.Context, callbackRelayURL string) (func(), error) {
-	if _, err := exec.LookPath("swiftc"); err != nil {
+// install 为本次登录安装 pixiv:// 回调 helper，并返回清理函数。
+func (i urlHandlerInstaller) install(ctx context.Context, callbackRelayURL string) (func(), error) {
+	if _, err := i.lookPath("swiftc"); err != nil {
 		return nil, err
 	}
-	if _, err := exec.LookPath("swift"); err != nil {
+	if _, err := i.lookPath("swift"); err != nil {
 		return nil, err
 	}
-	appPath, err := PixivURLHandlerAppPath()
+	appPath, err := pixivURLHandlerAppPath()
 	if err != nil {
 		return nil, err
 	}
-	if err := EnsurePixivURLHandlerApp(ctx, appPath); err != nil {
+	if err := i.ensureApp(ctx, appPath); err != nil {
 		return nil, err
 	}
-	endpointPath, err := WriteCallbackEndpoint(callbackRelayURL)
+	endpointPath, err := writeCallbackEndpoint(callbackRelayURL)
 	if err != nil {
 		return nil, err
 	}
@@ -162,28 +150,28 @@ func Install(ctx context.Context, callbackRelayURL string) (func(), error) {
 			_ = os.Remove(endpointPath)
 		}
 	}()
-	previous, _ := queryDarwinURLSchemeHandler(ctx, "pixiv")
-	if err := registerURLHandlerApp(ctx, appPath); err != nil {
+	previous, _ := i.queryScheme(ctx, "pixiv")
+	if err := i.registerApp(ctx, appPath); err != nil {
 		return nil, err
 	}
-	if err := setDarwinURLSchemeHandler(ctx, "pixiv", PixivURLHandlerBundleID); err != nil {
-		if previous != "" && previous != PixivURLHandlerBundleID {
-			_ = setDarwinURLSchemeHandler(context.Background(), "pixiv", previous)
+	if err := i.setScheme(ctx, "pixiv", pixivURLHandlerBundleID); err != nil {
+		if previous != "" && previous != pixivURLHandlerBundleID {
+			_ = i.setScheme(context.Background(), "pixiv", previous)
 		}
 		return nil, err
 	}
 	installed = true
 	cleanup := func() {
 		_ = os.Remove(endpointPath)
-		if previous != "" && previous != PixivURLHandlerBundleID {
-			_ = setDarwinURLSchemeHandler(context.Background(), "pixiv", previous)
+		if previous != "" && previous != pixivURLHandlerBundleID {
+			_ = i.setScheme(context.Background(), "pixiv", previous)
 		}
 	}
 	return cleanup, nil
 }
 
-// PixivURLHandlerAppPath 返回当前用户私有 app 数据目录下 helper app 的位置。
-func PixivURLHandlerAppPath() (string, error) {
+// pixivURLHandlerAppPath 返回当前用户私有 app 数据目录下 helper app 的位置。
+func pixivURLHandlerAppPath() (string, error) {
 	appDataDir, err := paths.UserDataSubdir(paths.AppDataDirName)
 	if err != nil {
 		return "", err
@@ -192,12 +180,12 @@ func PixivURLHandlerAppPath() (string, error) {
 }
 
 func handlerBundleManifestPath(appPath string) string {
-	return filepath.Join(appPath, "Contents", "Resources", HandlerManifestFilename)
+	return filepath.Join(appPath, "Contents", "Resources", handlerManifestFilename)
 }
 
-// SaveHandlerBundleManifest 保存 helper 唯一需要的启动目标。manifest 不含
+// saveHandlerBundleManifest 保存 helper 唯一需要的启动目标。manifest 不含
 // callback、token 或配对私钥，且 bundle 位于当前用户的私有应用数据目录。
-func SaveHandlerBundleManifest(appPath string, manifest HandlerManifest) error {
+func saveHandlerBundleManifest(appPath string, manifest handlerManifest) error {
 	body, err := json.Marshal(manifest)
 	if err != nil {
 		return err
@@ -205,17 +193,8 @@ func SaveHandlerBundleManifest(appPath string, manifest HandlerManifest) error {
 	return filesecret.WritePrivateFile(handlerBundleManifestPath(appPath), body, paths.PrivateFileMode)
 }
 
-// EnsurePixivURLHandlerApp 编译并安装当前用户的 macOS pixiv:// helper app。
-func EnsurePixivURLHandlerApp(ctx context.Context, appPath string) error {
-	return EnsurePixivURLHandlerAppWithCompiler(ctx, appPath, compilePixivURLHandler)
-}
-
-// PixivURLHandlerCompiler 编译嵌入式 Swift helper 并返回编译输出；测试通过它
-// 隔离 swiftc，生产路径使用 compilePixivURLHandler。
-type PixivURLHandlerCompiler func(context.Context, string, string) ([]byte, error)
-
-// EnsurePixivURLHandlerAppWithCompiler 以可注入的编译器安装 helper app。
-func EnsurePixivURLHandlerAppWithCompiler(ctx context.Context, appPath string, compile PixivURLHandlerCompiler) error {
+// ensureApp 编译并安装当前用户的 macOS pixiv:// helper app。
+func (i urlHandlerInstaller) ensureApp(ctx context.Context, appPath string) error {
 	executablePath := filepath.Join(appPath, "Contents", "MacOS", "PixivCLIURLHandler")
 	infoPath := filepath.Join(appPath, "Contents", "Info.plist")
 	versionPath := filepath.Join(appPath, "Contents", "Resources", "source-version")
@@ -243,20 +222,20 @@ func EnsurePixivURLHandlerAppWithCompiler(ctx context.Context, appPath string, c
 		_ = source.Close()
 		return err
 	}
-	if _, err := source.WriteString(PixivURLHandlerSwiftSource); err != nil {
+	if _, err := source.WriteString(pixivURLHandlerSwiftSource); err != nil {
 		_ = source.Close()
 		return err
 	}
 	if err := source.Close(); err != nil {
 		return err
 	}
-	if out, err := compile(ctx, sourcePath, executablePath); err != nil {
+	if out, err := i.compile(ctx, sourcePath, executablePath); err != nil {
 		return fmt.Errorf("compile pixiv:// callback helper: %w: %s", err, strings.TrimSpace(string(out)))
 	}
 	if err := os.WriteFile(infoPath, []byte(pixivURLHandlerInfoPlist), paths.PrivateFileMode); err != nil {
 		return err
 	}
-	if err := filesecret.WritePrivateFile(versionPath, []byte(PixivURLHandlerSourceVersion+"\n"), paths.PrivateFileMode); err != nil {
+	if err := filesecret.WritePrivateFile(versionPath, []byte(pixivURLHandlerSourceVersion+"\n"), paths.PrivateFileMode); err != nil {
 		return err
 	}
 	return nil
@@ -264,7 +243,7 @@ func EnsurePixivURLHandlerAppWithCompiler(ctx context.Context, appPath string, c
 
 func handlerSourceVersionMatches(versionPath string) bool {
 	version, err := os.ReadFile(versionPath)
-	return err == nil && strings.TrimSpace(string(version)) == PixivURLHandlerSourceVersion
+	return err == nil && strings.TrimSpace(string(version)) == pixivURLHandlerSourceVersion
 }
 
 func compilePixivURLHandler(ctx context.Context, sourcePath, executablePath string) ([]byte, error) {
@@ -307,7 +286,7 @@ const pixivURLHandlerInfoPlist = `<?xml version="1.0" encoding="UTF-8"?>
 <plist version="1.0">
 <dict>
   <key>CFBundleExecutable</key><string>PixivCLIURLHandler</string>
-  <key>CFBundleIdentifier</key><string>` + PixivURLHandlerBundleID + `</string>
+  <key>CFBundleIdentifier</key><string>` + pixivURLHandlerBundleID + `</string>
   <key>CFBundleName</key><string>PixivCLIURLHandler</string>
   <key>CFBundlePackageType</key><string>APPL</string>
   <key>LSUIElement</key><true/>
@@ -323,9 +302,9 @@ const pixivURLHandlerInfoPlist = `<?xml version="1.0" encoding="UTF-8"?>
 </plist>
 `
 
-// PixivURLHandlerSwiftSource 是随 helper app 编译的 Swift 源码。它只读取
+// pixivURLHandlerSwiftSource 是随 helper app 编译的 Swift 源码。它只读取
 // manifest 记录的 binary 路径并回调 CLI，不接触网络或任意本地文件。
-const PixivURLHandlerSwiftSource = `import Cocoa
+const pixivURLHandlerSwiftSource = `import Cocoa
 import Foundation
 
 final class AppDelegate: NSObject, NSApplicationDelegate {
@@ -364,17 +343,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 	}
 
 	private func manifestURL() -> URL? {
-		// LaunchServices 不会继承 CLI 进程的 HOME。先读随已注册 app 一同写入
-		// 的私有 manifest，使隔离 HOME 仍能回调正确 binary；旧版本只保存的
-		// 用户目录副本仍作为兼容回退。二者都不含 bearer secret。
-		if let resourceURL = Bundle.main.resourceURL {
-			let bundleManifest = resourceURL.appendingPathComponent("handler-manifest.json")
-			if FileManager.default.isReadableFile(atPath: bundleManifest.path) {
-				return bundleManifest
-			}
+		// LaunchServices 不会继承 CLI 进程的 HOME，因此只读取随已注册 app
+		// 一同写入的私有 manifest；它不含 bearer secret。
+		guard let resourceURL = Bundle.main.resourceURL else {
+			return nil
 		}
-		return URL(fileURLWithPath: NSHomeDirectory())
-			.appendingPathComponent(".pixiv-cli/url-handler/handler-manifest.json")
+		return resourceURL.appendingPathComponent("handler-manifest.json")
 	}
 }
 
@@ -384,3 +358,8 @@ app.delegate = delegate
 app.setActivationPolicy(.accessory)
 app.run()
 `
+
+// Install 为本次登录安装 pixiv:// 回调 helper，并返回清理函数。
+func Install(ctx context.Context, callbackRelayURL string) (func(), error) {
+	return newURLHandlerInstaller().install(ctx, callbackRelayURL)
+}
