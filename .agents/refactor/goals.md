@@ -51,8 +51,8 @@
 | G38 | `refactor-g38-tests-internal` | G28 | 是 |
 | G39 | `refactor-g39-audit` | G20、G28、G35、G36、G37、G38 | 是 |
 | G40 | `refactor-g40-audit-mcp` | G20、G28、G35、G36、G37、G38 | 是 |
-| G41 | `refactor-g41-audit-cli` | G20、G28、G35、G36、G37、G38、G43 | 是 |
-| G42 | `refactor-g42-audit-internal` | G20、G28、G35、G36、G37、G38 | 是 |
+| G41 | `refactor-g41-audit-cli` | G20、G28、G35、G36、G37、G38、G39、G40、G43 | 否 |
+| G42 | `refactor-g42-audit-internal` | G20、G28、G35、G36、G37、G38、G43 | 是 |
 | G43 | `refactor-g43-changelog` | 无 | 是 |
 | G34 | `refactor-g34-finish` | G29、G30、G31、G32、G33、G39、G40、G41、G42、G43 | 否 |
 
@@ -2304,7 +2304,7 @@
 - 名称：refactor-g41-audit-cli
 - 路径：/Users/flanchan/.codex/worktrees/refactor-g41-audit-cli/pixiv-cli
 - 分支：refactor/g41-audit-cli
-- 开始前用 gh 确认依赖已满足：G20、G28、G35、G36、G37、G38、G43（依赖已于 2026-10-24 调整，以本条为准）。未满足就标为阻塞并结束。
+- 开始前用 gh 确认依赖已满足：G20、G28、G35、G36、G37、G38、G39、G40、G43（依赖已于 2026-10-24 调整，以本条为准）。未满足就标为阻塞并结束。
 - 满足后执行 git fetch origin main，再用 git worktree add -b refactor/g41-audit-cli /Users/flanchan/.codex/worktrees/refactor-g41-audit-cli/pixiv-cli origin/main 创建。
 - 全部工作都在这个 worktree 中进行。goal-N/ 工作目录、临时探针和基线比对输出加入 .git/info/exclude，不提交。
 
@@ -2361,7 +2361,7 @@
 - 名称：refactor-g42-audit-internal
 - 路径：/Users/flanchan/.codex/worktrees/refactor-g42-audit-internal/pixiv-cli
 - 分支：refactor/g42-audit-internal
-- 开始前用 gh 确认依赖已满足：G20、G28、G35、G36、G37、G38（依赖已于 2026-10-24 调整，以本条为准）。未满足就标为阻塞并结束。
+- 开始前用 gh 确认依赖已满足：G20、G28、G35、G36、G37、G38、G43（依赖已于 2026-10-24 调整，以本条为准）。未满足就标为阻塞并结束。
 - 满足后执行 git fetch origin main，再用 git worktree add -b refactor/g42-audit-internal /Users/flanchan/.codex/worktrees/refactor-g42-audit-internal/pixiv-cli origin/main 创建。
 - 全部工作都在这个 worktree 中进行。goal-N/ 工作目录、临时探针和基线比对输出加入 .git/info/exclude，不提交。
 
@@ -2402,7 +2402,7 @@
 - 规则：
   - 只写用户能感知的变化，章节为“破坏性变更、新增、变更、修复、安全”，空章节不输出；删除“维护”章节。CI、测试、内部重构、PR 治理、维护者文档不写；用户文档（README、安装、使用说明）的实质变化可以写进“变更”。
   - 用用户的话写：先说用户看到什么、需要做什么，必要时再用一句话说明原因；写出具体命令、参数或 tool 名；不出现内部术语（smoke worker、handoff、check suite、可信变更分类等）。
-  - 每条保留来源 PR 链接；保留版本号、日期、compare 链接与新贡献者章节；中英文内容一致。
+  - 每条保留来源链接：PR 链接，没有 PR 的 direct commit 用 commit 链接；保留版本号、日期、compare 链接与新贡献者章节；中英文内容一致。
 - 工具：scripts/release 的 notes 校验仍要求覆盖范围内每个 PR 与 direct commit，但允许把内部改动明确标记为不进入正文（标记方式由本 goal 选择最简单的一种，例如文件末尾不渲染的 HTML 注释列出内部 PR 编号），GitHub Release 正文中不显示。
 - 重写全部历史版本：changelog/v0.1.0 到 v1.2.1 的 en.md 与 zh-CN.md、changelog/unreleased/，按新规则重写；被删除的内部条目改为标记。同步 changelog/README.md、README.zh-CN.md 与 pixiv-cli-release-notes skill 中的规则。
 - GitHub Release 页面：只运行 sync-history 的 dry-run，把将要变化的版本与差异摘要写进 PR；sync-history --apply 修改已发布的正文，需要维护者另行明确授权，本 goal 不执行。
@@ -2427,7 +2427,7 @@
 - 全部工作都在这个 worktree 中进行。goal-N/ 工作目录、临时探针和基线比对输出加入 .git/info/exclude，不提交。
 
 【提交与合并】
-按规格 7.0「每个 goal 的提交要求」执行；本 goal 可以分成两个 PR（规则与工具一个、历史重写一个），每个 PR 单独通过检查后合并：
+按规格 7.0「每个 goal 的提交要求」执行；规则、校验工具与历史重写放在同一个 PR 中合并（校验规则改变后，未重写的历史文件会通不过校验）：
 - 按逻辑单元分次提交。
 - 只修改本 goal 负责的目录。
 - 验收要点全部有证据后，跑一次第 9 节的完整检查，按 pixiv-cli-pr 写 PR 描述（包括 changelog 条目），并用 prmeta 校验，然后向 main 创建 PR。

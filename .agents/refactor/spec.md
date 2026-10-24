@@ -42,7 +42,7 @@
 | D5 | 包按职责划分，不按端点或 tool 划分；每个实体只有一种公开类型 |
 | D6 | 可选参数用 spec 结构体或方法表达，不再新增 `WithX` 一类函数变体 |
 | D7 | 上游协议实现（传输、协议约定、资源下载、OAuth）按产品放在模块级 `internal/pixivapi`、`internal/fanboxapi`。模块级 `internal/` 对模块外同样不可见；真实环境写入测试需要绕过 SDK、直接使用原始客户端做独立回读与清理，`pixivaccount` 的测试也引用协议常量，放在模块级可以让这些调用方都直接 import |
-| D8 | 拆成 34 个 goal，按依赖分四个阶段，阶段内的线路并行；每个 goal 一个命名 worktree、一个 PR，验收通过后合并进 main（见 7.0） |
+| D8 | 拆成 43 个 goal，按依赖分四个阶段，阶段内的线路并行；每个 goal 一个命名 worktree、一个 PR，验收通过后合并进 main（见 7.0） |
 | D9 | 声明按使用范围放置。包内多个文件共用的实体和常量，集中放在声明文件里；只服务一个行为的声明，和使用它的函数放在同一个文件（细则见 3.1）。名字说明职责，不用 `Deps`、`Data`、`Manager` 一类空泛名，不建依赖袋（细则见 3.1.2） |
 | D10 | 具有业务含义的标识符使用具名常量；有取值集合的标识符使用具名类型（细则见 3.2） |
 | D11 | 每个横切关注点只有一个归属层和一种传入方式；业务对象可以持有基础设施，但只能以“一个已封装好的依赖”形式持有，不自己实现横切逻辑（细则见 3.3） |
@@ -1803,8 +1803,8 @@ A1、B2 等是工作项的名称。执行单位是 **goal**：一个 goal 对应
                 L8 叶子包   G18
                 L9 脚本/CI  G19 → G20 → G21      ← 不依赖阶段 0
 阶段 2          G23–G27 与 G22（日志）按下表依赖并行 → G28（扫尾）
-阶段 3          G35–G38（测试精简）并行 → G39–G42（逐包审查与修正）并行 → G29–G33（注释整理）并行 → G34（收尾）
-                G43（面向用户的 changelog）不依赖代码类 goal，随时可以开始；G34 等它
+阶段 3          G35–G38（测试精简）并行 → G39、G40、G42（逐包审查与修正）并行 → G41 → G29–G33（注释整理）并行 → G34（收尾）
+                G43（面向用户的 changelog）现在就可以开始；G41、G42、G34 等它
 ```
 
 2026-10-23 调整：G19 不再等待发布 workflow 的状态；G20 把 S2 扩大为 scripts 与 CI 的全面精简（删除不再需要的工具和 workflow、能用 sh 写清楚的工具改为 sh、撤销 scripts/internal、按用途重排目录，细则见 `goals.md`）；G21、G33 照常执行；frontend/ 的文件头注释并入 G32。G09、G23–G27 只等待与其代码冲突的 goal；G24、G26 先于 G22 合并，G22 在它们的结果上改造日志。依赖以下表和 `goals.md` 为准。
@@ -1850,8 +1850,8 @@ A1、B2 等是工作项的名称。执行单位是 **goal**：一个 goal 对应
 | G38 | `refactor-g38-tests-internal` | 测试精简 | G28 | `internal/` 其余目录的测试 |
 | G39 | `refactor-g39-audit` | 逐包审查与修正：`sdk/`、`pixivapi`、`fanboxapi`；SDK 公开 API 与 v1.2.1 比对 | G20、G28、G35–G38 | 这些包（修正以小 PR 提交） |
 | G40 | `refactor-g40-audit-mcp` | 逐包审查与修正：`internal/mcpserver/`；`tools/list` 与 v1.2.1 比对 | G20、G28、G35–G38 | 同上 |
-| G41 | `refactor-g41-audit-cli` | 逐包审查与修正：`internal/cli/`、`cmd/`；CLI 输出与 v1.2.1 比对；产出 changelog 草稿 | G20、G28、G35–G38、G43 | 同上 |
-| G42 | `refactor-g42-audit-internal` | 逐包审查与修正：`internal/` 其余目录、`scripts/`；凭据脱敏收归一个类型；发布链路核对 | G20、G28、G35–G38 | 同上 |
+| G41 | `refactor-g41-audit-cli` | 逐包审查与修正：`internal/cli/`、`cmd/`；CLI 输出与 v1.2.1 比对；产出 changelog 草稿 | G20、G28、G35–G40、G43 | 同上 |
+| G42 | `refactor-g42-audit-internal` | 逐包审查与修正：`internal/` 其余目录、`scripts/`；凭据脱敏收归一个类型；发布链路核对 | G20、G28、G35–G38、G43 | 同上 |
 | G43 | `refactor-g43-changelog` | 面向用户的 changelog：新规则、`scripts/release` 的 notes 校验、重写全部历史版本 | — | `changelog/`、`scripts/release` 的 notes 部分、`pixiv-cli-release-notes` |
 | G34 | `refactor-g34-finish` | C2；删除 `.agents/refactor/` | G29–G33、G39–G43 | 文档、skill |
 
