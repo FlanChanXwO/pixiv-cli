@@ -18,6 +18,7 @@ import (
 
 	"strings"
 	"testing"
+	"time"
 
 	. "github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
 )
@@ -2042,3 +2043,23 @@ func TestSDKClientSurfaceCompiles(t *testing.T) {
 }
 
 func intPointer(value int) *int { return &value }
+
+func TestPacingWithNilLoggerDoesNotPanic(t *testing.T) {
+	requests := 0
+	httpClient := &http.Client{Transport: roundTripFunc(func(*http.Request) (*http.Response, error) {
+		requests++
+		return jsonResponse(`{"illust":{"id":42,"title":"paced","type":"illust","page_count":1,"create_date":"2026-01-01T00:00:00Z","user":{"id":7,"name":"artist"},"meta_single_page":{"original_image_url":"https://i.pximg.net/img-original/img/42_p0.png"}}}`), nil
+	})}
+	client, err := NewWith("fixture-token", Options{HTTPClient: httpClient, Pacing: Pacing{MinInterval: time.Millisecond}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for range 2 {
+		if _, err := client.Artwork(context.Background(), ArtworkRequest{ArtworkID: 42}); err != nil {
+			t.Fatalf("Artwork with nil logger: %v", err)
+		}
+	}
+	if requests != 2 {
+		t.Fatalf("requests = %d, want 2", requests)
+	}
+}
