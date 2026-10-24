@@ -303,7 +303,7 @@ func (c *Client) resolveResourceURL(ctx context.Context, ref sdk.ResourceRef, op
 		if appErr != nil {
 			return "", appErr
 		}
-		rawURL, err = profileImageResourceURL(detail.User.ProfileImage)
+		rawURL, err = profileImageResourceURL(detail.User.Value.ProfileImageURLs)
 	case "ugoira_archive":
 		var wire ugoiraResponseWire
 		if appErr := c.app.GetJSON(ctx, pixivapi.PathUgoiraMetadata, url.Values{
@@ -476,11 +476,11 @@ func variantPathComponents(variant string) (prefix, crop, suffix string, ok bool
 	}
 }
 
-func profileImageResourceURL(image ImageResource) (string, error) {
-	if image.Resource.URL == "" {
+func profileImageResourceURL(urls profileImageURLsWire) (string, error) {
+	if urls.Medium == nil || *urls.Medium == "" {
 		return "", errors.New("profile image is unavailable")
 	}
-	return image.Resource.URL, nil
+	return *urls.Medium, nil
 }
 
 func ugoiraResourceURL(meta ugoiraMetadataWire, variant string) (string, error) {

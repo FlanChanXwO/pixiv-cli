@@ -33,17 +33,6 @@ type imageURLsWire struct {
 	Original     string `json:"original"`
 }
 
-type singlePageWire struct {
-	OriginalImageURL string `json:"original_image_url"`
-}
-
-type metaPageWire struct {
-	Width     int           `json:"width"`
-	Height    int           `json:"height"`
-	Extension string        `json:"extension"`
-	ImageURLs imageURLsWire `json:"image_urls"`
-}
-
 // mapUser 是所有 artwork 与 artwork comment 响应的唯一 user 映射。
 func (c *Client) mapUser(value userWire) User {
 	result := User{
@@ -69,13 +58,6 @@ func mapTags(values []tagWire) []Tag {
 	return result
 }
 
-func intValue(value *int) int {
-	if value == nil {
-		return 0
-	}
-	return *value
-}
-
 func parseUTCTime(value string) (time.Time, error) {
 	if value == "" {
 		return time.Time{}, errNoPublishTime
@@ -89,13 +71,6 @@ func parseUTCTime(value string) (time.Time, error) {
 
 var errNoPublishTime = errors.New("no publish time")
 
-func strValue(value *string) string {
-	if value == nil {
-		return ""
-	}
-	return *value
-}
-
 // cloneValue 返回指针的副本，避免调用方与上游结构共享可变值。
 func cloneValue[T any](value *T) *T {
 	if value == nil {
@@ -103,22 +78,4 @@ func cloneValue[T any](value *T) *T {
 	}
 	copy := *value
 	return &copy
-}
-
-func cloneStringSlice(value *[]string) *[]string {
-	if value == nil {
-		return nil
-	}
-	cloned := make([]string, len(*value))
-	copy(cloned, *value)
-	return &cloned
-}
-
-func firstAvailable(urls imageURLsWire) string {
-	for _, value := range []string{urls.Original, urls.Large, urls.Medium, urls.SquareMedium} {
-		if value != "" {
-			return value
-		}
-	}
-	return ""
 }

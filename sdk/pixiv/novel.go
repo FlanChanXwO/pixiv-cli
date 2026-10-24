@@ -512,3 +512,10 @@ var novelUserContinuation = continuationSpec{
 	keys:  []string{pixivapi.ParamOffset},
 	query: []string{pixivapi.ParamUserID, pixivapi.ParamFilter},
 }
+
+func intValue(value *int) int {
+	if value == nil {
+		return 0
+	}
+	return *value
+}

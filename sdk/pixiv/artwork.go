@@ -917,3 +917,32 @@ var myPixivContinuation = continuationSpec{
 	path: pixivapi.PathIllustMyPixiv,
 	keys: []string{pixivapi.ParamOffset},
 }
+
+type singlePageWire struct {
+	OriginalImageURL string `json:"original_image_url"`
+}
+
+type metaPageWire struct {
+	Width     int           `json:"width"`
+	Height    int           `json:"height"`
+	Extension string        `json:"extension"`
+	ImageURLs imageURLsWire `json:"image_urls"`
+}
+
+func firstAvailable(urls imageURLsWire) string {
+	for _, value := range []string{urls.Original, urls.Large, urls.Medium, urls.SquareMedium} {
+		if value != "" {
+			return value
+		}
+	}
+	return ""
+}
+
+func cloneStringSlice(value *[]string) *[]string {
+	if value == nil {
+		return nil
+	}
+	cloned := make([]string, len(*value))
+	copy(cloned, *value)
+	return &cloned
+}

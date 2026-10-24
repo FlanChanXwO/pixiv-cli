@@ -182,7 +182,11 @@ func (c *Client) User(ctx context.Context, request UserRequest) (UserDetail, err
 	if request.UserID <= 0 {
 		return UserDetail{}, newError("User", sdk.InvalidArgument, "user ID must be positive")
 	}
-	return c.fetchUserDetail(ctx, "User", request.UserID, false)
+	detail, err := c.fetchUserDetail(ctx, "User", request.UserID, false)
+	if err != nil {
+		return UserDetail{}, err
+	}
+	return c.mapUserDetail(detail), nil
 }
 
 // CurrentUser returns the current authenticated user's detail. It requires a
@@ -192,25 +196,29 @@ func (c *Client) CurrentUser(ctx context.Context, request CurrentUserRequest) (U
 	if c.userID <= 0 {
 		return UserDetail{}, newError("CurrentUser", sdk.Unauthorized, "current user identity is unknown")
 	}
-	return c.fetchUserDetail(ctx, "CurrentUser", c.userID, true)
+	detail, err := c.fetchUserDetail(ctx, "CurrentUser", c.userID, true)
+	if err != nil {
+		return UserDetail{}, err
+	}
+	return c.mapUserDetail(detail), nil
 }
 
-func (c *Client) fetchUserDetail(ctx context.Context, operation string, userID int64, filter bool) (UserDetail, error) {
+func (c *Client) fetchUserDetail(ctx context.Context, operation string, userID int64, filter bool) (userDetailWire, error) {
 	query := url.Values{pixivapi.ParamUserID: {itoa(userID)}}
 	if filter {
 		query.Set(pixivapi.ParamFilter, "for_android")
 	}
 	var raw userDetailWire
 	if err := c.app.GetJSON(ctx, pixivapi.PathUserDetail, query, &raw); err != nil {
-		return UserDetail{}, classifyAppError(err, operation)
+		return userDetailWire{}, classifyAppError(err, operation)
 	}
 	if !raw.User.Present || !raw.User.Valid || raw.User.Value.ID <= 0 ||
 		!raw.Profile.Present || !raw.Profile.Valid ||
 		!raw.ProfilePublicity.Present || !raw.ProfilePublicity.Valid || !raw.ProfilePublicity.Value.valid() ||
 		!raw.Workspace.Present || !raw.Workspace.Valid {
-		return UserDetail{}, newError(operation, sdk.MalformedUpstreamResponse, "")
+		return userDetailWire{}, newError(operation, sdk.MalformedUpstreamResponse, "")
 	}
-	return c.mapUserDetail(raw), nil
+	return raw, nil
 }
 
 func (c *Client) mapUserDetail(value userDetailWire) UserDetail {
@@ -417,6 +425,7 @@ func (c *Client) mapUserPreviews(operation string, values []userPreviewWire, wit
 
 // mapUserPreview 映射一条 user_previews 项；只有推荐端点携带供参考的作品与小说。
 func (c *Client) mapUserPreview(operation string, value userPreviewWire, withSamples bool) (UserPreview, error) {
+	// 空样例保持非 nil 切片，公开 JSON 与旧映射一致输出 [] 而不是 null。
 	preview := UserPreview{User: c.mapUser(value.User), Illusts: []Artwork{}, Novels: []Novel{}}
 	if !withSamples {
 		return preview, nil
@@ -535,3 +544,10 @@ type MyPixivUsersRequest struct {
 
 // CurrentUserRequest reads the current authenticated user's detail.
 type CurrentUserRequest struct{}
+
+func strValue(value *string) string {
+	if value == nil {
+		return ""
+	}
+	return *value
+}
