@@ -49,12 +49,8 @@ type closeState struct {
 	once    sync.Once
 }
 
-// add 登记一个关闭函数。nil 接收者或 nil 关闭函数被静默忽略，使调用点无需
-// 额外判空（例如可选配置组未启用时没有资源可关）。
+// add 登记一个关闭函数；调用点只在确实打开资源时登记。
 func (s *closeState) add(closer func() error) {
-	if s == nil || closer == nil {
-		return
-	}
 	s.mu.Lock()
 	s.closers = append(s.closers, closer)
 	s.mu.Unlock()
@@ -62,9 +58,6 @@ func (s *closeState) add(closer func() error) {
 
 // close 在生产者退出、登记完成后逆序关闭资源并返回聚合错误；它是幂等的。
 func (s *closeState) close() error {
-	if s == nil {
-		return nil
-	}
 	s.once.Do(func() {
 		s.mu.Lock()
 		defer s.mu.Unlock()
@@ -139,7 +132,7 @@ func runContext(ctx context.Context, args []string, in io.Reader, out io.Writer,
 		pipelineSignal:      pipelineSignal,
 		mcpBrokenPipeSignal: mcpBrokenPipeSignal,
 		closeState:          &closeState{},
-		logs:                &logState{},
+		logs:                &logState{ctx: ctx, logger: logging.Discard()},
 	}
 	if pipelineSignal != nil {
 		defer func() {
@@ -310,7 +303,7 @@ func (a app) startLogging(cmd *cobra.Command, requirement requirements.Execution
 }
 
 func (a app) finishLogging(err error) error {
-	if a.logs.logger == nil || err == nil {
+	if err == nil {
 		return err
 	}
 	a.logs.logger.ErrorContext(a.logs.ctx, "Command failed", slog.Any(logging.AttrError, err))

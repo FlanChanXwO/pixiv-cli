@@ -22,10 +22,8 @@ func (p *PacingTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 	p.mu.Lock()
 	wait := p.Interval - time.Since(p.last)
 	if wait > 0 {
-		if p.Logger != nil {
-			p.Logger.LogAttrs(req.Context(), slog.LevelDebug, "Request pacing waited",
-				logging.OperationAttr(req.Context()), slog.Duration(logging.AttrWait, wait))
-		}
+		p.Logger.LogAttrs(req.Context(), slog.LevelDebug, "Request pacing waited",
+			logging.OperationAttr(req.Context()), slog.Duration(logging.AttrWait, wait))
 		timer := time.NewTimer(wait)
 		select {
 		case <-req.Context().Done():

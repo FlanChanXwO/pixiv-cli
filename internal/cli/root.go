@@ -37,7 +37,6 @@ import (
 	pixivuser "github.com/FlanChanXwO/pixiv-cli/internal/cli/user"
 	configapp "github.com/FlanChanXwO/pixiv-cli/internal/config/settings"
 	fanboxaccount "github.com/FlanChanXwO/pixiv-cli/internal/fanboxaccount"
-	"github.com/FlanChanXwO/pixiv-cli/internal/logging"
 	unifiedmcp "github.com/FlanChanXwO/pixiv-cli/internal/mcpserver"
 	downloader "github.com/FlanChanXwO/pixiv-cli/internal/media/downloader"
 	pixivaccount "github.com/FlanChanXwO/pixiv-cli/internal/pixivaccount"
@@ -60,13 +59,8 @@ type app struct {
 	logs                *logState
 }
 
-// logger 返回本次执行的 logger；未配置诊断时丢弃输出。
-func (a app) logger() *slog.Logger {
-	if a.logs == nil || a.logs.logger == nil {
-		return logging.Discard()
-	}
-	return a.logs.logger
-}
+// logger 返回本次执行的 logger；quiet 命令使用构造时注入的丢弃 logger。
+func (a app) logger() *slog.Logger { return a.logs.logger }
 
 // configMissingPlaceholder 保留根测试与文案契约的稳定名称；实际 config handler
 // 位于 commands/config。

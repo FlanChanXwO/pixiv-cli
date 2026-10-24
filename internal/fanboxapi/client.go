@@ -37,9 +37,6 @@ func NewClient(session *Session) *Client {
 
 // GetJSON performs one authenticated request against a route under APIBaseURL.
 func (c *Client) GetJSON(ctx context.Context, path string, query url.Values, target any) error {
-	if c == nil || c.session == nil {
-		return errors.New("FANBOX session is not configured")
-	}
 	endpoint := APIBaseURL + path
 	if len(query) > 0 {
 		endpoint += "?" + query.Encode()
@@ -51,9 +48,6 @@ func (c *Client) GetJSON(ctx context.Context, path string, query url.Values, tar
 // continuation. The continuation is validated against the FANBOX host policy
 // before it reaches the transport.
 func (c *Client) GetJSONURL(ctx context.Context, rawURL string, target any) error {
-	if c == nil || c.session == nil {
-		return errors.New("FANBOX session is not configured")
-	}
 	if err := ValidateAPIURL(rawURL); err != nil {
 		return err
 	}
@@ -62,9 +56,6 @@ func (c *Client) GetJSONURL(ctx context.Context, rawURL string, target any) erro
 
 // OpenMedia validates and opens one media resource.
 func (c *Client) OpenMedia(ctx context.Context, rawURL string, request MediaRequest) (*http.Response, error) {
-	if c == nil || c.session == nil {
-		return nil, errors.New("FANBOX session is not configured")
-	}
 	if err := ValidateURL(rawURL); err != nil {
 		return nil, err
 	}
@@ -88,9 +79,6 @@ func (c *Client) CachedLocator(ref string) (Locator, bool) {
 
 // CurrentUser reads the authenticated account identity from the session.
 func (c *Client) CurrentUser(ctx context.Context) (Identity, error) {
-	if c == nil || c.session == nil {
-		return Identity{}, errors.New("FANBOX session is not configured")
-	}
 	return c.session.CurrentUser(ctx)
 }
 
@@ -115,9 +103,4 @@ func (c *Client) VerifiedUserID(ctx context.Context) (int64, error) {
 }
 
 // CloseIdleConnections releases idle connections held by the session transport.
-func (c *Client) CloseIdleConnections() {
-	if c == nil || c.session == nil {
-		return
-	}
-	c.session.CloseIdleConnections()
-}
+func (c *Client) CloseIdleConnections() { c.session.CloseIdleConnections() }
