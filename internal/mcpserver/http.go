@@ -158,7 +158,7 @@ func (w *observedHTTPWriter) FlushError() error {
 }
 func (w *observedHTTPWriter) observe(operation string, accepted int, started time.Time, failed bool) {
 	attrs := []slog.Attr{
-		slog.String("stage", operation),
+		slog.String(logging.AttrStage, operation),
 		slog.Int(logging.AttrCount, accepted),
 		slog.Duration(logging.AttrDuration, time.Since(started)),
 	}

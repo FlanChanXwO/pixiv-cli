@@ -132,7 +132,7 @@ func readAnimation(ctx context.Context, client *pixiv.Client, id int64, format s
 // 阶段失败仅输出固定原因，保留业务错误通过原返回路径交付。
 func observeMediaPhase(ctx context.Context, stage string, duration time.Duration, count int, err error) {
 	attrs := []slog.Attr{
-		slog.String("stage", stage),
+		slog.String(logging.AttrStage, stage),
 		slog.Duration(logging.AttrDuration, duration),
 		slog.Int(logging.AttrCount, count),
 	}

@@ -10,7 +10,7 @@ import (
 	"errors"
 	"fmt"
 	"github.com/FlanChanXwO/pixiv-cli/internal/lifecycle"
-	diagnostics "github.com/FlanChanXwO/pixiv-cli/internal/logging"
+	logging "github.com/FlanChanXwO/pixiv-cli/internal/logging"
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/mediaproxy"
 	"html"
 	"image"
@@ -252,9 +252,9 @@ func TestHTTPAuthenticatedSDKNegotiationAndReset(t *testing.T) {
 	require.NoError(t, os.WriteFile(store.Path, body, 0600))
 	protocol := server.New(pixivmcp.SDKPorts{}, pixivmcp.Account{}, fanboxmcp.SDKPorts{}, nil)
 	output := &syncBuffer{}
-	logger, err := diagnostics.New(output, "debug", "json")
+	logger, err := logging.New(output, "debug", "json")
 	require.NoError(t, err)
-	observedCtx := diagnostics.WithCall(t.Context(), logger, "", "")
+	observedCtx := logging.WithCall(t.Context(), logger, "", "")
 	var serializationCalls atomic.Int32
 	mediaResult := &mcp.CallToolResult{Content: []mcp.Content{&mcp.ImageContent{MIMEType: "image/png", Data: []byte{1, 2, 3}}}, StructuredContent: countedMediaContent{calls: &serializationCalls}}
 	for _, name := range []string{"pixiv_artwork_media", "pixiv_gallery_animation", "other"} {
@@ -853,12 +853,12 @@ func TestHTTPWriteObservation(t *testing.T) {
 			require.NoError(t, err)
 			require.NoError(t, os.WriteFile(store.Path, data, 0600))
 			output := &syncBuffer{}
-			logger, err := diagnostics.New(output, "debug", "json")
+			logger, err := logging.New(output, "debug", "json")
 			require.NoError(t, err)
 			ctx, closeService := context.WithCancel(t.Context())
 			defer closeService()
 			if !tc.unscoped {
-				ctx = diagnostics.WithCall(ctx, logger, "", "")
+				ctx = logging.WithCall(ctx, logger, "", "")
 			}
 			protocol := server.New(pixivmcp.SDKPorts{}, pixivmcp.Account{}, fanboxmcp.SDKPorts{}, nil)
 			protocol.AddTool(&mcp.Tool{Name: "pixiv_artwork_media", InputSchema: map[string]any{"type": "object"}}, func(context.Context, *mcp.CallToolRequest) (*mcp.CallToolResult, error) {
@@ -942,7 +942,7 @@ func logRecords(t *testing.T, output, operation string) []map[string]any {
 		}
 		var record map[string]any
 		require.NoError(t, json.Unmarshal([]byte(line), &record), line)
-		if record["operation"] == operation || record["msg"] == operation || record["stage"] == operation {
+		if record["operation"] == operation || record["msg"] == operation || record[logging.AttrStage] == operation {
 			records = append(records, record)
 		}
 	}

@@ -52,7 +52,7 @@ func (s DownloadService) DownloadSources(ctx context.Context, client DownloadTar
 				slog.Duration(logging.AttrDuration, time.Since(startedAt)))
 			return
 		}
-		logging.From(ctx).InfoContext(ctx, "Download completed",
+		logging.From(ctx).DebugContext(ctx, "Download completed",
 			slog.Int(logging.AttrCount, len(report.Items)),
 			slog.Duration(logging.AttrDuration, time.Since(startedAt)))
 	}()

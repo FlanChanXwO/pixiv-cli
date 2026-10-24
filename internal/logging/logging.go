@@ -19,6 +19,7 @@ const (
 	AttrSDKOperation = "sdk_operation"
 	AttrError        = "error"
 	AttrCount        = "count"
+	AttrStage        = "stage"
 	AttrOperation    = "operation"
 	AttrCallID       = "call_id"
 	AttrReason       = "reason"

@@ -35,7 +35,7 @@ type observedMediaResult struct {
 func (r *observedMediaResult) MarshalJSON() ([]byte, error) {
 	started := time.Now()
 	data, err := json.Marshal(r.Result)
-	attrs := []slog.Attr{slog.Duration(logging.AttrDuration, time.Since(started)), slog.Int(logging.AttrCount, len(data))}
+	attrs := []slog.Attr{slog.String(logging.AttrStage, "mcp_response_serialization"), slog.Duration(logging.AttrDuration, time.Since(started)), slog.Int(logging.AttrCount, len(data))}
 	if err != nil {
 		r.logger.LogAttrs(context.Background(), slog.LevelWarn, "MCP response serialization failed", append(attrs, slog.String(logging.AttrReason, "tool failed"))...)
 		return data, err

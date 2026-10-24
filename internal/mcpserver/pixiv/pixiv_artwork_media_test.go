@@ -515,7 +515,7 @@ func mediaStages(t *testing.T, output string) map[string]map[string]any {
 		}
 		var record map[string]any
 		require.NoError(t, json.Unmarshal([]byte(line), &record), line)
-		if stage, ok := record["stage"].(string); ok && stage != "mcp_http_write" && stage != "mcp_http_flush" {
+		if stage, ok := record[logging.AttrStage].(string); ok && stage != "mcp_http_write" && stage != "mcp_http_flush" {
 			stages[stage] = record
 		}
 	}

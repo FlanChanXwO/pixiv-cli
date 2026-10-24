@@ -176,7 +176,7 @@ func configureMCPMedia(lifecycleCtx context.Context, media *mediaproxy.Service, 
 		},
 		Observe: func(_ context.Context, stage string, duration time.Duration) {
 			logging.From(lifecycleCtx).LogAttrs(lifecycleCtx, slog.LevelDebug, "Gallery media step completed",
-				slog.String("stage", stage), slog.Duration(logging.AttrDuration, duration))
+				slog.String(logging.AttrStage, stage), slog.Duration(logging.AttrDuration, duration))
 		},
 	}, func(ctx context.Context, userID int64) (mediaproxy.Session, error) {
 		return readSession(ctx, pixivcmd.Request{UserID: userID, HTTPSProxyOverride: request.HTTPSProxyOverride})
@@ -192,7 +192,7 @@ func logAnimation(lifecycleCtx, requestCtx context.Context, observation mediapro
 	}
 	logger := logging.From(ctx)
 	attrs := []slog.Attr{
-		slog.String("stage", observation.Stage),
+		slog.String(logging.AttrStage, observation.Stage),
 		slog.Duration(logging.AttrDuration, observation.Duration),
 	}
 	if observation.Bytes > 0 {
