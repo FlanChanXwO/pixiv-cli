@@ -11,10 +11,10 @@ import (
 	atomic "github.com/FlanChanXwO/pixiv-cli/internal/storage/atomicfile"
 )
 
-func TestWriteAtomic(t *testing.T) {
+func TestAtomicWrite(t *testing.T) {
 	dir := t.TempDir()
 	dest := filepath.Join(dir, "out", "file.bin")
-	written, err := atomic.Write(context.Background(), dest, strings.NewReader("hello"))
+	written, err := atomic.AtomicWrite(context.Background(), dest, strings.NewReader("hello"))
 	if err != nil {
 		t.Fatalf("Write: %v", err)
 	}
@@ -33,26 +33,10 @@ func TestWriteAtomic(t *testing.T) {
 	}
 }
 
-func TestAtomicWriteIsCanonicalEntryPoint(t *testing.T) {
-	dest := filepath.Join(t.TempDir(), "nested", "atomic.txt")
-
-	written, err := atomic.AtomicWrite(context.Background(), dest, strings.NewReader("hello"))
-	if err != nil {
-		t.Fatalf("AtomicWrite: %v", err)
-	}
-	if written != 5 {
-		t.Fatalf("written = %d", written)
-	}
-	body, err := os.ReadFile(dest)
-	if err != nil || string(body) != "hello" {
-		t.Fatalf("content = %q err=%v", body, err)
-	}
-}
-
 func TestWriteFailureRemovesTemp(t *testing.T) {
 	dir := t.TempDir()
 	dest := filepath.Join(dir, "out.txt")
-	_, err := atomic.Write(context.Background(), dest, errorReader{err: errors.New("boom")})
+	_, err := atomic.AtomicWrite(context.Background(), dest, errorReader{err: errors.New("boom")})
 	if err == nil {
 		t.Fatal("expected error")
 	}
@@ -66,7 +50,7 @@ func TestWriteCanceledContext(t *testing.T) {
 	dest := filepath.Join(dir, "out.txt")
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
-	if _, err := atomic.Write(ctx, dest, strings.NewReader("data")); err == nil {
+	if _, err := atomic.AtomicWrite(ctx, dest, strings.NewReader("data")); err == nil {
 		t.Fatal("expected context error")
 	}
 }
