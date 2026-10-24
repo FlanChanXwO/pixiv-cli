@@ -435,13 +435,13 @@ func loginInputFromText(input string, acceptsCallback callbackURLAccepter, expec
 		return result
 	}
 	if result.RelayURL == "" {
-		return loginInputResult{loginServerResult: loginServerResult{Err: errors.New("Pixiv authorization relay URL is empty")}, Relayed: true}
+		return loginInputResult{loginServerResult: loginServerResult{Err: errors.New("pixiv authorization relay URL is empty")}, Relayed: true}
 	}
 	if openRelay == nil {
 		return loginInputResult{loginServerResult: loginServerResult{Err: errors.New("browser opener is not configured")}, Relayed: true}
 	}
 	if err := openRelay(result.RelayURL); err != nil {
-		return loginInputResult{loginServerResult: loginServerResult{Err: fmt.Errorf("could not open Pixiv authorization relay URL: %w", err)}, Relayed: true}
+		return loginInputResult{loginServerResult: loginServerResult{Err: fmt.Errorf("could not open pixiv authorization relay URL: %w", err)}, Relayed: true}
 	}
 	return loginInputResult{Relayed: true, RelayURL: result.RelayURL}
 }

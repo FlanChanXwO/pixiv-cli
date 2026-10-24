@@ -20,7 +20,7 @@ const callbackEndpointFilename = "url-handler-endpoint"
 
 // errNoActiveLocalCallback 是持久协议 handler 在没有本轮 loopback 登录时的
 // 正常状态；调用方可继续尝试已配置的远程 relay。
-var errNoActiveLocalCallback = errors.New("Pixiv login callback is no longer active")
+var errNoActiveLocalCallback = errors.New("pixiv login callback is no longer active")
 
 // CallbackCommand 是 desktop protocol handler 调回当前 CLI binary 的隐藏入口名。
 // 它只由本包生成的系统关联使用，不是公开 CLI 命令。

@@ -210,6 +210,7 @@ PIXIV_REVERSE_SEARCH_PROVIDER=all go test ./internal/reversesearch -run TestReal
 | `internal/pixivaccount` | `pixiv_test.go` 观察未导出的 `newAccountWithToken` 构造，验证 `AccountWithToken` 的格式化与 JSON 输出不泄露 refresh token；为测试导出该构造会扩大凭据边界。 |
 | `internal/cli` | 组合根测试观察未导出的根装配、invocation 生命周期与关闭顺序；这些 seam 不是公开 API。 |
 | `internal/cli/auth` | 账号与登录测试直接构造 controller 和各平台 installer；未导出的 browser、handler 安装、清理、relay client、executable 解析与注册表/桌面 seam 都是生产装配细节，为测试导出只会扩大内部 CLI 接口。 |
+| `internal/cli/auth/loginhelper` | 测试直接构造 `callbackHandler`、`remoteLoginHandoff` 与各平台 `urlHandlerInstaller`，并观察未导出的 `errNoActiveLocalCallback`、`callbackRelayURL`、`saveActiveRemoteLogin` 与 `handlerManifest`，以验证 callback 路由优先级、不跟随重定向的 handoff 与条件清理。为测试导出这些符号只会扩大 loginhelper 的接口面。 |
 | `internal/cli/search` | 测试通过带 HTTP fixture 的真实 SDK 观察私有 searchArtworks 逻辑页续读。私有逻辑页策略仍是实现细节；MCP 另外暴露绑定的默认批次续读。仅为测试导出应用内部会扩大公开面。 |
 | `internal/mcpserver/pixiv/tools` | 测试通过带 HTTP fixture 的真实 SDK 观察私有 searchArtworks 逻辑页续读。私有逻辑页策略仍是实现细节；MCP 另外暴露绑定的默认批次续读。仅为测试导出应用内部会扩大公开面。 |
 | `internal/browsercookies/chromium` | 测试直接构造 provider 并注入加密密钥覆盖，观察未导出的 Cookie 记录解密路径与 profile 发现逻辑。 |

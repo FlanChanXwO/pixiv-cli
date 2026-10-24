@@ -40,7 +40,7 @@ func TestCallbackRelayURLRejectsNonLoopbackAndInactiveEndpoints(t *testing.T) {
 
 	require.NoError(t, os.Remove(path))
 	_, err = callbackRelayURL("pixiv://account/login?code=one-time-code")
-	require.EqualError(t, err, "Pixiv login callback is no longer active")
+	require.EqualError(t, err, "pixiv login callback is no longer active")
 
 	_, err = callbackRelayURL("https://example.invalid/callback?code=one-time-code")
 	require.EqualError(t, err, "invalid Pixiv callback URL")
