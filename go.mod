@@ -3,7 +3,6 @@ module github.com/FlanChanXwO/pixiv-cli
 go 1.27.3
 
 require (
-	github.com/AlecAivazis/survey/v2 v2.3.7
 	github.com/bogdanfinn/fhttp v0.6.8
 	github.com/bogdanfinn/tls-client v1.15.1
 	github.com/creachadair/tomledit v0.0.29
@@ -36,11 +35,7 @@ require (
 	github.com/inconshreveable/mousetrap v1.1.0 // indirect
 	github.com/jinzhu/inflection v1.0.0 // indirect
 	github.com/jinzhu/now v1.1.5 // indirect
-	github.com/kballard/go-shellquote v0.0.0-20180428030007-95032a82bc51 // indirect
 	github.com/klauspost/compress v1.18.2 // indirect
-	github.com/mattn/go-colorable v0.1.2 // indirect
-	github.com/mattn/go-isatty v0.0.20 // indirect
-	github.com/mgutz/ansi v0.0.0-20170206155736-9520e82c474b // indirect
 	github.com/ncruces/go-sqlite3-wasm/v6 v6.3.35304 // indirect
 	github.com/ncruces/julianday v1.0.0 // indirect
 	github.com/pmezard/go-difflib v1.0.0 // indirect
