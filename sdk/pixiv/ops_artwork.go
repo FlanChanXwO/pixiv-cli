@@ -467,7 +467,7 @@ func (c *Client) ArtworkComments(ctx context.Context, request ArtworkCommentsReq
 		query.Set(pixivapi.ParamOffset, itoa(int64(offset)))
 	}
 
-	var raw artworkCommentsWire
+	var raw commentsWire
 	if err := c.app.GetJSON(ctx, pixivapi.PathIllustComments, query, &raw); err != nil {
 		return CommentPage{}, classifyAppError(err, "ArtworkComments")
 	}

@@ -6,64 +6,14 @@ import (
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/endpoint/novel"
 	"github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/endpoint/user"
-	"github.com/FlanChanXwO/pixiv-cli/sdk"
 )
 
 var errNoPublishTime = errors.New("no publish time")
 
-func (c *Client) mapNovel(m novel.Novel) (Novel, error) {
-	published, err := parseUTCTime(m.CreateDate)
-	if err != nil {
-		return Novel{}, newError("Novel", sdk.MalformedUpstreamResponse, "invalid publish time")
-	}
-	out := Novel{
-		ID:             m.ID,
-		Title:          m.Title,
-		Caption:        m.Caption,
-		User:           c.mapNovelUser(m.User),
-		Tags:           mapNovelTags(m.Tags),
-		PublishedAt:    published,
-		XRestrict:      m.XRestrict,
-		TextLength:     m.TextLength,
-		IsOriginal:     m.IsOriginal,
-		TotalBookmarks: m.TotalBookmarks,
-		TotalViews:     m.TotalView,
-	}
-	for _, size := range []struct {
-		variant string
-		value   string
-	}{
-		{"original", m.ImageURLs.Original},
-		{"large", m.ImageURLs.Large},
-		{"medium", m.ImageURLs.Medium},
-		{"square_medium", m.ImageURLs.SquareMedium},
-	} {
-		if size.value != "" {
-			res, err := c.newResourceWithVariant("novel_cover", m.ID, -1, size.variant, size.value)
-			if err != nil {
-				return Novel{}, err
-			}
-			out.Cover = ImageResource{Resource: res, Variant: size.variant}
-			break
-		}
-	}
-	return out, nil
-}
-
-func (c *Client) mapNovelUser(m novel.UserSummary) User {
-	out := User{
-		ID:         m.ID,
-		Name:       m.Name,
-		Account:    m.Account,
-		Comment:    m.Comment,
-		IsFollowed: m.IsFollowed,
-	}
-	if m.ProfileImageURLs.Medium != nil && *m.ProfileImageURLs.Medium != "" {
-		if res, err := c.newResourceWithVariant("user_profile", m.ID, -1, "medium", *m.ProfileImageURLs.Medium); err == nil {
-			out.ProfileImage = ImageResource{Resource: res, Variant: "medium"}
-		}
-	}
-	return out
+// mapNovelEntity 把 internal novel 实体（user 小说端点仍在读取）转成公开模型；
+// wire 映射与资源注册由 wire.go 的 mapNovel 统一完成。
+func (c *Client) mapNovelEntity(m novel.Novel) (Novel, error) {
+	return c.mapNovel(novelWireFromEntity(m))
 }
 
 // mapUserEntity 映射 user 端点实体；user 端点并入 SDK 后由 wire.go 的 mapUser
@@ -143,22 +93,9 @@ func (c *Client) mapUserPreview(p user.Preview) UserPreview {
 		}
 	}
 	for _, m := range p.Novels {
-		if n, err := c.mapNovel(m); err == nil {
+		if n, err := c.mapNovelEntity(m); err == nil {
 			out.Novels = append(out.Novels, n)
 		}
-	}
-	return out
-}
-
-// mapNovelTags 映射 novel 标签；novel 端点并入 SDK 后由 wire.go 的 mapTags
-// 取代（G07）。
-func mapNovelTags(tags []novel.Tag) []Tag {
-	if len(tags) == 0 {
-		return []Tag{}
-	}
-	out := make([]Tag, 0, len(tags))
-	for _, t := range tags {
-		out = append(out, Tag{Name: t.Name, TranslatedName: t.TranslatedName})
 	}
 	return out
 }
@@ -187,7 +124,7 @@ func parseUTCTime(value string) (time.Time, error) {
 	return parsed.UTC(), nil
 }
 
-func firstAvailable(urls novel.ImageURLs) string {
+func firstAvailable(urls imageURLsWire) string {
 	for _, value := range []string{urls.Original, urls.Large, urls.Medium, urls.SquareMedium} {
 		if value != "" {
 			return value

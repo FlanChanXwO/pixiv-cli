@@ -26,6 +26,19 @@ const (
 	PathUserBookmarkTags     = "/v1/user/bookmark-tags/illust"
 	PathTrendingTagsIllust   = "/v1/trending-tags/illust"
 	PathUgoiraMetadata       = "/v1/ugoira/metadata"
+
+	PathSearchNovel        = "/v1/search/novel"
+	PathNovelDetail        = "/v2/novel/detail"
+	PathNovelContent       = "/v1/novel/content"
+	PathNovelRanking       = "/v1/novel/ranking"
+	PathNovelRecommended   = "/v1/novel/recommended"
+	PathNovelNew           = "/v1/novel/new"
+	PathNovelFollow        = "/v1/novel/follow"
+	PathNovelMyPixiv       = "/v1/novel/mypixiv"
+	PathNovelSeries        = "/v2/novel/series"
+	PathNovelComments      = "/v2/novel/comments"
+	PathNovelCommentAdd    = "/v1/novel/comment/add"
+	PathNovelCommentDelete = "/v1/novel/comment/delete"
 )
 
 // query/form 参数名。
@@ -70,4 +83,10 @@ const (
 	ParamMaxRecommend     = "max_bookmark_id_for_recommend"
 	ParamIncludeRanking   = "include_ranking_illusts"
 	ParamIncludePrivacy   = "include_privacy_policy"
+
+	ParamNovelID              = "novel_id"
+	ParamSeriesID             = "series_id"
+	ParamMaxNovelID           = "max_novel_id"
+	ParamAlreadyRecommended   = "already_recommended"
+	ParamIncludeRankingNovels = "include_ranking_novels"
 )

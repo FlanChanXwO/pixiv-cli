@@ -11,13 +11,6 @@ import (
 	"github.com/FlanChanXwO/pixiv-cli/internal/logging"
 	"github.com/FlanChanXwO/pixiv-cli/internal/pixivapi"
 	"github.com/FlanChanXwO/pixiv-cli/internal/pixivapi/oauth"
-	novelcomments "github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/endpoint/novel/comments"
-	noveldetail "github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/endpoint/novel/detail"
-	novelranking "github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/endpoint/novel/ranking"
-	novelrecommended "github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/endpoint/novel/recommended"
-	novelsearch "github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/endpoint/novel/search"
-	novelseries "github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/endpoint/novel/series"
-	noveltimeline "github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/endpoint/novel/timeline"
 	stamps "github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/endpoint/stamps"
 	userblocked "github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/endpoint/user/blocked"
 	userdetail "github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/endpoint/user/detail"
@@ -71,13 +64,6 @@ type Options struct {
 // or Web path.
 type Client struct {
 	app                *pixivapi.Client
-	novelComments      *novelcomments.Client
-	novelDetail        *noveldetail.Client
-	novelRecommended   *novelrecommended.Client
-	novelRanking       *novelranking.Client
-	novelSearch        *novelsearch.Client
-	novelSeries        *novelseries.Client
-	novelTimeline      *noveltimeline.Client
 	userBlocked        *userblocked.Client
 	userDetail         *userdetail.Client
 	userFollowers      *userfollowers.Client
@@ -189,13 +175,6 @@ func newClient(httpClient *http.Client, selfHTTP bool, accessToken string, optio
 	})
 	return &Client{
 		app:                app,
-		novelComments:      novelcomments.New(app),
-		novelDetail:        noveldetail.New(app),
-		novelRecommended:   novelrecommended.New(app),
-		novelRanking:       novelranking.New(app),
-		novelSearch:        novelsearch.New(app),
-		novelSeries:        novelseries.New(app),
-		novelTimeline:      noveltimeline.New(app),
 		userBlocked:        userblocked.New(app),
 		userDetail:         userdetail.New(app),
 		userFollowers:      userfollowers.New(app),
