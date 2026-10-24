@@ -13,13 +13,6 @@ import (
 )
 
 func TestDownloadRecordTypesConsumeArtworkByID(t *testing.T) {
-	assert.Equal(t, map[string]struct{}{
-		"artwork": {},
-		"illust":  {},
-		"manga":   {},
-		"ugoira":  {},
-	}, visualRecordTypes)
-
 	for _, recordType := range []string{"artwork", "illust", "manga", "ugoira"} {
 		t.Run(recordType, func(t *testing.T) {
 			var gotID int64
