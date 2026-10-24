@@ -1,10 +1,6 @@
 package settings
 
-import (
-	"time"
-
-	"github.com/knadh/koanf/v2"
-)
+import "time"
 
 type settingKind string
 
@@ -43,7 +39,7 @@ type SettingValue struct {
 }
 
 type Snapshot struct {
-	file *koanf.Koanf
+	file map[string]any
 	env  map[string]snapshotEnvValue
 }
 

@@ -95,8 +95,8 @@ func (s Store) readDefaultUserID(spec SettingSpec) (int64, bool, error) {
 	if err != nil {
 		return 0, false, err
 	}
-	raw := state.file.Get(spec.KoanfKey)
-	if raw == nil {
+	raw, present := state.fileValue(spec)
+	if !present {
 		return 0, false, nil
 	}
 	value, err := coercePositiveInt64(raw)
