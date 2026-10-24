@@ -40,12 +40,12 @@ func TraverseWith[C any, T any](
 	fetch func(context.Context, C, sdk.Cursor) ([]T, sdk.Cursor, error),
 	consume func([]T) (committed bool, err error),
 ) (PageResult, error) {
-	return TraverseWithFrom(ctx, execute, plan, sdk.Cursor{}, begin, fetch, consume)
+	return traverseWithFrom(ctx, execute, plan, sdk.Cursor{}, begin, fetch, consume)
 }
 
-// TraverseWithFrom 与 TraverseWith 相同，但从调用方已有的 opaque cursor 开始。
+// traverseWithFrom 与 TraverseWith 相同，但从调用方已有的 opaque cursor 开始。
 // 这保持 cursor 的具体语义在 shared pagination 内，不让调用方解码或重建它。
-func TraverseWithFrom[C any, T any](
+func traverseWithFrom[C any, T any](
 	ctx context.Context,
 	execute Execute[C],
 	plan PagePlan,
@@ -88,7 +88,7 @@ func CollectWithFrom[C any, T any](
 ) (PagedReadResult[T], error) {
 	result := PagedReadResult[T]{Items: make([]T, 0)}
 
-	pageResult, err := TraverseWithFrom(ctx, execute, plan, initial, func() error {
+	pageResult, err := traverseWithFrom(ctx, execute, plan, initial, func() error {
 		result.Items = result.Items[:0]
 		result.HasMore = false
 		return nil
