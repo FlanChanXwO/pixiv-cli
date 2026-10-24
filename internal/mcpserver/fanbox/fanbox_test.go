@@ -32,7 +32,7 @@ import (
 	"time"
 )
 
-func TestFanboxMCPDiagnosticsUseFanboxModuleAndRequestID(t *testing.T) {
+func TestFanboxMCPToolLogsCarryCallID(t *testing.T) {
 	output := &syncBuffer{}
 	logger, err := logging.New(output, "debug", "json")
 	if err != nil {

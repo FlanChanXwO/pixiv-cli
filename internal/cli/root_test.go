@@ -428,7 +428,7 @@ func TestRootHelpOmitsRemovedPersistentFlags(t *testing.T) {
 	assert.NotContains(t, output.String(), "--sleep-request")
 }
 
-func TestDiagnosticsLevelControlsMCPStderrWithoutTouchingStdout(t *testing.T) {
+func TestLogLevelControlsMCPStderrWithoutTouchingStdout(t *testing.T) {
 	for _, test := range []struct {
 		name       string
 		level      string
@@ -478,7 +478,7 @@ func TestDiagnosticsLevelControlsMCPStderrWithoutTouchingStdout(t *testing.T) {
 	}
 }
 
-func TestConfigCommandsRemainSilentWhenDiagnosticsAreEnabled(t *testing.T) {
+func TestConfigCommandsRemainSilentWhenLoggingIsEnabled(t *testing.T) {
 	useTempPaths(t)
 	t.Setenv("PIXIV_LOG_LEVEL", "debug")
 	var stdout, stderr bytes.Buffer

@@ -312,7 +312,7 @@ func TestStatelessHTTPProtocolNegotiation(t *testing.T) {
 	}
 }
 
-func TestPixivMCPDiagnosticsUseStableLocalRequestIDs(t *testing.T) {
+func TestPixivMCPToolLogsUseStableLocalCallIDs(t *testing.T) {
 	output := &syncBuffer{}
 	logger, err := logging.New(output, "debug", "json")
 	if err != nil {
