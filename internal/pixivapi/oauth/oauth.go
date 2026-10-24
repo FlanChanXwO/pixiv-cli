@@ -10,6 +10,7 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
+	"log/slog"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -17,6 +18,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/FlanChanXwO/pixiv-cli/internal/logging"
 	protocol "github.com/FlanChanXwO/pixiv-cli/internal/pixivapi"
 )
 
@@ -42,6 +44,7 @@ type Client struct {
 	userID          int64
 	userName        string
 	expiresAt       time.Time
+	log             *slog.Logger
 	mu              sync.RWMutex
 }
 
@@ -49,6 +52,8 @@ type Client struct {
 type Config struct {
 	HTTPClient *http.Client
 	BaseURL    string
+	// Logger 记录 token 轮换结果；nil 时不输出。
+	Logger *slog.Logger
 }
 
 // New builds an OAuth client; refreshToken is validated without network I/O.
@@ -62,11 +67,16 @@ func New(refreshToken string, cfg Config) *Client {
 	if httpClient == nil {
 		httpClient = &http.Client{}
 	}
+	logger := cfg.Logger
+	if logger == nil {
+		logger = logging.Discard()
+	}
 	return &Client{
 		httpClient:      httpClient,
 		baseURL:         strings.TrimRight(baseURL, "/"),
 		refreshToken:    refreshToken,
 		refreshTokenErr: refreshTokenErr,
+		log:             logger,
 	}
 }
 
@@ -114,6 +124,8 @@ func (c *Client) Refresh(ctx context.Context) error {
 		return protocol.MalformedResponse()
 	}
 	c.store(token)
+	// OpenWith 的入口操作名是 "Open"；传输日志同样带上它。
+	c.log.LogAttrs(ctx, slog.LevelDebug, "Refresh token rotated", slog.String(logging.AttrSDKOperation, "Open"))
 	return nil
 }
 

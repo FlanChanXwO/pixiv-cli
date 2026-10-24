@@ -1,188 +1,86 @@
-// Package diagnostics contains the opt-in, protocol-neutral event contract
-// shared by MCP and transport adapters. It deliberately accepts typed fields
-// only; raw URLs, headers, bodies, cookies and arbitrary log text do not
-// belong in this package.
+// Package logging 是 CLI、MCP、SDK 共用的 slog 层：ctx 中的调用信息、属性键常量
+// 和可配置的 text/JSON handler。调用边界通过 WithCall 写入 operation 和 call_id。
 package logging
 
 import (
 	"context"
-	"time"
+	"log/slog"
 )
 
-// Module is the stable product and subsystem prefix shown by the presenter.
-type Module string
-
+// 日志属性键。SDK 传输层、执行边界和 JSON 输出共用这些字段名。
 const (
-	ModulePixivCLI       Module = "Pixiv CLI"
-	ModuleFanboxCLI      Module = "FANBOX CLI"
-	ModulePixivMCP       Module = "Pixiv MCP server"
-	ModuleFanboxMCP      Module = "FANBOX MCP server"
-	ModulePixivAccount   Module = "Pixiv account pool"
-	ModulePixivAuth      Module = "Pixiv authentication"
-	ModuleFanboxAuth     Module = "FANBOX authentication"
-	ModulePixivAuthDB    Module = "Pixiv authentication database"
-	ModuleFanboxAuthDB   Module = "FANBOX authentication database"
-	ModulePixivConfig    Module = "Pixiv configuration"
-	ModuleFanboxConfig   Module = "FANBOX configuration"
-	ModulePixivNetwork   Module = "Pixiv network"
-	ModuleFanboxNetwork  Module = "FANBOX network"
-	ModuleFanboxSolver   Module = "FANBOX FlareSolverr"
-	ModulePixivDownload  Module = "Pixiv download"
-	ModuleFanboxDownload Module = "FANBOX download"
-
-	// Descriptive aliases keep call sites readable when they distinguish the
-	// server subsystem from the product name.
-	ModulePixivMCPServer  = ModulePixivMCP
-	ModuleFanboxMCPServer = ModuleFanboxMCP
+	AttrMethod       = "method"
+	AttrHost         = "host"
+	AttrPath         = "path"
+	AttrStatus       = "status"
+	AttrDuration     = "duration"
+	AttrAttempt      = "attempt"
+	AttrWait         = "wait"
+	AttrSDKOperation = "sdk_operation"
+	AttrError        = "error"
+	AttrCount        = "count"
+	AttrOperation    = "operation"
+	AttrCallID       = "call_id"
+	AttrReason       = "reason"
 )
 
-// EventKind is a closed set of diagnostic lifecycle stages. Event data is
-// intentionally finite and safe; callers cannot supply preformatted output.
-type EventKind string
+type contextKey struct{}
 
-const (
-	EventStarted         EventKind = "started"
-	EventCompleted       EventKind = "completed"
-	EventFailed          EventKind = "failed"
-	EventNetworkRequest  EventKind = "network_request"
-	EventChallenge       EventKind = "challenge"
-	EventSolverStarted   EventKind = "solver_started"
-	EventSolverCompleted EventKind = "solver_completed"
-	EventReplay          EventKind = "replay"
-	EventDownload        EventKind = "download"
-	EventAccount         EventKind = "account"
-	EventConfiguration   EventKind = "configuration"
-)
-
-// Reason is a stable, non-secret explanation selected by the emitting layer.
-// Raw Go errors do not belong in Event; the command boundary still returns the
-// original business error through its normal error path.
-type Reason string
-
-const (
-	ReasonRequestCancelled         Reason = "request cancelled"
-	ReasonTransportInterrupted     Reason = "transport interrupted"
-	ReasonSubscriptionReleased     Reason = "subscription released"
-	ReasonServiceClosed            Reason = "service closed"
-	ReasonAuthorizationExpired     Reason = "authorization expired"
-	ReasonAuthorizationInvalidated Reason = "authorization invalidated"
-	ReasonNone                     Reason = ""
-	ReasonCommandFailed            Reason = "command failed"
-	ReasonToolFailed               Reason = "tool failed"
-	ReasonChallenge                Reason = "challenge required"
-	ReasonSolverUnavailable        Reason = "solver unavailable"
-	ReasonSolverFailed             Reason = "solver failed"
-	ReasonMalformedSolver          Reason = "malformed solver response"
-	ReasonAccountFrozen            Reason = "account frozen"
-	ReasonAccountExhausted         Reason = "account pool exhausted"
-	ReasonConfigurationFailed      Reason = "configuration failed"
-	ReasonAuthenticationFailed     Reason = "authentication failed"
-)
-
-// Event is the complete safe diagnostic payload. Resource and Target are
-// non-secret identifiers or local destinations supplied by trusted adapters;
-// the presenter removes URL userinfo, query and fragment before rendering.
-type Event struct {
-	Module    Module
-	Kind      EventKind
-	Operation string
-	Resource  string
-	Route     string
-	Target    string
-	Proxy     string
-	UserAgent string
-	Reason    Reason
-	Status    int
-	Count     int
-	RequestID uint64
-	Duration  time.Duration
+// callInfo 是一次 CLI 命令或 MCP tool 调用的关联信息，由执行边界写入 ctx。
+type callInfo struct {
+	operation string
+	callID    string
 }
 
-// Sink receives one typed event at a time.
-type Sink interface {
-	Emit(Event)
+type callContext struct {
+	logger *slog.Logger
+	info   callInfo
 }
 
-// SinkFunc adapts a function to Sink.
-type SinkFunc func(Event)
+// WithCall 把调用信息和 logger 放进 ctx；同一次调用的所有日志都会附带这些信息。
+func WithCall(ctx context.Context, logger *slog.Logger, operation, callID string) context.Context {
+	return context.WithValue(ctx, contextKey{}, callContext{
+		logger: logger,
+		info:   callInfo{operation: operation, callID: callID},
+	})
+}
 
-func (f SinkFunc) Emit(event Event) {
-	if f != nil {
-		f(event)
+// From 返回 ctx 中的 logger；没有时返回丢弃所有输出的 logger。
+func From(ctx context.Context) *slog.Logger {
+	if value, ok := ctx.Value(contextKey{}).(callContext); ok {
+		return value.logger
 	}
+	return Discard()
 }
 
-type nopSink struct{}
-
-func (nopSink) Emit(Event) {}
-
-// Nop returns the sink used when diagnostics are disabled.
-func Nop() Sink { return nopSink{} }
-
-type scopeContextKey struct{}
-
-// Scope binds a sink, module and optional MCP-local request number to a
-// context. A zero request ID is reserved for a top-level CLI operation.
-type Scope struct {
-	sink      Sink
-	module    Module
-	requestID uint64
+// HasLogger 报告 ctx 是否携带执行边界放入的 logger。
+func HasLogger(ctx context.Context) bool {
+	_, ok := ctx.Value(contextKey{}).(callContext)
+	return ok
 }
 
-// WithScope installs an explicit diagnostic scope. A nil sink is converted to
-// a no-op sink so ordinary SDK callers remain silent and nil-safe.
-func WithScope(ctx context.Context, sink Sink, module Module, requestID uint64) context.Context {
-	if ctx == nil {
-		ctx = context.Background()
-	}
-	if sink == nil {
-		sink = Nop()
-	}
-	return context.WithValue(ctx, scopeContextKey{}, Scope{sink: sink, module: module, requestID: requestID})
+// Discard 返回不输出任何记录的 logger。
+func Discard() *slog.Logger {
+	return slog.New(slog.DiscardHandler)
 }
 
-// WithChildScope changes only the module and request number while preserving
-// the parent sink. Without a parent scope it deliberately remains a no-op;
-// this keeps public SDK usage quiet outside the CLI/MCP bootstrap.
-func WithChildScope(ctx context.Context, module Module, requestID uint64) context.Context {
-	scope, ok := ScopeFromContext(ctx)
-	if !ok {
+func callInfoFrom(ctx context.Context) (callInfo, bool) {
+	value, ok := ctx.Value(contextKey{}).(callContext)
+	return value.info, ok
+}
+
+type operationKey struct{}
+
+// WithOperation 把 SDK 操作名放进 ctx；只作为日志属性，不影响请求。
+func WithOperation(ctx context.Context, operation string) context.Context {
+	if existing, _ := ctx.Value(operationKey{}).(string); existing != "" {
 		return ctx
 	}
-	return WithScope(ctx, scope.sink, module, requestID)
+	return context.WithValue(ctx, operationKey{}, operation)
 }
 
-// ScopeFromContext returns the current scope for tests and controlled adapter
-// composition. The sink itself is intentionally not exported as a field.
-func ScopeFromContext(ctx context.Context) (Scope, bool) {
-	if ctx == nil {
-		return Scope{}, false
-	}
-	scope, ok := ctx.Value(scopeContextKey{}).(Scope)
-	return scope, ok
-}
-
-// Emit sends an event when the context carries a diagnostic scope.
-func Emit(ctx context.Context, event Event) {
-	scope, ok := ScopeFromContext(ctx)
-	if !ok {
-		return
-	}
-	if event.Module == "" {
-		event.Module = scope.module
-	}
-	event.RequestID = scope.requestID
-	scope.sink.Emit(event)
-}
-
-// Emit makes Scope implement a convenient direct sink-like API.
-func (scope Scope) Emit(event Event) {
-	if scope.sink == nil {
-		return
-	}
-	if event.Module == "" {
-		event.Module = scope.module
-	}
-	event.RequestID = scope.requestID
-	scope.sink.Emit(event)
+// OperationAttr 返回 SDK 操作名属性；没有登记时为空字符串。
+func OperationAttr(ctx context.Context) slog.Attr {
+	operation, _ := ctx.Value(operationKey{}).(string)
+	return slog.String(AttrSDKOperation, operation)
 }

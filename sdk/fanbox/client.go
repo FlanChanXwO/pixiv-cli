@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 
 	protocol "github.com/FlanChanXwO/pixiv-cli/internal/fanboxapi"
@@ -48,6 +49,10 @@ type Options struct {
 	// FlareSolverr enables challenge-only recovery when explicitly configured.
 	// A nil value keeps the client entirely independent of FlareSolverr.
 	FlareSolverr *FlareSolverrOptions
+	// Logger receives the transport's request outcomes and challenge-recovery
+	// decisions. Nil keeps the SDK silent. Logs never include queries, headers,
+	// bodies, cookies, or signed URLs.
+	Logger *slog.Logger
 }
 
 // FlareSolverrOptions configures the direct solver service and its independent
@@ -88,6 +93,7 @@ func OpenWith(credentials SessionCredentials, options Options) (*Client, error) 
 		ProxyURL:     options.ProxyURL,
 		UserAgent:    options.UserAgent,
 		FlareSolverr: solver,
+		Logger:       options.Logger,
 	})
 	if err != nil {
 		reason := sdk.CredentialsExpired
@@ -110,6 +116,7 @@ func (c *Client) CloseIdleConnections() {
 // ValidateSession verifies the current session identity. An expired session
 // returns CredentialsExpired.
 func (c *Client) ValidateSession(ctx context.Context) error {
+	ctx = protocol.WithOperation(ctx, "ValidateSession")
 	if _, err := c.currentUser(ctx); err != nil {
 		return classifyError("ValidateSession", err)
 	}
@@ -118,6 +125,7 @@ func (c *Client) ValidateSession(ctx context.Context) error {
 
 // CurrentUser returns the current authenticated user's identity.
 func (c *Client) CurrentUser(ctx context.Context, request CurrentUserRequest) (User, error) {
+	ctx = protocol.WithOperation(ctx, "CurrentUser")
 	identity, err := c.currentUser(ctx)
 	if err != nil {
 		return User{}, classifyError("CurrentUser", err)

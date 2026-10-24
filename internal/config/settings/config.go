@@ -140,6 +140,8 @@ type LogLevel string
 const (
 	LogLevelInfo  LogLevel = "info"
 	LogLevelDebug LogLevel = "debug"
+	LogLevelWarn  LogLevel = "warn"
+	LogLevelError LogLevel = "error"
 )
 
 // LogFormat 是诊断输出格式配置的取值。

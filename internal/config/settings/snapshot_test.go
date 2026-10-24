@@ -329,7 +329,7 @@ func TestLoggingSettingsRejectUnsupportedValues(t *testing.T) {
 		raw   string
 		want  string
 	}{
-		{alias: "log_level", key: "level", raw: "trace", want: "log_level must be one of: info, debug"},
+		{alias: "log_level", key: "level", raw: "trace", want: "log_level must be one of: info, debug, warn, error"},
 		{alias: "log_format", key: "format", raw: "yaml", want: "log_format must be one of: text, json"},
 	} {
 		t.Run(test.alias, func(t *testing.T) {
@@ -571,7 +571,7 @@ func TestDeclaredEnvironmentBindingsAreExactlyTheDocumentedSet(t *testing.T) {
 
 	// Invalid sentinels must fail with the alias's own validation error.
 	for alias, wantErr := range map[string]string{
-		"log_level":        "log_level must be one of: info, debug",
+		"log_level":        "log_level must be one of: info, debug, warn, error",
 		"log_format":       "log_format must be one of: text, json",
 		"request_interval": `request_interval: time: invalid duration "__env__not-a-duration"`,
 	} {

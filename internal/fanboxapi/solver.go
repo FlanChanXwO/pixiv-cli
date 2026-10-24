@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"strings"
 	"time"
@@ -149,20 +150,14 @@ func (s *Session) unregisterSolverWaiter(call *solverCall) {
 }
 
 func (s *Session) runSolver(call *solverCall) {
+	started := time.Now()
 	state, err := s.solveFlareSolverr(call.ctx)
 	if err == nil {
-		logging.Emit(call.ctx, logging.Event{
-			Module:    logging.ModuleFanboxSolver,
-			Kind:      logging.EventSolverCompleted,
-			Operation: "clearance",
-		})
+		s.log.LogAttrs(call.ctx, slog.LevelInfo, "Cloudflare clearance acquired",
+			logging.OperationAttr(call.ctx), slog.Duration(logging.AttrDuration, time.Since(started)))
 	} else if call.ctx.Err() == nil {
-		logging.Emit(call.ctx, logging.Event{
-			Module:    logging.ModuleFanboxSolver,
-			Kind:      logging.EventFailed,
-			Operation: "challenge recovery",
-			Reason:    solverDiagnosticReason(err),
-		})
+		s.log.LogAttrs(call.ctx, slog.LevelWarn, "Cloudflare solver failed",
+			logging.OperationAttr(call.ctx), slog.String(logging.AttrReason, solverFailureReason(err)))
 	}
 	s.solverMu.Lock()
 	call.state = state
@@ -182,11 +177,7 @@ func (s *Session) solveFlareSolverr(ctx context.Context) (solverState, error) {
 	if s.flareSolverr == nil {
 		return solverState{}, ErrChallenge
 	}
-	logging.Emit(ctx, logging.Event{
-		Module:    logging.ModuleFanboxSolver,
-		Kind:      logging.EventSolverStarted,
-		Operation: "challenge recovery",
-	})
+	s.log.LogAttrs(ctx, slog.LevelDebug, "Starting Cloudflare solver", logging.OperationAttr(ctx))
 	payload := []byte(`{"cmd":"request.get","url":"https://www.fanbox.cc/"}`)
 	if s.flareSolverr.ProxyURL != "" {
 		payload = fmt.Appendf(nil, `{"cmd":"request.get","url":"https://www.fanbox.cc/","proxy":%q}`, s.flareSolverr.ProxyURL)
@@ -234,16 +225,16 @@ func (s *Session) solveFlareSolverr(ctx context.Context) (solverState, error) {
 	return validateSolverSolution(decoded.Solution)
 }
 
-func solverDiagnosticReason(err error) logging.Reason {
+func solverFailureReason(err error) string {
 	switch {
 	case errors.Is(err, ErrSolverUnavailable):
-		return logging.ReasonSolverUnavailable
+		return "solver unavailable"
 	case errors.Is(err, ErrSolverFailed):
-		return logging.ReasonSolverFailed
+		return "solver failed"
 	case errors.Is(err, ErrMalformedSolverResponse):
-		return logging.ReasonMalformedSolver
+		return "malformed solver response"
 	default:
-		return logging.ReasonCommandFailed
+		return "solver request failed"
 	}
 }
 

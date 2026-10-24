@@ -187,10 +187,10 @@ func normalizeReverseSearchProvider(value string) (string, error) {
 
 func parseLogLevel(value string) (LogLevel, error) {
 	switch level := LogLevel(strings.TrimSpace(value)); level {
-	case LogLevelInfo, LogLevelDebug:
+	case LogLevelInfo, LogLevelDebug, LogLevelWarn, LogLevelError:
 		return level, nil
 	default:
-		return "", fmt.Errorf("log_level must be one of: info, debug")
+		return "", fmt.Errorf("log_level must be one of: info, debug, warn, error")
 	}
 }
 

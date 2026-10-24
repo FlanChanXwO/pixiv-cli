@@ -47,6 +47,7 @@ func (c *Client) postComment(ctx context.Context, operation, path string, form u
 // read-back confirmation and must not be inferred from a subsequent comment
 // listing.
 func (c *Client) PostArtworkComment(ctx context.Context, request PostArtworkCommentRequest) (CommentMutationResult, error) {
+	ctx = pixivapi.WithOperation(ctx, "PostArtworkComment")
 	if request.ArtworkID <= 0 {
 		return CommentMutationResult{}, newError("PostArtworkComment", sdk.InvalidArgument, "artwork ID must be positive")
 	}
@@ -65,6 +66,7 @@ func (c *Client) PostArtworkComment(ctx context.Context, request PostArtworkComm
 // read-back confirmation and must not be inferred from a subsequent comment
 // listing.
 func (c *Client) ReplyArtworkComment(ctx context.Context, request ReplyArtworkCommentRequest) (CommentMutationResult, error) {
+	ctx = pixivapi.WithOperation(ctx, "ReplyArtworkComment")
 	if request.ArtworkID <= 0 {
 		return CommentMutationResult{}, newError("ReplyArtworkComment", sdk.InvalidArgument, "artwork ID must be positive")
 	}
@@ -83,6 +85,7 @@ func (c *Client) ReplyArtworkComment(ctx context.Context, request ReplyArtworkCo
 
 // DeleteArtworkComment deletes one artwork comment by its comment ID.
 func (c *Client) DeleteArtworkComment(ctx context.Context, request DeleteArtworkCommentRequest) error {
+	ctx = pixivapi.WithOperation(ctx, "DeleteArtworkComment")
 	if request.CommentID <= 0 {
 		return newError("DeleteArtworkComment", sdk.InvalidArgument, "comment ID must be positive")
 	}
@@ -100,6 +103,7 @@ func (c *Client) DeleteArtworkComment(ctx context.Context, request DeleteArtwork
 // read-back confirmation and must not be inferred from a subsequent comment
 // listing.
 func (c *Client) PostNovelComment(ctx context.Context, request PostNovelCommentRequest) (CommentMutationResult, error) {
+	ctx = pixivapi.WithOperation(ctx, "PostNovelComment")
 	if request.NovelID <= 0 {
 		return CommentMutationResult{}, newError("PostNovelComment", sdk.InvalidArgument, "novel ID must be positive")
 	}
@@ -118,6 +122,7 @@ func (c *Client) PostNovelComment(ctx context.Context, request PostNovelCommentR
 // read-back confirmation and must not be inferred from a subsequent comment
 // listing.
 func (c *Client) ReplyNovelComment(ctx context.Context, request ReplyNovelCommentRequest) (CommentMutationResult, error) {
+	ctx = pixivapi.WithOperation(ctx, "ReplyNovelComment")
 	if request.NovelID <= 0 {
 		return CommentMutationResult{}, newError("ReplyNovelComment", sdk.InvalidArgument, "novel ID must be positive")
 	}
@@ -136,6 +141,7 @@ func (c *Client) ReplyNovelComment(ctx context.Context, request ReplyNovelCommen
 
 // DeleteNovelComment deletes one novel comment by its comment ID.
 func (c *Client) DeleteNovelComment(ctx context.Context, request DeleteNovelCommentRequest) error {
+	ctx = pixivapi.WithOperation(ctx, "DeleteNovelComment")
 	if request.CommentID <= 0 {
 		return newError("DeleteNovelComment", sdk.InvalidArgument, "comment ID must be positive")
 	}
@@ -150,6 +156,7 @@ func (c *Client) DeleteNovelComment(ctx context.Context, request DeleteNovelComm
 // StampArtworkComment posts a stamp comment on one artwork. StampID is sent
 // independently from Comment and never becomes a reply parent ID.
 func (c *Client) StampArtworkComment(ctx context.Context, request StampArtworkCommentRequest) (CommentMutationResult, error) {
+	ctx = pixivapi.WithOperation(ctx, "StampArtworkComment")
 	if request.ArtworkID <= 0 {
 		return CommentMutationResult{}, newError("StampArtworkComment", sdk.InvalidArgument, "artwork ID must be positive")
 	}
@@ -167,6 +174,7 @@ func (c *Client) StampArtworkComment(ctx context.Context, request StampArtworkCo
 // StampNovelComment posts a stamp comment on one novel. StampID is sent
 // independently from Comment and never becomes a reply parent ID.
 func (c *Client) StampNovelComment(ctx context.Context, request StampNovelCommentRequest) (CommentMutationResult, error) {
+	ctx = pixivapi.WithOperation(ctx, "StampNovelComment")
 	if request.NovelID <= 0 {
 		return CommentMutationResult{}, newError("StampNovelComment", sdk.InvalidArgument, "novel ID must be positive")
 	}
@@ -184,6 +192,7 @@ func (c *Client) StampNovelComment(ctx context.Context, request StampNovelCommen
 // AddArtworkBookmark bookmarks one artwork. Tags, when non-empty, are applied
 // as bookmark tags.
 func (c *Client) AddArtworkBookmark(ctx context.Context, request AddArtworkBookmarkRequest) error {
+	ctx = pixivapi.WithOperation(ctx, "AddArtworkBookmark")
 	return c.addArtworkBookmark(ctx, request)
 }
 
@@ -213,6 +222,7 @@ func (c *Client) addArtworkBookmark(ctx context.Context, request AddArtworkBookm
 
 // RemoveArtworkBookmark removes the current user's bookmark from one artwork.
 func (c *Client) RemoveArtworkBookmark(ctx context.Context, request RemoveArtworkBookmarkRequest) error {
+	ctx = pixivapi.WithOperation(ctx, "RemoveArtworkBookmark")
 	return c.removeArtworkBookmark(ctx, request.ArtworkID)
 }
 
@@ -232,6 +242,7 @@ func (c *Client) removeArtworkBookmark(ctx context.Context, artworkID int64) err
 // AddNovelBookmark bookmarks one novel. Tags, when non-empty, are applied as
 // bookmark tags.
 func (c *Client) AddNovelBookmark(ctx context.Context, request AddNovelBookmarkRequest) error {
+	ctx = pixivapi.WithOperation(ctx, "AddNovelBookmark")
 	if request.NovelID <= 0 {
 		return newError("AddNovelBookmark", sdk.InvalidArgument, "novel ID must be positive")
 	}
@@ -256,6 +267,7 @@ func (c *Client) AddNovelBookmark(ctx context.Context, request AddNovelBookmarkR
 
 // RemoveNovelBookmark removes the current user's bookmark from one novel.
 func (c *Client) RemoveNovelBookmark(ctx context.Context, request RemoveNovelBookmarkRequest) error {
+	ctx = pixivapi.WithOperation(ctx, "RemoveNovelBookmark")
 	if request.NovelID <= 0 {
 		return newError("RemoveNovelBookmark", sdk.InvalidArgument, "novel ID must be positive")
 	}
@@ -269,6 +281,7 @@ func (c *Client) RemoveNovelBookmark(ctx context.Context, request RemoveNovelBoo
 
 // FollowUser follows one user.
 func (c *Client) FollowUser(ctx context.Context, request FollowUserRequest) error {
+	ctx = pixivapi.WithOperation(ctx, "FollowUser")
 	if request.UserID <= 0 {
 		return newError("FollowUser", sdk.InvalidArgument, "user ID must be positive")
 	}
@@ -289,6 +302,7 @@ func (c *Client) FollowUser(ctx context.Context, request FollowUserRequest) erro
 
 // UnfollowUser unfollows one user.
 func (c *Client) UnfollowUser(ctx context.Context, request UnfollowUserRequest) error {
+	ctx = pixivapi.WithOperation(ctx, "UnfollowUser")
 	if request.UserID <= 0 {
 		return newError("UnfollowUser", sdk.InvalidArgument, "user ID must be positive")
 	}

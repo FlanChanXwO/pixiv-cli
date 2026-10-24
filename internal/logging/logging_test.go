@@ -3,44 +3,67 @@ package logging_test
 import (
 	"bytes"
 	"context"
-	"sync"
+	"errors"
+	"log/slog"
+	"strings"
 	"testing"
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/logging"
 )
 
-func TestDisabledScopeDoesNotEmitOrCreateOutput(t *testing.T) {
+func TestFromWithoutCallIsSilent(t *testing.T) {
 	var output bytes.Buffer
-	ctx := logging.WithScope(context.Background(), logging.Nop(), logging.ModulePixivCLI, 0)
-	logging.Emit(ctx, logging.Event{Kind: logging.EventStarted, Operation: "pixiv config path"})
+	if logging.From(context.Background()) == nil {
+		t.Fatal("From returned nil logger")
+	}
+	logging.From(context.Background()).Info("ignored")
 	if output.Len() != 0 {
-		t.Fatalf("disabled diagnostics wrote %q", output.String())
+		t.Fatalf("background logger wrote %q", output.String())
 	}
 }
 
-func TestScopeAddsModuleAndRequestID(t *testing.T) {
-	var (
-		mu     sync.Mutex
-		events []logging.Event
+func TestTextHandlerAddsCallInfoAndCauseTree(t *testing.T) {
+	var output bytes.Buffer
+	logger, err := logging.New(&output, "debug", "text")
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx := logging.WithCall(context.Background(), logger, "pixiv download", "call-7")
+	logger = logging.From(ctx)
+	logger.ErrorContext(ctx, "Command failed", slog.Any(logging.AttrError, errors.Join(errors.New("first"), errors.New("second"))))
+
+	text := output.String()
+	for _, want := range []string{"Command failed", "operation=pixiv download", "call_id=call-7", "caused by: first", "caused by: second"} {
+		if !strings.Contains(text, want) {
+			t.Fatalf("text output missing %q:\n%s", want, text)
+		}
+	}
+	if strings.Contains(text, "third") {
+		t.Fatalf("private unwrap cause leaked: %s", text)
+	}
+}
+
+func TestJSONHandlerUsesSharedAttributeKeys(t *testing.T) {
+	var output bytes.Buffer
+	logger, err := logging.New(&output, "warn", "json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx := logging.WithCall(context.Background(), logger, "pixiv_search_illust", "3")
+	logger.WarnContext(ctx, "Request rejected by upstream",
+		slog.String(logging.AttrMethod, "GET"),
+		slog.String(logging.AttrHost, "app-api.pixiv.net"),
+		slog.String(logging.AttrPath, "/v1/search/illust"),
+		slog.Int(logging.AttrStatus, 429),
+		slog.Duration(logging.AttrWait, 0),
+		slog.Int(logging.AttrAttempt, 1),
+		slog.String(logging.AttrSDKOperation, "SearchArtworks"),
+		slog.Any(logging.AttrError, errors.New("rate limited")),
 	)
-	sink := logging.SinkFunc(func(event logging.Event) {
-		mu.Lock()
-		defer mu.Unlock()
-		events = append(events, event)
-	})
-	ctx := logging.WithScope(context.Background(), sink, logging.ModuleFanboxMCPServer, 7)
-	logging.Emit(ctx, logging.Event{Kind: logging.EventNetworkRequest, Operation: "retrieve", Resource: "post 12221352"})
-
-	if len(events) != 1 {
-		t.Fatalf("event count=%d want 1", len(events))
-	}
-	if events[0].Module != logging.ModuleFanboxMCPServer || events[0].RequestID != 7 {
-		t.Fatalf("event scope=%+v", events[0])
-	}
-
-	child := logging.WithChildScope(ctx, logging.ModuleFanboxSolver, 8)
-	logging.Emit(child, logging.Event{Kind: logging.EventSolverStarted, Operation: "challenge recovery"})
-	if len(events) != 2 || events[1].Module != logging.ModuleFanboxSolver || events[1].RequestID != 8 {
-		t.Fatalf("child event scope=%+v", events)
+	line := strings.TrimSpace(output.String())
+	for _, want := range []string{`"operation":"pixiv_search_illust"`, `"call_id":"3"`, `"status":429`, `"sdk_operation":"SearchArtworks"`, `"error":"rate limited"`} {
+		if !strings.Contains(line, want) {
+			t.Fatalf("json output missing %s: %s", want, line)
+		}
 	}
 }

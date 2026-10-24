@@ -170,6 +170,7 @@ func (w blockedUsersWire) list() ([]userPreviewWire, error) {
 
 // SearchUsers searches users.
 func (c *Client) SearchUsers(ctx context.Context, request SearchUsersRequest) (sdk.Page[UserPreview], error) {
+	ctx = pixivapi.WithOperation(ctx, "SearchUsers")
 	if err := validateSearchWord("SearchUsers", request.Word); err != nil {
 		return sdk.Page[UserPreview]{}, err
 	}
@@ -179,6 +180,7 @@ func (c *Client) SearchUsers(ctx context.Context, request SearchUsersRequest) (s
 
 // User returns one user's detail by their stable ID.
 func (c *Client) User(ctx context.Context, request UserRequest) (UserDetail, error) {
+	ctx = pixivapi.WithOperation(ctx, "User")
 	if request.UserID <= 0 {
 		return UserDetail{}, newError("User", sdk.InvalidArgument, "user ID must be positive")
 	}
@@ -193,6 +195,7 @@ func (c *Client) User(ctx context.Context, request UserRequest) (UserDetail, err
 // verified identity, so it fails with Unauthorized on a New client whose
 // user ID is unknown.
 func (c *Client) CurrentUser(ctx context.Context, request CurrentUserRequest) (UserDetail, error) {
+	ctx = pixivapi.WithOperation(ctx, "CurrentUser")
 	if c.userID <= 0 {
 		return UserDetail{}, newError("CurrentUser", sdk.Unauthorized, "current user identity is unknown")
 	}
@@ -278,12 +281,14 @@ func (c *Client) mapUserDetail(value userDetailWire) UserDetail {
 
 // RecommendedUsers lists recommended users with sample works.
 func (c *Client) RecommendedUsers(ctx context.Context, request RecommendedUsersRequest) (sdk.Page[UserPreview], error) {
+	ctx = pixivapi.WithOperation(ctx, "RecommendedUsers")
 	base := url.Values{}
 	return c.userPreviewsPage(ctx, "RecommendedUsers", pixivapi.PathUserRecommended, base, base, request.Cursor, userRecommendedContinuation, true)
 }
 
 // RelatedUsers lists users related to one user.
 func (c *Client) RelatedUsers(ctx context.Context, request RelatedUsersRequest) (sdk.Page[UserPreview], error) {
+	ctx = pixivapi.WithOperation(ctx, "RelatedUsers")
 	if request.UserID <= 0 {
 		return sdk.Page[UserPreview]{}, newError("RelatedUsers", sdk.InvalidArgument, "user ID must be positive")
 	}
@@ -293,11 +298,13 @@ func (c *Client) RelatedUsers(ctx context.Context, request RelatedUsersRequest) 
 
 // UserFollowing lists the users one user follows.
 func (c *Client) UserFollowing(ctx context.Context, request UserFollowingRequest) (sdk.Page[UserPreview], error) {
+	ctx = pixivapi.WithOperation(ctx, "UserFollowing")
 	return c.userRelationshipPage(ctx, "UserFollowing", pixivapi.PathUserFollowing, request.UserID, request.Restrict, request.Cursor, userFollowingContinuation)
 }
 
 // UserFollowers lists the users following one user.
 func (c *Client) UserFollowers(ctx context.Context, request UserFollowersRequest) (sdk.Page[UserPreview], error) {
+	ctx = pixivapi.WithOperation(ctx, "UserFollowers")
 	return c.userRelationshipPage(ctx, "UserFollowers", pixivapi.PathUserFollower, request.UserID, request.Restrict, request.Cursor, userFollowerContinuation)
 }
 
@@ -318,6 +325,7 @@ func (c *Client) userRelationshipPage(ctx context.Context, operation, path strin
 
 // UserBlockedUsers lists the users one user has blocked.
 func (c *Client) UserBlockedUsers(ctx context.Context, request UserBlockedUsersRequest) (sdk.Page[UserPreview], error) {
+	ctx = pixivapi.WithOperation(ctx, "UserBlockedUsers")
 	if request.UserID <= 0 {
 		return sdk.Page[UserPreview]{}, newError("UserBlockedUsers", sdk.InvalidArgument, "user ID must be positive")
 	}
@@ -330,6 +338,7 @@ func (c *Client) UserBlockedUsers(ctx context.Context, request UserBlockedUsersR
 // verified identity, so it fails with Unauthorized on a New client whose
 // user ID is unknown.
 func (c *Client) MyPixivUsers(ctx context.Context, request MyPixivUsersRequest) (sdk.Page[UserPreview], error) {
+	ctx = pixivapi.WithOperation(ctx, "MyPixivUsers")
 	if c.userID <= 0 {
 		return sdk.Page[UserPreview]{}, newError("MyPixivUsers", sdk.Unauthorized, "current user identity is unknown")
 	}
