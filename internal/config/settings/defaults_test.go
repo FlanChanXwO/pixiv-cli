@@ -67,7 +67,7 @@ func TestGeneratedBaselineFileSurfaceIsStable(t *testing.T) {
 			continue
 		}
 		require.Truef(t, spec.HasDefault, "alias %q declares DefaultInFile without a default", alias)
-		want[spec.KoanfKey] = ""
+		want[spec.TOMLPath] = ""
 	}
 	require.Equalf(t, len(want), len(got),
 		"generated key count must equal the example-tagged set\nwant keys: %v\ngot keys: %v",
@@ -80,8 +80,8 @@ func TestGeneratedBaselineFileSurfaceIsStable(t *testing.T) {
 	}
 
 	// Values round-trip through the public parser back to the declared default.
-	for key, text := range got {
-		alias := aliasForKoanfKey(t, key)
+	for path, text := range got {
+		alias := config.Key(aliasForTOMLPath(t, path))
 		spec, ok := config.SettingSpecByAlias(alias)
 		require.True(t, ok)
 		raw := strings.Trim(text, `"`)
@@ -95,10 +95,10 @@ func TestGeneratedBaselineFileSurfaceIsStable(t *testing.T) {
 	require.NoError(t, (config.Store{Files: second}).EnsureDefaultConfigFile())
 	assert.Equal(t, string(body), string(second.files["injected/config.toml"]), "generation must be deterministic")
 
-	for key := range got {
-		parts := strings.Split(key, ".")
-		require.GreaterOrEqualf(t, len(parts), 2, "key %q must live in a table", key)
-		alias := aliasForKoanfKey(t, key)
+	for path := range got {
+		parts := strings.Split(path, ".")
+		require.GreaterOrEqualf(t, len(parts), 2, "key %q must live in a table", path)
+		alias := config.Key(aliasForTOMLPath(t, path))
 		spec, ok := config.SettingSpecByAlias(alias)
 		require.True(t, ok)
 		assert.Equal(t, spec.Table, parts[:len(parts)-1], "alias %q must be grouped under its declared table", alias)
@@ -121,7 +121,7 @@ func TestGeneratedBaselineFileSurfaceIsStable(t *testing.T) {
 			continue
 		}
 		assert.Falsef(t, spec.DefaultInFile, "sensitive alias %q must not be example-tagged", alias)
-		assert.NotContainsf(t, got, spec.KoanfKey, "sensitive key %q must never enter the baseline", spec.KoanfKey)
+		assert.NotContainsf(t, got, spec.TOMLPath, "sensitive key %q must never enter the baseline", spec.TOMLPath)
 		assert.NotContainsf(t, string(body), spec.Key, "sensitive key %q must never enter the baseline", spec.Key)
 	}
 	for _, tombstone := range []string{"web.fallback_enabled", "account_pool.accounts"} {
@@ -136,14 +136,14 @@ func TestGeneratedBaselineFileSurfaceIsStable(t *testing.T) {
 	files.files["injected/config.toml"] = existing
 }
 
-// aliasForKoanfKey maps a generated TOML path back to its alias.
-func aliasForKoanfKey(t *testing.T, key string) string {
+// aliasForTOMLPath maps a generated TOML path back to its alias.
+func aliasForTOMLPath(t *testing.T, key string) string {
 	t.Helper()
 	for _, alias := range config.ValidSettingAliases() {
 		spec, ok := config.SettingSpecByAlias(alias)
 		require.True(t, ok)
-		if spec.KoanfKey == key {
-			return alias
+		if spec.TOMLPath == key {
+			return string(alias)
 		}
 	}
 	t.Fatalf("generated key %q has no declared alias", key)

@@ -46,8 +46,7 @@ pixiv auth pool disable UID... [--all]
 
 `auth pool status` and `auth list` expose only non-secret scheduling summaries.
 The removed `account_pool.accounts` config key is not migrated; if it remains,
-runtime configuration fails with `removed_setting`. Remove it explicitly with
-`pixiv config unset account_pool_accounts`. The historical
+it is ignored as an undeclared key. The historical
 `data/account-pool.json` scheduler is not read, migrated, or deleted by the
 current runtime.
 

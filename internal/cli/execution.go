@@ -18,6 +18,7 @@ import (
 	authcommands "github.com/FlanChanXwO/pixiv-cli/internal/cli/auth"
 	requirements "github.com/FlanChanXwO/pixiv-cli/internal/cli/internal/command"
 	"github.com/FlanChanXwO/pixiv-cli/internal/cli/internal/input"
+	configapp "github.com/FlanChanXwO/pixiv-cli/internal/config/settings"
 	"github.com/FlanChanXwO/pixiv-cli/internal/logging"
 	"github.com/FlanChanXwO/pixiv-cli/internal/reversesearch"
 	"github.com/spf13/cobra"
@@ -298,14 +299,14 @@ func (a app) startDiagnostics(cmd *cobra.Command, requirement requirements.Execu
 	if err != nil {
 		return err
 	}
-	if runtime.LogLevel != "debug" {
+	if runtime.LogLevel != configapp.LogLevelDebug {
 		return nil
 	}
 	module := logging.ModulePixivCLI
 	if strings.HasPrefix(cmd.CommandPath(), "pixiv fanbox") {
 		module = logging.ModuleFanboxCLI
 	}
-	presenter := logging.NewPresenterWithFormat(a.errOut, runtime.LogFormat, nil)
+	presenter := logging.NewPresenterWithFormat(a.errOut, string(runtime.LogFormat), nil)
 	scoped := logging.WithScope(cmd.Context(), presenter, module, 0)
 	a.diagnostics.ctx = scoped
 	a.diagnostics.operation = cmd.CommandPath()

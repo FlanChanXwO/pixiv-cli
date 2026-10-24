@@ -1,7 +1,6 @@
 package settings
 
 import (
-	"errors"
 	"fmt"
 	"os"
 	"reflect"
@@ -49,9 +48,9 @@ func settingSpecsFromTags() ([]settingSpecFromTags, error) {
 
 // envNamesFor 返回某个别名按 env 标签声明顺序排列的环境变量名。顺序即优先级，
 // 因此这里不排序也不去重：调用方按顺序返回第一个**存在**的变量即可。
-func envNamesFor(alias string) []string {
+func envNamesFor(key Key) []string {
 	for _, entry := range mustSettingSpecs() {
-		if alias != "" && entry.spec.Alias == alias {
+		if key != "" && entry.spec.Alias == key {
 			return entry.env
 		}
 	}
@@ -70,33 +69,19 @@ func deriveSchemaFromTags(configType reflect.Type) ([]settingSpecFromTags, error
 	}
 
 	// 6. 唯一性校验：重复 config 路径与重复 alias 都是 schema 错误。
-	seenPaths := make(map[string]string, len(derived))
-	seenAliases := make(map[string]string, len(derived))
+	seenPaths := make(map[string]Key, len(derived))
+	seenAliases := make(map[Key]string, len(derived))
 	for _, entry := range derived {
-		if previous, duplicate := seenPaths[entry.spec.KoanfKey]; duplicate {
-			return nil, fmt.Errorf("config path %q is declared by both %q and %q", entry.spec.KoanfKey, previous, entry.spec.Alias)
+		if previous, duplicate := seenPaths[entry.spec.TOMLPath]; duplicate {
+			return nil, fmt.Errorf("config path %q is declared by both %q and %q", entry.spec.TOMLPath, previous, entry.spec.Alias)
 		}
-		seenPaths[entry.spec.KoanfKey] = entry.spec.Alias
+		seenPaths[entry.spec.TOMLPath] = entry.spec.Alias
 		if previous, duplicate := seenAliases[entry.spec.Alias]; entry.spec.Alias != "" && duplicate {
-			return nil, fmt.Errorf("alias %q is declared by both %q and %q", entry.spec.Alias, previous, entry.spec.KoanfKey)
+			return nil, fmt.Errorf("alias %q is declared by both %q and %q", entry.spec.Alias, previous, entry.spec.TOMLPath)
 		}
 		if entry.spec.Alias != "" {
-			seenAliases[entry.spec.Alias] = entry.spec.KoanfKey
+			seenAliases[entry.spec.Alias] = entry.spec.TOMLPath
 		}
-	}
-
-	// 7. 追加不绑定到 RuntimeConfig 字段的迁移墓碑。它们仍可被查询，以便
-	//    config unset 清理旧配置，且必须与已声明别名保持唯一性。
-	for _, tombstone := range settingTombstones {
-		if previous, duplicate := seenAliases[tombstone.Alias]; duplicate {
-			return nil, fmt.Errorf("alias %q is declared by both %q and %q", tombstone.Alias, previous, tombstone.KoanfKey)
-		}
-		seenAliases[tombstone.Alias] = tombstone.KoanfKey
-		if previous, duplicate := seenPaths[tombstone.KoanfKey]; duplicate {
-			return nil, fmt.Errorf("config path %q is declared by both %q and %q", tombstone.KoanfKey, previous, tombstone.Alias)
-		}
-		seenPaths[tombstone.KoanfKey] = tombstone.Alias
-		derived = append(derived, settingSpecFromTags{spec: tombstone})
 	}
 
 	return derived, nil
@@ -146,7 +131,7 @@ func appendTaggedFields(derived []settingSpecFromTags, structType reflect.Type, 
 			}
 			continue
 		}
-		alias := field.Tag.Get(tagAlias)
+		alias := Key(field.Tag.Get(tagAlias))
 		rawPath = strings.Join(fullPath, ".")
 		table, key, err := splitConfigPath(rawPath)
 		if err != nil {
@@ -159,7 +144,7 @@ func appendTaggedFields(derived []settingSpecFromTags, structType reflect.Type, 
 
 		spec := SettingSpec{
 			Alias:    alias,
-			KoanfKey: rawPath,
+			TOMLPath: rawPath,
 			Table:    table,
 			Key:      key,
 			Kind:     kind,
@@ -208,43 +193,6 @@ func appendTaggedFields(derived []settingSpecFromTags, structType reflect.Type, 
 		})
 	}
 	return derived, nil
-}
-
-// settingTombstones 是已退役但必须保持可查询的配置键。它们不绑定字段、不驱动
-// 运行时分支，只用于让旧配置的显式写入得到 removed_setting 并允许 unset 清理。
-var settingTombstones = []SettingSpec{
-	{
-		Alias:    "web_fallback_enabled",
-		KoanfKey: "web.fallback_enabled",
-		Table:    []string{"web"},
-		Key:      "fallback_enabled",
-		Kind:     settingBool,
-		Removed:  true,
-	},
-	{
-		Alias:    "account_pool_accounts",
-		KoanfKey: "account_pool.accounts",
-		Table:    []string{"account_pool"},
-		Key:      "accounts",
-		Kind:     settingString,
-		Removed:  true,
-	},
-	{
-		Alias:    "mcp_gallery_cache_ttl",
-		KoanfKey: "mcp.gallery_cache_ttl",
-		Table:    []string{"mcp"},
-		Key:      "gallery_cache_ttl",
-		Kind:     settingDuration,
-		Removed:  true,
-	},
-	{
-		Alias:    "mcp_gallery_concurrency",
-		KoanfKey: "mcp.gallery_concurrency",
-		Table:    []string{"mcp"},
-		Key:      "gallery_concurrency",
-		Kind:     settingInteger,
-		Removed:  true,
-	},
 }
 
 // parseEnvTag 拆分 env 标签：逗号分隔，去空白，保持声明顺序。
@@ -330,12 +278,11 @@ func parseDefaultForField(field reflect.StructField, kind settingKind, raw strin
 	}
 }
 
-// SettingSpecByAlias 返回 alias 对应的 spec。已移除键仍可被查询，以便 config unset
-// 执行清理、config get/set 返回 removed_setting。元数据完全来自字段标签声明。
+// SettingSpecByAlias 返回 key 对应的 spec。元数据完全来自字段标签声明。
 // Table 返回独立副本，调用方修改不会污染静态声明。
-func SettingSpecByAlias(alias string) (SettingSpec, bool) {
+func SettingSpecByAlias(key Key) (SettingSpec, bool) {
 	for _, entry := range mustSettingSpecs() {
-		if alias != "" && entry.spec.Alias == alias {
+		if key != "" && entry.spec.Alias == key {
 			entry.spec.Table = slices.Clone(entry.spec.Table)
 			return entry.spec, true
 		}
@@ -353,36 +300,25 @@ func mustSettingSpecs() []settingSpecFromTags {
 	return derived
 }
 
-// ErrRemovedSetting 表示该配置键已随版本删除。旧配置仍显式包含它时返回；用户
-// 通过 `pixiv config unset` 清理后不再出现。
-var ErrRemovedSetting = errors.New("removed_setting")
-
-// RemovedSettingError 构造一个同时能被 errors.Is 匹配 ErrRemovedSetting 的错误，
-// 明确指导用户如何清理旧配置。已移除键在显式写入配置时对 runtime 生效，不设置
-// 默认值，也不进入可写别名集合。
-func RemovedSettingError(alias string) error {
-	return fmt.Errorf("%w: config key %q was removed; clear it with `pixiv config unset %s`", ErrRemovedSetting, alias, alias)
-}
-
 // IsSensitiveSetting 标记禁止通过公开配置查询回显的凭据型值。
-func IsSensitiveSetting(alias string) bool {
-	spec, ok := SettingSpecByAlias(alias)
+func IsSensitiveSetting(key Key) bool {
+	spec, ok := SettingSpecByAlias(key)
 	return ok && spec.Sensitive
 }
 
 // PublicSettingText 返回可安全进入 CLI、SDK JSON 与日志边界的配置值。
-func PublicSettingText(alias, text string) string {
-	if IsSensitiveSetting(alias) && text != "" {
+func PublicSettingText(key Key, text string) string {
+	if IsSensitiveSetting(key) && text != "" {
 		return "<redacted>"
 	}
 	return text
 }
 
-func ValidSettingAliases() []string {
+func ValidSettingAliases() []Key {
 	derived := mustSettingSpecs()
-	keys := make([]string, 0, len(derived))
+	keys := make([]Key, 0, len(derived))
 	for _, entry := range derived {
-		if entry.spec.Removed || entry.spec.Alias == "" {
+		if entry.spec.Alias == "" {
 			continue
 		}
 		keys = append(keys, entry.spec.Alias)
@@ -392,11 +328,11 @@ func ValidSettingAliases() []string {
 }
 
 // CLISettingAliases 返回由 pixiv config 命令管理的非移除配置键。
-func CLISettingAliases() []string {
+func CLISettingAliases() []Key {
 	derived := mustSettingSpecs()
-	keys := make([]string, 0, len(derived))
+	keys := make([]Key, 0, len(derived))
 	for _, entry := range derived {
-		if entry.spec.Removed || entry.spec.Alias == "" || !entry.spec.CLIManaged {
+		if entry.spec.Alias == "" || !entry.spec.CLIManaged {
 			continue
 		}
 		keys = append(keys, entry.spec.Alias)
@@ -405,7 +341,7 @@ func CLISettingAliases() []string {
 	return keys
 }
 
-// EnvValue 返回 spec 对应别名按 env 标签声明顺序解析到的环境变量值。
+// envValue 返回 spec 对应别名按 env 标签声明顺序解析到的环境变量值。
 //
 // 契约：
 //   - 顺序即优先级，返回第一个**存在**的变量；某个变量存在但为空也算命中，
@@ -413,7 +349,7 @@ func CLISettingAliases() []string {
 //   - 未声明 env 标签的别名返回 ("", false)。
 //
 // 来源完全来自字段标签，不再维护独立的 alias switch。
-func EnvValue(spec SettingSpec) (string, bool) {
+func envValue(spec SettingSpec) (string, bool) {
 	for _, name := range envNamesFor(spec.Alias) {
 		if value, present := os.LookupEnv(name); present {
 			return value, true

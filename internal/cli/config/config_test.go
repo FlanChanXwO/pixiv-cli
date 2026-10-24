@@ -58,12 +58,12 @@ func TestCLIManagedAliasesComeFromSchema(t *testing.T) {
 		"reverse_search_provider",
 		"saucenao_api_key",
 	}
-	require.Equal(t, want, configapp.CLISettingAliases())
+	require.Equal(t, want, keyStrings(configapp.CLISettingAliases()))
 	for _, alias := range want {
-		require.Truef(t, isCLIConfigAlias(alias), "%s must be accepted by config commands", alias)
+		require.Truef(t, isCLIConfigAlias(configapp.Key(alias)), "%s must be accepted by config commands", alias)
 		require.Contains(t, configKeyHelp(), alias)
 	}
-	require.False(t, isCLIConfigAlias("output_json"))
+	require.False(t, isCLIConfigAlias(configapp.KeyOutputJSON))
 
 	cmd := NewCommand(testHost{in: bytes.NewReader(nil), out: &bytes.Buffer{}, err: &bytes.Buffer{}})
 	for _, child := range cmd.Commands() {
@@ -93,12 +93,12 @@ func TestCLIManagesRuntimeAliases(t *testing.T) {
 		{alias: "log_format", value: "json"},
 		{alias: "mcp_gallery_animation_temp_capacity_mib", value: "512"}, {alias: "mcp_gallery_cache_capacity_mib", value: "64"},
 	} {
-		require.NoError(t, set(host, test.alias, test.value))
+		require.NoError(t, set(host, configapp.Key(test.alias), test.value))
 		host.out.Reset()
-		require.NoError(t, get(host, test.alias))
+		require.NoError(t, get(host, configapp.Key(test.alias)))
 		require.Equal(t, test.value+"\n", host.out.String())
 		host.out.Reset()
-		require.NoError(t, unset(host, test.alias))
+		require.NoError(t, unset(host, configapp.Key(test.alias)))
 	}
 }
 
@@ -132,12 +132,12 @@ func TestSensitiveConfigSetReadsNonTTYStdinAndGetIsRedacted(t *testing.T) {
 
 	require.NoError(t, cmd.Execute())
 	require.Equal(t, "saucenao_api_key updated\n", host.out.String())
-	value, err := host.store.Get("saucenao_api_key")
+	value, err := host.store.Get(configapp.KeySauceNAOAPIKey)
 	require.NoError(t, err)
 	require.Equal(t, "private-key", value.Value)
 
 	host.out.Reset()
-	require.NoError(t, get(host, "saucenao_api_key"))
+	require.NoError(t, get(host, configapp.KeySauceNAOAPIKey))
 	require.Equal(t, "<redacted>\n", host.out.String())
 }
 
@@ -149,7 +149,7 @@ func TestSensitiveConfigGetIsRedactedEvenWhenUnset(t *testing.T) {
 		store: configapp.Store{Files: localFileStore{path: t.TempDir() + "/config.toml"}},
 	}
 
-	require.NoError(t, get(host, "saucenao_api_key"))
+	require.NoError(t, get(host, configapp.KeySauceNAOAPIKey))
 	require.Equal(t, "<redacted>\n", host.out.String())
 }
 
@@ -196,4 +196,12 @@ func commandNames(cmd interface{ Commands() []*cobra.Command }) []string {
 		names = append(names, child.Name())
 	}
 	return names
+}
+
+func keyStrings(keys []configapp.Key) []string {
+	out := make([]string, len(keys))
+	for index, key := range keys {
+		out[index] = string(key)
+	}
+	return out
 }

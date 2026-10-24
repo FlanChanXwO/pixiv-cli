@@ -2,7 +2,9 @@
 
 规格见同目录的 `spec.md` 第 7 节 7.0。每条语句可以独立粘贴。开始一个 goal 前，它依赖的 goal 必须已合并进 main；同一阶段内没有依赖关系的 goal 可以同时运行，每个都在自己的 worktree 中进行。
 
-标题带“（可并行）”的 goal 可以与其他 goal 同时运行：阶段 1 的各条线路之间、G23–G27 之间、G29–G33 之间互相并行，G19–G21 还可以与阶段 0 同时进行。同一线路内仍按依赖顺序执行，例如 G07 要等 G06 合并。
+标题带“（可并行）”的 goal 可以与其他 goal 同时运行，只要下表中的依赖都已合并。同一线路内仍按依赖顺序执行，例如 G08 要等 G07 合并。
+
+依赖于 2026-10-23 调整：G09、G23–G27 不再等待 G22 和整个阶段 1，只等待与其代码冲突的 goal；G24、G26 先于 G22 进行，G22 在它们的结果上改造日志。G19、G20、G21、G33（scripts、tools、workflow 的整理）取消，不执行；frontend/ 的文件头注释并入 G32。以下表为准。
 
 | Goal | worktree | 依赖 | 可并行 |
 |---|---|---|---|
@@ -14,7 +16,7 @@
 | G06 | `refactor-g06-sdk-artwork` | G05 | 是 |
 | G07 | `refactor-g07-sdk-novel` | G06 | 是 |
 | G08 | `refactor-g08-sdk-user` | G07 | 是 |
-| G09 | `refactor-g09-sdk-fanbox` | G08 | 是 |
+| G09 | `refactor-g09-sdk-fanbox` | G06 | 是 |
 | G10 | `refactor-g10-mcp-tools` | G05 | 是 |
 | G11 | `refactor-g11-cli-commands` | G05 | 是 |
 | G12 | `refactor-g12-cli-prompt` | G11 | 是 |
@@ -24,22 +26,22 @@
 | G16 | `refactor-g16-storage` | G05 | 是 |
 | G17 | `refactor-g17-live-tests` | G05 | 是 |
 | G18 | `refactor-g18-leaf-packages` | G05 | 是 |
-| G19 | `refactor-g19-scripts-move` | 用 gh 确认最近一次 release tag 对应的全部发布 workflow 已成功（不依赖其他 goal） | 是 |
-| G20 | `refactor-g20-scripts-slim` | G19 | 是 |
-| G21 | `refactor-g21-workflow-refs` | G20 | 是 |
-| G22 | `refactor-g22-logging` | G09、G10、G11、G14、G15 | 否 |
-| G23 | `refactor-g23-shared-mechanisms` | G22，以及 G01–G21 全部 | 是 |
-| G24 | `refactor-g24-media` | G22，以及 G01–G21 全部 | 是 |
-| G25 | `refactor-g25-mcp-runtime` | G22，以及 G01–G21 全部 | 是 |
-| G26 | `refactor-g26-accounts` | G22，以及 G01–G21 全部 | 是 |
-| G27 | `refactor-g27-cli-auth` | G22，以及 G01–G21 全部 | 是 |
-| G28 | `refactor-g28-sweep` | G23、G24、G25、G26、G27 | 否 |
+| G19 | `refactor-g19-scripts-move` | 已取消，不执行 | 是 |
+| G20 | `refactor-g20-scripts-slim` | 已取消，不执行 | 是 |
+| G21 | `refactor-g21-workflow-refs` | 已取消，不执行 | 是 |
+| G22 | `refactor-g22-logging` | G07、G08、G09、G10、G11、G14、G15、G24、G26 | 否 |
+| G23 | `refactor-g23-shared-mechanisms` | G08、G14 | 是 |
+| G24 | `refactor-g24-media` | G05 | 是 |
+| G25 | `refactor-g25-mcp-runtime` | G05 | 是 |
+| G26 | `refactor-g26-accounts` | G05 | 是 |
+| G27 | `refactor-g27-cli-auth` | G12 | 是 |
+| G28 | `refactor-g28-sweep` | G22、G23、G24、G25、G26、G27 | 否 |
 | G29 | `refactor-g29-headers-sdk` | G28 | 是 |
 | G30 | `refactor-g30-headers-cli` | G28 | 是 |
 | G31 | `refactor-g31-headers-mcp` | G28 | 是 |
 | G32 | `refactor-g32-headers-internal` | G28 | 是 |
-| G33 | `refactor-g33-headers-scripts` | G28、G21 | 是 |
-| G34 | `refactor-g34-finish` | G29、G30、G31、G32、G33 | 否 |
+| G33 | `refactor-g33-headers-scripts` | 已取消，不执行（frontend/ 并入 G32） | 是 |
+| G34 | `refactor-g34-finish` | G29、G30、G31、G32 | 否 |
 
 ## G01：go mod tidy
 
@@ -497,7 +499,8 @@
 
 【本 goal】
 工作项：A4（规格 6.1）。
-- services/fanbox/endpoint/** 并入 sdk/fanbox，完成后 services/ 目录消失。
+- services/fanbox/endpoint/** 并入 sdk/fanbox，完成后 services/fanbox/ 消失；services/pixiv/endpoint 由 G08 删除，两者都合并后 services/ 整体消失。
+- 只修改 sdk/fanbox 与 services/fanbox，与 G07、G08 的目录不重叠，不需要等待它们。
 - Client 字段按 3.3 收敛。
 
 【验收】
@@ -513,7 +516,7 @@
 - 名称：refactor-g09-sdk-fanbox
 - 路径：/Users/flanchan/.codex/worktrees/refactor-g09-sdk-fanbox/pixiv-cli
 - 分支：refactor/g09-sdk-fanbox
-- 开始前用 gh 确认依赖已满足：G08。未满足就标为阻塞并结束。
+- 开始前用 gh 确认依赖已满足：G06（依赖已于 2026-10-23 调整，以本条为准）。未满足就标为阻塞并结束。
 - 满足后执行 git fetch origin main，再用 git worktree add -b refactor/g09-sdk-fanbox /Users/flanchan/.codex/worktrees/refactor-g09-sdk-fanbox/pixiv-cli origin/main 创建。
 - 全部工作都在这个 worktree 中进行。goal-N/ 工作目录、临时探针和基线比对输出加入 .git/info/exclude，不提交。
 
@@ -1037,166 +1040,17 @@
 - 最终汇报包括：PR 链接、合并提交、实际运行的检查及结果、假设与阻塞项、依赖本 goal 的后续 goal 需要知道的事。
 ```
 
-## G19：合并 tools、ci 进 scripts（可并行）
+## G19：合并 tools、ci 进 scripts（已取消）
 
-```text
-/goal 执行 pixiv-cli 重构规格的 G19：合并 tools、ci 进 scripts。
+2026-10-23 取消，不执行。本次重构不整理 scripts、tools、workflow；依赖 G19 的 goal 已去掉这项依赖。
 
-【本 goal】
-工作项：S1（规格 5.4、S 组、第 10 节中 S1 的风险）。
-- 按 5.4 合并 tools/、ci/，每个工具一个 package main；删除 publicapi、browser-evidence 及其工具和 fixture、homebrew-prepublish-verify。
-- 更新所有 workflow、pixiv-cli-pr（prmeta 与命令白名单的路径）、pixiv-cli-ci、pixiv-cli-native、pixiv-cli-test、AGENTS.md 以及中英文维护文档。
-- platform-smoke.yml 与 container-smoke.yml 由 main 上的定义运行，却检出 PR head 的代码（规格 7.0 第 10 条）。其中引用的 ./tools/platformmatrix、./scripts/cmd/licensebundle、./scripts/cmd/nativeevidence、./scripts/tests/installers、./scripts/tests/containerrelease 会被本 goal 移动，因此分两步：先单独提交并合并一个过渡 PR，让这些步骤在检出的代码树中存在新路径时运行新路径，否则运行旧路径（做法同 PR #163）；再开主 PR；主 PR 合并后，用一个小 PR 删除全部回退分支（同 PR #164）。以合并时的 main 为准重新 grep 一遍这两个 workflow，不只依赖这份清单。
+## G20：scripts 精简（已取消）
 
-【验收】
-- 过渡 PR 和回退清理 PR 都已合并，main 上的两个 smoke workflow 只引用新路径。
-- 每个 workflow 引用的路径都存在；go test ./scripts/... 通过。
-- 本 PR 自身的 Classify、Validate PR metadata 检查通过。
+2026-10-23 取消，不执行。本次重构不整理 scripts、tools、workflow；依赖 G20 的 goal 已去掉这项依赖。
 
-【依据】
-- 规格：仓库内的 .agents/refactor/spec.md，以 origin/main 上的版本为准。先通读第 1–3 节、第 7 节的 7.0 和本 goal 涉及的工作项、第 9 节、第 10 节。第 6 节示例只固定职责划分和数据流向，签名以当时的代码为准。
-- 仓库：github.com/FlanChanXwO/pixiv-cli（本机路径 /Users/flanchan/Developer/Projects/GithubProjects/pixiv-cli）。先读 AGENTS.md，以及 .agents/skills/ 下的 pixiv-cli-develop、pixiv-cli-test、pixiv-cli-code-commenting、pixiv-cli-review、pixiv-cli-pr、pixiv-cli-commit-message。
-- 规格中的统计数字基于 ef4accb9；以当前 origin/main 的实际代码为准，有出入时写进工作记录和 PR 描述。
+## G21：workflow 与脚本中的编号引用（已取消）
 
-【worktree 与分支】
-- 名称：refactor-g19-scripts-move
-- 路径：/Users/flanchan/.codex/worktrees/refactor-g19-scripts-move/pixiv-cli
-- 分支：refactor/g19-scripts-move
-- 开始前用 gh 确认依赖已满足：用 gh 确认最近一次 release tag 对应的全部发布 workflow 已成功（不依赖其他 goal）。未满足就标为阻塞并结束。
-- 满足后执行 git fetch origin main，再用 git worktree add -b refactor/g19-scripts-move /Users/flanchan/.codex/worktrees/refactor-g19-scripts-move/pixiv-cli origin/main 创建。
-- 全部工作都在这个 worktree 中进行。goal-N/ 工作目录、临时探针和基线比对输出加入 .git/info/exclude，不提交。
-
-【提交与合并】
-按规格 7.0「每个 goal 的提交要求」执行：
-- 按逻辑单元分次提交。
-- 只修改本 goal 负责的目录。
-- 验收要点全部有证据后，跑一次第 9 节的完整检查，按 pixiv-cli-pr 写 PR 描述（包括 changelog 条目），并用 prmeta 校验，然后向 main 创建 PR。
-- 当前 head 的必需检查全部通过、机器人评审意见逐条处理之后，再 squash 合并。
-- 合并后删除远端分支和 worktree。
-- 无法合并时不强推、不绕过分支保护，写明原因后停止。
-
-【真实账号】
-本 goal 不运行真实环境测试。
-
-【授权】
-- 已授权：本 goal 的 commit、push、创建 PR，验收与检查通过后 squash 合并到 main，以及上面列出的真实账号测试。
-- 未授权：发布版本、打 tag、修改分支保护、force push、引入规格第 4 节以外的依赖、修改 .agents/refactor/（G34 除外）。
-
-【不确定时】
-- 不向用户提问，不修改规格中的设计决策。
-- 选择不改变对外行为的最保守做法继续推进，并把假设写进工作记录和 PR 描述。
-- 无法在假设下继续的部分标为阻塞，在最终汇报中列出。
-- 不做其他 goal 的工作项。本 goal 触及的目录顺带按规格 3.4 处理 T2、T3、T6。
-
-【完成标准】
-- PR 已合并进 main，上面的每条验收要点都有证据。
-- 最终汇报包括：PR 链接、合并提交、实际运行的检查及结果、假设与阻塞项、依赖本 goal 的后续 goal 需要知道的事。
-```
-
-## G20：scripts 精简（可并行）
-
-```text
-/goal 执行 pixiv-cli 重构规格的 G20：scripts 精简。
-
-【本 goal】
-工作项：S2（规格 S 组中 S2 的测试规则）。
-- 去掉 licensebundle 的暂存、备份、回滚和 bundleFileOps；licensebundle --check 从 7 处减为 2 处；按规则精简 scripts 的测试。
-
-【验收】
-- licensebundle 生成结果与改动前逐字节一致。
-- PR 中列出删除的测试及依据。
-
-【依据】
-- 规格：仓库内的 .agents/refactor/spec.md，以 origin/main 上的版本为准。先通读第 1–3 节、第 7 节的 7.0 和本 goal 涉及的工作项、第 9 节、第 10 节。第 6 节示例只固定职责划分和数据流向，签名以当时的代码为准。
-- 仓库：github.com/FlanChanXwO/pixiv-cli（本机路径 /Users/flanchan/Developer/Projects/GithubProjects/pixiv-cli）。先读 AGENTS.md，以及 .agents/skills/ 下的 pixiv-cli-develop、pixiv-cli-test、pixiv-cli-code-commenting、pixiv-cli-review、pixiv-cli-pr、pixiv-cli-commit-message。
-- 规格中的统计数字基于 ef4accb9；以当前 origin/main 的实际代码为准，有出入时写进工作记录和 PR 描述。
-
-【worktree 与分支】
-- 名称：refactor-g20-scripts-slim
-- 路径：/Users/flanchan/.codex/worktrees/refactor-g20-scripts-slim/pixiv-cli
-- 分支：refactor/g20-scripts-slim
-- 开始前用 gh 确认依赖已满足：G19。未满足就标为阻塞并结束。
-- 满足后执行 git fetch origin main，再用 git worktree add -b refactor/g20-scripts-slim /Users/flanchan/.codex/worktrees/refactor-g20-scripts-slim/pixiv-cli origin/main 创建。
-- 全部工作都在这个 worktree 中进行。goal-N/ 工作目录、临时探针和基线比对输出加入 .git/info/exclude，不提交。
-
-【提交与合并】
-按规格 7.0「每个 goal 的提交要求」执行：
-- 按逻辑单元分次提交。
-- 只修改本 goal 负责的目录。
-- 验收要点全部有证据后，跑一次第 9 节的完整检查，按 pixiv-cli-pr 写 PR 描述（包括 changelog 条目），并用 prmeta 校验，然后向 main 创建 PR。
-- 当前 head 的必需检查全部通过、机器人评审意见逐条处理之后，再 squash 合并。
-- 合并后删除远端分支和 worktree。
-- 无法合并时不强推、不绕过分支保护，写明原因后停止。
-
-【真实账号】
-本 goal 不运行真实环境测试。
-
-【授权】
-- 已授权：本 goal 的 commit、push、创建 PR，验收与检查通过后 squash 合并到 main，以及上面列出的真实账号测试。
-- 未授权：发布版本、打 tag、修改分支保护、force push、引入规格第 4 节以外的依赖、修改 .agents/refactor/（G34 除外）。
-
-【不确定时】
-- 不向用户提问，不修改规格中的设计决策。
-- 选择不改变对外行为的最保守做法继续推进，并把假设写进工作记录和 PR 描述。
-- 无法在假设下继续的部分标为阻塞，在最终汇报中列出。
-- 不做其他 goal 的工作项。本 goal 触及的目录顺带按规格 3.4 处理 T2、T3、T6。
-
-【完成标准】
-- PR 已合并进 main，上面的每条验收要点都有证据。
-- 最终汇报包括：PR 链接、合并提交、实际运行的检查及结果、假设与阻塞项、依赖本 goal 的后续 goal 需要知道的事。
-```
-
-## G21：workflow 与脚本中的编号引用（可并行）
-
-```text
-/goal 执行 pixiv-cli 重构规格的 G21：workflow 与脚本中的编号引用。
-
-【本 goal】
-工作项：T4 中 .github/workflows 与 scripts 的部分（规格 3.4.2 的 P-h）。
-- 把 §28、R14 一类指向仓库外文档的引用改为直接写出原因。
-
-【验收】
-- 只改注释；git diff --check 通过；相关 workflow 检查通过。
-
-【依据】
-- 规格：仓库内的 .agents/refactor/spec.md，以 origin/main 上的版本为准。先通读第 1–3 节、第 7 节的 7.0 和本 goal 涉及的工作项、第 9 节、第 10 节。第 6 节示例只固定职责划分和数据流向，签名以当时的代码为准。
-- 仓库：github.com/FlanChanXwO/pixiv-cli（本机路径 /Users/flanchan/Developer/Projects/GithubProjects/pixiv-cli）。先读 AGENTS.md，以及 .agents/skills/ 下的 pixiv-cli-develop、pixiv-cli-test、pixiv-cli-code-commenting、pixiv-cli-review、pixiv-cli-pr、pixiv-cli-commit-message。
-- 规格中的统计数字基于 ef4accb9；以当前 origin/main 的实际代码为准，有出入时写进工作记录和 PR 描述。
-
-【worktree 与分支】
-- 名称：refactor-g21-workflow-refs
-- 路径：/Users/flanchan/.codex/worktrees/refactor-g21-workflow-refs/pixiv-cli
-- 分支：refactor/g21-workflow-refs
-- 开始前用 gh 确认依赖已满足：G20。未满足就标为阻塞并结束。
-- 满足后执行 git fetch origin main，再用 git worktree add -b refactor/g21-workflow-refs /Users/flanchan/.codex/worktrees/refactor-g21-workflow-refs/pixiv-cli origin/main 创建。
-- 全部工作都在这个 worktree 中进行。goal-N/ 工作目录、临时探针和基线比对输出加入 .git/info/exclude，不提交。
-
-【提交与合并】
-按规格 7.0「每个 goal 的提交要求」执行：
-- 按逻辑单元分次提交。
-- 只修改本 goal 负责的目录。
-- 验收要点全部有证据后，跑一次第 9 节的完整检查，按 pixiv-cli-pr 写 PR 描述（包括 changelog 条目），并用 prmeta 校验，然后向 main 创建 PR。
-- 当前 head 的必需检查全部通过、机器人评审意见逐条处理之后，再 squash 合并。
-- 合并后删除远端分支和 worktree。
-- 无法合并时不强推、不绕过分支保护，写明原因后停止。
-
-【真实账号】
-本 goal 不运行真实环境测试。
-
-【授权】
-- 已授权：本 goal 的 commit、push、创建 PR，验收与检查通过后 squash 合并到 main，以及上面列出的真实账号测试。
-- 未授权：发布版本、打 tag、修改分支保护、force push、引入规格第 4 节以外的依赖、修改 .agents/refactor/（G34 除外）。
-
-【不确定时】
-- 不向用户提问，不修改规格中的设计决策。
-- 选择不改变对外行为的最保守做法继续推进，并把假设写进工作记录和 PR 描述。
-- 无法在假设下继续的部分标为阻塞，在最终汇报中列出。
-- 不做其他 goal 的工作项。本 goal 触及的目录顺带按规格 3.4 处理 T2、T3、T6。
-
-【完成标准】
-- PR 已合并进 main，上面的每条验收要点都有证据。
-- 最终汇报包括：PR 链接、合并提交、实际运行的检查及结果、假设与阻塞项、依赖本 goal 的后续 goal 需要知道的事。
-```
+2026-10-23 取消，不执行。本次重构不整理 scripts、tools、workflow；依赖 G21 的 goal 已去掉这项依赖。
 
 ## G22：slog 日志
 
@@ -1207,6 +1061,7 @@
 工作项：C1（规格 6.9、D4、3.3）。
 - 两个 SDK 增加 Options.Logger；pixivapi、fanboxapi 在 do/send 与各决策点记录日志；SDK 方法入口用 WithOperation 登记操作名。
 - 新建 internal/logging（Handler、ctx 调用信息、属性键常量），取代 shared/diagnostics 与 cli/diagnostics；CLI、MCP 执行边界接入；LogLevel 新增 warn、error。按 AGENTS.md 执行 Red/Green。
+- G24、G26 先于本 goal 合并：media/downloader、pixivaccount、session 中的诊断调用以它们合并后的代码为准替换。
 
 【验收】
 - CLI 的数据 stdout 和 MCP stdio 的 stdout 中没有日志。
@@ -1223,7 +1078,7 @@
 - 名称：refactor-g22-logging
 - 路径：/Users/flanchan/.codex/worktrees/refactor-g22-logging/pixiv-cli
 - 分支：refactor/g22-logging
-- 开始前用 gh 确认依赖已满足：G09、G10、G11、G14、G15。未满足就标为阻塞并结束。
+- 开始前用 gh 确认依赖已满足：G07、G08、G09、G10、G11、G14、G15、G24、G26（依赖已于 2026-10-23 调整，以本条为准）。未满足就标为阻塞并结束。
 - 满足后执行 git fetch origin main，再用 git worktree add -b refactor/g22-logging /Users/flanchan/.codex/worktrees/refactor-g22-logging/pixiv-cli origin/main 创建。
 - 全部工作都在这个 worktree 中进行。goal-N/ 工作目录、临时探针和基线比对输出加入 .git/info/exclude，不提交。
 
@@ -1277,7 +1132,7 @@
 - 名称：refactor-g23-shared-mechanisms
 - 路径：/Users/flanchan/.codex/worktrees/refactor-g23-shared-mechanisms/pixiv-cli
 - 分支：refactor/g23-shared-mechanisms
-- 开始前用 gh 确认依赖已满足：G22，以及 G01–G21 全部。未满足就标为阻塞并结束。
+- 开始前用 gh 确认依赖已满足：G08、G14（依赖已于 2026-10-23 调整，以本条为准）。未满足就标为阻塞并结束。
 - 满足后执行 git fetch origin main，再用 git worktree add -b refactor/g23-shared-mechanisms /Users/flanchan/.codex/worktrees/refactor-g23-shared-mechanisms/pixiv-cli origin/main 创建。
 - 全部工作都在这个 worktree 中进行。goal-N/ 工作目录、临时探针和基线比对输出加入 .git/info/exclude，不提交。
 
@@ -1317,6 +1172,7 @@
 工作项：T5，以及 T2、T6 在 media/downloader、media/filename（DownloadManager、Manager 按职责改名） 中的部分（规格 3.1.2、3.4）。
 - 按 3.4.2 的全部标准检查生产代码，按 3.4.1 检查测试。
 - 被其他包调用的导出 API 需要修改时，一并修改调用处。
+- 本 goal 在 G22 之前进行：现有的 internal/logging 诊断调用保持原样（可以随代码移动），不改成 slog；日志改造由 G22 在本 goal 合并后的代码上完成。
 
 【验收】
 - PR 中按 3.4.3 的表格列出删除或合并的测试和符号。
@@ -1331,7 +1187,7 @@
 - 名称：refactor-g24-media
 - 路径：/Users/flanchan/.codex/worktrees/refactor-g24-media/pixiv-cli
 - 分支：refactor/g24-media
-- 开始前用 gh 确认依赖已满足：G22，以及 G01–G21 全部。未满足就标为阻塞并结束。
+- 开始前用 gh 确认依赖已满足：G05（依赖已于 2026-10-23 调整，以本条为准）。未满足就标为阻塞并结束。
 - 满足后执行 git fetch origin main，再用 git worktree add -b refactor/g24-media /Users/flanchan/.codex/worktrees/refactor-g24-media/pixiv-cli origin/main 创建。
 - 全部工作都在这个 worktree 中进行。goal-N/ 工作目录、临时探针和基线比对输出加入 .git/info/exclude，不提交。
 
@@ -1371,6 +1227,7 @@
 工作项：T5，以及 T2、T6 在 mcpserver/auth、mcpserver/pixiv/{accounts,gallery,mediaproxy}（Manager、LoginManager 按职责改名） 中的部分（规格 3.1.2、3.4）。
 - 按 3.4.2 的全部标准检查生产代码，按 3.4.1 检查测试。
 - 被其他包调用的导出 API 需要修改时，一并修改调用处。
+- 本 goal 在 G22 之前进行：现有的 internal/logging 诊断调用保持原样（可以随代码移动），不改成 slog；日志改造由 G22 在本 goal 合并后的代码上完成。
 
 【验收】
 - PR 中按 3.4.3 的表格列出删除或合并的测试和符号。
@@ -1385,7 +1242,7 @@
 - 名称：refactor-g25-mcp-runtime
 - 路径：/Users/flanchan/.codex/worktrees/refactor-g25-mcp-runtime/pixiv-cli
 - 分支：refactor/g25-mcp-runtime
-- 开始前用 gh 确认依赖已满足：G22，以及 G01–G21 全部。未满足就标为阻塞并结束。
+- 开始前用 gh 确认依赖已满足：G05（依赖已于 2026-10-23 调整，以本条为准）。未满足就标为阻塞并结束。
 - 满足后执行 git fetch origin main，再用 git worktree add -b refactor/g25-mcp-runtime /Users/flanchan/.codex/worktrees/refactor-g25-mcp-runtime/pixiv-cli origin/main 创建。
 - 全部工作都在这个 worktree 中进行。goal-N/ 工作目录、临时探针和基线比对输出加入 .git/info/exclude，不提交。
 
@@ -1425,6 +1282,7 @@
 工作项：T5，以及 T2、T6 在 pixivaccount、pixivaccount/pool、fanboxaccount、session 中的部分（规格 3.1.2、3.4）。
 - 按 3.4.2 的全部标准检查生产代码，按 3.4.1 检查测试。
 - 被其他包调用的导出 API 需要修改时，一并修改调用处。
+- 本 goal 在 G22 之前进行：现有的 internal/logging 诊断调用保持原样（可以随代码移动），不改成 slog；日志改造由 G22 在本 goal 合并后的代码上完成。
 
 【验收】
 - PR 中按 3.4.3 的表格列出删除或合并的测试和符号。
@@ -1439,7 +1297,7 @@
 - 名称：refactor-g26-accounts
 - 路径：/Users/flanchan/.codex/worktrees/refactor-g26-accounts/pixiv-cli
 - 分支：refactor/g26-accounts
-- 开始前用 gh 确认依赖已满足：G22，以及 G01–G21 全部。未满足就标为阻塞并结束。
+- 开始前用 gh 确认依赖已满足：G05（依赖已于 2026-10-23 调整，以本条为准）。未满足就标为阻塞并结束。
 - 满足后执行 git fetch origin main，再用 git worktree add -b refactor/g26-accounts /Users/flanchan/.codex/worktrees/refactor-g26-accounts/pixiv-cli origin/main 创建。
 - 全部工作都在这个 worktree 中进行。goal-N/ 工作目录、临时探针和基线比对输出加入 .git/info/exclude，不提交。
 
@@ -1493,7 +1351,7 @@
 - 名称：refactor-g27-cli-auth
 - 路径：/Users/flanchan/.codex/worktrees/refactor-g27-cli-auth/pixiv-cli
 - 分支：refactor/g27-cli-auth
-- 开始前用 gh 确认依赖已满足：G22，以及 G01–G21 全部。未满足就标为阻塞并结束。
+- 开始前用 gh 确认依赖已满足：G12（依赖已于 2026-10-23 调整，以本条为准）。未满足就标为阻塞并结束。
 - 满足后执行 git fetch origin main，再用 git worktree add -b refactor/g27-cli-auth /Users/flanchan/.codex/worktrees/refactor-g27-cli-auth/pixiv-cli origin/main 创建。
 - 全部工作都在这个 worktree 中进行。goal-N/ 工作目录、临时探针和基线比对输出加入 .git/info/exclude，不提交。
 
@@ -1545,7 +1403,7 @@
 - 名称：refactor-g28-sweep
 - 路径：/Users/flanchan/.codex/worktrees/refactor-g28-sweep/pixiv-cli
 - 分支：refactor/g28-sweep
-- 开始前用 gh 确认依赖已满足：G23、G24、G25、G26、G27。未满足就标为阻塞并结束。
+- 开始前用 gh 确认依赖已满足：G22、G23、G24、G25、G26、G27（依赖已于 2026-10-23 调整，以本条为准）。未满足就标为阻塞并结束。
 - 满足后执行 git fetch origin main，再用 git worktree add -b refactor/g28-sweep /Users/flanchan/.codex/worktrees/refactor-g28-sweep/pixiv-cli origin/main 创建。
 - 全部工作都在这个 worktree 中进行。goal-N/ 工作目录、临时探针和基线比对输出加入 .git/info/exclude，不提交。
 
@@ -1735,13 +1593,13 @@
 - 最终汇报包括：PR 链接、合并提交、实际运行的检查及结果、假设与阻塞项、依赖本 goal 的后续 goal 需要知道的事。
 ```
 
-## G32：文件头注释：internal/ 中除 cli、mcpserver 以外的目录（可并行）
+## G32：文件头注释：internal/ 中除 cli、mcpserver 以外的目录，以及 frontend/（可并行）
 
 ```text
-/goal 执行 pixiv-cli 重构规格的 G32：文件头注释：internal/ 中除 cli、mcpserver 以外的目录。
+/goal 执行 pixiv-cli 重构规格的 G32：文件头注释：internal/ 中除 cli、mcpserver 以外的目录，以及 frontend/。
 
 【本 goal】
-工作项：C3 在 internal/ 中除 cli、mcpserver 以外的目录 中的部分（规格 3.5，以及 pixiv-cli-code-commenting 的 File header comments）。
+工作项：C3 在 internal/ 中除 cli、mcpserver 以外的目录，以及 frontend/ 中的部分（规格 3.5，以及 pixiv-cli-code-commenting 的 File header comments）。
 - 只添加或修正文件头注释，不改其他内容。
 
 【验收】
@@ -1788,58 +1646,9 @@
 - 最终汇报包括：PR 链接、合并提交、实际运行的检查及结果、假设与阻塞项、依赖本 goal 的后续 goal 需要知道的事。
 ```
 
-## G33：文件头注释：scripts/、.github/、frontend/（可并行）
+## G33：文件头注释：scripts/、.github/、frontend/（已取消）
 
-```text
-/goal 执行 pixiv-cli 重构规格的 G33：文件头注释：scripts/、.github/、frontend/。
-
-【本 goal】
-工作项：C3 在 scripts/、.github/、frontend/ 中的部分（规格 3.5，以及 pixiv-cli-code-commenting 的 File header comments）。
-- 只添加或修正文件头注释，不改其他内容。
-
-【验收】
-- 范围内每个需要头注释的文件都有 1–3 行职责说明；Go 文件头注释与 package 子句之间有空行，//go:build 位于最前。
-- go build ./... 和 go vet ./... 通过。
-
-【依据】
-- 规格：仓库内的 .agents/refactor/spec.md，以 origin/main 上的版本为准。先通读第 1–3 节、第 7 节的 7.0 和本 goal 涉及的工作项、第 9 节、第 10 节。第 6 节示例只固定职责划分和数据流向，签名以当时的代码为准。
-- 仓库：github.com/FlanChanXwO/pixiv-cli（本机路径 /Users/flanchan/Developer/Projects/GithubProjects/pixiv-cli）。先读 AGENTS.md，以及 .agents/skills/ 下的 pixiv-cli-develop、pixiv-cli-test、pixiv-cli-code-commenting、pixiv-cli-review、pixiv-cli-pr、pixiv-cli-commit-message。
-- 规格中的统计数字基于 ef4accb9；以当前 origin/main 的实际代码为准，有出入时写进工作记录和 PR 描述。
-
-【worktree 与分支】
-- 名称：refactor-g33-headers-scripts
-- 路径：/Users/flanchan/.codex/worktrees/refactor-g33-headers-scripts/pixiv-cli
-- 分支：refactor/g33-headers-scripts
-- 开始前用 gh 确认依赖已满足：G28、G21。未满足就标为阻塞并结束。
-- 满足后执行 git fetch origin main，再用 git worktree add -b refactor/g33-headers-scripts /Users/flanchan/.codex/worktrees/refactor-g33-headers-scripts/pixiv-cli origin/main 创建。
-- 全部工作都在这个 worktree 中进行。goal-N/ 工作目录、临时探针和基线比对输出加入 .git/info/exclude，不提交。
-
-【提交与合并】
-按规格 7.0「每个 goal 的提交要求」执行：
-- 按逻辑单元分次提交。
-- 只修改本 goal 负责的目录。
-- 验收要点全部有证据后，跑一次第 9 节的完整检查，按 pixiv-cli-pr 写 PR 描述（包括 changelog 条目），并用 prmeta 校验，然后向 main 创建 PR。
-- 当前 head 的必需检查全部通过、机器人评审意见逐条处理之后，再 squash 合并。
-- 合并后删除远端分支和 worktree。
-- 无法合并时不强推、不绕过分支保护，写明原因后停止。
-
-【真实账号】
-本 goal 不运行真实环境测试。
-
-【授权】
-- 已授权：本 goal 的 commit、push、创建 PR，验收与检查通过后 squash 合并到 main，以及上面列出的真实账号测试。
-- 未授权：发布版本、打 tag、修改分支保护、force push、引入规格第 4 节以外的依赖、修改 .agents/refactor/（G34 除外）。
-
-【不确定时】
-- 不向用户提问，不修改规格中的设计决策。
-- 选择不改变对外行为的最保守做法继续推进，并把假设写进工作记录和 PR 描述。
-- 无法在假设下继续的部分标为阻塞，在最终汇报中列出。
-- 不做其他 goal 的工作项。本 goal 触及的目录顺带按规格 3.4 处理 T2、T3、T6。
-
-【完成标准】
-- PR 已合并进 main，上面的每条验收要点都有证据。
-- 最终汇报包括：PR 链接、合并提交、实际运行的检查及结果、假设与阻塞项、依赖本 goal 的后续 goal 需要知道的事。
-```
+2026-10-23 取消，不执行。本次重构不整理 scripts、tools、workflow；依赖 G33 的 goal 已去掉这项依赖。frontend/ 的文件头注释并入 G32。
 
 ## G34：文档、skill 收尾并删除 refactor 目录
 
@@ -1850,7 +1659,7 @@
 工作项：C2（规格 C 组）。
 - 删除 .agents/refactor/ 整个目录。
 - 中英文 docs/*/sdk.md 改为描述新的 API；更新 architecture.md、development.md 和各 skill 中与重构结果相关的路径和放置规则；把规格第 6 节的示例整理到 pixiv-cli-develop 的 references/go-examples.md（删除前先从本目录复制需要的内容）。
-- 汇总 G01–G33 PR 描述中的 changelog 条目，写进本 PR 描述作为 release notes 草稿；不创建 changelog/vX.Y.Z/。
+- 汇总已合并各 goal 的 PR 描述中的 changelog 条目，写进本 PR 描述作为 release notes 草稿；不创建 changelog/vX.Y.Z/。
 
 【验收】
 - 文档中的链接和引用路径都有效；中英文内容一致。
@@ -1865,7 +1674,7 @@
 - 名称：refactor-g34-finish
 - 路径：/Users/flanchan/.codex/worktrees/refactor-g34-finish/pixiv-cli
 - 分支：refactor/g34-finish
-- 开始前用 gh 确认依赖已满足：G29、G30、G31、G32、G33。未满足就标为阻塞并结束。
+- 开始前用 gh 确认依赖已满足：G29、G30、G31、G32（依赖已于 2026-10-23 调整，以本条为准）。未满足就标为阻塞并结束。
 - 满足后执行 git fetch origin main，再用 git worktree add -b refactor/g34-finish /Users/flanchan/.codex/worktrees/refactor-g34-finish/pixiv-cli origin/main 创建。
 - 全部工作都在这个 worktree 中进行。goal-N/ 工作目录、临时探针和基线比对输出加入 .git/info/exclude，不提交。
 

@@ -17,29 +17,29 @@ func TestAuthDefaultUserIDRoundTrip(t *testing.T) {
 	defer restore()
 	t.Cleanup(func() { _ = os.Remove(configPath) })
 
-	if _, ok, err := config.ReadPixivDefaultUserID(); err != nil || ok {
+	if _, ok, err := config.DefaultStore().ReadPixivDefaultUserID(); err != nil || ok {
 		t.Fatalf("initial pixiv default: ok=%v err=%v", ok, err)
 	}
-	if err := config.SetPixivDefaultUserID(123); err != nil {
+	if err := config.DefaultStore().SetPixivDefaultUserID(123); err != nil {
 		t.Fatalf("set pixiv: %v", err)
 	}
-	if userID, ok, err := config.ReadPixivDefaultUserID(); err != nil || !ok || userID != 123 {
+	if userID, ok, err := config.DefaultStore().ReadPixivDefaultUserID(); err != nil || !ok || userID != 123 {
 		t.Fatalf("read pixiv = %d, %v, %v", userID, ok, err)
 	}
-	if err := config.ClearPixivDefaultUserID(); err != nil {
+	if err := config.DefaultStore().ClearPixivDefaultUserID(); err != nil {
 		t.Fatalf("clear pixiv: %v", err)
 	}
-	if _, ok, err := config.ReadPixivDefaultUserID(); err != nil || ok {
+	if _, ok, err := config.DefaultStore().ReadPixivDefaultUserID(); err != nil || ok {
 		t.Fatalf("after clear: ok=%v err=%v", ok, err)
 	}
 
-	if err := config.SetFanboxDefaultUserID(456); err != nil {
+	if err := config.DefaultStore().SetFanboxDefaultUserID(456); err != nil {
 		t.Fatalf("set fanbox: %v", err)
 	}
-	if userID, ok, err := config.ReadFanboxDefaultUserID(); err != nil || !ok || userID != 456 {
+	if userID, ok, err := config.DefaultStore().ReadFanboxDefaultUserID(); err != nil || !ok || userID != 456 {
 		t.Fatalf("read fanbox = %d, %v, %v", userID, ok, err)
 	}
-	if err := config.ClearFanboxDefaultUserID(); err != nil {
+	if err := config.DefaultStore().ClearFanboxDefaultUserID(); err != nil {
 		t.Fatalf("clear fanbox: %v", err)
 	}
 }
@@ -50,7 +50,7 @@ func TestAuthDefaultUserIDRejectsInvalid(t *testing.T) {
 	restore := paths.SetConfigFilePathForTest(filepath.Join(dir, "config.toml"))
 	defer restore()
 	for _, userID := range []int64{0, -5} {
-		if err := config.SetPixivDefaultUserID(userID); err == nil {
+		if err := config.DefaultStore().SetPixivDefaultUserID(userID); err == nil {
 			t.Fatalf("user id %d should be rejected", userID)
 		}
 	}
@@ -71,7 +71,7 @@ default_user_id = "not-a-number"
 path = "./ok"
 `), 0o600))
 
-	state, err := config.LoadSnapshotAt(path)
+	state, err := currentSnapshot(path)
 	require.NoError(t, err)
 	runtime, err := state.Runtime()
 	require.NoError(t, err, "an invalid default_user_id must not break ordinary runtime reads")
@@ -108,7 +108,7 @@ func TestDefaultUserIDStaysOutOfRuntimeAndConfigAliases(t *testing.T) {
 	require.True(t, ok)
 	require.Equal(t, int64(12345), userID)
 
-	state, err := config.LoadSnapshotAt(path)
+	state, err := currentSnapshot(path)
 	require.NoError(t, err)
 	_, err = state.Runtime()
 	require.NoError(t, err)

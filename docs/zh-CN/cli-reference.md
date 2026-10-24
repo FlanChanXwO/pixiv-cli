@@ -390,7 +390,7 @@ flowchart LR
 - 服务代理键区分"缺失"与"显式为空"。Pixiv 与 FANBOX 各自保持服务边界。CLI 覆盖从不持久化。
 - 反向搜图：命令级覆盖对标准与 ascii2d 流量都生效；否则服务值只影响 ascii2d，SauceNAO/标准 client 走全局路由。`user_agent` 只影响 ascii2d（与 client hints 配对）。FlareSolverr 可选、仅用于 challenge、使用 JSON（不是图片 multipart），与两条原生路由都独立。默认生成器省略服务代理与 FlareSolverr 表，但可能写入基线 `[reverse_search]` 值。
 - 更新检查只使用通用网络 fallback；从不读取 FANBOX 服务或 solver 设置。
-- `[account_pool]` 只存 `enabled` 与 `strategy`；每个账号的 `schedulable`、冻结与标记状态在 `pixiv-cli.db`。残留的 `account_pool.accounts` 返回 `removed_setting`——用 `pixiv config unset account_pool_accounts` 清除。历史上的 `data/account-pool.json` 不会被读取、迁移或删除。不要把 refresh token 放进 `config.toml`。
+- `[account_pool]` 只存 `enabled` 与 `strategy`；每个账号的 `schedulable`、冻结与标记状态在 `pixiv-cli.db`。残留的 `account_pool.accounts` 属于未声明键，加载时忽略；`pixiv config unset account_pool_accounts` 会报告未知键。历史上的 `data/account-pool.json` 不会被读取、迁移或删除。不要把 refresh token 放进 `config.toml`。
 - `[logging].level`（`info|debug`）与 `[logging].format`（`text|json`）生效；`PIXIV_LOG_LEVEL` / `PIXIV_LOG_FORMAT` 可覆盖。debug 输出只写 stderr，省略 query string、header、Cookie、token、响应体与代理 userinfo，从不创建日志文件。`config` 管理与 secret 导出保持安静。MCP JSON-RPC 在 stdio 模式用 stdout，`--port` 时用 HTTP。
 - v1 不读取也不迁移旧的 `~/.pixiv-cli/auth.json`。显式迁移：旧版本执行 `pixiv auth export --all --output <private bundle>`，再用 v1 执行 `pixiv auth import < bundle.json`。
 
@@ -411,7 +411,7 @@ flowchart LR
 
 ### 移除的匿名 web fallback
 
-v1 移除了匿名 Web API fallback：内容命令需要已认证账号（`pixiv auth use` 或 `[account_pool]`），否则返回需要认证。残留的 `web_fallback_enabled` 返回 `removed_setting`；用 `pixiv config unset web_fallback_enabled` 清除。无效 token 与 App API 网络/服务端错误返回安全的分类失败。
+v1 移除了匿名 Web API fallback：内容命令需要已认证账号（`pixiv auth use` 或 `[account_pool]`），否则返回需要认证。残留的 `web_fallback_enabled` 属于未声明键，加载时忽略。无效 token 与 App API 网络/服务端错误返回安全的分类失败。
 
 ## MCP HTTP server
 
@@ -455,7 +455,7 @@ flowchart TD
 | `mcp_gallery_animation_temp_capacity_mib` | `gallery_animation_temp_capacity_mib` | `1024` | 正整数；带检查的 MiB 换算；私有动画临时存储 |
 | `mcp_gallery_cache_capacity_mib` | `gallery_cache_capacity_mib` | `256` | 整数 ≥ 0；带检查的 MiB 换算；`0` 关闭缓存 |
 
-缺失键与 `config unset` 恢复默认；没有额外参数或环境变量。缓存有效期（15 分钟）以及元数据与图片各自的读取并发上限（各 4）为固定值；原 `mcp_gallery_cache_ttl` 与 `mcp_gallery_concurrency` 设置已删除——配置中残留时返回 `removed_setting`，请用 `pixiv config unset mcp_gallery_cache_ttl` / `pixiv config unset mcp_gallery_concurrency` 清理。进程内 LRU 预算覆盖元数据载荷与图片填充缓冲；超大图片完整流式传输但不缓存。过期时间 = 15 分钟 TTL、签发授权过期、上游读取会话过期三者中最早者，因此作品信息在窗口内可能滞后，收藏状态与写操作保持实时。每次命中都重新检查授权与账号/凭据/网络代际；撤销后拒绝后续读取；重启清空缓存。HTTP 响应为 `private, no-store`，无磁盘或公共 CDN 缓存。
+缺失键与 `config unset` 恢复默认；没有额外参数或环境变量。缓存有效期（15 分钟）以及元数据与图片各自的读取并发上限（各 4）为固定值；原 `mcp_gallery_cache_ttl` 与 `mcp_gallery_concurrency` 设置已删除——配置中残留时属于未声明键，加载时忽略。进程内 LRU 预算覆盖元数据载荷与图片填充缓冲；超大图片完整流式传输但不缓存。过期时间 = 15 分钟 TTL、签发授权过期、上游读取会话过期三者中最早者，因此作品信息在窗口内可能滞后，收藏状态与写操作保持实时。每次命中都重新检查授权与账号/凭据/网络代际；撤销后拒绝后续读取；重启清空缓存。HTTP 响应为 `private, no-store`，无磁盘或公共 CDN 缓存。
 
 **云端部署** —— 支持本地 HTTP；云 connector 需配置公开 HTTPS base，并在已有反向代理处终止 TLS（pixiv-cli 不签发证书）。保留公开 Host header 与原始转义路径。入站 Host 与任何 Origin 必须匹配 canonical origin（接受 host 大小写与默认端口等价）；转发 header 不能建立信任。base 为 `https://mcp.example.com/pixiv` 时需转发：
 
