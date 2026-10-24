@@ -109,8 +109,8 @@ func TestFilterContextBindsCanonicalLocalSemantics(t *testing.T) {
 	require.NotContains(t, illustration.CursorContext(), "r18")
 	require.NotContains(t, illustration.CursorContext(), "illustration")
 
-	context, err := searchfilter.FilterContext(" R18 ", " ILLUSTRATION ")
+	trimmed, err := searchfilter.NormalizeFilter(" R18 ", " ILLUSTRATION ")
 	require.NoError(t, err)
-	require.Equal(t, illustration.CursorContext(), context)
-	require.False(t, strings.Contains(context, "x_restrict"))
+	require.Equal(t, illustration.CursorContext(), trimmed.CursorContext())
+	require.False(t, strings.Contains(trimmed.CursorContext(), "x_restrict"))
 }

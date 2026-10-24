@@ -41,7 +41,7 @@ type Filter struct {
 // NormalizeFilter 将命令层输入归一化为共享 canonical 语义。
 // 空值和显式 all 等价；illustration 是既有 public artwork kind 的兼容别名。
 func NormalizeFilter(rating, contentType string) (Filter, error) {
-	normalizedRating, err := NormalizeRating(rating)
+	normalizedRating, err := normalizeRating(rating)
 	if err != nil {
 		return Filter{}, err
 	}
@@ -52,9 +52,9 @@ func NormalizeFilter(rating, contentType string) (Filter, error) {
 	return Filter{Rating: normalizedRating, ContentType: normalizedContentType}, nil
 }
 
-// NormalizeRating 将 rating 输入规范化为本地 canonical 值。
+// normalizeRating 将 rating 输入规范化为本地 canonical 值。
 // 该值只用于结果匹配和 cursor binding，不对应任何 upstream query 参数。
-func NormalizeRating(value string) (Rating, error) {
+func normalizeRating(value string) (Rating, error) {
 	switch strings.ToLower(strings.TrimSpace(value)) {
 	case "", string(RatingAll):
 		return RatingAll, nil
@@ -88,16 +88,6 @@ func NormalizeContentType(value string) (ContentType, error) {
 	default:
 		return "", errors.New("content-type must be one of all, illust-and-ugoira, illust, manga, ugoira")
 	}
-}
-
-// FilterContext 生成只包含 canonical 本地语义的 opaque cursor context。
-// context 只参与 SDK cursor binding，不会被当作 upstream 请求参数。
-func FilterContext(rating, contentType string) (string, error) {
-	filter, err := NormalizeFilter(rating, contentType)
-	if err != nil {
-		return "", err
-	}
-	return filter.CursorContext(), nil
 }
 
 // CursorContext 返回当前本地筛选语义的稳定摘要，不暴露原始输入。
