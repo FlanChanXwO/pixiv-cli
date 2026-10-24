@@ -1,6 +1,6 @@
 name: Publish Homebrew formula
 
-# §16.2：Homebrew 是独立 publisher，与容器、ClawHub、SkillHub 并行；任一渠道
+# Homebrew 是独立 publisher，与容器、ClawHub、SkillHub 并行；任一渠道
 # 失败不阻塞其他渠道。GITHUB_TOKEN 创建的 Release 不会再触发 release 事件，
 # 因此使用 workflow_run 作为受信任的异步 handoff。
 on:
@@ -9,7 +9,7 @@ on:
       - Release
     types:
       - completed
-  # §17：手动恢复只接受原始的 release_run_id，不接受 tag/latest 等模糊解析。
+  # 手动恢复只接受原始的 release_run_id，不接受 tag/latest 等模糊解析。
   workflow_dispatch:
     inputs:
       release_run_id:
@@ -26,7 +26,7 @@ jobs:
       github.event_name == 'workflow_dispatch' ||
       github.event.workflow_run.conclusion == 'success'
     runs-on: ubuntu-24.04
-    # §23/§24：environment 承载 Homebrew 专属凭据，但不再要求额外的 reviewer
+    # environment 承载 Homebrew 专属凭据，但不再要求额外的 reviewer
     # 审批；全链路只有 release-approval 一个人工审批边界。
     environment: release
     permissions:
@@ -48,7 +48,7 @@ jobs:
           INPUT_RUN_ID: ${{ inputs.release_run_id }}
         run: |
           set -euo pipefail
-          # §17：手动恢复必须从受保护的默认分支执行。`release` environment 也允许
+          # 手动恢复必须从受保护的默认分支执行。`release` environment 也允许
           # `v*` tag 部署，而旧 tag 自带的 workflow YAML 没有单调判定；若从 tag 触发，
           # 恢复就会用旧 YAML 跑，绕过 homebrewrecovery。workflow_run 的 ref 不是分支，
           # 因此这个约束只适用于 workflow_dispatch。
@@ -106,7 +106,7 @@ jobs:
           repository: ${{ github.repository }}
           run-id: ${{ steps.handoff.outputs.run_id }}
 
-      # §15/§19：只校验 production section（Homebrew 不发布容器镜像），并重新
+      # 只校验 production section（Homebrew 不发布容器镜像），并重新
       # 计算每个归档的 checksum，确保渲染 formula 用的是同一批 bytes。
       - name: Verify the immutable handoff and release archives
         id: verify
@@ -295,7 +295,7 @@ jobs:
           rm -rf "$tap_dir"
           git clone https://github.com/FlanChanXwO/homebrew-tap.git "$tap_dir"
           mkdir -p "$tap_dir/Formula"
-          # §17/§21：单调 deploy。同版本且字节一致 → no-op；请求版本更旧，或同版本
+          # 单调 deploy。同版本且字节一致 → no-op；请求版本更旧，或同版本
           # 但内容不同 → 在拿到 deploy key 之前 fail closed，绝不回退已发布 Formula。
           go run ./scripts/release recover \
             --current "$tap_dir/Formula/$formula_name.rb" \

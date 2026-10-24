@@ -11,7 +11,7 @@ on:
   # Registry 推送失败时，可使用原 Release run 的 artifact 做显式恢复，避免重建镜像。
   workflow_dispatch:
     inputs:
-      # §17：手动恢复只接受原始的 release_run_id，不接受 tag/latest 等模糊解析。
+      # 手动恢复只接受原始的 release_run_id，不接受 tag/latest 等模糊解析。
       # tag 由 immutable handoff 提供，调用方不必也不应自行推断。
       release_run_id:
         description: Original trusted Release workflow run ID
@@ -88,7 +88,7 @@ jobs:
           repository: ${{ github.repository }}
           run-id: ${{ steps.release.outputs.run_id }}
 
-      # §15/§19：只校验 container section，并重新计算每个 tar 的 checksum，确保
+      # 只校验 container section，并重新计算每个 tar 的 checksum，确保
       # 推送的是 Release run 原始产生并验证过的同一批 bytes。
       - name: Verify the immutable handoff and container bytes
         id: verify

@@ -1,6 +1,6 @@
 name: Quality gate
 
-# R15：tag push 由 Release 独占门禁，Quality 只服务 PR 与 manual dispatch。
+# tag push 由 Release 独占门禁，Quality 只服务 PR 与 manual dispatch。
 on:
   pull_request:
     # Base-branch retargets use edited; keep the required Quality job present.
@@ -16,7 +16,7 @@ concurrency:
 permissions: {}
 
 jobs:
-  # R6：Quality 的 skip 判定必须与 pr-metadata 的 smoke classification 使用同一
+  # Quality 的 skip 判定必须与 pr-metadata 的 smoke classification 使用同一
   # 信任模型。PR 能修改 scripts/ci/classify-change-scope.sh 与
   # .github/ci-change-scope.gitignore，因此分类绝不能从 PR 自己的 checkout 执行。
   scope:

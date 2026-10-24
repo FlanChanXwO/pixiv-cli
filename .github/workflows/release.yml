@@ -418,7 +418,7 @@ jobs:
           go run ./scripts/release checksums --dir dist --version "$version" --output dist/checksums.txt
           test -s dist/checksums.txt
 
-      # §14/§15：一次性固化 build-once 产物的 identity 与 checksum。所有 downstream
+      # 一次性固化 build-once 产物的 identity 与 checksum。所有 downstream
       # publisher 只消费这份 immutable handoff，不再自行构建或推断身份。
       - name: Write the immutable release handoff
         shell: bash
