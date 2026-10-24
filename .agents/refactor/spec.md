@@ -1774,7 +1774,7 @@ if err != nil {
 
 ### 7.0 并行执行与 goal
 
-A1、B2 等是工作项的名称。执行单位是 **goal**：一个 goal 对应一个命名的 worktree、一个分支、一个 PR，验收通过后合并进 main。共 38 个 goal，分四个阶段：阶段 0、3 内部按依赖执行，阶段 1、2 内的线路可以并行。各 goal 的完整语句见同目录的 `goals.md`。
+A1、B2 等是工作项的名称。执行单位是 **goal**：一个 goal 对应一个命名的 worktree、一个分支、一个 PR，验收通过后合并进 main。共 39 个 goal，分四个阶段：阶段 0、3 内部按依赖执行，阶段 1、2 内的线路可以并行。各 goal 的完整语句见同目录的 `goals.md`。
 
 ```text
 阶段 0（串行）  G01 → G02 → G03 → G04 → G05
@@ -1788,7 +1788,7 @@ A1、B2 等是工作项的名称。执行单位是 **goal**：一个 goal 对应
                 L8 叶子包   G18
                 L9 脚本/CI  G19 → G20 → G21      ← 不依赖阶段 0
 阶段 2          G23–G27 与 G22（日志）按下表依赖并行 → G28（扫尾）
-阶段 3          G29–G33（文件头注释）与 G35–G38（测试精简）并行 → G34（收尾）
+阶段 3          G35–G38（测试精简）并行 → G39（整体审查与修正）→ G29–G33（文件头注释）并行 → G34（收尾）
 ```
 
 2026-10-23 调整：G19 不再等待发布 workflow 的状态；G20 把 S2 扩大为 scripts 与 CI 的全面精简（删除不再需要的工具和 workflow、能用 sh 写清楚的工具改为 sh、撤销 scripts/internal、按用途重排目录，细则见 `goals.md`）；G21、G33 照常执行；frontend/ 的文件头注释并入 G32。G09、G23–G27 只等待与其代码冲突的 goal；G24、G26 先于 G22 合并，G22 在它们的结果上改造日志。依赖以下表和 `goals.md` 为准。
@@ -1823,16 +1823,17 @@ A1、B2 等是工作项的名称。执行单位是 **goal**：一个 goal 对应
 | G26 | `refactor-g26-accounts` | T5：`pixivaccount`、`pixivaccount/pool`、`fanboxaccount`、`session` | G05 | 这些包 |
 | G27 | `refactor-g27-cli-auth` | T5 与 T2：`cli/auth`、`loginhelper` 的注入点 | G12 | 这些包 |
 | G28 | `refactor-g28-sweep` | T2 重新扫描、T3、T4（scripts、.github 以外）、T6 其余（含 `illustration` 别名） | G22–G27 | 全仓库剩余部分 |
-| G29 | `refactor-g29-headers-sdk` | C3：`sdk/`、`cmd/` | G28 | 只加文件头注释 |
-| G30 | `refactor-g30-headers-cli` | C3：`internal/cli/` | G28 | 同上 |
-| G31 | `refactor-g31-headers-mcp` | C3：`internal/mcpserver/` | G28 | 同上 |
-| G32 | `refactor-g32-headers-internal` | C3：`internal/` 其余目录与 `frontend/` | G28 | 同上 |
-| G33 | `refactor-g33-headers-scripts` | C3：`scripts/`、`.github/` | G28、G21 | 同上 |
+| G29 | `refactor-g29-headers-sdk` | C3：`sdk/`、`cmd/` | G39 | 只加文件头注释 |
+| G30 | `refactor-g30-headers-cli` | C3：`internal/cli/` | G39 | 同上 |
+| G31 | `refactor-g31-headers-mcp` | C3：`internal/mcpserver/` | G39 | 同上 |
+| G32 | `refactor-g32-headers-internal` | C3：`internal/` 其余目录与 `frontend/` | G39 | 同上 |
+| G33 | `refactor-g33-headers-scripts` | C3：`scripts/`、`.github/` | G21、G39 | 同上 |
 | G35 | `refactor-g35-tests-sdk` | 测试精简（3.4.1，含 T-g、T-h） | G28 | `sdk/`、`pixivapi`、`fanboxapi` 的测试 |
 | G36 | `refactor-g36-tests-mcp` | 测试精简 | G28 | `internal/mcpserver/` 的测试 |
 | G37 | `refactor-g37-tests-cli` | 测试精简 | G28 | `internal/cli/`、`cmd/` 的测试 |
 | G38 | `refactor-g38-tests-internal` | 测试精简 | G28 | `internal/` 其余目录的测试 |
-| G34 | `refactor-g34-finish` | C2；删除 `.agents/refactor/` | G29–G33、G35–G38 | 文档、skill |
+| G39 | `refactor-g39-audit` | 整体审查与修正，产出 changelog 草稿 | G20、G28、G35–G38 | 全仓库（修正以小 PR 提交） |
+| G34 | `refactor-g34-finish` | C2；删除 `.agents/refactor/` | G29–G33、G39 | 文档、skill |
 
 每个 goal 顺带对自己触及的目录做 T2、T3、T6，并对触及的测试套用 3.4。
 
