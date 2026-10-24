@@ -40,9 +40,16 @@ type remoteLoginHandoff struct {
 	clear      func(activeRemoteLogin) error
 }
 
+// handoffHTTPClient never follows relay redirects. Request bodies contain a
+// one-time proof and the Pixiv callback, so a 307/308 must not replay them to a
+// new origin. It is shared so successive hand-offs reuse connections.
+var handoffHTTPClient = &http.Client{
+	CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse },
+}
+
 func newRemoteLoginHandoff() remoteLoginHandoff {
 	return remoteLoginHandoff{
-		httpClient: &http.Client{CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }},
+		httpClient: handoffHTTPClient,
 		clear:      clearActiveRemoteLoginIfMatches,
 	}
 }
