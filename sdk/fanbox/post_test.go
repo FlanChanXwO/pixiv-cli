@@ -1,5 +1,5 @@
-// Endpoint-family route and response-mapping tests: each case pins the request
-// path/query and the fields the old endpoint packages asserted.
+// FANBOX 领域的路由、响应解码与错误分类测试；每个用例固定请求路径/查询参数
+// 和公开模型字段，覆盖 creator、post 及信息流端点族。
 
 package fanbox_test
 
