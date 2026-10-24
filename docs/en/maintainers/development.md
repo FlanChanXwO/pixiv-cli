@@ -100,7 +100,7 @@ https_proxy=http://127.0.0.1:7890 ./build/pixiv mcp --port 1270
 **Configuration** — `pixiv config path/get/set/unset` manages `account_pool_enabled`, `account_pool_strategy`, `download_path`, `filename_template`, `directory_template`, `request_interval`, `https_proxy`, `log_level`, `log_format`, `reverse_search_provider`, `reverse_search_pixiv_only`, `saucenao_api_key`. Other TOML (e.g. `[reverse_search.network]`, `[reverse_search.flaresolverr]`) is hand-maintained, not in the baseline, read as a startup snapshot. The baseline is driven by **struct field tags** in `internal/config/settings`, generated with `tomledit`, compact (`example:"true"` only), never overwrites. Adding an ordinary setting: (1) field + declaration in `internal/config/settings/config.go`, (2) one focused behavioral test, (3) docs — see the [tag contract](architecture.md#configuration-declaration-struct-field-tags-are-the-single-source-of-truth).
 
 > [!NOTE]
-> A leftover `[web] fallback_enabled` is an undeclared key and is ignored at load. `[logging].level` (`info|debug`) and `[logging].format` (`text|json`) are live; `PIXIV_LOG_LEVEL` / `PIXIV_LOG_FORMAT` override.
+> A leftover `[web] fallback_enabled` is an undeclared key and is ignored at load. `[logging].level` (`debug|info|warn|error`) and `[logging].format` (`text|json`) are live; `PIXIV_LOG_LEVEL` / `PIXIV_LOG_FORMAT` override.
 
 **Flags and proxies** — Cobra/pflag accepts flags before or after positionals. Pixiv command proxy, `[pixiv.network]`, env and `[network]`, FANBOX `[fanbox.network]` / `[fanbox.flaresolverr]`, and reverse-search `[reverse_search.network]` / `[reverse_search.flaresolverr]` resolve per service boundary; reverse search has separate standard/SauceNAO, ascii2d browser and FlareSolverr JSON-control surfaces (FlareSolverr only for challenge recovery).
 
@@ -149,6 +149,7 @@ flowchart TD
 ```bash
 PIXIV_E2E_READ_USER_ID=<secondary-uid> \
 PIXIV_SDK_E2E=1 go test ./sdk/pixiv -run TestRealPixivSDKRead -count=1 -v
+# `PIXIV_E2E_LOG_LEVEL=debug` adds SDK request and decision logs to stderr; omit it to keep the live run quiet.
 FANBOX_E2E_CREATOR_ID=<non-secret-creator-id> FANBOX_E2E_TAG=<non-secret-tag> \
 FANBOX_E2E_POST_ID=<non-secret-post-id> FANBOX_E2E_POST_URL=<non-secret-post-url> \
 FANBOX_SDK_E2E=1 go test ./sdk/fanbox -run TestRealFanboxSDKRead -count=1 -v

@@ -6,7 +6,10 @@
 
 - Added reverse-image search to `pixiv search SOURCE` and the Pixiv MCP `reverse_search` tool. The CLI automatically selects image mode for explicit HTTP(S) URLs and existing regular files; SauceNAO, ascii2d color/BOVW, and `all` providers return a stable JSON envelope, generic artwork/user records, and NDJSON for canonical records, with explicit partial-provider semantics. ([`69caa31`](https://github.com/FlanChanXwO/pixiv-cli/commit/69caa31), [`6599dec`](https://github.com/FlanChanXwO/pixiv-cli/commit/6599dec), [`ef0dcfe`](https://github.com/FlanChanXwO/pixiv-cli/commit/ef0dcfe), [`e67e21f`](https://github.com/FlanChanXwO/pixiv-cli/commit/e67e21f), [`959414e`](https://github.com/FlanChanXwO/pixiv-cli/commit/959414e), [`ce03802`](https://github.com/FlanChanXwO/pixiv-cli/commit/ce03802), [`298e0f3`](https://github.com/FlanChanXwO/pixiv-cli/commit/298e0f3))
 
+
 ## Changed
+
+- Replaced the custom diagnostic events with standard-library `log/slog`. CLI and MCP stderr output now uses one text or JSON record format with shared attribute keys, `log_level` also accepts `warn` and `error`, and both SDKs accept `Options.Logger` for request and retry logs. Logs exclude queries, headers, cookies, tokens, response bodies and signed URLs; CLI data stdout and MCP stdio stdout carry no log records. Debug-level text now shows the source location and uses `timestamp LEVEL --- file:line : message key=value`; a failed command adds one terminating `ERROR` record.
 
 - Interactive account selection (`pixiv auth use` and `pixiv auth remove` without a UID) now asks for a number from a printed list instead of using arrow-key navigation. Password, text, and yes/no prompts keep the same TTY requirement, defaults, and output stream.
 

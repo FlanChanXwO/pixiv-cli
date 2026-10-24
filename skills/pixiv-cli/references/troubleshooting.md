@@ -96,9 +96,9 @@ safe metadata output does not make raw token or bundle stdout safe to display.
 - Go SDK calls return typed errors to the caller. MCP tool failures return their
   structured result with `isError=true`.
 - Set `pixiv config set log_level debug` (or `PIXIV_LOG_LEVEL=debug`) to enable
-  safe typed diagnostics on stderr. `log_format=json` (or
-  `PIXIV_LOG_FORMAT=json`) emits one JSON event per stderr line. Diagnostics are
+  safe request and decision logging on stderr. `log_format=json` (or
+  `PIXIV_LOG_FORMAT=json`) emits one JSON record per stderr line. Logs are
   startup-scoped, omit query strings, headers, cookies, tokens, response bodies,
-  and proxy userinfo, and never mix with MCP HTTP JSON-RPC responses.
+  and signed URLs, and never mix with MCP stdio or HTTP JSON-RPC output.
 - `pixiv update --check --json` is read-only and safe; a real `pixiv update`
   installs a new binary — treat as account/config-state tier (confirm).

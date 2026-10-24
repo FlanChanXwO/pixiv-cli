@@ -111,7 +111,7 @@ CLI 组合根，分为三个同包文件：
 | `internal/lifecycle` | 与协议无关的生命周期、Lease、Attempt | 负责账号选择、凭据或重放策略 |
 | `internal/pagination` | 单流与有序聚合流的逻辑分页：筛选先于全局 skip/limit 预算，`OneBatch` 在首个匹配批次停止，批次截断通过来源位置 checkpoint 续读；`StreamState` = 当前流 + 各流 cursor（owner 与查询/账号/子类型绑定一起编码） | 产品语义 |
 | `internal/pagination` | 单流/聚合读取的可重入执行生命周期，安全重放前清除未提交结果 | 负责命令筛选装配 |
-| `internal/logging` | 显式的内存类型化 scope；Pixiv/FANBOX MCP、传输、账号池、下载与 FlareSolverr 只输出允许的 module、operation、route、status、proxy、UA、request ID、reason、count；默认 sink 为 Nop；MCP scope 只影响诊断 | 创建日志文件，或保存响应体、Cookie、token、签名 query、任意错误转储（没有 scope 时 SDK 静默） |
+| `internal/logging` | `log/slog` handler 与 ctx 调用信息；CLI、MCP、传输、账号池、下载与 FlareSolverr 共用属性键，只输出 operation、method、host、path、status、duration、attempt、wait、reason、count；SDK 只接受一个 `Options.Logger`，nil 时静默 | 创建日志文件，或记录响应体、Cookie、token、query、签名 URL 或任意错误 cause 转储 |
 
 **账号池读取：** 普通 CLI 读取在具体函数类型上使用 `Pooled[R].Read[T]`——失败返回 T 零值且回调不提交；owner 保留自己的 Request 类型。`Write` 会把已调用的 SDK 请求标记为已提交（即使出错），防止跨账号重放结果未知的写入；缺少 pooled 端口是错误。流式 NDJSON、分页与部分交付仍由 owner 与 traversal/lifecycle 负责。
 
@@ -223,7 +223,7 @@ flowchart LR
 - 失败：替换前（写入/Sync/关闭）失败时保留旧目标；普通替换失败与可恢复的部分完成失败会保留/恢复旧目标并清理临时文件。目录同步失败仍会尝试其余目录并合并错误——替换已提交，旧文件可能已不存在。部分完成后的恢复本身失败时，调用方收到合并错误，目标可能暂时缺失，同目录的旧内容恢复备份与新内容临时文件都保留以便人工恢复（此时"无临时残留"不适用）。其他临时文件清理失败与主错误一起返回。
 - Windows：替换前同样 Sync 并关闭；目标存在 → 使用带同目录唯一恢复备份的 `ReplaceFileW`；首次创建 → 不覆盖的 `MoveFileEx`。`ERROR_UNABLE_TO_MOVE_REPLACEMENT` 保持目标/源的原名；`ERROR_UNABLE_TO_MOVE_REPLACEMENT_2` 尝试恢复已移到备份的旧目标，失败则保留备份/源。成功替换后备份清理失败属于已提交错误。新文件继承父目录 ACL，替换保留目标 ACL；不声称收紧 ACL，也不提供与 POSIX mode 或目录 fsync 等价的保证。
 
-`update_check_enabled` = `[update] check_enabled`（默认 `true`），只控制自动检查，不影响用户主动执行的 `pixiv update`。`log_level` / `log_format` = `[logging].level` / `.format`；默认 `info`/`text`，`debug`/`json` 启用 CLI stderr presenter；环境变量按次覆盖。
+`update_check_enabled` = `[update] check_enabled`（默认 `true`），只控制自动检查，不影响用户主动执行的 `pixiv update`。`log_level` / `log_format` = `[logging].level` / `.format`；默认 `info`/`text`，`debug` 增加请求与决策记录，`json` 选择 JSON 记录；环境变量按次覆盖。
 
 ### `internal/browsercookies`
 
@@ -320,7 +320,7 @@ flowchart LR
 
 ### `internal/config/paths`
 
-应用管理路径、`AppDataDirName` 与 Unix 私有目录/文件权限常量的唯一 owner；不读业务配置，不写文件。没有通用常量包：Pixiv 协议值、MCP 交付值与配置键/默认值留在各自领域。`internal/logging` 负责类型化事件契约；`internal/logging` 负责由 `[logging]` 配置的可选 text/JSON stderr presenter——不是持久化日志，也不是历史上的 `slog` 链。MCP JSON-RPC 使用干净的 stdio 或认证 HTTP；错误仍通过 CLI、MCP 或 SDK 接口返回。
+应用管理路径、`AppDataDirName` 与 Unix 私有目录/文件权限常量的唯一 owner；不读业务配置，不写文件。没有通用常量包：Pixiv 协议值、MCP 交付值与配置键/默认值留在各自领域。`internal/logging` 负责由 `[logging]` 配置的 slog handler、ctx 调用信息与共享属性键——不是持久化日志。MCP JSON-RPC 使用干净的 stdio 或认证 HTTP；错误仍通过 CLI、MCP 或 SDK 接口返回。
 
 ### `internal/storage/{atomicfile,filelock,secretfile}`
 

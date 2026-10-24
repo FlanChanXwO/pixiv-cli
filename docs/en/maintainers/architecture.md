@@ -111,7 +111,7 @@ Only exact `pixiv://account/login` and `pixiv://account/remote-login` enter the 
 | `internal/lifecycle` | protocol-agnostic lifecycle, Lease, Attempt | own account selection, credentials or replay strategy |
 | `internal/pagination` | logical pagination for one stream and ordered aggregates: filters before the global skip/limit budget, `OneBatch` stops at the first matching batch, truncation resumed via source-position checkpoint; `StreamState` = current stream + per-stream cursors (owners encode it with query/account/subtype bindings) | product semantics |
 | `internal/pagination` | reentrant execute lifecycle for single/aggregate reads, clearing uncommitted results before safe replay | own command filter wiring |
-| `internal/logging` | explicit in-memory typed scope; Pixiv/FANBOX MCP, transports, pool, download and FlareSolverr emit only allowed module, operation, route, status, proxy, UA, request ID, reason, count; default sink Nop; MCP scope affects diagnostics only | create log files or store bodies, Cookies, tokens, signed queries, arbitrary error dumps (SDK silent without a scope) |
+| `internal/logging` | `log/slog` handler plus context call information; CLI, MCP, transports, pool, download and FlareSolverr share attribute keys and emit only operation, method, host, path, status, duration, attempt, wait, reason and count; SDK accepts one `Options.Logger`; nil keeps the SDK silent | create log files or record bodies, Cookies, tokens, queries, signed URLs or arbitrary error cause dumps |
 
 **Pooled reads:** ordinary CLI reads use `Pooled[R].Read[T]` on a concrete function type — failure returns zero T and callbacks don't commit; owners keep their Request types. `Write` marks an invoked SDK call committed even on error (no cross-account replay of an unknown write); a missing pooled port is an error. Streaming NDJSON, pagination and partial delivery stay with owners and traversal/lifecycle.
 
@@ -223,7 +223,7 @@ flowchart LR
 - Failures: before replacement (write/Sync/close) the old target stays; normal replacement and recoverable partial failures keep/restore the old target and clean the temp. A failed directory sync still tries the rest and merges errors — the replacement is committed, so the old file may be gone. If recovery after partial completion fails, the caller gets a combined error, the target may be temporarily missing, and both the same-dir recovery backup and the new-content temp are kept for manual recovery ("no temp residual" does not apply). Other temp-cleanup failures are returned with the main error.
 - Windows: Sync and close before replacement; existing target → `ReplaceFileW` with a same-dir unique backup; first creation → `MoveFileEx` without overwrite. `ERROR_UNABLE_TO_MOVE_REPLACEMENT` keeps target/source names; `ERROR_UNABLE_TO_MOVE_REPLACEMENT_2` tries to restore the moved-to-backup target, else keeps backup/source. Backup cleanup failure after success is a committed error. New files inherit the parent ACL, replacements keep the target ACL; no ACL tightening or POSIX-mode/directory-fsync equivalence is claimed.
 
-`update_check_enabled` = `[update] check_enabled` (default `true`), only for the automatic check, never user-run `pixiv update`. `log_level` / `log_format` = `[logging].level` / `.format`; `info`/`text` default, `debug`/`json` opt into the CLI stderr presenter; env values override per invocation.
+`update_check_enabled` = `[update] check_enabled` (default `true`), only for the automatic check, never user-run `pixiv update`. `log_level` / `log_format` = `[logging].level` / `.format`; `info`/`text` default, `debug` adds request and decision records and `json` selects JSON records; env values override per invocation.
 
 ### `internal/browsercookies`
 
@@ -320,7 +320,7 @@ Detailed gates: [Release](release.md).
 
 ### `internal/config/paths`
 
-Sole owner of app-managed paths, `AppDataDirName` and Unix private dir/file permission constants; reads no business config, writes no files. No generic constants package: Pixiv protocol values, MCP delivery values and config keys/defaults stay in their domains. `internal/logging` owns the typed event contract; `internal/logging` owns the optional text/JSON stderr presenter configured by `[logging]` — not a persistent log or the old `slog` chain. MCP JSON-RPC uses clean stdio or authenticated HTTP; errors still flow through CLI, MCP or SDK interfaces.
+Sole owner of app-managed paths, `AppDataDirName` and Unix private dir/file permission constants; reads no business config, writes no files. No generic constants package: Pixiv protocol values, MCP delivery values and config keys/defaults stay in their domains. `internal/logging` owns the slog handler, context call information and shared attribute keys configured by `[logging]` — not a persistent log. MCP JSON-RPC uses clean stdio or authenticated HTTP; errors still flow through CLI, MCP or SDK interfaces.
 
 ### `internal/storage/{atomicfile,filelock,secretfile}`
 

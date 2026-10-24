@@ -335,8 +335,8 @@ Verified on the authenticated App API for illustration `search` with a tag `--se
 | `directory_template` | string | empty | Relative download directory template. |
 | `request_interval` | duration | `0` | Minimum interval between request starts; also `PIXIV_REQUEST_INTERVAL` or `[network].request_interval`. |
 | `https_proxy` | string | empty | Global proxy URI; the lowercase `https_proxy` env var takes precedence. |
-| `log_level` | string | `info` | `info` is silent; `debug` enables typed stderr diagnostics. Written as `[logging].level`. |
-| `log_format` | string | `text` | `text` or one JSON event per line. Written as `[logging].format`. |
+| `log_level` | string | `info` | `debug`, `info`, `warn`, or `error`; `info` keeps routine work quiet. Written as `[logging].level`. |
+| `log_format` | string | `text` | `text` or one JSON log record per line. Written as `[logging].format`. |
 | `reverse_search_provider` | string | `saucenao` | `saucenao`, `ascii2d-color`, `ascii2d-bovw`, `all`. |
 | `reverse_search_pixiv_only` | boolean | `true` | Keep only identified Pixiv artwork/user matches in the canonical set; external evidence can remain in `results` when disabled. |
 | `saucenao_api_key` | sensitive string | unset | `config get` always prints `<redacted>`; `config set` reads only non-TTY stdin, never an argument. |
@@ -391,7 +391,7 @@ flowchart LR
 - Reverse search: the command override wins for standard and ascii2d traffic; otherwise the service value affects only ascii2d, while SauceNAO/standard keep the global route. The `user_agent` affects only ascii2d (paired with client hints). FlareSolverr is optional, challenge-only, JSON (not image multipart), and independent from both native routes. The default generator omits service proxies and FlareSolverr tables but may emit baseline `[reverse_search]` values.
 - Update checks use only the general network fallback; they never consume FANBOX service or solver settings.
 - `[account_pool]` stores only `enabled` and `strategy`; per-account `schedulable`, freeze and marker state live in `pixiv-cli.db`. A leftover `account_pool.accounts` is undeclared and ignored; delete it from the file or leave it, and `pixiv config unset account_pool_accounts` reports an unknown key. The historical `data/account-pool.json` is not read, migrated or deleted. Never put a refresh token in `config.toml`.
-- `[logging].level` (`info|debug`) and `[logging].format` (`text|json`) are live; `PIXIV_LOG_LEVEL` / `PIXIV_LOG_FORMAT` override them. Debug output is stderr-only, omits query strings, headers, cookies, tokens, response bodies and proxy userinfo, and never creates log files. `config` management and secret export stay quiet. MCP JSON-RPC uses stdout in stdio mode and HTTP with `--port`.
+- `[logging].level` (`debug|info|warn|error`) and `[logging].format` (`text|json`) are live; `PIXIV_LOG_LEVEL` / `PIXIV_LOG_FORMAT` override them. Logs are stderr-only, omit query strings, headers, cookies, tokens, response bodies and signed URLs, and never create log files. `debug` adds request and decision records; a failed command also writes one terminating `ERROR` record with its safe error text. `config` management and secret export stay quiet. MCP JSON-RPC uses stdout in stdio mode and HTTP with `--port`.
 - v1 does not read or migrate a legacy `~/.pixiv-cli/auth.json`. Migrate explicitly: old version `pixiv auth export --all --output <private bundle>`, then v1 `pixiv auth import < bundle.json`.
 
 ### Environment variables
@@ -402,7 +402,7 @@ flowchart LR
 | `FILENAME_TEMPLATE` | `{author} - {title}_{id}` | Filename template. |
 | `DIRECTORY_TEMPLATE` | empty | Relative download directory template. |
 | `PIXIV_REQUEST_INTERVAL` | empty | Minimum interval between request starts. |
-| `PIXIV_LOG_LEVEL` | `info` | `info` or `debug`; overrides `[logging].level`. |
+| `PIXIV_LOG_LEVEL` | `info` | `debug`, `info`, `warn`, or `error`; overrides `[logging].level`. |
 | `PIXIV_LOG_FORMAT` | `text` | `text` or `json`; overrides `[logging].format`. |
 | `SAUCENAO_API_KEY` | empty | Overrides the private config value; never printed. |
 | `https_proxy` / `HTTPS_PROXY` | empty | Proxy URI; lowercase wins on case-sensitive systems; Windows treats both as one variable. |
