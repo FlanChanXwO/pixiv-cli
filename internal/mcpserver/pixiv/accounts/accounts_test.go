@@ -25,8 +25,8 @@ func TestInitialSelectionUsesOnlyExplicitDefaultOrSoleAccount(t *testing.T) {
 			store := auth.Store{Path: filepath.Join(t.TempDir(), "state.json")}
 			_, err := store.Init(t.Context(), false)
 			require.NoError(t, err)
-			manager := accounts.Manager{Store: store, Load: func(context.Context) (accounts.LocalSnapshot, error) { return test.local, nil }}
-			status, err := manager.Status(t.Context())
+			selection := accounts.Selection{Store: store, Load: func(context.Context) (accounts.LocalSnapshot, error) { return test.local, nil }}
+			status, err := selection.Status(t.Context())
 			require.NoError(t, err)
 			require.Equal(t, test.want, status.SelectedUserID)
 			require.Equal(t, test.state, status.SelectionState)
@@ -37,17 +37,17 @@ func TestInitialSelectionUsesOnlyExplicitDefaultOrSoleAccount(t *testing.T) {
 	}
 }
 
-func TestUsePersistsAcrossManagersAndDoesNotFallbackAfterRemoval(t *testing.T) {
+func TestUsePersistsAcrossSelectionsAndDoesNotFallbackAfterRemoval(t *testing.T) {
 	store := auth.Store{Path: filepath.Join(t.TempDir(), "state.json")}
 	_, err := store.Init(t.Context(), false)
 	require.NoError(t, err)
 	local := accounts.LocalSnapshot{DefaultUserID: 42, Accounts: []accounts.Account{{UserID: 42, HasCredentials: true}, {UserID: 73, HasCredentials: true}}}
 	load := func(context.Context) (accounts.LocalSnapshot, error) { return local, nil }
-	manager := accounts.Manager{Store: store, Load: load}
-	status, err := manager.Use(t.Context(), 73)
+	selection := accounts.Selection{Store: store, Load: load}
+	status, err := selection.Use(t.Context(), 73)
 	require.NoError(t, err)
 	require.Equal(t, int64(73), status.SelectedUserID)
-	other := accounts.Manager{Store: auth.Store{Path: store.Path}, Load: load}
+	other := accounts.Selection{Store: auth.Store{Path: store.Path}, Load: load}
 	id, err := other.Resolve(t.Context())
 	require.NoError(t, err)
 	require.Equal(t, int64(73), id)
@@ -70,16 +70,16 @@ func TestMissingCredentialsDoNotImplyUpstreamValidityOrFallback(t *testing.T) {
 	store := auth.Store{Path: filepath.Join(t.TempDir(), "state.json")}
 	_, err := store.Init(t.Context(), false)
 	require.NoError(t, err)
-	manager := accounts.Manager{Store: store, Load: func(context.Context) (accounts.LocalSnapshot, error) {
+	selection := accounts.Selection{Store: store, Load: func(context.Context) (accounts.LocalSnapshot, error) {
 		return accounts.LocalSnapshot{Accounts: []accounts.Account{{UserID: 42}}}, nil
 	}}
-	status, err := manager.Status(t.Context())
+	status, err := selection.Status(t.Context())
 	require.NoError(t, err)
 	require.Equal(t, "credentials_missing", status.SelectionState)
 	require.Equal(t, "missing", status.CredentialState)
-	_, err = manager.Resolve(t.Context())
+	_, err = selection.Resolve(t.Context())
 	require.ErrorContains(t, err, "credentials_missing")
-	_, err = manager.Use(t.Context(), 0)
+	_, err = selection.Use(t.Context(), 0)
 	require.Error(t, err)
 }
 
@@ -102,10 +102,10 @@ func TestLoginSelectionUsesLocalAvailability(t *testing.T) {
 			if tc.selected != 0 {
 				require.NoError(t, store.SelectPixivUser(t.Context(), tc.selected))
 			}
-			manager := accounts.Manager{Store: store, Load: func(context.Context) (accounts.LocalSnapshot, error) {
+			selection := accounts.Selection{Store: store, Load: func(context.Context) (accounts.LocalSnapshot, error) {
 				return accounts.LocalSnapshot{DefaultUserID: 42, Accounts: []accounts.Account{{UserID: 42, HasCredentials: tc.hasCredentials}, {UserID: 73, HasCredentials: true}}}, nil
 			}}
-			changed, err := manager.SelectAfterLogin(t.Context(), 73)
+			changed, err := selection.SelectAfterLogin(t.Context(), 73)
 			require.NoError(t, err)
 			require.Equal(t, tc.changed, changed)
 			saved, err := store.Read(t.Context())
@@ -123,13 +123,13 @@ func TestLoginSelectionSerializesWithConcurrentUse(t *testing.T) {
 		if initial != 0 {
 			require.NoError(t, store.SelectPixivUser(t.Context(), initial))
 		}
-		manager := accounts.Manager{Store: store, Load: func(context.Context) (accounts.LocalSnapshot, error) {
+		selection := accounts.Selection{Store: store, Load: func(context.Context) (accounts.LocalSnapshot, error) {
 			return accounts.LocalSnapshot{Accounts: []accounts.Account{{UserID: 42, HasCredentials: true}, {UserID: 73, HasCredentials: true}}}, nil
 		}}
 		start := make(chan struct{})
 		done := make(chan error, 2)
-		go func() { <-start; _, err := manager.SelectAfterLogin(t.Context(), 73); done <- err }()
-		go func() { <-start; _, err := manager.Use(t.Context(), 42); done <- err }()
+		go func() { <-start; _, err := selection.SelectAfterLogin(t.Context(), 73); done <- err }()
+		go func() { <-start; _, err := selection.Use(t.Context(), 42); done <- err }()
 		close(start)
 		require.NoError(t, <-done)
 		require.NoError(t, <-done)
@@ -146,10 +146,10 @@ func TestLoginSelectionFailureDoesNotChangeState(t *testing.T) {
 	require.NoError(t, store.SelectPixivUser(t.Context(), 42))
 	original, err := store.Read(t.Context())
 	require.NoError(t, err)
-	manager := accounts.Manager{Store: store, Load: func(context.Context) (accounts.LocalSnapshot, error) {
+	selection := accounts.Selection{Store: store, Load: func(context.Context) (accounts.LocalSnapshot, error) {
 		return accounts.LocalSnapshot{}, context.Canceled
 	}}
-	changed, err := manager.SelectAfterLogin(t.Context(), 73)
+	changed, err := selection.SelectAfterLogin(t.Context(), 73)
 	require.ErrorIs(t, err, context.Canceled)
 	require.False(t, changed)
 	after, err := store.Read(t.Context())

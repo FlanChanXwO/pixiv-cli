@@ -15,7 +15,7 @@ import (
 func (t pixivTools) registerAccountList(server *mcp.Server) {
 	outputs.ProtectAccountInput(server, "pixiv_account_list")
 	toolhost.AddTool(t.app, server, &mcp.Tool{Name: "pixiv_account_list", Description: "Inspect local Pixiv accounts and selection without network refresh; may persist the initial explicit-default or sole-account selection.", Annotations: &mcp.ToolAnnotations{ReadOnlyHint: false, DestructiveHint: new(false), IdempotentHint: true, OpenWorldHint: new(false)}}, func(ctx context.Context, _ *mcp.CallToolRequest, in struct{}) (*mcp.CallToolResult, outputs.AccountStatus, error) {
-		status, err := t.app.AccountManager().Status(ctx)
+		status, err := t.app.AccountSelection().Status(ctx)
 		return outputs.AccountResult(status, err)
 	})
 }
@@ -54,7 +54,7 @@ func (t pixivTools) registerAccountStatus(server *mcp.Server) {
 			}
 			return outputs.LoginQuery(manager.Status(*in.LoginID))
 		}
-		status, err := t.app.AccountManager().Status(ctx)
+		status, err := t.app.AccountSelection().Status(ctx)
 		return outputs.AccountResult(status, err)
 	})
 }
@@ -67,7 +67,7 @@ type accountUseIn struct {
 func (t pixivTools) registerAccountUse(server *mcp.Server) {
 	outputs.ProtectAccountInput(server, "pixiv_account_use")
 	toolhost.AddTool(t.app, server, &mcp.Tool{Name: "pixiv_account_use", Description: "Select an existing local Pixiv account for all connectors without changing the CLI default.", Annotations: &mcp.ToolAnnotations{ReadOnlyHint: false, DestructiveHint: new(false), IdempotentHint: true, OpenWorldHint: new(false)}}, func(ctx context.Context, _ *mcp.CallToolRequest, in accountUseIn) (*mcp.CallToolResult, outputs.AccountStatus, error) {
-		status, err := t.app.AccountManager().Use(ctx, in.UserID)
+		status, err := t.app.AccountSelection().Use(ctx, in.UserID)
 		return outputs.AccountResult(status, err)
 	})
 }

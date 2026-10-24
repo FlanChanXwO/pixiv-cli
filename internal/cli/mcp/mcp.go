@@ -120,10 +120,10 @@ func endpoint(host string, port int, rawBase string, explicitBase bool) (string,
 		}
 		rawBase = "http://" + listen
 	}
-	if _, err := mcpauth.NewHandler(rawBase, mcpauth.Store{Path: "unused"}); err != nil {
+	base, err := mcpauth.ParseBaseURL(rawBase)
+	if err != nil {
 		return "", "", err
 	}
-	base, _ := url.Parse(strings.TrimRight(rawBase, "/"))
 	base.Scheme = strings.ToLower(base.Scheme)
 	base.Host = strings.ToLower(base.Host)
 	ip := net.ParseIP(base.Hostname())

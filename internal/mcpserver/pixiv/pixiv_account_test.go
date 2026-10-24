@@ -45,10 +45,10 @@ func TestAccountToolsShareSelectionWithoutOpeningSDK(t *testing.T) {
 	store := auth.Store{Path: filepath.Join(t.TempDir(), "state.json")}
 	_, err := store.Init(t.Context(), false)
 	require.NoError(t, err)
-	manager := accounts.Manager{Store: store, Load: func(context.Context) (accounts.LocalSnapshot, error) {
+	selection := accounts.Selection{Store: store, Load: func(context.Context) (accounts.LocalSnapshot, error) {
 		return accounts.LocalSnapshot{Accounts: []accounts.Account{{UserID: 42, Username: "first", HasCredentials: true}, {UserID: 73, Username: "second", HasCredentials: true}}}, nil
 	}}
-	ports := pixivserver.SDKPorts{Accounts: manager}
+	ports := pixivserver.SDKPorts{Accounts: selection}
 	first, closeFirst := newSDKTestSessionWithPorts(t, ports, pixivserver.Account{})
 	defer closeFirst()
 	second, closeSecond := newSDKTestSessionWithPorts(t, ports, pixivserver.Account{})
@@ -78,10 +78,10 @@ func TestAccountToolsShareSelectionWithoutOpeningSDK(t *testing.T) {
 }
 
 func TestAccountToolsRedactLocalErrorsAndPreserveStructuredFailure(t *testing.T) {
-	manager := accounts.Manager{Load: func(context.Context) (accounts.LocalSnapshot, error) {
+	selection := accounts.Selection{Load: func(context.Context) (accounts.LocalSnapshot, error) {
 		return accounts.LocalSnapshot{}, errors.New("fixture-secret /private/database-path")
 	}}
-	session, closeSession := newSDKTestSessionWithPorts(t, pixivserver.SDKPorts{Accounts: manager}, pixivserver.Account{})
+	session, closeSession := newSDKTestSessionWithPorts(t, pixivserver.SDKPorts{Accounts: selection}, pixivserver.Account{})
 	defer closeSession()
 	for _, name := range []string{"pixiv_account_list", "pixiv_account_status", "pixiv_account_use"} {
 		args := map[string]any{}
@@ -105,10 +105,10 @@ func TestAccountToolsRedactLocalErrorsAndPreserveStructuredFailure(t *testing.T)
 func TestAccountUseDoesNotReportSuccessWhenStateIsUnavailable(t *testing.T) {
 	file := filepath.Join(t.TempDir(), "not-a-directory")
 	require.NoError(t, os.WriteFile(file, []byte("unchanged"), 0600))
-	manager := accounts.Manager{Store: auth.Store{Path: filepath.Join(file, "state.json")}, Load: func(context.Context) (accounts.LocalSnapshot, error) {
+	selection := accounts.Selection{Store: auth.Store{Path: filepath.Join(file, "state.json")}, Load: func(context.Context) (accounts.LocalSnapshot, error) {
 		return accounts.LocalSnapshot{Accounts: []accounts.Account{{UserID: 73, HasCredentials: true}}}, nil
 	}}
-	session, closeSession := newSDKTestSessionWithPorts(t, pixivserver.SDKPorts{Accounts: manager}, pixivserver.Account{})
+	session, closeSession := newSDKTestSessionWithPorts(t, pixivserver.SDKPorts{Accounts: selection}, pixivserver.Account{})
 	defer closeSession()
 	result := callTool(t, session, "pixiv_account_use", map[string]any{"user_id": 73})
 	require.True(t, result.IsError)
@@ -132,12 +132,12 @@ func TestAccountSchemaErrorsDoNotEchoRawInput(t *testing.T) {
 }
 
 func TestLoginToolsSharePendingSessionAndQueryWithoutLocalState(t *testing.T) {
-	manager, err := accounts.NewLoginManager(t.Context(), "https://relay.example/pixiv-login", func() (accounts.LoginAttempt, error) {
+	loginRelay, err := accounts.NewLogin(t.Context(), "https://relay.example/pixiv-login", func() (accounts.LoginAttempt, error) {
 		return accounts.LoginAttempt{AuthorizationURL: "https://app-api.pixiv.net/web/v1/login", AcceptsCallback: func(string) bool { return true }, Complete: func(context.Context, string) (accounts.LoginResult, error) { return accounts.LoginResult{}, nil }}, nil
 	})
 	require.NoError(t, err)
-	defer manager.Close()
-	ports := pixivserver.SDKPorts{Login: manager}
+	defer loginRelay.Close()
+	ports := pixivserver.SDKPorts{Login: loginRelay}
 	first, closeFirst := newSDKTestSessionWithPorts(t, ports, pixivserver.Account{})
 	defer closeFirst()
 	second, closeSecond := newSDKTestSessionWithPorts(t, ports, pixivserver.Account{})
@@ -217,7 +217,7 @@ func TestLoginStartErrorsKeepLoginEnvelopeAndHideArguments(t *testing.T) {
 
 func TestLoginStatusToolRetainsSavedAccountOnSelectionFailure(t *testing.T) {
 	entered, release := make(chan struct{}), make(chan struct{})
-	manager, err := accounts.NewLoginManager(t.Context(), "https://relay.example", func() (accounts.LoginAttempt, error) {
+	loginRelay, err := accounts.NewLogin(t.Context(), "https://relay.example", func() (accounts.LoginAttempt, error) {
 		return accounts.LoginAttempt{
 			AuthorizationURL: "https://app-api.pixiv.net/web/v1/login", AcceptsCallback: func(string) bool { return true },
 			Complete: func(ctx context.Context, _ string) (accounts.LoginResult, error) {
@@ -232,25 +232,25 @@ func TestLoginStatusToolRetainsSavedAccountOnSelectionFailure(t *testing.T) {
 		}, nil
 	})
 	require.NoError(t, err)
-	defer manager.Close()
-	session, closeSession := newSDKTestSessionWithPorts(t, pixivserver.SDKPorts{Login: manager}, pixivserver.Account{})
+	defer loginRelay.Close()
+	session, closeSession := newSDKTestSessionWithPorts(t, pixivserver.SDKPorts{Login: loginRelay}, pixivserver.Account{})
 	defer closeSession()
 	result := callTool(t, session, "pixiv_account_login_start", map[string]any{})
 	var started outputs.LoginStatus
 	decodeStructured(t, result, &started)
 	page := httptest.NewRecorder()
-	manager.ServeHTTP(page, httptest.NewRequest("GET", started.AuthorizationURL, nil))
+	loginRelay.ServeHTTP(page, httptest.NewRequest("GET", started.AuthorizationURL, nil))
 	link, err := url.Parse(page.Header().Get("Location"))
 	require.NoError(t, err)
 	id, proof := link.Query().Get("session"), link.Query().Get("access")
 	start := httptest.NewRecorder()
-	manager.ServeHTTP(start, httptest.NewRequest("POST", "/start/"+id, strings.NewReader(`{"proof":"`+proof+`"}`)))
+	loginRelay.ServeHTTP(start, httptest.NewRequest("POST", "/start/"+id, strings.NewReader(`{"proof":"`+proof+`"}`)))
 	require.Equal(t, 200, start.Code)
 	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()
 	done := make(chan struct{})
 	go func() {
-		manager.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest("POST", "/callback/"+id, strings.NewReader(`{"proof":"`+proof+`","callback_url":"pixiv://account/login?code=fixture"}`)).WithContext(ctx))
+		loginRelay.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest("POST", "/callback/"+id, strings.NewReader(`{"proof":"`+proof+`","callback_url":"pixiv://account/login?code=fixture"}`)).WithContext(ctx))
 		close(done)
 	}()
 	<-entered
@@ -261,7 +261,7 @@ func TestLoginStatusToolRetainsSavedAccountOnSelectionFailure(t *testing.T) {
 	cancel()
 	<-done
 	close(release)
-	require.Eventually(t, func() bool { return manager.Status(started.LoginID).Status == "failed" }, 5*time.Second, time.Millisecond)
+	require.Eventually(t, func() bool { return loginRelay.Status(started.LoginID).Status == "failed" }, 5*time.Second, time.Millisecond)
 	result = callTool(t, session, "pixiv_account_status", map[string]any{"login_id": started.LoginID})
 	require.True(t, result.IsError)
 	decodeStructured(t, result, &status)

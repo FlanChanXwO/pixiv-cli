@@ -43,9 +43,9 @@ type activeLogin struct {
 	status LoginStatus
 }
 
-// LoginManager owns one current/recent login. Start/Close serialize replacement;
+// Login owns one current/recent login relay. Start/Close serialize replacement;
 // status and HTTP routing remain available while a canceled exchange is being joined.
-type LoginManager struct {
+type Login struct {
 	ctx        context.Context
 	cancel     context.CancelFunc
 	baseURL    string
@@ -55,7 +55,7 @@ type LoginManager struct {
 	current    *activeLogin
 }
 
-func NewLoginManager(ctx context.Context, baseURL string, begin func() (LoginAttempt, error)) (*LoginManager, error) {
+func NewLogin(ctx context.Context, baseURL string, begin func() (LoginAttempt, error)) (*Login, error) {
 	baseURL, err := loginrelay.CanonicalPublicURL(baseURL)
 	if err != nil {
 		return nil, err
@@ -64,12 +64,12 @@ func NewLoginManager(ctx context.Context, baseURL string, begin func() (LoginAtt
 		return nil, errors.New("login service is not configured")
 	}
 	ctx, cancel := context.WithCancel(ctx)
-	return &LoginManager{ctx: ctx, cancel: cancel, baseURL: baseURL, begin: begin}, nil
+	return &Login{ctx: ctx, cancel: cancel, baseURL: baseURL, begin: begin}, nil
 }
 
 // Start reuses pending work unless restart was explicitly requested. Its lifetime
 // belongs to the server context, not the MCP request that requested the login URL.
-func (m *LoginManager) Start(restart bool) (LoginStatus, error) {
+func (m *Login) Start(restart bool) (LoginStatus, error) {
 	m.operations.Lock()
 	defer m.operations.Unlock()
 	if err := m.ctx.Err(); err != nil {
@@ -120,7 +120,7 @@ func (m *LoginManager) Start(restart bool) (LoginStatus, error) {
 	return result, nil
 }
 
-func (m *LoginManager) run(ctx context.Context, current *activeLogin, attempt LoginAttempt) {
+func (m *Login) run(ctx context.Context, current *activeLogin, attempt LoginAttempt) {
 	defer close(current.done)
 	defer current.relay.Stop()
 	var callback string
@@ -159,7 +159,7 @@ func (m *LoginManager) run(ctx context.Context, current *activeLogin, attempt Lo
 	current.relay.Complete(err == nil)
 }
 
-func (m *LoginManager) Status(loginID string) LoginStatus {
+func (m *Login) Status(loginID string) LoginStatus {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	if m.current == nil || m.current.status.LoginID != loginID {
@@ -174,7 +174,7 @@ func (m *LoginManager) Status(loginID string) LoginStatus {
 }
 
 // ServeHTTP expects the host mux to strip the public relay path prefix.
-func (m *LoginManager) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+func (m *Login) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	m.mu.Lock()
 	current := m.current
 	m.mu.Unlock()
@@ -186,7 +186,7 @@ func (m *LoginManager) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 }
 
 // Close cancels and joins pending exchange/persistence without a fixed cleanup timeout.
-func (m *LoginManager) Close() {
+func (m *Login) Close() {
 	m.cancel()
 	m.operations.Lock()
 	defer m.operations.Unlock()

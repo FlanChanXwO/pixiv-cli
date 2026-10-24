@@ -76,7 +76,7 @@ func (s *Service) revalidateAnimationGrants() {
 	state, err := s.store.Read(a.ctx)
 	for _, job := range a.jobs {
 		grant, ok := state.Grants[job.claim.Grant]
-		if err != nil || !ok || grant.Revoked || grant.Resource != s.base+"/mcp" || grant.Scope != "mcp" || !time.Now().Before(job.claim.Expires) {
+		if err != nil || !ok || !grant.Usable(s.base+"/mcp") || !time.Now().Before(job.claim.Expires) {
 			a.invalidateLocked(job, "expired", "authorization")
 		}
 	}
@@ -100,7 +100,7 @@ func (s *Service) purgeStaticGrants() {
 			return true
 		}
 		grant, ok := state.Grants[parts[1]]
-		return !ok || grant.Revoked || grant.Resource != s.base+"/mcp" || grant.Scope != "mcp"
+		return !ok || !grant.Usable(s.base+"/mcp")
 	})
 }
 

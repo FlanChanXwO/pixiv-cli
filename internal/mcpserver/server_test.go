@@ -360,14 +360,14 @@ func httpRegistryPorts(t *testing.T) pixiv.SDKPorts {
 	if err != nil {
 		t.Fatal(err)
 	}
-	login, err := accounts.NewLoginManager(t.Context(), "https://media.test/pixiv-login", func() (accounts.LoginAttempt, error) {
+	login, err := accounts.NewLogin(t.Context(), "https://media.test/pixiv-login", func() (accounts.LoginAttempt, error) {
 		return accounts.LoginAttempt{}, errors.New("fixture unavailable")
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(login.Close)
-	return pixiv.SDKPorts{Media: media, Accounts: accounts.Manager{Store: store, Load: func(context.Context) (accounts.LocalSnapshot, error) { return accounts.LocalSnapshot{}, nil }}, Login: login}
+	return pixiv.SDKPorts{Media: media, Accounts: accounts.Selection{Store: store, Load: func(context.Context) (accounts.LocalSnapshot, error) { return accounts.LocalSnapshot{}, nil }}, Login: login}
 }
 
 func TestConsolidatedToolRegistry(t *testing.T) {

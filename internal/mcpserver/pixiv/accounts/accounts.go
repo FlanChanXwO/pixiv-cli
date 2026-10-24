@@ -34,14 +34,14 @@ type Status struct {
 	Accounts        []Account `json:"accounts"`
 }
 
-// Manager shares one private MCP selection across connectors. Load must stay local.
-type Manager struct {
+// Selection shares one private MCP account choice across connectors. Load must stay local.
+type Selection struct {
 	Store auth.Store
 	Load  func(context.Context) (LocalSnapshot, error)
 }
 
 // Status adopts the initial selection once and otherwise reports the saved identity without fallback.
-func (m Manager) Status(ctx context.Context) (Status, error) {
+func (m Selection) Status(ctx context.Context) (Status, error) {
 	if m.Load == nil {
 		return Status{}, errors.New("MCP account reader is not configured")
 	}
@@ -95,7 +95,7 @@ func statusFor(local []Account, selected int64) Status {
 }
 
 // Use checks local existence before committing the shared selection; CLI defaults are untouched.
-func (m Manager) Use(ctx context.Context, userID int64) (Status, error) {
+func (m Selection) Use(ctx context.Context, userID int64) (Status, error) {
 	if userID <= 0 {
 		return Status{}, ErrInvalidUserID
 	}
@@ -119,7 +119,7 @@ func (m Manager) Use(ctx context.Context, userID int64) (Status, error) {
 }
 
 // Resolve requires usable local credentials; their actual upstream validity is checked by the SDK.
-func (m Manager) Resolve(ctx context.Context) (int64, error) {
+func (m Selection) Resolve(ctx context.Context) (int64, error) {
 	status, err := m.Status(ctx)
 	if err != nil {
 		return 0, err
@@ -133,7 +133,7 @@ func (m Manager) Resolve(ctx context.Context) (int64, error) {
 // SelectAfterLogin adopts a saved account only when the current selection lacks
 // local credentials. The state lock spans the lookup and conditional commit so
 // an explicit choice cannot be overwritten using stale availability, even for the same ID.
-func (m Manager) SelectAfterLogin(ctx context.Context, userID int64) (bool, error) {
+func (m Selection) SelectAfterLogin(ctx context.Context, userID int64) (bool, error) {
 	if userID <= 0 {
 		return false, ErrInvalidUserID
 	}

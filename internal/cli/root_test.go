@@ -706,8 +706,8 @@ func TestMCPReverseSearchRegistersSearcherForHTTPLifetime(t *testing.T) {
 	newCLIPixivSDKPorts = func(app) (pixivSDKPorts, error) {
 		return pixivSDKPorts{}, nil
 	}
-	runMCPHTTP = func(ctx context.Context, server *mcp.Server, listenAddr, baseURL string, store mcpauth.Store, out io.Writer, login *mcpaccounts.LoginManager, media ...*mediaproxy.Service) error {
-		require.NotNil(t, login, "production HTTP must receive the shared login manager")
+	runMCPHTTP = func(ctx context.Context, server *mcp.Server, listenAddr, baseURL string, store mcpauth.Store, out io.Writer, login *mcpaccounts.Login, media ...*mediaproxy.Service) error {
+		require.NotNil(t, login, "production HTTP must receive the shared login relay")
 		clientTransport, serverTransport := mcp.NewInMemoryTransports()
 		serverSession, err := server.Connect(ctx, serverTransport, nil)
 		require.NoError(t, err)
@@ -773,7 +773,7 @@ func TestMCPShutdownPreservesAnimationCleanupError(t *testing.T) {
 		}}, nil
 	}
 	serveErr := errors.New("fixture HTTP stopped")
-	runMCPHTTP = func(context.Context, *mcp.Server, string, string, mcpauth.Store, io.Writer, *mcpaccounts.LoginManager, ...*mediaproxy.Service) error {
+	runMCPHTTP = func(context.Context, *mcp.Server, string, string, mcpauth.Store, io.Writer, *mcpaccounts.Login, ...*mediaproxy.Service) error {
 		entries, err := os.ReadDir(temporary)
 		require.NoError(t, err)
 		require.Len(t, entries, 1)
@@ -936,7 +936,7 @@ base_url = "http://127.0.0.1:8123"
 				return pixivSDKPorts{watchReadSessions: func(context.Context) error { watchCalls++; return nil }}, nil
 			}
 			called := false
-			runMCPHTTP = func(_ context.Context, _ *mcp.Server, listen, base string, _ mcpauth.Store, out io.Writer, login *mcpaccounts.LoginManager, media ...*mediaproxy.Service) error {
+			runMCPHTTP = func(_ context.Context, _ *mcp.Server, listen, base string, _ mcpauth.Store, out io.Writer, login *mcpaccounts.Login, media ...*mediaproxy.Service) error {
 				called = true
 				require.Equal(t, tc.listen, listen)
 				require.Equal(t, tc.base, base)
@@ -984,7 +984,7 @@ func TestMCPProductionResolvesSharedSelectionBeforeSDK(t *testing.T) {
 			},
 		}, nil
 	}
-	runMCPHTTP = func(ctx context.Context, server *mcp.Server, _, _ string, store mcpauth.Store, _ io.Writer, login *mcpaccounts.LoginManager, media ...*mediaproxy.Service) error {
+	runMCPHTTP = func(ctx context.Context, server *mcp.Server, _, _ string, store mcpauth.Store, _ io.Writer, login *mcpaccounts.Login, media ...*mediaproxy.Service) error {
 
 		ct, st := mcp.NewInMemoryTransports()
 		ss, err := server.Connect(ctx, st, nil)
@@ -1133,8 +1133,8 @@ func TestMCPLoginProductionChain(t *testing.T) {
 			}
 			ports, err := newCLIPixivSDKPorts(a)
 			require.NoError(t, err)
-			manager := mcpaccounts.Manager{Store: store, Load: ports.localAccounts}
-			login, err := a.newMCPLoginManager(ctx, base, manager, proxy)
+			selection := mcpaccounts.Selection{Store: store, Load: ports.localAccounts}
+			login, err := a.newMCPLogin(ctx, base, selection, proxy)
 			require.NoError(t, err)
 			defer login.Close()
 			protocol := mcp.NewServer(&mcp.Implementation{Name: "fixture", Version: "1"}, nil)
