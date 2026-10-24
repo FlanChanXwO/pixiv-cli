@@ -6,7 +6,7 @@ import (
 	"errors"
 	"fmt"
 
-	commands "github.com/FlanChanXwO/pixiv-cli/internal/cli/internal/command"
+	"github.com/FlanChanXwO/pixiv-cli/internal/cli/internal/command"
 	"github.com/FlanChanXwO/pixiv-cli/internal/cli/internal/input"
 	pixivcmd "github.com/FlanChanXwO/pixiv-cli/internal/cli/internal/pixivcmd"
 	"github.com/FlanChanXwO/pixiv-cli/sdk"
@@ -17,29 +17,29 @@ import (
 // options 是只读 MyPixiv 命令的共同选项。MyPixiv 的好友关系写操作不在此命令组
 // 中，避免把读取工作流与关系变更混在一起。
 type options struct {
-	commands.Options
+	command.Options
 	ndjson      bool
 	limit       int
 	page        int
 	contentType string
 }
 
-type command struct {
-	env commands.Env
+type commandRunner struct {
+	env command.Env
 	run pixivcmd.Runner
 }
 
 // New builds the actual `pixiv mypixiv` command group.
-func New(env commands.Env, exec pixivcmd.Executor) *cobra.Command {
-	a := command{env: env, run: pixivcmd.New(env.Out, exec)}
+func New(env command.Env, exec pixivcmd.Executor) *cobra.Command {
+	a := commandRunner{env: env, run: pixivcmd.New(env.Out, exec)}
 	cmd := &cobra.Command{Use: "mypixiv", Short: "Browse authenticated MyPixiv data"}
 	cmd.AddCommand(a.newUsersCommand(), a.newWorksCommand())
 	env.BindNoInput(cmd)
-	commands.Bind(cmd, commands.PixivData())
+	command.Bind(cmd, command.PixivData())
 	return cmd
 }
 
-func (a command) newUsersCommand() *cobra.Command {
+func (a commandRunner) newUsersCommand() *cobra.Command {
 	opts := options{}
 	cmd := &cobra.Command{
 		Use:   "users",
@@ -53,11 +53,11 @@ func (a command) newUsersCommand() *cobra.Command {
 	pixivcmd.BindNDJSONFlag(cmd, &opts.ndjson)
 	pixivcmd.BindListFlags(cmd, &opts.limit, &opts.page)
 	a.env.BindNoInput(cmd)
-	commands.Bind(cmd, commands.PixivData())
+	command.Bind(cmd, command.PixivData())
 	return cmd
 }
 
-func (a command) newWorksCommand() *cobra.Command {
+func (a commandRunner) newWorksCommand() *cobra.Command {
 	opts := options{}
 	cmd := &cobra.Command{
 		Use:   "works [USER_ID]",
@@ -72,11 +72,11 @@ func (a command) newWorksCommand() *cobra.Command {
 	pixivcmd.BindListFlags(cmd, &opts.limit, &opts.page)
 	cmd.Flags().StringVarP(&opts.contentType, "type", "t", "", "required entity type: artwork or novel")
 	a.env.BindTextValue(cmd, 0, 1, 0)
-	commands.Bind(cmd, commands.PixivData())
+	command.Bind(cmd, command.PixivData())
 	return cmd
 }
 
-func (a command) runUsers(cmd *cobra.Command, opts options) error {
+func (a commandRunner) runUsers(cmd *cobra.Command, opts options) error {
 	plan, err := pixivcmd.ParsePlan(cmd, opts.limit, opts.page)
 	if err != nil {
 		return err
@@ -124,9 +124,8 @@ func currentUserID(client *pixiv.Client) (int64, error) {
 		sdk.WithDetail("cannot determine current user id"))
 }
 
-func (a command) runWorks(cmd *cobra.Command, args []string, opts options) error {
+func (a commandRunner) runWorks(cmd *cobra.Command, args []string, opts options) error {
 	// CLI 的 --type 选择实体，公开名称 artwork 对应 App API 的 illust 子类型。
-	// 保留 illust 输入兼容既有脚本，但帮助与文档统一使用 artwork。
 	if opts.contentType == "artwork" {
 		opts.contentType = "illust"
 	}

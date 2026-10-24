@@ -10,7 +10,7 @@ import (
 	"path/filepath"
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/media/filename"
-	sharedugoira "github.com/FlanChanXwO/pixiv-cli/internal/media/ugoira"
+	"github.com/FlanChanXwO/pixiv-cli/internal/media/ugoira"
 	"github.com/FlanChanXwO/pixiv-cli/sdk"
 	pixiv "github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
 )
@@ -60,7 +60,7 @@ func (b *ArtworkDownloader) downloadUgoira(ctx context.Context, artwork pixiv.Ar
 		return "", warning, err
 	}
 	outPath := filepath.Join(base, basename+"."+string(format))
-	if err := encodeUgoira(ctx, zipPath, meta.Frames, base, outPath, sharedugoira.Format(format)); err != nil {
+	if err := encodeUgoira(ctx, zipPath, meta.Frames, base, outPath, ugoira.Format(format)); err != nil {
 		return "", warning, err
 	}
 	return outPath, warning, nil
@@ -81,12 +81,12 @@ func SelectUgoiraArchive(meta pixiv.UgoiraMetadata) *pixiv.UgoiraArchive {
 	return fallback
 }
 
-func encodeUgoira(ctx context.Context, zipPath string, frames []pixiv.UgoiraFrame, workDir, outputPath string, format sharedugoira.Format) error {
-	ugoiraFrames := make([]sharedugoira.Frame, len(frames))
+func encodeUgoira(ctx context.Context, zipPath string, frames []pixiv.UgoiraFrame, workDir, outputPath string, format ugoira.Format) error {
+	ugoiraFrames := make([]ugoira.Frame, len(frames))
 	for index, frame := range frames {
-		ugoiraFrames[index] = sharedugoira.Frame{File: frame.Filename, Delay: frame.DelayMilliseconds}
+		ugoiraFrames[index] = ugoira.Frame{File: frame.Filename, Delay: frame.DelayMilliseconds}
 	}
-	return sharedugoira.NewEncoder().Encode(ctx, sharedugoira.Input{
+	return ugoira.NewEncoder().Encode(ctx, ugoira.Input{
 		ZipPath:    zipPath,
 		Frames:     ugoiraFrames,
 		WorkDir:    workDir,

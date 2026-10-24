@@ -8,15 +8,7 @@ import (
 	"path/filepath"
 )
 
-// Write 将 src 流式写入 Path 的原子目标：先写入目标目录中的私有临时文件并
-// fsync，再 rename 到最终路径，因此部分写入的文件绝不会出现在最终路径。任何
-// 失败都会移除临时文件。
-func Write(ctx context.Context, path string, src io.Reader) (int64, error) {
-	return AtomicWrite(ctx, path, src)
-}
-
 // AtomicWrite 将 src 流式写入 path，并以同目录临时文件加 fsync/rename 完成原子提交。
-// Write 保留为已有调用方的兼容名称。
 func AtomicWrite(ctx context.Context, path string, src io.Reader) (int64, error) {
 	dir := filepath.Dir(path)
 	if err := os.MkdirAll(dir, 0o700); err != nil {

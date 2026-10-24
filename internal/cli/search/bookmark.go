@@ -8,17 +8,17 @@ import (
 	"github.com/FlanChanXwO/pixiv-cli/internal/pagination"
 	"github.com/FlanChanXwO/pixiv-cli/internal/searchfilter"
 	"github.com/FlanChanXwO/pixiv-cli/sdk"
-	product "github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
+	"github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
 )
 
 // artworkSearchClient 是 bookmark 过滤所需的最小 public SDK capability。
 type artworkSearchClient interface {
-	SearchArtworks(context.Context, product.SearchArtworksRequest) (sdk.Page[product.Artwork], error)
-	CheckpointSearchArtworks(product.SearchArtworksRequest, int) (sdk.Cursor, error)
+	SearchArtworks(context.Context, pixiv.SearchArtworksRequest) (sdk.Page[pixiv.Artwork], error)
+	CheckpointSearchArtworks(pixiv.SearchArtworksRequest, int) (sdk.Cursor, error)
 }
 
 type artworkSearchOutcome struct {
-	Page   sdk.Page[product.Artwork]
+	Page   sdk.Page[pixiv.Artwork]
 	Filter *bookmarkFilterOutcome
 }
 
@@ -55,11 +55,11 @@ type bookmarkFilterOutcome struct {
 }
 
 type artworkSearchRequest struct {
-	Query      product.SearchArtworksRequest
+	Query      pixiv.SearchArtworksRequest
 	Plan       pagination.PagePlan
 	Membership bookmarkMembership
 	Strategy   bookmarkFilterStrategy
-	Include    func(product.Artwork) (bool, error)
+	Include    func(pixiv.Artwork) (bool, error)
 }
 
 // searchArtworks 在 CLI 的 execution scope 内执行 bookmark 候选筛选。
@@ -104,7 +104,7 @@ func searchArtworks[C artworkSearchClient](ctx context.Context, execute paginati
 			ctx,
 			request.Plan,
 			candidateQuery.Cursor,
-			func(ctx context.Context, cursor sdk.Cursor) ([]product.Artwork, sdk.Cursor, error) {
+			func(ctx context.Context, cursor sdk.Cursor) ([]pixiv.Artwork, sdk.Cursor, error) {
 				candidateQuery.Cursor = cursor
 				page, err := client.SearchArtworks(ctx, candidateQuery)
 				if err != nil {
@@ -112,7 +112,7 @@ func searchArtworks[C artworkSearchClient](ctx context.Context, execute paginati
 				}
 				return page.Items, page.Next, nil
 			},
-			func(item product.Artwork) (bool, error) {
+			func(item pixiv.Artwork) (bool, error) {
 				if item.TotalBookmarks < 0 {
 					return false, sdk.NewError("pixiv", "SearchArtworks", sdk.MalformedUpstreamResponse,
 						sdk.WithDetail("artwork bookmark count is negative"))
@@ -137,7 +137,7 @@ func searchArtworks[C artworkSearchClient](ctx context.Context, execute paginati
 			completeness = bookmarkFilterCompletenessPartial
 		}
 		outcome = artworkSearchOutcome{
-			Page: sdk.Page[product.Artwork]{Items: items, Next: next},
+			Page: sdk.Page[pixiv.Artwork]{Items: items, Next: next},
 			Filter: &bookmarkFilterOutcome{
 				Min:          cloneIntPointer(min),
 				Max:          cloneIntPointer(max),
@@ -211,11 +211,11 @@ func resolveBookmarkStrategy(requested bookmarkFilterStrategy, membership bookma
 	}
 }
 
-func searchArtworkPages[C artworkSearchClient](ctx context.Context, client C, query product.SearchArtworksRequest, plan pagination.PagePlan, include func(product.Artwork) (bool, error)) (sdk.Page[product.Artwork], error) {
+func searchArtworkPages[C artworkSearchClient](ctx context.Context, client C, query pixiv.SearchArtworksRequest, plan pagination.PagePlan, include func(pixiv.Artwork) (bool, error)) (sdk.Page[pixiv.Artwork], error) {
 	if include == nil {
-		include = func(product.Artwork) (bool, error) { return true, nil }
+		include = func(pixiv.Artwork) (bool, error) { return true, nil }
 	}
-	items, next, _, err := pagination.CollectFilteredPagesFrom(ctx, plan, query.Cursor, func(ctx context.Context, cursor sdk.Cursor) ([]product.Artwork, sdk.Cursor, error) {
+	items, next, _, err := pagination.CollectFilteredPagesFrom(ctx, plan, query.Cursor, func(ctx context.Context, cursor sdk.Cursor) ([]pixiv.Artwork, sdk.Cursor, error) {
 		fetchQuery := query
 		fetchQuery.Cursor = cursor
 		page, err := client.SearchArtworks(ctx, fetchQuery)
@@ -226,9 +226,9 @@ func searchArtworkPages[C artworkSearchClient](ctx context.Context, client C, qu
 		return client.CheckpointSearchArtworks(checkpointQuery, consumed)
 	})
 	if err != nil {
-		return sdk.Page[product.Artwork]{}, err
+		return sdk.Page[pixiv.Artwork]{}, err
 	}
-	return sdk.Page[product.Artwork]{Items: items, Next: next}, nil
+	return sdk.Page[pixiv.Artwork]{Items: items, Next: next}, nil
 }
 
 // combineCursorContexts 将多个已经脱敏的本地语义摘要绑定为一个摘要；空值

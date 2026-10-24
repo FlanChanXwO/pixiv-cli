@@ -192,7 +192,7 @@ func (c *Client) SaveResource(ctx context.Context, ref sdk.ResourceRef, options 
 	if response.StatusCode < 200 || response.StatusCode >= 300 {
 		return sdk.SavedResource{}, newError("SaveResource", sdk.UpstreamError, "resource returned a non-success status")
 	}
-	size, err := atomicfile.Write(ctx, options.Path, &progressReader{src: response.Body, total: response.ContentLength(), progress: options.Progress})
+	size, err := atomicfile.AtomicWrite(ctx, options.Path, &progressReader{src: response.Body, total: response.ContentLength(), progress: options.Progress})
 	if err != nil {
 		return sdk.SavedResource{}, classifyResourceWriteError("SaveResource", err)
 	}
@@ -228,7 +228,7 @@ func (c *Client) SaveResourceURL(ctx context.Context, rawURL string, options sdk
 		return sdk.SavedResource{}, newError(operation, sdk.UpstreamError, "resource returned a non-success status")
 	}
 
-	size, err := atomicfile.Write(ctx, options.Path, &progressReader{
+	size, err := atomicfile.AtomicWrite(ctx, options.Path, &progressReader{
 		src:      response.Body,
 		total:    response.ContentLength(),
 		progress: options.Progress,

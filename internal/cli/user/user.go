@@ -7,7 +7,7 @@ import (
 	"fmt"
 	"strings"
 
-	commands "github.com/FlanChanXwO/pixiv-cli/internal/cli/internal/command"
+	"github.com/FlanChanXwO/pixiv-cli/internal/cli/internal/command"
 	"github.com/FlanChanXwO/pixiv-cli/internal/cli/internal/input"
 	pixivcmd "github.com/FlanChanXwO/pixiv-cli/internal/cli/internal/pixivcmd"
 	"github.com/FlanChanXwO/pixiv-cli/internal/cli/internal/resolver"
@@ -17,7 +17,7 @@ import (
 )
 
 type listOptions struct {
-	commands.Options
+	command.Options
 	ndjson     bool
 	limit      int
 	page       int
@@ -26,8 +26,8 @@ type listOptions struct {
 	illustType string
 }
 
-type command struct {
-	env    commands.Env
+type commandRunner struct {
+	env    command.Env
 	runner pixivcmd.Runner
 }
 
@@ -43,8 +43,8 @@ func currentUserID(client *pixiv.Client) (int64, error) {
 
 // New builds the actual `pixiv user` command group. follow is assembled by the
 // composition root so this owner does not import a sibling command package.
-func New(env commands.Env, runner pixivcmd.Runner, follow func() *cobra.Command) *cobra.Command {
-	a := command{env: env, runner: runner}
+func New(env command.Env, runner pixivcmd.Runner, follow func() *cobra.Command) *cobra.Command {
+	a := commandRunner{env: env, runner: runner}
 	cmd := &cobra.Command{Use: "user", Short: "Query a Pixiv user"}
 	cmd.AddCommand(
 		a.newSearchCommand(),
@@ -61,29 +61,29 @@ func New(env commands.Env, runner pixivcmd.Runner, follow func() *cobra.Command)
 		cmd.AddCommand(follow())
 	}
 	a.env.BindNoInput(cmd)
-	commands.Bind(cmd, commands.PixivData())
+	command.Bind(cmd, command.PixivData())
 	return cmd
 }
 
 // NewSearch builds the canonical user-search command for the compatible
 // `pixiv user search` route and root `pixiv search --type user` execution.
-func NewSearch(env commands.Env, runner pixivcmd.Runner) *cobra.Command {
-	return command{env: env, runner: runner}.newSearchCommand()
+func NewSearch(env command.Env, runner pixivcmd.Runner) *cobra.Command {
+	return commandRunner{env: env, runner: runner}.newSearchCommand()
 }
 
 // SearchOptions carries the flags a compatible route already parsed for the
 // canonical user search. It exists so `pixiv search --type user` runs this
 // owner's execution instead of a second copy.
 type SearchOptions struct {
-	commands.Options
+	command.Options
 	NDJSON bool
 	Limit  int
 	Page   int
 }
 
 // RunSearch executes the canonical user search for a compatible route.
-func RunSearch(cmd *cobra.Command, env commands.Env, runner pixivcmd.Runner, args []string, opts SearchOptions) error {
-	return command{env: env, runner: runner}.runSearch(cmd, args, listOptions{
+func RunSearch(cmd *cobra.Command, env command.Env, runner pixivcmd.Runner, args []string, opts SearchOptions) error {
+	return commandRunner{env: env, runner: runner}.runSearch(cmd, args, listOptions{
 		Options: opts.Options,
 		ndjson:  opts.NDJSON,
 		limit:   opts.Limit,
@@ -91,7 +91,7 @@ func RunSearch(cmd *cobra.Command, env commands.Env, runner pixivcmd.Runner, arg
 	})
 }
 
-func (a command) newSearchCommand() *cobra.Command {
+func (a commandRunner) newSearchCommand() *cobra.Command {
 	opts := listOptions{}
 	cmd := &cobra.Command{
 		Use:     "search WORD",
@@ -104,12 +104,12 @@ func (a command) newSearchCommand() *cobra.Command {
 	}
 	a.bindListCommand(cmd, &opts)
 	a.env.BindTextValue(cmd, 1, -1, 0)
-	commands.Bind(cmd, commands.PixivData())
+	command.Bind(cmd, command.PixivData())
 	return cmd
 }
 
-func (a command) newDetailCommand() *cobra.Command {
-	var opts commands.Options
+func (a commandRunner) newDetailCommand() *cobra.Command {
+	var opts command.Options
 	cmd := &cobra.Command{
 		Use:   "detail USER_ID",
 		Short: "Show one user's complete profile",
@@ -120,12 +120,12 @@ func (a command) newDetailCommand() *cobra.Command {
 	}
 	a.env.BindCommonFlags(cmd, &opts)
 	a.env.BindTextValue(cmd, 1, 1, 0)
-	commands.Bind(cmd, commands.PixivData())
+	command.Bind(cmd, command.PixivData())
 	return cmd
 }
 
-func (a command) newArtworksCommand() *cobra.Command {
-	opts := listOptions{illustType: string(pixiv.ArtworkKindIllustration)}
+func (a commandRunner) newArtworksCommand() *cobra.Command {
+	opts := listOptions{illustType: "illust"}
 	cmd := &cobra.Command{
 		Use:   "artworks [USER_ID]",
 		Short: "List a user's artworks",
@@ -137,11 +137,11 @@ func (a command) newArtworksCommand() *cobra.Command {
 	a.bindListCommand(cmd, &opts)
 	cmd.Flags().StringVarP(&opts.illustType, "type", "t", opts.illustType, "illust type: illust, manga, ugoira")
 	a.env.BindTextValue(cmd, 0, 1, 0)
-	commands.Bind(cmd, commands.PixivData())
+	command.Bind(cmd, command.PixivData())
 	return cmd
 }
 
-func (a command) newBookmarksCommand() *cobra.Command {
+func (a commandRunner) newBookmarksCommand() *cobra.Command {
 	opts := listOptions{restrict: string(pixiv.RestrictPublic)}
 	cmd := &cobra.Command{
 		Use:   "bookmarks [USER_ID]",
@@ -155,11 +155,11 @@ func (a command) newBookmarksCommand() *cobra.Command {
 	cmd.Flags().StringVar(&opts.restrict, "restrict", opts.restrict, "bookmark visibility (public or private)")
 	cmd.Flags().StringVar(&opts.tag, "tag", "", "filter by bookmark tag")
 	a.env.BindTextValue(cmd, 0, 1, 0)
-	commands.Bind(cmd, commands.PixivData())
+	command.Bind(cmd, command.PixivData())
 	return cmd
 }
 
-func (a command) newFollowingCommand() *cobra.Command {
+func (a commandRunner) newFollowingCommand() *cobra.Command {
 	opts := listOptions{restrict: string(pixiv.RestrictPublic)}
 	cmd := &cobra.Command{
 		Use:   "following [USER_ID]",
@@ -172,11 +172,11 @@ func (a command) newFollowingCommand() *cobra.Command {
 	a.bindListCommand(cmd, &opts)
 	cmd.Flags().StringVar(&opts.restrict, "restrict", opts.restrict, "follow visibility (public or private)")
 	a.env.BindTextValue(cmd, 0, 1, 0)
-	commands.Bind(cmd, commands.PixivData())
+	command.Bind(cmd, command.PixivData())
 	return cmd
 }
 
-func (a command) newNovelsCommand() *cobra.Command {
+func (a commandRunner) newNovelsCommand() *cobra.Command {
 	opts := listOptions{}
 	cmd := &cobra.Command{
 		Use:   "novels [USER_ID]",
@@ -188,11 +188,11 @@ func (a command) newNovelsCommand() *cobra.Command {
 	}
 	a.bindListCommand(cmd, &opts)
 	a.env.BindTextValue(cmd, 0, 1, 0)
-	commands.Bind(cmd, commands.PixivData())
+	command.Bind(cmd, command.PixivData())
 	return cmd
 }
 
-func (a command) newFollowersCommand() *cobra.Command {
+func (a commandRunner) newFollowersCommand() *cobra.Command {
 	opts := listOptions{restrict: string(pixiv.RestrictPublic)}
 	cmd := &cobra.Command{
 		Use:   "followers [USER_ID]",
@@ -205,11 +205,11 @@ func (a command) newFollowersCommand() *cobra.Command {
 	a.bindListCommand(cmd, &opts)
 	cmd.Flags().StringVar(&opts.restrict, "restrict", opts.restrict, "follow visibility (public or private)")
 	a.env.BindTextValue(cmd, 0, 1, 0)
-	commands.Bind(cmd, commands.PixivData())
+	command.Bind(cmd, command.PixivData())
 	return cmd
 }
 
-func (a command) newRelatedCommand() *cobra.Command {
+func (a commandRunner) newRelatedCommand() *cobra.Command {
 	opts := listOptions{}
 	cmd := &cobra.Command{
 		Use:   "related USER_ID",
@@ -221,11 +221,11 @@ func (a command) newRelatedCommand() *cobra.Command {
 	}
 	a.bindListCommand(cmd, &opts)
 	a.env.BindTextValue(cmd, 1, 1, 0)
-	commands.Bind(cmd, commands.PixivData())
+	command.Bind(cmd, command.PixivData())
 	return cmd
 }
 
-func (a command) newBlockedCommand() *cobra.Command {
+func (a commandRunner) newBlockedCommand() *cobra.Command {
 	opts := listOptions{}
 	cmd := &cobra.Command{
 		Use:   "blocked [USER_ID]",
@@ -237,11 +237,11 @@ func (a command) newBlockedCommand() *cobra.Command {
 	}
 	a.bindListCommand(cmd, &opts)
 	a.env.BindTextValue(cmd, 0, 1, 0)
-	commands.Bind(cmd, commands.PixivData())
+	command.Bind(cmd, command.PixivData())
 	return cmd
 }
 
-func (a command) bindListCommand(cmd *cobra.Command, opts *listOptions) {
+func (a commandRunner) bindListCommand(cmd *cobra.Command, opts *listOptions) {
 	a.env.BindCommonFlags(cmd, &opts.Options)
 	pixivcmd.BindNDJSONFlag(cmd, &opts.ndjson)
 	pixivcmd.BindListFlags(cmd, &opts.limit, &opts.page)
@@ -249,7 +249,7 @@ func (a command) bindListCommand(cmd *cobra.Command, opts *listOptions) {
 
 // resolve 统一列表命令的分页、传输覆盖与输出模式判定。autoNDJSON 保持各命令既有
 // 的自动 NDJSON 行为，不在此处统一放宽或收紧。
-func (a command) resolve(cmd *cobra.Command, opts listOptions, autoNDJSON bool) (pixivcmd.Plan, pixivcmd.Request, bool, bool, error) {
+func (a commandRunner) resolve(cmd *cobra.Command, opts listOptions, autoNDJSON bool) (pixivcmd.Plan, pixivcmd.Request, bool, bool, error) {
 	plan, err := pixivcmd.ParsePlan(cmd, opts.limit, opts.page)
 	if err != nil {
 		return pixivcmd.Plan{}, pixivcmd.Request{}, false, false, err
@@ -312,7 +312,7 @@ func validateArtworkType(value string) error {
 		return nil
 	default:
 		return sdk.NewError("pixiv", "user artworks", sdk.InvalidArgument,
-			sdk.WithDetail("type must be one of illustration, illust, manga, or ugoira"))
+			sdk.WithDetail("type must be one of illust, manga, or ugoira"))
 	}
 }
 
@@ -326,7 +326,7 @@ func validateRelationshipRestrict(value string) error {
 	}
 }
 
-func (a command) runSearch(cmd *cobra.Command, args []string, opts listOptions) error {
+func (a commandRunner) runSearch(cmd *cobra.Command, args []string, opts listOptions) error {
 	plan, request, jsonOut, ndjson, err := a.resolve(cmd, opts, true)
 	if err != nil {
 		return err
@@ -344,7 +344,7 @@ func (a command) runSearch(cmd *cobra.Command, args []string, opts listOptions) 
 	}, Fetch: fetch, Print: func(items []pixiv.UserPreview) error { return printUserSearchPreviews(a.env.Out, items) }})
 }
 
-func (a command) runDetail(cmd *cobra.Command, arg string, opts commands.Options) error {
+func (a commandRunner) runDetail(cmd *cobra.Command, arg string, opts command.Options) error {
 	userID, err := resolveUserID(cmd.Context(), arg, "user detail")
 	if err != nil {
 		return err
@@ -369,7 +369,7 @@ func (a command) runDetail(cmd *cobra.Command, arg string, opts commands.Options
 	return printUserDetail(a.env.Out, result)
 }
 
-func (a command) runArtworks(cmd *cobra.Command, args []string, opts listOptions) error {
+func (a commandRunner) runArtworks(cmd *cobra.Command, args []string, opts listOptions) error {
 	if err := validateArtworkType(opts.illustType); err != nil {
 		return err
 	}
@@ -401,7 +401,7 @@ func (a command) runArtworks(cmd *cobra.Command, args []string, opts listOptions
 	}, Fetch: fetch, Print: func(items []pixiv.Artwork, start int) error { return pixivcmd.PrintArtworksSafe(a.env.Out, items) }})
 }
 
-func (a command) runBookmarks(cmd *cobra.Command, args []string, opts listOptions) error {
+func (a commandRunner) runBookmarks(cmd *cobra.Command, args []string, opts listOptions) error {
 	requested, err := requestedUserID(args)
 	if err != nil {
 		return err
@@ -431,7 +431,7 @@ func (a command) runBookmarks(cmd *cobra.Command, args []string, opts listOption
 }
 
 // runFollowing 保持既有输出模式：该命令不参与自动 NDJSON 判定。
-func (a command) runFollowing(cmd *cobra.Command, args []string, opts listOptions) error {
+func (a commandRunner) runFollowing(cmd *cobra.Command, args []string, opts listOptions) error {
 	if err := validateRelationshipRestrict(opts.restrict); err != nil {
 		return err
 	}
@@ -463,7 +463,7 @@ func (a command) runFollowing(cmd *cobra.Command, args []string, opts listOption
 	}, Fetch: fetch, Print: func(items []pixiv.UserPreview) error { return pixivcmd.PrintUserPreviewsSafe(a.env.Out, items) }})
 }
 
-func (a command) runNovels(cmd *cobra.Command, args []string, opts listOptions) error {
+func (a commandRunner) runNovels(cmd *cobra.Command, args []string, opts listOptions) error {
 	requested, err := requestedResolvedUserID(cmd.Context(), args, "user novels")
 	if err != nil {
 		return err
@@ -490,7 +490,7 @@ func (a command) runNovels(cmd *cobra.Command, args []string, opts listOptions) 
 	return a.runner.RunNovels(cmd.Context(), request, plan, pixivcmd.FormatOf(jsonOut, ndjson), pixivcmd.NovelList{Heading: fmt.Sprintf("novels by %d", userID), Fetch: fetch, Print: func(items []pixiv.Novel) error { return pixivcmd.PrintNovelsSafe(a.env.Out, items) }})
 }
 
-func (a command) runFollowers(cmd *cobra.Command, args []string, opts listOptions) error {
+func (a commandRunner) runFollowers(cmd *cobra.Command, args []string, opts listOptions) error {
 	if err := validateRelationshipRestrict(opts.restrict); err != nil {
 		return err
 	}
@@ -522,7 +522,7 @@ func (a command) runFollowers(cmd *cobra.Command, args []string, opts listOption
 	}, Fetch: fetch, Print: func(items []pixiv.UserPreview) error { return pixivcmd.PrintUserPreviewsSafe(a.env.Out, items) }})
 }
 
-func (a command) runRelated(cmd *cobra.Command, arg string, opts listOptions) error {
+func (a commandRunner) runRelated(cmd *cobra.Command, arg string, opts listOptions) error {
 	userID, err := resolveUserID(cmd.Context(), arg, "user related")
 	if err != nil {
 		return err
@@ -543,7 +543,7 @@ func (a command) runRelated(cmd *cobra.Command, arg string, opts listOptions) er
 	}, Fetch: fetch, Print: func(items []pixiv.UserPreview) error { return pixivcmd.PrintUserPreviewsSafe(a.env.Out, items) }})
 }
 
-func (a command) runBlocked(cmd *cobra.Command, args []string, opts listOptions) error {
+func (a commandRunner) runBlocked(cmd *cobra.Command, args []string, opts listOptions) error {
 	requested, err := requestedResolvedUserID(cmd.Context(), args, "user blocked")
 	if err != nil {
 		return err

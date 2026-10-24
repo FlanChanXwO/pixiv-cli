@@ -11,10 +11,10 @@ import (
 	"log/slog"
 	"time"
 
-	config "github.com/FlanChanXwO/pixiv-cli/internal/config/settings"
+	"github.com/FlanChanXwO/pixiv-cli/internal/config/settings"
 	"github.com/FlanChanXwO/pixiv-cli/internal/lifecycle"
 	"github.com/FlanChanXwO/pixiv-cli/internal/logging"
-	accountpixiv "github.com/FlanChanXwO/pixiv-cli/internal/pixivaccount"
+	"github.com/FlanChanXwO/pixiv-cli/internal/pixivaccount"
 )
 
 // ErrAccountPoolExhausted 表示自然候选集合已耗尽。
@@ -23,13 +23,13 @@ var ErrAccountPoolExhausted = errors.New("account pool has no available account"
 // PoolState 是数据库实现的最窄 scheduler port。选择器只接收事务快照，
 // scheduler 不持有 SQL 或 marker 状态。
 type PoolState interface {
-	SelectPixiv(context.Context, int64, []int64, accountpixiv.Chooser) (accountpixiv.Account, error)
+	SelectPixiv(context.Context, int64, []int64, pixivaccount.Chooser) (pixivaccount.Account, error)
 	Freeze(context.Context, int64, int64) error
 }
 
 // Scheduler 负责账号池 strategy、attempt exclusion、freeze 与安全 replay。
 type Scheduler struct {
-	Config config.AccountPoolConfig
+	Config settings.AccountPoolConfig
 	State  PoolState
 	Now    func() time.Time
 }
@@ -61,7 +61,7 @@ func (s Scheduler) Run(ctx context.Context, attempt func(context.Context, int64,
 			return err
 		}
 		current := now()
-		account, err := s.State.SelectPixiv(ctx, current.UTC().Unix(), attempted, func(snapshot accountpixiv.PoolSnapshot) (int64, error) {
+		account, err := s.State.SelectPixiv(ctx, current.UTC().Unix(), attempted, func(snapshot pixivaccount.PoolSnapshot) (int64, error) {
 			return choose(snapshot, s.Config.Strategy)
 		})
 		if err != nil {

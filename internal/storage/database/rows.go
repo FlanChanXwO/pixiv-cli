@@ -3,8 +3,8 @@
 package database
 
 import (
-	accountfanbox "github.com/FlanChanXwO/pixiv-cli/internal/fanboxaccount"
-	accountpixiv "github.com/FlanChanXwO/pixiv-cli/internal/pixivaccount"
+	"github.com/FlanChanXwO/pixiv-cli/internal/fanboxaccount"
+	"github.com/FlanChanXwO/pixiv-cli/internal/pixivaccount"
 )
 
 const (
@@ -47,8 +47,8 @@ type pixivAccountRow struct {
 
 func (pixivAccountRow) TableName() string { return tablePixivAccount }
 
-func (r pixivAccountRow) account() accountpixiv.Account {
-	account := accountpixiv.New(r.UserID, r.Username, r.RefreshToken)
+func (r pixivAccountRow) account() pixivaccount.Account {
+	account := pixivaccount.New(r.UserID, r.Username, r.RefreshToken)
 	account.SortOrder = r.SortOrder
 	account.CredentialRevision = r.CredentialRevision
 	account.PremiumStatus = intPtrToBoolPtr(r.PremiumStatus)
@@ -75,8 +75,8 @@ type fanboxAccountRow struct {
 
 func (fanboxAccountRow) TableName() string { return tableFanboxAccount }
 
-func (r fanboxAccountRow) account() accountfanbox.Account {
-	account := accountfanbox.New(r.UserID, r.DisplayName, r.CreatorID, r.SessionID)
+func (r fanboxAccountRow) account() fanboxaccount.Account {
+	account := fanboxaccount.New(r.UserID, r.DisplayName, r.CreatorID, r.SessionID)
 	account.SortOrder = r.SortOrder
 	account.CredentialRevision = r.CredentialRevision
 	account.ValidatedAt = r.ValidatedAt
@@ -93,8 +93,8 @@ type poolCandidateRow struct {
 	PoolLastSelected bool   `gorm:"column:pool_last_selected"`
 }
 
-func (r poolCandidateRow) candidate(now int64) accountpixiv.PoolCandidate {
-	return accountpixiv.PoolCandidate{
+func (r poolCandidateRow) candidate(now int64) pixivaccount.PoolCandidate {
+	return pixivaccount.PoolCandidate{
 		UserID:           r.UserID,
 		SortOrder:        r.SortOrder,
 		Schedulable:      r.Schedulable,

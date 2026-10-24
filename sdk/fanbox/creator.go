@@ -1,5 +1,5 @@
 // FANBOX 创作者操作：资料、支持中/关注中的创作者列表和 featured tags。
-// 响应结构与映射在 wire.go，游标编解码在 cursor.go。
+// 请求类型、响应结构与映射在本文件；游标编解码在 cursor.go。
 
 package fanbox
 
@@ -10,13 +10,70 @@ import (
 	"net/url"
 	"strings"
 
-	protocol "github.com/FlanChanXwO/pixiv-cli/internal/fanboxapi"
+	"github.com/FlanChanXwO/pixiv-cli/internal/fanboxapi"
 	"github.com/FlanChanXwO/pixiv-cli/sdk"
 )
 
+type creatorProfileWire struct {
+	CreatorID string `json:"creatorId"`
+	User      struct {
+		Name    string `json:"name"`
+		IconURL string `json:"iconUrl"`
+	} `json:"user"`
+	HasAdultContent bool   `json:"hasAdultContent"`
+	IsFollowing     bool   `json:"isFollowing"`
+	CoverImageURL   string `json:"coverImageUrl"`
+	Plan            struct {
+		Fee               int  `json:"fee"`
+		HasSupportingPlan bool `json:"hasSupportingPlan"`
+	} `json:"plan"`
+}
+
+type creatorSummaryWire struct {
+	CreatorID string `json:"creatorId"`
+}
+
+type creatorPageWire struct {
+	Plans    *[]creatorSummaryWire `json:"plans"`
+	Creators *[]creatorSummaryWire `json:"creators"`
+	NextURL  string                `json:"nextUrl"`
+	PageURLs []string              `json:"pageUrls"`
+}
+
+type tagWire struct {
+	Tag string `json:"tag"`
+	URL string `json:"url"`
+}
+
+// CreatorListKind selects the kind of creator list.
+type CreatorListKind string
+
+// CreatorListKind values define the supported CreatorListKind filesystem.
+const (
+	CreatorListSupporting CreatorListKind = "supporting"
+	CreatorListFollowing  CreatorListKind = "following"
+)
+
+// CreatorRequest selects one creator profile.
+type CreatorRequest struct {
+	CreatorID string
+}
+
+// CreatorsRequest lists supporting or following creators. Repeat the original
+// Kind when continuing with Cursor.
+type CreatorsRequest struct {
+	Kind   CreatorListKind
+	Cursor sdk.Cursor
+}
+
+// CreatorTagsRequest lists the tags used by one creator.
+type CreatorTagsRequest struct {
+	CreatorID string
+}
+
 // Creator returns one creator's profile.
 func (c *Client) Creator(ctx context.Context, request CreatorRequest) (Creator, error) {
-	ctx = protocol.WithOperation(ctx, "Creator")
+	ctx = fanboxapi.WithOperation(ctx, "Creator")
 	if request.CreatorID == "" {
 		return Creator{}, newError("Creator", sdk.InvalidArgument, errors.New("creator id is required"))
 	}
@@ -37,8 +94,8 @@ func (c *Client) creatorProfile(ctx context.Context, creatorID string) (creatorP
 	var response struct {
 		Body creatorProfileWire `json:"body"`
 	}
-	query := url.Values{protocol.ParamCreatorID: {creatorID}}
-	if err := c.app.GetJSON(ctx, protocol.PathCreatorGet, query, &response); err != nil {
+	query := url.Values{fanboxapi.ParamCreatorID: {creatorID}}
+	if err := c.app.GetJSON(ctx, fanboxapi.PathCreatorGet, query, &response); err != nil {
 		return creatorProfileWire{}, err
 	}
 	profile := response.Body
@@ -54,7 +111,7 @@ func (c *Client) creatorProfile(ctx context.Context, creatorID string) (creatorP
 
 // Creators lists supporting or following creators.
 func (c *Client) Creators(ctx context.Context, request CreatorsRequest) (sdk.Page[CreatorSummary], error) {
-	ctx = protocol.WithOperation(ctx, "Creators")
+	ctx = fanboxapi.WithOperation(ctx, "Creators")
 	kind := request.Kind
 	if kind == "" {
 		kind = CreatorListSupporting
@@ -62,9 +119,9 @@ func (c *Client) Creators(ctx context.Context, request CreatorsRequest) (sdk.Pag
 	path := ""
 	switch kind {
 	case CreatorListSupporting:
-		path = protocol.PathPlanListSupporting
+		path = fanboxapi.PathPlanListSupporting
 	case CreatorListFollowing:
-		path = protocol.PathCreatorListFollowing
+		path = fanboxapi.PathCreatorListFollowing
 	default:
 		return sdk.Page[CreatorSummary]{}, classifyError("Creators", errors.New("FANBOX creator list kind is invalid"))
 	}
@@ -90,7 +147,7 @@ func (c *Client) Creators(ctx context.Context, request CreatorsRequest) (sdk.Pag
 
 // CreatorTags lists the tags used by one creator.
 func (c *Client) CreatorTags(ctx context.Context, request CreatorTagsRequest) ([]CreatorTag, error) {
-	ctx = protocol.WithOperation(ctx, "CreatorTags")
+	ctx = fanboxapi.WithOperation(ctx, "CreatorTags")
 	if request.CreatorID == "" {
 		return nil, newError("CreatorTags", sdk.InvalidArgument, errors.New("creator id is required"))
 	}
@@ -101,8 +158,8 @@ func (c *Client) CreatorTags(ctx context.Context, request CreatorTagsRequest) ([
 	var response struct {
 		Body json.RawMessage `json:"body"`
 	}
-	query := url.Values{protocol.ParamCreatorID: {creatorID}}
-	if err := c.app.GetJSON(ctx, protocol.PathTagGetFeatured, query, &response); err != nil {
+	query := url.Values{fanboxapi.ParamCreatorID: {creatorID}}
+	if err := c.app.GetJSON(ctx, fanboxapi.PathTagGetFeatured, query, &response); err != nil {
 		return nil, classifyError("CreatorTags", err)
 	}
 	items, err := decodeFeaturedTags(response.Body)

@@ -11,7 +11,7 @@ import (
 )
 
 func TestSearchArtworksLocalRatingContextDoesNotSendUnconfirmedServerRating(t *testing.T) {
-	filter, err := searchfilter.NormalizeFilter("r18", "illustration")
+	filter, err := searchfilter.NormalizeFilter("r18", "illust")
 	require.NoError(t, err)
 
 	client, err := NewWith("token", Options{HTTPClient: &http.Client{Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {

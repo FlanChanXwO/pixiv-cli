@@ -211,3 +211,17 @@ func newFollowHTTPTestData(t *testing.T) (commands.Env, pixivcmd.Executor, *[]ca
 func newUserAliasCommand(env commands.Env, exec pixivcmd.Executor) *cobra.Command {
 	return pixivuser.New(env, pixivcmd.New(env.Out, exec), func() *cobra.Command { return New(env, exec) })
 }
+
+type testData struct {
+	Input       io.Reader
+	Output      io.Writer
+	ErrorOutput io.Writer
+	UsageError  func(error) error
+	JSONOut     func(*bool) (bool, error)
+	Pooled      func(context.Context, pixivcmd.Request, func(context.Context, *pixiv.Client) (bool, error)) error
+}
+
+func newTestCommand(d testData) *cobra.Command {
+	env := commands.Env{In: d.Input, Out: d.Output, Err: d.ErrorOutput, WrapUsage: d.UsageError, ResolveJSON: d.JSONOut}
+	return New(env, pixivcmd.Executor(d.Pooled))
+}

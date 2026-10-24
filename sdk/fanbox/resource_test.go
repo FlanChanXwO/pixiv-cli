@@ -13,7 +13,7 @@ import (
 	"github.com/FlanChanXwO/pixiv-cli/sdk/fanbox"
 )
 
-// TestFanboxResourceRefEncodesIdentityNotLocator 验证 finding #5：FANBOX 资源 ref
+// TestFanboxResourceRefEncodesIdentityNotLocator 验证：FANBOX 资源 ref
 // 的 payload 只编码稳定身份（kind + creator/post + attachment），绝不嵌入已解析的 URL
 // 或其签名查询参数。locator 轮换不得改变 cache key。
 func TestFanboxResourceRefEncodesIdentityNotLocator(t *testing.T) {
@@ -61,7 +61,7 @@ func TestFanboxResourceRefEncodesIdentityNotLocator(t *testing.T) {
 	}
 }
 
-// TestFanboxResourceMarksDownloadsHostCredentialed 验证 finding #19：落在
+// TestFanboxResourceMarksDownloadsHostCredentialed 验证：落在
 // downloads.fanbox.cc 的附件标记 RequiresCredentials，使调用方走 OpenResource
 // 而非把 URL 当公开链接；Pixiv CDN 不标记。
 func TestFanboxResourceMarksDownloadsHostCredentialed(t *testing.T) {
@@ -105,7 +105,7 @@ func TestFanboxResourceMarksDownloadsHostCredentialed(t *testing.T) {
 	}
 }
 
-// TestFanboxOpenResourceReResolvesFreshLocator 验证 finding #5：一个没有
+// TestFanboxOpenResourceReResolvesFreshLocator 验证：一个没有
 // in-session locator 缓存的 ref（模拟跨进程或缓存淘汰）会被重新解析为最新
 // locator，而不是重开过时的内嵌 URL。ref 通过 Post 取得，再用一个新的
 // client 打开，强制走 re-resolution 路径。

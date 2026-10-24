@@ -8,7 +8,7 @@ import (
 	"fmt"
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/cli/auth/loginhelper"
-	requirements "github.com/FlanChanXwO/pixiv-cli/internal/cli/internal/command"
+	"github.com/FlanChanXwO/pixiv-cli/internal/cli/internal/command"
 	"github.com/spf13/cobra"
 )
 
@@ -64,7 +64,7 @@ func (a controller) newAccountURLCallbackCommand() *cobra.Command {
 		},
 	}
 	a.bindNoInput(cmd)
-	requirements.Bind(cmd, requirements.HiddenCallback())
+	command.Bind(cmd, command.HiddenCallback())
 	return cmd
 }
 
@@ -84,6 +84,6 @@ func (a controller) newAccountURLHandlerInstallCommand() *cobra.Command {
 		},
 	}
 	a.bindNoInput(cmd)
-	requirements.Bind(cmd, requirements.HiddenCallback())
+	command.Bind(cmd, command.HiddenCallback())
 	return cmd
 }

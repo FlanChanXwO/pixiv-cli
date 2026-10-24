@@ -6,7 +6,7 @@ import (
 	"errors"
 	"fmt"
 
-	commands "github.com/FlanChanXwO/pixiv-cli/internal/cli/internal/command"
+	"github.com/FlanChanXwO/pixiv-cli/internal/cli/internal/command"
 	"github.com/FlanChanXwO/pixiv-cli/internal/cli/internal/pixivcmd"
 	"github.com/FlanChanXwO/pixiv-cli/sdk"
 	pixiv "github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
@@ -14,7 +14,7 @@ import (
 )
 
 type options struct {
-	commands.Options
+	command.Options
 	ndjson bool
 	typ    string
 	mode   string
@@ -23,14 +23,14 @@ type options struct {
 	page   int
 }
 
-type command struct {
-	env    commands.Env
+type commandRunner struct {
+	env    command.Env
 	runner pixivcmd.Runner
 }
 
 // New builds the actual `pixiv ranking` command.
-func New(env commands.Env, exec pixivcmd.Executor) *cobra.Command {
-	a := command{env: env, runner: pixivcmd.New(env.Out, exec)}
+func New(env command.Env, exec pixivcmd.Executor) *cobra.Command {
+	a := commandRunner{env: env, runner: pixivcmd.New(env.Out, exec)}
 	options := options{typ: "artwork", mode: string(pixiv.RankingModeDay)}
 	cmd := &cobra.Command{
 		Use:   "ranking",
@@ -48,11 +48,11 @@ func New(env commands.Env, exec pixivcmd.Executor) *cobra.Command {
 	flags.StringVar(&options.date, "date", "", "YYYY-MM-DD (artwork ranking only)")
 	pixivcmd.BindListFlags(cmd, &options.limit, &options.page)
 	env.BindNoInput(cmd)
-	commands.Bind(cmd, commands.PixivData())
+	command.Bind(cmd, command.PixivData())
 	return cmd
 }
 
-func (a command) run(cmd *cobra.Command, opts options) error {
+func (a commandRunner) run(cmd *cobra.Command, opts options) error {
 	if opts.typ != "artwork" && opts.typ != "novel" {
 		return errors.New("type must be one of: artwork, novel")
 	}

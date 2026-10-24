@@ -1,30 +1,21 @@
 package installer
 
 import (
-	"archive/tar"
-	"archive/zip"
 	"bytes"
-	"compress/gzip"
 	"context"
 	"crypto/ed25519"
-	"crypto/sha256"
-	"encoding/base64"
-	"encoding/hex"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
 	"net/http"
 	"os"
 	"os/exec"
-	"path"
 	"path/filepath"
 	"runtime"
-	"strings"
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/selfupdate/release"
 	"github.com/FlanChanXwO/pixiv-cli/internal/selfupdate/source"
-	filereplace "github.com/FlanChanXwO/pixiv-cli/internal/storage/atomicfile"
+	"github.com/FlanChanXwO/pixiv-cli/internal/storage/atomicfile"
 )
 
 const (
@@ -139,72 +130,17 @@ func (i *releaseInstaller) Install(ctx context.Context, rel release.Release) (er
 	if err := source.CheckContext(ctx, "prepare release update"); err != nil {
 		return err
 	}
-	version, err := release.ParseSemanticVersion(rel.TagName)
-	if err != nil {
-		return fmt.Errorf("parse release tag %q: %w", rel.TagName, err)
-	}
-	if rel.Version == "" || rel.Version != version.String() {
-		return fmt.Errorf("release version %q does not match tag %q", rel.Version, rel.TagName)
-	}
-	assets, err := selectReleaseAssets(rel.Assets, releaseArchiveName(rel.Version, i.goos, i.goarch))
+	assets, err := i.prepareRelease(ctx, rel)
 	if err != nil {
 		return err
 	}
-	if err := i.validateAssetURLs(rel, assets); err != nil {
-		return err
-	}
-	assetSources, err := i.assetSources(ctx, assets.checksums)
+	targetPath, workDir, err := i.stageRelease(ctx)
 	if err != nil {
 		return err
 	}
-	checksums, err := i.download(ctx, assets.checksums, assetSources)
-	if err != nil {
-		return fmt.Errorf("download %s: %w", checksumsAssetName, err)
-	}
-	manifestBytes, err := i.download(ctx, assets.manifest, assetSources)
-	if err != nil {
-		return fmt.Errorf("download %s: %w", manifestAssetName, err)
-	}
-	if err := verifyChecksumsManifest(manifestBytes, checksums, i.trustedKeys); err != nil {
-		return err
-	}
-	if err := verifyArchiveChecksum(checksums, assets.archive.Name, nil); err != nil {
-		return err
-	}
-	archive, err := i.download(ctx, assets.archive, assetSources)
-	if err != nil {
-		return fmt.Errorf("download release archive %q: %w", assets.archive.Name, err)
-	}
-	if err := source.CheckContext(ctx, "extract release archive"); err != nil {
-		return err
-	}
-	if err := verifyArchiveChecksum(checksums, assets.archive.Name, archive); err != nil {
-		return err
-	}
-	targetPath, err := i.executablePath()
-	if err != nil {
-		return fmt.Errorf("locate current executable: %w", err)
-	}
-	targetPath, err = resolveReleaseExecutablePath(targetPath)
-	if err != nil {
-		return err
-	}
-	workDir, err := os.MkdirTemp(filepath.Dir(targetPath), ".pixiv-update-")
-	if err != nil {
-		return fmt.Errorf("create update temporary directory beside %q: %w", targetPath, err)
-	}
-	defer func() {
-		if err != nil {
-			if removeErr := os.RemoveAll(workDir); removeErr != nil && !os.IsNotExist(removeErr) {
-				err = errors.Join(err, fmt.Errorf("remove update temporary directory %q: %w", workDir, removeErr))
-			}
-		}
-	}()
-	if err := source.CheckContext(ctx, "extract release archive"); err != nil {
-		return err
-	}
+	defer i.cleanupWorkDir(&err, workDir)
 	candidatePath := filepath.Join(workDir, releaseBinaryName(i.goos))
-	if err := extractReleaseBinary(archive, assets.archive.Name, candidatePath, releaseBinaryName(i.goos)); err != nil {
+	if err := extractReleaseBinary(assets.archivePayload, assets.archive.Name, candidatePath, releaseBinaryName(i.goos)); err != nil {
 		return err
 	}
 	if err := source.CheckContext(ctx, "preflight downloaded executable"); err != nil {
@@ -212,6 +148,87 @@ func (i *releaseInstaller) Install(ctx context.Context, rel release.Release) (er
 	}
 	if err := i.checker.Check(ctx, candidatePath, rel.TagName); err != nil {
 		return fmt.Errorf("preflight downloaded executable %q: %w", candidatePath, err)
+	}
+	return i.replaceExecutable(ctx, targetPath, candidatePath, workDir)
+}
+
+// prepareRelease validates the release identity and downloads/verifies its assets.
+func (i *releaseInstaller) prepareRelease(ctx context.Context, rel release.Release) (selectedReleaseAssets, error) {
+	version, err := release.ParseSemanticVersion(rel.TagName)
+	if err != nil {
+		return selectedReleaseAssets{}, fmt.Errorf("parse release tag %q: %w", rel.TagName, err)
+	}
+	if rel.Version == "" || rel.Version != version.String() {
+		return selectedReleaseAssets{}, fmt.Errorf("release version %q does not match tag %q", rel.Version, rel.TagName)
+	}
+	assets, err := selectReleaseAssets(rel.Assets, releaseArchiveName(rel.Version, i.goos, i.goarch))
+	if err != nil {
+		return selectedReleaseAssets{}, err
+	}
+	if err := i.validateAssetURLs(rel, assets); err != nil {
+		return selectedReleaseAssets{}, err
+	}
+	assetSources, err := i.assetSources(ctx, assets.checksums)
+	if err != nil {
+		return selectedReleaseAssets{}, err
+	}
+	checksums, err := i.download(ctx, assets.checksums, assetSources)
+	if err != nil {
+		return selectedReleaseAssets{}, fmt.Errorf("download %s: %w", checksumsAssetName, err)
+	}
+	manifestBytes, err := i.download(ctx, assets.manifest, assetSources)
+	if err != nil {
+		return selectedReleaseAssets{}, fmt.Errorf("download %s: %w", manifestAssetName, err)
+	}
+	if err := verifyChecksumsManifest(manifestBytes, checksums, i.trustedKeys); err != nil {
+		return selectedReleaseAssets{}, err
+	}
+	if err := verifyArchiveChecksum(checksums, assets.archive.Name, nil); err != nil {
+		return selectedReleaseAssets{}, err
+	}
+	assets.archivePayload, err = i.download(ctx, assets.archive, assetSources)
+	if err != nil {
+		return selectedReleaseAssets{}, fmt.Errorf("download release archive %q: %w", assets.archive.Name, err)
+	}
+	if err := source.CheckContext(ctx, "extract release archive"); err != nil {
+		return selectedReleaseAssets{}, err
+	}
+	if err := verifyArchiveChecksum(checksums, assets.archive.Name, assets.archivePayload); err != nil {
+		return selectedReleaseAssets{}, err
+	}
+	return assets, nil
+}
+
+// stageRelease locates the live binary and creates its sibling temporary workspace.
+func (i *releaseInstaller) stageRelease(ctx context.Context) (string, string, error) {
+	targetPath, err := i.executablePath()
+	if err != nil {
+		return "", "", fmt.Errorf("locate current executable: %w", err)
+	}
+	targetPath, err = resolveReleaseExecutablePath(targetPath)
+	if err != nil {
+		return "", "", err
+	}
+	workDir, err := os.MkdirTemp(filepath.Dir(targetPath), ".pixiv-update-")
+	if err != nil {
+		return "", "", fmt.Errorf("create update temporary directory beside %q: %w", targetPath, err)
+	}
+	return targetPath, workDir, nil
+}
+
+func (i *releaseInstaller) cleanupWorkDir(err *error, workDir string) {
+	if *err == nil {
+		return
+	}
+	if removeErr := os.RemoveAll(workDir); removeErr != nil && !os.IsNotExist(removeErr) {
+		*err = errors.Join(*err, fmt.Errorf("remove update temporary directory %q: %w", workDir, removeErr))
+	}
+}
+
+// replaceExecutable stages the verified binary next to the target and atomically replaces it.
+func (i *releaseInstaller) replaceExecutable(ctx context.Context, targetPath, candidatePath, workDir string) (err error) {
+	if err := source.CheckContext(ctx, "extract release archive"); err != nil {
+		return err
 	}
 	if err := source.CheckContext(ctx, "stage verified update"); err != nil {
 		return err
@@ -222,7 +239,7 @@ func (i *releaseInstaller) Install(ctx context.Context, rel release.Release) (er
 	}
 	stagedPath := staged.Name()
 	defer func() {
-		if err != nil && !filereplace.MustPreserveReplacementSource(err) {
+		if err != nil && !atomicfile.MustPreserveReplacementSource(err) {
 			if removeErr := os.Remove(stagedPath); removeErr != nil && !os.IsNotExist(removeErr) {
 				err = errors.Join(err, fmt.Errorf("remove staged update file %q: %w", stagedPath, removeErr))
 			}
@@ -293,9 +310,10 @@ func resolveReleaseExecutablePath(executablePath string) (string, error) {
 }
 
 type selectedReleaseAssets struct {
-	archive   release.ReleaseAsset
-	checksums release.ReleaseAsset
-	manifest  release.ReleaseAsset
+	archive        release.ReleaseAsset
+	checksums      release.ReleaseAsset
+	manifest       release.ReleaseAsset
+	archivePayload []byte
 }
 
 // validateAssetURLs 必须在任何 sidecar 或 archive 请求前执行完全部验证，防止被篡改的
@@ -413,243 +431,6 @@ func (i *releaseInstaller) downloadURL(ctx context.Context, asset release.Releas
 	return body, nil
 }
 
-type checksumsManifest struct {
-	KeyID           string `json:"key_id"`
-	ChecksumsSHA256 string `json:"checksums_sha256"`
-	Signature       string `json:"signature"`
-}
-
-func verifyChecksumsManifest(body, checksums []byte, trustedKeys map[string]ed25519.PublicKey) error {
-	decoder := json.NewDecoder(bytes.NewReader(body))
-	decoder.DisallowUnknownFields()
-	var manifest checksumsManifest
-	if err := decoder.Decode(&manifest); err != nil {
-		return fmt.Errorf("decode checksums manifest: %w", err)
-	}
-	var extra any
-	if err := decoder.Decode(&extra); err != io.EOF {
-		if err == nil {
-			return fmt.Errorf("decode checksums manifest: contains more than one JSON value")
-		}
-		return fmt.Errorf("decode checksums manifest trailing data: %w", err)
-	}
-	publicKey, ok := trustedKeys[manifest.KeyID]
-	if !ok {
-		return fmt.Errorf("checksums manifest references unknown key ID %q", manifest.KeyID)
-	}
-	if len(publicKey) != ed25519.PublicKeySize {
-		return fmt.Errorf("trusted public key %q has invalid length", manifest.KeyID)
-	}
-	hash := sha256.Sum256(checksums)
-	if manifest.ChecksumsSHA256 != hex.EncodeToString(hash[:]) {
-		return fmt.Errorf("checksums manifest SHA-256 does not match checksums.txt")
-	}
-	signature, err := base64.StdEncoding.DecodeString(manifest.Signature)
-	if err != nil {
-		return fmt.Errorf("decode checksums manifest signature: %w", err)
-	}
-	if !ed25519.Verify(publicKey, checksums, signature) {
-		return fmt.Errorf("checksums manifest Ed25519 signature verification failed for key ID %q", manifest.KeyID)
-	}
-	return nil
-}
-
-func verifyArchiveChecksum(checksums []byte, filename string, archive []byte) error {
-	var expected string
-	for _, line := range strings.Split(string(checksums), "\n") {
-		if line == "" {
-			continue
-		}
-		fields := strings.Fields(line)
-		if len(fields) != 2 {
-			return fmt.Errorf("parse checksums.txt line %q", line)
-		}
-		if strings.TrimPrefix(fields[1], "*") != filename {
-			continue
-		}
-		if expected != "" {
-			return fmt.Errorf("checksums.txt has duplicate entry for %q", filename)
-		}
-		if len(fields[0]) != sha256.Size*2 || strings.ToLower(fields[0]) != fields[0] {
-			return fmt.Errorf("checksums.txt has invalid SHA-256 for %q", filename)
-		}
-		if _, err := hex.DecodeString(fields[0]); err != nil {
-			return fmt.Errorf("checksums.txt has invalid SHA-256 for %q: %w", filename, err)
-		}
-		expected = fields[0]
-	}
-	if expected == "" {
-		return fmt.Errorf("checksums.txt has no entry for %q", filename)
-	}
-	if archive == nil {
-		return nil
-	}
-	actual := sha256.Sum256(archive)
-	if expected != hex.EncodeToString(actual[:]) {
-		return fmt.Errorf("release archive %q SHA-256 does not match checksums.txt", filename)
-	}
-	return nil
-}
-
-func extractReleaseBinary(archive []byte, archiveName, destination, binaryName string) error {
-	if strings.HasSuffix(archiveName, ".tar.gz") {
-		return extractTarGzBinary(archive, destination, binaryName)
-	}
-	if strings.HasSuffix(archiveName, ".zip") {
-		return extractZipBinary(archive, destination, binaryName)
-	}
-	return fmt.Errorf("unsupported release archive %q", archiveName)
-}
-
-func extractTarGzBinary(archive []byte, destination, binaryName string) error {
-	if err := validateTarGzArchivePaths(archive); err != nil {
-		return err
-	}
-	compressed, err := gzip.NewReader(bytes.NewReader(archive))
-	if err != nil {
-		return fmt.Errorf("open gzip release archive: %w", err)
-	}
-	defer compressed.Close()
-	reader := tar.NewReader(compressed)
-	found := false
-	for {
-		header, err := reader.Next()
-		if err == io.EOF {
-			break
-		}
-		if err != nil {
-			return fmt.Errorf("read tar release archive: %w", err)
-		}
-		if header.Typeflag == tar.TypeSymlink || header.Typeflag == tar.TypeLink {
-			return fmt.Errorf("release archive contains link entry %q", header.Name)
-		}
-		if path.Base(header.Name) != binaryName {
-			continue
-		}
-		if header.Typeflag != tar.TypeReg && header.Typeflag != tar.TypeRegA {
-			return fmt.Errorf("release archive binary %q is not a regular file", header.Name)
-		}
-		if found {
-			return fmt.Errorf("release archive contains duplicate binary %q", binaryName)
-		}
-		if err := writeExtractedBinary(destination, reader); err != nil {
-			return err
-		}
-		found = true
-	}
-	if !found {
-		return fmt.Errorf("release archive has no regular binary %q", binaryName)
-	}
-	return nil
-}
-
-// validateTarGzArchivePaths 在任何候选文件写入前扫描整个 tar stream，防止后置的
-// 不安全路径在合法二进制已经写出后才被发现。
-func validateTarGzArchivePaths(archive []byte) error {
-	compressed, err := gzip.NewReader(bytes.NewReader(archive))
-	if err != nil {
-		return fmt.Errorf("open gzip release archive: %w", err)
-	}
-	defer compressed.Close()
-	reader := tar.NewReader(compressed)
-	for {
-		header, err := reader.Next()
-		if err == io.EOF {
-			return nil
-		}
-		if err != nil {
-			return fmt.Errorf("read tar release archive: %w", err)
-		}
-		if err := validateArchivePath(header.Name); err != nil {
-			return err
-		}
-	}
-}
-
-func extractZipBinary(archive []byte, destination, binaryName string) error {
-	reader, err := zip.NewReader(bytes.NewReader(archive), int64(len(archive)))
-	if err != nil {
-		return fmt.Errorf("open zip release archive: %w", err)
-	}
-	for _, entry := range reader.File {
-		if err := validateArchivePath(entry.Name); err != nil {
-			return err
-		}
-	}
-	found := false
-	for _, entry := range reader.File {
-		if entry.Mode()&os.ModeSymlink != 0 {
-			return fmt.Errorf("release archive contains link entry %q", entry.Name)
-		}
-		if path.Base(entry.Name) != binaryName {
-			continue
-		}
-		if entry.FileInfo().IsDir() || !entry.Mode().IsRegular() {
-			return fmt.Errorf("release archive binary %q is not a regular file", entry.Name)
-		}
-		if found {
-			return fmt.Errorf("release archive contains duplicate binary %q", binaryName)
-		}
-		body, err := entry.Open()
-		if err != nil {
-			return fmt.Errorf("open release archive binary %q: %w", entry.Name, err)
-		}
-		writeErr := writeExtractedBinary(destination, body)
-		closeErr := body.Close()
-		if writeErr != nil {
-			return writeErr
-		}
-		if closeErr != nil {
-			return fmt.Errorf("close release archive binary %q: %w", entry.Name, closeErr)
-		}
-		found = true
-	}
-	if !found {
-		return fmt.Errorf("release archive has no regular binary %q", binaryName)
-	}
-	return nil
-}
-
-func validateArchivePath(name string) error {
-	if name == "" || strings.HasPrefix(name, "/") || strings.Contains(name, "\\") {
-		return fmt.Errorf("release archive has unsafe path %q", name)
-	}
-	// 必须在 path.Clean 前检查原始 segment，避免 `nested/../pixiv` 被归一化后
-	// 伪装成可接受的候选二进制路径。
-	for _, segment := range strings.Split(name, "/") {
-		if segment == ".." {
-			return fmt.Errorf("release archive has unsafe path %q", name)
-		}
-	}
-	clean := path.Clean(name)
-	if clean == "." || clean == ".." || strings.HasPrefix(clean, "../") {
-		return fmt.Errorf("release archive has unsafe path %q", name)
-	}
-	return nil
-}
-
-func writeExtractedBinary(destination string, source io.Reader) (err error) {
-	file, err := os.OpenFile(destination, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o755)
-	if err != nil {
-		return fmt.Errorf("create extracted release binary %q: %w", destination, err)
-	}
-	defer func() {
-		if closeErr := file.Close(); err == nil && closeErr != nil {
-			err = fmt.Errorf("close extracted release binary %q: %w", destination, closeErr)
-		}
-	}()
-	if _, err := io.Copy(file, source); err != nil {
-		return fmt.Errorf("write extracted release binary %q: %w", destination, err)
-	}
-	if err := file.Sync(); err != nil {
-		return fmt.Errorf("sync extracted release binary %q: %w", destination, err)
-	}
-	if err := file.Chmod(0o755); err != nil {
-		return fmt.Errorf("set extracted release binary permissions %q: %w", destination, err)
-	}
-	return nil
-}
-
 type binaryChecker interface {
 	Check(context.Context, string, string) error
 }
@@ -679,7 +460,7 @@ type releaseFileReplacer struct {
 
 func (r releaseFileReplacer) Replace(sourcePath, targetPath string) error {
 	if r.goos == "windows" {
-		return filereplace.ReplaceFileWithBackup(sourcePath, targetPath, targetPath+".old")
+		return atomicfile.ReplaceFileWithBackup(sourcePath, targetPath, targetPath+".old")
 	}
-	return filereplace.ReplaceFile(sourcePath, targetPath)
+	return atomicfile.ReplaceFile(sourcePath, targetPath)
 }

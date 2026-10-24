@@ -4,7 +4,7 @@ package update
 import (
 	"io"
 
-	configapp "github.com/FlanChanXwO/pixiv-cli/internal/config/settings"
+	"github.com/FlanChanXwO/pixiv-cli/internal/config/settings"
 	"github.com/FlanChanXwO/pixiv-cli/internal/selfupdate"
 	"github.com/spf13/cobra"
 )
@@ -14,14 +14,14 @@ type Host interface {
 	ErrorOutput() io.Writer
 	PrintJSON(any) error
 	RequireExactArgs(int, string) cobra.PositionalArgs
-	LoadUpdateRuntimeConfig() (configapp.RuntimeConfig, error)
+	LoadUpdateRuntimeConfig() (settings.RuntimeConfig, error)
 	NewUpdateCoordinator(string, io.Writer, io.Writer) (*selfupdate.UpdateCoordinator, error)
 }
 
 // AutomaticCheckHost 是成功命令后的只读更新检查所需的最小依赖端口。
 type AutomaticCheckHost interface {
 	ErrorOutput() io.Writer
-	LoadAutomaticUpdateRuntimeConfig() (configapp.RuntimeConfig, error)
+	LoadAutomaticUpdateRuntimeConfig() (settings.RuntimeConfig, error)
 	NewAutomaticUpdateChecker(string) (*selfupdate.AutomaticUpdateChecker, error)
 }
 

@@ -9,7 +9,7 @@ import (
 	"strings"
 	"sync/atomic"
 
-	protocol "github.com/FlanChanXwO/pixiv-cli/internal/pixivapi"
+	"github.com/FlanChanXwO/pixiv-cli/internal/pixivapi"
 	"github.com/FlanChanXwO/pixiv-cli/internal/pixivapi/oauth"
 	"github.com/FlanChanXwO/pixiv-cli/sdk"
 )
@@ -61,7 +61,7 @@ func BeginLogin(options LoginOptions) (*LoginSession, error) {
 	return &LoginSession{state: &loginSessionState{
 		httpClient:       httpClient,
 		selfHTTP:         selfHTTP,
-		authorizationURL: strings.TrimRight(protocol.AppAPIBase, "/") + protocol.AppLogin + "?" + values.Encode(),
+		authorizationURL: strings.TrimRight(pixivapi.AppAPIBase, "/") + pixivapi.AppLogin + "?" + values.Encode(),
 		verifier:         verifier,
 		state:            state,
 	}}, nil
@@ -194,7 +194,7 @@ func loginCallbackRequiresState(parsed *url.URL) bool {
 	if strings.EqualFold(parsed.Scheme, "pixiv") && strings.EqualFold(parsed.Host, "account") && parsed.Path == "/login" {
 		return false
 	}
-	callback, err := url.Parse(protocol.OAuthRedirectURI)
+	callback, err := url.Parse(pixivapi.OAuthRedirectURI)
 	if err != nil {
 		return true
 	}

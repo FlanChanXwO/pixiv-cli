@@ -7,8 +7,8 @@ import (
 	"io"
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/cli/auth/loginhelper"
-	commands "github.com/FlanChanXwO/pixiv-cli/internal/cli/internal/command"
-	config "github.com/FlanChanXwO/pixiv-cli/internal/config/settings"
+	"github.com/FlanChanXwO/pixiv-cli/internal/cli/internal/command"
+	"github.com/FlanChanXwO/pixiv-cli/internal/config/settings"
 	pixivaccount "github.com/FlanChanXwO/pixiv-cli/internal/pixivaccount"
 	"github.com/pkg/browser"
 )
@@ -17,7 +17,7 @@ import (
 // use. newController fills the production dependencies; same-package tests
 // replace individual fields.
 type controller struct {
-	env     commands.Env
+	env     command.Env
 	support Support
 	in      io.Reader
 	out     io.Writer
@@ -29,7 +29,7 @@ type controller struct {
 	clearHandoff      func(loginhelper.RemoteLoginStart) error
 }
 
-func newController(env commands.Env, support Support) controller {
+func newController(env command.Env, support Support) controller {
 	return controller{
 		env:               env,
 		support:           support,
@@ -46,6 +46,6 @@ func newController(env commands.Env, support Support) controller {
 type runtimeServices struct {
 	Account     AccountService
 	Login       pixivaccount.LoginService
-	LoadRuntime func() (config.RuntimeConfig, error)
+	LoadRuntime func() (settings.RuntimeConfig, error)
 	err         error
 }

@@ -5,7 +5,7 @@ import (
 	"context"
 	"fmt"
 
-	commands "github.com/FlanChanXwO/pixiv-cli/internal/cli/internal/command"
+	"github.com/FlanChanXwO/pixiv-cli/internal/cli/internal/command"
 	"github.com/FlanChanXwO/pixiv-cli/internal/cli/internal/input"
 	pixivcmd "github.com/FlanChanXwO/pixiv-cli/internal/cli/internal/pixivcmd"
 	"github.com/FlanChanXwO/pixiv-cli/internal/cli/internal/resolver"
@@ -17,26 +17,26 @@ import (
 var userRecordTypes = map[string]struct{}{"user": {}}
 
 type options struct {
-	commands.Options
+	command.Options
 	restrict string
 	onError  string
 }
 
-type command struct {
-	env    commands.Env
+type commandRunner struct {
+	env    command.Env
 	runner pixivcmd.Runner
 }
 
 // New builds the actual `pixiv follow` group command.
-func New(env commands.Env, exec pixivcmd.Executor) *cobra.Command {
-	a := command{env: env, runner: pixivcmd.New(env.Out, exec)}
+func New(env command.Env, exec pixivcmd.Executor) *cobra.Command {
+	a := commandRunner{env: env, runner: pixivcmd.New(env.Out, exec)}
 	cmd := &cobra.Command{Use: "follow", Short: "Manage followed users"}
 	cmd.AddCommand(a.newAdd(), a.newRemove())
 	env.BindNoInput(cmd)
 	return cmd
 }
 
-func (a command) newAdd() *cobra.Command {
+func (a commandRunner) newAdd() *cobra.Command {
 	opts := options{restrict: string(pixiv.RestrictPublic)}
 	cmd := &cobra.Command{
 		Use:   "add [USER_ID]",
@@ -68,11 +68,11 @@ func (a command) newAdd() *cobra.Command {
 	cmd.Flags().StringVar(&opts.restrict, "restrict", opts.restrict, "follow visibility (public or private)")
 	cmd.Flags().StringVar(&opts.onError, "on-error", "skip", "record failure strategy: skip or fail-fast")
 	a.env.BindTextOrRecord(cmd, 0, 1, 0)
-	commands.Bind(cmd, commands.PixivData())
+	command.Bind(cmd, command.PixivData())
 	return cmd
 }
 
-func (a command) newRemove() *cobra.Command {
+func (a commandRunner) newRemove() *cobra.Command {
 	opts := options{}
 	cmd := &cobra.Command{
 		Use:   "remove [USER_ID]",
@@ -100,11 +100,11 @@ func (a command) newRemove() *cobra.Command {
 	a.env.BindActionFlags(cmd, &opts.ProxyOptions)
 	cmd.Flags().StringVar(&opts.onError, "on-error", "skip", "record failure strategy: skip or fail-fast")
 	a.env.BindTextOrRecord(cmd, 0, 1, 0)
-	commands.Bind(cmd, commands.PixivData())
+	command.Bind(cmd, command.PixivData())
 	return cmd
 }
 
-func (a command) actionInvoker(cmd *cobra.Command, options commands.Options, invoke func(context.Context, pixivcmd.Request, int64) error) func(context.Context, int64) error {
+func (a commandRunner) actionInvoker(cmd *cobra.Command, options command.Options, invoke func(context.Context, pixivcmd.Request, int64) error) func(context.Context, int64) error {
 	var request pixivcmd.Request
 	initialized := false
 	return func(ctx context.Context, id int64) error {

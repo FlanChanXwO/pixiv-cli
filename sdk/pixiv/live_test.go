@@ -436,8 +436,8 @@ func TestRealPixivSDKLiveManifestRead(t *testing.T) {
 		}, func(item pixivsdk.Artwork) int64 { return item.ID }, true)
 	time.Sleep(liveManifestPace)
 
-	// #4 artwork-recommended：非空首页 + continuation + 真实第二页（P1 closure
-	// 场景）。缺一即失败转 correction，不得当作 data-limited。
+	// #4 artwork-recommended：非空首页 + continuation + 真实第二页。缺一即失败，
+	// 不得当作 data-limited。
 	recommended, err := client.RecommendedArtworks(ctx, pixivsdk.RecommendedArtworksRequest{})
 	if err != nil {
 		t.Errorf("recommended first page: %v", err)
@@ -462,7 +462,7 @@ func TestRealPixivSDKLiveManifestRead(t *testing.T) {
 	// #5 artwork-series：当前 surface 不暴露可追溯的 series 引用，按 manifest
 	// 记录 data-limited。#9 novel-series 由下方独立的显式候选 recovery probe
 	// 覆盖，避免把候选 ID 固化进常规 manifest。
-	t.Logf("artwork_series: blocked_external (data): no series reference reachable from production surfaces; correction candidate CAND-G1-T06-ARTWORK-SERIES-LIVE remains")
+	t.Logf("artwork_series: blocked_external (data): no series reference reachable from production surfaces; candidate recovery remains")
 	t.Logf("novel_series: see TestRealPixivSDKLiveNovelSeriesRecovery for explicit public candidate validation")
 
 	// #6 ugoira-metadata：从 ugoira 搜索结果取有效 artwork，读取 archive/frames。
@@ -483,7 +483,7 @@ func TestRealPixivSDKLiveManifestRead(t *testing.T) {
 	time.Sleep(liveManifestPace)
 
 	// #7 novel-search：固定 query，offset 首页+续页；period/date 参数未进入
-	// frozen request contract（CAND-G1-T06-NOVEL-SEARCH-CONTRACT 保持登记）。
+	// frozen request contract 仍保持登记。
 	liveTwoPages(t, "search_novel",
 		func(cursor sdk.Cursor) (sdk.Page[pixivsdk.Novel], error) {
 			return client.SearchNovels(ctx, pixivsdk.SearchNovelsRequest{Word: "初音ミク", Cursor: cursor})
@@ -550,7 +550,7 @@ func TestRealPixivSDKLiveManifestRead(t *testing.T) {
 // liveTwoPages 执行“首页 + 真实续页”场景并做跨页 ID 去重检查。上游无
 // continuation 时按 manifest 记录 data-limited，不伪造第二页；请求错误使测试
 // 失败。strictNoDup=true 时跨页重复判失败（搜索/排行/最新等确定性序列）；
-// 推荐类 feed 上游本身可能跨页重复（G1-T28 live 证据），重复仅记录计数。
+// 推荐类 feed 上游本身可能跨页重复（已在 live 请求中验证），重复仅记录计数。
 func liveTwoPages[T any](t *testing.T, name string, fetch func(sdk.Cursor) (sdk.Page[T], error), idOf func(T) int64, strictNoDup bool) {
 	t.Helper()
 	page1, err := fetch(sdk.Cursor{})

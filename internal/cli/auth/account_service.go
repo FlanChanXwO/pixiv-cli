@@ -14,7 +14,7 @@ import (
 	"strings"
 	"time"
 
-	config "github.com/FlanChanXwO/pixiv-cli/internal/config/settings"
+	"github.com/FlanChanXwO/pixiv-cli/internal/config/settings"
 	"github.com/FlanChanXwO/pixiv-cli/internal/httpclient"
 	pixivaccount "github.com/FlanChanXwO/pixiv-cli/internal/pixivaccount"
 	pixiv "github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
@@ -63,7 +63,7 @@ type accountPoolStatusOut struct {
 // 账号领域服务不读取 CLI 配置；代理和运行时开关只在这里转换为 SDK options。
 type AccountService struct {
 	Pixiv       accountPort
-	LoadRuntime func() (config.RuntimeConfig, error)
+	LoadRuntime func() (settings.RuntimeConfig, error)
 }
 
 // accountPort 是 auth adapter 需要的最小业务端口。它保持在 CLI adapter 中，

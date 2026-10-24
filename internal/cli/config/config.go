@@ -7,16 +7,16 @@ import (
 	"io"
 	"strings"
 
-	requirements "github.com/FlanChanXwO/pixiv-cli/internal/cli/internal/command"
+	"github.com/FlanChanXwO/pixiv-cli/internal/cli/internal/command"
 	"github.com/FlanChanXwO/pixiv-cli/internal/cli/internal/input"
-	configapp "github.com/FlanChanXwO/pixiv-cli/internal/config/settings"
+	"github.com/FlanChanXwO/pixiv-cli/internal/config/settings"
 	"github.com/spf13/cobra"
 )
 
 const configMissingPlaceholder = "<unset>"
 
 func configKeyHelp() string {
-	keys := configapp.CLISettingAliases()
+	keys := settings.CLISettingAliases()
 	names := make([]string, len(keys))
 	for index, key := range keys {
 		names[index] = string(key)
@@ -24,12 +24,12 @@ func configKeyHelp() string {
 	return strings.Join(names, ", ")
 }
 
-func isCLIConfigAlias(key configapp.Key) bool {
-	spec, ok := configapp.SettingSpecByAlias(key)
+func isCLIConfigAlias(key settings.Key) bool {
+	spec, ok := settings.SettingSpecByAlias(key)
 	return ok && spec.CLIManaged
 }
 
-func invalidCLIConfigKey(key configapp.Key) error {
+func invalidCLIConfigKey(key settings.Key) error {
 	return fmt.Errorf("unknown config key %q. valid keys: %s", key, configKeyHelp())
 }
 
@@ -39,7 +39,7 @@ type Host interface {
 	ErrorOutput() io.Writer
 	UsageError(error) error
 	RequireExactArgs(int, string) cobra.PositionalArgs
-	ConfigService() configapp.Store
+	ConfigService() settings.Store
 	ConfigPath() (string, error)
 }
 
@@ -60,7 +60,7 @@ func newConfigCommand(host Host) *cobra.Command {
 	}
 	cmd.AddCommand(newPathCommand(host), newGetCommand(host), newSetCommand(host), newUnsetCommand(host))
 	input.Bind(cmd, input.InputSpec{Codec: input.NoInput, MinArgs: 0, MaxArgs: 0, Reader: host.Input(), UsageError: host.UsageError})
-	requirements.Bind(cmd, requirements.Execution{})
+	command.Bind(cmd, command.Execution{})
 	return cmd
 }
 
@@ -79,7 +79,7 @@ func newPathCommand(host Host) *cobra.Command {
 		},
 	}
 	input.Bind(cmd, input.InputSpec{Codec: input.NoInput, MinArgs: 0, MaxArgs: 0, Reader: host.Input(), UsageError: host.UsageError})
-	requirements.Bind(cmd, requirements.ConfigPath())
+	command.Bind(cmd, command.ConfigPath())
 	return cmd
 }
 
@@ -90,15 +90,15 @@ func newGetCommand(host Host) *cobra.Command {
 		Long:  "Print one effective config value. KEY must be one of: " + configKeyHelp(),
 		Args:  host.RequireExactArgs(1, "pixiv config get KEY"),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return get(host, configapp.Key(args[0]))
+			return get(host, settings.Key(args[0]))
 		},
 	}
 	input.Bind(cmd, input.InputSpec{Codec: input.TextValue, MinArgs: 1, MaxArgs: 1, FillPosition: 0, Reader: host.Input(), UsageError: host.UsageError})
-	requirements.Bind(cmd, requirements.Normal())
+	command.Bind(cmd, command.Normal())
 	return cmd
 }
 
-func get(host Host, key configapp.Key) error {
+func get(host Host, key settings.Key) error {
 	if !isCLIConfigAlias(key) {
 		return invalidCLIConfigKey(key)
 	}
@@ -106,7 +106,7 @@ func get(host Host, key configapp.Key) error {
 	if err != nil {
 		return err
 	}
-	if spec, ok := configapp.SettingSpecByAlias(key); ok && spec.Sensitive {
+	if spec, ok := settings.SettingSpecByAlias(key); ok && spec.Sensitive {
 		_, err := fmt.Fprintln(host.Output(), "<redacted>")
 		return err
 	}
@@ -114,7 +114,7 @@ func get(host Host, key configapp.Key) error {
 		_, _ = fmt.Fprintln(host.Output(), configMissingPlaceholder)
 		return errors.New("config value is unset")
 	}
-	_, err = fmt.Fprintln(host.Output(), configapp.PublicSettingText(key, value.Text))
+	_, err = fmt.Fprintln(host.Output(), settings.PublicSettingText(key, value.Text))
 	return err
 }
 
@@ -127,14 +127,14 @@ func newSetCommand(host Host) *cobra.Command {
 			if len(args) < 1 || len(args) > 2 {
 				return errors.New("usage: pixiv config set KEY [VALUE]")
 			}
-			key := configapp.Key(args[0])
+			key := settings.Key(args[0])
 			if !isCLIConfigAlias(key) {
 				return invalidCLIConfigKey(key)
 			}
-			if configapp.IsSensitiveSetting(key) && len(args) == 2 {
+			if settings.IsSensitiveSetting(key) && len(args) == 2 {
 				return errors.New("sensitive config values must be provided through non-TTY stdin")
 			}
-			if configapp.IsSensitiveSetting(key) {
+			if settings.IsSensitiveSetting(key) {
 				if input.IsTTY(host.Input()) {
 					return errors.New("sensitive config values require non-TTY stdin")
 				}
@@ -146,8 +146,8 @@ func newSetCommand(host Host) *cobra.Command {
 			return nil
 		},
 		RunE: func(cmd *cobra.Command, args []string) error {
-			key := configapp.Key(args[0])
-			if configapp.IsSensitiveSetting(key) {
+			key := settings.Key(args[0])
+			if settings.IsSensitiveSetting(key) {
 				raw, err := input.ReadValue(host.Input())
 				if err != nil {
 					return fmt.Errorf("read sensitive config value from stdin: %w", err)
@@ -161,14 +161,14 @@ func newSetCommand(host Host) *cobra.Command {
 		Codec: input.TextValue, MinArgs: 1, MaxArgs: 2, FillPosition: 1,
 		Reader: host.Input(), UsageError: host.UsageError,
 		Enabled: func(_ *cobra.Command, args []string) bool {
-			return len(args) == 0 || !configapp.IsSensitiveSetting(configapp.Key(args[0]))
+			return len(args) == 0 || !settings.IsSensitiveSetting(settings.Key(args[0]))
 		},
 	})
-	requirements.Bind(cmd, requirements.Normal())
+	command.Bind(cmd, command.Normal())
 	return cmd
 }
 
-func set(host Host, key configapp.Key, raw string) error {
+func set(host Host, key settings.Key, raw string) error {
 	if !isCLIConfigAlias(key) {
 		return invalidCLIConfigKey(key)
 	}
@@ -190,15 +190,15 @@ func newUnsetCommand(host Host) *cobra.Command {
 		Long:  "Remove one config value from config.toml. KEY must be one of: " + configKeyHelp(),
 		Args:  host.RequireExactArgs(1, "pixiv config unset KEY"),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return unset(host, configapp.Key(args[0]))
+			return unset(host, settings.Key(args[0]))
 		},
 	}
 	input.Bind(cmd, input.InputSpec{Codec: input.TextValue, MinArgs: 1, MaxArgs: 1, FillPosition: 0, Reader: host.Input(), UsageError: host.UsageError})
-	requirements.Bind(cmd, requirements.Normal())
+	command.Bind(cmd, command.Normal())
 	return cmd
 }
 
-func unset(host Host, key configapp.Key) error {
+func unset(host Host, key settings.Key) error {
 	if !isCLIConfigAlias(key) {
 		return invalidCLIConfigKey(key)
 	}
@@ -213,8 +213,8 @@ func unset(host Host, key configapp.Key) error {
 	return err
 }
 
-func writeOverrideNote(out io.Writer, key configapp.Key, envOverride string) {
-	if key == configapp.KeyHTTPSProxy || configapp.IsSensitiveSetting(key) {
+func writeOverrideNote(out io.Writer, key settings.Key, envOverride string) {
+	if key == settings.KeyHTTPSProxy || settings.IsSensitiveSetting(key) {
 		_, _ = fmt.Fprintf(out, "note: %s is currently overridden by environment; effective value remains controlled by environment\n", key)
 		return
 	}

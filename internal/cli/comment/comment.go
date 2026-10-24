@@ -6,7 +6,7 @@ import (
 	"errors"
 	"fmt"
 
-	commands "github.com/FlanChanXwO/pixiv-cli/internal/cli/internal/command"
+	"github.com/FlanChanXwO/pixiv-cli/internal/cli/internal/command"
 	pixivcmd "github.com/FlanChanXwO/pixiv-cli/internal/cli/internal/pixivcmd"
 	"github.com/FlanChanXwO/pixiv-cli/internal/cli/internal/resolver"
 	"github.com/FlanChanXwO/pixiv-cli/sdk"
@@ -15,7 +15,7 @@ import (
 )
 
 type options struct {
-	commands.Options
+	command.Options
 	ndjson bool
 	limit  int
 	page   int
@@ -23,7 +23,7 @@ type options struct {
 }
 
 type mutationOptions struct {
-	commands.Options
+	command.Options
 	comment         string
 	parentCommentID int64
 	stampID         int64
@@ -31,19 +31,19 @@ type mutationOptions struct {
 }
 
 type stampsOptions struct {
-	commands.Options
+	command.Options
 	ndjson bool
 }
 
-type command struct {
-	env    commands.Env
+type commandRunner struct {
+	env    command.Env
 	runner pixivcmd.Runner
 	exec   pixivcmd.Executor
 }
 
 // New builds the actual `pixiv comment` command.
-func New(env commands.Env, exec pixivcmd.Executor) *cobra.Command {
-	a := command{env: env, runner: pixivcmd.New(env.Out, exec), exec: exec}
+func New(env command.Env, exec pixivcmd.Executor) *cobra.Command {
+	a := commandRunner{env: env, runner: pixivcmd.New(env.Out, exec), exec: exec}
 	options := options{}
 	cmd := &cobra.Command{
 		Use:   "comment ID",
@@ -58,12 +58,12 @@ func New(env commands.Env, exec pixivcmd.Executor) *cobra.Command {
 	pixivcmd.BindListFlags(cmd, &options.limit, &options.page)
 	cmd.Flags().StringVarP(&options.typ, "type", "t", "", "entity type: artwork or novel (required)")
 	env.BindTextValue(cmd, 1, 1, 0)
-	commands.Bind(cmd, commands.PixivData())
+	command.Bind(cmd, command.PixivData())
 	cmd.AddCommand(a.newCreate(), a.newDelete(), a.newReply(), a.newStamp(), a.newStamps())
 	return cmd
 }
 
-func (a command) newCreate() *cobra.Command {
+func (a commandRunner) newCreate() *cobra.Command {
 	opts := mutationOptions{}
 	cmd := &cobra.Command{
 		Use:   "create ID",
@@ -77,7 +77,7 @@ func (a command) newCreate() *cobra.Command {
 	return cmd
 }
 
-func (a command) newDelete() *cobra.Command {
+func (a commandRunner) newDelete() *cobra.Command {
 	opts := mutationOptions{}
 	cmd := &cobra.Command{
 		Use:   "delete COMMENT_ID",
@@ -91,7 +91,7 @@ func (a command) newDelete() *cobra.Command {
 	return cmd
 }
 
-func (a command) newReply() *cobra.Command {
+func (a commandRunner) newReply() *cobra.Command {
 	opts := mutationOptions{}
 	cmd := &cobra.Command{
 		Use:   "reply ID",
@@ -106,7 +106,7 @@ func (a command) newReply() *cobra.Command {
 	return cmd
 }
 
-func (a command) newStamp() *cobra.Command {
+func (a commandRunner) newStamp() *cobra.Command {
 	opts := mutationOptions{}
 	cmd := &cobra.Command{
 		Use:   "stamp ID",
@@ -121,7 +121,7 @@ func (a command) newStamp() *cobra.Command {
 	return cmd
 }
 
-func (a command) newStamps() *cobra.Command {
+func (a commandRunner) newStamps() *cobra.Command {
 	opts := stampsOptions{}
 	cmd := &cobra.Command{
 		Use:   "stamps",
@@ -134,21 +134,21 @@ func (a command) newStamps() *cobra.Command {
 	a.env.BindCommonFlags(cmd, &opts.Options)
 	pixivcmd.BindNDJSONFlag(cmd, &opts.ndjson)
 	a.env.BindNoInput(cmd)
-	commands.Bind(cmd, commands.PixivData())
+	command.Bind(cmd, command.PixivData())
 	return cmd
 }
 
-func (a command) bindMutationFlags(cmd *cobra.Command, opts *mutationOptions, commentUsage string) {
+func (a commandRunner) bindMutationFlags(cmd *cobra.Command, opts *mutationOptions, commentUsage string) {
 	a.env.BindCommonFlags(cmd, &opts.Options)
 	cmd.Flags().StringVarP(&opts.typ, "type", "t", "", "entity type: artwork or novel (required)")
 	if commentUsage != "" {
 		cmd.Flags().StringVar(&opts.comment, "comment", "", commentUsage)
 	}
 	a.env.BindTextValue(cmd, 1, 1, 0)
-	commands.Bind(cmd, commands.PixivData())
+	command.Bind(cmd, command.PixivData())
 }
 
-func (a command) runCreate(cmd *cobra.Command, arg string, opts mutationOptions) error {
+func (a commandRunner) runCreate(cmd *cobra.Command, arg string, opts mutationOptions) error {
 	if err := validateCommentType(cmd, opts.typ); err != nil {
 		return err
 	}
@@ -185,7 +185,7 @@ func (a command) runCreate(cmd *cobra.Command, arg string, opts mutationOptions)
 	return a.writeMutationResult(jsonOut, result)
 }
 
-func (a command) runDelete(cmd *cobra.Command, arg string, opts mutationOptions) error {
+func (a commandRunner) runDelete(cmd *cobra.Command, arg string, opts mutationOptions) error {
 	if err := validateCommentType(cmd, opts.typ); err != nil {
 		return err
 	}
@@ -217,7 +217,7 @@ func (a command) runDelete(cmd *cobra.Command, arg string, opts mutationOptions)
 	return a.writeDeleteResult(jsonOut)
 }
 
-func (a command) runReply(cmd *cobra.Command, arg string, opts mutationOptions) error {
+func (a commandRunner) runReply(cmd *cobra.Command, arg string, opts mutationOptions) error {
 	if err := validateCommentType(cmd, opts.typ); err != nil {
 		return err
 	}
@@ -265,7 +265,7 @@ func (a command) runReply(cmd *cobra.Command, arg string, opts mutationOptions) 
 	return a.writeMutationResult(jsonOut, result)
 }
 
-func (a command) runStamp(cmd *cobra.Command, arg string, opts mutationOptions) error {
+func (a commandRunner) runStamp(cmd *cobra.Command, arg string, opts mutationOptions) error {
 	if err := validateCommentType(cmd, opts.typ); err != nil {
 		return err
 	}
@@ -311,7 +311,7 @@ func (a command) runStamp(cmd *cobra.Command, arg string, opts mutationOptions) 
 	return a.writeMutationResult(jsonOut, result)
 }
 
-func (a command) runStamps(cmd *cobra.Command, opts stampsOptions) error {
+func (a commandRunner) runStamps(cmd *cobra.Command, opts stampsOptions) error {
 	request, err := pixivcmd.BuildRequest(cmd, opts.Options)
 	if err != nil {
 		return err
@@ -391,7 +391,7 @@ func commentDeleteContract() resolver.Contract {
 	}
 }
 
-func (a command) writeMutationResult(jsonOut bool, result pixiv.CommentMutationResult) error {
+func (a commandRunner) writeMutationResult(jsonOut bool, result pixiv.CommentMutationResult) error {
 	if jsonOut {
 		return a.env.PrintJSON(commentMutationOut{CommentID: result.CommentID})
 	}
@@ -399,7 +399,7 @@ func (a command) writeMutationResult(jsonOut bool, result pixiv.CommentMutationR
 	return err
 }
 
-func (a command) writeDeleteResult(jsonOut bool) error {
+func (a commandRunner) writeDeleteResult(jsonOut bool) error {
 	if jsonOut {
 		return a.env.PrintJSON(commentDeleteOut{Deleted: true})
 	}
@@ -421,7 +421,7 @@ type commentDeleteOut struct {
 	Deleted bool `json:"deleted"`
 }
 
-func (a command) run(cmd *cobra.Command, arg string, opts options) error {
+func (a commandRunner) run(cmd *cobra.Command, arg string, opts options) error {
 	target, err := resolveCommentTarget(cmd, arg, opts.typ, commentWorkContract("comment read"))
 	if err != nil {
 		return err

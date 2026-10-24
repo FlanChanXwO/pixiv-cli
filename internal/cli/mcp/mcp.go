@@ -10,9 +10,9 @@ import (
 	"strconv"
 	"strings"
 
-	requirements "github.com/FlanChanXwO/pixiv-cli/internal/cli/internal/command"
+	"github.com/FlanChanXwO/pixiv-cli/internal/cli/internal/command"
 	"github.com/FlanChanXwO/pixiv-cli/internal/cli/internal/input"
-	mcpauth "github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/auth"
+	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/auth"
 	"github.com/spf13/cobra"
 )
 
@@ -74,7 +74,7 @@ func NewCommand(host Host) *cobra.Command {
 
 	host.BindProxyFlags(cmd, &options)
 	input.Bind(cmd, input.InputSpec{Codec: input.NoInput, MinArgs: 0, MaxArgs: 0})
-	requirements.Bind(cmd, requirements.PixivMCP())
+	command.Bind(cmd, command.PixivMCP())
 	auth := &cobra.Command{Use: "auth", Short: "Manage the MCP owner"}
 	var reset bool
 	init := &cobra.Command{
@@ -93,7 +93,7 @@ func NewCommand(host Host) *cobra.Command {
 		},
 	}
 	// 本地 owner 管理不能继承 server 的启动、账号和日志副作用。
-	requirements.Bind(auth, requirements.Execution{})
+	command.Bind(auth, command.Execution{})
 	input.Bind(init, input.InputSpec{Codec: input.NoInput, MinArgs: 0, MaxArgs: 0})
 	init.Flags().BoolVar(&reset, "reset", false, "Rotate the owner secret and revoke all OAuth grants; keep clients and selected account")
 	auth.AddCommand(init)
@@ -120,7 +120,7 @@ func endpoint(host string, port int, rawBase string, explicitBase bool) (string,
 		}
 		rawBase = "http://" + listen
 	}
-	base, err := mcpauth.ParseBaseURL(rawBase)
+	base, err := auth.ParseBaseURL(rawBase)
 	if err != nil {
 		return "", "", err
 	}

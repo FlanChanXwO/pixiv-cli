@@ -7,7 +7,7 @@ import (
 	"errors"
 	"fmt"
 
-	commands "github.com/FlanChanXwO/pixiv-cli/internal/cli/internal/command"
+	"github.com/FlanChanXwO/pixiv-cli/internal/cli/internal/command"
 
 	pixivcmd "github.com/FlanChanXwO/pixiv-cli/internal/cli/internal/pixivcmd"
 	record "github.com/FlanChanXwO/pixiv-cli/internal/record"
@@ -18,7 +18,7 @@ import (
 )
 
 type options struct {
-	commands.Options
+	command.Options
 	ndjson      bool
 	limit       int
 	page        int
@@ -26,14 +26,14 @@ type options struct {
 	contentType string
 }
 
-type command struct {
-	env    commands.Env
+type commandRunner struct {
+	env    command.Env
 	runner pixivcmd.Runner
 }
 
 // New builds the actual `pixiv recommended` command.
-func New(env commands.Env, exec pixivcmd.Executor) *cobra.Command {
-	a := command{env: env, runner: pixivcmd.New(env.Out, exec)}
+func New(env command.Env, exec pixivcmd.Executor) *cobra.Command {
+	a := commandRunner{env: env, runner: pixivcmd.New(env.Out, exec)}
 	opts := options{contentType: "all"}
 	cmd := &cobra.Command{
 		Use:   "recommended [KIND]",
@@ -53,7 +53,7 @@ func New(env commands.Env, exec pixivcmd.Executor) *cobra.Command {
 	cmd.Flags().StringVarP(&opts.typ, "type", "t", opts.typ, "entity type: artwork, novel, user, all")
 	cmd.Flags().StringVar(&opts.contentType, "content-type", opts.contentType, "local artwork subtype filter applied after recommendation pagination: all, illust, manga")
 	env.BindTextValue(cmd, 0, 1, 0)
-	commands.Bind(cmd, commands.PixivData())
+	command.Bind(cmd, command.PixivData())
 	return cmd
 }
 
@@ -90,7 +90,7 @@ func resolveKind(cmd *cobra.Command, args []string, opts *options, usage func(er
 	return kind, nil
 }
 
-func (a command) execute(cmd *cobra.Command, kind string, opts options) error {
+func (a commandRunner) execute(cmd *cobra.Command, kind string, opts options) error {
 	if !validKind(kind) {
 		return errors.New("recommendation kind must be one of: all, illust, manga, novel, user")
 	}
@@ -138,7 +138,7 @@ func validKind(kind string) bool {
 	return kind == "all" || kind == "illust" || kind == "manga" || kind == "novel" || kind == "user"
 }
 
-func (a command) runOne(ctx context.Context, request pixivcmd.Request, plan pixivcmd.Plan, jsonOut, ndjson bool, kind string, artworkFilter searchfilter.Filter) error {
+func (a commandRunner) runOne(ctx context.Context, request pixivcmd.Request, plan pixivcmd.Plan, jsonOut, ndjson bool, kind string, artworkFilter searchfilter.Filter) error {
 	if kind == "illust" || kind == "manga" {
 		jsonKey := "illusts"
 		if kind == "manga" {
@@ -209,7 +209,7 @@ func fetchRecommendedArtworks(client *pixiv.Client, filter searchfilter.Filter) 
 
 // runAllNDJSON 保留 all 的既有类别顺序。每写出一条记录即标记提交，因此账号池只会
 // 在任何下游可见输出之前重放 429。
-func (a command) runAllNDJSON(ctx context.Context, client *pixiv.Client, plan pixivcmd.Plan) (bool, error) {
+func (a commandRunner) runAllNDJSON(ctx context.Context, client *pixiv.Client, plan pixivcmd.Plan) (bool, error) {
 	encoder := json.NewEncoder(a.env.Out)
 	committed := false
 	writeArtworks := func(items []pixiv.Artwork) error {

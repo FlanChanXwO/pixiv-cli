@@ -16,8 +16,8 @@ import (
 	"sync"
 	"syscall"
 
-	authcommands "github.com/FlanChanXwO/pixiv-cli/internal/cli/auth"
-	requirements "github.com/FlanChanXwO/pixiv-cli/internal/cli/internal/command"
+	"github.com/FlanChanXwO/pixiv-cli/internal/cli/auth"
+	"github.com/FlanChanXwO/pixiv-cli/internal/cli/internal/command"
 	"github.com/FlanChanXwO/pixiv-cli/internal/cli/internal/input"
 	"github.com/FlanChanXwO/pixiv-cli/internal/logging"
 	"github.com/FlanChanXwO/pixiv-cli/internal/reversesearch"
@@ -151,7 +151,7 @@ func runContext(ctx context.Context, args []string, in io.Reader, out io.Writer,
 	// 阶段 2：装配命令树并绑定流/参数。
 	cmd := a.newRootCommand()
 	defer input.Clear(cmd)
-	defer authcommands.ClearInputState(cmd)
+	defer auth.ClearInputState(cmd)
 	cmd.SetIn(in)
 	cmd.SetOut(out)
 	cmd.SetErr(errOut)
@@ -284,7 +284,7 @@ func registerReverseSearchCloser(state *closeState, searcher reversesearch.Searc
 	}
 }
 
-func (a app) startLogging(cmd *cobra.Command, requirement requirements.Execution) error {
+func (a app) startLogging(cmd *cobra.Command, requirement command.Execution) error {
 	if !requirement.EnsureConfig || isQuietConfigCommand(cmd) {
 		return nil
 	}
@@ -324,7 +324,7 @@ func (a app) enablePipelineSignal(cmd *cobra.Command) {
 	a.pipelineSignal.stop = a.pipelineSignal.enable()
 }
 
-func (a app) enableMCPBrokenPipeSignal(requirement requirements.Execution) {
+func (a app) enableMCPBrokenPipeSignal(requirement command.Execution) {
 	if a.mcpBrokenPipeSignal == nil || a.mcpBrokenPipeSignal.enable == nil || a.mcpBrokenPipeSignal.stop != nil || !requirement.MCP {
 		return
 	}

@@ -226,9 +226,9 @@ v1 的负面契约：下列任一项出现可发布的 CLI/MCP/SDK 入口即为�
 
 | ID | 唯一 owner | 当前证据 | 关闭条件 |
 | --- | --- | --- | --- |
-| `NOVEL-RANKING` | `sdk/pixiv` + `internal/cli/ranking`（T18/T30；MCP 之后） | SDK 与 CLI 在内部 `/v1/novel/ranking` 适配器上暴露增量的 `NovelRanking` seam；CLI 通过 `--type novel` 显式选择；MCP 没有 `novel_ranking` 工具，实时/公开发布证据仍不完整 | 完成实时第二页、共享 cursor、MCP 与发布兼容门禁；在此之前保持证据门禁，不是 `public_ready` |
-| `NOVEL-BOOKMARK-MUTATION` | `sdk/pixiv` + `internal/mcpserver/pixiv`（G1-T13；CLI 之后） | SDK 暴露增量的类型化 `AddNovelBookmark`/`RemoveNovelBookmark`；MCP 暴露 `add_novel_bookmark`/`remove_novel_bookmark`；已有离线结果、校验与不重放证据，严格/实时、回读与发布证据仍不完整 | 完成严格/实时写入证据、同账号回读、清理与兼容/发布门禁；在此之前保持证据门禁，不是 `public_ready` |
-| `COMMENT-WRITE` | `sdk/pixiv`（T16；CLI/MCP 之后） | SDK 暴露命名空间专属的 `PostArtworkComment`/`ReplyArtworkComment`/`DeleteArtworkComment` 及小说对应方法；MCP `comment_post`/`comment_add` 目录仍 = 0；响应 ID、回读、清理与严格实时证据不完整 | 完成严格/实时写入证据、同账号回读、清理与 T33/T38 兼容门禁；在此之前保持证据门禁，不是 `public_ready` |
+| `NOVEL-RANKING` | `sdk/pixiv` + `internal/cli/ranking`（MCP 之后） | SDK 与 CLI 在内部 `/v1/novel/ranking` 适配器上暴露增量的 `NovelRanking` seam；CLI 通过 `--type novel` 显式选择；MCP 没有 `novel_ranking` 工具，实时/公开发布证据仍不完整 | 完成实时第二页、共享 cursor、MCP 与发布兼容门禁；在此之前保持证据门禁，不是 `public_ready` |
+| `NOVEL-BOOKMARK-MUTATION` | `sdk/pixiv` + `internal/mcpserver/pixiv`（CLI 之后） | SDK 暴露增量的类型化 `AddNovelBookmark`/`RemoveNovelBookmark`；MCP 暴露 `add_novel_bookmark`/`remove_novel_bookmark`；已有离线结果、校验与不重放证据，严格/实时、回读与发布证据仍不完整 | 完成严格/实时写入证据、同账号回读、清理与兼容/发布门禁；在此之前保持证据门禁，不是 `public_ready` |
+| `COMMENT-WRITE` | `sdk/pixiv`（CLI/MCP 之后） | SDK 暴露命名空间专属的 `PostArtworkComment`/`ReplyArtworkComment`/`DeleteArtworkComment` 及小说对应方法；MCP `comment_post`/`comment_add` 目录仍 = 0；响应 ID、回读、清理与严格实时证据不完整 | 完成严格/实时写入证据、同账号回读、清理与 兼容门禁；在此之前保持证据门禁，不是 `public_ready` |
 | `NOTIFICATION` | 无 owner | MCP `notification` 目录 = 0；SDK `Notification*` 导出 = 0 | 同上 |
 | `AUTOCOMPLETE` | 无 owner | MCP `autocomplete` 目录 = 0；SDK `Autocomplete*` 导出 = 0；未并入 `search` | 同上 |
 | `WEB-RESTRICTED-READ` | 无 owner | 没有 `webapi` 包；`web_fallback_enabled` 属未声明键，加载时忽略 | 不重新开放匿名 Web 路径；任何恢复 Web/AJAX 的提议须先修订 AGENTS 冻结契约并通过 ADR |

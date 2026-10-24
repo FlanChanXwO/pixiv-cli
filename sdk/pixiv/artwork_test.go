@@ -140,9 +140,8 @@ func TestRelatedArtworksNormalizesIndexedLiveContinuationArrays(t *testing.T) {
 	}
 }
 
-// G1-CORR-G1-T28-RECOMMENDED-01：live next_url 的多参数续页集必须被完整
-// 回放；cursor 文本不得泄漏 raw next_url/凭据，binding v2 使旧单 offset
-// cursor 显式失效。
+// live next_url 的多参数续页集必须被完整回放；cursor 文本不得泄漏 raw
+// next_url/凭据，binding v2 使旧单 offset cursor 显式失效。
 func TestRecommendedArtworksReplaysFullLiveContinuationParams(t *testing.T) {
 	calls := 0
 	liveNextURL := "https://app-api.pixiv.net/v1/illust/recommended?min_bookmark_id_for_recent_illust=38760619879&max_bookmark_id_for_recommend=38712263830&offset=0&include_ranking_illusts=false&include_privacy_policy=false&viewed%5B0%5D=144455829&viewed%5B1%5D=149255689"
@@ -154,7 +153,7 @@ func TestRecommendedArtworksReplaysFullLiveContinuationParams(t *testing.T) {
 			}
 		} else {
 			query := req.URL.Query()
-			// viewed[] 是上游会话参数，回放会被 400 拒绝（G1-T28 live 证据），
+			// viewed[] 是上游会话参数，回放会被 400 拒绝（已在 live 请求中验证），
 			// 因此续页请求必须剔除 viewed、保留其余 live 参数。
 			if query.Get("min_bookmark_id_for_recent_illust") != "38760619879" ||
 				query.Get("max_bookmark_id_for_recommend") != "38712263830" ||

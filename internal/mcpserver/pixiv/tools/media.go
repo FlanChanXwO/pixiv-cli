@@ -205,6 +205,32 @@ func (t pixivTools) artworkMediaHandler(ctx context.Context, in artworkMediaIn) 
 	if in.Quality == "" {
 		in.Quality = "regular"
 	}
+	if err := normalizeArtworkMediaRequest(&in, &out, requestedQuality); err != "" {
+		return outputs.MediaResult(out, nil)
+	}
+	var content []mcp.Content
+	var source *pixiv.Client
+	// One lease binds detail and every page to the same account; partial bytes are
+	// never replayed with another account. Static reads stay in memory; the native
+	// animation encoder owns a per-call temporary workspace that is removed before delivery.
+	err := lifecycle.Run(ctx, t.app.OpenClient, func(ctx context.Context, client *pixiv.Client, _ *lifecycle.Attempt) error {
+		source = client
+		var runErr error
+		content, runErr = t.readArtworkMedia(ctx, client, &in, &out, requestedQuality)
+		return runErr
+	})
+	if err != nil {
+		out.Error = errorCode(err)
+	}
+	out.Complete = out.Error == "" && len(out.RequestedPages) > 0 && len(out.DeliveredPages) == len(out.RequestedPages)
+	result, output, resultErr := outputs.MediaResult(out, content)
+	t.attachMediaDownloads(ctx, &in, &out, content, source, result, resultErr)
+	return result, output, resultErr
+}
+
+// normalizeArtworkMediaRequest validates the request and expands the implicit
+// all-pages selection. It returns a non-empty tool error when the request is invalid.
+func normalizeArtworkMediaRequest(in *artworkMediaIn, out *outputs.ArtworkMedia, requestedQuality string) string {
 	switch {
 	case in.IllustID <= 0:
 		out.Error = "invalid_illust_id"
@@ -225,120 +251,128 @@ func (t pixivTools) artworkMediaHandler(ctx context.Context, in artworkMediaIn) 
 			seen[p] = true
 		}
 	}
-	if out.Error != "" {
-		return outputs.MediaResult(out, nil)
+	return out.Error
+}
+
+func (t pixivTools) readArtworkMedia(ctx context.Context, client *pixiv.Client, in *artworkMediaIn, out *outputs.ArtworkMedia, requestedQuality string) ([]mcp.Content, error) {
+	started := time.Now()
+	artwork, err := client.Artwork(ctx, pixiv.ArtworkRequest{ArtworkID: in.IllustID})
+	observeMediaPhase(ctx, "artwork_query", time.Since(started), 0, err)
+	if err != nil {
+		return nil, err
+	}
+	out.Title = artwork.Title
+	out.TotalPages = artwork.PageCount
+	if artwork.Kind == pixiv.ArtworkKindUgoira {
+		return t.readUgoiraMedia(ctx, client, in, out, requestedQuality)
+	}
+	if in.AnimationFormat != "" {
+		out.Error = "animation_format_not_applicable"
+		return nil, nil
+	}
+	if out.TotalPages <= 0 {
+		out.Error = "invalid_page_metadata"
+		return nil, nil
+	}
+	if in.Pages == nil {
+		for p := 1; p <= out.TotalPages; p++ {
+			out.RequestedPages = append(out.RequestedPages, p)
+		}
+	}
+	for _, p := range out.RequestedPages {
+		if p > out.TotalPages {
+			out.Error = "invalid_pages"
+			return nil, nil
+		}
+	}
+	return readArtworkPages(ctx, client, artwork, out, in.Quality)
+}
+
+func (t pixivTools) readUgoiraMedia(ctx context.Context, client *pixiv.Client, in *artworkMediaIn, out *outputs.ArtworkMedia, requestedQuality string) ([]mcp.Content, error) {
+	if in.Pages != nil || requestedQuality != "" {
+		out.Error = "static_parameters_not_applicable"
+		return nil, nil
+	}
+	out.TotalPages = 1
+	out.RequestedPages = []int{1}
+	content, page, err := readAnimation(ctx, client, in.IllustID, in.AnimationFormat)
+	if err != nil {
+		out.Failures = append(out.Failures, outputs.MediaFailure{Page: 1, Error: errorCode(err)})
+		return nil, err
+	}
+	out.Pages = append(out.Pages, page)
+	out.DeliveredPages = []int{1}
+	return content, nil
+}
+
+func readArtworkPages(ctx context.Context, client *pixiv.Client, artwork pixiv.Artwork, out *outputs.ArtworkMedia, quality string) ([]mcp.Content, error) {
+	pages := make(map[int]pixiv.ArtworkPage, len(artwork.Pages))
+	for _, page := range artwork.Pages {
+		pages[page.PageIndex+1] = page
+	}
+	variant := quality
+	if variant == "thumbnail" {
+		variant = "thumb"
 	}
 	var content []mcp.Content
-	var source *pixiv.Client
-	// One lease binds detail and every page to the same account; partial bytes are
-	// never replayed with another account. Static reads stay in memory; the native
-	// animation encoder owns a per-call temporary workspace that is removed before delivery.
-	err := lifecycle.Run(ctx, t.app.OpenClient, func(ctx context.Context, client *pixiv.Client, _ *lifecycle.Attempt) error {
-		source = client
-		started := time.Now()
-		artwork, err := client.Artwork(ctx, pixiv.ArtworkRequest{ArtworkID: in.IllustID})
-		observeMediaPhase(ctx, "artwork_query", time.Since(started), 0, err)
-		if err != nil {
-			return err
-		}
-		out.Title = artwork.Title
-		out.TotalPages = artwork.PageCount
-		if artwork.Kind == pixiv.ArtworkKindUgoira {
-			if in.Pages != nil || requestedQuality != "" {
-				out.Error = "static_parameters_not_applicable"
-				return nil
-			}
-			out.TotalPages = 1
-			out.RequestedPages = []int{1}
-			media, page, err := readAnimation(ctx, client, in.IllustID, in.AnimationFormat)
-			if err != nil {
-				out.Failures = append(out.Failures, outputs.MediaFailure{Page: 1, Error: errorCode(err)})
-				return err
-			}
-			content = media
-			out.Pages = append(out.Pages, page)
-			out.DeliveredPages = []int{1}
-			return nil
-		}
-		if in.AnimationFormat != "" {
-			out.Error = "animation_format_not_applicable"
-			return nil
-		}
-		if out.TotalPages <= 0 {
-			out.Error = "invalid_page_metadata"
-			return nil
-		}
-		if in.Pages == nil {
-			for p := 1; p <= out.TotalPages; p++ {
-				out.RequestedPages = append(out.RequestedPages, p)
-			}
-		}
-		for _, p := range out.RequestedPages {
-			if p > out.TotalPages {
-				out.Error = "invalid_pages"
-				return nil
-			}
-		}
-		pages := make(map[int]pixiv.ArtworkPage, len(artwork.Pages))
-		for _, page := range artwork.Pages {
-			pages[page.PageIndex+1] = page
-		}
-		variant := in.Quality
-		if variant == "thumbnail" {
-			variant = "thumb"
-		}
-		for _, p := range out.RequestedPages {
-			failure := outputs.MediaFailure{Page: p}
-			if err := ctx.Err(); err != nil {
-				failure.Error = errorCode(err)
-			} else if page, ok := pages[p]; !ok {
-				failure.Error = "page_unavailable"
-			} else {
-				data, mime, status, err := readPage(ctx, client, page, variant)
-				if err != nil {
-					failure.Error = errorCode(err)
-					failure.HTTPStatus = status
-				} else {
-					out.Pages = append(out.Pages, outputs.MediaPage{Page: p, MIMEType: mime, Size: len(data), ContentIndex: len(content)})
-					content = append(content, &mcp.ImageContent{Data: data, MIMEType: mime})
-					out.DeliveredPages = append(out.DeliveredPages, p)
-					continue
-				}
-			}
+	for _, p := range out.RequestedPages {
+		failure := outputs.MediaFailure{Page: p}
+		if err := ctx.Err(); err != nil {
+			failure.Error = errorCode(err)
 			out.Failures = append(out.Failures, failure)
+			continue
 		}
-		return ctx.Err()
-	})
+		page, ok := pages[p]
+		if !ok {
+			failure.Error = "page_unavailable"
+			out.Failures = append(out.Failures, failure)
+			continue
+		}
+		data, mime, status, err := readPage(ctx, client, page, variant)
+		if err != nil {
+			failure.Error = errorCode(err)
+			failure.HTTPStatus = status
+			out.Failures = append(out.Failures, failure)
+			continue
+		}
+		out.Pages = append(out.Pages, outputs.MediaPage{Page: p, MIMEType: mime, Size: len(data), ContentIndex: len(content)})
+		content = append(content, &mcp.ImageContent{Data: data, MIMEType: mime})
+		out.DeliveredPages = append(out.DeliveredPages, p)
+	}
+	return content, ctx.Err()
+}
+
+func (t pixivTools) attachMediaDownloads(ctx context.Context, in *artworkMediaIn, out *outputs.ArtworkMedia, content []mcp.Content, source *pixiv.Client, result *mcp.CallToolResult, resultErr error) {
+	if resultErr != nil {
+		return
+	}
+	media := t.app.SDKPorts().Media
+	if media == nil || len(out.Pages) == 0 || ctx.Err() != nil {
+		return
+	}
+	account, err := t.app.ResolveAccount(ctx)
 	if err != nil {
-		out.Error = errorCode(err)
+		return
 	}
-	out.Complete = out.Error == "" && len(out.RequestedPages) > 0 && len(out.DeliveredPages) == len(out.RequestedPages)
-	result, output, resultErr := outputs.MediaResult(out, content)
-	if media := t.app.SDKPorts().Media; media != nil && len(out.Pages) > 0 && ctx.Err() == nil {
-		account, accountErr := t.app.ResolveAccount(ctx)
-		if accountErr == nil {
-			downloads := []map[string]any{}
-			for _, page := range out.Pages {
-				var url string
-				if page.PreviewContentIndex != nil {
-					original := content[page.ContentIndex].(*mcp.ImageContent)
-					preview := content[*page.PreviewContentIndex].(*mcp.ImageContent)
-					format := strings.TrimPrefix(page.MIMEType, "image/")
-					published, publishErr := media.PublishAnimation(ctx, account.UserID, in.IllustID, format, source, original.Data, preview.Data)
-					if publishErr == nil {
-						url = published.AnimationURL
-					}
-				} else if in.Quality == "original" {
-					url, _ = media.Issue(ctx, account.UserID, in.IllustID, page.Page, "original")
-				}
-				if url != "" {
-					downloads = append(downloads, map[string]any{"page": page.Page, "url": url})
-				}
+	downloads := []map[string]any{}
+	for _, page := range out.Pages {
+		var url string
+		if page.PreviewContentIndex != nil {
+			original := content[page.ContentIndex].(*mcp.ImageContent)
+			preview := content[*page.PreviewContentIndex].(*mcp.ImageContent)
+			format := strings.TrimPrefix(page.MIMEType, "image/")
+			published, publishErr := media.PublishAnimation(ctx, account.UserID, in.IllustID, format, source, original.Data, preview.Data)
+			if publishErr == nil {
+				url = published.AnimationURL
 			}
-			result.Meta = mcp.Meta{"pixiv/mediaDownloads": map[string]any{"media_origin": media.Origin(), "pages": downloads}}
+		} else if in.Quality == "original" {
+			url, _ = media.Issue(ctx, account.UserID, in.IllustID, page.Page, "original")
+		}
+		if url != "" {
+			downloads = append(downloads, map[string]any{"page": page.Page, "url": url})
 		}
 	}
-	return result, output, resultErr
+	result.Meta = mcp.Meta{"pixiv/mediaDownloads": map[string]any{"media_origin": media.Origin(), "pages": downloads}}
 }
 
 func readPage(ctx context.Context, client *pixiv.Client, page pixiv.ArtworkPage, variant string) (data []byte, mime string, status int, err error) {
@@ -466,130 +500,17 @@ func (t pixivTools) showGalleryHandler(ctx context.Context, in showGalleryIn) (*
 	finish := func() (*mcp.CallToolResult, galleryOut, error) {
 		return records.Result(out.Records, len(out.Failures) > 0, "Gallery results; images load only in the explicit gallery."), out, nil
 	}
-	if len(in.IllustIDs) == 0 || in.Page < 0 || (len(in.Pages) > 0 && in.Page != 0) {
+	if !normalizeGalleryRequest(&in) {
 		out.Failures = append(out.Failures, galleryFailure{Error: "invalid_request"})
 		return finish()
 	}
-	for _, id := range in.IllustIDs {
-		if id <= 0 {
-			out.Failures = append(out.Failures, galleryFailure{Error: "invalid_request"})
-			return finish()
-		}
-	}
-	if in.Page == 0 {
-		in.Page = 1
-	}
-	// A single page is the one-element case; repeated pages keep their first position.
-	pages := []int{in.Page}
-	if len(in.Pages) > 0 {
-		pages = pages[:0]
-		seenPage := map[int]bool{}
-		for _, page := range in.Pages {
-			if page <= 0 {
-				out.Failures = append(out.Failures, galleryFailure{Error: "invalid_request"})
-				return finish()
-			}
-			if !seenPage[page] {
-				seenPage[page] = true
-				pages = append(pages, page)
-			}
-		}
-	}
-	if in.Quality == "" {
-		in.Quality = "thumbnail"
-	}
-	if in.Quality != "thumbnail" && in.Quality != "regular" && in.Quality != "original" {
-		out.Failures = append(out.Failures, galleryFailure{Error: "invalid_request"})
-		return finish()
-	}
-
-	ids := make([]int64, 0, len(in.IllustIDs))
-	seen := map[int64]bool{}
-	for _, id := range in.IllustIDs {
-		if !seen[id] {
-			seen[id] = true
-			ids = append(ids, id)
-		}
-	}
+	ids := uniqueIllustIDs(in.IllustIDs)
 	results := make([]galleryOut, len(ids))
-	one := func(id int64) galleryOut {
-		out := galleryOut{}
-		artwork, err := t.app.Artwork(ctx, id)
-		if err != nil {
-			out.Failures = append(out.Failures, galleryFailure{IllustID: id, Error: "artwork_unavailable"})
-			return out
-		}
-		rec, err := record.RecordFromArtwork(artwork)
-		if err != nil {
-			out.Failures = append(out.Failures, galleryFailure{IllustID: id, Error: "invalid_metadata"})
-			return out
-		}
-		out.Records = append(out.Records, rec)
-		if artwork.Kind == pixiv.ArtworkKindUgoira && in.Quality == "original" {
-			return out
-		}
-		media := t.app.SDKPorts().Media
-		if media == nil {
-			out.Failures = append(out.Failures, galleryFailure{IllustID: id, Error: "image_proxy_unavailable"})
-			return out
-		}
-		out.MediaOrigin = media.Origin()
-		account, err := t.app.ResolveAccount(ctx)
-		if err != nil {
-			out.Failures = append(out.Failures, galleryFailure{IllustID: id, Error: "account_unavailable"})
-			return out
-		}
-		avatar := !artwork.User.ProfileImage.Resource.Ref.IsZero()
-		for _, page := range pages {
-			if page > artwork.PageCount {
-				out.Failures = append(out.Failures, galleryFailure{IllustID: id, Error: "page_unavailable", Page: page})
-				continue
-			}
-			u, err := media.Issue(ctx, account.UserID, id, page, in.Quality)
-			if err != nil {
-				out.Failures = append(out.Failures, galleryFailure{IllustID: id, Error: "image_authorization_unavailable", Page: page})
-				continue
-			}
-			item := galleryImage{IllustID: id, Page: page, URL: u}
-			// The avatar belongs to the artwork, so only its first delivered page carries it.
-			if avatar {
-				avatar = false
-				item.AvatarURL, err = media.Issue(ctx, account.UserID, id, 1, "avatar")
-				if err != nil {
-					out.Failures = append(out.Failures, galleryFailure{IllustID: id, Error: "avatar_authorization_unavailable"})
-				}
-			}
-			out.Images = append(out.Images, item)
-		}
-		return out
-	}
-	workers := 4
-	if media := t.app.SDKPorts().Media; media != nil {
-		workers = media.ConcurrentReads()
-	}
-	if workers > len(ids) {
-		workers = len(ids)
-	}
-	jobs := make(chan int)
-	var wg sync.WaitGroup
-	for i := 0; i < workers; i++ {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			for index := range jobs {
-				results[index] = one(ids[index])
-			}
-		}()
-	}
-	for index := range ids {
-		select {
-		case jobs <- index:
-		case <-ctx.Done():
-			results[index].Failures = []galleryFailure{{IllustID: ids[index], Error: "artwork_unavailable"}}
-		}
-	}
-	close(jobs)
-	wg.Wait()
+	t.forEachGalleryItem(ctx, len(ids), func(index int) {
+		results[index] = t.readGalleryArtwork(ctx, ids[index], in)
+	}, func(index int) {
+		results[index].Failures = []galleryFailure{{IllustID: ids[index], Error: "artwork_unavailable"}}
+	})
 	for _, result := range results {
 		out.Records = append(out.Records, result.Records...)
 		out.Images = append(out.Images, result.Images...)
@@ -598,8 +519,147 @@ func (t pixivTools) showGalleryHandler(ctx context.Context, in showGalleryIn) (*
 			out.MediaOrigin = result.MediaOrigin
 		}
 	}
-
 	return finish()
+}
+
+// normalizeGalleryRequest validates ids/pages/quality and fills defaults.
+func normalizeGalleryRequest(in *showGalleryIn) bool {
+	if len(in.IllustIDs) == 0 || in.Page < 0 || (len(in.Pages) > 0 && in.Page != 0) {
+		return false
+	}
+	for _, id := range in.IllustIDs {
+		if id <= 0 {
+			return false
+		}
+	}
+	if in.Page == 0 {
+		in.Page = 1
+	}
+	if len(in.Pages) > 0 {
+		unique := in.Pages[:0]
+		seen := map[int]bool{}
+		for _, page := range in.Pages {
+			if page <= 0 {
+				return false
+			}
+			if !seen[page] {
+				seen[page] = true
+				unique = append(unique, page)
+			}
+		}
+		in.Pages = unique
+	}
+	if in.Quality == "" {
+		in.Quality = "thumbnail"
+	}
+	return in.Quality == "thumbnail" || in.Quality == "regular" || in.Quality == "original"
+}
+
+func galleryPages(in showGalleryIn) []int {
+	if len(in.Pages) > 0 {
+		return in.Pages
+	}
+	return []int{in.Page}
+}
+
+func uniqueIllustIDs(values []int64) []int64 {
+	ids := make([]int64, 0, len(values))
+	seen := map[int64]bool{}
+	for _, id := range values {
+		if !seen[id] {
+			seen[id] = true
+			ids = append(ids, id)
+		}
+	}
+	return ids
+}
+
+func (t pixivTools) forEachGalleryItem(ctx context.Context, count int, read, canceled func(int)) {
+	workers := 4
+	if media := t.app.SDKPorts().Media; media != nil {
+		workers = media.ConcurrentReads()
+	}
+	if workers > count {
+		workers = count
+	}
+	jobs := make(chan int)
+	var wg sync.WaitGroup
+	for i := 0; i < workers; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for index := range jobs {
+				read(index)
+			}
+		}()
+	}
+	for index := 0; index < count; index++ {
+		select {
+		case jobs <- index:
+		case <-ctx.Done():
+			// Cancellation before dispatch must not bypass the per-artwork failure path.
+			for undispatched := index; undispatched < count; undispatched++ {
+				canceled(undispatched)
+			}
+			close(jobs)
+			wg.Wait()
+			return
+		}
+	}
+	close(jobs)
+	wg.Wait()
+}
+
+func (t pixivTools) readGalleryArtwork(ctx context.Context, id int64, in showGalleryIn) galleryOut {
+	out := galleryOut{}
+	artwork, err := t.app.Artwork(ctx, id)
+	if err != nil {
+		out.Failures = append(out.Failures, galleryFailure{IllustID: id, Error: "artwork_unavailable"})
+		return out
+	}
+	rec, err := record.RecordFromArtwork(artwork)
+	if err != nil {
+		out.Failures = append(out.Failures, galleryFailure{IllustID: id, Error: "invalid_metadata"})
+		return out
+	}
+	out.Records = append(out.Records, rec)
+	if artwork.Kind == pixiv.ArtworkKindUgoira && in.Quality == "original" {
+		return out
+	}
+	media := t.app.SDKPorts().Media
+	if media == nil {
+		out.Failures = append(out.Failures, galleryFailure{IllustID: id, Error: "image_proxy_unavailable"})
+		return out
+	}
+	out.MediaOrigin = media.Origin()
+	account, err := t.app.ResolveAccount(ctx)
+	if err != nil {
+		out.Failures = append(out.Failures, galleryFailure{IllustID: id, Error: "account_unavailable"})
+		return out
+	}
+	avatar := !artwork.User.ProfileImage.Resource.Ref.IsZero()
+	for _, page := range galleryPages(in) {
+		if page > artwork.PageCount {
+			out.Failures = append(out.Failures, galleryFailure{IllustID: id, Error: "page_unavailable", Page: page})
+			continue
+		}
+		u, err := media.Issue(ctx, account.UserID, id, page, in.Quality)
+		if err != nil {
+			out.Failures = append(out.Failures, galleryFailure{IllustID: id, Error: "image_authorization_unavailable", Page: page})
+			continue
+		}
+		item := galleryImage{IllustID: id, Page: page, URL: u}
+		// The avatar belongs to the artwork, so only its first delivered page carries it.
+		if avatar {
+			avatar = false
+			item.AvatarURL, err = media.Issue(ctx, account.UserID, id, 1, "avatar")
+			if err != nil {
+				out.Failures = append(out.Failures, galleryFailure{IllustID: id, Error: "avatar_authorization_unavailable"})
+			}
+		}
+		out.Images = append(out.Images, item)
+	}
+	return out
 }
 
 func showGalleryOutputSchema() *jsonschema.Schema {

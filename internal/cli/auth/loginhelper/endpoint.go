@@ -13,7 +13,7 @@ import (
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/config/paths"
 	"github.com/FlanChanXwO/pixiv-cli/internal/loginrelay"
-	filesecret "github.com/FlanChanXwO/pixiv-cli/internal/storage/secretfile"
+	"github.com/FlanChanXwO/pixiv-cli/internal/storage/secretfile"
 )
 
 const callbackEndpointFilename = "url-handler-endpoint"
@@ -48,7 +48,7 @@ func writeCallbackEndpoint(callbackRelayURL string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	if err := filesecret.WritePrivateFile(path, []byte(endpoint+"\n"), paths.PrivateFileMode); err != nil {
+	if err := secretfile.WritePrivateFile(path, []byte(endpoint+"\n"), paths.PrivateFileMode); err != nil {
 		return "", err
 	}
 	return path, nil

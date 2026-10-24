@@ -12,7 +12,7 @@ import (
 	"strconv"
 	"strings"
 
-	commands "github.com/FlanChanXwO/pixiv-cli/internal/cli/internal/command"
+	"github.com/FlanChanXwO/pixiv-cli/internal/cli/internal/command"
 	inputcmd "github.com/FlanChanXwO/pixiv-cli/internal/cli/internal/input"
 	"github.com/FlanChanXwO/pixiv-cli/internal/cli/internal/pixivcmd"
 	"github.com/FlanChanXwO/pixiv-cli/internal/plaintext"
@@ -24,7 +24,7 @@ import (
 
 // Options 是 detail 自己声明的 flags。它只保存 Cobra 解析结果，不创建资源。
 type Options struct {
-	commands.Options
+	command.Options
 	ndjson bool
 
 	typ     string
@@ -40,8 +40,8 @@ type fetchers struct {
 	user         func(context.Context, *pixiv.Client, int64) (pixiv.UserDetail, error)
 }
 
-type command struct {
-	env          commands.Env
+type commandRunner struct {
+	env          command.Env
 	runner       pixivcmd.Runner
 	fetchers     fetchers
 	buildRequest func(*cobra.Command, Options) (pixivcmd.Request, error)
@@ -49,12 +49,12 @@ type command struct {
 }
 
 // New builds the actual `pixiv detail` command.
-func New(env commands.Env, exec pixivcmd.Executor) *cobra.Command {
+func New(env command.Env, exec pixivcmd.Executor) *cobra.Command {
 	return newCommand(env, exec, fetchers{}, nil, nil)
 }
 
-func newCommand(env commands.Env, exec pixivcmd.Executor, f fetchers, build func(*cobra.Command, Options) (pixivcmd.Request, error), outputIsTTY func() bool) *cobra.Command {
-	a := command{env: env, runner: pixivcmd.New(env.Out, exec), fetchers: f, buildRequest: build, outputIsTTY: outputIsTTY}
+func newCommand(env command.Env, exec pixivcmd.Executor, f fetchers, build func(*cobra.Command, Options) (pixivcmd.Request, error), outputIsTTY func() bool) *cobra.Command {
+	a := commandRunner{env: env, runner: pixivcmd.New(env.Out, exec), fetchers: f, buildRequest: build, outputIsTTY: outputIsTTY}
 	options := Options{typ: "artwork"}
 	cmd := &cobra.Command{
 		Use:   "detail [ID_OR_URL]",
@@ -69,11 +69,11 @@ func newCommand(env commands.Env, exec pixivcmd.Executor, f fetchers, build func
 	env.BindTextOrRecord(cmd, 1, 1, 0)
 	cmd.Flags().StringVarP(&options.typ, "type", "t", options.typ, "entity type: artwork, novel, user")
 	cmd.Flags().BoolVar(&options.content, "content", false, "for novels, read structured novel content instead of metadata")
-	commands.Bind(cmd, commands.PixivData())
+	command.Bind(cmd, command.PixivData())
 	return cmd
 }
 
-func (a command) run(cmd *cobra.Command, args []string, opts Options) error {
+func (a commandRunner) run(cmd *cobra.Command, args []string, opts Options) error {
 	if cmd.Flags().Changed("json") && cmd.Flags().Changed("ndjson") {
 		return errors.New("--json and --ndjson cannot be used together")
 	}
@@ -110,7 +110,7 @@ func validateContentEntity(content bool, entity string) error {
 	return nil
 }
 
-func (a command) runRecords(cmd *cobra.Command, opts Options) error {
+func (a commandRunner) runRecords(cmd *cobra.Command, opts Options) error {
 	jsonOut, err := a.jsonOutput(cmd, opts)
 	if err != nil {
 		return err
@@ -183,7 +183,7 @@ func (a command) runRecords(cmd *cobra.Command, opts Options) error {
 	return nil
 }
 
-func (a command) jsonOutput(cmd *cobra.Command, opts Options) (bool, error) {
+func (a commandRunner) jsonOutput(cmd *cobra.Command, opts Options) (bool, error) {
 	var override *bool
 	if cmd.Flags().Changed("json") {
 		override = &opts.JSON
@@ -191,7 +191,7 @@ func (a command) jsonOutput(cmd *cobra.Command, opts Options) (bool, error) {
 	return a.env.JSONOut(override)
 }
 
-func (a command) runOne(cmd *cobra.Command, entity string, id int64, opts Options, recordMode bool) error {
+func (a commandRunner) runOne(cmd *cobra.Command, entity string, id int64, opts Options, recordMode bool) error {
 	jsonOut, err := a.jsonOutput(cmd, opts)
 	if err != nil {
 		return err
@@ -200,7 +200,7 @@ func (a command) runOne(cmd *cobra.Command, entity string, id int64, opts Option
 	return a.runOneWithOutput(cmd.Context(), cmd, entity, id, opts, ndjson, jsonOut && !recordMode)
 }
 
-func (a command) runOneWithOutput(ctx context.Context, cmd *cobra.Command, entity string, id int64, opts Options, ndjson, jsonOut bool) error {
+func (a commandRunner) runOneWithOutput(ctx context.Context, cmd *cobra.Command, entity string, id int64, opts Options, ndjson, jsonOut bool) error {
 	request, err := a.request(cmd, opts)
 	if err != nil {
 		return err
@@ -284,7 +284,7 @@ func (a command) runOneWithOutput(ctx context.Context, cmd *cobra.Command, entit
 	}
 }
 
-func (a command) request(cmd *cobra.Command, opts Options) (pixivcmd.Request, error) {
+func (a commandRunner) request(cmd *cobra.Command, opts Options) (pixivcmd.Request, error) {
 	if a.buildRequest != nil {
 		return a.buildRequest(cmd, opts)
 	}
@@ -320,7 +320,7 @@ func (f fetchers) userOr(ctx context.Context, client *pixiv.Client, id int64) (p
 	return client.User(ctx, pixiv.UserRequest{UserID: id})
 }
 
-func (a command) writeRecord(value record.Record) error {
+func (a commandRunner) writeRecord(value record.Record) error {
 	if err := json.NewEncoder(a.env.Out).Encode(value); err != nil {
 		return inputcmd.FatalRecordPipeline(err)
 	}

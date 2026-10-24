@@ -3,8 +3,10 @@ package post
 import (
 	"bytes"
 	"errors"
+	"io"
 	"testing"
 
+	commands "github.com/FlanChanXwO/pixiv-cli/internal/cli/internal/command"
 	"github.com/FlanChanXwO/pixiv-cli/internal/session"
 	"github.com/spf13/cobra"
 	"github.com/stretchr/testify/assert"
@@ -30,4 +32,16 @@ func TestCreatorsRejectsInvalidKindBeforeResolvingClient(t *testing.T) {
 
 	require.EqualError(t, err, "kind must be one of: supporting, following")
 	assert.Zero(t, serviceCalls)
+}
+
+type testData struct {
+	Reader    io.Reader
+	Writer    io.Writer
+	WrapUsage func(error) error
+	Service   func() (*session.Fanbox, error)
+}
+
+func newTestCommands(d testData) []*cobra.Command {
+	env := commands.Env{In: d.Reader, Out: d.Writer, Err: io.Discard, WrapUsage: d.WrapUsage}
+	return Commands(env, d.Service)
 }

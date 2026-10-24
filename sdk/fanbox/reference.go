@@ -6,7 +6,7 @@ import (
 	"net/url"
 	"strings"
 
-	protocol "github.com/FlanChanXwO/pixiv-cli/internal/fanboxapi"
+	"github.com/FlanChanXwO/pixiv-cli/internal/fanboxapi"
 	"github.com/FlanChanXwO/pixiv-cli/sdk"
 )
 
@@ -30,11 +30,16 @@ type Reference struct {
 	Tag       string
 }
 
+// ResolveURLRequest resolves a FANBOX URL into a typed reference.
+type ResolveURLRequest struct {
+	RawURL string
+}
+
 // ResolveURL parses a FANBOX page URL into a typed Reference. It performs no
 // network I/O and accepts HTTPS URLs on fanbox.cc hosts or the legacy Pixiv
 // FANBOX host. Unknown paths and ambiguous inputs return InvalidArgument.
 func (c *Client) ResolveURL(ctx context.Context, request ResolveURLRequest) (Reference, error) {
-	ctx = protocol.WithOperation(ctx, "ResolveURL")
+	ctx = fanboxapi.WithOperation(ctx, "ResolveURL")
 	parsed, err := url.Parse(strings.TrimSpace(request.RawURL))
 	if err != nil {
 		return Reference{}, newError("ResolveURL", sdk.InvalidArgument, errors.New("URL is not parseable"))

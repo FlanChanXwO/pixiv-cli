@@ -4,7 +4,7 @@ import (
 	"fmt"
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/cli/internal/input"
-	configapp "github.com/FlanChanXwO/pixiv-cli/internal/config/settings"
+	"github.com/FlanChanXwO/pixiv-cli/internal/config/settings"
 	"github.com/FlanChanXwO/pixiv-cli/internal/selfupdate"
 	"github.com/FlanChanXwO/pixiv-cli/internal/version"
 	"github.com/spf13/cobra"
@@ -76,7 +76,7 @@ func shouldCheck(cmd *cobra.Command) bool {
 	return true
 }
 
-func automaticProxy(cmd *cobra.Command, runtimeConfig configapp.RuntimeConfig) (string, error) {
+func automaticProxy(cmd *cobra.Command, runtimeConfig settings.RuntimeConfig) (string, error) {
 	proxyFlag := cmd.Flags().Lookup("proxy")
 	noProxyFlag := cmd.Flags().Lookup("no-proxy")
 	if proxyFlag == nil && noProxyFlag == nil {

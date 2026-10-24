@@ -7,7 +7,7 @@ import (
 	"fmt"
 	"time"
 
-	accountpixiv "github.com/FlanChanXwO/pixiv-cli/internal/pixivaccount"
+	"github.com/FlanChanXwO/pixiv-cli/internal/pixivaccount"
 	"github.com/FlanChanXwO/pixiv-cli/sdk"
 )
 
@@ -24,7 +24,7 @@ func retryAfterFor(err error, now time.Time) (time.Duration, bool) {
 }
 
 func mapSelectionError(err, lastRateLimit error, now time.Time) error {
-	var selectionErr *accountpixiv.PoolSelectionError
+	var selectionErr *pixivaccount.PoolSelectionError
 	if !errors.As(err, &selectionErr) {
 		if errors.Is(err, ErrAccountPoolExhausted) {
 			return poolExhaustedError(lastRateLimit, nil, now)
@@ -32,13 +32,13 @@ func mapSelectionError(err, lastRateLimit error, now time.Time) error {
 		return sdk.NewError("pixiv", "account_pool", sdk.LocalStateError, sdk.WithDetail("account_pool_state_error"), sdk.WithCause(err))
 	}
 	switch selectionErr.Kind {
-	case accountpixiv.PoolSelectionNoLocalAccount:
+	case pixivaccount.PoolSelectionNoLocalAccount:
 		return sdk.NewError("pixiv", "account_pool", sdk.Unauthorized, sdk.WithDetail("account_pool_no_local_account"))
-	case accountpixiv.PoolSelectionNoSchedulable:
+	case pixivaccount.PoolSelectionNoSchedulable:
 		return sdk.NewError("pixiv", "account_pool", sdk.LocalStateError, sdk.WithDetail("account_pool_no_schedulable_account"))
-	case accountpixiv.PoolSelectionAllFrozen:
+	case pixivaccount.PoolSelectionAllFrozen:
 		return poolSelectionRateLimit("account_pool_all_frozen", selectionErr.EarliestFrozenUntil, nil, now)
-	case accountpixiv.PoolSelectionExhausted:
+	case pixivaccount.PoolSelectionExhausted:
 		return poolExhaustedError(lastRateLimit, selectionErr.EarliestFrozenUntil, now)
 	default:
 		return fmt.Errorf("account pool state store returned unknown selection kind %q", selectionErr.Kind)

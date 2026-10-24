@@ -106,85 +106,27 @@ func appendTaggedFields(derived []settingSpecFromTags, structType reflect.Type, 
 		if !hasPath || rawPath == "-" {
 			continue
 		}
-		parts := strings.Split(rawPath, ".")
-		for _, part := range parts {
-			if strings.TrimSpace(part) == "" {
-				return nil, fmt.Errorf("config field %q: config path %q contains an empty segment", field.Name, rawPath)
-			}
+		parts, err := configPathParts(field, rawPath)
+		if err != nil {
+			return nil, err
 		}
 		fullPath := append(append([]string(nil), pathPrefix...), parts...)
 		fieldIndex := append(append([]int(nil), indexPrefix...), index)
-		nested := field.Type
-		if nested.Kind() == reflect.Pointer {
-			nested = nested.Elem()
-		}
-		if nested.Kind() == reflect.Struct && nested != reflect.TypeOf(OptionalString{}) {
-			for _, attribute := range []string{tagAlias, tagEnv, tagDefault, tagCLI, tagSecret, tagExample} {
-				if _, present := field.Tag.Lookup(attribute); present {
-					return nil, fmt.Errorf("config group %q cannot declare %s", field.Name, attribute)
-				}
+		nested, isGroup := configGroupType(field)
+		if isGroup {
+			if err := validateConfigGroup(field); err != nil {
+				return nil, err
 			}
-			var err error
 			derived, err = appendTaggedFields(derived, nested, fullPath, fieldIndex, ancestors...)
 			if err != nil {
 				return nil, err
 			}
 			continue
 		}
-		alias := Key(field.Tag.Get(tagAlias))
-		rawPath = strings.Join(fullPath, ".")
-		table, key, err := splitConfigPath(rawPath)
+		spec, err := settingSpecFromField(field, fullPath)
 		if err != nil {
-			return nil, fmt.Errorf("config field %q: %w", field.Name, err)
+			return nil, err
 		}
-		kind, err := kindForField(field)
-		if err != nil {
-			return nil, fmt.Errorf("config field %q: %w", field.Name, err)
-		}
-
-		spec := SettingSpec{
-			Alias:    alias,
-			TOMLPath: rawPath,
-			Table:    table,
-			Key:      key,
-			Kind:     kind,
-		}
-
-		// 2. 默认值：用标签**是否存在**判断，而不是"字符串是否为空"。
-		//    这样 default:"" / default:"false" / default:"0s" / default:"0" 都能与
-		//    "未声明 default" 明确区分。
-		if rawDefault, hasDefault := field.Tag.Lookup(tagDefault); hasDefault {
-			value, err := parseDefaultForField(field, kind, rawDefault)
-			if err != nil {
-				return nil, fmt.Errorf("config field %q (alias %q): %w", field.Name, alias, err)
-			}
-			spec.HasDefault = true
-			spec.Default = value
-		}
-
-		// 开发者属性仅接受 true/false，避免拼写错误静默关闭安全或公开行为。
-		// 这里不改变用户配置值的既有解析规则。
-		for _, attribute := range []string{tagCLI, tagSecret, tagExample} {
-			if raw, present := field.Tag.Lookup(attribute); present && raw != "true" && raw != "false" {
-				return nil, fmt.Errorf("config field %q: %s must be true or false", field.Name, attribute)
-			}
-		}
-		spec.CLIManaged = field.Tag.Get(tagCLI) == "true"
-		spec.Sensitive = field.Tag.Get(tagSecret) == "true"
-		spec.DefaultInFile = field.Tag.Get(tagExample) == "true"
-		if alias == "" && (spec.CLIManaged || spec.DefaultInFile || len(parseEnvTag(field.Tag.Get(tagEnv))) != 0) {
-			return nil, fmt.Errorf("config field %q: private leaf cannot declare public cli, example or env attributes", field.Name)
-		}
-
-		// 4. schema 校验：secret 与 example 冲突必须明确拒绝，而不是静默写出敏感值。
-		if spec.Sensitive && spec.DefaultInFile {
-			return nil, fmt.Errorf("config field %q (alias %q): secret and example cannot both be true", field.Name, alias)
-		}
-		// 5. example 必须以 default 为前提，否则初始文件无值可写。
-		if spec.DefaultInFile && !spec.HasDefault {
-			return nil, fmt.Errorf("config field %q (alias %q): example requires a default value", field.Name, alias)
-		}
-
 		derived = append(derived, settingSpecFromTags{
 			spec:       spec,
 			env:        parseEnvTag(field.Tag.Get(tagEnv)),
@@ -193,6 +135,81 @@ func appendTaggedFields(derived []settingSpecFromTags, structType reflect.Type, 
 		})
 	}
 	return derived, nil
+}
+
+func configPathParts(field reflect.StructField, rawPath string) ([]string, error) {
+	parts := strings.Split(rawPath, ".")
+	for _, part := range parts {
+		if strings.TrimSpace(part) == "" {
+			return nil, fmt.Errorf("config field %q: config path %q contains an empty segment", field.Name, rawPath)
+		}
+	}
+	return parts, nil
+}
+
+// configGroupType unwraps optional pointers and reports whether the field is a
+// nested configuration group; OptionalString is a value, not a group.
+func configGroupType(field reflect.StructField) (reflect.Type, bool) {
+	nested := field.Type
+	if nested.Kind() == reflect.Pointer {
+		nested = nested.Elem()
+	}
+	return nested, nested.Kind() == reflect.Struct && nested != reflect.TypeOf(OptionalString{})
+}
+
+func validateConfigGroup(field reflect.StructField) error {
+	for _, attribute := range []string{tagAlias, tagEnv, tagDefault, tagCLI, tagSecret, tagExample} {
+		if _, present := field.Tag.Lookup(attribute); present {
+			return fmt.Errorf("config group %q cannot declare %s", field.Name, attribute)
+		}
+	}
+	return nil
+}
+
+func settingSpecFromField(field reflect.StructField, fullPath []string) (SettingSpec, error) {
+	alias := Key(field.Tag.Get(tagAlias))
+	rawPath := strings.Join(fullPath, ".")
+	table, key, err := splitConfigPath(rawPath)
+	if err != nil {
+		return SettingSpec{}, fmt.Errorf("config field %q: %w", field.Name, err)
+	}
+	kind, err := kindForField(field)
+	if err != nil {
+		return SettingSpec{}, fmt.Errorf("config field %q: %w", field.Name, err)
+	}
+	spec := SettingSpec{
+		Alias:    alias,
+		TOMLPath: rawPath,
+		Table:    table,
+		Key:      key,
+		Kind:     kind,
+	}
+	if rawDefault, hasDefault := field.Tag.Lookup(tagDefault); hasDefault {
+		value, err := parseDefaultForField(field, kind, rawDefault)
+		if err != nil {
+			return SettingSpec{}, fmt.Errorf("config field %q (alias %q): %w", field.Name, alias, err)
+		}
+		spec.HasDefault = true
+		spec.Default = value
+	}
+	for _, attribute := range []string{tagCLI, tagSecret, tagExample} {
+		if raw, present := field.Tag.Lookup(attribute); present && raw != "true" && raw != "false" {
+			return SettingSpec{}, fmt.Errorf("config field %q: %s must be true or false", field.Name, attribute)
+		}
+	}
+	spec.CLIManaged = field.Tag.Get(tagCLI) == "true"
+	spec.Sensitive = field.Tag.Get(tagSecret) == "true"
+	spec.DefaultInFile = field.Tag.Get(tagExample) == "true"
+	if alias == "" && (spec.CLIManaged || spec.DefaultInFile || len(parseEnvTag(field.Tag.Get(tagEnv))) != 0) {
+		return SettingSpec{}, fmt.Errorf("config field %q: private leaf cannot declare public cli, example or env attributes", field.Name)
+	}
+	if spec.Sensitive && spec.DefaultInFile {
+		return SettingSpec{}, fmt.Errorf("config field %q (alias %q): secret and example cannot both be true", field.Name, alias)
+	}
+	if spec.DefaultInFile && !spec.HasDefault {
+		return SettingSpec{}, fmt.Errorf("config field %q (alias %q): example requires a default value", field.Name, alias)
+	}
+	return spec, nil
 }
 
 // parseEnvTag 拆分 env 标签：逗号分隔，去空白，保持声明顺序。

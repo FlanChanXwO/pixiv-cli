@@ -194,8 +194,8 @@ func match(item any, filters value) (string, bool) {
 			return "", false
 		}
 		kind := string(value.Kind)
-		if kind == "" {
-			kind = string(pixiv.ArtworkKindIllustration)
+		if kind == "" || kind == string(pixiv.ArtworkKindIllustration) {
+			kind = "illust"
 		}
 		return fmt.Sprintf("%s:%d", kind, value.ID), true
 	case pixiv.Novel:
@@ -226,8 +226,10 @@ func MatchesIllust(item pixiv.Artwork, filter *IllustFilter) bool {
 		if kind == "" {
 			kind = string(pixiv.ArtworkKindIllustration)
 		}
-		// 上游 kind 渲染为 "illustration"，而 MCP 枚举使用 "illust"；两者等价。
-		if kind != filter.Type && (kind != string(pixiv.ArtworkKindIllustration) || filter.Type != "illust") {
+		if kind == string(pixiv.ArtworkKindIllustration) {
+			kind = "illust"
+		}
+		if kind != filter.Type {
 			return false
 		}
 	}

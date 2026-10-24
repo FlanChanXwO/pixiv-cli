@@ -9,14 +9,13 @@ import (
 	"strings"
 	"time"
 
-	commands "github.com/FlanChanXwO/pixiv-cli/internal/cli/internal/command"
+	"github.com/FlanChanXwO/pixiv-cli/internal/cli/internal/command"
 	pixivcmd "github.com/FlanChanXwO/pixiv-cli/internal/cli/internal/pixivcmd"
 	"github.com/FlanChanXwO/pixiv-cli/internal/cli/user"
-	textutil "github.com/FlanChanXwO/pixiv-cli/internal/plaintext"
+	"github.com/FlanChanXwO/pixiv-cli/internal/plaintext"
 	record "github.com/FlanChanXwO/pixiv-cli/internal/record"
 	"github.com/FlanChanXwO/pixiv-cli/internal/reversesearch"
 	"github.com/FlanChanXwO/pixiv-cli/internal/searchfilter"
-	dateutil "github.com/FlanChanXwO/pixiv-cli/internal/searchfilter"
 	"github.com/FlanChanXwO/pixiv-cli/sdk"
 	pixiv "github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
 	"github.com/spf13/cobra"
@@ -30,7 +29,7 @@ const (
 )
 
 type options struct {
-	commands.Options
+	command.Options
 	ndjson           bool
 	limit            int
 	page             int
@@ -56,16 +55,16 @@ type options struct {
 // ReverseSearchPort performs one reverse image search without opening Pixiv.
 type ReverseSearchPort func(context.Context, ReverseSearchRequest) (reversesearch.Response, error)
 
-type command struct {
-	env           commands.Env
+type commandRunner struct {
+	env           command.Env
 	runner        pixivcmd.Runner
 	exec          pixivcmd.Executor
 	reverseSearch ReverseSearchPort
 }
 
 // New builds the actual root `pixiv search` command.
-func New(env commands.Env, exec pixivcmd.Executor, reverseSearch ReverseSearchPort) *cobra.Command {
-	a := command{env: env, runner: pixivcmd.New(env.Out, exec), exec: exec, reverseSearch: reverseSearch}
+func New(env command.Env, exec pixivcmd.Executor, reverseSearch ReverseSearchPort) *cobra.Command {
+	a := commandRunner{env: env, runner: pixivcmd.New(env.Out, exec), exec: exec, reverseSearch: reverseSearch}
 	opts := options{
 		searchBy:    searchTargetTagPartial,
 		sortMode:    string(pixiv.SortModeDateDesc),
@@ -99,7 +98,7 @@ func New(env commands.Env, exec pixivcmd.Executor, reverseSearch ReverseSearchPo
 	flags.StringVar(&opts.endDate, "end-date", "", "inclusive end date: YYYY-MM-DD")
 	flags.StringVar(&opts.rating, "rating", "", "local rating filter: sfw, r18, r18g, mature, all")
 	flags.StringVarP(&opts.typ, "type", "t", opts.typ, "entity type: artwork, novel, user")
-	flags.StringVar(&opts.contentType, "content-type", opts.contentType, "artwork type filter: all, illust-and-ugoira, illust/illustration, manga, ugoira")
+	flags.StringVar(&opts.contentType, "content-type", opts.contentType, "artwork type filter: all, illust-and-ugoira, illust, manga, ugoira")
 	flags.BoolVar(&opts.trendingTags, "trending-tags", false, "return the complete current artwork trending-tag list; WORD and list pagination are not accepted")
 	flags.StringVar(&opts.resolution, "resolution", opts.resolution, "resolution filter: all, high, medium, low")
 	flags.StringVar(&opts.aspectRatio, "aspect-ratio", opts.aspectRatio, "aspect ratio filter: all, landscape, portrait, square")
@@ -111,11 +110,80 @@ func New(env commands.Env, exec pixivcmd.Executor, reverseSearch ReverseSearchPo
 	flags.StringVar(&opts.provider, "provider", "", "reverse search provider: saucenao, ascii2d-color, ascii2d-bovw, all")
 	pixivcmd.BindListFlags(cmd, &opts.limit, &opts.page)
 	env.BindTextValueWhen(cmd, 1, 1, 0, func(_ *cobra.Command, _ []string) bool { return !opts.trendingTags })
-	commands.Bind(cmd, commands.PixivData())
+	command.Bind(cmd, command.PixivData())
 	return cmd
 }
 
-func (a command) run(cmd *cobra.Command, args []string, opts options) error {
+// artworkSearchParams 收集 artwork 搜索在解析 flag 后的查询、分页和输出参数。
+type artworkSearchParams struct {
+	request     pixivcmd.Request
+	plan        pixivcmd.Plan
+	word        string
+	period      pixiv.DurationFilter
+	startDate   string
+	endDate     string
+	aiMode      pixiv.SearchAIMode
+	aspectRatio pixiv.SearchAspectRatio
+	resolution  pixiv.SearchResolution
+	bookmarkMin *int
+	bookmarkMax *int
+	jsonOut     bool
+	ndjson      bool
+}
+
+func (a commandRunner) artworkSearchParams(cmd *cobra.Command, opts options) (artworkSearchParams, error) {
+	aiMode, err := resolveAIMode(opts.aiMode)
+	if err != nil {
+		return artworkSearchParams{}, err
+	}
+	aspectRatio, err := resolveAspectRatio(opts.aspectRatio)
+	if err != nil {
+		return artworkSearchParams{}, err
+	}
+	resolution, err := resolveResolution(opts.resolution)
+	if err != nil {
+		return artworkSearchParams{}, err
+	}
+	period, err := resolvePeriod(opts.period)
+	if err != nil {
+		return artworkSearchParams{}, err
+	}
+	period, startDate, endDate, err := resolveDateRange(opts, period)
+	if err != nil {
+		return artworkSearchParams{}, err
+	}
+	bookmarkMin, bookmarkMax, err := resolveBookmarkRange(cmd, opts)
+	if err != nil {
+		return artworkSearchParams{}, err
+	}
+	plan, err := pixivcmd.ParsePlan(cmd, opts.limit, opts.page)
+	if err != nil {
+		return artworkSearchParams{}, err
+	}
+	request, err := pixivcmd.BuildRequest(cmd, opts.Options)
+	if err != nil {
+		return artworkSearchParams{}, err
+	}
+	if opts.ndjson && cmd.Flags().Changed("json") {
+		return artworkSearchParams{}, a.env.UsageError(errors.New("--ndjson cannot be used with --json"))
+	}
+	jsonOut := false
+	if !opts.ndjson {
+		jsonOut, err = a.env.JSONOut(a.env.JSONOverride(cmd, opts.Options))
+		if err != nil {
+			return artworkSearchParams{}, err
+		}
+	}
+	return artworkSearchParams{
+		request: request, plan: plan,
+		period: period, startDate: startDate, endDate: endDate, aiMode: aiMode,
+		aspectRatio: aspectRatio, resolution: resolution,
+		bookmarkMin: bookmarkMin, bookmarkMax: bookmarkMax,
+		jsonOut: jsonOut, ndjson: a.env.AutoNDJSON(cmd, opts.ndjson, jsonOut),
+	}, nil
+}
+
+func (a commandRunner) run(cmd *cobra.Command, args []string, opts options) error {
 	if source := strings.Join(args, " "); isReverseSearchSource(source) {
 		return a.runReverseSearch(cmd, source, opts)
 	}
@@ -162,57 +230,17 @@ func (a command) run(cmd *cobra.Command, args []string, opts options) error {
 	if err != nil {
 		return err
 	}
-	contentType := pixiv.SearchContentType(artworkFilter.ContentType)
-	aiMode, err := resolveAIMode(opts.aiMode)
+	params, err := a.artworkSearchParams(cmd, opts)
 	if err != nil {
 		return err
 	}
-	aspectRatio, err := resolveAspectRatio(opts.aspectRatio)
-	if err != nil {
-		return err
-	}
-	resolution, err := resolveResolution(opts.resolution)
-	if err != nil {
-		return err
-	}
-	period, err := resolvePeriod(opts.period)
-	if err != nil {
-		return err
-	}
-	period, startDate, endDate, err := resolveDateRange(opts, period)
-	if err != nil {
-		return err
-	}
-	bookmarkMin, bookmarkMax, err := resolveBookmarkRange(cmd, opts)
-	if err != nil {
-		return err
-	}
-	word := strings.Join(args, " ")
-	plan, err := pixivcmd.ParsePlan(cmd, opts.limit, opts.page)
-	if err != nil {
-		return err
-	}
-	clientReq, err := pixivcmd.BuildRequest(cmd, opts.Options)
-	if err != nil {
-		return err
-	}
-	jsonOverride := a.env.JSONOverride(cmd, opts.Options)
-	if opts.ndjson && cmd.Flags().Changed("json") {
-		return a.env.UsageError(errors.New("--ndjson cannot be used with --json"))
-	}
-	jsonOut := false
-	if !opts.ndjson {
-		jsonOut, err = a.env.JSONOut(jsonOverride)
-		if err != nil {
-			return err
-		}
-	}
-	ndjson := a.env.AutoNDJSON(cmd, opts.ndjson, jsonOut)
+	params.word = strings.Join(args, " ")
 	query := pixiv.SearchArtworksRequest{
-		Word: word, Target: target, Sort: pixiv.SortMode(opts.sortMode),
-		Duration: period, StartDate: startDate, EndDate: endDate,
-		ContentType: contentType, AIMode: aiMode, AspectRatio: aspectRatio, Resolution: resolution,
-		Tool: opts.drawTool, BookmarkMin: bookmarkMin, BookmarkMax: bookmarkMax,
+		Word: params.word, Target: target, Sort: pixiv.SortMode(opts.sortMode),
+		Duration: params.period, StartDate: params.startDate, EndDate: params.endDate,
+		ContentType: pixiv.SearchContentType(artworkFilter.ContentType), AIMode: params.aiMode,
+		AspectRatio: params.aspectRatio, Resolution: params.resolution,
+		Tool: opts.drawTool, BookmarkMin: params.bookmarkMin, BookmarkMax: params.bookmarkMax,
 	}
 	var include func(pixiv.Artwork) (bool, error)
 	if artworkFilter.Rating != searchfilter.RatingAll {
@@ -223,22 +251,22 @@ func (a command) run(cmd *cobra.Command, args []string, opts options) error {
 			return artworkFilter.Matches(item.XRestrict, string(item.Kind)), nil
 		}
 	}
-	if bookmarkMin != nil || bookmarkMax != nil || cmd.Flags().Changed("bookmark-strategy") {
-		if bookmarkMin == nil && bookmarkMax == nil {
+	if params.bookmarkMin != nil || params.bookmarkMax != nil || cmd.Flags().Changed("bookmark-strategy") {
+		if params.bookmarkMin == nil && params.bookmarkMax == nil {
 			return errors.New("--bookmark-strategy requires --bookmark-min or --bookmark-max")
 		}
 		strategy, err := resolveBookmarkFilterStrategy(opts.bookmarkStrategy)
 		if err != nil {
 			return err
 		}
-		return a.runBookmarkFiltered(cmd, clientReq, plan, jsonOut, ndjson, word, query, strategy, include)
+		return a.runBookmarkFiltered(cmd, params.request, params.plan, params.jsonOut, params.ndjson, params.word, query, strategy, include)
 	}
 	if include != nil {
-		return a.runLocallyFiltered(cmd, clientReq, plan, jsonOut, ndjson, word, query, include)
+		return a.runLocallyFiltered(cmd, params.request, params.plan, params.jsonOut, params.ndjson, params.word, query, include)
 	}
-	if aiMode != pixiv.SearchAIModeOnly && plan.PagePlan().Skip > 0 {
+	if params.aiMode != pixiv.SearchAIModeOnly && params.plan.PagePlan().Skip > 0 {
 		// AI-only 在 SDK 内本地过滤，不能把过滤后的逻辑位置当作原始 offset。
-		plan, query.Offset = plan.PushDownSkip()
+		params.plan, query.Offset = params.plan.PushDownSkip()
 	}
 	fetch := func(client *pixiv.Client, ctx context.Context, cursor sdk.Cursor) ([]pixiv.Artwork, sdk.Cursor, error) {
 		request := query
@@ -249,7 +277,7 @@ func (a command) run(cmd *cobra.Command, args []string, opts options) error {
 		}
 		return result.Items, result.Next, nil
 	}
-	return a.runner.RunArtworks(cmd.Context(), clientReq, plan, pixivcmd.FormatOf(jsonOut, ndjson), pixivcmd.ArtworkList{Heading: pixivcmd.Static(fmt.Sprintf("illustrations for %q", word)), Fetch: fetch, Print: func(items []pixiv.Artwork, start int) error { return pixivcmd.PrintArtworksSearch(a.env.Out, items) }})
+	return a.runner.RunArtworks(cmd.Context(), params.request, params.plan, pixivcmd.FormatOf(params.jsonOut, params.ndjson), pixivcmd.ArtworkList{Heading: pixivcmd.Static(fmt.Sprintf("illustrations for %q", params.word)), Fetch: fetch, Print: func(items []pixiv.Artwork, start int) error { return pixivcmd.PrintArtworksSearch(a.env.Out, items) }})
 }
 
 type artworkSearchOut struct {
@@ -267,7 +295,7 @@ type bookmarkFilterJSON struct {
 
 // runBookmarkFiltered 在 CLI adapter 内完成 bookmark 区间过滤；输出形态与
 // 过滤元数据仍由 CLI 保持。
-func (a command) runBookmarkFiltered(cmd *cobra.Command, account pixivcmd.Request, plan pixivcmd.Plan, jsonOut, ndjson bool, word string, query pixiv.SearchArtworksRequest, strategy bookmarkFilterStrategy, include func(pixiv.Artwork) (bool, error)) error {
+func (a commandRunner) runBookmarkFiltered(cmd *cobra.Command, account pixivcmd.Request, plan pixivcmd.Plan, jsonOut, ndjson bool, word string, query pixiv.SearchArtworksRequest, strategy bookmarkFilterStrategy, include func(pixiv.Artwork) (bool, error)) error {
 	outcome, err := searchArtworks(cmd.Context(), a.runner.Execute(account), artworkSearchRequest{
 		Query:      query,
 		Plan:       plan.PagePlan(),
@@ -281,7 +309,7 @@ func (a command) runBookmarkFiltered(cmd *cobra.Command, account pixivcmd.Reques
 	return a.writeArtworkResults(jsonOut, ndjson, word, outcome.Page.Items, outcome.Filter)
 }
 
-func (a command) runLocallyFiltered(cmd *cobra.Command, account pixivcmd.Request, plan pixivcmd.Plan, jsonOut, ndjson bool, word string, query pixiv.SearchArtworksRequest, include func(pixiv.Artwork) (bool, error)) error {
+func (a commandRunner) runLocallyFiltered(cmd *cobra.Command, account pixivcmd.Request, plan pixivcmd.Plan, jsonOut, ndjson bool, word string, query pixiv.SearchArtworksRequest, include func(pixiv.Artwork) (bool, error)) error {
 	outcome, err := searchArtworks(cmd.Context(), a.runner.Execute(account), artworkSearchRequest{
 		Query:   query,
 		Plan:    plan.PagePlan(),
@@ -293,7 +321,7 @@ func (a command) runLocallyFiltered(cmd *cobra.Command, account pixivcmd.Request
 	return a.writeArtworkResults(jsonOut, ndjson, word, outcome.Page.Items, nil)
 }
 
-func (a command) writeArtworkResults(jsonOut, ndjson bool, word string, items []pixiv.Artwork, bookmark *bookmarkFilterOutcome) error {
+func (a commandRunner) writeArtworkResults(jsonOut, ndjson bool, word string, items []pixiv.Artwork, bookmark *bookmarkFilterOutcome) error {
 	if ndjson {
 		encoder := json.NewEncoder(a.env.Out)
 		for _, item := range items {
@@ -324,7 +352,7 @@ func (a command) writeArtworkResults(jsonOut, ndjson bool, word string, items []
 	return pixivcmd.PrintArtworksSearch(a.env.Out, items)
 }
 
-func (a command) runTrendingTags(cmd *cobra.Command, options commands.Options) error {
+func (a commandRunner) runTrendingTags(cmd *cobra.Command, options command.Options) error {
 	request, err := pixivcmd.BuildRequest(cmd, options)
 	if err != nil {
 		return err
@@ -354,7 +382,7 @@ func (a command) runTrendingTags(cmd *cobra.Command, options commands.Options) e
 		if translated == "" {
 			translated = "none"
 		}
-		if _, err := fmt.Fprintf(a.env.Out, "%s (translation: %s)\n", textutil.SafeLine(tag.Tag), textutil.SafeLine(translated)); err != nil {
+		if _, err := fmt.Fprintf(a.env.Out, "%s (translation: %s)\n", plaintext.SafeLine(tag.Tag), plaintext.SafeLine(translated)); err != nil {
 			return err
 		}
 	}
@@ -537,9 +565,9 @@ func quickDateRange(value string, now time.Time) (startDate, endDate string, ok 
 	var start time.Time
 	switch value {
 	case "within_half_year":
-		start = dateutil.AddMonthsClamped(today, -6)
+		start = searchfilter.AddMonthsClamped(today, -6)
 	case "within_year":
-		start = dateutil.AddMonthsClamped(today, -12)
+		start = searchfilter.AddMonthsClamped(today, -12)
 	default:
 		return "", "", false
 	}

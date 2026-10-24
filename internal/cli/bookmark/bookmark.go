@@ -2,18 +2,16 @@
 package bookmark
 
 import (
-	"bytes"
 	"context"
 	"errors"
 	"fmt"
 	"io"
 	"strings"
 
-	commands "github.com/FlanChanXwO/pixiv-cli/internal/cli/internal/command"
+	"github.com/FlanChanXwO/pixiv-cli/internal/cli/internal/command"
 	inputcmd "github.com/FlanChanXwO/pixiv-cli/internal/cli/internal/input"
 	pixivcmd "github.com/FlanChanXwO/pixiv-cli/internal/cli/internal/pixivcmd"
 	"github.com/FlanChanXwO/pixiv-cli/internal/cli/internal/resolver"
-	"github.com/FlanChanXwO/pixiv-cli/internal/pagination"
 	record "github.com/FlanChanXwO/pixiv-cli/internal/record"
 	"github.com/FlanChanXwO/pixiv-cli/sdk"
 	pixiv "github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
@@ -35,7 +33,7 @@ var novelRecordTypes = map[string]struct{}{
 }
 
 type listOptions struct {
-	commands.Options
+	command.Options
 	ndjson   bool
 	limit    int
 	page     int
@@ -45,15 +43,15 @@ type listOptions struct {
 }
 
 type mutationOptions struct {
-	commands.Options
+	command.Options
 	typ      string
 	restrict string
 	tags     []string
 	onError  string
 }
 
-type command struct {
-	env    commands.Env
+type commandRunner struct {
+	env    command.Env
 	runner pixivcmd.Runner
 	exec   pixivcmd.Executor
 }
@@ -95,15 +93,15 @@ func (c bookmarkStreamCursor) String() string {
 }
 
 // New builds the actual `pixiv bookmark` group command.
-func New(env commands.Env, exec pixivcmd.Executor) *cobra.Command {
-	a := command{env: env, runner: pixivcmd.New(env.Out, exec), exec: exec}
+func New(env command.Env, exec pixivcmd.Executor) *cobra.Command {
+	a := commandRunner{env: env, runner: pixivcmd.New(env.Out, exec), exec: exec}
 	cmd := &cobra.Command{Use: "bookmark", Short: "Manage artwork and novel bookmarks"}
 	cmd.AddCommand(a.newList(), a.newTags(), a.newDetail(), a.newAdd(), a.newRemove())
 	env.BindNoInput(cmd)
 	return cmd
 }
 
-func (a command) newList() *cobra.Command {
+func (a commandRunner) newList() *cobra.Command {
 	opts := listOptions{typ: "artwork", restrict: string(pixiv.RestrictPublic)}
 	cmd := &cobra.Command{
 		Use:   "list [USER_ID_OR_URL]",
@@ -118,11 +116,11 @@ func (a command) newList() *cobra.Command {
 	cmd.Flags().StringVar(&opts.restrict, "restrict", opts.restrict, "bookmark visibility (public or private)")
 	cmd.Flags().StringVar(&opts.tag, "tag", "", "filter by bookmark tag")
 	a.env.BindTextOrRecord(cmd, 0, 1, 0)
-	commands.Bind(cmd, commands.PixivData())
+	command.Bind(cmd, command.PixivData())
 	return cmd
 }
 
-func (a command) newTags() *cobra.Command {
+func (a commandRunner) newTags() *cobra.Command {
 	opts := listOptions{typ: "artwork", restrict: string(pixiv.RestrictPublic)}
 	cmd := &cobra.Command{
 		Use:   "tags [USER_ID_OR_URL]",
@@ -136,12 +134,12 @@ func (a command) newTags() *cobra.Command {
 	cmd.Flags().StringVarP(&opts.typ, "type", "t", opts.typ, "entity type: artwork, novel, or all")
 	cmd.Flags().StringVar(&opts.restrict, "restrict", opts.restrict, "bookmark visibility (public or private)")
 	a.env.BindTextOrRecord(cmd, 0, 1, 0)
-	commands.Bind(cmd, commands.PixivData())
+	command.Bind(cmd, command.PixivData())
 	return cmd
 }
 
-func (a command) newDetail() *cobra.Command {
-	options := commands.Options{}
+func (a commandRunner) newDetail() *cobra.Command {
+	options := command.Options{}
 	typ := "artwork"
 	cmd := &cobra.Command{
 		Use:   "detail ARTWORK_ID_OR_NOVEL_ID_OR_URL",
@@ -209,11 +207,11 @@ func (a command) newDetail() *cobra.Command {
 	a.env.BindCommonFlags(cmd, &options)
 	cmd.Flags().StringVarP(&typ, "type", "t", typ, "entity type: artwork or novel")
 	a.env.BindTextOrRecord(cmd, 0, 1, 0)
-	commands.Bind(cmd, commands.PixivData())
+	command.Bind(cmd, command.PixivData())
 	return cmd
 }
 
-func (a command) bookmarkDetailInput(cmd *cobra.Command, args []string, typ string) (resolver.Input, error) {
+func (a commandRunner) bookmarkDetailInput(cmd *cobra.Command, args []string, typ string) (resolver.Input, error) {
 	input := resolver.Input{Type: typ}
 	if inputcmd.ModeOf(cmd) == inputcmd.RecordMode {
 		body, err := io.ReadAll(inputcmd.Reader(cmd, a.env.In))
@@ -274,7 +272,7 @@ func bookmarkMutationType(typ string) (string, error) {
 	}
 }
 
-func (a command) newAdd() *cobra.Command {
+func (a commandRunner) newAdd() *cobra.Command {
 	opts := mutationOptions{typ: "artwork", restrict: string(pixiv.RestrictPublic)}
 	cmd := &cobra.Command{
 		Use:   "add [ARTWORK_ID_OR_NOVEL_ID]",
@@ -316,11 +314,11 @@ func (a command) newAdd() *cobra.Command {
 	cmd.Flags().StringArrayVar(&opts.tags, "tag", nil, "bookmark tag; may be repeated")
 	cmd.Flags().StringVar(&opts.onError, "on-error", "skip", "record failure strategy: skip or fail-fast")
 	a.env.BindTextOrRecord(cmd, 0, 1, 0)
-	commands.Bind(cmd, commands.PixivData())
+	command.Bind(cmd, command.PixivData())
 	return cmd
 }
 
-func (a command) newRemove() *cobra.Command {
+func (a commandRunner) newRemove() *cobra.Command {
 	opts := mutationOptions{typ: "artwork"}
 	cmd := &cobra.Command{
 		Use:   "remove [ARTWORK_ID_OR_NOVEL_ID]",
@@ -360,17 +358,17 @@ func (a command) newRemove() *cobra.Command {
 	cmd.Flags().StringVarP(&opts.typ, "type", "t", opts.typ, "entity type: artwork or novel")
 	cmd.Flags().StringVar(&opts.onError, "on-error", "skip", "record failure strategy: skip or fail-fast")
 	a.env.BindTextOrRecord(cmd, 0, 1, 0)
-	commands.Bind(cmd, commands.PixivData())
+	command.Bind(cmd, command.PixivData())
 	return cmd
 }
 
-func (a command) bindListFlags(cmd *cobra.Command, opts *listOptions) {
+func (a commandRunner) bindListFlags(cmd *cobra.Command, opts *listOptions) {
 	a.env.BindCommonFlags(cmd, &opts.Options)
 	pixivcmd.BindNDJSONFlag(cmd, &opts.ndjson)
 	pixivcmd.BindListFlags(cmd, &opts.limit, &opts.page)
 }
 
-func (a command) runList(cmd *cobra.Command, args []string, opts listOptions) error {
+func (a commandRunner) runList(cmd *cobra.Command, args []string, opts listOptions) error {
 	switch opts.typ {
 	case "artwork":
 		return a.runArtworkList(cmd, args, opts)
@@ -381,252 +379,6 @@ func (a command) runList(cmd *cobra.Command, args []string, opts listOptions) er
 	default:
 		return errors.New("bookmark list type must be one of artwork, novel, all")
 	}
-}
-
-func (a command) runAllList(cmd *cobra.Command, args []string, opts listOptions) error {
-	plan, err := pixivcmd.ParsePlan(cmd, opts.limit, opts.page)
-	if err != nil {
-		return err
-	}
-	var userID int64
-	if len(args) == 1 || inputcmd.ModeOf(cmd) == inputcmd.RecordMode {
-		userID, err = a.resolveBookmarkUserID(cmd, args, opts.typ, bookmarkListContract())
-		if err != nil {
-			return err
-		}
-	}
-	request, err := pixivcmd.BuildRequest(cmd, opts.Options)
-	if err != nil {
-		return err
-	}
-	if opts.ndjson && cmd.Flags().Changed("json") {
-		return a.env.UsageError(errors.New("--ndjson cannot be used with --json"))
-	}
-	jsonOut := false
-	if !opts.ndjson {
-		jsonOut, err = a.env.JSONOut(a.env.JSONOverride(cmd, opts.Options))
-		if err != nil {
-			return err
-		}
-	}
-	ndjson := a.env.AutoNDJSON(cmd, opts.ndjson, jsonOut)
-
-	return a.exec(cmd.Context(), request, func(ctx context.Context, client *pixiv.Client) (bool, error) {
-		attemptUserID := userID
-		if attemptUserID == 0 {
-			resolvedUserID, err := pixivcmd.CurrentUserID(client)
-			if err != nil {
-				return false, err
-			}
-			attemptUserID = resolvedUserID
-		}
-		streams := []pagination.Stream[bookmarkListItem, bookmarkStreamCursor]{
-			bookmarkArtworkStream(client, attemptUserID, opts),
-			bookmarkNovelStream(client, attemptUserID, opts),
-		}
-		items, _, _, err := pagination.CollectStreams(ctx, plan.PagePlan(), streams)
-		if err != nil {
-			return false, err
-		}
-
-		var staged bytes.Buffer
-		if ndjson {
-			for _, item := range items {
-				value, err := item.record()
-				if err != nil {
-					return false, err
-				}
-				if err := pixivcmd.WriteJSONLine(&staged, value); err != nil {
-					return false, err
-				}
-			}
-		} else if jsonOut {
-			records := make([]record.Record, 0, len(items))
-			for _, item := range items {
-				value, err := item.record()
-				if err != nil {
-					return false, err
-				}
-				records = append(records, value)
-			}
-			if err := pixivcmd.WriteJSONValue(&staged, struct {
-				Records []record.Record `json:"records"`
-			}{Records: records}); err != nil {
-				return false, err
-			}
-		} else {
-			for _, item := range items {
-				var err error
-				switch item.kind {
-				case "artwork":
-					err = pixivcmd.PrintArtworks(&staged, []pixiv.Artwork{item.artwork})
-				case "novel":
-					err = pixivcmd.PrintNovels(&staged, []pixiv.Novel{item.novel})
-				}
-				if err != nil {
-					return false, err
-				}
-			}
-		}
-		_, err = io.Copy(a.env.Out, &staged)
-		return true, err
-	})
-}
-
-func bookmarkArtworkStream(client *pixiv.Client, userID int64, opts listOptions) pagination.Stream[bookmarkListItem, bookmarkStreamCursor] {
-	return pagination.Stream[bookmarkListItem, bookmarkStreamCursor]{
-		Fetch: func(ctx context.Context, cursor bookmarkStreamCursor) ([]bookmarkListItem, bookmarkStreamCursor, error) {
-			result, err := client.UserArtworkBookmarks(ctx, pixiv.UserArtworkBookmarksRequest{
-				UserID: userID, Restrict: pixiv.Restrict(opts.restrict), Tag: opts.tag, Cursor: cursor.upstream,
-			})
-			if err != nil {
-				return nil, bookmarkStreamCursor{}, err
-			}
-			if cursor.consumed > len(result.Items) {
-				return nil, bookmarkStreamCursor{}, errors.New("bookmark artwork checkpoint exceeds upstream batch")
-			}
-			items := make([]bookmarkListItem, 0, len(result.Items)-cursor.consumed)
-			for _, item := range result.Items[cursor.consumed:] {
-				items = append(items, bookmarkListItem{kind: "artwork", artwork: item})
-			}
-			return items, bookmarkStreamCursor{upstream: result.Next}, nil
-		},
-		Checkpoint: bookmarkCheckpoint,
-	}
-}
-
-func bookmarkNovelStream(client *pixiv.Client, userID int64, opts listOptions) pagination.Stream[bookmarkListItem, bookmarkStreamCursor] {
-	return pagination.Stream[bookmarkListItem, bookmarkStreamCursor]{
-		Fetch: func(ctx context.Context, cursor bookmarkStreamCursor) ([]bookmarkListItem, bookmarkStreamCursor, error) {
-			result, err := client.UserNovelBookmarks(ctx, pixiv.UserNovelBookmarksRequest{
-				UserID: userID, Restrict: pixiv.Restrict(opts.restrict), Tag: opts.tag, Cursor: cursor.upstream,
-			})
-			if err != nil {
-				return nil, bookmarkStreamCursor{}, err
-			}
-			if cursor.consumed > len(result.Items) {
-				return nil, bookmarkStreamCursor{}, errors.New("bookmark novel checkpoint exceeds upstream batch")
-			}
-			items := make([]bookmarkListItem, 0, len(result.Items)-cursor.consumed)
-			for _, item := range result.Items[cursor.consumed:] {
-				items = append(items, bookmarkListItem{kind: "novel", novel: item})
-			}
-			return items, bookmarkStreamCursor{upstream: result.Next}, nil
-		},
-		Checkpoint: bookmarkCheckpoint,
-	}
-}
-
-func bookmarkCheckpoint(cursor bookmarkStreamCursor, position int) (bookmarkStreamCursor, error) {
-	if position <= 0 {
-		return bookmarkStreamCursor{}, errors.New("bookmark checkpoint position must be positive")
-	}
-	return bookmarkStreamCursor{upstream: cursor.upstream, consumed: cursor.consumed + position}, nil
-}
-
-func (item bookmarkListItem) record() (record.Record, error) {
-	switch item.kind {
-	case "artwork":
-		return record.RecordFromArtwork(item.artwork)
-	case "novel":
-		return record.RecordFromNovel(item.novel)
-	default:
-		return record.Record{}, fmt.Errorf("unsupported bookmark item kind %q", item.kind)
-	}
-}
-
-func (a command) runArtworkList(cmd *cobra.Command, args []string, opts listOptions) error {
-	plan, err := pixivcmd.ParsePlan(cmd, opts.limit, opts.page)
-	if err != nil {
-		return err
-	}
-	var requestedUserID int64
-	if len(args) == 1 || inputcmd.ModeOf(cmd) == inputcmd.RecordMode {
-		requestedUserID, err = a.resolveBookmarkUserID(cmd, args, opts.typ, bookmarkListContract())
-		if err != nil {
-			return err
-		}
-	}
-	request, err := pixivcmd.BuildRequest(cmd, opts.Options)
-	if err != nil {
-		return err
-	}
-	if opts.ndjson && cmd.Flags().Changed("json") {
-		return a.env.UsageError(errors.New("--ndjson cannot be used with --json"))
-	}
-	jsonOut := false
-	if !opts.ndjson {
-		jsonOut, err = a.env.JSONOut(a.env.JSONOverride(cmd, opts.Options))
-		if err != nil {
-			return err
-		}
-	}
-	ndjson := a.env.AutoNDJSON(cmd, opts.ndjson, jsonOut)
-	userID := requestedUserID
-	fetch := func(client *pixiv.Client, ctx context.Context, cursor sdk.Cursor) ([]pixiv.Artwork, sdk.Cursor, error) {
-		if userID == 0 {
-			userID, err = pixivcmd.CurrentUserID(client)
-			if err != nil {
-				return nil, sdk.Cursor{}, err
-			}
-		}
-		result, err := client.UserArtworkBookmarks(ctx, pixiv.UserArtworkBookmarksRequest{UserID: userID, Restrict: pixiv.Restrict(opts.restrict), Tag: opts.tag, Cursor: cursor})
-		if err != nil {
-			return nil, sdk.Cursor{}, err
-		}
-		return result.Items, result.Next, nil
-	}
-	return a.runner.RunArtworks(cmd.Context(), pixivcmd.Request(request), plan, pixivcmd.FormatOf(jsonOut, ndjson), pixivcmd.ArtworkList{Heading: func() string {
-		return fmt.Sprintf("bookmarks by %d", userID)
-	}, Fetch: fetch, Print: func(items []pixiv.Artwork, _ int) error {
-		return pixivcmd.PrintArtworks(a.env.Out, items)
-	}})
-}
-
-func (a command) runNovelList(cmd *cobra.Command, args []string, opts listOptions) error {
-	plan, err := pixivcmd.ParsePlan(cmd, opts.limit, opts.page)
-	if err != nil {
-		return err
-	}
-	var requestedUserID int64
-	if len(args) == 1 || inputcmd.ModeOf(cmd) == inputcmd.RecordMode {
-		requestedUserID, err = a.resolveBookmarkUserID(cmd, args, opts.typ, bookmarkListContract())
-		if err != nil {
-			return err
-		}
-	}
-	request, err := pixivcmd.BuildRequest(cmd, opts.Options)
-	if err != nil {
-		return err
-	}
-	if opts.ndjson && cmd.Flags().Changed("json") {
-		return a.env.UsageError(errors.New("--ndjson cannot be used with --json"))
-	}
-	jsonOut := false
-	if !opts.ndjson {
-		jsonOut, err = a.env.JSONOut(a.env.JSONOverride(cmd, opts.Options))
-		if err != nil {
-			return err
-		}
-	}
-	ndjson := a.env.AutoNDJSON(cmd, opts.ndjson, jsonOut)
-	userID := requestedUserID
-	fetch := func(client *pixiv.Client, ctx context.Context, cursor sdk.Cursor) ([]pixiv.Novel, sdk.Cursor, error) {
-		if userID == 0 {
-			userID, err = pixivcmd.CurrentUserID(client)
-			if err != nil {
-				return nil, sdk.Cursor{}, err
-			}
-		}
-		result, err := client.UserNovelBookmarks(ctx, pixiv.UserNovelBookmarksRequest{UserID: userID, Restrict: pixiv.Restrict(opts.restrict), Tag: opts.tag, Cursor: cursor})
-		if err != nil {
-			return nil, sdk.Cursor{}, err
-		}
-		return result.Items, result.Next, nil
-	}
-	return a.runner.RunNovels(cmd.Context(), pixivcmd.Request(request), plan, pixivcmd.FormatOf(jsonOut, ndjson), pixivcmd.NovelList{Heading: fmt.Sprintf("novel bookmarks by %d", userID), Fetch: fetch, Print: func(items []pixiv.Novel) error {
-		return pixivcmd.PrintNovels(a.env.Out, items)
-	}})
 }
 
 func bookmarkContract(operation string) resolver.Contract {
@@ -653,7 +405,7 @@ func bookmarkTagsContract() resolver.Contract {
 	return bookmarkContract("bookmark tags")
 }
 
-func (a command) resolveBookmarkUserID(cmd *cobra.Command, args []string, typ string, contract resolver.Contract) (int64, error) {
+func (a commandRunner) resolveBookmarkUserID(cmd *cobra.Command, args []string, typ string, contract resolver.Contract) (int64, error) {
 	input := resolver.Input{Type: typ}
 	if inputcmd.ModeOf(cmd) == inputcmd.RecordMode {
 		body, err := io.ReadAll(inputcmd.Reader(cmd, a.env.In))
@@ -681,215 +433,7 @@ func (a command) resolveBookmarkUserID(cmd *cobra.Command, args []string, typ st
 	return target.ID, nil
 }
 
-func (a command) runTags(cmd *cobra.Command, args []string, opts listOptions) error {
-	if opts.typ == "all" {
-		return a.runAllTags(cmd, args, opts)
-	}
-	if opts.typ != "artwork" && opts.typ != "novel" {
-		return errors.New("bookmark tags type must be one of artwork, novel, all")
-	}
-	plan, err := pixivcmd.ParsePlan(cmd, opts.limit, opts.page)
-	if err != nil {
-		return err
-	}
-	var requestedUserID int64
-	if len(args) == 1 || inputcmd.ModeOf(cmd) == inputcmd.RecordMode {
-		requestedUserID, err = a.resolveBookmarkUserID(cmd, args, opts.typ, bookmarkTagsContract())
-		if err != nil {
-			return err
-		}
-	}
-	request, err := pixivcmd.BuildRequest(cmd, opts.Options)
-	if err != nil {
-		return err
-	}
-	if opts.ndjson && cmd.Flags().Changed("json") {
-		return a.env.UsageError(errors.New("--ndjson cannot be used with --json"))
-	}
-	jsonOut := false
-	if !opts.ndjson {
-		jsonOut, err = a.env.JSONOut(a.env.JSONOverride(cmd, opts.Options))
-		if err != nil {
-			return err
-		}
-	}
-	ndjson := a.env.AutoNDJSON(cmd, opts.ndjson, jsonOut)
-	userID := requestedUserID
-	return a.exec(cmd.Context(), request, func(ctx context.Context, client *pixiv.Client) (bool, error) {
-		fetch := func(ctx context.Context, cursor sdk.Cursor) ([]pixiv.BookmarkTag, sdk.Cursor, error) {
-			if userID == 0 {
-				userID, err = pixivcmd.CurrentUserID(client)
-				if err != nil {
-					return nil, sdk.Cursor{}, err
-				}
-			}
-			var result sdk.Page[pixiv.BookmarkTag]
-			if opts.typ == "novel" {
-				result, err = client.UserNovelBookmarkTags(ctx, pixiv.UserNovelBookmarkTagsRequest{UserID: userID, Restrict: pixiv.Restrict(opts.restrict), Cursor: cursor})
-			} else {
-				result, err = client.UserArtworkBookmarkTags(ctx, pixiv.UserArtworkBookmarkTagsRequest{UserID: userID, Restrict: pixiv.Restrict(opts.restrict), Cursor: cursor})
-			}
-			if err != nil {
-				return nil, sdk.Cursor{}, err
-			}
-			return result.Items, result.Next, nil
-		}
-		var items []pixiv.BookmarkTag
-		if err := pixivcmd.PageItems(ctx, plan, fetch, func(page []pixiv.BookmarkTag) error {
-			items = append(items, page...)
-			return nil
-		}); err != nil {
-			return false, err
-		}
-		if ndjson {
-			for _, item := range items {
-				if err := pixivcmd.WriteJSONLine(a.env.Out, item); err != nil {
-					return true, err
-				}
-			}
-			return len(items) > 0, nil
-		}
-		if jsonOut {
-			if err := a.env.PrintJSON(struct {
-				Tags []pixiv.BookmarkTag `json:"bookmark_tags"`
-			}{Tags: items}); err != nil {
-				return true, err
-			}
-			return true, nil
-		}
-		for _, item := range items {
-			if _, err := fmt.Fprintf(a.env.Out, "%s (%d)\n", item.Name, item.Count); err != nil {
-				return true, err
-			}
-		}
-		return true, nil
-	})
-}
-
-func (a command) runAllTags(cmd *cobra.Command, args []string, opts listOptions) error {
-	plan, err := pixivcmd.ParsePlan(cmd, opts.limit, opts.page)
-	if err != nil {
-		return err
-	}
-	var userID int64
-	if len(args) == 1 || inputcmd.ModeOf(cmd) == inputcmd.RecordMode {
-		userID, err = a.resolveBookmarkUserID(cmd, args, opts.typ, bookmarkTagsContract())
-		if err != nil {
-			return err
-		}
-	}
-	request, err := pixivcmd.BuildRequest(cmd, opts.Options)
-	if err != nil {
-		return err
-	}
-	if opts.ndjson && cmd.Flags().Changed("json") {
-		return a.env.UsageError(errors.New("--ndjson cannot be used with --json"))
-	}
-	jsonOut := false
-	if !opts.ndjson {
-		jsonOut, err = a.env.JSONOut(a.env.JSONOverride(cmd, opts.Options))
-		if err != nil {
-			return err
-		}
-	}
-	ndjson := a.env.AutoNDJSON(cmd, opts.ndjson, jsonOut)
-
-	return a.exec(cmd.Context(), request, func(ctx context.Context, client *pixiv.Client) (bool, error) {
-		attemptUserID := userID
-		if attemptUserID == 0 {
-			resolvedUserID, err := pixivcmd.CurrentUserID(client)
-			if err != nil {
-				return false, err
-			}
-			attemptUserID = resolvedUserID
-		}
-		streams := []pagination.Stream[bookmarkTagItem, bookmarkStreamCursor]{
-			bookmarkArtworkTagStream(client, attemptUserID, opts),
-			bookmarkNovelTagStream(client, attemptUserID, opts),
-		}
-		items, _, _, err := pagination.CollectStreams(ctx, plan.PagePlan(), streams)
-		if err != nil {
-			return false, err
-		}
-
-		var staged bytes.Buffer
-		if ndjson {
-			for _, item := range items {
-				if err := pixivcmd.WriteJSONLine(&staged, item.dto()); err != nil {
-					return false, err
-				}
-			}
-		} else if jsonOut {
-			dtos := make([]typedBookmarkTagDTO, 0, len(items))
-			for _, item := range items {
-				dtos = append(dtos, item.dto())
-			}
-			if err := pixivcmd.WriteJSONValue(&staged, struct {
-				Tags []typedBookmarkTagDTO `json:"bookmark_tags"`
-			}{Tags: dtos}); err != nil {
-				return false, err
-			}
-		} else {
-			for _, item := range items {
-				if _, err := fmt.Fprintf(&staged, "%s: %s (%d)\n", item.kind, item.tag.Name, item.tag.Count); err != nil {
-					return false, err
-				}
-			}
-		}
-		_, err = io.Copy(a.env.Out, &staged)
-		return true, err
-	})
-}
-
-func bookmarkArtworkTagStream(client *pixiv.Client, userID int64, opts listOptions) pagination.Stream[bookmarkTagItem, bookmarkStreamCursor] {
-	return pagination.Stream[bookmarkTagItem, bookmarkStreamCursor]{
-		Fetch: func(ctx context.Context, cursor bookmarkStreamCursor) ([]bookmarkTagItem, bookmarkStreamCursor, error) {
-			result, err := client.UserArtworkBookmarkTags(ctx, pixiv.UserArtworkBookmarkTagsRequest{
-				UserID: userID, Restrict: pixiv.Restrict(opts.restrict), Cursor: cursor.upstream,
-			})
-			if err != nil {
-				return nil, bookmarkStreamCursor{}, err
-			}
-			if cursor.consumed > len(result.Items) {
-				return nil, bookmarkStreamCursor{}, errors.New("bookmark artwork tag checkpoint exceeds upstream batch")
-			}
-			items := make([]bookmarkTagItem, 0, len(result.Items)-cursor.consumed)
-			for _, item := range result.Items[cursor.consumed:] {
-				items = append(items, bookmarkTagItem{kind: "artwork", tag: item})
-			}
-			return items, bookmarkStreamCursor{upstream: result.Next}, nil
-		},
-		Checkpoint: bookmarkCheckpoint,
-	}
-}
-
-func bookmarkNovelTagStream(client *pixiv.Client, userID int64, opts listOptions) pagination.Stream[bookmarkTagItem, bookmarkStreamCursor] {
-	return pagination.Stream[bookmarkTagItem, bookmarkStreamCursor]{
-		Fetch: func(ctx context.Context, cursor bookmarkStreamCursor) ([]bookmarkTagItem, bookmarkStreamCursor, error) {
-			result, err := client.UserNovelBookmarkTags(ctx, pixiv.UserNovelBookmarkTagsRequest{
-				UserID: userID, Restrict: pixiv.Restrict(opts.restrict), Cursor: cursor.upstream,
-			})
-			if err != nil {
-				return nil, bookmarkStreamCursor{}, err
-			}
-			if cursor.consumed > len(result.Items) {
-				return nil, bookmarkStreamCursor{}, errors.New("bookmark novel tag checkpoint exceeds upstream batch")
-			}
-			items := make([]bookmarkTagItem, 0, len(result.Items)-cursor.consumed)
-			for _, item := range result.Items[cursor.consumed:] {
-				items = append(items, bookmarkTagItem{kind: "novel", tag: item})
-			}
-			return items, bookmarkStreamCursor{upstream: result.Next}, nil
-		},
-		Checkpoint: bookmarkCheckpoint,
-	}
-}
-
-func (item bookmarkTagItem) dto() typedBookmarkTagDTO {
-	return typedBookmarkTagDTO{Name: item.tag.Name, Count: item.tag.Count, Type: item.kind}
-}
-
-func (a command) actionInvoker(cmd *cobra.Command, options commands.Options, invoke func(context.Context, pixivcmd.Request, int64) error) func(context.Context, int64) error {
+func (a commandRunner) actionInvoker(cmd *cobra.Command, options command.Options, invoke func(context.Context, pixivcmd.Request, int64) error) func(context.Context, int64) error {
 	var request pixivcmd.Request
 	initialized := false
 	return func(ctx context.Context, id int64) error {

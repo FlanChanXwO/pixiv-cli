@@ -14,7 +14,7 @@ import (
 	"sync"
 	"time"
 
-	commands "github.com/FlanChanXwO/pixiv-cli/internal/cli/internal/command"
+	"github.com/FlanChanXwO/pixiv-cli/internal/cli/internal/command"
 	"github.com/FlanChanXwO/pixiv-cli/internal/loginrelay"
 	pixivaccount "github.com/FlanChanXwO/pixiv-cli/internal/pixivaccount"
 	pixiv "github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
@@ -45,7 +45,7 @@ type loginInputResult struct {
 type callbackURLAccepter = func(string) bool
 
 type accountLoginOptions struct {
-	commands.ProxyOptions
+	command.ProxyOptions
 	jsonOut          bool
 	noOpen           bool
 	useAfterLogin    bool
@@ -80,7 +80,7 @@ func (a controller) newAccountLoginCommand() *cobra.Command {
 	flags.StringVar(&opts.relayTLSKeyFile, "relay-tls-key-file", "", "PEM private key file for this remote login relay")
 	a.bindProxyFlags(cmd, &opts.ProxyOptions)
 	a.bindNoInput(cmd)
-	commands.Bind(cmd, commands.AuthLogin())
+	command.Bind(cmd, command.AuthLogin())
 	return cmd
 }
 
@@ -169,74 +169,132 @@ func (a controller) accountLogin(cmd *cobra.Command, opts accountLoginOptions) e
 }
 
 func (a controller) waitForLoginCode(ctx context.Context, addr string, acceptsCallback callbackURLAccepter, loginURL string, noOpen bool) (code string, notifyFinal func(bool), cleanup func(), err error) {
-	ln, err := net.Listen("tcp", addr)
+	listener, err := net.Listen("tcp", addr)
 	if err != nil {
 		return "", func(bool) {}, func() {}, err
 	}
-	actualAddr := ln.Addr().String()
-	resultCh := make(chan loginServerResult, 1)
-	// finalCh 在 OAuth Complete 结束后通知仍挂起的浏览器 callback 响应。
-	finalCh := make(chan bool, 1)
-	var submitOnce sync.Once
-	var finalOnce sync.Once
-	var finalPageWaiters sync.WaitGroup
-	submit := func(result loginServerResult) {
-		submitOnce.Do(func() { resultCh <- result })
+	login := newLoginServer(a, ctx, listener, acceptsCallback, loginURL)
+	login.notifyFinal = login.notifyFinalPage
+	if !noOpen {
+		login.installHandler(ctx)
 	}
-	// notifyFinal 先通知最终页，再等待浏览器 handler 写完响应。
-	// 服务器生命周期由调用方 cleanup 负责，避免过早 Shutdown 打断最终页。
-	notifyFinal = func(ok bool) {
-		finalOnce.Do(func() {
-			select {
-			case finalCh <- ok:
-			default:
-			}
-			finalPageWaiters.Wait()
-		})
-	}
-	// waitFinalPage 假定调用方已在 submit 之前 finalPageWaiters.Add(1)，
-	// 避免 submit 放行主流程后与 Wait 竞态。
-	waitFinalPage := func(w http.ResponseWriter, r *http.Request) {
-		defer finalPageWaiters.Done()
-		select {
-		case ok := <-finalCh:
-			writeLoginFinalPage(w, ok)
-		case <-r.Context().Done():
-			writeLoginFinalPage(w, false)
-		case <-ctx.Done():
-			writeLoginFinalPage(w, false)
+	login.serve(loginURL, noOpen)
+	select {
+	case result := <-login.resultCh:
+		if result.Err != nil {
+			login.cleanup()
+			return "", login.notifyFinal, login.cleanup, result.Err
 		}
+		return result.Code, login.notifyFinal, login.cleanup, nil
+	case err := <-login.serveErr:
+		login.cleanup()
+		if err != nil {
+			return "", login.notifyFinal, login.cleanup, err
+		}
+		return "", login.notifyFinal, login.cleanup, errors.New("login server stopped before sign-in completed")
+	case <-ctx.Done():
+		login.cleanup()
+		return "", login.notifyFinal, login.cleanup, ctx.Err()
 	}
+}
+
+// loginServer owns one loopback callback listener and its browser-facing pages.
+type loginServer struct {
+	controller              controller
+	ctx                     context.Context
+	listener                net.Listener
+	acceptsCallback         callbackURLAccepter
+	loginURL                string
+	actualAddr              string
+	loginChallenge          string
+	resultCh                chan loginServerResult
+	finalCh                 chan bool
+	submitOnce              sync.Once
+	finalOnce               sync.Once
+	finalPageWaiters        sync.WaitGroup
+	server                  *http.Server
+	serveErr                chan error
+	cleanupOnce             sync.Once
+	notifyFinal             func(bool)
+	cleanup                 func()
+	writeErr                func(string, ...any)
+	reportInvalidSubmission func(error)
+	handlerCleanup          func()
+}
+
+func newLoginServer(a controller, ctx context.Context, listener net.Listener, acceptsCallback callbackURLAccepter, loginURL string) *loginServer {
+	return &loginServer{
+		controller: a, ctx: ctx, listener: listener, acceptsCallback: acceptsCallback, loginURL: loginURL,
+		actualAddr: listener.Addr().String(), loginChallenge: pixivLoginChallenge(loginURL),
+		resultCh: make(chan loginServerResult, 1), finalCh: make(chan bool, 1), serveErr: make(chan error, 1),
+	}
+}
+
+func (s *loginServer) submit(result loginServerResult) {
+	s.submitOnce.Do(func() { s.resultCh <- result })
+}
+
+// notifyFinal 先通知最终页，再等待浏览器 handler 写完响应。
+// 服务器生命周期由调用方 cleanup 负责，避免过早 Shutdown 打断最终页。
+func (s *loginServer) notifyFinalPage(ok bool) {
+	s.finalOnce.Do(func() {
+		select {
+		case s.finalCh <- ok:
+		default:
+		}
+		s.finalPageWaiters.Wait()
+	})
+}
+
+// waitFinalPage 假定调用方已在 submit 之前 finalPageWaiters.Add(1)，
+// 避免 submit 放行主流程后与 Wait 竞态。
+func (s *loginServer) waitFinalPage(w http.ResponseWriter, r *http.Request) {
+	defer s.finalPageWaiters.Done()
+	select {
+	case ok := <-s.finalCh:
+		writeLoginFinalPage(w, ok)
+	case <-r.Context().Done():
+		writeLoginFinalPage(w, false)
+	case <-s.ctx.Done():
+		writeLoginFinalPage(w, false)
+	}
+}
+
+func (s *loginServer) installHandler(ctx context.Context) {
+	s.initializeErrors()
+	if err := s.controller.ensureURLHandler(ctx); err != nil {
+		s.writeErr("warning: persistent pixiv:// callback handler is unavailable: %v\n", err)
+	}
+	cleanup, err := s.controller.installURLHandler(ctx, "http://"+s.actualAddr+"/callback")
+	if err != nil {
+		s.writeErr("warning: pixiv:// callback handler is unavailable: %v\n", err)
+	} else if cleanup != nil {
+		s.handlerCleanup = cleanup
+		s.writeErr("Registered pixiv:// callback handler for this login attempt.\n")
+		s.writeErr("After confirming the Pixiv account, keep this terminal open while the browser shows the final result.\n")
+	}
+}
+
+func (s *loginServer) initializeErrors() {
 	var errOutMu sync.Mutex
-	writeErr := func(format string, args ...any) {
+	s.writeErr = func(format string, args ...any) {
 		errOutMu.Lock()
 		defer errOutMu.Unlock()
-		fmt.Fprintf(a.errOut, format, args...)
+		fmt.Fprintf(s.controller.errOut, format, args...)
 	}
-	reportInvalidSubmission := func(err error) {
+	s.reportInvalidSubmission = func(err error) {
 		if err != nil {
-			writeErr("invalid login submission: %v\n", err)
+			s.writeErr("invalid login submission: %v\n", err)
 		}
 	}
-	loginChallenge := pixivLoginChallenge(loginURL)
-	openTerminalRelay := func(rawURL string) error {
-		writeErr("Detected Pixiv authorization relay page; opening Pixiv relay URL once.\n")
-		return a.openBrowser(rawURL)
-	}
-	if !noOpen {
-		if err := a.ensureURLHandler(ctx); err != nil {
-			writeErr("warning: persistent pixiv:// callback handler is unavailable: %v\n", err)
-		}
-		cleanup, err := a.installURLHandler(ctx, "http://"+actualAddr+"/callback")
-		if err != nil {
-			writeErr("warning: pixiv:// callback handler is unavailable: %v\n", err)
-		} else if cleanup != nil {
-			defer cleanup()
-			writeErr("Registered pixiv:// callback handler for this login attempt.\n")
-			writeErr("After confirming the Pixiv account, keep this terminal open while the browser shows the final result.\n")
-		}
-	}
+}
 
+func (s *loginServer) serve(loginURL string, noOpen bool) {
+	s.initializeErrors()
+	openTerminalRelay := func(rawURL string) error {
+		s.writeErr("Detected Pixiv authorization relay page; opening Pixiv relay URL once.\n")
+		return s.controller.openBrowser(rawURL)
+	}
 	mux := http.NewServeMux()
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/" {
@@ -245,30 +303,7 @@ func (a controller) waitForLoginCode(ctx context.Context, addr string, acceptsCa
 		}
 		writeLoginForm(w, loginURL)
 	})
-	mux.HandleFunc("/callback", func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodGet {
-			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
-			return
-		}
-		if r.URL.RawQuery == "" {
-			// macOS helper 将 callback 放入 fragment，避免授权码进入 loopback GET 请求和浏览器历史。
-			// 浏览器脚本会先清空 fragment，再通过本地 POST 提交给 /manual 并等待最终页。
-			writeLoginCallbackRelayPage(w)
-			return
-		}
-		result := loginCodeFromInput(callbackURLFromRequest(r), acceptsCallback)
-		reportInvalidSubmission(result.Err)
-		if result.Err != nil {
-			// 输入校验失败可立即回失败页；不泄露敏感细节。
-			writeLoginFinalPage(w, false)
-			return
-		}
-		// 先登记最终页 waiter，再 submit 放行主流程，保证 notifyFinal.Wait 可见该 waiter。
-		finalPageWaiters.Add(1)
-		submit(result)
-		// 等 OAuth 真正完成后再返回最终成功/失败页。
-		waitFinalPage(w, r)
-	})
+	mux.HandleFunc("/callback", s.handleCallback)
 	mux.HandleFunc("/manual", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method == http.MethodGet {
 			writeLoginForm(w, loginURL)
@@ -279,103 +314,115 @@ func (a controller) waitForLoginCode(ctx context.Context, addr string, acceptsCa
 			return
 		}
 		if err := r.ParseForm(); err != nil {
-			reportInvalidSubmission(err)
+			s.reportInvalidSubmission(err)
 			writeLoginFinalPage(w, false)
 			return
 		}
 		input := r.Form.Get("login_result")
-		result := classifyLoginInput(input, acceptsCallback, loginChallenge)
+		result := classifyLoginInput(input, s.acceptsCallback, s.loginChallenge)
 		if result.Relayed && result.Err == nil {
 			// fallback 页面可能经 SSH 转发在另一台机器的浏览器中打开。relay 必须由
 			// 当前请求的浏览器继续，不能在运行 CLI 的无 GUI 主机上调用 xdg-open。
-			writeErr("Detected Pixiv authorization relay page; continuing it in the current browser.\n")
+			s.writeErr("Detected Pixiv authorization relay page; continuing it in the current browser.\n")
 			w.Header().Set("Location", result.RelayURL)
 			w.WriteHeader(http.StatusSeeOther)
 			return
 		}
-		reportInvalidSubmission(result.Err)
+		s.reportInvalidSubmission(result.Err)
 		if result.Err != nil {
 			writeLoginFinalPage(w, false)
 			return
 		}
 		// 与 /callback 相同：Add 必须先于 submit，避免与 notifyFinal 的 Wait 竞态。
-		finalPageWaiters.Add(1)
-		submit(result.loginServerResult)
-		waitFinalPage(w, r)
+		s.finalPageWaiters.Add(1)
+		s.submit(result.loginServerResult)
+		s.waitFinalPage(w, r)
 	})
-
-	server := &http.Server{Handler: mux}
-	serveErr := make(chan error, 1)
+	s.server = &http.Server{Handler: mux}
 	go func() {
-		err := server.Serve(ln)
+		err := s.server.Serve(s.listener)
 		if errors.Is(err, http.ErrServerClosed) {
 			err = nil
 		}
-		serveErr <- err
+		s.serveErr <- err
 	}()
-	var cleanupOnce sync.Once
-	cleanup = func() {
-		cleanupOnce.Do(func() { _ = server.Shutdown(context.Background()) })
+	s.cleanup = func() {
+		s.cleanupOnce.Do(func() {
+			if s.handlerCleanup != nil {
+				s.handlerCleanup()
+			}
+			_ = s.server.Shutdown(context.Background())
+		})
 	}
-
-	writeErr("Open this Pixiv login URL:\n%s\n", loginURL)
-	if noOpen {
-		writeErr("Browser opening is disabled; use the manual fallback page or terminal prompt.\n")
-		if tunnelCommand, tunnelErr := loginSSHTunnelCommand(actualAddr); tunnelErr != nil {
-			writeErr("warning: could not generate the SSH tunnel hint for this login listener.\n")
-		} else {
-			writeErr("When this CLI runs on an SSH host, forward its loopback listener from the browser machine:\n  %s\n", tunnelCommand)
-		}
-		writeErr("An SSH tunnel alone cannot receive Pixiv's final app link; remote browser login requires a desktop handoff.\n")
-	} else {
-		writeErr("Complete sign-in in your browser; the local page will receive the result.\n")
-	}
-	writeErr("Manual fallback page: http://%s/\n", actualAddr)
-
-	enableTerminalFallback := a.canPrompt()
+	s.writeLoginInstructions(loginURL, noOpen)
+	enableTerminalFallback := s.controller.canPrompt()
 	if !noOpen {
-		if err := a.openBrowser(loginURL); err != nil {
-			writeErr("warning: could not open browser: %v\n", err)
+		if err := s.controller.openBrowser(loginURL); err != nil {
+			s.writeErr("warning: could not open browser: %v\n", err)
 		}
 	}
 	if enableTerminalFallback {
-		go func() {
-			for {
-				input, err := a.promptInput("Paste the returned Pixiv sign-in address, relay address, or value", "")
-				if err != nil {
-					return
-				}
-				result := loginInputFromText(input, acceptsCallback, loginChallenge, openTerminalRelay)
-				reportInvalidSubmission(result.Err)
-				if result.Relayed {
-					continue
-				}
-				if result.Err == nil {
-					submit(result.loginServerResult)
-					return
-				}
-			}
-		}()
+		go s.promptForLoginInput(openTerminalRelay)
 	}
+}
 
-	select {
-	case result := <-resultCh:
-		if result.Err != nil {
-			cleanup()
-			return "", notifyFinal, cleanup, result.Err
+func (s *loginServer) writeLoginInstructions(loginURL string, noOpen bool) {
+	s.writeErr("Open this Pixiv login URL:\n%s\n", loginURL)
+	if noOpen {
+		s.writeErr("Browser opening is disabled; use the manual fallback page or terminal prompt.\n")
+		if tunnelCommand, tunnelErr := loginSSHTunnelCommand(s.actualAddr); tunnelErr != nil {
+			s.writeErr("warning: could not generate the SSH tunnel hint for this login listener.\n")
+		} else {
+			s.writeErr("When this CLI runs on an SSH host, forward its loopback listener from the browser machine:\n  %s\n", tunnelCommand)
 		}
-		// 成功拿到 code 后保持服务器存活，直到调用方 notifyFinal + cleanup。
-		return result.Code, notifyFinal, cleanup, nil
-	case err := <-serveErr:
-		cleanup()
-		if err != nil {
-			return "", notifyFinal, cleanup, err
-		}
-		return "", notifyFinal, cleanup, errors.New("login server stopped before sign-in completed")
-	case <-ctx.Done():
-		cleanup()
-		return "", notifyFinal, cleanup, ctx.Err()
+		s.writeErr("An SSH tunnel alone cannot receive Pixiv's final app link; remote browser login requires a desktop handoff.\n")
+	} else {
+		s.writeErr("Complete sign-in in your browser; the local page will receive the result.\n")
 	}
+	s.writeErr("Manual fallback page: http://%s/\n", s.actualAddr)
+}
+
+func (s *loginServer) promptForLoginInput(openTerminalRelay func(string) error) {
+	for {
+		input, err := s.controller.promptInput("Paste the returned Pixiv sign-in address, relay address, or value", "")
+		if err != nil {
+			return
+		}
+		result := loginInputFromText(input, s.acceptsCallback, s.loginChallenge, openTerminalRelay)
+		s.reportInvalidSubmission(result.Err)
+		if result.Relayed {
+			continue
+		}
+		if result.Err == nil {
+			s.submit(result.loginServerResult)
+			return
+		}
+	}
+}
+
+func (s *loginServer) handleCallback(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	if r.URL.RawQuery == "" {
+		// macOS helper 将 callback 放入 fragment，避免授权码进入 loopback GET 请求和浏览器历史。
+		// 浏览器脚本会先清空 fragment，再通过本地 POST 提交给 /manual 并等待最终页。
+		writeLoginCallbackRelayPage(w)
+		return
+	}
+	result := loginCodeFromInput(callbackURLFromRequest(r), s.acceptsCallback)
+	s.reportInvalidSubmission(result.Err)
+	if result.Err != nil {
+		// 输入校验失败可立即回失败页；不泄露敏感细节。
+		writeLoginFinalPage(w, false)
+		return
+	}
+	// 先登记最终页 waiter，再 submit 放行主流程，保证 notifyFinal.Wait 可见该 waiter。
+	s.finalPageWaiters.Add(1)
+	s.submit(result)
+	// 等 OAuth 真正完成后再返回最终成功/失败页。
+	s.waitFinalPage(w, r)
 }
 
 // loginSSHTunnelCommand 只使用已绑定的 loopback listener 地址生成提示，不接受外部输入。

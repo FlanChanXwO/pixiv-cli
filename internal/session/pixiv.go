@@ -9,9 +9,9 @@ import (
 	"errors"
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/lifecycle"
-	accountpixiv "github.com/FlanChanXwO/pixiv-cli/internal/pixivaccount"
-	poolpixiv "github.com/FlanChanXwO/pixiv-cli/internal/pixivaccount/pool"
-	sdkpixiv "github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
+	"github.com/FlanChanXwO/pixiv-cli/internal/pixivaccount"
+	"github.com/FlanChanXwO/pixiv-cli/internal/pixivaccount/pool"
+	"github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
 )
 
 var (
@@ -35,7 +35,7 @@ var (
 // 本地账号。Options 原样传给 public SDK，不在 services 层解释代理或配置。
 type Request struct {
 	UserID  int64
-	Options sdkpixiv.Options
+	Options pixiv.Options
 }
 
 // PoolConfig 是 Pixiv 会话需要的最小账号池配置，不携带 settings 包类型。
@@ -52,8 +52,8 @@ type ConfigLoader func() (PoolConfig, error)
 // AccountService 是 account 叶服务为 client 生命周期提供的最小端口。
 // *account.Service 直接满足该接口；接口也让 Pixiv 会话测试可以使用无网络 fake。
 type AccountService interface {
-	OpenClient(context.Context, sdkpixiv.Options) (*sdkpixiv.Client, error)
-	OpenAccountClient(context.Context, int64, sdkpixiv.Options) (*sdkpixiv.Client, error)
+	OpenClient(context.Context, pixiv.Options) (*pixiv.Client, error)
+	OpenAccountClient(context.Context, int64, pixiv.Options) (*pixiv.Client, error)
 }
 
 // PoolExecutor 是 pool 叶服务的重放端口。执行器负责选择账号、判断 SDK
@@ -79,13 +79,13 @@ type Pixiv struct {
 	poolFactory    PoolFactory
 	gate           RotationGate
 	loadPoolConfig ConfigLoader
-	closeClient    func(*sdkpixiv.Client) error
+	closeClient    func(*pixiv.Client) error
 }
 
 var (
-	_ AccountService = (*accountpixiv.Service)(nil)
-	_ PoolExecutor   = poolpixiv.Scheduler{}
-	_ RotationGate   = (*poolpixiv.Gate)(nil)
+	_ AccountService = (*pixivaccount.Service)(nil)
+	_ PoolExecutor   = pool.Scheduler{}
+	_ RotationGate   = (*pool.Gate)(nil)
 )
 
 // NewPixiv 创建 Pixiv 根编排对象。依赖缺失不会在构造时 panic，而是在对应的
@@ -102,7 +102,7 @@ func NewPixiv(accounts AccountService, gate RotationGate, loadPoolConfig ConfigL
 // Open 打开一个显式的 SDK client snapshot，并返回负责释放 client 与 rotation
 // gate 的 Lease。调用方必须关闭 Lease；重复关闭是安全的，gate 和 client 只会
 // 各释放一次。
-func (f *Pixiv) Open(ctx context.Context, request Request) (*lifecycle.Lease[*sdkpixiv.Client], error) {
+func (f *Pixiv) Open(ctx context.Context, request Request) (*lifecycle.Lease[*pixiv.Client], error) {
 	if ctx == nil {
 		return nil, lifecycle.ErrNilContext
 	}
@@ -117,7 +117,7 @@ func (f *Pixiv) Open(ctx context.Context, request Request) (*lifecycle.Lease[*sd
 	}
 	closeClient := f.closeClient
 	if closeClient == nil {
-		closeClient = func(client *sdkpixiv.Client) error {
+		closeClient = func(client *pixiv.Client) error {
 			if client != nil {
 				client.CloseIdleConnections()
 			}
@@ -134,7 +134,7 @@ func (f *Pixiv) Open(ctx context.Context, request Request) (*lifecycle.Lease[*sd
 	}()
 
 	var (
-		client *sdkpixiv.Client
+		client *pixiv.Client
 		err    error
 	)
 	if request.UserID == 0 {
@@ -165,7 +165,7 @@ func (f *Pixiv) Open(ctx context.Context, request Request) (*lifecycle.Lease[*sd
 // Use 在一次账号池安全重放边界内使用 client。callback 返回 committed=true
 // 时，Pixiv 将该边界提交给 pool 执行器；之后执行器不得再切换账号。每个
 // attempt 都独立获得并关闭一个 Lease。
-func (f *Pixiv) Use(ctx context.Context, request Request, callback func(context.Context, *sdkpixiv.Client) (committed bool, err error)) error {
+func (f *Pixiv) Use(ctx context.Context, request Request, callback func(context.Context, *pixiv.Client) (committed bool, err error)) error {
 	if ctx == nil {
 		return lifecycle.ErrNilContext
 	}

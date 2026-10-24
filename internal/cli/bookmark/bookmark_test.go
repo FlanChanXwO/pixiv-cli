@@ -10,9 +10,13 @@ import (
 	"strings"
 	"testing"
 
+	commands "github.com/FlanChanXwO/pixiv-cli/internal/cli/internal/command"
+	"github.com/FlanChanXwO/pixiv-cli/internal/cli/internal/input"
 	pixivcmd "github.com/FlanChanXwO/pixiv-cli/internal/cli/internal/pixivcmd"
 	pixiv "github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
 	"github.com/spf13/cobra"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestNewRegistersBookmarkLeaves(t *testing.T) {
@@ -792,5 +796,62 @@ func TestBookmarkAddRejectsArtworkRecordWithNovelType(t *testing.T) {
 	err := cmd.Execute()
 	if err == nil || !strings.Contains(diagnostics.String(), `"code":"unsupported_type"`) {
 		t.Fatalf("Execute error = %v, diagnostics = %q, want unsupported_type", err, diagnostics.String())
+	}
+}
+
+type testData struct {
+	Input       io.Reader
+	Output      io.Writer
+	ErrorOutput io.Writer
+	UsageError  func(error) error
+	JSONOut     func(*bool) (bool, error)
+	Pooled      func(context.Context, pixivcmd.Request, func(context.Context, *pixiv.Client) (bool, error)) error
+}
+
+func newTestCommand(d testData) *cobra.Command {
+	env := commands.Env{In: d.Input, Out: d.Output, Err: d.ErrorOutput, WrapUsage: d.UsageError, ResolveJSON: d.JSONOut}
+	return New(env, pixivcmd.Executor(d.Pooled))
+}
+
+func TestArtworkBookmarkRecordTypesConsumeArtworkByID(t *testing.T) {
+	assert.Equal(t, map[string]struct{}{
+		"artwork": {},
+		"illust":  {},
+		"manga":   {},
+		"ugoira":  {},
+	}, visualRecordTypes)
+
+	for _, operation := range []string{"bookmark_add", "bookmark_remove"} {
+		t.Run(operation, func(t *testing.T) {
+			var gotID int64
+			err := input.ConsumeActionRecords(
+				context.Background(),
+				strings.NewReader(`{"id":"42","type":"artwork","url":"https://www.pixiv.net/artworks/42"}`+"\n"),
+				&bytes.Buffer{}, operation, "fail-fast", visualRecordTypes,
+				func(_ context.Context, id int64) error { gotID = id; return nil },
+				func(err error) error { return err },
+			)
+			require.NoError(t, err)
+			assert.Equal(t, int64(42), gotID)
+		})
+	}
+}
+
+func TestArtworkBookmarkRecordTypesStillRejectNonArtworkEntities(t *testing.T) {
+	for _, recordType := range []string{"user", "novel"} {
+		t.Run(recordType, func(t *testing.T) {
+			called := false
+			var diagnostics bytes.Buffer
+			err := input.ConsumeActionRecords(
+				context.Background(),
+				strings.NewReader(fmt.Sprintf(`{"id":"42","type":%q,"url":"https://www.pixiv.net/example/42"}`+"\n", recordType)),
+				&diagnostics, "bookmark_add", "fail-fast", visualRecordTypes,
+				func(context.Context, int64) error { called = true; return nil },
+				func(err error) error { return err },
+			)
+			require.Error(t, err)
+			assert.Contains(t, diagnostics.String(), `"code":"unsupported_type"`)
+			assert.False(t, called)
+		})
 	}
 }

@@ -6,7 +6,7 @@ import (
 	"errors"
 	"fmt"
 
-	commands "github.com/FlanChanXwO/pixiv-cli/internal/cli/internal/command"
+	"github.com/FlanChanXwO/pixiv-cli/internal/cli/internal/command"
 	pixivcmd "github.com/FlanChanXwO/pixiv-cli/internal/cli/internal/pixivcmd"
 	"github.com/FlanChanXwO/pixiv-cli/internal/searchfilter"
 	"github.com/FlanChanXwO/pixiv-cli/sdk"
@@ -17,7 +17,7 @@ import (
 // options 是关注新作与全站最新命令的共同选项。内容类型由边缘层显式选择，
 // 这样不会把插画、漫画和小说的独立 App 分页流错误合并。
 type options struct {
-	commands.Options
+	command.Options
 	ndjson      bool
 	limit       int
 	page        int
@@ -26,22 +26,22 @@ type options struct {
 	restrict    string
 }
 
-type command struct {
-	env commands.Env
+type commandRunner struct {
+	env command.Env
 	run pixivcmd.Runner
 }
 
 // New builds the actual `pixiv timeline` command group.
-func New(env commands.Env, exec pixivcmd.Executor) *cobra.Command {
-	a := command{env: env, run: pixivcmd.New(env.Out, exec)}
+func New(env command.Env, exec pixivcmd.Executor) *cobra.Command {
+	a := commandRunner{env: env, run: pixivcmd.New(env.Out, exec)}
 	cmd := &cobra.Command{Use: "timeline", Short: "Browse authenticated Pixiv timelines"}
 	cmd.AddCommand(a.newFollowingCommand(), a.newLatestCommand())
 	env.BindNoInput(cmd)
-	commands.Bind(cmd, commands.PixivData())
+	command.Bind(cmd, command.PixivData())
 	return cmd
 }
 
-func (a command) newFollowingCommand() *cobra.Command {
+func (a commandRunner) newFollowingCommand() *cobra.Command {
 	opts := options{restrict: string(pixiv.RestrictPublic)}
 	cmd := &cobra.Command{
 		Use:   "following",
@@ -58,11 +58,11 @@ func (a command) newFollowingCommand() *cobra.Command {
 	cmd.Flags().StringVar(&opts.artworkType, "content-type", string(pixiv.SearchContentTypeAll), "artwork subtype: all, illust-and-ugoira, illust, manga, ugoira")
 	cmd.Flags().StringVar(&opts.restrict, "restrict", opts.restrict, "follow visibility: public or private")
 	a.env.BindNoInput(cmd)
-	commands.Bind(cmd, commands.PixivData())
+	command.Bind(cmd, command.PixivData())
 	return cmd
 }
 
-func (a command) newLatestCommand() *cobra.Command {
+func (a commandRunner) newLatestCommand() *cobra.Command {
 	opts := options{artworkType: string(pixiv.SearchContentTypeIllust)}
 	cmd := &cobra.Command{
 		Use:   "latest",
@@ -78,11 +78,11 @@ func (a command) newLatestCommand() *cobra.Command {
 	cmd.Flags().StringVarP(&opts.contentType, "type", "t", "", "required entity type: artwork or novel; use --content-type for subtype")
 	cmd.Flags().StringVar(&opts.artworkType, "content-type", opts.artworkType, "artwork subtype: illust or manga")
 	a.env.BindNoInput(cmd)
-	commands.Bind(cmd, commands.PixivData())
+	command.Bind(cmd, command.PixivData())
 	return cmd
 }
 
-func (a command) runFollowing(cmd *cobra.Command, opts options) error {
+func (a commandRunner) runFollowing(cmd *cobra.Command, opts options) error {
 	entity := opts.contentType
 	if entity == "illust" {
 		entity = "artwork"
@@ -126,7 +126,7 @@ func (a command) runFollowing(cmd *cobra.Command, opts options) error {
 	return a.run.RunNovels(cmd.Context(), pixivcmd.Request(request), plan, pixivcmd.FormatOf(jsonOut, ndjson), pixivcmd.NovelList{Heading: "new novels from followed users", Fetch: fetch, Print: func(items []pixiv.Novel) error { return pixivcmd.PrintNovels(a.env.Out, items) }})
 }
 
-func (a command) runLatest(cmd *cobra.Command, opts options) error {
+func (a commandRunner) runLatest(cmd *cobra.Command, opts options) error {
 	entity := opts.contentType
 	if entity == "illust" || entity == "manga" {
 		if cmd.Flags().Changed("content-type") {
@@ -170,7 +170,7 @@ func (a command) runLatest(cmd *cobra.Command, opts options) error {
 
 // resolve 统一两个 timeline 命令的分页、传输覆盖与输出模式判定，使 --ndjson 与
 // --json 的互斥、自动 NDJSON 判定和 JSON 解析顺序保持一致。
-func (a command) resolve(cmd *cobra.Command, opts options) (pixivcmd.Plan, pixivcmd.Request, bool, bool, error) {
+func (a commandRunner) resolve(cmd *cobra.Command, opts options) (pixivcmd.Plan, pixivcmd.Request, bool, bool, error) {
 	plan, err := pixivcmd.ParsePlan(cmd, opts.limit, opts.page)
 	if err != nil {
 		return pixivcmd.Plan{}, pixivcmd.Request{}, false, false, err

@@ -23,23 +23,23 @@ import (
 	downloadcommands "github.com/FlanChanXwO/pixiv-cli/internal/cli/download"
 	fanboxauth "github.com/FlanChanXwO/pixiv-cli/internal/cli/fanbox/auth"
 	fanboxdownload "github.com/FlanChanXwO/pixiv-cli/internal/cli/fanbox/download"
-	fanboxpost "github.com/FlanChanXwO/pixiv-cli/internal/cli/fanbox/post"
+	"github.com/FlanChanXwO/pixiv-cli/internal/cli/fanbox/post"
 	"github.com/FlanChanXwO/pixiv-cli/internal/cli/internal/command"
 	"github.com/FlanChanXwO/pixiv-cli/internal/cli/internal/fanboxcmd"
 	"github.com/FlanChanXwO/pixiv-cli/internal/cli/internal/pixivcmd"
 	"github.com/FlanChanXwO/pixiv-cli/internal/config/paths"
-	configapp "github.com/FlanChanXwO/pixiv-cli/internal/config/settings"
+	"github.com/FlanChanXwO/pixiv-cli/internal/config/settings"
 	fanboxaccount "github.com/FlanChanXwO/pixiv-cli/internal/fanboxaccount"
 	"github.com/FlanChanXwO/pixiv-cli/internal/lifecycle"
-	mcpaccounts "github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/accounts"
+	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/accounts"
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/mediaproxy"
 	downloader "github.com/FlanChanXwO/pixiv-cli/internal/media/downloader"
 	pixivaccount "github.com/FlanChanXwO/pixiv-cli/internal/pixivaccount"
-	pixivpool "github.com/FlanChanXwO/pixiv-cli/internal/pixivaccount/pool"
+	"github.com/FlanChanXwO/pixiv-cli/internal/pixivaccount/pool"
 	selfupdate "github.com/FlanChanXwO/pixiv-cli/internal/selfupdate"
 	"github.com/FlanChanXwO/pixiv-cli/internal/session"
 	database "github.com/FlanChanXwO/pixiv-cli/internal/storage/database"
-	filesecret "github.com/FlanChanXwO/pixiv-cli/internal/storage/secretfile"
+	"github.com/FlanChanXwO/pixiv-cli/internal/storage/secretfile"
 	pixiv "github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
 	"github.com/spf13/cobra"
 )
@@ -66,7 +66,7 @@ func (a app) newPixivAccountServices() (authcommands.AccountService, pixivaccoun
 	if err != nil {
 		return authcommands.AccountService{}, pixivaccount.LoginService{}, err
 	}
-	service := pixivaccount.NewService(db, configapp.DefaultStore())
+	service := pixivaccount.NewService(db, settings.DefaultStore())
 	return authcommands.AccountService{Pixiv: service, LoadRuntime: a.runtimeConfig}, pixivaccount.LoginService{Pixiv: service}, nil
 }
 
@@ -75,8 +75,8 @@ func (a app) newPixivSDKPorts() (pixivSDKPorts, error) {
 	if err != nil {
 		return pixivSDKPorts{}, err
 	}
-	service := pixivaccount.NewService(db, configapp.DefaultStore())
-	gate := pixivpool.NewGate()
+	service := pixivaccount.NewService(db, settings.DefaultStore())
+	gate := pool.NewGate()
 	readSessions := pixivaccount.NewReadSessions(service, gate)
 	a.closeState.add(readSessions.Close)
 	facade := a.newPixivFacade(db, service, gate)
@@ -84,7 +84,7 @@ func (a app) newPixivSDKPorts() (pixivSDKPorts, error) {
 }
 
 // newPixivFacade 把账号池配置读取与执行器接到 session 编排层；两者都按调用重新读取。
-func (a app) newPixivFacade(db *database.DB, service *pixivaccount.Service, gate *pixivpool.Gate) *session.Pixiv {
+func (a app) newPixivFacade(db *database.DB, service *pixivaccount.Service, gate *pool.Gate) *session.Pixiv {
 	return session.NewPixiv(service, gate, func() (session.PoolConfig, error) {
 		runtime, err := a.runtimeConfig()
 		if err != nil {
@@ -92,8 +92,8 @@ func (a app) newPixivFacade(db *database.DB, service *pixivaccount.Service, gate
 		}
 		return session.PoolConfig{Enabled: runtime.AccountPool.Enabled, Strategy: string(runtime.AccountPool.Strategy)}, nil
 	}, func(config session.PoolConfig) (session.PoolExecutor, error) {
-		return pixivpool.Scheduler{
-			Config: configapp.AccountPoolConfig{Enabled: config.Enabled, Strategy: configapp.AccountPoolStrategy(config.Strategy)},
+		return pool.Scheduler{
+			Config: settings.AccountPoolConfig{Enabled: config.Enabled, Strategy: settings.AccountPoolStrategy(config.Strategy)},
 			State:  db,
 			Now:    time.Now,
 		}, nil
@@ -141,7 +141,7 @@ func (a app) newPixivSDKPortClosures(db *database.DB, facade *session.Pixiv, rea
 			snapshot.Invalidate(err)
 			return err
 		},
-		localAccounts: func(ctx context.Context) (mcpaccounts.LocalSnapshot, error) {
+		localAccounts: func(ctx context.Context) (accounts.LocalSnapshot, error) {
 			return localPixivAccounts(ctx, db)
 		},
 		open:      open,
@@ -167,7 +167,7 @@ func (a app) newReadSessionPort(readSessions *pixivaccount.ReadSessions) func(co
 		if err != nil {
 			return mediaproxy.Session{}, err
 		}
-		options, err := pixivOptionsFromRequest(request, func() (configapp.RuntimeConfig, error) { return cfg, nil }, a.logger())
+		options, err := pixivOptionsFromRequest(request, func() (settings.RuntimeConfig, error) { return cfg, nil }, a.logger())
 		if err != nil {
 			return mediaproxy.Session{}, err
 		}
@@ -187,21 +187,21 @@ func (a app) newReadSessionPort(readSessions *pixivaccount.ReadSessions) func(co
 	}
 }
 
-func localPixivAccounts(ctx context.Context, db *database.DB) (mcpaccounts.LocalSnapshot, error) {
+func localPixivAccounts(ctx context.Context, db *database.DB) (accounts.LocalSnapshot, error) {
 	records, err := db.ListPixiv(ctx)
 	if err != nil {
-		return mcpaccounts.LocalSnapshot{}, err
+		return accounts.LocalSnapshot{}, err
 	}
-	defaultID, explicit, err := configapp.DefaultStore().ReadPixivDefaultUserID()
+	defaultID, explicit, err := settings.DefaultStore().ReadPixivDefaultUserID()
 	if err != nil {
-		return mcpaccounts.LocalSnapshot{}, err
+		return accounts.LocalSnapshot{}, err
 	}
-	local := mcpaccounts.LocalSnapshot{Accounts: make([]mcpaccounts.Account, 0, len(records))}
+	local := accounts.LocalSnapshot{Accounts: make([]accounts.Account, 0, len(records))}
 	if explicit {
 		local.DefaultUserID = defaultID
 	}
 	for _, record := range records {
-		local.Accounts = append(local.Accounts, mcpaccounts.Account{UserID: record.UserID, Username: record.Username, HasCredentials: record.HasRefreshToken()})
+		local.Accounts = append(local.Accounts, accounts.Account{UserID: record.UserID, Username: record.Username, HasCredentials: record.HasRefreshToken()})
 	}
 	return local, nil
 }
@@ -211,7 +211,7 @@ func (a app) newFanboxAccountService() (*fanboxaccount.Service, error) {
 	if err != nil {
 		return nil, err
 	}
-	return fanboxaccount.NewService(db, configapp.DefaultStore(), func() (fanboxsdkOptions, error) {
+	return fanboxaccount.NewService(db, settings.DefaultStore(), func() (fanboxsdkOptions, error) {
 		return fanboxOptionsFromRuntime(a.runtimeConfig, a.logger())
 	}), nil
 }
@@ -314,11 +314,11 @@ func (a app) newFanboxCommandGroup(env command.Env) *cobra.Command {
 			return runtime.DownloadPath, err
 		}),
 	}
-	children = append(children, fanboxpost.Commands(env, load)...)
+	children = append(children, post.Commands(env, load)...)
 	return newFanboxCommand(env, children)
 }
 
-func (a app) ConfigService() configapp.Store { return configapp.DefaultStore() }
+func (a app) ConfigService() settings.Store { return settings.DefaultStore() }
 
 func (a app) ConfigPath() (string, error) { return a.ConfigService().Path() }
 
@@ -348,11 +348,11 @@ func (app) FanboxBrowserProvider() fanboxcmd.BrowserProvider {
 	return fanboxBrowserSessionReader
 }
 
-func (a app) FanboxRuntimeConfig() (configapp.RuntimeConfig, error) {
+func (a app) FanboxRuntimeConfig() (settings.RuntimeConfig, error) {
 	return a.runtimeConfig()
 }
 
-func (a app) LoadUpdateRuntimeConfig() (configapp.RuntimeConfig, error) {
+func (a app) LoadUpdateRuntimeConfig() (settings.RuntimeConfig, error) {
 	return a.runtimeConfig()
 }
 
@@ -360,7 +360,7 @@ func (a app) NewUpdateCoordinator(proxy string, out, errOut io.Writer) (*selfupd
 	return newUpdateCommandCoordinator(proxy, out, errOut)
 }
 
-func (a app) LoadAutomaticUpdateRuntimeConfig() (configapp.RuntimeConfig, error) {
+func (a app) LoadAutomaticUpdateRuntimeConfig() (settings.RuntimeConfig, error) {
 	return a.runtimeConfig()
 }
 
@@ -372,7 +372,7 @@ type pixivSDKPorts struct {
 	watchReadSessions func(context.Context) error
 	readSession       func(context.Context, pixivcmd.Request) (mediaproxy.Session, error)
 	read              func(context.Context, pixivcmd.Request, func(context.Context, *pixiv.Client) (bool, error)) error
-	localAccounts     func(context.Context) (mcpaccounts.LocalSnapshot, error)
+	localAccounts     func(context.Context) (accounts.LocalSnapshot, error)
 	open              func(pixivcmd.Request) (*pixiv.Client, error)
 	openLease         func(context.Context, pixivcmd.Request) (*lifecycle.Lease[*pixiv.Client], error)
 	execute           func(context.Context, pixivcmd.Request, func(context.Context, *pixiv.Client) (bool, error)) error
@@ -408,5 +408,5 @@ func openCLIAuthDatabase() (*database.DB, error) {
 }
 
 func writeAuthExportBundle(path string, body []byte, force bool) error {
-	return filesecret.WriteSecretFile(path, body, force)
+	return secretfile.WriteSecretFile(path, body, force)
 }

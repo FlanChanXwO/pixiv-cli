@@ -204,7 +204,7 @@ Canonical data actions: `search`, `detail`, `ranking`, `series`, `comment`, `boo
 | --- | --- | --- | --- |
 | `search` | `--type` / `-t` | `artwork` | Entity: `artwork`, `novel`, `user`. Subtype is `--content-type`; `illust` is not an entity value. |
 | `search` | `--provider` | `reverse_search_provider` (`saucenao`) | `saucenao`, `ascii2d-color`, `ascii2d-bovw`, `all`; image sources only. |
-| `search` | `--content-type` | `all` | `all`, `illust-and-ugoira`, `illust`/`illustration` (alias), `manga`, `ugoira`; artwork search only. |
+| `search` | `--content-type` | `all` | `all`, `illust-and-ugoira`, `illust`, `manga`, `ugoira`; artwork search only. |
 | `search`, `novel search` | `--search-by` | `tag-partial` | Artwork: `tag-partial`, `tag-exact`, `title-caption`, `tag-title-caption`; novel: first three. |
 | `search`, `novel search` | `--sort` | `date_desc` | `date_desc` or `date_asc`. |
 | `search` | `--period` | empty | Artwork: `day`, `week`, `month`, `half-year`, `year`; exclusive with `--start-date`/`--end-date`. |
@@ -230,13 +230,13 @@ Canonical data actions: `search`, `detail`, `ranking`, `series`, `comment`, `boo
 | `comment stamp` | `--stamp-id` | required positive integer | Sent independently from the body. |
 | `bookmark list` | `--type` / `-t` | `artwork` | `artwork`, `novel`, `all` (one logical page, artwork then novel, typed). `--restrict`, `--tag` passed to the matching list. |
 | `bookmark tags` | `--type` / `-t` | `artwork` | `artwork`, `novel`, `all` (same-name tags kept separate and typed). `--restrict` selects public/private. |
-| `user artworks` | `--type` | `illustration` | `illust`, `manga`, `ugoira`. |
+| `user artworks` | `--type` | `illust` | `illust`, `manga`, `ugoira`. |
 | `user bookmarks` | `--restrict`, `--tag` | `public`, empty | Visibility and exact bookmark-tag filter. |
 | `user following`, `user followers` | `--restrict` | `public` | `public` or `private`. |
 | `timeline following` | `--type` / `-t`, `--content-type` | required, `all` | `artwork` or `novel`; artwork filters locally `all\|illust-and-ugoira\|illust\|manga\|ugoira`; `--restrict public\|private`. `--content-type` with `novel` rejected. |
 | `timeline latest` | `--type` / `-t`, `--content-type` | required, `illust` | Latest artwork supports only `illust` or `manga`. `--content-type` with `novel` rejected. |
 | `mypixiv users` | `--page`, `--limit` | optional | Verified authenticated identity only; no positional target, no anonymous fallback. |
-| `mypixiv works` | `--type` / `-t` | required | Without `USER_ID`: `artwork` or `novel`; with a positive `USER_ID`: also `manga`. Legacy `illust` aliases `artwork`. Invalid types/IDs → `invalid_argument` before pool execution. |
+| `mypixiv works` | `--type` / `-t` | required | Without `USER_ID`: `artwork` or `novel`; with a positive `USER_ID`: also `manga`. `illust` is not accepted; use `artwork`. Invalid types/IDs → `invalid_argument` before pool execution. |
 | `recommended` | `--type` / `-t` | empty | `artwork`, `novel`, `user`, `all`; positional `KIND` is compatibility syntax. |
 | `recommended` | `--content-type` | `all` | Artwork-only local filter `all`, `illust`, `manga`, applied after `--page/--limit`; not sent as upstream `content_type`. |
 | record actions | `--on-error` | `skip` | `skip` (stderr diagnostic) or `fail-fast` for malformed/incompatible records. |

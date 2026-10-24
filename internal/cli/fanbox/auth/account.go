@@ -8,7 +8,7 @@ import (
 	"strconv"
 	"strings"
 
-	commands "github.com/FlanChanXwO/pixiv-cli/internal/cli/internal/command"
+	"github.com/FlanChanXwO/pixiv-cli/internal/cli/internal/command"
 	"github.com/FlanChanXwO/pixiv-cli/internal/cli/internal/fanboxcmd"
 	"github.com/FlanChanXwO/pixiv-cli/internal/fanboxaccount"
 	"github.com/spf13/cobra"
@@ -31,7 +31,7 @@ func accountOutFrom(userID int64, displayName, creatorID string, isDefault bool)
 	return accountOut{UserID: userID, DisplayName: displayName, CreatorID: creatorID, Default: isDefault}
 }
 
-func (a command) newImportCommand() *cobra.Command {
+func (a commandRunner) newImportCommand() *cobra.Command {
 	opts := importOptions{}
 	cmd := &cobra.Command{
 		Use:     "import",
@@ -51,7 +51,7 @@ func (a command) newImportCommand() *cobra.Command {
 	return cmd
 }
 
-func (a command) runImport(cmd *cobra.Command, opts importOptions) error {
+func (a commandRunner) runImport(cmd *cobra.Command, opts importOptions) error {
 	if opts.fromBrowser != "" {
 		value, err := a.browser.ReadSession(cmd.Context(), opts.fromBrowser, opts.profile)
 		if err != nil {
@@ -94,7 +94,7 @@ func readSessionInput(r io.Reader) (string, error) {
 	return value, nil
 }
 
-func (a command) importSession(cmd *cobra.Command, value string, setDefault, jsonOut bool) error {
+func (a commandRunner) importSession(cmd *cobra.Command, value string, setDefault, jsonOut bool) error {
 	service, err := a.accounts()
 	if err != nil {
 		return err
@@ -120,7 +120,7 @@ func (a command) importSession(cmd *cobra.Command, value string, setDefault, jso
 	return nil
 }
 
-func (a command) newListCommand() *cobra.Command {
+func (a commandRunner) newListCommand() *cobra.Command {
 	var jsonOut bool
 	cmd := &cobra.Command{
 		Use:   "list",
@@ -135,7 +135,7 @@ func (a command) newListCommand() *cobra.Command {
 	return cmd
 }
 
-func (a command) runList(cmd *cobra.Command, jsonOut bool) error {
+func (a commandRunner) runList(cmd *cobra.Command, jsonOut bool) error {
 	if _, err := fanboxcmd.ProxyOverride(cmd); err != nil {
 		return err
 	}
@@ -178,7 +178,7 @@ func (a command) runList(cmd *cobra.Command, jsonOut bool) error {
 	return nil
 }
 
-func (a command) newUseCommand() *cobra.Command {
+func (a commandRunner) newUseCommand() *cobra.Command {
 	opts := useOptions{}
 	cmd := &cobra.Command{
 		Use:   "use [UID]",
@@ -194,7 +194,7 @@ func (a command) newUseCommand() *cobra.Command {
 	return cmd
 }
 
-func (a command) runUse(args []string, opts useOptions) error {
+func (a commandRunner) runUse(args []string, opts useOptions) error {
 	if opts.auto && len(args) != 0 {
 		return errors.New("--auto cannot be combined with a UID")
 	}
@@ -229,7 +229,7 @@ func (a command) runUse(args []string, opts useOptions) error {
 	return nil
 }
 
-func (a command) newRemoveCommand() *cobra.Command {
+func (a commandRunner) newRemoveCommand() *cobra.Command {
 	opts := removeOptions{}
 	cmd := &cobra.Command{
 		Use:   "remove UID",
@@ -245,7 +245,7 @@ func (a command) newRemoveCommand() *cobra.Command {
 	return cmd
 }
 
-func (a command) runRemove(args []string, opts removeOptions) error {
+func (a commandRunner) runRemove(args []string, opts removeOptions) error {
 	userID, err := parseUID(args[0])
 	if err != nil {
 		return err
@@ -273,7 +273,7 @@ func (a command) runRemove(args []string, opts removeOptions) error {
 	return nil
 }
 
-func (a command) newStatusCommand() *cobra.Command {
+func (a commandRunner) newStatusCommand() *cobra.Command {
 	var jsonOut bool
 	cmd := &cobra.Command{
 		Use:   "status [UID]",
@@ -288,7 +288,7 @@ func (a command) newStatusCommand() *cobra.Command {
 	return cmd
 }
 
-func (a command) runStatus(cmd *cobra.Command, args []string, jsonOut bool) error {
+func (a commandRunner) runStatus(cmd *cobra.Command, args []string, jsonOut bool) error {
 	if _, err := fanboxcmd.ProxyOverride(cmd); err != nil {
 		return err
 	}
@@ -320,7 +320,7 @@ func (a command) runStatus(cmd *cobra.Command, args []string, jsonOut bool) erro
 	return a.printSummary(*summary, jsonOut)
 }
 
-func (a command) printSummary(summary fanboxaccount.AccountSummary, jsonOut bool) error {
+func (a commandRunner) printSummary(summary fanboxaccount.AccountSummary, jsonOut bool) error {
 	if jsonOut {
 		return a.env.PrintJSON(accountOutFrom(summary.UserID, summary.DisplayName, summary.CreatorID, summary.Default))
 	}
@@ -331,7 +331,7 @@ func (a command) printSummary(summary fanboxaccount.AccountSummary, jsonOut bool
 	if summary.CreatorID != "" {
 		fmt.Fprintf(a.env.Out, "creator:%s\n", summary.CreatorID)
 	}
-	fmt.Fprintf(a.env.Out, "default:%s\n", commands.TextBool(summary.Default))
+	fmt.Fprintf(a.env.Out, "default:%s\n", command.TextBool(summary.Default))
 	return nil
 }
 

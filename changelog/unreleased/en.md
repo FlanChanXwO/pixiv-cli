@@ -9,6 +9,10 @@
 
 ## Changed
 
+- `pixiv mypixiv works` no longer accepts `--type illust`; use `--type artwork`. Existing `artwork`, `manga`, and `novel` values are unchanged.
+
+- Removed the legacy `illustration` CLI/SDK input alias for artwork filters; use `illust`. Existing artwork records and MCP filters keep their `illust` contract, and the model's upstream `illustration` kind remains accepted when matching local results.
+
 - Replaced the custom diagnostic events with standard-library `log/slog`. CLI and MCP stderr output now uses one text or JSON record format with shared attribute keys, `log_level` also accepts `warn` and `error`, and both SDKs accept `Options.Logger` for request and retry logs. Logs exclude queries, headers, cookies, tokens, response bodies and signed URLs; CLI data stdout and MCP stdio stdout carry no log records. Debug-level text now shows the source location and uses `timestamp LEVEL --- file:line : message key=value`; a failed command adds one terminating `ERROR` record.
 
 - Interactive account selection (`pixiv auth use` and `pixiv auth remove` without a UID) now asks for a number from a printed list instead of using arrow-key navigation. Password, text, and yes/no prompts keep the same TTY requirement, defaults, and output stream.

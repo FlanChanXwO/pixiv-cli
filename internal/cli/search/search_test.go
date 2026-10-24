@@ -10,9 +10,13 @@ import (
 	"os"
 	"strings"
 	"testing"
+	"time"
 
+	commands "github.com/FlanChanXwO/pixiv-cli/internal/cli/internal/command"
+	pixivcmd "github.com/FlanChanXwO/pixiv-cli/internal/cli/internal/pixivcmd"
 	"github.com/FlanChanXwO/pixiv-cli/internal/reversesearch"
 	pixiv "github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
+	"github.com/spf13/cobra"
 )
 
 type searchRoundTripFunc func(*http.Request) (*http.Response, error)
@@ -566,7 +570,7 @@ func TestCommandLocallyFiltersArtworkRatingAndCanonicalizesSubtype(t *testing.T)
 			return err
 		},
 	})
-	cmd.SetArgs([]string{"cat", "--rating", "r18", "--content-type", "illustration", "--limit", "1", "--json"})
+	cmd.SetArgs([]string{"cat", "--rating", "r18", "--content-type", "illust", "--limit", "1", "--json"})
 
 	if err := cmd.Execute(); err != nil {
 		t.Fatalf("execute filtered artwork search: %v", err)
@@ -960,5 +964,54 @@ func TestTrendingTagsRejectsWordAndUnsupportedFlagsBeforeOpeningClient(t *testin
 				t.Fatal("opened SDK client before validating trending-tags flags")
 			}
 		})
+	}
+}
+
+// testDependencies keeps the old test-facing fields so assertions stay
+// unchanged while production constructors take explicit arguments.
+type testDependencies struct {
+	Input         io.Reader
+	Output        io.Writer
+	ErrorOutput   io.Writer
+	UsageError    func(error) error
+	JSONOut       func(*bool) (bool, error)
+	Pooled        func(context.Context, pixivcmd.Request, func(context.Context, *pixiv.Client) (bool, error)) error
+	ReverseSearch func(context.Context, ReverseSearchRequest) (reversesearch.Response, error)
+}
+
+type Request = pixivcmd.Request
+
+func (d testDependencies) env() commands.Env {
+	return commands.Env{In: d.Input, Out: d.Output, Err: d.ErrorOutput, WrapUsage: d.UsageError, ResolveJSON: d.JSONOut}
+}
+
+func newTestCommand(d testDependencies) *cobra.Command {
+	return New(d.env(), pixivcmd.Executor(d.Pooled), ReverseSearchPort(d.ReverseSearch))
+}
+
+func newTestNovelCommand(d testDependencies) *cobra.Command {
+	return NewNovel(d.env(), pixivcmd.Executor(d.Pooled), ReverseSearchPort(d.ReverseSearch))
+}
+
+func TestQuickDateRangeUsesTokyoDateAndClampsMonthEnd(t *testing.T) {
+	location := time.FixedZone("UTC-8", -8*60*60)
+	now := time.Date(2026, time.August, 31, 23, 0, 0, 0, location)
+	start, end, ok := quickDateRange("within_half_year", now)
+	if !ok || start != "2026-03-01" || end != "2026-09-01" {
+		t.Fatalf("half year range = %q..%q ok=%v", start, end, ok)
+	}
+}
+
+func TestQuickDateRangeClampsLeapDayForYear(t *testing.T) {
+	now := time.Date(2024, time.February, 29, 12, 0, 0, 0, time.FixedZone("Asia/Tokyo", 9*60*60))
+	start, end, ok := quickDateRange("within_year", now)
+	if !ok || start != "2023-02-28" || end != "2024-02-29" {
+		t.Fatalf("year range = %q..%q ok=%v", start, end, ok)
+	}
+}
+
+func TestQuickDateRangeRejectsUnknownValue(t *testing.T) {
+	if _, _, ok := quickDateRange("within_last_month", time.Now()); ok {
+		t.Fatal("short duration unexpectedly resolved to an explicit date range")
 	}
 }

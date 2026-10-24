@@ -9,7 +9,7 @@ import (
 	"fmt"
 	"time"
 
-	accountpixiv "github.com/FlanChanXwO/pixiv-cli/internal/pixivaccount"
+	"github.com/FlanChanXwO/pixiv-cli/internal/pixivaccount"
 	"gorm.io/gorm"
 )
 
@@ -24,7 +24,7 @@ func (d *DB) SetPixivSchedulable(ctx context.Context, userIDs []int64, schedulab
 				return err
 			}
 			if count != int64(len(userIDs)) {
-				return accountpixiv.ErrNotFound
+				return pixivaccount.ErrNotFound
 			}
 			return tx.Model(&pixivAccountRow{}).Where(colUserID+" IN ?", userIDs).
 				Updates(map[string]any{colSchedulable: schedulable, colUpdatedAt: nowUnix()}).Error
@@ -44,9 +44,9 @@ func (d *DB) SetAllPixivSchedulable(ctx context.Context, schedulable bool) error
 }
 
 // ListPixivPoolStatus 返回 non-secret 调度状态，并在同一个事务中清理已过期冻结。
-func (d *DB) ListPixivPoolStatus(ctx context.Context, now int64) (accountpixiv.PoolStatus, error) {
-	return withDatabaseValue(ctx, d, func() (accountpixiv.PoolStatus, error) {
-		var status accountpixiv.PoolStatus
+func (d *DB) ListPixivPoolStatus(ctx context.Context, now int64) (pixivaccount.PoolStatus, error) {
+	return withDatabaseValue(ctx, d, func() (pixivaccount.PoolStatus, error) {
+		var status pixivaccount.PoolStatus
 		err := d.orm.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 			if err := tx.Model(&pixivAccountRow{}).
 				Where(colPoolFrozenUntil+" IS NOT NULL AND "+colPoolFrozenUntil+" <= ?", now).
@@ -58,7 +58,7 @@ func (d *DB) ListPixivPoolStatus(ctx context.Context, now int64) (accountpixiv.P
 				Order(colSortOrder).Find(&rows).Error; err != nil {
 				return err
 			}
-			status.Accounts = make([]accountpixiv.PoolCandidate, 0, len(rows))
+			status.Accounts = make([]pixivaccount.PoolCandidate, 0, len(rows))
 			for _, row := range rows {
 				candidate := row.candidate(now)
 				if candidate.PoolFrozenUntil != nil && (status.EarliestFrozenUntil == nil || *candidate.PoolFrozenUntil < *status.EarliestFrozenUntil) {

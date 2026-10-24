@@ -10,13 +10,13 @@ import (
 	"io"
 	"strings"
 
-	protocol "github.com/FlanChanXwO/pixiv-cli/internal/fanboxapi"
+	"github.com/FlanChanXwO/pixiv-cli/internal/fanboxapi"
 	atomicfile "github.com/FlanChanXwO/pixiv-cli/internal/storage/atomicfile"
 	"github.com/FlanChanXwO/pixiv-cli/sdk"
 )
 
 // fanboxReferer is the non-secret referer FANBOX media requests carry.
-const fanboxReferer = protocol.Referer
+const fanboxReferer = fanboxapi.Referer
 
 // resourceRefPayload is the opaque identity payload embedded in a FANBOX
 // ResourceRef. It carries only stable identity (kind, owning creator or post,
@@ -33,7 +33,7 @@ type resourceRefPayload struct {
 }
 
 func (c *Client) validateResourceURL(rawURL string) error {
-	if err := protocol.ValidateURL(rawURL); err != nil {
+	if err := fanboxapi.ValidateURL(rawURL); err != nil {
 		return newError("resource", sdk.ResourceForbidden, errors.New("resource host is not allowed"))
 	}
 	return nil
@@ -59,12 +59,12 @@ func (c *Client) newResource(kind, creatorID, postID, assetID, rawURL, filename 
 	if err != nil {
 		return sdk.Resource{}, newError("resource", sdk.UpstreamError, err)
 	}
-	c.app.CacheLocator(ref.String(), protocol.Locator{URL: rawURL, Filename: filename})
+	c.app.CacheLocator(ref.String(), fanboxapi.Locator{URL: rawURL, Filename: filename})
 	return sdk.Resource{
 		Ref:                 ref,
 		URL:                 rawURL,
 		RequestHeaders:      map[string]string{"Referer": fanboxReferer},
-		RequiresCredentials: protocol.RequiresCredentials(rawURL),
+		RequiresCredentials: fanboxapi.RequiresCredentials(rawURL),
 	}, nil
 }
 
@@ -74,7 +74,7 @@ func (c *Client) newResource(kind, creatorID, postID, assetID, rawURL, filename 
 // host allowlist. The ref's stable identity is re-resolved to a fresh locator
 // so a stored ref never reopens a stale embedded URL.
 func (c *Client) OpenResource(ctx context.Context, request sdk.OpenResourceRequest) (*sdk.ResourceResponse, error) {
-	ctx = protocol.WithOperation(ctx, "OpenResource")
+	ctx = fanboxapi.WithOperation(ctx, "OpenResource")
 	if err := request.Validate(); err != nil {
 		return nil, err
 	}
@@ -85,7 +85,7 @@ func (c *Client) OpenResource(ctx context.Context, request sdk.OpenResourceReque
 	if err := c.validateResourceURL(locator.URL); err != nil {
 		return nil, newError("OpenResource", sdk.ResourceForbidden, errors.New("resource URL is not allowed"))
 	}
-	response, err := c.app.OpenMedia(ctx, locator.URL, protocol.MediaRequest{
+	response, err := c.app.OpenMedia(ctx, locator.URL, fanboxapi.MediaRequest{
 		Method:          string(request.Method),
 		Range:           request.Range,
 		IfNoneMatch:     request.IfNoneMatch,
@@ -104,7 +104,7 @@ func (c *Client) OpenResource(ctx context.Context, request sdk.OpenResourceReque
 // an atomic destination. It does not expand posts, creators, archives, or
 // sidecars; use the downloader for those.
 func (c *Client) SaveResource(ctx context.Context, ref sdk.ResourceRef, options sdk.SaveOptions) (sdk.SavedResource, error) {
-	ctx = protocol.WithOperation(ctx, "SaveResource")
+	ctx = fanboxapi.WithOperation(ctx, "SaveResource")
 	if strings.TrimSpace(options.Path) == "" {
 		return sdk.SavedResource{}, newError("SaveResource", sdk.InvalidArgument, errors.New("destination path is required"))
 	}
@@ -116,7 +116,7 @@ func (c *Client) SaveResource(ctx context.Context, ref sdk.ResourceRef, options 
 	if response.StatusCode < 200 || response.StatusCode >= 300 {
 		return sdk.SavedResource{}, newError("SaveResource", sdk.UpstreamError, errors.New("resource returned a non-success status"))
 	}
-	size, err := atomicfile.Write(ctx, options.Path, &progressReader{src: response.Body, progress: options.Progress})
+	size, err := atomicfile.AtomicWrite(ctx, options.Path, &progressReader{src: response.Body, progress: options.Progress})
 	if err != nil {
 		return sdk.SavedResource{}, newError("SaveResource", sdk.LocalStateError, errors.New("cannot write resource"))
 	}
@@ -144,31 +144,31 @@ func (c *Client) decodeResourceRef(ref sdk.ResourceRef) (resourceRefPayload, err
 
 // resolveResource keeps the URL and attachment name in the same cache entry.
 // Reopened references resolve metadata by kind and stable identity, never by URL.
-func (c *Client) resolveResource(ctx context.Context, ref sdk.ResourceRef, operation string) (protocol.Locator, error) {
+func (c *Client) resolveResource(ctx context.Context, ref sdk.ResourceRef, operation string) (fanboxapi.Locator, error) {
 	rp, err := c.decodeResourceRef(ref)
 	if err != nil {
-		return protocol.Locator{}, newError(operation, sdk.InvalidArgument, errors.New("invalid resource reference"))
+		return fanboxapi.Locator{}, newError(operation, sdk.InvalidArgument, errors.New("invalid resource reference"))
 	}
 	if locator, ok := c.app.CachedLocator(ref.String()); ok && locator.URL != "" {
 		return locator, nil
 	}
-	var locator protocol.Locator
+	var locator fanboxapi.Locator
 	switch rp.Kind {
 	case "creator_icon", "creator_cover":
 		locator.URL, err = c.resolveCreatorAssetURL(ctx, rp)
 	case "post_image", "post_file":
 		locator, err = c.resolvePostAsset(ctx, rp)
 	default:
-		return protocol.Locator{}, newError(operation, sdk.InvalidArgument, errors.New("resource kind is unsupported"))
+		return fanboxapi.Locator{}, newError(operation, sdk.InvalidArgument, errors.New("resource kind is unsupported"))
 	}
 	if err != nil {
 		if _, ok := err.(*sdk.Error); ok {
-			return protocol.Locator{}, err
+			return fanboxapi.Locator{}, err
 		}
-		return protocol.Locator{}, newError(operation, sdk.MalformedUpstreamResponse, errors.New("resource metadata has no usable URL"))
+		return fanboxapi.Locator{}, newError(operation, sdk.MalformedUpstreamResponse, errors.New("resource metadata has no usable URL"))
 	}
 	if err := c.validateResourceURL(locator.URL); err != nil {
-		return protocol.Locator{}, newError(operation, sdk.ResourceForbidden, errors.New("resolved resource URL is not allowed"))
+		return fanboxapi.Locator{}, newError(operation, sdk.ResourceForbidden, errors.New("resolved resource URL is not allowed"))
 	}
 	c.app.CacheLocator(ref.String(), locator)
 	return locator, nil
@@ -201,35 +201,35 @@ func (c *Client) resolveCreatorAssetURL(ctx context.Context, rp resourceRefPaylo
 }
 
 // resolvePostAsset selects kind as well as ID: image and file ID spaces may overlap.
-func (c *Client) resolvePostAsset(ctx context.Context, rp resourceRefPayload) (protocol.Locator, error) {
+func (c *Client) resolvePostAsset(ctx context.Context, rp resourceRefPayload) (fanboxapi.Locator, error) {
 	if rp.Post == "" || rp.Asset == "" {
-		return protocol.Locator{}, errors.New("post resource reference is missing post or attachment id")
+		return fanboxapi.Locator{}, errors.New("post resource reference is missing post or attachment id")
 	}
 	source, err := c.postInfo(ctx, rp.Post)
 	if err != nil {
-		return protocol.Locator{}, classifyError("resource", err)
+		return fanboxapi.Locator{}, classifyError("resource", err)
 	}
 	if source.Body == nil {
-		return protocol.Locator{}, errors.New("post body is unavailable")
+		return fanboxapi.Locator{}, errors.New("post body is unavailable")
 	}
 	images, files, err := bodyMedia(source.Body)
 	if err != nil {
-		return protocol.Locator{}, classifyError("resource", err)
+		return fanboxapi.Locator{}, classifyError("resource", err)
 	}
 	if rp.Kind == "post_image" {
 		for _, image := range images {
 			if image.ID == rp.Asset && image.OriginalURL != "" {
-				return protocol.Locator{URL: image.OriginalURL}, nil
+				return fanboxapi.Locator{URL: image.OriginalURL}, nil
 			}
 		}
 	} else if rp.Kind == "post_file" {
 		for _, file := range files {
 			if file.ID == rp.Asset && file.URL != "" {
-				return protocol.Locator{URL: file.URL, Filename: attachmentFilename(file.Name, file.Extension)}, nil
+				return fanboxapi.Locator{URL: file.URL, Filename: attachmentFilename(file.Name, file.Extension)}, nil
 			}
 		}
 	}
-	return protocol.Locator{}, errors.New("post attachment is unavailable")
+	return fanboxapi.Locator{}, errors.New("post attachment is unavailable")
 }
 
 // attachmentFilename retains upstream naming, without guessing a name from a locator.

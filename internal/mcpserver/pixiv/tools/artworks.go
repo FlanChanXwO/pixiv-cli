@@ -366,33 +366,17 @@ func artworkFilterForKind(kind string, filter *filters.IllustFilter) *filters.Il
 
 func (t pixivTools) recommendedHandler(ctx context.Context, in recommendedIn) (*mcp.CallToolResult, outputs.Recommended, error) {
 	out := outputs.NewRecommended()
-	plan, err := toolhost.ParseListPlan(in.PageLimitIn)
-	if err == nil && in.Kind != "all" && in.Kind != "illust" && in.Kind != "manga" && in.Kind != "novel" && in.Kind != "user" {
-		err = errors.New("kind must be one of: all, illust, manga, novel, user")
-	}
+	plan, err := parseRecommendedRequest(in)
 	if err != nil {
-		return outputs.RecommendedError(err)
-	}
-	if err := validateKindFilters(in); err != nil {
 		return outputs.RecommendedError(err)
 	}
 	ctx, err = filters.WithMixedFilters(ctx, in.IllustFilter, in.NovelFilter, in.UserFilter)
 	if err != nil {
 		return outputs.RecommendedError(err)
 	}
-	var initial sdk.Cursor
-	if in.Cursor != nil {
-		if !plan.OneBatch || in.Kind == "all" {
-			return outputs.RecommendedError(errors.New("cursor requires a single kind and omitted page and limit"))
-		}
-		binding, err := toolhost.BindCursor("recommended", streamInput(in, in.Kind))
-		if err != nil {
-			return outputs.RecommendedError(err)
-		}
-		initial, err = binding.Decode(in.Cursor)
-		if err != nil {
-			return outputs.RecommendedError(err)
-		}
+	initial, err := recommendedInitialCursor(in, plan)
+	if err != nil {
+		return outputs.RecommendedError(err)
 	}
 	execute := t.app.Execute()
 	if execute == nil {
@@ -402,110 +386,14 @@ func (t pixivTools) recommendedHandler(ctx context.Context, in recommendedIn) (*
 	err = execute(ctx, func(ctx context.Context, client *pixiv.Client) (bool, error) {
 		// 重放必须丢弃前一账号/尝试的记录与分页状态。
 		out = outputs.NewRecommended()
-		var visualItems []pixiv.Artwork
-		var visualMore bool
-		var visualNext sdk.Cursor
-		if in.Kind == "all" || in.Kind == "illust" || in.Kind == "manga" {
-			rawArtworkCtx, filterErr := filters.WithIllustFilter(ctx, nil)
-			if filterErr != nil {
-				return false, filterErr
-			}
-			visualItems, visualMore, visualNext, filterErr = toolhost.CollectPagesFrom(rawArtworkCtx, plan, initial, func(ctx context.Context, c sdk.Cursor) ([]pixiv.Artwork, sdk.Cursor, error) {
-				r, e := client.RecommendedArtworks(ctx, pixiv.RecommendedArtworksRequest{Cursor: c})
-				if e != nil {
-					return nil, sdk.Cursor{}, e
-				}
-				return r.Items, r.Next, nil
-			})
-			if filterErr != nil {
-				return false, filterErr
-			}
+		if err := t.recommendedArtworkStreams(ctx, client, in, plan, initial, &out); err != nil {
+			return false, err
 		}
-		if in.Kind == "all" || in.Kind == "illust" {
-			artworkCtx, filterErr := filters.WithIllustFilter(ctx, artworkFilterForKind("illust", in.IllustFilter))
-			if filterErr != nil {
-				return false, filterErr
-			}
-			items := filters.FilterPage(artworkCtx, visualItems, make(map[string]struct{}))
-			recordItems, mapErr := record.FromArtworks(items)
-			if mapErr != nil {
-				return false, mapErr
-			}
-			out.Records = append(out.Records, recordItems...)
-			out.Pagination.Illust = outputs.RecommendedPage(plan, in.Limit, len(items), visualMore)
-			out.Pagination.Illust.NextCursor, err = streamContinuation(in, "illust", visualNext)
-			if err != nil {
-				return false, err
-			}
+		if err := t.recommendedNovelStream(ctx, client, in, plan, initial, &out); err != nil {
+			return false, err
 		}
-		if in.Kind == "all" || in.Kind == "manga" {
-			artworkCtx, filterErr := filters.WithIllustFilter(ctx, artworkFilterForKind("manga", in.IllustFilter))
-			if filterErr != nil {
-				return false, filterErr
-			}
-			items := filters.FilterPage(artworkCtx, visualItems, make(map[string]struct{}))
-			recordItems, mapErr := record.FromArtworks(items)
-			if mapErr != nil {
-				return false, mapErr
-			}
-			out.Records = append(out.Records, recordItems...)
-			out.Pagination.Manga = outputs.RecommendedPage(plan, in.Limit, len(items), visualMore)
-			out.Pagination.Manga.NextCursor, err = streamContinuation(in, "manga", visualNext)
-			if err != nil {
-				return false, err
-			}
-		}
-		if in.Kind == "all" || in.Kind == "novel" {
-			novelCtx, filterErr := filters.WithNovelFilter(ctx, in.NovelFilter)
-			if filterErr != nil {
-				return false, filterErr
-			}
-			items, more, next, fetchErr := toolhost.CollectPagesFrom(novelCtx, plan, initial, func(ctx context.Context, c sdk.Cursor) ([]pixiv.Novel, sdk.Cursor, error) {
-				r, e := client.RecommendedNovels(ctx, pixiv.RecommendedNovelsRequest{Cursor: c})
-				if e != nil {
-					return nil, sdk.Cursor{}, e
-				}
-				return r.Items, r.Next, nil
-			})
-			if fetchErr != nil {
-				return false, fetchErr
-			}
-			recordItems, mapErr := record.FromNovels(items)
-			if mapErr != nil {
-				return false, mapErr
-			}
-			out.Records = append(out.Records, recordItems...)
-			out.Pagination.Novel = outputs.RecommendedPage(plan, in.Limit, len(items), more)
-			out.Pagination.Novel.NextCursor, err = streamContinuation(in, "novel", next)
-			if err != nil {
-				return false, err
-			}
-		}
-		if in.Kind == "all" || in.Kind == "user" {
-			userCtx, filterErr := filters.WithUserFilter(ctx, in.UserFilter)
-			if filterErr != nil {
-				return false, filterErr
-			}
-			items, more, next, fetchErr := toolhost.CollectPagesFrom(userCtx, plan, initial, func(ctx context.Context, c sdk.Cursor) ([]pixiv.UserPreview, sdk.Cursor, error) {
-				r, e := client.RecommendedUsers(ctx, pixiv.RecommendedUsersRequest{Cursor: c})
-				if e != nil {
-					return nil, sdk.Cursor{}, e
-				}
-				return r.Items, r.Next, nil
-			})
-			if fetchErr != nil {
-				return false, fetchErr
-			}
-			recordItems, mapErr := record.FromUserPreviews(items)
-			if mapErr != nil {
-				return false, mapErr
-			}
-			out.Records = append(out.Records, recordItems...)
-			out.Pagination.User = outputs.RecommendedPage(plan, in.Limit, len(items), more)
-			out.Pagination.User.NextCursor, err = streamContinuation(in, "user", next)
-			if err != nil {
-				return false, err
-			}
+		if err := t.recommendedUserStream(ctx, client, in, plan, initial, &out); err != nil {
+			return false, err
 		}
 		return false, nil
 	})
@@ -513,6 +401,147 @@ func (t pixivTools) recommendedHandler(ctx context.Context, in recommendedIn) (*
 		return outputs.RecommendedError(err)
 	}
 	return records.Result(out.Records, false, ""), out, nil
+}
+
+func parseRecommendedRequest(in recommendedIn) (toolhost.ListPlan, error) {
+	plan, err := toolhost.ParseListPlan(in.PageLimitIn)
+	if err == nil && in.Kind != "all" && in.Kind != "illust" && in.Kind != "manga" && in.Kind != "novel" && in.Kind != "user" {
+		err = errors.New("kind must be one of: all, illust, manga, novel, user")
+	}
+	if err != nil {
+		return toolhost.ListPlan{}, err
+	}
+	if err := validateKindFilters(in); err != nil {
+		return toolhost.ListPlan{}, err
+	}
+	return plan, nil
+}
+
+func recommendedInitialCursor(in recommendedIn, plan toolhost.ListPlan) (sdk.Cursor, error) {
+	if in.Cursor == nil {
+		return sdk.Cursor{}, nil
+	}
+	if !plan.OneBatch || in.Kind == "all" {
+		return sdk.Cursor{}, errors.New("cursor requires a single kind and omitted page and limit")
+	}
+	binding, err := toolhost.BindCursor("recommended", streamInput(in, in.Kind))
+	if err != nil {
+		return sdk.Cursor{}, err
+	}
+	return binding.Decode(in.Cursor)
+}
+
+func (t pixivTools) recommendedArtworkStreams(ctx context.Context, client *pixiv.Client, in recommendedIn, plan toolhost.ListPlan, initial sdk.Cursor, out *outputs.Recommended) error {
+	var visualItems []pixiv.Artwork
+	var visualMore bool
+	var visualNext sdk.Cursor
+	if in.Kind == "all" || in.Kind == "illust" || in.Kind == "manga" {
+		rawArtworkCtx, err := filters.WithIllustFilter(ctx, nil)
+		if err != nil {
+			return err
+		}
+		visualItems, visualMore, visualNext, err = toolhost.CollectPagesFrom(rawArtworkCtx, plan, initial, func(ctx context.Context, c sdk.Cursor) ([]pixiv.Artwork, sdk.Cursor, error) {
+			r, e := client.RecommendedArtworks(ctx, pixiv.RecommendedArtworksRequest{Cursor: c})
+			if e != nil {
+				return nil, sdk.Cursor{}, e
+			}
+			return r.Items, r.Next, nil
+		})
+		if err != nil {
+			return err
+		}
+	}
+	if in.Kind == "all" || in.Kind == "illust" {
+		if err := appendRecommendedArtworks(ctx, out, plan, in, "illust", visualItems, visualMore, visualNext); err != nil {
+			return err
+		}
+	}
+	if in.Kind == "all" || in.Kind == "manga" {
+		if err := appendRecommendedArtworks(ctx, out, plan, in, "manga", visualItems, visualMore, visualNext); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func appendRecommendedArtworks(ctx context.Context, out *outputs.Recommended, plan toolhost.ListPlan, in recommendedIn, kind string, items []pixiv.Artwork, more bool, next sdk.Cursor) error {
+	artworkCtx, err := filters.WithIllustFilter(ctx, artworkFilterForKind(kind, in.IllustFilter))
+	if err != nil {
+		return err
+	}
+	filtered := filters.FilterPage(artworkCtx, items, make(map[string]struct{}))
+	recordItems, err := record.FromArtworks(filtered)
+	if err != nil {
+		return err
+	}
+	out.Records = append(out.Records, recordItems...)
+	page := outputs.RecommendedPage(plan, in.Limit, len(filtered), more)
+	page.NextCursor, err = streamContinuation(in, kind, next)
+	if err != nil {
+		return err
+	}
+	if kind == "illust" {
+		out.Pagination.Illust = page
+	} else {
+		out.Pagination.Manga = page
+	}
+	return nil
+}
+
+func (t pixivTools) recommendedNovelStream(ctx context.Context, client *pixiv.Client, in recommendedIn, plan toolhost.ListPlan, initial sdk.Cursor, out *outputs.Recommended) error {
+	if in.Kind != "all" && in.Kind != "novel" {
+		return nil
+	}
+	novelCtx, err := filters.WithNovelFilter(ctx, in.NovelFilter)
+	if err != nil {
+		return err
+	}
+	items, more, next, err := toolhost.CollectPagesFrom(novelCtx, plan, initial, func(ctx context.Context, c sdk.Cursor) ([]pixiv.Novel, sdk.Cursor, error) {
+		r, e := client.RecommendedNovels(ctx, pixiv.RecommendedNovelsRequest{Cursor: c})
+		if e != nil {
+			return nil, sdk.Cursor{}, e
+		}
+		return r.Items, r.Next, nil
+	})
+	if err != nil {
+		return err
+	}
+	recordItems, err := record.FromNovels(items)
+	if err != nil {
+		return err
+	}
+	out.Records = append(out.Records, recordItems...)
+	out.Pagination.Novel = outputs.RecommendedPage(plan, in.Limit, len(items), more)
+	out.Pagination.Novel.NextCursor, err = streamContinuation(in, "novel", next)
+	return err
+}
+
+func (t pixivTools) recommendedUserStream(ctx context.Context, client *pixiv.Client, in recommendedIn, plan toolhost.ListPlan, initial sdk.Cursor, out *outputs.Recommended) error {
+	if in.Kind != "all" && in.Kind != "user" {
+		return nil
+	}
+	userCtx, err := filters.WithUserFilter(ctx, in.UserFilter)
+	if err != nil {
+		return err
+	}
+	items, more, next, err := toolhost.CollectPagesFrom(userCtx, plan, initial, func(ctx context.Context, c sdk.Cursor) ([]pixiv.UserPreview, sdk.Cursor, error) {
+		r, e := client.RecommendedUsers(ctx, pixiv.RecommendedUsersRequest{Cursor: c})
+		if e != nil {
+			return nil, sdk.Cursor{}, e
+		}
+		return r.Items, r.Next, nil
+	})
+	if err != nil {
+		return err
+	}
+	recordItems, err := record.FromUserPreviews(items)
+	if err != nil {
+		return err
+	}
+	out.Records = append(out.Records, recordItems...)
+	out.Pagination.User = outputs.RecommendedPage(plan, in.Limit, len(items), more)
+	out.Pagination.User.NextCursor, err = streamContinuation(in, "user", next)
+	return err
 }
 
 // streamInput 与客户端单 kind 续读参数一致，不把 all 的其他流筛选带过去。
