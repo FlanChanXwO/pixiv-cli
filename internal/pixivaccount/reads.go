@@ -1,3 +1,6 @@
+// MCP 读取会话的共享缓存：按账号与网络快照复用 client，凭据变更时作废旧 generation。
+// 文件事件监听在 reads_watch.go，账号选择与持久化在 accounts.go。
+
 package pixivaccount
 
 import (

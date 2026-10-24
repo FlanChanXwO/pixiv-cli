@@ -1,4 +1,4 @@
-package session_test
+package session
 
 import (
 	"context"
@@ -9,7 +9,6 @@ import (
 	"time"
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/lifecycle"
-	"github.com/FlanChanXwO/pixiv-cli/internal/session"
 	"github.com/FlanChanXwO/pixiv-cli/sdk"
 	sdkpixiv "github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
 	"github.com/stretchr/testify/require"
@@ -23,13 +22,13 @@ type fakeAccounts struct {
 	panic        bool
 }
 
-func (f *fakeAccounts) OpenClientWith(_ context.Context, options sdkpixiv.Options) (*sdkpixiv.Client, error) {
+func (f *fakeAccounts) OpenClient(_ context.Context, options sdkpixiv.Options) (*sdkpixiv.Client, error) {
 	f.openedIDs = append(f.openedIDs, 0)
 	f.options = append(f.options, options)
 	return f.client()
 }
 
-func (f *fakeAccounts) OpenAccountClientWith(_ context.Context, userID int64, options sdkpixiv.Options) (*sdkpixiv.Client, error) {
+func (f *fakeAccounts) OpenAccountClient(_ context.Context, userID int64, options sdkpixiv.Options) (*sdkpixiv.Client, error) {
 	f.openedIDs = append(f.openedIDs, userID)
 	f.options = append(f.options, options)
 	return f.client()
@@ -86,21 +85,25 @@ func (p *fakePool) Run(ctx context.Context, attempt func(context.Context, int64,
 	return errors.New("fake pool exhausted")
 }
 
+func newTestPixiv(accounts AccountService, gate RotationGate, loadPoolConfig ConfigLoader, pool PoolFactory, closeClient func(*sdkpixiv.Client) error) *Pixiv {
+	f := NewPixiv(accounts, gate, loadPoolConfig, pool)
+	if closeClient != nil {
+		f.closeClient = closeClient
+	}
+	return f
+}
+
 func TestPixivOpenLeaseClosesClientAndGateOnce(t *testing.T) {
 	accounts := &fakeAccounts{}
 	gate := &fakeGate{}
 	closeCount := 0
-	facade := session.NewPixiv(session.Dependencies{
-		Accounts: accounts,
-		Gate:     gate,
-		CloseClient: func(*sdkpixiv.Client) error {
-			closeCount++
-			return nil
-		},
+	facade := newTestPixiv(accounts, gate, nil, nil, func(*sdkpixiv.Client) error {
+		closeCount++
+		return nil
 	})
 	options := sdkpixiv.Options{AcceptLanguage: "ja-JP"}
 
-	lease, err := facade.Open(context.Background(), session.Request{UserID: 42, Options: options})
+	lease, err := facade.Open(context.Background(), Request{UserID: 42, Options: options})
 	if err != nil {
 		t.Fatalf("Open() error = %v", err)
 	}
@@ -131,22 +134,17 @@ func TestPixivUseReplaysUncommittedAttemptsAndClosesEachLease(t *testing.T) {
 	accounts := &fakeAccounts{}
 	gate := &fakeGate{}
 	pool := &fakePool{userIDs: []int64{11, 22}}
-	var gotConfig session.PoolConfig
-	facade := session.NewPixiv(session.Dependencies{
-		Accounts: accounts,
-		Gate:     gate,
-		Pool: func(config session.PoolConfig) (session.PoolExecutor, error) {
-			gotConfig = config
-			return pool, nil
-		},
-		LoadPoolConfig: func() (session.PoolConfig, error) {
-			return session.PoolConfig{Enabled: true, Strategy: "round-robin"}, nil
-		},
-	})
+	var gotConfig PoolConfig
+	facade := newTestPixiv(accounts, gate, func() (PoolConfig, error) {
+		return PoolConfig{Enabled: true, Strategy: "round-robin"}, nil
+	}, func(config PoolConfig) (PoolExecutor, error) {
+		gotConfig = config
+		return pool, nil
+	}, nil)
 	options := sdkpixiv.Options{AcceptLanguage: "en-US"}
 	callbackCalls := 0
 
-	err := facade.Use(context.Background(), session.Request{Options: options}, func(_ context.Context, _ *sdkpixiv.Client) (bool, error) {
+	err := facade.Use(context.Background(), Request{Options: options}, func(_ context.Context, _ *sdkpixiv.Client) (bool, error) {
 		callbackCalls++
 		if callbackCalls == 1 {
 			return false, sdk.NewError("pixiv", "test", sdk.RateLimited, sdk.WithRetry(sdk.RetryAdvice{
@@ -176,7 +174,7 @@ func TestPixivUseReplaysUncommittedAttemptsAndClosesEachLease(t *testing.T) {
 	if !reflect.DeepEqual(accounts.options, []sdkpixiv.Options{options, options}) {
 		t.Fatalf("SDK options = %#v, want %#v", accounts.options, []sdkpixiv.Options{options, options})
 	}
-	if got, want := gotConfig, (session.PoolConfig{Enabled: true, Strategy: "round-robin"}); !reflect.DeepEqual(got, want) {
+	if got, want := gotConfig, (PoolConfig{Enabled: true, Strategy: "round-robin"}); !reflect.DeepEqual(got, want) {
 		t.Fatalf("pool config = %#v, want %#v", got, want)
 	}
 }
@@ -185,28 +183,23 @@ func TestPixivUseBuildsPoolFromCurrentConfig(t *testing.T) {
 	accounts := &fakeAccounts{}
 	gate := &fakeGate{}
 	pool := &fakePool{userIDs: []int64{11}}
-	configs := []session.PoolConfig{
+	configs := []PoolConfig{
 		{Enabled: true, Strategy: "round-robin"},
 		{Enabled: true, Strategy: "random"},
 	}
 	var loaded int
-	var built []session.PoolConfig
-	facade := session.NewPixiv(session.Dependencies{
-		Accounts: accounts,
-		Gate:     gate,
-		Pool: func(config session.PoolConfig) (session.PoolExecutor, error) {
-			built = append(built, config)
-			return pool, nil
-		},
-		LoadPoolConfig: func() (session.PoolConfig, error) {
-			config := configs[loaded]
-			loaded++
-			return config, nil
-		},
-	})
+	var built []PoolConfig
+	facade := newTestPixiv(accounts, gate, func() (PoolConfig, error) {
+		config := configs[loaded]
+		loaded++
+		return config, nil
+	}, func(config PoolConfig) (PoolExecutor, error) {
+		built = append(built, config)
+		return pool, nil
+	}, nil)
 
 	for range configs {
-		err := facade.Use(context.Background(), session.Request{}, func(context.Context, *sdkpixiv.Client) (bool, error) {
+		err := facade.Use(context.Background(), Request{}, func(context.Context, *sdkpixiv.Client) (bool, error) {
 			return false, nil
 		})
 		require.NoError(t, err)
@@ -220,19 +213,14 @@ func TestPixivUseDoesNotReplayCommittedAttempt(t *testing.T) {
 	accounts := &fakeAccounts{}
 	gate := &fakeGate{}
 	pool := &fakePool{userIDs: []int64{11, 22}}
-	facade := session.NewPixiv(session.Dependencies{
-		Accounts: accounts,
-		Gate:     gate,
-		Pool: func(session.PoolConfig) (session.PoolExecutor, error) {
-			return pool, nil
-		},
-		LoadPoolConfig: func() (session.PoolConfig, error) {
-			return session.PoolConfig{Enabled: true}, nil
-		},
-	})
+	facade := newTestPixiv(accounts, gate, func() (PoolConfig, error) {
+		return PoolConfig{Enabled: true}, nil
+	}, func(PoolConfig) (PoolExecutor, error) {
+		return pool, nil
+	}, nil)
 	wantErr := errors.New("committed callback failed")
 
-	err := facade.Use(context.Background(), session.Request{}, func(_ context.Context, _ *sdkpixiv.Client) (bool, error) {
+	err := facade.Use(context.Background(), Request{}, func(_ context.Context, _ *sdkpixiv.Client) (bool, error) {
 		return true, wantErr
 	})
 	if !errors.Is(err, wantErr) {
@@ -252,10 +240,10 @@ func TestPixivUseDoesNotReplayCommittedAttempt(t *testing.T) {
 func TestPixivOpenReleasesGateWhenOpenerPanics(t *testing.T) {
 	accounts := &fakeAccounts{panic: true}
 	gate := &fakeGate{}
-	facade := session.NewPixiv(session.Dependencies{Accounts: accounts, Gate: gate})
+	facade := newTestPixiv(accounts, gate, nil, nil, nil)
 
 	require.Panics(t, func() {
-		_, _ = facade.Open(context.Background(), session.Request{})
+		_, _ = facade.Open(context.Background(), Request{})
 	})
 	require.Equal(t, 1, gate.acquired)
 	require.Equal(t, 1, gate.released)
@@ -268,16 +256,12 @@ func TestPixivOpenClosesPartialClientOnOpenError(t *testing.T) {
 	closeErr := errors.New("close failed")
 	accounts := &fakeAccounts{openedClient: partial, err: openErr}
 	gate := &fakeGate{}
-	facade := session.NewPixiv(session.Dependencies{
-		Accounts: accounts,
-		Gate:     gate,
-		CloseClient: func(client *sdkpixiv.Client) error {
-			require.Same(t, partial, client)
-			return closeErr
-		},
+	facade := newTestPixiv(accounts, gate, nil, nil, func(client *sdkpixiv.Client) error {
+		require.Same(t, partial, client)
+		return closeErr
 	})
 
-	_, gotErr := facade.Open(context.Background(), session.Request{})
+	_, gotErr := facade.Open(context.Background(), Request{})
 	require.ErrorIs(t, gotErr, openErr)
 	require.ErrorIs(t, gotErr, closeErr)
 	require.Equal(t, 1, gate.released)
@@ -287,18 +271,13 @@ func TestPixivUseJoinsCallbackAndCloseErrors(t *testing.T) {
 	callbackErr := errors.New("callback failed")
 	closeErr := errors.New("close failed")
 	gate := &fakeGate{}
-	facade := session.NewPixiv(session.Dependencies{
-		Accounts: &fakeAccounts{},
-		Gate:     gate,
-		CloseClient: func(*sdkpixiv.Client) error {
-			return closeErr
-		},
-		LoadPoolConfig: func() (session.PoolConfig, error) {
-			return session.PoolConfig{}, nil
-		},
+	facade := newTestPixiv(&fakeAccounts{}, gate, func() (PoolConfig, error) {
+		return PoolConfig{}, nil
+	}, nil, func(*sdkpixiv.Client) error {
+		return closeErr
 	})
 
-	err := facade.Use(context.Background(), session.Request{}, func(context.Context, *sdkpixiv.Client) (bool, error) {
+	err := facade.Use(context.Background(), Request{}, func(context.Context, *sdkpixiv.Client) (bool, error) {
 		return false, callbackErr
 	})
 
@@ -309,27 +288,23 @@ func TestPixivUseJoinsCallbackAndCloseErrors(t *testing.T) {
 
 func TestPixivLeaseClosePanicReleasesGate(t *testing.T) {
 	gate := &fakeGate{}
-	facade := session.NewPixiv(session.Dependencies{
-		Accounts: &fakeAccounts{},
-		Gate:     gate,
-		CloseClient: func(*sdkpixiv.Client) error {
-			panic("close panic")
-		},
+	facade := newTestPixiv(&fakeAccounts{}, gate, nil, nil, func(*sdkpixiv.Client) error {
+		panic("close panic")
 	})
 
-	lease, err := facade.Open(context.Background(), session.Request{})
+	lease, err := facade.Open(context.Background(), Request{})
 	require.NoError(t, err)
 	require.Panics(t, func() { _ = lease.Close() })
 	require.Equal(t, 1, gate.released)
 }
 
 func TestPixivUseReportsMissingPoolConfiguration(t *testing.T) {
-	facade := session.NewPixiv(session.Dependencies{})
-	err := facade.Use(context.Background(), session.Request{}, func(context.Context, *sdkpixiv.Client) (bool, error) {
+	facade := NewPixiv(nil, nil, nil, nil)
+	err := facade.Use(context.Background(), Request{}, func(context.Context, *sdkpixiv.Client) (bool, error) {
 		return false, nil
 	})
-	if !errors.Is(err, session.ErrPoolRuntimeLoaderNotConfigured) {
-		t.Fatalf("Use() error = %v, want %v", err, session.ErrPoolRuntimeLoaderNotConfigured)
+	if !errors.Is(err, poolRuntimeLoaderNotConfigured) {
+		t.Fatalf("Use() error = %v, want %v", err, poolRuntimeLoaderNotConfigured)
 	}
 }
 
@@ -339,14 +314,10 @@ func TestPixivExplicitAccountOverridesEnabledPool(t *testing.T) {
 			accounts := &fakeAccounts{}
 			gate := &fakeGate{}
 			pool := &fakePool{userIDs: []int64{11, 22}}
-			facade := session.NewPixiv(session.Dependencies{
-				Accounts: accounts, Gate: gate,
-				LoadPoolConfig: func() (session.PoolConfig, error) { return session.PoolConfig{Enabled: true}, nil },
-				Pool:           func(session.PoolConfig) (session.PoolExecutor, error) { return pool, nil },
-			})
+			facade := newTestPixiv(accounts, gate, func() (PoolConfig, error) { return PoolConfig{Enabled: true}, nil }, func(PoolConfig) (PoolExecutor, error) { return pool, nil }, nil)
 			want := sdk.NewError("pixiv", "fixture", sdk.RateLimited, sdk.WithRetry(sdk.RetryAdvice{Safe: true}))
 			calls := 0
-			err := facade.Use(t.Context(), session.Request{UserID: 42}, func(context.Context, *sdkpixiv.Client) (bool, error) { calls++; return committed, want })
+			err := facade.Use(t.Context(), Request{UserID: 42}, func(context.Context, *sdkpixiv.Client) (bool, error) { calls++; return committed, want })
 			require.ErrorIs(t, err, want)
 			require.Equal(t, []int64{42}, accounts.openedIDs)
 			require.Equal(t, 1, calls)
@@ -361,15 +332,11 @@ func TestPixivExplicitMissingAccountDoesNotTryPool(t *testing.T) {
 	want := errors.New("account missing")
 	accounts := &fakeAccounts{err: want}
 	gate := &fakeGate{}
-	facade := session.NewPixiv(session.Dependencies{
-		Accounts: accounts, Gate: gate,
-		LoadPoolConfig: func() (session.PoolConfig, error) { return session.PoolConfig{Enabled: true}, nil },
-		Pool: func(session.PoolConfig) (session.PoolExecutor, error) {
-			t.Error("pool created for explicit account")
-			return nil, nil
-		},
-	})
-	err := facade.Use(t.Context(), session.Request{UserID: 42}, func(context.Context, *sdkpixiv.Client) (bool, error) {
+	facade := newTestPixiv(accounts, gate, func() (PoolConfig, error) { return PoolConfig{Enabled: true}, nil }, func(PoolConfig) (PoolExecutor, error) {
+		t.Error("pool created for explicit account")
+		return nil, nil
+	}, nil)
+	err := facade.Use(t.Context(), Request{UserID: 42}, func(context.Context, *sdkpixiv.Client) (bool, error) {
 		t.Error("callback called for missing account")
 		return false, nil
 	})

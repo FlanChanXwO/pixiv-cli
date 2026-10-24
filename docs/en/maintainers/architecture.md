@@ -51,7 +51,7 @@ flowchart TD
 
 - `auth import` handles direct token import or bundle restore; `auth export` the local secret snapshot. `pixiv fanbox mcp` is removed.
 - Windows paths use `%USERPROFILE%\.pixiv-cli\`. Legacy `auth.json` is never read automatically — users explicitly export/import a bundle.
-- No anonymous Web fallback: content needs an authenticated local account or explicit credentials; a leftover `web_fallback_enabled` returns `removed_setting`.
+- No anonymous Web fallback: content needs an authenticated local account or explicit credentials. A leftover `web_fallback_enabled` is an undeclared key and is ignored.
 
 ## Frontend source and embedded pages
 
@@ -176,7 +176,7 @@ flowchart LR
 | `pixiv-cli.db` | account identity and credentials (`pixiv_account` / `fanbox_account`), file `0600` |
 | `config.toml` | global keys incl. `[pixiv.auth].default_user_id`, `[fanbox.auth].default_user_id`; Unix `0600`. Without a default, the first account by `sort_order` is selected |
 
-Runtime settings merge `config.toml` with public environment variables via `koanf`; `config set/unset` writes back sparsely with `tomledit`, preserving comments, order and layout where possible. The compact first-run baseline writes only `example:"true"` entries.
+Runtime settings parse `config.toml` with `go-toml/v2` and capture public environment variables once per snapshot; `config set/unset` writes back sparsely with `tomledit`, preserving comments, order and layout where possible. The compact first-run baseline writes only `example:"true"` entries.
 
 #### Configuration declaration: struct field tags are the single source of truth
 
@@ -196,13 +196,14 @@ Exported fields of `RuntimeConfig` (incl. nested account-pool, network and Flare
 - Declaration errors: duplicate expanded paths, duplicate non-empty aliases, empty path segments, cyclic groups, unsupported leaf types, leaf-only attributes on groups. Private leaves cannot enable CLI management, examples or env bindings without a public alias. `cli`, `secret`, `example` accept only `"true"`/`"false"` (user value parsing unchanged).
 - The private schema caches field index chains and Go types, never instances. Scalar binding uses the same source selection as `Effective`; ordinary binding allocates no pointer groups. Advanced readers locate compiled paths by field ownership without new aliases or allocating solver groups before the domain enablement check. Account-pool defaults come from declarations; strict file types and strategy validation stay domain rules.
 - Default-account selection has a separate private scope: `int64` UID leaves with no alias or default; positive-integer parsing stays in on-demand auth methods; never part of ordinary binding or early Snapshot validation.
-- `SettingSpec` is the **public derived view** the CLI consumes, not a hand-written table.
-- **Adding an ordinary setting** = field + tags, one behavioral test, matching docs. No registry, env `switch`, per-field assignment, baseline list or alias list.
+- `SettingSpec` is the **public derived view** the CLI consumes, not a hand-written table. `keys.go` declares the typed `Key` constants for every alias; a table-driven test fails if a constant and its alias drift, or if a declared alias has no constant. `LogLevel` and `LogFormat` are named types with constants.
+- **Adding an ordinary setting** = field + tags + a `Key` constant, one behavioral test, matching docs. No registry, env `switch`, per-field assignment, baseline list or alias list.
 
 | File | Responsibility |
 | --- | --- |
 | `config.go` | types, field tags, field contracts |
-| `schema.go` | tag-derived metadata, declaration validation, lookup, retirement tombstones, public `SettingSpec` view |
+| `keys.go` | typed `Key` constants for the public aliases |
+| `schema.go` | tag-derived metadata, declaration validation, lookup, public `SettingSpec` view |
 | `snapshot.go` | file/env snapshot, source selection, runtime binding (service networks, FlareSolverr, pool domain rules) |
 | `values.go` | type parsing, normalization, domain validation |
 | `document.go` | TOML targeting and sparse mutation |

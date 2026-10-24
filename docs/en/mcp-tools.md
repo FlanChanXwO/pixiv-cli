@@ -377,5 +377,5 @@ Same server, schemas via `tools/list`, FANBOX-specific credentials.
 
 ## Authentication and fallback
 
-- Pixiv reads/writes require the App API path; no anonymous or Web fallback; App errors are final. A leftover `web_fallback_enabled` reports `removed_setting`.
+- Pixiv reads/writes require the App API path; no anonymous or Web fallback; App errors are final. A leftover `web_fallback_enabled` is undeclared and ignored.
 - FANBOX shares the protocol server, not Pixiv credentials or the account pool. Each product keeps its SDK and service config; a command-level proxy override applies to both native clients.

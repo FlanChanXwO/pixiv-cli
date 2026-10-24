@@ -17,7 +17,7 @@ type stubAccountPort struct {
 	restoreErr    error
 }
 
-func (s *stubAccountPort) ImportAccountWith(context.Context, string, bool, pixiv.Options) (pixivaccount.AccountSummary, error) {
+func (s *stubAccountPort) ImportAccount(context.Context, string, bool, pixiv.Options) (pixivaccount.AccountSummary, error) {
 	return pixivaccount.AccountSummary{}, errors.New("not used")
 }
 func (s *stubAccountPort) ListAccounts(context.Context) ([]pixivaccount.AccountSummary, error) {
@@ -27,17 +27,14 @@ func (s *stubAccountPort) UseAccount(context.Context, int64) error { return nil 
 func (s *stubAccountPort) RemoveAccount(context.Context, int64) error {
 	return nil
 }
-func (s *stubAccountPort) CheckAccountWith(context.Context, int64, pixiv.Options) (pixivaccount.AccountSummary, error) {
+func (s *stubAccountPort) CheckAccount(context.Context, int64, pixiv.Options) (pixivaccount.AccountSummary, error) {
 	return pixivaccount.AccountSummary{}, nil
 }
-func (s *stubAccountPort) RefreshAccountWith(context.Context, int64, pixiv.Options) (pixivaccount.AccountSummary, error) {
+func (s *stubAccountPort) RefreshAccount(context.Context, int64, pixiv.Options) (pixivaccount.AccountSummary, error) {
 	return pixivaccount.AccountSummary{}, nil
 }
 func (s *stubAccountPort) CurrentUser(context.Context) (*pixivaccount.AccountSummary, error) {
 	return nil, nil
-}
-func (s *stubAccountPort) RestoreAccount(context.Context, pixivaccount.AccountSummary, string, bool) error {
-	return nil
 }
 func (s *stubAccountPort) RestoreAccounts(_ context.Context, inputs []pixivaccount.RestoreAccountInput) (pixivaccount.RestoreAccountsResult, error) {
 	s.restoreInputs = inputs

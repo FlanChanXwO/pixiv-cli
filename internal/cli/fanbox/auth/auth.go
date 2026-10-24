@@ -11,7 +11,7 @@ import (
 )
 
 type accountStore interface {
-	ImportSessionWithProxy(context.Context, string, bool, *string) (fanboxaccount.AccountSummary, error)
+	ImportSession(context.Context, string, bool, *string) (fanboxaccount.AccountSummary, error)
 	ListAccounts(context.Context) ([]fanboxaccount.AccountSummary, error)
 	Status(context.Context) (*fanboxaccount.AccountSummary, error)
 	UseAccount(context.Context, int64) error

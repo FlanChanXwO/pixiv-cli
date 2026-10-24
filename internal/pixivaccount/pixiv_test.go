@@ -1,16 +1,15 @@
-package pixivaccount_test
+package pixivaccount
 
 import (
 	"encoding/json"
 	"fmt"
-	pixiv "github.com/FlanChanXwO/pixiv-cli/internal/pixivaccount"
 	"strings"
 	"testing"
 )
 
 func TestAccountCredentialCopyAndSafeFormatting(t *testing.T) {
 	input := []byte("refresh-secret")
-	account := pixiv.New(42, "artist", input)
+	account := New(42, "artist", input)
 	input[0] = 'X'
 	copyValue := account.RefreshTokenCopy()
 	copyValue[0] = 'Y'
@@ -30,7 +29,7 @@ func TestAccountCredentialCopyAndSafeFormatting(t *testing.T) {
 
 func TestAccountWithTokenRequiresExplicitSecretAccessor(t *testing.T) {
 	const secret = "export-secret"
-	account := pixiv.NewAccountWithToken(42, "artist", true, secret)
+	account := newAccountWithToken(42, "artist", true, secret)
 	for _, formatted := range []string{
 		fmt.Sprintf("%v", account),
 		fmt.Sprintf("%+v", account),

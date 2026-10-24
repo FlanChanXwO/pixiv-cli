@@ -6,6 +6,10 @@
 
 - 为 `pixiv search SOURCE` 与 Pixiv MCP `reverse_search` tool 新增反向搜图。CLI 会自动把显式 HTTP(S) URL 和现有常规文件识别为图片模式；SauceNAO、ascii2d color/BOVW 与 `all` provider 返回稳定 JSON envelope、通用 artwork/user record 以及 canonical record 的 NDJSON，并明确报告 provider partial 结果。([`69caa31`](https://github.com/FlanChanXwO/pixiv-cli/commit/69caa31)、[`6599dec`](https://github.com/FlanChanXwO/pixiv-cli/commit/6599dec)、[`ef0dcfe`](https://github.com/FlanChanXwO/pixiv-cli/commit/ef0dcfe)、[`e67e21f`](https://github.com/FlanChanXwO/pixiv-cli/commit/e67e21f)、[`959414e`](https://github.com/FlanChanXwO/pixiv-cli/commit/959414e)、[`ce03802`](https://github.com/FlanChanXwO/pixiv-cli/commit/ce03802)、[`298e0f3`](https://github.com/FlanChanXwO/pixiv-cli/commit/298e0f3))
 
+## 变更
+
+- 交互式账号选择（不带 UID 的 `pixiv auth use` 与 `pixiv auth remove`）改为在打印的列表中输入编号，不再使用方向键选择。密码、文本与是/否提示保持原有的 TTY 要求、默认值和输出流。
+
 ## 安全
 
 - 反向搜图每个 source 只加载一次到私有快照，并在 provider 工作结束后清理；发布输出和诊断不会包含 source 字符串、凭据、临时路径、cookie、CSRF/redirect 值或上游 body。MCP 契约有意允许私有文件以及私网/loopback/link-local URL，但只适用于可信本机 client，同时说明第三方上传、保存和 URL 缓存影响。([`69caa31`](https://github.com/FlanChanXwO/pixiv-cli/commit/69caa31)、[`3e2cb47`](https://github.com/FlanChanXwO/pixiv-cli/commit/3e2cb47)、[`80d5729`](https://github.com/FlanChanXwO/pixiv-cli/commit/80d5729)、[`8169787`](https://github.com/FlanChanXwO/pixiv-cli/commit/8169787)、[`4632334`](https://github.com/FlanChanXwO/pixiv-cli/commit/4632334)、[`4cfc4d4`](https://github.com/FlanChanXwO/pixiv-cli/commit/4cfc4d4))

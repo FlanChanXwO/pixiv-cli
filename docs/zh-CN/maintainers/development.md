@@ -130,7 +130,7 @@ https_proxy=http://127.0.0.1:7890 ./build/pixiv mcp --port 1270
 **配置** —— `pixiv config path/get/set/unset` 管理 `account_pool_enabled`、`account_pool_strategy`、`download_path`、`filename_template`、`directory_template`、`request_interval`、`https_proxy`、`log_level`、`log_format`、`reverse_search_provider`、`reverse_search_pixiv_only`、`saucenao_api_key`。其他 TOML（如 `[reverse_search.network]`、`[reverse_search.flaresolverr]`）手工维护，不在基线中，作为启动快照读取。基线由 `internal/config/settings` 中的**结构体字段标签**驱动，用 `tomledit` 生成，紧凑（只含 `example:"true"`），从不覆盖。新增普通设置：(1) 在 `internal/config/settings/config.go` 添加字段与声明，(2) 一个聚焦的行为测试，(3) 文档——见[标签契约](architecture.md#配置声明结构体字段标签是唯一事实来源)。
 
 > [!NOTE]
-> 残留的 `[web] fallback_enabled` 返回 `removed_setting`；用 `pixiv config unset web_fallback_enabled` 清除。`[logging].level`（`info|debug`）与 `[logging].format`（`text|json`）生效；`PIXIV_LOG_LEVEL` / `PIXIV_LOG_FORMAT` 可覆盖。
+> 残留的 `[web] fallback_enabled` 属于未声明键，加载时忽略。`[logging].level`（`info|debug`）与 `[logging].format`（`text|json`）生效；`PIXIV_LOG_LEVEL` / `PIXIV_LOG_FORMAT` 可覆盖。
 
 **Flag 与代理** —— Cobra/pflag 允许 flag 出现在位置参数前后。Pixiv 命令代理、`[pixiv.network]`、环境变量与 `[network]`，FANBOX 的 `[fanbox.network]` / `[fanbox.flaresolverr]`，以及反向搜图的 `[reverse_search.network]` / `[reverse_search.flaresolverr]` 都按各自服务边界解析；反向搜图有独立的标准/SauceNAO、ascii2d 浏览器与 FlareSolverr JSON 控制网络面（FlareSolverr 只用于 challenge 恢复）。
 
@@ -207,6 +207,8 @@ PIXIV_REVERSE_SEARCH_PROVIDER=all go test ./internal/reversesearch -run TestReal
 | --- | --- |
 | `internal/media/ugoira` | 测试直接调用 `readFrameSource`、`frameSource`、`validateDecodedSize`、`frameNRGBA`、`decodeInto`、`resizeFrame` 与 `apngWriter`，在不做巨量分配的前提下验证分配边界与取消，保持透明 RGB 与缓冲复用时上一帧的所有权，用固定的上游参考向量比较 Lanczos3 像素，覆盖 APNG 序号溢出与写入失败，并检查 reservoir 状态、去重权重/索引、Oklab/Wu 参考值、固定种子 K-means 中心与逐像素抖动索引。`colorGrid` 测试验证格子边缘的精确候选范围；`frameQuantizer` 测试验证复用的误差行被清空、普通量化返回独立索引、显式缓冲复用只在上一帧被消费后开始。LZW 测试覆盖跨帧的字典/码宽重置与写入失败后的恢复。GIF 测试观察 `gifWriter`/`gifBlocks`，验证全局色表、流式 LZW 子块与写入失败；生命周期测试观察 `encodeGate`，无 sleep 地协调排队中的取消。为测试暴露这些 codec 内部细节会扩大 `Encoder` 契约。 |
 | `internal/config/settings` | `schema_test.go` 把合成类型传给私有的 `deriveSchemaFromTags` 编译器，在不导出反射元数据、不重置生产缓存的前提下测试声明拒绝。 |
+| `internal/session` | `pixiv_test.go`、`fanbox_test.go` 设置未导出的 `closeClient` 字段并断言未导出的配置错误 sentinel，验证 Lease 释放与失败传播；导出这些符号会扩大 `session` 的公开接口。 |
+| `internal/pixivaccount` | `pixiv_test.go` 观察未导出的 `newAccountWithToken` 构造，验证 `AccountWithToken` 的格式化与 JSON 输出不泄露 refresh token；为测试导出该构造会扩大凭据边界。 |
 | `internal/cli` | 组合根测试观察未导出的根装配、invocation 生命周期与关闭顺序；这些 seam 不是公开 API。 |
 | `internal/cli/search` | 测试通过带 HTTP fixture 的真实 SDK 观察私有 searchArtworks 逻辑页续读。私有逻辑页策略仍是实现细节；MCP 另外暴露绑定的默认批次续读。仅为测试导出应用内部会扩大公开面。 |
 | `internal/mcpserver/pixiv/tools` | 测试通过带 HTTP fixture 的真实 SDK 观察私有 searchArtworks 逻辑页续读。私有逻辑页策略仍是实现细节；MCP 另外暴露绑定的默认批次续读。仅为测试导出应用内部会扩大公开面。 |
@@ -264,7 +266,7 @@ v1 的负面契约：下列任一项出现可发布的 CLI/MCP/SDK 入口即为�
 | `COMMENT-WRITE` | `sdk/pixiv`（T16；CLI/MCP 之后） | SDK 暴露命名空间专属的 `PostArtworkComment`/`ReplyArtworkComment`/`DeleteArtworkComment` 及小说对应方法；MCP `comment_post`/`comment_add` 目录仍 = 0；响应 ID、回读、清理与严格实时证据不完整 | 完成严格/实时写入证据、同账号回读、清理与 T33/T38 兼容门禁；在此之前保持证据门禁，不是 `public_ready` |
 | `NOTIFICATION` | 无 owner | MCP `notification` 目录 = 0；SDK `Notification*` 导出 = 0 | 同上 |
 | `AUTOCOMPLETE` | 无 owner | MCP `autocomplete` 目录 = 0；SDK `Autocomplete*` 导出 = 0；未并入 `search` | 同上 |
-| `WEB-RESTRICTED-READ` | 无 owner | 没有 `webapi` 包；`web_fallback_enabled` 是墓碑键（`config get/set` → `removed_setting`） | 不重新开放匿名 Web 路径；任何恢复 Web/AJAX 的提议须先修订 AGENTS 冻结契约并通过 ADR |
+| `WEB-RESTRICTED-READ` | 无 owner | 没有 `webapi` 包；`web_fallback_enabled` 属未声明键，加载时忽略 | 不重新开放匿名 Web 路径；任何恢复 Web/AJAX 的提议须先修订 AGENTS 冻结契约并通过 ADR |
 | `USER-BLOCK-MUTE-REPORT` | 无 owner | MCP `mute`/`report` 目录 = 0；SDK `BlockUser`/`MuteUser`/`ReportUser` 导出 = 0 | 上游提供可验证的写入契约之后 |
 | `WATCHLIST-MARKER` | 无 owner | MCP `watchlist` 目录 = 0；SDK `Watchlist*` 导出 = 0 | 上游提供之后 |
 | `BOOKMARK-USERS` | 无 owner | 没有对应工具/SDK 导出；`bookmark_detail` 只覆盖当前用户详情 | 上游提供后可评估 |

@@ -377,5 +377,5 @@ flowchart LR
 
 ## 认证与 fallback
 
-- Pixiv 读写需要 App API 路径；没有匿名或 Web fallback；App 错误即最终结果。残留的 `web_fallback_enabled` 报告 `removed_setting`。
+- Pixiv 读写需要 App API 路径；没有匿名或 Web fallback；App 错误即最终结果。残留的 `web_fallback_enabled` 属于未声明键，加载时忽略。
 - FANBOX 共享协议 server，不共享 Pixiv 凭据或账号池。各产品保留自己的 SDK 与服务配置；命令级代理覆盖同时作用于两个原生 client。

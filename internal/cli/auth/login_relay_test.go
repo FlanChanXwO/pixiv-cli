@@ -32,7 +32,7 @@ func TestConfiguredRelayServerOptionsIgnoreLegacyClientRelaySettings(t *testing.
 	_, configPath := useTempPaths(t)
 	require.NoError(t, filesecret.WritePrivateFile(configPath, []byte("[login]\nrelay_secret = \"legacy-secret\"\nrelay_target_url = \"http://127.0.0.1:1\"\n"), paths.PrivateFileMode))
 
-	settings, err := config.LoadSnapshot()
+	settings, err := config.DefaultStore().Current()
 	require.NoError(t, err)
 	runtime, err := settings.Runtime()
 	require.NoError(t, err)

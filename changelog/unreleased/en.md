@@ -6,6 +6,10 @@
 
 - Added reverse-image search to `pixiv search SOURCE` and the Pixiv MCP `reverse_search` tool. The CLI automatically selects image mode for explicit HTTP(S) URLs and existing regular files; SauceNAO, ascii2d color/BOVW, and `all` providers return a stable JSON envelope, generic artwork/user records, and NDJSON for canonical records, with explicit partial-provider semantics. ([`69caa31`](https://github.com/FlanChanXwO/pixiv-cli/commit/69caa31), [`6599dec`](https://github.com/FlanChanXwO/pixiv-cli/commit/6599dec), [`ef0dcfe`](https://github.com/FlanChanXwO/pixiv-cli/commit/ef0dcfe), [`e67e21f`](https://github.com/FlanChanXwO/pixiv-cli/commit/e67e21f), [`959414e`](https://github.com/FlanChanXwO/pixiv-cli/commit/959414e), [`ce03802`](https://github.com/FlanChanXwO/pixiv-cli/commit/ce03802), [`298e0f3`](https://github.com/FlanChanXwO/pixiv-cli/commit/298e0f3))
 
+## Changed
+
+- Interactive account selection (`pixiv auth use` and `pixiv auth remove` without a UID) now asks for a number from a printed list instead of using arrow-key navigation. Password, text, and yes/no prompts keep the same TTY requirement, defaults, and output stream.
+
 ## Security
 
 - Reverse search loads each source once into a private snapshot, removes it after provider work, and keeps source strings, credentials, temporary paths, cookies, CSRF/redirect values, and upstream bodies out of published output and diagnostics. The MCP contract deliberately permits private files and private/loopback/link-local URLs only for trusted local clients, while documenting third-party upload, retention, and URL-caching implications. ([`69caa31`](https://github.com/FlanChanXwO/pixiv-cli/commit/69caa31), [`3e2cb47`](https://github.com/FlanChanXwO/pixiv-cli/commit/3e2cb47), [`80d5729`](https://github.com/FlanChanXwO/pixiv-cli/commit/80d5729), [`8169787`](https://github.com/FlanChanXwO/pixiv-cli/commit/8169787), [`4632334`](https://github.com/FlanChanXwO/pixiv-cli/commit/4632334), [`4cfc4d4`](https://github.com/FlanChanXwO/pixiv-cli/commit/4cfc4d4))

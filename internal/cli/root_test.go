@@ -1036,7 +1036,7 @@ func TestMCPAccountSnapshotContainsOnlyLocalSummaryAndExplicitDefault(t *testing
 	body, err := json.Marshal(local)
 	require.NoError(t, err)
 	require.NotContains(t, string(body), "fixture-secret")
-	require.NoError(t, configapp.SetPixivDefaultUserID(73))
+	require.NoError(t, configapp.DefaultStore().SetPixivDefaultUserID(73))
 	local, err = ports.localAccounts(t.Context())
 	require.NoError(t, err)
 	require.Equal(t, int64(73), local.DefaultUserID)
