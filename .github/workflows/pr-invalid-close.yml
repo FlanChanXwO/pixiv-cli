@@ -27,7 +27,7 @@ jobs:
 
       - name: Build trusted PR metadata validator
         shell: bash
-        run: go build -o "$RUNNER_TEMP/prmeta" ./scripts/prmeta
+        run: go build -o "$RUNNER_TEMP/pr" ./scripts/pr
 
       - name: Close PRs whose invalid body has been unchanged for seven days
         shell: bash
@@ -50,7 +50,7 @@ jobs:
             [ "$current_hash" = "$recorded_hash" ] || continue
 
             set +e
-            "$RUNNER_TEMP/prmeta" --body-file "$RUNNER_TEMP/pr-$pr.md" --whitelist scripts/verification/command-whitelist.txt --cli pixiv >/dev/null 2>&1
+            "$RUNNER_TEMP/pr" validate --body-file "$RUNNER_TEMP/pr-$pr.md" --whitelist scripts/pr/command-whitelist.txt --cli pixiv >/dev/null 2>&1
             validation_rc=$?
             set -e
             if [ "$validation_rc" -eq 0 ]; then

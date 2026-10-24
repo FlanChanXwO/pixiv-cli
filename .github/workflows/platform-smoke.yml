@@ -44,7 +44,7 @@ jobs:
       - name: Resolve native platform matrix
         id: matrix
         shell: bash
-        run: go run ./scripts/platformmatrix --capability smoke --github-output "$GITHUB_OUTPUT"
+        run: sh scripts/build/matrix.sh --capability smoke --github-output "$GITHUB_OUTPUT"
 
   worker:
     needs: setup
@@ -81,12 +81,6 @@ jobs:
       - name: Download locked Go module sources
         shell: bash
         run: go mod download
-      - name: Verify Go license bundle
-        shell: bash
-        run: |
-          tool=scripts/licensebundle
-          [ ! -f scripts/build/licensebundle/main.go ] || tool=scripts/build/licensebundle
-          go run "./$tool" --check
       - name: Test the platform installer
         shell: bash
         run: go test ./scripts/citest -count=1
@@ -106,9 +100,7 @@ jobs:
         run: |
           set -euo pipefail
           version="0.2.0-ci.${GITHUB_RUN_ID}"
-          build=scripts/build-platform.sh
-          [ ! -f scripts/build/platform.sh ] || build=scripts/build/platform.sh
-          archive=$(sh "$build" \
+          archive=$(sh scripts/build/platform.sh \
             --target '${{ matrix.goos }}/${{ matrix.goarch }}' \
             --version "$version" \
             --output-dir dist \
@@ -145,28 +137,10 @@ jobs:
           PIXIV_E2E_EXPECTED_VERSION="v${version}" \
           go test ./cmd/pixiv -run '^TestPixivBinaryPackagedSmoke$' -count=1
 
-      - name: Record Go binary and archive evidence
-        shell: bash
-        run: |
-          set -euo pipefail
-          binary='dist/pixiv'
-          if [ '${{ matrix.goos }}' = windows ]; then
-            binary='dist/pixiv.exe'
-          fi
-          if [ -f scripts/nativeevidence/main.go ]; then
-            go run ./scripts/nativeevidence record \
-              --repo-root . \
-              --version "0.2.0-ci.${GITHUB_RUN_ID}" \
-              --source-commit "$(git rev-parse HEAD)" \
-              --target '${{ matrix.goos }}/${{ matrix.goarch }}' \
-              --binary "$binary" \
-              --archive "$PLATFORM_ARCHIVE" \
-              --output dist/native-evidence.json
-          fi
-      - name: Upload native evidence
+      - name: Upload the platform archive
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
-          name: native-evidence-${{ matrix.artifact }}
+          name: platform-smoke-${{ matrix.artifact }}
           path: dist
           if-no-files-found: error
 

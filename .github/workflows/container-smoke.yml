@@ -44,7 +44,7 @@ jobs:
       - name: Resolve container matrix
         id: matrix
         shell: bash
-        run: go run ./scripts/platformmatrix --capability container --github-output "$GITHUB_OUTPUT"
+        run: sh scripts/build/matrix.sh --capability container --github-output "$GITHUB_OUTPUT"
 
   worker:
     needs: setup
@@ -75,19 +75,11 @@ jobs:
       - name: Download locked Go module sources
         shell: bash
         run: go mod download
-      - name: Verify Go license bundle
-        shell: bash
-        run: |
-          tool=scripts/licensebundle
-          [ ! -f scripts/build/licensebundle/main.go ] || tool=scripts/build/licensebundle
-          go run "./$tool" --check
       - name: Build the versioned Linux binary
         shell: bash
         run: |
           set -euo pipefail
-          build=scripts/build-platform.sh
-          [ ! -f scripts/build/platform.sh ] || build=scripts/build/platform.sh
-          binary=$(sh "$build" \
+          binary=$(sh scripts/build/platform.sh \
             --target '${{ matrix.goos }}/${{ matrix.goarch }}' \
             --version 0.0.0-smoke \
             --output-dir dist)

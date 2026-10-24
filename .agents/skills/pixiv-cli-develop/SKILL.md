@@ -49,7 +49,7 @@ Use the official [Go Code Review Comments](https://go.dev/wiki/CodeReviewComment
 
 Read [the test workflow](../pixiv-cli-test/SKILL.md), including its coverage-gap decision before adding tests. For new behavior or a fix, reuse or extend a focused test and observe the expected behavioral failure before implementation. Do not accept an import/toolchain error as Red. Make the smallest implementation pass; then refactor while retaining the regression. For behavior-preserving restructuring, reuse passing characterization before and after, and use a failing test for any actual behavior correction. If an applicable Red requirement cannot be established, obtain an explicit exception before editing source.
 
-Read [the MCP workflow](../pixiv-cli-mcp-tool/SKILL.md) for tool changes or [the native workflow](../pixiv-cli-native/SKILL.md) for encoder, platform-build, ABI or native-evidence changes.
+Read [the MCP workflow](../pixiv-cli-mcp-tool/SKILL.md) for tool changes or [the native workflow](../pixiv-cli-native/SKILL.md) for encoder, platform-build, or native platform smoke changes.
 
 Before adding a dependency, fallback, limit, cache, worker, or configuration switch, identify the present requirement and existing alternative. Follow the root approval policy. For a justified new constraint, record its trigger and effect, preserve valid success paths, and test both the protected failure and representative valid input.
 

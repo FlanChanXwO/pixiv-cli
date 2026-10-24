@@ -50,7 +50,7 @@ flowchart LR
 - 不请求管理员/root 权限，不安装前置工具，不读取 Pixiv 凭据，不绕过系统信誉提示。
 - **首次引导的信任边界：** `pixiv` 尚不存在时没有内嵌 Ed25519 校验器——SHA-256 只能发现损坏或不匹配，真实性依赖 HTTPS 与官方仓库。执行前请先审阅脚本。安装后 `pixiv update` 使用内嵌的 Ed25519 信任根。
 - **镜像源：** 带版本的安装脚本内嵌静态源列表（从不远程获取，只随签名 Release 变化）。候选源只用于平台压缩包，且其 checksum 响应必须与直连文件逐字节一致才可用；压缩包仍须匹配直连的 SHA-256。
-- **Linux：** 资产要求 glibc ≥ 2.35。release、native-evidence 与 packaged-smoke 任务在 Ubuntu 22.04 构建，拒绝任何需要高于 `GLIBC_2.35` 的 ELF；预检会在替换前暴露 loader 失败。
+- **Linux：** release 与 packaged-smoke 二进制为静态链接（`CGO_ENABLED=0`），在 Ubuntu 22.04 构建；预检会在替换前暴露 loader 失败。
 - **`pixiv://` handler：** 校验安装后初始化（Homebrew 在 `post_install` 中完成）。出现 warning 表示二进制已装好但桌面集成未完成。macOS/Windows 上下一次普通命令会重试，因此手动解压的压缩包会自行修复。桌面 Linux 需要 `xdg-mime` 与 `gio`；无头 Linux 不注册 handler，但支持 relay server。
 
 ## 从源码构建

@@ -258,10 +258,9 @@ flowchart LR
 
 | 位置 | 内容 |
 | --- | --- |
-| `scripts/<name>/` | 每个工具一个目录、一个 `package main`；测试与之同目录 |
-| `scripts/citest/` | 只验证 workflow、文档或安装器行为的纯测试载体 |
-| `scripts/internal/<name>` | 供多个工具共用的实现：`verificationpolicy`（PR 声明的命令策略）与 `releasenotesrender`（发布身份与 Release 正文渲染） |
-| `scripts/ci/platforms.json` → `scripts/platformmatrix` | 供 workflow 使用的 runner/能力元数据；workflow 测试验证行为/安全边界，而不是第二份 YAML 策略模型 |
+| `scripts/build/`、`scripts/ci/`、`scripts/release/`、`scripts/pr/` | 构建/打包脚本与平台注册表、必需 CI 脚本、发布工具、受信 PR 工具；Go 工具均为一目录一个 `package main`，测试与之同目录 |
+| `scripts/citest/` | 真实执行安装器、变更范围分类、验证预过滤、workflow action pin 与容器发布契约的测试 |
+| `scripts/build/platforms.json` → `scripts/build/matrix.sh` | 供 workflow 使用的 runner/能力元数据；workflow 测试验证行为/安全边界，而不是第二份 YAML 策略模型 |
 
 ### `sdk`、`sdk/pixiv`、`sdk/fanbox`
 
@@ -297,7 +296,7 @@ CLI 下载 owner。通过 `DownloadTargetClient` / `DownloadClient` 获取 SDK �
 
 ### `internal/media/ugoira`
 
-负责 `Format`、有序帧输入、`Encoder`、ZIP 校验/解码、缩放、GIF 量化/抖动、APNG 流式写入与原子发布。下载器消费 `Encoder` 契约，不得重复编码或发布。PNG 使用标准库；owner-local `jpeg` 保留旧的 IDCT/颜色舍入。六目标证据位于 `scripts/nativeevidence`，与运行时编码器分离。
+负责 `Format`、有序帧输入、`Encoder`、ZIP 校验/解码、缩放、GIF 量化/抖动、APNG 流式写入与原子发布。下载器消费 `Encoder` 契约，不得重复编码或发布。PNG 使用标准库；owner-local `jpeg` 保留旧的 IDCT/颜色舍入。六目标执行证据来自平台 smoke worker，与运行时编码器分离。
 
 ## Release assets 与信任边界
 

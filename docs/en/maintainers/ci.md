@@ -2,7 +2,7 @@
 
 English | [简体中文](../../zh-CN/maintainers/ci.md) | [Development](development.md)
 
-Which workflows run on a PR, how they decide what is required, and how results are trusted. Workflow YAML, `scripts/ci/platforms.json` and tool manifests remain the executable source of truth.
+Which workflows run on a PR, how they decide what is required, and how results are trusted. Workflow YAML, `scripts/build/platforms.json` and tool manifests remain the executable source of truth.
 
 ```mermaid
 flowchart TD
@@ -26,16 +26,15 @@ flowchart TD
 | `pull_request`, `workflow_dispatch` | `ci.yml` Quality gate (no longer on tag pushes) |
 | `pull_request.edited` | Quality too, so retargeting to `main` publishes its required result; title/body edits reclassify and run required Quality |
 | `pull_request_target` | `pr-metadata.yml` coordinator |
-| `/test` comment | `pr-verification.yml` `dispatch` pre-filters with `contains(github.event.comment.body, '/test')` before allocating a runner — a loose superset of `scripts/prmeta --check-trigger` (few false positives, never drops a real trigger); `scripts/prmeta` stays authoritative |
+| `/test` comment | `pr-verification.yml` `dispatch` pre-filters with `contains(github.event.comment.body, '/test')` before allocating a runner — a loose superset of `scripts/pr trigger` (few false positives, never drops a real trigger); `scripts/pr trigger` stays authoritative |
 | branch / `main` push | nothing |
 | stable `vX.Y.Z` tag | only `release.yml` (owns all tag gates, six-platform tests/builds and two-platform container verification; PR smoke matrices are not duplicated) |
-| manual | browser/native evidence workflows |
 
 Real Pixiv/FANBOX SDK E2E never enters PR CI; the offline `go test ./...` in the release test build covers the same packages, and real E2E is accepted separately on release-prep.
 
 ## Change-scope classification
 
-- `ci.yml` and `pr-metadata.yml` share one trust model: resolve the protected base branch's current tip, check out `scripts/classify-change-scope.sh` and `.github/ci-change-scope.gitignore` from it, then fetch the exact PR HEAD only for the diff range — a PR cannot change its own skip decision. Classifier failure fails closed.
+- `ci.yml` and `pr-metadata.yml` share one trust model: resolve the protected base branch's current tip, check out `scripts/ci/classify-change-scope.sh` and `.github/ci-change-scope.gitignore` from it, then fetch the exact PR HEAD only for the diff range — a PR cannot change its own skip decision. Classifier failure fails closed.
 - Plain patterns are documentation-only; `?pattern` requires Quality only; `!pattern` requires Quality + Platform + Container. `pr-metadata.yml` itself (the smoke controller: classification, both dispatches, required gates) must be `!pattern`.
 - Unneeded jobs are native job-level `Skipped`, never synthetic success. The Quality job keeps its literal required name even for docs-only skips (skipped dynamic job names aren't evaluated by GitHub).
 - Body-only metadata edits reclassify the unchanged head: required smoke jobs mirror the existing worker result, unneeded ones stay skipped — editing the body cannot replace a failed smoke with a bypassing skip.
@@ -58,4 +57,4 @@ Both build with `CGO_ENABLED=0`, keep the trusted ref, exact-head validation and
 ## Installer and packaging tests
 
 - `scripts/citest` uses a local fake Release, fake `curl` and checksum fixtures (no GitHub). The Unix job runs `install.sh` for SHA-256, paths with spaces, version preflight and not overwriting on verification failure. Windows amd64/arm64 platform-smoke runs `install.cmd` with real `cmd.exe`, `certutil.exe` and `tar.exe`, always `--no-path` (runner registry untouched). Part of the platform job, no separate workflow-policy implementation.
-- Windows `.zip` uses the runner's preinstalled `7z`; elsewhere `zip`. `scripts/test-package-release.sh` delegates fakes to real `7z` on Windows and uses the `zip` fixture elsewhere, checking archive members — a Git Bash missing `zip` fails the release test gate. It creates checked links with MSYS `winsymlinks:nativestrict`; if native links can't be created the test fails, so plain-file pseudo-links can't neuter the output-ancestor safety gate.
+- Windows `.zip` uses the runner's preinstalled `7z`; elsewhere `zip`. `scripts/ci/test-package-release.sh` delegates fakes to real `7z` on Windows and uses the `zip` fixture elsewhere, checking archive members — a Git Bash missing `zip` fails the release test gate. It creates checked links with MSYS `winsymlinks:nativestrict`; if native links can't be created the test fails, so plain-file pseudo-links can't neuter the output-ancestor safety gate.

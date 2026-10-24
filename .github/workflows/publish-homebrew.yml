@@ -132,7 +132,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          raw=$(go run ./scripts/platformmatrix --capability homebrew)
+          raw=$(sh scripts/build/matrix.sh --capability homebrew)
           printf 'matrix=%s\n' "$(printf '%s' "$raw" | jq -c '.include |= map(. + {display: (.goos + "/" + .goarch)})')" >> "$GITHUB_OUTPUT"
 
       - name: Render exactly one channel formula from the published checksums
@@ -142,7 +142,7 @@ jobs:
           VERSION: ${{ steps.verify.outputs.version }}
         run: |
           set -eu
-          case "$(go run ./scripts/releaseassets channel --version "$VERSION")" in
+          case "$(go run ./scripts/release assets channel --version "$VERSION")" in
             stable)
               formula_name=pixiv-cli
               ;;
@@ -155,7 +155,7 @@ jobs:
               ;;
           esac
           mkdir -p staging-formula
-          go run ./scripts/homebrewformula render \
+          go run ./scripts/release formula render \
             --formula "$formula_name" \
             --version "$VERSION" \
             --checksums published-release/checksums.txt \
@@ -297,7 +297,7 @@ jobs:
           mkdir -p "$tap_dir/Formula"
           # §17/§21：单调 deploy。同版本且字节一致 → no-op；请求版本更旧，或同版本
           # 但内容不同 → 在拿到 deploy key 之前 fail closed，绝不回退已发布 Formula。
-          go run ./scripts/homebrewrecovery \
+          go run ./scripts/release recover \
             --current "$tap_dir/Formula/$formula_name.rb" \
             --requested "staging-formula/$formula_name.rb" \
             --github-output "$GITHUB_OUTPUT"

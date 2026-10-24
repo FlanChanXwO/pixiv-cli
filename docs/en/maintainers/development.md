@@ -63,44 +63,15 @@ CGO_ENABLED=0 go test ./internal/media/ugoira/... -count=1
 
 **Encoder fidelity notes** — `internal/media/ugoira`: the JPEG decoder is Go 1.26.3 parsing plus the legacy zune-jpeg 0.5.15 integer IDCT and 14-bit BT.601 (standard-library IDCT rounding changed palette selection enough to fail the fixed gate; the parser BSD license stays in the package and the zune-jpeg MIT attribution in the license bundle). Resize uses bounded sine/cosine polynomials with explicit `math.FMA` against legacy `sinf`, with 1,031 references in `testdata/lanczos-kernel.json`. APNG uses fixed Sub prediction, an independent level-7 zlib stream per frame and RGBA8 lossless: Over with transparent unchanged pixels only when every changed pixel is opaque and the delta reduces horizontal RGBA runs, else Source, with None disposal. Compressed bytes may change with the toolchain; reuse quality evidence only after verifying complete canvases, timing and loop behavior — not file size alone.
 
-**Platform builds** — `scripts/build-platform.sh` builds an exact target with CGO0 and optionally a canonical archive: `--target GOOS/GOARCH`, `--output-dir DIR`, optional `--version VERSION` (no `v`) and `--package` (needs a version). It keeps Windows suffixes and the Linux ABI gate. Runner metadata stays in `scripts/ci/platforms.json`; tests, source identity, permissions, approvals and publication stay in workflows.
+**Platform builds** — `scripts/build/platform.sh` builds an exact target with CGO0 and optionally a canonical archive: `--target GOOS/GOARCH`, `--output-dir DIR`, optional `--version VERSION` (no `v`) and `--package` (needs a version). It keeps Windows suffixes. Runner metadata stays in `scripts/build/platforms.json`; tests, source identity, permissions, approvals and publication stay in workflows.
 
-**Linux ABI gate** — public baseline glibc 2.35. Linux runners for release test/production, native evidence, packaged smoke and the Homebrew install matrix are pinned to `ubuntu-22.04` / `ubuntu-22.04-arm` (other jobs may use newer runners). After every Linux executable:
-
-```bash
-go run ./scripts/linuxabi --binary <linux-elf>
-```
-
-It reads the loader contract from ELF `SHT_GNU_verneed` and checks imported symbol versions; anything above `GLIBC_2.35` fails before packaging. "It runs on the build runner" is not acceptable evidence — the runner's newer glibc hides regressions.
+**Linux compatibility** — release and packaged-smoke binaries are built with `CGO_ENABLED=0`, which produces a static ELF. The Linux runners for release test/production, packaged smoke and the Homebrew install matrix stay pinned to `ubuntu-22.04` / `ubuntu-22.04-arm`; verify with `file build/pixiv` when the build recipe changes.
 
 ### License bundle
 
-- `go run ./scripts/licensebundle` unions production modules from `go list -mod=readonly -deps -json ./cmd/pixiv` across the six release targets with `CGO_ENABLED=0`. Offline (`GOPROXY=off`, `GOSUMDB=off`), ignores workspace/flag overrides, needs cached module sources, no Cargo, no test/tool-only modules. `--check` compares the index and full text tree without publishing.
+- `go run ./scripts/build/licensebundle` unions production modules from `go list -mod=readonly -deps -json ./cmd/pixiv` across the six release targets with `CGO_ENABLED=0`. Offline (`GOPROXY=off`, `GOSUMDB=off`), ignores workspace/flag overrides, needs cached module sources, no Cargo, no test/tool-only modules. `--check` compares the index and full text tree without publishing.
 - `third_party/attributions.json` pins extra ported-source notices; texts live in `third_party/attributions/` (separate from generated `third_party/licenses/`). Selected MIT texts, the Go BSD/patent grant and the SunPro notice remain after Rust removal; `fhttp v0.6.8` supplies the Go BSD text its headers reference (its archive lacks a license file). Missing/empty texts fail before publication; nested notices included; CRLF → LF with full text kept.
 - Generated texts are embedded by `third_party/notices.go` and printed by `pixiv --licenses`; archives contain only `pixiv`/`pixiv.exe`. Index and tree keep rollback-safe publication. The test-only image-compare attribution in `third_party/attributions/image-compare-0.5.0/` is not embedded.
-
-### Native runner evidence
-
-```mermaid
-flowchart LR
-    W["native-evidence.yml<br/>(explicit, refs/heads/main)"] --> R1["6 runners: license check,<br/>build-platform.sh, GIF/APNG regressions"]
-    R1 --> A["schema 3 bundle per target<br/>source_commit · version · SHA-256s"]
-    A --> C["nativeevidence consolidate<br/>exactly 6, same source + version"]
-    C --> O["new dir: per-target bundles<br/>+ summary.json"]
-```
-
-- `.github/workflows/native-evidence.yml` is an explicit maintenance entry, not a main-push gate: empty global permissions, job-only `contents: read`, full-SHA actions, credential-free checkout, no publishing/signing environment; runners selected by the registry's `native-evidence` capability.
-- Schema 3 binds exact `source_commit`, target, binary version and binary/archive/member SHA-256; it runs `--version` and checks the archive holds exactly the recorded binary; old schemas and Rust source-digest/staticlib fields are rejected. `consolidate` rejects symlinks and unsafe paths and publishes atomically; it never backfills libraries into source.
-
-```bash
-go run ./scripts/nativeevidence consolidate \
-  --repo-root . --expected-version "v0.1.0-native-evidence.${RUN_ID}" \
-  --expected-commit "$SOURCE_COMMIT" --input-dir /absolute/evidence \
-  --output-dir /absolute/new-complete-evidence
-```
-
-Set `RUN_ID` and `SOURCE_COMMIT` from one audited run and use new absolute paths. PR Platform workers also upload schema 3 `native-evidence-<goos>-<goarch>` bundles (`v0.2.0-ci.<run-id>`) from the trusted base-ref workflow — editing a PR-head workflow doesn't change that producer. Inspect the actual run and exact head; never splice runs or treat a fixture, cross-build or workflow definition as six-platform execution.
-
 
 ## Run
 
@@ -150,7 +121,7 @@ Real login depends on Pixiv's OAuth web flow; automated tests use a fake OAuth s
 
 Default to existing checks without adding permanent tests. The [test admission rules](../../../.agents/skills/pixiv-cli-test/SKILL.md#decide-whether-test-code-must-change) decide which durable core regressions enter main and how to run local probes under `tmp/test/`.
 
-Coverage spans CLI commands and build metadata, explicit/automatic updates, `internal/{pixivaccount,fanboxaccount}`, `internal/pixivaccount/pool`, `internal/reversesearch` fixtures and aggregation, `internal/storage/database`, `internal/config/settings`, `internal/{lifecycle,pagination}`, App API auth retry, the public SDK, HTTP client wiring, downloads, the Go encoder/native-evidence contract and `internal/mcpserver/{pixiv,fanbox}/tools` registration.
+Coverage spans CLI commands and build metadata, explicit/automatic updates, `internal/{pixivaccount,fanboxaccount}`, `internal/pixivaccount/pool`, `internal/reversesearch` fixtures and aggregation, `internal/storage/database`, `internal/config/settings`, `internal/{lifecycle,pagination}`, App API auth retry, the public SDK, HTTP client wiring, downloads, the Go encoder contract and `internal/mcpserver/{pixiv,fanbox}/tools` registration.
 
 ```bash
 go test ./...

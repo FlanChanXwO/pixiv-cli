@@ -1,4 +1,4 @@
-# Scoped Git-ignore syntax consumed by scripts/classify-change-scope.sh.
+# Scoped Git-ignore syntax consumed by scripts/ci/classify-change-scope.sh.
 # Plain patterns are documentation-only, ?patterns require Quality only,
 # and !patterns require Quality + Platform + Container.
 /README.md
@@ -21,10 +21,8 @@
 ?/.github/workflows/ci.yml
 ?/.github/workflows/pr-invalid-close.yml
 ?/.github/workflows/pr-verification.yml
-?/scripts/classify-change-scope.sh
-?/scripts/internal/verificationpolicy/**
-?/scripts/prmeta/**
-?/scripts/verification/**
+?/scripts/ci/classify-change-scope.sh
+?/scripts/pr/**
 
 !/Dockerfile
 !/.dockerignore
@@ -37,14 +35,14 @@
 !/cmd/**
 !/internal/**
 !/sdk/**
-!/scripts/ci/**
-!/scripts/platformmatrix/**
+!/scripts/build/**
+!/scripts/ci/race-gate.sh
+!/scripts/ci/test-package-release.sh
 # pr-metadata.yml 是 smoke controller：它决定 smoke classification、dispatch 两个
 # worker，并持有 Platform/Container required gate，因此改动它必须真的跑 full smoke。
 !/.github/workflows/pr-metadata.yml
 !/.github/workflows/container-smoke.yml
-!/scripts/build-platform.sh
+!/scripts/build/platform.sh
 !/scripts/build-staticlibs*
-!/scripts/releaseassets/**
-
+!/scripts/release/**
 !/frontend/**

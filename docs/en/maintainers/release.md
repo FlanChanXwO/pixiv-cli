@@ -23,7 +23,7 @@ flowchart TD
 
 - `.github/workflows/release.yml` accepts only `v[0-9]*` tag pushes — no `workflow_dispatch`, `release_tag` input or test-only overlay. It reads or injects no Pixiv/FANBOX credentials; real SDK E2E, native browser and one-time solver acceptance happen in an authorized environment and are not release evidence.
 - Validate, test build, production build and publish all bind the same tag. On failure, fix on the default branch and re-run the normal immutable-tag process; never inject new verifiers, tests or sources into an old tag, and there is no manual recovery entry for an existing Release.
-- `releaseassets finalize` also reads `scripts/install.sh` and `scripts/install.cmd` from the tag, copies them into the Release under fixed names, and writes `checksums.txt` plus the Ed25519 manifest alongside the six archives. The publish policy locks finalize parameters and the full eight-asset upload set; the Homebrew renderer requires both installers in the checksum set, while the formula downloads only the platform archive.
+- `scripts/release assets finalize` also reads `scripts/install.sh` and `scripts/install.cmd` from the tag, copies them into the Release under fixed names, and writes `checksums.txt` plus the Ed25519 manifest alongside the six archives. The publish policy locks finalize parameters and the full eight-asset upload set; the Homebrew renderer requires both installers in the checksum set, while the formula downloads only the platform archive.
 - **Race gate:** the `go.mod` toolchain doesn't support race on Windows ARM64, yet all six native targets run it — five run `go test -race ./...`, Windows ARM64 runs the same command and must match Go's exact `-race is not supported on windows/arm64` diagnostic; any other failure fails, no entry is skipped. The test matrix pins `GIT_CONFIG_*` to `core.autocrlf=false` so Git for Windows keeps LF blobs (else pre-commit `gofmt` misreports CRLF). Test gate only; production builds from the tag's clean default checkout.
 - **Handoff:** release preparation writes the immutable `release/release-handoff.json` (release run, tag, commit, each production/container artifact's size and SHA256); publication verifies it against the approved `release/checksums.txt`; policy rejects intermediate steps, path replacement and post-publish rewriting. Production archives, container images, prepared checksums and Homebrew install against the exact archives all finish before `release-approval`; publication then uses the secret-bearing `release` environment and consumes approved artifacts without rebuilding.
 - **Downstream publishers** (Homebrew, Docker Hub, SkillHub, ClawHub) are triggered by `workflow_run` of a successful `Release`. The handoff binds original run, tag, commit and artifact identities (not just a tag file; independent of Homebrew finishing). Each publisher revalidates identity and artifacts. Never infer a version from `workflow_run.head_branch` or substitute later `main` content. Authorized recovery dispatches pass the original `release_run_id` to a specific publisher — never a replacement tag or current main.
@@ -31,12 +31,11 @@ flowchart TD
 ## Container release verification
 
 - `build_container` runs after the shared `build` gate beside `build_production` (never waits for asset rebuilds). Targets: `ubuntu-22.04` → `linux/amd64`, `ubuntu-22.04-arm` → `linux/arm64`.
-- Each checks out the tag, builds a versioned CGO0 Linux binary through the ABI gate, runs container packaging tests, builds a pinned glibc runtime image, verifies non-root, exact version, `pixiv config path` under `/home/pixiv/.pixiv-cli/`, `/work`, and OCI provenance (`org.opencontainers.image.source`, revision, version, licenses), then exports `verified-container-linux-amd64` / `-arm64`. Build jobs get only `contents: read`.
+- Each checks out the tag, builds a versioned static CGO0 Linux binary, runs container packaging tests, builds a pinned glibc runtime image, verifies non-root, exact version, `pixiv config path` under `/home/pixiv/.pixiv-cli/`, `/work`, and OCI provenance (`org.opencontainers.image.source`, revision, version, licenses), then exports `verified-container-linux-amd64` / `-arm64`. Build jobs get only `contents: read`.
 - `.github/workflows/publish-dockerhub.yml` is the independent post-Release publisher for GHCR and Docker Hub (Release and registries can't commit atomically). It takes the immutable handoff and both verified artifacts, checks tag and source identity, and pushes the same loaded bytes to `ghcr.io/flanchanxwo/pixiv-cli` and `docker.io/flanchanxwo/pixiv-cli` — never rebuilds. Only Docker Hub auth uses the protected `DOCKER_HUB_TOKEN` (via stdin); `packages: write` is requested only by this publisher. On failure, dispatch from the default branch with the original `release_run_id`. Exact-version tags always publish; an older stable recovery succeeds without moving `latest`; only the newest stable advances `latest`. No retry loop hides failures.
 
 ```bash
-go test ./scripts/citest -count=1
-go test ./scripts/release ./scripts/platformmatrix -count=1
+go test ./scripts/citest ./scripts/release -count=1
 ```
 
 The credential-free container smoke workflow builds both architectures on relevant changes; these local checks don't replace that CI evidence for a tag.
@@ -45,10 +44,8 @@ The credential-free container smoke workflow builds both architectures on releva
 
 | Owner | Responsibility |
 | --- | --- |
-| `scripts/ci/platforms.json` + `scripts/platformmatrix` | shared runner/capability registry, validated and emitted |
-| `scripts/internal/releasenotesrender` | release identity (version/channel, six archive targets) and Release body rendering |
-| `scripts/release` | reusable trust/artifact checks: immutable tag + default-branch ancestry, published Release state, run handoff identity, exact archive/container sets, checksums |
-| `scripts/nativeevidence` | `record` / `consolidate` dispatch; schema, single-runner records, six-target merge, archive member/hash audit, filesystem safety (its workflow test covers only credential/action/ownership boundaries) |
+| `scripts/build/platforms.json` + `scripts/build/matrix.sh` | shared runner/capability registry, validated and emitted |
+| `scripts/release` | release identity, asset packaging/finalize, changelog notes, Homebrew formula/recovery, and the trust/artifact checks: immutable tag + default-branch ancestry, published Release state, run handoff identity, exact archive/container sets, checksums |
 | publisher workflows | only channel credentials, permissions, change detection, publication commands |
 
 Recovery runs may verify a successful `Release` handoff without binding the workflow head to the tag; publishers whose contract requires it (e.g. Docker Hub) also bind the handoff run to the tag commit. Workflow tests keep behavior and security boundaries, not exact job counts, step positions or shell text. Historical recovery plans and acceptance reports keep their original text and are not current process docs.
@@ -58,7 +55,7 @@ Recovery runs may verify a successful `Release` handoff without binding the work
 `publish-homebrew.yml` consumes the handoff, verifies the production section, and maps stable/prerelease to `pixiv-cli` / `pixiv-cli-beta` (both install `pixiv`, mutually conflicting). Homebrew is not part of the Release workflow and adds no approval boundary (`release-approval` is the only one). `HOMEBREW_TAP_DEPLOY_KEY` reaches only the authorized tap-write step via the `release` Environment.
 
 1. **Install check** on macOS Intel/arm64 and Linux amd64/arm64: `brew tap-new pixiv-cli-release/staging --no-git`, single staging formula in `Formula/`, `brew install --formula pixiv-cli-release/staging/<formula>`, then `test "$(pixiv --version)" = "pixiv $RELEASE_TAG"`. macOS trusts the temp namespace with `brew trust --tap pixiv-cli-release/staging`; Linux uses a short-lived fixed-digest `homebrew/brew` container with a read-only bind mount. No workspace formula path, bypass variables or public tap clone/write/trust.
-2. **Deploy** only after every target passes: the protected `deploy_homebrew_tap` job HTTPS-clones the public tap; `scripts/homebrewrecovery` (trusted default-branch tip) compares versions with `internal/version` SemVer for each formula independently:
+2. **Deploy** only after every target passes: the protected `deploy_homebrew_tap` job HTTPS-clones the public tap; `scripts/release recover` (trusted default-branch tip) compares versions with `internal/version` SemVer for each formula independently:
 
 | Published vs requested | Action |
 | --- | --- |
@@ -79,7 +76,7 @@ This local check proves only declared workflow dependencies and semantics — **
 
 - Read-only: no `release` Environment, secret, tag checkout, Release edits, tap clone/commit/push, and deliberately no deploy job — the single publishing path can't be bypassed. Linux uses the fixed-digest container; macOS the native command.
 - It reproduces the install chain before release and **does not replace** formal tag publishing, signed Releases, tap deployment or post-publish acceptance. The quality gate keeps behavior-level formula and artifact checks instead of a second policy implementation.
-- A formal release still requires a tag, signed Release, tap formula and install acceptance; complete same-source/version six-target evidence ([native runner evidence](development.md#native-runner-evidence)); and a configured `release` Environment, signing key and public repository — preconditions that don't mean a Release/tap exists or the install path is accepted.
+- A formal release still requires a tag, signed Release, tap formula and install acceptance; complete same-source/version six-target execution evidence from the platform smoke workers; and a configured `release` Environment, signing key and public repository — preconditions that don't mean a Release/tap exists or the install path is accepted.
 
 </details>
 
@@ -107,11 +104,8 @@ The production Ed25519 trust root is committed at [`internal/selfupdate/installe
 ## Local release fixture gates
 
 ```bash
-sh scripts/test-build-platform.sh
-sh scripts/test-package-release.sh
-go test ./scripts/release ./scripts/platformmatrix -count=1
-go test ./scripts/nativeevidence -count=1
-sh scripts/test-homebrew-formula.sh
+sh scripts/ci/test-package-release.sh
+go test ./scripts/release ./scripts/citest -count=1
 git diff --check
 ```
 

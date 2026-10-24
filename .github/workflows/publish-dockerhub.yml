@@ -174,7 +174,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          channel=$(go run ./scripts/releaseassets channel --version "${RELEASE_TAG#v}")
+          channel=$(go run ./scripts/release assets channel --version "${RELEASE_TAG#v}")
           case "$channel" in
             stable)
               latest_stable_tag=$(

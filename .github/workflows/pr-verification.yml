@@ -20,9 +20,9 @@ jobs:
   dispatch:
     name: Dispatch verification
     # R14：廉价资源预过滤。普通 PR 评论（LGTM 等）不该占用 verification runner。
-    # `contains(comment.body, '/test')` 是 scripts/prmeta --check-trigger 的宽松超集
+    # `contains(comment.body, '/test')` 是 scripts/pr trigger 的宽松超集
     # （后者要求首个非空行精确等于 /test），因此只会产生少量 false positive，
-    # 不可能把合法触发过滤掉。最终授权与触发判定仍归 scripts/prmeta。
+    # 不可能把合法触发过滤掉。最终授权与触发判定仍归 scripts/pr。
     if: >-
       github.event_name == 'workflow_dispatch' ||
       (github.event.issue.pull_request && contains(github.event.comment.body, '/test'))
@@ -89,7 +89,7 @@ jobs:
           printf '%s' "$comment_body" > "$RUNNER_TEMP/comment-body.md"
           # §5.1：触发必须是评论首个非空行且精确为 /test。判定归 trusted policy，
           # workflow 不扫描整条评论，也不自建第二套 parser。
-          trigger=$(go run ./scripts/prmeta --check-trigger --comment-file "$RUNNER_TEMP/comment-body.md")
+          trigger=$(go run ./scripts/pr trigger --comment-file "$RUNNER_TEMP/comment-body.md")
           if [ "$trigger" != "trigger=true" ]; then
             printf '%s\n' 'accepted=false' >> "$GITHUB_OUTPUT"
             exit 0
@@ -161,7 +161,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          go run ./scripts/prmeta --body-file "$RUNNER_TEMP/pr-body.md" --whitelist scripts/verification/command-whitelist.txt --cli pixiv --github-output "$GITHUB_OUTPUT"
+          go run ./scripts/pr validate --body-file "$RUNNER_TEMP/pr-body.md" --whitelist scripts/pr/command-whitelist.txt --cli pixiv --github-output "$GITHUB_OUTPUT"
 
       - name: Resolve effective verification commands
         id: resolve
@@ -174,11 +174,10 @@ jobs:
           set -euo pipefail
           # 评论里的 commands block 完全覆盖 PR 声明；无效声明 fail closed，
           # 绝不回落到 PR body（§5.3/§5.4）。
-          go run ./scripts/prmeta \
-            --resolve \
+          go run ./scripts/pr resolve \
             --body-file "$RUNNER_TEMP/pr-body.md" \
             --comment-file "$RUNNER_TEMP/comment-body.md" \
-            --whitelist scripts/verification/command-whitelist.txt \
+            --whitelist scripts/pr/command-whitelist.txt \
             --cli pixiv \
             --github-output "$GITHUB_OUTPUT"
 
@@ -356,7 +355,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          matrix=$(go run ./scripts/platformmatrix --capability verification)
+          matrix=$(sh scripts/build/matrix.sh --capability verification)
           printf 'matrix=%s\n' "$matrix" >> "$GITHUB_OUTPUT"
 
   verify:
@@ -389,7 +388,7 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p "$RUNNER_TEMP/verification-result"
-          go run ./scripts/verification init --platform '${{ matrix.goos }}/${{ matrix.goarch }}' --output "$RUNNER_TEMP/verification-result/${{ matrix.artifact }}.json"
+          go run ./scripts/pr init --platform '${{ matrix.goos }}/${{ matrix.goarch }}' --output "$RUNNER_TEMP/verification-result/${{ matrix.artifact }}.json"
 
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
@@ -409,7 +408,7 @@ jobs:
         run: |
           set -euo pipefail
           test "$(git rev-parse HEAD)" = '${{ needs.dispatch.outputs.head_sha }}'
-          binary=$(sh scripts/build-platform.sh \
+          binary=$(sh scripts/build/platform.sh \
             --target '${{ matrix.goos }}/${{ matrix.goarch }}' \
             --output-dir "$RUNNER_TEMP/verification-build")
           printf 'VERIFICATION_BINARY=%s\n' "$binary" >> "$GITHUB_ENV"
@@ -427,7 +426,7 @@ jobs:
           PIXIV_LOG_FORMAT: text
         run: |
           set -euo pipefail
-          go run ./scripts/verification execute --platform '${{ matrix.goos }}/${{ matrix.goarch }}' --binary "$VERIFICATION_BINARY" --commands-json "$COMMANDS_JSON" --workspace "$GITHUB_WORKSPACE/pr" --whitelist scripts/verification/command-whitelist.txt --output "$RUNNER_TEMP/verification-result/${{ matrix.artifact }}.json"
+          go run ./scripts/pr execute --platform '${{ matrix.goos }}/${{ matrix.goarch }}' --binary "$VERIFICATION_BINARY" --commands-json "$COMMANDS_JSON" --workspace "$GITHUB_WORKSPACE/pr" --whitelist scripts/pr/command-whitelist.txt --output "$RUNNER_TEMP/verification-result/${{ matrix.artifact }}.json"
 
       - name: Remove isolated credential state
         if: always()
@@ -479,7 +478,7 @@ jobs:
           EXPECTED_MATRIX: ${{ needs.dispatch.outputs.matrix }}
         run: |
           set -euo pipefail
-          go run ./scripts/verification render --results-dir "$RUNNER_TEMP/verification-results" --expected-matrix-json "$EXPECTED_MATRIX" --commit '${{ needs.dispatch.outputs.head_sha }}' --run-url '${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}' --output "$RUNNER_TEMP/verification-comment.md" --github-output "$GITHUB_OUTPUT"
+          go run ./scripts/pr render --results-dir "$RUNNER_TEMP/verification-results" --expected-matrix-json "$EXPECTED_MATRIX" --commit '${{ needs.dispatch.outputs.head_sha }}' --run-url '${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}' --output "$RUNNER_TEMP/verification-comment.md" --github-output "$GITHUB_OUTPUT"
 
       - name: Publish result and terminal reactions
         shell: bash

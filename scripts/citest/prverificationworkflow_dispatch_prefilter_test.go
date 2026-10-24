@@ -24,7 +24,7 @@ var commentBodies = []string{
 	"\n\n",
 }
 
-// trustedTrigger 调用仓库自己的 scripts/prmeta --check-trigger 判定一条评论是否
+// trustedTrigger 调用仓库自己的 scripts/pr trigger 判定一条评论是否
 // 是合法触发。prefilter 的契约必须相对这个真实 parser 定义，而不是在测试里
 // 复刻一份简化规则。
 func trustedTrigger(t *testing.T, body string) bool {
@@ -35,11 +35,11 @@ func trustedTrigger(t *testing.T, body string) bool {
 	if err := os.WriteFile(commentPath, []byte(body), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	command := exec.Command("go", "run", "./scripts/prmeta", "--check-trigger", "--comment-file", commentPath)
+	command := exec.Command("go", "run", "./scripts/pr", "trigger", "--comment-file", commentPath)
 	command.Dir = root
 	output, err := command.CombinedOutput()
 	if err != nil {
-		t.Fatalf("scripts/prmeta --check-trigger (%q): %v\n%s", body, err, output)
+		t.Fatalf("scripts/pr trigger (%q): %v\n%s", body, err, output)
 	}
 	return strings.Contains(string(output), "trigger=true")
 }
@@ -78,9 +78,9 @@ func TestVerificationPrefilterNeverDropsATrustedTrigger(t *testing.T) {
 		t.Fatal("fixtures must include at least one trusted trigger, otherwise the property is vacuous")
 	}
 
-	// scripts/prmeta 必须仍是最终判定者：workflow 不能在 job 条件里自己完成授权。
-	if !strings.Contains(body, "go run ./scripts/prmeta --check-trigger --comment-file") {
-		t.Fatal("scripts/prmeta --check-trigger must remain the authoritative trigger decision")
+	// scripts/pr 必须仍是最终判定者：workflow 不能在 job 条件里自己完成授权。
+	if !strings.Contains(body, "go run ./scripts/pr trigger --comment-file") {
+		t.Fatal("scripts/pr --check-trigger must remain the authoritative trigger decision")
 	}
 }
 

@@ -50,7 +50,7 @@ flowchart LR
 - Never requests admin/root, installs prerequisites, reads Pixiv credentials or bypasses reputation warnings.
 - **Bootstrap trust:** before `pixiv` exists there is no embedded Ed25519 verifier — SHA-256 detects corruption/mismatch; authenticity relies on HTTPS and the official repository. Inspect the script first. Afterwards `pixiv update` uses the embedded Ed25519 trust root.
 - **Mirrors:** versioned installers embed a static source list (never fetched remotely; changes only with a signed Release). Candidates are probed only for the platform archive and are usable only if their checksum response is byte-identical to the direct file; the archive still needs the direct SHA-256 match.
-- **Linux:** assets require glibc ≥ 2.35. Release, native-evidence and packaged-smoke jobs build on Ubuntu 22.04 and reject any ELF needing more than `GLIBC_2.35`; preflight surfaces loader failures before replacement.
+- **Linux:** release and packaged-smoke binaries are static (`CGO_ENABLED=0`) and built on Ubuntu 22.04. Preflight surfaces loader failures before replacement.
 - **`pixiv://` handler:** initialized after a verified install (Homebrew does it in `post_install`). A warning means the binary installed but desktop integration did not. On macOS/Windows the next normal command retries, so a manually extracted archive self-repairs. Desktop Linux needs `xdg-mime` and `gio`; headless Linux supports the relay server without a handler.
 
 ## Build from source

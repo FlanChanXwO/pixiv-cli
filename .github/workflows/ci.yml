@@ -17,7 +17,7 @@ permissions: {}
 
 jobs:
   # R6：Quality 的 skip 判定必须与 pr-metadata 的 smoke classification 使用同一
-  # 信任模型。PR 能修改 scripts/classify-change-scope.sh 与
+  # 信任模型。PR 能修改 scripts/ci/classify-change-scope.sh 与
   # .github/ci-change-scope.gitignore，因此分类绝不能从 PR 自己的 checkout 执行。
   scope:
     name: Classify change scope
@@ -82,8 +82,10 @@ jobs:
             printf '%s\n' 'quality_required=true' >> "$GITHUB_OUTPUT"
             exit 0
           fi
-          # 分类器与规则文件均来自上面的 trusted base checkout。
-          bash ./scripts/classify-change-scope.sh --base "$BASE_SHA" --head "$HEAD_SHA" --github-output "$GITHUB_OUTPUT"
+          # 分类器与规则文件均来自上面的 trusted base checkout；G20 合并前后路径可能不同。
+          classifier=scripts/classify-change-scope.sh
+          [ ! -f scripts/ci/classify-change-scope.sh ] || classifier=scripts/ci/classify-change-scope.sh
+          bash "./$classifier" --base "$BASE_SHA" --head "$HEAD_SHA" --github-output "$GITHUB_OUTPUT"
 
   quality_gate:
     name: Quality gate
@@ -117,7 +119,7 @@ jobs:
       - name: Verify Go license bundle
         if: ${{ needs.scope.result == 'success' }}
         shell: bash
-        run: go run ./scripts/licensebundle --check
+        run: go run ./scripts/build/licensebundle --check
       - name: Test Go sources
         if: ${{ needs.scope.result == 'success' }}
         shell: bash
@@ -139,7 +141,7 @@ jobs:
       - name: Test release packaging
         if: ${{ needs.scope.result == 'success' }}
         shell: bash
-        run: sh scripts/test-package-release.sh
+        run: sh scripts/ci/test-package-release.sh
       - name: Check Go formatting
         if: ${{ needs.scope.result == 'success' }}
         shell: bash

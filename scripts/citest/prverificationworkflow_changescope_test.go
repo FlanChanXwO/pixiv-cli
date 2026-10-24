@@ -8,7 +8,7 @@ import (
 	"testing"
 )
 
-// runScopeClassifier 在临时仓库里执行仓库自己的 scripts/classify-change-scope.sh，
+// runScopeClassifier 在临时仓库里执行仓库自己的 scripts/ci/classify-change-scope.sh，
 // 对一个“只改动 targetPath”的提交做真实分类。判定必须由真实 policy 文件驱动，
 // 而不是在测试里复刻规则，否则规则被改错时测试仍会通过。
 func runScopeClassifier(t *testing.T, targetPath string) map[string]string {
@@ -20,7 +20,7 @@ func runScopeClassifier(t *testing.T, targetPath string) map[string]string {
 	// trusted base checkout，本测试也必须与“被分类的 PR 变更”解耦，否则
 	// 修改 classifier 自身的用例会覆盖掉正在执行的脚本。
 	trustedClassifier := filepath.Join(t.TempDir(), "classify-change-scope.sh")
-	if body, err := os.ReadFile(filepath.Join(root, "scripts", "classify-change-scope.sh")); err != nil {
+	if body, err := os.ReadFile(filepath.Join(root, "scripts", "ci", "classify-change-scope.sh")); err != nil {
 		t.Fatalf("read trusted classifier: %v", err)
 	} else if err := os.WriteFile(trustedClassifier, body, 0o755); err != nil {
 		t.Fatal(err)
@@ -63,9 +63,9 @@ func runScopeClassifier(t *testing.T, targetPath string) map[string]string {
 		".github/workflows/pr-metadata.yml",
 		".github/workflows/platform-smoke.yml",
 		".github/workflows/container-smoke.yml",
-		"scripts/classify-change-scope.sh",
-		"scripts/ci/platforms.json",
-		"scripts/platformmatrix/main.go",
+		"scripts/ci/classify-change-scope.sh",
+		"scripts/build/platforms.json",
+		"scripts/build/matrix.sh",
 		"README.md",
 		"internal/cli/root.go",
 	} {
@@ -79,7 +79,7 @@ func runScopeClassifier(t *testing.T, targetPath string) map[string]string {
 	}
 	// 再覆盖上真实 policy 与 classifier，确保判定由仓库自身规则驱动。
 	copyFile(".github/ci-change-scope.gitignore")
-	copyFile("scripts/classify-change-scope.sh")
+	copyFile("scripts/ci/classify-change-scope.sh")
 	git("add", "-A")
 	git("commit", "-qm", "base")
 
@@ -138,8 +138,8 @@ func TestTrustedSmokeOwnerScopesRemainCorrect(t *testing.T) {
 	}{
 		// 容器 worker 与其 registry 拥有 container 能力，必须跑 full smoke。
 		{".github/workflows/container-smoke.yml", "true", "true", "true"},
-		{"scripts/ci/platforms.json", "true", "true", "true"},
-		{"scripts/platformmatrix/main.go", "true", "true", "true"},
+		{"scripts/build/platforms.json", "true", "true", "true"},
+		{"scripts/build/matrix.sh", "true", "true", "true"},
 		{"frontend/mcp-apps/gallery/gallery.js", "true", "true", "true"},
 		{"frontend/pages/login/manual.html", "true", "true", "true"},
 		{"frontend/pages/oauth/consent.css", "true", "true", "true"},
@@ -148,7 +148,7 @@ func TestTrustedSmokeOwnerScopesRemainCorrect(t *testing.T) {
 		{".github/workflows/platform-smoke.yml", "true", "true", "false"},
 		// 分类策略文件只决定“是否运行”；R6 已让它从 trusted base 执行，
 		// 因此 PR 无法用它影响自己的判定，保持 Quality-only 即可。
-		{"scripts/classify-change-scope.sh", "true", "false", "false"},
+		{"scripts/ci/classify-change-scope.sh", "true", "false", "false"},
 		// 纯文档路径不触发任何 gate。
 		{"README.md", "false", "false", "false"},
 	} {
