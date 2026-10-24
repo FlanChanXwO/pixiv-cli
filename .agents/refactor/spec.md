@@ -226,6 +226,19 @@ type Pixiv struct {
 | T-d | 防止已删除的东西再出现（历史防回退） | — |
 | T-e | 已完成迁移的对比或特征测试；文件名带 `red`、`baseline`、`parity` 一类过程标记的通常属于此类 | — |
 | T-f | 测试 getter、纯转发、字段投影，或断言常量等于它自己 | — |
+| T-g | 共用同一个实现的同族端点（例如走同一个 `userPreviews` 的 user 列表端点）逐个重复同一组响应校验 | 每族保留一个正常用例和一张失败模式表（缺字段、类型错误、空列表、`next_url` 异常等）；只有某个端点有自己的分支时，才为它单独保留用例。取代 A3、A4 中“原有断言全部保留”的要求（自 G35 起） |
+| T-h | 同一契约在多层重复断言 | 按下方的分层表，只在负责该契约的那一层保留 |
+
+**每类契约只在一层断言（T-h）：**
+
+| 契约 | 断言所在的层 | 其他层不再断言 |
+|---|---|---|
+| 上游响应到模型的映射、响应校验 | SDK（`sdk/pixiv`、`sdk/fanbox`） | CLI、MCP 不再逐字段检查映射结果 |
+| 文本、JSON、NDJSON 输出外形，flag 解析，退出码，stdin 输入 | CLI | — |
+| tool schema、结构化输出外形、`isError`、注册与鉴权、stdio 纯净 | MCP | — |
+| 凭据与签名 URL 不泄露、持久化与 revision、取消与错误传播 | 该机制所在的边界 | 不在调用方重复 |
+
+**预期规模：** 2026-10-24 统计，生产代码 68.4k 行、测试 69.7k 行。G35–G38 完成后，测试预期约为生产代码的一半（3.5–4 万行）。这是预期结果，不是门槛：明显高于此比例时，在 PR 中说明原因。
 
 **保留**（满足任一条，且没有被另一个测试在更公开的边界覆盖）：凭据与密钥不泄露；数据完整性与持久化（事务、revision、文件原子替换）；CLI、MCP、SDK 对外输出契约；取消与错误传播（不把失败报告成成功）；发布产物的正确性（校验和、归档命名）。能真实执行的检查优先于字符串检查。
 
@@ -1761,7 +1774,7 @@ if err != nil {
 
 ### 7.0 并行执行与 goal
 
-A1、B2 等是工作项的名称。执行单位是 **goal**：一个 goal 对应一个命名的 worktree、一个分支、一个 PR，验收通过后合并进 main。共 34 个 goal，分四个阶段：阶段 0、3 内部按依赖执行，阶段 1、2 内的线路可以并行。各 goal 的完整语句见同目录的 `goals.md`。
+A1、B2 等是工作项的名称。执行单位是 **goal**：一个 goal 对应一个命名的 worktree、一个分支、一个 PR，验收通过后合并进 main。共 38 个 goal，分四个阶段：阶段 0、3 内部按依赖执行，阶段 1、2 内的线路可以并行。各 goal 的完整语句见同目录的 `goals.md`。
 
 ```text
 阶段 0（串行）  G01 → G02 → G03 → G04 → G05
@@ -1775,7 +1788,7 @@ A1、B2 等是工作项的名称。执行单位是 **goal**：一个 goal 对应
                 L8 叶子包   G18
                 L9 脚本/CI  G19 → G20 → G21      ← 不依赖阶段 0
 阶段 2          G23–G27 与 G22（日志）按下表依赖并行 → G28（扫尾）
-阶段 3          G29–G33 并行 → G34（收尾）
+阶段 3          G29–G33（文件头注释）与 G35–G38（测试精简）并行 → G34（收尾）
 ```
 
 2026-10-23 调整：G19 不再等待发布 workflow 的状态；G20 把 S2 扩大为 scripts 与 CI 的全面精简（删除不再需要的工具和 workflow、能用 sh 写清楚的工具改为 sh、撤销 scripts/internal、按用途重排目录，细则见 `goals.md`）；G21、G33 照常执行；frontend/ 的文件头注释并入 G32。G09、G23–G27 只等待与其代码冲突的 goal；G24、G26 先于 G22 合并，G22 在它们的结果上改造日志。依赖以下表和 `goals.md` 为准。
@@ -1815,7 +1828,11 @@ A1、B2 等是工作项的名称。执行单位是 **goal**：一个 goal 对应
 | G31 | `refactor-g31-headers-mcp` | C3：`internal/mcpserver/` | G28 | 同上 |
 | G32 | `refactor-g32-headers-internal` | C3：`internal/` 其余目录与 `frontend/` | G28 | 同上 |
 | G33 | `refactor-g33-headers-scripts` | C3：`scripts/`、`.github/` | G28、G21 | 同上 |
-| G34 | `refactor-g34-finish` | C2；删除 `.agents/refactor/` | G29–G33 | 文档、skill |
+| G35 | `refactor-g35-tests-sdk` | 测试精简（3.4.1，含 T-g、T-h） | G28 | `sdk/`、`pixivapi`、`fanboxapi` 的测试 |
+| G36 | `refactor-g36-tests-mcp` | 测试精简 | G28 | `internal/mcpserver/` 的测试 |
+| G37 | `refactor-g37-tests-cli` | 测试精简 | G28 | `internal/cli/`、`cmd/` 的测试 |
+| G38 | `refactor-g38-tests-internal` | 测试精简 | G28 | `internal/` 其余目录的测试 |
+| G34 | `refactor-g34-finish` | C2；删除 `.agents/refactor/` | G29–G33、G35–G38 | 文档、skill |
 
 每个 goal 顺带对自己触及的目录做 T2、T3、T6，并对触及的测试套用 3.4。
 
