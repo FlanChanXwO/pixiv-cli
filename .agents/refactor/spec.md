@@ -288,7 +288,7 @@ func TestReleaseNoLongerPublishesHomebrewInline(t *testing.T) {
 | P-a | 导出符号只被测试引用（`sdk/` 的公开 API 除外） | 改为未导出，或删除后让测试走生产代码实际使用的入口 |
 | P-b | 包级可变变量，由导出的 `SetXxx` 在测试中替换 | 改为结构体上的未导出字段，由同包测试构造 |
 | P-c | 只转发到默认实例的包级函数，以及 `At`、`WithX`、`WithFileStore` 一类入口变体（D6） | 删除，调用方直接使用唯一入口 |
-| P-d | 同一接口或映射函数在多个包中各写一份（例如 36 个 `Transport`） | 合并为一份（D5） |
+| P-d | 同一接口或映射函数在多个包中各写一份（例如 36 个 `Transport`）；同一套方法或机制在多个类型上各写一份（例如三个带凭据的账号结构体各自实现 `String`、`GoString`、`Format` 来脱敏） | 合并为一份（D5）；机制收归到它保护或描述的那个字段类型、值类型上（例如凭据字段使用一个自我脱敏的类型），外层类型不再各写一遍 |
 | P-e | 平行的类型层，例如 DTO 与模型 | 合并为一种类型（6.2） |
 | P-f | 自制的标准库或已有依赖的替代品（自制诊断系统对应 `slog`，`FirstNonEmpty` 对应 `cmp.Or`） | 改用标准库或已有依赖 |
 | P-g | 没有任何生产调用方的代码或工具 | 删除 |
@@ -536,6 +536,21 @@ package pixiv
 #!/bin/sh
 # 为单个目标平台构建 pixiv 二进制，注入版本号，并对 Linux 产物运行 linuxabi 检查。
 ```
+
+### 3.5.1 注释写什么
+
+注释写名字和签名表达不了的东西：调用约定、原因、不变量、副作用、所有权。没有这类内容就不写；写了就用平常说话的语气。
+
+| 不这样写 | 原因 | 这样写 |
+|---|---|---|
+| `// New 创建一个带 opaque FANBOX session 的账号值，并复制输入凭据。` | 前半句复述函数名与签名 | `// New 会复制 sessionID，调用方之后修改原切片不影响账号。` |
+| `// Account 是一个已保存的 FANBOX 账号记录。session ID 是 opaque credential。` | 用“X 是 Y”下定义，夹杂英文术语 | `// Account 对应本机保存的一个 FANBOX 账号；session ID 只能通过 SessionIDCopy 取得副本。` |
+| `// FANBOX session 不与 Pixiv refresh token 共享类型或生命周期。` | 翻译腔 | `// FANBOX 的 session 和 Pixiv 的 refresh token 分开存放、分开轮换。` |
+| `// String 返回字符串表示。` | 没有信息 | 删除；如果它承担脱敏，写清楚：`// String 只输出账号摘要，日志和 %v 不会打印出凭据。` |
+
+- Go 文档注释仍以标识符开头（Go 惯例），但后面的内容要说出名字之外的信息。
+- 公开的 `sdk/` 为每个导出符号保留文档注释（pkg.go.dev 展示）；`internal/` 中名字和签名已经说清楚的导出符号可以不写。
+- 中文注释用自然的中文句式；协议字段、标识符、错误原文保留英文，不在句子中夹杂可翻译的英文术语。
 
 **实施时机：** 各阶段 PR 新建或重写的文件，在同一个 PR 中写好头注释；其余文件在所有移动完成后（A7、A8、S1 之后）由 C3 一次补齐。现状：457 个生产 Go 文件中，约 157 个以注释开头，其中大部分是包注释。
 
@@ -1774,7 +1789,7 @@ if err != nil {
 
 ### 7.0 并行执行与 goal
 
-A1、B2 等是工作项的名称。执行单位是 **goal**：一个 goal 对应一个命名的 worktree、一个分支、一个 PR，验收通过后合并进 main。共 39 个 goal，分四个阶段：阶段 0、3 内部按依赖执行，阶段 1、2 内的线路可以并行。各 goal 的完整语句见同目录的 `goals.md`。
+A1、B2 等是工作项的名称。执行单位是 **goal**：一个 goal 对应一个命名的 worktree、一个分支、一个 PR，验收通过后合并进 main。共 43 个 goal，分四个阶段：阶段 0、3 内部按依赖执行，阶段 1、2 内的线路可以并行。各 goal 的完整语句见同目录的 `goals.md`。
 
 ```text
 阶段 0（串行）  G01 → G02 → G03 → G04 → G05
@@ -1788,7 +1803,8 @@ A1、B2 等是工作项的名称。执行单位是 **goal**：一个 goal 对应
                 L8 叶子包   G18
                 L9 脚本/CI  G19 → G20 → G21      ← 不依赖阶段 0
 阶段 2          G23–G27 与 G22（日志）按下表依赖并行 → G28（扫尾）
-阶段 3          G35–G38（测试精简）并行 → G39（整体审查与修正）→ G29–G33（文件头注释）并行 → G34（收尾）
+阶段 3          G35–G38（测试精简）并行 → G39–G42（逐包审查与修正）并行 → G29–G33（注释整理）并行 → G34（收尾）
+                G43（面向用户的 changelog）不依赖代码类 goal，随时可以开始；G34 等它
 ```
 
 2026-10-23 调整：G19 不再等待发布 workflow 的状态；G20 把 S2 扩大为 scripts 与 CI 的全面精简（删除不再需要的工具和 workflow、能用 sh 写清楚的工具改为 sh、撤销 scripts/internal、按用途重排目录，细则见 `goals.md`）；G21、G33 照常执行；frontend/ 的文件头注释并入 G32。G09、G23–G27 只等待与其代码冲突的 goal；G24、G26 先于 G22 合并，G22 在它们的结果上改造日志。依赖以下表和 `goals.md` 为准。
@@ -1823,17 +1839,21 @@ A1、B2 等是工作项的名称。执行单位是 **goal**：一个 goal 对应
 | G26 | `refactor-g26-accounts` | T5：`pixivaccount`、`pixivaccount/pool`、`fanboxaccount`、`session` | G05 | 这些包 |
 | G27 | `refactor-g27-cli-auth` | T5 与 T2：`cli/auth`、`loginhelper` 的注入点 | G12 | 这些包 |
 | G28 | `refactor-g28-sweep` | T2 重新扫描、T3、T4（scripts、.github 以外）、T6 其余（含 `illustration` 别名） | G22–G27 | 全仓库剩余部分 |
-| G29 | `refactor-g29-headers-sdk` | C3：`sdk/`、`cmd/` | G39 | 只加文件头注释 |
-| G30 | `refactor-g30-headers-cli` | C3：`internal/cli/` | G39 | 同上 |
-| G31 | `refactor-g31-headers-mcp` | C3：`internal/mcpserver/` | G39 | 同上 |
-| G32 | `refactor-g32-headers-internal` | C3：`internal/` 其余目录与 `frontend/` | G39 | 同上 |
-| G33 | `refactor-g33-headers-scripts` | C3：`scripts/`、`.github/` | G21、G39 | 同上 |
+| G29 | `refactor-g29-headers-sdk` | C3 与注释整理（3.5、3.5.1）：`sdk/`、`cmd/` | G39–G42 | 只改注释 |
+| G30 | `refactor-g30-headers-cli` | C3 与注释整理（3.5、3.5.1）：`internal/cli/` | G39–G42 | 只改注释 |
+| G31 | `refactor-g31-headers-mcp` | C3 与注释整理（3.5、3.5.1）：`internal/mcpserver/` | G39–G42 | 只改注释 |
+| G32 | `refactor-g32-headers-internal` | C3 与注释整理（3.5、3.5.1）：`internal/` 其余目录与 `frontend/` | G39–G42 | 只改注释 |
+| G33 | `refactor-g33-headers-scripts` | C3 与注释整理（3.5、3.5.1）：`scripts/`、`.github/` | G21、G39–G42 | 只改注释 |
 | G35 | `refactor-g35-tests-sdk` | 测试精简（3.4.1，含 T-g、T-h） | G28 | `sdk/`、`pixivapi`、`fanboxapi` 的测试 |
 | G36 | `refactor-g36-tests-mcp` | 测试精简 | G28 | `internal/mcpserver/` 的测试 |
 | G37 | `refactor-g37-tests-cli` | 测试精简 | G28 | `internal/cli/`、`cmd/` 的测试 |
 | G38 | `refactor-g38-tests-internal` | 测试精简 | G28 | `internal/` 其余目录的测试 |
-| G39 | `refactor-g39-audit` | 整体审查与修正，产出 changelog 草稿 | G20、G28、G35–G38 | 全仓库（修正以小 PR 提交） |
-| G34 | `refactor-g34-finish` | C2；删除 `.agents/refactor/` | G29–G33、G39 | 文档、skill |
+| G39 | `refactor-g39-audit` | 逐包审查与修正：`sdk/`、`pixivapi`、`fanboxapi`；SDK 公开 API 与 v1.2.1 比对 | G20、G28、G35–G38 | 这些包（修正以小 PR 提交） |
+| G40 | `refactor-g40-audit-mcp` | 逐包审查与修正：`internal/mcpserver/`；`tools/list` 与 v1.2.1 比对 | G20、G28、G35–G38 | 同上 |
+| G41 | `refactor-g41-audit-cli` | 逐包审查与修正：`internal/cli/`、`cmd/`；CLI 输出与 v1.2.1 比对；产出 changelog 草稿 | G20、G28、G35–G38、G43 | 同上 |
+| G42 | `refactor-g42-audit-internal` | 逐包审查与修正：`internal/` 其余目录、`scripts/`；凭据脱敏收归一个类型；发布链路核对 | G20、G28、G35–G38 | 同上 |
+| G43 | `refactor-g43-changelog` | 面向用户的 changelog：新规则、`scripts/release` 的 notes 校验、重写全部历史版本 | — | `changelog/`、`scripts/release` 的 notes 部分、`pixiv-cli-release-notes` |
+| G34 | `refactor-g34-finish` | C2；删除 `.agents/refactor/` | G29–G33、G39–G43 | 文档、skill |
 
 每个 goal 顺带对自己触及的目录做 T2、T3、T6，并对触及的测试套用 3.4。
 
