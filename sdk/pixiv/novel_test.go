@@ -529,6 +529,22 @@ func TestNovelListFamilyContinuation(t *testing.T) {
 			secondQR: map[string]string{"offset": "40"},
 		},
 		{
+			name: "user novels offset",
+			bodies: []string{
+				`{"novels":[` + oneNovel + `],"next_url":"https://app-api.pixiv.net/v1/user/novels?user_id=77&filter=for_android&offset=50"}`,
+				`{"novels":[],"next_url":null}`,
+			},
+			mutate: func(c *Client) (sdk.Cursor, error) {
+				page, err := c.UserNovels(context.Background(), UserNovelsRequest{UserID: 77})
+				return page.Next, err
+			},
+			invoke: func(c *Client, cursor sdk.Cursor) error {
+				_, err := c.UserNovels(context.Background(), UserNovelsRequest{UserID: 77, Cursor: cursor})
+				return err
+			},
+			secondQR: map[string]string{"offset": "50", "user_id": "77", "filter": "for_android"},
+		},
+		{
 			name: "bookmarks max bookmark id",
 			bodies: []string{
 				`{"novels":[` + oneNovel + `],"next_url":"https://app-api.pixiv.net/v1/user/bookmarks/novel?user_id=77&restrict=public&tag=cat&max_bookmark_id=88"}`,
