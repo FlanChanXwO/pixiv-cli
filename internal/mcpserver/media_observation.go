@@ -3,13 +3,14 @@ package mcpserver
 import (
 	"context"
 	"encoding/json"
+	"log/slog"
 	"time"
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/logging"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
-func observeMediaResult(ctx context.Context, request mcp.Request, result mcp.Result) mcp.Result {
+func observeMediaResult(lifecycleCtx context.Context, request mcp.Request, result mcp.Result) mcp.Result {
 	call, ok := request.(*mcp.CallToolRequest)
 	if result == nil || !ok || (call.Params.Name != "pixiv_artwork_media" && call.Params.Name != "pixiv_gallery_animation") {
 		return result
@@ -18,26 +19,27 @@ func observeMediaResult(ctx context.Context, request mcp.Request, result mcp.Res
 	if _, wrapped := result.(*observedMediaResult); wrapped {
 		return result
 	}
-	if _, scoped := logging.ScopeFromContext(ctx); !scoped {
+	logger := logging.From(lifecycleCtx)
+	if !logging.HasLogger(lifecycleCtx) {
 		return result
 	}
-	return &observedMediaResult{Result: result, ctx: ctx}
+	return &observedMediaResult{Result: result, logger: logger}
 }
 
 // 在 SDK 实际序列化边界计时，不提前编码、不记录结果正文。
 type observedMediaResult struct {
 	mcp.Result
-	ctx context.Context
+	logger *slog.Logger
 }
 
 func (r *observedMediaResult) MarshalJSON() ([]byte, error) {
 	started := time.Now()
 	data, err := json.Marshal(r.Result)
-	event := logging.Event{Module: logging.ModulePixivMCP, Kind: logging.EventCompleted, Operation: "mcp_response_serialization", Duration: time.Since(started), Count: len(data)}
+	attrs := []slog.Attr{slog.Duration(logging.AttrDuration, time.Since(started)), slog.Int(logging.AttrCount, len(data))}
 	if err != nil {
-		event.Kind = logging.EventFailed
-		event.Reason = logging.ReasonToolFailed
+		r.logger.LogAttrs(context.Background(), slog.LevelWarn, "MCP response serialization failed", append(attrs, slog.String(logging.AttrReason, "tool failed"))...)
+		return data, err
 	}
-	logging.Emit(r.ctx, event)
+	r.logger.LogAttrs(context.Background(), slog.LevelDebug, "MCP response serialized", attrs...)
 	return data, err
 }

@@ -10,6 +10,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"slices"
 	"strings"
 	"sync"
@@ -18,7 +19,6 @@ import (
 	authcommands "github.com/FlanChanXwO/pixiv-cli/internal/cli/auth"
 	requirements "github.com/FlanChanXwO/pixiv-cli/internal/cli/internal/command"
 	"github.com/FlanChanXwO/pixiv-cli/internal/cli/internal/input"
-	configapp "github.com/FlanChanXwO/pixiv-cli/internal/config/settings"
 	"github.com/FlanChanXwO/pixiv-cli/internal/logging"
 	"github.com/FlanChanXwO/pixiv-cli/internal/reversesearch"
 	"github.com/spf13/cobra"
@@ -26,10 +26,10 @@ import (
 	"golang.org/x/term"
 )
 
-type diagnosticState struct {
-	ctx       context.Context
-	operation string
-	presenter *logging.Presenter
+// logState 保存本次执行的 logger；命令结束后写一条终止 ERROR。
+type logState struct {
+	ctx    context.Context
+	logger *slog.Logger
 }
 
 // closeState 仅登记一次 CLI 执行的逆序关闭函数，不缓存服务或暴露依赖图。
@@ -139,7 +139,7 @@ func runContext(ctx context.Context, args []string, in io.Reader, out io.Writer,
 		pipelineSignal:      pipelineSignal,
 		mcpBrokenPipeSignal: mcpBrokenPipeSignal,
 		closeState:          &closeState{},
-		diagnostics:         &diagnosticState{},
+		logs:                &logState{},
 	}
 	if pipelineSignal != nil {
 		defer func() {
@@ -180,7 +180,7 @@ func runContext(ctx context.Context, args []string, in io.Reader, out io.Writer,
 		}
 	}
 	// 阶段 5：结束诊断并映射退出码（NDJSON 命令走成功语义）。
-	err = a.finishDiagnostics(err)
+	err = a.finishLogging(err)
 	return a.exitWithNDJSONScope(err, commandWritesNDJSON(target) || commandAutoWritesNDJSON(target, out))
 }
 
@@ -291,52 +291,29 @@ func registerReverseSearchCloser(state *closeState, searcher reversesearch.Searc
 	}
 }
 
-func (a app) startDiagnostics(cmd *cobra.Command, requirement requirements.Execution) error {
-	if a.diagnostics == nil || !requirement.EnsureConfig || isQuietConfigCommand(cmd) {
+func (a app) startLogging(cmd *cobra.Command, requirement requirements.Execution) error {
+	if !requirement.EnsureConfig || isQuietConfigCommand(cmd) {
 		return nil
 	}
 	runtime, err := a.runtimeConfig()
 	if err != nil {
 		return err
 	}
-	if runtime.LogLevel != configapp.LogLevelDebug {
-		return nil
+	logger, err := logging.New(a.errOut, string(runtime.LogLevel), string(runtime.LogFormat))
+	if err != nil {
+		return err
 	}
-	module := logging.ModulePixivCLI
-	if strings.HasPrefix(cmd.CommandPath(), "pixiv fanbox") {
-		module = logging.ModuleFanboxCLI
-	}
-	presenter := logging.NewPresenterWithFormat(a.errOut, string(runtime.LogFormat), nil)
-	scoped := logging.WithScope(cmd.Context(), presenter, module, 0)
-	a.diagnostics.ctx = scoped
-	a.diagnostics.operation = cmd.CommandPath()
-	a.diagnostics.presenter = presenter
-	logging.Emit(scoped, logging.Event{
-		Kind:      logging.EventStarted,
-		Operation: cmd.CommandPath(),
-	})
-	cmd.SetContext(scoped)
+	ctx := logging.WithCall(cmd.Context(), logger, cmd.CommandPath(), "")
+	a.logs.ctx, a.logs.logger = ctx, logger
+	cmd.SetContext(ctx)
 	return nil
 }
 
-func (a app) finishDiagnostics(err error) error {
-	if a.diagnostics == nil || a.diagnostics.presenter == nil {
+func (a app) finishLogging(err error) error {
+	if a.logs.logger == nil || err == nil {
 		return err
 	}
-	event := logging.Event{Operation: a.diagnostics.operation}
-	if err == nil {
-		event.Kind = logging.EventCompleted
-	} else {
-		event.Kind = logging.EventFailed
-		event.Reason = logging.ReasonCommandFailed
-	}
-	logging.Emit(a.diagnostics.ctx, event)
-	if diagnosticErr := a.diagnostics.presenter.Err(); diagnosticErr != nil {
-		if err == nil {
-			return fmt.Errorf("write diagnostics: %w", diagnosticErr)
-		}
-		return errors.Join(err, fmt.Errorf("write diagnostics: %w", diagnosticErr))
-	}
+	a.logs.logger.ErrorContext(a.logs.ctx, "Command failed", slog.Any(logging.AttrError, err))
 	return err
 }
 

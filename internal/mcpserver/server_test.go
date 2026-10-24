@@ -10,7 +10,6 @@ import (
 	"io"
 	"path/filepath"
 	"strings"
-	"sync"
 	"sync/atomic"
 	"testing"
 
@@ -32,16 +31,12 @@ func TestUnifiedMediaSerializationOverIOTransport(t *testing.T) {
 		{"normal-2026", "2026-07-28", false}, {"debug-2026", "2026-07-28", true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			var events []logging.Event
-			var mu sync.Mutex
-			ctx := t.Context()
-			if tc.debug {
-				ctx = logging.WithScope(ctx, logging.SinkFunc(func(event logging.Event) {
-					mu.Lock()
-					defer mu.Unlock()
-					events = append(events, event)
-				}), logging.ModulePixivMCP, 0)
+			output := &syncBuffer{}
+			logger, err := logging.New(output, "debug", "json")
+			if err != nil {
+				t.Fatal(err)
 			}
+			ctx := logging.WithCall(t.Context(), logger, "", "")
 			server := mcpserver.New(pixiv.SDKPorts{}, pixiv.Account{}, fanbox.SDKPorts{}, nil)
 			var calls atomic.Int32
 			fixture := &mcp.CallToolResult{Content: []mcp.Content{&mcp.ImageContent{MIMEType: "image/png", Data: []byte{1, 2, 3}}}, StructuredContent: countedMediaContent{calls: &calls}}
@@ -104,26 +99,16 @@ func TestUnifiedMediaSerializationOverIOTransport(t *testing.T) {
 			if calls.Load() != before+3 {
 				t.Fatalf("result encoded %d times, want 3", calls.Load()-before)
 			}
-			mu.Lock()
-			observed := append([]logging.Event(nil), events...)
-			mu.Unlock()
-			want := 0
-			if tc.debug {
-				want = 2
-			}
-			if len(observed) != want {
-				t.Fatalf("serialization events = %d, want %d", len(observed), want)
+			observed := logRecords(t, output.String(), "MCP response serialized")
+			if len(observed) != 2 {
+				t.Fatalf("serialization events = %d, want 2\n%s", len(observed), output.String())
 			}
 			for _, event := range observed {
-				if event.Operation != "mcp_response_serialization" || event.Kind != logging.EventCompleted || event.Count != resultLength || event.Duration < 0 {
+				if event["level"] != "DEBUG" || event["count"] != float64(resultLength) || event["duration"].(float64) < 0 {
 					t.Fatalf("invalid serialization observation: %+v", event)
 				}
 			}
-			safe, err := json.Marshal(observed)
-			if err != nil {
-				t.Fatal(err)
-			}
-			if strings.Contains(string(safe), "signed-url-and-token") {
+			if strings.Contains(output.String(), "signed-url-and-token") {
 				t.Fatal("private media leaked into diagnostics")
 			}
 		})

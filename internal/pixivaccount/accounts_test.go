@@ -15,7 +15,6 @@ import (
 	"testing/synctest"
 	"time"
 
-	"github.com/FlanChanXwO/pixiv-cli/internal/logging"
 	poolpixiv "github.com/FlanChanXwO/pixiv-cli/internal/pixivaccount/pool"
 	"github.com/FlanChanXwO/pixiv-cli/sdk"
 	sdkpixiv "github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
@@ -499,20 +498,14 @@ type cancelledReadGate struct{ cancel context.CancelFunc }
 func (g cancelledReadGate) Acquire(ctx context.Context) error { g.cancel(); return ctx.Err() }
 func (cancelledReadGate) Release()                            { panic("cancelled acquisition must not release the gate") }
 
-func TestReadSessionCancelledGateObservation(t *testing.T) {
+func TestReadSessionCancelledGateReturnsCancellation(t *testing.T) {
 	repo := newPixivTestRepository(pixivAccountFixture(42, "artist", "refresh", 1, true))
-	var events []logging.Event
-	ctx, cancel := context.WithCancel(logging.WithScope(t.Context(), logging.SinkFunc(func(event logging.Event) { events = append(events, event) }), logging.ModulePixivMCP, 0))
+	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()
 	sessions := pixiv.NewReadSessions(newPixivTestService(repo), cancelledReadGate{cancel})
 	defer sessions.Close()
 	_, err := sessions.Open(ctx, 42, "network", sdkpixiv.Options{})
 	require.ErrorIs(t, err, context.Canceled)
-	require.Len(t, events, 1)
-	require.Equal(t, "session_wait", events[0].Operation)
-	require.Equal(t, logging.EventFailed, events[0].Kind)
-	require.Equal(t, logging.ReasonRequestCancelled, events[0].Reason)
-	require.GreaterOrEqual(t, events[0].Duration, time.Duration(0))
 }
 
 func TestReadSessionsRevalidateExternalCredentialsWithoutRefresh(t *testing.T) {
@@ -589,23 +582,9 @@ func TestReadSessionsReuseAndCredentialInvalidation(t *testing.T) {
 	a = repo.accounts[42]
 	a.CredentialRevision++
 	repo.accounts[42] = a
-	var observed []logging.Event
-	ctx := logging.WithScope(t.Context(), logging.SinkFunc(func(event logging.Event) { observed = append(observed, event) }), logging.ModulePixivMCP, 0)
-	failed, err := sessions.Open(ctx, 42, "changed-network", options)
+	failed, err := sessions.Open(t.Context(), 42, "changed-network", options)
 	require.Error(t, err)
 	require.Nil(t, failed.Client)
-	var refresh []logging.Event
-	for _, event := range observed {
-		if event.Operation == "session_refresh" {
-			refresh = append(refresh, event)
-		}
-	}
-	require.Len(t, refresh, 1)
-	require.Equal(t, logging.EventFailed, refresh[0].Kind)
-	require.Equal(t, logging.ReasonToolFailed, refresh[0].Reason)
-	require.GreaterOrEqual(t, refresh[0].Duration, time.Duration(0))
-	require.NotContains(t, fmt.Sprint(observed), "persist failure")
-	require.NotContains(t, fmt.Sprint(observed), "rotated")
 	delete(repo.accounts, 42)
 	_, err = sessions.Open(t.Context(), 42, "changed-network", options)
 	require.Error(t, err)

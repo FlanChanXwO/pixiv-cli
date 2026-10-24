@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"net"
 	"net/http"
 	"net/url"
@@ -47,11 +48,7 @@ func NewHTTPHandler(ctx context.Context, server *mcp.Server, baseURL string, sto
 			defer cancel()
 			result, err := next(requestCtx, method, request)
 			if err == nil {
-				observationCtx := requestCtx
-				if _, scoped := logging.ScopeFromContext(observationCtx); !scoped {
-					observationCtx = ctx
-				}
-				result = observeMediaResult(observationCtx, request, result)
+				result = observeMediaResult(ctx, request, result)
 			}
 			return result, err
 		}
@@ -138,14 +135,7 @@ func observeHTTPWriter(lifecycleCtx, requestCtx context.Context, writer http.Res
 	if method != http.MethodPost {
 		return writer
 	}
-	observationCtx := requestCtx
-	if _, ok := logging.ScopeFromContext(observationCtx); !ok {
-		observationCtx = lifecycleCtx
-		if _, ok := logging.ScopeFromContext(observationCtx); !ok {
-			return writer
-		}
-	}
-	return &observedHTTPWriter{ResponseWriter: writer, lifecycleCtx: lifecycleCtx, requestCtx: requestCtx, observationCtx: observationCtx}
+	return &observedHTTPWriter{ResponseWriter: writer, lifecycleCtx: lifecycleCtx, requestCtx: requestCtx, observationCtx: lifecycleCtx}
 }
 
 type observedHTTPWriter struct {
@@ -167,17 +157,24 @@ func (w *observedHTTPWriter) FlushError() error {
 	return err
 }
 func (w *observedHTTPWriter) observe(operation string, accepted int, started time.Time, failed bool) {
-	event := logging.Event{Module: logging.ModulePixivMCP, Kind: logging.EventCompleted, Operation: operation, Count: accepted, Duration: time.Since(started)}
+	attrs := []slog.Attr{
+		slog.String("stage", operation),
+		slog.Int(logging.AttrCount, accepted),
+		slog.Duration(logging.AttrDuration, time.Since(started)),
+	}
+	reason := ""
 	switch {
 	case w.lifecycleCtx.Err() != nil:
-		event.Reason = logging.ReasonServiceClosed
+		reason = "service closed"
 	case failed:
-		event.Reason = logging.ReasonTransportInterrupted
+		reason = "transport interrupted"
 	case w.requestCtx.Err() != nil:
-		event.Reason = logging.ReasonRequestCancelled
+		reason = "request cancelled"
 	}
-	if event.Reason != "" {
-		event.Kind = logging.EventFailed
+	if reason == "" {
+		logging.From(w.observationCtx).LogAttrs(w.observationCtx, slog.LevelDebug, "MCP HTTP step completed", attrs...)
+		return
 	}
-	logging.Emit(w.observationCtx, event)
+	logging.From(w.observationCtx).LogAttrs(w.observationCtx, slog.LevelWarn, "MCP HTTP step failed",
+		append(attrs, slog.String(logging.AttrReason, reason))...)
 }

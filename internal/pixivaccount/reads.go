@@ -12,7 +12,6 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/FlanChanXwO/pixiv-cli/internal/logging"
 	"github.com/FlanChanXwO/pixiv-cli/sdk"
 	"github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
 )
@@ -93,9 +92,7 @@ func (m *ReadSessions) Open(ctx context.Context, uid int64, network string, opti
 	if session, ok, err := m.cached(ctx, uid, network); ok || err != nil {
 		return session, err
 	}
-	wait := time.Now()
 	err := m.gate.Acquire(ctx)
-	observeReadSession(ctx, "session_wait", wait, err)
 	if err != nil {
 		return ReadSession{}, err
 	}
@@ -115,9 +112,7 @@ func (m *ReadSessions) Open(ctx context.Context, uid int64, network string, opti
 	}
 	clientCopy.Transport = transport
 	options.HTTPClient = &clientCopy
-	started := time.Now()
 	session, err := m.service.openReadSession(ctx, uid, options)
-	observeReadSession(ctx, "session_refresh", started, err)
 	if err != nil {
 		cancelGeneration()
 		if options.HTTPClient != nil {
@@ -150,18 +145,6 @@ func (m *ReadSessions) Open(ctx context.Context, uid int64, network string, opti
 	transport.version.Store(session.Version)
 	m.sessions[uid] = readEntry{session, network, options.HTTPClient, cancelGeneration}
 	return session, nil
-}
-
-func observeReadSession(ctx context.Context, stage string, started time.Time, err error) {
-	event := logging.Event{Module: logging.ModulePixivMCP, Kind: logging.EventCompleted, Operation: stage, Duration: time.Since(started)}
-	if err != nil {
-		event.Kind = logging.EventFailed
-		event.Reason = logging.ReasonToolFailed
-		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
-			event.Reason = logging.ReasonRequestCancelled
-		}
-	}
-	logging.Emit(ctx, event)
 }
 
 // Revalidate checks local credential generations without opening an upstream session.

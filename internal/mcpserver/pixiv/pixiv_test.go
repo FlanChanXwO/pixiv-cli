@@ -313,21 +313,17 @@ func TestStatelessHTTPProtocolNegotiation(t *testing.T) {
 }
 
 func TestPixivMCPDiagnosticsUseStableLocalRequestIDs(t *testing.T) {
-	var (
-		mu     sync.Mutex
-		events []logging.Event
-	)
-	sink := logging.SinkFunc(func(event logging.Event) {
-		mu.Lock()
-		defer mu.Unlock()
-		events = append(events, event)
-	})
-	rootCtx, cancel := context.WithCancel(logging.WithScope(context.Background(), sink, logging.ModulePixivCLI, 0))
+	output := &syncBuffer{}
+	logger, err := logging.New(output, "debug", "json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	rootCtx, cancel := context.WithCancel(logging.WithCall(context.Background(), logger, "", ""))
 	defer cancel()
 
 	server := mcp.NewServer(&mcp.Implementation{Name: "debug-test", Version: "1"}, nil)
-	toolhost.AddTool(toolhost.NewApp(toolhost.SDKPorts{}, toolhost.Account{}), server, &mcp.Tool{Name: "diagnostic_test"}, func(context.Context, *mcp.CallToolRequest, struct{}) (*mcp.CallToolResult, struct{}, error) {
-		return &mcp.CallToolResult{}, struct{}{}, nil
+	toolhost.AddTool(toolhost.NewApp(toolhost.SDKPorts{Logger: logger}, toolhost.Account{}), server, &mcp.Tool{Name: "diagnostic_test"}, func(context.Context, *mcp.CallToolRequest, struct{}) (*mcp.CallToolResult, struct{}, error) {
+		return nil, struct{}{}, errors.New("fixture failure")
 	})
 	clientTransport, serverTransport := mcp.NewInMemoryTransports()
 	go func() { _ = server.Run(rootCtx, serverTransport) }()
@@ -338,20 +334,33 @@ func TestPixivMCPDiagnosticsUseStableLocalRequestIDs(t *testing.T) {
 	}
 	defer func() { _ = session.Close() }()
 
-	callTool(t, session, "diagnostic_test", map[string]any{})
-	callTool(t, session, "diagnostic_test", map[string]any{})
+	_, _ = session.CallTool(t.Context(), &mcp.CallToolParams{Name: "diagnostic_test", Arguments: map[string]any{}})
+	_, _ = session.CallTool(t.Context(), &mcp.CallToolParams{Name: "diagnostic_test", Arguments: map[string]any{}})
 
-	mu.Lock()
-	defer mu.Unlock()
-	if len(events) != 4 {
-		t.Fatalf("events=%+v want two start/complete pairs", events)
-	}
-	for index, event := range events {
-		wantID := uint64(index/2 + 1)
-		if event.Module != logging.ModulePixivMCPServer || event.RequestID != wantID {
-			t.Fatalf("event[%d]=%+v", index, event)
+	text := output.String()
+	for _, want := range []string{`"call_id":"1"`, `"call_id":"2"`, `"operation":"diagnostic_test"`, `"msg":"Tool failed"`, `"error":"fixture failure"`} {
+		if !strings.Contains(text, want) {
+			t.Fatalf("tool logs missing %s:\n%s", want, text)
 		}
 	}
+}
+
+// syncBuffer 让并发写入的日志在测试中可安全读取。
+type syncBuffer struct {
+	mu  sync.Mutex
+	buf bytes.Buffer
+}
+
+func (b *syncBuffer) Write(data []byte) (int, error) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.buf.Write(data)
+}
+
+func (b *syncBuffer) String() string {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.buf.String()
 }
 
 func httpFixturePorts(t *testing.T) pixivmcpserver.SDKPorts {
