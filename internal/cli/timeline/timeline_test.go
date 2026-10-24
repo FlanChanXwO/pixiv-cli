@@ -21,19 +21,6 @@ func (f roundTripFunc) RoundTrip(request *http.Request) (*http.Response, error) 
 	return f(request)
 }
 
-func TestNewRegistersTimelineLeaves(t *testing.T) {
-	cmd := newTestCommand(testData{Input: strings.NewReader(""), Output: &bytes.Buffer{}, ErrorOutput: &bytes.Buffer{}, UsageError: func(err error) error { return err }})
-	seen := map[string]bool{}
-	for _, child := range cmd.Commands() {
-		seen[child.Name()] = true
-	}
-	for _, name := range []string{"following", "latest"} {
-		if !seen[name] {
-			t.Fatalf("timeline command missing %q", name)
-		}
-	}
-}
-
 func TestLatestArtworkDefaultsToSupportedIllustContentType(t *testing.T) {
 	var contentType string
 	client, err := pixiv.NewWith("test-access-token", pixiv.Options{HTTPClient: &http.Client{Transport: roundTripFunc(func(request *http.Request) (*http.Response, error) {

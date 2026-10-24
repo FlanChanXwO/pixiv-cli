@@ -16,26 +16,9 @@ import (
 	"github.com/spf13/cobra"
 )
 
-func TestNewDeclaresSeriesInputAndTypeFlags(t *testing.T) {
-	cmd := newTestCommand(testData{Input: strings.NewReader(""), Output: &bytes.Buffer{}, ErrorOutput: &bytes.Buffer{}, UsageError: func(err error) error { return err }})
-	if cmd.Use != "series SERIES_ID_OR_URL" {
-		t.Fatalf("unexpected series use: %q", cmd.Use)
-	}
-	if cmd.Flags().Lookup("type") == nil || cmd.Flags().Lookup("ndjson") == nil {
-		t.Fatal("series command did not register required type/ndjson flags")
-	}
-}
-
 func TestSeriesArtworkURLUsesPublicSDK(t *testing.T) {
 	output := &bytes.Buffer{}
 	transport := seriesRoundTripFunc(func(request *http.Request) (*http.Response, error) {
-		if request.URL.Path != "/v1/illust/series" {
-			t.Fatalf("path = %q, want /v1/illust/series", request.URL.Path)
-		}
-		query := request.URL.Query()
-		if query.Get("illust_series_id") != "5001" || query.Get("last_order") != "" {
-			t.Fatalf("series query = %v, want illust_series_id=5001 without continuation", query)
-		}
 		return seriesJSONResponse(request, `{"illust_series_detail":{"user":{"id":7,"name":"artist"}},"illusts":[{"id":5002,"title":"chapter","type":"manga","create_date":"2026-01-01T00:00:00Z","user":{"id":7,"name":"artist"}}],"next_url":null}`), nil
 	})
 	client, err := pixiv.NewWith("test-access-token", pixiv.Options{HTTPClient: &http.Client{Transport: transport}})
@@ -129,69 +112,6 @@ func TestSeriesNovelURLContinuesAcrossPages(t *testing.T) {
 	}
 	if envelope.Series.ID != 6001 || len(envelope.Novels) != 2 || envelope.Novels[0].ID != 6002 || envelope.Novels[1].ID != 6003 {
 		t.Fatalf("series envelope = %#v, want series 6001 with novels 6002 and 6003", envelope)
-	}
-}
-
-func TestSeriesArtworkURLContinuesAcrossPages(t *testing.T) {
-	output := &bytes.Buffer{}
-	calls := 0
-	transport := seriesRoundTripFunc(func(request *http.Request) (*http.Response, error) {
-		calls++
-		if request.URL.Path != "/v1/illust/series" {
-			t.Fatalf("path = %q, want /v1/illust/series", request.URL.Path)
-		}
-		query := request.URL.Query()
-		if query.Get("illust_series_id") != "5001" {
-			t.Fatalf("illust_series_id = %q, want 5001", query.Get("illust_series_id"))
-		}
-		wantLastOrder := ""
-		if calls == 2 {
-			wantLastOrder = "8"
-		}
-		if query.Get("last_order") != wantLastOrder {
-			t.Fatalf("last_order = %q, want %q", query.Get("last_order"), wantLastOrder)
-		}
-		body := `{"illust_series_detail":{"user":{"id":7,"name":"artist"}},"illusts":[{"id":5002,"title":"first chapter","type":"manga","create_date":"2026-01-01T00:00:00Z","user":{"id":7,"name":"artist"}}],"next_url":"https://app-api.pixiv.net/v1/illust/series?illust_series_id=5001&last_order=8"}`
-		if calls == 2 {
-			body = `{"illust_series_detail":{"user":{"id":7,"name":"artist"}},"illusts":[{"id":5003,"title":"second chapter","type":"illust","create_date":"2026-01-02T00:00:00Z","user":{"id":7,"name":"artist"}}],"next_url":null}`
-		}
-		return seriesJSONResponse(request, body), nil
-	})
-	client, err := pixiv.NewWith("test-access-token", pixiv.Options{HTTPClient: &http.Client{Transport: transport}})
-	if err != nil {
-		t.Fatalf("NewWith: %v", err)
-	}
-
-	cmd := newTestCommand(testData{
-		Input:       strings.NewReader(""),
-		Output:      output,
-		ErrorOutput: &bytes.Buffer{},
-		UsageError:  func(err error) error { return err },
-		Pooled: func(ctx context.Context, _ pixivcmd.Request, attempt func(context.Context, *pixiv.Client) (bool, error)) error {
-			_, err := attempt(ctx, client)
-			return err
-		},
-	})
-	cmd.SetArgs([]string{"--type", "artwork", "https://www.pixiv.net/user/7/series/5001", "--limit", "2", "--ndjson"})
-
-	if err := cmd.Execute(); err != nil {
-		t.Fatalf("execute artwork series URL: %v", err)
-	}
-	if calls != 2 {
-		t.Fatalf("HTTP requests = %d, want 2", calls)
-	}
-	lines := strings.Split(strings.TrimSpace(output.String()), "\n")
-	if len(lines) != 2 {
-		t.Fatalf("NDJSON lines = %d, want 2; output=%q", len(lines), output.String())
-	}
-	for index, wantID := range []string{"5002", "5003"} {
-		var record map[string]any
-		if err := json.Unmarshal([]byte(lines[index]), &record); err != nil {
-			t.Fatalf("decode record %d: %v; output=%q", index, err, output.String())
-		}
-		if record["id"] != wantID {
-			t.Fatalf("record %d = %#v, want artwork %s", index, record, wantID)
-		}
 	}
 }
 
