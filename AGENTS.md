@@ -49,4 +49,4 @@ The separately distributed [product skill](skills/pixiv-cli/SKILL.md) teaches us
 
 ## Authoritative references
 
-[Development and test layout](docs/en/maintainers/development.md), [CLI contract](docs/en/cli-reference.md), [MCP contract](docs/en/mcp-tools.md), and [contributing](CONTRIBUTING.md) explain the checked-in behavior. Workflow YAML, `ci/platforms.json`, and tool manifests own executable configuration. When prose and implementation disagree, verify the disputed behavior and update the affected contract; do not guess or rewrite unrelated history.
+[Development and test layout](docs/en/maintainers/development.md), [CLI contract](docs/en/cli-reference.md), [MCP contract](docs/en/mcp-tools.md), and [contributing](CONTRIBUTING.md) explain the checked-in behavior. Workflow YAML, `scripts/ci/platforms.json`, and tool manifests own executable configuration. When prose and implementation disagree, verify the disputed behavior and update the affected contract; do not guess or rewrite unrelated history.

@@ -87,7 +87,7 @@ jobs:
           set -euo pipefail
           # §15：只发布 skill 的 publisher 不下载归档/镜像，用 identity-only 模式
           # 证明这份 handoff 确实来自刚解析出的那个 run。
-          go run ./tools/release verify-handoff-identity \
+          go run ./scripts/release verify-handoff-identity \
             --handoff prepared/release/release-handoff.json \
             --repository "$REPOSITORY" \
             --run-id "$RUN_ID" \
@@ -105,17 +105,17 @@ jobs:
           WORKFLOW_RUN_ID: ${{ steps.run.outputs.run_id }}
         run: |
           set -euo pipefail
-          go run ./tools/release verify-source --tag "$RELEASE_TAG" --default-branch "$DEFAULT_BRANCH" --github-output "$GITHUB_OUTPUT"
-          go run ./tools/release verify-published-release --repository "$GITHUB_REPOSITORY" --tag "$RELEASE_TAG"
+          go run ./scripts/release verify-source --tag "$RELEASE_TAG" --default-branch "$DEFAULT_BRANCH" --github-output "$GITHUB_OUTPUT"
+          go run ./scripts/release verify-published-release --repository "$GITHUB_REPOSITORY" --tag "$RELEASE_TAG"
           if [ "$GITHUB_EVENT_NAME" = workflow_run ]; then
-            go run ./tools/release verify-handoff --repository "$GITHUB_REPOSITORY" --run-id "$WORKFLOW_RUN_ID"
+            go run ./scripts/release verify-handoff --repository "$GITHUB_REPOSITORY" --run-id "$WORKFLOW_RUN_ID"
           fi
           skill_version=$(sed -n 's/^version: //p' skills/pixiv-cli/SKILL.md)
           test "$skill_version" = "${RELEASE_TAG#v}"
           git cat-file -e "$RELEASE_TAG:skills/pixiv-cli/SKILL.md"
           previous_tag=
           while IFS= read -r tag; do
-            if [ "$tag" != "$RELEASE_TAG" ] && go run ./scripts/cmd/releaseassets validate --version "${tag#v}" >/dev/null 2>&1; then
+            if [ "$tag" != "$RELEASE_TAG" ] && go run ./scripts/releaseassets validate --version "${tag#v}" >/dev/null 2>&1; then
               previous_tag=$tag
               break
             fi

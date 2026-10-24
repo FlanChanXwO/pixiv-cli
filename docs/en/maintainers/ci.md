@@ -2,7 +2,7 @@
 
 English | [简体中文](../../zh-CN/maintainers/ci.md) | [Development](development.md)
 
-Which workflows run on a PR, how they decide what is required, and how results are trusted. Workflow YAML, `ci/platforms.json` and tool manifests remain the executable source of truth.
+Which workflows run on a PR, how they decide what is required, and how results are trusted. Workflow YAML, `scripts/ci/platforms.json` and tool manifests remain the executable source of truth.
 
 ```mermaid
 flowchart TD
@@ -26,7 +26,7 @@ flowchart TD
 | `pull_request`, `workflow_dispatch` | `ci.yml` Quality gate (no longer on tag pushes) |
 | `pull_request.edited` | Quality too, so retargeting to `main` publishes its required result; title/body edits reclassify and run required Quality |
 | `pull_request_target` | `pr-metadata.yml` coordinator |
-| `/test` comment | `pr-verification.yml` `dispatch` pre-filters with `contains(github.event.comment.body, '/test')` before allocating a runner — a loose superset of `tools/prmeta --check-trigger` (few false positives, never drops a real trigger); `tools/prmeta` stays authoritative |
+| `/test` comment | `pr-verification.yml` `dispatch` pre-filters with `contains(github.event.comment.body, '/test')` before allocating a runner — a loose superset of `scripts/prmeta --check-trigger` (few false positives, never drops a real trigger); `scripts/prmeta` stays authoritative |
 | branch / `main` push | nothing |
 | stable `vX.Y.Z` tag | only `release.yml` (owns all tag gates, six-platform tests/builds and two-platform container verification; PR smoke matrices are not duplicated) |
 | manual | browser/native evidence workflows |
@@ -57,5 +57,5 @@ Both build with `CGO_ENABLED=0`, keep the trusted ref, exact-head validation and
 
 ## Installer and packaging tests
 
-- `scripts/tests/installers` uses a local fake Release, fake `curl` and checksum fixtures (no GitHub). The Unix job runs `install.sh` for SHA-256, paths with spaces, version preflight and not overwriting on verification failure. Windows amd64/arm64 platform-smoke runs `install.cmd` with real `cmd.exe`, `certutil.exe` and `tar.exe`, always `--no-path` (runner registry untouched). Part of the platform job, no separate workflow-policy implementation.
+- `scripts/citest` uses a local fake Release, fake `curl` and checksum fixtures (no GitHub). The Unix job runs `install.sh` for SHA-256, paths with spaces, version preflight and not overwriting on verification failure. Windows amd64/arm64 platform-smoke runs `install.cmd` with real `cmd.exe`, `certutil.exe` and `tar.exe`, always `--no-path` (runner registry untouched). Part of the platform job, no separate workflow-policy implementation.
 - Windows `.zip` uses the runner's preinstalled `7z`; elsewhere `zip`. `scripts/test-package-release.sh` delegates fakes to real `7z` on Windows and uses the `zip` fixture elsewhere, checking archive members — a Git Bash missing `zip` fails the release test gate. It creates checked links with MSYS `winsymlinks:nativestrict`; if native links can't be created the test fails, so plain-file pseudo-links can't neuter the output-ancestor safety gate.

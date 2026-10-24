@@ -5,7 +5,7 @@ description: Diagnose pixiv-cli GitHub Actions failures and verify current-head 
 
 # Diagnose pixiv-cli CI
 
-Read `AGENTS.md`, the exact changed workflow, and its invoked script/tool. Workflow YAML owns ordering, inputs, permissions, and conditions; `ci/platforms.json` plus `tools/platformmatrix` own platform selection. Do not infer executable policy from a historical plan or a skill's old command example.
+Read `AGENTS.md`, the exact changed workflow, and its invoked script/tool. Workflow YAML owns ordering, inputs, permissions, and conditions; `scripts/ci/platforms.json` plus `scripts/platformmatrix` own platform selection. Do not infer executable policy from a historical plan or a skill's old command example.
 
 ## Identify the failure
 
@@ -30,7 +30,7 @@ Inspect the exact PR SHA: `Quality gate`, `Platform smoke`, and `Container smoke
 
 `pr-verification.yml` handles explicit `/test` requests using trusted parser/runner code and an exact PR head. Keep write-capable control jobs separate from untrusted PR execution. Never execute a PR body or title as shell code, expose privileged credentials to it, or treat a returned artifact as trusted without the existing identity checks.
 
-`native-evidence.yml` and `browser-evidence.yml` are explicit manual, credential-free evidence providers, not automatic main-push gates; synthetic browser data does not prove real user-profile access. `homebrew-prepublish-verify.yml` is a read-only rehearsal, not a deployment workflow. Native execution and real API tests remain different evidence classes.
+`native-evidence.yml` is an explicit manual, credential-free evidence provider, not an automatic main-push gate. Native execution and real API tests remain different evidence classes.
 
 ## Operate only the authorized action
 

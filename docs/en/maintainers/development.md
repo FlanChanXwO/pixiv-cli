@@ -63,19 +63,19 @@ CGO_ENABLED=0 go test ./internal/media/ugoira/... -count=1
 
 **Encoder fidelity notes** — `internal/media/ugoira`: the JPEG decoder is Go 1.26.3 parsing plus the legacy zune-jpeg 0.5.15 integer IDCT and 14-bit BT.601 (standard-library IDCT rounding changed palette selection enough to fail the fixed gate; the parser BSD license stays in the package and the zune-jpeg MIT attribution in the license bundle). Resize uses bounded sine/cosine polynomials with explicit `math.FMA` against legacy `sinf`, with 1,031 references in `testdata/lanczos-kernel.json`. APNG uses fixed Sub prediction, an independent level-7 zlib stream per frame and RGBA8 lossless: Over with transparent unchanged pixels only when every changed pixel is opaque and the delta reduces horizontal RGBA runs, else Source, with None disposal. Compressed bytes may change with the toolchain; reuse quality evidence only after verifying complete canvases, timing and loop behavior — not file size alone.
 
-**Platform builds** — `scripts/build-platform.sh` builds an exact target with CGO0 and optionally a canonical archive: `--target GOOS/GOARCH`, `--output-dir DIR`, optional `--version VERSION` (no `v`) and `--package` (needs a version). It keeps Windows suffixes and the Linux ABI gate. Runner metadata stays in `ci/platforms.json`; tests, source identity, permissions, approvals and publication stay in workflows.
+**Platform builds** — `scripts/build-platform.sh` builds an exact target with CGO0 and optionally a canonical archive: `--target GOOS/GOARCH`, `--output-dir DIR`, optional `--version VERSION` (no `v`) and `--package` (needs a version). It keeps Windows suffixes and the Linux ABI gate. Runner metadata stays in `scripts/ci/platforms.json`; tests, source identity, permissions, approvals and publication stay in workflows.
 
 **Linux ABI gate** — public baseline glibc 2.35. Linux runners for release test/production, native evidence, packaged smoke and the Homebrew install matrix are pinned to `ubuntu-22.04` / `ubuntu-22.04-arm` (other jobs may use newer runners). After every Linux executable:
 
 ```bash
-go run ./scripts/cmd/linuxabi --binary <linux-elf>
+go run ./scripts/linuxabi --binary <linux-elf>
 ```
 
 It reads the loader contract from ELF `SHT_GNU_verneed` and checks imported symbol versions; anything above `GLIBC_2.35` fails before packaging. "It runs on the build runner" is not acceptable evidence — the runner's newer glibc hides regressions.
 
 ### License bundle
 
-- `go run ./scripts/cmd/licensebundle` unions production modules from `go list -mod=readonly -deps -json ./cmd/pixiv` across the six release targets with `CGO_ENABLED=0`. Offline (`GOPROXY=off`, `GOSUMDB=off`), ignores workspace/flag overrides, needs cached module sources, no Cargo, no test/tool-only modules. `--check` compares the index and full text tree without publishing.
+- `go run ./scripts/licensebundle` unions production modules from `go list -mod=readonly -deps -json ./cmd/pixiv` across the six release targets with `CGO_ENABLED=0`. Offline (`GOPROXY=off`, `GOSUMDB=off`), ignores workspace/flag overrides, needs cached module sources, no Cargo, no test/tool-only modules. `--check` compares the index and full text tree without publishing.
 - `third_party/attributions.json` pins extra ported-source notices; texts live in `third_party/attributions/` (separate from generated `third_party/licenses/`). Selected MIT texts, the Go BSD/patent grant and the SunPro notice remain after Rust removal; `fhttp v0.6.8` supplies the Go BSD text its headers reference (its archive lacks a license file). Missing/empty texts fail before publication; nested notices included; CRLF → LF with full text kept.
 - Generated texts are embedded by `third_party/notices.go` and printed by `pixiv --licenses`; archives contain only `pixiv`/`pixiv.exe`. Index and tree keep rollback-safe publication. The test-only image-compare attribution in `third_party/attributions/image-compare-0.5.0/` is not embedded.
 
@@ -93,7 +93,7 @@ flowchart LR
 - Schema 3 binds exact `source_commit`, target, binary version and binary/archive/member SHA-256; it runs `--version` and checks the archive holds exactly the recorded binary; old schemas and Rust source-digest/staticlib fields are rejected. `consolidate` rejects symlinks and unsafe paths and publishes atomically; it never backfills libraries into source.
 
 ```bash
-go run ./scripts/cmd/nativeevidence consolidate \
+go run ./scripts/nativeevidence consolidate \
   --repo-root . --expected-version "v0.1.0-native-evidence.${RUN_ID}" \
   --expected-commit "$SOURCE_COMMIT" --input-dir /absolute/evidence \
   --output-dir /absolute/new-complete-evidence
@@ -101,7 +101,6 @@ go run ./scripts/cmd/nativeevidence consolidate \
 
 Set `RUN_ID` and `SOURCE_COMMIT` from one audited run and use new absolute paths. PR Platform workers also upload schema 3 `native-evidence-<goos>-<goarch>` bundles (`v0.2.0-ci.<run-id>`) from the trusted base-ref workflow — editing a PR-head workflow doesn't change that producer. Inspect the actual run and exact head; never splice runs or treat a fixture, cross-build or workflow definition as six-platform execution.
 
-**Browser evidence** — `.github/workflows/browser-evidence.yml` is a separately dispatched, credential-free matrix running `internal/browsercookies/...` platform code and synthetic fixtures on macOS, Linux, Windows amd64/arm64 (never on ordinary main pushes). Windows runners lack `sqlite3`, so both Windows jobs provision the architecture-matched official SQLite 3.53.4 tools via `scripts/install-browser-sqlite.ps1` (fixed URLs + SHA-256) before the SQLite preflight. A focused test-only workflow contract covers credential, pinned-action, fixture, SQLite provisioning and cleanup boundaries; `scripts/cmd/browsernativeevidence firefox-contract` exercises the isolated Firefox profile. The `firefox_native` job unpacks the official package in runner temp, lets Firefox create an isolated profile, injects synthetic cookies — no user profiles, Keychain, DPAPI or Secret Service; nothing uploaded. Real profile/session evidence only comes from the protected release-prep host; this workflow is not real browser-import success.
 
 ## Run
 
@@ -220,14 +219,6 @@ A production `x.go` has at most one `x_test.go` in its directory; platform tests
 | `internal/selfupdate/release` | `source_route_test.go` observes unexported source route selection and canonical API URL cache state; the rest of the directory already uses the external package. |
 | `internal/storage/database` | Tests observe the unexported `tableInfoQuery` allowlist and migration-compatibility seams so SQL identifiers remain fixed literals and legacy schemas cannot silently bypass their contract. |
 | `sdk/pixiv` | `cursor_test.go` observes unexported cursor construction and client-instance binding to verify exact query-bound invalid continuations without widening the public SDK surface. |
-| `scripts/internal/browsernativeevidence` | Tests observe unexported environment probes and inject synthetic Firefox cookie seeds. |
-| `scripts/internal/homebrewformula` | Tests directly call unexported formula rendering and version validation (`renderFormula`, `validateFormulaVersion`, `checkDynamicVersionNeeds`). |
-| `scripts/internal/licensebundle` | Tests observe unexported `defaultBundleFileOps`, `modulesFromMetadata`, `packageLicenseFiles`, and license text normalization; executable Go fixtures verify the six-target offline command contract. |
-| `scripts/internal/linuxabi` | Tests directly call unexported glibc version parsing and ABI comparison (`parseGLIBCVersion`, `checkImportedSymbols`). |
-| `scripts/internal/nativeevidence` | Tests observe unexported record/consolidate state and the workflow security/ownership contract, covering schema 3, independent `source_commit`, exact binary `--version` output, six-target hash/archive verification, and mutation rollback. |
-| `scripts/internal/publicapi` | Tests observe the unexported parser handling of `unexported`/`hidden` symbols and the golden comparison logic, using `writeFixture` to generate fixtures. |
-| `scripts/internal/releaseassets` | Tests inject unexported `injectReleaseSources`/`injectWindowsReleaseSources`, observing asset archive naming (`archiveName`) and checksums generation. |
-| `scripts/internal/releasenotes` | Tests observe unexported GitHub client call mappings, injecting a fake client to assert source auditing. |
 
 - No temporary items; no open-ended phrases like "migration period". Adding a directory needs the specific unexported symbol and proof that a minimal exported interface won't do; removing one needs a deletion task and migration evidence (external package compiles, coverage unchanged).
 - `live_test.go`, `live_mutation_test.go` and `live_solver_test.go` are environment-gated real tests without a single production file owner; they stay in their target package (`sdk/pixiv`, `sdk/fanbox`, `internal/reversesearch`, `internal/browsercookies`) and skip unless their documented opt-in variable is set. Build-tagged test files differ per `GOOS`/`GOARCH`; verify with `go list` under `GOOS=darwin`, `windows` and `linux`.
