@@ -3,6 +3,7 @@ package oauth
 
 import (
 	"bytes"
+	"cmp"
 	"context"
 	"crypto/rand"
 	"crypto/sha256"
@@ -67,10 +68,7 @@ func New(refreshToken string, cfg Config) *Client {
 	if httpClient == nil {
 		httpClient = &http.Client{}
 	}
-	logger := cfg.Logger
-	if logger == nil {
-		logger = logging.Discard()
-	}
+	logger := cmp.Or(cfg.Logger, slog.New(slog.DiscardHandler))
 	return &Client{
 		httpClient:      httpClient,
 		baseURL:         strings.TrimRight(baseURL, "/"),

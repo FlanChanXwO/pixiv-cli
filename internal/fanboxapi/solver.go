@@ -61,9 +61,6 @@ type solverCookie struct {
 }
 
 func (s *Session) nativeState() (string, string) {
-	if s == nil {
-		return userAgent, ""
-	}
 	s.solverMu.Lock()
 	defer s.solverMu.Unlock()
 	if s.solverState != nil && s.solverState.hasExpiry && !time.Now().Before(s.solverState.expiresAt) {
@@ -86,16 +83,13 @@ func nativeCookieHeader(session, clearance string) string {
 }
 
 func (s *Session) invalidateSolverState() {
-	if s == nil {
-		return
-	}
 	s.solverMu.Lock()
 	s.solverState = nil
 	s.solverMu.Unlock()
 }
 
 func (s *Session) waitForSolver(ctx context.Context) (solverState, error) {
-	if s == nil || s.flareSolverr == nil {
+	if s.flareSolverr == nil {
 		return solverState{}, ErrChallenge
 	}
 	if err := ctx.Err(); err != nil {

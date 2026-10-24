@@ -74,7 +74,7 @@ func TestImageSearchJSONDoesNotOpenPixivSDK(t *testing.T) {
 	})
 
 	var stdout, stderr bytes.Buffer
-	root := (app{in: strings.NewReader(""), out: &stdout, errOut: &stderr, closeState: &closeState{}, logs: &logState{}}).newRootCommand()
+	root := (newTestApp(strings.NewReader(""), &stdout, &stderr)).newRootCommand()
 	root.SetArgs([]string{"search", "https://example.test/image.jpg", "--json"})
 
 	require.NoError(t, root.Execute(), stderr.String())
@@ -120,7 +120,7 @@ func TestImageSearchBuildsReverseSearchWithCLIProxyOverride(t *testing.T) {
 	t.Cleanup(func() { newCLIReverseSearch = oldReverse })
 
 	var stdout, stderr bytes.Buffer
-	root := (app{in: strings.NewReader(""), out: &stdout, errOut: &stderr, closeState: &closeState{}, logs: &logState{}}).newRootCommand()
+	root := (newTestApp(strings.NewReader(""), &stdout, &stderr)).newRootCommand()
 	root.SetArgs([]string{"search", "https://example.test/image.jpg", "--proxy", "http://127.0.0.1:7890", "--ndjson"})
 
 	require.NoError(t, root.Execute(), stderr.String())
@@ -616,14 +616,14 @@ func TestRunStartupCleanupControlsMCP(t *testing.T) {
 	}
 }
 
+// newTestApp 构造只带流、关闭表和丢弃 logger 的 app；测试不经过 startLogging。
+func newTestApp(in io.Reader, out, errOut io.Writer) app {
+	return app{in: in, out: out, errOut: errOut, closeState: &closeState{}, logs: &logState{ctx: context.Background(), logger: logging.Discard()}}
+}
+
 func newTestRootCommand(t *testing.T) *cobra.Command {
 	t.Helper()
-	a := app{
-		in:     strings.NewReader(""),
-		out:    io.Discard,
-		errOut: io.Discard,
-		logs:   &logState{},
-	}
+	a := newTestApp(strings.NewReader(""), io.Discard, io.Discard)
 	root := a.newRootCommand()
 	t.Cleanup(func() {
 		input.Clear(root)
@@ -740,13 +740,7 @@ func TestMCPReverseSearchRegistersSearcherForHTTPLifetime(t *testing.T) {
 	})
 
 	var stdout, stderr bytes.Buffer
-	a := app{
-		in:         strings.NewReader(""),
-		out:        &stdout,
-		errOut:     &stderr,
-		closeState: &closeState{},
-		logs:       &logState{},
-	}
+	a := newTestApp(strings.NewReader(""), &stdout, &stderr)
 	_, err := a.InitMCPAuth(t.Context(), false)
 	require.NoError(t, err)
 	require.NoError(t, a.runPixivMCP(context.Background(), mcpcommands.Request{ListenAddr: new("127.0.0.1:8123"), BaseURL: new("http://127.0.0.1:8123")}))
@@ -788,7 +782,7 @@ func TestMCPShutdownPreservesAnimationCleanupError(t *testing.T) {
 		t.Cleanup(func() { require.NoError(t, os.Chmod(workspace, 0700)) })
 		return serveErr
 	}
-	a := app{in: strings.NewReader(""), out: io.Discard, errOut: io.Discard, closeState: &closeState{}, logs: &logState{}}
+	a := newTestApp(strings.NewReader(""), io.Discard, io.Discard)
 	_, err := a.InitMCPAuth(t.Context(), false)
 	require.NoError(t, err)
 	err = a.runPixivMCP(t.Context(), mcpcommands.Request{ListenAddr: new("127.0.0.1:8123"), BaseURL: new("http://127.0.0.1:8123")})
@@ -926,7 +920,7 @@ func TestMCPHTTPEndpointFlagPrecedence(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			_, configPath := useTempPaths(t)
 			var stdout, stderr bytes.Buffer
-			a := app{in: strings.NewReader(""), out: &stdout, errOut: &stderr, logs: &logState{}}
+			a := newTestApp(strings.NewReader(""), &stdout, &stderr)
 			_, err := a.InitMCPAuth(t.Context(), false)
 			require.NoError(t, err)
 			if tc.name != "defaults" {
@@ -1014,7 +1008,7 @@ func TestMCPProductionResolvesSharedSelectionBeforeSDK(t *testing.T) {
 		require.Equal(t, []int64{73}, ids, "removed selection reached SDK or fell back to default")
 		return nil
 	}
-	a := app{in: strings.NewReader(""), out: io.Discard, errOut: io.Discard, closeState: &closeState{}, logs: &logState{}}
+	a := newTestApp(strings.NewReader(""), io.Discard, io.Discard)
 	_, err := a.InitMCPAuth(t.Context(), false)
 	require.NoError(t, err)
 	require.NoError(t, a.runPixivMCP(t.Context(), mcpcommands.Request{ListenAddr: new("127.0.0.1:8123"), BaseURL: new("http://127.0.0.1:8123")}))
@@ -1028,7 +1022,7 @@ func TestMCPAccountSnapshotContainsOnlyLocalSummaryAndExplicitDefault(t *testing
 	defer db.Close()
 	require.NoError(t, db.SavePixivCredential(t.Context(), pixivaccount.New(42, "fixture-a", []byte("fixture-secret-a"))))
 	require.NoError(t, db.SavePixivCredential(t.Context(), pixivaccount.New(73, "fixture-b", []byte("fixture-secret-b"))))
-	a := app{closeState: &closeState{}, logs: &logState{}}
+	a := newTestApp(nil, io.Discard, io.Discard)
 	ports, err := a.newPixivSDKPorts()
 	require.NoError(t, err)
 	defer a.closeResources()
@@ -1105,7 +1099,7 @@ func TestMCPLoginProductionChain(t *testing.T) {
 			previousTransport := http.DefaultTransport
 			http.DefaultTransport = transport
 			defer func() { http.DefaultTransport = previousTransport; transport.CloseIdleConnections() }()
-			a := app{closeState: &closeState{}, logs: &logState{}}
+			a := newTestApp(nil, io.Discard, io.Discard)
 			defer a.closeResources()
 			oldServices := newCLIAccountServices
 			loads := 0

@@ -5,6 +5,7 @@ package pixivapi
 
 import (
 	"bytes"
+	"cmp"
 	"context"
 	"encoding/json"
 	"errors"
@@ -68,10 +69,7 @@ func New(cfg Config) *Client {
 	if apiBase == "" {
 		apiBase = AppAPIBase
 	}
-	logger := cfg.Logger
-	if logger == nil {
-		logger = logging.Discard()
-	}
+	logger := cmp.Or(cfg.Logger, slog.New(slog.DiscardHandler))
 	return &Client{
 		http:                   httpClient,
 		apiBase:                strings.TrimRight(apiBase, "/"),

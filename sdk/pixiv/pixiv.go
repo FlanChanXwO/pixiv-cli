@@ -1,6 +1,7 @@
 package pixiv
 
 import (
+	"cmp"
 	"context"
 	"log/slog"
 	"net/http"
@@ -87,6 +88,7 @@ func Open(ctx context.Context, refreshToken string) (*Client, Credentials, error
 
 // OpenWith is Open with explicit connection-level Options.
 func OpenWith(ctx context.Context, refreshToken string, options Options) (*Client, Credentials, error) {
+	options.Logger = cmp.Or(options.Logger, slog.New(slog.DiscardHandler))
 	refreshToken = strings.TrimSpace(refreshToken)
 	if refreshToken == "" {
 		return nil, Credentials{}, newError("Open", sdk.CredentialsExpired, "refresh token is required")
@@ -127,6 +129,7 @@ func New(accessToken string) (*Client, error) {
 
 // NewWith is New with explicit connection-level Options.
 func NewWith(accessToken string, options Options) (*Client, error) {
+	options.Logger = cmp.Or(options.Logger, slog.New(slog.DiscardHandler))
 	accessToken = strings.TrimSpace(accessToken)
 	if accessToken == "" {
 		return nil, newError("New", sdk.InvalidArgument, "access token is required")

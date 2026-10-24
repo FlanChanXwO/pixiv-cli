@@ -4,6 +4,7 @@
 package toolhost
 
 import (
+	"cmp"
 	"context"
 	"errors"
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/gallery"
@@ -84,11 +85,7 @@ type App struct {
 
 // NewApp 构造独立的 Pixiv SDK 与账号运行时。
 func NewApp(ports SDKPorts, account Account) *App {
-	logger := ports.Logger
-	if logger == nil {
-		logger = logging.Discard()
-	}
-	return &App{sdk: ports, sdkAccount: account, logger: logger}
+	return &App{sdk: ports, sdkAccount: account, logger: cmp.Or(ports.Logger, slog.New(slog.DiscardHandler))}
 }
 
 // SDKPorts 返回注入的 SDK 端口。
@@ -98,12 +95,7 @@ func (a *App) SDKPorts() SDKPorts { return a.sdk }
 func (a *App) AccountSelection() accounts.Selection { return a.sdk.Accounts }
 
 // ReverseSearchPorts 返回启动时注入的反向搜图端口与配置。
-func (a *App) ReverseSearchPorts() ReverseSearchPorts {
-	if a == nil {
-		return ReverseSearchPorts{}
-	}
-	return a.sdk.ReverseSearch
-}
+func (a *App) ReverseSearchPorts() ReverseSearchPorts { return a.sdk.ReverseSearch }
 
 // Account 返回注入的账号请求值。
 func (a *App) Account() Account { return a.sdkAccount }
@@ -213,7 +205,7 @@ func ListPagination(plan ListPlan, limit *int, returned int, hasMore bool) Pagin
 // Execute 将 MCP 读取接入独立只读会话，兼容未注入 Read 的原重放端口；逻辑分页和
 // cursor 处理由 internal/pagination 统一拥有。
 func (a *App) Execute() pagination.Execute[*pixiv.Client] {
-	if a == nil || (a.sdk.Execute == nil && a.sdk.Read == nil) {
+	if a.sdk.Execute == nil && a.sdk.Read == nil {
 		return nil
 	}
 	return func(ctx context.Context, attempt func(context.Context, *pixiv.Client) (bool, error)) error {
@@ -231,7 +223,7 @@ func (a *App) Execute() pagination.Execute[*pixiv.Client] {
 // Read 使用独立只读会话；未注入该端口的 embedding 保留原 Execute 行为。
 func Read[T any](a *App, ctx context.Context, invoke func(context.Context, *pixiv.Client) (T, error)) (T, error) {
 	var zero T
-	if a == nil || (a.sdk.Execute == nil && a.sdk.Read == nil) {
+	if a.sdk.Execute == nil && a.sdk.Read == nil {
 		return zero, sdk.NewError("pixiv", "PagedRead", sdk.LocalStateError,
 			sdk.WithDetail("sdk pooled operation is not configured"))
 	}
@@ -257,7 +249,7 @@ func Read[T any](a *App, ctx context.Context, invoke func(context.Context, *pixi
 
 // Write 在账号池重放边界内执行一次 mutation；提交边界由 services Facade 语义决定。
 func Write(a *App, ctx context.Context, invoke func(context.Context, *pixiv.Client) error) error {
-	if a == nil || a.sdk.Execute == nil {
+	if a.sdk.Execute == nil {
 		return sdk.NewError("pixiv", "Write", sdk.LocalStateError,
 			sdk.WithDetail("sdk pooled operation is not configured"))
 	}
@@ -379,9 +371,6 @@ func CollectPagesFrom[T any](ctx context.Context, plan ListPlan, initial sdk.Cur
 // OpenClient 打开一次由 services Facade 管理的独立 SDK snapshot，并返回
 // 显式 Lease。调用方必须关闭 Lease；底层 gate 与 client 释放由注入端口拥有。
 func (a *App) OpenClient(ctx context.Context) (*lifecycle.Lease[*pixiv.Client], error) {
-	if a == nil {
-		return nil, errors.New("pixiv sdk is not configured")
-	}
 	openLease := a.sdk.OpenLease
 	if openLease == nil && a.sdk.Open != nil {
 		openLease = func(_ context.Context, account Account) (*lifecycle.Lease[*pixiv.Client], error) {

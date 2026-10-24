@@ -2,6 +2,7 @@ package fanboxapi
 
 import (
 	"bufio"
+	"cmp"
 	"context"
 	"crypto/tls"
 	"encoding/json"
@@ -126,20 +127,13 @@ func newSession(cookieHeader string, client, solverClient *http.Client, proxyURL
 	if err != nil {
 		return nil, err
 	}
-	if logger == nil {
-		logger = logging.Discard()
-	}
+	logger = cmp.Or(logger, slog.New(slog.DiscardHandler))
 	return &Session{httpClient: client, proxyURL: proxyURL, userAgent: agent, cookie: cookie, flareSolverr: flareSolverr, solverHTTPClient: solverClient, log: logger}, nil
 }
 
 // CloseIdleConnections 释放会话 transport 持有的空闲连接。它不设置请求 deadline；
 // 长期使用的调用方可在会话不再需要时显式调用，避免无请求期间的 FD 长期占用。
-func (s *Session) CloseIdleConnections() {
-	if s == nil || s.httpClient == nil {
-		return
-	}
-	s.httpClient.CloseIdleConnections()
-}
+func (s *Session) CloseIdleConnections() { s.httpClient.CloseIdleConnections() }
 
 type requestKind uint8
 
@@ -209,9 +203,6 @@ func (s *Session) do(ctx context.Context, rawURL string, kind requestKind, inclu
 // public SDK constructs the allowlisted Range/conditional headers before this
 // function is reached.
 func (s *Session) doWithRequest(ctx context.Context, rawURL string, kind requestKind, includeCookie bool, accept, method string, headers http.Header) (*http.Response, error) {
-	if s == nil {
-		return nil, errors.New("FANBOX session has no HTTP transport")
-	}
 	method = strings.ToUpper(strings.TrimSpace(method))
 	if method == "" {
 		method = http.MethodGet
@@ -293,9 +284,6 @@ func (r *safeMediaReadCloser) Close() error {
 }
 
 func (s *Session) doNativeWithRequest(ctx context.Context, rawURL string, kind requestKind, includeCookie bool, accept, method string, headers http.Header) (*http.Response, error) {
-	if s == nil || s.httpClient == nil || s.httpClient.Transport == nil {
-		return nil, errors.New("FANBOX session has no HTTP transport")
-	}
 	visited := make(map[string]struct{})
 	redirected := false
 	for {

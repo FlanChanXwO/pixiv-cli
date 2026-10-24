@@ -4,6 +4,7 @@
 package toolhost
 
 import (
+	"cmp"
 	"context"
 	"errors"
 	"fmt"
@@ -46,19 +47,12 @@ type App struct {
 
 // NewApp 构造带 SDK port 与请求覆写的 FANBOX MCP 应用。
 func NewApp(sdk SDKPorts, account Account) *App {
-	logger := sdk.Logger
-	if logger == nil {
-		logger = logging.Discard()
-	}
-	return &App{sdk: sdk, account: account, logger: logger}
+	return &App{sdk: sdk, account: account, logger: cmp.Or(sdk.Logger, slog.New(slog.DiscardHandler))}
 }
 
 // OpenClient 为一次 tool 调用建立独立 client snapshot，并返回显式 Lease。
 // tool 必须关闭 Lease，不得直接管理 SDK client 的底层连接。
 func (a *App) OpenClient(ctx context.Context) (*lifecycle.Lease[*fanbox.Client], error) {
-	if a == nil {
-		return nil, errors.New("fanbox service is not configured")
-	}
 	openLease := a.sdk.OpenLease
 	if openLease == nil && a.sdk.Open != nil {
 		openLease = func(ctx context.Context, account Account) (*lifecycle.Lease[*fanbox.Client], error) {
