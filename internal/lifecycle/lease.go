@@ -25,11 +25,8 @@ func NewLease[T any](value T, closeFn func() error) *Lease[T] {
 	}
 }
 
-// Value 返回 Lease 持有的资源。nil Lease 返回 T 的零值。
-func (l *Lease[T]) Value() (zero T) {
-	if l == nil {
-		return zero
-	}
+// Value 返回 Lease 持有的资源。
+func (l *Lease[T]) Value() T {
 	return l.value
 }
 
@@ -38,13 +35,8 @@ func (l *Lease[T]) Value() (zero T) {
 // 释放函数在并发或重复调用下最多执行一次；首次调用产生的错误会被后续
 // 调用复用。
 func (l *Lease[T]) Close() error {
-	if l == nil {
-		return nil
-	}
 	l.closeOnce.Do(func() {
-		if l.closeFn != nil {
-			l.closeErr = l.closeFn()
-		}
+		l.closeErr = l.closeFn()
 	})
 	return l.closeErr
 }

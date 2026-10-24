@@ -31,11 +31,11 @@ type PageResult struct {
 // 推导，分页包不依赖任何 SDK 或传输实现。
 func TraversePages[T any, C Cursor](ctx context.Context, plan PagePlan, fetch func(context.Context, C) ([]T, C, error), consume func([]T) error) (PageResult, error) {
 	var initial C
-	return TraversePagesFrom(ctx, plan, initial, fetch, consume)
+	return traversePagesFrom(ctx, plan, initial, fetch, consume)
 }
 
-// TraversePagesFrom 从调用方已有的 opaque cursor 开始遍历。
-func TraversePagesFrom[T any, C Cursor](ctx context.Context, plan PagePlan, initial C, fetch func(context.Context, C) ([]T, C, error), consume func([]T) error) (PageResult, error) {
+// traversePagesFrom 从调用方已有的 opaque cursor 开始遍历。
+func traversePagesFrom[T any, C Cursor](ctx context.Context, plan PagePlan, initial C, fetch func(context.Context, C) ([]T, C, error), consume func([]T) error) (PageResult, error) {
 	var result PageResult
 	if plan.Skip < 0 {
 		return result, errors.New("page skip must be zero or positive")
@@ -100,17 +100,11 @@ func TraversePagesFrom[T any, C Cursor](ctx context.Context, plan PagePlan, init
 	}
 }
 
-// CollectPages 使用共享遍历引擎收集结果；失败时丢弃已经收集的部分结果。
-func CollectPages[T any, C Cursor](ctx context.Context, plan PagePlan, fetch func(context.Context, C) ([]T, C, error)) ([]T, PageResult, error) {
-	var initial C
-	return CollectPagesFrom(ctx, plan, initial, fetch)
-}
-
 // CollectPagesFrom 保留调用方初始 cursor 的 operation/query binding，并在失败
 // 时丢弃已经收集的部分结果。
 func CollectPagesFrom[T any, C Cursor](ctx context.Context, plan PagePlan, initial C, fetch func(context.Context, C) ([]T, C, error)) ([]T, PageResult, error) {
 	items := make([]T, 0)
-	result, err := TraversePagesFrom(ctx, plan, initial, fetch, func(page []T) error {
+	result, err := traversePagesFrom(ctx, plan, initial, fetch, func(page []T) error {
 		items = append(items, page...)
 		return nil
 	})
@@ -124,19 +118,7 @@ func CollectPagesFrom[T any, C Cursor](ctx context.Context, plan PagePlan, initi
 // 不能先把 Limit 传给普通 TraversePages，否则被筛掉的候选会占用逻辑页额度。
 func CollectFilteredPagesFrom[T any, C Cursor](ctx context.Context, plan PagePlan, initial C, fetch func(context.Context, C) ([]T, C, error), include func(T) (bool, error), checkpoint func(C, int) (C, error)) ([]T, C, PageResult, error) {
 	var zero C
-	if plan.Skip < 0 {
-		return nil, zero, PageResult{}, errors.New("page skip must be zero or positive")
-	}
-	if plan.Limit < 0 {
-		return nil, zero, PageResult{}, errors.New("page limit must be zero or positive")
-	}
-	if checkpoint == nil {
-		return nil, zero, PageResult{}, errors.New("filtered page checkpoint is required")
-	}
-	if include == nil {
-		return nil, zero, PageResult{}, errors.New("filtered page predicate is required")
-	}
-	items, state, result, err := CollectStreamsFrom(ctx, plan, []Stream[T, C]{
+	items, state, result, err := collectStreamsFrom(ctx, plan, []Stream[T, C]{
 		{
 			Fetch:      fetch,
 			Include:    include,

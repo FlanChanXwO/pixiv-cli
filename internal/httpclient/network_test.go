@@ -77,8 +77,8 @@ func TestHTTPClientRejectsMalformedProxyWithSafeClassifiableError(t *testing.T) 
 	if client != nil {
 		t.Fatalf("HTTPClient() client = %#v, want nil", client)
 	}
-	if !errors.Is(err, httpclient.ErrInvalidProxy) {
-		t.Fatalf("HTTPClient() error = %v, want errors.Is ErrInvalidProxy", err)
+	if err == nil || !strings.Contains(err.Error(), "invalid proxy configuration") {
+		t.Fatalf("HTTPClient() error = %v, want the stable proxy classification", err)
 	}
 	for current := err; current != nil; current = errors.Unwrap(current) {
 		for _, secret := range []string{"proxy-user-secret", "proxy-pass-secret", "proxy-host-secret", "proxy-path-secret", "proxy-query-secret"} {

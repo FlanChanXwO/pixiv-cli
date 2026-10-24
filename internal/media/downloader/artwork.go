@@ -3,6 +3,7 @@
 package downloader
 
 import (
+	"cmp"
 	"context"
 	"errors"
 	"fmt"
@@ -12,7 +13,6 @@ import (
 	"time"
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/media/filename"
-	"github.com/FlanChanXwO/pixiv-cli/internal/plaintext"
 	"github.com/FlanChanXwO/pixiv-cli/sdk"
 	pixiv "github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
 )
@@ -38,7 +38,7 @@ func (b *ArtworkDownloader) downloadArtwork(ctx context.Context, id int64, pages
 	}
 	kind := string(artwork.Kind)
 	if directoryTemplate == "" && (artwork.PageCount > 1 || kind == string(pixiv.ArtworkKindUgoira)) {
-		base = filepath.Join(base, filename.Sanitize(fmt.Sprintf("%d - %s", artwork.ID, plaintext.DefaultString(artwork.Title, "Untitled"))))
+		base = filepath.Join(base, filename.Sanitize(fmt.Sprintf("%d - %s", artwork.ID, cmp.Or(artwork.Title, "Untitled"))))
 	}
 	if err := os.MkdirAll(base, 0o755); err != nil {
 		return DownloadedArtwork{}, nil, err

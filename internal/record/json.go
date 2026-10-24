@@ -5,7 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"math/big"
+	"io"
 	"regexp"
 	"strings"
 )
@@ -55,14 +55,15 @@ func ParseRecordJSON(line []byte) (Record, error) {
 }
 
 func decodeRecordObject(data []byte) (map[string]any, error) {
-	if !json.Valid(data) {
-		return nil, errors.New("invalid record JSON object")
-	}
 	decoder := json.NewDecoder(bytes.NewReader(data))
 	decoder.UseNumber()
 	var value any
 	if err := decoder.Decode(&value); err != nil {
 		return nil, fmt.Errorf("invalid record JSON object: %w", err)
+	}
+	// A record is exactly one JSON value: reject a second value or trailing bytes.
+	if err := decoder.Decode(new(any)); !errors.Is(err, io.EOF) {
+		return nil, errors.New("invalid record JSON object: trailing content after object")
 	}
 	fields, ok := value.(map[string]any)
 	if !ok || fields == nil {
@@ -72,9 +73,6 @@ func decodeRecordObject(data []byte) (map[string]any, error) {
 }
 
 func newRecord(fields map[string]any) (Record, error) {
-	if fields == nil {
-		return Record{}, errors.New("record must be a JSON object")
-	}
 	removeVersionMetadata(fields)
 	if _, err := requiredStringField(fields, "id"); err != nil {
 		return Record{}, err
@@ -130,11 +128,7 @@ func normalizeRecordID(raw any, exists bool) (string, error) {
 	if !ok || !positiveIntegerJSON.MatchString(number.String()) {
 		return "", errors.New("record id must be a non-empty string or positive integer")
 	}
-	value, ok := new(big.Int).SetString(number.String(), 10)
-	if !ok || value.Sign() <= 0 {
-		return "", errors.New("record id must be a non-empty string or positive integer")
-	}
-	return value.String(), nil
+	return number.String(), nil
 }
 
 func requiredStringField(fields map[string]any, name string) (string, error) {

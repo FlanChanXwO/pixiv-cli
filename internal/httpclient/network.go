@@ -7,8 +7,8 @@ import (
 	"net/url"
 )
 
-// ErrInvalidProxy 是 HTTP client 构造链共享的代理配置分类契约。
-var ErrInvalidProxy = errors.New("invalid proxy configuration")
+// errInvalidProxy 是代理配置错误对外呈现的稳定分类文本。
+var errInvalidProxy = errors.New("invalid proxy configuration")
 
 // HTTPClient 是公开 SDK 创建 operation transport 的内部基础设施；它不构造
 // Source，也不包含内容、认证或资源 facade。
@@ -21,10 +21,10 @@ func HTTPClient(proxyValue string) (*http.Client, error) {
 	}
 	proxyURL, err := url.Parse(proxyValue)
 	if err != nil {
-		return nil, fmt.Errorf("parse proxy URL: %w", ErrInvalidProxy)
+		return nil, fmt.Errorf("parse proxy URL: %w", errInvalidProxy)
 	}
 	if proxyURL.Host == "" || (proxyURL.Scheme != "http" && proxyURL.Scheme != "https" && proxyURL.Scheme != "socks5" && proxyURL.Scheme != "socks5h") {
-		return nil, fmt.Errorf("proxy URL must use http, https, socks5, or socks5h: %w", ErrInvalidProxy)
+		return nil, fmt.Errorf("proxy URL must use http, https, socks5, or socks5h: %w", errInvalidProxy)
 	}
 	transport.Proxy = http.ProxyURL(proxyURL)
 	return client, nil

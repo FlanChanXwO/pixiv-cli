@@ -17,18 +17,18 @@ func Validate(version string) error {
 	return nil
 }
 
-// Compare 按 SemVer 2.0 precedence 比较两个已通过 Validate 的 version：
+// Compare 按 SemVer 2.0 precedence 比较两个 version：
 // 返回负数、零或正数分别表示 a 低于、等于或高于 b。build metadata 不参与 precedence。
 // 数字 identifier 按规范十进制字符串比较（先长度后字典序），因此任意长度都不会溢出。
 func Compare(a, b string) (int, error) {
-	aCore, aPre, err := splitVersion(a)
-	if err != nil {
+	if err := Validate(a); err != nil {
 		return 0, err
 	}
-	bCore, bPre, err := splitVersion(b)
-	if err != nil {
+	if err := Validate(b); err != nil {
 		return 0, err
 	}
+	aCore, aPre := splitVersion(a)
+	bCore, bPre := splitVersion(b)
 	for index := range aCore {
 		if order := compareNumeric(aCore[index], bCore[index]); order != 0 {
 			return order, nil
@@ -37,32 +37,20 @@ func Compare(a, b string) (int, error) {
 	return comparePrerelease(aPre, bPre), nil
 }
 
-// splitVersion 把 version 拆成三个 core 数字与 prerelease identifiers；
-// core 保留为规范化十进制字符串，比较时不经过定长整数。
-func splitVersion(version string) ([3]string, []string, error) {
+// splitVersion 从已通过 Validate 的 version 拆出三个 core 数字与 prerelease
+// identifiers；regexp 已保证 core 是三段规范十进制，这里不再重复校验。
+func splitVersion(version string) ([3]string, []string) {
 	var core [3]string
-	if err := Validate(version); err != nil {
-		return core, nil, err
-	}
 	main := version
 	if index := strings.IndexAny(main, "-+"); index >= 0 {
 		main = main[:index]
 	}
-	fields := strings.Split(main, ".")
-	if len(fields) != 3 {
-		return core, nil, fmt.Errorf("version core %q must have three numeric identifiers", main)
-	}
-	for index, field := range fields {
-		if !isCanonicalDecimal(field) {
-			return core, nil, fmt.Errorf("version core identifier %q is not a canonical decimal number", field)
-		}
-		core[index] = field
-	}
+	copy(core[:], strings.Split(main, "."))
 	prerelease := ""
 	if rest, found := strings.CutPrefix(version, main+"-"); found {
 		prerelease, _, _ = strings.Cut(rest, "+")
 	}
-	return core, splitIdentifiers(prerelease), nil
+	return core, splitIdentifiers(prerelease)
 }
 
 // comparePrerelease 按 SemVer 规则比较 prerelease：无 prerelease 的版本更高，

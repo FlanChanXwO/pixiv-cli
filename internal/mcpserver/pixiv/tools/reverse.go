@@ -297,16 +297,16 @@ func reverseSearchRecords(results []reversesearch.Result) ([]record.Record, erro
 		if result.Pixiv == nil {
 			continue
 		}
-		var recordType, path string
+		var recordType string
 		switch result.Pixiv.Type {
 		case reversesearch.PixivRefArtwork:
-			recordType, path = "artwork", fmt.Sprintf("https://www.pixiv.net/artworks/%d", result.Pixiv.ID)
+			recordType = "artwork"
 		case reversesearch.PixivRefUser:
-			recordType, path = "user", fmt.Sprintf("https://www.pixiv.net/users/%d", result.Pixiv.ID)
+			recordType = "user"
 		default:
 			return nil, errors.New("invalid reverse search identity")
 		}
-		identity, err := record.NewIdentityRecord(result.Pixiv.ID, recordType, path)
+		identity, err := record.NewIdentityRecord(result.Pixiv.ID, recordType)
 		if err != nil {
 			return nil, err
 		}

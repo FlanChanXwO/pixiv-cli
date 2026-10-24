@@ -2,13 +2,12 @@
 package filename
 
 import (
+	"cmp"
 	"fmt"
 	"path"
 	"regexp"
 	"strings"
 	"time"
-
-	"github.com/FlanChanXwO/pixiv-cli/internal/plaintext"
 )
 
 // Fields 是一次文件名或目录模板渲染可用的作品字段。
@@ -85,8 +84,8 @@ func generateChecked(data Fields, page int, template string, appendPageSuffix bo
 		date = parsed.Format("2006-01-02")
 	}
 	name := strings.NewReplacer(
-		"{author}", Sanitize(plaintext.DefaultString(data.Author, "UnknownAuthor")),
-		"{title}", Sanitize(plaintext.DefaultString(data.Title, "Untitled")),
+		"{author}", Sanitize(cmp.Or(data.Author, "UnknownAuthor")),
+		"{title}", Sanitize(cmp.Or(data.Title, "Untitled")),
 		"{id}", fmt.Sprint(data.ID),
 		"{author_id}", fmt.Sprint(data.AuthorID),
 		"{date}", Sanitize(date),

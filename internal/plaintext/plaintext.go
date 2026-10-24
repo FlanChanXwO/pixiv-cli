@@ -16,8 +16,8 @@ func SafeLine(value string) string {
 	return quoted[1 : len(quoted)-1]
 }
 
-// SafeLines trims and escapes every line of a multi-line block.
-func SafeLines(value string) string {
+// safeLines trims and escapes every line of a multi-line block.
+func safeLines(value string) string {
 	value = strings.TrimSpace(value)
 	if value == "" {
 		return ""
@@ -30,7 +30,7 @@ func SafeLines(value string) string {
 }
 
 // HTMLPlainText renders an HTML fragment as terminal-readable plain text and
-// escapes the result with SafeLines. Callers that emit JSON keep the original
+// escapes the result with safeLines. Callers that emit JSON keep the original
 // markup; only the presentation layer flattens it.
 func HTMLPlainText(raw string) string {
 	if raw == "" {
@@ -38,7 +38,7 @@ func HTMLPlainText(raw string) string {
 	}
 	document, err := html.Parse(strings.NewReader(raw))
 	if err != nil {
-		return SafeLines(raw)
+		return safeLines(raw)
 	}
 	var out strings.Builder
 	var walk func(*html.Node)
@@ -67,7 +67,7 @@ func HTMLPlainText(raw string) string {
 		}
 	}
 	walk(document)
-	return SafeLines(out.String())
+	return safeLines(out.String())
 }
 
 func appendLineBreak(out *strings.Builder) {

@@ -27,27 +27,21 @@ type StreamState[C Cursor] struct {
 // CollectStreams 从所有流的零 cursor 开始，按顺序收集一个统一逻辑页。
 func CollectStreams[T any, C Cursor](ctx context.Context, plan PagePlan, streams []Stream[T, C]) ([]T, StreamState[C], PageResult, error) {
 	var initial StreamState[C]
-	return CollectStreamsFrom(ctx, plan, streams, initial)
+	return collectStreamsFrom(ctx, plan, streams, initial)
 }
 
-// CollectStreamsFrom 从调用方提供的聚合位置开始收集一个统一逻辑页。
+// collectStreamsFrom 从初始聚合位置开始收集一个统一逻辑页。
 //
 // 当 Limit 在源批次内部截断时，返回的 StreamState 会保留当前流的
 // Checkpoint cursor；当当前流结束而仍有后续流时，位置推进到下一流的零
 // cursor。任一流失败都会丢弃整个逻辑页的部分结果。
-func CollectStreamsFrom[T any, C Cursor](ctx context.Context, plan PagePlan, streams []Stream[T, C], initial StreamState[C]) ([]T, StreamState[C], PageResult, error) {
+func collectStreamsFrom[T any, C Cursor](ctx context.Context, plan PagePlan, streams []Stream[T, C], initial StreamState[C]) ([]T, StreamState[C], PageResult, error) {
 	var zeroState StreamState[C]
 	if plan.Skip < 0 {
 		return nil, zeroState, PageResult{}, errors.New("page skip must be zero or positive")
 	}
 	if plan.Limit < 0 {
 		return nil, zeroState, PageResult{}, errors.New("page limit must be zero or positive")
-	}
-	if initial.Current < 0 || initial.Current > len(streams) {
-		return nil, zeroState, PageResult{}, errors.New("stream state current index is out of range")
-	}
-	if len(initial.Cursors) > 0 && len(initial.Cursors) != len(streams) {
-		return nil, zeroState, PageResult{}, errors.New("stream state cursor count does not match stream count")
 	}
 	for index, stream := range streams {
 		if stream.Fetch == nil {

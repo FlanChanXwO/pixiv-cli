@@ -9,10 +9,6 @@ import (
 var (
 	// ErrNilContext 表示调用方没有提供 context。
 	ErrNilContext = errors.New("lifecycle: context is nil")
-	// ErrNilOpen 表示调用方没有提供资源打开函数。
-	ErrNilOpen = errors.New("lifecycle: open function is nil")
-	// ErrNilUse 表示调用方没有提供资源使用函数。
-	ErrNilUse = errors.New("lifecycle: use function is nil")
 	// ErrNilLease 表示打开函数成功但没有返回 Lease。
 	ErrNilLease = errors.New("lifecycle: open function returned a nil lease")
 )
@@ -29,12 +25,6 @@ type Use[T any] func(context.Context, T, *Attempt) error
 func Run[T any](ctx context.Context, open Open[T], use Use[T]) (err error) {
 	if ctx == nil {
 		return ErrNilContext
-	}
-	if open == nil {
-		return ErrNilOpen
-	}
-	if use == nil {
-		return ErrNilUse
 	}
 
 	child, cancel := context.WithCancel(ctx)

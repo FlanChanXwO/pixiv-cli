@@ -153,11 +153,11 @@ func reverseSearchRecords(results []reversesearch.Result) ([]record.Record, erro
 		if result.Pixiv == nil {
 			continue
 		}
-		typeName, path, identityErr := reverseSearchIdentity(result.Pixiv)
+		typeName, identityErr := reverseSearchIdentity(result.Pixiv)
 		if identityErr != nil {
 			return nil, identityErr
 		}
-		identity, err := record.NewIdentityRecord(result.Pixiv.ID, typeName, path)
+		identity, err := record.NewIdentityRecord(result.Pixiv.ID, typeName)
 		if err != nil {
 			return nil, errors.New("reverse search returned an invalid Pixiv identity")
 		}
@@ -166,17 +166,17 @@ func reverseSearchRecords(results []reversesearch.Result) ([]record.Record, erro
 	return records, nil
 }
 
-func reverseSearchIdentity(ref *reversesearch.PixivRef) (recordType, rawURL string, err error) {
+func reverseSearchIdentity(ref *reversesearch.PixivRef) (recordType string, err error) {
 	if ref == nil {
-		return "", "", errors.New("reverse search returned an invalid Pixiv identity")
+		return "", errors.New("reverse search returned an invalid Pixiv identity")
 	}
 	switch ref.Type {
 	case reversesearch.PixivRefUser:
-		return "user", fmt.Sprintf("https://www.pixiv.net/users/%d", ref.ID), nil
+		return "user", nil
 	case reversesearch.PixivRefArtwork:
-		return "artwork", fmt.Sprintf("https://www.pixiv.net/artworks/%d", ref.ID), nil
+		return "artwork", nil
 	default:
-		return "", "", errors.New("reverse search returned an invalid Pixiv identity")
+		return "", errors.New("reverse search returned an invalid Pixiv identity")
 	}
 }
 
@@ -184,11 +184,11 @@ func printReverseSearchHuman(out io.Writer, results []reversesearch.Result) erro
 	for _, result := range results {
 		line := "external result"
 		if result.Pixiv != nil {
-			typeName, rawURL, identityErr := reverseSearchIdentity(result.Pixiv)
+			typeName, identityErr := reverseSearchIdentity(result.Pixiv)
 			if identityErr != nil {
 				return identityErr
 			}
-			identity, err := record.NewIdentityRecord(result.Pixiv.ID, typeName, rawURL)
+			identity, err := record.NewIdentityRecord(result.Pixiv.ID, typeName)
 			if err != nil {
 				return errors.New("reverse search returned an invalid Pixiv identity")
 			}

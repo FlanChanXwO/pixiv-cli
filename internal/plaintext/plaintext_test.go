@@ -14,16 +14,11 @@ func TestSafeLineEscapesControlBytesAndKeepsPrintableUnicode(t *testing.T) {
 	assert.Empty(t, plaintext.SafeLine(""))
 }
 
-func TestSafeLinesTrimsAndEscapesEveryLine(t *testing.T) {
-	assert.Equal(t, "one\ntwo", plaintext.SafeLines("  one  \n  two  "))
-	assert.Empty(t, plaintext.SafeLines("   "))
-	assert.Equal(t, `a\tb`, plaintext.SafeLines("a\tb"))
-}
-
 func TestHTMLPlainTextFlattensMarkupAndDropsScriptContent(t *testing.T) {
 	assert.Equal(t, "line one\nline two", plaintext.HTMLPlainText("line one<br>line two"))
 	assert.Equal(t, "paragraph", plaintext.HTMLPlainText("<p>paragraph</p>"))
 	assert.Equal(t, "visible", plaintext.HTMLPlainText("<div>visible</div><script>hidden()</script>"))
+	assert.Equal(t, "one\ntwo", plaintext.HTMLPlainText("  one  \n  two  "))
 	assert.Empty(t, plaintext.HTMLPlainText(""))
 }
 
