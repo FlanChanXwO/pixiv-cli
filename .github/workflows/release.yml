@@ -34,10 +34,10 @@ jobs:
           DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
         run: |
           set -euo pipefail
-          go run ./tools/release verify-source --tag "$RELEASE_TAG" --default-branch "$DEFAULT_BRANCH"
+          go run ./scripts/release verify-source --tag "$RELEASE_TAG" --default-branch "$DEFAULT_BRANCH"
           tag_skill="$RUNNER_TEMP/pixiv-cli-SKILL.md"
           git show "$RELEASE_TAG:skills/pixiv-cli/SKILL.md" > "$tag_skill"
-          go run ./scripts/cmd/releaseassets validate-source --version "${RELEASE_TAG#v}" --product-skill "$tag_skill"
+          go run ./scripts/releaseassets validate-source --version "${RELEASE_TAG#v}" --product-skill "$tag_skill"
           set +e
           response=$(gh api --include "repos/$GITHUB_REPOSITORY/releases/tags/$RELEASE_TAG" 2>&1)
           api_status=$?
@@ -49,7 +49,7 @@ jobs:
           printf '%s\n' "$response" | grep -Eq 'HTTP/[0-9.]+ 404|HTTP 404'
       - name: Check release behavior contracts
         shell: bash
-        run: go test ./tools/release ./tools/platformmatrix -count=1
+        run: go test ./scripts/release ./scripts/platformmatrix -count=1
 
   resolve_platforms:
     name: Resolve release platform matrices
@@ -73,15 +73,15 @@ jobs:
       - name: Resolve release platforms
         id: release
         shell: bash
-        run: go run ./tools/platformmatrix --capability release --github-output "$GITHUB_OUTPUT"
+        run: go run ./scripts/platformmatrix --capability release --github-output "$GITHUB_OUTPUT"
       - name: Resolve container platforms
         id: container
         shell: bash
-        run: go run ./tools/platformmatrix --capability container --github-output "$GITHUB_OUTPUT"
+        run: go run ./scripts/platformmatrix --capability container --github-output "$GITHUB_OUTPUT"
       - name: Resolve Homebrew platforms
         id: homebrew
         shell: bash
-        run: go run ./tools/platformmatrix --capability homebrew --github-output "$GITHUB_OUTPUT"
+        run: go run ./scripts/platformmatrix --capability homebrew --github-output "$GITHUB_OUTPUT"
 
   build:
     name: Build ${{ matrix.goos }}/${{ matrix.goarch }}
@@ -113,7 +113,7 @@ jobs:
       # 质量门从不可变 tag 读取 workflow、版本、CHANGELOG 与 Release notes。
       - name: Validate the exact immutable release source
         shell: bash
-        run: go run ./scripts/cmd/releaseassets validate-source --version "${RELEASE_TAG#v}" --product-skill skills/pixiv-cli/SKILL.md
+        run: go run ./scripts/releaseassets validate-source --version "${RELEASE_TAG#v}" --product-skill skills/pixiv-cli/SKILL.md
       - name: Download locked Go module sources
         shell: bash
         run: go mod download
@@ -132,7 +132,7 @@ jobs:
         run: go vet ./...
       - name: Audit bundled licenses
         shell: bash
-        run: go run ./scripts/cmd/licensebundle --check
+        run: go run ./scripts/licensebundle --check
       - name: Test release packages
         shell: bash
         run: sh scripts/test-package-release.sh
@@ -173,13 +173,13 @@ jobs:
           cache: false
       - name: Validate the exact immutable production source
         shell: bash
-        run: go run ./scripts/cmd/releaseassets validate-source --version "${RELEASE_TAG#v}" --product-skill skills/pixiv-cli/SKILL.md
+        run: go run ./scripts/releaseassets validate-source --version "${RELEASE_TAG#v}" --product-skill skills/pixiv-cli/SKILL.md
       - name: Download locked Go module sources
         shell: bash
         run: go mod download
       - name: Verify Go license bundle
         shell: bash
-        run: go run ./scripts/cmd/licensebundle --check
+        run: go run ./scripts/licensebundle --check
       - name: Build the exact production archive
         shell: bash
         run: |
@@ -250,13 +250,13 @@ jobs:
         run: |
           set -euo pipefail
           test "$(git rev-parse HEAD)" = "$(git rev-parse "$RELEASE_TAG^{commit}")"
-          go run ./scripts/cmd/releaseassets validate-source --version "${RELEASE_TAG#v}" --product-skill skills/pixiv-cli/SKILL.md
+          go run ./scripts/releaseassets validate-source --version "${RELEASE_TAG#v}" --product-skill skills/pixiv-cli/SKILL.md
       - name: Download locked Go module sources
         shell: bash
         run: go mod download
       - name: Verify Go license bundle
         shell: bash
-        run: go run ./scripts/cmd/licensebundle --check
+        run: go run ./scripts/licensebundle --check
       - name: Build and verify the versioned Linux executable
         shell: bash
         run: |
@@ -275,7 +275,7 @@ jobs:
           cp "$binary" dist/pixiv
       - name: Check the container packaging contract
         shell: bash
-        run: go test ./scripts/tests/containerrelease -count=1
+        run: go test ./scripts/citest -count=1
       - name: Build the verified container image
         shell: bash
         run: |
@@ -346,12 +346,12 @@ jobs:
           previous_tag=$(git tag --merged "$RELEASE_TAG^" --sort=-version:refname | head -n 1)
           test -n "$previous_tag"
           audit_report="$RUNNER_TEMP/release-notes-audit.json"
-          go run ./scripts/cmd/releasenotes audit \
+          go run ./scripts/releasenotes audit \
             --repo "$GITHUB_REPOSITORY" \
             --from "$previous_tag" \
             --to "$RELEASE_TAG" \
             --output "$audit_report"
-          go run ./scripts/cmd/releasenotes validate \
+          go run ./scripts/releasenotes validate \
             --version "${RELEASE_TAG#v}" \
             --dir "changelog/$RELEASE_TAG" \
             --previous "$previous_tag" \
@@ -386,7 +386,7 @@ jobs:
           DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
         run: |
           set -euo pipefail
-          go run ./tools/release verify-source --tag "$RELEASE_TAG" --default-branch "$DEFAULT_BRANCH" --github-output "$GITHUB_OUTPUT"
+          go run ./scripts/release verify-source --tag "$RELEASE_TAG" --default-branch "$DEFAULT_BRANCH" --github-output "$GITHUB_OUTPUT"
 
   prepare_release:
     name: Prepare release materials
@@ -419,9 +419,9 @@ jobs:
         run: |
           set -euo pipefail
           version="${RELEASE_TAG#v}"
-          go run ./tools/release verify-artifact-set --dir dist --version "$version"
-          go run ./tools/release verify-container-set --dir containers
-          go run ./tools/release checksums --dir dist --version "$version" --output dist/checksums.txt
+          go run ./scripts/release verify-artifact-set --dir dist --version "$version"
+          go run ./scripts/release verify-container-set --dir containers
+          go run ./scripts/release checksums --dir dist --version "$version" --output dist/checksums.txt
           test -s dist/checksums.txt
 
       # §14/§15：一次性固化 build-once 产物的 identity 与 checksum。所有 downstream
@@ -438,7 +438,7 @@ jobs:
           set -euo pipefail
           version="${RELEASE_TAG#v}"
           mkdir -p release
-          go run ./tools/release write-handoff \
+          go run ./scripts/release write-handoff \
             --repository "$REPOSITORY" \
             --run-id "$RUN_ID" \
             --run-attempt "$RUN_ATTEMPT" \
@@ -450,7 +450,7 @@ jobs:
             --dist-dir dist \
             --container-dir containers \
             --output release/release-handoff.json
-          go run ./tools/release verify-handoff-set \
+          go run ./scripts/release verify-handoff-set \
             --handoff release/release-handoff.json \
             --dist-dir dist \
             --container-dir containers \
@@ -511,7 +511,7 @@ jobs:
           path: prepared-release
       - name: Re-verify the approved archive set
         shell: bash
-        run: go run ./tools/release verify-artifact-set --dir dist --version "${RELEASE_TAG#v}"
+        run: go run ./scripts/release verify-artifact-set --dir dist --version "${RELEASE_TAG#v}"
       - name: Create the signed release metadata
         shell: bash
         env:
@@ -525,7 +525,7 @@ jobs:
           test -n "$RELEASE_SIGNING_PRIVATE_KEY"
           test -n "$RELEASE_SIGNING_KEY_ID"
           printf '%s' "$RELEASE_SIGNING_PRIVATE_KEY" > "$key_path"
-          go run ./scripts/cmd/releaseassets finalize \
+          go run ./scripts/releaseassets finalize \
             --version "${RELEASE_TAG#v}" \
             --input-dir dist \
             --output-dir release \
@@ -546,7 +546,7 @@ jobs:
         run: |
           set -eu
           prerelease=()
-          case "$(go run ./scripts/cmd/releaseassets channel --version "${RELEASE_TAG#v}")" in
+          case "$(go run ./scripts/releaseassets channel --version "${RELEASE_TAG#v}")" in
             stable)
               ;;
             prerelease)

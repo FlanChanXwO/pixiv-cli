@@ -254,14 +254,14 @@ flowchart LR
 - 签名、checksum、HTTP、压缩包、替换与权限错误从不伪装成"没有更新"。Release 安装的失败语义是保护边界，不是临时降级。
 - **信任根**（`internal/selfupdate/installer`）：key ID 与公钥常量位于 `release_installer.go`；`internal/cli/update/production.go` 为安装器构造 key ID → 公钥映射，调用方无法污染；`root.go` 只持有更新 seam。指纹与签名 fixture 由同包测试验证；私钥不在源码或配置中；只读检查不需要它；这层装配不能替代每个版本的发布验收。`internal/bootstrap` 已在 v1 删除。
 
-### `scripts/cmd`、`scripts/tests` 与 `scripts/internal`
+### `scripts/`
 
 | 位置 | 内容 |
 | --- | --- |
-| `scripts/cmd/<name>/main.go` | 只做参数解析与调用 owner |
-| `scripts/tests/` | 只验证 workflow、文档或安装器行为的纯测试载体 |
-| `scripts/internal/<name>` | 实现与同包测试；共享的 `releasecontract`（目标/压缩包身份）与 `releasenotesrender`（Release 正文渲染，由 `releaseassets` 与历史同步共用） |
-| `ci/platforms.json` → `tools/platformmatrix` | 供 workflow 使用的 runner/能力元数据；workflow 测试验证行为/安全边界，而不是第二份 YAML 策略模型 |
+| `scripts/<name>/` | 每个工具一个目录、一个 `package main`；测试与之同目录 |
+| `scripts/citest/` | 只验证 workflow、文档或安装器行为的纯测试载体 |
+| `scripts/internal/<name>` | 供多个工具共用的实现：`verificationpolicy`（PR 声明的命令策略）与 `releasenotesrender`（发布身份与 Release 正文渲染） |
+| `scripts/ci/platforms.json` → `scripts/platformmatrix` | 供 workflow 使用的 runner/能力元数据；workflow 测试验证行为/安全边界，而不是第二份 YAML 策略模型 |
 
 ### `sdk`、`sdk/pixiv`、`sdk/fanbox`
 
@@ -297,7 +297,7 @@ CLI 下载 owner。通过 `DownloadTargetClient` / `DownloadClient` 获取 SDK �
 
 ### `internal/media/ugoira`
 
-负责 `Format`、有序帧输入、`Encoder`、ZIP 校验/解码、缩放、GIF 量化/抖动、APNG 流式写入与原子发布。下载器消费 `Encoder` 契约，不得重复编码或发布。PNG 使用标准库；owner-local `jpeg` 保留旧的 IDCT/颜色舍入。六目标证据位于 `scripts/internal/nativeevidence`，与运行时编码器分离。
+负责 `Format`、有序帧输入、`Encoder`、ZIP 校验/解码、缩放、GIF 量化/抖动、APNG 流式写入与原子发布。下载器消费 `Encoder` 契约，不得重复编码或发布。PNG 使用标准库；owner-local `jpeg` 保留旧的 IDCT/颜色舍入。六目标证据位于 `scripts/nativeevidence`，与运行时编码器分离。
 
 ## Release assets 与信任边界
 

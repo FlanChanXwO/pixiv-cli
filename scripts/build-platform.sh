@@ -72,7 +72,7 @@ if [ "$package" = true ] && [ -z "$version" ]; then
 	fail '--package requires --version'
 fi
 if [ -n "$version" ]; then
-	go run ./scripts/cmd/releaseassets validate --version "$version" >&2
+	go run ./scripts/releaseassets validate --version "$version" >&2
 fi
 
 mkdir -p "$output_dir"
@@ -93,7 +93,7 @@ else
 fi
 
 if [ "$goos" = linux ]; then
-	go run ./scripts/cmd/linuxabi --binary "$binary" >&2
+	go run ./scripts/linuxabi --binary "$binary" >&2
 fi
 
 if [ "$package" != true ]; then
@@ -101,7 +101,7 @@ if [ "$package" != true ]; then
 	exit 0
 fi
 
-go run ./scripts/cmd/releaseassets package \
+go run ./scripts/releaseassets package \
 	--repo-root "$repo_root" \
 	--version "$version" \
 	--target "$target" \

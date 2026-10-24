@@ -35,8 +35,8 @@ flowchart TD
 - `.github/workflows/publish-dockerhub.yml` is the independent post-Release publisher for GHCR and Docker Hub (Release and registries can't commit atomically). It takes the immutable handoff and both verified artifacts, checks tag and source identity, and pushes the same loaded bytes to `ghcr.io/flanchanxwo/pixiv-cli` and `docker.io/flanchanxwo/pixiv-cli` — never rebuilds. Only Docker Hub auth uses the protected `DOCKER_HUB_TOKEN` (via stdin); `packages: write` is requested only by this publisher. On failure, dispatch from the default branch with the original `release_run_id`. Exact-version tags always publish; an older stable recovery succeeds without moving `latest`; only the newest stable advances `latest`. No retry loop hides failures.
 
 ```bash
-go test ./scripts/tests/containerrelease -count=1
-go test ./tools/release ./tools/platformmatrix -count=1
+go test ./scripts/citest -count=1
+go test ./scripts/release ./scripts/platformmatrix -count=1
 ```
 
 The credential-free container smoke workflow builds both architectures on relevant changes; these local checks don't replace that CI evidence for a tag.
@@ -45,10 +45,10 @@ The credential-free container smoke workflow builds both architectures on releva
 
 | Owner | Responsibility |
 | --- | --- |
-| `ci/platforms.json` + `tools/platformmatrix` | shared runner/capability registry, validated and emitted |
-| `scripts/internal/releasecontract` | release archive identity |
-| `tools/release` | reusable trust/artifact checks: immutable tag + default-branch ancestry, published Release state, run handoff identity, exact archive/container sets, checksums |
-| `scripts/cmd/nativeevidence` → `scripts/internal/nativeevidence` | `record` / `consolidate` dispatch; schema, single-runner records, six-target merge, archive member/hash audit, filesystem safety (its workflow test covers only credential/action/ownership boundaries) |
+| `scripts/ci/platforms.json` + `scripts/platformmatrix` | shared runner/capability registry, validated and emitted |
+| `scripts/internal/releasenotesrender` | release identity (version/channel, six archive targets) and Release body rendering |
+| `scripts/release` | reusable trust/artifact checks: immutable tag + default-branch ancestry, published Release state, run handoff identity, exact archive/container sets, checksums |
+| `scripts/nativeevidence` | `record` / `consolidate` dispatch; schema, single-runner records, six-target merge, archive member/hash audit, filesystem safety (its workflow test covers only credential/action/ownership boundaries) |
 | publisher workflows | only channel credentials, permissions, change detection, publication commands |
 
 Recovery runs may verify a successful `Release` handoff without binding the workflow head to the tag; publishers whose contract requires it (e.g. Docker Hub) also bind the handoff run to the tag commit. Workflow tests keep behavior and security boundaries, not exact job counts, step positions or shell text. Historical recovery plans and acceptance reports keep their original text and are not current process docs.
@@ -58,7 +58,7 @@ Recovery runs may verify a successful `Release` handoff without binding the work
 `publish-homebrew.yml` consumes the handoff, verifies the production section, and maps stable/prerelease to `pixiv-cli` / `pixiv-cli-beta` (both install `pixiv`, mutually conflicting). Homebrew is not part of the Release workflow and adds no approval boundary (`release-approval` is the only one). `HOMEBREW_TAP_DEPLOY_KEY` reaches only the authorized tap-write step via the `release` Environment.
 
 1. **Install check** on macOS Intel/arm64 and Linux amd64/arm64: `brew tap-new pixiv-cli-release/staging --no-git`, single staging formula in `Formula/`, `brew install --formula pixiv-cli-release/staging/<formula>`, then `test "$(pixiv --version)" = "pixiv $RELEASE_TAG"`. macOS trusts the temp namespace with `brew trust --tap pixiv-cli-release/staging`; Linux uses a short-lived fixed-digest `homebrew/brew` container with a read-only bind mount. No workspace formula path, bypass variables or public tap clone/write/trust.
-2. **Deploy** only after every target passes: the protected `deploy_homebrew_tap` job HTTPS-clones the public tap; `scripts/cmd/homebrewrecovery` (trusted default-branch tip) compares versions with `internal/version` SemVer for each formula independently:
+2. **Deploy** only after every target passes: the protected `deploy_homebrew_tap` job HTTPS-clones the public tap; `scripts/homebrewrecovery` (trusted default-branch tip) compares versions with `internal/version` SemVer for each formula independently:
 
 | Published vs requested | Action |
 | --- | --- |
@@ -77,7 +77,6 @@ This local check proves only declared workflow dependencies and semantics — **
 <details>
 <summary>Expand the operational boundary and platform evidence</summary>
 
-- `.github/workflows/homebrew-prepublish-verify.yml` may be run manually from the default branch with an **already public, non-draft, non-prerelease** stable tag. It checks `v`-prefixed SemVer, default branch and matching Release tag, downloads only that Release's `checksums.txt`, renders the `pixiv-cli` staging formula, and installs it on the four production-identical runners.
 - Read-only: no `release` Environment, secret, tag checkout, Release edits, tap clone/commit/push, and deliberately no deploy job — the single publishing path can't be bypassed. Linux uses the fixed-digest container; macOS the native command.
 - It reproduces the install chain before release and **does not replace** formal tag publishing, signed Releases, tap deployment or post-publish acceptance. The quality gate keeps behavior-level formula and artifact checks instead of a second policy implementation.
 - A formal release still requires a tag, signed Release, tap formula and install acceptance; complete same-source/version six-target evidence ([native runner evidence](development.md#native-runner-evidence)); and a configured `release` Environment, signing key and public repository — preconditions that don't mean a Release/tap exists or the install path is accepted.
@@ -110,9 +109,8 @@ The production Ed25519 trust root is committed at [`internal/selfupdate/installe
 ```bash
 sh scripts/test-build-platform.sh
 sh scripts/test-package-release.sh
-go test ./tools/release ./tools/platformmatrix -count=1
-go test ./scripts/internal/nativeevidence -count=1
-go test ./scripts/internal/browsernativeevidence -count=1
+go test ./scripts/release ./scripts/platformmatrix -count=1
+go test ./scripts/nativeevidence -count=1
 sh scripts/test-homebrew-formula.sh
 git diff --check
 ```

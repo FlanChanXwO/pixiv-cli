@@ -37,7 +37,7 @@ SCRIPT
 		chmod 0755 "$output"
 		;;
 	run)
-		if [ "$2" = ./scripts/cmd/linuxabi ]; then
+		if [ "$2" = ./scripts/linuxabi ]; then
 			printf '%s\n' "$*" > "$PIXIV_TEST_ABI_LOG"
 			exit 0
 		fi
@@ -67,7 +67,7 @@ expected="$temporary/dist/pixiv-cli_${version}_linux_amd64.tar.gz"
 [ "$artifact" = "$expected" ]
 [ -f "$artifact" ]
 [ "$(cat "$build_log")" = 'linux|amd64|0' ]
-grep -F './scripts/cmd/linuxabi --binary' "$abi_log" >/dev/null
+grep -F './scripts/linuxabi --binary' "$abi_log" >/dev/null
 
 mkdir "$temporary/extract"
 tar -xzf "$artifact" -C "$temporary/extract"

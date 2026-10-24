@@ -10,3 +10,9 @@ third_party/licenses/** text eol=lf
 
 # Deterministic frontend assembly uses the same source bytes on every runner.
 frontend/** text eol=lf
+
+# CI 契约测试与工具把 workflow/容器定义当作字节数据读取；固定 checkout 为 LF，
+# 避免 Windows runner 的 autocrlf 让同一份配置在平台间不一致。
+.github/** text eol=lf
+Dockerfile text eol=lf
+.dockerignore text eol=lf

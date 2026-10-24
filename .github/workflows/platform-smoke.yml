@@ -44,7 +44,7 @@ jobs:
       - name: Resolve native platform matrix
         id: matrix
         shell: bash
-        run: go run ./tools/platformmatrix --capability smoke --github-output "$GITHUB_OUTPUT"
+        run: go run ./scripts/platformmatrix --capability smoke --github-output "$GITHUB_OUTPUT"
 
   worker:
     needs: setup

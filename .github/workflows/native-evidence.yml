@@ -25,7 +25,7 @@ jobs:
       - name: Resolve native evidence platforms
         id: matrix
         shell: bash
-        run: go run ./tools/platformmatrix --capability native-evidence --github-output "$GITHUB_OUTPUT"
+        run: go run ./scripts/platformmatrix --capability native-evidence --github-output "$GITHUB_OUTPUT"
 
   native_evidence:
     name: Native evidence ${{ matrix.goos }}/${{ matrix.goarch }}
@@ -53,7 +53,7 @@ jobs:
         run: go mod download
       - name: Verify Go license bundle
         shell: bash
-        run: go run ./scripts/cmd/licensebundle --check
+        run: go run ./scripts/licensebundle --check
       - name: Build and package the versioned native binary
         shell: bash
         run: |
@@ -84,7 +84,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          go run ./scripts/cmd/nativeevidence record \
+          go run ./scripts/nativeevidence record \
             --repo-root . \
             --version "$EVIDENCE_VERSION" \
             --source-commit "$GITHUB_SHA" \

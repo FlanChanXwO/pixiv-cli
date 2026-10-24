@@ -5,7 +5,7 @@ description: Change or validate pixiv-cli ugoira encoding, pure-Go platform buil
 
 # Maintain Encoding and Platform Builds
 
-Read `AGENTS.md`, the affected encoder/build owner, and [Ugoira Go encoder](../../../docs/en/maintainers/development.md#ugoira-go-encoder). `ci/platforms.json` owns runners and capabilities; `go.mod` owns the toolchain. `scripts/build-platform.sh` owns exact-target Go builds and canonical archives.
+Read `AGENTS.md`, the affected encoder/build owner, and [Ugoira Go encoder](../../../docs/en/maintainers/development.md#ugoira-go-encoder). `scripts/ci/platforms.json` owns runners and capabilities; `go.mod` owns the toolchain. `scripts/build-platform.sh` owns exact-target Go builds and canonical archives.
 
 ## Change the responsible boundary
 
@@ -19,17 +19,17 @@ Select the relevant existing checks:
 
 ```bash
 CGO_ENABLED=0 go test ./internal/media/ugoira/... ./internal/media/downloader -count=1
-go run ./scripts/cmd/licensebundle --check
+go run scripts/licensebundle --check
 sh scripts/test-build-platform.sh
-go test ./tools/platformmatrix ./scripts/internal/nativeevidence -count=1
+go test ./scripts/platformmatrix ./scripts/nativeevidence -count=1
 ```
 
 The license check consumes cached module sources. Report missing inputs instead of downloading or installing tools without approval. For quality/resource comparisons, use the documented offline corpus and fixed legacy/Go settings. Keep frozen baselines and complete inputs; compare each required sample/format rather than hiding failures in an overall average.
 
-Linux artifacts pass `scripts/cmd/linuxabi` against the actual ELF, including static binaries. Cross-compilation proves compilation, not native execution. Check the built and unpacked binary's version and archive's sole executable member.
+Linux artifacts pass `scripts/linuxabi` against the actual ELF, including static binaries. Cross-compilation proves compilation, not native execution. Check the built and unpacked binary's version and archive's sole executable member.
 
 ## Consume matching evidence
 
 The explicit `native-evidence.yml` entry requires audited main. PR Platform workers also emit schema 3 binary/archive bundles; their executable workflow comes from the trusted base ref. Inspect the actual producer and source SHA rather than assuming a PR-head workflow edit changes it.
 
-Consolidate exactly six complete bundles from one source/version/run into a new directory with `scripts/cmd/nativeevidence`. Keep failed or missing results visible; fixture success is not six-platform evidence. Report actual native executions and outstanding platforms. Release, signing, tags and publisher actions require separate authorization.
+Consolidate exactly six complete bundles from one source/version/run into a new directory with `scripts/nativeevidence`. Keep failed or missing results visible; fixture success is not six-platform evidence. Report actual native executions and outstanding platforms. Release, signing, tags and publisher actions require separate authorization.

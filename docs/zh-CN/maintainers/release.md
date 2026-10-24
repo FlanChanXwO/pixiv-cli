@@ -35,8 +35,8 @@ flowchart TD
 - `.github/workflows/publish-dockerhub.yml` 是 GHCR 与 Docker Hub 的独立发布后发布者（Release 与 registry 无法原子提交）。它接收不可变 handoff 与两个已验证产物，检查 tag 与源码身份，把同样已加载的镜像字节推送到 `ghcr.io/flanchanxwo/pixiv-cli` 与 `docker.io/flanchanxwo/pixiv-cli`——从不重新构建。只有 Docker Hub 认证使用受保护的 `DOCKER_HUB_TOKEN`（经 stdin 传入）；只有该发布者申请 `packages: write`。失败时从默认分支以原 `release_run_id` 重新派发。精确版本 tag 总会发布；较旧 stable 的恢复成功但不移动 `latest`；只有最新 stable 才推进 `latest`。没有掩盖推送失败的重试循环。
 
 ```bash
-go test ./scripts/tests/containerrelease -count=1
-go test ./tools/release ./tools/platformmatrix -count=1
+go test ./scripts/citest -count=1
+go test ./scripts/release ./scripts/platformmatrix -count=1
 ```
 
 无凭据的容器 smoke workflow 在相关改动时构建两个架构；这些本地检查不能替代 tag 的 CI 证据。
@@ -45,10 +45,10 @@ go test ./tools/release ./tools/platformmatrix -count=1
 
 | Owner | 职责 |
 | --- | --- |
-| `ci/platforms.json` + `tools/platformmatrix` | 共享 runner/能力注册表，校验并输出 |
-| `scripts/internal/releasecontract` | 发布压缩包身份 |
-| `tools/release` | 可复用的信任/产物检查：不可变 tag + 默认分支祖先、已发布 Release 状态、运行 handoff 身份、精确的压缩包/容器集合、checksum |
-| `scripts/cmd/nativeevidence` → `scripts/internal/nativeevidence` | 分发 `record` / `consolidate`；schema、单 runner 记录、六目标合并、压缩包成员/哈希审计、文件系统安全（其 workflow 测试只覆盖凭据/Action/归属边界） |
+| `scripts/ci/platforms.json` + `scripts/platformmatrix` | 共享 runner/能力注册表，校验并输出 |
+| `scripts/internal/releasenotesrender` | 发布身份（版本/渠道、六个 archive 目标）与 Release 正文渲染 |
+| `scripts/release` | 可复用的信任/产物检查：不可变 tag + 默认分支祖先、已发布 Release 状态、运行 handoff 身份、精确的压缩包/容器集合、checksum |
+| `scripts/nativeevidence` | 分发 `record` / `consolidate`；schema、单 runner 记录、六目标合并、压缩包成员/哈希审计、文件系统安全（其 workflow 测试只覆盖凭据/Action/归属边界） |
 | 各发布 workflow | 只保留渠道凭据、权限、变更检测与发布命令 |
 
 恢复运行可以校验成功的 `Release` handoff，而不把 workflow head 绑定到 tag；契约要求该身份的发布者（如 Docker Hub）还会把 handoff 运行绑定到 tag commit。workflow 测试保留行为与安全边界，不复刻精确的任务数、步骤位置或 shell 文本。历史恢复方案与验收报告保留原文，不作为当前流程说明。
@@ -58,7 +58,7 @@ go test ./tools/release ./tools/platformmatrix -count=1
 `publish-homebrew.yml` 消费 handoff，校验其生产部分，把 stable/预发布映射到 `pixiv-cli` / `pixiv-cli-beta`（都安装 `pixiv`，互相冲突）。Homebrew 不属于 Release workflow，也不增加审批边界（只有 `release-approval`）。`HOMEBREW_TAP_DEPLOY_KEY` 只通过 `release` Environment 进入已授权的 tap 写入步骤。
 
 1. **安装检查**（macOS Intel/arm64 与 Linux amd64/arm64）：`brew tap-new pixiv-cli-release/staging --no-git`，把单个 staging formula 放入 `Formula/`，执行 `brew install --formula pixiv-cli-release/staging/<formula>`，再执行 `test "$(pixiv --version)" = "pixiv $RELEASE_TAG"`。macOS 用 `brew trust --tap pixiv-cli-release/staging` 信任临时命名空间；Linux 使用短期、固定 digest 的 `homebrew/brew` 容器与只读 bind mount。不使用工作区 formula 路径、绕过变量或公开 tap 的 clone/写入/信任。
-2. **部署** 只在全部目标通过后进行：受保护的 `deploy_homebrew_tap` 任务 HTTPS clone 公开 tap；`scripts/cmd/homebrewrecovery`（可信默认分支 tip）对每个 formula 独立地用 `internal/version` SemVer 比较版本：
+2. **部署** 只在全部目标通过后进行：受保护的 `deploy_homebrew_tap` 任务 HTTPS clone 公开 tap；`scripts/homebrewrecovery`（可信默认分支 tip）对每个 formula 独立地用 `internal/version` SemVer 比较版本：
 
 | 已发布 vs 请求 | 动作 |
 | --- | --- |
@@ -77,7 +77,6 @@ go test ./tools/release ./tools/platformmatrix -count=1
 <details>
 <summary>展开运行边界与平台证据</summary>
 
-- 可从默认分支手动运行 `.github/workflows/homebrew-prepublish-verify.yml`，传入一个**已公开、非草稿、非预发布**的 stable tag。它检查 `v` 前缀 SemVer、默认分支与 Release tag 一致，只下载该 Release 的 `checksums.txt`，渲染 `pixiv-cli` staging formula，并在与生产一致的四个 runner 上安装。
 - 只读：没有 `release` Environment、secret、tag checkout、Release 编辑、tap clone/commit/push，也有意不设 deploy 任务——唯一的发布路径无法被绕过。Linux 使用固定 digest 容器；macOS 使用原生命令。
 - 它用于正式发布前复现安装链，**不能替代**正式 tag 发布、签名 Release、tap 部署或发布后验收。quality gate 保留行为级的 formula 与产物检查，而不是第二份策略实现。
 - 正式发布仍需要 tag、签名 Release、tap formula 与安装验收；完整的同源同版本六目标证据（[Native runner evidence](development.md#native-runner-evidence)）；以及已配置的 `release` Environment、签名私钥与公开仓库——这些前提本身不代表 Release/tap 已存在或安装路径已验收。
@@ -110,9 +109,8 @@ go test ./tools/release ./tools/platformmatrix -count=1
 ```bash
 sh scripts/test-build-platform.sh
 sh scripts/test-package-release.sh
-go test ./tools/release ./tools/platformmatrix -count=1
-go test ./scripts/internal/nativeevidence -count=1
-go test ./scripts/internal/browsernativeevidence -count=1
+go test ./scripts/release ./scripts/platformmatrix -count=1
+go test ./scripts/nativeevidence -count=1
 sh scripts/test-homebrew-formula.sh
 git diff --check
 ```
