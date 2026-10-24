@@ -100,7 +100,7 @@ https_proxy=http://127.0.0.1:7890 ./build/pixiv mcp --port 1270
 **配置** —— `pixiv config path/get/set/unset` 管理 `account_pool_enabled`、`account_pool_strategy`、`download_path`、`filename_template`、`directory_template`、`request_interval`、`https_proxy`、`log_level`、`log_format`、`reverse_search_provider`、`reverse_search_pixiv_only`、`saucenao_api_key`。其他 TOML（如 `[reverse_search.network]`、`[reverse_search.flaresolverr]`）手工维护，不在基线中，作为启动快照读取。基线由 `internal/config/settings` 中的**结构体字段标签**驱动，用 `tomledit` 生成，紧凑（只含 `example:"true"`），从不覆盖。新增普通设置：(1) 在 `internal/config/settings/config.go` 添加字段与声明，(2) 一个聚焦的行为测试，(3) 文档——见[标签契约](architecture.md#配置声明结构体字段标签是唯一事实来源)。
 
 > [!NOTE]
-> 残留的 `[web] fallback_enabled` 属于未声明键，加载时忽略。`[logging].level`（`info|debug`）与 `[logging].format`（`text|json`）生效；`PIXIV_LOG_LEVEL` / `PIXIV_LOG_FORMAT` 可覆盖。
+> 残留的 `[web] fallback_enabled` 属于未声明键，加载时忽略。`[logging].level`（`debug|info|warn|error`）与 `[logging].format`（`text|json`）生效；`PIXIV_LOG_LEVEL` / `PIXIV_LOG_FORMAT` 可覆盖。
 
 **Flag 与代理** —— Cobra/pflag 允许 flag 出现在位置参数前后。Pixiv 命令代理、`[pixiv.network]`、环境变量与 `[network]`，FANBOX 的 `[fanbox.network]` / `[fanbox.flaresolverr]`，以及反向搜图的 `[reverse_search.network]` / `[reverse_search.flaresolverr]` 都按各自服务边界解析；反向搜图有独立的标准/SauceNAO、ascii2d 浏览器与 FlareSolverr JSON 控制网络面（FlareSolverr 只用于 challenge 恢复）。
 
@@ -149,6 +149,7 @@ flowchart TD
 ```bash
 PIXIV_E2E_READ_USER_ID=<secondary-uid> \
 PIXIV_SDK_E2E=1 go test ./sdk/pixiv -run TestRealPixivSDKRead -count=1 -v
+# `PIXIV_E2E_LOG_LEVEL=debug` 将 SDK 请求与决策日志写到 stderr；省略时真实读取保持安静。
 FANBOX_E2E_CREATOR_ID=<non-secret-creator-id> FANBOX_E2E_TAG=<non-secret-tag> \
 FANBOX_E2E_POST_ID=<non-secret-post-id> FANBOX_E2E_POST_URL=<non-secret-post-url> \
 FANBOX_SDK_E2E=1 go test ./sdk/fanbox -run TestRealFanboxSDKRead -count=1 -v

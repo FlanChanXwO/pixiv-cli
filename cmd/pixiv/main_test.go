@@ -173,7 +173,8 @@ func TestPixivBinaryUnifiedStdioWithoutOwner(t *testing.T) {
 	require.NoError(t, session.Close())
 	_, err = os.Stat(filepath.Join(env.home, ".pixiv-cli", "mcp-state.json"))
 	require.ErrorIs(t, err, os.ErrNotExist)
-	require.Empty(t, diagnostics.String())
+	require.Contains(t, diagnostics.String(), "Tool failed")
+	require.Contains(t, diagnostics.String(), "pixiv_download")
 }
 
 func TestPixivBinaryHTTPOAuthDiscovery(t *testing.T) {

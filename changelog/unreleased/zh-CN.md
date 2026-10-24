@@ -6,7 +6,10 @@
 
 - 为 `pixiv search SOURCE` 与 Pixiv MCP `reverse_search` tool 新增反向搜图。CLI 会自动把显式 HTTP(S) URL 和现有常规文件识别为图片模式；SauceNAO、ascii2d color/BOVW 与 `all` provider 返回稳定 JSON envelope、通用 artwork/user record 以及 canonical record 的 NDJSON，并明确报告 provider partial 结果。([`69caa31`](https://github.com/FlanChanXwO/pixiv-cli/commit/69caa31)、[`6599dec`](https://github.com/FlanChanXwO/pixiv-cli/commit/6599dec)、[`ef0dcfe`](https://github.com/FlanChanXwO/pixiv-cli/commit/ef0dcfe)、[`e67e21f`](https://github.com/FlanChanXwO/pixiv-cli/commit/e67e21f)、[`959414e`](https://github.com/FlanChanXwO/pixiv-cli/commit/959414e)、[`ce03802`](https://github.com/FlanChanXwO/pixiv-cli/commit/ce03802)、[`298e0f3`](https://github.com/FlanChanXwO/pixiv-cli/commit/298e0f3))
 
+
 ## 变更
+
+- 用标准库 `log/slog` 取代自制的诊断事件系统。CLI 与 MCP 的 stderr 改为统一的 text 或 JSON 记录格式并共用属性键；`log_level` 新增 `warn`、`error`；两个 SDK 都接受 `Options.Logger` 记录请求与重试。日志不含 query、header、Cookie、token、响应体和签名 URL；CLI 数据 stdout 与 MCP stdio stdout 不含日志。debug 文本显示来源位置，格式为 `时间 级别 --- file:line : message key=value`；命令失败时另写一条终止 `ERROR`。
 
 - 交互式账号选择（不带 UID 的 `pixiv auth use` 与 `pixiv auth remove`）改为在打印的列表中输入编号，不再使用方向键选择。密码、文本与是/否提示保持原有的 TTY 要求、默认值和输出流。
 

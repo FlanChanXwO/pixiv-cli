@@ -128,6 +128,7 @@ func allowedResourceHost(host string, extra []string) bool {
 // resource URL, redirects, headers, and identity are revalidated before any
 // bytes are streamed; cookies are never sent for resource requests.
 func (c *Client) OpenResource(ctx context.Context, request sdk.OpenResourceRequest) (*sdk.ResourceResponse, error) {
+	ctx = pixivapi.WithOperation(ctx, "OpenResource")
 	if err := request.Validate(); err != nil {
 		return nil, err
 	}
@@ -172,6 +173,7 @@ func (c *Client) OpenResource(ctx context.Context, request sdk.OpenResourceReque
 // transferred file never appears at the final path. It does not expand creators,
 // archives, sidecars, or ugoira batches; use the downloader for those.
 func (c *Client) SaveResource(ctx context.Context, ref sdk.ResourceRef, options sdk.SaveOptions) (sdk.SavedResource, error) {
+	ctx = pixivapi.WithOperation(ctx, "SaveResource")
 	if strings.TrimSpace(options.Path) == "" {
 		return sdk.SavedResource{}, newError("SaveResource", sdk.InvalidArgument, "destination path is required")
 	}
@@ -201,6 +203,7 @@ func (c *Client) SaveResource(ctx context.Context, ref sdk.ResourceRef, options 
 // ResourceClient 的 Referer、重定向校验和禁用 cookie 行为，并通过原子目标
 // 写入，避免失败传输留下最终文件。
 func (c *Client) SaveResourceURL(ctx context.Context, rawURL string, options sdk.SaveOptions) (sdk.SavedResource, error) {
+	ctx = pixivapi.WithOperation(ctx, "SaveResourceURL")
 	const operation = "SaveResourceURL"
 	if strings.TrimSpace(options.Path) == "" {
 		return sdk.SavedResource{}, newError(operation, sdk.InvalidArgument, "destination path is required")

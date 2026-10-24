@@ -9,10 +9,11 @@ import (
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/gallery"
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/mediaproxy"
 	downloader "github.com/FlanChanXwO/pixiv-cli/internal/media/downloader"
+	"log/slog"
 	"math"
+	"strconv"
 	"sync"
 	"sync/atomic"
-	"time"
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/lifecycle"
 	"github.com/FlanChanXwO/pixiv-cli/internal/logging"
@@ -60,6 +61,8 @@ type SDKPorts struct {
 	// ReverseSearch 是启动时注入的反向搜图能力与配置快照。Searcher 的
 	// HTTP client、代理和凭据均由 composition root 构造，不从 MCP input 传入。
 	ReverseSearch ReverseSearchPorts
+	// Logger 是执行边界的日志入口；nil 时不输出。
+	Logger *slog.Logger
 }
 
 // ReverseSearchPorts 是 reverse_search tool 使用的窄端口与启动时配置快照。
@@ -75,12 +78,17 @@ type ReverseSearchPorts struct {
 type App struct {
 	sdk            SDKPorts
 	sdkAccount     Account
+	logger         *slog.Logger
 	requestCounter atomic.Uint64
 }
 
 // NewApp 构造独立的 Pixiv SDK 与账号运行时。
 func NewApp(ports SDKPorts, account Account) *App {
-	return &App{sdk: ports, sdkAccount: account}
+	logger := ports.Logger
+	if logger == nil {
+		logger = logging.Discard()
+	}
+	return &App{sdk: ports, sdkAccount: account, logger: logger}
 }
 
 // SDKPorts 返回注入的 SDK 端口。
@@ -131,24 +139,14 @@ func AddTool[In, Out any](app *App, server *mcp.Server, tool *mcp.Tool, handler 
 	}
 	mcp.AddTool(server, tool, func(ctx context.Context, request *mcp.CallToolRequest, input In) (*mcp.CallToolResult, Out, error) {
 		requestID := app.requestCounter.Add(1)
-		scoped := logging.WithChildScope(ctx, logging.ModulePixivMCPServer, requestID)
-		scoped = context.WithValue(scoped, accountSnapshotKey{}, &accountSnapshot{app: app})
-		startedAt := time.Now()
-		logging.Emit(scoped, logging.Event{Kind: logging.EventStarted, Operation: "tool " + tool.Name})
-		result, output, err := handler(scoped, request, input)
-		if err != nil || (result != nil && result.IsError) {
-			logging.Emit(scoped, logging.Event{
-				Kind:      logging.EventFailed,
-				Operation: "tool " + tool.Name,
-				Reason:    logging.ReasonToolFailed,
-				Duration:  time.Since(startedAt),
-			})
-		} else {
-			logging.Emit(scoped, logging.Event{
-				Kind:      logging.EventCompleted,
-				Operation: "tool " + tool.Name,
-				Duration:  time.Since(startedAt),
-			})
+		ctx = logging.WithCall(ctx, app.logger, tool.Name, strconv.FormatUint(requestID, 10))
+		ctx = context.WithValue(ctx, accountSnapshotKey{}, &accountSnapshot{app: app})
+		result, output, err := handler(ctx, request, input)
+		switch {
+		case err != nil:
+			app.logger.ErrorContext(ctx, "Tool failed", slog.Any(logging.AttrError, err))
+		case result != nil && result.IsError:
+			app.logger.ErrorContext(ctx, "Tool failed", slog.String(logging.AttrReason, "tool failed"))
 		}
 		return result, output, err
 	})

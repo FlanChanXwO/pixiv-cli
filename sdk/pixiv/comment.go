@@ -102,6 +102,7 @@ func (c *Client) commentPage(op string, query url.Values, values []commentWire, 
 
 // ArtworkComments lists comments on one artwork.
 func (c *Client) ArtworkComments(ctx context.Context, request ArtworkCommentsRequest) (CommentPage, error) {
+	ctx = pixivapi.WithOperation(ctx, "ArtworkComments")
 	if request.ArtworkID <= 0 {
 		return CommentPage{}, newError("ArtworkComments", sdk.InvalidArgument, "artwork ID must be positive")
 	}
@@ -142,6 +143,7 @@ func (c *Client) ArtworkComments(ctx context.Context, request ArtworkCommentsReq
 
 // NovelComments lists comments on one novel.
 func (c *Client) NovelComments(ctx context.Context, request NovelCommentsRequest) (CommentPage, error) {
+	ctx = pixivapi.WithOperation(ctx, "NovelComments")
 	if request.NovelID <= 0 {
 		return CommentPage{}, newError("NovelComments", sdk.InvalidArgument, "novel ID must be positive")
 	}
@@ -195,6 +197,7 @@ type stampWire struct {
 // image is represented as a stable SDK resource; the upstream locator remains
 // runtime-only and is never embedded in the opaque reference.
 func (c *Client) Stamps(ctx context.Context, request StampsRequest) ([]Stamp, error) {
+	ctx = pixivapi.WithOperation(ctx, "Stamps")
 	items, err := c.fetchStamps(ctx, "Stamps")
 	if err != nil {
 		return nil, err

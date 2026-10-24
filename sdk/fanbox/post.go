@@ -17,6 +17,7 @@ import (
 
 // Post returns one post by its stable ID.
 func (c *Client) Post(ctx context.Context, request PostRequest) (Post, error) {
+	ctx = protocol.WithOperation(ctx, "Post")
 	if request.PostID == "" {
 		return Post{}, newError("Post", sdk.InvalidArgument, errors.New("post id is required"))
 	}
@@ -50,6 +51,7 @@ func (c *Client) postInfo(ctx context.Context, postID string) (postWire, error) 
 
 // CreatorPosts lists one creator's posts.
 func (c *Client) CreatorPosts(ctx context.Context, request CreatorPostsRequest) (sdk.Page[Post], error) {
+	ctx = protocol.WithOperation(ctx, "CreatorPosts")
 	if request.CreatorID == "" {
 		return sdk.Page[Post]{}, newError("CreatorPosts", sdk.InvalidArgument, errors.New("creator id is required"))
 	}
@@ -64,6 +66,7 @@ func (c *Client) CreatorPosts(ctx context.Context, request CreatorPostsRequest) 
 
 // TaggedPosts lists one creator's posts for a single tag.
 func (c *Client) TaggedPosts(ctx context.Context, request TaggedPostsRequest) (sdk.Page[Post], error) {
+	ctx = protocol.WithOperation(ctx, "TaggedPosts")
 	if request.CreatorID == "" || request.Tag == "" {
 		return sdk.Page[Post]{}, newError("TaggedPosts", sdk.InvalidArgument, errors.New("creator id and tag are required"))
 	}
@@ -82,11 +85,13 @@ func (c *Client) TaggedPosts(ctx context.Context, request TaggedPostsRequest) (s
 
 // Home lists the current user's home feed.
 func (c *Client) Home(ctx context.Context, request HomeRequest) (sdk.Page[Post], error) {
+	ctx = protocol.WithOperation(ctx, "Home")
 	return c.postList(ctx, "Home", protocol.PathPostListHome, nil, nil, true, request.Cursor)
 }
 
 // Supporting lists posts from the current user's supporting creators.
 func (c *Client) Supporting(ctx context.Context, request SupportingRequest) (sdk.Page[Post], error) {
+	ctx = protocol.WithOperation(ctx, "Supporting")
 	return c.postList(ctx, "Supporting", protocol.PathPostListSupporting, nil, nil, true, request.Cursor)
 }
 

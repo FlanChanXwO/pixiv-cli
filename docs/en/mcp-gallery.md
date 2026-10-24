@@ -172,7 +172,7 @@ stateDiagram-v2
 
 ## Diagnostics
 
-With debug diagnostics enabled:
+With debug logging enabled:
 
 | Event | Meaning |
 | --- | --- |
@@ -181,7 +181,7 @@ With debug diagnostics enabled:
 | artwork-media animation stages | artwork lookup, animation metadata, ZIP download, observed native encode wait/encoding, result-file read |
 | `animation_generation` | Final outcome after temp cleanup, incl. failures and cancellation; bytes = 0 on failure, animation size on success. Excludes serialization and delivery. An attempt failing before the native queue reports no fabricated queue duration |
 
-Normal logging keeps the existing encoding path; overlapping HTTP/protocol scopes do not duplicate encoding or observations. Delivery interruptions report fixed request-cancelled / transport-interrupted reasons, never raw errors, credentials or capability URLs. Background metadata, ZIP and encoding observations carry their real outcome: ZIP success after close + Content-Length validation, encoding success after the encoder returns; partial ZIP bytes describe transfer, not delivery. Shared artwork lookup and session acquisition distinguish failures; OAuth refresh includes rotated-credential persistence (persistence failure is not refresh success); cancellation while acquiring the rotation gate records a fixed reason and stops before refresh or reads. Error returns and retry behavior are unchanged.
+Normal logging keeps the existing encoding path; the HTTP and protocol observation layers do not duplicate encoding or observations. Delivery interruptions report fixed request-cancelled / transport-interrupted reasons, never raw errors, credentials or capability URLs. Background metadata, ZIP and encoding observations carry their real outcome: ZIP success after close + Content-Length validation, encoding success after the encoder returns; partial ZIP bytes describe transfer, not delivery. Shared artwork lookup and session acquisition distinguish failures; OAuth refresh includes rotated-credential persistence (persistence failure is not refresh success); cancellation while acquiring the rotation gate records a fixed reason and stops before refresh or reads. Error returns and retry behavior are unchanged.
 
 ## Cancellation and invalidation
 

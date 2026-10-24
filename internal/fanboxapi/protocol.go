@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"net"
 	"net/http"
 	"net/url"
@@ -56,6 +57,7 @@ type Session struct {
 	userAgent    string
 	cookie       string
 	flareSolverr *FlareSolverrOptions
+	log          *slog.Logger
 
 	solverMu         sync.Mutex
 	solverState      *solverState
@@ -81,6 +83,8 @@ type SessionOptions struct {
 	ProxyURL         string
 	UserAgent        string
 	FlareSolverr     *FlareSolverrOptions
+	// Logger 记录请求结果和挑战恢复决策；nil 时不输出。
+	Logger *slog.Logger
 }
 
 // String 只返回会话类型，避免诊断格式化泄露认证 Cookie。
@@ -108,21 +112,24 @@ func NewSessionWithOptions(cookieHeader string, options SessionOptions) (*Sessio
 		if options.HTTPClient.Transport == nil {
 			return nil, errors.New("FANBOX injected HTTP client requires an explicit transport")
 		}
-		return newSession(cookieHeader, options.HTTPClient, options.SolverHTTPClient, proxyURL, validatedAgent, flareSolverr)
+		return newSession(cookieHeader, options.HTTPClient, options.SolverHTTPClient, proxyURL, validatedAgent, flareSolverr, options.Logger)
 	}
 	transport, err := newBrowserTransport(proxyURL)
 	if err != nil {
 		return nil, fmt.Errorf("create FANBOX TLS transport: %w", err)
 	}
-	return newSession(cookieHeader, &http.Client{Transport: transport}, options.SolverHTTPClient, proxyURL, validatedAgent, flareSolverr)
+	return newSession(cookieHeader, &http.Client{Transport: transport}, options.SolverHTTPClient, proxyURL, validatedAgent, flareSolverr, options.Logger)
 }
 
-func newSession(cookieHeader string, client, solverClient *http.Client, proxyURL, agent string, flareSolverr *FlareSolverrOptions) (*Session, error) {
+func newSession(cookieHeader string, client, solverClient *http.Client, proxyURL, agent string, flareSolverr *FlareSolverrOptions, logger *slog.Logger) (*Session, error) {
 	cookie, err := NormalizeCookieHeader(cookieHeader)
 	if err != nil {
 		return nil, err
 	}
-	return &Session{httpClient: client, proxyURL: proxyURL, userAgent: agent, cookie: cookie, flareSolverr: flareSolverr, solverHTTPClient: solverClient}, nil
+	if logger == nil {
+		logger = logging.Discard()
+	}
+	return &Session{httpClient: client, proxyURL: proxyURL, userAgent: agent, cookie: cookie, flareSolverr: flareSolverr, solverHTTPClient: solverClient, log: logger}, nil
 }
 
 // CloseIdleConnections 释放会话 transport 持有的空闲连接。它不设置请求 deadline；
@@ -223,12 +230,7 @@ func (s *Session) doWithRequest(ctx context.Context, rawURL string, kind request
 	if _, solveErr := s.waitForSolver(ctx); solveErr != nil {
 		return nil, solveErr
 	}
-	logging.Emit(ctx, logging.Event{
-		Module:    logging.ModuleFanboxNetwork,
-		Kind:      logging.EventReplay,
-		Operation: "request",
-		Route:     "native transport",
-	})
+	s.log.LogAttrs(ctx, slog.LevelDebug, "Replaying request with fresh clearance", logging.OperationAttr(ctx))
 	response, err = s.doNativeWithRequest(ctx, rawURL, kind, includeCookie, accept, method, headers)
 	if errors.Is(err, ErrChallenge) {
 		s.invalidateSolverState()
@@ -331,29 +333,28 @@ func (s *Session) doNativeWithRequest(ctx context.Context, rawURL string, kind r
 		client := *s.httpClient
 		client.Jar = nil
 		client.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
+		started := time.Now()
 		response, err := client.Do(request)
+		attrs := []slog.Attr{
+			slog.String(logging.AttrMethod, method),
+			slog.String(logging.AttrHost, target.Host),
+			slog.String(logging.AttrPath, target.Path),
+			slog.Duration(logging.AttrDuration, time.Since(started)),
+			logging.OperationAttr(ctx),
+		}
 		if err != nil {
-			logging.Emit(ctx, logging.Event{
-				Module:    logging.ModuleFanboxNetwork,
-				Kind:      logging.EventFailed,
-				Operation: "network request",
-				Route:     fanboxDiagnosticRoute(kind),
-			})
+			s.log.LogAttrs(ctx, slog.LevelDebug, "Request failed", append(attrs, slog.String(logging.AttrError, safeExternalError(ctx, "FANBOX request failed", err).Error()))...)
 			return nil, safeExternalError(ctx, "FANBOX request failed", err)
 		}
 		if response == nil {
 			return nil, errors.New("FANBOX request returned no response")
 		}
-		logging.Emit(ctx, logging.Event{
-			Module:    logging.ModuleFanboxNetwork,
-			Kind:      logging.EventNetworkRequest,
-			Operation: fanboxDiagnosticOperation(kind),
-			Resource:  target.EscapedPath(),
-			Route:     fanboxDiagnosticRoute(kind),
-			Proxy:     s.proxyURL,
-			UserAgent: agent,
-			Status:    response.StatusCode,
-		})
+		statusAttrs := append(attrs, slog.Int(logging.AttrStatus, response.StatusCode))
+		if response.StatusCode == http.StatusTooManyRequests || response.StatusCode >= http.StatusInternalServerError {
+			s.log.LogAttrs(ctx, slog.LevelWarn, "Request rejected by upstream", statusAttrs...)
+		} else {
+			s.log.LogAttrs(ctx, slog.LevelDebug, "Request completed", statusAttrs...)
+		}
 		// 只有真正的 redirect 状态码（301/302/303/307/308）才跟随 Location；
 		// 304 Not Modified 是条件 GET 的正常结果，没有 Location，必须原样返回。
 		if isRedirectStatus(response.StatusCode) {
@@ -413,32 +414,14 @@ func (s *Session) classifyError(ctx context.Context, response *http.Response) er
 		return ErrNotAuthenticated
 	case http.StatusForbidden:
 		if challengeMarkers || challengeHeaderDetected(response.Header) || challengeHTMLResponse(response.Header) {
-			logging.Emit(ctx, logging.Event{
-				Module:    logging.ModuleFanboxNetwork,
-				Kind:      logging.EventChallenge,
-				Operation: "request",
-				Status:    status,
-			})
+			s.log.LogAttrs(ctx, slog.LevelWarn, "Cloudflare challenge detected",
+				logging.OperationAttr(ctx), slog.Int(logging.AttrStatus, status))
 			return ErrChallenge
 		}
 		return ErrForbidden
 	default:
 		return fmt.Errorf("FANBOX request returned HTTP status %d", status)
 	}
-}
-
-func fanboxDiagnosticOperation(kind requestKind) string {
-	if kind == requestKindMedia {
-		return "retrieving media"
-	}
-	return "retrieving"
-}
-
-func fanboxDiagnosticRoute(kind requestKind) string {
-	if kind == requestKindMedia {
-		return "media transport"
-	}
-	return "native transport"
 }
 
 func scanChallengeBody(body io.Reader) (bool, error) {

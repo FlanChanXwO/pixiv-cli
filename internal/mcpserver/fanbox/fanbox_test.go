@@ -32,22 +32,18 @@ import (
 	"time"
 )
 
-func TestFanboxMCPDiagnosticsUseFanboxModuleAndRequestID(t *testing.T) {
-	var (
-		mu     sync.Mutex
-		events []logging.Event
-	)
-	sink := logging.SinkFunc(func(event logging.Event) {
-		mu.Lock()
-		defer mu.Unlock()
-		events = append(events, event)
-	})
-	rootCtx, cancel := context.WithCancel(logging.WithScope(context.Background(), sink, logging.ModuleFanboxCLI, 0))
+func TestFanboxMCPToolLogsCarryCallID(t *testing.T) {
+	output := &syncBuffer{}
+	logger, err := logging.New(output, "debug", "json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	rootCtx, cancel := context.WithCancel(logging.WithCall(context.Background(), logger, "", ""))
 	defer cancel()
 
 	server := mcp.NewServer(&mcp.Implementation{Name: "debug-test", Version: "1"}, nil)
-	toolhost.AddTool(toolhost.NewApp(toolhost.SDKPorts{}, toolhost.Account{}), server, &mcp.Tool{Name: "diagnostic_test"}, func(context.Context, *mcp.CallToolRequest, struct{}) (*mcp.CallToolResult, struct{}, error) {
-		return &mcp.CallToolResult{}, struct{}{}, nil
+	toolhost.AddTool(toolhost.NewApp(toolhost.SDKPorts{Logger: logger}, toolhost.Account{}), server, &mcp.Tool{Name: "diagnostic_test"}, func(context.Context, *mcp.CallToolRequest, struct{}) (*mcp.CallToolResult, struct{}, error) {
+		return nil, struct{}{}, errors.New("fixture failure")
 	})
 	clientTransport, serverTransport := mcp.NewInMemoryTransports()
 	go func() { _ = server.Run(rootCtx, serverTransport) }()
@@ -58,24 +54,29 @@ func TestFanboxMCPDiagnosticsUseFanboxModuleAndRequestID(t *testing.T) {
 	}
 	defer session.Close()
 
-	result, err := session.CallTool(context.Background(), &mcp.CallToolParams{Name: "diagnostic_test", Arguments: map[string]any{}})
-	if err != nil {
-		t.Fatalf("call tool: %v", err)
-	}
-	if result.IsError {
-		t.Fatalf("unexpected tool error: %+v", result)
-	}
+	_, _ = session.CallTool(context.Background(), &mcp.CallToolParams{Name: "diagnostic_test", Arguments: map[string]any{}})
 
-	mu.Lock()
-	defer mu.Unlock()
-	if len(events) != 2 {
-		t.Fatalf("events=%+v want start/complete pair", events)
+	if !strings.Contains(output.String(), `"call_id":"1"`) || !strings.Contains(output.String(), `"operation":"diagnostic_test"`) {
+		t.Fatalf("tool call log missing call id: %s", output.String())
 	}
-	for _, event := range events {
-		if event.Module != logging.ModuleFanboxMCPServer || event.RequestID != 1 {
-			t.Fatalf("event=%+v", event)
-		}
-	}
+}
+
+// syncBuffer 让并发写入的日志在测试中可安全读取。
+type syncBuffer struct {
+	mu  sync.Mutex
+	buf bytes.Buffer
+}
+
+func (b *syncBuffer) Write(data []byte) (int, error) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.buf.Write(data)
+}
+
+func (b *syncBuffer) String() string {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.buf.String()
 }
 
 // unsafeOutputPropertyNames mirrors the Pixiv product contract: a FANBOX tool

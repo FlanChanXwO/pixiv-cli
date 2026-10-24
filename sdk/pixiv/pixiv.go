@@ -2,13 +2,12 @@ package pixiv
 
 import (
 	"context"
-	"errors"
+	"log/slog"
 	"net/http"
 	"strings"
 	"sync"
 	"time"
 
-	"github.com/FlanChanXwO/pixiv-cli/internal/logging"
 	"github.com/FlanChanXwO/pixiv-cli/internal/pixivapi"
 	"github.com/FlanChanXwO/pixiv-cli/internal/pixivapi/oauth"
 	"github.com/FlanChanXwO/pixiv-cli/sdk"
@@ -43,6 +42,10 @@ type Options struct {
 	AcceptLanguage string
 	Pacing         Pacing
 	ResourcePolicy ResourcePolicy
+	// Logger receives the transport's request outcomes and internal decisions
+	// such as token refresh and retry waits. Nil keeps the SDK silent. Logs
+	// never include queries, headers, bodies, tokens, cookies, or signed URLs.
+	Logger *slog.Logger
 }
 
 // Client is a Pixiv App API client holding a single access token. It never
@@ -89,7 +92,7 @@ func OpenWith(ctx context.Context, refreshToken string, options Options) (*Clien
 		return nil, Credentials{}, newError("Open", sdk.CredentialsExpired, "refresh token is required")
 	}
 	httpClient, selfHTTP := buildHTTPClient(options)
-	oauthClient := oauth.New(refreshToken, oauth.Config{HTTPClient: httpClient})
+	oauthClient := oauth.New(refreshToken, oauth.Config{HTTPClient: httpClient, Logger: options.Logger})
 	if err := oauthClient.Refresh(ctx); err != nil {
 		return nil, Credentials{}, classifyOAuthError(err, "Open")
 	}
@@ -150,6 +153,7 @@ func newClient(httpClient *http.Client, selfHTTP bool, accessToken string, optio
 		AccessToken:    accessToken,
 		AcceptLanguage: options.AcceptLanguage,
 		UserID:         userID,
+		Logger:         options.Logger,
 	})
 	return &Client{
 		app:            app,
@@ -186,14 +190,14 @@ func (c *Client) UserID() int64 { return c.userID }
 // when unknown.
 func (c *Client) Username() string { return c.userName }
 
+// buildHTTPClient 把 pacing 放到项目传输层；请求日志与 OAuth 路由记录由 pixivapi 拥有。
 func buildHTTPClient(options Options) (*http.Client, bool) {
 	if options.HTTPClient == nil {
-		transport := http.DefaultTransport.(*http.Transport).Clone()
-		c := &http.Client{Transport: transport}
+		var transport http.RoundTripper = http.DefaultTransport.(*http.Transport).Clone()
 		if options.Pacing.MinInterval > 0 {
-			c.Transport = &pacingRoundTripper{inner: c.Transport, interval: options.Pacing.MinInterval}
+			transport = &pixivapi.PacingTransport{Inner: transport, Interval: options.Pacing.MinInterval, Logger: options.Logger}
 		}
-		return withDiagnosticTransport(c), true
+		return &http.Client{Transport: transport}, true
 	}
 	base := options.HTTPClient
 	if options.Pacing.MinInterval <= 0 {
@@ -204,119 +208,10 @@ func buildHTTPClient(options Options) (*http.Client, bool) {
 		transport = http.DefaultTransport
 	}
 	derived := &http.Client{
-		Transport:     &pacingRoundTripper{inner: transport, interval: options.Pacing.MinInterval},
+		Transport:     &pixivapi.PacingTransport{Inner: transport, Interval: options.Pacing.MinInterval, Logger: options.Logger},
 		Jar:           base.Jar,
 		Timeout:       base.Timeout,
 		CheckRedirect: base.CheckRedirect,
 	}
-	return withDiagnosticTransport(derived), false
-}
-
-func withDiagnosticTransport(client *http.Client) *http.Client {
-	if client == nil {
-		return nil
-	}
-	derived := *client
-	transport := client.Transport
-	if transport == nil {
-		transport = http.DefaultTransport
-	}
-	derived.Transport = &diagnosticRoundTripper{inner: transport}
-	return &derived
-}
-
-// diagnosticRoundTripper observes only a CLI/MCP diagnostic scope carried by
-// request.Context. Public SDK callers have no scope and therefore remain
-// completely silent; query strings, headers other than the safe User-Agent,
-// and transport errors are never placed in an event.
-type diagnosticRoundTripper struct {
-	inner http.RoundTripper
-}
-
-func (r *diagnosticRoundTripper) RoundTrip(request *http.Request) (*http.Response, error) {
-	if r == nil || r.inner == nil {
-		return nil, errors.New("Pixiv HTTP transport is not configured")
-	}
-	operation := "retrieving"
-	if request.Method != http.MethodGet && request.Method != http.MethodHead {
-		operation = "sending"
-	}
-	route := "App API"
-	if request.URL != nil && (request.URL.Hostname() == "oauth.secure.pixiv.net" || strings.Contains(request.URL.Path, "/auth/")) {
-		route = "OAuth transport"
-	} else if request.URL != nil && strings.HasSuffix(request.URL.Hostname(), "pximg.net") {
-		route = "media transport"
-	}
-	resourcePath := "/"
-	if request.URL != nil && request.URL.EscapedPath() != "" {
-		resourcePath = request.URL.EscapedPath()
-	}
-	var agent string
-	if request.Header != nil {
-		agent = request.Header.Get("User-Agent")
-	}
-	response, err := r.inner.RoundTrip(request)
-	if err != nil {
-		logging.Emit(request.Context(), logging.Event{
-			Module:    logging.ModulePixivNetwork,
-			Kind:      logging.EventFailed,
-			Operation: "network request",
-			Route:     route,
-		})
-		return nil, err
-	}
-	status := 0
-	if response != nil {
-		status = response.StatusCode
-	}
-	logging.Emit(request.Context(), logging.Event{
-		Module:    logging.ModulePixivNetwork,
-		Kind:      logging.EventNetworkRequest,
-		Operation: operation,
-		Resource:  resourcePath,
-		Route:     route,
-		UserAgent: agent,
-		Status:    status,
-	})
-	return response, nil
-}
-
-func (r *diagnosticRoundTripper) CloseIdleConnections() {
-	if r == nil {
-		return
-	}
-	if closer, ok := r.inner.(interface{ CloseIdleConnections() }); ok {
-		closer.CloseIdleConnections()
-	}
-}
-
-type pacingRoundTripper struct {
-	inner    http.RoundTripper
-	interval time.Duration
-	mu       sync.Mutex
-	last     time.Time
-}
-
-func (p *pacingRoundTripper) RoundTrip(req *http.Request) (*http.Response, error) {
-	p.mu.Lock()
-	wait := p.interval - time.Since(p.last)
-	if wait > 0 {
-		timer := time.NewTimer(wait)
-		select {
-		case <-req.Context().Done():
-			timer.Stop()
-			p.mu.Unlock()
-			return nil, req.Context().Err()
-		case <-timer.C:
-		}
-	}
-	p.last = time.Now()
-	p.mu.Unlock()
-	return p.inner.RoundTrip(req)
-}
-
-func (p *pacingRoundTripper) CloseIdleConnections() {
-	if closer, ok := p.inner.(interface{ CloseIdleConnections() }); ok {
-		closer.CloseIdleConnections()
-	}
+	return derived, false
 }

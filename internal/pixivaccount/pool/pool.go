@@ -8,7 +8,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"strconv"
+	"log/slog"
 	"time"
 
 	config "github.com/FlanChanXwO/pixiv-cli/internal/config/settings"
@@ -71,12 +71,6 @@ func (s Scheduler) Run(ctx context.Context, attempt func(context.Context, int64,
 		if userID <= 0 {
 			return errors.New("account pool state store selected an invalid user id")
 		}
-		logging.Emit(ctx, logging.Event{
-			Module:    logging.ModulePixivAccount,
-			Kind:      logging.EventAccount,
-			Operation: "selected",
-			Resource:  "uid " + strconv.FormatInt(userID, 10),
-		})
 		if _, wasAttempted := attemptedSet[userID]; wasAttempted {
 			return fmt.Errorf("account pool state store selected attempted user id %d", userID)
 		}
@@ -102,12 +96,7 @@ func (s Scheduler) Run(ctx context.Context, attempt func(context.Context, int64,
 		if err := s.State.Freeze(ctx, userID, freezeNow.Add(retryAfter).UTC().Unix()); err != nil {
 			return err
 		}
-		logging.Emit(ctx, logging.Event{
-			Module:    logging.ModulePixivAccount,
-			Kind:      logging.EventAccount,
-			Operation: "froze",
-			Resource:  "uid " + strconv.FormatInt(userID, 10),
-			Reason:    logging.ReasonAccountFrozen,
-		})
+		logging.From(ctx).WarnContext(ctx, "Account pool froze rate-limited account",
+			slog.String(logging.AttrReason, "account frozen"))
 	}
 }

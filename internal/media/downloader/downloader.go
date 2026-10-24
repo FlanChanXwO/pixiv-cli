@@ -6,7 +6,7 @@ package downloader
 import (
 	"context"
 	"errors"
-	"fmt"
+	"log/slog"
 	"reflect"
 	"strconv"
 	"strings"
@@ -44,26 +44,17 @@ type DownloadService struct {
 func (s DownloadService) DownloadSources(ctx context.Context, client DownloadTargetClient, sources []string, request DownloadRequest) (report DownloadReport, returnErr error) {
 	startedAt := time.Now()
 	report = DownloadReport{Items: []DownloadedArtwork{}, Failures: []DownloadFailure{}}
-	logging.Emit(ctx, logging.Event{
-		Module:    logging.ModulePixivDownload,
-		Kind:      logging.EventStarted,
-		Operation: fmt.Sprintf("download %d sources", len(sources)),
-	})
 	defer func() {
-		kind := logging.EventCompleted
-		reason := logging.ReasonNone
 		if returnErr != nil {
-			kind = logging.EventFailed
-			reason = logging.ReasonCommandFailed
+			logging.From(ctx).WarnContext(ctx, "Download sources failed",
+				slog.String(logging.AttrReason, "command failed"),
+				slog.Int(logging.AttrCount, len(report.Items)),
+				slog.Duration(logging.AttrDuration, time.Since(startedAt)))
+			return
 		}
-		logging.Emit(ctx, logging.Event{
-			Module:    logging.ModulePixivDownload,
-			Kind:      kind,
-			Operation: "download sources",
-			Reason:    reason,
-			Count:     len(report.Items),
-			Duration:  time.Since(startedAt),
-		})
+		logging.From(ctx).DebugContext(ctx, "Download completed",
+			slog.Int(logging.AttrCount, len(report.Items)),
+			slog.Duration(logging.AttrDuration, time.Since(startedAt)))
 	}()
 	if len(sources) == 0 {
 		return report, errors.New("at least one download source is required")

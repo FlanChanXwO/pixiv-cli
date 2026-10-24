@@ -10,7 +10,7 @@ import (
 	"errors"
 	"fmt"
 	"github.com/FlanChanXwO/pixiv-cli/internal/lifecycle"
-	diagnostics "github.com/FlanChanXwO/pixiv-cli/internal/logging"
+	logging "github.com/FlanChanXwO/pixiv-cli/internal/logging"
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/mediaproxy"
 	"html"
 	"image"
@@ -251,13 +251,10 @@ func TestHTTPAuthenticatedSDKNegotiationAndReset(t *testing.T) {
 	require.NoError(t, err)
 	require.NoError(t, os.WriteFile(store.Path, body, 0600))
 	protocol := server.New(pixivmcp.SDKPorts{}, pixivmcp.Account{}, fanboxmcp.SDKPorts{}, nil)
-	var events []diagnostics.Event
-	var eventsMu sync.Mutex
-	observedCtx := diagnostics.WithScope(t.Context(), diagnostics.SinkFunc(func(event diagnostics.Event) {
-		eventsMu.Lock()
-		defer eventsMu.Unlock()
-		events = append(events, event)
-	}), diagnostics.ModulePixivMCP, 0)
+	output := &syncBuffer{}
+	logger, err := logging.New(output, "debug", "json")
+	require.NoError(t, err)
+	observedCtx := logging.WithCall(t.Context(), logger, "", "")
 	var serializationCalls atomic.Int32
 	mediaResult := &mcp.CallToolResult{Content: []mcp.Content{&mcp.ImageContent{MIMEType: "image/png", Data: []byte{1, 2, 3}}}, StructuredContent: countedMediaContent{calls: &serializationCalls}}
 	for _, name := range []string{"pixiv_artwork_media", "pixiv_gallery_animation", "other"} {
@@ -312,24 +309,14 @@ func TestHTTPAuthenticatedSDKNegotiationAndReset(t *testing.T) {
 		require.Contains(t, response.Body.String(), string(expectedBytes), "observing serialization must preserve the exact result bytes")
 	}
 	require.Equal(t, callsBefore+3, serializationCalls.Load(), "each result must be encoded once, without a diagnostic pre-encoding pass")
-	eventsMu.Lock()
-	var observed []diagnostics.Event
-	for _, event := range events {
-		if event.Operation == "mcp_response_serialization" {
-			observed = append(observed, event)
-		}
-	}
-	eventsMu.Unlock()
+	observed := logRecords(t, output.String(), "MCP response serialized")
 	require.Len(t, observed, 2, "each media response must report its real serialization once; unrelated tools remain unchanged")
 	for _, event := range observed {
-		require.Equal(t, "mcp_response_serialization", event.Operation)
-		require.Equal(t, diagnostics.EventCompleted, event.Kind)
-		require.Equal(t, len(expectedBytes), event.Count)
-		require.GreaterOrEqual(t, event.Duration, time.Duration(0))
+		require.Equal(t, "DEBUG", event["level"])
+		require.Equal(t, float64(len(expectedBytes)), event["count"])
+		require.GreaterOrEqual(t, event["duration"], float64(0))
 	}
-	diagnosticJSON, err := json.Marshal(observed)
-	require.NoError(t, err)
-	require.NotContains(t, string(diagnosticJSON), "signed-url-and-token")
+	require.NotContains(t, output.String(), "signed-url-and-token")
 	_, err = store.Init(t.Context(), true)
 	require.NoError(t, err)
 	request := httptest.NewRequest("GET", "https://example.test/mcp", nil)
@@ -865,20 +852,13 @@ func TestHTTPWriteObservation(t *testing.T) {
 			data, err := json.Marshal(state)
 			require.NoError(t, err)
 			require.NoError(t, os.WriteFile(store.Path, data, 0600))
-			var events []diagnostics.Event
-			writeEvents := make(chan diagnostics.Event, 16)
-			var mu sync.Mutex
+			output := &syncBuffer{}
+			logger, err := logging.New(output, "debug", "json")
+			require.NoError(t, err)
 			ctx, closeService := context.WithCancel(t.Context())
 			defer closeService()
 			if !tc.unscoped {
-				ctx = diagnostics.WithScope(ctx, diagnostics.SinkFunc(func(event diagnostics.Event) {
-					mu.Lock()
-					defer mu.Unlock()
-					events = append(events, event)
-					if event.Operation == "mcp_http_write" {
-						writeEvents <- event
-					}
-				}), diagnostics.ModulePixivMCP, 0)
+				ctx = logging.WithCall(ctx, logger, "", "")
 			}
 			protocol := server.New(pixivmcp.SDKPorts{}, pixivmcp.Account{}, fanboxmcp.SDKPorts{}, nil)
 			protocol.AddTool(&mcp.Tool{Name: "pixiv_artwork_media", InputSchema: map[string]any{"type": "object"}}, func(context.Context, *mcp.CallToolRequest) (*mcp.CallToolResult, error) {
@@ -901,47 +881,30 @@ func TestHTTPWriteObservation(t *testing.T) {
 				writer.onWrite = closeService
 			}
 			handler.ServeHTTP(writer, request)
-			if !tc.unscoped {
-				select {
-				case <-writeEvents:
-				case <-time.After(5 * time.Second):
-					t.Fatal("HTTP write observation missing")
-				}
-			}
-			mu.Lock()
-			observed := append([]diagnostics.Event(nil), events...)
-			mu.Unlock()
-			var writes, flushes []diagnostics.Event
-			for _, event := range observed {
-				if event.Operation == "mcp_http_write" {
-					writes = append(writes, event)
-				}
-				if event.Operation == "mcp_http_flush" {
-					flushes = append(flushes, event)
-				}
-			}
+			writes := logRecords(t, output.String(), "mcp_http_write")
+			flushes := logRecords(t, output.String(), "mcp_http_flush")
 			if tc.unscoped {
 				require.Empty(t, writes)
 				require.Empty(t, flushes)
 				return
 			}
 			require.NotEmpty(t, writes)
-			wantKind, wantReason := diagnostics.EventCompleted, diagnostics.Reason("")
+			wantLevel, wantReason := "DEBUG", ""
 			if tc.writeFailure {
-				wantKind, wantReason = diagnostics.EventFailed, diagnostics.ReasonTransportInterrupted
+				wantLevel, wantReason = "WARN", "transport interrupted"
 			}
 			if tc.cancelRequest {
-				wantKind, wantReason = diagnostics.EventFailed, diagnostics.ReasonRequestCancelled
+				wantLevel, wantReason = "WARN", "request cancelled"
 			}
 			if tc.cancelService {
-				wantKind, wantReason = diagnostics.EventFailed, diagnostics.ReasonServiceClosed
+				wantLevel, wantReason = "WARN", "service closed"
 			}
 			accepted := 0
 			for _, event := range writes {
-				require.GreaterOrEqual(t, event.Duration, time.Duration(0))
-				require.Equal(t, wantKind, event.Kind)
-				require.Equal(t, wantReason, event.Reason)
-				accepted += event.Count
+				require.GreaterOrEqual(t, event["duration"], float64(0))
+				require.Equal(t, wantLevel, event["level"])
+				require.Equal(t, wantReason, textField(event, "reason"))
+				accepted += int(event["count"].(float64))
 			}
 			if !tc.cancelRequest && !tc.cancelService {
 				require.Equal(t, writer.Body.Len(), accepted, "record bytes accepted by the underlying writer")
@@ -953,17 +916,55 @@ func TestHTTPWriteObservation(t *testing.T) {
 			if tc.flushFailure {
 				require.NotEmpty(t, flushes)
 				for _, event := range flushes {
-					require.Equal(t, diagnostics.EventFailed, event.Kind)
-					require.Equal(t, diagnostics.ReasonTransportInterrupted, event.Reason)
+					require.Equal(t, "WARN", event["level"])
+					require.Equal(t, "transport interrupted", event["reason"])
 				}
 			}
-			diagnosticJSON, err := json.Marshal(writes)
-			require.NoError(t, err)
 			for _, private := range []string{token, "private-request-marker", "private-response-marker"} {
-				require.NotContains(t, string(diagnosticJSON), private)
+				require.NotContains(t, output.String(), private)
 			}
 		})
 	}
+}
+
+// logRecords 返回具有指定 operation 的 JSON 日志行。
+func textField(record map[string]any, key string) string {
+	value, _ := record[key].(string)
+	return value
+}
+
+func logRecords(t *testing.T, output, operation string) []map[string]any {
+	t.Helper()
+	var records []map[string]any
+	for _, line := range strings.Split(strings.TrimSpace(output), "\n") {
+		if line == "" {
+			continue
+		}
+		var record map[string]any
+		require.NoError(t, json.Unmarshal([]byte(line), &record), line)
+		if record["operation"] == operation || record["msg"] == operation || record[logging.AttrStage] == operation {
+			records = append(records, record)
+		}
+	}
+	return records
+}
+
+// syncBuffer 让并发写入的日志在测试中可安全读取。
+type syncBuffer struct {
+	mu  sync.Mutex
+	buf bytes.Buffer
+}
+
+func (b *syncBuffer) Write(data []byte) (int, error) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.buf.Write(data)
+}
+
+func (b *syncBuffer) String() string {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.buf.String()
 }
 
 type httpObservationWriter struct {

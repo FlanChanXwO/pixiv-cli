@@ -36,6 +36,7 @@ type bookmarkDetailWire struct {
 
 // UserArtworkBookmarks lists one user's bookmarked artworks.
 func (c *Client) UserArtworkBookmarks(ctx context.Context, request UserArtworkBookmarksRequest) (sdk.Page[Artwork], error) {
+	ctx = pixivapi.WithOperation(ctx, "UserArtworkBookmarks")
 	if request.UserID <= 0 {
 		return sdk.Page[Artwork]{}, newError("UserArtworkBookmarks", sdk.InvalidArgument, "user ID must be positive")
 	}
@@ -76,6 +77,7 @@ func (c *Client) UserArtworkBookmarks(ctx context.Context, request UserArtworkBo
 // UserArtworkBookmarkTags lists the bookmark tags of one user's bookmarked
 // artworks.
 func (c *Client) UserArtworkBookmarkTags(ctx context.Context, request UserArtworkBookmarkTagsRequest) (sdk.Page[BookmarkTag], error) {
+	ctx = pixivapi.WithOperation(ctx, "UserArtworkBookmarkTags")
 	if request.UserID <= 0 {
 		return sdk.Page[BookmarkTag]{}, newError("UserArtworkBookmarkTags", sdk.InvalidArgument, "user ID must be positive")
 	}
@@ -122,6 +124,7 @@ func (c *Client) UserArtworkBookmarkTags(ctx context.Context, request UserArtwor
 
 // ArtworkBookmark reads the current user's bookmark detail for one artwork.
 func (c *Client) ArtworkBookmark(ctx context.Context, request ArtworkBookmarkRequest) (ArtworkBookmarkDetail, error) {
+	ctx = pixivapi.WithOperation(ctx, "ArtworkBookmark")
 	if request.ArtworkID <= 0 {
 		return ArtworkBookmarkDetail{}, newError("ArtworkBookmark", sdk.InvalidArgument, "artwork ID must be positive")
 	}
@@ -151,6 +154,7 @@ func (c *Client) ArtworkBookmark(ctx context.Context, request ArtworkBookmarkReq
 
 // UserNovelBookmarks lists one user's bookmarked novels.
 func (c *Client) UserNovelBookmarks(ctx context.Context, request UserNovelBookmarksRequest) (sdk.Page[Novel], error) {
+	ctx = pixivapi.WithOperation(ctx, "UserNovelBookmarks")
 	if request.UserID <= 0 {
 		return sdk.Page[Novel]{}, newError("UserNovelBookmarks", sdk.InvalidArgument, "user ID must be positive")
 	}
@@ -196,6 +200,7 @@ func (c *Client) UserNovelBookmarks(ctx context.Context, request UserNovelBookma
 // novels. The candidate upstream endpoint currently has no continuation
 // contract, so a non-zero cursor is rejected instead of being guessed.
 func (c *Client) UserNovelBookmarkTags(ctx context.Context, request UserNovelBookmarkTagsRequest) (sdk.Page[BookmarkTag], error) {
+	ctx = pixivapi.WithOperation(ctx, "UserNovelBookmarkTags")
 	if request.UserID <= 0 {
 		return sdk.Page[BookmarkTag]{}, newError("UserNovelBookmarkTags", sdk.InvalidArgument, "user ID must be positive")
 	}
@@ -229,6 +234,7 @@ func (c *Client) UserNovelBookmarkTags(ctx context.Context, request UserNovelBoo
 // The upstream route is a candidate and is kept endpoint-oriented; it does
 // not expose novel metadata or mutation outcome through this method.
 func (c *Client) NovelBookmark(ctx context.Context, request NovelBookmarkRequest) (NovelBookmarkDetail, error) {
+	ctx = pixivapi.WithOperation(ctx, "NovelBookmark")
 	if request.NovelID <= 0 {
 		return NovelBookmarkDetail{}, newError("NovelBookmark", sdk.InvalidArgument, "novel ID must be positive")
 	}

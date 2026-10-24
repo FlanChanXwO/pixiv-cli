@@ -9,11 +9,14 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
+	"log/slog"
 	"net/http"
 	"net/url"
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/FlanChanXwO/pixiv-cli/internal/logging"
 )
 
 // ErrMalformedResponse 标识成功 HTTP 响应无法构成约定 JSON，不包含原始响应体。
@@ -27,6 +30,7 @@ type Client struct {
 	// disableRetryAfterRetry 只由上层明确需要观察首个 429 的调度器启用。
 	// 默认仍遵守既有的有效 Retry-After 单次重试契约。
 	disableRetryAfterRetry bool
+	log                    *slog.Logger
 }
 
 // Session 是 App 内容 API 仅需知道的最小认证边界。
@@ -46,6 +50,8 @@ type Config struct {
 	UserID         int64
 	// DisableRetryAfterRetry 使读取请求把首个有效 Retry-After 限流直接交给调用方。
 	DisableRetryAfterRetry bool
+	// Logger 记录请求结果与重试决策；nil 时不输出。
+	Logger *slog.Logger
 }
 
 // New builds an App API client from cfg.
@@ -62,6 +68,10 @@ func New(cfg Config) *Client {
 	if apiBase == "" {
 		apiBase = AppAPIBase
 	}
+	logger := cfg.Logger
+	if logger == nil {
+		logger = logging.Discard()
+	}
 	return &Client{
 		http:                   httpClient,
 		apiBase:                strings.TrimRight(apiBase, "/"),
@@ -69,6 +79,7 @@ func New(cfg Config) *Client {
 		acceptLanguage:         strings.TrimSpace(cfg.AcceptLanguage),
 		userID:                 cfg.UserID,
 		disableRetryAfterRetry: cfg.DisableRetryAfterRetry,
+		log:                    logger,
 	}
 }
 
@@ -159,14 +170,15 @@ func (staticSession) Refresh(context.Context) error {
 // Retry-After 再试一次。返回的响应 Body 由调用方关闭；被重试的响应在这里关闭。
 func (c *Client) do(ctx context.Context, req request) (*http.Response, error) {
 	authRetried, rateRetried := false, false
-	for {
-		resp, err := c.send(ctx, req)
+	for attempt := 1; ; attempt++ {
+		resp, err := c.send(ctx, req, attempt)
 		if err != nil {
 			return nil, Transport(err)
 		}
 		isAuth := resp.StatusCode == http.StatusUnauthorized || resp.StatusCode == http.StatusForbidden
 		if isAuth && !authRetried && c.session != nil {
 			authRetried = true
+			c.log.LogAttrs(ctx, slog.LevelDebug, "Access token expired; refreshing", logging.OperationAttr(ctx))
 			if err := c.session.Refresh(ctx); err != nil {
 				// 取消和 deadline 必须保留 context 语义，不能被首个 401/403 掩盖。
 				if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
@@ -182,6 +194,8 @@ func (c *Client) do(ctx context.Context, req request) (*http.Response, error) {
 		if resp.StatusCode == http.StatusTooManyRequests && req.retryRateLimit && !rateRetried && !c.disableRetryAfterRetry {
 			if wait, ok := parseRetryAfter(resp.Header.Get("Retry-After"), time.Now()); ok {
 				rateRetried, authRetried = true, false
+				c.log.LogAttrs(ctx, slog.LevelWarn, "Rate limited; retrying after wait",
+					logging.OperationAttr(ctx), slog.Duration(logging.AttrWait, wait))
 				discardBody(resp)
 				if err := waitForRetryAfter(ctx, wait); err != nil {
 					return nil, Transport(err)
@@ -193,8 +207,8 @@ func (c *Client) do(ctx context.Context, req request) (*http.Response, error) {
 	}
 }
 
-// send 发出一次请求。form 使用显式 Content-Type；旧的 resty 会自动添加它。
-func (c *Client) send(ctx context.Context, req request) (*http.Response, error) {
+// send 发出一次请求并记录结果。form 使用显式 Content-Type；日志只记录 host、path 和状态。
+func (c *Client) send(ctx context.Context, req request, attempt int) (*http.Response, error) {
 	var body io.Reader
 	if len(req.form) > 0 {
 		body = strings.NewReader(req.form.Encode())
@@ -210,7 +224,27 @@ func (c *Client) send(ctx context.Context, req request) (*http.Response, error) 
 	if len(req.form) > 0 {
 		httpReq.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	}
-	return c.http.Do(httpReq)
+	start := time.Now()
+	resp, err := c.http.Do(httpReq)
+	attrs := []slog.Attr{
+		slog.String(logging.AttrMethod, req.method),
+		slog.String(logging.AttrHost, req.url.Host),
+		slog.String(logging.AttrPath, req.url.Path),
+		slog.Duration(logging.AttrDuration, time.Since(start)),
+		slog.Int(logging.AttrAttempt, attempt),
+		logging.OperationAttr(ctx),
+	}
+	if err != nil {
+		c.log.LogAttrs(ctx, slog.LevelDebug, "Request failed", append(attrs, slog.String(logging.AttrError, Transport(err).Error()))...)
+		return nil, err
+	}
+	attrs = append(attrs, slog.Int(logging.AttrStatus, resp.StatusCode))
+	if resp.StatusCode == http.StatusTooManyRequests || resp.StatusCode >= http.StatusInternalServerError {
+		c.log.LogAttrs(ctx, slog.LevelWarn, "Request rejected by upstream", attrs...)
+	} else {
+		c.log.LogAttrs(ctx, slog.LevelDebug, "Request completed", attrs...)
+	}
+	return resp, nil
 }
 
 func discardBody(resp *http.Response) {

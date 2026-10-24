@@ -13,6 +13,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"log/slog"
 
 	authcommands "github.com/FlanChanXwO/pixiv-cli/internal/cli/auth"
 	"github.com/FlanChanXwO/pixiv-cli/internal/cli/auth/loginhelper"
@@ -36,6 +37,7 @@ import (
 	pixivuser "github.com/FlanChanXwO/pixiv-cli/internal/cli/user"
 	configapp "github.com/FlanChanXwO/pixiv-cli/internal/config/settings"
 	fanboxaccount "github.com/FlanChanXwO/pixiv-cli/internal/fanboxaccount"
+	"github.com/FlanChanXwO/pixiv-cli/internal/logging"
 	unifiedmcp "github.com/FlanChanXwO/pixiv-cli/internal/mcpserver"
 	downloader "github.com/FlanChanXwO/pixiv-cli/internal/media/downloader"
 	pixivaccount "github.com/FlanChanXwO/pixiv-cli/internal/pixivaccount"
@@ -55,7 +57,15 @@ type app struct {
 	pipelineSignal      *brokenPipeSignalState
 	mcpBrokenPipeSignal *brokenPipeSignalState
 	closeState          *closeState
-	diagnostics         *diagnosticState
+	logs                *logState
+}
+
+// logger 返回本次执行的 logger；未配置诊断时丢弃输出。
+func (a app) logger() *slog.Logger {
+	if a.logs == nil || a.logs.logger == nil {
+		return logging.Discard()
+	}
+	return a.logs.logger
 }
 
 // configMissingPlaceholder 保留根测试与文案契约的稳定名称；实际 config handler
@@ -128,7 +138,7 @@ func (a app) newRootCommand() *cobra.Command {
 				if err := configapp.DefaultStore().EnsureDefaultConfigFile(); err != nil {
 					return err
 				}
-				if err := a.startDiagnostics(cmd, requirement); err != nil {
+				if err := a.startLogging(cmd, requirement); err != nil {
 					return err
 				}
 			}

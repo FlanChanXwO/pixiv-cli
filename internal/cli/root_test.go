@@ -16,6 +16,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -26,7 +27,7 @@ import (
 	mcpcommands "github.com/FlanChanXwO/pixiv-cli/internal/cli/mcp"
 	"github.com/FlanChanXwO/pixiv-cli/internal/config/paths"
 	configapp "github.com/FlanChanXwO/pixiv-cli/internal/config/settings"
-	coreDiagnostics "github.com/FlanChanXwO/pixiv-cli/internal/logging"
+	"github.com/FlanChanXwO/pixiv-cli/internal/logging"
 	unifiedmcp "github.com/FlanChanXwO/pixiv-cli/internal/mcpserver"
 	mcpauth "github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/auth"
 	mcpaccounts "github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/accounts"
@@ -73,7 +74,7 @@ func TestImageSearchJSONDoesNotOpenPixivSDK(t *testing.T) {
 	})
 
 	var stdout, stderr bytes.Buffer
-	root := (app{in: strings.NewReader(""), out: &stdout, errOut: &stderr, closeState: &closeState{}}).newRootCommand()
+	root := (app{in: strings.NewReader(""), out: &stdout, errOut: &stderr, closeState: &closeState{}, logs: &logState{}}).newRootCommand()
 	root.SetArgs([]string{"search", "https://example.test/image.jpg", "--json"})
 
 	require.NoError(t, root.Execute(), stderr.String())
@@ -119,7 +120,7 @@ func TestImageSearchBuildsReverseSearchWithCLIProxyOverride(t *testing.T) {
 	t.Cleanup(func() { newCLIReverseSearch = oldReverse })
 
 	var stdout, stderr bytes.Buffer
-	root := (app{in: strings.NewReader(""), out: &stdout, errOut: &stderr, closeState: &closeState{}}).newRootCommand()
+	root := (app{in: strings.NewReader(""), out: &stdout, errOut: &stderr, closeState: &closeState{}, logs: &logState{}}).newRootCommand()
 	root.SetArgs([]string{"search", "https://example.test/image.jpg", "--proxy", "http://127.0.0.1:7890", "--ndjson"})
 
 	require.NoError(t, root.Execute(), stderr.String())
@@ -427,14 +428,14 @@ func TestRootHelpOmitsRemovedPersistentFlags(t *testing.T) {
 	assert.NotContains(t, output.String(), "--sleep-request")
 }
 
-func TestDiagnosticsLevelControlsMCPStderrWithoutTouchingStdout(t *testing.T) {
+func TestLogLevelControlsMCPStderrWithoutTouchingStdout(t *testing.T) {
 	for _, test := range []struct {
 		name       string
 		level      string
 		format     string
 		wantOutput bool
 	}{
-		{name: "info is silent", level: "info", format: "text"},
+		{name: "info logs terminal errors only", level: "info", format: "text", wantOutput: true},
 		{name: "debug text", level: "debug", format: "text", wantOutput: true},
 		{name: "debug json", level: "debug", format: "json", wantOutput: true},
 	} {
@@ -448,33 +449,36 @@ func TestDiagnosticsLevelControlsMCPStderrWithoutTouchingStdout(t *testing.T) {
 				runMCPServer = oldMCP
 				automaticPersistentHandlerSupported = oldSupported
 			})
-			runMCPServer = func(_ app, _ context.Context, _ mcpcommands.Request) error { return nil }
+			runMCPServer = func(_ app, _ context.Context, _ mcpcommands.Request) error { return errors.New("fixture failure") }
 			automaticPersistentHandlerSupported = func() bool { return false }
 
 			var stdout, stderr bytes.Buffer
 			code := Run([]string{"pixiv", "mcp"}, strings.NewReader(""), &stdout, &stderr)
-			require.Zero(t, code, stderr.String())
+			require.Equal(t, 1, code, stderr.String())
 			require.Empty(t, stdout.String(), "MCP must keep stdout for JSON-RPC")
-			if !test.wantOutput {
-				require.Empty(t, stderr.String())
+			require.Contains(t, stderr.String(), "error: fixture failure")
+			if test.level == "info" {
+				require.Contains(t, stderr.String(), "ERROR")
 				return
 			}
-			lines := strings.Split(strings.TrimSpace(stderr.String()), "\n")
-			require.Len(t, lines, 2)
+			output := strings.TrimSuffix(stderr.String(), "error: fixture failure\n")
+			lines := strings.Split(strings.TrimSpace(output), "\n")
+			require.NotEmpty(t, lines)
 			if test.format == "text" {
-				require.Contains(t, stderr.String(), "[Pixiv CLI]")
+				require.Contains(t, stderr.String(), "ERROR")
+				require.Contains(t, stderr.String(), "operation=pixiv mcp")
+				require.Contains(t, stderr.String(), "caused by: fixture failure")
 				return
 			}
-			for _, line := range lines {
-				var record map[string]any
-				require.NoError(t, json.Unmarshal([]byte(line), &record))
-				require.Equal(t, "DEBUG", record["level"])
-			}
+			var record map[string]any
+			require.NoError(t, json.Unmarshal([]byte(lines[0]), &record))
+			require.Equal(t, "ERROR", record["level"])
+			require.Equal(t, "pixiv mcp", record["operation"])
 		})
 	}
 }
 
-func TestConfigCommandsRemainSilentWhenDiagnosticsAreEnabled(t *testing.T) {
+func TestConfigCommandsRemainSilentWhenLoggingIsEnabled(t *testing.T) {
 	useTempPaths(t)
 	t.Setenv("PIXIV_LOG_LEVEL", "debug")
 	var stdout, stderr bytes.Buffer
@@ -488,7 +492,7 @@ func TestPixivOptionsUseConfiguredRequestIntervalForPacing(t *testing.T) {
 	want := 2 * time.Second
 	options, err := pixivOptionsFromRequest(pixivdeps.Request{}, func() (configapp.RuntimeConfig, error) {
 		return configapp.RuntimeConfig{RequestInterval: want}, nil
-	})
+	}, nil)
 	require.NoError(t, err)
 	require.Equal(t, want, options.Pacing.MinInterval)
 }
@@ -618,6 +622,7 @@ func newTestRootCommand(t *testing.T) *cobra.Command {
 		in:     strings.NewReader(""),
 		out:    io.Discard,
 		errOut: io.Discard,
+		logs:   &logState{},
 	}
 	root := a.newRootCommand()
 	t.Cleanup(func() {
@@ -740,6 +745,7 @@ func TestMCPReverseSearchRegistersSearcherForHTTPLifetime(t *testing.T) {
 		out:        &stdout,
 		errOut:     &stderr,
 		closeState: &closeState{},
+		logs:       &logState{},
 	}
 	_, err := a.InitMCPAuth(t.Context(), false)
 	require.NoError(t, err)
@@ -782,7 +788,7 @@ func TestMCPShutdownPreservesAnimationCleanupError(t *testing.T) {
 		t.Cleanup(func() { require.NoError(t, os.Chmod(workspace, 0700)) })
 		return serveErr
 	}
-	a := app{in: strings.NewReader(""), out: io.Discard, errOut: io.Discard, closeState: &closeState{}}
+	a := app{in: strings.NewReader(""), out: io.Discard, errOut: io.Discard, closeState: &closeState{}, logs: &logState{}}
 	_, err := a.InitMCPAuth(t.Context(), false)
 	require.NoError(t, err)
 	err = a.runPixivMCP(t.Context(), mcpcommands.Request{ListenAddr: new("127.0.0.1:8123"), BaseURL: new("http://127.0.0.1:8123")})
@@ -920,7 +926,7 @@ func TestMCPHTTPEndpointFlagPrecedence(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			_, configPath := useTempPaths(t)
 			var stdout, stderr bytes.Buffer
-			a := app{in: strings.NewReader(""), out: &stdout, errOut: &stderr}
+			a := app{in: strings.NewReader(""), out: &stdout, errOut: &stderr, logs: &logState{}}
 			_, err := a.InitMCPAuth(t.Context(), false)
 			require.NoError(t, err)
 			if tc.name != "defaults" {
@@ -1008,7 +1014,7 @@ func TestMCPProductionResolvesSharedSelectionBeforeSDK(t *testing.T) {
 		require.Equal(t, []int64{73}, ids, "removed selection reached SDK or fell back to default")
 		return nil
 	}
-	a := app{in: strings.NewReader(""), out: io.Discard, errOut: io.Discard, closeState: &closeState{}}
+	a := app{in: strings.NewReader(""), out: io.Discard, errOut: io.Discard, closeState: &closeState{}, logs: &logState{}}
 	_, err := a.InitMCPAuth(t.Context(), false)
 	require.NoError(t, err)
 	require.NoError(t, a.runPixivMCP(t.Context(), mcpcommands.Request{ListenAddr: new("127.0.0.1:8123"), BaseURL: new("http://127.0.0.1:8123")}))
@@ -1022,7 +1028,7 @@ func TestMCPAccountSnapshotContainsOnlyLocalSummaryAndExplicitDefault(t *testing
 	defer db.Close()
 	require.NoError(t, db.SavePixivCredential(t.Context(), pixivaccount.New(42, "fixture-a", []byte("fixture-secret-a"))))
 	require.NoError(t, db.SavePixivCredential(t.Context(), pixivaccount.New(73, "fixture-b", []byte("fixture-secret-b"))))
-	a := app{closeState: &closeState{}}
+	a := app{closeState: &closeState{}, logs: &logState{}}
 	ports, err := a.newPixivSDKPorts()
 	require.NoError(t, err)
 	defer a.closeResources()
@@ -1099,7 +1105,7 @@ func TestMCPLoginProductionChain(t *testing.T) {
 			previousTransport := http.DefaultTransport
 			http.DefaultTransport = transport
 			defer func() { http.DefaultTransport = previousTransport; transport.CloseIdleConnections() }()
-			a := app{closeState: &closeState{}}
+			a := app{closeState: &closeState{}, logs: &logState{}}
 			defer a.closeResources()
 			oldServices := newCLIAccountServices
 			loads := 0
@@ -1292,63 +1298,69 @@ func TestMCPLoginProductionChain(t *testing.T) {
 	}
 }
 
-func TestMCPMediaObservationsSurviveHTTPContextBoundary(t *testing.T) {
-	var parentEvents, requestEvents []coreDiagnostics.Event
-	parent := coreDiagnostics.WithScope(context.Background(), coreDiagnostics.SinkFunc(func(event coreDiagnostics.Event) { parentEvents = append(parentEvents, event) }), coreDiagnostics.ModulePixivMCP, 0)
-	event := coreDiagnostics.Event{Operation: "animation_encode", Kind: coreDiagnostics.EventCompleted, Count: 32}
-	emitMCPMediaEvent(parent, context.Background(), event)
-	require.Len(t, parentEvents, 1, "HTTP requests do not inherit the CLI diagnostic scope")
-	require.Equal(t, "animation_encode", parentEvents[0].Operation)
-	require.Equal(t, 32, parentEvents[0].Count)
-	request := coreDiagnostics.WithScope(context.Background(), coreDiagnostics.SinkFunc(func(event coreDiagnostics.Event) { requestEvents = append(requestEvents, event) }), coreDiagnostics.ModulePixivMCP, 7)
-	emitMCPMediaEvent(parent, request, event)
-	require.Len(t, parentEvents, 1, "an explicit request scope must not double emit")
-	require.Len(t, requestEvents, 1)
-	require.Equal(t, uint64(7), requestEvents[0].RequestID)
-}
-
-func TestMCPAnimationFailedPhaseKeepsSafeReason(t *testing.T) {
-	var events []coreDiagnostics.Event
-	ctx := coreDiagnostics.WithScope(t.Context(), coreDiagnostics.SinkFunc(func(e coreDiagnostics.Event) { events = append(events, e) }), coreDiagnostics.ModulePixivMCP, 0)
-	emitMCPAnimationEvent(ctx, context.Background(), mediaproxy.AnimationObservation{Stage: "animation_encode", Duration: time.Second, Failed: true})
-	require.Len(t, events, 1)
-	require.Equal(t, coreDiagnostics.EventFailed, events[0].Kind)
-	require.Equal(t, coreDiagnostics.ReasonToolFailed, events[0].Reason)
-	require.Zero(t, events[0].Count)
-}
-
-func TestMCPAnimationObservationsKeepSafeCancellationReasons(t *testing.T) {
+func TestMCPAnimationObservationsKeepSafeReasons(t *testing.T) {
 	for _, tc := range []struct {
-		source, reason string
-		failed         bool
+		name, source, reason string
 	}{
-		{"request", "request cancelled", true},
-		{"transport", "transport interrupted", true},
-		{"subscription", "subscription released", true},
-		{"service", "service closed", true},
-		{"expiry", "authorization expired", true},
-		{"authorization", "authorization invalidated", true},
-		{"", "", false},
-		{"https://private.test/?token=secret", "tool failed", true},
+		{"request", "request", "request cancelled"},
+		{"transport", "transport", "transport interrupted"},
+		{"subscription", "subscription", "subscription released"},
+		{"service", "service", "service closed"},
+		{"expiry", "expiry", "authorization expired"},
+		{"authorization", "authorization", "authorization invalidated"},
+		{"unknown source", "https://private.test/?token=secret", "tool failed"},
+		{"failed without source", "", "tool failed"},
 	} {
-		t.Run(tc.source, func(t *testing.T) {
-			var events []coreDiagnostics.Event
-			ctx := coreDiagnostics.WithScope(t.Context(), coreDiagnostics.SinkFunc(func(e coreDiagnostics.Event) { events = append(events, e) }), coreDiagnostics.ModulePixivMCP, 0)
-			emitMCPAnimationEvent(ctx, context.Background(), mediaproxy.AnimationObservation{Stage: "animation_delivery", Duration: time.Second, Bytes: 17, CancellationSource: tc.source})
-			require.Len(t, events, 1)
-			require.Equal(t, tc.reason, string(events[0].Reason))
-			kind := coreDiagnostics.EventCompleted
-			if tc.failed {
-				kind = coreDiagnostics.EventFailed
-			}
-			require.Equal(t, kind, events[0].Kind)
-			require.Equal(t, 17, events[0].Count)
-			require.Equal(t, time.Second, events[0].Duration)
-			encoded, err := json.Marshal(events)
+		t.Run(tc.name, func(t *testing.T) {
+			output := &syncBuffer{}
+			logger, err := logging.New(output, "warn", "json")
 			require.NoError(t, err)
-			require.NotContains(t, string(encoded), "token=secret")
+			ctx := logging.WithCall(t.Context(), logger, "pixiv_gallery_animation", "2")
+			logAnimation(ctx, ctx, mediaproxy.AnimationObservation{Stage: "animation_delivery", Duration: time.Second, Bytes: 17, Failed: tc.source == "", CancellationSource: tc.source})
+			records := cliLogRecords(t, output.String(), "Animation animation_delivery")
+			require.Len(t, records, 1)
+			require.Equal(t, "WARN", records[0]["level"])
+			require.Equal(t, tc.reason, records[0]["reason"])
+			require.Equal(t, float64(17), records[0]["count"])
+			require.Equal(t, "2", records[0]["call_id"])
+			require.NotContains(t, output.String(), "token=secret")
 		})
 	}
+}
+
+// cliLogRecords 返回指定 operation 的 JSON 日志行。
+func cliLogRecords(t *testing.T, output, prefix string) []map[string]any {
+	t.Helper()
+	var records []map[string]any
+	for _, line := range strings.Split(strings.TrimSpace(output), "\n") {
+		if line == "" {
+			continue
+		}
+		var record map[string]any
+		require.NoError(t, json.Unmarshal([]byte(line), &record), line)
+		if message, _ := record["msg"].(string); strings.HasPrefix(message, prefix) {
+			records = append(records, record)
+		}
+	}
+	return records
+}
+
+// syncBuffer 让并发写入的日志在测试中可安全读取。
+type syncBuffer struct {
+	mu  sync.Mutex
+	buf bytes.Buffer
+}
+
+func (b *syncBuffer) Write(data []byte) (int, error) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.buf.Write(data)
+}
+
+func (b *syncBuffer) String() string {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.buf.String()
 }
 
 func TestDefaultMCPStartsWithoutHTTPOwner(t *testing.T) {

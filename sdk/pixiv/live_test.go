@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"net/url"
 	"os"
@@ -156,6 +157,10 @@ func openPixivLiveSession(t *testing.T, ctx context.Context, mutationAccountID i
 	}
 	httpClient := &http.Client{Transport: transport}
 	options := pixivsdk.Options{HTTPClient: httpClient}
+	// PIXIV_E2E_LOG_LEVEL 让真实读取复用 SDK 的传输与决策日志；默认保持 stderr 安静。
+	if level := liveLogLevel(os.Getenv("PIXIV_E2E_LOG_LEVEL")); level != nil {
+		options.Logger = slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: level}))
+	}
 	if mutationAccountID > 0 {
 		options.Pacing = pixivsdk.Pacing{MinInterval: liveManifestPace}
 	}
@@ -186,6 +191,21 @@ func openPixivLiveSession(t *testing.T, ctx context.Context, mutationAccountID i
 		UserID:      credentials.UserID,
 	})
 	return &pixivLiveSession{client: client, raw: raw, userID: credentials.UserID}
+}
+
+func liveLogLevel(value string) slog.Leveler {
+	switch value {
+	case "debug":
+		return slog.LevelDebug
+	case "info":
+		return slog.LevelInfo
+	case "warn":
+		return slog.LevelWarn
+	case "error":
+		return slog.LevelError
+	default:
+		return nil
+	}
 }
 
 func TestPixivE2ERotationUsesStoredRevision(t *testing.T) {

@@ -14,7 +14,6 @@ import (
 	"net/http"
 	"os"
 	"strings"
-	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -286,15 +285,12 @@ func TestArtworkMediaUgoiraDeliversAnimationAndPreview(t *testing.T) {
 				return &http.Response{StatusCode: 200, Header: http.Header{"Content-Type": {"application/json"}}, Body: io.NopCloser(strings.NewReader(body))}, nil
 			})}})
 			require.NoError(t, err)
-			var events []logging.Event
-			var eventsMu sync.Mutex
-			ctx, cancel := context.WithCancel(logging.WithScope(t.Context(), logging.SinkFunc(func(event logging.Event) {
-				eventsMu.Lock()
-				defer eventsMu.Unlock()
-				events = append(events, event)
-			}), logging.ModulePixivMCP, 0))
+			output := &syncBuffer{}
+			logger, err := logging.New(output, "debug", "json")
+			require.NoError(t, err)
+			ctx, cancel := context.WithCancel(logging.WithCall(t.Context(), logger, "", ""))
 			defer cancel()
-			protocol := newTestServer(pixivserver.SDKPorts{OpenLease: func(context.Context, pixivserver.Account) (*lifecycle.Lease[*pixiv.Client], error) {
+			protocol := newTestServer(pixivserver.SDKPorts{Logger: logger, OpenLease: func(context.Context, pixivserver.Account) (*lifecycle.Lease[*pixiv.Client], error) {
 				return lifecycle.NewLease(client, func() error { closed.Add(1); return nil }), nil
 			}}, pixivserver.Account{})
 			clientTransport, serverTransport := mcp.NewInMemoryTransports()
@@ -346,27 +342,19 @@ func TestArtworkMediaUgoiraDeliversAnimationAndPreview(t *testing.T) {
 			require.Equal(t, contentMIME, animation.MIMEType)
 			animationBytes := animation.Data
 			require.Equal(t, p.Size, len(animationBytes))
-			eventsMu.Lock()
-			observed := append([]logging.Event(nil), events...)
-			eventsMu.Unlock()
-			stages := map[string]logging.Event{}
-			for _, event := range observed {
-				stages[event.Operation] = event
-			}
+			stages := mediaStages(t, output.String())
 			for _, stage := range []string{"artwork_query", "animation_metadata", "animation_zip_download", "animation_encode_wait", "animation_encode", "animation_result_read", "animation_generation"} {
 				event, ok := stages[stage]
 				require.True(t, ok, "missing actual stage %s", stage)
-				require.Equal(t, logging.EventCompleted, event.Kind)
-				require.GreaterOrEqual(t, event.Duration, time.Duration(0))
+				require.Equal(t, "DEBUG", event["level"])
+				require.GreaterOrEqual(t, event["duration"], float64(0))
 			}
-			require.Equal(t, len(archive.Bytes()), stages["animation_zip_download"].Count)
-			require.Equal(t, p.Size, stages["animation_result_read"].Count)
-			require.Equal(t, p.Size, stages["animation_generation"].Count)
-			safe, err := json.Marshal(observed)
-			require.NoError(t, err)
-			require.NotContains(t, string(safe), "fixture-token")
-			require.NotContains(t, string(safe), "pximg.net")
-			require.NotContains(t, string(safe), temp)
+			require.Equal(t, float64(len(archive.Bytes())), stages["animation_zip_download"]["count"])
+			require.Equal(t, float64(p.Size), stages["animation_result_read"]["count"])
+			require.Equal(t, float64(p.Size), stages["animation_generation"]["count"])
+			require.NotContains(t, output.String(), "fixture-token")
+			require.NotContains(t, output.String(), "pximg.net")
+			require.NotContains(t, output.String(), temp)
 
 			if format == "gif" {
 				decoded, err := gif.DecodeAll(bytes.NewReader(animationBytes))
@@ -429,15 +417,12 @@ func TestArtworkMediaUgoiraFailureAndCancellationCleanTemporaryFiles(t *testing.
 				return &http.Response{StatusCode: 200, Header: http.Header{"Content-Type": {"application/zip"}}, Body: body}, nil
 			})}})
 			require.NoError(t, err)
-			var events []logging.Event
-			var eventsMu sync.Mutex
-			lifetime, stop := context.WithCancel(logging.WithScope(t.Context(), logging.SinkFunc(func(event logging.Event) {
-				eventsMu.Lock()
-				defer eventsMu.Unlock()
-				events = append(events, event)
-			}), logging.ModulePixivMCP, 0))
+			output := &syncBuffer{}
+			logger, err := logging.New(output, "debug", "json")
+			require.NoError(t, err)
+			lifetime, stop := context.WithCancel(logging.WithCall(t.Context(), logger, "", ""))
 			defer stop()
-			protocol := newTestServer(pixivserver.SDKPorts{OpenLease: func(context.Context, pixivserver.Account) (*lifecycle.Lease[*pixiv.Client], error) {
+			protocol := newTestServer(pixivserver.SDKPorts{Logger: logger, OpenLease: func(context.Context, pixivserver.Account) (*lifecycle.Lease[*pixiv.Client], error) {
 				return lifecycle.NewLease(client, func() error { leaseClosed.Store(true); return nil }), nil
 			}}, pixivserver.Account{})
 			ct, st := mcp.NewInMemoryTransports()
@@ -481,32 +466,22 @@ func TestArtworkMediaUgoiraFailureAndCancellationCleanTemporaryFiles(t *testing.
 			entries, err := os.ReadDir(temp)
 			require.NoError(t, err)
 			require.Empty(t, entries, "failed/canceled encode left temporary files")
-			var terminal logging.Event
+			var terminal map[string]any
 			require.Eventually(t, func() bool {
-				eventsMu.Lock()
-				defer eventsMu.Unlock()
-				for _, event := range events {
-					if event.Operation == "animation_generation" {
-						terminal = event
-						return true
-					}
-				}
-				return false
+				stages := mediaStages(t, output.String())
+				terminal = stages["animation_generation"]
+				return terminal != nil
 			}, 5*time.Second, time.Millisecond)
-			require.Equal(t, logging.EventFailed, terminal.Kind)
-			reason := logging.ReasonToolFailed
+			require.Equal(t, "WARN", terminal["level"])
+			reason := "tool failed"
 			if mode == "cancel" {
-				reason = logging.ReasonRequestCancelled
+				reason = "request cancelled"
 			}
-			require.Equal(t, reason, terminal.Reason)
-			require.Zero(t, terminal.Count, "failed work must not report a delivered animation")
-			eventsMu.Lock()
-			safe, err := json.Marshal(events)
-			eventsMu.Unlock()
-			require.NoError(t, err)
-			require.NotContains(t, string(safe), "fixture-private-corrupt-zip")
-			require.NotContains(t, string(safe), "fixture-token")
-			require.NotContains(t, string(safe), temp)
+			require.Equal(t, reason, terminal["reason"])
+			require.Zero(t, terminal["count"], "failed work must not report a delivered animation")
+			require.NotContains(t, output.String(), "fixture-private-corrupt-zip")
+			require.NotContains(t, output.String(), "fixture-token")
+			require.NotContains(t, output.String(), temp)
 
 		})
 	}
@@ -528,4 +503,21 @@ func TestGalleryAnimationControlRegistered(t *testing.T) {
 		}
 	}
 	require.True(t, found, "Gallery needs a short animation control request")
+}
+
+// mediaStages 按消息里的阶段名聚合本测试输出的 JSON 日志行。
+func mediaStages(t *testing.T, output string) map[string]map[string]any {
+	t.Helper()
+	stages := map[string]map[string]any{}
+	for _, line := range strings.Split(strings.TrimSpace(output), "\n") {
+		if line == "" {
+			continue
+		}
+		var record map[string]any
+		require.NoError(t, json.Unmarshal([]byte(line), &record), line)
+		if stage, ok := record[logging.AttrStage].(string); ok && stage != "mcp_http_write" && stage != "mcp_http_flush" {
+			stages[stage] = record
+		}
+	}
+	return stages
 }

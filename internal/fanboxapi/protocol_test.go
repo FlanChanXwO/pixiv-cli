@@ -1,17 +1,21 @@
 package fanboxapi_test
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
-	"github.com/FlanChanXwO/pixiv-cli/internal/fanboxapi"
 	"io"
+	"log/slog"
 	"net"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
 	"strings"
 	"testing"
+
+	"github.com/FlanChanXwO/pixiv-cli/internal/fanboxapi"
+	"github.com/FlanChanXwO/pixiv-cli/internal/logging"
 )
 
 // newTestSession 启动一个信任自签证书的 httptest TLS server，并把任意 fanbox/媒体
@@ -318,4 +322,44 @@ func fetchPage(session *fanboxapi.Session, ctx context.Context, nextURL string) 
 		Body json.RawMessage `json:"body"`
 	}
 	return session.GetJSON(ctx, endpoint, &body)
+}
+
+func TestRequestLogsOmitCookieQueryAndBody(t *testing.T) {
+	const (
+		cookieValue = "session-canary"
+		querySecret = "query-canary"
+		bodySecret  = "body-canary"
+	)
+	var output bytes.Buffer
+	logger := slog.New(slog.NewJSONHandler(&output, &slog.HandlerOptions{Level: slog.LevelDebug}))
+	session, err := fanboxapi.NewSessionWithOptions("FANBOXSESSID="+cookieValue, fanboxapi.SessionOptions{
+		Logger: logger,
+		HTTPClient: &http.Client{Transport: roundTripFunc(func(request *http.Request) (*http.Response, error) {
+			return &http.Response{
+				StatusCode: http.StatusOK,
+				Header:     http.Header{"Content-Type": {"application/json"}},
+				Body:       io.NopCloser(strings.NewReader(`{"secret":"` + bodySecret + `"}`)),
+				Request:    request,
+			}, nil
+		})},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx := logging.WithOperation(t.Context(), "Post")
+	var result struct{}
+	if err := session.GetJSON(ctx, fanboxapi.APIBaseURL+"post.info?postId="+querySecret, &result); err != nil {
+		t.Fatal(err)
+	}
+	logged := output.String()
+	for _, want := range []string{`"method":"GET"`, `"path":"/post.info"`, `"status":200`, `"sdk_operation":"Post"`} {
+		if !strings.Contains(logged, want) {
+			t.Fatalf("log missing %s: %s", want, logged)
+		}
+	}
+	for _, secret := range []string{cookieValue, querySecret, bodySecret} {
+		if strings.Contains(logged, secret) {
+			t.Fatalf("log leaked %q: %s", secret, logged)
+		}
+	}
 }

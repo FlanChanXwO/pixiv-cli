@@ -15,6 +15,7 @@ import (
 // SearchArtworks searches artworks. Repeat the original request fields when
 // continuing with a non-zero Cursor.
 func (c *Client) SearchArtworks(ctx context.Context, request SearchArtworksRequest) (sdk.Page[Artwork], error) {
+	ctx = pixivapi.WithOperation(ctx, "SearchArtworks")
 	request, query, err := searchArtworksQuery(request)
 	if err != nil {
 		return sdk.Page[Artwork]{}, err

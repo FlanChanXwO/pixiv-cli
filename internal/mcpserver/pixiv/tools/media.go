@@ -25,6 +25,7 @@ import (
 	"image/gif"
 	"image/png"
 	"io"
+	"log/slog"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -130,15 +131,20 @@ func readAnimation(ctx context.Context, client *pixiv.Client, id int64, format s
 
 // 阶段失败仅输出固定原因，保留业务错误通过原返回路径交付。
 func observeMediaPhase(ctx context.Context, stage string, duration time.Duration, count int, err error) {
-	event := logging.Event{Module: logging.ModulePixivMCP, Kind: logging.EventCompleted, Operation: stage, Duration: duration, Count: count}
-	if err != nil {
-		event.Kind = logging.EventFailed
-		event.Reason = logging.ReasonToolFailed
-		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
-			event.Reason = logging.ReasonRequestCancelled
-		}
+	attrs := []slog.Attr{
+		slog.String(logging.AttrStage, stage),
+		slog.Duration(logging.AttrDuration, duration),
+		slog.Int(logging.AttrCount, count),
 	}
-	logging.Emit(ctx, event)
+	if err != nil {
+		reason := "tool failed"
+		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+			reason = "request cancelled"
+		}
+		logging.From(ctx).LogAttrs(ctx, slog.LevelWarn, "Media step failed", append(attrs, slog.String(logging.AttrReason, reason))...)
+		return
+	}
+	logging.From(ctx).LogAttrs(ctx, slog.LevelDebug, "Media step completed", attrs...)
 }
 
 type artworkMediaIn struct {

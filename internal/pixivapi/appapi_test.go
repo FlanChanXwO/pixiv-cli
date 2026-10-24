@@ -1,16 +1,20 @@
 package pixivapi_test
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
-	"github.com/FlanChanXwO/pixiv-cli/internal/pixivapi"
 	"io"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
 	"strings"
 	"testing"
+
+	"github.com/FlanChanXwO/pixiv-cli/internal/logging"
+	"github.com/FlanChanXwO/pixiv-cli/internal/pixivapi"
 )
 
 type testDetailResponse struct {
@@ -509,5 +513,44 @@ func TestMutationServerErrorDoesNotRefreshOrReplay(t *testing.T) {
 	}
 	if requests != 1 || session.refreshCalls != 0 {
 		t.Fatalf("requests=%d refresh_calls=%d", requests, session.refreshCalls)
+	}
+}
+
+func TestRequestLogsOmitSecretsAndQueries(t *testing.T) {
+	const (
+		accessToken = "access-token-canary"
+		querySecret = "query-canary"
+		bodySecret  = "body-canary"
+	)
+	api := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Query().Get("word") != querySecret {
+			t.Fatalf("query = %q", r.URL.RawQuery)
+		}
+		if r.Header.Get("Authorization") != "Bearer "+accessToken {
+			t.Fatalf("authorization = %q", r.Header.Get("Authorization"))
+		}
+		_, _ = w.Write([]byte(`{"secret":"` + bodySecret + `"}`))
+	}))
+	defer api.Close()
+
+	var output bytes.Buffer
+	logger := slog.New(slog.NewJSONHandler(&output, &slog.HandlerOptions{Level: slog.LevelDebug}))
+	ctx := logging.WithOperation(context.Background(), "SearchArtworks")
+	var result testDetailResponse
+	err := pixivapi.New(pixivapi.Config{BaseURL: api.URL, HTTPClient: api.Client(), AccessToken: accessToken, Logger: logger}).
+		GetJSON(ctx, "/v1/illust/detail", url.Values{"word": {querySecret}}, &result)
+	if err != nil {
+		t.Fatal(err)
+	}
+	logged := output.String()
+	for _, want := range []string{`"method":"GET"`, `"path":"/v1/illust/detail"`, `"status":200`, `"sdk_operation":"SearchArtworks"`} {
+		if !strings.Contains(logged, want) {
+			t.Fatalf("log missing %s: %s", want, logged)
+		}
+	}
+	for _, secret := range []string{accessToken, querySecret, bodySecret} {
+		if strings.Contains(logged, secret) {
+			t.Fatalf("log leaked %q: %s", secret, logged)
+		}
 	}
 }

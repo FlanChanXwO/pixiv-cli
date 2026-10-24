@@ -7,7 +7,9 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"math"
+	"strconv"
 	"sync/atomic"
 	"time"
 
@@ -30,18 +32,25 @@ type SDKPorts struct {
 	// complete client lifecycle.
 	Open      func(context.Context, Account) (*fanbox.Client, error)
 	OpenLease func(context.Context, Account) (*lifecycle.Lease[*fanbox.Client], error)
+	// Logger 是执行边界的日志入口；nil 时不输出。
+	Logger *slog.Logger
 }
 
 // App 是 FANBOX MCP 应用，持有 SDK port 与命令级代理覆写。
 type App struct {
 	sdk            SDKPorts
 	account        Account
+	logger         *slog.Logger
 	requestCounter atomic.Uint64
 }
 
 // NewApp 构造带 SDK port 与请求覆写的 FANBOX MCP 应用。
 func NewApp(sdk SDKPorts, account Account) *App {
-	return &App{sdk: sdk, account: account}
+	logger := sdk.Logger
+	if logger == nil {
+		logger = logging.Discard()
+	}
+	return &App{sdk: sdk, account: account, logger: logger}
 }
 
 // OpenClient 为一次 tool 调用建立独立 client snapshot，并返回显式 Lease。
@@ -85,23 +94,13 @@ func (a *App) OpenClient(ctx context.Context) (*lifecycle.Lease[*fanbox.Client],
 func AddTool[In, Out any](app *App, server *mcp.Server, tool *mcp.Tool, handler mcp.ToolHandlerFor[In, Out]) {
 	mcp.AddTool(server, tool, func(ctx context.Context, request *mcp.CallToolRequest, input In) (*mcp.CallToolResult, Out, error) {
 		requestID := app.requestCounter.Add(1)
-		scoped := logging.WithChildScope(ctx, logging.ModuleFanboxMCPServer, requestID)
-		startedAt := time.Now()
-		logging.Emit(scoped, logging.Event{Kind: logging.EventStarted, Operation: "tool " + tool.Name})
-		result, output, err := handler(scoped, request, input)
-		if err != nil || (result != nil && result.IsError) {
-			logging.Emit(scoped, logging.Event{
-				Kind:      logging.EventFailed,
-				Operation: "tool " + tool.Name,
-				Reason:    logging.ReasonToolFailed,
-				Duration:  time.Since(startedAt),
-			})
-		} else {
-			logging.Emit(scoped, logging.Event{
-				Kind:      logging.EventCompleted,
-				Operation: "tool " + tool.Name,
-				Duration:  time.Since(startedAt),
-			})
+		ctx = logging.WithCall(ctx, app.logger, tool.Name, strconv.FormatUint(requestID, 10))
+		result, output, err := handler(ctx, request, input)
+		switch {
+		case err != nil:
+			app.logger.ErrorContext(ctx, "Tool failed", slog.Any(logging.AttrError, err))
+		case result != nil && result.IsError:
+			app.logger.ErrorContext(ctx, "Tool failed", slog.String(logging.AttrReason, "tool failed"))
 		}
 		return result, output, err
 	})
