@@ -227,8 +227,8 @@ func (a app) newFanboxService() (*session.Fanbox, error) {
 }
 
 func defaultDownloadService() downloader.DownloadService {
-	return downloader.DownloadService{NewManager: func(client downloader.DownloadClient, downloadPath, filenameTemplate string) (downloader.DownloadManager, error) {
-		return downloader.NewManager(client, downloadPath, filenameTemplate), nil
+	return downloader.DownloadService{NewBatchDownloader: func(client downloader.DownloadClient, downloadPath, filenameTemplate string) (downloader.BatchDownloader, error) {
+		return downloader.NewArtworkDownloader(client, downloadPath, filenameTemplate), nil
 	}}
 }
 

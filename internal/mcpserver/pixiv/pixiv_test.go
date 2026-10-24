@@ -374,9 +374,9 @@ func httpFixturePorts(t *testing.T) pixivmcpserver.SDKPorts {
 	return pixivmcpserver.SDKPorts{Media: media, Accounts: accounts.Selection{Store: store, Load: func(context.Context) (accounts.LocalSnapshot, error) { return accounts.LocalSnapshot{}, nil }}, Login: login}
 }
 
-type mcpDownloadFunc func(context.Context, downloader.DownloadRequest) (downloader.DownloadBatchResult, error)
+type mcpDownloadFunc func(context.Context, downloader.DownloadRequest) (downloader.DownloadReport, error)
 
-func (f mcpDownloadFunc) Download(ctx context.Context, request downloader.DownloadRequest) (downloader.DownloadBatchResult, error) {
+func (f mcpDownloadFunc) Download(ctx context.Context, request downloader.DownloadRequest) (downloader.DownloadReport, error) {
 	return f(ctx, request)
 }
 
@@ -391,12 +391,12 @@ func TestLocalDownloadsUseSharedServiceAndReportPartialFiles(t *testing.T) {
 	var requests []downloader.DownloadRequest
 	fail := false
 	ports.Downloads = &pixivmcpserver.LocalDownloads{Path: root, FilenameTemplate: "{id}", DirectoryTemplate: "{user_id}", Service: downloader.DownloadService{
-		NewManager: func(_ downloader.DownloadClient, path, template string) (downloader.DownloadManager, error) {
+		NewBatchDownloader: func(_ downloader.DownloadClient, path, template string) (downloader.BatchDownloader, error) {
 			require.Equal(t, root, path)
 			require.Equal(t, "{id}", template)
-			return mcpDownloadFunc(func(_ context.Context, req downloader.DownloadRequest) (downloader.DownloadBatchResult, error) {
+			return mcpDownloadFunc(func(_ context.Context, req downloader.DownloadRequest) (downloader.DownloadReport, error) {
 				requests = append(requests, req)
-				result := downloader.DownloadBatchResult{Items: []downloader.DownloadedArtwork{{IllustID: 42, Files: []downloader.DownloadedFile{{Path: file, Page: 1}}}}}
+				result := downloader.DownloadReport{Items: []downloader.DownloadedArtwork{{IllustID: 42, Files: []downloader.DownloadedFile{{Path: file, Page: 1}}}}}
 				if fail {
 					return result, errors.New("fixture interrupted after write")
 				}
@@ -416,13 +416,18 @@ func TestLocalDownloadsUseSharedServiceAndReportPartialFiles(t *testing.T) {
 	require.Equal(t, "{user_id}", requests[0].DirectoryTemplate)
 	var out struct {
 		Files []struct {
-			Path, FileURI string
-			Size          int64 `json:"size_bytes"`
+			Path     string `json:"path"`
+			FileURI  string `json:"file_uri"`
+			MIMEType string `json:"mime_type"`
+			Size     int64  `json:"size_bytes"`
 		}
 	}
 	decodeStructured(t, result, &out)
 	require.Len(t, out.Files, 1)
 	require.Equal(t, file, out.Files[0].Path)
+	require.Contains(t, out.Files[0].FileURI, "file://")
+	require.Contains(t, out.Files[0].FileURI, "42.gif")
+	require.Equal(t, "image/gif", out.Files[0].MIMEType)
 	require.EqualValues(t, 7, out.Files[0].Size)
 	fail = true
 	result = callTool(t, session, "pixiv_download_random_from_recommendation", map[string]any{"count": 1})

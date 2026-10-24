@@ -1,4 +1,4 @@
-// Package filename 提供下载路径使用的安全文件名构造逻辑。
+// Package filename 构造下载路径使用的安全文件名与目录模板。
 package filename
 
 import (
@@ -11,7 +11,8 @@ import (
 	"github.com/FlanChanXwO/pixiv-cli/internal/plaintext"
 )
 
-type FilenameData struct {
+// Fields 是一次文件名或目录模板渲染可用的作品字段。
+type Fields struct {
 	ID         int64
 	Author     string
 	AuthorID   int64
@@ -20,6 +21,8 @@ type FilenameData struct {
 	Tags       []string
 	PageCount  int
 }
+
+var unsafeNameCharacters = regexp.MustCompile(`[\\/*?:"<>|]`)
 
 // ValidateTemplate 只接受公开文档承诺的下载占位符。模板直接影响本地文件路径，
 // 因此未知占位符和不配对花括号必须在网络请求前明确拒绝，而不能作为字面量落盘。
@@ -48,35 +51,25 @@ func ValidateTemplate(template string) error {
 	return nil
 }
 
-// HasPlaceholder 报告已经通过语法校验的模板是否引用某个占位符。
-func HasPlaceholder(template, placeholder string) bool {
+// hasPlaceholder 报告已经通过语法校验的模板是否引用某个占位符。
+func hasPlaceholder(template, placeholder string) bool {
 	return strings.Contains(template, placeholder)
 }
 
+// Sanitize 把路径分隔符和各平台不允许出现在文件名中的字符替换为下划线。
 func Sanitize(name string) string {
-	re := regexp.MustCompile(`[\\/*?:"<>|]`)
-	return re.ReplaceAllString(name, "_")
-}
-
-func Generate(data FilenameData, page int, template string) string {
-	name, err := GenerateChecked(data, page, template)
-	if err == nil {
-		return name
-	}
-	// 兼容的 Generate 入口无法返回错误。public SDK 在网络请求前调用
-	// GenerateChecked，因此不会把这个兼容分支的空值当成正常下载行为。
-	return ""
+	return unsafeNameCharacters.ReplaceAllString(name, "_")
 }
 
 // GenerateChecked 生成安全文件名，并在模板实际使用日期时校验 Pixiv 时间。{num}
 // 是 0-based 页码；未显式出现时保留历史多页 _pN 后缀。
-func GenerateChecked(data FilenameData, page int, template string) (string, error) {
+func GenerateChecked(data Fields, page int, template string) (string, error) {
 	return generateChecked(data, page, template, true)
 }
 
 // generateChecked 在 filename 和 directory template 间复用同一占位符渲染逻辑。
 // 只有最终文件名需要历史兼容的多页 _pN 后缀；目录层级绝不能凭空追加页后缀。
-func generateChecked(data FilenameData, page int, template string, appendPageSuffix bool) (string, error) {
+func generateChecked(data Fields, page int, template string, appendPageSuffix bool) (string, error) {
 	if template == "" {
 		template = "{author} - {title}_{id}"
 	}
@@ -84,7 +77,7 @@ func generateChecked(data FilenameData, page int, template string, appendPageSuf
 		return "", err
 	}
 	date := ""
-	if HasPlaceholder(template, "{date}") {
+	if hasPlaceholder(template, "{date}") {
 		parsed, err := time.Parse(time.RFC3339, data.CreateDate)
 		if err != nil {
 			return "", fmt.Errorf("filename template requires a valid create date")
@@ -102,7 +95,7 @@ func generateChecked(data FilenameData, page int, template string, appendPageSuf
 	).Replace(template)
 	// 模板字面量也可能包含路径分隔符；最终文件名必须整体清理，避免下载写出目标目录。
 	name = Sanitize(name)
-	if appendPageSuffix && data.PageCount > 1 && !HasPlaceholder(template, "{num}") {
+	if appendPageSuffix && data.PageCount > 1 && !hasPlaceholder(template, "{num}") {
 		return fmt.Sprintf("%s_p%d", name, page), nil
 	}
 	return name, nil
@@ -131,7 +124,7 @@ func ValidateDirectoryTemplate(template string) error {
 
 // BuildRelativeDirectory 渲染下载目录模板。路径一律使用 / 表示层级，渲染后的
 // 每段单独清理，禁止空段、绝对路径和 . / ..，避免从下载目录逃逸。
-func BuildRelativeDirectory(template string, data FilenameData, page int) (string, error) {
+func BuildRelativeDirectory(template string, data Fields, page int) (string, error) {
 	template = strings.TrimSpace(template)
 	if template == "" {
 		return "", nil

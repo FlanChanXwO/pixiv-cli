@@ -333,7 +333,7 @@ flowchart LR
 
 | 迁出的职责 | Owner |
 | --- | --- |
-| 文件名清理、模板展开 | `internal/media/downloader/filename` |
+| 文件名清理、模板展开 | `internal/media/filename` |
 | ID 去重、媒体 MIME 类型 | `internal/media/downloader` |
 | refresh token 校验 | `internal/pixivapi/oauth` |
 | 路径、权限 | `internal/config/paths` |
