@@ -10,13 +10,10 @@ type Attempt struct {
 
 // Commit 标记本次尝试已经提交给调用方或产生外部副作用。
 func (a *Attempt) Commit() {
-	if a == nil {
-		return
-	}
 	a.state.Store(1)
 }
 
 // Committed 返回本次尝试是否已经越过可重放边界。
 func (a *Attempt) Committed() bool {
-	return a != nil && a.state.Load() == 1
+	return a.state.Load() == 1
 }

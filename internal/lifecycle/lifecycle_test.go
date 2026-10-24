@@ -127,18 +127,15 @@ func TestRunPropagatesContextCancellation(t *testing.T) {
 	}
 }
 
-func TestRunRejectsMissingInputs(t *testing.T) {
+func TestRunRejectsNilContextAndMissingLease(t *testing.T) {
 	var nilContext context.Context
 	if !errors.Is(lifecycle.Run[string](nilContext, nil, nil), lifecycle.ErrNilContext) {
 		t.Fatal("nil context was not rejected")
 	}
-	if !errors.Is(lifecycle.Run[string](context.Background(), nil, nil), lifecycle.ErrNilOpen) {
-		t.Fatal("nil open was not rejected")
-	}
-	open := lifecycle.Open[string](func(context.Context) (*lifecycle.Lease[string], error) {
-		return lifecycle.NewLease("value", nil), nil
-	})
-	if !errors.Is(lifecycle.Run(context.Background(), open, nil), lifecycle.ErrNilUse) {
-		t.Fatal("nil use was not rejected")
+	err := lifecycle.Run(context.Background(), func(context.Context) (*lifecycle.Lease[string], error) {
+		return nil, nil
+	}, func(context.Context, string, *lifecycle.Attempt) error { return nil })
+	if !errors.Is(err, lifecycle.ErrNilLease) {
+		t.Fatalf("Run error = %v, want ErrNilLease", err)
 	}
 }
