@@ -30,6 +30,11 @@ type Reference struct {
 	Tag       string
 }
 
+// ResolveURLRequest resolves a FANBOX URL into a typed reference.
+type ResolveURLRequest struct {
+	RawURL string
+}
+
 // ResolveURL parses a FANBOX page URL into a typed Reference. It performs no
 // network I/O and accepts HTTPS URLs on fanbox.cc hosts or the legacy Pixiv
 // FANBOX host. Unknown paths and ambiguous inputs return InvalidArgument.

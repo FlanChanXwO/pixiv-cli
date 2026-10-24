@@ -1,5 +1,5 @@
 // FANBOX 创作者操作：资料、支持中/关注中的创作者列表和 featured tags。
-// 响应结构与映射在 wire.go，游标编解码在 cursor.go。
+// 请求类型、响应结构与映射在本文件；游标编解码在 cursor.go。
 
 package fanbox
 
@@ -13,6 +13,63 @@ import (
 	protocol "github.com/FlanChanXwO/pixiv-cli/internal/fanboxapi"
 	"github.com/FlanChanXwO/pixiv-cli/sdk"
 )
+
+type creatorProfileWire struct {
+	CreatorID string `json:"creatorId"`
+	User      struct {
+		Name    string `json:"name"`
+		IconURL string `json:"iconUrl"`
+	} `json:"user"`
+	HasAdultContent bool   `json:"hasAdultContent"`
+	IsFollowing     bool   `json:"isFollowing"`
+	CoverImageURL   string `json:"coverImageUrl"`
+	Plan            struct {
+		Fee               int  `json:"fee"`
+		HasSupportingPlan bool `json:"hasSupportingPlan"`
+	} `json:"plan"`
+}
+
+type creatorSummaryWire struct {
+	CreatorID string `json:"creatorId"`
+}
+
+type creatorPageWire struct {
+	Plans    *[]creatorSummaryWire `json:"plans"`
+	Creators *[]creatorSummaryWire `json:"creators"`
+	NextURL  string                `json:"nextUrl"`
+	PageURLs []string              `json:"pageUrls"`
+}
+
+type tagWire struct {
+	Tag string `json:"tag"`
+	URL string `json:"url"`
+}
+
+// CreatorListKind selects the kind of creator list.
+type CreatorListKind string
+
+// CreatorListKind values define the supported CreatorListKind filesystem.
+const (
+	CreatorListSupporting CreatorListKind = "supporting"
+	CreatorListFollowing  CreatorListKind = "following"
+)
+
+// CreatorRequest selects one creator profile.
+type CreatorRequest struct {
+	CreatorID string
+}
+
+// CreatorsRequest lists supporting or following creators. Repeat the original
+// Kind when continuing with Cursor.
+type CreatorsRequest struct {
+	Kind   CreatorListKind
+	Cursor sdk.Cursor
+}
+
+// CreatorTagsRequest lists the tags used by one creator.
+type CreatorTagsRequest struct {
+	CreatorID string
+}
 
 // Creator returns one creator's profile.
 func (c *Client) Creator(ctx context.Context, request CreatorRequest) (Creator, error) {

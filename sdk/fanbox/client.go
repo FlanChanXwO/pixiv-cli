@@ -1,5 +1,5 @@
 // FANBOX SDK 入口：客户端构造、连接选项，以及会话校验。
-// 业务操作分布在 creator.go、post.go，响应结构与映射在 wire.go。
+// 业务操作分布在 creator.go、post.go，响应结构与映射在各自领域文件；共用映射在 response.go。
 
 package fanbox
 
@@ -32,6 +32,9 @@ func (SessionCredentials) GoString() string { return "fanbox.SessionCredentials{
 func (SessionCredentials) Format(state fmt.State, _ rune) {
 	_, _ = io.WriteString(state, "fanbox.SessionCredentials{}")
 }
+
+// CurrentUserRequest reads the current authenticated user's identity.
+type CurrentUserRequest struct{}
 
 // Options are connection-level settings for constructing a Client.
 type Options struct {
