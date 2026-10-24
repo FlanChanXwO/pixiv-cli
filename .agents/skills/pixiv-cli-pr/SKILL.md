@@ -24,7 +24,7 @@ Use an ordinary code fence for evidence commands. A `commands` fence is a declar
 Validate a prepared non-secret body file from the repository root:
 
 ```bash
-go run ./scripts/prmeta --body-file BODY_PATH --cli pixiv
+go run ./scripts/pr validate --body-file BODY_PATH --cli pixiv
 ```
 
 Replace `BODY_PATH` with the actual file. This checks local metadata/declared-command syntax, not remote trust, API success, or the outcome of a `/test` run. Keep draft files outside tracked sources unless they are requested artifacts.

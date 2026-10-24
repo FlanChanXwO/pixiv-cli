@@ -49,7 +49,7 @@ Start at [AGENTS.md](../AGENTS.md) for the full routing table. Checked-in skills
 | Focused testing and evidence | `.agents/skills/pixiv-cli-test/` |
 | Code contracts, intent comments, numbered phases | `.agents/skills/pixiv-cli-code-commenting/` |
 | MCP tool changes | `.agents/skills/pixiv-cli-mcp-tool/` |
-| Ugoira encoding, platform builds, native evidence | `.agents/skills/pixiv-cli-native/` |
+| Ugoira encoding, platform builds, native platform smoke | `.agents/skills/pixiv-cli-native/` |
 | Docs and skills | `.agents/skills/pixiv-cli-docs/` |
 | Reviewing changes | `.agents/skills/pixiv-cli-review/` |
 | Preparing a PR | `.agents/skills/pixiv-cli-pr/` |

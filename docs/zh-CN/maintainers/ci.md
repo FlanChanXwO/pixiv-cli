@@ -29,7 +29,6 @@ flowchart TD
 | `/test` 评论 | `pr-verification.yml` 的 `dispatch` 在分配 runner 前用 `contains(github.event.comment.body, '/test')` 预过滤——它是 `scripts/pr trigger` 的宽松超集（少量误报，从不漏掉真实触发）；`scripts/pr trigger` 仍是权威判断 |
 | 分支 / `main` push | 不运行 CI |
 | stable `vX.Y.Z` tag | 只运行 `release.yml`（负责全部 tag 门禁、六平台测试/构建与双平台容器验证；不重复 PR smoke 矩阵） |
-| 手动 | 浏览器/native 证据 workflow |
 
 真实 Pixiv/FANBOX SDK E2E 从不进入 PR CI；离线 `go test ./...` 由发布测试构建覆盖相同包，真实 E2E 在 release-prep 中单独验收。
 

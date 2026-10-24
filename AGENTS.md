@@ -12,7 +12,7 @@ Read the relevant local skill below before its task. These are checked-in instru
 | Decide test admission, run Red/Green, or validate a change | [pixiv-cli-test](.agents/skills/pixiv-cli-test/SKILL.md) |
 | Write or review code comments, API docs, or numbered stages | [pixiv-cli-code-commenting](.agents/skills/pixiv-cli-code-commenting/SKILL.md) |
 | Add or change an MCP tool | [pixiv-cli-mcp-tool](.agents/skills/pixiv-cli-mcp-tool/SKILL.md) |
-| Change ugoira encoding, platform builds, or native evidence | [pixiv-cli-native](.agents/skills/pixiv-cli-native/SKILL.md) |
+| Change ugoira encoding, platform builds, or native platform smoke | [pixiv-cli-native](.agents/skills/pixiv-cli-native/SKILL.md) |
 | Edit documentation or either kind of skill | [pixiv-cli-docs](.agents/skills/pixiv-cli-docs/SKILL.md) |
 | Review code or assess a PR | [pixiv-cli-review](.agents/skills/pixiv-cli-review/SKILL.md) |
 | Prepare, update, or verify a PR | [pixiv-cli-pr](.agents/skills/pixiv-cli-pr/SKILL.md) |

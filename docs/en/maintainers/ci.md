@@ -29,7 +29,6 @@ flowchart TD
 | `/test` comment | `pr-verification.yml` `dispatch` pre-filters with `contains(github.event.comment.body, '/test')` before allocating a runner — a loose superset of `scripts/pr trigger` (few false positives, never drops a real trigger); `scripts/pr trigger` stays authoritative |
 | branch / `main` push | nothing |
 | stable `vX.Y.Z` tag | only `release.yml` (owns all tag gates, six-platform tests/builds and two-platform container verification; PR smoke matrices are not duplicated) |
-| manual | browser/native evidence workflows |
 
 Real Pixiv/FANBOX SDK E2E never enters PR CI; the offline `go test ./...` in the release test build covers the same packages, and real E2E is accepted separately on release-prep.
 
