@@ -26,7 +26,7 @@ func run(arguments []string) error {
 	if len(arguments) == 0 {
 		return errors.New("a subcommand is required: render")
 	}
-	if arguments[0] != "github.com/FlanChanXwO/pixiv-cli/scripts/internal/releasenotesrender" {
+	if arguments[0] != "render" {
 		return fmt.Errorf("unknown subcommand %q; expected render", arguments[0])
 	}
 	return runRender(arguments[1:])
@@ -35,7 +35,7 @@ func run(arguments []string) error {
 // runRender 是供发布 workflow 调用的唯一公开入口：release 产物的 checksums.txt
 // 是 version、URL 与 SHA-256 唯一来源，模板本身不保存任何版本或 digest。
 func runRender(arguments []string) error {
-	flags := flag.NewFlagSet("github.com/FlanChanXwO/pixiv-cli/scripts/internal/releasenotesrender", flag.ContinueOnError)
+	flags := flag.NewFlagSet("render", flag.ContinueOnError)
 	flags.SetOutput(os.Stderr)
 	formula := flags.String("formula", "", "target formula: pixiv-cli or pixiv-cli-beta")
 	version := flags.String("version", "", "release semantic version without v")

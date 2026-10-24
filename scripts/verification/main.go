@@ -78,7 +78,7 @@ func main() {
 		initResult(os.Args[2:])
 	case "execute":
 		executeResult(os.Args[2:])
-	case "github.com/FlanChanXwO/pixiv-cli/scripts/internal/releasenotesrender":
+	case "render":
 		renderResults(os.Args[2:])
 	default:
 		fatal(fmt.Errorf("unknown mode %q", os.Args[1]))
@@ -429,7 +429,7 @@ func writeResult(path string, result platformResult) {
 }
 
 func renderResults(args []string) {
-	set := flag.NewFlagSet("github.com/FlanChanXwO/pixiv-cli/scripts/internal/releasenotesrender", flag.ExitOnError)
+	set := flag.NewFlagSet("render", flag.ExitOnError)
 	resultsDir := set.String("results-dir", "", "directory containing platform JSON results")
 	expectedJSON := set.String("expected-matrix-json", "", "trusted expected matrix JSON")
 	commit := set.String("commit", "", "verified commit")
