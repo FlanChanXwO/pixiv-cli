@@ -332,7 +332,7 @@ Protocol-free helpers live with their callers: positive-integer parsing in `inte
 
 | Moved responsibility | Owner |
 | --- | --- |
-| filename cleaning, template expansion | `internal/media/downloader/filename` |
+| filename cleaning, template expansion | `internal/media/filename` |
 | ID dedup, media MIME types | `internal/media/downloader` |
 | refresh-token validation | `internal/pixivapi/oauth` |
 | paths, permissions | `internal/config/paths` |

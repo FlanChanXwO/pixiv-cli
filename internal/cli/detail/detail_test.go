@@ -118,7 +118,7 @@ func TestDetailNDJSONFeedsExistingVisualDownloadConsumer(t *testing.T) {
 		func() (downloadcmd.Runtime, error) { return downloadcmd.Runtime{}, nil },
 		func() downloader.DownloadService {
 			return downloader.DownloadService{
-				NewManager: func(_ downloader.DownloadClient, _, _ string) (downloader.DownloadManager, error) {
+				NewBatchDownloader: func(_ downloader.DownloadClient, _, _ string) (downloader.BatchDownloader, error) {
 					return captureDownloadManager{ids: &downloadedIDs}, nil
 				},
 			}
@@ -135,9 +135,9 @@ type captureDownloadManager struct {
 	ids *[]int64
 }
 
-func (m captureDownloadManager) Download(_ context.Context, request downloader.DownloadRequest) (downloader.DownloadBatchResult, error) {
+func (m captureDownloadManager) Download(_ context.Context, request downloader.DownloadRequest) (downloader.DownloadReport, error) {
 	*m.ids = append(*m.ids, request.IllustIDs...)
-	return downloader.DownloadBatchResult{}, nil
+	return downloader.DownloadReport{}, nil
 }
 
 func reverseSearchOutput(t *testing.T, results []reversesearch.Result, jsonOutput bool) string {
