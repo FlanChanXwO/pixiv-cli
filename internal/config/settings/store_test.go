@@ -6,7 +6,6 @@ import (
 	"testing"
 
 	config "github.com/FlanChanXwO/pixiv-cli/internal/config/settings"
-	"github.com/creachadair/tomledit/parser"
 	"github.com/stretchr/testify/require"
 )
 
@@ -137,9 +136,8 @@ func TestStoreCurrentReturnsFreshImmutableSnapshots(t *testing.T) {
 	require.Equal(t, "./environment-second", envSecondValue.Value)
 }
 
-// TestRemovedKeysStayClearableWhileAdvancedTablesExist covers the store path:
-// a stale tombstone does not block ordinary writes or its own cleanup, and
-// unrelated advanced tables keep working afterwards.
+// TestRetiredKeysDoNotBlockWritesOrAdvancedTables covers the store path: a
+// stale retired key is ignored, and unrelated advanced tables keep working.
 func TestRemovedKeysStayClearableWhileAdvancedTablesExist(t *testing.T) {
 	path := t.TempDir() + "/config.toml"
 	require.NoError(t, os.WriteFile(path, []byte(`[web]
@@ -165,14 +163,6 @@ url = "http://solver"
 	require.Equal(t, "http://p", runtime.PixivNetwork.ProxyURL.Value)
 	require.NotNil(t, runtime.FanboxFlareSolverr)
 	require.Equal(t, "http://solver", runtime.FanboxFlareSolverr.URL)
-}
-
-// mustParseValue serializes a string through the existing config-set contract.
-func mustParseValue(t *testing.T, raw string) parser.Value {
-	t.Helper()
-	value, err := parser.ParseValue("'" + raw + "'")
-	require.NoError(t, err)
-	return value
 }
 
 // diskFileStore backs tests that need a real file for auth and document checks.
