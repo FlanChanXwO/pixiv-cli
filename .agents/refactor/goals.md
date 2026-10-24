@@ -1125,9 +1125,10 @@
 - 撤销 scripts/internal/：把共享包的使用方合并为一个带子命令的工具，共享包随之消失。
 - 预期目录结构（2026-10-24 与维护者确认；文件名以实际代码为准）：
   - scripts/ 根目录：install.sh、install.cmd（README 中公开的 raw URL，不动）、build.sh（本机构建入口）。
-  - scripts/build/：platform.sh（← build-platform.sh）、package.sh（← package-release.sh）、platforms.json（← ci/platforms.json）、matrix.sh（← platformmatrix）、licensebundle/（Go）。
-  - scripts/release/：一个 Go 工具，子命令 handoff、assets、notes、formula、recover；由 release、releaseassets、releasenotes、homebrewformula、homebrewrecovery 与 internal/releasenotesrender 合并，按领域分文件。
-  - scripts/pr/：一个 Go 工具，子命令 meta、verify，以及 command-whitelist.txt；由 prmeta、verification 与 internal/verificationpolicy 合并。
+  - scripts/build/：platform.sh（← build-platform.sh）、package.sh（← package-release.sh）、platforms.json（← ci/platforms.json）、matrix.sh（← platformmatrix；保留 --capability、--registry、--github-output 参数，默认 registry 改为 scripts/build/platforms.json；保留对 registry 的校验与报错；无 --github-output 时把 matrix JSON 写到 stdout，提供时追加 matrix=<json>）、licensebundle/（Go）。
+  - scripts/release/：一个 Go 工具，由 release、releaseassets、releasenotes、homebrewformula、homebrewrecovery 与 internal/releasenotesrender 合并，按领域分文件。release 现有的 9 个子命令（verify-source、verify-published-release、verify-handoff、write-handoff、verify-handoff-set、verify-handoff-identity、verify-artifact-set、verify-container-set、checksums）名称和输出契约不变；并入的工具各成为新的子命令（例如 assets、notes、formula、recover，以实际功能命名）。
+  - scripts/pr/：一个 Go 工具，以及 command-whitelist.txt；由 prmeta、verification 与 internal/verificationpolicy 合并。verification 现有的 init、execute、render 与 prmeta 的各个模式都保留为子命令，语义不变。
+  - PR 中列出每个旧调用（workflow、脚本、文档中的 go run ./scripts/... 命令）到新调用的完整对照，并同步修改全部调用处。
   - scripts/ci/：classify-change-scope.sh、race-gate.sh（← test-race-gate.sh）、test-package-release.sh。
   - scripts/citest/：精简后保留的测试。
   - .github/workflows/：删除 native-evidence.yml、auto-assign.yml 后剩 12 个；ci-change-scope.gitignore、labeler.yml 中的路径同步更新。
