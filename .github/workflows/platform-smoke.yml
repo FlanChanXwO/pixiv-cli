@@ -103,7 +103,9 @@ jobs:
         run: |
           set -euo pipefail
           version="0.2.0-ci.${GITHUB_RUN_ID}"
-          archive=$(sh scripts/build-platform.sh \
+          build=scripts/build-platform.sh
+          [ ! -f scripts/build/platform.sh ] || build=scripts/build/platform.sh
+          archive=$(sh "$build" \
             --target '${{ matrix.goos }}/${{ matrix.goarch }}' \
             --version "$version" \
             --output-dir dist \
@@ -148,14 +150,16 @@ jobs:
           if [ '${{ matrix.goos }}' = windows ]; then
             binary='dist/pixiv.exe'
           fi
-          go run ./scripts/nativeevidence record \
-            --repo-root . \
-            --version "0.2.0-ci.${GITHUB_RUN_ID}" \
-            --source-commit "$(git rev-parse HEAD)" \
-            --target '${{ matrix.goos }}/${{ matrix.goarch }}' \
-            --binary "$binary" \
-            --archive "$PLATFORM_ARCHIVE" \
-            --output dist/native-evidence.json
+          if [ -f scripts/nativeevidence/main.go ]; then
+            go run ./scripts/nativeevidence record \
+              --repo-root . \
+              --version "0.2.0-ci.${GITHUB_RUN_ID}" \
+              --source-commit "$(git rev-parse HEAD)" \
+              --target '${{ matrix.goos }}/${{ matrix.goarch }}' \
+              --binary "$binary" \
+              --archive "$PLATFORM_ARCHIVE" \
+              --output dist/native-evidence.json
+          fi
       - name: Upload native evidence
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
