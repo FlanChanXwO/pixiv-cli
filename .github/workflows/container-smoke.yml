@@ -77,15 +77,7 @@ jobs:
         run: go mod download
       - name: Verify Go license bundle
         shell: bash
-        run: |
-          set -euo pipefail
-          # The worker workflow comes from the trusted base ref while the checkout
-          # is the PR head, so the path bridges the scripts layout move until merge.
-          tool=./scripts/licensebundle
-          if [ ! -d "$tool" ]; then
-            tool=./scripts/cmd/licensebundle
-          fi
-          go run "$tool" --check
+        run: go run ./scripts/licensebundle --check
       - name: Build the versioned Linux binary
         shell: bash
         run: |
@@ -146,13 +138,7 @@ jobs:
           '
       - name: Run container release contract tests
         shell: bash
-        run: |
-          set -euo pipefail
-          package=./scripts/citest
-          if [ ! -d "$package" ]; then
-            package=./scripts/tests/containerrelease
-          fi
-          go test "$package" -count=1
+        run: go test ./scripts/citest -count=1
 
   publish:
     if: ${{ always() && inputs.check_run_id != '' }}
