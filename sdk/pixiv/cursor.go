@@ -10,6 +10,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/FlanChanXwO/pixiv-cli/internal/pixivapi"
 	"github.com/FlanChanXwO/pixiv-cli/sdk"
 )
 
@@ -276,26 +277,26 @@ func validContinuationParams(op string, params url.Values) bool {
 		return true
 	case "RecommendedNovels":
 		allowed := map[string]bool{
-			"offset": true, "already_recommended": true,
-			"max_bookmark_id_for_recommend": true, "include_ranking_novels": true,
-			"include_privacy_policy": true,
+			pixivapi.ParamOffset: true, pixivapi.ParamAlreadyRecommended: true,
+			pixivapi.ParamMaxRecommend: true, pixivapi.ParamIncludeRankingNovels: true,
+			pixivapi.ParamIncludePrivacy: true,
 		}
 		for key, values := range params {
 			if !allowed[key] || len(values) != 1 || values[0] == "" {
 				return false
 			}
 			switch key {
-			case "offset":
+			case pixivapi.ParamOffset:
 				value, err := strconv.ParseInt(values[0], 10, 64)
 				if err != nil || value < 0 {
 					return false
 				}
-			case "max_bookmark_id_for_recommend":
+			case pixivapi.ParamMaxRecommend:
 				value, err := strconv.ParseInt(values[0], 10, 64)
 				if err != nil || value <= 0 {
 					return false
 				}
-			case "include_ranking_novels", "include_privacy_policy":
+			case pixivapi.ParamIncludeRankingNovels, pixivapi.ParamIncludePrivacy:
 				if values[0] != "true" && values[0] != "false" {
 					return false
 				}

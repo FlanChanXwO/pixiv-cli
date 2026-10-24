@@ -1,4 +1,4 @@
-// Pixiv App API 的 artwork wire 结构、响应字段映射，以及每个 artwork 端点的
+// Pixiv App API 的 artwork 与 novel wire 结构、响应字段映射，以及每个端点的
 // next_url continuation Spec 与解析函数。
 
 package pixiv
@@ -13,6 +13,7 @@ import (
 	"github.com/FlanChanXwO/pixiv-cli/internal/pixivapi"
 	"github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/endpoint/artwork"
 	endpointcontinuation "github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/endpoint/continuation"
+	"github.com/FlanChanXwO/pixiv-cli/internal/services/pixiv/endpoint/novel"
 	"github.com/FlanChanXwO/pixiv-cli/sdk"
 )
 
@@ -167,7 +168,8 @@ type commentAccessControlWire struct {
 	IsLocked   bool `json:"is_locked"`
 }
 
-type artworkCommentsWire struct {
+// commentsWire 是 illust 与 novel 评论列表的共同响应结构。
+type commentsWire struct {
 	Comments      pixivapi.RequiredList[commentWire] `json:"comments"`
 	NextURL       *string                            `json:"next_url"`
 	TotalComments *int64                             `json:"total_comments"`
@@ -175,6 +177,54 @@ type artworkCommentsWire struct {
 	// CommentAccessControl 是当前 App API 标量；与 legacy object 分开解码，
 	// 避免猜测其业务含义。
 	CommentAccessControl *int64 `json:"comment_access_control"`
+}
+
+// novelWire 是 App API 所有 novel 响应的共同结构。search 要求
+// x_restrict/text_length/is_original 存在，其余端点把缺失值当作零值；因此这三
+// 个字段保持指针，由调用端点决定是否要求。
+type novelWire struct {
+	ID             int64         `json:"id"`
+	Title          string        `json:"title"`
+	Caption        string        `json:"caption"`
+	XRestrict      *int          `json:"x_restrict"`
+	TextLength     *int          `json:"text_length"`
+	IsOriginal     *bool         `json:"is_original"`
+	User           userWire      `json:"user"`
+	Tags           []tagWire     `json:"tags"`
+	ImageURLs      imageURLsWire `json:"image_urls"`
+	CreateDate     string        `json:"create_date"`
+	TotalBookmarks int           `json:"total_bookmarks"`
+	TotalView      int           `json:"total_view"`
+}
+
+type novelSeriesRefWire struct {
+	ID    int64  `json:"id"`
+	Title string `json:"title"`
+}
+
+type novelDetailWire struct {
+	Novel      *novelWire          `json:"novel"`
+	SeriesNext *novelSeriesRefWire `json:"series_next"`
+	SeriesPrev *novelSeriesRefWire `json:"series_prev"`
+}
+
+type novelListWire struct {
+	Novels  pixivapi.RequiredList[novelWire] `json:"novels"`
+	NextURL *string                          `json:"next_url"`
+}
+
+type novelSeriesDetailWire struct {
+	ID          int64    `json:"id"`
+	Title       string   `json:"title"`
+	Caption     string   `json:"caption"`
+	User        userWire `json:"user"`
+	IsConcluded bool     `json:"is_concluded"`
+}
+
+type novelSeriesWire struct {
+	Detail  *novelSeriesDetailWire           `json:"novel_series_detail"`
+	Novels  pixivapi.RequiredList[novelWire] `json:"novels"`
+	NextURL *string                          `json:"next_url"`
 }
 
 type bookmarkTagWire struct {
@@ -238,6 +288,88 @@ func mapTags(values []tagWire) []Tag {
 		result[index] = Tag{Name: value.Name, TranslatedName: value.TranslatedName}
 	}
 	return result
+}
+
+// mapNovel 把一份上游 novel 响应映射为公开模型。cover 与 user profile 都经
+// 受 policy 校验的资源边界创建。
+func (c *Client) mapNovel(value novelWire) (Novel, error) {
+	published, err := parseUTCTime(value.CreateDate)
+	if err != nil {
+		return Novel{}, newError("Novel", sdk.MalformedUpstreamResponse, "invalid publish time")
+	}
+	result := Novel{
+		ID:             value.ID,
+		Title:          value.Title,
+		Caption:        value.Caption,
+		User:           c.mapUser(value.User),
+		Tags:           mapTags(value.Tags),
+		PublishedAt:    published,
+		XRestrict:      intValue(value.XRestrict),
+		TextLength:     intValue(value.TextLength),
+		IsOriginal:     value.IsOriginal != nil && *value.IsOriginal,
+		TotalBookmarks: value.TotalBookmarks,
+		TotalViews:     value.TotalView,
+	}
+	for _, size := range []struct {
+		variant string
+		value   string
+	}{
+		{"original", value.ImageURLs.Original},
+		{"large", value.ImageURLs.Large},
+		{"medium", value.ImageURLs.Medium},
+		{"square_medium", value.ImageURLs.SquareMedium},
+	} {
+		if size.value == "" {
+			continue
+		}
+		resource, err := c.newResourceWithVariant("novel_cover", value.ID, -1, size.variant, size.value)
+		if err != nil {
+			return Novel{}, err
+		}
+		result.Cover = ImageResource{Resource: resource, Variant: size.variant}
+		break
+	}
+	return result, nil
+}
+
+func (c *Client) novelItems(operation string, list pixivapi.RequiredList[novelWire], requireSearchFields bool) ([]Novel, error) {
+	if !list.Present || !list.Valid {
+		return nil, newError(operation, sdk.MalformedUpstreamResponse, "")
+	}
+	items := make([]Novel, len(list.Items))
+	for index, value := range list.Items {
+		if value.ID <= 0 || value.User.ID <= 0 ||
+			requireSearchFields && (value.XRestrict == nil || value.TextLength == nil || value.IsOriginal == nil) {
+			return nil, newError(operation, sdk.MalformedUpstreamResponse, "")
+		}
+		mapped, err := c.mapNovel(value)
+		if err != nil {
+			return nil, err
+		}
+		items[index] = mapped
+	}
+	return items, nil
+}
+
+// novelWireFromEntity 是 internal novel 实体到 wire 的临时桥接：user 端点
+// 仍在读取 novel.UserSummary，G08 删除 internal novel 实体后一并删除。
+func novelWireFromEntity(value novel.Novel) novelWire {
+	tags := make([]tagWire, len(value.Tags))
+	for index, tag := range value.Tags {
+		tags[index] = tagWire{Name: tag.Name, TranslatedName: tag.TranslatedName}
+	}
+	xRestrict, textLength, isOriginal := value.XRestrict, value.TextLength, value.IsOriginal
+	return novelWire{
+		ID: value.ID, Title: value.Title, Caption: value.Caption,
+		XRestrict: &xRestrict, TextLength: &textLength, IsOriginal: &isOriginal,
+		User: userWire{
+			ID: value.User.ID, Name: value.User.Name, Account: value.User.Account,
+			Comment: value.User.Comment, IsFollowed: value.User.IsFollowed,
+			ProfileImageURLs: profileImageURLsWire{Medium: cloneValue(value.User.ProfileImageURLs.Medium)},
+		},
+		Tags: tags, ImageURLs: imageURLsWire(value.ImageURLs),
+		CreateDate: value.CreateDate, TotalBookmarks: value.TotalBookmarks, TotalView: value.TotalView,
+	}
 }
 
 // mapArtwork 把一份上游 artwork 响应映射为公开模型，并在受 policy 校验的边界
@@ -595,6 +727,50 @@ var (
 		path: pixivapi.PathIllustMyPixiv,
 		keys: []string{pixivapi.ParamOffset},
 	}
+	novelSearchContinuation = continuationSpec{
+		path: pixivapi.PathSearchNovel,
+		keys: []string{pixivapi.ParamOffset},
+		query: []string{
+			pixivapi.ParamWord, pixivapi.ParamSearchTarget, pixivapi.ParamSort, pixivapi.ParamDuration,
+		},
+	}
+	novelRankingContinuation = continuationSpec{
+		path:  pixivapi.PathNovelRanking,
+		keys:  []string{pixivapi.ParamOffset},
+		query: []string{pixivapi.ParamFilter, pixivapi.ParamMode},
+	}
+	novelRecommendedContinuation = continuationSpec{
+		path: pixivapi.PathNovelRecommended,
+		keys: []string{
+			pixivapi.ParamOffset, pixivapi.ParamAlreadyRecommended,
+			pixivapi.ParamMaxRecommend, pixivapi.ParamIncludeRankingNovels, pixivapi.ParamIncludePrivacy,
+		},
+		allowZero: true,
+	}
+	novelSeriesContinuation = continuationSpec{
+		path:  pixivapi.PathNovelSeries,
+		keys:  []string{pixivapi.ParamLastOrder},
+		query: []string{pixivapi.ParamSeriesID},
+	}
+	novelCommentsContinuation = continuationSpec{
+		path:  pixivapi.PathNovelComments,
+		keys:  []string{pixivapi.ParamOffset},
+		query: []string{pixivapi.ParamNovelID},
+	}
+	novelFollowingContinuation = continuationSpec{
+		path:  pixivapi.PathNovelFollow,
+		keys:  []string{pixivapi.ParamOffset},
+		query: []string{pixivapi.ParamRestrict},
+	}
+	novelLatestContinuation = continuationSpec{
+		path:  pixivapi.PathNovelNew,
+		keys:  []string{pixivapi.ParamMaxNovelID},
+		query: []string{pixivapi.ParamFilter},
+	}
+	novelMyPixivContinuation = continuationSpec{
+		path: pixivapi.PathNovelMyPixiv,
+		keys: []string{pixivapi.ParamOffset},
+	}
 	searchContinuation = continuationSpec{
 		path: pixivapi.PathSearchIllust,
 		keys: []string{pixivapi.ParamOffset},
@@ -737,4 +913,11 @@ func indexedContinuationValues(params url.Values, prefix string) ([]string, bool
 		values[index] = value
 	}
 	return values, true
+}
+
+func intValue(value *int) int {
+	if value == nil {
+		return 0
+	}
+	return *value
 }
