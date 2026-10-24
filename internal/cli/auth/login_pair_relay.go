@@ -1,10 +1,11 @@
+// One-shot relay server session used by remote Pixiv login.
+
 package auth
 
 import (
 	"context"
 	"errors"
 	"fmt"
-	"io"
 	"net"
 	"net/http"
 	"sync"
@@ -12,17 +13,9 @@ import (
 	"github.com/FlanChanXwO/pixiv-cli/internal/loginrelay"
 )
 
-// WaitForHandoffRelayLoginCode 在独立 server 上运行一次性 remote Pixiv login
-// relay 会话，并把会话页 URL 写入 errOut。errOut 只接收会话 URL，绝不含 OAuth
-// 凭证；loginURL 不写入任何输出。该函数是 accountLogin 的 relay 分支与聚焦
-// handoff 测试共用的入口。
-func WaitForHandoffRelayLoginCode(ctx context.Context, errOut io.Writer, opts RelayServerOptions, acceptsCallback CallbackURLAccepter, loginURL string) (string, func(bool), func(), error) {
-	return controller{errOut: errOut}.waitForHandoffRelayLoginCode(ctx, opts, acceptsCallback, loginURL)
-}
-
 // waitForHandoffRelayLoginCode 在 server 上运行一次性会话。会话 proof 只存在
 // session page 的操作入口与 desktop 的短暂私有状态中，终端不输出 Pixiv OAuth URL。
-func (a controller) waitForHandoffRelayLoginCode(ctx context.Context, opts RelayServerOptions, acceptsCallback CallbackURLAccepter, loginURL string) (string, func(bool), func(), error) {
+func (a controller) waitForHandoffRelayLoginCode(ctx context.Context, opts relayServerOptions, acceptsCallback callbackURLAccepter, loginURL string) (string, func(bool), func(), error) {
 	publicURL, err := loginrelay.CanonicalPublicURL(opts.PublicURL)
 	if err != nil {
 		return "", func(bool) {}, func() {}, err

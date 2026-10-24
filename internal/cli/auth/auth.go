@@ -13,10 +13,6 @@ func New(env commands.Env, support Support) *cobra.Command {
 	return newController(env, support).newAccountCommand()
 }
 
-func newController(env commands.Env, support Support) controller {
-	return controller{env: env, support: support, in: env.In, out: env.Out, errOut: env.Err}
-}
-
 // Support is the account and login backing shared by the auth leaves. Shared
 // command support comes from commands.Env; prompts are methods on Env.
 type Support struct {

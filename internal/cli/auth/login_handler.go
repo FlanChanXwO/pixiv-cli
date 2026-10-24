@@ -1,8 +1,12 @@
+// Hidden desktop protocol callbacks: routes pixiv:// links and installs the
+// persistent URL handler.
+
 package auth
 
 import (
 	"errors"
 	"fmt"
+
 	"github.com/FlanChanXwO/pixiv-cli/internal/cli/auth/loginhelper"
 	requirements "github.com/FlanChanXwO/pixiv-cli/internal/cli/internal/command"
 	"github.com/spf13/cobra"
@@ -10,24 +14,6 @@ import (
 
 const internalURLCallbackCommand = loginhelper.CallbackCommand
 const internalURLHandlerInstallCommand = "_install-handler"
-
-// clearRemoteLoginHandoffForHandler 是狭窄的测试注入点，覆盖 browser 启动失败
-// 后本地一次性状态也无法清理的错误边界。
-var clearRemoteLoginHandoffForHandler = loginhelper.ClearRemoteLoginHandoff
-
-// NewAccountURLCallbackCommand 构造桌面系统协议 handler 调用的隐藏命令。它不属于
-// 公开 CLI 契约，仅供系统关联与聚焦协议测试使用。
-func NewAccountURLCallbackCommand() *cobra.Command {
-	return controller{}.newAccountURLCallbackCommand()
-}
-
-// SetClearRemoteLoginHandoffForHandler 是覆盖 remote handoff 本地清理失败的窄
-// 测试注入点；生产路径使用 loginhelper.ClearRemoteLoginHandoff。
-func SetClearRemoteLoginHandoffForHandler(clear func(loginhelper.RemoteLoginStart) error) func() {
-	original := clearRemoteLoginHandoffForHandler
-	clearRemoteLoginHandoffForHandler = clear
-	return func() { clearRemoteLoginHandoffForHandler = original }
-}
 
 // newAccountURLCallbackCommand 仅供各桌面系统协议关联调用。它不属于公开 CLI
 // 契约：活跃 loopback bridge 优先，随后才转发精确白名单 callback 到本次
@@ -42,14 +28,14 @@ func (a controller) newAccountURLCallbackCommand() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			browserOpener, _, _ := currentLoginHooks()
+			browserOpener := a.openBrowser
 			if result.RemoteLoginStart != nil {
 				loginURL, err := loginhelper.StartRemoteLogin(cmd.Context(), *result.RemoteLoginStart)
 				if err != nil {
 					return err
 				}
 				if err := browserOpener(loginURL); err != nil {
-					if clearErr := clearRemoteLoginHandoffForHandler(*result.RemoteLoginStart); clearErr != nil {
+					if clearErr := a.clearHandoff(*result.RemoteLoginStart); clearErr != nil {
 						return errors.New("could not clear remote Pixiv login handoff after browser launch failed")
 					}
 					return errors.New("could not open Pixiv authorization page")
@@ -91,8 +77,7 @@ func (a controller) newAccountURLHandlerInstallCommand() *cobra.Command {
 		Hidden: true,
 		Args:   a.requireExactArgs(0, "pixiv auth "+internalURLHandlerInstallCommand),
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			_, _, ensure := currentLoginHooks()
-			if err := ensure(cmd.Context()); err != nil {
+			if err := a.ensureURLHandler(cmd.Context()); err != nil {
 				fmt.Fprintf(a.errOut, "warning: persistent pixiv:// callback handler was not initialized: %v\n", err)
 			}
 			return nil
