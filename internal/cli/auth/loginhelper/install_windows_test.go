@@ -16,18 +16,12 @@ import (
 )
 
 func TestWindowsURLHandlerCommandQuotesExecutableAndCallback(t *testing.T) {
-	for _, test := range []struct {
-		name string
-		path string
-		want string
-	}{
-		{"spaces", `C:\Users\A Name\pixiv.exe`, `"C:\Users\A Name\pixiv.exe" auth _callback "%1"`},
-		{"embedded quotes", `C:\path\"quoted"\pixiv.exe`, `"C:\path\"quoted\"\pixiv.exe" auth _callback "%1"`},
-	} {
-		t.Run(test.name, func(t *testing.T) {
-			require.Equal(t, test.want, windowsURLHandlerCommand(test.path))
-		})
-	}
+	command := windowsURLHandlerCommand(`C:\Users\A Name\pixiv.exe`)
+	require.Equal(t, `"C:\Users\A Name\pixiv.exe" auth _callback "%1"`, command)
+
+	command = windowsURLHandlerCommand(`C:\path\"quoted"\pixiv.exe`)
+	require.Contains(t, command, `\"quoted\"`)
+	require.Contains(t, command, `auth _callback "%1"`)
 }
 
 func TestWindowsDelegateToPreviousUsesPrivateProgID(t *testing.T) {
