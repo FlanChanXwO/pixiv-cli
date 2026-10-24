@@ -2,9 +2,11 @@ package pixiv_test
 
 import (
 	"context"
+	"encoding/json"
 	"io"
 	"net/http"
 	"strconv"
+	"strings"
 	"testing"
 
 	"github.com/FlanChanXwO/pixiv-cli/sdk"
@@ -344,7 +346,31 @@ func TestUserListFamilyRejectsMalformedResponses(t *testing.T) {
 			if test.name == "blocked preview envelope" && (len(page.Items) != 1 || page.Items[0].User.ID != 92) {
 				t.Fatalf("legacy envelope = %#v", page)
 			}
+
 		})
+	}
+}
+
+// TestUserListItemsKeepNullSampleFields 固定非推荐列表的公开 JSON 契约：
+// 列表项不带样例作品时输出 null，而不是 []。
+func TestUserListItemsKeepNullSampleFields(t *testing.T) {
+	rt := roundTripFunc(func(*http.Request) (*http.Response, error) {
+		return jsonResponse(`{"user_previews":[{"user":{"id":41,"name":"artist"}}],"next_url":null}`), nil
+	})
+	client, err := NewWith("token", Options{HTTPClient: &http.Client{Transport: rt}})
+	if err != nil {
+		t.Fatalf("NewWith: %v", err)
+	}
+	page, err := client.SearchUsers(context.Background(), SearchUsersRequest{Word: "artist"})
+	if err != nil {
+		t.Fatalf("SearchUsers: %v", err)
+	}
+	encoded, err := json.Marshal(page.Items[0])
+	if err != nil {
+		t.Fatalf("json.Marshal: %v", err)
+	}
+	if !strings.Contains(string(encoded), `"illusts":null`) || !strings.Contains(string(encoded), `"novels":null`) {
+		t.Fatalf("list item JSON = %s, want null sample fields", encoded)
 	}
 }
 

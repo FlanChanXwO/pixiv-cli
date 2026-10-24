@@ -126,6 +126,101 @@ func TestExplicitNovelBookmarkReadSDK(t *testing.T) {
 	}
 }
 
+// TestNovelBookmarkDetailNormalizesAbsentStates 保留原 novel bookmark endpoint
+// 对 404、缺失 detail 与 is_bookmarked=false 的归一化断言。
+func TestNovelBookmarkDetailNormalizesAbsentStates(t *testing.T) {
+	for name, test := range map[string]struct {
+		body   string
+		status int
+	}{
+		"missing detail":               {body: `{}`, status: http.StatusOK},
+		"null detail":                  {body: `{"bookmark_detail":null}`, status: http.StatusOK},
+		"false detail":                 {body: `{"bookmark_detail":{"is_bookmarked":false,"restrict":"","tags":[]}}`, status: http.StatusOK},
+		"false detail with restrict":   {body: `{"bookmark_detail":{"is_bookmarked":false,"restrict":"private","tags":[]}}`, status: http.StatusOK},
+		"false detail with novel tags": {body: `{"bookmark_detail":{"is_bookmarked":false,"restrict":"","tags":[{"name":"cat","is_registered":false}]}}`, status: http.StatusOK},
+		"upstream not found":           {status: http.StatusNotFound},
+	} {
+		t.Run(name, func(t *testing.T) {
+			rt := roundTripFunc(func(*http.Request) (*http.Response, error) {
+				return &http.Response{
+					StatusCode: test.status,
+					Header:     http.Header{"Content-Type": {"application/json"}},
+					Body:       io.NopCloser(strings.NewReader(test.body)),
+				}, nil
+			})
+			client, err := pixiv.NewWith("token", pixiv.Options{HTTPClient: &http.Client{Transport: rt}})
+			if err != nil {
+				t.Fatalf("NewWith: %v", err)
+			}
+			detail, err := client.NovelBookmark(context.Background(), pixiv.NovelBookmarkRequest{NovelID: 42})
+			if err != nil {
+				t.Fatalf("NovelBookmark: %v", err)
+			}
+			if detail.Restrict != "" || detail.Tags == nil || len(detail.Tags) != 0 {
+				t.Fatalf("absent detail = %#v, want empty normalized state", detail)
+			}
+		})
+	}
+}
+
+// TestNovelBookmarkDetailExposesOnlyRegisteredBookmarkTags 保留原 endpoint 的
+// is_registered 过滤断言：作品自身标签不得作为收藏标签返回。
+func TestNovelBookmarkDetailExposesOnlyRegisteredBookmarkTags(t *testing.T) {
+	rt := roundTripFunc(func(*http.Request) (*http.Response, error) {
+		return jsonResponse(`{"bookmark_detail":{"is_bookmarked":true,"restrict":"public","tags":[{"name":"content-tag","is_registered":false},{"name":"saved-tag","is_registered":true}]}}`), nil
+	})
+	client, err := pixiv.NewWith("token", pixiv.Options{HTTPClient: &http.Client{Transport: rt}})
+	if err != nil {
+		t.Fatalf("NewWith: %v", err)
+	}
+	detail, err := client.NovelBookmark(context.Background(), pixiv.NovelBookmarkRequest{NovelID: 42})
+	if err != nil {
+		t.Fatalf("NovelBookmark: %v", err)
+	}
+	if detail.Restrict != pixiv.RestrictPublic || len(detail.Tags) != 1 || detail.Tags[0] != "saved-tag" {
+		t.Fatalf("bookmark detail = %#v, want only registered bookmark tags", detail)
+	}
+}
+
+// TestUserNovelBookmarksRejectsInvalidContinuation 保留原 endpoint 对
+// max_bookmark_id=0、重复键与额外查询键的拒绝断言。
+func TestUserNovelBookmarksRejectsInvalidContinuation(t *testing.T) {
+	for name, nextURL := range map[string]string{
+		"zero cursor":       "https://app-api.pixiv.net/v1/user/bookmarks/novel?max_bookmark_id=0",
+		"duplicate cursor":  "https://app-api.pixiv.net/v1/user/bookmarks/novel?max_bookmark_id=2&max_bookmark_id=3",
+		"unknown query key": "https://app-api.pixiv.net/v1/user/bookmarks/novel?max_bookmark_id=2&offset=40",
+		"wrong path":        "https://app-api.pixiv.net/v1/user/bookmarks/illust?max_bookmark_id=2",
+	} {
+		t.Run(name, func(t *testing.T) {
+			rt := roundTripFunc(func(*http.Request) (*http.Response, error) {
+				return jsonResponse(`{"novels":[],"next_url":"` + nextURL + `"}`), nil
+			})
+			client, err := pixiv.NewWith("token", pixiv.Options{HTTPClient: &http.Client{Transport: rt}})
+			if err != nil {
+				t.Fatalf("NewWith: %v", err)
+			}
+			if _, err := client.UserNovelBookmarks(context.Background(), pixiv.UserNovelBookmarksRequest{UserID: 7, Restrict: pixiv.RestrictPublic}); sdk.ReasonOf(err) != sdk.MalformedUpstreamResponse {
+				t.Fatalf("ReasonOf = %q, err = %v", sdk.ReasonOf(err), err)
+			}
+		})
+	}
+
+	rt := roundTripFunc(func(*http.Request) (*http.Response, error) {
+		return jsonResponse(`{"novels":[],"next_url":null}`), nil
+	})
+	client, err := pixiv.NewWith("token", pixiv.Options{HTTPClient: &http.Client{Transport: rt}})
+	if err != nil {
+		t.Fatalf("NewWith: %v", err)
+	}
+	page, err := client.UserNovelBookmarks(context.Background(), pixiv.UserNovelBookmarksRequest{UserID: 7, Restrict: pixiv.RestrictPublic})
+	if err != nil {
+		t.Fatalf("empty UserNovelBookmarks: %v", err)
+	}
+	if page.Items == nil || len(page.Items) != 0 || !page.Next.IsZero() {
+		t.Fatalf("empty page = %#v, want non-nil empty terminal page", page)
+	}
+}
+
 func TestExplicitNovelBookmarkSDKRejectsUnsupportedInputsBeforeNetwork(t *testing.T) {
 	calls := 0
 	rt := roundTripFunc(func(req *http.Request) (*http.Response, error) {

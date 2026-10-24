@@ -1,4 +1,4 @@
-// user 领域：用户详情、各类用户列表和用户收藏标签的读取。
+// user 领域：用户详情和各类用户列表的读取。
 // 请求类型、响应结构与映射、continuation Spec 都在本文件；共用 user 映射在 response.go。
 
 package pixiv
@@ -425,8 +425,8 @@ func (c *Client) mapUserPreviews(operation string, values []userPreviewWire, wit
 
 // mapUserPreview 映射一条 user_previews 项；只有推荐端点携带供参考的作品与小说。
 func (c *Client) mapUserPreview(operation string, value userPreviewWire, withSamples bool) (UserPreview, error) {
-	// 空样例保持非 nil 切片，公开 JSON 与旧映射一致输出 [] 而不是 null。
-	preview := UserPreview{User: c.mapUser(value.User), Illusts: []Artwork{}, Novels: []Novel{}}
+	// 非样例列表保持零值切片（JSON null），与合并前的公开输出一致。
+	preview := UserPreview{User: c.mapUser(value.User)}
 	if !withSamples {
 		return preview, nil
 	}
@@ -485,11 +485,6 @@ var (
 	}
 	userMyPixivContinuation = continuationSpec{
 		path:  pixivapi.PathUserMyPixiv,
-		keys:  []string{pixivapi.ParamOffset},
-		query: []string{pixivapi.ParamUserID, pixivapi.ParamFilter},
-	}
-	userNovelsContinuation = continuationSpec{
-		path:  pixivapi.PathUserNovels,
 		keys:  []string{pixivapi.ParamOffset},
 		query: []string{pixivapi.ParamUserID, pixivapi.ParamFilter},
 	}

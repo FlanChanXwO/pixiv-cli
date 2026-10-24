@@ -344,7 +344,7 @@ func newCursorInstanceID() (string, error) {
 	return hex.EncodeToString(raw[:]), nil
 }
 
-// continuationSpec 描述单条 artwork endpoint 的 next_url 白名单。
+// continuationSpec 描述单条 endpoint 的 next_url 白名单。
 type continuationSpec struct {
 	path      string
 	keys      []string

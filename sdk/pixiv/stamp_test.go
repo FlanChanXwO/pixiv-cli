@@ -180,16 +180,45 @@ func TestStampCommentMutationsRejectInvalidInputsBeforeNetwork(t *testing.T) {
 }
 
 func TestStampsRejectMalformedResponse(t *testing.T) {
+	for name, body := range map[string]string{
+		"missing list":      `{}`,
+		"null list":         `{"stamps":null}`,
+		"zero id":           `{"stamps":[{"stamp_id":0,"stamp_url":"https://s.pximg.net/stamp.png"}]}`,
+		"negative id":       `{"stamps":[{"stamp_id":-1,"stamp_url":"https://s.pximg.net/stamp.png"}]}`,
+		"missing url":       `{"stamps":[{"stamp_id":1}]}`,
+		"plain http":        `{"stamps":[{"stamp_id":1,"stamp_url":"http://s.pximg.net/stamp.png"}]}`,
+		"root path":         `{"stamps":[{"stamp_id":1,"stamp_url":"https://s.pximg.net"}]}`,
+		"userinfo":          `{"stamps":[{"stamp_id":1,"stamp_url":"https://user:pass@s.pximg.net/stamp.png"}]}`,
+		"untrusted host":    `{"stamps":[{"stamp_id":1,"stamp_url":"https://example.com/stamp.png"}]}`,
+		"non-null next_url": `{"stamps":[],"next_url":"https://app-api.pixiv.net/v1/stamps?offset=40"}`,
+	} {
+		t.Run(name, func(t *testing.T) {
+			rt := roundTripFunc(func(*http.Request) (*http.Response, error) {
+				return jsonResponse(body), nil
+			})
+			client, err := NewWith("token", Options{HTTPClient: &http.Client{Transport: rt}})
+			if err != nil {
+				t.Fatalf("NewWith: %v", err)
+			}
+			if _, err := client.Stamps(context.Background(), StampsRequest{}); sdk.ReasonOf(err) != sdk.MalformedUpstreamResponse {
+				t.Fatalf("Stamps reason = %q, err = %v", sdk.ReasonOf(err), err)
+			}
+		})
+	}
+
 	rt := roundTripFunc(func(*http.Request) (*http.Response, error) {
-		return jsonResponse(`{"stamps":[{"stamp_id":1,"stamp_url":"https://example.com/stamp.png"}]}`), nil
+		return jsonResponse(`{"stamps":[]}`), nil
 	})
 	client, err := NewWith("token", Options{HTTPClient: &http.Client{Transport: rt}})
 	if err != nil {
 		t.Fatalf("NewWith: %v", err)
 	}
-	_, err = client.Stamps(context.Background(), StampsRequest{})
-	if sdk.ReasonOf(err) != sdk.MalformedUpstreamResponse {
-		t.Fatalf("Stamps reason = %q, err = %v", sdk.ReasonOf(err), err)
+	stamps, err := client.Stamps(context.Background(), StampsRequest{})
+	if err != nil {
+		t.Fatalf("empty Stamps: %v", err)
+	}
+	if stamps == nil || len(stamps) != 0 {
+		t.Fatalf("empty stamps = %#v, want non-nil empty slice", stamps)
 	}
 }
 

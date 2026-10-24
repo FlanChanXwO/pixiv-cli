@@ -33,7 +33,7 @@ type imageURLsWire struct {
 	Original     string `json:"original"`
 }
 
-// mapUser 是所有 artwork 与 artwork comment 响应的唯一 user 映射。
+// mapUser 是所有 Pixiv 响应的唯一 user 映射。
 func (c *Client) mapUser(value userWire) User {
 	result := User{
 		ID:         value.ID,
