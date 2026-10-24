@@ -96,23 +96,18 @@ func (a app) newPixivSDKPorts() (pixivSDKPorts, error) {
 	gate := pixivpool.NewGate()
 	readSessions := pixivaccount.NewReadSessions(service, gate)
 	a.closeState.add(readSessions.Close)
-	facade := session.NewPixiv(session.Dependencies{
-		Accounts: service,
-		Gate:     gate,
-		LoadPoolConfig: func() (session.PoolConfig, error) {
-			runtime, err := a.runtimeConfig()
-			if err != nil {
-				return session.PoolConfig{}, err
-			}
-			return session.PoolConfig{Enabled: runtime.AccountPool.Enabled, Strategy: string(runtime.AccountPool.Strategy)}, nil
-		},
-		Pool: func(config session.PoolConfig) (session.PoolExecutor, error) {
-			return pixivpool.Scheduler{
-				Config: configapp.AccountPoolConfig{Enabled: config.Enabled, Strategy: configapp.AccountPoolStrategy(config.Strategy)},
-				State:  db,
-				Now:    time.Now,
-			}, nil
-		},
+	facade := session.NewPixiv(service, gate, func() (session.PoolConfig, error) {
+		runtime, err := a.runtimeConfig()
+		if err != nil {
+			return session.PoolConfig{}, err
+		}
+		return session.PoolConfig{Enabled: runtime.AccountPool.Enabled, Strategy: string(runtime.AccountPool.Strategy)}, nil
+	}, func(config session.PoolConfig) (session.PoolExecutor, error) {
+		return pixivpool.Scheduler{
+			Config: configapp.AccountPoolConfig{Enabled: config.Enabled, Strategy: configapp.AccountPoolStrategy(config.Strategy)},
+			State:  db,
+			Now:    time.Now,
+		}, nil
 	})
 	if facade == nil {
 		return pixivSDKPorts{}, errors.New("pixiv service facade is not configured")
@@ -218,11 +213,9 @@ func (a app) newFanboxAccountService() (*fanboxaccount.Service, error) {
 	if err != nil {
 		return nil, err
 	}
-	service := fanboxaccount.NewService(db, configapp.DefaultStore())
-	service.LoadOptionsFunc = func() (fanboxsdkOptions, error) {
+	return fanboxaccount.NewService(db, configapp.DefaultStore(), func() (fanboxsdkOptions, error) {
 		return fanboxOptionsFromRuntime(a.runtimeConfig)
-	}
-	return service, nil
+	}), nil
 }
 
 func (a app) newFanboxService() (*session.Fanbox, error) {

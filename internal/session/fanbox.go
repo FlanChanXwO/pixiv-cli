@@ -1,5 +1,7 @@
 // 账号选择与连接选项由 account leaf 负责；session.Fanbox 负责把默认账号
 // client 组合成明确的资源生命周期，避免调用方直接管理 SDK client 的释放。
+// Pixiv 的账号池与 rotation 编排在 pixiv.go。
+
 package session
 
 import (
@@ -11,10 +13,10 @@ import (
 )
 
 var (
-	// ErrFanboxAccountServiceNotConfigured 表示没有注入 FANBOX 账号叶服务。
-	ErrFanboxAccountServiceNotConfigured = errors.New("fanbox account service is not configured")
-	// ErrNilClient 表示账号叶服务成功返回了 nil client。
-	ErrNilClient = errors.New("fanbox account service returned a nil client")
+	// fanboxAccountServiceNotConfigured 表示没有注入 FANBOX 账号叶服务。
+	fanboxAccountServiceNotConfigured = errors.New("fanbox account service is not configured")
+	// nilClient 表示账号叶服务成功返回了 nil client。
+	nilClient = errors.New("fanbox account service returned a nil client")
 )
 
 // AccountOpener 是 account leaf 为 Fanbox 提供的最窄打开端口。
@@ -23,7 +25,7 @@ var (
 // LoadOptionsFunc 加载 public sdk/fanbox.Options。ProxyOverride 只作用于
 // 当前调用，不改变持久化配置或其他连接策略。
 type AccountOpener interface {
-	OpenClientWithProxy(context.Context, *string) (*fanboxsdk.Client, error)
+	OpenClient(context.Context, *string) (*fanboxsdk.Client, error)
 }
 
 // OpenRequest 描述一次默认 FANBOX 账号 client 打开请求。
@@ -44,24 +46,7 @@ type Fanbox struct {
 
 // NewFanbox 构造 FANBOX 根业务编排对象。
 func NewFanbox(accounts AccountOpener) *Fanbox {
-	return NewFanboxWithCloseClient(accounts, nil)
-}
-
-// NewFanboxWithCloseClient 构造可注入 client 释放策略的 FANBOX 编排对象。
-// closeClient 为 nil 时使用 public SDK 的 CloseIdleConnections。
-func NewFanboxWithCloseClient(accounts AccountOpener, closeClient func(*fanboxsdk.Client) error) *Fanbox {
-	if closeClient == nil {
-		closeClient = func(client *fanboxsdk.Client) error {
-			if client != nil {
-				client.CloseIdleConnections()
-			}
-			return nil
-		}
-	}
-	return &Fanbox{
-		accounts:    accounts,
-		closeClient: closeClient,
-	}
+	return &Fanbox{accounts: accounts}
 }
 
 // Open 打开当前默认账号并返回显式 Lease。
@@ -70,7 +55,7 @@ func (f *Fanbox) Open(ctx context.Context, request OpenRequest) (*lifecycle.Leas
 		return nil, lifecycle.ErrNilContext
 	}
 	if f == nil || f.accounts == nil {
-		return nil, ErrFanboxAccountServiceNotConfigured
+		return nil, fanboxAccountServiceNotConfigured
 	}
 	closeClient := f.closeClient
 	if closeClient == nil {
@@ -81,7 +66,7 @@ func (f *Fanbox) Open(ctx context.Context, request OpenRequest) (*lifecycle.Leas
 			return nil
 		}
 	}
-	client, err := f.accounts.OpenClientWithProxy(ctx, request.ProxyOverride)
+	client, err := f.accounts.OpenClient(ctx, request.ProxyOverride)
 	if err != nil {
 		if client != nil {
 			return nil, errors.Join(err, closeClient(client))
@@ -89,7 +74,7 @@ func (f *Fanbox) Open(ctx context.Context, request OpenRequest) (*lifecycle.Leas
 		return nil, err
 	}
 	if client == nil {
-		return nil, ErrNilClient
+		return nil, nilClient
 	}
 	return lifecycle.NewLease(client, func() error { return closeClient(client) }), nil
 }
