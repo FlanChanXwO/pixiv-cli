@@ -435,7 +435,7 @@ func recordTypeMeaning(value string) (ResultKind, Subtype, bool) {
 	switch value {
 	case "artwork":
 		return ResultKindArtwork, "", true
-	case "illustration", "illust":
+	case "illust":
 		return ResultKindArtwork, SubtypeIllust, true
 	case "manga":
 		return ResultKindArtwork, SubtypeManga, true

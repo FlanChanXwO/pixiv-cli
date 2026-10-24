@@ -39,7 +39,7 @@ type Filter struct {
 }
 
 // NormalizeFilter 将命令层输入归一化为共享 canonical 语义。
-// 空值和显式 all 等价；illustration 是既有 public artwork kind 的兼容别名。
+// 空值和显式 all 等价。
 func NormalizeFilter(rating, contentType string) (Filter, error) {
 	normalizedRating, err := normalizeRating(rating)
 	if err != nil {
@@ -72,12 +72,11 @@ func normalizeRating(value string) (Rating, error) {
 }
 
 // NormalizeContentType 将 artwork subtype/selector 规范化为 canonical 值。
-// illustration 是既有 public artwork kind 的兼容别名，canonical 值为 illust。
 func NormalizeContentType(value string) (ContentType, error) {
 	switch strings.ToLower(strings.TrimSpace(value)) {
 	case "", string(ContentTypeAll):
 		return ContentTypeAll, nil
-	case "illustration", string(ContentTypeIllust):
+	case string(ContentTypeIllust):
 		return ContentTypeIllust, nil
 	case string(ContentTypeIllustAndUgoira):
 		return ContentTypeIllustAndUgoira, nil
@@ -136,6 +135,7 @@ func matchesContentType(contentType ContentType, kind string) bool {
 		return true
 	}
 	kind = strings.ToLower(strings.TrimSpace(kind))
+	// Artwork.Kind keeps the upstream spelling; compare it with the public illust value.
 	if kind == "" || kind == "illustration" {
 		kind = string(ContentTypeIllust)
 	}

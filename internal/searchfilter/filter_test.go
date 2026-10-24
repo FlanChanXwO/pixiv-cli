@@ -17,8 +17,8 @@ func TestNormalizeFilterCanonicalizesRatingAndContentType(t *testing.T) {
 		wantContent searchfilter.ContentType
 	}{
 		{name: "empty values are unrestricted", wantRating: searchfilter.RatingAll, wantContent: searchfilter.ContentTypeAll},
-		{name: "trim and case fold", rating: " R18 ", contentType: " ILLUSTRATION ", wantRating: searchfilter.RatingR18, wantContent: searchfilter.ContentTypeIllust},
-		{name: "illustration alias", contentType: "illustration", wantRating: searchfilter.RatingAll, wantContent: searchfilter.ContentTypeIllust},
+		{name: "trim and case fold", rating: " R18 ", contentType: " ILLUST ", wantRating: searchfilter.RatingR18, wantContent: searchfilter.ContentTypeIllust},
+
 		{name: "aggregate content type", contentType: "illust-and-ugoira", wantRating: searchfilter.RatingAll, wantContent: searchfilter.ContentTypeIllustAndUgoira},
 		{name: "mature rating", rating: "mature", wantRating: searchfilter.RatingMature, wantContent: searchfilter.ContentTypeAll},
 	}
@@ -100,16 +100,16 @@ func TestFilterContextBindsCanonicalLocalSemantics(t *testing.T) {
 	require.NoError(t, err)
 	explicit, err := searchfilter.NormalizeFilter("all", "all")
 	require.NoError(t, err)
-	illustration, err := searchfilter.NormalizeFilter("r18", "illustration")
+	illustration, err := searchfilter.NormalizeFilter("r18", "illust")
 	require.NoError(t, err)
 
 	require.Equal(t, empty.CursorContext(), explicit.CursorContext())
 	require.NotEqual(t, empty.CursorContext(), illustration.CursorContext())
 	require.Len(t, empty.CursorContext(), 64)
 	require.NotContains(t, illustration.CursorContext(), "r18")
-	require.NotContains(t, illustration.CursorContext(), "illustration")
+	require.NotContains(t, illustration.CursorContext(), "illust")
 
-	trimmed, err := searchfilter.NormalizeFilter(" R18 ", " ILLUSTRATION ")
+	trimmed, err := searchfilter.NormalizeFilter(" R18 ", " ILLUST ")
 	require.NoError(t, err)
 	require.Equal(t, illustration.CursorContext(), trimmed.CursorContext())
 	require.False(t, strings.Contains(trimmed.CursorContext(), "x_restrict"))

@@ -566,7 +566,7 @@ func TestCommandLocallyFiltersArtworkRatingAndCanonicalizesSubtype(t *testing.T)
 			return err
 		},
 	})
-	cmd.SetArgs([]string{"cat", "--rating", "r18", "--content-type", "illustration", "--limit", "1", "--json"})
+	cmd.SetArgs([]string{"cat", "--rating", "r18", "--content-type", "illust", "--limit", "1", "--json"})
 
 	if err := cmd.Execute(); err != nil {
 		t.Fatalf("execute filtered artwork search: %v", err)

@@ -125,7 +125,7 @@ func (a commandRunner) newDetailCommand() *cobra.Command {
 }
 
 func (a commandRunner) newArtworksCommand() *cobra.Command {
-	opts := listOptions{illustType: string(pixiv.ArtworkKindIllustration)}
+	opts := listOptions{illustType: "illust"}
 	cmd := &cobra.Command{
 		Use:   "artworks [USER_ID]",
 		Short: "List a user's artworks",
@@ -312,7 +312,7 @@ func validateArtworkType(value string) error {
 		return nil
 	default:
 		return sdk.NewError("pixiv", "user artworks", sdk.InvalidArgument,
-			sdk.WithDetail("type must be one of illustration, illust, manga, or ugoira"))
+			sdk.WithDetail("type must be one of illust, manga, or ugoira"))
 	}
 }
 

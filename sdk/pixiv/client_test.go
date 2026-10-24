@@ -958,7 +958,7 @@ func TestSearchArtworksRejectsChangedQuery(t *testing.T) {
 	}
 }
 
-// TestLatestArtworksBindsCursorToContentType 验证 finding #12：latest-artwork 游标
+// TestLatestArtworksBindsCursorToContentType 验证：latest-artwork 游标
 // 绑定 content type，一个为 illust 生成的 continuation 不得在 manga 请求里复用，
 // 否则会在错误的 result set 上恢复 offset。
 func TestLatestArtworksBindsCursorToContentType(t *testing.T) {
@@ -1047,7 +1047,7 @@ func TestLatestArtworksRejectsUnapprovedContentTypeBeforeNetwork(t *testing.T) {
 	}
 }
 
-func TestUserArtworksNormalizesLegacyKindAndBindsCursorToCanonicalType(t *testing.T) {
+func TestUserArtworksBindsCursorToCanonicalType(t *testing.T) {
 	calls := 0
 	rt := roundTripFunc(func(req *http.Request) (*http.Response, error) {
 		calls++
@@ -1069,9 +1069,9 @@ func TestUserArtworksNormalizesLegacyKindAndBindsCursorToCanonicalType(t *testin
 	if err != nil {
 		t.Fatalf("NewWith: %v", err)
 	}
-	page, err := client.UserArtworks(context.Background(), UserArtworksRequest{UserID: 77, Kind: ArtworkKindIllustration})
+	page, err := client.UserArtworks(context.Background(), UserArtworksRequest{UserID: 77, Kind: ArtworkKind("illust")})
 	if err != nil {
-		t.Fatalf("legacy illustration kind: %v", err)
+		t.Fatalf("illust kind: %v", err)
 	}
 	if page.Next.IsZero() {
 		t.Fatal("expected continuation cursor")

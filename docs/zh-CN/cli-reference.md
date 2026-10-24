@@ -204,7 +204,7 @@ canonical 数据动作：`search`、`detail`、`ranking`、`series`、`comment`�
 | --- | --- | --- | --- |
 | `search` | `--type` / `-t` | `artwork` | 实体：`artwork`、`novel`、`user`。子类型用 `--content-type`；`illust` 不是实体值。 |
 | `search` | `--provider` | `reverse_search_provider`（`saucenao`） | `saucenao`、`ascii2d-color`、`ascii2d-bovw`、`all`；仅图片来源。 |
-| `search` | `--content-type` | `all` | `all`、`illust-and-ugoira`、`illust`/`illustration`（别名）、`manga`、`ugoira`；仅作品搜索。 |
+| `search` | `--content-type` | `all` | `all`、`illust-and-ugoira`、`illust`、`manga`、`ugoira`；仅作品搜索。 |
 | `search`、`novel search` | `--search-by` | `tag-partial` | 作品：`tag-partial`、`tag-exact`、`title-caption`、`tag-title-caption`；小说：前三个。 |
 | `search`、`novel search` | `--sort` | `date_desc` | `date_desc` 或 `date_asc`。 |
 | `search` | `--period` | 空 | 作品：`day`、`week`、`month`、`half-year`、`year`；与 `--start-date`/`--end-date` 互斥。 |
@@ -230,7 +230,7 @@ canonical 数据动作：`search`、`detail`、`ranking`、`series`、`comment`�
 | `comment stamp` | `--stamp-id` | 必填正整数 | 与正文分开发送。 |
 | `bookmark list` | `--type` / `-t` | `artwork` | `artwork`、`novel`、`all`（一个逻辑页，作品在前、小说在后，保留类型）。`--restrict`、`--tag` 传给对应列表。 |
 | `bookmark tags` | `--type` / `-t` | `artwork` | `artwork`、`novel`、`all`（同名标签分别保留并带类型）。`--restrict` 选择公开/私密。 |
-| `user artworks` | `--type` | `illustration` | `illust`、`manga`、`ugoira`。 |
+| `user artworks` | `--type` | `illust` | `illust`、`manga`、`ugoira`。 |
 | `user bookmarks` | `--restrict`、`--tag` | `public`、空 | 可见性与精确收藏标签筛选。 |
 | `user following`、`user followers` | `--restrict` | `public` | `public` 或 `private`。 |
 | `timeline following` | `--type` / `-t`、`--content-type` | 必填、`all` | `artwork` 或 `novel`；作品本地筛选 `all\|illust-and-ugoira\|illust\|manga\|ugoira`；`--restrict public\|private`。`novel` 搭配 `--content-type` 被拒绝。 |

@@ -55,11 +55,11 @@ func normalizeLatestArtworkContentType(operation string, value SearchContentType
 	}
 }
 
-// normalizeUserArtworkKind 将旧 public 拼写 illustration 与 wire 拼写
-// illust 绑定到同一查询摘要，避免合法旧游标无法续读。
+// normalizeUserArtworkKind 将 public 空值与 illust 绑定到同一查询摘要，
+// 避免合法游标无法续读。
 func normalizeUserArtworkKind(operation string, value ArtworkKind) (string, error) {
 	switch value {
-	case "", ArtworkKindIllustration, ArtworkKind("illust"):
+	case "", ArtworkKind("illust"):
 		return "illust", nil
 	case ArtworkKindManga, ArtworkKindUgoira:
 		return string(value), nil

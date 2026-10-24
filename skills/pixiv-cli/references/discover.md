@@ -25,7 +25,7 @@ pixiv search "landscape" --type artwork --limit 10 --json
   reserve `--tag` for `user bookmarks` (filter) and `bookmark add` (repeatable
   bookmark tag).
 - Sort defaults to `date_desc`; `date_asc` is the only other supported value.
-- `--content-type all|illust-and-ugoira|illust|illustration|manga|ugoira`, `--ai-mode
+- `--content-type all|illust-and-ugoira|illust|manga|ugoira`, `--ai-mode
   all|exclude|only`, `--aspect-ratio all|landscape|portrait|square`,
   `--resolution all|high|medium|low`, and exact `--draw-tool` names are
   artwork-only filters. `--type` selects the entity route; it is not an
