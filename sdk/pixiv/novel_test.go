@@ -301,6 +301,22 @@ func TestNovelContinuationRejectsUnexpectedNextURLs(t *testing.T) {
 			_, err := c.MyPixivNovels(context.Background(), MyPixivNovelsRequest{})
 			return err
 		}},
+		"series non-positive last order": {body: `{"novel_series_detail":{"id":21,"user":{"id":7}},"novels":[],"next_url":"https://app-api.pixiv.net/v2/novel/series?series_id=21&last_order=0"}`, invoke: func(c *Client) error {
+			_, err := c.NovelSeries(context.Background(), NovelSeriesRequest{SeriesID: 21})
+			return err
+		}},
+		"bookmarks zero cursor": {body: `{"novels":[],"next_url":"https://app-api.pixiv.net/v1/user/bookmarks/novel?max_bookmark_id=0"}`, invoke: func(c *Client) error {
+			_, err := c.UserNovelBookmarks(context.Background(), UserNovelBookmarksRequest{UserID: 7})
+			return err
+		}},
+		"bookmarks duplicate key": {body: `{"novels":[],"next_url":"https://app-api.pixiv.net/v1/user/bookmarks/novel?max_bookmark_id=2&max_bookmark_id=3"}`, invoke: func(c *Client) error {
+			_, err := c.UserNovelBookmarks(context.Background(), UserNovelBookmarksRequest{UserID: 7})
+			return err
+		}},
+		"bookmarks wrong path": {body: `{"novels":[],"next_url":"https://app-api.pixiv.net/v1/user/bookmarks/illust?max_bookmark_id=2"}`, invoke: func(c *Client) error {
+			_, err := c.UserNovelBookmarks(context.Background(), UserNovelBookmarksRequest{UserID: 7})
+			return err
+		}},
 	} {
 		t.Run(name, func(t *testing.T) {
 			client, _ := newWireClient(t, test.body)

@@ -139,6 +139,14 @@ func TestBookmarkOperationsRejectInvalidInputBeforeNetwork(t *testing.T) {
 		{name: "add artwork bookmark restrict", reason: sdk.InvalidArgument, call: func() error {
 			return client.AddArtworkBookmark(context.Background(), AddArtworkBookmarkRequest{ArtworkID: 7, Restrict: Restrict("unknown")})
 		}},
+		{name: "novel bookmark tags cursor", reason: sdk.InvalidCursor, call: func() error {
+			cursor, err := sdk.NewCursor("pixiv", "UserNovelBookmarkTags", 1, "digest", []byte("payload"))
+			if err != nil {
+				return err
+			}
+			_, err = client.UserNovelBookmarkTags(context.Background(), UserNovelBookmarkTagsRequest{UserID: 8, Cursor: cursor})
+			return err
+		}},
 		{name: "novel bookmark tags user id", reason: sdk.InvalidArgument, call: func() error {
 			_, err := client.UserNovelBookmarkTags(context.Background(), UserNovelBookmarkTagsRequest{Restrict: RestrictPublic})
 			return err

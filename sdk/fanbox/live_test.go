@@ -172,7 +172,10 @@ func TestRealFanboxSDKRead(t *testing.T) {
 	if err != nil {
 		t.Fatalf("CreatorPosts: %v", err)
 	}
-	followFanboxPostPage(t, "CreatorPosts", creatorPage, func(cursor sdk.Cursor) (sdk.Page[fanboxsdk.Post], error) {
+	if len(creatorPage.Items) == 0 {
+		t.Fatal("CreatorPosts returned no items for the explicit non-empty target")
+	}
+	followFanboxPageIfPresent(t, "CreatorPosts", creatorPage, func(cursor sdk.Cursor) (sdk.Page[fanboxsdk.Post], error) {
 		return client.CreatorPosts(ctx, fanboxsdk.CreatorPostsRequest{CreatorID: targets.CreatorID, Cursor: cursor})
 	})
 	taggedPage, err := client.TaggedPosts(ctx, fanboxsdk.TaggedPostsRequest{CreatorID: targets.CreatorID, Tag: targets.Tag})
@@ -306,22 +309,6 @@ func TestRealFanboxSDKPostInfo(t *testing.T) {
 	if reference.Kind != fanboxsdk.ReferenceKindPost || reference.PostID != targets.PostID {
 		t.Fatalf("ResolveURL returned kind=%q post=%q", reference.Kind, reference.PostID)
 	}
-}
-
-// followFanboxPostPage follows exactly one server cursor to prove the public
-// cursor binding and continuation request. This is an acceptance assertion,
-// not a production result cap; the SDK itself keeps returning server pages.
-func followFanboxPostPage(
-	t *testing.T,
-	operation string,
-	page sdk.Page[fanboxsdk.Post],
-	next func(sdk.Cursor) (sdk.Page[fanboxsdk.Post], error),
-) {
-	t.Helper()
-	if len(page.Items) == 0 {
-		t.Fatalf("%s returned no items for the explicit non-empty target", operation)
-	}
-	followFanboxPageIfPresent(t, operation, page, next)
 }
 
 // followFanboxPageIfPresent verifies one continuation whenever the upstream

@@ -731,6 +731,17 @@ func buildLegacyRecommendedCursor(t *testing.T, key string, value int64) sdk.Cur
 	return legacy
 }
 
+func TestSearchArtworkAIModeFiltersBatchLocally(t *testing.T) {
+	client, recorder := newWireClient(t, `{"illusts":[{"id":901,"type":"illust","ai_type":2,"create_date":"2026-01-01T00:00:00Z","user":{"id":7}},{"id":902,"type":"illust","ai_type":1,"create_date":"2026-01-01T00:00:00Z","user":{"id":7}}]}`)
+	page, err := client.SearchArtworks(context.Background(), SearchArtworksRequest{Word: "ai", AIMode: SearchAIModeOnly})
+	if err != nil || len(page.Items) != 1 || page.Items[0].ID != 901 {
+		t.Fatalf("page = %#v err=%v, want only the AI artwork", page, err)
+	}
+	if got := recorder.request(t, 0).URL.Query().Get("search_ai_type"); got != "0" {
+		t.Fatalf("search_ai_type = %q, want local filtering", got)
+	}
+}
+
 func TestSearchArtworkWireAliases(t *testing.T) {
 	for name, test := range map[string]struct {
 		request SearchArtworksRequest
