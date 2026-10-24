@@ -11,7 +11,7 @@ import (
 	"github.com/FlanChanXwO/pixiv-cli/internal/fanboxapi"
 )
 
-func TestClientCachesLocatorsAndVerifiedIdentity(t *testing.T) {
+func TestClientVerifiesIdentityOncePerSession(t *testing.T) {
 	identityCalls := 0
 	session, err := fanboxapi.NewSessionWithOptions("FANBOXSESSID=client-canary", fanboxapi.SessionOptions{
 		HTTPClient: &http.Client{Transport: roundTripFunc(func(*http.Request) (*http.Response, error) {
@@ -23,10 +23,6 @@ func TestClientCachesLocatorsAndVerifiedIdentity(t *testing.T) {
 		t.Fatal(err)
 	}
 	client := fanboxapi.NewClient(session)
-	client.CacheLocator("ref-1", fanboxapi.Locator{URL: "https://downloads.fanbox.cc/a.png", Filename: "a.png"})
-	if locator, ok := client.CachedLocator("ref-1"); !ok || locator.Filename != "a.png" {
-		t.Fatalf("cached locator = %+v ok=%v", locator, ok)
-	}
 	for range 2 {
 		userID, err := client.VerifiedUserID(context.Background())
 		if err != nil || userID != 800 {

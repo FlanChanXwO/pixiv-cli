@@ -212,7 +212,7 @@ func (c *Client) resolvePostAsset(ctx context.Context, rp resourceRefPayload) (p
 	}
 	images, files, err := bodyMedia(source.Body)
 	if err != nil {
-		return protocol.Locator{}, err
+		return protocol.Locator{}, classifyError("resource", err)
 	}
 	if rp.Kind == "post_image" {
 		for _, image := range images {

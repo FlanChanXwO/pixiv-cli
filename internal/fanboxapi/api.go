@@ -1,5 +1,6 @@
-// FANBOX API 路径与 query 参数名。请求发送在 protocol.go，媒体定位规则在 resource.go。
-
+// Package fanboxapi owns the FANBOX protocol: the session transport and its
+// challenge handling, API routes and query names, and the media URL policy.
+// The public SDK business client lives in sdk/fanbox.
 package fanboxapi
 
 // FANBOX API 路径，相对 APIBaseURL。

@@ -187,8 +187,7 @@ func ValidateAPIURL(rawURL string) error {
 }
 
 // ValidateMediaURL applies the media host policy without opening a request.
-// The resource endpoint uses it to keep locator validation beside the product
-// transport policy.
+// sdk/fanbox uses it to validate every locator it exposes.
 func ValidateMediaURL(rawURL string) error {
 	_, err := parseAllowedURL(rawURL, requestKindMedia)
 	return err

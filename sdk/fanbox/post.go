@@ -55,10 +55,11 @@ func (c *Client) CreatorPosts(ctx context.Context, request CreatorPostsRequest) 
 	}
 	creatorID := strings.TrimSpace(request.CreatorID)
 	if creatorID == "" {
-		return sdk.Page[Post]{}, newError("CreatorPosts", sdk.InvalidArgument, errors.New("FANBOX creator id is required"))
+		return sdk.Page[Post]{}, classifyError("CreatorPosts", errors.New("FANBOX creator id is required"))
 	}
+	cursorQuery := url.Values{protocol.ParamCreatorID: {request.CreatorID}}
 	query := url.Values{protocol.ParamCreatorID: {creatorID}}
-	return c.postList(ctx, "CreatorPosts", protocol.PathPostListCreator, query, true, request.Cursor)
+	return c.postList(ctx, "CreatorPosts", protocol.PathPostListCreator, cursorQuery, query, true, request.Cursor)
 }
 
 // TaggedPosts lists one creator's posts for a single tag.
@@ -67,38 +68,40 @@ func (c *Client) TaggedPosts(ctx context.Context, request TaggedPostsRequest) (s
 		return sdk.Page[Post]{}, newError("TaggedPosts", sdk.InvalidArgument, errors.New("creator id and tag are required"))
 	}
 	creatorID := strings.TrimSpace(request.CreatorID)
-	tag := strings.TrimSpace(request.Tag)
 	if creatorID == "" {
-		return sdk.Page[Post]{}, newError("TaggedPosts", sdk.InvalidArgument, errors.New("FANBOX creator id is required"))
+		return sdk.Page[Post]{}, classifyError("TaggedPosts", errors.New("FANBOX creator id is required"))
 	}
+	tag := strings.TrimSpace(request.Tag)
 	if tag == "" {
-		return sdk.Page[Post]{}, newError("TaggedPosts", sdk.InvalidArgument, errors.New("FANBOX tag is required"))
+		return sdk.Page[Post]{}, classifyError("TaggedPosts", errors.New("FANBOX tag is required"))
 	}
+	cursorQuery := url.Values{protocol.ParamCreatorID: {request.CreatorID}, protocol.ParamTag: {request.Tag}}
 	query := url.Values{protocol.ParamCreatorID: {creatorID}, protocol.ParamTag: {tag}}
-	return c.postList(ctx, "TaggedPosts", protocol.PathPostListTagged, query, false, request.Cursor)
+	return c.postList(ctx, "TaggedPosts", protocol.PathPostListTagged, cursorQuery, query, false, request.Cursor)
 }
 
 // Home lists the current user's home feed.
 func (c *Client) Home(ctx context.Context, request HomeRequest) (sdk.Page[Post], error) {
-	return c.postList(ctx, "Home", protocol.PathPostListHome, url.Values{}, true, request.Cursor)
+	return c.postList(ctx, "Home", protocol.PathPostListHome, nil, nil, true, request.Cursor)
 }
 
 // Supporting lists posts from the current user's supporting creators.
 func (c *Client) Supporting(ctx context.Context, request SupportingRequest) (sdk.Page[Post], error) {
-	return c.postList(ctx, "Supporting", protocol.PathPostListSupporting, url.Values{}, true, request.Cursor)
+	return c.postList(ctx, "Supporting", protocol.PathPostListSupporting, nil, nil, true, request.Cursor)
 }
 
-// postList fetches one post page. Pages carrying a server continuation use it
-// verbatim; first pages add the explicit upstream page limit when requested.
-// acceptItems selects the items envelope used by home/supporting.
-func (c *Client) postList(ctx context.Context, operation, path string, baseQuery url.Values, limit bool, cursor sdk.Cursor) (sdk.Page[Post], error) {
-	nextURL, err := c.continuationURL(ctx, operation, baseQuery, cursor)
+// postList fetches one post page. cursorQuery binds the cursor and query is sent
+// on the first page; pages carrying a server continuation use it verbatim.
+// First pages add the explicit upstream page limit when requested. The two query
+// values differ when a request carries surrounding whitespace: the digest keeps
+// the caller's value so existing cursors stay valid, while the wire sees it trimmed.
+func (c *Client) postList(ctx context.Context, operation, path string, cursorQuery, query url.Values, limit bool, cursor sdk.Cursor) (sdk.Page[Post], error) {
+	nextURL, err := c.continuationURL(ctx, operation, cursorQuery, cursor)
 	if err != nil {
 		return sdk.Page[Post]{}, err
 	}
-	query := baseQuery
 	if limit && strings.TrimSpace(nextURL) == "" {
-		query = cloneValues(baseQuery)
+		query = cloneValues(query)
 		query.Set(protocol.ParamLimit, strconv.Itoa(protocol.PostListPageLimit))
 	}
 	var body json.RawMessage
@@ -122,7 +125,7 @@ func (c *Client) postList(ctx context.Context, operation, path string, baseQuery
 		}
 		items = append(items, post)
 	}
-	next, err := c.buildCursor(ctx, operation, baseQuery, firstContinuation(page.PageURLs, page.NextURL))
+	next, err := c.buildCursor(ctx, operation, cursorQuery, firstContinuation(page.PageURLs, page.NextURL))
 	if err != nil {
 		return sdk.Page[Post]{}, err
 	}

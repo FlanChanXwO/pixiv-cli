@@ -134,66 +134,67 @@ func (c *Client) mapPost(source postWire) (Post, error) {
 
 // mapPostBody maps the one body variant the response provides: the images
 // list, the files list, or ordered blocks whose media live in imageMap/fileMap.
-// Assets are flattened in upstream display order; the block variant appends one
-// asset per referenced media.
+// Assets list every image before every file, each id once; an explicit list keeps
+// its upstream duplicates, as before. Block ImageID/FileID are collected
+// regardless of block type; Blocks itself still follows the type.
 func (c *Client) mapPostBody(source postWire) (*PostBody, error) {
 	wire := source.Body
 	body := &PostBody{Text: wire.Text, Blocks: []PostBlock{}, Assets: []Asset{}}
-	switch {
-	case wire.Images != nil:
-		for _, image := range *wire.Images {
-			asset, err := c.imageAsset(source, image)
-			if err != nil {
-				return nil, err
-			}
-			body.Assets = append(body.Assets, asset)
+	images, files, err := bodyMedia(wire)
+	if err != nil {
+		return nil, err
+	}
+	imageByID := make(map[string]imageWire, len(images))
+	for _, image := range images {
+		asset, err := c.imageAsset(source, image)
+		if err != nil {
+			return nil, err
 		}
-	case wire.Files != nil:
-		for _, file := range *wire.Files {
-			asset, err := c.fileAsset(source, file)
-			if err != nil {
-				return nil, err
-			}
-			body.Assets = append(body.Assets, asset)
+		imageByID[image.ID] = image
+		body.Assets = append(body.Assets, asset)
+	}
+	fileByID := make(map[string]fileWire, len(files))
+	for _, file := range files {
+		asset, err := c.fileAsset(source, file)
+		if err != nil {
+			return nil, err
 		}
-	case wire.Blocks != nil:
-		for _, block := range *wire.Blocks {
-			switch PostBlockKind(block.Type) {
-			case PostBlockImage:
-				if block.ImageID == nil {
-					continue
-				}
-				image, found := wire.ImageMap[*block.ImageID]
-				if !found {
-					return nil, errors.New("FANBOX blog block references a missing image")
-				}
-				asset, err := c.imageAsset(source, image)
+		fileByID[file.ID] = file
+		body.Assets = append(body.Assets, asset)
+	}
+	if wire.Blocks == nil {
+		return body, nil
+	}
+	for _, block := range *wire.Blocks {
+		switch PostBlockKind(block.Type) {
+		case PostBlockImage:
+			if block.ImageID == nil {
+				continue
+			}
+			if image, ok := imageByID[*block.ImageID]; ok && image.OriginalURL != "" {
+				res, err := c.newResource("post_image", source.CreatorID, source.ID, image.ID, image.OriginalURL, "")
 				if err != nil {
 					return nil, err
 				}
-				body.Assets = append(body.Assets, asset)
-				body.Blocks = append(body.Blocks, PostBlock{Kind: PostBlockImage, Image: &PostImageBlock{Resource: asset.Resource}})
-			case PostBlockFile:
-				if block.FileID == nil {
-					continue
-				}
-				file, found := wire.FileMap[*block.FileID]
-				if !found {
-					return nil, errors.New("FANBOX blog block references a missing file")
-				}
-				asset, err := c.fileAsset(source, file)
+				body.Blocks = append(body.Blocks, PostBlock{Kind: PostBlockImage, Image: &PostImageBlock{Resource: res}})
+			}
+		case PostBlockFile:
+			if block.FileID == nil {
+				continue
+			}
+			if file, ok := fileByID[*block.FileID]; ok && file.URL != "" {
+				res, err := c.newResource("post_file", source.CreatorID, source.ID, file.ID, file.URL, attachmentFilename(file.Name, file.Extension))
 				if err != nil {
 					return nil, err
 				}
-				body.Assets = append(body.Assets, asset)
-				body.Blocks = append(body.Blocks, PostBlock{Kind: PostBlockFile, File: &PostFileBlock{Resource: asset.Resource, Name: asset.Name}})
-			case PostBlockArticle:
-				body.Blocks = append(body.Blocks, PostBlock{Kind: PostBlockArticle, Article: &PostArticleBlock{}})
-			case PostBlockVideo:
-				body.Blocks = append(body.Blocks, PostBlock{Kind: PostBlockVideo, Video: &PostVideoEmbed{EmbeddedData: map[string]string{}}})
-			default:
-				body.Blocks = append(body.Blocks, PostBlock{Kind: PostBlockUnknown, Unknown: &PostUnknownBlock{RawType: block.Type, Payload: map[string]string{}}})
+				body.Blocks = append(body.Blocks, PostBlock{Kind: PostBlockFile, File: &PostFileBlock{Resource: res, Name: file.Name}})
 			}
+		case PostBlockArticle:
+			body.Blocks = append(body.Blocks, PostBlock{Kind: PostBlockArticle, Article: &PostArticleBlock{}})
+		case PostBlockVideo:
+			body.Blocks = append(body.Blocks, PostBlock{Kind: PostBlockVideo, Video: &PostVideoEmbed{EmbeddedData: map[string]string{}}})
+		default:
+			body.Blocks = append(body.Blocks, PostBlock{Kind: PostBlockUnknown, Unknown: &PostUnknownBlock{RawType: block.Type, Payload: map[string]string{}}})
 		}
 	}
 	return body, nil
@@ -221,9 +222,9 @@ func (c *Client) fileAsset(source postWire, file fileWire) (Asset, error) {
 	return Asset{ID: file.ID, Kind: AssetKindFile, Name: file.Name, Resource: res}, nil
 }
 
-// bodyMedia returns the image and file locators of one body variant for
-// resource re-resolution: the explicit list when present, otherwise the media
-// referenced by blocks, each id once in first-use order.
+// bodyMedia returns the image and file locators of one body variant: the
+// explicit list when present, otherwise the block-referenced media in first-use
+// order, deduplicated by id.
 func bodyMedia(body *postBodyWire) ([]imageWire, []fileWire, error) {
 	switch {
 	case body.Images != nil:

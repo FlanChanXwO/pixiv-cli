@@ -64,7 +64,7 @@ func (c *Client) Creators(ctx context.Context, request CreatorsRequest) (sdk.Pag
 	case CreatorListFollowing:
 		path = protocol.PathCreatorListFollowing
 	default:
-		return sdk.Page[CreatorSummary]{}, newError("Creators", sdk.InvalidArgument, errors.New("FANBOX creator list kind is invalid"))
+		return sdk.Page[CreatorSummary]{}, classifyError("Creators", errors.New("FANBOX creator list kind is invalid"))
 	}
 	query := url.Values{"kind": {string(kind)}}
 	nextURL, err := c.continuationURL(ctx, "Creators", query, request.Cursor)
@@ -93,7 +93,7 @@ func (c *Client) CreatorTags(ctx context.Context, request CreatorTagsRequest) ([
 	}
 	creatorID := strings.TrimSpace(request.CreatorID)
 	if creatorID == "" {
-		return nil, newError("CreatorTags", sdk.InvalidArgument, errors.New("FANBOX creator id is required"))
+		return nil, classifyError("CreatorTags", errors.New("FANBOX creator id is required"))
 	}
 	var response struct {
 		Body json.RawMessage `json:"body"`
@@ -116,7 +116,7 @@ func (c *Client) getListBody(ctx context.Context, path string, query url.Values,
 		Body json.RawMessage `json:"body"`
 	}
 	var err error
-	if nextURL != "" {
+	if strings.TrimSpace(nextURL) != "" {
 		err = c.app.GetJSONURL(ctx, nextURL, &response)
 	} else {
 		err = c.app.GetJSON(ctx, path, query, &response)
