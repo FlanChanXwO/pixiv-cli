@@ -4,14 +4,10 @@ package fanbox
 
 import (
 	"context"
-	"crypto/sha256"
-	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"net/url"
-	"sort"
 	"strconv"
-	"strings"
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/fanboxapi"
 	"github.com/FlanChanXwO/pixiv-cli/sdk"
@@ -40,28 +36,6 @@ var identityScopedOps = map[string]bool{
 	"TaggedPosts":  false,
 }
 
-// queryDigest returns a stable digest of the base request query parameters.
-func queryDigest(query url.Values) string {
-	keys := make([]string, 0, len(query))
-	for key := range query {
-		keys = append(keys, key)
-	}
-	sort.Strings(keys)
-	var builder strings.Builder
-	for _, key := range keys {
-		values := append([]string(nil), query[key]...)
-		sort.Strings(values)
-		for _, value := range values {
-			builder.WriteString(url.QueryEscape(key))
-			builder.WriteByte('=')
-			builder.WriteString(url.QueryEscape(value))
-			builder.WriteByte('&')
-		}
-	}
-	sum := sha256.Sum256([]byte(builder.String()))
-	return hex.EncodeToString(sum[:])
-}
-
 func (c *Client) buildCursor(ctx context.Context, op string, baseQuery url.Values, nextURL string) (sdk.Cursor, error) {
 	if nextURL == "" {
 		return sdk.Cursor{}, nil
@@ -81,14 +55,14 @@ func (c *Client) buildCursor(ctx context.Context, op string, baseQuery url.Value
 		}
 		opts = append(opts, sdk.WithCursorIdentity(strconv.FormatInt(userID, 10)))
 	}
-	return sdk.NewCursor(product, op, cursorBindingVersion, queryDigest(baseQuery), payload, opts...)
+	return sdk.NewCursor(product, op, cursorBindingVersion, sdk.CursorQueryHash(baseQuery), payload, opts...)
 }
 
 func (c *Client) continuationURL(ctx context.Context, op string, baseQuery url.Values, cur sdk.Cursor) (string, error) {
 	if cur.IsZero() {
 		return "", nil
 	}
-	if err := sdk.ValidateCursor(cur, product, op, cursorBindingVersion, queryDigest(baseQuery)); err != nil {
+	if err := sdk.ValidateCursor(cur, product, op, cursorBindingVersion, sdk.CursorQueryHash(baseQuery)); err != nil {
 		return "", newError(op, sdk.InvalidCursor, err)
 	}
 	if identityScopedOps[op] {

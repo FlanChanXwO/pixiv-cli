@@ -1,9 +1,16 @@
+// Opaque cursor envelopes and query bindings for product SDK pagination.
+
 package sdk
 
 import (
+	"crypto/sha256"
 	"encoding/base64"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"net/url"
+	"sort"
+	"strings"
 )
 
 // cursorFormatVersion is the encoding version of the cursor envelope. It is
@@ -262,4 +269,28 @@ func decodeCursor(text string) (cursorEnvelope, error) {
 		return cursorEnvelope{}, errors.New("cursor missing binding or payload")
 	}
 	return env, nil
+}
+
+// CursorQueryHash returns the stable binding digest of a base request query.
+// Keys and repeated values are sorted without modifying query; product SDKs
+// exclude continuation parameters before calling it.
+func CursorQueryHash(query url.Values) string {
+	keys := make([]string, 0, len(query))
+	for key := range query {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+	var builder strings.Builder
+	for _, key := range keys {
+		values := append([]string(nil), query[key]...)
+		sort.Strings(values)
+		for _, value := range values {
+			builder.WriteString(url.QueryEscape(key))
+			builder.WriteByte('=')
+			builder.WriteString(url.QueryEscape(value))
+			builder.WriteByte('&')
+		}
+	}
+	sum := sha256.Sum256([]byte(builder.String()))
+	return hex.EncodeToString(sum[:])
 }
