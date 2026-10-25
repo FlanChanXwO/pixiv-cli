@@ -69,7 +69,6 @@ func NotesFromChangelog(path, version string) ([]byte, error) {
 		return nil, fmt.Errorf("changelog has more than one release heading for v%s", version)
 	}
 	notes := strings.Trim(internalNotePattern.ReplaceAllString(string(body[location[1]:]), ""), "\n")
-	notes = strings.TrimSpace(repeatedBlankLines.ReplaceAllString(notes, "\n\n"))
 	if notes == "" {
 		return nil, fmt.Errorf("changelog release v%s has no release notes", version)
 	}

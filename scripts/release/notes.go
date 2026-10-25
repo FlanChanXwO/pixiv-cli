@@ -28,7 +28,6 @@ var (
 	linkPattern              = regexp.MustCompile(`\[[^\]]+\]\((https://github\.com/FlanChanXwO/pixiv-cli/(?:compare/[^)\s]+|commits/[^)\s]+))\)`)
 	internalNotePattern      = regexp.MustCompile(`(?s)<!--\s*internal:(.*?)-->`)
 	internalLinkPattern      = regexp.MustCompile(`\[[^\]]+\]\((https://github\.com/FlanChanXwO/pixiv-cli/(?:pull/[0-9]+|commit/[0-9a-fA-F]{7,64}))\)`)
-	repeatedBlankLines       = regexp.MustCompile(`\n{3,}`)
 	semanticVersionPattern   = regexp.MustCompile(`^[0-9]+\.[0-9]+\.[0-9]+(?:-[0-9A-Za-z.-]+)?$`)
 )
 
