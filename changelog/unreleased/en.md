@@ -19,6 +19,8 @@
 **Full Changelog**: _Added when the next version is tagged._
 
 <!-- internal:
+  [#228](https://github.com/FlanChanXwO/pixiv-cli/pull/228)
+  [#229](https://github.com/FlanChanXwO/pixiv-cli/pull/229)
   [#227](https://github.com/FlanChanXwO/pixiv-cli/pull/227)
   [#218](https://github.com/FlanChanXwO/pixiv-cli/pull/218)
   [#220](https://github.com/FlanChanXwO/pixiv-cli/pull/220)
