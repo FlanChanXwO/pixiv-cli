@@ -4,6 +4,7 @@
 package pixiv
 
 import (
+	"cmp"
 	"errors"
 	"time"
 )
@@ -34,12 +35,7 @@ type imageURLsWire struct {
 }
 
 func firstImageURL(value imageURLsWire) string {
-	for _, candidate := range []string{value.Original, value.Large, value.Medium, value.SquareMedium} {
-		if candidate != "" {
-			return candidate
-		}
-	}
-	return ""
+	return cmp.Or(value.Original, value.Large, value.Medium, value.SquareMedium)
 }
 
 // mapUser 是所有 Pixiv 响应的唯一 user 映射。
