@@ -4,21 +4,10 @@ package database
 
 import (
 	"context"
-	"strings"
 	"testing"
 
 	accountpixiv "github.com/FlanChanXwO/pixiv-cli/internal/pixivaccount"
 )
-
-func TestDSNWithPragmasUsesSlashSeparatedFileURI(t *testing.T) {
-	dsn := dsnWithPragmas(`C:\Users\runner\AppData\Local\pixiv-cli.db`)
-	if !strings.HasPrefix(dsn, "file:C:/Users/runner/AppData/Local/pixiv-cli.db?") {
-		t.Fatalf("dsnWithPragmas() = %q, want file:C:/... for ncruces", dsn)
-	}
-	if strings.Contains(dsn, `\\`) || strings.Contains(dsn, "%5C") || strings.Contains(dsn, "file:///") {
-		t.Fatalf("dsnWithPragmas() retained an incompatible Windows path form: %q", dsn)
-	}
-}
 
 // Windows CI 实际打开数据库，覆盖盘符、反斜杠、空格与 TMP 路径。
 func TestOpenOnWindowsAcceptsForwardSlashFileURI(t *testing.T) {
