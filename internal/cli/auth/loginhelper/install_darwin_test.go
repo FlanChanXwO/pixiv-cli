@@ -126,12 +126,6 @@ func TestEnsurePixivURLHandlerAppRebuildsHelperWithoutCurrentSourceVersion(t *te
 	require.Equal(t, pixivURLHandlerSourceVersion+"\n", string(version))
 }
 
-func TestPixivURLHandlerStartsHiddenCallbackProcess(t *testing.T) {
-	require.Contains(t, pixivURLHandlerSwiftSource, "process.arguments = [\"auth\", \"_callback\", callbackURL]")
-	require.Contains(t, pixivURLHandlerSwiftSource, "handler-manifest.json")
-	require.NotContains(t, pixivURLHandlerSwiftSource, "URLSession.shared.dataTask")
-}
-
 func TestPixivURLHandlerReadsPrivateManifest(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)

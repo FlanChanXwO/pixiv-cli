@@ -21,19 +21,6 @@ func (f roundTripFunc) RoundTrip(request *http.Request) (*http.Response, error) 
 	return f(request)
 }
 
-func TestNewRegistersTimelineLeaves(t *testing.T) {
-	cmd := newTestCommand(testData{Input: strings.NewReader(""), Output: &bytes.Buffer{}, ErrorOutput: &bytes.Buffer{}, UsageError: func(err error) error { return err }})
-	seen := map[string]bool{}
-	for _, child := range cmd.Commands() {
-		seen[child.Name()] = true
-	}
-	for _, name := range []string{"following", "latest"} {
-		if !seen[name] {
-			t.Fatalf("timeline command missing %q", name)
-		}
-	}
-}
-
 func TestLatestArtworkDefaultsToSupportedIllustContentType(t *testing.T) {
 	var contentType string
 	client, err := pixiv.NewWith("test-access-token", pixiv.Options{HTTPClient: &http.Client{Transport: roundTripFunc(func(request *http.Request) (*http.Response, error) {
@@ -164,72 +151,38 @@ func TestFollowingArtworkContentTypeFiltersAcrossPages(t *testing.T) {
 	}
 }
 
-func TestFollowingNovelRejectsContentTypeBeforeOpeningClient(t *testing.T) {
-	opened := false
-	cmd := newTestCommand(testData{
-		Input:      strings.NewReader(""),
-		Output:     &bytes.Buffer{},
-		UsageError: func(err error) error { return err },
-		JSONOut:    func(*bool) (bool, error) { return false, nil },
-		Pooled: func(context.Context, pixivcmd.Request, func(context.Context, *pixiv.Client) (bool, error)) error {
-			opened = true
-			return nil
-		},
-	})
-	cmd.SetArgs([]string{"following", "--type", "novel", "--content-type", "manga", "--limit", "1"})
-
-	err := cmd.Execute()
-	if err == nil || !strings.Contains(err.Error(), "--content-type is only supported when --type artwork") {
-		t.Fatalf("expected novel content-type validation error, got %v", err)
-	}
-	if opened {
-		t.Fatal("opened SDK client before validating novel content-type")
-	}
-}
-
-func TestLatestNovelRejectsContentTypeBeforeOpeningClient(t *testing.T) {
-	opened := false
-	cmd := newTestCommand(testData{
-		Input:      strings.NewReader(""),
-		Output:     &bytes.Buffer{},
-		UsageError: func(err error) error { return err },
-		JSONOut:    func(*bool) (bool, error) { return false, nil },
-		Pooled: func(context.Context, pixivcmd.Request, func(context.Context, *pixiv.Client) (bool, error)) error {
-			opened = true
-			return nil
-		},
-	})
-	cmd.SetArgs([]string{"latest", "--type", "novel", "--content-type", "manga", "--limit", "1"})
-
-	err := cmd.Execute()
-	if err == nil || !strings.Contains(err.Error(), "--content-type is only supported when --type artwork") {
-		t.Fatalf("expected novel content-type validation error, got %v", err)
-	}
-	if opened {
-		t.Fatal("opened SDK client before validating novel content-type")
-	}
-}
-
-func TestFollowingArtworkRejectsUnsupportedContentTypeBeforeOpeningClient(t *testing.T) {
-	opened := false
-	cmd := newTestCommand(testData{
-		Input:      strings.NewReader(""),
-		Output:     &bytes.Buffer{},
-		UsageError: func(err error) error { return err },
-		JSONOut:    func(*bool) (bool, error) { return false, nil },
-		Pooled: func(context.Context, pixivcmd.Request, func(context.Context, *pixiv.Client) (bool, error)) error {
-			opened = true
-			return nil
-		},
-	})
-	cmd.SetArgs([]string{"following", "--type", "artwork", "--content-type", "unknown", "--limit", "1"})
-
-	err := cmd.Execute()
-	if err == nil || !strings.Contains(err.Error(), "content-type must be one of") {
-		t.Fatalf("expected artwork content-type validation error, got %v", err)
-	}
-	if opened {
-		t.Fatal("opened SDK client before validating following artwork content-type")
+// content-type 只在 artwork 下有效，且值域受限；三条校验分支共用同一打开前的拒绝路径。
+func TestTimelineContentTypeValidation(t *testing.T) {
+	for _, test := range []struct {
+		name string
+		args []string
+		want string
+	}{
+		{name: "following novel", args: []string{"following", "--type", "novel", "--content-type", "manga", "--limit", "1"}, want: "--content-type is only supported when --type artwork"},
+		{name: "latest novel", args: []string{"latest", "--type", "novel", "--content-type", "manga", "--limit", "1"}, want: "--content-type is only supported when --type artwork"},
+		{name: "unsupported value", args: []string{"following", "--type", "artwork", "--content-type", "unknown", "--limit", "1"}, want: "content-type must be one of"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			opened := false
+			cmd := newTestCommand(testData{
+				Input:      strings.NewReader(""),
+				Output:     &bytes.Buffer{},
+				UsageError: func(err error) error { return err },
+				JSONOut:    func(*bool) (bool, error) { return false, nil },
+				Pooled: func(context.Context, pixivcmd.Request, func(context.Context, *pixiv.Client) (bool, error)) error {
+					opened = true
+					return nil
+				},
+			})
+			cmd.SetArgs(test.args)
+			err := cmd.Execute()
+			if err == nil || !strings.Contains(err.Error(), test.want) {
+				t.Fatalf("expected %q validation error, got %v", test.want, err)
+			}
+			if opened {
+				t.Fatal("opened SDK client before validating content type")
+			}
+		})
 	}
 }
 

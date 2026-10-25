@@ -41,25 +41,10 @@ func TestNewCommandPreservesConfigSurface(t *testing.T) {
 	assert.Equal(t, []string{"get", "path", "set", "unset"}, commandNames(cmd))
 }
 
+// CLI 的责任是把 settings 声明的每个可管理 alias 接进 config 命令并写进 help；
+// alias 清单本身由 internal/config/settings 的测试固定。
 func TestCLIManagedAliasesComeFromSchema(t *testing.T) {
-	want := []string{
-		"account_pool_enabled",
-		"account_pool_strategy",
-		"directory_template",
-		"download_path",
-		"filename_template",
-		"https_proxy",
-		"log_format",
-		"log_level",
-		"mcp_gallery_animation_temp_capacity_mib",
-		"mcp_gallery_cache_capacity_mib",
-		"request_interval",
-		"reverse_search_pixiv_only",
-		"reverse_search_provider",
-		"saucenao_api_key",
-	}
-	require.Equal(t, want, keyStrings(configapp.CLISettingAliases()))
-	for _, alias := range want {
+	for _, alias := range configapp.CLISettingAliases() {
 		require.Truef(t, isCLIConfigAlias(configapp.Key(alias)), "%s must be accepted by config commands", alias)
 		require.Contains(t, configKeyHelp(), alias)
 	}

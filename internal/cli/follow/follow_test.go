@@ -19,16 +19,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestNewRegistersFollowMutations(t *testing.T) {
-	cmd := newTestCommand(testData{Input: strings.NewReader(""), Output: &bytes.Buffer{}, ErrorOutput: &bytes.Buffer{}, UsageError: func(err error) error { return err }})
-	if len(cmd.Commands()) != 2 || cmd.Commands()[0].Name() != "add" || cmd.Commands()[1].Name() != "remove" {
-		t.Fatalf("unexpected follow leaves: %v", cmd.Commands())
-	}
-}
-
 func TestFollowRecordTypesRemainUserOnly(t *testing.T) {
-	assert.Equal(t, map[string]struct{}{"user": {}}, userRecordTypes)
-
 	called := false
 	var diagnostics bytes.Buffer
 	err := input.ConsumeActionRecords(

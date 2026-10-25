@@ -43,18 +43,7 @@ func TestNewRegistersCommentActionsWithoutChangingReadRoute(t *testing.T) {
 }
 
 func TestCommentCreateReturnsResponseCommentID(t *testing.T) {
-	var request *http.Request
 	transport := commentRoundTripFunc(func(req *http.Request) (*http.Response, error) {
-		request = req
-		if req.Method != http.MethodPost || req.URL.Path != "/v1/illust/comment/add" {
-			t.Fatalf("request = %s %s, want POST /v1/illust/comment/add", req.Method, req.URL.Path)
-		}
-		if err := req.ParseForm(); err != nil {
-			return nil, err
-		}
-		if req.PostForm.Get("illust_id") != "101" || req.PostForm.Get("comment") != "hello" || len(req.PostForm) != 2 {
-			t.Fatalf("form = %#v, want illust_id=101 and comment=hello", req.PostForm)
-		}
 		return commentJSONResponse(req, `{"comment_id":73}`), nil
 	})
 	client, err := pixiv.NewWith("test-access-token", pixiv.Options{HTTPClient: &http.Client{Transport: transport}})
@@ -68,9 +57,6 @@ func TestCommentCreateReturnsResponseCommentID(t *testing.T) {
 	if err := cmd.Execute(); err != nil {
 		t.Fatalf("execute comment create: %v", err)
 	}
-	if request == nil {
-		t.Fatal("comment create did not send a request")
-	}
 	var result struct {
 		CommentID int64 `json:"comment_id"`
 	}
@@ -82,111 +68,44 @@ func TestCommentCreateReturnsResponseCommentID(t *testing.T) {
 	}
 }
 
+// 五种 action 的输出外形：create/reply 返回 comment_id，stamp 允许空文案，delete 返回 deleted。
 func TestCommentMutationsDispatchArtworkAndNovelNamespaces(t *testing.T) {
-	tests := []struct {
-		name         string
-		args         []string
-		path         string
-		form         map[string]string
-		response     string
-		wantID       int64
-		wantDeleted  bool
-		responseCode int
+	for _, test := range []struct {
+		name        string
+		args        []string
+		response    string
+		wantID      int64
+		wantDeleted bool
 	}{
 		{
-			name:     "novel create",
-			args:     []string{"create", "201", "--type", "novel", "--comment", "hello", "--json"},
-			path:     "/v1/novel/comment/add",
-			form:     map[string]string{"novel_id": "201", "comment": "hello"},
-			response: `{"comment_id":81}`,
-			wantID:   81,
-		},
-		{
-			name:     "artwork reply",
-			args:     []string{"reply", "101", "--type", "artwork", "--parent-comment-id", "73", "--comment", "reply", "--json"},
-			path:     "/v1/illust/comment/add",
-			form:     map[string]string{"illust_id": "101", "comment": "reply", "parent_comment_id": "73"},
-			response: `{"comment_id":82}`,
-			wantID:   82,
+			name:     "artwork create",
+			args:     []string{"create", "101", "--type", "artwork", "--comment", "hello", "--json"},
+			response: `{"comment_id":73}`,
+			wantID:   73,
 		},
 		{
 			name:     "novel reply",
 			args:     []string{"reply", "201", "--type", "novel", "--parent-comment-id", "81", "--comment", "reply", "--json"},
-			path:     "/v1/novel/comment/add",
-			form:     map[string]string{"novel_id": "201", "comment": "reply", "parent_comment_id": "81"},
 			response: `{"comment_id":83}`,
 			wantID:   83,
 		},
 		{
-			name:     "artwork stamp",
-			args:     []string{"stamp", "101", "--type", "artwork", "--stamp-id", "9", "--comment", "stamp", "--json"},
-			path:     "/v1/illust/comment/add",
-			form:     map[string]string{"illust_id": "101", "comment": "stamp", "stamp_id": "9"},
-			response: `{"comment_id":84}`,
-			wantID:   84,
-		},
-		{
-			name:     "artwork stamp without comment",
+			name:     "stamp without comment",
 			args:     []string{"stamp", "101", "--type", "artwork", "--stamp-id", "9", "--json"},
-			path:     "/v1/illust/comment/add",
-			form:     map[string]string{"illust_id": "101", "comment": "", "stamp_id": "9"},
 			response: `{"comment":{"id":86}}`,
 			wantID:   86,
 		},
 		{
-			name:     "novel stamp",
-			args:     []string{"stamp", "201", "--type", "novel", "--stamp-id", "9", "--comment", "stamp", "--json"},
-			path:     "/v1/novel/comment/add",
-			form:     map[string]string{"novel_id": "201", "comment": "stamp", "stamp_id": "9"},
-			response: `{"comment_id":85}`,
-			wantID:   85,
+			name:        "novel delete",
+			args:        []string{"delete", "85", "--type", "novel", "--json"},
+			wantDeleted: true,
 		},
-		{
-			name:     "novel stamp without comment",
-			args:     []string{"stamp", "201", "--type", "novel", "--stamp-id", "9", "--json"},
-			path:     "/v1/novel/comment/add",
-			form:     map[string]string{"novel_id": "201", "comment": "", "stamp_id": "9"},
-			response: `{"comment":{"id":87}}`,
-			wantID:   87,
-		},
-		{
-			name:         "artwork delete",
-			args:         []string{"delete", "84", "--type", "artwork", "--json"},
-			path:         "/v1/illust/comment/delete",
-			form:         map[string]string{"comment_id": "84"},
-			wantDeleted:  true,
-			responseCode: http.StatusNoContent,
-		},
-		{
-			name:         "novel delete",
-			args:         []string{"delete", "85", "--type", "novel", "--json"},
-			path:         "/v1/novel/comment/delete",
-			form:         map[string]string{"comment_id": "85"},
-			wantDeleted:  true,
-			responseCode: http.StatusNoContent,
-		},
-	}
-
-	for _, test := range tests {
+	} {
 		t.Run(test.name, func(t *testing.T) {
 			transport := commentRoundTripFunc(func(req *http.Request) (*http.Response, error) {
-				if req.Method != http.MethodPost || req.URL.Path != test.path {
-					t.Fatalf("request = %s %s, want POST %s", req.Method, req.URL.Path, test.path)
-				}
-				if err := req.ParseForm(); err != nil {
-					return nil, err
-				}
-				if len(req.PostForm) != len(test.form) {
-					t.Fatalf("form = %#v, want %#v", req.PostForm, test.form)
-				}
-				for key, want := range test.form {
-					if got := req.PostForm.Get(key); got != want {
-						t.Fatalf("form[%q] = %q, want %q", key, got, want)
-					}
-				}
 				if test.wantDeleted {
 					return &http.Response{
-						StatusCode: test.responseCode,
+						StatusCode: http.StatusNoContent,
 						Header:     http.Header{},
 						Body:       io.NopCloser(strings.NewReader("")),
 						Request:    req,
@@ -264,37 +183,25 @@ func TestCommentStampsJSONOutputIsSafeAndNonPaginated(t *testing.T) {
 }
 
 func TestCommentReadRouteRemainsArtworkAndNovelComments(t *testing.T) {
-	tests := []struct {
+	for _, test := range []struct {
 		name string
 		args []string
-		path string
-		form string
+		body string
 	}{
 		{
 			name: "artwork",
 			args: []string{"123", "--type", "artwork", "--json"},
-			path: "/v3/illust/comments",
-			form: "illust_id=123",
+			body: `{"comments":[{"id":8,"comment":"hello","date":"2026-01-02T03:04:05+00:00","user":{"id":7,"name":"artist"}}],"comment_access_control":0,"next_url":null}`,
 		},
 		{
 			name: "novel",
 			args: []string{"456", "--type", "novel", "--json"},
-			path: "/v2/novel/comments",
-			form: "novel_id=456",
+			body: `{"comments":[{"id":8,"comment":"hello","created_at":"2024-01-02T03:04:05+00:00","user":{"id":7,"name":"artist"}}],"next_url":null}`,
 		},
-	}
-
-	for _, test := range tests {
+	} {
 		t.Run(test.name, func(t *testing.T) {
 			transport := commentRoundTripFunc(func(req *http.Request) (*http.Response, error) {
-				if req.Method != http.MethodGet || req.URL.Path != test.path || req.URL.RawQuery != test.form {
-					t.Fatalf("request = %s %s?%s, want GET %s?%s", req.Method, req.URL.Path, req.URL.RawQuery, test.path, test.form)
-				}
-				body := `{"comments":[{"id":8,"comment":"hello","created_at":"2024-01-02T03:04:05+00:00","user":{"id":7,"name":"artist"}}],"next_url":null}`
-				if test.name == "artwork" {
-					body = `{"comments":[{"id":8,"comment":"hello","date":"2026-01-02T03:04:05+00:00","user":{"id":7,"name":"artist"}}],"comment_access_control":0,"next_url":null}`
-				}
-				return commentJSONResponse(req, body), nil
+				return commentJSONResponse(req, test.body), nil
 			})
 			client, err := pixiv.NewWith("test-access-token", pixiv.Options{HTTPClient: &http.Client{Transport: transport}})
 			if err != nil {

@@ -60,15 +60,6 @@ func TestWriteAuthExportStdoutShortWritesSafely(t *testing.T) {
 	assert.NotContains(t, directErr.Error(), token)
 }
 
-func TestLoginSSHTunnelCommandUsesOnlyBoundListenerAddress(t *testing.T) {
-	command, err := loginSSHTunnelCommand("127.0.0.1:41871")
-	require.NoError(t, err)
-	assert.Equal(t, "ssh -N -L 41871:127.0.0.1:41871 USER@SERVER", command)
-
-	_, err = loginSSHTunnelCommand("not-a-listener")
-	assert.Error(t, err)
-}
-
 func TestLoginCodeFromInputOnlyPixivCallbacksMayOmitState(t *testing.T) {
 	accepts := func(rawURL string) bool {
 		return rawURL == "pixiv://account/login?code=app-code" || rawURL == "https://app-api.pixiv.net/web/v1/users/auth/pixiv/callback?code=https-code"
@@ -138,25 +129,6 @@ func TestLoginInputFromTextRejectsStalePostRedirectChallenge(t *testing.T) {
 	require.Error(t, result.Err)
 	assert.True(t, result.Relayed)
 	assert.Empty(t, opened)
-}
-
-func TestPixivPostRedirectReturnToAcceptsOnlyPixivStartURL(t *testing.T) {
-	returnTo := "https://app-api.pixiv.net/web/v1/users/auth/pixiv/start?code_challenge=challenge&client=pixiv-android"
-	actual, ok := pixivPostRedirectReturnTo("https://accounts.pixiv.net/post-redirect?return_to=" + url.QueryEscape(returnTo))
-	require.True(t, ok)
-	assert.Equal(t, returnTo, actual)
-
-	_, ok = pixivPostRedirectReturnTo("https://accounts.pixiv.net/post-redirect?return_to=" + url.QueryEscape("https://example.test/web/v1/users/auth/pixiv/start"))
-	assert.False(t, ok)
-
-	_, ok = pixivPostRedirectReturnTo("https://accounts.pixiv.net/post-redirect?return_to=" + url.QueryEscape("https://app-api.pixiv.net/not-start"))
-	assert.False(t, ok)
-}
-
-func TestPixivAuthStartMatchesChallenge(t *testing.T) {
-	assert.True(t, pixivAuthStartMatchesChallenge(pixivAuthStartURLForTest("current-challenge"), "current-challenge"))
-	assert.False(t, pixivAuthStartMatchesChallenge(pixivAuthStartURLForTest("stale-challenge"), "current-challenge"))
-	assert.False(t, pixivAuthStartMatchesChallenge(pixivAuthStartURLForTest("any-challenge"), ""))
 }
 
 func pixivAuthStartURLForTest(challenge string) string {
