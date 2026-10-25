@@ -113,3 +113,128 @@ func writeReleaseNote(t *testing.T, root, name, body string) {
 		t.Fatalf("write %s: %v", name, err)
 	}
 }
+
+func TestValidateRejectsMaintenanceSection(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	writeReleaseNote(t, root, "en.md", `# v1.2.0 — 2026-07-30
+
+## Maintenance
+
+- Refactored the transport. ([#42](https://github.com/FlanChanXwO/pixiv-cli/pull/42))
+
+**Full Changelog**: [v1.1.0...v1.2.0](https://github.com/FlanChanXwO/pixiv-cli/compare/v1.1.0...v1.2.0)
+`)
+	writeReleaseNote(t, root, "zh-CN.md", `# v1.2.0 — 2026-07-30
+
+## 维护
+
+- 重构传输层。([#42](https://github.com/FlanChanXwO/pixiv-cli/pull/42))
+
+**完整变更**：[v1.1.0...v1.2.0](https://github.com/FlanChanXwO/pixiv-cli/compare/v1.1.0...v1.2.0)
+`)
+
+	err := validateReleaseDirectory(root, "1.2.0", "v1.1.0")
+	if err == nil || !strings.Contains(err.Error(), "unsupported section") {
+		t.Fatalf("validate error = %v, want unsupported section", err)
+	}
+}
+
+func TestValidateRejectsUnpairedBilingualEntries(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	writeReleaseNote(t, root, "en.md", `# v1.2.0 — 2026-07-30
+
+## Added
+
+- Added one. ([#42](https://github.com/FlanChanXwO/pixiv-cli/pull/42))
+- Added two. ([#43](https://github.com/FlanChanXwO/pixiv-cli/pull/43))
+
+**Full Changelog**: [v1.1.0...v1.2.0](https://github.com/FlanChanXwO/pixiv-cli/compare/v1.1.0...v1.2.0)
+`)
+	writeReleaseNote(t, root, "zh-CN.md", `# v1.2.0 — 2026-07-30
+
+## 新增
+
+- 新增一、二。([#42](https://github.com/FlanChanXwO/pixiv-cli/pull/42), [#43](https://github.com/FlanChanXwO/pixiv-cli/pull/43))
+
+**完整变更**：[v1.1.0...v1.2.0](https://github.com/FlanChanXwO/pixiv-cli/compare/v1.1.0...v1.2.0)
+`)
+
+	err := validateReleaseDirectory(root, "1.2.0", "v1.1.0")
+	if err == nil || !strings.Contains(err.Error(), "entry count differs") {
+		t.Fatalf("validate error = %v, want bilingual entry count mismatch", err)
+	}
+}
+
+func TestValidateSourceCoverageAcceptsInternalMarker(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	writeReleaseNote(t, root, "en.md", `# v1.2.0 — 2026-07-30
+
+## Fixed
+
+- Fixed a visible crash. ([#42](https://github.com/FlanChanXwO/pixiv-cli/pull/42))
+
+<!-- internal: [#43](https://github.com/FlanChanXwO/pixiv-cli/pull/43), [a1b2c3d](https://github.com/FlanChanXwO/pixiv-cli/commit/a1b2c3d9f8e7d6c5b4a39281706f5e4d3c2b1a09) -->
+
+**Full Changelog**: [v1.1.0...v1.2.0](https://github.com/FlanChanXwO/pixiv-cli/compare/v1.1.0...v1.2.0)
+`)
+	writeReleaseNote(t, root, "zh-CN.md", `# v1.2.0 — 2026-07-30
+
+## 修复
+
+- 修复可见崩溃。([#42](https://github.com/FlanChanXwO/pixiv-cli/pull/42))
+
+<!-- internal: [#43](https://github.com/FlanChanXwO/pixiv-cli/pull/43), [a1b2c3d](https://github.com/FlanChanXwO/pixiv-cli/commit/a1b2c3d9f8e7d6c5b4a39281706f5e4d3c2b1a09) -->
+
+**完整变更**：[v1.1.0...v1.2.0](https://github.com/FlanChanXwO/pixiv-cli/compare/v1.1.0...v1.2.0)
+`)
+	report := auditReport{Sources: []auditSource{
+		{URL: "https://github.com/FlanChanXwO/pixiv-cli/pull/42"},
+		{URL: "https://github.com/FlanChanXwO/pixiv-cli/pull/43"},
+		{URL: "https://github.com/FlanChanXwO/pixiv-cli/commit/a1b2c3d9f8e7d6c5b4a39281706f5e4d3c2b1a09"},
+	}}
+
+	if err := validateSourceCoverage(root, "1.2.0", "v1.1.0", report); err != nil {
+		t.Fatalf("validate source coverage: %v", err)
+	}
+	body, err := NotesFromChangelog(filepath.Join(root, "en.md"), "1.2.0")
+	if err != nil {
+		t.Fatalf("render notes: %v", err)
+	}
+	if strings.Contains(string(body), "internal:") {
+		t.Fatalf("rendered notes contain the internal marker: %q", body)
+	}
+}
+
+func TestValidateRejectsInternalMarkerText(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	writeReleaseNote(t, root, "en.md", `# v1.2.0 — 2026-07-30
+
+## Fixed
+
+- Fixed a visible crash. ([#42](https://github.com/FlanChanXwO/pixiv-cli/pull/42))
+
+<!-- internal: refactor only -->
+
+**Full Changelog**: [v1.1.0...v1.2.0](https://github.com/FlanChanXwO/pixiv-cli/compare/v1.1.0...v1.2.0)
+`)
+	writeReleaseNote(t, root, "zh-CN.md", `# v1.2.0 — 2026-07-30
+
+## 修复
+
+- 修复可见崩溃。([#42](https://github.com/FlanChanXwO/pixiv-cli/pull/42))
+
+**完整变更**：[v1.1.0...v1.2.0](https://github.com/FlanChanXwO/pixiv-cli/compare/v1.1.0...v1.2.0)
+`)
+
+	if err := validateReleaseDirectory(root, "1.2.0", "v1.1.0"); err == nil || !strings.Contains(err.Error(), "internal marker") {
+		t.Fatalf("validate error = %v, want internal marker rejection", err)
+	}
+}

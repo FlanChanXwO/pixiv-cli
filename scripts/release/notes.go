@@ -24,6 +24,8 @@ var (
 	sectionPattern         = regexp.MustCompile(`(?m)^##\s+(.+?)\s*$`)
 	sourcePattern          = regexp.MustCompile(`https://github\.com/FlanChanXwO/pixiv-cli/(?:pull/[0-9]+|commit/[0-9a-fA-F]{7,64})`)
 	linkPattern            = regexp.MustCompile(`\[[^\]]+\]\((https://github\.com/FlanChanXwO/pixiv-cli/(?:compare/[^)\s]+|commits/[^)\s]+))\)`)
+	internalNotePattern    = regexp.MustCompile(`(?s)<!--\s*internal:(.*?)-->`)
+	internalLinkPattern    = regexp.MustCompile(`\[[^\]]+\]\((https://github\.com/FlanChanXwO/pixiv-cli/(?:pull/[0-9]+|commit/[0-9a-fA-F]{7,64}))\)`)
 	semanticVersionPattern = regexp.MustCompile(`^[0-9]+\.[0-9]+\.[0-9]+(?:-[0-9A-Za-z.-]+)?$`)
 )
 
@@ -106,6 +108,7 @@ type githubReleaseWrite struct {
 type releaseDocument struct {
 	sections []releaseSection
 	sources  []string
+	internal []string
 	compare  string
 }
 
@@ -562,6 +565,12 @@ func validateReleaseDirectory(directory, version, previous string) error {
 	if !sameStrings(english.sources, chinese.sources) {
 		return fmt.Errorf("bilingual source sets differ: English=%v SimplifiedChinese=%v", english.sources, chinese.sources)
 	}
+	if !sameStrings(english.internal, chinese.internal) {
+		return fmt.Errorf("bilingual internal source sets differ: English=%v SimplifiedChinese=%v", english.internal, chinese.internal)
+	}
+	if err := validateBilingualEntries(english, chinese); err != nil {
+		return err
+	}
 	if err := validateCompareLink(english.compare, version, previous); err != nil {
 		return fmt.Errorf("English Full Changelog: %w", err)
 	}
@@ -570,6 +579,22 @@ func validateReleaseDirectory(directory, version, previous string) error {
 	}
 	if english.compare != chinese.compare {
 		return fmt.Errorf("bilingual compare links differ: English=%q SimplifiedChinese=%q", english.compare, chinese.compare)
+	}
+	return nil
+}
+
+// validateBilingualEntries 要求两种语言在每个章节里逐条对应。共享来源集合
+// 无法发现把两条英文合并成一条中文的改写。
+func validateBilingualEntries(english, chinese releaseDocument) error {
+	if len(english.sections) != len(chinese.sections) {
+		return fmt.Errorf("bilingual section count differs: English=%d SimplifiedChinese=%d", len(english.sections), len(chinese.sections))
+	}
+	for index := range english.sections {
+		left, right := english.sections[index], chinese.sections[index]
+		if len(left.entries) != len(right.entries) {
+			return fmt.Errorf("bilingual entry count differs in %q/%q: English=%d SimplifiedChinese=%d",
+				left.name, right.name, len(left.entries), len(right.entries))
+		}
 	}
 	return nil
 }
@@ -584,13 +609,16 @@ func validateSourceCoverage(directory, version, previous string, report auditRep
 	if err != nil {
 		return err
 	}
-	expected := make(map[string]struct{})
+	expected := make(map[string]struct{}, len(report.Sources))
 	for _, source := range report.Sources {
-		expected[source.URL] = struct{}{}
+		expected[normalizeSourceURL(source.URL)] = struct{}{}
 	}
-	actual := make(map[string]struct{}, len(english.sources))
+	actual := make(map[string]struct{}, len(english.sources)+len(english.internal))
 	for _, source := range english.sources {
-		actual[source] = struct{}{}
+		actual[normalizeSourceURL(source)] = struct{}{}
+	}
+	for _, source := range english.internal {
+		actual[normalizeSourceURL(source)] = struct{}{}
 	}
 	for source := range expected {
 		if _, ok := actual[source]; !ok {
@@ -611,8 +639,6 @@ var englishSectionOrder = []string{
 	"Changed",
 	"Fixed",
 	"Security",
-	"Documentation",
-	"Maintenance",
 	"New Contributors",
 }
 
@@ -622,8 +648,6 @@ var chineseSectionOrder = []string{
 	"变更",
 	"修复",
 	"安全",
-	"文档",
-	"维护",
 	"新贡献者",
 }
 
@@ -637,6 +661,20 @@ func readReleaseDocument(path, version string, sectionOrder []string) (releaseDo
 	if len(heading) != 2 || heading[1] != version {
 		return releaseDocument{}, fmt.Errorf("must start with heading for v%s", version)
 	}
+	document := releaseDocument{}
+	for _, match := range internalNotePattern.FindAllStringSubmatch(content, -1) {
+		links := internalLinkPattern.FindAllStringSubmatch(match[1], -1)
+		remainder := internalLinkPattern.ReplaceAllString(match[1], "")
+		remainder = strings.NewReplacer(" ", "", "\t", "", "\r", "", "\n", "", ",", "").Replace(remainder)
+		if remainder != "" || len(links) == 0 {
+			return releaseDocument{}, fmt.Errorf("internal marker contains text other than source links: %q", strings.TrimSpace(match[1]))
+		}
+		for _, link := range links {
+			document.internal = append(document.internal, link[1])
+		}
+	}
+	// 注释只用于审计覆盖，不参与章节、条目和 compare 链接的解析。
+	content = internalNotePattern.ReplaceAllString(content, "")
 
 	matches := sectionPattern.FindAllStringSubmatchIndex(content, -1)
 	if len(matches) == 0 {
@@ -646,7 +684,6 @@ func readReleaseDocument(path, version string, sectionOrder []string) (releaseDo
 	for index, name := range sectionOrder {
 		allowed[name] = index
 	}
-	document := releaseDocument{}
 	previousIndex := -1
 	for index, match := range matches {
 		name := strings.TrimSpace(content[match[2]:match[3]])
@@ -682,7 +719,18 @@ func readReleaseDocument(path, version string, sectionOrder []string) (releaseDo
 	}
 	document.compare = links[0][1]
 	document.sources = sortedUnique(document.sources)
+	document.internal = sortedUnique(document.internal)
 	return document, nil
+}
+
+// normalizeSourceURL 把 direct commit 链接截到审计和旧说明都使用的 7 位短 SHA，
+// 这样同一提交的两种写法可以逐项比较。
+func normalizeSourceURL(source string) string {
+	prefix := "https://github.com/FlanChanXwO/pixiv-cli/commit/"
+	if commit, ok := strings.CutPrefix(source, prefix); ok && len(commit) > 7 {
+		return prefix + commit[:7]
+	}
+	return source
 }
 
 func bulletEntries(section string) []string {
