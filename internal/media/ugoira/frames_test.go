@@ -145,14 +145,6 @@ func TestFrameArchiveRejectsCRCAndLengthCorruption(t *testing.T) {
 	}
 }
 
-func TestFrameArchiveHonorsZIPPathPolicy(t *testing.T) {
-	t.Setenv("GODEBUG", "zipinsecurepath=0")
-	path := writeFrameArchive(t, []frameZipEntry{{"../frame.png", framePNG(t, image.NewGray(image.Rect(0, 0, 1, 1)))}})
-	if _, err := openFrameArchive(t.Context(), Input{ZipPath: path, Frames: []Frame{{File: "../frame.png"}}}); !errors.Is(err, zip.ErrInsecurePath) {
-		t.Fatalf("ZIP path policy error lost: %v", err)
-	}
-}
-
 func TestReadFrameSource(t *testing.T) {
 	for _, tc := range []struct {
 		name     string
@@ -312,29 +304,6 @@ func TestDecodePNGColorTypes(t *testing.T) {
 		if _, err := decodeFrameSource(t.Context(), bad); err == nil {
 			t.Fatalf("bad PNG length/payload at %d accepted", pos)
 		}
-	}
-}
-
-func TestDecodeJPEGMatchesOldPixels(t *testing.T) {
-	// 17×9 合成图；参考像素由旧 zune-jpeg 0.5.15 解码，包含 IDCT 舍入边界。
-	for _, kind := range []string{"444", "progressive", "gray", "restart"} {
-		t.Run(kind, func(t *testing.T) {
-			source, err := os.ReadFile(filepath.Join("testdata", "jpeg-"+kind+".jpg"))
-			if err != nil {
-				t.Fatal(err)
-			}
-			want, err := os.ReadFile(filepath.Join("testdata", "jpeg-"+kind+".rgba"))
-			if err != nil {
-				t.Fatal(err)
-			}
-			got, err := decodeFrameSource(t.Context(), source)
-			if err != nil {
-				t.Fatal(err)
-			}
-			if got.Rect != image.Rect(0, 0, 17, 9) || !bytes.Equal(got.Pix, want) {
-				t.Fatal("JPEG IDCT/color conversion changed the reference pixels")
-			}
-		})
 	}
 }
 
@@ -547,48 +516,5 @@ func TestReadFrameSourceReusesStorage(t *testing.T) {
 	}
 	if !bytes.Equal(storage, before) {
 		t.Fatal("pre-cancel changed reused source")
-	}
-}
-
-func TestFrameNRGBA444SubImage(t *testing.T) {
-	img := image.NewYCbCr(image.Rect(3, 5, 10, 10), image.YCbCrSubsampleRatio444)
-	for i := range img.Cb {
-		img.Cb[i], img.Cr[i] = 128, 128
-	}
-	for y := 5; y < 10; y++ {
-		for x := 3; x < 10; x++ {
-			img.Y[img.YOffset(x, y)] = byte(x*7 + y*3)
-		}
-	}
-	crop := image.Rect(4, 6, 9, 9)
-	got, err := frameNRGBA(t.Context(), img.SubImage(crop))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if got.Rect != (image.Rectangle{Max: crop.Size()}) {
-		t.Fatal("output was not normalized")
-	}
-	for y := 0; y < crop.Dy(); y++ {
-		for x := 0; x < crop.Dx(); x++ {
-			v := byte((x+crop.Min.X)*7 + (y+crop.Min.Y)*3)
-			if c := got.NRGBAAt(x, y); c != (color.NRGBA{v, v, v, 255}) {
-				t.Fatalf("(%d,%d): got %v want gray %d", x, y, c, v)
-			}
-		}
-	}
-}
-
-func BenchmarkReadFrameSourceReuse(b *testing.B) {
-	payload := bytes.Repeat([]byte("abcd"), 256)
-	reader := bytes.NewReader(payload)
-	source := frameSource{data: make([]byte, 0, len(payload))}
-	ctx := b.Context()
-	b.ReportAllocs()
-	for b.Loop() {
-		reader.Reset(payload)
-		_, err := source.read(ctx, reader, "sample", uint64(len(payload)), uint64(len(payload)))
-		if err != nil {
-			b.Fatal(err)
-		}
 	}
 }

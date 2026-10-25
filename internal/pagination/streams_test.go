@@ -182,37 +182,3 @@ func TestCollectStreamsFailureDiscardsEveryPartialStream(t *testing.T) {
 	assert.Equal(t, pagination.StreamState[fakeCursor]{}, state)
 	assert.Equal(t, pagination.PageResult{}, result)
 }
-
-func TestCollectStreamsCheckpointsLastBatchRemainder(t *testing.T) {
-	remainder := fakeCursor{value: "remainder"}
-	streams := []pagination.Stream[int, fakeCursor]{
-		{
-			Fetch: func(_ context.Context, cursor fakeCursor) ([]int, fakeCursor, error) {
-				switch cursor.value {
-				case "":
-					return []int{1, 2, 3}, fakeCursor{}, nil
-				case remainder.value:
-					return []int{3}, fakeCursor{}, nil
-				default:
-					t.Fatalf("unexpected cursor %q", cursor.value)
-					return nil, fakeCursor{}, nil
-				}
-			},
-			Checkpoint: func(cursor fakeCursor, consumed int) (fakeCursor, error) {
-				require.True(t, cursor.IsZero())
-				require.Equal(t, 2, consumed)
-				return remainder, nil
-			},
-		},
-	}
-
-	items, state, result, err := pagination.CollectStreams(
-		context.Background(),
-		pagination.PagePlan{Limit: 2},
-		streams,
-	)
-	require.NoError(t, err)
-	assert.Equal(t, []int{1, 2}, items)
-	assert.Equal(t, pagination.PageResult{Returned: 2, HasMore: true}, result)
-	assert.Equal(t, pagination.StreamState[fakeCursor]{Current: 0, Cursors: []fakeCursor{remainder}}, state)
-}

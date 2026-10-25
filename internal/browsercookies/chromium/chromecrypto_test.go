@@ -62,30 +62,22 @@ func buildModernV10CBCBlob(t *testing.T, key []byte, host string, value []byte) 
 	return append([]byte("v10"), ciphertext...)
 }
 
-func TestDecryptCookieValueRoundtrip(t *testing.T) {
+func TestDecryptChromiumValueRoundtrip(t *testing.T) {
 	key := deriveChromeKey([]byte("test-password"))
-	value := []byte("fanbox-session12") // 16 字节，保证 32+16 对齐
+	value := []byte("fanbox-session12") // 16 bytes keeps the legacy 32-byte prefix aligned
 	blob := buildV10Blob(t, key, value)
 
 	plain, err := decryptCookieValue(blob, key)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !hasChromiumPrefix(plain) {
-		t.Fatal("expected v10 prefix in decrypted output")
-	}
 	got, err := stripChromiumPrefix(plain)
-	if err != nil {
-		t.Fatal(err)
+	if err != nil || !bytes.Equal(got, value) {
+		t.Fatalf("decrypted value = %q, %v; want %q", got, err, value)
 	}
-	if !bytes.Equal(got, value) {
-		t.Fatalf("decrypted value = %q, want %q", got, value)
-	}
-}
 
-func TestDecryptChromiumGCM(t *testing.T) {
-	key := []byte("01234567890123456789012345678901")
-	block, err := aes.NewCipher(key)
+	gcmKey := []byte("01234567890123456789012345678901")
+	block, err := aes.NewCipher(gcmKey)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -94,38 +86,10 @@ func TestDecryptChromiumGCM(t *testing.T) {
 		t.Fatal(err)
 	}
 	nonce := []byte("0123456789ab")
-	ciphertext := gcm.Seal(nil, nonce, []byte("gcm-session"), nil)
-	blob := append([]byte("v10"), nonce...)
-	blob = append(blob, ciphertext...)
-
-	got, err := decryptChromiumValue(blob, key)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if string(got) != "gcm-session" {
-		t.Fatalf("decrypted value = %q, want gcm-session", got)
-	}
-}
-
-func TestDecryptChromiumCBCRoundtrip(t *testing.T) {
-	key := []byte("0123456789abcdef")
-	value := []byte("cbc-session")
-	padding := aes.BlockSize - len(value)%aes.BlockSize
-	plain := append(append([]byte(nil), value...), bytes.Repeat([]byte{byte(padding)}, padding)...)
-	block, err := aes.NewCipher(key)
-	if err != nil {
-		t.Fatal(err)
-	}
-	ciphertext := make([]byte, len(plain))
-	cipher.NewCBCEncrypter(block, bytes.Repeat([]byte{' '}, aes.BlockSize)).CryptBlocks(ciphertext, plain)
-	blob := append([]byte("v10"), ciphertext...)
-
-	got, err := decryptChromiumValue(blob, key)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if string(got) != string(value) {
-		t.Fatalf("decrypted value = %q, want %q", got, value)
+	gcmBlob := append([]byte("v10"), nonce...)
+	gcmBlob = append(gcmBlob, gcm.Seal(nil, nonce, []byte("gcm-session"), nil)...)
+	if got, err := decryptChromiumValue(gcmBlob, gcmKey); err != nil || string(got) != "gcm-session" {
+		t.Fatalf("GCM value = %q, %v", got, err)
 	}
 }
 

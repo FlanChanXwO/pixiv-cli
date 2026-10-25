@@ -11,7 +11,7 @@ import (
 	"github.com/FlanChanXwO/pixiv-cli/internal/browsercookies"
 )
 
-func TestSecretNeverLeaksInFormatting(t *testing.T) {
+func TestSecretNeverLeaksInOutput(t *testing.T) {
 	const value = "super-secret-FANBOXSESSID-value"
 	s := browsercookies.NewSecret(value)
 	if s.Value() != value {
@@ -30,33 +30,25 @@ func TestSecretNeverLeaksInFormatting(t *testing.T) {
 	if got := fmt.Sprint(s); got != "<redacted>" {
 		t.Fatalf("Sprint = %q, want %q", got, "<redacted>")
 	}
-	// 错误路径也不得泄露。
-	err := fmt.Errorf("wrap: %v", s)
-	if strings.Contains(err.Error(), value) {
+	if err := fmt.Errorf("wrap: %v", s); strings.Contains(err.Error(), value) {
 		t.Fatalf("error leaked secret: %q", err.Error())
 	}
-}
 
-func TestSecretNeverLeaksInJSON(t *testing.T) {
-	const value = "json-secret-value"
-	s := browsercookies.NewSecret(value)
 	body, err := json.Marshal(s)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if strings.Contains(string(body), value) {
-		t.Fatalf("json leaked secret: %s", body)
-	}
-	// 结构体字段序列化同样不得泄露。
 	wrapper := struct {
 		Session browsercookies.Secret `json:"session"`
 	}{Session: s}
-	body, err = json.Marshal(wrapper)
+	wrapped, err := json.Marshal(wrapper)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if strings.Contains(string(body), value) {
-		t.Fatalf("json wrapper leaked secret: %s", body)
+	for _, encoded := range []string{string(body), string(wrapped)} {
+		if strings.Contains(encoded, value) {
+			t.Fatalf("json leaked secret: %s", encoded)
+		}
 	}
 }
 

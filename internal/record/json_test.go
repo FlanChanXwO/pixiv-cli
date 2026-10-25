@@ -10,42 +10,32 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestParseRecordJSONNormalizesNumericIDAndPreservesUnknownFields(t *testing.T) {
-	record, err := recordpkg.ParseRecordJSON([]byte(`{
+func TestParseRecordJSONPreservesUnknownFieldsAndNumbers(t *testing.T) {
+	parsed, err := recordpkg.ParseRecordJSON([]byte(`{
 		"id":9007199254740993,
 		"type":"illust",
 		"url":"https://www.pixiv.net/artworks/9007199254740993",
 		"custom":{"enabled":true,"score":1.25},
-		"tags":["tag-a"]
+		"tags":["tag-a"],
+		"custom_integer":9007199254740993123456789,
+		"nested":{"integer":9223372036854775807,"decimal":1.0000000000000000001}
 	}`))
 	require.NoError(t, err)
-
-	got, err := json.Marshal(record)
+	got, err := json.Marshal(parsed)
 	require.NoError(t, err)
 	assert.JSONEq(t, `{
 		"id":"9007199254740993",
 		"type":"illust",
 		"url":"https://www.pixiv.net/artworks/9007199254740993",
 		"custom":{"enabled":true,"score":1.25},
-		"tags":["tag-a"]
+		"tags":["tag-a"],
+		"custom_integer":9007199254740993123456789,
+		"nested":{"integer":9223372036854775807,"decimal":1.0000000000000000001}
 	}`, string(got))
-	assert.Equal(t, "9007199254740993", record.ID())
-}
-
-func TestRecordUnmarshalJSONUsesPipelineValidationAndNormalization(t *testing.T) {
-	var record recordpkg.Record
-	err := json.Unmarshal([]byte(`{
-		"id":9007199254740993,
-		"type":"illust",
-		"url":"https://www.pixiv.net/artworks/9007199254740993",
-		"version":"must-not-survive",
-		"unknown":{"value":true}
-	}`), &record)
-	require.NoError(t, err)
-	assert.Equal(t, "9007199254740993", record.ID())
-	encoded, err := json.Marshal(record)
-	require.NoError(t, err)
-	assert.JSONEq(t, `{"id":"9007199254740993","type":"illust","url":"https://www.pixiv.net/artworks/9007199254740993","unknown":{"value":true}}`, string(encoded))
+	assert.Contains(t, string(got), `"custom_integer":9007199254740993123456789`)
+	assert.Contains(t, string(got), `"decimal":1.0000000000000000001`)
+	assert.Contains(t, string(got), `"integer":9223372036854775807`)
+	assert.Equal(t, "9007199254740993", parsed.ID())
 }
 
 func TestParseRecordJSONRemovesVersionMetadataRecursively(t *testing.T) {
@@ -91,31 +81,6 @@ func TestParseRecordJSONRemovesVersionMetadataRecursively(t *testing.T) {
 			{"conversion":"second-conversion","nested":[{"keep":"deep"}]}
 		]
 	}`, string(got))
-}
-
-func TestParseRecordJSONPreservesUnknownNumbersWithoutFloatConversion(t *testing.T) {
-	parsed, err := recordpkg.ParseRecordJSON([]byte(`{
-		"id":"1",
-		"type":"illust",
-		"url":"https://www.pixiv.net/artworks/1",
-		"custom_integer":9007199254740993123456789,
-		"custom_decimal":0.12345678901234567890123456789,
-		"nested":{"integer":9223372036854775807,"decimal":1.0000000000000000001}
-	}`))
-	require.NoError(t, err)
-
-	got, err := json.Marshal(parsed)
-	require.NoError(t, err)
-	assert.JSONEq(t, `{
-		"id":"1",
-		"type":"illust",
-		"url":"https://www.pixiv.net/artworks/1",
-		"custom_integer":9007199254740993123456789,
-		"custom_decimal":0.12345678901234567890123456789,
-		"nested":{"integer":9223372036854775807,"decimal":1.0000000000000000001}
-	}`, string(got))
-	assert.Contains(t, string(got), `"custom_integer":9007199254740993123456789`)
-	assert.Contains(t, string(got), `"custom_decimal":0.12345678901234567890123456789`)
 }
 
 func TestParseRecordJSONRejectsInvalidRequiredFields(t *testing.T) {

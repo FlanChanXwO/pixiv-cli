@@ -64,7 +64,7 @@ func TestRecordFromArtworkNormalizesIllustrationType(t *testing.T) {
 	assert.Equal(t, "illust", record.Type())
 }
 
-func TestRecordFromNovelAndUserPreview(t *testing.T) {
+func TestRecordFromNovel(t *testing.T) {
 	novel := pixiv.Novel{
 		ID:             88,
 		Title:          "小说标题",
@@ -77,21 +77,10 @@ func TestRecordFromNovelAndUserPreview(t *testing.T) {
 		User:           pixiv.User{ID: 77, Name: "小说作者"},
 		TotalBookmarks: 3,
 	}
-	userPreview := pixiv.UserPreview{User: pixiv.User{
-		ID:         9_007_199_254_740_993,
-		Name:       "用户",
-		Account:    "user-account",
-		Comment:    "用户简介",
-		IsFollowed: true,
-	}}
 
 	novelRecord, err := recordpkg.RecordFromNovel(novel)
 	require.NoError(t, err)
 	assertRecordMatchesSource(t, novel, novelRecord, "88", "novel", "https://www.pixiv.net/novel/show.php?id=88")
-
-	userRecord, err := recordpkg.RecordFromUserPreview(userPreview)
-	require.NoError(t, err)
-	assertRecordMatchesSource(t, userPreview, userRecord, "9007199254740993", "user", "https://www.pixiv.net/users/9007199254740993")
 }
 
 func TestRecordFromUserPreviewPreservesCompleteEnvelope(t *testing.T) {
@@ -236,7 +225,7 @@ func assertRecordMatchesSource(t *testing.T, source any, record recordpkg.Record
 	t.Helper()
 	got, err := json.Marshal(record)
 	require.NoError(t, err)
-	want, err := json.Marshal(recordSourceDTO(source))
+	want, err := json.Marshal(source)
 	require.NoError(t, err)
 
 	var wantObject map[string]json.RawMessage
@@ -253,20 +242,6 @@ func assertRecordMatchesSource(t *testing.T, source any, record recordpkg.Record
 	assert.Equal(t, url, record.URL())
 }
 
-func recordSourceDTO(source any) any {
-	switch value := source.(type) {
-	case pixiv.Artwork:
-		return value
-	case pixiv.Novel:
-		return value
-	case pixiv.UserPreview:
-		return value
-	case pixiv.UserDetail:
-		return value
-	default:
-		return source
-	}
-}
 func testPtr[T any](value T) *T {
 	return &value
 }

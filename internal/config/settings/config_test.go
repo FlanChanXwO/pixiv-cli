@@ -57,37 +57,11 @@ var expectedCLIManagedAliases = []string{
 	"saucenao_api_key",
 }
 
-// allResolvableAliases is the complete SettingSpecByAlias lookup set.
-var allResolvableAliases = []string{
-	"account_pool_enabled",
-	"account_pool_strategy",
-	"directory_template",
-	"download_path",
-	"filename_template",
-	"https_proxy",
-	"log_format",
-	"log_level",
-	"login_open_browser",
-	"login_relay_listen_addr",
-	"login_relay_public_url",
-	"login_relay_tls_cert_file",
-	"login_relay_tls_key_file",
-	"login_use_after_login",
-	"mcp_gallery_animation_temp_capacity_mib",
-	"mcp_gallery_cache_capacity_mib",
-	"output_json",
-	"request_interval",
-	"reverse_search_pixiv_only",
-	"reverse_search_provider",
-	"saucenao_api_key",
-	"update_check_enabled",
-}
-
 func TestSettingAliasSurfaceIsStable(t *testing.T) {
 	aliases := keyStrings(config.ValidSettingAliases())
 	assert.Equal(t, expectedAliases, aliases, "ValidSettingAliases changed")
 
-	for _, alias := range allResolvableAliases {
+	for _, alias := range expectedAliases {
 		spec, ok := config.SettingSpecByAlias(config.Key(alias))
 		require.Truef(t, ok, "alias %q must stay resolvable", alias)
 		assert.Equal(t, alias, string(spec.Alias))

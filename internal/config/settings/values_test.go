@@ -61,6 +61,13 @@ func TestParseSettingInputNormalizesExactlyAsBefore(t *testing.T) {
 		assert.Equal(t, "1m30s", value.Text)
 	})
 
+	t.Run("log level and format reject unsupported values", func(t *testing.T) {
+		_, _, err := config.ParseSettingInput(config.KeyLogLevel, "trace")
+		require.EqualError(t, err, "log_level must be one of: info, debug, warn, error")
+		_, _, err = config.ParseSettingInput(config.KeyLogFormat, "yaml")
+		require.EqualError(t, err, "log_format must be one of: text, json")
+	})
+
 	t.Run("unknown key is rejected", func(t *testing.T) {
 		_, _, err := config.ParseSettingInput(config.Key("not_a_key"), "x")
 		require.EqualError(t, err, `unknown config key "not_a_key"`)

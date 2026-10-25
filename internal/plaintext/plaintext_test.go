@@ -20,8 +20,5 @@ func TestHTMLPlainTextFlattensMarkupAndDropsScriptContent(t *testing.T) {
 	assert.Equal(t, "visible", plaintext.HTMLPlainText("<div>visible</div><script>hidden()</script>"))
 	assert.Equal(t, "one\ntwo", plaintext.HTMLPlainText("  one  \n  two  "))
 	assert.Empty(t, plaintext.HTMLPlainText(""))
-}
-
-func TestHTMLPlainTextEscapesControlBytesFromUpstreamMarkup(t *testing.T) {
 	assert.Equal(t, `\x1b[31mred`, plaintext.HTMLPlainText("<p>\x1b[31mred</p>"))
 }

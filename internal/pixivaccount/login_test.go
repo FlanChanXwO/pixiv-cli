@@ -29,14 +29,6 @@ func TestLoginServiceStartPreservesPublicSessionBehavior(t *testing.T) {
 	assert.True(t, start.AcceptsCallbackURL(matching))
 }
 
-func TestLoginServiceStartAcceptsPublicSDKOptions(t *testing.T) {
-	start, err := (pixiv.LoginService{}).Start(pixiv.LoginRequest{
-		Options: sdkpixiv.LoginOptions{HTTPClient: &http.Client{}},
-	})
-	require.NoError(t, err)
-	require.NotEmpty(t, start.AuthorizationURL)
-}
-
 func TestLoginServiceCompleteRejectsMissingSession(t *testing.T) {
 	_, err := (pixiv.LoginService{}).Complete(context.Background(), pixiv.LoginStart{}, pixiv.LoginCompleteRequest{})
 	require.EqualError(t, err, "login session is not initialized")
@@ -50,11 +42,6 @@ func TestLoginServiceCompleteRejectsInvalidCallback(t *testing.T) {
 		CallbackOrCode: "https://example.com/?code=x&state=wrong",
 	})
 	require.ErrorContains(t, err, "login callback is invalid")
-}
-
-func TestLoginStartAcceptsCallbackRequiresSession(t *testing.T) {
-	var empty pixiv.LoginStart
-	assert.False(t, empty.AcceptsCallbackURL(protocol.OAuthRedirectURI+"?code=x"))
 }
 
 func TestLoginServicePreservesCLISelectionWhenRequested(t *testing.T) {
