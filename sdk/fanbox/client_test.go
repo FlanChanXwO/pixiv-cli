@@ -89,10 +89,17 @@ func TestSessionCredentialsStayPrivate(t *testing.T) {
 	require.NotContains(t, output.String(), credentials.FANBOXSESSID)
 }
 
-func TestOtherListsReportMissingItems(t *testing.T) {
-	for _, posts := range []bool{false, true} {
+func TestOtherListsReportMalformedResponses(t *testing.T) {
+	for _, tc := range []struct {
+		posts bool
+		body  string
+	}{
+		{false, `{"body":{}}`},
+		{true, `{"body":{}}`},
+		{true, `{"body":{"posts":[],"nextUrl":" "}}`},
+	} {
 		api := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			fmt.Fprint(w, `{"body":{}}`)
+			fmt.Fprint(w, tc.body)
 		}))
 		httpClient := api.Client()
 		transport := httpClient.Transport.(*http.Transport)
@@ -102,7 +109,7 @@ func TestOtherListsReportMissingItems(t *testing.T) {
 		}
 		client, err := fanbox.OpenWith(fanbox.SessionCredentials{FANBOXSESSID: "session-canary"}, fanbox.Options{HTTPClient: httpClient})
 		require.NoError(t, err)
-		if posts {
+		if tc.posts {
 			_, err = client.CreatorPosts(t.Context(), fanbox.CreatorPostsRequest{CreatorID: "artist"})
 		} else {
 			_, err = client.CreatorTags(t.Context(), fanbox.CreatorTagsRequest{CreatorID: "artist"})
