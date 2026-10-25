@@ -16,118 +16,40 @@ import (
 	"github.com/spf13/cobra"
 )
 
-func TestUserDetailRejectsInvalidIDBeforeOpeningClient(t *testing.T) {
-	opened := false
-	cmd := newTestUserCommand(testData{
-		Input:      strings.NewReader(""),
-		Output:     &bytes.Buffer{},
-		UsageError: func(err error) error { return err },
-		JSONOut:    func(*bool) (bool, error) { return false, nil },
-		Pooled: func(context.Context, pixivcmd.Request, func(context.Context, *pixiv.Client) (bool, error)) error {
-			opened = true
-			return nil
-		},
-	})
-	cmd.SetArgs([]string{"detail", "not-an-id"})
-
-	err := cmd.Execute()
-	if err == nil || !strings.Contains(err.Error(), "user_id") {
-		t.Fatalf("expected user ID validation error, got %v", err)
-	}
-	if opened {
-		t.Fatal("opened SDK client before validating user ID")
-	}
-}
-
-func TestUserArtworksRejectsUnsupportedTypeBeforeOpeningClient(t *testing.T) {
-	opened := false
-	cmd := newTestUserCommand(testData{
-		Input:      strings.NewReader(""),
-		Output:     &bytes.Buffer{},
-		UsageError: func(err error) error { return err },
-		JSONOut:    func(*bool) (bool, error) { return false, nil },
-		Pooled: func(context.Context, pixivcmd.Request, func(context.Context, *pixiv.Client) (bool, error)) error {
-			opened = true
-			return nil
-		},
-	})
-	cmd.SetArgs([]string{"artworks", "123", "--type", "all"})
-
-	err := cmd.Execute()
-	if err == nil || !strings.Contains(err.Error(), "type") {
-		t.Fatalf("expected unsupported artwork type error, got %v", err)
-	}
-	if opened {
-		t.Fatal("opened SDK client before validating artwork type")
-	}
-}
-
-func TestUserDetailClassifiesURLInputAsInvalidArgument(t *testing.T) {
-	opened := false
-	cmd := newTestUserCommand(testData{
-		Input:      strings.NewReader(""),
-		Output:     &bytes.Buffer{},
-		UsageError: func(err error) error { return err },
-		JSONOut:    func(*bool) (bool, error) { return false, nil },
-		Pooled: func(context.Context, pixivcmd.Request, func(context.Context, *pixiv.Client) (bool, error)) error {
-			opened = true
-			return nil
-		},
-	})
-	cmd.SetArgs([]string{"detail", "https://www.pixiv.net/users/123"})
-
-	err := cmd.Execute()
-	if sdk.ReasonOf(err) != sdk.InvalidArgument {
-		t.Fatalf("ReasonOf = %q, want %q (err=%v)", sdk.ReasonOf(err), sdk.InvalidArgument, err)
-	}
-	if opened {
-		t.Fatal("opened SDK client before validating strict user ID input")
-	}
-}
-
-func TestUserFollowingRejectsUnsupportedRestrictBeforeOpeningClient(t *testing.T) {
-	opened := false
-	cmd := newTestUserCommand(testData{
-		Input:      strings.NewReader(""),
-		Output:     &bytes.Buffer{},
-		UsageError: func(err error) error { return err },
-		JSONOut:    func(*bool) (bool, error) { return false, nil },
-		Pooled: func(context.Context, pixivcmd.Request, func(context.Context, *pixiv.Client) (bool, error)) error {
-			opened = true
-			return nil
-		},
-	})
-	cmd.SetArgs([]string{"following", "123", "--restrict", "all"})
-
-	err := cmd.Execute()
-	if err == nil || !strings.Contains(err.Error(), "restrict") {
-		t.Fatalf("expected unsupported restrict error, got %v", err)
-	}
-	if opened {
-		t.Fatal("opened SDK client before validating relationship restrict")
-	}
-}
-
-func TestUserArtworksClassifiesURLInputAsInvalidArgument(t *testing.T) {
-	opened := false
-	cmd := newTestUserCommand(testData{
-		Input:      strings.NewReader(""),
-		Output:     &bytes.Buffer{},
-		UsageError: func(err error) error { return err },
-		JSONOut:    func(*bool) (bool, error) { return false, nil },
-		Pooled: func(context.Context, pixivcmd.Request, func(context.Context, *pixiv.Client) (bool, error)) error {
-			opened = true
-			return nil
-		},
-	})
-	cmd.SetArgs([]string{"artworks", "https://www.pixiv.net/users/123"})
-
-	err := cmd.Execute()
-	if sdk.ReasonOf(err) != sdk.InvalidArgument {
-		t.Fatalf("ReasonOf = %q, want %q (err=%v)", sdk.ReasonOf(err), sdk.InvalidArgument, err)
-	}
-	if opened {
-		t.Fatal("opened SDK client before validating strict user ID input")
+// 输入校验：非法 ID、URL 当 ID、非法 type/restrict 都必须在打开 SDK 前返回分类错误。
+func TestUserCommandInputValidation(t *testing.T) {
+	for _, test := range []struct {
+		name string
+		args []string
+		want sdk.Reason
+	}{
+		{name: "invalid detail id", args: []string{"detail", "abc"}, want: sdk.InvalidArgument},
+		{name: "artworks unsupported type", args: []string{"artworks", "123", "--type", "all"}, want: sdk.InvalidArgument},
+		{name: "detail URL input", args: []string{"detail", "https://www.pixiv.net/users/123"}, want: sdk.InvalidArgument},
+		{name: "following unsupported restrict", args: []string{"following", "123", "--restrict", "all"}, want: sdk.InvalidArgument},
+		{name: "artworks URL input", args: []string{"artworks", "https://www.pixiv.net/users/123"}, want: sdk.InvalidArgument},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			opened := false
+			cmd := newTestUserCommand(testData{
+				Input:      strings.NewReader(""),
+				Output:     &bytes.Buffer{},
+				UsageError: func(err error) error { return err },
+				JSONOut:    func(*bool) (bool, error) { return false, nil },
+				Pooled: func(context.Context, pixivcmd.Request, func(context.Context, *pixiv.Client) (bool, error)) error {
+					opened = true
+					return nil
+				},
+			})
+			cmd.SetArgs(test.args)
+			err := cmd.Execute()
+			if sdk.ReasonOf(err) != test.want {
+				t.Fatalf("ReasonOf = %q, want %q (err=%v)", sdk.ReasonOf(err), test.want, err)
+			}
+			if opened {
+				t.Fatal("opened SDK client before input validation")
+			}
+		})
 	}
 }
 
@@ -154,7 +76,6 @@ func TestUserArtworksRequiresKnownCurrentUserForOmittedID(t *testing.T) {
 	}
 }
 
-// 每条命令只验证 CLI 自己的 flag → 请求字段映射与 JSON 外形；上游路由与响应字段归 SDK。
 func TestUserReadCommandsUseTypedSDKRoutes(t *testing.T) {
 	tests := []struct {
 		name    string
