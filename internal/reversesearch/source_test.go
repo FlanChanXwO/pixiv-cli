@@ -153,74 +153,59 @@ func TestURLSourceRevalidatesRedirectAndFinalResponseURL(t *testing.T) {
 }
 
 func TestURLSourceCancellationRemovesPartialSnapshot(t *testing.T) {
-	started := make(chan struct{})
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, request *http.Request) {
-		w.WriteHeader(http.StatusOK)
-		_, _ = w.Write([]byte("partial"))
-		if flusher, ok := w.(http.Flusher); ok {
-			flusher.Flush()
-		}
-		close(started)
-		<-request.Context().Done()
-	}))
-	t.Cleanup(server.Close)
-	snapshotDir := t.TempDir()
-	loader := reversesearch.NewSourceLoader(reversesearch.SourceLoaderOptions{HTTPClient: server.Client(), TempDir: snapshotDir})
-	ctx, cancel := context.WithCancel(context.Background())
-	result := make(chan error, 1)
-	go func() {
-		_, err := loader.Load(ctx, server.URL+"/slow")
-		result <- err
-	}()
+	t.Run("while streaming", func(t *testing.T) {
+		started := make(chan struct{})
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, request *http.Request) {
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte("partial"))
+			if flusher, ok := w.(http.Flusher); ok {
+				flusher.Flush()
+			}
+			close(started)
+			<-request.Context().Done()
+		}))
+		t.Cleanup(server.Close)
+		snapshotDir := t.TempDir()
+		loader := reversesearch.NewSourceLoader(reversesearch.SourceLoaderOptions{HTTPClient: server.Client(), TempDir: snapshotDir})
+		ctx, cancel := context.WithCancel(context.Background())
+		result := make(chan error, 1)
+		go func() {
+			_, err := loader.Load(ctx, server.URL+"/slow")
+			result <- err
+		}()
 
-	<-started
-	cancel()
-	err := <-result
-	require.ErrorIs(t, err, context.Canceled)
-	require.Equal(t, reversesearch.CodeUnknown, reversesearch.CodeOf(err))
-	files, readErr := os.ReadDir(snapshotDir)
-	require.NoError(t, readErr)
-	require.Empty(t, files)
-}
-
-type cancelAfterFirstReadBody struct {
-	cancel context.CancelFunc
-	read   bool
-}
-
-func (b *cancelAfterFirstReadBody) Read(buffer []byte) (int, error) {
-	if b.read {
-		return 0, io.EOF
-	}
-	b.read = true
-	n := copy(buffer, "partial")
-	b.cancel()
-	return n, nil
-}
-
-func (*cancelAfterFirstReadBody) Close() error { return nil }
-
-func TestCancellationDuringSnapshotCopyRemainsAnOverallCancellation(t *testing.T) {
-	ctx, cancel := context.WithCancel(context.Background())
-	snapshotDir := t.TempDir()
-	loader := reversesearch.NewSourceLoader(reversesearch.SourceLoaderOptions{
-		TempDir: snapshotDir,
-		HTTPClient: &http.Client{Transport: roundTripFunc(func(request *http.Request) (*http.Response, error) {
-			return &http.Response{
-				StatusCode: http.StatusOK,
-				Body:       &cancelAfterFirstReadBody{cancel: cancel},
-				Header:     make(http.Header),
-				Request:    request,
-			}, nil
-		})},
+		<-started
+		cancel()
+		err := <-result
+		require.ErrorIs(t, err, context.Canceled)
+		require.Equal(t, reversesearch.CodeUnknown, reversesearch.CodeOf(err))
+		files, readErr := os.ReadDir(snapshotDir)
+		require.NoError(t, readErr)
+		require.Empty(t, files)
 	})
 
-	_, err := loader.Load(ctx, "http://example.test/image")
-	require.ErrorIs(t, err, context.Canceled)
-	require.Equal(t, reversesearch.CodeUnknown, reversesearch.CodeOf(err))
-	files, readErr := os.ReadDir(snapshotDir)
-	require.NoError(t, readErr)
-	require.Empty(t, files)
+	t.Run("during copy", func(t *testing.T) {
+		ctx, cancel := context.WithCancel(context.Background())
+		snapshotDir := t.TempDir()
+		loader := reversesearch.NewSourceLoader(reversesearch.SourceLoaderOptions{
+			TempDir: snapshotDir,
+			HTTPClient: &http.Client{Transport: roundTripFunc(func(request *http.Request) (*http.Response, error) {
+				return &http.Response{
+					StatusCode: http.StatusOK,
+					Body:       &cancelAfterFirstReadBody{cancel: cancel},
+					Header:     make(http.Header),
+					Request:    request,
+				}, nil
+			})},
+		})
+
+		_, err := loader.Load(ctx, "http://example.test/image")
+		require.ErrorIs(t, err, context.Canceled)
+		require.Equal(t, reversesearch.CodeUnknown, reversesearch.CodeOf(err))
+		files, readErr := os.ReadDir(snapshotDir)
+		require.NoError(t, readErr)
+		require.Empty(t, files)
+	})
 }
 
 func TestURLSourceHTTPFailureDoesNotReadOrExposeResponseBody(t *testing.T) {
@@ -263,25 +248,19 @@ func TestFileSourceFollowsSymlinkAndRejectsNonRegularTarget(t *testing.T) {
 	require.NotContains(t, err.Error(), sourceDir)
 }
 
-func TestExistingRegularFileWinsOverURLLikeColonSyntax(t *testing.T) {
+func TestSourceSchemeAndColonSyntaxAreNotFileFallbacks(t *testing.T) {
 	t.Chdir(t.TempDir())
-	sourcePath := "art:work.png"
-	require.NoError(t, os.WriteFile(sourcePath, []byte("image"), 0o600))
 	loader := reversesearch.NewSourceLoader(reversesearch.SourceLoaderOptions{TempDir: t.TempDir()})
 
+	sourcePath := "art:work.png"
+	require.NoError(t, os.WriteFile(sourcePath, []byte("image"), 0o600))
 	snapshot, err := loader.Load(context.Background(), sourcePath)
 	require.NoError(t, err)
 	require.Equal(t, reversesearch.SourceKindFile, snapshot.Kind())
 	require.NoError(t, snapshot.Close())
-}
-
-func TestExplicitHTTPSchemeNeverFallsBackToAnExistingFile(t *testing.T) {
-	t.Chdir(t.TempDir())
-	loader := reversesearch.NewSourceLoader(reversesearch.SourceLoaderOptions{TempDir: t.TempDir()})
 
 	for _, source := range []string{"http:opaque", "HtTpS:opaque"} {
 		require.NoError(t, os.WriteFile(source, []byte("must-not-be-read"), 0o600))
-
 		_, err := loader.Load(context.Background(), source)
 		require.Equal(t, reversesearch.CodeInvalidSource, reversesearch.CodeOf(err), source)
 		require.EqualError(t, err, "image source URL is invalid")
@@ -305,3 +284,20 @@ func TestSnapshotCloseRemovesPayloadAndPreventsReopen(t *testing.T) {
 	require.Equal(t, reversesearch.CodeSnapshotFailed, reversesearch.CodeOf(err))
 	require.EqualError(t, err, "image snapshot is closed")
 }
+
+type cancelAfterFirstReadBody struct {
+	cancel context.CancelFunc
+	read   bool
+}
+
+func (b *cancelAfterFirstReadBody) Read(buffer []byte) (int, error) {
+	if b.read {
+		return 0, io.EOF
+	}
+	b.read = true
+	n := copy(buffer, "partial")
+	b.cancel()
+	return n, nil
+}
+
+func (*cancelAfterFirstReadBody) Close() error { return nil }

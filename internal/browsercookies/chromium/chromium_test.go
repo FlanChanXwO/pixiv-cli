@@ -75,93 +75,80 @@ func mustWriteFile(t *testing.T, path string) {
 }
 
 func TestDiscoverProfiles(t *testing.T) {
-	root := t.TempDir()
-	mustWriteFile(t, filepath.Join(root, "Default", cookiesFile))
-	mustWriteFile(t, filepath.Join(root, "Profile 1", cookiesFile))
+	t.Run("installed", func(t *testing.T) {
+		root := t.TempDir()
+		mustWriteFile(t, filepath.Join(root, "Default", cookiesFile))
+		mustWriteFile(t, filepath.Join(root, "Profile 1", cookiesFile))
+		mustWriteFile(t, filepath.Join(root, "Cache", "data.txt"))
 
-	mustWriteFile(t, filepath.Join(root, "Cache", "data.txt"))
-
-	p, err := newProvider("chrome", root)
-	if err != nil {
-		t.Fatal(err)
-	}
-	profiles, err := p.DiscoverProfiles(context.Background())
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(profiles) != 2 {
-		t.Fatalf("profiles = %+v, want 2", profiles)
-	}
-	ids := map[string]bool{}
-	for _, pr := range profiles {
-		ids[pr.ID] = true
-		if pr.Path == "" {
-			t.Fatalf("profile %q missing path", pr.ID)
+		p, err := newProvider("chrome", root)
+		if err != nil {
+			t.Fatal(err)
 		}
-	}
-	if !ids["Default"] || !ids["Profile 1"] {
-		t.Fatalf("profiles missing expected IDs: %+v", ids)
-	}
+		profiles, err := p.DiscoverProfiles(context.Background())
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(profiles) != 2 {
+			t.Fatalf("profiles = %+v, want 2", profiles)
+		}
+		ids := map[string]bool{}
+		for _, pr := range profiles {
+			ids[pr.ID] = true
+			if pr.Path == "" {
+				t.Fatalf("profile %q missing path", pr.ID)
+			}
+		}
+		if !ids["Default"] || !ids["Profile 1"] {
+			t.Fatalf("profiles missing expected IDs: %+v", ids)
+		}
+	})
+
+	t.Run("not installed", func(t *testing.T) {
+		for _, kind := range []string{"chrome", "edge"} {
+			p, err := newProvider(kind, filepath.Join(t.TempDir(), "missing"))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if _, err := p.DiscoverProfiles(context.Background()); !errors.Is(err, browsercookies.ErrNotInstalled) {
+				t.Fatalf("%s err = %v, want ErrNotInstalled", kind, err)
+			}
+		}
+	})
 }
 
-func TestDiscoverProfilesNotInstalled(t *testing.T) {
-	p, err := newProvider("chrome", filepath.Join(t.TempDir(), "missing"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err := p.DiscoverProfiles(context.Background()); !errors.Is(err, browsercookies.ErrNotInstalled) {
-		t.Fatalf("err = %v, want ErrNotInstalled", err)
-	}
-
-	pe, err := newProvider("edge", filepath.Join(t.TempDir(), "missing"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err := pe.DiscoverProfiles(context.Background()); !errors.Is(err, browsercookies.ErrNotInstalled) {
-		t.Fatalf("edge err = %v, want ErrNotInstalled", err)
-	}
-}
-
-func TestReadPlaintextCookie(t *testing.T) {
+func TestReadPlaintextCookieHostVariants(t *testing.T) {
 	skipIfNoSQLite3(t)
-	root := t.TempDir()
-	fixture := buildFixtureDB(t, cookiesSchema,
-		`INSERT INTO cookies (host_key, name, value, encrypted_value) VALUES ('.fanbox.cc', 'FANBOXSESSID', 'plain-session', X'');`,
-	)
-	writeCookieFixture(t, filepath.Join(root, "Default", cookiesFile), fixture)
+	for _, test := range []struct {
+		name string
+		host string
+		want string
+	}{
+		{name: "dot prefixed host", host: ".fanbox.cc", want: "plain-session"},
+		{name: "bare host", host: "fanbox.cc", want: "no-dot-session"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			root := t.TempDir()
+			fixture := buildFixtureDB(t, cookiesSchema,
+				`INSERT INTO cookies (host_key, name, value, encrypted_value) VALUES ('`+test.host+`', 'FANBOXSESSID', '`+test.want+`', X'');`,
+			)
+			writeCookieFixture(t, filepath.Join(root, "Default", cookiesFile), fixture)
 
-	p, err := newProvider("chrome", root)
-	if err != nil {
-		t.Fatal(err)
-	}
-	secrets, err := p.Read(context.Background(), browsercookies.DefaultQuery, "Default")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(secrets) != 1 || secrets[0].Value() != "plain-session" {
-		t.Fatalf("secrets = %+v", secrets)
-	}
-
-	if got := secrets[0].String(); got == "plain-session" {
-		t.Fatal("Secret.String leaked value")
-	}
-}
-
-func TestReadPlaintextHostVariant(t *testing.T) {
-	skipIfNoSQLite3(t)
-	root := t.TempDir()
-	fixture := buildFixtureDB(t, cookiesSchema,
-		`INSERT INTO cookies (host_key, name, value, encrypted_value) VALUES ('fanbox.cc', 'FANBOXSESSID', 'no-dot-session', X'');`,
-	)
-	writeCookieFixture(t, filepath.Join(root, "Default", cookiesFile), fixture)
-
-	p, _ := newProvider("chrome", root)
-	secrets, err := p.Read(context.Background(), browsercookies.DefaultQuery, "Default")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(secrets) != 1 || secrets[0].Value() != "no-dot-session" {
-		t.Fatalf("secrets = %+v", secrets)
+			p, err := newProvider("chrome", root)
+			if err != nil {
+				t.Fatal(err)
+			}
+			secrets, err := p.Read(context.Background(), browsercookies.DefaultQuery, "Default")
+			if err != nil {
+				t.Fatal(err)
+			}
+			if len(secrets) != 1 || secrets[0].Value() != test.want {
+				t.Fatalf("secrets = %+v", secrets)
+			}
+			if got := secrets[0].String(); got == test.want {
+				t.Fatal("Secret.String leaked value")
+			}
+		})
 	}
 }
 
@@ -248,27 +235,27 @@ func TestReadLockedDatabaseClassified(t *testing.T) {
 	}
 }
 
-func TestReadInvalidQueryOrProfile(t *testing.T) {
-	p, _ := newProvider("chrome", t.TempDir())
-	if _, err := p.Read(context.Background(), browsercookies.CookieQuery{}, "Default"); !errors.Is(err, browsercookies.ErrQueryInvalid) {
-		t.Fatalf("invalid query err = %v", err)
-	}
-	if _, err := p.Read(context.Background(), browsercookies.DefaultQuery, "../evil"); !errors.Is(err, browsercookies.ErrInvalidProfileID) {
-		t.Fatalf("invalid profile err = %v", err)
-	}
-	if _, err := p.Read(context.Background(), browsercookies.DefaultQuery, ""); !errors.Is(err, browsercookies.ErrInvalidProfileID) {
-		t.Fatalf("empty profile err = %v", err)
+func TestReadClassifiesInvalidInputs(t *testing.T) {
+	for _, test := range []struct {
+		name    string
+		query   browsercookies.CookieQuery
+		profile string
+		want    error
+	}{
+		{name: "invalid query", query: browsercookies.CookieQuery{}, profile: "Default", want: browsercookies.ErrQueryInvalid},
+		{name: "path-like profile", query: browsercookies.DefaultQuery, profile: "../evil", want: browsercookies.ErrInvalidProfileID},
+		{name: "empty profile", query: browsercookies.DefaultQuery, profile: "", want: browsercookies.ErrInvalidProfileID},
+		{name: "database not found", query: browsercookies.DefaultQuery, profile: "Default", want: browsercookies.ErrDatabaseNotFound},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			p, _ := newProvider("chrome", t.TempDir())
+			if _, err := p.Read(context.Background(), test.query, test.profile); !errors.Is(err, test.want) {
+				t.Fatalf("err = %v, want %v", err, test.want)
+			}
+		})
 	}
 }
 
-func TestReadDatabaseNotFound(t *testing.T) {
-	root := t.TempDir()
-	p, _ := newProvider("chrome", root)
-
-	if _, err := p.Read(context.Background(), browsercookies.DefaultQuery, "Default"); !errors.Is(err, browsercookies.ErrDatabaseNotFound) {
-		t.Fatalf("err = %v, want ErrDatabaseNotFound", err)
-	}
-}
 func TestBrowserDataRootMatchesSupportedPlatformLayout(t *testing.T) {
 	home := filepath.FromSlash("/fixture-home")
 	switch runtime.GOOS {

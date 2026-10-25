@@ -309,23 +309,6 @@ func TestUpdateCoordinatorHomebrewSwitchRollsBackAndReportsBothOutcomes(t *testi
 	}
 }
 
-func TestUpdateCoordinatorDevelopmentBuildRejectsBeforeNetworkOrCommands(t *testing.T) {
-	checker := &fakeReleaseChecker{}
-	runner := &fakeCommandRunner{}
-	coordinator, err := selfupdate.NewUpdateCoordinator(selfupdate.UpdateCoordinatorOptions{
-		SourceDetector: fakeSourceDetector{source: selfupdate.InstallSourceDevelopment},
-		ReleaseChecker: checker,
-		CommandRunner:  runner,
-	})
-	require.NoError(t, err)
-
-	_, err = coordinator.Execute(context.Background(), selfupdate.UpdateRequest{BuildInfo: version.Info{Version: "dev"}})
-
-	require.ErrorContains(t, err, "development builds cannot update")
-	assert.Empty(t, checker.options)
-	assert.Empty(t, runner.commands)
-}
-
 func TestUpdateCoordinatorCheckNeverRunsCommandOrInstaller(t *testing.T) {
 	tests := []struct {
 		name   string
@@ -359,18 +342,33 @@ func TestUpdateCoordinatorCheckNeverRunsCommandOrInstaller(t *testing.T) {
 	}
 }
 
-func TestUpdateCoordinatorRejectsInvalidFormalVersionBeforeReleaseCheck(t *testing.T) {
-	checker := &fakeReleaseChecker{}
-	coordinator, err := selfupdate.NewUpdateCoordinator(selfupdate.UpdateCoordinatorOptions{
-		SourceDetector: fakeSourceDetector{source: selfupdate.InstallSourceRelease},
-		ReleaseChecker: checker,
-	})
-	require.NoError(t, err)
+func TestUpdateCoordinatorRejectsInvalidLocalVersionBeforeReleaseCheck(t *testing.T) {
+	for _, test := range []struct {
+		name      string
+		source    selfupdate.InstallSource
+		buildInfo version.Info
+		wantError string
+	}{
+		{name: "development", source: selfupdate.InstallSourceDevelopment, buildInfo: version.Info{Version: "dev"}, wantError: "development builds cannot update"},
+		{name: "invalid formal version", source: selfupdate.InstallSourceRelease, buildInfo: version.Info{Version: "0.1.0"}, wantError: `parse current build version "0.1.0"`},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			checker := &fakeReleaseChecker{}
+			runner := &fakeCommandRunner{}
+			coordinator, err := selfupdate.NewUpdateCoordinator(selfupdate.UpdateCoordinatorOptions{
+				SourceDetector: fakeSourceDetector{source: test.source},
+				ReleaseChecker: checker,
+				CommandRunner:  runner,
+			})
+			require.NoError(t, err)
 
-	_, err = coordinator.Execute(context.Background(), selfupdate.UpdateRequest{BuildInfo: version.Info{Version: "0.1.0"}})
+			_, err = coordinator.Execute(context.Background(), selfupdate.UpdateRequest{BuildInfo: test.buildInfo})
 
-	require.ErrorContains(t, err, `parse current build version "0.1.0"`)
-	assert.Empty(t, checker.options)
+			require.ErrorContains(t, err, test.wantError)
+			assert.Empty(t, checker.options)
+			assert.Empty(t, runner.commands)
+		})
+	}
 }
 
 func TestUpdateCoordinatorPreservesDetectorAndCheckerFailures(t *testing.T) {

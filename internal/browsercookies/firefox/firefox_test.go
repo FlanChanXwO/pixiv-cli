@@ -68,100 +68,116 @@ func writeProfiles(t *testing.T, root string, ini string, dirs ...string) {
 	}
 }
 
-func TestDiscoverProfilesFromProfilesIni(t *testing.T) {
-	root := t.TempDir()
-	writeProfiles(t, root,
-		"[Profile0]\nName=default\nIsRelative=1\nPath=default-release\n\n[Profile1]\nName=dev\nPath=devprofile\n",
-		"default-release", "devprofile")
+func TestDiscoverProfiles(t *testing.T) {
+	t.Run("profiles.ini", func(t *testing.T) {
+		root := t.TempDir()
+		writeProfiles(t, root,
+			"[Profile0]\nName=default\nIsRelative=1\nPath=default-release\n\n[Profile1]\nName=dev\nPath=devprofile\n",
+			"default-release", "devprofile")
 
-	p, err := newProvider(root)
-	if err != nil {
-		t.Fatal(err)
-	}
-	profiles, err := p.DiscoverProfiles(context.Background())
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(profiles) != 2 {
-		t.Fatalf("profiles = %+v", profiles)
-	}
-	byID := map[string]browsercookies.Profile{}
-	for _, pr := range profiles {
-		byID[pr.ID] = pr
-	}
-	if pr, ok := byID["default-release"]; !ok || pr.Name != "default" {
-		t.Fatalf("default-release profile = %+v", pr)
-	}
-	if pr, ok := byID["devprofile"]; !ok || pr.Name != "dev" {
-		t.Fatalf("devprofile profile = %+v", pr)
-	}
+		p, err := newProvider(root)
+		if err != nil {
+			t.Fatal(err)
+		}
+		profiles, err := p.DiscoverProfiles(context.Background())
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(profiles) != 2 {
+			t.Fatalf("profiles = %+v", profiles)
+		}
+		byID := map[string]browsercookies.Profile{}
+		for _, pr := range profiles {
+			byID[pr.ID] = pr
+		}
+		if pr, ok := byID["default-release"]; !ok || pr.Name != "default" {
+			t.Fatalf("default-release profile = %+v", pr)
+		}
+		if pr, ok := byID["devprofile"]; !ok || pr.Name != "dev" {
+			t.Fatalf("devprofile profile = %+v", pr)
+		}
+	})
+
+	t.Run("not installed", func(t *testing.T) {
+		p, _ := newProvider(filepath.Join(t.TempDir(), "missing"))
+		if _, err := p.DiscoverProfiles(context.Background()); !errors.Is(err, browsercookies.ErrNotInstalled) {
+			t.Fatalf("err = %v, want ErrNotInstalled", err)
+		}
+
+		root := t.TempDir()
+		if err := os.WriteFile(filepath.Join(root, profilesIni), []byte("[Profile0]\nPath=ghost\n"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		p2, _ := newProvider(root)
+		if _, err := p2.DiscoverProfiles(context.Background()); !errors.Is(err, browsercookies.ErrNotInstalled) {
+			t.Fatalf("empty profiles err = %v, want ErrNotInstalled", err)
+		}
+	})
 }
 
-func TestDiscoverNotInstalled(t *testing.T) {
-	p, _ := newProvider(filepath.Join(t.TempDir(), "missing"))
-	if _, err := p.DiscoverProfiles(context.Background()); !errors.Is(err, browsercookies.ErrNotInstalled) {
-		t.Fatalf("err = %v, want ErrNotInstalled", err)
-	}
-
-	root := t.TempDir()
-	if err := os.WriteFile(filepath.Join(root, profilesIni), []byte("[Profile0]\nPath=ghost\n"), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	p2, _ := newProvider(root)
-	if _, err := p2.DiscoverProfiles(context.Background()); !errors.Is(err, browsercookies.ErrNotInstalled) {
-		t.Fatalf("empty profiles err = %v, want ErrNotInstalled", err)
-	}
-}
-
-func TestReadPlaintextCookie(t *testing.T) {
+func TestReadClassifiesCookieAndProfileFailures(t *testing.T) {
 	skipIfNoSQLite3(t)
-	root := t.TempDir()
-	fixture := buildMozFixture(t,
-		`INSERT INTO moz_cookies (name, value, host, path) VALUES ('FANBOXSESSID', 'ff-session', '.fanbox.cc', '/');`,
-	)
-	writeProfiles(t, root, "[Profile0]\nName=default\nPath=default-release\n", "default-release")
-	require.NoError(t, os.WriteFile(filepath.Join(root, "default-release", cookiesDB), fixture, 0o600))
-
-	p, _ := newProvider(root)
-	secrets, err := p.Read(context.Background(), browsercookies.DefaultQuery, "default-release")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(secrets) != 1 || secrets[0].Value() != "ff-session" {
-		t.Fatalf("secrets = %+v", secrets)
+	for _, test := range []struct {
+		name    string
+		insert  string
+		query   browsercookies.CookieQuery
+		profile string
+		value   string
+		wantErr error
+	}{
+		{
+			name:    "plaintext",
+			insert:  `INSERT INTO moz_cookies (name, value, host, path) VALUES ('FANBOXSESSID', 'ff-session', '.fanbox.cc', '/');`,
+			query:   browsercookies.DefaultQuery,
+			profile: "default-release",
+			value:   "ff-session",
+		},
+		{
+			name:    "encrypted value classified",
+			insert:  `INSERT INTO moz_cookies (name, value, host, path) VALUES ('FANBOXSESSID', X'8F8F8F8F8F', '.fanbox.cc', '/');`,
+			query:   browsercookies.DefaultQuery,
+			profile: "default-release",
+			wantErr: browsercookies.ErrEncryptedCookieUnsupported,
+		},
+		{
+			name:    "invalid query",
+			query:   browsercookies.CookieQuery{},
+			profile: "default-release",
+			wantErr: browsercookies.ErrQueryInvalid,
+		},
+		{
+			name:    "invalid profile id",
+			query:   browsercookies.DefaultQuery,
+			profile: "../x",
+			wantErr: browsercookies.ErrInvalidProfileID,
+		},
+		{
+			name:    "unknown profile",
+			query:   browsercookies.DefaultQuery,
+			profile: "unknown-profile",
+			wantErr: browsercookies.ErrProfileNotFound,
+		},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			root := t.TempDir()
+			writeProfiles(t, root, "[Profile0]\nName=default\nPath=default-release\n", "default-release")
+			if test.insert != "" {
+				fixture := buildMozFixture(t, test.insert)
+				require.NoError(t, os.WriteFile(filepath.Join(root, "default-release", cookiesDB), fixture, 0o600))
+			}
+			p, _ := newProvider(root)
+			secrets, err := p.Read(context.Background(), test.query, test.profile)
+			if test.wantErr != nil {
+				require.ErrorIs(t, err, test.wantErr)
+				return
+			}
+			require.NoError(t, err)
+			require.Len(t, secrets, 1)
+			require.Equal(t, test.value, secrets[0].Value())
+		})
 	}
 }
 
-func TestReadEncryptedClassified(t *testing.T) {
-	skipIfNoSQLite3(t)
-	root := t.TempDir()
-	fixture := buildMozFixture(t,
-		`INSERT INTO moz_cookies (name, value, host, path) VALUES ('FANBOXSESSID', X'8F8F8F8F8F', '.fanbox.cc', '/');`,
-	)
-	writeProfiles(t, root, "[Profile0]\nName=default\nPath=default-release\n", "default-release")
-	require.NoError(t, os.WriteFile(filepath.Join(root, "default-release", cookiesDB), fixture, 0o600))
-
-	p, _ := newProvider(root)
-	if _, err := p.Read(context.Background(), browsercookies.DefaultQuery, "default-release"); !errors.Is(err, browsercookies.ErrEncryptedCookieUnsupported) {
-		t.Fatalf("err = %v, want ErrEncryptedCookieUnsupported", err)
-	}
-}
-
-func TestReadInvalidInputs(t *testing.T) {
-	root := t.TempDir()
-	writeProfiles(t, root, "[Profile0]\nName=default\nPath=default-release\n", "default-release")
-	p, _ := newProvider(root)
-
-	if _, err := p.Read(context.Background(), browsercookies.CookieQuery{}, "default-release"); !errors.Is(err, browsercookies.ErrQueryInvalid) {
-		t.Fatalf("invalid query err = %v", err)
-	}
-	if _, err := p.Read(context.Background(), browsercookies.DefaultQuery, "../x"); !errors.Is(err, browsercookies.ErrInvalidProfileID) {
-		t.Fatalf("invalid profile err = %v", err)
-	}
-	if _, err := p.Read(context.Background(), browsercookies.DefaultQuery, "unknown-profile"); !errors.Is(err, browsercookies.ErrProfileNotFound) {
-		t.Fatalf("unknown profile err = %v", err)
-	}
-}
 func TestFirefoxDataRootMatchesSupportedPlatformLayout(t *testing.T) {
 	home := filepath.FromSlash("/fixture-home")
 	switch runtime.GOOS {

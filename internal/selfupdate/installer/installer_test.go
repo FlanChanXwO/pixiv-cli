@@ -904,23 +904,6 @@ func TestDetectInstallSourceHomebrewKeg(t *testing.T) {
 	}
 }
 
-func TestDetectInstallSourceGoInstallWithExplicitGOBIN(t *testing.T) {
-	gobin := filepath.Join(t.TempDir(), "bin")
-	executable := filepath.Join(gobin, pixivExecutableName(runtime.GOOS))
-	deps := testDetector(executable, executable, map[string]string{"GOBIN": gobin})
-	deps.readBuildInfo = func() (*debug.BuildInfo, bool) {
-		return &debug.BuildInfo{Path: pixivCLIModulePath + "/cmd/pixiv", Main: debug.Module{Path: pixivCLIModulePath}}, true
-	}
-
-	got, err := detectInstallSource(version.Info{Version: "v0.1.0"}, deps)
-	if err != nil {
-		t.Fatalf("detectInstallSource() error = %v", err)
-	}
-	if got != InstallSourceGoInstall {
-		t.Fatalf("detectInstallSource() = %q, want %q", got, InstallSourceGoInstall)
-	}
-}
-
 func TestDetectInstallSourceDoesNotMistakeGoBuildForGoInstall(t *testing.T) {
 	tests := []struct {
 		name          string
@@ -928,6 +911,7 @@ func TestDetectInstallSourceDoesNotMistakeGoBuildForGoInstall(t *testing.T) {
 		buildInfo     *debug.BuildInfo
 		buildInfoOkay bool
 		env           map[string]string
+		want          InstallSource
 	}{
 		{
 			name:          "matching module outside GOBIN",
@@ -935,6 +919,12 @@ func TestDetectInstallSourceDoesNotMistakeGoBuildForGoInstall(t *testing.T) {
 			buildInfo:     &debug.BuildInfo{Path: pixivCLIModulePath + "/cmd/pixiv", Main: debug.Module{Path: pixivCLIModulePath}},
 			buildInfoOkay: true,
 			env:           map[string]string{"GOBIN": filepath.Join(t.TempDir(), "bin")},
+		},
+		{
+			name:          "GOBIN executable with matching module",
+			buildInfo:     &debug.BuildInfo{Path: pixivCLIModulePath + "/cmd/pixiv", Main: debug.Module{Path: pixivCLIModulePath}},
+			buildInfoOkay: true,
+			want:          InstallSourceGoInstall,
 		},
 		{
 			name:          "GOBIN executable with another main module",
@@ -970,8 +960,12 @@ func TestDetectInstallSourceDoesNotMistakeGoBuildForGoInstall(t *testing.T) {
 			if err != nil {
 				t.Fatalf("detectInstallSource() error = %v", err)
 			}
-			if got != InstallSourceRelease {
-				t.Fatalf("detectInstallSource() = %q, want %q", got, InstallSourceRelease)
+			want := test.want
+			if want == "" {
+				want = InstallSourceRelease
+			}
+			if got != want {
+				t.Fatalf("detectInstallSource() = %q, want %q", got, want)
 			}
 		})
 	}

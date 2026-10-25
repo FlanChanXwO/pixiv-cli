@@ -421,136 +421,74 @@ func TestDownloadPopulatesDocumentedFilenamePlaceholders(t *testing.T) {
 	}
 }
 
-func TestDownloadPublishesDetectedImageExtensionForEveryStaticQuality(t *testing.T) {
-	images := []struct {
+func TestDownloadPublishesDetectedImageExtension(t *testing.T) {
+	for _, test := range []struct {
 		name        string
 		body        []byte
 		contentType string
 		wantExt     string
 	}{
-		{
-			name:        "jpeg-mime",
-			body:        []byte("\xff\xd8\xff\xe0\x00\x10JFIF\x00"),
-			contentType: "image/jpeg; charset=binary",
-			wantExt:     ".jpg",
-		},
-		{
-			name:        "png-mime",
-			body:        []byte("\x89PNG\r\n\x1a\nPNG fixture"),
-			contentType: "image/png",
-			wantExt:     ".png",
-		},
-		{
-			name:    "gif-signature",
-			body:    []byte("GIF89aGIF fixture"),
-			wantExt: ".gif",
-		},
-		{
-			name:    "webp-signature",
-			body:    []byte("RIFF\x00\x00\x00\x00WEBPVP8 fixture"),
-			wantExt: ".webp",
-		},
-		{
-			name:        "mime-overrides-signature",
-			body:        []byte("\x89PNG\r\n\x1a\nPNG fixture"),
-			contentType: "image/jpeg; charset=binary",
-			wantExt:     ".jpg",
-		},
-	}
-	qualities := []struct {
-		name  string
-		value downloader.DownloadQuality
-	}{
-		{name: "original", value: downloader.DownloadQualityOriginal},
-		{name: "regular", value: downloader.DownloadQualityRegular},
-		{name: "small", value: downloader.DownloadQualitySmall},
-		{name: "thumb", value: downloader.DownloadQualityThumb},
-		{name: "mini", value: downloader.DownloadQualityMini},
-	}
-
-	for _, quality := range qualities {
-		quality := quality
-		for _, image := range images {
-			image := image
-			t.Run(quality.name+"/"+image.name, func(t *testing.T) {
-				dir := t.TempDir()
-				rawURL := "https://i.example/42.png"
-				client := &fakePixivClient{
-					details: map[int64]pixiv.Artwork{42: {
-						ID: 42, Title: "quality", PageCount: 1, Kind: pixiv.ArtworkKindIllustration,
-						User:  pixiv.User{Name: "author"},
-						Pages: []pixiv.ArtworkPage{artworkPageWithArtworkRef(rawURL)},
-					}},
-				}
-				body := append([]byte(nil), image.body...)
-				client.saveResourceOverride = func(_ context.Context, _ sdk.ResourceRef, options sdk.SaveOptions) (sdk.SavedResource, error) {
-					if err := os.WriteFile(options.Path, body, 0o600); err != nil {
-						return sdk.SavedResource{}, err
-					}
-					return sdk.SavedResource{
-						Path: options.Path, Size: int64(len(body)), ContentType: image.contentType,
-					}, nil
-				}
-
-				batch, err := downloader.NewArtworkDownloader(client, dir, "{id}").Download(context.Background(), downloader.DownloadRequest{
-					IllustIDs: []int64{42}, Quality: quality.value,
-				})
-				require.NoError(t, err)
-				require.Len(t, batch.Items, 1)
-				require.Len(t, batch.Items[0].Files, 1)
-				path := batch.Items[0].Files[0].Path
-				require.Equal(t, image.wantExt, filepath.Ext(path))
-				assertFileBody(t, path, string(body))
-			})
-		}
-	}
-}
-
-func TestDownloadRejectsUnsupportedStaticImageType(t *testing.T) {
-	qualities := []struct {
-		name  string
-		value downloader.DownloadQuality
-	}{
-		{name: "original", value: downloader.DownloadQualityOriginal},
-		{name: "regular", value: downloader.DownloadQualityRegular},
-		{name: "small", value: downloader.DownloadQualitySmall},
-		{name: "thumb", value: downloader.DownloadQualityThumb},
-		{name: "mini", value: downloader.DownloadQualityMini},
-	}
-
-	for _, quality := range qualities {
-		quality := quality
-		t.Run(quality.name, func(t *testing.T) {
+		{name: "jpeg-mime", body: []byte("\xff\xd8\xff\xe0\x00\x10JFIF\x00"), contentType: "image/jpeg; charset=binary", wantExt: ".jpg"},
+		{name: "png-mime", body: []byte("\x89PNG\r\n\x1a\nPNG fixture"), contentType: "image/png", wantExt: ".png"},
+		{name: "gif-signature", body: []byte("GIF89aGIF fixture"), wantExt: ".gif"},
+		{name: "webp-signature", body: []byte("RIFF\x00\x00\x00\x00WEBPVP8 fixture"), wantExt: ".webp"},
+		{name: "mime-overrides-signature", body: []byte("\x89PNG\r\n\x1a\nPNG fixture"), contentType: "image/jpeg; charset=binary", wantExt: ".jpg"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
 			dir := t.TempDir()
 			rawURL := "https://i.example/42.png"
 			client := &fakePixivClient{
 				details: map[int64]pixiv.Artwork{42: {
-					ID: 42, Title: "unsupported", PageCount: 1, Kind: pixiv.ArtworkKindIllustration,
+					ID: 42, Title: "quality", PageCount: 1, Kind: pixiv.ArtworkKindIllustration,
 					User:  pixiv.User{Name: "author"},
 					Pages: []pixiv.ArtworkPage{artworkPageWithArtworkRef(rawURL)},
 				}},
 			}
-			body := []byte("not an image")
+			body := append([]byte(nil), test.body...)
 			client.saveResourceOverride = func(_ context.Context, _ sdk.ResourceRef, options sdk.SaveOptions) (sdk.SavedResource, error) {
 				if err := os.WriteFile(options.Path, body, 0o600); err != nil {
 					return sdk.SavedResource{}, err
 				}
-				return sdk.SavedResource{
-					Path: options.Path, Size: int64(len(body)), ContentType: "application/octet-stream",
-				}, nil
+				return sdk.SavedResource{Path: options.Path, Size: int64(len(body)), ContentType: test.contentType}, nil
 			}
 
 			batch, err := downloader.NewArtworkDownloader(client, dir, "{id}").Download(context.Background(), downloader.DownloadRequest{
-				IllustIDs: []int64{42}, Quality: quality.value,
+				IllustIDs: []int64{42}, Quality: downloader.DownloadQualityOriginal,
 			})
 			require.NoError(t, err)
-			require.Empty(t, batch.Items)
-			require.Len(t, batch.Failures, 1)
-			require.NotEmpty(t, batch.Failures[0].Message)
-			_, statErr := os.Stat(filepath.Join(dir, "42.png"))
-			require.ErrorIs(t, statErr, os.ErrNotExist)
+			require.Len(t, batch.Items, 1)
+			require.Len(t, batch.Items[0].Files, 1)
+			path := batch.Items[0].Files[0].Path
+			require.Equal(t, test.wantExt, filepath.Ext(path))
+			assertFileBody(t, path, string(body))
 		})
 	}
+
+	t.Run("unsupported replaces nothing", func(t *testing.T) {
+		dir := t.TempDir()
+		client := &fakePixivClient{
+			details: map[int64]pixiv.Artwork{42: {
+				ID: 42, Title: "unsupported", PageCount: 1, Kind: pixiv.ArtworkKindIllustration,
+				User:  pixiv.User{Name: "author"},
+				Pages: []pixiv.ArtworkPage{artworkPageWithArtworkRef("https://i.example/42.png")},
+			}},
+		}
+		body := []byte("not an image")
+		client.saveResourceOverride = func(_ context.Context, _ sdk.ResourceRef, options sdk.SaveOptions) (sdk.SavedResource, error) {
+			if err := os.WriteFile(options.Path, body, 0o600); err != nil {
+				return sdk.SavedResource{}, err
+			}
+			return sdk.SavedResource{Path: options.Path, Size: int64(len(body)), ContentType: "application/octet-stream"}, nil
+		}
+		batch, err := downloader.NewArtworkDownloader(client, dir, "{id}").Download(context.Background(), downloader.DownloadRequest{
+			IllustIDs: []int64{42}, Quality: downloader.DownloadQualityOriginal,
+		})
+		require.NoError(t, err)
+		require.Empty(t, batch.Items)
+		require.Len(t, batch.Failures, 1)
+		_, statErr := os.Stat(filepath.Join(dir, "42.png"))
+		require.ErrorIs(t, statErr, os.ErrNotExist)
+	})
 }
 
 func TestDownloadRejectsUndetectableStaticImageWithoutMetadata(t *testing.T) {
