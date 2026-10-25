@@ -13,7 +13,6 @@
 ## Changed
 
 - Ugoira GIF/APNG encoding is now pure Go and streaming. Release binaries build with `CGO_ENABLED=0`, and source builds no longer need Rust or a C linker. Frame order, timing, transparency, resizing, and atomic output are unchanged. ([#147](https://github.com/FlanChanXwO/pixiv-cli/pull/147))
-- The README no longer carries the Telegram group badge and link. ([#134](https://github.com/FlanChanXwO/pixiv-cli/pull/134), [#150](https://github.com/FlanChanXwO/pixiv-cli/pull/150))
 - Configuration paths, aliases, environment overrides, and defaults are generated from struct field tags; existing keys, environment names, defaults, and generated `config.toml` content remain compatible. ([#133](https://github.com/FlanChanXwO/pixiv-cli/pull/133))
 
 ## Fixed
@@ -28,6 +27,8 @@
 **Full Changelog**: [v1.1.1...v1.2.0](https://github.com/FlanChanXwO/pixiv-cli/compare/v1.1.1...v1.2.0)
 
 <!-- internal:
+  [#134](https://github.com/FlanChanXwO/pixiv-cli/pull/134)
+  [#150](https://github.com/FlanChanXwO/pixiv-cli/pull/150)
   [#122](https://github.com/FlanChanXwO/pixiv-cli/pull/122)
   [#123](https://github.com/FlanChanXwO/pixiv-cli/pull/123)
   [#124](https://github.com/FlanChanXwO/pixiv-cli/pull/124)

@@ -251,7 +251,7 @@ flowchart LR
 ```
 
 - Sections, in order when non-empty: `Breaking changes`, `Added`, `Changed`, `Fixed`, `Security`, `New Contributors` (translated names in Chinese), ending with a same-scope `Full Changelog` compare link (first version: that tag's commits).
-- Write for CLI, MCP, and SDK users: the command, flag, or tool they see and what they need to do. CI, tests, internal refactors, pull request process, and maintainer-only documentation stay out of the body; user-visible documentation changes belong under `Changed`.
+- Write for CLI, MCP, and SDK users: the command, flag, or tool they see and what they need to do. CI, tests, internal refactors, pull request process, and and documentation or README changes stay out of the body.
 - Each note inlines its source PR (or a real short-SHA commit link); one entry may merge related sources. Every audited PR and direct commit must be in the body or in a trailing `<!-- internal: ... -->` comment, which the rendered Release body omits. Each version lists first-time external contributors (not owner or bots). `changelog/unreleased/` is a release-prep workspace, not an ordinary PR target.
 - Classification, breaking-change judgment and version summaries are the release-prep maintainer's call from the final Markdown and compatibility assessment, not the PR body; PR authors don't pick versions.
 - `validate --audit` checks section order, one-to-one bilingual entries, compare footer, and missing or out-of-scope sources; `validate --unreleased --audit` does the same for `changelog/unreleased/` without a version heading or compare link. The formal tag's `release_notes_audit` job reruns audit + validation with read-only `contents` and `pull-requests`.

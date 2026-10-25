@@ -6,9 +6,9 @@
 
 ## 新增
 
+- 首次发布 `pixiv` CLI 与 MCP server：账号命令、API 读取和下载。（[`51b6894`](https://github.com/FlanChanXwO/pixiv-cli/commit/51b6894), [`53ad400`](https://github.com/FlanChanXwO/pixiv-cli/commit/53ad400)）
 - `pixiv update` 可安装签名的发布版本、识别当前安装来源、在有新版本时提示更新；`pixiv --version` 现在可以显示构建信息。（[`1101530`](https://github.com/FlanChanXwO/pixiv-cli/commit/1101530), [`3176147`](https://github.com/FlanChanXwO/pixiv-cli/commit/3176147), [`75872cd`](https://github.com/FlanChanXwO/pixiv-cli/commit/75872cd), [`a2330b4`](https://github.com/FlanChanXwO/pixiv-cli/commit/a2330b4), [`a279985`](https://github.com/FlanChanXwO/pixiv-cli/commit/a279985), [`c4e7737`](https://github.com/FlanChanXwO/pixiv-cli/commit/c4e7737)）
 - 动图作品下载时可用内置 GIF/APNG 编码，不再需要外部编码器。（[`235a017`](https://github.com/FlanChanXwO/pixiv-cli/commit/235a017), [`e5bc6a9`](https://github.com/FlanChanXwO/pixiv-cli/commit/e5bc6a9)）
-- 首次发布 `pixiv` CLI 与 MCP server：账号命令、API 读取、下载和安装使用文档。（[`51b6894`](https://github.com/FlanChanXwO/pixiv-cli/commit/51b6894), [`53ad400`](https://github.com/FlanChanXwO/pixiv-cli/commit/53ad400)）
 
 ## 修复
 
@@ -19,6 +19,7 @@
 **完整变更**：[v0.1.0 commits](https://github.com/FlanChanXwO/pixiv-cli/commits/v0.1.0)
 
 <!-- internal:
+  [`51b6894`](https://github.com/FlanChanXwO/pixiv-cli/commit/51b6894)
   [`02cc1bb`](https://github.com/FlanChanXwO/pixiv-cli/commit/02cc1bb)
   [`08b98c8`](https://github.com/FlanChanXwO/pixiv-cli/commit/08b98c8)
   [`0cbd004`](https://github.com/FlanChanXwO/pixiv-cli/commit/0cbd004)

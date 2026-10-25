@@ -6,7 +6,7 @@
 
 ## 新增
 
-- CLI 与 MCP 新增需要登录的小说搜索和用户搜索，并提供日文 SDK 与 MCP 参考页。（[`2f414ac`](https://github.com/FlanChanXwO/pixiv-cli/commit/2f414ac), [`60bd6b4`](https://github.com/FlanChanXwO/pixiv-cli/commit/60bd6b4)）
+- CLI 与 MCP 新增需要登录的小说搜索和用户搜索。（[`2f414ac`](https://github.com/FlanChanXwO/pixiv-cli/commit/2f414ac)）
 
 ## 修复
 
@@ -15,6 +15,7 @@
 **完整变更**：[v0.5.0...v0.6.0](https://github.com/FlanChanXwO/pixiv-cli/compare/v0.5.0...v0.6.0)
 
 <!-- internal:
+  [`60bd6b4`](https://github.com/FlanChanXwO/pixiv-cli/commit/60bd6b4)
   [`7d75073`](https://github.com/FlanChanXwO/pixiv-cli/commit/7d75073)
   [`82c18ad`](https://github.com/FlanChanXwO/pixiv-cli/commit/82c18ad)
   [`b0c6ad1`](https://github.com/FlanChanXwO/pixiv-cli/commit/b0c6ad1)

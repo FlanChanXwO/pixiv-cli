@@ -6,11 +6,7 @@
 
 ## 新增
 
-- 新增 macOS/Linux 与 Windows 独立安装器、带版本号的离线认证包、覆盖 SDK/CLI/MCP 的完整搜索筛选，以及多语言文档。（[#14](https://github.com/FlanChanXwO/pixiv-cli/pull/14)）
-
-## 变更
-
-- SDK 参考文档整合为作品、用户和搜索三部分，并为每个操作补充示例。（[#10](https://github.com/FlanChanXwO/pixiv-cli/pull/10), [#11](https://github.com/FlanChanXwO/pixiv-cli/pull/11)）
+- 新增 macOS/Linux 与 Windows 独立安装器、带版本号的离线认证包，以及覆盖 SDK/CLI/MCP 的完整搜索筛选。（[#14](https://github.com/FlanChanXwO/pixiv-cli/pull/14)）
 
 ## 修复
 
@@ -19,6 +15,8 @@
 **完整变更**：[v0.3.0...v0.4.0](https://github.com/FlanChanXwO/pixiv-cli/compare/v0.3.0...v0.4.0)
 
 <!-- internal:
+  [#10](https://github.com/FlanChanXwO/pixiv-cli/pull/10)
+  [#11](https://github.com/FlanChanXwO/pixiv-cli/pull/11)
   [#12](https://github.com/FlanChanXwO/pixiv-cli/pull/12)
   [#13](https://github.com/FlanChanXwO/pixiv-cli/pull/13)
 -->

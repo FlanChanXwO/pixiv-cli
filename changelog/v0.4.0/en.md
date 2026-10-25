@@ -6,11 +6,7 @@
 
 ## Added
 
-- Standalone installers for macOS/Linux and Windows, versioned offline auth bundles, complete search filters across SDK/CLI/MCP, and multilingual documentation. ([#14](https://github.com/FlanChanXwO/pixiv-cli/pull/14))
-
-## Changed
-
-- The SDK reference is consolidated into artwork, user, and search pages, with examples for each operation. ([#10](https://github.com/FlanChanXwO/pixiv-cli/pull/10), [#11](https://github.com/FlanChanXwO/pixiv-cli/pull/11))
+- Standalone installers for macOS/Linux and Windows, versioned offline auth bundles, and complete search filters across SDK/CLI/MCP. ([#14](https://github.com/FlanChanXwO/pixiv-cli/pull/14))
 
 ## Fixed
 
@@ -19,6 +15,8 @@
 **Full Changelog**: [v0.3.0...v0.4.0](https://github.com/FlanChanXwO/pixiv-cli/compare/v0.3.0...v0.4.0)
 
 <!-- internal:
+  [#10](https://github.com/FlanChanXwO/pixiv-cli/pull/10)
+  [#11](https://github.com/FlanChanXwO/pixiv-cli/pull/11)
   [#12](https://github.com/FlanChanXwO/pixiv-cli/pull/12)
   [#13](https://github.com/FlanChanXwO/pixiv-cli/pull/13)
 -->
