@@ -771,19 +771,37 @@ func TestMCPAuthInitPersistsPrivateVerifierOnce(t *testing.T) {
 	require.True(t, bytes.Equal(body, unchanged), "ordinary re-init replaced state")
 }
 
-func TestMCPAuthResetPreservesClientsAndSelection(t *testing.T) {
+// 两种 stdout 失败的保存边界：正常 init 只落 verifier；reset 轮换 owner 但保留
+// clients/selection，并在输出失败时报告已保存状态。
+// 两种保存边界：输出失败不得伪装成回滚；reset 轮换 owner 但保留 clients/selection。
+func TestMCPAuthInitAndResetPersistence(t *testing.T) {
 	_, configPath := useTempPaths(t)
+	filename := filepath.Join(filepath.Dir(configPath), "mcp-state.json")
 	var stdout, stderr bytes.Buffer
 	run := func(args ...string) int {
 		stdout.Reset()
 		stderr.Reset()
 		return RunContext(t.Context(), append([]string{"pixiv", "mcp", "auth", "init"}, args...), strings.NewReader(""), &stdout, &stderr)
 	}
-	require.Zero(t, run())
+
+	// 首次 init 的输出失败：owner 已保存，提示用 --reset 重试。
+	reader, writer := io.Pipe()
+	require.NoError(t, reader.Close())
+	defer writer.Close()
+	code := RunContext(t.Context(), []string{"pixiv", "mcp", "auth", "init"}, strings.NewReader(""), writer, &stderr)
+	require.NotZero(t, code)
+	_, statErr := os.Stat(filename)
+	require.NoError(t, statErr, "output failure must not pretend to roll back a committed owner")
+	require.Contains(t, stderr.String(), "saved")
+	require.Contains(t, stderr.String(), "pixiv mcp auth init --reset")
+
+	require.Zero(t, run("--reset"), "reset failed: %s", stderr.String())
 	oldSecret := strings.TrimSpace(stdout.String())
-	filename := filepath.Join(filepath.Dir(configPath), "mcp-state.json")
+	require.NotEmpty(t, oldSecret)
 	body, err := os.ReadFile(filename)
 	require.NoError(t, err)
+	require.False(t, bytes.Contains(body, []byte(oldSecret)), "raw owner secret was persisted")
+
 	var state map[string]any
 	require.NoError(t, json.Unmarshal(body, &state))
 	registeredClient := map[string]any{"client_name": "Fixture", "redirect_uris": []any{"https://client.example/callback"}}
@@ -793,6 +811,7 @@ func TestMCPAuthResetPreservesClientsAndSelection(t *testing.T) {
 	body, err = json.Marshal(state)
 	require.NoError(t, err)
 	require.NoError(t, os.WriteFile(filename, body, 0600))
+
 	require.Zero(t, run("--reset"), "reset failed: %s", stderr.String())
 	newSecret := strings.TrimSpace(stdout.String())
 	require.NotEmpty(t, newSecret)
@@ -808,20 +827,6 @@ func TestMCPAuthResetPreservesClientsAndSelection(t *testing.T) {
 	require.False(t, state["owner_verifier"] == after["owner_verifier"], "owner generation did not change")
 	require.False(t, bytes.Contains(body, []byte(oldSecret)) || bytes.Contains(body, []byte(newSecret)), "raw secret persisted")
 	require.Empty(t, stderr.String())
-}
-
-func TestMCPAuthInitOutputFailureReportsSavedState(t *testing.T) {
-	_, configPath := useTempPaths(t)
-	reader, writer := io.Pipe()
-	require.NoError(t, reader.Close())
-	defer writer.Close()
-	var stderr bytes.Buffer
-	code := RunContext(t.Context(), []string{"pixiv", "mcp", "auth", "init"}, strings.NewReader(""), writer, &stderr)
-	require.NotZero(t, code)
-	_, err := os.Stat(filepath.Join(filepath.Dir(configPath), "mcp-state.json"))
-	require.NoError(t, err, "output failure must not pretend to roll back a committed owner")
-	require.Contains(t, stderr.String(), "saved")
-	require.Contains(t, stderr.String(), "pixiv mcp auth init --reset")
 }
 
 func TestMCPHTTPPreflightFailsBeforeStarting(t *testing.T) {
