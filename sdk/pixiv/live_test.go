@@ -907,100 +907,95 @@ func parseSeriesRecoveryID(rawID, family string) (int64, error) {
 	return seriesID, nil
 }
 
-// TestRealPixivSDKLiveNovelSeriesRecovery validates one explicitly supplied
-// public candidate. The candidate stays in the invocation environment rather
-// than becoming a permanent fixture or an ID-enumeration seed.
-func TestRealPixivSDKLiveNovelSeriesRecovery(t *testing.T) {
-	if os.Getenv("PIXIV_SDK_E2E") != "1" {
-		t.Skip("set PIXIV_SDK_E2E=1 to run the real Pixiv SDK e2e")
-	}
-	rawID := strings.TrimSpace(os.Getenv("PIXIV_NOVEL_SERIES_RECOVERY_ID"))
-	if rawID == "" {
-		t.Skip("set PIXIV_NOVEL_SERIES_RECOVERY_ID to validate one explicit novel series candidate")
-	}
-	seriesID, err := parseSeriesRecoveryID(rawID, "novel")
-	if err != nil {
-		t.Fatal(err)
-	}
+// TestRealPixivSDKLiveSeriesRecovery validates one explicitly supplied public
+// candidate through the public SDK, including its real continuation. The
+// candidate stays in the invocation environment rather than becoming a
+// permanent fixture or an ID-enumeration seed.
+func TestRealPixivSDKLiveSeriesRecovery(t *testing.T) {
+	for _, family := range []struct {
+		name string
+		env  string
+	}{
+		{name: "novel", env: "PIXIV_NOVEL_SERIES_RECOVERY_ID"},
+		{name: "artwork", env: "PIXIV_ARTWORK_SERIES_RECOVERY_ID"},
+	} {
+		t.Run(family.name, func(t *testing.T) {
+			if os.Getenv("PIXIV_SDK_E2E") != "1" {
+				t.Skip("set PIXIV_SDK_E2E=1 to run the real Pixiv SDK e2e")
+			}
+			rawID := strings.TrimSpace(os.Getenv(family.env))
+			if rawID == "" {
+				t.Skipf("set %s to validate one explicit %s series candidate", family.env, family.name)
+			}
+			seriesID, err := parseSeriesRecoveryID(rawID, family.name)
+			if err != nil {
+				t.Fatal(err)
+			}
+			ctx := context.Background()
+			client := openPixivLiveSession(t, ctx, 0).client
 
-	ctx := context.Background()
-	client := openPixivLiveSession(t, ctx, 0).client
-	first, err := client.NovelSeries(ctx, pixivsdk.NovelSeriesRequest{SeriesID: seriesID})
-	if err != nil {
-		switch sdk.ReasonOf(err) {
-		case sdk.Forbidden, sdk.NotFound, sdk.ContentUnavailable:
-			t.Logf("novel_series candidate %d: blocked_external (data/permission): reason=%s", seriesID, sdk.ReasonOf(err))
-			return
-		default:
-			t.Fatalf("novel_series candidate %d: %v", seriesID, err)
-		}
-	}
+			fetch := func(cursor sdk.Cursor) (sdk.Page[pixivsdk.Artwork], error) {
+				return client.ArtworkSeries(ctx, pixivsdk.ArtworkSeriesRequest{SeriesID: seriesID, Cursor: cursor})
+			}
+			if family.name == "novel" {
+				first, err := client.NovelSeries(ctx, pixivsdk.NovelSeriesRequest{SeriesID: seriesID})
+				if err != nil {
+					reportSeriesCandidateError(t, family.name, seriesID, err)
+					return
+				}
+				if !seriesCandidateHasPages(t, family.name, seriesID, len(first.Novels.Items), !first.Novels.Next.IsZero()) {
+					return
+				}
+				second, err := client.NovelSeries(ctx, pixivsdk.NovelSeriesRequest{SeriesID: seriesID, Cursor: first.Novels.Next})
+				if err != nil {
+					t.Fatalf("%s_series candidate %d second page: %v", family.name, seriesID, err)
+				}
+				t.Logf("%s_series candidate %d second page: items=%d continuation=%v", family.name, seriesID, len(second.Novels.Items), !second.Novels.Next.IsZero())
+				return
+			}
 
-	t.Logf("novel_series candidate %d first page: novels=%d continuation=%v", seriesID, len(first.Novels.Items), !first.Novels.Next.IsZero())
-	if len(first.Novels.Items) == 0 {
-		t.Logf("novel_series candidate %d: blocked_external (data): empty first page", seriesID)
-		return
+			first, err := fetch(sdk.Cursor{})
+			if err != nil {
+				reportSeriesCandidateError(t, family.name, seriesID, err)
+				return
+			}
+			if !seriesCandidateHasPages(t, family.name, seriesID, len(first.Items), !first.Next.IsZero()) {
+				return
+			}
+			second, err := fetch(first.Next)
+			if err != nil {
+				t.Fatalf("%s_series candidate %d second page: %v", family.name, seriesID, err)
+			}
+			if len(second.Items) == 0 {
+				t.Fatalf("%s_series candidate %d second page is empty", family.name, seriesID)
+			}
+			t.Logf("%s_series candidate %d second page: items=%d continuation=%v", family.name, seriesID, len(second.Items), !second.Next.IsZero())
+		})
 	}
-	if first.Novels.Next.IsZero() {
-		t.Logf("novel_series candidate %d: blocked_external (data): no continuation", seriesID)
-		return
-	}
-
-	second, err := client.NovelSeries(ctx, pixivsdk.NovelSeriesRequest{SeriesID: seriesID, Cursor: first.Novels.Next})
-	if err != nil {
-		t.Fatalf("novel_series candidate %d second page: %v", seriesID, err)
-	}
-	t.Logf("novel_series candidate %d second page: novels=%d continuation=%v", seriesID, len(second.Novels.Items), !second.Novels.Next.IsZero())
 }
 
-// TestRealPixivSDKLiveArtworkSeriesRecovery validates one explicitly supplied
-// public candidate through the public SDK, including its real continuation.
-// The candidate stays in the invocation environment rather than becoming a
-// permanent fixture or an ID-enumeration seed.
-func TestRealPixivSDKLiveArtworkSeriesRecovery(t *testing.T) {
-	if os.Getenv("PIXIV_SDK_E2E") != "1" {
-		t.Skip("set PIXIV_SDK_E2E=1 to run the real Pixiv SDK e2e")
+func reportSeriesCandidateError(t *testing.T, family string, seriesID int64, err error) {
+	t.Helper()
+	switch sdk.ReasonOf(err) {
+	case sdk.Forbidden, sdk.NotFound, sdk.ContentUnavailable:
+		t.Logf("%s_series candidate %d: blocked_external (data/permission): reason=%s", family, seriesID, sdk.ReasonOf(err))
+	default:
+		t.Fatalf("%s_series candidate %d: %v", family, seriesID, err)
 	}
-	rawID := strings.TrimSpace(os.Getenv("PIXIV_ARTWORK_SERIES_RECOVERY_ID"))
-	if rawID == "" {
-		t.Skip("set PIXIV_ARTWORK_SERIES_RECOVERY_ID to validate one explicit artwork series candidate")
-	}
-	seriesID, err := parseSeriesRecoveryID(rawID, "artwork")
-	if err != nil {
-		t.Fatal(err)
-	}
+}
 
-	ctx := context.Background()
-	client := openPixivLiveSession(t, ctx, 0).client
-	first, err := client.ArtworkSeries(ctx, pixivsdk.ArtworkSeriesRequest{SeriesID: seriesID})
-	if err != nil {
-		switch sdk.ReasonOf(err) {
-		case sdk.Forbidden, sdk.NotFound, sdk.ContentUnavailable:
-			t.Logf("artwork_series candidate %d: blocked_external (data/permission): reason=%s", seriesID, sdk.ReasonOf(err))
-			return
-		default:
-			t.Fatalf("artwork_series candidate %d: %v", seriesID, err)
-		}
+func seriesCandidateHasPages(t *testing.T, family string, seriesID int64, items int, hasNext bool) bool {
+	t.Helper()
+	t.Logf("%s_series candidate %d first page: items=%d continuation=%v", family, seriesID, items, hasNext)
+	if items == 0 {
+		t.Logf("%s_series candidate %d: blocked_external (data): empty first page", family, seriesID)
+		return false
 	}
-
-	t.Logf("artwork_series candidate %d first page: artworks=%d continuation=%v", seriesID, len(first.Items), !first.Next.IsZero())
-	if len(first.Items) == 0 {
-		t.Logf("artwork_series candidate %d: blocked_external (data): empty first page", seriesID)
-		return
+	if !hasNext {
+		t.Logf("%s_series candidate %d: blocked_external (data): no continuation", family, seriesID)
+		return false
 	}
-	if first.Next.IsZero() {
-		t.Logf("artwork_series candidate %d: blocked_external (data): no continuation", seriesID)
-		return
-	}
-
-	second, err := client.ArtworkSeries(ctx, pixivsdk.ArtworkSeriesRequest{SeriesID: seriesID, Cursor: first.Next})
-	if err != nil {
-		t.Fatalf("artwork_series candidate %d second page: %v", seriesID, err)
-	}
-	if len(second.Items) == 0 {
-		t.Fatalf("artwork_series candidate %d second page is empty", seriesID)
-	}
-	t.Logf("artwork_series candidate %d second page: artworks=%d continuation=%v", seriesID, len(second.Items), !second.Next.IsZero())
+	return true
 }
 
 // cliRecordTypes 解析 CLI --json 输出的 record type 序列（兼容数组与

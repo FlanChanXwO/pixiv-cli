@@ -13,7 +13,7 @@ func TestResolveURL(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Open: %v", err)
 	}
-	cases := []struct {
+	for _, test := range []struct {
 		name      string
 		raw       string
 		kind      fanbox.ReferenceKind
@@ -27,23 +27,15 @@ func TestResolveURL(t *testing.T) {
 		{name: "tag", raw: "https://www.fanbox.cc/@pixiv/posts/tag/illust", kind: fanbox.ReferenceKindTag, creatorID: "pixiv", tag: "illust"},
 		{name: "subdomain", raw: "https://pixiv.fanbox.cc", kind: fanbox.ReferenceKindCreator, creatorID: "pixiv"},
 		{name: "legacy creators", raw: "https://www.fanbox.cc/creators/pixiv", kind: fanbox.ReferenceKindCreator, creatorID: "pixiv"},
-	}
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			ref, err := client.ResolveURL(context.Background(), fanbox.ResolveURLRequest{RawURL: tc.raw})
-			if err != nil {
-				t.Fatalf("ResolveURL(%q): %v", tc.raw, err)
-			}
-			if ref.Kind != tc.kind || ref.CreatorID != tc.creatorID || ref.PostID != tc.postID || ref.Tag != tc.tag {
-				t.Fatalf("ref = %+v", ref)
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			ref, err := client.ResolveURL(context.Background(), fanbox.ResolveURLRequest{RawURL: test.raw})
+			if err != nil || ref.Kind != test.kind || ref.CreatorID != test.creatorID || ref.PostID != test.postID || ref.Tag != test.tag {
+				t.Fatalf("ref = %+v err=%v", ref, err)
 			}
 		})
 	}
-}
-
-func TestResolveURLRejectsInvalid(t *testing.T) {
-	client, _ := fanbox.Open(fanbox.SessionCredentials{FANBOXSESSID: "session"})
-	cases := []string{
+	for _, raw := range []string{
 		"",
 		"https://example.com/@pixiv",
 		"http://www.fanbox.cc/@pixiv",
@@ -52,12 +44,11 @@ func TestResolveURLRejectsInvalid(t *testing.T) {
 		"https://www.fanbox.cc/@pixiv/unknown",
 		"https://www.fanbox.cc/@pixiv/posts/tag",
 		"https://sub.sub.fanbox.cc",
-	}
-	for _, raw := range cases {
-		t.Run(raw, func(t *testing.T) {
+	} {
+		t.Run("invalid/"+raw, func(t *testing.T) {
 			_, err := client.ResolveURL(context.Background(), fanbox.ResolveURLRequest{RawURL: raw})
 			if sdk.ReasonOf(err) != sdk.InvalidArgument {
-				t.Fatalf("ResolveURL(%q): expected InvalidArgument, got %v", raw, err)
+				t.Fatalf("ResolveURL(%q) = %v, want InvalidArgument", raw, err)
 			}
 		})
 	}
