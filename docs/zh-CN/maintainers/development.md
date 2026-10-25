@@ -5,7 +5,7 @@
 ```mermaid
 flowchart LR
     E["环境检查"] --> B["构建<br/>sh scripts/build.sh"] --> T["测试<br/>go test ./..."] --> PR["PR CI 门禁<br/>（ci.md）"] --> REL["发布门禁<br/>（release.md）"]
-    T -. "opt-in，需授权" .-> E2E["真实 SDK / 反向搜图 live 测试"]
+    T -. "单独授权" .-> LIVE["手动 CLI / SDK / 浏览器验证"]
 ```
 
 | 你想做什么 | 从这里开始 |
@@ -38,10 +38,9 @@ CGO_ENABLED=0 go test ./...
 go test ./...
 go vet ./...
 sh scripts/build.sh
-node frontend/mcp-apps/gallery/gallery_test.mjs   # 直接测试 Gallery bridge
 ```
 
-- `frontend` 包测试校验嵌入输入与占位符；本地/平台/race 构建直接编译源码。有 Node 时 Go 回归测试也会跑遍所有宿主能力模式。
+- 本地/平台/race 构建直接编译嵌入源码。Gallery、同意页和登录页的行为变更通过相应浏览器/MCP 宿主手动检查。
 - 前端改动需要 Quality、Platform 与 Container 检查。Docker 使用预构建二进制；Homebrew 模板仍在 `templates/homebrew/`。
 - 源码安装与自更新使用精确 tag：`go install github.com/FlanChanXwO/pixiv-cli/cmd/pixiv@vX.Y.Z`。
 
@@ -61,7 +60,7 @@ CGO_ENABLED=0 go test ./internal/media/ugoira/... -count=1
 | 取消 | 每个读取分块与图片解码的前后都会检查；PNG/JPEG 解码循环没有回调，因此单帧解码中途的取消在该次解码返回时才被观察到 |
 | 工具链 | 不需要 Rust、native library 或 C linker；只有 race 测试需要 `CGO_ENABLED=1` + C 工具链 |
 
-**编码器保真说明** —— `internal/media/ugoira`：JPEG 解码器是 Go 1.26.3 解析加旧 zune-jpeg 0.5.15 整数 IDCT 与 14 位 BT.601（标准库 IDCT 舍入对调色板选择的改变足以让固定门禁失败；解析器 BSD 许可证留在该包，zune-jpeg 的 MIT 署名留在许可证 bundle）。缩放使用带显式 `math.FMA` 的有界正弦/余弦多项式对齐旧 `sinf`，参考值在 `testdata/lanczos-kernel.json`（1,031 条）。APNG 使用固定 Sub 预测、每帧独立的 level-7 zlib 流与 RGBA8 无损：只有全部变化像素不透明且差分能减少横向 RGBA 游程时，才对未变像素使用透明的 Over，否则使用 Source，均用 None disposal。压缩字节可能随工具链变化；只有在验证完整渲染画布、时序与循环行为后才能复用旧质量证据——不能只看文件大小。
+**编码器保真说明** —— `internal/media/ugoira`：JPEG 解码器是 Go 1.26.3 解析加旧 zune-jpeg 0.5.15 整数 IDCT 与 14 位 BT.601（标准库 IDCT 舍入对调色板选择的改变足以让固定门禁失败；解析器 BSD 许可证留在该包，zune-jpeg 的 MIT 署名留在 `internal/media/ugoira/jpeg/idct.go`）。缩放使用带显式 `math.FMA` 的有界正弦/余弦多项式对齐旧 `sinf`，保真证据由保留的 native 编码测试负责。APNG 使用固定 Sub 预测、每帧独立的 level-7 zlib 流与 RGBA8 无损：只有全部变化像素不透明且差分能减少横向 RGBA 游程时，才对未变像素使用透明的 Over，否则使用 Source，均用 None disposal。压缩字节可能随工具链变化；只有在验证完整渲染画布、时序与循环行为后才能复用旧质量证据——不能只看文件大小。
 
 **平台构建** —— `scripts/build/platform.sh` 以 CGO0 构建精确目标，并可选生成 canonical 压缩包：`--target GOOS/GOARCH`、`--output-dir DIR`、可选 `--version VERSION`（不带 `v`）与 `--package`（需要版本）。保留 Windows 后缀。runner 元数据在 `scripts/build/platforms.json`；测试、源码身份、权限、审批与发布留在 workflow 中。
 
@@ -91,7 +90,7 @@ https_proxy=http://127.0.0.1:7890 ./build/pixiv mcp --port 1270
 > [!WARNING]
 > 新版本从不读取或删除旧的 `auth.json`。迁移方式：旧版本执行 `pixiv auth export --all --output <private bundle>`，新版本执行 `pixiv auth import < bundle.json`。
 
-**配置** —— `pixiv config path/get/set/unset` 管理 `account_pool_enabled`、`account_pool_strategy`、`download_path`、`filename_template`、`directory_template`、`request_interval`、`https_proxy`、`log_level`、`log_format`、`reverse_search_provider`、`reverse_search_pixiv_only`、`saucenao_api_key`。其他 TOML（如 `[reverse_search.network]`、`[reverse_search.flaresolverr]`）手工维护，不在基线中，作为启动快照读取。基线由 `internal/config/settings` 中的**结构体字段标签**驱动，用 `tomledit` 生成，紧凑（只含 `example:"true"`），从不覆盖。新增普通设置：(1) 在 `internal/config/settings/config.go` 添加字段与声明，(2) 一个聚焦的行为测试，(3) 文档——见[标签契约](architecture.md#配置声明结构体字段标签是唯一事实来源)。
+**配置** —— `pixiv config path/get/set/unset` 管理 `account_pool_enabled`、`account_pool_strategy`、`download_path`、`filename_template`、`directory_template`、`request_interval`、`https_proxy`、`log_level`、`log_format`、`reverse_search_provider`、`reverse_search_pixiv_only`、`saucenao_api_key`。其他 TOML（如 `[reverse_search.network]`、`[reverse_search.flaresolverr]`）手工维护，不在基线中，作为启动快照读取。基线由 `internal/config/settings` 中的**结构体字段标签**驱动，用 `tomledit` 生成，紧凑（只含 `example:"true"`），从不覆盖。新增普通设置：(1) 在 `internal/config/settings/config.go` 添加字段与声明，(2) 按清单核对现有优先级/空值测试，(3) 文档——见[标签契约](architecture.md#配置声明结构体字段标签是唯一事实来源)。
 
 > [!NOTE]
 > 残留的 `[web] fallback_enabled` 属于未声明键，加载时忽略。`[logging].level`（`debug|info|warn|error`）与 `[logging].format`（`text|json`）生效；`PIXIV_LOG_LEVEL` / `PIXIV_LOG_FORMAT` 可覆盖。
@@ -109,102 +108,99 @@ https_proxy=http://127.0.0.1:7890 ./build/pixiv mcp --port 1270
 > [!WARNING]
 > 只有不带 `--output` 的显式 `pixiv auth export` 可以把 token 写到 stdout。bundle 是未加密、含 secret 的时间点备份，不是实时同步。恢复结果 `committed` / `unknown` 绝不算成功回滚。
 
-真实登录依赖 Pixiv 的 OAuth 网页流程；自动化测试使用 fake OAuth server，从不访问 Pixiv。
+真实登录依赖 Pixiv 的 OAuth 网页流程，离线测试使用本地 HTTP 服务。已授权的真实账号观测按[手动验证流程](#手动真实环境验证)执行。
 
 ## 测试
 
-默认复用已有检查，不新增永久测试。[测试准入规则](../../../.agents/skills/pixiv-cli-test/SKILL.md#decide-whether-test-code-must-change)决定哪些长期核心回归可以进入主线，以及如何在 `tmp/test/` 下运行本地探测。
+长期维护的代码/行为测试遵循[七项契约清单](../../../.agents/skills/pixiv-cli-test/SKILL.md#decide-whether-test-code-must-change)。复用契约归属层的测试，每项保留一个代表性用例与必要失败用例；清单外的调查放在忽略的 `tmp/test/_probe/` 目录中。
 
-覆盖范围包括 CLI 命令与构建元数据、显式/自动更新、`internal/{pixivaccount,fanboxaccount}`、`internal/pixivaccount/pool`、`internal/reversesearch` fixture 与聚合、`internal/storage/database`、`internal/config/settings`、`internal/{lifecycle,pagination}`、App API 认证重试、公开 SDK、HTTP client 装配、下载、Go 编码器契约，以及 `internal/mcpserver/{pixiv,fanbox}/tools` 的工具注册。
+| 契约 | 归属 |
+| --- | --- |
+| 账号/Cookie 在 `%v`、`%+v`、`%#v` 与 slog 中脱敏；日志省略 query/token/Cookie/签名 URL；MCP 输出省略签名 URL 与 Cookie | 凭据类型、请求日志、MCP 输出 |
+| revision 冲突、事务回滚、v1.2.x 数据库可打开、私有权限、原子替换与文件锁 | `internal/storage/*` |
+| 返回 client 前持久化轮换后的 token | `internal/pixivaccount` 或 `internal/session` |
+| 上游响应异常时返回错误，取消向上传播 | `sdk/pixiv`、`sdk/fanbox` |
+| 一份完整 MCP `tools/list` golden；一个 CLI 命令的 text/JSON/NDJSON；用法退出码；纯 JSON-RPC stdio；HTTP bearer 鉴权 | `internal/mcpserver`、`internal/cli` |
+| 环境变量 > 文件 > 默认值及显式空值 | `internal/config/settings` |
+| 自更新校验失败时保留已有二进制 | `internal/selfupdate` |
 
-```bash
-go test ./...
+**上限：** 全仓库最多 25 个非豁免测试文件，每个文件最多 200 行（含导入、辅助函数与空行），每个测试函数最多 40 行，每张表最多 8 行用例。统计全部平台/build tag 文件。`testdata` 仅存放旧版本数据库样本与少量 golden。使用真实 `httptest` 服务与临时存储；测试辅助包、fixture 构造器、mock 层级和测试专用生产导出符号均不纳入套件。
+
+编辑期间运行受影响包；共享契约的最终候选执行：
+
+```fish
+go test ./... -count=1
+env CGO_ENABLED=1 go test -race ./... -count=1
+go vet ./...
 sh scripts/build.sh
-go test ./internal/browsercookies/... -count=1   # 离线 fixture/加密/权限分类回归
 ```
 
-```mermaid
-flowchart TD
-    T["live_test.go 各包<br/>（go test ./... 默认跳过）"] --> F{"设置了 opt-in 变量？"}
-    F -->|否| SK["跳过（默认离线稳定）<br/>绝不能作为发布证据"]
-    F -->|是| P{"本地凭据 /<br/>目标齐全？"}
-    P -->|否| FAIL["失败并暴露缺口"]
-    P -->|是| RUN["真实网络观测"]
-```
+race 检查需要 C 工具链，源码构建保持 CGO-free。保留 workflow 对 Windows ARM64 race 的限制与诊断处理。记录实际通过、失败、跳过及尚未运行的必需检查。发布 fixture 门禁见[发布](release.md#本地发布-fixture-门禁)。
 
-| 测试 | 开启 | 需要 | 验证 |
-| --- | --- | --- | --- |
-| `TestRealPixivSDKRead` | `PIXIV_SDK_E2E=1` | 本地 `pixiv-cli.db` 中的选中账号；可选 `PIXIV_E2E_READ_USER_ID`（必须指向已存账号，联网前 fail closed，不回退默认；发布证据应选副账号） | 身份、稳定的详情/列表与 `Resource` 读取；轮换凭据先经普通 repository 事务持久化 |
-| `TestRealFanboxSDKRead` | `FANBOX_SDK_E2E=1` | 约定 macOS Keychain 项中的 `FANBOXSESSID`；`FANBOX_E2E_CREATOR_ID`、`_TAG`、`_POST_ID`、`_POST_URL` | `Creator`、`Creators`、`CreatorTags`、`CreatorPosts`、`TaggedPosts`、`Post`、`Home`、`Supporting`、`ResolveURL`、`OpenResource`、`SaveResource`；每个列表 cursor 续读一次；在临时目录完整读取文件附件（HEAD、保存、字节数）；会话过期 → `credentials_expired` |
-| `TestRealFanboxSDKPostInfo` | `FANBOX_SDK_E2E=1 FANBOX_E2E_POST_ONLY=1` | 帖子 ID + 页面 URL | `Post`、非空正文、`ResolveURL`、资源清单；允许 `file_assets=0`（不能替代严格测试） |
-| `TestRealReverseSearch` | `PIXIV_REVERSE_SEARCH_E2E=1` | `PIXIV_REVERSE_SEARCH_SOURCE`、`_PROVIDER`；SauceNAO/`all` 需要 `SAUCENAO_API_KEY`（从私有环境 export，不要内联） | 第三方兼容性；不接受来源/key 参数，也不回显；仅用已授权测试图；不是发布门禁 |
-| `TestRealReverseSearchMCPReusesSolverSession` | 同上 | `PIXIV_REVERSE_SEARCH_SOLVER_URL`；可选 `_SOLVER_PROXY`（仅浏览器上游） | solver 会话复用；不持久化会话状态或来源 |
+### CI 豁免
 
-```bash
-PIXIV_E2E_READ_USER_ID=<secondary-uid> \
-PIXIV_SDK_E2E=1 go test ./sdk/pixiv -run TestRealPixivSDKRead -count=1 -v
-# `PIXIV_E2E_LOG_LEVEL=debug` 将 SDK 请求与决策日志写到 stderr；省略时真实读取保持安静。
-FANBOX_E2E_CREATOR_ID=<non-secret-creator-id> FANBOX_E2E_TAG=<non-secret-tag> \
-FANBOX_E2E_POST_ID=<non-secret-post-id> FANBOX_E2E_POST_URL=<non-secret-post-url> \
-FANBOX_SDK_E2E=1 go test ./sdk/fanbox -run TestRealFanboxSDKRead -count=1 -v
-# 可选的 challenge 恢复（默认不配置）
-FANBOX_E2E_SOLVER_URL=http://127.0.0.1:8191 FANBOX_E2E_SOLVER_PROXY=http://host.docker.internal:7890 \
-FANBOX_E2E_CREATOR_ID=... FANBOX_E2E_TAG=... FANBOX_E2E_POST_ID=... FANBOX_E2E_POST_URL=... \
-FANBOX_SDK_E2E=1 go test ./sdk/fanbox -run TestRealFanboxSDKRead -count=1 -v
-FANBOX_E2E_POST_ID=<non-secret-post-id> FANBOX_E2E_POST_URL=<non-secret-post-url> \
-FANBOX_SDK_E2E=1 FANBOX_E2E_POST_ONLY=1 go test ./sdk/fanbox -run TestRealFanboxSDKPostInfo -count=1 -v
-export SAUCENAO_API_KEY      # 预先从私有环境导出
-PIXIV_REVERSE_SEARCH_E2E=1 PIXIV_REVERSE_SEARCH_SOURCE=<private-test-image-path-or-url> \
-PIXIV_REVERSE_SEARCH_PROVIDER=all go test ./internal/reversesearch -run TestRealReverseSearch -count=1 -v
-```
+workflow 步骤保持完整。测试重写期间，以下测试及其必需声明/fixture 原样保留，豁免上述上限与 `testdata` 限制：
 
-- 没有单独的 E2E 包装脚本；离线套件与需要凭据的观测共用一条路径。目标只接受显式的非 secret 值——从不接受 token、会话或 Cookie 作为参数或环境变量。`PIXIV_E2E_PROXY` 是非 secret 的代理 URI；solver 变量是可选的非 secret 拓扑配置。
-- release-prep 运行后，检查 stdout、stderr、日志与证据：token、Cookie、签名 URL 与原始响应体绝不能出现在 argv、环境转储、日志、测试名、产物或 diff 中。本节描述的是覆盖范围，并不表示真实测试已运行。
-- 显式代理下，资源传输协商 HTTP/1.1，App API 与 OAuth 保持原协商；live 资源读取回归这一边界，不为慢速下载加超时。收到没有有效 `Retry-After` 的 429 时保留诊断并失败——不猜测等待，不无限重试。
-- `PIXIV_E2E_BINARY` / `PIXIV_E2E_EXPECTED_VERSION` 让离线 `cmd/pixiv` smoke 针对已构建并解包的 release 二进制运行（不注入 token、不启用真实 API）；`platform-smoke.yml` 在六个 runner 上运行这组 CLI/config/MCP 命令面检查。
-- 按改动范围新增或更新测试；无法运行测试时，在交付说明中写明原因与风险。发布 fixture 门禁见[发布](release.md#本地发布-fixture-门禁)。
+- 整包：`scripts/citest`、`scripts/release`、`internal/cli/auth/loginhelper`、`internal/media/ugoira/...`。
+- 点名测试：`cmd/pixiv/TestPixivBinaryPackagedSmoke`、`internal/storage/database/TestOpenOnWindowsAcceptsForwardSlashFileURI`，以及 `internal/cli/TestAuthURLCallback`、`TestAuthURLHandlerInstall`、`TestNormalCLIInvocationEnsuresPersistentHandlerWithoutBlockingCommand`。
+
+合并前对照当前 workflow 与实际定义重核 selector，记录没有匹配测试的 selector。混合文件保留被点名的函数、注释与必需辅助声明，其余测试按清单处理。通用的 `go test ./...` 门禁维持现有豁免范围。
+
+`PIXIV_E2E_BINARY` 与 `PIXIV_E2E_EXPECTED_VERSION` 继续作为 `platform-smoke.yml` 在六个 runner 上使用的离线打包二进制输入。Platform 与 Container 证据须指向实际 PR head。套件重写的 PR 列出每个计入上限的文件、行数与清单项、保留的 CI 测试名单及测试总行数变化；删除和重写一并合入。
 
 ### 测试文件布局
 
-生产文件 `x.go` 在同目录最多对应一个 `x_test.go`；平台测试使用 `x_<platform>_test.go`，且必须有真实的基础 owner。新 owner 一律使用外部测试包（`X_test`）；只有下列目录因观察未导出状态而允许同包测试。新增同包例外必须在此登记并给出永久理由。
+生产 owner `x.go` 同目录最多对应一个 `x_test.go`；平台专用测试使用 `x_<platform>_test.go`。新测试使用外部包（`X_test`），现有 CI 点名文件保留原布局。同包例外如下：
 
-| 目录 | 同包理由 |
+| 目录 | 理由 |
 | --- | --- |
-| `internal/media/ugoira` | 测试直接调用 `readFrameSource`、`frameSource`、`validateDecodedSize`、`frameNRGBA`、`decodeInto`、`resizeFrame` 与 `apngWriter`，在不做巨量分配的前提下验证分配边界与取消，保持透明 RGB 与缓冲复用时上一帧的所有权，用固定的上游参考向量比较 Lanczos3 像素，覆盖 APNG 序号溢出与写入失败，并检查 reservoir 状态、去重权重/索引、Oklab/Wu 参考值、固定种子 K-means 中心与逐像素抖动索引。`colorGrid` 测试验证格子边缘的精确候选范围；`frameQuantizer` 测试验证复用的误差行被清空、普通量化返回独立索引、显式缓冲复用只在上一帧被消费后开始。LZW 测试覆盖跨帧的字典/码宽重置与写入失败后的恢复。GIF 测试观察 `gifWriter`/`gifBlocks`，验证全局色表、流式 LZW 子块与写入失败；生命周期测试观察 `encodeGate`，无 sleep 地协调排队中的取消。为测试暴露这些 codec 内部细节会扩大 `Encoder` 契约。 |
-| `internal/config/settings` | `schema_test.go` 把合成类型传给私有的 `deriveSchemaFromTags` 编译器，在不导出反射元数据、不重置生产缓存的前提下测试声明拒绝。 |
-| `internal/session` | `pixiv_test.go`、`fanbox_test.go` 设置未导出的 `closeClient` 字段并断言未导出的配置错误 sentinel，验证 Lease 释放与失败传播；导出这些符号会扩大 `session` 的公开接口。 |
-| `internal/pixivaccount` | `pixiv_test.go` 观察未导出的 `newAccountWithToken` 构造，验证 `AccountWithToken` 的格式化与 JSON 输出不泄露 refresh token；为测试导出该构造会扩大凭据边界。 |
-| `internal/cli` | 组合根测试观察未导出的根装配、invocation 生命周期与关闭顺序；这些 seam 不是公开 API。 |
-| `internal/cli/auth` | 账号与登录测试直接构造 controller 和各平台 installer；未导出的 browser、handler 安装、清理、relay client、executable 解析与注册表/桌面 seam 都是生产装配细节，为测试导出只会扩大内部 CLI 接口。 |
-| `internal/cli/auth/loginhelper` | 测试直接构造 `callbackHandler`、`remoteLoginHandoff` 与各平台 `urlHandlerInstaller`，并观察未导出的 `errNoActiveLocalCallback`、`callbackRelayURL`、`saveActiveRemoteLogin` 与 `handlerManifest`，以验证 callback 路由优先级、不跟随重定向的 handoff 与条件清理。为测试导出这些符号只会扩大 loginhelper 的接口面。 |
-| `internal/cli/search` | 测试通过带 HTTP fixture 的真实 SDK 观察私有 searchArtworks 逻辑页续读。私有逻辑页策略仍是实现细节；MCP 另外暴露绑定的默认批次续读。仅为测试导出应用内部会扩大公开面。 |
-| `internal/mcpserver/pixiv/tools` | 测试通过带 HTTP fixture 的真实 SDK 观察私有 searchArtworks 逻辑页续读。私有逻辑页策略仍是实现细节；MCP 另外暴露绑定的默认批次续读。仅为测试导出应用内部会扩大公开面。 |
-| `internal/fanboxapi` | `identity_test.go` 直接调用未导出的 `parseIdentityMetadataHTML`，验证 metadata 的存在性、JSON 合法性、数字或 null 用户字段与 creator 状态；该解析 seam 只有 `Session.CurrentUser` 使用，为测试导出会扩大内部接口。 |
-| `internal/browsercookies/chromium` | 测试直接构造 provider 并注入加密密钥覆盖，观察未导出的 Cookie 记录解密路径与 profile 发现逻辑。 |
-| `internal/browsercookies/firefox` | 测试观察未导出的 profile 发现（`profiles.ini` 解析）、Cookie 数据库路径解析与记录布局。 |
-| `internal/browsercookies/safari` | 测试直接调用未导出的 `parseBinaryCookies`，断言 binarycookies 记录布局。 |
-| `internal/browsercookies/secret` | 测试构造 `SecretService{command: ...}` 注入未导出字段，并断言未导出的 sentinel 错误与命令输出脱敏行为。 |
-| `internal/selfupdate/installer` | 测试注入未导出的 `assetURLValidator` seam 与 checksum 校验函数，并用真实 fixture 二进制验证根 `--version` 预检，以及失败时不替换旧可执行文件。 |
-| `internal/selfupdate/release` | `source_route_test.go` 观察未导出的来源路由选择与 canonical API URL 缓存状态；目录中其他测试已使用外部包。 |
-| `internal/storage/database` | 测试观察未导出的 `tableInfoQuery` allowlist 与迁移兼容 seam，确保 SQL 标识符保持固定字面量，旧 schema 无法静默绕过契约。 |
-| `sdk/pixiv` | `cursor_test.go` 观察未导出的 cursor 构造与 client 实例绑定，在不扩大公开 SDK 面的前提下验证与查询精确绑定的非法续读。 |
+| `internal/pixivaccount` | `pixiv_test.go` 调用私有 `newAccountWithToken` 检查凭据格式化/slog 脱敏；轮换测试使用外部包。 |
+| `internal/cli/auth/loginhelper` | 保留的 native CI 测试观察私有 callback、handoff 与平台 installer 状态。 |
+| `internal/media/ugoira` | 保留的 native CI 测试观察私有解码、量化与 GIF/APNG 编码状态。 |
+| `internal/storage/database` | 保留的 Windows 点名 CI 测试沿用原 package 声明；其他数据库测试使用外部包。 |
+| `scripts/release` | 保留的 release CI 测试运行命令包及私有发布/产物操作。 |
 
-- 当前没有临时条目，也不接受"迁移期间""将来"之类开放式表述。新增目录必须说明具体观察的未导出符号，并确认导出最小接口不可行；移除目录需要删除任务与测试迁移证据（外部包可编译 + 覆盖不变）。
-- `live_test.go`、`live_mutation_test.go`、`live_solver_test.go` 是按开关变量启用的真实测试，没有单一生产文件归属；它们留在被测包（`sdk/pixiv`、`sdk/fanbox`、`internal/reversesearch`、`internal/browsercookies`），未设置文档中的开关变量时跳过。带 build tag 的测试文件在不同 `GOOS`/`GOARCH` 下可见数量不同；校验时分别用 `GOOS=darwin`、`windows` 与 `linux` 运行 `go list`。
+新增同包例外须在此记录具体私有符号与理由，并遵守清单和上限。用 `go list` 查看当前选中文件；分别设置 `GOOS=darwin`、`windows`、`linux` 核对平台差异：
 
-```bash
-# 列出测试留在生产包内的目录（package X 而非 X_test）
-go list -json ./... | python3 -c 'import json,sys
-dec=json.JSONDecoder(); s=sys.stdin.read(); i=0; same=[]
-while i<len(s):
-    try: p,i=dec.raw_decode(s,i)
-    except json.JSONDecodeError: break
-    while i<len(s) and s[i] in " \n\t": i+=1
-    if p.get("Dir") and p.get("TestGoFiles") and not p["ImportPath"].endswith(("_test",)):
-        same.append((p["ImportPath"],len(p["TestGoFiles"])))
-for ip,n in sorted(same): print(ip,n)'
-# 期望结果 = 上表 Permanent 目录
+```fish
+go list -f '{{if .TestGoFiles}}{{.ImportPath}}{{end}}' ./... | grep .
 ```
+
+### 手动真实环境验证
+
+真实环境验证在明确授权后通过正常 CLI/SDK 操作完成。日常套件保持离线，长期测试保留上述契约清单。
+
+1. 约定产品、副账号、目标、联网请求与下载范围。浏览器秘密访问、图片上传及写入操作分别确认范围。记录 Pixiv/FANBOX 当前默认账号以便恢复；账号检查可能轮换并持久化 token，切换账号会写入本地状态。
+2. 使用已有 CLI 账号，或通过约定的私密凭据输入路径调用仅 SDK 提供的能力。token、Cookie 值、签名 URL 与原始响应体留在私密操作范围内，argv、源码、环境转储与共享证据只含安全信息。登录/导入流程见[认证](../authentication.md)。
+3. 将下列大写占位符替换为已授权的非 secret ID/路径，只执行约定范围内的命令，内容输出私下检查。
+
+```fish
+pixiv auth list --json
+pixiv auth use PIXIV_UID
+pixiv auth check PIXIV_UID --json
+pixiv detail ARTWORK_ID --json
+pixiv search SEARCH_WORD --limit 1 --json
+pixiv download ARTWORK_ID --output PRIVATE_TEMP_DIR
+
+pixiv fanbox auth list --json
+pixiv fanbox auth use FANBOX_UID --json
+pixiv fanbox auth status --json
+pixiv fanbox posts CREATOR_ID --limit 1 --json
+pixiv fanbox post POST_ID --json
+env DOWNLOAD_PATH=PRIVATE_TEMP_DIR pixiv fanbox download POST_URL
+```
+
+4. 仅 SDK 或平台专属的观测通过忽略目录 `tmp/test/_probe/` 中的私密本地调用程序使用当前导出 API，或走正常浏览器导入流程。按范围选择：
+
+| 范围 | 手动观测 |
+| --- | --- |
+| Pixiv SDK | 核对账号身份、一个稳定详情/列表、同查询的一次 `Next` 续读及完整资源读取/保存。轮换后通过正常服务重新打开账号。用 context 取消在途请求，观察取消向上传播。 |
+| FANBOX SDK | 在授权 creator/tag/post 上按需运行 `Creator`、`Creators`、`CreatorTags`、`CreatorPosts`、`TaggedPosts`、`Post`、`Home`、`Supporting`、`ResolveURL`，对可用 cursor 续读一次。用 `OpenResource`（HEAD/GET）与 `SaveResource` 完整读取第一方文件附件，核对 EOF 与保存字节数；缺少附件时记录覆盖缺口。经明确授权的过期会话检查应得到 `credentials_expired`。 |
+| 代理/solver/反向搜图 | 使用已配置的服务专属代理与可选 solver 拓扑。另获图片上传授权后运行 `pixiv search IMAGE_PATH --provider PROVIDER`，观察 provider 兼容性及相关 solver 会话复用，保留上游 429/错误诊断。 |
+| 浏览器凭据 | 浏览器/profile 获授权后走正常导入，在实际 Keychain、Secret Service 或 DPAPI 后端核对所得账号身份；凭据值保持私密。 |
+| 写入 | 先约定精确操作/目标与初始状态，执行一次操作，以同账号独立回读，然后恢复原状态或仅删除本次创建的对象。清理失败时报告安全对象 ID 与所需恢复动作。 |
+
+5. 恢复默认账号，仅清理本次创建的临时下载/探测程序。记录提交、OS/架构、安全账号/目标 ID、操作、状态/计数/字节数、错误与清理结果，分别归档手动观测、离线测试和 native CI 结果。遵循上游重试契约，保留失败诊断，额外等待、重试或轮换账号须有实际依据。
 
 ### 能力边界
 
@@ -214,7 +210,7 @@ v1 的负面契约：下列任一项出现可发布的 CLI/MCP/SDK 入口即为�
 
 | ID | 唯一 owner | 当前证据 | 关闭条件 |
 | --- | --- | --- | --- |
-| `ART-SEARCH-RATING` | `internal/cli/search` + `internal/searchfilter` + `sdk/pixiv` | CLI 作品搜索在本地筛选规范化的 `x_restrict` 并将筛选绑定到 cursor；不发送上游分级字段。MCP `pixiv_search_illust` 没有独立的分级参数 | 保留本地 CLI 契约并测试 cursor/筛选一致性；暴露新的 MCP 参数或上游字段需要其自身的受支持行为与同步的 schema/文档 |
+| `ART-SEARCH-RATING` | `internal/cli/search` + `internal/searchfilter` + `sdk/pixiv` | CLI 作品搜索在本地筛选规范化的 `x_restrict` 并将筛选绑定到 cursor；不发送上游分级字段。MCP `pixiv_search_illust` 没有独立的分级参数 | 保留本地 CLI 契约并手动验证 cursor/筛选一致性；暴露新的 MCP 参数或上游字段需要其自身的受支持行为与同步的 schema/文档 |
 | `NOVEL-SEARCH-ADVANCED` | 无 owner（不得新增） | SDK/MCP schema 没有高级字段 | 上游契约出现后可评估；禁止仅 schema 的占位 |
 
 **证据门禁**
@@ -222,7 +218,7 @@ v1 的负面契约：下列任一项出现可发布的 CLI/MCP/SDK 入口即为�
 | ID | 唯一 owner | 当前证据 | 关闭条件 |
 | --- | --- | --- | --- |
 | `NOVEL-RANKING` | `sdk/pixiv` + `internal/cli/ranking`（MCP 之后） | SDK 与 CLI 在内部 `/v1/novel/ranking` 适配器上暴露增量的 `NovelRanking` seam；CLI 通过 `--type novel` 显式选择；MCP 没有 `novel_ranking` 工具，实时/公开发布证据仍不完整 | 完成实时第二页、共享 cursor、MCP 与发布兼容门禁；在此之前保持证据门禁，不是 `public_ready` |
-| `NOVEL-BOOKMARK-MUTATION` | `sdk/pixiv` + `internal/mcpserver/pixiv`（CLI 之后） | SDK 暴露增量的类型化 `AddNovelBookmark`/`RemoveNovelBookmark`；MCP 暴露 `add_novel_bookmark`/`remove_novel_bookmark`；已有离线结果、校验与不重放证据，严格/实时、回读与发布证据仍不完整 | 完成严格/实时写入证据、同账号回读、清理与兼容/发布门禁；在此之前保持证据门禁，不是 `public_ready` |
+| `NOVEL-BOOKMARK-MUTATION` | `sdk/pixiv` + `internal/mcpserver/pixiv`（CLI 之后） | SDK 暴露增量的类型化 `AddNovelBookmark`/`RemoveNovelBookmark`；MCP 暴露 `add_novel_bookmark`/`remove_novel_bookmark`；结果、校验与不重放改用已授权的手动验证；严格/实时、回读与发布证据仍不完整 | 完成严格/实时写入证据、同账号回读、清理与兼容/发布门禁；在此之前保持证据门禁，不是 `public_ready` |
 | `COMMENT-WRITE` | `sdk/pixiv`（CLI/MCP 之后） | SDK 暴露命名空间专属的 `PostArtworkComment`/`ReplyArtworkComment`/`DeleteArtworkComment` 及小说对应方法；MCP `comment_post`/`comment_add` 目录仍 = 0；响应 ID、回读、清理与严格实时证据不完整 | 完成严格/实时写入证据、同账号回读、清理与 兼容门禁；在此之前保持证据门禁，不是 `public_ready` |
 | `NOTIFICATION` | 无 owner | MCP `notification` 目录 = 0；SDK `Notification*` 导出 = 0 | 同上 |
 | `AUTOCOMPLETE` | 无 owner | MCP `autocomplete` 目录 = 0；SDK `Autocomplete*` 导出 = 0；未并入 `search` | 同上 |

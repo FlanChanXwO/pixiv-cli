@@ -10,21 +10,17 @@
 package cli
 
 import (
-	"context"
 	"fmt"
 	"io"
 	"log/slog"
 
-	authcommands "github.com/FlanChanXwO/pixiv-cli/internal/cli/auth"
 	"github.com/FlanChanXwO/pixiv-cli/internal/cli/auth/loginhelper"
 	"github.com/FlanChanXwO/pixiv-cli/internal/cli/bookmark"
 	"github.com/FlanChanXwO/pixiv-cli/internal/cli/comment"
 	"github.com/FlanChanXwO/pixiv-cli/internal/cli/config"
 	"github.com/FlanChanXwO/pixiv-cli/internal/cli/detail"
-	fanboxauth "github.com/FlanChanXwO/pixiv-cli/internal/cli/fanbox/auth"
 	"github.com/FlanChanXwO/pixiv-cli/internal/cli/follow"
 	command "github.com/FlanChanXwO/pixiv-cli/internal/cli/internal/command"
-	"github.com/FlanChanXwO/pixiv-cli/internal/cli/internal/fanboxcmd"
 	"github.com/FlanChanXwO/pixiv-cli/internal/cli/internal/pixivcmd"
 	"github.com/FlanChanXwO/pixiv-cli/internal/cli/mcp"
 	"github.com/FlanChanXwO/pixiv-cli/internal/cli/mypixiv"
@@ -36,14 +32,7 @@ import (
 	"github.com/FlanChanXwO/pixiv-cli/internal/cli/update"
 	"github.com/FlanChanXwO/pixiv-cli/internal/cli/user"
 	"github.com/FlanChanXwO/pixiv-cli/internal/config/settings"
-	fanboxaccount "github.com/FlanChanXwO/pixiv-cli/internal/fanboxaccount"
-	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver"
-	downloader "github.com/FlanChanXwO/pixiv-cli/internal/media/downloader"
-	pixivaccount "github.com/FlanChanXwO/pixiv-cli/internal/pixivaccount"
-	"github.com/FlanChanXwO/pixiv-cli/internal/reversesearch"
-	"github.com/FlanChanXwO/pixiv-cli/internal/reversesearch/assembly"
 	selfupdate "github.com/FlanChanXwO/pixiv-cli/internal/selfupdate"
-	"github.com/FlanChanXwO/pixiv-cli/internal/session"
 	"github.com/FlanChanXwO/pixiv-cli/internal/version"
 	"github.com/spf13/cobra"
 )
@@ -60,41 +49,6 @@ type app struct {
 
 // logger 返回本次执行的 logger；quiet 命令使用构造时注入的丢弃 logger。
 func (a app) logger() *slog.Logger { return a.logs.logger }
-
-// configMissingPlaceholder 保留根测试与文案契约的稳定名称；实际 config handler
-// 位于 commands/config。
-const configMissingPlaceholder = "<unset>"
-
-var (
-	runMCPServer = func(a app, ctx context.Context, request mcp.Request) error {
-		return a.runPixivMCP(ctx, request)
-	}
-	runMCPStdio          = mcpserver.RunStdio
-	runMCPHTTP           = mcpserver.RunHTTP
-	ensureURLSchemeRelay = loginhelper.EnsurePersistentIfNeeded
-	// FANBOX 浏览器读取是 auth command 的注入端口；根包只保留一次 Run
-	// 级别的测试 seam，生产默认实现位于 commands/fanbox/auth。
-	fanboxBrowserSessionReader          fanboxcmd.BrowserProvider = fanboxauth.SystemBrowserProvider{}
-	cleanupPendingWindowsUpdate                                   = selfupdate.CleanupPendingWindowsUpdate
-	automaticPersistentHandlerSupported                           = loginhelper.AutomaticPersistentHandlerSupported
-	newUpdateCommandCoordinator                                   = update.NewCoordinator
-	newCLIAutomaticUpdateChecker                                  = update.NewAutomaticChecker
-	newCLIPixivSDKPorts                                           = func(a app) (pixivSDKPorts, error) { return a.newPixivSDKPorts() }
-	newCLIAccountServices                                         = func(a app) (authcommands.AccountService, pixivaccount.LoginService, error) {
-		return a.newPixivAccountServices()
-	}
-	newCLIFanboxService        = func(a app) (*session.Fanbox, error) { return a.newFanboxService() }
-	newCLIFanboxAccountService = func(a app) (*fanboxaccount.Service, error) {
-		return a.newFanboxAccountService()
-	}
-	newCLIDownloadService = func() downloader.DownloadService { return defaultDownloadService() }
-	newCLIReverseSearch   = func(options assembly.Options) (reversesearch.Searcher, error) {
-		return assembly.New(options)
-	}
-	newCLIMCPReverseSearch = func(options assembly.Options) (reversesearch.Searcher, error) {
-		return assembly.New(options)
-	}
-)
 
 func (a app) newRootCommand() *cobra.Command {
 	cmd := &cobra.Command{
@@ -113,11 +67,11 @@ func (a app) newRootCommand() *cobra.Command {
 				a.enableMCPBrokenPipeSignal(requirement)
 			}
 			if requirement.StartupHooks {
-				if err := cleanupPendingWindowsUpdate(); err != nil {
+				if err := selfupdate.CleanupPendingWindowsUpdate(); err != nil {
 					return &startupError{err: fmt.Errorf("clean pending update: %w", err)}
 				}
-				if automaticPersistentHandlerSupported() {
-					if err := ensureURLSchemeRelay(cmd.Context()); err != nil {
+				if loginhelper.AutomaticPersistentHandlerSupported() {
+					if err := loginhelper.EnsurePersistentIfNeeded(cmd.Context()); err != nil {
 						// 这项桌面集成不能阻断原命令，也不能把系统/本机路径写入 stderr。
 						fmt.Fprintln(a.errOut, "warning: persistent pixiv:// callback handler was not initialized")
 					}
@@ -215,7 +169,7 @@ func (a app) ClientRequest(cmd *cobra.Command, options mcp.ProxyOptions) (mcp.Re
 }
 
 func (a app) runtimeConfig() (settings.RuntimeConfig, error) {
-	return loadCLIRuntimeConfig()
+	return defaultCLIRuntimeConfig()
 }
 
 func requireExactArgs(count int, usage string) cobra.PositionalArgs {

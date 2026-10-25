@@ -1,52 +1,33 @@
 package pixivaccount
 
 import (
-	"encoding/json"
+	"bytes"
+	"encoding/base64"
 	"fmt"
+	"log/slog"
 	"strings"
 	"testing"
+
+	"github.com/FlanChanXwO/pixiv-cli/internal/logging"
+	"github.com/stretchr/testify/require"
 )
 
-func TestAccountCredentialCopyAndSafeFormatting(t *testing.T) {
-	input := []byte("refresh-secret")
-	account := New(42, "artist", input)
-	input[0] = 'X'
-	copyValue := account.RefreshTokenCopy()
-	copyValue[0] = 'Y'
-
-	if string(account.RefreshTokenCopy()) != "refresh-secret" {
-		t.Fatal("credential was not defensively copied")
-	}
-	formatted := fmt.Sprintf("%+v", account)
-	if strings.Contains(formatted, "refresh-secret") || strings.Contains(formatted, "refreshToken") {
-		t.Fatalf("safe formatting leaked credential: %s", formatted)
-	}
-	goFormatted := fmt.Sprintf("%#v", account)
-	if strings.Contains(goFormatted, "refresh-secret") || strings.Contains(goFormatted, "refreshToken") {
-		t.Fatalf("GoString formatting leaked credential: %s", goFormatted)
-	}
-}
-
-func TestAccountWithTokenRequiresExplicitSecretAccessor(t *testing.T) {
-	const secret = "export-secret"
-	account := newAccountWithToken(42, "artist", true, secret)
-	for _, formatted := range []string{
-		fmt.Sprintf("%v", account),
-		fmt.Sprintf("%+v", account),
-		fmt.Sprintf("%#v", account),
-	} {
-		if strings.Contains(formatted, secret) || strings.Contains(formatted, "refreshToken") {
-			t.Fatalf("AccountWithToken formatting leaked credential: %s", formatted)
+func TestAccountFormattingKeepsCredentialsPrivate(t *testing.T) {
+	const secret = "pixiv-refresh-canary"
+	for _, account := range []any{New(42, "artist", []byte(secret)), newAccountWithToken(42, "artist", true, secret)} {
+		var output bytes.Buffer
+		for _, format := range []string{"%v", "%+v", "%#v"} {
+			fmt.Fprintf(&output, format, account)
 		}
-	}
-	body, err := json.Marshal(account)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if strings.Contains(string(body), secret) {
-		t.Fatalf("AccountWithToken JSON leaked credential: %s", body)
-	}
-	if account.RefreshToken() != secret {
-		t.Fatalf("RefreshToken() = %q, want %q", account.RefreshToken(), secret)
+		for _, format := range []string{logging.FormatText, logging.FormatJSON} {
+			logger, err := logging.New(&output, "info", format)
+			require.NoError(t, err)
+			logger.Info("account", slog.Any("account", account))
+		}
+		require.Contains(t, output.String(), "artist")
+		// %#v 的切片类型名随值所在位置变化，只检查字节内容。
+		for _, leaked := range []string{secret, fmt.Sprint([]byte(secret)), strings.TrimPrefix(fmt.Sprintf("%#v", []byte(secret)), "[]byte"), base64.StdEncoding.EncodeToString([]byte(secret))} {
+			require.NotContains(t, output.String(), leaked)
+		}
 	}
 }

@@ -12,9 +12,6 @@ import (
 )
 
 func (p *provider) encryptionKeys(ctx context.Context) ([][]byte, error) {
-	if p.encryptionKeyOverride != nil {
-		return p.encryptionKeyOverride(ctx)
-	}
 	localStateKey, present, err := p.localStateEncryptedKey()
 	if err != nil {
 		return nil, err

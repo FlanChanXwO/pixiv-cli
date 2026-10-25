@@ -36,7 +36,6 @@ var ErrMalformedResponse = pixivapi.ErrMalformedResponse
 
 type Client struct {
 	httpClient   *http.Client
-	baseURL      string
 	refreshToken string
 	// refreshTokenErr 只保存本地输入校验错误；Refresh 会直接返回它，确保 Cookie
 	// 不会因被清空而伪装成普通的“缺少 token”错误。
@@ -49,10 +48,9 @@ type Client struct {
 	mu              sync.RWMutex
 }
 
-// Config 是 OAuth 客户端的连接配置；零值使用默认基址和默认 HTTP client。
+// Config 是 OAuth 客户端的连接配置；零值使用默认 HTTP client。
 type Config struct {
 	HTTPClient *http.Client
-	BaseURL    string
 	// Logger 记录 token 轮换结果；nil 时不输出。
 	Logger *slog.Logger
 }
@@ -60,10 +58,6 @@ type Config struct {
 // New builds an OAuth client; refreshToken is validated without network I/O.
 func New(refreshToken string, cfg Config) *Client {
 	refreshToken, refreshTokenErr := ValidateRefreshTokenInput(refreshToken)
-	baseURL := cfg.BaseURL
-	if baseURL == "" {
-		baseURL = DefaultBase
-	}
 	httpClient := cfg.HTTPClient
 	if httpClient == nil {
 		httpClient = &http.Client{}
@@ -71,7 +65,6 @@ func New(refreshToken string, cfg Config) *Client {
 	logger := cmp.Or(cfg.Logger, slog.New(slog.DiscardHandler))
 	return &Client{
 		httpClient:      httpClient,
-		baseURL:         strings.TrimRight(baseURL, "/"),
 		refreshToken:    refreshToken,
 		refreshTokenErr: refreshTokenErr,
 		log:             logger,
@@ -174,7 +167,7 @@ func (c *Client) exchange(ctx context.Context, form map[string]string) (authResp
 	for key, value := range form {
 		values.Set(key, value)
 	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.baseURL+pixivapi.OAuthToken, strings.NewReader(values.Encode()))
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, DefaultBase+pixivapi.OAuthToken, strings.NewReader(values.Encode()))
 	if err != nil {
 		return authResponse{}, pixivapi.Transport(err)
 	}

@@ -96,9 +96,6 @@ func withDatabaseValue[T any](ctx context.Context, d *DB, action func() (T, erro
 	return value, err
 }
 
-// ApplicationID 是数据库文件的固定 SQLite application_id（ASCII "PIXC"）。
-const ApplicationID = 0x50495843
-
 func (d *DB) initialize() error {
 	if err := d.enforcePermissions(); err != nil {
 		return err
@@ -155,6 +152,3 @@ func (d *DB) Close() error {
 
 // Path 返回数据库文件路径。
 func (d *DB) Path() string { return d.path }
-
-// DB 返回底层 *sql.DB，供 repository 与测试使用。
-func (d *DB) DB() *sql.DB { return d.sql }

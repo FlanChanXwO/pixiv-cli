@@ -2,10 +2,15 @@
 
 package chromium
 
-import "crypto/aes"
+import (
+	"context"
 
-// macOS/Linux legacy cookie value 是项目支持的 v10/v11 明文前缀 + AES-CBC
-// 结构；先检查其客观布局，避免明显短输入触发平台 secret backend。
-func legacyBlobSupported(blob []byte) bool {
-	return len(blob) >= prefixLength && len(blob)%aes.BlockSize == 0
+	"github.com/FlanChanXwO/pixiv-cli/internal/browsercookies"
+)
+
+// 非 Windows 的受支持格式都在密文外层携带 v10/v11 标记。
+func legacyBlobSupported([]byte) bool { return false }
+
+func (p *provider) decryptLegacy(context.Context, []byte) ([]byte, error) {
+	return nil, browsercookies.ErrEncryptedFormatUnknown
 }

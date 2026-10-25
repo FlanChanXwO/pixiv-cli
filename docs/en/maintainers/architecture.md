@@ -57,11 +57,11 @@ flowchart TD
 
 | Source dir | Owns | Embedding |
 | --- | --- | --- |
-| `frontend/mcp-apps/gallery/` | Gallery HTML/CSS/JS + fixture | CSS/JS inlined |
+| `frontend/mcp-apps/gallery/` | Gallery HTML/CSS/JS | CSS/JS inlined |
 | `frontend/pages/login/` | login/callback/result templates and styles | kept separate, byte-preserved |
 | `frontend/pages/oauth/` | consent HTML/CSS | CSS inlined |
 
-The resource-only `frontend` package embeds exact paths (fixtures excluded) and assembles pages once at startup with the standard library; its tests validate sources and placeholders. Go owners keep MCP registration, template rendering/data/escaping, CSP/media origin, canonical actions, CSRF and authorization. Current and historical resource URIs stay supported. No generation for clean builds or versioned `go install`; runtime reads only embedded bytes. Homebrew templates keep their owner.
+The resource-only `frontend` package embeds exact paths (fixtures excluded) and assembles pages once at startup with the standard library; page behavior is checked manually in the relevant browser/MCP host. Go owners keep MCP registration, template rendering/data/escaping, CSP/media origin, canonical actions, CSRF and authorization. Current and historical resource URIs stay supported. No generation for clean builds or versioned `go install`; runtime reads only embedded bytes. Homebrew templates keep their owner.
 
 ## Package responsibilities
 
@@ -86,7 +86,7 @@ Responsibilities: Cobra tree/help/flags; text/JSON output; `auth import` input a
 - **Command packages:** root `internal/cli/{config,mcp,update}`; Pixiv `internal/cli/{auth,bookmark,comment,detail,download,follow,mypixiv,ranking,recommended,search,series,timeline,user}`; FANBOX `internal/cli/fanbox/{auth,download,post}`. Shared command support lives in `internal/cli/internal/{command,input,pixivcmd,fanboxcmd,resolver}`. Data commands use `*pixiv.Client` / `*fanbox.Client` via the owner-local `Data` port (`Open`/`Pooled`/`JSONOut`, …), never protocol adapters.
 - **Shared helpers:** stdin codec `internal/cli/internal/input`; record projection `internal/record`; target resolver `internal/cli/internal/resolver` (consumes only the command contract, records and offline `sdk/pixiv.ParseURL`; owners inject any bare-ID probe; owns no clients, credentials or adapters). These never import the `internal/cli` root.
 - **`--version` / auto-update:** stdout exactly `pixiv <version>`, empty stderr, no update check. Auto-update runs only after a successful normal command, skipped for MCP, help, `--version`, `update`, all `auth export`, bundle `auth import` and dev builds; stable Release, 24 h throttle on the user cache, ≤ 3 s; failures only as stderr warnings — never change the exit code or leak into JSON stdout or MCP JSON-RPC.
-- **Windows startup cleanup** of pending updates is a potential mutation: all `auth export` invocations are detected before Cobra parsing and skip it. Repeated-override semantics of root bool flags are covered by focused tests so forms like `--help=false` cannot bypass the secret-export boundary.
+- **Windows startup cleanup** of pending updates is a potential mutation: all `auth export` invocations are detected before Cobra parsing and skip it. When changing root bool parsing, manually verify repeated overrides such as `--help=false` preserve the secret-export boundary.
 
 ### `internal/cli/auth/loginhelper`
 
@@ -196,8 +196,8 @@ Exported fields of `RuntimeConfig` (incl. nested account-pool, network and Flare
 - Declaration errors: duplicate expanded paths, duplicate non-empty aliases, empty path segments, cyclic groups, unsupported leaf types, leaf-only attributes on groups. Private leaves cannot enable CLI management, examples or env bindings without a public alias. `cli`, `secret`, `example` accept only `"true"`/`"false"` (user value parsing unchanged).
 - The private schema caches field index chains and Go types, never instances. Scalar binding uses the same source selection as `Effective`; ordinary binding allocates no pointer groups. Advanced readers locate compiled paths by field ownership without new aliases or allocating solver groups before the domain enablement check. Account-pool defaults come from declarations; strict file types and strategy validation stay domain rules.
 - Default-account selection has a separate private scope: `int64` UID leaves with no alias or default; positive-integer parsing stays in on-demand auth methods; never part of ordinary binding or early Snapshot validation.
-- `SettingSpec` is the **public derived view** the CLI consumes, not a hand-written table. `keys.go` declares the typed `Key` constants for every alias; a table-driven test fails if a constant and its alias drift, or if a declared alias has no constant. `LogLevel` and `LogFormat` are named types with constants.
-- **Adding an ordinary setting** = field + tags + a `Key` constant, one behavioral test, matching docs. No registry, env `switch`, per-field assignment, baseline list or alias list.
+- `SettingSpec` is the **public derived view** the CLI consumes, not a hand-written table. `keys.go` declares the typed `Key` constants for every alias; keep them aligned when changing declarations. `LogLevel` and `LogFormat` are named types with constants.
+- **Adding an ordinary setting** = field + tags + a `Key` constant, matching docs; extend the existing precedence/empty-value test only for an uncovered [checklist contract](../../../.agents/skills/pixiv-cli-test/SKILL.md#decide-whether-test-code-must-change). No registry, env `switch`, per-field assignment, baseline list or alias list.
 
 | File | Responsibility |
 | --- | --- |
@@ -252,7 +252,7 @@ Thin root (coordinator + auto-check API), re-exporting `internal/selfupdate/{sou
 
 - GitHub Releases API is the only query backend; drafts excluded; stable excludes prereleases before verification; ETag/cache for throttling with atomic persistence. Canonical SemVer is enforced on the channel's published Releases — one invalid tag fails closed and is reported (never skipped for an older version).
 - Signature, checksum, HTTP, archive, replacement and permission errors are never disguised as "no update". Release-install failure semantics are a protective boundary, not a temporary degradation.
-- **Trust root** (`internal/selfupdate/installer`): key ID and public key constants live in `release_installer.go`; `internal/cli/update/production.go` builds the key ID → key map for the installer so callers can't pollute it; `root.go` holds only update seams. Fingerprint and signing fixtures are verified by same-package tests; the private key is not in source or config; read-only checks don't need it; this wiring does not replace per-version release acceptance. `internal/bootstrap` was deleted in v1.
+- **Trust root** (`internal/selfupdate/installer`): key ID and public key constants live in `release_installer.go`; `internal/cli/update/production.go` builds the key ID → key map for the installer so callers can't pollute it; `composition.go` calls the production update constructors directly. The offline installer test verifies that a signed download with a bad archive checksum preserves the existing binary; the private key is not in source or config; read-only checks don't need it; this wiring does not replace per-version release acceptance. `internal/bootstrap` was deleted in v1.
 
 ### `scripts/`
 

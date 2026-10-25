@@ -34,17 +34,6 @@ var ReleaseSigningPublicKey = [...]byte{
 	0x59, 0x5c, 0x09, 0xdb, 0x9a, 0x78, 0xb1, 0x44,
 }
 
-// ReleaseBinaryChecker 在替换前验证下载二进制实际报告的版本。
-// 实现必须只在 archive、checksum 和签名都已通过后调用二进制。
-type ReleaseBinaryChecker interface {
-	Check(context.Context, string, string) error
-}
-
-// ReleaseFileReplacer 抽象最终的同目录原子替换，供受控测试和平台实现复用。
-type ReleaseFileReplacer interface {
-	Replace(string, string) error
-}
-
 // ReleaseInstaller 安装已核验的 Release。
 type ReleaseInstaller interface {
 	Install(context.Context, release.Release) error
@@ -56,8 +45,6 @@ type ReleaseInstallerOptions struct {
 	HTTPClient                 *http.Client
 	TrustedKeys                map[string]ed25519.PublicKey
 	ExecutablePath             func() (string, error)
-	GOOS                       string
-	GOARCH                     string
 	EnablePublicReleaseSources bool
 }
 
@@ -72,29 +59,16 @@ func NewReleaseInstaller(options ReleaseInstallerOptions) ReleaseInstaller {
 	if executablePath == nil {
 		executablePath = os.Executable
 	}
-	goos := options.GOOS
-	if goos == "" {
-		goos = runtime.GOOS
-	}
-	goarch := options.GOARCH
-	if goarch == "" {
-		goarch = runtime.GOARCH
-	}
-	checker := binaryChecker(processReleaseBinaryChecker{})
-	replacer := fileReplacer(releaseFileReplacer{goos: goos})
 	keys := make(map[string]ed25519.PublicKey, len(options.TrustedKeys))
 	for keyID, publicKey := range options.TrustedKeys {
 		keys[keyID] = append(ed25519.PublicKey(nil), publicKey...)
 	}
 	installer := &releaseInstaller{
-		httpClient:        httpClient,
-		trustedKeys:       keys,
-		executablePath:    executablePath,
-		goos:              goos,
-		goarch:            goarch,
-		checker:           checker,
-		replacer:          replacer,
-		assetURLValidator: release.ValidateOfficialGitHubReleaseAssetURL,
+		httpClient:     httpClient,
+		trustedKeys:    keys,
+		executablePath: executablePath,
+		goos:           runtime.GOOS,
+		goarch:         runtime.GOARCH,
 	}
 	if options.EnablePublicReleaseSources {
 		installer.sourceSelector = source.NewDefaultReleaseSourceSelector(httpClient)
@@ -103,19 +77,12 @@ func NewReleaseInstaller(options ReleaseInstallerOptions) ReleaseInstaller {
 }
 
 type releaseInstaller struct {
-	httpClient        *http.Client
-	trustedKeys       map[string]ed25519.PublicKey
-	executablePath    func() (string, error)
-	goos              string
-	goarch            string
-	checker           binaryChecker
-	replacer          fileReplacer
-	assetURLValidator func(release.Release, release.ReleaseAsset) error
-	sourceSelector    *source.ReleaseSourceSelector
-	// 下列 hook 仅供同包测试精确触发并观测取消边界；生产构造始终为 nil。
-	afterStagedCreate func()
-	afterStagedClose  func()
-	afterStaging      func()
+	httpClient     *http.Client
+	trustedKeys    map[string]ed25519.PublicKey
+	executablePath func() (string, error)
+	goos           string
+	goarch         string
+	sourceSelector *source.ReleaseSourceSelector
 }
 
 // Install 下载并验证选中版本的唯一平台资产。任何下载、认证、解包、预检或替换失败
@@ -146,7 +113,7 @@ func (i *releaseInstaller) Install(ctx context.Context, rel release.Release) (er
 	if err := source.CheckContext(ctx, "preflight downloaded executable"); err != nil {
 		return err
 	}
-	if err := i.checker.Check(ctx, candidatePath, rel.TagName); err != nil {
+	if err := (processReleaseBinaryChecker{}).Check(ctx, candidatePath, rel.TagName); err != nil {
 		return fmt.Errorf("preflight downloaded executable %q: %w", candidatePath, err)
 	}
 	return i.replaceExecutable(ctx, targetPath, candidatePath, workDir)
@@ -245,14 +212,8 @@ func (i *releaseInstaller) replaceExecutable(ctx context.Context, targetPath, ca
 			}
 		}
 	}()
-	if i.afterStagedCreate != nil {
-		i.afterStagedCreate()
-	}
 	if err := staged.Close(); err != nil {
 		return fmt.Errorf("close staged update file %q: %w", stagedPath, err)
-	}
-	if i.afterStagedClose != nil {
-		i.afterStagedClose()
 	}
 	if err := source.CheckContext(ctx, "stage verified update"); err != nil {
 		return err
@@ -269,19 +230,13 @@ func (i *releaseInstaller) replaceExecutable(ctx context.Context, targetPath, ca
 	if err := source.CheckContext(ctx, "replace release executable"); err != nil {
 		return err
 	}
-	if i.afterStaging != nil {
-		i.afterStaging()
-	}
-	if err := source.CheckContext(ctx, "replace release executable"); err != nil {
-		return err
-	}
 	if err := os.Remove(workDir); err != nil {
 		return fmt.Errorf("remove verified update temporary directory %q: %w", workDir, err)
 	}
 	if err := source.CheckContext(ctx, "replace release executable"); err != nil {
 		return err
 	}
-	if err := i.replacer.Replace(stagedPath, targetPath); err != nil {
+	if err := (releaseFileReplacer{goos: i.goos}).Replace(stagedPath, targetPath); err != nil {
 		return fmt.Errorf("atomically replace executable %q: %w", targetPath, err)
 	}
 	return nil
@@ -320,7 +275,7 @@ type selectedReleaseAssets struct {
 // Releases API 响应或 ETag cache 把安装器引向非项目控制的来源。
 func (i *releaseInstaller) validateAssetURLs(rel release.Release, assets selectedReleaseAssets) error {
 	for _, asset := range []release.ReleaseAsset{assets.archive, assets.checksums, assets.manifest} {
-		if err := i.assetURLValidator(rel, asset); err != nil {
+		if err := release.ValidateOfficialGitHubReleaseAssetURL(rel, asset); err != nil {
 			return err
 		}
 	}
@@ -429,14 +384,6 @@ func (i *releaseInstaller) downloadURL(ctx context.Context, asset release.Releas
 		return nil, fmt.Errorf("read asset %q: %w", asset.Name, err)
 	}
 	return body, nil
-}
-
-type binaryChecker interface {
-	Check(context.Context, string, string) error
-}
-
-type fileReplacer interface {
-	Replace(string, string) error
 }
 
 type processReleaseBinaryChecker struct{}

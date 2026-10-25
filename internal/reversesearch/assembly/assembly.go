@@ -43,12 +43,6 @@ func New(options Options) (reversesearch.Searcher, error) {
 	return newWithClient(options, client)
 }
 
-func newWithClient(options Options, client *http.Client) (reversesearch.Searcher, error) {
-	return newWithClientWithASCII2DFactory(options, client, func(options ascii2d.Options) (reversesearch.ASCII2DClient, error) {
-		return ascii2d.New(options)
-	})
-}
-
 func (options Options) ascii2dProxy() string {
 	if options.ASCII2DProxy != nil {
 		return *options.ASCII2DProxy
@@ -56,11 +50,7 @@ func (options Options) ascii2dProxy() string {
 	return options.Proxy
 }
 
-func newWithClientWithASCII2DFactory(
-	options Options,
-	client *http.Client,
-	newASCII2DClient func(ascii2d.Options) (reversesearch.ASCII2DClient, error),
-) (reversesearch.Searcher, error) {
+func newWithClient(options Options, client *http.Client) (reversesearch.Searcher, error) {
 	if client == nil {
 		return nil, reversesearch.NewError(reversesearch.CodeProviderNotConfigured, "reverse search HTTP client is not configured", nil)
 	}
@@ -71,7 +61,7 @@ func newWithClientWithASCII2DFactory(
 			ProxyURL: options.FlareSolverr.ProxyURL,
 		}
 	}
-	asciiClient, err := newASCII2DClient(ascii2d.Options{
+	asciiClient, err := ascii2d.New(ascii2d.Options{
 		ProxyURL:     options.ascii2dProxy(),
 		UserAgent:    options.UserAgent,
 		FlareSolverr: solverOptions,

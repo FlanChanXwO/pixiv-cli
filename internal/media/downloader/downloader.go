@@ -33,8 +33,7 @@ type BatchDownloader interface {
 
 // DownloadService 编排来源展开、批量下载和部分成功报告。
 type DownloadService struct {
-	// NewBatchDownloader 构造一次请求使用的批量下载器；composition root 注入文件
-	// 系统实现，需要固定报告的测试注入自己的实现。
+	// NewBatchDownloader 构造一次请求使用的批量下载器；composition root 注入文件系统实现。
 	NewBatchDownloader func(client DownloadClient, downloadPath, filenameTemplate string) (BatchDownloader, error)
 }
 

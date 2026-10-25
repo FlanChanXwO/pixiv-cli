@@ -5,7 +5,7 @@ English | [简体中文](../../zh-CN/maintainers/development.md) | [Documentatio
 ```mermaid
 flowchart LR
     E["Environment check"] --> B["Build<br/>sh scripts/build.sh"] --> T["Tests<br/>go test ./..."] --> PR["PR CI gates<br/>(ci.md)"] --> REL["Release gates<br/>(release.md)"]
-    T -. "opt-in, authorized" .-> E2E["real SDK / reverse-search live tests"]
+    T -. "separate authorization" .-> LIVE["manual CLI / SDK / browser verification"]
 ```
 
 | What you want to do | Start here |
@@ -38,10 +38,9 @@ Sources in `frontend/mcp-apps/gallery/`, `frontend/pages/login/`, `frontend/page
 go test ./...
 go vet ./...
 sh scripts/build.sh
-node frontend/mcp-apps/gallery/gallery_test.mjs   # Gallery bridge directly
 ```
 
-- The `frontend` package tests validate embedded inputs and placeholders; local/platform/race builds compile the sources directly. The Go regression also runs every host capability mode when Node is available.
+- Local/platform/race builds compile the embedded sources directly. Inspect changed Gallery, consent and login behavior manually in the relevant browser/MCP host.
 - Frontend changes require Quality, Platform and Container checks. Docker uses prebuilt binaries; Homebrew templates stay in `templates/homebrew/`.
 - Source installation and self-update use an exact tag: `go install github.com/FlanChanXwO/pixiv-cli/cmd/pixiv@vX.Y.Z`.
 
@@ -61,7 +60,7 @@ CGO_ENABLED=0 go test ./internal/media/ugoira/... -count=1
 | Cancellation | checked before/after each read chunk and image decode; PNG/JPEG decode loops have no callback, so mid-frame cancellation is seen when that decode returns |
 | Toolchain | no Rust, native library or C linker; only race tests need `CGO_ENABLED=1` + C toolchain |
 
-**Encoder fidelity notes** — `internal/media/ugoira`: the JPEG decoder is Go 1.26.3 parsing plus the legacy zune-jpeg 0.5.15 integer IDCT and 14-bit BT.601 (standard-library IDCT rounding changed palette selection enough to fail the fixed gate; the parser BSD license stays in the package and the zune-jpeg MIT attribution). Resize uses bounded sine/cosine polynomials with explicit `math.FMA` against legacy `sinf`, with 1,031 references in `testdata/lanczos-kernel.json`. APNG uses fixed Sub prediction, an independent level-7 zlib stream per frame and RGBA8 lossless: Over with transparent unchanged pixels only when every changed pixel is opaque and the delta reduces horizontal RGBA runs, else Source, with None disposal. Compressed bytes may change with the toolchain; reuse quality evidence only after verifying complete canvases, timing and loop behavior — not file size alone.
+**Encoder fidelity notes** — `internal/media/ugoira`: the JPEG decoder is Go 1.26.3 parsing plus the legacy zune-jpeg 0.5.15 integer IDCT and 14-bit BT.601 (standard-library IDCT rounding changed palette selection enough to fail the fixed gate; the parser BSD license stays in the package and the zune-jpeg MIT attribution in `internal/media/ugoira/jpeg/idct.go`). Resize uses bounded sine/cosine polynomials with explicit `math.FMA` against legacy `sinf`; retained native encoder tests own fidelity evidence. APNG uses fixed Sub prediction, an independent level-7 zlib stream per frame and RGBA8 lossless: Over with transparent unchanged pixels only when every changed pixel is opaque and the delta reduces horizontal RGBA runs, else Source, with None disposal. Compressed bytes may change with the toolchain; reuse quality evidence only after verifying complete canvases, timing and loop behavior — not file size alone.
 
 **Platform builds** — `scripts/build/platform.sh` builds an exact target with CGO0 and optionally a canonical archive: `--target GOOS/GOARCH`, `--output-dir DIR`, optional `--version VERSION` (no `v`) and `--package` (needs a version). It keeps Windows suffixes. Runner metadata stays in `scripts/build/platforms.json`; tests, source identity, permissions, approvals and publication stay in workflows.
 
@@ -91,7 +90,7 @@ https_proxy=http://127.0.0.1:7890 ./build/pixiv mcp --port 1270
 > [!WARNING]
 > New versions never read or delete legacy `auth.json`. Migrate with `pixiv auth export --all --output <private bundle>` on the old version, then `pixiv auth import < bundle.json` on the new one.
 
-**Configuration** — `pixiv config path/get/set/unset` manages `account_pool_enabled`, `account_pool_strategy`, `download_path`, `filename_template`, `directory_template`, `request_interval`, `https_proxy`, `log_level`, `log_format`, `reverse_search_provider`, `reverse_search_pixiv_only`, `saucenao_api_key`. Other TOML (e.g. `[reverse_search.network]`, `[reverse_search.flaresolverr]`) is hand-maintained, not in the baseline, read as a startup snapshot. The baseline is driven by **struct field tags** in `internal/config/settings`, generated with `tomledit`, compact (`example:"true"` only), never overwrites. Adding an ordinary setting: (1) field + declaration in `internal/config/settings/config.go`, (2) one focused behavioral test, (3) docs — see the [tag contract](architecture.md#configuration-declaration-struct-field-tags-are-the-single-source-of-truth).
+**Configuration** — `pixiv config path/get/set/unset` manages `account_pool_enabled`, `account_pool_strategy`, `download_path`, `filename_template`, `directory_template`, `request_interval`, `https_proxy`, `log_level`, `log_format`, `reverse_search_provider`, `reverse_search_pixiv_only`, `saucenao_api_key`. Other TOML (e.g. `[reverse_search.network]`, `[reverse_search.flaresolverr]`) is hand-maintained, not in the baseline, read as a startup snapshot. The baseline is driven by **struct field tags** in `internal/config/settings`, generated with `tomledit`, compact (`example:"true"` only), never overwrites. Adding an ordinary setting: (1) field + declaration in `internal/config/settings/config.go`, (2) check the existing precedence/empty-value test against the checklist, (3) docs — see the [tag contract](architecture.md#configuration-declaration-struct-field-tags-are-the-single-source-of-truth).
 
 > [!NOTE]
 > A leftover `[web] fallback_enabled` is an undeclared key and is ignored at load. `[logging].level` (`debug|info|warn|error`) and `[logging].format` (`text|json`) are live; `PIXIV_LOG_LEVEL` / `PIXIV_LOG_FORMAT` override.
@@ -109,102 +108,99 @@ Full flows: [Authentication](../authentication.md). Development-specific facts:
 > [!WARNING]
 > Only an explicit `pixiv auth export` without `--output` may write a token to stdout. The bundle is an unencrypted, secret-bearing point-in-time backup, not live sync. `committed` / `unknown` restore outcomes are never a successful rollback.
 
-Real login depends on Pixiv's OAuth web flow; automated tests use a fake OAuth server and never contact Pixiv.
+Real login depends on Pixiv's OAuth web flow; offline tests use a local HTTP server. Follow the [manual live procedure](#manual-live-verification) for authorized real-account observations.
 
 ## Tests
 
-Default to existing checks without adding permanent tests. The [test admission rules](../../../.agents/skills/pixiv-cli-test/SKILL.md#decide-whether-test-code-must-change) decide which durable core regressions enter main and how to run local probes under `tmp/test/`.
+Maintained code/behavior tests follow the [seven-contract checklist](../../../.agents/skills/pixiv-cli-test/SKILL.md#decide-whether-test-code-must-change). Reuse the owning test, with one representative case and necessary failures. Keep investigations outside this list in ignored `tmp/test/_probe/` directories.
 
-Coverage spans CLI commands and build metadata, explicit/automatic updates, `internal/{pixivaccount,fanboxaccount}`, `internal/pixivaccount/pool`, `internal/reversesearch` fixtures and aggregation, `internal/storage/database`, `internal/config/settings`, `internal/{lifecycle,pagination}`, App API auth retry, the public SDK, HTTP client wiring, downloads, the Go encoder contract and `internal/mcpserver/{pixiv,fanbox}/tools` registration.
+| Contract | Owner |
+| --- | --- |
+| Account/Cookie privacy under `%v`, `%+v`, `%#v` and slog; logs omit query/token/Cookie/signed URLs; MCP output omits signed URLs and Cookie | Credential types, request logging, MCP output |
+| Revision conflicts, transaction rollback, v1.2.x database opening, private permissions, atomic replacement and file locking | `internal/storage/*` |
+| Rotated token is persisted before returning the client | `internal/pixivaccount` or `internal/session` |
+| Upstream response errors and cancellation propagation | `sdk/pixiv`, `sdk/fanbox` |
+| One full MCP `tools/list` golden; one CLI command's text/JSON/NDJSON; usage exit code; JSON-RPC-only stdio; bearer-required HTTP | `internal/mcpserver`, `internal/cli` |
+| Environment > file > default and explicit empty values | `internal/config/settings` |
+| Update verification failure preserves the installed binary | `internal/selfupdate` |
 
-```bash
-go test ./...
+**Caps:** at most 25 non-exempt test files repository-wide, 200 lines per file including imports/helpers/blank lines, 40 lines per test function and 8 cases per table. Count all platform/build-tagged files. `testdata` holds only old-version databases and a few goldens. Use real `httptest` servers and temporary stores; keep helper packages, fixture constructors, mock hierarchies and test-only production exports out of the suite.
+
+Run the affected package during editing. On the final shared-contract candidate, run:
+
+```fish
+go test ./... -count=1
+env CGO_ENABLED=1 go test -race ./... -count=1
+go vet ./...
 sh scripts/build.sh
-go test ./internal/browsercookies/... -count=1   # offline fixture/crypto/permission regression
 ```
 
-```mermaid
-flowchart TD
-    T["live_test.go packages<br/>(go test ./... skips by default)"] --> F{"opt-in variable set?"}
-    F -->|no| SK["skip (offline-stable default)<br/>never release evidence"]
-    F -->|yes| P{"local credentials /<br/>targets present?"}
-    P -->|no| FAIL["fail and expose the gap"]
-    P -->|yes| RUN["real network observation"]
-```
+Race checks need the C toolchain; source builds stay CGO-free. Preserve the workflow's Windows ARM64 race limitation and diagnostic handling. Report actual pass/fail/skip and unrun required checks. Release fixture gates are documented under [release](release.md#local-release-fixture-gates).
 
-| Test | Enable | Needs | Verifies |
-| --- | --- | --- | --- |
-| `TestRealPixivSDKRead` | `PIXIV_SDK_E2E=1` | selected account from local `pixiv-cli.db`; optional `PIXIV_E2E_READ_USER_ID` (must name a stored account, fails closed before network, no default fallback; release evidence uses a secondary account) | identity, stable detail/list and `Resource` read; rotated credentials persisted via a normal repository transaction first |
-| `TestRealFanboxSDKRead` | `FANBOX_SDK_E2E=1` | `FANBOXSESSID` from the agreed macOS Keychain item; `FANBOX_E2E_CREATOR_ID`, `_TAG`, `_POST_ID`, `_POST_URL` | `Creator`, `Creators`, `CreatorTags`, `CreatorPosts`, `TaggedPosts`, `Post`, `Home`, `Supporting`, `ResolveURL`, `OpenResource`, `SaveResource`; one continuation per list cursor; a file attachment fully read (HEAD, save, byte count) in a temp dir; expired session → `credentials_expired` |
-| `TestRealFanboxSDKPostInfo` | `FANBOX_SDK_E2E=1 FANBOX_E2E_POST_ONLY=1` | post ID + page URL | `Post`, non-empty body, `ResolveURL`, resource manifest; allows `file_assets=0` (does not replace the strict test) |
-| `TestRealReverseSearch` | `PIXIV_REVERSE_SEARCH_E2E=1` | `PIXIV_REVERSE_SEARCH_SOURCE`, `_PROVIDER`; `SAUCENAO_API_KEY` for SauceNAO/`all` (exported from a private env, never inline) | third-party compatibility; takes no source/key args, never echoes them; authorized test image only; not a release gate |
-| `TestRealReverseSearchMCPReusesSolverSession` | same | `PIXIV_REVERSE_SEARCH_SOLVER_URL`; optional `_SOLVER_PROXY` (browser upstream only) | solver session reuse; no session state or source persisted |
+### CI exemptions
 
-```bash
-PIXIV_E2E_READ_USER_ID=<secondary-uid> \
-PIXIV_SDK_E2E=1 go test ./sdk/pixiv -run TestRealPixivSDKRead -count=1 -v
-# `PIXIV_E2E_LOG_LEVEL=debug` adds SDK request and decision logs to stderr; omit it to keep the live run quiet.
-FANBOX_E2E_CREATOR_ID=<non-secret-creator-id> FANBOX_E2E_TAG=<non-secret-tag> \
-FANBOX_E2E_POST_ID=<non-secret-post-id> FANBOX_E2E_POST_URL=<non-secret-post-url> \
-FANBOX_SDK_E2E=1 go test ./sdk/fanbox -run TestRealFanboxSDKRead -count=1 -v
-# optional challenge recovery (not configured by default)
-FANBOX_E2E_SOLVER_URL=http://127.0.0.1:8191 FANBOX_E2E_SOLVER_PROXY=http://host.docker.internal:7890 \
-FANBOX_E2E_CREATOR_ID=... FANBOX_E2E_TAG=... FANBOX_E2E_POST_ID=... FANBOX_E2E_POST_URL=... \
-FANBOX_SDK_E2E=1 go test ./sdk/fanbox -run TestRealFanboxSDKRead -count=1 -v
-FANBOX_E2E_POST_ID=<non-secret-post-id> FANBOX_E2E_POST_URL=<non-secret-post-url> \
-FANBOX_SDK_E2E=1 FANBOX_E2E_POST_ONLY=1 go test ./sdk/fanbox -run TestRealFanboxSDKPostInfo -count=1 -v
-export SAUCENAO_API_KEY      # pre-exported from a private environment
-PIXIV_REVERSE_SEARCH_E2E=1 PIXIV_REVERSE_SEARCH_SOURCE=<private-test-image-path-or-url> \
-PIXIV_REVERSE_SEARCH_PROVIDER=all go test ./internal/reversesearch -run TestRealReverseSearch -count=1 -v
-```
+Workflow steps stay intact. Preserve the following tests and their required declarations/fixtures verbatim during a test rewrite; they are exempt from the caps and `testdata` restriction:
 
-- No separate E2E wrapper; offline suite and credentialed observation share one path. Targets accept only explicit non-secret values — never tokens, sessions or cookies as args or env. `PIXIV_E2E_PROXY` is a non-secret proxy URI; solver variables are optional non-secret topology.
-- After release-prep runs, scan stdout, stderr, logs and evidence: tokens, cookies, signed URLs and raw bodies must never reach argv, env dumps, logs, test names, artifacts or diffs. This section describes coverage, not that the real tests have run.
-- Under an explicit proxy, resource transport negotiates HTTP/1.1 while App API and OAuth keep theirs; the live resource read regresses this boundary without a slow-download timeout. A 429 without a valid `Retry-After` keeps the diagnostic and fails — no guessed wait or endless retry.
-- `PIXIV_E2E_BINARY` / `PIXIV_E2E_EXPECTED_VERSION` run the offline `cmd/pixiv` smoke against a built, unpacked release binary (no tokens, no real API); `platform-smoke.yml` runs that CLI/config/MCP surface check on six runners.
-- Add or update tests per change scope; if tests can't run, state the reason and risk in the delivery notes. Release fixture gates: [release](release.md#local-release-fixture-gates).
+- Whole packages: `scripts/citest`, `scripts/release`, `internal/cli/auth/loginhelper`, `internal/media/ugoira/...`.
+- Named tests: `cmd/pixiv/TestPixivBinaryPackagedSmoke`, `internal/storage/database/TestOpenOnWindowsAcceptsForwardSlashFileURI`, and `internal/cli/TestAuthURLCallback`, `TestAuthURLHandlerInstall`, `TestNormalCLIInvocationEnsuresPersistentHandlerWithoutBlockingCommand`.
+
+Recheck selectors against current workflows and actual definitions before merging; report selectors with no matching test. In a mixed file, retain the selected function/comments and required support, and apply the checklist to other tests. The generic `go test ./...` gate does not create further exemptions.
+
+`PIXIV_E2E_BINARY` and `PIXIV_E2E_EXPECTED_VERSION` remain the offline packaged-binary inputs used by `platform-smoke.yml` on six runners. Platform and Container evidence must identify the actual PR head. For suite rewrites, the PR lists each counted file, line count and checklist row, the preserved CI inventory and the total test-line change; deletion and replacement merge together.
 
 ### Test file layout
 
-A production `x.go` has at most one `x_test.go` in its directory; platform tests use `x_<platform>_test.go` with a real base owner. New owners use the external test package (`X_test`); only the directories below may be same-package because they observe unexported state. New exceptions must be registered here with a permanent reason.
+Use at most one `x_test.go` beside its production owner `x.go`; platform-specific cases use `x_<platform>_test.go`. New tests use the external package (`X_test`). Existing CI-selected files keep their original layout. The same-package exceptions are:
 
-| Directory | Reason for same-package |
+| Directory | Reason |
 | --- | --- |
-| `internal/media/ugoira` | Tests exercise `readFrameSource`, `frameSource`, `validateDecodedSize`, `frameNRGBA`, `decodeInto`, `resizeFrame`, and `apngWriter` directly to verify allocation boundaries and cancellation without huge allocations, preserve transparent RGB and ownership of the previous frame during buffer reuse, compare Lanczos3 pixels with fixed upstream reference vectors, exercise APNG sequence overflow and write failures, and check reservoir state, deduplication weights/indices, Oklab/Wu reference values, fixed-seed K-means centers and per-pixel dither indices. `colorGrid` tests verify exact candidate bounds at cell edges; `frameQuantizer` tests verify that reused error rows are cleared, ordinary quantization returns independent indices, and explicit buffer reuse starts only after the previous frame is consumed. LZW tests cover dictionary/code-width reset across frames and recovery after a write failure. GIF tests observe `gifWriter`/`gifBlocks` to verify global tables, streaming LZW sub-blocks and write failures; lifecycle tests observe `encodeGate` to coordinate queued cancellation without sleeps. Exposing these codec internals would expand the `Encoder` contract solely for tests. |
-| `internal/config/settings` | `schema_test.go` passes synthetic types to the private `deriveSchemaFromTags` compiler to test declaration rejection without exporting reflection metadata or resetting the production cache. |
-| `internal/session` | `pixiv_test.go` and `fanbox_test.go` set the unexported `closeClient` field and assert the unexported configuration-error sentinels, verifying Lease release and failure propagation; exporting them would widen the `session` API. |
-| `internal/pixivaccount` | `pixiv_test.go` observes the unexported `newAccountWithToken` constructor to verify `AccountWithToken` formatting and JSON never expose the refresh token; exporting the constructor would widen the credential boundary. |
-| `internal/cli` | The composition root test observes unexported root wiring, invocation lifecycle, and close ordering; these seams are not a public API. |
-| `internal/cli/auth` | Accounts and login tests construct the controller and platform installers directly; the unexported browser, handler-install, cleanup, relay-client, executable-lookup, and registry/desktop seams are production wiring details, so exporting them would only widen the internal CLI surface for tests. |
-| `internal/cli/auth/loginhelper` | Tests construct `callbackHandler`, `remoteLoginHandoff`, and the per-platform `urlHandlerInstaller` directly. They observe the unexported `errNoActiveLocalCallback`, `callbackRelayURL`, `saveActiveRemoteLogin`, and `handlerManifest` to verify callback routing priority, no-redirect handoff, and conditional state cleanup. Exporting them would widen the login helper surface solely for tests. |
-| `internal/cli/search` | Tests observe private searchArtworks logical-page continuation through a real SDK with an HTTP fixture. The private logical-page strategy remains an implementation detail; MCP separately exposes bound default-batch continuation. Exporting application internals only for tests would widen the public surface. |
-| `internal/mcpserver/pixiv/tools` | Tests observe private searchArtworks logical-page continuation through a real SDK with an HTTP fixture. The private logical-page strategy remains an implementation detail; MCP separately exposes bound default-batch continuation. Exporting application internals only for tests would widen the public surface. |
-| `internal/fanboxapi` | `identity_test.go` calls the unexported `parseIdentityMetadataHTML` to verify metadata presence, JSON validity, numeric or null user fields and creator state without exporting an HTML parsing seam that only `Session.CurrentUser` consumes. |
-| `internal/browsercookies/chromium` | Tests construct the provider directly and inject an encryption key override, observing the unexported cookie record decryption path and profile discovery logic. |
-| `internal/browsercookies/firefox` | Tests observe unexported profile discovery (`profiles.ini` parsing), cookie database path resolution, and record layout. |
-| `internal/browsercookies/safari` | Tests directly call the unexported `parseBinaryCookies`, asserting binarycookies record layout. |
-| `internal/browsercookies/secret` | Tests construct `SecretService{command: ...}` injecting unexported fields and assert unexported sentinel errors and command-output redaction behavior. |
-| `internal/selfupdate/installer` | Tests inject the unexported `assetURLValidator` seam and checksum verification function, and use real fixture binaries to verify root `--version` preflight and that the old executable is not replaced on failure. |
-| `internal/selfupdate/release` | `source_route_test.go` observes unexported source route selection and canonical API URL cache state; the rest of the directory already uses the external package. |
-| `internal/storage/database` | Tests observe the unexported `tableInfoQuery` allowlist and migration-compatibility seams so SQL identifiers remain fixed literals and legacy schemas cannot silently bypass their contract. |
-| `sdk/pixiv` | `cursor_test.go` observes unexported cursor construction and client-instance binding to verify exact query-bound invalid continuations without widening the public SDK surface. |
+| `internal/pixivaccount` | `pixiv_test.go` calls private `newAccountWithToken` to check credential formatting/slog privacy; the rotation test uses the external package. |
+| `internal/cli/auth/loginhelper` | Preserved native CI tests inspect private callback, handoff and platform-installer state. |
+| `internal/media/ugoira` | Preserved native CI tests inspect private decoding, quantization and GIF/APNG encoding state. |
+| `internal/storage/database` | The preserved Windows named CI test retains its original package declaration; other database tests use the external package. |
+| `scripts/release` | Preserved release CI tests exercise the command package and private release/artifact operations. |
 
-- No temporary items; no open-ended phrases like "migration period". Adding a directory needs the specific unexported symbol and proof that a minimal exported interface won't do; removing one needs a deletion task and migration evidence (external package compiles, coverage unchanged).
-- `live_test.go`, `live_mutation_test.go` and `live_solver_test.go` are environment-gated real tests without a single production file owner; they stay in their target package (`sdk/pixiv`, `sdk/fanbox`, `internal/reversesearch`, `internal/browsercookies`) and skip unless their documented opt-in variable is set. Build-tagged test files differ per `GOOS`/`GOARCH`; verify with `go list` under `GOOS=darwin`, `windows` and `linux`.
+Register any new same-package exception here with the exact private symbol and reason, within the checklist and caps. Inspect selected files with `go list`; repeat under `GOOS=darwin`, `windows` and `linux` for platform differences:
 
-```bash
-# List all directories whose tests stay inside the production package (package X rather than X_test)
-go list -json ./... | python3 -c 'import json,sys
-dec=json.JSONDecoder(); s=sys.stdin.read(); i=0; same=[]
-while i<len(s):
-    try: p,i=dec.raw_decode(s,i)
-    except json.JSONDecodeError: break
-    while i<len(s) and s[i] in " \n\t": i+=1
-    if p.get("Dir") and p.get("TestGoFiles") and not p["ImportPath"].endswith(("_test",)):
-        same.append((p["ImportPath"],len(p["TestGoFiles"])))
-for ip,n in sorted(same): print(ip,n)'
-# Expected result = the Permanent directories above
+```fish
+go list -f '{{if .TestGoFiles}}{{.ImportPath}}{{end}}' ./... | grep .
 ```
+
+### Manual live verification
+
+Real-environment verification uses normal CLI/SDK operations after explicit authorization. Keep the ordinary suite offline and keep live harnesses out of tracked tests.
+
+1. Agree the product, secondary account, targets, network requests and downloads. Browser-secret access, image uploads and mutations each need explicit scope. Record current Pixiv/FANBOX default selections so they can be restored. Account checks may rotate/persist tokens; account selection writes local state.
+2. Use existing authenticated CLI accounts or the approved private credential-input path for SDK-only calls. Keep tokens, Cookie values, signed URLs and raw bodies out of argv, source, environment dumps and shared evidence. Consult [authentication](../authentication.md) for login/import.
+3. Replace the uppercase placeholders below with authorized non-secret IDs/paths. Run only the commands relevant to the agreed scope; keep content output private.
+
+```fish
+pixiv auth list --json
+pixiv auth use PIXIV_UID
+pixiv auth check PIXIV_UID --json
+pixiv detail ARTWORK_ID --json
+pixiv search SEARCH_WORD --limit 1 --json
+pixiv download ARTWORK_ID --output PRIVATE_TEMP_DIR
+
+pixiv fanbox auth list --json
+pixiv fanbox auth use FANBOX_UID --json
+pixiv fanbox auth status --json
+pixiv fanbox posts CREATOR_ID --limit 1 --json
+pixiv fanbox post POST_ID --json
+env DOWNLOAD_PATH=PRIVATE_TEMP_DIR pixiv fanbox download POST_URL
+```
+
+4. For SDK-only or platform-specific observations, use the current exported API from a private local caller under ignored `tmp/test/_probe/`, or the normal browser import flow. Select the relevant checks:
+
+| Scope | Manual observation |
+| --- | --- |
+| Pixiv SDK | Verify account identity, one stable detail/list, one `Next` continuation with the same query and a complete resource read/save. Reopen the account through the normal service after rotation. Cancel an in-flight request with its context and observe the propagated cancellation. |
+| FANBOX SDK | On authorized creator/tag/post targets, exercise `Creator`, `Creators`, `CreatorTags`, `CreatorPosts`, `TaggedPosts`, `Post`, `Home`, `Supporting` and `ResolveURL` as needed; follow one available cursor. Fully read a first-party file attachment with `OpenResource` (HEAD/GET) and `SaveResource`, checking EOF and saved byte count. Record a missing attachment as a coverage gap. An explicitly authorized expired-session check expects `credentials_expired`. |
+| Proxy/solver/reverse search | Use the configured service-specific proxy and optional solver topology. With separate image-upload authorization, run `pixiv search IMAGE_PATH --provider PROVIDER`; observe provider compatibility and, when relevant, reuse of a solver session. Preserve the upstream 429/error diagnostic. |
+| Browser credentials | After browser/profile authorization, use normal import and verify the resulting account identity on the actual Keychain, Secret Service or DPAPI backend. Keep the secret value private. |
+| Mutations | Agree the exact operation/target and initial state first. Perform one operation, independently read back with the same account, then restore the original state or remove only the object created for this check. Report failed cleanup with safe object IDs and the required recovery action. |
+
+5. Restore account selections and remove only temporary downloads/probes created for the check. Record revision, OS/architecture, safe account/target IDs, operations, status/counts/byte totals, errors and cleanup outcome. Keep manual observations separate from offline and native CI results. Use the upstream retry contract; retain failures rather than adding guessed waits, retries or account rotation.
 
 ### Capability scope
 
@@ -214,7 +210,7 @@ Negative contract for v1: a shipped CLI/MCP/SDK entry point for any item below i
 
 | ID | Unique owner | Current evidence | Close-out condition |
 | --- | --- | --- | --- |
-| `ART-SEARCH-RATING` | `internal/cli/search` + `internal/searchfilter` + `sdk/pixiv` | CLI artwork search filters normalized `x_restrict` locally and binds the filter to its cursor; it does not send an upstream rating field. MCP `pixiv_search_illust` has no standalone rating parameter | Preserve the local CLI contract and test cursor/filter consistency; exposing a new MCP parameter or upstream field requires its own supported behavior and synchronized schema/docs |
+| `ART-SEARCH-RATING` | `internal/cli/search` + `internal/searchfilter` + `sdk/pixiv` | CLI artwork search filters normalized `x_restrict` locally and binds the filter to its cursor; it does not send an upstream rating field. MCP `pixiv_search_illust` has no standalone rating parameter | Preserve the local CLI contract and verify cursor/filter consistency manually; exposing a new MCP parameter or upstream field requires its own supported behavior and synchronized schema/docs |
 | `NOVEL-SEARCH-ADVANCED` | No owner (must not be added) | SDK/MCP schema has no advanced field | May be evaluated once the upstream contract appears; schema-only placeholders are forbidden |
 
 **Evidence-gated**
@@ -222,7 +218,7 @@ Negative contract for v1: a shipped CLI/MCP/SDK entry point for any item below i
 | ID | Unique owner | Current evidence | Close-out condition |
 | --- | --- | --- | --- |
 | `NOVEL-RANKING` | `sdk/pixiv` + `internal/cli/ranking` (MCP later) | SDK and CLI expose the additive `NovelRanking` seam over the internal `/v1/novel/ranking` adapter; CLI selects it explicitly with `--type novel`; MCP has no `novel_ranking` tool, and live/public release evidence is still incomplete | Complete the live second-page, shared cursor, MCP and release compatibility gates; until then this remains evidence-gated and is not `public_ready` |
-| `NOVEL-BOOKMARK-MUTATION` | `sdk/pixiv` + `internal/mcpserver/pixiv` (CLI later) | SDK exposes additive typed `AddNovelBookmark`/`RemoveNovelBookmark`; MCP exposes `add_novel_bookmark`/`remove_novel_bookmark`; offline outcome, validation and no-replay evidence is present, while strict/live, read-back and release evidence remain incomplete | Complete strict/live mutation evidence, same-account read-back, cleanup and compatibility/release gates; until then this remains evidence-gated and is not `public_ready` |
+| `NOVEL-BOOKMARK-MUTATION` | `sdk/pixiv` + `internal/mcpserver/pixiv` (CLI later) | SDK exposes additive typed `AddNovelBookmark`/`RemoveNovelBookmark`; MCP exposes `add_novel_bookmark`/`remove_novel_bookmark`; outcome, validation and no-replay checks now use authorized manual verification; strict/live, read-back and release evidence remain incomplete | Complete strict/live mutation evidence, same-account read-back, cleanup and compatibility/release gates; until then this remains evidence-gated and is not `public_ready` |
 | `COMMENT-WRITE` | `sdk/pixiv` (CLI/MCP later) | SDK exposes namespace-specific `PostArtworkComment`/`ReplyArtworkComment`/`DeleteArtworkComment` and novel equivalents; MCP `comment_post`/`comment_add` directories remain = 0; response ID, read-back, cleanup, and strict live evidence are incomplete | After strict/live write evidence plus same-account read-back, cleanup, and compatibility gates; until then this remains evidence-gated and is not `public_ready` |
 | `NOTIFICATION` | No owner | MCP `notification` directory = 0; SDK `Notification*` exports = 0 | Same as above |
 | `AUTOCOMPLETE` | No owner | MCP `autocomplete` directory = 0; SDK `Autocomplete*` exports = 0; not merged into `search` | Same as above |

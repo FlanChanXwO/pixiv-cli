@@ -19,7 +19,7 @@ import (
 )
 
 func init() {
-	browsercookies.Register("safari", func() (browsercookies.Provider, error) { return newProvider(nil) })
+	browsercookies.Register("safari", func() (browsercookies.Provider, error) { return newProvider() })
 }
 
 // defaultCookiePaths 返回候选 Cookies.binarycookies 路径（新容器 + legacy）。
@@ -38,12 +38,9 @@ type provider struct {
 	paths []string
 }
 
-// newProvider 构造 provider；paths 为空时使用默认路径。
-func newProvider(paths []string) (*provider, error) {
-	if len(paths) == 0 {
-		paths = defaultCookiePaths()
-	}
-	return &provider{paths: paths}, nil
+// newProvider 使用默认路径构造 provider。
+func newProvider() (*provider, error) {
+	return &provider{paths: defaultCookiePaths()}, nil
 }
 
 func (p *provider) Name() string { return "safari" }

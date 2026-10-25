@@ -1,4 +1,4 @@
 interface:
   display_name: "Pixiv CLI Testing"
-  short_description: "Keep only durable core tests; verify with minimal code."
-  default_prompt: "Use $pixiv-cli-test to verify the affected behavior, apply mainline test admission, and report evidence."
+  short_description: "Apply the contract checklist and test size caps."
+  default_prompt: "Use $pixiv-cli-test to verify the affected contract within the test budget, preserve CI-selected tests, and report evidence."

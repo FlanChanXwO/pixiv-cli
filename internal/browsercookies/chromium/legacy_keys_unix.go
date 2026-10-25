@@ -42,7 +42,6 @@ func derivePBKDF2SHA1(password, salt []byte, iterations, keyLength int) []byte {
 // 最终仍返回 ErrEncryptedMalformed。
 func chromiumKeyCandidates(password []byte) [][]byte {
 	candidates := [][]byte{
-		deriveChromeKey(password),
 		derivePBKDF2SHA1(password, []byte("saltysalt"), 1003, aes.BlockSize),
 		derivePBKDF2SHA1(password, peanuts, 1, aes.BlockSize),
 	}

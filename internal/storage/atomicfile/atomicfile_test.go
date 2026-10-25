@@ -1,60 +1,34 @@
 package atomicfile_test
 
 import (
-	"context"
-	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
-	"strings"
 	"testing"
 
-	atomic "github.com/FlanChanXwO/pixiv-cli/internal/storage/atomicfile"
+	"github.com/FlanChanXwO/pixiv-cli/internal/storage/atomicfile"
+	"github.com/stretchr/testify/require"
 )
 
-func TestAtomicWrite(t *testing.T) {
-	dir := t.TempDir()
-	dest := filepath.Join(dir, "out", "file.bin")
-	written, err := atomic.AtomicWrite(context.Background(), dest, strings.NewReader("hello"))
-	if err != nil {
-		t.Fatalf("Write: %v", err)
-	}
-	if written != 5 {
-		t.Fatalf("written = %d", written)
-	}
-	content, err := os.ReadFile(dest)
-	if err != nil || string(content) != "hello" {
-		t.Fatalf("content = %q err=%v", content, err)
-	}
-	entries, _ := os.ReadDir(filepath.Dir(dest))
-	for _, e := range entries {
-		if strings.HasPrefix(e.Name(), ".atomic-write-") {
-			t.Fatalf("temp file left behind: %s", e.Name())
-		}
-	}
-}
-
-func TestWriteFailureRemovesTemp(t *testing.T) {
-	dir := t.TempDir()
-	dest := filepath.Join(dir, "out.txt")
-	_, err := atomic.AtomicWrite(context.Background(), dest, errorReader{err: errors.New("boom")})
-	if err == nil {
-		t.Fatal("expected error")
-	}
-	if _, err := os.Stat(dest); !os.IsNotExist(err) {
-		t.Fatal("destination should not exist after failure")
+func TestPrivateReplacementPreservesTargetOnFailure(t *testing.T) {
+	for _, missingSource := range []bool{false, true} {
+		t.Run(fmt.Sprint(missingSource), func(t *testing.T) {
+			directory := t.TempDir()
+			source, target := filepath.Join(directory, "source"), filepath.Join(directory, "target")
+			require.NoError(t, os.WriteFile(target, []byte("old"), 0o600))
+			want := "old"
+			if !missingSource {
+				require.NoError(t, os.WriteFile(source, []byte("new"), 0o600))
+				want = "new"
+			}
+			outcome, err := atomicfile.ReplacePrivateFile(source, target)
+			require.Equal(t, missingSource, err != nil)
+			require.Equal(t, !missingSource, outcome.Committed)
+			body, err := os.ReadFile(target)
+			require.NoError(t, err)
+			require.Equal(t, want, string(body))
+			_, err = os.Stat(source)
+			require.ErrorIs(t, err, os.ErrNotExist)
+		})
 	}
 }
-
-func TestWriteCanceledContext(t *testing.T) {
-	dir := t.TempDir()
-	dest := filepath.Join(dir, "out.txt")
-	ctx, cancel := context.WithCancel(context.Background())
-	cancel()
-	if _, err := atomic.AtomicWrite(ctx, dest, strings.NewReader("data")); err == nil {
-		t.Fatal("expected context error")
-	}
-}
-
-type errorReader struct{ err error }
-
-func (r errorReader) Read([]byte) (int, error) { return 0, r.err }

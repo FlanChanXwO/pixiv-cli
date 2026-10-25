@@ -9,6 +9,7 @@ import (
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/cli/auth/loginhelper"
 	"github.com/FlanChanXwO/pixiv-cli/internal/cli/internal/command"
+	"github.com/pkg/browser"
 	"github.com/spf13/cobra"
 )
 
@@ -28,14 +29,13 @@ func (a controller) newAccountURLCallbackCommand() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			browserOpener := a.openBrowser
 			if result.RemoteLoginStart != nil {
 				loginURL, err := loginhelper.StartRemoteLogin(cmd.Context(), *result.RemoteLoginStart)
 				if err != nil {
 					return err
 				}
-				if err := browserOpener(loginURL); err != nil {
-					if clearErr := a.clearHandoff(*result.RemoteLoginStart); clearErr != nil {
+				if err := browser.OpenURL(loginURL); err != nil {
+					if clearErr := loginhelper.ClearRemoteLoginHandoff(*result.RemoteLoginStart); clearErr != nil {
 						return errors.New("could not clear remote Pixiv login handoff after browser launch failed")
 					}
 					return errors.New("could not open Pixiv authorization page")
@@ -43,7 +43,7 @@ func (a controller) newAccountURLCallbackCommand() *cobra.Command {
 				return nil
 			}
 			if result.LocalRelayURL != "" {
-				if err := browserOpener(result.LocalRelayURL); err != nil {
+				if err := browser.OpenURL(result.LocalRelayURL); err != nil {
 					// browser.OpenURL 的错误可能含本地路径或完整 URL；内部 handler 的
 					// stderr 是协议调用方可见边界，只保留稳定类别。
 					return errors.New("could not open Pixiv login callback bridge")
@@ -53,7 +53,7 @@ func (a controller) newAccountURLCallbackCommand() *cobra.Command {
 			if result.RemoteCallback == nil {
 				return nil
 			}
-			if err := browserOpener(result.RemoteCallback.ResultURL); err != nil {
+			if err := browser.OpenURL(result.RemoteCallback.ResultURL); err != nil {
 				result.RemoteCallback.Abort()
 				return errors.New("could not open Pixiv login result page")
 			}
@@ -77,7 +77,7 @@ func (a controller) newAccountURLHandlerInstallCommand() *cobra.Command {
 		Hidden: true,
 		Args:   a.requireExactArgs(0, "pixiv auth "+internalURLHandlerInstallCommand),
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			if err := a.ensureURLHandler(cmd.Context()); err != nil {
+			if err := loginhelper.EnsurePersistentIfNeeded(cmd.Context()); err != nil {
 				fmt.Fprintf(a.errOut, "warning: persistent pixiv:// callback handler was not initialized: %v\n", err)
 			}
 			return nil

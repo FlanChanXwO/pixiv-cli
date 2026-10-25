@@ -17,34 +17,6 @@ type SecretFileWriteError struct {
 	cause   error
 }
 
-type secretFileOps struct {
-	openExclusive func(string) (*os.File, error)
-	protect       func(*os.File) error
-	write         func(*os.File, []byte) (int, error)
-	sync          func(*os.File) error
-	close         func(*os.File) error
-	remove        func(string) error
-	replace       func(string, string) (atomicfile.Result, error)
-	protectPath   func(string) error
-	syncParent    func(string) error
-}
-
-func defaultSecretFileOps() secretFileOps {
-	return secretFileOps{
-		openExclusive: openSecretFileExclusive,
-		protect:       applySecretFileProtection,
-		write: func(file *os.File, body []byte) (int, error) {
-			return file.Write(body)
-		},
-		sync:        func(file *os.File) error { return file.Sync() },
-		close:       func(file *os.File) error { return file.Close() },
-		remove:      os.Remove,
-		replace:     atomicfile.ReplacePrivateFile,
-		protectPath: applySecretPathProtection,
-		syncParent:  atomicfile.SyncParentDirectory,
-	}
-}
-
 func (e *SecretFileWriteError) Error() string {
 	return "authentication export write failed: " + safeSecretWriteCause(e.cause) + " (" + string(e.outcome) + ")"
 }
@@ -78,10 +50,6 @@ func SecretFileWriteCommitOutcome(err error) WriteCommitOutcome {
 // WriteSecretFile 把 secret 写到任意目标；已有 parent 的权限与 ownership 保持不变。
 // force=false 直接排他创建，因此写入期间目标可见，不承诺 atomic visibility。
 func WriteSecretFile(path string, body []byte, force bool) (resultErr error) {
-	return writeSecretFile(path, body, force, defaultSecretFileOps())
-}
-
-func writeSecretFile(path string, body []byte, force bool, ops secretFileOps) (resultErr error) {
 	outcome := WriteCommitOutcomeNotCommitted
 	defer func() {
 		if resultErr != nil {
@@ -94,27 +62,27 @@ func writeSecretFile(path string, body []byte, force bool, ops secretFileOps) (r
 		return err
 	}
 	if !force {
-		file, err := ops.openExclusive(path)
+		file, err := openSecretFileExclusive(path)
 		if err != nil {
 			return err
 		}
 		complete := false
 		defer func() {
 			if !complete {
-				if err := ops.remove(path); err != nil && !errors.Is(err, os.ErrNotExist) {
+				if err := os.Remove(path); err != nil && !errors.Is(err, os.ErrNotExist) {
 					resultErr = errors.Join(resultErr, err)
 				}
 			}
 		}()
-		if err := writeAndCloseSecret(file, body, ops); err != nil {
+		if err := writeAndCloseSecret(file, body); err != nil {
 			return err
 		}
 		complete = true
 		outcome = WriteCommitOutcomeCommitted
-		return ops.syncParent(directory)
+		return atomicfile.SyncParentDirectory(directory)
 	}
 
-	temporary, temporaryPath, err := createSecretTemporary(directory, ops)
+	temporary, temporaryPath, err := createSecretTemporary(directory)
 	if err != nil {
 		return err
 	}
@@ -122,20 +90,20 @@ func writeSecretFile(path string, body []byte, force bool, ops secretFileOps) (r
 	preserveTemporary := false
 	defer func() {
 		if !closed {
-			_ = ops.close(temporary)
+			_ = temporary.Close()
 		}
 		if !preserveTemporary {
-			if err := ops.remove(temporaryPath); err != nil && !errors.Is(err, os.ErrNotExist) {
+			if err := os.Remove(temporaryPath); err != nil && !errors.Is(err, os.ErrNotExist) {
 				resultErr = errors.Join(resultErr, err)
 			}
 		}
 	}()
-	if err := writeAndCloseSecret(temporary, body, ops); err != nil {
+	if err := writeAndCloseSecret(temporary, body); err != nil {
 		closed = true
 		return err
 	}
 	closed = true
-	replacement, err := ops.replace(temporaryPath, path)
+	replacement, err := atomicfile.ReplacePrivateFile(temporaryPath, path)
 	preserveTemporary = replacement.PreserveSource
 	switch {
 	case replacement.Committed:
@@ -146,34 +114,34 @@ func writeSecretFile(path string, body []byte, force bool, ops secretFileOps) (r
 	if !replacement.Committed {
 		return err
 	}
-	return errors.Join(err, ops.protectPath(path), ops.syncParent(directory))
+	return errors.Join(err, applySecretPathProtection(path), atomicfile.SyncParentDirectory(directory))
 }
 
-func writeAndCloseSecret(file *os.File, body []byte, ops secretFileOps) error {
-	if err := ops.protect(file); err != nil {
-		return errors.Join(err, ops.close(file))
+func writeAndCloseSecret(file *os.File, body []byte) error {
+	if err := applySecretFileProtection(file); err != nil {
+		return errors.Join(err, file.Close())
 	}
-	written, err := ops.write(file, body)
+	written, err := file.Write(body)
 	if err != nil {
-		return errors.Join(err, ops.close(file))
+		return errors.Join(err, file.Close())
 	}
 	if written != len(body) {
-		return errors.Join(io.ErrShortWrite, ops.close(file))
+		return errors.Join(io.ErrShortWrite, file.Close())
 	}
-	if err := ops.sync(file); err != nil {
-		return errors.Join(err, ops.close(file))
+	if err := file.Sync(); err != nil {
+		return errors.Join(err, file.Close())
 	}
-	return ops.close(file)
+	return file.Close()
 }
 
-func createSecretTemporary(directory string, ops secretFileOps) (*os.File, string, error) {
+func createSecretTemporary(directory string) (*os.File, string, error) {
 	for {
 		var random [16]byte
 		if _, err := rand.Read(random[:]); err != nil {
 			return nil, "", err
 		}
 		path := filepath.Join(directory, ".pixiv-secret-"+hex.EncodeToString(random[:]))
-		file, err := ops.openExclusive(path)
+		file, err := openSecretFileExclusive(path)
 		if errors.Is(err, os.ErrExist) {
 			continue
 		}

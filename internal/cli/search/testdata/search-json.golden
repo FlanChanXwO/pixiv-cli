@@ -1,0 +1,39 @@
+{
+  "illusts": [
+    {
+      "id": 101,
+      "title": "cat",
+      "caption": "",
+      "kind": "illustration",
+      "raw_kind": "illust",
+      "tags": [],
+      "user": {
+        "id": 7,
+        "name": "artist",
+        "account": "",
+        "comment": "",
+        "is_followed": false,
+        "profile_image": {
+          "resource": null,
+          "variant": "",
+          "width": 0,
+          "height": 0
+        }
+      },
+      "published_at": "2024-05-01T01:00:00Z",
+      "total_bookmarks": 0,
+      "total_views": 0,
+      "width": 0,
+      "height": 0,
+      "page_count": 0,
+      "x_restrict": 0,
+      "ai_type": 0,
+      "cover": {
+        "resource": null,
+        "variant": "",
+        "width": 0,
+        "height": 0
+      }
+    }
+  ]
+}

@@ -1,94 +1,82 @@
 ---
 name: pixiv-cli-test
-description: Select and run pixiv-cli regression, TDD, document, SDK, CLI/MCP, and build checks. Use when changing behavior, reproducing a bug, deciding which tests may enter main, or reporting readiness. Separates offline fixtures, native platform smoke, and explicitly authorized live API tests.
+description: Select and run pixiv-cli checks, admit tests within the seven-contract checklist and size caps, and distinguish offline, native CI, and authorized manual live verification.
 ---
 
 # Test pixiv-cli
 
 ## Determine the evidence
 
-Read the diff and the affected owner/tests before choosing commands. Work from the repository root unless a command explicitly needs another directory. Check `go version` against `go.mod`; source builds use `CGO_ENABLED=0`; race-detector checks separately enable cgo and need a compatible C toolchain. Do not install missing tools or fetch dependencies without authorization. Report environment failures separately from regressions.
+Read the diff, affected owner and existing tests. Work from the repository root; compare `go version` with `go.mod`. Source builds use `CGO_ENABLED=0`; race checks use `CGO_ENABLED=1` and a compatible C toolchain. Obtain approval before installing missing tools or adding dependencies.
 
-For source behavior, select the smallest existing test that exposes the missing behavior, or extend it only where coverage is missing, and observe its expected failure before implementation. A test that fails to compile or cannot reach its assertion is not a behavioral Red. Implement one slice, run Green, then refactor and rerun. For structural-only work, reuse before/after characterization evidence; obtain an explicit exception if an applicable Red requirement cannot be met. Never modify expected output solely to make an unexplained failure disappear.
-
-Use existing Go testing and HTTP/FS fixtures. Test public behavior through real boundaries rather than reproducing the implementation in mocks. Prefer deterministic inputs and temporary stores; exercise cancellation, error propagation, and ordering when affected. Follow the canonical [test file layout](../../../docs/en/maintainers/development.md#test-file-layout), including owner-matched names and documented same-package exceptions; do not create task-numbered test files or public exports only for tests.
+For a behavior change, observe a relevant behavioral Red before implementation, then Green and the affected regression. An import or toolchain failure does not supply Red. Use an ignored local probe when the scenario is outside the permanent checklist. Pure restructuring uses before/after characterization. Obtain an explicit exception when an applicable Red requirement cannot be met. Keep expected output tied to the contract and investigate unexplained changes.
 
 ## Decide whether test code must change
 
-Apply Ponytail **full**: verify the whole change with the least maintained test code. The default is **no new permanent test code**. Run existing checks first; a missing assertion is a reason to investigate, not automatic permission to grow the suite. This admission rule applies to new tests, extra table rows/assertions, fixtures, and test helpers alike.
+Reuse existing checks first. Maintained code/behavior tests cover only the following checklist, with one representative case and necessary failure cases per contract. Keep each assertion at its owning boundary; CLI/MCP output cases exercise their presentation contract rather than duplicating SDK mapping tables.
 
-### Admit only durable core regressions
+| Contract | Owning boundary |
+| --- | --- |
+| Credential privacy: account/Cookie values stay private under `%v`, `%+v`, `%#v` and slog; request logs omit query, token, Cookie and signed URLs; MCP tool output omits signed URLs and Cookie | Account/Cookie types, request logging, MCP output |
+| Account storage: revision conflicts, transaction rollback, opening a v1.2.x database, private permissions; atomic replacement and file locking | `internal/storage/*` |
+| Rotated token is persisted before the client is returned | `internal/pixivaccount` or `internal/session` |
+| Malformed upstream responses return errors; cancellation propagates | `sdk/pixiv`, `sdk/fanbox` |
+| Public snapshots: one full MCP `tools/list` golden; one CLI command's text/JSON/NDJSON; usage exit code; stdio stdout contains only JSON-RPC; HTTP requires bearer | `internal/mcpserver`, `internal/cli` |
+| Environment > file > default, including explicit empty values | `internal/config/settings` |
+| Failed update verification preserves the installed binary | `internal/selfupdate` |
 
-A test change may enter main only when **all** of these hold:
+### Enforce the budget
 
-- It protects a long-lived core contract: credential/security boundaries, data integrity and persistence, public CLI/MCP/SDK contracts, or a critical execution path whose failure loses results, breaks cancellation, or reports false success. Name the concrete failure and user impact; merely touching a core package does not qualify.
-- Existing assertions do not catch that failure. Prefer the smallest extension at the stable owning boundary; add a new test only when reuse cannot express it. Do not repeat the same assertion across CLI/MCP/SDK layers unless their distinct contracts require it.
-- The evidence will remain useful after the current task, refactor, or upstream investigation ends. Use deterministic offline inputs for ordinary regressions; retain explicitly authorized live/native gates only for contracts that need that environment.
-- The check is the smallest maintainable proof, with direct assertions and minimal fixtures. Reuse Go testing and existing fixtures; avoid new frameworks, mock hierarchies, fixture builders, or production exports introduced only for tests.
+| Item | Maximum |
+| --- | --- |
+| Non-exempt test files across the repository | 25 |
+| Lines per test file, including imports, blank lines and helpers | 200 |
+| Lines per test function | 40 |
+| Cases in a table | 8 |
+| `testdata` | Old-version database samples and a few goldens |
 
-Before retaining test code, record the core contract, the uncovered failure, and why existing checks are insufficient in the current PR/handoff. If that justification is missing, keep the experiment temporary instead. Do not add tests for getters, forwarding wrappers, field projections, pure moves, prose, or internal file shape merely to satisfy TDD, a checklist, or a coverage target. Machine-consumed formats and security checks qualify only when they meet the same core-contract criteria.
+Count files for every platform/build tag, not just files selected on the current host. Prefer `httptest`, temporary directories and actual stores. Do not create test helper packages, fixture constructors, mock hierarchies or production exports for tests. Use the [test file layout](../../../docs/en/maintainers/development.md#test-file-layout) and its documented same-package exceptions.
 
-A test double never justifies an exported setter, a package-level mutable variable swapped by tests, or an interface without a second production implementation. Use real boundaries such as `httptest` servers and temporary directories, or a same-package test that sets unexported fields; register a new same-package exception in the test layout as required.
+Before retaining a change, identify the checklist row, the missing failure and the smallest proof in the PR/handoff. Keep out-of-checklist experiments under ignored `tmp/test/_probe/`; run that package explicitly so ordinary `go test ./...` discovery excludes it. Keep probe output there too and use synthetic credentials. No permanent live-test files or opt-in live harnesses.
+
+### Preserve CI-selected tests
+
+Keep workflows and their steps intact during test deletion/rewrites. Preserve these tests verbatim, together with required support and fixtures; they are exempt from the file/function/case caps and `testdata` restriction:
+
+- Entire packages: `scripts/citest`, `scripts/release`, `internal/cli/auth/loginhelper`, `internal/media/ugoira/...`.
+- Named tests: `cmd/pixiv/TestPixivBinaryPackagedSmoke`; `internal/storage/database/TestOpenOnWindowsAcceptsForwardSlashFileURI`; `internal/cli/TestAuthURLCallback`, `TestAuthURLHandlerInstall`, `TestNormalCLIInvocationEnsuresPersistentHandlerWithoutBlockingCommand`.
+
+Recheck this list against actual workflow references before merging. Broad `go test ./...` steps do not exempt the whole repository. For a mixed file, retain the selected function, comments and necessary declarations exactly; unrelated tests still follow the checklist. If a workflow selector matches no definition, report the coverage gap rather than claiming that named test passed.
 
 ### Remove low-value tests
 
-When a change touches tests or a task asks to slim them, delete or merge a test that:
+Within authorized test cleanup, remove code/behavior tests outside the checklist and their orphan helpers, fixtures and test-only production seams. Retain CI-selected tests as above. Delete duplicate assertions, getter/forwarding tests, test-harness tests and completed-migration characterization; preserve v1.2.x database-opening evidence. Temporary investigation belongs under `tmp/test/`.
 
-- asserts file text (YAML, Dockerfile, Markdown, Go source) instead of executing behavior, unless the text itself is a security contract no execution can check, such as full-SHA action pins;
-- repeats a contract another test already asserts; keep the one at the most public boundary (CLI/MCP output, SDK method, configuration entry point);
-- tests test-harness code, such as live-test environment parsing, fixture builders, or target finders;
-- guards against reintroducing something already removed;
-- preserves characterization of a finished migration; file names containing `red`, `baseline`, or `parity` are a hint;
-- checks getters, forwarding, field projection, or a constant equal to itself.
-
-Keep tests that protect secret redaction, data integrity and persistence, public CLI/MCP/SDK output contracts, cancellation and error propagation, and release artifact correctness. Prefer a check that executes real code over a string assertion. When moving tests to their owner file, do not carry duplicated assertions along. In the PR, list each deleted or merged test, the criterion applied, and the retained test that still covers the contract; do not change a retained assertion to fit a refactor.
-
-### Keep temporary verification out of main
-
-Put one-off reproductions, exploratory probes, benchmarks, migration characterization, and task-specific fixtures **only under a `tmp/test/` directory**, such as repository-root `tmp/test/` or an owner's `tmp/test/`. They are ignored local evidence, not deliverables. Keep their generated output there too; never force-add them or move them into tracked sources merely to satisfy a gate.
-
-For Go probes, use `tmp/test/_probe/` and run that package explicitly, for example `go test ./tmp/test/_probe -run '^TestProbe$' -count=1`. The underscore directory keeps it out of ordinary `go test ./...` discovery. Exercise existing public/owner-accessible boundaries; do not export private symbols to make a temporary probe compile.
-
-Temporary Red/Green evidence can verify a change without becoming a permanent regression. Promote only the minimal case that independently meets every admission criterion above, then follow the canonical test-file layout. Record commands and results in the existing PR/handoff, not a new test-plan/report artifact. Keep secrets out of temporary files as well.
-
-Keep established security and release gates. Remove or consolidate existing tests only within the authorized scope after identifying equivalent retained protection and running it. Fewer lines alone do not justify deleting evidence. Finish when changed behavior and credible failures are verified; mandatory gates still apply, without a per-function, per-file, test-count, or coverage-percentage quota.
+For a suite rewrite, include each counted file, its line count and checklist row, the preserved CI inventory, and total test-line change in the PR. Delete and replace in the same PR so main always retains the complete suite.
 
 ## Select checks
 
-Tests are one form of evidence; compilation, output comparison, and reading the diff are often more direct. While editing, run only what the change affects and never the whole suite after each edit:
+During implementation, run the affected package and direct callers, narrowing with `-run` when useful. Use `CGO_ENABLED=0 go build ./...` for source compilation. Reuse passing evidence until a relevant change or failure invalidates it.
 
-- `CGO_ENABLED=0 go build ./...` for any Go change; a pure move, rename, or import rewrite needs only compilation.
-- The touched package and its direct callers, narrowed with `-run` where possible, for example `go test ./path/to/owner -run '^TestName$' -count=1`, replacing both placeholders with inspected values.
-- Only the affected command output or MCP `tools/list` when an external output may change.
-
-After a check passes, do not rerun or widen it unless something changed or failed. Run the repository-wide checks once, before handoff or opening/updating a PR, according to actual impact:
-
-| Change | Relevant checks |
+| Change | Checks |
 | --- | --- |
-| Documentation, instructions, product skills | Inspect links, skill metadata, examples, and `git diff --check`; run affected existing script/tool contracts |
-| Local Go implementation | Focused test, affected integration packages, and scoped `go vet`; run `sh scripts/build.sh` when the change affects the build or executable |
-| Shared contract, public SDK, core behavior, or release candidate | Once before handoff: `go test ./... -count=1`, `go vet ./...`, and `sh scripts/build.sh` |
-| Concurrency, account lifecycle, persistence, shared runtime | Add `CGO_ENABLED=1 go test -race ./... -count=1` once before handoff; use native platform checks where platform code is involved |
-| PR metadata and verification tooling | `go test ./scripts/pr -count=1`; inspect the changed workflow's existing tests |
-| Platform/release contracts | `go test ./scripts/release ./scripts/citest -count=1`, `sh scripts/ci/test-package-release.sh`, and `sh scripts/build/matrix.sh --capability smoke` |
-| Encoding, platform builds, or native platform smoke | Follow [pixiv-cli-native](../pixiv-cli-native/SKILL.md) for the affected execution/artifact boundary |
+| Documentation/instructions | Links, metadata, commands, `git diff --check`; affected existing tooling |
+| Local Go behavior | Focused test and scoped vet; build the executable when affected |
+| Shared/public contract or release candidate | Once on the final candidate: `go test ./... -count=1`, `go vet ./...`, `sh scripts/build.sh` |
+| Concurrency/persistence/shared runtime | Also `CGO_ENABLED=1 go test -race ./... -count=1`; native gates for changed platform behavior |
+| PR metadata | `go run ./scripts/pr validate --body-file PATH --cli pixiv` |
+| Platform/release | Existing `scripts/release`/`scripts/citest` tests, `sh scripts/ci/test-package-release.sh`, `sh scripts/build/matrix.sh --capability smoke`; follow [native](../pixiv-cli-native/SKILL.md) |
 
-Use `gofmt -l` on affected Go files and the existing `.pre-commit-config.yaml`. Run installed pre-commit when applicable; do not introduce a new linter or download hook environments silently. `sh -n` checks shell syntax, not shell behavior. Cross-compilation checks compilation, not execution on another operating system.
+Use `gofmt` and the installed local pre-commit hook on affected Go files. Cross-compilation supplies compilation evidence; native runners supply execution evidence.
 
-CI scope is determined by `.github/ci-change-scope.gitignore` through `scripts/ci/classify-change-scope.sh`, not the file extension or this table. `ci.yml` owns Quality; trusted `pr-metadata.yml` classifies PRs and dispatches base-ref Platform/Container workers. Required smoke gates are Check Runs on the exact PR head and use a real skipped conclusion when their scope is not required. Honor those gates without changing classification to save a run. Ordinary branch/main pushes do not run CI; matching tags retain the current Quality/release path.
+CI scope comes from `.github/ci-change-scope.gitignore` and `scripts/ci/classify-change-scope.sh`. `ci.yml` owns Quality; trusted `pr-metadata.yml` dispatches base-ref Platform/Container workers. Inspect Check Runs on the exact PR head, including actual pass or skip conclusions; keep classification and gates unchanged. Ordinary branch/main pushes do not run CI; matching tags retain their Quality/release path.
 
-## Live and native boundaries
+## Manual live and native verification
 
-The ordinary suite must remain offline-stable. Real SDK tests are opt-in and can rotate/persist credentials. Read the live-test section of `docs/en/maintainers/development.md` and obtain account/target authorization first. Select an authorized secondary Pixiv account with `PIXIV_E2E_READ_USER_ID`; never read a real credential store into the transcript. FANBOX sessions come from the agreed Keychain environment, not command arguments or logs.
+The ordinary suite is offline. Follow [manual live verification](../../../docs/en/maintainers/development.md#manual-live-verification) after explicit authorization for account, targets, network requests, downloads, browser-secret access and any mutation. Use normal authenticated CLI/SDK entry points and private credential input; record only safe IDs, counts, byte totals and error categories. Image upload requires its own authorization. For writes, agree the initial state, read-back and cleanup before executing.
 
-Live tests live beside their target: `TestRealPixivSDKRead`, the manifest reads and `TestRealPixivSDKLiveManifestMutation` in `sdk/pixiv/live_test.go` and `live_mutation_test.go`; FANBOX reads and solver acceptance in `sdk/fanbox/live_test.go` and `live_solver_test.go`; reverse search in `internal/reversesearch/live_test.go`; browser providers in `internal/browsercookies/live_test.go`; packaged-binary and MCP process checks in `cmd/pixiv/main_test.go`. Run them with the package path, e.g. `PIXIV_SDK_E2E=1 go test ./sdk/pixiv -run TestRealPixivSDKRead -count=1 -v`. There is no `e2e/` package.
-
-`TestRealPixivSDKRead` and `TestRealFanboxSDKRead` prove their specific live paths only when actually run. The FANBOX full read requires a first-party attachment; `TestRealFanboxSDKPostInfo` is supplemental partial evidence, not a replacement. Default skips are not live evidence. Reverse-search E2E additionally needs explicit image-upload authorization. An upstream 429 is not permission to invent retries or rotate accounts.
-
-Native/browser fixture checks do not establish real keychain/DPAPI access, and one host does not establish native linking on every shipped platform. Select the existing native/browser evidence workflows for those claims. Preserve the documented Windows ARM64 race-detector limitation and its exact diagnostic check; do not call unsupported execution a successful race run.
+Keep manual observations separate from offline test results. Preserve upstream errors, including 429 diagnostics; add no guessed waits, retries or account rotation. Native/browser acceptance needs the actual authorized OS/secret backend. Use existing native CI for platform claims, retaining the documented Windows ARM64 race-detector limitation and exact diagnostic handling.
 
 ## Handle failures and finish
 
-Identify the first causal failure, command, owner, and relevant environment. For a fail-fast gate, run relevant safely independent downstream checks to expose other blockers. Do not repeatedly run unchanged deterministic failures; retry only after a relevant change or to test a stated infrastructure/flakiness hypothesis. Fix only in-scope regressions.
-
-Report actual commands, pass/fail/skip, unrun checks and why, tested commit, and remaining risk. Completion requires the requested behavior and mandatory evidence, not a selected subset of green checks.
+Record the first causal failure, command, owner and environment. Continue safely independent checks; retry only after a relevant change or a stated infrastructure hypothesis. Report the tested revision, actual pass/fail/skip, unrun required checks and their effect on acceptance. Completion needs the requested behavior and every mandatory gate.

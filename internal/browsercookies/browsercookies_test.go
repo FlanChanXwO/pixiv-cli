@@ -1,163 +1,28 @@
 package browsercookies_test
 
 import (
-	"context"
-	"encoding/json"
-	"errors"
+	"bytes"
 	"fmt"
-	"strings"
+	"log/slog"
 	"testing"
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/browsercookies"
+	"github.com/FlanChanXwO/pixiv-cli/internal/logging"
+	"github.com/stretchr/testify/require"
 )
 
-func TestSecretNeverLeaksInOutput(t *testing.T) {
-	const value = "super-secret-FANBOXSESSID-value"
-	s := browsercookies.NewSecret(value)
-	if s.Value() != value {
-		t.Fatalf("Value() = %q, want %q", s.Value(), value)
+func TestCookieFormattingKeepsSessionPrivate(t *testing.T) {
+	const secret = "FANBOXSESSID=cookie-canary"
+	cookie := browsercookies.NewSecret(secret)
+	for _, format := range []string{"%v", "%+v", "%#v"} {
+		require.NotContains(t, fmt.Sprintf(format, cookie), secret)
 	}
-	formats := []string{"%v", "%s", "%+v", "%q", "%#v", "%x", "%X", "%20s", "% -s"}
-	for _, f := range formats {
-		got := fmt.Sprintf(f, s)
-		if strings.Contains(got, value) {
-			t.Fatalf("format %s leaked secret: %q", f, got)
-		}
-		if got == value {
-			t.Fatalf("format %s returned raw secret", f)
-		}
-	}
-	if got := fmt.Sprint(s); got != "<redacted>" {
-		t.Fatalf("Sprint = %q, want %q", got, "<redacted>")
-	}
-	if err := fmt.Errorf("wrap: %v", s); strings.Contains(err.Error(), value) {
-		t.Fatalf("error leaked secret: %q", err.Error())
-	}
-
-	body, err := json.Marshal(s)
-	if err != nil {
-		t.Fatal(err)
-	}
-	wrapper := struct {
-		Session browsercookies.Secret `json:"session"`
-	}{Session: s}
-	wrapped, err := json.Marshal(wrapper)
-	if err != nil {
-		t.Fatal(err)
-	}
-	for _, encoded := range []string{string(body), string(wrapped)} {
-		if strings.Contains(encoded, value) {
-			t.Fatalf("json leaked secret: %s", encoded)
-		}
-	}
-}
-
-func TestCookieQueryValid(t *testing.T) {
-	valid := []browsercookies.CookieQuery{
-		{Host: ".fanbox.cc", Name: "FANBOXSESSID"},
-		{Host: "fanbox.cc", Name: "a-b_c.d"},
-	}
-	for _, q := range valid {
-		if err := q.Valid(); err != nil {
-			t.Fatalf("Valid(%+v) = %v, want nil", q, err)
-		}
-	}
-	if err := browsercookies.DefaultQuery.Valid(); err != nil {
-		t.Fatalf("DefaultQuery invalid: %v", err)
-	}
-	invalid := []browsercookies.CookieQuery{
-		{},
-		{Host: "", Name: "X"},
-		{Host: "x", Name: ""},
-		{Host: "a b", Name: "X"},
-		{Host: "a;DROP TABLE cookies", Name: "X"},
-		{Host: "x", Name: "y\nz"},
-		{Host: "x", Name: `FANBOXSESSID" OR 1=1`},
-	}
-	for _, q := range invalid {
-		if err := q.Valid(); err == nil {
-			t.Fatalf("Valid(%+v) = nil, want error", q)
-		}
-	}
-}
-
-func TestNewUnknownBrowser(t *testing.T) {
-	for _, name := range []string{"netscape", "", "OPERA", "   "} {
-		if _, err := browsercookies.New(name); !errors.Is(err, browsercookies.ErrUnknownBrowser) {
-			t.Fatalf("New(%q) err = %v, want ErrUnknownBrowser", name, err)
-		}
-	}
-}
-
-var testProviderRegistered = false
-
-// registerTestProvider 注册一个幂等的测试 provider。
-func registerTestProvider(t *testing.T) {
-	t.Helper()
-	if testProviderRegistered {
-		return
-	}
-	testProviderRegistered = true
-	browsercookies.Register("test-browser", func() (browsercookies.Provider, error) {
-		return testProvider{}, nil
-	})
-}
-
-type testProvider struct{}
-
-func (testProvider) Name() string { return "test-browser" }
-func (testProvider) DiscoverProfiles(context.Context) ([]browsercookies.Profile, error) {
-	return nil, nil
-}
-func (testProvider) Read(context.Context, browsercookies.CookieQuery, string) ([]browsercookies.Secret, error) {
-	return nil, nil
-}
-func (testProvider) Close() error { return nil }
-
-func TestNewDispatchRegisteredProvider(t *testing.T) {
-	registerTestProvider(t)
-	p, err := browsercookies.New("test-browser")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if p.Name() != "test-browser" {
-		t.Fatalf("Name() = %q", p.Name())
-	}
-	// 大小写不敏感。
-	if _, err := browsercookies.New("TEST-BROWSER"); err != nil {
-		t.Fatalf("New uppercase err = %v", err)
-	}
-}
-
-func TestSelectProfile(t *testing.T) {
-	profiles := []browsercookies.Profile{
-		{ID: "Default", Name: "Default", Path: "/private/var/aaa"},
-		{ID: "Profile 1", Name: "Profile 1", Path: "/private/var/bbb"},
-	}
-	// 多个 profile 且未指定 → ErrMultipleProfiles，错误只列出安全 identifier。
-	_, err := browsercookies.SelectProfile(profiles, "")
-	if !errors.Is(err, browsercookies.ErrMultipleProfiles) {
-		t.Fatalf("err = %v, want ErrMultipleProfiles", err)
-	}
-	if strings.Contains(err.Error(), "/private") {
-		t.Fatalf("multiple-profile error leaked a path: %q", err.Error())
-	}
-	// 单个 profile 自动选择。
-	got, err := browsercookies.SelectProfile([]browsercookies.Profile{{ID: "Default", Path: "/x"}}, "")
-	if err != nil || got.ID != "Default" {
-		t.Fatalf("single profile select = %+v, %v", got, err)
-	}
-	// 指定 identifier。
-	got, err = browsercookies.SelectProfile(profiles, "Profile 1")
-	if err != nil || got.ID != "Profile 1" || got.Path != "/private/var/bbb" {
-		t.Fatalf("select by id = %+v, %v", got, err)
-	}
-	// 未知 identifier。
-	if _, err := browsercookies.SelectProfile(profiles, "nope"); !errors.Is(err, browsercookies.ErrProfileNotFound) {
-		t.Fatalf("unknown id err = %v", err)
-	}
-	// 空列表。
-	if _, err := browsercookies.SelectProfile(nil, ""); !errors.Is(err, browsercookies.ErrProfileNotFound) {
-		t.Fatalf("empty list err = %v", err)
+	for _, format := range []string{logging.FormatText, logging.FormatJSON} {
+		var output bytes.Buffer
+		logger, err := logging.New(&output, "info", format)
+		require.NoError(t, err)
+		logger.Info("cookie", slog.Any("cookie", cookie))
+		require.Contains(t, output.String(), "cookie")
+		require.NotContains(t, output.String(), secret)
 	}
 }

@@ -66,8 +66,7 @@ type AccountService struct {
 	LoadRuntime func() (settings.RuntimeConfig, error)
 }
 
-// accountPort 是 auth adapter 需要的最小业务端口。它保持在 CLI adapter 中，
-// 使 auth 测试可以注入无网络替身，同时不把 CLI DTO 反向放进 services。
+// accountPort 是 auth adapter 消费的账号业务端口，领域服务保持独立于 CLI DTO。
 type accountPort interface {
 	ImportAccount(context.Context, string, bool, pixiv.Options) (pixivaccount.AccountSummary, error)
 	ListAccounts(context.Context) ([]pixivaccount.AccountSummary, error)

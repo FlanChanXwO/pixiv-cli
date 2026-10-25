@@ -53,10 +53,9 @@ type Session struct {
 	flareSolverr *FlareSolverrOptions
 	log          *slog.Logger
 
-	solverMu         sync.Mutex
-	solverState      *solverState
-	solverActive     *solverCall
-	solverHTTPClient *http.Client // deterministic test seam; production remains direct.
+	solverMu     sync.Mutex
+	solverState  *solverState
+	solverActive *solverCall
 }
 
 // FlareSolverrOptions carries the two independent addresses used by the
@@ -69,14 +68,10 @@ type FlareSolverrOptions struct {
 // SessionOptions contains explicit FANBOX native and solver configuration.
 // The solver is inactive when FlareSolverr is nil.
 type SessionOptions struct {
-	HTTPClient *http.Client
-	// SolverHTTPClient optionally injects the FlareSolverr control transport.
-	// It is an explicit transport dependency, not a fallback; production uses
-	// a client created for the configured solver URL when this is nil.
-	SolverHTTPClient *http.Client
-	ProxyURL         string
-	UserAgent        string
-	FlareSolverr     *FlareSolverrOptions
+	HTTPClient   *http.Client
+	ProxyURL     string
+	UserAgent    string
+	FlareSolverr *FlareSolverrOptions
 	// Logger 记录请求结果和挑战恢复决策；nil 时不输出。
 	Logger *slog.Logger
 }
@@ -106,22 +101,22 @@ func NewSessionWithOptions(cookieHeader string, options SessionOptions) (*Sessio
 		if options.HTTPClient.Transport == nil {
 			return nil, errors.New("FANBOX injected HTTP client requires an explicit transport")
 		}
-		return newSession(cookieHeader, options.HTTPClient, options.SolverHTTPClient, proxyURL, validatedAgent, flareSolverr, options.Logger)
+		return newSession(cookieHeader, options.HTTPClient, proxyURL, validatedAgent, flareSolverr, options.Logger)
 	}
 	transport, err := newBrowserTransport(proxyURL)
 	if err != nil {
 		return nil, fmt.Errorf("create FANBOX TLS transport: %w", err)
 	}
-	return newSession(cookieHeader, &http.Client{Transport: transport}, options.SolverHTTPClient, proxyURL, validatedAgent, flareSolverr, options.Logger)
+	return newSession(cookieHeader, &http.Client{Transport: transport}, proxyURL, validatedAgent, flareSolverr, options.Logger)
 }
 
-func newSession(cookieHeader string, client, solverClient *http.Client, proxyURL, agent string, flareSolverr *FlareSolverrOptions, logger *slog.Logger) (*Session, error) {
+func newSession(cookieHeader string, client *http.Client, proxyURL, agent string, flareSolverr *FlareSolverrOptions, logger *slog.Logger) (*Session, error) {
 	cookie, err := NormalizeCookieHeader(cookieHeader)
 	if err != nil {
 		return nil, err
 	}
 	logger = cmp.Or(logger, slog.New(slog.DiscardHandler))
-	return &Session{httpClient: client, proxyURL: proxyURL, userAgent: agent, cookie: cookie, flareSolverr: flareSolverr, solverHTTPClient: solverClient, log: logger}, nil
+	return &Session{httpClient: client, proxyURL: proxyURL, userAgent: agent, cookie: cookie, flareSolverr: flareSolverr, log: logger}, nil
 }
 
 // CloseIdleConnections 释放会话 transport 持有的空闲连接。它不设置请求 deadline；
