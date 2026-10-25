@@ -1,3 +1,5 @@
+// Publish complete inline animation bytes as grant-scoped downloadable artifacts.
+
 package mediaproxy
 
 import (
@@ -119,9 +121,9 @@ func (s *Service) reserveAnimation(ctx context.Context, lease Session, c claims,
 // writeAnimation 写入已验证的字节并发布下载 capability；失败时撤销并清理工作目录。
 func (s *Service) writeAnimation(ctx context.Context, j *animationJob, data, preview []byte) (out AnimationStatus, err error) {
 	a := s.animations
-	a.mu.Lock()
 	defer a.wg.Done()
 	defer func() {
+		a.mu.Lock()
 		defer a.mu.Unlock()
 		j.done = true
 		if err != nil || j.ctx.Err() != nil || !time.Now().Before(j.expiry) {
