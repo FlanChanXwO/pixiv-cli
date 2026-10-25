@@ -63,28 +63,9 @@ func TestCanonicalNovelSearchUsesRoutePeriodAndLogicalPaginationJSON(t *testing.
 	requests := 0
 	transport := searchFixtureTransport(func(request *http.Request) (*http.Response, error) {
 		requests++
-		if request.URL.Path != "/v1/search/novel" {
-			t.Fatalf("path = %q, want /v1/search/novel", request.URL.Path)
-		}
-		query := request.URL.Query()
-		if query.Get("word") != "cat" {
-			t.Fatalf("word = %q, want cat", query.Get("word"))
-		}
-		if query.Get("search_target") != string(pixiv.SearchTargetPartialMatchForTags) {
-			t.Fatalf("search_target = %q, want %q", query.Get("search_target"), pixiv.SearchTargetPartialMatchForTags)
-		}
-		if query.Get("sort") != string(pixiv.SortModeDateDesc) {
-			t.Fatalf("sort = %q, want %q", query.Get("sort"), pixiv.SortModeDateDesc)
-		}
-		if query.Get("duration") != string(pixiv.DurationLastWeek) {
-			t.Fatalf("duration = %q, want %q", query.Get("duration"), pixiv.DurationLastWeek)
-		}
-		wantOffset := ""
-		if requests == 2 {
-			wantOffset = "30"
-		}
-		if query.Get("offset") != wantOffset {
-			t.Fatalf("offset = %q, want %q", query.Get("offset"), wantOffset)
+		// CLI 只负责把 --period 翻成 duration；路由与查询字段由 SDK 测试固定。
+		if got := request.URL.Query().Get("duration"); got != string(pixiv.DurationLastWeek) {
+			t.Fatalf("duration = %q, want %q", got, pixiv.DurationLastWeek)
 		}
 		nextURL := ""
 		if requests == 1 {
@@ -125,13 +106,13 @@ func TestLegacyNovelSearchReadsStdinAndEmitsNDJSON(t *testing.T) {
 	output := &bytes.Buffer{}
 	var requestQuery map[string]string
 	transport := searchFixtureTransport(func(request *http.Request) (*http.Response, error) {
+		// 旧版 search 的 flag 映射（CLI 责任）：stdin word 与 --search-by/--sort/--period。
 		query := request.URL.Query()
 		requestQuery = map[string]string{
 			"word":          query.Get("word"),
 			"search_target": query.Get("search_target"),
 			"sort":          query.Get("sort"),
 			"duration":      query.Get("duration"),
-			"offset":        query.Get("offset"),
 		}
 		return novelSearchResponse(2003, "stdin novel", "")
 	})
@@ -156,7 +137,6 @@ func TestLegacyNovelSearchReadsStdinAndEmitsNDJSON(t *testing.T) {
 		"search_target": string(pixiv.SearchTargetExactMatchForTags),
 		"sort":          string(pixiv.SortModeDateAsc),
 		"duration":      string(pixiv.DurationLastMonth),
-		"offset":        "",
 	}
 	for key, want := range wantQuery {
 		if requestQuery[key] != want {
