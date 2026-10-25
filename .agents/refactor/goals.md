@@ -2463,15 +2463,16 @@
 
 【本 goal】
 工作项：规格 3.4.4（2026-10-25 与维护者确认）。建议由能力更强的模型执行。
-- 删除全仓库全部 *_test.go，以及不再被使用的 testdata 和测试专用代码；然后只按 3.4.4 的清单重写测试，测试点到为止。
+- 删除全仓库针对代码和行为的 *_test.go，以及不再被使用的 testdata 和测试专用代码；然后只按 3.4.4 的清单重写测试，测试点到为止。
+- CI 的检查不在删除范围内：不修改 .github/workflows，不删除任何 CI 步骤；3.4.4 列出的、workflow 按名称或包路径单独运行的测试原样保留，不删除、不重写，也不计入上限。开始前以当时 workflow 中的引用重新核对这份名单。
 - 遵守 3.4.4 的上限：单个测试文件不超过 200 行，单个测试函数不超过 40 行，全仓库测试文件不超过 25 个；不新建测试辅助包、fixture 构造器或 mock 层级；不为测试导出生产符号。优先用 httptest 与临时目录这类真实边界。
-- workflow 按名称或路径运行的测试保留原名重写（3.4.4 清单最后一行）；scripts/citest 至少保留一个测试文件，因为 platform-smoke、container-smoke 与 release.yml 都运行它。删掉的测试名如果仍被 workflow 引用，同步修改 workflow，并按 7.0 第 10 条处理 smoke workflow。
 - 真实环境测试（sdk/pixiv、sdk/fanbox 的 live_test.go、live_mutation_test.go 等）删除，不重写；中英文 development.md 中真实环境测试的说明改为手动验证步骤。
 - 更新 pixiv-cli-test skill：把 3.4.4 的清单与上限写成长期规则，取代原来“无数量上限”的说法；同步中英文 development.md 的测试布局章节与 AGENTS.md 中相关的测试条款。
-- 只改测试、testdata、测试相关文档与 workflow 中的测试引用；生产代码中只为测试存在的部分（导出符号、注入点）一并删除，其余生产代码不改。
+- 只改测试、testdata 与测试相关文档；生产代码中只为测试存在的部分（导出符号、注入点）一并删除，其余生产代码不改。
 
 【验收】
-- 全仓库测试文件不超过 25 个，每个不超过 200 行；PR 中列出每个测试文件、行数与它覆盖的清单项。
+- 除原样保留的 CI 测试外，全仓库测试文件不超过 25 个，每个不超过 200 行；PR 中列出每个测试文件、行数与它覆盖的清单项，以及原样保留的 CI 测试名单。
+- .github/workflows 没有改动，CI 的各项检查在本 PR 上照常运行并通过。
 - 3.4.4 清单的每一项都有对应测试；清单外没有测试。
 - go test ./... -count=1、go test -race ./... -count=1、go vet ./...、sh scripts/build.sh 通过；platform-smoke、container-smoke 在本 PR 上通过。
 - PR 中列出测试总行数变化（G35–G38 后为 52.7k 行）。

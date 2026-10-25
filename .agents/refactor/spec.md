@@ -242,7 +242,7 @@ type Pixiv struct {
 
 #### 3.4.4 测试重写（G44，2026-10-25 起取代 3.4.1 的逐条删减）
 
-G35–G38 后测试仍有 52.7k 行（生产代码 65.2k），并被合并进少数大文件（最大的 4716 行）。维护者决定：删除全部测试，只按下面的清单重写，测试点到为止。
+G35–G38 后测试仍有 52.7k 行（生产代码 65.2k），并被合并进少数大文件（最大的 4716 行）。维护者决定：删除全部针对代码和行为的测试，只按下面的清单重写，测试点到为止。CI 的检查不在删除范围内：workflow 及其步骤（Quality gate 的 test、vet、race、build、licensebundle 检查，platform-smoke、container-smoke、release 中的各项检查）保持不变；workflow 按名称或包路径单独运行的测试原样保留，不删除、不重写，也不计入下面的上限。
 
 **上限：**
 
@@ -265,9 +265,9 @@ G35–G38 后测试仍有 52.7k 行（生产代码 65.2k），并被合并进少
 | 上游响应异常时返回错误而不是空结果；取消向上传播 | `sdk/pixiv`、`sdk/fanbox` |
 | 对外契约快照：MCP `tools/list` 一份 golden；CLI 一个代表性命令的 text、JSON、NDJSON 输出；用法错误的退出码；MCP stdio stdout 只有 JSON-RPC；HTTP 必须带 bearer | `mcpserver`、`cli` |
 | 配置来源优先级（环境变量、文件、默认值）与显式空值 | `config/settings` |
-| 自更新与安装：校验失败时不覆盖已有二进制 | `selfupdate`、`scripts/citest` |
-| 发布产物：校验和、归档命名、formula 版本；workflow 中 action 固定完整 SHA | `scripts/release`、`scripts/citest` |
-| workflow 按名称或路径运行的测试，保留原名重写：`TestPixivBinaryPackagedSmoke`、`TestOpenOnWindowsAcceptsForwardSlashFileURI`、`TestAuthURLCallback` 等 platform-smoke 中点名的测试、`loginhelper` 的各平台注册、`media/ugoira` 的一个编码样本 | 原位置 |
+| 自更新：校验失败时不覆盖已有二进制 | `selfupdate` |
+
+**原样保留、不计入上限的 CI 测试**（以合并时 workflow 中的引用为准重新核对）：`scripts/citest` 整个包（platform-smoke、container-smoke、release 运行）；`scripts/release` 的测试（release.yml 运行）；platform-smoke 点名的 `TestPixivBinaryPackagedSmoke`（`cmd/pixiv`）、`TestOpenOnWindowsAcceptsForwardSlashFileURI`（`storage/database`）、`TestAuthURLCallback`、`TestAuthURLHandlerInstall`、`TestNormalCLIInvocationEnsuresPersistentHandlerWithoutBlockingCommand`（`internal/cli`）；`internal/cli/auth/loginhelper` 与 `internal/media/ugoira/...` 的测试（platform-smoke 按包路径运行，作为各平台的原生证据）。
 
 真实环境测试（`live_test.go`、`live_mutation_test.go`）删除，不重写；真实环境验证改为手动。
 
