@@ -178,7 +178,7 @@ func isPixivHost(host string) bool {
 
 func isLocaleSegment(value string) bool {
 	parts := strings.Split(value, "-")
-	if len(parts) == 0 || len(parts) > 2 {
+	if len(parts) > 2 {
 		return false
 	}
 	for _, part := range parts {

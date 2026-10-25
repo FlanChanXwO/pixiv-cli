@@ -22,9 +22,6 @@ func (c *Client) parseNovelContent(novelID int64, raw []byte) (NovelContent, err
 	if len(blocks) == 0 {
 		return NovelContent{}, newError("NovelContent", sdk.MalformedUpstreamResponse, "novel webview contains no body blocks")
 	}
-	if blocks == nil {
-		blocks = []NovelBlock{}
-	}
 	return NovelContent{NovelID: novelID, Title: title, Caption: caption, Blocks: blocks}, nil
 }
 
@@ -286,9 +283,6 @@ func textContent(n *html.Node) string {
 }
 
 func firstAttribute(n *html.Node, key string) string {
-	if n == nil {
-		return ""
-	}
 	for _, attr := range n.Attr {
 		if strings.EqualFold(attr.Key, key) {
 			return attr.Val

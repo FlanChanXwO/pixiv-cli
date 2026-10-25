@@ -37,13 +37,11 @@ func (c *Client) SearchArtworks(ctx context.Context, request SearchArtworksReque
 	if err != nil {
 		return sdk.Page[Artwork]{}, classifyAppError(err, "SearchArtworks")
 	}
-	page := sdk.Page[Artwork]{Items: make([]Artwork, len(items))}
-	for index, item := range items {
-		page.Items[index], err = c.mapArtwork(item)
-		if err != nil {
-			return sdk.Page[Artwork]{}, err
-		}
+	mapped, err := c.mapArtworks(items)
+	if err != nil {
+		return sdk.Page[Artwork]{}, err
 	}
+	page := sdk.Page[Artwork]{Items: mapped}
 	if hasNext {
 		page.Next, err = c.buildCursor("SearchArtworks", query, pixivapi.ParamOffset, int64(nextOffset), true)
 		if err != nil {
@@ -89,15 +87,9 @@ func searchArtworksQuery(request SearchArtworksRequest) (SearchArtworksRequest, 
 	if request.CursorContext != "" {
 		query.Set("cursor_context", request.CursorContext)
 	}
-	if request.Word != "" {
-		query.Set("word", request.Word)
-	}
-	if request.Target != "" {
-		query.Set("search_target", string(request.Target))
-	}
-	if request.Sort != "" {
-		query.Set("sort", string(request.Sort))
-	}
+	query.Set("word", request.Word)
+	query.Set("search_target", string(request.Target))
+	query.Set("sort", string(request.Sort))
 	if request.Duration != "" {
 		query.Set("duration", string(request.Duration))
 	}

@@ -196,7 +196,7 @@ func (c *Client) NovelSeries(ctx context.Context, request NovelSeriesRequest) (N
 		return NovelSeriesResult{}, newError("NovelSeries", sdk.InvalidArgument, "series ID must be positive")
 	}
 	base := url.Values{pixivapi.ParamSeriesID: {itoa(request.SeriesID)}}
-	_, lastOrder, err := c.continuationValue("NovelSeries", base, request.Cursor, novelSeriesContinuation)
+	_, lastOrder, err := c.continuationKeyValue("NovelSeries", base, request.Cursor, novelSeriesContinuation)
 	if err != nil {
 		return NovelSeriesResult{}, err
 	}
@@ -285,9 +285,6 @@ func (c *Client) RecommendedNovels(ctx context.Context, request RecommendedNovel
 	if err != nil {
 		return sdk.Page[Novel]{}, err
 	}
-	if raw.NextURL != nil && *raw.NextURL == "" {
-		return sdk.Page[Novel]{}, newError("RecommendedNovels", sdk.MalformedUpstreamResponse, "")
-	}
 	nextParams, hasNext, err := novelRecommendedContinuation.params(raw.NextURL)
 	if err != nil {
 		return sdk.Page[Novel]{}, classifyAppError(err, "RecommendedNovels")
@@ -321,7 +318,7 @@ func (c *Client) FollowingNovels(ctx context.Context, request FollowingNovelsReq
 func (c *Client) LatestNovels(ctx context.Context, request LatestNovelsRequest) (sdk.Page[Novel], error) {
 	ctx = pixivapi.WithOperation(ctx, "LatestNovels")
 	base := url.Values{pixivapi.ParamFilter: {"for_android"}}
-	_, maxNovelID, err := c.continuationValue("LatestNovels", base, request.Cursor, novelLatestContinuation)
+	_, maxNovelID, err := c.continuationKeyValue("LatestNovels", base, request.Cursor, novelLatestContinuation)
 	if err != nil {
 		return sdk.Page[Novel]{}, err
 	}
@@ -409,7 +406,7 @@ func (c *Client) fetchNovelContent(ctx context.Context, operation string, novelI
 	if len(bytes.TrimSpace(body)) == 0 {
 		return nil, newError(operation, sdk.MalformedUpstreamResponse, "")
 	}
-	return append([]byte(nil), body...), nil
+	return body, nil
 }
 
 // SearchNovelsRequest searches novels. Repeat the original fields when

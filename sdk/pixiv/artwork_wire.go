@@ -112,6 +112,18 @@ type ugoiraResponseWire struct {
 	Metadata pixivapi.RequiredObject[ugoiraMetadataWire] `json:"ugoira_metadata"`
 }
 
+func (c *Client) mapArtworks(values []artworkWire) ([]Artwork, error) {
+	items := make([]Artwork, len(values))
+	for index, value := range values {
+		mapped, err := c.mapArtwork(value)
+		if err != nil {
+			return nil, err
+		}
+		items[index] = mapped
+	}
+	return items, nil
+}
+
 // mapArtwork 把一份上游 artwork 响应映射为公开模型，并在受 policy 校验的边界
 // 创建资源引用。
 func (c *Client) mapArtwork(value artworkWire) (Artwork, error) {
@@ -136,15 +148,18 @@ func (c *Client) mapArtwork(value artworkWire) (Artwork, error) {
 		PageCount:      value.PageCount,
 		XRestrict:      value.XRestrict,
 		AIType:         value.AIType,
-		Tools:          append([]string{}, value.Tools...),
+		Tools:          value.Tools,
 		Pages:          []ArtworkPage{},
 
-		IsBookmarked:          cloneValue(value.IsBookmarked),
-		IsMuted:               cloneValue(value.IsMuted),
-		Visible:               cloneValue(value.Visible),
-		SanityLevel:           cloneValue(value.SanityLevel),
-		RestrictionAttributes: cloneStringSlice(value.RestrictionAttributes),
-		TotalComments:         cloneValue(value.TotalComments),
+		IsBookmarked:          value.IsBookmarked,
+		IsMuted:               value.IsMuted,
+		Visible:               value.Visible,
+		SanityLevel:           value.SanityLevel,
+		RestrictionAttributes: value.RestrictionAttributes,
+		TotalComments:         value.TotalComments,
+	}
+	if result.Tools == nil {
+		result.Tools = []string{}
 	}
 	if value.Series != nil {
 		result.Series = &ArtworkSeriesSummary{ID: value.Series.ID, Title: value.Series.Title}
@@ -206,7 +221,7 @@ func (c *Client) mapArtworkPages(value artworkWire) ([]ArtworkPage, error) {
 	if len(value.MetaPages) > 0 {
 		pages := make([]ArtworkPage, 0, len(value.MetaPages))
 		for index, page := range value.MetaPages {
-			imageURL := firstArtworkImageURL(page.ImageURLs)
+			imageURL := firstImageURL(page.ImageURLs)
 			if imageURL == "" {
 				return nil, newError("ArtworkPages", sdk.MalformedUpstreamResponse, "page has no image URL")
 			}
@@ -248,7 +263,7 @@ func (c *Client) mapArtworkPages(value artworkWire) ([]ArtworkPage, error) {
 	}}, nil
 }
 
-func firstArtworkImageURL(value imageURLsWire) string {
+func firstImageURL(value imageURLsWire) string {
 	for _, candidate := range []string{value.Original, value.Large, value.Medium, value.SquareMedium} {
 		if candidate != "" {
 			return candidate
@@ -259,13 +274,12 @@ func firstArtworkImageURL(value imageURLsWire) string {
 
 // mapUgoiraMetadata 校验并映射可播放动图的压缩包与帧信息。
 func (c *Client) mapUgoiraMetadata(artworkID int64, value ugoiraMetadataWire) (UgoiraMetadata, error) {
-	if artworkID <= 0 || !value.ZipURLs.Present || !value.ZipURLs.Valid ||
+	if !value.ZipURLs.Present || !value.ZipURLs.Valid ||
 		(value.ZipURLs.Value.Medium == "" && value.ZipURLs.Value.Original == "") ||
 		!value.Frames.Present || !value.Frames.Valid || len(value.Frames.Items) == 0 {
 		return UgoiraMetadata{}, pixivapi.MalformedResponse()
 	}
 	archives := make([]UgoiraArchive, 0, 2)
-	seenQuality := map[string]bool{}
 	for _, candidate := range []struct {
 		quality UgoiraQuality
 		url     string
@@ -273,7 +287,7 @@ func (c *Client) mapUgoiraMetadata(artworkID int64, value ugoiraMetadataWire) (U
 		{UgoiraQualityMedium, value.ZipURLs.Value.Medium},
 		{UgoiraQualityOriginal, value.ZipURLs.Value.Original},
 	} {
-		if candidate.url == "" || seenQuality[string(candidate.quality)] {
+		if candidate.url == "" {
 			continue
 		}
 		resource, err := c.newResourceWithVariant("ugoira_archive", artworkID, -1, string(candidate.quality), candidate.url)
@@ -281,10 +295,6 @@ func (c *Client) mapUgoiraMetadata(artworkID int64, value ugoiraMetadataWire) (U
 			return UgoiraMetadata{}, err
 		}
 		archives = append(archives, UgoiraArchive{Quality: candidate.quality, Resource: resource})
-		seenQuality[string(candidate.quality)] = true
-	}
-	if len(archives) == 0 {
-		return UgoiraMetadata{}, pixivapi.MalformedResponse()
 	}
 	frames := make([]UgoiraFrame, 0, len(value.Frames.Items))
 	seenFile := map[string]bool{}

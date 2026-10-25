@@ -93,13 +93,9 @@ func artworkKind(raw string) (ArtworkKind, string) {
 }
 
 func (c *Client) artworkPage(op string, query url.Values, key string, values []artworkWire, nextValue int64, hasNext bool) (sdk.Page[Artwork], error) {
-	items := make([]Artwork, len(values))
-	for index, value := range values {
-		mapped, err := c.mapArtwork(value)
-		if err != nil {
-			return sdk.Page[Artwork]{}, err
-		}
-		items[index] = mapped
+	items, err := c.mapArtworks(values)
+	if err != nil {
+		return sdk.Page[Artwork]{}, err
 	}
 	next, err := c.buildCursor(op, query, key, nextValue, hasNext)
 	if err != nil {
@@ -110,13 +106,9 @@ func (c *Client) artworkPage(op string, query url.Values, key string, values []a
 
 // artworkParamsPage 以多参数 continuation 构建 cursor（recommended）。
 func (c *Client) artworkParamsPage(op string, query url.Values, values []artworkWire, nextParams url.Values, hasNext bool) (sdk.Page[Artwork], error) {
-	items := make([]Artwork, len(values))
-	for index, value := range values {
-		mapped, err := c.mapArtwork(value)
-		if err != nil {
-			return sdk.Page[Artwork]{}, err
-		}
-		items[index] = mapped
+	items, err := c.mapArtworks(values)
+	if err != nil {
+		return sdk.Page[Artwork]{}, err
 	}
 	var next sdk.Cursor
 	if hasNext {
@@ -517,22 +509,4 @@ type metaPageWire struct {
 	Height    int           `json:"height"`
 	Extension string        `json:"extension"`
 	ImageURLs imageURLsWire `json:"image_urls"`
-}
-
-func firstAvailable(urls imageURLsWire) string {
-	for _, value := range []string{urls.Original, urls.Large, urls.Medium, urls.SquareMedium} {
-		if value != "" {
-			return value
-		}
-	}
-	return ""
-}
-
-func cloneStringSlice(value *[]string) *[]string {
-	if value == nil {
-		return nil
-	}
-	cloned := make([]string, len(*value))
-	copy(cloned, *value)
-	return &cloned
 }

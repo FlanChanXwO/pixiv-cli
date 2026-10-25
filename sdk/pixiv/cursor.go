@@ -571,18 +571,7 @@ func (c *Client) continuationKeyValue(operation string, base url.Values, cur sdk
 	return "", 0, newError(operation, sdk.InvalidCursor, "cursor continuation kind mismatch")
 }
 
-// continuationValue 读取单一 key 的续页游标；零游标表示首页。
-func (c *Client) continuationValue(operation string, base url.Values, cur sdk.Cursor, spec continuationSpec) (string, int64, error) {
-	if cur.IsZero() {
-		return spec.keys[0], 0, nil
-	}
-	return c.continuationKeyValue(operation, base, cur, spec)
-}
-
 func cloneValues(values url.Values) url.Values {
-	if values == nil {
-		return url.Values{}
-	}
 	cloned := make(url.Values, len(values))
 	for key, entries := range values {
 		cloned[key] = append([]string(nil), entries...)

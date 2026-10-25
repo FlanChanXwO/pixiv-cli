@@ -193,10 +193,6 @@ func (c *Client) StampNovelComment(ctx context.Context, request StampNovelCommen
 // as bookmark tags.
 func (c *Client) AddArtworkBookmark(ctx context.Context, request AddArtworkBookmarkRequest) error {
 	ctx = pixivapi.WithOperation(ctx, "AddArtworkBookmark")
-	return c.addArtworkBookmark(ctx, request)
-}
-
-func (c *Client) addArtworkBookmark(ctx context.Context, request AddArtworkBookmarkRequest) error {
 	const operation = "AddArtworkBookmark"
 	if request.ArtworkID <= 0 {
 		return newError(operation, sdk.InvalidArgument, "artwork ID must be positive")
@@ -223,16 +219,12 @@ func (c *Client) addArtworkBookmark(ctx context.Context, request AddArtworkBookm
 // RemoveArtworkBookmark removes the current user's bookmark from one artwork.
 func (c *Client) RemoveArtworkBookmark(ctx context.Context, request RemoveArtworkBookmarkRequest) error {
 	ctx = pixivapi.WithOperation(ctx, "RemoveArtworkBookmark")
-	return c.removeArtworkBookmark(ctx, request.ArtworkID)
-}
-
-func (c *Client) removeArtworkBookmark(ctx context.Context, artworkID int64) error {
 	const operation = "RemoveArtworkBookmark"
-	if artworkID <= 0 {
+	if request.ArtworkID <= 0 {
 		return newError(operation, sdk.InvalidArgument, "artwork ID must be positive")
 	}
 	if err := c.app.PostForm(ctx, pixivapi.PathBookmarkDelete, url.Values{
-		pixivapi.ParamIllustID: {itoa(artworkID)},
+		pixivapi.ParamIllustID: {itoa(request.ArtworkID)},
 	}); err != nil {
 		return classifyAppError(err, operation)
 	}
