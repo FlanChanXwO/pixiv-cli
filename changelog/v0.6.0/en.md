@@ -6,7 +6,7 @@
 
 ## Added
 
-- Authenticated novel search and user search are available through the CLI and MCP, with Japanese SDK and MCP reference pages. ([`2f414ac`](https://github.com/FlanChanXwO/pixiv-cli/commit/2f414ac), [`60bd6b4`](https://github.com/FlanChanXwO/pixiv-cli/commit/60bd6b4))
+- Authenticated novel search and user search are available through the CLI and MCP. ([`2f414ac`](https://github.com/FlanChanXwO/pixiv-cli/commit/2f414ac))
 
 ## Fixed
 
@@ -15,6 +15,7 @@
 **Full Changelog**: [v0.5.0...v0.6.0](https://github.com/FlanChanXwO/pixiv-cli/compare/v0.5.0...v0.6.0)
 
 <!-- internal:
+  [`60bd6b4`](https://github.com/FlanChanXwO/pixiv-cli/commit/60bd6b4)
   [`7d75073`](https://github.com/FlanChanXwO/pixiv-cli/commit/7d75073)
   [`82c18ad`](https://github.com/FlanChanXwO/pixiv-cli/commit/82c18ad)
   [`b0c6ad1`](https://github.com/FlanChanXwO/pixiv-cli/commit/b0c6ad1)

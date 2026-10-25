@@ -9,7 +9,7 @@ Write what a CLI, MCP, or SDK user notices: the command, flag, or tool that chan
 and internal-refactor work, pull request process changes, and maintainer-only documentation do not belong in the body.
 When a release contains internal work only, mark its sources in a trailing `<!-- internal: ... -->` comment; the notes
 validator requires every audited PR and direct commit to be in the body or that comment, and the rendered GitHub Release
-omits it. Documentation changes that affect users belong under Changed.
+omits it. Documentation and README changes are maintainer work and also stay in that comment.
 
 `unreleased/` is the release-prep workspace. Maintainers audit the tag range and write the next bilingual notes directly.
 

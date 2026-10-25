@@ -2,7 +2,7 @@
 
 ## Changed
 
-- The Pixiv Premium requirement for App API search is explained in the error and documentation, and account, configuration, and operation-log messages are easier to read. ([#34](https://github.com/FlanChanXwO/pixiv-cli/pull/34))
+- App API search reports the Pixiv Premium requirement in its error, and account, configuration, and operation-log messages are easier to read. ([#34](https://github.com/FlanChanXwO/pixiv-cli/pull/34))
 
 **Full Changelog**: [v0.7.0...v0.7.1](https://github.com/FlanChanXwO/pixiv-cli/compare/v0.7.0...v0.7.1)
 

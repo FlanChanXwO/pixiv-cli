@@ -8,7 +8,6 @@
 
 - `pixiv update` installs signed releases, detects how the CLI was installed, warns you when a newer version is available, and `pixiv --version` can now show build metadata. ([`1101530`](https://github.com/FlanChanXwO/pixiv-cli/commit/1101530), [`3176147`](https://github.com/FlanChanXwO/pixiv-cli/commit/3176147), [`75872cd`](https://github.com/FlanChanXwO/pixiv-cli/commit/75872cd), [`a2330b4`](https://github.com/FlanChanXwO/pixiv-cli/commit/a2330b4), [`a279985`](https://github.com/FlanChanXwO/pixiv-cli/commit/a279985), [`c4e7737`](https://github.com/FlanChanXwO/pixiv-cli/commit/c4e7737))
 - Ugoira works download with built-in GIF/APNG encoding instead of requiring an external encoder. ([`235a017`](https://github.com/FlanChanXwO/pixiv-cli/commit/235a017), [`e5bc6a9`](https://github.com/FlanChanXwO/pixiv-cli/commit/e5bc6a9))
-- Initial `pixiv` CLI and MCP server release, with account commands, API reads, downloads, and setup documentation. ([`51b6894`](https://github.com/FlanChanXwO/pixiv-cli/commit/51b6894), [`53ad400`](https://github.com/FlanChanXwO/pixiv-cli/commit/53ad400))
 
 ## Fixed
 
@@ -19,6 +18,7 @@
 **Full Changelog**: [v0.1.0 commits](https://github.com/FlanChanXwO/pixiv-cli/commits/v0.1.0)
 
 <!-- internal:
+  [`51b6894`](https://github.com/FlanChanXwO/pixiv-cli/commit/51b6894)
   [`02cc1bb`](https://github.com/FlanChanXwO/pixiv-cli/commit/02cc1bb)
   [`08b98c8`](https://github.com/FlanChanXwO/pixiv-cli/commit/08b98c8)
   [`0cbd004`](https://github.com/FlanChanXwO/pixiv-cli/commit/0cbd004)

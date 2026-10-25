@@ -13,7 +13,6 @@
 ## 变更
 
 - 动图 GIF/APNG 编码改为流式纯 Go 实现；发布二进制以 `CGO_ENABLED=0` 构建，源码构建不再需要 Rust 或 C 链接器。帧顺序、时长、透明度、缩放和原子写出保持不变。（[#147](https://github.com/FlanChanXwO/pixiv-cli/pull/147)）
-- README 不再包含 Telegram 群组徽章和链接。（[#134](https://github.com/FlanChanXwO/pixiv-cli/pull/134), [#150](https://github.com/FlanChanXwO/pixiv-cli/pull/150)）
 - 配置路径、别名、环境变量覆盖与默认值改为由结构体字段标签生成；现有键名、环境变量、默认值和生成的 `config.toml` 内容保持兼容。（[#133](https://github.com/FlanChanXwO/pixiv-cli/pull/133)）
 
 ## 修复
@@ -28,6 +27,8 @@
 **完整变更**：[v1.1.1...v1.2.0](https://github.com/FlanChanXwO/pixiv-cli/compare/v1.1.1...v1.2.0)
 
 <!-- internal:
+  [#134](https://github.com/FlanChanXwO/pixiv-cli/pull/134)
+  [#150](https://github.com/FlanChanXwO/pixiv-cli/pull/150)
   [#122](https://github.com/FlanChanXwO/pixiv-cli/pull/122)
   [#123](https://github.com/FlanChanXwO/pixiv-cli/pull/123)
   [#124](https://github.com/FlanChanXwO/pixiv-cli/pull/124)

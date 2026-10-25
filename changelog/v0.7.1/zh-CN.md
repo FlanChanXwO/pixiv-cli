@@ -2,7 +2,7 @@
 
 ## 变更
 
-- App API 搜索需要 Pixiv Premium 这一点已在报错和文档中说明；账号、配置和操作日志的提示更易读。（[#34](https://github.com/FlanChanXwO/pixiv-cli/pull/34)）
+- App API 搜索需要 Pixiv Premium 时，报错会说明这一点；账号、配置和操作日志的提示更易读。（[#34](https://github.com/FlanChanXwO/pixiv-cli/pull/34)）
 
 **完整变更**：[v0.7.0...v0.7.1](https://github.com/FlanChanXwO/pixiv-cli/compare/v0.7.0...v0.7.1)
 

@@ -11,10 +11,6 @@
 - All App API ranking modes are available through the CLI. ([`bc00211`](https://github.com/FlanChanXwO/pixiv-cli/commit/bc00211))
 - `debug` writes redacted daily operation logs under the user state directory. ([`907fe1b`](https://github.com/FlanChanXwO/pixiv-cli/commit/907fe1b))
 
-## Changed
-
-- CLI, MCP, and product-skill documentation now matches the App API search behavior and the updated download flow. ([`1ffad53`](https://github.com/FlanChanXwO/pixiv-cli/commit/1ffad53))
-
 ## Fixed
 
 - Authenticated R18 artwork reads work again; search filtering skips empty upstream batches, login shows its final page, and log writers close when a command finishes. ([`1030531`](https://github.com/FlanChanXwO/pixiv-cli/commit/1030531), [`1e01b74`](https://github.com/FlanChanXwO/pixiv-cli/commit/1e01b74), [`274ccac`](https://github.com/FlanChanXwO/pixiv-cli/commit/274ccac), [`71734d0`](https://github.com/FlanChanXwO/pixiv-cli/commit/71734d0), [`79c14ac`](https://github.com/FlanChanXwO/pixiv-cli/commit/79c14ac), [`8a172da`](https://github.com/FlanChanXwO/pixiv-cli/commit/8a172da))
@@ -24,6 +20,7 @@
 **Full Changelog**: [v0.4.5...v0.5.0](https://github.com/FlanChanXwO/pixiv-cli/compare/v0.4.5...v0.5.0)
 
 <!-- internal:
+  [`1ffad53`](https://github.com/FlanChanXwO/pixiv-cli/commit/1ffad53)
   [`02fe9f5`](https://github.com/FlanChanXwO/pixiv-cli/commit/02fe9f5)
   [`058aaad`](https://github.com/FlanChanXwO/pixiv-cli/commit/058aaad)
   [`0acc0d7`](https://github.com/FlanChanXwO/pixiv-cli/commit/0acc0d7)
