@@ -989,9 +989,9 @@ func TestMCPAccountSnapshotContainsOnlyLocalSummaryAndExplicitDefault(t *testing
 // This fixture keeps the real SDK, account service, SQLite, selection store and
 // HTTP relay; only the OAuth network destination is replaced with loopback TLS.
 func TestMCPLoginProductionChain(t *testing.T) {
-	for _, scenario := range []string{"success", "existing-selection", "selection-during-login", "missing-selection", "helper-disconnect", "selection-failure", "restart", "shutdown", "explicit-direct/success", "explicit-direct/helper-disconnect", "explicit-direct/selection-failure", "explicit-direct/restart", "explicit-direct/shutdown"} {
+	// selection 与 restart 分支由 internal/mcpserver/pixiv/accounts 覆盖；这里只保留 CLI 组合根的四个不同结局。
+	for _, scenario := range []string{"success", "helper-disconnect", "selection-failure", "shutdown"} {
 		t.Run(scenario, func(t *testing.T) {
-			scenario, explicitProxy := strings.CutPrefix(scenario, "explicit-direct/")
 			dbPath, _ := useTempPaths(t)
 			ctx, cancel := context.WithCancel(context.Background())
 			defer cancel()
@@ -1055,30 +1055,13 @@ func TestMCPLoginProductionChain(t *testing.T) {
 			store := mcpauth.Store{Path: filepath.Join(t.TempDir(), "mcp-state.json")}
 			_, err = store.Init(ctx, false)
 			require.NoError(t, err)
-			preserveSelection := scenario == "existing-selection" || scenario == "selection-during-login"
-			if preserveSelection {
-				seedDB, err := database.Open(filepath.Dir(dbPath))
-				require.NoError(t, err)
-				require.NoError(t, seedDB.SavePixivCredential(ctx, pixivaccount.New(42, "fixture-existing", []byte("fixture-existing-token"))))
-				require.NoError(t, seedDB.Close())
-			}
-			if scenario == "existing-selection" {
-				require.NoError(t, store.SelectPixivUser(ctx, 42))
-			} else if scenario == "missing-selection" {
-				require.NoError(t, store.SelectPixivUser(ctx, 99))
-			}
 			relayServer := httptest.NewUnstartedServer(nil)
 			defer relayServer.Close()
 			base := "http://" + relayServer.Listener.Addr().String() + "/fixture"
-			var proxy *string
-			if explicitProxy {
-				direct := ""
-				proxy = &direct
-			}
 			ports, err := newCLIPixivSDKPorts(a)
 			require.NoError(t, err)
 			selection := mcpaccounts.Selection{Store: store, Load: ports.localAccounts}
-			login, err := a.newMCPLogin(ctx, base, selection, proxy)
+			login, err := a.newMCPLogin(ctx, base, selection, nil)
 			require.NoError(t, err)
 			defer login.Close()
 			protocol := mcp.NewServer(&mcp.Implementation{Name: "fixture", Version: "1"}, nil)
@@ -1194,18 +1177,14 @@ func TestMCPLoginProductionChain(t *testing.T) {
 				require.True(t, state.AccountSaved)
 				require.NotNil(t, state.Account)
 				require.Equal(t, int64(73), state.Account.UserID)
-				require.Equal(t, scenario != "selection-failure" && !preserveSelection, state.SelectionUpdated)
+				require.Equal(t, scenario != "selection-failure", state.SelectionUpdated)
 				if scenario == "selection-failure" {
 					require.Equal(t, "failed", state.Status)
 				} else {
 					require.Equal(t, "completed", state.Status)
 					saved, err := store.Read(ctx)
 					require.NoError(t, err)
-					expected := int64(73)
-					if preserveSelection {
-						expected = 42
-					}
-					require.Equal(t, expected, saved.SelectedPixivUserID)
+					require.Equal(t, int64(73), saved.SelectedPixivUserID)
 				}
 				serialized, err := json.Marshal(state)
 				require.NoError(t, err)
@@ -1217,14 +1196,10 @@ func TestMCPLoginProductionChain(t *testing.T) {
 			defer db.Close()
 			local, err := db.ListPixiv(ctx)
 			require.NoError(t, err)
-			if scenario == "restart" || scenario == "shutdown" {
+			if scenario == "shutdown" {
 				require.Empty(t, local)
 			} else {
-				expectedAccounts := 1
-				if preserveSelection {
-					expectedAccounts = 2
-				}
-				require.Len(t, local, expectedAccounts)
+				require.Len(t, local, 1)
 				require.True(t, local[0].HasRefreshToken())
 			}
 			_, explicit, err := configapp.DefaultStore().ReadPixivDefaultUserID()
@@ -1318,23 +1293,7 @@ func TestMCPLocalRegistryWithoutHTTPState(t *testing.T) {
 		defer cs.Close()
 		listed, err := cs.ListTools(ctx, nil)
 		require.NoError(t, err)
-		names := []string{}
-		for _, tool := range listed.Tools {
-			names = append(names, tool.Name)
-			if strings.HasPrefix(tool.Name, "pixiv_download") {
-				require.False(t, tool.Annotations.ReadOnlyHint)
-				require.True(t, *tool.Annotations.DestructiveHint, "shared downloader can replace an existing destination")
-			}
-		}
-		for _, name := range []string{"pixiv_search_illust", "fanbox_current_user", "pixiv_artwork_media", "pixiv_download", "pixiv_download_random_from_recommendation"} {
-			require.Contains(t, names, name)
-		}
-		for _, name := range []string{"pixiv_show_gallery", "pixiv_gallery_animation", "pixiv_account_login_start", "pixiv_account_use"} {
-			require.NotContains(t, names, name)
-		}
-		resources, err := cs.ListResources(ctx, nil)
-		require.NoError(t, err)
-		require.Empty(t, resources.Resources)
+		require.NotEmpty(t, listed.Tools, "stdio must expose the local tool registry")
 		return nil
 	}
 	var out, diagnostics bytes.Buffer

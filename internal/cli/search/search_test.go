@@ -8,6 +8,7 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -104,39 +105,60 @@ func TestCommandRejectsInvalidFilterBeforeOpeningClient(t *testing.T) {
 	}
 }
 
-func TestCommandUsesReverseSearchForHTTPSourceWithoutOpeningPixivSDK(t *testing.T) {
-	opened := false
-	reverseCalls := 0
-	const source = "https://example.test/image.jpg"
-	cmd := newTestCommand(testDependencies{
-		Input:  strings.NewReader(""),
-		Output: &bytes.Buffer{},
-		JSONOut: func(*bool) (bool, error) {
-			opened = true
-			return false, nil
-		},
-		Pooled: func(context.Context, Request, func(context.Context, *pixiv.Client) (bool, error)) error {
-			opened = true
-			return nil
-		},
-		ReverseSearch: func(_ context.Context, request ReverseSearchRequest) (reversesearch.Response, error) {
-			reverseCalls++
-			if request.Source != source {
-				t.Fatalf("reverse search source = %q, want %q", request.Source, source)
+// 输入分类：HTTP(S) 与常规文件走 reverse search，其它字符串仍走关键词搜索；两路互斥。
+func TestCommandRoutesInputSources(t *testing.T) {
+	for _, test := range []struct {
+		name        string
+		args        []string
+		wantSource  string
+		wantKeyword bool
+	}{
+		{name: "https source", args: []string{"https://example.test/image.jpg", "--ndjson"}, wantSource: "https://example.test/image.jpg"},
+		{name: "regular file", args: []string{filepath.Join(t.TempDir(), "image.jpg"), "--ndjson"}, wantSource: "file"},
+		{name: "keyword", args: []string{"ordinary-keyword", "--ndjson"}, wantKeyword: true},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			if test.wantSource == "file" {
+				path := test.args[0]
+				if err := os.WriteFile(path, []byte("not-an-image-fixture"), 0o600); err != nil {
+					t.Fatal(err)
+				}
+				test.wantSource = path
 			}
-			return reversesearch.Response{}, nil
-		},
-	})
-	cmd.SetArgs([]string{source, "--ndjson"})
-
-	if err := cmd.Execute(); err != nil {
-		t.Fatalf("execute reverse search: %v", err)
-	}
-	if reverseCalls != 1 {
-		t.Fatalf("reverse search calls = %d, want 1", reverseCalls)
-	}
-	if opened {
-		t.Fatal("opened Pixiv SDK or JSON resolver for image search")
+			keywordCalls := 0
+			reverseCalls := 0
+			cmd := newTestCommand(testDependencies{
+				Input:  strings.NewReader(""),
+				Output: &bytes.Buffer{},
+				Pooled: func(context.Context, Request, func(context.Context, *pixiv.Client) (bool, error)) error {
+					keywordCalls++
+					return nil
+				},
+				ReverseSearch: func(_ context.Context, request ReverseSearchRequest) (reversesearch.Response, error) {
+					reverseCalls++
+					if test.wantKeyword {
+						t.Fatalf("used reverse search for %q", request.Source)
+					}
+					if request.Source != test.wantSource {
+						t.Fatalf("reverse search source = %q, want %q", request.Source, test.wantSource)
+					}
+					return reversesearch.Response{}, nil
+				},
+			})
+			cmd.SetArgs(test.args)
+			if err := cmd.Execute(); err != nil {
+				t.Fatalf("execute: %v", err)
+			}
+			if test.wantKeyword {
+				if keywordCalls != 1 || reverseCalls != 0 {
+					t.Fatalf("keyword calls = %d, reverse calls = %d", keywordCalls, reverseCalls)
+				}
+				return
+			}
+			if reverseCalls != 1 || keywordCalls != 0 {
+				t.Fatalf("reverse calls = %d, keyword calls = %d, want reverse only", reverseCalls, keywordCalls)
+			}
+		})
 	}
 }
 
@@ -235,50 +257,64 @@ func TestCommandDoesNotFallbackInvalidHTTPSourceToKeywordSearch(t *testing.T) {
 	}
 }
 
-func TestCommandJSONOutputPreservesStableSolverErrorAndSafeCause(t *testing.T) {
-	const secret = "solver-secret source-secret csrf-secret"
-	output := &bytes.Buffer{}
-	response := reversesearch.Response{
-		Input:     reversesearch.Input{Kind: reversesearch.SourceKindURL, SHA256: "deadbeef"},
-		Providers: []reversesearch.ProviderSummary{{Name: reversesearch.ProviderASCII2DColor, Status: reversesearch.ProviderStatusError}},
-		Results:   []reversesearch.Result{},
-		ProviderErrors: []reversesearch.ProviderError{{
-			Provider: reversesearch.ProviderASCII2DColor,
-			Code:     reversesearch.CodeSolverUnavailable,
-			Message:  "ascii2d challenge solver is unavailable",
-		}},
-	}
-	cmd := newTestCommand(testDependencies{
-		Input:       strings.NewReader(""),
-		Output:      output,
-		ErrorOutput: &bytes.Buffer{},
-		JSONOut:     func(*bool) (bool, error) { return true, nil },
-		ReverseSearch: func(context.Context, ReverseSearchRequest) (reversesearch.Response, error) {
-			return response, reversesearch.NewError(reversesearch.CodeSolverUnavailable, "ascii2d challenge solver is unavailable", errors.New(secret))
-		},
-	})
-	cmd.SetArgs([]string{"https://example.test/image.jpg", "--json"})
+// provider 失败时 JSON 信封仍完整输出、错误 message 稳定，且私有 cause 不进入 stdout/stderr。
+func TestCommandJSONOutputPreservesProviderErrorEnvelope(t *testing.T) {
+	for _, test := range []struct {
+		name       string
+		provider   reversesearch.Provider
+		message    string
+		errorCode  reversesearch.ErrorCode
+		wantSecure bool
+	}{
+		{name: "solver unavailable", provider: reversesearch.ProviderASCII2DColor, message: "ascii2d challenge solver is unavailable", errorCode: reversesearch.CodeSolverUnavailable, wantSecure: true},
+		{name: "missing credential", provider: reversesearch.ProviderSauceNAO, message: "SauceNAO API key is required", errorCode: reversesearch.CodeMissingCredential},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			const secret = "solver-secret source-secret csrf-secret"
+			output := &bytes.Buffer{}
+			errorOutput := &bytes.Buffer{}
+			provider := test.provider
+			response := reversesearch.Response{
+				Input:     reversesearch.Input{Kind: reversesearch.SourceKindURL, SHA256: "deadbeef"},
+				Providers: []reversesearch.ProviderSummary{{Name: provider, Status: reversesearch.ProviderStatusError}},
+				Results:   []reversesearch.Result{},
+				ProviderErrors: []reversesearch.ProviderError{{
+					Provider: provider,
+					Code:     test.errorCode,
+					Message:  test.message,
+				}},
+			}
+			cmd := newTestCommand(testDependencies{
+				Input:       strings.NewReader(""),
+				Output:      output,
+				ErrorOutput: errorOutput,
+				JSONOut:     func(*bool) (bool, error) { return true, nil },
+				ReverseSearch: func(context.Context, ReverseSearchRequest) (reversesearch.Response, error) {
+					return response, reversesearch.NewError(test.errorCode, test.message, errors.New(secret))
+				},
+			})
+			cmd.SetArgs([]string{"https://example.test/image.jpg", "--json"})
 
-	err := cmd.Execute()
-	if err == nil || err.Error() != "ascii2d challenge solver is unavailable" {
-		t.Fatalf("execute reverse search error = %v", err)
-	}
-	var envelope struct {
-		Providers      []reversesearch.ProviderSummary `json:"providers"`
-		Results        []reversesearch.Result          `json:"results"`
-		ProviderErrors []reversesearch.ProviderError   `json:"provider_errors"`
-	}
-	if decodeErr := json.Unmarshal(output.Bytes(), &envelope); decodeErr != nil {
-		t.Fatalf("decode JSON output: %v; output=%q", decodeErr, output.String())
-	}
-	if len(envelope.Providers) != 1 || len(envelope.Results) != 0 || len(envelope.ProviderErrors) != 1 {
-		t.Fatalf("unexpected solver error envelope: %+v", envelope)
-	}
-	if envelope.ProviderErrors[0].Code != reversesearch.CodeSolverUnavailable {
-		t.Fatalf("provider error code = %q, want %q", envelope.ProviderErrors[0].Code, reversesearch.CodeSolverUnavailable)
-	}
-	if strings.Contains(output.String(), secret) || strings.Contains(err.Error(), secret) {
-		t.Fatalf("solver error leaked private cause: output=%q err=%q", output.String(), err)
+			err := cmd.Execute()
+			if err == nil || err.Error() != test.message {
+				t.Fatalf("execute error = %v, want %q", err, test.message)
+			}
+			var envelope struct {
+				ProviderErrors []reversesearch.ProviderError `json:"provider_errors"`
+			}
+			if decodeErr := json.Unmarshal(output.Bytes(), &envelope); decodeErr != nil {
+				t.Fatalf("decode JSON output: %v; output=%q", decodeErr, output.String())
+			}
+			if len(envelope.ProviderErrors) != 1 || envelope.ProviderErrors[0].Code != test.errorCode {
+				t.Fatalf("unexpected provider error envelope: %+v", envelope)
+			}
+			if strings.Contains(output.String()+errorOutput.String()+err.Error(), secret) {
+				t.Fatalf("provider error leaked private cause: output=%q stderr=%q err=%q", output.String(), errorOutput.String(), err)
+			}
+			if test.wantSecure && strings.Contains(output.String()+errorOutput.String(), "https://example.test/image.jpg") {
+				t.Fatal("leaked source URL in provider failure output")
+			}
+		})
 	}
 }
 
