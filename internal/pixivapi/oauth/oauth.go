@@ -78,23 +78,14 @@ func New(refreshToken string, cfg Config) *Client {
 	}
 }
 
-func (c *Client) SetRefreshToken(token string) {
-	token, inputErr := ValidateRefreshTokenInput(token)
-	c.mu.Lock()
-	c.refreshToken = strings.TrimSpace(token)
-	c.refreshTokenErr = inputErr
-	c.mu.Unlock()
-}
-
 func (c *Client) RefreshTokenValue() string {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 	return c.refreshToken
 }
-func (c *Client) AccessToken() string   { c.mu.RLock(); defer c.mu.RUnlock(); return c.accessToken }
-func (c *Client) UserID() int64         { c.mu.RLock(); defer c.mu.RUnlock(); return c.userID }
-func (c *Client) UserName() string      { c.mu.RLock(); defer c.mu.RUnlock(); return c.userName }
-func (c *Client) IsAuthenticated() bool { return c.AccessToken() != "" }
+func (c *Client) AccessToken() string { c.mu.RLock(); defer c.mu.RUnlock(); return c.accessToken }
+func (c *Client) UserID() int64       { c.mu.RLock(); defer c.mu.RUnlock(); return c.userID }
+func (c *Client) UserName() string    { c.mu.RLock(); defer c.mu.RUnlock(); return c.userName }
 
 // Expiry 返回 access token 的过期时间；上游未提供或已过期时为零值。
 func (c *Client) Expiry() time.Time { c.mu.RLock(); defer c.mu.RUnlock(); return c.expiresAt }
