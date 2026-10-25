@@ -10,7 +10,7 @@
 
 ## Changed
 
-- Release notes are published in English and Simplified Chinese, installation and account guides for AI agents are clearer, contribution templates are localized, and the SkillHub and ClawHub install paths are explained separately. ([#38](https://github.com/FlanChanXwO/pixiv-cli/pull/38), [`66d5fd7`](https://github.com/FlanChanXwO/pixiv-cli/commit/66d5fd7), [`92261fa`](https://github.com/FlanChanXwO/pixiv-cli/commit/92261fa), [`ea02b29`](https://github.com/FlanChanXwO/pixiv-cli/commit/ea02b29))
+- Release notes are published in English and Simplified Chinese, installation and account guides for AI agents are clearer, and the SkillHub and ClawHub install paths are explained separately. ([`66d5fd7`](https://github.com/FlanChanXwO/pixiv-cli/commit/66d5fd7), [`92261fa`](https://github.com/FlanChanXwO/pixiv-cli/commit/92261fa), [`ea02b29`](https://github.com/FlanChanXwO/pixiv-cli/commit/ea02b29))
 
 ## Fixed
 
@@ -19,6 +19,7 @@
 **Full Changelog**: [v0.8.0...v0.9.0](https://github.com/FlanChanXwO/pixiv-cli/compare/v0.8.0...v0.9.0)
 
 <!-- internal:
+  [#38](https://github.com/FlanChanXwO/pixiv-cli/pull/38)
   [#37](https://github.com/FlanChanXwO/pixiv-cli/pull/37)
   [#41](https://github.com/FlanChanXwO/pixiv-cli/pull/41)
   [`b8daaa1`](https://github.com/FlanChanXwO/pixiv-cli/commit/b8daaa1)

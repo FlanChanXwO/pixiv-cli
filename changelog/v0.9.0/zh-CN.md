@@ -10,7 +10,7 @@
 
 ## 变更
 
-- 发布说明同时提供英文和简体中文；面向 AI agent 的安装与账号说明更清楚，贡献模板已本地化，SkillHub 与 ClawHub 的安装路径分别说明。（[#38](https://github.com/FlanChanXwO/pixiv-cli/pull/38), [`66d5fd7`](https://github.com/FlanChanXwO/pixiv-cli/commit/66d5fd7), [`92261fa`](https://github.com/FlanChanXwO/pixiv-cli/commit/92261fa), [`ea02b29`](https://github.com/FlanChanXwO/pixiv-cli/commit/ea02b29)）
+- 发布说明同时提供英文和简体中文；面向 AI agent 的安装与账号说明更清楚，SkillHub 与 ClawHub 的安装路径分别说明。（[`66d5fd7`](https://github.com/FlanChanXwO/pixiv-cli/commit/66d5fd7), [`92261fa`](https://github.com/FlanChanXwO/pixiv-cli/commit/92261fa), [`ea02b29`](https://github.com/FlanChanXwO/pixiv-cli/commit/ea02b29)）
 
 ## 修复
 
@@ -19,6 +19,7 @@
 **完整变更**：[v0.8.0...v0.9.0](https://github.com/FlanChanXwO/pixiv-cli/compare/v0.8.0...v0.9.0)
 
 <!-- internal:
+  [#38](https://github.com/FlanChanXwO/pixiv-cli/pull/38)
   [#37](https://github.com/FlanChanXwO/pixiv-cli/pull/37)
   [#41](https://github.com/FlanChanXwO/pixiv-cli/pull/41)
   [`b8daaa1`](https://github.com/FlanChanXwO/pixiv-cli/commit/b8daaa1)
