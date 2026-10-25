@@ -344,3 +344,70 @@ func (b *failingBody) Read(p []byte) (int, error) {
 }
 
 func (b *failingBody) Close() error { return nil }
+
+// TestOpenResourceConditionalRequest 覆盖 OpenResource 的条件请求头转发、
+// 请求不带 cookie，以及响应只暴露 allowlist 头。
+func TestOpenResourceConditionalRequest(t *testing.T) {
+	var received *http.Request
+	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+		received = req.Clone(req.Context())
+		w.Header().Set("Content-Type", "image/png")
+		w.Header().Set("Content-Range", "bytes 0-3/4")
+		w.Header().Set("ETag", `"etag"`)
+		w.Header().Set("Set-Cookie", "sentinel=must-not-leak")
+		w.WriteHeader(http.StatusPartialContent)
+		_, _ = io.WriteString(w, "DATA")
+	}))
+	defer server.Close()
+	serverURL, err := url.Parse(server.URL)
+	if err != nil {
+		t.Fatalf("url.Parse: %v", err)
+	}
+	httpClient := server.Client()
+	jar, err := cookiejar.New(nil)
+	if err != nil {
+		t.Fatalf("cookiejar.New: %v", err)
+	}
+	jar.SetCookies(serverURL, []*http.Cookie{{Name: "sentinel", Value: "must-not-send"}})
+	httpClient.Jar = jar
+	rt := roundTripFunc(func(req *http.Request) (*http.Response, error) {
+		if req.URL.Host == "app-api.pixiv.net" {
+			return jsonResponse(`{"illust":{"id":1,"title":"art","type":"illust","create_date":"2026-01-01T00:00:00Z","image_urls":{"original":"` + server.URL + `/asset"},"user":{"id":7,"name":"artist"},"tags":[]}}`), nil
+		}
+		return httpClient.Transport.RoundTrip(req)
+	})
+	client, err := pixiv.NewWith("token", pixiv.Options{
+		HTTPClient:     &http.Client{Transport: rt, Jar: jar},
+		ResourcePolicy: pixiv.ResourcePolicy{AllowedHosts: []string{serverURL.Hostname()}},
+	})
+	if err != nil {
+		t.Fatalf("NewWith: %v", err)
+	}
+	artwork, err := client.Artwork(context.Background(), pixiv.ArtworkRequest{ArtworkID: 1})
+	if err != nil {
+		t.Fatalf("Artwork: %v", err)
+	}
+	response, err := client.OpenResource(context.Background(), sdk.OpenResourceRequest{
+		Ref:   artwork.Cover.Resource.Ref,
+		Range: "bytes=0-3", IfNoneMatch: `"old"`,
+		IfModifiedSince: "Wed, 01 Jan 2025 00:00:00 GMT", IfRange: `"old"`,
+	})
+	if err != nil {
+		t.Fatalf("OpenResource: %v", err)
+	}
+	defer func() { _ = response.Body.Close() }()
+	body, err := io.ReadAll(response.Body)
+	if err != nil || string(body) != "DATA" {
+		t.Fatalf("body = %q err=%v", body, err)
+	}
+	if received == nil || received.Header.Get("Range") != "bytes=0-3" || received.Header.Get("If-None-Match") != `"old"` ||
+		received.Header.Get("If-Modified-Since") == "" || received.Header.Get("If-Range") != `"old"` {
+		t.Fatalf("forwarded headers = %#v", received)
+	}
+	if received.Header.Get("Cookie") != "" {
+		t.Fatalf("resource request carried a cookie: %q", received.Header.Get("Cookie"))
+	}
+	if response.Header().Get("Set-Cookie") != "" || response.ContentRange() != "bytes 0-3/4" || response.ETag() != `"etag"` {
+		t.Fatalf("response headers = %#v", response.Header())
+	}
+}
