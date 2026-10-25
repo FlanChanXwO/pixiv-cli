@@ -58,193 +58,125 @@ const oneArtwork = `{"id":5,"title":"ranked","type":"illust","create_date":"2024
 type artworkFamilyCase struct {
 	name      string
 	body      string
-	invoke    func(*Client) error
 	path      string
 	query     map[string]string
+	invoke    func(*Client, sdk.Cursor) (sdk.Page[Artwork], error)
 	nextQuery map[string]string
 }
 
-// TestArtworkListFamily 覆盖所有共用 artworkListWire/artworkPage 的列表端点：
-// 路由、初始 query、续页 query 与响应映射。
-func TestArtworkListFamily(t *testing.T) {
-	cases := []artworkFamilyCase{
-		{
-			name:  "following",
-			body:  `{"illusts":[` + oneArtwork + `],"next_url":"https://app-api.pixiv.net/v2/illust/follow?restrict=public&offset=20"}`,
-			path:  "/v2/illust/follow",
-			query: map[string]string{"restrict": "public"},
-			invoke: func(c *Client) error {
-				_, err := c.FollowingArtworks(context.Background(), FollowingArtworksRequest{})
-				return err
-			},
-			nextQuery: map[string]string{"restrict": "public", "offset": "20"},
+var artworkFamilyCases = []artworkFamilyCase{
+	{
+		name:  "following",
+		body:  `{"illusts":[` + oneArtwork + `],"next_url":"https://app-api.pixiv.net/v2/illust/follow?restrict=public&offset=20"}`,
+		path:  "/v2/illust/follow",
+		query: map[string]string{"restrict": "public"},
+		invoke: func(c *Client, cursor sdk.Cursor) (sdk.Page[Artwork], error) {
+			return c.FollowingArtworks(context.Background(), FollowingArtworksRequest{Cursor: cursor})
 		},
-		{
-			name:  "latest",
-			body:  `{"illusts":[` + oneArtwork + `],"next_url":"https://app-api.pixiv.net/v1/illust/new?content_type=illust&filter=for_android&max_illust_id=987654"}`,
-			path:  "/v1/illust/new",
-			query: map[string]string{"content_type": "illust", "filter": "for_android"},
-			invoke: func(c *Client) error {
-				_, err := c.LatestArtworks(context.Background(), LatestArtworksRequest{})
-				return err
-			},
-			nextQuery: map[string]string{"max_illust_id": "987654", "filter": "for_android"},
+		nextQuery: map[string]string{"restrict": "public", "offset": "20"},
+	},
+	{
+		name:  "latest",
+		body:  `{"illusts":[` + oneArtwork + `],"next_url":"https://app-api.pixiv.net/v1/illust/new?content_type=illust&filter=for_android&max_illust_id=987654"}`,
+		path:  "/v1/illust/new",
+		query: map[string]string{"content_type": "illust", "filter": "for_android"},
+		invoke: func(c *Client, cursor sdk.Cursor) (sdk.Page[Artwork], error) {
+			return c.LatestArtworks(context.Background(), LatestArtworksRequest{Cursor: cursor})
 		},
-		{
-			name: "mypixiv",
-			body: `{"illusts":[` + oneArtwork + `],"next_url":"https://app-api.pixiv.net/v2/illust/mypixiv?offset=40"}`,
-			path: "/v2/illust/mypixiv",
-			invoke: func(c *Client) error {
-				_, err := c.MyPixivArtworks(context.Background(), MyPixivArtworksRequest{})
-				return err
-			},
-			nextQuery: map[string]string{"offset": "40"},
+		nextQuery: map[string]string{"max_illust_id": "987654", "filter": "for_android"},
+	},
+	{
+		name: "mypixiv",
+		body: `{"illusts":[` + oneArtwork + `],"next_url":"https://app-api.pixiv.net/v2/illust/mypixiv?offset=40"}`,
+		path: "/v2/illust/mypixiv",
+		invoke: func(c *Client, cursor sdk.Cursor) (sdk.Page[Artwork], error) {
+			return c.MyPixivArtworks(context.Background(), MyPixivArtworksRequest{Cursor: cursor})
 		},
-		{
-			name:  "user artworks",
-			body:  `{"illusts":[` + oneArtwork + `],"next_url":"https://app-api.pixiv.net/v1/user/illusts?user_id=77&type=manga&offset=50"}`,
-			path:  "/v1/user/illusts",
-			query: map[string]string{"user_id": "77", "type": "manga"},
-			invoke: func(c *Client) error {
-				_, err := c.UserArtworks(context.Background(), UserArtworksRequest{UserID: 77, Kind: ArtworkKindManga})
-				return err
-			},
-			nextQuery: map[string]string{"user_id": "77", "type": "manga", "offset": "50"},
+		nextQuery: map[string]string{"offset": "40"},
+	},
+	{
+		name:  "user artworks",
+		body:  `{"illusts":[` + oneArtwork + `],"next_url":"https://app-api.pixiv.net/v1/user/illusts?user_id=77&type=manga&offset=50"}`,
+		path:  "/v1/user/illusts",
+		query: map[string]string{"user_id": "77", "type": "manga"},
+		invoke: func(c *Client, cursor sdk.Cursor) (sdk.Page[Artwork], error) {
+			return c.UserArtworks(context.Background(), UserArtworksRequest{UserID: 77, Kind: ArtworkKindManga, Cursor: cursor})
 		},
-		{
-			name:  "ranking",
-			body:  `{"illusts":[` + oneArtwork + `],"next_url":"https://app-api.pixiv.net/v1/illust/ranking?mode=week&date=2024-01-01&offset=30"}`,
-			path:  "/v1/illust/ranking",
-			query: map[string]string{"mode": "week", "date": "2024-01-01"},
-			invoke: func(c *Client) error {
-				_, err := c.ArtworkRanking(context.Background(), ArtworkRankingRequest{Mode: RankingModeWeek, Date: "2024-01-01"})
-				return err
-			},
-			nextQuery: map[string]string{"mode": "week", "offset": "30"},
+		nextQuery: map[string]string{"user_id": "77", "type": "manga", "offset": "50"},
+	},
+	{
+		name:  "ranking",
+		body:  `{"illusts":[` + oneArtwork + `],"next_url":"https://app-api.pixiv.net/v1/illust/ranking?mode=week&date=2024-01-01&offset=30"}`,
+		path:  "/v1/illust/ranking",
+		query: map[string]string{"mode": "week", "date": "2024-01-01"},
+		invoke: func(c *Client, cursor sdk.Cursor) (sdk.Page[Artwork], error) {
+			return c.ArtworkRanking(context.Background(), ArtworkRankingRequest{Mode: RankingModeWeek, Date: "2024-01-01", Cursor: cursor})
 		},
-		{
-			name:  "search",
-			body:  `{"illusts":[` + oneArtwork + `],"next_url":"https://app-api.pixiv.net/v1/search/illust?word=landscape&offset=30"}`,
-			path:  "/v1/search/illust",
-			query: map[string]string{"word": "landscape"},
-			invoke: func(c *Client) error {
-				_, err := c.SearchArtworks(context.Background(), SearchArtworksRequest{Word: "landscape"})
-				return err
-			},
-			nextQuery: map[string]string{"word": "landscape", "offset": "30"},
+		nextQuery: map[string]string{"mode": "week", "offset": "30"},
+	},
+	{
+		name:  "search",
+		body:  `{"illusts":[` + oneArtwork + `],"next_url":"https://app-api.pixiv.net/v1/search/illust?word=landscape&offset=30"}`,
+		path:  "/v1/search/illust",
+		query: map[string]string{"word": "landscape"},
+		invoke: func(c *Client, cursor sdk.Cursor) (sdk.Page[Artwork], error) {
+			return c.SearchArtworks(context.Background(), SearchArtworksRequest{Word: "landscape", Cursor: cursor})
 		},
-		{
-			name:  "bookmarks",
-			body:  `{"illusts":[` + oneArtwork + `],"next_url":"https://app-api.pixiv.net/v1/user/bookmarks/illust?user_id=7&restrict=private&tag=cat&max_bookmark_id=88"}`,
-			path:  "/v1/user/bookmarks/illust",
-			query: map[string]string{"user_id": "7", "restrict": "private", "tag": "cat"},
-			invoke: func(c *Client) error {
-				_, err := c.UserArtworkBookmarks(context.Background(), UserArtworkBookmarksRequest{UserID: 7, Restrict: RestrictPrivate, Tag: "cat"})
-				return err
-			},
-			nextQuery: map[string]string{"user_id": "7", "tag": "cat", "max_bookmark_id": "88"},
+		nextQuery: map[string]string{"word": "landscape", "offset": "30"},
+	},
+	{
+		name:  "bookmarks",
+		body:  `{"illusts":[` + oneArtwork + `],"next_url":"https://app-api.pixiv.net/v1/user/bookmarks/illust?user_id=7&restrict=private&tag=cat&max_bookmark_id=88"}`,
+		path:  "/v1/user/bookmarks/illust",
+		query: map[string]string{"user_id": "7", "restrict": "private", "tag": "cat"},
+		invoke: func(c *Client, cursor sdk.Cursor) (sdk.Page[Artwork], error) {
+			return c.UserArtworkBookmarks(context.Background(), UserArtworkBookmarksRequest{UserID: 7, Restrict: RestrictPrivate, Tag: "cat", Cursor: cursor})
 		},
-	}
-	for _, test := range cases {
-		t.Run(test.name, func(t *testing.T) {
-			client, recorder := newWireClient(t, test.body, `{"illusts":[],"next_url":null}`)
-			if err := test.invoke(client); err != nil {
-				t.Fatalf("first page: %v", err)
-			}
-			first := recorder.request(t, 0)
-			if first.URL.Path != test.path {
-				t.Fatalf("path = %q, want %q", first.URL.Path, test.path)
-			}
-			for key, want := range test.query {
-				if got := first.URL.Query().Get(key); got != want {
-					t.Errorf("%s = %q, want %q; query=%v", key, got, want, first.URL.Query())
-				}
-			}
-			if _, present := first.URL.Query()["offset"]; present && test.name != "following" {
-				t.Errorf("initial query unexpectedly contains offset: %v", first.URL.Query())
-			}
-		})
-	}
+		nextQuery: map[string]string{"user_id": "7", "tag": "cat", "max_bookmark_id": "88"},
+	},
 }
 
-func TestArtworkListFamilyMapsAndContinues(t *testing.T) {
-	tests := []artworkFamilyCase{
-		{
-			name: "following", body: `{"illusts":[` + oneArtwork + `],"next_url":"https://app-api.pixiv.net/v2/illust/follow?restrict=public&offset=20"}`,
-			invoke: func(c *Client) error {
-				page, err := c.FollowingArtworks(context.Background(), FollowingArtworksRequest{})
-				return continueArtwork(t, c, page, err, func(cursor sdk.Cursor) (sdk.Page[Artwork], error) {
-					return c.FollowingArtworks(context.Background(), FollowingArtworksRequest{Cursor: cursor})
-				})
-			},
-			nextQuery: map[string]string{"restrict": "public", "offset": "20"},
-		},
-		{
-			name: "ranking", body: `{"illusts":[` + oneArtwork + `],"next_url":"https://app-api.pixiv.net/v1/illust/ranking?mode=day&offset=30"}`,
-			invoke: func(c *Client) error {
-				page, err := c.ArtworkRanking(context.Background(), ArtworkRankingRequest{})
-				return continueArtwork(t, c, page, err, func(cursor sdk.Cursor) (sdk.Page[Artwork], error) {
-					return c.ArtworkRanking(context.Background(), ArtworkRankingRequest{Cursor: cursor})
-				})
-			},
-			nextQuery: map[string]string{"mode": "day", "offset": "30"},
-		},
-		{
-			name: "user artworks", body: `{"illusts":[` + oneArtwork + `],"next_url":"https://app-api.pixiv.net/v1/user/illusts?user_id=77&type=illust&offset=30"}`,
-			invoke: func(c *Client) error {
-				page, err := c.UserArtworks(context.Background(), UserArtworksRequest{UserID: 77})
-				return continueArtwork(t, c, page, err, func(cursor sdk.Cursor) (sdk.Page[Artwork], error) {
-					return c.UserArtworks(context.Background(), UserArtworksRequest{UserID: 77, Cursor: cursor})
-				})
-			},
-			nextQuery: map[string]string{"user_id": "77", "type": "illust", "offset": "30"},
-		},
-		{
-			name: "bookmarks", body: `{"illusts":[` + oneArtwork + `],"next_url":"https://app-api.pixiv.net/v1/user/bookmarks/illust?user_id=7&restrict=public&tag=cat&max_bookmark_id=88"}`,
-			invoke: func(c *Client) error {
-				page, err := c.UserArtworkBookmarks(context.Background(), UserArtworkBookmarksRequest{UserID: 7, Tag: "cat"})
-				return continueArtwork(t, c, page, err, func(cursor sdk.Cursor) (sdk.Page[Artwork], error) {
-					return c.UserArtworkBookmarks(context.Background(), UserArtworkBookmarksRequest{UserID: 7, Tag: "cat", Cursor: cursor})
-				})
-			},
-			nextQuery: map[string]string{"user_id": "7", "tag": "cat", "max_bookmark_id": "88"},
-		},
-	}
-	for _, test := range tests {
+// TestArtworkListFamily 覆盖共用 artworkListWire/artworkPage 的列表端点：
+// 路由、初始 query、续页 query、响应映射与空终页。
+func TestArtworkListFamily(t *testing.T) {
+	for _, test := range artworkFamilyCases {
 		t.Run(test.name, func(t *testing.T) {
 			client, recorder := newWireClient(t, test.body, `{"illusts":[],"next_url":null}`)
-			if err := test.invoke(client); err != nil {
-				t.Fatalf("invoke: %v", err)
+			first, err := test.invoke(client, sdk.Cursor{})
+			if err != nil {
+				t.Fatalf("first page: %v", err)
+			}
+			if len(first.Items) != 1 || first.Items[0].ID != 5 || first.Items[0].Title != "ranked" || first.Next.IsZero() {
+				t.Fatalf("first page = %#v", first)
+			}
+			request := recorder.request(t, 0)
+			if request.URL.Path != test.path {
+				t.Fatalf("path = %q, want %q", request.URL.Path, test.path)
+			}
+			for key, want := range test.query {
+				if got := request.URL.Query().Get(key); got != want {
+					t.Errorf("%s = %q, want %q; query=%v", key, got, want, request.URL.Query())
+				}
+			}
+
+			if len(test.nextQuery) == 0 {
+				return
+			}
+			second, err := test.invoke(client, first.Next)
+			if err != nil {
+				t.Fatalf("continuation: %v", err)
+			}
+			if second.Items == nil || len(second.Items) != 0 || !second.Next.IsZero() {
+				t.Fatalf("terminal page = %#v", second)
 			}
 			query := recorder.request(t, 1).URL.Query()
 			for key, want := range test.nextQuery {
 				if got := query.Get(key); got != want {
-					t.Errorf("%s = %q, want %q; query=%v", key, got, want, query)
+					t.Errorf("continuation %s = %q, want %q; query=%v", key, got, want, query)
 				}
 			}
 		})
 	}
-}
-
-func continueArtwork(t *testing.T, _ *Client, page sdk.Page[Artwork], err error, next func(sdk.Cursor) (sdk.Page[Artwork], error)) error {
-	t.Helper()
-	if err != nil {
-		return err
-	}
-	if len(page.Items) != 1 || page.Items[0].ID != 5 || page.Items[0].Title != "ranked" {
-		t.Fatalf("page = %#v", page)
-	}
-	if page.Next.IsZero() {
-		t.Fatal("expected a continuation cursor")
-	}
-	second, err := next(page.Next)
-	if err != nil {
-		return err
-	}
-	if second.Items == nil || len(second.Items) != 0 || !second.Next.IsZero() {
-		t.Fatalf("terminal page = %#v", second)
-	}
-	return nil
 }
 
 func TestArtworkDetailMapsPagesSeriesViewerAndResources(t *testing.T) {
