@@ -67,12 +67,6 @@ CGO_ENABLED=0 go test ./internal/media/ugoira/... -count=1
 
 **Linux 兼容性** —— release 与打包 smoke 的二进制以 `CGO_ENABLED=0` 构建，产物是静态 ELF。release 测试/生产、打包 smoke 与 Homebrew 安装矩阵的 Linux runner 固定为 `ubuntu-22.04` / `ubuntu-22.04-arm`；构建配方变化时用 `file build/pixiv` 核实。
 
-### 许可证 bundle
-
-- `go run ./scripts/build/licensebundle` 在六个发布目标上以 `CGO_ENABLED=0` 合并 `go list -mod=readonly -deps -json ./cmd/pixiv` 选出的生产模块。离线（`GOPROXY=off`、`GOSUMDB=off`），忽略 workspace/flag 覆盖，需要已缓存的模块源码，不用 Cargo，不含仅测试/工具模块。`--check` 比较索引与完整文本树但不发布。
-- `third_party/attributions.json` 固定额外的移植源码声明；文本在 `third_party/attributions/`（与生成的 `third_party/licenses/` 分开）。移除 Rust 源码后仍保留选定的 MIT 文本、Go BSD/专利授权与 SunPro 声明；`fhttp v0.6.8` 提供其源码头引用的 Go BSD 文本（该模块归档缺少独立许可证文件）。文本缺失/为空会在发布前失败；包含嵌套声明；CRLF → LF 并保留全文。
-- 生成的文本由 `third_party/notices.go` 内嵌，`pixiv --licenses` 打印；压缩包只含 `pixiv`/`pixiv.exe`。索引与文本树保持可回滚的发布方式。`third_party/attributions/image-compare-0.5.0/` 中仅测试使用的署名不内嵌。
-
 ## 运行
 
 ```bash

@@ -8,7 +8,6 @@
 
 - `pixiv mcp --port` 通过受 OAuth 保护的 Streamable HTTP 提供同一套工具，支持授权确认/PKCE、`--host`/`--base-url` 以及图片/动图交付；stdio 仍是默认模式，并保留本地文件下载。（[#146](https://github.com/FlanChanXwO/pixiv-cli/pull/146)）
 - HTTP 模式新增交互式 `pixiv_show_gallery` MCP App：缩略图网格、带作者头像的作品详情、可缩放的全屏原图查看器、收藏操作、点击标签发起精确标签搜索，以及点击复制作品 ID。（[#146](https://github.com/FlanChanXwO/pixiv-cli/pull/146), [#151](https://github.com/FlanChanXwO/pixiv-cli/pull/151)）
-- `pixiv --licenses` 输出可执行文件内嵌的第三方许可声明。（[#147](https://github.com/FlanChanXwO/pixiv-cli/pull/147)）
 
 ## 变更
 

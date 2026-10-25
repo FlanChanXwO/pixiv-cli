@@ -16,8 +16,6 @@ Use the installed `pixiv` binary. This bundle describes operation, privacy, and 
 
 ## Preflight and routing
 
-`pixiv --licenses` prints embedded third-party notices without network access or local state. Release archives contain only the executable.
-
 Run `pixiv --version` and require a successful `pixiv VERSION` line. A missing or non-executable binary is a blocker, not authorization to install it. Inspect the relevant command's `--help` before execution and read only the needed reference:
 
 | Task | Reference |

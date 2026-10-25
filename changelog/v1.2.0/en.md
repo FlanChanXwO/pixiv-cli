@@ -8,7 +8,6 @@
 
 - `pixiv mcp --port` serves the same tools over OAuth-protected Streamable HTTP with consent/PKCE, `--host`/`--base-url`, and image/animation delivery. stdio remains the default and keeps local file downloads. ([#146](https://github.com/FlanChanXwO/pixiv-cli/pull/146))
 - The HTTP mode adds the interactive `pixiv_show_gallery` MCP App: a thumbnail grid, an artwork detail view with author avatars, a zoomable full-screen original viewer, bookmark actions, exact-tag search from tags, and click-to-copy artwork IDs. ([#146](https://github.com/FlanChanXwO/pixiv-cli/pull/146), [#151](https://github.com/FlanChanXwO/pixiv-cli/pull/151))
-- `pixiv --licenses` prints the third-party notices embedded in the executable. ([#147](https://github.com/FlanChanXwO/pixiv-cli/pull/147))
 
 ## Changed
 

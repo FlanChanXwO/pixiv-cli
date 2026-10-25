@@ -1,9 +1,5 @@
 # v1.2.1 — 2026-10-22
 
-## 变更
-
-- 根目录 `LICENSE` 恢复为纯 MIT 文本，GitHub 可以正确识别许可证。第三方声明仍可通过 `pixiv --licenses` 查看。（[#155](https://github.com/FlanChanXwO/pixiv-cli/pull/155)）
-
 ## 修复
 
 - 修复 Windows 账号存储文件监听器的竞态（fsnotify 升级到 v1.10.1），长时间运行的 CLI 与 MCP 会话不再出现并发访问错误。（[#153](https://github.com/FlanChanXwO/pixiv-cli/pull/153)）
@@ -15,6 +11,7 @@
 **完整变更**：[v1.2.0...v1.2.1](https://github.com/FlanChanXwO/pixiv-cli/compare/v1.2.0...v1.2.1)
 
 <!-- internal:
+  [#155](https://github.com/FlanChanXwO/pixiv-cli/pull/155)
   [#154](https://github.com/FlanChanXwO/pixiv-cli/pull/154)
   [#156](https://github.com/FlanChanXwO/pixiv-cli/pull/156)
   [#157](https://github.com/FlanChanXwO/pixiv-cli/pull/157)
