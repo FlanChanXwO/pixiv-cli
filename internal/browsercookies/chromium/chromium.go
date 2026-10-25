@@ -15,6 +15,7 @@ import (
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/browsercookies"
 	"github.com/FlanChanXwO/pixiv-cli/internal/browsercookies/sqliteio"
+	"github.com/FlanChanXwO/pixiv-cli/internal/credential"
 )
 
 const cookiesFile = "Cookies"
@@ -63,14 +64,6 @@ func (p *provider) Name() string { return p.name }
 
 func (p *provider) Close() error { return nil }
 
-// safeProfileID 校验 profile 目录名是安全 identifier：非空、非隐藏、无路径分隔。
-func safeProfileID(id string) bool {
-	if id == "" || id == "." || id == ".." || strings.HasPrefix(id, ".") {
-		return false
-	}
-	return filepath.Base(id) == id
-}
-
 // DiscoverProfiles 扫描用户数据目录下包含 Cookies 文件的 profile 子目录。
 // 不修改或启动浏览器；目录不存在时返回 ErrNotInstalled。
 func (p *provider) DiscoverProfiles(ctx context.Context) ([]browsercookies.Profile, error) {
@@ -86,7 +79,7 @@ func (p *provider) DiscoverProfiles(ctx context.Context) ([]browsercookies.Profi
 	}
 	var profiles []browsercookies.Profile
 	for _, entry := range entries {
-		if !entry.IsDir() || !safeProfileID(entry.Name()) {
+		if !entry.IsDir() || !browsercookies.ValidProfileID(entry.Name()) {
 			continue
 		}
 		info, err := os.Stat(filepath.Join(p.root, entry.Name(), cookiesFile))
@@ -113,11 +106,11 @@ func (p *provider) DiscoverProfiles(ctx context.Context) ([]browsercookies.Profi
 
 // Read 读取 profileID 下匹配 query 的 cookie secret。解密前查询已经收敛到
 // 固定 host/name，且浏览器数据库通过 sqliteio 的只读参数查询。
-func (p *provider) Read(ctx context.Context, query browsercookies.CookieQuery, profileID string) ([]browsercookies.Secret, error) {
+func (p *provider) Read(ctx context.Context, query browsercookies.CookieQuery, profileID string) ([]credential.Secret, error) {
 	if err := query.Valid(); err != nil {
 		return nil, err
 	}
-	if !safeProfileID(profileID) {
+	if !browsercookies.ValidProfileID(profileID) {
 		return nil, browsercookies.ErrInvalidProfileID
 	}
 	cookiesPath := filepath.Join(p.root, profileID, cookiesFile)
@@ -139,8 +132,8 @@ func (p *provider) Read(ctx context.Context, query browsercookies.CookieQuery, p
 	return p.rowsToSecrets(ctx, rows)
 }
 
-func (p *provider) rowsToSecrets(ctx context.Context, rows [][]string) ([]browsercookies.Secret, error) {
-	secrets := make([]browsercookies.Secret, 0, len(rows))
+func (p *provider) rowsToSecrets(ctx context.Context, rows [][]string) ([]credential.Secret, error) {
+	secrets := make([]credential.Secret, 0, len(rows))
 	for _, row := range rows {
 		if len(row) < 3 {
 			return nil, browsercookies.ErrQueryFailed
@@ -157,10 +150,10 @@ func (p *provider) rowsToSecrets(ctx context.Context, rows [][]string) ([]browse
 			if err != nil {
 				return nil, err
 			}
-			secrets = append(secrets, browsercookies.NewSecret(string(stripChromiumHostDigest(value, host))))
+			secrets = append(secrets, credential.New(stripChromiumHostDigest(value, host)))
 			continue
 		}
-		secrets = append(secrets, browsercookies.NewSecret(plain))
+		secrets = append(secrets, credential.New([]byte(plain)))
 	}
 	return secrets, nil
 }

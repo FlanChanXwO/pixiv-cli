@@ -16,6 +16,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/browsercookies"
+	"github.com/FlanChanXwO/pixiv-cli/internal/credential"
 )
 
 func init() {
@@ -63,13 +64,6 @@ func (p *provider) findCookieFile() (string, error) {
 	return "", nil
 }
 
-func (p *provider) firstCandidatePath() string {
-	if len(p.paths) == 0 {
-		return ""
-	}
-	return p.paths[0]
-}
-
 // DiscoverProfiles 返回单个 "Default" profile；找不到 cookie 文件时返回
 // ErrNotInstalled。
 func (p *provider) DiscoverProfiles(ctx context.Context) ([]browsercookies.Profile, error) {
@@ -88,7 +82,10 @@ func (p *provider) DiscoverProfiles(ctx context.Context) ([]browsercookies.Profi
 
 // Read 读取匹配 query 的明文 cookie。加密值（非 UTF-8）返回
 // ErrEncryptedCookieUnsupported 分类。
-func (p *provider) Read(ctx context.Context, query browsercookies.CookieQuery, profileID string) ([]browsercookies.Secret, error) {
+func (p *provider) Read(ctx context.Context, query browsercookies.CookieQuery, profileID string) ([]credential.Secret, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
 	if err := query.Valid(); err != nil {
 		return nil, err
 	}
@@ -100,10 +97,7 @@ func (p *provider) Read(ctx context.Context, query browsercookies.CookieQuery, p
 		return nil, err
 	}
 	if path == "" {
-		path = p.firstCandidatePath()
-		if path == "" {
-			return nil, browsercookies.ErrDatabaseNotFound
-		}
+		return nil, browsercookies.ErrDatabaseNotFound
 	}
 	data, err := os.ReadFile(path)
 	if err != nil {
@@ -116,7 +110,7 @@ func (p *provider) Read(ctx context.Context, query browsercookies.CookieQuery, p
 	if err != nil {
 		return nil, err
 	}
-	secrets := make([]browsercookies.Secret, 0)
+	secrets := make([]credential.Secret, 0)
 	for _, c := range cookies {
 		if !cookieMatches(c, query) {
 			continue
@@ -124,7 +118,7 @@ func (p *provider) Read(ctx context.Context, query browsercookies.CookieQuery, p
 		if !utf8.Valid(c.value) {
 			return nil, browsercookies.ErrEncryptedCookieUnsupported
 		}
-		secrets = append(secrets, browsercookies.NewSecret(string(c.value)))
+		secrets = append(secrets, credential.New(c.value))
 	}
 	return secrets, nil
 }
@@ -133,20 +127,14 @@ func cookieMatches(c safariCookie, query browsercookies.CookieQuery) bool {
 	if c.name != query.Name {
 		return false
 	}
-	if c.domain == query.Host {
-		return true
-	}
 	// 无前导点匹配：query ".fanbox.cc" ↔ 存储 "fanbox.cc"。
 	return strings.TrimPrefix(c.domain, ".") == strings.TrimPrefix(query.Host, ".")
 }
 
 type safariCookie struct {
-	domain   string
-	name     string
-	path     string
-	value    []byte
-	secure   bool
-	httpOnly bool
+	domain string
+	name   string
+	value  []byte
 }
 
 // parseBinaryCookies 解析 Safari Cookies.binarycookies 二进制格式。
@@ -242,7 +230,7 @@ func parseCookie(record []byte) (safariCookie, error) {
 	if err != nil {
 		return safariCookie{}, err
 	}
-	path, err := read()
+	_, err = read()
 	if err != nil {
 		return safariCookie{}, err
 	}
@@ -255,13 +243,9 @@ func parseCookie(record []byte) (safariCookie, error) {
 	if flagsPos >= len(record) {
 		return safariCookie{}, browsercookies.ErrInvalidFormat
 	}
-	flags := record[flagsPos]
 	return safariCookie{
-		domain:   string(domain),
-		name:     string(name),
-		path:     string(path),
-		value:    value,
-		secure:   flags&0x01 != 0,
-		httpOnly: flags&0x04 != 0,
+		domain: string(domain),
+		name:   string(name),
+		value:  value,
 	}, nil
 }

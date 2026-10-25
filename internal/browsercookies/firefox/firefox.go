@@ -18,6 +18,7 @@ import (
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/browsercookies"
 	"github.com/FlanChanXwO/pixiv-cli/internal/browsercookies/sqliteio"
+	"github.com/FlanChanXwO/pixiv-cli/internal/credential"
 )
 
 const (
@@ -54,14 +55,6 @@ func newProvider() (*provider, error) {
 func (p *provider) Name() string { return "firefox" }
 
 func (p *provider) Close() error { return nil }
-
-// safeProfileID 校验 Firefox profile 目录名是安全 identifier：非空、非隐藏。
-func safeProfileID(id string) bool {
-	if id == "" || id == "." || id == ".." || strings.HasPrefix(id, ".") {
-		return false
-	}
-	return filepath.Base(id) == id
-}
 
 // DiscoverProfiles 解析 profiles.ini 中的 [ProfileN] 节，只保留存在
 // cookies.sqlite 的 profile。Firefox 未安装（根目录或 profiles.ini 缺失）时
@@ -153,7 +146,7 @@ func parseProfilesIni(file *os.File, root string) ([]browsercookies.Profile, err
 			dir = filepath.Join(root, s.path)
 		}
 		id := filepath.Base(s.path)
-		if !safeProfileID(id) {
+		if !browsercookies.ValidProfileID(id) {
 			continue
 		}
 		if _, err := os.Stat(filepath.Join(dir, cookiesDB)); err != nil {
@@ -182,11 +175,11 @@ func (p *provider) resolveProfile(ctx context.Context, profileID string) (browse
 
 // Read 读取 profileID 下匹配 query 的明文 cookie。加密值（非 UTF-8）返回
 // ErrEncryptedCookieUnsupported 分类。
-func (p *provider) Read(ctx context.Context, query browsercookies.CookieQuery, profileID string) ([]browsercookies.Secret, error) {
+func (p *provider) Read(ctx context.Context, query browsercookies.CookieQuery, profileID string) ([]credential.Secret, error) {
 	if err := query.Valid(); err != nil {
 		return nil, err
 	}
-	if !safeProfileID(profileID) {
+	if !browsercookies.ValidProfileID(profileID) {
 		return nil, browsercookies.ErrInvalidProfileID
 	}
 	profile, err := p.resolveProfile(ctx, profileID)
@@ -203,7 +196,7 @@ func (p *provider) Read(ctx context.Context, query browsercookies.CookieQuery, p
 	if err != nil {
 		return nil, err
 	}
-	secrets := make([]browsercookies.Secret, 0, len(rows))
+	secrets := make([]credential.Secret, 0, len(rows))
 	for _, row := range rows {
 		if len(row) < 1 {
 			return nil, browsercookies.ErrQueryFailed
@@ -212,7 +205,7 @@ func (p *provider) Read(ctx context.Context, query browsercookies.CookieQuery, p
 		if looksEncrypted(value) {
 			return nil, browsercookies.ErrEncryptedCookieUnsupported
 		}
-		secrets = append(secrets, browsercookies.NewSecret(value))
+		secrets = append(secrets, credential.New([]byte(value)))
 	}
 	return secrets, nil
 }
