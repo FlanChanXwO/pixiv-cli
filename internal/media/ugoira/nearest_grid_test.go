@@ -50,10 +50,17 @@ func TestColorGridMatchesScanForDegeneratePalettes(t *testing.T) {
 		{{math.MaxFloat32, 0, 0}, {math.Nextafter32(math.MaxFloat32, 0), 0, 0}},
 	} {
 		g := newColorGrid(palette)
+		inside := 0
 		for _, c := range palette {
-			if got, ok := g.nearest(c); ok && got != nearestColor(palette, c) {
-				t.Fatalf("palette=%v query=%v: index %d, want %d", palette, c, got, nearestColor(palette, c))
+			if got, ok := g.nearest(c); ok {
+				inside++
+				if got != nearestColor(palette, c) {
+					t.Fatalf("palette=%v query=%v: index %d, want %d", palette, c, got, nearestColor(palette, c))
+				}
 			}
+		}
+		if inside == 0 {
+			t.Fatalf("degenerate palette %v never used grid", palette)
 		}
 	}
 }

@@ -910,6 +910,7 @@ func TestDetectInstallSourceDoesNotMistakeGoBuildForGoInstall(t *testing.T) {
 		executable    string
 		buildInfo     *debug.BuildInfo
 		buildInfoOkay bool
+		gopathBin     bool
 		env           map[string]string
 		want          InstallSource
 	}{
@@ -921,9 +922,17 @@ func TestDetectInstallSourceDoesNotMistakeGoBuildForGoInstall(t *testing.T) {
 			env:           map[string]string{"GOBIN": filepath.Join(t.TempDir(), "bin")},
 		},
 		{
+			name:          "default GOPATH bin with matching module",
+			buildInfo:     &debug.BuildInfo{Path: pixivCLIModulePath + "/cmd/pixiv", Main: debug.Module{Path: pixivCLIModulePath}},
+			buildInfoOkay: true,
+			gopathBin:     true,
+			want:          InstallSourceGoInstall,
+		},
+		{
 			name:          "GOBIN executable with matching module",
 			buildInfo:     &debug.BuildInfo{Path: pixivCLIModulePath + "/cmd/pixiv", Main: debug.Module{Path: pixivCLIModulePath}},
 			buildInfoOkay: true,
+			env:           map[string]string{},
 			want:          InstallSourceGoInstall,
 		},
 		{
@@ -945,11 +954,18 @@ func TestDetectInstallSourceDoesNotMistakeGoBuildForGoInstall(t *testing.T) {
 			if test.env == nil {
 				test.env = map[string]string{}
 			}
-			if test.env["GOBIN"] == "" {
-				test.env["GOBIN"] = gobin
-			}
-			if test.executable == "" {
-				test.executable = filepath.Join(test.env["GOBIN"], pixivExecutableName(runtime.GOOS))
+			if test.gopathBin {
+				gopath := t.TempDir()
+				test.env["GOPATH"] = gopath
+				test.executable = filepath.Join(gopath, "bin", pixivExecutableName(runtime.GOOS))
+			} else {
+				if _, set := test.env["GOBIN"]; !set {
+					test.env["GOBIN"] = gobin
+				}
+				if test.executable == "" {
+					test.env["GOBIN"] = gobin
+					test.executable = filepath.Join(gobin, pixivExecutableName(runtime.GOOS))
+				}
 			}
 			deps := testDetector(test.executable, test.executable, test.env)
 			deps.readBuildInfo = func() (*debug.BuildInfo, bool) {

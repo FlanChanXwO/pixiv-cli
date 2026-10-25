@@ -38,6 +38,9 @@ func TestAuthDefaultUserIDStaysOutOfRuntimeAndConfigAliases(t *testing.T) {
 	require.True(t, ok)
 	require.Equal(t, int64(456), userID)
 	require.NoError(t, store.ClearFanboxDefaultUserID())
+	_, ok, err = store.ReadFanboxDefaultUserID()
+	require.NoError(t, err)
+	require.False(t, ok)
 
 	state, err := currentSnapshot(configPath)
 	require.NoError(t, err)

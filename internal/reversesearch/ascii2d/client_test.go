@@ -693,7 +693,7 @@ func TestUploadClassifiesCloudflareChallengeWithoutLeakingBody(t *testing.T) {
 			status: http.StatusForbidden,
 			body: func() io.ReadCloser {
 				return io.NopCloser(strings.NewReader(strings.Repeat("ordinary prefix ", 5000) +
-					`<html><head><title>Just a moment...</title></head><body>Checking your browser before accessing ascii2d</body></html>`))
+					`<html><head><title>Just a moment...</title></head><body>Checking your browser before accessing ascii2d ` + privateResponse + `</body></html>`))
 			},
 		},
 	} {

@@ -62,6 +62,23 @@ func TestTraverseWithReportsUnconfiguredExecute(t *testing.T) {
 	}
 }
 
+func TestCollectWithKeepsLogicalMoreWithoutExposingCursor(t *testing.T) {
+	next := traversalTestCursor(t, "collect")
+	result, err := pagination.CollectWithFrom(context.Background(), onceExecute(t, struct{}{}, false), pagination.PagePlan{OneBatch: true}, sdk.Cursor{}, func(_ context.Context, _ struct{}, cursor sdk.Cursor) ([]int, sdk.Cursor, error) {
+		if cursor.IsZero() {
+			return []int{1}, next, nil
+		}
+		return []int{2}, sdk.Cursor{}, nil
+	})
+
+	if err != nil {
+		t.Fatalf("CollectWith error = %v", err)
+	}
+	if len(result.Items) != 1 || result.Items[0] != 1 || !result.HasMore {
+		t.Fatalf("result = %#v", result)
+	}
+}
+
 func TestCollectWithClearsUncommittedResultsBeforeReplay(t *testing.T) {
 	firstNext := traversalTestCursor(t, "first-next")
 	var fetchCalls int

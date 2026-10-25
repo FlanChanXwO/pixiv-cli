@@ -416,6 +416,7 @@ func TestFilteredContinuationResumesFromCheckpoint(t *testing.T) {
 	}
 	checkpoint := func(c fakeCursor, n int) (fakeCursor, error) {
 		require.Equal(t, "batch", c.value)
+		require.Equal(t, 3, n)
 		return fakeCursor{value: "rest"}, nil
 	}
 	include := func(n int) (bool, error) { return n%2 == 0, nil }
@@ -434,32 +435,33 @@ func TestFilteredContinuationResumesFromCheckpoint(t *testing.T) {
 
 func TestFilteredContinuationCancellationAndFailures(t *testing.T) {
 	boom := errors.New("checkpoint failed")
+	unexpectedCheckpointErr := errors.New("unexpected checkpoint")
+	failCheckpoint := func(fakeCursor, int) (fakeCursor, error) { return fakeCursor{}, boom }
+	unexpectedCheckpoint := func(fakeCursor, int) (fakeCursor, error) { return fakeCursor{}, unexpectedCheckpointErr }
 	include := func(int) (bool, error) { return true, nil }
 	fetch := func(context.Context, fakeCursor) ([]int, fakeCursor, error) { return []int{1, 2}, fakeCursor{}, nil }
 	for _, test := range []struct {
-		name     string
-		fetch    func(context.Context, fakeCursor) ([]int, fakeCursor, error)
-		include  func(int) (bool, error)
-		want     error
-		wantText string
+		name       string
+		fetch      func(context.Context, fakeCursor) ([]int, fakeCursor, error)
+		include    func(int) (bool, error)
+		checkpoint func(fakeCursor, int) (fakeCursor, error)
+		want       error
+		wantText   string
 	}{
-		{name: "checkpoint failure", fetch: fetch, include: include, want: boom},
-		{name: "predicate failure", fetch: fetch, include: func(int) (bool, error) { return false, boom }, want: boom},
+		{name: "checkpoint failure", fetch: fetch, include: include, checkpoint: failCheckpoint, want: boom},
+		{name: "predicate failure", fetch: fetch, include: func(int) (bool, error) { return false, boom }, checkpoint: unexpectedCheckpoint, want: boom},
 		{
 			name: "repeated cursor",
 			fetch: func(context.Context, fakeCursor) ([]int, fakeCursor, error) {
 				return nil, fakeCursor{value: "same"}, nil
 			},
-			include:  include,
-			wantText: "cursor repeated",
+			include:    include,
+			checkpoint: unexpectedCheckpoint,
+			wantText:   "cursor repeated",
 		},
 	} {
 		t.Run(test.name, func(t *testing.T) {
-			checkpoint := func(fakeCursor, int) (fakeCursor, error) { return fakeCursor{}, boom }
-			if test.name == "repeated cursor" {
-				checkpoint = func(c fakeCursor, n int) (fakeCursor, error) { t.Fatal("unexpected checkpoint"); return c, nil }
-			}
-			items, _, _, err := pagination.CollectFilteredPagesFrom(context.Background(), pagination.PagePlan{Limit: 1}, fakeCursor{}, test.fetch, test.include, checkpoint)
+			items, _, _, err := pagination.CollectFilteredPagesFrom(context.Background(), pagination.PagePlan{Limit: 1}, fakeCursor{}, test.fetch, test.include, test.checkpoint)
 			if test.wantText != "" {
 				require.ErrorContains(t, err, test.wantText)
 			} else {

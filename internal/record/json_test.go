@@ -32,6 +32,9 @@ func TestParseRecordJSONPreservesUnknownFieldsAndNumbers(t *testing.T) {
 		"custom_integer":9007199254740993123456789,
 		"nested":{"integer":9223372036854775807,"decimal":1.0000000000000000001}
 	}`, string(got))
+	assert.Contains(t, string(got), `"custom_integer":9007199254740993123456789`)
+	assert.Contains(t, string(got), `"decimal":1.0000000000000000001`)
+	assert.Contains(t, string(got), `"integer":9223372036854775807`)
 	assert.Equal(t, "9007199254740993", parsed.ID())
 }
 
