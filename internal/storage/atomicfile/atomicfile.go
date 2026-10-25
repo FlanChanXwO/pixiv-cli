@@ -3,13 +3,14 @@ package atomicfile
 
 import (
 	"context"
+	"errors"
 	"io"
 	"os"
 	"path/filepath"
 )
 
 // AtomicWrite 将 src 流式写入 path，并以同目录临时文件加 fsync/rename 完成原子提交。
-func AtomicWrite(ctx context.Context, path string, src io.Reader) (int64, error) {
+func AtomicWrite(ctx context.Context, path string, src io.Reader) (written int64, resultErr error) {
 	dir := filepath.Dir(path)
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return 0, err
@@ -19,42 +20,51 @@ func AtomicWrite(ctx context.Context, path string, src io.Reader) (int64, error)
 		return 0, err
 	}
 	tempPath := temp.Name()
-	defer func() { _ = os.Remove(tempPath) }()
-	var written int64
+	closed, preserveSource := false, false
+	defer func() {
+		if !closed {
+			resultErr = errors.Join(resultErr, temp.Close())
+		}
+		if !preserveSource {
+			if err := os.Remove(tempPath); err != nil && !errors.Is(err, os.ErrNotExist) {
+				resultErr = errors.Join(resultErr, err)
+			}
+		}
+	}()
 	buffer := make([]byte, 64*1024)
 	for {
 		if err := ctx.Err(); err != nil {
-			_ = temp.Close()
 			return written, err
 		}
 		n, readErr := src.Read(buffer)
 		if n > 0 {
-			if _, err := temp.Write(buffer[:n]); err != nil {
-				_ = temp.Close()
+			count, err := temp.Write(buffer[:n])
+			written += int64(count)
+			if err != nil {
 				return written, err
 			}
-			written += int64(n)
 		}
 		if readErr != nil {
 			if readErr != io.EOF {
-				_ = temp.Close()
 				return written, readErr
 			}
 			break
 		}
 	}
 	if err := temp.Sync(); err != nil {
-		_ = temp.Close()
 		return written, err
 	}
+	closed = true
 	if err := temp.Close(); err != nil {
 		return written, err
 	}
 	if err := os.Chmod(tempPath, 0o600); err != nil {
 		return written, err
 	}
-	if err := os.Rename(tempPath, path); err != nil {
+	if err := ctx.Err(); err != nil {
 		return written, err
 	}
-	return written, nil
+	replacement, err := ReplacePrivateFile(tempPath, path)
+	preserveSource = replacement.PreserveSource
+	return written, err
 }

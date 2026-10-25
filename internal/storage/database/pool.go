@@ -77,10 +77,6 @@ func validatePoolUserIDs(userIDs []int64) error {
 	if len(userIDs) == 0 {
 		return errors.New("database: account pool requires at least one user id")
 	}
-	return validatePoolUserIDsAllowEmpty(userIDs)
-}
-
-func validatePoolUserIDsAllowEmpty(userIDs []int64) error {
 	seen := make(map[int64]struct{}, len(userIDs))
 	for _, userID := range userIDs {
 		if userID <= 0 {

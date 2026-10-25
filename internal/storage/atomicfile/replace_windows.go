@@ -4,11 +4,26 @@ package atomicfile
 
 import (
 	"errors"
+	"fmt"
 	"os"
 	"unsafe"
 
 	"golang.org/x/sys/windows"
 )
+
+type replacementAttemptState uint8
+
+const (
+	replacementUnchanged replacementAttemptState = iota
+	replacementCommitted
+	replacementOldMovedToBackup
+)
+
+type replacementAttempt struct {
+	state         replacementAttemptState
+	backupCreated bool
+	err           error
+}
 
 var replaceFileW = windows.NewLazySystemDLL("kernel32.dll").NewProc("ReplaceFileW")
 
@@ -17,7 +32,7 @@ var replaceFileW = windows.NewLazySystemDLL("kernel32.dll").NewProc("ReplaceFile
 // ReplaceFileW 不支持 WRITE_THROUGH，故不能擅自传入该标志；同步由调用方在替换前完成。
 // 同目录 disposable backup 用于恢复 API 部分完成后已移动的旧目标。
 func ReplaceFile(sourcePath, targetPath string) error {
-	_, err := replaceWithDisposableBackup(sourcePath, targetPath, sourcePath+".recovery", windowsReplacementRecoveryOps())
+	_, err := replaceWithDisposableBackup(sourcePath, targetPath, sourcePath+".recovery")
 	return err
 }
 
@@ -29,20 +44,12 @@ func ReplaceFileWithBackup(sourcePath, targetPath, backupPath string) error {
 		return ReplaceFile(sourcePath, targetPath)
 	}
 	attempt := replaceFileWithBackupAttempt(sourcePath, targetPath, backupPath)
-	_, err := recoverReplacementAttempt(attempt, backupPath, targetPath, restoreWindowsBackup)
+	_, err := recoverReplacementAttempt(attempt, backupPath, targetPath)
 	return err
 }
 
 func replacePrivateFile(sourcePath, targetPath string) (Result, error) {
-	return replaceWithDisposableBackup(sourcePath, targetPath, sourcePath+".recovery", windowsReplacementRecoveryOps())
-}
-
-func windowsReplacementRecoveryOps() replacementRecoveryOps {
-	return replacementRecoveryOps{
-		replace:      replaceFileWithBackupAttempt,
-		restore:      restoreWindowsBackup,
-		removeBackup: os.Remove,
-	}
+	return replaceWithDisposableBackup(sourcePath, targetPath, sourcePath+".recovery")
 }
 
 func replaceFileWithBackupAttempt(sourcePath, targetPath, backupPath string) replacementAttempt {
@@ -112,4 +119,36 @@ func restoreWindowsBackup(backupPath, targetPath string) error {
 	}
 	// 1177 状态下 target 应不存在；禁止覆盖可显露并发写入或状态偏差，并保留 backup。
 	return windows.MoveFileEx(backup, target, 0)
+}
+
+// replaceWithDisposableBackup 使用只服务于本次替换的唯一 backup。若旧目标已被移动，
+// 必须先恢复或保留新旧两份恢复材料，不能让调用方按普通失败删除 source。
+func replaceWithDisposableBackup(sourcePath, targetPath, backupPath string) (Result, error) {
+	attempt := replaceFileWithBackupAttempt(sourcePath, targetPath, backupPath)
+	outcome, replaceErr := recoverReplacementAttempt(attempt, backupPath, targetPath)
+	if !outcome.Committed || !attempt.backupCreated {
+		return outcome, replaceErr
+	}
+	cleanupErr := os.Remove(backupPath)
+	if cleanupErr != nil {
+		cleanupErr = fmt.Errorf("remove committed replacement backup: %w", cleanupErr)
+	}
+	return outcome, errors.Join(replaceErr, cleanupErr)
+}
+
+func recoverReplacementAttempt(attempt replacementAttempt, backupPath, targetPath string) (Result, error) {
+	switch attempt.state {
+	case replacementCommitted:
+		return Result{Committed: true}, attempt.err
+	case replacementOldMovedToBackup:
+		if restoreErr := restoreWindowsBackup(backupPath, targetPath); restoreErr != nil {
+			return Result{PreserveSource: true}, markReplacementSourceForPreservation(errors.Join(
+				attempt.err,
+				fmt.Errorf("restore replaced target from backup: %w", restoreErr),
+			))
+		}
+		return Result{}, attempt.err
+	default:
+		return Result{}, attempt.err
+	}
 }

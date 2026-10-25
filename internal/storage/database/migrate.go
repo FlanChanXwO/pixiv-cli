@@ -1,6 +1,3 @@
-// Package database 管理 Pixiv / FANBOX 鉴权状态的单一 SQLite 数据库。
-// 它只保存鉴权数据与 Pixiv account-pool 租约状态，不保存普通配置、下载
-// archive、缓存、请求日志或浏览器 profile。
 package database
 
 import (
@@ -79,11 +76,8 @@ func checksum(content []byte) string {
 	return hex.EncodeToString(sum[:])
 }
 
-// CurrentVersion 返回 binary 所知的最新 schema 版本。
-func CurrentVersion() int {
-	if len(embeddedMigrations) == 0 {
-		return 0
-	}
+// currentVersion 返回 binary 所知的最新 schema 版本。
+func currentVersion() int {
 	return embeddedMigrations[len(embeddedMigrations)-1].Version
 }
 
@@ -123,7 +117,7 @@ func migrate(db *sql.DB) error {
 		}
 	}
 	// 拒绝 schema 比 binary 更新的 downgrade 运行。
-	latest := CurrentVersion()
+	latest := currentVersion()
 	if userVersion > latest {
 		return fmt.Errorf("database schema version %d is newer than binary schema version %d; refusing to run a downgrade", userVersion, latest)
 	}
@@ -153,10 +147,8 @@ func migrate(db *sql.DB) error {
 			return fmt.Errorf("apply migration %d (%s): %w", m.Version, m.Name, err)
 		}
 	}
-	if len(embeddedMigrations) > 0 {
-		if _, err := db.Exec(fmt.Sprintf(`PRAGMA user_version = %d`, latest)); err != nil {
-			return fmt.Errorf("set user_version: %w", err)
-		}
+	if _, err := db.Exec(fmt.Sprintf(`PRAGMA user_version = %d`, latest)); err != nil {
+		return fmt.Errorf("set user_version: %w", err)
 	}
 	return nil
 }
@@ -179,9 +171,6 @@ func readApplied(db *sql.DB) (map[int]appliedMigration, error) {
 }
 
 func validateApplied(applied map[int]appliedMigration) error {
-	if len(applied) == 0 {
-		return nil
-	}
 	versions := make([]int, 0, len(applied))
 	for version := range applied {
 		versions = append(versions, version)
@@ -241,36 +230,17 @@ func recordOneTx(tx *sql.Tx, m migration) error {
 func migrationAlreadySatisfied(db *sql.DB, m migration) (bool, error) {
 	switch m.Version {
 	case 2:
-		return tableColumnNotNull(db, "fanbox_account", "creator_id")
+		present, notNull, err := tableColumn(db, `PRAGMA table_info(fanbox_account)`, "creator_id")
+		return present && notNull, err
 	case 3:
-		present, _, err := tableColumn(db, "pixiv_account", "schedulable")
+		present, _, err := tableColumn(db, `PRAGMA table_info(pixiv_account)`, "schedulable")
 		return present, err
 	default:
 		return false, nil
 	}
 }
 
-func tableColumnNotNull(db *sql.DB, table, column string) (bool, error) {
-	present, notNull, err := tableColumn(db, table, column)
-	return present && notNull, err
-}
-
-func tableInfoQuery(table string) (string, error) {
-	switch table {
-	case "fanbox_account":
-		return `PRAGMA table_info(fanbox_account)`, nil
-	case "pixiv_account":
-		return `PRAGMA table_info(pixiv_account)`, nil
-	default:
-		return "", fmt.Errorf("unsupported table %q", table)
-	}
-}
-
-func tableColumn(db *sql.DB, table, column string) (present, notNull bool, returnErr error) {
-	query, err := tableInfoQuery(table)
-	if err != nil {
-		return false, false, err
-	}
+func tableColumn(db *sql.DB, query, column string) (present, notNull bool, returnErr error) {
 	rows, err := db.Query(query)
 	if err != nil {
 		return false, false, err

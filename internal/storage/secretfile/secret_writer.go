@@ -11,19 +11,25 @@ import (
 	"github.com/FlanChanXwO/pixiv-cli/internal/storage/atomicfile"
 )
 
-// SecretFileWriteError 隐藏任意目标路径及底层可能携带的路径，同时保留 errors.Is/As。
-type SecretFileWriteError struct {
-	outcome WriteCommitOutcome
+type writeCommitOutcome string
+
+const (
+	writeCommitOutcomeUnknown      writeCommitOutcome = "unknown"
+	writeCommitOutcomeNotCommitted writeCommitOutcome = "not_committed"
+	writeCommitOutcomeCommitted    writeCommitOutcome = "committed"
+)
+
+// secretFileWriteError 隐藏任意目标路径及底层可能携带的路径，同时保留 errors.Is/As。
+type secretFileWriteError struct {
+	outcome writeCommitOutcome
 	cause   error
 }
 
-func (e *SecretFileWriteError) Error() string {
+func (e *secretFileWriteError) Error() string {
 	return "authentication export write failed: " + safeSecretWriteCause(e.cause) + " (" + string(e.outcome) + ")"
 }
 
-func (e *SecretFileWriteError) Unwrap() error { return e.cause }
-
-func (e *SecretFileWriteError) CommitOutcome() WriteCommitOutcome { return e.outcome }
+func (e *secretFileWriteError) Unwrap() error { return e.cause }
 
 func safeSecretWriteCause(err error) string {
 	switch {
@@ -38,22 +44,13 @@ func safeSecretWriteCause(err error) string {
 	}
 }
 
-// SecretFileWriteCommitOutcome 返回 export writer 对目标路径提交状态的判断。
-func SecretFileWriteCommitOutcome(err error) WriteCommitOutcome {
-	var writeErr *SecretFileWriteError
-	if !errors.As(err, &writeErr) {
-		return WriteCommitOutcomeUnknown
-	}
-	return writeErr.outcome
-}
-
 // WriteSecretFile 把 secret 写到任意目标；已有 parent 的权限与 ownership 保持不变。
 // force=false 直接排他创建，因此写入期间目标可见，不承诺 atomic visibility。
 func WriteSecretFile(path string, body []byte, force bool) (resultErr error) {
-	outcome := WriteCommitOutcomeNotCommitted
+	outcome := writeCommitOutcomeNotCommitted
 	defer func() {
 		if resultErr != nil {
-			resultErr = &SecretFileWriteError{outcome: outcome, cause: resultErr}
+			resultErr = &secretFileWriteError{outcome: outcome, cause: resultErr}
 		}
 	}()
 
@@ -78,7 +75,7 @@ func WriteSecretFile(path string, body []byte, force bool) (resultErr error) {
 			return err
 		}
 		complete = true
-		outcome = WriteCommitOutcomeCommitted
+		outcome = writeCommitOutcomeCommitted
 		return atomicfile.SyncParentDirectory(directory)
 	}
 
@@ -86,12 +83,8 @@ func WriteSecretFile(path string, body []byte, force bool) (resultErr error) {
 	if err != nil {
 		return err
 	}
-	closed := false
 	preserveTemporary := false
 	defer func() {
-		if !closed {
-			_ = temporary.Close()
-		}
 		if !preserveTemporary {
 			if err := os.Remove(temporaryPath); err != nil && !errors.Is(err, os.ErrNotExist) {
 				resultErr = errors.Join(resultErr, err)
@@ -99,17 +92,15 @@ func WriteSecretFile(path string, body []byte, force bool) (resultErr error) {
 		}
 	}()
 	if err := writeAndCloseSecret(temporary, body); err != nil {
-		closed = true
 		return err
 	}
-	closed = true
 	replacement, err := atomicfile.ReplacePrivateFile(temporaryPath, path)
 	preserveTemporary = replacement.PreserveSource
 	switch {
 	case replacement.Committed:
-		outcome = WriteCommitOutcomeCommitted
+		outcome = writeCommitOutcomeCommitted
 	case replacement.PreserveSource:
-		outcome = WriteCommitOutcomeUnknown
+		outcome = writeCommitOutcomeUnknown
 	}
 	if !replacement.Committed {
 		return err

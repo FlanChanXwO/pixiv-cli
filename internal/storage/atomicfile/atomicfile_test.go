@@ -1,9 +1,12 @@
 package atomicfile_test
 
 import (
+	"context"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/storage/atomicfile"
@@ -31,4 +34,31 @@ func TestPrivateReplacementPreservesTargetOnFailure(t *testing.T) {
 			require.ErrorIs(t, err, os.ErrNotExist)
 		})
 	}
+}
+
+type cancelAtEOF struct {
+	io.Reader
+	cancel context.CancelFunc
+}
+
+func (r cancelAtEOF) Read(p []byte) (int, error) {
+	n, err := r.Reader.Read(p)
+	if err == io.EOF {
+		r.cancel()
+	}
+	return n, err
+}
+
+func TestAtomicWriteCancellationPreservesTarget(t *testing.T) {
+	target := filepath.Join(t.TempDir(), "state")
+	require.NoError(t, os.WriteFile(target, []byte("old"), 0o600))
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+	reader := cancelAtEOF{Reader: strings.NewReader("new"), cancel: cancel}
+	written, err := atomicfile.AtomicWrite(ctx, target, reader)
+	require.ErrorIs(t, err, context.Canceled)
+	require.EqualValues(t, 3, written)
+	body, err := os.ReadFile(target)
+	require.NoError(t, err)
+	require.Equal(t, "old", string(body))
 }
