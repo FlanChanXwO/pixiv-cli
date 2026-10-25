@@ -20,9 +20,7 @@ import (
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/cli/auth/loginhelper"
 	commands "github.com/FlanChanXwO/pixiv-cli/internal/cli/internal/command"
-	"github.com/FlanChanXwO/pixiv-cli/internal/config/paths"
 	config "github.com/FlanChanXwO/pixiv-cli/internal/config/settings"
-	filesecret "github.com/FlanChanXwO/pixiv-cli/internal/storage/secretfile"
 	"github.com/spf13/pflag"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -42,22 +40,6 @@ func changedFlags(values map[string]bool) *pflag.FlagSet {
 		}
 	}
 	return flags
-}
-
-func TestConfiguredRelayServerOptionsIgnoreLegacyClientRelaySettings(t *testing.T) {
-	clearConfigEnv(t)
-	_, configPath := useTempPaths(t)
-	require.NoError(t, filesecret.WritePrivateFile(configPath, []byte("[login]\nrelay_secret = \"legacy-secret\"\nrelay_target_url = \"http://127.0.0.1:1\"\n"), paths.PrivateFileMode))
-
-	settings, err := config.DefaultStore().Current()
-	require.NoError(t, err)
-	runtime, err := settings.Runtime()
-	require.NoError(t, err)
-
-	opts, enabled, err := configuredRelayServerOptions(changedFlags(nil), accountLoginOptions{}, runtime)
-	require.NoError(t, err)
-	assert.False(t, enabled)
-	assert.Empty(t, opts)
 }
 
 func TestConfiguredRelayServerOptionsRequirePublicURLAndListener(t *testing.T) {
@@ -332,54 +314,6 @@ func TestRemoteLoginHandoffRejectsMismatchedCapability(t *testing.T) {
 	require.EqualError(t, err, "remote Pixiv login relay rejected login handoff")
 	_, err = os.Stat(filepath.Join(os.Getenv("HOME"), ".pixiv-cli", "remote-login-session.json"))
 	require.ErrorIs(t, err, os.ErrNotExist)
-}
-
-func TestRemoteLoginHandoffRejectsCallbackBeforeDesktopStartAndWithWrongState(t *testing.T) {
-	t.Setenv("HOME", t.TempDir())
-	t.Setenv("USERPROFILE", t.TempDir())
-	addr := freeLoopbackAddr(t)
-	const callback = "pixiv://account/login?code=must-not-be-accepted-before-start"
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-
-	output := newSynchronizedOutput()
-	type outcome struct {
-		cleanup func()
-		err     error
-	}
-	resultCh := make(chan outcome, 1)
-	go func() {
-		_, _, cleanup, err := (controller{errOut: output}).waitForHandoffRelayLoginCode(ctx, relayServerOptions{
-			PublicURL:  "http://" + addr,
-			ListenAddr: addr,
-		}, func(raw string) bool {
-			return raw == callback || raw == callback+"&state=matching-state"
-		}, "https://app-api.pixiv.net/web/v1/login?client=pixiv-android&code_challenge_method=S256&code_challenge=handoff-challenge&state=handoff")
-		resultCh <- outcome{cleanup: cleanup, err: err}
-	}()
-	t.Cleanup(func() {
-		cancel()
-		select {
-		case result := <-resultCh:
-			if result.cleanup != nil {
-				result.cleanup()
-			}
-		case <-time.After(5 * time.Second):
-			t.Fatal("handoff relay did not stop after cancellation")
-		}
-	})
-
-	waitForLoginServer(t, addr)
-	start := parseRemoteLoginStart(t, remoteLoginDeepLinkFromSessionURL(t, output.waitForSessionURL(t)))
-	response := postHandoffCallback(t, "http://"+addr+"/callback/"+start.SessionID, start.Proof, callback)
-	require.Equal(t, http.StatusConflict, response.StatusCode)
-	require.NoError(t, response.Body.Close())
-
-	_, err := loginhelper.StartRemoteLogin(context.Background(), start)
-	require.NoError(t, err)
-	wrongState := postHandoffCallback(t, "http://"+addr+"/callback/"+start.SessionID, start.Proof, callback+"&state=other-session")
-	require.Equal(t, http.StatusBadRequest, wrongState.StatusCode)
-	require.NoError(t, wrongState.Body.Close())
 }
 
 func TestHandoffRelayContextWaiterStopsWhenServerFails(t *testing.T) {

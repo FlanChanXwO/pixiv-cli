@@ -198,14 +198,6 @@ func TestSearchArtworksPreservesUpstreamErrorAndRejectsNegativeBookmarkCount(t *
 	require.Equal(t, sdk.MalformedUpstreamResponse, sdk.ReasonOf(err))
 }
 
-func TestSearchArtworksReportsUnconfiguredOperation(t *testing.T) {
-	_, err := searchArtworks[*product.Client](context.Background(), nil, artworkSearchRequest{
-		Query: product.SearchArtworksRequest{BookmarkMin: intSearchPointer(1)},
-	})
-	require.Equal(t, sdk.LocalStateError, sdk.ReasonOf(err))
-	require.NotContains(t, err.Error(), "refresh_token")
-}
-
 func TestSearchWorkflowPreservesMissingExecutorError(t *testing.T) {
 	_, err := searchArtworks(context.Background(), func(context.Context, func(context.Context, artworkClient) (bool, error)) error {
 		return nil

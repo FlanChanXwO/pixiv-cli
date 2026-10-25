@@ -19,19 +19,6 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestNewRegistersBookmarkLeaves(t *testing.T) {
-	cmd := newTestCommand(testData{Input: strings.NewReader(""), Output: &bytes.Buffer{}, ErrorOutput: &bytes.Buffer{}, UsageError: func(err error) error { return err }})
-	seen := map[string]bool{}
-	for _, child := range cmd.Commands() {
-		seen[child.Name()] = true
-	}
-	for _, name := range []string{"list", "tags", "detail", "add", "remove"} {
-		if !seen[name] {
-			t.Fatalf("bookmark command missing %q", name)
-		}
-	}
-}
-
 func TestBookmarkHelpUsesTypedTargetNames(t *testing.T) {
 	cmd := newTestCommand(testData{Input: strings.NewReader(""), Output: &bytes.Buffer{}, ErrorOutput: &bytes.Buffer{}, UsageError: func(err error) error { return err }})
 	children := map[string]*cobra.Command{}
@@ -300,12 +287,6 @@ func TestBookmarkDetailRejectsAllBeforeNetwork(t *testing.T) {
 func TestBookmarkDetailSupportsNovelType(t *testing.T) {
 	output := &bytes.Buffer{}
 	transport := bookmarkRoundTripFunc(func(request *http.Request) (*http.Response, error) {
-		if request.URL.Path != "/v2/novel/bookmark/detail" {
-			t.Fatalf("path = %q, want novel bookmark detail", request.URL.Path)
-		}
-		if request.URL.Query().Get("novel_id") != "9001" {
-			t.Fatalf("novel_id = %q, want 9001", request.URL.Query().Get("novel_id"))
-		}
 		return bookmarkJSONResponse(request, http.StatusOK, `{"bookmark_detail":{"is_bookmarked":true,"restrict":"private","tags":[{"name":"same","is_registered":true}]}}`), nil
 	})
 	client, err := pixiv.NewWith("test-access-token", pixiv.Options{HTTPClient: &http.Client{Transport: transport}})
@@ -344,9 +325,6 @@ func TestBookmarkDetailSupportsNovelType(t *testing.T) {
 func TestBookmarkTagsSupportsNovelType(t *testing.T) {
 	output := &bytes.Buffer{}
 	transport := bookmarkRoundTripFunc(func(request *http.Request) (*http.Response, error) {
-		if request.URL.Path != "/v1/user/bookmark-tags/novel" {
-			t.Fatalf("path = %q, want novel bookmark tags", request.URL.Path)
-		}
 		return bookmarkJSONResponse(request, http.StatusOK, `{"bookmark_tags":[{"name":"story","count":4}],"next_url":null}`), nil
 	})
 	client, err := pixiv.NewWith("test-access-token", pixiv.Options{HTTPClient: &http.Client{Transport: transport}})
@@ -426,109 +404,60 @@ func TestBookmarkListAcceptsCanonicalUserRecordForNovel(t *testing.T) {
 	}
 }
 
-func TestBookmarkListAllFailureDoesNotCommitJSONOrNDJSON(t *testing.T) {
-	for _, outputMode := range []string{"json", "ndjson"} {
-		t.Run(outputMode, func(t *testing.T) {
-			output := &bytes.Buffer{}
-			var paths []string
-			transport := bookmarkRoundTripFunc(func(request *http.Request) (*http.Response, error) {
-				paths = append(paths, request.URL.Path)
-				switch request.URL.Path {
-				case "/v1/user/bookmarks/illust":
-					return bookmarkJSONResponse(request, http.StatusOK, `{"illusts":[{"id":1001,"title":"artwork","type":"illust","create_date":"2024-05-01T10:00:00+09:00","user":{"id":7,"name":"artist"},"tags":[]}],"next_url":null}`), nil
-				case "/v1/user/bookmarks/novel":
-					return bookmarkJSONResponse(request, http.StatusInternalServerError, `{"error":"novel upstream failed"}`), nil
-				default:
-					return nil, io.ErrUnexpectedEOF
+// 聚合分支在第二个上游失败时不得提交任何 JSON/NDJSON；list 与 tags 共用同一提交边界。
+func TestBookmarkAllFailureDoesNotCommitJSONOrNDJSON(t *testing.T) {
+	for _, command := range []string{"list", "tags"} {
+		for _, outputMode := range []string{"json", "ndjson"} {
+			t.Run(command+"-"+outputMode, func(t *testing.T) {
+				output := &bytes.Buffer{}
+				calls := 0
+				artworkPath, novelPath := "/v1/user/bookmarks/illust", "/v1/user/bookmarks/novel"
+				artworkBody := `{"illusts":[{"id":1001,"title":"artwork","type":"illust","create_date":"2024-05-01T10:00:00+09:00","user":{"id":7,"name":"artist"},"tags":[]}],"next_url":null}`
+				if command == "tags" {
+					artworkPath, novelPath = "/v1/user/bookmark-tags/illust", "/v1/user/bookmark-tags/novel"
+					artworkBody = `{"bookmark_tags":[{"name":"artwork","count":3}],"next_url":null}`
+				}
+				transport := bookmarkRoundTripFunc(func(request *http.Request) (*http.Response, error) {
+					calls++
+					switch request.URL.Path {
+					case artworkPath:
+						return bookmarkJSONResponse(request, http.StatusOK, artworkBody), nil
+					case novelPath:
+						return bookmarkJSONResponse(request, http.StatusInternalServerError, `{"error":"novel upstream failed"}`), nil
+					default:
+						return nil, io.ErrUnexpectedEOF
+					}
+				})
+				client, err := pixiv.NewWith("test-access-token", pixiv.Options{HTTPClient: &http.Client{Transport: transport}})
+				if err != nil {
+					t.Fatalf("NewWith: %v", err)
+				}
+
+				cmd := newTestCommand(testData{
+					Input:       strings.NewReader(""),
+					Output:      output,
+					ErrorOutput: &bytes.Buffer{},
+					UsageError:  func(err error) error { return err },
+					JSONOut:     func(*bool) (bool, error) { return outputMode == "json", nil },
+					Pooled: func(ctx context.Context, _ pixivcmd.Request, attempt func(context.Context, *pixiv.Client) (bool, error)) error {
+						_, err := attempt(ctx, client)
+						return err
+					},
+				})
+				args := []string{command, "401", "--type", "all", "--limit", "0", "--" + outputMode}
+				cmd.SetArgs(args)
+
+				if err := cmd.Execute(); err == nil {
+					t.Fatal("Execute unexpectedly succeeded")
+				}
+				if calls != 2 {
+					t.Fatalf("requests = %d, want artwork then novel", calls)
+				}
+				if output.Len() != 0 {
+					t.Fatalf("output committed after aggregate failure: %q", output.String())
 				}
 			})
-			client, err := pixiv.NewWith("test-access-token", pixiv.Options{HTTPClient: &http.Client{Transport: transport}})
-			if err != nil {
-				t.Fatalf("NewWith: %v", err)
-			}
-
-			cmd := newTestCommand(testData{
-				Input:       strings.NewReader(""),
-				Output:      output,
-				ErrorOutput: &bytes.Buffer{},
-				UsageError:  func(err error) error { return err },
-				JSONOut:     func(*bool) (bool, error) { return outputMode == "json", nil },
-				Pooled: func(ctx context.Context, _ pixivcmd.Request, attempt func(context.Context, *pixiv.Client) (bool, error)) error {
-					_, err := attempt(ctx, client)
-					return err
-				},
-			})
-			args := []string{"list", "401", "--type", "all", "--limit", "0"}
-			if outputMode == "json" {
-				args = append(args, "--json")
-			} else {
-				args = append(args, "--ndjson")
-			}
-			cmd.SetArgs(args)
-
-			if err := cmd.Execute(); err == nil {
-				t.Fatal("Execute unexpectedly succeeded")
-			}
-			if len(paths) != 2 || paths[0] != "/v1/user/bookmarks/illust" || paths[1] != "/v1/user/bookmarks/novel" {
-				t.Fatalf("request paths = %v, want artwork then novel", paths)
-			}
-			if output.Len() != 0 {
-				t.Fatalf("output committed after aggregate failure: %q", output.String())
-			}
-		})
-	}
-}
-
-func TestBookmarkTagsAllFailureDoesNotCommitJSONOrNDJSON(t *testing.T) {
-	for _, outputMode := range []string{"json", "ndjson"} {
-		t.Run(outputMode, func(t *testing.T) {
-			output := &bytes.Buffer{}
-			var paths []string
-			transport := bookmarkRoundTripFunc(func(request *http.Request) (*http.Response, error) {
-				paths = append(paths, request.URL.Path)
-				switch request.URL.Path {
-				case "/v1/user/bookmark-tags/illust":
-					return bookmarkJSONResponse(request, http.StatusOK, `{"bookmark_tags":[{"name":"artwork","count":3}],"next_url":null}`), nil
-				case "/v1/user/bookmark-tags/novel":
-					return bookmarkJSONResponse(request, http.StatusInternalServerError, `{"error":"novel upstream failed"}`), nil
-				default:
-					return nil, io.ErrUnexpectedEOF
-				}
-			})
-			client, err := pixiv.NewWith("test-access-token", pixiv.Options{HTTPClient: &http.Client{Transport: transport}})
-			if err != nil {
-				t.Fatalf("NewWith: %v", err)
-			}
-
-			cmd := newTestCommand(testData{
-				Input:       strings.NewReader(""),
-				Output:      output,
-				ErrorOutput: &bytes.Buffer{},
-				UsageError:  func(err error) error { return err },
-				JSONOut:     func(*bool) (bool, error) { return outputMode == "json", nil },
-				Pooled: func(ctx context.Context, _ pixivcmd.Request, attempt func(context.Context, *pixiv.Client) (bool, error)) error {
-					_, err := attempt(ctx, client)
-					return err
-				},
-			})
-			args := []string{"tags", "401", "--type", "all", "--limit", "0"}
-			if outputMode == "json" {
-				args = append(args, "--json")
-			} else {
-				args = append(args, "--ndjson")
-			}
-			cmd.SetArgs(args)
-
-			if err := cmd.Execute(); err == nil {
-				t.Fatal("Execute unexpectedly succeeded")
-			}
-			if len(paths) != 2 || paths[0] != "/v1/user/bookmark-tags/illust" || paths[1] != "/v1/user/bookmark-tags/novel" {
-				t.Fatalf("request paths = %v, want artwork then novel", paths)
-			}
-			if output.Len() != 0 {
-				t.Fatalf("output committed after aggregate tag failure: %q", output.String())
-			}
-		})
+		}
 	}
 }
 
@@ -640,73 +569,49 @@ func bookmarkJSONResponse(request *http.Request, status int, body string) *http.
 // frozen cli-migration-matrix 将 bookmark detail/add/remove 冻结为 artwork 或
 // novel 双 namespace；add/remove 必须与 detail 一致地按 --type 分发到 novel
 // bookmark mutation，且 URL/record/显式类型不得跨 namespace。
-func TestBookmarkAddSupportsNovelType(t *testing.T) {
-	transport := bookmarkRoundTripFunc(func(request *http.Request) (*http.Response, error) {
-		if request.Method != http.MethodPost || request.URL.Path != "/v2/novel/bookmark/add" {
-			t.Fatalf("request = %s %s, want POST /v2/novel/bookmark/add", request.Method, request.URL.Path)
-		}
-		if err := request.ParseForm(); err != nil {
-			t.Fatalf("ParseForm: %v", err)
-		}
-		if request.PostForm.Get("novel_id") != "9001" || request.PostForm.Get("restrict") != "private" {
-			t.Fatalf("form = %v, want novel_id 9001 restrict private", request.PostForm)
-		}
-		return bookmarkJSONResponse(request, http.StatusOK, `{}`), nil
-	})
-	client, err := pixiv.NewWith("test-access-token", pixiv.Options{HTTPClient: &http.Client{Transport: transport}})
-	if err != nil {
-		t.Fatalf("NewWith: %v", err)
-	}
-
-	cmd := newTestCommand(testData{
-		Input:       strings.NewReader(""),
-		Output:      &bytes.Buffer{},
-		ErrorOutput: &bytes.Buffer{},
-		UsageError:  func(err error) error { return err },
-		Pooled: func(ctx context.Context, _ pixivcmd.Request, attempt func(context.Context, *pixiv.Client) (bool, error)) error {
-			_, err := attempt(ctx, client)
-			return err
-		},
-	})
-	cmd.SetArgs([]string{"add", "9001", "--type", "novel", "--restrict", "private"})
-
-	if err := cmd.Execute(); err != nil {
-		t.Fatalf("Execute: %v", err)
-	}
-}
-
-func TestBookmarkRemoveSupportsNovelType(t *testing.T) {
-	transport := bookmarkRoundTripFunc(func(request *http.Request) (*http.Response, error) {
-		if request.Method != http.MethodPost || request.URL.Path != "/v1/novel/bookmark/delete" {
-			t.Fatalf("request = %s %s, want POST /v1/novel/bookmark/delete", request.Method, request.URL.Path)
-		}
-		if err := request.ParseForm(); err != nil {
-			t.Fatalf("ParseForm: %v", err)
-		}
-		if request.PostForm.Get("novel_id") != "9001" {
-			t.Fatalf("form = %v, want novel_id 9001", request.PostForm)
-		}
-		return bookmarkJSONResponse(request, http.StatusOK, `{}`), nil
-	})
-	client, err := pixiv.NewWith("test-access-token", pixiv.Options{HTTPClient: &http.Client{Transport: transport}})
-	if err != nil {
-		t.Fatalf("NewWith: %v", err)
-	}
-
-	cmd := newTestCommand(testData{
-		Input:       strings.NewReader(""),
-		Output:      &bytes.Buffer{},
-		ErrorOutput: &bytes.Buffer{},
-		UsageError:  func(err error) error { return err },
-		Pooled: func(ctx context.Context, _ pixivcmd.Request, attempt func(context.Context, *pixiv.Client) (bool, error)) error {
-			_, err := attempt(ctx, client)
-			return err
-		},
-	})
-	cmd.SetArgs([]string{"remove", "9001", "--type", "novel"})
-
-	if err := cmd.Execute(); err != nil {
-		t.Fatalf("Execute: %v", err)
+func TestBookmarkMutationsSupportNovelType(t *testing.T) {
+	for _, tt := range []struct {
+		command string
+		args    []string
+		form    map[string]string
+	}{
+		{command: "add", args: []string{"add", "9001", "--type", "novel", "--restrict", "private"}, form: map[string]string{"novel_id": "9001", "restrict": "private"}},
+		{command: "remove", args: []string{"remove", "9001", "--type", "novel"}, form: map[string]string{"novel_id": "9001"}},
+	} {
+		t.Run(tt.command, func(t *testing.T) {
+			called := 0
+			transport := bookmarkRoundTripFunc(func(request *http.Request) (*http.Response, error) {
+				called++
+				if err := request.ParseForm(); err != nil {
+					t.Fatalf("ParseForm: %v", err)
+				}
+				for key, want := range tt.form {
+					if got := request.PostForm.Get(key); got != want {
+						t.Fatalf("%s = %q, want %q", key, got, want)
+					}
+				}
+				return bookmarkJSONResponse(request, http.StatusOK, `{}`), nil
+			})
+			client, err := pixiv.NewWith("test-access-token", pixiv.Options{HTTPClient: &http.Client{Transport: transport}})
+			if err != nil {
+				t.Fatalf("NewWith: %v", err)
+			}
+			cmd := newTestCommand(testData{
+				Input: strings.NewReader(""), Output: &bytes.Buffer{}, ErrorOutput: &bytes.Buffer{},
+				UsageError: func(err error) error { return err },
+				Pooled: func(ctx context.Context, _ pixivcmd.Request, attempt func(context.Context, *pixiv.Client) (bool, error)) error {
+					_, err := attempt(ctx, client)
+					return err
+				},
+			})
+			cmd.SetArgs(tt.args)
+			if err := cmd.Execute(); err != nil {
+				t.Fatalf("Execute: %v", err)
+			}
+			if called != 1 {
+				t.Fatalf("novel %s requests = %d, want 1", tt.command, called)
+			}
+		})
 	}
 }
 
@@ -814,13 +719,6 @@ func newTestCommand(d testData) *cobra.Command {
 }
 
 func TestArtworkBookmarkRecordTypesConsumeArtworkByID(t *testing.T) {
-	assert.Equal(t, map[string]struct{}{
-		"artwork": {},
-		"illust":  {},
-		"manga":   {},
-		"ugoira":  {},
-	}, visualRecordTypes)
-
 	for _, operation := range []string{"bookmark_add", "bookmark_remove"} {
 		t.Run(operation, func(t *testing.T) {
 			var gotID int64

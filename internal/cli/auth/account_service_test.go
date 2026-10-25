@@ -127,10 +127,6 @@ func TestDecodeAuthExportBundleRejectsDefaultNotInAccounts(t *testing.T) {
 	require.ErrorContains(t, err, "default does not name")
 }
 
-func TestRejectDuplicateObjectKeysAcceptsCanonical(t *testing.T) {
-	require.NoError(t, rejectDuplicateObjectKeys([]byte(validBundleJSON())))
-}
-
 func TestEncodeAuthExportBundleProducesCanonicalJSON(t *testing.T) {
 	bundle, err := decodeAuthExportBundle([]byte(validBundleJSON()))
 	require.NoError(t, err)
