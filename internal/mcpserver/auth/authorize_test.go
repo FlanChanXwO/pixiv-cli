@@ -415,19 +415,6 @@ func TestAuthorizeRejectsAmbiguousCallbackQuery(t *testing.T) {
 	}
 }
 
-func TestAuthorizeCookieUsesEscapedPathPrefix(t *testing.T) {
-	f := newAuthorizationFixture(t)
-	handler, err := auth.NewHandler("http://instance.test/my%20instance", f.store)
-	require.NoError(t, err)
-	f.query.Set("resource", "http://instance.test/my%20instance/mcp")
-	request := httptest.NewRequest(http.MethodGet, "http://instance.test/my%20instance/oauth/authorize?"+f.query.Encode(), nil)
-	recorder := httptest.NewRecorder()
-	handler.ServeHTTP(recorder, request)
-	require.Equal(t, http.StatusOK, recorder.Code)
-	require.Equal(t, "/my%20instance/oauth", recorder.Result().Cookies()[0].Path)
-	require.Contains(t, recorder.Body.String(), `action="http://instance.test/my%20instance/oauth/authorize"`)
-}
-
 func TestAuthorizeFormTargetsCanonicalEndpoint(t *testing.T) {
 	for _, prefix := range []string{"/prefix", "/my%20instance", "//client.test"} {
 		t.Run(prefix, func(t *testing.T) {
@@ -454,6 +441,8 @@ func TestAuthorizeFormTargetsCanonicalEndpoint(t *testing.T) {
 			require.Equal(t, "http", destination.Scheme)
 			require.Equal(t, "instance.test", destination.Host)
 			require.Equal(t, base+"/oauth/authorize", destination.String())
+			// Cookie scope 使用未转义的 canonical prefix，与 form action 一致。
+			require.Equal(t, prefix+"/oauth", recorder.Result().Cookies()[0].Path)
 		})
 	}
 }
