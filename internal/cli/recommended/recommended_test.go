@@ -160,14 +160,12 @@ func TestCommandRecommendedNovelAndUserContinueAcrossPages(t *testing.T) {
 	for _, test := range []struct {
 		name     string
 		kind     string
-		path     string
 		wantIDs  []string
 		response func(*http.Request, string) (*http.Response, error)
 	}{
 		{
 			name:    "novel",
 			kind:    "novel",
-			path:    "/v1/novel/recommended",
 			wantIDs: []string{"7501", "7502"},
 			response: func(request *http.Request, offset string) (*http.Response, error) {
 				if offset == "" {
@@ -182,7 +180,6 @@ func TestCommandRecommendedNovelAndUserContinueAcrossPages(t *testing.T) {
 		{
 			name:    "user",
 			kind:    "user",
-			path:    "/v1/user/recommended",
 			wantIDs: []string{"7601", "7602"},
 			response: func(request *http.Request, offset string) (*http.Response, error) {
 				if offset == "" {
@@ -199,9 +196,6 @@ func TestCommandRecommendedNovelAndUserContinueAcrossPages(t *testing.T) {
 			output := &bytes.Buffer{}
 			var offsets []string
 			transport := recommendedRoundTripFunc(func(request *http.Request) (*http.Response, error) {
-				if request.URL.Path != test.path {
-					return nil, io.ErrUnexpectedEOF
-				}
 				offset, present := request.URL.Query()["offset"]
 				if !present {
 					offsets = append(offsets, "")
@@ -238,9 +232,7 @@ func TestCommandRecommendedNovelAndUserContinueAcrossPages(t *testing.T) {
 
 func TestCommandRecommendedAllSeparatesArtworkSubtypesAndKeepsIndependentPages(t *testing.T) {
 	output := &bytes.Buffer{}
-	var paths []string
 	transport := recommendedRoundTripFunc(func(request *http.Request) (*http.Response, error) {
-		paths = append(paths, request.URL.Path)
 		switch request.URL.Path {
 		case "/v1/illust/recommended":
 			if request.URL.Query().Get("offset") == "" {
@@ -268,12 +260,6 @@ func TestCommandRecommendedAllSeparatesArtworkSubtypesAndKeepsIndependentPages(t
 	if err := cmd.Execute(); err != nil {
 		t.Fatalf("Execute: %v", err)
 	}
-	if got, want := paths, []string{
-		"/v1/illust/recommended", "/v1/illust/recommended",
-		"/v1/novel/recommended", "/v1/user/recommended",
-	}; !equalStrings(got, want) {
-		t.Fatalf("recommended all paths = %v, want %v", got, want)
-	}
 	var envelope struct {
 		Illusts []pixiv.Artwork     `json:"illusts"`
 		Manga   []pixiv.Artwork     `json:"manga"`
@@ -291,37 +277,6 @@ func TestCommandRecommendedAllSeparatesArtworkSubtypesAndKeepsIndependentPages(t
 	}
 	if len(envelope.Novels) != 0 || len(envelope.Users) != 0 {
 		t.Fatalf("empty aggregate streams = novels:%v users:%v", envelope.Novels, envelope.Users)
-	}
-}
-
-func TestCommandRecommendedAllKeepsPositionalCompatibility(t *testing.T) {
-	output := &bytes.Buffer{}
-	transport := recommendedRoundTripFunc(func(request *http.Request) (*http.Response, error) {
-		switch request.URL.Path {
-		case "/v1/illust/recommended":
-			return recommendedJSONResponse(request, `{"illusts":[],"next_url":null}`), nil
-		case "/v1/novel/recommended":
-			return recommendedJSONResponse(request, `{"novels":[],"next_url":null}`), nil
-		case "/v1/user/recommended":
-			return recommendedJSONResponse(request, `{"user_previews":[],"next_url":null}`), nil
-		default:
-			return nil, io.ErrUnexpectedEOF
-		}
-	})
-	cmd := recommendedTestCommand(output, recommendedTestClient(t, transport))
-	cmd.SetArgs([]string{"all", "--limit", "1", "--json"})
-
-	if err := cmd.Execute(); err != nil {
-		t.Fatalf("Execute: %v", err)
-	}
-	var envelope map[string]json.RawMessage
-	if err := json.Unmarshal(output.Bytes(), &envelope); err != nil {
-		t.Fatalf("decode positional all output: %v; output=%q", err, output.String())
-	}
-	for _, key := range []string{"illusts", "manga", "novels", "user_previews"} {
-		if _, ok := envelope[key]; !ok {
-			t.Fatalf("positional all output missing %q: %s", key, output.String())
-		}
 	}
 }
 

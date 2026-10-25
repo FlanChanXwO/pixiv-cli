@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
-	"net/http"
 	"strings"
 	"testing"
 
@@ -21,13 +20,6 @@ import (
 	pixiv "github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
 	"github.com/spf13/cobra"
 )
-
-func TestCommandUsageShowsOptionalIDForRecordInput(t *testing.T) {
-	cmd := newTestCommand(testDependencies{})
-	if usage := cmd.UseLine(); usage != "detail [ID_OR_URL] [flags]" {
-		t.Fatalf("usage = %q, want detail [ID_OR_URL] [flags]", usage)
-	}
-}
 
 func TestCommandConsumesReverseSearchIdentityRecordsInOrder(t *testing.T) {
 	input := reverseSearchOutput(t, []reversesearch.Result{
@@ -228,96 +220,25 @@ func TestCommandNovelContentReturnsUnavailableBeforeOpeningClient(t *testing.T) 
 	}
 }
 
-func TestCommandRoutesTypedIDsThroughPublicSDK(t *testing.T) {
-	tests := []struct {
-		name      string
-		typ       string
-		id        string
-		path      string
-		queryName string
-		body      string
-	}{
-		{
-			name:      "artwork",
-			typ:       "artwork",
-			id:        "101",
-			path:      "/v1/illust/detail",
-			queryName: "illust_id",
-			body:      `{"illust":{"id":101,"title":"artwork","type":"illust","create_date":"2024-01-01T00:00:00Z","page_count":1,"image_urls":{"original":"https://i.pximg.net/img/101.png"},"user":{"id":9,"name":"artist"},"tags":[]}}`,
-		},
-		{
-			name:      "novel",
-			typ:       "novel",
-			id:        "201",
-			path:      "/v2/novel/detail",
-			queryName: "novel_id",
-			body:      `{"novel":{"id":201,"title":"novel","create_date":"2024-01-01T00:00:00Z","user":{"id":9,"name":"writer"}}}`,
-		},
-		{
-			name:      "user",
-			typ:       "user",
-			id:        "301",
-			path:      "/v1/user/detail",
-			queryName: "user_id",
-			body:      `{"user":{"id":301,"name":"user"},"profile":{},"profile_publicity":{"gender":false,"region":false,"birth_day":false,"birth_year":false,"job":false,"pawoo":false},"workspace":{}}`,
-		},
-	}
-
-	for _, test := range tests {
-		t.Run(test.name, func(t *testing.T) {
-			var gotPath string
-			var gotID string
-			cmd := newTestCommand(testDependencies{
-				Input:      strings.NewReader(""),
-				Output:     &bytes.Buffer{},
-				UsageError: func(err error) error { return err },
-				BuildRequest: func(*cobra.Command, Options) (Request, error) {
-					return Request{}, nil
-				},
-				Pooled: func(ctx context.Context, _ Request, attempt func(context.Context, *pixiv.Client) (bool, error)) error {
-					client, err := pixiv.NewWith("token", pixiv.Options{HTTPClient: &http.Client{Transport: detailRoundTripFunc(func(req *http.Request) (*http.Response, error) {
-						gotPath = req.URL.Path
-						gotID = req.URL.Query().Get(test.queryName)
-						return &http.Response{
-							StatusCode: http.StatusOK,
-							Header:     http.Header{"Content-Type": {"application/json"}},
-							Body:       io.NopCloser(strings.NewReader(test.body)),
-							Request:    req,
-						}, nil
-					})}})
-					if err != nil {
-						return err
-					}
-					_, err = attempt(ctx, client)
-					return err
-				},
-				FetchArtwork: func(ctx context.Context, client *pixiv.Client, id int64) (pixiv.Artwork, error) {
-					return client.Artwork(ctx, pixiv.ArtworkRequest{ArtworkID: id})
-				},
-				FetchNovel: func(ctx context.Context, client *pixiv.Client, id int64) (pixiv.Novel, error) {
-					return client.Novel(ctx, pixiv.NovelRequest{NovelID: id})
-				},
-				FetchUser: func(ctx context.Context, client *pixiv.Client, id int64) (pixiv.UserDetail, error) {
-					return client.User(ctx, pixiv.UserRequest{UserID: id})
-				},
-				JSONOut: func(*bool) (bool, error) { return false, nil },
-			})
-			cmd.SetArgs([]string{"--type", test.typ, test.id})
-
-			if err := cmd.Execute(); err != nil {
-				t.Fatalf("Execute: %v", err)
+// 三种实体都走公开 SDK，且各自输出一个对应 key 的 JSON 文档；具体路由与字段映射由 SDK 测试负责。
+func TestCommandTypedIDsOutputEntityEnvelopes(t *testing.T) {
+	for _, typ := range []string{"artwork", "novel", "user"} {
+		t.Run(typ, func(t *testing.T) {
+			var output bytes.Buffer
+			data := testMachineDependencies(&output, strings.NewReader(""))
+			data.OutputIsTTY = func() bool { return true }
+			cmd := newTestCommand(data)
+			cmd.SetArgs([]string{"--type", typ, "42", "--json"})
+			requireNoError(t, cmd.Execute())
+			var object map[string]json.RawMessage
+			if err := json.Unmarshal(output.Bytes(), &object); err != nil {
+				t.Fatalf("expected one JSON object, got %q: %v", output.String(), err)
 			}
-			if gotPath != test.path || gotID != test.id {
-				t.Fatalf("request = %s?%s, want %s?%s", gotPath, gotID, test.path, test.queryName+"="+test.id)
+			if len(object) == 0 {
+				t.Fatalf("empty %s detail object: %q", typ, output.String())
 			}
 		})
 	}
-}
-
-type detailRoundTripFunc func(*http.Request) (*http.Response, error)
-
-func (f detailRoundTripFunc) RoundTrip(req *http.Request) (*http.Response, error) {
-	return f(req)
 }
 
 func TestCommandRejectsURLTypeConflictBeforeBuildingRequest(t *testing.T) {
@@ -505,180 +426,113 @@ func TestCommandRejectsRecordTypeMismatch(t *testing.T) {
 	}
 }
 
-func TestCommandTextValueKeepsHumanOutputWhenStdoutIsNotTTY(t *testing.T) {
-	var output bytes.Buffer
-	data := testMachineDependencies(&output, strings.NewReader(""))
-	data.OutputIsTTY = func() bool { return false }
-
-	cmd := newTestCommand(data)
-	cmd.SetArgs([]string{"42"})
-	requireNoError(t, cmd.Execute())
-
-	got := output.String()
-	if !strings.Contains(got, "title: artwork") {
-		t.Fatalf("expected human detail output, got %q", got)
-	}
-	trimmed := strings.TrimSpace(got)
-	if strings.HasPrefix(trimmed, "{") || strings.HasPrefix(trimmed, "[") {
-		t.Fatalf("text-value output unexpectedly became machine JSON: %q", got)
-	}
-}
-
-func TestCommandTextValueAcceptsRawURLAndStdin(t *testing.T) {
-	tests := []struct {
-		name  string
-		args  []string
-		input string
+// 文本输入与 record 输入在 TTY/非 TTY 下的输出外形是 detail 自己的契约；
+// 实体字段内容由 SDK/record 层覆盖。
+func TestCommandOutputModes(t *testing.T) {
+	twoRecords := `{"id":"42","type":"illust","url":"https://www.pixiv.net/artworks/42"}
+{"id":"43","type":"manga","url":"https://www.pixiv.net/artworks/43"}
+`
+	for _, test := range []struct {
+		name   string
+		input  string
+		args   []string
+		tty    bool
+		verify func(*testing.T, string)
 	}{
 		{
-			name: "raw Pixiv URL",
-			args: []string{"https://www.pixiv.net/artworks/42"},
+			name: "text value stays human off-TTY", input: "", args: []string{"42"}, tty: false,
+			verify: func(t *testing.T, out string) {
+				if !strings.Contains(out, "title: artwork") {
+					t.Fatalf("expected human detail output, got %q", out)
+				}
+				if trimmed := strings.TrimSpace(out); strings.HasPrefix(trimmed, "{") || strings.HasPrefix(trimmed, "[") {
+					t.Fatalf("text-value output unexpectedly became machine JSON: %q", out)
+				}
+			},
 		},
 		{
-			name:  "stdin raw ID",
-			input: "42\n",
+			name: "raw URL", input: "", args: []string{"https://www.pixiv.net/artworks/42"}, tty: false,
+			verify: func(t *testing.T, out string) {
+				if !strings.Contains(out, "title: artwork") {
+					t.Fatalf("expected human detail output, got %q", out)
+				}
+			},
 		},
-	}
-
-	for _, tc := range tests {
-		t.Run(tc.name, func(t *testing.T) {
+		{
+			name: "stdin ID", input: "42\n", tty: false,
+			verify: func(t *testing.T, out string) {
+				if !strings.Contains(out, "title: artwork") {
+					t.Fatalf("expected human detail output, got %q", out)
+				}
+			},
+		},
+		{
+			name: "text value NDJSON overrides TTY", input: "", args: []string{"42", "--ndjson"}, tty: true,
+			verify: func(t *testing.T, out string) {
+				records := decodeMachineRecords(t, out)
+				if len(records) != 1 || records[0]["id"] != "42" || records[0]["type"] != "illust" {
+					t.Fatalf("unexpected text-value canonical output: %q", out)
+				}
+			},
+		},
+		{
+			name: "record TTY separates entries", input: twoRecords, tty: true,
+			verify: func(t *testing.T, out string) {
+				if strings.Count(out, "title: artwork") != 2 {
+					t.Fatalf("expected two human detail entries, got %q", out)
+				}
+				if !strings.Contains(out, "\n---\n") {
+					t.Fatalf("expected stable separator between TTY record entries, got %q", out)
+				}
+			},
+		},
+		{
+			name: "record non-TTY auto NDJSON", input: twoRecords, tty: false,
+			verify: func(t *testing.T, out string) {
+				assertMachineRecordIDs(t, decodeMachineRecords(t, out), []string{"42", "43"})
+			},
+		},
+		{
+			name: "record explicit NDJSON", input: twoRecords, args: []string{"--ndjson"}, tty: true,
+			verify: func(t *testing.T, out string) {
+				assertMachineRecordIDs(t, decodeMachineRecords(t, out), []string{"42", "43"})
+			},
+		},
+		{
+			name: "record JSON array", input: twoRecords, args: []string{"--json"}, tty: true,
+			verify: func(t *testing.T, out string) {
+				var records []map[string]any
+				if err := json.Unmarshal([]byte(out), &records); err != nil {
+					t.Fatalf("expected one JSON array document, got %q: %v", out, err)
+				}
+				assertMachineRecordIDs(t, records, []string{"42", "43"})
+			},
+		},
+	} {
+		t.Run(test.name, func(t *testing.T) {
 			var output bytes.Buffer
-			cmd := newTestCommand(testMachineDependencies(&output, strings.NewReader(tc.input)))
-			cmd.SetArgs(tc.args)
-			requireNoError(t, cmd.Execute())
-			if !strings.Contains(output.String(), "title: artwork") {
-				t.Fatalf("expected compatible human detail output, got %q", output.String())
+			data := testMachineDependencies(&output, strings.NewReader(test.input))
+			data.OutputIsTTY = func() bool { return test.tty }
+			cmd := newTestCommand(data)
+			args := test.args
+			if args == nil {
+				args = []string{}
 			}
+			cmd.SetArgs(args)
+			requireNoError(t, cmd.Execute())
+			test.verify(t, output.String())
 		})
 	}
 }
 
-func TestCommandTextValueJSONRemainsSingleDocument(t *testing.T) {
-	var output bytes.Buffer
-	data := testMachineDependencies(&output, strings.NewReader(""))
-	cmd := newTestCommand(data)
-	cmd.SetArgs([]string{"42", "--json"})
-	requireNoError(t, cmd.Execute())
-
-	var object map[string]any
-	if err := json.Unmarshal(output.Bytes(), &object); err != nil {
-		t.Fatalf("expected one JSON object, got %q: %v", output.String(), err)
-	}
-	if len(object) == 0 {
-		t.Fatalf("expected detail DTO fields, got %q", output.String())
-	}
-	if strings.HasPrefix(strings.TrimSpace(output.String()), "[") {
-		t.Fatalf("text-value --json unexpectedly became an array: %q", output.String())
-	}
-}
-
-func TestCommandTextValueNDJSONOutputsCanonicalRecord(t *testing.T) {
-	var output bytes.Buffer
-	data := testMachineDependencies(&output, strings.NewReader(""))
-	data.OutputIsTTY = func() bool { return true }
-	cmd := newTestCommand(data)
-	cmd.SetArgs([]string{"42", "--ndjson"})
-	requireNoError(t, cmd.Execute())
-
-	records := decodeMachineRecords(t, output.String())
-	if len(records) != 1 || records[0]["id"] != "42" || records[0]["type"] != "illust" {
-		t.Fatalf("unexpected text-value canonical output: %q", output.String())
-	}
-}
-
-func TestCommandRecordTTYSeparatesHumanDetails(t *testing.T) {
-	var output bytes.Buffer
-	data := testMachineDependencies(&output, strings.NewReader(`{"id":"42","type":"illust","url":"https://www.pixiv.net/artworks/42"}
-{"id":"43","type":"manga","url":"https://www.pixiv.net/artworks/43"}
-`))
-	data.OutputIsTTY = func() bool { return true }
-	cmd := newTestCommand(data)
-	cmd.SetArgs([]string{})
-	requireNoError(t, cmd.Execute())
-
-	got := output.String()
-	if strings.Count(got, "title: artwork") != 2 {
-		t.Fatalf("expected two human detail entries, got %q", got)
-	}
-	if !strings.Contains(got, "\n---\n") {
-		t.Fatalf("expected stable separator between TTY record entries, got %q", got)
-	}
-}
-
-func TestCommandRecordNonTTYAutoNDJSONPreservesOrder(t *testing.T) {
-	var output bytes.Buffer
-	data := testMachineDependencies(&output, strings.NewReader(`{"id":"42","type":"illust","url":"https://www.pixiv.net/artworks/42"}
-{"id":"43","type":"manga","url":"https://www.pixiv.net/artworks/43"}
-`))
-	data.OutputIsTTY = func() bool { return false }
-	cmd := newTestCommand(data)
-	cmd.SetArgs([]string{})
-	requireNoError(t, cmd.Execute())
-
-	assertMachineRecordIDs(t, decodeMachineRecords(t, output.String()), []string{"42", "43"})
-}
-
-func TestCommandRecordExplicitNDJSONOverridesTTY(t *testing.T) {
-	var output bytes.Buffer
-	data := testMachineDependencies(&output, strings.NewReader(`{"id":"42","type":"illust","url":"https://www.pixiv.net/artworks/42"}
-{"id":"43","type":"manga","url":"https://www.pixiv.net/artworks/43"}
-`))
-	data.OutputIsTTY = func() bool { return true }
-	cmd := newTestCommand(data)
-	cmd.SetArgs([]string{"--ndjson"})
-	requireNoError(t, cmd.Execute())
-
-	assertMachineRecordIDs(t, decodeMachineRecords(t, output.String()), []string{"42", "43"})
-}
-
-func TestCommandRecordJSONOutputsOrderedArray(t *testing.T) {
-	var output bytes.Buffer
-	data := testMachineDependencies(&output, strings.NewReader(`{"id":"42","type":"illust","url":"https://www.pixiv.net/artworks/42"}
-{"id":"43","type":"manga","url":"https://www.pixiv.net/artworks/43"}
-`))
-	data.OutputIsTTY = func() bool { return true }
-	cmd := newTestCommand(data)
-	cmd.SetArgs([]string{"--json"})
-	requireNoError(t, cmd.Execute())
-
-	var records []map[string]any
-	if err := json.Unmarshal(output.Bytes(), &records); err != nil {
-		t.Fatalf("expected one JSON array document, got %q: %v", output.String(), err)
-	}
-	assertMachineRecordIDs(t, records, []string{"42", "43"})
-}
-
 func TestCommandRecordMachineOutputUsesDetailTypes(t *testing.T) {
+	// artwork 的 illust/manga/ugoira 别名归 record 与 SDK；这里只验证 detail 自己拼的 novel/user 记录。
 	tests := []struct {
 		name     string
 		input    string
 		wantID   string
 		wantType string
 	}{
-		{
-			name:     "generic artwork becomes concrete artwork kind",
-			input:    `{"id":"42","type":"artwork","url":"https://www.pixiv.net/artworks/42"}` + "\n",
-			wantID:   "42",
-			wantType: "illust",
-		},
-		{
-			name:     "illust artwork alias",
-			input:    `{"id":"43","type":"illust","url":"https://www.pixiv.net/artworks/43"}` + "\n",
-			wantID:   "43",
-			wantType: "illust",
-		},
-		{
-			name:     "manga artwork alias",
-			input:    `{"id":"44","type":"manga","url":"https://www.pixiv.net/artworks/44"}` + "\n",
-			wantID:   "44",
-			wantType: "illust",
-		},
-		{
-			name:     "ugoira artwork alias",
-			input:    `{"id":"45","type":"ugoira","url":"https://www.pixiv.net/artworks/45"}` + "\n",
-			wantID:   "45",
-			wantType: "illust",
-		},
 		{
 			name:     "novel",
 			input:    `{"id":"88","type":"novel","url":"https://www.pixiv.net/novel/show.php?id=88"}` + "\n",

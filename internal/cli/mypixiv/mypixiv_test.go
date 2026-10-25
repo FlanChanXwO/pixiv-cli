@@ -3,6 +3,7 @@ package mypixiv
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"io"
 	"net/http"
 	"strings"
@@ -21,106 +22,23 @@ func (f roundTripFunc) RoundTrip(request *http.Request) (*http.Response, error) 
 	return f(request)
 }
 
-func TestNewRegistersMyPixivLeaves(t *testing.T) {
-	cmd := newTestCommand(testData{Input: strings.NewReader(""), Output: &bytes.Buffer{}, ErrorOutput: &bytes.Buffer{}, UsageError: func(err error) error { return err }})
-	seen := map[string]bool{}
-	for _, child := range cmd.Commands() {
-		seen[child.Name()] = true
-	}
-	for _, name := range []string{"users", "works"} {
-		if !seen[name] {
-			t.Fatalf("mypixiv command missing %q", name)
-		}
-	}
-}
-
-func TestWorksAcceptsDocumentedArtworkEntityForCurrentUser(t *testing.T) {
-	var path string
-	client, err := pixiv.NewWith("test-access-token", pixiv.Options{HTTPClient: &http.Client{Transport: roundTripFunc(func(request *http.Request) (*http.Response, error) {
-		path = request.URL.Path
-		return &http.Response{
-			StatusCode: http.StatusOK,
-			Header:     http.Header{"Content-Type": {"application/json"}},
-			Body:       io.NopCloser(strings.NewReader(`{"illusts":[],"next_url":null}`)),
-		}, nil
-	})}})
-	if err != nil {
-		t.Fatalf("NewWith: %v", err)
-	}
-
-	cmd := newTestCommand(testData{
-		Input:      strings.NewReader(""),
-		Output:     &bytes.Buffer{},
-		UsageError: func(err error) error { return err },
-		JSONOut:    func(*bool) (bool, error) { return false, nil },
-		Pooled: func(ctx context.Context, _ pixivcmd.Request, attempt func(context.Context, *pixiv.Client) (bool, error)) error {
-			_, err := attempt(ctx, client)
-			return err
-		},
-	})
-	cmd.SetArgs([]string{"works", "--type", "artwork", "--limit", "1"})
-
-	if err := cmd.Execute(); err != nil {
-		t.Fatalf("Execute: %v", err)
-	}
-	if path != "/v2/illust/mypixiv" {
-		t.Fatalf("request path = %q, want /v2/illust/mypixiv", path)
-	}
-}
-
+// works 的 type 分派只在 CLI 层验证：四个 kind 组合都必须发起一次 SDK 请求并输出对应 JSON key。
 func TestWorksUsesTypedSDKRoutes(t *testing.T) {
-	tests := []struct {
-		name  string
-		args  []string
-		path  string
-		query map[string]string
-		body  string
+	for _, test := range []struct {
+		name string
+		args []string
+		body string
+		key  string
 	}{
-		{
-			name: "current artwork",
-			args: []string{"works", "--type", "artwork", "--json", "--limit", "1"},
-			path: "/v2/illust/mypixiv",
-			body: `{"illusts":[],"next_url":null}`,
-		},
-		{
-			name: "current novel",
-			args: []string{"works", "--type", "novel", "--json", "--limit", "1"},
-			path: "/v1/novel/mypixiv",
-			body: `{"novels":[],"next_url":null}`,
-		},
-		{
-			name:  "user manga",
-			args:  []string{"works", "123", "--type", "manga", "--json", "--limit", "1"},
-			path:  "/v1/user/illusts",
-			query: map[string]string{"user_id": "123", "type": "manga"},
-			body:  `{"illusts":[],"next_url":null}`,
-		},
-		{
-			name:  "user novel",
-			args:  []string{"works", "123", "--type", "novel", "--json", "--limit", "1"},
-			path:  "/v1/user/novels",
-			query: map[string]string{"user_id": "123", "filter": "for_android"},
-			body:  `{"novels":[],"next_url":null}`,
-		},
-	}
-
-	for _, test := range tests {
+		{name: "current artwork", args: []string{"works", "--type", "artwork", "--json", "--limit", "1"}, body: `{"illusts":[],"next_url":null}`, key: "illusts"},
+		{name: "current novel", args: []string{"works", "--type", "novel", "--json", "--limit", "1"}, body: `{"novels":[],"next_url":null}`, key: "novels"},
+		{name: "user manga", args: []string{"works", "123", "--type", "manga", "--json", "--limit", "1"}, body: `{"illusts":[],"next_url":null}`, key: "illusts"},
+		{name: "user novel", args: []string{"works", "123", "--type", "novel", "--json", "--limit", "1"}, body: `{"novels":[],"next_url":null}`, key: "novels"},
+	} {
 		t.Run(test.name, func(t *testing.T) {
+			calls := 0
 			transport := roundTripFunc(func(request *http.Request) (*http.Response, error) {
-				if request.URL.Host != "app-api.pixiv.net" {
-					t.Fatalf("request host = %q, want app-api.pixiv.net", request.URL.Host)
-				}
-				if request.URL.Path != test.path {
-					t.Fatalf("request path = %q, want %q", request.URL.Path, test.path)
-				}
-				for key, want := range test.query {
-					if got := request.URL.Query().Get(key); got != want {
-						t.Fatalf("query %s = %q, want %q", key, got, want)
-					}
-				}
-				if got := request.URL.Query().Get("offset"); got != "" {
-					t.Fatalf("initial request offset = %q, want empty", got)
-				}
+				calls++
 				return &http.Response{
 					StatusCode: http.StatusOK,
 					Header:     http.Header{"Content-Type": {"application/json"}},
@@ -131,21 +49,29 @@ func TestWorksUsesTypedSDKRoutes(t *testing.T) {
 			if err != nil {
 				t.Fatalf("NewWith: %v", err)
 			}
-
+			output := &bytes.Buffer{}
 			cmd := newTestCommand(testData{
-				Input:      strings.NewReader(""),
-				Output:     &bytes.Buffer{},
+				Input: strings.NewReader(""), Output: output,
 				UsageError: func(err error) error { return err },
-				JSONOut:    func(*bool) (bool, error) { return false, nil },
+				JSONOut:    func(*bool) (bool, error) { return true, nil },
 				Pooled: func(ctx context.Context, _ pixivcmd.Request, attempt func(context.Context, *pixiv.Client) (bool, error)) error {
 					_, err := attempt(ctx, client)
 					return err
 				},
 			})
 			cmd.SetArgs(test.args)
-
 			if err := cmd.Execute(); err != nil {
 				t.Fatalf("Execute: %v", err)
+			}
+			if calls != 1 {
+				t.Fatalf("requests = %d, want 1", calls)
+			}
+			var payload map[string]json.RawMessage
+			if err := json.Unmarshal(output.Bytes(), &payload); err != nil {
+				t.Fatalf("decode output: %v; output=%q", err, output.String())
+			}
+			if _, ok := payload[test.key]; !ok {
+				t.Fatalf("missing %q in output: %q", test.key, output.String())
 			}
 		})
 	}

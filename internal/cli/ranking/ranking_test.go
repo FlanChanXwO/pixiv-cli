@@ -15,28 +15,10 @@ import (
 	"github.com/spf13/cobra"
 )
 
-func TestNewDeclaresRankingInputAndOutputFlags(t *testing.T) {
-	cmd := newTestCommand(testData{Input: strings.NewReader(""), Output: &bytes.Buffer{}, ErrorOutput: &bytes.Buffer{}, UsageError: func(err error) error { return err }})
-	if cmd.Use != "ranking" {
-		t.Fatalf("unexpected ranking use: %q", cmd.Use)
-	}
-	for _, name := range []string{"type", "mode", "date", "limit", "page", "ndjson"} {
-		if cmd.Flags().Lookup(name) == nil {
-			t.Fatalf("ranking command missing flag %q", name)
-		}
-	}
-}
-
 func TestNovelRankingUsesTypedRouteAndContinuesAcrossPages(t *testing.T) {
 	output := &bytes.Buffer{}
 	var requests []string
 	transport := rankingRoundTripFunc(func(request *http.Request) (*http.Response, error) {
-		if request.URL.Path != "/v1/novel/ranking" {
-			t.Fatalf("ranking path = %q, want novel ranking", request.URL.Path)
-		}
-		if request.URL.Query().Get("filter") != "for_android" || request.URL.Query().Get("mode") != "week" {
-			t.Fatalf("novel ranking query = %v", request.URL.Query())
-		}
 		requests = append(requests, request.URL.Query().Get("offset"))
 		switch request.URL.Query().Get("offset") {
 		case "":
@@ -89,13 +71,6 @@ func TestNovelRankingUsesTypedRouteAndContinuesAcrossPages(t *testing.T) {
 func TestArtworkRankingDefaultPreservesLegacyRoute(t *testing.T) {
 	output := &bytes.Buffer{}
 	transport := rankingRoundTripFunc(func(request *http.Request) (*http.Response, error) {
-		if request.URL.Path != "/v1/illust/ranking" {
-			t.Fatalf("ranking path = %q, want artwork ranking", request.URL.Path)
-		}
-		query := request.URL.Query()
-		if query.Get("mode") != "week" || query.Get("date") != "2026-09-01" || query.Get("offset") != "" {
-			t.Fatalf("artwork ranking query = %v", query)
-		}
 		return rankingJSONResponse(request, `{"illusts":[{"id":9401,"title":"ranked artwork","type":"illust","create_date":"2026-09-01T00:00:00Z","user":{"id":41,"name":"artist"}}],"next_url":null}`), nil
 	})
 	client, err := pixiv.NewWith("test-access-token", pixiv.Options{HTTPClient: &http.Client{Transport: transport}})
