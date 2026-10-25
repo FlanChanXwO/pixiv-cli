@@ -116,9 +116,17 @@ func (c *Client) SaveResource(ctx context.Context, ref sdk.ResourceRef, options 
 	if response.StatusCode < 200 || response.StatusCode >= 300 {
 		return sdk.SavedResource{}, newError("SaveResource", sdk.UpstreamError, errors.New("resource returned a non-success status"))
 	}
-	size, err := atomicfile.AtomicWrite(ctx, options.Path, &progressReader{src: response.Body, progress: options.Progress})
+	size, err := atomicfile.AtomicWrite(ctx, options.Path, &progressReader{ctx: ctx, src: response.Body, progress: options.Progress})
 	if err != nil {
-		return sdk.SavedResource{}, newError("SaveResource", sdk.LocalStateError, errors.New("cannot write resource"))
+		var cause error
+		switch {
+		case errors.Is(err, context.Canceled):
+			cause = context.Canceled
+		case errors.Is(err, context.DeadlineExceeded):
+			cause = context.DeadlineExceeded
+		}
+		return sdk.SavedResource{}, sdk.NewError(product, "SaveResource", sdk.LocalStateError,
+			sdk.WithDetail("cannot write resource"), sdk.WithCause(cause))
 	}
 	return sdk.SavedResource{Path: options.Path, Size: size}, nil
 }
@@ -241,6 +249,7 @@ func attachmentFilename(name, extension string) string {
 }
 
 type progressReader struct {
+	ctx      context.Context
 	src      io.Reader
 	progress func(sdk.SaveProgress)
 	done     int64
@@ -253,6 +262,11 @@ func (r *progressReader) Read(p []byte) (int, error) {
 		if r.progress != nil {
 			r.progress(sdk.SaveProgress{Done: r.done})
 		}
+	}
+	// A final Read can deliver data and EOF together; cancellation must reach
+	// the atomic writer before it commits those bytes to the destination.
+	if (err == nil || err == io.EOF) && r.ctx.Err() != nil {
+		err = r.ctx.Err()
 	}
 	return n, err
 }

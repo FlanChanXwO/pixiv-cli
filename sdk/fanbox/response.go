@@ -17,7 +17,7 @@ import (
 // envelope used by the supporting and following creator lists.
 func decodeCreatorSummaries(raw json.RawMessage, kind CreatorListKind) ([]CreatorSummary, string, error) {
 	var direct []creatorSummaryWire
-	if err := json.Unmarshal(raw, &direct); err == nil {
+	if err := json.Unmarshal(raw, &direct); err == nil && direct != nil {
 		items, err := mapCreatorSummaries(direct)
 		return items, "", err
 	}
@@ -59,13 +59,13 @@ func mapCreatorSummaries(items []creatorSummaryWire) ([]CreatorSummary, error) {
 // decodeFeaturedTags accepts either a bare array or the tags envelope.
 func decodeFeaturedTags(raw json.RawMessage) ([]CreatorTag, error) {
 	var direct []tagWire
-	if err := json.Unmarshal(raw, &direct); err == nil {
+	if err := json.Unmarshal(raw, &direct); err == nil && direct != nil {
 		return mapTags(direct)
 	}
 	var wrapped struct {
 		Tags []tagWire `json:"tags"`
 	}
-	if err := json.Unmarshal(raw, &wrapped); err != nil {
+	if err := json.Unmarshal(raw, &wrapped); err != nil || wrapped.Tags == nil {
 		return nil, errors.New("decode FANBOX creator tags")
 	}
 	return mapTags(wrapped.Tags)

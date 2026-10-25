@@ -406,6 +406,9 @@ func (c *Client) postList(ctx context.Context, operation, path string, cursorQue
 	if acceptItems && wirePosts == nil {
 		wirePosts = page.Items
 	}
+	if wirePosts == nil {
+		return sdk.Page[Post]{}, classifyError(operation, errors.New("FANBOX post list is missing items"))
+	}
 	items := make([]Post, 0, len(wirePosts))
 	for _, source := range wirePosts {
 		post, err := c.mapPost(source)
