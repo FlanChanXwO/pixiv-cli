@@ -8,6 +8,8 @@
 
 2026-10-24 补充：G39 拆为 G39–G42 四个按目录并行的逐包审查；G29–G33 扩大为注释整理（规格 3.5.1）；新增 G43 面向用户的 changelog。
 
+2026-10-25 补充：新增 G44，删除全部测试后按规格 3.4.4 的清单与上限重写；G39–G42 改为在 G44 之后进行。
+
 2026-10-24 起冻结各 goal 语句：执行中发现的新问题记录在 PR 描述和最终汇报中，由 G28（代码）或 G34（文档、skill）统一处理，不再修改尚在执行的 goal。
 
 | Goal | worktree | 依赖 | 可并行 |
@@ -49,11 +51,12 @@
 | G36 | `refactor-g36-tests-mcp` | G28 | 是 |
 | G37 | `refactor-g37-tests-cli` | G28 | 是 |
 | G38 | `refactor-g38-tests-internal` | G28 | 是 |
-| G39 | `refactor-g39-audit` | G20、G28、G35、G36、G37、G38 | 是 |
-| G40 | `refactor-g40-audit-mcp` | G20、G28、G35、G36、G37、G38 | 是 |
-| G41 | `refactor-g41-audit-cli` | G20、G28、G35、G36、G37、G38、G39、G40、G43 | 否 |
-| G42 | `refactor-g42-audit-internal` | G20、G28、G35、G36、G37、G38、G43 | 是 |
+| G39 | `refactor-g39-audit` | G20、G28、G35、G36、G37、G38、G44 | 是 |
+| G40 | `refactor-g40-audit-mcp` | G20、G28、G35、G36、G37、G38、G44 | 是 |
+| G41 | `refactor-g41-audit-cli` | G20、G28、G35、G36、G37、G38、G39、G40、G43、G44 | 否 |
+| G42 | `refactor-g42-audit-internal` | G20、G28、G35、G36、G37、G38、G44、G43 | 是 |
 | G43 | `refactor-g43-changelog` | 无 | 是 |
+| G44 | `refactor-g44-tests-rewrite` | G35、G36、G37、G38 | 否 |
 | G34 | `refactor-g34-finish` | G29、G30、G31、G32、G33、G39、G40、G41、G42、G43 | 否 |
 
 ## G01：go mod tidy
@@ -2170,7 +2173,7 @@
 【本 goal】
 工作项：逐包审查与修正，范围 sdk/、internal/pixivapi、internal/fanboxapi。建议由能力更强的模型执行。
 - 逐包审查：范围内每个生产包都按规格 3.1（命名与放置）、3.3（横切关注点）、3.4.2 的 P-a 到 P-m 对照一遍；重点是主要为测试而存在的生产代码（P-a）、同一套方法或机制在多个类型上各写一份（P-d）、过度防御（P-m）。发现的问题直接修正。
-- 测试覆盖：G35–G38 删减测试后，范围内凭据不泄露、持久化与 revision、取消与错误传播、对外输出契约仍各有测试覆盖；缺失的补回最小用例。
+- 测试：按规格 3.4.4 的清单核对范围内的测试；清单内缺失的按 3.4.4 的上限补回最小用例，清单外的不新增。
 - 规格与事实不符的地方按 7.0 第 8 条处理，并写进最终汇报，供 G34 更新文档和 skill。
 - 公开 SDK：比对 v1.2.1 tag 与当前 main 的 go doc -all（sdk、sdk/pixiv、sdk/fanbox），列出全部破坏性变更，作为 changelog 的 SDK 部分写进最终汇报。
 - 映射：核对 G08 映射取舍带来的变化——推荐用户中作品样本新增的可选字段；上游缺少 tags 时模型中是 nil 还是空切片（G05 的契约是映射层保证切片非 nil）。不符合契约的在映射层修正。
@@ -2189,7 +2192,7 @@
 - 名称：refactor-g39-audit
 - 路径：/Users/flanchan/.codex/worktrees/refactor-g39-audit/pixiv-cli
 - 分支：refactor/g39-audit
-- 开始前用 gh 确认依赖已满足：G20、G28、G35、G36、G37、G38（依赖已于 2026-10-24 调整，以本条为准）。未满足就标为阻塞并结束。
+- 开始前用 gh 确认依赖已满足：G20、G28、G35、G36、G37、G38、G44（依赖已于 2026-10-25 调整，以本条为准）。未满足就标为阻塞并结束。
 - 满足后执行 git fetch origin main，再用 git worktree add -b refactor/g39-audit /Users/flanchan/.codex/worktrees/refactor-g39-audit/pixiv-cli origin/main 创建。
 - 全部工作都在这个 worktree 中进行。goal-N/ 工作目录、临时探针和基线比对输出加入 .git/info/exclude，不提交。
 
@@ -2228,7 +2231,7 @@
 【本 goal】
 工作项：逐包审查与修正，范围 internal/mcpserver/。建议由能力更强的模型执行。
 - 逐包审查：范围内每个生产包都按规格 3.1（命名与放置）、3.3（横切关注点）、3.4.2 的 P-a 到 P-m 对照一遍；重点是主要为测试而存在的生产代码（P-a）、同一套方法或机制在多个类型上各写一份（P-d）、过度防御（P-m）。发现的问题直接修正。
-- 测试覆盖：G35–G38 删减测试后，范围内凭据不泄露、持久化与 revision、取消与错误传播、对外输出契约仍各有测试覆盖；缺失的补回最小用例。
+- 测试：按规格 3.4.4 的清单核对范围内的测试；清单内缺失的按 3.4.4 的上限补回最小用例，清单外的不新增。
 - 规格与事实不符的地方按 7.0 第 8 条处理，并写进最终汇报，供 G34 更新文档和 skill。
 - 对外输出：比对 v1.2.1 与当前 main 的 MCP tools/list（名称、schema、annotations）以及代表性 tool 的结构化输出；每个差异确认是预期内并写进最终汇报。
 - 安全：stdio stdout 只有 JSON-RPC；HTTP 必须带 OAuth bearer；运行失败返回 isError=true 的结构化结果；tool 输出不含签名 URL 与 Cookie；执行边界记录的 error 属性不带凭据。
@@ -2246,7 +2249,7 @@
 - 名称：refactor-g40-audit-mcp
 - 路径：/Users/flanchan/.codex/worktrees/refactor-g40-audit-mcp/pixiv-cli
 - 分支：refactor/g40-audit-mcp
-- 开始前用 gh 确认依赖已满足：G20、G28、G35、G36、G37、G38（依赖已于 2026-10-24 调整，以本条为准）。未满足就标为阻塞并结束。
+- 开始前用 gh 确认依赖已满足：G20、G28、G35、G36、G37、G38、G44（依赖已于 2026-10-25 调整，以本条为准）。未满足就标为阻塞并结束。
 - 满足后执行 git fetch origin main，再用 git worktree add -b refactor/g40-audit-mcp /Users/flanchan/.codex/worktrees/refactor-g40-audit-mcp/pixiv-cli origin/main 创建。
 - 全部工作都在这个 worktree 中进行。goal-N/ 工作目录、临时探针和基线比对输出加入 .git/info/exclude，不提交。
 
@@ -2285,7 +2288,7 @@
 【本 goal】
 工作项：逐包审查与修正，范围 internal/cli/、cmd/。建议由能力更强的模型执行。
 - 逐包审查：范围内每个生产包都按规格 3.1（命名与放置）、3.3（横切关注点）、3.4.2 的 P-a 到 P-m 对照一遍；重点是主要为测试而存在的生产代码（P-a）、同一套方法或机制在多个类型上各写一份（P-d）、过度防御（P-m）。发现的问题直接修正。
-- 测试覆盖：G35–G38 删减测试后，范围内凭据不泄露、持久化与 revision、取消与错误传播、对外输出契约仍各有测试覆盖；缺失的补回最小用例。
+- 测试：按规格 3.4.4 的清单核对范围内的测试；清单内缺失的按 3.4.4 的上限补回最小用例，清单外的不新增。
 - 规格与事实不符的地方按 7.0 第 8 条处理，并写进最终汇报，供 G34 更新文档和 skill。
 - 对外输出：用本机 Homebrew 安装的 v1.2.1 与当前 main 构建的二进制，对同一批输入比对 --help 与各命令的 text/JSON/NDJSON 输出；逐项确认差异都是预期内（包括 G08 映射变化在 CLI 中的表现）。
 - 安全：CLI 数据 stdout 中没有日志；错误输出不含凭据。
@@ -2304,7 +2307,7 @@
 - 名称：refactor-g41-audit-cli
 - 路径：/Users/flanchan/.codex/worktrees/refactor-g41-audit-cli/pixiv-cli
 - 分支：refactor/g41-audit-cli
-- 开始前用 gh 确认依赖已满足：G20、G28、G35、G36、G37、G38、G39、G40、G43（依赖已于 2026-10-24 调整，以本条为准）。未满足就标为阻塞并结束。
+- 开始前用 gh 确认依赖已满足：G20、G28、G35、G36、G37、G38、G39、G40、G43、G44（依赖已于 2026-10-25 调整，以本条为准）。未满足就标为阻塞并结束。
 - 满足后执行 git fetch origin main，再用 git worktree add -b refactor/g41-audit-cli /Users/flanchan/.codex/worktrees/refactor-g41-audit-cli/pixiv-cli origin/main 创建。
 - 全部工作都在这个 worktree 中进行。goal-N/ 工作目录、临时探针和基线比对输出加入 .git/info/exclude，不提交。
 
@@ -2343,7 +2346,7 @@
 【本 goal】
 工作项：逐包审查与修正，范围 internal/ 中除 cli、mcpserver、pixivapi、fanboxapi 以外的目录，以及 scripts/。建议由能力更强的模型执行。
 - 逐包审查：范围内每个生产包都按规格 3.1（命名与放置）、3.3（横切关注点）、3.4.2 的 P-a 到 P-m 对照一遍；重点是主要为测试而存在的生产代码（P-a）、同一套方法或机制在多个类型上各写一份（P-d）、过度防御（P-m）。发现的问题直接修正。
-- 测试覆盖：G35–G38 删减测试后，范围内凭据不泄露、持久化与 revision、取消与错误传播、对外输出契约仍各有测试覆盖；缺失的补回最小用例。
+- 测试：按规格 3.4.4 的清单核对范围内的测试；清单内缺失的按 3.4.4 的上限补回最小用例，清单外的不新增。
 - 规格与事实不符的地方按 7.0 第 8 条处理，并写进最终汇报，供 G34 更新文档和 skill。
 - 凭据脱敏收归一个类型（P-d）：pixivaccount.Account、pixivaccount.AccountWithToken、fanboxaccount.Account 不再各自实现 String、GoString、Format；凭据字段改用一个自我脱敏的类型（实现 String、GoString、Format 与 slog.LogValuer），可复用或推广 browsercookies.Secret 的做法，类型放在按职责命名的位置。保留一个测试，确认 %v、%+v、%#v 与 slog 都不会输出凭据。
 - 发布链路：scripts/release、scripts/pr 的每个子命令都有 workflow 或脚本调用，workflow 中每处调用都与工具一致；scripts/ci/test-package-release.sh 通过。
@@ -2361,7 +2364,7 @@
 - 名称：refactor-g42-audit-internal
 - 路径：/Users/flanchan/.codex/worktrees/refactor-g42-audit-internal/pixiv-cli
 - 分支：refactor/g42-audit-internal
-- 开始前用 gh 确认依赖已满足：G20、G28、G35、G36、G37、G38、G43（依赖已于 2026-10-24 调整，以本条为准）。未满足就标为阻塞并结束。
+- 开始前用 gh 确认依赖已满足：G20、G28、G35、G36、G37、G38、G43、G44（依赖已于 2026-10-25 调整，以本条为准）。未满足就标为阻塞并结束。
 - 满足后执行 git fetch origin main，再用 git worktree add -b refactor/g42-audit-internal /Users/flanchan/.codex/worktrees/refactor-g42-audit-internal/pixiv-cli origin/main 创建。
 - 全部工作都在这个 worktree 中进行。goal-N/ 工作目录、临时探针和基线比对输出加入 .git/info/exclude，不提交。
 
@@ -2453,6 +2456,67 @@
 - 最终汇报包括：PR 链接、合并提交、实际运行的检查及结果、假设与阻塞项、依赖本 goal 的后续 goal 需要知道的事。
 ```
 
+## G44：测试重写
+
+```text
+/goal 执行 pixiv-cli 重构规格的 G44：测试重写。
+
+【本 goal】
+工作项：规格 3.4.4（2026-10-25 与维护者确认）。建议由能力更强的模型执行。
+- 删除全仓库针对代码和行为的 *_test.go，以及不再被使用的 testdata 和测试专用代码；然后只按 3.4.4 的清单重写测试，测试点到为止。
+- CI 的检查不在删除范围内：不修改 .github/workflows，不删除任何 CI 步骤；3.4.4 列出的、workflow 按名称或包路径单独运行的测试原样保留，不删除、不重写，也不计入上限。开始前以当时 workflow 中的引用重新核对这份名单。
+- 遵守 3.4.4 的上限：单个测试文件不超过 200 行，单个测试函数不超过 40 行，全仓库测试文件不超过 25 个；不新建测试辅助包、fixture 构造器或 mock 层级；不为测试导出生产符号。优先用 httptest 与临时目录这类真实边界。
+- 真实环境测试（sdk/pixiv、sdk/fanbox 的 live_test.go、live_mutation_test.go 等）删除，不重写；中英文 development.md 中真实环境测试的说明改为手动验证步骤。
+- 更新 pixiv-cli-test skill：把 3.4.4 的清单与上限写成长期规则，取代原来“无数量上限”的说法；同步中英文 development.md 的测试布局章节与 AGENTS.md 中相关的测试条款。
+- 只改测试、testdata 与测试相关文档；生产代码中只为测试存在的部分（导出符号、注入点）一并删除，其余生产代码不改。
+
+【验收】
+- 除原样保留的 CI 测试外，全仓库测试文件不超过 25 个，每个不超过 200 行；PR 中列出每个测试文件、行数与它覆盖的清单项，以及原样保留的 CI 测试名单。
+- .github/workflows 没有改动，CI 的各项检查在本 PR 上照常运行并通过。
+- 3.4.4 清单的每一项都有对应测试；清单外没有测试。
+- go test ./... -count=1、go test -race ./... -count=1、go vet ./...、sh scripts/build.sh 通过；platform-smoke、container-smoke 在本 PR 上通过。
+- PR 中列出测试总行数变化（G35–G38 后为 52.7k 行）。
+
+【依据】
+- 规格：仓库内的 .agents/refactor/spec.md，以 origin/main 上的版本为准。先通读第 1–3 节、第 7 节的 7.0 和本 goal 涉及的工作项、第 9 节、第 10 节。第 6 节示例只固定职责划分和数据流向，签名以当时的代码为准。
+- 仓库：github.com/FlanChanXwO/pixiv-cli（本机路径 /Users/flanchan/Developer/Projects/GithubProjects/pixiv-cli）。先读 AGENTS.md，以及 .agents/skills/ 下的 pixiv-cli-develop、pixiv-cli-test、pixiv-cli-code-commenting、pixiv-cli-review、pixiv-cli-pr、pixiv-cli-commit-message。
+- 规格中的统计数字基于 ef4accb9；以当前 origin/main 的实际代码为准，有出入时写进工作记录和 PR 描述。
+
+【worktree 与分支】
+- 名称：refactor-g44-tests-rewrite
+- 路径：/Users/flanchan/.codex/worktrees/refactor-g44-tests-rewrite/pixiv-cli
+- 分支：refactor/g44-tests-rewrite
+- 开始前用 gh 确认依赖已满足：G35、G36、G37、G38。未满足就标为阻塞并结束。
+- 满足后执行 git fetch origin main，再用 git worktree add -b refactor/g44-tests-rewrite /Users/flanchan/.codex/worktrees/refactor-g44-tests-rewrite/pixiv-cli origin/main 创建。
+- 全部工作都在这个 worktree 中进行。goal-N/ 工作目录、临时探针和基线比对输出加入 .git/info/exclude，不提交。
+
+【提交与合并】
+按规格 7.0「每个 goal 的提交要求」执行；删除与重写放在同一个 PR 中合并，main 上不出现没有测试的中间状态：
+- 按逻辑单元分次提交。
+- 只修改本 goal 负责的目录。
+- 验收要点全部有证据后，跑一次第 9 节的完整检查，按 pixiv-cli-pr 写 PR 描述（包括 changelog 条目），并用 prmeta 校验，然后向 main 创建 PR。
+- 当前 head 的必需检查全部通过、机器人评审意见逐条处理之后，再 squash 合并。
+- 合并后删除远端分支和 worktree。
+- 无法合并时不强推、不绕过分支保护，写明原因后停止。
+
+【真实账号】
+本 goal 不运行真实环境测试。
+
+【授权】
+- 已授权：本 goal 的 commit、push、创建 PR，验收与检查通过后 squash 合并到 main，以及上面列出的真实账号测试。
+- 未授权：发布版本、打 tag、修改分支保护、force push、引入规格第 4 节以外的依赖、修改 .agents/refactor/（G34 除外）。
+
+【不确定时】
+- 不向用户提问，不修改规格中的设计决策。
+- 选择不改变对外行为的最保守做法继续推进，并把假设写进工作记录和 PR 描述。
+- 无法在假设下继续的部分标为阻塞，在最终汇报中列出。
+- 不做其他 goal 的工作项。本 goal 触及的目录顺带按规格 3.4 处理 T2、T3、T6。
+
+【完成标准】
+- PR 已合并进 main，上面的每条验收要点都有证据。
+- 最终汇报包括：PR 链接、合并提交、实际运行的检查及结果、假设与阻塞项、依赖本 goal 的后续 goal 需要知道的事。
+```
+
 ## G34：文档、skill 收尾并删除 refactor 目录
 
 ```text
@@ -2462,7 +2526,7 @@
 工作项：C2（规格 C 组）。
 - 删除 .agents/refactor/ 整个目录。
 - 在 pixiv-cli-develop 与 pixiv-cli-review 中写入过度防御的判定（规格 3.4.2 的 P-m：删除什么、保留哪些边界），作为长期规则。
-- 在 pixiv-cli-test 中写入 T-g、T-h 与契约分层表（规格 3.4.1），作为长期规则。
+- 确认 pixiv-cli-test 与规格 3.4.4 的清单和上限一致（由 G44 写入），作为长期规则。
 - 在 pixiv-cli-code-commenting 中写入 3.5.1 的注释规则与正反例，在 pixiv-cli-develop、pixiv-cli-review 中写入 P-d 的扩充（同一机制收归到字段类型或值类型），作为长期规则。
 - 中英文 docs/*/sdk.md 改为描述新的 API；更新 architecture.md、development.md 和各 skill 中与重构结果相关的路径和放置规则；把规格第 6 节的示例整理到 pixiv-cli-develop 的 references/go-examples.md（删除前先从本目录复制需要的内容），示例中的文件名按重构后的实际命名改写（例如 wire.go 已改为领域文件与 response.go）。
 - 以 G41 产出的 changelog 草稿为基础、按 G43 的规则，汇总已合并各 goal 的 PR 描述中的 changelog 条目，写进本 PR 描述作为 release notes 草稿；不创建 changelog/vX.Y.Z/。

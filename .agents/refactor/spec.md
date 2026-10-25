@@ -42,7 +42,7 @@
 | D5 | 包按职责划分，不按端点或 tool 划分；每个实体只有一种公开类型 |
 | D6 | 可选参数用 spec 结构体或方法表达，不再新增 `WithX` 一类函数变体 |
 | D7 | 上游协议实现（传输、协议约定、资源下载、OAuth）按产品放在模块级 `internal/pixivapi`、`internal/fanboxapi`。模块级 `internal/` 对模块外同样不可见；真实环境写入测试需要绕过 SDK、直接使用原始客户端做独立回读与清理，`pixivaccount` 的测试也引用协议常量，放在模块级可以让这些调用方都直接 import |
-| D8 | 拆成 43 个 goal，按依赖分四个阶段，阶段内的线路并行；每个 goal 一个命名 worktree、一个 PR，验收通过后合并进 main（见 7.0） |
+| D8 | 拆成 44 个 goal，按依赖分四个阶段，阶段内的线路并行；每个 goal 一个命名 worktree、一个 PR，验收通过后合并进 main（见 7.0） |
 | D9 | 声明按使用范围放置。包内多个文件共用的实体和常量，集中放在声明文件里；只服务一个行为的声明，和使用它的函数放在同一个文件（细则见 3.1）。名字说明职责，不用 `Deps`、`Data`、`Manager` 一类空泛名，不建依赖袋（细则见 3.1.2） |
 | D10 | 具有业务含义的标识符使用具名常量；有取值集合的标识符使用具名类型（细则见 3.2） |
 | D11 | 每个横切关注点只有一个归属层和一种传入方式；业务对象可以持有基础设施，但只能以“一个已封装好的依赖”形式持有，不自己实现横切逻辑（细则见 3.3） |
@@ -239,6 +239,37 @@ type Pixiv struct {
 | 凭据与签名 URL 不泄露、持久化与 revision、取消与错误传播 | 该机制所在的边界 | 不在调用方重复 |
 
 **预期规模：** 2026-10-24 统计，生产代码 68.4k 行、测试 69.7k 行。G35–G38 完成后，测试预期约为生产代码的一半（3.5–4 万行）。这是预期结果，不是门槛：明显高于此比例时，在 PR 中说明原因。
+
+#### 3.4.4 测试重写（G44，2026-10-25 起取代 3.4.1 的逐条删减）
+
+G35–G38 后测试仍有 52.7k 行（生产代码 65.2k），并被合并进少数大文件（最大的 4716 行）。维护者决定：删除全部针对代码和行为的测试，只按下面的清单重写，测试点到为止。CI 的检查不在删除范围内：workflow 及其步骤（Quality gate 的 test、vet、race、build、licensebundle 检查，platform-smoke、container-smoke、release 中的各项检查）保持不变；workflow 按名称或包路径单独运行的测试原样保留，不删除、不重写，也不计入下面的上限。
+
+**上限：**
+
+| 项目 | 上限 |
+|---|---|
+| 单个测试文件 | 200 行（含导入与辅助函数） |
+| 单个测试函数 | 40 行；表驱动时表格不超过 8 行用例 |
+| 全仓库测试文件 | 25 个 |
+| testdata | 只用于数据库旧版本样本与少量 golden 文件 |
+
+不新建测试辅助包、fixture 构造器或 mock 层级；不为测试导出生产符号。
+
+**清单（只测这些，每项一个代表性用例加必要的失败用例）：**
+
+| 契约 | 位置 |
+|---|---|
+| 凭据不泄露：账号与 Cookie 类型在 `%v`、`%+v`、`%#v`、slog 中不输出凭据；日志不含 query、token、Cookie、签名 URL；MCP tool 输出不含签名 URL 与 Cookie | `logging`、账号包、`mcpserver` |
+| 账号存储：revision 冲突、事务回滚、v1.2.x 数据库可打开、文件权限；原子替换与文件锁 | `storage/*` |
+| 凭据轮换后新 token 写入存储 | `pixivaccount` 或 `session` |
+| 上游响应异常时返回错误而不是空结果；取消向上传播 | `sdk/pixiv`、`sdk/fanbox` |
+| 对外契约快照：MCP `tools/list` 一份 golden；CLI 一个代表性命令的 text、JSON、NDJSON 输出；用法错误的退出码；MCP stdio stdout 只有 JSON-RPC；HTTP 必须带 bearer | `mcpserver`、`cli` |
+| 配置来源优先级（环境变量、文件、默认值）与显式空值 | `config/settings` |
+| 自更新：校验失败时不覆盖已有二进制 | `selfupdate` |
+
+**原样保留、不计入上限的 CI 测试**（以合并时 workflow 中的引用为准重新核对）：`scripts/citest` 整个包（platform-smoke、container-smoke、release 运行）；`scripts/release` 的测试（release.yml 运行）；platform-smoke 点名的 `TestPixivBinaryPackagedSmoke`（`cmd/pixiv`）、`TestOpenOnWindowsAcceptsForwardSlashFileURI`（`storage/database`）、`TestAuthURLCallback`、`TestAuthURLHandlerInstall`、`TestNormalCLIInvocationEnsuresPersistentHandlerWithoutBlockingCommand`（`internal/cli`）；`internal/cli/auth/loginhelper` 与 `internal/media/ugoira/...` 的测试（platform-smoke 按包路径运行，作为各平台的原生证据）。
+
+真实环境测试（`live_test.go`、`live_mutation_test.go`）删除，不重写；真实环境验证改为手动。
 
 **保留**（满足任一条，且没有被另一个测试在更公开的边界覆盖）：凭据与密钥不泄露；数据完整性与持久化（事务、revision、文件原子替换）；CLI、MCP、SDK 对外输出契约；取消与错误传播（不把失败报告成成功）；发布产物的正确性（校验和、归档命名）。能真实执行的检查优先于字符串检查。
 
@@ -1789,7 +1820,7 @@ if err != nil {
 
 ### 7.0 并行执行与 goal
 
-A1、B2 等是工作项的名称。执行单位是 **goal**：一个 goal 对应一个命名的 worktree、一个分支、一个 PR，验收通过后合并进 main。共 43 个 goal，分四个阶段：阶段 0、3 内部按依赖执行，阶段 1、2 内的线路可以并行。各 goal 的完整语句见同目录的 `goals.md`。
+A1、B2 等是工作项的名称。执行单位是 **goal**：一个 goal 对应一个命名的 worktree、一个分支、一个 PR，验收通过后合并进 main。共 44 个 goal，分四个阶段：阶段 0、3 内部按依赖执行，阶段 1、2 内的线路可以并行。各 goal 的完整语句见同目录的 `goals.md`。
 
 ```text
 阶段 0（串行）  G01 → G02 → G03 → G04 → G05
@@ -1803,7 +1834,7 @@ A1、B2 等是工作项的名称。执行单位是 **goal**：一个 goal 对应
                 L8 叶子包   G18
                 L9 脚本/CI  G19 → G20 → G21      ← 不依赖阶段 0
 阶段 2          G23–G27 与 G22（日志）按下表依赖并行 → G28（扫尾）
-阶段 3          G35–G38（测试精简）并行 → G39、G40、G42（逐包审查与修正）并行，G41 在 G39、G40 之后 → G29–G33（注释整理）并行 → G34（收尾）
+阶段 3          G35–G38（测试精简）并行 → G44（测试重写）→ G39、G40、G42（逐包审查与修正）并行，G41 在 G39、G40 之后 → G29–G33（注释整理）并行 → G34（收尾）
                 G43（面向用户的 changelog）现在就可以开始；G41、G42、G34 都依赖它
 ```
 
@@ -1848,10 +1879,11 @@ A1、B2 等是工作项的名称。执行单位是 **goal**：一个 goal 对应
 | G36 | `refactor-g36-tests-mcp` | 测试精简 | G28 | `internal/mcpserver/` 的测试 |
 | G37 | `refactor-g37-tests-cli` | 测试精简 | G28 | `internal/cli/`、`cmd/` 的测试 |
 | G38 | `refactor-g38-tests-internal` | 测试精简 | G28 | `internal/` 其余目录的测试 |
-| G39 | `refactor-g39-audit` | 逐包审查与修正：`sdk/`、`pixivapi`、`fanboxapi`；SDK 公开 API 与 v1.2.1 比对 | G20、G28、G35–G38 | 这些包（修正以小 PR 提交） |
-| G40 | `refactor-g40-audit-mcp` | 逐包审查与修正：`internal/mcpserver/`；`tools/list` 与 v1.2.1 比对 | G20、G28、G35–G38 | 同上 |
-| G41 | `refactor-g41-audit-cli` | 逐包审查与修正：`internal/cli/`、`cmd/`；CLI 输出与 v1.2.1 比对；产出 changelog 草稿 | G20、G28、G35–G40、G43 | 同上 |
-| G42 | `refactor-g42-audit-internal` | 逐包审查与修正：`internal/` 其余目录、`scripts/`；凭据脱敏收归一个类型；发布链路核对 | G20、G28、G35–G38、G43 | 同上 |
+| G39 | `refactor-g39-audit` | 逐包审查与修正：`sdk/`、`pixivapi`、`fanboxapi`；SDK 公开 API 与 v1.2.1 比对 | G20、G28、G35–G38、G44 | 这些包（修正以小 PR 提交） |
+| G40 | `refactor-g40-audit-mcp` | 逐包审查与修正：`internal/mcpserver/`；`tools/list` 与 v1.2.1 比对 | G20、G28、G35–G38、G44 | 同上 |
+| G41 | `refactor-g41-audit-cli` | 逐包审查与修正：`internal/cli/`、`cmd/`；CLI 输出与 v1.2.1 比对；产出 changelog 草稿 | G20、G28、G35–G40、G44、G43 | 同上 |
+| G42 | `refactor-g42-audit-internal` | 逐包审查与修正：`internal/` 其余目录、`scripts/`；凭据脱敏收归一个类型；发布链路核对 | G20、G28、G35–G38、G44、G43 | 同上 |
+| G44 | `refactor-g44-tests-rewrite` | 测试重写（3.4.4）：删除全部测试，按清单与上限重写；更新 `pixiv-cli-test` 与测试布局文档 | G35–G38 | 全仓库的测试、`pixiv-cli-test`、`development.md` 的测试章节 |
 | G43 | `refactor-g43-changelog` | 面向用户的 changelog：新规则、`scripts/release` 的 notes 校验、重写全部历史版本 | — | `changelog/`、`scripts/release` 的 notes 部分、`pixiv-cli-release-notes` |
 | G34 | `refactor-g34-finish` | C2；删除 `.agents/refactor/` | G29–G33、G39–G43 | 文档、skill |
 
