@@ -41,12 +41,12 @@ func (s *Session) CurrentUser(ctx context.Context) (Identity, error) {
 	if closeErr != nil {
 		return Identity{}, safeExternalError(ctx, "close FANBOX identity page failed", closeErr)
 	}
-	return ParseIdentityMetadataHTML(document)
+	return parseIdentityMetadataHTML(document)
 }
 
-// ParseIdentityMetadataHTML 从 FANBOX 首页的 metadata meta 标签读取登录身份。
+// parseIdentityMetadataHTML 从 FANBOX 首页的 metadata meta 标签读取登录身份。
 // 页面缺少 metadata、metadata 非 JSON 或 user id 无效时都会失败，绝不猜测用户身份。
-func ParseIdentityMetadataHTML(document []byte) (Identity, error) {
+func parseIdentityMetadataHTML(document []byte) (Identity, error) {
 	metadata, err := metadataContent(document)
 	if err != nil {
 		return Identity{}, err

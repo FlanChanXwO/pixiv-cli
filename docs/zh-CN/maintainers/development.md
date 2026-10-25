@@ -185,6 +185,7 @@ PIXIV_REVERSE_SEARCH_PROVIDER=all go test ./internal/reversesearch -run TestReal
 | `internal/cli/auth/loginhelper` | 测试直接构造 `callbackHandler`、`remoteLoginHandoff` 与各平台 `urlHandlerInstaller`，并观察未导出的 `errNoActiveLocalCallback`、`callbackRelayURL`、`saveActiveRemoteLogin` 与 `handlerManifest`，以验证 callback 路由优先级、不跟随重定向的 handoff 与条件清理。为测试导出这些符号只会扩大 loginhelper 的接口面。 |
 | `internal/cli/search` | 测试通过带 HTTP fixture 的真实 SDK 观察私有 searchArtworks 逻辑页续读。私有逻辑页策略仍是实现细节；MCP 另外暴露绑定的默认批次续读。仅为测试导出应用内部会扩大公开面。 |
 | `internal/mcpserver/pixiv/tools` | 测试通过带 HTTP fixture 的真实 SDK 观察私有 searchArtworks 逻辑页续读。私有逻辑页策略仍是实现细节；MCP 另外暴露绑定的默认批次续读。仅为测试导出应用内部会扩大公开面。 |
+| `internal/fanboxapi` | `identity_test.go` 直接调用未导出的 `parseIdentityMetadataHTML`，验证 metadata 的存在性、JSON 合法性、数字或 null 用户字段与 creator 状态；该解析 seam 只有 `Session.CurrentUser` 使用，为测试导出会扩大内部接口。 |
 | `internal/browsercookies/chromium` | 测试直接构造 provider 并注入加密密钥覆盖，观察未导出的 Cookie 记录解密路径与 profile 发现逻辑。 |
 | `internal/browsercookies/firefox` | 测试观察未导出的 profile 发现（`profiles.ini` 解析）、Cookie 数据库路径解析与记录布局。 |
 | `internal/browsercookies/safari` | 测试直接调用未导出的 `parseBinaryCookies`，断言 binarycookies 记录布局。 |
