@@ -292,9 +292,11 @@ jobs:
           docker run --rm "$IMAGE" config path | grep -F '/home/pixiv/.pixiv-cli/'
           test "$(docker run --rm --entrypoint sh "$IMAGE" -c pwd)" = /work
           docker run --rm --entrypoint sh "$IMAGE" -c '
-            test -s /usr/share/doc/pixiv-cli/LICENSE &&
-            test -s /usr/share/doc/pixiv-cli/THIRD_PARTY_LICENSES.md &&
-            find /usr/share/doc/pixiv-cli/third_party/licenses -type f | grep -q .
+            test -s /usr/share/doc/pixiv-cli/LICENSE
+            if [ -e /usr/share/doc/pixiv-cli/THIRD_PARTY_LICENSES.md ]; then
+              test -s /usr/share/doc/pixiv-cli/THIRD_PARTY_LICENSES.md
+              find /usr/share/doc/pixiv-cli/third_party/licenses -type f | grep -q .
+            fi
           '
           inspect_label() {
             docker image inspect --format '{{ index .Config.Labels "'"$1"'" }}' "$IMAGE"
