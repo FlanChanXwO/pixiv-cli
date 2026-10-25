@@ -2,9 +2,16 @@
 
 This directory contains the versioned release notes. Each release has matching English and Simplified Chinese files.
 GitHub Release bodies present the two versions together, with English first and Simplified Chinese second. Entries are
-grouped by user outcome and carry inline PR or historical direct-commit sources; empty standard sections are omitted.
-`unreleased/` is the release-prep workspace. Maintainers audit the tag range and write the next bilingual notes directly;
-internal-only changes are grouped under `Maintenance`.
+grouped by user outcome and carry inline PR or historical direct-commit sources; empty sections are omitted. The only
+sections are Breaking changes, Added, Changed, Fixed, Security, and New Contributors.
+
+Write what a CLI, MCP, or SDK user notices: the command, flag, or tool that changed, and what to do about it. CI, test,
+and internal-refactor work, pull request process changes, and maintainer-only documentation do not belong in the body.
+When a release contains internal work only, mark its sources in a trailing `<!-- internal: ... -->` comment; the notes
+validator requires every audited PR and direct commit to be in the body or that comment, and the rendered GitHub Release
+omits it. Documentation changes that affect users belong under Changed.
+
+`unreleased/` is the release-prep workspace. Maintainers audit the tag range and write the next bilingual notes directly.
 
 | Version | Date | Release notes |
 | --- | --- | --- |

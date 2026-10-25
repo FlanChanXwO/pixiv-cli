@@ -15,16 +15,20 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"sort"
 	"strings"
 )
 
 var (
-	releaseHeadingPattern  = regexp.MustCompile(`(?m)^# v([0-9]+\.[0-9]+\.[0-9]+(?:-[0-9A-Za-z.-]+)?)\s+[—-]\s+.+$`)
-	sectionPattern         = regexp.MustCompile(`(?m)^##\s+(.+?)\s*$`)
-	sourcePattern          = regexp.MustCompile(`https://github\.com/FlanChanXwO/pixiv-cli/(?:pull/[0-9]+|commit/[0-9a-fA-F]{7,64})`)
-	linkPattern            = regexp.MustCompile(`\[[^\]]+\]\((https://github\.com/FlanChanXwO/pixiv-cli/(?:compare/[^)\s]+|commits/[^)\s]+))\)`)
-	semanticVersionPattern = regexp.MustCompile(`^[0-9]+\.[0-9]+\.[0-9]+(?:-[0-9A-Za-z.-]+)?$`)
+	releaseHeadingPattern    = regexp.MustCompile(`(?m)^# v([0-9]+\.[0-9]+\.[0-9]+(?:-[0-9A-Za-z.-]+)?)\s+[—-]\s+.+$`)
+	unreleasedHeadingPattern = regexp.MustCompile(`(?m)^# (?:Unreleased|未发布)\s*$`)
+	sectionPattern           = regexp.MustCompile(`(?m)^##\s+(.+?)\s*$`)
+	sourcePattern            = regexp.MustCompile(`https://github\.com/FlanChanXwO/pixiv-cli/(?:pull/[0-9]+|commit/[0-9a-fA-F]{7,64})`)
+	linkPattern              = regexp.MustCompile(`\[[^\]]+\]\((https://github\.com/FlanChanXwO/pixiv-cli/(?:compare/[^)\s]+|commits/[^)\s]+))\)`)
+	internalNotePattern      = regexp.MustCompile(`(?s)<!--\s*internal:(.*?)-->`)
+	internalLinkPattern      = regexp.MustCompile(`\[[^\]]+\]\((https://github\.com/FlanChanXwO/pixiv-cli/(?:pull/[0-9]+|commit/[0-9a-fA-F]{7,64}))\)`)
+	semanticVersionPattern   = regexp.MustCompile(`^[0-9]+\.[0-9]+\.[0-9]+(?:-[0-9A-Za-z.-]+)?$`)
 )
 
 // githubClient 只封装发布流程需要的 GitHub REST 读取。写入历史
@@ -106,6 +110,7 @@ type githubReleaseWrite struct {
 type releaseDocument struct {
 	sections []releaseSection
 	sources  []string
+	internal []string
 	compare  string
 }
 
@@ -529,38 +534,48 @@ func runNotesValidate(arguments []string) error {
 	directory := flags.String("dir", "", "directory containing en.md and zh-CN.md")
 	previous := flags.String("previous", "", "previous v-prefixed tag; empty for the initial release")
 	auditPath := flags.String("audit", "", "optional audit JSON report whose source set must match")
+	unreleased := flags.Bool("unreleased", false, "validate the unreleased workspace, which has no version heading or compare link")
 	if err := flags.Parse(arguments); err != nil {
 		return err
 	}
 	if flags.NArg() != 0 {
 		return fmt.Errorf("validate accepts no positional arguments: %q", flags.Arg(0))
 	}
-	if *version == "" || *directory == "" {
-		return errors.New("validate requires --version and --dir")
+	if *directory == "" || (!*unreleased && *version == "") {
+		return errors.New("validate requires --dir and --version, or --unreleased")
 	}
 	if *auditPath == "" {
-		return validateReleaseDirectory(*directory, *version, *previous)
+		return validateReleaseDirectory(*directory, *version, *previous, *unreleased)
 	}
 	report, err := readAuditReport(*auditPath)
 	if err != nil {
 		return err
 	}
-	return validateSourceCoverage(*directory, *version, *previous, report)
+	return validateSourceCoverage(*directory, *version, *previous, *unreleased, report)
 }
 
 // validateReleaseDirectory 检查可发布的双语版本文件。它不依赖网络，因此既可用于
 // 文档 CI，也可用于不可变 tag 的发布前门禁。
-func validateReleaseDirectory(directory, version, previous string) error {
-	english, err := readReleaseDocument(filepath.Join(directory, "en.md"), version, englishSectionOrder)
+func validateReleaseDirectory(directory, version, previous string, unreleased bool) error {
+	english, err := readReleaseDocument(filepath.Join(directory, "en.md"), version, englishSectionOrder, unreleased)
 	if err != nil {
 		return fmt.Errorf("English changelog: %w", err)
 	}
-	chinese, err := readReleaseDocument(filepath.Join(directory, "zh-CN.md"), version, chineseSectionOrder)
+	chinese, err := readReleaseDocument(filepath.Join(directory, "zh-CN.md"), version, chineseSectionOrder, unreleased)
 	if err != nil {
 		return fmt.Errorf("Simplified Chinese changelog: %w", err)
 	}
 	if !sameStrings(english.sources, chinese.sources) {
 		return fmt.Errorf("bilingual source sets differ: English=%v SimplifiedChinese=%v", english.sources, chinese.sources)
+	}
+	if !sameStrings(english.internal, chinese.internal) {
+		return fmt.Errorf("bilingual internal source sets differ: English=%v SimplifiedChinese=%v", english.internal, chinese.internal)
+	}
+	if err := validateBilingualEntries(english, chinese); err != nil {
+		return err
+	}
+	if unreleased {
+		return nil
 	}
 	if err := validateCompareLink(english.compare, version, previous); err != nil {
 		return fmt.Errorf("English Full Changelog: %w", err)
@@ -574,23 +589,47 @@ func validateReleaseDirectory(directory, version, previous string) error {
 	return nil
 }
 
+// validateBilingualEntries 要求两种语言在每个章节里逐条对应。共享来源集合
+// 无法发现把两条英文合并成一条中文的改写。
+func validateBilingualEntries(english, chinese releaseDocument) error {
+	if len(english.sections) != len(chinese.sections) {
+		return fmt.Errorf("bilingual section count differs: English=%d SimplifiedChinese=%d", len(english.sections), len(chinese.sections))
+	}
+	for index := range english.sections {
+		left, right := english.sections[index], chinese.sections[index]
+		englishIndex := slices.Index(englishSectionOrder, left.name)
+		chineseIndex := slices.Index(chineseSectionOrder, right.name)
+		if englishIndex != chineseIndex {
+			return fmt.Errorf("bilingual section %q is paired with %q", left.name, right.name)
+		}
+		if len(left.entries) != len(right.entries) {
+			return fmt.Errorf("bilingual entry count differs in %q/%q: English=%d SimplifiedChinese=%d",
+				left.name, right.name, len(left.entries), len(right.entries))
+		}
+	}
+	return nil
+}
+
 // validateSourceCoverage 将已经渲染的说明与审计报告逐项对照。它既能发现漏记的
 // PR/历史 direct commit，也拒绝无法由该版本审计报告解释的额外来源链接。
-func validateSourceCoverage(directory, version, previous string, report auditReport) error {
-	if err := validateReleaseDirectory(directory, version, previous); err != nil {
+func validateSourceCoverage(directory, version, previous string, unreleased bool, report auditReport) error {
+	if err := validateReleaseDirectory(directory, version, previous, unreleased); err != nil {
 		return err
 	}
-	english, err := readReleaseDocument(filepath.Join(directory, "en.md"), version, englishSectionOrder)
+	english, err := readReleaseDocument(filepath.Join(directory, "en.md"), version, englishSectionOrder, unreleased)
 	if err != nil {
 		return err
 	}
-	expected := make(map[string]struct{})
+	expected := make(map[string]struct{}, len(report.Sources))
 	for _, source := range report.Sources {
-		expected[source.URL] = struct{}{}
+		expected[normalizeSourceURL(source.URL)] = struct{}{}
 	}
-	actual := make(map[string]struct{}, len(english.sources))
+	actual := make(map[string]struct{}, len(english.sources)+len(english.internal))
 	for _, source := range english.sources {
-		actual[source] = struct{}{}
+		actual[normalizeSourceURL(source)] = struct{}{}
+	}
+	for _, source := range english.internal {
+		actual[normalizeSourceURL(source)] = struct{}{}
 	}
 	for source := range expected {
 		if _, ok := actual[source]; !ok {
@@ -611,8 +650,6 @@ var englishSectionOrder = []string{
 	"Changed",
 	"Fixed",
 	"Security",
-	"Documentation",
-	"Maintenance",
 	"New Contributors",
 }
 
@@ -622,31 +659,48 @@ var chineseSectionOrder = []string{
 	"变更",
 	"修复",
 	"安全",
-	"文档",
-	"维护",
 	"新贡献者",
 }
 
-func readReleaseDocument(path, version string, sectionOrder []string) (releaseDocument, error) {
+func readReleaseDocument(path, version string, sectionOrder []string, unreleased bool) (releaseDocument, error) {
 	body, err := os.ReadFile(path)
 	if err != nil {
 		return releaseDocument{}, err
 	}
 	content := strings.TrimSpace(string(body))
-	heading := releaseHeadingPattern.FindStringSubmatch(content)
-	if len(heading) != 2 || heading[1] != version {
-		return releaseDocument{}, fmt.Errorf("must start with heading for v%s", version)
+	if unreleased {
+		if !unreleasedHeadingPattern.MatchString(content) {
+			return releaseDocument{}, errors.New("must start with an Unreleased heading")
+		}
+	} else {
+		heading := releaseHeadingPattern.FindStringSubmatch(content)
+		if len(heading) != 2 || heading[1] != version {
+			return releaseDocument{}, fmt.Errorf("must start with heading for v%s", version)
+		}
 	}
+	document := releaseDocument{}
+	for _, match := range internalNotePattern.FindAllStringSubmatch(content, -1) {
+		links := internalLinkPattern.FindAllStringSubmatch(match[1], -1)
+		remainder := internalLinkPattern.ReplaceAllString(match[1], "")
+		remainder = strings.NewReplacer(" ", "", "\t", "", "\r", "", "\n", "", ",", "").Replace(remainder)
+		if remainder != "" || len(links) == 0 {
+			return releaseDocument{}, fmt.Errorf("internal marker contains text other than source links: %q", strings.TrimSpace(match[1]))
+		}
+		for _, link := range links {
+			document.internal = append(document.internal, link[1])
+		}
+	}
+	// 注释只用于审计覆盖，不参与章节、条目和 compare 链接的解析。
+	content = internalNotePattern.ReplaceAllString(content, "")
 
 	matches := sectionPattern.FindAllStringSubmatchIndex(content, -1)
-	if len(matches) == 0 {
+	if len(matches) == 0 && len(document.internal) == 0 {
 		return releaseDocument{}, errors.New("has no release-note sections")
 	}
 	allowed := make(map[string]int, len(sectionOrder))
 	for index, name := range sectionOrder {
 		allowed[name] = index
 	}
-	document := releaseDocument{}
 	previousIndex := -1
 	for index, match := range matches {
 		name := strings.TrimSpace(content[match[2]:match[3]])
@@ -677,12 +731,29 @@ func readReleaseDocument(path, version string, sectionOrder []string) (releaseDo
 	}
 
 	links := linkPattern.FindAllStringSubmatch(content, -1)
-	if len(links) != 1 {
+	if unreleased {
+		if len(links) > 1 {
+			return releaseDocument{}, errors.New("must contain at most one Full Changelog link")
+		}
+	} else if len(links) != 1 {
 		return releaseDocument{}, errors.New("must contain exactly one Full Changelog link")
 	}
-	document.compare = links[0][1]
+	if len(links) == 1 {
+		document.compare = links[0][1]
+	}
 	document.sources = sortedUnique(document.sources)
+	document.internal = sortedUnique(document.internal)
 	return document, nil
+}
+
+// normalizeSourceURL 把 direct commit 链接截到审计和旧说明都使用的 7 位短 SHA，
+// 这样同一提交的两种写法可以逐项比较。
+func normalizeSourceURL(source string) string {
+	prefix := "https://github.com/FlanChanXwO/pixiv-cli/commit/"
+	if commit, ok := strings.CutPrefix(source, prefix); ok && len(commit) > 7 {
+		return prefix + commit[:7]
+	}
+	return source
 }
 
 func bulletEntries(section string) []string {

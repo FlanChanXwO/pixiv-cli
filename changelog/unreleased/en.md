@@ -1,53 +1,78 @@
 # Unreleased
 
-> Release-prep workspace. Audit the target tag range, then write the next bilingual notes directly. Every PR or direct commit in the audit must appear in both languages.
+> Release-prep workspace. Audit the target tag range, then write the next bilingual notes directly. Every PR or direct commit in the audit must appear in both languages. Internal-only changes are listed in a trailing `internal` comment, which is hidden from the rendered Release body.
+
+## Breaking changes
+
+- `pixiv mcp` no longer accepts the `mcp_gallery_cache_ttl` and `mcp_gallery_concurrency` settings; remove them from `config.toml`. ([#168](https://github.com/FlanChanXwO/pixiv-cli/pull/168))
 
 ## Added
 
-- Added reverse-image search to `pixiv search SOURCE` and the Pixiv MCP `reverse_search` tool. The CLI automatically selects image mode for explicit HTTP(S) URLs and existing regular files; SauceNAO, ascii2d color/BOVW, and `all` providers return a stable JSON envelope, generic artwork/user records, and NDJSON for canonical records, with explicit partial-provider semantics. ([`69caa31`](https://github.com/FlanChanXwO/pixiv-cli/commit/69caa31), [`6599dec`](https://github.com/FlanChanXwO/pixiv-cli/commit/6599dec), [`ef0dcfe`](https://github.com/FlanChanXwO/pixiv-cli/commit/ef0dcfe), [`e67e21f`](https://github.com/FlanChanXwO/pixiv-cli/commit/e67e21f), [`959414e`](https://github.com/FlanChanXwO/pixiv-cli/commit/959414e), [`ce03802`](https://github.com/FlanChanXwO/pixiv-cli/commit/ce03802), [`298e0f3`](https://github.com/FlanChanXwO/pixiv-cli/commit/298e0f3))
-
+- MCP adds the `pixiv_show_artwork` tool, and the Gallery layout adapts to phones and embedded panels. ([#167](https://github.com/FlanChanXwO/pixiv-cli/pull/167))
 
 ## Changed
 
-- `pixiv mypixiv works` no longer accepts `--type illust`; use `--type artwork`. Existing `artwork`, `manga`, and `novel` values are unchanged.
+- MCP search filters are preserved when a bookmark lookup partially fails, and the partial result is reported instead of dropping the filters or the successful items. ([#165](https://github.com/FlanChanXwO/pixiv-cli/pull/165))
+- An empty account list is encoded as JSON `null` instead of `[]`, keeping the existing CLI JSON contract. ([#201](https://github.com/FlanChanXwO/pixiv-cli/pull/201))
 
-- Removed the legacy `illustration` CLI/SDK input alias for artwork filters; use `illust`. Existing artwork records and MCP filters keep their `illust` contract, and the model's upstream `illustration` kind remains accepted when matching local results.
 
-- Replaced the custom diagnostic events with standard-library `log/slog`. CLI and MCP stderr output now uses one text or JSON record format with shared attribute keys, `log_level` also accepts `warn` and `error`, and both SDKs accept `Options.Logger` for request and retry logs. Logs exclude queries, headers, cookies, tokens, response bodies and signed URLs; CLI data stdout and MCP stdio stdout carry no log records. Debug-level text now shows the source location and uses `timestamp LEVEL --- file:line : message key=value`; a failed command adds one terminating `ERROR` record.
+**Full Changelog**: _Added when the next version is tagged._
 
-- Interactive account selection (`pixiv auth use` and `pixiv auth remove` without a UID) now asks for a number from a printed list instead of using arrow-key navigation. Password, text, and yes/no prompts keep the same TTY requirement, defaults, and output stream.
-
-## Security
-
-- Reverse search loads each source once into a private snapshot, removes it after provider work, and keeps source strings, credentials, temporary paths, cookies, CSRF/redirect values, and upstream bodies out of published output and diagnostics. The MCP contract deliberately permits private files and private/loopback/link-local URLs only for trusted local clients, while documenting third-party upload, retention, and URL-caching implications. ([`69caa31`](https://github.com/FlanChanXwO/pixiv-cli/commit/69caa31), [`3e2cb47`](https://github.com/FlanChanXwO/pixiv-cli/commit/3e2cb47), [`80d5729`](https://github.com/FlanChanXwO/pixiv-cli/commit/80d5729), [`8169787`](https://github.com/FlanChanXwO/pixiv-cli/commit/8169787), [`4632334`](https://github.com/FlanChanXwO/pixiv-cli/commit/4632334), [`4cfc4d4`](https://github.com/FlanChanXwO/pixiv-cli/commit/4cfc4d4))
-- Sanitized reverse-search provider failures at the public CLI/MCP boundary so only reviewed stable `code`/`message` values are exposed; wrapped causes and upstream diagnostics remain private. ([`7505ae8`](https://github.com/FlanChanXwO/pixiv-cli/commit/7505ae8))
-
-## Documentation
-
-- Documented reverse-search source classification, provider/configuration behavior, stdin-only SauceNAO credentials, third-party privacy implications, MCP trusted-client boundaries, partial results, generic artwork records, and the opt-in upstream compatibility workflow across the bilingual user, maintainer, and product-skill documentation. ([`d103eb4`](https://github.com/FlanChanXwO/pixiv-cli/commit/d103eb4), [`9cf51d7`](https://github.com/FlanChanXwO/pixiv-cli/commit/9cf51d7))
-
-## Configuration and diagnostics
-
-- Restored unified `[logging].level`/`[logging].format` configuration with `PIXIV_LOG_LEVEL` and
-  `PIXIV_LOG_FORMAT` overrides; `debug` diagnostics remain stderr-only and MCP stdout stays JSON-RPC.
-- `pixiv config` now manages the logging, download directory, request pacing, proxy, and account-pool keys
-  from one schema; first-run `config.toml` is generated from schema metadata and never overwrites an existing file.
-- Added `reverse_search_provider` and `reverse_search_pixiv_only` configuration, plus stdin-only/redacted
-  `saucenao_api_key` and the `SAUCENAO_API_KEY` environment override; public SDK construction and APIs remain unchanged. ([`d4a1254`](https://github.com/FlanChanXwO/pixiv-cli/commit/d4a1254), [`ce03802`](https://github.com/FlanChanXwO/pixiv-cli/commit/ce03802), [`9cf51d7`](https://github.com/FlanChanXwO/pixiv-cli/commit/9cf51d7))
-- Reverse-search runtime configuration now documents separate standard/source-SauceNAO and ascii2d proxy surfaces,
-  Chrome-146 User-Agent/client-hint pairing, and optional challenge-only FlareSolverr JSON control with an independent
-  browser upstream proxy. Native ascii2d image uploads remain multipart and provider-specific at 10 MB; no global 1 MiB
-  compressed-upload rule is introduced. ([`c01402a`](https://github.com/FlanChanXwO/pixiv-cli/commit/c01402a), [`50d13a3`](https://github.com/FlanChanXwO/pixiv-cli/commit/50d13a3), [`f9c1525`](https://github.com/FlanChanXwO/pixiv-cli/commit/f9c1525), [`341cfbb`](https://github.com/FlanChanXwO/pixiv-cli/commit/341cfbb), [`471af9b`](https://github.com/FlanChanXwO/pixiv-cli/commit/471af9b))
-
-## Maintenance
-
-- Fixed multi-page Pixiv artwork normalization to derive page indexes from `meta_pages` order when the upstream response omits `page_index`, keeping per-page resource refs distinct so downloads no longer resolve multiple output files to the same image. ([#81](https://github.com/FlanChanXwO/pixiv-cli/pull/81))
-- Fixed Pixiv current-user lookup to use the active `/v1/user/detail` route, accepted `max_illust_id` pagination for the latest-artwork feed, and corrected thumbnail filenames/MCP MIME metadata when CDN bytes are JPEG behind a `.png` URL.
-- Hardened the FANBOX identity-scoped cursor binding (Home, Supporting, Creators) to the verified FANBOX account id so a cursor minted under one account cannot be replayed against another account's feed; CreatorPosts and TaggedPosts remain public-scoped. ([#59](https://github.com/FlanChanXwO/pixiv-cli/pull/59))
-- Replaced the embedded-URL FANBOX resource ref with a stable identity-only envelope (kind, owning creator/post, attachment id); `OpenResource`/`SaveResource` re-resolve a fresh allowlisted locator from trusted metadata when no in-session locator is cached, and the session cookie is sent only on the credentialed `downloads.fanbox.cc` host. ([#59](https://github.com/FlanChanXwO/pixiv-cli/pull/59))
-- Fixed logical pagination `has_more` to stay true when a batch is truncated mid-way by a limit even if the upstream cursor is empty, across the shared traversal engine and the FANBOX MCP runtime. ([#59](https://github.com/FlanChanXwO/pixiv-cli/pull/59))
-- Bounded page-range expansion in download page specs and made directory-template segments reject absolute, empty, or traversal segments; direct-resource filenames now use a full-ref digest instead of a truncated prefix that could collide across distinct resources. ([#59](https://github.com/FlanChanXwO/pixiv-cli/pull/59))
-- Mapped non-original download qualities to the corresponding artwork variant resource so `SaveResource` re-resolves the correct locator, and made filename generation fail early on unknown placeholders, unmatched braces, or missing `{date}` values rather than writing empty filenames. ([#59](https://github.com/FlanChanXwO/pixiv-cli/pull/59))
-- Download now reports partial success: each artwork writes its files atomically, independent per-artwork failures are returned as a failure set rather than aborting the whole batch, and only context cancellation stops immediately. ([#59](https://github.com/FlanChanXwO/pixiv-cli/pull/59))
-- Account removal now confirms on a TTY by default and reselects the first remaining account after the default is removed. ([#59](https://github.com/FlanChanXwO/pixiv-cli/pull/59))
-- Added a default-off `PIXIV_REVERSE_SEARCH_E2E=1` maintenance script for authorized real-provider compatibility observation; source and key are supplied through the private environment, never command arguments, and the check is not part of the normal release gate. ([`d103eb4`](https://github.com/FlanChanXwO/pixiv-cli/commit/d103eb4))
+<!-- internal:
+  [#177](https://github.com/FlanChanXwO/pixiv-cli/pull/177)
+  [#183](https://github.com/FlanChanXwO/pixiv-cli/pull/183)
+  [#185](https://github.com/FlanChanXwO/pixiv-cli/pull/185)
+  [#159](https://github.com/FlanChanXwO/pixiv-cli/pull/159)
+  [#160](https://github.com/FlanChanXwO/pixiv-cli/pull/160)
+  [#161](https://github.com/FlanChanXwO/pixiv-cli/pull/161)
+  [#162](https://github.com/FlanChanXwO/pixiv-cli/pull/162)
+  [#163](https://github.com/FlanChanXwO/pixiv-cli/pull/163)
+  [#164](https://github.com/FlanChanXwO/pixiv-cli/pull/164)
+  [#166](https://github.com/FlanChanXwO/pixiv-cli/pull/166)
+  [#170](https://github.com/FlanChanXwO/pixiv-cli/pull/170)
+  [#171](https://github.com/FlanChanXwO/pixiv-cli/pull/171)
+  [#172](https://github.com/FlanChanXwO/pixiv-cli/pull/172)
+  [#173](https://github.com/FlanChanXwO/pixiv-cli/pull/173)
+  [#174](https://github.com/FlanChanXwO/pixiv-cli/pull/174)
+  [#175](https://github.com/FlanChanXwO/pixiv-cli/pull/175)
+  [#176](https://github.com/FlanChanXwO/pixiv-cli/pull/176)
+  [#178](https://github.com/FlanChanXwO/pixiv-cli/pull/178)
+  [#179](https://github.com/FlanChanXwO/pixiv-cli/pull/179)
+  [#180](https://github.com/FlanChanXwO/pixiv-cli/pull/180)
+  [#181](https://github.com/FlanChanXwO/pixiv-cli/pull/181)
+  [#182](https://github.com/FlanChanXwO/pixiv-cli/pull/182)
+  [#184](https://github.com/FlanChanXwO/pixiv-cli/pull/184)
+  [#186](https://github.com/FlanChanXwO/pixiv-cli/pull/186)
+  [#187](https://github.com/FlanChanXwO/pixiv-cli/pull/187)
+  [#188](https://github.com/FlanChanXwO/pixiv-cli/pull/188)
+  [#189](https://github.com/FlanChanXwO/pixiv-cli/pull/189)
+  [#190](https://github.com/FlanChanXwO/pixiv-cli/pull/190)
+  [#191](https://github.com/FlanChanXwO/pixiv-cli/pull/191)
+  [#192](https://github.com/FlanChanXwO/pixiv-cli/pull/192)
+  [#193](https://github.com/FlanChanXwO/pixiv-cli/pull/193)
+  [#194](https://github.com/FlanChanXwO/pixiv-cli/pull/194)
+  [#195](https://github.com/FlanChanXwO/pixiv-cli/pull/195)
+  [#196](https://github.com/FlanChanXwO/pixiv-cli/pull/196)
+  [#197](https://github.com/FlanChanXwO/pixiv-cli/pull/197)
+  [#198](https://github.com/FlanChanXwO/pixiv-cli/pull/198)
+  [#199](https://github.com/FlanChanXwO/pixiv-cli/pull/199)
+  [#200](https://github.com/FlanChanXwO/pixiv-cli/pull/200)
+  [#202](https://github.com/FlanChanXwO/pixiv-cli/pull/202)
+  [#203](https://github.com/FlanChanXwO/pixiv-cli/pull/203)
+  [#204](https://github.com/FlanChanXwO/pixiv-cli/pull/204)
+  [#205](https://github.com/FlanChanXwO/pixiv-cli/pull/205)
+  [#206](https://github.com/FlanChanXwO/pixiv-cli/pull/206)
+  [#207](https://github.com/FlanChanXwO/pixiv-cli/pull/207)
+  [#208](https://github.com/FlanChanXwO/pixiv-cli/pull/208)
+  [#209](https://github.com/FlanChanXwO/pixiv-cli/pull/209)
+  [#210](https://github.com/FlanChanXwO/pixiv-cli/pull/210)
+  [#211](https://github.com/FlanChanXwO/pixiv-cli/pull/211)
+  [#212](https://github.com/FlanChanXwO/pixiv-cli/pull/212)
+  [#213](https://github.com/FlanChanXwO/pixiv-cli/pull/213)
+  [#214](https://github.com/FlanChanXwO/pixiv-cli/pull/214)
+  [#215](https://github.com/FlanChanXwO/pixiv-cli/pull/215)
+  [#216](https://github.com/FlanChanXwO/pixiv-cli/pull/216)
+  [#217](https://github.com/FlanChanXwO/pixiv-cli/pull/217)
+  [#219](https://github.com/FlanChanXwO/pixiv-cli/pull/219)
+  [#221](https://github.com/FlanChanXwO/pixiv-cli/pull/221)
+-->

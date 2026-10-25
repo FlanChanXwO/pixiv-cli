@@ -2,11 +2,12 @@
 
 ## Fixed
 
-- Restore release validation for historical commits explicitly attributed by the audit, so valid release preparation is not rejected. ([#42](https://github.com/FlanChanXwO/pixiv-cli/pull/42))
-- Require the product Skill version to match the CLI release before protected release jobs run, so the matching SkillHub and ClawHub publication can proceed. ([#44](https://github.com/FlanChanXwO/pixiv-cli/pull/44))
-
-## Maintenance
-
-- Restore the audited workflow-dispatch recovery path used to verify release-notes policy for immutable release tags. ([#43](https://github.com/FlanChanXwO/pixiv-cli/pull/43))
+- Release preparation no longer fails when a commit is already listed in the notes. ([#42](https://github.com/FlanChanXwO/pixiv-cli/pull/42))
+- The product skill and the CLI release now must carry the same version before publication, so a mismatched skill cannot ship. ([#44](https://github.com/FlanChanXwO/pixiv-cli/pull/44))
 
 **Full Changelog**: [v0.9.0...v0.9.1](https://github.com/FlanChanXwO/pixiv-cli/compare/v0.9.0...v0.9.1)
+
+<!-- internal:
+  [#43](https://github.com/FlanChanXwO/pixiv-cli/pull/43)
+  [#45](https://github.com/FlanChanXwO/pixiv-cli/pull/45)
+-->

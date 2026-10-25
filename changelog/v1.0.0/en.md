@@ -2,38 +2,37 @@
 
 ## Breaking changes
 
-- Complete the v1 SDK and CLI rewrite, consolidating the public Pixiv/FANBOX SDK, CLI, MCP, authentication, storage, and resource contracts around the v1 architecture. ([#59](https://github.com/FlanChanXwO/pixiv-cli/pull/59))
+- The v1 rewrite changes the public Pixiv/FANBOX SDK, CLI, MCP, authentication, storage, and resource contracts. SDK users should re-check their imports and type usage against the v1 API. ([#59](https://github.com/FlanChanXwO/pixiv-cli/pull/59))
 
 ## Added
 
-- Add reverse-image search to the CLI and Pixiv MCP, with local-file/URL source classification, SauceNAO and ascii2d providers, stable result envelopes, and explicit partial-provider semantics. ([#62](https://github.com/FlanChanXwO/pixiv-cli/pull/62))
-- Add first-class Docker container release support with pinned runtime, provenance, non-root state handling, and exact-version publication checks. ([#63](https://github.com/FlanChanXwO/pixiv-cli/pull/63))
+- `pixiv search` and the Pixiv MCP `reverse_search` tool add reverse-image search with local files and URLs, SauceNAO and ascii2d providers, a stable result envelope, and explicit partial-provider results. ([#62](https://github.com/FlanChanXwO/pixiv-cli/pull/62))
+- Official container images are published for `linux/amd64` and `linux/arm64` with a pinned runtime, non-root state handling, and version checks. ([#63](https://github.com/FlanChanXwO/pixiv-cli/pull/63))
 
 ## Changed
 
-- Align Pixiv timeline and MyPixiv operations with their verified response contracts and public SDK types. ([#60](https://github.com/FlanChanXwO/pixiv-cli/pull/60))
+- Pixiv timeline and MyPixiv reads follow the verified response contracts and public SDK types. ([#60](https://github.com/FlanChanXwO/pixiv-cli/pull/60))
 
 ## Fixed
 
-- Restore release validation for the audited v0.10.0 recovery path so valid release preparation is not rejected. ([#49](https://github.com/FlanChanXwO/pixiv-cli/pull/49))
-- Handle pending ClawHub security scans without misreporting a received publication as a failed release. ([#50](https://github.com/FlanChanXwO/pixiv-cli/pull/50))
-- Fix Pixiv authentication service initialization errors, verified current-user and endpoint contracts, FANBOX proxy conflict validation, and forward-compatible local account migrations. ([#67](https://github.com/FlanChanXwO/pixiv-cli/pull/67))
-- Make Windows release gates portable across file URIs, ACL-backed permissions, platform paths, and executable naming. ([#68](https://github.com/FlanChanXwO/pixiv-cli/pull/68))
-- Make the database permission test distinguish Windows ACL semantics from POSIX mode bits. ([#71](https://github.com/FlanChanXwO/pixiv-cli/pull/71))
-- Refresh the six pinned native ugoira static libraries from one source-matched evidence run so production release rebuilds are byte-for-byte reproducible. ([#72](https://github.com/FlanChanXwO/pixiv-cli/pull/72))
-- Pass the expanded release tag to the container image version label so OCI provenance verification matches the immutable tag. ([#74](https://github.com/FlanChanXwO/pixiv-cli/pull/74))
+- `pixiv auth` initialization and current-user reads work correctly, FANBOX rejects conflicting proxy settings, and existing account databases migrate in place. ([#67](https://github.com/FlanChanXwO/pixiv-cli/pull/67))
+- The Windows build and installer work with file URIs, ACL permissions, platform paths, and the executable name. ([#68](https://github.com/FlanChanXwO/pixiv-cli/pull/68))
+- Ugoira encoding in release builds uses libraries matched to the tagged source, so a rebuild produces the same bytes. ([#72](https://github.com/FlanChanXwO/pixiv-cli/pull/72))
+- Container images report the same version as the release tag. ([#74](https://github.com/FlanChanXwO/pixiv-cli/pull/74))
 
-## Documentation
+## Security
 
-- Simplify the pull request template so review records contain the change, verification, and self-check evidence required by the repository workflow. ([#61](https://github.com/FlanChanXwO/pixiv-cli/pull/61))
-- Record the audited Windows portability fix in the bilingual v1.0.0 release notes. ([#69](https://github.com/FlanChanXwO/pixiv-cli/pull/69))
-- Complete the audited source coverage for the v1.0.0 release notes. ([#70](https://github.com/FlanChanXwO/pixiv-cli/pull/70))
-- Record the native staticlib refresh and its release provenance in the bilingual v1.0.0 notes. ([#73](https://github.com/FlanChanXwO/pixiv-cli/pull/73))
-
-## Maintenance
-
-- Remove generated goal and output artifacts from the repository. ([#64](https://github.com/FlanChanXwO/pixiv-cli/pull/64))
-- Remove unused repository artifacts and keep the committed source tree focused. ([#65](https://github.com/FlanChanXwO/pixiv-cli/pull/65))
-- Simplify oversized Go test files while retaining the installer, FANBOX, and other behavior coverage. ([#66](https://github.com/FlanChanXwO/pixiv-cli/pull/66))
+- A pending security scan on ClawHub is reported as pending instead of a failed release, and a failed v0.10.0 release can be recovered. ([#49](https://github.com/FlanChanXwO/pixiv-cli/pull/49), [#50](https://github.com/FlanChanXwO/pixiv-cli/pull/50))
 
 **Full Changelog**: [v0.10.0...v1.0.0](https://github.com/FlanChanXwO/pixiv-cli/compare/v0.10.0...v1.0.0)
+
+<!-- internal:
+  [#61](https://github.com/FlanChanXwO/pixiv-cli/pull/61)
+  [#64](https://github.com/FlanChanXwO/pixiv-cli/pull/64)
+  [#65](https://github.com/FlanChanXwO/pixiv-cli/pull/65)
+  [#66](https://github.com/FlanChanXwO/pixiv-cli/pull/66)
+  [#69](https://github.com/FlanChanXwO/pixiv-cli/pull/69)
+  [#70](https://github.com/FlanChanXwO/pixiv-cli/pull/70)
+  [#71](https://github.com/FlanChanXwO/pixiv-cli/pull/71)
+  [#73](https://github.com/FlanChanXwO/pixiv-cli/pull/73)
+-->

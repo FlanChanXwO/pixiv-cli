@@ -250,10 +250,11 @@ flowchart LR
     AU --> W["编写 changelog/vX.Y.Z/en.md + zh-CN.md"] --> V["validate --audit"] --> RP["release-prep PR"] --> TAG["tag + GitHub Release"] --> HUB["SkillHub / ClawHub 校验"]
 ```
 
-- 非空章节依次为 `Breaking changes`、`Added`、`Changed`、`Fixed`、`Security`、`Documentation`、`Maintenance`（中文使用对应译名），末尾附同范围的 `Full Changelog` compare 链接（首个版本链接到该 tag 的提交）。
-- 每条面向结果的说明内联来源 PR（无 PR 时用真实短 SHA commit 链接）；一条可合并多个相关来源。纯内部改动归入 `Maintenance`，不得省略。每个版本列出首次合并贡献的外部贡献者（非仓库所有者、非 bot）。`changelog/unreleased/` 只保留 release-prep 提示，不是普通 PR 的编辑目标。
+- 非空章节依次为 `Breaking changes`、`Added`、`Changed`、`Fixed`、`Security`、`New Contributors`（中文使用对应译名），末尾附同范围的 `Full Changelog` compare 链接（首个版本链接到该 tag 的提交）。
+- 面向 CLI、MCP 与 SDK 使用者写：他们看到的命令、参数或 tool，以及需要做什么。CI、测试、内部重构、PR 治理流程和仅维护者使用的文档不写进正文；影响用户的文档变化写进 `Changed`。
+- 每条说明内联来源 PR（无 PR 时用真实短 SHA commit 链接）；一条可合并多个相关来源。审计范围内每个 PR 和 direct commit 都必须出现在正文或末尾的 `<!-- internal: ... -->` 注释中，渲染 Release 正文时注释会被去掉。每个版本列出首次合并贡献的外部贡献者（非仓库所有者、非 bot）。`changelog/unreleased/` 是 release-prep 暂存区，不是普通 PR 的编辑目标。
 - 分类、breaking change 判断与版本摘要由 release-prep 维护者依据最终 Markdown 章节与兼容性评估决定，不读取 PR 正文；PR 作者无需事先决定版本号。
-- `validate --audit` 检查章节顺序、双语来源集合、compare 页脚、缺失来源与范围外来源。正式 tag 上的 `release_notes_audit` 任务以只读的 `contents` 与 `pull-requests` 权限重跑审计与校验。
+- `validate --audit` 检查章节顺序、中英文逐条对应、compare 页脚，以及缺失来源与范围外来源；`validate --unreleased --audit` 对 `changelog/unreleased/` 做同样的检查，不要求版本标题和 compare 链接。正式 tag 上的 `release_notes_audit` 任务以只读的 `contents` 与 `pull-requests` 权限重跑审计与校验。
 - 选定版本不等于发布授权：创建 release-prep PR、合并、创建或推送 tag、触发发布或同步历史 GitHub Release 之前，维护者必须在当前会话中明确确认具体版本、范围与影响。完整流程见 `.agents/skills/pixiv-cli-release-notes/SKILL.md`。
 - `sync-history` 默认 dry-run；只有显式 `--apply` 才更新已有 Release 正文，或基于已有 tag 创建缺失的历史 Release（不带资产）；两种情况都会比较远端正文与本地双语渲染结果。
 
