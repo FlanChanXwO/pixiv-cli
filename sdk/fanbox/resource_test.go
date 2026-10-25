@@ -188,3 +188,72 @@ func TestFanboxResourceKindsSurviveReopen(t *testing.T) {
 		})
 	}
 }
+
+func TestOpenResourceCredentialBoundary(t *testing.T) {
+	for name, test := range map[string]struct {
+		mediaHost, mediaURL string
+		wantCookie          string
+	}{
+		"downloads host": {"downloads.fanbox.cc", "https://downloads.fanbox.cc/image-1.png", "FANBOXSESSID=session-value"},
+		"pixiv media":    {"i.pximg.net", "https://i.pximg.net/image-1.png", ""},
+	} {
+		t.Run(name, func(t *testing.T) {
+			var mediaCookie string
+			client := testClient(t, roundTripFunc(func(req *http.Request) (*http.Response, error) {
+				switch {
+				case req.URL.Host == "api.fanbox.cc" && req.URL.Path == "/post.info":
+					return jsonResponse(`{"body":{"post":{"id":"p-resource","title":"resource","publishedDatetime":"2024-01-01T00:00:00Z","isRestricted":false,"isPinned":false,"body":{"images":[{"id":"image-1","originalUrl":"` + test.mediaURL + `"}]}}}}`), nil
+				case req.URL.Host == test.mediaHost:
+					mediaCookie = req.Header.Get("Cookie")
+					return &http.Response{StatusCode: http.StatusOK, Header: http.Header{"Content-Type": {"image/png"}}, Body: io.NopCloser(strings.NewReader("bytes"))}, nil
+				default:
+					return nil, errors.New("unexpected FANBOX resource request")
+				}
+			}))
+			post, err := client.Post(context.Background(), fanbox.PostRequest{PostID: "p-resource"})
+			if err != nil {
+				t.Fatalf("Post: %v", err)
+			}
+			response, err := client.OpenResource(context.Background(), sdk.OpenResourceRequest{Ref: post.Body.Assets[0].Resource.Ref, Method: sdk.ResourceMethodGet})
+			if err != nil {
+				t.Fatalf("OpenResource: %v", err)
+			}
+			defer response.Body.Close()
+			if mediaCookie != test.wantCookie {
+				t.Fatalf("media Cookie = %q, want %q", mediaCookie, test.wantCookie)
+			}
+		})
+	}
+}
+
+func TestOpenResourceForwardsMethodAndConditionalHeaders(t *testing.T) {
+	var mediaRequest *http.Request
+	client := testClient(t, roundTripFunc(func(req *http.Request) (*http.Response, error) {
+		switch {
+		case req.URL.Host == "api.fanbox.cc" && req.URL.Path == "/post.info":
+			return jsonResponse(`{"body":{"post":{"id":"p-conditional","title":"resource","publishedDatetime":"2024-01-01T00:00:00Z","isRestricted":false,"isPinned":false,"body":{"images":[{"id":"image-1","originalUrl":"https://downloads.fanbox.cc/image-1.png"}]}}}}`), nil
+		case req.URL.Host == "downloads.fanbox.cc":
+			mediaRequest = req.Clone(req.Context())
+			return &http.Response{StatusCode: http.StatusPartialContent, Header: http.Header{"Content-Length": {"2"}}, Body: io.NopCloser(strings.NewReader("ok"))}, nil
+		default:
+			return nil, errors.New("unexpected FANBOX resource request")
+		}
+	}))
+	post, err := client.Post(context.Background(), fanbox.PostRequest{PostID: "p-conditional"})
+	if err != nil {
+		t.Fatalf("Post: %v", err)
+	}
+	response, err := client.OpenResource(context.Background(), sdk.OpenResourceRequest{
+		Ref: post.Body.Assets[0].Resource.Ref, Method: sdk.ResourceMethodHead, IfNoneMatch: `"etag"`, Range: "bytes=0-1",
+	})
+	if err != nil {
+		t.Fatalf("OpenResource: %v", err)
+	}
+	defer response.Body.Close()
+	if mediaRequest == nil || mediaRequest.Method != http.MethodHead || mediaRequest.Header.Get("If-None-Match") != `"etag"` || mediaRequest.Header.Get("Range") != "bytes=0-1" {
+		t.Fatalf("media request = %#v", mediaRequest)
+	}
+	if response.StatusCode != http.StatusPartialContent || response.ContentLength() != 2 {
+		t.Fatalf("response = %d/%d", response.StatusCode, response.ContentLength())
+	}
+}
