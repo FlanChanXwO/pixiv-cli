@@ -5,7 +5,6 @@ package pool
 
 import (
 	"crypto/rand"
-	"errors"
 	"fmt"
 	"math/big"
 
@@ -19,7 +18,7 @@ func choose(snapshot pixivaccount.PoolSnapshot, strategy settings.AccountPoolStr
 	if len(snapshot.Candidates) == 0 {
 		return 0, &pixivaccount.PoolSelectionError{
 			Kind:                pixivaccount.PoolSelectionExhausted,
-			EarliestFrozenUntil: cloneInt64(snapshot.EarliestFrozenUntil),
+			EarliestFrozenUntil: snapshot.EarliestFrozenUntil,
 		}
 	}
 	switch strategy {
@@ -33,31 +32,12 @@ func choose(snapshot pixivaccount.PoolSnapshot, strategy settings.AccountPoolStr
 		}
 		return snapshot.Candidates[0].UserID, nil
 	case settings.AccountPoolStrategyRandom:
-		index, err := randomIndex(len(snapshot.Candidates))
+		index, err := rand.Int(rand.Reader, big.NewInt(int64(len(snapshot.Candidates))))
 		if err != nil {
 			return 0, err
 		}
-		return snapshot.Candidates[index].UserID, nil
+		return snapshot.Candidates[index.Int64()].UserID, nil
 	default:
 		return 0, fmt.Errorf("unsupported account pool strategy %q", strategy)
 	}
-}
-
-func randomIndex(size int) (int, error) {
-	if size <= 0 {
-		return 0, errors.New("pixiv account pool has no eligible account")
-	}
-	value, err := rand.Int(rand.Reader, big.NewInt(int64(size)))
-	if err != nil {
-		return 0, err
-	}
-	return int(value.Int64()), nil
-}
-
-func cloneInt64(value *int64) *int64 {
-	if value == nil {
-		return nil
-	}
-	out := *value
-	return &out
 }

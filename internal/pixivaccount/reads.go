@@ -115,9 +115,7 @@ func (m *ReadSessions) Open(ctx context.Context, uid int64, network string, opti
 	session, err := m.service.openReadSession(ctx, uid, options)
 	if err != nil {
 		cancelGeneration()
-		if options.HTTPClient != nil {
-			options.HTTPClient.CloseIdleConnections()
-		}
+		options.HTTPClient.CloseIdleConnections()
 		return ReadSession{}, err
 	}
 	m.mu.Lock()
@@ -223,9 +221,7 @@ func (m *ReadSessions) Close() error {
 func (e readEntry) close() {
 	e.cancel()
 	e.session.Client.CloseIdleConnections()
-	if e.transport != nil {
-		e.transport.CloseIdleConnections()
-	}
+	e.transport.CloseIdleConnections()
 }
 
 // Raw read leases (for example media tools) also invalidate on upstream 401,

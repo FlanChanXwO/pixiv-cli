@@ -15,16 +15,8 @@ import (
 )
 
 var (
-	// pixivAccountServiceNotConfigured 表示未注入 Pixiv account 叶服务。
-	pixivAccountServiceNotConfigured = errors.New("pixiv account service is not configured")
-	// rotationGateNotConfigured 表示未注入用于串行 OAuth rotation 的 gate。
-	rotationGateNotConfigured = errors.New("pixiv rotation gate is not configured")
-	// poolRuntimeLoaderNotConfigured 表示未注入账号池启用状态读取器。
-	poolRuntimeLoaderNotConfigured = errors.New("account pool runtime loader is not configured")
 	// poolExecutorNotConfigured 表示启用账号池时未注入 pool 叶执行器。
 	poolExecutorNotConfigured = errors.New("account pool executor is not configured")
-	// useNotConfigured 表示调用方没有提供 client callback。
-	useNotConfigured = errors.New("pixiv client callback is not configured")
 	// clientNotConfigured 表示 account 叶服务返回了 nil client。
 	clientNotConfigured = errors.New("pixiv account service returned a nil client")
 )
@@ -50,7 +42,7 @@ type PoolConfig struct {
 type ConfigLoader func() (PoolConfig, error)
 
 // AccountService 是 account 叶服务为 client 生命周期提供的最小端口。
-// *account.Service 直接满足该接口；接口也让 Pixiv 会话测试可以使用无网络 fake。
+// *pixivaccount.Service 直接满足该接口；账号选择与持久化由该叶服务负责。
 type AccountService interface {
 	OpenClient(context.Context, pixiv.Options) (*pixiv.Client, error)
 	OpenAccountClient(context.Context, int64, pixiv.Options) (*pixiv.Client, error)
@@ -79,7 +71,6 @@ type Pixiv struct {
 	poolFactory    PoolFactory
 	gate           RotationGate
 	loadPoolConfig ConfigLoader
-	closeClient    func(*pixiv.Client) error
 }
 
 var (
@@ -88,8 +79,7 @@ var (
 	_ RotationGate   = (*pool.Gate)(nil)
 )
 
-// NewPixiv 创建 Pixiv 根编排对象。依赖缺失不会在构造时 panic，而是在对应的
-// Open/Use 路径返回稳定配置错误，便于 CLI/MCP 组合根保留自己的启动语义。
+// NewPixiv 接收组合根已装配的账号、轮换门与按调用读取的账号池策略。
 func NewPixiv(accounts AccountService, gate RotationGate, loadPoolConfig ConfigLoader, pool PoolFactory) *Pixiv {
 	return &Pixiv{
 		accounts:       accounts,
@@ -106,23 +96,8 @@ func (f *Pixiv) Open(ctx context.Context, request Request) (*lifecycle.Lease[*pi
 	if ctx == nil {
 		return nil, lifecycle.ErrNilContext
 	}
-	if f == nil || f.accounts == nil {
-		return nil, pixivAccountServiceNotConfigured
-	}
-	if f.gate == nil {
-		return nil, rotationGateNotConfigured
-	}
 	if err := f.gate.Acquire(ctx); err != nil {
 		return nil, err
-	}
-	closeClient := f.closeClient
-	if closeClient == nil {
-		closeClient = func(client *pixiv.Client) error {
-			if client != nil {
-				client.CloseIdleConnections()
-			}
-			return nil
-		}
 	}
 	gateReleased := false
 	defer func() {
@@ -144,7 +119,7 @@ func (f *Pixiv) Open(ctx context.Context, request Request) (*lifecycle.Lease[*pi
 	}
 	if err != nil {
 		if client != nil {
-			return nil, errors.Join(err, closeClient(client))
+			client.CloseIdleConnections()
 		}
 		return nil, err
 	}
@@ -156,7 +131,8 @@ func (f *Pixiv) Open(ctx context.Context, request Request) (*lifecycle.Lease[*pi
 	lease := lifecycle.NewLease(client, func() error {
 		// defer 保证即使 SDK 释放实现未来返回 panic，gate 也不会永久占用。
 		defer gate.Release()
-		return closeClient(client)
+		client.CloseIdleConnections()
+		return nil
 	})
 	gateReleased = true
 	return lease, nil
@@ -168,12 +144,6 @@ func (f *Pixiv) Open(ctx context.Context, request Request) (*lifecycle.Lease[*pi
 func (f *Pixiv) Use(ctx context.Context, request Request, callback func(context.Context, *pixiv.Client) (committed bool, err error)) error {
 	if ctx == nil {
 		return lifecycle.ErrNilContext
-	}
-	if callback == nil {
-		return useNotConfigured
-	}
-	if f == nil || f.loadPoolConfig == nil {
-		return poolRuntimeLoaderNotConfigured
 	}
 	config, err := f.loadPoolConfig()
 	if err != nil {
@@ -201,9 +171,6 @@ func (f *Pixiv) Use(ctx context.Context, request Request, callback func(context.
 	// 显式账号属于调用快照，账号池不能改写身份或在错误后换号。
 	if request.UserID != 0 || !config.Enabled {
 		return useAttempt(ctx, request, &lifecycle.Attempt{})
-	}
-	if f.poolFactory == nil {
-		return poolExecutorNotConfigured
 	}
 	pool, err := f.poolFactory(config)
 	if err != nil {

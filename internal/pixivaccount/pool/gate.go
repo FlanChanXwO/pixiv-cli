@@ -2,10 +2,7 @@
 
 package pool
 
-import (
-	"context"
-	"errors"
-)
+import "context"
 
 // Gate serializes executions that may consume the same Pixiv refresh token.
 // It is product account-pool state, not an MCP server global.
@@ -16,9 +13,6 @@ func NewGate() *Gate { return &Gate{slots: make(chan struct{}, 1)} }
 
 // Acquire waits for the serialization slot and is paired with Release.
 func (g *Gate) Acquire(ctx context.Context) error {
-	if g == nil || g.slots == nil {
-		return errors.New("pixiv rotation gate is not configured")
-	}
 	select {
 	case g.slots <- struct{}{}:
 		return nil
@@ -29,7 +23,5 @@ func (g *Gate) Acquire(ctx context.Context) error {
 
 // Release releases a slot acquired by Acquire.
 func (g *Gate) Release() {
-	if g != nil && g.slots != nil {
-		<-g.slots
-	}
+	<-g.slots
 }

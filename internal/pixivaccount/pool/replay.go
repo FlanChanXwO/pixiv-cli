@@ -45,7 +45,7 @@ func mapSelectionError(err, lastRateLimit error, now time.Time) error {
 	}
 }
 
-func poolSelectionRateLimit(detail string, earliest *int64, cause error, now time.Time) error {
+func poolSelectionRateLimit(detail string, earliest *int64, cause error, now time.Time) *sdk.Error {
 	opts := []sdk.ErrorOption{sdk.WithDetail(detail)}
 	if retry, ok := poolRetryAdvice(earliest, now); ok {
 		opts = append(opts, sdk.WithRetry(retry))
@@ -72,11 +72,7 @@ func poolExhaustedError(lastRateLimit error, earliest *int64, now time.Time) err
 		return ErrAccountPoolExhausted
 	}
 	classified := poolSelectionRateLimit("account_pool_exhausted", earliest, lastRateLimit, now)
-	var typed *sdk.Error
-	if !errors.As(classified, &typed) {
-		return fmt.Errorf("%w: %w", ErrAccountPoolExhausted, classified)
-	}
-	return &accountPoolExhaustedError{classified: typed}
+	return &accountPoolExhaustedError{classified: classified}
 }
 
 type accountPoolExhaustedError struct{ classified *sdk.Error }
