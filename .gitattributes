@@ -2,11 +2,9 @@
 # 其他受审计输入的字节，因此仅对此公开安装入口强制 checkout 为 CRLF。
 scripts/install.cmd text eol=crlf
 
-# release archive 与 licensebundle gate 会按字节比较这些许可证输入。保留 LF，避免 Windows checkout
-# 改成 CRLF 后让跨平台 archive evidence 分裂，或把未修改的许可证 bundle 误报为 stale。
+# release archive 会按字节比较 LICENSE。保留 LF，避免 Windows checkout 改成 CRLF 后
+# 让跨平台 archive evidence 分裂。
 LICENSE text eol=lf
-THIRD_PARTY_LICENSES.md text eol=lf
-third_party/licenses/** text eol=lf
 
 # Deterministic frontend assembly uses the same source bytes on every runner.
 frontend/** text eol=lf

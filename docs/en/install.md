@@ -124,7 +124,6 @@ Bind mounts keep host ownership. Never pass a token as an argv value. `auth impo
 ## Version and updates
 
 ```bash
-pixiv --licenses          # embedded third-party notices; no auth, network or local state
 pixiv --version           # exactly one line: pixiv <version>; no stderr, no update check
 pixiv update --check [--json] [--prerelease]
 pixiv update --proxy http://127.0.0.1:7890

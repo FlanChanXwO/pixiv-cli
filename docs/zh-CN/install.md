@@ -124,7 +124,6 @@ bind mount 保留宿主属主。不要把 token 作为 argv 传入。`auth impor
 ## 版本与更新
 
 ```bash
-pixiv --licenses          # 内嵌第三方声明；不认证、不联网、不创建本地状态
 pixiv --version           # 恰好一行：pixiv <version>；无 stderr，不检查更新
 pixiv update --check [--json] [--prerelease]
 pixiv update --proxy http://127.0.0.1:7890

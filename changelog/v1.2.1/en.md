@@ -1,9 +1,5 @@
 # v1.2.1 — 2026-10-22
 
-## Changed
-
-- The root `LICENSE` is plain MIT text so GitHub detects the license. Third-party notices remain available through `pixiv --licenses`. ([#155](https://github.com/FlanChanXwO/pixiv-cli/pull/155))
-
 ## Fixed
 
 - A race condition in the Windows account-store file watcher is fixed (fsnotify updated to v1.10.1), so long-running CLI and MCP sessions no longer hit concurrent access errors. ([#153](https://github.com/FlanChanXwO/pixiv-cli/pull/153))
@@ -15,6 +11,7 @@
 **Full Changelog**: [v1.2.0...v1.2.1](https://github.com/FlanChanXwO/pixiv-cli/compare/v1.2.0...v1.2.1)
 
 <!-- internal:
+  [#155](https://github.com/FlanChanXwO/pixiv-cli/pull/155)
   [#154](https://github.com/FlanChanXwO/pixiv-cli/pull/154)
   [#156](https://github.com/FlanChanXwO/pixiv-cli/pull/156)
   [#157](https://github.com/FlanChanXwO/pixiv-cli/pull/157)
