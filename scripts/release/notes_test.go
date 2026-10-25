@@ -310,3 +310,30 @@ func TestValidateRejectsMispairedBilingualSections(t *testing.T) {
 		t.Fatalf("validate error = %v, want mispaired section rejection", err)
 	}
 }
+
+func TestValidateAcceptsInternalOnlyRelease(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	writeReleaseNote(t, root, "en.md", `# v1.2.0 — 2026-07-30
+
+**Full Changelog**: [v1.1.0...v1.2.0](https://github.com/FlanChanXwO/pixiv-cli/compare/v1.1.0...v1.2.0)
+
+<!-- internal:
+  [#42](https://github.com/FlanChanXwO/pixiv-cli/pull/42)
+-->
+`)
+	writeReleaseNote(t, root, "zh-CN.md", `# v1.2.0 — 2026-07-30
+
+**完整变更**：[v1.1.0...v1.2.0](https://github.com/FlanChanXwO/pixiv-cli/compare/v1.1.0...v1.2.0)
+
+<!-- internal:
+  [#42](https://github.com/FlanChanXwO/pixiv-cli/pull/42)
+-->
+`)
+	report := auditReport{Sources: []auditSource{{URL: "https://github.com/FlanChanXwO/pixiv-cli/pull/42"}}}
+
+	if err := validateSourceCoverage(root, "1.2.0", "v1.1.0", false, report); err != nil {
+		t.Fatalf("validate internal-only release: %v", err)
+	}
+}

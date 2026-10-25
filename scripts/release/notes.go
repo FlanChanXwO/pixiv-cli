@@ -694,7 +694,7 @@ func readReleaseDocument(path, version string, sectionOrder []string, unreleased
 	content = internalNotePattern.ReplaceAllString(content, "")
 
 	matches := sectionPattern.FindAllStringSubmatchIndex(content, -1)
-	if len(matches) == 0 {
+	if len(matches) == 0 && len(document.internal) == 0 {
 		return releaseDocument{}, errors.New("has no release-note sections")
 	}
 	allowed := make(map[string]int, len(sectionOrder))
