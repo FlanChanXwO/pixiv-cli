@@ -11,7 +11,7 @@ import (
 	"time"
 )
 
-func TestSchemaRejectsInvalidBooleanAttributes(t *testing.T) {
+func TestSchemaRejectsInvalidDeclarations(t *testing.T) {
 	for _, attribute := range []string{"cli", "secret", "example"} {
 		for _, value := range []string{"", "TRUE", "1", "flase"} {
 			t.Run(attribute+"="+value, func(t *testing.T) {
@@ -26,9 +26,13 @@ func TestSchemaRejectsInvalidBooleanAttributes(t *testing.T) {
 			})
 		}
 	}
-}
 
-func TestSchemaRejectsInvalidDeclarations(t *testing.T) {
+	type leaf struct {
+		Value string `config:"value"`
+	}
+	type recursive struct {
+		Next *recursive `config:"next"`
+	}
 	cases := []struct {
 		name        string
 		declaration any
@@ -60,26 +64,6 @@ func TestSchemaRejectsInvalidDeclarations(t *testing.T) {
 		{"fractional integer default", struct {
 			Value int64 `config:"test.value" alias:"test_value" default:"1.5"`
 		}{}, "is not an integer"},
-	}
-	for _, test := range cases {
-		t.Run(test.name, func(t *testing.T) {
-			_, err := deriveSchemaFromTags(reflect.TypeOf(test.declaration))
-			if err == nil || !strings.Contains(err.Error(), test.want) {
-				t.Fatalf("want error containing %q, got %v", test.want, err)
-			}
-		})
-	}
-}
-
-func TestSchemaRejectsMalformedGroupsAndPaths(t *testing.T) {
-	type leaf struct {
-		Value string `config:"value"`
-	}
-	cases := []struct {
-		name        string
-		declaration any
-		want        string
-	}{
 		{"empty path", struct {
 			Value string `config:"" alias:"value"`
 		}{}, "empty segment"},
@@ -96,57 +80,40 @@ func TestSchemaRejectsMalformedGroupsAndPaths(t *testing.T) {
 			Group leaf   `config:"a"`
 			Value string `config:"a.value" alias:"other"`
 		}{}, "declared by both"},
+		{"cyclic group", recursive{}, "cyclic"},
+		{"unsupported slice", struct {
+			Values []string `config:"test.values"`
+		}{}, "unsupported"},
+		{"unsupported optional type", struct {
+			Value *OptionalString `config:"test.value"`
+		}{}, "unsupported"},
 	}
 	for _, test := range cases {
 		t.Run(test.name, func(t *testing.T) {
 			_, err := deriveSchemaFromTags(reflect.TypeOf(test.declaration))
 			if err == nil || !strings.Contains(err.Error(), test.want) {
-				t.Fatalf("want %q, got %v", test.want, err)
+				t.Fatalf("want error containing %q, got %v", test.want, err)
+			}
+		})
+	}
+
+	for _, attribute := range []string{`cli:"true"`, `example:"true"`, `env:"PRIVATE_CONFIG_TEST"`} {
+		t.Run("private leaf "+attribute, func(t *testing.T) {
+			declaration := reflect.StructOf([]reflect.StructField{{
+				Name: "Value", Type: reflect.TypeOf(""),
+				Tag: reflect.StructTag(`config:"private.value" default:"" ` + attribute),
+			}})
+			if _, err := deriveSchemaFromTags(declaration); err == nil {
+				t.Errorf("private leaf with %s must not expose public configuration", attribute)
 			}
 		})
 	}
 }
 
-func TestSchemaRejectsPublicAttributesOnPrivateLeaves(t *testing.T) {
-	for _, attribute := range []string{`cli:"true"`, `example:"true"`, `env:"PRIVATE_CONFIG_TEST"`} {
-		declaration := reflect.StructOf([]reflect.StructField{{
-			Name: "Value", Type: reflect.TypeOf(""),
-			Tag: reflect.StructTag(`config:"private.value" default:"" ` + attribute),
-		}})
-		if _, err := deriveSchemaFromTags(declaration); err == nil {
-			t.Errorf("private leaf with %s must not expose public configuration", attribute)
-		}
-	}
-}
-
-func TestSchemaRejectsCyclicGroupsAndUnsupportedTypes(t *testing.T) {
-	type recursive struct {
-		Next *recursive `config:"next"`
-	}
-	cases := []struct {
-		value any
-		want  string
-	}{
-		{recursive{}, "cyclic"},
-		{struct {
-			Values []string `config:"test.values"`
-		}{}, "unsupported"},
-		{struct {
-			Value *OptionalString `config:"test.value"`
-		}{}, "unsupported"},
-	}
-	for _, test := range cases {
-		_, err := deriveSchemaFromTags(reflect.TypeOf(test.value))
-		if err == nil || !strings.Contains(err.Error(), test.want) {
-			t.Errorf("%T: want %q, got %v", test.value, test.want, err)
-		}
-	}
-}
-
-// TestSchemaPreservesExplicitDefaultsAndAttributes covers the accepted side of
-// the compiler: an empty string, false, and 0s are distinct declared defaults,
-// and omitted attribute tags keep their default booleans.
-func TestSchemaPreservesExplicitDefaultsAndAttributes(t *testing.T) {
+// TestSchemaAcceptsDeclaredShapes covers the accepted side of the compiler:
+// explicit false/0s/empty defaults stay distinct, groups resolve relative to
+// their prefix, excluded subtrees disappear, and optional strings stay leaves.
+func TestSchemaAcceptsDeclaredShapes(t *testing.T) {
 	type declaration struct {
 		Empty   string        `config:"test.empty" alias:"empty" default:"" cli:"false" secret:"false" example:"true"`
 		False   bool          `config:"test.false" alias:"false" default:"false" cli:"true" example:"false"`
@@ -169,33 +136,19 @@ func TestSchemaPreservesExplicitDefaultsAndAttributes(t *testing.T) {
 		!entries[1].spec.CLIManaged || entries[1].spec.DefaultInFile || !entries[2].spec.Sensitive {
 		t.Fatal("explicit boolean attributes changed")
 	}
-}
 
-func TestSchemaExcludesEntireSubtree(t *testing.T) {
 	type hidden struct {
 		Value string `config:"hidden.value" alias:"hidden_value"`
 	}
-	type declaration struct {
-		Hidden hidden `config:"-"`
-	}
-	entries, err := deriveSchemaFromTags(reflect.TypeOf(declaration{}))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(entries) != 0 {
-		t.Errorf("excluded subtree produced configuration entry %#v", entries)
-	}
-}
-
-func TestSchemaResolvesReusableGroupsRelativeToEachPrefix(t *testing.T) {
 	type network struct {
 		Proxy string `config:"proxy_url"`
 	}
-	type declaration struct {
+	type grouped struct {
+		Hidden  hidden   `config:"-"`
 		Fanbox  network  `config:"fanbox.network"`
 		Reverse *network `config:"reverse_search.network"`
 	}
-	entries, err := deriveSchemaFromTags(reflect.TypeOf(declaration{}))
+	entries, err = deriveSchemaFromTags(reflect.TypeOf(grouped{}))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -210,16 +163,13 @@ func TestSchemaResolvesReusableGroupsRelativeToEachPrefix(t *testing.T) {
 	if !reflect.DeepEqual(paths, want) {
 		t.Fatalf("paths = %v, want %v", paths, want)
 	}
-}
 
-func TestSchemaKeepsOptionalStringAsPrivateLeaf(t *testing.T) {
-	type network struct {
-		Proxy OptionalString `config:"proxy_url"`
-	}
-	type declaration struct {
-		Network network `config:"fanbox.network"`
-	}
-	entries, err := deriveSchemaFromTags(reflect.TypeOf(declaration{}))
+	optional := struct {
+		Network struct {
+			Proxy OptionalString `config:"proxy_url"`
+		} `config:"fanbox.network"`
+	}{}
+	entries, err = deriveSchemaFromTags(reflect.TypeOf(optional))
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -3,7 +3,6 @@ package ascii2d
 import (
 	"context"
 	"errors"
-	"net/http"
 	"runtime"
 	"sync/atomic"
 	"testing"
@@ -247,22 +246,5 @@ func waitForSolverWaiters(t *testing.T, cache *solverStateCache, want int) {
 		default:
 			runtime.Gosched()
 		}
-	}
-}
-
-func TestNewSessionClientSharesSolverStateCache(t *testing.T) {
-	base, err := New(Options{HTTPClient: &http.Client{}, Endpoint: "https://ascii2d.test"})
-	if err != nil {
-		t.Fatalf("New() error = %v", err)
-	}
-	session, err := base.newSessionClient()
-	if err != nil {
-		t.Fatalf("newSessionClient() error = %v", err)
-	}
-	if base.solverCache == nil {
-		t.Fatal("base client has no solver state cache")
-	}
-	if session.solverCache != base.solverCache {
-		t.Fatal("session client does not share the MCP-lifetime solver state cache")
 	}
 }

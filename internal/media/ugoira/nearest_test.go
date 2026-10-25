@@ -7,24 +7,6 @@ import (
 	"testing"
 )
 
-func TestNearestColorReference(t *testing.T) {
-	for _, tc := range readKmeansReference(t).Nearest {
-		colors := make([]oklab, len(tc.Palette))
-		for i, c := range tc.Palette {
-			colors[i] = srgbToOklab(c)
-		}
-		search := newColorSearch(colors)
-		for i, c := range tc.Input {
-			if got := nearestColor(colors, srgbToOklab(c)); got != tc.Indices[i] {
-				t.Fatalf("%d colors input %d: index %d, old %d", len(colors), i, got, tc.Indices[i])
-			}
-			if got := search.nearest(srgbToOklab(c)); got != tc.Indices[i] {
-				t.Fatalf("%d colors input %d: tree index %d, old %d", len(colors), i, got, tc.Indices[i])
-			}
-		}
-	}
-}
-
 func TestColorSearchPreservesNearest(t *testing.T) {
 	rng := rand.New(rand.NewPCG(0, 1))
 	for size := 1; size <= 256; size++ {

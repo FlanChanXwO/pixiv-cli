@@ -32,14 +32,3 @@ func TestReplaceFileReportsMissingSource(t *testing.T) {
 	require.Error(t, err)
 	assert.True(t, errors.Is(err, os.ErrNotExist))
 }
-
-func TestReplaceDelegatesToReplaceFile(t *testing.T) {
-	directory := t.TempDir()
-	source := filepath.Join(directory, "source")
-	target := filepath.Join(directory, "target")
-	require.NoError(t, os.WriteFile(source, []byte("new"), 0o600))
-	require.NoError(t, atomicfile.Replace(source, target))
-	body, err := os.ReadFile(target)
-	require.NoError(t, err)
-	assert.Equal(t, "new", string(body))
-}

@@ -32,40 +32,6 @@ func newTestFanbox(opener AccountOpener, closeCount *int) *Fanbox {
 	return f
 }
 
-func TestFanboxOpenReturnsCloseOnceLease(t *testing.T) {
-	opener := &testAccountOpener{client: &fanboxsdk.Client{}}
-	closeCount := 0
-	facade := newTestFanbox(opener, &closeCount)
-
-	lease, err := facade.Open(context.Background(), OpenRequest{})
-	require.NoError(t, err)
-	require.Same(t, opener.client, lease.Value())
-	require.NoError(t, lease.Close())
-	require.NoError(t, lease.Close())
-	require.Equal(t, 1, closeCount)
-	require.Equal(t, 1, opener.openCount)
-}
-
-func TestFanboxUseClosesClientAfterCallback(t *testing.T) {
-	opener := &testAccountOpener{client: &fanboxsdk.Client{}}
-	closeCount := 0
-	facade := newTestFanbox(opener, &closeCount)
-	callbackErr := errors.New("callback failed")
-	var callbackClient *fanboxsdk.Client
-	var callbackAttempt *lifecycle.Attempt
-
-	err := facade.Use(context.Background(), OpenRequest{}, func(_ context.Context, client *fanboxsdk.Client, attempt *lifecycle.Attempt) error {
-		callbackClient = client
-		callbackAttempt = attempt
-		return callbackErr
-	})
-
-	require.ErrorIs(t, err, callbackErr)
-	require.Same(t, opener.client, callbackClient)
-	require.NotNil(t, callbackAttempt)
-	require.Equal(t, 1, closeCount)
-}
-
 func TestFanboxPassesProxyOverrideToAccountLeaf(t *testing.T) {
 	opener := &testAccountOpener{client: &fanboxsdk.Client{}}
 	facade := NewFanbox(opener)

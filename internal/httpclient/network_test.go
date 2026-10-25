@@ -10,19 +10,30 @@ import (
 )
 
 func TestHTTPClientLeavesRequestLifetimeToContext(t *testing.T) {
-	client, err := httpclient.HTTPClient("")
-	if err != nil {
-		t.Fatalf("HTTPClient returned error: %v", err)
-	}
-	if client.Timeout != 0 {
-		t.Fatalf("timeout = %v, want zero", client.Timeout)
-	}
-	transport, ok := client.Transport.(*http.Transport)
-	if !ok {
-		t.Fatalf("transport = %T, want *http.Transport", client.Transport)
-	}
-	if transport.Proxy != nil {
-		t.Fatal("empty proxy must disable environment proxy fallback")
+	for _, test := range []struct {
+		name      string
+		proxy     string
+		wantProxy bool
+	}{
+		{name: "empty proxy disables environment fallback"},
+		{name: "explicit proxy is kept", proxy: "http://127.0.0.1:7890", wantProxy: true},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			client, err := httpclient.HTTPClient(test.proxy)
+			if err != nil {
+				t.Fatalf("HTTPClient returned error: %v", err)
+			}
+			if client.Timeout != 0 {
+				t.Fatalf("timeout = %v, want zero", client.Timeout)
+			}
+			transport, ok := client.Transport.(*http.Transport)
+			if !ok {
+				t.Fatalf("transport = %T, want *http.Transport", client.Transport)
+			}
+			if (transport.Proxy != nil) != test.wantProxy {
+				t.Fatalf("proxy function presence = %v, want %v", transport.Proxy != nil, test.wantProxy)
+			}
+		})
 	}
 }
 
@@ -49,23 +60,6 @@ func TestHTTPClientConfiguresSOCKS5AndSOCKS5HProxySchemes(t *testing.T) {
 				t.Fatalf("proxy URL = %v, want %s scheme", proxyURL, scheme)
 			}
 		})
-	}
-}
-
-func TestHTTPClientKeepsProxyWithoutAddingTotalTimeout(t *testing.T) {
-	client, err := httpclient.HTTPClient("http://127.0.0.1:7890")
-	if err != nil {
-		t.Fatalf("HTTPClient returned error: %v", err)
-	}
-	if client.Timeout != 0 {
-		t.Fatalf("timeout = %v, want zero", client.Timeout)
-	}
-	transport, ok := client.Transport.(*http.Transport)
-	if !ok {
-		t.Fatalf("transport = %T, want *http.Transport", client.Transport)
-	}
-	if transport.Proxy == nil {
-		t.Fatal("proxy function is nil")
 	}
 }
 
