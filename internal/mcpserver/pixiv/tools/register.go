@@ -11,7 +11,8 @@ type pixivTools struct{ app *toolhost.App }
 
 // Register adds every Pixiv tool. A tool whose media, account, login, download,
 // or reverse-search port is absent stays unregistered, as before.
-func Register(app *toolhost.App, server *mcp.Server, ports toolhost.SDKPorts) {
+func Register(app *toolhost.App, server *mcp.Server) {
+	ports := app.SDKPorts()
 	if ports.Media != nil {
 		gallery.Register(server, ports.Media)
 	}

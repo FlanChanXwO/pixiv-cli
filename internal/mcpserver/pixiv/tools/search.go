@@ -381,9 +381,9 @@ func (t pixivTools) searchIllustHandler(ctx context.Context, in searchIllustIn) 
 			return outputs.Error(err)
 		}
 		query.Cursor = initial
-		outcome, err := searchArtworks(ctx, t.app.Execute(), artworkSearchRequest{
+		outcome, err := searchArtworks(ctx, t.app.ReadExecutor(), artworkSearchRequest{
 			Query:      query,
-			Plan:       pagination.PagePlan{Skip: plan.Skip, Limit: max(0, plan.Limit), OneBatch: plan.OneBatch},
+			Plan:       pagination.PagePlan{Skip: plan.Skip, Limit: plan.Limit, OneBatch: plan.OneBatch},
 			Membership: bookmarkMembershipUnknown,
 			Strategy:   bookmarkFilterStrategy(in.BookmarkStrategy),
 			Include: func(item pixiv.Artwork) (bool, error) {

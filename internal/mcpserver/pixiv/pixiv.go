@@ -22,5 +22,5 @@ type ReverseSearchPorts = toolhost.ReverseSearchPorts
 
 // Register 将 Pixiv tools 注册到共享 server，账号和 SDK 生命周期仍由 Pixiv runtime 持有。
 func Register(server *mcp.Server, ports SDKPorts, account Account) {
-	tools.Register(toolhost.NewApp(ports, account), server, ports)
+	tools.Register(toolhost.NewApp(ports, account), server)
 }

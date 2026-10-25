@@ -378,7 +378,7 @@ func (t pixivTools) recommendedHandler(ctx context.Context, in recommendedIn) (*
 	if err != nil {
 		return outputs.RecommendedError(err)
 	}
-	execute := t.app.Execute()
+	execute := t.app.ReadExecutor()
 	if execute == nil {
 		return outputs.RecommendedError(sdk.NewError("pixiv", "Recommended", sdk.LocalStateError,
 			sdk.WithDetail("sdk pooled operation is not configured")))
