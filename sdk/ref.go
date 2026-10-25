@@ -135,7 +135,7 @@ func decodeResourceRef(text string) (resourceRefEnvelope, error) {
 	}
 	var env resourceRefEnvelope
 	if err := json.Unmarshal(raw, &env); err != nil {
-		return resourceRefEnvelope{}, NewError("", "decodeResourceRef", InvalidArgument, WithCause(err))
+		return resourceRefEnvelope{}, NewError("", "decodeResourceRef", InvalidArgument, WithDetail("malformed reference envelope"))
 	}
 	if env.Version != resourceRefFormatVersion {
 		return resourceRefEnvelope{}, NewError("", "decodeResourceRef", InvalidArgument, WithCause(fmt.Errorf("unsupported reference format version %d", env.Version)))

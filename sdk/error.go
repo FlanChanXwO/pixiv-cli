@@ -141,7 +141,7 @@ func (e *Error) Unwrap() error { return e.cause }
 // classified error match a Reason-only sentinel.
 func (e *Error) Is(target error) bool {
 	t, ok := target.(*Error)
-	if !ok {
+	if !ok || t == nil {
 		return false
 	}
 	return t.Reason != "" && e.Reason == t.Reason

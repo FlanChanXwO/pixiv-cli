@@ -3,6 +3,7 @@ package sdk
 import (
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
 )
 
@@ -253,10 +254,13 @@ func decodeCursor(text string) (cursorEnvelope, error) {
 	}
 	var env cursorEnvelope
 	if err := json.Unmarshal(raw, &env); err != nil {
-		return cursorEnvelope{}, err
+		return cursorEnvelope{}, errors.New("malformed cursor envelope")
 	}
 	if env.Version != cursorFormatVersion {
 		return cursorEnvelope{}, fmt.Errorf("unsupported cursor format version %d", env.Version)
+	}
+	if env.Product == "" || env.Operation == "" || env.Binding <= 0 || env.QueryHash == "" || len(env.Payload) == 0 {
+		return cursorEnvelope{}, errors.New("cursor missing binding or payload")
 	}
 	return env, nil
 }
