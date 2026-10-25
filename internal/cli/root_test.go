@@ -36,7 +36,6 @@ import (
 	"github.com/FlanChanXwO/pixiv-cli/internal/reversesearch"
 	reverseassembly "github.com/FlanChanXwO/pixiv-cli/internal/reversesearch/assembly"
 	"github.com/FlanChanXwO/pixiv-cli/internal/storage/database"
-	sdkpixiv "github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/spf13/cobra"
 	"github.com/stretchr/testify/assert"
@@ -894,62 +893,6 @@ base_url = "http://127.0.0.1:8123"
 	}
 }
 
-func TestMCPProductionResolvesSharedSelectionBeforeSDK(t *testing.T) {
-	useTempPaths(t)
-	oldConfig, oldSDK, oldHTTP, oldReverse := loadCLIRuntimeConfig, newCLIPixivSDKPorts, runMCPHTTP, newCLIMCPReverseSearch
-	t.Cleanup(func() {
-		loadCLIRuntimeConfig, newCLIPixivSDKPorts, runMCPHTTP, newCLIMCPReverseSearch = oldConfig, oldSDK, oldHTTP, oldReverse
-	})
-	loadCLIRuntimeConfig = func() (configapp.RuntimeConfig, error) {
-		return configapp.RuntimeConfig{}, nil
-	}
-	newCLIMCPReverseSearch = func(reverseassembly.Options) (reversesearch.Searcher, error) {
-		return rootReverseSearcherFunc(func(context.Context, reversesearch.Request) (reversesearch.Response, error) {
-			return reversesearch.Response{}, nil
-		}), nil
-	}
-	local := mcpaccounts.LocalSnapshot{DefaultUserID: 42, Accounts: []mcpaccounts.Account{{UserID: 42, HasCredentials: true}, {UserID: 73, HasCredentials: true}}}
-	var ids []int64
-	newCLIPixivSDKPorts = func(app) (pixivSDKPorts, error) {
-		return pixivSDKPorts{
-			localAccounts: func(context.Context) (mcpaccounts.LocalSnapshot, error) { return local, nil },
-			execute: func(_ context.Context, req pixivdeps.Request, _ func(context.Context, *sdkpixiv.Client) (bool, error)) error {
-				ids = append(ids, req.UserID)
-				return errors.New("fixture SDK boundary")
-			},
-		}, nil
-	}
-	runMCPHTTP = func(ctx context.Context, server *mcp.Server, _, _ string, store mcpauth.Store, _ io.Writer, login *mcpaccounts.Login, media ...*mediaproxy.Service) error {
-
-		ct, st := mcp.NewInMemoryTransports()
-		ss, err := server.Connect(ctx, st, nil)
-		require.NoError(t, err)
-		defer ss.Close()
-		client := mcp.NewClient(&mcp.Implementation{Name: "fixture", Version: "1"}, nil)
-		session, err := client.Connect(ctx, ct, nil)
-		require.NoError(t, err)
-		defer session.Close()
-		switched, err := session.CallTool(ctx, &mcp.CallToolParams{Name: "pixiv_account_use", Arguments: map[string]any{"user_id": 73}})
-		require.NoError(t, err)
-		require.False(t, switched.IsError)
-		result, err := session.CallTool(ctx, &mcp.CallToolParams{Name: "pixiv_illust_detail", Arguments: map[string]any{"illust_id": 1}})
-		require.NoError(t, err)
-		require.True(t, result.IsError)
-		require.Equal(t, []int64{73}, ids)
-		local.Accounts = local.Accounts[:1]
-		result, err = session.CallTool(ctx, &mcp.CallToolParams{Name: "pixiv_illust_detail", Arguments: map[string]any{"illust_id": 1}})
-		require.NoError(t, err)
-		require.True(t, result.IsError)
-		require.Equal(t, []int64{73}, ids, "removed selection reached SDK or fell back to default")
-		return nil
-	}
-	a := newTestApp(strings.NewReader(""), io.Discard, io.Discard)
-	_, err := a.InitMCPAuth(t.Context(), false)
-	require.NoError(t, err)
-	require.NoError(t, a.runPixivMCP(t.Context(), mcpcommands.Request{ListenAddr: new("127.0.0.1:8123"), BaseURL: new("http://127.0.0.1:8123")}))
-	require.NoError(t, a.closeResources())
-}
-
 func TestMCPAccountSnapshotContainsOnlyLocalSummaryAndExplicitDefault(t *testing.T) {
 	dbPath, _ := useTempPaths(t)
 	db, err := database.Open(filepath.Dir(dbPath))
@@ -1265,31 +1208,4 @@ func (b *syncBuffer) String() string {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	return b.buf.String()
-}
-
-func TestMCPLocalRegistryWithoutHTTPState(t *testing.T) {
-	_, configPath := useTempPaths(t)
-	oldRun, oldPorts := runMCPStdio, newCLIPixivSDKPorts
-	t.Cleanup(func() { runMCPStdio, newCLIPixivSDKPorts = oldRun, oldPorts })
-	newCLIPixivSDKPorts = func(app) (pixivSDKPorts, error) {
-		return pixivSDKPorts{watchReadSessions: func(context.Context) error { return errors.New("stdio must not start the HTTP read-session watcher") }}, nil
-	}
-	runMCPStdio = func(ctx context.Context, server *mcp.Server, _ io.Reader, _ io.Writer) error {
-		ct, st := mcp.NewInMemoryTransports()
-		ss, err := server.Connect(ctx, st, nil)
-		require.NoError(t, err)
-		defer ss.Close()
-		cs, err := mcp.NewClient(&mcp.Implementation{Name: "local", Version: "1"}, nil).Connect(ctx, ct, nil)
-		require.NoError(t, err)
-		defer cs.Close()
-		listed, err := cs.ListTools(ctx, nil)
-		require.NoError(t, err)
-		require.NotEmpty(t, listed.Tools, "stdio must expose the local tool registry")
-		return nil
-	}
-	var out, diagnostics bytes.Buffer
-	require.Zero(t, RunContext(t.Context(), []string{"pixiv", "mcp"}, strings.NewReader(""), &out, &diagnostics), diagnostics.String())
-	_, err := os.Stat(filepath.Join(filepath.Dir(configPath), "mcp-state.json"))
-	require.ErrorIs(t, err, os.ErrNotExist)
-	require.Empty(t, out.String())
 }

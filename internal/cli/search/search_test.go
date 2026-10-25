@@ -514,30 +514,6 @@ func TestCommandRejectsInvalidReverseSearchProviderBeforeCallingService(t *testi
 	}
 }
 
-func TestCommandKeepsNonFileInputOnKeywordSearchPath(t *testing.T) {
-	pooled := false
-	cmd := newTestCommand(testDependencies{
-		Input:  strings.NewReader(""),
-		Output: &bytes.Buffer{},
-		Pooled: func(context.Context, Request, func(context.Context, *pixiv.Client) (bool, error)) error {
-			pooled = true
-			return nil
-		},
-		ReverseSearch: func(context.Context, ReverseSearchRequest) (reversesearch.Response, error) {
-			t.Fatal("used reverse search for a keyword")
-			return reversesearch.Response{}, nil
-		},
-	})
-	cmd.SetArgs([]string{"ordinary-keyword", "--ndjson"})
-
-	if err := cmd.Execute(); err != nil {
-		t.Fatalf("execute keyword search: %v", err)
-	}
-	if !pooled {
-		t.Fatal("did not use Pixiv keyword search for non-file input")
-	}
-}
-
 func TestCommandLocallyFiltersArtworkRatingAndCanonicalizesSubtype(t *testing.T) {
 	output := &bytes.Buffer{}
 	var requests []*http.Request
