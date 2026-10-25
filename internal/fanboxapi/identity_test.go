@@ -1,22 +1,18 @@
-package fanboxapi_test
+package fanboxapi
 
-import (
-	"testing"
-
-	"github.com/FlanChanXwO/pixiv-cli/internal/fanboxapi"
-)
+import "testing"
 
 func TestParseIdentityMetadataHTML(t *testing.T) {
-	identity, err := fanboxapi.ParseIdentityMetadataHTML([]byte(`<html><head><meta name="metadata" content='{"context":{"user":{"userId":"800","name":"verified","creatorId":"artist","creatorStatus":"explicit","isCreator":true}}}'></head></html>`))
+	identity, err := parseIdentityMetadataHTML([]byte(`<html><head><meta name="metadata" content='{"context":{"user":{"userId":"800","name":"verified","creatorId":"artist","creatorStatus":"explicit","isCreator":true}}}'></head></html>`))
 	if err != nil {
 		t.Fatalf("ParseIdentityMetadataHTML() error = %v", err)
 	}
-	want := fanboxapi.Identity{UserID: 800, DisplayName: "verified", CreatorID: "artist", CreatorStatus: "explicit", IsCreator: true}
+	want := Identity{UserID: 800, DisplayName: "verified", CreatorID: "artist", CreatorStatus: "explicit", IsCreator: true}
 	if identity != want {
 		t.Fatalf("identity = %+v, want %+v", identity, want)
 	}
 
-	identity, err = fanboxapi.ParseIdentityMetadataHTML([]byte(`<meta name="metadata" content='{"context":{"user":{"userId":800,"name":"numeric","creatorId":null}} }'>`))
+	identity, err = parseIdentityMetadataHTML([]byte(`<meta name="metadata" content='{"context":{"user":{"userId":800,"name":"numeric","creatorId":null}} }'>`))
 	if err != nil || identity.UserID != 800 || identity.DisplayName != "numeric" || identity.CreatorID != "" || identity.IsCreator {
 		t.Fatalf("identity = %+v err=%v", identity, err)
 	}
@@ -32,7 +28,7 @@ func TestParseIdentityMetadataHTMLRejectsInvalid(t *testing.T) {
 		"trailing content": `<meta name="metadata" content='{"context":{"user":{"userId":"1","name":"n"}}} extra'>`,
 	} {
 		t.Run(name, func(t *testing.T) {
-			if _, err := fanboxapi.ParseIdentityMetadataHTML([]byte(document)); err == nil {
+			if _, err := parseIdentityMetadataHTML([]byte(document)); err == nil {
 				t.Fatalf("ParseIdentityMetadataHTML() unexpectedly succeeded")
 			}
 		})
