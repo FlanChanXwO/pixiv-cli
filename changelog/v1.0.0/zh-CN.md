@@ -2,38 +2,37 @@
 
 ## 破坏性变更
 
-- 完成 v1 SDK 与 CLI 重写，将 Pixiv/FANBOX public SDK、CLI、MCP、认证、存储和资源契约统一到 v1 架构。 ([#59](https://github.com/FlanChanXwO/pixiv-cli/pull/59))
+- v1 重写改变了公开的 Pixiv/FANBOX SDK、CLI、MCP、认证、存储和资源契约。SDK 使用方需要按 v1 API 重新核对导入和类型用法。（[#59](https://github.com/FlanChanXwO/pixiv-cli/pull/59)）
 
 ## 新增
 
-- 为 CLI 与 Pixiv MCP 新增反向搜图，支持本地文件/URL source 识别、SauceNAO 与 ascii2d provider、稳定结果 envelope 以及明确的 provider partial 语义。 ([#62](https://github.com/FlanChanXwO/pixiv-cli/pull/62))
-- 新增一等 Docker 容器发布支持，包含固定 runtime、provenance、非 root 状态处理和精确版本发布校验。 ([#63](https://github.com/FlanChanXwO/pixiv-cli/pull/63))
+- `pixiv search` 与 Pixiv MCP 的 `reverse_search` 工具新增反向搜图：支持本地文件和 URL、SauceNAO 与 ascii2d provider、稳定的结果结构，并明确报告部分 provider 失败。（[#62](https://github.com/FlanChanXwO/pixiv-cli/pull/62)）
+- 发布官方 `linux/amd64` 与 `linux/arm64` 容器镜像，使用固定运行时、非 root 状态处理和版本校验。（[#63](https://github.com/FlanChanXwO/pixiv-cli/pull/63)）
 
 ## 变更
 
-- 按已验证的响应契约和 public SDK 类型统一 Pixiv timeline 与 MyPixiv 操作。 ([#60](https://github.com/FlanChanXwO/pixiv-cli/pull/60))
+- Pixiv 动态（timeline）与 MyPixiv 读取已按验证过的响应契约和公开 SDK 类型统一。（[#60](https://github.com/FlanChanXwO/pixiv-cli/pull/60)）
 
 ## 修复
 
-- 恢复经审计的 v0.10.0 recovery 路径发布校验，避免有效的发布准备被拒绝。 ([#49](https://github.com/FlanChanXwO/pixiv-cli/pull/49))
-- 处理 ClawHub pending security scan，避免已接收的发布被错误报告为失败。 ([#50](https://github.com/FlanChanXwO/pixiv-cli/pull/50))
-- 修复 Pixiv 认证服务初始化错误、已验证的当前用户与端点契约、FANBOX 代理冲突校验，以及本地账号数据库的向前兼容迁移。 ([#67](https://github.com/FlanChanXwO/pixiv-cli/pull/67))
-- 修复 Windows 发布门禁在文件 URI、ACL 权限、平台路径和可执行文件命名上的兼容性问题。 ([#68](https://github.com/FlanChanXwO/pixiv-cli/pull/68))
-- 让数据库权限测试区分 Windows ACL 语义与 POSIX 权限位。 ([#71](https://github.com/FlanChanXwO/pixiv-cli/pull/71))
-- 从单次与源码匹配的 evidence run 重新汇总 6 个 pinned native ugoira 静态库，使生产发布重建能够逐字节复现。 ([#72](https://github.com/FlanChanXwO/pixiv-cli/pull/72))
-- 将展开后的 release tag 传入容器镜像版本标签，使 OCI provenance 校验与 immutable tag 保持一致。 ([#74](https://github.com/FlanChanXwO/pixiv-cli/pull/74))
+- `pixiv auth` 初始化与当前用户读取恢复正常，FANBOX 会拒绝冲突的代理设置，已有账号数据库会原地迁移。（[#67](https://github.com/FlanChanXwO/pixiv-cli/pull/67)）
+- Windows 构建与安装器可正确处理文件 URI、ACL 权限、平台路径和可执行文件名称。（[#68](https://github.com/FlanChanXwO/pixiv-cli/pull/68)）
+- 发布构建中的动图编码使用与 tag 源码匹配的库，重建可以得到相同的字节。（[#72](https://github.com/FlanChanXwO/pixiv-cli/pull/72)）
+- 容器镜像报告的版本与 release tag 一致。（[#74](https://github.com/FlanChanXwO/pixiv-cli/pull/74)）
 
-## 文档
+## 安全
 
-- 简化 pull request template，使审查记录包含仓库流程要求的变更、验证和自查证据。 ([#61](https://github.com/FlanChanXwO/pixiv-cli/pull/61))
-- 在双语 v1.0.0 release notes 中记录经审计的 Windows 兼容性修复。 ([#69](https://github.com/FlanChanXwO/pixiv-cli/pull/69))
-- 完成 v1.0.0 release notes 的审计来源覆盖。 ([#70](https://github.com/FlanChanXwO/pixiv-cli/pull/70))
-- 在双语 v1.0.0 release notes 中记录 native 静态库回填及其发布来源。 ([#73](https://github.com/FlanChanXwO/pixiv-cli/pull/73))
-
-## 维护
-
-- 移除仓库中的 generated goal 与 output artifact。 ([#64](https://github.com/FlanChanXwO/pixiv-cli/pull/64))
-- 移除未使用的仓库 artifact，保持提交的 source tree 聚焦。 ([#65](https://github.com/FlanChanXwO/pixiv-cli/pull/65))
-- 简化过大的 Go 测试文件，同时保留 installer、FANBOX 和其他行为覆盖。 ([#66](https://github.com/FlanChanXwO/pixiv-cli/pull/66))
+- ClawHub 仍在安全审核时会报告为待审核，不再显示为发布失败；v0.10.0 发布失败后也可以恢复。（[#49](https://github.com/FlanChanXwO/pixiv-cli/pull/49), [#50](https://github.com/FlanChanXwO/pixiv-cli/pull/50)）
 
 **完整变更**：[v0.10.0...v1.0.0](https://github.com/FlanChanXwO/pixiv-cli/compare/v0.10.0...v1.0.0)
+
+<!-- internal:
+  [#61](https://github.com/FlanChanXwO/pixiv-cli/pull/61)
+  [#64](https://github.com/FlanChanXwO/pixiv-cli/pull/64)
+  [#65](https://github.com/FlanChanXwO/pixiv-cli/pull/65)
+  [#66](https://github.com/FlanChanXwO/pixiv-cli/pull/66)
+  [#69](https://github.com/FlanChanXwO/pixiv-cli/pull/69)
+  [#70](https://github.com/FlanChanXwO/pixiv-cli/pull/70)
+  [#71](https://github.com/FlanChanXwO/pixiv-cli/pull/71)
+  [#73](https://github.com/FlanChanXwO/pixiv-cli/pull/73)
+-->

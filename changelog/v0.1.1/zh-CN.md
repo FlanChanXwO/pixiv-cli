@@ -2,11 +2,22 @@
 
 ## 修复
 
-- 识别直接下载的发布二进制，并稳定 Windows 发布链接和 checkout 处理。 ([`8f7169a`](https://github.com/FlanChanXwO/pixiv-cli/commit/8f7169a), [`c5eef2c`](https://github.com/FlanChanXwO/pixiv-cli/commit/c5eef2c))
-- 新增 Windows 安全的不可变 tag 发布恢复路径，并隔离测试与生产构建。 ([`557beb0`](https://github.com/FlanChanXwO/pixiv-cli/commit/557beb0), [`86697e9`](https://github.com/FlanChanXwO/pixiv-cli/commit/86697e9), [`c295394`](https://github.com/FlanChanXwO/pixiv-cli/commit/c295394))
-
-## 维护
-
-- 强化恢复工作流测试及其跨平台 fixture 处理。 ([`2490f03`](https://github.com/FlanChanXwO/pixiv-cli/commit/2490f03), [`f7926ae`](https://github.com/FlanChanXwO/pixiv-cli/commit/f7926ae))
+- 直接解压发布压缩包安装、未设置 `GOBIN` 的 `pixiv update` 也能识别当前安装；Windows 发布过程不再破坏文件内容或换行。（[`156c47d`](https://github.com/FlanChanXwO/pixiv-cli/commit/156c47d), [`47db575`](https://github.com/FlanChanXwO/pixiv-cli/commit/47db575), [`4867ae6`](https://github.com/FlanChanXwO/pixiv-cli/commit/4867ae6), [`604b2c6`](https://github.com/FlanChanXwO/pixiv-cli/commit/604b2c6), [`6299020`](https://github.com/FlanChanXwO/pixiv-cli/commit/6299020), [`fde8766`](https://github.com/FlanChanXwO/pixiv-cli/commit/fde8766)）
+- tag 发布失败后可以直接重试，不必重建发布资产，Windows 上同样如此。（[`8d0cf84`](https://github.com/FlanChanXwO/pixiv-cli/commit/8d0cf84), [`9b5d97a`](https://github.com/FlanChanXwO/pixiv-cli/commit/9b5d97a), [`db64f6d`](https://github.com/FlanChanXwO/pixiv-cli/commit/db64f6d)）
 
 **完整变更**：[v0.1.0...v0.1.1](https://github.com/FlanChanXwO/pixiv-cli/compare/v0.1.0...v0.1.1)
+
+<!-- internal:
+  [`1501949`](https://github.com/FlanChanXwO/pixiv-cli/commit/1501949)
+  [`1507054`](https://github.com/FlanChanXwO/pixiv-cli/commit/1507054)
+  [`1c3097a`](https://github.com/FlanChanXwO/pixiv-cli/commit/1c3097a)
+  [`20eb274`](https://github.com/FlanChanXwO/pixiv-cli/commit/20eb274)
+  [`41ee6f8`](https://github.com/FlanChanXwO/pixiv-cli/commit/41ee6f8)
+  [`7f62b38`](https://github.com/FlanChanXwO/pixiv-cli/commit/7f62b38)
+  [`8209a64`](https://github.com/FlanChanXwO/pixiv-cli/commit/8209a64)
+  [`96a5713`](https://github.com/FlanChanXwO/pixiv-cli/commit/96a5713)
+  [`9796b8a`](https://github.com/FlanChanXwO/pixiv-cli/commit/9796b8a)
+  [`bef34d8`](https://github.com/FlanChanXwO/pixiv-cli/commit/bef34d8)
+  [`cb85a87`](https://github.com/FlanChanXwO/pixiv-cli/commit/cb85a87)
+  [`e7e463f`](https://github.com/FlanChanXwO/pixiv-cli/commit/e7e463f)
+-->

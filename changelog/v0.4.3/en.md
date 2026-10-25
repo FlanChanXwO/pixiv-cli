@@ -2,10 +2,10 @@
 
 ## Fixed
 
-- Moved Linux Homebrew validation to a runner-private temporary directory so staging installation avoids EINVAL failures. ([#19](https://github.com/FlanChanXwO/pixiv-cli/pull/19))
-
-## Maintenance
-
-- Prepared the v0.4.3 release metadata. ([#20](https://github.com/FlanChanXwO/pixiv-cli/pull/20))
+- Homebrew validation on Linux no longer fails with `EINVAL` while installing from a staging directory. ([#19](https://github.com/FlanChanXwO/pixiv-cli/pull/19))
 
 **Full Changelog**: [v0.4.2...v0.4.3](https://github.com/FlanChanXwO/pixiv-cli/compare/v0.4.2...v0.4.3)
+
+<!-- internal:
+  [#20](https://github.com/FlanChanXwO/pixiv-cli/pull/20)
+-->

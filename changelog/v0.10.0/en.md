@@ -2,16 +2,20 @@
 
 ## Breaking changes
 
-- Move artwork filtering to <code>--filter EXPR</code> on visual list and download commands, replacing <code>pixiv filter</code>; replace the CLI <code>--ugoira-format</code> flag with <code>--ugoira-mode</code>. ([#46](https://github.com/FlanChanXwO/pixiv-cli/pull/46))
+- Artwork filtering moved from `pixiv filter` to `--filter EXPR` on visual list and download commands, and the CLI `--ugoira-format` flag is now `--ugoira-mode`. ([#46](https://github.com/FlanChanXwO/pixiv-cli/pull/46))
 
 ## Added
 
-- Add a typed local illustration filter shared by the SDK, CLI, and MCP, including tag/tool collection predicates and preflight validation without extra Pixiv requests. ([#46](https://github.com/FlanChanXwO/pixiv-cli/pull/46))
-- Add resilient downloads with SQLite artwork archives, atomic metadata sidecars, extended file and directory templates, configurable retries and request pacing, open page ranges, and GIF/APNG/ZIP/frame ugoira outputs. ([#46](https://github.com/FlanChanXwO/pixiv-cli/pull/46))
-- Accept public-bookmark and illustration-series URLs as download sources with canonical artwork deduplication, and support HTTP(S), SOCKS5, and SOCKS5H proxy URIs consistently across runtime and update requests. ([#46](https://github.com/FlanChanXwO/pixiv-cli/pull/46))
+- A typed local illustration filter is shared by the SDK, CLI, and MCP, including tag and drawing-tool predicates validated before any Pixiv request. ([#46](https://github.com/FlanChanXwO/pixiv-cli/pull/46))
+- Downloads can archive to SQLite, write atomic metadata sidecars, use extended filename and directory templates, configure retries and request pacing, download open page ranges, and output ugoira as GIF, APNG, ZIP, or frames. Public bookmark and illustration-series URLs are accepted as sources, and HTTP(S)/SOCKS5/SOCKS5H proxies work for both downloads and updates. ([#46](https://github.com/FlanChanXwO/pixiv-cli/pull/46))
 
 ## Changed
 
-- Make visual list commands emit canonical Record NDJSON when stdout is non-interactive, so their output can be piped directly into <code>pixiv download</code> without an external JSON processor. ([#46](https://github.com/FlanChanXwO/pixiv-cli/pull/46))
+- When output is piped, visual list commands emit canonical Record NDJSON that can be passed straight to `pixiv download`. ([#46](https://github.com/FlanChanXwO/pixiv-cli/pull/46))
 
 **Full Changelog**: [v0.9.1...v0.10.0](https://github.com/FlanChanXwO/pixiv-cli/compare/v0.9.1...v0.10.0)
+
+<!-- internal:
+  [#47](https://github.com/FlanChanXwO/pixiv-cli/pull/47)
+  [#48](https://github.com/FlanChanXwO/pixiv-cli/pull/48)
+-->
