@@ -7,8 +7,8 @@ package pixivaccount
 import (
 	"context"
 	"errors"
-	"fmt"
-	"io"
+
+	"github.com/FlanChanXwO/pixiv-cli/internal/credential"
 )
 
 // Account 是一个已保存的 Pixiv 账号记录。除 refresh token 外的字段是
@@ -26,32 +26,19 @@ type Account struct {
 	UpdatedAt          int64
 	Schedulable        bool
 
-	refreshToken []byte
+	Credential credential.Secret `json:"-"`
 }
 
 // New 创建一个带 opaque refresh token 的账号值。输入凭据会立即复制。
 func New(userID int64, username string, refreshToken []byte) Account {
-	return Account{UserID: userID, Username: username, refreshToken: cloneBytes(refreshToken)}
+	return Account{UserID: userID, Username: username, Credential: credential.New(refreshToken)}
 }
 
 // RefreshTokenCopy 返回 refresh token 的 defensive copy。
-func (a Account) RefreshTokenCopy() []byte { return cloneBytes(a.refreshToken) }
+func (a Account) RefreshTokenCopy() []byte { return a.Credential.Copy() }
 
 // HasRefreshToken reports whether the account contains a non-empty credential.
-func (a Account) HasRefreshToken() bool { return len(a.refreshToken) != 0 }
-
-// String 只输出安全摘要；refresh token 永远不进入默认格式化结果。
-func (a Account) String() string {
-	return fmt.Sprintf("pixiv.Account{user_id:%d username:%q credential_revision:%d}", a.UserID, a.Username, a.CredentialRevision)
-}
-
-// GoString 返回 %#v 使用的安全摘要，避免 fmt 回退到结构体默认格式并暴露凭据字段。
-func (a Account) GoString() string { return a.String() }
-
-// Format 覆盖所有 fmt 格式化路径，避免带 %#v 的调试输出回退到结构体字段。
-func (a Account) Format(state fmt.State, _ rune) {
-	_, _ = io.WriteString(state, a.String())
-}
+func (a Account) HasRefreshToken() bool { return !a.Credential.Empty() }
 
 // PoolCandidate 是 DB 事务交给纯 chooser 的 non-secret 快照项。
 type PoolCandidate struct {
@@ -130,13 +117,4 @@ type DefaultStore interface {
 	ReadPixivDefaultUserID() (int64, bool, error)
 	SetPixivDefaultUserID(int64) error
 	ClearPixivDefaultUserID() error
-}
-
-func cloneBytes(value []byte) []byte {
-	if value == nil {
-		return nil
-	}
-	out := make([]byte, len(value))
-	copy(out, value)
-	return out
 }
