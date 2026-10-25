@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"sort"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/creachadair/tomledit"
@@ -33,14 +34,14 @@ var baselineSectionOrder = []string{
 
 // baselineSectionRank 返回 section 在呈现顺序中的位置。
 // 未列出的 section 排在已列出项之后；相同 rank 的条目保持声明顺序。
-func baselineSectionRank(table []string) (int, bool) {
-	name := joinTableName(table)
+func baselineSectionRank(table []string) int {
+	name := strings.Join(table, ".")
 	for index, ordered := range baselineSectionOrder {
 		if ordered == name {
-			return index, true
+			return index
 		}
 	}
-	return len(baselineSectionOrder), false
+	return len(baselineSectionOrder)
 }
 
 func generatedDefaultConfig() ([]byte, error) {
@@ -58,29 +59,23 @@ func generatedDefaultConfig() ([]byte, error) {
 		entries = append(entries, entry)
 	}
 	sort.SliceStable(entries, func(i, j int) bool {
-		ri, _ := baselineSectionRank(entries[i].spec.Table)
-		rj, _ := baselineSectionRank(entries[j].spec.Table)
+		ri := baselineSectionRank(entries[i].spec.Table)
+		rj := baselineSectionRank(entries[j].spec.Table)
 		return ri < rj
 	})
 
 	for _, entry := range entries {
 		spec := entry.spec
-		if !spec.DefaultInFile {
-			continue
-		}
-		if !spec.HasDefault {
-			return nil, fmt.Errorf("default config key %q has no default value", spec.Alias)
-		}
 		raw, err := defaultSettingInput(spec)
 		if err != nil {
 			return nil, err
 		}
-		_, value, err := ParseSettingInput(spec.Alias, raw)
+		value, err := parseSettingInput(spec, raw)
 		if err != nil {
 			return nil, fmt.Errorf("generate default config key %q: %w", spec.Alias, err)
 		}
 
-		sectionName := joinTableName(spec.Table)
+		sectionName := strings.Join(spec.Table, ".")
 		section := sections[sectionName]
 		if section == nil {
 			section = &tomledit.Section{Heading: &parser.Heading{Name: append(parser.Key(nil), spec.Table...)}}
@@ -111,15 +106,4 @@ func defaultSettingInput(spec SettingSpec) (string, error) {
 	default:
 		return "", fmt.Errorf("default config key %q has unsupported default type %T", spec.Alias, spec.Default)
 	}
-}
-
-func joinTableName(table []string) string {
-	name := ""
-	for index, part := range table {
-		if index > 0 {
-			name += "."
-		}
-		name += part
-	}
-	return name
 }

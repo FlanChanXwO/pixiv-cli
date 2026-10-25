@@ -37,12 +37,7 @@ type SettingValue struct {
 
 type Snapshot struct {
 	file map[string]any
-	env  map[Key]snapshotEnvValue
-}
-
-type snapshotEnvValue struct {
-	value   string
-	present bool
+	env  map[Key]string
 }
 
 type RuntimeConfig struct {

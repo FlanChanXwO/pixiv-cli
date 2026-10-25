@@ -103,57 +103,38 @@ func normalizeDurationValue(raw any) (time.Duration, error) {
 	}
 }
 
-func ParseSettingInput(key Key, raw string) (SettingValue, parser.Value, error) {
-	spec, ok := SettingSpecByAlias(key)
-	if !ok {
-		return SettingValue{}, parser.Value{}, fmt.Errorf("unknown config key %q", key)
-	}
+func parseSettingInput(spec SettingSpec, raw string) (parser.Value, error) {
 	raw = strings.TrimSpace(raw)
 	switch spec.Kind {
 	case settingInteger:
 		parsed, err := coerceSettingValue(spec, raw, "cli")
 		if err != nil {
-			return SettingValue{}, parser.Value{}, err
+			return parser.Value{}, err
 		}
-		value, err := parser.ParseValue(parsed.Text)
-		return parsed, value, err
+		return parser.ParseValue(parsed.Text)
 	case settingString:
-		normalized, err := normalizeSpecialString(key, raw)
+		normalized, err := normalizeSpecialString(spec.Alias, raw)
 		if err != nil {
-			return SettingValue{}, parser.Value{}, err
+			return parser.Value{}, err
 		}
-		raw = normalized
-		value, err := parser.ParseValue(strconv.Quote(raw))
-		if err != nil {
-			return SettingValue{}, parser.Value{}, err
-		}
-		return SettingValue{Value: raw, Text: raw, Source: "cli", HasValue: true}, value, nil
+		return parser.ParseValue(strconv.Quote(normalized))
 	case settingBool:
 		parsed, err := strconv.ParseBool(raw)
 		if err != nil {
-			return SettingValue{}, parser.Value{}, fmt.Errorf("expects bool value: %w", err)
+			return parser.Value{}, fmt.Errorf("expects bool value: %w", err)
 		}
-		value, err := parser.ParseValue(strconv.FormatBool(parsed))
-		if err != nil {
-			return SettingValue{}, parser.Value{}, err
-		}
-		return SettingValue{Value: parsed, Text: strconv.FormatBool(parsed), Source: "cli", HasValue: true}, value, nil
+		return parser.ParseValue(strconv.FormatBool(parsed))
 	case settingDuration:
 		parsed, err := time.ParseDuration(raw)
 		if err != nil {
-			return SettingValue{}, parser.Value{}, fmt.Errorf("expects duration value: %w", err)
+			return parser.Value{}, fmt.Errorf("expects duration value: %w", err)
 		}
 		if spec.Alias == KeyRequestInterval && parsed < 0 {
-			return SettingValue{}, parser.Value{}, errors.New("request_interval must not be negative")
+			return parser.Value{}, errors.New("request_interval must not be negative")
 		}
-		normalized := parsed.String()
-		value, err := parser.ParseValue(strconv.Quote(normalized))
-		if err != nil {
-			return SettingValue{}, parser.Value{}, err
-		}
-		return SettingValue{Value: parsed, Text: normalized, Source: "cli", HasValue: true}, value, nil
+		return parser.ParseValue(strconv.Quote(parsed.String()))
 	default:
-		return SettingValue{}, parser.Value{}, fmt.Errorf("unsupported setting kind %q", spec.Kind)
+		return parser.Value{}, fmt.Errorf("unsupported setting kind %q", spec.Kind)
 	}
 }
 

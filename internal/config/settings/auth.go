@@ -53,11 +53,11 @@ func (s Store) ClearFanboxDefaultUserID() error {
 }
 
 func (s Store) readDefaultUserID(spec SettingSpec) (int64, bool, error) {
-	path, err := s.Path()
+	files, err := s.fileStore()
 	if err != nil {
 		return 0, false, err
 	}
-	files, err := s.fileStore()
+	path, err := files.Path()
 	if err != nil {
 		return 0, false, err
 	}
@@ -102,11 +102,11 @@ func (s Store) writeDefaultUserID(spec SettingSpec, userID int64) error {
 	if userID <= 0 {
 		return errors.New("config: default_user_id must be positive")
 	}
-	path, err := s.Path()
+	files, err := s.fileStore()
 	if err != nil {
 		return err
 	}
-	files, err := s.fileStore()
+	path, err := files.Path()
 	if err != nil {
 		return err
 	}
@@ -126,11 +126,11 @@ func (s Store) writeDefaultUserID(spec SettingSpec, userID int64) error {
 }
 
 func (s Store) clearDefaultUserID(spec SettingSpec) error {
-	path, err := s.Path()
+	files, err := s.fileStore()
 	if err != nil {
 		return err
 	}
-	files, err := s.fileStore()
+	path, err := files.Path()
 	if err != nil {
 		return err
 	}

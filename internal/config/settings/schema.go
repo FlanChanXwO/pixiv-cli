@@ -36,15 +36,14 @@ type settingSpecFromTags struct {
 	fieldType  reflect.Type
 }
 
-// schemaOnce 只缓存静态声明；声明错误由 mustSettingSpecs 作为编程错误报告。
-var schemaOnce = sync.OnceValues(func() ([]settingSpecFromTags, error) {
-	return deriveSchemaFromTags(reflect.TypeOf(RuntimeConfig{}))
+// mustSettingSpecs 缓存静态声明；标签错误属于编程错误，在首次使用时立即报告。
+var mustSettingSpecs = sync.OnceValue(func() []settingSpecFromTags {
+	entries, err := deriveSchemaFromTags(reflect.TypeOf(RuntimeConfig{}))
+	if err != nil {
+		panic(fmt.Sprintf("invalid configuration schema: %v", err))
+	}
+	return entries
 })
-
-// settingSpecsFromTags 返回派生元数据；schema 声明错误在此处暴露。
-func settingSpecsFromTags() ([]settingSpecFromTags, error) {
-	return schemaOnce()
-}
 
 // envNamesFor 返回某个别名按 env 标签声明顺序排列的环境变量名。顺序即优先级，
 // 因此这里不排序也不去重：调用方按顺序返回第一个**存在**的变量即可。
@@ -307,16 +306,6 @@ func SettingSpecByAlias(key Key) (SettingSpec, bool) {
 	return SettingSpec{}, false
 }
 
-// mustSettingSpecs 返回派生 schema；声明错误在此以 panic 暴露，因为它是编程错误，
-// 只能在首次使用时才能通过 public API 观察到。
-func mustSettingSpecs() []settingSpecFromTags {
-	derived, err := settingSpecsFromTags()
-	if err != nil {
-		panic(fmt.Sprintf("invalid configuration schema: %v", err))
-	}
-	return derived
-}
-
 // IsSensitiveSetting 标记禁止通过公开配置查询回显的凭据型值。
 func IsSensitiveSetting(key Key) bool {
 	spec, ok := SettingSpecByAlias(key)
@@ -331,7 +320,7 @@ func PublicSettingText(key Key, text string) string {
 	return text
 }
 
-func ValidSettingAliases() []Key {
+func validSettingAliases() []Key {
 	derived := mustSettingSpecs()
 	keys := make([]Key, 0, len(derived))
 	for _, entry := range derived {

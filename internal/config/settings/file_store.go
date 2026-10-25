@@ -1,7 +1,6 @@
 package settings
 
 import (
-	"errors"
 	"os"
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/config/paths"
@@ -15,13 +14,6 @@ type FileStore interface {
 	ReadFile(string) ([]byte, error)
 	WritePrivateFile(string, []byte) error
 	EnsurePrivateFile(string, []byte) error
-}
-
-func requireFileStore(store FileStore) (FileStore, error) {
-	if store == nil {
-		return nil, errors.New("config file store is not configured")
-	}
-	return store, nil
 }
 
 type defaultFileStore struct{}

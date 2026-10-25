@@ -6,19 +6,13 @@ import (
 	"fmt"
 	"os"
 	"strings"
-)
 
-import (
 	"github.com/creachadair/tomledit"
 	"github.com/creachadair/tomledit/parser"
 	"github.com/creachadair/tomledit/transform"
 )
 
 func loadConfigDocumentWithFileStore(path string, store FileStore) (*tomledit.Document, error) {
-	store, err := requireFileStore(store)
-	if err != nil {
-		return nil, err
-	}
 	body, err := store.ReadFile(path)
 	if errors.Is(err, os.ErrNotExist) {
 		return &tomledit.Document{}, nil
@@ -33,10 +27,6 @@ func loadConfigDocumentWithFileStore(path string, store FileStore) (*tomledit.Do
 }
 
 func saveConfigDocumentWithFileStore(path string, doc *tomledit.Document, store FileStore) error {
-	store, err := requireFileStore(store)
-	if err != nil {
-		return err
-	}
 	var buf bytes.Buffer
 	if err := tomledit.Format(&buf, doc); err != nil {
 		return err
@@ -45,15 +35,7 @@ func saveConfigDocumentWithFileStore(path string, doc *tomledit.Document, store 
 }
 
 // setConfigValue 在注入的文件端口上执行稀疏配置写回。
-func setConfigValue(path string, key Key, value parser.Value, store FileStore) error {
-	store, err := requireFileStore(store)
-	if err != nil {
-		return err
-	}
-	spec, ok := SettingSpecByAlias(key)
-	if !ok {
-		return fmt.Errorf("unknown config key %q", key)
-	}
+func setConfigValue(path string, spec SettingSpec, value parser.Value, store FileStore) error {
 	doc, err := loadConfigDocumentWithFileStore(path, store)
 	if err != nil {
 		return err
@@ -64,34 +46,26 @@ func setConfigValue(path string, key Key, value parser.Value, store FileStore) e
 		Value: value,
 	}, true)
 	if !inserted {
-		return fmt.Errorf("failed to update config key %q", key)
+		return fmt.Errorf("failed to update config key %q", spec.Alias)
 	}
 	return saveConfigDocumentWithFileStore(path, doc, store)
 }
 
 // unsetConfigValue 在注入的文件端口上删除一个配置键。
-func unsetConfigValue(path string, key Key, store FileStore) (bool, error) {
-	store, err := requireFileStore(store)
-	if err != nil {
-		return false, err
-	}
-	spec, ok := SettingSpecByAlias(key)
-	if !ok {
-		return false, fmt.Errorf("unknown config key %q", key)
-	}
+func unsetConfigValue(path string, spec SettingSpec, store FileStore) error {
 	doc, err := loadConfigDocumentWithFileStore(path, store)
 	if err != nil {
-		return false, err
+		return err
 	}
 	entry := doc.First(append(spec.Table, spec.Key)...)
 	if entry == nil {
-		return false, saveConfigDocumentWithFileStore(path, doc, store)
+		return saveConfigDocumentWithFileStore(path, doc, store)
 	}
-	removed := entry.Remove()
+	entry.Remove()
 	if sectionEntry := transform.FindTable(doc, spec.Table...); sectionEntry != nil && len(sectionEntry.Section.Items) == 0 {
 		sectionEntry.Remove()
 	}
-	return removed, saveConfigDocumentWithFileStore(path, doc, store)
+	return saveConfigDocumentWithFileStore(path, doc, store)
 }
 
 func ensureConfigSection(doc *tomledit.Document, name []string) *tomledit.Section {
