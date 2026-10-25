@@ -276,3 +276,37 @@ func TestValidateAcceptsUnreleasedWorkspace(t *testing.T) {
 		t.Fatalf("validate unreleased workspace: %v", err)
 	}
 }
+
+func TestValidateRejectsMispairedBilingualSections(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	writeReleaseNote(t, root, "en.md", `# v1.2.0 — 2026-07-30
+
+## Added
+
+- Added one. ([#42](https://github.com/FlanChanXwO/pixiv-cli/pull/42))
+
+## Fixed
+
+- Fixed one. ([#43](https://github.com/FlanChanXwO/pixiv-cli/pull/43))
+
+**Full Changelog**: [v1.1.0...v1.2.0](https://github.com/FlanChanXwO/pixiv-cli/compare/v1.1.0...v1.2.0)
+`)
+	writeReleaseNote(t, root, "zh-CN.md", `# v1.2.0 — 2026-07-30
+
+## 变更
+
+- 修改一。([#42](https://github.com/FlanChanXwO/pixiv-cli/pull/42))
+
+## 修复
+
+- 修复一。([#43](https://github.com/FlanChanXwO/pixiv-cli/pull/43))
+
+**完整变更**：[v1.1.0...v1.2.0](https://github.com/FlanChanXwO/pixiv-cli/compare/v1.1.0...v1.2.0)
+`)
+
+	if err := validateReleaseDirectory(root, "1.2.0", "v1.1.0", false); err == nil || !strings.Contains(err.Error(), "is paired with") {
+		t.Fatalf("validate error = %v, want mispaired section rejection", err)
+	}
+}

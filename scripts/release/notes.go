@@ -15,6 +15,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"sort"
 	"strings"
 )
@@ -27,6 +28,7 @@ var (
 	linkPattern              = regexp.MustCompile(`\[[^\]]+\]\((https://github\.com/FlanChanXwO/pixiv-cli/(?:compare/[^)\s]+|commits/[^)\s]+))\)`)
 	internalNotePattern      = regexp.MustCompile(`(?s)<!--\s*internal:(.*?)-->`)
 	internalLinkPattern      = regexp.MustCompile(`\[[^\]]+\]\((https://github\.com/FlanChanXwO/pixiv-cli/(?:pull/[0-9]+|commit/[0-9a-fA-F]{7,64}))\)`)
+	repeatedBlankLines       = regexp.MustCompile(`\n{3,}`)
 	semanticVersionPattern   = regexp.MustCompile(`^[0-9]+\.[0-9]+\.[0-9]+(?:-[0-9A-Za-z.-]+)?$`)
 )
 
@@ -596,6 +598,11 @@ func validateBilingualEntries(english, chinese releaseDocument) error {
 	}
 	for index := range english.sections {
 		left, right := english.sections[index], chinese.sections[index]
+		englishIndex := slices.Index(englishSectionOrder, left.name)
+		chineseIndex := slices.Index(chineseSectionOrder, right.name)
+		if englishIndex != chineseIndex {
+			return fmt.Errorf("bilingual section %q is paired with %q", left.name, right.name)
+		}
 		if len(left.entries) != len(right.entries) {
 			return fmt.Errorf("bilingual entry count differs in %q/%q: English=%d SimplifiedChinese=%d",
 				left.name, right.name, len(left.entries), len(right.entries))
