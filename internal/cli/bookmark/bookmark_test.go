@@ -404,109 +404,60 @@ func TestBookmarkListAcceptsCanonicalUserRecordForNovel(t *testing.T) {
 	}
 }
 
-func TestBookmarkListAllFailureDoesNotCommitJSONOrNDJSON(t *testing.T) {
-	for _, outputMode := range []string{"json", "ndjson"} {
-		t.Run(outputMode, func(t *testing.T) {
-			output := &bytes.Buffer{}
-			var paths []string
-			transport := bookmarkRoundTripFunc(func(request *http.Request) (*http.Response, error) {
-				paths = append(paths, request.URL.Path)
-				switch request.URL.Path {
-				case "/v1/user/bookmarks/illust":
-					return bookmarkJSONResponse(request, http.StatusOK, `{"illusts":[{"id":1001,"title":"artwork","type":"illust","create_date":"2024-05-01T10:00:00+09:00","user":{"id":7,"name":"artist"},"tags":[]}],"next_url":null}`), nil
-				case "/v1/user/bookmarks/novel":
-					return bookmarkJSONResponse(request, http.StatusInternalServerError, `{"error":"novel upstream failed"}`), nil
-				default:
-					return nil, io.ErrUnexpectedEOF
+// 聚合分支在第二个上游失败时不得提交任何 JSON/NDJSON；list 与 tags 共用同一提交边界。
+func TestBookmarkAllFailureDoesNotCommitJSONOrNDJSON(t *testing.T) {
+	for _, command := range []string{"list", "tags"} {
+		for _, outputMode := range []string{"json", "ndjson"} {
+			t.Run(command+"-"+outputMode, func(t *testing.T) {
+				output := &bytes.Buffer{}
+				calls := 0
+				artworkPath, novelPath := "/v1/user/bookmarks/illust", "/v1/user/bookmarks/novel"
+				artworkBody := `{"illusts":[{"id":1001,"title":"artwork","type":"illust","create_date":"2024-05-01T10:00:00+09:00","user":{"id":7,"name":"artist"},"tags":[]}],"next_url":null}`
+				if command == "tags" {
+					artworkPath, novelPath = "/v1/user/bookmark-tags/illust", "/v1/user/bookmark-tags/novel"
+					artworkBody = `{"bookmark_tags":[{"name":"artwork","count":3}],"next_url":null}`
+				}
+				transport := bookmarkRoundTripFunc(func(request *http.Request) (*http.Response, error) {
+					calls++
+					switch request.URL.Path {
+					case artworkPath:
+						return bookmarkJSONResponse(request, http.StatusOK, artworkBody), nil
+					case novelPath:
+						return bookmarkJSONResponse(request, http.StatusInternalServerError, `{"error":"novel upstream failed"}`), nil
+					default:
+						return nil, io.ErrUnexpectedEOF
+					}
+				})
+				client, err := pixiv.NewWith("test-access-token", pixiv.Options{HTTPClient: &http.Client{Transport: transport}})
+				if err != nil {
+					t.Fatalf("NewWith: %v", err)
+				}
+
+				cmd := newTestCommand(testData{
+					Input:       strings.NewReader(""),
+					Output:      output,
+					ErrorOutput: &bytes.Buffer{},
+					UsageError:  func(err error) error { return err },
+					JSONOut:     func(*bool) (bool, error) { return outputMode == "json", nil },
+					Pooled: func(ctx context.Context, _ pixivcmd.Request, attempt func(context.Context, *pixiv.Client) (bool, error)) error {
+						_, err := attempt(ctx, client)
+						return err
+					},
+				})
+				args := []string{command, "401", "--type", "all", "--limit", "0", "--" + outputMode}
+				cmd.SetArgs(args)
+
+				if err := cmd.Execute(); err == nil {
+					t.Fatal("Execute unexpectedly succeeded")
+				}
+				if calls != 2 {
+					t.Fatalf("requests = %d, want artwork then novel", calls)
+				}
+				if output.Len() != 0 {
+					t.Fatalf("output committed after aggregate failure: %q", output.String())
 				}
 			})
-			client, err := pixiv.NewWith("test-access-token", pixiv.Options{HTTPClient: &http.Client{Transport: transport}})
-			if err != nil {
-				t.Fatalf("NewWith: %v", err)
-			}
-
-			cmd := newTestCommand(testData{
-				Input:       strings.NewReader(""),
-				Output:      output,
-				ErrorOutput: &bytes.Buffer{},
-				UsageError:  func(err error) error { return err },
-				JSONOut:     func(*bool) (bool, error) { return outputMode == "json", nil },
-				Pooled: func(ctx context.Context, _ pixivcmd.Request, attempt func(context.Context, *pixiv.Client) (bool, error)) error {
-					_, err := attempt(ctx, client)
-					return err
-				},
-			})
-			args := []string{"list", "401", "--type", "all", "--limit", "0"}
-			if outputMode == "json" {
-				args = append(args, "--json")
-			} else {
-				args = append(args, "--ndjson")
-			}
-			cmd.SetArgs(args)
-
-			if err := cmd.Execute(); err == nil {
-				t.Fatal("Execute unexpectedly succeeded")
-			}
-			if len(paths) != 2 || paths[0] != "/v1/user/bookmarks/illust" || paths[1] != "/v1/user/bookmarks/novel" {
-				t.Fatalf("request paths = %v, want artwork then novel", paths)
-			}
-			if output.Len() != 0 {
-				t.Fatalf("output committed after aggregate failure: %q", output.String())
-			}
-		})
-	}
-}
-
-func TestBookmarkTagsAllFailureDoesNotCommitJSONOrNDJSON(t *testing.T) {
-	for _, outputMode := range []string{"json", "ndjson"} {
-		t.Run(outputMode, func(t *testing.T) {
-			output := &bytes.Buffer{}
-			var paths []string
-			transport := bookmarkRoundTripFunc(func(request *http.Request) (*http.Response, error) {
-				paths = append(paths, request.URL.Path)
-				switch request.URL.Path {
-				case "/v1/user/bookmark-tags/illust":
-					return bookmarkJSONResponse(request, http.StatusOK, `{"bookmark_tags":[{"name":"artwork","count":3}],"next_url":null}`), nil
-				case "/v1/user/bookmark-tags/novel":
-					return bookmarkJSONResponse(request, http.StatusInternalServerError, `{"error":"novel upstream failed"}`), nil
-				default:
-					return nil, io.ErrUnexpectedEOF
-				}
-			})
-			client, err := pixiv.NewWith("test-access-token", pixiv.Options{HTTPClient: &http.Client{Transport: transport}})
-			if err != nil {
-				t.Fatalf("NewWith: %v", err)
-			}
-
-			cmd := newTestCommand(testData{
-				Input:       strings.NewReader(""),
-				Output:      output,
-				ErrorOutput: &bytes.Buffer{},
-				UsageError:  func(err error) error { return err },
-				JSONOut:     func(*bool) (bool, error) { return outputMode == "json", nil },
-				Pooled: func(ctx context.Context, _ pixivcmd.Request, attempt func(context.Context, *pixiv.Client) (bool, error)) error {
-					_, err := attempt(ctx, client)
-					return err
-				},
-			})
-			args := []string{"tags", "401", "--type", "all", "--limit", "0"}
-			if outputMode == "json" {
-				args = append(args, "--json")
-			} else {
-				args = append(args, "--ndjson")
-			}
-			cmd.SetArgs(args)
-
-			if err := cmd.Execute(); err == nil {
-				t.Fatal("Execute unexpectedly succeeded")
-			}
-			if len(paths) != 2 || paths[0] != "/v1/user/bookmark-tags/illust" || paths[1] != "/v1/user/bookmark-tags/novel" {
-				t.Fatalf("request paths = %v, want artwork then novel", paths)
-			}
-			if output.Len() != 0 {
-				t.Fatalf("output committed after aggregate tag failure: %q", output.String())
-			}
-		})
+		}
 	}
 }
 
