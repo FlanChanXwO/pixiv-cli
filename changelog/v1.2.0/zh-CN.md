@@ -20,11 +20,6 @@
 
 - 作品搜索与详情输出在已知时保留上游的 `is_bookmarked`、`is_muted`、`visible`、`sanity_level` 和 `restriction_attributes`；深页搜索从请求的上游 offset 开始，不再重复抓取前面的批次。（[#131](https://github.com/FlanChanXwO/pixiv-cli/pull/131)）
 - MCP `tools/list` 始终把工具的 `required` 编码为数组；严格校验的客户端不再因某个工具没有必填参数而拒绝该服务。（[#135](https://github.com/FlanChanXwO/pixiv-cli/pull/135)）
-- Homebrew、GHCR 和 ClawHub 发布器可以在 Release 失败后恢复，无需重建资产。（[#122](https://github.com/FlanChanXwO/pixiv-cli/pull/122), [#123](https://github.com/FlanChanXwO/pixiv-cli/pull/123)）
-
-## 安全
-
-- Pull request 自动化只获得所需的权限，并且在 pull request 的 base 分支变化后仍会运行检查。（[#124](https://github.com/FlanChanXwO/pixiv-cli/pull/124), [#125](https://github.com/FlanChanXwO/pixiv-cli/pull/125), [#137](https://github.com/FlanChanXwO/pixiv-cli/pull/137), [#138](https://github.com/FlanChanXwO/pixiv-cli/pull/138), [#144](https://github.com/FlanChanXwO/pixiv-cli/pull/144), [#148](https://github.com/FlanChanXwO/pixiv-cli/pull/148)）
 
 ## 新贡献者
 
@@ -33,6 +28,14 @@
 **完整变更**：[v1.1.1...v1.2.0](https://github.com/FlanChanXwO/pixiv-cli/compare/v1.1.1...v1.2.0)
 
 <!-- internal:
+  [#122](https://github.com/FlanChanXwO/pixiv-cli/pull/122)
+  [#123](https://github.com/FlanChanXwO/pixiv-cli/pull/123)
+  [#124](https://github.com/FlanChanXwO/pixiv-cli/pull/124)
+  [#125](https://github.com/FlanChanXwO/pixiv-cli/pull/125)
+  [#137](https://github.com/FlanChanXwO/pixiv-cli/pull/137)
+  [#138](https://github.com/FlanChanXwO/pixiv-cli/pull/138)
+  [#144](https://github.com/FlanChanXwO/pixiv-cli/pull/144)
+  [#148](https://github.com/FlanChanXwO/pixiv-cli/pull/148)
   [#149](https://github.com/FlanChanXwO/pixiv-cli/pull/149)
   [#152](https://github.com/FlanChanXwO/pixiv-cli/pull/152)
 -->

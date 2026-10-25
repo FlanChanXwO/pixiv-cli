@@ -20,11 +20,6 @@
 
 - Artwork search and detail output keep upstream `is_bookmarked`, `is_muted`, `visible`, `sanity_level`, and `restriction_attributes` values when known, and deep search pages start at the requested upstream offset instead of refetching earlier batches. ([#131](https://github.com/FlanChanXwO/pixiv-cli/pull/131))
 - MCP `tools/list` always encodes a tool's `required` list as an array, so strict clients no longer reject the server when a tool takes no required arguments. ([#135](https://github.com/FlanChanXwO/pixiv-cli/pull/135))
-- Homebrew, GHCR, and ClawHub publishers can recover from a failed Release without rebuilding assets. ([#122](https://github.com/FlanChanXwO/pixiv-cli/pull/122), [#123](https://github.com/FlanChanXwO/pixiv-cli/pull/123))
-
-## Security
-
-- Pull request automation only receives the permissions it needs, and its checks continue to run after a pull request's base branch changes. ([#124](https://github.com/FlanChanXwO/pixiv-cli/pull/124), [#125](https://github.com/FlanChanXwO/pixiv-cli/pull/125), [#137](https://github.com/FlanChanXwO/pixiv-cli/pull/137), [#138](https://github.com/FlanChanXwO/pixiv-cli/pull/138), [#144](https://github.com/FlanChanXwO/pixiv-cli/pull/144), [#148](https://github.com/FlanChanXwO/pixiv-cli/pull/148))
 
 ## New Contributors
 
@@ -33,6 +28,14 @@
 **Full Changelog**: [v1.1.1...v1.2.0](https://github.com/FlanChanXwO/pixiv-cli/compare/v1.1.1...v1.2.0)
 
 <!-- internal:
+  [#122](https://github.com/FlanChanXwO/pixiv-cli/pull/122)
+  [#123](https://github.com/FlanChanXwO/pixiv-cli/pull/123)
+  [#124](https://github.com/FlanChanXwO/pixiv-cli/pull/124)
+  [#125](https://github.com/FlanChanXwO/pixiv-cli/pull/125)
+  [#137](https://github.com/FlanChanXwO/pixiv-cli/pull/137)
+  [#138](https://github.com/FlanChanXwO/pixiv-cli/pull/138)
+  [#144](https://github.com/FlanChanXwO/pixiv-cli/pull/144)
+  [#148](https://github.com/FlanChanXwO/pixiv-cli/pull/148)
   [#149](https://github.com/FlanChanXwO/pixiv-cli/pull/149)
   [#152](https://github.com/FlanChanXwO/pixiv-cli/pull/152)
 -->

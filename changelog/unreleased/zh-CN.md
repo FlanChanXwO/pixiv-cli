@@ -14,16 +14,14 @@
 
 - 收藏读取部分失败时，MCP 搜索筛选条件会保留，并报告部分结果，不再丢弃筛选条件或已成功读取的条目。（[#165](https://github.com/FlanChanXwO/pixiv-cli/pull/165)）
 - 账号列表为空时编码为 JSON `null` 而不是 `[]`，保持现有 CLI JSON 契约。（[#201](https://github.com/FlanChanXwO/pixiv-cli/pull/201)）
-- `pixiv config` 仍读写相同的键名、环境变量覆盖和默认值，生成的 `config.toml` 内容不变；配置解析改用内置 TOML 读取器和类型化设置键。（[#185](https://github.com/FlanChanXwO/pixiv-cli/pull/185)）
-- 交互式提示直接使用终端，不再依赖 survey 库。密码、文本和 yes/no 提示的 TTY 要求、默认值和输出流保持不变。（[#183](https://github.com/FlanChanXwO/pixiv-cli/pull/183)）
 
-## 安全
-
-- SQLite 账号存储改用 GORM 驱动和 gormlite；账号、会话和 schema 迁移记录的数据与权限保持不变。（[#177](https://github.com/FlanChanXwO/pixiv-cli/pull/177)）
 
 **完整变更**：打下一版 tag 时补充。
 
 <!-- internal:
+  [#177](https://github.com/FlanChanXwO/pixiv-cli/pull/177)
+  [#183](https://github.com/FlanChanXwO/pixiv-cli/pull/183)
+  [#185](https://github.com/FlanChanXwO/pixiv-cli/pull/185)
   [#159](https://github.com/FlanChanXwO/pixiv-cli/pull/159)
   [#160](https://github.com/FlanChanXwO/pixiv-cli/pull/160)
   [#161](https://github.com/FlanChanXwO/pixiv-cli/pull/161)

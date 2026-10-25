@@ -14,16 +14,14 @@
 
 - MCP search filters are preserved when a bookmark lookup partially fails, and the partial result is reported instead of dropping the filters or the successful items. ([#165](https://github.com/FlanChanXwO/pixiv-cli/pull/165))
 - An empty account list is encoded as JSON `null` instead of `[]`, keeping the existing CLI JSON contract. ([#201](https://github.com/FlanChanXwO/pixiv-cli/pull/201))
-- `pixiv config` still reads the same keys, environment overrides, and defaults; the generated `config.toml` content is unchanged. Configuration parsing now uses the built-in TOML reader and typed setting keys. ([#185](https://github.com/FlanChanXwO/pixiv-cli/pull/185))
-- Interactive prompts use the terminal directly instead of the survey library. Password, text, and yes/no prompts keep the same TTY requirement, defaults, and output stream. ([#183](https://github.com/FlanChanXwO/pixiv-cli/pull/183))
 
-## Security
-
-- The SQLite account store now uses the GORM driver with gormlite; accounts, sessions, and the schema migration ledger keep their existing data and permissions. ([#177](https://github.com/FlanChanXwO/pixiv-cli/pull/177))
 
 **Full Changelog**: _Added when the next version is tagged._
 
 <!-- internal:
+  [#177](https://github.com/FlanChanXwO/pixiv-cli/pull/177)
+  [#183](https://github.com/FlanChanXwO/pixiv-cli/pull/183)
+  [#185](https://github.com/FlanChanXwO/pixiv-cli/pull/185)
   [#159](https://github.com/FlanChanXwO/pixiv-cli/pull/159)
   [#160](https://github.com/FlanChanXwO/pixiv-cli/pull/160)
   [#161](https://github.com/FlanChanXwO/pixiv-cli/pull/161)

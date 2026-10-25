@@ -15,7 +15,6 @@
 - 下载和更新在全部六个发布平台上可用，包括用 7-Zip 打包的 Windows 压缩包和 `install.cmd` 安装脚本。（[`0a36d3d`](https://github.com/FlanChanXwO/pixiv-cli/commit/0a36d3d), [`4a315a0`](https://github.com/FlanChanXwO/pixiv-cli/commit/4a315a0), [`a092dd8`](https://github.com/FlanChanXwO/pixiv-cli/commit/a092dd8), [`ab03362`](https://github.com/FlanChanXwO/pixiv-cli/commit/ab03362), [`c295394`](https://github.com/FlanChanXwO/pixiv-cli/commit/c295394), [`c5eef2c`](https://github.com/FlanChanXwO/pixiv-cli/commit/c5eef2c), [`d486442`](https://github.com/FlanChanXwO/pixiv-cli/commit/d486442), [`e5a8ff3`](https://github.com/FlanChanXwO/pixiv-cli/commit/e5a8ff3), [`fc2d7d7`](https://github.com/FlanChanXwO/pixiv-cli/commit/fc2d7d7)）
 - 更新不会再留下损坏的可执行文件：替换正在运行的二进制、符号链接、取消安装和临时文件清理都已安全处理。（[`6f47ead`](https://github.com/FlanChanXwO/pixiv-cli/commit/6f47ead), [`ab03362`](https://github.com/FlanChanXwO/pixiv-cli/commit/ab03362), [`beb97e1`](https://github.com/FlanChanXwO/pixiv-cli/commit/beb97e1), [`d11653e`](https://github.com/FlanChanXwO/pixiv-cli/commit/d11653e)）
 - 更新下载会拒绝逃逸目标目录的压缩包路径，也不再信任未校验的 GitHub 资源地址。（[`0643c40`](https://github.com/FlanChanXwO/pixiv-cli/commit/0643c40), [`79568f9`](https://github.com/FlanChanXwO/pixiv-cli/commit/79568f9), [`7c04d19`](https://github.com/FlanChanXwO/pixiv-cli/commit/7c04d19), [`808f132`](https://github.com/FlanChanXwO/pixiv-cli/commit/808f132), [`e1ee586`](https://github.com/FlanChanXwO/pixiv-cli/commit/e1ee586)）
-- 动图下载遇到缺少原生编码器的构建会明确报错，不再静默生成损坏的二进制；发布构建也会拒绝不匹配的原生编码器。（[`0a36d3d`](https://github.com/FlanChanXwO/pixiv-cli/commit/0a36d3d), [`42a5515`](https://github.com/FlanChanXwO/pixiv-cli/commit/42a5515), [`981cf14`](https://github.com/FlanChanXwO/pixiv-cli/commit/981cf14)）
 
 **完整变更**：[v0.1.0 commits](https://github.com/FlanChanXwO/pixiv-cli/commits/v0.1.0)
 
@@ -34,6 +33,7 @@
   [`272c4aa`](https://github.com/FlanChanXwO/pixiv-cli/commit/272c4aa)
   [`2cff4b6`](https://github.com/FlanChanXwO/pixiv-cli/commit/2cff4b6)
   [`4002c10`](https://github.com/FlanChanXwO/pixiv-cli/commit/4002c10)
+  [`42a5515`](https://github.com/FlanChanXwO/pixiv-cli/commit/42a5515)
   [`49fba31`](https://github.com/FlanChanXwO/pixiv-cli/commit/49fba31)
   [`4e93760`](https://github.com/FlanChanXwO/pixiv-cli/commit/4e93760)
   [`4f811b8`](https://github.com/FlanChanXwO/pixiv-cli/commit/4f811b8)
@@ -54,6 +54,7 @@
   [`8caecda`](https://github.com/FlanChanXwO/pixiv-cli/commit/8caecda)
   [`8f7169a`](https://github.com/FlanChanXwO/pixiv-cli/commit/8f7169a)
   [`91154f0`](https://github.com/FlanChanXwO/pixiv-cli/commit/91154f0)
+  [`981cf14`](https://github.com/FlanChanXwO/pixiv-cli/commit/981cf14)
   [`9968e0e`](https://github.com/FlanChanXwO/pixiv-cli/commit/9968e0e)
   [`9c9071e`](https://github.com/FlanChanXwO/pixiv-cli/commit/9c9071e)
   [`a1c6b83`](https://github.com/FlanChanXwO/pixiv-cli/commit/a1c6b83)
