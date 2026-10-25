@@ -295,7 +295,9 @@ func (s *Service) sendImage(w http.ResponseWriter, r *http.Request, c claims, se
 		body.fill = s.reads.cache.begin()
 		defer body.fill.abort()
 	}
-	s.pipeImage(&body, res.Body, prefix, length, started)
+	if err := s.pipeImage(&body, res.Body, prefix, length, started); err != nil {
+		return
+	}
 	if closeBody() != nil {
 		return
 	}
@@ -366,12 +368,12 @@ type imageBody struct {
 	observe func(stage string, at time.Time)
 }
 
-// pipeImage 先交付嗅探前缀，再流式转发剩余字节；中止连接时保留原有语义。
-func (s *Service) pipeImage(body *imageBody, source io.Reader, prefix []byte, length int64, started time.Time) {
+// pipeImage 转发完整图片；写入失败时返回错误，让调用方放弃缓存填充。
+func (s *Service) pipeImage(body *imageBody, source io.Reader, prefix []byte, length int64, started time.Time) error {
 	transfer := time.Now()
 	defer body.observe("image_transfer", transfer)
 	if err := body.write(prefix); err != nil {
-		return
+		return err
 	}
 	if f, ok := body.writer.(http.Flusher); ok {
 		f.Flush()
@@ -383,7 +385,7 @@ func (s *Service) pipeImage(body *imageBody, source io.Reader, prefix []byte, le
 		n, err := source.Read(buffer)
 		if n > 0 {
 			if err := body.write(buffer[:n]); err != nil {
-				return
+				return err
 			}
 			total += int64(n)
 		}
@@ -391,7 +393,7 @@ func (s *Service) pipeImage(body *imageBody, source io.Reader, prefix []byte, le
 			if err != io.EOF || (length >= 0 && length != total) {
 				panic(http.ErrAbortHandler)
 			}
-			return
+			return nil
 		}
 	}
 }
