@@ -1,5 +1,5 @@
 // FANBOX 文章操作：单篇详情、home/supporting 信息流，以及创作者文章列表。
-// 请求类型、响应结构与映射在本文件；游标编解码在 cursor.go。
+// 请求类型、响应结构与映射在本文件；分页和游标在 pagination.go。
 
 package fanbox
 
@@ -10,6 +10,7 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/fanboxapi"
 	"github.com/FlanChanXwO/pixiv-cli/sdk"
@@ -402,4 +403,15 @@ func cloneValues(source url.Values) url.Values {
 		clone[key] = append([]string(nil), values...)
 	}
 	return clone
+}
+
+func parseUTCTime(value string) (time.Time, error) {
+	if value == "" {
+		return time.Time{}, errors.New("no publish time")
+	}
+	parsed, err := time.Parse(time.RFC3339, value)
+	if err != nil {
+		return time.Time{}, err
+	}
+	return parsed.UTC(), nil
 }

@@ -1,5 +1,5 @@
 // FANBOX SDK 入口：客户端构造、连接选项，以及会话校验。
-// 业务操作分布在 creator.go、post.go，响应结构与映射在各自领域文件；共用映射在 response.go。
+// 业务操作分布在 creator.go、post.go，响应结构与映射在各自领域文件；分页和游标在 pagination.go。
 
 package fanbox
 

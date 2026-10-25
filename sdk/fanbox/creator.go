@@ -1,5 +1,5 @@
 // FANBOX 创作者操作：资料、支持中/关注中的创作者列表和 featured tags。
-// 请求类型、响应结构与映射在本文件；游标编解码在 cursor.go。
+// 请求类型、响应结构与映射在本文件；分页和游标在 pagination.go。
 
 package fanbox
 
@@ -7,6 +7,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/url"
 	"strings"
 
@@ -48,7 +49,7 @@ type tagWire struct {
 // CreatorListKind selects the kind of creator list.
 type CreatorListKind string
 
-// CreatorListKind values define the supported CreatorListKind filesystem.
+// CreatorListKind values define the supported creator lists.
 const (
 	CreatorListSupporting CreatorListKind = "supporting"
 	CreatorListFollowing  CreatorListKind = "following"
@@ -169,25 +170,6 @@ func (c *Client) CreatorTags(ctx context.Context, request CreatorTagsRequest) ([
 	return items, nil
 }
 
-// getListBody fetches one list page body, reusing a server continuation when
-// the caller supplied one and sending query on the first page otherwise.
-func (c *Client) getListBody(ctx context.Context, path string, query url.Values, nextURL string, body *json.RawMessage, operation string) error {
-	var response struct {
-		Body json.RawMessage `json:"body"`
-	}
-	var err error
-	if nextURL != "" {
-		err = c.app.GetJSONURL(ctx, nextURL, &response)
-	} else {
-		err = c.app.GetJSON(ctx, path, query, &response)
-	}
-	if err != nil {
-		return classifyError(operation, err)
-	}
-	*body = response.Body
-	return nil
-}
-
 // mapCreator maps a validated profile response into the public model.
 func (c *Client) mapCreator(source creatorProfileWire) (Creator, error) {
 	id := source.CreatorID
@@ -213,4 +195,74 @@ func (c *Client) mapCreator(source creatorProfileWire) (Creator, error) {
 		out.Cover = ImageResource{Resource: res}
 	}
 	return out, nil
+}
+
+// decodeCreatorSummaries accepts either a bare array or the plans/creators
+// envelope used by the supporting and following creator lists.
+func decodeCreatorSummaries(raw json.RawMessage, kind CreatorListKind) ([]CreatorSummary, string, error) {
+	var direct []creatorSummaryWire
+	if err := json.Unmarshal(raw, &direct); err == nil && direct != nil {
+		items, err := mapCreatorSummaries(direct)
+		return items, "", err
+	}
+	var wrapped creatorPageWire
+	if err := json.Unmarshal(raw, &wrapped); err != nil {
+		return nil, "", fmt.Errorf("decode FANBOX %s creators", kind)
+	}
+	var source *[]creatorSummaryWire
+	switch kind {
+	case CreatorListSupporting:
+		source = wrapped.Plans
+	case CreatorListFollowing:
+		source = wrapped.Creators
+	default:
+		return nil, "", errors.New("FANBOX creator list kind is invalid")
+	}
+	if source == nil {
+		return nil, "", fmt.Errorf("decode FANBOX %s creators", kind)
+	}
+	items, err := mapCreatorSummaries(*source)
+	if err != nil {
+		return nil, "", err
+	}
+	return items, firstContinuation(wrapped.PageURLs, wrapped.NextURL), nil
+}
+
+func mapCreatorSummaries(items []creatorSummaryWire) ([]CreatorSummary, error) {
+	result := make([]CreatorSummary, 0, len(items))
+	for _, item := range items {
+		id := strings.TrimSpace(item.CreatorID)
+		if id == "" {
+			return nil, errors.New("FANBOX creator response includes an empty creator id")
+		}
+		result = append(result, CreatorSummary{ID: id})
+	}
+	return result, nil
+}
+
+// decodeFeaturedTags accepts either a bare array or the tags envelope.
+func decodeFeaturedTags(raw json.RawMessage) ([]CreatorTag, error) {
+	var direct []tagWire
+	if err := json.Unmarshal(raw, &direct); err == nil && direct != nil {
+		return mapTags(direct)
+	}
+	var wrapped struct {
+		Tags []tagWire `json:"tags"`
+	}
+	if err := json.Unmarshal(raw, &wrapped); err != nil || wrapped.Tags == nil {
+		return nil, errors.New("decode FANBOX creator tags")
+	}
+	return mapTags(wrapped.Tags)
+}
+
+func mapTags(items []tagWire) ([]CreatorTag, error) {
+	result := make([]CreatorTag, 0, len(items))
+	for _, item := range items {
+		name := strings.TrimSpace(item.Tag)
+		if name == "" {
+			return nil, errors.New("FANBOX creator tag response includes an empty tag")
+		}
+		result = append(result, CreatorTag{Name: name, URL: item.URL})
+	}
+	return result, nil
 }
