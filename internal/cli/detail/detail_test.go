@@ -514,7 +514,11 @@ func TestCommandOutputModes(t *testing.T) {
 			data := testMachineDependencies(&output, strings.NewReader(test.input))
 			data.OutputIsTTY = func() bool { return test.tty }
 			cmd := newTestCommand(data)
-			cmd.SetArgs(test.args)
+			args := test.args
+			if args == nil {
+				args = []string{}
+			}
+			cmd.SetArgs(args)
 			requireNoError(t, cmd.Execute())
 			test.verify(t, output.String())
 		})
