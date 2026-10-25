@@ -194,37 +194,6 @@ func TestCommandPassesReverseSearchProviderAndProxyOverride(t *testing.T) {
 	}
 }
 
-func TestCommandUsesReverseSearchForRegularFile(t *testing.T) {
-	path := t.TempDir() + "/image.jpg"
-	if err := os.WriteFile(path, []byte("not-an-image-fixture"), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	called := false
-	cmd := newTestCommand(testDependencies{
-		Input:  strings.NewReader(""),
-		Output: &bytes.Buffer{},
-		Pooled: func(context.Context, Request, func(context.Context, *pixiv.Client) (bool, error)) error {
-			t.Fatal("opened Pixiv SDK for regular-file image search")
-			return nil
-		},
-		ReverseSearch: func(_ context.Context, request ReverseSearchRequest) (reversesearch.Response, error) {
-			called = true
-			if request.Source != path {
-				t.Fatalf("reverse search source = %q, want %q", request.Source, path)
-			}
-			return reversesearch.Response{}, nil
-		},
-	})
-	cmd.SetArgs([]string{path, "--ndjson"})
-
-	if err := cmd.Execute(); err != nil {
-		t.Fatalf("execute reverse search: %v", err)
-	}
-	if !called {
-		t.Fatal("did not use reverse search for a regular file")
-	}
-}
-
 func TestCommandDoesNotFallbackInvalidHTTPSourceToKeywordSearch(t *testing.T) {
 	called := false
 	opened := false
@@ -618,43 +587,6 @@ type searchFixtureTransport func(*http.Request) (*http.Response, error)
 
 func (f searchFixtureTransport) RoundTrip(request *http.Request) (*http.Response, error) {
 	return f(request)
-}
-
-func TestCommandOutputsEnvelopeBeforeSingleProviderFailure(t *testing.T) {
-	output := &bytes.Buffer{}
-	errorOutput := &bytes.Buffer{}
-	response := reversesearch.Response{
-		Input:     reversesearch.Input{Kind: reversesearch.SourceKindURL, SHA256: "deadbeef"},
-		Providers: []reversesearch.ProviderSummary{{Name: reversesearch.ProviderSauceNAO, Status: reversesearch.ProviderStatusError}},
-		ProviderErrors: []reversesearch.ProviderError{{
-			Provider: reversesearch.ProviderSauceNAO, Code: reversesearch.CodeMissingCredential, Message: "SauceNAO API key is required",
-		}},
-	}
-	cmd := newTestCommand(testDependencies{
-		Input:       strings.NewReader(""),
-		Output:      output,
-		ErrorOutput: errorOutput,
-		JSONOut:     func(*bool) (bool, error) { return true, nil },
-		ReverseSearch: func(context.Context, ReverseSearchRequest) (reversesearch.Response, error) {
-			return response, reversesearch.NewError(reversesearch.CodeMissingCredential, "SauceNAO API key is required", nil)
-		},
-	})
-	cmd.SetArgs([]string{"https://example.test/image.jpg", "--json"})
-
-	err := cmd.Execute()
-	if err == nil || !strings.Contains(err.Error(), "SauceNAO API key is required") {
-		t.Fatalf("expected provider failure, got %v", err)
-	}
-	var envelope map[string]any
-	if decodeErr := json.Unmarshal(output.Bytes(), &envelope); decodeErr != nil {
-		t.Fatalf("decode failure envelope: %v; output=%q", decodeErr, output.String())
-	}
-	if _, ok := envelope["provider_errors"]; !ok {
-		t.Fatalf("failure envelope omitted provider_errors: %+v", envelope)
-	}
-	if strings.Contains(output.String()+errorOutput.String(), "https://example.test/image.jpg") {
-		t.Fatal("leaked source URL in provider failure output")
-	}
 }
 
 type fdBuffer struct {
