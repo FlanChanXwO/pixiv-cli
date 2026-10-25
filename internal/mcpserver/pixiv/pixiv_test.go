@@ -1617,6 +1617,30 @@ func TestRegisteredToolSchemasMatchContract(t *testing.T) {
 	}
 }
 
+// TestUnsafeOutputPropertyIsDetected proves the walker can fail, so a schema shape it
+// does not understand cannot silently turn the credential-field check into a no-op.
+func TestUnsafeOutputPropertyIsDetected(t *testing.T) {
+	probe := []*mcp.Tool{{
+		Name: "probe_tool",
+		OutputSchema: map[string]any{
+			"type": "object",
+			"properties": map[string]any{
+				"assets": map[string]any{
+					"type": "array",
+					"items": map[string]any{
+						"type":       "object",
+						"properties": map[string]any{"cookie": map[string]any{"type": "string"}},
+					},
+				},
+			},
+		},
+	}}
+	violations := unsafeSchemaProperties(t, probe)
+	if len(violations) != 1 || !strings.Contains(violations[0], "cookie") {
+		t.Fatalf("nested unsafe property was not detected, got %v", violations)
+	}
+}
+
 func connectAndListTools(t *testing.T) []*mcp.Tool {
 	t.Helper()
 	server := newTestServer(pixivmcpserver.SDKPorts{}, pixivmcpserver.Account{})
