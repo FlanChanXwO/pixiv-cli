@@ -266,6 +266,15 @@ type fakeSDKClient struct {
 }
 
 // 收藏/关注 mutation tool 的 owner 契约：结构化成功结果。
+func findTool(tools []*mcp.Tool, name string) *mcp.Tool {
+	for _, tool := range tools {
+		if tool.Name == name {
+			return tool
+		}
+	}
+	return nil
+}
+
 func TestPixivMCPToolLogsUseStableLocalCallIDs(t *testing.T) {
 	output := &syncBuffer{}
 	logger, err := logging.New(output, "debug", "json")
@@ -405,6 +414,8 @@ func TestLocalDownloadsUseSharedServiceAndReportPartialFiles(t *testing.T) {
 	require.Equal(t, before, len(requests), "invalid inputs must not write files")
 }
 
+// TestAccountToolsShareSelectionWithoutOpeningSDK 也固定账号 tool 的注册与本地 effect
+// 注解：只访问本地账号选择，不打开 SDK。
 func TestAccountToolsShareSelectionWithoutOpeningSDK(t *testing.T) {
 	store := auth.Store{Path: filepath.Join(t.TempDir(), "state.json")}
 	_, err := store.Init(t.Context(), false)
@@ -439,6 +450,18 @@ func TestAccountToolsShareSelectionWithoutOpeningSDK(t *testing.T) {
 	saved, err := store.Read(t.Context())
 	require.NoError(t, err)
 	require.Equal(t, int64(73), saved.SelectedPixivUserID)
+	tools, err := first.ListTools(t.Context(), nil)
+	require.NoError(t, err)
+	for _, name := range []string{"pixiv_account_list", "pixiv_account_status", "pixiv_account_use"} {
+		tool := findTool(tools.Tools, name)
+		require.NotNil(t, tool, "missing %s", name)
+		require.NotNil(t, tool.Annotations)
+		require.False(t, tool.Annotations.ReadOnlyHint)
+		require.False(t, *tool.Annotations.DestructiveHint)
+		require.False(t, *tool.Annotations.OpenWorldHint)
+		require.True(t, tool.Annotations.IdempotentHint)
+		require.NotNil(t, tool.OutputSchema)
+	}
 }
 
 func TestAccountToolsRedactLocalErrorsAndPreserveStructuredFailure(t *testing.T) {
@@ -452,18 +475,27 @@ func TestAccountToolsRedactLocalErrorsAndPreserveStructuredFailure(t *testing.T)
 		if name == "pixiv_account_use" {
 			args["user_id"] = 73
 		}
+
 		result := callTool(t, session, name, args)
 		require.True(t, result.IsError)
 		body, err := json.Marshal(result)
 		require.NoError(t, err)
 		require.NotContains(t, string(body), "fixture-secret")
 		require.NotContains(t, string(body), "database-path")
+
 		var out outputs.AccountStatus
 		decodeStructured(t, result, &out)
 		require.Equal(t, "local_state_error", out.Error)
 		require.Equal(t, "unknown", out.SelectionState)
 		require.Empty(t, out.Accounts)
 	}
+	// schema 拒绝的错误同样不回显原始输入值，并保留 structured content。
+	invalid := callTool(t, session, "pixiv_account_use", map[string]any{"user_id": "fixture-secret-value"})
+	require.True(t, invalid.IsError)
+	body, err := json.Marshal(invalid)
+	require.NoError(t, err)
+	require.NotContains(t, string(body), "fixture-secret-value")
+	require.NotNil(t, invalid.StructuredContent)
 }
 
 func TestAccountUseDoesNotReportSuccessWhenStateIsUnavailable(t *testing.T) {
