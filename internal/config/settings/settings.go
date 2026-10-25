@@ -23,7 +23,7 @@ func (s Store) Current() (Snapshot, error) {
 	if err != nil {
 		return Snapshot{}, err
 	}
-	return loadSnapshotAt(path, files)
+	return loadSnapshot(path, files)
 }
 
 type ConfigMutationResult struct {
@@ -76,7 +76,7 @@ func (s Store) Get(key Key) (SettingValue, error) {
 	if err != nil {
 		return SettingValue{}, err
 	}
-	settings, err := loadSnapshotAt(path, files)
+	settings, err := loadSnapshot(path, files)
 	if err != nil {
 		return SettingValue{}, err
 	}

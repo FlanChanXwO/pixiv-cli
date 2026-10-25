@@ -10,7 +10,7 @@ import (
 	"github.com/pelletier/go-toml/v2"
 )
 
-// loadSnapshotAt 从明确路径与文件端口生成一次不可变快照。只有 Store 方法
+// loadSnapshot 从明确路径与文件端口生成一次不可变快照。只有 Store 方法
 // 对外提供读取入口。
 //
 // 配置绑定整体分四个阶段，本函数只负责**阶段 1**：
@@ -23,7 +23,7 @@ import (
 //
 // 阶段 1 的具体含义：文件内容在此一次性解析为嵌套表，环境变量在此一次性捕获；
 // 之后无论 Effective 被调用多少次，同一快照都看到同一份输入。
-func loadSnapshotAt(path string, store FileStore) (Snapshot, error) {
+func loadSnapshot(path string, store FileStore) (Snapshot, error) {
 	// 阶段 1：解析文件视图。
 	file, err := loadConfigFile(path, store.ReadFile)
 	if err != nil {

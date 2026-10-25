@@ -61,7 +61,7 @@ func (s Store) readDefaultUserID(spec SettingSpec) (int64, bool, error) {
 	if err != nil {
 		return 0, false, err
 	}
-	state, err := loadSnapshotAt(path, files)
+	state, err := loadSnapshot(path, files)
 	if err != nil {
 		return 0, false, err
 	}
@@ -110,7 +110,7 @@ func (s Store) writeDefaultUserID(spec SettingSpec, userID int64) error {
 	if err != nil {
 		return err
 	}
-	doc, err := loadConfigDocumentWithFileStore(path, files)
+	doc, err := loadConfigDocument(path, files)
 	if err != nil {
 		return err
 	}
@@ -122,7 +122,7 @@ func (s Store) writeDefaultUserID(spec SettingSpec, userID int64) error {
 	if !transform.InsertMapping(section, &parser.KeyValue{Name: parser.Key{spec.Key}, Value: value}, true) {
 		return errors.New("config: failed to update default_user_id")
 	}
-	return saveConfigDocumentWithFileStore(path, doc, files)
+	return saveConfigDocument(path, doc, files)
 }
 
 func (s Store) clearDefaultUserID(spec SettingSpec) error {
@@ -134,17 +134,17 @@ func (s Store) clearDefaultUserID(spec SettingSpec) error {
 	if err != nil {
 		return err
 	}
-	doc, err := loadConfigDocumentWithFileStore(path, files)
+	doc, err := loadConfigDocument(path, files)
 	if err != nil {
 		return err
 	}
 	entry := doc.First(append(append([]string(nil), spec.Table...), spec.Key)...)
 	if entry == nil {
-		return saveConfigDocumentWithFileStore(path, doc, files)
+		return saveConfigDocument(path, doc, files)
 	}
 	entry.Remove()
 	if sectionEntry := transform.FindTable(doc, spec.Table...); sectionEntry != nil && len(sectionEntry.Section.Items) == 0 {
 		sectionEntry.Remove()
 	}
-	return saveConfigDocumentWithFileStore(path, doc, files)
+	return saveConfigDocument(path, doc, files)
 }

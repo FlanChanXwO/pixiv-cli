@@ -18,7 +18,7 @@ type Service struct {
 	defaults DefaultStore
 }
 
-// New 构造 Pixiv 应用服务；repository/defaults 均由 composition root 注入。
+// NewService 构造 Pixiv 应用服务；repository/defaults 均由 composition root 注入。
 func NewService(repo Repository, defaults DefaultStore) *Service {
 	return &Service{repo: repo, defaults: defaults}
 }
