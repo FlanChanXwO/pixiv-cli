@@ -65,45 +65,29 @@ func TestOpenClientReturnsLeaseAndForwardsCancellation(t *testing.T) {
 	}
 }
 
-// TestCollectPagesPreservesHasMoreWhenTruncatingInsideBatch 验证 FANBOX
-// 侧的等价修复：逻辑 limit 小于上游最后一批、且该批上游 cursor 已为空时，
-// CollectPages 必须返回 has_more=true，而不是仅依据上游 cursor 推导出 false。
-func TestCollectPagesPreservesHasMoreWhenTruncatingInsideBatch(t *testing.T) {
-	plan := ListPlan{Page: 1, Limit: 2}
-	fetch := func(_ context.Context, cursor sdk.Cursor) (sdk.Page[int], error) {
-		if !cursor.IsZero() {
-			t.Fatalf("unexpected continuation fetch")
-		}
-		// Five items, no continuation cursor; 3 remain unreturned after the limit.
-		return sdk.Page[int]{Items: []int{1, 2, 3, 4, 5}}, nil
-	}
-	items, hasMore, err := CollectPages[int](context.Background(), plan, fetch)
-	if err != nil {
-		t.Fatalf("CollectPages error = %v", err)
-	}
-	if len(items) != 2 || items[0] != 1 || items[1] != 2 {
-		t.Fatalf("items = %#v", items)
-	}
-	if !hasMore {
-		t.Fatalf("hasMore = false, want true (batch truncated with unreturned items)")
-	}
-}
-
-// TestCollectPagesHasMoreFalseWhenBatchFullyReturned 验证 FANBOX 侧非截断路径
-// 不被 #17 修复误判为 has_more=true。
-func TestCollectPagesHasMoreFalseWhenBatchFullyReturned(t *testing.T) {
-	plan := ListPlan{Page: 1, Limit: 5}
-	fetch := func(_ context.Context, cursor sdk.Cursor) (sdk.Page[int], error) {
-		return sdk.Page[int]{Items: []int{1, 2, 3}}, nil
-	}
-	items, hasMore, err := CollectPages[int](context.Background(), plan, fetch)
-	if err != nil {
-		t.Fatalf("CollectPages error = %v", err)
-	}
-	if len(items) != 3 {
-		t.Fatalf("items = %#v", items)
-	}
-	if hasMore {
-		t.Fatalf("hasMore = true, want false (batch fully returned, no continuation)")
+// TestCollectPagesHasMore 是 FANBOX 分页的失败模式表：批内截断时仍有未返回项，
+// 必须 has_more=true；整批返回且无续页时为 false。
+func TestCollectPagesHasMore(t *testing.T) {
+	for _, test := range []struct {
+		name     string
+		limit    int
+		items    []int
+		want     int
+		wantMore bool
+	}{
+		{name: "truncated inside batch", limit: 2, items: []int{1, 2, 3, 4, 5}, want: 2, wantMore: true},
+		{name: "fully returned", limit: 5, items: []int{1, 2, 3}, want: 3, wantMore: false},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			items, hasMore, err := CollectPages[int](context.Background(), ListPlan{Page: 1, Limit: test.limit}, func(context.Context, sdk.Cursor) (sdk.Page[int], error) {
+				return sdk.Page[int]{Items: test.items}, nil
+			})
+			if err != nil {
+				t.Fatalf("CollectPages error = %v", err)
+			}
+			if len(items) != test.want || hasMore != test.wantMore {
+				t.Fatalf("items=%#v hasMore=%v, want %d/%v", items, hasMore, test.want, test.wantMore)
+			}
+		})
 	}
 }

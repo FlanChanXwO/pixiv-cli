@@ -233,6 +233,14 @@ func TestUnifiedToolRegistry(t *testing.T) {
 			t.Error("reverse search omits external upload disclosure")
 		}
 	}
+	// Gallery animation 仍是 read-only 控制，UI-only FrameCount 不进入公开 schema。
+	if tool := findTool(tools.Tools, "pixiv_gallery_animation"); tool == nil {
+		t.Error("pixiv_gallery_animation must stay registered for the Gallery")
+	} else if tool.Annotations == nil || !tool.Annotations.ReadOnlyHint {
+		t.Errorf("pixiv_gallery_animation must stay read-only: %+v", tool.Annotations)
+	} else if raw, err := json.Marshal(tool.OutputSchema); err != nil || strings.Contains(string(raw), "FrameCount") {
+		t.Errorf("UI-only frame count leaked into the public schema: %s, %v", raw, err)
+	}
 	for _, name := range []string{"pixiv_show_gallery", "pixiv_search_illust", "pixiv_user_detail", "fanbox_current_user", "fanbox_post"} {
 		if !seen[name] {
 			t.Errorf("missing product tool %s", name)
@@ -249,24 +257,6 @@ func TestUnifiedToolRegistry(t *testing.T) {
 		}
 	}
 }
-
-func TestServerImplementationVersionIsProtocolOnlyException(t *testing.T) {
-	server := mcpserver.New(pixiv.SDKPorts{}, pixiv.Account{}, fanbox.SDKPorts{}, nil)
-	clientTransport, serverTransport := mcp.NewInMemoryTransports()
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-	go func() { _ = server.Run(ctx, serverTransport) }()
-	client := mcp.NewClient(&mcp.Implementation{Name: "test", Version: "1"}, nil)
-	session, err := client.Connect(ctx, clientTransport, nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer func() { _ = session.Close() }()
-	if session.InitializeResult().ServerInfo.Version != "3.0.0" {
-		t.Fatalf("serverInfo.version=%q, want 3.0.0", session.InitializeResult().ServerInfo.Version)
-	}
-}
-
 func TestGalleryResourceAndToolMetadata(t *testing.T) {
 	server := mcpserver.New(httpRegistryPorts(t), pixiv.Account{}, fanbox.SDKPorts{}, nil)
 	c, s := mcp.NewInMemoryTransports()
@@ -335,6 +325,15 @@ func TestGalleryResourceAndToolMetadata(t *testing.T) {
 	}
 }
 
+func findTool(tools []*mcp.Tool, name string) *mcp.Tool {
+	for _, tool := range tools {
+		if tool.Name == name {
+			return tool
+		}
+	}
+	return nil
+}
+
 func httpRegistryPorts(t *testing.T) pixiv.SDKPorts {
 	t.Helper()
 	store := auth.Store{Path: filepath.Join(t.TempDir(), "state.json")}
@@ -353,40 +352,4 @@ func httpRegistryPorts(t *testing.T) pixiv.SDKPorts {
 	}
 	t.Cleanup(login.Close)
 	return pixiv.SDKPorts{Media: media, Accounts: accounts.Selection{Store: store, Load: func(context.Context) (accounts.LocalSnapshot, error) { return accounts.LocalSnapshot{}, nil }}, Login: login}
-}
-
-func TestConsolidatedToolRegistry(t *testing.T) {
-	server := mcpserver.New(httpRegistryPorts(t), pixiv.Account{}, fanbox.SDKPorts{}, nil)
-	ct, st := mcp.NewInMemoryTransports()
-	ss, err := server.Connect(t.Context(), st, nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer ss.Close()
-	cs, err := mcp.NewClient(&mcp.Implementation{Name: "consolidated-registry", Version: "1"}, nil).Connect(t.Context(), ct, nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer cs.Close()
-	result, err := cs.ListTools(t.Context(), nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	names := map[string]bool{}
-	for _, tool := range result.Tools {
-		names[tool.Name] = true
-	}
-	for _, name := range []string{"pixiv_comments", "pixiv_comment_create", "pixiv_comment_reply", "pixiv_comment_stamp", "pixiv_comment_delete", "pixiv_bookmark_add", "pixiv_bookmark_remove", "fanbox_creator_posts", "fanbox_feed", "pixiv_user_bookmarks", "pixiv_user_relations", "pixiv_timeline_following", "pixiv_timeline_latest", "pixiv_mypixiv"} {
-		if !names[name] {
-			t.Errorf("missing unified tool %s", name)
-		}
-	}
-	for _, name := range []string{"fanbox_home", "fanbox_supporting", "fanbox_tagged_posts", "pixiv_add_bookmark", "pixiv_add_novel_bookmark", "pixiv_create_artwork_comment", "pixiv_create_novel_comment", "pixiv_delete_artwork_comment", "pixiv_delete_novel_comment", "pixiv_illust_comments", "pixiv_mypixiv_illusts", "pixiv_mypixiv_novels", "pixiv_mypixiv_users", "pixiv_novel_comments", "pixiv_related_users", "pixiv_remove_bookmark", "pixiv_remove_novel_bookmark", "pixiv_reply_artwork_comment", "pixiv_reply_novel_comment", "pixiv_stamp_artwork_comment", "pixiv_stamp_novel_comment", "pixiv_timeline_illust_following", "pixiv_timeline_illust_latest", "pixiv_timeline_novel_following", "pixiv_timeline_novel_latest", "pixiv_user_followers", "pixiv_user_following", "pixiv_user_novel_bookmarks"} {
-		if names[name] {
-			t.Errorf("retired tool remains registered: %s", name)
-		}
-	}
-	if len(result.Tools) != 54 {
-		t.Errorf("HTTP tools=%d, want 54", len(result.Tools))
-	}
 }

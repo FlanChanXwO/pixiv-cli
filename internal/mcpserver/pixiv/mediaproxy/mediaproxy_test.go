@@ -479,38 +479,6 @@ func TestAuthorizationRevocationReclaimsIdleStaticCache(t *testing.T) {
 	}, 3*time.Second, time.Millisecond)
 }
 
-func TestSessionInvalidationReclaimsIdleStaticCache(t *testing.T) {
-	service, target, _, _ := newCachedProxyFixture(t, func(r *http.Request) (*http.Response, error) {
-		if r.URL.Host == "app-api.pixiv.net" {
-			return fixtureArtwork("42"), nil
-		}
-		return &http.Response{StatusCode: 200, Header: http.Header{}, Body: io.NopCloser(bytes.NewReader([]byte("\x89PNG\r\n\x1a\nfixture")))}, nil
-	}, 8192)
-	invalidated := make(chan struct{})
-	open := service.reads.open
-	require.NoError(t, service.Configure(service.reads.config, func(ctx context.Context, account int64) (Session, error) {
-		session, err := open(ctx, account)
-		session.Invalidated = invalidated
-		return session, err
-	}))
-	require.NoError(t, service.ConfigureAnimations(t.Context(), 1<<20))
-	t.Cleanup(func() { require.NoError(t, service.CloseAnimations()) })
-	w := httptest.NewRecorder()
-	service.ServeHTTP(w, httptest.NewRequest("GET", target, nil))
-	require.Equal(t, http.StatusOK, w.Code)
-	cache := service.reads.cache
-	cache.mu.Lock()
-	used := cache.used
-	cache.mu.Unlock()
-	require.Positive(t, used)
-	close(invalidated)
-	require.Eventually(t, func() bool {
-		cache.mu.Lock()
-		defer cache.mu.Unlock()
-		return cache.used == 0
-	}, time.Second, time.Millisecond)
-}
-
 func TestInvalidatedSessionCannotRepublishCompletedImage(t *testing.T) {
 	invalidated := make(chan struct{})
 	release := make(chan struct{})

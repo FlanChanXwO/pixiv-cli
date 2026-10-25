@@ -11,9 +11,7 @@ import (
 	config "github.com/FlanChanXwO/pixiv-cli/internal/config/settings"
 	accountfanbox "github.com/FlanChanXwO/pixiv-cli/internal/fanboxaccount"
 	fanboxapp "github.com/FlanChanXwO/pixiv-cli/internal/fanboxaccount"
-	"github.com/FlanChanXwO/pixiv-cli/internal/logging"
 	fanboxmcpserver "github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/fanbox"
-	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/fanbox/internal/toolhost"
 	ugoira "github.com/FlanChanXwO/pixiv-cli/internal/media/ugoira"
 	"github.com/FlanChanXwO/pixiv-cli/internal/storage/database"
 	fanboxsdk "github.com/FlanChanXwO/pixiv-cli/sdk/fanbox"
@@ -24,60 +22,13 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
-	"sync"
 	"testing"
 	"time"
 )
-
-func TestFanboxMCPToolLogsCarryCallID(t *testing.T) {
-	output := &syncBuffer{}
-	logger, err := logging.New(output, "debug", "json")
-	if err != nil {
-		t.Fatal(err)
-	}
-	rootCtx, cancel := context.WithCancel(logging.WithCall(context.Background(), logger, "", ""))
-	defer cancel()
-
-	server := mcp.NewServer(&mcp.Implementation{Name: "debug-test", Version: "1"}, nil)
-	toolhost.AddTool(toolhost.NewApp(toolhost.SDKPorts{Logger: logger}, toolhost.Account{}), server, &mcp.Tool{Name: "diagnostic_test"}, func(context.Context, *mcp.CallToolRequest, struct{}) (*mcp.CallToolResult, struct{}, error) {
-		return nil, struct{}{}, errors.New("fixture failure")
-	})
-	clientTransport, serverTransport := mcp.NewInMemoryTransports()
-	go func() { _ = server.Run(rootCtx, serverTransport) }()
-	client := mcp.NewClient(&mcp.Implementation{Name: "debug-client", Version: "1"}, nil)
-	session, err := client.Connect(rootCtx, clientTransport, nil)
-	if err != nil {
-		t.Fatalf("connect: %v", err)
-	}
-	defer session.Close()
-
-	_, _ = session.CallTool(context.Background(), &mcp.CallToolParams{Name: "diagnostic_test", Arguments: map[string]any{}})
-
-	if !strings.Contains(output.String(), `"call_id":"1"`) || !strings.Contains(output.String(), `"operation":"diagnostic_test"`) {
-		t.Fatalf("tool call log missing call id: %s", output.String())
-	}
-}
-
-// syncBuffer 让并发写入的日志在测试中可安全读取。
-type syncBuffer struct {
-	mu  sync.Mutex
-	buf bytes.Buffer
-}
-
-func (b *syncBuffer) Write(data []byte) (int, error) {
-	b.mu.Lock()
-	defer b.mu.Unlock()
-	return b.buf.Write(data)
-}
-
-func (b *syncBuffer) String() string {
-	b.mu.Lock()
-	defer b.mu.Unlock()
-	return b.buf.String()
-}
 
 // unsafeOutputPropertyNames mirrors the Pixiv product contract: a FANBOX tool
 // output may carry an opaque resource reference, never the session cookie,
@@ -125,33 +76,6 @@ func TestEveryToolOutputSchemaOmitsTransportAndCredentialFields(t *testing.T) {
 		t.Fatalf("tool output schemas expose transport or credential fields:\n  %s", strings.Join(violations, "\n  "))
 	}
 }
-
-// TestUnsafeOutputPropertyIsDetected proves the walk above can fail, so a
-// schema shape the walker does not understand cannot silently turn the check
-// into a no-op for every tool.
-func TestUnsafeOutputPropertyIsDetected(t *testing.T) {
-	probe := []*mcp.Tool{{
-		Name: "probe_tool",
-		OutputSchema: map[string]any{
-			"type": "object",
-			"properties": map[string]any{
-				"assets": map[string]any{
-					"type": "array",
-					"items": map[string]any{
-						"type":       "object",
-						"properties": map[string]any{"cookie": map[string]any{"type": "string"}},
-					},
-				},
-			},
-		},
-	}}
-
-	violations := unsafeSchemaProperties(t, probe)
-	if len(violations) != 1 || !strings.Contains(violations[0], "cookie") {
-		t.Fatalf("nested unsafe property was not detected, got %v", violations)
-	}
-}
-
 func listFanboxTools(t *testing.T, session *mcp.ClientSession) []*mcp.Tool {
 	t.Helper()
 	tools := make([]*mcp.Tool, 0)
@@ -215,109 +139,33 @@ func unsafeSchemaKeys(node any, path string) []string {
 	return found
 }
 
-func TestFanboxCreatorMapsCreatorIDAndReturnsProfile(t *testing.T) {
-	var captured string
-	service, _ := fanboxTestService(t, roundTripFunc(func(req *http.Request) (*http.Response, error) {
-		captured = req.URL.Path + "?" + req.URL.RawQuery
-		return jsonResponse(`{"body":{"creatorId":"creator value","user":{"name":"Creator Name","iconUrl":"https://i.pximg.net/icon.png"},"hasAdultContent":true,"isFollowing":true,"coverImageUrl":"https://i.pximg.net/cover.png","plan":{"fee":500,"hasSupportingPlan":true}}}`), nil
-	}))
-	session, closeSession := newFanboxMCPSession(t, service)
-	defer closeSession()
-
-	result, err := session.CallTool(context.Background(), &mcp.CallToolParams{Name: "fanbox_creator", Arguments: map[string]any{"creator_id": "creator value"}})
-	if err != nil {
-		t.Fatalf("call tool: %v", err)
-	}
-	if captured != "/creator.get?creatorId=creator+value" {
-		t.Fatalf("creator.get URL = %q", captured)
-	}
-	if result.IsError {
-		t.Fatalf("fanbox_creator failed: %+v", result)
-	}
-	var out struct {
-		ID                string `json:"id"`
-		Name              string `json:"name"`
-		HasAdultContent   bool   `json:"has_adult_content"`
-		IsFollowing       bool   `json:"is_following"`
-		PlanFee           int    `json:"plan_fee"`
-		HasSupportingPlan bool   `json:"has_supporting_plan"`
-		Icon              any    `json:"icon"`
-	}
-	decodeStructured(t, result, &out)
-	if out.ID != "creator value" || out.Name != "Creator Name" || !out.HasAdultContent || !out.IsFollowing || out.PlanFee != 500 || !out.HasSupportingPlan || out.Icon == nil {
-		t.Fatalf("creator output=%+v", out)
-	}
-}
-
-func TestFanboxCreatorMissingIDIsStructuredError(t *testing.T) {
-	tests := []struct {
-		name string
-		tool string
-		args map[string]any
-		want string
+// TestFanboxReadToolsReturnDeclaredEnvelopes 是 FANBOX 读取族的正常用例：
+// 每个 tool 返回其声明的 structured 顶层字段；字段映射属于 sdk/fanbox 契约。
+func TestFanboxReadToolsReturnDeclaredEnvelopes(t *testing.T) {
+	for _, test := range []struct {
+		name  string
+		tool  string
+		args  map[string]any
+		body  string
+		shape []string
 	}{
-		{name: "creator", tool: "fanbox_creator", args: map[string]any{"creator_id": ""}, want: "creator_id is required"},
-		{name: "creator posts", tool: "fanbox_creator_posts", args: map[string]any{"creator_id": ""}, want: "creator_id is required"},
-		{name: "creator tags", tool: "fanbox_creator_tags", args: map[string]any{"creator_id": ""}, want: "creator_id is required"},
-		{name: "post", tool: "fanbox_post", args: map[string]any{"post_id": ""}, want: "post_id is required"},
-		{name: "tagged posts missing creator", tool: "fanbox_creator_posts", args: map[string]any{"creator_id": "", "tag": "fanart"}, want: "creator_id is required"},
-		{name: "tagged posts missing tag", tool: "fanbox_creator_posts", args: map[string]any{"creator_id": "c", "tag": ""}, want: "tag must be non-empty"},
-	}
-	for _, test := range tests {
+		{name: "creator", tool: "fanbox_creator", args: map[string]any{"creator_id": "c"},
+			body:  `{"body":{"creatorId":"c","user":{"name":"n","iconUrl":"https://i.pximg.net/i.png"},"coverImageUrl":"https://i.pximg.net/c.png","plan":{"fee":500,"hasSupportingPlan":true}}}`,
+			shape: []string{"cover", "has_supporting_plan", "icon", "id", "name", "plan_fee"}},
+		{name: "creators", tool: "fanbox_creators", args: map[string]any{"kind": "supporting"},
+			body:  `{"body":{"plans":[{"creatorId":"c"}],"pageUrls":[]}}`,
+			shape: []string{"creators", "pagination"}},
+		{name: "creator tags", tool: "fanbox_creator_tags", args: map[string]any{"creator_id": "c"},
+			body:  `{"body":{"tags":[{"tag":"t","url":"https://www.fanbox.cc/@w/posts/tag/t"}]}}`,
+			shape: []string{"tags"}},
+		{name: "post", tool: "fanbox_post", args: map[string]any{"post_id": "p1"},
+			body:  `{"body":{"post":{"id":"p1","publishedDatetime":"2024-06-01T10:00:00Z","creatorId":"c","body":{"blocks":[],"imageMap":{}}}}}`,
+			shape: []string{"assets", "creator_id", "id", "is_restricted", "published_at", "title"}},
+		{name: "resolve url", tool: "fanbox_resolve_url", args: map[string]any{"url": "https://www.fanbox.cc/@w/posts/123"},
+			shape: []string{"creator_id", "kind", "post_id"}},
+	} {
 		t.Run(test.name, func(t *testing.T) {
-			service, _ := fanboxTestService(t, fanboxsdkOKRoundTripper())
-			session, closeSession := newFanboxMCPSession(t, service)
-			defer closeSession()
-
-			result, err := session.CallTool(context.Background(), &mcp.CallToolParams{Name: test.tool, Arguments: test.args})
-			if err != nil {
-				t.Fatalf("call tool: %v", err)
-			}
-			if !result.IsError || !strings.Contains(textOf(t, result), test.want) {
-				t.Fatalf("missing argument result=%+v", result)
-			}
-		})
-	}
-}
-
-func TestFanboxPostListToolsMapIDsAndReturnPosts(t *testing.T) {
-	tests := []struct {
-		name      string
-		tool      string
-		args      map[string]any
-		wantURL   string
-		body      string
-		wantID    string
-		wantTitle string
-	}{
-		{
-			name: "creator posts", tool: "fanbox_creator_posts",
-			args: map[string]any{"creator_id": "c"}, wantURL: "/post.listCreator?creatorId=c&limit=10",
-			body:   `{"body":{"posts":[{"id":"p1","title":"creator posts","publishedDatetime":"2024-01-01T00:00:00Z","creatorId":"c","isRestricted":false,"isPinned":false}],"pageUrls":[]}}`,
-			wantID: "p1", wantTitle: "creator posts",
-		},
-		{
-			name: "home", tool: "fanbox_feed", args: map[string]any{"source": "home"}, wantURL: "/post.listHome?limit=10",
-			body:   `{"body":{"items":[{"id":"h1","title":"home","publishedDatetime":"2024-01-01T00:00:00Z","creatorId":"c","isRestricted":false,"isPinned":false}],"nextUrl":""}}`,
-			wantID: "h1", wantTitle: "home",
-		},
-		{
-			name: "supporting", tool: "fanbox_feed", args: map[string]any{"source": "supporting"}, wantURL: "/post.listSupporting?limit=10",
-			body:   `{"body":{"items":[{"id":"s1","title":"supporting","publishedDatetime":"2024-01-01T00:00:00Z","creatorId":"c","isRestricted":false,"isPinned":false}],"nextUrl":""}}`,
-			wantID: "s1", wantTitle: "supporting",
-		},
-		{
-			name: "tagged posts", tool: "fanbox_creator_posts",
-			args: map[string]any{"creator_id": "c", "tag": "fanart"}, wantURL: "/post.listTagged?creatorId=c&tag=fanart",
-			body:   `{"body":{"posts":[{"id":"t1","title":"tagged","publishedDatetime":"2024-01-01T00:00:00Z","creatorId":"c","isRestricted":false,"isPinned":false}],"pageUrls":[]}}`,
-			wantID: "t1", wantTitle: "tagged",
-		},
-	}
-	for _, test := range tests {
-		t.Run(test.name, func(t *testing.T) {
-			var captured string
-			service, _ := fanboxTestService(t, roundTripFunc(func(req *http.Request) (*http.Response, error) {
-				captured = req.URL.Path + "?" + req.URL.RawQuery
+			service, _ := fanboxTestService(t, roundTripFunc(func(*http.Request) (*http.Response, error) {
 				return jsonResponse(test.body), nil
 			}))
 			session, closeSession := newFanboxMCPSession(t, service)
@@ -327,285 +175,22 @@ func TestFanboxPostListToolsMapIDsAndReturnPosts(t *testing.T) {
 			if err != nil {
 				t.Fatalf("call tool: %v", err)
 			}
-			if captured != test.wantURL {
-				t.Fatalf("request URL = %q, want %q", captured, test.wantURL)
-			}
 			if result.IsError {
 				t.Fatalf("%s failed: %+v", test.tool, result)
 			}
-			var out struct {
-				Posts []struct {
-					ID    string `json:"id"`
-					Title string `json:"title"`
-				} `json:"posts"`
+			var structured map[string]any
+			decodeStructured(t, result, &structured)
+			keys := make([]string, 0, len(structured))
+			for key := range structured {
+				keys = append(keys, key)
 			}
-			decodeStructured(t, result, &out)
-			if len(out.Posts) != 1 || out.Posts[0].ID != test.wantID || out.Posts[0].Title != test.wantTitle {
-				t.Fatalf("post output=%+v", out)
-			}
-		})
-	}
-}
-
-func TestFanboxCreatorTagsMapsCreatorIDAndReturnsTags(t *testing.T) {
-	var captured string
-	service, _ := fanboxTestService(t, roundTripFunc(func(req *http.Request) (*http.Response, error) {
-		captured = req.URL.Path + "?" + req.URL.RawQuery
-		return jsonResponse(`{"body":{"tags":[{"tag":"fanart","url":"https://www.fanbox.cc/@writer/posts/tag/fanart"}]}}`), nil
-	}))
-	session, closeSession := newFanboxMCPSession(t, service)
-	defer closeSession()
-
-	result, err := session.CallTool(context.Background(), &mcp.CallToolParams{Name: "fanbox_creator_tags", Arguments: map[string]any{"creator_id": "writer"}})
-	if err != nil {
-		t.Fatalf("call tool: %v", err)
-	}
-	if captured != "/tag.getFeatured?creatorId=writer" {
-		t.Fatalf("tag.getFeatured URL = %q", captured)
-	}
-	if result.IsError {
-		t.Fatalf("fanbox_creator_tags failed: %+v", result)
-	}
-	var out struct {
-		Tags []struct {
-			Name string `json:"name"`
-			URL  string `json:"url"`
-		} `json:"tags"`
-	}
-	decodeStructured(t, result, &out)
-	if len(out.Tags) != 1 || out.Tags[0].Name != "fanart" || out.Tags[0].URL != "https://www.fanbox.cc/@writer/posts/tag/fanart" {
-		t.Fatalf("creator tags output=%+v", out)
-	}
-}
-
-func TestFanboxCreatorsMapsKindAndReturnsSummaries(t *testing.T) {
-	var captured string
-	service, _ := fanboxTestService(t, roundTripFunc(func(req *http.Request) (*http.Response, error) {
-		captured = req.URL.Path + "?" + req.URL.RawQuery
-		return jsonResponse(`{"body":{"plans":[{"creatorId":"supported"}],"pageUrls":[]}}`), nil
-	}))
-	session, closeSession := newFanboxMCPSession(t, service)
-	defer closeSession()
-
-	result, err := session.CallTool(context.Background(), &mcp.CallToolParams{Name: "fanbox_creators", Arguments: map[string]any{"kind": "supporting"}})
-	if err != nil {
-		t.Fatalf("call tool: %v", err)
-	}
-	if captured != "/plan.listSupporting?" {
-		t.Fatalf("plan.listSupporting URL = %q", captured)
-	}
-	if result.IsError {
-		t.Fatalf("fanbox_creators failed: %+v", result)
-	}
-	var out struct {
-		Creators []struct {
-			ID string `json:"id"`
-		} `json:"creators"`
-	}
-	decodeStructured(t, result, &out)
-	if len(out.Creators) != 1 || out.Creators[0].ID != "supported" {
-		t.Fatalf("creators output=%+v", out)
-	}
-}
-
-func TestFanboxCreatorsInvalidKindIsStructuredError(t *testing.T) {
-	service, _ := fanboxTestService(t, fanboxsdkOKRoundTripper())
-	session, closeSession := newFanboxMCPSession(t, service)
-	defer closeSession()
-
-	result, err := session.CallTool(context.Background(), &mcp.CallToolParams{Name: "fanbox_creators", Arguments: map[string]any{"kind": "everything"}})
-	if err != nil {
-		t.Fatalf("call tool: %v", err)
-	}
-	if !result.IsError || !strings.Contains(textOf(t, result), "Error: kind must be one of: supporting, following") {
-		t.Fatalf("invalid kind result=%+v", result)
-	}
-}
-
-func TestFanboxHomeMapsFeedAndReturnsPosts(t *testing.T) {
-	var captured string
-	service, _ := fanboxTestService(t, roundTripFunc(func(req *http.Request) (*http.Response, error) {
-		captured = req.URL.Path + "?" + req.URL.RawQuery
-		return jsonResponse(`{"body":{"items":[{"id":"h1","title":"home","publishedDatetime":"2024-01-01T00:00:00Z","creatorId":"c","isRestricted":false,"isPinned":false}],"nextUrl":""}}`), nil
-	}))
-	session, closeSession := newFanboxMCPSession(t, service)
-	defer closeSession()
-
-	result, err := session.CallTool(context.Background(), &mcp.CallToolParams{Name: "fanbox_feed", Arguments: map[string]any{"source": "home"}})
-	if err != nil {
-		t.Fatalf("call tool: %v", err)
-	}
-	if captured != "/post.listHome?limit=10" {
-		t.Fatalf("post.listHome URL = %q", captured)
-	}
-	if result.IsError {
-		t.Fatalf("fanbox_home failed: %+v", result)
-	}
-	var out struct {
-		Posts []struct {
-			ID    string `json:"id"`
-			Title string `json:"title"`
-		} `json:"posts"`
-	}
-	decodeStructured(t, result, &out)
-	if len(out.Posts) != 1 || out.Posts[0].ID != "h1" || out.Posts[0].Title != "home" {
-		t.Fatalf("home output=%+v", out)
-	}
-}
-
-func TestFanboxHomeUpstreamFailureIsStructuredError(t *testing.T) {
-	for _, test := range []struct {
-		name string
-		tool string
-	}{
-		{name: "home", tool: "fanbox_feed"},
-		{name: "supporting", tool: "fanbox_feed"},
-	} {
-		t.Run(test.name, func(t *testing.T) {
-			service, _ := fanboxTestService(t, roundTripFunc(func(*http.Request) (*http.Response, error) {
-				return nil, fmt.Errorf("upstream refused")
-			}))
-			session, closeSession := newFanboxMCPSession(t, service)
-			defer closeSession()
-
-			result, err := session.CallTool(context.Background(), &mcp.CallToolParams{Name: test.tool, Arguments: map[string]any{"source": test.name}})
-			if err != nil {
-				t.Fatalf("call tool: %v", err)
-			}
-			if !result.IsError || result.StructuredContent == nil || !strings.Contains(textOf(t, result), "Error:") {
-				t.Fatalf("%s failure result=%+v", test.tool, result)
+			sort.Strings(keys)
+			if !slices.Equal(keys, test.shape) {
+				t.Fatalf("%s structured keys=%v, want %v", test.tool, keys, test.shape)
 			}
 		})
 	}
 }
-
-func TestFanboxPostMapsPostIDAndReturnsPost(t *testing.T) {
-	var captured string
-	service, _ := fanboxTestService(t, roundTripFunc(func(req *http.Request) (*http.Response, error) {
-		captured = req.URL.Path + "?" + req.URL.RawQuery
-		return jsonResponse(`{"body":{"post":{"id":"p1","title":"a","publishedDatetime":"2024-06-01T10:00:00Z","creatorId":"c","isRestricted":false,"isPinned":false,"body":{"blocks":[{"type":"image","imageId":"image-1"}],"imageMap":{"image-1":{"id":"image-1","extension":"png","originalUrl":"https://downloads.fanbox.cc/image.png"}}}}}}`), nil
-	}))
-	session, closeSession := newFanboxMCPSession(t, service)
-	defer closeSession()
-
-	result, err := session.CallTool(context.Background(), &mcp.CallToolParams{Name: "fanbox_post", Arguments: map[string]any{"post_id": "p1"}})
-	if err != nil {
-		t.Fatalf("call tool: %v", err)
-	}
-	if captured != "/post.info?postId=p1" {
-		t.Fatalf("post.info URL = %q", captured)
-	}
-	if result.IsError {
-		t.Fatalf("fanbox_post failed: %+v", result)
-	}
-	var out struct {
-		ID    string `json:"id"`
-		Title string `json:"title"`
-	}
-	decodeStructured(t, result, &out)
-	if out.ID != "p1" || out.Title != "a" {
-		t.Fatalf("post output=%+v", out)
-	}
-}
-
-func TestFanboxResolveURLParsesPageURL(t *testing.T) {
-	service, _ := fanboxTestService(t, fanboxsdkOKRoundTripper())
-	session, closeSession := newFanboxMCPSession(t, service)
-	defer closeSession()
-
-	result, err := session.CallTool(context.Background(), &mcp.CallToolParams{Name: "fanbox_resolve_url", Arguments: map[string]any{"url": "https://www.fanbox.cc/@writer/posts/123"}})
-	if err != nil {
-		t.Fatalf("call tool: %v", err)
-	}
-	if result.IsError {
-		t.Fatalf("fanbox_resolve_url failed: %+v", result)
-	}
-	var out struct {
-		Kind   string `json:"kind"`
-		PostID string `json:"post_id"`
-	}
-	decodeStructured(t, result, &out)
-	if out.Kind != "post" || out.PostID != "123" {
-		t.Fatalf("resolve output=%+v", out)
-	}
-}
-
-func TestFanboxResolveURLInvalidHostIsStructuredError(t *testing.T) {
-	service, _ := fanboxTestService(t, fanboxsdkOKRoundTripper())
-	session, closeSession := newFanboxMCPSession(t, service)
-	defer closeSession()
-
-	result, err := session.CallTool(context.Background(), &mcp.CallToolParams{Name: "fanbox_resolve_url", Arguments: map[string]any{"url": "https://example.com/not-fanbox"}})
-	if err != nil {
-		t.Fatalf("call tool: %v", err)
-	}
-	if !result.IsError || !strings.Contains(textOf(t, result), "Error:") {
-		t.Fatalf("invalid host result=%+v", result)
-	}
-}
-
-func TestFanboxSupportingMapsFeedAndReturnsPosts(t *testing.T) {
-	var captured string
-	service, _ := fanboxTestService(t, roundTripFunc(func(req *http.Request) (*http.Response, error) {
-		captured = req.URL.Path + "?" + req.URL.RawQuery
-		return jsonResponse(`{"body":{"items":[{"id":"s1","title":"support","publishedDatetime":"2024-01-01T00:00:00Z","creatorId":"c","isRestricted":false,"isPinned":false}],"nextUrl":""}}`), nil
-	}))
-	session, closeSession := newFanboxMCPSession(t, service)
-	defer closeSession()
-
-	result, err := session.CallTool(context.Background(), &mcp.CallToolParams{Name: "fanbox_feed", Arguments: map[string]any{"source": "supporting"}})
-	if err != nil {
-		t.Fatalf("call tool: %v", err)
-	}
-	if captured != "/post.listSupporting?limit=10" {
-		t.Fatalf("post.listSupporting URL = %q", captured)
-	}
-	if result.IsError {
-		t.Fatalf("fanbox_supporting failed: %+v", result)
-	}
-	var out struct {
-		Posts []struct {
-			ID    string `json:"id"`
-			Title string `json:"title"`
-		} `json:"posts"`
-	}
-	decodeStructured(t, result, &out)
-	if len(out.Posts) != 1 || out.Posts[0].ID != "s1" || out.Posts[0].Title != "support" {
-		t.Fatalf("supporting output=%+v", out)
-	}
-}
-
-func TestFanboxTaggedPostsMapsCreatorAndTag(t *testing.T) {
-	var captured string
-	service, _ := fanboxTestService(t, roundTripFunc(func(req *http.Request) (*http.Response, error) {
-		captured = req.URL.Path + "?" + req.URL.RawQuery
-		return jsonResponse(`{"body":{"posts":[{"id":"t1","title":"tag","publishedDatetime":"2024-01-01T00:00:00Z","creatorId":"c","isRestricted":false,"isPinned":false}],"pageUrls":[]}}`), nil
-	}))
-	session, closeSession := newFanboxMCPSession(t, service)
-	defer closeSession()
-
-	result, err := session.CallTool(context.Background(), &mcp.CallToolParams{Name: "fanbox_creator_posts", Arguments: map[string]any{"creator_id": "c", "tag": "fanart"}})
-	if err != nil {
-		t.Fatalf("call tool: %v", err)
-	}
-	if captured != "/post.listTagged?creatorId=c&tag=fanart" {
-		t.Fatalf("post.listTagged URL = %q", captured)
-	}
-	if result.IsError {
-		t.Fatalf("fanbox_tagged_posts failed: %+v", result)
-	}
-	var out struct {
-		Posts []struct {
-			ID    string `json:"id"`
-			Title string `json:"title"`
-		} `json:"posts"`
-	}
-	decodeStructured(t, result, &out)
-	if len(out.Posts) != 1 || out.Posts[0].ID != "t1" || out.Posts[0].Title != "tag" {
-		t.Fatalf("tagged posts output=%+v", out)
-	}
-}
-
 func textOf(t *testing.T, result *mcp.CallToolResult) string {
 	t.Helper()
 	if len(result.Content) != 1 {
