@@ -1,3 +1,5 @@
+// Read account-owned sessions and cache grant/version-scoped artwork metadata.
+
 package mediaproxy
 
 import (
@@ -24,7 +26,6 @@ type Session struct {
 	Invalidated <-chan struct{}
 }
 
-// Config is loaded once at server startup. Observe receives fixed stage names only.
 // AnimationObservation contains safe phase metrics, never identity or capabilities.
 type AnimationObservation struct {
 	Stage              string
@@ -41,6 +42,7 @@ const (
 	DefaultConcurrency = 4
 )
 
+// Config is loaded once at server startup; observers receive fixed stage names only.
 type Config struct {
 	Capacity         int64
 	TTL              time.Duration
@@ -76,9 +78,6 @@ func (s *Service) observe(ctx context.Context, stage string, start time.Time) {
 	}
 }
 func acquire(ctx context.Context, slots chan struct{}) error {
-	if slots == nil {
-		return ctx.Err()
-	}
 	select {
 	case slots <- struct{}{}:
 		return nil
@@ -166,9 +165,6 @@ func (s *Service) metadata(ctx context.Context, c claims, session Session) (pixi
 	if s.authorized(ctx, c) != nil {
 		return pixiv.Artwork{}, errCapability
 	}
-	if session.Lease == nil || session.Lease.Value() == nil {
-		return pixiv.Artwork{}, errors.New("missing client")
-	}
 	query := func() (result pixiv.Artwork, err error) {
 		start := time.Now()
 		defer func() {
@@ -193,9 +189,11 @@ func (s *Service) metadata(ctx context.Context, c claims, session Session) (pixi
 	c.Page = 0
 	c.Quality = ""
 	key := contentKey(c, session, "metadata")
-	if value, ok := s.cachedArtwork(key); ok {
-		s.observe(ctx, "cache_hit", time.Now())
-		return value, nil
+	if value, ok, err := s.cachedArtwork(key); ok || err != nil {
+		if err == nil {
+			s.observe(ctx, "cache_hit", time.Now())
+		}
+		return value, err
 	}
 
 	state := s.reads
@@ -213,16 +211,19 @@ func (s *Service) metadata(ctx context.Context, c claims, session Session) (pixi
 		}
 	}
 	// A fill may have completed between the first lookup and taking the flight lock.
-	if value, ok := s.cachedArtwork(key); ok {
+	if value, ok, err := s.cachedArtwork(key); ok || err != nil {
 		state.mu.Unlock()
-		return value, nil
+		return value, err
 	}
 	flight := &metadataFlight{done: make(chan struct{})}
 	state.flights[key] = flight
 	state.mu.Unlock()
 	value, err := query()
 	if err == nil {
-		if data, e := marshalArtwork(value); e == nil {
+		data, encodeErr := marshalArtwork(value)
+		if encodeErr != nil {
+			err = fmt.Errorf("encode Gallery metadata cache: %w", encodeErr)
+		} else {
 			state.cache.putValidated(key, data, s.expiry(c, session), func() bool { return s.canCache(ctx, c, session) })
 		}
 	}
@@ -257,7 +258,7 @@ func (s *Service) Artwork(ctx context.Context, account, artwork int64) (pixiv.Ar
 // ConcurrentReads reports the configured Gallery query worker count.
 func (s *Service) ConcurrentReads() int {
 	if s == nil || s.reads == nil {
-		return 4
+		return DefaultConcurrency
 	}
 	return s.reads.config.Concurrency
 }
@@ -303,15 +304,12 @@ func cacheResource(value sdk.Resource) cachedResource {
 	out := cachedResource{
 		URL:                 value.URL,
 		RequestHeaders:      value.RequestHeaders,
+		ExpiresAt:           value.ExpiresAt,
 		RequiresCredentials: value.RequiresCredentials,
 	}
 	if !value.Ref.IsZero() {
 		ref := value.Ref
 		out.Ref = &ref
-	}
-	if value.ExpiresAt != nil {
-		expires := *value.ExpiresAt
-		out.ExpiresAt = &expires
 	}
 	return out
 }
@@ -374,15 +372,16 @@ func marshalArtwork(value pixiv.Artwork) ([]byte, error) {
 	return json.Marshal(wire)
 }
 
-func (s *Service) cachedArtwork(key string) (pixiv.Artwork, bool) {
+func (s *Service) cachedArtwork(key string) (pixiv.Artwork, bool, error) {
 	chunks, release, ok := s.reads.cache.load(key)
 	defer release()
-	if !ok || len(chunks) != 1 {
-		return pixiv.Artwork{}, false
+	if !ok {
+		return pixiv.Artwork{}, false, nil
 	}
+	// Metadata entries contain exactly one JSON payload written by marshalArtwork.
 	var wire cachedArtwork
 	if err := json.Unmarshal(chunks[0], &wire); err != nil {
-		return pixiv.Artwork{}, false
+		return pixiv.Artwork{}, false, fmt.Errorf("decode Gallery metadata cache: %w", err)
 	}
-	return wire.artwork(), true
+	return wire.artwork(), true, nil
 }

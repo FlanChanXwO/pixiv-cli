@@ -82,9 +82,13 @@ func (s *Service) Issue(ctx context.Context, account, artwork int64, page int, q
 		return "", err
 	}
 	payload := base64.RawURLEncoding.EncodeToString(b)
+	return s.base + "/media/" + payload + "." + base64.RawURLEncoding.EncodeToString(s.signCapability(payload)), nil
+}
+
+func (s *Service) signCapability(payload string) []byte {
 	mac := hmac.New(sha256.New, s.key[:])
 	mac.Write([]byte(payload))
-	return s.base + "/media/" + payload + "." + base64.RawURLEncoding.EncodeToString(mac.Sum(nil)), nil
+	return mac.Sum(nil)
 }
 func (s *Service) authorized(ctx context.Context, c claims) error {
 	if ctx.Err() != nil || !time.Now().Before(c.Expires) {
@@ -110,9 +114,7 @@ func (s *Service) verify(ctx context.Context, token string) (claims, error) {
 	if err != nil {
 		return c, errCapability
 	}
-	mac := hmac.New(sha256.New, s.key[:])
-	mac.Write([]byte(payload))
-	if !hmac.Equal(sig, mac.Sum(nil)) {
+	if !hmac.Equal(sig, s.signCapability(payload)) {
 		return c, errCapability
 	}
 	b, err := base64.RawURLEncoding.DecodeString(payload)
@@ -177,10 +179,7 @@ func (s *Service) imageRequest(w http.ResponseWriter, r *http.Request) (c claims
 // openImageSession 取得账号持有者的读取快照；调用方负责关闭 Lease。
 func (s *Service) openImageSession(w http.ResponseWriter, r *http.Request, c claims) (Session, bool) {
 	session, err := s.session(r.Context(), c.Account)
-	if err != nil || session.Lease == nil || session.Lease.Value() == nil {
-		if session.Lease != nil {
-			session.Lease.Close()
-		}
+	if err != nil {
 		http.Error(w, "Image unavailable", 502)
 		return Session{}, false
 	}

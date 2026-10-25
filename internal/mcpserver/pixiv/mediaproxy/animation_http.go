@@ -1,9 +1,10 @@
+// Authenticate animation artifact requests and pin files through HTTP delivery.
+
 package mediaproxy
 
 import (
 	"context"
 	"crypto/hmac"
-	"crypto/sha256"
 	"encoding/base64"
 	"errors"
 	"io"
@@ -18,9 +19,7 @@ import (
 
 func (s *Service) animationURL(j *animationJob, kind string) string {
 	payload := j.id + "." + kind
-	mac := hmac.New(sha256.New, s.key[:])
-	mac.Write([]byte(payload))
-	return s.base + "/media/animation/" + payload + "." + base64.RawURLEncoding.EncodeToString(mac.Sum(nil))
+	return s.base + "/media/animation/" + payload + "." + base64.RawURLEncoding.EncodeToString(s.signCapability(payload))
 }
 func (s *Service) serveAnimation(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Cache-Control", "private, no-store")
@@ -53,9 +52,7 @@ func (s *Service) animationRequest(w http.ResponseWriter, r *http.Request) (kind
 		return "", nil, false, false
 	}
 	sig, err := base64.RawURLEncoding.DecodeString(parts[2])
-	mac := hmac.New(sha256.New, s.key[:])
-	mac.Write([]byte(parts[0] + "." + parts[1]))
-	if err != nil || !hmac.Equal(sig, mac.Sum(nil)) {
+	if err != nil || !hmac.Equal(sig, s.signCapability(parts[0]+"."+parts[1])) {
 		http.Error(w, "Animation authorization unavailable", 401)
 		return "", nil, false, false
 	}

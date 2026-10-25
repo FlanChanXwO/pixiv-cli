@@ -1,3 +1,5 @@
+// Own animation subscriptions, worker lifetimes, and temporary-file capacity.
+
 package mediaproxy
 
 import (
@@ -61,11 +63,6 @@ func (s *Service) ConfigureAnimations(ctx context.Context, capacity int64) error
 	}
 	root, release, err := newAnimationWorkspace(os.TempDir())
 	if err != nil {
-		return err
-	}
-	if err = os.Chmod(root, 0700); err != nil {
-		_ = release()
-		_ = os.RemoveAll(root)
 		return err
 	}
 	ctx, cancel := context.WithCancel(ctx)
@@ -195,21 +192,7 @@ func (s *Service) PrepareAnimation(ctx context.Context, account, artwork int64, 
 		j.timer = time.AfterFunc(time.Until(j.expiry), func() { a.mu.Lock(); defer a.mu.Unlock(); a.invalidateLocked(j, "expired", "expiry") })
 		a.wg.Add(1)
 		go func() { defer a.wg.Done(); s.buildAnimation(workerCtx, j) }()
-		if lease.Invalidated != nil {
-			a.sessionWG.Add(1)
-			go func() {
-				defer a.sessionWG.Done()
-				select {
-				case <-workerCtx.Done():
-				case <-lease.Invalidated:
-					a.mu.Lock()
-					defer a.mu.Unlock()
-					if workerCtx.Err() == nil {
-						a.invalidateLocked(j, "expired", "authorization")
-					}
-				}
-			}()
-		}
+		a.watchSessionLocked(j, lease.Invalidated)
 	}
 	if j.state == "ready" {
 		s.observeAnimation(ctx, AnimationObservation{Stage: "animation_cache_hit", Bytes: j.size})
@@ -218,6 +201,26 @@ func (s *Service) PrepareAnimation(ctx context.Context, account, artwork int64, 
 	j.last = time.Now()
 	a.handles[handle] = j
 	return s.animationOutputLocked(j, handle), nil
+}
+
+// watchSessionLocked registers the worker before Close can start joining it.
+func (a *animationState) watchSessionLocked(j *animationJob, invalidated <-chan struct{}) {
+	if invalidated == nil {
+		return
+	}
+	a.sessionWG.Add(1)
+	go func() {
+		defer a.sessionWG.Done()
+		select {
+		case <-j.ctx.Done():
+		case <-invalidated:
+			a.mu.Lock()
+			defer a.mu.Unlock()
+			if j.ctx.Err() == nil {
+				a.invalidateLocked(j, "expired", "authorization")
+			}
+		}
+	}()
 }
 
 // AnimationSubscription revalidates both grant and current credential generation.

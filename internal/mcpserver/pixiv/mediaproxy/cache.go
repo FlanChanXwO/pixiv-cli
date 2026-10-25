@@ -1,3 +1,5 @@
+// Account for cached and in-flight bytes, pin readers, and evict expired content.
+
 package mediaproxy
 
 import (
@@ -50,7 +52,7 @@ func (c *contentCache) invalidate(reject func(string) bool) {
 	}
 }
 func (c *contentCache) reserve(size int64) bool {
-	if size < 0 || size > c.capacity || c.capacity == 0 {
+	if size > c.capacity || c.capacity == 0 {
 		return false
 	}
 	for e := c.lru.Back(); c.used > c.capacity-size && e != nil; {
@@ -65,14 +67,6 @@ func (c *contentCache) reserve(size int64) bool {
 	}
 	c.used += size
 	return true
-}
-func (c *contentCache) get(key string) ([][]byte, bool) {
-	chunks, release, ok := c.load(key)
-	release()
-	return chunks, ok
-}
-func (c *contentCache) put(key string, data []byte, expires time.Time) {
-	c.putValidated(key, data, expires, nil)
 }
 func (c *contentCache) putValidated(key string, data []byte, expires time.Time, validate func() bool) {
 	fill := c.begin()
@@ -118,9 +112,6 @@ func (f *cacheFill) abort() {
 	f.cache.used -= f.size
 	f.done = true
 	f.chunks = nil
-}
-func (f *cacheFill) commit(key string, expires time.Time) {
-	f.commitValidated(key, expires, nil)
 }
 func (f *cacheFill) commitValidated(key string, expires time.Time, validate func() bool) {
 	if f.done {

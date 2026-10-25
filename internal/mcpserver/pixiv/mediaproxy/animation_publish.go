@@ -7,10 +7,11 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
-	"github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
 	"io"
 	"os"
 	"time"
+
+	"github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
 )
 
 // PublishAnimation retains already validated, complete encoded bytes for protected
@@ -84,11 +85,7 @@ func (s *Service) reserveAnimation(ctx context.Context, lease Session, c claims,
 	workerCtx, cancel := context.WithCancel(a.ctx)
 	j = &animationJob{key: key, id: id, version: lease.Version, format: format, dir: dir, claim: c, expiry: s.expiry(c, lease), state: "encoding", ctx: workerCtx, cancel: cancel, last: time.Now(), size: size}
 	// 已知完整长度，写入前一次预留，避免不同填充者互相耗尽剩余空间。
-	if size > a.capacity {
-		err = errAnimationCapacity
-	} else {
-		err = a.reserveLocked(j, size)
-	}
+	err = a.reserveLocked(j, size)
 	if err != nil {
 		j.done = true
 		j.state = "failed"
@@ -99,21 +96,7 @@ func (s *Service) reserveAnimation(ctx context.Context, lease Session, c claims,
 	}
 	a.jobs[key] = j
 	a.wg.Add(1)
-	if lease.Invalidated != nil {
-		a.sessionWG.Add(1)
-		go func() {
-			defer a.sessionWG.Done()
-			select {
-			case <-workerCtx.Done():
-			case <-lease.Invalidated:
-				a.mu.Lock()
-				defer a.mu.Unlock()
-				if workerCtx.Err() == nil {
-					a.invalidateLocked(j, "expired", "authorization")
-				}
-			}
-		}()
-	}
+	a.watchSessionLocked(j, lease.Invalidated)
 	a.mu.Unlock()
 	return j, nil, nil
 }
@@ -121,6 +104,7 @@ func (s *Service) reserveAnimation(ctx context.Context, lease Session, c claims,
 // writeAnimation 写入已验证的字节并发布下载 capability；失败时撤销并清理工作目录。
 func (s *Service) writeAnimation(ctx context.Context, j *animationJob, data, preview []byte) (out AnimationStatus, err error) {
 	a := s.animations
+	// Session acquisition also takes a.mu; only the final publication holds it.
 	defer a.wg.Done()
 	defer func() {
 		a.mu.Lock()
