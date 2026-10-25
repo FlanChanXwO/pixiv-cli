@@ -136,7 +136,8 @@ func (c *Client) mapArtwork(value artworkWire) (Artwork, error) {
 		PageCount:      value.PageCount,
 		XRestrict:      value.XRestrict,
 		AIType:         value.AIType,
-		Tools:          append([]string(nil), value.Tools...),
+		Tools:          append([]string{}, value.Tools...),
+		Pages:          []ArtworkPage{},
 
 		IsBookmarked:          cloneValue(value.IsBookmarked),
 		IsMuted:               cloneValue(value.IsMuted),
@@ -228,7 +229,7 @@ func (c *Client) mapArtworkPages(value artworkWire) ([]ArtworkPage, error) {
 		return pages, nil
 	}
 	if value.MetaSinglePage.OriginalImageURL == "" {
-		return nil, nil
+		return []ArtworkPage{}, nil
 	}
 	resource, err := c.newResourceWithVariant("artwork", value.ID, 0, "original", value.MetaSinglePage.OriginalImageURL)
 	if err != nil {
