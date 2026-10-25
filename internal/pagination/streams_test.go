@@ -108,6 +108,48 @@ func TestCollectStreamsOneBatchSkipsEmptyStreamsWithoutFetchingAhead(t *testing.
 	assert.Equal(t, 1, stream1Calls)
 }
 
+func TestCollectStreamsFiltersBeforeGlobalSkipAndLimit(t *testing.T) {
+	streams := []pagination.Stream[int, fakeCursor]{
+		{
+			Fetch: func(_ context.Context, cursor fakeCursor) ([]int, fakeCursor, error) {
+				if !cursor.IsZero() {
+					t.Fatalf("unexpected stream 0 cursor %q", cursor.value)
+				}
+				return []int{1, 2}, fakeCursor{}, nil
+			},
+			Include: func(value int) (bool, error) { return value%2 == 0, nil },
+			Checkpoint: func(fakeCursor, int) (fakeCursor, error) {
+				t.Fatal("stream 0 must not be checkpointed")
+				return fakeCursor{}, nil
+			},
+		},
+		{
+			Fetch: func(_ context.Context, cursor fakeCursor) ([]int, fakeCursor, error) {
+				if !cursor.IsZero() {
+					t.Fatalf("unexpected stream 1 cursor %q", cursor.value)
+				}
+				return []int{3, 4}, fakeCursor{}, nil
+			},
+			Include: func(value int) (bool, error) { return value%2 == 0, nil },
+			Checkpoint: func(fakeCursor, int) (fakeCursor, error) {
+				t.Fatal("stream 1 must not be checkpointed")
+				return fakeCursor{}, nil
+			},
+		},
+	}
+
+	items, state, result, err := pagination.CollectStreams(
+		context.Background(),
+		pagination.PagePlan{Skip: 1, Limit: 1},
+		streams,
+	)
+	require.NoError(t, err)
+	assert.Equal(t, []int{4}, items)
+	assert.Equal(t, pagination.PageResult{Returned: 1}, result)
+	assert.Equal(t, 2, state.Current)
+	assert.Equal(t, []fakeCursor{{}, {}}, state.Cursors)
+}
+
 func TestCollectStreamsFailureDiscardsEveryPartialStream(t *testing.T) {
 	boom := errors.New("second stream failed")
 	streams := []pagination.Stream[int, fakeCursor]{

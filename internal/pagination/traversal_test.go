@@ -50,6 +50,18 @@ func TestTraverseWithPreservesCommitBoundaryAndPagePlan(t *testing.T) {
 	}
 }
 
+func TestTraverseWithReportsUnconfiguredExecute(t *testing.T) {
+	_, err := pagination.TraverseWith(context.Background(), nil, pagination.PagePlan{}, nil,
+		func(context.Context, struct{}, sdk.Cursor) ([]int, sdk.Cursor, error) {
+			return nil, sdk.Cursor{}, nil
+		}, func([]int) (bool, error) {
+			return false, nil
+		})
+	if !errors.Is(err, pagination.ErrExecuteNotConfigured) {
+		t.Fatalf("error = %v", err)
+	}
+}
+
 func TestCollectWithClearsUncommittedResultsBeforeReplay(t *testing.T) {
 	firstNext := traversalTestCursor(t, "first-next")
 	var fetchCalls int
