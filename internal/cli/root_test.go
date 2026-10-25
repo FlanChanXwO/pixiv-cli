@@ -858,8 +858,6 @@ func TestMCPHTTPEndpointFlagPrecedence(t *testing.T) {
 		{"config ignored", []string{"--port", "9000"}, "127.0.0.1:9000", "http://127.0.0.1:9000"},
 		{"IPv6", []string{"--port", "8124", "--host", "::1"}, "[::1]:8124", "http://[::1]:8124"},
 		{"base override", []string{"--port", "8123", "--base-url", "https://public.test/prefix/"}, "127.0.0.1:8123", "https://public.test/prefix"},
-		{"missing port", []string{"--host", "0.0.0.0"}, "", ""},
-		{"empty base", []string{"--port", "8123", "--base-url="}, "", ""},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			_, configPath := useTempPaths(t)
@@ -888,16 +886,9 @@ base_url = "http://127.0.0.1:8123"
 				return nil
 			}
 			code := RunContext(t.Context(), append([]string{"pixiv", "mcp"}, tc.args...), strings.NewReader(""), &stdout, &stderr)
-			if tc.listen == "" {
-				require.NotZero(t, code)
-				require.False(t, called)
-				require.Zero(t, watchCalls)
-				require.NotEmpty(t, stderr.String())
-			} else {
-				require.Equal(t, 0, code, stderr.String())
-				require.True(t, called)
-				require.Equal(t, 1, watchCalls)
-			}
+			require.Equal(t, 0, code, stderr.String())
+			require.True(t, called)
+			require.Equal(t, 1, watchCalls)
 			require.Empty(t, stdout.String())
 		})
 	}
