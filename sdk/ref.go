@@ -3,7 +3,6 @@ package sdk
 import (
 	"encoding/base64"
 	"encoding/json"
-	"fmt"
 )
 
 // resourceRefFormatVersion is the encoding version of the resource reference
@@ -138,7 +137,7 @@ func decodeResourceRef(text string) (resourceRefEnvelope, error) {
 		return resourceRefEnvelope{}, NewError("", "decodeResourceRef", InvalidArgument, WithDetail("malformed reference envelope"))
 	}
 	if env.Version != resourceRefFormatVersion {
-		return resourceRefEnvelope{}, NewError("", "decodeResourceRef", InvalidArgument, WithCause(fmt.Errorf("unsupported reference format version %d", env.Version)))
+		return resourceRefEnvelope{}, NewError("", "decodeResourceRef", InvalidArgument, WithDetail("unsupported reference format version"))
 	}
 	if env.Product == "" || len(env.Payload) == 0 {
 		return resourceRefEnvelope{}, NewError("", "decodeResourceRef", InvalidArgument, WithDetail("reference missing product or payload"))

@@ -4,7 +4,6 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"errors"
-	"fmt"
 )
 
 // cursorFormatVersion is the encoding version of the cursor envelope. It is
@@ -257,7 +256,7 @@ func decodeCursor(text string) (cursorEnvelope, error) {
 		return cursorEnvelope{}, errors.New("malformed cursor envelope")
 	}
 	if env.Version != cursorFormatVersion {
-		return cursorEnvelope{}, fmt.Errorf("unsupported cursor format version %d", env.Version)
+		return cursorEnvelope{}, errors.New("unsupported cursor format version")
 	}
 	if env.Product == "" || env.Operation == "" || env.Binding <= 0 || env.QueryHash == "" || len(env.Payload) == 0 {
 		return cursorEnvelope{}, errors.New("cursor missing binding or payload")
