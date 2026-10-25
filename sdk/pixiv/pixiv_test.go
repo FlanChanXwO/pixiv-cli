@@ -8,6 +8,8 @@ import (
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/FlanChanXwO/pixiv-cli/sdk"
@@ -102,4 +104,26 @@ func TestOpenCredentialsStayPrivate(t *testing.T) {
 	require.Contains(t, output.String(), "artist")
 	require.NotContains(t, output.String(), "access-canary")
 	require.NotContains(t, output.String(), "refresh-canary")
+}
+
+func TestSaveResourceURLPropagatesCancellation(t *testing.T) {
+	api := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { fmt.Fprint(w, "file bytes") }))
+	defer api.Close()
+	httpClient := api.Client()
+	transport := httpClient.Transport.(*http.Transport)
+	transport.TLSClientConfig.ServerName = api.Listener.Addr().(*net.TCPAddr).IP.String()
+	transport.DialContext = func(ctx context.Context, network, _ string) (net.Conn, error) {
+		return (&net.Dialer{}).DialContext(ctx, network, api.Listener.Addr().String())
+	}
+	client, err := pixiv.NewWith("access-canary", pixiv.Options{HTTPClient: httpClient})
+	require.NoError(t, err)
+	path := filepath.Join(t.TempDir(), "file.bin")
+	require.NoError(t, os.WriteFile(path, []byte("original"), 0o600))
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+	_, err = client.SaveResourceURL(ctx, "https://i.pximg.net/file.bin", sdk.SaveOptions{Path: path, Progress: func(sdk.SaveProgress) { cancel() }})
+	require.ErrorIs(t, err, context.Canceled)
+	data, err := os.ReadFile(path)
+	require.NoError(t, err)
+	require.Equal(t, "original", string(data))
 }

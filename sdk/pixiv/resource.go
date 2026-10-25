@@ -1,16 +1,17 @@
+// Pixiv resource identity, locator resolution, and validated streaming.
+// Atomic saving and progress are shared through sdk.WriteResource.
+
 package pixiv
 
 import (
 	"context"
 	"encoding/json"
 	"errors"
-	"io"
 	"net/http"
 	"net/url"
 	"strings"
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/pixivapi"
-	atomicfile "github.com/FlanChanXwO/pixiv-cli/internal/storage/atomicfile"
 	"github.com/FlanChanXwO/pixiv-cli/sdk"
 )
 
@@ -192,9 +193,9 @@ func (c *Client) SaveResource(ctx context.Context, ref sdk.ResourceRef, options 
 	if response.StatusCode < 200 || response.StatusCode >= 300 {
 		return sdk.SavedResource{}, newError("SaveResource", sdk.UpstreamError, "resource returned a non-success status")
 	}
-	size, err := atomicfile.AtomicWrite(ctx, options.Path, &progressReader{src: response.Body, total: response.ContentLength(), progress: options.Progress})
+	size, err := sdk.WriteResource(ctx, product, "SaveResource", response.Body, response.ContentLength(), options)
 	if err != nil {
-		return sdk.SavedResource{}, classifyResourceWriteError("SaveResource", err)
+		return sdk.SavedResource{}, err
 	}
 	return sdk.SavedResource{Path: options.Path, Size: size, ContentType: response.ContentType()}, nil
 }
@@ -228,33 +229,11 @@ func (c *Client) SaveResourceURL(ctx context.Context, rawURL string, options sdk
 		return sdk.SavedResource{}, newError(operation, sdk.UpstreamError, "resource returned a non-success status")
 	}
 
-	size, err := atomicfile.AtomicWrite(ctx, options.Path, &progressReader{
-		src:      response.Body,
-		total:    response.ContentLength(),
-		progress: options.Progress,
-	})
+	size, err := sdk.WriteResource(ctx, product, operation, response.Body, response.ContentLength(), options)
 	if err != nil {
-		return sdk.SavedResource{}, classifyResourceWriteError(operation, err)
+		return sdk.SavedResource{}, err
 	}
 	return sdk.SavedResource{Path: options.Path, Size: size, ContentType: response.ContentType()}, nil
-}
-
-type progressReader struct {
-	src      io.Reader
-	total    int64
-	progress func(sdk.SaveProgress)
-	done     int64
-}
-
-func (r *progressReader) Read(p []byte) (int, error) {
-	n, err := r.src.Read(p)
-	if n > 0 {
-		r.done += int64(n)
-		if r.progress != nil {
-			r.progress(sdk.SaveProgress{Total: r.total, Done: r.done})
-		}
-	}
-	return n, err
 }
 
 func (c *Client) decodeResourceRef(ref sdk.ResourceRef) (resourceRefPayload, error) {
