@@ -20,13 +20,14 @@ import (
 )
 
 var (
-	releaseHeadingPattern  = regexp.MustCompile(`(?m)^# v([0-9]+\.[0-9]+\.[0-9]+(?:-[0-9A-Za-z.-]+)?)\s+[—-]\s+.+$`)
-	sectionPattern         = regexp.MustCompile(`(?m)^##\s+(.+?)\s*$`)
-	sourcePattern          = regexp.MustCompile(`https://github\.com/FlanChanXwO/pixiv-cli/(?:pull/[0-9]+|commit/[0-9a-fA-F]{7,64})`)
-	linkPattern            = regexp.MustCompile(`\[[^\]]+\]\((https://github\.com/FlanChanXwO/pixiv-cli/(?:compare/[^)\s]+|commits/[^)\s]+))\)`)
-	internalNotePattern    = regexp.MustCompile(`(?s)<!--\s*internal:(.*?)-->`)
-	internalLinkPattern    = regexp.MustCompile(`\[[^\]]+\]\((https://github\.com/FlanChanXwO/pixiv-cli/(?:pull/[0-9]+|commit/[0-9a-fA-F]{7,64}))\)`)
-	semanticVersionPattern = regexp.MustCompile(`^[0-9]+\.[0-9]+\.[0-9]+(?:-[0-9A-Za-z.-]+)?$`)
+	releaseHeadingPattern    = regexp.MustCompile(`(?m)^# v([0-9]+\.[0-9]+\.[0-9]+(?:-[0-9A-Za-z.-]+)?)\s+[—-]\s+.+$`)
+	unreleasedHeadingPattern = regexp.MustCompile(`(?m)^# (?:Unreleased|未发布)\s*$`)
+	sectionPattern           = regexp.MustCompile(`(?m)^##\s+(.+?)\s*$`)
+	sourcePattern            = regexp.MustCompile(`https://github\.com/FlanChanXwO/pixiv-cli/(?:pull/[0-9]+|commit/[0-9a-fA-F]{7,64})`)
+	linkPattern              = regexp.MustCompile(`\[[^\]]+\]\((https://github\.com/FlanChanXwO/pixiv-cli/(?:compare/[^)\s]+|commits/[^)\s]+))\)`)
+	internalNotePattern      = regexp.MustCompile(`(?s)<!--\s*internal:(.*?)-->`)
+	internalLinkPattern      = regexp.MustCompile(`\[[^\]]+\]\((https://github\.com/FlanChanXwO/pixiv-cli/(?:pull/[0-9]+|commit/[0-9a-fA-F]{7,64}))\)`)
+	semanticVersionPattern   = regexp.MustCompile(`^[0-9]+\.[0-9]+\.[0-9]+(?:-[0-9A-Za-z.-]+)?$`)
 )
 
 // githubClient 只封装发布流程需要的 GitHub REST 读取。写入历史
@@ -532,33 +533,34 @@ func runNotesValidate(arguments []string) error {
 	directory := flags.String("dir", "", "directory containing en.md and zh-CN.md")
 	previous := flags.String("previous", "", "previous v-prefixed tag; empty for the initial release")
 	auditPath := flags.String("audit", "", "optional audit JSON report whose source set must match")
+	unreleased := flags.Bool("unreleased", false, "validate the unreleased workspace, which has no version heading or compare link")
 	if err := flags.Parse(arguments); err != nil {
 		return err
 	}
 	if flags.NArg() != 0 {
 		return fmt.Errorf("validate accepts no positional arguments: %q", flags.Arg(0))
 	}
-	if *version == "" || *directory == "" {
-		return errors.New("validate requires --version and --dir")
+	if *directory == "" || (!*unreleased && *version == "") {
+		return errors.New("validate requires --dir and --version, or --unreleased")
 	}
 	if *auditPath == "" {
-		return validateReleaseDirectory(*directory, *version, *previous)
+		return validateReleaseDirectory(*directory, *version, *previous, *unreleased)
 	}
 	report, err := readAuditReport(*auditPath)
 	if err != nil {
 		return err
 	}
-	return validateSourceCoverage(*directory, *version, *previous, report)
+	return validateSourceCoverage(*directory, *version, *previous, *unreleased, report)
 }
 
 // validateReleaseDirectory 检查可发布的双语版本文件。它不依赖网络，因此既可用于
 // 文档 CI，也可用于不可变 tag 的发布前门禁。
-func validateReleaseDirectory(directory, version, previous string) error {
-	english, err := readReleaseDocument(filepath.Join(directory, "en.md"), version, englishSectionOrder)
+func validateReleaseDirectory(directory, version, previous string, unreleased bool) error {
+	english, err := readReleaseDocument(filepath.Join(directory, "en.md"), version, englishSectionOrder, unreleased)
 	if err != nil {
 		return fmt.Errorf("English changelog: %w", err)
 	}
-	chinese, err := readReleaseDocument(filepath.Join(directory, "zh-CN.md"), version, chineseSectionOrder)
+	chinese, err := readReleaseDocument(filepath.Join(directory, "zh-CN.md"), version, chineseSectionOrder, unreleased)
 	if err != nil {
 		return fmt.Errorf("Simplified Chinese changelog: %w", err)
 	}
@@ -570,6 +572,9 @@ func validateReleaseDirectory(directory, version, previous string) error {
 	}
 	if err := validateBilingualEntries(english, chinese); err != nil {
 		return err
+	}
+	if unreleased {
+		return nil
 	}
 	if err := validateCompareLink(english.compare, version, previous); err != nil {
 		return fmt.Errorf("English Full Changelog: %w", err)
@@ -601,11 +606,11 @@ func validateBilingualEntries(english, chinese releaseDocument) error {
 
 // validateSourceCoverage 将已经渲染的说明与审计报告逐项对照。它既能发现漏记的
 // PR/历史 direct commit，也拒绝无法由该版本审计报告解释的额外来源链接。
-func validateSourceCoverage(directory, version, previous string, report auditReport) error {
-	if err := validateReleaseDirectory(directory, version, previous); err != nil {
+func validateSourceCoverage(directory, version, previous string, unreleased bool, report auditReport) error {
+	if err := validateReleaseDirectory(directory, version, previous, unreleased); err != nil {
 		return err
 	}
-	english, err := readReleaseDocument(filepath.Join(directory, "en.md"), version, englishSectionOrder)
+	english, err := readReleaseDocument(filepath.Join(directory, "en.md"), version, englishSectionOrder, unreleased)
 	if err != nil {
 		return err
 	}
@@ -651,15 +656,21 @@ var chineseSectionOrder = []string{
 	"新贡献者",
 }
 
-func readReleaseDocument(path, version string, sectionOrder []string) (releaseDocument, error) {
+func readReleaseDocument(path, version string, sectionOrder []string, unreleased bool) (releaseDocument, error) {
 	body, err := os.ReadFile(path)
 	if err != nil {
 		return releaseDocument{}, err
 	}
 	content := strings.TrimSpace(string(body))
-	heading := releaseHeadingPattern.FindStringSubmatch(content)
-	if len(heading) != 2 || heading[1] != version {
-		return releaseDocument{}, fmt.Errorf("must start with heading for v%s", version)
+	if unreleased {
+		if !unreleasedHeadingPattern.MatchString(content) {
+			return releaseDocument{}, errors.New("must start with an Unreleased heading")
+		}
+	} else {
+		heading := releaseHeadingPattern.FindStringSubmatch(content)
+		if len(heading) != 2 || heading[1] != version {
+			return releaseDocument{}, fmt.Errorf("must start with heading for v%s", version)
+		}
 	}
 	document := releaseDocument{}
 	for _, match := range internalNotePattern.FindAllStringSubmatch(content, -1) {
@@ -714,10 +725,16 @@ func readReleaseDocument(path, version string, sectionOrder []string) (releaseDo
 	}
 
 	links := linkPattern.FindAllStringSubmatch(content, -1)
-	if len(links) != 1 {
+	if unreleased {
+		if len(links) > 1 {
+			return releaseDocument{}, errors.New("must contain at most one Full Changelog link")
+		}
+	} else if len(links) != 1 {
 		return releaseDocument{}, errors.New("must contain exactly one Full Changelog link")
 	}
-	document.compare = links[0][1]
+	if len(links) == 1 {
+		document.compare = links[0][1]
+	}
 	document.sources = sortedUnique(document.sources)
 	document.internal = sortedUnique(document.internal)
 	return document, nil

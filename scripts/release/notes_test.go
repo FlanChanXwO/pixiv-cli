@@ -32,7 +32,7 @@ func TestValidateAcceptsMatchingBilingualReleaseNotes(t *testing.T) {
 **完整变更**：[v1.1.0...v1.2.0](https://github.com/FlanChanXwO/pixiv-cli/compare/v1.1.0...v1.2.0)
 `)
 
-	if err := validateReleaseDirectory(root, "1.2.0", "v1.1.0"); err != nil {
+	if err := validateReleaseDirectory(root, "1.2.0", "v1.1.0", false); err != nil {
 		t.Fatalf("validate release directory: %v", err)
 	}
 }
@@ -58,7 +58,7 @@ func TestValidateRejectsMismatchedBilingualSources(t *testing.T) {
 **完整变更**：[v1.1.0...v1.2.0](https://github.com/FlanChanXwO/pixiv-cli/compare/v1.1.0...v1.2.0)
 `)
 
-	err := validateReleaseDirectory(root, "1.2.0", "v1.1.0")
+	err := validateReleaseDirectory(root, "1.2.0", "v1.1.0", false)
 	if err == nil || !strings.Contains(err.Error(), "source sets differ") {
 		t.Fatalf("validate error = %v, want bilingual source mismatch", err)
 	}
@@ -135,7 +135,7 @@ func TestValidateRejectsMaintenanceSection(t *testing.T) {
 **完整变更**：[v1.1.0...v1.2.0](https://github.com/FlanChanXwO/pixiv-cli/compare/v1.1.0...v1.2.0)
 `)
 
-	err := validateReleaseDirectory(root, "1.2.0", "v1.1.0")
+	err := validateReleaseDirectory(root, "1.2.0", "v1.1.0", false)
 	if err == nil || !strings.Contains(err.Error(), "unsupported section") {
 		t.Fatalf("validate error = %v, want unsupported section", err)
 	}
@@ -163,7 +163,7 @@ func TestValidateRejectsUnpairedBilingualEntries(t *testing.T) {
 **完整变更**：[v1.1.0...v1.2.0](https://github.com/FlanChanXwO/pixiv-cli/compare/v1.1.0...v1.2.0)
 `)
 
-	err := validateReleaseDirectory(root, "1.2.0", "v1.1.0")
+	err := validateReleaseDirectory(root, "1.2.0", "v1.1.0", false)
 	if err == nil || !strings.Contains(err.Error(), "entry count differs") {
 		t.Fatalf("validate error = %v, want bilingual entry count mismatch", err)
 	}
@@ -199,7 +199,7 @@ func TestValidateSourceCoverageAcceptsInternalMarker(t *testing.T) {
 		{URL: "https://github.com/FlanChanXwO/pixiv-cli/commit/a1b2c3d9f8e7d6c5b4a39281706f5e4d3c2b1a09"},
 	}}
 
-	if err := validateSourceCoverage(root, "1.2.0", "v1.1.0", report); err != nil {
+	if err := validateSourceCoverage(root, "1.2.0", "v1.1.0", false, report); err != nil {
 		t.Fatalf("validate source coverage: %v", err)
 	}
 	body, err := NotesFromChangelog(filepath.Join(root, "en.md"), "1.2.0")
@@ -234,7 +234,45 @@ func TestValidateRejectsInternalMarkerText(t *testing.T) {
 **完整变更**：[v1.1.0...v1.2.0](https://github.com/FlanChanXwO/pixiv-cli/compare/v1.1.0...v1.2.0)
 `)
 
-	if err := validateReleaseDirectory(root, "1.2.0", "v1.1.0"); err == nil || !strings.Contains(err.Error(), "internal marker") {
+	if err := validateReleaseDirectory(root, "1.2.0", "v1.1.0", false); err == nil || !strings.Contains(err.Error(), "internal marker") {
 		t.Fatalf("validate error = %v, want internal marker rejection", err)
+	}
+}
+
+func TestValidateAcceptsUnreleasedWorkspace(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	writeReleaseNote(t, root, "en.md", `# Unreleased
+
+## Added
+
+- Added one. ([#42](https://github.com/FlanChanXwO/pixiv-cli/pull/42))
+
+**Full Changelog**: _Added when the next version is tagged._
+
+<!-- internal:
+  [#43](https://github.com/FlanChanXwO/pixiv-cli/pull/43)
+-->
+`)
+	writeReleaseNote(t, root, "zh-CN.md", `# 未发布
+
+## 新增
+
+- 新增一。([#42](https://github.com/FlanChanXwO/pixiv-cli/pull/42))
+
+**完整变更**：打下一版 tag 时补充。
+
+<!-- internal:
+  [#43](https://github.com/FlanChanXwO/pixiv-cli/pull/43)
+-->
+`)
+	report := auditReport{Sources: []auditSource{
+		{URL: "https://github.com/FlanChanXwO/pixiv-cli/pull/42"},
+		{URL: "https://github.com/FlanChanXwO/pixiv-cli/pull/43"},
+	}}
+
+	if err := validateSourceCoverage(root, "", "", true, report); err != nil {
+		t.Fatalf("validate unreleased workspace: %v", err)
 	}
 }
