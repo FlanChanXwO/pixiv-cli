@@ -4,8 +4,9 @@
 //
 // The client is constructed from an explicit FANBOXSESSID session value and
 // never reads browsers, local account stores, or Pixiv credentials. Cookies are
-// sent only to the exact allowed FANBOX hosts, never on resource requests or
-// redirect targets. A session that expires returns CredentialsExpired.
+// sent only to allowlisted FANBOX API, page, and download hosts on the initial
+// request; redirected requests omit cookies. An expired session returns
+// CredentialsExpired.
 //
 // First-party media is exposed through sdk.Resource (URL plus an opaque ref);
 // third-party embeds keep only their canonical link and are never fetched.
