@@ -140,14 +140,14 @@ func (c *Client) mapPost(source postWire) (Post, error) {
 	if strings.TrimSpace(source.ID) == "" {
 		return Post{}, errors.New("FANBOX post has no id")
 	}
-	published, err := parseUTCTime(source.PublishedDateTime)
+	published, err := time.Parse(time.RFC3339, source.PublishedDateTime)
 	if err != nil {
-		return Post{}, newError("Post", sdk.MalformedUpstreamResponse, err)
+		return Post{}, newError("Post", sdk.MalformedUpstreamResponse, errors.New("invalid publish time"))
 	}
 	out := Post{
 		ID:            source.ID,
 		Title:         source.Title,
-		PublishedAt:   published,
+		PublishedAt:   published.UTC(),
 		CreatorID:     source.CreatorID,
 		FeeRequired:   source.FeeRequired,
 		IsRestricted:  source.IsRestricted,
@@ -373,14 +373,14 @@ func (c *Client) postList(ctx context.Context, operation, path string, cursorQue
 	}
 	var page postPageWire
 	if err := json.Unmarshal(body, &page); err != nil {
-		return sdk.Page[Post]{}, classifyError(operation, errors.New("decode FANBOX post list response"))
+		return sdk.Page[Post]{}, classifyResponseError(operation, errors.New("decode FANBOX post list response"))
 	}
 	wirePosts := page.Posts
 	if acceptItems && wirePosts == nil {
 		wirePosts = page.Items
 	}
 	if wirePosts == nil {
-		return sdk.Page[Post]{}, classifyError(operation, errors.New("FANBOX post list is missing items"))
+		return sdk.Page[Post]{}, classifyResponseError(operation, errors.New("FANBOX post list is missing items"))
 	}
 	items := make([]Post, 0, len(wirePosts))
 	for _, source := range wirePosts {
@@ -403,15 +403,4 @@ func cloneValues(source url.Values) url.Values {
 		clone[key] = append([]string(nil), values...)
 	}
 	return clone
-}
-
-func parseUTCTime(value string) (time.Time, error) {
-	if value == "" {
-		return time.Time{}, errors.New("no publish time")
-	}
-	parsed, err := time.Parse(time.RFC3339, value)
-	if err != nil {
-		return time.Time{}, err
-	}
-	return parsed.UTC(), nil
 }

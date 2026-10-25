@@ -78,26 +78,26 @@ func (c *Client) Creator(ctx context.Context, request CreatorRequest) (Creator, 
 	if request.CreatorID == "" {
 		return Creator{}, newError("Creator", sdk.InvalidArgument, errors.New("creator id is required"))
 	}
-	profile, err := c.creatorProfile(ctx, request.CreatorID)
+	profile, err := c.creatorProfile(ctx, "Creator", request.CreatorID)
 	if err != nil {
-		return Creator{}, classifyError("Creator", err)
+		return Creator{}, err
 	}
 	return c.mapCreator(profile)
 }
 
 // creatorProfile fetches and validates the raw profile response; resource
 // re-resolution reads the same fields without building resources a second time.
-func (c *Client) creatorProfile(ctx context.Context, creatorID string) (creatorProfileWire, error) {
+func (c *Client) creatorProfile(ctx context.Context, operation, creatorID string) (creatorProfileWire, error) {
 	creatorID = strings.TrimSpace(creatorID)
 	if creatorID == "" {
-		return creatorProfileWire{}, errors.New("FANBOX creator id is required")
+		return creatorProfileWire{}, classifyError(operation, errors.New("FANBOX creator id is required"))
 	}
 	var response struct {
 		Body creatorProfileWire `json:"body"`
 	}
 	query := url.Values{fanboxapi.ParamCreatorID: {creatorID}}
 	if err := c.app.GetJSON(ctx, fanboxapi.PathCreatorGet, query, &response); err != nil {
-		return creatorProfileWire{}, err
+		return creatorProfileWire{}, classifyError(operation, err)
 	}
 	profile := response.Body
 	profile.CreatorID = strings.TrimSpace(profile.CreatorID)
@@ -105,7 +105,7 @@ func (c *Client) creatorProfile(ctx context.Context, creatorID string) (creatorP
 		profile.CreatorID = creatorID
 	}
 	if strings.TrimSpace(profile.User.Name) == "" {
-		return creatorProfileWire{}, errors.New("FANBOX creator profile is missing creator id or display name")
+		return creatorProfileWire{}, newError(operation, sdk.MalformedUpstreamResponse, errors.New("FANBOX creator profile is missing creator id or display name"))
 	}
 	return profile, nil
 }
@@ -137,7 +137,7 @@ func (c *Client) Creators(ctx context.Context, request CreatorsRequest) (sdk.Pag
 	}
 	items, pageNextURL, err := decodeCreatorSummaries(body, kind)
 	if err != nil {
-		return sdk.Page[CreatorSummary]{}, classifyError("Creators", err)
+		return sdk.Page[CreatorSummary]{}, classifyResponseError("Creators", err)
 	}
 	next, err := c.buildCursor(ctx, "Creators", query, pageNextURL)
 	if err != nil {
@@ -165,7 +165,7 @@ func (c *Client) CreatorTags(ctx context.Context, request CreatorTagsRequest) ([
 	}
 	items, err := decodeFeaturedTags(response.Body)
 	if err != nil {
-		return nil, classifyError("CreatorTags", err)
+		return nil, classifyResponseError("CreatorTags", err)
 	}
 	return items, nil
 }

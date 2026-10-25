@@ -89,14 +89,15 @@ func TestSessionCredentialsStayPrivate(t *testing.T) {
 	require.NotContains(t, output.String(), credentials.FANBOXSESSID)
 }
 
-func TestOtherListsReportMalformedResponses(t *testing.T) {
+func TestResponsesReportMalformedData(t *testing.T) {
 	for _, tc := range []struct {
-		posts bool
-		body  string
+		operation, body string
 	}{
-		{false, `{"body":{}}`},
-		{true, `{"body":{}}`},
-		{true, `{"body":{"posts":[],"nextUrl":" "}}`},
+		{"CreatorTags", `{"body":{}}`},
+		{"CreatorPosts", `{"body":{}}`},
+		{"CreatorPosts", `{"body":{"posts":[],"nextUrl":" "}}`},
+		{"Post", `{"body":{"post":{"id":"p1","publishedDatetime":"response-token-canary"}}}`},
+		{"Creator", `{"body":{"creatorId":"artist","user":{}}}`},
 	} {
 		api := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			fmt.Fprint(w, tc.body)
@@ -109,13 +110,19 @@ func TestOtherListsReportMalformedResponses(t *testing.T) {
 		}
 		client, err := fanbox.OpenWith(fanbox.SessionCredentials{FANBOXSESSID: "session-canary"}, fanbox.Options{HTTPClient: httpClient})
 		require.NoError(t, err)
-		if tc.posts {
+		switch tc.operation {
+		case "CreatorPosts":
 			_, err = client.CreatorPosts(t.Context(), fanbox.CreatorPostsRequest{CreatorID: "artist"})
-		} else {
+		case "Post":
+			_, err = client.Post(t.Context(), fanbox.PostRequest{PostID: "p1"})
+		case "Creator":
+			_, err = client.Creator(t.Context(), fanbox.CreatorRequest{CreatorID: "artist"})
+		case "CreatorTags":
 			_, err = client.CreatorTags(t.Context(), fanbox.CreatorTagsRequest{CreatorID: "artist"})
 		}
 		api.Close()
-		require.Error(t, err)
+		require.Equal(t, sdk.MalformedUpstreamResponse, sdk.ReasonOf(err))
+		require.NotContains(t, fmt.Sprint(err), "response-token-canary")
 	}
 }
 

@@ -179,9 +179,9 @@ func (c *Client) resolveCreatorAssetURL(ctx context.Context, rp resourceRefPaylo
 	if rp.Creator == "" {
 		return "", errors.New("creator resource reference is missing creator id")
 	}
-	profile, err := c.creatorProfile(ctx, rp.Creator)
+	profile, err := c.creatorProfile(ctx, "resource", rp.Creator)
 	if err != nil {
-		return "", classifyError("resource", err)
+		return "", err
 	}
 	switch rp.Kind {
 	case "creator_icon":

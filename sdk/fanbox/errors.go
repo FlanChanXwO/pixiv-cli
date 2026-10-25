@@ -21,7 +21,7 @@ func classifyResponseError(operation string, err error) error {
 	if errors.As(err, &classified) {
 		return err
 	}
-	return classifyError(operation, err)
+	return newError(operation, sdk.MalformedUpstreamResponse, err)
 }
 
 // classifyError maps an adapter failure to a classified error. It preserves
