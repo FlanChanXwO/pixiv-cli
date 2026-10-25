@@ -2148,6 +2148,7 @@ func TestInvalidInputsRejectBeforeSDKExecution(t *testing.T) {
 		{name: "recommended manga rejects conflicting artwork type", tool: "pixiv_recommended", args: map[string]any{"kind": "manga", "illust_filter": map[string]any{"type": "illust"}}},
 		{name: "recommended novel rejects user filter", tool: "pixiv_recommended", args: map[string]any{"kind": "novel", "user_filter": map[string]any{"id": 401}}},
 		{name: "recommended user rejects artwork filter", tool: "pixiv_recommended", args: map[string]any{"kind": "user", "illust_filter": map[string]any{"type": "illust"}}},
+		{name: "illust detail both references", tool: "pixiv_illust_detail", args: map[string]any{"illust_id": 42, "url": "https://www.pixiv.net/artworks/42"}},
 		{name: "ranking unknown mode", tool: "pixiv_illust_ranking", args: map[string]any{"mode": "not-a-ranking"}},
 		{name: "ranking invalid calendar date", tool: "pixiv_illust_ranking", args: map[string]any{"date": "2025-02-30"}},
 	} {
