@@ -426,128 +426,99 @@ func TestCommandRejectsRecordTypeMismatch(t *testing.T) {
 	}
 }
 
-func TestCommandTextValueKeepsHumanOutputWhenStdoutIsNotTTY(t *testing.T) {
-	var output bytes.Buffer
-	data := testMachineDependencies(&output, strings.NewReader(""))
-	data.OutputIsTTY = func() bool { return false }
-
-	cmd := newTestCommand(data)
-	cmd.SetArgs([]string{"42"})
-	requireNoError(t, cmd.Execute())
-
-	got := output.String()
-	if !strings.Contains(got, "title: artwork") {
-		t.Fatalf("expected human detail output, got %q", got)
-	}
-	trimmed := strings.TrimSpace(got)
-	if strings.HasPrefix(trimmed, "{") || strings.HasPrefix(trimmed, "[") {
-		t.Fatalf("text-value output unexpectedly became machine JSON: %q", got)
-	}
-}
-
-func TestCommandTextValueAcceptsRawURLAndStdin(t *testing.T) {
-	tests := []struct {
-		name  string
-		args  []string
-		input string
+// 文本输入与 record 输入在 TTY/非 TTY 下的输出外形是 detail 自己的契约；
+// 实体字段内容由 SDK/record 层覆盖。
+func TestCommandOutputModes(t *testing.T) {
+	twoRecords := `{"id":"42","type":"illust","url":"https://www.pixiv.net/artworks/42"}
+{"id":"43","type":"manga","url":"https://www.pixiv.net/artworks/43"}
+`
+	for _, test := range []struct {
+		name   string
+		input  string
+		args   []string
+		tty    bool
+		verify func(*testing.T, string)
 	}{
 		{
-			name: "raw Pixiv URL",
-			args: []string{"https://www.pixiv.net/artworks/42"},
+			name: "text value stays human off-TTY", input: "", args: []string{"42"}, tty: false,
+			verify: func(t *testing.T, out string) {
+				if !strings.Contains(out, "title: artwork") {
+					t.Fatalf("expected human detail output, got %q", out)
+				}
+				if trimmed := strings.TrimSpace(out); strings.HasPrefix(trimmed, "{") || strings.HasPrefix(trimmed, "[") {
+					t.Fatalf("text-value output unexpectedly became machine JSON: %q", out)
+				}
+			},
 		},
 		{
-			name:  "stdin raw ID",
-			input: "42\n",
+			name: "raw URL", input: "", args: []string{"https://www.pixiv.net/artworks/42"}, tty: false,
+			verify: func(t *testing.T, out string) {
+				if !strings.Contains(out, "title: artwork") {
+					t.Fatalf("expected human detail output, got %q", out)
+				}
+			},
 		},
-	}
-
-	for _, tc := range tests {
-		t.Run(tc.name, func(t *testing.T) {
+		{
+			name: "stdin ID", input: "42\n", tty: false,
+			verify: func(t *testing.T, out string) {
+				if !strings.Contains(out, "title: artwork") {
+					t.Fatalf("expected human detail output, got %q", out)
+				}
+			},
+		},
+		{
+			name: "text value NDJSON overrides TTY", input: "", args: []string{"42", "--ndjson"}, tty: true,
+			verify: func(t *testing.T, out string) {
+				records := decodeMachineRecords(t, out)
+				if len(records) != 1 || records[0]["id"] != "42" || records[0]["type"] != "illust" {
+					t.Fatalf("unexpected text-value canonical output: %q", out)
+				}
+			},
+		},
+		{
+			name: "record TTY separates entries", input: twoRecords, tty: true,
+			verify: func(t *testing.T, out string) {
+				if strings.Count(out, "title: artwork") != 2 {
+					t.Fatalf("expected two human detail entries, got %q", out)
+				}
+				if !strings.Contains(out, "\n---\n") {
+					t.Fatalf("expected stable separator between TTY record entries, got %q", out)
+				}
+			},
+		},
+		{
+			name: "record non-TTY auto NDJSON", input: twoRecords, tty: false,
+			verify: func(t *testing.T, out string) {
+				assertMachineRecordIDs(t, decodeMachineRecords(t, out), []string{"42", "43"})
+			},
+		},
+		{
+			name: "record explicit NDJSON", input: twoRecords, args: []string{"--ndjson"}, tty: true,
+			verify: func(t *testing.T, out string) {
+				assertMachineRecordIDs(t, decodeMachineRecords(t, out), []string{"42", "43"})
+			},
+		},
+		{
+			name: "record JSON array", input: twoRecords, args: []string{"--json"}, tty: true,
+			verify: func(t *testing.T, out string) {
+				var records []map[string]any
+				if err := json.Unmarshal([]byte(out), &records); err != nil {
+					t.Fatalf("expected one JSON array document, got %q: %v", out, err)
+				}
+				assertMachineRecordIDs(t, records, []string{"42", "43"})
+			},
+		},
+	} {
+		t.Run(test.name, func(t *testing.T) {
 			var output bytes.Buffer
-			cmd := newTestCommand(testMachineDependencies(&output, strings.NewReader(tc.input)))
-			cmd.SetArgs(tc.args)
+			data := testMachineDependencies(&output, strings.NewReader(test.input))
+			data.OutputIsTTY = func() bool { return test.tty }
+			cmd := newTestCommand(data)
+			cmd.SetArgs(test.args)
 			requireNoError(t, cmd.Execute())
-			if !strings.Contains(output.String(), "title: artwork") {
-				t.Fatalf("expected compatible human detail output, got %q", output.String())
-			}
+			test.verify(t, output.String())
 		})
 	}
-}
-
-func TestCommandTextValueNDJSONOutputsCanonicalRecord(t *testing.T) {
-	var output bytes.Buffer
-	data := testMachineDependencies(&output, strings.NewReader(""))
-	data.OutputIsTTY = func() bool { return true }
-	cmd := newTestCommand(data)
-	cmd.SetArgs([]string{"42", "--ndjson"})
-	requireNoError(t, cmd.Execute())
-
-	records := decodeMachineRecords(t, output.String())
-	if len(records) != 1 || records[0]["id"] != "42" || records[0]["type"] != "illust" {
-		t.Fatalf("unexpected text-value canonical output: %q", output.String())
-	}
-}
-
-func TestCommandRecordTTYSeparatesHumanDetails(t *testing.T) {
-	var output bytes.Buffer
-	data := testMachineDependencies(&output, strings.NewReader(`{"id":"42","type":"illust","url":"https://www.pixiv.net/artworks/42"}
-{"id":"43","type":"manga","url":"https://www.pixiv.net/artworks/43"}
-`))
-	data.OutputIsTTY = func() bool { return true }
-	cmd := newTestCommand(data)
-	cmd.SetArgs([]string{})
-	requireNoError(t, cmd.Execute())
-
-	got := output.String()
-	if strings.Count(got, "title: artwork") != 2 {
-		t.Fatalf("expected two human detail entries, got %q", got)
-	}
-	if !strings.Contains(got, "\n---\n") {
-		t.Fatalf("expected stable separator between TTY record entries, got %q", got)
-	}
-}
-
-func TestCommandRecordNonTTYAutoNDJSONPreservesOrder(t *testing.T) {
-	var output bytes.Buffer
-	data := testMachineDependencies(&output, strings.NewReader(`{"id":"42","type":"illust","url":"https://www.pixiv.net/artworks/42"}
-{"id":"43","type":"manga","url":"https://www.pixiv.net/artworks/43"}
-`))
-	data.OutputIsTTY = func() bool { return false }
-	cmd := newTestCommand(data)
-	cmd.SetArgs([]string{})
-	requireNoError(t, cmd.Execute())
-
-	assertMachineRecordIDs(t, decodeMachineRecords(t, output.String()), []string{"42", "43"})
-}
-
-func TestCommandRecordExplicitNDJSONOverridesTTY(t *testing.T) {
-	var output bytes.Buffer
-	data := testMachineDependencies(&output, strings.NewReader(`{"id":"42","type":"illust","url":"https://www.pixiv.net/artworks/42"}
-{"id":"43","type":"manga","url":"https://www.pixiv.net/artworks/43"}
-`))
-	data.OutputIsTTY = func() bool { return true }
-	cmd := newTestCommand(data)
-	cmd.SetArgs([]string{"--ndjson"})
-	requireNoError(t, cmd.Execute())
-
-	assertMachineRecordIDs(t, decodeMachineRecords(t, output.String()), []string{"42", "43"})
-}
-
-func TestCommandRecordJSONOutputsOrderedArray(t *testing.T) {
-	var output bytes.Buffer
-	data := testMachineDependencies(&output, strings.NewReader(`{"id":"42","type":"illust","url":"https://www.pixiv.net/artworks/42"}
-{"id":"43","type":"manga","url":"https://www.pixiv.net/artworks/43"}
-`))
-	data.OutputIsTTY = func() bool { return true }
-	cmd := newTestCommand(data)
-	cmd.SetArgs([]string{"--json"})
-	requireNoError(t, cmd.Execute())
-
-	var records []map[string]any
-	if err := json.Unmarshal(output.Bytes(), &records); err != nil {
-		t.Fatalf("expected one JSON array document, got %q: %v", output.String(), err)
-	}
-	assertMachineRecordIDs(t, records, []string{"42", "43"})
 }
 
 func TestCommandRecordMachineOutputUsesDetailTypes(t *testing.T) {
