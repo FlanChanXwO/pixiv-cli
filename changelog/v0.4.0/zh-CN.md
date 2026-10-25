@@ -4,6 +4,10 @@
 
 - `pixiv auth add` 与 `pixiv auth token` 由 `pixiv auth import` 与 `pixiv auth export` 取代；已认证搜索返回 App API 的结果。（[#14](https://github.com/FlanChanXwO/pixiv-cli/pull/14)）
 
+## 新增
+
+- 新增 macOS/Linux 与 Windows 独立安装器、带版本号的离线认证包，以及覆盖 SDK/CLI/MCP 的完整搜索筛选。（[#14](https://github.com/FlanChanXwO/pixiv-cli/pull/14)）
+
 ## 修复
 
 - v0.3 发布失败后可以从固定的原生源码恢复，修复后的版本仍包含经审核的二进制。（[#8](https://github.com/FlanChanXwO/pixiv-cli/pull/8), [#9](https://github.com/FlanChanXwO/pixiv-cli/pull/9)）

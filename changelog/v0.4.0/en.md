@@ -4,6 +4,10 @@
 
 - `pixiv auth add` and `pixiv auth token` are replaced by `pixiv auth import` and `pixiv auth export`, and authenticated search returns App API results. ([#14](https://github.com/FlanChanXwO/pixiv-cli/pull/14))
 
+## Added
+
+- Standalone installers for macOS/Linux and Windows, versioned offline auth bundles, and complete search filters across SDK/CLI/MCP. ([#14](https://github.com/FlanChanXwO/pixiv-cli/pull/14))
+
 ## Fixed
 
 - A failed v0.3 release can be recovered from the pinned native sources, so the repaired release contains the reviewed binaries. ([#8](https://github.com/FlanChanXwO/pixiv-cli/pull/8), [#9](https://github.com/FlanChanXwO/pixiv-cli/pull/9))
