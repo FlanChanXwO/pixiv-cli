@@ -1,74 +1,69 @@
 package mcpserver_test
 
 import (
+	"bufio"
+	"bytes"
 	"context"
-	"errors"
+	"encoding/json"
 	"io"
+	"os"
+	"os/exec"
+	"strconv"
 	"testing"
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver"
-	"github.com/modelcontextprotocol/go-sdk/mcp"
+	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/fanbox"
+	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv"
 	"github.com/stretchr/testify/require"
 )
 
-func TestRunStdioCancellationWaitsForToolCleanup(t *testing.T) {
-	for _, eof := range []bool{false, true} {
-		name := "signal"
-		if eof {
-			name = "EOF"
-		}
-		t.Run(name, func(t *testing.T) { testStdioCleanup(t, eof) })
-	}
-}
-
-func testStdioCleanup(t *testing.T, eof bool) {
+func TestStdioStdoutIsJSONRPC(t *testing.T) {
 	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()
-	server := mcp.NewServer(&mcp.Implementation{Name: "stdio-lifecycle", Version: "1"}, nil)
-	started, canceled, cleanup := make(chan struct{}), make(chan struct{}), make(chan struct{})
-	server.AddTool(&mcp.Tool{Name: "wait", InputSchema: map[string]any{"type": "object"}}, func(ctx context.Context, _ *mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-		close(started)
-		<-ctx.Done()
-		close(canceled)
-		<-cleanup
-		return nil, ctx.Err()
-	})
-	serverRead, clientWrite := io.Pipe()
-	clientRead, serverWrite := io.Pipe()
-	defer serverRead.Close()
-	defer clientRead.Close()
-	defer serverWrite.Close()
-	defer clientWrite.Close()
-	done := make(chan error, 1)
-	go func() { done <- mcpserver.RunStdio(ctx, server, serverRead, serverWrite) }()
-	session, err := mcp.NewClient(&mcp.Implementation{Name: "lifecycle-client", Version: "1"}, nil).Connect(t.Context(), &mcp.IOTransport{Reader: clientRead, Writer: clientWrite}, nil)
+	command := exec.CommandContext(ctx, os.Args[0], "-test.run=^TestStdioProcess$")
+	command.Env = append(os.Environ(), "PIXIV_MCP_JSONRPC_TEST_PROCESS=1")
+	var diagnostics bytes.Buffer
+	command.Stderr = &diagnostics
+	stdin, err := command.StdinPipe()
 	require.NoError(t, err)
-	defer session.Close()
-	called := make(chan struct{})
-	go func() {
-		defer close(called)
-		_, _ = session.CallTool(t.Context(), &mcp.CallToolParams{Name: "wait", Arguments: map[string]any{}})
+	stdout, err := command.StdoutPipe()
+	require.NoError(t, err)
+	require.NoError(t, command.Start())
+	defer func() {
+		if t.Failed() {
+			cancel()
+		}
+		require.NoError(t, command.Wait(), diagnostics.String())
 	}()
-	<-started
-	if eof {
-		require.NoError(t, clientWrite.Close())
-	} else {
-		cancel()
+	scanner := bufio.NewScanner(stdout)
+	for index, message := range []string{
+		`{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"test","version":"1"}}}`,
+		`{"jsonrpc":"2.0","method":"notifications/initialized","params":{}}` + "\n" + `{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"pixiv_user_detail","arguments":{"user_id":42}}}`,
+	} {
+		_, err := io.WriteString(stdin, message+"\n")
+		require.NoError(t, err)
+		require.True(t, scanner.Scan(), diagnostics.String())
+		var response map[string]json.RawMessage
+		require.NoError(t, json.Unmarshal(scanner.Bytes(), &response))
+		require.Equal(t, `"2.0"`, string(response["jsonrpc"]))
+		require.Equal(t, strconv.Itoa(index+1), string(response["id"]))
+		require.NotEmpty(t, response["result"])
+		if index == 1 {
+			require.Contains(t, string(response["result"]), `"isError":true`)
+		}
 	}
-	<-canceled
-	select {
-	case err := <-done:
-		t.Fatalf("returned before handler cleanup: %v", err)
-	default:
+	require.NoError(t, stdin.Close())
+	require.False(t, scanner.Scan(), "extra stdout beyond JSON-RPC responses")
+	require.NoError(t, scanner.Err())
+}
+
+func TestStdioProcess(t *testing.T) {
+	if os.Getenv("PIXIV_MCP_JSONRPC_TEST_PROCESS") != "1" {
+		t.Skip("subprocess entry point")
 	}
-	close(cleanup)
-	if eof {
-		require.NoError(t, <-done)
-	} else {
-		require.True(t, errors.Is(<-done, context.Canceled))
+	server := mcpserver.New(pixiv.SDKPorts{}, pixiv.Account{}, fanbox.SDKPorts{}, nil)
+	if err := mcpserver.RunStdio(t.Context(), server, os.Stdin, os.Stdout); err != nil {
+		os.Exit(1)
 	}
-	// Process exit closes stdout after the runner has joined every handler.
-	require.NoError(t, serverWrite.Close())
-	require.NoError(t, session.Close())
-	<-called
+	os.Exit(0)
 }
