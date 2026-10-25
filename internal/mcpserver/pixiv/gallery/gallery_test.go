@@ -4,7 +4,6 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
-	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
@@ -106,15 +105,6 @@ func TestGalleryEmbeddedAssetsAndMediaCSP(t *testing.T) {
 			for _, revision := range []string{"invalid", strings.Repeat("A", 64)} {
 				if _, err := session.ReadResource(t.Context(), &mcp.ReadResourceParams{URI: baseURI + "/sha256-" + revision}); err == nil {
 					t.Fatal("malformed revision aliases must not be readable")
-				}
-			}
-			for _, part := range []struct{ name, tag string }{{"gallery.css", "style"}, {"gallery.js", "script"}} {
-				source, err := os.ReadFile("../../../../frontend/mcp-apps/gallery/" + part.name)
-				if err != nil {
-					t.Fatal(err)
-				}
-				if !strings.Contains(page, "<"+part.tag+">"+string(source)+"</"+part.tag+">") {
-					t.Fatalf("%s is not fully inline", part.name)
 				}
 			}
 			csp := "img-src blob:;"

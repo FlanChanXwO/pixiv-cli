@@ -138,31 +138,33 @@ func TestTokenRefreshRotatesAndReplayRevokesOnlyItsGrant(t *testing.T) {
 	tokenRequest(t, f, form, http.StatusOK)
 }
 
-func TestTokenRejectsMismatchedBindingsWithoutConsumingCode(t *testing.T) {
-	for _, field := range []string{"code", "client_id", "redirect_uri", "resource", "scope", "code_verifier"} {
-		t.Run(field, func(t *testing.T) {
-			f := newAuthorizationFixture(t)
-			good := codeForm(t, f)
-			bad, err := url.ParseQuery(good.Encode())
-			require.NoError(t, err)
-			bad.Set(field, "wrong-binding")
-			require.Equal(t, "invalid_grant", tokenRequest(t, f, bad, 400)["error"])
-			tokenRequest(t, f, good, 200)
-		})
-	}
-}
-
-func TestTokenRefreshRejectsMismatchedBindingsWithoutRotating(t *testing.T) {
-	for _, field := range []string{"client_id", "resource", "scope"} {
-		t.Run(field, func(t *testing.T) {
-			f := newAuthorizationFixture(t)
-			pair := tokenRequest(t, f, codeForm(t, f), 200)
-			good := url.Values{"grant_type": {"refresh_token"}, "refresh_token": {pair["refresh_token"].(string)}, "client_id": {f.query.Get("client_id")}, "resource": {f.query.Get("resource")}}
-			bad, err := url.ParseQuery(good.Encode())
-			require.NoError(t, err)
-			bad.Set(field, "wrong-binding")
-			require.Equal(t, "invalid_grant", tokenRequest(t, f, bad, 400)["error"])
-			tokenRequest(t, f, good, 200)
+// TestTokenRejectsMismatchedBindingsWithoutConsuming 是 OAuth grant 绑定校验的失败
+// 模式表：code/refresh 交换在任一绑定不匹配时都返回 invalid_grant，且不消耗 code、
+// 不轮换 refresh，随后的正确请求仍然成功。
+func TestTokenRejectsMismatchedBindingsWithoutConsuming(t *testing.T) {
+	for _, test := range []struct {
+		grantType string
+		fields    []string
+	}{
+		{grantType: "code", fields: []string{"code", "client_id", "redirect_uri", "resource", "scope", "code_verifier"}},
+		{grantType: "refresh", fields: []string{"client_id", "resource", "scope"}},
+	} {
+		t.Run(test.grantType, func(t *testing.T) {
+			for _, field := range test.fields {
+				t.Run(field, func(t *testing.T) {
+					f := newAuthorizationFixture(t)
+					good := codeForm(t, f)
+					if test.grantType == "refresh" {
+						pair := tokenRequest(t, f, good, 200)
+						good = url.Values{"grant_type": {"refresh_token"}, "refresh_token": {pair["refresh_token"].(string)}, "client_id": {f.query.Get("client_id")}, "resource": {f.query.Get("resource")}}
+					}
+					bad, err := url.ParseQuery(good.Encode())
+					require.NoError(t, err)
+					bad.Set(field, "wrong-binding")
+					require.Equal(t, "invalid_grant", tokenRequest(t, f, bad, 400)["error"])
+					tokenRequest(t, f, good, 200)
+				})
+			}
 		})
 	}
 }
