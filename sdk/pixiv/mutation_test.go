@@ -2,147 +2,176 @@ package pixiv_test
 
 import (
 	"context"
-	"io"
+	"errors"
 	"net/http"
 	"slices"
-	"strings"
 	"testing"
 
 	"github.com/FlanChanXwO/pixiv-cli/sdk"
-	pixiv "github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
+	. "github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
 )
 
-func TestFollowUserRejectsUnknownRestrictBeforeNetwork(t *testing.T) {
-	calls := 0
-	rt := roundTripFunc(func(req *http.Request) (*http.Response, error) {
-		calls++
-		return nil, io.ErrUnexpectedEOF
-	})
-	client, err := pixiv.NewWith("token", pixiv.Options{HTTPClient: &http.Client{Transport: rt}})
-	if err != nil {
-		t.Fatalf("NewWith: %v", err)
-	}
-
-	err = client.FollowUser(context.Background(), pixiv.FollowUserRequest{
-		UserID:   7,
-		Restrict: pixiv.Restrict("unknown"),
-	})
-	if sdk.ReasonOf(err) != sdk.InvalidArgument {
-		t.Fatalf("ReasonOf = %q, want %q (err=%v)", sdk.ReasonOf(err), sdk.InvalidArgument, err)
-	}
-	if calls != 0 {
-		t.Fatalf("invalid restrict reached upstream %d time(s)", calls)
-	}
-}
-
-func TestFollowUserDefaultsEmptyRestrictToPublic(t *testing.T) {
-	var captured *http.Request
-	rt := roundTripFunc(func(req *http.Request) (*http.Response, error) {
-		captured = req
-		return &http.Response{
-			StatusCode: http.StatusOK,
-			Header:     http.Header{"Content-Type": {"application/json"}},
-			Body:       io.NopCloser(strings.NewReader("{}")),
-		}, nil
-	})
-	client, err := pixiv.NewWith("token", pixiv.Options{HTTPClient: &http.Client{Transport: rt}})
-	if err != nil {
-		t.Fatalf("NewWith: %v", err)
-	}
-
-	if err := client.FollowUser(context.Background(), pixiv.FollowUserRequest{UserID: 7}); err != nil {
+// TestFollowMutations 覆盖 follow/unfollow 共用 form/post 的契约，
+// 以及不确定失败不得重放。
+func TestFollowMutations(t *testing.T) {
+	client, recorder := newWireClient(t, `{}`, `{}`)
+	if err := client.FollowUser(context.Background(), FollowUserRequest{UserID: 7}); err != nil {
 		t.Fatalf("FollowUser: %v", err)
 	}
-	if captured == nil {
-		t.Fatal("follow request was not captured")
+	if err := client.UnfollowUser(context.Background(), UnfollowUserRequest{UserID: 7}); err != nil {
+		t.Fatalf("UnfollowUser: %v", err)
 	}
-	if err := captured.ParseForm(); err != nil {
-		t.Fatalf("ParseForm: %v", err)
+	for index, want := range []struct {
+		path     string
+		restrict string
+	}{
+		{path: "/v1/user/follow/add", restrict: "public"},
+		{path: "/v1/user/follow/delete"},
+	} {
+		request := recorder.request(t, index)
+		if err := request.ParseForm(); err != nil {
+			t.Fatalf("ParseForm: %v", err)
+		}
+		if request.URL.Path != want.path || request.PostForm.Get("user_id") != "7" || request.PostForm.Get("restrict") != want.restrict {
+			t.Fatalf("request %d = %q form=%v", index, request.URL.Path, request.PostForm)
+		}
 	}
-	if captured.URL.Path != "/v1/user/follow/add" || captured.PostForm.Get("restrict") != "public" {
-		t.Fatalf("request = %s form=%v", captured.URL.Path, captured.PostForm)
-	}
-}
 
-// 关注/取消关注的 uncertain failure（如 502）无法判断上游是否已生效，
-// 因此必须把错误原样返回且只发送一次请求，禁止自动重试或重放。
-func TestFollowMutationsDoNotReplayUncertainFailure(t *testing.T) {
 	for _, test := range []struct {
 		name string
-		call func(*pixiv.Client) error
+		call func(*Client) error
 	}{
-		{name: "follow", call: func(c *pixiv.Client) error {
-			return c.FollowUser(context.Background(), pixiv.FollowUserRequest{UserID: 7, Restrict: pixiv.RestrictPublic})
+		{name: "follow", call: func(c *Client) error {
+			return c.FollowUser(context.Background(), FollowUserRequest{UserID: 7, Restrict: RestrictPublic})
 		}},
-		{name: "unfollow", call: func(c *pixiv.Client) error {
-			return c.UnfollowUser(context.Background(), pixiv.UnfollowUserRequest{UserID: 7})
+		{name: "unfollow", call: func(c *Client) error {
+			return c.UnfollowUser(context.Background(), UnfollowUserRequest{UserID: 7})
 		}},
 	} {
-		t.Run(test.name, func(t *testing.T) {
+		t.Run("uncertain/"+test.name, func(t *testing.T) {
 			calls := 0
-			rt := roundTripFunc(func(req *http.Request) (*http.Response, error) {
+			rt := roundTripFunc(func(*http.Request) (*http.Response, error) {
 				calls++
-				return &http.Response{
-					StatusCode: http.StatusBadGateway,
-					Header:     http.Header{"Content-Type": {"application/json"}},
-					Body:       io.NopCloser(strings.NewReader(`{"error":"outcome unknown"}`)),
-				}, nil
+				return &http.Response{StatusCode: http.StatusBadGateway, Header: http.Header{}, Body: http.NoBody}, nil
 			})
-			client, err := pixiv.NewWith("token", pixiv.Options{HTTPClient: &http.Client{Transport: rt}})
+			client, err := NewWith("token", Options{HTTPClient: &http.Client{Transport: rt}})
 			if err != nil {
 				t.Fatalf("NewWith: %v", err)
 			}
-
-			if err := test.call(client); err == nil {
-				t.Fatalf("%s returned nil for an upstream 502", test.name)
-			}
-			if calls != 1 {
-				t.Fatalf("upstream call count = %d, want 1 for uncertain mutation", calls)
+			if err := test.call(client); err == nil || calls != 1 {
+				t.Fatalf("err = %v calls = %d, want one uncertain failure", err, calls)
 			}
 		})
 	}
-}
 
-func TestFollowMutationsRejectInvalidInputBeforeNetwork(t *testing.T) {
-	calls := 0
-	rt := roundTripFunc(func(req *http.Request) (*http.Response, error) {
-		calls++
-		return nil, io.ErrUnexpectedEOF
-	})
-	client, err := pixiv.NewWith("token", pixiv.Options{HTTPClient: &http.Client{Transport: rt}})
-	if err != nil {
-		t.Fatalf("NewWith: %v", err)
-	}
-
+	client, recorder = newWireClient(t)
 	for _, test := range []struct {
 		name string
 		call func() error
 	}{
 		{name: "follow user id", call: func() error {
-			return client.FollowUser(context.Background(), pixiv.FollowUserRequest{Restrict: pixiv.RestrictPublic})
+			return client.FollowUser(context.Background(), FollowUserRequest{Restrict: RestrictPublic})
 		}},
 		{name: "follow restrict", call: func() error {
-			return client.FollowUser(context.Background(), pixiv.FollowUserRequest{UserID: 7, Restrict: pixiv.Restrict("friends")})
+			return client.FollowUser(context.Background(), FollowUserRequest{UserID: 7, Restrict: Restrict("friends")})
 		}},
 		{name: "unfollow user id", call: func() error {
-			return client.UnfollowUser(context.Background(), pixiv.UnfollowUserRequest{})
+			return client.UnfollowUser(context.Background(), UnfollowUserRequest{})
 		}},
 	} {
-		t.Run(test.name, func(t *testing.T) {
-			err := test.call()
-			if sdk.ReasonOf(err) != sdk.InvalidArgument {
-				t.Fatalf("ReasonOf = %q, want %q (err=%v)", sdk.ReasonOf(err), sdk.InvalidArgument, err)
+		t.Run("invalid/"+test.name, func(t *testing.T) {
+			if err := test.call(); sdk.ReasonOf(err) != sdk.InvalidArgument {
+				t.Fatalf("ReasonOf = %q", sdk.ReasonOf(err))
 			}
 		})
 	}
-	if calls != 0 {
-		t.Fatalf("invalid input reached upstream %d time(s)", calls)
+	if recorder.calls() != 0 {
+		t.Fatalf("invalid input reached upstream %d time(s)", recorder.calls())
 	}
 }
 
-// Read-back 编排（写入后用同账号 read 确认真实状态、删除后确认恢复）由调用方
-// 基于既有 public read 操作组合；本测试只证明该编排可离线测试，2xx 本身不代表
-// 状态已改变；live read-back 仍由真实环境 manifest 覆盖。
+// TestNovelBookmarkMutations 覆盖 add/remove 的 candidate path、form 与默认 restrict。
+func TestNovelBookmarkMutations(t *testing.T) {
+	client, recorder := newWireClient(t, `{}`, `{}`, `{}`)
+	if err := client.AddNovelBookmark(context.Background(), AddNovelBookmarkRequest{
+		NovelID: 42, Restrict: RestrictPrivate, Tags: []string{"story", "favorite"},
+	}); err != nil {
+		t.Fatalf("AddNovelBookmark: %v", err)
+	}
+	if err := client.AddNovelBookmark(context.Background(), AddNovelBookmarkRequest{NovelID: 43}); err != nil {
+		t.Fatalf("AddNovelBookmark default: %v", err)
+	}
+	if err := client.RemoveNovelBookmark(context.Background(), RemoveNovelBookmarkRequest{NovelID: 42}); err != nil {
+		t.Fatalf("RemoveNovelBookmark: %v", err)
+	}
+	for index, want := range []struct {
+		path     string
+		restrict string
+		tags     []string
+	}{
+		{path: "/v2/novel/bookmark/add", restrict: "private", tags: []string{"story", "favorite"}},
+		{path: "/v2/novel/bookmark/add", restrict: "public"},
+		{path: "/v1/novel/bookmark/delete"},
+	} {
+		request := recorder.request(t, index)
+		if err := request.ParseForm(); err != nil {
+			t.Fatalf("ParseForm: %v", err)
+		}
+		if request.URL.Path != want.path || request.PostForm.Get("restrict") != want.restrict {
+			t.Fatalf("request %d = %q form=%v", index, request.URL.Path, request.PostForm)
+		}
+		if want.tags != nil && !slices.Equal(request.PostForm["tags[]"], want.tags) {
+			t.Fatalf("request %d tags = %v, want %v", index, request.PostForm["tags[]"], want.tags)
+		}
+	}
+
+	client, recorder = newWireClient(t)
+	for _, test := range []struct {
+		name string
+		call func() error
+	}{
+		{name: "add novel id", call: func() error {
+			return client.AddNovelBookmark(context.Background(), AddNovelBookmarkRequest{Restrict: RestrictPublic})
+		}},
+		{name: "add restrict", call: func() error {
+			return client.AddNovelBookmark(context.Background(), AddNovelBookmarkRequest{NovelID: 1, Restrict: Restrict("friends")})
+		}},
+		{name: "remove novel id", call: func() error {
+			return client.RemoveNovelBookmark(context.Background(), RemoveNovelBookmarkRequest{})
+		}},
+	} {
+		t.Run("invalid/"+test.name, func(t *testing.T) {
+			if err := test.call(); sdk.ReasonOf(err) != sdk.InvalidArgument {
+				t.Fatalf("ReasonOf = %q", sdk.ReasonOf(err))
+			}
+		})
+	}
+	for _, test := range []struct {
+		name string
+		call func(*Client) error
+	}{
+		{name: "add", call: func(c *Client) error {
+			return c.AddNovelBookmark(context.Background(), AddNovelBookmarkRequest{NovelID: 1})
+		}},
+		{name: "remove", call: func(c *Client) error {
+			return c.RemoveNovelBookmark(context.Background(), RemoveNovelBookmarkRequest{NovelID: 1})
+		}},
+	} {
+		t.Run("uncertain/"+test.name, func(t *testing.T) {
+			failing, failingRecorder := newWireClient(t)
+			failingRecorder.err = errors.New("uncertain transport")
+			if err := test.call(failing); err == nil || failingRecorder.calls() != 1 {
+				t.Fatalf("err = %v calls = %d", err, failingRecorder.calls())
+			}
+		})
+	}
+	if recorder.calls() != 0 {
+		t.Fatalf("invalid input reached upstream %d time(s)", recorder.calls())
+	}
+}
+
+// TestBookmarkMutationReadBackOrchestrationOffline 证明写后回读与删除后恢复
+// 可以按 public read/write 组合，2xx 本身不代表状态已改变。
 func TestBookmarkMutationReadBackOrchestrationOffline(t *testing.T) {
 	var sequence []string
 	rt := roundTripFunc(func(req *http.Request) (*http.Response, error) {
@@ -163,34 +192,25 @@ func TestBookmarkMutationReadBackOrchestrationOffline(t *testing.T) {
 			return nil, nil
 		}
 	})
-	client, err := pixiv.NewWith("token", pixiv.Options{HTTPClient: &http.Client{Transport: rt}})
+	client, err := NewWith("token", Options{HTTPClient: &http.Client{Transport: rt}})
 	if err != nil {
 		t.Fatalf("NewWith: %v", err)
 	}
 	ctx := context.Background()
-
-	if err := client.AddArtworkBookmark(ctx, pixiv.AddArtworkBookmarkRequest{ArtworkID: 77, Tags: []string{"cat"}}); err != nil {
+	if err := client.AddArtworkBookmark(ctx, AddArtworkBookmarkRequest{ArtworkID: 77, Tags: []string{"cat"}}); err != nil {
 		t.Fatalf("AddArtworkBookmark: %v", err)
 	}
-	detail, err := client.ArtworkBookmark(ctx, pixiv.ArtworkBookmarkRequest{ArtworkID: 77})
-	if err != nil {
-		t.Fatalf("read-back after add: %v", err)
+	detail, err := client.ArtworkBookmark(ctx, ArtworkBookmarkRequest{ArtworkID: 77})
+	if err != nil || len(detail.Tags) != 1 || detail.Tags[0] != "cat" {
+		t.Fatalf("read-back after add = %#v err=%v", detail, err)
 	}
-	if len(detail.Tags) != 1 || detail.Tags[0] != "cat" {
-		t.Fatalf("read-back after add did not confirm state: %#v", detail)
-	}
-
-	if err := client.RemoveArtworkBookmark(ctx, pixiv.RemoveArtworkBookmarkRequest{ArtworkID: 77}); err != nil {
+	if err := client.RemoveArtworkBookmark(ctx, RemoveArtworkBookmarkRequest{ArtworkID: 77}); err != nil {
 		t.Fatalf("RemoveArtworkBookmark: %v", err)
 	}
-	detail, err = client.ArtworkBookmark(ctx, pixiv.ArtworkBookmarkRequest{ArtworkID: 77})
-	if err != nil {
-		t.Fatalf("read-back after remove: %v", err)
+	detail, err = client.ArtworkBookmark(ctx, ArtworkBookmarkRequest{ArtworkID: 77})
+	if err != nil || len(detail.Tags) != 0 {
+		t.Fatalf("read-back after remove = %#v err=%v", detail, err)
 	}
-	if len(detail.Tags) != 0 {
-		t.Fatalf("read-back after remove did not confirm restore: %#v", detail)
-	}
-
 	want := []string{
 		http.MethodPost + " /v2/illust/bookmark/add",
 		http.MethodGet + " /v2/illust/bookmark/detail",
@@ -199,137 +219,5 @@ func TestBookmarkMutationReadBackOrchestrationOffline(t *testing.T) {
 	}
 	if !slices.Equal(sequence, want) {
 		t.Fatalf("wire sequence = %v, want %v", sequence, want)
-	}
-}
-
-func TestNovelBookmarkMutationsUseCandidatePathsAndForms(t *testing.T) {
-	var requests []*http.Request
-	rt := roundTripFunc(func(req *http.Request) (*http.Response, error) {
-		requests = append(requests, req)
-		return &http.Response{
-			StatusCode: http.StatusOK,
-			Header:     http.Header{"Content-Type": {"application/json"}},
-			Body:       io.NopCloser(strings.NewReader("{}")),
-		}, nil
-	})
-	client, err := pixiv.NewWith("token", pixiv.Options{HTTPClient: &http.Client{Transport: rt}})
-	if err != nil {
-		t.Fatalf("NewWith: %v", err)
-	}
-
-	if err := client.AddNovelBookmark(context.Background(), pixiv.AddNovelBookmarkRequest{
-		NovelID:  42,
-		Restrict: pixiv.RestrictPrivate,
-		Tags:     []string{"story", "favorite"},
-	}); err != nil {
-		t.Fatalf("AddNovelBookmark: %v", err)
-	}
-	if err := client.RemoveNovelBookmark(context.Background(), pixiv.RemoveNovelBookmarkRequest{NovelID: 42}); err != nil {
-		t.Fatalf("RemoveNovelBookmark: %v", err)
-	}
-	if len(requests) != 2 {
-		t.Fatalf("request count = %d, want 2", len(requests))
-	}
-
-	if err := requests[0].ParseForm(); err != nil {
-		t.Fatalf("ParseForm(add): %v", err)
-	}
-	if requests[0].URL.Path != "/v2/novel/bookmark/add" || requests[0].PostForm.Get("novel_id") != "42" || requests[0].PostForm.Get("restrict") != "private" || !slices.Equal(requests[0].PostForm["tags[]"], []string{"story", "favorite"}) {
-		t.Fatalf("add request = %s form=%v", requests[0].URL.Path, requests[0].PostForm)
-	}
-	if err := requests[1].ParseForm(); err != nil {
-		t.Fatalf("ParseForm(remove): %v", err)
-	}
-	if requests[1].URL.Path != "/v1/novel/bookmark/delete" || requests[1].PostForm.Get("novel_id") != "42" {
-		t.Fatalf("remove request = %s form=%v", requests[1].URL.Path, requests[1].PostForm)
-	}
-}
-
-func TestAddNovelBookmarkDefaultsEmptyRestrictToPublic(t *testing.T) {
-	var captured *http.Request
-	rt := roundTripFunc(func(req *http.Request) (*http.Response, error) {
-		captured = req
-		return &http.Response{
-			StatusCode: http.StatusOK,
-			Header:     http.Header{"Content-Type": {"application/json"}},
-			Body:       io.NopCloser(strings.NewReader("{}")),
-		}, nil
-	})
-	client, err := pixiv.NewWith("token", pixiv.Options{HTTPClient: &http.Client{Transport: rt}})
-	if err != nil {
-		t.Fatalf("NewWith: %v", err)
-	}
-
-	if err := client.AddNovelBookmark(context.Background(), pixiv.AddNovelBookmarkRequest{NovelID: 7}); err != nil {
-		t.Fatalf("AddNovelBookmark: %v", err)
-	}
-	if captured == nil {
-		t.Fatal("novel bookmark request was not captured")
-	}
-	if err := captured.ParseForm(); err != nil {
-		t.Fatalf("ParseForm: %v", err)
-	}
-	if captured.URL.Path != "/v2/novel/bookmark/add" || captured.PostForm.Get("restrict") != "public" {
-		t.Fatalf("request = %s form=%v, want public restrict", captured.URL.Path, captured.PostForm)
-	}
-}
-
-func TestNovelBookmarkMutationDoesNotReplayUncertainFailure(t *testing.T) {
-	calls := 0
-	rt := roundTripFunc(func(req *http.Request) (*http.Response, error) {
-		calls++
-		return &http.Response{
-			StatusCode: http.StatusBadGateway,
-			Header:     http.Header{"Content-Type": {"application/json"}},
-			Body:       io.NopCloser(strings.NewReader(`{"error":"outcome unknown"}`)),
-		}, nil
-	})
-	client, err := pixiv.NewWith("token", pixiv.Options{HTTPClient: &http.Client{Transport: rt}})
-	if err != nil {
-		t.Fatalf("NewWith: %v", err)
-	}
-
-	err = client.AddNovelBookmark(context.Background(), pixiv.AddNovelBookmarkRequest{NovelID: 42, Restrict: pixiv.RestrictPublic})
-	if err == nil {
-		t.Fatal("AddNovelBookmark returned nil for an upstream 502")
-	}
-	if calls != 1 {
-		t.Fatalf("upstream call count = %d, want 1 for uncertain mutation", calls)
-	}
-}
-
-func TestNovelBookmarkMutationsRejectInvalidInputBeforeNetwork(t *testing.T) {
-	calls := 0
-	rt := roundTripFunc(func(req *http.Request) (*http.Response, error) {
-		calls++
-		return nil, io.ErrUnexpectedEOF
-	})
-	client, err := pixiv.NewWith("token", pixiv.Options{HTTPClient: &http.Client{Transport: rt}})
-	if err != nil {
-		t.Fatalf("NewWith: %v", err)
-	}
-
-	for _, test := range []struct {
-		name string
-		call func() error
-	}{
-		{name: "add novel id", call: func() error {
-			return client.AddNovelBookmark(context.Background(), pixiv.AddNovelBookmarkRequest{Restrict: pixiv.RestrictPublic})
-		}},
-		{name: "add restrict", call: func() error {
-			return client.AddNovelBookmark(context.Background(), pixiv.AddNovelBookmarkRequest{NovelID: 42, Restrict: pixiv.Restrict("friends")})
-		}},
-		{name: "remove novel id", call: func() error {
-			return client.RemoveNovelBookmark(context.Background(), pixiv.RemoveNovelBookmarkRequest{})
-		}},
-	} {
-		t.Run(test.name, func(t *testing.T) {
-			if reason := sdk.ReasonOf(test.call()); reason != sdk.InvalidArgument {
-				t.Fatalf("ReasonOf = %q, want %q", reason, sdk.InvalidArgument)
-			}
-		})
-	}
-	if calls != 0 {
-		t.Fatalf("invalid request reached upstream %d time(s)", calls)
 	}
 }

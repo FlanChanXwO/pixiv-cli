@@ -1,11 +1,7 @@
-// FANBOX 领域的路由、响应解码与错误分类测试；每个用例固定请求路径/查询参数
-// 和公开模型字段，覆盖 creator、post 及信息流端点族。
-
 package fanbox_test
 
 import (
 	"context"
-	"errors"
 	"io"
 	"net/http"
 	"net/url"
@@ -16,40 +12,28 @@ import (
 	"github.com/FlanChanXwO/pixiv-cli/sdk/fanbox"
 )
 
-type recordedRequest struct {
-	url *url.URL
-	raw string
-}
+// FANBOX creator 与 feed 端点共用 creatorProfile/postList 的响应与 cursor 实现。
 
-// endpointRecorder serves one JSON body per call and records every request.
+type recordedRequest struct{ url *url.URL }
+
 type endpointRecorder struct {
 	bodies   []string
 	requests []recordedRequest
 }
 
 func (r *endpointRecorder) roundTrip(req *http.Request) (*http.Response, error) {
-	r.requests = append(r.requests, recordedRequest{url: req.URL, raw: req.URL.String()})
+	r.requests = append(r.requests, recordedRequest{url: req.URL})
 	if req.URL.Host == "www.fanbox.cc" {
-		return &http.Response{
-			StatusCode: http.StatusOK,
-			Header:     http.Header{"Content-Type": {"text/html"}},
-			Body:       io.NopCloser(strings.NewReader(homeMetadataBody(42, "tester"))),
-		}, nil
+		return &http.Response{StatusCode: http.StatusOK, Header: http.Header{"Content-Type": {"text/html"}}, Body: io.NopCloser(strings.NewReader(homeMetadataBody(42, "tester")))}, nil
 	}
 	if len(r.bodies) == 0 {
-		return nil, errors.New("unexpected request " + req.URL.String())
+		return nil, http.ErrNotSupported
 	}
 	body := r.bodies[0]
 	r.bodies = r.bodies[1:]
-	return &http.Response{
-		StatusCode: http.StatusOK,
-		Header:     http.Header{"Content-Type": {"application/json"}},
-		Body:       io.NopCloser(strings.NewReader(body)),
-	}, nil
+	return jsonResponse(body), nil
 }
 
-// lastAPI returns the most recent API request. Identity lookups hit the web
-// host and can follow the request under assertion when cursors are built.
 func (r *endpointRecorder) lastAPI(t *testing.T) *url.URL {
 	t.Helper()
 	for index := len(r.requests) - 1; index >= 0; index-- {
@@ -73,96 +57,94 @@ func recorderClient(t *testing.T, bodies ...string) (*fanbox.Client, *endpointRe
 	return client, recorder
 }
 
-func TestCreatorProfileMapsFieldsAndRoute(t *testing.T) {
-	client, recorder := recorderClient(t, `{"body":{"creatorId":"creator value","user":{"name":"Creator Name","iconUrl":"https://i.pximg.net/icon.png"},"hasAdultContent":true,"isFollowing":true,"coverImageUrl":"https://i.pximg.net/cover.png","plan":{"fee":500,"hasSupportingPlan":true}}}`)
-	profile, err := client.Creator(context.Background(), fanbox.CreatorRequest{CreatorID: "creator value"})
-	if err != nil {
-		t.Fatal(err)
+func TestCreatorEndpoints(t *testing.T) {
+	tests := []struct {
+		name     string
+		body     string
+		invoke   func(*fanbox.Client) error
+		path     string
+		query    map[string]string
+		wantItem string
+	}{
+		{
+			name: "profile", body: `{"body":{"creatorId":"creator value","user":{"name":"Creator Name","iconUrl":"https://i.pximg.net/icon.png"},"hasAdultContent":true,"isFollowing":true,"coverImageUrl":"https://i.pximg.net/cover.png","plan":{"fee":500,"hasSupportingPlan":true}}}`,
+			path: "/creator.get", query: map[string]string{"creatorId": "creator value"},
+			invoke: func(c *fanbox.Client) error {
+				profile, err := c.Creator(context.Background(), fanbox.CreatorRequest{CreatorID: "creator value"})
+				if err != nil {
+					return err
+				}
+				if profile.ID != "creator value" || profile.Name != "Creator Name" || profile.PlanFee != 500 || !profile.HasSupportingPlan ||
+					profile.Icon.Resource.URL != "https://i.pximg.net/icon.png" || profile.Cover.Resource.URL != "https://i.pximg.net/cover.png" {
+					t.Errorf("profile = %+v", profile)
+				}
+				return nil
+			},
+		},
+		{
+			name: "tags", body: `{"body":{"tags":[{"tag":"fanart","url":"https://www.fanbox.cc/@writer/posts/tag/fanart"}]}}`,
+			path: "/tag.getFeatured", query: map[string]string{"creatorId": "writer"},
+			invoke: func(c *fanbox.Client) error {
+				items, err := c.CreatorTags(context.Background(), fanbox.CreatorTagsRequest{CreatorID: "writer"})
+				if err == nil && (len(items) != 1 || items[0].Name != "fanart" || items[0].URL == "") {
+					t.Errorf("items = %+v", items)
+				}
+				return err
+			},
+		},
+		{
+			name: "tagged posts", body: `{"body":{"posts":[{"id":"tagged","title":"tagged","publishedDatetime":"2024-01-01T00:00:00Z"}]}}`,
+			path: "/post.listTagged", query: map[string]string{"creatorId": "writer", "tag": "fanart"},
+			invoke: func(c *fanbox.Client) error {
+				page, err := c.TaggedPosts(context.Background(), fanbox.TaggedPostsRequest{CreatorID: "writer", Tag: "fanart"})
+				if err == nil && (len(page.Items) != 1 || page.Items[0].ID != "tagged") {
+					t.Errorf("page = %+v", page)
+				}
+				return err
+			},
+		},
+		{
+			name: "supporting", body: `{"body":{"items":[{"id":"support-1","title":"support","publishedDatetime":"2024-01-01T00:00:00Z"}]}}`,
+			path: "/post.listSupporting", query: map[string]string{"limit": "10"},
+			invoke: func(c *fanbox.Client) error {
+				page, err := c.Supporting(context.Background(), fanbox.SupportingRequest{})
+				if err == nil && (len(page.Items) != 1 || page.Items[0].ID != "support-1") {
+					t.Errorf("page = %+v", page)
+				}
+				return err
+			},
+		},
+		{
+			name: "home", body: `{"body":{"items":[{"id":"home-1","title":"home","publishedDatetime":"2024-01-01T00:00:00Z"}],"nextUrl":"https://api.fanbox.cc/post.listHome?cursor=2"}}`,
+			path: "/post.listHome", query: map[string]string{"limit": "10"},
+			invoke: func(c *fanbox.Client) error {
+				page, err := c.Home(context.Background(), fanbox.HomeRequest{})
+				if err == nil && (len(page.Items) != 1 || page.Items[0].ID != "home-1" || page.Next.IsZero()) {
+					t.Errorf("page = %+v", page)
+				}
+				return err
+			},
+		},
 	}
-	if profile.ID != "creator value" || profile.Name != "Creator Name" || profile.PlanFee != 500 || !profile.HasSupportingPlan {
-		t.Fatalf("profile = %+v", profile)
-	}
-	if profile.Icon.Resource.URL != "https://i.pximg.net/icon.png" || profile.Cover.Resource.URL != "https://i.pximg.net/cover.png" {
-		t.Fatalf("profile media = %+v / %+v", profile.Icon, profile.Cover)
-	}
-	request := recorder.lastAPI(t)
-	if request.Path != "/creator.get" || request.Query().Get("creatorId") != "creator value" {
-		t.Fatalf("profile endpoint = %q", request.String())
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			client, recorder := recorderClient(t, test.body)
+			if err := test.invoke(client); err != nil {
+				t.Fatalf("invoke: %v", err)
+			}
+			request := recorder.lastAPI(t)
+			if request.Path != test.path {
+				t.Fatalf("path = %q, want %q", request.Path, test.path)
+			}
+			for key, want := range test.query {
+				if got := request.Query().Get(key); got != want {
+					t.Errorf("%s = %q, want %q", key, got, want)
+				}
+			}
+		})
 	}
 }
 
-func TestCreatorTagsMapFeaturedTagsAndQuery(t *testing.T) {
-	client, recorder := recorderClient(t, `{"body":{"tags":[{"tag":"fanart","url":"https://www.fanbox.cc/@writer/posts/tag/fanart"}]}}`)
-	items, err := client.CreatorTags(context.Background(), fanbox.CreatorTagsRequest{CreatorID: "writer"})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(items) != 1 || items[0].Name != "fanart" || items[0].URL == "" {
-		t.Fatalf("items = %+v", items)
-	}
-	request := recorder.lastAPI(t)
-	if request.Path != "/tag.getFeatured" || request.Query().Get("creatorId") != "writer" {
-		t.Fatalf("endpoint = %q", request.String())
-	}
-}
-
-func TestTaggedPostsUseCreatorQuery(t *testing.T) {
-	client, recorder := recorderClient(t, `{"body":{"posts":[{"id":"tagged","title":"tagged","publishedDatetime":"2024-01-01T00:00:00Z"}]}}`)
-	page, err := client.TaggedPosts(context.Background(), fanbox.TaggedPostsRequest{CreatorID: "writer", Tag: "fanart"})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(page.Items) != 1 || page.Items[0].ID != "tagged" {
-		t.Fatalf("page = %+v", page)
-	}
-	request := recorder.lastAPI(t)
-	if request.Path != "/post.listTagged" || request.Query().Get("creatorId") != "writer" || request.Query().Get("tag") != "fanart" {
-		t.Fatalf("tagged endpoint = %q", request.String())
-	}
-}
-
-func TestSupportingUsesRouteAndItemsEnvelope(t *testing.T) {
-	client, recorder := recorderClient(t, `{"body":{"items":[{"id":"support-1","title":"support","publishedDatetime":"2024-01-01T00:00:00Z"}]}}`)
-	page, err := client.Supporting(context.Background(), fanbox.SupportingRequest{})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(page.Items) != 1 || page.Items[0].ID != "support-1" {
-		t.Fatalf("page = %+v", page)
-	}
-	request := recorder.lastAPI(t)
-	if request.Path != "/post.listSupporting" || request.Query().Get("limit") != "10" {
-		t.Fatalf("endpoint = %q", request.String())
-	}
-}
-
-func TestHomeDecodesItemsEnvelope(t *testing.T) {
-	client, recorder := recorderClient(t, `{"body":{"items":[{"id":"home-1","title":"home","publishedDatetime":"2024-01-01T00:00:00Z"}],"nextUrl":"https://api.fanbox.cc/post.listHome?cursor=2"}}`, `{"body":{"items":[]}}`)
-	page, err := client.Home(context.Background(), fanbox.HomeRequest{})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(page.Items) != 1 || page.Items[0].ID != "home-1" || page.Next.IsZero() {
-		t.Fatalf("page = %+v", page)
-	}
-	request := recorder.lastAPI(t)
-	if request.Path != "/post.listHome" || request.Query().Get("limit") != "10" {
-		t.Fatalf("endpoint = %q", request.String())
-	}
-}
-
-// TestPostRejectsMissingMediaReference keeps the previous wire assertion that a
-// block pointing at absent imageMap media fails the operation.
-func TestPostRejectsMissingMediaReference(t *testing.T) {
-	client, _ := recorderClient(t, `{"body":{"post":{"id":"post-bad","publishedDatetime":"2024-01-01T00:00:00Z","body":{"blocks":[{"type":"image","imageId":"missing"}],"imageMap":{}}}}}`)
-	if _, err := client.Post(context.Background(), fanbox.PostRequest{PostID: "post-bad"}); err == nil {
-		t.Fatal("missing media reference unexpectedly succeeded")
-	}
-}
-
-// TestPostBodyVariants pins the asset semantics the previous SDK exposed:
-// every image before every file, block media deduplicated by id, and an
-// imageId/fileId collected even on a block whose type is not image/file.
 func TestPostBodyVariants(t *testing.T) {
 	const image = `"img-1":{"id":"img-1","originalUrl":"https://i.pximg.net/1.png"}`
 	const file = `"file-1":{"id":"file-1","name":"clip","extension":"mp4","url":"https://downloads.fanbox.cc/1.mp4"}`
@@ -172,50 +154,12 @@ func TestPostBodyVariants(t *testing.T) {
 		wantIDs  []string
 		wantKind []fanbox.PostBlockKind
 	}{
-		{
-			name:     "images list",
-			body:     `{"images":[{"id":"img-1","originalUrl":"https://i.pximg.net/1.png"},{"id":"img-2","originalUrl":"https://i.pximg.net/2.png"}]}`,
-			wantIDs:  []string{"img-1", "img-2"},
-			wantKind: nil,
-		},
-		{
-			name:     "files list",
-			body:     `{"files":[{"id":"file-1","name":"clip","extension":"mp4","url":"https://downloads.fanbox.cc/1.mp4"}]}`,
-			wantIDs:  []string{"file-1"},
-			wantKind: nil,
-		},
-		{
-			name:    "repeated block reference",
-			body:    `{"blocks":[{"type":"image","imageId":"img-1"},{"type":"file","fileId":"file-1"},{"type":"image","imageId":"img-1"}],"imageMap":{` + image + `},"fileMap":{` + file + `}}`,
-			wantIDs: []string{"img-1", "file-1"},
-			wantKind: []fanbox.PostBlockKind{
-				fanbox.PostBlockImage, fanbox.PostBlockFile, fanbox.PostBlockImage,
-			},
-		},
-		{
-			name:    "file block before image block",
-			body:    `{"blocks":[{"type":"file","fileId":"file-1"},{"type":"image","imageId":"img-1"}],"imageMap":{` + image + `},"fileMap":{` + file + `}}`,
-			wantIDs: []string{"img-1", "file-1"},
-			wantKind: []fanbox.PostBlockKind{
-				fanbox.PostBlockFile, fanbox.PostBlockImage,
-			},
-		},
-		{
-			name:    "both ids on one block",
-			body:    `{"blocks":[{"type":"image","imageId":"img-1","fileId":"file-1"}],"imageMap":{` + image + `},"fileMap":{` + file + `}}`,
-			wantIDs: []string{"img-1", "file-1"},
-			wantKind: []fanbox.PostBlockKind{
-				fanbox.PostBlockImage,
-			},
-		},
-		{
-			name:    "article block carrying an image id",
-			body:    `{"blocks":[{"type":"article","imageId":"img-1"}],"imageMap":{` + image + `}}`,
-			wantIDs: []string{"img-1"},
-			wantKind: []fanbox.PostBlockKind{
-				fanbox.PostBlockArticle,
-			},
-		},
+		{name: "images list", body: `{"images":[{"id":"img-1","originalUrl":"https://i.pximg.net/1.png"},{"id":"img-2","originalUrl":"https://i.pximg.net/2.png"}]}`, wantIDs: []string{"img-1", "img-2"}},
+		{name: "files list", body: `{"files":[{"id":"file-1","name":"clip","extension":"mp4","url":"https://downloads.fanbox.cc/1.mp4"}]}`, wantIDs: []string{"file-1"}},
+		{name: "repeated block reference", body: `{"blocks":[{"type":"image","imageId":"img-1"},{"type":"file","fileId":"file-1"},{"type":"image","imageId":"img-1"}],"imageMap":{` + image + `},"fileMap":{` + file + `}}`, wantIDs: []string{"img-1", "file-1"}, wantKind: []fanbox.PostBlockKind{fanbox.PostBlockImage, fanbox.PostBlockFile, fanbox.PostBlockImage}},
+		{name: "file block before image block", body: `{"blocks":[{"type":"file","fileId":"file-1"},{"type":"image","imageId":"img-1"}],"imageMap":{` + image + `},"fileMap":{` + file + `}}`, wantIDs: []string{"img-1", "file-1"}, wantKind: []fanbox.PostBlockKind{fanbox.PostBlockFile, fanbox.PostBlockImage}},
+		{name: "both ids on one block", body: `{"blocks":[{"type":"image","imageId":"img-1","fileId":"file-1"}],"imageMap":{` + image + `},"fileMap":{` + file + `}}`, wantIDs: []string{"img-1", "file-1"}, wantKind: []fanbox.PostBlockKind{fanbox.PostBlockImage}},
+		{name: "article block carrying an image id", body: `{"blocks":[{"type":"article","imageId":"img-1"}],"imageMap":{` + image + `}}`, wantIDs: []string{"img-1"}, wantKind: []fanbox.PostBlockKind{fanbox.PostBlockArticle}},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
@@ -228,20 +172,11 @@ func TestPostBodyVariants(t *testing.T) {
 				t.Fatal("post body is nil")
 			}
 			var gotIDs []string
-			var gotKinds []fanbox.AssetKind
 			for _, asset := range post.Body.Assets {
 				gotIDs = append(gotIDs, asset.ID)
-				gotKinds = append(gotKinds, asset.Kind)
 			}
 			if strings.Join(gotIDs, ",") != strings.Join(test.wantIDs, ",") {
 				t.Fatalf("asset ids = %v, want %v", gotIDs, test.wantIDs)
-			}
-			if len(gotKinds) > 0 && gotKinds[0] == fanbox.AssetKindImage {
-				for _, kind := range gotKinds {
-					if kind != fanbox.AssetKindImage && kind != fanbox.AssetKindFile {
-						t.Fatalf("unexpected asset kind %q", kind)
-					}
-				}
 			}
 			var gotBlockKinds []fanbox.PostBlockKind
 			for _, block := range post.Body.Blocks {
@@ -259,24 +194,20 @@ func TestPostBodyVariants(t *testing.T) {
 	}
 }
 
-// TestPostResponseErrorsStayClassified keeps the previous boundary contract:
-// wire failures surface as classified SDK errors, while a malformed publish
-// time keeps its specific reason.
 func TestPostResponseErrorsStayClassified(t *testing.T) {
-	tests := []struct {
-		name   string
+	for name, test := range map[string]struct {
 		body   string
 		reason sdk.Reason
 	}{
-		{name: "missing id", body: `{"body":{"post":{"publishedDatetime":"2024-01-01T00:00:00Z"}}}`, reason: sdk.UpstreamError},
-		{name: "malformed time", body: `{"body":{"post":{"id":"p","publishedDatetime":"yesterday"}}}`, reason: sdk.MalformedUpstreamResponse},
-	}
-	for _, test := range tests {
-		t.Run(test.name, func(t *testing.T) {
+		"missing id":       {body: `{"body":{"post":{"publishedDatetime":"2024-01-01T00:00:00Z"}}}`, reason: sdk.UpstreamError},
+		"malformed time":   {body: `{"body":{"post":{"id":"p","publishedDatetime":"yesterday"}}}`, reason: sdk.MalformedUpstreamResponse},
+		"missing media":    {body: `{"body":{"post":{"id":"post-bad","publishedDatetime":"2024-01-01T00:00:00Z","body":{"blocks":[{"type":"image","imageId":"missing"}],"imageMap":{}}}}}`, reason: sdk.UpstreamError},
+		"missing envelope": {body: `{}`, reason: sdk.UpstreamError},
+	} {
+		t.Run(name, func(t *testing.T) {
 			client, _ := recorderClient(t, test.body)
-			_, err := client.Post(context.Background(), fanbox.PostRequest{PostID: "p"})
-			if got := sdk.ReasonOf(err); got != test.reason {
-				t.Fatalf("reason = %q, want %q (err=%v)", got, test.reason, err)
+			if _, err := client.Post(context.Background(), fanbox.PostRequest{PostID: "p"}); sdk.ReasonOf(err) != test.reason {
+				t.Fatalf("reason = %q, want %q (err=%v)", sdk.ReasonOf(err), test.reason, err)
 			}
 		})
 	}

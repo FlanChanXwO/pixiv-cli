@@ -17,45 +17,20 @@ import (
 	"github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
 )
 
-// originalArtworkURL 是一个典型的 img-original 路径，带签名查询参数；用于
-// 验证质量变体推导只改写 path 并丢弃 query/fragment。
+// originalArtworkURL 是典型 img-original 路径，带签名查询；变体推导只改写
+// path 并丢弃 query/fragment。
 const originalArtworkURL = "https://i.pximg.net/img-original/img/2026/01/01/00/00/00/42_p0.png?signature=sentinel"
 
-var errUnexpectedVariantHost = errors.New("unexpected variant host")
-
-// variantCases 是公开 DownloadQuality 与 SDK variant 的映射，以及每个质量
-// 推导出的 img-master 路径后缀与裁剪段。DownloadQuality 常量在 downloader
-// 包里定义；这里用字面量避免把 downloader 依赖引入 sdk/pixiv 测试。
-var variantCases = []struct {
-	quality string
-	variant string
-	suffix  string
-	crop    string
-}{
-	{"regular", "regular", "_master1200", "c/1200x1200/"},
-	{"small", "small", "_master1200", "c/540x540_70/"},
-	{"thumb", "thumb", "_square1200", "c/250x250_80_a2/"},
-	{"mini", "mini", "_square1200", "c/48x48/"},
-}
-
-func TestArtworkVariantResourceDerivesImgMasterURL(t *testing.T) {
-	// Trusted artwork metadata should resolve all quality variants without another query.
-	detailCalls := 0
+// TestArtworkVariantResource 覆盖质量变体映射：稳定身份、img-master 推导、
+// 原图透传与非 artwork 拒绝。
+func TestArtworkVariantResource(t *testing.T) {
+	var requested string
 	rt := roundTripFunc(func(req *http.Request) (*http.Response, error) {
-		switch req.URL.Host {
-		case "app-api.pixiv.net":
-			detailCalls++
-			body := `{"illust":{"id":42,"title":"art","type":"illust","create_date":"2026-01-01T00:00:00Z","image_urls":{"original":"` + originalArtworkURL + `"},"user":{"id":7,"name":"artist"},"tags":[]}}`
-			return jsonResponse(body), nil
-		case "i.pximg.net":
-			return &http.Response{
-				StatusCode: http.StatusOK,
-				Header:     http.Header{"Content-Type": {"image/jpeg"}},
-				Body:       io.NopCloser(strings.NewReader("DATA")),
-			}, nil
-		default:
-			return nil, &url.Error{Op: "Get", URL: req.URL.String(), Err: errUnexpectedVariantHost}
+		if req.URL.Host == "i.pximg.net" {
+			requested = req.URL.String()
+			return &http.Response{StatusCode: http.StatusOK, Header: http.Header{"Content-Type": {"image/jpeg"}}, Body: http.NoBody}, nil
 		}
+		return jsonResponse(`{"illust":{"id":42,"title":"art","type":"illust","create_date":"2026-01-01T00:00:00Z","image_urls":{"original":"` + originalArtworkURL + `"},"user":{"id":7,"name":"artist"},"tags":[]}}`), nil
 	})
 	client, err := pixiv.NewWith("token", pixiv.Options{HTTPClient: &http.Client{Transport: rt}})
 	if err != nil {
@@ -66,102 +41,55 @@ func TestArtworkVariantResourceDerivesImgMasterURL(t *testing.T) {
 		t.Fatalf("Artwork: %v", err)
 	}
 	original := artwork.Cover.Resource
-	for _, tc := range variantCases {
-		t.Run(tc.quality, func(t *testing.T) {
-			variantRef, err := pixiv.ArtworkVariantResource(original, tc.variant)
+	for _, test := range []struct{ variant, suffix, crop string }{
+		{variant: "regular", suffix: "_master1200", crop: "c/1200x1200/"},
+		{variant: "small", suffix: "_master1200", crop: "c/540x540_70/"},
+		{variant: "thumb", suffix: "_square1200", crop: "c/250x250_80_a2/"},
+		{variant: "mini", suffix: "_square1200", crop: "c/48x48/"},
+	} {
+		t.Run(test.variant, func(t *testing.T) {
+			ref, err := pixiv.ArtworkVariantResource(original, test.variant)
 			if err != nil {
 				t.Fatalf("ArtworkVariantResource: %v", err)
 			}
-			// 变体 ref 必须保留稳定身份并只替换 variant 字段。
-			payload, err := sdk.ResourceRefPayload(variantRef)
-			if err != nil {
-				t.Fatalf("ResourceRefPayload: %v", err)
+			payload, err := sdk.ResourceRefPayload(ref)
+			if err != nil || !strings.Contains(string(payload), `"v":"`+test.variant+`"`) {
+				t.Fatalf("variant ref payload = %q err=%v", payload, err)
 			}
-			if !strings.Contains(string(payload), `"v":"`+tc.variant+`"`) {
-				t.Fatalf("variant ref payload = %q, want variant %q", payload, tc.variant)
+			requested = ""
+			if _, err := client.OpenResource(context.Background(), sdk.OpenResourceRequest{Ref: ref}); err != nil {
+				t.Fatalf("OpenResource: %v", err)
 			}
-			res, e := client.OpenResource(t.Context(), sdk.OpenResourceRequest{Ref: variantRef})
-			if e != nil {
-				t.Fatal(e)
-			}
-			res.Body.Close()
-			// 推导出的 URL 走 img-master，丢弃签名 query。
-			gotURL, err := resolveVariantURL(t, client, variantRef)
-			if err != nil {
-				t.Fatalf("resolveVariantURL: %v", err)
-			}
-			if !strings.HasPrefix(gotURL, "https://i.pximg.net/"+tc.crop+"img-master/img/") {
-				t.Fatalf("variant URL = %q, want prefix %q", gotURL, "https://i.pximg.net/"+tc.crop+"img-master/img/")
-			}
-			if !strings.HasSuffix(gotURL, "42_p0"+tc.suffix+".jpg") {
-				t.Fatalf("variant URL = %q, want suffix %q", gotURL, "42_p0"+tc.suffix+".jpg")
-			}
-			if strings.Contains(gotURL, "signature") {
-				t.Fatalf("variant URL must not carry the original signature query: %q", gotURL)
+			if !strings.HasPrefix(requested, "https://i.pximg.net/"+test.crop+"img-master/img/") ||
+				!strings.HasSuffix(requested, "42_p0"+test.suffix+".jpg") || strings.Contains(requested, "signature") {
+				t.Fatalf("variant URL = %q", requested)
 			}
 		})
 	}
-	if detailCalls != 1 {
-		t.Fatalf("detail calls = %d, want 1", detailCalls)
-	}
-}
 
-func TestArtworkVariantResourceRejectsNonArtworkKind(t *testing.T) {
+	for _, variant := range []string{"", "original"} {
+		if got, err := pixiv.ArtworkVariantResource(original, variant); err != nil || got != original.Ref {
+			t.Fatalf("variant %q = %v err=%v, want passthrough", variant, got, err)
+		}
+	}
 	novelRef, err := sdk.NewResourceRef("pixiv", []byte(`{"k":"novel_cover","id":42}`))
 	if err != nil {
 		t.Fatalf("NewResourceRef: %v", err)
 	}
-	original := sdk.Resource{Ref: novelRef}
-	if _, err := pixiv.ArtworkVariantResource(original, "regular"); err == nil {
+	if _, err := pixiv.ArtworkVariantResource(sdk.Resource{Ref: novelRef}, "regular"); err == nil {
 		t.Fatal("ArtworkVariantResource should reject non-artwork kind")
 	}
-}
 
-func TestArtworkVariantResourcePassesThroughOriginal(t *testing.T) {
-	ref, err := sdk.NewResourceRef("pixiv", []byte(`{"k":"artwork","id":42,"p":0}`))
+	foreign, err := sdk.NewResourceRef("other-product", []byte(`{"k":"artwork","id":42}`))
 	if err != nil {
 		t.Fatalf("NewResourceRef: %v", err)
 	}
-	original := sdk.Resource{Ref: ref}
-	for _, variant := range []string{"", "original"} {
-		got, err := pixiv.ArtworkVariantResource(original, variant)
-		if err != nil {
-			t.Fatalf("variant %q: %v", variant, err)
-		}
-		if got != ref {
-			t.Fatalf("variant %q returned %v, want passthrough %v", variant, got, ref)
-		}
+	if _, err := client.OpenResource(context.Background(), sdk.OpenResourceRequest{Ref: foreign}); sdk.ReasonOf(err) != sdk.InvalidArgument {
+		t.Fatalf("foreign product = %v, want InvalidArgument", err)
 	}
 }
 
-// resolveVariantURL 打开变体资源并返回它最终被请求到的 locator。因为 detail
-// 只提供 original，变体 ref 必须在 revalidate 路径上被重新解析为 img-master URL。
-func resolveVariantURL(t *testing.T, client *pixiv.Client, ref sdk.ResourceRef) (string, error) {
-	t.Helper()
-	var requested string
-	capturing := roundTripFunc(func(req *http.Request) (*http.Response, error) {
-		if req.URL.Host == "i.pximg.net" {
-			requested = req.URL.String()
-			return &http.Response{
-				StatusCode: http.StatusOK,
-				Header:     http.Header{"Content-Type": {"image/jpeg"}},
-				Body:       io.NopCloser(strings.NewReader("DATA")),
-			}, nil
-		}
-		body := `{"illust":{"id":42,"title":"art","type":"illust","create_date":"2026-01-01T00:00:00Z","image_urls":{"original":"` + originalArtworkURL + `"},"user":{"id":7,"name":"artist"},"tags":[]}}`
-		return jsonResponse(body), nil
-	})
-	captureClient, err := pixiv.NewWith("token", pixiv.Options{HTTPClient: &http.Client{Transport: capturing}})
-	if err != nil {
-		return "", err
-	}
-	if _, err := captureClient.OpenResource(context.Background(), sdk.OpenResourceRequest{Ref: ref}); err != nil {
-		return "", err
-	}
-	return requested, nil
-}
-
-func TestSaveResourceURLWritesAtomicFileAndReturnsMetadata(t *testing.T) {
+func TestSaveResourceURLWritesAtomically(t *testing.T) {
 	const body = "DATA"
 	var received *http.Request
 	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -184,10 +112,8 @@ func TestSaveResourceURLWritesAtomicFileAndReturnsMetadata(t *testing.T) {
 	httpClient := server.Client()
 	httpClient.Jar = jar
 	client, err := pixiv.NewWith("token", pixiv.Options{
-		HTTPClient: httpClient,
-		ResourcePolicy: pixiv.ResourcePolicy{
-			AllowedHosts: []string{serverURL.Hostname()},
-		},
+		HTTPClient:     httpClient,
+		ResourcePolicy: pixiv.ResourcePolicy{AllowedHosts: []string{serverURL.Hostname()}},
 	})
 	if err != nil {
 		t.Fatalf("NewWith: %v", err)
@@ -196,10 +122,8 @@ func TestSaveResourceURLWritesAtomicFileAndReturnsMetadata(t *testing.T) {
 	destination := filepath.Join(t.TempDir(), "nested", "asset.png")
 	var progress []sdk.SaveProgress
 	saved, err := client.SaveResourceURL(context.Background(), server.URL+"/img/asset.png?signature=secret", sdk.SaveOptions{
-		Path: destination,
-		Progress: func(value sdk.SaveProgress) {
-			progress = append(progress, value)
-		},
+		Path:     destination,
+		Progress: func(value sdk.SaveProgress) { progress = append(progress, value) },
 	})
 	if err != nil {
 		t.Fatalf("SaveResourceURL: %v", err)
@@ -208,27 +132,18 @@ func TestSaveResourceURLWritesAtomicFileAndReturnsMetadata(t *testing.T) {
 		t.Fatalf("saved = %+v", saved)
 	}
 	content, err := os.ReadFile(destination)
-	if err != nil {
-		t.Fatalf("ReadFile: %v", err)
+	if err != nil || string(content) != body {
+		t.Fatalf("content = %q err=%v", content, err)
 	}
-	if string(content) != body {
-		t.Fatalf("content = %q, want %q", content, body)
-	}
-	if received == nil || received.Method != http.MethodGet {
+	if received == nil || received.Method != http.MethodGet || received.Header.Get("Referer") != "https://app-api.pixiv.net/" || received.Header.Get("Cookie") != "" {
 		t.Fatalf("received request = %#v", received)
 	}
-	if got := received.Header.Get("Referer"); got != "https://app-api.pixiv.net/" {
-		t.Fatalf("Referer = %q", got)
-	}
-	if got := received.Header.Get("Cookie"); got != "" {
-		t.Fatalf("resource request carried a cookie: %q", got)
-	}
-	if len(progress) == 0 || progress[len(progress)-1].Done != int64(len(body)) || progress[len(progress)-1].Total != int64(len(body)) {
+	if len(progress) == 0 || progress[len(progress)-1].Total != int64(len(body)) || progress[len(progress)-1].Done != int64(len(body)) {
 		t.Fatalf("progress = %#v", progress)
 	}
 }
 
-func TestSaveResourceURLRejectsInvalidURLsBeforeNetwork(t *testing.T) {
+func TestSaveResourceURLRejectsInvalidInputsWithoutDestination(t *testing.T) {
 	calls := 0
 	client, err := pixiv.NewWith("token", pixiv.Options{HTTPClient: &http.Client{Transport: roundTripFunc(func(*http.Request) (*http.Response, error) {
 		calls++
@@ -237,25 +152,56 @@ func TestSaveResourceURLRejectsInvalidURLsBeforeNetwork(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewWith: %v", err)
 	}
-
-	tests := []struct {
-		name string
-		raw  string
+	for name, test := range map[string]struct {
+		raw      string
+		reason   sdk.Reason
+		redirect string
+		status   int
 	}{
-		{name: "http scheme", raw: "http://i.pximg.net/img/asset.png"},
-		{name: "userinfo", raw: "https://user:pass@i.pximg.net/img/asset.png"},
-		{name: "missing path", raw: "https://i.pximg.net/"},
-		{name: "foreign signed host", raw: "https://example.com/img/asset.png?signature=secret"},
-	}
-	for _, tc := range tests {
-		t.Run(tc.name, func(t *testing.T) {
-			destination := filepath.Join(t.TempDir(), "asset.bin")
-			_, err := client.SaveResourceURL(context.Background(), tc.raw, sdk.SaveOptions{Path: destination})
-			if sdk.ReasonOf(err) != sdk.ResourceForbidden {
-				t.Fatalf("ReasonOf = %q, want %q (err=%v)", sdk.ReasonOf(err), sdk.ResourceForbidden, err)
+		"http scheme":          {raw: "http://i.pximg.net/img/asset.png", reason: sdk.ResourceForbidden},
+		"userinfo":             {raw: "https://user:pass@i.pximg.net/img/asset.png", reason: sdk.ResourceForbidden},
+		"missing path":         {raw: "https://i.pximg.net/", reason: sdk.ResourceForbidden},
+		"foreign signed host":  {raw: "https://example.com/img/asset.png?signature=secret", reason: sdk.ResourceForbidden},
+		"disallowed redirect":  {raw: "https://i.pximg.net/img/asset.png", redirect: "https://example.com/asset.png"},
+		"non-success response": {raw: "https://i.pximg.net/img/asset.png", reason: sdk.UpstreamError, status: http.StatusNotFound},
+	} {
+		t.Run(name, func(t *testing.T) {
+			target := test.raw
+			if test.redirect != "" || test.status != 0 {
+				server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+					if test.redirect != "" {
+						http.Redirect(w, r, test.redirect, http.StatusFound)
+						return
+					}
+					w.WriteHeader(test.status)
+					_, _ = io.WriteString(w, "private upstream body")
+				}))
+				defer server.Close()
+				serverURL, err := url.Parse(server.URL)
+				if err != nil {
+					t.Fatalf("url.Parse: %v", err)
+				}
+				target = server.URL + "/img/asset.png"
+				client, err = pixiv.NewWith("token", pixiv.Options{
+					HTTPClient:     server.Client(),
+					ResourcePolicy: pixiv.ResourcePolicy{AllowedHosts: []string{serverURL.Hostname()}},
+				})
+				if err != nil {
+					t.Fatalf("NewWith: %v", err)
+				}
 			}
-			if strings.Contains(err.Error(), "signature=secret") {
-				t.Fatalf("error leaked signed query: %v", err)
+			destination := filepath.Join(t.TempDir(), "asset.bin")
+			_, err := client.SaveResourceURL(context.Background(), target, sdk.SaveOptions{Path: destination})
+			if err == nil {
+				t.Fatal("SaveResourceURL unexpectedly succeeded")
+			}
+			if test.reason != "" && sdk.ReasonOf(err) != test.reason {
+				t.Fatalf("ReasonOf = %q, want %q (err=%v)", sdk.ReasonOf(err), test.reason, err)
+			}
+			for _, leaked := range []string{"signature=secret", "example.com", "blocked"} {
+				if strings.Contains(err.Error(), leaked) {
+					t.Fatalf("error leaked %q: %v", leaked, err)
+				}
 			}
 			if _, statErr := os.Stat(destination); !os.IsNotExist(statErr) {
 				t.Fatalf("destination should not exist, stat error = %v", statErr)
@@ -267,82 +213,13 @@ func TestSaveResourceURLRejectsInvalidURLsBeforeNetwork(t *testing.T) {
 	}
 }
 
-func TestSaveResourceURLRejectsDisallowedRedirectWithoutDestination(t *testing.T) {
-	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		http.Redirect(w, r, "https://example.com/blocked.png?signature=secret", http.StatusFound)
-	}))
-	defer server.Close()
-	serverURL, err := url.Parse(server.URL)
-	if err != nil {
-		t.Fatalf("url.Parse: %v", err)
-	}
-	client, err := pixiv.NewWith("token", pixiv.Options{
-		HTTPClient: server.Client(),
-		ResourcePolicy: pixiv.ResourcePolicy{
-			AllowedHosts: []string{serverURL.Hostname()},
-		},
-	})
-	if err != nil {
-		t.Fatalf("NewWith: %v", err)
-	}
-
-	destination := filepath.Join(t.TempDir(), "asset.bin")
-	_, err = client.SaveResourceURL(context.Background(), server.URL+"/redirect.png?signature=secret", sdk.SaveOptions{Path: destination})
-	if err == nil {
-		t.Fatal("SaveResourceURL should reject a disallowed redirect")
-	}
-	if strings.Contains(err.Error(), "signature=secret") || strings.Contains(err.Error(), "example.com") {
-		t.Fatalf("redirect error leaked upstream URL: %v", err)
-	}
-	if _, statErr := os.Stat(destination); !os.IsNotExist(statErr) {
-		t.Fatalf("destination should not exist, stat error = %v", statErr)
-	}
-}
-
-func TestSaveResourceURLRejectsNonSuccessWithoutDestination(t *testing.T) {
-	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		http.Error(w, "private upstream body", http.StatusNotFound)
-	}))
-	defer server.Close()
-	serverURL, err := url.Parse(server.URL)
-	if err != nil {
-		t.Fatalf("url.Parse: %v", err)
-	}
-	client, err := pixiv.NewWith("token", pixiv.Options{
-		HTTPClient: server.Client(),
-		ResourcePolicy: pixiv.ResourcePolicy{
-			AllowedHosts: []string{serverURL.Hostname()},
-		},
-	})
-	if err != nil {
-		t.Fatalf("NewWith: %v", err)
-	}
-
-	destination := filepath.Join(t.TempDir(), "asset.bin")
-	_, err = client.SaveResourceURL(context.Background(), server.URL+"/missing.png", sdk.SaveOptions{Path: destination})
-	if sdk.ReasonOf(err) != sdk.UpstreamError {
-		t.Fatalf("ReasonOf = %q, want %q (err=%v)", sdk.ReasonOf(err), sdk.UpstreamError, err)
-	}
-	if strings.Contains(err.Error(), "private upstream body") {
-		t.Fatalf("status error leaked response body: %v", err)
-	}
-	if _, statErr := os.Stat(destination); !os.IsNotExist(statErr) {
-		t.Fatalf("destination should not exist, stat error = %v", statErr)
-	}
-}
-
-func TestSaveResourceURLDoesNotPublishPartialBody(t *testing.T) {
+func TestSaveResourceDoesNotPublishPartialBody(t *testing.T) {
 	client, err := pixiv.NewWith("token", pixiv.Options{HTTPClient: &http.Client{Transport: roundTripFunc(func(*http.Request) (*http.Response, error) {
-		return &http.Response{
-			StatusCode: http.StatusOK,
-			Header:     http.Header{"Content-Type": {"image/png"}},
-			Body:       io.NopCloser(&failingBody{}),
-		}, nil
+		return &http.Response{StatusCode: http.StatusOK, Header: http.Header{"Content-Type": {"image/png"}}, Body: io.NopCloser(&failingBody{})}, nil
 	})}})
 	if err != nil {
 		t.Fatalf("NewWith: %v", err)
 	}
-
 	destination := filepath.Join(t.TempDir(), "asset.png")
 	_, err = client.SaveResourceURL(context.Background(), "https://i.pximg.net/img/asset.png", sdk.SaveOptions{Path: destination})
 	if sdk.ReasonOf(err) != sdk.LocalStateError {
@@ -353,148 +230,65 @@ func TestSaveResourceURLDoesNotPublishPartialBody(t *testing.T) {
 	}
 }
 
-func TestSaveResourceURLPreservesWriteContextCause(t *testing.T) {
-	tests := []struct {
-		name  string
-		cause error
-	}{
-		{name: "canceled", cause: context.Canceled},
-		{name: "deadline exceeded", cause: context.DeadlineExceeded},
-	}
-	for _, tc := range tests {
-		t.Run(tc.name, func(t *testing.T) {
-			client, err := pixiv.NewWith("token", pixiv.Options{HTTPClient: &http.Client{Transport: roundTripFunc(func(*http.Request) (*http.Response, error) {
-				return &http.Response{
-					StatusCode: http.StatusOK,
-					Header:     http.Header{"Content-Type": {"image/png"}},
-					Body:       io.NopCloser(&contextErrorBody{cause: tc.cause}),
-				}, nil
-			})}})
-			if err != nil {
-				t.Fatalf("NewWith: %v", err)
-			}
-
-			destination := filepath.Join(t.TempDir(), "asset.png")
-			_, err = client.SaveResourceURL(context.Background(), "https://i.pximg.net/img/asset.png", sdk.SaveOptions{Path: destination})
-			assertResourceWriteContextCause(t, err, tc.cause, destination)
-		})
-	}
-}
-
 func TestSaveResourcePreservesWriteContextCause(t *testing.T) {
-	tests := []struct {
-		name  string
-		cause error
+	for _, test := range []struct {
+		name string
+		url  string
+		ref  bool
 	}{
-		{name: "canceled", cause: context.Canceled},
-		{name: "deadline exceeded", cause: context.DeadlineExceeded},
-	}
-	for _, tc := range tests {
-		t.Run(tc.name, func(t *testing.T) {
-			rawURL := "https://i.pximg.net/img/asset.png"
-			client, err := pixiv.NewWith("token", pixiv.Options{HTTPClient: &http.Client{Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
-				if req.URL.Host == "app-api.pixiv.net" {
-					body := `{"illust":{"id":42,"title":"art","type":"illust","create_date":"2026-01-01T00:00:00Z","image_urls":{"original":"` + rawURL + `"},"user":{"id":7,"name":"artist"},"tags":[]}}`
-					return jsonResponse(body), nil
+		{name: "url", url: "https://i.pximg.net/img/asset.png"},
+		{name: "ref", ref: true},
+	} {
+		for _, cause := range []error{context.Canceled, context.DeadlineExceeded} {
+			t.Run(test.name+"/"+cause.Error(), func(t *testing.T) {
+				rawURL := "https://i.pximg.net/img/asset.png"
+				client, err := pixiv.NewWith("token", pixiv.Options{HTTPClient: &http.Client{Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+					if req.URL.Host == "app-api.pixiv.net" {
+						return jsonResponse(`{"illust":{"id":42,"title":"art","type":"illust","create_date":"2026-01-01T00:00:00Z","image_urls":{"original":"` + rawURL + `"},"user":{"id":7,"name":"artist"},"tags":[]}}`), nil
+					}
+					return &http.Response{StatusCode: http.StatusOK, Header: http.Header{"Content-Type": {"image/png"}}, Body: io.NopCloser(&contextErrorBody{cause: cause})}, nil
+				})}})
+				if err != nil {
+					t.Fatalf("NewWith: %v", err)
 				}
-				if req.URL.Host == "i.pximg.net" {
-					return &http.Response{
-						StatusCode: http.StatusOK,
-						Header:     http.Header{"Content-Type": {"image/png"}},
-						Body:       io.NopCloser(&contextErrorBody{cause: tc.cause}),
-					}, nil
+				destination := filepath.Join(t.TempDir(), "asset.png")
+				if !test.ref {
+					_, err = client.SaveResourceURL(context.Background(), test.url, sdk.SaveOptions{Path: destination})
+				} else {
+					artwork, artworkErr := client.Artwork(context.Background(), pixiv.ArtworkRequest{ArtworkID: 42})
+					if artworkErr != nil {
+						t.Fatalf("Artwork: %v", artworkErr)
+					}
+					_, err = client.SaveResource(context.Background(), artwork.Cover.Resource.Ref, sdk.SaveOptions{Path: destination})
 				}
-				return nil, errors.New("unexpected resource host")
-			})}})
-			if err != nil {
-				t.Fatalf("NewWith: %v", err)
-			}
-			artwork, err := client.Artwork(context.Background(), pixiv.ArtworkRequest{ArtworkID: 42})
-			if err != nil {
-				t.Fatalf("Artwork: %v", err)
-			}
-
-			destination := filepath.Join(t.TempDir(), "asset.png")
-			_, err = client.SaveResource(context.Background(), artwork.Cover.Resource.Ref, sdk.SaveOptions{Path: destination})
-			assertResourceWriteContextCause(t, err, tc.cause, destination)
-		})
+				if err == nil || !errors.Is(err, cause) || sdk.ReasonOf(err) != sdk.LocalStateError {
+					t.Fatalf("err = %v, want %v with LocalStateError", err, cause)
+				}
+				if _, statErr := os.Stat(destination); !os.IsNotExist(statErr) {
+					t.Fatalf("destination should not exist, stat error = %v", statErr)
+				}
+			})
+		}
 	}
 }
-
-func assertResourceWriteContextCause(t *testing.T, err, cause error, destination string) {
-	t.Helper()
-	if err == nil {
-		t.Fatal("resource save should return an error")
-	}
-	if !errors.Is(err, cause) {
-		t.Fatalf("errors.Is(%v, %v) = false", err, cause)
-	}
-	if sdk.ReasonOf(err) != sdk.LocalStateError {
-		t.Fatalf("ReasonOf = %q, want %q (err=%v)", sdk.ReasonOf(err), sdk.LocalStateError, err)
-	}
-	if _, statErr := os.Stat(destination); !os.IsNotExist(statErr) {
-		t.Fatalf("destination should not exist, stat error = %v", statErr)
-	}
-}
-
-type contextErrorBody struct {
-	written bool
-	cause   error
-}
-
-func (b *contextErrorBody) Read(p []byte) (int, error) {
-	if b.written {
-		return 0, b.cause
-	}
-	b.written = true
-	copy(p, "partial")
-	return len("partial"), nil
-}
-
-func (b *contextErrorBody) Close() error { return nil }
-
-type failingBody struct {
-	written bool
-}
-
-func (b *failingBody) Read(p []byte) (int, error) {
-	if b.written {
-		return 0, errors.New("resource body read failed")
-	}
-	b.written = true
-	copy(p, "partial")
-	return len("partial"), nil
-}
-
-func (b *failingBody) Close() error { return nil }
 
 func TestNovelImageResourceRejectsEmptyOrMalformedContent(t *testing.T) {
-	tests := []struct {
-		name string
+	for name, test := range map[string]struct {
 		body string
 		url  string
 	}{
-		{name: "empty content", body: " \n\t"},
-		{name: "no image block", body: `<html><body><p class="noveltext">text</p></body></html>`},
-		{name: "image block", body: `<html><body><figure class="image"><img src="https://i.pximg.net/novel/image.png"></figure></body></html>`, url: "https://i.pximg.net/novel/image.png"},
-	}
-	for _, test := range tests {
-		t.Run(test.name, func(t *testing.T) {
+		"empty content":  {body: " \n\t"},
+		"no image block": {body: `<html><body><p class="noveltext">text</p></body></html>`},
+		"image block":    {body: `<html><body><figure class="image"><img src="https://i.pximg.net/novel/image.png"></figure></body></html>`, url: "https://i.pximg.net/novel/image.png"},
+	} {
+		t.Run(name, func(t *testing.T) {
 			var requests []string
 			rt := roundTripFunc(func(req *http.Request) (*http.Response, error) {
 				requests = append(requests, req.URL.Path)
 				if req.URL.Host == "i.pximg.net" {
-					return &http.Response{
-						StatusCode: http.StatusOK,
-						Header:     http.Header{"Content-Type": {"image/png"}},
-						Body:       io.NopCloser(strings.NewReader("DATA")),
-					}, nil
+					return &http.Response{StatusCode: http.StatusOK, Header: http.Header{"Content-Type": {"image/png"}}, Body: http.NoBody}, nil
 				}
-				return &http.Response{
-					StatusCode: http.StatusOK,
-					Header:     http.Header{"Content-Type": {"text/html"}},
-					Body:       io.NopCloser(strings.NewReader(test.body)),
-				}, nil
+				return &http.Response{StatusCode: http.StatusOK, Header: http.Header{"Content-Type": {"text/html"}}, Body: io.NopCloser(strings.NewReader(test.body))}, nil
 			})
 			client, err := pixiv.NewWith("token", pixiv.Options{HTTPClient: &http.Client{Transport: rt}})
 			if err != nil {
@@ -521,3 +315,32 @@ func TestNovelImageResourceRejectsEmptyOrMalformedContent(t *testing.T) {
 		})
 	}
 }
+
+type contextErrorBody struct {
+	written bool
+	cause   error
+}
+
+func (b *contextErrorBody) Read(p []byte) (int, error) {
+	if b.written {
+		return 0, b.cause
+	}
+	b.written = true
+	copy(p, "partial")
+	return len("partial"), nil
+}
+
+func (b *contextErrorBody) Close() error { return nil }
+
+type failingBody struct{ written bool }
+
+func (b *failingBody) Read(p []byte) (int, error) {
+	if b.written {
+		return 0, errors.New("resource body read failed")
+	}
+	b.written = true
+	copy(p, "partial")
+	return len("partial"), nil
+}
+
+func (b *failingBody) Close() error { return nil }

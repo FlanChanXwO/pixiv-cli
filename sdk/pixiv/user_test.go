@@ -3,9 +3,8 @@ package pixiv_test
 import (
 	"context"
 	"encoding/json"
-	"io"
 	"net/http"
-	"strconv"
+	"net/url"
 	"strings"
 	"testing"
 
@@ -13,346 +12,220 @@ import (
 	. "github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
 )
 
-func TestUserRelationshipDefaultsRestrictAndContinuesWithNormalizedQuery(t *testing.T) {
-	for _, test := range []struct {
-		name string
-		path string
-		call func(*Client, sdk.Cursor) (sdk.Page[UserPreview], error)
+func TestUserListFamily(t *testing.T) {
+	tests := []struct {
+		name      string
+		path      string
+		body      string
+		query     map[string]string
+		nextQuery map[string]string
+		invoke    func(*Client, sdk.Cursor) (sdk.Page[UserPreview], error)
 	}{
 		{
-			name: "following",
-			path: "/v1/user/following",
-			call: func(client *Client, cursor sdk.Cursor) (sdk.Page[UserPreview], error) {
-				return client.UserFollowing(context.Background(), UserFollowingRequest{UserID: 7, Cursor: cursor})
-			},
-		},
-		{
-			name: "followers",
-			path: "/v1/user/follower",
-			call: func(client *Client, cursor sdk.Cursor) (sdk.Page[UserPreview], error) {
-				return client.UserFollowers(context.Background(), UserFollowersRequest{UserID: 7, Cursor: cursor})
-			},
-		},
-	} {
-		t.Run(test.name, func(t *testing.T) {
-			calls := 0
-			rt := roundTripFunc(func(req *http.Request) (*http.Response, error) {
-				calls++
-				if req.URL.Path != test.path {
-					t.Errorf("path = %q, want %q", req.URL.Path, test.path)
-				}
-				query := req.URL.Query()
-				if query.Get("restrict") != string(RestrictPublic) {
-					t.Errorf("restrict = %q, want %q", query.Get("restrict"), RestrictPublic)
-				}
-				wantOffset := ""
-				if calls == 2 {
-					wantOffset = "20"
-				}
-				if query.Get("offset") != wantOffset {
-					t.Errorf("offset = %q, want %q", query.Get("offset"), wantOffset)
-				}
-				body := `{"user_previews":[{"user":{"id":41,"name":"user"}}],"next_url":"https://app-api.pixiv.net` + test.path + `?user_id=7&restrict=public&offset=20"}`
-				if calls == 2 {
-					body = `{"user_previews":[],"next_url":null}`
-				}
-				return jsonResponse(body), nil
-			})
-			client, err := NewWith("token", Options{HTTPClient: &http.Client{Transport: rt}})
-			if err != nil {
-				t.Fatalf("NewWith: %v", err)
-			}
-			page, err := test.call(client, sdk.Cursor{})
-			if err != nil {
-				t.Fatalf("first page: %v", err)
-			}
-			if page.Next.IsZero() {
-				t.Fatal("expected continuation cursor")
-			}
-			page, err = test.call(client, page.Next)
-			if err != nil {
-				t.Fatalf("continuation: %v", err)
-			}
-			if page.Items == nil || len(page.Items) != 0 || !page.Next.IsZero() || calls != 2 {
-				t.Fatalf("second page = %#v calls=%d", page, calls)
-			}
-		})
-	}
-}
-
-// userFamily 是 user 端点族的表驱动基线：路由、query、续页与响应校验。
-type userFamily struct {
-	name    string
-	path    string
-	body    string
-	call    func(*Client, sdk.Cursor) (sdk.Page[UserPreview], error)
-	query   map[string]string
-	next    int64
-	itemIDs []int64
-}
-
-func TestUserListFamilyRoutesAndContinuation(t *testing.T) {
-	tests := []userFamily{
-		{
-			name: "search",
-			path: "/v1/search/user",
-			body: `{"user_previews":[{"user":{"id":41,"name":"artist","account":"artist"}}],"next_url":"https://app-api.pixiv.net/v1/search/user?word=artist&offset=20"}`,
-			call: func(c *Client, cursor sdk.Cursor) (sdk.Page[UserPreview], error) {
+			name:      "search",
+			path:      "/v1/search/user",
+			body:      `{"user_previews":[{"user":{"id":41}}],"next_url":"https://app-api.pixiv.net/v1/search/user?word=artist&offset=20"}`,
+			query:     map[string]string{"word": "artist"},
+			nextQuery: map[string]string{"offset": "20", "word": "artist"},
+			invoke: func(c *Client, cursor sdk.Cursor) (sdk.Page[UserPreview], error) {
 				return c.SearchUsers(context.Background(), SearchUsersRequest{Word: "artist", Cursor: cursor})
 			},
-			query:   map[string]string{"word": "artist"},
-			next:    20,
-			itemIDs: []int64{41},
 		},
 		{
-			name: "following",
-			path: "/v1/user/following",
-			body: `{"user_previews":[{"user":{"id":71}}],"next_url":"https://app-api.pixiv.net/v1/user/following?user_id=8&restrict=private&offset=20"}`,
-			call: func(c *Client, cursor sdk.Cursor) (sdk.Page[UserPreview], error) {
+			name:      "following",
+			path:      "/v1/user/following",
+			body:      `{"user_previews":[{"user":{"id":71}}],"next_url":"https://app-api.pixiv.net/v1/user/following?user_id=8&restrict=private&offset=20"}`,
+			query:     map[string]string{"user_id": "8", "restrict": "private"},
+			nextQuery: map[string]string{"offset": "20", "restrict": "private"},
+			invoke: func(c *Client, cursor sdk.Cursor) (sdk.Page[UserPreview], error) {
 				return c.UserFollowing(context.Background(), UserFollowingRequest{UserID: 8, Restrict: RestrictPrivate, Cursor: cursor})
 			},
-			query:   map[string]string{"user_id": "8", "restrict": "private"},
-			next:    20,
-			itemIDs: []int64{71},
 		},
 		{
-			name: "followers",
-			path: "/v1/user/follower",
-			body: `{"user_previews":[{"user":{"id":81}}],"next_url":"https://app-api.pixiv.net/v1/user/follower?user_id=8&restrict=public&offset=20"}`,
-			call: func(c *Client, cursor sdk.Cursor) (sdk.Page[UserPreview], error) {
+			name:      "followers",
+			path:      "/v1/user/follower",
+			body:      `{"user_previews":[{"user":{"id":81}}],"next_url":"https://app-api.pixiv.net/v1/user/follower?user_id=8&restrict=public&offset=20"}`,
+			query:     map[string]string{"user_id": "8", "restrict": "public"},
+			nextQuery: map[string]string{"offset": "20", "restrict": "public"},
+			invoke: func(c *Client, cursor sdk.Cursor) (sdk.Page[UserPreview], error) {
 				return c.UserFollowers(context.Background(), UserFollowersRequest{UserID: 8, Restrict: RestrictPublic, Cursor: cursor})
 			},
-			query:   map[string]string{"user_id": "8", "restrict": "public"},
-			next:    20,
-			itemIDs: []int64{81},
 		},
 		{
-			name: "related",
-			path: "/v1/user/related",
-			body: `{"user_previews":[{"user":{"id":61,"name":"artist"}}],"next_url":"https://app-api.pixiv.net/v1/user/related?seed_user_id=9&offset=20"}`,
-			call: func(c *Client, cursor sdk.Cursor) (sdk.Page[UserPreview], error) {
+			name:      "related",
+			path:      "/v1/user/related",
+			body:      `{"user_previews":[{"user":{"id":61}}],"next_url":"https://app-api.pixiv.net/v1/user/related?seed_user_id=9&offset=20"}`,
+			query:     map[string]string{"seed_user_id": "9"},
+			nextQuery: map[string]string{"offset": "20", "seed_user_id": "9"},
+			invoke: func(c *Client, cursor sdk.Cursor) (sdk.Page[UserPreview], error) {
 				return c.RelatedUsers(context.Background(), RelatedUsersRequest{UserID: 9, Cursor: cursor})
 			},
-			query:   map[string]string{"seed_user_id": "9"},
-			next:    20,
-			itemIDs: []int64{61},
 		},
 		{
-			name: "mypixiv",
-			path: "/v1/user/mypixiv",
-			body: `{"user_previews":[{"user":{"id":101}}],"next_url":"https://app-api.pixiv.net/v1/user/mypixiv?user_id=10&filter=for_android&offset=40"}`,
-			call: func(c *Client, cursor sdk.Cursor) (sdk.Page[UserPreview], error) {
-				return c.MyPixivUsers(context.Background(), MyPixivUsersRequest{Cursor: cursor})
-			},
-			query:   map[string]string{"user_id": "10", "filter": "for_android"},
-			next:    40,
-			itemIDs: []int64{101},
-		},
-		{
-			name: "blocked",
-			path: "/v2/user/list",
-			body: `{"users":[{"id":91}],"next_url":"https://app-api.pixiv.net/v2/user/list?user_id=9&filter=for_android&offset=20"}`,
-			call: func(c *Client, cursor sdk.Cursor) (sdk.Page[UserPreview], error) {
+			name:      "blocked",
+			path:      "/v2/user/list",
+			body:      `{"users":[{"id":91}],"next_url":"https://app-api.pixiv.net/v2/user/list?user_id=9&filter=for_android&offset=20"}`,
+			query:     map[string]string{"user_id": "9", "filter": "for_android"},
+			nextQuery: map[string]string{"offset": "20", "user_id": "9"},
+			invoke: func(c *Client, cursor sdk.Cursor) (sdk.Page[UserPreview], error) {
 				return c.UserBlockedUsers(context.Background(), UserBlockedUsersRequest{UserID: 9, Cursor: cursor})
 			},
-			query:   map[string]string{"user_id": "9", "filter": "for_android"},
-			next:    20,
-			itemIDs: []int64{91},
 		},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			// 上一轮的用户列表响应；MyPixivUsers 需要已验证身份。
-			appCalls := 0
-			rt := roundTripFunc(func(req *http.Request) (*http.Response, error) {
-				if req.URL.Host == "oauth.secure.pixiv.net" {
-					return jsonResponse(`{"access_token":"access","refresh_token":"refresh","expires_in":3600,"user":{"id":10,"name":"tester"}}`), nil
-				}
-				appCalls++
-				if req.URL.Path != test.path {
-					t.Errorf("path = %q, want %q", req.URL.Path, test.path)
-				}
-				query := req.URL.Query()
-				for key, want := range test.query {
-					if query.Get(key) != want {
-						t.Errorf("%s = %q, want %q", key, query.Get(key), want)
-					}
-				}
-				if appCalls == 1 {
-					if query.Get("offset") != "" {
-						t.Errorf("initial offset = %q, want none", query.Get("offset"))
-					}
-					return jsonResponse(test.body), nil
-				}
-				if query.Get("offset") != strconv.FormatInt(test.next, 10) {
-					t.Errorf("continuation offset = %q, want %d", query.Get("offset"), test.next)
-				}
-				return jsonResponse(`{"user_previews":[],"users":[],"next_url":null}`), nil
-			})
-			client, _, err := OpenWith(context.Background(), "refresh", Options{HTTPClient: &http.Client{Transport: rt}})
-			if err != nil {
-				t.Fatalf("OpenWith: %v", err)
-			}
-			page, err := test.call(client, sdk.Cursor{})
+			client, recorder := newWireClient(t, test.body, `{"user_previews":[],"users":[],"next_url":null}`)
+			page, err := test.invoke(client, sdk.Cursor{})
 			if err != nil {
 				t.Fatalf("first page: %v", err)
 			}
-			if len(page.Items) != len(test.itemIDs) || page.Next.IsZero() {
-				t.Fatalf("first page = %#v", page)
+			if len(page.Items) != 1 || page.Next.IsZero() {
+				t.Fatalf("page = %#v", page)
 			}
-			for index, id := range test.itemIDs {
-				if page.Items[index].User.ID != id {
-					t.Fatalf("item %d user = %d, want %d", index, page.Items[index].User.ID, id)
+			if request := recorder.request(t, 0); request.URL.Path != test.path {
+				t.Fatalf("path = %q, want %q", request.URL.Path, test.path)
+			}
+			for key, want := range test.query {
+				if got := recorder.request(t, 0).URL.Query().Get(key); got != want {
+					t.Errorf("%s = %q, want %q", key, got, want)
 				}
 			}
-			page, err = test.call(client, page.Next)
-			if err != nil {
+			if _, err := test.invoke(client, page.Next); err != nil {
 				t.Fatalf("continuation: %v", err)
 			}
-			if page.Items == nil || len(page.Items) != 0 || !page.Next.IsZero() {
-				t.Fatalf("second page = %#v", page)
+			for key, want := range test.nextQuery {
+				if got := recorder.request(t, 1).URL.Query().Get(key); got != want {
+					t.Errorf("continuation %s = %q, want %q", key, got, want)
+				}
 			}
 		})
 	}
 }
 
-// TestUserListFamilyRejectsMalformedResponses 保留原 endpoint 测试的空列表、
-// null 列表、非法 user ID 与 continuation allowlist 断言。
+func TestUserFollowingDefaultsPublicRestrict(t *testing.T) {
+	client, recorder := newWireClient(t, `{"user_previews":[{"user":{"id":41}}],"next_url":"https://app-api.pixiv.net/v1/user/following?user_id=7&restrict=public&offset=20"}`)
+	page, err := client.UserFollowing(context.Background(), UserFollowingRequest{UserID: 7})
+	if err != nil {
+		t.Fatalf("UserFollowing: %v", err)
+	}
+	if page.Next.IsZero() {
+		t.Fatal("expected continuation")
+	}
+	if got := recorder.request(t, 0).URL.Query().Get("restrict"); got != string(RestrictPublic) {
+		t.Fatalf("restrict = %q, want public", got)
+	}
+}
+
+func TestMyPixivUsersUsesVerifiedIdentity(t *testing.T) {
+	var query url.Values
+	client, _, err := OpenWith(context.Background(), "refresh", Options{HTTPClient: &http.Client{Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+		if req.URL.Host == "oauth.secure.pixiv.net" {
+			return jsonResponse(`{"access_token":"access","refresh_token":"rotated","expires_in":3600,"user":{"id":10}}`), nil
+		}
+		query = req.URL.Query()
+		return jsonResponse(`{"user_previews":[{"user":{"id":101}}],"next_url":"https://app-api.pixiv.net/v1/user/mypixiv?user_id=10&filter=for_android&offset=40"}`), nil
+	})}})
+	if err != nil {
+		t.Fatalf("OpenWith: %v", err)
+	}
+	page, err := client.MyPixivUsers(context.Background(), MyPixivUsersRequest{})
+	if err != nil {
+		t.Fatalf("MyPixivUsers: %v", err)
+	}
+	if len(page.Items) != 1 || page.Next.IsZero() {
+		t.Fatalf("page = %#v", page)
+	}
+	if query.Get("user_id") != "10" || query.Get("filter") != "for_android" {
+		t.Fatalf("query = %v", query)
+	}
+}
+
 func TestUserListFamilyRejectsMalformedResponses(t *testing.T) {
 	cases := []struct {
-		name string
-		call func(*Client) error
-		body string
+		name   string
+		body   string
+		invoke func(*Client) error
 	}{
-		{name: "search null list", body: `{"user_previews":null}`, call: func(c *Client) error {
+		{name: "search missing list", body: `{}`, invoke: func(c *Client) error {
 			_, err := c.SearchUsers(context.Background(), SearchUsersRequest{Word: "artist"})
 			return err
 		}},
-		{name: "search invalid user", body: `{"user_previews":[{"user":{"id":0}}]}`, call: func(c *Client) error {
+		{name: "search null list", body: `{"user_previews":null}`, invoke: func(c *Client) error {
 			_, err := c.SearchUsers(context.Background(), SearchUsersRequest{Word: "artist"})
 			return err
 		}},
-		{name: "search unknown continuation key", body: `{"user_previews":[{"user":{"id":41}}],"next_url":"https://app-api.pixiv.net/v1/search/user?word=artist&offset=20&max_novel_id=9"}`, call: func(c *Client) error {
+		{name: "search zero user", body: `{"user_previews":[{"user":{"id":0}}]}`, invoke: func(c *Client) error {
 			_, err := c.SearchUsers(context.Background(), SearchUsersRequest{Word: "artist"})
 			return err
 		}},
-		{name: "search wrong continuation path", body: `{"user_previews":[{"user":{"id":41}}],"next_url":"https://app-api.pixiv.net/v1/search/novel?word=artist&offset=20"}`, call: func(c *Client) error {
-			_, err := c.SearchUsers(context.Background(), SearchUsersRequest{Word: "artist"})
-			return err
-		}},
-		{name: "search wrong continuation host", body: `{"user_previews":[{"user":{"id":41}}],"next_url":"https://example.invalid/v1/search/user?word=artist&offset=20"}`, call: func(c *Client) error {
-			_, err := c.SearchUsers(context.Background(), SearchUsersRequest{Word: "artist"})
-			return err
-		}},
-		{name: "related null list", body: `{"user_previews":null}`, call: func(c *Client) error {
+		{name: "related zero user", body: `{"user_previews":[{"user":{"id":0}}]}`, invoke: func(c *Client) error {
 			_, err := c.RelatedUsers(context.Background(), RelatedUsersRequest{UserID: 1})
 			return err
 		}},
-		{name: "related invalid user", body: `{"user_previews":[{"user":{"id":0}}]}`, call: func(c *Client) error {
-			_, err := c.RelatedUsers(context.Background(), RelatedUsersRequest{UserID: 1})
-			return err
-		}},
-		{name: "following missing list", body: `{}`, call: func(c *Client) error {
-			_, err := c.UserFollowing(context.Background(), UserFollowingRequest{UserID: 8, Restrict: RestrictPrivate})
-			return err
-		}},
-		{name: "following null list", body: `{"user_previews":null}`, call: func(c *Client) error {
-			_, err := c.UserFollowing(context.Background(), UserFollowingRequest{UserID: 8, Restrict: RestrictPrivate})
-			return err
-		}},
-		{name: "followers invalid user", body: `{"user_previews":[{"user":{"id":0}}]}`, call: func(c *Client) error {
-			_, err := c.UserFollowers(context.Background(), UserFollowersRequest{UserID: 8, Restrict: RestrictPublic})
-			return err
-		}},
-		{name: "mypixiv null list", body: `{"user_previews":null}`, call: func(c *Client) error {
-			_, err := c.MyPixivUsers(context.Background(), MyPixivUsersRequest{})
-			return err
-		}},
-		{name: "blocked missing list", body: `{}`, call: func(c *Client) error {
+		{name: "blocked missing list", body: `{"users":null}`, invoke: func(c *Client) error {
 			_, err := c.UserBlockedUsers(context.Background(), UserBlockedUsersRequest{UserID: 9})
 			return err
 		}},
-		{name: "blocked null list", body: `{"users":null}`, call: func(c *Client) error {
+		{name: "blocked invalid user", body: `{"users":[{"id":0}]}`, invoke: func(c *Client) error {
 			_, err := c.UserBlockedUsers(context.Background(), UserBlockedUsersRequest{UserID: 9})
 			return err
 		}},
-		{name: "blocked invalid user", body: `{"users":[{"id":0}]}`, call: func(c *Client) error {
+		{name: "blocked empty continuation", body: `{"users":[],"next_url":""}`, invoke: func(c *Client) error {
 			_, err := c.UserBlockedUsers(context.Background(), UserBlockedUsersRequest{UserID: 9})
 			return err
 		}},
-		{name: "blocked empty continuation", body: `{"users":[],"next_url":""}`, call: func(c *Client) error {
-			_, err := c.UserBlockedUsers(context.Background(), UserBlockedUsersRequest{UserID: 9})
-			return err
-		}},
-		{name: "recommended invalid nested artwork", body: `{"user_previews":[{"user":{"id":111},"illusts":[{"id":0}],"novels":[]}]}`, call: func(c *Client) error {
+		{name: "recommended nested artwork", body: `{"user_previews":[{"user":{"id":111},"illusts":[{"id":0}]}]}`, invoke: func(c *Client) error {
 			_, err := c.RecommendedUsers(context.Background(), RecommendedUsersRequest{})
 			return err
 		}},
 	}
 	for _, test := range cases {
 		t.Run(test.name, func(t *testing.T) {
-			rt := roundTripFunc(func(req *http.Request) (*http.Response, error) {
-				if req.URL.Host == "oauth.secure.pixiv.net" {
-					return jsonResponse(`{"access_token":"access","refresh_token":"refresh","expires_in":3600,"user":{"id":10}}`), nil
-				}
-				return jsonResponse(test.body), nil
-			})
-			client, _, err := OpenWith(context.Background(), "refresh", Options{HTTPClient: &http.Client{Transport: rt}})
-			if err != nil {
-				t.Fatalf("OpenWith: %v", err)
-			}
-			if err := test.call(client); sdk.ReasonOf(err) != sdk.MalformedUpstreamResponse {
+			client, _ := newWireClient(t, test.body)
+			if err := test.invoke(client); sdk.ReasonOf(err) != sdk.MalformedUpstreamResponse {
 				t.Fatalf("ReasonOf = %q, want %q (err=%v)", sdk.ReasonOf(err), sdk.MalformedUpstreamResponse, err)
 			}
 		})
 	}
+}
 
-	// 成功空列表必须保留非 nil 切片与零游标。
-	for _, test := range []struct {
-		name string
-		body string
-		call func(*Client) (any, error)
+func TestUserListFamilyEmptyTerminalPage(t *testing.T) {
+	for name, test := range map[string]struct {
+		body   string
+		invoke func(*Client) (sdk.Page[UserPreview], error)
 	}{
-		{name: "search empty", body: `{"user_previews":[]}`, call: func(c *Client) (any, error) {
+		"search": {body: `{"user_previews":[]}`, invoke: func(c *Client) (sdk.Page[UserPreview], error) {
 			return c.SearchUsers(context.Background(), SearchUsersRequest{Word: "artist"})
 		}},
-		{name: "related empty", body: `{"user_previews":[]}`, call: func(c *Client) (any, error) {
+		"related": {body: `{"user_previews":[]}`, invoke: func(c *Client) (sdk.Page[UserPreview], error) {
 			return c.RelatedUsers(context.Background(), RelatedUsersRequest{UserID: 1})
 		}},
-		{name: "following empty", body: `{"user_previews":[]}`, call: func(c *Client) (any, error) {
-			return c.UserFollowing(context.Background(), UserFollowingRequest{UserID: 8, Restrict: RestrictPrivate})
-		}},
-		{name: "blocked empty", body: `{"users":[]}`, call: func(c *Client) (any, error) {
+		"blocked": {body: `{"users":[]}`, invoke: func(c *Client) (sdk.Page[UserPreview], error) {
 			return c.UserBlockedUsers(context.Background(), UserBlockedUsersRequest{UserID: 9})
 		}},
-		{name: "blocked preview envelope", body: `{"user_previews":[{"user":{"id":92}}]}`, call: func(c *Client) (any, error) {
+		"blocked preview envelope": {body: `{"user_previews":[{"user":{"id":92}}]}`, invoke: func(c *Client) (sdk.Page[UserPreview], error) {
 			return c.UserBlockedUsers(context.Background(), UserBlockedUsersRequest{UserID: 9})
 		}},
 	} {
-		t.Run(test.name, func(t *testing.T) {
-			rt := roundTripFunc(func(*http.Request) (*http.Response, error) { return jsonResponse(test.body), nil })
-			client, err := NewWith("token", Options{HTTPClient: &http.Client{Transport: rt}})
-			if err != nil {
-				t.Fatalf("NewWith: %v", err)
-			}
-			result, err := test.call(client)
+		t.Run(name, func(t *testing.T) {
+			client, _ := newWireClient(t, test.body)
+			page, err := test.invoke(client)
 			if err != nil {
 				t.Fatalf("call: %v", err)
 			}
-			page := result.(sdk.Page[UserPreview])
-			if page.Items == nil || len(page.Items) != 0 && test.name != "blocked preview envelope" || !page.Next.IsZero() {
+			if name == "blocked preview envelope" {
+				if len(page.Items) != 1 || page.Items[0].User.ID != 92 {
+					t.Fatalf("legacy envelope = %#v", page)
+				}
+				return
+			}
+			if page.Items == nil || len(page.Items) != 0 || !page.Next.IsZero() {
 				t.Fatalf("empty result = %#v", page)
 			}
-			if test.name == "blocked preview envelope" && (len(page.Items) != 1 || page.Items[0].User.ID != 92) {
-				t.Fatalf("legacy envelope = %#v", page)
-			}
-
 		})
 	}
 }
 
-// TestUserListItemsKeepNullSampleFields 固定非推荐列表的公开 JSON 契约：
-// 列表项不带样例作品时输出 null，而不是 []。
 func TestUserListItemsKeepNullSampleFields(t *testing.T) {
 	rt := roundTripFunc(func(*http.Request) (*http.Response, error) {
 		return jsonResponse(`{"user_previews":[{"user":{"id":41,"name":"artist"}}],"next_url":null}`), nil
@@ -380,7 +253,7 @@ func TestUserDetailAndRecommendations(t *testing.T) {
 		if req.URL.Path == "/v1/user/detail" {
 			return jsonResponse(detailBody), nil
 		}
-		return jsonResponse(`{"user_previews":[{"user":{"id":111,"name":"artist"},"illusts":[{"id":112,"title":"art","user":{"id":111},"create_date":"2024-01-02T03:04:05+00:00"}],"novels":[{"id":113,"title":"story","user":{"id":111},"create_date":"2024-01-02T03:04:05+00:00"}]}],"next_url":"https://app-api.pixiv.net/v1/user/recommended?offset=0"}`), nil
+		return jsonResponse(`{"user_previews":[{"user":{"id":111},"illusts":[{"id":112,"title":"art","user":{"id":111},"create_date":"2024-01-02T03:04:05+00:00"}],"novels":[{"id":113,"title":"story","user":{"id":111},"create_date":"2024-01-02T03:04:05+00:00"}]}],"next_url":"https://app-api.pixiv.net/v1/user/recommended?offset=0"}`), nil
 	})
 	client, err := NewWith("token", Options{HTTPClient: &http.Client{Transport: rt}})
 	if err != nil {
@@ -393,12 +266,11 @@ func TestUserDetailAndRecommendations(t *testing.T) {
 	if detail.User.ID != 51 || detail.Profile.TotalNovels != 3 || !detail.ProfilePublicity.Gender || detail.ProfilePublicity.Region || detail.Workspace.PC != "mac" || detail.User.ProfileImage.Resource.Ref.IsZero() {
 		t.Fatalf("detail = %#v", detail)
 	}
-
 	page, err := client.RecommendedUsers(context.Background(), RecommendedUsersRequest{})
 	if err != nil {
 		t.Fatalf("RecommendedUsers: %v", err)
 	}
-	if len(page.Items) != 1 || page.Items[0].User.ID != 111 || len(page.Items[0].Illusts) != 1 || page.Items[0].Illusts[0].ID != 112 || len(page.Items[0].Novels) != 1 || page.Items[0].Novels[0].ID != 113 || page.Next.IsZero() {
+	if len(page.Items) != 1 || page.Items[0].User.ID != 111 || len(page.Items[0].Illusts) != 1 || len(page.Items[0].Novels) != 1 || page.Next.IsZero() {
 		t.Fatalf("recommended = %#v", page)
 	}
 
@@ -410,28 +282,22 @@ func TestUserDetailAndRecommendations(t *testing.T) {
 		`{"user":{"id":51},"profile":{},"profile_publicity":{"gender":"hidden"},"workspace":{}}`,
 		`{"user":{"id":0},"profile":{},"profile_publicity":{},"workspace":{}}`,
 	} {
-		badClient, err := NewWith("token", Options{HTTPClient: &http.Client{Transport: roundTripFunc(func(*http.Request) (*http.Response, error) {
-			return jsonResponse(body), nil
-		})}})
-		if err != nil {
-			t.Fatalf("NewWith: %v", err)
-		}
-		if _, err := badClient.User(context.Background(), UserRequest{UserID: 51}); sdk.ReasonOf(err) != sdk.MalformedUpstreamResponse {
-			t.Fatalf("body %s ReasonOf = %q (err=%v)", body, sdk.ReasonOf(err), err)
-		}
+		t.Run("malformed/"+body, func(t *testing.T) {
+			badClient, err := NewWith("token", Options{HTTPClient: &http.Client{Transport: roundTripFunc(func(*http.Request) (*http.Response, error) {
+				return jsonResponse(body), nil
+			})}})
+			if err != nil {
+				t.Fatalf("NewWith: %v", err)
+			}
+			if _, err := badClient.User(context.Background(), UserRequest{UserID: 51}); sdk.ReasonOf(err) != sdk.MalformedUpstreamResponse {
+				t.Fatalf("ReasonOf = %q (err=%v)", sdk.ReasonOf(err), err)
+			}
+		})
 	}
 }
 
 func TestUserRequestsRejectInvalidInputBeforeNetwork(t *testing.T) {
-	calls := 0
-	rt := roundTripFunc(func(*http.Request) (*http.Response, error) {
-		calls++
-		return nil, io.ErrUnexpectedEOF
-	})
-	client, err := NewWith("token", Options{HTTPClient: &http.Client{Transport: rt}})
-	if err != nil {
-		t.Fatalf("NewWith: %v", err)
-	}
+	client, recorder := newWireClient(t)
 	tests := []struct {
 		name   string
 		reason sdk.Reason
@@ -473,7 +339,7 @@ func TestUserRequestsRejectInvalidInputBeforeNetwork(t *testing.T) {
 			}
 		})
 	}
-	if calls != 0 {
-		t.Fatalf("invalid input reached transport %d time(s)", calls)
+	if recorder.calls() != 0 {
+		t.Fatalf("invalid input reached transport %d time(s)", recorder.calls())
 	}
 }

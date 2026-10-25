@@ -1,13 +1,13 @@
 package fanboxapi_test
 
 import (
-	"github.com/FlanChanXwO/pixiv-cli/internal/fanboxapi"
 	"testing"
+
+	"github.com/FlanChanXwO/pixiv-cli/internal/fanboxapi"
 )
 
 func TestParseIdentityMetadataHTML(t *testing.T) {
-	document := []byte(`<html><head><meta name="metadata" content='{"context":{"user":{"userId":"800","name":"verified","creatorId":"artist","creatorStatus":"explicit","isCreator":true}}}'></head></html>`)
-	identity, err := fanboxapi.ParseIdentityMetadataHTML(document)
+	identity, err := fanboxapi.ParseIdentityMetadataHTML([]byte(`<html><head><meta name="metadata" content='{"context":{"user":{"userId":"800","name":"verified","creatorId":"artist","creatorStatus":"explicit","isCreator":true}}}'></head></html>`))
 	if err != nil {
 		t.Fatalf("ParseIdentityMetadataHTML() error = %v", err)
 	}
@@ -15,16 +15,10 @@ func TestParseIdentityMetadataHTML(t *testing.T) {
 	if identity != want {
 		t.Fatalf("identity = %+v, want %+v", identity, want)
 	}
-}
 
-func TestParseIdentityMetadataHTMLHandlesNumericUserIDAndNullCreator(t *testing.T) {
-	document := []byte(`<meta name="metadata" content='{"context":{"user":{"userId":800,"name":"numeric","creatorId":null}} }'>`)
-	identity, err := fanboxapi.ParseIdentityMetadataHTML(document)
-	if err != nil {
-		t.Fatalf("ParseIdentityMetadataHTML() error = %v", err)
-	}
-	if identity.UserID != 800 || identity.DisplayName != "numeric" || identity.CreatorID != "" || identity.IsCreator {
-		t.Fatalf("identity = %+v", identity)
+	identity, err = fanboxapi.ParseIdentityMetadataHTML([]byte(`<meta name="metadata" content='{"context":{"user":{"userId":800,"name":"numeric","creatorId":null}} }'>`))
+	if err != nil || identity.UserID != 800 || identity.DisplayName != "numeric" || identity.CreatorID != "" || identity.IsCreator {
+		t.Fatalf("identity = %+v err=%v", identity, err)
 	}
 }
 

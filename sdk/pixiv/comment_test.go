@@ -2,198 +2,126 @@ package pixiv_test
 
 import (
 	"context"
-	"io"
-	"net/http"
-	"strings"
+	"errors"
 	"testing"
 
 	"github.com/FlanChanXwO/pixiv-cli/sdk"
-	pixiv "github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
+	. "github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
 )
 
-func TestExplicitCommentMutationsReturnResponseIDsAndUseNamespaces(t *testing.T) {
-	var requests []*http.Request
-	rt := roundTripFunc(func(req *http.Request) (*http.Response, error) {
-		if err := req.ParseForm(); err != nil {
-			return nil, err
-		}
-		requests = append(requests, req)
-		switch req.URL.Path {
-		case "/v1/illust/comment/add":
-			if req.PostForm.Get("parent_comment_id") == "" {
-				return jsonResponse(`{"comment_id":901}`), nil
-			}
-			return jsonResponse(`{"comment_id":902}`), nil
-		case "/v1/novel/comment/add":
-			if req.PostForm.Get("parent_comment_id") == "" {
-				return jsonResponse(`{"comment_id":903}`), nil
-			}
-			return jsonResponse(`{"comment_id":904}`), nil
-		case "/v1/illust/comment/delete", "/v1/novel/comment/delete":
-			return &http.Response{
-				StatusCode: http.StatusOK,
-				Header:     http.Header{},
-				Body:       io.NopCloser(strings.NewReader("")),
-			}, nil
-		default:
-			return nil, io.ErrUnexpectedEOF
-		}
-	})
-	client, err := pixiv.NewWith("token", pixiv.Options{HTTPClient: &http.Client{Transport: rt}})
-	if err != nil {
-		t.Fatalf("NewWith: %v", err)
-	}
-
-	artworkComment, err := client.PostArtworkComment(context.Background(), pixiv.PostArtworkCommentRequest{
-		ArtworkID: 101,
-		Comment:   "artwork comment",
-	})
-	if err != nil {
-		t.Fatalf("PostArtworkComment: %v", err)
-	}
-	if artworkComment.CommentID != 901 {
-		t.Fatalf("artwork comment ID = %d, want 901", artworkComment.CommentID)
-	}
-
-	artworkReply, err := client.ReplyArtworkComment(context.Background(), pixiv.ReplyArtworkCommentRequest{
-		ArtworkID:       101,
-		Comment:         "artwork reply",
-		ParentCommentID: 901,
-	})
-	if err != nil {
-		t.Fatalf("ReplyArtworkComment: %v", err)
-	}
-	if artworkReply.CommentID != 902 {
-		t.Fatalf("artwork reply ID = %d, want 902", artworkReply.CommentID)
-	}
-
-	if err := client.DeleteArtworkComment(context.Background(), pixiv.DeleteArtworkCommentRequest{CommentID: artworkReply.CommentID}); err != nil {
-		t.Fatalf("DeleteArtworkComment: %v", err)
-	}
-
-	novelComment, err := client.PostNovelComment(context.Background(), pixiv.PostNovelCommentRequest{
-		NovelID: 201,
-		Comment: "novel comment",
-	})
-	if err != nil {
-		t.Fatalf("PostNovelComment: %v", err)
-	}
-	if novelComment.CommentID != 903 {
-		t.Fatalf("novel comment ID = %d, want 903", novelComment.CommentID)
-	}
-
-	novelReply, err := client.ReplyNovelComment(context.Background(), pixiv.ReplyNovelCommentRequest{
-		NovelID:         201,
-		Comment:         "novel reply",
-		ParentCommentID: 903,
-	})
-	if err != nil {
-		t.Fatalf("ReplyNovelComment: %v", err)
-	}
-	if novelReply.CommentID != 904 {
-		t.Fatalf("novel reply ID = %d, want 904", novelReply.CommentID)
-	}
-
-	if err := client.DeleteNovelComment(context.Background(), pixiv.DeleteNovelCommentRequest{CommentID: novelReply.CommentID}); err != nil {
-		t.Fatalf("DeleteNovelComment: %v", err)
-	}
-
-	if len(requests) != 6 {
-		t.Fatalf("request count = %d, want 6", len(requests))
-	}
-	checks := []struct {
-		request *http.Request
-		path    string
-		form    map[string]string
+// TestCommentMutations 覆盖 artwork/novel 共用的 postComment：
+// namespace、form、响应 ID（comment_id 与嵌套 comment.id）与删除。
+func TestCommentMutations(t *testing.T) {
+	tests := []struct {
+		name   string
+		invoke func(*Client) (CommentMutationResult, error)
+		path   string
+		form   map[string]string
+		body   string
+		hasID  bool
 	}{
-		{requests[0], "/v1/illust/comment/add", map[string]string{"illust_id": "101", "comment": "artwork comment"}},
-		{requests[1], "/v1/illust/comment/add", map[string]string{"illust_id": "101", "comment": "artwork reply", "parent_comment_id": "901"}},
-		{requests[2], "/v1/illust/comment/delete", map[string]string{"comment_id": "902"}},
-		{requests[3], "/v1/novel/comment/add", map[string]string{"novel_id": "201", "comment": "novel comment"}},
-		{requests[4], "/v1/novel/comment/add", map[string]string{"novel_id": "201", "comment": "novel reply", "parent_comment_id": "903"}},
-		{requests[5], "/v1/novel/comment/delete", map[string]string{"comment_id": "904"}},
+		{name: "artwork post", invoke: func(c *Client) (CommentMutationResult, error) {
+			return c.PostArtworkComment(context.Background(), PostArtworkCommentRequest{ArtworkID: 101, Comment: "artwork comment"})
+		}, path: "/v1/illust/comment/add", form: map[string]string{"illust_id": "101", "comment": "artwork comment"}, body: `{"comment_id":901}`, hasID: true},
+		{name: "artwork reply", invoke: func(c *Client) (CommentMutationResult, error) {
+			return c.ReplyArtworkComment(context.Background(), ReplyArtworkCommentRequest{ArtworkID: 101, Comment: "artwork reply", ParentCommentID: 901})
+		}, path: "/v1/illust/comment/add", form: map[string]string{"illust_id": "101", "comment": "artwork reply", "parent_comment_id": "901"}, body: `{"comment":{"id":902}}`, hasID: true},
+		{name: "novel post", invoke: func(c *Client) (CommentMutationResult, error) {
+			return c.PostNovelComment(context.Background(), PostNovelCommentRequest{NovelID: 201, Comment: "novel comment"})
+		}, path: "/v1/novel/comment/add", form: map[string]string{"novel_id": "201", "comment": "novel comment"}, body: `{"comment_id":903}`, hasID: true},
+		{name: "novel reply", invoke: func(c *Client) (CommentMutationResult, error) {
+			return c.ReplyNovelComment(context.Background(), ReplyNovelCommentRequest{NovelID: 201, Comment: "novel reply", ParentCommentID: 903})
+		}, path: "/v1/novel/comment/add", form: map[string]string{"novel_id": "201", "comment": "novel reply", "parent_comment_id": "903"}, body: `{"comment_id":904}`, hasID: true},
 	}
-	for _, check := range checks {
-		if check.request.URL.Path != check.path {
-			t.Errorf("path = %q, want %q", check.request.URL.Path, check.path)
-		}
-		for key, want := range check.form {
-			if got := check.request.PostForm.Get(key); got != want {
-				t.Errorf("%s form[%q] = %q, want %q", check.path, key, got, want)
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			client, recorder := newWireClient(t, test.body)
+			result, err := test.invoke(client)
+			if err != nil {
+				t.Fatalf("invoke: %v", err)
 			}
-		}
+			if test.hasID && result.CommentID == 0 {
+				t.Fatalf("result = %#v, want a comment ID", result)
+			}
+			request := recorder.request(t, 0)
+			if err := request.ParseForm(); err != nil {
+				t.Fatalf("ParseForm: %v", err)
+			}
+			if request.URL.Path != test.path || len(request.PostForm) != len(test.form) {
+				t.Fatalf("request = %q form=%v", request.URL.Path, request.PostForm)
+			}
+			for key, want := range test.form {
+				if got := request.PostForm.Get(key); got != want {
+					t.Errorf("%s = %q, want %q", key, got, want)
+				}
+			}
+		})
+	}
+
+	for name, invoke := range map[string]func(*Client) error{
+		"artwork delete": func(c *Client) error {
+			return c.DeleteArtworkComment(context.Background(), DeleteArtworkCommentRequest{CommentID: 902})
+		},
+		"novel delete": func(c *Client) error {
+			return c.DeleteNovelComment(context.Background(), DeleteNovelCommentRequest{CommentID: 904})
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			client, recorder := newWireClient(t, `{}`)
+			if err := invoke(client); err != nil {
+				t.Fatalf("delete: %v", err)
+			}
+			request := recorder.request(t, 0)
+			if err := request.ParseForm(); err != nil {
+				t.Fatalf("ParseForm: %v", err)
+			}
+			wantPath := "/v1/illust/comment/delete"
+			if name == "novel delete" {
+				wantPath = "/v1/novel/comment/delete"
+			}
+			if request.URL.Path != wantPath || len(request.PostForm) != 1 || request.PostForm.Get("comment_id") == "" {
+				t.Fatalf("request = %q form=%v", request.URL.Path, request.PostForm)
+			}
+		})
 	}
 }
 
-func TestExplicitCommentMutationsRejectInvalidInputsBeforeNetwork(t *testing.T) {
-	calls := 0
-	rt := roundTripFunc(func(req *http.Request) (*http.Response, error) {
-		calls++
-		return nil, io.ErrUnexpectedEOF
-	})
-	client, err := pixiv.NewWith("token", pixiv.Options{HTTPClient: &http.Client{Transport: rt}})
-	if err != nil {
-		t.Fatalf("NewWith: %v", err)
-	}
-
+func TestCommentMutationsRejectInvalidInputBeforeNetwork(t *testing.T) {
+	client, recorder := newWireClient(t)
 	tests := []struct {
 		name string
 		call func() error
 	}{
-		{
-			name: "artwork comment ID",
-			call: func() error {
-				_, err := client.PostArtworkComment(context.Background(), pixiv.PostArtworkCommentRequest{ArtworkID: 0, Comment: "body"})
-				return err
-			},
-		},
-		{
-			name: "artwork comment body",
-			call: func() error {
-				_, err := client.PostArtworkComment(context.Background(), pixiv.PostArtworkCommentRequest{ArtworkID: 1})
-				return err
-			},
-		},
-		{
-			name: "artwork reply parent",
-			call: func() error {
-				_, err := client.ReplyArtworkComment(context.Background(), pixiv.ReplyArtworkCommentRequest{ArtworkID: 1, Comment: "body"})
-				return err
-			},
-		},
-		{
-			name: "artwork delete comment ID",
-			call: func() error {
-				return client.DeleteArtworkComment(context.Background(), pixiv.DeleteArtworkCommentRequest{})
-			},
-		},
-		{
-			name: "novel comment ID",
-			call: func() error {
-				_, err := client.PostNovelComment(context.Background(), pixiv.PostNovelCommentRequest{NovelID: 0, Comment: "body"})
-				return err
-			},
-		},
-		{
-			name: "novel comment body",
-			call: func() error {
-				_, err := client.PostNovelComment(context.Background(), pixiv.PostNovelCommentRequest{NovelID: 1})
-				return err
-			},
-		},
-		{
-			name: "novel reply parent",
-			call: func() error {
-				_, err := client.ReplyNovelComment(context.Background(), pixiv.ReplyNovelCommentRequest{NovelID: 1, Comment: "body"})
-				return err
-			},
-		},
-		{
-			name: "novel delete comment ID",
-			call: func() error {
-				return client.DeleteNovelComment(context.Background(), pixiv.DeleteNovelCommentRequest{})
-			},
-		},
+		{name: "artwork comment ID", call: func() error {
+			_, err := client.PostArtworkComment(context.Background(), PostArtworkCommentRequest{Comment: "body"})
+			return err
+		}},
+		{name: "artwork comment body", call: func() error {
+			_, err := client.PostArtworkComment(context.Background(), PostArtworkCommentRequest{ArtworkID: 1})
+			return err
+		}},
+		{name: "artwork reply parent", call: func() error {
+			_, err := client.ReplyArtworkComment(context.Background(), ReplyArtworkCommentRequest{ArtworkID: 1, Comment: "body"})
+			return err
+		}},
+		{name: "artwork delete comment ID", call: func() error {
+			return client.DeleteArtworkComment(context.Background(), DeleteArtworkCommentRequest{})
+		}},
+		{name: "novel comment ID", call: func() error {
+			_, err := client.PostNovelComment(context.Background(), PostNovelCommentRequest{Comment: "body"})
+			return err
+		}},
+		{name: "novel comment body", call: func() error {
+			_, err := client.PostNovelComment(context.Background(), PostNovelCommentRequest{NovelID: 1})
+			return err
+		}},
+		{name: "novel reply parent", call: func() error {
+			_, err := client.ReplyNovelComment(context.Background(), ReplyNovelCommentRequest{NovelID: 1, Comment: "body"})
+			return err
+		}},
+		{name: "novel delete comment ID", call: func() error {
+			return client.DeleteNovelComment(context.Background(), DeleteNovelCommentRequest{})
+		}},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
@@ -202,27 +130,108 @@ func TestExplicitCommentMutationsRejectInvalidInputsBeforeNetwork(t *testing.T) 
 			}
 		})
 	}
-	if calls != 0 {
-		t.Fatalf("invalid comment mutation reached upstream %d time(s)", calls)
+	if recorder.calls() != 0 {
+		t.Fatalf("invalid comment mutation reached upstream %d time(s)", recorder.calls())
 	}
 }
 
-func TestPostArtworkCommentRequiresResponseCommentID(t *testing.T) {
-	calls := 0
-	rt := roundTripFunc(func(req *http.Request) (*http.Response, error) {
-		calls++
-		return jsonResponse(`{"status":"ok"}`), nil
-	})
-	client, err := pixiv.NewWith("token", pixiv.Options{HTTPClient: &http.Client{Transport: rt}})
-	if err != nil {
-		t.Fatalf("NewWith: %v", err)
+func TestCommentMutationsRequireResponseID(t *testing.T) {
+	for _, body := range []string{`{}`, `{"status":"ok"}`, `{"comment_id":null}`, `{"comment_id":0}`} {
+		t.Run(body, func(t *testing.T) {
+			client, recorder := newWireClient(t, body)
+			if _, err := client.PostArtworkComment(context.Background(), PostArtworkCommentRequest{ArtworkID: 1, Comment: "body"}); sdk.ReasonOf(err) != sdk.MalformedUpstreamResponse {
+				t.Fatalf("error = %v, want malformed response", err)
+			}
+			if _, err := client.PostNovelComment(context.Background(), PostNovelCommentRequest{NovelID: 1, Comment: "body"}); sdk.ReasonOf(err) != sdk.MalformedUpstreamResponse {
+				t.Fatalf("error = %v, want malformed response", err)
+			}
+			if recorder.calls() != 2 {
+				t.Fatalf("request count = %d, want 2", recorder.calls())
+			}
+		})
+	}
+}
+
+func TestCommentMutationsPropagateTransportFailure(t *testing.T) {
+	client, recorder := newWireClient(t)
+	recorder.err = errors.New("transport canary")
+	if _, err := client.PostArtworkComment(context.Background(), PostArtworkCommentRequest{ArtworkID: 1, Comment: "body"}); sdk.ReasonOf(err) != sdk.UpstreamUnavailable {
+		t.Fatalf("create error = %v, want UpstreamUnavailable", err)
+	}
+	if err := client.DeleteNovelComment(context.Background(), DeleteNovelCommentRequest{CommentID: 1}); sdk.ReasonOf(err) != sdk.UpstreamUnavailable {
+		t.Fatalf("delete error = %v, want UpstreamUnavailable", err)
+	}
+}
+
+// TestStampComments 覆盖 stamp 与普通评论共用 postComment 但 form 独立的契约：
+// stamp_id 与 comment 各自保留，空 comment 合法，artwork/novel 同形。
+func TestStampComments(t *testing.T) {
+	for _, test := range []struct {
+		name   string
+		invoke func(*Client) (CommentMutationResult, error)
+		path   string
+		form   map[string]string
+	}{
+		{name: "artwork text", invoke: func(c *Client) (CommentMutationResult, error) {
+			return c.StampArtworkComment(context.Background(), StampArtworkCommentRequest{ArtworkID: 123, Comment: "stamp", StampID: 9})
+		}, path: "/v1/illust/comment/add", form: map[string]string{"illust_id": "123", "comment": "stamp", "stamp_id": "9"}},
+		{name: "artwork empty text", invoke: func(c *Client) (CommentMutationResult, error) {
+			return c.StampArtworkComment(context.Background(), StampArtworkCommentRequest{ArtworkID: 123, StampID: 9})
+		}, path: "/v1/illust/comment/add", form: map[string]string{"illust_id": "123", "comment": "", "stamp_id": "9"}},
+		{name: "novel text", invoke: func(c *Client) (CommentMutationResult, error) {
+			return c.StampNovelComment(context.Background(), StampNovelCommentRequest{NovelID: 456, Comment: "stamp", StampID: 9})
+		}, path: "/v1/novel/comment/add", form: map[string]string{"novel_id": "456", "comment": "stamp", "stamp_id": "9"}},
+		{name: "novel empty text", invoke: func(c *Client) (CommentMutationResult, error) {
+			return c.StampNovelComment(context.Background(), StampNovelCommentRequest{NovelID: 456, StampID: 9})
+		}, path: "/v1/novel/comment/add", form: map[string]string{"novel_id": "456", "comment": "", "stamp_id": "9"}},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			client, recorder := newWireClient(t, `{"comment_id":901}`)
+			result, err := test.invoke(client)
+			if err != nil || result.CommentID != 901 {
+				t.Fatalf("result = %#v err=%v", result, err)
+			}
+			request := recorder.request(t, 0)
+			if err := request.ParseForm(); err != nil {
+				t.Fatalf("ParseForm: %v", err)
+			}
+			if request.URL.Path != test.path || len(request.PostForm) != len(test.form) {
+				t.Fatalf("request = %q form=%v", request.URL.Path, request.PostForm)
+			}
+			for key, want := range test.form {
+				if got := request.PostForm.Get(key); got != want {
+					t.Errorf("%s = %q, want %q", key, got, want)
+				}
+			}
+		})
 	}
 
-	_, err = client.PostArtworkComment(context.Background(), pixiv.PostArtworkCommentRequest{ArtworkID: 1, Comment: "body"})
-	if sdk.ReasonOf(err) != sdk.MalformedUpstreamResponse {
-		t.Fatalf("ReasonOf = %q, want %q (err=%v)", sdk.ReasonOf(err), sdk.MalformedUpstreamResponse, err)
-	}
-	if calls != 1 {
-		t.Fatalf("request count = %d, want 1", calls)
+	for _, test := range []struct {
+		name   string
+		invoke func(*Client) error
+	}{
+		{name: "artwork missing artwork", invoke: func(c *Client) error {
+			_, err := c.StampArtworkComment(context.Background(), StampArtworkCommentRequest{Comment: "body", StampID: 9})
+			return err
+		}},
+		{name: "artwork missing stamp", invoke: func(c *Client) error {
+			_, err := c.StampArtworkComment(context.Background(), StampArtworkCommentRequest{ArtworkID: 1, Comment: "body"})
+			return err
+		}},
+		{name: "novel missing novel", invoke: func(c *Client) error {
+			_, err := c.StampNovelComment(context.Background(), StampNovelCommentRequest{Comment: "body", StampID: 9})
+			return err
+		}},
+		{name: "novel missing stamp", invoke: func(c *Client) error {
+			_, err := c.StampNovelComment(context.Background(), StampNovelCommentRequest{NovelID: 1, Comment: "body"})
+			return err
+		}},
+	} {
+		t.Run("invalid/"+test.name, func(t *testing.T) {
+			client, recorder := newWireClient(t)
+			if err := test.invoke(client); sdk.ReasonOf(err) != sdk.InvalidArgument || recorder.calls() != 0 {
+				t.Fatalf("reason = %q calls = %d", sdk.ReasonOf(err), recorder.calls())
+			}
+		})
 	}
 }

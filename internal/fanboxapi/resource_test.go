@@ -9,7 +9,7 @@ import (
 	"github.com/FlanChanXwO/pixiv-cli/internal/fanboxapi"
 )
 
-func TestValidateURLRejectsUnsafeOrPathlessLocators(t *testing.T) {
+func TestMediaURLValidation(t *testing.T) {
 	for _, rawURL := range []string{
 		"http://downloads.fanbox.cc/file.zip",
 		"https://user:pass@downloads.fanbox.cc/file.zip",
@@ -20,11 +20,7 @@ func TestValidateURLRejectsUnsafeOrPathlessLocators(t *testing.T) {
 			t.Fatalf("ValidateURL(%q) unexpectedly succeeded", rawURL)
 		}
 	}
-}
 
-// TestClientOpenMediaValidatesURLBeforeTransport pins the path requirement the
-// product client adds on top of the session's media host policy.
-func TestClientOpenMediaValidatesURLBeforeTransport(t *testing.T) {
 	called := false
 	session, err := fanboxapi.NewSessionWithOptions("FANBOXSESSID=media-canary", fanboxapi.SessionOptions{
 		HTTPClient: &http.Client{Transport: roundTripFunc(func(*http.Request) (*http.Response, error) {

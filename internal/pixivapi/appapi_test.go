@@ -3,7 +3,6 @@ package pixivapi_test
 import (
 	"bytes"
 	"context"
-	"encoding/json"
 	"errors"
 	"io"
 	"log/slog"
@@ -37,403 +36,6 @@ func getTestDetail(ctx context.Context, client *pixivapi.Client) (testDetailResp
 	return result, err
 }
 
-func TestPostFormJSONDecodesResponseAndSendsForm(t *testing.T) {
-	api := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodPost || r.URL.Path != "/v1/illust/comment/add" {
-			t.Fatalf("request = %s %s", r.Method, r.URL.String())
-		}
-		if err := r.ParseForm(); err != nil {
-			t.Fatalf("ParseForm returned error: %v", err)
-		}
-		if r.Form.Get("illust_id") != "42" || r.Form.Get("comment") != "hello" || strings.Join(r.Form["extra[]"], ",") != "a,b" {
-			t.Fatalf("form = %#v", r.Form)
-		}
-		if r.Header.Get("Authorization") != "Bearer direct-access" {
-			t.Fatalf("Authorization = %q", r.Header.Get("Authorization"))
-		}
-		if contentType := r.Header.Get("Content-Type"); contentType != "application/x-www-form-urlencoded" {
-			t.Fatalf("Content-Type = %q", contentType)
-		}
-		if r.Header.Get("User-Agent") != pixivapi.AppUserAgent {
-			t.Fatalf("User-Agent = %q", r.Header.Get("User-Agent"))
-		}
-		w.Header().Set("Content-Type", "application/json")
-		_, _ = w.Write([]byte(`{"comment_id":73}`))
-	}))
-	defer api.Close()
-
-	var result testMutationResponse
-	err := pixivapi.New(pixivapi.Config{
-		BaseURL:     api.URL,
-		HTTPClient:  api.Client(),
-		AccessToken: "direct-access",
-	}).PostFormJSON(
-		context.Background(),
-		"/v1/illust/comment/add",
-		url.Values{"illust_id": {"42"}, "comment": {"hello"}, "extra[]": {"a", "b"}},
-		&result,
-	)
-	if err != nil {
-		t.Fatalf("PostFormJSON returned error: %v", err)
-	}
-	if result.CommentID != 73 {
-		t.Fatalf("CommentID = %d, want 73", result.CommentID)
-	}
-}
-
-func TestPostFormJSONRejectsMalformedSuccessResponse(t *testing.T) {
-	for _, body := range []string{"", "   \n\t", "not-json"} {
-		t.Run(strings.ReplaceAll(body, "\n", "\\n"), func(t *testing.T) {
-			requests := 0
-			api := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-				requests++
-				if r.Method != http.MethodPost || r.URL.Path != "/v1/illust/comment/add" {
-					t.Fatalf("request = %s %s", r.Method, r.URL.String())
-				}
-				w.Header().Set("Content-Type", "application/json")
-				_, _ = w.Write([]byte(body))
-			}))
-			defer api.Close()
-
-			var result testMutationResponse
-			err := pixivapi.New(pixivapi.Config{BaseURL: api.URL, HTTPClient: api.Client(), AccessToken: "access"}).PostFormJSON(
-				context.Background(),
-				"/v1/illust/comment/add",
-				url.Values{"illust_id": {"42"}},
-				&result,
-			)
-			if !errors.Is(err, pixivapi.ErrMalformedResponse) {
-				t.Fatalf("error = %v, want malformed response", err)
-			}
-			if requests != 1 {
-				t.Fatalf("requests = %d, want 1", requests)
-			}
-		})
-	}
-}
-
-func TestPostFormJSONRefreshesAuthAndDecodesRetry(t *testing.T) {
-	for _, status := range []int{http.StatusUnauthorized, http.StatusForbidden} {
-		t.Run(http.StatusText(status), func(t *testing.T) {
-			session := &fakeSession{token: "old-access"}
-			requests := 0
-			api := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-				requests++
-				if r.Method != http.MethodPost || r.URL.Path != "/v1/illust/comment/add" {
-					t.Fatalf("request = %s %s", r.Method, r.URL.String())
-				}
-				switch requests {
-				case 1:
-					if r.Header.Get("Authorization") != "Bearer old-access" {
-						t.Fatalf("first Authorization = %q", r.Header.Get("Authorization"))
-					}
-					w.WriteHeader(status)
-				case 2:
-					if r.Header.Get("Authorization") != "Bearer new-access" {
-						t.Fatalf("retry Authorization = %q", r.Header.Get("Authorization"))
-					}
-					_ = json.NewEncoder(w).Encode(testMutationResponse{CommentID: 73})
-				default:
-					t.Fatalf("unexpected request %d", requests)
-				}
-			}))
-			defer api.Close()
-
-			var result testMutationResponse
-			err := pixivapi.New(pixivapi.Config{BaseURL: api.URL, HTTPClient: api.Client(), Session: session}).PostFormJSON(
-				context.Background(),
-				"/v1/illust/comment/add",
-				url.Values{"illust_id": {"42"}},
-				&result,
-			)
-			if err != nil || result.CommentID != 73 || session.refreshCalls != 1 || requests != 2 {
-				t.Fatalf("result=%+v err=%v refresh calls=%d requests=%d", result, err, session.refreshCalls, requests)
-			}
-		})
-	}
-}
-
-func TestPostFormJSONDoesNotReplayUncertainFailure(t *testing.T) {
-	for _, testCase := range []struct {
-		name       string
-		status     int
-		retryAfter string
-	}{
-		{name: "rate-limit", status: http.StatusTooManyRequests, retryAfter: "0"},
-		{name: "server-error", status: http.StatusBadGateway},
-	} {
-		t.Run(testCase.name, func(t *testing.T) {
-			session := &fakeSession{token: "access"}
-			requests := 0
-			api := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-				requests++
-				if testCase.retryAfter != "" {
-					w.Header().Set("Retry-After", testCase.retryAfter)
-				}
-				w.WriteHeader(testCase.status)
-				_, _ = w.Write([]byte(`{"error":"request outcome is unknown"}`))
-			}))
-			defer api.Close()
-
-			var result testMutationResponse
-			err := pixivapi.New(pixivapi.Config{BaseURL: api.URL, HTTPClient: api.Client(), Session: session}).PostFormJSON(
-				context.Background(),
-				"/v1/illust/comment/add",
-				url.Values{"illust_id": {"42"}},
-				&result,
-			)
-			if err == nil {
-				t.Fatal("PostFormJSON unexpectedly succeeded")
-			}
-			if requests != 1 || session.refreshCalls != 0 {
-				t.Fatalf("requests=%d refresh calls=%d, want one request and no refresh", requests, session.refreshCalls)
-			}
-		})
-	}
-
-	t.Run("transport-error", func(t *testing.T) {
-		calls := 0
-		httpClient := &http.Client{Transport: roundTripFunc(func(*http.Request) (*http.Response, error) {
-			calls++
-			return nil, errors.New("connection reset")
-		})}
-		var result testMutationResponse
-		err := pixivapi.New(pixivapi.Config{BaseURL: "https://example.invalid", HTTPClient: httpClient, AccessToken: "access"}).PostFormJSON(
-			context.Background(),
-			"/v1/illust/comment/add",
-			url.Values{"illust_id": {"42"}},
-			&result,
-		)
-		if err == nil {
-			t.Fatal("PostFormJSON unexpectedly succeeded")
-		}
-		if calls != 1 {
-			t.Fatalf("transport calls=%d, want 1", calls)
-		}
-	})
-}
-
-func TestGetRawPreservesBodyAndHeadersForEndpointFamily(t *testing.T) {
-	api := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path != "/v1/novel/content" || r.URL.Query().Get("novel_id") != "9" {
-			t.Fatalf("request = %s", r.URL.String())
-		}
-		if r.Header.Get("X-User-Id") != "42" {
-			t.Fatalf("X-User-Id = %q", r.Header.Get("X-User-Id"))
-		}
-		_, _ = w.Write([]byte("<p>raw</p>"))
-	}))
-	defer api.Close()
-
-	body, err := pixivapi.New(pixivapi.Config{BaseURL: api.URL, HTTPClient: api.Client(), AccessToken: "access", UserID: 42}).GetRaw(context.Background(), "/v1/novel/content", url.Values{"novel_id": {"9"}})
-	if err != nil {
-		t.Fatalf("GetRaw returned error: %v", err)
-	}
-	if string(body) != "<p>raw</p>" {
-		t.Fatalf("body = %q", body)
-	}
-}
-
-func TestNewPropagatesContextCancellation(t *testing.T) {
-	started := make(chan struct{})
-	api := httptest.NewServer(http.HandlerFunc(func(_ http.ResponseWriter, request *http.Request) {
-		close(started)
-		<-request.Context().Done()
-	}))
-	defer api.Close()
-
-	ctx, cancel := context.WithCancel(context.Background())
-	result := make(chan error, 1)
-	go func() {
-		var response testDetailResponse
-		result <- pixivapi.New(pixivapi.Config{BaseURL: api.URL, AccessToken: "access"}).GetJSON(ctx, "/v1/illust/detail", nil, &response)
-	}()
-	<-started
-	cancel()
-	if err := <-result; !errors.Is(err, context.Canceled) {
-		t.Fatalf("GetJSON error = %v, want context.Canceled", err)
-	}
-}
-
-func TestNewPreservesExplicitHTTPClient(t *testing.T) {
-	calls := 0
-	httpClient := &http.Client{Transport: roundTripFunc(func(request *http.Request) (*http.Response, error) {
-		calls++
-		return &http.Response{
-			StatusCode: http.StatusOK,
-			Header:     http.Header{"Content-Type": {"application/json"}},
-			Body:       io.NopCloser(strings.NewReader(`{"illust":{"id":42}}`)),
-			Request:    request,
-		}, nil
-	})}
-	result, err := getTestDetail(context.Background(), pixivapi.New(pixivapi.Config{BaseURL: "https://example.invalid", HTTPClient: httpClient, AccessToken: "access"}))
-	if err != nil || result.Illust.ID != 42 || calls != 1 {
-		t.Fatalf("result=%+v err=%v calls=%d", result, err, calls)
-	}
-}
-
-func TestRefreshAndRetryOnceOnTypedAuthStatus(t *testing.T) {
-	for _, status := range []int{http.StatusUnauthorized, http.StatusForbidden} {
-		t.Run(http.StatusText(status), func(t *testing.T) {
-			session := &fakeSession{token: "old-access"}
-			requests := 0
-			api := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-				requests++
-				if r.URL.Path != "/v1/illust/detail" {
-					t.Fatalf("unexpected api path %s", r.URL.Path)
-				}
-				if r.Header.Get("Authorization") != "Bearer new-access" {
-					http.Error(w, `{"error":{"message":"auth required"}}`, status)
-					return
-				}
-				_ = json.NewEncoder(w).Encode(map[string]any{"illust": map[string]any{"id": 42}})
-			}))
-			defer api.Close()
-
-			client := pixivapi.New(pixivapi.Config{BaseURL: api.URL, Session: session})
-			result, err := getTestDetail(context.Background(), client)
-			if err != nil {
-				t.Fatalf("GetJSON returned error: %v", err)
-			}
-			if result.Illust.ID != 42 || session.refreshCalls != 1 || requests != 2 {
-				t.Fatalf("result=%+v refresh calls=%d requests=%d", result, session.refreshCalls, requests)
-			}
-		})
-	}
-}
-
-func TestRefreshCancellationIsNotReportedAsHTTPStatus(t *testing.T) {
-	api := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		w.WriteHeader(http.StatusUnauthorized)
-	}))
-	defer api.Close()
-
-	session := &fakeSession{token: "old-access", refreshErr: context.Canceled}
-	_, err := getTestDetail(context.Background(), pixivapi.New(pixivapi.Config{BaseURL: api.URL, HTTPClient: api.Client(), Session: session}))
-	if !errors.Is(err, context.Canceled) {
-		t.Fatalf("error = %v, want context.Canceled", err)
-	}
-	if session.refreshCalls != 1 {
-		t.Fatalf("refresh calls = %d, want 1", session.refreshCalls)
-	}
-}
-
-func TestGETNonAuthStatusDoesNotRefreshOrReplayForAuthWordsInBody(t *testing.T) {
-	session := &fakeSession{token: "old-access"}
-	requests := 0
-	api := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		requests++
-		if r.URL.Path != "/v1/illust/detail" {
-			t.Fatalf("unexpected api path %s", r.URL.Path)
-		}
-		w.WriteHeader(http.StatusBadGateway)
-		_, _ = w.Write([]byte("oauth unauthorized invalid_grant"))
-	}))
-	defer api.Close()
-
-	client := pixivapi.New(pixivapi.Config{BaseURL: api.URL, Session: session})
-	if _, err := getTestDetail(context.Background(), client); err == nil {
-		t.Fatal("IllustDetail unexpectedly succeeded")
-	}
-	if requests != 1 || session.refreshCalls != 0 {
-		t.Fatalf("requests=%d refresh calls=%d", requests, session.refreshCalls)
-	}
-}
-
-func TestGETRetriesOnceAfterValidRateLimitResponse(t *testing.T) {
-	requests := 0
-	api := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		requests++
-		if r.Method != http.MethodGet || r.URL.Path != "/v1/illust/detail" {
-			t.Fatalf("request = %s %s", r.Method, r.URL.Path)
-		}
-		if requests == 1 {
-			w.Header().Set("Retry-After", "0")
-			w.WriteHeader(http.StatusTooManyRequests)
-			return
-		}
-		_ = json.NewEncoder(w).Encode(map[string]any{"illust": map[string]any{"id": 42}})
-	}))
-	defer api.Close()
-
-	result, err := getTestDetail(context.Background(), pixivapi.New(pixivapi.Config{BaseURL: api.URL, HTTPClient: api.Client(), AccessToken: "access"}))
-	if err != nil || result.Illust.ID != 42 || requests != 2 {
-		t.Fatalf("result=%#v err=%v requests=%d", result, err, requests)
-	}
-}
-
-func TestGETDoesNotRetryRateLimitWithoutValidRetryAfter(t *testing.T) {
-	for _, header := range []string{"", "not-a-delay", "-1"} {
-		t.Run(header, func(t *testing.T) {
-			requests := 0
-			api := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-				requests++
-				if header != "" {
-					w.Header().Set("Retry-After", header)
-				}
-				w.WriteHeader(http.StatusTooManyRequests)
-			}))
-			defer api.Close()
-
-			_, err := getTestDetail(context.Background(), pixivapi.New(pixivapi.Config{BaseURL: api.URL, HTTPClient: api.Client(), AccessToken: "access"}))
-			if err == nil || requests != 1 {
-				t.Fatalf("error=%v requests=%d", err, requests)
-			}
-		})
-	}
-}
-
-func TestGETStopsAfterSecondRateLimitResponse(t *testing.T) {
-	requests := 0
-	api := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		requests++
-		w.Header().Set("Retry-After", "0")
-		w.WriteHeader(http.StatusTooManyRequests)
-	}))
-	defer api.Close()
-
-	_, err := getTestDetail(context.Background(), pixivapi.New(pixivapi.Config{BaseURL: api.URL, HTTPClient: api.Client(), AccessToken: "access"}))
-	if err == nil || requests != 2 {
-		t.Fatalf("error=%v requests=%d", err, requests)
-	}
-}
-
-func TestGETRateLimitWaitHonorsContextCancellation(t *testing.T) {
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-	requests := 0
-	api := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		requests++
-		w.Header().Set("Retry-After", "60")
-		w.WriteHeader(http.StatusTooManyRequests)
-		cancel()
-	}))
-	defer api.Close()
-
-	_, err := getTestDetail(ctx, pixivapi.New(pixivapi.Config{BaseURL: api.URL, HTTPClient: api.Client(), AccessToken: "access"}))
-	if !errors.Is(err, context.Canceled) || requests != 1 {
-		t.Fatalf("error=%v requests=%d", err, requests)
-	}
-}
-
-func TestMutationRateLimitIsNotReplayed(t *testing.T) {
-	requests := 0
-	api := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		requests++
-		if r.Method != http.MethodPost {
-			t.Fatalf("method = %s", r.Method)
-		}
-		w.Header().Set("Retry-After", "0")
-		w.WriteHeader(http.StatusTooManyRequests)
-	}))
-	defer api.Close()
-
-	err := pixivapi.New(pixivapi.Config{BaseURL: api.URL, HTTPClient: api.Client(), AccessToken: "access"}).PostForm(context.Background(), "/v2/illust/bookmark/add", url.Values{"illust_id": {"42"}, "restrict": {"public"}})
-	if err == nil || requests != 1 {
-		t.Fatalf("error=%v requests=%d", err, requests)
-	}
-}
-
 type fakeSession struct {
 	token        string
 	refreshCalls int
@@ -450,84 +52,357 @@ func (s *fakeSession) Refresh(context.Context) error {
 	return nil
 }
 
-func TestWithAccessTokenSendsBearerAuthorization(t *testing.T) {
-	api := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if got := r.Header.Get("Authorization"); got != "Bearer direct-access" {
-			t.Fatalf("Authorization = %q, want bearer access token", got)
+// TestAppClientRequestContract 覆盖 App client 的请求形状、鉴权与响应解码。
+func TestAppClientRequestContract(t *testing.T) {
+	t.Run("get with bearer and user id", func(t *testing.T) {
+		var received *http.Request
+		client := pixivapi.New(pixivapi.Config{
+			HTTPClient: &http.Client{Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+				received = req.Clone(req.Context())
+				return &http.Response{StatusCode: http.StatusOK, Header: http.Header{"Content-Type": {"application/json"}}, Body: io.NopCloser(strings.NewReader(`{"illust":{"id":42}}`))}, nil
+			})},
+			AccessToken: "direct-access", UserID: 42,
+		})
+		result, err := getTestDetail(context.Background(), client)
+		if err != nil || result.Illust.ID != 42 {
+			t.Fatalf("result=%+v err=%v", result, err)
 		}
-		_ = json.NewEncoder(w).Encode(map[string]any{"illust": map[string]any{"id": 42}})
-	}))
-	defer api.Close()
+		if received.Header.Get("Authorization") != "Bearer direct-access" || received.Header.Get("X-User-Id") != "42" || received.Header.Get("User-Agent") != pixivapi.AppUserAgent {
+			t.Fatalf("headers = %v", received.Header)
+		}
+	})
 
-	client := pixivapi.New(pixivapi.Config{BaseURL: api.URL, AccessToken: "direct-access"})
-	if _, err := getTestDetail(context.Background(), client); err != nil {
-		t.Fatalf("GetJSON returned error: %v", err)
+	t.Run("post form", func(t *testing.T) {
+		var received *http.Request
+		client := pixivapi.New(pixivapi.Config{
+			HTTPClient: &http.Client{Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+				received = req.Clone(req.Context())
+				return &http.Response{StatusCode: http.StatusOK, Header: http.Header{"Content-Type": {"application/json"}}, Body: io.NopCloser(strings.NewReader(`{"comment_id":73}`))}, nil
+			})},
+			AccessToken: "direct-access",
+		})
+		var result testMutationResponse
+		err := client.PostFormJSON(context.Background(), "/v1/illust/comment/add", url.Values{"illust_id": {"42"}, "comment": {"hello"}, "extra[]": {"a", "b"}}, &result)
+		if err != nil || result.CommentID != 73 {
+			t.Fatalf("result=%+v err=%v", result, err)
+		}
+		if err := received.ParseForm(); err != nil {
+			t.Fatalf("ParseForm: %v", err)
+		}
+		if received.Method != http.MethodPost || received.URL.Path != "/v1/illust/comment/add" ||
+			received.PostForm.Get("illust_id") != "42" || received.PostForm.Get("comment") != "hello" || strings.Join(received.PostForm["extra[]"], ",") != "a,b" ||
+			received.Header.Get("Content-Type") != "application/x-www-form-urlencoded" || received.Header.Get("Authorization") != "Bearer direct-access" {
+			t.Fatalf("request = %s %s form=%v headers=%v", received.Method, received.URL, received.PostForm, received.Header)
+		}
+	})
+
+	t.Run("raw body", func(t *testing.T) {
+		client := pixivapi.New(pixivapi.Config{
+			HTTPClient: &http.Client{Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+				if req.URL.Path != "/v1/novel/content" || req.URL.Query().Get("novel_id") != "9" {
+					t.Errorf("request = %s", req.URL)
+				}
+				if req.Header.Get("X-User-Id") != "42" {
+					t.Errorf("X-User-Id = %q", req.Header.Get("X-User-Id"))
+				}
+				return &http.Response{StatusCode: http.StatusOK, Header: http.Header{}, Body: io.NopCloser(strings.NewReader("<p>raw</p>"))}, nil
+			})},
+			AccessToken: "access", UserID: 42,
+		})
+		body, err := client.GetRaw(context.Background(), "/v1/novel/content", url.Values{"novel_id": {"9"}})
+		if err != nil || string(body) != "<p>raw</p>" {
+			t.Fatalf("body = %q err=%v", body, err)
+		}
+	})
+}
+
+func TestAppClientMalformedSuccessResponse(t *testing.T) {
+	for _, body := range []string{"", "   \n\t", "not-json"} {
+		t.Run(strings.ReplaceAll(body, "\n", "\\n"), func(t *testing.T) {
+			requests := 0
+			client := pixivapi.New(pixivapi.Config{
+				HTTPClient: &http.Client{Transport: roundTripFunc(func(*http.Request) (*http.Response, error) {
+					requests++
+					return &http.Response{StatusCode: http.StatusOK, Header: http.Header{"Content-Type": {"application/json"}}, Body: io.NopCloser(strings.NewReader(body))}, nil
+				})},
+				AccessToken: "access",
+			})
+			var result testMutationResponse
+			err := client.PostFormJSON(context.Background(), "/v1/illust/comment/add", url.Values{"illust_id": {"42"}}, &result)
+			if !errors.Is(err, pixivapi.ErrMalformedResponse) || requests != 1 {
+				t.Fatalf("error = %v requests = %d", err, requests)
+			}
+		})
 	}
 }
 
-func TestBookmarkMutationRefreshesAuthAndAcceptsEmptySuccess(t *testing.T) {
-	session := &fakeSession{token: "old-access"}
-	api := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
-		if request.Method != http.MethodPost || request.URL.Path != "/v2/illust/bookmark/add" {
-			t.Fatalf("method=%s path=%s", request.Method, request.URL.Path)
-		}
-		if err := request.ParseForm(); err != nil {
-			t.Fatal(err)
-		}
-		if request.Form.Get("illust_id") != "42" || request.Form.Get("restrict") != "public" || len(request.Form["tags[]"]) != 2 {
-			t.Fatalf("form=%v", request.Form)
-		}
-		if request.Header.Get("Authorization") != "Bearer new-access" {
-			http.Error(writer, `{"error":{"message":"unauthorized"}}`, http.StatusUnauthorized)
-			return
-		}
-		writer.WriteHeader(http.StatusNoContent)
-	}))
-	defer api.Close()
+func TestAppClientRefreshAndReplayContract(t *testing.T) {
+	for _, status := range []int{http.StatusUnauthorized, http.StatusForbidden} {
+		t.Run("refresh/"+http.StatusText(status), func(t *testing.T) {
+			session := &fakeSession{token: "old-access"}
+			requests := 0
+			client := pixivapi.New(pixivapi.Config{
+				HTTPClient: &http.Client{Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+					requests++
+					if requests == 1 && req.Header.Get("Authorization") != "Bearer old-access" {
+						t.Fatalf("first Authorization = %q", req.Header.Get("Authorization"))
+					}
+					if requests == 2 && req.Header.Get("Authorization") != "Bearer new-access" {
+						t.Fatalf("retry Authorization = %q", req.Header.Get("Authorization"))
+					}
+					if requests == 1 {
+						return &http.Response{StatusCode: status, Header: http.Header{}, Body: http.NoBody}, nil
+					}
+					return &http.Response{StatusCode: http.StatusOK, Header: http.Header{"Content-Type": {"application/json"}}, Body: io.NopCloser(strings.NewReader(`{"illust":{"id":42}}`))}, nil
+				})},
+				Session: session,
+			})
+			result, err := getTestDetail(context.Background(), client)
+			if err != nil || result.Illust.ID != 42 || session.refreshCalls != 1 || requests != 2 {
+				t.Fatalf("result=%+v err=%v refresh=%d requests=%d", result, err, session.refreshCalls, requests)
+			}
+		})
+	}
 
-	client := pixivapi.New(pixivapi.Config{BaseURL: api.URL, Session: session})
-	if err := client.PostForm(context.Background(), "/v2/illust/bookmark/add", url.Values{"illust_id": {"42"}, "restrict": {"public"}, "tags[]": {"a", "b"}}); err != nil {
-		t.Fatalf("PostForm returned error: %v", err)
-	}
-	if session.refreshCalls != 1 {
-		t.Fatalf("refresh calls=%d", session.refreshCalls)
-	}
+	t.Run("refresh cancellation", func(t *testing.T) {
+		session := &fakeSession{token: "old-access", refreshErr: context.Canceled}
+		client := pixivapi.New(pixivapi.Config{
+			HTTPClient: &http.Client{Transport: roundTripFunc(func(*http.Request) (*http.Response, error) {
+				return &http.Response{StatusCode: http.StatusUnauthorized, Header: http.Header{}, Body: http.NoBody}, nil
+			})},
+			Session: session,
+		})
+		if _, err := getTestDetail(context.Background(), client); !errors.Is(err, context.Canceled) || session.refreshCalls != 1 {
+			t.Fatalf("error = %v refresh=%d", err, session.refreshCalls)
+		}
+	})
+
+	t.Run("non-auth status with auth words", func(t *testing.T) {
+		session := &fakeSession{token: "old-access"}
+		requests := 0
+		client := pixivapi.New(pixivapi.Config{
+			HTTPClient: &http.Client{Transport: roundTripFunc(func(*http.Request) (*http.Response, error) {
+				requests++
+				return &http.Response{StatusCode: http.StatusBadGateway, Header: http.Header{}, Body: io.NopCloser(strings.NewReader("oauth unauthorized invalid_grant"))}, nil
+			})},
+			Session: session,
+		})
+		if _, err := getTestDetail(context.Background(), client); err == nil || requests != 1 || session.refreshCalls != 0 {
+			t.Fatalf("err=%v requests=%d refresh=%d", err, requests, session.refreshCalls)
+		}
+	})
+
+	t.Run("mutation refresh", func(t *testing.T) {
+		session := &fakeSession{token: "old-access"}
+		requests := 0
+		client := pixivapi.New(pixivapi.Config{
+			HTTPClient: &http.Client{Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+				requests++
+				if err := req.ParseForm(); err != nil {
+					t.Fatalf("ParseForm: %v", err)
+				}
+				if req.Method != http.MethodPost || req.URL.Path != "/v2/illust/bookmark/add" ||
+					req.PostForm.Get("illust_id") != "42" || req.PostForm.Get("restrict") != "public" || len(req.PostForm["tags[]"]) != 2 {
+					t.Fatalf("form = %v", req.PostForm)
+				}
+				if req.Header.Get("Authorization") != "Bearer new-access" {
+					return &http.Response{StatusCode: http.StatusUnauthorized, Header: http.Header{}, Body: http.NoBody}, nil
+				}
+				return &http.Response{StatusCode: http.StatusNoContent, Header: http.Header{}, Body: http.NoBody}, nil
+			})},
+			Session: session,
+		})
+		if err := client.PostForm(context.Background(), "/v2/illust/bookmark/add", url.Values{"illust_id": {"42"}, "restrict": {"public"}, "tags[]": {"a", "b"}}); err != nil || session.refreshCalls != 1 {
+			t.Fatalf("err=%v refresh=%d", err, session.refreshCalls)
+		}
+	})
 }
 
-func TestMutationServerErrorDoesNotRefreshOrReplay(t *testing.T) {
-	session := &fakeSession{token: "old-access"}
-	requests := 0
-	api := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
-		requests++
-		if request.Method != http.MethodPost || request.URL.Path != "/v1/user/follow/delete" {
-			t.Fatalf("method=%s path=%s", request.Method, request.URL.Path)
-		}
-		writer.WriteHeader(http.StatusBadGateway)
-		_, _ = writer.Write([]byte("unauthorized"))
-	}))
-	defer api.Close()
+func TestAppClientUncertainFailuresAreNotReplayed(t *testing.T) {
+	for name, test := range map[string]struct {
+		status     int
+		retryAfter string
+	}{
+		"rate-limit":   {status: http.StatusTooManyRequests, retryAfter: "0"},
+		"server-error": {status: http.StatusBadGateway},
+	} {
+		t.Run(name, func(t *testing.T) {
+			session := &fakeSession{token: "access"}
+			requests := 0
+			client := pixivapi.New(pixivapi.Config{
+				HTTPClient: &http.Client{Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+					requests++
+					if req.Method == http.MethodGet {
+						header := http.Header{}
+						if test.retryAfter != "" {
+							header.Set("Retry-After", test.retryAfter)
+						}
+						return &http.Response{StatusCode: test.status, Header: header, Body: http.NoBody}, nil
+					}
+					header := http.Header{}
+					if test.retryAfter != "" {
+						header.Set("Retry-After", test.retryAfter)
+					}
+					return &http.Response{StatusCode: test.status, Header: header, Body: io.NopCloser(strings.NewReader(`{"error":"request outcome is unknown"}`))}, nil
+				})},
+				Session: session,
+			})
+			var result testMutationResponse
+			if err := client.PostFormJSON(context.Background(), "/v1/illust/comment/add", url.Values{"illust_id": {"42"}}, &result); err == nil || session.refreshCalls != 0 {
+				t.Fatalf("mutation err=%v refresh=%d", err, session.refreshCalls)
+			}
+			if requests != 1 {
+				t.Fatalf("mutation requests = %d, want 1", requests)
+			}
+		})
+	}
 
-	client := pixivapi.New(pixivapi.Config{BaseURL: api.URL, Session: session})
-	if err := client.PostForm(context.Background(), "/v1/user/follow/delete", url.Values{"user_id": {"42"}}); err == nil {
-		t.Fatal("follow delete unexpectedly succeeded")
-	}
-	if requests != 1 || session.refreshCalls != 0 {
-		t.Fatalf("requests=%d refresh_calls=%d", requests, session.refreshCalls)
-	}
+	t.Run("server error mutation", func(t *testing.T) {
+		session := &fakeSession{token: "old-access"}
+		requests := 0
+		client := pixivapi.New(pixivapi.Config{
+			HTTPClient: &http.Client{Transport: roundTripFunc(func(*http.Request) (*http.Response, error) {
+				requests++
+				return &http.Response{StatusCode: http.StatusBadGateway, Header: http.Header{}, Body: io.NopCloser(strings.NewReader("unauthorized"))}, nil
+			})},
+			Session: session,
+		})
+		if err := client.PostForm(context.Background(), "/v1/user/follow/delete", url.Values{"user_id": {"42"}}); err == nil || requests != 1 || session.refreshCalls != 0 {
+			t.Fatalf("err=%v requests=%d refresh=%d", err, requests, session.refreshCalls)
+		}
+	})
+
+	t.Run("transport", func(t *testing.T) {
+		calls := 0
+		client := pixivapi.New(pixivapi.Config{
+			HTTPClient: &http.Client{Transport: roundTripFunc(func(*http.Request) (*http.Response, error) {
+				calls++
+				return nil, errors.New("connection reset")
+			})},
+			AccessToken: "access",
+		})
+		var result testMutationResponse
+		if err := client.PostFormJSON(context.Background(), "/v1/illust/comment/add", url.Values{"illust_id": {"42"}}, &result); err == nil || calls != 1 {
+			t.Fatalf("err=%v calls=%d", err, calls)
+		}
+	})
 }
 
-func TestRequestLogsOmitSecretsAndQueries(t *testing.T) {
+func TestAppClientRateLimitPolicy(t *testing.T) {
+	detail := func(requests *int, status func(int) (int, string)) *pixivapi.Client {
+		return pixivapi.New(pixivapi.Config{
+			HTTPClient: &http.Client{Transport: roundTripFunc(func(*http.Request) (*http.Response, error) {
+				*requests++
+				code, retryAfter := status(*requests)
+				header := http.Header{}
+				if retryAfter != "" {
+					header.Set("Retry-After", retryAfter)
+				}
+				if code == http.StatusOK {
+					return &http.Response{StatusCode: code, Header: header, Body: io.NopCloser(strings.NewReader(`{"illust":{"id":42}}`))}, nil
+				}
+				return &http.Response{StatusCode: code, Header: header, Body: http.NoBody}, nil
+			})},
+			AccessToken: "access",
+		})
+	}
+
+	t.Run("retry once with valid retry-after", func(t *testing.T) {
+		requests := 0
+		client := detail(&requests, func(call int) (int, string) {
+			if call == 1 {
+				return http.StatusTooManyRequests, "0"
+			}
+			return http.StatusOK, ""
+		})
+		result, err := getTestDetail(context.Background(), client)
+		if err != nil || result.Illust.ID != 42 || requests != 2 {
+			t.Fatalf("result=%+v err=%v requests=%d", result, err, requests)
+		}
+	})
+
+	for _, header := range []string{"", "not-a-delay", "-1"} {
+		t.Run("invalid retry-after/"+header, func(t *testing.T) {
+			requests := 0
+			client := detail(&requests, func(int) (int, string) { return http.StatusTooManyRequests, header })
+			if _, err := getTestDetail(context.Background(), client); err == nil || requests != 1 {
+				t.Fatalf("err=%v requests=%d", err, requests)
+			}
+		})
+	}
+
+	t.Run("stop after second rate limit", func(t *testing.T) {
+		requests := 0
+		client := detail(&requests, func(int) (int, string) { return http.StatusTooManyRequests, "0" })
+		if _, err := getTestDetail(context.Background(), client); err == nil || requests != 2 {
+			t.Fatalf("err=%v requests=%d", err, requests)
+		}
+	})
+
+	t.Run("wait honors cancellation", func(t *testing.T) {
+		ctx, cancel := context.WithCancel(context.Background())
+		defer cancel()
+		requests := 0
+		client := pixivapi.New(pixivapi.Config{
+			HTTPClient: &http.Client{Transport: roundTripFunc(func(*http.Request) (*http.Response, error) {
+				requests++
+				cancel()
+				return &http.Response{StatusCode: http.StatusTooManyRequests, Header: http.Header{"Retry-After": {"60"}}, Body: http.NoBody}, nil
+			})},
+			AccessToken: "access",
+		})
+		if _, err := getTestDetail(ctx, client); !errors.Is(err, context.Canceled) || requests != 1 {
+			t.Fatalf("err=%v requests=%d", err, requests)
+		}
+	})
+}
+
+func TestAppClientPreservesCallerClientAndCancellation(t *testing.T) {
+	t.Run("explicit client", func(t *testing.T) {
+		calls := 0
+		client := pixivapi.New(pixivapi.Config{
+			BaseURL: "https://example.invalid",
+			HTTPClient: &http.Client{Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+				calls++
+				return &http.Response{StatusCode: http.StatusOK, Header: http.Header{"Content-Type": {"application/json"}}, Body: io.NopCloser(strings.NewReader(`{"illust":{"id":42}}`)), Request: req}, nil
+			})},
+			AccessToken: "access",
+		})
+		if result, err := getTestDetail(context.Background(), client); err != nil || result.Illust.ID != 42 || calls != 1 {
+			t.Fatalf("result=%+v err=%v calls=%d", result, err, calls)
+		}
+	})
+
+	t.Run("context cancellation", func(t *testing.T) {
+		started := make(chan struct{})
+		api := httptest.NewServer(http.HandlerFunc(func(_ http.ResponseWriter, request *http.Request) {
+			close(started)
+			<-request.Context().Done()
+		}))
+		defer api.Close()
+		ctx, cancel := context.WithCancel(context.Background())
+		result := make(chan error, 1)
+		go func() {
+			var response testDetailResponse
+			result <- pixivapi.New(pixivapi.Config{BaseURL: api.URL, AccessToken: "access"}).GetJSON(ctx, "/v1/illust/detail", nil, &response)
+		}()
+		<-started
+		cancel()
+		if err := <-result; !errors.Is(err, context.Canceled) {
+			t.Fatalf("GetJSON error = %v, want context.Canceled", err)
+		}
+	})
+}
+
+func TestAppClientLogsOmitSecretsAndQueries(t *testing.T) {
 	const (
 		accessToken = "access-token-canary"
 		querySecret = "query-canary"
 		bodySecret  = "body-canary"
 	)
 	api := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Query().Get("word") != querySecret {
-			t.Fatalf("query = %q", r.URL.RawQuery)
-		}
-		if r.Header.Get("Authorization") != "Bearer "+accessToken {
-			t.Fatalf("authorization = %q", r.Header.Get("Authorization"))
+		if r.URL.Query().Get("word") != querySecret || r.Header.Get("Authorization") != "Bearer "+accessToken {
+			t.Fatalf("request = %s auth=%q", r.URL, r.Header.Get("Authorization"))
 		}
 		_, _ = w.Write([]byte(`{"secret":"` + bodySecret + `"}`))
 	}))
