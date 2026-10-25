@@ -1,7 +1,12 @@
+// auth.go 组装 OAuth 路由与入站保护，提供各授权阶段共用的随机值生成。
+
 package auth
 
 import (
 	"bytes"
+	"context"
+	"crypto/rand"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"io"
@@ -22,10 +27,77 @@ import (
 // Bound unauthenticated allocation and persisted DCR growth for this single-owner server.
 const maxOAuthBody = 64 << 10
 const maxOAuthEntries = 1024
-const authorizationLifetime = 10 * time.Minute
 const controlBodyReadTimeout = 10 * time.Second
 
 var errOAuthCapacity = errors.New("OAuth capacity reached")
+
+// Handler 同时持有 OAuth 路由及 canonical resource 的 bearer 边界，不管理 listener。
+type Handler struct {
+	routes                http.Handler
+	store                 Store
+	resource, metadataURL string
+}
+
+// ServeHTTP 处理 discovery、注册、授权与 token 请求。
+func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) { h.routes.ServeHTTP(w, r) }
+
+func randomAuthorizationValue() (string, error) {
+	value := make([]byte, 32)
+	if _, err := rand.Read(value); err != nil {
+		return "", err
+	}
+	return base64.RawURLEncoding.EncodeToString(value), nil
+}
+
+// RequireBearer 包装 MCP handler；鉴权只影响新请求，不取消已授权请求。
+func (h *Handler) RequireBearer(next http.Handler) http.Handler {
+	protected := sdkauth.RequireBearerToken(h.verify, &sdkauth.RequireBearerTokenOptions{
+		ResourceMetadataURL: h.metadataURL, Scopes: []string{"mcp"},
+	})(next)
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Cache-Control", "no-store")
+		protected.ServeHTTP(privateResponseWriter{w}, r)
+	})
+}
+
+// SDK 会重设 SSE 缓存头；在实际提交时守住私有结果边界，而非只在进入 handler 前设置。
+type privateResponseWriter struct{ http.ResponseWriter }
+
+func (w privateResponseWriter) WriteHeader(status int) {
+	w.Header().Set("Cache-Control", "no-store")
+	w.ResponseWriter.WriteHeader(status)
+}
+
+func (w privateResponseWriter) Write(p []byte) (int, error) {
+	w.Header().Set("Cache-Control", "no-store")
+	return w.ResponseWriter.Write(p)
+}
+
+func (w privateResponseWriter) FlushError() error {
+	w.Header().Set("Cache-Control", "no-store")
+	return http.NewResponseController(w.ResponseWriter).Flush()
+}
+
+// 让 ResponseController 的 deadline/full-duplex 等能力仍可到达底层连接。
+func (w privateResponseWriter) Unwrap() http.ResponseWriter { return w.ResponseWriter }
+
+func (h *Handler) verify(ctx context.Context, token string, request *http.Request) (*sdkauth.TokenInfo, error) {
+	if len(request.Header.Values("Authorization")) != 1 {
+		return nil, sdkauth.ErrInvalidToken
+	}
+	state, err := h.store.Read(ctx)
+	if err != nil {
+		return nil, errors.New("MCP authorization state unavailable")
+	}
+	hash := tokenHash(token)
+	for grantID, grant := range state.Grants {
+		expiry, exists := grant.AccessTokens[hash]
+		if exists && grant.Usable(h.resource) && time.Now().Before(expiry) {
+			return &sdkauth.TokenInfo{Scopes: []string{grant.Scope}, Expiration: expiry, UserID: "owner", Extra: map[string]any{"grant_id": grantID}}, nil
+		}
+	}
+	return nil, sdkauth.ErrInvalidToken
+}
 
 // ParseBaseURL 校验并返回规范化的公开 MCP base URL（去掉末尾斜杠），只接受显式配置。
 // 客户端会归一化 dot segments；拒绝可能使 issuer 与 discovery 路径不一致的配置。

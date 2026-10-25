@@ -1,4 +1,5 @@
-// Package mcpserver 拥有统一 MCP Streamable HTTP transport 与 runtime lifecycle。
+// http.go 组装 Streamable HTTP、OAuth 与媒体路由，并管理 listener 和写入观测。
+
 package mcpserver
 
 import (
@@ -23,7 +24,7 @@ import (
 
 // NewHTTPHandler 将专用 server 绑定到 ctx 的服务生命周期并组装 HTTP/OAuth 路由。
 // owner 必须已初始化；同一 server 不应再次绑定到另一生命周期。
-func NewHTTPHandler(ctx context.Context, server *mcp.Server, baseURL string, store auth.Store, login *accounts.Login, media ...*mediaproxy.Service) (http.Handler, error) {
+func NewHTTPHandler(ctx context.Context, server *mcp.Server, baseURL string, store auth.Store, login *accounts.Login, media *mediaproxy.Service) (http.Handler, error) {
 	authorization, err := auth.NewHandler(baseURL, store)
 	if err != nil {
 		return nil, err
@@ -37,22 +38,7 @@ func NewHTTPHandler(ctx context.Context, server *mcp.Server, baseURL string, sto
 		return nil, err
 	}
 	// 旧 revision 的 SDK session 会脱离 HTTP context；服务退出仍必须取消在途工具。
-	server.AddReceivingMiddleware(func(next mcp.MethodHandler) mcp.MethodHandler {
-		return func(requestCtx context.Context, method string, request mcp.Request) (mcp.Result, error) {
-			if err := ctx.Err(); err != nil {
-				return nil, err
-			}
-			requestCtx, cancel := context.WithCancel(requestCtx)
-			stop := context.AfterFunc(ctx, cancel)
-			defer stop()
-			defer cancel()
-			result, err := next(requestCtx, method, request)
-			if err == nil {
-				result = observeMediaResult(ctx, request, result)
-			}
-			return result, err
-		}
-	})
+	bindLifecycle(ctx, server)
 	protocol := mcp.NewStreamableHTTPHandler(func(*http.Request) *mcp.Server { return server }, &mcp.StreamableHTTPOptions{
 		Stateless: true,
 		// 新 revision 的 POST 就是请求生命周期；断线后不再继续无法交付的工具工作。
@@ -68,8 +54,8 @@ func NewHTTPHandler(ctx context.Context, server *mcp.Server, baseURL string, sto
 	}
 	relayURL, _ := url.Parse(relayBase)
 	return authorization.RequireCanonical(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if len(media) > 0 && media[0] != nil && strings.HasPrefix(r.URL.EscapedPath(), media[0].Path()) {
-			media[0].ServeHTTP(w, r)
+		if media != nil && strings.HasPrefix(r.URL.EscapedPath(), media.Path()) {
+			media.ServeHTTP(w, r)
 			return
 		}
 		// ServeMux 会清理双斜线和转义路径，破坏已发布的 canonical resource。
@@ -90,13 +76,13 @@ func NewHTTPHandler(ctx context.Context, server *mcp.Server, baseURL string, sto
 }
 
 // RunHTTP 监听显式地址；取消或 listener 失败时取消并等待在途 handler 退出，不切换端口。
-func RunHTTP(ctx context.Context, server *mcp.Server, listenAddr, baseURL string, store auth.Store, out io.Writer, login *accounts.Login, media ...*mediaproxy.Service) error {
+func RunHTTP(ctx context.Context, server *mcp.Server, listenAddr, baseURL string, store auth.Store, out io.Writer, login *accounts.Login, media *mediaproxy.Service) error {
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 	if login != nil {
 		defer login.Close()
 	}
-	handler, err := NewHTTPHandler(ctx, server, baseURL, store, login, media...)
+	handler, err := NewHTTPHandler(ctx, server, baseURL, store, login, media)
 	if err != nil {
 		return err
 	}
@@ -135,12 +121,12 @@ func observeHTTPWriter(lifecycleCtx, requestCtx context.Context, writer http.Res
 	if method != http.MethodPost {
 		return writer
 	}
-	return &observedHTTPWriter{ResponseWriter: writer, lifecycleCtx: lifecycleCtx, requestCtx: requestCtx, observationCtx: lifecycleCtx}
+	return &observedHTTPWriter{ResponseWriter: writer, lifecycleCtx: lifecycleCtx, requestCtx: requestCtx}
 }
 
 type observedHTTPWriter struct {
 	http.ResponseWriter
-	lifecycleCtx, requestCtx, observationCtx context.Context
+	lifecycleCtx, requestCtx context.Context
 }
 
 func (w *observedHTTPWriter) Unwrap() http.ResponseWriter { return w.ResponseWriter }
@@ -172,9 +158,9 @@ func (w *observedHTTPWriter) observe(operation string, accepted int, started tim
 		reason = "request cancelled"
 	}
 	if reason == "" {
-		logging.From(w.observationCtx).LogAttrs(w.observationCtx, slog.LevelDebug, "MCP HTTP step completed", attrs...)
+		logging.From(w.lifecycleCtx).LogAttrs(w.lifecycleCtx, slog.LevelDebug, "MCP HTTP step completed", attrs...)
 		return
 	}
-	logging.From(w.observationCtx).LogAttrs(w.observationCtx, slog.LevelWarn, "MCP HTTP step failed",
+	logging.From(w.lifecycleCtx).LogAttrs(w.lifecycleCtx, slog.LevelWarn, "MCP HTTP step failed",
 		append(attrs, slog.String(logging.AttrReason, reason))...)
 }

@@ -1,3 +1,5 @@
+// stdio.go 在输入断开时取消 JSON-RPC 调用，并保留输出流的所有权。
+
 package mcpserver
 
 import (
@@ -13,18 +15,7 @@ import (
 func RunStdio(ctx context.Context, server *mcp.Server, in io.Reader, out io.Writer) error {
 	ctx, cancel := context.WithCancelCause(ctx)
 	defer cancel(nil)
-	server.AddReceivingMiddleware(func(next mcp.MethodHandler) mcp.MethodHandler {
-		return func(requestCtx context.Context, method string, request mcp.Request) (mcp.Result, error) {
-			requestCtx, stopRequest := context.WithCancel(requestCtx)
-			stop := context.AfterFunc(ctx, stopRequest)
-			defer stop()
-			defer stopRequest()
-			if err := ctx.Err(); err != nil {
-				return nil, err
-			}
-			return next(requestCtx, method, request)
-		}
-	})
+	bindLifecycle(ctx, server)
 	reader, ok := in.(io.ReadCloser)
 	if !ok {
 		reader = io.NopCloser(in)

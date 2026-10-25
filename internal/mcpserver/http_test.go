@@ -33,7 +33,7 @@ func TestHTTPRequiresBearer(t *testing.T) {
 	require.NoError(t, err)
 	require.NoError(t, os.WriteFile(store.Path, body, 0o600))
 	server := mcpserver.New(pixiv.SDKPorts{}, pixiv.Account{}, fanbox.SDKPorts{}, nil)
-	handler, err := mcpserver.NewHTTPHandler(t.Context(), server, "https://mcp.test", store, nil)
+	handler, err := mcpserver.NewHTTPHandler(t.Context(), server, "https://mcp.test", store, nil, nil)
 	require.NoError(t, err)
 	for _, tc := range []struct {
 		token  string

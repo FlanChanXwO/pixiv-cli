@@ -4,13 +4,10 @@ package auth
 import (
 	"bytes"
 	"context"
-	"crypto/rand"
 	"crypto/sha256"
-	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
-	"io"
 	"os"
 	"runtime"
 	"slices"
@@ -115,13 +112,10 @@ func (s Store) Read(ctx context.Context) (State, error) {
 	if err := decoder.Decode(&state); err != nil {
 		return State{}, ErrInvalidState
 	}
-	if err := decoder.Decode(new(any)); err != io.EOF {
-		return State{}, ErrInvalidState
-	}
 	if state.Version != 1 {
 		return State{}, errors.New("unsupported MCP state version")
 	}
-	if !validHash(state.OwnerVerifier) || state.Clients == nil || state.Grants == nil || state.SelectedPixivUserID < 0 {
+	if !validHash(state.OwnerVerifier) || state.SelectedPixivUserID < 0 {
 		return State{}, ErrInvalidState
 	}
 	for id, client := range state.Clients {
@@ -169,13 +163,11 @@ func (s Store) Init(ctx context.Context, reset bool) (string, error) {
 			return ErrAlreadyInitialized
 		}
 		// 256 位机器随机值不是用户密码，持久化只需不可逆 SHA-256 verifier。
-		value := make([]byte, 32)
-		if _, err := rand.Read(value); err != nil {
+		candidate, err := randomAuthorizationValue()
+		if err != nil {
 			return err
 		}
-		candidate := base64.RawURLEncoding.EncodeToString(value)
-		digest := sha256.Sum256([]byte(candidate))
-		state.OwnerVerifier = hex.EncodeToString(digest[:])
+		state.OwnerVerifier = tokenHash(candidate)
 		// reset 清空 grant 前保留旧版本已经获得 owner 授权的证据。
 		for _, grant := range state.Grants {
 			client := state.Clients[grant.ClientID]
@@ -225,11 +217,10 @@ func (s Store) registerClient(ctx context.Context, client Client) (string, error
 				return errOAuthCapacity
 			}
 		}
-		value := make([]byte, 32)
-		if _, err := rand.Read(value); err != nil {
+		candidate, err := randomAuthorizationValue()
+		if err != nil {
 			return err
 		}
-		candidate := base64.RawURLEncoding.EncodeToString(value)
 		if _, exists := state.Clients[candidate]; exists {
 			return errors.New("MCP client ID collision")
 		}
