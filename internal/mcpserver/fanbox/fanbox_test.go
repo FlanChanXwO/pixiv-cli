@@ -11,7 +11,9 @@ import (
 	config "github.com/FlanChanXwO/pixiv-cli/internal/config/settings"
 	accountfanbox "github.com/FlanChanXwO/pixiv-cli/internal/fanboxaccount"
 	fanboxapp "github.com/FlanChanXwO/pixiv-cli/internal/fanboxaccount"
+	"github.com/FlanChanXwO/pixiv-cli/internal/logging"
 	fanboxmcpserver "github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/fanbox"
+	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/fanbox/internal/toolhost"
 	ugoira "github.com/FlanChanXwO/pixiv-cli/internal/media/ugoira"
 	"github.com/FlanChanXwO/pixiv-cli/internal/storage/database"
 	fanboxsdk "github.com/FlanChanXwO/pixiv-cli/sdk/fanbox"
@@ -26,6 +28,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 )
@@ -52,6 +55,53 @@ var unsafeOutputPropertyNames = map[string]struct{}{
 	"session":         {},
 	"fanboxsessid":    {},
 	"token":           {},
+}
+
+func TestFanboxMCPToolLogsCarryCallID(t *testing.T) {
+	output := &syncBuffer{}
+	logger, err := logging.New(output, "debug", "json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	rootCtx, cancel := context.WithCancel(logging.WithCall(context.Background(), logger, "", ""))
+	defer cancel()
+
+	server := mcp.NewServer(&mcp.Implementation{Name: "debug-test", Version: "1"}, nil)
+	toolhost.AddTool(toolhost.NewApp(toolhost.SDKPorts{Logger: logger}, toolhost.Account{}), server, &mcp.Tool{Name: "diagnostic_test"}, func(context.Context, *mcp.CallToolRequest, struct{}) (*mcp.CallToolResult, struct{}, error) {
+		return nil, struct{}{}, errors.New("fixture failure")
+	})
+	clientTransport, serverTransport := mcp.NewInMemoryTransports()
+	go func() { _ = server.Run(rootCtx, serverTransport) }()
+	client := mcp.NewClient(&mcp.Implementation{Name: "debug-client", Version: "1"}, nil)
+	session, err := client.Connect(rootCtx, clientTransport, nil)
+	if err != nil {
+		t.Fatalf("connect: %v", err)
+	}
+	defer session.Close()
+
+	_, _ = session.CallTool(context.Background(), &mcp.CallToolParams{Name: "diagnostic_test", Arguments: map[string]any{}})
+
+	if !strings.Contains(output.String(), `"call_id":"1"`) || !strings.Contains(output.String(), `"operation":"diagnostic_test"`) {
+		t.Fatalf("tool call log missing call id: %s", output.String())
+	}
+}
+
+// syncBuffer 让并发写入的日志在测试中可安全读取。
+type syncBuffer struct {
+	mu  sync.Mutex
+	buf bytes.Buffer
+}
+
+func (b *syncBuffer) Write(data []byte) (int, error) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.buf.Write(data)
+}
+
+func (b *syncBuffer) String() string {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.buf.String()
 }
 
 // TestEveryToolOutputSchemaOmitsTransportAndCredentialFields walks the output

@@ -2144,6 +2144,7 @@ func TestInvalidInputsRejectBeforeSDKExecution(t *testing.T) {
 		tool string
 		args map[string]any
 	}{
+		{name: "search user rejects blank word", tool: "pixiv_search_user", args: map[string]any{"word": " \t"}},
 		{name: "recommended illust rejects novel filter", tool: "pixiv_recommended", args: map[string]any{"kind": "illust", "novel_filter": map[string]any{"id": 201}}},
 		{name: "recommended manga rejects conflicting artwork type", tool: "pixiv_recommended", args: map[string]any{"kind": "manga", "illust_filter": map[string]any{"type": "illust"}}},
 		{name: "recommended novel rejects user filter", tool: "pixiv_recommended", args: map[string]any{"kind": "novel", "user_filter": map[string]any{"id": 401}}},
@@ -2371,6 +2372,21 @@ func TestSearchUserRejectsBlankWordBeforeSDKExecution(t *testing.T) {
 
 // TestReadToolSDKFailuresRemainStructured 是读取 tool 的失败模式表：SDK 返回的类型化
 // 错误必须以 isError 暴露、保留结构化空 envelope，并且不静默回退到其它端点。
+func TestTrendingTagsIllustEmptyResultIsSuccessful(t *testing.T) {
+	session, closeSession := newSDKTestSession(t, &fakeSDKClient{trendingTags: []pixiv.TrendingTag{}})
+	defer closeSession()
+
+	result := callTool(t, session, "pixiv_trending_tags_illust", map[string]any{})
+	if result.IsError || !resultHasText(result, "No trending tags found.") {
+		t.Fatalf("empty trending result=%+v", result)
+	}
+	var out outputs.TrendingTags
+	decodeStructured(t, result, &out)
+	if out.Tags == nil || len(out.Tags) != 0 || out.Text != "No trending tags found." {
+		t.Fatalf("empty trending output=%+v", out)
+	}
+}
+
 func TestReadToolSDKFailuresRemainStructured(t *testing.T) {
 	for _, test := range []struct {
 		name   string
@@ -2581,6 +2597,29 @@ func TestSDKRecommendedAllReturnsEveryStreamAndPagination(t *testing.T) {
 		t.Fatalf("structured output leaks continuation: %s, err=%v", raw, err)
 	}
 }
+func TestSDKRecommendedMangaLimitDoesNotScanPastLogicalArtworkWindow(t *testing.T) {
+	calls := 0
+	client := &fakeSDKClient{recommendedArtworks: func(_ context.Context, _ pixiv.RecommendedArtworksRequest, call int) (sdk.Page[pixiv.Artwork], error) {
+		calls = call
+		if call > 1 {
+			return sdk.Page[pixiv.Artwork]{}, errors.New("unexpected recommendation scan beyond logical artwork window")
+		}
+		return sdk.Page[pixiv.Artwork]{Items: []pixiv.Artwork{testSDKIllust(11, "illustration", 1)}, Next: testPageCursor(1)}, nil
+	}}
+	session, closeSession := newSDKTestSession(t, client)
+	defer closeSession()
+
+	result := callTool(t, session, "pixiv_recommended", map[string]any{"kind": "manga", "limit": 1})
+	if result.IsError {
+		t.Fatalf("recommended manga result=%+v", result)
+	}
+	var out outputs.Recommended
+	decodeStructured(t, result, &out)
+	if calls != 1 || len(out.Records) != 0 {
+		t.Fatalf("calls=%d records=%+v, want one artwork request and no manga in selected window", calls, out.Records)
+	}
+}
+
 func TestSDKRecommendedAllFailureDoesNotExposePartialStructuredOutput(t *testing.T) {
 	client := &fakeSDKClient{
 		recommendedArtworks: func(_ context.Context, _ pixiv.RecommendedArtworksRequest, _ int) (sdk.Page[pixiv.Artwork], error) {
