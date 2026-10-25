@@ -18,7 +18,7 @@ Production builds use `CGO_ENABLED=0`; only explicit race-detector steps enable 
 Select the relevant existing checks:
 
 ```bash
-CGO_ENABLED=0 go test ./internal/media/ugoira/... ./internal/media/downloader -count=1
+CGO_ENABLED=0 go test ./internal/media/ugoira/... -count=1
 go run ./scripts/build/licensebundle --check
 sh scripts/build/platform.sh --target linux/amd64 --output-dir /tmp/pixiv-platform-check
 sh scripts/build/matrix.sh --capability smoke

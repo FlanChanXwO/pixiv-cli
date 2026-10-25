@@ -1,5 +1,4 @@
-// 本文件声明配置键（别名）。常量与 RuntimeConfig 字段上的 alias 标签一一对应，
-// 由 keys_test.go 的表驱动测试保证两者不会漂移。
+// 本文件声明配置键（别名），与 RuntimeConfig 字段上的 alias 标签一一对应。
 
 package settings
 

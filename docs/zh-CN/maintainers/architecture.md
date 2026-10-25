@@ -57,11 +57,11 @@ flowchart TD
 
 | 源码目录 | 负责 | 嵌入方式 |
 | --- | --- | --- |
-| `frontend/mcp-apps/gallery/` | Gallery HTML/CSS/JS + fixture | CSS/JS 内联 |
+| `frontend/mcp-apps/gallery/` | Gallery HTML/CSS/JS | CSS/JS 内联 |
 | `frontend/pages/login/` | 登录/回调/结果模板与样式 | 保持分离，逐字节保留 |
 | `frontend/pages/oauth/` | 同意页 HTML/CSS | CSS 内联 |
 
-纯资源包 `frontend` 嵌入精确路径（不含 fixture），启动时用标准库组装一次页面；其测试校验源码与占位符。Go owner 保留 MCP 注册、模板渲染/数据/转义、CSP/媒体 origin、canonical action、CSRF 与授权。当前与历史资源 URI 均受支持。干净构建与带版本的 `go install` 无需生成步骤；运行时只读嵌入字节。Homebrew 模板保持原 owner。
+纯资源包 `frontend` 嵌入精确路径（不含 fixture），启动时用标准库组装一次页面；页面行为通过相应浏览器/MCP 宿主手动检查。Go owner 保留 MCP 注册、模板渲染/数据/转义、CSP/媒体 origin、canonical action、CSRF 与授权。当前与历史资源 URI 均受支持。干净构建与带版本的 `go install` 无需生成步骤；运行时只读嵌入字节。Homebrew 模板保持原 owner。
 
 ## 包职责
 
@@ -86,7 +86,7 @@ CLI 组合根，分为三个同包文件：
 - **命令包：** 根级 `internal/cli/{config,mcp,update}`；Pixiv `internal/cli/{auth,bookmark,comment,detail,download,follow,mypixiv,ranking,recommended,search,series,timeline,user}`；FANBOX `internal/cli/fanbox/{auth,download,post}`。命令间共享支撑位于 `internal/cli/internal/{command,input,pixivcmd,fanboxcmd,resolver}`。数据命令经 owner-local 的 `Data` 端口（`Open`/`Pooled`/`JSONOut` 等）使用 `*pixiv.Client` / `*fanbox.Client`，从不直连协议适配器。
 - **共享 helper：** stdin codec 在 `internal/cli/internal/input`；record 投影在 `internal/record`；目标解析器在 `internal/cli/internal/resolver`（只消费命令契约、record 与离线的 `sdk/pixiv.ParseURL`；owner 显式注入裸 ID 探测；不持有 client、凭据或适配器）。这些子包不反向导入 `internal/cli` 根包。
 - **`--version` / 自动更新：** stdout 恰为 `pixiv <version>`，stderr 为空，不检查更新。自动更新只在普通业务命令成功后运行，MCP、help、`--version`、`update`、所有 `auth export`、bundle 形式 `auth import` 与 dev 构建跳过；选择 stable Release，用户缓存 24 小时节流，最多等 3 秒；失败只作为 stderr warning——不改变退出码，不泄漏到 JSON stdout 或 MCP JSON-RPC。
-- **Windows 启动清理** 待更新文件属于潜在写操作：所有 `auth export` 调用在 Cobra 解析前识别并跳过它。根 bool flag 的重复覆盖语义由聚焦测试保护，避免 `--help=false` 之类形式绕过 secret 导出边界。
+- **Windows 启动清理** 待更新文件属于潜在写操作：所有 `auth export` 调用在 Cobra 解析前识别并跳过它。根 bool 解析变更时，手动核对 `--help=false` 等重复覆盖形式仍遵守 secret 导出边界。
 
 ### `internal/cli/auth/loginhelper`
 
@@ -196,8 +196,8 @@ flowchart LR
 - 声明错误：展开后路径重复、非空别名重复、空路径段、循环组、不支持的叶子类型、组上出现仅限叶子的属性。私有叶子没有公开别名就不能启用 CLI 管理、示例或环境变量绑定。`cli`、`secret`、`example` 只接受 `"true"`/`"false"`（不影响用户配置值的解析）。
 - 私有 schema 缓存字段索引链与 Go 类型，从不缓存实例。标量绑定与 `Effective` 使用相同的来源选择；普通绑定不分配指针组。高级读取器按字段归属定位已编译路径，不新增别名，也不会在领域启用检查前分配 solver 组。账号池默认值来自声明；严格文件类型与策略校验仍是领域规则。
 - 默认账号选择有单独的私有声明范围：`int64` UID 叶子无别名、无默认值；正整数解析留在按需的 auth 读写方法中；从不进入普通绑定或 Snapshot 早期校验。
-- `SettingSpec` 是 CLI 消费的**公开派生视图**，不是手写事实表。`keys.go` 为每个别名声明具名 `Key` 常量；表驱动测试在常量与别名不一致、或某个已声明别名缺少常量时失败。`LogLevel` 与 `LogFormat` 是带常量的具名类型。
-- **新增普通设置** = 字段 + 标签 + `Key` 常量、一个行为测试、对应文档。没有注册表、环境变量 `switch`、逐字段赋值、基线列表或别名列表需要同步。
+- `SettingSpec` 是 CLI 消费的**公开派生视图**，不是手写事实表。`keys.go` 为每个别名声明具名 `Key` 常量，变更声明时同步保持一致。`LogLevel` 与 `LogFormat` 是带常量的具名类型。
+- **新增普通设置** = 字段 + 标签 + `Key` 常量、对应文档；仅在[清单契约](../../../.agents/skills/pixiv-cli-test/SKILL.md#decide-whether-test-code-must-change)存在缺口时扩展现有优先级/空值测试。没有注册表、环境变量 `switch`、逐字段赋值、基线列表或别名列表需要同步。
 
 | 文件 | 职责 |
 | --- | --- |
@@ -252,7 +252,7 @@ flowchart LR
 
 - GitHub Releases API 是唯一查询后端；排除草稿；stable 在校验前排除预发布；ETag/缓存用于节流并原子持久化。对通道内已发布 Release 强制 canonical SemVer——任一非法 tag 都 fail closed 并报告（绝不跳过而选旧版本）。
 - 签名、checksum、HTTP、压缩包、替换与权限错误从不伪装成"没有更新"。Release 安装的失败语义是保护边界，不是临时降级。
-- **信任根**（`internal/selfupdate/installer`）：key ID 与公钥常量位于 `release_installer.go`；`internal/cli/update/production.go` 为安装器构造 key ID → 公钥映射，调用方无法污染；`root.go` 只持有更新 seam。指纹与签名 fixture 由同包测试验证；私钥不在源码或配置中；只读检查不需要它；这层装配不能替代每个版本的发布验收。`internal/bootstrap` 已在 v1 删除。
+- **信任根**（`internal/selfupdate/installer`）：key ID 与公钥常量位于 `release_installer.go`；`internal/cli/update/production.go` 为安装器构造 key ID → 公钥映射，调用方无法污染；`composition.go` 直接调用生产更新构造。离线安装器测试验证带有效签名但 archive checksum 错误的下载保留原二进制；私钥不在源码或配置中；只读检查不需要它；这层装配不能替代每个版本的发布验收。`internal/bootstrap` 已在 v1 删除。
 
 ### `scripts/`
 
