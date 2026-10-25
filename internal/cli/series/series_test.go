@@ -16,10 +16,17 @@ import (
 	"github.com/spf13/cobra"
 )
 
+// artwork series URL 走公开 SDK；--limit 跨页时 NDJSON 按上游顺序逐条输出。
 func TestSeriesArtworkURLUsesPublicSDK(t *testing.T) {
 	output := &bytes.Buffer{}
+	calls := 0
 	transport := seriesRoundTripFunc(func(request *http.Request) (*http.Response, error) {
-		return seriesJSONResponse(request, `{"illust_series_detail":{"user":{"id":7,"name":"artist"}},"illusts":[{"id":5002,"title":"chapter","type":"manga","create_date":"2026-01-01T00:00:00Z","user":{"id":7,"name":"artist"}}],"next_url":null}`), nil
+		calls++
+		body := `{"illust_series_detail":{"user":{"id":7,"name":"artist"}},"illusts":[{"id":5002,"title":"chapter","type":"manga","create_date":"2026-01-01T00:00:00Z","user":{"id":7,"name":"artist"}}],"next_url":"https://app-api.pixiv.net/v1/illust/series?illust_series_id=5001&last_order=8"}`
+		if calls == 2 {
+			body = `{"illust_series_detail":{"user":{"id":7,"name":"artist"}},"illusts":[{"id":5003,"title":"next chapter","type":"illust","create_date":"2026-01-02T00:00:00Z","user":{"id":7,"name":"artist"}}],"next_url":null}`
+		}
+		return seriesJSONResponse(request, body), nil
 	})
 	client, err := pixiv.NewWith("test-access-token", pixiv.Options{HTTPClient: &http.Client{Transport: transport}})
 	if err != nil {
@@ -36,17 +43,26 @@ func TestSeriesArtworkURLUsesPublicSDK(t *testing.T) {
 			return err
 		},
 	})
-	cmd.SetArgs([]string{"--type", "artwork", "https://www.pixiv.net/user/7/series/5001?ref=tracking", "--ndjson"})
+	cmd.SetArgs([]string{"--type", "artwork", "https://www.pixiv.net/user/7/series/5001?ref=tracking", "--limit", "2", "--ndjson"})
 
 	if err := cmd.Execute(); err != nil {
 		t.Fatalf("execute series URL: %v", err)
 	}
-	var record map[string]any
-	if err := json.Unmarshal([]byte(strings.TrimSpace(output.String())), &record); err != nil {
-		t.Fatalf("decode NDJSON record: %v; output=%q", err, output.String())
+	if calls != 2 {
+		t.Fatalf("HTTP requests = %d, want 2", calls)
 	}
-	if record["id"] != "5002" || record["type"] != "manga" {
-		t.Fatalf("record = %#v, want manga 5002", record)
+	lines := strings.Split(strings.TrimSpace(output.String()), "\n")
+	if len(lines) != 2 {
+		t.Fatalf("NDJSON lines = %d, want 2; output=%q", len(lines), output.String())
+	}
+	for index, want := range []struct{ id, typ string }{{"5002", "manga"}, {"5003", "illust"}} {
+		var record map[string]any
+		if err := json.Unmarshal([]byte(lines[index]), &record); err != nil {
+			t.Fatalf("decode record %d: %v; output=%q", index, err, output.String())
+		}
+		if record["id"] != want.id || record["type"] != want.typ {
+			t.Fatalf("record %d = %#v, want %s %s", index, record, want.typ, want.id)
+		}
 	}
 }
 
