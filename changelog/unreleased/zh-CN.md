@@ -19,6 +19,7 @@
 **完整变更**：打下一版 tag 时补充。
 
 <!-- internal:
+  [#227](https://github.com/FlanChanXwO/pixiv-cli/pull/227)
   [#218](https://github.com/FlanChanXwO/pixiv-cli/pull/218)
   [#220](https://github.com/FlanChanXwO/pixiv-cli/pull/220)
   [#222](https://github.com/FlanChanXwO/pixiv-cli/pull/222)
