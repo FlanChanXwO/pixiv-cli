@@ -42,7 +42,7 @@ func TestStdioStdoutIsJSONRPC(t *testing.T) {
 	} {
 		_, err := io.WriteString(stdin, message+"\n")
 		require.NoError(t, err)
-		require.True(t, scanner.Scan(), diagnostics.String())
+		require.True(t, scanner.Scan())
 		var response map[string]json.RawMessage
 		require.NoError(t, json.Unmarshal(scanner.Bytes(), &response))
 		require.Equal(t, `"2.0"`, string(response["jsonrpc"]))
