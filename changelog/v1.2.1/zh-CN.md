@@ -2,7 +2,7 @@
 
 ## 变更
 
-- 文档重组为聚焦的独立页面，使用表格和图示，覆盖安装、认证、MCP 图库和维护者指南；快速开始命令已修正，README 增加贡献者展示链接。（[#154](https://github.com/FlanChanXwO/pixiv-cli/pull/154), [#156](https://github.com/FlanChanXwO/pixiv-cli/pull/156)）
+- 文档重组为聚焦的独立页面，使用表格和图示覆盖安装、认证和 MCP 图库；快速开始命令已修正，README 增加贡献者展示链接。（[#154](https://github.com/FlanChanXwO/pixiv-cli/pull/154), [#156](https://github.com/FlanChanXwO/pixiv-cli/pull/156)）
 - 根目录 `LICENSE` 恢复为纯 MIT 文本，GitHub 可以正确识别许可证。第三方声明仍可通过 `pixiv --licenses` 查看。（[#155](https://github.com/FlanChanXwO/pixiv-cli/pull/155)）
 
 ## 修复

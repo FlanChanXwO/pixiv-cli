@@ -2,7 +2,7 @@
 
 ## Changed
 
-- The documentation is reorganized into focused pages with tables and diagrams, including installation, authentication, the MCP gallery, and maintainer guides; quick-start commands are corrected, and the READMEs link to a contributor gallery. ([#154](https://github.com/FlanChanXwO/pixiv-cli/pull/154), [#156](https://github.com/FlanChanXwO/pixiv-cli/pull/156))
+- The documentation is reorganized into focused pages with tables and diagrams for installation, authentication, and the MCP gallery; quick-start commands are corrected, and the READMEs link to a contributor gallery. ([#154](https://github.com/FlanChanXwO/pixiv-cli/pull/154), [#156](https://github.com/FlanChanXwO/pixiv-cli/pull/156))
 - The root `LICENSE` is plain MIT text so GitHub detects the license. Third-party notices remain available through `pixiv --licenses`. ([#155](https://github.com/FlanChanXwO/pixiv-cli/pull/155))
 
 ## Fixed
