@@ -114,94 +114,88 @@ func writePlaceholder(t *testing.T, root, name string) string {
 }
 
 func TestDiscoverProfiles(t *testing.T) {
-	root := t.TempDir()
-	path := writePlaceholder(t, root, "Cookies.binarycookies")
-	p, _ := newProvider([]string{path})
-	profiles, err := p.DiscoverProfiles(context.Background())
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(profiles) != 1 || profiles[0].ID != "Default" {
-		t.Fatalf("profiles = %+v", profiles)
-	}
-}
-
-func TestDiscoverNotInstalled(t *testing.T) {
-	p, _ := newProvider([]string{filepath.Join(t.TempDir(), "missing.binarycookies")})
-	if _, err := p.DiscoverProfiles(context.Background()); !errors.Is(err, browsercookies.ErrNotInstalled) {
-		t.Fatalf("err = %v, want ErrNotInstalled", err)
-	}
-}
-
-func TestReadPlaintextBinaryCookies(t *testing.T) {
-	file := buildBinaryCookies(t, safariCookie{
-		domain: ".fanbox.cc", name: "FANBOXSESSID", path: "/",
-		value: []byte("sf-session"), secure: true, httpOnly: true,
+	t.Run("installed", func(t *testing.T) {
+		root := t.TempDir()
+		path := writePlaceholder(t, root, "Cookies.binarycookies")
+		p, _ := newProvider([]string{path})
+		profiles, err := p.DiscoverProfiles(context.Background())
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(profiles) != 1 || profiles[0].ID != "Default" {
+			t.Fatalf("profiles = %+v", profiles)
+		}
 	})
-
-	cookiePath := filepath.Join(t.TempDir(), "Cookies.binarycookies")
-	require.NoError(t, os.WriteFile(cookiePath, file, 0o600))
-	p, _ := newProvider([]string{cookiePath})
-	secrets, err := p.Read(context.Background(), browsercookies.DefaultQuery, "Default")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(secrets) != 1 || secrets[0].Value() != "sf-session" {
-		t.Fatalf("secrets = %+v", secrets)
-	}
-}
-
-func TestReadHostVariantAndNonMatching(t *testing.T) {
-	file := buildBinaryCookies(t,
-		safariCookie{domain: "fanbox.cc", name: "FANBOXSESSID", path: "/", value: []byte("no-dot")},
-		safariCookie{domain: ".example.com", name: "OTHER", path: "/", value: []byte("x")},
-	)
-
-	cookiePath := filepath.Join(t.TempDir(), "Cookies.binarycookies")
-	require.NoError(t, os.WriteFile(cookiePath, file, 0o600))
-	p, _ := newProvider([]string{cookiePath})
-	secrets, err := p.Read(context.Background(), browsercookies.DefaultQuery, "Default")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(secrets) != 1 || secrets[0].Value() != "no-dot" {
-		t.Fatalf("secrets = %+v", secrets)
-	}
-}
-
-func TestReadEncryptedClassified(t *testing.T) {
-	file := buildBinaryCookies(t, safariCookie{
-		domain: ".fanbox.cc", name: "FANBOXSESSID", path: "/",
-		value: []byte{0x8F, 0x8F, 0x8F, 0x8F},
+	t.Run("not installed", func(t *testing.T) {
+		p, _ := newProvider([]string{filepath.Join(t.TempDir(), "missing.binarycookies")})
+		if _, err := p.DiscoverProfiles(context.Background()); !errors.Is(err, browsercookies.ErrNotInstalled) {
+			t.Fatalf("err = %v, want ErrNotInstalled", err)
+		}
 	})
-
-	cookiePath := filepath.Join(t.TempDir(), "Cookies.binarycookies")
-	require.NoError(t, os.WriteFile(cookiePath, file, 0o600))
-	p, _ := newProvider([]string{cookiePath})
-	if _, err := p.Read(context.Background(), browsercookies.DefaultQuery, "Default"); !errors.Is(err, browsercookies.ErrEncryptedCookieUnsupported) {
-		t.Fatalf("err = %v, want ErrEncryptedCookieUnsupported", err)
-	}
 }
 
-func TestReadInvalidFormat(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "Cookies.binarycookies")
-	require.NoError(t, os.WriteFile(path, []byte("not-a-binarycookies-file"), 0o600))
-	p, _ := newProvider([]string{path})
-	if _, err := p.Read(context.Background(), browsercookies.DefaultQuery, "Default"); !errors.Is(err, browsercookies.ErrInvalidFormat) {
-		t.Fatalf("err = %v, want ErrInvalidFormat", err)
-	}
-}
-
-func TestReadDatabaseNotFound(t *testing.T) {
-	p, _ := newProvider([]string{filepath.Join(t.TempDir(), "missing.binarycookies")})
-	if _, err := p.Read(context.Background(), browsercookies.DefaultQuery, "Default"); !errors.Is(err, browsercookies.ErrDatabaseNotFound) {
-		t.Fatalf("err = %v, want ErrDatabaseNotFound", err)
-	}
-	// 未知 profile。
-	root := t.TempDir()
-	writePlaceholder(t, root, "Cookies.binarycookies")
-	p2, _ := newProvider([]string{filepath.Join(root, "Cookies.binarycookies")})
-	if _, err := p2.Read(context.Background(), browsercookies.DefaultQuery, "Other"); !errors.Is(err, browsercookies.ErrProfileNotFound) {
-		t.Fatalf("unknown profile err = %v", err)
+func TestReadClassifiesCookiesAndProfiles(t *testing.T) {
+	for _, test := range []struct {
+		name     string
+		file     []byte
+		profile  string
+		settings []string
+		value    string
+		wantErr  error
+	}{
+		{
+			name:    "plaintext",
+			file:    buildBinaryCookies(t, safariCookie{domain: ".fanbox.cc", name: "FANBOXSESSID", path: "/", value: []byte("sf-session"), secure: true, httpOnly: true}),
+			profile: "Default",
+			value:   "sf-session",
+		},
+		{
+			name: "bare host matches and unrelated cookie is ignored",
+			file: buildBinaryCookies(t,
+				safariCookie{domain: "fanbox.cc", name: "FANBOXSESSID", path: "/", value: []byte("no-dot")},
+				safariCookie{domain: ".example.com", name: "OTHER", path: "/", value: []byte("x")},
+			),
+			profile: "Default",
+			value:   "no-dot",
+		},
+		{
+			name:    "encrypted value classified",
+			file:    buildBinaryCookies(t, safariCookie{domain: ".fanbox.cc", name: "FANBOXSESSID", path: "/", value: []byte{0x8F, 0x8F, 0x8F, 0x8F}}),
+			profile: "Default",
+			wantErr: browsercookies.ErrEncryptedCookieUnsupported,
+		},
+		{
+			name:    "invalid format",
+			file:    []byte("not-a-binarycookies-file"),
+			profile: "Default",
+			wantErr: browsercookies.ErrInvalidFormat,
+		},
+		{
+			name:    "database not found",
+			profile: "Default",
+			wantErr: browsercookies.ErrDatabaseNotFound,
+		},
+		{
+			name:    "unknown profile",
+			file:    buildBinaryCookies(t),
+			profile: "Other",
+			wantErr: browsercookies.ErrProfileNotFound,
+		},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			path := filepath.Join(t.TempDir(), "Cookies.binarycookies")
+			if test.file != nil {
+				require.NoError(t, os.WriteFile(path, test.file, 0o600))
+			}
+			p, _ := newProvider([]string{path})
+			secrets, err := p.Read(context.Background(), browsercookies.DefaultQuery, test.profile)
+			if test.wantErr != nil {
+				require.ErrorIs(t, err, test.wantErr)
+				return
+			}
+			require.NoError(t, err)
+			require.Len(t, secrets, 1)
+			require.Equal(t, test.value, secrets[0].Value())
+		})
 	}
 }

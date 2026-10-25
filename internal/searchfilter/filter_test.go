@@ -8,24 +8,30 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestNormalizeFilterCanonicalizesRatingAndContentType(t *testing.T) {
+func TestNormalizeFilterCanonicalizesAndRejectsUnknownValues(t *testing.T) {
 	tests := []struct {
 		name        string
 		rating      string
 		contentType string
 		wantRating  searchfilter.Rating
 		wantContent searchfilter.ContentType
+		wantError   string
 	}{
 		{name: "empty values are unrestricted", wantRating: searchfilter.RatingAll, wantContent: searchfilter.ContentTypeAll},
 		{name: "trim and case fold", rating: " R18 ", contentType: " ILLUST ", wantRating: searchfilter.RatingR18, wantContent: searchfilter.ContentTypeIllust},
-
 		{name: "aggregate content type", contentType: "illust-and-ugoira", wantRating: searchfilter.RatingAll, wantContent: searchfilter.ContentTypeIllustAndUgoira},
 		{name: "mature rating", rating: "mature", wantRating: searchfilter.RatingMature, wantContent: searchfilter.ContentTypeAll},
+		{name: "unknown rating", rating: "explicit", wantError: "rating must be one of"},
+		{name: "unknown content type", contentType: "animation", wantError: "content-type must be one of"},
 	}
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			got, err := searchfilter.NormalizeFilter(test.rating, test.contentType)
+			if test.wantError != "" {
+				require.ErrorContains(t, err, test.wantError)
+				return
+			}
 			require.NoError(t, err)
 			require.Equal(t, test.wantRating, got.Rating)
 			require.Equal(t, test.wantContent, got.ContentType)
@@ -33,64 +39,36 @@ func TestNormalizeFilterCanonicalizesRatingAndContentType(t *testing.T) {
 	}
 }
 
-func TestNormalizeFilterRejectsUnknownValues(t *testing.T) {
-	for _, test := range []struct {
+func TestFilterMatchesLocalRatingAndContentType(t *testing.T) {
+	tests := []struct {
 		name        string
 		rating      string
 		contentType string
-		wantMessage string
+		xRestrict   int
+		kind        string
+		wantMatch   bool
 	}{
-		{name: "rating", rating: "explicit", wantMessage: "rating must be one of"},
-		{name: "content type", contentType: "animation", wantMessage: "content-type must be one of"},
-	} {
-		t.Run(test.name, func(t *testing.T) {
-			_, err := searchfilter.NormalizeFilter(test.rating, test.contentType)
-			require.Error(t, err)
-			require.ErrorContains(t, err, test.wantMessage)
-		})
+		{name: "mature r18 illustration", rating: "mature", contentType: "illust-and-ugoira", xRestrict: 1, kind: "illustration", wantMatch: true},
+		{name: "mature r18g ugoira", rating: "mature", contentType: "illust-and-ugoira", xRestrict: 2, kind: "ugoira", wantMatch: true},
+		{name: "safe rejected by mature", rating: "mature", contentType: "illust-and-ugoira", xRestrict: 0, kind: "illust"},
+		{name: "manga excluded by aggregate", rating: "mature", contentType: "illust-and-ugoira", xRestrict: 1, kind: "manga"},
+		{name: "sfw matches zero", rating: "sfw", xRestrict: 0, kind: "illust", wantMatch: true},
+		{name: "sfw rejects r18", rating: "sfw", xRestrict: 1, kind: "illust"},
+		{name: "r18 matches one", rating: "r18", xRestrict: 1, kind: "illust", wantMatch: true},
+		{name: "r18 rejects r18g", rating: "r18", xRestrict: 2, kind: "illust"},
+		{name: "r18g matches two", rating: "r18g", xRestrict: 2, kind: "illust", wantMatch: true},
+		{name: "mature rejects unknown class", rating: "mature", xRestrict: 3, kind: "illust"},
+		{name: "all preserves unknown class", rating: "all", xRestrict: 3, kind: "illust", wantMatch: true},
 	}
-}
-
-func TestFilterMatchesLocalRatingAndContentType(t *testing.T) {
-	filter, err := searchfilter.NormalizeFilter("mature", "illust-and-ugoira")
-	require.NoError(t, err)
-
-	for _, test := range []struct {
-		name      string
-		xRestrict int
-		kind      string
-		wantMatch bool
-	}{
-		{name: "r18 illustration", xRestrict: 1, kind: "illustration", wantMatch: true},
-		{name: "r18g ugoira", xRestrict: 2, kind: "ugoira", wantMatch: true},
-		{name: "safe illustration", xRestrict: 0, kind: "illust", wantMatch: false},
-		{name: "manga excluded by aggregate", xRestrict: 1, kind: "manga", wantMatch: false},
-	} {
+	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			require.Equal(t, test.wantMatch, filter.Matches(test.xRestrict, test.kind))
-		})
-	}
-}
-
-func TestRatingMatchesOnlyItsKnownXRestrictClass(t *testing.T) {
-	for _, test := range []struct {
-		name      string
-		rating    string
-		xRestrict int
-		wantMatch bool
-	}{
-		{name: "sfw matches zero", rating: "sfw", xRestrict: 0, wantMatch: true},
-		{name: "sfw rejects r18", rating: "sfw", xRestrict: 1, wantMatch: false},
-		{name: "r18 matches one", rating: "r18", xRestrict: 1, wantMatch: true},
-		{name: "r18 rejects r18g", rating: "r18", xRestrict: 2, wantMatch: false},
-		{name: "r18g matches two", rating: "r18g", xRestrict: 2, wantMatch: true},
-		{name: "mature rejects unknown class", rating: "mature", xRestrict: 3, wantMatch: false},
-		{name: "all preserves unknown class", rating: "all", xRestrict: 3, wantMatch: true},
-	} {
-		t.Run(test.name, func(t *testing.T) {
-			filter, err := searchfilter.NormalizeFilter(test.rating, "all")
+			contentType := test.contentType
+			if contentType == "" {
+				contentType = "all"
+			}
+			filter, err := searchfilter.NormalizeFilter(test.rating, contentType)
 			require.NoError(t, err)
-			require.Equal(t, test.wantMatch, filter.Matches(test.xRestrict, "illust"))
+			require.Equal(t, test.wantMatch, filter.Matches(test.xRestrict, test.kind))
 		})
 	}
 }

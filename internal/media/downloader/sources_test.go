@@ -156,65 +156,46 @@ func TestDownloadSourcesDownloadsDirectCDNURLWithSafeBasename(t *testing.T) {
 	assertFileBody(t, gotPath, "direct-image")
 }
 
-func TestDownloadSourcesUsesDistinctPathsForDirectURLsWithSameBasename(t *testing.T) {
-	dir := t.TempDir()
-	sources := []string{
-		"https://i.pximg.net/a/photo.png",
-		"https://i.pximg.net/b/photo.png",
-	}
-	var paths []string
-	client := &downloadSourcesStub{
-		saveResourceURL: func(_ context.Context, rawURL string, options sdk.SaveOptions) (sdk.SavedResource, error) {
-			paths = append(paths, options.Path)
-			body := []byte(rawURL)
-			if err := os.WriteFile(options.Path, body, 0o600); err != nil {
-				return sdk.SavedResource{}, err
-			}
-			return sdk.SavedResource{Path: options.Path, Size: int64(len(body)), ContentType: "image/png"}, nil
+func TestDownloadSourcesUsesDistinctPathsForDirectURLs(t *testing.T) {
+	for _, test := range []struct {
+		name    string
+		sources []string
+	}{
+		{
+			name:    "same basename",
+			sources: []string{"https://i.pximg.net/a/photo.png", "https://i.pximg.net/b/photo.png"},
 		},
-	}
-
-	report, err := (downloader.DownloadService{}).DownloadSources(context.Background(), client, sources, downloader.DownloadRequest{DownloadPath: dir})
-
-	require.NoError(t, err)
-	require.True(t, report.Committed)
-	require.Empty(t, report.Failures)
-	require.Len(t, report.Items, len(sources))
-	require.Len(t, paths, len(sources))
-	require.NotEqual(t, paths[0], paths[1])
-	for index, path := range paths {
-		assertFileBody(t, path, sources[index])
-	}
-}
-
-func TestDownloadSourcesUsesDistinctPathsForDistinctDirectURLQueries(t *testing.T) {
-	dir := t.TempDir()
-	sources := []string{
-		"https://i.pximg.net/a/photo.png?signature=one",
-		"https://i.pximg.net/a/photo.png?signature=two",
-	}
-	var paths []string
-	client := &downloadSourcesStub{
-		saveResourceURL: func(_ context.Context, rawURL string, options sdk.SaveOptions) (sdk.SavedResource, error) {
-			paths = append(paths, options.Path)
-			body := []byte(rawURL)
-			if err := os.WriteFile(options.Path, body, 0o600); err != nil {
-				return sdk.SavedResource{}, err
-			}
-			return sdk.SavedResource{Path: options.Path, Size: int64(len(body)), ContentType: "image/png"}, nil
+		{
+			name:    "same path distinct query",
+			sources: []string{"https://i.pximg.net/a/photo.png?signature=one", "https://i.pximg.net/a/photo.png?signature=two"},
 		},
-	}
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			dir := t.TempDir()
+			var paths []string
+			client := &downloadSourcesStub{
+				saveResourceURL: func(_ context.Context, rawURL string, options sdk.SaveOptions) (sdk.SavedResource, error) {
+					paths = append(paths, options.Path)
+					body := []byte(rawURL)
+					if err := os.WriteFile(options.Path, body, 0o600); err != nil {
+						return sdk.SavedResource{}, err
+					}
+					return sdk.SavedResource{Path: options.Path, Size: int64(len(body)), ContentType: "image/png"}, nil
+				},
+			}
 
-	report, err := (downloader.DownloadService{}).DownloadSources(context.Background(), client, sources, downloader.DownloadRequest{DownloadPath: dir})
+			report, err := (downloader.DownloadService{}).DownloadSources(context.Background(), client, test.sources, downloader.DownloadRequest{DownloadPath: dir})
 
-	require.NoError(t, err)
-	require.True(t, report.Committed)
-	require.Empty(t, report.Failures)
-	require.Len(t, report.Items, len(sources))
-	require.Len(t, paths, len(sources))
-	require.NotEqual(t, paths[0], paths[1])
-	for index, path := range paths {
-		assertFileBody(t, path, sources[index])
+			require.NoError(t, err)
+			require.True(t, report.Committed)
+			require.Empty(t, report.Failures)
+			require.Len(t, report.Items, len(test.sources))
+			require.Len(t, paths, len(test.sources))
+			require.NotEqual(t, paths[0], paths[1])
+			for index, path := range paths {
+				assertFileBody(t, path, test.sources[index])
+			}
+		})
 	}
 }
 

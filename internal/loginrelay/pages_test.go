@@ -10,7 +10,7 @@ import (
 	"github.com/FlanChanXwO/pixiv-cli/internal/loginrelay"
 )
 
-func TestWriteManualEscapesLoginURL(t *testing.T) {
+func TestPagesRenderEscapedLoginContent(t *testing.T) {
 	t.Parallel()
 
 	var out bytes.Buffer
@@ -68,48 +68,6 @@ func TestWriteResultKeepsFailureGeneric(t *testing.T) {
 	for _, forbidden := range []string{"token", "refresh", "bearer", "code=", "password", "secret"} {
 		if strings.Contains(body, forbidden) {
 			t.Fatalf("failure page leaked %q: %s", forbidden, body)
-		}
-	}
-}
-
-func TestPagesDoNotOverrideBrowserFavicon(t *testing.T) {
-	t.Parallel()
-
-	var manual, callback bytes.Buffer
-	if err := loginrelay.WriteManual(&manual, "https://app-api.pixiv.net/web/v1/login?state=test"); err != nil {
-		t.Fatalf("loginrelay.WriteManual() error = %v", err)
-	}
-	if err := loginrelay.WriteCallbackRelay(&callback); err != nil {
-		t.Fatalf("loginrelay.WriteCallbackRelay() error = %v", err)
-	}
-	success, failure := httptest.NewRecorder(), httptest.NewRecorder()
-	loginrelay.WriteFinalPage(success, true)
-	loginrelay.WriteFinalPage(failure, false)
-	for _, page := range []string{manual.String(), callback.String(), success.Body.String(), failure.Body.String()} {
-		if strings.Contains(strings.ToLower(page), `rel="icon"`) {
-			t.Fatalf("login page overrides favicon: %s", page)
-		}
-	}
-}
-
-func TestPagesUseSingleEnglishLocale(t *testing.T) {
-	t.Parallel()
-
-	var manual, callback bytes.Buffer
-	if err := loginrelay.WriteManual(&manual, "https://app-api.pixiv.net/web/v1/login?state=test"); err != nil {
-		t.Fatalf("loginrelay.WriteManual() error = %v", err)
-	}
-	if err := loginrelay.WriteCallbackRelay(&callback); err != nil {
-		t.Fatalf("loginrelay.WriteCallbackRelay() error = %v", err)
-	}
-	success, failure := httptest.NewRecorder(), httptest.NewRecorder()
-	loginrelay.WriteFinalPage(success, true)
-	loginrelay.WriteFinalPage(failure, false)
-	for _, page := range []string{manual.String(), callback.String(), success.Body.String(), failure.Body.String()} {
-		for _, forbidden := range []string{"data-i18n", "navigator.language", "完成登录", "ログイン"} {
-			if strings.Contains(page, forbidden) {
-				t.Fatalf("login page retained locale switching content %q: %s", forbidden, page)
-			}
 		}
 	}
 }

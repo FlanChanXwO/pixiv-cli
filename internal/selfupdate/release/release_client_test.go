@@ -17,48 +17,21 @@ import (
 	"github.com/FlanChanXwO/pixiv-cli/internal/selfupdate/release"
 )
 
-func TestGitHubReleaseClientSelectsLatestStableRelease(t *testing.T) {
+func TestGitHubReleaseClientSelectsStableReleaseAndCarriesAssets(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path != "/repos/FlanChanXwO/pixiv-cli/releases" {
-			t.Fatalf("request path = %q", r.URL.Path)
-		}
-		if r.Method != http.MethodGet {
-			t.Fatalf("request method = %q", r.Method)
+		if r.URL.Path != "/repos/FlanChanXwO/pixiv-cli/releases" || r.Method != http.MethodGet {
+			t.Errorf("request = %s %s", r.Method, r.URL.Path)
 		}
 		w.Header().Set("Content-Type", "application/json")
 		fmt.Fprint(w, `[
 			{"tag_name":"v9.0.0","draft":true,"prerelease":false},
 			{"tag_name":"v2.0.0-rc.1","draft":false,"prerelease":true},
 			{"tag_name":"v1.0.0","draft":false,"prerelease":false},
-			{"tag_name":"v1.0.1","draft":false,"prerelease":false}
+			{"tag_name":"v1.0.1","draft":false,"prerelease":false,"assets":[
+				{"name":"pixiv-cli_1.0.1_linux_amd64.tar.gz","browser_download_url":"https://downloads.example.test/linux"},
+				{"name":"checksums.txt","browser_download_url":"https://downloads.example.test/checksums"}
+			]}
 		]`)
-	}))
-	defer server.Close()
-
-	client := newGitHubReleaseClient(t, release.ReleaseClientOptions{
-		APIBaseURL: server.URL,
-		CacheDir:   t.TempDir(),
-	})
-
-	result, err := client.Check(context.Background(), release.ReleaseCheckOptions{})
-	if err != nil {
-		t.Fatalf("Check() error = %v", err)
-	}
-	if result.Release == nil {
-		t.Fatal("Check() returned no release")
-	}
-	if result.Release.TagName != "v1.0.1" {
-		t.Fatalf("Check() tag = %q, want %q", result.Release.TagName, "v1.0.1")
-	}
-}
-
-func TestGitHubReleaseClientCarriesSelectedReleaseAssets(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		fmt.Fprint(w, `[{"tag_name":"v1.0.1","draft":false,"prerelease":false,"assets":[
-			{"name":"pixiv-cli_1.0.1_linux_amd64.tar.gz","browser_download_url":"https://downloads.example.test/linux"},
-			{"name":"checksums.txt","browser_download_url":"https://downloads.example.test/checksums"}
-		]}]`)
 	}))
 	defer server.Close()
 
@@ -67,8 +40,11 @@ func TestGitHubReleaseClientCarriesSelectedReleaseAssets(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Check() error = %v", err)
 	}
-	if result.Release == nil || len(result.Release.Assets) != 2 {
-		t.Fatalf("Check() assets = %#v, want selected release assets", result.Release)
+	if result.Release == nil || result.Release.TagName != "v1.0.1" {
+		t.Fatalf("Check() release = %#v, want latest stable", result.Release)
+	}
+	if len(result.Release.Assets) != 2 {
+		t.Fatalf("Check() assets = %#v, want selected release assets", result.Release.Assets)
 	}
 	if got := result.Release.Assets[0]; got.Name != "pixiv-cli_1.0.1_linux_amd64.tar.gz" || got.DownloadURL != "https://downloads.example.test/linux" {
 		t.Fatalf("first asset = %#v, want name and browser_download_url", got)

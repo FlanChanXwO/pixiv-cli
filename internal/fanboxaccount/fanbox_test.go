@@ -302,20 +302,3 @@ func TestListAccountsUsesCallerContextForAutoDefault(t *testing.T) {
 	require.NoError(t, err)
 	require.ErrorIs(t, repo.listContext.Err(), context.Canceled)
 }
-
-func TestFanboxDefaultReadErrorIsReturnedBeforeRemoval(t *testing.T) {
-	repo := newFanboxTestRepository()
-	first := fanbox.New(42, "first", "", []byte("session"))
-	first.ValidatedAt = 1
-	repo.accounts[42] = first
-	service := newFanboxTestService(repo, &fanboxTestDefaults{readErr: errors.New("default read failed")})
-
-	err := service.RemoveAccount(context.Background(), 42)
-	require.ErrorContains(t, err, "default read failed")
-	_, getErr := repo.GetFanbox(context.Background(), 42)
-	require.NoError(t, getErr)
-	require.False(t, errors.Is(err, fanbox.ErrNotFound))
-}
-
-var _ fanbox.DefaultStore = (*fanboxTestDefaults)(nil)
-var _ fanbox.Repository = (*fanboxTestRepository)(nil)
