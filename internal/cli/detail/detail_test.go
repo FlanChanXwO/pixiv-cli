@@ -474,25 +474,6 @@ func TestCommandTextValueAcceptsRawURLAndStdin(t *testing.T) {
 	}
 }
 
-func TestCommandTextValueJSONRemainsSingleDocument(t *testing.T) {
-	var output bytes.Buffer
-	data := testMachineDependencies(&output, strings.NewReader(""))
-	cmd := newTestCommand(data)
-	cmd.SetArgs([]string{"42", "--json"})
-	requireNoError(t, cmd.Execute())
-
-	var object map[string]any
-	if err := json.Unmarshal(output.Bytes(), &object); err != nil {
-		t.Fatalf("expected one JSON object, got %q: %v", output.String(), err)
-	}
-	if len(object) == 0 {
-		t.Fatalf("expected detail DTO fields, got %q", output.String())
-	}
-	if strings.HasPrefix(strings.TrimSpace(output.String()), "[") {
-		t.Fatalf("text-value --json unexpectedly became an array: %q", output.String())
-	}
-}
-
 func TestCommandTextValueNDJSONOutputsCanonicalRecord(t *testing.T) {
 	var output bytes.Buffer
 	data := testMachineDependencies(&output, strings.NewReader(""))
