@@ -114,10 +114,6 @@ jobs:
         if: ${{ needs.scope.result == 'success' }}
         shell: bash
         run: go mod download
-      - name: Verify Go license bundle
-        if: ${{ needs.scope.result == 'success' }}
-        shell: bash
-        run: go run ./scripts/build/licensebundle --check
       - name: Test Go sources
         if: ${{ needs.scope.result == 'success' }}
         shell: bash

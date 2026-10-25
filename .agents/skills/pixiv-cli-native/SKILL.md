@@ -11,7 +11,7 @@ Read `AGENTS.md`, the affected encoder/build owner, and [Ugoira Go encoder](../.
 
 Use [the test workflow](../pixiv-cli-test/SKILL.md) for behavior changes. Keep the downloader's `ugoira.Encoder` seam: ZIP metadata order, frame timing, resizing, transparency, playback, cancellation and atomic publication belong to `internal/media/ugoira`. Preserve the documented decoder-derived allocation boundary and buffer ownership. A slow encode is not a timeout failure.
 
-Production builds use `CGO_ENABLED=0`; only explicit race-detector steps enable cgo. Ported algorithms keep their source/license notices through `third_party/attributions.json` and the generated license bundle. A toolchain change needs verification of affected targets, not just a version-field edit.
+Production builds use `CGO_ENABLED=0`; only explicit race-detector steps enable cgo. Ported algorithms keep their source/license notices. A toolchain change needs verification of affected targets, not just a version-field edit.
 
 ## Verify the changed behavior
 
@@ -19,12 +19,11 @@ Select the relevant existing checks:
 
 ```bash
 CGO_ENABLED=0 go test ./internal/media/ugoira/... -count=1
-go run ./scripts/build/licensebundle --check
 sh scripts/build/platform.sh --target linux/amd64 --output-dir /tmp/pixiv-platform-check
 sh scripts/build/matrix.sh --capability smoke
 ```
 
-The license check consumes cached module sources. Report missing inputs instead of downloading or installing tools without approval. For quality/resource comparisons, use the documented offline corpus and fixed legacy/Go settings. Keep frozen baselines and complete inputs; compare each required sample/format rather than hiding failures in an overall average.
+For quality/resource comparisons, use the documented offline corpus and fixed legacy/Go settings. Keep frozen baselines and complete inputs; compare each required sample/format rather than hiding failures in an overall average.
 
 `CGO_ENABLED=0` produces a static Linux ELF; confirm with `file` when the build recipe changes. Cross-compilation proves compilation, not native execution. Check the built and unpacked binary's version and archive's sole executable member.
 

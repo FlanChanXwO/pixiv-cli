@@ -130,9 +130,6 @@ jobs:
       - name: Vet Go sources
         shell: bash
         run: go vet ./...
-      - name: Audit bundled licenses
-        shell: bash
-        run: go run ./scripts/build/licensebundle --check
       - name: Test release packages
         shell: bash
         run: sh scripts/ci/test-package-release.sh
@@ -278,7 +275,6 @@ jobs:
             --build-arg VERSION="${RELEASE_TAG}" \
             --platform 'linux/${{ matrix.goarch }}' \
             --tag "pixiv-cli:${RELEASE_TAG}-${{ matrix.artifact }}" .
-      # Includes the embedded license-notices bundle in every architecture check.
       - name: Verify image provenance and runtime contract
         shell: bash
         env:
@@ -291,11 +287,7 @@ jobs:
           test "$version" = "pixiv ${RELEASE_TAG}"
           docker run --rm "$IMAGE" config path | grep -F '/home/pixiv/.pixiv-cli/'
           test "$(docker run --rm --entrypoint sh "$IMAGE" -c pwd)" = /work
-          docker run --rm --entrypoint sh "$IMAGE" -c '
-            test -s /usr/share/doc/pixiv-cli/LICENSE &&
-            test -s /usr/share/doc/pixiv-cli/THIRD_PARTY_LICENSES.md &&
-            find /usr/share/doc/pixiv-cli/third_party/licenses -type f | grep -q .
-          '
+          docker run --rm --entrypoint sh "$IMAGE" -c 'test -s /usr/share/doc/pixiv-cli/LICENSE'
           inspect_label() {
             docker image inspect --format '{{ index .Config.Labels "'"$1"'" }}' "$IMAGE"
           }

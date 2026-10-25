@@ -34,7 +34,6 @@ import (
 	"github.com/FlanChanXwO/pixiv-cli/internal/config/settings"
 	selfupdate "github.com/FlanChanXwO/pixiv-cli/internal/selfupdate"
 	"github.com/FlanChanXwO/pixiv-cli/internal/version"
-	thirdparty "github.com/FlanChanXwO/pixiv-cli/third_party"
 	"github.com/spf13/cobra"
 )
 
@@ -52,7 +51,6 @@ type app struct {
 func (a app) logger() *slog.Logger { return a.logs.logger }
 
 func (a app) newRootCommand() *cobra.Command {
-	var licenses bool
 	cmd := &cobra.Command{
 		Use:           "pixiv",
 		Short:         "Pixiv CLI and MCP server",
@@ -60,9 +58,6 @@ func (a app) newRootCommand() *cobra.Command {
 		SilenceUsage:  true,
 		SilenceErrors: true,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			if licenses {
-				return thirdparty.WriteNotices(cmd.OutOrStdout())
-			}
 			return cmd.Help()
 		},
 		PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
@@ -100,7 +95,6 @@ func (a app) newRootCommand() *cobra.Command {
 	}
 	command.Bind(cmd, command.Execution{})
 	cmd.SetFlagErrorFunc(func(_ *cobra.Command, err error) error { return normalizeFlagError(err) })
-	cmd.Flags().BoolVar(&licenses, "licenses", false, "Print embedded third-party license notices")
 	cmd.SetVersionTemplate("pixiv {{.Version}}\n")
 	// 不把 Cobra 的 help handler 作为公开 root subcommand；根命令仍通过
 	// --help 与 --version 提供内置帮助/版本入口。

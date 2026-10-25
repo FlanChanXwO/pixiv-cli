@@ -164,4 +164,4 @@ pixiv mcp --port 1270 --base-url https://mcp.example.com   # 位于 HTTPS 反向
 
 ## 许可证
 
-[MIT](LICENSE) © FlanChanXwO · 第三方声明已内嵌：运行 `pixiv --licenses`。Release 压缩包只包含可执行文件。
+[MIT](LICENSE) © FlanChanXwO。Release 压缩包只包含可执行文件。

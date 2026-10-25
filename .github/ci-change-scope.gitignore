@@ -27,9 +27,6 @@
 !/Dockerfile
 !/.dockerignore
 !/LICENSE
-!/THIRD_PARTY_LICENSES.md
-!/third_party/licenses/**
-!/third_party/rust/**
 !/go.mod
 !/go.sum
 !/cmd/**

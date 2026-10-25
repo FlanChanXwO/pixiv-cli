@@ -164,4 +164,4 @@ Thank you to everyone who helps improve pixiv-cli.
 
 ## License
 
-[MIT](LICENSE) © FlanChanXwO · Third-party notices are embedded: run `pixiv --licenses`. Release archives contain only the executable.
+[MIT](LICENSE) © FlanChanXwO. Release archives contain only the executable.
