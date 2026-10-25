@@ -42,9 +42,6 @@ func (c *Client) validateResourceURL(rawURL string) error {
 // envelope encodes only stable identity. RequiresCredentials reflects whether
 // the locator lives on the credentialed downloads host.
 func (c *Client) newResource(kind, creatorID, postID, assetID, rawURL, filename string) (sdk.Resource, error) {
-	if rawURL == "" {
-		return sdk.Resource{}, nil
-	}
 	if err := c.validateResourceURL(rawURL); err != nil {
 		return sdk.Resource{}, err
 	}
@@ -220,13 +217,13 @@ func (c *Client) resolvePostAsset(ctx context.Context, rp resourceRefPayload) (f
 	}
 	if rp.Kind == "post_image" {
 		for _, image := range images {
-			if image.ID == rp.Asset && image.OriginalURL != "" {
+			if image.ID == rp.Asset {
 				return fanboxapi.Locator{URL: image.OriginalURL}, nil
 			}
 		}
 	} else if rp.Kind == "post_file" {
 		for _, file := range files {
-			if file.ID == rp.Asset && file.URL != "" {
+			if file.ID == rp.Asset {
 				return fanboxapi.Locator{URL: file.URL, Filename: attachmentFilename(file.Name, file.Extension)}, nil
 			}
 		}
