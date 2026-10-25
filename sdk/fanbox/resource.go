@@ -15,9 +15,6 @@ import (
 	"github.com/FlanChanXwO/pixiv-cli/sdk"
 )
 
-// fanboxReferer is the non-secret referer FANBOX media requests carry.
-const fanboxReferer = fanboxapi.Referer
-
 // resourceRefPayload is the opaque identity payload embedded in a FANBOX
 // ResourceRef. It carries only stable identity (kind, owning creator or post,
 // and attachment id) so locator rotation never changes the cache key and a
@@ -63,7 +60,7 @@ func (c *Client) newResource(kind, creatorID, postID, assetID, rawURL, filename 
 	return sdk.Resource{
 		Ref:                 ref,
 		URL:                 rawURL,
-		RequestHeaders:      map[string]string{"Referer": fanboxReferer},
+		RequestHeaders:      map[string]string{"Referer": fanboxapi.Referer},
 		RequiresCredentials: fanboxapi.RequiresCredentials(rawURL),
 	}, nil
 }
@@ -81,9 +78,6 @@ func (c *Client) OpenResource(ctx context.Context, request sdk.OpenResourceReque
 	locator, err := c.resolveResource(ctx, request.Ref, "OpenResource")
 	if err != nil {
 		return nil, err
-	}
-	if err := c.validateResourceURL(locator.URL); err != nil {
-		return nil, newError("OpenResource", sdk.ResourceForbidden, errors.New("resource URL is not allowed"))
 	}
 	response, err := c.app.OpenMedia(ctx, locator.URL, fanboxapi.MediaRequest{
 		Method:          string(request.Method),
@@ -157,7 +151,7 @@ func (c *Client) resolveResource(ctx context.Context, ref sdk.ResourceRef, opera
 	if err != nil {
 		return fanboxapi.Locator{}, newError(operation, sdk.InvalidArgument, errors.New("invalid resource reference"))
 	}
-	if locator, ok := c.app.CachedLocator(ref.String()); ok && locator.URL != "" {
+	if locator, ok := c.app.CachedLocator(ref.String()); ok {
 		return locator, nil
 	}
 	var locator fanboxapi.Locator

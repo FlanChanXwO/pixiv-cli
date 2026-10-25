@@ -177,22 +177,24 @@ func (c *Client) mapPostBody(source postWire) (*PostBody, error) {
 	if err != nil {
 		return nil, err
 	}
-	imageByID := make(map[string]imageWire, len(images))
+	imageByID := make(map[string]Asset, len(images))
 	for _, image := range images {
-		asset, err := c.imageAsset(source, image)
+		res, err := c.newResource("post_image", source.CreatorID, source.ID, image.ID, image.OriginalURL, "")
 		if err != nil {
 			return nil, err
 		}
-		imageByID[image.ID] = image
+		asset := Asset{ID: image.ID, Kind: AssetKindImage, Resource: res}
+		imageByID[image.ID] = asset
 		body.Assets = append(body.Assets, asset)
 	}
-	fileByID := make(map[string]fileWire, len(files))
+	fileByID := make(map[string]Asset, len(files))
 	for _, file := range files {
-		asset, err := c.fileAsset(source, file)
+		res, err := c.newResource("post_file", source.CreatorID, source.ID, file.ID, file.URL, attachmentFilename(file.Name, file.Extension))
 		if err != nil {
 			return nil, err
 		}
-		fileByID[file.ID] = file
+		asset := Asset{ID: file.ID, Kind: AssetKindFile, Name: file.Name, Resource: res}
+		fileByID[file.ID] = asset
 		body.Assets = append(body.Assets, asset)
 	}
 	if wire.Blocks == nil {
@@ -204,23 +206,15 @@ func (c *Client) mapPostBody(source postWire) (*PostBody, error) {
 			if block.ImageID == nil {
 				continue
 			}
-			if image, ok := imageByID[*block.ImageID]; ok && image.OriginalURL != "" {
-				res, err := c.newResource("post_image", source.CreatorID, source.ID, image.ID, image.OriginalURL, "")
-				if err != nil {
-					return nil, err
-				}
-				body.Blocks = append(body.Blocks, PostBlock{Kind: PostBlockImage, Image: &PostImageBlock{Resource: res}})
+			if image, ok := imageByID[*block.ImageID]; ok {
+				body.Blocks = append(body.Blocks, PostBlock{Kind: PostBlockImage, Image: &PostImageBlock{Resource: image.Resource.Copy()}})
 			}
 		case PostBlockFile:
 			if block.FileID == nil {
 				continue
 			}
-			if file, ok := fileByID[*block.FileID]; ok && file.URL != "" {
-				res, err := c.newResource("post_file", source.CreatorID, source.ID, file.ID, file.URL, attachmentFilename(file.Name, file.Extension))
-				if err != nil {
-					return nil, err
-				}
-				body.Blocks = append(body.Blocks, PostBlock{Kind: PostBlockFile, File: &PostFileBlock{Resource: res, Name: file.Name}})
+			if file, ok := fileByID[*block.FileID]; ok {
+				body.Blocks = append(body.Blocks, PostBlock{Kind: PostBlockFile, File: &PostFileBlock{Resource: file.Resource.Copy(), Name: file.Name}})
 			}
 		case PostBlockArticle:
 			body.Blocks = append(body.Blocks, PostBlock{Kind: PostBlockArticle, Article: &PostArticleBlock{}})
@@ -231,28 +225,6 @@ func (c *Client) mapPostBody(source postWire) (*PostBody, error) {
 		}
 	}
 	return body, nil
-}
-
-func (c *Client) imageAsset(source postWire, image imageWire) (Asset, error) {
-	if err := validateImage(image); err != nil {
-		return Asset{}, err
-	}
-	res, err := c.newResource("post_image", source.CreatorID, source.ID, image.ID, image.OriginalURL, "")
-	if err != nil {
-		return Asset{}, err
-	}
-	return Asset{ID: image.ID, Kind: AssetKindImage, Resource: res}, nil
-}
-
-func (c *Client) fileAsset(source postWire, file fileWire) (Asset, error) {
-	if err := validateFile(file); err != nil {
-		return Asset{}, err
-	}
-	res, err := c.newResource("post_file", source.CreatorID, source.ID, file.ID, file.URL, attachmentFilename(file.Name, file.Extension))
-	if err != nil {
-		return Asset{}, err
-	}
-	return Asset{ID: file.ID, Kind: AssetKindFile, Name: file.Name, Resource: res}, nil
 }
 
 // bodyMedia returns the image and file locators of one body variant: the
@@ -389,7 +361,7 @@ func (c *Client) postList(ctx context.Context, operation, path string, cursorQue
 	if err != nil {
 		return sdk.Page[Post]{}, err
 	}
-	if limit && strings.TrimSpace(nextURL) == "" {
+	if limit && nextURL == "" {
 		query = cloneValues(query)
 		query.Set(fanboxapi.ParamLimit, strconv.Itoa(fanboxapi.PostListPageLimit))
 	}

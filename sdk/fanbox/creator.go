@@ -103,7 +103,7 @@ func (c *Client) creatorProfile(ctx context.Context, creatorID string) (creatorP
 	if profile.CreatorID == "" {
 		profile.CreatorID = creatorID
 	}
-	if profile.CreatorID == "" || strings.TrimSpace(profile.User.Name) == "" {
+	if strings.TrimSpace(profile.User.Name) == "" {
 		return creatorProfileWire{}, errors.New("FANBOX creator profile is missing creator id or display name")
 	}
 	return profile, nil
@@ -176,7 +176,7 @@ func (c *Client) getListBody(ctx context.Context, path string, query url.Values,
 		Body json.RawMessage `json:"body"`
 	}
 	var err error
-	if strings.TrimSpace(nextURL) != "" {
+	if nextURL != "" {
 		err = c.app.GetJSONURL(ctx, nextURL, &response)
 	} else {
 		err = c.app.GetJSON(ctx, path, query, &response)

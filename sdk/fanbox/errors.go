@@ -11,9 +11,6 @@ import (
 const product = "fanbox"
 
 func newError(operation string, code sdk.Reason, err error) *sdk.Error {
-	if err == nil {
-		return sdk.NewError(product, operation, code)
-	}
 	return sdk.NewError(product, operation, code, sdk.WithCause(err))
 }
 
@@ -30,9 +27,6 @@ func classifyResponseError(operation string, err error) error {
 // classifyError maps an adapter failure to a classified error. It preserves
 // context cancellation and the distinct challenge/forbidden/expired outcomes.
 func classifyError(operation string, err error) *sdk.Error {
-	if err == nil {
-		return nil
-	}
 	switch {
 	case errors.Is(err, context.Canceled):
 		return sdk.NewError(product, operation, sdk.UpstreamError, sdk.WithCause(context.Canceled))

@@ -9,8 +9,6 @@ import (
 	"fmt"
 	"strings"
 	"time"
-
-	"github.com/FlanChanXwO/pixiv-cli/internal/fanboxapi"
 )
 
 // decodeCreatorSummaries accepts either a bare array or the plans/creators
@@ -81,16 +79,6 @@ func mapTags(items []tagWire) ([]CreatorTag, error) {
 		result = append(result, CreatorTag{Name: name, URL: item.URL})
 	}
 	return result, nil
-}
-
-func mapUser(identity fanboxapi.Identity) User {
-	return User{
-		UserID:        identity.UserID,
-		DisplayName:   identity.DisplayName,
-		CreatorID:     identity.CreatorID,
-		CreatorStatus: identity.CreatorStatus,
-		IsCreator:     identity.IsCreator,
-	}
 }
 
 func parseUTCTime(value string) (time.Time, error) {
