@@ -18,9 +18,6 @@ func (k kind) secretApplication() string {
 }
 
 func (p *provider) encryptionKeys(ctx context.Context) ([][]byte, error) {
-	if p.encryptionKeyOverride != nil {
-		return p.encryptionKeyOverride(ctx)
-	}
 	password, err := (secret.SecretService{}).GetPassword(ctx, p.kind.secretApplication())
 	if err != nil {
 		return nil, mapSecretError(err)
@@ -45,23 +42,6 @@ func (p *provider) encryptionKeys(ctx context.Context) ([][]byte, error) {
 		return nil, browsercookies.ErrEncryptedFormatUnknown
 	}
 	return [][]byte{localStateKey}, nil
-}
-
-func (p *provider) decryptLegacy(ctx context.Context, blob []byte) ([]byte, error) {
-	keys, err := p.encryptionKeys(ctx)
-	if err != nil {
-		return nil, err
-	}
-	for _, key := range keys {
-		plain, err := decryptCookieValue(blob, key)
-		if err != nil {
-			continue
-		}
-		if value, err := stripChromiumPrefix(plain); err == nil {
-			return value, nil
-		}
-	}
-	return nil, browsercookies.ErrEncryptedMalformed
 }
 
 func mapSecretError(err error) error {

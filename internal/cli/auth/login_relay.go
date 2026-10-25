@@ -13,15 +13,11 @@ import (
 )
 
 // relayServerOptions 是 remote Pixiv login relay 的一次性 server 配置。
-// ContextWaiterExited 与 Listen 仅供生命周期测试观察/注入内部 ctx watcher 与
-// listener；生产路径保持 nil，不能影响 relay 的网络或授权行为。
 type relayServerOptions struct {
-	PublicURL           string
-	ListenAddr          string
-	TLSCertFile         string
-	TLSKeyFile          string
-	ContextWaiterExited func()
-	Listen              func(network, address string) (net.Listener, error)
+	PublicURL   string
+	ListenAddr  string
+	TLSCertFile string
+	TLSKeyFile  string
 }
 
 // configuredRelayServerOptions 按单次 flag > 私有 config 的优先级合成 server

@@ -10,32 +10,6 @@ import (
 	"github.com/FlanChanXwO/pixiv-cli/internal/storage/atomicfile"
 )
 
-type privateFileOps struct {
-	write       func(*os.File, []byte) (int, error)
-	syncFile    func(*os.File) error
-	replaceFile func(string, string) (atomicfile.Result, error)
-	syncParent  func(string) error
-}
-
-// defaultPrivateFileOps 只为不可稳定复现的文件系统失败提供按调用注入点，
-// 生产路径不使用全局可变 hook。
-func defaultPrivateFileOps() privateFileOps {
-	return privateFileOps{
-		write: func(file *os.File, body []byte) (int, error) {
-			return file.Write(body)
-		},
-		syncFile: func(file *os.File) error {
-			return file.Sync()
-		},
-		replaceFile: atomicfile.ReplacePrivateFile,
-		syncParent:  atomicfile.SyncParentDirectory,
-	}
-}
-
-func WritePrivateFile(path string, body []byte, mode os.FileMode) error {
-	return writePrivateFile(path, body, mode, defaultPrivateFileOps())
-}
-
 // EnsurePrivateDir 创建目录并把权限收紧到本项目约定的私有目录模式。
 // 该 API 不负责清理或覆盖目录之外的内容。
 func EnsurePrivateDir(path string) error {
@@ -87,10 +61,10 @@ func EnsurePrivateFile(path string, body []byte, mode os.FileMode) (resultErr er
 	return nil
 }
 
-// writePrivateFile 在目标同目录完成 staging；普通替换前失败保留旧文件。若平台替换
+// WritePrivateFile 在目标同目录完成 staging；普通替换前失败保留旧文件。若平台替换
 // 部分完成且恢复也失败，则保留新旧 recovery artifacts，不能由 defer 误删 source。
 // 已提交后的 cleanup/durability 失败返回真实错误，但不会伪装成已经回滚。
-func writePrivateFile(path string, body []byte, mode os.FileMode, ops privateFileOps) (resultErr error) {
+func WritePrivateFile(path string, body []byte, mode os.FileMode) (resultErr error) {
 	commitOutcome := WriteCommitOutcomeNotCommitted
 	defer func() {
 		resultErr = withPrivateFileWriteCommitOutcome(resultErr, commitOutcome)
@@ -130,14 +104,14 @@ func writePrivateFile(path string, body []byte, mode os.FileMode, ops privateFil
 	if err := temporary.Chmod(mode); err != nil {
 		return err
 	}
-	written, err := ops.write(temporary, body)
+	written, err := temporary.Write(body)
 	if err != nil {
 		return err
 	}
 	if written != len(body) {
 		return io.ErrShortWrite
 	}
-	if err := ops.syncFile(temporary); err != nil {
+	if err := temporary.Sync(); err != nil {
 		return err
 	}
 	if err := temporary.Close(); err != nil {
@@ -145,7 +119,7 @@ func writePrivateFile(path string, body []byte, mode os.FileMode, ops privateFil
 		return err
 	}
 	closed = true
-	replacement, replaceErr := ops.replaceFile(temporaryPath, path)
+	replacement, replaceErr := atomicfile.ReplacePrivateFile(temporaryPath, path)
 	replaced = replacement.Committed
 	preserveTemporary = replacement.PreserveSource
 	switch {
@@ -157,7 +131,7 @@ func writePrivateFile(path string, body []byte, mode os.FileMode, ops privateFil
 	if !replacement.Committed {
 		return replaceErr
 	}
-	return errors.Join(replaceErr, syncCommittedPrivatePath(targetDirectory, newDirectories, ops.syncParent))
+	return errors.Join(replaceErr, syncCommittedPrivatePath(targetDirectory, newDirectories))
 }
 
 // missingDirectoryChain 按 leaf→root 记录调用开始时尚不存在的目录。MkdirAll 成功后，
@@ -180,10 +154,10 @@ func missingDirectoryChain(directory string) ([]string, error) {
 	}
 }
 
-func syncCommittedPrivatePath(targetDirectory string, newDirectories []string, syncDirectory func(string) error) error {
-	errs := []error{syncDirectory(targetDirectory)}
+func syncCommittedPrivatePath(targetDirectory string, newDirectories []string) error {
+	errs := []error{atomicfile.SyncParentDirectory(targetDirectory)}
 	for _, directory := range newDirectories {
-		errs = append(errs, syncDirectory(filepath.Dir(directory)))
+		errs = append(errs, atomicfile.SyncParentDirectory(filepath.Dir(directory)))
 	}
 	return errors.Join(errs...)
 }

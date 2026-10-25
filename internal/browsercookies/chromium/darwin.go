@@ -25,8 +25,7 @@ func (k kind) keychainAccount() string {
 	return "Chrome"
 }
 
-// keychainPassword 读取浏览器 Safe Storage 密码。测试可通过
-// keychainKeyOverride 注入已经派生的 key，避免调用真实 `security` 命令。
+// keychainPassword 读取浏览器 Safe Storage 密码。
 func (p *provider) keychainPassword(ctx context.Context) ([]byte, error) {
 	password, err := secret.Keychain{}.GetPassword(ctx, p.kind.keychainService(), p.kind.keychainAccount())
 	if err != nil {
@@ -42,16 +41,6 @@ func (p *provider) keychainPassword(ctx context.Context) ([]byte, error) {
 }
 
 func (p *provider) encryptionKeys(ctx context.Context) ([][]byte, error) {
-	if p.encryptionKeyOverride != nil {
-		return p.encryptionKeyOverride(ctx)
-	}
-	if p.keychainKeyOverride != nil {
-		key, err := p.keychainKeyOverride(ctx)
-		if err != nil {
-			return nil, err
-		}
-		return [][]byte{key}, nil
-	}
 	password, err := p.keychainPassword(ctx)
 	if err != nil {
 		return nil, err
@@ -76,21 +65,4 @@ func (p *provider) encryptionKeys(ctx context.Context) ([][]byte, error) {
 		return nil, browsercookies.ErrEncryptedFormatUnknown
 	}
 	return [][]byte{localStateKey}, nil
-}
-
-func (p *provider) decryptLegacy(ctx context.Context, blob []byte) ([]byte, error) {
-	keys, err := p.encryptionKeys(ctx)
-	if err != nil {
-		return nil, err
-	}
-	for _, key := range keys {
-		plain, err := decryptCookieValue(blob, key)
-		if err != nil {
-			continue
-		}
-		if value, err := stripChromiumPrefix(plain); err == nil {
-			return value, nil
-		}
-	}
-	return nil, browsercookies.ErrEncryptedMalformed
 }

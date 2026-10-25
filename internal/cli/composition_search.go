@@ -40,7 +40,7 @@ func reverseSearchProxies(runtime settings.RuntimeConfig, override *string) (sta
 // 的运行时语义漂移。
 func newMCPReverseSearchPorts(runtime settings.RuntimeConfig, request mcp.Request) (pixiv.ReverseSearchPorts, error) {
 	standardProxy, ascii2dProxy := reverseSearchProxies(runtime, request.HTTPSProxyOverride)
-	searcher, err := newCLIMCPReverseSearch(assembly.Options{
+	searcher, err := assembly.New(assembly.Options{
 		Proxy:        standardProxy,
 		ASCII2DProxy: &ascii2dProxy,
 		UserAgent:    runtime.ReverseSearchNetwork.UserAgent.Value,
@@ -73,7 +73,7 @@ func (a app) reverseSearchPort() search.ReverseSearchPort {
 			provider = request.Provider
 		}
 		standardProxy, ascii2dProxy := reverseSearchProxies(runtime, request.HTTPSProxyOverride)
-		searcher, err := newCLIReverseSearch(assembly.Options{
+		searcher, err := assembly.New(assembly.Options{
 			Proxy:        standardProxy,
 			ASCII2DProxy: &ascii2dProxy,
 			UserAgent:    runtime.ReverseSearchNetwork.UserAgent.Value,

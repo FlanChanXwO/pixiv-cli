@@ -14,8 +14,6 @@ const (
 	PrivateFileMode = 0o600
 )
 
-var configFilePathOverride func() (string, error)
-
 // UserDataSubdir 返回当前用户 home 下的应用数据目录。所有平台均使用相同的
 // `~/APP_NAME` 语义；Windows 上的 home 由 os.UserHomeDir 解析为用户 profile。
 func UserDataSubdir(appName string) (string, error) {
@@ -43,20 +41,9 @@ func UserDataFile(appName, filename string) (string, error) {
 // ConfigFilePath 返回 config.toml 的应用管理路径。配置 schema 由
 // internal/config/settings 拥有；本机路径与权限只由本包解析。
 func ConfigFilePath() (string, error) {
-	if configFilePathOverride != nil {
-		return configFilePathOverride()
-	}
 	directory, err := AppDataDir()
 	if err != nil {
 		return "", err
 	}
 	return filepath.Join(directory, "config.toml"), nil
-}
-
-// SetConfigFilePathForTest 为依赖默认 app path 的进程测试提供可恢复的路径
-// 注入。生产代码不调用它；恢复函数必须在测试清理阶段执行。
-func SetConfigFilePathForTest(path string) func() {
-	previous := configFilePathOverride
-	configFilePathOverride = func() (string, error) { return path, nil }
-	return func() { configFilePathOverride = previous }
 }

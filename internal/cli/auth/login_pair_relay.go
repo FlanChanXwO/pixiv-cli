@@ -20,11 +20,7 @@ func (a controller) waitForHandoffRelayLoginCode(ctx context.Context, opts relay
 	if err != nil {
 		return "", func(bool) {}, func() {}, err
 	}
-	listen := opts.Listen
-	if listen == nil {
-		listen = net.Listen
-	}
-	listener, err := listen("tcp", opts.ListenAddr)
+	listener, err := net.Listen("tcp", opts.ListenAddr)
 	if err != nil {
 		return "", func(bool) {}, func() {}, err
 	}
@@ -32,9 +28,6 @@ func (a controller) waitForHandoffRelayLoginCode(ctx context.Context, opts relay
 	if err != nil {
 		_ = listener.Close()
 		return "", func(bool) {}, func() {}, err
-	}
-	if opts.ContextWaiterExited != nil {
-		go func() { <-session.Done; opts.ContextWaiterExited() }()
 	}
 	server := &http.Server{Handler: session.Handler}
 	serveErr := make(chan error, 1)

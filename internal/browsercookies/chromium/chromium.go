@@ -25,8 +25,8 @@ const cookiesFile = "Cookies"
 const selectCookiesSQL = `SELECT host_key, value, hex(encrypted_value) FROM cookies WHERE (host_key = @h1 OR host_key = @h2) AND name = @n;`
 
 func init() {
-	browsercookies.Register("chrome", func() (browsercookies.Provider, error) { return newProvider("chrome", "") })
-	browsercookies.Register("edge", func() (browsercookies.Provider, error) { return newProvider("edge", "") })
+	browsercookies.Register("chrome", func() (browsercookies.Provider, error) { return newProvider("chrome") })
+	browsercookies.Register("edge", func() (browsercookies.Provider, error) { return newProvider("edge") })
 }
 
 type kind int
@@ -48,23 +48,15 @@ type provider struct {
 	name string
 	kind kind
 	root string
-	// keychainKeyOverride 仅供测试注入 Keychain 密码；nil 时走真实 Keychain。
-	keychainKeyOverride func(ctx context.Context) ([]byte, error)
-	// encryptionKeyOverride 仅供跨平台 crypto fixture 注入已经解包的 AES key。
-	// 生产路径始终走平台秘密后端或 DPAPI。
-	encryptionKeyOverride func(ctx context.Context) ([][]byte, error)
 }
 
-// newProvider 构造 provider；root 为空时使用默认用户数据目录。
-func newProvider(name, root string) (*provider, error) {
+// newProvider 使用默认用户数据目录构造 provider。
+func newProvider(name string) (*provider, error) {
 	k := kindChrome
 	if name == "edge" {
 		k = kindEdge
 	}
-	if root == "" {
-		root = k.rootDir()
-	}
-	return &provider{name: name, kind: k, root: root}, nil
+	return &provider{name: name, kind: k, root: k.rootDir()}, nil
 }
 
 func (p *provider) Name() string { return p.name }

@@ -13,7 +13,7 @@ import (
 
 // standardInputIsTerminal 只在真实字符设备上要求人工提供位置参数；嵌入式调用
 // 使用的 reader 视为管道，以便测试和其他程序直接组合 CLI。
-var standardInputIsTerminal = func(in io.Reader) bool {
+func standardInputIsTerminal(in io.Reader) bool {
 	file, ok := in.(*os.File)
 	if !ok {
 		return false

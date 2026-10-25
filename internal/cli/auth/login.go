@@ -14,10 +14,12 @@ import (
 	"sync"
 	"time"
 
+	"github.com/FlanChanXwO/pixiv-cli/internal/cli/auth/loginhelper"
 	"github.com/FlanChanXwO/pixiv-cli/internal/cli/internal/command"
 	"github.com/FlanChanXwO/pixiv-cli/internal/loginrelay"
 	pixivaccount "github.com/FlanChanXwO/pixiv-cli/internal/pixivaccount"
 	pixiv "github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
+	"github.com/pkg/browser"
 	"github.com/spf13/cobra"
 )
 
@@ -262,10 +264,10 @@ func (s *loginServer) waitFinalPage(w http.ResponseWriter, r *http.Request) {
 
 func (s *loginServer) installHandler(ctx context.Context) {
 	s.initializeErrors()
-	if err := s.controller.ensureURLHandler(ctx); err != nil {
+	if err := loginhelper.EnsurePersistentIfNeeded(ctx); err != nil {
 		s.writeErr("warning: persistent pixiv:// callback handler is unavailable: %v\n", err)
 	}
-	cleanup, err := s.controller.installURLHandler(ctx, "http://"+s.actualAddr+"/callback")
+	cleanup, err := loginhelper.Install(ctx, "http://"+s.actualAddr+"/callback")
 	if err != nil {
 		s.writeErr("warning: pixiv:// callback handler is unavailable: %v\n", err)
 	} else if cleanup != nil {
@@ -293,7 +295,7 @@ func (s *loginServer) serve(loginURL string, noOpen bool) {
 	s.initializeErrors()
 	openTerminalRelay := func(rawURL string) error {
 		s.writeErr("Detected Pixiv authorization relay page; opening Pixiv relay URL once.\n")
-		return s.controller.openBrowser(rawURL)
+		return browser.OpenURL(rawURL)
 	}
 	mux := http.NewServeMux()
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
@@ -357,7 +359,7 @@ func (s *loginServer) serve(loginURL string, noOpen bool) {
 	s.writeLoginInstructions(loginURL, noOpen)
 	enableTerminalFallback := s.controller.canPrompt()
 	if !noOpen {
-		if err := s.controller.openBrowser(loginURL); err != nil {
+		if err := browser.OpenURL(loginURL); err != nil {
 			s.writeErr("warning: could not open browser: %v\n", err)
 		}
 	}

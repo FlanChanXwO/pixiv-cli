@@ -30,7 +30,7 @@ import (
 )
 
 func (a app) RunMCP(ctx context.Context, request mcp.Request) error {
-	return runMCPServer(a, ctx, request)
+	return a.runPixivMCP(ctx, request)
 }
 
 func (a app) runPixivMCP(ctx context.Context, request mcp.Request) (result error) {
@@ -48,7 +48,7 @@ func (a app) runPixivMCP(ctx context.Context, request mcp.Request) (result error
 		return err
 	}
 	registerReverseSearchCloser(a.closeState, reverseSearchPorts.Searcher)
-	ports, err := newCLIPixivSDKPorts(a)
+	ports, err := a.newPixivSDKPorts()
 	if err != nil {
 		return err
 	}
@@ -61,7 +61,7 @@ func (a app) runPixivMCP(ctx context.Context, request mcp.Request) (result error
 
 // newMCPSDKPorts 把 composition root 的 SDK 边界翻译成 MCP 产品端口。
 func (a app) newMCPSDKPorts(ports pixivSDKPorts, reverseSearchPorts pixivmcpserver.ReverseSearchPorts, request mcp.Request) (pixivmcpserver.SDKPorts, fanboxmcpserver.SDKPorts) {
-	fanboxService := func() (*session.Fanbox, error) { return newCLIFanboxService(a) }
+	fanboxService := func() (*session.Fanbox, error) { return a.newFanboxService() }
 	sdkPorts := pixivmcpserver.SDKPorts{
 		Logger: a.logger(),
 		Open: func(account pixivmcpserver.Account) (*sdkpixiv.Client, error) {
@@ -109,7 +109,7 @@ func (a app) runMCPStdio(ctx context.Context, runtime settings.RuntimeConfig, sd
 	sdkPorts.OpenLease = func(ctx context.Context, account pixivmcpserver.Account) (*lifecycle.Lease[*sdkpixiv.Client], error) {
 		return ports.openLease(ctx, pixivcmd.Request{UserID: account.UserID, HTTPSProxyOverride: account.HTTPSProxyOverride})
 	}
-	return runMCPStdio(ctx, unifiedmcp.New(sdkPorts, account, fanboxPorts, request.HTTPSProxyOverride), a.in, a.out)
+	return unifiedmcp.RunStdio(ctx, unifiedmcp.New(sdkPorts, account, fanboxPorts, request.HTTPSProxyOverride), a.in, a.out)
 }
 
 // runMCPHTTP 在显式 --port 时启动共享账号选择、登录 relay 与媒体代理。
@@ -162,7 +162,7 @@ func (a app) runMCPHTTP(ctx context.Context, runtime settings.RuntimeConfig, sdk
 		return account, nil
 	}
 	account := pixivmcpserver.Account{HTTPSProxyOverride: request.HTTPSProxyOverride}
-	return runMCPHTTP(ctx, unifiedmcp.New(sdkPorts, account, fanboxPorts, request.HTTPSProxyOverride), listenAddr, baseURL, store, a.errOut, login, media)
+	return unifiedmcp.RunHTTP(ctx, unifiedmcp.New(sdkPorts, account, fanboxPorts, request.HTTPSProxyOverride), listenAddr, baseURL, store, a.errOut, login, media)
 }
 
 // configureMCPMedia 挂媒体阶段观测；日志只带固定阶段名和计数。
@@ -236,7 +236,7 @@ func (a app) newMCPLogin(ctx context.Context, baseURL string, selection mcpaccou
 	var service *pixivaccount.LoginService
 	return mcpaccounts.NewLogin(ctx, strings.TrimRight(baseURL, "/")+"/pixiv-login", func() (mcpaccounts.LoginAttempt, error) {
 		if service == nil {
-			_, loaded, err := newCLIAccountServices(a)
+			_, loaded, err := a.newPixivAccountServices()
 			if err != nil {
 				return mcpaccounts.LoginAttempt{}, err
 			}

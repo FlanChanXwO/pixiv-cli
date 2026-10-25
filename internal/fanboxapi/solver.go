@@ -183,17 +183,14 @@ func (s *Session) solveFlareSolverr(ctx context.Context) (solverState, error) {
 	}
 	request.Header.Set("Content-Type", "application/json")
 	request.Header.Set("Accept", "application/json")
-	client := s.solverHTTPClient
-	if client == nil {
-		transport := &http.Transport{Proxy: nil}
-		client = &http.Client{
-			Transport: transport,
-			CheckRedirect: func(*http.Request, []*http.Request) error {
-				return http.ErrUseLastResponse
-			},
-		}
-		defer transport.CloseIdleConnections()
+	transport := &http.Transport{Proxy: nil}
+	client := &http.Client{
+		Transport: transport,
+		CheckRedirect: func(*http.Request, []*http.Request) error {
+			return http.ErrUseLastResponse
+		},
 	}
+	defer transport.CloseIdleConnections()
 	response, err := client.Do(request)
 	if err != nil {
 		if ctxErr := ctx.Err(); ctxErr != nil {

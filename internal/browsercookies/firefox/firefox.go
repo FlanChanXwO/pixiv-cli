@@ -29,7 +29,7 @@ const (
 )
 
 func init() {
-	browsercookies.Register("firefox", func() (browsercookies.Provider, error) { return newProvider("") })
+	browsercookies.Register("firefox", func() (browsercookies.Provider, error) { return newProvider() })
 }
 
 // defaultRoot 返回当前平台的 Firefox 用户目录；其他平台返回空路径并按
@@ -46,12 +46,9 @@ type provider struct {
 	root string
 }
 
-// newProvider 构造 provider；root 为空时使用默认用户目录。
-func newProvider(root string) (*provider, error) {
-	if root == "" {
-		root = defaultRoot()
-	}
-	return &provider{root: root}, nil
+// newProvider 使用默认用户目录构造 provider。
+func newProvider() (*provider, error) {
+	return &provider{root: defaultRoot()}, nil
 }
 
 func (p *provider) Name() string { return "firefox" }

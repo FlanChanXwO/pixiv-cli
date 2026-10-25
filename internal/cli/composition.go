@@ -19,7 +19,6 @@ import (
 	"time"
 
 	authcommands "github.com/FlanChanXwO/pixiv-cli/internal/cli/auth"
-	"github.com/FlanChanXwO/pixiv-cli/internal/cli/auth/loginhelper"
 	downloadcommands "github.com/FlanChanXwO/pixiv-cli/internal/cli/download"
 	fanboxauth "github.com/FlanChanXwO/pixiv-cli/internal/cli/fanbox/auth"
 	fanboxdownload "github.com/FlanChanXwO/pixiv-cli/internal/cli/fanbox/download"
@@ -27,6 +26,7 @@ import (
 	"github.com/FlanChanXwO/pixiv-cli/internal/cli/internal/command"
 	"github.com/FlanChanXwO/pixiv-cli/internal/cli/internal/fanboxcmd"
 	"github.com/FlanChanXwO/pixiv-cli/internal/cli/internal/pixivcmd"
+	"github.com/FlanChanXwO/pixiv-cli/internal/cli/update"
 	"github.com/FlanChanXwO/pixiv-cli/internal/config/paths"
 	"github.com/FlanChanXwO/pixiv-cli/internal/config/settings"
 	fanboxaccount "github.com/FlanChanXwO/pixiv-cli/internal/fanboxaccount"
@@ -43,14 +43,6 @@ import (
 	pixiv "github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
 	"github.com/spf13/cobra"
 )
-
-const internalURLCallbackCommand = loginhelper.CallbackCommand
-
-const internalURLHandlerInstallCommand = "_install-handler"
-
-// systemFanboxBrowserSessionReader 保留根包测试对默认 provider 的类型引用；实现
-// 本身属于 commands/fanbox/auth，不在根包复制浏览器逻辑。
-type systemFanboxBrowserSessionReader = fanboxauth.SystemBrowserProvider
 
 func (a app) openAuthDatabase() (*database.DB, error) {
 	db, err := openCLIAuthDatabase()
@@ -251,7 +243,7 @@ func (a app) commandExecutor() pixivcmd.Executor {
 	var ports pixivSDKPorts
 	var portsErr error
 	return func(ctx context.Context, request pixivcmd.Request, attempt func(context.Context, *pixiv.Client) (bool, error)) error {
-		once.Do(func() { ports, portsErr = newCLIPixivSDKPorts(a) })
+		once.Do(func() { ports, portsErr = a.newPixivSDKPorts() })
 		if portsErr != nil {
 			return portsErr
 		}
@@ -267,7 +259,7 @@ func (a app) newAuthCommand() *cobra.Command {
 	var loadErr error
 	load := func() {
 		once.Do(func() {
-			account, login, loadErr = newCLIAccountServices(a)
+			account, login, loadErr = a.newPixivAccountServices()
 		})
 	}
 	return authcommands.New(a.commandEnv(), authcommands.Support{
@@ -295,7 +287,7 @@ func (a app) newDownloadCommand() *cobra.Command {
 			FilenameTemplate:  runtime.FilenameTemplate,
 			DirectoryTemplate: runtime.DirectoryTemplate,
 		}, nil
-	}, newCLIDownloadService)
+	}, defaultDownloadService)
 }
 
 func (a app) newFanboxCommandGroup(env command.Env) *cobra.Command {
@@ -303,12 +295,12 @@ func (a app) newFanboxCommandGroup(env command.Env) *cobra.Command {
 	var service *session.Fanbox
 	var serviceErr error
 	load := func() (*session.Fanbox, error) {
-		once.Do(func() { service, serviceErr = newCLIFanboxService(a) })
+		once.Do(func() { service, serviceErr = a.newFanboxService() })
 		return service, serviceErr
 	}
-	accounts := func() (*fanboxaccount.Service, error) { return newCLIFanboxAccountService(a) }
+	accounts := func() (*fanboxaccount.Service, error) { return a.newFanboxAccountService() }
 	children := []*cobra.Command{
-		fanboxauth.New(env, accounts, fanboxBrowserSessionReader),
+		fanboxauth.New(env, accounts, fanboxauth.SystemBrowserProvider{}),
 		fanboxdownload.New(env, load, func() (string, error) {
 			runtime, err := a.runtimeConfig()
 			return runtime.DownloadPath, err
@@ -323,21 +315,21 @@ func (a app) ConfigService() settings.Store { return settings.DefaultStore() }
 func (a app) ConfigPath() (string, error) { return a.ConfigService().Path() }
 
 func (a app) FanboxService() (*session.Fanbox, error) {
-	return newCLIFanboxService(a)
+	return a.newFanboxService()
 }
 
 func (a app) AccountService() authcommands.AccountService {
-	account, _, _ := newCLIAccountServices(a)
+	account, _, _ := a.newPixivAccountServices()
 	return account
 }
 
 func (a app) LoginService() pixivaccount.LoginService {
-	_, login, _ := newCLIAccountServices(a)
+	_, login, _ := a.newPixivAccountServices()
 	return login
 }
 
 func (a app) DownloadService() downloader.DownloadService {
-	return newCLIDownloadService()
+	return defaultDownloadService()
 }
 
 func (app) WriteAuthExportBundle(path string, body []byte, force bool) error {
@@ -345,7 +337,7 @@ func (app) WriteAuthExportBundle(path string, body []byte, force bool) error {
 }
 
 func (app) FanboxBrowserProvider() fanboxcmd.BrowserProvider {
-	return fanboxBrowserSessionReader
+	return fanboxauth.SystemBrowserProvider{}
 }
 
 func (a app) FanboxRuntimeConfig() (settings.RuntimeConfig, error) {
@@ -357,7 +349,7 @@ func (a app) LoadUpdateRuntimeConfig() (settings.RuntimeConfig, error) {
 }
 
 func (a app) NewUpdateCoordinator(proxy string, out, errOut io.Writer) (*selfupdate.UpdateCoordinator, error) {
-	return newUpdateCommandCoordinator(proxy, out, errOut)
+	return update.NewCoordinator(proxy, out, errOut)
 }
 
 func (a app) LoadAutomaticUpdateRuntimeConfig() (settings.RuntimeConfig, error) {
@@ -365,7 +357,7 @@ func (a app) LoadAutomaticUpdateRuntimeConfig() (settings.RuntimeConfig, error) 
 }
 
 func (a app) NewAutomaticUpdateChecker(proxy string) (*selfupdate.AutomaticUpdateChecker, error) {
-	return newCLIAutomaticUpdateChecker(proxy)
+	return update.NewAutomaticChecker(proxy)
 }
 
 type pixivSDKPorts struct {

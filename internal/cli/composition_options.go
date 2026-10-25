@@ -20,9 +20,6 @@ func defaultCLIRuntimeConfig() (settings.RuntimeConfig, error) {
 	return snapshot.Runtime()
 }
 
-// loadCLIRuntimeConfig 是 composition root 的窄测试 seam。
-var loadCLIRuntimeConfig = defaultCLIRuntimeConfig
-
 func pixivOptionsFromRequest(request pixivcmd.Request, loadRuntime func() (settings.RuntimeConfig, error), logger *slog.Logger) (pixiv.Options, error) {
 	runtime, err := loadRuntime()
 	if err != nil {

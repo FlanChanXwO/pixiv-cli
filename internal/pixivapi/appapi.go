@@ -24,7 +24,6 @@ import (
 
 type Client struct {
 	http           *http.Client
-	apiBase        string
 	session        Session
 	acceptLanguage string
 	userID         int64
@@ -40,10 +39,9 @@ type Session interface {
 	Refresh(context.Context) error
 }
 
-// Config 是 App API 客户端的构造参数；零值使用默认基址、默认 HTTP client 和无认证。
+// Config 是 App API 客户端的构造参数；零值使用默认 HTTP client 和无认证。
 type Config struct {
 	HTTPClient *http.Client
-	BaseURL    string
 	// Session 提供 access token 与刷新能力；同时设置 AccessToken 时改用不可刷新的静态 token。
 	Session        Session
 	AccessToken    string
@@ -65,14 +63,9 @@ func New(cfg Config) *Client {
 	if httpClient == nil {
 		httpClient = &http.Client{}
 	}
-	apiBase := cfg.BaseURL
-	if apiBase == "" {
-		apiBase = AppAPIBase
-	}
 	logger := cmp.Or(cfg.Logger, slog.New(slog.DiscardHandler))
 	return &Client{
 		http:                   httpClient,
-		apiBase:                strings.TrimRight(apiBase, "/"),
 		session:                session,
 		acceptLanguage:         strings.TrimSpace(cfg.AcceptLanguage),
 		userID:                 cfg.UserID,
@@ -107,7 +100,7 @@ func newRequest(method, rawURL string, query url.Values) (request, error) {
 }
 
 func (c *Client) appRequest(method, path string, query, form url.Values) (request, error) {
-	req, err := newRequest(method, c.apiBase+path, query)
+	req, err := newRequest(method, AppAPIBase+path, query)
 	if err != nil {
 		return request{}, err
 	}
