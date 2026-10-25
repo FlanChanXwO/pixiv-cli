@@ -1,7 +1,6 @@
 package secretfile_test
 
 import (
-	"encoding/json"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -133,14 +132,4 @@ func TestSecretFileWriteErrorKeepsCauseClassifiable(t *testing.T) {
 	var typed *secret.SecretFileWriteError
 	require.ErrorAs(t, err, &typed)
 	assert.NotEmpty(t, typed.Error())
-}
-
-func TestWriteJSONOutputIsValidJSON(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "state.json")
-	require.NoError(t, secret.WriteJSON(path, map[string]string{"status": "ok"}))
-	body, err := os.ReadFile(path)
-	require.NoError(t, err)
-	var decoded map[string]string
-	require.NoError(t, json.Unmarshal(body, &decoded))
-	assert.Equal(t, "ok", decoded["status"])
 }

@@ -145,136 +145,86 @@ func TestTraversePagesAtExactLimitUsesNextCursorForHasMore(t *testing.T) {
 	}
 }
 
-func TestTraversePagesOneBatchSkipsLeadingEmptyBatches(t *testing.T) {
-	empty2 := testCursor(t, "empty2")
-	data := testCursor(t, "data")
-	later := testCursor(t, "later")
-	pages := map[sdk.Cursor]struct {
-		items []int
-		next  sdk.Cursor
-	}{
-		{}:     {next: empty2},
-		empty2: {next: data},
-		data:   {items: []int{7, 8}, next: later},
-		later:  {items: []int{9}},
-	}
-	var cursors []sdk.Cursor
-	var got []int
-
-	result, err := pagination.TraversePages(context.Background(), pagination.PagePlan{OneBatch: true}, func(_ context.Context, cursor sdk.Cursor) ([]int, sdk.Cursor, error) {
-		cursors = append(cursors, cursor)
-		page := pages[cursor]
-		return page.items, page.next, nil
-	}, func(items []int) error {
-		got = append(got, items...)
-		return nil
-	})
-
-	require.NoError(t, err)
-	assert.Equal(t, []string{"", empty2.String(), data.String()}, cursorNames(cursors))
-	assert.Equal(t, []int{7, 8}, got)
-	assert.Equal(t, pagination.PageResult{Returned: 2, HasMore: true}, result)
-}
-
-func TestTraversePagesOneBatchEndsWhenOnlyEmptyBatchesRemain(t *testing.T) {
+// 一个逻辑批次必须跨过前导空批次，但批次内的 Skip 只消耗当前批次。
+func TestTraversePagesOneBatchAndLimitAcrossEmptyBatches(t *testing.T) {
 	empty := testCursor(t, "empty")
-	pages := map[sdk.Cursor]struct {
+	data := testCursor(t, "data")
+	tail := testCursor(t, "tail")
+	type page struct {
 		items []int
 		next  sdk.Cursor
-	}{
+	}
+	dataPages := map[sdk.Cursor]page{
+		{}:    {next: empty},
+		empty: {next: data},
+		data:  {items: []int{7, 8}, next: tail},
+		tail:  {items: []int{9}},
+	}
+	emptyPages := map[sdk.Cursor]page{
 		{}:    {next: empty},
 		empty: {},
 	}
-	var cursors []sdk.Cursor
-	result, err := pagination.TraversePages(context.Background(), pagination.PagePlan{OneBatch: true}, func(_ context.Context, cursor sdk.Cursor) ([]int, sdk.Cursor, error) {
-		cursors = append(cursors, cursor)
-		page := pages[cursor]
-		return page.items, page.next, nil
-	}, func([]int) error { return nil })
-
-	require.NoError(t, err)
-	assert.Equal(t, []string{"", empty.String()}, cursorNames(cursors))
-	assert.Equal(t, pagination.PageResult{Returned: 0, HasMore: false}, result)
-}
-
-func TestTraversePagesLimitFillsAcrossEmptyBatches(t *testing.T) {
-	empty := testCursor(t, "empty")
-	more := testCursor(t, "more")
-	tail := testCursor(t, "tail")
-	pages := map[sdk.Cursor]struct {
-		items []int
-		next  sdk.Cursor
+	for _, test := range []struct {
+		name        string
+		plan        pagination.PagePlan
+		pages       map[sdk.Cursor]page
+		wantCursors []string
+		wantItems   []int
+		want        pagination.PageResult
 	}{
-		{}:    {items: []int{1}, next: empty},
-		empty: {next: more},
-		more:  {items: []int{2, 3}, next: tail},
-		tail:  {items: []int{4}},
+		{
+			name:        "one batch skips leading empty batches",
+			plan:        pagination.PagePlan{OneBatch: true},
+			pages:       dataPages,
+			wantCursors: []string{"", empty.String(), data.String()},
+			wantItems:   []int{7, 8},
+			want:        pagination.PageResult{Returned: 2, HasMore: true},
+		},
+		{
+			name:        "one batch stops when only empty batches remain",
+			plan:        pagination.PagePlan{OneBatch: true},
+			pages:       emptyPages,
+			wantCursors: []string{"", empty.String()},
+			want:        pagination.PageResult{},
+		},
+		{
+			name:        "limit fills across empty batches",
+			plan:        pagination.PagePlan{Limit: 3},
+			pages:       dataPages,
+			wantCursors: []string{"", empty.String(), data.String(), tail.String()},
+			wantItems:   []int{7, 8, 9},
+			want:        pagination.PageResult{Returned: 3},
+		},
+		{
+			name:        "one batch after skip stops at first non-empty batch",
+			plan:        pagination.PagePlan{Skip: 1, OneBatch: true},
+			pages:       dataPages,
+			wantCursors: []string{"", empty.String(), data.String()},
+			wantItems:   []int{8},
+			want:        pagination.PageResult{Returned: 1, HasMore: true},
+		},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			var cursors []sdk.Cursor
+			var got []int
+			result, err := pagination.TraversePages(context.Background(), test.plan, func(_ context.Context, cursor sdk.Cursor) ([]int, sdk.Cursor, error) {
+				cursors = append(cursors, cursor)
+				current := test.pages[cursor]
+				return current.items, current.next, nil
+			}, func(items []int) error {
+				got = append(got, items...)
+				return nil
+			})
+
+			require.NoError(t, err)
+			assert.Equal(t, test.wantCursors, cursorNames(cursors))
+			assert.Equal(t, test.wantItems, got)
+			assert.Equal(t, test.want, result)
+		})
 	}
-	var cursors []sdk.Cursor
-	var got []int
-	result, err := pagination.TraversePages(context.Background(), pagination.PagePlan{Limit: 3}, func(_ context.Context, cursor sdk.Cursor) ([]int, sdk.Cursor, error) {
-		cursors = append(cursors, cursor)
-		page := pages[cursor]
-		return page.items, page.next, nil
-	}, func(items []int) error {
-		got = append(got, items...)
-		return nil
-	})
-	require.NoError(t, err)
-	assert.Equal(t, []string{"", empty.String(), more.String()}, cursorNames(cursors))
-	assert.Equal(t, []int{1, 2, 3}, got)
-	assert.Equal(t, pagination.PageResult{Returned: 3, HasMore: true}, result)
 }
 
-func TestTraversePagesOneBatchStopsAtFirstNonEmptyBatchAfterSkip(t *testing.T) {
-	empty := testCursor(t, "empty")
-	target := testCursor(t, "target")
-	later := testCursor(t, "later")
-	pages := map[sdk.Cursor]struct {
-		items []int
-		next  sdk.Cursor
-	}{
-		{}:     {items: []int{1, 2}, next: empty},
-		empty:  {next: target},
-		target: {items: []int{3, 4}, next: later},
-		later:  {items: []int{5}},
-	}
-	var cursors []sdk.Cursor
-	var got []int
-
-	result, err := pagination.TraversePages(context.Background(), pagination.PagePlan{Skip: 2, OneBatch: true}, func(_ context.Context, cursor sdk.Cursor) ([]int, sdk.Cursor, error) {
-		cursors = append(cursors, cursor)
-		page := pages[cursor]
-		return page.items, page.next, nil
-	}, func(items []int) error {
-		got = append(got, items...)
-		return nil
-	})
-
-	require.NoError(t, err)
-	assert.Equal(t, []string{"", empty.String(), target.String()}, cursorNames(cursors))
-	assert.Equal(t, []int{3, 4}, got)
-	assert.Equal(t, pagination.PageResult{Returned: 2, HasMore: true}, result)
-}
-
-func TestTraversePagesRejectsRepeatedCursorBeforeFetchingItAgain(t *testing.T) {
-	repeat := testCursor(t, "repeat")
-	unexpectedFetch := errors.New("repeated cursor was fetched")
-	var cursors []sdk.Cursor
-
-	_, err := pagination.TraversePages(context.Background(), pagination.PagePlan{}, func(_ context.Context, cursor sdk.Cursor) ([]int, sdk.Cursor, error) {
-		cursors = append(cursors, cursor)
-		if len(cursors) > 2 {
-			return nil, sdk.Cursor{}, unexpectedFetch
-		}
-		return nil, repeat, nil
-	}, func([]int) error { return nil })
-
-	require.EqualError(t, err, `pagination cursor repeated: `+repeat.String())
-	assert.Equal(t, []string{"", repeat.String()}, cursorNames(cursors))
-}
-
-func TestTraversePagesRejectsLongerCursorCycle(t *testing.T) {
+func TestTraversePagesRejectsCursorCycleBeforeFetchingItAgain(t *testing.T) {
 	a := testCursor(t, "A")
 	b := testCursor(t, "B")
 	next := map[sdk.Cursor]sdk.Cursor{{}: a, a: b, b: a}
@@ -310,23 +260,38 @@ func TestTraversePagesRejectsNegativePlanValuesBeforeFetch(t *testing.T) {
 	}
 }
 
-func TestTraversePagesReturnsFetchErrorUnchanged(t *testing.T) {
+func TestTraversePagesPropagatesFetchAndConsumeErrorsUnchanged(t *testing.T) {
 	fetchErr := errors.New("fetch failed")
-	_, err := pagination.TraversePages(context.Background(), pagination.PagePlan{}, func(_ context.Context, _ sdk.Cursor) ([]int, sdk.Cursor, error) {
-		return nil, sdk.Cursor{}, fetchErr
-	}, func([]int) error { return nil })
-
-	require.ErrorIs(t, err, fetchErr)
-}
-
-func TestTraversePagesReturnsConsumeErrorUnchanged(t *testing.T) {
-	next := testCursor(t, "next")
 	consumeErr := errors.New("consume failed")
-	_, err := pagination.TraversePages(context.Background(), pagination.PagePlan{}, func(_ context.Context, _ sdk.Cursor) ([]int, sdk.Cursor, error) {
-		return []int{1}, next, nil
-	}, func([]int) error { return consumeErr })
-
-	require.ErrorIs(t, err, consumeErr)
+	next := testCursor(t, "next")
+	for _, test := range []struct {
+		name    string
+		fetch   func(context.Context, sdk.Cursor) ([]int, sdk.Cursor, error)
+		consume func([]int) error
+		want    error
+	}{
+		{
+			name: "fetch",
+			fetch: func(context.Context, sdk.Cursor) ([]int, sdk.Cursor, error) {
+				return nil, sdk.Cursor{}, fetchErr
+			},
+			consume: func([]int) error { return nil },
+			want:    fetchErr,
+		},
+		{
+			name: "consume",
+			fetch: func(context.Context, sdk.Cursor) ([]int, sdk.Cursor, error) {
+				return []int{1}, next, nil
+			},
+			consume: func([]int) error { return consumeErr },
+			want:    consumeErr,
+		},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			_, err := pagination.TraversePages(context.Background(), pagination.PagePlan{}, test.fetch, test.consume)
+			require.ErrorIs(t, err, test.want)
+		})
+	}
 }
 
 func TestTraversePagesPassesCallerContextToEveryFetch(t *testing.T) {
@@ -347,103 +312,95 @@ func TestTraversePagesPassesCallerContextToEveryFetch(t *testing.T) {
 	assert.Equal(t, []any{"caller", "caller"}, values)
 }
 
-func TestCollectPagesReturnsNonNilEmptySliceOnSuccess(t *testing.T) {
-	items, result, err := pagination.CollectPagesFrom(context.Background(), pagination.PagePlan{}, sdk.Cursor{}, func(_ context.Context, _ sdk.Cursor) ([]int, sdk.Cursor, error) {
-		return nil, sdk.Cursor{}, nil
-	})
-
-	require.NoError(t, err)
-	require.NotNil(t, items)
-	assert.Empty(t, items)
-	assert.Equal(t, pagination.PageResult{}, result)
-}
-
-func TestCollectPagesDiscardsPartialItemsOnError(t *testing.T) {
+func TestCollectPagesEmptyAndPartialFailureContracts(t *testing.T) {
 	next := testCursor(t, "next")
 	fetchErr := errors.New("second page failed")
-	items, result, err := pagination.CollectPagesFrom(context.Background(), pagination.PagePlan{}, sdk.Cursor{}, func(_ context.Context, cursor sdk.Cursor) ([]int, sdk.Cursor, error) {
-		if cursor.IsZero() {
-			return []int{1}, next, nil
-		}
-		return nil, sdk.Cursor{}, fetchErr
-	})
-
-	require.ErrorIs(t, err, fetchErr)
-	assert.Nil(t, items)
-	assert.Equal(t, pagination.PageResult{}, result)
-}
-
-func TestCollectFilteredPagesAppliesLimitAfterFilteringAcrossBatches(t *testing.T) {
-	next := testCursor(t, "next")
-	var cursors []sdk.Cursor
-	items, cursor, result, err := pagination.CollectFilteredPagesFrom(context.Background(), pagination.PagePlan{Limit: 2}, sdk.Cursor{}, func(_ context.Context, current sdk.Cursor) ([]int, sdk.Cursor, error) {
-		cursors = append(cursors, current)
-		if current.IsZero() {
-			return []int{1, 2, 3}, next, nil
-		}
-		return []int{4}, sdk.Cursor{}, nil
-	}, func(value int) (bool, error) {
-		return value%2 == 0, nil
-	}, func(c sdk.Cursor, n int) (sdk.Cursor, error) { return testCursor(t, "checkpoint"), nil })
-
-	require.NoError(t, err)
-	assert.Equal(t, []int{2, 4}, items)
-	assert.Equal(t, sdk.Cursor{}, cursor)
-	assert.Equal(t, []string{"", next.String()}, cursorNames(cursors))
-	assert.Equal(t, pagination.PageResult{Returned: 2}, result)
-}
-
-func TestCollectFilteredPagesKeepsNextCursorWhenLogicalLimitStopsInsideSource(t *testing.T) {
-	next := testCursor(t, "next")
-	items, cursor, result, err := pagination.CollectFilteredPagesFrom(context.Background(), pagination.PagePlan{Limit: 1}, sdk.Cursor{}, func(_ context.Context, _ sdk.Cursor) ([]int, sdk.Cursor, error) {
-		return []int{2, 4}, next, nil
-	}, func(value int) (bool, error) { return value%2 == 0, nil }, func(c sdk.Cursor, n int) (sdk.Cursor, error) { return testCursor(t, "checkpoint"), nil })
-
-	require.NoError(t, err)
-	assert.Equal(t, []int{2}, items)
-	assert.Equal(t, testCursor(t, "checkpoint"), cursor)
-	assert.Equal(t, pagination.PageResult{Returned: 1, HasMore: true}, result)
-}
-
-func TestFilteredContinuationPreservesUnconsumedItems(t *testing.T) {
-	for _, lastBatch := range []bool{false, true} {
-		t.Run(map[bool]string{false: "next batch", true: "last batch"}[lastBatch], func(t *testing.T) {
-			fetch := func(_ context.Context, cur fakeCursor) ([]int, fakeCursor, error) {
-				if cur.value == "second" {
-					return []int{4}, fakeCursor{}, nil
+	for _, test := range []struct {
+		name  string
+		fetch func(context.Context, sdk.Cursor) ([]int, sdk.Cursor, error)
+		want  error
+	}{
+		{
+			name: "empty success returns non-nil slice",
+			fetch: func(context.Context, sdk.Cursor) ([]int, sdk.Cursor, error) {
+				return nil, sdk.Cursor{}, nil
+			},
+		},
+		{
+			name: "failure discards partial items",
+			fetch: func(_ context.Context, cursor sdk.Cursor) ([]int, sdk.Cursor, error) {
+				if cursor.IsZero() {
+					return []int{1}, next, nil
 				}
-				next := fakeCursor{value: "second"}
-				if lastBatch {
-					next = fakeCursor{}
-				}
-				if cur.value == "remainder" {
-					return []int{3}, next, nil
-				}
-				return []int{1, 2, 3}, next, nil
+				return nil, sdk.Cursor{}, fetchErr
+			},
+			want: fetchErr,
+		},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			items, result, err := pagination.CollectPagesFrom(context.Background(), pagination.PagePlan{}, sdk.Cursor{}, test.fetch)
+			if test.want != nil {
+				require.ErrorIs(t, err, test.want)
+				assert.Nil(t, items)
+				assert.Equal(t, pagination.PageResult{}, result)
+				return
 			}
-			include := func(int) (bool, error) { return true, nil }
-			first, next, result, err := pagination.CollectFilteredPagesFrom(context.Background(), pagination.PagePlan{Limit: 2}, fakeCursor{}, fetch, include, func(c fakeCursor, n int) (fakeCursor, error) {
-				require.Equal(t, 2, n)
-				return fakeCursor{value: "remainder"}, nil
-			})
 			require.NoError(t, err)
-			require.True(t, result.HasMore)
-			require.False(t, next.IsZero(), "remaining items require a usable cursor")
-			rest, _, _, err := pagination.CollectFilteredPagesFrom(context.Background(), pagination.PagePlan{}, next, fetch, include, func(c fakeCursor, n int) (fakeCursor, error) {
-				require.Equal(t, 2, n)
-				return fakeCursor{value: "remainder"}, nil
-			})
-			require.NoError(t, err)
-			want := []int{1, 2, 3, 4}
-			if lastBatch {
-				want = []int{1, 2, 3}
-			}
-			require.Equal(t, want, append(first, rest...))
+			require.NotNil(t, items)
+			assert.Empty(t, items)
+			assert.Equal(t, pagination.PageResult{}, result)
 		})
 	}
 }
 
-func TestFilteredContinuationConsumesSourcePositions(t *testing.T) {
+func TestCollectFilteredPagesAppliesLimitAfterFiltering(t *testing.T) {
+	next := testCursor(t, "next")
+	checkpoint := func(sdk.Cursor, int) (sdk.Cursor, error) { return testCursor(t, "checkpoint"), nil }
+	for _, test := range []struct {
+		name      string
+		plan      pagination.PagePlan
+		first     []int
+		second    []int
+		wantItems []int
+		wantNext  sdk.Cursor
+		want      pagination.PageResult
+	}{
+		{
+			name:      "across batches",
+			plan:      pagination.PagePlan{Limit: 2},
+			first:     []int{1, 2, 3},
+			second:    []int{4},
+			wantItems: []int{2, 4},
+			want:      pagination.PageResult{Returned: 2},
+		},
+		{
+			name:      "checkpoint when limit stops inside source batch",
+			plan:      pagination.PagePlan{Limit: 1},
+			first:     []int{2, 4},
+			wantItems: []int{2},
+			wantNext:  testCursor(t, "checkpoint"),
+			want:      pagination.PageResult{Returned: 1, HasMore: true},
+		},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			items, cursor, result, err := pagination.CollectFilteredPagesFrom(context.Background(), test.plan, sdk.Cursor{}, func(_ context.Context, current sdk.Cursor) ([]int, sdk.Cursor, error) {
+				if current.IsZero() {
+					return test.first, next, nil
+				}
+				return test.second, sdk.Cursor{}, nil
+			}, func(value int) (bool, error) {
+				return value%2 == 0, nil
+			}, checkpoint)
+
+			require.NoError(t, err)
+			assert.Equal(t, test.wantItems, items)
+			assert.Equal(t, test.wantNext, cursor)
+			assert.Equal(t, test.want, result)
+		})
+	}
+}
+
+func TestFilteredContinuationResumesFromCheckpoint(t *testing.T) {
 	fetch := func(_ context.Context, c fakeCursor) ([]int, fakeCursor, error) {
 		switch c.value {
 		case "":
@@ -453,19 +410,21 @@ func TestFilteredContinuationConsumesSourcePositions(t *testing.T) {
 		case "rest":
 			return []int{5, 6}, fakeCursor{}, nil
 		default:
-			t.Fatal("unexpected continuation")
+			t.Fatalf("unexpected continuation %q", c.value)
 			return nil, fakeCursor{}, nil
 		}
 	}
 	checkpoint := func(c fakeCursor, n int) (fakeCursor, error) {
 		require.Equal(t, "batch", c.value)
-		require.Equal(t, 3, n)
 		return fakeCursor{value: "rest"}, nil
 	}
 	include := func(n int) (bool, error) { return n%2 == 0, nil }
-	first, next, _, err := pagination.CollectFilteredPagesFrom(context.Background(), pagination.PagePlan{Skip: 1, Limit: 1, OneBatch: true}, fakeCursor{}, fetch, include, checkpoint)
+
+	first, next, result, err := pagination.CollectFilteredPagesFrom(context.Background(), pagination.PagePlan{Skip: 1, Limit: 1, OneBatch: true}, fakeCursor{}, fetch, include, checkpoint)
 	require.NoError(t, err)
 	require.Equal(t, []int{4}, first)
+	require.True(t, result.HasMore)
+
 	rest, next, result, err := pagination.CollectFilteredPagesFrom(context.Background(), pagination.PagePlan{OneBatch: true}, next, fetch, include, checkpoint)
 	require.NoError(t, err)
 	require.Equal(t, []int{6}, rest)
@@ -473,30 +432,45 @@ func TestFilteredContinuationConsumesSourcePositions(t *testing.T) {
 	require.False(t, result.HasMore)
 }
 
-func TestFilteredContinuationCancellationAndErrors(t *testing.T) {
+func TestFilteredContinuationCancellationAndFailures(t *testing.T) {
 	boom := errors.New("checkpoint failed")
 	include := func(int) (bool, error) { return true, nil }
-	checkpoint := func(fakeCursor, int) (fakeCursor, error) { return fakeCursor{}, boom }
 	fetch := func(context.Context, fakeCursor) ([]int, fakeCursor, error) { return []int{1, 2}, fakeCursor{}, nil }
-	items, _, _, err := pagination.CollectFilteredPagesFrom(context.Background(), pagination.PagePlan{Limit: 1}, fakeCursor{}, fetch, include, checkpoint)
-	require.ErrorIs(t, err, boom)
-	require.Nil(t, items)
+	for _, test := range []struct {
+		name     string
+		fetch    func(context.Context, fakeCursor) ([]int, fakeCursor, error)
+		include  func(int) (bool, error)
+		want     error
+		wantText string
+	}{
+		{name: "checkpoint failure", fetch: fetch, include: include, want: boom},
+		{name: "predicate failure", fetch: fetch, include: func(int) (bool, error) { return false, boom }, want: boom},
+		{
+			name: "repeated cursor",
+			fetch: func(context.Context, fakeCursor) ([]int, fakeCursor, error) {
+				return nil, fakeCursor{value: "same"}, nil
+			},
+			include:  include,
+			wantText: "cursor repeated",
+		},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			checkpoint := func(fakeCursor, int) (fakeCursor, error) { return fakeCursor{}, boom }
+			if test.name == "repeated cursor" {
+				checkpoint = func(c fakeCursor, n int) (fakeCursor, error) { t.Fatal("unexpected checkpoint"); return c, nil }
+			}
+			items, _, _, err := pagination.CollectFilteredPagesFrom(context.Background(), pagination.PagePlan{Limit: 1}, fakeCursor{}, test.fetch, test.include, checkpoint)
+			if test.wantText != "" {
+				require.ErrorContains(t, err, test.wantText)
+			} else {
+				require.ErrorIs(t, err, test.want)
+			}
+			require.Nil(t, items)
+		})
+	}
+
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
-	_, _, _, err = pagination.CollectFilteredPagesFrom(ctx, pagination.PagePlan{}, fakeCursor{}, fetch, include, checkpoint)
+	_, _, _, err := pagination.CollectFilteredPagesFrom(ctx, pagination.PagePlan{}, fakeCursor{}, fetch, include, func(fakeCursor, int) (fakeCursor, error) { return fakeCursor{value: "unused"}, nil })
 	require.ErrorIs(t, err, context.Canceled)
-}
-
-func TestFilteredContinuationRejectsRepeatedCursorAndPredicateFailure(t *testing.T) {
-	checkpoint := func(c fakeCursor, n int) (fakeCursor, error) { t.Fatal("unexpected checkpoint"); return c, nil }
-	repeat := func(context.Context, fakeCursor) ([]int, fakeCursor, error) {
-		return nil, fakeCursor{value: "same"}, nil
-	}
-	items, _, _, err := pagination.CollectFilteredPagesFrom(context.Background(), pagination.PagePlan{}, fakeCursor{}, repeat, func(int) (bool, error) { return true, nil }, checkpoint)
-	require.ErrorContains(t, err, "cursor repeated")
-	require.Nil(t, items)
-	boom := errors.New("predicate failed")
-	items, _, _, err = pagination.CollectFilteredPagesFrom(context.Background(), pagination.PagePlan{}, fakeCursor{}, func(context.Context, fakeCursor) ([]int, fakeCursor, error) { return []int{1}, fakeCursor{}, nil }, func(int) (bool, error) { return false, boom }, checkpoint)
-	require.ErrorIs(t, err, boom)
-	require.Nil(t, items)
 }

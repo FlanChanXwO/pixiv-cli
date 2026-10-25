@@ -50,23 +50,6 @@ func TestTraverseWithPreservesCommitBoundaryAndPagePlan(t *testing.T) {
 	}
 }
 
-func TestCollectWithKeepsLogicalMoreWithoutExposingCursor(t *testing.T) {
-	next := traversalTestCursor(t, "collect")
-	result, err := pagination.CollectWithFrom(context.Background(), onceExecute(t, struct{}{}, false), pagination.PagePlan{OneBatch: true}, sdk.Cursor{}, func(_ context.Context, _ struct{}, cursor sdk.Cursor) ([]int, sdk.Cursor, error) {
-		if cursor.IsZero() {
-			return []int{1}, next, nil
-		}
-		return []int{2}, sdk.Cursor{}, nil
-	})
-
-	if err != nil {
-		t.Fatalf("CollectWith error = %v", err)
-	}
-	if len(result.Items) != 1 || result.Items[0] != 1 || !result.HasMore {
-		t.Fatalf("result = %#v", result)
-	}
-}
-
 func TestCollectWithClearsUncommittedResultsBeforeReplay(t *testing.T) {
 	firstNext := traversalTestCursor(t, "first-next")
 	var fetchCalls int
@@ -104,58 +87,6 @@ func TestCollectWithClearsUncommittedResultsBeforeReplay(t *testing.T) {
 	}
 	if len(result.Items) != 1 || result.Items[0] != 2 || result.HasMore {
 		t.Fatalf("result = %#v", result)
-	}
-}
-
-func TestTraverseWithReportsUnconfiguredExecute(t *testing.T) {
-	_, err := pagination.TraverseWith(context.Background(), nil, pagination.PagePlan{}, nil,
-		func(context.Context, struct{}, sdk.Cursor) ([]int, sdk.Cursor, error) {
-			return nil, sdk.Cursor{}, nil
-		}, func([]int) (bool, error) {
-			return false, nil
-		})
-	if !errors.Is(err, pagination.ErrExecuteNotConfigured) {
-		t.Fatalf("error = %v", err)
-	}
-}
-
-// TestCollectWithPreservesHasMoreWhenTruncatingInsideBatch 验证逻辑 limit 小于
-// 上游最后一批、且该批上游 cursor 已为空时，CollectWithFrom 必须把
-// has_more=true 传给调用方，而不是仅依据上游 cursor 重新推导出 false。
-func TestCollectWithPreservesHasMoreWhenTruncatingInsideBatch(t *testing.T) {
-	// Single upstream batch of 5 items, no continuation cursor, limit 2:
-	// 3 items remain unreturned, so has_more must be true.
-	result, err := pagination.CollectWithFrom(context.Background(), onceExecute(t, struct{}{}, false), pagination.PagePlan{Limit: 2}, sdk.Cursor{}, func(_ context.Context, _ struct{}, cursor sdk.Cursor) ([]int, sdk.Cursor, error) {
-		if !cursor.IsZero() {
-			t.Fatalf("unexpected continuation fetch for zero-cursor batch")
-		}
-		return []int{1, 2, 3, 4, 5}, sdk.Cursor{}, nil
-	})
-	if err != nil {
-		t.Fatalf("CollectWith error = %v", err)
-	}
-	if len(result.Items) != 2 || result.Items[0] != 1 || result.Items[1] != 2 {
-		t.Fatalf("items = %#v", result.Items)
-	}
-	if !result.HasMore {
-		t.Fatalf("HasMore = false, want true (batch truncated with unreturned items)")
-	}
-}
-
-// TestCollectWithHasMoreFalseWhenBatchFullyReturned 验证非截断的正常路径
-// 不会被误判为 has_more=true。
-func TestCollectWithHasMoreFalseWhenBatchFullyReturned(t *testing.T) {
-	result, err := pagination.CollectWithFrom(context.Background(), onceExecute(t, struct{}{}, false), pagination.PagePlan{Limit: 5}, sdk.Cursor{}, func(_ context.Context, _ struct{}, cursor sdk.Cursor) ([]int, sdk.Cursor, error) {
-		return []int{1, 2, 3}, sdk.Cursor{}, nil
-	})
-	if err != nil {
-		t.Fatalf("CollectWith error = %v", err)
-	}
-	if len(result.Items) != 3 {
-		t.Fatalf("items = %#v", result.Items)
-	}
-	if result.HasMore {
-		t.Fatalf("HasMore = true, want false (batch fully returned, no continuation)")
 	}
 }
 

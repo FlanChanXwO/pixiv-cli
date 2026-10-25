@@ -65,43 +65,19 @@ func TestOpenAcceptsLegacyInitialMigrationChecksum(t *testing.T) {
 	defer legacyDB.Close()
 }
 
-func TestOpenIsIdempotentAndRejectsApplicationOrVersionDrift(t *testing.T) {
-	dir := t.TempDir()
-	db, err := Open(dir)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err := db.DB().Exec(`PRAGMA application_id = 0x1234`); err != nil {
-		t.Fatal(err)
-	}
-	db.Close()
-	if _, err := Open(dir); err == nil || !strings.Contains(err.Error(), "another application") {
-		t.Fatalf("wrong application_id error = %v", err)
-	}
-	_ = os.Remove(DatabasePath(dir))
-
-	db, err = Open(dir)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err := db.DB().Exec(fmt.Sprintf(`PRAGMA user_version = %d`, CurrentVersion()+1)); err != nil {
-		t.Fatal(err)
-	}
-	db.Close()
-	if _, err := Open(dir); err == nil || !strings.Contains(err.Error(), "downgrade") {
-		t.Fatalf("downgrade error = %v", err)
-	}
-}
-
-func TestMigrationLedgerRejectsChecksumAndNameDrift(t *testing.T) {
-	for _, test := range []struct {
-		name  string
-		query string
-		want  string
+func TestOpenRejectsDriftInPersistedMetadata(t *testing.T) {
+	tests := []struct {
+		name   string
+		query  string
+		want   string
+		remove bool
 	}{
+		{name: "application id", query: `PRAGMA application_id = 0x1234`, want: "another application", remove: true},
+		{name: "future version", query: fmt.Sprintf(`PRAGMA user_version = %d`, CurrentVersion()+1), want: "downgrade", remove: true},
 		{name: "checksum", query: `UPDATE schema_migration SET checksum='drifted' WHERE version=1`, want: "checksum"},
 		{name: "name", query: `UPDATE schema_migration SET name='drifted' WHERE version=1`, want: "name drifted"},
-	} {
+	}
+	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			dir := t.TempDir()
 			db, err := Open(dir)
@@ -112,8 +88,19 @@ func TestMigrationLedgerRejectsChecksumAndNameDrift(t *testing.T) {
 				t.Fatal(err)
 			}
 			db.Close()
+			if test.remove {
+				_ = os.Remove(DatabasePath(dir))
+				db, err = Open(dir)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if _, err := db.DB().Exec(test.query); err != nil {
+					t.Fatal(err)
+				}
+				db.Close()
+			}
 			if _, err := Open(dir); err == nil || !strings.Contains(err.Error(), test.want) {
-				t.Fatalf("migration drift error = %v", err)
+				t.Fatalf("persisted metadata drift error = %v", err)
 			}
 		})
 	}
@@ -155,7 +142,7 @@ func TestDatabasePermissionsAndSpecialPath(t *testing.T) {
 	}
 }
 
-func TestInitialSchemaUsesFinalV1Defaults(t *testing.T) {
+func TestInitialSchemaUsesFinalV1DefaultsAndChecks(t *testing.T) {
 	db := openTestDatabase(t)
 	if _, err := db.DB().Exec(`INSERT INTO pixiv_account (user_id, sort_order, username, refresh_token, credential_revision, created_at, updated_at) VALUES (?,?,?,?,?,?,?)`, 1, 1, "user", []byte("token"), 1, 1, 1); err != nil {
 		t.Fatal(err)
@@ -177,23 +164,9 @@ func TestInitialSchemaUsesFinalV1Defaults(t *testing.T) {
 	if creatorID != "" {
 		t.Fatalf("creator_id = %q, want empty", creatorID)
 	}
-}
-
-func TestPixivSchedulableCheckRejectsInvalidValue(t *testing.T) {
-	db := openTestDatabase(t)
-	if _, err := db.DB().Exec(`INSERT INTO pixiv_account (user_id, sort_order, username, refresh_token, credential_revision, pool_last_selected, created_at, updated_at, schedulable) VALUES (?,?,?,?,?,?,?,?,?)`, 1, 1, "user", []byte("token"), 1, 0, 1, 1, 2); err == nil {
+	if _, err := db.DB().Exec(`INSERT INTO pixiv_account (user_id, sort_order, username, refresh_token, credential_revision, pool_last_selected, created_at, updated_at, schedulable) VALUES (?,?,?,?,?,?,?,?,?)`, 2, 2, "user", []byte("token"), 1, 0, 1, 1, 2); err == nil {
 		t.Fatal("invalid schedulable value was accepted")
 	}
-}
-
-func openTestDatabase(t *testing.T) *DB {
-	t.Helper()
-	db, err := Open(t.TempDir())
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = db.Close() })
-	return db
 }
 
 func TestTableInfoQueryUsesFixedIdentifiers(t *testing.T) {
@@ -218,4 +191,14 @@ func TestTableInfoQueryUsesFixedIdentifiers(t *testing.T) {
 	if _, err := tableInfoQuery("pixiv_account); DROP TABLE schema_migration;--"); err == nil {
 		t.Fatal("tableInfoQuery accepted an unsupported identifier")
 	}
+}
+
+func openTestDatabase(t *testing.T) *DB {
+	t.Helper()
+	db, err := Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = db.Close() })
+	return db
 }

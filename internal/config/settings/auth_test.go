@@ -10,37 +10,41 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestAuthDefaultUserIDRoundTrip(t *testing.T) {
+// TestAuthDefaultUserIDStaysOutOfRuntimeAndConfigAliases covers the store
+// round trip and keeps the auth table writable without becoming a setting.
+func TestAuthDefaultUserIDStaysOutOfRuntimeAndConfigAliases(t *testing.T) {
 	dir := t.TempDir()
 	configPath := filepath.Join(dir, "config.toml")
 	restore := paths.SetConfigFilePathForTest(configPath)
 	defer restore()
-	t.Cleanup(func() { _ = os.Remove(configPath) })
+	store := config.DefaultStore()
 
-	if _, ok, err := config.DefaultStore().ReadPixivDefaultUserID(); err != nil || ok {
+	if _, ok, err := store.ReadPixivDefaultUserID(); err != nil || ok {
 		t.Fatalf("initial pixiv default: ok=%v err=%v", ok, err)
 	}
-	if err := config.DefaultStore().SetPixivDefaultUserID(123); err != nil {
-		t.Fatalf("set pixiv: %v", err)
-	}
-	if userID, ok, err := config.DefaultStore().ReadPixivDefaultUserID(); err != nil || !ok || userID != 123 {
-		t.Fatalf("read pixiv = %d, %v, %v", userID, ok, err)
-	}
-	if err := config.DefaultStore().ClearPixivDefaultUserID(); err != nil {
-		t.Fatalf("clear pixiv: %v", err)
-	}
-	if _, ok, err := config.DefaultStore().ReadPixivDefaultUserID(); err != nil || ok {
-		t.Fatalf("after clear: ok=%v err=%v", ok, err)
-	}
+	require.NoError(t, store.SetPixivDefaultUserID(123))
+	userID, ok, err := store.ReadPixivDefaultUserID()
+	require.NoError(t, err)
+	require.True(t, ok)
+	require.Equal(t, int64(123), userID)
+	require.NoError(t, store.ClearPixivDefaultUserID())
+	_, ok, err = store.ReadPixivDefaultUserID()
+	require.NoError(t, err)
+	require.False(t, ok)
 
-	if err := config.DefaultStore().SetFanboxDefaultUserID(456); err != nil {
-		t.Fatalf("set fanbox: %v", err)
-	}
-	if userID, ok, err := config.DefaultStore().ReadFanboxDefaultUserID(); err != nil || !ok || userID != 456 {
-		t.Fatalf("read fanbox = %d, %v, %v", userID, ok, err)
-	}
-	if err := config.DefaultStore().ClearFanboxDefaultUserID(); err != nil {
-		t.Fatalf("clear fanbox: %v", err)
+	require.NoError(t, store.SetFanboxDefaultUserID(456))
+	userID, ok, err = store.ReadFanboxDefaultUserID()
+	require.NoError(t, err)
+	require.True(t, ok)
+	require.Equal(t, int64(456), userID)
+	require.NoError(t, store.ClearFanboxDefaultUserID())
+
+	state, err := currentSnapshot(configPath)
+	require.NoError(t, err)
+	_, err = state.Runtime()
+	require.NoError(t, err)
+	for _, alias := range config.ValidSettingAliases() {
+		require.NotEqual(t, "default_user_id", alias, "default_user_id must not become a config alias")
 	}
 }
 

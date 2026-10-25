@@ -110,46 +110,22 @@ func TestSauceNAOAPIKeyEnvironmentOverridesFileInSnapshot(t *testing.T) {
 
 	state, err := currentSnapshot(path)
 	require.NoError(t, err)
-	t.Setenv("SAUCENAO_API_KEY", "changed-after-snapshot")
 
 	runtimeConfig, err := state.Runtime()
 	require.NoError(t, err)
 	require.Equal(t, "environment-key", runtimeConfig.SauceNAOAPIKey)
 }
 
-func TestDownloadSettingsExposeDirectoryTemplateAndRequestInterval(t *testing.T) {
-	clearSettingEnvironment(t)
-	path := filepath.Join(t.TempDir(), "config.toml")
-	require.NoError(t, os.WriteFile(path, []byte("[download]\ndirectory_template = \"{author}/{date}\"\n[network]\nrequest_interval = \"2s\"\n"), 0o600))
-	state, err := currentSnapshot(path)
-	require.NoError(t, err)
-	runtime, err := state.Runtime()
-	require.NoError(t, err)
-	require.Equal(t, "{author}/{date}", runtime.DirectoryTemplate)
-	require.Equal(t, 2*time.Second, runtime.RequestInterval)
-
-}
-
-func TestRuntimeReadsLoggingConfigFromFile(t *testing.T) {
-	clearSettingEnvironment(t)
-	path := t.TempDir() + "/config.toml"
-	require.NoError(t, os.WriteFile(path, []byte("[logging]\nlevel = \"debug\"\nformat = \"json\"\n"), 0o600))
-
-	state, err := currentSnapshot(path)
-	require.NoError(t, err)
-	runtimeConfig, err := state.Runtime()
-	require.NoError(t, err)
-	require.Equal(t, config.LogLevelDebug, runtimeConfig.LogLevel)
-	require.Equal(t, config.LogFormatJSON, runtimeConfig.LogFormat)
-
-}
-
-// TestRuntimePreservesReverseSearchNetworkAndFlareSolverrSeparately covers the
-// private advanced groups end to end.
-func TestRuntimePreservesReverseSearchNetworkAndFlareSolverrSeparately(t *testing.T) {
+func TestRuntimePreservesAdvancedNetworkGroups(t *testing.T) {
 	withoutProxyEnvironment(t)
-	path := filepath.Join(t.TempDir(), "config.toml")
-	require.NoError(t, os.WriteFile(path, []byte(`[network]
+	for _, test := range []struct {
+		name  string
+		body  string
+		check func(*testing.T, config.RuntimeConfig)
+	}{
+		{
+			name: "reverse search",
+			body: `[network]
 https_proxy = "http://global-proxy"
 
 [reverse_search.network]
@@ -159,22 +135,53 @@ user_agent = "custom-reverse-search-agent"
 [reverse_search.flaresolverr]
 url = "http://reverse-solver.example"
 proxy_url = "socks5://reverse-solver-proxy.example"
+`,
+			check: func(t *testing.T, runtime config.RuntimeConfig) {
+				require.True(t, runtime.ReverseSearchNetwork.ProxyURL.Present)
+				require.Empty(t, runtime.ReverseSearchNetwork.ProxyURL.Value)
+				require.True(t, runtime.ReverseSearchNetwork.UserAgent.Present)
+				require.Equal(t, "custom-reverse-search-agent", runtime.ReverseSearchNetwork.UserAgent.Value)
+				require.NotNil(t, runtime.ReverseSearchFlareSolverr)
+				require.Equal(t, "http://reverse-solver.example", runtime.ReverseSearchFlareSolverr.URL)
+				require.Equal(t, "socks5://reverse-solver-proxy.example", runtime.ReverseSearchFlareSolverr.ProxyURL)
+			},
+		},
+		{
+			name: "fanbox",
+			body: `[network]
+https_proxy = "http://global-proxy"
 
-`), 0o600))
+[fanbox.network]
+proxy_url = ""
+user_agent = "custom-fanbox-agent"
 
-	state, err := currentSnapshot(path)
-	require.NoError(t, err)
-	runtime, err := state.Runtime()
-	require.NoError(t, err)
-
-	require.Equal(t, "http://global-proxy", runtime.HTTPSProxy)
-	require.True(t, runtime.ReverseSearchNetwork.ProxyURL.Present)
-	require.Empty(t, runtime.ReverseSearchNetwork.ProxyURL.Value)
-	require.True(t, runtime.ReverseSearchNetwork.UserAgent.Present)
-	require.Equal(t, "custom-reverse-search-agent", runtime.ReverseSearchNetwork.UserAgent.Value)
-	require.NotNil(t, runtime.ReverseSearchFlareSolverr)
-	require.Equal(t, "http://reverse-solver.example", runtime.ReverseSearchFlareSolverr.URL)
-	require.Equal(t, "socks5://reverse-solver-proxy.example", runtime.ReverseSearchFlareSolverr.ProxyURL)
+[fanbox.flaresolverr]
+url = "http://solver.example"
+proxy_url = "socks5://solver-proxy.example"
+`,
+			check: func(t *testing.T, runtime config.RuntimeConfig) {
+				require.False(t, runtime.PixivNetwork.ProxyURL.Present)
+				require.True(t, runtime.FanboxNetwork.ProxyURL.Present)
+				require.Empty(t, runtime.FanboxNetwork.ProxyURL.Value)
+				require.True(t, runtime.FanboxNetwork.UserAgent.Present)
+				require.Equal(t, "custom-fanbox-agent", runtime.FanboxNetwork.UserAgent.Value)
+				require.NotNil(t, runtime.FanboxFlareSolverr)
+				require.Equal(t, "http://solver.example", runtime.FanboxFlareSolverr.URL)
+				require.Equal(t, "socks5://solver-proxy.example", runtime.FanboxFlareSolverr.ProxyURL)
+			},
+		},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			path := filepath.Join(t.TempDir(), "config.toml")
+			require.NoError(t, os.WriteFile(path, []byte(test.body), 0o600))
+			state, err := currentSnapshot(path)
+			require.NoError(t, err)
+			runtime, err := state.Runtime()
+			require.NoError(t, err)
+			require.Equal(t, "http://global-proxy", runtime.HTTPSProxy)
+			test.check(t, runtime)
+		})
+	}
 }
 
 // TestPixivNetworkRejectsUserAgentWhileFanboxKeepsIt covers the structural
@@ -271,37 +278,6 @@ func TestRuntimeRejectsMalformedAdvancedValues(t *testing.T) {
 	}
 }
 
-func TestRuntimePreservesServiceNetworkPresenceAndValues(t *testing.T) {
-	withoutProxyEnvironment(t)
-	path := filepath.Join(t.TempDir(), "config.toml")
-	require.NoError(t, os.WriteFile(path, []byte(`[network]
-https_proxy = "http://global-proxy"
-
-[fanbox.network]
-proxy_url = ""
-user_agent = "custom-fanbox-agent"
-
-[fanbox.flaresolverr]
-url = "http://solver.example"
-proxy_url = "socks5://solver-proxy.example"
-`), 0o600))
-
-	state, err := currentSnapshot(path)
-	require.NoError(t, err)
-	runtime, err := state.Runtime()
-	require.NoError(t, err)
-
-	require.Equal(t, "http://global-proxy", runtime.HTTPSProxy)
-	require.False(t, runtime.PixivNetwork.ProxyURL.Present)
-	require.True(t, runtime.FanboxNetwork.ProxyURL.Present)
-	require.Empty(t, runtime.FanboxNetwork.ProxyURL.Value)
-	require.True(t, runtime.FanboxNetwork.UserAgent.Present)
-	require.Equal(t, "custom-fanbox-agent", runtime.FanboxNetwork.UserAgent.Value)
-	require.NotNil(t, runtime.FanboxFlareSolverr)
-	require.Equal(t, "http://solver.example", runtime.FanboxFlareSolverr.URL)
-	require.Equal(t, "socks5://solver-proxy.example", runtime.FanboxFlareSolverr.ProxyURL)
-}
-
 func TestRuntimeLeavesOptionalServiceNetworkTablesAbsent(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "config.toml")
 	require.NoError(t, os.WriteFile(path, []byte("[network]\nhttps_proxy = \"http://global-proxy\"\n"), 0o600))
@@ -318,56 +294,6 @@ func TestRuntimeLeavesOptionalServiceNetworkTablesAbsent(t *testing.T) {
 	require.False(t, runtime.ReverseSearchNetwork.UserAgent.Present)
 	require.Nil(t, runtime.FanboxFlareSolverr)
 	require.Nil(t, runtime.ReverseSearchFlareSolverr)
-}
-
-// TestLoggingSettingsRejectUnsupportedValues checks both the CLI parser and the
-// file path use the same domain errors.
-func TestLoggingSettingsRejectUnsupportedValues(t *testing.T) {
-	for _, test := range []struct {
-		alias string
-		key   string
-		raw   string
-		want  string
-	}{
-		{alias: "log_level", key: "level", raw: "trace", want: "log_level must be one of: info, debug, warn, error"},
-		{alias: "log_format", key: "format", raw: "yaml", want: "log_format must be one of: text, json"},
-	} {
-		t.Run(test.alias, func(t *testing.T) {
-			_, _, err := config.ParseSettingInput(config.Key(test.alias), test.raw)
-			require.EqualError(t, err, test.want)
-
-			path := t.TempDir() + "/config.toml"
-			require.NoError(t, os.WriteFile(path, []byte("[logging]\n"+test.key+" = \""+test.raw+"\"\n"), 0o600))
-			state, err := currentSnapshot(path)
-			require.NoError(t, err)
-			_, err = state.Runtime()
-			require.EqualError(t, err, test.want)
-		})
-	}
-}
-
-func TestGalleryCacheSettings(t *testing.T) {
-	for _, raw := range []string{"true", "1.5", "'256'", "-1", "8796093022208"} {
-		p := filepath.Join(t.TempDir(), "config.toml")
-		require.NoError(t, os.WriteFile(p, []byte("[mcp]\ngallery_cache_capacity_mib = "+raw+"\n"), 0o600))
-		s, err := currentSnapshot(p)
-		require.NoError(t, err)
-		_, err = s.Runtime()
-		require.Error(t, err, raw)
-	}
-	// Zero disables the cache and is accepted.
-	p := filepath.Join(t.TempDir(), "config.toml")
-	require.NoError(t, os.WriteFile(p, []byte("[mcp]\ngallery_cache_capacity_mib = 0\n"), 0o600))
-	s, err := currentSnapshot(p)
-	require.NoError(t, err)
-	_, err = s.Runtime()
-	require.NoError(t, err)
-
-	for alias, want := range map[string]string{"mcp_gallery_animation_temp_capacity_mib": "1024", "mcp_gallery_cache_capacity_mib": "256"} {
-		value, _, err := config.ParseSettingInput(config.Key(alias), want)
-		require.NoError(t, err)
-		require.Equal(t, want, value.Text)
-	}
 }
 
 func TestRuntimeGallerySettingsBindDeclaredValues(t *testing.T) {

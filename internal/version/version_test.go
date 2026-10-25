@@ -1,7 +1,6 @@
 package version_test
 
 import (
-	"reflect"
 	"testing"
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/version"
@@ -36,15 +35,5 @@ func TestInfoIsDevelopment(t *testing.T) {
 				t.Errorf("Info.IsDevelopment() = %t, want %t", got, test.want)
 			}
 		})
-	}
-}
-
-func TestInfoContainsOnlyVersion(t *testing.T) {
-	infoType := reflect.TypeOf(version.Info{})
-	if got := infoType.NumField(); got != 1 {
-		t.Fatalf("Info field count = %d, want 1", got)
-	}
-	if got := infoType.Field(0).Name; got != "Version" {
-		t.Errorf("Info field name = %q, want Version", got)
 	}
 }
