@@ -8,6 +8,7 @@ import (
 	"github.com/FlanChanXwO/pixiv-cli/sdk"
 )
 
+// ArtworkRequest selects one artwork by its stable ID.
 type ArtworkRequest struct {
 	ArtworkID int64
 }

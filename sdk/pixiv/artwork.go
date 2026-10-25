@@ -1,5 +1,5 @@
 // artwork 领域：详情、相关、排行、推荐、时间线、系列、趋势、用户作品与动图元数据。
-// 请求类型、响应结构与映射、continuation Spec 都在本文件；共用映射在 response.go，游标在 cursor.go。
+// 请求与 continuation Spec 见 artwork_request.go；响应与映射见 artwork_wire.go，游标见 cursor.go。
 
 package pixiv
 
@@ -497,16 +497,4 @@ func artworkItems(operation string, list pixivapi.RequiredList[artworkWire], req
 		}
 	}
 	return list.Items, nil
-}
-
-// ArtworkRequest selects one artwork by its stable ID.
-type singlePageWire struct {
-	OriginalImageURL string `json:"original_image_url"`
-}
-
-type metaPageWire struct {
-	Width     int           `json:"width"`
-	Height    int           `json:"height"`
-	Extension string        `json:"extension"`
-	ImageURLs imageURLsWire `json:"image_urls"`
 }

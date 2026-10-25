@@ -12,6 +12,17 @@ import (
 	"github.com/FlanChanXwO/pixiv-cli/sdk"
 )
 
+type singlePageWire struct {
+	OriginalImageURL string `json:"original_image_url"`
+}
+
+type metaPageWire struct {
+	Width     int           `json:"width"`
+	Height    int           `json:"height"`
+	Extension string        `json:"extension"`
+	ImageURLs imageURLsWire `json:"image_urls"`
+}
+
 // artworkWire 是 App API 所有 artwork 响应的共同结构。缺少某字段的端点解出 nil，
 // 需要区分“未提供”和显式值的字段因此保持指针。
 type artworkWire struct {
@@ -261,15 +272,6 @@ func (c *Client) mapArtworkPages(value artworkWire) ([]ArtworkPage, error) {
 		Width:  value.Width,
 		Height: value.Height,
 	}}, nil
-}
-
-func firstImageURL(value imageURLsWire) string {
-	for _, candidate := range []string{value.Original, value.Large, value.Medium, value.SquareMedium} {
-		if candidate != "" {
-			return candidate
-		}
-	}
-	return ""
 }
 
 // mapUgoiraMetadata 校验并映射可播放动图的压缩包与帧信息。

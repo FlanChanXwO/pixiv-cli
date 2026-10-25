@@ -33,6 +33,15 @@ type imageURLsWire struct {
 	Original     string `json:"original"`
 }
 
+func firstImageURL(value imageURLsWire) string {
+	for _, candidate := range []string{value.Original, value.Large, value.Medium, value.SquareMedium} {
+		if candidate != "" {
+			return candidate
+		}
+	}
+	return ""
+}
+
 // mapUser 是所有 Pixiv 响应的唯一 user 映射。
 func (c *Client) mapUser(value userWire) User {
 	result := User{

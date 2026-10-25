@@ -1,5 +1,5 @@
 // 作品搜索：查询参数翻译、AIMode 批内过滤与 checkpoint 游标。
-// 搜索响应结构复用 response.go 与 artwork.go。
+// 搜索响应结构与映射复用 artwork_wire.go。
 
 package pixiv
 
