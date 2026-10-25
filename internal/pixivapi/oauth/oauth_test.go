@@ -44,7 +44,7 @@ func TestOAuthTokenLifecycle(t *testing.T) {
 		require.NoError(t, err)
 		assert.Equal(t, "refresh", token.RefreshToken)
 		assert.Equal(t, int64(9), token.UserID)
-		assert.True(t, client.IsAuthenticated())
+		assert.Equal(t, "access", client.AccessToken())
 	})
 }
 
@@ -56,6 +56,5 @@ func TestOAuthRefreshRejectsInvalidInput(t *testing.T) {
 	}
 	client := oauth.New("PHPSESSID=secret; refresh_token=another", oauth.Config{})
 	require.ErrorContains(t, client.Refresh(context.Background()), "cookie input is not supported; provide a Pixiv App API refresh token")
-	client.SetRefreshToken("csrftoken=secret")
-	require.ErrorContains(t, client.Refresh(context.Background()), "cookie input is not supported; provide a Pixiv App API refresh token")
+	require.ErrorContains(t, oauth.New("csrftoken=secret", oauth.Config{}).Refresh(context.Background()), "cookie input is not supported; provide a Pixiv App API refresh token")
 }
