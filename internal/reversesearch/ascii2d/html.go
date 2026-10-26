@@ -1,3 +1,5 @@
+// HTML parsing extracts upload tokens and provider result evidence.
+
 package ascii2d
 
 import (
@@ -105,14 +107,14 @@ func parseResultItem(item *html.Node, rank int) (reversesearch.Match, bool, erro
 			}
 		case "small":
 			if source == "" {
-				source = nodeText(node)
+				source = nodeText(node, false)
 			}
 		}
 	})
 	if len(links) == 0 || source == "" {
 		return reversesearch.Match{}, false, errors.New("result identity is missing")
 	}
-	return matchFromLinks(rank, source, links), true, nil
+	return matchFromLinks(rank, source, nodeText(links[0], false), links), true, nil
 }
 
 func parseExternalResult(external *html.Node, rank int) (reversesearch.Match, bool, error) {
@@ -125,35 +127,31 @@ func parseExternalResult(external *html.Node, rank int) (reversesearch.Match, bo
 	if len(links) == 0 {
 		return reversesearch.Match{}, false, errors.New("result identity is missing")
 	}
-	title := textOutsideAnchors(external)
-	source := nodeText(links[0])
+	title := nodeText(external, true)
+	source := nodeText(links[0], false)
 	if title == "" || source == "" {
 		return reversesearch.Match{}, false, errors.New("result identity is missing")
 	}
-	return matchFromLinksWithTitle(rank, source, title, links), true, nil
+	return matchFromLinks(rank, source, title, links), true, nil
 }
 
-func matchFromLinks(rank int, source string, links []*html.Node) reversesearch.Match {
-	return matchFromLinksWithTitle(rank, source, nodeText(links[0]), links)
-}
-
-func matchFromLinksWithTitle(rank int, source, title string, links []*html.Node) reversesearch.Match {
+func matchFromLinks(rank int, source, title string, links []*html.Node) reversesearch.Match {
 	externalURLs := make([]string, 0, len(links))
 	for _, link := range links {
 		externalURLs = append(externalURLs, strings.TrimSpace(attribute(link, "href")))
 	}
 	match := reversesearch.Match{Rank: rank, IndexName: source, Title: title, ExternalURLs: externalURLs}
 	if len(links) > 1 {
-		match.Author = nodeText(links[1])
+		match.Author = nodeText(links[1], false)
 	}
 	return match
 }
 
-func textOutsideAnchors(node *html.Node) string {
+func nodeText(node *html.Node, excludeAnchors bool) string {
 	var values []string
 	var collect func(*html.Node)
 	collect = func(current *html.Node) {
-		if current.Type == html.ElementNode && current.Data == "a" {
+		if excludeAnchors && current.Type == html.ElementNode && current.Data == "a" {
 			return
 		}
 		if current.Type == html.TextNode {
@@ -202,19 +200,4 @@ func attribute(node *html.Node, key string) string {
 		}
 	}
 	return ""
-}
-
-func nodeText(node *html.Node) string {
-	var values []string
-	var collect func(*html.Node)
-	collect = func(current *html.Node) {
-		if current.Type == html.TextNode {
-			values = append(values, current.Data)
-		}
-		for child := current.FirstChild; child != nil; child = child.NextSibling {
-			collect(child)
-		}
-	}
-	collect(node)
-	return strings.Join(strings.Fields(strings.Join(values, " ")), " ")
 }

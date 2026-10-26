@@ -1,3 +1,5 @@
+// Result normalization merges provider-owned evidence by strict Pixiv identity.
+
 package reversesearch
 
 import (
@@ -13,9 +15,8 @@ type pixivRefKey struct {
 }
 
 func appendProviderMatches(results *[]Result, canonical map[pixivRefKey]int, provider Provider, matches []Match, pixivOnly bool) {
-	ordered := append([]Match(nil), matches...)
-	sort.SliceStable(ordered, func(left, right int) bool { return ordered[left].Rank < ordered[right].Rank })
-	for _, match := range ordered {
+	sort.SliceStable(matches, func(left, right int) bool { return matches[left].Rank < matches[right].Rank })
+	for _, match := range matches {
 		pixiv := pixivRefFromMatch(match)
 		if pixivOnly && pixiv == nil {
 			continue
@@ -89,14 +90,6 @@ func evidenceFromMatch(provider Provider, match Match) Evidence {
 	return Evidence{
 		Provider: provider, Rank: match.Rank, Similarity: match.Similarity,
 		IndexID: match.IndexID, IndexName: match.IndexName, Title: match.Title, Author: match.Author,
-		ExternalURLs: append([]string(nil), match.ExternalURLs...),
+		ExternalURLs: match.ExternalURLs,
 	}
-}
-
-func cloneQuota(quota *Quota) *Quota {
-	if quota == nil {
-		return nil
-	}
-	copy := *quota
-	return &copy
 }

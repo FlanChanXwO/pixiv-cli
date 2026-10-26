@@ -1,3 +1,5 @@
+// Browser transport preserves the provider fingerprint and cancellable proxy CONNECT.
+
 package ascii2d
 
 import (
@@ -12,7 +14,6 @@ import (
 	"net/url"
 	"regexp"
 	"strings"
-	"sync"
 	"time"
 
 	reversesearch "github.com/FlanChanXwO/pixiv-cli/internal/reversesearch"
@@ -197,26 +198,11 @@ func browserHeaderOrder(header http.Header) []string {
 }
 
 func (c *Client) originURL() string {
-	origin := *c.endpoint
-	origin.Path = ""
-	origin.RawPath = ""
-	origin.RawQuery = ""
-	origin.Fragment = ""
-	origin.RawFragment = ""
-	origin.ForceQuery = false
-	return origin.String()
+	return c.endpoint.String()
 }
 
 func (c *Client) homeURL() string {
-	home := *c.endpoint
-	home.RawQuery = ""
-	home.Fragment = ""
-	home.RawFragment = ""
-	home.ForceQuery = false
-	if home.Path == "" {
-		home.Path = "/"
-	}
-	return home.String()
+	return c.resolvePath("/").String()
 }
 
 // browserTransport 将标准 RoundTripper 调用桥接到 tls-client 的 Chrome_146 profile。
@@ -224,7 +210,7 @@ type browserTransport struct{ client tlsclient.HttpClient }
 
 var _ http.RoundTripper = (*browserTransport)(nil)
 
-func newBrowserTransport(proxyURL string) (*browserTransport, error) {
+func newBrowserTransport(proxyURL *url.URL) (*browserTransport, error) {
 	noIdleTimeout := time.Duration(0)
 	options := []tlsclient.HttpClientOption{
 		tlsclient.WithClientProfile(profiles.Chrome_146),
@@ -235,18 +221,14 @@ func newBrowserTransport(proxyURL string) (*browserTransport, error) {
 		// 因无依据的时间阈值中断。
 		tlsclient.WithTransportOptions(&tlsclient.TransportOptions{IdleConnTimeout: &noIdleTimeout}),
 	}
-	if proxyURL != "" {
-		parsed, err := url.Parse(proxyURL)
-		if err != nil || parsed == nil {
-			return nil, errors.New("ascii2d proxy URL is invalid")
-		}
-		switch strings.ToLower(parsed.Scheme) {
+	if proxyURL != nil {
+		switch proxyURL.Scheme {
 		case "http", "https":
 			// tls-client 的内置 CONNECT dialer 会把 timeout=0 转成当前时刻的
 			// deadline；HTTP(S) 代理改用不设固定 deadline 的 context dialer。
 			options = append(options, tlsclient.WithProxyDialerFactory(newProxyDialerFactory(proxyURL)))
 		default:
-			options = append(options, tlsclient.WithProxyUrl(proxyURL))
+			options = append(options, tlsclient.WithProxyUrl(proxyURL.String()))
 		}
 	}
 	client, err := tlsclient.NewHttpClient(tlsclient.NewNoopLogger(), options...)
@@ -257,20 +239,11 @@ func newBrowserTransport(proxyURL string) (*browserTransport, error) {
 }
 
 func (t *browserTransport) RoundTrip(request *http.Request) (*http.Response, error) {
-	if request == nil || request.URL == nil {
-		return nil, errors.New("ascii2d request is invalid")
-	}
-	if t == nil || t.client == nil {
-		return nil, errors.New("ascii2d TLS transport is not configured")
-	}
 	frequest, err := fhttp.NewRequestWithContext(request.Context(), request.Method, request.URL.String(), request.Body)
 	if err != nil {
 		return nil, err
 	}
-	frequest.Header = make(fhttp.Header, len(request.Header))
-	for key, values := range request.Header {
-		frequest.Header[key] = append([]string(nil), values...)
-	}
+	frequest.Header = fhttp.Header(request.Header.Clone())
 	frequest.Header[fhttp.HeaderOrderKey] = browserHeaderOrder(request.Header)
 	frequest.Header[fhttp.PHeaderOrderKey] = []string{":method", ":authority", ":scheme", ":path"}
 	frequest.ContentLength = request.ContentLength
@@ -293,45 +266,32 @@ func (t *browserTransport) RoundTrip(request *http.Request) (*http.Response, err
 		TransferEncoding: append([]string(nil), response.TransferEncoding...),
 		Close:            response.Close,
 		Uncompressed:     response.Uncompressed,
-		Header:           cloneHeader(response.Header),
+		Header:           http.Header(response.Header).Clone(),
 		Request:          request,
 	}
 	return result, nil
 }
 
 func (t *browserTransport) CloseIdleConnections() {
-	if t != nil && t.client != nil {
-		t.client.CloseIdleConnections()
-	}
+	t.client.CloseIdleConnections()
 }
 
-func cloneHeader(header fhttp.Header) http.Header {
-	cloned := make(http.Header, len(header))
-	for key, values := range header {
-		cloned[key] = append([]string(nil), values...)
-	}
-	return cloned
-}
-
-func validateProxyURL(raw string) (string, error) {
+func validateProxyURL(raw string) (*url.URL, error) {
 	if strings.TrimSpace(raw) == "" {
-		return "", nil
+		return nil, nil
 	}
 	parsed, err := url.Parse(raw)
-	if err != nil || parsed == nil || parsed.Hostname() == "" ||
+	if err != nil || parsed.Hostname() == "" ||
 		(parsed.Scheme != "http" && parsed.Scheme != "https" && parsed.Scheme != "socks5" && parsed.Scheme != "socks5h") ||
 		(parsed.Path != "" && parsed.Path != "/") || parsed.RawQuery != "" || parsed.Fragment != "" || parsed.ForceQuery {
-		return "", reversesearch.NewError(reversesearch.CodeInvalidRequest, "ascii2d proxy URL is invalid", nil)
+		return nil, reversesearch.NewError(reversesearch.CodeInvalidRequest, "ascii2d proxy URL is invalid", err)
 	}
-	return parsed.String(), nil
+	return parsed, nil
 }
 
-func newProxyDialerFactory(proxyURL string) tlsclient.ProxyDialerFactory {
+func newProxyDialerFactory(proxyURL *url.URL) tlsclient.ProxyDialerFactory {
 	return func(_ string, _ time.Duration, localAddr *net.TCPAddr, connectHeaders fhttp.Header, _ tlsclient.Logger) (proxy.ContextDialer, error) {
-		parsed, err := url.Parse(proxyURL)
-		if err != nil || parsed == nil || parsed.Hostname() == "" {
-			return nil, errors.New("ascii2d proxy URL is invalid")
-		}
+		parsed := *proxyURL
 		if parsed.Port() == "" {
 			defaultPort := "80"
 			if strings.EqualFold(parsed.Scheme, "https") {
@@ -339,14 +299,17 @@ func newProxyDialerFactory(proxyURL string) tlsclient.ProxyDialerFactory {
 			}
 			parsed.Host = net.JoinHostPort(parsed.Hostname(), defaultPort)
 		}
-		headers := cloneHeader(connectHeaders)
+		headers := http.Header(connectHeaders).Clone()
 		if parsed.User != nil {
+			if headers == nil {
+				headers = make(http.Header)
+			}
 			password, _ := parsed.User.Password()
 			headerValue := base64.StdEncoding.EncodeToString([]byte(parsed.User.Username() + ":" + password))
 			headers.Set("Proxy-Authorization", "Basic "+headerValue)
 		}
 		return &proxyDialer{
-			proxyURL: parsed,
+			proxyURL: &parsed,
 			dialer:   net.Dialer{LocalAddr: localAddr},
 			headers:  headers,
 		}, nil
@@ -362,9 +325,6 @@ type proxyDialer struct {
 func (d *proxyDialer) DialContext(ctx context.Context, network, address string) (net.Conn, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
-	}
-	if d == nil || d.proxyURL == nil {
-		return nil, errors.New("ascii2d proxy dialer is not configured")
 	}
 
 	var (
@@ -384,7 +344,7 @@ func (d *proxyDialer) DialContext(ctx context.Context, network, address string) 
 		return nil, errors.New("ascii2d proxy URL is invalid")
 	}
 	if err != nil {
-		return nil, proxyContextError(ctx)
+		return nil, proxyContextError(ctx, err)
 	}
 	stopWatching := closeProxyConnOnCancel(ctx, conn)
 	defer stopWatching()
@@ -397,12 +357,12 @@ func (d *proxyDialer) DialContext(ctx context.Context, network, address string) 
 	}).WithContext(ctx)
 	if err := request.Write(conn); err != nil {
 		_ = conn.Close()
-		return nil, proxyContextError(ctx)
+		return nil, proxyContextError(ctx, err)
 	}
 	response, err := http.ReadResponse(bufio.NewReader(conn), request)
 	if err != nil {
 		_ = conn.Close()
-		return nil, proxyContextError(ctx)
+		return nil, proxyContextError(ctx, err)
 	}
 	if response.Body != nil {
 		_ = response.Body.Close()
@@ -414,16 +374,15 @@ func (d *proxyDialer) DialContext(ctx context.Context, network, address string) 
 	return conn, nil
 }
 
-func proxyContextError(ctx context.Context) error {
+func proxyContextError(ctx context.Context, cause error) error {
 	if err := ctx.Err(); err != nil {
-		return err
+		return errors.Join(err, reversesearch.NewError(reversesearch.CodeProviderFailed, "ascii2d proxy connection failed", cause))
 	}
-	return errors.New("ascii2d proxy connection failed")
+	return reversesearch.NewError(reversesearch.CodeProviderFailed, "ascii2d proxy connection failed", cause)
 }
 
 func closeProxyConnOnCancel(ctx context.Context, conn net.Conn) func() {
 	done := make(chan struct{})
-	var once sync.Once
 	go func() {
 		select {
 		case <-ctx.Done():
@@ -431,5 +390,5 @@ func closeProxyConnOnCancel(ctx context.Context, conn net.Conn) func() {
 		case <-done:
 		}
 	}()
-	return func() { once.Do(func() { close(done) }) }
+	return func() { close(done) }
 }

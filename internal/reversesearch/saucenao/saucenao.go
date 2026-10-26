@@ -2,17 +2,16 @@
 package saucenao
 
 import (
+	"cmp"
 	"context"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"io"
 	"math"
 	"mime/multipart"
 	"net/http"
 	"strconv"
 	"strings"
-	"sync"
 
 	reversesearch "github.com/FlanChanXwO/pixiv-cli/internal/reversesearch"
 )
@@ -23,53 +22,32 @@ const defaultEndpoint = "https://saucenao.com/search.php"
 type Options struct {
 	APIKey     string
 	HTTPClient *http.Client
-	Endpoint   string
 }
 
 type Client struct {
 	apiKey     string
 	httpClient *http.Client
-	endpoint   string
-	closeOnce  sync.Once
 }
 
 var _ reversesearch.Closer = (*Client)(nil)
 
 func New(options Options) *Client {
-	endpoint := options.Endpoint
-	if endpoint == "" {
-		endpoint = defaultEndpoint
-	}
-	client := options.HTTPClient
-	if client == nil {
-		client = http.DefaultClient
-	}
-	return &Client{apiKey: options.APIKey, httpClient: client, endpoint: endpoint}
+	return &Client{apiKey: options.APIKey, httpClient: options.HTTPClient}
 }
 
 // Close 释放 SauceNAO client 的空闲连接；整个 reverse-search Service 结束时
 // 调用一次即可，重复调用保持幂等。
 func (c *Client) Close() error {
-	if c == nil {
-		return nil
-	}
-	c.closeOnce.Do(func() {
-		if c.httpClient != nil {
-			c.httpClient.CloseIdleConnections()
-		}
-	})
+	c.httpClient.CloseIdleConnections()
 	return nil
 }
 
 // Preflight 在 source 被读取前验证构造期凭据。
 func (c *Client) Preflight(ctx context.Context) error {
-	if ctx == nil {
-		return reversesearch.NewError(reversesearch.CodeInvalidRequest, "reverse search context is required", nil)
-	}
 	if err := ctx.Err(); err != nil {
 		return err
 	}
-	if c == nil || strings.TrimSpace(c.apiKey) == "" {
+	if strings.TrimSpace(c.apiKey) == "" {
 		return reversesearch.NewError(reversesearch.CodeMissingCredential, "SauceNAO API key is required", nil)
 	}
 	return nil
@@ -77,18 +55,15 @@ func (c *Client) Preflight(ctx context.Context) error {
 
 // Search 上传同一私有快照并解析 SauceNAO JSON 响应。
 func (c *Client) Search(ctx context.Context, snapshot *reversesearch.Snapshot) (reversesearch.ProviderResponse, error) {
-	if err := c.Preflight(ctx); err != nil {
+	if err := ctx.Err(); err != nil {
 		return reversesearch.ProviderResponse{}, err
 	}
-	if snapshot == nil {
-		return reversesearch.ProviderResponse{}, reversesearch.NewError(reversesearch.CodeInvalidRequest, "image snapshot is required", nil)
-	}
 	body, contentType, writeResult := c.multipartBody(ctx, snapshot)
-	request, err := http.NewRequestWithContext(ctx, http.MethodPost, c.endpoint, body)
+	request, err := http.NewRequestWithContext(ctx, http.MethodPost, defaultEndpoint, body)
 	if err != nil {
 		_ = body.CloseWithError(err)
 		<-writeResult
-		return reversesearch.ProviderResponse{}, reversesearch.NewError(reversesearch.CodeProviderFailed, "could not create SauceNAO request", nil)
+		return reversesearch.ProviderResponse{}, reversesearch.NewError(reversesearch.CodeProviderFailed, "could not create SauceNAO request", err)
 	}
 	request.Header.Set("Content-Type", contentType)
 	response, err := c.httpClient.Do(request)
@@ -98,7 +73,7 @@ func (c *Client) Search(ctx context.Context, snapshot *reversesearch.Snapshot) (
 		if ctxErr := ctx.Err(); ctxErr != nil {
 			return reversesearch.ProviderResponse{}, ctxErr
 		}
-		return reversesearch.ProviderResponse{}, reversesearch.NewError(reversesearch.CodeProviderFailed, "SauceNAO request failed", nil)
+		return reversesearch.ProviderResponse{}, reversesearch.NewError(reversesearch.CodeProviderFailed, "SauceNAO request failed", err)
 	}
 	defer response.Body.Close()
 	writeErr := <-writeResult
@@ -109,7 +84,7 @@ func (c *Client) Search(ctx context.Context, snapshot *reversesearch.Snapshot) (
 		return reversesearch.ProviderResponse{}, reversesearch.NewError(reversesearch.CodeUpstreamHTTPStatus, "SauceNAO returned an unsuccessful HTTP status", nil)
 	}
 	if writeErr != nil {
-		return reversesearch.ProviderResponse{}, reversesearch.NewError(reversesearch.CodeProviderFailed, "could not upload image to SauceNAO", nil)
+		return reversesearch.ProviderResponse{}, reversesearch.NewError(reversesearch.CodeProviderFailed, "could not upload image to SauceNAO", writeErr)
 	}
 	return decodeResponse(response.Body)
 }
@@ -120,9 +95,7 @@ func (c *Client) multipartBody(ctx context.Context, snapshot *reversesearch.Snap
 	result := make(chan error, 1)
 	go func() {
 		err := writeMultipart(ctx, multipartWriter, snapshot, c.apiKey)
-		if closeErr := multipartWriter.Close(); err == nil {
-			err = closeErr
-		}
+		err = errors.Join(err, multipartWriter.Close())
 		if err != nil {
 			_ = writer.CloseWithError(err)
 		} else {
@@ -134,7 +107,7 @@ func (c *Client) multipartBody(ctx context.Context, snapshot *reversesearch.Snap
 	return reader, multipartWriter.FormDataContentType(), result
 }
 
-func writeMultipart(ctx context.Context, writer *multipart.Writer, snapshot *reversesearch.Snapshot, apiKey string) error {
+func writeMultipart(ctx context.Context, writer *multipart.Writer, snapshot *reversesearch.Snapshot, apiKey string) (err error) {
 	fields := []struct{ name, value string }{
 		{name: "api_key", value: apiKey},
 		{name: "output_type", value: "2"},
@@ -149,25 +122,13 @@ func writeMultipart(ctx context.Context, writer *multipart.Writer, snapshot *rev
 	if err != nil {
 		return err
 	}
-	source, err := snapshot.Open()
+	source, err := snapshot.Open(ctx)
 	if err != nil {
 		return err
 	}
-	defer source.Close()
-	_, err = io.Copy(part, contextReader{ctx: ctx, reader: source})
+	defer func() { err = errors.Join(err, source.Close()) }()
+	_, err = io.Copy(part, source)
 	return err
-}
-
-type contextReader struct {
-	ctx    context.Context
-	reader io.Reader
-}
-
-func (r contextReader) Read(buffer []byte) (int, error) {
-	if err := r.ctx.Err(); err != nil {
-		return 0, err
-	}
-	return r.reader.Read(buffer)
 }
 
 type flexibleInt int64
@@ -234,19 +195,19 @@ func decodeResponse(body io.Reader) (reversesearch.ProviderResponse, error) {
 	decoder := json.NewDecoder(body)
 	var wire wireResponse
 	if err := decoder.Decode(&wire); err != nil {
-		return reversesearch.ProviderResponse{}, malformedResponseError()
+		return reversesearch.ProviderResponse{}, malformedResponseError(err)
 	}
-	if err := ensureJSONEnd(decoder); err != nil {
-		return reversesearch.ProviderResponse{}, malformedResponseError()
+	var trailing any
+	if err := decoder.Decode(&trailing); err != io.EOF {
+		return reversesearch.ProviderResponse{}, malformedResponseError(err)
 	}
 	if err := validateWireResponse(wire); err != nil {
-		return reversesearch.ProviderResponse{}, malformedResponseError()
+		return reversesearch.ProviderResponse{}, malformedResponseError(err)
 	}
 	if *wire.Header.Status != 0 {
 		return reversesearch.ProviderResponse{}, reversesearch.NewError(reversesearch.CodeProviderFailed, "SauceNAO rejected the query", nil)
 	}
 	response := reversesearch.ProviderResponse{
-		Provider: reversesearch.ProviderSauceNAO,
 		Quota: &reversesearch.Quota{
 			ShortRemaining: int(*wire.Header.ShortRemaining), LongRemaining: int(*wire.Header.LongRemaining),
 			ShortLimit: int(*wire.Header.ShortLimit), LongLimit: int(*wire.Header.LongLimit),
@@ -257,26 +218,16 @@ func decodeResponse(body io.Reader) (reversesearch.ProviderResponse, error) {
 		response.Matches = append(response.Matches, reversesearch.Match{
 			Rank: index + 1, Similarity: float64(*result.Header.Similarity),
 			IndexID: int(*result.Header.IndexID), IndexName: result.Header.IndexName,
-			Title: result.Data.Title, Author: firstNonEmpty(result.Data.MemberName, result.Data.AuthorName),
+			Title: result.Data.Title, Author: cmp.Or(result.Data.MemberName, result.Data.AuthorName),
 			ArtworkID: int64(result.Data.PixivID), UserID: int64(result.Data.MemberID),
-			ExternalURLs: append([]string(nil), result.Data.ExternalURLs...),
+			ExternalURLs: result.Data.ExternalURLs,
 		})
 	}
 	return response, nil
 }
 
-func malformedResponseError() error {
-	// JSON 解码错误可能包含上游字段原值，因此不把 cause 暴露到错误链。
-	return reversesearch.NewError(reversesearch.CodeMalformedUpstreamResponse, "SauceNAO returned a malformed response", nil)
-}
-
-func firstNonEmpty(values ...string) string {
-	for _, value := range values {
-		if value != "" {
-			return value
-		}
-	}
-	return ""
+func malformedResponseError(cause error) error {
+	return reversesearch.NewError(reversesearch.CodeMalformedUpstreamResponse, "SauceNAO returned a malformed response", cause)
 }
 
 func validateWireResponse(response wireResponse) error {
@@ -296,17 +247,6 @@ func validateWireResponse(response wireResponse) error {
 		if result.Header == nil || result.Data == nil || result.Header.Similarity == nil || result.Header.IndexID == nil || result.Header.IndexName == "" {
 			return errors.New("missing result fields")
 		}
-	}
-	return nil
-}
-
-func ensureJSONEnd(decoder *json.Decoder) error {
-	var trailing any
-	if err := decoder.Decode(&trailing); !errors.Is(err, io.EOF) {
-		if err == nil {
-			return fmt.Errorf("unexpected trailing JSON value")
-		}
-		return err
 	}
 	return nil
 }
