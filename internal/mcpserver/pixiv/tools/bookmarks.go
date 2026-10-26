@@ -7,7 +7,6 @@ import (
 	"errors"
 	"fmt"
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/internal/outputs"
-	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/internal/records"
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/internal/schemas"
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/internal/toolhost"
 	"github.com/FlanChanXwO/pixiv-cli/internal/pagination"
@@ -53,7 +52,7 @@ func (t pixivTools) bookmarkAddHandler(ctx context.Context, in bookmarkAddIn) (*
 
 // registerBookmarkDetail 注册 pixiv_bookmark_detail。
 func (t pixivTools) registerBookmarkDetail(server *mcp.Server) {
-	toolhost.AddTool(t.app, server, &mcp.Tool{Name: "pixiv_bookmark_detail", Annotations: &mcp.ToolAnnotations{ReadOnlyHint: true, DestructiveHint: new(false), IdempotentHint: true, OpenWorldHint: new(true)}, Description: "Get the current user's bookmark state for one artwork.", OutputSchema: records.BookmarkDetailOutputSchema()}, func(ctx context.Context, request *mcp.CallToolRequest, input bookmarkDetailIn) (*mcp.CallToolResult, outputs.BookmarkDetail, error) {
+	toolhost.AddTool(t.app, server, &mcp.Tool{Name: "pixiv_bookmark_detail", Annotations: &mcp.ToolAnnotations{ReadOnlyHint: true, DestructiveHint: new(false), IdempotentHint: true, OpenWorldHint: new(true)}, Description: "Get the current user's bookmark state for one artwork.", OutputSchema: schemas.BookmarkDetailOutputSchema()}, func(ctx context.Context, request *mcp.CallToolRequest, input bookmarkDetailIn) (*mcp.CallToolResult, outputs.BookmarkDetail, error) {
 		return t.bookmarkDetailHandler(ctx, input)
 	})
 }
@@ -87,7 +86,7 @@ func (t pixivTools) registerBookmarkListAll(server *mcp.Server) {
 			"restrict": schemas.EnumString("Bookmark visibility.", "public", "private"),
 			"tag":      map[string]any{"type": "string", "description": "Optional bookmark tag."},
 		}),
-		OutputSchema: records.RecordsOutputSchema(),
+		OutputSchema: schemas.RecordsOutputSchema(),
 	}, func(ctx context.Context, request *mcp.CallToolRequest, input bookmarkListAllIn) (*mcp.CallToolResult, outputs.Records, error) {
 		return t.bookmarkListAllHandler(ctx, input)
 	})
@@ -266,7 +265,7 @@ func (t pixivTools) bookmarkRemoveHandler(ctx context.Context, in bookmarkRemove
 
 // registerBookmarkTags 注册 pixiv_bookmark_tags。
 func (t pixivTools) registerBookmarkTags(server *mcp.Server) {
-	toolhost.AddTool(t.app, server, &mcp.Tool{Name: "pixiv_bookmark_tags", Annotations: &mcp.ToolAnnotations{ReadOnlyHint: true, DestructiveHint: new(false), IdempotentHint: true, OpenWorldHint: new(true)}, Description: "List artwork (default) or novel bookmark tags.", InputSchema: bookmarkTagsInputSchema(), OutputSchema: records.BookmarkTagsOutputSchema()}, func(ctx context.Context, request *mcp.CallToolRequest, input bookmarkTagsIn) (*mcp.CallToolResult, outputs.BookmarkTags, error) {
+	toolhost.AddTool(t.app, server, &mcp.Tool{Name: "pixiv_bookmark_tags", Annotations: &mcp.ToolAnnotations{ReadOnlyHint: true, DestructiveHint: new(false), IdempotentHint: true, OpenWorldHint: new(true)}, Description: "List artwork (default) or novel bookmark tags.", InputSchema: bookmarkTagsInputSchema(), OutputSchema: schemas.BookmarkTagsOutputSchema()}, func(ctx context.Context, request *mcp.CallToolRequest, input bookmarkTagsIn) (*mcp.CallToolResult, outputs.BookmarkTags, error) {
 		return t.bookmarkTagsHandler(ctx, input)
 	})
 }
@@ -338,7 +337,7 @@ func (t pixivTools) registerBookmarkTagsAll(server *mcp.Server) {
 			"user_id":  schemas.PositiveInteger("Optional positive Pixiv user ID; defaults to the authenticated user."),
 			"restrict": schemas.EnumString("Bookmark visibility.", "public", "private"),
 		}),
-		OutputSchema: records.BookmarkTagsAllOutputSchema(),
+		OutputSchema: schemas.BookmarkTagsAllOutputSchema(),
 	}, func(ctx context.Context, request *mcp.CallToolRequest, input bookmarkTagsAllIn) (*mcp.CallToolResult, outputs.BookmarkTagsAll, error) {
 		return t.bookmarkTagsAllHandler(ctx, input)
 	})

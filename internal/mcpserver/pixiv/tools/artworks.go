@@ -8,7 +8,7 @@ import (
 	"fmt"
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/internal/filters"
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/internal/outputs"
-	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/internal/records"
+	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/internal/schemas"
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/internal/toolhost"
 	record "github.com/FlanChanXwO/pixiv-cli/internal/record"
 	"github.com/FlanChanXwO/pixiv-cli/sdk"
@@ -21,7 +21,7 @@ import (
 
 // registerIllustDetail 注册 pixiv_illust_detail。
 func (t pixivTools) registerIllustDetail(server *mcp.Server) {
-	toolhost.AddTool(t.app, server, &mcp.Tool{Name: "pixiv_illust_detail", Annotations: &mcp.ToolAnnotations{ReadOnlyHint: true, DestructiveHint: new(false), IdempotentHint: true, OpenWorldHint: new(true)}, Description: "Get detailed information from exactly one artwork ID or supported Pixiv URL.", OutputSchema: records.UserDetailOutputSchema()}, func(ctx context.Context, request *mcp.CallToolRequest, input illustReferenceIn) (*mcp.CallToolResult, outputs.UserDetail, error) {
+	toolhost.AddTool(t.app, server, &mcp.Tool{Name: "pixiv_illust_detail", Annotations: &mcp.ToolAnnotations{ReadOnlyHint: true, DestructiveHint: new(false), IdempotentHint: true, OpenWorldHint: new(true)}, Description: "Get detailed information from exactly one artwork ID or supported Pixiv URL.", OutputSchema: schemas.UserDetailOutputSchema()}, func(ctx context.Context, request *mcp.CallToolRequest, input illustReferenceIn) (*mcp.CallToolResult, outputs.UserDetail, error) {
 		return t.illustDetailHandler(ctx, input)
 	})
 }
@@ -72,7 +72,7 @@ func resolveMCPArtworkReference(in illustReferenceIn) (int64, error) {
 
 // registerIllustRanking 注册 pixiv_illust_ranking。
 func (t pixivTools) registerIllustRanking(server *mcp.Server) {
-	toolhost.AddTool(t.app, server, &mcp.Tool{Name: "pixiv_illust_ranking", Annotations: &mcp.ToolAnnotations{ReadOnlyHint: true, DestructiveHint: new(false), IdempotentHint: true, OpenWorldHint: new(true)}, Description: "Browse Pixiv rankings.", InputSchema: rankingInputSchema(), OutputSchema: records.RecordsOutputSchema()}, func(ctx context.Context, request *mcp.CallToolRequest, input rankingIn) (*mcp.CallToolResult, outputs.Records, error) {
+	toolhost.AddTool(t.app, server, &mcp.Tool{Name: "pixiv_illust_ranking", Annotations: &mcp.ToolAnnotations{ReadOnlyHint: true, DestructiveHint: new(false), IdempotentHint: true, OpenWorldHint: new(true)}, Description: "Browse Pixiv rankings.", InputSchema: rankingInputSchema(), OutputSchema: schemas.RecordsOutputSchema()}, func(ctx context.Context, request *mcp.CallToolRequest, input rankingIn) (*mcp.CallToolResult, outputs.Records, error) {
 		return t.illustRankingHandler(ctx, input)
 	})
 }
@@ -148,7 +148,7 @@ func (t pixivTools) illustRankingHandler(ctx context.Context, in rankingIn) (*mc
 
 // registerIllustRecommended 注册 pixiv_illust_recommended。
 func (t pixivTools) registerIllustRecommended(server *mcp.Server) {
-	toolhost.AddTool(t.app, server, &mcp.Tool{Name: "pixiv_illust_recommended", Annotations: &mcp.ToolAnnotations{ReadOnlyHint: true, DestructiveHint: new(false), IdempotentHint: true, OpenWorldHint: new(true)}, Description: "Get personalized artwork recommendations.", InputSchema: recommendedArtworkInputSchema(), OutputSchema: records.RecordsOutputSchema()}, func(ctx context.Context, request *mcp.CallToolRequest, input recommendedArtworkIn) (*mcp.CallToolResult, outputs.Records, error) {
+	toolhost.AddTool(t.app, server, &mcp.Tool{Name: "pixiv_illust_recommended", Annotations: &mcp.ToolAnnotations{ReadOnlyHint: true, DestructiveHint: new(false), IdempotentHint: true, OpenWorldHint: new(true)}, Description: "Get personalized artwork recommendations.", InputSchema: recommendedArtworkInputSchema(), OutputSchema: schemas.RecordsOutputSchema()}, func(ctx context.Context, request *mcp.CallToolRequest, input recommendedArtworkIn) (*mcp.CallToolResult, outputs.Records, error) {
 		return t.illustRecommendedHandler(ctx, input)
 	})
 }
@@ -199,7 +199,7 @@ func (t pixivTools) illustRecommendedHandler(ctx context.Context, in recommended
 
 // registerIllustRelated 注册 pixiv_illust_related。
 func (t pixivTools) registerIllustRelated(server *mcp.Server) {
-	toolhost.AddTool(t.app, server, &mcp.Tool{Name: "pixiv_illust_related", Annotations: &mcp.ToolAnnotations{ReadOnlyHint: true, DestructiveHint: new(false), IdempotentHint: true, OpenWorldHint: new(true)}, Description: "Find artworks related to a specific illustration.", OutputSchema: records.RecordsOutputSchema()}, func(ctx context.Context, request *mcp.CallToolRequest, input relatedIn) (*mcp.CallToolResult, outputs.Records, error) {
+	toolhost.AddTool(t.app, server, &mcp.Tool{Name: "pixiv_illust_related", Annotations: &mcp.ToolAnnotations{ReadOnlyHint: true, DestructiveHint: new(false), IdempotentHint: true, OpenWorldHint: new(true)}, Description: "Find artworks related to a specific illustration.", OutputSchema: schemas.RecordsOutputSchema()}, func(ctx context.Context, request *mcp.CallToolRequest, input relatedIn) (*mcp.CallToolResult, outputs.Records, error) {
 		return t.illustRelatedHandler(ctx, input)
 	})
 }
@@ -242,7 +242,7 @@ func (t pixivTools) illustRelatedHandler(ctx context.Context, in relatedIn) (*mc
 
 // registerIllustSeries 注册 pixiv_illust_series。
 func (t pixivTools) registerIllustSeries(server *mcp.Server) {
-	toolhost.AddTool(t.app, server, &mcp.Tool{Name: "pixiv_illust_series", Annotations: &mcp.ToolAnnotations{ReadOnlyHint: true, DestructiveHint: new(false), IdempotentHint: true, OpenWorldHint: new(true)}, Description: "Browse artworks in a Pixiv series.", OutputSchema: records.RecordsOutputSchema()}, func(ctx context.Context, request *mcp.CallToolRequest, input illustSeriesIn) (*mcp.CallToolResult, outputs.Records, error) {
+	toolhost.AddTool(t.app, server, &mcp.Tool{Name: "pixiv_illust_series", Annotations: &mcp.ToolAnnotations{ReadOnlyHint: true, DestructiveHint: new(false), IdempotentHint: true, OpenWorldHint: new(true)}, Description: "Browse artworks in a Pixiv series.", OutputSchema: schemas.RecordsOutputSchema()}, func(ctx context.Context, request *mcp.CallToolRequest, input illustSeriesIn) (*mcp.CallToolResult, outputs.Records, error) {
 		return t.illustSeriesHandler(ctx, input)
 	})
 }
@@ -287,7 +287,7 @@ func (t pixivTools) illustSeriesHandler(ctx context.Context, in illustSeriesIn) 
 
 // registerRecommended 注册 pixiv_recommended。
 func (t pixivTools) registerRecommended(server *mcp.Server) {
-	toolhost.AddTool(t.app, server, &mcp.Tool{Name: "pixiv_recommended", Annotations: &mcp.ToolAnnotations{ReadOnlyHint: true, DestructiveHint: new(false), IdempotentHint: true, OpenWorldHint: new(true)}, Description: "Get typed personalized recommendations through the Pixiv SDK.", InputSchema: recommendedInputSchema(), OutputSchema: records.RecommendedOutputSchema()}, func(ctx context.Context, request *mcp.CallToolRequest, input recommendedIn) (*mcp.CallToolResult, outputs.Recommended, error) {
+	toolhost.AddTool(t.app, server, &mcp.Tool{Name: "pixiv_recommended", Annotations: &mcp.ToolAnnotations{ReadOnlyHint: true, DestructiveHint: new(false), IdempotentHint: true, OpenWorldHint: new(true)}, Description: "Get typed personalized recommendations through the Pixiv SDK.", InputSchema: recommendedInputSchema(), OutputSchema: schemas.RecommendedOutputSchema()}, func(ctx context.Context, request *mcp.CallToolRequest, input recommendedIn) (*mcp.CallToolResult, outputs.Recommended, error) {
 		return t.recommendedHandler(ctx, input)
 	})
 }
@@ -400,7 +400,7 @@ func (t pixivTools) recommendedHandler(ctx context.Context, in recommendedIn) (*
 	if err != nil {
 		return outputs.RecommendedError(err)
 	}
-	return records.Result(out.Records, false, ""), out, nil
+	return outputs.RecordResult(out.Records, false, ""), out, nil
 }
 
 func parseRecommendedRequest(in recommendedIn) (toolhost.ListPlan, error) {
@@ -576,7 +576,7 @@ func streamContinuation(in recommendedIn, kind string, next sdk.Cursor) (string,
 
 // registerTrendingTagsIllust 注册 pixiv_trending_tags_illust。
 func (t pixivTools) registerTrendingTagsIllust(server *mcp.Server) {
-	toolhost.AddTool(t.app, server, &mcp.Tool{Name: "pixiv_trending_tags_illust", Annotations: &mcp.ToolAnnotations{ReadOnlyHint: true, DestructiveHint: new(false), IdempotentHint: true, OpenWorldHint: new(true)}, Description: "Get currently trending illustration tags.", InputSchema: trendingInputSchema(), OutputSchema: records.TrendingTagsOutputSchema()}, func(ctx context.Context, request *mcp.CallToolRequest, input trendingTagsIllustIn) (*mcp.CallToolResult, outputs.TrendingTags, error) {
+	toolhost.AddTool(t.app, server, &mcp.Tool{Name: "pixiv_trending_tags_illust", Annotations: &mcp.ToolAnnotations{ReadOnlyHint: true, DestructiveHint: new(false), IdempotentHint: true, OpenWorldHint: new(true)}, Description: "Get currently trending illustration tags.", InputSchema: trendingInputSchema(), OutputSchema: schemas.TrendingTagsOutputSchema()}, func(ctx context.Context, request *mcp.CallToolRequest, input trendingTagsIllustIn) (*mcp.CallToolResult, outputs.TrendingTags, error) {
 		return t.trendingTagsIllustHandler(ctx, input)
 	})
 }

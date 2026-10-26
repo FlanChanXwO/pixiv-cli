@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/internal/filters"
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/internal/outputs"
-	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/internal/records"
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/internal/schemas"
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/internal/toolhost"
 	record "github.com/FlanChanXwO/pixiv-cli/internal/record"
@@ -22,7 +21,7 @@ func (t pixivTools) registerBlockedUsers(server *mcp.Server) {
 	toolhost.AddTool(t.app, server, &mcp.Tool{Name: "pixiv_blocked_users", Annotations: &mcp.ToolAnnotations{ReadOnlyHint: true, DestructiveHint: new(false), IdempotentHint: true, OpenWorldHint: new(true)}, Description: "View users blocked by the authenticated account through the App API.", InputSchema: schemas.List(map[string]any{
 		"user_id":  schemas.PositiveInteger("Optional positive Pixiv user ID; defaults to the authenticated user."),
 		"restrict": schemas.EnumString("Compatibility visibility field.", "public", "private"),
-	}), OutputSchema: records.RecordsOutputSchema()}, func(ctx context.Context, request *mcp.CallToolRequest, input blockedUsersIn) (*mcp.CallToolResult, outputs.Records, error) {
+	}), OutputSchema: schemas.RecordsOutputSchema()}, func(ctx context.Context, request *mcp.CallToolRequest, input blockedUsersIn) (*mcp.CallToolResult, outputs.Records, error) {
 		return t.blockedUsersHandler(ctx, input)
 	})
 }
@@ -34,7 +33,7 @@ type blockedUsersIn struct {
 }
 
 func (t pixivTools) blockedUsersHandler(ctx context.Context, in blockedUsersIn) (*mcp.CallToolResult, outputs.Records, error) {
-	return outputs.ListUserRelations(ctx, t.app, "blocked", in.UserID, in.Restrict, in.PageLimitIn, in.Limit)
+	return t.listUserRelations(ctx, "blocked", in.UserID, in.Restrict, in.PageLimitIn, in.Limit)
 }
 
 // registerFollowUser 注册 pixiv_follow_user。
@@ -62,7 +61,7 @@ func (t pixivTools) followUserHandler(ctx context.Context, in followUserIn) (*mc
 func (t pixivTools) registerMypixiv(server *mcp.Server) {
 	toolhost.AddTool(t.app, server, &mcp.Tool{Name: "pixiv_mypixiv", Description: "Browse MyPixiv artworks, novels or users for the authenticated account.", Annotations: &mcp.ToolAnnotations{ReadOnlyHint: true, DestructiveHint: new(false), IdempotentHint: true, OpenWorldHint: new(true)},
 		InputSchema:  schemas.List(map[string]any{"illust_filter": filters.IllustFilterSchema(), "novel_filter": filters.NovelFilterSchema(), "user_filter": filters.UserFilterSchema(), "kind": schemas.EnumString("Required content type.", "artwork", "novel", "user")}, "kind"),
-		OutputSchema: records.RecordsOutputSchema()}, func(ctx context.Context, request *mcp.CallToolRequest, input mypixivIn) (*mcp.CallToolResult, outputs.Records, error) {
+		OutputSchema: schemas.RecordsOutputSchema()}, func(ctx context.Context, request *mcp.CallToolRequest, input mypixivIn) (*mcp.CallToolResult, outputs.Records, error) {
 		return t.mypixivHandler(ctx, input)
 	})
 }
@@ -185,7 +184,7 @@ func (t pixivTools) unfollowUserHandler(ctx context.Context, in unfollowUserIn) 
 func (t pixivTools) registerUserRelations(server *mcp.Server) {
 	toolhost.AddTool(t.app, server, &mcp.Tool{Name: "pixiv_user_relations", Description: "Browse followers, following or related users; restrict applies only to followers/following.", Annotations: &mcp.ToolAnnotations{ReadOnlyHint: true, DestructiveHint: new(false), IdempotentHint: true, OpenWorldHint: new(true)},
 		InputSchema:  schemas.List(map[string]any{"relation": schemas.EnumString("User relation.", "followers", "following", "related"), "user_id": schemas.PositiveInteger("Optional user ID; defaults to authenticated user."), "restrict": schemas.EnumString("Followers/following visibility; ignored for related users.", "public", "private"), "user_filter": filters.UserFilterSchema()}, "relation"),
-		OutputSchema: records.RecordsOutputSchema()}, func(ctx context.Context, request *mcp.CallToolRequest, input userRelationsIn) (*mcp.CallToolResult, outputs.Records, error) {
+		OutputSchema: schemas.RecordsOutputSchema()}, func(ctx context.Context, request *mcp.CallToolRequest, input userRelationsIn) (*mcp.CallToolResult, outputs.Records, error) {
 		return t.userRelationsHandler(ctx, input)
 	})
 }
@@ -210,5 +209,47 @@ func (t pixivTools) userRelationsHandler(ctx context.Context, in userRelationsIn
 	if err != nil {
 		return outputs.Error(err)
 	}
-	return outputs.ListUserRelations(ctx, t.app, in.Relation, in.UserID, in.Restrict, in.PageLimitIn, in.Limit)
+	return t.listUserRelations(ctx, in.Relation, in.UserID, in.Restrict, in.PageLimitIn, in.Limit)
+}
+
+// ListUserRelations 在账号池重放边界内收集 followers/following/related/blocked 用户列表并
+// 输出统一 records envelope。
+func (t pixivTools) listUserRelations(ctx context.Context, kind string, userID int64, restrict string, input toolhost.PageLimitIn, limit *int) (*mcp.CallToolResult, outputs.Records, error) {
+	userID, err := toolhost.ResolveUserID(t.app, ctx, userID)
+	if err != nil {
+		return outputs.Error(err)
+	}
+	plan, err := toolhost.ParseListPlan(input)
+	if err != nil {
+		return outputs.Error(err)
+	}
+	items, more, err := toolhost.CollectWith(ctx, t.app, plan, func(ctx context.Context, client *pixiv.Client, cursor sdk.Cursor) ([]pixiv.UserPreview, sdk.Cursor, error) {
+		var result sdk.Page[pixiv.UserPreview]
+		var err error
+		switch kind {
+		case "followers":
+			result, err = client.UserFollowers(ctx, pixiv.UserFollowersRequest{UserID: userID, Restrict: pixiv.Restrict(restrict), Cursor: cursor})
+		case "following":
+			result, err = client.UserFollowing(ctx, pixiv.UserFollowingRequest{UserID: userID, Restrict: pixiv.Restrict(restrict), Cursor: cursor})
+		case "related":
+			result, err = client.RelatedUsers(ctx, pixiv.RelatedUsersRequest{UserID: userID, Cursor: cursor})
+		case "blocked":
+			result, err = client.UserBlockedUsers(ctx, pixiv.UserBlockedUsersRequest{UserID: userID, Cursor: cursor})
+		default:
+			return nil, sdk.Cursor{}, errors.New("unknown user relation")
+		}
+		if err != nil {
+			return nil, sdk.Cursor{}, err
+		}
+		return result.Items, result.Next, nil
+	})
+	if err != nil {
+		return outputs.Error(err)
+	}
+	recordItems, err := record.FromUserPreviews(items)
+	if err != nil {
+		return outputs.Error(err)
+	}
+	out := outputs.Records{Records: recordItems, Pagination: toolhost.ListPagination(plan, limit, len(items), more)}
+	return outputs.Result(out, false), out, nil
 }

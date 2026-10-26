@@ -7,7 +7,6 @@ import (
 	"errors"
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/internal/filters"
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/internal/outputs"
-	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/internal/records"
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/internal/schemas"
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/internal/toolhost"
 	record "github.com/FlanChanXwO/pixiv-cli/internal/record"
@@ -20,7 +19,7 @@ import (
 func (t pixivTools) registerTimelineFollowing(server *mcp.Server) {
 	toolhost.AddTool(t.app, server, &mcp.Tool{Name: "pixiv_timeline_following", Description: "Browse artworks or novels from followed users.", Annotations: &mcp.ToolAnnotations{ReadOnlyHint: true, DestructiveHint: new(false), IdempotentHint: true, OpenWorldHint: new(true)},
 		InputSchema:  schemas.List(map[string]any{"illust_filter": filters.IllustFilterSchema(), "novel_filter": filters.NovelFilterSchema(), "restrict": schemas.EnumString("Visibility; omitted defaults to public.", "public", "private"), "kind": schemas.EnumString("Required content type.", "artwork", "novel")}, "kind"),
-		OutputSchema: records.RecordsOutputSchema()}, func(ctx context.Context, request *mcp.CallToolRequest, input timelineFollowingIn) (*mcp.CallToolResult, outputs.Records, error) {
+		OutputSchema: schemas.RecordsOutputSchema()}, func(ctx context.Context, request *mcp.CallToolRequest, input timelineFollowingIn) (*mcp.CallToolResult, outputs.Records, error) {
 		return t.timelineFollowingHandler(ctx, input)
 	})
 }
@@ -98,7 +97,7 @@ func (t pixivTools) timelineFollowingHandler(ctx context.Context, in timelineFol
 func (t pixivTools) registerTimelineLatest(server *mcp.Server) {
 	toolhost.AddTool(t.app, server, &mcp.Tool{Name: "pixiv_timeline_latest", Description: "Browse latest illustrations, manga or novels.", Annotations: &mcp.ToolAnnotations{ReadOnlyHint: true, DestructiveHint: new(false), IdempotentHint: true, OpenWorldHint: new(true)},
 		InputSchema:  schemas.List(map[string]any{"illust_filter": filters.IllustFilterSchema(), "novel_filter": filters.NovelFilterSchema(), "content_type": schemas.EnumString("Required content type.", "illust", "manga", "novel")}, "content_type"),
-		OutputSchema: records.RecordsOutputSchema()}, func(ctx context.Context, request *mcp.CallToolRequest, input timelineLatestIn) (*mcp.CallToolResult, outputs.Records, error) {
+		OutputSchema: schemas.RecordsOutputSchema()}, func(ctx context.Context, request *mcp.CallToolRequest, input timelineLatestIn) (*mcp.CallToolResult, outputs.Records, error) {
 		return t.timelineLatestHandler(ctx, input)
 	})
 }

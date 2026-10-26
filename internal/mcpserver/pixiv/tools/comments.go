@@ -4,11 +4,12 @@ package tools
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/internal/outputs"
-	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/internal/records"
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/internal/schemas"
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/internal/toolhost"
+	"github.com/FlanChanXwO/pixiv-cli/sdk"
 	pixiv "github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
@@ -259,7 +260,7 @@ func (t pixivTools) commentStampHandler(ctx context.Context, in commentStampIn) 
 // registerComments 注册 pixiv_comments。
 func (t pixivTools) registerComments(server *mcp.Server) {
 	toolhost.AddTool(t.app, server, &mcp.Tool{Name: "pixiv_comments", Annotations: &mcp.ToolAnnotations{ReadOnlyHint: true, DestructiveHint: new(false), IdempotentHint: true, OpenWorldHint: new(true)}, Description: "Read comments for a Pixiv artwork or novel.", InputSchema: commentsInputSchema(),
-		OutputSchema: records.CommentOutputSchema()}, func(ctx context.Context, request *mcp.CallToolRequest, input commentsIn) (*mcp.CallToolResult, outputs.Comments, error) {
+		OutputSchema: schemas.CommentOutputSchema()}, func(ctx context.Context, request *mcp.CallToolRequest, input commentsIn) (*mcp.CallToolResult, outputs.Comments, error) {
 		return t.commentsHandler(ctx, input)
 	})
 }
@@ -272,12 +273,77 @@ type commentsIn struct {
 }
 
 func (t pixivTools) commentsHandler(ctx context.Context, in commentsIn) (*mcp.CallToolResult, outputs.Comments, error) {
-	return outputs.ListComments(ctx, t.app, in.ID, in.Kind == "novel", in.PageLimitIn, in.Limit)
+	return t.listComments(ctx, in.ID, in.Kind == "novel", in.PageLimitIn, in.Limit)
 }
 
 func commentsInputSchema() map[string]any {
-	schema := records.CommentInputSchema()
+	schema := schemas.CommentInputSchema()
 	schema["properties"].(map[string]any)["kind"] = schemas.EnumString("Target content type.", "artwork", "novel")
 	schema["required"] = []string{"kind", "id"}
 	return schema
+}
+
+// commentMetadata 只缓存上游明确提供的评论总数与访问控制信息。
+type commentMetadata struct {
+	Total  *int64
+	Access *pixiv.CommentAccessControl
+}
+
+// Set 从评论页记录首个可用的元数据。
+func (m *commentMetadata) Set(page pixiv.CommentPage) {
+	if m.Total == nil && page.Total != nil {
+		value := *page.Total
+		m.Total = &value
+	}
+	if m.Access == nil && page.AccessControl != nil {
+		value := *page.AccessControl
+		m.Access = &value
+	}
+}
+
+// ListComments 在账号池重放边界内收集 artwork 或 novel 的评论分页并输出统一
+// envelope；novel 为 true 时读取小说评论。元数据只缓存上游明确提供的值。
+func (t pixivTools) listComments(ctx context.Context, id int64, novel bool, input toolhost.PageLimitIn, limit *int) (*mcp.CallToolResult, outputs.Comments, error) {
+	if id <= 0 {
+		result, out, _ := outputs.CommentsError(errors.New("id must be a positive integer"))
+		return result, out, nil
+	}
+	plan, err := toolhost.ParseListPlan(input)
+	if err != nil {
+		result, out, _ := outputs.CommentsError(err)
+		return result, out, nil
+	}
+	metadata := commentMetadata{}
+	items, more, err := toolhost.CollectWith(ctx, t.app, plan, func(ctx context.Context, client *pixiv.Client, cursor sdk.Cursor) ([]pixiv.Comment, sdk.Cursor, error) {
+		var page pixiv.CommentPage
+		var err error
+		if novel {
+			page, err = client.NovelComments(ctx, pixiv.NovelCommentsRequest{NovelID: id, Cursor: cursor})
+		} else {
+			page, err = client.ArtworkComments(ctx, pixiv.ArtworkCommentsRequest{ArtworkID: id, Cursor: cursor})
+		}
+		if err != nil {
+			return nil, sdk.Cursor{}, err
+		}
+		if cursor.IsZero() {
+			metadata = commentMetadata{}
+		}
+		metadata.Set(page)
+		return page.Page.Items, page.Page.Next, nil
+	})
+	if err != nil {
+		result, out, _ := outputs.CommentsError(err)
+		return result, out, nil
+	}
+	comments := make([]pixiv.Comment, 0, len(items))
+	for _, item := range items {
+		comments = append(comments, item)
+	}
+	var accessControl *pixiv.CommentAccessControl
+	if metadata.Access != nil {
+		dto := *metadata.Access
+		accessControl = &dto
+	}
+	out := outputs.Comments{Comments: comments, Pagination: toolhost.ListPagination(plan, limit, len(comments), more), Total: metadata.Total, AccessControl: accessControl}
+	return outputs.CommentsResult(out, false, ""), out, nil
 }

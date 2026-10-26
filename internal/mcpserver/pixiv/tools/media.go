@@ -11,7 +11,6 @@ import (
 	"github.com/FlanChanXwO/pixiv-cli/internal/lifecycle"
 	"github.com/FlanChanXwO/pixiv-cli/internal/logging"
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/internal/outputs"
-	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/internal/records"
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/internal/schemas"
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/internal/toolhost"
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/mediaproxy"
@@ -498,7 +497,7 @@ func (t pixivTools) registerShowGallery(server *mcp.Server) {
 func (t pixivTools) showGalleryHandler(ctx context.Context, in showGalleryIn) (*mcp.CallToolResult, galleryOut, error) {
 	out := galleryOut{Records: []record.Record{}, Images: []galleryImage{}, Failures: []galleryFailure{}}
 	finish := func() (*mcp.CallToolResult, galleryOut, error) {
-		return records.Result(out.Records, len(out.Failures) > 0, "Gallery results; images load only in the explicit gallery."), out, nil
+		return outputs.RecordResult(out.Records, len(out.Failures) > 0, "Gallery results; images load only in the explicit gallery."), out, nil
 	}
 	if !normalizeGalleryRequest(&in) {
 		out.Failures = append(out.Failures, galleryFailure{Error: "invalid_request"})
@@ -667,6 +666,6 @@ func showGalleryOutputSchema() *jsonschema.Schema {
 	if err != nil {
 		panic(err)
 	}
-	schema.Properties["records"] = &jsonschema.Schema{Type: "array", Items: records.OpenObjectSchema()}
+	schema.Properties["records"] = &jsonschema.Schema{Type: "array", Items: schemas.OpenObjectSchema()}
 	return schema
 }

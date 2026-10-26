@@ -1,35 +1,14 @@
-// Package records 持有 Pixiv MCP 各 tool 共享的 record 构造、输出 schema 与
-// 本地筛选。它从 public 模型构造 record.Record，保持未知字段与精确数字；
-// CLI 与 MCP 共用同一 Record 机制。
-package records
+// MCP output schemas preserve open entity records and explicit wire envelopes.
+
+package schemas
 
 import (
-	"fmt"
 	"reflect"
 
-	record "github.com/FlanChanXwO/pixiv-cli/internal/record"
 	"github.com/FlanChanXwO/pixiv-cli/sdk"
 	pixiv "github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
 	"github.com/google/jsonschema-go/jsonschema"
-	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
-
-// Result 统一实体查询的 MCP 文本摘要。完整实体只存在于 structured records，
-// Content 绝不复制 JSON，以便客户端始终只消费一个机器可读载荷。
-func Result(records []record.Record, isError bool, message string) *mcp.CallToolResult {
-	if message == "" {
-		message = fmt.Sprintf("Retrieved %d records.", len(records))
-	}
-	return &mcp.CallToolResult{
-		IsError: isError,
-		Content: []mcp.Content{&mcp.TextContent{Text: message}},
-	}
-}
-
-// ErrorMessage 返回统一错误摘要。
-func ErrorMessage(err error) string {
-	return "Error: " + err.Error()
-}
 
 // OpenObjectSchema 返回允许任意附加属性的开放对象 schema。
 func OpenObjectSchema() *jsonschema.Schema {
@@ -325,18 +304,4 @@ func recordSchema() *jsonschema.Schema {
 		},
 		AdditionalProperties: &jsonschema.Schema{},
 	}
-}
-
-// ResourceOut 是资源引用的安全输出形态。
-type ResourceOut struct {
-	Ref                 string `json:"ref"`
-	RequiresCredentials bool   `json:"requires_credentials,omitempty"`
-}
-
-// ResourceOutFrom 把 opaque Resource 转为安全输出。
-func ResourceOutFrom(res sdk.Resource) *ResourceOut {
-	if res.Ref.IsZero() {
-		return nil
-	}
-	return &ResourceOut{Ref: res.Ref.String(), RequiresCredentials: res.RequiresCredentials}
 }

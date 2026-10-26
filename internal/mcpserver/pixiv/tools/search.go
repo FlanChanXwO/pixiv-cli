@@ -7,7 +7,6 @@ import (
 	"errors"
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/internal/filters"
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/internal/outputs"
-	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/internal/records"
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/internal/schemas"
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/internal/toolhost"
 	"github.com/FlanChanXwO/pixiv-cli/internal/pagination"
@@ -268,7 +267,7 @@ func cloneIntPointer(value *int) *int {
 
 // registerSearchIllust 注册 pixiv_search_illust。
 func (t pixivTools) registerSearchIllust(server *mcp.Server) {
-	toolhost.AddTool(t.app, server, &mcp.Tool{Name: "pixiv_search_illust", Annotations: &mcp.ToolAnnotations{ReadOnlyHint: true, DestructiveHint: new(false), IdempotentHint: true, OpenWorldHint: new(true)}, Description: "Search for illustrations using keywords with filters.", InputSchema: searchIllustInputSchema(), OutputSchema: records.RecordsOutputSchema()}, func(ctx context.Context, request *mcp.CallToolRequest, input searchIllustIn) (*mcp.CallToolResult, outputs.Records, error) {
+	toolhost.AddTool(t.app, server, &mcp.Tool{Name: "pixiv_search_illust", Annotations: &mcp.ToolAnnotations{ReadOnlyHint: true, DestructiveHint: new(false), IdempotentHint: true, OpenWorldHint: new(true)}, Description: "Search for illustrations using keywords with filters.", InputSchema: searchIllustInputSchema(), OutputSchema: schemas.RecordsOutputSchema()}, func(ctx context.Context, request *mcp.CallToolRequest, input searchIllustIn) (*mcp.CallToolResult, outputs.Records, error) {
 		return t.searchIllustHandler(ctx, input)
 	})
 }
@@ -481,7 +480,7 @@ func searchIllustListPlan(in searchIllustIn) (toolhost.ListPlan, error) {
 
 // registerSearchNovel 注册 pixiv_search_novel。
 func (t pixivTools) registerSearchNovel(server *mcp.Server) {
-	toolhost.AddTool(t.app, server, &mcp.Tool{Name: "pixiv_search_novel", Annotations: &mcp.ToolAnnotations{ReadOnlyHint: true, DestructiveHint: new(false), IdempotentHint: true, OpenWorldHint: new(true)}, Description: "Search for novels using keywords with supported filters.", InputSchema: searchNovelInputSchema(), OutputSchema: records.RecordsOutputSchema()}, func(ctx context.Context, request *mcp.CallToolRequest, input searchNovelIn) (*mcp.CallToolResult, outputs.Records, error) {
+	toolhost.AddTool(t.app, server, &mcp.Tool{Name: "pixiv_search_novel", Annotations: &mcp.ToolAnnotations{ReadOnlyHint: true, DestructiveHint: new(false), IdempotentHint: true, OpenWorldHint: new(true)}, Description: "Search for novels using keywords with supported filters.", InputSchema: searchNovelInputSchema(), OutputSchema: schemas.RecordsOutputSchema()}, func(ctx context.Context, request *mcp.CallToolRequest, input searchNovelIn) (*mcp.CallToolResult, outputs.Records, error) {
 		return t.searchNovelHandler(ctx, input)
 	})
 }
@@ -557,7 +556,7 @@ func (t pixivTools) registerSearchUser(server *mcp.Server) {
 	toolhost.AddTool(t.app, server, &mcp.Tool{Name: "pixiv_search_user", Annotations: &mcp.ToolAnnotations{ReadOnlyHint: true, DestructiveHint: new(false), IdempotentHint: true, OpenWorldHint: new(true)}, Description: "Search for users/artists on Pixiv.", InputSchema: schemas.List(map[string]any{
 		"word":        map[string]any{"type": "string", "minLength": 1, "description": "User search keyword."},
 		"user_filter": filters.UserFilterSchema(),
-	}, "word"), OutputSchema: records.RecordsOutputSchema()}, func(ctx context.Context, request *mcp.CallToolRequest, input searchUserIn) (*mcp.CallToolResult, outputs.Records, error) {
+	}, "word"), OutputSchema: schemas.RecordsOutputSchema()}, func(ctx context.Context, request *mcp.CallToolRequest, input searchUserIn) (*mcp.CallToolResult, outputs.Records, error) {
 		return t.searchUserHandler(ctx, input)
 	})
 }
