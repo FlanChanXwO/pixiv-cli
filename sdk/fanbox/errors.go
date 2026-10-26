@@ -15,7 +15,7 @@ func newError(operation string, code sdk.Reason, err error) *sdk.Error {
 }
 
 // classifyResponseError classifies a wire-decoding failure, preserving a reason
-// the mapping already assigned (for example a malformed publish time).
+// the mapping already assigned (for example ResourceForbidden).
 func classifyResponseError(operation string, err error) error {
 	var classified *sdk.Error
 	if errors.As(err, &classified) {

@@ -96,6 +96,7 @@ func TestResponsesReportMalformedData(t *testing.T) {
 		{"CreatorTags", `{"body":{}}`},
 		{"CreatorPosts", `{"body":{}}`},
 		{"CreatorPosts", `{"body":{"posts":[],"nextUrl":" "}}`},
+		{"CreatorPosts", `{"body":{"posts":[{"id":"p1","publishedDatetime":"response-token-canary"}]}}`},
 		{"Post", `{"body":{"post":{"id":"p1","publishedDatetime":"response-token-canary"}}}`},
 		{"Creator", `{"body":{"creatorId":"artist","user":{}}}`},
 	} {
@@ -121,6 +122,9 @@ func TestResponsesReportMalformedData(t *testing.T) {
 			_, err = client.CreatorTags(t.Context(), fanbox.CreatorTagsRequest{CreatorID: "artist"})
 		}
 		api.Close()
+		var failure *sdk.Error
+		require.ErrorAs(t, err, &failure)
+		require.Equal(t, tc.operation, failure.Operation)
 		require.Equal(t, sdk.MalformedUpstreamResponse, sdk.ReasonOf(err))
 		require.NotContains(t, fmt.Sprint(err), "response-token-canary")
 	}

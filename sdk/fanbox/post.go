@@ -142,7 +142,7 @@ func (c *Client) mapPost(source postWire) (Post, error) {
 	}
 	published, err := time.Parse(time.RFC3339, source.PublishedDateTime)
 	if err != nil {
-		return Post{}, newError("Post", sdk.MalformedUpstreamResponse, errors.New("invalid publish time"))
+		return Post{}, errors.New("invalid publish time")
 	}
 	out := Post{
 		ID:            source.ID,
