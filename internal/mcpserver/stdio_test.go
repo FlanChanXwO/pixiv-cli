@@ -50,6 +50,7 @@ func TestStdioStdoutIsJSONRPC(t *testing.T) {
 		require.NotEmpty(t, response["result"])
 		if index == 1 {
 			require.Contains(t, string(response["result"]), `"isError":true`)
+			require.Contains(t, string(response["result"]), `"structuredContent":`)
 		}
 	}
 	require.NoError(t, stdin.Close())

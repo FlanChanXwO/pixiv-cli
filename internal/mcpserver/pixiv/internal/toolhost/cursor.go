@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 
+	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/toolrun"
 	"github.com/FlanChanXwO/pixiv-cli/sdk"
 	pixiv "github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
 )
@@ -14,8 +15,8 @@ import (
 // CollectCursorWith 为 discovery 复用查询绑定与完整批次续读；bindingInput
 // 必须是清除 cursor 后的原始 typed input，不能丢失 owner 的筛选字段。
 // envelope 不提供授权；SDK 仍验证内部 cursor 的 operation/query/账号绑定。
-func CollectCursorWith[T any](ctx context.Context, app *App, operation string, bindingInput any, cursor *string, input PageLimitIn, fetch func(context.Context, *pixiv.Client, sdk.Cursor) ([]T, sdk.Cursor, error)) ([]T, PaginationOut, error) {
-	plan, err := ParseListPlan(input)
+func CollectCursorWith[T any](ctx context.Context, app *App, operation string, bindingInput any, cursor *string, input toolrun.ListIn, fetch func(context.Context, *pixiv.Client, sdk.Cursor) ([]T, sdk.Cursor, error)) ([]T, PaginationOut, error) {
+	plan, err := toolrun.ParseListPlan(input)
 	if err != nil {
 		return nil, PaginationOut{}, err
 	}

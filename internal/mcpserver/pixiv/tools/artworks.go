@@ -6,22 +6,24 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
+	"strings"
+	"time"
+
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/internal/filters"
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/internal/outputs"
-	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/internal/records"
+	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/internal/schemas"
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/internal/toolhost"
+	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/toolrun"
 	record "github.com/FlanChanXwO/pixiv-cli/internal/record"
 	"github.com/FlanChanXwO/pixiv-cli/sdk"
 	pixiv "github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
-	"slices"
-	"strings"
-	"time"
 )
 
 // registerIllustDetail 注册 pixiv_illust_detail。
 func (t pixivTools) registerIllustDetail(server *mcp.Server) {
-	toolhost.AddTool(t.app, server, &mcp.Tool{Name: "pixiv_illust_detail", Annotations: &mcp.ToolAnnotations{ReadOnlyHint: true, DestructiveHint: new(false), IdempotentHint: true, OpenWorldHint: new(true)}, Description: "Get detailed information from exactly one artwork ID or supported Pixiv URL.", OutputSchema: records.UserDetailOutputSchema()}, func(ctx context.Context, request *mcp.CallToolRequest, input illustReferenceIn) (*mcp.CallToolResult, outputs.UserDetail, error) {
+	toolhost.AddTool(t.app, server, &mcp.Tool{Name: "pixiv_illust_detail", Annotations: &mcp.ToolAnnotations{ReadOnlyHint: true, DestructiveHint: new(false), IdempotentHint: true, OpenWorldHint: new(true)}, Description: "Get detailed information from exactly one artwork ID or supported Pixiv URL.", OutputSchema: schemas.DetailOutputSchema()}, func(ctx context.Context, request *mcp.CallToolRequest, input illustReferenceIn) (*mcp.CallToolResult, outputs.Detail, error) {
 		return t.illustDetailHandler(ctx, input)
 	})
 }
@@ -31,21 +33,21 @@ type illustReferenceIn struct {
 	URL      string `json:"url,omitempty" jsonschema:"supported Pixiv artwork URL; provide exactly one of illust_id or url"`
 }
 
-func (t pixivTools) illustDetailHandler(ctx context.Context, in illustReferenceIn) (*mcp.CallToolResult, outputs.UserDetail, error) {
+func (t pixivTools) illustDetailHandler(ctx context.Context, in illustReferenceIn) (*mcp.CallToolResult, outputs.Detail, error) {
 	id, err := resolveMCPArtworkReference(in)
 	if err != nil {
-		return outputs.UserDetailError(err)
+		return outputs.DetailError(err)
 	}
 	result, err := t.app.Artwork(ctx, id)
 	if err != nil {
-		return outputs.UserDetailError(err)
+		return outputs.DetailError(err)
 	}
 	artworkRecord, err := record.RecordFromArtwork(result)
 	if err != nil {
-		return outputs.UserDetailError(err)
+		return outputs.DetailError(err)
 	}
-	out := outputs.UserDetail{Records: []record.Record{artworkRecord}}
-	return outputs.UserDetailResult(out, false), out, nil
+	out := outputs.Detail{Records: []record.Record{artworkRecord}}
+	return outputs.DetailResult(out), out, nil
 }
 
 func resolveMCPArtworkReference(in illustReferenceIn) (int64, error) {
@@ -72,7 +74,7 @@ func resolveMCPArtworkReference(in illustReferenceIn) (int64, error) {
 
 // registerIllustRanking 注册 pixiv_illust_ranking。
 func (t pixivTools) registerIllustRanking(server *mcp.Server) {
-	toolhost.AddTool(t.app, server, &mcp.Tool{Name: "pixiv_illust_ranking", Annotations: &mcp.ToolAnnotations{ReadOnlyHint: true, DestructiveHint: new(false), IdempotentHint: true, OpenWorldHint: new(true)}, Description: "Browse Pixiv rankings.", InputSchema: rankingInputSchema(), OutputSchema: records.RecordsOutputSchema()}, func(ctx context.Context, request *mcp.CallToolRequest, input rankingIn) (*mcp.CallToolResult, outputs.Records, error) {
+	toolhost.AddTool(t.app, server, &mcp.Tool{Name: "pixiv_illust_ranking", Annotations: &mcp.ToolAnnotations{ReadOnlyHint: true, DestructiveHint: new(false), IdempotentHint: true, OpenWorldHint: new(true)}, Description: "Browse Pixiv rankings.", InputSchema: rankingInputSchema(), OutputSchema: schemas.RecordsOutputSchema()}, func(ctx context.Context, request *mcp.CallToolRequest, input rankingIn) (*mcp.CallToolResult, outputs.Records, error) {
 		return t.illustRankingHandler(ctx, input)
 	})
 }
@@ -82,7 +84,7 @@ type rankingIn struct {
 	Mode         string                `json:"mode,omitempty"`
 	Date         string                `json:"date,omitempty"`
 	IllustFilter *filters.IllustFilter `json:"illust_filter,omitempty"`
-	toolhost.PageLimitIn
+	toolrun.ListIn
 }
 
 var rankingModes = []string{
@@ -128,7 +130,7 @@ func (t pixivTools) illustRankingHandler(ctx context.Context, in rankingIn) (*mc
 	}
 	bindingInput := in
 	bindingInput.Cursor = nil
-	items, page, err := toolhost.CollectCursorWith(ctx, t.app, "illust_ranking", bindingInput, in.Cursor, in.PageLimitIn, func(ctx context.Context, client *pixiv.Client, cursor sdk.Cursor) ([]pixiv.Artwork, sdk.Cursor, error) {
+	items, page, err := toolhost.CollectCursorWith(ctx, t.app, "illust_ranking", bindingInput, in.Cursor, in.ListIn, func(ctx context.Context, client *pixiv.Client, cursor sdk.Cursor) ([]pixiv.Artwork, sdk.Cursor, error) {
 		result, err := client.ArtworkRanking(ctx, pixiv.ArtworkRankingRequest{Mode: pixiv.RankingMode(in.Mode), Date: in.Date, Cursor: cursor})
 		if err != nil {
 			return nil, sdk.Cursor{}, err
@@ -143,12 +145,12 @@ func (t pixivTools) illustRankingHandler(ctx context.Context, in rankingIn) (*mc
 		return outputs.Error(err)
 	}
 	out := outputs.Records{Records: recordItems, Pagination: page}
-	return outputs.Result(out, false), out, nil
+	return outputs.Result(out), out, nil
 }
 
 // registerIllustRecommended 注册 pixiv_illust_recommended。
 func (t pixivTools) registerIllustRecommended(server *mcp.Server) {
-	toolhost.AddTool(t.app, server, &mcp.Tool{Name: "pixiv_illust_recommended", Annotations: &mcp.ToolAnnotations{ReadOnlyHint: true, DestructiveHint: new(false), IdempotentHint: true, OpenWorldHint: new(true)}, Description: "Get personalized artwork recommendations.", InputSchema: recommendedArtworkInputSchema(), OutputSchema: records.RecordsOutputSchema()}, func(ctx context.Context, request *mcp.CallToolRequest, input recommendedArtworkIn) (*mcp.CallToolResult, outputs.Records, error) {
+	toolhost.AddTool(t.app, server, &mcp.Tool{Name: "pixiv_illust_recommended", Annotations: &mcp.ToolAnnotations{ReadOnlyHint: true, DestructiveHint: new(false), IdempotentHint: true, OpenWorldHint: new(true)}, Description: "Get personalized artwork recommendations.", InputSchema: recommendedArtworkInputSchema(), OutputSchema: schemas.RecordsOutputSchema()}, func(ctx context.Context, request *mcp.CallToolRequest, input recommendedArtworkIn) (*mcp.CallToolResult, outputs.Records, error) {
 		return t.illustRecommendedHandler(ctx, input)
 	})
 }
@@ -156,7 +158,7 @@ func (t pixivTools) registerIllustRecommended(server *mcp.Server) {
 type recommendedArtworkIn struct {
 	Cursor       *string               `json:"cursor,omitempty" jsonschema:"opaque default-batch continuation; repeat original arguments and omit page and limit"`
 	IllustFilter *filters.IllustFilter `json:"illust_filter,omitempty"`
-	toolhost.PageLimitIn
+	toolrun.ListIn
 }
 
 func recommendedArtworkInputSchema() map[string]any {
@@ -179,7 +181,7 @@ func (t pixivTools) illustRecommendedHandler(ctx context.Context, in recommended
 	}
 	bindingInput := in
 	bindingInput.Cursor = nil
-	items, page, err := toolhost.CollectCursorWith(ctx, t.app, "illust_recommended", bindingInput, in.Cursor, in.PageLimitIn, func(ctx context.Context, client *pixiv.Client, cursor sdk.Cursor) ([]pixiv.Artwork, sdk.Cursor, error) {
+	items, page, err := toolhost.CollectCursorWith(ctx, t.app, "illust_recommended", bindingInput, in.Cursor, in.ListIn, func(ctx context.Context, client *pixiv.Client, cursor sdk.Cursor) ([]pixiv.Artwork, sdk.Cursor, error) {
 		result, err := client.RecommendedArtworks(ctx, pixiv.RecommendedArtworksRequest{Cursor: cursor})
 		if err != nil {
 			return nil, sdk.Cursor{}, err
@@ -194,12 +196,12 @@ func (t pixivTools) illustRecommendedHandler(ctx context.Context, in recommended
 		return outputs.Error(err)
 	}
 	out := outputs.Records{Records: recordItems, Pagination: page}
-	return outputs.Result(out, false), out, nil
+	return outputs.Result(out), out, nil
 }
 
 // registerIllustRelated 注册 pixiv_illust_related。
 func (t pixivTools) registerIllustRelated(server *mcp.Server) {
-	toolhost.AddTool(t.app, server, &mcp.Tool{Name: "pixiv_illust_related", Annotations: &mcp.ToolAnnotations{ReadOnlyHint: true, DestructiveHint: new(false), IdempotentHint: true, OpenWorldHint: new(true)}, Description: "Find artworks related to a specific illustration.", OutputSchema: records.RecordsOutputSchema()}, func(ctx context.Context, request *mcp.CallToolRequest, input relatedIn) (*mcp.CallToolResult, outputs.Records, error) {
+	toolhost.AddTool(t.app, server, &mcp.Tool{Name: "pixiv_illust_related", Annotations: &mcp.ToolAnnotations{ReadOnlyHint: true, DestructiveHint: new(false), IdempotentHint: true, OpenWorldHint: new(true)}, Description: "Find artworks related to a specific illustration.", OutputSchema: schemas.RecordsOutputSchema()}, func(ctx context.Context, request *mcp.CallToolRequest, input relatedIn) (*mcp.CallToolResult, outputs.Records, error) {
 		return t.illustRelatedHandler(ctx, input)
 	})
 }
@@ -208,7 +210,7 @@ type relatedIn struct {
 	Cursor       *string               `json:"cursor,omitempty" jsonschema:"opaque default-batch continuation; repeat original arguments and omit page and limit"`
 	IllustID     int64                 `json:"illust_id"`
 	IllustFilter *filters.IllustFilter `json:"illust_filter,omitempty"`
-	toolhost.PageLimitIn
+	toolrun.ListIn
 }
 
 func (t pixivTools) illustRelatedHandler(ctx context.Context, in relatedIn) (*mcp.CallToolResult, outputs.Records, error) {
@@ -228,7 +230,7 @@ func (t pixivTools) illustRelatedHandler(ctx context.Context, in relatedIn) (*mc
 	}
 	bindingInput := in
 	bindingInput.Cursor = nil
-	items, page, err := toolhost.CollectCursorWith(ctx, t.app, "illust_related", bindingInput, in.Cursor, in.PageLimitIn, fetch)
+	items, page, err := toolhost.CollectCursorWith(ctx, t.app, "illust_related", bindingInput, in.Cursor, in.ListIn, fetch)
 	if err != nil {
 		return outputs.Error(err)
 	}
@@ -237,33 +239,26 @@ func (t pixivTools) illustRelatedHandler(ctx context.Context, in relatedIn) (*mc
 		return outputs.Error(err)
 	}
 	out := outputs.Records{Records: recordItems, Pagination: page}
-	return outputs.Result(out, false), out, nil
+	return outputs.Result(out), out, nil
 }
 
 // registerIllustSeries 注册 pixiv_illust_series。
 func (t pixivTools) registerIllustSeries(server *mcp.Server) {
-	toolhost.AddTool(t.app, server, &mcp.Tool{Name: "pixiv_illust_series", Annotations: &mcp.ToolAnnotations{ReadOnlyHint: true, DestructiveHint: new(false), IdempotentHint: true, OpenWorldHint: new(true)}, Description: "Browse artworks in a Pixiv series.", OutputSchema: records.RecordsOutputSchema()}, func(ctx context.Context, request *mcp.CallToolRequest, input illustSeriesIn) (*mcp.CallToolResult, outputs.Records, error) {
+	toolhost.AddTool(t.app, server, &mcp.Tool{Name: "pixiv_illust_series", Annotations: &mcp.ToolAnnotations{ReadOnlyHint: true, DestructiveHint: new(false), IdempotentHint: true, OpenWorldHint: new(true)}, Description: "Browse artworks in a Pixiv series.", OutputSchema: schemas.RecordsOutputSchema()}, func(ctx context.Context, request *mcp.CallToolRequest, input illustSeriesIn) (*mcp.CallToolResult, outputs.Records, error) {
 		return t.illustSeriesHandler(ctx, input)
 	})
 }
 
 type illustSeriesIn struct {
 	SeriesID int64 `json:"series_id" jsonschema:"positive Pixiv series ID"`
-	toolhost.PageLimitIn
-}
-
-func illustSeriesValidateSeriesID(id int64) error {
-	if id <= 0 {
-		return errors.New("series_id must be a positive integer")
-	}
-	return nil
+	toolrun.ListIn
 }
 
 func (t pixivTools) illustSeriesHandler(ctx context.Context, in illustSeriesIn) (*mcp.CallToolResult, outputs.Records, error) {
-	if err := illustSeriesValidateSeriesID(in.SeriesID); err != nil {
-		return outputs.Error(err)
+	if in.SeriesID <= 0 {
+		return outputs.Error(errors.New("series_id must be a positive integer"))
 	}
-	plan, err := toolhost.ParseListPlan(in.PageLimitIn)
+	plan, err := toolrun.ParseListPlan(in.ListIn)
 	if err != nil {
 		return outputs.Error(err)
 	}
@@ -282,12 +277,12 @@ func (t pixivTools) illustSeriesHandler(ctx context.Context, in illustSeriesIn) 
 		return outputs.Error(err)
 	}
 	out := outputs.Records{Records: recordItems, Pagination: toolhost.ListPagination(plan, in.Limit, len(items), more)}
-	return outputs.Result(out, false), out, nil
+	return outputs.Result(out), out, nil
 }
 
 // registerRecommended 注册 pixiv_recommended。
 func (t pixivTools) registerRecommended(server *mcp.Server) {
-	toolhost.AddTool(t.app, server, &mcp.Tool{Name: "pixiv_recommended", Annotations: &mcp.ToolAnnotations{ReadOnlyHint: true, DestructiveHint: new(false), IdempotentHint: true, OpenWorldHint: new(true)}, Description: "Get typed personalized recommendations through the Pixiv SDK.", InputSchema: recommendedInputSchema(), OutputSchema: records.RecommendedOutputSchema()}, func(ctx context.Context, request *mcp.CallToolRequest, input recommendedIn) (*mcp.CallToolResult, outputs.Recommended, error) {
+	toolhost.AddTool(t.app, server, &mcp.Tool{Name: "pixiv_recommended", Annotations: &mcp.ToolAnnotations{ReadOnlyHint: true, DestructiveHint: new(false), IdempotentHint: true, OpenWorldHint: new(true)}, Description: "Get typed personalized recommendations through the Pixiv SDK.", InputSchema: recommendedInputSchema(), OutputSchema: schemas.RecommendedOutputSchema()}, func(ctx context.Context, request *mcp.CallToolRequest, input recommendedIn) (*mcp.CallToolResult, outputs.Recommended, error) {
 		return t.recommendedHandler(ctx, input)
 	})
 }
@@ -298,7 +293,7 @@ type recommendedIn struct {
 	IllustFilter *filters.IllustFilter `json:"illust_filter,omitempty"`
 	NovelFilter  *filters.NovelFilter  `json:"novel_filter,omitempty"`
 	UserFilter   *filters.UserFilter   `json:"user_filter,omitempty"`
-	toolhost.PageLimitIn
+	toolrun.ListIn
 }
 
 func recommendedInputSchema() map[string]any {
@@ -378,7 +373,7 @@ func (t pixivTools) recommendedHandler(ctx context.Context, in recommendedIn) (*
 	if err != nil {
 		return outputs.RecommendedError(err)
 	}
-	execute := t.app.Execute()
+	execute := t.app.ReadExecutor()
 	if execute == nil {
 		return outputs.RecommendedError(sdk.NewError("pixiv", "Recommended", sdk.LocalStateError,
 			sdk.WithDetail("sdk pooled operation is not configured")))
@@ -400,24 +395,24 @@ func (t pixivTools) recommendedHandler(ctx context.Context, in recommendedIn) (*
 	if err != nil {
 		return outputs.RecommendedError(err)
 	}
-	return records.Result(out.Records, false, ""), out, nil
+	return outputs.RecordResult(out.Records, false, ""), out, nil
 }
 
-func parseRecommendedRequest(in recommendedIn) (toolhost.ListPlan, error) {
-	plan, err := toolhost.ParseListPlan(in.PageLimitIn)
+func parseRecommendedRequest(in recommendedIn) (toolrun.ListPlan, error) {
+	plan, err := toolrun.ParseListPlan(in.ListIn)
 	if err == nil && in.Kind != "all" && in.Kind != "illust" && in.Kind != "manga" && in.Kind != "novel" && in.Kind != "user" {
 		err = errors.New("kind must be one of: all, illust, manga, novel, user")
 	}
 	if err != nil {
-		return toolhost.ListPlan{}, err
+		return toolrun.ListPlan{}, err
 	}
 	if err := validateKindFilters(in); err != nil {
-		return toolhost.ListPlan{}, err
+		return toolrun.ListPlan{}, err
 	}
 	return plan, nil
 }
 
-func recommendedInitialCursor(in recommendedIn, plan toolhost.ListPlan) (sdk.Cursor, error) {
+func recommendedInitialCursor(in recommendedIn, plan toolrun.ListPlan) (sdk.Cursor, error) {
 	if in.Cursor == nil {
 		return sdk.Cursor{}, nil
 	}
@@ -431,7 +426,7 @@ func recommendedInitialCursor(in recommendedIn, plan toolhost.ListPlan) (sdk.Cur
 	return binding.Decode(in.Cursor)
 }
 
-func (t pixivTools) recommendedArtworkStreams(ctx context.Context, client *pixiv.Client, in recommendedIn, plan toolhost.ListPlan, initial sdk.Cursor, out *outputs.Recommended) error {
+func (t pixivTools) recommendedArtworkStreams(ctx context.Context, client *pixiv.Client, in recommendedIn, plan toolrun.ListPlan, initial sdk.Cursor, out *outputs.Recommended) error {
 	var visualItems []pixiv.Artwork
 	var visualMore bool
 	var visualNext sdk.Cursor
@@ -464,7 +459,7 @@ func (t pixivTools) recommendedArtworkStreams(ctx context.Context, client *pixiv
 	return nil
 }
 
-func appendRecommendedArtworks(ctx context.Context, out *outputs.Recommended, plan toolhost.ListPlan, in recommendedIn, kind string, items []pixiv.Artwork, more bool, next sdk.Cursor) error {
+func appendRecommendedArtworks(ctx context.Context, out *outputs.Recommended, plan toolrun.ListPlan, in recommendedIn, kind string, items []pixiv.Artwork, more bool, next sdk.Cursor) error {
 	artworkCtx, err := filters.WithIllustFilter(ctx, artworkFilterForKind(kind, in.IllustFilter))
 	if err != nil {
 		return err
@@ -488,7 +483,7 @@ func appendRecommendedArtworks(ctx context.Context, out *outputs.Recommended, pl
 	return nil
 }
 
-func (t pixivTools) recommendedNovelStream(ctx context.Context, client *pixiv.Client, in recommendedIn, plan toolhost.ListPlan, initial sdk.Cursor, out *outputs.Recommended) error {
+func (t pixivTools) recommendedNovelStream(ctx context.Context, client *pixiv.Client, in recommendedIn, plan toolrun.ListPlan, initial sdk.Cursor, out *outputs.Recommended) error {
 	if in.Kind != "all" && in.Kind != "novel" {
 		return nil
 	}
@@ -516,7 +511,7 @@ func (t pixivTools) recommendedNovelStream(ctx context.Context, client *pixiv.Cl
 	return err
 }
 
-func (t pixivTools) recommendedUserStream(ctx context.Context, client *pixiv.Client, in recommendedIn, plan toolhost.ListPlan, initial sdk.Cursor, out *outputs.Recommended) error {
+func (t pixivTools) recommendedUserStream(ctx context.Context, client *pixiv.Client, in recommendedIn, plan toolrun.ListPlan, initial sdk.Cursor, out *outputs.Recommended) error {
 	if in.Kind != "all" && in.Kind != "user" {
 		return nil
 	}
@@ -576,7 +571,7 @@ func streamContinuation(in recommendedIn, kind string, next sdk.Cursor) (string,
 
 // registerTrendingTagsIllust 注册 pixiv_trending_tags_illust。
 func (t pixivTools) registerTrendingTagsIllust(server *mcp.Server) {
-	toolhost.AddTool(t.app, server, &mcp.Tool{Name: "pixiv_trending_tags_illust", Annotations: &mcp.ToolAnnotations{ReadOnlyHint: true, DestructiveHint: new(false), IdempotentHint: true, OpenWorldHint: new(true)}, Description: "Get currently trending illustration tags.", InputSchema: trendingInputSchema(), OutputSchema: records.TrendingTagsOutputSchema()}, func(ctx context.Context, request *mcp.CallToolRequest, input trendingTagsIllustIn) (*mcp.CallToolResult, outputs.TrendingTags, error) {
+	toolhost.AddTool(t.app, server, &mcp.Tool{Name: "pixiv_trending_tags_illust", Annotations: &mcp.ToolAnnotations{ReadOnlyHint: true, DestructiveHint: new(false), IdempotentHint: true, OpenWorldHint: new(true)}, Description: "Get currently trending illustration tags.", InputSchema: trendingInputSchema(), OutputSchema: schemas.TrendingTagsOutputSchema()}, func(ctx context.Context, request *mcp.CallToolRequest, input trendingTagsIllustIn) (*mcp.CallToolResult, outputs.TrendingTags, error) {
 		return t.trendingTagsIllustHandler(ctx, input)
 	})
 }

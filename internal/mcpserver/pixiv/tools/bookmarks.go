@@ -6,10 +6,11 @@ import (
 	"context"
 	"errors"
 	"fmt"
+
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/internal/outputs"
-	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/internal/records"
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/internal/schemas"
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/internal/toolhost"
+	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/toolrun"
 	"github.com/FlanChanXwO/pixiv-cli/internal/pagination"
 	record "github.com/FlanChanXwO/pixiv-cli/internal/record"
 	"github.com/FlanChanXwO/pixiv-cli/sdk"
@@ -36,7 +37,7 @@ type bookmarkAddIn struct {
 func (t pixivTools) bookmarkAddHandler(ctx context.Context, in bookmarkAddIn) (*mcp.CallToolResult, outputs.Mutation, error) {
 	if in.Kind == "novel" {
 		out := outputs.Mutation{Action: "add_novel_bookmark", NovelID: in.ID, Text: fmt.Sprintf("Bookmarked novel %d.", in.ID)}
-		return outputs.RunMutation(out, func() error {
+		return outputs.RunMutation(&out, func() error {
 			return toolhost.Write(t.app, ctx, func(ctx context.Context, client *pixiv.Client) error {
 				return client.AddNovelBookmark(ctx, pixiv.AddNovelBookmarkRequest{NovelID: in.ID, Restrict: pixiv.Restrict(in.Restrict), Tags: in.Tags})
 			})
@@ -44,7 +45,7 @@ func (t pixivTools) bookmarkAddHandler(ctx context.Context, in bookmarkAddIn) (*
 	}
 
 	out := outputs.Mutation{Action: "add_bookmark", IllustID: in.ID, Text: fmt.Sprintf("Bookmarked artwork %d.", in.ID)}
-	return outputs.RunMutation(out, func() error {
+	return outputs.RunMutation(&out, func() error {
 		return toolhost.Write(t.app, ctx, func(ctx context.Context, client *pixiv.Client) error {
 			return client.AddArtworkBookmark(ctx, pixiv.AddArtworkBookmarkRequest{ArtworkID: in.ID, Restrict: pixiv.Restrict(in.Restrict), Tags: in.Tags})
 		})
@@ -53,7 +54,7 @@ func (t pixivTools) bookmarkAddHandler(ctx context.Context, in bookmarkAddIn) (*
 
 // registerBookmarkDetail 注册 pixiv_bookmark_detail。
 func (t pixivTools) registerBookmarkDetail(server *mcp.Server) {
-	toolhost.AddTool(t.app, server, &mcp.Tool{Name: "pixiv_bookmark_detail", Annotations: &mcp.ToolAnnotations{ReadOnlyHint: true, DestructiveHint: new(false), IdempotentHint: true, OpenWorldHint: new(true)}, Description: "Get the current user's bookmark state for one artwork.", OutputSchema: records.BookmarkDetailOutputSchema()}, func(ctx context.Context, request *mcp.CallToolRequest, input bookmarkDetailIn) (*mcp.CallToolResult, outputs.BookmarkDetail, error) {
+	toolhost.AddTool(t.app, server, &mcp.Tool{Name: "pixiv_bookmark_detail", Annotations: &mcp.ToolAnnotations{ReadOnlyHint: true, DestructiveHint: new(false), IdempotentHint: true, OpenWorldHint: new(true)}, Description: "Get the current user's bookmark state for one artwork.", OutputSchema: schemas.BookmarkDetailOutputSchema()}, func(ctx context.Context, request *mcp.CallToolRequest, input bookmarkDetailIn) (*mcp.CallToolResult, outputs.BookmarkDetail, error) {
 		return t.bookmarkDetailHandler(ctx, input)
 	})
 }
@@ -87,7 +88,7 @@ func (t pixivTools) registerBookmarkListAll(server *mcp.Server) {
 			"restrict": schemas.EnumString("Bookmark visibility.", "public", "private"),
 			"tag":      map[string]any{"type": "string", "description": "Optional bookmark tag."},
 		}),
-		OutputSchema: records.RecordsOutputSchema(),
+		OutputSchema: schemas.RecordsOutputSchema(),
 	}, func(ctx context.Context, request *mcp.CallToolRequest, input bookmarkListAllIn) (*mcp.CallToolResult, outputs.Records, error) {
 		return t.bookmarkListAllHandler(ctx, input)
 	})
@@ -98,7 +99,7 @@ type bookmarkListAllIn struct {
 	UserID   int64  `json:"user_id,omitempty"`
 	Restrict string `json:"restrict,omitempty"`
 	Tag      string `json:"tag,omitempty"`
-	toolhost.PageLimitIn
+	toolrun.ListIn
 }
 
 type bookmarkCursor struct {
@@ -121,7 +122,7 @@ type bookmarkItem struct {
 }
 
 func (t pixivTools) bookmarkListAllHandler(ctx context.Context, in bookmarkListAllIn) (*mcp.CallToolResult, outputs.Records, error) {
-	plan, err := toolhost.ParseListPlan(in.PageLimitIn)
+	plan, err := toolrun.ParseListPlan(in.ListIn)
 	if err != nil {
 		return outputs.Error(err)
 	}
@@ -160,7 +161,7 @@ func (t pixivTools) bookmarkListAllHandler(ctx context.Context, in bookmarkListA
 		Records:    recordItems,
 		Pagination: toolhost.ListPagination(plan, in.Limit, len(recordItems), more),
 	}
-	return outputs.Result(out, false), out, nil
+	return outputs.Result(out), out, nil
 }
 
 func artworkStream(client *pixiv.Client, userID int64, restrict, tag string) pagination.Stream[bookmarkItem, bookmarkCursor] {
@@ -249,7 +250,7 @@ type bookmarkRemoveIn struct {
 func (t pixivTools) bookmarkRemoveHandler(ctx context.Context, in bookmarkRemoveIn) (*mcp.CallToolResult, outputs.Mutation, error) {
 	if in.Kind == "novel" {
 		out := outputs.Mutation{Action: "remove_novel_bookmark", NovelID: in.ID, Text: fmt.Sprintf("Removed bookmark from novel %d.", in.ID)}
-		return outputs.RunMutation(out, func() error {
+		return outputs.RunMutation(&out, func() error {
 			return toolhost.Write(t.app, ctx, func(ctx context.Context, client *pixiv.Client) error {
 				return client.RemoveNovelBookmark(ctx, pixiv.RemoveNovelBookmarkRequest{NovelID: in.ID})
 			})
@@ -257,7 +258,7 @@ func (t pixivTools) bookmarkRemoveHandler(ctx context.Context, in bookmarkRemove
 	}
 
 	out := outputs.Mutation{Action: "remove_bookmark", IllustID: in.ID, Text: fmt.Sprintf("Removed bookmark from artwork %d.", in.ID)}
-	return outputs.RunMutation(out, func() error {
+	return outputs.RunMutation(&out, func() error {
 		return toolhost.Write(t.app, ctx, func(ctx context.Context, client *pixiv.Client) error {
 			return client.RemoveArtworkBookmark(ctx, pixiv.RemoveArtworkBookmarkRequest{ArtworkID: in.ID})
 		})
@@ -266,7 +267,7 @@ func (t pixivTools) bookmarkRemoveHandler(ctx context.Context, in bookmarkRemove
 
 // registerBookmarkTags 注册 pixiv_bookmark_tags。
 func (t pixivTools) registerBookmarkTags(server *mcp.Server) {
-	toolhost.AddTool(t.app, server, &mcp.Tool{Name: "pixiv_bookmark_tags", Annotations: &mcp.ToolAnnotations{ReadOnlyHint: true, DestructiveHint: new(false), IdempotentHint: true, OpenWorldHint: new(true)}, Description: "List artwork (default) or novel bookmark tags.", InputSchema: bookmarkTagsInputSchema(), OutputSchema: records.BookmarkTagsOutputSchema()}, func(ctx context.Context, request *mcp.CallToolRequest, input bookmarkTagsIn) (*mcp.CallToolResult, outputs.BookmarkTags, error) {
+	toolhost.AddTool(t.app, server, &mcp.Tool{Name: "pixiv_bookmark_tags", Annotations: &mcp.ToolAnnotations{ReadOnlyHint: true, DestructiveHint: new(false), IdempotentHint: true, OpenWorldHint: new(true)}, Description: "List artwork (default) or novel bookmark tags.", InputSchema: bookmarkTagsInputSchema(), OutputSchema: schemas.BookmarkTagsOutputSchema()}, func(ctx context.Context, request *mcp.CallToolRequest, input bookmarkTagsIn) (*mcp.CallToolResult, outputs.BookmarkTags, error) {
 		return t.bookmarkTagsHandler(ctx, input)
 	})
 }
@@ -275,7 +276,7 @@ type bookmarkTagsIn struct {
 	Kind     string `json:"kind,omitempty"`
 	UserID   int64  `json:"user_id,omitempty" jsonschema:"optional user ID; defaults to authenticated user"`
 	Restrict string `json:"restrict,omitempty" jsonschema:"public or private"`
-	toolhost.PageLimitIn
+	toolrun.ListIn
 }
 
 func (t pixivTools) bookmarkTagsHandler(ctx context.Context, in bookmarkTagsIn) (*mcp.CallToolResult, outputs.BookmarkTags, error) {
@@ -286,7 +287,7 @@ func (t pixivTools) bookmarkTagsHandler(ctx context.Context, in bookmarkTagsIn) 
 	if err != nil {
 		return outputs.BookmarkTagsError(err)
 	}
-	plan, err := toolhost.ParseListPlan(in.PageLimitIn)
+	plan, err := toolrun.ParseListPlan(in.ListIn)
 	if err != nil {
 		return outputs.BookmarkTagsError(err)
 	}
@@ -307,12 +308,11 @@ func (t pixivTools) bookmarkTagsHandler(ctx context.Context, in bookmarkTagsIn) 
 	if err != nil {
 		return outputs.BookmarkTagsError(err)
 	}
-	tags := make([]pixiv.BookmarkTag, 0, len(items))
-	for _, item := range items {
-		tags = append(tags, item)
+	if items == nil {
+		items = []pixiv.BookmarkTag{}
 	}
-	out := outputs.BookmarkTags{Tags: tags, Pagination: toolhost.ListPagination(plan, in.Limit, len(items), more)}
-	return outputs.BookmarkTagsResult(out, len(items)), out, nil
+	out := outputs.BookmarkTags{Tags: items, Pagination: toolhost.ListPagination(plan, in.Limit, len(items), more)}
+	return outputs.BookmarkTagsResult(out), out, nil
 }
 
 func bookmarkTagsInputSchema() map[string]any {
@@ -338,7 +338,7 @@ func (t pixivTools) registerBookmarkTagsAll(server *mcp.Server) {
 			"user_id":  schemas.PositiveInteger("Optional positive Pixiv user ID; defaults to the authenticated user."),
 			"restrict": schemas.EnumString("Bookmark visibility.", "public", "private"),
 		}),
-		OutputSchema: records.BookmarkTagsAllOutputSchema(),
+		OutputSchema: schemas.BookmarkTagsAllOutputSchema(),
 	}, func(ctx context.Context, request *mcp.CallToolRequest, input bookmarkTagsAllIn) (*mcp.CallToolResult, outputs.BookmarkTagsAll, error) {
 		return t.bookmarkTagsAllHandler(ctx, input)
 	})
@@ -348,7 +348,7 @@ func (t pixivTools) registerBookmarkTagsAll(server *mcp.Server) {
 type bookmarkTagsAllIn struct {
 	UserID   int64  `json:"user_id,omitempty"`
 	Restrict string `json:"restrict,omitempty"`
-	toolhost.PageLimitIn
+	toolrun.ListIn
 }
 
 type bookmarkTagsCursor struct {
@@ -416,7 +416,7 @@ func bookmarkTagsCheckpoint(cursor bookmarkTagsCursor, position int) (bookmarkTa
 }
 
 func (t pixivTools) bookmarkTagsAllHandler(ctx context.Context, in bookmarkTagsAllIn) (*mcp.CallToolResult, outputs.BookmarkTagsAll, error) {
-	plan, err := toolhost.ParseListPlan(in.PageLimitIn)
+	plan, err := toolrun.ParseListPlan(in.ListIn)
 	if err != nil {
 		return outputs.BookmarkTagsAllError(err)
 	}
@@ -448,7 +448,7 @@ func (t pixivTools) bookmarkTagsAllHandler(ctx context.Context, in bookmarkTagsA
 		Tags:       tags,
 		Pagination: toolhost.ListPagination(plan, in.Limit, len(tags), more),
 	}
-	return outputs.BookmarkTagsAllResult(out, len(tags)), out, nil
+	return outputs.BookmarkTagsAllResult(out), out, nil
 }
 
 func tagBatch(page sdk.Page[pixiv.BookmarkTag], consumed int, contentType string) ([]bookmarkTagItem, sdk.Cursor, error) {

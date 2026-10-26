@@ -6,11 +6,12 @@ import (
 	"context"
 	"errors"
 	"fmt"
+
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/internal/filters"
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/internal/outputs"
-	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/internal/records"
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/internal/schemas"
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/internal/toolhost"
+	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/toolrun"
 	record "github.com/FlanChanXwO/pixiv-cli/internal/record"
 	"github.com/FlanChanXwO/pixiv-cli/sdk"
 	pixiv "github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
@@ -24,7 +25,7 @@ func (t pixivTools) registerUserArtworks(server *mcp.Server) {
 		"user_id":       schemas.PositiveInteger("Optional positive Pixiv user ID; defaults to the authenticated user."),
 		"type":          schemas.EnumString("Artwork type.", "illust", "manga", "ugoira"),
 		"illust_filter": filters.IllustFilterSchema(),
-	}), OutputSchema: records.RecordsOutputSchema()}, func(ctx context.Context, request *mcp.CallToolRequest, input userArtworksIn) (*mcp.CallToolResult, outputs.Records, error) {
+	}), OutputSchema: schemas.RecordsOutputSchema()}, func(ctx context.Context, request *mcp.CallToolRequest, input userArtworksIn) (*mcp.CallToolResult, outputs.Records, error) {
 		return t.userArtworksHandler(ctx, input)
 	})
 }
@@ -33,11 +34,11 @@ type userArtworksIn struct {
 	UserID       int64                 `json:"user_id,omitempty" jsonschema:"optional user ID; defaults to the authenticated user"`
 	Type         string                `json:"type,omitempty" jsonschema:"illust, manga, or ugoira"`
 	IllustFilter *filters.IllustFilter `json:"illust_filter,omitempty"`
-	toolhost.PageLimitIn
+	toolrun.ListIn
 }
 
 func (t pixivTools) userArtworksHandler(ctx context.Context, in userArtworksIn) (*mcp.CallToolResult, outputs.Records, error) {
-	plan, err := toolhost.ParseListPlan(in.PageLimitIn)
+	plan, err := toolrun.ParseListPlan(in.ListIn)
 	if err != nil {
 		return outputs.Error(err)
 	}
@@ -64,13 +65,13 @@ func (t pixivTools) userArtworksHandler(ctx context.Context, in userArtworksIn) 
 		return outputs.Error(err)
 	}
 	out := outputs.Records{Records: recordItems, Pagination: toolhost.ListPagination(plan, in.Limit, len(items), more)}
-	return outputs.Result(out, false), out, nil
+	return outputs.Result(out), out, nil
 }
 
 // registerUserBookmarks 注册 pixiv_user_bookmarks。
 func (t pixivTools) registerUserBookmarks(server *mcp.Server) {
 	toolhost.AddTool(t.app, server, &mcp.Tool{Name: "pixiv_user_bookmarks", InputSchema: userBookmarksInputSchema(), Description: "Browse a user's bookmarked artworks or novels.", Annotations: &mcp.ToolAnnotations{ReadOnlyHint: true, DestructiveHint: new(false), IdempotentHint: true, OpenWorldHint: new(true)},
-		OutputSchema: records.RecordsOutputSchema()}, func(ctx context.Context, request *mcp.CallToolRequest, input userBookmarksIn) (*mcp.CallToolResult, outputs.Records, error) {
+		OutputSchema: schemas.RecordsOutputSchema()}, func(ctx context.Context, request *mcp.CallToolRequest, input userBookmarksIn) (*mcp.CallToolResult, outputs.Records, error) {
 		return t.userBookmarksHandler(ctx, input)
 	})
 }
@@ -82,11 +83,11 @@ type userBookmarksIn struct {
 	Restrict     string                `json:"restrict,omitempty" jsonschema:"public or private"`
 	Tag          string                `json:"tag,omitempty"`
 	IllustFilter *filters.IllustFilter `json:"illust_filter,omitempty"`
-	toolhost.PageLimitIn
+	toolrun.ListIn
 }
 
 func (t pixivTools) userBookmarksHandler(ctx context.Context, in userBookmarksIn) (*mcp.CallToolResult, outputs.Records, error) {
-	plan, err := toolhost.ParseListPlan(in.PageLimitIn)
+	plan, err := toolrun.ParseListPlan(in.ListIn)
 	if err != nil {
 		return outputs.Error(err)
 	}
@@ -113,7 +114,7 @@ func (t pixivTools) userBookmarksHandler(ctx context.Context, in userBookmarksIn
 			return outputs.Error(err)
 		}
 		out := outputs.Records{Records: recordItems, Pagination: toolhost.ListPagination(plan, in.Limit, len(items), more)}
-		return outputs.Result(out, false), out, nil
+		return outputs.Result(out), out, nil
 	}
 
 	userID := in.UserID
@@ -140,7 +141,7 @@ func (t pixivTools) userBookmarksHandler(ctx context.Context, in userBookmarksIn
 		return outputs.Error(err)
 	}
 	out := outputs.Records{Records: recordItems, Pagination: toolhost.ListPagination(plan, in.Limit, len(items), more)}
-	return outputs.Result(out, false), out, nil
+	return outputs.Result(out), out, nil
 }
 
 func userBookmarksInputSchema() *jsonschema.Schema {
@@ -156,7 +157,7 @@ func userBookmarksInputSchema() *jsonschema.Schema {
 func (t pixivTools) registerUserDetail(server *mcp.Server) {
 	toolhost.AddTool(t.app, server, &mcp.Tool{Name: "pixiv_user_detail", Annotations: &mcp.ToolAnnotations{ReadOnlyHint: true, DestructiveHint: new(false), IdempotentHint: true, OpenWorldHint: new(true)}, Description: "Get a user's complete profile through the authenticated Pixiv SDK.", InputSchema: schemas.ClosedObject(map[string]any{
 		"user_id": schemas.PositiveInteger("Positive Pixiv user ID."),
-	}, []string{"user_id"}), OutputSchema: records.UserDetailOutputSchema()}, func(ctx context.Context, request *mcp.CallToolRequest, input userDetailIn) (*mcp.CallToolResult, outputs.UserDetail, error) {
+	}, []string{"user_id"}), OutputSchema: schemas.DetailOutputSchema()}, func(ctx context.Context, request *mcp.CallToolRequest, input userDetailIn) (*mcp.CallToolResult, outputs.Detail, error) {
 		return t.userDetailHandler(ctx, input)
 	})
 }
@@ -168,22 +169,22 @@ type userDetailIn struct {
 
 // userDetailHandler 将完整公开 SDK envelope 封装为单条 user record，避免详情 tool
 // 成为 records 契约的例外。
-func (t pixivTools) userDetailHandler(ctx context.Context, in userDetailIn) (*mcp.CallToolResult, outputs.UserDetail, error) {
+func (t pixivTools) userDetailHandler(ctx context.Context, in userDetailIn) (*mcp.CallToolResult, outputs.Detail, error) {
 	if in.UserID <= 0 {
-		return outputs.UserDetailError(fmt.Errorf("user_id must be a positive integer"))
+		return outputs.DetailError(fmt.Errorf("user_id must be a positive integer"))
 	}
 	result, err := toolhost.Read(t.app, ctx, func(ctx context.Context, client *pixiv.Client) (pixiv.UserDetail, error) {
 		return client.User(ctx, pixiv.UserRequest{UserID: in.UserID})
 	})
 	if err != nil {
-		return outputs.UserDetailError(err)
+		return outputs.DetailError(err)
 	}
 	userRecord, err := record.RecordFromUserDetail(result)
 	if err != nil {
-		return outputs.UserDetailError(err)
+		return outputs.DetailError(err)
 	}
-	out := outputs.UserDetail{Records: []record.Record{userRecord}}
-	return outputs.UserDetailResult(out, false), out, nil
+	out := outputs.Detail{Records: []record.Record{userRecord}}
+	return outputs.DetailResult(out), out, nil
 }
 
 // registerUserNovels 注册 pixiv_user_novels。
@@ -191,7 +192,7 @@ func (t pixivTools) registerUserNovels(server *mcp.Server) {
 	toolhost.AddTool(t.app, server, &mcp.Tool{Name: "pixiv_user_novels", Annotations: &mcp.ToolAnnotations{ReadOnlyHint: true, DestructiveHint: new(false), IdempotentHint: true, OpenWorldHint: new(true)}, Description: "Browse a user's novels through the App API.", InputSchema: schemas.List(map[string]any{
 		"user_id":      schemas.PositiveInteger("Optional positive Pixiv user ID; defaults to the authenticated user."),
 		"novel_filter": filters.NovelFilterSchema(),
-	}), OutputSchema: records.RecordsOutputSchema()}, func(ctx context.Context, request *mcp.CallToolRequest, input userNovelsIn) (*mcp.CallToolResult, outputs.Records, error) {
+	}), OutputSchema: schemas.RecordsOutputSchema()}, func(ctx context.Context, request *mcp.CallToolRequest, input userNovelsIn) (*mcp.CallToolResult, outputs.Records, error) {
 		return t.userNovelsHandler(ctx, input)
 	})
 }
@@ -199,11 +200,11 @@ func (t pixivTools) registerUserNovels(server *mcp.Server) {
 type userNovelsIn struct {
 	UserID      int64                `json:"user_id,omitempty" jsonschema:"optional user ID; defaults to the authenticated user"`
 	NovelFilter *filters.NovelFilter `json:"novel_filter,omitempty"`
-	toolhost.PageLimitIn
+	toolrun.ListIn
 }
 
 func (t pixivTools) userNovelsHandler(ctx context.Context, in userNovelsIn) (*mcp.CallToolResult, outputs.Records, error) {
-	plan, err := toolhost.ParseListPlan(in.PageLimitIn)
+	plan, err := toolrun.ParseListPlan(in.ListIn)
 	if err != nil {
 		return outputs.Error(err)
 	}
@@ -230,5 +231,5 @@ func (t pixivTools) userNovelsHandler(ctx context.Context, in userNovelsIn) (*mc
 		return outputs.Error(err)
 	}
 	out := outputs.Records{Records: recordItems, Pagination: toolhost.ListPagination(plan, in.Limit, len(items), more)}
-	return outputs.Result(out, false), out, nil
+	return outputs.Result(out), out, nil
 }

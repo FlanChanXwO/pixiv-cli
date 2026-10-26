@@ -1,9 +1,9 @@
+// Package mcpserver 拥有统一 MCP 注册、传输和服务生命周期。
 package mcpserver
 
 import (
 	"context"
 
-	"github.com/FlanChanXwO/pixiv-cli/internal/logging"
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/fanbox"
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
@@ -19,12 +19,31 @@ func New(pixivPorts pixiv.SDKPorts, account pixiv.Account, fanboxPorts fanbox.SD
 	server.AddReceivingMiddleware(func(next mcp.MethodHandler) mcp.MethodHandler {
 		return func(ctx context.Context, method string, request mcp.Request) (mcp.Result, error) {
 			result, err := next(ctx, method, request)
-			// 工具边界已把 logger 放入 ctx 时观察 stdio 结果；HTTP owner 自行传入生命周期 ctx。
-			if err == nil && logging.HasLogger(ctx) {
+			if err == nil {
 				result = observeMediaResult(ctx, request, result)
 			}
 			return result, err
 		}
 	})
 	return server
+}
+
+// bindLifecycle 把服务取消传给请求，资源由各次调用负责释放。
+func bindLifecycle(ctx context.Context, server *mcp.Server) {
+	server.AddReceivingMiddleware(func(next mcp.MethodHandler) mcp.MethodHandler {
+		return func(requestCtx context.Context, method string, request mcp.Request) (mcp.Result, error) {
+			requestCtx, cancel := context.WithCancel(requestCtx)
+			stop := context.AfterFunc(ctx, cancel)
+			defer stop()
+			defer cancel()
+			if err := ctx.Err(); err != nil {
+				return nil, err
+			}
+			result, err := next(requestCtx, method, request)
+			if err == nil {
+				result = observeMediaResult(ctx, request, result)
+			}
+			return result, err
+		}
+	})
 }

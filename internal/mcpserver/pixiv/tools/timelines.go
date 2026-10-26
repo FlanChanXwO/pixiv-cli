@@ -5,11 +5,12 @@ package tools
 import (
 	"context"
 	"errors"
+
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/internal/filters"
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/internal/outputs"
-	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/internal/records"
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/internal/schemas"
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/internal/toolhost"
+	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/toolrun"
 	record "github.com/FlanChanXwO/pixiv-cli/internal/record"
 	"github.com/FlanChanXwO/pixiv-cli/sdk"
 	pixiv "github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
@@ -20,7 +21,7 @@ import (
 func (t pixivTools) registerTimelineFollowing(server *mcp.Server) {
 	toolhost.AddTool(t.app, server, &mcp.Tool{Name: "pixiv_timeline_following", Description: "Browse artworks or novels from followed users.", Annotations: &mcp.ToolAnnotations{ReadOnlyHint: true, DestructiveHint: new(false), IdempotentHint: true, OpenWorldHint: new(true)},
 		InputSchema:  schemas.List(map[string]any{"illust_filter": filters.IllustFilterSchema(), "novel_filter": filters.NovelFilterSchema(), "restrict": schemas.EnumString("Visibility; omitted defaults to public.", "public", "private"), "kind": schemas.EnumString("Required content type.", "artwork", "novel")}, "kind"),
-		OutputSchema: records.RecordsOutputSchema()}, func(ctx context.Context, request *mcp.CallToolRequest, input timelineFollowingIn) (*mcp.CallToolResult, outputs.Records, error) {
+		OutputSchema: schemas.RecordsOutputSchema()}, func(ctx context.Context, request *mcp.CallToolRequest, input timelineFollowingIn) (*mcp.CallToolResult, outputs.Records, error) {
 		return t.timelineFollowingHandler(ctx, input)
 	})
 }
@@ -32,11 +33,11 @@ type timelineFollowingIn struct {
 	IllustFilter *filters.IllustFilter `json:"illust_filter,omitempty"`
 	NovelFilter  *filters.NovelFilter  `json:"novel_filter,omitempty"`
 	Restrict     string                `json:"restrict,omitempty"`
-	toolhost.PageLimitIn
+	toolrun.ListIn
 }
 
 func (t pixivTools) timelineFollowingHandler(ctx context.Context, in timelineFollowingIn) (*mcp.CallToolResult, outputs.Records, error) {
-	plan, err := toolhost.ParseListPlan(in.PageLimitIn)
+	plan, err := toolrun.ParseListPlan(in.ListIn)
 	if err != nil {
 		return outputs.Error(err)
 	}
@@ -69,7 +70,7 @@ func (t pixivTools) timelineFollowingHandler(ctx context.Context, in timelineFol
 			return outputs.Error(err)
 		}
 		out := outputs.Records{Records: recordItems, Pagination: toolhost.ListPagination(plan, in.Limit, len(items), more)}
-		return outputs.Result(out, false), out, nil
+		return outputs.Result(out), out, nil
 	}
 
 	ctx, err = filters.WithIllustFilter(ctx, in.IllustFilter)
@@ -91,14 +92,14 @@ func (t pixivTools) timelineFollowingHandler(ctx context.Context, in timelineFol
 		return outputs.Error(err)
 	}
 	out := outputs.Records{Records: recordItems, Pagination: toolhost.ListPagination(plan, in.Limit, len(items), more)}
-	return outputs.Result(out, false), out, nil
+	return outputs.Result(out), out, nil
 }
 
 // registerTimelineLatest 注册 pixiv_timeline_latest。
 func (t pixivTools) registerTimelineLatest(server *mcp.Server) {
 	toolhost.AddTool(t.app, server, &mcp.Tool{Name: "pixiv_timeline_latest", Description: "Browse latest illustrations, manga or novels.", Annotations: &mcp.ToolAnnotations{ReadOnlyHint: true, DestructiveHint: new(false), IdempotentHint: true, OpenWorldHint: new(true)},
 		InputSchema:  schemas.List(map[string]any{"illust_filter": filters.IllustFilterSchema(), "novel_filter": filters.NovelFilterSchema(), "content_type": schemas.EnumString("Required content type.", "illust", "manga", "novel")}, "content_type"),
-		OutputSchema: records.RecordsOutputSchema()}, func(ctx context.Context, request *mcp.CallToolRequest, input timelineLatestIn) (*mcp.CallToolResult, outputs.Records, error) {
+		OutputSchema: schemas.RecordsOutputSchema()}, func(ctx context.Context, request *mcp.CallToolRequest, input timelineLatestIn) (*mcp.CallToolResult, outputs.Records, error) {
 		return t.timelineLatestHandler(ctx, input)
 	})
 }
@@ -109,11 +110,11 @@ type timelineLatestIn struct {
 
 	IllustFilter *filters.IllustFilter `json:"illust_filter,omitempty"`
 	NovelFilter  *filters.NovelFilter  `json:"novel_filter,omitempty"`
-	toolhost.PageLimitIn
+	toolrun.ListIn
 }
 
 func (t pixivTools) timelineLatestHandler(ctx context.Context, in timelineLatestIn) (*mcp.CallToolResult, outputs.Records, error) {
-	plan, err := toolhost.ParseListPlan(in.PageLimitIn)
+	plan, err := toolrun.ParseListPlan(in.ListIn)
 	if err != nil {
 		return outputs.Error(err)
 	}
@@ -143,7 +144,7 @@ func (t pixivTools) timelineLatestHandler(ctx context.Context, in timelineLatest
 			return outputs.Error(err)
 		}
 		out := outputs.Records{Records: recordItems, Pagination: toolhost.ListPagination(plan, in.Limit, len(items), more)}
-		return outputs.Result(out, false), out, nil
+		return outputs.Result(out), out, nil
 	}
 
 	if in.ContentType != pixiv.SearchContentTypeIllust && in.ContentType != pixiv.SearchContentTypeManga {
@@ -168,5 +169,5 @@ func (t pixivTools) timelineLatestHandler(ctx context.Context, in timelineLatest
 		return outputs.Error(err)
 	}
 	out := outputs.Records{Records: recordItems, Pagination: toolhost.ListPagination(plan, in.Limit, len(items), more)}
-	return outputs.Result(out, false), out, nil
+	return outputs.Result(out), out, nil
 }

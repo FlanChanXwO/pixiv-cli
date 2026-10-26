@@ -17,23 +17,19 @@ func ClosedObject(properties map[string]any, required []string) map[string]any {
 	}
 }
 
-// List 返回包含统一逻辑分页字段的 MCP object schema。
+// List 把分页字段加入调用方提供的新 properties map，返回 MCP object schema。
 func List(properties map[string]any, required ...string) map[string]any {
-	all := make(map[string]any, len(properties)+2)
-	for name, property := range properties {
-		all[name] = property
-	}
-	all["page"] = map[string]any{
+	properties["page"] = map[string]any{
 		"type":        "integer",
 		"minimum":     1,
 		"description": "1-based logical page; requires a positive limit.",
 	}
-	all["limit"] = map[string]any{
+	properties["limit"] = map[string]any{
 		"type":        "integer",
 		"minimum":     0,
 		"description": "Maximum logical results; 0 returns all; omit for one logical batch.",
 	}
-	return ClosedObject(all, required)
+	return ClosedObject(properties, required)
 }
 
 // PositiveInteger 返回可选或必填正整数共用的 schema property。

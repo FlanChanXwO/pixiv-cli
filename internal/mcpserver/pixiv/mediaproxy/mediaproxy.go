@@ -82,9 +82,13 @@ func (s *Service) Issue(ctx context.Context, account, artwork int64, page int, q
 		return "", err
 	}
 	payload := base64.RawURLEncoding.EncodeToString(b)
+	return s.base + "/media/" + payload + "." + base64.RawURLEncoding.EncodeToString(s.signCapability(payload)), nil
+}
+
+func (s *Service) signCapability(payload string) []byte {
 	mac := hmac.New(sha256.New, s.key[:])
 	mac.Write([]byte(payload))
-	return s.base + "/media/" + payload + "." + base64.RawURLEncoding.EncodeToString(mac.Sum(nil)), nil
+	return mac.Sum(nil)
 }
 func (s *Service) authorized(ctx context.Context, c claims) error {
 	if ctx.Err() != nil || !time.Now().Before(c.Expires) {
@@ -110,9 +114,7 @@ func (s *Service) verify(ctx context.Context, token string) (claims, error) {
 	if err != nil {
 		return c, errCapability
 	}
-	mac := hmac.New(sha256.New, s.key[:])
-	mac.Write([]byte(payload))
-	if !hmac.Equal(sig, mac.Sum(nil)) {
+	if !hmac.Equal(sig, s.signCapability(payload)) {
 		return c, errCapability
 	}
 	b, err := base64.RawURLEncoding.DecodeString(payload)
@@ -177,10 +179,7 @@ func (s *Service) imageRequest(w http.ResponseWriter, r *http.Request) (c claims
 // openImageSession 取得账号持有者的读取快照；调用方负责关闭 Lease。
 func (s *Service) openImageSession(w http.ResponseWriter, r *http.Request, c claims) (Session, bool) {
 	session, err := s.session(r.Context(), c.Account)
-	if err != nil || session.Lease == nil || session.Lease.Value() == nil {
-		if session.Lease != nil {
-			session.Lease.Close()
-		}
+	if err != nil {
 		http.Error(w, "Image unavailable", 502)
 		return Session{}, false
 	}
@@ -295,7 +294,9 @@ func (s *Service) sendImage(w http.ResponseWriter, r *http.Request, c claims, se
 		body.fill = s.reads.cache.begin()
 		defer body.fill.abort()
 	}
-	s.pipeImage(&body, res.Body, prefix, length, started)
+	if err := s.pipeImage(&body, res.Body, prefix, length, started); err != nil {
+		return
+	}
 	if closeBody() != nil {
 		return
 	}
@@ -366,12 +367,12 @@ type imageBody struct {
 	observe func(stage string, at time.Time)
 }
 
-// pipeImage 先交付嗅探前缀，再流式转发剩余字节；中止连接时保留原有语义。
-func (s *Service) pipeImage(body *imageBody, source io.Reader, prefix []byte, length int64, started time.Time) {
+// pipeImage 转发完整图片；写入失败时返回错误，让调用方放弃缓存填充。
+func (s *Service) pipeImage(body *imageBody, source io.Reader, prefix []byte, length int64, started time.Time) error {
 	transfer := time.Now()
 	defer body.observe("image_transfer", transfer)
 	if err := body.write(prefix); err != nil {
-		return
+		return err
 	}
 	if f, ok := body.writer.(http.Flusher); ok {
 		f.Flush()
@@ -383,7 +384,7 @@ func (s *Service) pipeImage(body *imageBody, source io.Reader, prefix []byte, le
 		n, err := source.Read(buffer)
 		if n > 0 {
 			if err := body.write(buffer[:n]); err != nil {
-				return
+				return err
 			}
 			total += int64(n)
 		}
@@ -391,7 +392,7 @@ func (s *Service) pipeImage(body *imageBody, source io.Reader, prefix []byte, le
 			if err != io.EOF || (length >= 0 && length != total) {
 				panic(http.ErrAbortHandler)
 			}
-			return
+			return nil
 		}
 	}
 }

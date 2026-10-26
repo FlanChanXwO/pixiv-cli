@@ -1,17 +1,12 @@
-// Package outputs 持有 Pixiv MCP 多个 tool 共享的输出类型、schema 与 result
-// helper。每个 tool 一个 package，共享输出契约集中在这里，避免 tool 之间交叉
-// import 或复制记录协议。
+// Package outputs 定义 Pixiv MCP 工具共用的结构化输出与结果摘要。
 package outputs
 
 import (
-	"context"
-	"errors"
 	"fmt"
 
-	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/internal/records"
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/internal/toolhost"
+	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/toolrun"
 	record "github.com/FlanChanXwO/pixiv-cli/internal/record"
-	"github.com/FlanChanXwO/pixiv-cli/sdk"
 	pixiv "github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
@@ -33,30 +28,30 @@ type BookmarkFilter struct {
 }
 
 // Result 构造实体列表的 MCP 文本摘要。
-func Result(out Records, isError bool) *mcp.CallToolResult {
-	return records.Result(out.Records, isError, "")
+func Result(out Records) *mcp.CallToolResult {
+	return RecordResult(out.Records, false, "")
 }
 
 // Error 构造实体列表的 MCP error 摘要。
 func Error(err error) (*mcp.CallToolResult, Records, error) {
-	out := Records{Records: []record.Record{}, Pagination: toolhost.PaginationOut{Page: 1}}
-	return records.Result(out.Records, true, records.ErrorMessage(err)), out, nil
+	out := Records{Records: []record.Record{}, Pagination: toolhost.PaginationOut{PaginationOut: toolrun.PaginationOut{Page: 1}}}
+	return RecordResult(out.Records, true, errorMessage(err)), out, nil
 }
 
-// UserDetail 是 user_detail tool 的输出 envelope。
-type UserDetail struct {
+// Detail 是 artwork、user 与 novel detail 共用的记录 envelope。
+type Detail struct {
 	Records []record.Record `json:"records"`
 }
 
-// UserDetailResult 构造 user detail 的 MCP 摘要。
-func UserDetailResult(out UserDetail, isError bool) *mcp.CallToolResult {
-	return records.Result(out.Records, isError, "")
+// DetailResult 构造单实体详情的 MCP 摘要。
+func DetailResult(out Detail) *mcp.CallToolResult {
+	return RecordResult(out.Records, false, "")
 }
 
-// UserDetailError 构造 user detail 的 MCP error 摘要。
-func UserDetailError(err error) (*mcp.CallToolResult, UserDetail, error) {
-	out := UserDetail{Records: []record.Record{}}
-	return records.Result(out.Records, true, records.ErrorMessage(err)), out, nil
+// DetailError 构造单实体详情的 MCP error 摘要。
+func DetailError(err error) (*mcp.CallToolResult, Detail, error) {
+	out := Detail{Records: []record.Record{}}
+	return RecordResult(out.Records, true, errorMessage(err)), out, nil
 }
 
 // RecommendedPagination 分别表达每条推荐流的逻辑页与默认批次续读；
@@ -82,11 +77,11 @@ func NewRecommended() Recommended {
 // RecommendedError 构造 recommended 的 MCP error 摘要。
 func RecommendedError(err error) (*mcp.CallToolResult, Recommended, error) {
 	out := NewRecommended()
-	return records.Result(out.Records, true, records.ErrorMessage(err)), out, nil
+	return RecordResult(out.Records, true, errorMessage(err)), out, nil
 }
 
 // RecommendedPage 把单条推荐流的分页转为指针输出。
-func RecommendedPage(plan toolhost.ListPlan, limit *int, returned int, more bool) *toolhost.PaginationOut {
+func RecommendedPage(plan toolrun.ListPlan, limit *int, returned int, more bool) *toolhost.PaginationOut {
 	value := toolhost.ListPagination(plan, limit, returned, more)
 	return &value
 }
@@ -108,24 +103,6 @@ func TrendingTagsError(err error) (*mcp.CallToolResult, TrendingTags, error) {
 	return TrendingTagsResult(out, true), out, nil
 }
 
-// CommentToolMetadata 只缓存上游明确提供的评论总数与访问控制信息。
-type CommentToolMetadata struct {
-	Total  *int64
-	Access *pixiv.CommentAccessControl
-}
-
-// Set 从评论页记录首个可用的元数据。
-func (m *CommentToolMetadata) Set(page pixiv.CommentPage) {
-	if m.Total == nil && page.Total != nil {
-		value := *page.Total
-		m.Total = &value
-	}
-	if m.Access == nil && page.AccessControl != nil {
-		value := *page.AccessControl
-		m.Access = &value
-	}
-}
-
 // Comments 是评论 tool 的输出 envelope。
 type Comments struct {
 	Comments      []pixiv.Comment             `json:"comments"`
@@ -144,24 +121,8 @@ func CommentsResult(out Comments, isError bool, message string) *mcp.CallToolRes
 
 // CommentsError 构造评论的 MCP error 摘要。
 func CommentsError(err error) (*mcp.CallToolResult, Comments, error) {
-	out := Comments{Comments: []pixiv.Comment{}, Pagination: toolhost.PaginationOut{Page: 1}}
-	return CommentsResult(out, true, records.ErrorMessage(err)), out, nil
-}
-
-// NovelDetail 是 novel_detail tool 的输出 envelope。
-type NovelDetail struct {
-	Records []record.Record `json:"records"`
-}
-
-// NovelDetailResult 构造 novel detail 的 MCP 摘要。
-func NovelDetailResult(out NovelDetail) *mcp.CallToolResult {
-	return records.Result(out.Records, false, "")
-}
-
-// NovelDetailError 构造 novel detail 的 MCP error 摘要。
-func NovelDetailError(err error) (*mcp.CallToolResult, NovelDetail, error) {
-	out := NovelDetail{Records: []record.Record{}}
-	return records.Result(out.Records, true, records.ErrorMessage(err)), out, nil
+	out := Comments{Comments: []pixiv.Comment{}, Pagination: toolhost.PaginationOut{PaginationOut: toolrun.PaginationOut{Page: 1}}}
+	return CommentsResult(out, true, errorMessage(err)), out, nil
 }
 
 // NovelContent 是 novel_content tool 的输出 envelope。
@@ -177,7 +138,7 @@ func NovelContentResult(novelID int64) *mcp.CallToolResult {
 // NovelContentError 构造 novel content 的 MCP error 摘要。
 func NovelContentError(err error) (*mcp.CallToolResult, NovelContent, error) {
 	out := NovelContent{Content: pixiv.NovelContent{Blocks: []pixiv.NovelBlock{}}}
-	return &mcp.CallToolResult{IsError: true, Content: []mcp.Content{&mcp.TextContent{Text: records.ErrorMessage(err)}}}, out, nil
+	return &mcp.CallToolResult{IsError: true, Content: []mcp.Content{&mcp.TextContent{Text: errorMessage(err)}}}, out, nil
 }
 
 // NovelSeries 是 novel_series tool 的输出 envelope。
@@ -189,13 +150,13 @@ type NovelSeries struct {
 
 // NovelSeriesResult 构造 novel series 的 MCP 摘要。
 func NovelSeriesResult(out NovelSeries) *mcp.CallToolResult {
-	return records.Result(out.Records, false, "")
+	return RecordResult(out.Records, false, "")
 }
 
 // NovelSeriesError 构造 novel series 的 MCP error 摘要。
 func NovelSeriesError(err error) (*mcp.CallToolResult, NovelSeries, error) {
 	out := NovelSeries{Records: []record.Record{}}
-	return records.Result(out.Records, true, records.ErrorMessage(err)), out, nil
+	return RecordResult(out.Records, true, errorMessage(err)), out, nil
 }
 
 // BookmarkTags 是 bookmark_tags tool 的输出 envelope。
@@ -205,14 +166,14 @@ type BookmarkTags struct {
 }
 
 // BookmarkTagsResult 构造 bookmark tags 的 MCP 摘要。
-func BookmarkTagsResult(out BookmarkTags, count int) *mcp.CallToolResult {
-	return &mcp.CallToolResult{Content: []mcp.Content{&mcp.TextContent{Text: fmt.Sprintf("Retrieved %d bookmark tags.", count)}}}
+func BookmarkTagsResult(out BookmarkTags) *mcp.CallToolResult {
+	return &mcp.CallToolResult{Content: []mcp.Content{&mcp.TextContent{Text: fmt.Sprintf("Retrieved %d bookmark tags.", len(out.Tags))}}}
 }
 
 // BookmarkTagsError 构造 bookmark tags 的 MCP error 摘要。
 func BookmarkTagsError(err error) (*mcp.CallToolResult, BookmarkTags, error) {
-	out := BookmarkTags{Tags: []pixiv.BookmarkTag{}, Pagination: toolhost.PaginationOut{Page: 1}}
-	return &mcp.CallToolResult{IsError: true, Content: []mcp.Content{&mcp.TextContent{Text: records.ErrorMessage(err)}}}, out, nil
+	out := BookmarkTags{Tags: []pixiv.BookmarkTag{}, Pagination: toolhost.PaginationOut{PaginationOut: toolrun.PaginationOut{Page: 1}}}
+	return &mcp.CallToolResult{IsError: true, Content: []mcp.Content{&mcp.TextContent{Text: errorMessage(err)}}}, out, nil
 }
 
 // TypedBookmarkTag 是 bookmark_tags_all 的标签记录；content_type 保持
@@ -230,14 +191,14 @@ type BookmarkTagsAll struct {
 }
 
 // BookmarkTagsAllResult 构造 bookmark_tags_all 的 MCP 摘要。
-func BookmarkTagsAllResult(out BookmarkTagsAll, count int) *mcp.CallToolResult {
-	return &mcp.CallToolResult{Content: []mcp.Content{&mcp.TextContent{Text: fmt.Sprintf("Retrieved %d bookmark tags.", count)}}}
+func BookmarkTagsAllResult(out BookmarkTagsAll) *mcp.CallToolResult {
+	return &mcp.CallToolResult{Content: []mcp.Content{&mcp.TextContent{Text: fmt.Sprintf("Retrieved %d bookmark tags.", len(out.Tags))}}}
 }
 
 // BookmarkTagsAllError 构造 bookmark_tags_all 的 MCP error 摘要。
 func BookmarkTagsAllError(err error) (*mcp.CallToolResult, BookmarkTagsAll, error) {
-	out := BookmarkTagsAll{Tags: []TypedBookmarkTag{}, Pagination: toolhost.PaginationOut{Page: 1}}
-	return &mcp.CallToolResult{IsError: true, Content: []mcp.Content{&mcp.TextContent{Text: records.ErrorMessage(err)}}}, out, nil
+	out := BookmarkTagsAll{Tags: []TypedBookmarkTag{}, Pagination: toolhost.PaginationOut{PaginationOut: toolrun.PaginationOut{Page: 1}}}
+	return &mcp.CallToolResult{IsError: true, Content: []mcp.Content{&mcp.TextContent{Text: errorMessage(err)}}}, out, nil
 }
 
 // BookmarkDetail 是 bookmark_detail tool 的输出 envelope。
@@ -260,7 +221,7 @@ func NovelBookmarkDetailResult(out BookmarkDetail, novelID int64) *mcp.CallToolR
 // BookmarkDetailError 构造 bookmark detail 的 MCP error 摘要。
 func BookmarkDetailError(err error) (*mcp.CallToolResult, BookmarkDetail, error) {
 	out := BookmarkDetail{Tags: []string{}}
-	return &mcp.CallToolResult{IsError: true, Content: []mcp.Content{&mcp.TextContent{Text: records.ErrorMessage(err)}}}, out, nil
+	return &mcp.CallToolResult{IsError: true, Content: []mcp.Content{&mcp.TextContent{Text: errorMessage(err)}}}, out, nil
 }
 
 // Mutation 是 mutation tool 的输出 envelope。
@@ -279,20 +240,8 @@ func MutationResult(out Mutation) *mcp.CallToolResult {
 	return &mcp.CallToolResult{IsError: !out.Success, Content: []mcp.Content{&mcp.TextContent{Text: out.Text}}}
 }
 
-// RunMutation 执行一次 mutation 并统一包装成功/失败摘要。
-func RunMutation(out Mutation, run func() error) (*mcp.CallToolResult, Mutation, error) {
-	err := run()
-	if err != nil {
-		out.Text = "Error: " + err.Error()
-		return MutationResult(out), out, nil
-	}
-	out.Success = true
-	return MutationResult(out), out, nil
-}
-
-// RunMutationInPlace 与 RunMutation 共享失败/成功语义，同时允许一次上游
-// mutation 成功后把可靠响应字段（例如 comment_id）写回同一个 envelope。
-func RunMutationInPlace(out *Mutation, run func() error) (*mcp.CallToolResult, Mutation, error) {
+// RunMutation 执行 mutation，保留上游写回字段并统一包装成功/失败摘要。
+func RunMutation(out *Mutation, run func() error) (*mcp.CallToolResult, Mutation, error) {
 	err := run()
 	if err != nil {
 		out.Text = "Error: " + err.Error()
@@ -302,91 +251,19 @@ func RunMutationInPlace(out *Mutation, run func() error) (*mcp.CallToolResult, M
 	return MutationResult(*out), *out, nil
 }
 
-// ListComments 在账号池重放边界内收集 artwork 或 novel 的评论分页并输出统一
-// envelope；novel 为 true 时读取小说评论。元数据只缓存上游明确提供的值。
-func ListComments(ctx context.Context, app *toolhost.App, id int64, novel bool, input toolhost.PageLimitIn, limit *int) (*mcp.CallToolResult, Comments, error) {
-	if id <= 0 {
-		result, out, _ := CommentsError(errors.New("id must be a positive integer"))
-		return result, out, nil
+// RecordResult 统一实体查询的 MCP 文本摘要。完整实体只存在于 structured records，
+// Content 绝不复制 JSON，以便客户端始终只消费一个机器可读载荷。
+func RecordResult(records []record.Record, isError bool, message string) *mcp.CallToolResult {
+	if message == "" {
+		message = fmt.Sprintf("Retrieved %d records.", len(records))
 	}
-	plan, err := toolhost.ParseListPlan(input)
-	if err != nil {
-		result, out, _ := CommentsError(err)
-		return result, out, nil
+	return &mcp.CallToolResult{
+		IsError: isError,
+		Content: []mcp.Content{&mcp.TextContent{Text: message}},
 	}
-	metadata := CommentToolMetadata{}
-	items, more, err := toolhost.CollectWith(ctx, app, plan, func(ctx context.Context, client *pixiv.Client, cursor sdk.Cursor) ([]pixiv.Comment, sdk.Cursor, error) {
-		var page pixiv.CommentPage
-		var err error
-		if novel {
-			page, err = client.NovelComments(ctx, pixiv.NovelCommentsRequest{NovelID: id, Cursor: cursor})
-		} else {
-			page, err = client.ArtworkComments(ctx, pixiv.ArtworkCommentsRequest{ArtworkID: id, Cursor: cursor})
-		}
-		if err != nil {
-			return nil, sdk.Cursor{}, err
-		}
-		if cursor.IsZero() {
-			metadata = CommentToolMetadata{}
-		}
-		metadata.Set(page)
-		return page.Page.Items, page.Page.Next, nil
-	})
-	if err != nil {
-		result, out, _ := CommentsError(err)
-		return result, out, nil
-	}
-	comments := make([]pixiv.Comment, 0, len(items))
-	for _, item := range items {
-		comments = append(comments, item)
-	}
-	var accessControl *pixiv.CommentAccessControl
-	if metadata.Access != nil {
-		dto := *metadata.Access
-		accessControl = &dto
-	}
-	out := Comments{Comments: comments, Pagination: toolhost.ListPagination(plan, limit, len(comments), more), Total: metadata.Total, AccessControl: accessControl}
-	return CommentsResult(out, false, ""), out, nil
 }
 
-// ListUserRelations 在账号池重放边界内收集 followers/following/related/blocked 用户列表并
-// 输出统一 records envelope。
-func ListUserRelations(ctx context.Context, app *toolhost.App, kind string, userID int64, restrict string, input toolhost.PageLimitIn, limit *int) (*mcp.CallToolResult, Records, error) {
-	userID, err := toolhost.ResolveUserID(app, ctx, userID)
-	if err != nil {
-		return Error(err)
-	}
-	plan, err := toolhost.ParseListPlan(input)
-	if err != nil {
-		return Error(err)
-	}
-	items, more, err := toolhost.CollectWith(ctx, app, plan, func(ctx context.Context, client *pixiv.Client, cursor sdk.Cursor) ([]pixiv.UserPreview, sdk.Cursor, error) {
-		var result sdk.Page[pixiv.UserPreview]
-		var err error
-		switch kind {
-		case "followers":
-			result, err = client.UserFollowers(ctx, pixiv.UserFollowersRequest{UserID: userID, Restrict: pixiv.Restrict(restrict), Cursor: cursor})
-		case "following":
-			result, err = client.UserFollowing(ctx, pixiv.UserFollowingRequest{UserID: userID, Restrict: pixiv.Restrict(restrict), Cursor: cursor})
-		case "related":
-			result, err = client.RelatedUsers(ctx, pixiv.RelatedUsersRequest{UserID: userID, Cursor: cursor})
-		case "blocked":
-			result, err = client.UserBlockedUsers(ctx, pixiv.UserBlockedUsersRequest{UserID: userID, Cursor: cursor})
-		default:
-			return nil, sdk.Cursor{}, errors.New("unknown user relation")
-		}
-		if err != nil {
-			return nil, sdk.Cursor{}, err
-		}
-		return result.Items, result.Next, nil
-	})
-	if err != nil {
-		return Error(err)
-	}
-	recordItems, err := record.FromUserPreviews(items)
-	if err != nil {
-		return Error(err)
-	}
-	out := Records{Records: recordItems, Pagination: toolhost.ListPagination(plan, limit, len(items), more)}
-	return Result(out, false), out, nil
+// errorMessage 返回统一错误摘要。
+func errorMessage(err error) string {
+	return "Error: " + err.Error()
 }

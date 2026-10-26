@@ -6,13 +6,15 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/internal/toolhost"
-	record "github.com/FlanChanXwO/pixiv-cli/internal/record"
-	"github.com/FlanChanXwO/pixiv-cli/internal/reversesearch"
-	"github.com/modelcontextprotocol/go-sdk/mcp"
 	"net/url"
 	"path/filepath"
 	"strings"
+
+	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/internal/toolhost"
+	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/toolrun"
+	record "github.com/FlanChanXwO/pixiv-cli/internal/record"
+	"github.com/FlanChanXwO/pixiv-cli/internal/reversesearch"
+	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
 // registerReverseSearch 注册 pixiv_reverse_search。source 只在当前请求中传给 reversesearch.Service，输出永远只
@@ -20,22 +22,11 @@ import (
 func (t pixivTools) registerReverseSearch(server *mcp.Server) {
 	// SDK 的 schema/type 错误会包含输入值；仅拦截本 tool 尚未进入 typed handler 的失败。
 	// handler 总是返回完整 envelope，不能覆盖其 provider partial/error 结果。
-	server.AddReceivingMiddleware(func(next mcp.MethodHandler) mcp.MethodHandler {
-		return func(ctx context.Context, method string, request mcp.Request) (mcp.Result, error) {
-			result, err := next(ctx, method, request)
-			call, ok := request.(*mcp.CallToolRequest)
-			if !ok || call.Params.Name != "pixiv_reverse_search" {
-				return result, err
-			}
-			failed, ok := result.(*mcp.CallToolResult)
-			if ok && failed.IsError && failed.StructuredContent == nil {
-				out := emptyReverseSearchOutput()
-				safe := reverseSearchError(out, reversesearch.CodeInvalidRequest)
-				safe.StructuredContent = out
-				return safe, nil
-			}
-			return result, err
-		}
+	toolrun.ProtectInput(server, "pixiv_reverse_search", func() *mcp.CallToolResult {
+		out := emptyReverseSearchOutput()
+		safe := reverseSearchError(reversesearch.CodeInvalidRequest)
+		safe.StructuredContent = out
+		return safe
 	})
 	toolhost.AddTool(t.app, server, &mcp.Tool{
 		Meta: mcp.Meta{"openai/fileParams": []string{"image"}},
@@ -195,7 +186,7 @@ func reverseSearchOutputSchema() map[string]any {
 func (t pixivTools) reverseSearchHandler(ctx context.Context, input reverseSearchInput) (*mcp.CallToolResult, reverseSearchOutput, error) {
 	out := emptyReverseSearchOutput()
 	if (input.Source == nil) == (input.Image == nil) {
-		return reverseSearchError(out, reversesearch.CodeInvalidRequest), out, nil
+		return reverseSearchError(reversesearch.CodeInvalidRequest), out, nil
 	}
 	var source string
 	if input.Source != nil {
@@ -204,7 +195,7 @@ func (t pixivTools) reverseSearchHandler(ctx context.Context, input reverseSearc
 			parsed, err := url.Parse(source)
 			// file URI 只表示 server 本机绝对路径；不能静默丢弃 authority、查询或片段。
 			if err != nil || parsed.User != nil || (parsed.Host != "" && !strings.EqualFold(parsed.Host, "localhost")) || parsed.RawQuery != "" || parsed.ForceQuery || strings.Contains(source, "#") || strings.ContainsRune(parsed.Path, 0) {
-				return reverseSearchError(out, reversesearch.CodeInvalidSource), out, nil
+				return reverseSearchError(reversesearch.CodeInvalidSource), out, nil
 			}
 			source = filepath.FromSlash(parsed.Path)
 			// Windows file:///C:/... 的首分隔符不属于盘符；其他平台不改路径。
@@ -212,22 +203,22 @@ func (t pixivTools) reverseSearchHandler(ctx context.Context, input reverseSearc
 				source = source[1:]
 			}
 			if !filepath.IsAbs(source) || strings.HasPrefix(filepath.ToSlash(source), "//") {
-				return reverseSearchError(out, reversesearch.CodeInvalidSource), out, nil
+				return reverseSearchError(reversesearch.CodeInvalidSource), out, nil
 			}
 		}
 	} else {
 		source = input.Image.DownloadURL
 		parsed, err := url.Parse(source)
 		if strings.TrimSpace(input.Image.FileID) == "" || err != nil || parsed.Host == "" || parsed.User != nil || (parsed.Scheme != "http" && parsed.Scheme != "https") {
-			return reverseSearchError(out, reversesearch.CodeInvalidRequest), out, nil
+			return reverseSearchError(reversesearch.CodeInvalidRequest), out, nil
 		}
 	}
 	if strings.TrimSpace(source) == "" {
-		return reverseSearchError(out, reversesearch.CodeInvalidRequest), out, nil
+		return reverseSearchError(reversesearch.CodeInvalidRequest), out, nil
 	}
 	ports := t.app.ReverseSearchPorts()
 	if ports.Searcher == nil {
-		return reverseSearchError(out, reversesearch.CodeProviderNotConfigured), out, nil
+		return reverseSearchError(reversesearch.CodeProviderNotConfigured), out, nil
 	}
 	provider := ports.Provider
 	if input.Provider != "" {
@@ -248,14 +239,14 @@ func (t pixivTools) reverseSearchHandler(ctx context.Context, input reverseSearc
 	}
 	if err != nil {
 		code := safeErrorCode(ctx, err)
-		result := reverseSearchError(out, code)
+		result := reverseSearchError(code)
 		if input.Image != nil && (code == reversesearch.CodeSourceHTTPStatus || code == reversesearch.CodeSourceReadFailed) {
 			result.Content = append(result.Content, &mcp.TextContent{Text: "The host image could not be downloaded. Reattach the image and try again."})
 		}
 		return result, out, nil
 	}
 	if recordsErr != nil {
-		return reverseSearchError(out, reversesearch.CodeUnknown), out, nil
+		return reverseSearchError(reversesearch.CodeUnknown), out, nil
 	}
 	return reverseSearchResult(out), out, nil
 }
@@ -321,7 +312,7 @@ func reverseSearchResult(out reverseSearchOutput) *mcp.CallToolResult {
 	}
 }
 
-func reverseSearchError(out reverseSearchOutput, code reversesearch.ErrorCode) *mcp.CallToolResult {
+func reverseSearchError(code reversesearch.ErrorCode) *mcp.CallToolResult {
 	message := "Error: reverse search failed"
 	if code != "" && code != reversesearch.CodeUnknown {
 		message += " (" + string(code) + ")"
@@ -333,10 +324,10 @@ func reverseSearchError(out reverseSearchOutput, code reversesearch.ErrorCode) *
 }
 
 func safeErrorCode(ctx context.Context, err error) reversesearch.ErrorCode {
-	if errors.Is(err, context.Canceled) || (ctx != nil && errors.Is(ctx.Err(), context.Canceled)) {
+	if errors.Is(err, context.Canceled) || errors.Is(ctx.Err(), context.Canceled) {
 		return reversesearch.CodeUnknown
 	}
-	if errors.Is(err, context.DeadlineExceeded) || (ctx != nil && errors.Is(ctx.Err(), context.DeadlineExceeded)) {
+	if errors.Is(err, context.DeadlineExceeded) || errors.Is(ctx.Err(), context.DeadlineExceeded) {
 		return reversesearch.CodeUnknown
 	}
 	return reversesearch.CodeOf(err)
