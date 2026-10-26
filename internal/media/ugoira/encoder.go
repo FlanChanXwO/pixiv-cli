@@ -69,6 +69,17 @@ func (encoder) Encode(ctx context.Context, input Input) error {
 	})
 }
 
+func writeAnimation(ctx context.Context, output io.Writer, data []byte) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	n, err := output.Write(data)
+	if n != len(data) && err == nil {
+		err = io.ErrShortWrite
+	}
+	return errors.Join(err, ctx.Err())
+}
+
 // 预算位于缓冲器下游，在每次实际落盘前预留容量；普通调用不受限。
 type outputBudgetWriter struct {
 	writer    io.Writer

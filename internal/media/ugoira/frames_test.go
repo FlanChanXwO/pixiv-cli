@@ -2,6 +2,7 @@ package ugoira
 
 import (
 	"archive/zip"
+	"bufio"
 	"bytes"
 	"compress/zlib"
 	"context"
@@ -21,7 +22,28 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	framejpeg "github.com/FlanChanXwO/pixiv-cli/internal/media/ugoira/jpeg"
 )
+
+func (a *frameArchive) decode(ctx context.Context, frame Frame) (*image.NRGBA, error) {
+	return a.decodeInto(ctx, frame, nil)
+}
+
+func readFrameSource(ctx context.Context, r io.Reader, file string, declaredSize, limit uint64) ([]byte, error) {
+	var source frameSource
+	return source.read(ctx, r, file, declaredSize, limit)
+}
+
+func decodeFrameSource(ctx context.Context, source []byte) (*image.NRGBA, error) {
+	var decoder framejpeg.Decoder
+	var header bufio.Reader
+	return decodeFrameSourceInto(ctx, source, nil, &decoder, &header)
+}
+
+func frameNRGBA(ctx context.Context, src image.Image) (*image.NRGBA, error) {
+	return frameNRGBAInto(ctx, src, nil)
+}
 
 func TestFrameArchiveOrderAndPixels(t *testing.T) {
 	first := image.NewNRGBA(image.Rect(0, 0, 3, 1))

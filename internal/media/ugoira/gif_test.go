@@ -13,6 +13,10 @@ import (
 	"testing"
 )
 
+func (w *gifWriter) write(data []byte) error {
+	return writeAnimation(w.ctx, w.output, data)
+}
+
 func TestGIFReplay(t *testing.T) {
 	first := image.NewNRGBA(image.Rect(0, 0, 3, 1))
 	copy(first.Pix, []byte{255, 0, 0, 255, 255, 255, 255, 128, 10, 20, 30, 0})
