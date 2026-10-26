@@ -1,5 +1,5 @@
 // Package fanboxaccount 定义 FANBOX 本地账号领域和独立 storage port。
-// FANBOX session 不与 Pixiv refresh token 共享类型或生命周期。
+// FANBOX 的账号选择、会话校验和存储端口独立于 Pixiv。
 package fanboxaccount
 
 import (
