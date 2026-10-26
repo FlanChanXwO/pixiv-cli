@@ -32,25 +32,14 @@ type ReleaseSourceSelector struct {
 	httpClient *http.Client
 }
 
-// NewReleaseSourceSelector 建立使用给定候选的传输路径选择器。
-func NewReleaseSourceSelector(sources []ReleaseSource, httpClient *http.Client) *ReleaseSourceSelector {
-	if httpClient == nil {
-		httpClient = http.DefaultClient
-	}
-	return &ReleaseSourceSelector{sources: append([]ReleaseSource(nil), sources...), httpClient: httpClient}
-}
-
-// NewDefaultReleaseSourceSelector 建立使用内置默认传输路径的选择器。
-func NewDefaultReleaseSourceSelector(httpClient *http.Client) *ReleaseSourceSelector {
-	return NewReleaseSourceSelector(DefaultReleaseSources(), httpClient)
+// NewReleaseSourceSelector 建立使用内置默认传输路径的选择器。
+func NewReleaseSourceSelector(httpClient *http.Client) *ReleaseSourceSelector {
+	return &ReleaseSourceSelector{sources: defaultReleaseSources(), httpClient: httpClient}
 }
 
 // Ordered 返回首个通过探测的候选，随后按内置顺序附上尚未使用的同类候选，供下载失败时逐一
 // 尝试。候选只改写 canonical URL；后续签名、checksum 与 URL allowlist 仍在调用处执行。
 func (s *ReleaseSourceSelector) Ordered(ctx context.Context, kind ReleaseSourceKind, canonicalURL string) ([]ReleaseSource, error) {
-	if s == nil {
-		return nil, fmt.Errorf("release source selector is nil")
-	}
 	if err := CheckContext(ctx, "select release source"); err != nil {
 		return nil, err
 	}
@@ -63,7 +52,6 @@ func (s *ReleaseSourceSelector) Ordered(ctx context.Context, kind ReleaseSourceK
 	defer cancel()
 	results := make(chan releaseSourceProbeResult, len(candidates))
 	for _, source := range candidates {
-		source := source
 		go func() {
 			err := s.probe(probeContext, source, kind, canonicalURL)
 			results <- releaseSourceProbeResult{source: source, err: err}

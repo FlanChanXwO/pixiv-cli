@@ -14,7 +14,7 @@ const (
 	homebrewBetaFormula   = "FlanChanXwO/tap/pixiv-cli-beta"
 )
 
-// UpdateCoordinatorOptions 注入更新策略需要的外部依赖，供 CLI 和受控测试复用。
+// UpdateCoordinatorOptions 提供更新策略所需的安装来源、查询与执行端口。
 type UpdateCoordinatorOptions struct {
 	SourceDetector   SourceDetector
 	ReleaseChecker   ReleaseChecker
@@ -46,7 +46,7 @@ type UpdateResult struct {
 	UpdateAvailable  bool          `json:"update_available"`
 }
 
-// NewUpdateCoordinator 建立可测试的更新策略编排器。
+// NewUpdateCoordinator 建立显式更新策略编排器。
 func NewUpdateCoordinator(options UpdateCoordinatorOptions) (*UpdateCoordinator, error) {
 	if options.SourceDetector == nil {
 		return nil, fmt.Errorf("update source detector is required")
@@ -55,7 +55,10 @@ func NewUpdateCoordinator(options UpdateCoordinatorOptions) (*UpdateCoordinator,
 		return nil, fmt.Errorf("update release checker is required")
 	}
 	if options.ReleaseInstaller == nil {
-		options.ReleaseInstaller = NewReleaseInstaller(ReleaseInstallerOptions{})
+		return nil, fmt.Errorf("release installer is required")
+	}
+	if options.CommandRunner == nil {
+		return nil, fmt.Errorf("update command runner is required")
 	}
 	return &UpdateCoordinator{
 		sourceDetector:   options.SourceDetector,
@@ -67,9 +70,6 @@ func NewUpdateCoordinator(options UpdateCoordinatorOptions) (*UpdateCoordinator,
 
 // Execute 查询更新并在非 check 模式下执行来源对应的更新策略。
 func (c *UpdateCoordinator) Execute(ctx context.Context, request UpdateRequest) (UpdateResult, error) {
-	if c == nil {
-		return UpdateResult{}, fmt.Errorf("update coordinator is nil")
-	}
 	source, err := c.sourceDetector.Detect(request.BuildInfo)
 	if err != nil {
 		return UpdateResult{}, fmt.Errorf("detect installation source: %w", err)
@@ -126,9 +126,6 @@ func (c *UpdateCoordinator) Execute(ctx context.Context, request UpdateRequest) 
 	}
 	switch source {
 	case InstallSourceGoInstall:
-		if c.commandRunner == nil {
-			return UpdateResult{}, fmt.Errorf("go install update command runner is unavailable")
-		}
 		command := Command{Name: "go", Args: []string{"install", goInstallPackage + "@" + checked.Release.TagName}}
 		if err := c.commandRunner.Run(ctx, command); err != nil {
 			return UpdateResult{}, fmt.Errorf("run go install update: %w", err)
@@ -146,9 +143,6 @@ func homebrewChannelSwitchRequested(source InstallSource, includePrerelease bool
 }
 
 func (c *UpdateCoordinator) runHomebrew(ctx context.Context, action, formula string) error {
-	if c.commandRunner == nil {
-		return fmt.Errorf("Homebrew update command runner is unavailable")
-	}
 	if err := c.commandRunner.Run(ctx, Command{Name: "brew", Args: []string{action, formula}}); err != nil {
 		return fmt.Errorf("Homebrew %s %q: %w", action, formula, err)
 	}

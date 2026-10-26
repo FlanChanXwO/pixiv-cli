@@ -60,15 +60,11 @@ var ReleaseSigningPublicKey = installer.ReleaseSigningPublicKey
 // 使用安装器提供的文件 cache 并落在应用数据目录。
 func NewGitHubReleaseClient(options ReleaseClientOptions) (*release.GitHubReleaseClient, error) {
 	if options.Cache == nil {
-		cacheDir := options.CacheDir
-		if cacheDir == "" {
-			appDataDir, err := paths.UserDataSubdir(paths.AppDataDirName)
-			if err != nil {
-				return nil, fmt.Errorf("determine application data directory: %w", err)
-			}
-			cacheDir = filepath.Join(appDataDir, "cache")
+		appDataDir, err := paths.UserDataSubdir(paths.AppDataDirName)
+		if err != nil {
+			return nil, fmt.Errorf("determine application data directory: %w", err)
 		}
-		options.Cache = installer.NewFileReleaseCache(cacheDir, filepath.Join(cacheDir, release.CacheFilename))
+		options.Cache = installer.NewFileReleaseCache(filepath.Join(appDataDir, "cache", release.CacheFilename))
 	}
 	return release.NewGitHubReleaseClient(options)
 }

@@ -1,4 +1,4 @@
-package installer_test
+package installer
 
 import (
 	"context"
@@ -17,7 +17,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/FlanChanXwO/pixiv-cli/internal/selfupdate/installer"
 	"github.com/FlanChanXwO/pixiv-cli/internal/selfupdate/release"
 	"github.com/stretchr/testify/require"
 )
@@ -48,7 +47,8 @@ func TestChecksumFailurePreservesInstalledBinary(t *testing.T) {
 	}
 	target := filepath.Join(t.TempDir(), "pixiv")
 	require.NoError(t, os.WriteFile(target, []byte("old executable"), 0o700))
-	updater := installer.NewReleaseInstaller(installer.ReleaseInstallerOptions{HTTPClient: httpClient, TrustedKeys: map[string]ed25519.PublicKey{"fixture": publicKey}, ExecutablePath: func() (string, error) { return target, nil }})
+	updater := NewReleaseInstaller(ReleaseInstallerOptions{HTTPClient: httpClient, TrustedKeys: map[string]ed25519.PublicKey{"fixture": publicKey}}).(*releaseInstaller)
+	updater.executablePath = func() (string, error) { return target, nil }
 	rel := release.Release{TagName: "v1.2.3", Version: "1.2.3"}
 	for _, name := range []string{archive, "checksums.txt", "checksums.json"} {
 		rel.Assets = append(rel.Assets, release.ReleaseAsset{Name: name, DownloadURL: "https://github.com/FlanChanXwO/pixiv-cli/releases/download/v1.2.3/" + name})
